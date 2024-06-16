@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-/*
+/* -*- mode: c; c-basic-offset: 8; -*-
+ * vim: noexpandtab sw=8 ts=8 sts=0:
+ *
  * io.c
  *
  * Buffer cache handling
@@ -64,7 +66,7 @@ int ocfs2_write_block(struct ocfs2_super *osb, struct buffer_head *bh,
 
 	get_bh(bh); /* for end_buffer_write_sync() */
 	bh->b_end_io = end_buffer_write_sync;
-	submit_bh(REQ_OP_WRITE, bh);
+	submit_bh(REQ_OP_WRITE, 0, bh);
 
 	wait_on_buffer(bh);
 
@@ -147,7 +149,7 @@ int ocfs2_read_blocks_sync(struct ocfs2_super *osb, u64 block,
 
 		get_bh(bh); /* for end_buffer_read_sync() */
 		bh->b_end_io = end_buffer_read_sync;
-		submit_bh(REQ_OP_READ, bh);
+		submit_bh(REQ_OP_READ, 0, bh);
 	}
 
 read_failure:
@@ -158,7 +160,7 @@ read_failure:
 			if (new_bh && bh) {
 				/* If middle bh fails, let previous bh
 				 * finish its read and then put it to
-				 * avoid bh leak
+				 * aovoid bh leak
 				 */
 				if (!buffer_jbd(bh))
 					wait_on_buffer(bh);
@@ -328,7 +330,7 @@ int ocfs2_read_blocks(struct ocfs2_caching_info *ci, u64 block, int nr,
 			if (validate)
 				set_buffer_needs_validate(bh);
 			bh->b_end_io = end_buffer_read_sync;
-			submit_bh(REQ_OP_READ, bh);
+			submit_bh(REQ_OP_READ, 0, bh);
 			continue;
 		}
 	}
@@ -345,7 +347,7 @@ read_failure:
 				if (new_bh && bh) {
 					/* If middle bh fails, let previous bh
 					 * finish its read and then put it to
-					 * avoid bh leak
+					 * aovoid bh leak
 					 */
 					if (!buffer_jbd(bh))
 						wait_on_buffer(bh);
@@ -449,7 +451,7 @@ int ocfs2_write_super_or_backup(struct ocfs2_super *osb,
 	get_bh(bh); /* for end_buffer_write_sync() */
 	bh->b_end_io = end_buffer_write_sync;
 	ocfs2_compute_meta_ecc(osb->sb, bh->b_data, &di->i_check);
-	submit_bh(REQ_OP_WRITE, bh);
+	submit_bh(REQ_OP_WRITE, 0, bh);
 
 	wait_on_buffer(bh);
 

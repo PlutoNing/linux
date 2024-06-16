@@ -19,94 +19,112 @@
 #include <asm/sclp.h>
 
 #define SLOT_NAME_SIZE	10
+static LIST_HEAD(s390_hotplug_slot_list);
+
+static int zpci_fn_configured(enum zpci_state state)
+{
+	return state == ZPCI_FN_STATE_CONFIGURED ||
+	       state == ZPCI_FN_STATE_ONLINE;
+}
+
+/*
+ * struct slot - slot information for each *physical* slot
+ */
+struct slot {
+	struct list_head slot_list;
+	struct hotplug_slot hotplug_slot;
+	struct zpci_dev *zdev;
+};
+
+static inline struct slot *to_slot(struct hotplug_slot *hotplug_slot)
+{
+	return container_of(hotplug_slot, struct slot, hotplug_slot);
+}
+
+static inline int slot_configure(struct slot *slot)
+{
+	int ret = sclp_pci_configure(slot->zdev->fid);
+
+	zpci_dbg(3, "conf fid:%x, rc:%d\n", slot->zdev->fid, ret);
+	if (!ret)
+		slot->zdev->state = ZPCI_FN_STATE_CONFIGURED;
+
+	return ret;
+}
+
+static inline int slot_deconfigure(struct slot *slot)
+{
+	int ret = sclp_pci_deconfigure(slot->zdev->fid);
+
+	zpci_dbg(3, "deconf fid:%x, rc:%d\n", slot->zdev->fid, ret);
+	if (!ret)
+		slot->zdev->state = ZPCI_FN_STATE_STANDBY;
+
+	return ret;
+}
 
 static int enable_slot(struct hotplug_slot *hotplug_slot)
 {
-	struct zpci_dev *zdev = container_of(hotplug_slot, struct zpci_dev,
-					     hotplug_slot);
+	struct slot *slot = to_slot(hotplug_slot);
 	int rc;
 
-	mutex_lock(&zdev->state_lock);
-	if (zdev->state != ZPCI_FN_STATE_STANDBY) {
-		rc = -EIO;
-		goto out;
-	}
+	if (slot->zdev->state != ZPCI_FN_STATE_STANDBY)
+		return -EIO;
 
-	rc = sclp_pci_configure(zdev->fid);
-	zpci_dbg(3, "conf fid:%x, rc:%d\n", zdev->fid, rc);
+	rc = slot_configure(slot);
 	if (rc)
-		goto out;
-	zdev->state = ZPCI_FN_STATE_CONFIGURED;
+		return rc;
 
-	rc = zpci_scan_configured_device(zdev, zdev->fh);
-out:
-	mutex_unlock(&zdev->state_lock);
+	rc = zpci_enable_device(slot->zdev);
+	if (rc)
+		goto out_deconfigure;
+
+	pci_scan_slot(slot->zdev->bus, ZPCI_DEVFN);
+	pci_lock_rescan_remove();
+	pci_bus_add_devices(slot->zdev->bus);
+	pci_unlock_rescan_remove();
+
+	return rc;
+
+out_deconfigure:
+	slot_deconfigure(slot);
 	return rc;
 }
 
 static int disable_slot(struct hotplug_slot *hotplug_slot)
 {
-	struct zpci_dev *zdev = container_of(hotplug_slot, struct zpci_dev,
-					     hotplug_slot);
-	struct pci_dev *pdev = NULL;
+	struct slot *slot = to_slot(hotplug_slot);
+	struct pci_dev *pdev;
 	int rc;
 
-	mutex_lock(&zdev->state_lock);
-	if (zdev->state != ZPCI_FN_STATE_CONFIGURED) {
-		rc = -EIO;
-		goto out;
+	if (!zpci_fn_configured(slot->zdev->state))
+		return -EIO;
+
+	pdev = pci_get_slot(slot->zdev->bus, ZPCI_DEVFN);
+	if (pdev) {
+		pci_stop_and_remove_bus_device_locked(pdev);
+		pci_dev_put(pdev);
 	}
 
-	pdev = pci_get_slot(zdev->zbus->bus, zdev->devfn);
-	if (pdev && pci_num_vf(pdev)) {
-		pci_dev_put(pdev);
-		rc = -EBUSY;
-		goto out;
-	}
-
-	rc = zpci_deconfigure_device(zdev);
-out:
-	mutex_unlock(&zdev->state_lock);
-	if (pdev)
-		pci_dev_put(pdev);
-	return rc;
-}
-
-static int reset_slot(struct hotplug_slot *hotplug_slot, bool probe)
-{
-	struct zpci_dev *zdev = container_of(hotplug_slot, struct zpci_dev,
-					     hotplug_slot);
-	int rc = -EIO;
-
-	/*
-	 * If we can't get the zdev->state_lock the device state is
-	 * currently undergoing a transition and we bail out - just
-	 * the same as if the device's state is not configured at all.
-	 */
-	if (!mutex_trylock(&zdev->state_lock))
+	rc = zpci_disable_device(slot->zdev);
+	if (rc)
 		return rc;
 
-	/* We can reset only if the function is configured */
-	if (zdev->state != ZPCI_FN_STATE_CONFIGURED)
-		goto out;
-
-	if (probe) {
-		rc = 0;
-		goto out;
-	}
-
-	rc = zpci_hot_reset_device(zdev);
-out:
-	mutex_unlock(&zdev->state_lock);
-	return rc;
+	return slot_deconfigure(slot);
 }
 
 static int get_power_status(struct hotplug_slot *hotplug_slot, u8 *value)
 {
-	struct zpci_dev *zdev = container_of(hotplug_slot, struct zpci_dev,
-					     hotplug_slot);
+	struct slot *slot = to_slot(hotplug_slot);
 
-	*value = zpci_is_device_configured(zdev) ? 1 : 0;
+	switch (slot->zdev->state) {
+	case ZPCI_FN_STATE_STANDBY:
+		*value = 0;
+		break;
+	default:
+		*value = 1;
+		break;
+	}
 	return 0;
 }
 
@@ -120,7 +138,6 @@ static int get_adapter_status(struct hotplug_slot *hotplug_slot, u8 *value)
 static const struct hotplug_slot_ops s390_hotplug_slot_ops = {
 	.enable_slot =		enable_slot,
 	.disable_slot =		disable_slot,
-	.reset_slot =		reset_slot,
 	.get_power_status =	get_power_status,
 	.get_adapter_status =	get_adapter_status,
 };
@@ -128,16 +145,44 @@ static const struct hotplug_slot_ops s390_hotplug_slot_ops = {
 int zpci_init_slot(struct zpci_dev *zdev)
 {
 	char name[SLOT_NAME_SIZE];
-	struct zpci_bus *zbus = zdev->zbus;
+	struct slot *slot;
+	int rc;
 
-	zdev->hotplug_slot.ops = &s390_hotplug_slot_ops;
+	if (!zdev)
+		return 0;
+
+	slot = kzalloc(sizeof(*slot), GFP_KERNEL);
+	if (!slot)
+		goto error;
+
+	slot->zdev = zdev;
+	slot->hotplug_slot.ops = &s390_hotplug_slot_ops;
 
 	snprintf(name, SLOT_NAME_SIZE, "%08x", zdev->fid);
-	return pci_hp_register(&zdev->hotplug_slot, zbus->bus,
-			       zdev->devfn, name);
+	rc = pci_hp_register(&slot->hotplug_slot, zdev->bus,
+			     ZPCI_DEVFN, name);
+	if (rc)
+		goto error_reg;
+
+	list_add(&slot->slot_list, &s390_hotplug_slot_list);
+	return 0;
+
+error_reg:
+	kfree(slot);
+error:
+	return -ENOMEM;
 }
 
 void zpci_exit_slot(struct zpci_dev *zdev)
 {
-	pci_hp_deregister(&zdev->hotplug_slot);
+	struct slot *slot, *next;
+
+	list_for_each_entry_safe(slot, next, &s390_hotplug_slot_list,
+				 slot_list) {
+		if (slot->zdev != zdev)
+			continue;
+		list_del(&slot->slot_list);
+		pci_hp_deregister(&slot->hotplug_slot);
+		kfree(slot);
+	}
 }

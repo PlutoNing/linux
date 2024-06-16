@@ -16,15 +16,11 @@
 #include <asm/barrier.h>
 #include <asm/compiler.h>
 #include <asm/errno.h>
-#include <asm/sync.h>
+#include <asm/war.h>
 
-#define arch_futex_atomic_op_inuser arch_futex_atomic_op_inuser
-#define futex_atomic_cmpxchg_inatomic futex_atomic_cmpxchg_inatomic
-#include <asm-generic/futex.h>
-
-#define __futex_atomic_op(op, insn, ret, oldval, uaddr, oparg)		\
+#define __futex_atomic_op(insn, ret, oldval, uaddr, oparg)		\
 {									\
-	if (cpu_has_llsc && IS_ENABLED(CONFIG_WAR_R10000_LLSC)) {	\
+	if (cpu_has_llsc && R10000_LLSC_WAR) {				\
 		__asm__ __volatile__(					\
 		"	.set	push				\n"	\
 		"	.set	noat				\n"	\
@@ -36,7 +32,7 @@
 		"	.set	arch=r4000			\n"	\
 		"2:	sc	$1, %2				\n"	\
 		"	beqzl	$1, 1b				\n"	\
-		__stringify(__WEAK_LLSC_MB) "			\n"	\
+		__WEAK_LLSC_MB						\
 		"3:						\n"	\
 		"	.insn					\n"	\
 		"	.set	pop				\n"	\
@@ -54,19 +50,19 @@
 		  "i" (-EFAULT)						\
 		: "memory");						\
 	} else if (cpu_has_llsc) {					\
+		loongson_llsc_mb();					\
 		__asm__ __volatile__(					\
 		"	.set	push				\n"	\
 		"	.set	noat				\n"	\
 		"	.set	push				\n"	\
 		"	.set	"MIPS_ISA_ARCH_LEVEL"		\n"	\
-		"	" __SYNC(full, loongson3_war) "		\n"	\
 		"1:	"user_ll("%1", "%4")" # __futex_atomic_op\n"	\
 		"	.set	pop				\n"	\
 		"	" insn	"				\n"	\
 		"	.set	"MIPS_ISA_ARCH_LEVEL"		\n"	\
 		"2:	"user_sc("$1", "%2")"			\n"	\
 		"	beqz	$1, 1b				\n"	\
-		__stringify(__WEAK_LLSC_MB) "			\n"	\
+		__WEAK_LLSC_MB						\
 		"3:						\n"	\
 		"	.insn					\n"	\
 		"	.set	pop				\n"	\
@@ -83,10 +79,8 @@
 		: "0" (0), GCC_OFF_SMALL_ASM() (*uaddr), "Jr" (oparg),	\
 		  "i" (-EFAULT)						\
 		: "memory");						\
-	} else {							\
-		/* fallback for non-SMP */				\
-		ret = futex_atomic_op_inuser_local(op, oparg, oval, uaddr);	\
-	}								\
+	} else								\
+		ret = -ENOSYS;						\
 }
 
 static inline int
@@ -94,33 +88,34 @@ arch_futex_atomic_op_inuser(int op, int oparg, int *oval, u32 __user *uaddr)
 {
 	int oldval = 0, ret;
 
-	if (!access_ok(uaddr, sizeof(u32)))
-		return -EFAULT;
+	pagefault_disable();
 
 	switch (op) {
 	case FUTEX_OP_SET:
-		__futex_atomic_op(op, "move $1, %z5", ret, oldval, uaddr, oparg);
+		__futex_atomic_op("move $1, %z5", ret, oldval, uaddr, oparg);
 		break;
 
 	case FUTEX_OP_ADD:
-		__futex_atomic_op(op, "addu $1, %1, %z5",
+		__futex_atomic_op("addu $1, %1, %z5",
 				  ret, oldval, uaddr, oparg);
 		break;
 	case FUTEX_OP_OR:
-		__futex_atomic_op(op, "or	$1, %1, %z5",
+		__futex_atomic_op("or	$1, %1, %z5",
 				  ret, oldval, uaddr, oparg);
 		break;
 	case FUTEX_OP_ANDN:
-		__futex_atomic_op(op, "and	$1, %1, %z5",
+		__futex_atomic_op("and	$1, %1, %z5",
 				  ret, oldval, uaddr, ~oparg);
 		break;
 	case FUTEX_OP_XOR:
-		__futex_atomic_op(op, "xor	$1, %1, %z5",
+		__futex_atomic_op("xor	$1, %1, %z5",
 				  ret, oldval, uaddr, oparg);
 		break;
 	default:
 		ret = -ENOSYS;
 	}
+
+	pagefault_enable();
 
 	if (!ret)
 		*oval = oldval;
@@ -138,7 +133,7 @@ futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 	if (!access_ok(uaddr, sizeof(u32)))
 		return -EFAULT;
 
-	if (cpu_has_llsc && IS_ENABLED(CONFIG_WAR_R10000_LLSC)) {
+	if (cpu_has_llsc && R10000_LLSC_WAR) {
 		__asm__ __volatile__(
 		"# futex_atomic_cmpxchg_inatomic			\n"
 		"	.set	push					\n"
@@ -152,7 +147,7 @@ futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 		"	.set	arch=r4000				\n"
 		"2:	sc	$1, %2					\n"
 		"	beqzl	$1, 1b					\n"
-		__stringify(__WEAK_LLSC_MB) "				\n"
+		__WEAK_LLSC_MB
 		"3:							\n"
 		"	.insn						\n"
 		"	.set	pop					\n"
@@ -169,13 +164,13 @@ futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 		  "i" (-EFAULT)
 		: "memory");
 	} else if (cpu_has_llsc) {
+		loongson_llsc_mb();
 		__asm__ __volatile__(
 		"# futex_atomic_cmpxchg_inatomic			\n"
 		"	.set	push					\n"
 		"	.set	noat					\n"
 		"	.set	push					\n"
 		"	.set	"MIPS_ISA_ARCH_LEVEL"			\n"
-		"	" __SYNC(full, loongson3_war) "			\n"
 		"1:	"user_ll("%1", "%3")"				\n"
 		"	bne	%1, %z4, 3f				\n"
 		"	.set	pop					\n"
@@ -183,7 +178,8 @@ futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 		"	.set	"MIPS_ISA_ARCH_LEVEL"			\n"
 		"2:	"user_sc("$1", "%2")"				\n"
 		"	beqz	$1, 1b					\n"
-		"3:	" __SYNC_ELSE(full, loongson3_war, __WEAK_LLSC_MB) "\n"
+		__WEAK_LLSC_MB
+		"3:							\n"
 		"	.insn						\n"
 		"	.set	pop					\n"
 		"	.section .fixup,\"ax\"				\n"
@@ -198,9 +194,9 @@ futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 		: GCC_OFF_SMALL_ASM() (*uaddr), "Jr" (oldval), "Jr" (newval),
 		  "i" (-EFAULT)
 		: "memory");
-	} else {
-		return futex_atomic_cmpxchg_inatomic_local(uval, uaddr, oldval, newval);
-	}
+		loongson_llsc_mb();
+	} else
+		return -ENOSYS;
 
 	*uval = val;
 	return ret;

@@ -10,7 +10,6 @@
  */
 
 #include <crypto/algapi.h>
-#include <crypto/internal/cipher.h>
 #include <crypto/internal/skcipher.h>
 #include <linux/err.h>
 #include <linux/init.h>
@@ -71,7 +70,7 @@ static int crypto_pcbc_encrypt(struct skcipher_request *req)
 
 	err = skcipher_walk_virt(&walk, req, false);
 
-	while (walk.nbytes) {
+	while ((nbytes = walk.nbytes)) {
 		if (walk.src.virt.addr == walk.dst.virt.addr)
 			nbytes = crypto_pcbc_encrypt_inplace(req, &walk,
 							     cipher);
@@ -138,7 +137,7 @@ static int crypto_pcbc_decrypt(struct skcipher_request *req)
 
 	err = skcipher_walk_virt(&walk, req, false);
 
-	while (walk.nbytes) {
+	while ((nbytes = walk.nbytes)) {
 		if (walk.src.virt.addr == walk.dst.virt.addr)
 			nbytes = crypto_pcbc_decrypt_inplace(req, &walk,
 							     cipher);
@@ -154,9 +153,10 @@ static int crypto_pcbc_decrypt(struct skcipher_request *req)
 static int crypto_pcbc_create(struct crypto_template *tmpl, struct rtattr **tb)
 {
 	struct skcipher_instance *inst;
+	struct crypto_alg *alg;
 	int err;
 
-	inst = skcipher_alloc_instance_simple(tmpl, tb);
+	inst = skcipher_alloc_instance_simple(tmpl, tb, &alg);
 	if (IS_ERR(inst))
 		return PTR_ERR(inst);
 
@@ -166,7 +166,7 @@ static int crypto_pcbc_create(struct crypto_template *tmpl, struct rtattr **tb)
 	err = skcipher_register_instance(tmpl, inst);
 	if (err)
 		inst->free(inst);
-
+	crypto_mod_put(alg);
 	return err;
 }
 
@@ -192,4 +192,3 @@ module_exit(crypto_pcbc_module_exit);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("PCBC block cipher mode of operation");
 MODULE_ALIAS_CRYPTO("pcbc");
-MODULE_IMPORT_NS(CRYPTO_INTERNAL);

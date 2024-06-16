@@ -68,6 +68,7 @@ static void asd_phy_event_tasklet(struct asd_ascb *ascb,
 					 struct done_list_struct *dl)
 {
 	struct asd_ha_struct *asd_ha = ascb->ha;
+	struct sas_ha_struct *sas_ha = &asd_ha->sas_ha;
 	int phy_id = dl->status_block[0] & DL_PHY_MASK;
 	struct asd_phy *phy = &asd_ha->phys[phy_id];
 
@@ -80,8 +81,7 @@ static void asd_phy_event_tasklet(struct asd_ascb *ascb,
 		ASD_DPRINTK("phy%d: device unplugged\n", phy_id);
 		asd_turn_led(asd_ha, phy_id, 0);
 		sas_phy_disconnected(&phy->sas_phy);
-		sas_notify_phy_event(&phy->sas_phy, PHYE_LOSS_OF_SIGNAL,
-				     GFP_ATOMIC);
+		sas_ha->notify_phy_event(&phy->sas_phy, PHYE_LOSS_OF_SIGNAL);
 		break;
 	case CURRENT_OOB_DONE:
 		/* hot plugged device */
@@ -89,13 +89,12 @@ static void asd_phy_event_tasklet(struct asd_ascb *ascb,
 		get_lrate_mode(phy, oob_mode);
 		ASD_DPRINTK("phy%d device plugged: lrate:0x%x, proto:0x%x\n",
 			    phy_id, phy->sas_phy.linkrate, phy->sas_phy.iproto);
-		sas_notify_phy_event(&phy->sas_phy, PHYE_OOB_DONE, GFP_ATOMIC);
+		sas_ha->notify_phy_event(&phy->sas_phy, PHYE_OOB_DONE);
 		break;
 	case CURRENT_SPINUP_HOLD:
 		/* hot plug SATA, no COMWAKE sent */
 		asd_turn_led(asd_ha, phy_id, 1);
-		sas_notify_phy_event(&phy->sas_phy, PHYE_SPINUP_HOLD,
-				     GFP_ATOMIC);
+		sas_ha->notify_phy_event(&phy->sas_phy, PHYE_SPINUP_HOLD);
 		break;
 	case CURRENT_GTO_TIMEOUT:
 	case CURRENT_OOB_ERROR:
@@ -103,7 +102,7 @@ static void asd_phy_event_tasklet(struct asd_ascb *ascb,
 			    dl->status_block[1]);
 		asd_turn_led(asd_ha, phy_id, 0);
 		sas_phy_disconnected(&phy->sas_phy);
-		sas_notify_phy_event(&phy->sas_phy, PHYE_OOB_ERROR, GFP_ATOMIC);
+		sas_ha->notify_phy_event(&phy->sas_phy, PHYE_OOB_ERROR);
 		break;
 	}
 }
@@ -124,8 +123,8 @@ static unsigned ord_phy(struct asd_ha_struct *asd_ha, struct asd_phy *phy)
 
 /**
  * asd_get_attached_sas_addr -- extract/generate attached SAS address
- * @phy: pointer to asd_phy
- * @sas_addr: pointer to buffer where the SAS address is to be written
+ * phy: pointer to asd_phy
+ * sas_addr: pointer to buffer where the SAS address is to be written
  *
  * This function extracts the SAS address from an IDENTIFY frame
  * received.  If OOB is SATA, then a SAS address is generated from the
@@ -223,6 +222,7 @@ static void asd_bytes_dmaed_tasklet(struct asd_ascb *ascb,
 	int edb_el = edb_id + ascb->edb_index;
 	struct asd_dma_tok *edb = ascb->ha->seq.edb_arr[edb_el];
 	struct asd_phy *phy = &ascb->ha->phys[phy_id];
+	struct sas_ha_struct *sas_ha = phy->sas_phy.ha;
 	u16 size = ((dl->status_block[3] & 7) << 8) | dl->status_block[2];
 
 	size = min(size, (u16) sizeof(phy->frame_rcvd));
@@ -234,7 +234,7 @@ static void asd_bytes_dmaed_tasklet(struct asd_ascb *ascb,
 	spin_unlock_irqrestore(&phy->sas_phy.frame_rcvd_lock, flags);
 	asd_dump_frame_rcvd(phy, dl);
 	asd_form_port(ascb->ha, phy);
-	sas_notify_port_event(&phy->sas_phy, PORTE_BYTES_DMAED, GFP_ATOMIC);
+	sas_ha->notify_port_event(&phy->sas_phy, PORTE_BYTES_DMAED);
 }
 
 static void asd_link_reset_err_tasklet(struct asd_ascb *ascb,
@@ -270,7 +270,7 @@ static void asd_link_reset_err_tasklet(struct asd_ascb *ascb,
 	asd_turn_led(asd_ha, phy_id, 0);
 	sas_phy_disconnected(sas_phy);
 	asd_deform_port(asd_ha, phy);
-	sas_notify_port_event(sas_phy, PORTE_LINK_RESET_ERR, GFP_ATOMIC);
+	sas_ha->notify_port_event(sas_phy, PORTE_LINK_RESET_ERR);
 
 	if (retries_left == 0) {
 		int num = 1;
@@ -315,8 +315,7 @@ static void asd_primitive_rcvd_tasklet(struct asd_ascb *ascb,
 			spin_lock_irqsave(&sas_phy->sas_prim_lock, flags);
 			sas_phy->sas_prim = ffs(cont);
 			spin_unlock_irqrestore(&sas_phy->sas_prim_lock, flags);
-			sas_notify_port_event(sas_phy, PORTE_BROADCAST_RCVD,
-					      GFP_ATOMIC);
+			sas_ha->notify_port_event(sas_phy,PORTE_BROADCAST_RCVD);
 			break;
 
 		case LmUNKNOWNP:
@@ -337,8 +336,7 @@ static void asd_primitive_rcvd_tasklet(struct asd_ascb *ascb,
 			/* The sequencer disables all phys on that port.
 			 * We have to re-enable the phys ourselves. */
 			asd_deform_port(asd_ha, phy);
-			sas_notify_port_event(sas_phy, PORTE_HARD_RESET,
-					      GFP_ATOMIC);
+			sas_ha->notify_port_event(sas_phy, PORTE_HARD_RESET);
 			break;
 
 		default:
@@ -569,7 +567,7 @@ static void escb_tasklet_complete(struct asd_ascb *ascb,
 		/* the device is gone */
 		sas_phy_disconnected(sas_phy);
 		asd_deform_port(asd_ha, phy);
-		sas_notify_port_event(sas_phy, PORTE_TIMER_EVENT, GFP_ATOMIC);
+		sas_ha->notify_port_event(sas_phy, PORTE_TIMER_EVENT);
 		break;
 	default:
 		ASD_DPRINTK("%s: phy%d: unknown event:0x%x\n", __func__,
@@ -708,11 +706,11 @@ static void set_speed_mask(u8 *speed_mask, struct asd_phy_desc *pd)
 	switch (pd->max_sas_lrate) {
 	case SAS_LINK_RATE_6_0_GBPS:
 		*speed_mask &= ~SAS_SPEED_60_DIS;
-		fallthrough;
+		/* fall through*/
 	default:
 	case SAS_LINK_RATE_3_0_GBPS:
 		*speed_mask &= ~SAS_SPEED_30_DIS;
-		fallthrough;
+		/* fall through*/
 	case SAS_LINK_RATE_1_5_GBPS:
 		*speed_mask &= ~SAS_SPEED_15_DIS;
 	}
@@ -720,10 +718,9 @@ static void set_speed_mask(u8 *speed_mask, struct asd_phy_desc *pd)
 	switch (pd->min_sas_lrate) {
 	case SAS_LINK_RATE_6_0_GBPS:
 		*speed_mask |= SAS_SPEED_30_DIS;
-		fallthrough;
+		/* fall through*/
 	case SAS_LINK_RATE_3_0_GBPS:
 		*speed_mask |= SAS_SPEED_15_DIS;
-		fallthrough;
 	default:
 	case SAS_LINK_RATE_1_5_GBPS:
 		/* nothing to do */
@@ -733,7 +730,7 @@ static void set_speed_mask(u8 *speed_mask, struct asd_phy_desc *pd)
 	switch (pd->max_sata_lrate) {
 	case SAS_LINK_RATE_3_0_GBPS:
 		*speed_mask &= ~SATA_SPEED_30_DIS;
-		fallthrough;
+		/* fall through*/
 	default:
 	case SAS_LINK_RATE_1_5_GBPS:
 		*speed_mask &= ~SATA_SPEED_15_DIS;
@@ -742,7 +739,6 @@ static void set_speed_mask(u8 *speed_mask, struct asd_phy_desc *pd)
 	switch (pd->min_sata_lrate) {
 	case SAS_LINK_RATE_3_0_GBPS:
 		*speed_mask |= SATA_SPEED_15_DIS;
-		fallthrough;
 	default:
 	case SAS_LINK_RATE_1_5_GBPS:
 		/* nothing to do */
@@ -793,7 +789,7 @@ void asd_build_control_phy(struct asd_ascb *ascb, int phy_id, u8 subfunc)
 
 		/* link reset retries, this should be nominal */
 		control_phy->link_reset_retries = 10;
-		fallthrough;
+		/* fall through */
 
 	case RELEASE_SPINUP_HOLD: /* 0x02 */
 		/* decide the func_mask */
@@ -851,7 +847,7 @@ void asd_build_initiate_link_adm_task(struct asd_ascb *ascb, int phy_id,
 
 /**
  * asd_ascb_timedout -- called when a pending SCB's timer has expired
- * @t: Timer context used to fetch the SCB
+ * @data: unsigned long, a pointer to the ascb in question
  *
  * This is the default timeout function which does the most necessary.
  * Upper layers can implement their own timeout function, say to free

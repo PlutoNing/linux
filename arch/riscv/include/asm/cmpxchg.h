@@ -8,6 +8,7 @@
 
 #include <linux/bug.h>
 
+#include <asm/barrier.h>
 #include <asm/fence.h>
 
 #define __xchg_relaxed(ptr, new, size)					\
@@ -36,7 +37,7 @@
 	__ret;								\
 })
 
-#define arch_xchg_relaxed(ptr, x)					\
+#define xchg_relaxed(ptr, x)						\
 ({									\
 	__typeof__(*(ptr)) _x_ = (x);					\
 	(__typeof__(*(ptr))) __xchg_relaxed((ptr),			\
@@ -71,7 +72,7 @@
 	__ret;								\
 })
 
-#define arch_xchg_acquire(ptr, x)					\
+#define xchg_acquire(ptr, x)						\
 ({									\
 	__typeof__(*(ptr)) _x_ = (x);					\
 	(__typeof__(*(ptr))) __xchg_acquire((ptr),			\
@@ -106,14 +107,14 @@
 	__ret;								\
 })
 
-#define arch_xchg_release(ptr, x)					\
+#define xchg_release(ptr, x)						\
 ({									\
 	__typeof__(*(ptr)) _x_ = (x);					\
 	(__typeof__(*(ptr))) __xchg_release((ptr),			\
 					    _x_, sizeof(*(ptr)));	\
 })
 
-#define __arch_xchg(ptr, new, size)					\
+#define __xchg(ptr, new, size)						\
 ({									\
 	__typeof__(ptr) __ptr = (ptr);					\
 	__typeof__(new) __new = (new);					\
@@ -139,22 +140,22 @@
 	__ret;								\
 })
 
-#define arch_xchg(ptr, x)						\
+#define xchg(ptr, x)							\
 ({									\
 	__typeof__(*(ptr)) _x_ = (x);					\
-	(__typeof__(*(ptr))) __arch_xchg((ptr), _x_, sizeof(*(ptr)));	\
+	(__typeof__(*(ptr))) __xchg((ptr), _x_, sizeof(*(ptr)));	\
 })
 
 #define xchg32(ptr, x)							\
 ({									\
 	BUILD_BUG_ON(sizeof(*(ptr)) != 4);				\
-	arch_xchg((ptr), (x));						\
+	xchg((ptr), (x));						\
 })
 
 #define xchg64(ptr, x)							\
 ({									\
 	BUILD_BUG_ON(sizeof(*(ptr)) != 8);				\
-	arch_xchg((ptr), (x));						\
+	xchg((ptr), (x));						\
 })
 
 /*
@@ -178,7 +179,7 @@
 			"	bnez %1, 0b\n"				\
 			"1:\n"						\
 			: "=&r" (__ret), "=&r" (__rc), "+A" (*__ptr)	\
-			: "rJ" ((long)__old), "rJ" (__new)		\
+			: "rJ" (__old), "rJ" (__new)			\
 			: "memory");					\
 		break;							\
 	case 8:								\
@@ -198,7 +199,7 @@
 	__ret;								\
 })
 
-#define arch_cmpxchg_relaxed(ptr, o, n)					\
+#define cmpxchg_relaxed(ptr, o, n)					\
 ({									\
 	__typeof__(*(ptr)) _o_ = (o);					\
 	__typeof__(*(ptr)) _n_ = (n);					\
@@ -223,7 +224,7 @@
 			RISCV_ACQUIRE_BARRIER				\
 			"1:\n"						\
 			: "=&r" (__ret), "=&r" (__rc), "+A" (*__ptr)	\
-			: "rJ" ((long)__old), "rJ" (__new)		\
+			: "rJ" (__old), "rJ" (__new)			\
 			: "memory");					\
 		break;							\
 	case 8:								\
@@ -244,7 +245,7 @@
 	__ret;								\
 })
 
-#define arch_cmpxchg_acquire(ptr, o, n)					\
+#define cmpxchg_acquire(ptr, o, n)					\
 ({									\
 	__typeof__(*(ptr)) _o_ = (o);					\
 	__typeof__(*(ptr)) _n_ = (n);					\
@@ -269,7 +270,7 @@
 			"	bnez %1, 0b\n"				\
 			"1:\n"						\
 			: "=&r" (__ret), "=&r" (__rc), "+A" (*__ptr)	\
-			: "rJ" ((long)__old), "rJ" (__new)		\
+			: "rJ" (__old), "rJ" (__new)			\
 			: "memory");					\
 		break;							\
 	case 8:								\
@@ -290,7 +291,7 @@
 	__ret;								\
 })
 
-#define arch_cmpxchg_release(ptr, o, n)					\
+#define cmpxchg_release(ptr, o, n)					\
 ({									\
 	__typeof__(*(ptr)) _o_ = (o);					\
 	__typeof__(*(ptr)) _n_ = (n);					\
@@ -312,10 +313,10 @@
 			"	bne  %0, %z3, 1f\n"			\
 			"	sc.w.rl %1, %z4, %2\n"			\
 			"	bnez %1, 0b\n"				\
-			RISCV_FULL_BARRIER				\
+			"	fence rw, rw\n"				\
 			"1:\n"						\
 			: "=&r" (__ret), "=&r" (__rc), "+A" (*__ptr)	\
-			: "rJ" ((long)__old), "rJ" (__new)		\
+			: "rJ" (__old), "rJ" (__new)			\
 			: "memory");					\
 		break;							\
 	case 8:								\
@@ -324,7 +325,7 @@
 			"	bne %0, %z3, 1f\n"			\
 			"	sc.d.rl %1, %z4, %2\n"			\
 			"	bnez %1, 0b\n"				\
-			RISCV_FULL_BARRIER				\
+			"	fence rw, rw\n"				\
 			"1:\n"						\
 			: "=&r" (__ret), "=&r" (__rc), "+A" (*__ptr)	\
 			: "rJ" (__old), "rJ" (__new)			\
@@ -336,7 +337,7 @@
 	__ret;								\
 })
 
-#define arch_cmpxchg(ptr, o, n)						\
+#define cmpxchg(ptr, o, n)						\
 ({									\
 	__typeof__(*(ptr)) _o_ = (o);					\
 	__typeof__(*(ptr)) _n_ = (n);					\
@@ -344,19 +345,31 @@
 				       _o_, _n_, sizeof(*(ptr)));	\
 })
 
-#define arch_cmpxchg_local(ptr, o, n)					\
+#define cmpxchg_local(ptr, o, n)					\
 	(__cmpxchg_relaxed((ptr), (o), (n), sizeof(*(ptr))))
 
-#define arch_cmpxchg64(ptr, o, n)					\
+#define cmpxchg32(ptr, o, n)						\
 ({									\
-	BUILD_BUG_ON(sizeof(*(ptr)) != 8);				\
-	arch_cmpxchg((ptr), (o), (n));					\
+	BUILD_BUG_ON(sizeof(*(ptr)) != 4);				\
+	cmpxchg((ptr), (o), (n));					\
 })
 
-#define arch_cmpxchg64_local(ptr, o, n)					\
+#define cmpxchg32_local(ptr, o, n)					\
+({									\
+	BUILD_BUG_ON(sizeof(*(ptr)) != 4);				\
+	cmpxchg_relaxed((ptr), (o), (n))				\
+})
+
+#define cmpxchg64(ptr, o, n)						\
 ({									\
 	BUILD_BUG_ON(sizeof(*(ptr)) != 8);				\
-	arch_cmpxchg_relaxed((ptr), (o), (n));				\
+	cmpxchg((ptr), (o), (n));					\
+})
+
+#define cmpxchg64_local(ptr, o, n)					\
+({									\
+	BUILD_BUG_ON(sizeof(*(ptr)) != 8);				\
+	cmpxchg_relaxed((ptr), (o), (n));				\
 })
 
 #endif /* _ASM_RISCV_CMPXCHG_H */

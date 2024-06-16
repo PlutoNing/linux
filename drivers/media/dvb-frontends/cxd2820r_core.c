@@ -530,13 +530,13 @@ struct dvb_frontend *cxd2820r_attach(const struct cxd2820r_config *config,
 	strscpy(board_info.type, "cxd2820r", I2C_NAME_SIZE);
 	board_info.addr = config->i2c_address;
 	board_info.platform_data = &pdata;
-	client = i2c_new_client_device(adapter, &board_info);
-	if (!i2c_client_has_driver(client))
+	client = i2c_new_device(adapter, &board_info);
+	if (!client || !client->dev.driver)
 		return NULL;
 
 	return pdata.get_dvb_frontend(client);
 }
-EXPORT_SYMBOL_GPL(cxd2820r_attach);
+EXPORT_SYMBOL(cxd2820r_attach);
 
 static struct dvb_frontend *cxd2820r_get_dvb_frontend(struct i2c_client *client)
 {
@@ -547,7 +547,8 @@ static struct dvb_frontend *cxd2820r_get_dvb_frontend(struct i2c_client *client)
 	return &priv->fe;
 }
 
-static int cxd2820r_probe(struct i2c_client *client)
+static int cxd2820r_probe(struct i2c_client *client,
+			  const struct i2c_device_id *id)
 {
 	struct cxd2820r_platform_data *pdata = client->dev.platform_data;
 	struct cxd2820r_priv *priv;
@@ -628,7 +629,7 @@ static int cxd2820r_probe(struct i2c_client *client)
 
 	/*
 	 * Chip has two I2C addresses for different register banks. We register
-	 * one dummy I2C client in order to get own I2C client for each
+	 * one dummy I2C client in in order to get own I2C client for each
 	 * register bank.
 	 */
 	priv->client[1] = i2c_new_dummy_device(client->adapter, client->addr | (1 << 1));
@@ -704,7 +705,7 @@ err:
 	return ret;
 }
 
-static void cxd2820r_remove(struct i2c_client *client)
+static int cxd2820r_remove(struct i2c_client *client)
 {
 	struct cxd2820r_priv *priv = i2c_get_clientdata(client);
 
@@ -720,6 +721,8 @@ static void cxd2820r_remove(struct i2c_client *client)
 	regmap_exit(priv->regmap[0]);
 
 	kfree(priv);
+
+	return 0;
 }
 
 static const struct i2c_device_id cxd2820r_id_table[] = {

@@ -14,7 +14,6 @@
 #include <linux/module.h>
 #include <linux/mod_devicetable.h>
 #include <linux/delay.h>
-#include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/platform_device.h>
 #include <linux/rtc.h>
@@ -56,21 +55,10 @@ struct rtc7301_priv {
 	u8 bank;
 };
 
-/*
- * When the device is memory-mapped, some platforms pack the registers into
- * 32-bit access using the lower 8 bits at each 4-byte stride, while others
- * expose them as simply consecutive bytes.
- */
-static const struct regmap_config rtc7301_regmap_32_config = {
+static const struct regmap_config rtc7301_regmap_config = {
 	.reg_bits = 32,
 	.val_bits = 8,
 	.reg_stride = 4,
-};
-
-static const struct regmap_config rtc7301_regmap_8_config = {
-	.reg_bits = 8,
-	.val_bits = 8,
-	.reg_stride = 1,
 };
 
 static u8 rtc7301_read(struct rtc7301_priv *priv, unsigned int reg)
@@ -332,10 +320,11 @@ static irqreturn_t rtc7301_irq_handler(int irq, void *dev_id)
 {
 	struct rtc_device *rtc = dev_id;
 	struct rtc7301_priv *priv = dev_get_drvdata(rtc->dev.parent);
+	unsigned long flags;
 	irqreturn_t ret = IRQ_NONE;
 	u8 alrm_ctrl;
 
-	spin_lock(&priv->lock);
+	spin_lock_irqsave(&priv->lock, flags);
 
 	rtc7301_select_bank(priv, 1);
 
@@ -346,7 +335,7 @@ static irqreturn_t rtc7301_irq_handler(int irq, void *dev_id)
 		rtc_update_irq(rtc, 1, RTC_IRQF | RTC_AF);
 	}
 
-	spin_unlock(&priv->lock);
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	return ret;
 }
@@ -365,40 +354,26 @@ static void rtc7301_init(struct rtc7301_priv *priv)
 
 static int __init rtc7301_rtc_probe(struct platform_device *dev)
 {
+	struct resource *res;
 	void __iomem *regs;
 	struct rtc7301_priv *priv;
 	struct rtc_device *rtc;
-	static const struct regmap_config *mapconf;
 	int ret;
-	u32 val;
+
+	res = platform_get_resource(dev, IORESOURCE_MEM, 0);
+	if (!res)
+		return -ENODEV;
 
 	priv = devm_kzalloc(&dev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
-	regs = devm_platform_ioremap_resource(dev, 0);
+	regs = devm_ioremap_resource(&dev->dev, res);
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
-	ret = device_property_read_u32(&dev->dev, "reg-io-width", &val);
-	if (ret)
-		/* Default to 32bit accesses */
-		val = 4;
-
-	switch (val) {
-	case 1:
-		mapconf = &rtc7301_regmap_8_config;
-		break;
-	case 4:
-		mapconf = &rtc7301_regmap_32_config;
-		break;
-	default:
-		dev_err(&dev->dev, "invalid reg-io-width %d\n", val);
-		return -EINVAL;
-	}
-
 	priv->regmap = devm_regmap_init_mmio(&dev->dev, regs,
-					     mapconf);
+					     &rtc7301_regmap_config);
 	if (IS_ERR(priv->regmap))
 		return PTR_ERR(priv->regmap);
 

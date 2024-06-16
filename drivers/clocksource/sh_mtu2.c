@@ -23,10 +23,6 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
-#ifdef CONFIG_SUPERH
-#include <asm/platform_early.h>
-#endif
-
 struct sh_mtu2_device;
 
 struct sh_mtu2_channel {
@@ -297,12 +293,12 @@ static int sh_mtu2_clock_event_set_periodic(struct clock_event_device *ced)
 
 static void sh_mtu2_clock_event_suspend(struct clock_event_device *ced)
 {
-	dev_pm_genpd_suspend(&ced_to_sh_mtu2(ced)->mtu->pdev->dev);
+	pm_genpd_syscore_poweroff(&ced_to_sh_mtu2(ced)->mtu->pdev->dev);
 }
 
 static void sh_mtu2_clock_event_resume(struct clock_event_device *ced)
 {
-	dev_pm_genpd_resume(&ced_to_sh_mtu2(ced)->mtu->pdev->dev);
+	pm_genpd_syscore_poweron(&ced_to_sh_mtu2(ced)->mtu->pdev->dev);
 }
 
 static void sh_mtu2_register_clockevent(struct sh_mtu2_channel *ch,
@@ -377,7 +373,7 @@ static int sh_mtu2_map_memory(struct sh_mtu2_device *mtu)
 		return -ENXIO;
 	}
 
-	mtu->mapbase = ioremap(res->start, resource_size(res));
+	mtu->mapbase = ioremap_nocache(res->start, resource_size(res));
 	if (mtu->mapbase == NULL)
 		return -ENXIO;
 
@@ -452,7 +448,7 @@ static int sh_mtu2_probe(struct platform_device *pdev)
 	struct sh_mtu2_device *mtu = platform_get_drvdata(pdev);
 	int ret;
 
-	if (!is_sh_early_platform_device(pdev)) {
+	if (!is_early_platform_device(pdev)) {
 		pm_runtime_set_active(&pdev->dev);
 		pm_runtime_enable(&pdev->dev);
 	}
@@ -472,7 +468,7 @@ static int sh_mtu2_probe(struct platform_device *pdev)
 		pm_runtime_idle(&pdev->dev);
 		return ret;
 	}
-	if (is_sh_early_platform_device(pdev))
+	if (is_early_platform_device(pdev))
 		return 0;
 
  out:
@@ -482,6 +478,11 @@ static int sh_mtu2_probe(struct platform_device *pdev)
 		pm_runtime_idle(&pdev->dev);
 
 	return 0;
+}
+
+static int sh_mtu2_remove(struct platform_device *pdev)
+{
+	return -EBUSY; /* cannot unregister clockevent */
 }
 
 static const struct platform_device_id sh_mtu2_id_table[] = {
@@ -498,10 +499,10 @@ MODULE_DEVICE_TABLE(of, sh_mtu2_of_table);
 
 static struct platform_driver sh_mtu2_device_driver = {
 	.probe		= sh_mtu2_probe,
+	.remove		= sh_mtu2_remove,
 	.driver		= {
 		.name	= "sh_mtu2",
 		.of_match_table = of_match_ptr(sh_mtu2_of_table),
-		.suppress_bind_attrs = true,
 	},
 	.id_table	= sh_mtu2_id_table,
 };
@@ -516,12 +517,10 @@ static void __exit sh_mtu2_exit(void)
 	platform_driver_unregister(&sh_mtu2_device_driver);
 }
 
-#ifdef CONFIG_SUPERH
-sh_early_platform_init("earlytimer", &sh_mtu2_device_driver);
-#endif
-
+early_platform_init("earlytimer", &sh_mtu2_device_driver);
 subsys_initcall(sh_mtu2_init);
 module_exit(sh_mtu2_exit);
 
 MODULE_AUTHOR("Magnus Damm");
 MODULE_DESCRIPTION("SuperH MTU2 Timer Driver");
+MODULE_LICENSE("GPL v2");

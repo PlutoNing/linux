@@ -24,7 +24,7 @@ CTR8BL:	.octa 0x00000003000000020000000100000000
 
 .text
 
-SYM_FUNC_START(chacha_2block_xor_avx512vl)
+ENTRY(chacha_2block_xor_avx512vl)
 	# %rdi: Input state matrix, s
 	# %rsi: up to 2 data blocks output, o
 	# %rdx: up to 2 data blocks input, i
@@ -166,13 +166,13 @@ SYM_FUNC_START(chacha_2block_xor_avx512vl)
 
 .Ldone2:
 	vzeroupper
-	RET
+	ret
 
 .Lxorpart2:
 	# xor remaining bytes from partial register into output
 	mov		%rcx,%rax
 	and		$0xf,%rcx
-	jz		.Ldone2
+	jz		.Ldone8
 	mov		%rax,%r9
 	and		$~0xf,%r9
 
@@ -187,9 +187,9 @@ SYM_FUNC_START(chacha_2block_xor_avx512vl)
 
 	jmp		.Ldone2
 
-SYM_FUNC_END(chacha_2block_xor_avx512vl)
+ENDPROC(chacha_2block_xor_avx512vl)
 
-SYM_FUNC_START(chacha_4block_xor_avx512vl)
+ENTRY(chacha_4block_xor_avx512vl)
 	# %rdi: Input state matrix, s
 	# %rsi: up to 4 data blocks output, o
 	# %rdx: up to 4 data blocks input, i
@@ -432,13 +432,13 @@ SYM_FUNC_START(chacha_4block_xor_avx512vl)
 
 .Ldone4:
 	vzeroupper
-	RET
+	ret
 
 .Lxorpart4:
 	# xor remaining bytes from partial register into output
 	mov		%rcx,%rax
 	and		$0xf,%rcx
-	jz		.Ldone4
+	jz		.Ldone8
 	mov		%rax,%r9
 	and		$~0xf,%r9
 
@@ -453,9 +453,9 @@ SYM_FUNC_START(chacha_4block_xor_avx512vl)
 
 	jmp		.Ldone4
 
-SYM_FUNC_END(chacha_4block_xor_avx512vl)
+ENDPROC(chacha_4block_xor_avx512vl)
 
-SYM_FUNC_START(chacha_8block_xor_avx512vl)
+ENTRY(chacha_8block_xor_avx512vl)
 	# %rdi: Input state matrix, s
 	# %rsi: up to 8 data blocks output, o
 	# %rdx: up to 8 data blocks input, i
@@ -812,7 +812,7 @@ SYM_FUNC_START(chacha_8block_xor_avx512vl)
 
 .Ldone8:
 	vzeroupper
-	RET
+	ret
 
 .Lxorpart8:
 	# xor remaining bytes from partial register into output
@@ -833,4 +833,4 @@ SYM_FUNC_START(chacha_8block_xor_avx512vl)
 
 	jmp		.Ldone8
 
-SYM_FUNC_END(chacha_8block_xor_avx512vl)
+ENDPROC(chacha_8block_xor_avx512vl)

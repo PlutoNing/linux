@@ -23,8 +23,8 @@
 struct pi3usb30532 {
 	struct i2c_client *client;
 	struct mutex lock; /* protects the cached conf register */
-	struct typec_switch_dev *sw;
-	struct typec_mux_dev *mux;
+	struct typec_switch *sw;
+	struct typec_mux *mux;
 	u8 conf;
 };
 
@@ -45,7 +45,7 @@ static int pi3usb30532_set_conf(struct pi3usb30532 *pi, u8 new_conf)
 	return 0;
 }
 
-static int pi3usb30532_sw_set(struct typec_switch_dev *sw,
+static int pi3usb30532_sw_set(struct typec_switch *sw,
 			      enum typec_orientation orientation)
 {
 	struct pi3usb30532 *pi = typec_switch_get_drvdata(sw);
@@ -73,8 +73,7 @@ static int pi3usb30532_sw_set(struct typec_switch_dev *sw,
 	return ret;
 }
 
-static int
-pi3usb30532_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *state)
+static int pi3usb30532_mux_set(struct typec_mux *mux, int state)
 {
 	struct pi3usb30532 *pi = typec_mux_get_drvdata(mux);
 	u8 new_conf;
@@ -83,7 +82,7 @@ pi3usb30532_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *state)
 	mutex_lock(&pi->lock);
 	new_conf = pi->conf;
 
-	switch (state->mode) {
+	switch (state) {
 	case TYPEC_STATE_SAFE:
 		new_conf = (new_conf & PI3USB30532_CONF_SWAP) |
 			   PI3USB30532_CONF_OPEN;
@@ -114,8 +113,8 @@ pi3usb30532_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *state)
 static int pi3usb30532_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
-	struct typec_switch_desc sw_desc = { };
-	struct typec_mux_desc mux_desc = { };
+	struct typec_switch_desc sw_desc;
+	struct typec_mux_desc mux_desc;
 	struct pi3usb30532 *pi;
 	int ret;
 
@@ -160,12 +159,13 @@ static int pi3usb30532_probe(struct i2c_client *client)
 	return 0;
 }
 
-static void pi3usb30532_remove(struct i2c_client *client)
+static int pi3usb30532_remove(struct i2c_client *client)
 {
 	struct pi3usb30532 *pi = i2c_get_clientdata(client);
 
 	typec_mux_unregister(pi->mux);
 	typec_switch_unregister(pi->sw);
+	return 0;
 }
 
 static const struct i2c_device_id pi3usb30532_table[] = {
@@ -178,7 +178,7 @@ static struct i2c_driver pi3usb30532_driver = {
 	.driver = {
 		.name = "pi3usb30532",
 	},
-	.probe		= pi3usb30532_probe,
+	.probe_new	= pi3usb30532_probe,
 	.remove		= pi3usb30532_remove,
 	.id_table	= pi3usb30532_table,
 };

@@ -12,7 +12,8 @@
 #include <linux/regmap.h>
 #include <linux/delay.h>
 #include <linux/reset.h>
-#include <linux/of.h>
+#include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/pinctrl/consumer.h>
@@ -252,12 +253,12 @@ static int gemini_sata_bridge_init(struct sata_gemini *sg)
 
 	ret = clk_prepare_enable(sg->sata0_pclk);
 	if (ret) {
-		dev_err(dev, "failed to enable SATA0 PCLK\n");
+		pr_err("failed to enable SATA0 PCLK\n");
 		return ret;
 	}
 	ret = clk_prepare_enable(sg->sata1_pclk);
 	if (ret) {
-		dev_err(dev, "failed to enable SATA1 PCLK\n");
+		pr_err("failed to enable SATA1 PCLK\n");
 		clk_disable_unprepare(sg->sata0_pclk);
 		return ret;
 	}
@@ -317,6 +318,7 @@ static int gemini_sata_probe(struct platform_device *pdev)
 	struct device_node *np = dev->of_node;
 	struct sata_gemini *sg;
 	struct regmap *map;
+	struct resource *res;
 	enum gemini_muxmode muxmode;
 	u32 gmode;
 	u32 gmask;
@@ -327,7 +329,11 @@ static int gemini_sata_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	sg->dev = dev;
 
-	sg->base = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res)
+		return -ENODEV;
+
+	sg->base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(sg->base))
 		return PTR_ERR(sg->base);
 
@@ -399,7 +405,7 @@ out_unprep_clk:
 	return ret;
 }
 
-static void gemini_sata_remove(struct platform_device *pdev)
+static int gemini_sata_remove(struct platform_device *pdev)
 {
 	struct sata_gemini *sg = platform_get_drvdata(pdev);
 
@@ -408,24 +414,27 @@ static void gemini_sata_remove(struct platform_device *pdev)
 		clk_unprepare(sg->sata0_pclk);
 	}
 	sg_singleton = NULL;
+
+	return 0;
 }
 
 static const struct of_device_id gemini_sata_of_match[] = {
-	{ .compatible = "cortina,gemini-sata-bridge", },
-	{ /* sentinel */ }
+	{
+		.compatible = "cortina,gemini-sata-bridge",
+	},
+	{},
 };
 
 static struct platform_driver gemini_sata_driver = {
 	.driver = {
 		.name = DRV_NAME,
-		.of_match_table = gemini_sata_of_match,
+		.of_match_table = of_match_ptr(gemini_sata_of_match),
 	},
 	.probe = gemini_sata_probe,
-	.remove_new = gemini_sata_remove,
+	.remove = gemini_sata_remove,
 };
 module_platform_driver(gemini_sata_driver);
 
-MODULE_DESCRIPTION("low level driver for Cortina Systems Gemini SATA bridge");
 MODULE_AUTHOR("Linus Walleij <linus.walleij@linaro.org>");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:" DRV_NAME);

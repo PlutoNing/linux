@@ -10,12 +10,13 @@
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
-#include <linux/of.h>
+#include <linux/of_platform.h>
 
 #include <asm/time.h>
 #include <asm/machdep.h>
 #include <asm/pci-bridge.h>
 #include <mm/mmu_decl.h>
+#include <asm/prom.h>
 #include <asm/udbg.h>
 #include <asm/mpic.h>
 
@@ -24,7 +25,7 @@
 
 #include "mpc85xx.h"
 
-static void __init p1010_rdb_pic_init(void)
+void __init p1010_rdb_pic_init(void)
 {
 	struct mpic *mpic = mpic_alloc(NULL, 0, MPIC_BIG_ENDIAN |
 	  MPIC_SINGLE_DEST_CPU,
@@ -73,5 +74,6 @@ define_machine(p1010_rdb) {
 	.pcibios_fixup_phb      = fsl_pcibios_fixup_phb,
 #endif
 	.get_irq		= mpic_get_irq,
+	.calibrate_decr		= generic_calibrate_decr,
 	.progress		= udbg_progress,
 };

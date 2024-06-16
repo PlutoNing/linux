@@ -10,66 +10,32 @@ struct beacon_bc_data {
 };
 
 static void
-mt7603_mac_stuck_beacon_recovery(struct mt7603_dev *dev)
-{
-	if (dev->beacon_check % 5 != 4)
-		return;
-
-	mt76_clear(dev, MT_WPDMA_GLO_CFG, MT_WPDMA_GLO_CFG_TX_DMA_EN);
-	mt76_set(dev, MT_SCH_4, MT_SCH_4_RESET);
-	mt76_clear(dev, MT_SCH_4, MT_SCH_4_RESET);
-	mt76_set(dev, MT_WPDMA_GLO_CFG, MT_WPDMA_GLO_CFG_TX_DMA_EN);
-
-	mt76_set(dev, MT_WF_CFG_OFF_WOCCR, MT_WF_CFG_OFF_WOCCR_TMAC_GC_DIS);
-	mt76_set(dev, MT_ARB_SCR, MT_ARB_SCR_TX_DISABLE);
-	mt76_clear(dev, MT_ARB_SCR, MT_ARB_SCR_TX_DISABLE);
-	mt76_clear(dev, MT_WF_CFG_OFF_WOCCR, MT_WF_CFG_OFF_WOCCR_TMAC_GC_DIS);
-}
-
-static void
 mt7603_update_beacon_iter(void *priv, u8 *mac, struct ieee80211_vif *vif)
 {
 	struct mt7603_dev *dev = (struct mt7603_dev *)priv;
-	struct mt76_dev *mdev = &dev->mt76;
 	struct mt7603_vif *mvif = (struct mt7603_vif *)vif->drv_priv;
 	struct sk_buff *skb = NULL;
-	u32 om_idx = mvif->idx;
-	u32 val;
 
-	if (!(mdev->beacon_mask & BIT(mvif->idx)))
+	if (!(dev->mt76.beacon_mask & BIT(mvif->idx)))
 		return;
 
-	skb = ieee80211_beacon_get(mt76_hw(dev), vif, 0);
+	skb = ieee80211_beacon_get(mt76_hw(dev), vif);
 	if (!skb)
 		return;
 
-	if (om_idx)
-		om_idx |= 0x10;
-	val = MT_DMA_FQCR0_BUSY | MT_DMA_FQCR0_MODE |
-		FIELD_PREP(MT_DMA_FQCR0_TARGET_BSS, om_idx) |
-		FIELD_PREP(MT_DMA_FQCR0_DEST_PORT_ID, 3) |
-		FIELD_PREP(MT_DMA_FQCR0_DEST_QUEUE_ID, 8);
+	mt76_tx_queue_skb(dev, MT_TXQ_BEACON, skb, &mvif->sta.wcid, NULL);
 
 	spin_lock_bh(&dev->ps_lock);
+	mt76_wr(dev, MT_DMA_FQCR0, MT_DMA_FQCR0_BUSY |
+		FIELD_PREP(MT_DMA_FQCR0_TARGET_WCID, mvif->sta.wcid.idx) |
+		FIELD_PREP(MT_DMA_FQCR0_TARGET_QID,
+			   dev->mt76.q_tx[MT_TXQ_CAB].q->hw_idx) |
+		FIELD_PREP(MT_DMA_FQCR0_DEST_PORT_ID, 3) |
+		FIELD_PREP(MT_DMA_FQCR0_DEST_QUEUE_ID, 8));
 
-	mt76_wr(dev, MT_DMA_FQCR0, val |
-		FIELD_PREP(MT_DMA_FQCR0_TARGET_QID, MT_TX_HW_QUEUE_BCN));
-	if (!mt76_poll(dev, MT_DMA_FQCR0, MT_DMA_FQCR0_BUSY, 0, 5000)) {
+	if (!mt76_poll(dev, MT_DMA_FQCR0, MT_DMA_FQCR0_BUSY, 0, 5000))
 		dev->beacon_check = MT7603_WATCHDOG_TIMEOUT;
-		goto out;
-	}
 
-	mt76_wr(dev, MT_DMA_FQCR0, val |
-		FIELD_PREP(MT_DMA_FQCR0_TARGET_QID, MT_TX_HW_QUEUE_BMC));
-	if (!mt76_poll(dev, MT_DMA_FQCR0, MT_DMA_FQCR0_BUSY, 0, 5000)) {
-		dev->beacon_check = MT7603_WATCHDOG_TIMEOUT;
-		goto out;
-	}
-
-	mt76_tx_queue_skb(dev, dev->mphy.q_tx[MT_TXQ_BEACON],
-			  MT_TXQ_BEACON, skb, &mvif->sta.wcid, NULL);
-
-out:
 	spin_unlock_bh(&dev->ps_lock);
 }
 
@@ -98,10 +64,9 @@ mt7603_add_buffered_bc(void *priv, u8 *mac, struct ieee80211_vif *vif)
 	data->count[mvif->idx]++;
 }
 
-void mt7603_pre_tbtt_tasklet(struct tasklet_struct *t)
+void mt7603_pre_tbtt_tasklet(unsigned long arg)
 {
-	struct mt7603_dev *dev = from_tasklet(dev, t, mt76.pre_tbtt_tasklet);
-	struct mt76_dev *mdev = &dev->mt76;
+	struct mt7603_dev *dev = (struct mt7603_dev *)arg;
 	struct mt76_queue *q;
 	struct beacon_bc_data data = {};
 	struct sk_buff *skb;
@@ -113,31 +78,24 @@ void mt7603_pre_tbtt_tasklet(struct tasklet_struct *t)
 	data.dev = dev;
 	__skb_queue_head_init(&data.q);
 
-	/* Flush all previous CAB queue packets and beacons */
-	mt76_wr(dev, MT_WF_ARB_CAB_FLUSH, GENMASK(30, 16) | BIT(0));
-
-	mt76_queue_tx_cleanup(dev, dev->mphy.q_tx[MT_TXQ_CAB], false);
-	mt76_queue_tx_cleanup(dev, dev->mphy.q_tx[MT_TXQ_BEACON], false);
-
-	if (dev->mphy.q_tx[MT_TXQ_BEACON]->queued > 0)
-		dev->beacon_check++;
-	else
-		dev->beacon_check = 0;
-	mt7603_mac_stuck_beacon_recovery(dev);
-
-	q = dev->mphy.q_tx[MT_TXQ_BEACON];
-	spin_lock(&q->lock);
+	q = dev->mt76.q_tx[MT_TXQ_BEACON].q;
+	spin_lock_bh(&q->lock);
 	ieee80211_iterate_active_interfaces_atomic(mt76_hw(dev),
 		IEEE80211_IFACE_ITER_RESUME_ALL,
 		mt7603_update_beacon_iter, dev);
 	mt76_queue_kick(dev, q);
-	spin_unlock(&q->lock);
+	spin_unlock_bh(&q->lock);
 
-	mt76_csa_check(mdev);
-	if (mdev->csa_complete)
-		return;
+	/* Flush all previous CAB queue packets */
+	mt76_wr(dev, MT_WF_ARB_CAB_FLUSH, GENMASK(30, 16) | BIT(0));
 
-	q = dev->mphy.q_tx[MT_TXQ_CAB];
+	mt76_queue_tx_cleanup(dev, MT_TXQ_CAB, false);
+
+	mt76_csa_check(&dev->mt76);
+	if (dev->mt76.csa_complete)
+		goto out;
+
+	q = dev->mt76.q_tx[MT_TXQ_CAB].q;
 	do {
 		nframes = skb_queue_len(&data.q);
 		ieee80211_iterate_active_interfaces_atomic(mt76_hw(dev),
@@ -147,7 +105,7 @@ void mt7603_pre_tbtt_tasklet(struct tasklet_struct *t)
 		 skb_queue_len(&data.q) < 8);
 
 	if (skb_queue_empty(&data.q))
-		return;
+		goto out;
 
 	for (i = 0; i < ARRAY_SIZE(data.tail); i++) {
 		if (!data.tail[i])
@@ -156,16 +114,16 @@ void mt7603_pre_tbtt_tasklet(struct tasklet_struct *t)
 		mt76_skb_set_moredata(data.tail[i], false);
 	}
 
-	spin_lock(&q->lock);
+	spin_lock_bh(&q->lock);
 	while ((skb = __skb_dequeue(&data.q)) != NULL) {
 		struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 		struct ieee80211_vif *vif = info->control.vif;
 		struct mt7603_vif *mvif = (struct mt7603_vif *)vif->drv_priv;
 
-		mt76_tx_queue_skb(dev, q, MT_TXQ_CAB, skb, &mvif->sta.wcid, NULL);
+		mt76_tx_queue_skb(dev, MT_TXQ_CAB, skb, &mvif->sta.wcid, NULL);
 	}
 	mt76_queue_kick(dev, q);
-	spin_unlock(&q->lock);
+	spin_unlock_bh(&q->lock);
 
 	for (i = 0; i < ARRAY_SIZE(data.count); i++)
 		mt76_wr(dev, MT_WF_ARB_CAB_COUNT_B0_REG(i),
@@ -175,6 +133,12 @@ void mt7603_pre_tbtt_tasklet(struct tasklet_struct *t)
 		MT_WF_ARB_CAB_START_BSSn(0) |
 		(MT_WF_ARB_CAB_START_BSS0n(1) *
 		 ((1 << (MT7603_MAX_INTERFACES - 1)) - 1)));
+
+out:
+	mt76_queue_tx_cleanup(dev, MT_TXQ_BEACON, false);
+	if (dev->mt76.q_tx[MT_TXQ_BEACON].q->queued >
+	    hweight8(dev->mt76.beacon_mask))
+		dev->beacon_check++;
 }
 
 void mt7603_beacon_set_timer(struct mt7603_dev *dev, int idx, int intval)
@@ -195,8 +159,7 @@ void mt7603_beacon_set_timer(struct mt7603_dev *dev, int idx, int intval)
 		return;
 	}
 
-	if (intval)
-		dev->mt76.beacon_int = intval;
+	dev->mt76.beacon_int = intval;
 	mt76_wr(dev, MT_TBTT,
 		FIELD_PREP(MT_TBTT_PERIOD, intval) | MT_TBTT_CAL_ENABLE);
 

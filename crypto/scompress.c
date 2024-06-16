@@ -6,22 +6,23 @@
  * Copyright (c) 2016, Intel Corporation
  * Author: Giovanni Cabiddu <giovanni.cabiddu@intel.com>
  */
-
-#include <crypto/internal/acompress.h>
-#include <crypto/internal/scompress.h>
-#include <crypto/scatterwalk.h>
-#include <linux/cryptouser.h>
-#include <linux/err.h>
+#include <linux/errno.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/scatterlist.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/crypto.h>
+#include <linux/compiler.h>
 #include <linux/vmalloc.h>
+#include <crypto/algapi.h>
+#include <linux/cryptouser.h>
 #include <net/netlink.h>
-
-#include "compress.h"
+#include <linux/scatterlist.h>
+#include <crypto/scatterwalk.h>
+#include <crypto/internal/acompress.h>
+#include <crypto/internal/scompress.h>
+#include "internal.h"
 
 struct scomp_scratch {
 	spinlock_t	lock;
@@ -37,8 +38,8 @@ static const struct crypto_type crypto_scomp_type;
 static int scomp_scratch_users;
 static DEFINE_MUTEX(scomp_lock);
 
-static int __maybe_unused crypto_scomp_report(
-	struct sk_buff *skb, struct crypto_alg *alg)
+#ifdef CONFIG_NET
+static int crypto_scomp_report(struct sk_buff *skb, struct crypto_alg *alg)
 {
 	struct crypto_report_comp rscomp;
 
@@ -49,6 +50,12 @@ static int __maybe_unused crypto_scomp_report(
 	return nla_put(skb, CRYPTOCFGA_REPORT_COMPRESS,
 		       sizeof(rscomp), &rscomp);
 }
+#else
+static int crypto_scomp_report(struct sk_buff *skb, struct crypto_alg *alg)
+{
+	return -ENOSYS;
+}
+#endif
 
 static void crypto_scomp_show(struct seq_file *m, struct crypto_alg *alg)
 	__maybe_unused;
@@ -117,8 +124,6 @@ static int scomp_acomp_comp_decomp(struct acomp_req *req, int dir)
 	struct crypto_scomp *scomp = *tfm_ctx;
 	void **ctx = acomp_request_ctx(req);
 	struct scomp_scratch *scratch;
-	void *src, *dst;
-	unsigned int dlen;
 	int ret;
 
 	if (!req->src || !req->slen || req->slen > SCOMP_SCRATCH_SIZE)
@@ -130,30 +135,16 @@ static int scomp_acomp_comp_decomp(struct acomp_req *req, int dir)
 	if (!req->dlen || req->dlen > SCOMP_SCRATCH_SIZE)
 		req->dlen = SCOMP_SCRATCH_SIZE;
 
-	dlen = req->dlen;
-
 	scratch = raw_cpu_ptr(&scomp_scratch);
 	spin_lock(&scratch->lock);
 
-	if (sg_nents(req->src) == 1 && !PageHighMem(sg_page(req->src))) {
-		src = page_to_virt(sg_page(req->src)) + req->src->offset;
-	} else {
-		scatterwalk_map_and_copy(scratch->src, req->src, 0,
-					 req->slen, 0);
-		src = scratch->src;
-	}
-
-	if (req->dst && sg_nents(req->dst) == 1 && !PageHighMem(sg_page(req->dst)))
-		dst = page_to_virt(sg_page(req->dst)) + req->dst->offset;
-	else
-		dst = scratch->dst;
-
+	scatterwalk_map_and_copy(scratch->src, req->src, 0, req->slen, 0);
 	if (dir)
-		ret = crypto_scomp_compress(scomp, src, req->slen,
-					    dst, &req->dlen, *ctx);
+		ret = crypto_scomp_compress(scomp, scratch->src, req->slen,
+					    scratch->dst, &req->dlen, *ctx);
 	else
-		ret = crypto_scomp_decompress(scomp, src, req->slen,
-					      dst, &req->dlen, *ctx);
+		ret = crypto_scomp_decompress(scomp, scratch->src, req->slen,
+					      scratch->dst, &req->dlen, *ctx);
 	if (!ret) {
 		if (!req->dst) {
 			req->dst = sgl_alloc(req->dlen, GFP_ATOMIC, NULL);
@@ -161,21 +152,9 @@ static int scomp_acomp_comp_decomp(struct acomp_req *req, int dir)
 				ret = -ENOMEM;
 				goto out;
 			}
-		} else if (req->dlen > dlen) {
-			ret = -ENOSPC;
-			goto out;
 		}
-		if (dst == scratch->dst) {
-			scatterwalk_map_and_copy(scratch->dst, req->dst, 0,
-						 req->dlen, 1);
-		} else {
-			int nr_pages = DIV_ROUND_UP(req->dst->offset + req->dlen, PAGE_SIZE);
-			int i;
-			struct page *dst_page = sg_page(req->dst);
-
-			for (i = 0; i < nr_pages; i++)
-				flush_dcache_page(dst_page + i);
-		}
+		scatterwalk_map_and_copy(scratch->dst, req->dst, 0, req->dlen,
+					 1);
 	}
 out:
 	spin_unlock(&scratch->lock);
@@ -268,12 +247,7 @@ static const struct crypto_type crypto_scomp_type = {
 #ifdef CONFIG_PROC_FS
 	.show = crypto_scomp_show,
 #endif
-#if IS_ENABLED(CONFIG_CRYPTO_USER)
 	.report = crypto_scomp_report,
-#endif
-#ifdef CONFIG_CRYPTO_STATS
-	.report_stat = crypto_acomp_report_stat,
-#endif
 	.maskclear = ~CRYPTO_ALG_TYPE_MASK,
 	.maskset = CRYPTO_ALG_TYPE_MASK,
 	.type = CRYPTO_ALG_TYPE_SCOMPRESS,
@@ -282,20 +256,19 @@ static const struct crypto_type crypto_scomp_type = {
 
 int crypto_register_scomp(struct scomp_alg *alg)
 {
-	struct crypto_alg *base = &alg->calg.base;
-
-	comp_prepare_alg(&alg->calg);
+	struct crypto_alg *base = &alg->base;
 
 	base->cra_type = &crypto_scomp_type;
+	base->cra_flags &= ~CRYPTO_ALG_TYPE_MASK;
 	base->cra_flags |= CRYPTO_ALG_TYPE_SCOMPRESS;
 
 	return crypto_register_alg(base);
 }
 EXPORT_SYMBOL_GPL(crypto_register_scomp);
 
-void crypto_unregister_scomp(struct scomp_alg *alg)
+int crypto_unregister_scomp(struct scomp_alg *alg)
 {
-	crypto_unregister_alg(&alg->base);
+	return crypto_unregister_alg(&alg->base);
 }
 EXPORT_SYMBOL_GPL(crypto_unregister_scomp);
 

@@ -12,10 +12,12 @@
 #include <linux/console.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
+#include <linux/mc146818rtc.h>
 #include <linux/param.h>
 #include <linux/sched.h>
 
 #include <asm/bootinfo.h>
+#include <asm/mc146818-time.h>
 #include <asm/mipsregs.h>
 #include <asm/mmu_context.h>
 #include <asm/sgialib.h>
@@ -26,7 +28,8 @@
 #include <asm/ip32/mace.h>
 #include <asm/ip32/ip32_ints.h>
 
-#include "ip32-common.h"
+extern void ip32_be_init(void);
+extern void crime_init(void);
 
 #ifdef CONFIG_SGI_O2MACE_ETH
 /*

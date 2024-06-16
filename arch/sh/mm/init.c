@@ -27,9 +27,7 @@
 #include <asm/sections.h>
 #include <asm/setup.h>
 #include <asm/cache.h>
-#include <asm/pgalloc.h>
 #include <linux/sizes.h>
-#include "ioremap.h"
 
 pgd_t swapper_pg_dir[PTRS_PER_PGD];
 
@@ -47,7 +45,6 @@ void __init __weak plat_mem_setup(void)
 static pte_t *__get_pte_phys(unsigned long addr)
 {
 	pgd_t *pgd;
-	p4d_t *p4d;
 	pud_t *pud;
 	pmd_t *pmd;
 
@@ -57,13 +54,7 @@ static pte_t *__get_pte_phys(unsigned long addr)
 		return NULL;
 	}
 
-	p4d = p4d_alloc(NULL, pgd, addr);
-	if (unlikely(!p4d)) {
-		p4d_ERROR(*p4d);
-		return NULL;
-	}
-
-	pud = pud_alloc(NULL, p4d, addr);
+	pud = pud_alloc(NULL, pgd, addr);
 	if (unlikely(!pud)) {
 		pud_ERROR(*pud);
 		return NULL;
@@ -181,9 +172,9 @@ void __init page_table_range_init(unsigned long start, unsigned long end,
 	unsigned long vaddr;
 
 	vaddr = start;
-	i = pgd_index(vaddr);
-	j = pud_index(vaddr);
-	k = pmd_index(vaddr);
+	i = __pgd_offset(vaddr);
+	j = __pud_offset(vaddr);
+	k = __pmd_offset(vaddr);
 	pgd = pgd_base + i;
 
 	for ( ; (i < PTRS_PER_PGD) && (vaddr != end); pgd++, i++) {
@@ -211,7 +202,7 @@ void __init allocate_pgdat(unsigned int nid)
 
 	get_pfn_range_for_nid(nid, &start_pfn, &end_pfn);
 
-#ifdef CONFIG_NUMA
+#ifdef CONFIG_NEED_MULTIPLE_NODES
 	NODE_DATA(nid) = memblock_alloc_try_nid(
 				sizeof(struct pglist_data),
 				SMP_CACHE_BYTES, MEMBLOCK_LOW_LIMIT,
@@ -226,12 +217,15 @@ void __init allocate_pgdat(unsigned int nid)
 
 static void __init do_init_bootmem(void)
 {
-	unsigned long start_pfn, end_pfn;
-	int i;
+	struct memblock_region *reg;
 
 	/* Add active regions with valid PFNs. */
-	for_each_mem_pfn_range(i, MAX_NUMNODES, &start_pfn, &end_pfn, NULL)
+	for_each_memblock(memory, reg) {
+		unsigned long start_pfn, end_pfn;
+		start_pfn = memblock_region_memory_base_pfn(reg);
+		end_pfn = memblock_region_memory_end_pfn(reg);
 		__add_active_range(0, start_pfn, end_pfn);
+	}
 
 	/* All of system RAM sits in node 0 for the non-NUMA case */
 	allocate_pgdat(0);
@@ -239,6 +233,12 @@ static void __init do_init_bootmem(void)
 
 	plat_mem_setup();
 
+	for_each_memblock(memory, reg) {
+		int nid = memblock_get_region_node(reg);
+
+		memory_present(nid, memblock_region_memory_base_pfn(reg),
+			memblock_region_memory_end_pfn(reg));
+	}
 	sparse_init();
 }
 
@@ -301,7 +301,6 @@ void __init paging_init(void)
 	 */
 	max_low_pfn = max_pfn = memblock_end_of_DRAM() >> PAGE_SHIFT;
 	min_low_pfn = __MEMORY_START >> PAGE_SHIFT;
-	set_max_mapnr(max_low_pfn - min_low_pfn);
 
 	nodes_clear(node_online_map);
 
@@ -335,7 +334,7 @@ void __init paging_init(void)
 
 	memset(max_zone_pfns, 0, sizeof(max_zone_pfns));
 	max_zone_pfns[ZONE_NORMAL] = max_low_pfn;
-	free_area_init(max_zone_pfns);
+	free_area_init_nodes(max_zone_pfns);
 }
 
 unsigned int mem_init_done = 0;
@@ -360,8 +359,12 @@ void __init mem_init(void)
 
 	vsyscall_init();
 
+	mem_init_print_info(NULL);
 	pr_info("virtual kernel memory layout:\n"
 		"    fixmap  : 0x%08lx - 0x%08lx   (%4ld kB)\n"
+#ifdef CONFIG_HIGHMEM
+		"    pkmap   : 0x%08lx - 0x%08lx   (%4ld kB)\n"
+#endif
 		"    vmalloc : 0x%08lx - 0x%08lx   (%4ld MB)\n"
 		"    lowmem  : 0x%08lx - 0x%08lx   (%4ld MB) (cached)\n"
 #ifdef CONFIG_UNCACHED_MAPPING
@@ -372,6 +375,11 @@ void __init mem_init(void)
 		"      .text : 0x%08lx - 0x%08lx   (%4ld kB)\n",
 		FIXADDR_START, FIXADDR_TOP,
 		(FIXADDR_TOP - FIXADDR_START) >> 10,
+
+#ifdef CONFIG_HIGHMEM
+		PKMAP_BASE, PKMAP_BASE+LAST_PKMAP*PAGE_SIZE,
+		(LAST_PKMAP*PAGE_SIZE) >> 10,
+#endif
 
 		(unsigned long)VMALLOC_START, VMALLOC_END,
 		(VMALLOC_END - VMALLOC_START) >> 20,
@@ -398,28 +406,37 @@ void __init mem_init(void)
 
 #ifdef CONFIG_MEMORY_HOTPLUG
 int arch_add_memory(int nid, u64 start, u64 size,
-		    struct mhp_params *params)
+			struct mhp_restrictions *restrictions)
 {
 	unsigned long start_pfn = PFN_DOWN(start);
 	unsigned long nr_pages = size >> PAGE_SHIFT;
 	int ret;
 
-	if (WARN_ON_ONCE(params->pgprot.pgprot != PAGE_KERNEL.pgprot))
-		return -EINVAL;
-
 	/* We only have ZONE_NORMAL, so this is easy.. */
-	ret = __add_pages(nid, start_pfn, nr_pages, params);
+	ret = __add_pages(nid, start_pfn, nr_pages, restrictions);
 	if (unlikely(ret))
 		printk("%s: Failed, __add_pages() == %d\n", __func__, ret);
 
 	return ret;
 }
 
-void arch_remove_memory(u64 start, u64 size, struct vmem_altmap *altmap)
+#ifdef CONFIG_NUMA
+int memory_add_physaddr_to_nid(u64 addr)
+{
+	/* Node 0 for now.. */
+	return 0;
+}
+EXPORT_SYMBOL_GPL(memory_add_physaddr_to_nid);
+#endif
+
+void arch_remove_memory(int nid, u64 start, u64 size,
+			struct vmem_altmap *altmap)
 {
 	unsigned long start_pfn = PFN_DOWN(start);
 	unsigned long nr_pages = size >> PAGE_SHIFT;
+	struct zone *zone;
 
-	__remove_pages(start_pfn, nr_pages, altmap);
+	zone = page_zone(pfn_to_page(start_pfn));
+	__remove_pages(zone, start_pfn, nr_pages, altmap);
 }
 #endif /* CONFIG_MEMORY_HOTPLUG */

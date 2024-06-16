@@ -178,9 +178,11 @@ static irqreturn_t wm831x_dcdc_uv_irq(int irq, void *data)
 {
 	struct wm831x_dcdc *dcdc = data;
 
+	regulator_lock(dcdc->regulator);
 	regulator_notifier_call_chain(dcdc->regulator,
 				      REGULATOR_EVENT_UNDER_VOLTAGE,
 				      NULL);
+	regulator_unlock(dcdc->regulator);
 
 	return IRQ_HANDLED;
 }
@@ -189,9 +191,11 @@ static irqreturn_t wm831x_dcdc_oc_irq(int irq, void *data)
 {
 	struct wm831x_dcdc *dcdc = data;
 
+	regulator_lock(dcdc->regulator);
 	regulator_notifier_call_chain(dcdc->regulator,
 				      REGULATOR_EVENT_OVER_CURRENT,
 				      NULL);
+	regulator_unlock(dcdc->regulator);
 
 	return IRQ_HANDLED;
 }
@@ -200,7 +204,7 @@ static irqreturn_t wm831x_dcdc_oc_irq(int irq, void *data)
  * BUCKV specifics
  */
 
-static const struct linear_range wm831x_buckv_ranges[] = {
+static const struct regulator_linear_range wm831x_buckv_ranges[] = {
 	REGULATOR_LINEAR_RANGE(600000, 0, 0x7, 0),
 	REGULATOR_LINEAR_RANGE(600000, 0x8, 0x68, 12500),
 };
@@ -505,7 +509,6 @@ static struct platform_driver wm831x_buckv_driver = {
 	.probe = wm831x_buckv_probe,
 	.driver		= {
 		.name	= "wm831x-buckv",
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 };
 
@@ -633,7 +636,6 @@ static struct platform_driver wm831x_buckp_driver = {
 	.probe = wm831x_buckp_probe,
 	.driver		= {
 		.name	= "wm831x-buckp",
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 };
 
@@ -749,7 +751,6 @@ static struct platform_driver wm831x_boostp_driver = {
 	.probe = wm831x_boostp_probe,
 	.driver		= {
 		.name	= "wm831x-boostp",
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 };
 
@@ -825,7 +826,6 @@ static struct platform_driver wm831x_epe_driver = {
 	.probe = wm831x_epe_probe,
 	.driver		= {
 		.name	= "wm831x-epe",
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 };
 

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 // Copyright(c) 2018 Intel Corporation.
 
 /*
@@ -18,18 +18,13 @@
 #include <sound/soc.h>
 #include <sound/soc-acpi.h>
 #include "../../codecs/rt5682.h"
-#include "../../codecs/rt5682s.h"
 #include "../../codecs/hdac_hdmi.h"
-#include "hda_dsp_common.h"
 
 /* The platform clock outputs 19.2Mhz clock to codec as I2S MCLK */
 #define GLK_PLAT_CLK_FREQ 19200000
 #define RT5682_PLL_FREQ (48000 * 512)
-#define RT5682_DAI_NAME "rt5682-aif1"
-#define RT5682S_DAI_NAME "rt5682s-aif1"
+#define GLK_REALTEK_CODEC_DAI "rt5682-aif1"
 #define GLK_MAXIM_CODEC_DAI "HiFi"
-#define RT5682_DEV0_NAME "i2c-10EC5682:00"
-#define RT5682S_DEV0_NAME "i2c-RTL5682:00"
 #define MAXIM_DEV0_NAME "MX98357A:00"
 #define DUAL_CHANNEL 2
 #define QUAD_CHANNEL 4
@@ -46,8 +41,6 @@ struct glk_hdmi_pcm {
 struct glk_card_private {
 	struct snd_soc_jack geminilake_headset;
 	struct list_head hdmi_pcm_list;
-	bool common_hdmi_codec_drv;
-	int is_rt5682s;
 };
 
 enum {
@@ -76,17 +69,6 @@ static const struct snd_soc_dapm_widget geminilake_widgets[] = {
 	SND_SOC_DAPM_SPK("HDMI1", NULL),
 	SND_SOC_DAPM_SPK("HDMI2", NULL),
 	SND_SOC_DAPM_SPK("HDMI3", NULL),
-};
-
-static struct snd_soc_jack_pin jack_pins[] = {
-	{
-		.pin    = "Headphone Jack",
-		.mask   = SND_JACK_HEADPHONE,
-	},
-	{
-		.pin    = "Headset Mic",
-		.mask   = SND_JACK_MICROPHONE,
-	},
 };
 
 static const struct snd_soc_dapm_route geminilake_map[] = {
@@ -134,13 +116,13 @@ static int geminilake_ssp_fixup(struct snd_soc_pcm_runtime *rtd,
 {
 	struct snd_interval *rate = hw_param_interval(params,
 			SNDRV_PCM_HW_PARAM_RATE);
-	struct snd_interval *chan = hw_param_interval(params,
+	struct snd_interval *channels = hw_param_interval(params,
 			SNDRV_PCM_HW_PARAM_CHANNELS);
 	struct snd_mask *fmt = hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT);
 
 	/* The ADSP will convert the FE rate to 48k, stereo */
 	rate->min = rate->max = 48000;
-	chan->min = chan->max = DUAL_CHANNEL;
+	channels->min = channels->max = DUAL_CHANNEL;
 
 	/* set SSP to 24 bit */
 	snd_mask_none(fmt);
@@ -152,22 +134,12 @@ static int geminilake_ssp_fixup(struct snd_soc_pcm_runtime *rtd,
 static int geminilake_rt5682_codec_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct glk_card_private *ctx = snd_soc_card_get_drvdata(rtd->card);
-	struct snd_soc_component *component = snd_soc_rtd_to_codec(rtd, 0)->component;
-	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+	struct snd_soc_component *component = rtd->codec_dai->component;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	struct snd_soc_jack *jack;
-	int pll_id, pll_source, clk_id, ret;
+	int ret;
 
-	if (ctx->is_rt5682s) {
-		pll_id = RT5682S_PLL2;
-		pll_source = RT5682S_PLL_S_MCLK;
-		clk_id = RT5682S_SCLK_S_PLL2;
-	} else {
-		pll_id = RT5682_PLL1;
-		pll_source = RT5682_PLL1_S_MCLK;
-		clk_id = RT5682_SCLK_S_PLL1;
-	}
-
-	ret = snd_soc_dai_set_pll(codec_dai, pll_id, pll_source,
+	ret = snd_soc_dai_set_pll(codec_dai, 0, RT5682_PLL1_S_MCLK,
 					GLK_PLAT_CLK_FREQ, RT5682_PLL_FREQ);
 	if (ret < 0) {
 		dev_err(rtd->dev, "can't set codec pll: %d\n", ret);
@@ -175,7 +147,7 @@ static int geminilake_rt5682_codec_init(struct snd_soc_pcm_runtime *rtd)
 	}
 
 	/* Configure sysclk for codec */
-	ret = snd_soc_dai_set_sysclk(codec_dai, clk_id,
+	ret = snd_soc_dai_set_sysclk(codec_dai, RT5682_SCLK_S_PLL1,
 					RT5682_PLL_FREQ, SND_SOC_CLOCK_IN);
 	if (ret < 0)
 		dev_err(rtd->dev, "snd_soc_dai_set_sysclk err = %d\n", ret);
@@ -184,12 +156,10 @@ static int geminilake_rt5682_codec_init(struct snd_soc_pcm_runtime *rtd)
 	 * Headset buttons map to the google Reference headset.
 	 * These can be configured by userspace.
 	 */
-	ret = snd_soc_card_jack_new_pins(rtd->card, "Headset Jack",
-					 SND_JACK_HEADSET | SND_JACK_BTN_0 | SND_JACK_BTN_1 |
-					 SND_JACK_BTN_2 | SND_JACK_BTN_3 | SND_JACK_LINEOUT,
-					 &ctx->geminilake_headset,
-					 jack_pins,
-					 ARRAY_SIZE(jack_pins));
+	ret = snd_soc_card_jack_new(rtd->card, "Headset Jack",
+			SND_JACK_HEADSET | SND_JACK_BTN_0 | SND_JACK_BTN_1 |
+			SND_JACK_BTN_2 | SND_JACK_BTN_3 | SND_JACK_LINEOUT,
+			&ctx->geminilake_headset, NULL, 0);
 	if (ret) {
 		dev_err(rtd->dev, "Headset Jack creation failed: %d\n", ret);
 		return ret;
@@ -215,8 +185,8 @@ static int geminilake_rt5682_codec_init(struct snd_soc_pcm_runtime *rtd)
 static int geminilake_rt5682_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
 {
-	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
-	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	int ret;
 
 	/* Set valid bitmask & configuration for I2S in 24 bit */
@@ -236,7 +206,7 @@ static struct snd_soc_ops geminilake_rt5682_ops = {
 static int geminilake_hdmi_init(struct snd_soc_pcm_runtime *rtd)
 {
 	struct glk_card_private *ctx = snd_soc_card_get_drvdata(rtd->card);
-	struct snd_soc_dai *dai = snd_soc_rtd_to_codec(rtd, 0);
+	struct snd_soc_dai *dai = rtd->codec_dai;
 	struct glk_hdmi_pcm *pcm;
 
 	pcm = devm_kzalloc(rtd->card->dev, sizeof(*pcm), GFP_KERNEL);
@@ -253,7 +223,7 @@ static int geminilake_hdmi_init(struct snd_soc_pcm_runtime *rtd)
 
 static int geminilake_rt5682_fe_init(struct snd_soc_pcm_runtime *rtd)
 {
-	struct snd_soc_component *component = snd_soc_rtd_to_cpu(rtd, 0)->component;
+	struct snd_soc_component *component = rtd->cpu_dai->component;
 	struct snd_soc_dapm_context *dapm;
 	int ret;
 
@@ -277,6 +247,16 @@ static const struct snd_pcm_hw_constraint_list constraints_rates = {
 	.mask = 0,
 };
 
+static const unsigned int channels[] = {
+	DUAL_CHANNEL,
+};
+
+static const struct snd_pcm_hw_constraint_list constraints_channels = {
+	.count = ARRAY_SIZE(channels),
+	.list = channels,
+	.mask = 0,
+};
+
 static unsigned int channels_quad[] = {
 	QUAD_CHANNEL,
 };
@@ -290,13 +270,13 @@ static struct snd_pcm_hw_constraint_list constraints_channels_quad = {
 static int geminilake_dmic_fixup(struct snd_soc_pcm_runtime *rtd,
 		struct snd_pcm_hw_params *params)
 {
-	struct snd_interval *chan = hw_param_interval(params,
+	struct snd_interval *channels = hw_param_interval(params,
 				SNDRV_PCM_HW_PARAM_CHANNELS);
 
 	/*
 	 * set BE channel constraint as user FE channels
 	 */
-	chan->min = chan->max = 4;
+	channels->min = channels->max = 4;
 
 	return 0;
 }
@@ -372,12 +352,9 @@ SND_SOC_DAILINK_DEF(ssp1_codec,
 
 SND_SOC_DAILINK_DEF(ssp2_pin,
 	DAILINK_COMP_ARRAY(COMP_CPU("SSP2 Pin")));
-SND_SOC_DAILINK_DEF(ssp2_codec_5682,
-	DAILINK_COMP_ARRAY(COMP_CODEC(RT5682_DEV0_NAME,
-				      RT5682_DAI_NAME)));
-SND_SOC_DAILINK_DEF(ssp2_codec_5682s,
-	DAILINK_COMP_ARRAY(COMP_CODEC(RT5682S_DEV0_NAME,
-				      RT5682S_DAI_NAME)));
+SND_SOC_DAILINK_DEF(ssp2_codec,
+	DAILINK_COMP_ARRAY(COMP_CODEC("i2c-10EC5682:00",
+				      GLK_REALTEK_CODEC_DAI)));
 
 SND_SOC_DAILINK_DEF(dmic_pin,
 	DAILINK_COMP_ARRAY(COMP_CPU("DMIC01 Pin")));
@@ -438,9 +415,8 @@ static struct snd_soc_dai_link geminilake_dais[] = {
 		.name = "Glk Audio Echo Reference cap",
 		.stream_name = "Echoreference Capture",
 		.init = NULL,
-		.dpcm_capture = 1,
+		.capture_only = 1,
 		.nonatomic = 1,
-		.dynamic = 1,
 		SND_SOC_DAILINK_REG(echoref, dummy, platform),
 	},
 	[GLK_DPCM_AUDIO_REF_CP] = {
@@ -504,7 +480,7 @@ static struct snd_soc_dai_link geminilake_dais[] = {
 		.no_pcm = 1,
 		.dai_fmt = SND_SOC_DAIFMT_I2S |
 			SND_SOC_DAIFMT_NB_NF |
-			SND_SOC_DAIFMT_CBC_CFC,
+			SND_SOC_DAIFMT_CBS_CFS,
 		.ignore_pmdown_time = 1,
 		.be_hw_params_fixup = geminilake_ssp_fixup,
 		.dpcm_playback = 1,
@@ -517,13 +493,13 @@ static struct snd_soc_dai_link geminilake_dais[] = {
 		.no_pcm = 1,
 		.init = geminilake_rt5682_codec_init,
 		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
-			SND_SOC_DAIFMT_CBC_CFC,
+			SND_SOC_DAIFMT_CBS_CFS,
 		.ignore_pmdown_time = 1,
 		.be_hw_params_fixup = geminilake_ssp_fixup,
 		.ops = &geminilake_rt5682_ops,
 		.dpcm_playback = 1,
 		.dpcm_capture = 1,
-		SND_SOC_DAILINK_REG(ssp2_pin, ssp2_codec_5682, platform),
+		SND_SOC_DAILINK_REG(ssp2_pin, ssp2_codec, platform),
 	},
 	{
 		.name = "dmic01",
@@ -566,25 +542,16 @@ static int glk_card_late_probe(struct snd_soc_card *card)
 	struct snd_soc_component *component = NULL;
 	char jack_name[NAME_SIZE];
 	struct glk_hdmi_pcm *pcm;
-	int err;
+	int err = 0;
 	int i = 0;
-
-	if (list_empty(&ctx->hdmi_pcm_list))
-		return -EINVAL;
-
-	if (ctx->common_hdmi_codec_drv) {
-		pcm = list_first_entry(&ctx->hdmi_pcm_list, struct glk_hdmi_pcm,
-				       head);
-		component = pcm->codec_dai->component;
-		return hda_dsp_hdmi_build_controls(card, component);
-	}
 
 	list_for_each_entry(pcm, &ctx->hdmi_pcm_list, head) {
 		component = pcm->codec_dai->component;
 		snprintf(jack_name, sizeof(jack_name),
 			"HDMI/DP, pcm=%d Jack", pcm->device);
 		err = snd_soc_card_jack_new(card, jack_name,
-					SND_JACK_AVOUT, &geminilake_hdmi[i]);
+					SND_JACK_AVOUT, &geminilake_hdmi[i],
+					NULL, 0);
 
 		if (err)
 			return err;
@@ -596,6 +563,9 @@ static int glk_card_late_probe(struct snd_soc_card *card)
 
 		i++;
 	}
+
+	if (!component)
+		return -EINVAL;
 
 	return hdac_hdmi_jack_port_init(component, &card->dapm);
 }
@@ -622,27 +592,11 @@ static int geminilake_audio_probe(struct platform_device *pdev)
 	struct snd_soc_acpi_mach *mach;
 	const char *platform_name;
 	struct snd_soc_card *card;
-	int ret, i;
+	int ret;
 
 	ctx = devm_kzalloc(&pdev->dev, sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
-
-	/* Detect the headset codec variant */
-	if (acpi_dev_present("RTL5682", NULL, -1)) {
-		/* ALC5682I-VS is detected */
-		ctx->is_rt5682s = 1;
-
-		for (i = 0; i < glk_audio_card_rt5682_m98357a.num_links; i++) {
-			if (strcmp(geminilake_dais[i].name, "SSP2-Codec"))
-				continue;
-
-			/* update the dai link to use rt5682s codec */
-			geminilake_dais[i].codecs = ssp2_codec_5682s;
-			geminilake_dais[i].num_codecs = ARRAY_SIZE(ssp2_codec_5682s);
-			break;
-		}
-	}
 
 	INIT_LIST_HEAD(&ctx->hdmi_pcm_list);
 
@@ -650,28 +604,25 @@ static int geminilake_audio_probe(struct platform_device *pdev)
 	card->dev = &pdev->dev;
 	snd_soc_card_set_drvdata(card, ctx);
 
-	/* override platform name, if required */
-	mach = pdev->dev.platform_data;
+	/* override plaform name, if required */
+	mach = (&pdev->dev)->platform_data;
 	platform_name = mach->mach_params.platform;
 
 	ret = snd_soc_fixup_dai_links_platform_name(card, platform_name);
 	if (ret)
 		return ret;
 
-	ctx->common_hdmi_codec_drv = mach->mach_params.common_hdmi_codec_drv;
-
 	return devm_snd_soc_register_card(&pdev->dev, card);
 }
 
 static const struct platform_device_id glk_board_ids[] = {
 	{
-		.name = "glk_rt5682_mx98357a",
+		.name = "glk_rt5682_max98357a",
 		.driver_data =
 			(kernel_ulong_t)&glk_audio_card_rt5682_m98357a,
 	},
 	{ }
 };
-MODULE_DEVICE_TABLE(platform, glk_board_ids);
 
 static struct platform_driver geminilake_audio = {
 	.probe = geminilake_audio_probe,
@@ -688,4 +639,4 @@ MODULE_DESCRIPTION("Geminilake Audio Machine driver-RT5682 & MAX98357A in I2S mo
 MODULE_AUTHOR("Naveen Manohar <naveen.m@intel.com>");
 MODULE_AUTHOR("Harsha Priya <harshapriya.n@intel.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_IMPORT_NS(SND_SOC_INTEL_HDA_DSP_COMMON);
+MODULE_ALIAS("platform:glk_rt5682_max98357a");

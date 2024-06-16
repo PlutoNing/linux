@@ -36,14 +36,14 @@ multiq_classify(struct sk_buff *skb, struct Qdisc *sch, int *qerr)
 	int err;
 
 	*qerr = NET_XMIT_SUCCESS | __NET_XMIT_BYPASS;
-	err = tcf_classify(skb, NULL, fl, &res, false);
+	err = tcf_classify(skb, fl, &res, false);
 #ifdef CONFIG_NET_CLS_ACT
 	switch (err) {
 	case TC_ACT_STOLEN:
 	case TC_ACT_QUEUED:
 	case TC_ACT_TRAP:
 		*qerr = NET_XMIT_SUCCESS | __NET_XMIT_STOLEN;
-		fallthrough;
+		/* fall through */
 	case TC_ACT_SHOT:
 		return NULL;
 	}
@@ -152,6 +152,7 @@ multiq_reset(struct Qdisc *sch)
 
 	for (band = 0; band < q->bands; band++)
 		qdisc_reset(q->queues[band]);
+	sch->q.qlen = 0;
 	q->curband = 0;
 }
 
@@ -337,7 +338,8 @@ static int multiq_dump_class_stats(struct Qdisc *sch, unsigned long cl,
 	struct Qdisc *cl_q;
 
 	cl_q = q->queues[cl - 1];
-	if (gnet_stats_copy_basic(d, cl_q->cpu_bstats, &cl_q->bstats, true) < 0 ||
+	if (gnet_stats_copy_basic(qdisc_root_sleeping_running(sch),
+				  d, NULL, &cl_q->bstats) < 0 ||
 	    qdisc_qstats_copy(d, cl_q) < 0)
 		return -1;
 
@@ -353,8 +355,15 @@ static void multiq_walk(struct Qdisc *sch, struct qdisc_walker *arg)
 		return;
 
 	for (band = 0; band < q->bands; band++) {
-		if (!tc_qdisc_stats_dump(sch, band + 1, arg))
+		if (arg->count < arg->skip) {
+			arg->count++;
+			continue;
+		}
+		if (arg->fn(sch, band + 1, arg) < 0) {
+			arg->stop = 1;
 			break;
+		}
+		arg->count++;
 	}
 }
 
@@ -395,7 +404,6 @@ static struct Qdisc_ops multiq_qdisc_ops __read_mostly = {
 	.dump		=	multiq_dump,
 	.owner		=	THIS_MODULE,
 };
-MODULE_ALIAS_NET_SCH("multiq");
 
 static int __init multiq_module_init(void)
 {
@@ -411,4 +419,3 @@ module_init(multiq_module_init)
 module_exit(multiq_module_exit)
 
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Multi queue to hardware queue mapping qdisc");

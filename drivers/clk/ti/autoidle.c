@@ -1,10 +1,18 @@
-// SPDX-License-Identifier: GPL-2.0-only
 /*
  * TI clock autoidle support
  *
  * Copyright (C) 2013 Texas Instruments, Inc.
  *
  * Tero Kristo <t-kristo@ti.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
+ * kind, whether express or implied; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <linux/clk-provider.h>
@@ -74,12 +82,7 @@ static int _omap2_clk_allow_idle(struct clk_hw_omap *clk)
  */
 int omap2_clk_deny_idle(struct clk *clk)
 {
-	struct clk_hw *hw;
-
-	if (!clk)
-		return -EINVAL;
-
-	hw = __clk_get_hw(clk);
+	struct clk_hw *hw = __clk_get_hw(clk);
 
 	if (omap2_clk_is_hw_omap(hw)) {
 		struct clk_hw_omap *c = to_clk_hw_omap(hw);
@@ -98,12 +101,7 @@ int omap2_clk_deny_idle(struct clk *clk)
  */
 int omap2_clk_allow_idle(struct clk *clk)
 {
-	struct clk_hw *hw;
-
-	if (!clk)
-		return -EINVAL;
-
-	hw = __clk_get_hw(clk);
+	struct clk_hw *hw = __clk_get_hw(clk);
 
 	if (omap2_clk_is_hw_omap(hw)) {
 		struct clk_hw_omap *c = to_clk_hw_omap(hw);
@@ -197,7 +195,7 @@ int __init of_ti_clk_autoidle_setup(struct device_node *node)
 		return -ENOMEM;
 
 	clk->shift = shift;
-	clk->name = ti_dt_clk_name(node);
+	clk->name = node->name;
 	ret = ti_clk_get_reg_addr(node, 0, &clk->reg);
 	if (ret) {
 		kfree(clk);

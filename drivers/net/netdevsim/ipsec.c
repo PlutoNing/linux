@@ -29,9 +29,9 @@ static ssize_t nsim_dbg_netdev_ops_read(struct file *filp,
 		return -ENOMEM;
 
 	p = buf;
-	p += scnprintf(p, bufsize - (p - buf),
-		       "SA count=%u tx=%u\n",
-		       ipsec->count, ipsec->tx);
+	p += snprintf(p, bufsize - (p - buf),
+		      "SA count=%u tx=%u\n",
+		      ipsec->count, ipsec->tx);
 
 	for (i = 0; i < NSIM_IPSEC_MAX_SA_COUNT; i++) {
 		struct nsim_sa *sap = &ipsec->sa[i];
@@ -39,18 +39,18 @@ static ssize_t nsim_dbg_netdev_ops_read(struct file *filp,
 		if (!sap->used)
 			continue;
 
-		p += scnprintf(p, bufsize - (p - buf),
-			       "sa[%i] %cx ipaddr=0x%08x %08x %08x %08x\n",
-			       i, (sap->rx ? 'r' : 't'), sap->ipaddr[0],
-			       sap->ipaddr[1], sap->ipaddr[2], sap->ipaddr[3]);
-		p += scnprintf(p, bufsize - (p - buf),
-			       "sa[%i]    spi=0x%08x proto=0x%x salt=0x%08x crypt=%d\n",
-			       i, be32_to_cpu(sap->xs->id.spi),
-			       sap->xs->id.proto, sap->salt, sap->crypt);
-		p += scnprintf(p, bufsize - (p - buf),
-			       "sa[%i]    key=0x%08x %08x %08x %08x\n",
-			       i, sap->key[0], sap->key[1],
-			       sap->key[2], sap->key[3]);
+		p += snprintf(p, bufsize - (p - buf),
+			      "sa[%i] %cx ipaddr=0x%08x %08x %08x %08x\n",
+			      i, (sap->rx ? 'r' : 't'), sap->ipaddr[0],
+			      sap->ipaddr[1], sap->ipaddr[2], sap->ipaddr[3]);
+		p += snprintf(p, bufsize - (p - buf),
+			      "sa[%i]    spi=0x%08x proto=0x%x salt=0x%08x crypt=%d\n",
+			      i, be32_to_cpu(sap->xs->id.spi),
+			      sap->xs->id.proto, sap->salt, sap->crypt);
+		p += snprintf(p, bufsize - (p - buf),
+			      "sa[%i]    key=0x%08x %08x %08x %08x\n",
+			      i, sap->key[0], sap->key[1],
+			      sap->key[2], sap->key[3]);
 	}
 
 	len = simple_read_from_buffer(buffer, count, ppos, buf, p - buf);
@@ -85,7 +85,7 @@ static int nsim_ipsec_parse_proto_keys(struct xfrm_state *xs,
 				       u32 *mykey, u32 *mysalt)
 {
 	const char aes_gcm_name[] = "rfc4106(gcm(aes))";
-	struct net_device *dev = xs->xso.real_dev;
+	struct net_device *dev = xs->xso.dev;
 	unsigned char *key_data;
 	char *alg_name = NULL;
 	int key_len;
@@ -125,8 +125,7 @@ static int nsim_ipsec_parse_proto_keys(struct xfrm_state *xs,
 	return 0;
 }
 
-static int nsim_ipsec_add_sa(struct xfrm_state *xs,
-			     struct netlink_ext_ack *extack)
+static int nsim_ipsec_add_sa(struct xfrm_state *xs)
 {
 	struct nsim_ipsec *ipsec;
 	struct net_device *dev;
@@ -135,29 +134,25 @@ static int nsim_ipsec_add_sa(struct xfrm_state *xs,
 	u16 sa_idx;
 	int ret;
 
-	dev = xs->xso.real_dev;
+	dev = xs->xso.dev;
 	ns = netdev_priv(dev);
 	ipsec = &ns->ipsec;
 
 	if (xs->id.proto != IPPROTO_ESP && xs->id.proto != IPPROTO_AH) {
-		NL_SET_ERR_MSG_MOD(extack, "Unsupported protocol for ipsec offload");
+		netdev_err(dev, "Unsupported protocol 0x%04x for ipsec offload\n",
+			   xs->id.proto);
 		return -EINVAL;
 	}
 
 	if (xs->calg) {
-		NL_SET_ERR_MSG_MOD(extack, "Compression offload not supported");
-		return -EINVAL;
-	}
-
-	if (xs->xso.type != XFRM_DEV_OFFLOAD_CRYPTO) {
-		NL_SET_ERR_MSG_MOD(extack, "Unsupported ipsec offload type");
+		netdev_err(dev, "Compression offload not supported\n");
 		return -EINVAL;
 	}
 
 	/* find the first unused index */
 	ret = nsim_ipsec_find_empty_idx(ipsec);
 	if (ret < 0) {
-		NL_SET_ERR_MSG_MOD(extack, "No space for SA in Rx table!");
+		netdev_err(dev, "No space for SA in Rx table!\n");
 		return ret;
 	}
 	sa_idx = (u16)ret;
@@ -172,11 +167,11 @@ static int nsim_ipsec_add_sa(struct xfrm_state *xs,
 	/* get the key and salt */
 	ret = nsim_ipsec_parse_proto_keys(xs, sa.key, &sa.salt);
 	if (ret) {
-		NL_SET_ERR_MSG_MOD(extack, "Failed to get key data for SA table");
+		netdev_err(dev, "Failed to get key data for SA table\n");
 		return ret;
 	}
 
-	if (xs->xso.dir == XFRM_DEV_OFFLOAD_IN) {
+	if (xs->xso.flags & XFRM_OFFLOAD_INBOUND) {
 		sa.rx = true;
 
 		if (xs->props.family == AF_INET6)
@@ -199,7 +194,7 @@ static int nsim_ipsec_add_sa(struct xfrm_state *xs,
 
 static void nsim_ipsec_del_sa(struct xfrm_state *xs)
 {
-	struct netdevsim *ns = netdev_priv(xs->xso.real_dev);
+	struct netdevsim *ns = netdev_priv(xs->xso.dev);
 	struct nsim_ipsec *ipsec = &ns->ipsec;
 	u16 sa_idx;
 
@@ -216,7 +211,7 @@ static void nsim_ipsec_del_sa(struct xfrm_state *xs)
 
 static bool nsim_ipsec_offload_ok(struct sk_buff *skb, struct xfrm_state *xs)
 {
-	struct netdevsim *ns = netdev_priv(xs->xso.real_dev);
+	struct netdevsim *ns = netdev_priv(xs->xso.dev);
 	struct nsim_ipsec *ipsec = &ns->ipsec;
 
 	ipsec->ok++;

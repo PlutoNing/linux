@@ -145,8 +145,8 @@ static void s6sy761_report_coordinates(struct s6sy761_data *sdata,
 	u8 major = event[4];
 	u8 minor = event[5];
 	u8 z = event[6] & S6SY761_MASK_Z;
-	u16 x = (event[1] << 4) | ((event[3] & S6SY761_MASK_X) >> 4);
-	u16 y = (event[2] << 4) | (event[3] & S6SY761_MASK_Y);
+	u16 x = (event[1] << 3) | ((event[3] & S6SY761_MASK_X) >> 4);
+	u16 y = (event[2] << 3) | (event[3] & S6SY761_MASK_Y);
 
 	input_mt_slot(sdata->input, tid);
 
@@ -286,7 +286,10 @@ static struct attribute *s6sy761_sysfs_attrs[] = {
 	&dev_attr_devid.attr,
 	NULL
 };
-ATTRIBUTE_GROUPS(s6sy761_sysfs);
+
+static struct attribute_group s6sy761_attribute_group = {
+	.attrs = s6sy761_sysfs_attrs
+};
 
 static int s6sy761_power_on(struct s6sy761_data *sdata)
 {
@@ -386,7 +389,8 @@ static void s6sy761_power_off(void *data)
 						sdata->regulators);
 }
 
-static int s6sy761_probe(struct i2c_client *client)
+static int s6sy761_probe(struct i2c_client *client,
+			 const struct i2c_device_id *id)
 {
 	struct s6sy761_data *sdata;
 	unsigned int max_x, max_y;
@@ -462,17 +466,23 @@ static int s6sy761_probe(struct i2c_client *client)
 	if (err)
 		return err;
 
+	err = devm_device_add_group(&client->dev, &s6sy761_attribute_group);
+	if (err)
+		return err;
+
 	pm_runtime_enable(&client->dev);
 
 	return 0;
 }
 
-static void s6sy761_remove(struct i2c_client *client)
+static int s6sy761_remove(struct i2c_client *client)
 {
 	pm_runtime_disable(&client->dev);
+
+	return 0;
 }
 
-static int s6sy761_runtime_suspend(struct device *dev)
+static int __maybe_unused s6sy761_runtime_suspend(struct device *dev)
 {
 	struct s6sy761_data *sdata = dev_get_drvdata(dev);
 
@@ -480,7 +490,7 @@ static int s6sy761_runtime_suspend(struct device *dev)
 				S6SY761_APPLICATION_MODE, S6SY761_APP_SLEEP);
 }
 
-static int s6sy761_runtime_resume(struct device *dev)
+static int __maybe_unused s6sy761_runtime_resume(struct device *dev)
 {
 	struct s6sy761_data *sdata = dev_get_drvdata(dev);
 
@@ -488,7 +498,7 @@ static int s6sy761_runtime_resume(struct device *dev)
 				S6SY761_APPLICATION_MODE, S6SY761_APP_NORMAL);
 }
 
-static int s6sy761_suspend(struct device *dev)
+static int __maybe_unused s6sy761_suspend(struct device *dev)
 {
 	struct s6sy761_data *sdata = dev_get_drvdata(dev);
 
@@ -497,7 +507,7 @@ static int s6sy761_suspend(struct device *dev)
 	return 0;
 }
 
-static int s6sy761_resume(struct device *dev)
+static int __maybe_unused s6sy761_resume(struct device *dev)
 {
 	struct s6sy761_data *sdata = dev_get_drvdata(dev);
 
@@ -507,8 +517,9 @@ static int s6sy761_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops s6sy761_pm_ops = {
-	SYSTEM_SLEEP_PM_OPS(s6sy761_suspend, s6sy761_resume)
-	RUNTIME_PM_OPS(s6sy761_runtime_suspend, s6sy761_runtime_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(s6sy761_suspend, s6sy761_resume)
+	SET_RUNTIME_PM_OPS(s6sy761_runtime_suspend,
+				s6sy761_runtime_resume, NULL)
 };
 
 #ifdef CONFIG_OF
@@ -528,9 +539,8 @@ MODULE_DEVICE_TABLE(i2c, s6sy761_id);
 static struct i2c_driver s6sy761_driver = {
 	.driver = {
 		.name = S6SY761_DEV_NAME,
-		.dev_groups = s6sy761_sysfs_groups,
 		.of_match_table = of_match_ptr(s6sy761_of_match),
-		.pm = pm_ptr(&s6sy761_pm_ops),
+		.pm = &s6sy761_pm_ops,
 	},
 	.probe = s6sy761_probe,
 	.remove = s6sy761_remove,

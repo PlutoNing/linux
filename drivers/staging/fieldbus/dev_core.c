@@ -23,12 +23,15 @@ static dev_t fieldbus_devt;
 static DEFINE_IDA(fieldbus_ida);
 static DEFINE_MUTEX(fieldbus_mtx);
 
+static const char ctrl_enabled[] = "enabled";
+static const char ctrl_disabled[] = "disabled";
+
 static ssize_t online_show(struct device *dev, struct device_attribute *attr,
 			   char *buf)
 {
 	struct fieldbus_dev *fb = dev_get_drvdata(dev);
 
-	return sysfs_emit(buf, "%d\n", !!fb->online);
+	return sprintf(buf, "%d\n", !!fb->online);
 }
 static DEVICE_ATTR_RO(online);
 
@@ -39,7 +42,7 @@ static ssize_t enabled_show(struct device *dev, struct device_attribute *attr,
 
 	if (!fb->enable_get)
 		return -EINVAL;
-	return sysfs_emit(buf, "%d\n", !!fb->enable_get(fb));
+	return sprintf(buf, "%d\n", !!fb->enable_get(fb));
 }
 
 static ssize_t enabled_store(struct device *dev, struct device_attribute *attr,
@@ -66,8 +69,11 @@ static ssize_t card_name_show(struct device *dev, struct device_attribute *attr,
 {
 	struct fieldbus_dev *fb = dev_get_drvdata(dev);
 
-	/* card_name was provided by child driver. */
-	return sysfs_emit(buf, "%s\n", fb->card_name);
+	/*
+	 * card_name was provided by child driver, could potentially be long.
+	 * protect against buffer overrun.
+	 */
+	return snprintf(buf, PAGE_SIZE, "%s\n", fb->card_name);
 }
 static DEVICE_ATTR_RO(card_name);
 
@@ -76,7 +82,7 @@ static ssize_t read_area_size_show(struct device *dev,
 {
 	struct fieldbus_dev *fb = dev_get_drvdata(dev);
 
-	return sysfs_emit(buf, "%zu\n", fb->read_area_sz);
+	return sprintf(buf, "%zu\n", fb->read_area_sz);
 }
 static DEVICE_ATTR_RO(read_area_size);
 
@@ -85,7 +91,7 @@ static ssize_t write_area_size_show(struct device *dev,
 {
 	struct fieldbus_dev *fb = dev_get_drvdata(dev);
 
-	return sysfs_emit(buf, "%zu\n", fb->write_area_sz);
+	return sprintf(buf, "%zu\n", fb->write_area_sz);
 }
 static DEVICE_ATTR_RO(write_area_size);
 
@@ -113,7 +119,7 @@ static ssize_t fieldbus_type_show(struct device *dev,
 		break;
 	}
 
-	return sysfs_emit(buf, "%s\n", t);
+	return sprintf(buf, "%s\n", t);
 }
 static DEVICE_ATTR_RO(fieldbus_type);
 
@@ -131,7 +137,7 @@ static struct attribute *fieldbus_attrs[] = {
 static umode_t fieldbus_is_visible(struct kobject *kobj, struct attribute *attr,
 				   int n)
 {
-	struct device *dev = kobj_to_dev(kobj);
+	struct device *dev = container_of(kobj, struct device, kobj);
 	struct fieldbus_dev *fb = dev_get_drvdata(dev);
 	umode_t mode = attr->mode;
 
@@ -152,8 +158,9 @@ static const struct attribute_group fieldbus_group = {
 };
 __ATTRIBUTE_GROUPS(fieldbus);
 
-static const struct class fieldbus_class = {
+static struct class fieldbus_class = {
 	.name =		"fieldbus_dev",
+	.owner =	THIS_MODULE,
 	.dev_groups =	fieldbus_groups,
 };
 
@@ -247,7 +254,7 @@ static void __fieldbus_dev_unregister(struct fieldbus_dev *fb)
 		return;
 	device_destroy(&fieldbus_class, fb->cdev.dev);
 	cdev_del(&fb->cdev);
-	ida_free(&fieldbus_ida, fb->id);
+	ida_simple_remove(&fieldbus_ida, fb->id);
 }
 
 void fieldbus_dev_unregister(struct fieldbus_dev *fb)
@@ -267,7 +274,7 @@ static int __fieldbus_dev_register(struct fieldbus_dev *fb)
 		return -EINVAL;
 	if (!fb->read_area || !fb->write_area || !fb->fieldbus_id_get)
 		return -EINVAL;
-	fb->id = ida_alloc_max(&fieldbus_ida, MAX_FIELDBUSES - 1, GFP_KERNEL);
+	fb->id = ida_simple_get(&fieldbus_ida, 0, MAX_FIELDBUSES, GFP_KERNEL);
 	if (fb->id < 0)
 		return fb->id;
 	devno = MKDEV(MAJOR(fieldbus_devt), fb->id);
@@ -290,7 +297,7 @@ static int __fieldbus_dev_register(struct fieldbus_dev *fb)
 err_dev_create:
 	cdev_del(&fb->cdev);
 err_cdev:
-	ida_free(&fieldbus_ida, fb->id);
+	ida_simple_remove(&fieldbus_ida, fb->id);
 	return err;
 }
 

@@ -196,16 +196,9 @@ static void br_stp_stop(struct net_bridge *br)
 	br->stp_enabled = BR_NO_STP;
 }
 
-int br_stp_set_enabled(struct net_bridge *br, unsigned long val,
-		       struct netlink_ext_ack *extack)
+void br_stp_set_enabled(struct net_bridge *br, unsigned long val)
 {
 	ASSERT_RTNL();
-
-	if (br_mrp_enabled(br)) {
-		NL_SET_ERR_MSG_MOD(extack,
-				   "STP can't be enabled if MRP is already enabled");
-		return -EINVAL;
-	}
 
 	if (val) {
 		if (br->stp_enabled == BR_NO_STP)
@@ -214,8 +207,6 @@ int br_stp_set_enabled(struct net_bridge *br, unsigned long val,
 		if (br->stp_enabled != BR_NO_STP)
 			br_stp_stop(br);
 	}
-
-	return 0;
 }
 
 /* called under bridge lock */
@@ -233,7 +224,7 @@ void br_stp_change_bridge_id(struct net_bridge *br, const unsigned char *addr)
 
 	memcpy(oldaddr, br->bridge_id.addr, ETH_ALEN);
 	memcpy(br->bridge_id.addr, addr, ETH_ALEN);
-	eth_hw_addr_set(br->dev, addr);
+	memcpy(br->dev->dev_addr, addr, ETH_ALEN);
 
 	list_for_each_entry(p, &br->port_list, list) {
 		if (ether_addr_equal(p->designated_bridge.addr, oldaddr))

@@ -35,14 +35,13 @@
  */
 
 #include "i915_drv.h"
-#include "i915_reg.h"
-#include "gt/intel_ggtt_fencing.h"
+#include "i915_gem_fence_reg.h"
 #include "gvt.h"
 
 static int alloc_gm(struct intel_vgpu *vgpu, bool high_gm)
 {
 	struct intel_gvt *gvt = vgpu->gvt;
-	struct intel_gt *gt = gvt->gt;
+	struct drm_i915_private *dev_priv = gvt->dev_priv;
 	unsigned int flags;
 	u64 start, end, size;
 	struct drm_mm_node *node;
@@ -62,14 +61,14 @@ static int alloc_gm(struct intel_vgpu *vgpu, bool high_gm)
 		flags = PIN_MAPPABLE;
 	}
 
-	mutex_lock(&gt->ggtt->vm.mutex);
-	mmio_hw_access_pre(gt);
-	ret = i915_gem_gtt_insert(&gt->ggtt->vm, NULL, node,
+	mutex_lock(&dev_priv->drm.struct_mutex);
+	mmio_hw_access_pre(dev_priv);
+	ret = i915_gem_gtt_insert(&dev_priv->ggtt.vm, node,
 				  size, I915_GTT_PAGE_SIZE,
 				  I915_COLOR_UNEVICTABLE,
 				  start, end, flags);
-	mmio_hw_access_post(gt);
-	mutex_unlock(&gt->ggtt->vm.mutex);
+	mmio_hw_access_post(dev_priv);
+	mutex_unlock(&dev_priv->drm.struct_mutex);
 	if (ret)
 		gvt_err("fail to alloc %s gm space from host\n",
 			high_gm ? "high" : "low");
@@ -80,7 +79,7 @@ static int alloc_gm(struct intel_vgpu *vgpu, bool high_gm)
 static int alloc_vgpu_gm(struct intel_vgpu *vgpu)
 {
 	struct intel_gvt *gvt = vgpu->gvt;
-	struct intel_gt *gt = gvt->gt;
+	struct drm_i915_private *dev_priv = gvt->dev_priv;
 	int ret;
 
 	ret = alloc_gm(vgpu, false);
@@ -99,21 +98,20 @@ static int alloc_vgpu_gm(struct intel_vgpu *vgpu)
 
 	return 0;
 out_free_aperture:
-	mutex_lock(&gt->ggtt->vm.mutex);
+	mutex_lock(&dev_priv->drm.struct_mutex);
 	drm_mm_remove_node(&vgpu->gm.low_gm_node);
-	mutex_unlock(&gt->ggtt->vm.mutex);
+	mutex_unlock(&dev_priv->drm.struct_mutex);
 	return ret;
 }
 
 static void free_vgpu_gm(struct intel_vgpu *vgpu)
 {
-	struct intel_gvt *gvt = vgpu->gvt;
-	struct intel_gt *gt = gvt->gt;
+	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
 
-	mutex_lock(&gt->ggtt->vm.mutex);
+	mutex_lock(&dev_priv->drm.struct_mutex);
 	drm_mm_remove_node(&vgpu->gm.low_gm_node);
 	drm_mm_remove_node(&vgpu->gm.high_gm_node);
-	mutex_unlock(&gt->ggtt->vm.mutex);
+	mutex_unlock(&dev_priv->drm.struct_mutex);
 }
 
 /**
@@ -130,29 +128,28 @@ void intel_vgpu_write_fence(struct intel_vgpu *vgpu,
 		u32 fence, u64 value)
 {
 	struct intel_gvt *gvt = vgpu->gvt;
-	struct drm_i915_private *i915 = gvt->gt->i915;
-	struct intel_uncore *uncore = gvt->gt->uncore;
+	struct drm_i915_private *dev_priv = gvt->dev_priv;
 	struct i915_fence_reg *reg;
 	i915_reg_t fence_reg_lo, fence_reg_hi;
 
-	assert_rpm_wakelock_held(uncore->rpm);
+	assert_rpm_wakelock_held(&dev_priv->runtime_pm);
 
-	if (drm_WARN_ON(&i915->drm, fence >= vgpu_fence_sz(vgpu)))
+	if (WARN_ON(fence >= vgpu_fence_sz(vgpu)))
 		return;
 
 	reg = vgpu->fence.regs[fence];
-	if (drm_WARN_ON(&i915->drm, !reg))
+	if (WARN_ON(!reg))
 		return;
 
 	fence_reg_lo = FENCE_REG_GEN6_LO(reg->id);
 	fence_reg_hi = FENCE_REG_GEN6_HI(reg->id);
 
-	intel_uncore_write(uncore, fence_reg_lo, 0);
-	intel_uncore_posting_read(uncore, fence_reg_lo);
+	I915_WRITE(fence_reg_lo, 0);
+	POSTING_READ(fence_reg_lo);
 
-	intel_uncore_write(uncore, fence_reg_hi, upper_32_bits(value));
-	intel_uncore_write(uncore, fence_reg_lo, lower_32_bits(value));
-	intel_uncore_posting_read(uncore, fence_reg_lo);
+	I915_WRITE(fence_reg_hi, upper_32_bits(value));
+	I915_WRITE(fence_reg_lo, lower_32_bits(value));
+	POSTING_READ(fence_reg_lo);
 }
 
 static void _clear_vgpu_fence(struct intel_vgpu *vgpu)
@@ -166,43 +163,42 @@ static void _clear_vgpu_fence(struct intel_vgpu *vgpu)
 static void free_vgpu_fence(struct intel_vgpu *vgpu)
 {
 	struct intel_gvt *gvt = vgpu->gvt;
-	struct intel_uncore *uncore = gvt->gt->uncore;
+	struct drm_i915_private *dev_priv = gvt->dev_priv;
 	struct i915_fence_reg *reg;
-	intel_wakeref_t wakeref;
 	u32 i;
 
-	if (drm_WARN_ON(&gvt->gt->i915->drm, !vgpu_fence_sz(vgpu)))
+	if (WARN_ON(!vgpu_fence_sz(vgpu)))
 		return;
 
-	wakeref = intel_runtime_pm_get(uncore->rpm);
+	intel_runtime_pm_get(&dev_priv->runtime_pm);
 
-	mutex_lock(&gvt->gt->ggtt->vm.mutex);
+	mutex_lock(&dev_priv->ggtt.vm.mutex);
 	_clear_vgpu_fence(vgpu);
 	for (i = 0; i < vgpu_fence_sz(vgpu); i++) {
 		reg = vgpu->fence.regs[i];
 		i915_unreserve_fence(reg);
 		vgpu->fence.regs[i] = NULL;
 	}
-	mutex_unlock(&gvt->gt->ggtt->vm.mutex);
+	mutex_unlock(&dev_priv->ggtt.vm.mutex);
 
-	intel_runtime_pm_put(uncore->rpm, wakeref);
+	intel_runtime_pm_put_unchecked(&dev_priv->runtime_pm);
 }
 
 static int alloc_vgpu_fence(struct intel_vgpu *vgpu)
 {
 	struct intel_gvt *gvt = vgpu->gvt;
-	struct intel_uncore *uncore = gvt->gt->uncore;
+	struct drm_i915_private *dev_priv = gvt->dev_priv;
+	struct intel_runtime_pm *rpm = &dev_priv->runtime_pm;
 	struct i915_fence_reg *reg;
-	intel_wakeref_t wakeref;
 	int i;
 
-	wakeref = intel_runtime_pm_get(uncore->rpm);
+	intel_runtime_pm_get(rpm);
 
 	/* Request fences from host */
-	mutex_lock(&gvt->gt->ggtt->vm.mutex);
+	mutex_lock(&dev_priv->ggtt.vm.mutex);
 
 	for (i = 0; i < vgpu_fence_sz(vgpu); i++) {
-		reg = i915_reserve_fence(gvt->gt->ggtt);
+		reg = i915_reserve_fence(dev_priv);
 		if (IS_ERR(reg))
 			goto out_free_fence;
 
@@ -211,10 +207,9 @@ static int alloc_vgpu_fence(struct intel_vgpu *vgpu)
 
 	_clear_vgpu_fence(vgpu);
 
-	mutex_unlock(&gvt->gt->ggtt->vm.mutex);
-	intel_runtime_pm_put(uncore->rpm, wakeref);
+	mutex_unlock(&dev_priv->ggtt.vm.mutex);
+	intel_runtime_pm_put_unchecked(rpm);
 	return 0;
-
 out_free_fence:
 	gvt_vgpu_err("Failed to alloc fences\n");
 	/* Return fences to host, if fail */
@@ -225,8 +220,8 @@ out_free_fence:
 		i915_unreserve_fence(reg);
 		vgpu->fence.regs[i] = NULL;
 	}
-	mutex_unlock(&gvt->gt->ggtt->vm.mutex);
-	intel_runtime_pm_put_unchecked(uncore->rpm);
+	mutex_unlock(&dev_priv->ggtt.vm.mutex);
+	intel_runtime_pm_put_unchecked(rpm);
 	return -ENOSPC;
 }
 
@@ -240,13 +235,13 @@ static void free_resource(struct intel_vgpu *vgpu)
 }
 
 static int alloc_resource(struct intel_vgpu *vgpu,
-		const struct intel_vgpu_config *conf)
+		struct intel_vgpu_creation_params *param)
 {
 	struct intel_gvt *gvt = vgpu->gvt;
 	unsigned long request, avail, max, taken;
 	const char *item;
 
-	if (!conf->low_mm || !conf->high_mm || !conf->fence) {
+	if (!param->low_gm_sz || !param->high_gm_sz || !param->fence_sz) {
 		gvt_vgpu_err("Invalid vGPU creation params\n");
 		return -EINVAL;
 	}
@@ -255,7 +250,7 @@ static int alloc_resource(struct intel_vgpu *vgpu,
 	max = gvt_aperture_sz(gvt) - HOST_LOW_GM_SIZE;
 	taken = gvt->gm.vgpu_allocated_low_gm_size;
 	avail = max - taken;
-	request = conf->low_mm;
+	request = MB_TO_BYTES(param->low_gm_sz);
 
 	if (request > avail)
 		goto no_enough_resource;
@@ -266,7 +261,7 @@ static int alloc_resource(struct intel_vgpu *vgpu,
 	max = gvt_hidden_sz(gvt) - HOST_HIGH_GM_SIZE;
 	taken = gvt->gm.vgpu_allocated_high_gm_size;
 	avail = max - taken;
-	request = conf->high_mm;
+	request = MB_TO_BYTES(param->high_gm_sz);
 
 	if (request > avail)
 		goto no_enough_resource;
@@ -277,16 +272,16 @@ static int alloc_resource(struct intel_vgpu *vgpu,
 	max = gvt_fence_sz(gvt) - HOST_FENCE;
 	taken = gvt->fence.vgpu_allocated_fence_num;
 	avail = max - taken;
-	request = conf->fence;
+	request = param->fence_sz;
 
 	if (request > avail)
 		goto no_enough_resource;
 
 	vgpu_fence_sz(vgpu) = request;
 
-	gvt->gm.vgpu_allocated_low_gm_size += conf->low_mm;
-	gvt->gm.vgpu_allocated_high_gm_size += conf->high_mm;
-	gvt->fence.vgpu_allocated_fence_num += conf->fence;
+	gvt->gm.vgpu_allocated_low_gm_size += MB_TO_BYTES(param->low_gm_sz);
+	gvt->gm.vgpu_allocated_high_gm_size += MB_TO_BYTES(param->high_gm_sz);
+	gvt->fence.vgpu_allocated_fence_num += param->fence_sz;
 	return 0;
 
 no_enough_resource:
@@ -298,7 +293,7 @@ no_enough_resource:
 }
 
 /**
- * intel_vgpu_free_resource() - free HW resource owned by a vGPU
+ * inte_gvt_free_vgpu_resource - free HW resource owned by a vGPU
  * @vgpu: a vGPU
  *
  * This function is used to free the HW resource owned by a vGPU.
@@ -320,17 +315,17 @@ void intel_vgpu_free_resource(struct intel_vgpu *vgpu)
  */
 void intel_vgpu_reset_resource(struct intel_vgpu *vgpu)
 {
-	struct intel_gvt *gvt = vgpu->gvt;
-	intel_wakeref_t wakeref;
+	struct drm_i915_private *dev_priv = vgpu->gvt->dev_priv;
 
-	with_intel_runtime_pm(gvt->gt->uncore->rpm, wakeref)
-		_clear_vgpu_fence(vgpu);
+	intel_runtime_pm_get(&dev_priv->runtime_pm);
+	_clear_vgpu_fence(vgpu);
+	intel_runtime_pm_put_unchecked(&dev_priv->runtime_pm);
 }
 
 /**
- * intel_vgpu_alloc_resource() - allocate HW resource for a vGPU
+ * intel_alloc_vgpu_resource - allocate HW resource for a vGPU
  * @vgpu: vGPU
- * @conf: vGPU creation params
+ * @param: vGPU creation params
  *
  * This function is used to allocate HW resource for a vGPU. User specifies
  * the resource configuration through the creation params.
@@ -340,11 +335,11 @@ void intel_vgpu_reset_resource(struct intel_vgpu *vgpu)
  *
  */
 int intel_vgpu_alloc_resource(struct intel_vgpu *vgpu,
-		const struct intel_vgpu_config *conf)
+		struct intel_vgpu_creation_params *param)
 {
 	int ret;
 
-	ret = alloc_resource(vgpu, conf);
+	ret = alloc_resource(vgpu, param);
 	if (ret)
 		return ret;
 

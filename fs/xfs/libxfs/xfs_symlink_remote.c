@@ -16,10 +16,7 @@
 #include "xfs_trans.h"
 #include "xfs_buf_item.h"
 #include "xfs_log.h"
-#include "xfs_symlink_remote.h"
-#include "xfs_bit.h"
-#include "xfs_bmap.h"
-#include "xfs_health.h"
+
 
 /*
  * Each contiguous block has a header, so it is not just a simple pathlen
@@ -45,7 +42,7 @@ xfs_symlink_hdr_set(
 {
 	struct xfs_dsymlink_hdr	*dsl = bp->b_addr;
 
-	if (!xfs_has_crc(mp))
+	if (!xfs_sb_version_hascrc(&mp->m_sb))
 		return 0;
 
 	memset(dsl, 0, sizeof(struct xfs_dsymlink_hdr));
@@ -54,7 +51,7 @@ xfs_symlink_hdr_set(
 	dsl->sl_bytes = cpu_to_be32(size);
 	uuid_copy(&dsl->sl_uuid, &mp->m_sb.sb_meta_uuid);
 	dsl->sl_owner = cpu_to_be64(ino);
-	dsl->sl_blkno = cpu_to_be64(xfs_buf_daddr(bp));
+	dsl->sl_blkno = cpu_to_be64(bp->b_bn);
 	bp->b_ops = &xfs_symlink_buf_ops;
 
 	return sizeof(struct xfs_dsymlink_hdr);
@@ -92,13 +89,13 @@ xfs_symlink_verify(
 	struct xfs_mount	*mp = bp->b_mount;
 	struct xfs_dsymlink_hdr	*dsl = bp->b_addr;
 
-	if (!xfs_has_crc(mp))
+	if (!xfs_sb_version_hascrc(&mp->m_sb))
 		return __this_address;
 	if (!xfs_verify_magic(bp, dsl->sl_magic))
 		return __this_address;
 	if (!uuid_equal(&dsl->sl_uuid, &mp->m_sb.sb_meta_uuid))
 		return __this_address;
-	if (xfs_buf_daddr(bp) != be64_to_cpu(dsl->sl_blkno))
+	if (bp->b_bn != be64_to_cpu(dsl->sl_blkno))
 		return __this_address;
 	if (be32_to_cpu(dsl->sl_offset) +
 				be32_to_cpu(dsl->sl_bytes) >= XFS_SYMLINK_MAXLEN)
@@ -119,7 +116,7 @@ xfs_symlink_read_verify(
 	xfs_failaddr_t	fa;
 
 	/* no verification of non-crc buffers */
-	if (!xfs_has_crc(mp))
+	if (!xfs_sb_version_hascrc(&mp->m_sb))
 		return;
 
 	if (!xfs_buf_verify_cksum(bp, XFS_SYMLINK_CRC_OFF))
@@ -140,7 +137,7 @@ xfs_symlink_write_verify(
 	xfs_failaddr_t		fa;
 
 	/* no verification of non-crc buffers */
-	if (!xfs_has_crc(mp))
+	if (!xfs_sb_version_hascrc(&mp->m_sb))
 		return;
 
 	fa = xfs_symlink_verify(bp);
@@ -176,9 +173,9 @@ xfs_symlink_local_to_remote(
 
 	xfs_trans_buf_set_type(tp, bp, XFS_BLFT_SYMLINK_BUF);
 
-	if (!xfs_has_crc(mp)) {
+	if (!xfs_sb_version_hascrc(&mp->m_sb)) {
 		bp->b_ops = NULL;
-		memcpy(bp->b_addr, ifp->if_data, ifp->if_bytes);
+		memcpy(bp->b_addr, ifp->if_u1.if_data, ifp->if_bytes);
 		xfs_trans_log_buf(tp, bp, 0, ifp->if_bytes - 1);
 		return;
 	}
@@ -194,7 +191,7 @@ xfs_symlink_local_to_remote(
 
 	buf = bp->b_addr;
 	buf += xfs_symlink_hdr_set(mp, ip->i_ino, 0, ifp->if_bytes, bp);
-	memcpy(buf, ifp->if_data, ifp->if_bytes);
+	memcpy(buf, ifp->if_u1.if_data, ifp->if_bytes);
 	xfs_trans_log_buf(tp, bp, 0, sizeof(struct xfs_dsymlink_hdr) +
 					ifp->if_bytes - 1);
 }
@@ -205,14 +202,22 @@ xfs_symlink_local_to_remote(
  */
 xfs_failaddr_t
 xfs_symlink_shortform_verify(
-	void			*sfp,
-	int64_t			size)
+	struct xfs_inode	*ip)
 {
-	char			*endp = sfp + size;
+	char			*sfp;
+	char			*endp;
+	struct xfs_ifork	*ifp;
+	int			size;
+
+	ASSERT(ip->i_d.di_format == XFS_DINODE_FMT_LOCAL);
+	ifp = XFS_IFORK_PTR(ip, XFS_DATA_FORK);
+	sfp = (char *)ifp->if_u1.if_data;
+	size = ifp->if_bytes;
+	endp = sfp + size;
 
 	/*
 	 * Zero length symlinks should never occur in memory as they are
-	 * never allowed to exist on disk.
+	 * never alllowed to exist on disk.
 	 */
 	if (!size)
 		return __this_address;
@@ -229,154 +234,4 @@ xfs_symlink_shortform_verify(
 	if (*endp != 0)
 		return __this_address;
 	return NULL;
-}
-
-/* Read a remote symlink target into the buffer. */
-int
-xfs_symlink_remote_read(
-	struct xfs_inode	*ip,
-	char			*link)
-{
-	struct xfs_mount	*mp = ip->i_mount;
-	struct xfs_bmbt_irec	mval[XFS_SYMLINK_MAPS];
-	struct xfs_buf		*bp;
-	xfs_daddr_t		d;
-	char			*cur_chunk;
-	int			pathlen = ip->i_disk_size;
-	int			nmaps = XFS_SYMLINK_MAPS;
-	int			byte_cnt;
-	int			n;
-	int			error = 0;
-	int			fsblocks = 0;
-	int			offset;
-
-	xfs_assert_ilocked(ip, XFS_ILOCK_SHARED | XFS_ILOCK_EXCL);
-
-	fsblocks = xfs_symlink_blocks(mp, pathlen);
-	error = xfs_bmapi_read(ip, 0, fsblocks, mval, &nmaps, 0);
-	if (error)
-		goto out;
-
-	offset = 0;
-	for (n = 0; n < nmaps; n++) {
-		d = XFS_FSB_TO_DADDR(mp, mval[n].br_startblock);
-		byte_cnt = XFS_FSB_TO_B(mp, mval[n].br_blockcount);
-
-		error = xfs_buf_read(mp->m_ddev_targp, d, BTOBB(byte_cnt), 0,
-				&bp, &xfs_symlink_buf_ops);
-		if (xfs_metadata_is_sick(error))
-			xfs_inode_mark_sick(ip, XFS_SICK_INO_SYMLINK);
-		if (error)
-			return error;
-		byte_cnt = XFS_SYMLINK_BUF_SPACE(mp, byte_cnt);
-		if (pathlen < byte_cnt)
-			byte_cnt = pathlen;
-
-		cur_chunk = bp->b_addr;
-		if (xfs_has_crc(mp)) {
-			if (!xfs_symlink_hdr_ok(ip->i_ino, offset,
-							byte_cnt, bp)) {
-				xfs_inode_mark_sick(ip, XFS_SICK_INO_SYMLINK);
-				error = -EFSCORRUPTED;
-				xfs_alert(mp,
-"symlink header does not match required off/len/owner (0x%x/0x%x,0x%llx)",
-					offset, byte_cnt, ip->i_ino);
-				xfs_buf_relse(bp);
-				goto out;
-
-			}
-
-			cur_chunk += sizeof(struct xfs_dsymlink_hdr);
-		}
-
-		memcpy(link + offset, cur_chunk, byte_cnt);
-
-		pathlen -= byte_cnt;
-		offset += byte_cnt;
-
-		xfs_buf_relse(bp);
-	}
-	ASSERT(pathlen == 0);
-
-	link[ip->i_disk_size] = '\0';
-	error = 0;
-
- out:
-	return error;
-}
-
-/* Write the symlink target into the inode. */
-int
-xfs_symlink_write_target(
-	struct xfs_trans	*tp,
-	struct xfs_inode	*ip,
-	const char		*target_path,
-	int			pathlen,
-	xfs_fsblock_t		fs_blocks,
-	uint			resblks)
-{
-	struct xfs_bmbt_irec	mval[XFS_SYMLINK_MAPS];
-	struct xfs_mount	*mp = tp->t_mountp;
-	const char		*cur_chunk;
-	struct xfs_buf		*bp;
-	xfs_daddr_t		d;
-	int			byte_cnt;
-	int			nmaps;
-	int			offset = 0;
-	int			n;
-	int			error;
-
-	/*
-	 * If the symlink will fit into the inode, write it inline.
-	 */
-	if (pathlen <= xfs_inode_data_fork_size(ip)) {
-		xfs_init_local_fork(ip, XFS_DATA_FORK, target_path, pathlen);
-
-		ip->i_disk_size = pathlen;
-		ip->i_df.if_format = XFS_DINODE_FMT_LOCAL;
-		xfs_trans_log_inode(tp, ip, XFS_ILOG_DDATA | XFS_ILOG_CORE);
-		return 0;
-	}
-
-	nmaps = XFS_SYMLINK_MAPS;
-	error = xfs_bmapi_write(tp, ip, 0, fs_blocks, XFS_BMAPI_METADATA,
-			resblks, mval, &nmaps);
-	if (error)
-		return error;
-
-	ip->i_disk_size = pathlen;
-	xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
-
-	cur_chunk = target_path;
-	offset = 0;
-	for (n = 0; n < nmaps; n++) {
-		char	*buf;
-
-		d = XFS_FSB_TO_DADDR(mp, mval[n].br_startblock);
-		byte_cnt = XFS_FSB_TO_B(mp, mval[n].br_blockcount);
-		error = xfs_trans_get_buf(tp, mp->m_ddev_targp, d,
-				BTOBB(byte_cnt), 0, &bp);
-		if (error)
-			return error;
-		bp->b_ops = &xfs_symlink_buf_ops;
-
-		byte_cnt = XFS_SYMLINK_BUF_SPACE(mp, byte_cnt);
-		byte_cnt = min(byte_cnt, pathlen);
-
-		buf = bp->b_addr;
-		buf += xfs_symlink_hdr_set(mp, ip->i_ino, offset, byte_cnt,
-				bp);
-
-		memcpy(buf, cur_chunk, byte_cnt);
-
-		cur_chunk += byte_cnt;
-		pathlen -= byte_cnt;
-		offset += byte_cnt;
-
-		xfs_trans_buf_set_type(tp, bp, XFS_BLFT_SYMLINK_BUF);
-		xfs_trans_log_buf(tp, bp, 0, (buf + byte_cnt - 1) -
-						(char *)bp->b_addr);
-	}
-	ASSERT(pathlen == 0);
-	return 0;
 }

@@ -4,7 +4,7 @@
  *
  * Copyright 2009-2017 Analog Devices Inc.
  *
- * https://www.analog.com/ADF7242
+ * http://www.analog.com/ADF7242
  */
 
 #include <linux/kernel.h>
@@ -882,9 +882,7 @@ static int adf7242_rx(struct adf7242_local *lp)
 	int ret;
 	u8 lqi, len_u8, *data;
 
-	ret = adf7242_read_reg(lp, 0, &len_u8);
-	if (ret)
-		return ret;
+	adf7242_read_reg(lp, 0, &len_u8);
 
 	len = len_u8;
 
@@ -1162,10 +1160,9 @@ static int adf7242_stats_show(struct seq_file *file, void *offset)
 
 static void adf7242_debugfs_init(struct adf7242_local *lp)
 {
-	char debugfs_dir_name[DNAME_INLINE_LEN + 1];
+	char debugfs_dir_name[DNAME_INLINE_LEN + 1] = "adf7242-";
 
-	snprintf(debugfs_dir_name, sizeof(debugfs_dir_name),
-		 "adf7242-%s", dev_name(&lp->spi->dev));
+	strncat(debugfs_dir_name, dev_name(&lp->spi->dev), DNAME_INLINE_LEN);
 
 	lp->debugfs_root = debugfs_create_dir(debugfs_dir_name, NULL);
 
@@ -1265,7 +1262,7 @@ static int adf7242_probe(struct spi_device *spi)
 					     WQ_MEM_RECLAIM);
 	if (unlikely(!lp->wqueue)) {
 		ret = -ENOMEM;
-		goto err_alloc_wq;
+		goto err_hw_init;
 	}
 
 	ret = adf7242_hw_init(lp);
@@ -1297,27 +1294,26 @@ static int adf7242_probe(struct spi_device *spi)
 	return ret;
 
 err_hw_init:
-	destroy_workqueue(lp->wqueue);
-err_alloc_wq:
 	mutex_destroy(&lp->bmux);
 	ieee802154_free_hw(lp->hw);
 
 	return ret;
 }
 
-static void adf7242_remove(struct spi_device *spi)
+static int adf7242_remove(struct spi_device *spi)
 {
 	struct adf7242_local *lp = spi_get_drvdata(spi);
 
 	debugfs_remove_recursive(lp->debugfs_root);
 
-	ieee802154_unregister_hw(lp->hw);
-
 	cancel_delayed_work_sync(&lp->work);
 	destroy_workqueue(lp->wqueue);
 
+	ieee802154_unregister_hw(lp->hw);
 	mutex_destroy(&lp->bmux);
 	ieee802154_free_hw(lp->hw);
+
+	return 0;
 }
 
 static const struct of_device_id adf7242_of_match[] = {
@@ -1337,8 +1333,9 @@ MODULE_DEVICE_TABLE(spi, adf7242_device_id);
 static struct spi_driver adf7242_driver = {
 	.id_table = adf7242_device_id,
 	.driver = {
-		   .of_match_table = adf7242_of_match,
+		   .of_match_table = of_match_ptr(adf7242_of_match),
 		   .name = "adf7242",
+		   .owner = THIS_MODULE,
 		   },
 	.probe = adf7242_probe,
 	.remove = adf7242_remove,
@@ -1349,5 +1346,3 @@ module_spi_driver(adf7242_driver);
 MODULE_AUTHOR("Michael Hennerich <michael.hennerich@analog.com>");
 MODULE_DESCRIPTION("ADF7242 IEEE802.15.4 Transceiver Driver");
 MODULE_LICENSE("GPL");
-
-MODULE_FIRMWARE(FIRMWARE);

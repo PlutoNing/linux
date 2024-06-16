@@ -46,7 +46,7 @@ static void hfcsusb_start_endpoint(struct hfcsusb *hw, int channel);
 static void hfcsusb_stop_endpoint(struct hfcsusb *hw, int channel);
 static int  hfcsusb_setup_bch(struct bchannel *bch, int protocol);
 static void deactivate_bchannel(struct bchannel *bch);
-static int  hfcsusb_ph_info(struct hfcsusb *hw);
+static void hfcsusb_ph_info(struct hfcsusb *hw);
 
 /* start next background transfer for control channel */
 static void
@@ -241,7 +241,7 @@ hfcusb_l2l1B(struct mISDNchannel *ch, struct sk_buff *skb)
  * send full D/B channel status information
  * as MPH_INFORMATION_IND
  */
-static int
+static void
 hfcsusb_ph_info(struct hfcsusb *hw)
 {
 	struct ph_info *phi;
@@ -250,7 +250,7 @@ hfcsusb_ph_info(struct hfcsusb *hw)
 
 	phi = kzalloc(struct_size(phi, bch, dch->dev.nrbchan), GFP_ATOMIC);
 	if (!phi)
-		return -ENOMEM;
+		return;
 
 	phi->dch.ch.protocol = hw->protocol;
 	phi->dch.ch.Flags = dch->Flags;
@@ -261,10 +261,9 @@ hfcsusb_ph_info(struct hfcsusb *hw)
 		phi->bch[i].Flags = hw->bch[i].Flags;
 	}
 	_queue_data(&dch->dev.D, MPH_INFORMATION_IND, MISDN_ID_ANY,
-		    struct_size(phi, bch, dch->dev.nrbchan), phi, GFP_ATOMIC);
+		    sizeof(struct ph_info_dch) + dch->dev.nrbchan *
+		    sizeof(struct ph_info_ch), phi, GFP_ATOMIC);
 	kfree(phi);
-
-	return 0;
 }
 
 /*
@@ -326,24 +325,20 @@ hfcusb_l2l1D(struct mISDNchannel *ch, struct sk_buff *skb)
 		test_and_clear_bit(FLG_L2_ACTIVATED, &dch->Flags);
 
 		if (hw->protocol == ISDN_P_NT_S0) {
-			struct sk_buff_head free_queue;
-
-			__skb_queue_head_init(&free_queue);
 			hfcsusb_ph_command(hw, HFC_L1_DEACTIVATE_NT);
 			spin_lock_irqsave(&hw->lock, flags);
-			skb_queue_splice_init(&dch->squeue, &free_queue);
+			skb_queue_purge(&dch->squeue);
 			if (dch->tx_skb) {
-				__skb_queue_tail(&free_queue, dch->tx_skb);
+				dev_kfree_skb(dch->tx_skb);
 				dch->tx_skb = NULL;
 			}
 			dch->tx_idx = 0;
 			if (dch->rx_skb) {
-				__skb_queue_tail(&free_queue, dch->rx_skb);
+				dev_kfree_skb(dch->rx_skb);
 				dch->rx_skb = NULL;
 			}
 			test_and_clear_bit(FLG_TX_BUSY, &dch->Flags);
 			spin_unlock_irqrestore(&hw->lock, flags);
-			__skb_queue_purge(&free_queue);
 #ifdef FIXME
 			if (test_and_clear_bit(FLG_L1_BUSY, &dch->Flags))
 				dchannel_sched_event(&hc->dch, D_CLEARBUSY);
@@ -353,7 +348,8 @@ hfcusb_l2l1D(struct mISDNchannel *ch, struct sk_buff *skb)
 			ret = l1_event(dch->l1, hh->prim);
 		break;
 	case MPH_INFORMATION_REQ:
-		ret = hfcsusb_ph_info(hw);
+		hfcsusb_ph_info(hw);
+		ret = 0;
 		break;
 	}
 
@@ -408,7 +404,8 @@ hfc_l1callback(struct dchannel *dch, u_int cmd)
 			       hw->name, __func__, cmd);
 		return -1;
 	}
-	return hfcsusb_ph_info(hw);
+	hfcsusb_ph_info(hw);
+	return 0;
 }
 
 static int
@@ -678,7 +675,7 @@ ph_state(struct dchannel *dch)
 }
 
 /*
- * disable/enable BChannel for desired protocol
+ * disable/enable BChannel for desired protocoll
  */
 static int
 hfcsusb_setup_bch(struct bchannel *bch, int protocol)
@@ -699,7 +696,7 @@ hfcsusb_setup_bch(struct bchannel *bch, int protocol)
 	switch (protocol) {
 	case (-1):	/* used for init */
 		bch->state = -1;
-		fallthrough;
+		/* fall through */
 	case (ISDN_P_NONE):
 		if (bch->state == ISDN_P_NONE)
 			return 0; /* already in idle state */
@@ -750,7 +747,8 @@ hfcsusb_setup_bch(struct bchannel *bch, int protocol)
 			handle_led(hw, (bch->nr == 1) ? LED_B1_OFF :
 				   LED_B2_OFF);
 	}
-	return hfcsusb_ph_info(hw);
+	hfcsusb_ph_info(hw);
+	return 0;
 }
 
 static void
@@ -843,8 +841,8 @@ hfcsusb_rx_frame(struct usb_fifo *fifo, __u8 *data, unsigned int len,
 		if (maxlen < 0) {
 			if (rx_skb)
 				skb_trim(rx_skb, 0);
-			pr_warn("%s.B%d: No bufferspace for %d bytes\n",
-				hw->name, fifo->bch->nr, len);
+			pr_warning("%s.B%d: No bufferspace for %d bytes\n",
+				   hw->name, fifo->bch->nr, len);
 			spin_unlock_irqrestore(&hw->lock, flags);
 			return;
 		}
@@ -1334,7 +1332,7 @@ tx_iso_complete(struct urb *urb)
 					printk("\n");
 				}
 
-				dev_consume_skb_irq(tx_skb);
+				dev_kfree_skb(tx_skb);
 				tx_skb = NULL;
 				if (fifo->dch && get_next_dframe(fifo->dch))
 					tx_skb = fifo->dch->tx_skb;
@@ -1561,7 +1559,7 @@ reset_hfcsusb(struct hfcsusb *hw)
 	write_reg(hw, HFCUSB_USB_SIZE, (hw->packet_size / 8) |
 		  ((hw->packet_size / 8) << 4));
 
-	/* set USB_SIZE_I to match the wMaxPacketSize for ISO transfers */
+	/* set USB_SIZE_I to match the the wMaxPacketSize for ISO transfers */
 	write_reg(hw, HFCUSB_USB_SIZE_I, hw->iso_packet_size);
 
 	/* enable PCM/GCI master mode */

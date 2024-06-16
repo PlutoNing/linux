@@ -329,25 +329,22 @@ static int emc1403_detect(struct i2c_client *client,
 	id = i2c_smbus_read_byte_data(client, THERMAL_PID_REG);
 	switch (id) {
 	case 0x20:
-		strscpy(info->type, "emc1402", I2C_NAME_SIZE);
+		strlcpy(info->type, "emc1402", I2C_NAME_SIZE);
 		break;
 	case 0x21:
-		strscpy(info->type, "emc1403", I2C_NAME_SIZE);
+		strlcpy(info->type, "emc1403", I2C_NAME_SIZE);
 		break;
 	case 0x22:
-		strscpy(info->type, "emc1422", I2C_NAME_SIZE);
+		strlcpy(info->type, "emc1422", I2C_NAME_SIZE);
 		break;
 	case 0x23:
-		strscpy(info->type, "emc1423", I2C_NAME_SIZE);
+		strlcpy(info->type, "emc1423", I2C_NAME_SIZE);
 		break;
 	case 0x25:
-		strscpy(info->type, "emc1404", I2C_NAME_SIZE);
+		strlcpy(info->type, "emc1404", I2C_NAME_SIZE);
 		break;
 	case 0x27:
-		strscpy(info->type, "emc1424", I2C_NAME_SIZE);
-		break;
-	case 0x60:
-		strscpy(info->type, "emc1442", I2C_NAME_SIZE);
+		strlcpy(info->type, "emc1424", I2C_NAME_SIZE);
 		break;
 	default:
 		return -ENODEV;
@@ -385,17 +382,15 @@ static bool emc1403_regmap_is_volatile(struct device *dev, unsigned int reg)
 static const struct regmap_config emc1403_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
-	.cache_type = REGCACHE_MAPLE,
+	.cache_type = REGCACHE_RBTREE,
 	.volatile_reg = emc1403_regmap_is_volatile,
 };
 
-static const struct i2c_device_id emc1403_idtable[];
-
-static int emc1403_probe(struct i2c_client *client)
+static int emc1403_probe(struct i2c_client *client,
+			const struct i2c_device_id *id)
 {
 	struct thermal_data *data;
 	struct device *hwmon_dev;
-	const struct i2c_device_id *id = i2c_match_id(emc1403_idtable, client);
 
 	data = devm_kzalloc(&client->dev, sizeof(struct thermal_data),
 			    GFP_KERNEL);
@@ -411,10 +406,10 @@ static int emc1403_probe(struct i2c_client *client)
 	switch (id->driver_data) {
 	case emc1404:
 		data->groups[2] = &emc1404_group;
-		fallthrough;
+		/* fall through */
 	case emc1403:
 		data->groups[1] = &emc1403_group;
-		fallthrough;
+		/* fall through */
 	case emc1402:
 		data->groups[0] = &emc1402_group;
 	}
@@ -433,7 +428,7 @@ static int emc1403_probe(struct i2c_client *client)
 }
 
 static const unsigned short emc1403_address_list[] = {
-	0x18, 0x1c, 0x29, 0x3c, 0x4c, 0x4d, 0x5c, I2C_CLIENT_END
+	0x18, 0x1c, 0x29, 0x4c, 0x4d, 0x5c, I2C_CLIENT_END
 };
 
 /* Last digit of chip name indicates number of channels */
@@ -447,7 +442,6 @@ static const struct i2c_device_id emc1403_idtable[] = {
 	{ "emc1422", emc1402 },
 	{ "emc1423", emc1403 },
 	{ "emc1424", emc1404 },
-	{ "emc1442", emc1402 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, emc1403_idtable);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
+/**
  * Copyright (C) 2006 Juergen Beisert, Pengutronix
  * Copyright (C) 2008 Guennadi Liakhovetski, Pengutronix
  * Copyright (C) 2009 Wolfram Sang, Pengutronix
@@ -47,7 +47,7 @@
 
 static int max7301_direction_input(struct gpio_chip *chip, unsigned offset)
 {
-	struct max7301 *ts = container_of(chip, struct max7301, chip);
+	struct max7301 *ts = gpiochip_get_data(chip);
 	u8 *config;
 	u8 offset_bits, pin_config;
 	int ret;
@@ -89,7 +89,7 @@ static int __max7301_set(struct max7301 *ts, unsigned offset, int value)
 static int max7301_direction_output(struct gpio_chip *chip, unsigned offset,
 				    int value)
 {
-	struct max7301 *ts = container_of(chip, struct max7301, chip);
+	struct max7301 *ts = gpiochip_get_data(chip);
 	u8 *config;
 	u8 offset_bits;
 	int ret;
@@ -189,6 +189,10 @@ int __max730x_probe(struct max7301 *ts)
 	ts->chip.parent = dev;
 	ts->chip.owner = THIS_MODULE;
 
+	ret = gpiochip_add_data(&ts->chip, ts);
+	if (ret)
+		goto exit_destroy;
+
 	/*
 	 * initialize pullups according to platform data and cache the
 	 * register values for later use.
@@ -210,9 +214,7 @@ int __max730x_probe(struct max7301 *ts)
 		}
 	}
 
-	ret = gpiochip_add_data(&ts->chip, ts);
-	if (!ret)
-		return ret;
+	return ret;
 
 exit_destroy:
 	mutex_destroy(&ts->lock);
@@ -220,14 +222,18 @@ exit_destroy:
 }
 EXPORT_SYMBOL_GPL(__max730x_probe);
 
-void __max730x_remove(struct device *dev)
+int __max730x_remove(struct device *dev)
 {
 	struct max7301 *ts = dev_get_drvdata(dev);
+
+	if (ts == NULL)
+		return -ENODEV;
 
 	/* Power down the chip and disable IRQ output */
 	ts->write(dev, 0x04, 0x00);
 	gpiochip_remove(&ts->chip);
 	mutex_destroy(&ts->lock);
+	return 0;
 }
 EXPORT_SYMBOL_GPL(__max730x_remove);
 

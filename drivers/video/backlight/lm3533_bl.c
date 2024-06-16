@@ -39,8 +39,14 @@ static inline int lm3533_bl_get_ctrlbank_id(struct lm3533_bl *bl)
 static int lm3533_bl_update_status(struct backlight_device *bd)
 {
 	struct lm3533_bl *bl = bl_get_data(bd);
+	int brightness = bd->props.brightness;
 
-	return lm3533_ctrlbank_set_brightness(&bl->cb, backlight_get_brightness(bd));
+	if (bd->props.power != FB_BLANK_UNBLANK)
+		brightness = 0;
+	if (bd->props.fb_blank != FB_BLANK_UNBLANK)
+		brightness = 0;
+
+	return lm3533_ctrlbank_set_brightness(&bl->cb, (u8)brightness);
 }
 
 static int lm3533_bl_get_brightness(struct backlight_device *bd)
@@ -229,7 +235,7 @@ static struct attribute *lm3533_bl_attributes[] = {
 static umode_t lm3533_bl_attr_is_visible(struct kobject *kobj,
 					     struct attribute *attr, int n)
 {
-	struct device *dev = kobj_to_dev(kobj);
+	struct device *dev = container_of(kobj, struct device, kobj);
 	struct lm3533_bl *bl = dev_get_drvdata(dev);
 	umode_t mode = attr->mode;
 
@@ -337,7 +343,7 @@ err_sysfs_remove:
 	return ret;
 }
 
-static void lm3533_bl_remove(struct platform_device *pdev)
+static int lm3533_bl_remove(struct platform_device *pdev)
 {
 	struct lm3533_bl *bl = platform_get_drvdata(pdev);
 	struct backlight_device *bd = bl->bd;
@@ -349,6 +355,8 @@ static void lm3533_bl_remove(struct platform_device *pdev)
 
 	lm3533_ctrlbank_disable(&bl->cb);
 	sysfs_remove_group(&bd->dev.kobj, &lm3533_bl_attribute_group);
+
+	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -388,7 +396,7 @@ static struct platform_driver lm3533_bl_driver = {
 		.pm	= &lm3533_bl_pm_ops,
 	},
 	.probe		= lm3533_bl_probe,
-	.remove_new	= lm3533_bl_remove,
+	.remove		= lm3533_bl_remove,
 	.shutdown	= lm3533_bl_shutdown,
 };
 module_platform_driver(lm3533_bl_driver);

@@ -40,9 +40,9 @@ struct hinic_txq {
 	struct napi_struct      napi;
 };
 
-void hinic_txq_get_stats(struct hinic_txq *txq, struct hinic_txq_stats *stats);
+void hinic_txq_clean_stats(struct hinic_txq *txq);
 
-netdev_tx_t hinic_lb_xmit_frame(struct sk_buff *skb, struct net_device *netdev);
+void hinic_txq_get_stats(struct hinic_txq *txq, struct hinic_txq_stats *stats);
 
 netdev_tx_t hinic_xmit_frame(struct sk_buff *skb, struct net_device *netdev);
 

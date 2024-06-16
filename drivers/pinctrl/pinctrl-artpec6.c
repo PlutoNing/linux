@@ -798,7 +798,7 @@ static int artpec6_pconf_set(struct pinctrl_dev *pctldev, unsigned int pin,
 	enum pin_config_param param;
 	unsigned int arg;
 	unsigned int regval;
-	void __iomem *reg;
+	unsigned int *reg;
 	int i;
 
 	/* Check for valid pin */
@@ -936,6 +936,7 @@ static void artpec6_pmx_reset(struct artpec6_pmx *pmx)
 static int artpec6_pmx_probe(struct platform_device *pdev)
 {
 	struct artpec6_pmx *pmx;
+	struct resource *res;
 
 	pmx = devm_kzalloc(&pdev->dev, sizeof(*pmx), GFP_KERNEL);
 	if (!pmx)
@@ -943,7 +944,8 @@ static int artpec6_pmx_probe(struct platform_device *pdev)
 
 	pmx->dev = &pdev->dev;
 
-	pmx->base = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	pmx->base = devm_ioremap_resource(&pdev->dev, res);
 
 	if (IS_ERR(pmx->base))
 		return PTR_ERR(pmx->base);
@@ -970,11 +972,13 @@ static int artpec6_pmx_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void artpec6_pmx_remove(struct platform_device *pdev)
+static int artpec6_pmx_remove(struct platform_device *pdev)
 {
 	struct artpec6_pmx *pmx = platform_get_drvdata(pdev);
 
 	pinctrl_unregister(pmx->pctl);
+
+	return 0;
 }
 
 static const struct of_device_id artpec6_pinctrl_match[] = {
@@ -988,7 +992,7 @@ static struct platform_driver artpec6_pmx_driver = {
 		.of_match_table = artpec6_pinctrl_match,
 	},
 	.probe = artpec6_pmx_probe,
-	.remove_new = artpec6_pmx_remove,
+	.remove = artpec6_pmx_remove,
 };
 
 static int __init artpec6_pmx_init(void)

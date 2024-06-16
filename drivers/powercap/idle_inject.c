@@ -12,15 +12,15 @@
  *
  * All of the kthreads used for idle injection are created at init time.
  *
- * Next, the users of the idle injection framework provide a cpumask via
+ * Next, the users of the the idle injection framework provide a cpumask via
  * its register function. The kthreads will be synchronized with respect to
  * this cpumask.
  *
  * The idle + run duration is specified via separate helpers and that allows
  * idle injection to be started.
  *
- * The idle injection kthreads will call play_idle_precise() with the idle
- * duration and max allowed latency specified as per the above.
+ * The idle injection kthreads will call play_idle() with the idle duration
+ * specified as per the above.
  *
  * After all of them have been woken up, a timer is set to start the next idle
  * injection cycle.
@@ -43,7 +43,6 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/smpboot.h>
-#include <linux/idle_inject.h>
 
 #include <uapi/linux/sched/types.h>
 
@@ -62,31 +61,13 @@ struct idle_inject_thread {
  * @timer: idle injection period timer
  * @idle_duration_us: duration of CPU idle time to inject
  * @run_duration_us: duration of CPU run time to allow
- * @latency_us: max allowed latency
- * @update: Optional callback deciding whether or not to skip idle
- *		injection in the given cycle.
  * @cpumask: mask of CPUs affected by idle injection
- *
- * This structure is used to define per instance idle inject device data. Each
- * instance has an idle duration, a run duration and mask of CPUs to inject
- * idle.
- *
- * Actual CPU idle time is injected by calling kernel scheduler interface
- * play_idle_precise(). There is one optional callback that can be registered
- * by calling idle_inject_register_full():
- *
- * update() - This callback is invoked just before waking up CPUs to inject
- * idle. If it returns false, CPUs are not woken up to inject idle in the given
- * cycle. It also allows the caller to readjust the idle and run duration by
- * calling idle_inject_set_duration() for the next cycle.
  */
 struct idle_inject_device {
 	struct hrtimer timer;
 	unsigned int idle_duration_us;
 	unsigned int run_duration_us;
-	unsigned int latency_us;
-	bool (*update)(void);
-	unsigned long cpumask[];
+	unsigned long int cpumask[0];
 };
 
 static DEFINE_PER_CPU(struct idle_inject_thread, idle_inject_thread);
@@ -117,7 +98,7 @@ static void idle_inject_wakeup(struct idle_inject_device *ii_dev)
  *
  * This function is called when the idle injection timer expires.  It wakes up
  * idle injection tasks associated with the timer and they, in turn, invoke
- * play_idle_precise() to inject a specified amount of CPU idle time.
+ * play_idle() to inject a specified amount of CPU idle time.
  *
  * Return: HRTIMER_RESTART.
  */
@@ -127,11 +108,10 @@ static enum hrtimer_restart idle_inject_timer_fn(struct hrtimer *timer)
 	struct idle_inject_device *ii_dev =
 		container_of(timer, struct idle_inject_device, timer);
 
-	if (!ii_dev->update || (ii_dev->update && ii_dev->update()))
-		idle_inject_wakeup(ii_dev);
-
 	duration_us = READ_ONCE(ii_dev->run_duration_us);
 	duration_us += READ_ONCE(ii_dev->idle_duration_us);
+
+	idle_inject_wakeup(ii_dev);
 
 	hrtimer_forward_now(timer, ns_to_ktime(duration_us * NSEC_PER_USEC));
 
@@ -142,8 +122,8 @@ static enum hrtimer_restart idle_inject_timer_fn(struct hrtimer *timer)
  * idle_inject_fn - idle injection work function
  * @cpu: the CPU owning the task
  *
- * This function calls play_idle_precise() to inject a specified amount of CPU
- * idle time.
+ * This function calls play_idle() to inject a specified amount of CPU idle
+ * time.
  */
 static void idle_inject_fn(unsigned int cpu)
 {
@@ -158,13 +138,11 @@ static void idle_inject_fn(unsigned int cpu)
 	 */
 	iit->should_run = 0;
 
-	play_idle_precise(READ_ONCE(ii_dev->idle_duration_us) * NSEC_PER_USEC,
-			  READ_ONCE(ii_dev->latency_us) * NSEC_PER_USEC);
+	play_idle(READ_ONCE(ii_dev->idle_duration_us));
 }
 
 /**
  * idle_inject_set_duration - idle and run duration update helper
- * @ii_dev: idle injection control device structure
  * @run_duration_us: CPU run time to allow in microseconds
  * @idle_duration_us: CPU idle time to inject in microseconds
  */
@@ -172,18 +150,14 @@ void idle_inject_set_duration(struct idle_inject_device *ii_dev,
 			      unsigned int run_duration_us,
 			      unsigned int idle_duration_us)
 {
-	if (run_duration_us + idle_duration_us) {
+	if (run_duration_us && idle_duration_us) {
 		WRITE_ONCE(ii_dev->run_duration_us, run_duration_us);
 		WRITE_ONCE(ii_dev->idle_duration_us, idle_duration_us);
 	}
-	if (!run_duration_us)
-		pr_debug("CPU is forced to 100 percent idle\n");
 }
-EXPORT_SYMBOL_NS_GPL(idle_inject_set_duration, IDLE_INJECT);
 
 /**
  * idle_inject_get_duration - idle and run duration retrieval helper
- * @ii_dev: idle injection control device structure
  * @run_duration_us: memory location to store the current CPU run time
  * @idle_duration_us: memory location to store the current CPU idle time
  */
@@ -194,19 +168,6 @@ void idle_inject_get_duration(struct idle_inject_device *ii_dev,
 	*run_duration_us = READ_ONCE(ii_dev->run_duration_us);
 	*idle_duration_us = READ_ONCE(ii_dev->idle_duration_us);
 }
-EXPORT_SYMBOL_NS_GPL(idle_inject_get_duration, IDLE_INJECT);
-
-/**
- * idle_inject_set_latency - set the maximum latency allowed
- * @ii_dev: idle injection control device structure
- * @latency_us: set the latency requirement for the idle state
- */
-void idle_inject_set_latency(struct idle_inject_device *ii_dev,
-			     unsigned int latency_us)
-{
-	WRITE_ONCE(ii_dev->latency_us, latency_us);
-}
-EXPORT_SYMBOL_NS_GPL(idle_inject_set_latency, IDLE_INJECT);
 
 /**
  * idle_inject_start - start idle injections
@@ -223,7 +184,7 @@ int idle_inject_start(struct idle_inject_device *ii_dev)
 	unsigned int idle_duration_us = READ_ONCE(ii_dev->idle_duration_us);
 	unsigned int run_duration_us = READ_ONCE(ii_dev->run_duration_us);
 
-	if (!(idle_duration_us + run_duration_us))
+	if (!idle_duration_us || !run_duration_us)
 		return -EINVAL;
 
 	pr_debug("Starting injecting idle cycles on CPUs '%*pbl'\n",
@@ -238,7 +199,6 @@ int idle_inject_start(struct idle_inject_device *ii_dev)
 
 	return 0;
 }
-EXPORT_SYMBOL_NS_GPL(idle_inject_start, IDLE_INJECT);
 
 /**
  * idle_inject_stop - stops idle injections
@@ -280,12 +240,11 @@ void idle_inject_stop(struct idle_inject_device *ii_dev)
 		iit = per_cpu_ptr(&idle_inject_thread, cpu);
 		iit->should_run = 0;
 
-		wait_task_inactive(iit->tsk, TASK_ANY);
+		wait_task_inactive(iit->tsk, 0);
 	}
 
 	cpu_hotplug_enable();
 }
-EXPORT_SYMBOL_NS_GPL(idle_inject_stop, IDLE_INJECT);
 
 /**
  * idle_inject_setup - prepare the current task for idle injection
@@ -296,7 +255,9 @@ EXPORT_SYMBOL_NS_GPL(idle_inject_stop, IDLE_INJECT);
  */
 static void idle_inject_setup(unsigned int cpu)
 {
-	sched_set_fifo(current);
+	struct sched_param param = { .sched_priority = MAX_USER_RT_PRIO / 2 };
+
+	sched_setscheduler(current, SCHED_FIFO, &param);
 }
 
 /**
@@ -314,22 +275,17 @@ static int idle_inject_should_run(unsigned int cpu)
 }
 
 /**
- * idle_inject_register_full - initialize idle injection on a set of CPUs
+ * idle_inject_register - initialize idle injection on a set of CPUs
  * @cpumask: CPUs to be affected by idle injection
- * @update: This callback is called just before waking up CPUs to inject
- * idle
  *
  * This function creates an idle injection control device structure for the
- * given set of CPUs and initializes the timer associated with it. This
- * function also allows to register update()callback.
- * It does not start any injection cycles.
+ * given set of CPUs and initializes the timer associated with it.  It does not
+ * start any injection cycles.
  *
  * Return: NULL if memory allocation fails, idle injection control device
  * pointer on success.
  */
-
-struct idle_inject_device *idle_inject_register_full(struct cpumask *cpumask,
-						     bool (*update)(void))
+struct idle_inject_device *idle_inject_register(struct cpumask *cpumask)
 {
 	struct idle_inject_device *ii_dev;
 	int cpu, cpu_rb;
@@ -341,8 +297,6 @@ struct idle_inject_device *idle_inject_register_full(struct cpumask *cpumask,
 	cpumask_copy(to_cpumask(ii_dev->cpumask), cpumask);
 	hrtimer_init(&ii_dev->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	ii_dev->timer.function = idle_inject_timer_fn;
-	ii_dev->latency_us = UINT_MAX;
-	ii_dev->update = update;
 
 	for_each_cpu(cpu, to_cpumask(ii_dev->cpumask)) {
 
@@ -367,24 +321,6 @@ out_rollback:
 
 	return NULL;
 }
-EXPORT_SYMBOL_NS_GPL(idle_inject_register_full, IDLE_INJECT);
-
-/**
- * idle_inject_register - initialize idle injection on a set of CPUs
- * @cpumask: CPUs to be affected by idle injection
- *
- * This function creates an idle injection control device structure for the
- * given set of CPUs and initializes the timer associated with it.  It does not
- * start any injection cycles.
- *
- * Return: NULL if memory allocation fails, idle injection control device
- * pointer on success.
- */
-struct idle_inject_device *idle_inject_register(struct cpumask *cpumask)
-{
-	return idle_inject_register_full(cpumask, NULL);
-}
-EXPORT_SYMBOL_NS_GPL(idle_inject_register, IDLE_INJECT);
 
 /**
  * idle_inject_unregister - unregister idle injection control device
@@ -405,7 +341,6 @@ void idle_inject_unregister(struct idle_inject_device *ii_dev)
 
 	kfree(ii_dev);
 }
-EXPORT_SYMBOL_NS_GPL(idle_inject_unregister, IDLE_INJECT);
 
 static struct smp_hotplug_thread idle_inject_threads = {
 	.store = &idle_inject_thread.tsk,

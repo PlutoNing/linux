@@ -77,7 +77,7 @@ static struct ltc4151_data *ltc4151_update_device(struct device *dev)
 			data->regs[i] = val;
 		}
 		data->last_updated = jiffies;
-		data->valid = true;
+		data->valid = 1;
 	}
 abort:
 	mutex_unlock(&data->update_lock);
@@ -128,7 +128,7 @@ static ssize_t ltc4151_value_show(struct device *dev,
 		return PTR_ERR(data);
 
 	value = ltc4151_get_value(data, attr->index);
-	return sysfs_emit(buf, "%d\n", value);
+	return snprintf(buf, PAGE_SIZE, "%d\n", value);
 }
 
 /*
@@ -154,7 +154,8 @@ static struct attribute *ltc4151_attrs[] = {
 };
 ATTRIBUTE_GROUPS(ltc4151);
 
-static int ltc4151_probe(struct i2c_client *client)
+static int ltc4151_probe(struct i2c_client *client,
+			 const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = client->adapter;
 	struct device *dev = &client->dev;

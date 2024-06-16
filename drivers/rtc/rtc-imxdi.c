@@ -24,7 +24,6 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-#include <linux/pm_wakeirq.h>
 #include <linux/rtc.h>
 #include <linux/sched.h>
 #include <linux/spinlock.h>
@@ -96,7 +95,7 @@
 
 /**
  * struct imxdi_dev - private imxdi rtc data
- * @pdev: pointer to platform dev
+ * @pdev: pionter to platform dev
  * @rtc: pointer to rtc struct
  * @ioaddr: IO registers pointer
  * @clk: input reference clock
@@ -351,7 +350,7 @@ static int di_handle_invalid_and_failure_state(struct imxdi_dev *imxdi, u32 dsr)
 			 * the tamper register is locked. We cannot disable the
 			 * tamper detection. The TDCHL can only be reset by a
 			 * DRYICE POR, but we cannot force a DRYICE POR in
-			 * software because we are still in "FAILURE STATE".
+			 * softwere because we are still in "FAILURE STATE".
 			 * We need a DRYICE POR via battery power cycling....
 			 */
 			/*
@@ -812,13 +811,10 @@ static int __init dryice_rtc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, imxdi);
 
-	device_init_wakeup(&pdev->dev, true);
-	dev_pm_set_wake_irq(&pdev->dev, norm_irq);
-
 	imxdi->rtc->ops = &dryice_rtc_ops;
 	imxdi->rtc->range_max = U32_MAX;
 
-	rc = devm_rtc_register_device(imxdi->rtc);
+	rc = rtc_register_device(imxdi->rtc);
 	if (rc)
 		goto err;
 
@@ -830,7 +826,7 @@ err:
 	return rc;
 }
 
-static void __exit dryice_rtc_remove(struct platform_device *pdev)
+static int __exit dryice_rtc_remove(struct platform_device *pdev)
 {
 	struct imxdi_dev *imxdi = platform_get_drvdata(pdev);
 
@@ -840,27 +836,25 @@ static void __exit dryice_rtc_remove(struct platform_device *pdev)
 	writel(0, imxdi->ioaddr + DIER);
 
 	clk_disable_unprepare(imxdi->clk);
+
+	return 0;
 }
 
+#ifdef CONFIG_OF
 static const struct of_device_id dryice_dt_ids[] = {
 	{ .compatible = "fsl,imx25-rtc" },
 	{ /* sentinel */ }
 };
 
 MODULE_DEVICE_TABLE(of, dryice_dt_ids);
+#endif
 
-/*
- * dryice_rtc_remove() lives in .exit.text. For drivers registered via
- * module_platform_driver_probe() this is ok because they cannot get unbound at
- * runtime. So mark the driver struct with __refdata to prevent modpost
- * triggering a section mismatch warning.
- */
-static struct platform_driver dryice_rtc_driver __refdata = {
+static struct platform_driver dryice_rtc_driver = {
 	.driver = {
 		   .name = "imxdi_rtc",
-		   .of_match_table = dryice_dt_ids,
+		   .of_match_table = of_match_ptr(dryice_dt_ids),
 		   },
-	.remove_new = __exit_p(dryice_rtc_remove),
+	.remove = __exit_p(dryice_rtc_remove),
 };
 
 module_platform_driver_probe(dryice_rtc_driver, dryice_rtc_probe);

@@ -109,6 +109,7 @@ static int exynos_trng_init(struct hwrng *rng)
 static int exynos_trng_probe(struct platform_device *pdev)
 {
 	struct exynos_trng_dev *trng;
+	struct resource *res;
 	int ret = -ENOMEM;
 
 	trng = devm_kzalloc(&pdev->dev, sizeof(*trng), GFP_KERNEL);
@@ -127,12 +128,13 @@ static int exynos_trng_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, trng);
 	trng->dev = &pdev->dev;
 
-	trng->mem = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	trng->mem = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(trng->mem))
 		return PTR_ERR(trng->mem);
 
 	pm_runtime_enable(&pdev->dev);
-	ret = pm_runtime_resume_and_get(&pdev->dev);
+	ret = pm_runtime_get_sync(&pdev->dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Could not get runtime PM.\n");
 		goto err_pm_get;
@@ -165,7 +167,7 @@ err_register:
 	clk_disable_unprepare(trng->clk);
 
 err_clock:
-	pm_runtime_put_noidle(&pdev->dev);
+	pm_runtime_put_sync(&pdev->dev);
 
 err_pm_get:
 	pm_runtime_disable(&pdev->dev);
@@ -173,7 +175,7 @@ err_pm_get:
 	return ret;
 }
 
-static void exynos_trng_remove(struct platform_device *pdev)
+static int exynos_trng_remove(struct platform_device *pdev)
 {
 	struct exynos_trng_dev *trng =  platform_get_drvdata(pdev);
 
@@ -181,29 +183,32 @@ static void exynos_trng_remove(struct platform_device *pdev)
 
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
+
+	return 0;
 }
 
-static int exynos_trng_suspend(struct device *dev)
+static int __maybe_unused exynos_trng_suspend(struct device *dev)
 {
 	pm_runtime_put_sync(dev);
 
 	return 0;
 }
 
-static int exynos_trng_resume(struct device *dev)
+static int __maybe_unused exynos_trng_resume(struct device *dev)
 {
 	int ret;
 
-	ret = pm_runtime_resume_and_get(dev);
+	ret = pm_runtime_get_sync(dev);
 	if (ret < 0) {
 		dev_err(dev, "Could not get runtime PM.\n");
+		pm_runtime_put_noidle(dev);
 		return ret;
 	}
 
 	return 0;
 }
 
-static DEFINE_SIMPLE_DEV_PM_OPS(exynos_trng_pm_ops, exynos_trng_suspend,
+static SIMPLE_DEV_PM_OPS(exynos_trng_pm_ops, exynos_trng_suspend,
 			 exynos_trng_resume);
 
 static const struct of_device_id exynos_trng_dt_match[] = {
@@ -217,11 +222,11 @@ MODULE_DEVICE_TABLE(of, exynos_trng_dt_match);
 static struct platform_driver exynos_trng_driver = {
 	.driver = {
 		.name = "exynos-trng",
-		.pm = pm_sleep_ptr(&exynos_trng_pm_ops),
+		.pm = &exynos_trng_pm_ops,
 		.of_match_table = exynos_trng_dt_match,
 	},
 	.probe = exynos_trng_probe,
-	.remove_new = exynos_trng_remove,
+	.remove = exynos_trng_remove,
 };
 
 module_platform_driver(exynos_trng_driver);

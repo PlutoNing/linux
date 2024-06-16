@@ -608,7 +608,7 @@ static int lance_rx(struct net_device *dev)
 			len = (*rds_ptr(rd, mblength, lp->type) & 0xfff) - 4;
 			skb = netdev_alloc_skb(dev, len + 2);
 
-			if (!skb) {
+			if (skb == 0) {
 				dev->stats.rx_dropped++;
 				*rds_ptr(rd, mblength, lp->type) = 0;
 				*rds_ptr(rd, rmd1, lp->type) =
@@ -884,7 +884,7 @@ static inline int lance_reset(struct net_device *dev)
 	return status;
 }
 
-static void lance_tx_timeout(struct net_device *dev, unsigned int txqueue)
+static void lance_tx_timeout(struct net_device *dev)
 {
 	struct lance_private *lp = netdev_priv(dev);
 	volatile struct lance_regs *ll = lp->ll;
@@ -937,7 +937,7 @@ static netdev_tx_t lance_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	dev_kfree_skb(skb);
 
-	return NETDEV_TX_OK;
+ 	return NETDEV_TX_OK;
 }
 
 static void lance_load_multicast(struct net_device *dev)
@@ -1032,7 +1032,6 @@ static int dec_lance_probe(struct device *bdev, const int type)
 	int i, ret;
 	unsigned long esar_base;
 	unsigned char *esar;
-	u8 addr[ETH_ALEN];
 	const char *desc;
 
 	if (dec_lance_debug && version_printed++ == 0)
@@ -1229,8 +1228,7 @@ static int dec_lance_probe(struct device *bdev, const int type)
 		break;
 	}
 	for (i = 0; i < 6; i++)
-		addr[i] = esar[i * 4];
-	eth_hw_addr_set(dev, addr);
+		dev->dev_addr[i] = esar[i * 4];
 
 	printk("%s: %s, addr = %pM, irq = %d\n",
 	       name, desc, dev->dev_addr, dev->irq);

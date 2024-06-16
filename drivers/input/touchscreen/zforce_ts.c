@@ -20,7 +20,6 @@
 #include <linux/device.h>
 #include <linux/sysfs.h>
 #include <linux/input/mt.h>
-#include <linux/input/touchscreen.h>
 #include <linux/platform_data/zforce_ts.h>
 #include <linux/regulator/consumer.h>
 #include <linux/of.h>
@@ -107,7 +106,6 @@ struct zforce_point {
 struct zforce_ts {
 	struct i2c_client	*client;
 	struct input_dev	*input;
-	struct touchscreen_properties prop;
 	const struct zforce_ts_platdata *pdata;
 	char			phys[32];
 
@@ -268,6 +266,7 @@ static int zforce_setconfig(struct zforce_ts *ts, char b1)
 static int zforce_start(struct zforce_ts *ts)
 {
 	struct i2c_client *client = ts->client;
+	const struct zforce_ts_platdata *pdata = ts->pdata;
 	int ret;
 
 	dev_dbg(&client->dev, "starting device\n");
@@ -278,7 +277,7 @@ static int zforce_start(struct zforce_ts *ts)
 		return ret;
 	}
 
-	ret = zforce_resolution(ts, ts->prop.max_x, ts->prop.max_y);
+	ret = zforce_resolution(ts, pdata->x_max, pdata->y_max);
 	if (ret) {
 		dev_err(&client->dev, "Unable to set resolution, %d\n", ret);
 		goto error;
@@ -338,6 +337,7 @@ static int zforce_stop(struct zforce_ts *ts)
 static int zforce_touch_event(struct zforce_ts *ts, u8 *payload)
 {
 	struct i2c_client *client = ts->client;
+	const struct zforce_ts_platdata *pdata = ts->pdata;
 	struct zforce_point point;
 	int count, i, num = 0;
 
@@ -355,8 +355,8 @@ static int zforce_touch_event(struct zforce_ts *ts, u8 *payload)
 		point.coord_y =
 			payload[9 * i + 4] << 8 | payload[9 * i + 3];
 
-		if (point.coord_x > ts->prop.max_x ||
-		    point.coord_y > ts->prop.max_y) {
+		if (point.coord_x > pdata->x_max ||
+		    point.coord_y > pdata->y_max) {
 			dev_warn(&client->dev, "coordinates (%d,%d) invalid\n",
 				point.coord_x, point.coord_y);
 			point.coord_x = point.coord_y = 0;
@@ -390,9 +390,10 @@ static int zforce_touch_event(struct zforce_ts *ts, u8 *payload)
 						point.state != STATE_UP);
 
 		if (point.state != STATE_UP) {
-			touchscreen_report_pos(ts->input, &ts->prop,
-					       point.coord_x, point.coord_y,
-					       true);
+			input_report_abs(ts->input, ABS_MT_POSITION_X,
+					 point.coord_x);
+			input_report_abs(ts->input, ABS_MT_POSITION_Y,
+					 point.coord_y);
 			input_report_abs(ts->input, ABS_MT_TOUCH_MAJOR,
 					 point.area_major);
 			input_report_abs(ts->input, ABS_MT_TOUCH_MINOR,
@@ -607,7 +608,7 @@ static void zforce_input_close(struct input_dev *dev)
 	return;
 }
 
-static int zforce_suspend(struct device *dev)
+static int __maybe_unused zforce_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct zforce_ts *ts = i2c_get_clientdata(client);
@@ -625,14 +626,14 @@ static int zforce_suspend(struct device *dev)
 		dev_dbg(&client->dev, "suspend while being a wakeup source\n");
 
 		/* Need to start device, if not open, to be a wakeup source. */
-		if (!input_device_enabled(input)) {
+		if (!input->users) {
 			ret = zforce_start(ts);
 			if (ret)
 				goto unlock;
 		}
 
 		enable_irq_wake(client->irq);
-	} else if (input_device_enabled(input)) {
+	} else if (input->users) {
 		dev_dbg(&client->dev,
 			"suspend without being a wakeup source\n");
 
@@ -652,7 +653,7 @@ unlock:
 	return ret;
 }
 
-static int zforce_resume(struct device *dev)
+static int __maybe_unused zforce_resume(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct zforce_ts *ts = i2c_get_clientdata(client);
@@ -669,12 +670,12 @@ static int zforce_resume(struct device *dev)
 		disable_irq_wake(client->irq);
 
 		/* need to stop device if it was not open on suspend */
-		if (!input_device_enabled(input)) {
+		if (!input->users) {
 			ret = zforce_stop(ts);
 			if (ret)
 				goto unlock;
 		}
-	} else if (input_device_enabled(input)) {
+	} else if (input->users) {
 		dev_dbg(&client->dev, "resume without being a wakeup source\n");
 
 		enable_irq(client->irq);
@@ -690,7 +691,7 @@ unlock:
 	return ret;
 }
 
-static DEFINE_SIMPLE_DEV_PM_OPS(zforce_pm_ops, zforce_suspend, zforce_resume);
+static SIMPLE_DEV_PM_OPS(zforce_pm_ops, zforce_suspend, zforce_resume);
 
 static void zforce_reset(void *data)
 {
@@ -718,13 +719,21 @@ static struct zforce_ts_platdata *zforce_parse_dt(struct device *dev)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	of_property_read_u32(np, "x-size", &pdata->x_max);
-	of_property_read_u32(np, "y-size", &pdata->y_max);
+	if (of_property_read_u32(np, "x-size", &pdata->x_max)) {
+		dev_err(dev, "failed to get x-size property\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	if (of_property_read_u32(np, "y-size", &pdata->y_max)) {
+		dev_err(dev, "failed to get y-size property\n");
+		return ERR_PTR(-EINVAL);
+	}
 
 	return pdata;
 }
 
-static int zforce_probe(struct i2c_client *client)
+static int zforce_probe(struct i2c_client *client,
+			const struct i2c_device_id *id)
 {
 	const struct zforce_ts_platdata *pdata = dev_get_platdata(&client->dev);
 	struct zforce_ts *ts;
@@ -848,12 +857,6 @@ static int zforce_probe(struct i2c_client *client)
 	input_set_abs_params(input_dev, ABS_MT_POSITION_Y, 0,
 			     pdata->y_max, 0, 0);
 
-	touchscreen_parse_properties(input_dev, true, &ts->prop);
-	if (ts->prop.max_x == 0 || ts->prop.max_y == 0) {
-		dev_err(&client->dev, "no size specified\n");
-		return -EINVAL;
-	}
-
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR, 0,
 			     ZFORCE_MAX_AREA, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MINOR, 0,
@@ -939,7 +942,7 @@ MODULE_DEVICE_TABLE(of, zforce_dt_idtable);
 static struct i2c_driver zforce_driver = {
 	.driver = {
 		.name	= "zforce-ts",
-		.pm	= pm_sleep_ptr(&zforce_pm_ops),
+		.pm	= &zforce_pm_ops,
 		.of_match_table	= of_match_ptr(zforce_dt_idtable),
 	},
 	.probe		= zforce_probe,

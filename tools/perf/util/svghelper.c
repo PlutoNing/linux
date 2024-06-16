@@ -331,7 +331,7 @@ static char *cpu_model(void)
 	file = fopen("/proc/cpuinfo", "r");
 	if (file) {
 		while (fgets(buf, 255, file)) {
-			if (strcasestr(buf, "model name")) {
+			if (strstr(buf, "model name")) {
 				strlcpy(cpu_m, &buf[13], 255);
 				break;
 			}
@@ -728,20 +728,20 @@ static int str_to_bitmap(char *s, cpumask_t *b, int nr_cpus)
 	int i;
 	int ret = 0;
 	struct perf_cpu_map *m;
-	struct perf_cpu c;
+	int c;
 
 	m = perf_cpu_map__new(s);
 	if (!m)
 		return -1;
 
-	for (i = 0; i < perf_cpu_map__nr(m); i++) {
-		c = perf_cpu_map__cpu(m, i);
-		if (c.cpu >= nr_cpus) {
+	for (i = 0; i < m->nr; i++) {
+		c = m->map[i];
+		if (c >= nr_cpus) {
 			ret = -1;
 			break;
 		}
 
-		__set_bit(c.cpu, cpumask_bits(b));
+		set_bit(c, cpumask_bits(b));
 	}
 
 	perf_cpu_map__put(m);
@@ -754,7 +754,6 @@ int svg_build_topology_map(struct perf_env *env)
 	int i, nr_cpus;
 	struct topology t;
 	char *sib_core, *sib_thr;
-	int ret = -1;
 
 	nr_cpus = min(env->nr_cpus_online, MAX_NR_CPUS);
 
@@ -800,11 +799,11 @@ int svg_build_topology_map(struct perf_env *env)
 
 	scan_core_topology(topology_map, &t, nr_cpus);
 
-	ret = 0;
+	return 0;
 
 exit:
 	zfree(&t.sib_core);
 	zfree(&t.sib_thr);
 
-	return ret;
+	return -1;
 }

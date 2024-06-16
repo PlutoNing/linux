@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 //
-// Copyright (C) 2019 Texas Instruments Incorporated - https://www.ti.com/
+// Copyright (C) 2019 Texas Instruments Incorporated - http://www.ti.com/
 // Author: Vignesh Raghavendra <vigneshr@ti.com>
 
 #include <linux/err.h>
@@ -10,6 +10,7 @@
 #include <linux/mtd/map.h>
 #include <linux/mtd/mtd.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/types.h>
 
 static struct hyperbus_device *map_to_hbdev(struct map_info *map)
@@ -61,6 +62,7 @@ int hyperbus_register_device(struct hyperbus_device *hbdev)
 	struct hyperbus_ctlr *ctlr;
 	struct device_node *np;
 	struct map_info *map;
+	struct resource res;
 	struct device *dev;
 	int ret;
 
@@ -71,15 +73,22 @@ int hyperbus_register_device(struct hyperbus_device *hbdev)
 
 	np = hbdev->np;
 	ctlr = hbdev->ctlr;
-	if (!of_device_is_compatible(np, "cypress,hyperflash")) {
-		dev_err(ctlr->dev, "\"cypress,hyperflash\" compatible missing\n");
+	if (!of_device_is_compatible(np, "cypress,hyperflash"))
 		return -ENODEV;
-	}
 
 	hbdev->memtype = HYPERFLASH;
 
+	ret = of_address_to_resource(np, 0, &res);
+	if (ret)
+		return ret;
+
 	dev = ctlr->dev;
 	map = &hbdev->map;
+	map->size = resource_size(&res);
+	map->virt = devm_ioremap_resource(dev, &res);
+	if (IS_ERR(map->virt))
+		return PTR_ERR(map->virt);
+
 	map->name = dev_name(dev);
 	map->bankwidth = 2;
 	map->device_node = np;
@@ -126,12 +135,16 @@ int hyperbus_register_device(struct hyperbus_device *hbdev)
 }
 EXPORT_SYMBOL_GPL(hyperbus_register_device);
 
-void hyperbus_unregister_device(struct hyperbus_device *hbdev)
+int hyperbus_unregister_device(struct hyperbus_device *hbdev)
 {
+	int ret = 0;
+
 	if (hbdev && hbdev->mtd) {
-		WARN_ON(mtd_device_unregister(hbdev->mtd));
+		ret = mtd_device_unregister(hbdev->mtd);
 		map_destroy(hbdev->mtd);
 	}
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(hyperbus_unregister_device);
 

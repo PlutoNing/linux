@@ -12,14 +12,13 @@
 #include <linux/iopoll.h>
 #include <linux/irq.h>
 #include <linux/mfd/syscon.h>
-#include <linux/of.h>
+#include <linux/of_device.h>
+#include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 
-#include <drm/drm_blend.h>
 #include <drm/drm_fourcc.h>
-#include <drm/drm_framebuffer.h>
 #include <drm/drm_vblank.h>
 
 #include "exynos_drm_crtc.h"
@@ -56,7 +55,6 @@ static const char * const decon_clks_name[] = {
 struct decon_context {
 	struct device			*dev;
 	struct drm_device		*drm_dev;
-	void				*dma_priv;
 	struct exynos_drm_crtc		*crtc;
 	struct exynos_drm_plane		planes[WINDOWS_NR];
 	struct exynos_drm_plane_config	configs[WINDOWS_NR];
@@ -319,9 +317,9 @@ static void decon_win_set_bldmod(struct decon_context *ctx, unsigned int win,
 static void decon_win_set_pixfmt(struct decon_context *ctx, unsigned int win,
 				 struct drm_framebuffer *fb)
 {
-	struct exynos_drm_plane *plane = &ctx->planes[win];
+	struct exynos_drm_plane plane = ctx->planes[win];
 	struct exynos_drm_plane_state *state =
-		to_exynos_plane_state(plane->base.state);
+		to_exynos_plane_state(plane.base.state);
 	unsigned int alpha = state->base.alpha;
 	unsigned int pixel_alpha;
 	unsigned long val;
@@ -512,16 +510,11 @@ static void decon_swreset(struct decon_context *ctx)
 	       ctx->addr + DECON_CRCCTRL);
 }
 
-static void decon_atomic_enable(struct exynos_drm_crtc *crtc)
+static void decon_enable(struct exynos_drm_crtc *crtc)
 {
 	struct decon_context *ctx = crtc->ctx;
-	int ret;
 
-	ret = pm_runtime_resume_and_get(ctx->dev);
-	if (ret < 0) {
-		DRM_DEV_ERROR(ctx->dev, "failed to enable DECON device.\n");
-		return;
-	}
+	pm_runtime_get_sync(ctx->dev);
 
 	exynos_drm_pipe_clk_enable(crtc, true);
 
@@ -530,7 +523,7 @@ static void decon_atomic_enable(struct exynos_drm_crtc *crtc)
 	decon_commit(ctx->crtc);
 }
 
-static void decon_atomic_disable(struct exynos_drm_crtc *crtc)
+static void decon_disable(struct exynos_drm_crtc *crtc)
 {
 	struct decon_context *ctx = crtc->ctx;
 	int i;
@@ -606,8 +599,8 @@ static enum drm_mode_status decon_mode_valid(struct exynos_drm_crtc *crtc,
 }
 
 static const struct exynos_drm_crtc_ops decon_crtc_ops = {
-	.atomic_enable		= decon_atomic_enable,
-	.atomic_disable		= decon_atomic_disable,
+	.enable			= decon_enable,
+	.disable		= decon_disable,
 	.enable_vblank		= decon_enable_vblank,
 	.disable_vblank		= decon_disable_vblank,
 	.atomic_begin		= decon_atomic_begin,
@@ -651,17 +644,17 @@ static int decon_bind(struct device *dev, struct device *master, void *data)
 
 	decon_clear_channels(ctx->crtc);
 
-	return exynos_drm_register_dma(drm_dev, dev, &ctx->dma_priv);
+	return exynos_drm_register_dma(drm_dev, dev);
 }
 
 static void decon_unbind(struct device *dev, struct device *master, void *data)
 {
 	struct decon_context *ctx = dev_get_drvdata(dev);
 
-	decon_atomic_disable(ctx->crtc);
+	decon_disable(ctx->crtc);
 
 	/* detach this sub driver from iommu mapping if supported. */
-	exynos_drm_unregister_dma(ctx->drm_dev, ctx->dev, &ctx->dma_priv);
+	exynos_drm_unregister_dma(ctx->drm_dev, ctx->dev);
 }
 
 static const struct component_ops decon_component_ops = {
@@ -710,6 +703,7 @@ static irqreturn_t decon_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_PM
 static int exynos5433_decon_suspend(struct device *dev)
 {
 	struct decon_context *ctx = dev_get_drvdata(dev);
@@ -740,10 +734,14 @@ err:
 
 	return ret;
 }
+#endif
 
-static DEFINE_RUNTIME_DEV_PM_OPS(exynos5433_decon_pm_ops,
-				 exynos5433_decon_suspend,
-				 exynos5433_decon_resume, NULL);
+static const struct dev_pm_ops exynos5433_decon_pm_ops = {
+	SET_RUNTIME_PM_OPS(exynos5433_decon_suspend, exynos5433_decon_resume,
+			   NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
+				     pm_runtime_force_resume)
+};
 
 static const struct of_device_id exynos5433_decon_driver_dt_match[] = {
 	{
@@ -776,8 +774,8 @@ static int decon_conf_irq(struct decon_context *ctx, const char *name,
 			return irq;
 		}
 	}
-	ret = devm_request_irq(ctx->dev, irq, handler,
-			       flags | IRQF_NO_AUTOEN, "drm_decon", ctx);
+	irq_set_status_flags(irq, IRQ_NOAUTOEN);
+	ret = devm_request_irq(ctx->dev, irq, handler, flags, "drm_decon", ctx);
 	if (ret < 0) {
 		dev_err(ctx->dev, "IRQ %s request failed\n", name);
 		return ret;
@@ -790,6 +788,7 @@ static int exynos5433_decon_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct decon_context *ctx;
+	struct resource *res;
 	int ret;
 	int i;
 
@@ -814,9 +813,12 @@ static int exynos5433_decon_probe(struct platform_device *pdev)
 		ctx->clks[i] = clk;
 	}
 
-	ctx->addr = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(ctx->addr))
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	ctx->addr = devm_ioremap_resource(dev, res);
+	if (IS_ERR(ctx->addr)) {
+		dev_err(dev, "ioremap failed\n");
 		return PTR_ERR(ctx->addr);
+	}
 
 	ret = decon_conf_irq(ctx, "vsync", decon_irq_handler, 0);
 	if (ret < 0)
@@ -862,19 +864,21 @@ err_disable_pm_runtime:
 	return ret;
 }
 
-static void exynos5433_decon_remove(struct platform_device *pdev)
+static int exynos5433_decon_remove(struct platform_device *pdev)
 {
 	pm_runtime_disable(&pdev->dev);
 
 	component_del(&pdev->dev, &decon_component_ops);
+
+	return 0;
 }
 
 struct platform_driver exynos5433_decon_driver = {
 	.probe		= exynos5433_decon_probe,
-	.remove_new	= exynos5433_decon_remove,
+	.remove		= exynos5433_decon_remove,
 	.driver		= {
 		.name	= "exynos5433-decon",
-		.pm	= pm_ptr(&exynos5433_decon_pm_ops),
+		.pm	= &exynos5433_decon_pm_ops,
 		.of_match_table = exynos5433_decon_driver_dt_match,
 	},
 };

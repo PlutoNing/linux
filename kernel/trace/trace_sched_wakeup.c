@@ -26,9 +26,9 @@ static struct task_struct	*wakeup_task;
 static int			wakeup_cpu;
 static int			wakeup_current_cpu;
 static unsigned			wakeup_prio = -1;
-static bool			wakeup_rt;
-static bool			wakeup_dl;
-static bool			tracing_dl;
+static int			wakeup_rt;
+static int			wakeup_dl;
+static int			tracing_dl = 0;
 
 static arch_spinlock_t wakeup_lock =
 	(arch_spinlock_t)__ARCH_SPIN_LOCK_UNLOCKED;
@@ -67,7 +67,7 @@ static bool function_enabled;
 static int
 func_prolog_preempt_disable(struct trace_array *tr,
 			    struct trace_array_cpu **data,
-			    unsigned int *trace_ctx)
+			    int *pc)
 {
 	long disabled;
 	int cpu;
@@ -75,14 +75,14 @@ func_prolog_preempt_disable(struct trace_array *tr,
 	if (likely(!wakeup_task))
 		return 0;
 
-	*trace_ctx = tracing_gen_ctx();
+	*pc = preempt_count();
 	preempt_disable_notrace();
 
 	cpu = raw_smp_processor_id();
 	if (cpu != wakeup_current_cpu)
 		goto out_enable;
 
-	*data = per_cpu_ptr(tr->array_buffer.data, cpu);
+	*data = per_cpu_ptr(tr->trace_buffer.data, cpu);
 	disabled = atomic_inc_return(&(*data)->disabled);
 	if (unlikely(disabled != 1))
 		goto out;
@@ -116,8 +116,8 @@ static int wakeup_graph_entry(struct ftrace_graph_ent *trace)
 {
 	struct trace_array *tr = wakeup_trace;
 	struct trace_array_cpu *data;
-	unsigned int trace_ctx;
-	int ret = 0;
+	unsigned long flags;
+	int pc, ret = 0;
 
 	if (ftrace_graph_ignore_func(trace))
 		return 0;
@@ -131,10 +131,11 @@ static int wakeup_graph_entry(struct ftrace_graph_ent *trace)
 	if (ftrace_graph_notrace_addr(trace->func))
 		return 1;
 
-	if (!func_prolog_preempt_disable(tr, &data, &trace_ctx))
+	if (!func_prolog_preempt_disable(tr, &data, &pc))
 		return 0;
 
-	ret = __trace_graph_entry(tr, trace, trace_ctx);
+	local_save_flags(flags);
+	ret = __trace_graph_entry(tr, trace, flags, pc);
 	atomic_dec(&data->disabled);
 	preempt_enable_notrace();
 
@@ -145,14 +146,16 @@ static void wakeup_graph_return(struct ftrace_graph_ret *trace)
 {
 	struct trace_array *tr = wakeup_trace;
 	struct trace_array_cpu *data;
-	unsigned int trace_ctx;
+	unsigned long flags;
+	int pc;
 
 	ftrace_graph_addr_finish(trace);
 
-	if (!func_prolog_preempt_disable(tr, &data, &trace_ctx))
+	if (!func_prolog_preempt_disable(tr, &data, &pc))
 		return;
 
-	__trace_graph_return(tr, trace, trace_ctx);
+	local_save_flags(flags);
+	__trace_graph_return(tr, trace, flags, pc);
 	atomic_dec(&data->disabled);
 
 	preempt_enable_notrace();
@@ -168,8 +171,6 @@ static void wakeup_trace_open(struct trace_iterator *iter)
 {
 	if (is_graph(iter->tr))
 		graph_trace_open(iter);
-	else
-		iter->private = NULL;
 }
 
 static void wakeup_trace_close(struct trace_iterator *iter)
@@ -211,18 +212,18 @@ static void wakeup_print_header(struct seq_file *s)
  */
 static void
 wakeup_tracer_call(unsigned long ip, unsigned long parent_ip,
-		   struct ftrace_ops *op, struct ftrace_regs *fregs)
+		   struct ftrace_ops *op, struct pt_regs *pt_regs)
 {
 	struct trace_array *tr = wakeup_trace;
 	struct trace_array_cpu *data;
 	unsigned long flags;
-	unsigned int trace_ctx;
+	int pc;
 
-	if (!func_prolog_preempt_disable(tr, &data, &trace_ctx))
+	if (!func_prolog_preempt_disable(tr, &data, &pc))
 		return;
 
 	local_irq_save(flags);
-	trace_function(tr, ip, parent_ip, trace_ctx);
+	trace_function(tr, ip, parent_ip, flags, pc);
 	local_irq_restore(flags);
 
 	atomic_dec(&data->disabled);
@@ -302,12 +303,12 @@ static void wakeup_print_header(struct seq_file *s)
 static void
 __trace_function(struct trace_array *tr,
 		 unsigned long ip, unsigned long parent_ip,
-		 unsigned int trace_ctx)
+		 unsigned long flags, int pc)
 {
 	if (is_graph(tr))
-		trace_graph_function(tr, ip, parent_ip, trace_ctx);
+		trace_graph_function(tr, ip, parent_ip, flags, pc);
 	else
-		trace_function(tr, ip, parent_ip, trace_ctx);
+		trace_function(tr, ip, parent_ip, flags, pc);
 }
 
 static int wakeup_flag_changed(struct trace_array *tr, u32 mask, int set)
@@ -374,15 +375,15 @@ static void
 tracing_sched_switch_trace(struct trace_array *tr,
 			   struct task_struct *prev,
 			   struct task_struct *next,
-			   unsigned int trace_ctx)
+			   unsigned long flags, int pc)
 {
 	struct trace_event_call *call = &event_context_switch;
-	struct trace_buffer *buffer = tr->array_buffer.buffer;
+	struct ring_buffer *buffer = tr->trace_buffer.buffer;
 	struct ring_buffer_event *event;
 	struct ctx_switch_entry *entry;
 
 	event = trace_buffer_lock_reserve(buffer, TRACE_CTX,
-					  sizeof(*entry), trace_ctx);
+					  sizeof(*entry), flags, pc);
 	if (!event)
 		return;
 	entry	= ring_buffer_event_data(event);
@@ -395,22 +396,22 @@ tracing_sched_switch_trace(struct trace_array *tr,
 	entry->next_cpu	= task_cpu(next);
 
 	if (!call_filter_check_discard(call, entry, buffer, event))
-		trace_buffer_unlock_commit(tr, buffer, event, trace_ctx);
+		trace_buffer_unlock_commit(tr, buffer, event, flags, pc);
 }
 
 static void
 tracing_sched_wakeup_trace(struct trace_array *tr,
 			   struct task_struct *wakee,
 			   struct task_struct *curr,
-			   unsigned int trace_ctx)
+			   unsigned long flags, int pc)
 {
 	struct trace_event_call *call = &event_wakeup;
 	struct ring_buffer_event *event;
 	struct ctx_switch_entry *entry;
-	struct trace_buffer *buffer = tr->array_buffer.buffer;
+	struct ring_buffer *buffer = tr->trace_buffer.buffer;
 
 	event = trace_buffer_lock_reserve(buffer, TRACE_WAKE,
-					  sizeof(*entry), trace_ctx);
+					  sizeof(*entry), flags, pc);
 	if (!event)
 		return;
 	entry	= ring_buffer_event_data(event);
@@ -423,20 +424,19 @@ tracing_sched_wakeup_trace(struct trace_array *tr,
 	entry->next_cpu			= task_cpu(wakee);
 
 	if (!call_filter_check_discard(call, entry, buffer, event))
-		trace_buffer_unlock_commit(tr, buffer, event, trace_ctx);
+		trace_buffer_unlock_commit(tr, buffer, event, flags, pc);
 }
 
 static void notrace
 probe_wakeup_sched_switch(void *ignore, bool preempt,
-			  struct task_struct *prev, struct task_struct *next,
-			  unsigned int prev_state)
+			  struct task_struct *prev, struct task_struct *next)
 {
 	struct trace_array_cpu *data;
 	u64 T0, T1, delta;
 	unsigned long flags;
 	long disabled;
 	int cpu;
-	unsigned int trace_ctx;
+	int pc;
 
 	tracing_record_cmdline(prev);
 
@@ -455,15 +455,15 @@ probe_wakeup_sched_switch(void *ignore, bool preempt,
 	if (next != wakeup_task)
 		return;
 
+	pc = preempt_count();
+
 	/* disable local data, not wakeup_cpu data */
 	cpu = raw_smp_processor_id();
-	disabled = atomic_inc_return(&per_cpu_ptr(wakeup_trace->array_buffer.data, cpu)->disabled);
+	disabled = atomic_inc_return(&per_cpu_ptr(wakeup_trace->trace_buffer.data, cpu)->disabled);
 	if (likely(disabled != 1))
 		goto out;
 
 	local_irq_save(flags);
-	trace_ctx = tracing_gen_ctx_flags(flags);
-
 	arch_spin_lock(&wakeup_lock);
 
 	/* We could race with grabbing wakeup_lock */
@@ -471,11 +471,11 @@ probe_wakeup_sched_switch(void *ignore, bool preempt,
 		goto out_unlock;
 
 	/* The task we are waiting for is waking up */
-	data = per_cpu_ptr(wakeup_trace->array_buffer.data, wakeup_cpu);
+	data = per_cpu_ptr(wakeup_trace->trace_buffer.data, wakeup_cpu);
 
-	__trace_function(wakeup_trace, CALLER_ADDR0, CALLER_ADDR1, trace_ctx);
-	tracing_sched_switch_trace(wakeup_trace, prev, next, trace_ctx);
-	__trace_stack(wakeup_trace, trace_ctx, 0);
+	__trace_function(wakeup_trace, CALLER_ADDR0, CALLER_ADDR1, flags, pc);
+	tracing_sched_switch_trace(wakeup_trace, prev, next, flags, pc);
+	__trace_stack(wakeup_trace, flags, 0, pc);
 
 	T0 = data->preempt_timestamp;
 	T1 = ftrace_now(cpu);
@@ -494,14 +494,14 @@ out_unlock:
 	arch_spin_unlock(&wakeup_lock);
 	local_irq_restore(flags);
 out:
-	atomic_dec(&per_cpu_ptr(wakeup_trace->array_buffer.data, cpu)->disabled);
+	atomic_dec(&per_cpu_ptr(wakeup_trace->trace_buffer.data, cpu)->disabled);
 }
 
 static void __wakeup_reset(struct trace_array *tr)
 {
 	wakeup_cpu = -1;
 	wakeup_prio = -1;
-	tracing_dl = false;
+	tracing_dl = 0;
 
 	if (wakeup_task)
 		put_task_struct(wakeup_task);
@@ -513,7 +513,7 @@ static void wakeup_reset(struct trace_array *tr)
 {
 	unsigned long flags;
 
-	tracing_reset_online_cpus(&tr->array_buffer);
+	tracing_reset_online_cpus(&tr->trace_buffer);
 
 	local_irq_save(flags);
 	arch_spin_lock(&wakeup_lock);
@@ -527,8 +527,9 @@ probe_wakeup(void *ignore, struct task_struct *p)
 {
 	struct trace_array_cpu *data;
 	int cpu = smp_processor_id();
+	unsigned long flags;
 	long disabled;
-	unsigned int trace_ctx;
+	int pc;
 
 	if (likely(!tracer_enabled))
 		return;
@@ -549,11 +550,10 @@ probe_wakeup(void *ignore, struct task_struct *p)
 	    (!dl_task(p) && (p->prio >= wakeup_prio || p->prio >= current->prio)))
 		return;
 
-	disabled = atomic_inc_return(&per_cpu_ptr(wakeup_trace->array_buffer.data, cpu)->disabled);
+	pc = preempt_count();
+	disabled = atomic_inc_return(&per_cpu_ptr(wakeup_trace->trace_buffer.data, cpu)->disabled);
 	if (unlikely(disabled != 1))
 		goto out;
-
-	trace_ctx = tracing_gen_ctx();
 
 	/* interrupts should be off from try_to_wake_up */
 	arch_spin_lock(&wakeup_lock);
@@ -575,28 +575,30 @@ probe_wakeup(void *ignore, struct task_struct *p)
 	 * another task until the first one wakes up.
 	 */
 	if (dl_task(p))
-		tracing_dl = true;
+		tracing_dl = 1;
 	else
-		tracing_dl = false;
+		tracing_dl = 0;
 
 	wakeup_task = get_task_struct(p);
 
-	data = per_cpu_ptr(wakeup_trace->array_buffer.data, wakeup_cpu);
+	local_save_flags(flags);
+
+	data = per_cpu_ptr(wakeup_trace->trace_buffer.data, wakeup_cpu);
 	data->preempt_timestamp = ftrace_now(cpu);
-	tracing_sched_wakeup_trace(wakeup_trace, p, current, trace_ctx);
-	__trace_stack(wakeup_trace, trace_ctx, 0);
+	tracing_sched_wakeup_trace(wakeup_trace, p, current, flags, pc);
+	__trace_stack(wakeup_trace, flags, 0, pc);
 
 	/*
 	 * We must be careful in using CALLER_ADDR2. But since wake_up
 	 * is not called by an assembly function  (where as schedule is)
 	 * it should be safe to use it here.
 	 */
-	__trace_function(wakeup_trace, CALLER_ADDR1, CALLER_ADDR2, trace_ctx);
+	__trace_function(wakeup_trace, CALLER_ADDR1, CALLER_ADDR2, flags, pc);
 
 out_locked:
 	arch_spin_unlock(&wakeup_lock);
 out:
-	atomic_dec(&per_cpu_ptr(wakeup_trace->array_buffer.data, cpu)->disabled);
+	atomic_dec(&per_cpu_ptr(wakeup_trace->trace_buffer.data, cpu)->disabled);
 }
 
 static void start_wakeup_tracer(struct trace_array *tr)
@@ -628,7 +630,7 @@ static void start_wakeup_tracer(struct trace_array *tr)
 	if (ret) {
 		pr_info("wakeup trace: Couldn't activate tracepoint"
 			" probe to kernel_sched_migrate_task\n");
-		goto fail_deprobe_sched_switch;
+		return;
 	}
 
 	wakeup_reset(tr);
@@ -646,8 +648,6 @@ static void start_wakeup_tracer(struct trace_array *tr)
 		printk(KERN_ERR "failed to start wakeup tracer\n");
 
 	return;
-fail_deprobe_sched_switch:
-	unregister_trace_sched_switch(probe_wakeup_sched_switch, NULL);
 fail_deprobe_wake_new:
 	unregister_trace_sched_wakeup_new(probe_wakeup, NULL);
 fail_deprobe:
@@ -688,8 +688,8 @@ static int wakeup_tracer_init(struct trace_array *tr)
 	if (wakeup_busy)
 		return -EBUSY;
 
-	wakeup_dl = false;
-	wakeup_rt = false;
+	wakeup_dl = 0;
+	wakeup_rt = 0;
 	return __wakeup_tracer_init(tr);
 }
 
@@ -698,8 +698,8 @@ static int wakeup_rt_tracer_init(struct trace_array *tr)
 	if (wakeup_busy)
 		return -EBUSY;
 
-	wakeup_dl = false;
-	wakeup_rt = true;
+	wakeup_dl = 0;
+	wakeup_rt = 1;
 	return __wakeup_tracer_init(tr);
 }
 
@@ -708,8 +708,8 @@ static int wakeup_dl_tracer_init(struct trace_array *tr)
 	if (wakeup_busy)
 		return -EBUSY;
 
-	wakeup_dl = true;
-	wakeup_rt = false;
+	wakeup_dl = 1;
+	wakeup_rt = 0;
 	return __wakeup_tracer_init(tr);
 }
 

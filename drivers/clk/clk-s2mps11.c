@@ -195,14 +195,13 @@ static int s2mps11_clk_probe(struct platform_device *pdev)
 	return ret;
 
 err_reg:
-	of_node_put(s2mps11_clks[0].clk_np);
 	while (--i >= 0)
 		clkdev_drop(s2mps11_clks[i].lookup);
 
 	return ret;
 }
 
-static void s2mps11_clk_remove(struct platform_device *pdev)
+static int s2mps11_clk_remove(struct platform_device *pdev)
 {
 	struct s2mps11_clk *s2mps11_clks = platform_get_drvdata(pdev);
 	int i;
@@ -217,6 +216,8 @@ static void s2mps11_clk_remove(struct platform_device *pdev)
 			continue;
 		clkdev_drop(s2mps11_clks[i].lookup);
 	}
+
+	return 0;
 }
 
 static const struct platform_device_id s2mps11_clk_id[] = {
@@ -263,10 +264,21 @@ static struct platform_driver s2mps11_clk_driver = {
 		.name  = "s2mps11-clk",
 	},
 	.probe = s2mps11_clk_probe,
-	.remove_new = s2mps11_clk_remove,
+	.remove = s2mps11_clk_remove,
 	.id_table = s2mps11_clk_id,
 };
-module_platform_driver(s2mps11_clk_driver);
+
+static int __init s2mps11_clk_init(void)
+{
+	return platform_driver_register(&s2mps11_clk_driver);
+}
+subsys_initcall(s2mps11_clk_init);
+
+static void __exit s2mps11_clk_cleanup(void)
+{
+	platform_driver_unregister(&s2mps11_clk_driver);
+}
+module_exit(s2mps11_clk_cleanup);
 
 MODULE_DESCRIPTION("S2MPS11 Clock Driver");
 MODULE_AUTHOR("Yadwinder Singh Brar <yadi.brar@samsung.com>");

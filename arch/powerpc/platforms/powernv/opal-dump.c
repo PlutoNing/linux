@@ -88,14 +88,9 @@ static ssize_t dump_ack_store(struct dump_obj *dump_obj,
 			      const char *buf,
 			      size_t count)
 {
-	/*
-	 * Try to self remove this attribute. If we are successful,
-	 * delete the kobject itself.
-	 */
-	if (sysfs_remove_file_self(&dump_obj->kobj, &attr->attr)) {
-		dump_send_ack(dump_obj->id);
-		kobject_put(&dump_obj->kobj);
-	}
+	dump_send_ack(dump_obj->id);
+	sysfs_remove_file_self(&dump_obj->kobj, &attr->attr);
+	kobject_put(&dump_obj->kobj);
 	return count;
 }
 
@@ -150,7 +145,7 @@ static struct attribute *initiate_attrs[] = {
 	NULL,
 };
 
-static const struct attribute_group initiate_attr_group = {
+static struct attribute_group initiate_attr_group = {
 	.attrs = initiate_attrs,
 };
 
@@ -208,12 +203,11 @@ static struct attribute *dump_default_attrs[] = {
 	&ack_attribute.attr,
 	NULL,
 };
-ATTRIBUTE_GROUPS(dump_default);
 
 static struct kobj_type dump_ktype = {
 	.sysfs_ops = &dump_sysfs_ops,
 	.release = &dump_release,
-	.default_groups = dump_default_groups,
+	.default_attrs = dump_default_attrs,
 };
 
 static int64_t dump_read_info(uint32_t *dump_id, uint32_t *dump_size, uint32_t *dump_type)
@@ -324,14 +318,15 @@ static ssize_t dump_attr_read(struct file *filep, struct kobject *kobj,
 	return count;
 }
 
-static void create_dump_obj(uint32_t id, size_t size, uint32_t type)
+static struct dump_obj *create_dump_obj(uint32_t id, size_t size,
+					uint32_t type)
 {
 	struct dump_obj *dump;
 	int rc;
 
 	dump = kzalloc(sizeof(*dump), GFP_KERNEL);
 	if (!dump)
-		return;
+		return NULL;
 
 	dump->kobj.kset = dump_kset;
 
@@ -351,39 +346,21 @@ static void create_dump_obj(uint32_t id, size_t size, uint32_t type)
 	rc = kobject_add(&dump->kobj, NULL, "0x%x-0x%x", type, id);
 	if (rc) {
 		kobject_put(&dump->kobj);
-		return;
+		return NULL;
 	}
 
-	/*
-	 * As soon as the sysfs file for this dump is created/activated there is
-	 * a chance the opal_errd daemon (or any userspace) might read and
-	 * acknowledge the dump before kobject_uevent() is called. If that
-	 * happens then there is a potential race between
-	 * dump_ack_store->kobject_put() and kobject_uevent() which leads to a
-	 * use-after-free of a kernfs object resulting in a kernel crash.
-	 *
-	 * To avoid that, we need to take a reference on behalf of the bin file,
-	 * so that our reference remains valid while we call kobject_uevent().
-	 * We then drop our reference before exiting the function, leaving the
-	 * bin file to drop the last reference (if it hasn't already).
-	 */
-
-	/* Take a reference for the bin file */
-	kobject_get(&dump->kobj);
 	rc = sysfs_create_bin_file(&dump->kobj, &dump->dump_attr);
-	if (rc == 0) {
-		kobject_uevent(&dump->kobj, KOBJ_ADD);
-
-		pr_info("%s: New platform dump. ID = 0x%x Size %u\n",
-			__func__, dump->id, dump->size);
-	} else {
-		/* Drop reference count taken for bin file */
+	if (rc) {
 		kobject_put(&dump->kobj);
+		return NULL;
 	}
 
-	/* Drop our reference */
-	kobject_put(&dump->kobj);
-	return;
+	pr_info("%s: New platform dump. ID = 0x%x Size %u\n",
+		__func__, dump->id, dump->size);
+
+	kobject_uevent(&dump->kobj, KOBJ_ADD);
+
+	return dump;
 }
 
 static irqreturn_t process_dump(int irq, void *data)
@@ -420,7 +397,7 @@ void __init opal_platform_dump_init(void)
 	int rc;
 	int dump_irq;
 
-	/* Dump not supported by firmware */
+	/* ELOG not supported by firmware */
 	if (!opal_check_token(OPAL_DUMP_READ))
 		return;
 

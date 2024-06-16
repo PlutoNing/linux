@@ -87,12 +87,11 @@ static u32 pll_get_ibias(u64 rate, const u64 *table)
 {
 	u32 i, num = table[0];
 
-	/* table[0] indicates the number of items in this table */
-	for (i = 0; i < num; i++)
-		if (rate <= table[i + 1])
+	for (i = 1; i < num + 1; i++)
+		if (rate <= table[i])
 			break;
 
-	return i == num ? num - 1 : i;
+	return (i == num + 1) ? num : i;
 }
 
 static unsigned long _sprd_pll_recalc_rate(const struct sprd_pll *pll,
@@ -106,7 +105,7 @@ static unsigned long _sprd_pll_recalc_rate(const struct sprd_pll *pll,
 
 	cfg = kcalloc(regs_num, sizeof(*cfg), GFP_KERNEL);
 	if (!cfg)
-		return parent_rate;
+		return -ENOMEM;
 
 	for (i = 0; i < regs_num; i++)
 		cfg[i] = sprd_pll_read(pll, i);

@@ -24,12 +24,10 @@
 #include <linux/tty.h>
 #include <linux/personality.h>
 #include <linux/binfmts.h>
-#include <asm/access-regs.h>
 #include <asm/ucontext.h>
 #include <linux/uaccess.h>
 #include <asm/lowcore.h>
-#include <asm/vdso.h>
-#include <asm/fpu.h>
+#include <asm/switch_to.h>
 #include "compat_linux.h"
 #include "compat_ptrace.h"
 #include "entry.h"
@@ -56,7 +54,7 @@ typedef struct
 static void store_sigregs(void)
 {
 	save_access_regs(current->thread.acrs);
-	save_user_fpu_regs();
+	save_fpu_regs();
 }
 
 /* Load registers after signal return */
@@ -79,7 +77,7 @@ static int save_sigregs32(struct pt_regs *regs, _sigregs32 __user *sregs)
 		user_sregs.regs.gprs[i] = (__u32) regs->gprs[i];
 	memcpy(&user_sregs.regs.acrs, current->thread.acrs,
 	       sizeof(user_sregs.regs.acrs));
-	fpregs_store((_s390_fp_regs *) &user_sregs.fpregs, &current->thread.ufpu);
+	fpregs_store((_s390_fp_regs *) &user_sregs.fpregs, &current->thread.fpu);
 	if (__copy_to_user(sregs, &user_sregs, sizeof(_sigregs32)))
 		return -EFAULT;
 	return 0;
@@ -90,13 +88,17 @@ static int restore_sigregs32(struct pt_regs *regs,_sigregs32 __user *sregs)
 	_sigregs32 user_sregs;
 	int i;
 
-	/* Always make any pending restarted system call return -EINTR */
+	/* Alwys make any pending restarted system call return -EINTR */
 	current->restart_block.fn = do_no_restart_syscall;
 
 	if (__copy_from_user(&user_sregs, &sregs->regs, sizeof(user_sregs)))
 		return -EFAULT;
 
 	if (!is_ri_task(current) && (user_sregs.regs.psw.mask & PSW32_MASK_RI))
+		return -EINVAL;
+
+	/* Test the floating-point-control word. */
+	if (test_fp_ctl(user_sregs.fpregs.fpc))
 		return -EINVAL;
 
 	/* Use regs->psw.mask instead of PSW_USER_BITS to preserve PER bit. */
@@ -113,7 +115,7 @@ static int restore_sigregs32(struct pt_regs *regs,_sigregs32 __user *sregs)
 		regs->gprs[i] = (__u64) user_sregs.regs.gprs[i];
 	memcpy(&current->thread.acrs, &user_sregs.regs.acrs,
 	       sizeof(current->thread.acrs));
-	fpregs_load((_s390_fp_regs *)&user_sregs.fpregs, &current->thread.ufpu);
+	fpregs_load((_s390_fp_regs *) &user_sregs.fpregs, &current->thread.fpu);
 
 	clear_pt_regs_flag(regs, PIF_SYSCALL); /* No longer in a system call */
 	return 0;
@@ -134,13 +136,13 @@ static int save_sigregs_ext32(struct pt_regs *regs,
 		return -EFAULT;
 
 	/* Save vector registers to signal stack */
-	if (cpu_has_vx()) {
+	if (MACHINE_HAS_VX) {
 		for (i = 0; i < __NUM_VXRS_LOW; i++)
-			vxrs[i] = current->thread.ufpu.vxrs[i].low;
+			vxrs[i] = *((__u64 *)(current->thread.fpu.vxrs + i) + 1);
 		if (__copy_to_user(&sregs_ext->vxrs_low, vxrs,
 				   sizeof(sregs_ext->vxrs_low)) ||
 		    __copy_to_user(&sregs_ext->vxrs_high,
-				   current->thread.ufpu.vxrs + __NUM_VXRS_LOW,
+				   current->thread.fpu.vxrs + __NUM_VXRS_LOW,
 				   sizeof(sregs_ext->vxrs_high)))
 			return -EFAULT;
 	}
@@ -162,15 +164,15 @@ static int restore_sigregs_ext32(struct pt_regs *regs,
 		*(__u32 *)&regs->gprs[i] = gprs_high[i];
 
 	/* Restore vector registers from signal stack */
-	if (cpu_has_vx()) {
+	if (MACHINE_HAS_VX) {
 		if (__copy_from_user(vxrs, &sregs_ext->vxrs_low,
 				     sizeof(sregs_ext->vxrs_low)) ||
-		    __copy_from_user(current->thread.ufpu.vxrs + __NUM_VXRS_LOW,
+		    __copy_from_user(current->thread.fpu.vxrs + __NUM_VXRS_LOW,
 				     &sregs_ext->vxrs_high,
 				     sizeof(sregs_ext->vxrs_high)))
 			return -EFAULT;
 		for (i = 0; i < __NUM_VXRS_LOW; i++)
-			current->thread.ufpu.vxrs[i].low = vxrs[i];
+			*((__u64 *)(current->thread.fpu.vxrs + i) + 1) = vxrs[i];
 	}
 	return 0;
 }
@@ -184,7 +186,7 @@ COMPAT_SYSCALL_DEFINE0(sigreturn)
 	if (get_compat_sigset(&set, (compat_sigset_t __user *)frame->sc.oldmask))
 		goto badframe;
 	set_current_blocked(&set);
-	save_user_fpu_regs();
+	save_fpu_regs();
 	if (restore_sigregs32(regs, &frame->sregs))
 		goto badframe;
 	if (restore_sigregs_ext32(regs, &frame->sregs_ext))
@@ -207,7 +209,7 @@ COMPAT_SYSCALL_DEFINE0(rt_sigreturn)
 	set_current_blocked(&set);
 	if (compat_restore_altstack(&frame->uc.uc_stack))
 		goto badframe;
-	save_user_fpu_regs();
+	save_fpu_regs();
 	if (restore_sigregs32(regs, &frame->uc.uc_mcontext))
 		goto badframe;
 	if (restore_sigregs_ext32(regs, &frame->uc.uc_mcontext_ext))
@@ -262,7 +264,7 @@ static int setup_frame32(struct ksignal *ksig, sigset_t *set,
 	 * the machine supports it
 	 */
 	frame_size = sizeof(*frame) - sizeof(frame->sregs_ext.__reserved);
-	if (!cpu_has_vx())
+	if (!MACHINE_HAS_VX)
 		frame_size -= sizeof(frame->sregs_ext.vxrs_low) +
 			      sizeof(frame->sregs_ext.vxrs_high);
 	frame = get_sigframe(&ksig->ka, regs, frame_size);
@@ -301,7 +303,11 @@ static int setup_frame32(struct ksignal *ksig, sigset_t *set,
 		restorer = (unsigned long __force)
 			ksig->ka.sa.sa_restorer | PSW32_ADDR_AMODE;
 	} else {
-		restorer = VDSO32_SYMBOL(current, sigreturn);
+		/* Signal frames without vectors registers are short ! */
+		__u16 __user *svc = (void __user *) frame + frame_size - 2;
+		if (__put_user(S390_SYSCALL_OPCODE | __NR_sigreturn, svc))
+			return -EFAULT;
+		restorer = (unsigned long __force) svc | PSW32_ADDR_AMODE;
         }
 
 	/* Set up registers for signal handler */
@@ -345,12 +351,11 @@ static int setup_rt_frame32(struct ksignal *ksig, sigset_t *set,
 	 * the machine supports it
 	 */
 	uc_flags = UC_GPRS_HIGH;
-	if (cpu_has_vx()) {
+	if (MACHINE_HAS_VX) {
 		uc_flags |= UC_VXRS;
-	} else {
+	} else
 		frame_size -= sizeof(frame->uc.uc_mcontext_ext.vxrs_low) +
 			      sizeof(frame->uc.uc_mcontext_ext.vxrs_high);
-	}
 	frame = get_sigframe(&ksig->ka, regs, frame_size);
 	if (frame == (void __user *) -1UL)
 		return -EFAULT;
@@ -365,7 +370,10 @@ static int setup_rt_frame32(struct ksignal *ksig, sigset_t *set,
 		restorer = (unsigned long __force)
 			ksig->ka.sa.sa_restorer | PSW32_ADDR_AMODE;
 	} else {
-		restorer = VDSO32_SYMBOL(current, rt_sigreturn);
+		__u16 __user *svc = &frame->svc_insn;
+		if (__put_user(S390_SYSCALL_OPCODE | __NR_rt_sigreturn, svc))
+			return -EFAULT;
+		restorer = (unsigned long __force) svc | PSW32_ADDR_AMODE;
 	}
 
 	/* Create siginfo on the signal stack */

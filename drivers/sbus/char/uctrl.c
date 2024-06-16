@@ -15,12 +15,15 @@
 #include <linux/miscdevice.h>
 #include <linux/mm.h>
 #include <linux/of.h>
-#include <linux/platform_device.h>
+#include <linux/of_device.h>
 
 #include <asm/openprom.h>
 #include <asm/oplib.h>
 #include <asm/irq.h>
 #include <asm/io.h>
+#include <asm/pgtable.h>
+
+#define UCTRL_MINOR	174
 
 #define DEBUG 1
 #ifdef DEBUG
@@ -399,7 +402,7 @@ out_free:
 	goto out;
 }
 
-static void uctrl_remove(struct platform_device *op)
+static int uctrl_remove(struct platform_device *op)
 {
 	struct uctrl_driver *p = dev_get_drvdata(&op->dev);
 
@@ -409,6 +412,7 @@ static void uctrl_remove(struct platform_device *op)
 		of_iounmap(&op->resource[0], p->regs, resource_size(&op->resource[0]));
 		kfree(p);
 	}
+	return 0;
 }
 
 static const struct of_device_id uctrl_match[] = {
@@ -425,7 +429,7 @@ static struct platform_driver uctrl_driver = {
 		.of_match_table = uctrl_match,
 	},
 	.probe		= uctrl_probe,
-	.remove_new	= uctrl_remove,
+	.remove		= uctrl_remove,
 };
 
 

@@ -10,7 +10,6 @@
 #include <asm/errno.h>
 #include <asm/arcregs.h>
 #include <asm/irqflags.h>
-#include <asm/mmu.h>
 
 ; A maximum number of supported interrupts in the core interrupt controller.
 ; This number is not equal to the maximum interrupt number (256) because
@@ -125,6 +124,11 @@ ENTRY(mem_service)
 
 	EXCEPTION_PROLOGUE
 
+	lr  r0, [efa]
+	mov r1, sp
+
+	FAKE_RET_FROM_EXCPN
+
 	bl  do_memory_error
 	b   ret_from_exception
 END(mem_service)
@@ -132,6 +136,11 @@ END(mem_service)
 ENTRY(EV_Misaligned)
 
 	EXCEPTION_PROLOGUE
+
+	lr  r0, [efa]	; Faulting Data address
+	mov r1, sp
+
+	FAKE_RET_FROM_EXCPN
 
 	SAVE_CALLEE_SAVED_USER
 	mov r2, sp              ; callee_regs
@@ -152,6 +161,11 @@ END(EV_Misaligned)
 ENTRY(EV_TLBProtV)
 
 	EXCEPTION_PROLOGUE
+
+	lr  r0, [efa]	; Faulting Data address
+	mov r1, sp	; pt_regs
+
+	FAKE_RET_FROM_EXCPN
 
 	mov blink, ret_from_exception
 	b   do_page_fault

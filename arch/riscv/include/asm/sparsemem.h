@@ -1,15 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
-#ifndef _ASM_RISCV_SPARSEMEM_H
-#define _ASM_RISCV_SPARSEMEM_H
+#ifndef __ASM_SPARSEMEM_H
+#define __ASM_SPARSEMEM_H
 
 #ifdef CONFIG_SPARSEMEM
-#ifdef CONFIG_64BIT
-#define MAX_PHYSMEM_BITS	56
-#else
-#define MAX_PHYSMEM_BITS	34
-#endif /* CONFIG_64BIT */
+#define MAX_PHYSMEM_BITS	CONFIG_PA_BITS
 #define SECTION_SIZE_BITS	27
 #endif /* CONFIG_SPARSEMEM */
 
-#endif /* _ASM_RISCV_SPARSEMEM_H */
+#endif /* __ASM_SPARSEMEM_H */

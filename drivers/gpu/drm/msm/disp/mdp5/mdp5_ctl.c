@@ -216,9 +216,7 @@ static void send_start_signal(struct mdp5_ctl *ctl)
 /**
  * mdp5_ctl_set_encoder_state() - set the encoder state
  *
- * @ctl:      the CTL instance
- * @pipeline: the encoder's INTF + MIXER configuration
- * @enabled:  true, when encoder is ready for data streaming; false, otherwise.
+ * @enable: true, when encoder is ready for data streaming; false, otherwise.
  *
  * Note:
  * This encoder state is needed to trigger START signal (data path kickoff).
@@ -512,13 +510,6 @@ static void fix_for_single_flush(struct mdp5_ctl *ctl, u32 *flush_mask,
 /**
  * mdp5_ctl_commit() - Register Flush
  *
- * @ctl:        the CTL instance
- * @pipeline:   the encoder's INTF + MIXER configuration
- * @flush_mask: bitmask of display controller hw blocks to flush
- * @start:      if true, immediately update flush registers and set START
- *              bit, otherwise accumulate flush_mask bits until we are
- *              ready to START
- *
  * The flush register is used to indicate several registers are all
  * programmed, and are safe to update to the back copy of the double
  * buffered registers.
@@ -681,6 +672,11 @@ void mdp5_ctlm_hw_reset(struct mdp5_ctl_manager *ctl_mgr)
 	}
 }
 
+void mdp5_ctlm_destroy(struct mdp5_ctl_manager *ctl_mgr)
+{
+	kfree(ctl_mgr);
+}
+
 struct mdp5_ctl_manager *mdp5_ctlm_init(struct drm_device *dev,
 		void __iomem *mmio_base, struct mdp5_cfg_handler *cfg_hnd)
 {
@@ -692,16 +688,18 @@ struct mdp5_ctl_manager *mdp5_ctlm_init(struct drm_device *dev,
 	unsigned long flags;
 	int c, ret;
 
-	ctl_mgr = devm_kzalloc(dev->dev, sizeof(*ctl_mgr), GFP_KERNEL);
+	ctl_mgr = kzalloc(sizeof(*ctl_mgr), GFP_KERNEL);
 	if (!ctl_mgr) {
 		DRM_DEV_ERROR(dev->dev, "failed to allocate CTL manager\n");
-		return ERR_PTR(-ENOMEM);
+		ret = -ENOMEM;
+		goto fail;
 	}
 
 	if (WARN_ON(ctl_cfg->count > MAX_CTL)) {
 		DRM_DEV_ERROR(dev->dev, "Increase static pool size to at least %d\n",
 				ctl_cfg->count);
-		return ERR_PTR(-ENOSPC);
+		ret = -ENOSPC;
+		goto fail;
 	}
 
 	/* initialize the CTL manager: */
@@ -720,7 +718,7 @@ struct mdp5_ctl_manager *mdp5_ctlm_init(struct drm_device *dev,
 			DRM_DEV_ERROR(dev->dev, "CTL_%d: base is null!\n", c);
 			ret = -EINVAL;
 			spin_unlock_irqrestore(&ctl_mgr->pool_lock, flags);
-			return ERR_PTR(ret);
+			goto fail;
 		}
 		ctl->ctlm = ctl_mgr;
 		ctl->id = c;
@@ -730,7 +728,7 @@ struct mdp5_ctl_manager *mdp5_ctlm_init(struct drm_device *dev,
 	}
 
 	/*
-	 * In bonded DSI case, CTL0 and CTL1 are always assigned to two DSI
+	 * In Dual DSI case, CTL0 and CTL1 are always assigned to two DSI
 	 * interfaces to support single FLUSH feature (Flush CTL0 and CTL1 when
 	 * only write into CTL0's FLUSH register) to keep two DSI pipes in sync.
 	 * Single FLUSH is supported from hw rev v3.0.
@@ -748,4 +746,10 @@ struct mdp5_ctl_manager *mdp5_ctlm_init(struct drm_device *dev,
 	DBG("Pool of %d CTLs created.", ctl_mgr->nctl);
 
 	return ctl_mgr;
+
+fail:
+	if (ctl_mgr)
+		mdp5_ctlm_destroy(ctl_mgr);
+
+	return ERR_PTR(ret);
 }

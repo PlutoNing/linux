@@ -35,7 +35,7 @@
  * The IFP can produce several output image formats from the sensor core
  * output. This driver currently supports only YUYV format permutations.
  *
- * The driver allows manual frame rate control through set_frame_interval subdev
+ * The driver allows manual frame rate control through s_frame_interval subdev
  * operation or V4L2_CID_V/HBLANK controls, but it is known that the
  * auto-exposure algorithm might modify the programmed frame rate. While the
  * driver initially programs the sensor with auto-exposure and
@@ -103,7 +103,7 @@
 #define MT9V111_MAX_CLKIN				27000000
 
 /* The default sensor configuration at startup time. */
-static const struct v4l2_mbus_framefmt mt9v111_def_fmt = {
+static struct v4l2_mbus_framefmt mt9v111_def_fmt = {
 	.width		= 640,
 	.height		= 480,
 	.code		= MEDIA_BUS_FMT_UYVY8_2X8,
@@ -121,7 +121,9 @@ struct mt9v111_dev {
 	u8 addr_space;
 
 	struct v4l2_subdev sd;
+#if IS_ENABLED(CONFIG_MEDIA_CONTROLLER)
 	struct media_pad pad;
+#endif
 
 	struct v4l2_ctrl *auto_awb;
 	struct v4l2_ctrl *auto_exp;
@@ -631,7 +633,7 @@ static int mt9v111_hw_config(struct mt9v111_dev *mt9v111)
 
 	/*
 	 * Set pixel integration time to the whole frame time.
-	 * This value controls the shutter delay when running with AE
+	 * This value controls the the shutter delay when running with AE
 	 * disabled. If longer than frame time, it affects the output
 	 * frame rate.
 	 */
@@ -719,9 +721,8 @@ error_unlock:
 	return ret;
 }
 
-static int mt9v111_set_frame_interval(struct v4l2_subdev *sd,
-				      struct v4l2_subdev_state *sd_state,
-				      struct v4l2_subdev_frame_interval *ival)
+static int mt9v111_s_frame_interval(struct v4l2_subdev *sd,
+				    struct v4l2_subdev_frame_interval *ival)
 {
 	struct mt9v111_dev *mt9v111 = sd_to_mt9v111(sd);
 	struct v4l2_fract *tpf = &ival->interval;
@@ -729,13 +730,6 @@ static int mt9v111_set_frame_interval(struct v4l2_subdev *sd,
 			   tpf->denominator / tpf->numerator :
 			   tpf->denominator;
 	unsigned int max_fps;
-
-	/*
-	 * FIXME: Implement support for V4L2_SUBDEV_FORMAT_TRY, using the V4L2
-	 * subdev active state API.
-	 */
-	if (ival->which != V4L2_SUBDEV_FORMAT_ACTIVE)
-		return -EINVAL;
 
 	if (!tpf->numerator)
 		tpf->numerator = 1;
@@ -779,19 +773,11 @@ static int mt9v111_set_frame_interval(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int mt9v111_get_frame_interval(struct v4l2_subdev *sd,
-				      struct v4l2_subdev_state *sd_state,
-				      struct v4l2_subdev_frame_interval *ival)
+static int mt9v111_g_frame_interval(struct v4l2_subdev *sd,
+				    struct v4l2_subdev_frame_interval *ival)
 {
 	struct mt9v111_dev *mt9v111 = sd_to_mt9v111(sd);
 	struct v4l2_fract *tpf = &ival->interval;
-
-	/*
-	 * FIXME: Implement support for V4L2_SUBDEV_FORMAT_TRY, using the V4L2
-	 * subdev active state API.
-	 */
-	if (ival->which != V4L2_SUBDEV_FORMAT_ACTIVE)
-		return -EINVAL;
 
 	mutex_lock(&mt9v111->stream_mutex);
 
@@ -805,13 +791,17 @@ static int mt9v111_get_frame_interval(struct v4l2_subdev *sd,
 
 static struct v4l2_mbus_framefmt *__mt9v111_get_pad_format(
 					struct mt9v111_dev *mt9v111,
-					struct v4l2_subdev_state *sd_state,
+					struct v4l2_subdev_pad_config *cfg,
 					unsigned int pad,
 					enum v4l2_subdev_format_whence which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_state_get_format(sd_state, pad);
+#if IS_ENABLED(CONFIG_VIDEO_V4L2_SUBDEV_API)
+		return v4l2_subdev_get_try_format(&mt9v111->sd, cfg, pad);
+#else
+		return &cfg->try_fmt;
+#endif
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		return &mt9v111->fmt;
 	default:
@@ -820,7 +810,7 @@ static struct v4l2_mbus_framefmt *__mt9v111_get_pad_format(
 }
 
 static int mt9v111_enum_mbus_code(struct v4l2_subdev *subdev,
-				  struct v4l2_subdev_state *sd_state,
+				  struct v4l2_subdev_pad_config *cfg,
 				  struct v4l2_subdev_mbus_code_enum *code)
 {
 	if (code->pad || code->index > ARRAY_SIZE(mt9v111_formats) - 1)
@@ -832,7 +822,7 @@ static int mt9v111_enum_mbus_code(struct v4l2_subdev *subdev,
 }
 
 static int mt9v111_enum_frame_interval(struct v4l2_subdev *sd,
-				struct v4l2_subdev_state *sd_state,
+				struct v4l2_subdev_pad_config *cfg,
 				struct v4l2_subdev_frame_interval_enum *fie)
 {
 	unsigned int i;
@@ -855,7 +845,7 @@ static int mt9v111_enum_frame_interval(struct v4l2_subdev *sd,
 }
 
 static int mt9v111_enum_frame_size(struct v4l2_subdev *subdev,
-				   struct v4l2_subdev_state *sd_state,
+				   struct v4l2_subdev_pad_config *cfg,
 				   struct v4l2_subdev_frame_size_enum *fse)
 {
 	if (fse->pad || fse->index >= ARRAY_SIZE(mt9v111_frame_sizes))
@@ -870,7 +860,7 @@ static int mt9v111_enum_frame_size(struct v4l2_subdev *subdev,
 }
 
 static int mt9v111_get_format(struct v4l2_subdev *subdev,
-			      struct v4l2_subdev_state *sd_state,
+			      struct v4l2_subdev_pad_config *cfg,
 			      struct v4l2_subdev_format *format)
 {
 	struct mt9v111_dev *mt9v111 = sd_to_mt9v111(subdev);
@@ -879,8 +869,7 @@ static int mt9v111_get_format(struct v4l2_subdev *subdev,
 		return -EINVAL;
 
 	mutex_lock(&mt9v111->stream_mutex);
-	format->format = *__mt9v111_get_pad_format(mt9v111, sd_state,
-						   format->pad,
+	format->format = *__mt9v111_get_pad_format(mt9v111, cfg, format->pad,
 						   format->which);
 	mutex_unlock(&mt9v111->stream_mutex);
 
@@ -888,7 +877,7 @@ static int mt9v111_get_format(struct v4l2_subdev *subdev,
 }
 
 static int mt9v111_set_format(struct v4l2_subdev *subdev,
-			      struct v4l2_subdev_state *sd_state,
+			      struct v4l2_subdev_pad_config *cfg,
 			      struct v4l2_subdev_format *format)
 {
 	struct mt9v111_dev *mt9v111 = sd_to_mt9v111(subdev);
@@ -936,7 +925,7 @@ static int mt9v111_set_format(struct v4l2_subdev *subdev,
 	new_fmt.height = mt9v111_frame_sizes[idx].height;
 
 	/* Update the device (or pad) format if it has changed. */
-	__fmt = __mt9v111_get_pad_format(mt9v111, sd_state, format->pad,
+	__fmt = __mt9v111_get_pad_format(mt9v111, cfg, format->pad,
 					 format->which);
 
 	/* Format hasn't changed, stop here. */
@@ -964,10 +953,10 @@ done:
 	return 0;
 }
 
-static int mt9v111_init_state(struct v4l2_subdev *subdev,
-			      struct v4l2_subdev_state *sd_state)
+static int mt9v111_init_cfg(struct v4l2_subdev *subdev,
+			    struct v4l2_subdev_pad_config *cfg)
 {
-	*v4l2_subdev_state_get_format(sd_state, 0) = mt9v111_def_fmt;
+	cfg->try_fmt = mt9v111_def_fmt;
 
 	return 0;
 }
@@ -978,16 +967,17 @@ static const struct v4l2_subdev_core_ops mt9v111_core_ops = {
 
 static const struct v4l2_subdev_video_ops mt9v111_video_ops = {
 	.s_stream		= mt9v111_s_stream,
+	.s_frame_interval	= mt9v111_s_frame_interval,
+	.g_frame_interval	= mt9v111_g_frame_interval,
 };
 
 static const struct v4l2_subdev_pad_ops mt9v111_pad_ops = {
+	.init_cfg		= mt9v111_init_cfg,
 	.enum_mbus_code		= mt9v111_enum_mbus_code,
 	.enum_frame_size	= mt9v111_enum_frame_size,
 	.enum_frame_interval	= mt9v111_enum_frame_interval,
 	.get_fmt		= mt9v111_get_format,
 	.set_fmt		= mt9v111_set_format,
-	.get_frame_interval	= mt9v111_get_frame_interval,
-	.set_frame_interval	= mt9v111_set_frame_interval,
 };
 
 static const struct v4l2_subdev_ops mt9v111_ops = {
@@ -996,13 +986,11 @@ static const struct v4l2_subdev_ops mt9v111_ops = {
 	.pad	= &mt9v111_pad_ops,
 };
 
-static const struct v4l2_subdev_internal_ops mt9v111_internal_ops = {
-	.init_state		= mt9v111_init_state,
-};
-
+#if IS_ENABLED(CONFIG_MEDIA_CONTROLLER)
 static const struct media_entity_operations mt9v111_subdev_entity_ops = {
 	.link_validate = v4l2_subdev_link_validate,
 };
+#endif
 
 /* --- V4L2 ctrl --- */
 static int mt9v111_s_ctrl(struct v4l2_ctrl *ctrl)
@@ -1213,8 +1201,8 @@ static int mt9v111_probe(struct i2c_client *client)
 	mt9v111->pending	= true;
 
 	v4l2_i2c_subdev_init(&mt9v111->sd, client, &mt9v111_ops);
-	mt9v111->sd.internal_ops = &mt9v111_internal_ops;
 
+#if IS_ENABLED(CONFIG_MEDIA_CONTROLLER)
 	mt9v111->sd.flags	|= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	mt9v111->sd.entity.ops	= &mt9v111_subdev_entity_ops;
 	mt9v111->sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
@@ -1223,6 +1211,7 @@ static int mt9v111_probe(struct i2c_client *client)
 	ret = media_entity_pads_init(&mt9v111->sd.entity, 1, &mt9v111->pad);
 	if (ret)
 		goto error_free_entity;
+#endif
 
 	ret = mt9v111_chip_probe(mt9v111);
 	if (ret)
@@ -1235,7 +1224,9 @@ static int mt9v111_probe(struct i2c_client *client)
 	return 0;
 
 error_free_entity:
+#if IS_ENABLED(CONFIG_MEDIA_CONTROLLER)
 	media_entity_cleanup(&mt9v111->sd.entity);
+#endif
 
 error_free_ctrls:
 	v4l2_ctrl_handler_free(&mt9v111->ctrls);
@@ -1246,19 +1237,29 @@ error_free_ctrls:
 	return ret;
 }
 
-static void mt9v111_remove(struct i2c_client *client)
+static int mt9v111_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct mt9v111_dev *mt9v111 = sd_to_mt9v111(sd);
 
 	v4l2_async_unregister_subdev(sd);
 
+#if IS_ENABLED(CONFIG_MEDIA_CONTROLLER)
 	media_entity_cleanup(&sd->entity);
+#endif
 
 	v4l2_ctrl_handler_free(&mt9v111->ctrls);
 
 	mutex_destroy(&mt9v111->pwr_mutex);
 	mutex_destroy(&mt9v111->stream_mutex);
+
+	devm_gpiod_put(mt9v111->dev, mt9v111->oe);
+	devm_gpiod_put(mt9v111->dev, mt9v111->standby);
+	devm_gpiod_put(mt9v111->dev, mt9v111->reset);
+
+	devm_clk_put(mt9v111->dev, mt9v111->clk);
+
+	return 0;
 }
 
 static const struct of_device_id mt9v111_of_match[] = {
@@ -1271,7 +1272,7 @@ static struct i2c_driver mt9v111_driver = {
 		.name = "mt9v111",
 		.of_match_table = mt9v111_of_match,
 	},
-	.probe		= mt9v111_probe,
+	.probe_new	= mt9v111_probe,
 	.remove		= mt9v111_remove,
 };
 

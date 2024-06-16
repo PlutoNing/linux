@@ -9,19 +9,20 @@
 #include <string.h>
 
 #include "lkc.h"
-#include "internal.h"
-#include "list.h"
 
 static const char nohelp_text[] = "There is no help available for this option.";
 
 struct menu rootmenu;
 static struct menu **last_entry_ptr;
 
+struct file *file_list;
+struct file *current_file;
+
 void menu_warn(struct menu *menu, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	fprintf(stderr, "%s:%d:warning: ", menu->filename, menu->lineno);
+	fprintf(stderr, "%s:%d:warning: ", menu->file->name, menu->lineno);
 	vfprintf(stderr, fmt, ap);
 	fprintf(stderr, "\n");
 	va_end(ap);
@@ -31,7 +32,7 @@ static void prop_warn(struct property *prop, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	fprintf(stderr, "%s:%d:warning: ", prop->filename, prop->lineno);
+	fprintf(stderr, "%s:%d:warning: ", prop->file->name, prop->lineno);
 	vfprintf(stderr, fmt, ap);
 	fprintf(stderr, "\n");
 	va_end(ap);
@@ -51,23 +52,20 @@ void menu_add_entry(struct symbol *sym)
 	memset(menu, 0, sizeof(*menu));
 	menu->sym = sym;
 	menu->parent = current_menu;
-	menu->filename = cur_filename;
-	menu->lineno = cur_lineno;
+	menu->file = current_file;
+	menu->lineno = zconf_lineno();
 
 	*last_entry_ptr = menu;
 	last_entry_ptr = &menu->next;
 	current_entry = menu;
-	if (sym) {
+	if (sym)
 		menu_add_symbol(P_SYMBOL, sym, NULL);
-		list_add_tail(&menu->link, &sym->menus);
-	}
 }
 
 struct menu *menu_add_menu(void)
 {
 	last_entry_ptr = &current_entry->list;
-	current_menu = current_entry;
-	return current_menu;
+	return current_menu = current_entry;
 }
 
 void menu_end_menu(void)
@@ -126,74 +124,59 @@ void menu_set_type(int type)
 		sym_type_name(sym->type), sym_type_name(type));
 }
 
-static struct property *menu_add_prop(enum prop_type type, struct expr *expr,
-				      struct expr *dep)
+static struct property *menu_add_prop(enum prop_type type, char *prompt, struct expr *expr, struct expr *dep)
 {
-	struct property *prop;
+	struct property *prop = prop_alloc(type, current_entry->sym);
 
-	prop = xmalloc(sizeof(*prop));
-	memset(prop, 0, sizeof(*prop));
-	prop->type = type;
-	prop->filename = cur_filename;
-	prop->lineno = cur_lineno;
 	prop->menu = current_entry;
 	prop->expr = expr;
 	prop->visible.expr = dep;
 
-	/* append property to the prop list of symbol */
-	if (current_entry->sym) {
-		struct property **propp;
+	if (prompt) {
+		if (isspace(*prompt)) {
+			prop_warn(prop, "leading whitespace ignored");
+			while (isspace(*prompt))
+				prompt++;
+		}
+		if (current_entry->prompt && current_entry != &rootmenu)
+			prop_warn(prop, "prompt redefined");
 
-		for (propp = &current_entry->sym->prop;
-		     *propp;
-		     propp = &(*propp)->next)
-			;
-		*propp = prop;
+		/* Apply all upper menus' visibilities to actual prompts. */
+		if(type == P_PROMPT) {
+			struct menu *menu = current_entry;
+
+			while ((menu = menu->parent) != NULL) {
+				struct expr *dup_expr;
+
+				if (!menu->visibility)
+					continue;
+				/*
+				 * Do not add a reference to the
+				 * menu's visibility expression but
+				 * use a copy of it.  Otherwise the
+				 * expression reduction functions
+				 * will modify expressions that have
+				 * multiple references which can
+				 * cause unwanted side effects.
+				 */
+				dup_expr = expr_copy(menu->visibility);
+
+				prop->visible.expr
+					= expr_alloc_and(prop->visible.expr,
+							 dup_expr);
+			}
+		}
+
+		current_entry->prompt = prop;
 	}
+	prop->text = prompt;
 
 	return prop;
 }
 
-struct property *menu_add_prompt(enum prop_type type, char *prompt,
-				 struct expr *dep)
+struct property *menu_add_prompt(enum prop_type type, char *prompt, struct expr *dep)
 {
-	struct property *prop = menu_add_prop(type, NULL, dep);
-
-	if (isspace(*prompt)) {
-		prop_warn(prop, "leading whitespace ignored");
-		while (isspace(*prompt))
-			prompt++;
-	}
-	if (current_entry->prompt)
-		prop_warn(prop, "prompt redefined");
-
-	/* Apply all upper menus' visibilities to actual prompts. */
-	if (type == P_PROMPT) {
-		struct menu *menu = current_entry;
-
-		while ((menu = menu->parent) != NULL) {
-			struct expr *dup_expr;
-
-			if (!menu->visibility)
-				continue;
-			/*
-			 * Do not add a reference to the menu's visibility
-			 * expression but use a copy of it. Otherwise the
-			 * expression reduction functions will modify
-			 * expressions that have multiple references which
-			 * can cause unwanted side effects.
-			 */
-			dup_expr = expr_copy(menu->visibility);
-
-			prop->visible.expr = expr_alloc_and(prop->visible.expr,
-							    dup_expr);
-		}
-	}
-
-	current_entry->prompt = prop;
-	prop->text = prompt;
-
-	return prop;
+	return menu_add_prop(type, prompt, NULL, dep);
 }
 
 void menu_add_visibility(struct expr *expr)
@@ -204,12 +187,34 @@ void menu_add_visibility(struct expr *expr)
 
 void menu_add_expr(enum prop_type type, struct expr *expr, struct expr *dep)
 {
-	menu_add_prop(type, expr, dep);
+	menu_add_prop(type, NULL, expr, dep);
 }
 
 void menu_add_symbol(enum prop_type type, struct symbol *sym, struct expr *dep)
 {
-	menu_add_prop(type, expr_alloc_symbol(sym), dep);
+	menu_add_prop(type, NULL, expr_alloc_symbol(sym), dep);
+}
+
+void menu_add_option_modules(void)
+{
+	if (modules_sym)
+		zconf_error("symbol '%s' redefines option 'modules' already defined by symbol '%s'",
+			    current_entry->sym->name, modules_sym->name);
+	modules_sym = current_entry->sym;
+}
+
+void menu_add_option_defconfig_list(void)
+{
+	if (!sym_defconfig_list)
+		sym_defconfig_list = current_entry->sym;
+	else if (sym_defconfig_list != current_entry->sym)
+		zconf_error("trying to redefine defconfig symbol");
+	sym_defconfig_list->flags |= SYMBOL_NO_WRITE;
+}
+
+void menu_add_option_allnoconfig_y(void)
+{
+	current_entry->sym->flags |= SYMBOL_ALLNOCONFIG_Y;
 }
 
 static int menu_validate_number(struct symbol *sym, struct symbol *sym2)
@@ -307,6 +312,12 @@ void menu_finalize(struct menu *parent)
 					}
 				}
 			}
+			/* set the type of the remaining choice values */
+			for (menu = parent->list; menu; menu = menu->next) {
+				current_entry = menu;
+				if (menu->sym && menu->sym->type == S_UNKNOWN)
+					menu_set_type(sym->type);
+			}
 
 			/*
 			 * Use the choice itself as the parent dependency of
@@ -315,10 +326,12 @@ void menu_finalize(struct menu *parent)
 			 * choice value symbols.
 			 */
 			parentdep = expr_alloc_symbol(sym);
-		} else {
-			/* Menu node for 'menu', 'if' */
+		} else if (parent->prompt)
+			/* Menu node for 'menu' */
+			parentdep = parent->prompt->visible.expr;
+		else
+			/* Menu node for 'if' */
 			parentdep = parent->dep;
-		}
 
 		/* For each child menu node... */
 		for (menu = parent->list; menu; menu = menu->next) {
@@ -561,6 +574,9 @@ void menu_finalize(struct menu *parent)
 		if (sym->type == S_UNKNOWN)
 			menu_warn(parent, "config symbol defined without type");
 
+		if (sym_is_choice(sym) && !parent->prompt)
+			menu_warn(parent, "choice must have a prompt");
+
 		/* Check properties connected to this symbol */
 		sym_check_prop(sym);
 		sym->flags |= SYMBOL_WARNED;
@@ -652,6 +668,11 @@ const char *menu_get_prompt(struct menu *menu)
 	return NULL;
 }
 
+struct menu *menu_get_root_menu(struct menu *menu)
+{
+	return &rootmenu;
+}
+
 struct menu *menu_get_parent_menu(struct menu *menu)
 {
 	enum prop_type type;
@@ -664,24 +685,17 @@ struct menu *menu_get_parent_menu(struct menu *menu)
 	return menu;
 }
 
-static void get_def_str(struct gstr *r, struct menu *menu)
+bool menu_has_help(struct menu *menu)
 {
-	str_printf(r, "Defined at %s:%d\n",
-		   menu->filename, menu->lineno);
+	return menu->help != NULL;
 }
 
-static void get_dep_str(struct gstr *r, struct expr *expr, const char *prefix)
+const char *menu_get_help(struct menu *menu)
 {
-	if (!expr_is_yes(expr)) {
-		str_append(r, prefix);
-		expr_gstr_print(expr, r);
-		str_append(r, "\n");
-	}
-}
-
-int __attribute__((weak)) get_jump_key_char(void)
-{
-	return -1;
+	if (menu->help)
+		return menu->help;
+	else
+		return "";
 }
 
 static void get_prompt_str(struct gstr *r, struct property *prop,
@@ -691,56 +705,66 @@ static void get_prompt_str(struct gstr *r, struct property *prop,
 	struct menu *submenu[8], *menu, *location = NULL;
 	struct jump_key *jump = NULL;
 
-	str_printf(r, "  Prompt: %s\n", prop->text);
-
-	get_dep_str(r, prop->menu->dep, "  Depends on: ");
-	/*
-	 * Most prompts in Linux have visibility that exactly matches their
-	 * dependencies. For these, we print only the dependencies to improve
-	 * readability. However, prompts with inline "if" expressions and
-	 * prompts with a parent that has a "visible if" expression have
-	 * differing dependencies and visibility. In these rare cases, we
-	 * print both.
-	 */
-	if (!expr_eq(prop->menu->dep, prop->visible.expr))
-		get_dep_str(r, prop->visible.expr, "  Visible if: ");
-
-	menu = prop->menu;
+	str_printf(r, "Prompt: %s\n", prop->text);
+	menu = prop->menu->parent;
 	for (i = 0; menu != &rootmenu && i < 8; menu = menu->parent) {
+		bool accessible = menu_is_visible(menu);
+
 		submenu[i++] = menu;
-		if (location == NULL && menu_is_visible(menu))
+		if (location == NULL && accessible)
 			location = menu;
 	}
 	if (head && location) {
 		jump = xmalloc(sizeof(struct jump_key));
-		jump->target = location;
+
+		if (menu_is_visible(prop->menu)) {
+			/*
+			 * There is not enough room to put the hint at the
+			 * beginning of the "Prompt" line. Put the hint on the
+			 * last "Location" line even when it would belong on
+			 * the former.
+			 */
+			jump->target = prop->menu;
+		} else
+			jump->target = location;
+
+		if (list_empty(head))
+			jump->index = 0;
+		else
+			jump->index = list_entry(head->prev, struct jump_key,
+						 entries)->index + 1;
+
 		list_add_tail(&jump->entries, head);
 	}
 
-	str_printf(r, "  Location:\n");
-	for (j = 0; --i >= 0; j++) {
-		int jk = -1;
-		int indent = 2 * j + 4;
-
-		menu = submenu[i];
-		if (jump && menu == location) {
-			jump->offset = strlen(r->s);
-			jk = get_jump_key_char();
+	if (i > 0) {
+		str_printf(r, "  Location:\n");
+		for (j = 4; --i >= 0; j += 2) {
+			menu = submenu[i];
+			if (jump && menu == location)
+				jump->offset = strlen(r->s);
+			str_printf(r, "%*c-> %s", j, ' ',
+				   menu_get_prompt(menu));
+			if (menu->sym) {
+				str_printf(r, " (%s [=%s])", menu->sym->name ?
+					menu->sym->name : "<choice>",
+					sym_get_string_value(menu->sym));
+			}
+			str_append(r, "\n");
 		}
-
-		if (jk >= 0) {
-			str_printf(r, "(%c)", jk);
-			indent -= 3;
-		}
-
-		str_printf(r, "%*c-> %s", indent, ' ', menu_get_prompt(menu));
-		if (menu->sym) {
-			str_printf(r, " (%s [=%s])", menu->sym->name ?
-				menu->sym->name : "<choice>",
-				sym_get_string_value(menu->sym));
-		}
-		str_append(r, "\n");
 	}
+}
+
+/*
+ * get property of type P_SYMBOL
+ */
+static struct property *get_symbol_prop(struct symbol *sym)
+{
+	struct property *prop = NULL;
+
+	for_all_properties(sym, prop, P_SYMBOL)
+		break;
+	return prop;
 }
 
 static void get_symbol_props_str(struct gstr *r, struct symbol *sym,
@@ -768,7 +792,6 @@ static void get_symbol_str(struct gstr *r, struct symbol *sym,
 		    struct list_head *head)
 {
 	struct property *prop;
-	struct menu *menu;
 
 	if (sym && sym->name) {
 		str_printf(r, "Symbol: %s [=%s]\n", sym->name,
@@ -783,34 +806,32 @@ static void get_symbol_str(struct gstr *r, struct symbol *sym,
 			}
 		}
 	}
+	for_all_prompts(sym, prop)
+		get_prompt_str(r, prop, head);
 
-	/* Print the definitions with prompts before the ones without */
-	list_for_each_entry(menu, &sym->menus, link) {
-		if (menu->prompt) {
-			get_def_str(r, menu);
-			get_prompt_str(r, menu->prompt, head);
+	prop = get_symbol_prop(sym);
+	if (prop) {
+		str_printf(r, "  Defined at %s:%d\n", prop->menu->file->name,
+			prop->menu->lineno);
+		if (!expr_is_yes(prop->visible.expr)) {
+			str_append(r, "  Depends on: ");
+			expr_gstr_print(prop->visible.expr, r);
+			str_append(r, "\n");
 		}
 	}
 
-	list_for_each_entry(menu, &sym->menus, link) {
-		if (!menu->prompt) {
-			get_def_str(r, menu);
-			get_dep_str(r, menu->dep, "  Depends on: ");
-		}
-	}
-
-	get_symbol_props_str(r, sym, P_SELECT, "Selects: ");
+	get_symbol_props_str(r, sym, P_SELECT, "  Selects: ");
 	if (sym->rev_dep.expr) {
-		expr_gstr_print_revdep(sym->rev_dep.expr, r, yes, "Selected by [y]:\n");
-		expr_gstr_print_revdep(sym->rev_dep.expr, r, mod, "Selected by [m]:\n");
-		expr_gstr_print_revdep(sym->rev_dep.expr, r, no, "Selected by [n]:\n");
+		expr_gstr_print_revdep(sym->rev_dep.expr, r, yes, "  Selected by [y]:\n");
+		expr_gstr_print_revdep(sym->rev_dep.expr, r, mod, "  Selected by [m]:\n");
+		expr_gstr_print_revdep(sym->rev_dep.expr, r, no, "  Selected by [n]:\n");
 	}
 
-	get_symbol_props_str(r, sym, P_IMPLY, "Implies: ");
+	get_symbol_props_str(r, sym, P_IMPLY, "  Implies: ");
 	if (sym->implied.expr) {
-		expr_gstr_print_revdep(sym->implied.expr, r, yes, "Implied by [y]:\n");
-		expr_gstr_print_revdep(sym->implied.expr, r, mod, "Implied by [m]:\n");
-		expr_gstr_print_revdep(sym->implied.expr, r, no, "Implied by [n]:\n");
+		expr_gstr_print_revdep(sym->implied.expr, r, yes, "  Implied by [y]:\n");
+		expr_gstr_print_revdep(sym->implied.expr, r, mod, "  Implied by [m]:\n");
+		expr_gstr_print_revdep(sym->implied.expr, r, no, "  Implied by [n]:\n");
 	}
 
 	str_append(r, "\n\n");
@@ -835,10 +856,10 @@ void menu_get_ext_help(struct menu *menu, struct gstr *help)
 	struct symbol *sym = menu->sym;
 	const char *help_text = nohelp_text;
 
-	if (menu->help) {
+	if (menu_has_help(menu)) {
 		if (sym->name)
 			str_printf(help, "%s%s:\n\n", CONFIG_, sym->name);
-		help_text = menu->help;
+		help_text = menu_get_help(menu);
 	}
 	str_printf(help, "%s\n", help_text);
 	if (sym)

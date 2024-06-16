@@ -11,5 +11,4 @@
 #  define __ASM_CONST(x)	x##UL
 #  define ASM_CONST(x)		__ASM_CONST(x)
 #endif
-
 #endif /* _ASM_POWERPC_ASM_CONST_H */

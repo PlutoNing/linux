@@ -30,7 +30,7 @@
 #include <net/net_namespace.h>
 
 
-atomic64_t uevent_seqnum;
+u64 uevent_seqnum;
 #ifdef CONFIG_UEVENT_HELPER
 char uevent_helper[UEVENT_HELPER_PATH_LEN] = CONFIG_UEVENT_HELPER_PATH;
 #endif
@@ -42,9 +42,10 @@ struct uevent_sock {
 
 #ifdef CONFIG_NET
 static LIST_HEAD(uevent_sock_list);
-/* This lock protects uevent_sock_list */
-static DEFINE_MUTEX(uevent_sock_mutex);
 #endif
+
+/* This lock protects uevent_seqnum and uevent_sock_list */
+static DEFINE_MUTEX(uevent_sock_mutex);
 
 /* the strings here must match the enum in include/linux/kobject.h */
 static const char *kobject_actions[] = {
@@ -250,13 +251,12 @@ static int kobj_usermode_filter(struct kobject *kobj)
 
 static int init_uevent_argv(struct kobj_uevent_env *env, const char *subsystem)
 {
-	int buffer_size = sizeof(env->buf) - env->buflen;
 	int len;
 
-	len = strscpy(&env->buf[env->buflen], subsystem, buffer_size);
-	if (len < 0) {
-		pr_warn("%s: insufficient buffer space (%u left) for %s\n",
-			__func__, buffer_size, subsystem);
+	len = strlcpy(&env->buf[env->buflen], subsystem,
+		      sizeof(env->buf) - env->buflen);
+	if (len >= (sizeof(env->buf) - env->buflen)) {
+		WARN(1, KERN_ERR "init_uevent_argv: buffer size too small\n");
 		return -ENOMEM;
 	}
 
@@ -314,7 +314,6 @@ static int uevent_net_broadcast_untagged(struct kobj_uevent_env *env,
 	int retval = 0;
 
 	/* send netlink message */
-	mutex_lock(&uevent_sock_mutex);
 	list_for_each_entry(ue_sk, &uevent_sock_list, list) {
 		struct sock *uevent_sock = ue_sk->sk;
 
@@ -334,7 +333,6 @@ static int uevent_net_broadcast_untagged(struct kobj_uevent_env *env,
 		if (retval == -ENOBUFS || retval == -ESRCH)
 			retval = 0;
 	}
-	mutex_unlock(&uevent_sock_mutex);
 	consume_skb(skb);
 
 	return retval;
@@ -502,7 +500,7 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 	}
 	/* skip the event, if the filter returns zero. */
 	if (uevent_ops && uevent_ops->filter)
-		if (!uevent_ops->filter(kobj)) {
+		if (!uevent_ops->filter(kset, kobj)) {
 			pr_debug("kobject: '%s' (%p): %s: filter function "
 				 "caused the event to drop!\n",
 				 kobject_name(kobj), kobj, __func__);
@@ -511,7 +509,7 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 
 	/* originating subsystem */
 	if (uevent_ops && uevent_ops->name)
-		subsystem = uevent_ops->name(kobj);
+		subsystem = uevent_ops->name(kset, kobj);
 	else
 		subsystem = kobject_name(&kset->kobj);
 	if (!subsystem) {
@@ -555,7 +553,7 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 
 	/* let the kset specific function add its stuff */
 	if (uevent_ops && uevent_ops->uevent) {
-		retval = uevent_ops->uevent(kobj, env);
+		retval = uevent_ops->uevent(kset, kobj, env);
 		if (retval) {
 			pr_debug("kobject: '%s' (%p): %s: uevent() returned "
 				 "%d\n", kobject_name(kobj), kobj,
@@ -584,14 +582,16 @@ int kobject_uevent_env(struct kobject *kobj, enum kobject_action action,
 		break;
 	}
 
+	mutex_lock(&uevent_sock_mutex);
 	/* we will send an event, so request a new sequence number */
-	retval = add_uevent_var(env, "SEQNUM=%llu",
-				atomic64_inc_return(&uevent_seqnum));
-	if (retval)
+	retval = add_uevent_var(env, "SEQNUM=%llu", ++uevent_seqnum);
+	if (retval) {
+		mutex_unlock(&uevent_sock_mutex);
 		goto exit;
-
+	}
 	retval = kobject_uevent_net_broadcast(kobj, env, action_string,
 					      devpath);
+	mutex_unlock(&uevent_sock_mutex);
 
 #ifdef CONFIG_UEVENT_HELPER
 	/* call uevent_helper, usually only enabled during early boot */
@@ -687,8 +687,7 @@ static int uevent_net_broadcast(struct sock *usk, struct sk_buff *skb,
 	int ret;
 
 	/* bump and prepare sequence number */
-	ret = snprintf(buf, sizeof(buf), "SEQNUM=%llu",
-		       atomic64_inc_return(&uevent_seqnum));
+	ret = snprintf(buf, sizeof(buf), "SEQNUM=%llu", ++uevent_seqnum);
 	if (ret < 0 || (size_t)ret >= sizeof(buf))
 		return -ENOMEM;
 	ret++;
@@ -742,7 +741,9 @@ static int uevent_net_rcv_skb(struct sk_buff *skb, struct nlmsghdr *nlh,
 		return -EPERM;
 	}
 
+	mutex_lock(&uevent_sock_mutex);
 	ret = uevent_net_broadcast(net->uevent_sock->sk, skb, extack);
+	mutex_unlock(&uevent_sock_mutex);
 
 	return ret;
 }

@@ -60,10 +60,10 @@ Hyper-Thread attacks are possible.
 
 The victim of a malicious actor does not need to make use of TSX. Only the
 attacker needs to begin a TSX transaction and raise an asynchronous abort
-which in turn potentially leaks data stored in the buffers.
+which in turn potenitally leaks data stored in the buffers.
 
 More detailed technical information is available in the TAA specific x86
-architecture section: :ref:`Documentation/arch/x86/tsx_async_abort.rst <tsx_async_abort>`.
+architecture section: :ref:`Documentation/x86/tsx_async_abort.rst <tsx_async_abort>`.
 
 
 Attack scenarios
@@ -98,25 +98,32 @@ The possible values in this file are:
    * - 'Vulnerable'
      - The CPU is affected by this vulnerability and the microcode and kernel mitigation are not applied.
    * - 'Vulnerable: Clear CPU buffers attempted, no microcode'
-     - The processor is vulnerable but microcode is not updated. The
-       mitigation is enabled on a best effort basis.
-
-       If the processor is vulnerable but the availability of the microcode
-       based mitigation mechanism is not advertised via CPUID, the kernel
-       selects a best effort mitigation mode. This mode invokes the mitigation
-       instructions without a guarantee that they clear the CPU buffers.
-
-       This is done to address virtualization scenarios where the host has the
-       microcode update applied, but the hypervisor is not yet updated to
-       expose the CPUID to the guest. If the host has updated microcode the
-       protection takes effect; otherwise a few CPU cycles are wasted
-       pointlessly.
+     - The system tries to clear the buffers but the microcode might not support the operation.
    * - 'Mitigation: Clear CPU buffers'
      - The microcode has been updated to clear the buffers. TSX is still enabled.
    * - 'Mitigation: TSX disabled'
      - TSX is disabled.
    * - 'Not affected'
      - The CPU is not affected by this issue.
+
+.. _ucode_needed:
+
+Best effort mitigation mode
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If the processor is vulnerable, but the availability of the microcode-based
+mitigation mechanism is not advertised via CPUID the kernel selects a best
+effort mitigation mode.  This mode invokes the mitigation instructions
+without a guarantee that they clear the CPU buffers.
+
+This is done to address virtualization scenarios where the host has the
+microcode update applied, but the hypervisor is not yet updated to expose the
+CPUID to the guest. If the host has updated microcode the protection takes
+effect; otherwise a few CPU cycles are wasted pointlessly.
+
+The state in the tsx_async_abort sysfs file reflects this situation
+accordingly.
+
 
 Mitigation mechanism
 --------------------
@@ -128,6 +135,8 @@ enables the mitigation by default.
 
 The mitigation can be controlled at boot time via a kernel command line option.
 See :ref:`taa_mitigation_control_command_line`.
+
+.. _virt_mechanism:
 
 Virtualization mitigation
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -165,10 +174,7 @@ the option "tsx_async_abort=". The valid arguments for this option are:
                 CPU is not vulnerable to cross-thread TAA attacks.
   ============  =============================================================
 
-Not specifying this option is equivalent to "tsx_async_abort=full". For
-processors that are affected by both TAA and MDS, specifying just
-"tsx_async_abort=off" without an accompanying "mds=off" will have no
-effect as the same mitigation is used for both vulnerabilities.
+Not specifying this option is equivalent to "tsx_async_abort=full".
 
 The kernel command line also allows to control the TSX feature using the
 parameter "tsx=" on CPUs which support TSX control. MSR_IA32_TSX_CTRL is used

@@ -863,8 +863,8 @@ static int smbb_charger_probe(struct platform_device *pdev)
 	}
 
 	chg->revision += 1;
-	if (chg->revision != 1 && chg->revision != 2 && chg->revision != 3) {
-		dev_err(&pdev->dev, "v%d hardware not supported\n", chg->revision);
+	if (chg->revision != 2 && chg->revision != 3) {
+		dev_err(&pdev->dev, "v1 hardware not supported\n");
 		return -ENODEV;
 	}
 	dev_info(&pdev->dev, "Initializing SMBB rev %u", chg->revision);
@@ -929,8 +929,11 @@ static int smbb_charger_probe(struct platform_device *pdev)
 		int irq;
 
 		irq = platform_get_irq_byname(pdev, smbb_charger_irqs[i].name);
-		if (irq < 0)
+		if (irq < 0) {
+			dev_err(&pdev->dev, "failed to get irq '%s'\n",
+				smbb_charger_irqs[i].name);
 			return irq;
+		}
 
 		smbb_charger_irqs[i].handler(irq, chg);
 
@@ -1000,17 +1003,18 @@ static int smbb_charger_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void smbb_charger_remove(struct platform_device *pdev)
+static int smbb_charger_remove(struct platform_device *pdev)
 {
 	struct smbb_charger *chg;
 
 	chg = platform_get_drvdata(pdev);
 
 	regmap_update_bits(chg->regmap, chg->addr + SMBB_CHG_CTRL, CTRL_EN, 0);
+
+	return 0;
 }
 
 static const struct of_device_id smbb_charger_id_table[] = {
-	{ .compatible = "qcom,pm8226-charger" },
 	{ .compatible = "qcom,pm8941-charger" },
 	{ }
 };
@@ -1018,7 +1022,7 @@ MODULE_DEVICE_TABLE(of, smbb_charger_id_table);
 
 static struct platform_driver smbb_charger_driver = {
 	.probe	  = smbb_charger_probe,
-	.remove_new	 = smbb_charger_remove,
+	.remove	 = smbb_charger_remove,
 	.driver	 = {
 		.name   = "qcom-smbb",
 		.of_match_table = smbb_charger_id_table,

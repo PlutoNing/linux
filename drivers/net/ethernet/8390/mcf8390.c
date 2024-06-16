@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  Support for ColdFire CPU based boards using a NS8390 Ethernet device.
  *
@@ -6,6 +5,9 @@
  *
  *  (C) Copyright 2012,  Greg Ungerer <gerg@uclinux.org>
  *
+ *  This file is subject to the terms and conditions of the GNU General Public
+ *  License.  See the file COPYING in the main directory of the Linux
+ *  distribution for more details.
  */
 
 #include <linux/module.h>
@@ -372,7 +374,8 @@ static int mcf8390_init(struct net_device *dev)
 	if (ret)
 		return ret;
 
-	eth_hw_addr_set(dev, SA_prom);
+	for (i = 0; i < ETH_ALEN; i++)
+		dev->dev_addr[i] = SA_prom[i];
 
 	netdev_dbg(dev, "Found ethernet address: %pM\n", dev->dev_addr);
 
@@ -403,13 +406,15 @@ static int mcf8390_init(struct net_device *dev)
 static int mcf8390_probe(struct platform_device *pdev)
 {
 	struct net_device *dev;
-	struct resource *mem;
+	struct resource *mem, *irq;
 	resource_size_t msize;
-	int ret, irq;
+	int ret;
 
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0)
+	irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (irq == NULL) {
+		dev_err(&pdev->dev, "no IRQ specified?\n");
 		return -ENXIO;
+	}
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (mem == NULL) {
@@ -429,7 +434,7 @@ static int mcf8390_probe(struct platform_device *pdev)
 	SET_NETDEV_DEV(dev, &pdev->dev);
 	platform_set_drvdata(pdev, dev);
 
-	dev->irq = irq;
+	dev->irq = irq->start;
 	dev->base_addr = mem->start;
 
 	ret = mcf8390_init(dev);
@@ -441,15 +446,17 @@ static int mcf8390_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void mcf8390_remove(struct platform_device *pdev)
+static int mcf8390_remove(struct platform_device *pdev)
 {
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct resource *mem;
 
 	unregister_netdev(dev);
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	release_mem_region(mem->start, resource_size(mem));
+	if (mem)
+		release_mem_region(mem->start, resource_size(mem));
 	free_netdev(dev);
+	return 0;
 }
 
 static struct platform_driver mcf8390_drv = {
@@ -457,7 +464,7 @@ static struct platform_driver mcf8390_drv = {
 		.name	= "mcf8390",
 	},
 	.probe		= mcf8390_probe,
-	.remove_new	= mcf8390_remove,
+	.remove		= mcf8390_remove,
 };
 
 module_platform_driver(mcf8390_drv);

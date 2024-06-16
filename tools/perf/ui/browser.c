@@ -57,12 +57,12 @@ void ui_browser__gotorc(struct ui_browser *browser, int y, int x)
 void ui_browser__write_nstring(struct ui_browser *browser __maybe_unused, const char *msg,
 			       unsigned int width)
 {
-	SLsmg_write_nstring(msg, width);
+	slsmg_write_nstring(msg, width);
 }
 
 void ui_browser__vprintf(struct ui_browser *browser __maybe_unused, const char *fmt, va_list args)
 {
-	SLsmg_vprintf(fmt, args);
+	slsmg_vprintf(fmt, args);
 }
 
 void ui_browser__printf(struct ui_browser *browser __maybe_unused, const char *fmt, ...)
@@ -268,9 +268,9 @@ void __ui_browser__show_title(struct ui_browser *browser, const char *title)
 
 void ui_browser__show_title(struct ui_browser *browser, const char *title)
 {
-	mutex_lock(&ui__lock);
+	pthread_mutex_lock(&ui__lock);
 	__ui_browser__show_title(browser, title);
-	mutex_unlock(&ui__lock);
+	pthread_mutex_unlock(&ui__lock);
 }
 
 int ui_browser__show(struct ui_browser *browser, const char *title,
@@ -284,7 +284,7 @@ int ui_browser__show(struct ui_browser *browser, const char *title,
 
 	browser->refresh_dimensions(browser);
 
-	mutex_lock(&ui__lock);
+	pthread_mutex_lock(&ui__lock);
 	__ui_browser__show_title(browser, title);
 
 	browser->title = title;
@@ -295,16 +295,16 @@ int ui_browser__show(struct ui_browser *browser, const char *title,
 	va_end(ap);
 	if (err > 0)
 		ui_helpline__push(browser->helpline);
-	mutex_unlock(&ui__lock);
+	pthread_mutex_unlock(&ui__lock);
 	return err ? 0 : -1;
 }
 
 void ui_browser__hide(struct ui_browser *browser)
 {
-	mutex_lock(&ui__lock);
+	pthread_mutex_lock(&ui__lock);
 	ui_helpline__pop();
 	zfree(&browser->helpline);
-	mutex_unlock(&ui__lock);
+	pthread_mutex_unlock(&ui__lock);
 }
 
 static void ui_browser__scrollbar_set(struct ui_browser *browser)
@@ -352,9 +352,9 @@ static int __ui_browser__refresh(struct ui_browser *browser)
 
 int ui_browser__refresh(struct ui_browser *browser)
 {
-	mutex_lock(&ui__lock);
+	pthread_mutex_lock(&ui__lock);
 	__ui_browser__refresh(browser);
-	mutex_unlock(&ui__lock);
+	pthread_mutex_unlock(&ui__lock);
 
 	return 0;
 }
@@ -390,10 +390,10 @@ int ui_browser__run(struct ui_browser *browser, int delay_secs)
 	while (1) {
 		off_t offset;
 
-		mutex_lock(&ui__lock);
+		pthread_mutex_lock(&ui__lock);
 		err = __ui_browser__refresh(browser);
 		SLsmg_refresh();
-		mutex_unlock(&ui__lock);
+		pthread_mutex_unlock(&ui__lock);
 		if (err < 0)
 			break;
 
@@ -757,40 +757,25 @@ void __ui_browser__line_arrow(struct ui_browser *browser, unsigned int column,
 }
 
 void ui_browser__mark_fused(struct ui_browser *browser, unsigned int column,
-			    unsigned int row, int diff, bool arrow_down)
+			    unsigned int row, bool arrow_down)
 {
-	int end_row;
+	unsigned int end_row;
 
-	if (diff <= 0)
+	if (row >= browser->top_idx)
+		end_row = row - browser->top_idx;
+	else
 		return;
 
 	SLsmg_set_char_set(1);
 
 	if (arrow_down) {
-		if (row + diff <= browser->top_idx)
-			return;
-
-		end_row = row + diff - browser->top_idx;
 		ui_browser__gotorc(browser, end_row, column - 1);
+		SLsmg_write_char(SLSMG_ULCORN_CHAR);
+		ui_browser__gotorc(browser, end_row, column);
+		SLsmg_draw_hline(2);
+		ui_browser__gotorc(browser, end_row + 1, column - 1);
 		SLsmg_write_char(SLSMG_LTEE_CHAR);
-
-		while (--end_row >= 0 && end_row > (int)(row - browser->top_idx)) {
-			ui_browser__gotorc(browser, end_row, column - 1);
-			SLsmg_draw_vline(1);
-		}
-
-		end_row = (int)(row - browser->top_idx);
-		if (end_row >= 0) {
-			ui_browser__gotorc(browser, end_row, column - 1);
-			SLsmg_write_char(SLSMG_ULCORN_CHAR);
-			ui_browser__gotorc(browser, end_row, column);
-			SLsmg_draw_hline(2);
-		}
 	} else {
-		if (row < browser->top_idx)
-			return;
-
-		end_row = row - browser->top_idx;
 		ui_browser__gotorc(browser, end_row, column - 1);
 		SLsmg_write_char(SLSMG_LTEE_CHAR);
 		ui_browser__gotorc(browser, end_row, column);
@@ -808,6 +793,6 @@ void ui_browser__init(void)
 
 	while (ui_browser__colorsets[i].name) {
 		struct ui_browser_colorset *c = &ui_browser__colorsets[i++];
-		SLtt_set_color(c->colorset, c->name, c->fg, c->bg);
+		sltt_set_color(c->colorset, c->name, c->fg, c->bg);
 	}
 }

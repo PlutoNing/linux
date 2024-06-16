@@ -70,10 +70,6 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 
 	/*
 	 * Add or remove nodes from the lockspace's ls_nodes list.
-	 *
-	 * Due to the fact that we must report all membership changes to lsops
-	 * or midcomms layer, it is not permitted to abort ls_recover() until
-	 * this is done.
 	 */
 
 	error = dlm_recover_members(ls, rv, &neg);
@@ -90,7 +86,7 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 
 	dlm_set_recover_status(ls, DLM_RS_NODES);
 
-	error = dlm_recover_members_wait(ls, rv->seq);
+	error = dlm_recover_members_wait(ls);
 	if (error) {
 		log_rinfo(ls, "dlm_recover_members_wait error %d", error);
 		goto fail;
@@ -103,7 +99,7 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 	 * nodes their master rsb names that hash to us.
 	 */
 
-	error = dlm_recover_directory(ls, rv->seq);
+	error = dlm_recover_directory(ls);
 	if (error) {
 		log_rinfo(ls, "dlm_recover_directory error %d", error);
 		goto fail;
@@ -111,7 +107,7 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 
 	dlm_set_recover_status(ls, DLM_RS_DIR);
 
-	error = dlm_recover_directory_wait(ls, rv->seq);
+	error = dlm_recover_directory_wait(ls);
 	if (error) {
 		log_rinfo(ls, "dlm_recover_directory_wait error %d", error);
 		goto fail;
@@ -128,10 +124,9 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 
 	dlm_recover_waiters_pre(ls);
 
-	if (dlm_recovery_stopped(ls)) {
-		error = -EINTR;
+	error = dlm_recovery_stopped(ls);
+	if (error)
 		goto fail;
-	}
 
 	if (neg || dlm_no_directory(ls)) {
 		/*
@@ -145,7 +140,7 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 		 * departed nodes.
 		 */
 
-		error = dlm_recover_masters(ls, rv->seq);
+		error = dlm_recover_masters(ls);
 		if (error) {
 			log_rinfo(ls, "dlm_recover_masters error %d", error);
 			goto fail;
@@ -155,7 +150,7 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 		 * Send our locks on remastered rsb's to the new masters.
 		 */
 
-		error = dlm_recover_locks(ls, rv->seq);
+		error = dlm_recover_locks(ls);
 		if (error) {
 			log_rinfo(ls, "dlm_recover_locks error %d", error);
 			goto fail;
@@ -163,7 +158,7 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 
 		dlm_set_recover_status(ls, DLM_RS_LOCKS);
 
-		error = dlm_recover_locks_wait(ls, rv->seq);
+		error = dlm_recover_locks_wait(ls);
 		if (error) {
 			log_rinfo(ls, "dlm_recover_locks_wait error %d", error);
 			goto fail;
@@ -187,7 +182,7 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 		 */
 		dlm_set_recover_status(ls, DLM_RS_LOCKS);
 
-		error = dlm_recover_locks_wait(ls, rv->seq);
+		error = dlm_recover_locks_wait(ls);
 		if (error) {
 			log_rinfo(ls, "dlm_recover_locks_wait error %d", error);
 			goto fail;
@@ -206,13 +201,15 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 
 	dlm_set_recover_status(ls, DLM_RS_DONE);
 
-	error = dlm_recover_done_wait(ls, rv->seq);
+	error = dlm_recover_done_wait(ls);
 	if (error) {
 		log_rinfo(ls, "dlm_recover_done_wait error %d", error);
 		goto fail;
 	}
 
 	dlm_clear_members_gone(ls);
+
+	dlm_adjust_timeouts(ls);
 
 	dlm_callback_resume(ls);
 
@@ -241,12 +238,14 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 		  jiffies_to_msecs(jiffies - start));
 	mutex_unlock(&ls->ls_recoverd_active);
 
+	dlm_lsop_recover_done(ls);
 	return 0;
 
  fail:
 	dlm_release_root_list(ls);
+	log_rinfo(ls, "dlm_recover %llu error %d",
+		  (unsigned long long)rv->seq, error);
 	mutex_unlock(&ls->ls_recoverd_active);
-
 	return error;
 }
 
@@ -257,7 +256,6 @@ static int ls_recover(struct dlm_ls *ls, struct dlm_recover *rv)
 static void do_ls_recovery(struct dlm_ls *ls)
 {
 	struct dlm_recover *rv = NULL;
-	int error;
 
 	spin_lock(&ls->ls_recover_lock);
 	rv = ls->ls_recover_args;
@@ -267,31 +265,7 @@ static void do_ls_recovery(struct dlm_ls *ls)
 	spin_unlock(&ls->ls_recover_lock);
 
 	if (rv) {
-		error = ls_recover(ls, rv);
-		switch (error) {
-		case 0:
-			ls->ls_recovery_result = 0;
-			complete(&ls->ls_recovery_done);
-
-			dlm_lsop_recover_done(ls);
-			break;
-		case -EINTR:
-			/* if recovery was interrupted -EINTR we wait for the next
-			 * ls_recover() iteration until it hopefully succeeds.
-			 */
-			log_rinfo(ls, "%s %llu interrupted and should be queued to run again",
-				  __func__, (unsigned long long)rv->seq);
-			break;
-		default:
-			log_rinfo(ls, "%s %llu error %d", __func__,
-				  (unsigned long long)rv->seq, error);
-
-			/* let new_lockspace() get aware of critical error */
-			ls->ls_recovery_result = error;
-			complete(&ls->ls_recovery_done);
-			break;
-		}
-
+		ls_recover(ls, rv);
 		kfree(rv->nodes);
 		kfree(rv);
 	}

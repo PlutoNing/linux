@@ -10,37 +10,36 @@
  */
 
 #include <linux/interrupt.h>
-
 #include <asm/acrn.h>
 #include <asm/apic.h>
-#include <asm/cpufeatures.h>
 #include <asm/desc.h>
 #include <asm/hypervisor.h>
-#include <asm/idtentry.h>
 #include <asm/irq_regs.h>
 
-static u32 __init acrn_detect(void)
+static uint32_t __init acrn_detect(void)
 {
-	return acrn_cpuid_base();
+	return hypervisor_cpuid_base("ACRNACRNACRN\0\0", 0);
 }
 
 static void __init acrn_init_platform(void)
 {
-	/* Install system interrupt handler for ACRN hypervisor callback */
-	sysvec_install(HYPERVISOR_CALLBACK_VECTOR, sysvec_acrn_hv_callback);
-
-	x86_platform.calibrate_tsc = acrn_get_tsc_khz;
-	x86_platform.calibrate_cpu = acrn_get_tsc_khz;
+	/* Setup the IDT for ACRN hypervisor callback */
+	alloc_intr_gate(HYPERVISOR_CALLBACK_VECTOR, acrn_hv_callback_vector);
 }
 
 static bool acrn_x2apic_available(void)
 {
-	return boot_cpu_has(X86_FEATURE_X2APIC);
+	/*
+	 * x2apic is not supported for now. Future enablement will have to check
+	 * X86_FEATURE_X2APIC to determine whether x2apic is supported in the
+	 * guest.
+	 */
+	return false;
 }
 
 static void (*acrn_intr_handler)(void);
 
-DEFINE_IDTENTRY_SYSVEC(sysvec_acrn_hv_callback)
+__visible void __irq_entry acrn_hv_vector_handler(struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
@@ -51,26 +50,15 @@ DEFINE_IDTENTRY_SYSVEC(sysvec_acrn_hv_callback)
 	 * will block the interrupt whose vector is lower than
 	 * HYPERVISOR_CALLBACK_VECTOR.
 	 */
-	apic_eoi();
+	entering_ack_irq();
 	inc_irq_stat(irq_hv_callback_count);
 
 	if (acrn_intr_handler)
 		acrn_intr_handler();
 
+	exiting_irq();
 	set_irq_regs(old_regs);
 }
-
-void acrn_setup_intr_handler(void (*handler)(void))
-{
-	acrn_intr_handler = handler;
-}
-EXPORT_SYMBOL_GPL(acrn_setup_intr_handler);
-
-void acrn_remove_intr_handler(void)
-{
-	acrn_intr_handler = NULL;
-}
-EXPORT_SYMBOL_GPL(acrn_remove_intr_handler);
 
 const __initconst struct hypervisor_x86 x86_hyper_acrn = {
 	.name                   = "ACRN",

@@ -192,7 +192,7 @@ static void eurwdt_ping(void)
  * @ppos: pointer to the position to write. No seeks allowed
  *
  * A write to a watchdog device is defined as a keepalive signal. Any
- * write of data will do, as we don't define content meaning.
+ * write of data will do, as we we don't define content meaning.
  */
 
 static ssize_t eurwdt_write(struct file *file, const char __user *buf,
@@ -286,7 +286,7 @@ static long eurwdt_ioctl(struct file *file,
 		eurwdt_timeout = time;
 		eurwdt_set_timeout(time);
 		spin_unlock(&eurwdt_lock);
-		fallthrough;
+		/* fall through */
 
 	case WDIOC_GETTIMEOUT:
 		return put_user(eurwdt_timeout, p);
@@ -371,7 +371,6 @@ static const struct file_operations eurwdt_fops = {
 	.llseek		= no_llseek,
 	.write		= eurwdt_write,
 	.unlocked_ioctl	= eurwdt_ioctl,
-	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= eurwdt_open,
 	.release	= eurwdt_release,
 };
@@ -392,7 +391,7 @@ static struct notifier_block eurwdt_notifier = {
 };
 
 /**
- * eurwdt_exit:
+ * cleanup_module:
  *
  * Unload the watchdog. You cannot do this with any file handles open.
  * If your watchdog is set to continue ticking on close and you unload

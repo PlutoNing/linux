@@ -7,12 +7,13 @@
  * Author: Mark Brown <broonie@opensource.wolfsonmicro.com>
  */
 
-#include <linux/gpio/driver.h>
 #include <linux/kernel.h>
+#include <linux/slab.h>
 #include <linux/module.h>
+#include <linux/gpio/driver.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
-#include <linux/slab.h>
+#include <linux/seq_file.h>
 
 #include <linux/mfd/arizona/core.h>
 #include <linux/mfd/arizona/pdata.h>
@@ -63,7 +64,6 @@ static int arizona_gpio_get(struct gpio_chip *chip, unsigned offset)
 		ret = pm_runtime_get_sync(chip->parent);
 		if (ret < 0) {
 			dev_err(chip->parent, "Failed to resume: %d\n", ret);
-			pm_runtime_put_autosuspend(chip->parent);
 			return ret;
 		}
 
@@ -72,15 +72,12 @@ static int arizona_gpio_get(struct gpio_chip *chip, unsigned offset)
 		if (ret < 0) {
 			dev_err(chip->parent, "Failed to drop cache: %d\n",
 				ret);
-			pm_runtime_put_autosuspend(chip->parent);
 			return ret;
 		}
 
 		ret = regmap_read(arizona->regmap, reg, &val);
-		if (ret < 0) {
-			pm_runtime_put_autosuspend(chip->parent);
+		if (ret < 0)
 			return ret;
-		}
 
 		pm_runtime_mark_last_busy(chip->parent);
 		pm_runtime_put_autosuspend(chip->parent);
@@ -109,7 +106,6 @@ static int arizona_gpio_direction_out(struct gpio_chip *chip,
 		ret = pm_runtime_get_sync(chip->parent);
 		if (ret < 0) {
 			dev_err(chip->parent, "Failed to resume: %d\n", ret);
-			pm_runtime_put(chip->parent);
 			return ret;
 		}
 	}
@@ -150,8 +146,6 @@ static int arizona_gpio_probe(struct platform_device *pdev)
 	struct arizona_gpio *arizona_gpio;
 	int ret;
 
-	device_set_node(&pdev->dev, dev_fwnode(pdev->dev.parent));
-
 	arizona_gpio = devm_kzalloc(&pdev->dev, sizeof(*arizona_gpio),
 				    GFP_KERNEL);
 	if (!arizona_gpio)
@@ -160,6 +154,9 @@ static int arizona_gpio_probe(struct platform_device *pdev)
 	arizona_gpio->arizona = arizona;
 	arizona_gpio->gpio_chip = template_chip;
 	arizona_gpio->gpio_chip.parent = &pdev->dev;
+#ifdef CONFIG_OF_GPIO
+	arizona_gpio->gpio_chip.of_node = arizona->dev->of_node;
+#endif
 
 	switch (arizona->type) {
 	case WM5102:
@@ -190,7 +187,6 @@ static int arizona_gpio_probe(struct platform_device *pdev)
 	ret = devm_gpiochip_add_data(&pdev->dev, &arizona_gpio->gpio_chip,
 				     arizona_gpio);
 	if (ret < 0) {
-		pm_runtime_disable(&pdev->dev);
 		dev_err(&pdev->dev, "Could not register gpiochip, %d\n",
 			ret);
 		return ret;

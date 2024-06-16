@@ -68,17 +68,15 @@ int athub_v1_0_set_clockgating(struct amdgpu_device *adev,
 	if (amdgpu_sriov_vf(adev))
 		return 0;
 
-	switch (amdgpu_ip_version(adev, ATHUB_HWIP, 0)) {
-	case IP_VERSION(9, 0, 0):
-	case IP_VERSION(9, 1, 0):
-	case IP_VERSION(9, 2, 0):
-	case IP_VERSION(9, 3, 0):
-	case IP_VERSION(9, 4, 0):
-	case IP_VERSION(1, 5, 0):
+	switch (adev->asic_type) {
+	case CHIP_VEGA10:
+	case CHIP_VEGA12:
+	case CHIP_VEGA20:
+	case CHIP_RAVEN:
 		athub_update_medium_grain_clock_gating(adev,
-				state == AMD_CG_STATE_GATE);
+				state == AMD_CG_STATE_GATE ? true : false);
 		athub_update_medium_grain_light_sleep(adev,
-				state == AMD_CG_STATE_GATE);
+				state == AMD_CG_STATE_GATE ? true : false);
 		break;
 	default:
 		break;
@@ -87,7 +85,7 @@ int athub_v1_0_set_clockgating(struct amdgpu_device *adev,
 	return 0;
 }
 
-void athub_v1_0_get_clockgating(struct amdgpu_device *adev, u64 *flags)
+void athub_v1_0_get_clockgating(struct amdgpu_device *adev, u32 *flags)
 {
 	int data;
 

@@ -106,22 +106,20 @@ struct wmi *ath9k_init_wmi(struct ath9k_htc_priv *priv)
 	mutex_init(&wmi->multi_rmw_mutex);
 	init_completion(&wmi->cmd_wait);
 	INIT_LIST_HEAD(&wmi->pending_tx_events);
-	tasklet_setup(&wmi->wmi_event_tasklet, ath9k_wmi_event_tasklet);
+	tasklet_init(&wmi->wmi_event_tasklet, ath9k_wmi_event_tasklet,
+		     (unsigned long)wmi);
 
 	return wmi;
 }
 
-void ath9k_stop_wmi(struct ath9k_htc_priv *priv)
+void ath9k_deinit_wmi(struct ath9k_htc_priv *priv)
 {
 	struct wmi *wmi = priv->wmi;
 
 	mutex_lock(&wmi->op_mutex);
 	wmi->stopped = true;
 	mutex_unlock(&wmi->op_mutex);
-}
 
-void ath9k_destroy_wmi(struct ath9k_htc_priv *priv)
-{
 	kfree(priv->wmi);
 }
 
@@ -135,9 +133,9 @@ void ath9k_wmi_event_drain(struct ath9k_htc_priv *priv)
 	spin_unlock_irqrestore(&priv->wmi->wmi_lock, flags);
 }
 
-void ath9k_wmi_event_tasklet(struct tasklet_struct *t)
+void ath9k_wmi_event_tasklet(unsigned long data)
 {
-	struct wmi *wmi = from_tasklet(wmi, t, wmi_event_tasklet);
+	struct wmi *wmi = (struct wmi *)data;
 	struct ath9k_htc_priv *priv = wmi->drv_priv;
 	struct wmi_cmd_hdr *hdr;
 	void *wmi_event;
@@ -154,12 +152,6 @@ void ath9k_wmi_event_tasklet(struct tasklet_struct *t)
 			return;
 		}
 		spin_unlock_irqrestore(&wmi->wmi_lock, flags);
-
-		/* Check if ath9k_htc_probe_device() completed. */
-		if (!data_race(priv->initialized)) {
-			kfree_skb(skb);
-			continue;
-		}
 
 		hdr = (struct wmi_cmd_hdr *) skb->data;
 		cmd_id = be16_to_cpu(hdr->command_id);
@@ -223,10 +215,6 @@ static void ath9k_wmi_ctrl_rx(void *priv, struct sk_buff *skb,
 	if (unlikely(wmi->stopped))
 		goto free_skb;
 
-	/* Validate the obtained SKB. */
-	if (unlikely(skb->len < sizeof(struct wmi_cmd_hdr)))
-		goto free_skb;
-
 	hdr = (struct wmi_cmd_hdr *) skb->data;
 	cmd_id = be16_to_cpu(hdr->command_id);
 
@@ -244,10 +232,10 @@ static void ath9k_wmi_ctrl_rx(void *priv, struct sk_buff *skb,
 		spin_unlock_irqrestore(&wmi->wmi_lock, flags);
 		goto free_skb;
 	}
+	spin_unlock_irqrestore(&wmi->wmi_lock, flags);
 
 	/* WMI command response */
 	ath9k_wmi_rsp_callback(wmi, skb);
-	spin_unlock_irqrestore(&wmi->wmi_lock, flags);
 
 free_skb:
 	kfree_skb(skb);
@@ -285,8 +273,7 @@ int ath9k_wmi_connect(struct htc_target *htc, struct wmi *wmi,
 
 static int ath9k_wmi_cmd_issue(struct wmi *wmi,
 			       struct sk_buff *skb,
-			       enum wmi_cmd_id cmd, u16 len,
-			       u8 *rsp_buf, u32 rsp_len)
+			       enum wmi_cmd_id cmd, u16 len)
 {
 	struct wmi_cmd_hdr *hdr;
 	unsigned long flags;
@@ -296,11 +283,6 @@ static int ath9k_wmi_cmd_issue(struct wmi *wmi,
 	hdr->seq_no = cpu_to_be16(++wmi->tx_seq_id);
 
 	spin_lock_irqsave(&wmi->wmi_lock, flags);
-
-	/* record the rsp buffer and length */
-	wmi->cmd_rsp_buf = rsp_buf;
-	wmi->cmd_rsp_len = rsp_len;
-
 	wmi->last_seq_id = wmi->tx_seq_id;
 	spin_unlock_irqrestore(&wmi->wmi_lock, flags);
 
@@ -316,8 +298,8 @@ int ath9k_wmi_cmd(struct wmi *wmi, enum wmi_cmd_id cmd_id,
 	struct ath_common *common = ath9k_hw_common(ah);
 	u16 headroom = sizeof(struct htc_frame_hdr) +
 		       sizeof(struct wmi_cmd_hdr);
-	unsigned long time_left, flags;
 	struct sk_buff *skb;
+	unsigned long time_left;
 	int ret = 0;
 
 	if (ah->ah_flags & AH_UNPLUGGED)
@@ -341,7 +323,11 @@ int ath9k_wmi_cmd(struct wmi *wmi, enum wmi_cmd_id cmd_id,
 		goto out;
 	}
 
-	ret = ath9k_wmi_cmd_issue(wmi, skb, cmd_id, cmd_len, rsp_buf, rsp_len);
+	/* record the rsp buffer and length */
+	wmi->cmd_rsp_buf = rsp_buf;
+	wmi->cmd_rsp_len = rsp_len;
+
+	ret = ath9k_wmi_cmd_issue(wmi, skb, cmd_id, cmd_len);
 	if (ret)
 		goto out;
 
@@ -349,10 +335,8 @@ int ath9k_wmi_cmd(struct wmi *wmi, enum wmi_cmd_id cmd_id,
 	if (!time_left) {
 		ath_dbg(common, WMI, "Timeout waiting for WMI command: %s\n",
 			wmi_cmd_to_name(cmd_id));
-		spin_lock_irqsave(&wmi->wmi_lock, flags);
-		wmi->last_seq_id = 0;
-		spin_unlock_irqrestore(&wmi->wmi_lock, flags);
 		mutex_unlock(&wmi->op_mutex);
+		kfree_skb(skb);
 		return -ETIMEDOUT;
 	}
 

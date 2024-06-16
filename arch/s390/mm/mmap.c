@@ -17,6 +17,7 @@
 #include <linux/random.h>
 #include <linux/compat.h>
 #include <linux/security.h>
+#include <asm/pgalloc.h>
 #include <asm/elf.h>
 
 static unsigned long stack_maxrandom_size(void)
@@ -37,7 +38,7 @@ static inline int mmap_is_legacy(struct rlimit *rlim_stack)
 
 unsigned long arch_mmap_rnd(void)
 {
-	return (get_random_u32() & MMAP_RND_MASK) << PAGE_SHIFT;
+	return (get_random_int() & MMAP_RND_MASK) << PAGE_SHIFT;
 }
 
 static unsigned long mmap_base_legacy(unsigned long rnd)
@@ -58,9 +59,9 @@ static inline unsigned long mmap_base(unsigned long rnd,
 
 	/*
 	 * Top of mmap area (just below the process stack).
-	 * Leave at least a ~128 MB hole.
+	 * Leave at least a ~32 MB hole.
 	 */
-	gap_min = SZ_128M;
+	gap_min = 32 * 1024 * 1024UL;
 	gap_max = (STACK_TOP / 6) * 5;
 
 	if (gap < gap_min)
@@ -71,22 +72,14 @@ static inline unsigned long mmap_base(unsigned long rnd,
 	return PAGE_ALIGN(STACK_TOP - gap - rnd);
 }
 
-static int get_align_mask(struct file *filp, unsigned long flags)
-{
-	if (!(current->flags & PF_RANDOMIZE))
-		return 0;
-	if (filp || (flags & MAP_SHARED))
-		return MMAP_ALIGN_MASK << PAGE_SHIFT;
-	return 0;
-}
-
-unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr,
-				     unsigned long len, unsigned long pgoff,
-				     unsigned long flags)
+unsigned long
+arch_get_unmapped_area(struct file *filp, unsigned long addr,
+		unsigned long len, unsigned long pgoff, unsigned long flags)
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	struct vm_unmapped_area_info info;
+	int rc;
 
 	if (len > TASK_SIZE - mmap_min_addr)
 		return -ENOMEM;
@@ -106,23 +99,36 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	info.length = len;
 	info.low_limit = mm->mmap_base;
 	info.high_limit = TASK_SIZE;
-	info.align_mask = get_align_mask(filp, flags);
+	if (filp || (flags & MAP_SHARED))
+		info.align_mask = MMAP_ALIGN_MASK << PAGE_SHIFT;
+	else
+		info.align_mask = 0;
 	info.align_offset = pgoff << PAGE_SHIFT;
 	addr = vm_unmapped_area(&info);
-	if (offset_in_page(addr))
+	if (addr & ~PAGE_MASK)
 		return addr;
 
 check_asce_limit:
-	return check_asce_limit(mm, addr, len);
+	if (addr + len > current->mm->context.asce_limit &&
+	    addr + len <= TASK_SIZE) {
+		rc = crst_table_upgrade(mm, addr + len);
+		if (rc)
+			return (unsigned long) rc;
+	}
+
+	return addr;
 }
 
-unsigned long arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr,
-					     unsigned long len, unsigned long pgoff,
-					     unsigned long flags)
+unsigned long
+arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
+			  const unsigned long len, const unsigned long pgoff,
+			  const unsigned long flags)
 {
 	struct vm_area_struct *vma;
 	struct mm_struct *mm = current->mm;
+	unsigned long addr = addr0;
 	struct vm_unmapped_area_info info;
+	int rc;
 
 	/* requested length too big for entire address space */
 	if (len > TASK_SIZE - mmap_min_addr)
@@ -142,9 +148,12 @@ unsigned long arch_get_unmapped_area_topdown(struct file *filp, unsigned long ad
 
 	info.flags = VM_UNMAPPED_AREA_TOPDOWN;
 	info.length = len;
-	info.low_limit = PAGE_SIZE;
+	info.low_limit = max(PAGE_SIZE, mmap_min_addr);
 	info.high_limit = mm->mmap_base;
-	info.align_mask = get_align_mask(filp, flags);
+	if (filp || (flags & MAP_SHARED))
+		info.align_mask = MMAP_ALIGN_MASK << PAGE_SHIFT;
+	else
+		info.align_mask = 0;
 	info.align_offset = pgoff << PAGE_SHIFT;
 	addr = vm_unmapped_area(&info);
 
@@ -154,18 +163,25 @@ unsigned long arch_get_unmapped_area_topdown(struct file *filp, unsigned long ad
 	 * can happen with large stack limits and large mmap()
 	 * allocations.
 	 */
-	if (offset_in_page(addr)) {
+	if (addr & ~PAGE_MASK) {
 		VM_BUG_ON(addr != -ENOMEM);
 		info.flags = 0;
 		info.low_limit = TASK_UNMAPPED_BASE;
 		info.high_limit = TASK_SIZE;
 		addr = vm_unmapped_area(&info);
-		if (offset_in_page(addr))
+		if (addr & ~PAGE_MASK)
 			return addr;
 	}
 
 check_asce_limit:
-	return check_asce_limit(mm, addr, len);
+	if (addr + len > current->mm->context.asce_limit &&
+	    addr + len <= TASK_SIZE) {
+		rc = crst_table_upgrade(mm, addr + len);
+		if (rc)
+			return (unsigned long) rc;
+	}
+
+	return addr;
 }
 
 /*
@@ -191,23 +207,3 @@ void arch_pick_mmap_layout(struct mm_struct *mm, struct rlimit *rlim_stack)
 		mm->get_unmapped_area = arch_get_unmapped_area_topdown;
 	}
 }
-
-static const pgprot_t protection_map[16] = {
-	[VM_NONE]					= PAGE_NONE,
-	[VM_READ]					= PAGE_RO,
-	[VM_WRITE]					= PAGE_RO,
-	[VM_WRITE | VM_READ]				= PAGE_RO,
-	[VM_EXEC]					= PAGE_RX,
-	[VM_EXEC | VM_READ]				= PAGE_RX,
-	[VM_EXEC | VM_WRITE]				= PAGE_RX,
-	[VM_EXEC | VM_WRITE | VM_READ]			= PAGE_RX,
-	[VM_SHARED]					= PAGE_NONE,
-	[VM_SHARED | VM_READ]				= PAGE_RO,
-	[VM_SHARED | VM_WRITE]				= PAGE_RW,
-	[VM_SHARED | VM_WRITE | VM_READ]		= PAGE_RW,
-	[VM_SHARED | VM_EXEC]				= PAGE_RX,
-	[VM_SHARED | VM_EXEC | VM_READ]			= PAGE_RX,
-	[VM_SHARED | VM_EXEC | VM_WRITE]		= PAGE_RWX,
-	[VM_SHARED | VM_EXEC | VM_WRITE | VM_READ]	= PAGE_RWX
-};
-DECLARE_VM_GET_PAGE_PROT

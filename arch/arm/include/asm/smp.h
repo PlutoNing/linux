@@ -25,6 +25,11 @@ struct seq_file;
 extern void show_ipi_list(struct seq_file *, int);
 
 /*
+ * Called from assembly code, this handles an IPI.
+ */
+asmlinkage void do_IPI(int ipinr, struct pt_regs *regs);
+
+/*
  * Called from C code, this handles an IPI.
  */
 void handle_IPI(int ipinr, struct pt_regs *regs);
@@ -34,16 +39,17 @@ void handle_IPI(int ipinr, struct pt_regs *regs);
  */
 extern void smp_init_cpus(void);
 
+
 /*
- * Register IPI interrupts with the arch SMP code
+ * Provide a function to raise an IPI cross call on CPUs in callmap.
  */
-extern void set_smp_ipi_range(int ipi_base, int nr_ipi);
+extern void set_smp_cross_call(void (*)(const struct cpumask *, unsigned int));
 
 /*
  * Called from platform specific assembly code, this is the
  * secondary CPU entry point.
  */
-asmlinkage void secondary_start_kernel(struct task_struct *task);
+asmlinkage void secondary_start_kernel(void);
 
 
 /*
@@ -56,7 +62,6 @@ struct secondary_data {
 	};
 	unsigned long swapper_pg_dir;
 	void *stack;
-	struct task_struct *task;
 };
 extern struct secondary_data secondary_data;
 extern void secondary_startup(void);
@@ -64,7 +69,7 @@ extern void secondary_startup_arm(void);
 
 extern int __cpu_disable(void);
 
-static inline void __cpu_die(unsigned int cpu) { }
+extern void __cpu_die(unsigned int cpu);
 
 extern void arch_send_call_function_single_ipi(int cpu);
 extern void arch_send_call_function_ipi_mask(const struct cpumask *mask);
@@ -108,7 +113,7 @@ struct of_cpu_method {
 
 #define CPU_METHOD_OF_DECLARE(name, _method, _ops)			\
 	static const struct of_cpu_method __cpu_method_of_table_##name	\
-		__used __section("__cpu_method_of_table")		\
+		__used __section(__cpu_method_of_table)			\
 		= { .method = _method, .ops = _ops }
 /*
  * set platform specific SMP operations

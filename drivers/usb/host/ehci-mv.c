@@ -11,7 +11,6 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/usb/otg.h>
-#include <linux/usb/of.h>
 #include <linux/platform_data/mv_usb.h>
 #include <linux/io.h>
 
@@ -42,33 +41,32 @@ struct ehci_hcd_mv {
 	int (*set_vbus)(unsigned int vbus);
 };
 
+static void ehci_clock_enable(struct ehci_hcd_mv *ehci_mv)
+{
+	clk_prepare_enable(ehci_mv->clk);
+}
+
+static void ehci_clock_disable(struct ehci_hcd_mv *ehci_mv)
+{
+	clk_disable_unprepare(ehci_mv->clk);
+}
+
 static int mv_ehci_enable(struct ehci_hcd_mv *ehci_mv)
 {
-	int retval;
-
-	retval = clk_prepare_enable(ehci_mv->clk);
-	if (retval)
-		return retval;
-
-	retval = phy_init(ehci_mv->phy);
-	if (retval)
-		clk_disable_unprepare(ehci_mv->clk);
-
-	return retval;
+	ehci_clock_enable(ehci_mv);
+	return phy_init(ehci_mv->phy);
 }
 
 static void mv_ehci_disable(struct ehci_hcd_mv *ehci_mv)
 {
 	phy_exit(ehci_mv->phy);
-	clk_disable_unprepare(ehci_mv->clk);
+	ehci_clock_disable(ehci_mv);
 }
 
 static int mv_ehci_reset(struct usb_hcd *hcd)
 {
 	struct device *dev = hcd->self.controller;
 	struct ehci_hcd_mv *ehci_mv = hcd_to_ehci_hcd_mv(hcd);
-	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
-	u32 status;
 	int retval;
 
 	if (ehci_mv == NULL) {
@@ -81,14 +79,6 @@ static int mv_ehci_reset(struct usb_hcd *hcd)
 	retval = ehci_setup(hcd);
 	if (retval)
 		dev_err(dev, "ehci_setup failed %d\n", retval);
-
-	if (of_usb_get_phy_mode(dev->of_node) == USBPHY_INTERFACE_MODE_HSIC) {
-		status = ehci_readl(ehci, &ehci->regs->port_status[0]);
-		status |= PORT_TEST_FORCE;
-		ehci_writel(ehci, status, &ehci->regs->port_status[0]);
-		status &= ~PORT_TEST_FORCE;
-		ehci_writel(ehci, status, &ehci->regs->port_status[0]);
-	}
 
 	return retval;
 }
@@ -107,14 +97,13 @@ static int mv_ehci_probe(struct platform_device *pdev)
 	struct ehci_hcd *ehci;
 	struct ehci_hcd_mv *ehci_mv;
 	struct resource *r;
-	int retval;
+	int retval = -ENODEV;
 	u32 offset;
-	u32 status;
 
 	if (usb_disabled())
 		return -ENODEV;
 
-	hcd = usb_create_hcd(&ehci_platform_hc_driver, &pdev->dev, dev_name(&pdev->dev));
+	hcd = usb_create_hcd(&ehci_platform_hc_driver, &pdev->dev, "mv ehci");
 	if (!hcd)
 		return -ENOMEM;
 
@@ -127,7 +116,7 @@ static int mv_ehci_probe(struct platform_device *pdev)
 		ehci_mv->set_vbus = pdata->set_vbus;
 	}
 
-	ehci_mv->phy = devm_phy_optional_get(&pdev->dev, "usb");
+	ehci_mv->phy = devm_phy_get(&pdev->dev, "usb");
 	if (IS_ERR(ehci_mv->phy)) {
 		retval = PTR_ERR(ehci_mv->phy);
 		if (retval != -EPROBE_DEFER)
@@ -142,7 +131,10 @@ static int mv_ehci_probe(struct platform_device *pdev)
 		goto err_put_hcd;
 	}
 
-	ehci_mv->base = devm_platform_get_and_ioremap_resource(pdev, 0, &r);
+
+
+	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	ehci_mv->base = devm_ioremap_resource(&pdev->dev, r);
 	if (IS_ERR(ehci_mv->base)) {
 		retval = PTR_ERR(ehci_mv->base);
 		goto err_put_hcd;
@@ -164,13 +156,15 @@ static int mv_ehci_probe(struct platform_device *pdev)
 	hcd->rsrc_len = resource_size(r);
 	hcd->regs = ehci_mv->op_regs;
 
-	retval = platform_get_irq(pdev, 0);
-	if (retval < 0)
+	hcd->irq = platform_get_irq(pdev, 0);
+	if (!hcd->irq) {
+		dev_err(&pdev->dev, "Cannot get irq.");
+		retval = -ENODEV;
 		goto err_disable_clk;
-	hcd->irq = retval;
+	}
 
 	ehci = hcd_to_ehci(hcd);
-	ehci->caps = (struct ehci_caps __iomem *) ehci_mv->cap_regs;
+	ehci->caps = (struct ehci_caps *) ehci_mv->cap_regs;
 
 	if (ehci_mv->mode == MV_USB_MODE_OTG) {
 		ehci_mv->otg = devm_usb_get_phy(&pdev->dev, USB_PHY_TYPE_USB2);
@@ -208,14 +202,6 @@ static int mv_ehci_probe(struct platform_device *pdev)
 		device_wakeup_enable(hcd->self.controller);
 	}
 
-	if (of_usb_get_phy_mode(pdev->dev.of_node) == USBPHY_INTERFACE_MODE_HSIC) {
-		status = ehci_readl(ehci, &ehci->regs->port_status[0]);
-		/* These "reserved" bits actually enable HSIC mode. */
-		status |= BIT(25);
-		status &= ~GENMASK(31, 30);
-		ehci_writel(ehci, status, &ehci->regs->port_status[0]);
-	}
-
 	dev_info(&pdev->dev,
 		 "successful find EHCI device with regs 0x%p irq %d"
 		 " working in %s mode\n", hcd->regs, hcd->irq,
@@ -234,7 +220,7 @@ err_put_hcd:
 	return retval;
 }
 
-static void mv_ehci_remove(struct platform_device *pdev)
+static int mv_ehci_remove(struct platform_device *pdev)
 {
 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
 	struct ehci_hcd_mv *ehci_mv = hcd_to_ehci_hcd_mv(hcd);
@@ -253,11 +239,17 @@ static void mv_ehci_remove(struct platform_device *pdev)
 	}
 
 	usb_put_hcd(hcd);
+
+	return 0;
 }
 
+MODULE_ALIAS("mv-ehci");
+
 static const struct platform_device_id ehci_id_table[] = {
-	{"pxa-u2oehci", 0},
-	{"pxa-sph", 0},
+	{"pxa-u2oehci", PXA_U2OEHCI},
+	{"pxa-sph", PXA_SPH},
+	{"mmp3-hsic", MMP3_HSIC},
+	{"mmp3-fsic", MMP3_FSIC},
 	{},
 };
 
@@ -279,7 +271,7 @@ static const struct of_device_id ehci_mv_dt_ids[] = {
 
 static struct platform_driver ehci_mv_driver = {
 	.probe = mv_ehci_probe,
-	.remove_new = mv_ehci_remove,
+	.remove = mv_ehci_remove,
 	.shutdown = mv_ehci_shutdown,
 	.driver = {
 		.name = "mv-ehci",

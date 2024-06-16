@@ -3,9 +3,6 @@
  * R-Car PWM Timer driver
  *
  * Copyright (C) 2015 Renesas Electronics Corporation
- *
- * Limitations:
- * - The hardware cannot generate a 0% duty cycle.
  */
 
 #include <linux/clk.h>
@@ -38,13 +35,14 @@
 #define  RCAR_PWMCNT_PH0_SHIFT	0
 
 struct rcar_pwm_chip {
+	struct pwm_chip chip;
 	void __iomem *base;
 	struct clk *clk;
 };
 
 static inline struct rcar_pwm_chip *to_rcar_pwm_chip(struct pwm_chip *chip)
 {
-	return pwmchip_get_drvdata(chip);
+	return container_of(chip, struct rcar_pwm_chip, chip);
 }
 
 static void rcar_pwm_write(struct rcar_pwm_chip *rp, u32 data,
@@ -109,7 +107,7 @@ static int rcar_pwm_set_counter(struct rcar_pwm_chip *rp, int div, int duty_ns,
 	unsigned long clk_rate = clk_get_rate(rp->clk);
 	u32 cyc, ph;
 
-	one_cycle = NSEC_PER_SEC * 100ULL << div;
+	one_cycle = (unsigned long long)NSEC_PER_SEC * 100ULL * (1 << div);
 	do_div(one_cycle, clk_rate);
 
 	tmp = period_ns * 100ULL;
@@ -131,12 +129,12 @@ static int rcar_pwm_set_counter(struct rcar_pwm_chip *rp, int div, int duty_ns,
 
 static int rcar_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
 {
-	return pm_runtime_get_sync(pwmchip_parent(chip));
+	return pm_runtime_get_sync(chip->dev);
 }
 
 static void rcar_pwm_free(struct pwm_chip *chip, struct pwm_device *pwm)
 {
-	pm_runtime_put(pwmchip_parent(chip));
+	pm_runtime_put(chip->dev);
 }
 
 static int rcar_pwm_enable(struct rcar_pwm_chip *rp)
@@ -163,11 +161,13 @@ static int rcar_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 			  const struct pwm_state *state)
 {
 	struct rcar_pwm_chip *rp = to_rcar_pwm_chip(chip);
+	struct pwm_state cur_state;
 	int div, ret;
 
 	/* This HW/driver only supports normal polarity */
+	pwm_get_state(pwm, &cur_state);
 	if (state->polarity != PWM_POLARITY_NORMAL)
-		return -EINVAL;
+		return -ENOTSUPP;
 
 	if (!state->enabled) {
 		rcar_pwm_disable(rp);
@@ -197,20 +197,21 @@ static const struct pwm_ops rcar_pwm_ops = {
 	.request = rcar_pwm_request,
 	.free = rcar_pwm_free,
 	.apply = rcar_pwm_apply,
+	.owner = THIS_MODULE,
 };
 
 static int rcar_pwm_probe(struct platform_device *pdev)
 {
-	struct pwm_chip *chip;
 	struct rcar_pwm_chip *rcar_pwm;
+	struct resource *res;
 	int ret;
 
-	chip = devm_pwmchip_alloc(&pdev->dev, 1, sizeof(*rcar_pwm));
-	if (IS_ERR(chip))
-		return PTR_ERR(chip);
-	rcar_pwm = to_rcar_pwm_chip(chip);
+	rcar_pwm = devm_kzalloc(&pdev->dev, sizeof(*rcar_pwm), GFP_KERNEL);
+	if (rcar_pwm == NULL)
+		return -ENOMEM;
 
-	rcar_pwm->base = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	rcar_pwm->base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(rcar_pwm->base))
 		return PTR_ERR(rcar_pwm->base);
 
@@ -220,29 +221,31 @@ static int rcar_pwm_probe(struct platform_device *pdev)
 		return PTR_ERR(rcar_pwm->clk);
 	}
 
-	chip->ops = &rcar_pwm_ops;
+	platform_set_drvdata(pdev, rcar_pwm);
 
-	platform_set_drvdata(pdev, chip);
+	rcar_pwm->chip.dev = &pdev->dev;
+	rcar_pwm->chip.ops = &rcar_pwm_ops;
+	rcar_pwm->chip.base = -1;
+	rcar_pwm->chip.npwm = 1;
 
-	pm_runtime_enable(&pdev->dev);
-
-	ret = pwmchip_add(chip);
+	ret = pwmchip_add(&rcar_pwm->chip);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to register PWM chip: %d\n", ret);
-		pm_runtime_disable(&pdev->dev);
 		return ret;
 	}
+
+	pm_runtime_enable(&pdev->dev);
 
 	return 0;
 }
 
-static void rcar_pwm_remove(struct platform_device *pdev)
+static int rcar_pwm_remove(struct platform_device *pdev)
 {
-	struct pwm_chip *chip = platform_get_drvdata(pdev);
-
-	pwmchip_remove(chip);
+	struct rcar_pwm_chip *rcar_pwm = platform_get_drvdata(pdev);
 
 	pm_runtime_disable(&pdev->dev);
+
+	return pwmchip_remove(&rcar_pwm->chip);
 }
 
 static const struct of_device_id rcar_pwm_of_table[] = {
@@ -253,10 +256,10 @@ MODULE_DEVICE_TABLE(of, rcar_pwm_of_table);
 
 static struct platform_driver rcar_pwm_driver = {
 	.probe = rcar_pwm_probe,
-	.remove_new = rcar_pwm_remove,
+	.remove = rcar_pwm_remove,
 	.driver = {
 		.name = "pwm-rcar",
-		.of_match_table = rcar_pwm_of_table,
+		.of_match_table = of_match_ptr(rcar_pwm_of_table),
 	}
 };
 module_platform_driver(rcar_pwm_driver);

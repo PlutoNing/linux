@@ -41,9 +41,9 @@ void eip_set_multicast_list(struct net_device *dev)
 }
 EXPORT_SYMBOL(eip_set_multicast_list);
 
-void eip_tx_timeout(struct net_device *dev, unsigned int txqueue)
+void eip_tx_timeout(struct net_device *dev)
 {
-	__ei_tx_timeout(dev, txqueue);
+	__ei_tx_timeout(dev);
 }
 EXPORT_SYMBOL(eip_tx_timeout);
 
@@ -102,5 +102,4 @@ static void __exit NS8390p_cleanup_module(void)
 
 module_init(NS8390p_init_module);
 module_exit(NS8390p_cleanup_module);
-MODULE_DESCRIPTION("National Semiconductor 8390 core for ISA driver");
 MODULE_LICENSE("GPL");

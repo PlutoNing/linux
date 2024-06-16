@@ -4,7 +4,6 @@
 
 #include <linux/thread_info.h>
 #include <asm/nospec-branch.h>
-#include <asm/msr.h>
 
 /*
  * On VMENTER we must preserve whatever view of the SPEC_CTRL MSR
@@ -14,7 +13,7 @@
  * Takes the guest view of SPEC_CTRL MSR as a parameter and also
  * the guest's version of VIRT_SPEC_CTRL, if emulated.
  */
-extern void x86_virt_spec_ctrl(u64 guest_virt_spec_ctrl, bool guest);
+extern void x86_virt_spec_ctrl(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl, bool guest);
 
 /**
  * x86_spec_ctrl_set_guest - Set speculation control registers for the guest
@@ -25,9 +24,9 @@ extern void x86_virt_spec_ctrl(u64 guest_virt_spec_ctrl, bool guest);
  * Avoids writing to the MSR if the content/bits are the same
  */
 static inline
-void x86_spec_ctrl_set_guest(u64 guest_virt_spec_ctrl)
+void x86_spec_ctrl_set_guest(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl)
 {
-	x86_virt_spec_ctrl(guest_virt_spec_ctrl, true);
+	x86_virt_spec_ctrl(guest_spec_ctrl, guest_virt_spec_ctrl, true);
 }
 
 /**
@@ -39,9 +38,9 @@ void x86_spec_ctrl_set_guest(u64 guest_virt_spec_ctrl)
  * Avoids writing to the MSR if the content/bits are the same
  */
 static inline
-void x86_spec_ctrl_restore_host(u64 guest_virt_spec_ctrl)
+void x86_spec_ctrl_restore_host(u64 guest_spec_ctrl, u64 guest_virt_spec_ctrl)
 {
-	x86_virt_spec_ctrl(guest_virt_spec_ctrl, false);
+	x86_virt_spec_ctrl(guest_spec_ctrl, guest_virt_spec_ctrl, false);
 }
 
 /* AMD specific Speculative Store Bypass MSR data */
@@ -77,16 +76,6 @@ static inline u64 ssbd_tif_to_amd_ls_cfg(u64 tifn)
 	return (tifn & _TIF_SSBD) ? x86_amd_ls_cfg_ssbd_mask : 0ULL;
 }
 
-/*
- * This can be used in noinstr functions & should only be called in bare
- * metal context.
- */
-static __always_inline void __update_spec_ctrl(u64 val)
-{
-	__this_cpu_write(x86_spec_ctrl_current, val);
-	native_wrmsrl(MSR_IA32_SPEC_CTRL, val);
-}
-
 #ifdef CONFIG_SMP
 extern void speculative_store_bypass_ht_init(void);
 #else
@@ -95,7 +84,5 @@ static inline void speculative_store_bypass_ht_init(void) { }
 
 extern void speculation_ctrl_update(unsigned long tif);
 extern void speculation_ctrl_update_current(void);
-
-extern bool itlb_multihit_kvm_mitigation;
 
 #endif

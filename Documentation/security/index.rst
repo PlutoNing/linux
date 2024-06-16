@@ -6,7 +6,6 @@ Security Documentation
    :maxdepth: 1
 
    credentials
-   snp-tdx-threat-model
    IMA-templates
    keys/index
    lsm
@@ -16,6 +15,3 @@ Security Documentation
    self-protection
    siphash
    tpm/index
-   digsig
-   landlock
-   secrets/index

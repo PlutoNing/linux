@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
+/**
  * Copyright (C) 2008, Creative Technology Ltd. All Rights Reserved.
  *
  * @File	ctamixer.c
@@ -23,15 +23,16 @@
 
 #define BLANK_SLOT		4094
 
-static void amixer_master(struct rsc *rsc)
+static int amixer_master(struct rsc *rsc)
 {
 	rsc->conj = 0;
-	rsc->idx = container_of(rsc, struct amixer, rsc)->idx[0];
+	return rsc->idx = container_of(rsc, struct amixer, rsc)->idx[0];
 }
 
-static void amixer_next_conj(struct rsc *rsc)
+static int amixer_next_conj(struct rsc *rsc)
 {
 	rsc->conj++;
+	return container_of(rsc, struct amixer, rsc)->idx[rsc->conj];
 }
 
 static int amixer_index(const struct rsc *rsc)
@@ -292,7 +293,7 @@ static int put_amixer_rsc(struct amixer_mgr *mgr, struct amixer *amixer)
 	return 0;
 }
 
-int amixer_mgr_create(struct hw *hw, void **ramixer_mgr)
+int amixer_mgr_create(struct hw *hw, struct amixer_mgr **ramixer_mgr)
 {
 	int err;
 	struct amixer_mgr *amixer_mgr;
@@ -321,9 +322,8 @@ error:
 	return err;
 }
 
-int amixer_mgr_destroy(void *ptr)
+int amixer_mgr_destroy(struct amixer_mgr *amixer_mgr)
 {
-	struct amixer_mgr *amixer_mgr = ptr;
 	rsc_mgr_uninit(&amixer_mgr->mgr);
 	kfree(amixer_mgr);
 	return 0;
@@ -331,15 +331,16 @@ int amixer_mgr_destroy(void *ptr)
 
 /* SUM resource management */
 
-static void sum_master(struct rsc *rsc)
+static int sum_master(struct rsc *rsc)
 {
 	rsc->conj = 0;
-	rsc->idx = container_of(rsc, struct sum, rsc)->idx[0];
+	return rsc->idx = container_of(rsc, struct sum, rsc)->idx[0];
 }
 
-static void sum_next_conj(struct rsc *rsc)
+static int sum_next_conj(struct rsc *rsc)
 {
 	rsc->conj++;
+	return container_of(rsc, struct sum, rsc)->idx[rsc->conj];
 }
 
 static int sum_index(const struct rsc *rsc)
@@ -447,7 +448,7 @@ static int put_sum_rsc(struct sum_mgr *mgr, struct sum *sum)
 	return 0;
 }
 
-int sum_mgr_create(struct hw *hw, void **rsum_mgr)
+int sum_mgr_create(struct hw *hw, struct sum_mgr **rsum_mgr)
 {
 	int err;
 	struct sum_mgr *sum_mgr;
@@ -476,9 +477,8 @@ error:
 	return err;
 }
 
-int sum_mgr_destroy(void *ptr)
+int sum_mgr_destroy(struct sum_mgr *sum_mgr)
 {
-	struct sum_mgr *sum_mgr = ptr;
 	rsc_mgr_uninit(&sum_mgr->mgr);
 	kfree(sum_mgr);
 	return 0;

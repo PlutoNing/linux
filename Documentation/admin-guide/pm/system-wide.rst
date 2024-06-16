@@ -8,4 +8,3 @@ System-Wide Power Management
    :maxdepth: 2
 
    sleep-states
-   suspend-flows

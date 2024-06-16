@@ -5,7 +5,6 @@
  */
 
 #include <linux/debugfs.h>
-#include <linux/dma-mapping.h>
 #include <linux/host1x.h>
 #include <linux/of.h>
 #include <linux/seq_file.h>
@@ -33,7 +32,6 @@ struct host1x_subdev {
 /**
  * host1x_subdev_add() - add a new subdevice with an associated device node
  * @device: host1x device to add the subdevice to
- * @driver: host1x driver containing the subdevices
  * @np: device node
  */
 static int host1x_subdev_add(struct host1x_device *device,
@@ -122,7 +120,7 @@ static void host1x_subdev_register(struct host1x_device *device,
 	mutex_lock(&device->clients_lock);
 	list_move_tail(&client->list, &device->clients);
 	list_move_tail(&subdev->list, &device->active);
-	client->host = &device->dev;
+	client->parent = &device->dev;
 	subdev->client = client;
 	mutex_unlock(&device->clients_lock);
 	mutex_unlock(&device->subdevs_lock);
@@ -158,7 +156,7 @@ static void __host1x_subdev_unregister(struct host1x_device *device,
 	 */
 	mutex_lock(&device->clients_lock);
 	subdev->client = NULL;
-	client->host = NULL;
+	client->parent = NULL;
 	list_move_tail(&subdev->list, &device->subdevs);
 	/*
 	 * XXX: Perhaps don't do this here, but rather explicitly remove it
@@ -198,17 +196,6 @@ int host1x_device_init(struct host1x_device *device)
 	mutex_lock(&device->clients_lock);
 
 	list_for_each_entry(client, &device->clients, list) {
-		if (client->ops && client->ops->early_init) {
-			err = client->ops->early_init(client);
-			if (err < 0) {
-				dev_err(&device->dev, "failed to early initialize %s: %d\n",
-					dev_name(client->dev), err);
-				goto teardown_late;
-			}
-		}
-	}
-
-	list_for_each_entry(client, &device->clients, list) {
 		if (client->ops && client->ops->init) {
 			err = client->ops->init(client);
 			if (err < 0) {
@@ -228,14 +215,6 @@ teardown:
 	list_for_each_entry_continue_reverse(client, &device->clients, list)
 		if (client->ops->exit)
 			client->ops->exit(client);
-
-	/* reset client to end of list for late teardown */
-	client = list_entry(&device->clients, struct host1x_client, list);
-
-teardown_late:
-	list_for_each_entry_continue_reverse(client, &device->clients, list)
-		if (client->ops->late_exit)
-			client->ops->late_exit(client);
 
 	mutex_unlock(&device->clients_lock);
 	return err;
@@ -264,18 +243,6 @@ int host1x_device_exit(struct host1x_device *device)
 			if (err < 0) {
 				dev_err(&device->dev,
 					"failed to cleanup %s: %d\n",
-					dev_name(client->dev), err);
-				mutex_unlock(&device->clients_lock);
-				return err;
-			}
-		}
-	}
-
-	list_for_each_entry_reverse(client, &device->clients, list) {
-		if (client->ops && client->ops->late_exit) {
-			err = client->ops->late_exit(client);
-			if (err < 0) {
-				dev_err(&device->dev, "failed to late cleanup %s: %d\n",
 					dev_name(client->dev), err);
 				mutex_unlock(&device->clients_lock);
 				return err;
@@ -338,15 +305,32 @@ static int host1x_device_match(struct device *dev, struct device_driver *drv)
 	return strcmp(dev_name(dev), drv->name) == 0;
 }
 
-/*
- * Note that this is really only needed for backwards compatibility
- * with libdrm, which parses this information from sysfs and will
- * fail if it can't find the OF_FULLNAME, specifically.
- */
-static int host1x_device_uevent(const struct device *dev,
+static int host1x_device_uevent(struct device *dev,
 				struct kobj_uevent_env *env)
 {
-	of_device_uevent(dev->parent, env);
+	struct device_node *np = dev->parent->of_node;
+	unsigned int count = 0;
+	struct property *p;
+	const char *compat;
+
+	/*
+	 * This duplicates most of of_device_uevent(), but the latter cannot
+	 * be called from modules and operates on dev->of_node, which is not
+	 * available in this case.
+	 *
+	 * Note that this is really only needed for backwards compatibility
+	 * with libdrm, which parses this information from sysfs and will
+	 * fail if it can't find the OF_FULLNAME, specifically.
+	 */
+	add_uevent_var(env, "OF_NAME=%pOFn", np);
+	add_uevent_var(env, "OF_FULLNAME=%pOF", np);
+
+	of_property_for_each_string(np, "compatible", p, compat) {
+		add_uevent_var(env, "OF_COMPATIBLE_%u=%s", count, compat);
+		count++;
+	}
+
+	add_uevent_var(env, "OF_COMPATIBLE_N=%u", count);
 
 	return 0;
 }
@@ -365,7 +349,7 @@ static const struct dev_pm_ops host1x_device_pm_ops = {
 	.restore = pm_generic_restore,
 };
 
-const struct bus_type host1x_bus_type = {
+struct bus_type host1x_bus_type = {
 	.name = "host1x",
 	.match = host1x_device_match,
 	.uevent = host1x_device_uevent,
@@ -461,7 +445,7 @@ static int host1x_device_add(struct host1x *host1x,
 	of_dma_configure(&device->dev, host1x->dev->of_node, true);
 
 	device->dev.dma_parms = &device->dma_parms;
-	dma_set_max_seg_size(&device->dev, UINT_MAX);
+	dma_set_max_seg_size(&device->dev, SZ_4M);
 
 	err = host1x_device_parse_dt(device, driver);
 	if (err < 0) {
@@ -702,16 +686,7 @@ EXPORT_SYMBOL(host1x_driver_register_full);
  */
 void host1x_driver_unregister(struct host1x_driver *driver)
 {
-	struct host1x *host1x;
-
 	driver_unregister(&driver->driver);
-
-	mutex_lock(&devices_lock);
-
-	list_for_each_entry(host1x, &devices, list)
-		host1x_detach_driver(host1x, driver);
-
-	mutex_unlock(&devices_lock);
 
 	mutex_lock(&drivers_lock);
 	list_del_init(&driver->list);
@@ -720,31 +695,7 @@ void host1x_driver_unregister(struct host1x_driver *driver)
 EXPORT_SYMBOL(host1x_driver_unregister);
 
 /**
- * __host1x_client_init() - initialize a host1x client
- * @client: host1x client
- * @key: lock class key for the client-specific mutex
- */
-void __host1x_client_init(struct host1x_client *client, struct lock_class_key *key)
-{
-	host1x_bo_cache_init(&client->cache);
-	INIT_LIST_HEAD(&client->list);
-	__mutex_init(&client->lock, "host1x client lock", key);
-	client->usecount = 0;
-}
-EXPORT_SYMBOL(__host1x_client_init);
-
-/**
- * host1x_client_exit() - uninitialize a host1x client
- * @client: host1x client
- */
-void host1x_client_exit(struct host1x_client *client)
-{
-	mutex_destroy(&client->lock);
-}
-EXPORT_SYMBOL(host1x_client_exit);
-
-/**
- * __host1x_client_register() - register a host1x client
+ * host1x_client_register() - register a host1x client
  * @client: host1x client
  *
  * Registers a host1x client with each host1x controller instance. Note that
@@ -754,7 +705,7 @@ EXPORT_SYMBOL(host1x_client_exit);
  * device and call host1x_device_init(), which will in turn call each client's
  * &host1x_client_ops.init implementation.
  */
-int __host1x_client_register(struct host1x_client *client)
+int host1x_client_register(struct host1x_client *client)
 {
 	struct host1x *host1x;
 	int err;
@@ -777,7 +728,7 @@ int __host1x_client_register(struct host1x_client *client)
 
 	return 0;
 }
-EXPORT_SYMBOL(__host1x_client_register);
+EXPORT_SYMBOL(host1x_client_register);
 
 /**
  * host1x_client_unregister() - unregister a host1x client
@@ -786,7 +737,7 @@ EXPORT_SYMBOL(__host1x_client_register);
  * Removes a host1x client from its host1x controller instance. If a logical
  * device has already been initialized, it will be torn down.
  */
-void host1x_client_unregister(struct host1x_client *client)
+int host1x_client_unregister(struct host1x_client *client)
 {
 	struct host1x_client *c;
 	struct host1x *host1x;
@@ -798,7 +749,7 @@ void host1x_client_unregister(struct host1x_client *client)
 		err = host1x_del_client(host1x, client);
 		if (!err) {
 			mutex_unlock(&devices_lock);
-			return;
+			return 0;
 		}
 	}
 
@@ -814,152 +765,6 @@ void host1x_client_unregister(struct host1x_client *client)
 
 	mutex_unlock(&clients_lock);
 
-	host1x_bo_cache_destroy(&client->cache);
+	return 0;
 }
 EXPORT_SYMBOL(host1x_client_unregister);
-
-int host1x_client_suspend(struct host1x_client *client)
-{
-	int err = 0;
-
-	mutex_lock(&client->lock);
-
-	if (client->usecount == 1) {
-		if (client->ops && client->ops->suspend) {
-			err = client->ops->suspend(client);
-			if (err < 0)
-				goto unlock;
-		}
-	}
-
-	client->usecount--;
-	dev_dbg(client->dev, "use count: %u\n", client->usecount);
-
-	if (client->parent) {
-		err = host1x_client_suspend(client->parent);
-		if (err < 0)
-			goto resume;
-	}
-
-	goto unlock;
-
-resume:
-	if (client->usecount == 0)
-		if (client->ops && client->ops->resume)
-			client->ops->resume(client);
-
-	client->usecount++;
-unlock:
-	mutex_unlock(&client->lock);
-	return err;
-}
-EXPORT_SYMBOL(host1x_client_suspend);
-
-int host1x_client_resume(struct host1x_client *client)
-{
-	int err = 0;
-
-	mutex_lock(&client->lock);
-
-	if (client->parent) {
-		err = host1x_client_resume(client->parent);
-		if (err < 0)
-			goto unlock;
-	}
-
-	if (client->usecount == 0) {
-		if (client->ops && client->ops->resume) {
-			err = client->ops->resume(client);
-			if (err < 0)
-				goto suspend;
-		}
-	}
-
-	client->usecount++;
-	dev_dbg(client->dev, "use count: %u\n", client->usecount);
-
-	goto unlock;
-
-suspend:
-	if (client->parent)
-		host1x_client_suspend(client->parent);
-unlock:
-	mutex_unlock(&client->lock);
-	return err;
-}
-EXPORT_SYMBOL(host1x_client_resume);
-
-struct host1x_bo_mapping *host1x_bo_pin(struct device *dev, struct host1x_bo *bo,
-					enum dma_data_direction dir,
-					struct host1x_bo_cache *cache)
-{
-	struct host1x_bo_mapping *mapping;
-
-	if (cache) {
-		mutex_lock(&cache->lock);
-
-		list_for_each_entry(mapping, &cache->mappings, entry) {
-			if (mapping->bo == bo && mapping->direction == dir) {
-				kref_get(&mapping->ref);
-				goto unlock;
-			}
-		}
-	}
-
-	mapping = bo->ops->pin(dev, bo, dir);
-	if (IS_ERR(mapping))
-		goto unlock;
-
-	spin_lock(&mapping->bo->lock);
-	list_add_tail(&mapping->list, &bo->mappings);
-	spin_unlock(&mapping->bo->lock);
-
-	if (cache) {
-		INIT_LIST_HEAD(&mapping->entry);
-		mapping->cache = cache;
-
-		list_add_tail(&mapping->entry, &cache->mappings);
-
-		/* bump reference count to track the copy in the cache */
-		kref_get(&mapping->ref);
-	}
-
-unlock:
-	if (cache)
-		mutex_unlock(&cache->lock);
-
-	return mapping;
-}
-EXPORT_SYMBOL(host1x_bo_pin);
-
-static void __host1x_bo_unpin(struct kref *ref)
-{
-	struct host1x_bo_mapping *mapping = to_host1x_bo_mapping(ref);
-
-	/*
-	 * When the last reference of the mapping goes away, make sure to remove the mapping from
-	 * the cache.
-	 */
-	if (mapping->cache)
-		list_del(&mapping->entry);
-
-	spin_lock(&mapping->bo->lock);
-	list_del(&mapping->list);
-	spin_unlock(&mapping->bo->lock);
-
-	mapping->bo->ops->unpin(mapping);
-}
-
-void host1x_bo_unpin(struct host1x_bo_mapping *mapping)
-{
-	struct host1x_bo_cache *cache = mapping->cache;
-
-	if (cache)
-		mutex_lock(&cache->lock);
-
-	kref_put(&mapping->ref, __host1x_bo_unpin);
-
-	if (cache)
-		mutex_unlock(&cache->lock);
-}
-EXPORT_SYMBOL(host1x_bo_unpin);

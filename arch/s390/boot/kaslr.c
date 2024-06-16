@@ -2,13 +2,12 @@
 /*
  * Copyright IBM Corp. 2019
  */
-#include <linux/pgtable.h>
-#include <asm/physmem_info.h>
+#include <asm/mem_detect.h>
+#include <asm/pgtable.h>
 #include <asm/cpacf.h>
 #include <asm/timex.h>
 #include <asm/sclp.h>
-#include <asm/kasan.h>
-#include "decompressor.h"
+#include "compressed/decompressor.h"
 #include "boot.h"
 
 #define PRNG_MODE_TDES	 1
@@ -43,7 +42,7 @@ static int check_prng(void)
 		return PRNG_MODE_TDES;
 }
 
-static int get_random(unsigned long limit, unsigned long *value)
+static unsigned long get_random(unsigned long limit)
 {
 	struct prng_parm prng = {
 		/* initial parameter block for tdes mode, copied from libica */
@@ -76,7 +75,7 @@ static int get_random(unsigned long limit, unsigned long *value)
 		*(unsigned long *) prng.parm_block ^= seed;
 		for (i = 0; i < 16; i++) {
 			cpacf_kmc(CPACF_KMC_PRNG, prng.parm_block,
-				  (u8 *) entropy, (u8 *) entropy,
+				  (char *) entropy, (char *) entropy,
 				  sizeof(entropy));
 			memcpy(prng.parm_block, entropy, sizeof(entropy));
 		}
@@ -85,114 +84,87 @@ static int get_random(unsigned long limit, unsigned long *value)
 			  (u8 *) &random, sizeof(random));
 		break;
 	default:
-		return -1;
+		random = 0;
 	}
-	*value = random % limit;
-	return 0;
+	return random % limit;
 }
 
-static void sort_reserved_ranges(struct reserved_range *res, unsigned long size)
+unsigned long get_random_base(unsigned long safe_addr)
 {
-	struct reserved_range tmp;
-	int i, j;
-
-	for (i = 1; i < size; i++) {
-		tmp = res[i];
-		for (j = i - 1; j >= 0 && res[j].start > tmp.start; j--)
-			res[j + 1] = res[j];
-		res[j + 1] = tmp;
-	}
-}
-
-static unsigned long iterate_valid_positions(unsigned long size, unsigned long align,
-					     unsigned long _min, unsigned long _max,
-					     struct reserved_range *res, size_t res_count,
-					     bool pos_count, unsigned long find_pos)
-{
-	unsigned long start, end, tmp_end, range_pos, pos = 0;
-	struct reserved_range *res_end = res + res_count;
-	struct reserved_range *skip_res;
+	unsigned long memory_limit = memory_end_set ? memory_end : 0;
+	unsigned long base, start, end, kernel_size;
+	unsigned long block_sum, offset;
+	unsigned long kasan_needs;
 	int i;
 
-	align = max(align, 8UL);
-	_min = round_up(_min, align);
-	for_each_physmem_usable_range(i, &start, &end) {
-		if (_min >= end)
-			continue;
-		start = round_up(start, align);
-		if (start >= _max)
-			break;
-		start = max(_min, start);
-		end = min(_max, end);
+	if (IS_ENABLED(CONFIG_BLK_DEV_INITRD) && INITRD_START && INITRD_SIZE) {
+		if (safe_addr < INITRD_START + INITRD_SIZE)
+			safe_addr = INITRD_START + INITRD_SIZE;
+	}
+	safe_addr = ALIGN(safe_addr, THREAD_SIZE);
 
-		while (start + size <= end) {
-			/* skip reserved ranges below the start */
-			while (res && res->end <= start) {
-				res++;
-				if (res >= res_end)
-					res = NULL;
-			}
-			skip_res = NULL;
-			tmp_end = end;
-			/* has intersecting reserved range */
-			if (res && res->start < end) {
-				skip_res = res;
-				tmp_end = res->start;
-			}
-			if (start + size <= tmp_end) {
-				range_pos = (tmp_end - start - size) / align + 1;
-				if (pos_count) {
-					pos += range_pos;
-				} else {
-					if (range_pos >= find_pos)
-						return start + (find_pos - 1) * align;
-					find_pos -= range_pos;
-				}
-			}
-			if (!skip_res)
-				break;
-			start = round_up(skip_res->end, align);
-		}
+	if ((IS_ENABLED(CONFIG_KASAN))) {
+		/*
+		 * Estimate kasan memory requirements, which it will reserve
+		 * at the very end of available physical memory. To estimate
+		 * that, we take into account that kasan would require
+		 * 1/8 of available physical memory (for shadow memory) +
+		 * creating page tables for the whole memory + shadow memory
+		 * region (1 + 1/8). To keep page tables estimates simple take
+		 * the double of combined ptes size.
+		 */
+		memory_limit = get_mem_detect_end();
+		if (memory_end_set && memory_limit > memory_end)
+			memory_limit = memory_end;
+
+		/* for shadow memory */
+		kasan_needs = memory_limit / 8;
+		/* for paging structures */
+		kasan_needs += (memory_limit + kasan_needs) / PAGE_SIZE /
+			       _PAGE_ENTRIES * _PAGE_TABLE_SIZE * 2;
+		memory_limit -= kasan_needs;
 	}
 
-	return pos_count ? pos : 0;
-}
-
-/*
- * Two types of decompressor memory allocations/reserves are considered
- * differently.
- *
- * "Static" or "single" allocations are done via physmem_alloc_range() and
- * physmem_reserve(), and they are listed in physmem_info.reserved[]. Each
- * type of "static" allocation can only have one allocation per type and
- * cannot have chains.
- *
- * On the other hand, "dynamic" or "repetitive" allocations are done via
- * physmem_alloc_top_down(). These allocations are tightly packed together
- * top down from the end of online memory. physmem_alloc_pos represents
- * current position where those allocations start.
- *
- * Functions randomize_within_range() and iterate_valid_positions()
- * only consider "dynamic" allocations by never looking above
- * physmem_alloc_pos. "Static" allocations, however, are explicitly
- * considered by checking the "res" (reserves) array. The first
- * reserved_range of a "dynamic" allocation may also be checked along the
- * way, but it will always be above the maximum value anyway.
- */
-unsigned long randomize_within_range(unsigned long size, unsigned long align,
-				     unsigned long min, unsigned long max)
-{
-	struct reserved_range res[RR_MAX];
-	unsigned long max_pos, pos;
-
-	memcpy(res, physmem_info.reserved, sizeof(res));
-	sort_reserved_ranges(res, ARRAY_SIZE(res));
-	max = min(max, get_physmem_alloc_pos());
-
-	max_pos = iterate_valid_positions(size, align, min, max, res, ARRAY_SIZE(res), true, 0);
-	if (!max_pos)
+	kernel_size = vmlinux.image_size + vmlinux.bss_size;
+	block_sum = 0;
+	for_each_mem_detect_block(i, &start, &end) {
+		if (memory_limit) {
+			if (start >= memory_limit)
+				break;
+			if (end > memory_limit)
+				end = memory_limit;
+		}
+		if (end - start < kernel_size)
+			continue;
+		block_sum += end - start - kernel_size;
+	}
+	if (!block_sum) {
+		sclp_early_printk("KASLR disabled: not enough memory\n");
 		return 0;
-	if (get_random(max_pos, &pos))
+	}
+
+	base = get_random(block_sum);
+	if (base == 0)
 		return 0;
-	return iterate_valid_positions(size, align, min, max, res, ARRAY_SIZE(res), false, pos + 1);
+	if (base < safe_addr)
+		base = safe_addr;
+	block_sum = offset = 0;
+	for_each_mem_detect_block(i, &start, &end) {
+		if (memory_limit) {
+			if (start >= memory_limit)
+				break;
+			if (end > memory_limit)
+				end = memory_limit;
+		}
+		if (end - start < kernel_size)
+			continue;
+		block_sum += end - start - kernel_size;
+		if (base <= block_sum) {
+			base = start + base - offset;
+			base = ALIGN_DOWN(base, THREAD_SIZE);
+			break;
+		}
+		offset = block_sum;
+	}
+	return base;
 }

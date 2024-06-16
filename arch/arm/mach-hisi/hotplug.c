@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2013 Linaro Ltd.
- * Copyright (c) 2013 HiSilicon Limited.
+ * Copyright (c) 2013 Hisilicon Limited.
  */
 
 #include <linux/cpu.h>
 #include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/of_address.h>
+#include <linux/of_platform.h>
 #include <asm/cacheflush.h>
 #include <asm/smp_plat.h>
 #include "core.h"

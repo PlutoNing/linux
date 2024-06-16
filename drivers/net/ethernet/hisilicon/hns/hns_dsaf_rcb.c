@@ -11,6 +11,10 @@
 #include <linux/etherdevice.h>
 #include <asm/cacheflush.h>
 #include <linux/platform_device.h>
+#include <linux/of.h>
+#include <linux/of_address.h>
+#include <linux/of_platform.h>
+#include <linux/of_irq.h>
 #include <linux/spinlock.h>
 
 #include "hns_dsaf_main.h"
@@ -30,7 +34,7 @@
 /**
  *hns_rcb_wait_fbd_clean - clean fbd
  *@qs: ring struct pointer array
- *@q_num: num of array
+ *@qnum: num of array
  *@flag: tx or rx flag
  */
 void hns_rcb_wait_fbd_clean(struct hnae_queue **qs, int q_num, u32 flag)
@@ -187,8 +191,7 @@ void hns_rcbv2_int_clr_hw(struct hnae_queue *q, u32 flag)
 
 /**
  *hns_rcb_ring_enable_hw - enable ring
- *@q: rcb ring
- *@val: value to write
+ *@ring: rcb ring
  */
 void hns_rcb_ring_enable_hw(struct hnae_queue *q, u32 val)
 {
@@ -841,7 +844,7 @@ void hns_rcb_update_stats(struct hnae_queue *queue)
 
 /**
  *hns_rcb_get_stats - get rcb statistic
- *@queue: rcb ring
+ *@ring: rcb ring
  *@data:statistic value
  */
 void hns_rcb_get_stats(struct hnae_queue *queue, u64 *data)
@@ -909,7 +912,7 @@ int hns_rcb_get_common_regs_count(void)
 }
 
 /**
- *hns_rcb_get_ring_regs_count - rcb ring regs count
+ *rcb_get_sset_count - rcb ring regs count
  *return regs count
  */
 int hns_rcb_get_ring_regs_count(void)
@@ -925,42 +928,69 @@ int hns_rcb_get_ring_regs_count(void)
  */
 void hns_rcb_get_strings(int stringset, u8 *data, int index)
 {
-	u8 *buff = data;
+	char *buff = (char *)data;
 
 	if (stringset != ETH_SS_STATS)
 		return;
 
-	ethtool_sprintf(&buff, "tx_ring%d_rcb_pkt_num", index);
-	ethtool_sprintf(&buff, "tx_ring%d_ppe_tx_pkt_num", index);
-	ethtool_sprintf(&buff, "tx_ring%d_ppe_drop_pkt_num", index);
-	ethtool_sprintf(&buff, "tx_ring%d_fbd_num", index);
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_rcb_pkt_num", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_ppe_tx_pkt_num", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_ppe_drop_pkt_num", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_fbd_num", index);
+	buff = buff + ETH_GSTRING_LEN;
 
-	ethtool_sprintf(&buff, "tx_ring%d_pkt_num", index);
-	ethtool_sprintf(&buff, "tx_ring%d_bytes", index);
-	ethtool_sprintf(&buff, "tx_ring%d_err_cnt", index);
-	ethtool_sprintf(&buff, "tx_ring%d_io_err", index);
-	ethtool_sprintf(&buff, "tx_ring%d_sw_err", index);
-	ethtool_sprintf(&buff, "tx_ring%d_seg_pkt", index);
-	ethtool_sprintf(&buff, "tx_ring%d_restart_queue", index);
-	ethtool_sprintf(&buff, "tx_ring%d_tx_busy", index);
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_pkt_num", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_bytes", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_err_cnt", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_io_err", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_sw_err", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_seg_pkt", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_restart_queue", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "tx_ring%d_tx_busy", index);
+	buff = buff + ETH_GSTRING_LEN;
 
-	ethtool_sprintf(&buff, "rx_ring%d_rcb_pkt_num", index);
-	ethtool_sprintf(&buff, "rx_ring%d_ppe_pkt_num", index);
-	ethtool_sprintf(&buff, "rx_ring%d_ppe_drop_pkt_num", index);
-	ethtool_sprintf(&buff, "rx_ring%d_fbd_num", index);
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_rcb_pkt_num", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_ppe_pkt_num", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_ppe_drop_pkt_num", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_fbd_num", index);
+	buff = buff + ETH_GSTRING_LEN;
 
-	ethtool_sprintf(&buff, "rx_ring%d_pkt_num", index);
-	ethtool_sprintf(&buff, "rx_ring%d_bytes", index);
-	ethtool_sprintf(&buff, "rx_ring%d_err_cnt", index);
-	ethtool_sprintf(&buff, "rx_ring%d_io_err", index);
-	ethtool_sprintf(&buff, "rx_ring%d_sw_err", index);
-	ethtool_sprintf(&buff, "rx_ring%d_seg_pkt", index);
-	ethtool_sprintf(&buff, "rx_ring%d_reuse_pg", index);
-	ethtool_sprintf(&buff, "rx_ring%d_len_err", index);
-	ethtool_sprintf(&buff, "rx_ring%d_non_vld_desc_err", index);
-	ethtool_sprintf(&buff, "rx_ring%d_bd_num_err", index);
-	ethtool_sprintf(&buff, "rx_ring%d_l2_err", index);
-	ethtool_sprintf(&buff, "rx_ring%d_l3l4csum_err", index);
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_pkt_num", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_bytes", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_err_cnt", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_io_err", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_sw_err", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_seg_pkt", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_reuse_pg", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_len_err", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_non_vld_desc_err", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_bd_num_err", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_l2_err", index);
+	buff = buff + ETH_GSTRING_LEN;
+	snprintf(buff, ETH_GSTRING_LEN, "rx_ring%d_l3l4csum_err", index);
 }
 
 void hns_rcb_get_common_regs(struct rcb_common_cb *rcb_com, void *data)
@@ -970,7 +1000,7 @@ void hns_rcb_get_common_regs(struct rcb_common_cb *rcb_com, void *data)
 	bool is_dbg = HNS_DSAF_IS_DEBUG(rcb_com->dsaf_dev);
 	u32 reg_tmp;
 	u32 reg_num_tmp;
-	u32 i;
+	u32 i = 0;
 
 	/*rcb common registers */
 	regs[0] = dsaf_read_dev(rcb_com, RCB_COM_CFG_ENDIAN_REG);
@@ -1041,7 +1071,7 @@ void hns_rcb_get_ring_regs(struct hnae_queue *queue, void *data)
 	u32 *regs = data;
 	struct ring_pair_cb *ring_pair
 		= container_of(queue, struct ring_pair_cb, q);
-	u32 i;
+	u32 i = 0;
 
 	/*rcb ring registers */
 	regs[0] = dsaf_read_dev(queue, RCB_RING_RX_RING_BASEADDR_L_REG);

@@ -9,6 +9,7 @@
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/regmap.h>
 #include <linux/spi/spi.h>
 
@@ -111,11 +112,13 @@ static int madera_spi_probe(struct spi_device *spi)
 	return madera_dev_init(madera);
 }
 
-static void madera_spi_remove(struct spi_device *spi)
+static int madera_spi_remove(struct spi_device *spi)
 {
 	struct madera *madera = spi_get_drvdata(spi);
 
 	madera_dev_exit(madera);
+
+	return 0;
 }
 
 static const struct spi_device_id madera_spi_ids[] = {

@@ -6,15 +6,16 @@
 #include <linux/fs_pin.h>
 
 struct mnt_namespace {
+	atomic_t		count;
 	struct ns_common	ns;
 	struct mount *	root;
-	struct rb_root		mounts; /* Protected by namespace_sem */
+	struct list_head	list;
 	struct user_namespace	*user_ns;
 	struct ucounts		*ucounts;
 	u64			seq;	/* Sequence number to prevent loops */
 	wait_queue_head_t poll;
 	u64 event;
-	unsigned int		nr_mounts; /* # of mounts in the namespace */
+	unsigned int		mounts; /* # of mounts in the namespace */
 	unsigned int		pending_mounts;
 } __randomize_layout;
 
@@ -49,10 +50,7 @@ struct mount {
 	struct list_head mnt_child;	/* and going through their mnt_child */
 	struct list_head mnt_instance;	/* mount instance on sb->s_mounts */
 	const char *mnt_devname;	/* Name of device e.g. /dev/dsk/hda1 */
-	union {
-		struct rb_node mnt_node;	/* Under ns->mounts */
-		struct list_head mnt_list;
-	};
+	struct list_head mnt_list;
 	struct list_head mnt_expire;	/* link in fs-specific expiry list */
 	struct list_head mnt_share;	/* circular list of shared mounts */
 	struct list_head mnt_slave_list;/* list of slave mounts */
@@ -69,8 +67,7 @@ struct mount {
 	struct fsnotify_mark_connector __rcu *mnt_fsnotify_marks;
 	__u32 mnt_fsnotify_mask;
 #endif
-	int mnt_id;			/* mount identifier, reused */
-	u64 mnt_id_unique;		/* mount ID unique until reboot */
+	int mnt_id;			/* mount identifier */
 	int mnt_group_id;		/* peer group identifier */
 	int mnt_expiry_mark;		/* true if marked for expiry */
 	struct hlist_head mnt_pins;
@@ -98,6 +95,7 @@ static inline int is_mounted(struct vfsmount *mnt)
 extern struct mount *__lookup_mnt(struct vfsmount *, struct dentry *);
 
 extern int __legitimize_mnt(struct vfsmount *, unsigned);
+extern bool legitimize_mnt(struct vfsmount *, unsigned);
 
 static inline bool __path_is_mountpoint(const struct path *path)
 {
@@ -116,15 +114,28 @@ static inline void detach_mounts(struct dentry *dentry)
 
 static inline void get_mnt_ns(struct mnt_namespace *ns)
 {
-	refcount_inc(&ns->ns.count);
+	atomic_inc(&ns->count);
 }
 
 extern seqlock_t mount_lock;
+
+static inline void lock_mount_hash(void)
+{
+	write_seqlock(&mount_lock);
+}
+
+static inline void unlock_mount_hash(void)
+{
+	write_sequnlock(&mount_lock);
+}
 
 struct proc_mounts {
 	struct mnt_namespace *ns;
 	struct path root;
 	int (*show)(struct seq_file *, struct vfsmount *);
+	void *cached_mount;
+	u64 cached_event;
+	loff_t cached_index;
 };
 
 extern const struct seq_operations mounts_op;
@@ -142,13 +153,3 @@ static inline bool is_anon_ns(struct mnt_namespace *ns)
 {
 	return ns->seq == 0;
 }
-
-static inline void move_from_ns(struct mount *mnt, struct list_head *dt_list)
-{
-	WARN_ON(!(mnt->mnt.mnt_flags & MNT_ONRB));
-	mnt->mnt.mnt_flags &= ~MNT_ONRB;
-	rb_erase(&mnt->mnt_node, &mnt->mnt_ns->mounts);
-	list_add_tail(&mnt->mnt_list, dt_list);
-}
-
-extern void mnt_cursor_del(struct mnt_namespace *ns, struct mount *cursor);

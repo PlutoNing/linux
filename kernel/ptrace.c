@@ -31,8 +31,6 @@
 #include <linux/cn_proc.h>
 #include <linux/compat.h>
 #include <linux/sched/signal.h>
-#include <linux/minmax.h>
-#include <linux/syscall_user_dispatch.h>
 
 #include <asm/syscall.h>	/* for syscall_get_* */
 
@@ -59,7 +57,7 @@ int ptrace_access_vm(struct task_struct *tsk, unsigned long addr,
 		return 0;
 	}
 
-	ret = access_remote_vm(mm, addr, buf, len, gup_flags);
+	ret = __access_remote_vm(tsk, mm, addr, buf, len, gup_flags);
 	mmput(mm);
 
 	return ret;
@@ -119,9 +117,9 @@ void __ptrace_unlink(struct task_struct *child)
 	const struct cred *old_cred;
 	BUG_ON(!child->ptrace);
 
-	clear_task_syscall_work(child, SYSCALL_TRACE);
-#if defined(CONFIG_GENERIC_ENTRY) || defined(TIF_SYSCALL_EMU)
-	clear_task_syscall_work(child, SYSCALL_EMU);
+	clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
+#ifdef TIF_SYSCALL_EMU
+	clear_tsk_thread_flag(child, TIF_SYSCALL_EMU);
 #endif
 
 	child->parent = child->real_parent;
@@ -145,8 +143,19 @@ void __ptrace_unlink(struct task_struct *child)
 	 */
 	if (!(child->flags & PF_EXITING) &&
 	    (child->signal->flags & SIGNAL_STOP_STOPPED ||
-	     child->signal->group_stop_count))
+	     child->signal->group_stop_count)) {
 		child->jobctl |= JOBCTL_STOP_PENDING;
+
+		/*
+		 * This is only possible if this thread was cloned by the
+		 * traced task running in the stopped group, set the signal
+		 * for the future reports.
+		 * FIXME: we should change ptrace_init_task() to handle this
+		 * case.
+		 */
+		if (!(child->jobctl & JOBCTL_STOP_SIGMASK))
+			child->jobctl |= SIGSTOP;
+	}
 
 	/*
 	 * If transition to TASK_STOPPED is pending or in TASK_TRACED, kick
@@ -160,27 +169,7 @@ void __ptrace_unlink(struct task_struct *child)
 	spin_unlock(&child->sighand->siglock);
 }
 
-static bool looks_like_a_spurious_pid(struct task_struct *task)
-{
-	if (task->exit_code != ((PTRACE_EVENT_EXEC << 8) | SIGTRAP))
-		return false;
-
-	if (task_pid_vnr(task) == task->ptrace_message)
-		return false;
-	/*
-	 * The tracee changed its pid but the PTRACE_EVENT_EXEC event
-	 * was not wait()'ed, most probably debugger targets the old
-	 * leader which was destroyed in de_thread().
-	 */
-	return true;
-}
-
-/*
- * Ensure that nothing can wake it up, even SIGKILL
- *
- * A task is switched to this state while a ptrace operation is in progress;
- * such that the ptrace operation is uninterruptible.
- */
+/* Ensure that nothing can wake it up, even SIGKILL */
 static bool ptrace_freeze_traced(struct task_struct *task)
 {
 	bool ret = false;
@@ -190,9 +179,8 @@ static bool ptrace_freeze_traced(struct task_struct *task)
 		return ret;
 
 	spin_lock_irq(&task->sighand->siglock);
-	if (task_is_traced(task) && !looks_like_a_spurious_pid(task) &&
-	    !__fatal_signal_pending(task)) {
-		task->jobctl |= JOBCTL_PTRACE_FROZEN;
+	if (task_is_traced(task) && !__fatal_signal_pending(task)) {
+		task->state = __TASK_TRACED;
 		ret = true;
 	}
 	spin_unlock_irq(&task->sighand->siglock);
@@ -202,21 +190,23 @@ static bool ptrace_freeze_traced(struct task_struct *task)
 
 static void ptrace_unfreeze_traced(struct task_struct *task)
 {
-	unsigned long flags;
+	if (task->state != __TASK_TRACED)
+		return;
+
+	WARN_ON(!task->ptrace || task->parent != current);
 
 	/*
-	 * The child may be awake and may have cleared
-	 * JOBCTL_PTRACE_FROZEN (see ptrace_resume).  The child will
-	 * not set JOBCTL_PTRACE_FROZEN or enter __TASK_TRACED anew.
+	 * PTRACE_LISTEN can allow ptrace_trap_notify to wake us up remotely.
+	 * Recheck state under the lock to close this race.
 	 */
-	if (lock_task_sighand(task, &flags)) {
-		task->jobctl &= ~JOBCTL_PTRACE_FROZEN;
-		if (__fatal_signal_pending(task)) {
-			task->jobctl &= ~JOBCTL_TRACED;
+	spin_lock_irq(&task->sighand->siglock);
+	if (task->state == __TASK_TRACED) {
+		if (__fatal_signal_pending(task))
 			wake_up_state(task, __TASK_TRACED);
-		}
-		unlock_task_sighand(task, &flags);
+		else
+			task->state = TASK_TRACED;
 	}
+	spin_unlock_irq(&task->sighand->siglock);
 }
 
 /**
@@ -249,6 +239,7 @@ static int ptrace_check_attach(struct task_struct *child, bool ignore_state)
 	 */
 	read_lock(&tasklist_lock);
 	if (child->ptrace && child->parent == current) {
+		WARN_ON(child->state == __TASK_TRACED);
 		/*
 		 * child->sighand can't be NULL, release_task()
 		 * does ptrace_unlink() before __exit_signal().
@@ -258,18 +249,27 @@ static int ptrace_check_attach(struct task_struct *child, bool ignore_state)
 	}
 	read_unlock(&tasklist_lock);
 
-	if (!ret && !ignore_state &&
-	    WARN_ON_ONCE(!wait_task_inactive(child, __TASK_TRACED|TASK_FROZEN)))
-		ret = -ESRCH;
+	if (!ret && !ignore_state) {
+		if (!wait_task_inactive(child, __TASK_TRACED)) {
+			/*
+			 * This can only happen if may_ptrace_stop() fails and
+			 * ptrace_stop() changes ->state back to TASK_RUNNING,
+			 * so we should not worry about leaking __TASK_TRACED.
+			 */
+			WARN_ON(child->state == __TASK_TRACED);
+			ret = -ESRCH;
+		}
+	}
 
 	return ret;
 }
 
-static bool ptrace_has_cap(struct user_namespace *ns, unsigned int mode)
+static int ptrace_has_cap(struct user_namespace *ns, unsigned int mode)
 {
 	if (mode & PTRACE_MODE_NOAUDIT)
-		return ns_capable_noaudit(ns, CAP_SYS_PTRACE);
-	return ns_capable(ns, CAP_SYS_PTRACE);
+		return has_ns_capability_noaudit(current, ns, CAP_SYS_PTRACE);
+	else
+		return has_ns_capability(current, ns, CAP_SYS_PTRACE);
 }
 
 /* Returns 0 on success, -errno on denial. */
@@ -355,33 +355,66 @@ bool ptrace_may_access(struct task_struct *task, unsigned int mode)
 	return !err;
 }
 
-static int check_ptrace_options(unsigned long data)
+static int ptrace_attach(struct task_struct *task, long request,
+			 unsigned long addr,
+			 unsigned long flags)
 {
-	if (data & ~(unsigned long)PTRACE_O_MASK)
-		return -EINVAL;
+	bool seize = (request == PTRACE_SEIZE);
+	int retval;
 
-	if (unlikely(data & PTRACE_O_SUSPEND_SECCOMP)) {
-		if (!IS_ENABLED(CONFIG_CHECKPOINT_RESTORE) ||
-		    !IS_ENABLED(CONFIG_SECCOMP))
-			return -EINVAL;
-
-		if (!capable(CAP_SYS_ADMIN))
-			return -EPERM;
-
-		if (seccomp_mode(&current->seccomp) != SECCOMP_MODE_DISABLED ||
-		    current->ptrace & PT_SUSPEND_SECCOMP)
-			return -EPERM;
+	retval = -EIO;
+	if (seize) {
+		if (addr != 0)
+			goto out;
+		if (flags & ~(unsigned long)PTRACE_O_MASK)
+			goto out;
+		flags = PT_PTRACED | PT_SEIZED | (flags << PT_OPT_FLAG_SHIFT);
+	} else {
+		flags = PT_PTRACED;
 	}
-	return 0;
-}
 
-static inline void ptrace_set_stopped(struct task_struct *task, bool seize)
-{
-	guard(spinlock)(&task->sighand->siglock);
+	audit_ptrace(task);
+
+	retval = -EPERM;
+	if (unlikely(task->flags & PF_KTHREAD))
+		goto out;
+	if (same_thread_group(task, current))
+		goto out;
+
+	/*
+	 * Protect exec's credential calculations against our interference;
+	 * SUID, SGID and LSM creds get determined differently
+	 * under ptrace.
+	 */
+	retval = -ERESTARTNOINTR;
+	if (mutex_lock_interruptible(&task->signal->cred_guard_mutex))
+		goto out;
+
+	task_lock(task);
+	retval = __ptrace_may_access(task, PTRACE_MODE_ATTACH_REALCREDS);
+	task_unlock(task);
+	if (retval)
+		goto unlock_creds;
+
+	write_lock_irq(&tasklist_lock);
+	retval = -EPERM;
+	if (unlikely(task->exit_state))
+		goto unlock_tasklist;
+	if (task->ptrace)
+		goto unlock_tasklist;
+
+	if (seize)
+		flags |= PT_SEIZED;
+	task->ptrace = flags;
+
+	ptrace_link(task, current);
 
 	/* SEIZE doesn't trap tracee on attach */
 	if (!seize)
-		send_signal_locked(SIGSTOP, SEND_SIG_PRIV, task, PIDTYPE_PID);
+		send_sig_info(SIGSTOP, SEND_SIG_PRIV, task);
+
+	spin_lock(&task->sighand->siglock);
+
 	/*
 	 * If the task is already STOPPED, set JOBCTL_TRAP_STOP and
 	 * TRAPPING, and kick it so that it transits to TRACED.  TRAPPING
@@ -400,82 +433,30 @@ static inline void ptrace_set_stopped(struct task_struct *task, bool seize)
 	 * in and out of STOPPED are protected by siglock.
 	 */
 	if (task_is_stopped(task) &&
-	    task_set_jobctl_pending(task, JOBCTL_TRAP_STOP | JOBCTL_TRAPPING)) {
-		task->jobctl &= ~JOBCTL_STOPPED;
+	    task_set_jobctl_pending(task, JOBCTL_TRAP_STOP | JOBCTL_TRAPPING))
 		signal_wake_up_state(task, __TASK_STOPPED);
-	}
-}
 
-static int ptrace_attach(struct task_struct *task, long request,
-			 unsigned long addr,
-			 unsigned long flags)
-{
-	bool seize = (request == PTRACE_SEIZE);
-	int retval;
+	spin_unlock(&task->sighand->siglock);
 
-	if (seize) {
-		if (addr != 0)
-			return -EIO;
+	retval = 0;
+unlock_tasklist:
+	write_unlock_irq(&tasklist_lock);
+unlock_creds:
+	mutex_unlock(&task->signal->cred_guard_mutex);
+out:
+	if (!retval) {
 		/*
-		 * This duplicates the check in check_ptrace_options() because
-		 * ptrace_attach() and ptrace_setoptions() have historically
-		 * used different error codes for unknown ptrace options.
+		 * We do not bother to change retval or clear JOBCTL_TRAPPING
+		 * if wait_on_bit() was interrupted by SIGKILL. The tracer will
+		 * not return to user-mode, it will exit and clear this bit in
+		 * __ptrace_unlink() if it wasn't already cleared by the tracee;
+		 * and until then nobody can ptrace this task.
 		 */
-		if (flags & ~(unsigned long)PTRACE_O_MASK)
-			return -EIO;
-
-		retval = check_ptrace_options(flags);
-		if (retval)
-			return retval;
-		flags = PT_PTRACED | PT_SEIZED | (flags << PT_OPT_FLAG_SHIFT);
-	} else {
-		flags = PT_PTRACED;
+		wait_on_bit(&task->jobctl, JOBCTL_TRAPPING_BIT, TASK_KILLABLE);
+		proc_ptrace_connector(task, PTRACE_ATTACH);
 	}
 
-	audit_ptrace(task);
-
-	if (unlikely(task->flags & PF_KTHREAD))
-		return -EPERM;
-	if (same_thread_group(task, current))
-		return -EPERM;
-
-	/*
-	 * Protect exec's credential calculations against our interference;
-	 * SUID, SGID and LSM creds get determined differently
-	 * under ptrace.
-	 */
-	scoped_cond_guard (mutex_intr, return -ERESTARTNOINTR,
-			   &task->signal->cred_guard_mutex) {
-
-		scoped_guard (task_lock, task) {
-			retval = __ptrace_may_access(task, PTRACE_MODE_ATTACH_REALCREDS);
-			if (retval)
-				return retval;
-		}
-
-		scoped_guard (write_lock_irq, &tasklist_lock) {
-			if (unlikely(task->exit_state))
-				return -EPERM;
-			if (task->ptrace)
-				return -EPERM;
-
-			task->ptrace = flags;
-			ptrace_link(task, current);
-			ptrace_set_stopped(task, seize);
-		}
-	}
-
-	/*
-	 * We do not bother to change retval or clear JOBCTL_TRAPPING
-	 * if wait_on_bit() was interrupted by SIGKILL. The tracer will
-	 * not return to user-mode, it will exit and clear this bit in
-	 * __ptrace_unlink() if it wasn't already cleared by the tracee;
-	 * and until then nobody can ptrace this task.
-	 */
-	wait_on_bit(&task->jobctl, JOBCTL_TRAPPING_BIT, TASK_KILLABLE);
-	proc_ptrace_connector(task, PTRACE_ATTACH);
-
-	return 0;
+	return retval;
 }
 
 /**
@@ -659,11 +640,22 @@ int ptrace_writedata(struct task_struct *tsk, char __user *src, unsigned long ds
 static int ptrace_setoptions(struct task_struct *child, unsigned long data)
 {
 	unsigned flags;
-	int ret;
 
-	ret = check_ptrace_options(data);
-	if (ret)
-		return ret;
+	if (data & ~(unsigned long)PTRACE_O_MASK)
+		return -EINVAL;
+
+	if (unlikely(data & PTRACE_O_SUSPEND_SECCOMP)) {
+		if (!IS_ENABLED(CONFIG_CHECKPOINT_RESTORE) ||
+		    !IS_ENABLED(CONFIG_SECCOMP))
+			return -EINVAL;
+
+		if (!capable(CAP_SYS_ADMIN))
+			return -EPERM;
+
+		if (seccomp_mode(&current->seccomp) != SECCOMP_MODE_DISABLED ||
+		    current->ptrace & PT_SUSPEND_SECCOMP)
+			return -EPERM;
+	}
 
 	/* Avoid intermediate state when all opts are cleared */
 	flags = child->ptrace;
@@ -788,25 +780,11 @@ static int ptrace_peek_siginfo(struct task_struct *child,
 	return ret;
 }
 
-#ifdef CONFIG_RSEQ
-static long ptrace_get_rseq_configuration(struct task_struct *task,
-					  unsigned long size, void __user *data)
-{
-	struct ptrace_rseq_configuration conf = {
-		.rseq_abi_pointer = (u64)(uintptr_t)task->rseq,
-		.rseq_abi_size = task->rseq_len,
-		.signature = task->rseq_sig,
-		.flags = 0,
-	};
-
-	size = min_t(unsigned long, size, sizeof(conf));
-	if (copy_to_user(data, &conf, size))
-		return -EFAULT;
-	return sizeof(conf);
-}
-#endif
-
+#ifdef PTRACE_SINGLESTEP
 #define is_singlestep(request)		((request) == PTRACE_SINGLESTEP)
+#else
+#define is_singlestep(request)		0
+#endif
 
 #ifdef PTRACE_SINGLEBLOCK
 #define is_singleblock(request)		((request) == PTRACE_SINGLEBLOCK)
@@ -823,19 +801,21 @@ static long ptrace_get_rseq_configuration(struct task_struct *task,
 static int ptrace_resume(struct task_struct *child, long request,
 			 unsigned long data)
 {
+	bool need_siglock;
+
 	if (!valid_signal(data))
 		return -EIO;
 
 	if (request == PTRACE_SYSCALL)
-		set_task_syscall_work(child, SYSCALL_TRACE);
+		set_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
 	else
-		clear_task_syscall_work(child, SYSCALL_TRACE);
+		clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
 
-#if defined(CONFIG_GENERIC_ENTRY) || defined(TIF_SYSCALL_EMU)
+#ifdef TIF_SYSCALL_EMU
 	if (request == PTRACE_SYSEMU || request == PTRACE_SYSEMU_SINGLESTEP)
-		set_task_syscall_work(child, SYSCALL_EMU);
+		set_tsk_thread_flag(child, TIF_SYSCALL_EMU);
 	else
-		clear_task_syscall_work(child, SYSCALL_EMU);
+		clear_tsk_thread_flag(child, TIF_SYSCALL_EMU);
 #endif
 
 	if (is_singleblock(request)) {
@@ -858,12 +838,18 @@ static int ptrace_resume(struct task_struct *child, long request,
 	 * Note that we need siglock even if ->exit_code == data and/or this
 	 * status was not reported yet, the new status must not be cleared by
 	 * wait_task_stopped() after resume.
+	 *
+	 * If data == 0 we do not care if wait_task_stopped() reports the old
+	 * status and clears the code too; this can't race with the tracee, it
+	 * takes siglock after resume.
 	 */
-	spin_lock_irq(&child->sighand->siglock);
+	need_siglock = data && !thread_group_empty(current);
+	if (need_siglock)
+		spin_lock_irq(&child->sighand->siglock);
 	child->exit_code = data;
-	child->jobctl &= ~JOBCTL_TRACED;
 	wake_up_state(child, __TASK_TRACED);
-	spin_unlock_irq(&child->sighand->siglock);
+	if (need_siglock)
+		spin_unlock_irq(&child->sighand->siglock);
 
 	return 0;
 }
@@ -1186,7 +1172,9 @@ int ptrace_request(struct task_struct *child, long request,
 	}
 #endif
 
+#ifdef PTRACE_SINGLESTEP
 	case PTRACE_SINGLESTEP:
+#endif
 #ifdef PTRACE_SINGLEBLOCK
 	case PTRACE_SINGLEBLOCK:
 #endif
@@ -1199,8 +1187,9 @@ int ptrace_request(struct task_struct *child, long request,
 		return ptrace_resume(child, request, data);
 
 	case PTRACE_KILL:
-		send_sig_info(SIGKILL, SEND_SIG_NOINFO, child);
-		return 0;
+		if (child->exit_state)	/* already dead */
+			return 0;
+		return ptrace_resume(child, request, SIGKILL);
 
 #ifdef CONFIG_HAVE_ARCH_TRACEHOOK
 	case PTRACE_GETREGSET:
@@ -1234,26 +1223,16 @@ int ptrace_request(struct task_struct *child, long request,
 		ret = seccomp_get_metadata(child, addr, datavp);
 		break;
 
-#ifdef CONFIG_RSEQ
-	case PTRACE_GET_RSEQ_CONFIGURATION:
-		ret = ptrace_get_rseq_configuration(child, addr, datavp);
-		break;
-#endif
-
-	case PTRACE_SET_SYSCALL_USER_DISPATCH_CONFIG:
-		ret = syscall_user_dispatch_set_config(child, addr, datavp);
-		break;
-
-	case PTRACE_GET_SYSCALL_USER_DISPATCH_CONFIG:
-		ret = syscall_user_dispatch_get_config(child, addr, datavp);
-		break;
-
 	default:
 		break;
 	}
 
 	return ret;
 }
+
+#ifndef arch_ptrace_attach
+#define arch_ptrace_attach(child)	do { } while (0)
+#endif
 
 SYSCALL_DEFINE4(ptrace, long, request, long, pid, unsigned long, addr,
 		unsigned long, data)
@@ -1263,6 +1242,8 @@ SYSCALL_DEFINE4(ptrace, long, request, long, pid, unsigned long, addr,
 
 	if (request == PTRACE_TRACEME) {
 		ret = ptrace_traceme();
+		if (!ret)
+			arch_ptrace_attach(current);
 		goto out;
 	}
 
@@ -1274,6 +1255,12 @@ SYSCALL_DEFINE4(ptrace, long, request, long, pid, unsigned long, addr,
 
 	if (request == PTRACE_ATTACH || request == PTRACE_SEIZE) {
 		ret = ptrace_attach(child, request, addr, data);
+		/*
+		 * Some architectures need to do book-keeping after
+		 * a ptrace attach.
+		 */
+		if (!ret)
+			arch_ptrace_attach(child);
 		goto out_put_task_struct;
 	}
 
@@ -1413,6 +1400,12 @@ COMPAT_SYSCALL_DEFINE4(ptrace, compat_long_t, request, compat_long_t, pid,
 
 	if (request == PTRACE_ATTACH || request == PTRACE_SEIZE) {
 		ret = ptrace_attach(child, request, addr, data);
+		/*
+		 * Some architectures need to do book-keeping after
+		 * a ptrace attach.
+		 */
+		if (!ret)
+			arch_ptrace_attach(child);
 		goto out_put_task_struct;
 	}
 

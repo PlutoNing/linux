@@ -14,16 +14,15 @@
 #include <net/netfilter/nf_tables.h>
 
 struct nft_redir {
-	u8			sreg_proto_min;
-	u8			sreg_proto_max;
+	enum nft_registers	sreg_proto_min:8;
+	enum nft_registers	sreg_proto_max:8;
 	u16			flags;
 };
 
 static const struct nla_policy nft_redir_policy[NFTA_REDIR_MAX + 1] = {
 	[NFTA_REDIR_REG_PROTO_MIN]	= { .type = NLA_U32 },
 	[NFTA_REDIR_REG_PROTO_MAX]	= { .type = NLA_U32 },
-	[NFTA_REDIR_FLAGS]		=
-		NLA_POLICY_MASK(NLA_BE32, NF_NAT_RANGE_MASK),
+	[NFTA_REDIR_FLAGS]		= { .type = NLA_U32 },
 };
 
 static int nft_redir_validate(const struct nft_ctx *ctx,
@@ -49,34 +48,38 @@ static int nft_redir_init(const struct nft_ctx *ctx,
 	unsigned int plen;
 	int err;
 
-	plen = sizeof_field(struct nf_nat_range, min_proto.all);
+	plen = FIELD_SIZEOF(struct nf_nat_range, min_addr.all);
 	if (tb[NFTA_REDIR_REG_PROTO_MIN]) {
-		err = nft_parse_register_load(tb[NFTA_REDIR_REG_PROTO_MIN],
-					      &priv->sreg_proto_min, plen);
+		priv->sreg_proto_min =
+			nft_parse_register(tb[NFTA_REDIR_REG_PROTO_MIN]);
+
+		err = nft_validate_register_load(priv->sreg_proto_min, plen);
 		if (err < 0)
 			return err;
 
 		if (tb[NFTA_REDIR_REG_PROTO_MAX]) {
-			err = nft_parse_register_load(tb[NFTA_REDIR_REG_PROTO_MAX],
-						      &priv->sreg_proto_max,
-						      plen);
+			priv->sreg_proto_max =
+				nft_parse_register(tb[NFTA_REDIR_REG_PROTO_MAX]);
+
+			err = nft_validate_register_load(priv->sreg_proto_max,
+							 plen);
 			if (err < 0)
 				return err;
 		} else {
 			priv->sreg_proto_max = priv->sreg_proto_min;
 		}
-
-		priv->flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
 	}
 
-	if (tb[NFTA_REDIR_FLAGS])
+	if (tb[NFTA_REDIR_FLAGS]) {
 		priv->flags = ntohl(nla_get_be32(tb[NFTA_REDIR_FLAGS]));
+		if (priv->flags & ~NF_NAT_RANGE_MASK)
+			return -EINVAL;
+	}
 
 	return nf_ct_netns_get(ctx->net, ctx->family);
 }
 
-static int nft_redir_dump(struct sk_buff *skb,
-			  const struct nft_expr *expr, bool reset)
+static int nft_redir_dump(struct sk_buff *skb, const struct nft_expr *expr)
 {
 	const struct nft_redir *priv = nft_expr_priv(expr);
 
@@ -99,37 +102,25 @@ nla_put_failure:
 	return -1;
 }
 
-static void nft_redir_eval(const struct nft_expr *expr,
-			   struct nft_regs *regs,
-			   const struct nft_pktinfo *pkt)
+static void nft_redir_ipv4_eval(const struct nft_expr *expr,
+				struct nft_regs *regs,
+				const struct nft_pktinfo *pkt)
 {
-	const struct nft_redir *priv = nft_expr_priv(expr);
-	struct nf_nat_range2 range;
+	struct nft_redir *priv = nft_expr_priv(expr);
+	struct nf_nat_ipv4_multi_range_compat mr;
 
-	memset(&range, 0, sizeof(range));
-	range.flags = priv->flags;
+	memset(&mr, 0, sizeof(mr));
 	if (priv->sreg_proto_min) {
-		range.min_proto.all = (__force __be16)
-			nft_reg_load16(&regs->data[priv->sreg_proto_min]);
-		range.max_proto.all = (__force __be16)
-			nft_reg_load16(&regs->data[priv->sreg_proto_max]);
+		mr.range[0].min.all = (__force __be16)nft_reg_load16(
+			&regs->data[priv->sreg_proto_min]);
+		mr.range[0].max.all = (__force __be16)nft_reg_load16(
+			&regs->data[priv->sreg_proto_max]);
+		mr.range[0].flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
 	}
 
-	switch (nft_pf(pkt)) {
-	case NFPROTO_IPV4:
-		regs->verdict.code = nf_nat_redirect_ipv4(pkt->skb, &range,
-							  nft_hook(pkt));
-		break;
-#ifdef CONFIG_NF_TABLES_IPV6
-	case NFPROTO_IPV6:
-		regs->verdict.code = nf_nat_redirect_ipv6(pkt->skb, &range,
-							  nft_hook(pkt));
-		break;
-#endif
-	default:
-		WARN_ON_ONCE(1);
-		break;
-	}
+	mr.range[0].flags |= priv->flags;
+
+	regs->verdict.code = nf_nat_redirect_ipv4(pkt->skb, &mr, nft_hook(pkt));
 }
 
 static void
@@ -142,12 +133,11 @@ static struct nft_expr_type nft_redir_ipv4_type;
 static const struct nft_expr_ops nft_redir_ipv4_ops = {
 	.type		= &nft_redir_ipv4_type,
 	.size		= NFT_EXPR_SIZE(sizeof(struct nft_redir)),
-	.eval		= nft_redir_eval,
+	.eval		= nft_redir_ipv4_eval,
 	.init		= nft_redir_init,
 	.destroy	= nft_redir_ipv4_destroy,
 	.dump		= nft_redir_dump,
 	.validate	= nft_redir_validate,
-	.reduce		= NFT_REDUCE_READONLY,
 };
 
 static struct nft_expr_type nft_redir_ipv4_type __read_mostly = {
@@ -160,6 +150,28 @@ static struct nft_expr_type nft_redir_ipv4_type __read_mostly = {
 };
 
 #ifdef CONFIG_NF_TABLES_IPV6
+static void nft_redir_ipv6_eval(const struct nft_expr *expr,
+				struct nft_regs *regs,
+				const struct nft_pktinfo *pkt)
+{
+	struct nft_redir *priv = nft_expr_priv(expr);
+	struct nf_nat_range2 range;
+
+	memset(&range, 0, sizeof(range));
+	if (priv->sreg_proto_min) {
+		range.min_proto.all = (__force __be16)nft_reg_load16(
+			&regs->data[priv->sreg_proto_min]);
+		range.max_proto.all = (__force __be16)nft_reg_load16(
+			&regs->data[priv->sreg_proto_max]);
+		range.flags |= NF_NAT_RANGE_PROTO_SPECIFIED;
+	}
+
+	range.flags |= priv->flags;
+
+	regs->verdict.code =
+		nf_nat_redirect_ipv6(pkt->skb, &range, nft_hook(pkt));
+}
+
 static void
 nft_redir_ipv6_destroy(const struct nft_ctx *ctx, const struct nft_expr *expr)
 {
@@ -170,12 +182,11 @@ static struct nft_expr_type nft_redir_ipv6_type;
 static const struct nft_expr_ops nft_redir_ipv6_ops = {
 	.type		= &nft_redir_ipv6_type,
 	.size		= NFT_EXPR_SIZE(sizeof(struct nft_redir)),
-	.eval		= nft_redir_eval,
+	.eval		= nft_redir_ipv6_eval,
 	.init		= nft_redir_init,
 	.destroy	= nft_redir_ipv6_destroy,
 	.dump		= nft_redir_dump,
 	.validate	= nft_redir_validate,
-	.reduce		= NFT_REDUCE_READONLY,
 };
 
 static struct nft_expr_type nft_redir_ipv6_type __read_mostly = {
@@ -189,6 +200,20 @@ static struct nft_expr_type nft_redir_ipv6_type __read_mostly = {
 #endif
 
 #ifdef CONFIG_NF_TABLES_INET
+static void nft_redir_inet_eval(const struct nft_expr *expr,
+				struct nft_regs *regs,
+				const struct nft_pktinfo *pkt)
+{
+	switch (nft_pf(pkt)) {
+	case NFPROTO_IPV4:
+		return nft_redir_ipv4_eval(expr, regs, pkt);
+	case NFPROTO_IPV6:
+		return nft_redir_ipv6_eval(expr, regs, pkt);
+	}
+
+	WARN_ON_ONCE(1);
+}
+
 static void
 nft_redir_inet_destroy(const struct nft_ctx *ctx, const struct nft_expr *expr)
 {
@@ -199,12 +224,11 @@ static struct nft_expr_type nft_redir_inet_type;
 static const struct nft_expr_ops nft_redir_inet_ops = {
 	.type		= &nft_redir_inet_type,
 	.size		= NFT_EXPR_SIZE(sizeof(struct nft_redir)),
-	.eval		= nft_redir_eval,
+	.eval		= nft_redir_inet_eval,
 	.init		= nft_redir_init,
 	.destroy	= nft_redir_inet_destroy,
 	.dump		= nft_redir_dump,
 	.validate	= nft_redir_validate,
-	.reduce		= NFT_REDUCE_READONLY,
 };
 
 static struct nft_expr_type nft_redir_inet_type __read_mostly = {
@@ -212,7 +236,7 @@ static struct nft_expr_type nft_redir_inet_type __read_mostly = {
 	.name		= "redir",
 	.ops		= &nft_redir_inet_ops,
 	.policy		= nft_redir_policy,
-	.maxattr	= NFTA_REDIR_MAX,
+	.maxattr	= NFTA_MASQ_MAX,
 	.owner		= THIS_MODULE,
 };
 
@@ -268,4 +292,3 @@ module_exit(nft_redir_module_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Arturo Borrero Gonzalez <arturo@debian.org>");
 MODULE_ALIAS_NFT_EXPR("redir");
-MODULE_DESCRIPTION("Netfilter nftables redirect support");

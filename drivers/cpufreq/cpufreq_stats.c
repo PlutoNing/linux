@@ -9,8 +9,8 @@
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
 #include <linux/module.h>
-#include <linux/sched/clock.h>
 #include <linux/slab.h>
+
 
 struct cpufreq_stats {
 	unsigned int total_trans;
@@ -19,104 +19,64 @@ struct cpufreq_stats {
 	unsigned int state_num;
 	unsigned int last_index;
 	u64 *time_in_state;
+	spinlock_t lock;
 	unsigned int *freq_table;
 	unsigned int *trans_table;
-
-	/* Deferred reset */
-	unsigned int reset_pending;
-	unsigned long long reset_time;
 };
 
-static void cpufreq_stats_update(struct cpufreq_stats *stats,
-				 unsigned long long time)
+static void cpufreq_stats_update(struct cpufreq_stats *stats)
 {
-	unsigned long long cur_time = local_clock();
+	unsigned long long cur_time = get_jiffies_64();
 
-	stats->time_in_state[stats->last_index] += cur_time - time;
+	stats->time_in_state[stats->last_index] += cur_time - stats->last_time;
 	stats->last_time = cur_time;
 }
 
-static void cpufreq_stats_reset_table(struct cpufreq_stats *stats)
+static void cpufreq_stats_clear_table(struct cpufreq_stats *stats)
 {
 	unsigned int count = stats->max_state;
 
+	spin_lock(&stats->lock);
 	memset(stats->time_in_state, 0, count * sizeof(u64));
 	memset(stats->trans_table, 0, count * count * sizeof(int));
-	stats->last_time = local_clock();
+	stats->last_time = get_jiffies_64();
 	stats->total_trans = 0;
-
-	/* Adjust for the time elapsed since reset was requested */
-	WRITE_ONCE(stats->reset_pending, 0);
-	/*
-	 * Prevent the reset_time read from being reordered before the
-	 * reset_pending accesses in cpufreq_stats_record_transition().
-	 */
-	smp_rmb();
-	cpufreq_stats_update(stats, READ_ONCE(stats->reset_time));
+	spin_unlock(&stats->lock);
 }
 
 static ssize_t show_total_trans(struct cpufreq_policy *policy, char *buf)
 {
-	struct cpufreq_stats *stats = policy->stats;
-
-	if (READ_ONCE(stats->reset_pending))
-		return sprintf(buf, "%d\n", 0);
-	else
-		return sprintf(buf, "%u\n", stats->total_trans);
+	return sprintf(buf, "%d\n", policy->stats->total_trans);
 }
 cpufreq_freq_attr_ro(total_trans);
 
 static ssize_t show_time_in_state(struct cpufreq_policy *policy, char *buf)
 {
 	struct cpufreq_stats *stats = policy->stats;
-	bool pending = READ_ONCE(stats->reset_pending);
-	unsigned long long time;
 	ssize_t len = 0;
 	int i;
 
-	for (i = 0; i < stats->state_num; i++) {
-		if (pending) {
-			if (i == stats->last_index) {
-				/*
-				 * Prevent the reset_time read from occurring
-				 * before the reset_pending read above.
-				 */
-				smp_rmb();
-				time = local_clock() - READ_ONCE(stats->reset_time);
-			} else {
-				time = 0;
-			}
-		} else {
-			time = stats->time_in_state[i];
-			if (i == stats->last_index)
-				time += local_clock() - stats->last_time;
-		}
+	if (policy->fast_switch_enabled)
+		return 0;
 
+	spin_lock(&stats->lock);
+	cpufreq_stats_update(stats);
+	spin_unlock(&stats->lock);
+
+	for (i = 0; i < stats->state_num; i++) {
 		len += sprintf(buf + len, "%u %llu\n", stats->freq_table[i],
-			       nsec_to_clock_t(time));
+			(unsigned long long)
+			jiffies_64_to_clock_t(stats->time_in_state[i]));
 	}
 	return len;
 }
 cpufreq_freq_attr_ro(time_in_state);
 
-/* We don't care what is written to the attribute */
 static ssize_t store_reset(struct cpufreq_policy *policy, const char *buf,
 			   size_t count)
 {
-	struct cpufreq_stats *stats = policy->stats;
-
-	/*
-	 * Defer resetting of stats to cpufreq_stats_record_transition() to
-	 * avoid races.
-	 */
-	WRITE_ONCE(stats->reset_time, local_clock());
-	/*
-	 * The memory barrier below is to prevent the readers of reset_time from
-	 * seeing a stale or partially updated value.
-	 */
-	smp_wmb();
-	WRITE_ONCE(stats->reset_pending, 1);
-
+	/* We don't care what is written to the attribute. */
+	cpufreq_stats_clear_table(policy->stats);
 	return count;
 }
 cpufreq_freq_attr_wo(reset);
@@ -124,45 +84,44 @@ cpufreq_freq_attr_wo(reset);
 static ssize_t show_trans_table(struct cpufreq_policy *policy, char *buf)
 {
 	struct cpufreq_stats *stats = policy->stats;
-	bool pending = READ_ONCE(stats->reset_pending);
 	ssize_t len = 0;
-	int i, j, count;
+	int i, j;
 
-	len += sysfs_emit_at(buf, len, "   From  :    To\n");
-	len += sysfs_emit_at(buf, len, "         : ");
+	if (policy->fast_switch_enabled)
+		return 0;
+
+	len += snprintf(buf + len, PAGE_SIZE - len, "   From  :    To\n");
+	len += snprintf(buf + len, PAGE_SIZE - len, "         : ");
 	for (i = 0; i < stats->state_num; i++) {
-		if (len >= PAGE_SIZE - 1)
+		if (len >= PAGE_SIZE)
 			break;
-		len += sysfs_emit_at(buf, len, "%9u ", stats->freq_table[i]);
+		len += snprintf(buf + len, PAGE_SIZE - len, "%9u ",
+				stats->freq_table[i]);
 	}
-	if (len >= PAGE_SIZE - 1)
-		return PAGE_SIZE - 1;
+	if (len >= PAGE_SIZE)
+		return PAGE_SIZE;
 
-	len += sysfs_emit_at(buf, len, "\n");
+	len += snprintf(buf + len, PAGE_SIZE - len, "\n");
 
 	for (i = 0; i < stats->state_num; i++) {
-		if (len >= PAGE_SIZE - 1)
+		if (len >= PAGE_SIZE)
 			break;
 
-		len += sysfs_emit_at(buf, len, "%9u: ", stats->freq_table[i]);
+		len += snprintf(buf + len, PAGE_SIZE - len, "%9u: ",
+				stats->freq_table[i]);
 
 		for (j = 0; j < stats->state_num; j++) {
-			if (len >= PAGE_SIZE - 1)
+			if (len >= PAGE_SIZE)
 				break;
-
-			if (pending)
-				count = 0;
-			else
-				count = stats->trans_table[i * stats->max_state + j];
-
-			len += sysfs_emit_at(buf, len, "%9u ", count);
+			len += snprintf(buf + len, PAGE_SIZE - len, "%9u ",
+					stats->trans_table[i*stats->max_state+j]);
 		}
-		if (len >= PAGE_SIZE - 1)
+		if (len >= PAGE_SIZE)
 			break;
-		len += sysfs_emit_at(buf, len, "\n");
+		len += snprintf(buf + len, PAGE_SIZE - len, "\n");
 	}
 
-	if (len >= PAGE_SIZE - 1) {
+	if (len >= PAGE_SIZE) {
 		pr_warn_once("cpufreq transition table exceeds PAGE_SIZE. Disabling\n");
 		return -EFBIG;
 	}
@@ -209,7 +168,7 @@ void cpufreq_stats_free_table(struct cpufreq_policy *policy)
 
 void cpufreq_stats_create_table(struct cpufreq_policy *policy)
 {
-	unsigned int i = 0, count;
+	unsigned int i = 0, count = 0, ret = -ENOMEM;
 	struct cpufreq_stats *stats;
 	unsigned int alloc_size;
 	struct cpufreq_frequency_table *pos;
@@ -243,16 +202,17 @@ void cpufreq_stats_create_table(struct cpufreq_policy *policy)
 
 	/* Find valid-unique entries */
 	cpufreq_for_each_valid_entry(pos, policy->freq_table)
-		if (policy->freq_table_sorted != CPUFREQ_TABLE_UNSORTED ||
-		    freq_table_get_index(stats, pos->frequency) == -1)
+		if (freq_table_get_index(stats, pos->frequency) == -1)
 			stats->freq_table[i++] = pos->frequency;
 
 	stats->state_num = i;
-	stats->last_time = local_clock();
+	stats->last_time = get_jiffies_64();
 	stats->last_index = freq_table_get_index(stats, policy->cur);
+	spin_lock_init(&stats->lock);
 
 	policy->stats = stats;
-	if (!sysfs_create_group(&policy->kobj, &stats_attr_group))
+	ret = sysfs_create_group(&policy->kobj, &stats_attr_group);
+	if (!ret)
 		return;
 
 	/* We failed, release resources */
@@ -268,22 +228,23 @@ void cpufreq_stats_record_transition(struct cpufreq_policy *policy,
 	struct cpufreq_stats *stats = policy->stats;
 	int old_index, new_index;
 
-	if (unlikely(!stats))
+	if (!stats) {
+		pr_debug("%s: No stats found\n", __func__);
 		return;
-
-	if (unlikely(READ_ONCE(stats->reset_pending)))
-		cpufreq_stats_reset_table(stats);
+	}
 
 	old_index = stats->last_index;
 	new_index = freq_table_get_index(stats, new_freq);
 
 	/* We can't do stats->time_in_state[-1]= .. */
-	if (unlikely(old_index == -1 || new_index == -1 || old_index == new_index))
+	if (old_index == -1 || new_index == -1 || old_index == new_index)
 		return;
 
-	cpufreq_stats_update(stats, stats->last_time);
+	spin_lock(&stats->lock);
+	cpufreq_stats_update(stats);
 
 	stats->last_index = new_index;
 	stats->trans_table[old_index * stats->max_state + new_index]++;
 	stats->total_trans++;
+	spin_unlock(&stats->lock);
 }

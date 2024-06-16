@@ -24,7 +24,7 @@
 /**
  * dev_pm_opp_init_cpufreq_table() - create a cpufreq table for a device
  * @dev:	device for which we do this operation
- * @opp_table:	Cpufreq table returned back to caller
+ * @table:	Cpufreq table returned back to caller
  *
  * Generate a cpufreq table for a provided device- this assumes that the
  * opp table is already initialized and ready for usage.
@@ -41,7 +41,7 @@
  * the table if any of the mentioned functions have been invoked in the interim.
  */
 int dev_pm_opp_init_cpufreq_table(struct device *dev,
-				  struct cpufreq_frequency_table **opp_table)
+				  struct cpufreq_frequency_table **table)
 {
 	struct dev_pm_opp *opp;
 	struct cpufreq_frequency_table *freq_table = NULL;
@@ -76,7 +76,7 @@ int dev_pm_opp_init_cpufreq_table(struct device *dev,
 	freq_table[i].driver_data = i;
 	freq_table[i].frequency = CPUFREQ_TABLE_END;
 
-	*opp_table = &freq_table[0];
+	*table = &freq_table[0];
 
 out:
 	if (ret)
@@ -89,18 +89,18 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_init_cpufreq_table);
 /**
  * dev_pm_opp_free_cpufreq_table() - free the cpufreq table
  * @dev:	device for which we do this operation
- * @opp_table:	table to free
+ * @table:	table to free
  *
  * Free up the table allocated by dev_pm_opp_init_cpufreq_table
  */
 void dev_pm_opp_free_cpufreq_table(struct device *dev,
-				   struct cpufreq_frequency_table **opp_table)
+				   struct cpufreq_frequency_table **table)
 {
-	if (!opp_table)
+	if (!table)
 		return;
 
-	kfree(*opp_table);
-	*opp_table = NULL;
+	kfree(*table);
+	*table = NULL;
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_free_cpufreq_table);
 #endif	/* CONFIG_CPU_FREQ */
@@ -124,7 +124,7 @@ void _dev_pm_opp_cpumask_remove_table(const struct cpumask *cpumask,
 			continue;
 		}
 
-		dev_pm_opp_remove_table(cpu_dev);
+		_dev_pm_opp_find_and_remove_table(cpu_dev);
 	}
 }
 

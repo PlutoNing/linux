@@ -11,7 +11,6 @@
 #include <linux/mm.h>
 #include <linux/uaccess.h>
 #include <linux/delay.h>
-#include <linux/irqdomain.h>
 #include <asm/synch.h>
 #include <asm/switch_to.h>
 #include <misc/cxl-base.h>
@@ -267,6 +266,11 @@ static void attach_spa(struct cxl_afu *afu)
 		afu->native->spa, afu->native->spa_max_procs,
 		afu->native->sw_command_status, spap);
 	cxl_p1n_write(afu, CXL_PSL_SPAP_An, spap);
+}
+
+static inline void detach_spa(struct cxl_afu *afu)
+{
+	cxl_p1n_write(afu, CXL_PSL_SPAP_An, 0);
 }
 
 void cxl_release_spa(struct cxl_afu *afu)

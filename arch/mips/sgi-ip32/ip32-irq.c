@@ -28,8 +28,6 @@
 #include <asm/ip32/mace.h>
 #include <asm/ip32/ip32_ints.h>
 
-#include "ip32-common.h"
-
 /* issue a PIO read to make sure no PIO writes are pending */
 static inline void flush_crime_bus(void)
 {
@@ -108,6 +106,20 @@ static inline void flush_mace_bus(void)
  * different IRQ map than IRIX uses, but that's OK as Linux irq handling
  * is quite different anyway.
  */
+
+/* Some initial interrupts to set up */
+extern irqreturn_t crime_memerr_intr(int irq, void *dev_id);
+extern irqreturn_t crime_cpuerr_intr(int irq, void *dev_id);
+
+static struct irqaction memerr_irq = {
+	.handler = crime_memerr_intr,
+	.name = "CRIME memory error",
+};
+
+static struct irqaction cpuerr_irq = {
+	.handler = crime_cpuerr_intr,
+	.name = "CRIME CPU error",
+};
 
 /*
  * This is for pure CRIME interrupts - ie not MACE.  The advantage?
@@ -341,7 +353,7 @@ static void ip32_unknown_interrupt(void)
 	printk("Register dump:\n");
 	show_regs(get_irq_regs());
 
-	printk("Please mail this report to linux-mips@vger.kernel.org\n");
+	printk("Please mail this report to linux-mips@linux-mips.org\n");
 	printk("Spinning...");
 	while(1) ;
 }
@@ -485,12 +497,8 @@ void __init arch_init_irq(void)
 			break;
 		}
 	}
-	if (request_irq(CRIME_MEMERR_IRQ, crime_memerr_intr, 0,
-			"CRIME memory error", NULL))
-		pr_err("Failed to register CRIME memory error interrupt\n");
-	if (request_irq(CRIME_CPUERR_IRQ, crime_cpuerr_intr, 0,
-			"CRIME CPU error", NULL))
-		pr_err("Failed to register CRIME CPU error interrupt\n");
+	setup_irq(CRIME_MEMERR_IRQ, &memerr_irq);
+	setup_irq(CRIME_CPUERR_IRQ, &cpuerr_irq);
 
 #define ALLINTS (IE_IRQ0 | IE_IRQ1 | IE_IRQ2 | IE_IRQ3 | IE_IRQ4 | IE_IRQ5)
 	change_c0_status(ST0_IM, ALLINTS);

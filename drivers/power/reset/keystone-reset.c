@@ -2,7 +2,7 @@
 /*
  * TI keystone reboot driver
  *
- * Copyright (C) 2014 Texas Instruments Incorporated. https://www.ti.com/
+ * Copyright (C) 2014 Texas Instruments Incorporated. http://www.ti.com/
  *
  * Author: Ivan Khoronzhuk <ivan.khoronzhuk@ti.com>
  */
@@ -10,11 +10,10 @@
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
-#include <linux/platform_device.h>
 #include <linux/reboot.h>
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
-#include <linux/of.h>
+#include <linux/of_platform.h>
 
 #define RSTYPE_RG			0x0
 #define RSCTRL_RG			0x4
@@ -72,7 +71,6 @@ static const struct of_device_id rsctrl_of_match[] = {
 	{.compatible = "ti,keystone-reset", },
 	{},
 };
-MODULE_DEVICE_TABLE(of, rsctrl_of_match);
 
 static int rsctrl_probe(struct platform_device *pdev)
 {
@@ -170,4 +168,5 @@ module_platform_driver(rsctrl_driver);
 
 MODULE_AUTHOR("Ivan Khoronzhuk <ivan.khoronzhuk@ti.com>");
 MODULE_DESCRIPTION("Texas Instruments keystone reset driver");
+MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:" KBUILD_MODNAME);

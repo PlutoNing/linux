@@ -17,7 +17,6 @@
 #include <linux/cpumask.h>
 #include <linux/time.h>
 #include <linux/sched.h>
-#include <linux/topology.h>
 #include <asm/processor.h>
 #include <asm/msr.h>
 
@@ -41,6 +40,10 @@ MODULE_LICENSE("GPL");
 
 /* set maximum interval as 1 second */
 #define MAX_INTERVAL			1000
+
+#define MSR_F15H_CU_PWR_ACCUMULATOR	0xc001007a
+#define MSR_F15H_CU_MAX_PWR_ACCUMULATOR	0xc001007b
+#define MSR_F15H_PTSC			0xc0010280
 
 #define PCI_DEVICE_ID_AMD_15H_M70H_NB_F4 0x15b4
 
@@ -135,13 +138,15 @@ static DEVICE_ATTR_RO(power1_crit);
 static void do_read_registers_on_cu(void *_data)
 {
 	struct fam15h_power_data *data = _data;
-	int cu;
+	int cpu, cu;
+
+	cpu = smp_processor_id();
 
 	/*
 	 * With the new x86 topology modelling, cpu core id actually
 	 * is compute unit id.
 	 */
-	cu = topology_core_id(smp_processor_id());
+	cu = cpu_data(cpu).cpu_core_id;
 
 	rdmsrl_safe(MSR_F15H_CU_PWR_ACCUMULATOR, &data->cu_acc_power[cu]);
 	rdmsrl_safe(MSR_F15H_PTSC, &data->cpu_sw_pwr_ptsc[cu]);
@@ -165,7 +170,7 @@ static int read_registers(struct fam15h_power_data *data)
 
 	memset(data->cu_on, 0, sizeof(int) * MAX_CUS);
 
-	cpus_read_lock();
+	get_online_cpus();
 
 	/*
 	 * Choose the first online core of each compute unit, and then
@@ -189,7 +194,7 @@ static int read_registers(struct fam15h_power_data *data)
 
 	on_each_cpu_mask(mask, do_read_registers_on_cu, data, true);
 
-	cpus_read_unlock();
+	put_online_cpus();
 	free_cpumask_var(mask);
 
 	return 0;
@@ -209,7 +214,7 @@ static ssize_t power1_average_show(struct device *dev,
 	 * With the new x86 topology modelling, x86_max_cores is the
 	 * compute unit number.
 	 */
-	cu_num = topology_num_cores_per_package();
+	cu_num = boot_cpu_data.x86_max_cores;
 
 	ret = read_registers(data);
 	if (ret)

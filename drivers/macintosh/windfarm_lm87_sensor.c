@@ -13,7 +13,7 @@
 #include <linux/init.h>
 #include <linux/wait.h>
 #include <linux/i2c.h>
-
+#include <asm/prom.h>
 #include <asm/machdep.h>
 #include <asm/io.h>
 #include <asm/sections.h>
@@ -95,7 +95,8 @@ static const struct wf_sensor_ops wf_lm87_ops = {
 	.owner		= THIS_MODULE,
 };
 
-static int wf_lm87_probe(struct i2c_client *client)
+static int wf_lm87_probe(struct i2c_client *client,
+			 const struct i2c_device_id *id)
 {	
 	struct wf_lm87_sensor *lm;
 	const char *name = NULL, *loc;
@@ -123,8 +124,8 @@ static int wf_lm87_probe(struct i2c_client *client)
 		}
 	}
 	if (!name) {
-		pr_warn("wf_lm87: Unsupported sensor %pOF\n",
-			client->dev.of_node);
+		pr_warning("wf_lm87: Unsupported sensor %pOF\n",
+			   client->dev.of_node);
 		return -ENODEV;
 	}
 
@@ -144,15 +145,19 @@ static int wf_lm87_probe(struct i2c_client *client)
 	return rc;
 }
 
-static void wf_lm87_remove(struct i2c_client *client)
+static int wf_lm87_remove(struct i2c_client *client)
 {
 	struct wf_lm87_sensor *lm = i2c_get_clientdata(client);
+
+	DBG("wf_lm87: i2c detatch called for %s\n", lm->sens.name);
 
 	/* Mark client detached */
 	lm->i2c = NULL;
 
 	/* release sensor */
 	wf_unregister_sensor(&lm->sens);
+
+	return 0;
 }
 
 static const struct i2c_device_id wf_lm87_id[] = {
@@ -161,16 +166,9 @@ static const struct i2c_device_id wf_lm87_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, wf_lm87_id);
 
-static const struct of_device_id wf_lm87_of_id[] = {
-	{ .compatible = "lm87cimt", },
-	{ }
-};
-MODULE_DEVICE_TABLE(of, wf_lm87_of_id);
-
 static struct i2c_driver wf_lm87_driver = {
 	.driver = {
 		.name	= "wf_lm87",
-		.of_match_table = wf_lm87_of_id,
 	},
 	.probe		= wf_lm87_probe,
 	.remove		= wf_lm87_remove,

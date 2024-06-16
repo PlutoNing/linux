@@ -80,20 +80,21 @@ u32 mega_mod64(u64 dividend, u32 divisor)
 }
 
 /**
- * mega_div64_32 - Do a 64-bit division
- * @dividend:	Dividend
- * @divisor:	Divisor
+ * @param dividend    : Dividend
+ * @param divisor    : Divisor
  *
  * @return quotient
  **/
-static u64 mega_div64_32(uint64_t dividend, uint32_t divisor)
+u64 mega_div64_32(uint64_t dividend, uint32_t divisor)
 {
-	u64 d = dividend;
+	u32 remainder;
+	u64 d;
 
 	if (!divisor)
 		printk(KERN_ERR "megasas : DIVISOR is zero in mod fn\n");
 
-	do_div(d, divisor);
+	d = dividend;
+	remainder = do_div(d, divisor);
 
 	return d;
 }
@@ -326,9 +327,9 @@ u8 MR_ValidateMapInfo(struct megasas_instance *instance, u64 map_id)
 	else if (instance->supportmax256vd)
 		expected_size = sizeof(struct MR_FW_RAID_MAP_EXT);
 	else
-		expected_size = struct_size_t(struct MR_FW_RAID_MAP,
-					      ldSpanMap,
-					      le16_to_cpu(pDrvRaidMap->ldCount));
+		expected_size =
+			(sizeof(struct MR_FW_RAID_MAP) - sizeof(struct MR_LD_SPAN_MAP) +
+			(sizeof(struct MR_LD_SPAN_MAP) * le16_to_cpu(pDrvRaidMap->ldCount)));
 
 	if (le32_to_cpu(pDrvRaidMap->totalSize) != expected_size) {
 		dev_dbg(&instance->pdev->dev, "megasas: map info structure size 0x%x",
@@ -349,28 +350,24 @@ u8 MR_ValidateMapInfo(struct megasas_instance *instance, u64 map_id)
 
 	num_lds = le16_to_cpu(drv_map->raidMap.ldCount);
 
-	memcpy(instance->ld_ids_prev,
-	       instance->ld_ids_from_raidmap,
-	       sizeof(instance->ld_ids_from_raidmap));
-	memset(instance->ld_ids_from_raidmap, 0xff, MEGASAS_MAX_LD_IDS);
 	/*Convert Raid capability values to CPU arch */
 	for (i = 0; (num_lds > 0) && (i < MAX_LOGICAL_DRIVES_EXT); i++) {
 		ld = MR_TargetIdToLdGet(i, drv_map);
 
 		/* For non existing VDs, iterate to next VD*/
-		if (ld >= MEGASAS_MAX_SUPPORTED_LD_IDS)
+		if (ld >= (MAX_LOGICAL_DRIVES_EXT - 1))
 			continue;
 
 		raid = MR_LdRaidGet(ld, drv_map);
 		le32_to_cpus((u32 *)&raid->capability);
-		instance->ld_ids_from_raidmap[i] = i;
+
 		num_lds--;
 	}
 
 	return 1;
 }
 
-static u32 MR_GetSpanBlock(u32 ld, u64 row, u64 *span_blk,
+u32 MR_GetSpanBlock(u32 ld, u64 row, u64 *span_blk,
 		    struct MR_DRV_RAID_MAP_ALL *map)
 {
 	struct MR_SPAN_BLOCK_INFO *pSpanBlock = MR_LdSpanInfoGet(ld, map);
@@ -389,8 +386,9 @@ static u32 MR_GetSpanBlock(u32 ld, u64 row, u64 *span_blk,
 				le64_to_cpu(quad->logEnd) && (mega_mod64(row - le64_to_cpu(quad->logStart),
 				le32_to_cpu(quad->diff))) == 0) {
 				if (span_blk != NULL) {
-					u64  blk;
+					u64  blk, debugBlk;
 					blk =  mega_div64_32((row-le64_to_cpu(quad->logStart)), le32_to_cpu(quad->diff));
+					debugBlk = blk;
 
 					blk = (blk + le64_to_cpu(quad->offsetInSpan)) << raid->stripeShift;
 					*span_blk = blk;
@@ -420,7 +418,7 @@ static u32 MR_GetSpanBlock(u32 ld, u64 row, u64 *span_blk,
 *    div_error	   - Devide error code.
 */
 
-static u32 mr_spanset_get_span_block(struct megasas_instance *instance,
+u32 mr_spanset_get_span_block(struct megasas_instance *instance,
 		u32 ld, u64 row, u64 *span_blk, struct MR_DRV_RAID_MAP_ALL *map)
 {
 	struct fusion_context *fusion = instance->ctrl_context;
@@ -645,7 +643,7 @@ static u32 get_arm_from_strip(struct megasas_instance *instance,
 }
 
 /* This Function will return Phys arm */
-static u8 get_arm(struct megasas_instance *instance, u32 ld, u8 span, u64 stripe,
+u8 get_arm(struct megasas_instance *instance, u32 ld, u8 span, u64 stripe,
 		struct MR_DRV_RAID_MAP_ALL *map)
 {
 	struct MR_LD_RAID  *raid = MR_LdRaidGet(ld, map);
@@ -701,7 +699,9 @@ static u8 mr_spanset_get_phy_params(struct megasas_instance *instance, u32 ld,
 	__le16	*pDevHandle = &io_info->devHandle;
 	u8	*pPdInterface = &io_info->pd_interface;
 	u32	logArm, rowMod, armQ, arm;
+	struct fusion_context *fusion;
 
+	fusion = instance->ctrl_context;
 	*pDevHandle = cpu_to_le16(MR_DEVHANDLE_INVALID);
 
 	/*Get row and span from io_info for Uneven Span IO.*/
@@ -788,7 +788,7 @@ static u8 mr_spanset_get_phy_params(struct megasas_instance *instance, u32 ld,
 *    span          - Span number
 *    block         - Absolute Block number in the physical disk
 */
-static u8 MR_GetPhyParams(struct megasas_instance *instance, u32 ld, u64 stripRow,
+u8 MR_GetPhyParams(struct megasas_instance *instance, u32 ld, u64 stripRow,
 		u16 stripRef, struct IO_REQUEST_INFO *io_info,
 		struct RAID_CONTEXT *pRAID_Context,
 		struct MR_DRV_RAID_MAP_ALL *map)
@@ -801,7 +801,9 @@ static u8 MR_GetPhyParams(struct megasas_instance *instance, u32 ld, u64 stripRo
 	u64	    *pdBlock = &io_info->pdBlock;
 	__le16	    *pDevHandle = &io_info->devHandle;
 	u8	    *pPdInterface = &io_info->pd_interface;
+	struct fusion_context *fusion;
 
+	fusion = instance->ctrl_context;
 	*pDevHandle = cpu_to_le16(MR_DEVHANDLE_INVALID);
 
 	row =  mega_div64_32(stripRow, raid->rowDataSize);
@@ -1345,7 +1347,7 @@ void mr_update_load_balance_params(struct MR_DRV_RAID_MAP_ALL *drv_map,
 	}
 }
 
-static u8 megasas_get_best_arm_pd(struct megasas_instance *instance,
+u8 megasas_get_best_arm_pd(struct megasas_instance *instance,
 			   struct LD_LOAD_BALANCE_INFO *lbInfo,
 			   struct IO_REQUEST_INFO *io_info,
 			   struct MR_DRV_RAID_MAP_ALL *drv_map)

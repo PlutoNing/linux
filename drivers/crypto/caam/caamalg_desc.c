@@ -373,7 +373,6 @@ EXPORT_SYMBOL(cnstr_shdsc_aead_encap);
  *         with OP_ALG_AAI_HMAC_PRECOMP.
  * @ivsize: initialization vector size
  * @icvsize: integrity check value (ICV) size (truncated or full)
- * @geniv: whether to generate Encrypted Chain IV
  * @is_rfc3686: true when ctr(aes) is wrapped by rfc3686 template
  * @nonce: pointer to rfc3686 nonce
  * @ctx1_iv_off: IV offset in CONTEXT1 register
@@ -1380,9 +1379,6 @@ void cnstr_shdsc_skcipher_encap(u32 * const desc, struct alginfo *cdata,
 				const u32 ctx1_iv_off)
 {
 	u32 *key_jump_cmd;
-	u32 options = cdata->algtype | OP_ALG_AS_INIT | OP_ALG_ENCRYPT;
-	bool is_chacha20 = ((cdata->algtype & OP_ALG_ALGSEL_MASK) ==
-			    OP_ALG_ALGSEL_CHACHA20);
 
 	init_sh_desc(desc, HDR_SHARE_SERIAL | HDR_SAVECTX);
 	/* Skip if already shared */
@@ -1421,15 +1417,14 @@ void cnstr_shdsc_skcipher_encap(u32 * const desc, struct alginfo *cdata,
 				      LDST_OFFSET_SHIFT));
 
 	/* Load operation */
-	if (is_chacha20)
-		options |= OP_ALG_AS_FINALIZE;
-	append_operation(desc, options);
+	append_operation(desc, cdata->algtype | OP_ALG_AS_INIT |
+			 OP_ALG_ENCRYPT);
 
 	/* Perform operation */
 	skcipher_append_src_dst(desc);
 
 	/* Store IV */
-	if (!is_chacha20 && ivsize)
+	if (ivsize)
 		append_seq_store(desc, ivsize, LDST_SRCDST_BYTE_CONTEXT |
 				 LDST_CLASS_1_CCB | (ctx1_iv_off <<
 				 LDST_OFFSET_SHIFT));
@@ -1456,8 +1451,6 @@ void cnstr_shdsc_skcipher_decap(u32 * const desc, struct alginfo *cdata,
 				const u32 ctx1_iv_off)
 {
 	u32 *key_jump_cmd;
-	bool is_chacha20 = ((cdata->algtype & OP_ALG_ALGSEL_MASK) ==
-			    OP_ALG_ALGSEL_CHACHA20);
 
 	init_sh_desc(desc, HDR_SHARE_SERIAL | HDR_SAVECTX);
 	/* Skip if already shared */
@@ -1506,7 +1499,7 @@ void cnstr_shdsc_skcipher_decap(u32 * const desc, struct alginfo *cdata,
 	skcipher_append_src_dst(desc);
 
 	/* Store IV */
-	if (!is_chacha20 && ivsize)
+	if (ivsize)
 		append_seq_store(desc, ivsize, LDST_SRCDST_BYTE_CONTEXT |
 				 LDST_CLASS_1_CCB | (ctx1_iv_off <<
 				 LDST_OFFSET_SHIFT));
@@ -1525,13 +1518,7 @@ EXPORT_SYMBOL(cnstr_shdsc_skcipher_decap);
  */
 void cnstr_shdsc_xts_skcipher_encap(u32 * const desc, struct alginfo *cdata)
 {
-	/*
-	 * Set sector size to a big value, practically disabling
-	 * sector size segmentation in xts implementation. We cannot
-	 * take full advantage of this HW feature with existing
-	 * crypto API / dm-crypt SW architecture.
-	 */
-	__be64 sector_size = cpu_to_be64(BIT(15));
+	__be64 sector_size = cpu_to_be64(512);
 	u32 *key_jump_cmd;
 
 	init_sh_desc(desc, HDR_SHARE_SERIAL | HDR_SAVECTX);
@@ -1551,14 +1538,13 @@ void cnstr_shdsc_xts_skcipher_encap(u32 * const desc, struct alginfo *cdata)
 	set_jump_tgt_here(desc, key_jump_cmd);
 
 	/*
-	 * create sequence for loading the sector index / 16B tweak value
-	 * Lower 8B of IV - sector index / tweak lower half
-	 * Upper 8B of IV - upper half of 16B tweak
+	 * create sequence for loading the sector index
+	 * Upper 8B of IV - will be used as sector index
+	 * Lower 8B of IV - will be discarded
 	 */
 	append_seq_load(desc, 8, LDST_SRCDST_BYTE_CONTEXT | LDST_CLASS_1_CCB |
 			(0x20 << LDST_OFFSET_SHIFT));
-	append_seq_load(desc, 8, LDST_SRCDST_BYTE_CONTEXT | LDST_CLASS_1_CCB |
-			(0x30 << LDST_OFFSET_SHIFT));
+	append_seq_fifo_load(desc, 8, FIFOLD_CLASS_SKIP);
 
 	/* Load operation */
 	append_operation(desc, cdata->algtype | OP_ALG_AS_INITFINAL |
@@ -1567,11 +1553,9 @@ void cnstr_shdsc_xts_skcipher_encap(u32 * const desc, struct alginfo *cdata)
 	/* Perform operation */
 	skcipher_append_src_dst(desc);
 
-	/* Store lower 8B and upper 8B of IV */
+	/* Store upper 8B of IV */
 	append_seq_store(desc, 8, LDST_SRCDST_BYTE_CONTEXT | LDST_CLASS_1_CCB |
 			 (0x20 << LDST_OFFSET_SHIFT));
-	append_seq_store(desc, 8, LDST_SRCDST_BYTE_CONTEXT | LDST_CLASS_1_CCB |
-			 (0x30 << LDST_OFFSET_SHIFT));
 
 	print_hex_dump_debug("xts skcipher enc shdesc@" __stringify(__LINE__)
 			     ": ", DUMP_PREFIX_ADDRESS, 16, 4,
@@ -1587,13 +1571,7 @@ EXPORT_SYMBOL(cnstr_shdsc_xts_skcipher_encap);
  */
 void cnstr_shdsc_xts_skcipher_decap(u32 * const desc, struct alginfo *cdata)
 {
-	/*
-	 * Set sector size to a big value, practically disabling
-	 * sector size segmentation in xts implementation. We cannot
-	 * take full advantage of this HW feature with existing
-	 * crypto API / dm-crypt SW architecture.
-	 */
-	__be64 sector_size = cpu_to_be64(BIT(15));
+	__be64 sector_size = cpu_to_be64(512);
 	u32 *key_jump_cmd;
 
 	init_sh_desc(desc, HDR_SHARE_SERIAL | HDR_SAVECTX);
@@ -1613,25 +1591,23 @@ void cnstr_shdsc_xts_skcipher_decap(u32 * const desc, struct alginfo *cdata)
 	set_jump_tgt_here(desc, key_jump_cmd);
 
 	/*
-	 * create sequence for loading the sector index / 16B tweak value
-	 * Lower 8B of IV - sector index / tweak lower half
-	 * Upper 8B of IV - upper half of 16B tweak
+	 * create sequence for loading the sector index
+	 * Upper 8B of IV - will be used as sector index
+	 * Lower 8B of IV - will be discarded
 	 */
 	append_seq_load(desc, 8, LDST_SRCDST_BYTE_CONTEXT | LDST_CLASS_1_CCB |
 			(0x20 << LDST_OFFSET_SHIFT));
-	append_seq_load(desc, 8, LDST_SRCDST_BYTE_CONTEXT | LDST_CLASS_1_CCB |
-			(0x30 << LDST_OFFSET_SHIFT));
+	append_seq_fifo_load(desc, 8, FIFOLD_CLASS_SKIP);
+
 	/* Load operation */
 	append_dec_op1(desc, cdata->algtype);
 
 	/* Perform operation */
 	skcipher_append_src_dst(desc);
 
-	/* Store lower 8B and upper 8B of IV */
+	/* Store upper 8B of IV */
 	append_seq_store(desc, 8, LDST_SRCDST_BYTE_CONTEXT | LDST_CLASS_1_CCB |
 			 (0x20 << LDST_OFFSET_SHIFT));
-	append_seq_store(desc, 8, LDST_SRCDST_BYTE_CONTEXT | LDST_CLASS_1_CCB |
-			 (0x30 << LDST_OFFSET_SHIFT));
 
 	print_hex_dump_debug("xts skcipher dec shdesc@" __stringify(__LINE__)
 			     ": ", DUMP_PREFIX_ADDRESS, 16, 4, desc,

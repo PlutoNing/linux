@@ -6,7 +6,6 @@
  * Author: Hu Hongbing <huhb@lemote.com>
  *	   Wu Zhangjin <wuzhangjin@gmail.com>
  */
-#include <linux/suspend.h>
 #include <asm/sections.h>
 #include <asm/fpu.h>
 #include <asm/dsp.h>
@@ -20,8 +19,8 @@ void save_processor_state(void)
 
 	if (is_fpu_owner())
 		save_fp(current);
-
-	save_dsp(current);
+	if (cpu_has_dsp)
+		save_dsp(current);
 }
 
 void restore_processor_state(void)
@@ -30,8 +29,8 @@ void restore_processor_state(void)
 
 	if (is_fpu_owner())
 		restore_fp(current);
-
-	restore_dsp(current);
+	if (cpu_has_dsp)
+		restore_dsp(current);
 }
 
 int pfn_is_nosave(unsigned long pfn)

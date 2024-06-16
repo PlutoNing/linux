@@ -22,7 +22,8 @@
 #include <asm/dvma.h>
 #include <asm/io.h>
 #include <asm/page.h>
-#include <asm/tlbflush.h>
+#include <asm/pgtable.h>
+#include <asm/pgalloc.h>
 
 /* IOMMU support */
 
@@ -60,7 +61,7 @@ static volatile unsigned long *iommu_pte = (unsigned long *)SUN3X_IOMMU;
 
 #ifdef DEBUG
 /* code to print out a dvma mapping for debugging purposes */
-static void dvma_print (unsigned long dvma_addr)
+void dvma_print (unsigned long dvma_addr)
 {
 
 	unsigned long index;
@@ -79,8 +80,6 @@ inline int dvma_map_cpu(unsigned long kaddr,
 			       unsigned long vaddr, int len)
 {
 	pgd_t *pgd;
-	p4d_t *p4d;
-	pud_t *pud;
 	unsigned long end;
 	int ret = 0;
 
@@ -91,14 +90,12 @@ inline int dvma_map_cpu(unsigned long kaddr,
 
 	pr_debug("dvma: mapping kern %08lx to virt %08lx\n", kaddr, vaddr);
 	pgd = pgd_offset_k(vaddr);
-	p4d = p4d_offset(pgd, vaddr);
-	pud = pud_offset(p4d, vaddr);
 
 	do {
 		pmd_t *pmd;
 		unsigned long end2;
 
-		if((pmd = pmd_alloc(&init_mm, pud, vaddr)) == NULL) {
+		if((pmd = pmd_alloc(&init_mm, pgd, vaddr)) == NULL) {
 			ret = -ENOMEM;
 			goto out;
 		}
@@ -125,7 +122,7 @@ inline int dvma_map_cpu(unsigned long kaddr,
 			do {
 				pr_debug("mapping %08lx phys to %08lx\n",
 					 __pa(kaddr), vaddr);
-				set_pte(pte, pfn_pte(virt_to_pfn((void *)kaddr),
+				set_pte(pte, pfn_pte(virt_to_pfn(kaddr),
 						     PAGE_KERNEL));
 				pte++;
 				kaddr += PAGE_SIZE;
@@ -143,7 +140,8 @@ inline int dvma_map_cpu(unsigned long kaddr,
 }
 
 
-int dvma_map_iommu(unsigned long kaddr, unsigned long baddr, int len)
+inline int dvma_map_iommu(unsigned long kaddr, unsigned long baddr,
+				 int len)
 {
 	unsigned long end, index;
 
@@ -198,3 +196,4 @@ void dvma_unmap_iommu(unsigned long baddr, int len)
 	}
 
 }
+

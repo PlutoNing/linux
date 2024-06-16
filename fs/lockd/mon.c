@@ -276,9 +276,6 @@ static struct nsm_handle *nsm_create_handle(const struct sockaddr *sap,
 {
 	struct nsm_handle *new;
 
-	if (!hostname)
-		return NULL;
-
 	new = kzalloc(sizeof(*new) + hostname_len + 1, GFP_KERNEL);
 	if (unlikely(new == NULL))
 		return NULL;
@@ -420,7 +417,7 @@ void nsm_release(struct nsm_handle *nsm)
 /*
  * XDR functions for NSM.
  *
- * See https://www.opengroup.org/ for details on the Network
+ * See http://www.opengroup.org/ for details on the Network
  * Status Monitor wire protocol.
  */
 

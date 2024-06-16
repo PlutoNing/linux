@@ -9,25 +9,25 @@
 #include <linux/export.h>
 #include <linux/ftrace.h>
 #include <linux/kprobes.h>
-#include <linux/stacktrace.h>
 
 #include <asm/stack_pointer.h>
+#include <asm/stacktrace.h>
 
 struct return_address_data {
 	unsigned int level;
 	void *addr;
 };
 
-static bool save_return_addr(void *d, unsigned long pc)
+static int save_return_addr(struct stackframe *frame, void *d)
 {
 	struct return_address_data *data = d;
 
 	if (!data->level) {
-		data->addr = (void *)pc;
-		return false;
+		data->addr = (void *)frame->pc;
+		return 1;
 	} else {
 		--data->level;
-		return true;
+		return 0;
 	}
 }
 NOKPROBE_SYMBOL(save_return_addr);
@@ -35,11 +35,15 @@ NOKPROBE_SYMBOL(save_return_addr);
 void *return_address(unsigned int level)
 {
 	struct return_address_data data;
+	struct stackframe frame;
 
 	data.level = level + 2;
 	data.addr = NULL;
 
-	arch_stack_walk(save_return_addr, &data, current, NULL);
+	start_backtrace(&frame,
+			(unsigned long)__builtin_frame_address(0),
+			(unsigned long)return_address);
+	walk_stackframe(current, &frame, save_return_addr, &data);
 
 	if (!data.level)
 		return data.addr;

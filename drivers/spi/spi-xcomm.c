@@ -58,7 +58,7 @@ static int spi_xcomm_sync_config(struct spi_xcomm *spi_xcomm, unsigned int len)
 static void spi_xcomm_chipselect(struct spi_xcomm *spi_xcomm,
 	struct spi_device *spi, int is_active)
 {
-	unsigned long cs = spi_get_chipselect(spi, 0);
+	unsigned long cs = spi->chip_select;
 	uint16_t chipselect = spi_xcomm->chipselect;
 
 	if (is_active)
@@ -132,10 +132,10 @@ static int spi_xcomm_txrx_bufs(struct spi_xcomm *spi_xcomm,
 	return t->len;
 }
 
-static int spi_xcomm_transfer_one(struct spi_controller *host,
+static int spi_xcomm_transfer_one(struct spi_master *master,
 	struct spi_message *msg)
 {
-	struct spi_xcomm *spi_xcomm = spi_controller_get_devdata(host);
+	struct spi_xcomm *spi_xcomm = spi_master_get_devdata(master);
 	unsigned int settings = spi_xcomm->settings;
 	struct spi_device *spi = msg->spi;
 	unsigned cs_change = 0;
@@ -188,7 +188,8 @@ static int spi_xcomm_transfer_one(struct spi_controller *host,
 		}
 		status = 0;
 
-		spi_transfer_delay_exec(t);
+		if (t->delay_usecs)
+			udelay(t->delay_usecs);
 
 		is_first = false;
 	}
@@ -197,35 +198,36 @@ static int spi_xcomm_transfer_one(struct spi_controller *host,
 		spi_xcomm_chipselect(spi_xcomm, spi, false);
 
 	msg->status = status;
-	spi_finalize_current_message(host);
+	spi_finalize_current_message(master);
 
 	return status;
 }
 
-static int spi_xcomm_probe(struct i2c_client *i2c)
+static int spi_xcomm_probe(struct i2c_client *i2c,
+	const struct i2c_device_id *id)
 {
 	struct spi_xcomm *spi_xcomm;
-	struct spi_controller *host;
+	struct spi_master *master;
 	int ret;
 
-	host = spi_alloc_host(&i2c->dev, sizeof(*spi_xcomm));
-	if (!host)
+	master = spi_alloc_master(&i2c->dev, sizeof(*spi_xcomm));
+	if (!master)
 		return -ENOMEM;
 
-	spi_xcomm = spi_controller_get_devdata(host);
+	spi_xcomm = spi_master_get_devdata(master);
 	spi_xcomm->i2c = i2c;
 
-	host->num_chipselect = 16;
-	host->mode_bits = SPI_CPHA | SPI_CPOL | SPI_3WIRE;
-	host->bits_per_word_mask = SPI_BPW_MASK(8);
-	host->flags = SPI_CONTROLLER_HALF_DUPLEX;
-	host->transfer_one_message = spi_xcomm_transfer_one;
-	host->dev.of_node = i2c->dev.of_node;
-	i2c_set_clientdata(i2c, host);
+	master->num_chipselect = 16;
+	master->mode_bits = SPI_CPHA | SPI_CPOL | SPI_3WIRE;
+	master->bits_per_word_mask = SPI_BPW_MASK(8);
+	master->flags = SPI_MASTER_HALF_DUPLEX;
+	master->transfer_one_message = spi_xcomm_transfer_one;
+	master->dev.of_node = i2c->dev.of_node;
+	i2c_set_clientdata(i2c, master);
 
-	ret = devm_spi_register_controller(&i2c->dev, host);
+	ret = devm_spi_register_master(&i2c->dev, master);
 	if (ret < 0)
-		spi_controller_put(host);
+		spi_master_put(master);
 
 	return ret;
 }

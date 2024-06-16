@@ -13,17 +13,11 @@
 #include <string.h>
 #include <syscall.h>
 #include <sys/mount.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 
 #include "../kselftest.h"
 
 #ifndef P_PIDFD
 #define P_PIDFD 3
-#endif
-
-#ifndef CLONE_NEWTIME
-#define CLONE_NEWTIME 0x00000080
 #endif
 
 #ifndef CLONE_PIDFD
@@ -40,14 +34,6 @@
 
 #ifndef __NR_clone3
 #define __NR_clone3 -1
-#endif
-
-#ifndef __NR_pidfd_getfd
-#define __NR_pidfd_getfd -1
-#endif
-
-#ifndef PIDFD_NONBLOCK
-#define PIDFD_NONBLOCK O_NONBLOCK
 #endif
 
 /*
@@ -68,7 +54,7 @@
 #define PIDFD_SKIP 3
 #define PIDFD_XFAIL 4
 
-static inline int wait_for_pid(pid_t pid)
+int wait_for_pid(pid_t pid)
 {
 	int status, ret;
 
@@ -78,19 +64,13 @@ again:
 		if (errno == EINTR)
 			goto again;
 
-		ksft_print_msg("waitpid returned -1, errno=%d\n", errno);
 		return -1;
 	}
 
-	if (!WIFEXITED(status)) {
-		ksft_print_msg(
-		       "waitpid !WIFEXITED, WIFSIGNALED=%d, WTERMSIG=%d\n",
-		       WIFSIGNALED(status), WTERMSIG(status));
+	if (!WIFEXITED(status))
 		return -1;
-	}
 
-	ret = WEXITSTATUS(status);
-	return ret;
+	return WEXITSTATUS(status);
 }
 
 static inline int sys_pidfd_open(pid_t pid, unsigned int flags)
@@ -102,16 +82,6 @@ static inline int sys_pidfd_send_signal(int pidfd, int sig, siginfo_t *info,
 					unsigned int flags)
 {
 	return syscall(__NR_pidfd_send_signal, pidfd, sig, info, flags);
-}
-
-static inline int sys_pidfd_getfd(int pidfd, int fd, int flags)
-{
-	return syscall(__NR_pidfd_getfd, pidfd, fd, flags);
-}
-
-static inline int sys_memfd_create(const char *name, unsigned int flags)
-{
-	return syscall(__NR_memfd_create, name, flags);
 }
 
 #endif /* __PIDFD_H */

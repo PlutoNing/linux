@@ -24,7 +24,6 @@
 #include <net/ip.h>
 #include <net/route.h>
 #include <net/flow_dissector.h>
-#include <net/tc_wrapper.h>
 
 #if IS_ENABLED(CONFIG_NF_CONNTRACK)
 #include <net/netfilter/nf_conntrack.h>
@@ -81,7 +80,7 @@ static u32 flow_get_dst(const struct sk_buff *skb, const struct flow_keys *flow)
 	if (dst)
 		return ntohl(dst);
 
-	return addr_fold(skb_dst(skb)) ^ (__force u16)skb_protocol(skb, true);
+	return addr_fold(skb_dst(skb)) ^ (__force u16) tc_skb_protocol(skb);
 }
 
 static u32 flow_get_proto(const struct sk_buff *skb,
@@ -105,7 +104,7 @@ static u32 flow_get_proto_dst(const struct sk_buff *skb,
 	if (flow->ports.ports)
 		return ntohs(flow->ports.dst);
 
-	return addr_fold(skb_dst(skb)) ^ (__force u16)skb_protocol(skb, true);
+	return addr_fold(skb_dst(skb)) ^ (__force u16) tc_skb_protocol(skb);
 }
 
 static u32 flow_get_iif(const struct sk_buff *skb)
@@ -152,7 +151,7 @@ static u32 flow_get_nfct(const struct sk_buff *skb)
 static u32 flow_get_nfct_src(const struct sk_buff *skb,
 			     const struct flow_keys *flow)
 {
-	switch (skb_protocol(skb, true)) {
+	switch (tc_skb_protocol(skb)) {
 	case htons(ETH_P_IP):
 		return ntohl(CTTUPLE(skb, src.u3.ip));
 	case htons(ETH_P_IPV6):
@@ -165,7 +164,7 @@ fallback:
 static u32 flow_get_nfct_dst(const struct sk_buff *skb,
 			     const struct flow_keys *flow)
 {
-	switch (skb_protocol(skb, true)) {
+	switch (tc_skb_protocol(skb)) {
 	case htons(ETH_P_IP):
 		return ntohl(CTTUPLE(skb, dst.u3.ip));
 	case htons(ETH_P_IPV6):
@@ -226,7 +225,7 @@ static u32 flow_get_skgid(const struct sk_buff *skb)
 
 static u32 flow_get_vlan_tag(const struct sk_buff *skb)
 {
-	u16 tag;
+	u16 uninitialized_var(tag);
 
 	if (vlan_get_tag(skb, &tag) < 0)
 		return 0;
@@ -293,9 +292,8 @@ static u32 flow_key_get(struct sk_buff *skb, int key, struct flow_keys *flow)
 			  (1 << FLOW_KEY_NFCT_PROTO_SRC) |	\
 			  (1 << FLOW_KEY_NFCT_PROTO_DST))
 
-TC_INDIRECT_SCOPE int flow_classify(struct sk_buff *skb,
-				    const struct tcf_proto *tp,
-				    struct tcf_result *res)
+static int flow_classify(struct sk_buff *skb, const struct tcf_proto *tp,
+			 struct tcf_result *res)
 {
 	struct flow_head *head = rcu_dereference_bh(tp->root);
 	struct flow_filter *f;
@@ -369,7 +367,7 @@ static const struct nla_policy flow_policy[TCA_FLOW_MAX + 1] = {
 
 static void __flow_destroy_filter(struct flow_filter *f)
 {
-	timer_shutdown_sync(&f->perturb_timer);
+	del_timer_sync(&f->perturb_timer);
 	tcf_exts_destroy(&f->exts);
 	tcf_em_tree_destroy(&f->ematches);
 	tcf_exts_put_net(&f->exts);
@@ -389,7 +387,7 @@ static void flow_destroy_filter_work(struct work_struct *work)
 static int flow_change(struct net *net, struct sk_buff *in_skb,
 		       struct tcf_proto *tp, unsigned long base,
 		       u32 handle, struct nlattr **tca,
-		       void **arg, u32 flags,
+		       void **arg, bool ovr, bool rtnl_held,
 		       struct netlink_ext_ack *extack)
 {
 	struct flow_head *head = rtnl_dereference(tp->root);
@@ -444,8 +442,8 @@ static int flow_change(struct net *net, struct sk_buff *in_skb,
 	if (err < 0)
 		goto err2;
 
-	err = tcf_exts_validate(net, tp, tb, tca[TCA_RATE], &fnew->exts, flags,
-				extack);
+	err = tcf_exts_validate(net, tp, tb, tca[TCA_RATE], &fnew->exts, ovr,
+				true, extack);
 	if (err < 0)
 		goto err2;
 
@@ -685,8 +683,14 @@ static void flow_walk(struct tcf_proto *tp, struct tcf_walker *arg,
 	struct flow_filter *f;
 
 	list_for_each_entry(f, &head->filters, list) {
-		if (!tc_cls_stats_dump(tp, arg, f))
+		if (arg->count < arg->skip)
+			goto skip;
+		if (arg->fn(tp, f, arg) < 0) {
+			arg->stop = 1;
 			break;
+		}
+skip:
+		arg->count++;
 	}
 }
 
@@ -702,7 +706,6 @@ static struct tcf_proto_ops cls_flow_ops __read_mostly = {
 	.walk		= flow_walk,
 	.owner		= THIS_MODULE,
 };
-MODULE_ALIAS_NET_CLS("flow");
 
 static int __init cls_flow_init(void)
 {

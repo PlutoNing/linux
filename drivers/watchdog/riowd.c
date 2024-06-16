@@ -14,7 +14,7 @@
 #include <linux/miscdevice.h>
 #include <linux/watchdog.h>
 #include <linux/of.h>
-#include <linux/platform_device.h>
+#include <linux/of_device.h>
 #include <linux/io.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
@@ -46,6 +46,7 @@
 
 MODULE_AUTHOR("David S. Miller <davem@davemloft.net>");
 MODULE_DESCRIPTION("Hardware watchdog driver for Sun RIO");
+MODULE_SUPPORTED_DEVICE("watchdog");
 MODULE_LICENSE("GPL");
 
 #define DRIVER_NAME	"riowd"
@@ -133,14 +134,14 @@ static long riowd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return -EINVAL;
 		riowd_timeout = (new_margin + 59) / 60;
 		riowd_writereg(p, riowd_timeout, WDTO_INDEX);
-		fallthrough;
+		/* Fall through */
 
 	case WDIOC_GETTIMEOUT:
 		return put_user(riowd_timeout * 60, (int __user *)argp);
 
 	default:
 		return -EINVAL;
-	}
+	};
 
 	return 0;
 }
@@ -162,7 +163,6 @@ static const struct file_operations riowd_fops = {
 	.owner =		THIS_MODULE,
 	.llseek =		no_llseek,
 	.unlocked_ioctl =	riowd_ioctl,
-	.compat_ioctl	=	compat_ptr_ioctl,
 	.open =			riowd_open,
 	.write =		riowd_write,
 	.release =		riowd_release,
@@ -217,12 +217,14 @@ out:
 	return err;
 }
 
-static void riowd_remove(struct platform_device *op)
+static int riowd_remove(struct platform_device *op)
 {
 	struct riowd *p = platform_get_drvdata(op);
 
 	misc_deregister(&riowd_miscdev);
 	of_iounmap(&op->resource[0], p->regs, 2);
+
+	return 0;
 }
 
 static const struct of_device_id riowd_match[] = {
@@ -239,7 +241,7 @@ static struct platform_driver riowd_driver = {
 		.of_match_table = riowd_match,
 	},
 	.probe		= riowd_probe,
-	.remove_new	= riowd_remove,
+	.remove		= riowd_remove,
 };
 
 module_platform_driver(riowd_driver);

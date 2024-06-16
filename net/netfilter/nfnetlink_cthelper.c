@@ -96,16 +96,14 @@ static int
 nfnl_cthelper_from_nlattr(struct nlattr *attr, struct nf_conn *ct)
 {
 	struct nf_conn_help *help = nfct_help(ct);
-	const struct nf_conntrack_helper *helper;
 
 	if (attr == NULL)
 		return -EINVAL;
 
-	helper = rcu_dereference(help->helper);
-	if (!helper || helper->data_len == 0)
+	if (help->helper->data_len == 0)
 		return -EINVAL;
 
-	nla_memcpy(help->data, attr, sizeof(help->data));
+	nla_memcpy(help->data, nla_data(attr), sizeof(help->data));
 	return 0;
 }
 
@@ -113,11 +111,9 @@ static int
 nfnl_cthelper_to_nlattr(struct sk_buff *skb, const struct nf_conn *ct)
 {
 	const struct nf_conn_help *help = nfct_help(ct);
-	const struct nf_conntrack_helper *helper;
 
-	helper = rcu_dereference(help->helper);
-	if (helper && helper->data_len &&
-	    nla_put(skb, CTA_HELP_INFO, helper->data_len, &help->data))
+	if (help->helper->data_len &&
+	    nla_put(skb, CTA_HELP_INFO, help->helper->data_len, &help->data))
 		goto nla_put_failure;
 
 	return 0;
@@ -150,7 +146,7 @@ nfnl_cthelper_expect_policy(struct nf_conntrack_expect_policy *expect_policy,
 	    !tb[NFCTH_POLICY_EXPECT_TIMEOUT])
 		return -EINVAL;
 
-	nla_strscpy(expect_policy->name,
+	nla_strlcpy(expect_policy->name,
 		    tb[NFCTH_POLICY_NAME], NF_CT_HELPER_NAME_LEN);
 	expect_policy->max_expected =
 		ntohl(nla_get_be32(tb[NFCTH_POLICY_EXPECT_MAX]));
@@ -237,14 +233,13 @@ nfnl_cthelper_create(const struct nlattr * const tb[],
 	if (ret < 0)
 		goto err1;
 
-	nla_strscpy(helper->name,
+	nla_strlcpy(helper->name,
 		    tb[NFCTH_NAME], NF_CT_HELPER_NAME_LEN);
 	size = ntohl(nla_get_be32(tb[NFCTH_PRIV_DATA_LEN]));
-	if (size > sizeof_field(struct nf_conn_help, data)) {
+	if (size > FIELD_SIZEOF(struct nf_conn_help, data)) {
 		ret = -ENOMEM;
 		goto err2;
 	}
-	helper->data_len = size;
 
 	helper->flags |= NF_CT_HELPER_F_USERSPACE;
 	memcpy(&helper->tuple, tuple, sizeof(struct nf_conntrack_tuple));
@@ -384,14 +379,10 @@ static int
 nfnl_cthelper_update(const struct nlattr * const tb[],
 		     struct nf_conntrack_helper *helper)
 {
-	u32 size;
 	int ret;
 
-	if (tb[NFCTH_PRIV_DATA_LEN]) {
-		size = ntohl(nla_get_be32(tb[NFCTH_PRIV_DATA_LEN]));
-		if (size != helper->data_len)
-			return -EBUSY;
-	}
+	if (tb[NFCTH_PRIV_DATA_LEN])
+		return -EBUSY;
 
 	if (tb[NFCTH_POLICY]) {
 		ret = nfnl_cthelper_update_policy(helper, tb[NFCTH_POLICY]);
@@ -416,8 +407,10 @@ nfnl_cthelper_update(const struct nlattr * const tb[],
 	return 0;
 }
 
-static int nfnl_cthelper_new(struct sk_buff *skb, const struct nfnl_info *info,
-			     const struct nlattr * const tb[])
+static int nfnl_cthelper_new(struct net *net, struct sock *nfnl,
+			     struct sk_buff *skb, const struct nlmsghdr *nlh,
+			     const struct nlattr * const tb[],
+			     struct netlink_ext_ack *extack)
 {
 	const char *helper_name;
 	struct nf_conntrack_helper *cur, *helper = NULL;
@@ -447,7 +440,7 @@ static int nfnl_cthelper_new(struct sk_buff *skb, const struct nfnl_info *info,
 		     tuple.dst.protonum != cur->tuple.dst.protonum))
 			continue;
 
-		if (info->nlh->nlmsg_flags & NLM_F_EXCL)
+		if (nlh->nlmsg_flags & NLM_F_EXCL)
 			return -EEXIST;
 
 		helper = cur;
@@ -532,14 +525,19 @@ nfnl_cthelper_fill_info(struct sk_buff *skb, u32 portid, u32 seq, u32 type,
 			int event, struct nf_conntrack_helper *helper)
 {
 	struct nlmsghdr *nlh;
+	struct nfgenmsg *nfmsg;
 	unsigned int flags = portid ? NLM_F_MULTI : 0;
 	int status;
 
 	event = nfnl_msg_type(NFNL_SUBSYS_CTHELPER, event);
-	nlh = nfnl_msg_put(skb, portid, seq, event, flags, AF_UNSPEC,
-			   NFNETLINK_V0, 0);
-	if (!nlh)
+	nlh = nlmsg_put(skb, portid, seq, event, sizeof(*nfmsg), flags);
+	if (nlh == NULL)
 		goto nlmsg_failure;
+
+	nfmsg = nlmsg_data(nlh);
+	nfmsg->nfgen_family = AF_UNSPEC;
+	nfmsg->version = NFNETLINK_V0;
+	nfmsg->res_id = 0;
 
 	if (nla_put_string(skb, NFCTH_NAME, helper->name))
 		goto nla_put_failure;
@@ -613,8 +611,10 @@ out:
 	return skb->len;
 }
 
-static int nfnl_cthelper_get(struct sk_buff *skb, const struct nfnl_info *info,
-			     const struct nlattr * const tb[])
+static int nfnl_cthelper_get(struct net *net, struct sock *nfnl,
+			     struct sk_buff *skb, const struct nlmsghdr *nlh,
+			     const struct nlattr * const tb[],
+			     struct netlink_ext_ack *extack)
 {
 	int ret = -ENOENT;
 	struct nf_conntrack_helper *cur;
@@ -627,11 +627,11 @@ static int nfnl_cthelper_get(struct sk_buff *skb, const struct nfnl_info *info,
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
 
-	if (info->nlh->nlmsg_flags & NLM_F_DUMP) {
+	if (nlh->nlmsg_flags & NLM_F_DUMP) {
 		struct netlink_dump_control c = {
 			.dump = nfnl_cthelper_dump_table,
 		};
-		return netlink_dump_start(info->sk, skb, info->nlh, &c);
+		return netlink_dump_start(nfnl, skb, nlh, &c);
 	}
 
 	if (tb[NFCTH_NAME])
@@ -663,23 +663,29 @@ static int nfnl_cthelper_get(struct sk_buff *skb, const struct nfnl_info *info,
 		}
 
 		ret = nfnl_cthelper_fill_info(skb2, NETLINK_CB(skb).portid,
-					      info->nlh->nlmsg_seq,
-					      NFNL_MSG_TYPE(info->nlh->nlmsg_type),
+					      nlh->nlmsg_seq,
+					      NFNL_MSG_TYPE(nlh->nlmsg_type),
 					      NFNL_MSG_CTHELPER_NEW, cur);
 		if (ret <= 0) {
 			kfree_skb(skb2);
 			break;
 		}
 
-		ret = nfnetlink_unicast(skb2, info->net, NETLINK_CB(skb).portid);
-		break;
-	}
+		ret = netlink_unicast(nfnl, skb2, NETLINK_CB(skb).portid,
+				      MSG_DONTWAIT);
+		if (ret > 0)
+			ret = 0;
 
+		/* this avoids a loop in nfnetlink. */
+		return ret == -EAGAIN ? -ENOBUFS : ret;
+	}
 	return ret;
 }
 
-static int nfnl_cthelper_del(struct sk_buff *skb, const struct nfnl_info *info,
-			     const struct nlattr * const tb[])
+static int nfnl_cthelper_del(struct net *net, struct sock *nfnl,
+			     struct sk_buff *skb, const struct nlmsghdr *nlh,
+			     const struct nlattr * const tb[],
+			     struct netlink_ext_ack *extack)
 {
 	char *helper_name = NULL;
 	struct nf_conntrack_helper *cur;
@@ -736,29 +742,18 @@ static const struct nla_policy nfnl_cthelper_policy[NFCTH_MAX+1] = {
 	[NFCTH_NAME] = { .type = NLA_NUL_STRING,
 			 .len = NF_CT_HELPER_NAME_LEN-1 },
 	[NFCTH_QUEUE_NUM] = { .type = NLA_U32, },
-	[NFCTH_PRIV_DATA_LEN] = { .type = NLA_U32, },
-	[NFCTH_STATUS] = { .type = NLA_U32, },
 };
 
 static const struct nfnl_callback nfnl_cthelper_cb[NFNL_MSG_CTHELPER_MAX] = {
-	[NFNL_MSG_CTHELPER_NEW]	= {
-		.call		= nfnl_cthelper_new,
-		.type		= NFNL_CB_MUTEX,
-		.attr_count	= NFCTH_MAX,
-		.policy		= nfnl_cthelper_policy
-	},
-	[NFNL_MSG_CTHELPER_GET] = {
-		.call		= nfnl_cthelper_get,
-		.type		= NFNL_CB_MUTEX,
-		.attr_count	= NFCTH_MAX,
-		.policy		= nfnl_cthelper_policy
-	},
-	[NFNL_MSG_CTHELPER_DEL]	= {
-		.call		= nfnl_cthelper_del,
-		.type		= NFNL_CB_MUTEX,
-		.attr_count	= NFCTH_MAX,
-		.policy		= nfnl_cthelper_policy
-	},
+	[NFNL_MSG_CTHELPER_NEW]		= { .call = nfnl_cthelper_new,
+					    .attr_count = NFCTH_MAX,
+					    .policy = nfnl_cthelper_policy },
+	[NFNL_MSG_CTHELPER_GET]		= { .call = nfnl_cthelper_get,
+					    .attr_count = NFCTH_MAX,
+					    .policy = nfnl_cthelper_policy },
+	[NFNL_MSG_CTHELPER_DEL]		= { .call = nfnl_cthelper_del,
+					    .attr_count = NFCTH_MAX,
+					    .policy = nfnl_cthelper_policy },
 };
 
 static const struct nfnetlink_subsystem nfnl_cthelper_subsys = {

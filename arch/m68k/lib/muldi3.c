@@ -16,7 +16,6 @@ GNU General Public License for more details. */
 
 #include <linux/compiler.h>
 #include <linux/export.h>
-#include <linux/libgcc.h>
 
 #ifdef CONFIG_CPU_HAS_NO_MULDIV64
 
@@ -85,7 +84,7 @@ __muldi3 (DItype u, DItype v)
   DIunion w;
   DIunion uu, vv;
 
-  uu.ll = u;
+  uu.ll = u,
   vv.ll = v;
 
   w.ll = __umulsidi3 (uu.s.low, vv.s.low);

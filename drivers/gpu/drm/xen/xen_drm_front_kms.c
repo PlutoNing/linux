@@ -12,9 +12,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_fourcc.h>
-#include <drm/drm_framebuffer.h>
 #include <drm/drm_gem.h>
-#include <drm/drm_gem_atomic_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_vblank.h>
@@ -62,10 +60,17 @@ fb_create(struct drm_device *dev, struct drm_file *filp,
 	int ret;
 
 	fb = drm_gem_fb_create_with_funcs(dev, filp, mode_cmd, &fb_funcs);
-	if (IS_ERR(fb))
+	if (IS_ERR_OR_NULL(fb))
 		return fb;
 
-	gem_obj = fb->obj[0];
+	gem_obj = drm_gem_object_lookup(filp, mode_cmd->handles[0]);
+	if (!gem_obj) {
+		DRM_ERROR("Failed to lookup GEM object\n");
+		ret = -ENOENT;
+		goto fail;
+	}
+
+	drm_gem_object_put_unlocked(gem_obj);
 
 	ret = xen_drm_front_fb_attach(drm_info->front_info,
 				      xen_drm_front_dbuf_to_cookie(gem_obj),
@@ -222,24 +227,6 @@ static bool display_send_page_flip(struct drm_simple_display_pipe *pipe,
 	return false;
 }
 
-static int display_check(struct drm_simple_display_pipe *pipe,
-			 struct drm_plane_state *plane_state,
-			 struct drm_crtc_state *crtc_state)
-{
-	/*
-	 * Xen doesn't initialize vblanking via drm_vblank_init(), so
-	 * DRM helpers assume that it doesn't handle vblanking and start
-	 * sending out fake VBLANK events automatically.
-	 *
-	 * As xen contains it's own logic for sending out VBLANK events
-	 * in send_pending_event(), disable no_vblank (i.e., the xen
-	 * driver has vblanking support).
-	 */
-	crtc_state->no_vblank = false;
-
-	return 0;
-}
-
 static void display_update(struct drm_simple_display_pipe *pipe,
 			   struct drm_plane_state *old_plane_state)
 {
@@ -283,12 +270,11 @@ static void display_update(struct drm_simple_display_pipe *pipe,
 }
 
 static enum drm_mode_status
-display_mode_valid(struct drm_simple_display_pipe *pipe,
-		   const struct drm_display_mode *mode)
+display_mode_valid(struct drm_crtc *crtc, const struct drm_display_mode *mode)
 {
 	struct xen_drm_front_drm_pipeline *pipeline =
-			container_of(pipe, struct xen_drm_front_drm_pipeline,
-				     pipe);
+			container_of(crtc, struct xen_drm_front_drm_pipeline,
+				     pipe.crtc);
 
 	if (mode->hdisplay != pipeline->width)
 		return MODE_ERROR;
@@ -303,7 +289,7 @@ static const struct drm_simple_display_pipe_funcs display_funcs = {
 	.mode_valid = display_mode_valid,
 	.enable = display_enable,
 	.disable = display_disable,
-	.check = display_check,
+	.prepare_fb = drm_gem_fb_simple_display_pipe_prepare_fb,
 	.update = display_update,
 };
 

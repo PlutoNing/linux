@@ -32,11 +32,10 @@
 #include <linux/root_dev.h>
 #include <linux/initrd.h>
 #include <linux/timer.h>
-#include <linux/of_address.h>
-#include <linux/of_fdt.h>
-#include <linux/of_irq.h>
 
 #include <asm/io.h>
+#include <asm/pgtable.h>
+#include <asm/prom.h>
 #include <asm/pci-bridge.h>
 #include <asm/dma.h>
 #include <asm/machdep.h>
@@ -253,7 +252,7 @@ static void __noreturn briq_restart(char *cmd)
  * Per default, input/output-device points to the keyboard/screen
  * If no card is installed, the built-in serial port is used as a fallback.
  * But unfortunately, the firmware does not connect /chosen/{stdin,stdout}
- * to the built-in serial node. Instead, a /failsafe node is created.
+ * the the built-in serial node. Instead, a /failsafe node is created.
  */
 static __init void chrp_init(void)
 {
@@ -323,11 +322,11 @@ static void __init chrp_setup_arch(void)
 	printk("chrp type = %x [%s]\n", _chrp_type, chrp_names[_chrp_type]);
 
 	rtas_initialize();
-	if (rtas_function_token(RTAS_FN_DISPLAY_CHARACTER) >= 0)
+	if (rtas_token("display-character") >= 0)
 		ppc_md.progress = rtas_progress;
 
 	/* use RTAS time-of-day routines if available */
-	if (rtas_function_token(RTAS_FN_GET_TIME_OF_DAY) != RTAS_UNKNOWN_SERVICE) {
+	if (rtas_token("get-time-of-day") != RTAS_UNKNOWN_SERVICE) {
 		ppc_md.get_boot_time	= rtas_get_boot_time;
 		ppc_md.get_rtc_time	= rtas_get_rtc_time;
 		ppc_md.set_rtc_time	= rtas_set_rtc_time;
@@ -336,10 +335,21 @@ static void __init chrp_setup_arch(void)
 	/* On pegasos, enable the L2 cache if not already done by OF */
 	pegasos_set_l2cr();
 
+	/* Lookup PCI host bridges */
+	chrp_find_bridges();
+
+	/*
+	 *  Temporary fixes for PCI devices.
+	 *  -- Geert
+	 */
+	hydra_init();		/* Mac I/O */
+
 	/*
 	 *  Fix the Super I/O configuration
 	 */
 	sio_init();
+
+	pci_create_OF_bus_map();
 
 	/*
 	 * Print the banner, then scroll down so boot progress
@@ -441,6 +451,13 @@ static void __init chrp_find_openpic(void)
 	of_node_put(np);
 }
 
+#if defined(CONFIG_VT) && defined(CONFIG_INPUT_ADBHID) && defined(CONFIG_XMON)
+static struct irqaction xmon_irqaction = {
+	.handler = xmon_irq,
+	.name = "XMON break",
+};
+#endif
+
 static void __init chrp_find_8259(void)
 {
 	struct device_node *np, *pic = NULL;
@@ -524,11 +541,8 @@ static void __init chrp_init_IRQ(void)
 		if (of_node_is_type(kbd->parent, "adb"))
 			break;
 	of_node_put(kbd);
-	if (kbd) {
-		if (request_irq(HYDRA_INT_ADB_NMI, xmon_irq, 0, "XMON break",
-				NULL))
-			pr_err("Failed to register XMON break interrupt\n");
-	}
+	if (kbd)
+		setup_irq(HYDRA_INT_ADB_NMI, &xmon_irqaction);
 #endif
 }
 
@@ -559,6 +573,7 @@ static int __init chrp_probe(void)
  	if (strcmp(dtype, "chrp"))
 		return 0;
 
+	ISA_DMA_THRESHOLD = ~0L;
 	DMA_MODE_READ = 0x44;
 	DMA_MODE_WRITE = 0x48;
 
@@ -573,7 +588,6 @@ define_machine(chrp) {
 	.name			= "CHRP",
 	.probe			= chrp_probe,
 	.setup_arch		= chrp_setup_arch,
-	.discover_phbs		= chrp_find_bridges,
 	.init			= chrp_init2,
 	.show_cpuinfo		= chrp_show_cpuinfo,
 	.init_IRQ		= chrp_init_IRQ,
@@ -582,5 +596,6 @@ define_machine(chrp) {
 	.time_init		= chrp_time_init,
 	.set_rtc_time		= chrp_set_rtc_time,
 	.get_rtc_time		= chrp_get_rtc_time,
+	.calibrate_decr		= generic_calibrate_decr,
 	.phys_mem_access_prot	= pci_phys_mem_access_prot,
 };

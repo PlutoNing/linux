@@ -4,7 +4,6 @@
  * Author: Rob Clark <robdclark@gmail.com>
  */
 
-#include <linux/backlight.h>
 #include <linux/gpio/consumer.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
@@ -17,7 +16,6 @@
 #include <drm/drm_connector.h>
 #include <drm/drm_modeset_helper_vtables.h>
 #include <drm/drm_probe_helper.h>
-#include <drm/drm_simple_kms_helper.h>
 
 #include "tilcdc_drv.h"
 #include "tilcdc_panel.h"
@@ -76,6 +74,10 @@ static void panel_encoder_mode_set(struct drm_encoder *encoder,
 	/* nothing needed */
 }
 
+static const struct drm_encoder_funcs panel_encoder_funcs = {
+		.destroy        = drm_encoder_cleanup,
+};
+
 static const struct drm_encoder_helper_funcs panel_encoder_helper_funcs = {
 		.dpms           = panel_encoder_dpms,
 		.prepare        = panel_encoder_prepare,
@@ -100,7 +102,8 @@ static struct drm_encoder *panel_encoder_create(struct drm_device *dev,
 	encoder = &panel_encoder->base;
 	encoder->possible_crtcs = 1;
 
-	ret = drm_simple_encoder_init(dev, encoder, DRM_MODE_ENCODER_LVDS);
+	ret = drm_encoder_init(dev, encoder, &panel_encoder_funcs,
+			DRM_MODE_ENCODER_LVDS, NULL);
 	if (ret < 0)
 		goto fail;
 
@@ -140,14 +143,10 @@ static int panel_connector_get_modes(struct drm_connector *connector)
 	int i;
 
 	for (i = 0; i < timings->num_timings; i++) {
-		struct drm_display_mode *mode;
+		struct drm_display_mode *mode = drm_mode_create(dev);
 		struct videomode vm;
 
 		if (videomode_from_timings(timings, &vm, i))
-			break;
-
-		mode = drm_mode_create(dev);
-		if (!mode)
 			break;
 
 		drm_display_mode_from_videomode(&vm, mode);
@@ -304,8 +303,7 @@ put_node:
 
 static int panel_probe(struct platform_device *pdev)
 {
-	struct device_node *node = pdev->dev.of_node;
-	struct backlight_device *backlight;
+	struct device_node *bl_node, *node = pdev->dev.of_node;
 	struct panel_module *panel_mod;
 	struct tilcdc_module *mod;
 	struct pinctrl *pinctrl;
@@ -321,10 +319,16 @@ static int panel_probe(struct platform_device *pdev)
 	if (!panel_mod)
 		return -ENOMEM;
 
-	backlight = devm_of_find_backlight(&pdev->dev);
-	if (IS_ERR(backlight))
-		return PTR_ERR(backlight);
-	panel_mod->backlight = backlight;
+	bl_node = of_parse_phandle(node, "backlight", 0);
+	if (bl_node) {
+		panel_mod->backlight = of_find_backlight_by_node(bl_node);
+		of_node_put(bl_node);
+
+		if (!panel_mod->backlight)
+			return -EPROBE_DEFER;
+
+		dev_info(&pdev->dev, "found backlight\n");
+	}
 
 	panel_mod->enable_gpio = devm_gpiod_get_optional(&pdev->dev, "enable",
 							 GPIOD_OUT_LOW);
@@ -374,7 +378,7 @@ fail_backlight:
 	return ret;
 }
 
-static void panel_remove(struct platform_device *pdev)
+static int panel_remove(struct platform_device *pdev)
 {
 	struct tilcdc_module *mod = dev_get_platdata(&pdev->dev);
 	struct panel_module *panel_mod = to_panel_module(mod);
@@ -387,6 +391,8 @@ static void panel_remove(struct platform_device *pdev)
 
 	tilcdc_module_cleanup(mod);
 	kfree(panel_mod->info);
+
+	return 0;
 }
 
 static const struct of_device_id panel_of_match[] = {
@@ -394,10 +400,11 @@ static const struct of_device_id panel_of_match[] = {
 		{ },
 };
 
-static struct platform_driver panel_driver = {
+struct platform_driver panel_driver = {
 	.probe = panel_probe,
-	.remove_new = panel_remove,
+	.remove = panel_remove,
 	.driver = {
+		.owner = THIS_MODULE,
 		.name = "tilcdc-panel",
 		.of_match_table = panel_of_match,
 	},

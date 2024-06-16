@@ -9,7 +9,7 @@
  * HISTORY : some part of the code was base on ueagle 1.3 BSD driver,
  * Damien Bergamini agree to put his code under a DUAL GPL/BSD license.
  *
- * The rest of the code was rewritten from scratch.
+ * The rest of the code was was rewritten from scratch.
  */
 
 #include <linux/module.h>
@@ -350,7 +350,7 @@ struct l1_code {
 	u8 string_header[E4_L1_STRING_HEADER];
 	u8 page_number_to_block_index[E4_MAX_PAGE_NUMBER];
 	struct block_index page_header[E4_NO_SWAPPAGE_HEADERS];
-	u8 code[];
+	u8 code[0];
 } __packed;
 
 /* structures describing a block within a DSP page */
@@ -546,7 +546,7 @@ MODULE_PARM_DESC(annex,
 
 #define uea_wait(sc, cond, timeo) \
 ({ \
-	int _r = wait_event_freezable_timeout(sc->sync_q, \
+	int _r = wait_event_interruptible_timeout(sc->sync_q, \
 			(cond) || kthread_should_stop(), timeo); \
 	if (kthread_should_stop()) \
 		_r = -ENODEV; \
@@ -570,7 +570,7 @@ MODULE_PARM_DESC(annex,
 #define LOAD_INTERNAL     0xA0
 #define F8051_USBCS       0x7f92
 
-/*
+/**
  * uea_send_modem_cmd - Send a command for pre-firmware devices.
  */
 static int uea_send_modem_cmd(struct usb_device *usb,
@@ -672,7 +672,7 @@ err:
 	uea_leaves(usb);
 }
 
-/*
+/**
  * uea_load_firmware - Load usb firmware for pre-firmware devices.
  */
 static int uea_load_firmware(struct usb_device *usb, unsigned int ver)
@@ -1896,6 +1896,7 @@ static int uea_kthread(void *data)
 			ret = sc->stat(sc);
 		if (ret != -EAGAIN)
 			uea_wait(sc, 0, msecs_to_jiffies(1000));
+		try_to_freeze();
 	}
 	uea_leaves(INS_TO_USBDEV(sc));
 	return ret;
@@ -2123,11 +2124,10 @@ resubmit:
 /*
  * Start the modem : init the data and start kernel thread
  */
-static int uea_boot(struct uea_softc *sc, struct usb_interface *intf)
+static int uea_boot(struct uea_softc *sc)
 {
+	int ret, size;
 	struct intr_pkt *intr;
-	int ret = -ENOMEM;
-	int size;
 
 	uea_enters(INS_TO_USBDEV(sc));
 
@@ -2152,11 +2152,6 @@ static int uea_boot(struct uea_softc *sc, struct usb_interface *intf)
 	if (UEA_CHIP_VERSION(sc) == ADI930)
 		load_XILINX_firmware(sc);
 
-	if (intf->cur_altsetting->desc.bNumEndpoints < 1) {
-		ret = -ENODEV;
-		goto err0;
-	}
-
 	intr = kmalloc(size, GFP_KERNEL);
 	if (!intr)
 		goto err0;
@@ -2168,7 +2163,8 @@ static int uea_boot(struct uea_softc *sc, struct usb_interface *intf)
 	usb_fill_int_urb(sc->urb_int, sc->usb_dev,
 			 usb_rcvintpipe(sc->usb_dev, UEA_INTR_PIPE),
 			 intr, size, uea_intr, sc,
-			 intf->cur_altsetting->endpoint[0].desc.bInterval);
+			 sc->usb_dev->actconfig->interface[0]->altsetting[0].
+			 endpoint[0].desc.bInterval);
 
 	ret = usb_submit_urb(sc->urb_int, GFP_KERNEL);
 	if (ret < 0) {
@@ -2183,7 +2179,6 @@ static int uea_boot(struct uea_softc *sc, struct usb_interface *intf)
 	sc->kthread = kthread_create(uea_kthread, sc, "ueagle-atm");
 	if (IS_ERR(sc->kthread)) {
 		uea_err(INS_TO_USBDEV(sc), "failed to create thread\n");
-		ret = PTR_ERR(sc->kthread);
 		goto err2;
 	}
 
@@ -2198,7 +2193,7 @@ err1:
 	kfree(intr);
 err0:
 	uea_leaves(INS_TO_USBDEV(sc));
-	return ret;
+	return -ENOMEM;
 }
 
 /*
@@ -2251,7 +2246,7 @@ static ssize_t stat_status_show(struct device *dev, struct device_attribute *att
 	sc = dev_to_uea(dev);
 	if (!sc)
 		goto out;
-	ret = sysfs_emit(buf, "%08x\n", sc->stats.phy.state);
+	ret = snprintf(buf, 10, "%08x\n", sc->stats.phy.state);
 out:
 	mutex_unlock(&uea_mutex);
 	return ret;
@@ -2317,19 +2312,19 @@ static ssize_t stat_human_status_show(struct device *dev,
 
 	switch (modem_state) {
 	case 0:
-		ret = sysfs_emit(buf, "Modem is booting\n");
+		ret = sprintf(buf, "Modem is booting\n");
 		break;
 	case 1:
-		ret = sysfs_emit(buf, "Modem is initializing\n");
+		ret = sprintf(buf, "Modem is initializing\n");
 		break;
 	case 2:
-		ret = sysfs_emit(buf, "Modem is operational\n");
+		ret = sprintf(buf, "Modem is operational\n");
 		break;
 	case 3:
-		ret = sysfs_emit(buf, "Modem synchronization failed\n");
+		ret = sprintf(buf, "Modem synchronization failed\n");
 		break;
 	default:
-		ret = sysfs_emit(buf, "Modem state is unknown\n");
+		ret = sprintf(buf, "Modem state is unknown\n");
 		break;
 	}
 out:
@@ -2363,7 +2358,7 @@ static ssize_t stat_delin_show(struct device *dev, struct device_attribute *attr
 			delin = "LOSS";
 	}
 
-	ret = sysfs_emit(buf, "%s\n", delin);
+	ret = sprintf(buf, "%s\n", delin);
 out:
 	mutex_unlock(&uea_mutex);
 	return ret;
@@ -2383,7 +2378,7 @@ static ssize_t stat_##name##_show(struct device *dev,		\
 	sc = dev_to_uea(dev);					\
 	if (!sc)						\
 		goto out;					\
-	ret = sysfs_emit(buf, "%08x\n", sc->stats.phy.name);	\
+	ret = snprintf(buf, 10, "%08x\n", sc->stats.phy.name);	\
 	if (reset)						\
 		sc->stats.phy.name = 0;				\
 out:								\
@@ -2553,7 +2548,7 @@ static int uea_bind(struct usbatm_data *usbatm, struct usb_interface *intf,
 		}
 	}
 
-	ret = uea_boot(sc, intf);
+	ret = uea_boot(sc);
 	if (ret < 0)
 		goto error;
 

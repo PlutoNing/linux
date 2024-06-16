@@ -77,7 +77,7 @@ struct mace_frame {
 	u8	pad4;
 	u32	pad5;
 	u32	pad6;
-	DECLARE_FLEX_ARRAY(u8, data);
+	u8	data[1];
 	/* And frame continues.. */
 };
 
@@ -91,8 +91,8 @@ static int mace_set_address(struct net_device *dev, void *addr);
 static void mace_reset(struct net_device *dev);
 static irqreturn_t mace_interrupt(int irq, void *dev_id);
 static irqreturn_t mace_dma_intr(int irq, void *dev_id);
-static void mace_tx_timeout(struct net_device *dev, unsigned int txqueue);
-static void __mace_set_address(struct net_device *dev, const void *addr);
+static void mace_tx_timeout(struct net_device *dev);
+static void __mace_set_address(struct net_device *dev, void *addr);
 
 /*
  * Load a receive DMA channel with a base address and ring length
@@ -197,7 +197,6 @@ static int mace_probe(struct platform_device *pdev)
 	unsigned char *addr;
 	struct net_device *dev;
 	unsigned char checksum = 0;
-	u8 macaddr[ETH_ALEN];
 	int err;
 
 	dev = alloc_etherdev(PRIV_BYTES);
@@ -230,9 +229,8 @@ static int mace_probe(struct platform_device *pdev)
 	for (j = 0; j < 6; ++j) {
 		u8 v = bitrev8(addr[j<<4]);
 		checksum ^= v;
-		macaddr[j] = v;
+		dev->dev_addr[j] = v;
 	}
-	eth_hw_addr_set(dev, macaddr);
 	for (; j < 8; ++j) {
 		checksum ^= bitrev8(addr[j<<4]);
 	}
@@ -317,12 +315,11 @@ static void mace_reset(struct net_device *dev)
  * Load the address on a mace controller.
  */
 
-static void __mace_set_address(struct net_device *dev, const void *addr)
+static void __mace_set_address(struct net_device *dev, void *addr)
 {
 	struct mace_data *mp = netdev_priv(dev);
 	volatile struct mace *mb = mp->mace;
-	const unsigned char *p = addr;
-	u8 macaddr[ETH_ALEN];
+	unsigned char *p = addr;
 	int i;
 
 	/* load up the hardware address */
@@ -334,8 +331,7 @@ static void __mace_set_address(struct net_device *dev, const void *addr)
 			;
 	}
 	for (i = 0; i < 6; ++i)
-		mb->padr = macaddr[i] = p[i];
-	eth_hw_addr_set(dev, macaddr);
+		mb->padr = dev->dev_addr[i] = p[i];
 	if (mp->chipid != BROKEN_ADDRCHG_REV)
 		mb->iac = 0;
 }
@@ -604,7 +600,7 @@ static irqreturn_t mace_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void mace_tx_timeout(struct net_device *dev, unsigned int txqueue)
+static void mace_tx_timeout(struct net_device *dev)
 {
 	struct mace_data *mp = netdev_priv(dev);
 	volatile struct mace *mb = mp->mace;
@@ -739,7 +735,7 @@ MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Macintosh MACE ethernet driver");
 MODULE_ALIAS("platform:macmace");
 
-static void mac_mace_device_remove(struct platform_device *pdev)
+static int mac_mace_device_remove(struct platform_device *pdev)
 {
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct mace_data *mp = netdev_priv(dev);
@@ -755,11 +751,13 @@ static void mac_mace_device_remove(struct platform_device *pdev)
 	                  mp->tx_ring, mp->tx_ring_phys);
 
 	free_netdev(dev);
+
+	return 0;
 }
 
 static struct platform_driver mac_mace_driver = {
 	.probe  = mace_probe,
-	.remove_new = mac_mace_device_remove,
+	.remove = mac_mace_device_remove,
 	.driver	= {
 		.name	= mac_mace_string,
 	},

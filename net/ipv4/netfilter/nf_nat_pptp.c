@@ -3,7 +3,7 @@
  * nf_nat_pptp.c
  *
  * NAT support for PPTP (Point to Point Tunneling Protocol).
- * PPTP is a protocol for creating virtual private networks.
+ * PPTP is a a protocol for creating virtual private networks.
  * It is a specification defined by Microsoft and some vendors
  * working with Microsoft.  PPTP is built on top of a modified
  * version of the Internet Generic Routing Encapsulation Protocol.
@@ -166,8 +166,9 @@ pptp_outbound_pkt(struct sk_buff *skb,
 		break;
 	default:
 		pr_debug("unknown outbound packet 0x%04x:%s\n", msg,
-			 pptp_msg_name(msg));
-		fallthrough;
+			 msg <= PPTP_MSG_MAX ? pptp_msg_name[msg] :
+					       pptp_msg_name[0]);
+		/* fall through */
 	case PPTP_SET_LINK_INFO:
 		/* only need to NAT in case PAC is behind NAT box */
 	case PPTP_START_SESSION_REQUEST:
@@ -267,8 +268,10 @@ pptp_inbound_pkt(struct sk_buff *skb,
 		pcid_off = offsetof(union pptp_ctrl_union, setlink.peersCallID);
 		break;
 	default:
-		pr_debug("unknown inbound packet %s\n", pptp_msg_name(msg));
-		fallthrough;
+		pr_debug("unknown inbound packet %s\n",
+			 msg <= PPTP_MSG_MAX ? pptp_msg_name[msg] :
+					       pptp_msg_name[0]);
+		/* fall through */
 	case PPTP_START_SESSION_REQUEST:
 	case PPTP_START_SESSION_REPLY:
 	case PPTP_STOP_SESSION_REQUEST:
@@ -295,24 +298,28 @@ pptp_inbound_pkt(struct sk_buff *skb,
 	return NF_ACCEPT;
 }
 
-static const struct nf_nat_pptp_hook pptp_hooks = {
-	.outbound = pptp_outbound_pkt,
-	.inbound = pptp_inbound_pkt,
-	.exp_gre = pptp_exp_gre,
-	.expectfn = pptp_nat_expected,
-};
-
 static int __init nf_nat_helper_pptp_init(void)
 {
-	WARN_ON(nf_nat_pptp_hook != NULL);
-	RCU_INIT_POINTER(nf_nat_pptp_hook, &pptp_hooks);
+	BUG_ON(nf_nat_pptp_hook_outbound != NULL);
+	RCU_INIT_POINTER(nf_nat_pptp_hook_outbound, pptp_outbound_pkt);
 
+	BUG_ON(nf_nat_pptp_hook_inbound != NULL);
+	RCU_INIT_POINTER(nf_nat_pptp_hook_inbound, pptp_inbound_pkt);
+
+	BUG_ON(nf_nat_pptp_hook_exp_gre != NULL);
+	RCU_INIT_POINTER(nf_nat_pptp_hook_exp_gre, pptp_exp_gre);
+
+	BUG_ON(nf_nat_pptp_hook_expectfn != NULL);
+	RCU_INIT_POINTER(nf_nat_pptp_hook_expectfn, pptp_nat_expected);
 	return 0;
 }
 
 static void __exit nf_nat_helper_pptp_fini(void)
 {
-	RCU_INIT_POINTER(nf_nat_pptp_hook, NULL);
+	RCU_INIT_POINTER(nf_nat_pptp_hook_expectfn, NULL);
+	RCU_INIT_POINTER(nf_nat_pptp_hook_exp_gre, NULL);
+	RCU_INIT_POINTER(nf_nat_pptp_hook_inbound, NULL);
+	RCU_INIT_POINTER(nf_nat_pptp_hook_outbound, NULL);
 	synchronize_rcu();
 }
 

@@ -10,11 +10,12 @@
 
 struct gpio_siox_ddata {
 	struct gpio_chip gchip;
+	struct irq_chip ichip;
 	struct mutex lock;
 	u8 setdata[1];
 	u8 getdata[3];
 
-	raw_spinlock_t irqlock;
+	spinlock_t irqlock;
 	u32 irq_enable;
 	u32 irq_status;
 	u32 irq_type[20];
@@ -43,7 +44,7 @@ static int gpio_siox_get_data(struct siox_device *sdevice, const u8 buf[])
 
 	mutex_lock(&ddata->lock);
 
-	raw_spin_lock_irq(&ddata->irqlock);
+	spin_lock_irq(&ddata->irqlock);
 
 	for (offset = 0; offset < 12; ++offset) {
 		unsigned int bitpos = 11 - offset;
@@ -65,7 +66,7 @@ static int gpio_siox_get_data(struct siox_device *sdevice, const u8 buf[])
 
 	trigger = ddata->irq_status & ddata->irq_enable;
 
-	raw_spin_unlock_irq(&ddata->irqlock);
+	spin_unlock_irq(&ddata->irqlock);
 
 	ddata->getdata[0] = buf[0];
 	ddata->getdata[1] = buf[1];
@@ -83,9 +84,9 @@ static int gpio_siox_get_data(struct siox_device *sdevice, const u8 buf[])
 			 * handler of the irq chip. But it doesn't, so we have
 			 * to clean the irq_status here.
 			 */
-			raw_spin_lock_irq(&ddata->irqlock);
+			spin_lock_irq(&ddata->irqlock);
 			ddata->irq_status &= ~(1 << offset);
-			raw_spin_unlock_irq(&ddata->irqlock);
+			spin_unlock_irq(&ddata->irqlock);
 
 			handle_nested_irq(irq);
 		}
@@ -96,51 +97,54 @@ static int gpio_siox_get_data(struct siox_device *sdevice, const u8 buf[])
 
 static void gpio_siox_irq_ack(struct irq_data *d)
 {
-	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct gpio_siox_ddata *ddata = gpiochip_get_data(gc);
+	struct irq_chip *ic = irq_data_get_irq_chip(d);
+	struct gpio_siox_ddata *ddata =
+		container_of(ic, struct gpio_siox_ddata, ichip);
 
-	raw_spin_lock(&ddata->irqlock);
+	spin_lock_irq(&ddata->irqlock);
 	ddata->irq_status &= ~(1 << d->hwirq);
-	raw_spin_unlock(&ddata->irqlock);
+	spin_unlock_irq(&ddata->irqlock);
 }
 
 static void gpio_siox_irq_mask(struct irq_data *d)
 {
-	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct gpio_siox_ddata *ddata = gpiochip_get_data(gc);
+	struct irq_chip *ic = irq_data_get_irq_chip(d);
+	struct gpio_siox_ddata *ddata =
+		container_of(ic, struct gpio_siox_ddata, ichip);
 
-	raw_spin_lock(&ddata->irqlock);
+	spin_lock_irq(&ddata->irqlock);
 	ddata->irq_enable &= ~(1 << d->hwirq);
-	raw_spin_unlock(&ddata->irqlock);
-	gpiochip_disable_irq(gc, irqd_to_hwirq(d));
+	spin_unlock_irq(&ddata->irqlock);
 }
 
 static void gpio_siox_irq_unmask(struct irq_data *d)
 {
-	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct gpio_siox_ddata *ddata = gpiochip_get_data(gc);
+	struct irq_chip *ic = irq_data_get_irq_chip(d);
+	struct gpio_siox_ddata *ddata =
+		container_of(ic, struct gpio_siox_ddata, ichip);
 
-	gpiochip_enable_irq(gc, irqd_to_hwirq(d));
-	raw_spin_lock(&ddata->irqlock);
+	spin_lock_irq(&ddata->irqlock);
 	ddata->irq_enable |= 1 << d->hwirq;
-	raw_spin_unlock(&ddata->irqlock);
+	spin_unlock_irq(&ddata->irqlock);
 }
 
 static int gpio_siox_irq_set_type(struct irq_data *d, u32 type)
 {
-	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct gpio_siox_ddata *ddata = gpiochip_get_data(gc);
+	struct irq_chip *ic = irq_data_get_irq_chip(d);
+	struct gpio_siox_ddata *ddata =
+		container_of(ic, struct gpio_siox_ddata, ichip);
 
-	raw_spin_lock(&ddata->irqlock);
+	spin_lock_irq(&ddata->irqlock);
 	ddata->irq_type[d->hwirq] = type;
-	raw_spin_unlock(&ddata->irqlock);
+	spin_unlock_irq(&ddata->irqlock);
 
 	return 0;
 }
 
 static int gpio_siox_get(struct gpio_chip *chip, unsigned int offset)
 {
-	struct gpio_siox_ddata *ddata = gpiochip_get_data(chip);
+	struct gpio_siox_ddata *ddata =
+		container_of(chip, struct gpio_siox_ddata, gchip);
 	int ret;
 
 	mutex_lock(&ddata->lock);
@@ -163,7 +167,8 @@ static int gpio_siox_get(struct gpio_chip *chip, unsigned int offset)
 static void gpio_siox_set(struct gpio_chip *chip,
 			  unsigned int offset, int value)
 {
-	struct gpio_siox_ddata *ddata = gpiochip_get_data(chip);
+	struct gpio_siox_ddata *ddata =
+		container_of(chip, struct gpio_siox_ddata, gchip);
 	u8 mask = 1 << (19 - offset);
 
 	mutex_lock(&ddata->lock);
@@ -198,27 +203,16 @@ static int gpio_siox_direction_output(struct gpio_chip *chip,
 static int gpio_siox_get_direction(struct gpio_chip *chip, unsigned int offset)
 {
 	if (offset < 12)
-		return GPIO_LINE_DIRECTION_IN;
+		return 1; /* input */
 	else
-		return GPIO_LINE_DIRECTION_OUT;
+		return 0; /* output */
 }
-
-static const struct irq_chip gpio_siox_irq_chip = {
-	.name = "siox-gpio",
-	.irq_ack = gpio_siox_irq_ack,
-	.irq_mask = gpio_siox_irq_mask,
-	.irq_unmask = gpio_siox_irq_unmask,
-	.irq_set_type = gpio_siox_irq_set_type,
-	.flags = IRQCHIP_IMMUTABLE,
-	GPIOCHIP_IRQ_RESOURCE_HELPERS,
-};
 
 static int gpio_siox_probe(struct siox_device *sdevice)
 {
 	struct gpio_siox_ddata *ddata;
 	struct gpio_irq_chip *girq;
 	struct device *dev = &sdevice->dev;
-	struct gpio_chip *gc;
 	int ret;
 
 	ddata = devm_kzalloc(dev, sizeof(*ddata), GFP_KERNEL);
@@ -228,27 +222,31 @@ static int gpio_siox_probe(struct siox_device *sdevice)
 	dev_set_drvdata(dev, ddata);
 
 	mutex_init(&ddata->lock);
-	raw_spin_lock_init(&ddata->irqlock);
+	spin_lock_init(&ddata->irqlock);
 
-	gc = &ddata->gchip;
-	gc->base = -1;
-	gc->can_sleep = 1;
-	gc->parent = dev;
-	gc->owner = THIS_MODULE;
-	gc->get = gpio_siox_get;
-	gc->set = gpio_siox_set;
-	gc->direction_input = gpio_siox_direction_input;
-	gc->direction_output = gpio_siox_direction_output;
-	gc->get_direction = gpio_siox_get_direction;
-	gc->ngpio = 20;
+	ddata->gchip.base = -1;
+	ddata->gchip.can_sleep = 1;
+	ddata->gchip.parent = dev;
+	ddata->gchip.owner = THIS_MODULE;
+	ddata->gchip.get = gpio_siox_get;
+	ddata->gchip.set = gpio_siox_set;
+	ddata->gchip.direction_input = gpio_siox_direction_input;
+	ddata->gchip.direction_output = gpio_siox_direction_output;
+	ddata->gchip.get_direction = gpio_siox_get_direction;
+	ddata->gchip.ngpio = 20;
 
-	girq = &gc->irq;
-	gpio_irq_chip_set_chip(girq, &gpio_siox_irq_chip);
+	ddata->ichip.name = "siox-gpio";
+	ddata->ichip.irq_ack = gpio_siox_irq_ack;
+	ddata->ichip.irq_mask = gpio_siox_irq_mask;
+	ddata->ichip.irq_unmask = gpio_siox_irq_unmask;
+	ddata->ichip.irq_set_type = gpio_siox_irq_set_type;
+
+	girq = &ddata->gchip.irq;
+	girq->chip = &ddata->ichip;
 	girq->default_type = IRQ_TYPE_NONE;
 	girq->handler = handle_level_irq;
-	girq->threaded = true;
 
-	ret = devm_gpiochip_add_data(dev, gc, ddata);
+	ret = devm_gpiochip_add_data(dev, &ddata->gchip, NULL);
 	if (ret)
 		dev_err(dev, "Failed to register gpio chip (%d)\n", ret);
 

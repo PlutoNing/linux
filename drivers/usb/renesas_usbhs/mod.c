@@ -142,7 +142,7 @@ int usbhs_mod_probe(struct usbhs_priv *priv)
 
 	/* irq settings */
 	ret = devm_request_irq(dev, priv->irq, usbhs_interrupt,
-			       0, dev_name(dev), priv);
+			  priv->irqflags, dev_name(dev), priv);
 	if (ret) {
 		dev_err(dev, "irq request err\n");
 		goto mod_init_gadget_err;
@@ -169,7 +169,17 @@ void usbhs_mod_remove(struct usbhs_priv *priv)
  */
 int usbhs_status_get_device_state(struct usbhs_irq_state *irq_state)
 {
-	return (int)irq_state->intsts0 & DVSQ_MASK;
+	int state = irq_state->intsts0 & DVSQ_MASK;
+
+	switch (state) {
+	case POWER_STATE:
+	case DEFAULT_STATE:
+	case ADDRESS_STATE:
+	case CONFIGURATION_STATE:
+		return state;
+	}
+
+	return -EIO;
 }
 
 int usbhs_status_get_ctrl_stage(struct usbhs_irq_state *irq_state)
@@ -218,6 +228,18 @@ static int usbhs_status_get_each_irq(struct usbhs_priv *priv,
 	}
 	usbhs_unlock(priv, flags);
 	/********************  spin unlock ******************/
+
+	/*
+	 * Check whether the irq enable registers and the irq status are set
+	 * when IRQF_SHARED is set.
+	 */
+	if (priv->irqflags & IRQF_SHARED) {
+		if (!(intenb0 & state->intsts0) &&
+		    !(intenb1 & state->intsts1) &&
+		    !(state->bempsts) &&
+		    !(state->brdysts))
+			return -EIO;
+	}
 
 	return 0;
 }
@@ -326,6 +348,10 @@ void usbhs_irq_callback_update(struct usbhs_priv *priv, struct usbhs_mod *mod)
 	 *	usbhs_interrupt
 	 */
 
+	/*
+	 * it don't enable DVSE (intenb0) here
+	 * but "mod->irq_dev_state" will be called.
+	 */
 	if (info->irq_vbus)
 		intenb0 |= VBSE;
 
@@ -335,9 +361,6 @@ void usbhs_irq_callback_update(struct usbhs_priv *priv, struct usbhs_mod *mod)
 		 */
 		if (mod->irq_ctrl_stage)
 			intenb0 |= CTRE;
-
-		if (mod->irq_dev_state)
-			intenb0 |= DVSE;
 
 		if (mod->irq_empty && mod->irq_bempsts) {
 			usbhs_write(priv, BEMPENB, mod->irq_bempsts);

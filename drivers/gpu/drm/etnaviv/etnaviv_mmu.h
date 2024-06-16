@@ -91,7 +91,6 @@ int etnaviv_iommu_map_gem(struct etnaviv_iommu_context *context,
 	struct etnaviv_vram_mapping *mapping, u64 va);
 void etnaviv_iommu_unmap_gem(struct etnaviv_iommu_context *context,
 	struct etnaviv_vram_mapping *mapping);
-void etnaviv_iommu_reap_mapping(struct etnaviv_vram_mapping *mapping);
 
 int etnaviv_iommu_get_suballoc_va(struct etnaviv_iommu_context *ctx,
 				  struct etnaviv_vram_mapping *mapping,
@@ -106,11 +105,9 @@ void etnaviv_iommu_dump(struct etnaviv_iommu_context *ctx, void *buf);
 struct etnaviv_iommu_context *
 etnaviv_iommu_context_init(struct etnaviv_iommu_global *global,
 			   struct etnaviv_cmdbuf_suballoc *suballoc);
-static inline struct etnaviv_iommu_context *
-etnaviv_iommu_context_get(struct etnaviv_iommu_context *ctx)
+static inline void etnaviv_iommu_context_get(struct etnaviv_iommu_context *ctx)
 {
 	kref_get(&ctx->refcount);
-	return ctx;
 }
 void etnaviv_iommu_context_put(struct etnaviv_iommu_context *ctx);
 void etnaviv_iommu_restore(struct etnaviv_gpu *gpu,

@@ -12,8 +12,10 @@
 #include <linux/delay.h>
 #include <linux/pm.h>
 #include <linux/acpi.h>
+#include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/regmap.h>
+#include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/firmware.h>
 #include <sound/core.h>
@@ -409,7 +411,7 @@ static int rt1305_is_rc_clk_from_pll(struct snd_soc_dapm_widget *source,
 	struct rt1305_priv *rt1305 = snd_soc_component_get_drvdata(component);
 	unsigned int val;
 
-	val = snd_soc_component_read(component, RT1305_CLK_1);
+	snd_soc_component_read(component, RT1305_CLK_1, &val);
 
 	if (rt1305->sysclk_src == RT1305_FS_SYS_PRE_S_PLL1 &&
 		(val & RT1305_SEL_PLL_SRC_2_RCCLK))
@@ -839,7 +841,7 @@ static int rt1305_set_component_pll(struct snd_soc_component *component,
 
 	ret = rl6231_pll_calc(freq_in, freq_out, &pll_code);
 	if (ret < 0) {
-		dev_err(component->dev, "Unsupported input clock %d\n", freq_in);
+		dev_err(component->dev, "Unsupport input clock %d\n", freq_in);
 		return ret;
 	}
 
@@ -848,8 +850,8 @@ static int rt1305_set_component_pll(struct snd_soc_component *component,
 		pll_code.n_code, pll_code.k_code);
 
 	snd_soc_component_write(component, RT1305_PLL1_1,
-		((pll_code.m_bp ? 0 : pll_code.m_code) << RT1305_PLL_1_M_SFT) |
-		(pll_code.m_bp << RT1305_PLL_1_M_BYPASS_SFT) |
+		(pll_code.m_bp ? 0 : pll_code.m_code) << RT1305_PLL_1_M_SFT |
+		pll_code.m_bp << RT1305_PLL_1_M_BYPASS_SFT |
 		pll_code.n_code);
 	snd_soc_component_write(component, RT1305_PLL1_2,
 		pll_code.k_code);
@@ -944,6 +946,7 @@ static const struct snd_soc_component_driver soc_component_dev_rt1305 = {
 	.set_pll = rt1305_set_component_pll,
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
+	.non_legacy_dai_naming	= 1,
 };
 
 static const struct regmap_config rt1305_regmap = {
@@ -953,7 +956,7 @@ static const struct regmap_config rt1305_regmap = {
 					       RT1305_PR_SPACING),
 	.volatile_reg = rt1305_volatile_register,
 	.readable_reg = rt1305_readable_register,
-	.cache_type = REGCACHE_MAPLE,
+	.cache_type = REGCACHE_RBTREE,
 	.reg_defaults = rt1305_reg,
 	.num_reg_defaults = ARRAY_SIZE(rt1305_reg),
 	.ranges = rt1305_ranges,
@@ -972,7 +975,7 @@ MODULE_DEVICE_TABLE(of, rt1305_of_match);
 #endif
 
 #ifdef CONFIG_ACPI
-static const struct acpi_device_id rt1305_acpi_match[] = {
+static struct acpi_device_id rt1305_acpi_match[] = {
 	{"10EC1305", 0,},
 	{"10EC1306", 0,},
 	{},
@@ -1114,7 +1117,8 @@ static void rt1305_calibrate(struct rt1305_priv *rt1305)
 	regcache_cache_bypass(rt1305->regmap, false);
 }
 
-static int rt1305_i2c_probe(struct i2c_client *i2c)
+static int rt1305_i2c_probe(struct i2c_client *i2c,
+		    const struct i2c_device_id *id)
 {
 	struct rt1305_priv *rt1305;
 	int ret;

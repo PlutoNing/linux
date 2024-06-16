@@ -7,18 +7,16 @@
 #include <linux/string.h>
 #include <linux/ctype.h>
 #include <asm/setup.h>
-#include <asm/cmdline.h>
 
 static inline int myisspace(u8 c)
 {
 	return c <= ' ';	/* Close enough approximation */
 }
 
-/*
+/**
  * Find a boolean option (like quiet,noapic,nosmp....)
  *
  * @cmdline: the cmdline string
- * @max_cmdline_size: the maximum size of cmdline
  * @option: option string to look for
  *
  * Returns the position of that @option (starts counting with 1)
@@ -60,7 +58,7 @@ __cmdline_find_option_bool(const char *cmdline, int max_cmdline_size,
 			state = st_wordcmp;
 			opptr = option;
 			wstart = pos;
-			fallthrough;
+			/* fall through */
 
 		case st_wordcmp:
 			if (!*opptr) {
@@ -91,7 +89,7 @@ __cmdline_find_option_bool(const char *cmdline, int max_cmdline_size,
 				break;
 			}
 			state = st_wordskip;
-			fallthrough;
+			/* fall through */
 
 		case st_wordskip:
 			if (!c)
@@ -153,7 +151,7 @@ __cmdline_find_option(const char *cmdline, int max_cmdline_size,
 
 			state = st_wordcmp;
 			opptr = option;
-			fallthrough;
+			/* fall through */
 
 		case st_wordcmp:
 			if ((c == '=') && !*opptr) {
@@ -174,7 +172,7 @@ __cmdline_find_option(const char *cmdline, int max_cmdline_size,
 				break;
 			}
 			state = st_wordskip;
-			fallthrough;
+			/* fall through */
 
 		case st_wordskip:
 			if (myisspace(c))

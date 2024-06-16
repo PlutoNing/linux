@@ -12,12 +12,13 @@
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
-#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/regulator/consumer.h>
 
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_print.h>
 
 #define S6E3HA2_MIN_BRIGHTNESS		0
 #define S6E3HA2_MAX_BRIGHTNESS		100
@@ -214,7 +215,7 @@ static const u8 gamma_tbl[S6E3HA2_NUM_GAMMA_STEPS][S6E3HA2_GAMMA_CMD_CNT] = {
 	  0x00, 0x00 }
 };
 
-static const unsigned char vint_table[S6E3HA2_VINT_STATUS_MAX] = {
+unsigned char vint_table[S6E3HA2_VINT_STATUS_MAX] = {
 	0x18, 0x19, 0x1a, 0x1b, 0x1c,
 	0x1d, 0x1e, 0x1f, 0x20, 0x21
 };
@@ -616,6 +617,7 @@ static const struct drm_display_mode s6e3ha2_mode = {
 	.vsync_start = 2560 + 1,
 	.vsync_end = 2560 + 1 + 1,
 	.vtotal = 2560 + 1 + 1 + 15,
+	.vrefresh = 60,
 	.flags = 0,
 };
 
@@ -634,6 +636,7 @@ static const struct drm_display_mode s6e3hf2_mode = {
 	.vsync_start = 2560 + 1,
 	.vsync_end = 2560 + 1 + 1,
 	.vtotal = 2560 + 1 + 1 + 15,
+	.vrefresh = 60,
 	.flags = 0,
 };
 
@@ -642,17 +645,17 @@ static const struct s6e3ha2_panel_desc samsung_s6e3hf2 = {
 	.type = HF2_TYPE,
 };
 
-static int s6e3ha2_get_modes(struct drm_panel *panel,
-			     struct drm_connector *connector)
+static int s6e3ha2_get_modes(struct drm_panel *panel)
 {
+	struct drm_connector *connector = panel->connector;
 	struct s6e3ha2 *ctx = container_of(panel, struct s6e3ha2, panel);
 	struct drm_display_mode *mode;
 
-	mode = drm_mode_duplicate(connector->dev, ctx->desc->mode);
+	mode = drm_mode_duplicate(panel->drm, ctx->desc->mode);
 	if (!mode) {
-		dev_err(panel->dev, "failed to add mode %ux%u@%u\n",
+		DRM_ERROR("failed to add mode %ux%ux@%u\n",
 			ctx->desc->mode->hdisplay, ctx->desc->mode->vdisplay,
-			drm_mode_vrefresh(ctx->desc->mode));
+			ctx->desc->mode->vrefresh);
 		return -ENOMEM;
 	}
 
@@ -692,9 +695,7 @@ static int s6e3ha2_probe(struct mipi_dsi_device *dsi)
 
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS |
-		MIPI_DSI_MODE_VIDEO_NO_HFP | MIPI_DSI_MODE_VIDEO_NO_HBP |
-		MIPI_DSI_MODE_VIDEO_NO_HSA | MIPI_DSI_MODE_NO_EOT_PACKET;
+	dsi->mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS;
 
 	ctx->supplies[0].supply = "vdd3";
 	ctx->supplies[1].supply = "vci";
@@ -731,11 +732,13 @@ static int s6e3ha2_probe(struct mipi_dsi_device *dsi)
 	ctx->bl_dev->props.brightness = S6E3HA2_DEFAULT_BRIGHTNESS;
 	ctx->bl_dev->props.power = FB_BLANK_POWERDOWN;
 
-	drm_panel_init(&ctx->panel, dev, &s6e3ha2_drm_funcs,
-		       DRM_MODE_CONNECTOR_DSI);
-	ctx->panel.prepare_prev_first = true;
+	drm_panel_init(&ctx->panel);
+	ctx->panel.dev = dev;
+	ctx->panel.funcs = &s6e3ha2_drm_funcs;
 
-	drm_panel_add(&ctx->panel);
+	ret = drm_panel_add(&ctx->panel);
+	if (ret < 0)
+		goto unregister_backlight;
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0)
@@ -745,18 +748,22 @@ static int s6e3ha2_probe(struct mipi_dsi_device *dsi)
 
 remove_panel:
 	drm_panel_remove(&ctx->panel);
+
+unregister_backlight:
 	backlight_device_unregister(ctx->bl_dev);
 
 	return ret;
 }
 
-static void s6e3ha2_remove(struct mipi_dsi_device *dsi)
+static int s6e3ha2_remove(struct mipi_dsi_device *dsi)
 {
 	struct s6e3ha2 *ctx = mipi_dsi_get_drvdata(dsi);
 
 	mipi_dsi_detach(dsi);
 	drm_panel_remove(&ctx->panel);
 	backlight_device_unregister(ctx->bl_dev);
+
+	return 0;
 }
 
 static const struct of_device_id s6e3ha2_of_match[] = {

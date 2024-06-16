@@ -31,8 +31,7 @@
 #include <linux/uaccess.h>
 #include <asm/traps.h>
 #include <asm/user.h>
-#include <asm/fpu/api.h>
-#include <asm/fpu/regset.h>
+#include <asm/fpu/internal.h>
 
 #include "fpu_system.h"
 #include "fpu_emu.h"
@@ -641,7 +640,7 @@ int fpregs_soft_set(struct task_struct *target,
 		    unsigned int pos, unsigned int count,
 		    const void *kbuf, const void __user *ubuf)
 {
-	struct swregs_state *s387 = &target->thread.fpu.fpstate->regs.soft;
+	struct swregs_state *s387 = &target->thread.fpu.state.soft;
 	void *space = s387->st_space;
 	int ret;
 	int offset, other, i, tags, regnr, tag, newtop;
@@ -690,10 +689,12 @@ int fpregs_soft_set(struct task_struct *target,
 
 int fpregs_soft_get(struct task_struct *target,
 		    const struct user_regset *regset,
-		    struct membuf to)
+		    unsigned int pos, unsigned int count,
+		    void *kbuf, void __user *ubuf)
 {
-	struct swregs_state *s387 = &target->thread.fpu.fpstate->regs.soft;
+	struct swregs_state *s387 = &target->thread.fpu.state.soft;
 	const void *space = s387->st_space;
+	int ret;
 	int offset = (S387->ftop & 7) * 10, other = 80 - offset;
 
 	RE_ENTRANT_CHECK_OFF;
@@ -708,11 +709,18 @@ int fpregs_soft_get(struct task_struct *target,
 	S387->fos |= 0xffff0000;
 #endif /* PECULIAR_486 */
 
-	membuf_write(&to, s387, offsetof(struct swregs_state, st_space));
-	membuf_write(&to, space + offset, other);
-	membuf_write(&to, space, offset);
+	ret = user_regset_copyout(&pos, &count, &kbuf, &ubuf, s387, 0,
+				  offsetof(struct swregs_state, st_space));
+
+	/* Copy all registers in stack order. */
+	if (!ret)
+		ret = user_regset_copyout(&pos, &count, &kbuf, &ubuf,
+					  space + offset, 0, other);
+	if (!ret)
+		ret = user_regset_copyout(&pos, &count, &kbuf, &ubuf,
+					  space, 0, offset);
 
 	RE_ENTRANT_CHECK_ON;
 
-	return 0;
+	return ret;
 }

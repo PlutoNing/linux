@@ -115,8 +115,7 @@ struct mxs_lradc_adc {
 	struct device		*dev;
 
 	void __iomem		*base;
-	/* Maximum of 8 channels + 8 byte ts */
-	u32			buffer[10] __aligned(8);
+	u32			buffer[10];
 	struct iio_trigger	*trig;
 	struct completion	completion;
 	spinlock_t		lock;
@@ -456,7 +455,7 @@ static int mxs_lradc_adc_trigger_init(struct iio_dev *iio)
 	struct mxs_lradc_adc *adc = iio_priv(iio);
 
 	trig = devm_iio_trigger_alloc(&iio->dev, "%s-dev%i", iio->name,
-				      iio_device_id(iio));
+				      iio->id);
 	if (!trig)
 		return -ENOMEM;
 
@@ -569,6 +568,8 @@ static bool mxs_lradc_adc_validate_scan_mask(struct iio_dev *iio,
 
 static const struct iio_buffer_setup_ops mxs_lradc_adc_buffer_ops = {
 	.preenable = &mxs_lradc_adc_buffer_preenable,
+	.postenable = &iio_triggered_buffer_postenable,
+	.predisable = &iio_triggered_buffer_predisable,
 	.postdisable = &mxs_lradc_adc_buffer_postdisable,
 	.validate_scan_mask = &mxs_lradc_adc_validate_scan_mask,
 };
@@ -721,6 +722,7 @@ static int mxs_lradc_adc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, iio);
 
 	iio->name = pdev->name;
+	iio->dev.parent = dev;
 	iio->dev.of_node = dev->parent->of_node;
 	iio->info = &mxs_lradc_adc_iio_info;
 	iio->modes = INDIO_DIRECT_MODE;
@@ -757,13 +759,13 @@ static int mxs_lradc_adc_probe(struct platform_device *pdev)
 
 	ret = mxs_lradc_adc_trigger_init(iio);
 	if (ret)
-		return ret;
+		goto err_trig;
 
 	ret = iio_triggered_buffer_setup(iio, &iio_pollfunc_store_time,
 					 &mxs_lradc_adc_trigger_handler,
 					 &mxs_lradc_adc_buffer_ops);
 	if (ret)
-		goto err_trig;
+		return ret;
 
 	adc->vref_mv = mxs_lradc_adc_vref_mv[lradc->soc];
 
@@ -801,21 +803,23 @@ static int mxs_lradc_adc_probe(struct platform_device *pdev)
 
 err_dev:
 	mxs_lradc_adc_hw_stop(adc);
-	iio_triggered_buffer_cleanup(iio);
-err_trig:
 	mxs_lradc_adc_trigger_remove(iio);
+err_trig:
+	iio_triggered_buffer_cleanup(iio);
 	return ret;
 }
 
-static void mxs_lradc_adc_remove(struct platform_device *pdev)
+static int mxs_lradc_adc_remove(struct platform_device *pdev)
 {
 	struct iio_dev *iio = platform_get_drvdata(pdev);
 	struct mxs_lradc_adc *adc = iio_priv(iio);
 
 	iio_device_unregister(iio);
 	mxs_lradc_adc_hw_stop(adc);
-	iio_triggered_buffer_cleanup(iio);
 	mxs_lradc_adc_trigger_remove(iio);
+	iio_triggered_buffer_cleanup(iio);
+
+	return 0;
 }
 
 static struct platform_driver mxs_lradc_adc_driver = {
@@ -823,7 +827,7 @@ static struct platform_driver mxs_lradc_adc_driver = {
 		.name	= "mxs-lradc-adc",
 	},
 	.probe	= mxs_lradc_adc_probe,
-	.remove_new = mxs_lradc_adc_remove,
+	.remove = mxs_lradc_adc_remove,
 };
 module_platform_driver(mxs_lradc_adc_driver);
 

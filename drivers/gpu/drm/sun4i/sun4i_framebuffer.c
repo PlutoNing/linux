@@ -8,7 +8,6 @@
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_blend.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 
 #include "sun4i_drv.h"
@@ -36,7 +35,7 @@ static const struct drm_mode_config_funcs sun4i_de_mode_config_funcs = {
 	.fb_create		= drm_gem_fb_create,
 };
 
-static const struct drm_mode_config_helper_funcs sun4i_de_mode_config_helpers = {
+static struct drm_mode_config_helper_funcs sun4i_de_mode_config_helpers = {
 	.atomic_commit_tail	= drm_atomic_helper_commit_tail_rpm,
 };
 

@@ -148,7 +148,6 @@ static int mt76x0u_load_firmware(struct mt76x02_dev *dev)
 	mt76_wr(dev, MT_USB_DMA_CFG, val);
 
 	ret = mt76x0u_upload_firmware(dev, hdr);
-	mt76x02_set_ethtool_fwver(dev, hdr);
 	release_firmware(fw);
 
 	mt76_wr(dev, MT_FCE_PSE_CTRL, 1);
@@ -169,7 +168,7 @@ int mt76x0u_mcu_init(struct mt76x02_dev *dev)
 	if (ret < 0)
 		return ret;
 
-	set_bit(MT76_STATE_MCU_RUNNING, &dev->mphy.state);
+	set_bit(MT76_STATE_MCU_RUNNING, &dev->mt76.state);
 
 	return 0;
 }

@@ -135,11 +135,8 @@ static int __init owl_timer_init(struct device_node *node)
 	}
 
 	clk = of_clk_get(node, 0);
-	if (IS_ERR(clk)) {
-		ret = PTR_ERR(clk);
-		pr_err("Failed to get clock for clocksource (%d)\n", ret);
-		return ret;
-	}
+	if (IS_ERR(clk))
+		return PTR_ERR(clk);
 
 	rate = clk_get_rate(clk);
 
@@ -147,12 +144,8 @@ static int __init owl_timer_init(struct device_node *node)
 	owl_timer_set_enabled(owl_clksrc_base, true);
 
 	sched_clock_register(owl_timer_sched_read, 32, rate);
-	ret = clocksource_mmio_init(owl_clksrc_base + OWL_Tx_VAL, node->name,
-				    rate, 200, 32, clocksource_mmio_readl_up);
-	if (ret) {
-		pr_err("Failed to register clocksource (%d)\n", ret);
-		return ret;
-	}
+	clocksource_mmio_init(owl_clksrc_base + OWL_Tx_VAL, node->name,
+			      rate, 200, 32, clocksource_mmio_readl_up);
 
 	owl_timer_reset(owl_clkevt_base);
 

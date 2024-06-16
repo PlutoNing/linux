@@ -9,16 +9,18 @@
  * This file implements various helper functions for UBIFS authentication support
  */
 
+#include <linux/crypto.h>
 #include <linux/verification.h>
 #include <crypto/hash.h>
-#include <crypto/utils.h>
+#include <crypto/sha.h>
+#include <crypto/algapi.h>
 #include <keys/user-type.h>
 #include <keys/asymmetric-type.h>
 
 #include "ubifs.h"
 
 /**
- * __ubifs_node_calc_hash - calculate the hash of a UBIFS node
+ * ubifs_node_calc_hash - calculate the hash of a UBIFS node
  * @c: UBIFS file-system description object
  * @node: the node to calculate a hash for
  * @hash: the returned hash
@@ -29,9 +31,15 @@ int __ubifs_node_calc_hash(const struct ubifs_info *c, const void *node,
 			    u8 *hash)
 {
 	const struct ubifs_ch *ch = node;
+	SHASH_DESC_ON_STACK(shash, c->hash_tfm);
+	int err;
 
-	return crypto_shash_tfm_digest(c->hash_tfm, node, le32_to_cpu(ch->len),
-				       hash);
+	shash->tfm = c->hash_tfm;
+
+	err = crypto_shash_digest(shash, node, le32_to_cpu(ch->len), hash);
+	if (err < 0)
+		return err;
+	return 0;
 }
 
 /**
@@ -45,14 +53,22 @@ int __ubifs_node_calc_hash(const struct ubifs_info *c, const void *node,
 static int ubifs_hash_calc_hmac(const struct ubifs_info *c, const u8 *hash,
 				 u8 *hmac)
 {
-	return crypto_shash_tfm_digest(c->hmac_tfm, hash, c->hash_len, hmac);
+	SHASH_DESC_ON_STACK(shash, c->hmac_tfm);
+	int err;
+
+	shash->tfm = c->hmac_tfm;
+
+	err = crypto_shash_digest(shash, hash, c->hash_len, hmac);
+	if (err < 0)
+		return err;
+	return 0;
 }
 
 /**
  * ubifs_prepare_auth_node - Prepare an authentication node
  * @c: UBIFS file-system description object
  * @node: the node to calculate a hash for
- * @inhash: input hash of previous nodes
+ * @hash: input hash of previous nodes
  *
  * This function prepares an authentication node for writing onto flash.
  * It creates a HMAC from the given input hash and writes it to the node.
@@ -63,8 +79,12 @@ int ubifs_prepare_auth_node(struct ubifs_info *c, void *node,
 			     struct shash_desc *inhash)
 {
 	struct ubifs_auth_node *auth = node;
-	u8 hash[UBIFS_HASH_ARR_SZ];
+	u8 *hash;
 	int err;
+
+	hash = kmalloc(crypto_shash_descsize(c->hash_tfm), GFP_NOFS);
+	if (!hash)
+		return -ENOMEM;
 
 	{
 		SHASH_DESC_ON_STACK(hash_desc, c->hash_tfm);
@@ -74,16 +94,21 @@ int ubifs_prepare_auth_node(struct ubifs_info *c, void *node,
 
 		err = crypto_shash_final(hash_desc, hash);
 		if (err)
-			return err;
+			goto out;
 	}
 
 	err = ubifs_hash_calc_hmac(c, hash, auth->hmac);
 	if (err)
-		return err;
+		goto out;
 
 	auth->ch.node_type = UBIFS_AUTH_NODE;
 	ubifs_prepare_node(c, auth, ubifs_auth_node_sz(c), 0);
-	return 0;
+
+	err = 0;
+out:
+	kfree(hash);
+
+	return err;
 }
 
 static struct shash_desc *ubifs_get_desc(const struct ubifs_info *c,
@@ -326,7 +351,7 @@ int ubifs_init_authentication(struct ubifs_info *c)
 		ubifs_err(c, "hmac %s is bigger than maximum allowed hmac size (%d > %d)",
 			  hmac_name, c->hmac_desc_len, UBIFS_HMAC_ARR_SZ);
 		err = -EINVAL;
-		goto out_free_hmac;
+		goto out_free_hash;
 	}
 
 	err = crypto_shash_setkey(c->hmac_tfm, ukp->data, ukp->datalen);
@@ -336,10 +361,8 @@ int ubifs_init_authentication(struct ubifs_info *c)
 	c->authenticated = true;
 
 	c->log_hash = ubifs_hash_get_desc(c);
-	if (IS_ERR(c->log_hash)) {
-		err = PTR_ERR(c->log_hash);
+	if (IS_ERR(c->log_hash))
 		goto out_free_hmac;
-	}
 
 	err = 0;
 
@@ -507,13 +530,28 @@ out:
  */
 int ubifs_hmac_wkm(struct ubifs_info *c, u8 *hmac)
 {
+	SHASH_DESC_ON_STACK(shash, c->hmac_tfm);
+	int err;
 	const char well_known_message[] = "UBIFS";
 
 	if (!ubifs_authenticated(c))
 		return 0;
 
-	return crypto_shash_tfm_digest(c->hmac_tfm, well_known_message,
-				       sizeof(well_known_message) - 1, hmac);
+	shash->tfm = c->hmac_tfm;
+
+	err = crypto_shash_init(shash);
+	if (err)
+		return err;
+
+	err = crypto_shash_update(shash, well_known_message,
+				  sizeof(well_known_message) - 1);
+	if (err < 0)
+		return err;
+
+	err = crypto_shash_final(shash, hmac);
+	if (err)
+		return err;
+	return 0;
 }
 
 /*

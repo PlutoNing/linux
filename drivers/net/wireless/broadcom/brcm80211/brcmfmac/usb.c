@@ -164,6 +164,7 @@ struct brcmf_usbdev_info {
 
 	struct urb *bulk_urb; /* used for FW download */
 
+	bool wowl_enabled;
 	struct brcmf_mp_device *settings;
 };
 
@@ -311,43 +312,27 @@ static int brcmf_usb_tx_ctlpkt(struct device *dev, u8 *buf, u32 len)
 	int err = 0;
 	int timeout = 0;
 	struct brcmf_usbdev_info *devinfo = brcmf_usb_get_businfo(dev);
-	struct usb_interface *intf = to_usb_interface(dev);
 
 	brcmf_dbg(USB, "Enter\n");
+	if (devinfo->bus_pub.state != BRCMFMAC_USB_STATE_UP)
+		return -EIO;
 
-	err = usb_autopm_get_interface(intf);
-	if (err)
-		goto out;
-
-	if (devinfo->bus_pub.state != BRCMFMAC_USB_STATE_UP) {
-		err = -EIO;
-		goto fail;
-	}
-
-	if (test_and_set_bit(0, &devinfo->ctl_op)) {
-		err = -EIO;
-		goto fail;
-	}
+	if (test_and_set_bit(0, &devinfo->ctl_op))
+		return -EIO;
 
 	devinfo->ctl_completed = false;
 	err = brcmf_usb_send_ctl(devinfo, buf, len);
 	if (err) {
 		brcmf_err("fail %d bytes: %d\n", err, len);
 		clear_bit(0, &devinfo->ctl_op);
-		goto fail;
+		return err;
 	}
 	timeout = brcmf_usb_ioctl_resp_wait(devinfo);
+	clear_bit(0, &devinfo->ctl_op);
 	if (!timeout) {
 		brcmf_err("Txctl wait timed out\n");
-		usb_kill_urb(devinfo->ctl_urb);
 		err = -EIO;
-		goto fail;
 	}
-	clear_bit(0, &devinfo->ctl_op);
-
-fail:
-	usb_autopm_put_interface(intf);
-out:
 	return err;
 }
 
@@ -356,46 +341,32 @@ static int brcmf_usb_rx_ctlpkt(struct device *dev, u8 *buf, u32 len)
 	int err = 0;
 	int timeout = 0;
 	struct brcmf_usbdev_info *devinfo = brcmf_usb_get_businfo(dev);
-	struct usb_interface *intf = to_usb_interface(dev);
 
 	brcmf_dbg(USB, "Enter\n");
+	if (devinfo->bus_pub.state != BRCMFMAC_USB_STATE_UP)
+		return -EIO;
 
-	err = usb_autopm_get_interface(intf);
-	if (err)
-		goto out;
-
-	if (devinfo->bus_pub.state != BRCMFMAC_USB_STATE_UP) {
-		err = -EIO;
-		goto fail;
-	}
-
-	if (test_and_set_bit(0, &devinfo->ctl_op)) {
-		err = -EIO;
-		goto fail;
-	}
+	if (test_and_set_bit(0, &devinfo->ctl_op))
+		return -EIO;
 
 	devinfo->ctl_completed = false;
 	err = brcmf_usb_recv_ctl(devinfo, buf, len);
 	if (err) {
 		brcmf_err("fail %d bytes: %d\n", err, len);
 		clear_bit(0, &devinfo->ctl_op);
-		goto fail;
+		return err;
 	}
 	timeout = brcmf_usb_ioctl_resp_wait(devinfo);
 	err = devinfo->ctl_urb_status;
+	clear_bit(0, &devinfo->ctl_op);
 	if (!timeout) {
 		brcmf_err("rxctl wait timed out\n");
-		usb_kill_urb(devinfo->ctl_urb);
 		err = -EIO;
-		goto fail;
 	}
-	clear_bit(0, &devinfo->ctl_op);
-fail:
-	usb_autopm_put_interface(intf);
 	if (!err)
 		return devinfo->ctl_urb_actual_length;
-out:
-	return err;
+	else
+		return err;
 }
 
 static struct brcmf_usbreq *brcmf_usb_deq(struct brcmf_usbdev_info *devinfo,
@@ -459,7 +430,6 @@ fail:
 			usb_free_urb(req->urb);
 		list_del(q->next);
 	}
-	kfree(reqs);
 	return NULL;
 
 }
@@ -529,12 +499,10 @@ static void brcmf_usb_rx_complete(struct urb *urb)
 		return;
 	}
 
-	if (devinfo->bus_pub.state == BRCMFMAC_USB_STATE_UP ||
-	    devinfo->bus_pub.state == BRCMFMAC_USB_STATE_SLEEP) {
+	if (devinfo->bus_pub.state == BRCMFMAC_USB_STATE_UP) {
 		skb_put(skb, urb->actual_length);
-		brcmf_rx_frame(devinfo->dev, skb, true, true);
+		brcmf_rx_frame(devinfo->dev, skb, true);
 		brcmf_usb_rx_refill(devinfo, req);
-		usb_mark_last_busy(urb->dev);
 	} else {
 		brcmu_pkt_buf_free_skb(skb);
 		brcmf_usb_enq(devinfo, &devinfo->rx_freeq, req, NULL);
@@ -618,11 +586,6 @@ static int brcmf_usb_tx(struct device *dev, struct sk_buff *skb)
 	struct brcmf_usbreq  *req;
 	int ret;
 	unsigned long flags;
-	struct usb_interface *intf = to_usb_interface(dev);
-
-	ret = usb_autopm_get_interface(intf);
-	if (ret)
-		goto out;
 
 	brcmf_dbg(USB, "Enter, skb=%p\n", skb);
 	if (devinfo->bus_pub.state != BRCMFMAC_USB_STATE_UP) {
@@ -661,10 +624,9 @@ static int brcmf_usb_tx(struct device *dev, struct sk_buff *skb)
 		devinfo->tx_flowblock = true;
 	}
 	spin_unlock_irqrestore(&devinfo->tx_flowblock_lock, flags);
+	return 0;
 
 fail:
-	usb_autopm_put_interface(intf);
-out:
 	return ret;
 }
 
@@ -1028,32 +990,20 @@ static int
 brcmf_usb_fw_download(struct brcmf_usbdev_info *devinfo)
 {
 	int err;
-	struct usb_interface *intf;
 
 	brcmf_dbg(USB, "Enter\n");
-	if (!devinfo) {
-		err = -ENODEV;
-		goto out;
-	}
+	if (devinfo == NULL)
+		return -ENODEV;
 
 	if (!devinfo->image) {
 		brcmf_err("No firmware!\n");
-		err = -ENOENT;
-		goto out;
+		return -ENOENT;
 	}
-
-	intf = to_usb_interface(devinfo->dev);
-	err = usb_autopm_get_interface(intf);
-	if (err)
-		goto out;
 
 	err = brcmf_usb_dlstart(devinfo,
 		(u8 *)devinfo->image, devinfo->image_len);
 	if (err == 0)
 		err = brcmf_usb_dlrun(devinfo);
-
-	usb_autopm_put_interface(intf);
-out:
 	return err;
 }
 
@@ -1154,11 +1104,36 @@ error:
 	return NULL;
 }
 
-static int brcmf_usb_get_blob(struct device *dev, const struct firmware **fw,
-			      enum brcmf_blob_type type)
+static void brcmf_usb_wowl_config(struct device *dev, bool enabled)
 {
-	/* No blobs for USB devices... */
-	return -ENOENT;
+	struct brcmf_usbdev_info *devinfo = brcmf_usb_get_businfo(dev);
+
+	brcmf_dbg(USB, "Configuring WOWL, enabled=%d\n", enabled);
+	devinfo->wowl_enabled = enabled;
+	if (enabled)
+		device_set_wakeup_enable(devinfo->dev, true);
+	else
+		device_set_wakeup_enable(devinfo->dev, false);
+}
+
+static
+int brcmf_usb_get_fwname(struct device *dev, const char *ext, u8 *fw_name)
+{
+	struct brcmf_bus *bus = dev_get_drvdata(dev);
+	struct brcmf_fw_request *fwreq;
+	struct brcmf_fw_name fwnames[] = {
+		{ ext, fw_name },
+	};
+
+	fwreq = brcmf_fw_alloc_request(bus->chip, bus->chiprev,
+				       brcmf_usb_fwnames,
+				       ARRAY_SIZE(brcmf_usb_fwnames),
+				       fwnames, ARRAY_SIZE(fwnames));
+	if (!fwreq)
+		return -ENOMEM;
+
+	kfree(fwreq);
+	return 0;
 }
 
 static const struct brcmf_bus_ops brcmf_usb_bus_ops = {
@@ -1167,7 +1142,8 @@ static const struct brcmf_bus_ops brcmf_usb_bus_ops = {
 	.txdata = brcmf_usb_tx,
 	.txctl = brcmf_usb_tx_ctlpkt,
 	.rxctl = brcmf_usb_rx_ctlpkt,
-	.get_blob = brcmf_usb_get_blob,
+	.wowl_config = brcmf_usb_wowl_config,
+	.get_fwname = brcmf_usb_get_fwname,
 };
 
 #define BRCMF_USB_FW_CODE	0
@@ -1240,8 +1216,7 @@ brcmf_usb_prepare_fw_request(struct brcmf_usbdev_info *devinfo)
 	return fwreq;
 }
 
-static int brcmf_usb_probe_cb(struct brcmf_usbdev_info *devinfo,
-			      enum brcmf_fwvendor fwvid)
+static int brcmf_usb_probe_cb(struct brcmf_usbdev_info *devinfo)
 {
 	struct brcmf_bus *bus = NULL;
 	struct brcmf_usbdev *bus_pub = NULL;
@@ -1266,7 +1241,6 @@ static int brcmf_usb_probe_cb(struct brcmf_usbdev_info *devinfo,
 	dev_set_drvdata(dev, bus);
 	bus->ops = &brcmf_usb_bus_ops;
 	bus->proto_type = BRCMF_PROTO_BCDC;
-	bus->fwvid = fwvid;
 	bus->always_use_fws_queue = true;
 #ifdef CONFIG_PM
 	bus->wowl_supported = true;
@@ -1331,9 +1305,6 @@ brcmf_usb_disconnect_cb(struct brcmf_usbdev_info *devinfo)
 	brcmf_usb_detach(devinfo);
 }
 
-/* Forward declaration for usb_match_id() call */
-static const struct usb_device_id brcmf_usb_devid_table[];
-
 static int
 brcmf_usb_probe(struct usb_interface *intf, const struct usb_device_id *id)
 {
@@ -1344,14 +1315,6 @@ brcmf_usb_probe(struct usb_interface *intf, const struct usb_device_id *id)
 	int ret = 0;
 	u32 num_of_eps;
 	u8 endpoint_num, ep;
-
-	if (!id) {
-		id = usb_match_id(intf, brcmf_usb_devid_table);
-		if (!id) {
-			dev_err(&intf->dev, "Error could not find matching usb_device_id\n");
-			return -ENODEV;
-		}
-	}
 
 	brcmf_dbg(USB, "Enter 0x%04x:0x%04x\n", id->idVendor, id->idProduct);
 
@@ -1367,8 +1330,6 @@ brcmf_usb_probe(struct usb_interface *intf, const struct usb_device_id *id)
 	init_completion(&devinfo->dev_init_done);
 
 	usb_set_intfdata(intf, devinfo);
-
-	intf->needs_remote_wakeup = 1;
 
 	/* Check that the device supports only one configuration */
 	if (usb->descriptor.bNumConfigurations != 1) {
@@ -1387,7 +1348,7 @@ brcmf_usb_probe(struct usb_interface *intf, const struct usb_device_id *id)
 		goto fail;
 	}
 
-	desc = &intf->cur_altsetting->desc;
+	desc = &intf->altsetting[0].desc;
 	if ((desc->bInterfaceClass != USB_CLASS_VENDOR_SPEC) ||
 	    (desc->bInterfaceSubClass != 2) ||
 	    (desc->bInterfaceProtocol != 0xff)) {
@@ -1400,7 +1361,7 @@ brcmf_usb_probe(struct usb_interface *intf, const struct usb_device_id *id)
 
 	num_of_eps = desc->bNumEndpoints;
 	for (ep = 0; ep < num_of_eps; ep++) {
-		endpoint = &intf->cur_altsetting->endpoint[ep].desc;
+		endpoint = &intf->altsetting[0].endpoint[ep].desc;
 		endpoint_num = usb_endpoint_num(endpoint);
 		if (!usb_endpoint_xfer_bulk(endpoint))
 			continue;
@@ -1436,7 +1397,7 @@ brcmf_usb_probe(struct usb_interface *intf, const struct usb_device_id *id)
 	else
 		brcmf_dbg(USB, "Broadcom full speed USB WLAN interface detected\n");
 
-	ret = brcmf_usb_probe_cb(devinfo, id->driver_info);
+	ret = brcmf_usb_probe_cb(devinfo);
 	if (ret)
 		goto fail;
 
@@ -1483,8 +1444,12 @@ static int brcmf_usb_suspend(struct usb_interface *intf, pm_message_t state)
 
 	brcmf_dbg(USB, "Enter\n");
 	devinfo->bus_pub.state = BRCMFMAC_USB_STATE_SLEEP;
-	brcmf_cancel_all_urbs(devinfo);
-	device_set_wakeup_enable(devinfo->dev, true);
+	if (devinfo->wowl_enabled) {
+		brcmf_cancel_all_urbs(devinfo);
+	} else {
+		brcmf_detach(&usb->dev);
+		brcmf_free(&usb->dev);
+	}
 	return 0;
 }
 
@@ -1497,10 +1462,22 @@ static int brcmf_usb_resume(struct usb_interface *intf)
 	struct brcmf_usbdev_info *devinfo = brcmf_usb_get_businfo(&usb->dev);
 
 	brcmf_dbg(USB, "Enter\n");
+	if (!devinfo->wowl_enabled) {
+		int err;
+
+		err = brcmf_alloc(&usb->dev, devinfo->settings);
+		if (err)
+			return err;
+
+		err = brcmf_attach(devinfo->dev);
+		if (err) {
+			brcmf_free(devinfo->dev);
+			return err;
+		}
+	}
 
 	devinfo->bus_pub.state = BRCMFMAC_USB_STATE_UP;
 	brcmf_usb_rx_fill_all(devinfo);
-	device_set_wakeup_enable(devinfo->dev, false);
 	return 0;
 }
 
@@ -1524,23 +1501,14 @@ static int brcmf_usb_reset_resume(struct usb_interface *intf)
 	return ret;
 }
 
-#define BRCMF_USB_DEVICE(dev_id) \
-	{ \
-		USB_DEVICE(BRCM_USB_VENDOR_ID_BROADCOM, dev_id), \
-		.driver_info = BRCMF_FWVENDOR_WCC \
-	}
+#define BRCMF_USB_DEVICE(dev_id)	\
+	{ USB_DEVICE(BRCM_USB_VENDOR_ID_BROADCOM, dev_id) }
 
-#define LINKSYS_USB_DEVICE(dev_id) \
-	{ \
-		USB_DEVICE(BRCM_USB_VENDOR_ID_LINKSYS, dev_id), \
-		.driver_info = BRCMF_FWVENDOR_WCC \
-	}
+#define LINKSYS_USB_DEVICE(dev_id)	\
+	{ USB_DEVICE(BRCM_USB_VENDOR_ID_LINKSYS, dev_id) }
 
-#define CYPRESS_USB_DEVICE(dev_id) \
-	{ \
-		USB_DEVICE(CY_USB_VENDOR_ID_CYPRESS, dev_id), \
-		.driver_info = BRCMF_FWVENDOR_WCC \
-	}
+#define CYPRESS_USB_DEVICE(dev_id)	\
+	{ USB_DEVICE(CY_USB_VENDOR_ID_CYPRESS, dev_id) }
 
 static const struct usb_device_id brcmf_usb_devid_table[] = {
 	BRCMF_USB_DEVICE(BRCM_USB_43143_DEVICE_ID),
@@ -1566,7 +1534,6 @@ static struct usb_driver brcmf_usbdrvr = {
 	.suspend = brcmf_usb_suspend,
 	.resume = brcmf_usb_resume,
 	.reset_resume = brcmf_usb_reset_resume,
-	.supports_autosuspend = true,
 	.disable_hub_initiated_lpm = 1,
 };
 
@@ -1581,20 +1548,21 @@ static int brcmf_usb_reset_device(struct device *dev, void *notused)
 
 void brcmf_usb_exit(void)
 {
-	struct device_driver *drv = &brcmf_usbdrvr.driver;
+	struct device_driver *drv = &brcmf_usbdrvr.drvwrap.driver;
 	int ret;
 
 	brcmf_dbg(USB, "Enter\n");
 	ret = driver_for_each_device(drv, NULL, NULL,
 				     brcmf_usb_reset_device);
-	if (ret)
-		brcmf_err("failed to reset all usb devices %d\n", ret);
-
 	usb_deregister(&brcmf_usbdrvr);
 }
 
-int brcmf_usb_register(void)
+void brcmf_usb_register(void)
 {
+	int ret;
+
 	brcmf_dbg(USB, "Enter\n");
-	return usb_register(&brcmf_usbdrvr);
+	ret = usb_register(&brcmf_usbdrvr);
+	if (ret)
+		brcmf_err("usb_register failed %d\n", ret);
 }

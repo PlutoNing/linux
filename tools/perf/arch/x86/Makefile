@@ -10,19 +10,18 @@ PERF_HAVE_JITDUMP := 1
 # Syscall table generation
 #
 
-generated := $(OUTPUT)arch/x86/include/generated
-out       := $(generated)/asm
-header    := $(out)/syscalls_64.c
-sys       := $(srctree)/tools/perf/arch/x86/entry/syscalls
-systbl    := $(sys)/syscalltbl.sh
+out    := $(OUTPUT)arch/x86/include/generated/asm
+header := $(out)/syscalls_64.c
+sys    := $(srctree)/tools/perf/arch/x86/entry/syscalls
+systbl := $(sys)/syscalltbl.sh
 
 # Create output directory if not already present
-$(shell [ -d '$(out)' ] || mkdir -p '$(out)')
+_dummy := $(shell [ -d '$(out)' ] || mkdir -p '$(out)')
 
 $(header): $(sys)/syscall_64.tbl $(systbl)
 	$(Q)$(SHELL) '$(systbl)' $(sys)/syscall_64.tbl 'x86_64' > $@
 
 clean::
-	$(call QUIET_CLEAN, x86) $(RM) -r $(header) $(generated)
+	$(call QUIET_CLEAN, x86) $(RM) $(header)
 
 archheaders: $(header)

@@ -7,7 +7,6 @@
 #include <linux/ip.h>
 #include <linux/netfilter.h>
 #include <linux/module.h>
-#include <linux/rcupdate.h>
 #include <linux/skbuff.h>
 #include <net/netns/generic.h>
 #include <net/route.h>
@@ -66,7 +65,7 @@ static unsigned int ipv4_conntrack_defrag(void *priv,
 	struct sock *sk = skb->sk;
 
 	if (sk && sk_fullsock(sk) && (sk->sk_family == PF_INET) &&
-	    inet_test_bit(NODEFRAG, sk))
+	    inet_sk(sk)->nodefrag)
 		return NF_ACCEPT;
 
 #if IS_ENABLED(CONFIG_NF_CONNTRACK)
@@ -107,18 +106,12 @@ static const struct nf_hook_ops ipv4_defrag_ops[] = {
 
 static void __net_exit defrag4_net_exit(struct net *net)
 {
-	if (net->nf.defrag_ipv4_users) {
+	if (net->nf.defrag_ipv4) {
 		nf_unregister_net_hooks(net, ipv4_defrag_ops,
 					ARRAY_SIZE(ipv4_defrag_ops));
-		net->nf.defrag_ipv4_users = 0;
+		net->nf.defrag_ipv4 = false;
 	}
 }
-
-static const struct nf_defrag_hook defrag_hook = {
-	.owner = THIS_MODULE,
-	.enable = nf_defrag_ipv4_enable,
-	.disable = nf_defrag_ipv4_disable,
-};
 
 static struct pernet_operations defrag4_net_ops = {
 	.exit = defrag4_net_exit,
@@ -126,19 +119,11 @@ static struct pernet_operations defrag4_net_ops = {
 
 static int __init nf_defrag_init(void)
 {
-	int err;
-
-	err = register_pernet_subsys(&defrag4_net_ops);
-	if (err)
-		return err;
-
-	rcu_assign_pointer(nf_defrag_v4_hook, &defrag_hook);
-	return err;
+	return register_pernet_subsys(&defrag4_net_ops);
 }
 
 static void __exit nf_defrag_fini(void)
 {
-	rcu_assign_pointer(nf_defrag_v4_hook, NULL);
 	unregister_pernet_subsys(&defrag4_net_ops);
 }
 
@@ -146,21 +131,19 @@ int nf_defrag_ipv4_enable(struct net *net)
 {
 	int err = 0;
 
-	mutex_lock(&defrag4_mutex);
-	if (net->nf.defrag_ipv4_users == UINT_MAX) {
-		err = -EOVERFLOW;
-		goto out_unlock;
-	}
+	might_sleep();
 
-	if (net->nf.defrag_ipv4_users) {
-		net->nf.defrag_ipv4_users++;
+	if (net->nf.defrag_ipv4)
+		return 0;
+
+	mutex_lock(&defrag4_mutex);
+	if (net->nf.defrag_ipv4)
 		goto out_unlock;
-	}
 
 	err = nf_register_net_hooks(net, ipv4_defrag_ops,
 				    ARRAY_SIZE(ipv4_defrag_ops));
 	if (err == 0)
-		net->nf.defrag_ipv4_users = 1;
+		net->nf.defrag_ipv4 = true;
 
  out_unlock:
 	mutex_unlock(&defrag4_mutex);
@@ -168,22 +151,7 @@ int nf_defrag_ipv4_enable(struct net *net)
 }
 EXPORT_SYMBOL_GPL(nf_defrag_ipv4_enable);
 
-void nf_defrag_ipv4_disable(struct net *net)
-{
-	mutex_lock(&defrag4_mutex);
-	if (net->nf.defrag_ipv4_users) {
-		net->nf.defrag_ipv4_users--;
-		if (net->nf.defrag_ipv4_users == 0)
-			nf_unregister_net_hooks(net, ipv4_defrag_ops,
-						ARRAY_SIZE(ipv4_defrag_ops));
-	}
-
-	mutex_unlock(&defrag4_mutex);
-}
-EXPORT_SYMBOL_GPL(nf_defrag_ipv4_disable);
-
 module_init(nf_defrag_init);
 module_exit(nf_defrag_fini);
 
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("IPv4 defragmentation support");

@@ -249,7 +249,7 @@ static const struct i2c_algorithm smbus_algorithm = {
 
 static struct i2c_adapter sch_adapter = {
 	.owner		= THIS_MODULE,
-	.class		= I2C_CLASS_HWMON,
+	.class		= I2C_CLASS_HWMON | I2C_CLASS_SPD,
 	.algo		= &smbus_algorithm,
 };
 
@@ -286,12 +286,14 @@ static int smbus_sch_probe(struct platform_device *dev)
 	return retval;
 }
 
-static void smbus_sch_remove(struct platform_device *pdev)
+static int smbus_sch_remove(struct platform_device *pdev)
 {
 	if (sch_smba) {
 		i2c_del_adapter(&sch_adapter);
 		sch_smba = 0;
 	}
+
+	return 0;
 }
 
 static struct platform_driver smbus_sch_driver = {
@@ -299,7 +301,7 @@ static struct platform_driver smbus_sch_driver = {
 		.name = "isch_smbus",
 	},
 	.probe		= smbus_sch_probe,
-	.remove_new	= smbus_sch_remove,
+	.remove		= smbus_sch_remove,
 };
 
 module_platform_driver(smbus_sch_driver);

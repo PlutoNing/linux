@@ -30,7 +30,6 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
-#include <linux/property.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/map.h>
 #include <linux/mtd/partitions.h>
@@ -38,13 +37,10 @@
 #include <linux/mtd/concat.h>
 #include <linux/mtd/cfi_endian.h>
 #include <linux/io.h>
-#include <linux/of.h>
-#include <linux/pm_runtime.h>
+#include <linux/of_device.h>
 #include <linux/gpio/consumer.h>
 
-#include "physmap-bt1-rom.h"
 #include "physmap-gemini.h"
-#include "physmap-ixp4xx.h"
 #include "physmap-versatile.h"
 
 struct physmap_flash_info {
@@ -63,16 +59,20 @@ struct physmap_flash_info {
 	unsigned int		win_order;
 };
 
-static void physmap_flash_remove(struct platform_device *dev)
+static int physmap_flash_remove(struct platform_device *dev)
 {
 	struct physmap_flash_info *info;
 	struct physmap_flash_data *physmap_data;
-	int i;
+	int i, err;
 
 	info = platform_get_drvdata(dev);
+	if (!info)
+		return 0;
 
 	if (info->cmtd) {
-		WARN_ON(mtd_device_unregister(info->cmtd));
+		err = mtd_device_unregister(info->cmtd);
+		if (err)
+			return err;
 
 		if (info->cmtd != info->mtds[0])
 			mtd_concat_destroy(info->cmtd);
@@ -87,8 +87,7 @@ static void physmap_flash_remove(struct platform_device *dev)
 	if (physmap_data && physmap_data->exit)
 		physmap_data->exit(dev);
 
-	pm_runtime_put(&dev->dev);
-	pm_runtime_disable(&dev->dev);
+	return 0;
 }
 
 static void physmap_set_vpp(struct map_info *map, int state)
@@ -296,9 +295,11 @@ static const char * const *of_get_part_probes(struct platform_device *dev)
 static const char *of_select_probe_type(struct platform_device *dev)
 {
 	struct device_node *dp = dev->dev.of_node;
+	const struct of_device_id *match;
 	const char *probe_type;
 
-	probe_type = device_get_match_data(&dev->dev);
+	match = of_match_device(of_flash_match, &dev->dev);
+	probe_type = match->data;
 	if (probe_type)
 		return probe_type;
 
@@ -365,15 +366,7 @@ static int physmap_flash_of_init(struct platform_device *dev)
 		info->maps[i].bankwidth = bankwidth;
 		info->maps[i].device_node = dp;
 
-		err = of_flash_probe_bt1_rom(dev, dp, &info->maps[i]);
-		if (err)
-			return err;
-
 		err = of_flash_probe_gemini(dev, dp, &info->maps[i]);
-		if (err)
-			return err;
-
-		err = of_flash_probe_ixp4xx(dev, dp, &info->maps[i]);
 		if (err)
 			return err;
 
@@ -486,24 +479,19 @@ static int physmap_flash_probe(struct platform_device *dev)
 		return -EINVAL;
 	}
 
-	pm_runtime_enable(&dev->dev);
-	pm_runtime_get_sync(&dev->dev);
-
 	if (dev->dev.of_node)
 		err = physmap_flash_of_init(dev);
 	else
 		err = physmap_flash_pdata_init(dev);
 
-	if (err) {
-		pm_runtime_put(&dev->dev);
-		pm_runtime_disable(&dev->dev);
+	if (err)
 		return err;
-	}
 
 	for (i = 0; i < info->nmaps; i++) {
 		struct resource *res;
 
-		info->maps[i].virt = devm_platform_get_and_ioremap_resource(dev, i, &res);
+		res = platform_get_resource(dev, IORESOURCE_MEM, i);
+		info->maps[i].virt = devm_ioremap_resource(&dev->dev, res);
 		if (IS_ERR(info->maps[i].virt)) {
 			err = PTR_ERR(info->maps[i].virt);
 			goto err_out;
@@ -512,13 +500,12 @@ static int physmap_flash_probe(struct platform_device *dev)
 		dev_notice(&dev->dev, "physmap platform flash device: %pR\n",
 			   res);
 
-		if (!info->maps[i].name)
-			info->maps[i].name = dev_name(&dev->dev);
+		info->maps[i].name = dev_name(&dev->dev);
 
 		if (!info->maps[i].phys)
 			info->maps[i].phys = res->start;
 
-		info->win_order = fls64(resource_size(res)) - 1;
+		info->win_order = get_bitmask_order(resource_size(res)) - 1;
 		info->maps[i].size = BIT(info->win_order +
 					 (info->gpios ?
 					  info->gpios->ndescs : 0));
@@ -546,17 +533,6 @@ static int physmap_flash_probe(struct platform_device *dev)
 		if (info->probe_type) {
 			info->mtds[i] = do_map_probe(info->probe_type,
 						     &info->maps[i]);
-
-			/* Fall back to mapping region as ROM */
-			if (!info->mtds[i] && IS_ENABLED(CONFIG_MTD_ROM) &&
-			    strcmp(info->probe_type, "map_rom")) {
-				dev_warn(&dev->dev,
-					 "map_probe() failed for type %s\n",
-					 info->probe_type);
-
-				info->mtds[i] = do_map_probe("map_rom",
-							     &info->maps[i]);
-			}
 		} else {
 			int j;
 
@@ -621,7 +597,7 @@ static void physmap_flash_shutdown(struct platform_device *dev)
 
 static struct platform_driver physmap_flash_driver = {
 	.probe		= physmap_flash_probe,
-	.remove_new	= physmap_flash_remove,
+	.remove		= physmap_flash_remove,
 	.shutdown	= physmap_flash_shutdown,
 	.driver		= {
 		.name	= "physmap-flash",

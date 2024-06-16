@@ -12,7 +12,6 @@
 
 #include <linux/kernel.h>
 #include <asm/page.h>
-#include <asm/pgtable.h>
 #include <asm/pci_io.h>
 
 #define xlate_dev_mem_ptr xlate_dev_mem_ptr
@@ -20,20 +19,19 @@ void *xlate_dev_mem_ptr(phys_addr_t phys);
 #define unxlate_dev_mem_ptr unxlate_dev_mem_ptr
 void unxlate_dev_mem_ptr(phys_addr_t phys, void *addr);
 
+/*
+ * Convert a virtual cached pointer to an uncached pointer
+ */
+#define xlate_dev_kmem_ptr(p)	p
+
 #define IO_SPACE_LIMIT 0
 
-/*
- * I/O memory mapping functions.
- */
-#define ioremap_prot ioremap_prot
-#define iounmap iounmap
+#define ioremap_nocache(addr, size)	ioremap(addr, size)
+#define ioremap_wc			ioremap_nocache
+#define ioremap_wt			ioremap_nocache
 
-#define _PAGE_IOREMAP pgprot_val(PAGE_KERNEL)
-
-#define ioremap_wc(addr, size)  \
-	ioremap_prot((addr), (size), pgprot_val(pgprot_writecombine(PAGE_KERNEL)))
-#define ioremap_wt(addr, size)  \
-	ioremap_prot((addr), (size), pgprot_val(pgprot_writethrough(PAGE_KERNEL)))
+void __iomem *ioremap(unsigned long offset, unsigned long size);
+void iounmap(volatile void __iomem *addr);
 
 static inline void __iomem *ioport_map(unsigned long port, unsigned int nr)
 {

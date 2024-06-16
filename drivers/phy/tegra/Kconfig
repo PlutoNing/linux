@@ -1,10 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 config PHY_TEGRA_XUSB
 	tristate "NVIDIA Tegra XUSB pad controller driver"
-	depends on ARCH_TEGRA && USB_SUPPORT
-	select USB_COMMON
-	select USB_CONN_GPIO
-	select USB_PHY
+	depends on ARCH_TEGRA
 	help
 	  Choose this option if you have an NVIDIA Tegra SoC.
 

@@ -7,7 +7,21 @@
 #include <linux/stddef.h>
 #include <linux/debugobjects.h>
 #include <linux/stringify.h>
-#include <linux/timer_types.h>
+
+struct timer_list {
+	/*
+	 * All fields that change during normal runtime grouped to the
+	 * same cacheline
+	 */
+	struct hlist_node	entry;
+	unsigned long		expires;
+	void			(*function)(struct timer_list *);
+	u32			flags;
+
+#ifdef CONFIG_LOCKDEP
+	struct lockdep_map	lockdep_map;
+#endif
+};
 
 #ifdef CONFIG_LOCKDEP
 /*
@@ -36,10 +50,16 @@
  * workqueue locking issues. It's not meant for executing random crap
  * with interrupts disabled. Abuse is monitored!
  *
- * @TIMER_PINNED: A pinned timer will always expire on the CPU on which the
- * timer was enqueued. When a particular CPU is required, add_timer_on()
- * has to be used. Enqueue via mod_timer() and add_timer() is always done
- * on the local CPU.
+ * @TIMER_PINNED: A pinned timer will not be affected by any timer
+ * placement heuristics (like, NOHZ) and will always expire on the CPU
+ * on which the timer was enqueued.
+ *
+ * Note: Because enqueuing of timers can migrate the timer from one
+ * CPU to another, pinned timers are not guaranteed to stay on the
+ * initialy selected CPU.  They move to the CPU on which the enqueue
+ * function is invoked via mod_timer() or add_timer().  If the timer
+ * should be placed on a particular CPU, then add_timer_on() has to be
+ * used.
  */
 #define TIMER_CPUMASK		0x0003FFFF
 #define TIMER_MIGRATING		0x00040000
@@ -47,7 +67,6 @@
 #define TIMER_DEFERRABLE	0x00080000
 #define TIMER_PINNED		0x00100000
 #define TIMER_IRQSAFE		0x00200000
-#define TIMER_INIT_FLAGS	(TIMER_DEFERRABLE | TIMER_PINNED | TIMER_IRQSAFE)
 #define TIMER_ARRAYSHIFT	22
 #define TIMER_ARRAYMASK		0xFFC00000
 
@@ -57,7 +76,8 @@
 		.entry = { .next = TIMER_ENTRY_STATIC },	\
 		.function = (_function),			\
 		.flags = (_flags),				\
-		__TIMER_LOCKDEP_MAP_INITIALIZER(FILE_LINE)	\
+		__TIMER_LOCKDEP_MAP_INITIALIZER(		\
+			__FILE__ ":" __stringify(__LINE__))	\
 	}
 
 #define DEFINE_TIMER(_name, _function)				\
@@ -133,6 +153,7 @@ static inline void destroy_timer_on_stack(struct timer_list *timer) { }
 	container_of(callback_timer, typeof(*var), timer_fieldname)
 
 /**
+2024年6月16日23:23:20
  * timer_pending - is a timer pending?
  * @timer: the timer in question
  *
@@ -144,10 +165,11 @@ static inline void destroy_timer_on_stack(struct timer_list *timer) { }
  */
 static inline int timer_pending(const struct timer_list * timer)
 {
-	return !hlist_unhashed_lockless(&timer->entry);
+	return timer->entry.pprev != NULL;
 }
 
 extern void add_timer_on(struct timer_list *timer, int cpu);
+extern int del_timer(struct timer_list * timer);
 extern int mod_timer(struct timer_list *timer, unsigned long expires);
 extern int mod_timer_pending(struct timer_list *timer, unsigned long expires);
 extern int timer_reduce(struct timer_list *timer, unsigned long expires);
@@ -159,44 +181,30 @@ extern int timer_reduce(struct timer_list *timer, unsigned long expires);
 #define NEXT_TIMER_MAX_DELTA	((1UL << 30) - 1)
 
 extern void add_timer(struct timer_list *timer);
-extern void add_timer_local(struct timer_list *timer);
-extern void add_timer_global(struct timer_list *timer);
 
 extern int try_to_del_timer_sync(struct timer_list *timer);
-extern int timer_delete_sync(struct timer_list *timer);
-extern int timer_delete(struct timer_list *timer);
-extern int timer_shutdown_sync(struct timer_list *timer);
-extern int timer_shutdown(struct timer_list *timer);
 
-/**
- * del_timer_sync - Delete a pending timer and wait for a running callback
- * @timer:	The timer to be deleted
- *
- * See timer_delete_sync() for detailed explanation.
- *
- * Do not use in new code. Use timer_delete_sync() instead.
- */
-static inline int del_timer_sync(struct timer_list *timer)
-{
-	return timer_delete_sync(timer);
-}
+#if defined(CONFIG_SMP) || defined(CONFIG_PREEMPT_RT)
+  extern int del_timer_sync(struct timer_list *timer);
+#else
+# define del_timer_sync(t)		del_timer(t)
+#endif
 
-/**
- * del_timer - Delete a pending timer
- * @timer:	The timer to be deleted
- *
- * See timer_delete() for detailed explanation.
- *
- * Do not use in new code. Use timer_delete() instead.
- */
-static inline int del_timer(struct timer_list *timer)
-{
-	return timer_delete(timer);
-}
+#define del_singleshot_timer_sync(t) del_timer_sync(t)
 
 extern void init_timers(void);
+extern void run_local_timers(void);
 struct hrtimer;
 extern enum hrtimer_restart it_real_fn(struct hrtimer *);
+
+#if defined(CONFIG_SMP) && defined(CONFIG_NO_HZ_COMMON)
+struct ctl_table;
+
+extern unsigned int sysctl_timer_migration;
+int timer_migration_handler(struct ctl_table *table, int write,
+			    void __user *buffer, size_t *lenp,
+			    loff_t *ppos);
+#endif
 
 unsigned long __round_jiffies(unsigned long j, int cpu);
 unsigned long __round_jiffies_relative(unsigned long j, int cpu);

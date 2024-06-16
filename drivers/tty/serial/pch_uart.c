@@ -2,8 +2,10 @@
 /*
  *Copyright (C) 2011 LAPIS Semiconductor Co., Ltd.
  */
+#if defined(CONFIG_SERIAL_PCH_UART_CONSOLE) && defined(CONFIG_MAGIC_SYSRQ)
+#define SUPPORT_SYSRQ
+#endif
 #include <linux/kernel.h>
-#include <linux/serial.h>
 #include <linux/serial_reg.h>
 #include <linux/slab.h>
 #include <linux/module.h>
@@ -190,6 +192,8 @@ enum {
 #define PCH_UART_HAL_LOOP		(PCH_UART_MCR_LOOP)
 #define PCH_UART_HAL_AFE		(PCH_UART_MCR_AFE)
 
+#define BOTH_EMPTY (UART_LSR_TEMT | UART_LSR_THRE)
+
 #define DEFAULT_UARTCLK   1843200 /*   1.8432 MHz */
 #define CMITC_UARTCLK   192000000 /* 192.0000 MHz */
 #define FRI2_64_UARTCLK  64000000 /*  64.0000 MHz */
@@ -229,14 +233,17 @@ struct eg20t_port {
 	struct dma_chan			*chan_rx;
 	struct scatterlist		*sg_tx_p;
 	int				nent;
-	int				orig_nent;
 	struct scatterlist		sg_rx;
 	int				tx_dma_use;
 	void				*rx_buf_virt;
 	dma_addr_t			rx_buf_dma;
 
+	struct dentry	*debugfs;
 #define IRQ_NAME_SIZE 17
 	char				irq_name[IRQ_NAME_SIZE];
+
+	/* protect the eg20t_port private structure and io access to membase */
+	spinlock_t lock;
 };
 
 /**
@@ -287,6 +294,8 @@ static const int trigger_level_64[4] = { 1, 16, 32, 56 };
 static const int trigger_level_16[4] = { 1, 4, 8, 14 };
 static const int trigger_level_1[4] = { 1, 1, 1, 1 };
 
+#ifdef CONFIG_DEBUG_FS
+
 #define PCH_REGS_BUFSIZE	1024
 
 
@@ -303,32 +312,32 @@ static ssize_t port_show_regs(struct file *file, char __user *user_buf,
 	if (!buf)
 		return 0;
 
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"PCH EG20T port[%d] regs:\n", priv->port.line);
 
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"=================================\n");
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"IER: \t0x%02x\n", ioread8(priv->membase + UART_IER));
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"IIR: \t0x%02x\n", ioread8(priv->membase + UART_IIR));
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"LCR: \t0x%02x\n", ioread8(priv->membase + UART_LCR));
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"MCR: \t0x%02x\n", ioread8(priv->membase + UART_MCR));
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"LSR: \t0x%02x\n", ioread8(priv->membase + UART_LSR));
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"MSR: \t0x%02x\n", ioread8(priv->membase + UART_MSR));
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"BRCSR: \t0x%02x\n",
 			ioread8(priv->membase + PCH_UART_BRCSR));
 
 	lcr = ioread8(priv->membase + UART_LCR);
 	iowrite8(PCH_UART_LCR_DLAB, priv->membase + UART_LCR);
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"DLL: \t0x%02x\n", ioread8(priv->membase + UART_DLL));
-	len += scnprintf(buf + len, PCH_REGS_BUFSIZE - len,
+	len += snprintf(buf + len, PCH_REGS_BUFSIZE - len,
 			"DLM: \t0x%02x\n", ioread8(priv->membase + UART_DLM));
 	iowrite8(lcr, priv->membase + UART_LCR);
 
@@ -346,6 +355,7 @@ static const struct file_operations port_regs_ops = {
 	.read		= port_show_regs,
 	.llseek		= default_llseek,
 };
+#endif	/* CONFIG_DEBUG_FS */
 
 static const struct dmi_system_id pch_uart_dmi_table[] = {
 	{
@@ -546,6 +556,18 @@ static u8 pch_uart_hal_get_modem(struct eg20t_port *priv)
 	return (u8)msr;
 }
 
+static void pch_uart_hal_write(struct eg20t_port *priv,
+			      const unsigned char *buf, int tx_size)
+{
+	int i;
+	unsigned int thr;
+
+	for (i = 0; i < tx_size;) {
+		thr = buf[i++];
+		iowrite8(thr, priv->membase + PCH_UART_THR);
+	}
+}
+
 static int pch_uart_hal_read(struct eg20t_port *priv, unsigned char *buf,
 			     int rx_size)
 {
@@ -564,8 +586,12 @@ static int pch_uart_hal_read(struct eg20t_port *priv, unsigned char *buf,
 			if (uart_handle_break(port))
 				continue;
 		}
-		if (uart_prepare_sysrq_char(port, rbr))
-			continue;
+#ifdef SUPPORT_SYSRQ
+		if (port->sysrq) {
+			if (uart_handle_sysrq_char(port, rbr))
+				continue;
+		}
+#endif
 
 		buf[i++] = rbr;
 	}
@@ -596,14 +622,32 @@ static void pch_uart_hal_set_break(struct eg20t_port *priv, int on)
 	iowrite8(lcr, priv->membase + UART_LCR);
 }
 
-static void push_rx(struct eg20t_port *priv, const unsigned char *buf,
-		    int size)
+static int push_rx(struct eg20t_port *priv, const unsigned char *buf,
+		   int size)
 {
 	struct uart_port *port = &priv->port;
 	struct tty_port *tport = &port->state->port;
 
 	tty_insert_flip_string(tport, buf, size);
 	tty_flip_buffer_push(tport);
+
+	return 0;
+}
+
+static int pop_tx_x(struct eg20t_port *priv, unsigned char *buf)
+{
+	int ret = 0;
+	struct uart_port *port = &priv->port;
+
+	if (port->x_char) {
+		dev_dbg(priv->port.dev, "%s:X character send %02x (%lu)\n",
+			__func__, port->x_char, jiffies);
+		buf[0] = port->x_char;
+		port->x_char = 0;
+		ret = 1;
+	}
+
+	return ret;
 }
 
 static int dma_push_rx(struct eg20t_port *priv, int size)
@@ -689,7 +733,6 @@ static void pch_request_dma(struct uart_port *port)
 	if (!chan) {
 		dev_err(priv->port.dev, "%s:dma_request_channel FAILS(Tx)\n",
 			__func__);
-		pci_dev_put(dma_dev);
 		return;
 	}
 	priv->chan_tx = chan;
@@ -706,7 +749,6 @@ static void pch_request_dma(struct uart_port *port)
 			__func__);
 		dma_release_channel(priv->chan_tx);
 		priv->chan_tx = NULL;
-		pci_dev_put(dma_dev);
 		return;
 	}
 
@@ -714,8 +756,6 @@ static void pch_request_dma(struct uart_port *port)
 	priv->rx_buf_virt = dma_alloc_coherent(port->dev, port->fifosize,
 				    &priv->rx_buf_dma, GFP_KERNEL);
 	priv->chan_rx = chan;
-
-	pci_dev_put(dma_dev);
 }
 
 static void pch_dma_rx_complete(void *arg)
@@ -737,26 +777,53 @@ static void pch_dma_tx_complete(void *arg)
 {
 	struct eg20t_port *priv = arg;
 	struct uart_port *port = &priv->port;
+	struct circ_buf *xmit = &port->state->xmit;
 	struct scatterlist *sg = priv->sg_tx_p;
 	int i;
 
-	for (i = 0; i < priv->nent; i++, sg++)
-		uart_xmit_advance(port, sg_dma_len(sg));
-
+	for (i = 0; i < priv->nent; i++, sg++) {
+		xmit->tail += sg_dma_len(sg);
+		port->icount.tx += sg_dma_len(sg);
+	}
+	xmit->tail &= UART_XMIT_SIZE - 1;
 	async_tx_ack(priv->desc_tx);
-	dma_unmap_sg(port->dev, priv->sg_tx_p, priv->orig_nent, DMA_TO_DEVICE);
+	dma_unmap_sg(port->dev, sg, priv->nent, DMA_TO_DEVICE);
 	priv->tx_dma_use = 0;
 	priv->nent = 0;
-	priv->orig_nent = 0;
 	kfree(priv->sg_tx_p);
 	pch_uart_hal_enable_interrupt(priv, PCH_UART_HAL_TX_INT);
+}
+
+static int pop_tx(struct eg20t_port *priv, int size)
+{
+	int count = 0;
+	struct uart_port *port = &priv->port;
+	struct circ_buf *xmit = &port->state->xmit;
+
+	if (uart_tx_stopped(port) || uart_circ_empty(xmit) || count >= size)
+		goto pop_tx_end;
+
+	do {
+		int cnt_to_end =
+		    CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
+		int sz = min(size - count, cnt_to_end);
+		pch_uart_hal_write(priv, &xmit->buf[xmit->tail], sz);
+		xmit->tail = (xmit->tail + sz) & (UART_XMIT_SIZE - 1);
+		count += sz;
+	} while (!uart_circ_empty(xmit) && count < size);
+
+pop_tx_end:
+	dev_dbg(priv->port.dev, "%d characters. Remained %d characters.(%lu)\n",
+		 count, size - count, jiffies);
+
+	return count;
 }
 
 static int handle_rx_to(struct eg20t_port *priv)
 {
 	struct pch_uart_buffer *buf;
 	int rx_size;
-
+	int ret;
 	if (!priv->start_rx) {
 		pch_uart_hal_disable_interrupt(priv, PCH_UART_HAL_RX_INT |
 						     PCH_UART_HAL_RX_ERR_INT);
@@ -765,10 +832,17 @@ static int handle_rx_to(struct eg20t_port *priv)
 	buf = &priv->rxbuf;
 	do {
 		rx_size = pch_uart_hal_read(priv, buf->buf, buf->size);
-		push_rx(priv, buf->buf, rx_size);
+		ret = push_rx(priv, buf->buf, rx_size);
+		if (ret)
+			return 0;
 	} while (rx_size == buf->size);
 
 	return PCH_UART_HANDLED_RX_INT;
+}
+
+static int handle_rx(struct eg20t_port *priv)
+{
+	return handle_rx_to(priv);
 }
 
 static int dma_handle_rx(struct eg20t_port *priv)
@@ -810,6 +884,8 @@ static unsigned int handle_tx(struct eg20t_port *priv)
 	struct uart_port *port = &priv->port;
 	struct circ_buf *xmit = &port->state->xmit;
 	int fifo_size;
+	int tx_size;
+	int size;
 	int tx_empty;
 
 	if (!priv->start_tx) {
@@ -822,18 +898,19 @@ static unsigned int handle_tx(struct eg20t_port *priv)
 
 	fifo_size = max(priv->fifo_size, 1);
 	tx_empty = 1;
-	if (port->x_char) {
-		iowrite8(port->x_char, priv->membase + PCH_UART_THR);
+	if (pop_tx_x(priv, xmit->buf)) {
+		pch_uart_hal_write(priv, xmit->buf, 1);
 		port->icount.tx++;
-		port->x_char = 0;
 		tx_empty = 0;
 		fifo_size--;
 	}
+	size = min(xmit->head - xmit->tail, fifo_size);
+	if (size < 0)
+		size = fifo_size;
 
-	while (!uart_tx_stopped(port) && !uart_circ_empty(xmit) && fifo_size) {
-		iowrite8(xmit->buf[xmit->tail], priv->membase + PCH_UART_THR);
-		uart_xmit_advance(port, 1);
-		fifo_size--;
+	tx_size = pop_tx(priv, size);
+	if (tx_size > 0) {
+		port->icount.tx += tx_size;
 		tx_empty = 0;
 	}
 
@@ -878,15 +955,15 @@ static unsigned int dma_handle_tx(struct eg20t_port *priv)
 	}
 
 	fifo_size = max(priv->fifo_size, 1);
-
-	if (port->x_char) {
-		iowrite8(port->x_char, priv->membase + PCH_UART_THR);
+	if (pop_tx_x(priv, xmit->buf)) {
+		pch_uart_hal_write(priv, xmit->buf, 1);
 		port->icount.tx++;
-		port->x_char = 0;
 		fifo_size--;
 	}
 
-	bytes = CIRC_CNT_TO_END(xmit->head, xmit->tail, UART_XMIT_SIZE);
+	bytes = min((int)CIRC_CNT(xmit->head, xmit->tail,
+			     UART_XMIT_SIZE), CIRC_CNT_TO_END(xmit->head,
+			     xmit->tail, UART_XMIT_SIZE));
 	if (!bytes) {
 		dev_dbg(priv->port.dev, "%s 0 bytes return\n", __func__);
 		pch_uart_hal_disable_interrupt(priv, PCH_UART_HAL_TX_INT);
@@ -909,7 +986,7 @@ static unsigned int dma_handle_tx(struct eg20t_port *priv)
 
 	priv->tx_dma_use = 1;
 
-	priv->sg_tx_p = kmalloc_array(num, sizeof(struct scatterlist), GFP_ATOMIC);
+	priv->sg_tx_p = kcalloc(num, sizeof(struct scatterlist), GFP_ATOMIC);
 	if (!priv->sg_tx_p) {
 		dev_err(priv->port.dev, "%s:kzalloc Failed\n", __func__);
 		return 0;
@@ -933,7 +1010,6 @@ static unsigned int dma_handle_tx(struct eg20t_port *priv)
 		dev_err(priv->port.dev, "%s:dma_map_sg Failed\n", __func__);
 		return 0;
 	}
-	priv->orig_nent = num;
 	priv->nent = nent;
 
 	for (i = 0; i < nent; i++, sg++) {
@@ -1007,10 +1083,11 @@ static irqreturn_t pch_uart_interrupt(int irq, void *dev_id)
 	u8 lsr;
 	int ret = 0;
 	unsigned char iid;
+	unsigned long flags;
 	int next = 1;
 	u8 msr;
 
-	uart_port_lock(&priv->port);
+	spin_lock_irqsave(&priv->lock, flags);
 	handled = 0;
 	while (next) {
 		iid = pch_uart_hal_get_iid(priv);
@@ -1038,7 +1115,7 @@ static irqreturn_t pch_uart_interrupt(int irq, void *dev_id)
 						PCH_UART_HAL_RX_INT |
 						PCH_UART_HAL_RX_ERR_INT);
 			} else {
-				ret = handle_rx_to(priv);
+				ret = handle_rx(priv);
 			}
 			break;
 		case PCH_UART_IID_RDR_TO:	/* Received Data Ready
@@ -1070,7 +1147,7 @@ static irqreturn_t pch_uart_interrupt(int irq, void *dev_id)
 		handled |= (unsigned int)ret;
 	}
 
-	uart_unlock_and_check_sysrq(&priv->port);
+	spin_unlock_irqrestore(&priv->lock, flags);
 	return IRQ_RETVAL(handled);
 }
 
@@ -1181,9 +1258,9 @@ static void pch_uart_break_ctl(struct uart_port *port, int ctl)
 	unsigned long flags;
 
 	priv = container_of(port, struct eg20t_port, port);
-	uart_port_lock_irqsave(&priv->port, &flags);
+	spin_lock_irqsave(&priv->lock, flags);
 	pch_uart_hal_set_break(priv, ctl);
-	uart_port_unlock_irqrestore(&priv->port, flags);
+	spin_unlock_irqrestore(&priv->lock, flags);
 }
 
 /* Grab any interrupt resources and initialise any low level driver state. */
@@ -1286,8 +1363,7 @@ static void pch_uart_shutdown(struct uart_port *port)
  *bits.  Update read_status_mask and ignore_status_mask to indicate
  *the types of events we are interested in receiving.  */
 static void pch_uart_set_termios(struct uart_port *port,
-				 struct ktermios *termios,
-				 const struct ktermios *old)
+				 struct ktermios *termios, struct ktermios *old)
 {
 	int rtn;
 	unsigned int baud, parity, bits, stb;
@@ -1333,7 +1409,8 @@ static void pch_uart_set_termios(struct uart_port *port,
 
 	baud = uart_get_baud_rate(port, termios, old, 0, port->uartclk / 16);
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&priv->lock, flags);
+	spin_lock(&port->lock);
 
 	uart_update_timeout(port, termios->c_cflag, baud);
 	rtn = pch_uart_hal_set_line(priv, baud, parity, bits, stb);
@@ -1346,7 +1423,8 @@ static void pch_uart_set_termios(struct uart_port *port,
 		tty_termios_encode_baud_rate(termios, baud, baud);
 
 out:
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock(&port->lock);
+	spin_unlock_irqrestore(&priv->lock, flags);
 }
 
 static const char *pch_uart_type(struct uart_port *port)
@@ -1499,7 +1577,7 @@ static void pch_uart_put_poll_char(struct uart_port *port,
 	 * Finally, wait for transmitter to become empty
 	 * and restore the IER
 	 */
-	wait_for_xmitr(priv, UART_LSR_BOTH_EMPTY);
+	wait_for_xmitr(priv, BOTH_EMPTY);
 	iowrite8(ier, priv->membase + UART_IER);
 }
 #endif /* CONFIG_CONSOLE_POLL */
@@ -1530,7 +1608,7 @@ static const struct uart_ops pch_uart_ops = {
 
 #ifdef CONFIG_SERIAL_PCH_UART_CONSOLE
 
-static void pch_console_putchar(struct uart_port *port, unsigned char ch)
+static void pch_console_putchar(struct uart_port *port, int ch)
 {
 	struct eg20t_port *priv =
 		container_of(port, struct eg20t_port, port);
@@ -1550,17 +1628,27 @@ pch_console_write(struct console *co, const char *s, unsigned int count)
 {
 	struct eg20t_port *priv;
 	unsigned long flags;
-	int locked = 1;
+	int priv_locked = 1;
+	int port_locked = 1;
 	u8 ier;
 
 	priv = pch_uart_ports[co->index];
 
 	touch_nmi_watchdog();
 
-	if (oops_in_progress)
-		locked = uart_port_trylock_irqsave(&priv->port, &flags);
-	else
-		uart_port_lock_irqsave(&priv->port, &flags);
+	local_irq_save(flags);
+	if (priv->port.sysrq) {
+		/* call to uart_handle_sysrq_char already took the priv lock */
+		priv_locked = 0;
+		/* serial8250_handle_port() already took the port lock */
+		port_locked = 0;
+	} else if (oops_in_progress) {
+		priv_locked = spin_trylock(&priv->lock);
+		port_locked = spin_trylock(&priv->port.lock);
+	} else {
+		spin_lock(&priv->lock);
+		spin_lock(&priv->port.lock);
+	}
 
 	/*
 	 *	First save the IER then disable the interrupts
@@ -1575,11 +1663,14 @@ pch_console_write(struct console *co, const char *s, unsigned int count)
 	 *	Finally, wait for transmitter to become empty
 	 *	and restore the IER
 	 */
-	wait_for_xmitr(priv, UART_LSR_BOTH_EMPTY);
+	wait_for_xmitr(priv, BOTH_EMPTY);
 	iowrite8(ier, priv->membase + UART_IER);
 
-	if (locked)
-		uart_port_unlock_irqrestore(&priv->port, flags);
+	if (port_locked)
+		spin_unlock(&priv->port.lock);
+	if (priv_locked)
+		spin_unlock(&priv->lock);
+	local_irq_restore(flags);
 }
 
 static int __init pch_console_setup(struct console *co, char *options)
@@ -1648,7 +1739,9 @@ static struct eg20t_port *pch_uart_init_port(struct pci_dev *pdev,
 	int fifosize;
 	int port_type;
 	struct pch_uart_driver_data *board;
-	char name[32];
+#ifdef CONFIG_DEBUG_FS
+	char name[32];	/* for debugfs file name */
+#endif
 
 	board = &drv_dat[id->driver_data];
 	port_type = board->port_type;
@@ -1676,6 +1769,8 @@ static struct eg20t_port *pch_uart_init_port(struct pci_dev *pdev,
 	pci_enable_msi(pdev);
 	pci_set_master(pdev);
 
+	spin_lock_init(&priv->lock);
+
 	iobase = pci_resource_start(pdev, 0);
 	mapbase = pci_resource_start(pdev, 1);
 	priv->mapbase = mapbase;
@@ -1698,12 +1793,13 @@ static struct eg20t_port *pch_uart_init_port(struct pci_dev *pdev,
 	priv->port.flags = UPF_BOOT_AUTOCONF;
 	priv->port.fifosize = fifosize;
 	priv->port.line = board->line_no;
-	priv->port.has_sysrq = IS_ENABLED(CONFIG_SERIAL_PCH_UART_CONSOLE);
 	priv->trigger = PCH_UART_HAL_TRIGGER_M;
 
 	snprintf(priv->irq_name, IRQ_NAME_SIZE,
 		 KBUILD_MODNAME ":" PCH_UART_DRIVER_DEVICE "%d",
 		 priv->port.line);
+
+	spin_lock_init(&priv->port.lock);
 
 	pci_set_drvdata(pdev, priv);
 	priv->trigger_level = 1;
@@ -1720,9 +1816,11 @@ static struct eg20t_port *pch_uart_init_port(struct pci_dev *pdev,
 	if (ret < 0)
 		goto init_port_hal_free;
 
-	snprintf(name, sizeof(name), "uart%d_regs", priv->port.line);
-	debugfs_create_file(name, S_IFREG | S_IRUGO, NULL, priv,
-			    &port_regs_ops);
+#ifdef CONFIG_DEBUG_FS
+	snprintf(name, sizeof(name), "uart%d_regs", board->line_no);
+	priv->debugfs = debugfs_create_file(name, S_IFREG | S_IRUGO,
+				NULL, priv, &port_regs_ops);
+#endif
 
 	return priv;
 
@@ -1740,10 +1838,10 @@ init_port_alloc_err:
 
 static void pch_uart_exit_port(struct eg20t_port *priv)
 {
-	char name[32];
 
-	snprintf(name, sizeof(name), "uart%d_regs", priv->port.line);
-	debugfs_lookup_and_remove(name, NULL);
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove(priv->debugfs);
+#endif
 	uart_remove_one_port(&pch_uart_driver, &priv->port);
 	free_page((unsigned long)priv->rxbuf.buf);
 }
@@ -1762,24 +1860,41 @@ static void pch_uart_pci_remove(struct pci_dev *pdev)
 	kfree(priv);
 	return;
 }
-
-static int __maybe_unused pch_uart_pci_suspend(struct device *dev)
+#ifdef CONFIG_PM
+static int pch_uart_pci_suspend(struct pci_dev *pdev, pm_message_t state)
 {
-	struct eg20t_port *priv = dev_get_drvdata(dev);
+	struct eg20t_port *priv = pci_get_drvdata(pdev);
 
 	uart_suspend_port(&pch_uart_driver, &priv->port);
 
+	pci_save_state(pdev);
+	pci_set_power_state(pdev, pci_choose_state(pdev, state));
 	return 0;
 }
 
-static int __maybe_unused pch_uart_pci_resume(struct device *dev)
+static int pch_uart_pci_resume(struct pci_dev *pdev)
 {
-	struct eg20t_port *priv = dev_get_drvdata(dev);
+	struct eg20t_port *priv = pci_get_drvdata(pdev);
+	int ret;
+
+	pci_set_power_state(pdev, PCI_D0);
+	pci_restore_state(pdev);
+
+	ret = pci_enable_device(pdev);
+	if (ret) {
+		dev_err(&pdev->dev,
+		"%s-pci_enable_device failed(ret=%d) ", __func__, ret);
+		return ret;
+	}
 
 	uart_resume_port(&pch_uart_driver, &priv->port);
 
 	return 0;
 }
+#else
+#define pch_uart_pci_suspend NULL
+#define pch_uart_pci_resume NULL
+#endif
 
 static const struct pci_device_id pch_uart_pci_id[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x8811),
@@ -1833,16 +1948,13 @@ probe_error:
 	return ret;
 }
 
-static SIMPLE_DEV_PM_OPS(pch_uart_pci_pm_ops,
-			 pch_uart_pci_suspend,
-			 pch_uart_pci_resume);
-
 static struct pci_driver pch_uart_pci_driver = {
 	.name = "pch_uart",
 	.id_table = pch_uart_pci_id,
 	.probe = pch_uart_pci_probe,
 	.remove = pch_uart_pci_remove,
-	.driver.pm = &pch_uart_pci_pm_ops,
+	.suspend = pch_uart_pci_suspend,
+	.resume = pch_uart_pci_resume,
 };
 
 static int __init pch_uart_module_init(void)

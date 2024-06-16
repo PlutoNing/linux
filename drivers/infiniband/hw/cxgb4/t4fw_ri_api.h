@@ -122,7 +122,9 @@ struct fw_ri_dsgl {
 	__be16	nsge;
 	__be32	len0;
 	__be64	addr0;
-	struct fw_ri_dsge_pair sge[];
+#ifndef C99_NOT_SUPPORTED
+	struct fw_ri_dsge_pair sge[0];
+#endif
 };
 
 struct fw_ri_sge {
@@ -136,7 +138,9 @@ struct fw_ri_isgl {
 	__u8	r1;
 	__be16	nsge;
 	__be32	r2;
-	struct fw_ri_sge sge[];
+#ifndef C99_NOT_SUPPORTED
+	struct fw_ri_sge sge[0];
+#endif
 };
 
 struct fw_ri_immd {
@@ -144,7 +148,9 @@ struct fw_ri_immd {
 	__u8	r1;
 	__be16	r2;
 	__be32	immdlen;
-	__u8	data[];
+#ifndef C99_NOT_SUPPORTED
+	__u8	data[0];
+#endif
 };
 
 struct fw_ri_tpte {
@@ -314,7 +320,9 @@ struct fw_ri_res_wr {
 	__be32 op_nres;
 	__be32 len16_pkd;
 	__u64  cookie;
-	struct fw_ri_res res[];
+#ifndef C99_NOT_SUPPORTED
+	struct fw_ri_res res[0];
+#endif
 };
 
 #define FW_RI_RES_WR_NRES_S	0
@@ -554,10 +562,12 @@ struct fw_ri_rdma_write_wr {
 	__be32 plen;
 	__be32 stag_sink;
 	__be64 to_sink;
+#ifndef C99_NOT_SUPPORTED
 	union {
-		DECLARE_FLEX_ARRAY(struct fw_ri_immd, immd_src);
-		DECLARE_FLEX_ARRAY(struct fw_ri_isgl, isgl_src);
+		struct fw_ri_immd immd_src[0];
+		struct fw_ri_isgl isgl_src[0];
 	} u;
+#endif
 };
 
 struct fw_ri_send_wr {
@@ -571,10 +581,12 @@ struct fw_ri_send_wr {
 	__be32 plen;
 	__be32 r3;
 	__be64 r4;
+#ifndef C99_NOT_SUPPORTED
 	union {
-		DECLARE_FLEX_ARRAY(struct fw_ri_immd, immd_src);
-		DECLARE_FLEX_ARRAY(struct fw_ri_isgl, isgl_src);
+		struct fw_ri_immd immd_src[0];
+		struct fw_ri_isgl isgl_src[0];
 	} u;
+#endif
 };
 
 #define FW_RI_SEND_WR_SENDOP_S		0
@@ -606,10 +618,12 @@ struct fw_ri_rdma_write_cmpl_wr {
 		struct fw_ri_isgl isgl_src;
 	} u_cmpl;
 	__be64 r3;
+#ifndef C99_NOT_SUPPORTED
 	union fw_ri_write {
-		DECLARE_FLEX_ARRAY(struct fw_ri_immd, immd_src);
-		DECLARE_FLEX_ARRAY(struct fw_ri_isgl, isgl_src);
+		struct fw_ri_immd immd_src[0];
+		struct fw_ri_isgl isgl_src[0];
 	} u;
+#endif
 };
 
 struct fw_ri_rdma_read_wr {

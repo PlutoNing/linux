@@ -7,6 +7,8 @@
  */
 #include <linux/export.h>
 #include <linux/ftrace.h>
+
+#if defined(CONFIG_FRAME_POINTER) && !defined(CONFIG_ARM_UNWIND)
 #include <linux/sched.h>
 
 #include <asm/stacktrace.h>
@@ -16,17 +18,17 @@ struct return_address_data {
 	void *addr;
 };
 
-static bool save_return_addr(void *d, unsigned long pc)
+static int save_return_addr(struct stackframe *frame, void *d)
 {
 	struct return_address_data *data = d;
 
 	if (!data->level) {
-		data->addr = (void *)pc;
+		data->addr = (void *)frame->pc;
 
-		return false;
+		return 1;
 	} else {
 		--data->level;
-		return true;
+		return 0;
 	}
 }
 
@@ -41,13 +43,7 @@ void *return_address(unsigned int level)
 	frame.fp = (unsigned long)__builtin_frame_address(0);
 	frame.sp = current_stack_pointer;
 	frame.lr = (unsigned long)__builtin_return_address(0);
-here:
-	frame.pc = (unsigned long)&&here;
-#ifdef CONFIG_KRETPROBES
-	frame.kr_cur = NULL;
-	frame.tsk = current;
-#endif
-	frame.ex_frame = false;
+	frame.pc = (unsigned long)return_address;
 
 	walk_stackframe(&frame, save_return_addr, &data);
 
@@ -56,5 +52,7 @@ here:
 	else
 		return NULL;
 }
+
+#endif /* if defined(CONFIG_FRAME_POINTER) && !defined(CONFIG_ARM_UNWIND) */
 
 EXPORT_SYMBOL_GPL(return_address);

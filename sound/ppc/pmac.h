@@ -26,7 +26,6 @@
 #include <asm/dbdma.h>
 #include <asm/prom.h>
 #include <asm/machdep.h>
-#include <asm/pmac_feature.h>
 
 /* maximum number of fragments */
 #define PMAC_MAX_FRAGS		32
@@ -105,7 +104,7 @@ struct snd_pmac {
 	struct resource rsrc[3];
 
 	int num_freqs;
-	const int *freq_table;
+	int *freq_table;
 	unsigned int freqs_ok;		/* bit flags */
 	unsigned int formats_ok;	/* pcm hwinfo */
 	int active;

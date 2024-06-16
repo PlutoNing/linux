@@ -28,17 +28,8 @@ static int coreboot_bus_match(struct device *dev, struct device_driver *drv)
 {
 	struct coreboot_device *device = CB_DEV(dev);
 	struct coreboot_driver *driver = CB_DRV(drv);
-	const struct coreboot_device_id *id;
 
-	if (!driver->id_table)
-		return 0;
-
-	for (id = driver->id_table; id->tag; id++) {
-		if (device->entry.tag == id->tag)
-			return 1;
-	}
-
-	return 0;
+	return device->entry.tag == driver->tag;
 }
 
 static int coreboot_bus_probe(struct device *dev)
@@ -53,29 +44,23 @@ static int coreboot_bus_probe(struct device *dev)
 	return ret;
 }
 
-static void coreboot_bus_remove(struct device *dev)
+static int coreboot_bus_remove(struct device *dev)
 {
+	int ret = 0;
 	struct coreboot_device *device = CB_DEV(dev);
 	struct coreboot_driver *driver = CB_DRV(dev->driver);
 
 	if (driver->remove)
-		driver->remove(device);
+		ret = driver->remove(device);
+
+	return ret;
 }
 
-static int coreboot_bus_uevent(const struct device *dev, struct kobj_uevent_env *env)
-{
-	struct coreboot_device *device = CB_DEV(dev);
-	u32 tag = device->entry.tag;
-
-	return add_uevent_var(env, "MODALIAS=coreboot:t%08X", tag);
-}
-
-static const struct bus_type coreboot_bus_type = {
+static struct bus_type coreboot_bus_type = {
 	.name		= "coreboot",
 	.match		= coreboot_bus_match,
 	.probe		= coreboot_bus_probe,
 	.remove		= coreboot_bus_remove,
-	.uevent		= coreboot_bus_uevent,
 };
 
 static void coreboot_device_release(struct device *dev)
@@ -111,29 +96,15 @@ static int coreboot_table_populate(struct device *dev, void *ptr)
 	for (i = 0; i < header->table_entries; i++) {
 		entry = ptr_entry;
 
-		if (entry->size < sizeof(*entry)) {
-			dev_warn(dev, "coreboot table entry too small!\n");
-			return -EINVAL;
-		}
-
-		device = kzalloc(sizeof(device->dev) + entry->size, GFP_KERNEL);
+		device = kzalloc(sizeof(struct device) + entry->size, GFP_KERNEL);
 		if (!device)
 			return -ENOMEM;
 
+		dev_set_name(&device->dev, "coreboot%d", i);
 		device->dev.parent = dev;
 		device->dev.bus = &coreboot_bus_type;
 		device->dev.release = coreboot_device_release;
-		memcpy(device->raw, ptr_entry, entry->size);
-
-		switch (device->entry.tag) {
-		case LB_TAG_CBMEM_ENTRY:
-			dev_set_name(&device->dev, "cbmem-%08x",
-				     device->cbmem_entry.id);
-			break;
-		default:
-			dev_set_name(&device->dev, "coreboot%d", i);
-			break;
-		}
+		memcpy(&device->entry, ptr_entry, entry->size);
 
 		ret = device_register(&device->dev);
 		if (ret) {
@@ -181,22 +152,21 @@ static int coreboot_table_probe(struct platform_device *pdev)
 	if (!ptr)
 		return -ENOMEM;
 
-	ret = coreboot_table_populate(dev, ptr);
-
+	ret = bus_register(&coreboot_bus_type);
+	if (!ret) {
+		ret = coreboot_table_populate(dev, ptr);
+		if (ret)
+			bus_unregister(&coreboot_bus_type);
+	}
 	memunmap(ptr);
 
 	return ret;
 }
 
-static int __cb_dev_unregister(struct device *dev, void *dummy)
+static int coreboot_table_remove(struct platform_device *pdev)
 {
-	device_unregister(dev);
+	bus_unregister(&coreboot_bus_type);
 	return 0;
-}
-
-static void coreboot_table_remove(struct platform_device *pdev)
-{
-	bus_for_each_dev(&coreboot_bus_type, NULL, NULL, __cb_dev_unregister);
 }
 
 #ifdef CONFIG_ACPI
@@ -218,39 +188,13 @@ MODULE_DEVICE_TABLE(of, coreboot_of_match);
 
 static struct platform_driver coreboot_table_driver = {
 	.probe = coreboot_table_probe,
-	.remove_new = coreboot_table_remove,
+	.remove = coreboot_table_remove,
 	.driver = {
 		.name = "coreboot_table",
 		.acpi_match_table = ACPI_PTR(cros_coreboot_acpi_match),
 		.of_match_table = of_match_ptr(coreboot_of_match),
 	},
 };
-
-static int __init coreboot_table_driver_init(void)
-{
-	int ret;
-
-	ret = bus_register(&coreboot_bus_type);
-	if (ret)
-		return ret;
-
-	ret = platform_driver_register(&coreboot_table_driver);
-	if (ret) {
-		bus_unregister(&coreboot_bus_type);
-		return ret;
-	}
-
-	return 0;
-}
-
-static void __exit coreboot_table_driver_exit(void)
-{
-	platform_driver_unregister(&coreboot_table_driver);
-	bus_unregister(&coreboot_bus_type);
-}
-
-module_init(coreboot_table_driver_init);
-module_exit(coreboot_table_driver_exit);
-
+module_platform_driver(coreboot_table_driver);
 MODULE_AUTHOR("Google, Inc.");
 MODULE_LICENSE("GPL");

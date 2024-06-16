@@ -10,7 +10,6 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
-#include <linux/platform_device.h>
 
 /*
  * FPGA programming requires a higher level of privilege (EL3), per the SoC
@@ -155,11 +154,11 @@ static void s10_receive_callback(struct stratix10_svc_client *client,
 	 * Here we set status bits as we receive them.  Elsewhere, we always use
 	 * test_and_clear_bit() to check status in priv->status
 	 */
-	for (i = 0; i <= SVC_STATUS_ERROR; i++)
+	for (i = 0; i <= SVC_STATUS_RECONFIG_ERROR; i++)
 		if (status & (1 << i))
 			set_bit(i, &priv->status);
 
-	if (status & BIT(SVC_STATUS_BUFFER_DONE)) {
+	if (status & BIT(SVC_STATUS_RECONFIG_BUFFER_DONE)) {
 		s10_unlock_bufs(priv, data->kaddr1);
 		s10_unlock_bufs(priv, data->kaddr2);
 		s10_unlock_bufs(priv, data->kaddr3);
@@ -197,16 +196,21 @@ static int s10_ops_write_init(struct fpga_manager *mgr,
 	if (ret < 0)
 		goto init_done;
 
-	ret = wait_for_completion_timeout(
+	ret = wait_for_completion_interruptible_timeout(
 		&priv->status_return_completion, S10_RECONFIG_TIMEOUT);
 	if (!ret) {
 		dev_err(dev, "timeout waiting for RECONFIG_REQUEST\n");
 		ret = -ETIMEDOUT;
 		goto init_done;
 	}
+	if (ret < 0) {
+		dev_err(dev, "error (%d) waiting for RECONFIG_REQUEST\n", ret);
+		goto init_done;
+	}
 
 	ret = 0;
-	if (!test_and_clear_bit(SVC_STATUS_OK, &priv->status)) {
+	if (!test_and_clear_bit(SVC_STATUS_RECONFIG_REQUEST_OK,
+				&priv->status)) {
 		ret = -ETIMEDOUT;
 		goto init_done;
 	}
@@ -214,9 +218,9 @@ static int s10_ops_write_init(struct fpga_manager *mgr,
 	/* Allocate buffers from the service layer's pool. */
 	for (i = 0; i < NUM_SVC_BUFS; i++) {
 		kbuf = stratix10_svc_allocate_memory(priv->chan, SVC_BUF_SIZE);
-		if (IS_ERR(kbuf)) {
+		if (!kbuf) {
 			s10_free_buffers(mgr);
-			ret = PTR_ERR(kbuf);
+			ret = -ENOMEM;
 			goto init_done;
 		}
 
@@ -272,7 +276,7 @@ static int s10_send_buf(struct fpga_manager *mgr, const char *buf, size_t count)
 }
 
 /*
- * Send an FPGA image to privileged layers to write to the FPGA.  When done
+ * Send a FPGA image to privileged layers to write to the FPGA.  When done
  * sending, free all service layer buffers we allocated in write_init.
  */
 static int s10_ops_write(struct fpga_manager *mgr, const char *buf,
@@ -315,19 +319,21 @@ static int s10_ops_write(struct fpga_manager *mgr, const char *buf,
 		 */
 		wait_status = 1; /* not timed out */
 		if (!priv->status)
-			wait_status = wait_for_completion_timeout(
+			wait_status = wait_for_completion_interruptible_timeout(
 				&priv->status_return_completion,
 				S10_BUFFER_TIMEOUT);
 
-		if (test_and_clear_bit(SVC_STATUS_BUFFER_DONE, &priv->status) ||
-		    test_and_clear_bit(SVC_STATUS_BUFFER_SUBMITTED,
+		if (test_and_clear_bit(SVC_STATUS_RECONFIG_BUFFER_DONE,
+				       &priv->status) ||
+		    test_and_clear_bit(SVC_STATUS_RECONFIG_BUFFER_SUBMITTED,
 				       &priv->status)) {
 			ret = 0;
 			continue;
 		}
 
-		if (test_and_clear_bit(SVC_STATUS_ERROR, &priv->status)) {
-			dev_err(dev, "ERROR - giving up - SVC_STATUS_ERROR\n");
+		if (test_and_clear_bit(SVC_STATUS_RECONFIG_ERROR,
+				       &priv->status)) {
+			dev_err(dev, "ERROR - giving up - SVC_STATUS_RECONFIG_ERROR\n");
 			ret = -EFAULT;
 			break;
 		}
@@ -335,6 +341,13 @@ static int s10_ops_write(struct fpga_manager *mgr, const char *buf,
 		if (!wait_status) {
 			dev_err(dev, "timeout waiting for svc layer buffers\n");
 			ret = -ETIMEDOUT;
+			break;
+		}
+		if (wait_status < 0) {
+			ret = wait_status;
+			dev_err(dev,
+				"error (%d) waiting for svc layer buffers\n",
+				ret);
 			break;
 		}
 	}
@@ -362,7 +375,7 @@ static int s10_ops_write_complete(struct fpga_manager *mgr,
 		if (ret < 0)
 			break;
 
-		ret = wait_for_completion_timeout(
+		ret = wait_for_completion_interruptible_timeout(
 			&priv->status_return_completion, timeout);
 		if (!ret) {
 			dev_err(dev,
@@ -370,15 +383,23 @@ static int s10_ops_write_complete(struct fpga_manager *mgr,
 			ret = -ETIMEDOUT;
 			break;
 		}
+		if (ret < 0) {
+			dev_err(dev,
+				"error (%d) waiting for RECONFIG_COMPLETED\n",
+				ret);
+			break;
+		}
 		/* Not error or timeout, so ret is # of jiffies until timeout */
 		timeout = ret;
 		ret = 0;
 
-		if (test_and_clear_bit(SVC_STATUS_COMPLETED, &priv->status))
+		if (test_and_clear_bit(SVC_STATUS_RECONFIG_COMPLETED,
+				       &priv->status))
 			break;
 
-		if (test_and_clear_bit(SVC_STATUS_ERROR, &priv->status)) {
-			dev_err(dev, "ERROR - giving up - SVC_STATUS_ERROR\n");
+		if (test_and_clear_bit(SVC_STATUS_RECONFIG_ERROR,
+				       &priv->status)) {
+			dev_err(dev, "ERROR - giving up - SVC_STATUS_RECONFIG_ERROR\n");
 			ret = -EFAULT;
 			break;
 		}
@@ -389,7 +410,13 @@ static int s10_ops_write_complete(struct fpga_manager *mgr,
 	return ret;
 }
 
+static enum fpga_mgr_states s10_ops_state(struct fpga_manager *mgr)
+{
+	return FPGA_MGR_STATE_UNKNOWN;
+}
+
 static const struct fpga_manager_ops s10_ops = {
+	.state = s10_ops_state,
 	.write_init = s10_ops_write_init,
 	.write = s10_ops_write,
 	.write_complete = s10_ops_write_complete,
@@ -420,34 +447,42 @@ static int s10_probe(struct platform_device *pdev)
 
 	init_completion(&priv->status_return_completion);
 
-	mgr = fpga_mgr_register(dev, "Stratix10 SOC FPGA Manager",
-				&s10_ops, priv);
-	if (IS_ERR(mgr)) {
+	mgr = fpga_mgr_create(dev, "Stratix10 SOC FPGA Manager",
+			      &s10_ops, priv);
+	if (!mgr) {
+		dev_err(dev, "unable to create FPGA manager\n");
+		ret = -ENOMEM;
+		goto probe_err;
+	}
+
+	ret = fpga_mgr_register(mgr);
+	if (ret) {
 		dev_err(dev, "unable to register FPGA manager\n");
-		ret = PTR_ERR(mgr);
+		fpga_mgr_free(mgr);
 		goto probe_err;
 	}
 
 	platform_set_drvdata(pdev, mgr);
-	return 0;
+	return ret;
 
 probe_err:
 	stratix10_svc_free_channel(priv->chan);
 	return ret;
 }
 
-static void s10_remove(struct platform_device *pdev)
+static int s10_remove(struct platform_device *pdev)
 {
 	struct fpga_manager *mgr = platform_get_drvdata(pdev);
 	struct s10_priv *priv = mgr->priv;
 
 	fpga_mgr_unregister(mgr);
 	stratix10_svc_free_channel(priv->chan);
+
+	return 0;
 }
 
 static const struct of_device_id s10_of_match[] = {
-	{.compatible = "intel,stratix10-soc-fpga-mgr"},
-	{.compatible = "intel,agilex-soc-fpga-mgr"},
+	{ .compatible = "intel,stratix10-soc-fpga-mgr", },
 	{},
 };
 
@@ -455,7 +490,7 @@ MODULE_DEVICE_TABLE(of, s10_of_match);
 
 static struct platform_driver s10_driver = {
 	.probe = s10_probe,
-	.remove_new = s10_remove,
+	.remove = s10_remove,
 	.driver = {
 		.name	= "Stratix10 SoC FPGA manager",
 		.of_match_table = of_match_ptr(s10_of_match),

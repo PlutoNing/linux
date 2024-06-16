@@ -16,13 +16,10 @@
 #include <linux/firmware.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
-#include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/soc/ixp4xx/npe.h>
-#include <linux/soc/ixp4xx/cpu.h>
 
 #define DEBUG_MSG			0
 #define DEBUG_FW			0
@@ -285,7 +282,6 @@ static int __must_check npe_logical_reg_write32(struct npe *npe, u32 addr,
 
 static int npe_reset(struct npe *npe)
 {
-	u32 reset_bit = (IXP4XX_FEATURE_RESET_NPEA << npe->id);
 	u32 val, ctl, exec_count, ctx_reg2;
 	int i;
 
@@ -382,19 +378,16 @@ static int npe_reset(struct npe *npe)
 	__raw_writel(0, &npe->regs->action_points[3]);
 	__raw_writel(0, &npe->regs->watch_count);
 
-	/*
-	 * We need to work on cached values here because the register
-	 * will read inverted but needs to be written non-inverted.
-	 */
-	val = cpu_ixp4xx_features(npe->rmap);
+	val = ixp4xx_read_feature_bits();
 	/* reset the NPE */
-	regmap_write(npe->rmap, IXP4XX_EXP_CNFG2, val & ~reset_bit);
+	ixp4xx_write_feature_bits(val &
+				  ~(IXP4XX_FEATURE_RESET_NPEA << npe->id));
 	/* deassert reset */
-	regmap_write(npe->rmap, IXP4XX_EXP_CNFG2, val | reset_bit);
-
+	ixp4xx_write_feature_bits(val |
+				  (IXP4XX_FEATURE_RESET_NPEA << npe->id));
 	for (i = 0; i < MAX_RETRIES; i++) {
-		val = cpu_ixp4xx_features(npe->rmap);
-		if (val & reset_bit)
+		if (ixp4xx_read_feature_bits() &
+		    (IXP4XX_FEATURE_RESET_NPEA << npe->id))
 			break;	/* NPE is back alive */
 		udelay(1);
 	}
@@ -519,15 +512,15 @@ int npe_load_firmware(struct npe *npe, const char *name, struct device *dev)
 		u32 id;
 		u32 size;
 		union {
-			DECLARE_FLEX_ARRAY(u32, data);
-			DECLARE_FLEX_ARRAY(struct dl_block, blocks);
+			u32 data[0];
+			struct dl_block blocks[0];
 		};
 	} *image;
 
 	struct dl_codeblock {
 		u32 npe_addr;
 		u32 size;
-		u32 data[];
+		u32 data[0];
 	} *cb;
 
 	int i, j, err, data_size, instr_size, blocks, table_end;
@@ -686,16 +679,7 @@ static int ixp4xx_npe_probe(struct platform_device *pdev)
 {
 	int i, found = 0;
 	struct device *dev = &pdev->dev;
-	struct device_node *np = dev->of_node;
 	struct resource *res;
-	struct regmap *rmap;
-	u32 val;
-
-	/* This system has only one syscon, so fetch it */
-	rmap = syscon_regmap_lookup_by_compatible("syscon");
-	if (IS_ERR(rmap))
-		return dev_err_probe(dev, PTR_ERR(rmap),
-				     "failed to look up syscon\n");
 
 	for (i = 0; i < NPE_COUNT; i++) {
 		struct npe *npe = &npe_tab[i];
@@ -704,39 +688,33 @@ static int ixp4xx_npe_probe(struct platform_device *pdev)
 		if (!res)
 			return -ENODEV;
 
-		val = cpu_ixp4xx_features(rmap);
-
-		if (!(val & (IXP4XX_FEATURE_RESET_NPEA << i))) {
-			dev_info(dev, "NPE%d at %pR not available\n",
-				 i, res);
+		if (!(ixp4xx_read_feature_bits() &
+		      (IXP4XX_FEATURE_RESET_NPEA << i))) {
+			dev_info(dev, "NPE%d at 0x%08x-0x%08x not available\n",
+				 i, res->start, res->end);
 			continue; /* NPE already disabled or not present */
 		}
 		npe->regs = devm_ioremap_resource(dev, res);
 		if (IS_ERR(npe->regs))
 			return PTR_ERR(npe->regs);
-		npe->rmap = rmap;
 
 		if (npe_reset(npe)) {
-			dev_info(dev, "NPE%d at %pR does not reset\n",
-				 i, res);
+			dev_info(dev, "NPE%d at 0x%08x-0x%08x does not reset\n",
+				 i, res->start, res->end);
 			continue;
 		}
 		npe->valid = 1;
-		dev_info(dev, "NPE%d at %pR registered\n", i, res);
+		dev_info(dev, "NPE%d at 0x%08x-0x%08x registered\n",
+			 i, res->start, res->end);
 		found++;
 	}
 
 	if (!found)
 		return -ENODEV;
-
-	/* Spawn crypto subdevice if using device tree */
-	if (IS_ENABLED(CONFIG_OF) && np)
-		devm_of_platform_populate(dev);
-
 	return 0;
 }
 
-static void ixp4xx_npe_remove(struct platform_device *pdev)
+static int ixp4xx_npe_remove(struct platform_device *pdev)
 {
 	int i;
 
@@ -744,6 +722,8 @@ static void ixp4xx_npe_remove(struct platform_device *pdev)
 		if (npe_tab[i].regs) {
 			npe_reset(&npe_tab[i]);
 		}
+
+	return 0;
 }
 
 static const struct of_device_id ixp4xx_npe_of_match[] = {
@@ -756,10 +736,10 @@ static const struct of_device_id ixp4xx_npe_of_match[] = {
 static struct platform_driver ixp4xx_npe_driver = {
 	.driver = {
 		.name           = "ixp4xx-npe",
-		.of_match_table = ixp4xx_npe_of_match,
+		.of_match_table = of_match_ptr(ixp4xx_npe_of_match),
 	},
 	.probe = ixp4xx_npe_probe,
-	.remove_new = ixp4xx_npe_remove,
+	.remove = ixp4xx_npe_remove,
 };
 module_platform_driver(ixp4xx_npe_driver);
 

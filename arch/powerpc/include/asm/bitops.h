@@ -41,6 +41,7 @@
 #include <linux/compiler.h>
 #include <asm/asm-compat.h>
 #include <asm/synch.h>
+#include <asm/asm-405.h>
 
 /* PPC bit number conversion */
 #define PPC_BITLSHIFT(be)	(BITS_PER_LONG - 1 - (be))
@@ -63,85 +64,44 @@
 
 /* Macro for generating the ***_bits() functions */
 #define DEFINE_BITOP(fn, op, prefix)		\
-static inline void fn(unsigned long mask,	\
+static __inline__ void fn(unsigned long mask,	\
 		volatile unsigned long *_p)	\
 {						\
 	unsigned long old;			\
 	unsigned long *p = (unsigned long *)_p;	\
 	__asm__ __volatile__ (			\
 	prefix					\
-"1:"	PPC_LLARX "%0,0,%3,0\n"			\
-	#op "%I2 %0,%0,%2\n"			\
+"1:"	PPC_LLARX(%0,0,%3,0) "\n"		\
+	stringify_in_c(op) "%0,%0,%2\n"		\
+	PPC405_ERR77(0,%3)			\
 	PPC_STLCX "%0,0,%3\n"			\
 	"bne- 1b\n"				\
 	: "=&r" (old), "+m" (*p)		\
-	: "rK" (mask), "r" (p)			\
+	: "r" (mask), "r" (p)			\
 	: "cc", "memory");			\
 }
 
 DEFINE_BITOP(set_bits, or, "")
+DEFINE_BITOP(clear_bits, andc, "")
+DEFINE_BITOP(clear_bits_unlock, andc, PPC_RELEASE_BARRIER)
 DEFINE_BITOP(change_bits, xor, "")
 
-static __always_inline bool is_rlwinm_mask_valid(unsigned long x)
-{
-	if (!x)
-		return false;
-	if (x & 1)
-		x = ~x;	// make the mask non-wrapping
-	x += x & -x;	// adding the low set bit results in at most one bit set
-
-	return !(x & (x - 1));
-}
-
-#define DEFINE_CLROP(fn, prefix)					\
-static inline void fn(unsigned long mask, volatile unsigned long *_p)	\
-{									\
-	unsigned long old;						\
-	unsigned long *p = (unsigned long *)_p;				\
-									\
-	if (IS_ENABLED(CONFIG_PPC32) &&					\
-	    __builtin_constant_p(mask) && is_rlwinm_mask_valid(~mask)) {\
-		asm volatile (						\
-			prefix						\
-		"1:"	"lwarx	%0,0,%3\n"				\
-			"rlwinm	%0,%0,0,%2\n"				\
-			"stwcx.	%0,0,%3\n"				\
-			"bne- 1b\n"					\
-			: "=&r" (old), "+m" (*p)			\
-			: "n" (~mask), "r" (p)				\
-			: "cc", "memory");				\
-	} else {							\
-		asm volatile (						\
-			prefix						\
-		"1:"	PPC_LLARX "%0,0,%3,0\n"				\
-			"andc %0,%0,%2\n"				\
-			PPC_STLCX "%0,0,%3\n"				\
-			"bne- 1b\n"					\
-			: "=&r" (old), "+m" (*p)			\
-			: "r" (mask), "r" (p)				\
-			: "cc", "memory");				\
-	}								\
-}
-
-DEFINE_CLROP(clear_bits, "")
-DEFINE_CLROP(clear_bits_unlock, PPC_RELEASE_BARRIER)
-
-static inline void arch_set_bit(int nr, volatile unsigned long *addr)
+static __inline__ void set_bit(int nr, volatile unsigned long *addr)
 {
 	set_bits(BIT_MASK(nr), addr + BIT_WORD(nr));
 }
 
-static inline void arch_clear_bit(int nr, volatile unsigned long *addr)
+static __inline__ void clear_bit(int nr, volatile unsigned long *addr)
 {
 	clear_bits(BIT_MASK(nr), addr + BIT_WORD(nr));
 }
 
-static inline void arch_clear_bit_unlock(int nr, volatile unsigned long *addr)
+static __inline__ void clear_bit_unlock(int nr, volatile unsigned long *addr)
 {
 	clear_bits_unlock(BIT_MASK(nr), addr + BIT_WORD(nr));
 }
 
-static inline void arch_change_bit(int nr, volatile unsigned long *addr)
+static __inline__ void change_bit(int nr, volatile unsigned long *addr)
 {
 	change_bits(BIT_MASK(nr), addr + BIT_WORD(nr));
 }
@@ -149,7 +109,7 @@ static inline void arch_change_bit(int nr, volatile unsigned long *addr)
 /* Like DEFINE_BITOP(), with changes to the arguments to 'op' and the output
  * operands. */
 #define DEFINE_TESTOP(fn, op, prefix, postfix, eh)	\
-static inline unsigned long fn(			\
+static __inline__ unsigned long fn(			\
 		unsigned long mask,			\
 		volatile unsigned long *_p)		\
 {							\
@@ -157,13 +117,14 @@ static inline unsigned long fn(			\
 	unsigned long *p = (unsigned long *)_p;		\
 	__asm__ __volatile__ (				\
 	prefix						\
-"1:"	PPC_LLARX "%0,0,%3,%4\n"			\
-	#op "%I2 %1,%0,%2\n"				\
+"1:"	PPC_LLARX(%0,0,%3,eh) "\n"			\
+	stringify_in_c(op) "%1,%0,%2\n"			\
+	PPC405_ERR77(0,%3)				\
 	PPC_STLCX "%1,0,%3\n"				\
 	"bne- 1b\n"					\
 	postfix						\
 	: "=&r" (old), "=&r" (t)			\
-	: "rK" (mask), "r" (p), "n" (eh)		\
+	: "r" (mask), "r" (p)				\
 	: "cc", "memory");				\
 	return (old & mask);				\
 }
@@ -171,90 +132,68 @@ static inline unsigned long fn(			\
 DEFINE_TESTOP(test_and_set_bits, or, PPC_ATOMIC_ENTRY_BARRIER,
 	      PPC_ATOMIC_EXIT_BARRIER, 0)
 DEFINE_TESTOP(test_and_set_bits_lock, or, "",
-	      PPC_ACQUIRE_BARRIER, IS_ENABLED(CONFIG_PPC64))
+	      PPC_ACQUIRE_BARRIER, 1)
+DEFINE_TESTOP(test_and_clear_bits, andc, PPC_ATOMIC_ENTRY_BARRIER,
+	      PPC_ATOMIC_EXIT_BARRIER, 0)
 DEFINE_TESTOP(test_and_change_bits, xor, PPC_ATOMIC_ENTRY_BARRIER,
 	      PPC_ATOMIC_EXIT_BARRIER, 0)
 
-static inline unsigned long test_and_clear_bits(unsigned long mask, volatile unsigned long *_p)
-{
-	unsigned long old, t;
-	unsigned long *p = (unsigned long *)_p;
-
-	if (IS_ENABLED(CONFIG_PPC32) &&
-	    __builtin_constant_p(mask) && is_rlwinm_mask_valid(~mask)) {
-		asm volatile (
-			PPC_ATOMIC_ENTRY_BARRIER
-		"1:"	"lwarx %0,0,%3\n"
-			"rlwinm	%1,%0,0,%2\n"
-			"stwcx. %1,0,%3\n"
-			"bne- 1b\n"
-			PPC_ATOMIC_EXIT_BARRIER
-			: "=&r" (old), "=&r" (t)
-			: "n" (~mask), "r" (p)
-			: "cc", "memory");
-	} else {
-		asm volatile (
-			PPC_ATOMIC_ENTRY_BARRIER
-		"1:"	PPC_LLARX "%0,0,%3,0\n"
-			"andc	%1,%0,%2\n"
-			PPC_STLCX "%1,0,%3\n"
-			"bne- 1b\n"
-			PPC_ATOMIC_EXIT_BARRIER
-			: "=&r" (old), "=&r" (t)
-			: "r" (mask), "r" (p)
-			: "cc", "memory");
-	}
-
-	return (old & mask);
-}
-
-static inline int arch_test_and_set_bit(unsigned long nr,
-					volatile unsigned long *addr)
+static __inline__ int test_and_set_bit(unsigned long nr,
+				       volatile unsigned long *addr)
 {
 	return test_and_set_bits(BIT_MASK(nr), addr + BIT_WORD(nr)) != 0;
 }
 
-static inline int arch_test_and_set_bit_lock(unsigned long nr,
-					     volatile unsigned long *addr)
+static __inline__ int test_and_set_bit_lock(unsigned long nr,
+				       volatile unsigned long *addr)
 {
 	return test_and_set_bits_lock(BIT_MASK(nr),
 				addr + BIT_WORD(nr)) != 0;
 }
 
-static inline int arch_test_and_clear_bit(unsigned long nr,
-					  volatile unsigned long *addr)
+static __inline__ int test_and_clear_bit(unsigned long nr,
+					 volatile unsigned long *addr)
 {
 	return test_and_clear_bits(BIT_MASK(nr), addr + BIT_WORD(nr)) != 0;
 }
 
-static inline int arch_test_and_change_bit(unsigned long nr,
-					   volatile unsigned long *addr)
+static __inline__ int test_and_change_bit(unsigned long nr,
+					  volatile unsigned long *addr)
 {
 	return test_and_change_bits(BIT_MASK(nr), addr + BIT_WORD(nr)) != 0;
 }
 
-static inline bool arch_xor_unlock_is_negative_byte(unsigned long mask,
-		volatile unsigned long *p)
+#ifdef CONFIG_PPC64
+static __inline__ unsigned long clear_bit_unlock_return_word(int nr,
+						volatile unsigned long *addr)
 {
 	unsigned long old, t;
+	unsigned long *p = (unsigned long *)addr + BIT_WORD(nr);
+	unsigned long mask = BIT_MASK(nr);
 
 	__asm__ __volatile__ (
 	PPC_RELEASE_BARRIER
-"1:"	PPC_LLARX "%0,0,%3,0\n"
-	"xor %1,%0,%2\n"
+"1:"	PPC_LLARX(%0,0,%3,0) "\n"
+	"andc %1,%0,%2\n"
+	PPC405_ERR77(0,%3)
 	PPC_STLCX "%1,0,%3\n"
 	"bne- 1b\n"
 	: "=&r" (old), "=&r" (t)
 	: "r" (mask), "r" (p)
 	: "cc", "memory");
 
-	return (old & BIT_MASK(7)) != 0;
+	return old;
 }
-#define arch_xor_unlock_is_negative_byte arch_xor_unlock_is_negative_byte
+
+/* This is a special function for mm/filemap.c */
+#define clear_bit_unlock_is_negative_byte(nr, addr)			\
+	(clear_bit_unlock_return_word(nr, addr) & BIT_MASK(PG_waiters))
+
+#endif /* CONFIG_PPC64 */
 
 #include <asm-generic/bitops/non-atomic.h>
 
-static inline void arch___clear_bit_unlock(int nr, volatile unsigned long *addr)
+static __inline__ void __clear_bit_unlock(int nr, volatile unsigned long *addr)
 {
 	__asm__ __volatile__(PPC_RELEASE_BARRIER "" ::: "memory");
 	__clear_bit(nr, addr);
@@ -276,36 +215,17 @@ static inline void arch___clear_bit_unlock(int nr, volatile unsigned long *addr)
  * fls: find last (most-significant) bit set.
  * Note fls(0) = 0, fls(1) = 1, fls(0x80000000) = 32.
  */
-static __always_inline int fls(unsigned int x)
+static __inline__ int fls(unsigned int x)
 {
-	int lz;
-
-	if (__builtin_constant_p(x))
-		return x ? 32 - __builtin_clz(x) : 0;
-	asm("cntlzw %0,%1" : "=r" (lz) : "r" (x));
-	return 32 - lz;
+	return 32 - __builtin_clz(x);
 }
 
 #include <asm-generic/bitops/builtin-__fls.h>
 
-/*
- * 64-bit can do this using one cntlzd (count leading zeroes doubleword)
- * instruction; for 32-bit we use the generic version, which does two
- * 32-bit fls calls.
- */
-#ifdef CONFIG_PPC64
-static __always_inline int fls64(__u64 x)
+static __inline__ int fls64(__u64 x)
 {
-	int lz;
-
-	if (__builtin_constant_p(x))
-		return x ? 64 - __builtin_clzll(x) : 0;
-	asm("cntlzd %0,%1" : "=r" (lz) : "r" (x));
-	return 64 - lz;
+	return 64 - __builtin_clzll(x);
 }
-#else
-#include <asm-generic/bitops/fls64.h>
-#endif
 
 #ifdef CONFIG_PPC64
 unsigned int __arch_hweight8(unsigned int w);
@@ -317,9 +237,7 @@ unsigned long __arch_hweight64(__u64 w);
 #include <asm-generic/bitops/hweight.h>
 #endif
 
-/* wrappers that deal with KASAN instrumentation */
-#include <asm-generic/bitops/instrumented-atomic.h>
-#include <asm-generic/bitops/instrumented-lock.h>
+#include <asm-generic/bitops/find.h>
 
 /* Little-endian versions */
 #include <asm-generic/bitops/le.h>

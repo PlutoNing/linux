@@ -688,11 +688,9 @@ static int tvp7002_g_register(struct v4l2_subdev *sd,
 	int ret;
 
 	ret = tvp7002_read(sd, reg->reg & 0xff, &val);
-	if (ret < 0)
-		return ret;
 	reg->val = val;
 	reg->size = 1;
-	return 0;
+	return ret;
 }
 
 /*
@@ -791,14 +789,13 @@ static const struct v4l2_ctrl_ops tvp7002_ctrl_ops = {
 /*
  * tvp7002_enum_mbus_code() - Enum supported digital video format on pad
  * @sd: pointer to standard V4L2 sub-device structure
- * @sd_state: V4L2 subdev state
+ * @cfg: pad configuration
  * @code: pointer to subdev enum mbus code struct
  *
  * Enumerate supported digital video formats for pad.
  */
 static int
-tvp7002_enum_mbus_code(struct v4l2_subdev *sd,
-		       struct v4l2_subdev_state *sd_state,
+tvp7002_enum_mbus_code(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config *cfg,
 		       struct v4l2_subdev_mbus_code_enum *code)
 {
 	/* Check requested format index is within range */
@@ -813,14 +810,13 @@ tvp7002_enum_mbus_code(struct v4l2_subdev *sd,
 /*
  * tvp7002_get_pad_format() - get video format on pad
  * @sd: pointer to standard V4L2 sub-device structure
- * @sd_state: V4L2 subdev state
+ * @cfg: pad configuration
  * @fmt: pointer to subdev format struct
  *
  * get video format for pad.
  */
 static int
-tvp7002_get_pad_format(struct v4l2_subdev *sd,
-		       struct v4l2_subdev_state *sd_state,
+tvp7002_get_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config *cfg,
 		       struct v4l2_subdev_format *fmt)
 {
 	struct tvp7002 *tvp7002 = to_tvp7002(sd);
@@ -837,17 +833,16 @@ tvp7002_get_pad_format(struct v4l2_subdev *sd,
 /*
  * tvp7002_set_pad_format() - set video format on pad
  * @sd: pointer to standard V4L2 sub-device structure
- * @sd_state: V4L2 subdev state
+ * @cfg: pad configuration
  * @fmt: pointer to subdev format struct
  *
  * set video format for pad.
  */
 static int
-tvp7002_set_pad_format(struct v4l2_subdev *sd,
-		       struct v4l2_subdev_state *sd_state,
+tvp7002_set_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_pad_config *cfg,
 		       struct v4l2_subdev_format *fmt)
 {
-	return tvp7002_get_pad_format(sd, sd_state, fmt);
+	return tvp7002_get_pad_format(sd, cfg, fmt);
 }
 
 /* V4L2 core operation handlers */
@@ -893,7 +888,7 @@ tvp7002_get_pdata(struct i2c_client *client)
 	if (!IS_ENABLED(CONFIG_OF) || !client->dev.of_node)
 		return client->dev.platform_data;
 
-	endpoint = of_graph_get_endpoint_by_regs(client->dev.of_node, 0, -1);
+	endpoint = of_graph_get_next_endpoint(client->dev.of_node, NULL);
 	if (!endpoint)
 		return NULL;
 
@@ -1044,7 +1039,7 @@ error:
  * Reset the TVP7002 device
  * Returns zero.
  */
-static void tvp7002_remove(struct i2c_client *c)
+static int tvp7002_remove(struct i2c_client *c)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(c);
 	struct tvp7002 *device = to_tvp7002(sd);
@@ -1056,6 +1051,7 @@ static void tvp7002_remove(struct i2c_client *c)
 	media_entity_cleanup(&device->sd.entity);
 #endif
 	v4l2_ctrl_handler_free(&device->hdl);
+	return 0;
 }
 
 /* I2C Device ID table */
@@ -1079,7 +1075,7 @@ static struct i2c_driver tvp7002_driver = {
 		.of_match_table = of_match_ptr(tvp7002_of_match),
 		.name = TVP7002_MODULE_NAME,
 	},
-	.probe = tvp7002_probe,
+	.probe_new = tvp7002_probe,
 	.remove = tvp7002_remove,
 	.id_table = tvp7002_id,
 };

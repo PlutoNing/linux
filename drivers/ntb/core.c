@@ -100,8 +100,6 @@ EXPORT_SYMBOL(ntb_unregister_client);
 
 int ntb_register_device(struct ntb_dev *ntb)
 {
-	int ret;
-
 	if (!ntb)
 		return -EINVAL;
 	if (!ntb->pdev)
@@ -122,11 +120,7 @@ int ntb_register_device(struct ntb_dev *ntb)
 	ntb->ctx_ops = NULL;
 	spin_lock_init(&ntb->ctx_lock);
 
-	ret = device_register(&ntb->dev);
-	if (ret)
-		put_device(&ntb->dev);
-
-	return ret;
+	return device_register(&ntb->dev);
 }
 EXPORT_SYMBOL(ntb_register_device);
 
@@ -220,8 +214,10 @@ int ntb_default_port_number(struct ntb_dev *ntb)
 	case NTB_TOPO_B2B_DSD:
 		return NTB_PORT_SEC_DSD;
 	default:
-		return 0;
+		break;
 	}
+
+	return -EINVAL;
 }
 EXPORT_SYMBOL(ntb_default_port_number);
 
@@ -244,8 +240,10 @@ int ntb_default_peer_port_number(struct ntb_dev *ntb, int pidx)
 	case NTB_TOPO_B2B_DSD:
 		return NTB_PORT_PRI_USD;
 	default:
-		return 0;
+		break;
 	}
+
+	return -EINVAL;
 }
 EXPORT_SYMBOL(ntb_default_peer_port_number);
 
@@ -277,7 +275,7 @@ static int ntb_probe(struct device *dev)
 	return rc;
 }
 
-static void ntb_remove(struct device *dev)
+static int ntb_remove(struct device *dev)
 {
 	struct ntb_dev *ntb;
 	struct ntb_client *client;
@@ -289,6 +287,8 @@ static void ntb_remove(struct device *dev)
 		client->ops.remove(client, ntb);
 		put_device(dev);
 	}
+
+	return 0;
 }
 
 static void ntb_dev_release(struct device *dev)
@@ -315,3 +315,4 @@ static void __exit ntb_driver_exit(void)
 	bus_unregister(&ntb_bus);
 }
 module_exit(ntb_driver_exit);
+

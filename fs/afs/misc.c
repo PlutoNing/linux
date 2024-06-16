@@ -69,7 +69,6 @@ int afs_abort_to_error(u32 abort_code)
 		/* Unified AFS error table */
 	case UAEPERM:			return -EPERM;
 	case UAENOENT:			return -ENOENT;
-	case UAEAGAIN:			return -EAGAIN;
 	case UAEACCES:			return -EACCES;
 	case UAEBUSY:			return -EBUSY;
 	case UAEEXIST:			return -EEXIST;
@@ -84,7 +83,6 @@ int afs_abort_to_error(u32 abort_code)
 	case UAENOLCK:			return -ENOLCK;
 	case UAENOTEMPTY:		return -ENOTEMPTY;
 	case UAELOOP:			return -ELOOP;
-	case UAEOVERFLOW:		return -EOVERFLOW;
 	case UAENOMEDIUM:		return -ENOMEDIUM;
 	case UAEDQUOT:			return -EDQUOT;
 
@@ -116,65 +114,56 @@ void afs_prioritise_error(struct afs_error *e, int error, u32 abort_code)
 {
 	switch (error) {
 	case 0:
-		e->aborted = false;
-		e->error = 0;
 		return;
 	default:
 		if (e->error == -ETIMEDOUT ||
 		    e->error == -ETIME)
 			return;
-		fallthrough;
+		/* Fall through */
 	case -ETIMEDOUT:
 	case -ETIME:
 		if (e->error == -ENOMEM ||
 		    e->error == -ENONET)
 			return;
-		fallthrough;
+		/* Fall through */
 	case -ENOMEM:
 	case -ENONET:
 		if (e->error == -ERFKILL)
 			return;
-		fallthrough;
+		/* Fall through */
 	case -ERFKILL:
 		if (e->error == -EADDRNOTAVAIL)
 			return;
-		fallthrough;
+		/* Fall through */
 	case -EADDRNOTAVAIL:
 		if (e->error == -ENETUNREACH)
 			return;
-		fallthrough;
+		/* Fall through */
 	case -ENETUNREACH:
 		if (e->error == -EHOSTUNREACH)
 			return;
-		fallthrough;
+		/* Fall through */
 	case -EHOSTUNREACH:
 		if (e->error == -EHOSTDOWN)
 			return;
-		fallthrough;
+		/* Fall through */
 	case -EHOSTDOWN:
 		if (e->error == -ECONNREFUSED)
 			return;
-		fallthrough;
+		/* Fall through */
 	case -ECONNREFUSED:
 		if (e->error == -ECONNRESET)
 			return;
-		fallthrough;
+		/* Fall through */
 	case -ECONNRESET: /* Responded, but call expired. */
 		if (e->responded)
 			return;
 		e->error = error;
-		e->aborted = false;
 		return;
 
 	case -ECONNABORTED:
+		e->responded = true;
 		e->error = afs_abort_to_error(abort_code);
-		e->aborted = true;
-		e->responded = true;
-		return;
-	case -ENETRESET: /* Responded, but we seem to have changed address */
-		e->aborted = false;
-		e->responded = true;
-		e->error = error;
 		return;
 	}
 }

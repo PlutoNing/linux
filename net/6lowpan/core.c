@@ -5,7 +5,6 @@
  * (C) 2015 Pengutronix, Alexander Aring <aar@pengutronix.de>
  */
 
-#include <linux/if_arp.h>
 #include <linux/module.h>
 
 #include <net/6lowpan.h>
@@ -179,5 +178,4 @@ static void __exit lowpan_module_exit(void)
 module_init(lowpan_module_init);
 module_exit(lowpan_module_exit);
 
-MODULE_DESCRIPTION("IPv6 over Low-Power Wireless Personal Area Network core module");
 MODULE_LICENSE("GPL");

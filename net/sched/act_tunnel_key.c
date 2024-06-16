@@ -10,22 +10,19 @@
 #include <linux/skbuff.h>
 #include <linux/rtnetlink.h>
 #include <net/geneve.h>
-#include <net/vxlan.h>
-#include <net/erspan.h>
 #include <net/netlink.h>
 #include <net/pkt_sched.h>
 #include <net/dst.h>
 #include <net/pkt_cls.h>
-#include <net/tc_wrapper.h>
 
 #include <linux/tc_act/tc_tunnel_key.h>
 #include <net/tc_act/tc_tunnel_key.h>
 
+static unsigned int tunnel_key_net_id;
 static struct tc_action_ops act_tunnel_key_ops;
 
-TC_INDIRECT_SCOPE int tunnel_key_act(struct sk_buff *skb,
-				     const struct tc_action *a,
-				     struct tcf_result *res)
+static int tunnel_key_act(struct sk_buff *skb, const struct tc_action *a,
+			  struct tcf_result *res)
 {
 	struct tcf_tunnel_key *t = to_tunnel_key(a);
 	struct tcf_tunnel_key_params *params;
@@ -34,7 +31,7 @@ TC_INDIRECT_SCOPE int tunnel_key_act(struct sk_buff *skb,
 	params = rcu_dereference_bh(t->params);
 
 	tcf_lastuse_update(&t->tcf_tm);
-	tcf_action_update_bstats(&t->common, skb);
+	bstats_cpu_update(this_cpu_ptr(t->common.cpu_bstats), skb);
 	action = READ_ONCE(t->tcf_action);
 
 	switch (params->tcft_action) {
@@ -56,11 +53,7 @@ TC_INDIRECT_SCOPE int tunnel_key_act(struct sk_buff *skb,
 
 static const struct nla_policy
 enc_opts_policy[TCA_TUNNEL_KEY_ENC_OPTS_MAX + 1] = {
-	[TCA_TUNNEL_KEY_ENC_OPTS_UNSPEC]	= {
-		.strict_start_type = TCA_TUNNEL_KEY_ENC_OPTS_VXLAN },
 	[TCA_TUNNEL_KEY_ENC_OPTS_GENEVE]	= { .type = NLA_NESTED },
-	[TCA_TUNNEL_KEY_ENC_OPTS_VXLAN]		= { .type = NLA_NESTED },
-	[TCA_TUNNEL_KEY_ENC_OPTS_ERSPAN]	= { .type = NLA_NESTED },
 };
 
 static const struct nla_policy
@@ -69,19 +62,6 @@ geneve_opt_policy[TCA_TUNNEL_KEY_ENC_OPT_GENEVE_MAX + 1] = {
 	[TCA_TUNNEL_KEY_ENC_OPT_GENEVE_TYPE]	   = { .type = NLA_U8 },
 	[TCA_TUNNEL_KEY_ENC_OPT_GENEVE_DATA]	   = { .type = NLA_BINARY,
 						       .len = 128 },
-};
-
-static const struct nla_policy
-vxlan_opt_policy[TCA_TUNNEL_KEY_ENC_OPT_VXLAN_MAX + 1] = {
-	[TCA_TUNNEL_KEY_ENC_OPT_VXLAN_GBP]	   = { .type = NLA_U32 },
-};
-
-static const struct nla_policy
-erspan_opt_policy[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_MAX + 1] = {
-	[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_VER]	   = { .type = NLA_U8 },
-	[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_INDEX]	   = { .type = NLA_U32 },
-	[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_DIR]	   = { .type = NLA_U8 },
-	[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_HWID]	   = { .type = NLA_U8 },
 };
 
 static int
@@ -136,90 +116,10 @@ tunnel_key_copy_geneve_opt(const struct nlattr *nla, void *dst, int dst_len,
 	return opt_len;
 }
 
-static int
-tunnel_key_copy_vxlan_opt(const struct nlattr *nla, void *dst, int dst_len,
-			  struct netlink_ext_ack *extack)
-{
-	struct nlattr *tb[TCA_TUNNEL_KEY_ENC_OPT_VXLAN_MAX + 1];
-	int err;
-
-	err = nla_parse_nested(tb, TCA_TUNNEL_KEY_ENC_OPT_VXLAN_MAX, nla,
-			       vxlan_opt_policy, extack);
-	if (err < 0)
-		return err;
-
-	if (!tb[TCA_TUNNEL_KEY_ENC_OPT_VXLAN_GBP]) {
-		NL_SET_ERR_MSG(extack, "Missing tunnel key vxlan option gbp");
-		return -EINVAL;
-	}
-
-	if (dst) {
-		struct vxlan_metadata *md = dst;
-
-		md->gbp = nla_get_u32(tb[TCA_TUNNEL_KEY_ENC_OPT_VXLAN_GBP]);
-		md->gbp &= VXLAN_GBP_MASK;
-	}
-
-	return sizeof(struct vxlan_metadata);
-}
-
-static int
-tunnel_key_copy_erspan_opt(const struct nlattr *nla, void *dst, int dst_len,
-			   struct netlink_ext_ack *extack)
-{
-	struct nlattr *tb[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_MAX + 1];
-	int err;
-	u8 ver;
-
-	err = nla_parse_nested(tb, TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_MAX, nla,
-			       erspan_opt_policy, extack);
-	if (err < 0)
-		return err;
-
-	if (!tb[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_VER]) {
-		NL_SET_ERR_MSG(extack, "Missing tunnel key erspan option ver");
-		return -EINVAL;
-	}
-
-	ver = nla_get_u8(tb[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_VER]);
-	if (ver == 1) {
-		if (!tb[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_INDEX]) {
-			NL_SET_ERR_MSG(extack, "Missing tunnel key erspan option index");
-			return -EINVAL;
-		}
-	} else if (ver == 2) {
-		if (!tb[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_DIR] ||
-		    !tb[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_HWID]) {
-			NL_SET_ERR_MSG(extack, "Missing tunnel key erspan option dir or hwid");
-			return -EINVAL;
-		}
-	} else {
-		NL_SET_ERR_MSG(extack, "Tunnel key erspan option ver is incorrect");
-		return -EINVAL;
-	}
-
-	if (dst) {
-		struct erspan_metadata *md = dst;
-
-		md->version = ver;
-		if (ver == 1) {
-			nla = tb[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_INDEX];
-			md->u.index = nla_get_be32(nla);
-		} else {
-			nla = tb[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_DIR];
-			md->u.md2.dir = nla_get_u8(nla);
-			nla = tb[TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_HWID];
-			set_hwid(&md->u.md2, nla_get_u8(nla));
-		}
-	}
-
-	return sizeof(struct erspan_metadata);
-}
-
 static int tunnel_key_copy_opts(const struct nlattr *nla, u8 *dst,
 				int dst_len, struct netlink_ext_ack *extack)
 {
-	int err, rem, opt_len, len = nla_len(nla), opts_len = 0, type = 0;
+	int err, rem, opt_len, len = nla_len(nla), opts_len = 0;
 	const struct nlattr *attr, *head = nla_data(nla);
 
 	err = nla_validate_deprecated(head, len, TCA_TUNNEL_KEY_ENC_OPTS_MAX,
@@ -230,10 +130,6 @@ static int tunnel_key_copy_opts(const struct nlattr *nla, u8 *dst,
 	nla_for_each_attr(attr, head, len, rem) {
 		switch (nla_type(attr)) {
 		case TCA_TUNNEL_KEY_ENC_OPTS_GENEVE:
-			if (type && type != TUNNEL_GENEVE_OPT) {
-				NL_SET_ERR_MSG(extack, "Duplicate type for geneve options");
-				return -EINVAL;
-			}
 			opt_len = tunnel_key_copy_geneve_opt(attr, dst,
 							     dst_len, extack);
 			if (opt_len < 0)
@@ -247,31 +143,6 @@ static int tunnel_key_copy_opts(const struct nlattr *nla, u8 *dst,
 				dst_len -= opt_len;
 				dst += opt_len;
 			}
-			type = TUNNEL_GENEVE_OPT;
-			break;
-		case TCA_TUNNEL_KEY_ENC_OPTS_VXLAN:
-			if (type) {
-				NL_SET_ERR_MSG(extack, "Duplicate type for vxlan options");
-				return -EINVAL;
-			}
-			opt_len = tunnel_key_copy_vxlan_opt(attr, dst,
-							    dst_len, extack);
-			if (opt_len < 0)
-				return opt_len;
-			opts_len += opt_len;
-			type = TUNNEL_VXLAN_OPT;
-			break;
-		case TCA_TUNNEL_KEY_ENC_OPTS_ERSPAN:
-			if (type) {
-				NL_SET_ERR_MSG(extack, "Duplicate type for erspan options");
-				return -EINVAL;
-			}
-			opt_len = tunnel_key_copy_erspan_opt(attr, dst,
-							     dst_len, extack);
-			if (opt_len < 0)
-				return opt_len;
-			opts_len += opt_len;
-			type = TUNNEL_ERSPAN_OPT;
 			break;
 		}
 	}
@@ -303,22 +174,6 @@ static int tunnel_key_opts_set(struct nlattr *nla, struct ip_tunnel_info *info,
 	case TCA_TUNNEL_KEY_ENC_OPTS_GENEVE:
 #if IS_ENABLED(CONFIG_INET)
 		info->key.tun_flags |= TUNNEL_GENEVE_OPT;
-		return tunnel_key_copy_opts(nla, ip_tunnel_info_opts(info),
-					    opts_len, extack);
-#else
-		return -EAFNOSUPPORT;
-#endif
-	case TCA_TUNNEL_KEY_ENC_OPTS_VXLAN:
-#if IS_ENABLED(CONFIG_INET)
-		info->key.tun_flags |= TUNNEL_VXLAN_OPT;
-		return tunnel_key_copy_opts(nla, ip_tunnel_info_opts(info),
-					    opts_len, extack);
-#else
-		return -EAFNOSUPPORT;
-#endif
-	case TCA_TUNNEL_KEY_ENC_OPTS_ERSPAN:
-#if IS_ENABLED(CONFIG_INET)
-		info->key.tun_flags |= TUNNEL_ERSPAN_OPT;
 		return tunnel_key_copy_opts(nla, ip_tunnel_info_opts(info),
 					    opts_len, extack);
 #else
@@ -356,11 +211,11 @@ static void tunnel_key_release_params(struct tcf_tunnel_key_params *p)
 
 static int tunnel_key_init(struct net *net, struct nlattr *nla,
 			   struct nlattr *est, struct tc_action **a,
-			   struct tcf_proto *tp, u32 act_flags,
+			   int ovr, int bind, bool rtnl_held,
+			   struct tcf_proto *tp,
 			   struct netlink_ext_ack *extack)
 {
-	struct tc_action_net *tn = net_generic(net, act_tunnel_key_ops.net_id);
-	bool bind = act_flags & TCA_ACT_FLAGS_BIND;
+	struct tc_action_net *tn = net_generic(net, tunnel_key_net_id);
 	struct nlattr *tb[TCA_TUNNEL_KEY_MAX + 1];
 	struct tcf_tunnel_key_params *params_new;
 	struct metadata_dst *metadata = NULL;
@@ -401,7 +256,7 @@ static int tunnel_key_init(struct net *net, struct nlattr *nla,
 		return err;
 	exists = err;
 	if (exists && bind)
-		return ACT_P_BOUND;
+		return 0;
 
 	switch (parm->t_action) {
 	case TCA_TUNNEL_KEY_ACT_RELEASE:
@@ -419,9 +274,6 @@ static int tunnel_key_init(struct net *net, struct nlattr *nla,
 		if (tb[TCA_TUNNEL_KEY_NO_CSUM] &&
 		    nla_get_u8(tb[TCA_TUNNEL_KEY_NO_CSUM]))
 			flags &= ~TUNNEL_CSUM;
-
-		if (nla_get_flag(tb[TCA_TUNNEL_KEY_NO_FRAG]))
-			flags |= TUNNEL_DONT_FRAGMENT;
 
 		if (tb[TCA_TUNNEL_KEY_ENC_DST_PORT])
 			dst_port = nla_get_be16(tb[TCA_TUNNEL_KEY_ENC_DST_PORT]);
@@ -463,7 +315,7 @@ static int tunnel_key_init(struct net *net, struct nlattr *nla,
 
 			metadata = __ipv6_tun_set_dst(&saddr, &daddr, tos, ttl, dst_port,
 						      0, flags,
-						      key_id, opts_len);
+						      key_id, 0);
 		} else {
 			NL_SET_ERR_MSG(extack, "Missing either ipv4 or ipv6 src and dst");
 			ret = -EINVAL;
@@ -499,16 +351,15 @@ static int tunnel_key_init(struct net *net, struct nlattr *nla,
 	}
 
 	if (!exists) {
-		ret = tcf_idr_create_from_flags(tn, index, est, a,
-						&act_tunnel_key_ops, bind,
-						act_flags);
+		ret = tcf_idr_create(tn, index, est, a,
+				     &act_tunnel_key_ops, bind, true);
 		if (ret) {
 			NL_SET_ERR_MSG(extack, "Cannot create TC IDR");
 			goto release_tun_meta;
 		}
 
 		ret = ACT_P_CREATED;
-	} else if (!(act_flags & TCA_ACT_FLAGS_REPLACE)) {
+	} else if (!ovr) {
 		NL_SET_ERR_MSG(extack, "TC IDR already exists");
 		ret = -EEXIST;
 		goto release_tun_meta;
@@ -534,12 +385,15 @@ static int tunnel_key_init(struct net *net, struct nlattr *nla,
 
 	spin_lock_bh(&t->tcf_lock);
 	goto_ch = tcf_action_set_ctrlact(*a, parm->action, goto_ch);
-	params_new = rcu_replace_pointer(t->params, params_new,
-					 lockdep_is_held(&t->tcf_lock));
+	rcu_swap_protected(t->params, params_new,
+			   lockdep_is_held(&t->tcf_lock));
 	spin_unlock_bh(&t->tcf_lock);
 	tunnel_key_release_params(params_new);
 	if (goto_ch)
 		tcf_chain_put_by_act(goto_ch);
+
+	if (ret == ACT_P_CREATED)
+		tcf_idr_insert(tn, *a);
 
 	return ret;
 
@@ -600,56 +454,6 @@ static int tunnel_key_geneve_opts_dump(struct sk_buff *skb,
 	return 0;
 }
 
-static int tunnel_key_vxlan_opts_dump(struct sk_buff *skb,
-				      const struct ip_tunnel_info *info)
-{
-	struct vxlan_metadata *md = (struct vxlan_metadata *)(info + 1);
-	struct nlattr *start;
-
-	start = nla_nest_start_noflag(skb, TCA_TUNNEL_KEY_ENC_OPTS_VXLAN);
-	if (!start)
-		return -EMSGSIZE;
-
-	if (nla_put_u32(skb, TCA_TUNNEL_KEY_ENC_OPT_VXLAN_GBP, md->gbp)) {
-		nla_nest_cancel(skb, start);
-		return -EMSGSIZE;
-	}
-
-	nla_nest_end(skb, start);
-	return 0;
-}
-
-static int tunnel_key_erspan_opts_dump(struct sk_buff *skb,
-				       const struct ip_tunnel_info *info)
-{
-	struct erspan_metadata *md = (struct erspan_metadata *)(info + 1);
-	struct nlattr *start;
-
-	start = nla_nest_start_noflag(skb, TCA_TUNNEL_KEY_ENC_OPTS_ERSPAN);
-	if (!start)
-		return -EMSGSIZE;
-
-	if (nla_put_u8(skb, TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_VER, md->version))
-		goto err;
-
-	if (md->version == 1 &&
-	    nla_put_be32(skb, TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_INDEX, md->u.index))
-		goto err;
-
-	if (md->version == 2 &&
-	    (nla_put_u8(skb, TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_DIR,
-			md->u.md2.dir) ||
-	     nla_put_u8(skb, TCA_TUNNEL_KEY_ENC_OPT_ERSPAN_HWID,
-			get_hwid(&md->u.md2))))
-		goto err;
-
-	nla_nest_end(skb, start);
-	return 0;
-err:
-	nla_nest_cancel(skb, start);
-	return -EMSGSIZE;
-}
-
 static int tunnel_key_opts_dump(struct sk_buff *skb,
 				const struct ip_tunnel_info *info)
 {
@@ -665,14 +469,6 @@ static int tunnel_key_opts_dump(struct sk_buff *skb,
 
 	if (info->key.tun_flags & TUNNEL_GENEVE_OPT) {
 		err = tunnel_key_geneve_opts_dump(skb, info);
-		if (err)
-			goto err_out;
-	} else if (info->key.tun_flags & TUNNEL_VXLAN_OPT) {
-		err = tunnel_key_vxlan_opts_dump(skb, info);
-		if (err)
-			goto err_out;
-	} else if (info->key.tun_flags & TUNNEL_ERSPAN_OPT) {
-		err = tunnel_key_erspan_opts_dump(skb, info);
 		if (err)
 			goto err_out;
 	} else {
@@ -750,8 +546,6 @@ static int tunnel_key_dump(struct sk_buff *skb, struct tc_action *a,
 				   key->tp_dst)) ||
 		    nla_put_u8(skb, TCA_TUNNEL_KEY_NO_CSUM,
 			       !(key->tun_flags & TUNNEL_CSUM)) ||
-		    ((key->tun_flags & TUNNEL_DONT_FRAGMENT) &&
-		     nla_put_flag(skb, TCA_TUNNEL_KEY_NO_FRAG)) ||
 		    tunnel_key_opts_dump(skb, info))
 			goto nla_put_failure;
 
@@ -776,59 +570,21 @@ nla_put_failure:
 	return -1;
 }
 
-static void tcf_tunnel_encap_put_tunnel(void *priv)
+static int tunnel_key_walker(struct net *net, struct sk_buff *skb,
+			     struct netlink_callback *cb, int type,
+			     const struct tc_action_ops *ops,
+			     struct netlink_ext_ack *extack)
 {
-	struct ip_tunnel_info *tunnel = priv;
+	struct tc_action_net *tn = net_generic(net, tunnel_key_net_id);
 
-	kfree(tunnel);
+	return tcf_generic_walker(tn, skb, cb, type, ops, extack);
 }
 
-static int tcf_tunnel_encap_get_tunnel(struct flow_action_entry *entry,
-				       const struct tc_action *act)
+static int tunnel_key_search(struct net *net, struct tc_action **a, u32 index)
 {
-	entry->tunnel = tcf_tunnel_info_copy(act);
-	if (!entry->tunnel)
-		return -ENOMEM;
-	entry->destructor = tcf_tunnel_encap_put_tunnel;
-	entry->destructor_priv = entry->tunnel;
-	return 0;
-}
+	struct tc_action_net *tn = net_generic(net, tunnel_key_net_id);
 
-static int tcf_tunnel_key_offload_act_setup(struct tc_action *act,
-					    void *entry_data,
-					    u32 *index_inc,
-					    bool bind,
-					    struct netlink_ext_ack *extack)
-{
-	int err;
-
-	if (bind) {
-		struct flow_action_entry *entry = entry_data;
-
-		if (is_tcf_tunnel_set(act)) {
-			entry->id = FLOW_ACTION_TUNNEL_ENCAP;
-			err = tcf_tunnel_encap_get_tunnel(entry, act);
-			if (err)
-				return err;
-		} else if (is_tcf_tunnel_release(act)) {
-			entry->id = FLOW_ACTION_TUNNEL_DECAP;
-		} else {
-			NL_SET_ERR_MSG_MOD(extack, "Unsupported tunnel key mode offload");
-			return -EOPNOTSUPP;
-		}
-		*index_inc = 1;
-	} else {
-		struct flow_offload_action *fl_action = entry_data;
-
-		if (is_tcf_tunnel_set(act))
-			fl_action->id = FLOW_ACTION_TUNNEL_ENCAP;
-		else if (is_tcf_tunnel_release(act))
-			fl_action->id = FLOW_ACTION_TUNNEL_DECAP;
-		else
-			return -EOPNOTSUPP;
-	}
-
-	return 0;
+	return tcf_idr_search(tn, a, index);
 }
 
 static struct tc_action_ops act_tunnel_key_ops = {
@@ -839,27 +595,27 @@ static struct tc_action_ops act_tunnel_key_ops = {
 	.dump		=	tunnel_key_dump,
 	.init		=	tunnel_key_init,
 	.cleanup	=	tunnel_key_release,
-	.offload_act_setup =	tcf_tunnel_key_offload_act_setup,
+	.walk		=	tunnel_key_walker,
+	.lookup		=	tunnel_key_search,
 	.size		=	sizeof(struct tcf_tunnel_key),
 };
-MODULE_ALIAS_NET_ACT("tunnel_key");
 
 static __net_init int tunnel_key_init_net(struct net *net)
 {
-	struct tc_action_net *tn = net_generic(net, act_tunnel_key_ops.net_id);
+	struct tc_action_net *tn = net_generic(net, tunnel_key_net_id);
 
 	return tc_action_net_init(net, tn, &act_tunnel_key_ops);
 }
 
 static void __net_exit tunnel_key_exit_net(struct list_head *net_list)
 {
-	tc_action_net_exit(net_list, act_tunnel_key_ops.net_id);
+	tc_action_net_exit(net_list, tunnel_key_net_id);
 }
 
 static struct pernet_operations tunnel_key_net_ops = {
 	.init = tunnel_key_init_net,
 	.exit_batch = tunnel_key_exit_net,
-	.id   = &act_tunnel_key_ops.net_id,
+	.id   = &tunnel_key_net_id,
 	.size = sizeof(struct tc_action_net),
 };
 

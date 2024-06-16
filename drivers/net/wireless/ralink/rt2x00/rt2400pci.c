@@ -1023,9 +1023,9 @@ static int rt2400pci_set_state(struct rt2x00_dev *rt2x00dev,
 {
 	u32 reg, reg2;
 	unsigned int i;
-	bool put_to_sleep;
-	u8 bbp_state;
-	u8 rf_state;
+	char put_to_sleep;
+	char bbp_state;
+	char rf_state;
 
 	put_to_sleep = (state != STATE_AWAKE);
 
@@ -1291,7 +1291,7 @@ static void rt2400pci_txdone(struct rt2x00_dev *rt2x00dev,
 			break;
 		case 2: /* Failure, excessive retries */
 			__set_bit(TXDONE_EXCESSIVE_RETRY, &txdesc.flags);
-			fallthrough;	/* this is a failed frame! */
+			/* Fall through - this is a failed frame! */
 		default: /* Failure */
 			__set_bit(TXDONE_FAILURE, &txdesc.flags);
 		}
@@ -1319,10 +1319,9 @@ static inline void rt2400pci_enable_interrupt(struct rt2x00_dev *rt2x00dev,
 	spin_unlock_irq(&rt2x00dev->irqmask_lock);
 }
 
-static void rt2400pci_txstatus_tasklet(struct tasklet_struct *t)
+static void rt2400pci_txstatus_tasklet(unsigned long data)
 {
-	struct rt2x00_dev *rt2x00dev = from_tasklet(rt2x00dev, t,
-						    txstatus_tasklet);
+	struct rt2x00_dev *rt2x00dev = (struct rt2x00_dev *)data;
 	u32 reg;
 
 	/*
@@ -1348,18 +1347,17 @@ static void rt2400pci_txstatus_tasklet(struct tasklet_struct *t)
 	}
 }
 
-static void rt2400pci_tbtt_tasklet(struct tasklet_struct *t)
+static void rt2400pci_tbtt_tasklet(unsigned long data)
 {
-	struct rt2x00_dev *rt2x00dev = from_tasklet(rt2x00dev, t, tbtt_tasklet);
+	struct rt2x00_dev *rt2x00dev = (struct rt2x00_dev *)data;
 	rt2x00lib_beacondone(rt2x00dev);
 	if (test_bit(DEVICE_STATE_ENABLED_RADIO, &rt2x00dev->flags))
 		rt2400pci_enable_interrupt(rt2x00dev, CSR8_TBCN_EXPIRE);
 }
 
-static void rt2400pci_rxdone_tasklet(struct tasklet_struct *t)
+static void rt2400pci_rxdone_tasklet(unsigned long data)
 {
-	struct rt2x00_dev *rt2x00dev = from_tasklet(rt2x00dev, t,
-						    rxdone_tasklet);
+	struct rt2x00_dev *rt2x00dev = (struct rt2x00_dev *)data;
 	if (rt2x00mmio_rxdone(rt2x00dev))
 		tasklet_schedule(&rt2x00dev->rxdone_tasklet);
 	else if (test_bit(DEVICE_STATE_ENABLED_RADIO, &rt2x00dev->flags))
@@ -1561,7 +1559,7 @@ static int rt2400pci_probe_hw_mode(struct rt2x00_dev *rt2x00dev)
 {
 	struct hw_mode_spec *spec = &rt2x00dev->spec;
 	struct channel_info *info;
-	u8 *tx_power;
+	char *tx_power;
 	unsigned int i;
 
 	/*
@@ -1654,8 +1652,7 @@ static int rt2400pci_probe_hw(struct rt2x00_dev *rt2x00dev)
  * IEEE80211 stack callback functions.
  */
 static int rt2400pci_conf_tx(struct ieee80211_hw *hw,
-			     struct ieee80211_vif *vif,
-			     unsigned int link_id, u16 queue,
+			     struct ieee80211_vif *vif, u16 queue,
 			     const struct ieee80211_tx_queue_params *params)
 {
 	struct rt2x00_dev *rt2x00dev = hw->priv;
@@ -1668,7 +1665,7 @@ static int rt2400pci_conf_tx(struct ieee80211_hw *hw,
 	if (queue != 0)
 		return -EINVAL;
 
-	if (rt2x00mac_conf_tx(hw, vif, link_id, queue, params))
+	if (rt2x00mac_conf_tx(hw, vif, queue, params))
 		return -EINVAL;
 
 	/*
@@ -1705,12 +1702,7 @@ static int rt2400pci_tx_last_beacon(struct ieee80211_hw *hw)
 }
 
 static const struct ieee80211_ops rt2400pci_mac80211_ops = {
-	.add_chanctx = ieee80211_emulate_add_chanctx,
-	.remove_chanctx = ieee80211_emulate_remove_chanctx,
-	.change_chanctx = ieee80211_emulate_change_chanctx,
-	.switch_vif_chanctx = ieee80211_emulate_switch_vif_chanctx,
 	.tx			= rt2x00mac_tx,
-	.wake_tx_queue		= ieee80211_handle_wake_tx_queue,
 	.start			= rt2x00mac_start,
 	.stop			= rt2x00mac_stop,
 	.add_interface		= rt2x00mac_add_interface,
@@ -1827,6 +1819,7 @@ static const struct pci_device_id rt2400pci_device_table[] = {
 MODULE_AUTHOR(DRV_PROJECT);
 MODULE_VERSION(DRV_VERSION);
 MODULE_DESCRIPTION("Ralink RT2400 PCI & PCMCIA Wireless LAN driver.");
+MODULE_SUPPORTED_DEVICE("Ralink RT2460 PCI & PCMCIA chipset based cards");
 MODULE_DEVICE_TABLE(pci, rt2400pci_device_table);
 MODULE_LICENSE("GPL");
 
@@ -1841,7 +1834,8 @@ static struct pci_driver rt2400pci_driver = {
 	.id_table	= rt2400pci_device_table,
 	.probe		= rt2400pci_probe,
 	.remove		= rt2x00pci_remove,
-	.driver.pm	= &rt2x00pci_pm_ops,
+	.suspend	= rt2x00pci_suspend,
+	.resume		= rt2x00pci_resume,
 };
 
 module_pci_driver(rt2400pci_driver);

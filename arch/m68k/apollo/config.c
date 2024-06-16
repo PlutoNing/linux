@@ -4,6 +4,7 @@
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <linux/tty.h>
+#include <linux/console.h>
 #include <linux/rtc.h>
 #include <linux/vt_kern.h>
 #include <linux/interrupt.h>
@@ -12,12 +13,10 @@
 #include <asm/bootinfo.h>
 #include <asm/bootinfo-apollo.h>
 #include <asm/byteorder.h>
+#include <asm/pgtable.h>
 #include <asm/apollohw.h>
 #include <asm/irq.h>
 #include <asm/machdep.h>
-#include <asm/config.h>
-
-#include "apollo.h"
 
 u_long sio01_physaddr;
 u_long sio23_physaddr;
@@ -28,9 +27,10 @@ u_long cpuctrl_physaddr;
 u_long timer_physaddr;
 u_long apollo_model;
 
-extern void dn_sched_init(void);
+extern void dn_sched_init(irq_handler_t handler);
+extern void dn_init_IRQ(void);
 extern int dn_dummy_hwclk(int, struct rtc_time *);
-static void dn_dummy_reset(void);
+extern void dn_dummy_reset(void);
 #ifdef CONFIG_HEARTBEAT
 static void dn_heartbeat(int on);
 #endif
@@ -108,7 +108,28 @@ static void __init dn_setup_model(void)
 
 }
 
-static void dn_serial_print(const char *str)
+int dn_serial_console_wait_key(struct console *co) {
+
+	while(!(sio01.srb_csrb & 1))
+		barrier();
+	return sio01.rhrb_thrb;
+}
+
+void dn_serial_console_write (struct console *co, const char *str,unsigned int count)
+{
+   while(count--) {
+	if (*str == '\n') {
+	sio01.rhrb_thrb = (unsigned char)'\r';
+	while (!(sio01.srb_csrb & 0x4))
+                ;
+	}
+    sio01.rhrb_thrb = (unsigned char)*str++;
+    while (!(sio01.srb_csrb & 0x4))
+            ;
+  }
+}
+
+void dn_serial_print (const char *str)
 {
     while (*str) {
         if (*str == '\n') {
@@ -130,6 +151,7 @@ void __init config_apollo(void)
 
 	mach_sched_init=dn_sched_init; /* */
 	mach_init_IRQ=dn_init_IRQ;
+	mach_max_dma_address = 0xffffffff;
 	mach_hwclk           = dn_dummy_hwclk; /* */
 	mach_reset	     = dn_dummy_reset;  /* */
 #ifdef CONFIG_HEARTBEAT
@@ -147,18 +169,19 @@ void __init config_apollo(void)
 
 irqreturn_t dn_timer_int(int irq, void *dev_id)
 {
-	unsigned char *at = (unsigned char *)apollo_timer;
+	irq_handler_t timer_handler = dev_id;
 
-	legacy_timer_tick(1);
-	timer_heartbeat();
+	volatile unsigned char x;
 
-	READ_ONCE(*(at + 3));
-	READ_ONCE(*(at + 5));
+	timer_handler(irq, dev_id);
+
+	x = *(volatile unsigned char *)(apollo_timer + 3);
+	x = *(volatile unsigned char *)(apollo_timer + 5);
 
 	return IRQ_HANDLED;
 }
 
-void dn_sched_init(void)
+void dn_sched_init(irq_handler_t timer_routine)
 {
 	/* program timer 1 */
 	*(volatile unsigned char *)(apollo_timer + 3) = 0x01;
@@ -176,7 +199,7 @@ void dn_sched_init(void)
 		*(volatile unsigned char *)(apollo_timer + 0x3));
 #endif
 
-	if (request_irq(IRQ_APOLLO, dn_timer_int, 0, "time", NULL))
+	if (request_irq(IRQ_APOLLO, dn_timer_int, 0, "time", timer_routine))
 		pr_err("Couldn't register timer interrupt\n");
 }
 
@@ -208,11 +231,17 @@ int dn_dummy_hwclk(int op, struct rtc_time *t) {
 
 }
 
-static void dn_dummy_reset(void)
-{
+void dn_dummy_reset(void) {
+
   dn_serial_print("The end !\n");
 
   for(;;);
+
+}
+
+void dn_dummy_waitbut(void) {
+
+  dn_serial_print("waitbut\n");
 
 }
 

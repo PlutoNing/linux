@@ -9,7 +9,6 @@
  * Authors: Alexander Graf <agraf@suse.de>
  */
 
-#include <linux/linkage.h>
 #include <asm/ppc_asm.h>
 #include <asm/kvm_asm.h>
 #include <asm/reg.h>
@@ -59,19 +58,21 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_207S)
 	/*
 	 * Put whatever is in the decrementer into the
 	 * hypervisor decrementer.
-	 * Because of a hardware deviation in P8,
-	 * we need to set LPCR[HDICE] before writing HDEC.
 	 */
+BEGIN_FTR_SECTION
 	ld	r5, HSTATE_KVM_VCORE(r13)
 	ld	r6, VCORE_KVM(r5)
 	ld	r9, KVM_HOST_LPCR(r6)
-	ori	r8, r9, LPCR_HDICE
-	mtspr	SPRN_LPCR, r8
-	isync
+	andis.	r9, r9, LPCR_LD@h
+END_FTR_SECTION_IFSET(CPU_FTR_ARCH_300)
 	mfspr	r8,SPRN_DEC
 	mftb	r7
+BEGIN_FTR_SECTION
+	/* On POWER9, don't sign-extend if host LPCR[LD] bit is set */
+	bne	32f
+END_FTR_SECTION_IFSET(CPU_FTR_ARCH_300)
 	extsw	r8,r8
-	mtspr	SPRN_HDEC,r8
+32:	mtspr	SPRN_HDEC,r8
 	add	r8,r8,r7
 	std	r8,HSTATE_DECEXP(r13)
 
@@ -105,10 +106,7 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_207S)
 	mtlr	r0
 	blr
 
-/*
- * void kvmhv_save_host_pmu(void)
- */
-SYM_FUNC_START_LOCAL(kvmhv_save_host_pmu)
+_GLOBAL(kvmhv_save_host_pmu)
 BEGIN_FTR_SECTION
 	/* Work around P8 PMAE bug */
 	li	r3, -1
@@ -155,4 +153,3 @@ END_FTR_SECTION_IFSET(CPU_FTR_ARCH_207S)
 	stw	r8, HSTATE_PMC5(r13)
 	stw	r9, HSTATE_PMC6(r13)
 31:	blr
-SYM_FUNC_END(kvmhv_save_host_pmu)

@@ -6,7 +6,6 @@
 #include <linux/fs.h>
 #include <linux/buffer_head.h>
 #include <linux/quotaops.h>
-#include <linux/blkdev.h>
 #include "jfs_incore.h"
 #include "jfs_filsys.h"
 #include "jfs_metapage.h"
@@ -86,7 +85,8 @@ int jfs_extendfs(struct super_block *sb, s64 newLVSize, int newLogSize)
 		goto out;
 	}
 
-	VolumeSize = sb_bdev_nr_blocks(sb);
+	VolumeSize = i_size_read(sb->s_bdev->bd_inode) >> sb->s_blocksize_bits;
+
 	if (VolumeSize) {
 		if (newLVSize > VolumeSize) {
 			printk(KERN_WARNING "jfs_extendfs: invalid size\n");
@@ -198,7 +198,7 @@ int jfs_extendfs(struct super_block *sb, s64 newLVSize, int newLogSize)
 	txQuiesce(sb);
 
 	/* Reset size of direct inode */
-	sbi->direct_inode->i_size = bdev_nr_bytes(sb->s_bdev);
+	sbi->direct_inode->i_size =  i_size_read(sb->s_bdev->bd_inode);
 
 	if (sbi->mntflag & JFS_INLINELOG) {
 		/*

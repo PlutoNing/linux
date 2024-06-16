@@ -15,7 +15,7 @@
 #include "vxpocket.h"
 
 
-static const int vxp_reg_offset[VX_REG_MAX] = {
+static int vxp_reg_offset[VX_REG_MAX] = {
 	[VX_ICR]	= 0x00,		// ICR
 	[VX_CVR]	= 0x01,		// CVR
 	[VX_ISR]	= 0x02,		// ISR
@@ -237,11 +237,9 @@ static int vxp_load_dsp(struct vx_core *vx, int index, const struct firmware *fw
 	switch (index) {
 	case 0:
 		/* xilinx boot */
-		err = vx_check_magic(vx);
-		if (err < 0)
+		if ((err = vx_check_magic(vx)) < 0)
 			return err;
-		err = snd_vx_load_boot_image(vx, fw);
-		if (err < 0)
+		if ((err = snd_vx_load_boot_image(vx, fw)) < 0)
 			return err;
 		return 0;
 	case 1:
@@ -583,7 +581,7 @@ static void vxp_reset_board(struct vx_core *_chip, int cold_reset)
  * callbacks
  */
 /* exported */
-const struct snd_vx_ops snd_vxpocket_ops = {
+struct snd_vx_ops snd_vxpocket_ops = {
 	.in8 = vxp_inb,
 	.out8 = vxp_outb,
 	.test_and_ack = vxp_test_and_ack,

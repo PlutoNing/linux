@@ -120,7 +120,7 @@ static const u32 tegra_ahb_gizmo[] = {
 struct tegra_ahb {
 	void __iomem	*regs;
 	struct device	*dev;
-	u32		ctx[];
+	u32		ctx[0];
 };
 
 static inline u32 gizmo_readl(struct tegra_ahb *ahb, u32 offset)
@@ -285,4 +285,5 @@ module_platform_driver(tegra_ahb_driver);
 
 MODULE_AUTHOR("Hiroshi DOYU <hdoyu@nvidia.com>");
 MODULE_DESCRIPTION("Tegra AHB driver");
+MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:" DRV_NAME);

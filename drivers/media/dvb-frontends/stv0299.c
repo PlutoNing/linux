@@ -161,9 +161,8 @@ static int stv0299_set_FEC(struct stv0299_state *state, enum fe_code_rate fec)
 
 static enum fe_code_rate stv0299_get_fec(struct stv0299_state *state)
 {
-	static const enum fe_code_rate fec_tab[] = {
-		FEC_2_3, FEC_3_4, FEC_5_6, FEC_7_8, FEC_1_2
-	};
+	static enum fe_code_rate fec_tab[] = { FEC_2_3, FEC_3_4, FEC_5_6,
+					       FEC_7_8, FEC_1_2 };
 	u8 index;
 
 	dprintk ("%s\n", __func__);
@@ -184,7 +183,7 @@ static int stv0299_wait_diseqc_fifo (struct stv0299_state* state, int timeout)
 	dprintk ("%s\n", __func__);
 
 	while (stv0299_readreg(state, 0x0a) & 1) {
-		if (time_is_before_jiffies(start + timeout)) {
+		if (jiffies - start > timeout) {
 			dprintk ("%s: timeout!!\n", __func__);
 			return -ETIMEDOUT;
 		}
@@ -201,7 +200,7 @@ static int stv0299_wait_diseqc_idle (struct stv0299_state* state, int timeout)
 	dprintk ("%s\n", __func__);
 
 	while ((stv0299_readreg(state, 0x0a) & 3) != 2 ) {
-		if (time_is_before_jiffies(start + timeout)) {
+		if (jiffies - start > timeout) {
 			dprintk ("%s: timeout!!\n", __func__);
 			return -ETIMEDOUT;
 		}
@@ -752,4 +751,4 @@ MODULE_DESCRIPTION("ST STV0299 DVB Demodulator driver");
 MODULE_AUTHOR("Ralph Metzler, Holger Waechtler, Peter Schildmann, Felix Domke, Andreas Oberritter, Andrew de Quincey, Kenneth Aafly");
 MODULE_LICENSE("GPL");
 
-EXPORT_SYMBOL_GPL(stv0299_attach);
+EXPORT_SYMBOL(stv0299_attach);

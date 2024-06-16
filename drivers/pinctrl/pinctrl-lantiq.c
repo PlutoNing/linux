@@ -6,13 +6,12 @@
  *  Copyright (C) 2012 John Crispin <john@phrozen.org>
  */
 
+#include <linux/module.h>
 #include <linux/device.h>
 #include <linux/io.h>
-#include <linux/module.h>
-#include <linux/of.h>
 #include <linux/platform_device.h>
-#include <linux/seq_file.h>
 #include <linux/slab.h>
+#include <linux/of.h>
 
 #include "pinctrl-lantiq.h"
 
@@ -222,7 +221,7 @@ static int match_mux(const struct ltq_mfp_pin *mfp, unsigned mux)
 	return i;
 }
 
-/* don't assume .mfp is linearly mapped. find the mfp with the correct .pin */
+/* dont assume .mfp is linearly mapped. find the mfp with the correct .pin */
 static int match_mfp(const struct ltq_pinmux_info *info, int pin)
 {
 	int i;

@@ -1,5 +1,15 @@
-// SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2013 Broadcom Corporation
+/*
+ * Copyright (C) 2013 Broadcom Corporation
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation version 2.
+ *
+ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
+ * kind, whether express or implied; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -11,6 +21,7 @@
 #include <linux/clk.h>
 #include <linux/regulator/consumer.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/mmc/slot-gpio.h>
 
 #include "sdhci-pltfm.h"
@@ -167,7 +178,7 @@ static void sdhci_bcm_kona_init_74_clocks(struct sdhci_host *host,
 	/*
 	 *  JEDEC and SD spec specify supplying 74 continuous clocks to
 	 * device after power up. With minimum bus (100KHz) that
-	 * translates to 740us
+	 * that translates to 740us
 	 */
 	if (power_mode != MMC_POWER_OFF)
 		udelay(740);
@@ -310,25 +321,14 @@ err_pltfm_free:
 	return ret;
 }
 
-static void sdhci_bcm_kona_remove(struct platform_device *pdev)
-{
-	struct sdhci_host *host = platform_get_drvdata(pdev);
-	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct clk *clk = pltfm_host->clk;
-
-	sdhci_pltfm_remove(pdev);
-	clk_disable_unprepare(clk);
-}
-
 static struct platform_driver sdhci_bcm_kona_driver = {
 	.driver		= {
 		.name	= "sdhci-kona",
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.pm	= &sdhci_pltfm_pmops,
 		.of_match_table = sdhci_bcm_kona_of_match,
 	},
 	.probe		= sdhci_bcm_kona_probe,
-	.remove_new	= sdhci_bcm_kona_remove,
+	.remove		= sdhci_pltfm_unregister,
 };
 module_platform_driver(sdhci_bcm_kona_driver);
 

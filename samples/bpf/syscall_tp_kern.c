@@ -2,9 +2,8 @@
 /* Copyright (c) 2017 Facebook
  */
 #include <uapi/linux/bpf.h>
-#include <bpf/bpf_helpers.h>
+#include "bpf_helpers.h"
 
-#if !defined(__aarch64__)
 struct syscalls_enter_open_args {
 	unsigned long long unused;
 	long syscall_nr;
@@ -12,7 +11,6 @@ struct syscalls_enter_open_args {
 	long flags;
 	long mode;
 };
-#endif
 
 struct syscalls_exit_open_args {
 	unsigned long long unused;
@@ -20,28 +18,19 @@ struct syscalls_exit_open_args {
 	long ret;
 };
 
-struct syscalls_enter_open_at_args {
-	unsigned long long unused;
-	long syscall_nr;
-	long long dfd;
-	long filename_ptr;
-	long flags;
-	long mode;
+struct bpf_map_def SEC("maps") enter_open_map = {
+	.type = BPF_MAP_TYPE_ARRAY,
+	.key_size = sizeof(u32),
+	.value_size = sizeof(u32),
+	.max_entries = 1,
 };
 
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, u32);
-	__type(value, u32);
-	__uint(max_entries, 1);
-} enter_open_map SEC(".maps");
-
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, u32);
-	__type(value, u32);
-	__uint(max_entries, 1);
-} exit_open_map SEC(".maps");
+struct bpf_map_def SEC("maps") exit_open_map = {
+	.type = BPF_MAP_TYPE_ARRAY,
+	.key_size = sizeof(u32),
+	.value_size = sizeof(u32),
+	.max_entries = 1,
+};
 
 static __always_inline void count(void *map)
 {
@@ -55,48 +44,16 @@ static __always_inline void count(void *map)
 		bpf_map_update_elem(map, &key, &init_val, BPF_NOEXIST);
 }
 
-#if !defined(__aarch64__)
 SEC("tracepoint/syscalls/sys_enter_open")
 int trace_enter_open(struct syscalls_enter_open_args *ctx)
 {
-	count(&enter_open_map);
-	return 0;
-}
-#endif
-
-SEC("tracepoint/syscalls/sys_enter_openat")
-int trace_enter_open_at(struct syscalls_enter_open_at_args *ctx)
-{
-	count(&enter_open_map);
+	count((void *)&enter_open_map);
 	return 0;
 }
 
-SEC("tracepoint/syscalls/sys_enter_openat2")
-int trace_enter_open_at2(struct syscalls_enter_open_at_args *ctx)
-{
-	count(&enter_open_map);
-	return 0;
-}
-
-#if !defined(__aarch64__)
 SEC("tracepoint/syscalls/sys_exit_open")
 int trace_enter_exit(struct syscalls_exit_open_args *ctx)
 {
-	count(&exit_open_map);
-	return 0;
-}
-#endif
-
-SEC("tracepoint/syscalls/sys_exit_openat")
-int trace_enter_exit_at(struct syscalls_exit_open_args *ctx)
-{
-	count(&exit_open_map);
-	return 0;
-}
-
-SEC("tracepoint/syscalls/sys_exit_openat2")
-int trace_enter_exit_at2(struct syscalls_exit_open_args *ctx)
-{
-	count(&exit_open_map);
+	count((void *)&exit_open_map);
 	return 0;
 }

@@ -61,13 +61,14 @@ struct mtd_info *lpddr_cmdset(struct map_info *map)
 		mtd->_point = lpddr_point;
 		mtd->_unpoint = lpddr_unpoint;
 	}
-	mtd->size = 1ULL << lpddr->qinfo->DevSizeShift;
+	mtd->size = 1 << lpddr->qinfo->DevSizeShift;
 	mtd->erasesize = 1 << lpddr->qinfo->UniformBlockSizeShift;
 	mtd->writesize = 1 << lpddr->qinfo->BufSizeShift;
 
 	shared = kmalloc_array(lpddr->numchips, sizeof(struct flchip_shared),
 						GFP_KERNEL);
 	if (!shared) {
+		kfree(lpddr);
 		kfree(mtd);
 		return NULL;
 	}
@@ -93,34 +94,6 @@ struct mtd_info *lpddr_cmdset(struct map_info *map)
 	return mtd;
 }
 EXPORT_SYMBOL(lpddr_cmdset);
-
-static void print_drs_error(unsigned int dsr)
-{
-	int prog_status = (dsr & DSR_RPS) >> 8;
-
-	if (!(dsr & DSR_AVAILABLE))
-		pr_notice("DSR.15: (0) Device not Available\n");
-	if ((prog_status & 0x03) == 0x03)
-		pr_notice("DSR.9,8: (11) Attempt to program invalid half with 41h command\n");
-	else if (prog_status & 0x02)
-		pr_notice("DSR.9,8: (10) Object Mode Program attempt in region with Control Mode data\n");
-	else if (prog_status &  0x01)
-		pr_notice("DSR.9,8: (01) Program attempt in region with Object Mode data\n");
-	if (!(dsr & DSR_READY_STATUS))
-		pr_notice("DSR.7: (0) Device is Busy\n");
-	if (dsr & DSR_ESS)
-		pr_notice("DSR.6: (1) Erase Suspended\n");
-	if (dsr & DSR_ERASE_STATUS)
-		pr_notice("DSR.5: (1) Erase/Blank check error\n");
-	if (dsr & DSR_PROGRAM_STATUS)
-		pr_notice("DSR.4: (1) Program Error\n");
-	if (dsr & DSR_VPPS)
-		pr_notice("DSR.3: (1) Vpp low detect, operation aborted\n");
-	if (dsr & DSR_PSS)
-		pr_notice("DSR.2: (1) Program suspended\n");
-	if (dsr & DSR_DPS)
-		pr_notice("DSR.1: (1) Aborted Erase/Program attempt on locked block\n");
-}
 
 static int wait_for_ready(struct map_info *map, struct flchip *chip,
 		unsigned int chip_op_time)
@@ -332,7 +305,8 @@ static int chip_ready(struct map_info *map, struct flchip *chip, int mode)
 		/* Only if there's no operation suspended... */
 		if (mode == FL_READY && chip->oldstate == FL_READY)
 			return 0;
-		fallthrough;
+		/* fall through */
+
 	default:
 sleep:
 		set_current_state(TASK_UNINTERRUPTIBLE);
@@ -406,7 +380,7 @@ static int do_write_buffer(struct map_info *map, struct flchip *chip,
 {
 	struct lpddr_private *lpddr = map->fldrv_priv;
 	map_word datum;
-	int ret, wbufsize, word_gap;
+	int ret, wbufsize, word_gap, words;
 	const struct kvec *vec;
 	unsigned long vec_seek;
 	unsigned long prog_buf_ofs;
@@ -421,7 +395,10 @@ static int do_write_buffer(struct map_info *map, struct flchip *chip,
 	}
 	/* Figure out the number of words to write */
 	word_gap = (-adr & (map_bankwidth(map)-1));
-	if (word_gap) {
+	words = (len - word_gap + map_bankwidth(map) - 1) / map_bankwidth(map);
+	if (!word_gap) {
+		words--;
+	} else {
 		word_gap = map_bankwidth(map) - word_gap;
 		adr -= word_gap;
 		datum = map_word_ff(map);

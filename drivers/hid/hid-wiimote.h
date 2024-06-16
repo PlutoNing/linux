@@ -88,7 +88,6 @@ enum wiimote_exttype {
 	WIIMOTE_EXT_PRO_CONTROLLER,
 	WIIMOTE_EXT_DRUMS,
 	WIIMOTE_EXT_GUITAR,
-	WIIMOTE_EXT_TURNTABLE,
 	WIIMOTE_EXT_NUM,
 };
 
@@ -162,8 +161,6 @@ struct wiimote_data {
 	struct wiimote_state state;
 	struct work_struct init_worker;
 };
-
-extern bool wiimote_dpad_as_analog;
 
 /* wiimote modules */
 

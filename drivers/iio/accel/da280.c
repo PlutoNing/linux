@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * IIO driver for the MiraMEMS DA217 and DA280 3-axis accelerometer and
+/**
+ * IIO driver for the MiraMEMS DA280 3-axis accelerometer and
  * IIO driver for the MiraMEMS DA226 2-axis accelerometer
  *
  * Copyright (c) 2016 Hans de Goede <hdegoede@redhat.com>
@@ -23,6 +23,8 @@
 #define DA280_MODE_ENABLE		0x1e
 #define DA280_MODE_DISABLE		0x9e
 
+enum da280_chipset { da226, da280 };
+
 /*
  * a value of + or -4096 corresponds to + or - 1G
  * scale = 9.81 / 4096 = 0.002395019
@@ -43,11 +45,6 @@ static const struct iio_chan_spec da280_channels[] = {
 	DA280_CHANNEL(DA280_REG_ACC_X_LSB, X),
 	DA280_CHANNEL(DA280_REG_ACC_Y_LSB, Y),
 	DA280_CHANNEL(DA280_REG_ACC_Z_LSB, Z),
-};
-
-struct da280_match_data {
-	const char *name;
-	int num_channels;
 };
 
 struct da280_data {
@@ -92,27 +89,28 @@ static const struct iio_info da280_info = {
 	.read_raw	= da280_read_raw,
 };
 
-static void da280_disable(void *client)
+static enum da280_chipset da280_match_acpi_device(struct device *dev)
 {
-	da280_enable(client, false);
+	const struct acpi_device_id *id;
+
+	id = acpi_match_device(dev->driver->acpi_match_table, dev);
+	if (!id)
+		return -EINVAL;
+
+	return (enum da280_chipset) id->driver_data;
 }
 
-static int da280_probe(struct i2c_client *client)
+static int da280_probe(struct i2c_client *client,
+			const struct i2c_device_id *id)
 {
-	const struct da280_match_data *match_data;
+	int ret;
 	struct iio_dev *indio_dev;
 	struct da280_data *data;
-	int ret;
+	enum da280_chipset chip;
 
 	ret = i2c_smbus_read_byte_data(client, DA280_REG_CHIP_ID);
 	if (ret != DA280_CHIP_ID)
 		return (ret < 0) ? ret : -ENODEV;
-
-	match_data = i2c_get_match_data(client);
-	if (!match_data) {
-		dev_err(&client->dev, "Error match-data not set\n");
-		return -EINVAL;
-	}
 
 	indio_dev = devm_iio_device_alloc(&client->dev, sizeof(*data));
 	if (!indio_dev)
@@ -120,24 +118,50 @@ static int da280_probe(struct i2c_client *client)
 
 	data = iio_priv(indio_dev);
 	data->client = client;
+	i2c_set_clientdata(client, indio_dev);
 
+	indio_dev->dev.parent = &client->dev;
 	indio_dev->info = &da280_info;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->channels = da280_channels;
-	indio_dev->num_channels = match_data->num_channels;
-	indio_dev->name = match_data->name;
+
+	if (ACPI_HANDLE(&client->dev)) {
+		chip = da280_match_acpi_device(&client->dev);
+	} else {
+		chip = id->driver_data;
+	}
+
+	if (chip == da226) {
+		indio_dev->name = "da226";
+		indio_dev->num_channels = 2;
+	} else {
+		indio_dev->name = "da280";
+		indio_dev->num_channels = 3;
+	}
 
 	ret = da280_enable(client, true);
 	if (ret < 0)
 		return ret;
 
-	ret = devm_add_action_or_reset(&client->dev, da280_disable, client);
-	if (ret)
-		return ret;
+	ret = iio_device_register(indio_dev);
+	if (ret < 0) {
+		dev_err(&client->dev, "device_register failed\n");
+		da280_enable(client, false);
+	}
 
-	return devm_iio_device_register(&client->dev, indio_dev);
+	return ret;
 }
 
+static int da280_remove(struct i2c_client *client)
+{
+	struct iio_dev *indio_dev = i2c_get_clientdata(client);
+
+	iio_device_unregister(indio_dev);
+
+	return da280_enable(client, false);
+}
+
+#ifdef CONFIG_PM_SLEEP
 static int da280_suspend(struct device *dev)
 {
 	return da280_enable(to_i2c_client(dev), false);
@@ -147,24 +171,19 @@ static int da280_resume(struct device *dev)
 {
 	return da280_enable(to_i2c_client(dev), true);
 }
+#endif
 
-static DEFINE_SIMPLE_DEV_PM_OPS(da280_pm_ops, da280_suspend, da280_resume);
-
-static const struct da280_match_data da217_match_data = { "da217", 3 };
-static const struct da280_match_data da226_match_data = { "da226", 2 };
-static const struct da280_match_data da280_match_data = { "da280", 3 };
+static SIMPLE_DEV_PM_OPS(da280_pm_ops, da280_suspend, da280_resume);
 
 static const struct acpi_device_id da280_acpi_match[] = {
-	{ "NSA2513", (kernel_ulong_t)&da217_match_data },
-	{ "MIRAACC", (kernel_ulong_t)&da280_match_data },
-	{}
+	{"MIRAACC", da280},
+	{},
 };
 MODULE_DEVICE_TABLE(acpi, da280_acpi_match);
 
 static const struct i2c_device_id da280_i2c_id[] = {
-	{ "da217", (kernel_ulong_t)&da217_match_data },
-	{ "da226", (kernel_ulong_t)&da226_match_data },
-	{ "da280", (kernel_ulong_t)&da280_match_data },
+	{ "da226", da226 },
+	{ "da280", da280 },
 	{}
 };
 MODULE_DEVICE_TABLE(i2c, da280_i2c_id);
@@ -172,10 +191,11 @@ MODULE_DEVICE_TABLE(i2c, da280_i2c_id);
 static struct i2c_driver da280_driver = {
 	.driver = {
 		.name = "da280",
-		.acpi_match_table = da280_acpi_match,
-		.pm = pm_sleep_ptr(&da280_pm_ops),
+		.acpi_match_table = ACPI_PTR(da280_acpi_match),
+		.pm = &da280_pm_ops,
 	},
 	.probe		= da280_probe,
+	.remove		= da280_remove,
 	.id_table	= da280_i2c_id,
 };
 

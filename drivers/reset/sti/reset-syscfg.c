@@ -7,18 +7,17 @@
  */
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
-#include <linux/property.h>
 #include <linux/module.h>
 #include <linux/err.h>
 #include <linux/types.h>
-#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
 
 #include "reset-syscfg.h"
 
 /**
- * struct syscfg_reset_channel - Reset channel regmap configuration
+ * Reset channel regmap configuration
  *
  * @reset: regmap field for the channel's reset bit.
  * @ack: regmap field for the channel's ack bit (optional).
@@ -29,9 +28,8 @@ struct syscfg_reset_channel {
 };
 
 /**
- * struct syscfg_reset_controller - A reset controller which groups together
- * a set of related reset bits, which may be located in different system
- * configuration registers.
+ * A reset controller which groups together a set of related reset bits, which
+ * may be located in different system configuration registers.
  *
  * @rst: base reset controller structure.
  * @active_low: are the resets in this controller active low, i.e. clearing
@@ -65,12 +63,22 @@ static int syscfg_reset_program_hw(struct reset_controller_dev *rcdev,
 		return err;
 
 	if (ch->ack) {
+		unsigned long timeout = jiffies + msecs_to_jiffies(1000);
 		u32 ack_val;
 
-		err = regmap_field_read_poll_timeout(ch->ack, ack_val, (ack_val == ctrl_val),
-						     100, USEC_PER_SEC);
-		if (err)
-			return err;
+		while (true) {
+			err = regmap_field_read(ch->ack, &ack_val);
+			if (err)
+				return err;
+
+			if (ack_val == ctrl_val)
+				break;
+
+			if (time_after(jiffies, timeout))
+				return -ETIME;
+
+			cpu_relax();
+		}
 	}
 
 	return 0;
@@ -144,7 +152,7 @@ static int syscfg_reset_controller_register(struct device *dev,
 	if (!rc->channels)
 		return -ENOMEM;
 
-	rc->rst.ops = &syscfg_reset_ops;
+	rc->rst.ops = &syscfg_reset_ops,
 	rc->rst.of_node = dev->of_node;
 	rc->rst.nr_resets = data->nr_channels;
 	rc->active_low = data->active_low;
@@ -184,14 +192,14 @@ static int syscfg_reset_controller_register(struct device *dev,
 int syscfg_reset_probe(struct platform_device *pdev)
 {
 	struct device *dev = pdev ? &pdev->dev : NULL;
-	const void *data;
+	const struct of_device_id *match;
 
 	if (!dev || !dev->driver)
 		return -ENODEV;
 
-	data = device_get_match_data(&pdev->dev);
-	if (!data)
+	match = of_match_device(dev->driver->of_match_table, dev);
+	if (!match || !match->data)
 		return -EINVAL;
 
-	return syscfg_reset_controller_register(dev, data);
+	return syscfg_reset_controller_register(dev, match->data);
 }

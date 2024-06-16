@@ -19,6 +19,7 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_print.h>
 
 #define MCS_LEVEL2_KEY		0xf0
 #define MCS_MTP_KEY		0xf1
@@ -51,6 +52,7 @@ static const struct drm_display_mode default_mode = {
 	.vsync_start = 320 + 150,
 	.vsync_end = 320 + 150 + 1,
 	.vtotal = 320 + 150 + 1 + 2,
+	.vrefresh = 30,
 	.flags = 0,
 };
 
@@ -398,16 +400,16 @@ static int s6e63j0x03_enable(struct drm_panel *panel)
 	return 0;
 }
 
-static int s6e63j0x03_get_modes(struct drm_panel *panel,
-				struct drm_connector *connector)
+static int s6e63j0x03_get_modes(struct drm_panel *panel)
 {
+	struct drm_connector *connector = panel->connector;
 	struct drm_display_mode *mode;
 
-	mode = drm_mode_duplicate(connector->dev, &default_mode);
+	mode = drm_mode_duplicate(panel->drm, &default_mode);
 	if (!mode) {
-		dev_err(panel->dev, "failed to add mode %ux%u@%u\n",
+		DRM_ERROR("failed to add mode %ux%ux@%u\n",
 			default_mode.hdisplay, default_mode.vdisplay,
-			drm_mode_vrefresh(&default_mode));
+			default_mode.vrefresh);
 		return -ENOMEM;
 	}
 
@@ -446,36 +448,42 @@ static int s6e63j0x03_probe(struct mipi_dsi_device *dsi)
 
 	dsi->lanes = 1;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO_NO_HFP |
-		MIPI_DSI_MODE_VIDEO_NO_HBP | MIPI_DSI_MODE_VIDEO_NO_HSA;
+	dsi->mode_flags = MIPI_DSI_MODE_EOT_PACKET;
 
 	ctx->supplies[0].supply = "vdd3";
 	ctx->supplies[1].supply = "vci";
 	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(ctx->supplies),
 				      ctx->supplies);
-	if (ret < 0)
-		return dev_err_probe(dev, ret, "failed to get regulators\n");
+	if (ret < 0) {
+		dev_err(dev, "failed to get regulators: %d\n", ret);
+		return ret;
+	}
 
 	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
-	if (IS_ERR(ctx->reset_gpio))
-		return dev_err_probe(dev, PTR_ERR(ctx->reset_gpio),
-				     "cannot get reset-gpio\n");
+	if (IS_ERR(ctx->reset_gpio)) {
+		dev_err(dev, "cannot get reset-gpio: %ld\n",
+				PTR_ERR(ctx->reset_gpio));
+		return PTR_ERR(ctx->reset_gpio);
+	}
 
-	drm_panel_init(&ctx->panel, dev, &s6e63j0x03_funcs,
-		       DRM_MODE_CONNECTOR_DSI);
-	ctx->panel.prepare_prev_first = true;
+	drm_panel_init(&ctx->panel);
+	ctx->panel.dev = dev;
+	ctx->panel.funcs = &s6e63j0x03_funcs;
 
 	ctx->bl_dev = backlight_device_register("s6e63j0x03", dev, ctx,
 						&s6e63j0x03_bl_ops, NULL);
-	if (IS_ERR(ctx->bl_dev))
-		return dev_err_probe(dev, PTR_ERR(ctx->bl_dev),
-				     "failed to register backlight device\n");
+	if (IS_ERR(ctx->bl_dev)) {
+		dev_err(dev, "failed to register backlight device\n");
+		return PTR_ERR(ctx->bl_dev);
+	}
 
 	ctx->bl_dev->props.max_brightness = MAX_BRIGHTNESS;
 	ctx->bl_dev->props.brightness = DEFAULT_BRIGHTNESS;
 	ctx->bl_dev->props.power = FB_BLANK_POWERDOWN;
 
-	drm_panel_add(&ctx->panel);
+	ret = drm_panel_add(&ctx->panel);
+	if (ret < 0)
+		goto unregister_backlight;
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0)
@@ -485,12 +493,14 @@ static int s6e63j0x03_probe(struct mipi_dsi_device *dsi)
 
 remove_panel:
 	drm_panel_remove(&ctx->panel);
+
+unregister_backlight:
 	backlight_device_unregister(ctx->bl_dev);
 
 	return ret;
 }
 
-static void s6e63j0x03_remove(struct mipi_dsi_device *dsi)
+static int s6e63j0x03_remove(struct mipi_dsi_device *dsi)
 {
 	struct s6e63j0x03 *ctx = mipi_dsi_get_drvdata(dsi);
 
@@ -498,6 +508,8 @@ static void s6e63j0x03_remove(struct mipi_dsi_device *dsi)
 	drm_panel_remove(&ctx->panel);
 
 	backlight_device_unregister(ctx->bl_dev);
+
+	return 0;
 }
 
 static const struct of_device_id s6e63j0x03_of_match[] = {

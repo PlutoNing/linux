@@ -23,6 +23,8 @@
 #define MSG_DESCRIPTOR_SIZE         0x24
 #define MSG_HEADER_SIZE             (MSG_DESCRIPTOR_SIZE + 4)
 
+#define MSG_DEFAULT_SIZE            512
+
 #define MSG_TYPE_MASK               0x00000003    /* mask for following types */
 #define MSG_TYPE_NOTIFY             0             /* embedded -> driver (only notification, do not get_msg() !) */
 #define MSG_TYPE_COMMAND            1             /* driver <-> embedded (a command has no answer) */
@@ -68,6 +70,7 @@ static int get_msg(struct mixart_mgr *mgr, struct mixart_msg *resp,
 	unsigned int i;
 #endif
 
+	mutex_lock(&mgr->msg_lock);
 	err = 0;
 
 	/* copy message descriptor from miXart to driver */
@@ -116,6 +119,8 @@ static int get_msg(struct mixart_mgr *mgr, struct mixart_msg *resp,
 	writel_be(headptr, MIXART_MEM(mgr, MSG_OUTBOUND_FREE_HEAD));
 
  _clean_exit:
+	mutex_unlock(&mgr->msg_lock);
+
 	return err;
 }
 
@@ -253,9 +258,7 @@ int snd_mixart_send_msg(struct mixart_mgr *mgr, struct mixart_msg *request, int 
 	resp.data = resp_data;
 	resp.size = max_resp_size;
 
-	mutex_lock(&mgr->msg_lock);
 	err = get_msg(mgr, &resp, msg_frame);
-	mutex_unlock(&mgr->msg_lock);
 
 	if( request->message_id != resp.message_id )
 		dev_err(&mgr->pci->dev, "RESPONSE ERROR!\n");
@@ -442,9 +445,6 @@ irqreturn_t snd_mixart_threaded_irq(int irq, void *dev_id)
 				struct mixart_timer_notify *notify;
 				notify = (struct mixart_timer_notify *)mixart_msg_data;
 
-				BUILD_BUG_ON(sizeof(notify) > sizeof(mixart_msg_data));
-				if (snd_BUG_ON(notify->stream_count > ARRAY_SIZE(notify->streams)))
-					break;
 				for(i=0; i<notify->stream_count; i++) {
 
 					u32 buffer_id = notify->streams[i].buffer_id;
@@ -527,7 +527,7 @@ irqreturn_t snd_mixart_threaded_irq(int irq, void *dev_id)
 				dev_err(&mgr->pci->dev,
 					"canceled notification %x !\n", msg);
 			}
-			fallthrough;
+			/* fall through */
 		case MSG_TYPE_ANSWER:
 			/* answer or notification to a message we are waiting for*/
 			mutex_lock(&mgr->msg_lock);

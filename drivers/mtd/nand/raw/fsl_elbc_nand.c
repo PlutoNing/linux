@@ -22,6 +22,7 @@
 
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/rawnand.h>
+#include <linux/mtd/nand_ecc.h>
 #include <linux/mtd/partitions.h>
 
 #include <asm/io.h>
@@ -243,7 +244,7 @@ static int fsl_elbc_run_command(struct mtd_info *mtd)
 		return -EIO;
 	}
 
-	if (chip->ecc.engine_type != NAND_ECC_ENGINE_TYPE_ON_HOST)
+	if (chip->ecc.mode != NAND_ECC_HW)
 		return 0;
 
 	elbc_fcm_ctrl->max_bitflips = 0;
@@ -323,7 +324,8 @@ static void fsl_elbc_cmdfunc(struct nand_chip *chip, unsigned int command,
 	/* READ0 and READ1 read the entire buffer to use hardware ECC. */
 	case NAND_CMD_READ1:
 		column += 256;
-		fallthrough;
+
+	/* fall-through */
 	case NAND_CMD_READ0:
 		dev_dbg(priv->dev,
 		        "fsl_elbc_cmdfunc: NAND_CMD_READ0, page_addr:"
@@ -725,52 +727,40 @@ static int fsl_elbc_attach_chip(struct nand_chip *chip)
 	struct fsl_lbc_ctrl *ctrl = priv->ctrl;
 	struct fsl_lbc_regs __iomem *lbc = ctrl->regs;
 	unsigned int al;
-	u32 br;
 
+	switch (chip->ecc.mode) {
 	/*
 	 * if ECC was not chosen in DT, decide whether to use HW or SW ECC from
 	 * CS Base Register
 	 */
-	if (chip->ecc.engine_type == NAND_ECC_ENGINE_TYPE_INVALID) {
+	case NAND_ECC_NONE:
 		/* If CS Base Register selects full hardware ECC then use it */
 		if ((in_be32(&lbc->bank[priv->bank].br) & BR_DECC) ==
 		    BR_DECC_CHK_GEN) {
-			chip->ecc.engine_type = NAND_ECC_ENGINE_TYPE_ON_HOST;
+			chip->ecc.read_page = fsl_elbc_read_page;
+			chip->ecc.write_page = fsl_elbc_write_page;
+			chip->ecc.write_subpage = fsl_elbc_write_subpage;
+
+			chip->ecc.mode = NAND_ECC_HW;
+			mtd_set_ooblayout(mtd, &fsl_elbc_ooblayout_ops);
+			chip->ecc.size = 512;
+			chip->ecc.bytes = 3;
+			chip->ecc.strength = 1;
 		} else {
 			/* otherwise fall back to default software ECC */
-			chip->ecc.engine_type = NAND_ECC_ENGINE_TYPE_SOFT;
-			chip->ecc.algo = NAND_ECC_ALGO_HAMMING;
+			chip->ecc.mode = NAND_ECC_SOFT;
+			chip->ecc.algo = NAND_ECC_HAMMING;
 		}
-	}
-
-	switch (chip->ecc.engine_type) {
-	/* if HW ECC was chosen, setup ecc and oob layout */
-	case NAND_ECC_ENGINE_TYPE_ON_HOST:
-		chip->ecc.read_page = fsl_elbc_read_page;
-		chip->ecc.write_page = fsl_elbc_write_page;
-		chip->ecc.write_subpage = fsl_elbc_write_subpage;
-		mtd_set_ooblayout(mtd, &fsl_elbc_ooblayout_ops);
-		chip->ecc.size = 512;
-		chip->ecc.bytes = 3;
-		chip->ecc.strength = 1;
 		break;
 
-	/* if none or SW ECC was chosen, we do not need to set anything here */
-	case NAND_ECC_ENGINE_TYPE_NONE:
-	case NAND_ECC_ENGINE_TYPE_SOFT:
-	case NAND_ECC_ENGINE_TYPE_ON_DIE:
+	/* if SW ECC was chosen in DT, we do not need to set anything here */
+	case NAND_ECC_SOFT:
 		break;
 
+	/* should we also implement NAND_ECC_HW to do as the code above? */
 	default:
 		return -EINVAL;
 	}
-
-	/* enable/disable HW ECC checking and generating based on if HW ECC was chosen */
-	br = in_be32(&lbc->bank[priv->bank].br) & ~BR_DECC;
-	if (chip->ecc.engine_type == NAND_ECC_ENGINE_TYPE_ON_HOST)
-		out_be32(&lbc->bank[priv->bank].br, br | BR_DECC_CHK_GEN);
-	else
-		out_be32(&lbc->bank[priv->bank].br, br | BR_DECC_OFF);
 
 	/* calculate FMR Address Length field */
 	al = 0;
@@ -797,8 +787,8 @@ static int fsl_elbc_attach_chip(struct nand_chip *chip)
 	        chip->page_shift);
 	dev_dbg(priv->dev, "fsl_elbc_init: nand->phys_erase_shift = %d\n",
 	        chip->phys_erase_shift);
-	dev_dbg(priv->dev, "fsl_elbc_init: nand->ecc.engine_type = %d\n",
-		chip->ecc.engine_type);
+	dev_dbg(priv->dev, "fsl_elbc_init: nand->ecc.mode = %d\n",
+	        chip->ecc.mode);
 	dev_dbg(priv->dev, "fsl_elbc_init: nand->ecc.steps = %d\n",
 	        chip->ecc.steps);
 	dev_dbg(priv->dev, "fsl_elbc_init: nand->ecc.bytes = %d\n",
@@ -869,8 +859,7 @@ static int fsl_elbc_nand_probe(struct platform_device *pdev)
 	struct mtd_info *mtd;
 
 	if (!fsl_lbc_ctrl_dev || !fsl_lbc_ctrl_dev->regs)
-		return dev_err_probe(&pdev->dev, -EPROBE_DEFER, "lbc_ctrl_dev missing\n");
-
+		return -ENODEV;
 	lbc = fsl_lbc_ctrl_dev->regs;
 	dev = fsl_lbc_ctrl_dev->dev;
 
@@ -964,17 +953,12 @@ err:
 	return ret;
 }
 
-static void fsl_elbc_nand_remove(struct platform_device *pdev)
+static int fsl_elbc_nand_remove(struct platform_device *pdev)
 {
 	struct fsl_elbc_fcm_ctrl *elbc_fcm_ctrl = fsl_lbc_ctrl_dev->nand;
 	struct fsl_elbc_mtd *priv = dev_get_drvdata(&pdev->dev);
-	struct nand_chip *chip = &priv->chip;
-	int ret;
 
-	ret = mtd_device_unregister(nand_to_mtd(chip));
-	WARN_ON(ret);
-	nand_cleanup(chip);
-
+	nand_release(&priv->chip);
 	fsl_elbc_chip_remove(priv);
 
 	mutex_lock(&fsl_elbc_nand_mutex);
@@ -984,6 +968,8 @@ static void fsl_elbc_nand_remove(struct platform_device *pdev)
 		kfree(elbc_fcm_ctrl);
 	}
 	mutex_unlock(&fsl_elbc_nand_mutex);
+
+	return 0;
 
 }
 
@@ -999,7 +985,7 @@ static struct platform_driver fsl_elbc_nand_driver = {
 		.of_match_table = fsl_elbc_nand_match,
 	},
 	.probe = fsl_elbc_nand_probe,
-	.remove_new = fsl_elbc_nand_remove,
+	.remove = fsl_elbc_nand_remove,
 };
 
 module_platform_driver(fsl_elbc_nand_driver);

@@ -132,7 +132,6 @@ Some additional variants exist for more specialized cases:
 .. c:function:: u64 ktime_get_mono_fast_ns( void )
 		u64 ktime_get_raw_fast_ns( void )
 		u64 ktime_get_boot_fast_ns( void )
-		u64 ktime_get_tai_fast_ns( void )
 		u64 ktime_get_real_fast_ns( void )
 
 	These variants are safe to call from any context, including from
@@ -155,9 +154,9 @@ architectures. These are the recommended replacements:
 
 	Use ktime_get() or ktime_get_ts64() instead.
 
-.. c:function:: void do_gettimeofday( struct timeval * )
-		void getnstimeofday( struct timespec * )
-		void getnstimeofday64( struct timespec64 * )
+.. c:function:: struct timeval do_gettimeofday( void )
+		struct timespec getnstimeofday( void )
+		struct timespec64 getnstimeofday64( void )
 		void ktime_get_real_ts( struct timespec * )
 
 	ktime_get_real_ts64() is a direct replacement, but consider using

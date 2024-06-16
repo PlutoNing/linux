@@ -6,13 +6,14 @@
  *   Tang Yuantian <Yuantian.Tang@freescale.com>
  */
 
-#include <linux/acpi.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/pm.h>
 #include <linux/ahci_platform.h>
 #include <linux/device.h>
+#include <linux/of_address.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/libata.h>
 #include "ahci.h"
@@ -75,20 +76,14 @@ static const struct of_device_id ahci_qoriq_of_match[] = {
 	{ .compatible = "fsl,ls1088a-ahci", .data = (void *)AHCI_LS1088A},
 	{ .compatible = "fsl,ls2088a-ahci", .data = (void *)AHCI_LS2088A},
 	{ .compatible = "fsl,lx2160a-ahci", .data = (void *)AHCI_LX2160A},
-	{ /* sentinel */ }
+	{},
 };
 MODULE_DEVICE_TABLE(of, ahci_qoriq_of_match);
-
-static const struct acpi_device_id ahci_qoriq_acpi_match[] = {
-	{"NXP0004", .driver_data = (kernel_ulong_t)AHCI_LX2160A},
-	{ }
-};
-MODULE_DEVICE_TABLE(acpi, ahci_qoriq_acpi_match);
 
 static int ahci_qoriq_hardreset(struct ata_link *link, unsigned int *class,
 			  unsigned long deadline)
 {
-	const unsigned int *timing = sata_ehc_deb_timing(&link->eh_context);
+	const unsigned long *timing = sata_ehc_deb_timing(&link->eh_context);
 	void __iomem *port_mmio = ahci_port_base(link->ap);
 	u32 px_cmd, px_is, px_val;
 	struct ata_port *ap = link->ap;
@@ -100,6 +95,8 @@ static int ahci_qoriq_hardreset(struct ata_link *link, unsigned int *class,
 	bool online;
 	int rc;
 	bool ls1021a_workaround = (qoriq_priv->type == AHCI_LS1021A);
+
+	DPRINTK("ENTER\n");
 
 	hpriv->stop_engine(ap);
 
@@ -121,7 +118,7 @@ static int ahci_qoriq_hardreset(struct ata_link *link, unsigned int *class,
 
 	/* clear D2H reception area to properly wait for D2H FIS */
 	ata_tf_init(link->device, &tf);
-	tf.status = ATA_BUSY;
+	tf.command = ATA_BUSY;
 	ata_tf_to_fis(&tf, 0, 0, d2h_fis);
 
 	rc = sata_link_hardreset(link, timing, deadline, &online,
@@ -142,6 +139,8 @@ static int ahci_qoriq_hardreset(struct ata_link *link, unsigned int *class,
 
 	if (online)
 		*class = ahci_dev_classify(ap);
+
+	DPRINTK("EXIT, rc=%d, class=%u\n", rc, *class);
 	return rc;
 }
 
@@ -157,7 +156,7 @@ static const struct ata_port_info ahci_qoriq_port_info = {
 	.port_ops	= &ahci_qoriq_ops,
 };
 
-static const struct scsi_host_template ahci_qoriq_sht = {
+static struct scsi_host_template ahci_qoriq_sht = {
 	AHCI_SHT(DRV_NAME),
 };
 
@@ -256,7 +255,6 @@ static int ahci_qoriq_phy_init(struct ahci_host_priv *hpriv)
 static int ahci_qoriq_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	const struct acpi_device_id *acpi_id;
 	struct device *dev = &pdev->dev;
 	struct ahci_host_priv *hpriv;
 	struct ahci_qoriq_priv *qoriq_priv;
@@ -269,18 +267,14 @@ static int ahci_qoriq_probe(struct platform_device *pdev)
 		return PTR_ERR(hpriv);
 
 	of_id = of_match_node(ahci_qoriq_of_match, np);
-	acpi_id = acpi_match_device(ahci_qoriq_acpi_match, &pdev->dev);
-	if (!(of_id || acpi_id))
+	if (!of_id)
 		return -ENODEV;
 
 	qoriq_priv = devm_kzalloc(dev, sizeof(*qoriq_priv), GFP_KERNEL);
 	if (!qoriq_priv)
 		return -ENOMEM;
 
-	if (of_id)
-		qoriq_priv->type = (unsigned long)of_id->data;
-	else
-		qoriq_priv->type = (enum ahci_qoriq_type)acpi_id->driver_data;
+	qoriq_priv->type = (enum ahci_qoriq_type)of_id->data;
 
 	if (unlikely(!ecc_initialized)) {
 		res = platform_get_resource_byname(pdev,
@@ -294,8 +288,7 @@ static int ahci_qoriq_probe(struct platform_device *pdev)
 		}
 	}
 
-	if (device_get_dma_attr(&pdev->dev) == DEV_DMA_COHERENT)
-		qoriq_priv->is_dmacoherent = true;
+	qoriq_priv->is_dmacoherent = of_dma_is_coherent(np);
 
 	rc = ahci_platform_enable_resources(hpriv);
 	if (rc)
@@ -357,11 +350,10 @@ static SIMPLE_DEV_PM_OPS(ahci_qoriq_pm_ops, ahci_platform_suspend,
 
 static struct platform_driver ahci_qoriq_driver = {
 	.probe = ahci_qoriq_probe,
-	.remove_new = ata_platform_remove_one,
+	.remove = ata_platform_remove_one,
 	.driver = {
 		.name = DRV_NAME,
 		.of_match_table = ahci_qoriq_of_match,
-		.acpi_match_table = ahci_qoriq_acpi_match,
 		.pm = &ahci_qoriq_pm_ops,
 	},
 };

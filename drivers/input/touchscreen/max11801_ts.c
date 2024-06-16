@@ -130,6 +130,7 @@ static irqreturn_t max11801_ts_interrupt(int irq, void *dev_id)
 
 		switch (buf[1] & EVENT_TAG_MASK) {
 		case EVENT_INIT:
+			/* fall through */
 		case EVENT_MIDDLE:
 			input_report_abs(data->input_dev, ABS_X, x);
 			input_report_abs(data->input_dev, ABS_Y, y);
@@ -168,7 +169,8 @@ static void max11801_ts_phy_init(struct max11801_data *data)
 	max11801_write_reg(client, OP_MODE_CONF_REG, 0x36);
 }
 
-static int max11801_ts_probe(struct i2c_client *client)
+static int max11801_ts_probe(struct i2c_client *client,
+				       const struct i2c_device_id *id)
 {
 	struct max11801_data *data;
 	struct input_dev *input_dev;

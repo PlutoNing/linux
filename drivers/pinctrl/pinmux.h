@@ -9,33 +9,22 @@
  *
  * Author: Linus Walleij <linus.walleij@linaro.org>
  */
-
-#include <linux/types.h>
-
-struct dentry;
-struct seq_file;
-
-struct pinctrl_dev;
-struct pinctrl_gpio_range;
-struct pinctrl_map;
-struct pinctrl_setting;
-
 #ifdef CONFIG_PINMUX
 
 int pinmux_check_ops(struct pinctrl_dev *pctldev);
 
 int pinmux_validate_map(const struct pinctrl_map *map, int i);
 
-bool pinmux_can_be_used_for_gpio(struct pinctrl_dev *pctldev, unsigned int pin);
+bool pinmux_can_be_used_for_gpio(struct pinctrl_dev *pctldev, unsigned pin);
 
 int pinmux_request_gpio(struct pinctrl_dev *pctldev,
 			struct pinctrl_gpio_range *range,
-			unsigned int pin, unsigned int gpio);
-void pinmux_free_gpio(struct pinctrl_dev *pctldev, unsigned int pin,
+			unsigned pin, unsigned gpio);
+void pinmux_free_gpio(struct pinctrl_dev *pctldev, unsigned pin,
 		      struct pinctrl_gpio_range *range);
 int pinmux_gpio_direction(struct pinctrl_dev *pctldev,
 			  struct pinctrl_gpio_range *range,
-			  unsigned int pin, bool input);
+			  unsigned pin, bool input);
 
 int pinmux_map_to_setting(const struct pinctrl_map *map,
 			  struct pinctrl_setting *setting);
@@ -56,27 +45,27 @@ static inline int pinmux_validate_map(const struct pinctrl_map *map, int i)
 }
 
 static inline bool pinmux_can_be_used_for_gpio(struct pinctrl_dev *pctldev,
-					       unsigned int pin)
+					       unsigned pin)
 {
 	return true;
 }
 
 static inline int pinmux_request_gpio(struct pinctrl_dev *pctldev,
 			struct pinctrl_gpio_range *range,
-			unsigned int pin, unsigned int gpio)
+			unsigned pin, unsigned gpio)
 {
 	return 0;
 }
 
 static inline void pinmux_free_gpio(struct pinctrl_dev *pctldev,
-				    unsigned int pin,
+				    unsigned pin,
 				    struct pinctrl_gpio_range *range)
 {
 }
 
 static inline int pinmux_gpio_direction(struct pinctrl_dev *pctldev,
 					struct pinctrl_gpio_range *range,
-					unsigned int pin, bool input)
+					unsigned pin, bool input)
 {
 	return 0;
 }
@@ -140,7 +129,7 @@ static inline void pinmux_init_device_debugfs(struct dentry *devroot,
  */
 struct function_desc {
 	const char *name;
-	const char * const *group_names;
+	const char **group_names;
 	int num_group_names;
 	void *data;
 };
@@ -154,15 +143,15 @@ pinmux_generic_get_function_name(struct pinctrl_dev *pctldev,
 int pinmux_generic_get_function_groups(struct pinctrl_dev *pctldev,
 				       unsigned int selector,
 				       const char * const **groups,
-				       unsigned int * const num_groups);
+				       unsigned * const num_groups);
 
 struct function_desc *pinmux_generic_get_function(struct pinctrl_dev *pctldev,
 						  unsigned int selector);
 
 int pinmux_generic_add_function(struct pinctrl_dev *pctldev,
 				const char *name,
-				const char * const *groups,
-				unsigned int const num_groups,
+				const char **groups,
+				unsigned const num_groups,
 				void *data);
 
 int pinmux_generic_remove_function(struct pinctrl_dev *pctldev,

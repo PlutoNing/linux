@@ -6,7 +6,6 @@
  */
 
 #include <linux/i2c.h>
-#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/regmap.h>
 
@@ -18,9 +17,9 @@ static const struct regmap_config adxl372_regmap_config = {
 	.readable_noinc_reg = adxl372_readable_noinc_reg,
 };
 
-static int adxl372_i2c_probe(struct i2c_client *client)
+static int adxl372_i2c_probe(struct i2c_client *client,
+			     const struct i2c_device_id *id)
 {
-	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct regmap *regmap;
 	unsigned int regval;
 	int ret;
@@ -47,16 +46,9 @@ static const struct i2c_device_id adxl372_i2c_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, adxl372_i2c_id);
 
-static const struct of_device_id adxl372_of_match[] = {
-	{ .compatible = "adi,adxl372" },
-	{ }
-};
-MODULE_DEVICE_TABLE(of, adxl372_of_match);
-
 static struct i2c_driver adxl372_i2c_driver = {
 	.driver = {
 		.name = "adxl372_i2c",
-		.of_match_table = adxl372_of_match,
 	},
 	.probe = adxl372_i2c_probe,
 	.id_table = adxl372_i2c_id,
@@ -67,4 +59,3 @@ module_i2c_driver(adxl372_i2c_driver);
 MODULE_AUTHOR("Stefan Popa <stefan.popa@analog.com>");
 MODULE_DESCRIPTION("Analog Devices ADXL372 3-axis accelerometer I2C driver");
 MODULE_LICENSE("GPL");
-MODULE_IMPORT_NS(IIO_ADXL372);

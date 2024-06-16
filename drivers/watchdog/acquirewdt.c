@@ -221,7 +221,6 @@ static const struct file_operations acq_fops = {
 	.llseek		= no_llseek,
 	.write		= acq_write,
 	.unlocked_ioctl	= acq_ioctl,
-	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= acq_open,
 	.release	= acq_close,
 };
@@ -271,12 +270,14 @@ out:
 	return ret;
 }
 
-static void acq_remove(struct platform_device *dev)
+static int acq_remove(struct platform_device *dev)
 {
 	misc_deregister(&acq_miscdev);
 	release_region(wdt_start, 1);
 	if (wdt_stop != wdt_start)
 		release_region(wdt_stop, 1);
+
+	return 0;
 }
 
 static void acq_shutdown(struct platform_device *dev)
@@ -286,7 +287,7 @@ static void acq_shutdown(struct platform_device *dev)
 }
 
 static struct platform_driver acquirewdt_driver = {
-	.remove_new	= acq_remove,
+	.remove		= acq_remove,
 	.shutdown	= acq_shutdown,
 	.driver		= {
 		.name	= DRV_NAME,

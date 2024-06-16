@@ -41,7 +41,7 @@ MODULE_PARM_DESC(rsa_disable, "Disable use of RSA - any non-zero value");
 
 /* List heads for the supported algorithms */
 static LIST_HEAD(hash_algs);
-static LIST_HEAD(skcipher_algs);
+static LIST_HEAD(cipher_algs);
 static LIST_HEAD(aead_algs);
 static LIST_HEAD(akcipher_algs);
 
@@ -59,7 +59,7 @@ struct ccp_crypto_queue {
 #define CCP_CRYPTO_MAX_QLEN	100
 
 static struct ccp_crypto_queue req_queue;
-static DEFINE_SPINLOCK(req_queue_lock);
+static spinlock_t req_queue_lock;
 
 struct ccp_crypto_cmd {
 	struct list_head entry;
@@ -76,6 +76,13 @@ struct ccp_crypto_cmd {
 
 	/* Used for held command processing to determine state */
 	int ret;
+};
+
+struct ccp_crypto_cpu {
+	struct work_struct work;
+	struct completion completion;
+	struct ccp_crypto_cmd *crypto_cmd;
+	int err;
 };
 
 static inline bool ccp_crypto_success(int err)
@@ -139,14 +146,14 @@ static void ccp_crypto_complete(void *data, int err)
 	struct ccp_crypto_cmd *crypto_cmd = data;
 	struct ccp_crypto_cmd *held, *next, *backlog;
 	struct crypto_async_request *req = crypto_cmd->req;
-	struct ccp_ctx *ctx = crypto_tfm_ctx_dma(req->tfm);
+	struct ccp_ctx *ctx = crypto_tfm_ctx(req->tfm);
 	int ret;
 
 	if (err == -EINPROGRESS) {
 		/* Only propagate the -EINPROGRESS if necessary */
 		if (crypto_cmd->ret == -EBUSY) {
 			crypto_cmd->ret = -EINPROGRESS;
-			crypto_request_complete(req, -EINPROGRESS);
+			req->complete(req, -EINPROGRESS);
 		}
 
 		return;
@@ -159,18 +166,18 @@ static void ccp_crypto_complete(void *data, int err)
 	held = ccp_crypto_cmd_complete(crypto_cmd, &backlog);
 	if (backlog) {
 		backlog->ret = -EINPROGRESS;
-		crypto_request_complete(backlog->req, -EINPROGRESS);
+		backlog->req->complete(backlog->req, -EINPROGRESS);
 	}
 
 	/* Transition the state from -EBUSY to -EINPROGRESS first */
 	if (crypto_cmd->ret == -EBUSY)
-		crypto_request_complete(req, -EINPROGRESS);
+		req->complete(req, -EINPROGRESS);
 
 	/* Completion callbacks */
 	ret = err;
 	if (ctx->complete)
 		ret = ctx->complete(req, ret);
-	crypto_request_complete(req, ret);
+	req->complete(req, ret);
 
 	/* Submit the next cmd */
 	while (held) {
@@ -183,15 +190,15 @@ static void ccp_crypto_complete(void *data, int err)
 			break;
 
 		/* Error occurred, report it and get the next entry */
-		ctx = crypto_tfm_ctx_dma(held->req->tfm);
+		ctx = crypto_tfm_ctx(held->req->tfm);
 		if (ctx->complete)
 			ret = ctx->complete(held->req, ret);
-		crypto_request_complete(held->req, ret);
+		held->req->complete(held->req, ret);
 
 		next = ccp_crypto_cmd_complete(held, &backlog);
 		if (backlog) {
 			backlog->ret = -EINPROGRESS;
-			crypto_request_complete(backlog->req, -EINPROGRESS);
+			backlog->req->complete(backlog->req, -EINPROGRESS);
 		}
 
 		kfree(held);
@@ -323,7 +330,7 @@ static int ccp_register_algs(void)
 	int ret;
 
 	if (!aes_disable) {
-		ret = ccp_register_aes_algs(&skcipher_algs);
+		ret = ccp_register_aes_algs(&cipher_algs);
 		if (ret)
 			return ret;
 
@@ -331,7 +338,7 @@ static int ccp_register_algs(void)
 		if (ret)
 			return ret;
 
-		ret = ccp_register_aes_xts_algs(&skcipher_algs);
+		ret = ccp_register_aes_xts_algs(&cipher_algs);
 		if (ret)
 			return ret;
 
@@ -341,7 +348,7 @@ static int ccp_register_algs(void)
 	}
 
 	if (!des3_disable) {
-		ret = ccp_register_des3_algs(&skcipher_algs);
+		ret = ccp_register_des3_algs(&cipher_algs);
 		if (ret)
 			return ret;
 	}
@@ -364,7 +371,7 @@ static int ccp_register_algs(void)
 static void ccp_unregister_algs(void)
 {
 	struct ccp_crypto_ahash_alg *ahash_alg, *ahash_tmp;
-	struct ccp_crypto_skcipher_alg *ablk_alg, *ablk_tmp;
+	struct ccp_crypto_ablkcipher_alg *ablk_alg, *ablk_tmp;
 	struct ccp_crypto_aead *aead_alg, *aead_tmp;
 	struct ccp_crypto_akcipher_alg *akc_alg, *akc_tmp;
 
@@ -374,8 +381,8 @@ static void ccp_unregister_algs(void)
 		kfree(ahash_alg);
 	}
 
-	list_for_each_entry_safe(ablk_alg, ablk_tmp, &skcipher_algs, entry) {
-		crypto_unregister_skcipher(&ablk_alg->alg);
+	list_for_each_entry_safe(ablk_alg, ablk_tmp, &cipher_algs, entry) {
+		crypto_unregister_alg(&ablk_alg->alg);
 		list_del(&ablk_alg->entry);
 		kfree(ablk_alg);
 	}
@@ -393,7 +400,7 @@ static void ccp_unregister_algs(void)
 	}
 }
 
-static int __init ccp_crypto_init(void)
+static int ccp_crypto_init(void)
 {
 	int ret;
 
@@ -403,6 +410,7 @@ static int __init ccp_crypto_init(void)
 		return ret;
 	}
 
+	spin_lock_init(&req_queue_lock);
 	INIT_LIST_HEAD(&req_queue.cmds);
 	req_queue.backlog = &req_queue.cmds;
 	req_queue.cmd_count = 0;
@@ -414,7 +422,7 @@ static int __init ccp_crypto_init(void)
 	return ret;
 }
 
-static void __exit ccp_crypto_exit(void)
+static void ccp_crypto_exit(void)
 {
 	ccp_unregister_algs();
 }

@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright (C) 2011 Philippe Rétornaz
  *
  * Based on twl4030-pwrbutton driver by:
@@ -229,7 +229,7 @@ free_input_dev:
 	return err;
 }
 
-static void mc13783_pwrbutton_remove(struct platform_device *pdev)
+static int mc13783_pwrbutton_remove(struct platform_device *pdev)
 {
 	struct mc13783_pwrb *priv = platform_get_drvdata(pdev);
 	const struct mc13xxx_buttons_platform_data *pdata;
@@ -249,11 +249,13 @@ static void mc13783_pwrbutton_remove(struct platform_device *pdev)
 
 	input_unregister_device(priv->pwr);
 	kfree(priv);
+
+	return 0;
 }
 
 static struct platform_driver mc13783_pwrbutton_driver = {
 	.probe		= mc13783_pwrbutton_probe,
-	.remove_new	= mc13783_pwrbutton_remove,
+	.remove		= mc13783_pwrbutton_remove,
 	.driver		= {
 		.name	= "mc13783-pwrbutton",
 	},

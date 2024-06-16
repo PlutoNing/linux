@@ -1,8 +1,20 @@
-// SPDX-License-Identifier: GPL-2.0-only
 /*
- * NXP Wireless LAN device driver: functions for station ioctl
+ * Marvell Wireless LAN device driver: functions for station ioctl
  *
- * Copyright 2011-2020 NXP
+ * Copyright (C) 2011-2014, Marvell International Ltd.
+ *
+ * This software file (the "File") is distributed by Marvell International
+ * Ltd. under the terms of the GNU General Public License Version 2, June 1991
+ * (the "License").  You may use, redistribute and/or modify this File in
+ * accordance with the terms and conditions of the License, a copy of which
+ * is available by writing to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ *
+ * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ * this warranty disclaimer.
  */
 
 #include "decl.h"
@@ -217,15 +229,6 @@ static int mwifiex_process_country_ie(struct mwifiex_private *priv,
 			    "11D: skip setting domain info in FW\n");
 		return 0;
 	}
-
-	if (country_ie_len >
-	    (IEEE80211_COUNTRY_STRING_LEN + MWIFIEX_MAX_TRIPLET_802_11D)) {
-		rcu_read_unlock();
-		mwifiex_dbg(priv->adapter, ERROR,
-			    "11D: country_ie_len overflow!, deauth AP\n");
-		return -EINVAL;
-	}
-
 	memcpy(priv->adapter->country_code, &country_ie[2], 2);
 
 	domain_info->country_code[0] = country_ie[2];
@@ -269,9 +272,8 @@ int mwifiex_bss_start(struct mwifiex_private *priv, struct cfg80211_bss *bss,
 	priv->scan_block = false;
 
 	if (bss) {
-		if (adapter->region_code == 0x00 &&
-		    mwifiex_process_country_ie(priv, bss))
-			return -EINVAL;
+		if (adapter->region_code == 0x00)
+			mwifiex_process_country_ie(priv, bss);
 
 		/* Allocate and fill new bss descriptor */
 		bss_desc = kzalloc(sizeof(struct mwifiex_bssdescriptor),
@@ -345,8 +347,8 @@ int mwifiex_bss_start(struct mwifiex_private *priv, struct cfg80211_bss *bss,
 		/* Adhoc mode */
 		/* If the requested SSID matches current SSID, return */
 		if (bss_desc && bss_desc->ssid.ssid_len &&
-		    cfg80211_ssid_eq(&priv->curr_bss_params.bss_descriptor.ssid,
-				     &bss_desc->ssid)) {
+		    (!mwifiex_ssid_cmp(&priv->curr_bss_params.bss_descriptor.
+				       ssid, &bss_desc->ssid))) {
 			ret = 0;
 			goto done;
 		}
@@ -1313,8 +1315,8 @@ mwifiex_set_gen_ie_helper(struct mwifiex_private *priv, u8 *ie_data_ptr,
 			  u16 ie_len)
 {
 	struct ieee_types_vendor_header *pvendor_ie;
-	static const u8 wpa_oui[] = { 0x00, 0x50, 0xf2, 0x01 };
-	static const u8 wps_oui[] = { 0x00, 0x50, 0xf2, 0x04 };
+	const u8 wpa_oui[] = { 0x00, 0x50, 0xf2, 0x01 };
+	const u8 wps_oui[] = { 0x00, 0x50, 0xf2, 0x04 };
 	u16 unparsed_len = ie_len, cur_ie_len;
 
 	/* If the passed length is zero, reset the buffer */

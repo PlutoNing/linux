@@ -29,30 +29,33 @@
 #include <linux/sched_clock.h>
 #include <asm/mach/time.h>
 
+#include "addr-map.h"
 #include "regs-timers.h"
-#include <linux/soc/mmp/cputype.h>
+#include "regs-apbc.h"
+#include "irqs.h"
+#include "cputype.h"
+#include "clock.h"
+
+#define TIMERS_VIRT_BASE	TIMERS1_VIRT_BASE
 
 #define MAX_DELTA		(0xfffffffe)
 #define MIN_DELTA		(16)
 
-static void __iomem *mmp_timer_base;
+static void __iomem *mmp_timer_base = TIMERS_VIRT_BASE;
 
 /*
- * Read the timer through the CVWR register. Delay is required after requesting
- * a read. The CR register cannot be directly read due to metastability issues
- * documented in the PXA168 software manual.
+ * FIXME: the timer needs some delay to stablize the counter capture
  */
 static inline uint32_t timer_read(void)
 {
-	uint32_t val;
-	int delay = 3;
+	int delay = 100;
 
 	__raw_writel(1, mmp_timer_base + TMR_CVWR(1));
 
 	while (delay--)
-		val = __raw_readl(mmp_timer_base + TMR_CVWR(1));
+		cpu_relax();
 
-	return val;
+	return __raw_readl(mmp_timer_base + TMR_CVWR(1));
 }
 
 static u64 notrace mmp_read_sched_clock(void)
@@ -152,8 +155,7 @@ static void __init timer_config(void)
 
 	__raw_writel(0x0, mmp_timer_base + TMR_CER); /* disable */
 
-	ccr &= (cpu_is_mmp2() || cpu_is_mmp3()) ?
-		(TMR_CCR_CS_0(0) | TMR_CCR_CS_1(0)) :
+	ccr &= (cpu_is_mmp2()) ? (TMR_CCR_CS_0(0) | TMR_CCR_CS_1(0)) :
 		(TMR_CCR_CS_0(3) | TMR_CCR_CS_1(3));
 	__raw_writel(ccr, mmp_timer_base + TMR_CCR);
 
@@ -172,7 +174,14 @@ static void __init timer_config(void)
 	__raw_writel(0x2, mmp_timer_base + TMR_CER);
 }
 
-static void __init mmp_timer_init(int irq, unsigned long rate)
+static struct irqaction timer_irq = {
+	.name		= "timer",
+	.flags		= IRQF_TIMER | IRQF_IRQPOLL,
+	.handler	= timer_interrupt,
+	.dev_id		= &ckevt,
+};
+
+void __init mmp_timer_init(int irq, unsigned long rate)
 {
 	timer_config();
 
@@ -180,26 +189,37 @@ static void __init mmp_timer_init(int irq, unsigned long rate)
 
 	ckevt.cpumask = cpumask_of(0);
 
-	if (request_irq(irq, timer_interrupt, IRQF_TIMER | IRQF_IRQPOLL,
-			"timer", &ckevt))
-		pr_err("Failed to request irq %d (timer)\n", irq);
+	setup_irq(irq, &timer_irq);
 
 	clocksource_register_hz(&cksrc, rate);
 	clockevents_config_and_register(&ckevt, rate, MIN_DELTA, MAX_DELTA);
 }
 
-static int __init mmp_dt_init_timer(struct device_node *np)
+#ifdef CONFIG_OF
+static const struct of_device_id mmp_timer_dt_ids[] = {
+	{ .compatible = "mrvl,mmp-timer", },
+	{}
+};
+
+void __init mmp_dt_init_timer(void)
 {
+	struct device_node *np;
 	struct clk *clk;
 	int irq, ret;
 	unsigned long rate;
+
+	np = of_find_matching_node(NULL, mmp_timer_dt_ids);
+	if (!np) {
+		ret = -ENODEV;
+		goto out;
+	}
 
 	clk = of_clk_get(np, 0);
 	if (!IS_ERR(clk)) {
 		ret = clk_prepare_enable(clk);
 		if (ret)
-			return ret;
-		rate = clk_get_rate(clk);
+			goto out;
+		rate = clk_get_rate(clk) / 2;
 	} else if (cpu_is_pj4()) {
 		rate = 6500000;
 	} else {
@@ -207,15 +227,18 @@ static int __init mmp_dt_init_timer(struct device_node *np)
 	}
 
 	irq = irq_of_parse_and_map(np, 0);
-	if (!irq)
-		return -EINVAL;
-
+	if (!irq) {
+		ret = -EINVAL;
+		goto out;
+	}
 	mmp_timer_base = of_iomap(np, 0);
-	if (!mmp_timer_base)
-		return -ENOMEM;
-
+	if (!mmp_timer_base) {
+		ret = -ENOMEM;
+		goto out;
+	}
 	mmp_timer_init(irq, rate);
-	return 0;
+	return;
+out:
+	pr_err("Failed to get timer from device tree with error:%d\n", ret);
 }
-
-TIMER_OF_DECLARE(mmp_timer, "mrvl,mmp-timer", mmp_dt_init_timer);
+#endif

@@ -9,6 +9,7 @@
  *
  * TODO:
  *  - TDM mode configuration.
+ *  - Digital microphone support.
  */
 
 #include <linux/module.h>
@@ -341,7 +342,7 @@ static void wm8903_seq_notifier(struct snd_soc_component *component,
 				if (!(wm8903->dcs_pending & (1 << i)))
 					continue;
 
-				val = snd_soc_component_read(component,
+				val = snd_soc_component_read32(component,
 						   WM8903_DC_SERVO_READBACK_1 + i);
 				dev_dbg(component->dev, "DC servo %d: %x\n",
 					3 - i, val);
@@ -374,7 +375,7 @@ static int wm8903_class_w_put(struct snd_kcontrol *kcontrol,
 	u16 reg;
 	int ret;
 
-	reg = snd_soc_component_read(component, WM8903_CLASS_W_0);
+	reg = snd_soc_component_read32(component, WM8903_CLASS_W_0);
 
 	/* Turn it off if we're about to enable bypass */
 	if (ucontrol->value.integer.value[0]) {
@@ -1223,7 +1224,7 @@ static int wm8903_set_dai_fmt(struct snd_soc_dai *codec_dai,
 			      unsigned int fmt)
 {
 	struct snd_soc_component *component = codec_dai->component;
-	u16 aif1 = snd_soc_component_read(component, WM8903_AUDIO_INTERFACE_1);
+	u16 aif1 = snd_soc_component_read32(component, WM8903_AUDIO_INTERFACE_1);
 
 	aif1 &= ~(WM8903_LRCLK_DIR | WM8903_BCLK_DIR | WM8903_AIF_FMT_MASK |
 		  WM8903_AIF_LRCLK_INV | WM8903_AIF_BCLK_INV);
@@ -1306,12 +1307,12 @@ static int wm8903_set_dai_fmt(struct snd_soc_dai *codec_dai,
 	return 0;
 }
 
-static int wm8903_mute(struct snd_soc_dai *codec_dai, int mute, int direction)
+static int wm8903_digital_mute(struct snd_soc_dai *codec_dai, int mute)
 {
 	struct snd_soc_component *component = codec_dai->component;
 	u16 reg;
 
-	reg = snd_soc_component_read(component, WM8903_DAC_DIGITAL_1);
+	reg = snd_soc_component_read32(component, WM8903_DAC_DIGITAL_1);
 
 	if (mute)
 		reg |= WM8903_DAC_MUTE;
@@ -1450,12 +1451,12 @@ static int wm8903_hw_params(struct snd_pcm_substream *substream,
 	int cur_val;
 	int clk_sys;
 
-	u16 aif1 = snd_soc_component_read(component, WM8903_AUDIO_INTERFACE_1);
-	u16 aif2 = snd_soc_component_read(component, WM8903_AUDIO_INTERFACE_2);
-	u16 aif3 = snd_soc_component_read(component, WM8903_AUDIO_INTERFACE_3);
-	u16 clock0 = snd_soc_component_read(component, WM8903_CLOCK_RATES_0);
-	u16 clock1 = snd_soc_component_read(component, WM8903_CLOCK_RATES_1);
-	u16 dac_digital1 = snd_soc_component_read(component, WM8903_DAC_DIGITAL_1);
+	u16 aif1 = snd_soc_component_read32(component, WM8903_AUDIO_INTERFACE_1);
+	u16 aif2 = snd_soc_component_read32(component, WM8903_AUDIO_INTERFACE_2);
+	u16 aif3 = snd_soc_component_read32(component, WM8903_AUDIO_INTERFACE_3);
+	u16 clock0 = snd_soc_component_read32(component, WM8903_CLOCK_RATES_0);
+	u16 clock1 = snd_soc_component_read32(component, WM8903_CLOCK_RATES_1);
+	u16 dac_digital1 = snd_soc_component_read32(component, WM8903_DAC_DIGITAL_1);
 
 	/* Enable sloping stopband filter for low sample rates */
 	if (fs <= 24000)
@@ -1548,12 +1549,14 @@ static int wm8903_hw_params(struct snd_pcm_substream *substream,
 	 * BCLKs to clock out the samples).
 	 */
 	bclk_div = 0;
+	best_val = ((clk_sys * 10) / bclk_divs[0].ratio) - bclk;
 	i = 1;
 	while (i < ARRAY_SIZE(bclk_divs)) {
 		cur_val = ((clk_sys * 10) / bclk_divs[i].ratio) - bclk;
 		if (cur_val < 0) /* BCLK table is sorted */
 			break;
 		bclk_div = i;
+		best_val = cur_val;
 		i++;
 	}
 
@@ -1734,10 +1737,9 @@ static irqreturn_t wm8903_irq(int irq, void *data)
 
 static const struct snd_soc_dai_ops wm8903_dai_ops = {
 	.hw_params	= wm8903_hw_params,
-	.mute_stream	= wm8903_mute,
+	.digital_mute	= wm8903_digital_mute,
 	.set_fmt	= wm8903_set_dai_fmt,
 	.set_sysclk	= wm8903_set_dai_sysclk,
-	.no_capture_mute = 1,
 };
 
 static struct snd_soc_dai_driver wm8903_dai = {
@@ -1757,7 +1759,7 @@ static struct snd_soc_dai_driver wm8903_dai = {
 		 .formats = WM8903_FORMATS,
 	 },
 	.ops = &wm8903_dai_ops,
-	.symmetric_rate = 1,
+	.symmetric_rates = 1,
 };
 
 static int wm8903_resume(struct snd_soc_component *component)
@@ -1892,6 +1894,7 @@ static const struct snd_soc_component_driver soc_component_dev_wm8903 = {
 	.idle_bias_on		= 1,
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
+	.non_legacy_dai_naming	= 1,
 };
 
 static const struct regmap_config wm8903_regmap = {
@@ -1902,7 +1905,7 @@ static const struct regmap_config wm8903_regmap = {
 	.volatile_reg = wm8903_volatile_register,
 	.readable_reg = wm8903_readable_register,
 
-	.cache_type = REGCACHE_MAPLE,
+	.cache_type = REGCACHE_RBTREE,
 	.reg_defaults = wm8903_reg_defaults,
 	.num_reg_defaults = ARRAY_SIZE(wm8903_reg_defaults),
 };
@@ -1924,7 +1927,7 @@ static int wm8903_set_pdata_irq_trigger(struct i2c_client *i2c,
 		* We assume the controller imposes no restrictions,
 		* so we are able to select active-high
 		*/
-		fallthrough;
+		/* Fall-through */
 	case IRQ_TYPE_LEVEL_HIGH:
 		pdata->irq_active_low = false;
 		break;
@@ -1979,7 +1982,8 @@ static int wm8903_set_pdata_from_of(struct i2c_client *i2c,
 	return 0;
 }
 
-static int wm8903_i2c_probe(struct i2c_client *i2c)
+static int wm8903_i2c_probe(struct i2c_client *i2c,
+			    const struct i2c_device_id *id)
 {
 	struct wm8903_platform_data *pdata = dev_get_platdata(&i2c->dev);
 	struct wm8903_priv *wm8903;
@@ -2129,7 +2133,7 @@ static int wm8903_i2c_probe(struct i2c_client *i2c)
 		if (ret != 0) {
 			dev_err(wm8903->dev, "Failed to request IRQ: %d\n",
 				ret);
-			goto err;
+			return ret;
 		}
 
 		/* Enable write sequencer interrupts */
@@ -2181,7 +2185,7 @@ err:
 	return ret;
 }
 
-static void wm8903_i2c_remove(struct i2c_client *client)
+static int wm8903_i2c_remove(struct i2c_client *client)
 {
 	struct wm8903_priv *wm8903 = i2c_get_clientdata(client);
 
@@ -2190,6 +2194,8 @@ static void wm8903_i2c_remove(struct i2c_client *client)
 	if (client->irq)
 		free_irq(client->irq, wm8903);
 	wm8903_free_gpio(wm8903);
+
+	return 0;
 }
 
 static const struct of_device_id wm8903_of_match[] = {

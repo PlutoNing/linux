@@ -3,11 +3,10 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
-#include "messages.h"
 #include "ctree.h"
+#include "volumes.h"
 #include "extent_map.h"
 #include "compression.h"
-#include "btrfs_inode.h"
 
 
 static struct kmem_cache *extent_map_cache;
@@ -15,7 +14,8 @@ static struct kmem_cache *extent_map_cache;
 int __init extent_map_init(void)
 {
 	extent_map_cache = kmem_cache_create("btrfs_extent_map",
-					     sizeof(struct extent_map), 0, 0, NULL);
+			sizeof(struct extent_map), 0,
+			SLAB_MEM_SPREAD, NULL);
 	if (!extent_map_cache)
 		return -ENOMEM;
 	return 0;
@@ -26,9 +26,12 @@ void __cold extent_map_exit(void)
 	kmem_cache_destroy(extent_map_cache);
 }
 
-/*
- * Initialize the extent tree @tree.  Should be called for each new inode or
- * other user of the extent_map interface.
+/**
+ * extent_map_tree_init - initialize extent map tree
+ * @tree:		tree to initialize
+ *
+ * Initialize the extent tree @tree.  Should be called for each new inode
+ * or other user of the extent_map interface.
  */
 void extent_map_tree_init(struct extent_map_tree *tree)
 {
@@ -37,9 +40,12 @@ void extent_map_tree_init(struct extent_map_tree *tree)
 	rwlock_init(&tree->lock);
 }
 
-/*
- * Allocate a new extent_map structure.  The new structure is returned with a
- * reference count of one and needs to be freed using free_extent_map()
+/**
+ * alloc_extent_map - allocate new extent map structure
+ *
+ * Allocate a new extent_map structure.  The new structure is
+ * returned with a reference count of one and needs to be
+ * freed using free_extent_map()
  */
 struct extent_map *alloc_extent_map(void)
 {
@@ -48,27 +54,36 @@ struct extent_map *alloc_extent_map(void)
 	if (!em)
 		return NULL;
 	RB_CLEAR_NODE(&em->rb_node);
+	em->flags = 0;
+	em->compress_type = BTRFS_COMPRESS_NONE;
+	em->generation = 0;
 	refcount_set(&em->refs, 1);
 	INIT_LIST_HEAD(&em->list);
 	return em;
 }
 
-/*
- * Drop the reference out on @em by one and free the structure if the reference
- * count hits zero.
+/**
+ * free_extent_map - drop reference count of an extent_map
+ * @em:		extent map being released
+ *
+ * Drops the reference out on @em by one and free the structure
+ * if the reference count hits zero.
  */
 void free_extent_map(struct extent_map *em)
 {
 	if (!em)
 		return;
+	WARN_ON(refcount_read(&em->refs) == 0);
 	if (refcount_dec_and_test(&em->refs)) {
 		WARN_ON(extent_map_in_tree(em));
 		WARN_ON(!list_empty(&em->list));
+		if (test_bit(EXTENT_FLAG_FS_MAPPING, &em->flags))
+			kfree(em->map_lookup);
 		kmem_cache_free(extent_map_cache, em);
 	}
 }
 
-/* Do the math around the end of an extent, handling wrapping. */
+/* simple helper to do math around the end of an extent, handling wrap */
 static u64 range_end(u64 start, u64 len)
 {
 	if (start + len < start)
@@ -124,19 +139,18 @@ static int tree_insert(struct rb_root_cached *root, struct extent_map *em)
 }
 
 /*
- * Search through the tree for an extent_map with a given offset.  If it can't
- * be found, try to find some neighboring extents
+ * search through the tree for an extent_map with a given offset.  If
+ * it can't be found, try to find some neighboring extents
  */
 static struct rb_node *__tree_search(struct rb_root *root, u64 offset,
-				     struct rb_node **prev_or_next_ret)
+				     struct rb_node **prev_ret,
+				     struct rb_node **next_ret)
 {
 	struct rb_node *n = root->rb_node;
 	struct rb_node *prev = NULL;
 	struct rb_node *orig_prev = NULL;
 	struct extent_map *entry;
 	struct extent_map *prev_entry = NULL;
-
-	ASSERT(prev_or_next_ret);
 
 	while (n) {
 		entry = rb_entry(n, struct extent_map, rb_node);
@@ -151,76 +165,67 @@ static struct rb_node *__tree_search(struct rb_root *root, u64 offset,
 			return n;
 	}
 
-	orig_prev = prev;
-	while (prev && offset >= extent_map_end(prev_entry)) {
-		prev = rb_next(prev);
+	if (prev_ret) {
+		orig_prev = prev;
+		while (prev && offset >= extent_map_end(prev_entry)) {
+			prev = rb_next(prev);
+			prev_entry = rb_entry(prev, struct extent_map, rb_node);
+		}
+		*prev_ret = prev;
+		prev = orig_prev;
+	}
+
+	if (next_ret) {
 		prev_entry = rb_entry(prev, struct extent_map, rb_node);
+		while (prev && offset < prev_entry->start) {
+			prev = rb_prev(prev);
+			prev_entry = rb_entry(prev, struct extent_map, rb_node);
+		}
+		*next_ret = prev;
 	}
-
-	/*
-	 * Previous extent map found, return as in this case the caller does not
-	 * care about the next one.
-	 */
-	if (prev) {
-		*prev_or_next_ret = prev;
-		return NULL;
-	}
-
-	prev = orig_prev;
-	prev_entry = rb_entry(prev, struct extent_map, rb_node);
-	while (prev && offset < prev_entry->start) {
-		prev = rb_prev(prev);
-		prev_entry = rb_entry(prev, struct extent_map, rb_node);
-	}
-	*prev_or_next_ret = prev;
-
 	return NULL;
 }
 
-static inline u64 extent_map_block_end(const struct extent_map *em)
+/* check to see if two extent_map structs are adjacent and safe to merge */
+static int mergable_maps(struct extent_map *prev, struct extent_map *next)
 {
-	if (em->block_start + em->block_len < em->block_start)
-		return (u64)-1;
-	return em->block_start + em->block_len;
-}
+	if (test_bit(EXTENT_FLAG_PINNED, &prev->flags))
+		return 0;
 
-static bool can_merge_extent_map(const struct extent_map *em)
-{
-	if (em->flags & EXTENT_FLAG_PINNED)
-		return false;
+	/*
+	 * don't merge compressed extents, we need to know their
+	 * actual size
+	 */
+	if (test_bit(EXTENT_FLAG_COMPRESSED, &prev->flags))
+		return 0;
 
-	/* Don't merge compressed extents, we need to know their actual size. */
-	if (extent_map_is_compressed(em))
-		return false;
-
-	if (em->flags & EXTENT_FLAG_LOGGING)
-		return false;
+	if (test_bit(EXTENT_FLAG_LOGGING, &prev->flags) ||
+	    test_bit(EXTENT_FLAG_LOGGING, &next->flags))
+		return 0;
 
 	/*
 	 * We don't want to merge stuff that hasn't been written to the log yet
 	 * since it may not reflect exactly what is on disk, and that would be
 	 * bad.
 	 */
-	if (!list_empty(&em->list))
-		return false;
+	if (!list_empty(&prev->list) || !list_empty(&next->list))
+		return 0;
 
-	return true;
-}
+	ASSERT(next->block_start != EXTENT_MAP_DELALLOC &&
+	       prev->block_start != EXTENT_MAP_DELALLOC);
 
-/* Check to see if two extent_map structs are adjacent and safe to merge. */
-static bool mergeable_maps(const struct extent_map *prev, const struct extent_map *next)
-{
-	if (extent_map_end(prev) != next->start)
-		return false;
-
-	if (prev->flags != next->flags)
-		return false;
-
-	if (next->block_start < EXTENT_MAP_LAST_BYTE - 1)
-		return next->block_start == extent_map_block_end(prev);
-
-	/* HOLES and INLINE extents. */
-	return next->block_start == prev->block_start;
+	if (extent_map_end(prev) == next->start &&
+	    prev->flags == next->flags &&
+	    prev->bdev == next->bdev &&
+	    ((next->block_start == EXTENT_MAP_HOLE &&
+	      prev->block_start == EXTENT_MAP_HOLE) ||
+	     (next->block_start == EXTENT_MAP_INLINE &&
+	      prev->block_start == EXTENT_MAP_INLINE) ||
+	     (next->block_start < EXTENT_MAP_LAST_BYTE - 1 &&
+	      next->block_start == extent_map_block_end(prev)))) {
+		return 1;
+	}
+	return 0;
 }
 
 static void try_merge_map(struct extent_map_tree *tree, struct extent_map *em)
@@ -228,25 +233,11 @@ static void try_merge_map(struct extent_map_tree *tree, struct extent_map *em)
 	struct extent_map *merge = NULL;
 	struct rb_node *rb;
 
-	/*
-	 * We can't modify an extent map that is in the tree and that is being
-	 * used by another task, as it can cause that other task to see it in
-	 * inconsistent state during the merging. We always have 1 reference for
-	 * the tree and 1 for this task (which is unpinning the extent map or
-	 * clearing the logging flag), so anything > 2 means it's being used by
-	 * other tasks too.
-	 */
-	if (refcount_read(&em->refs) > 2)
-		return;
-
-	if (!can_merge_extent_map(em))
-		return;
-
 	if (em->start != 0) {
 		rb = rb_prev(&em->rb_node);
 		if (rb)
 			merge = rb_entry(rb, struct extent_map, rb_node);
-		if (rb && can_merge_extent_map(merge) && mergeable_maps(merge, em)) {
+		if (rb && mergable_maps(merge, em)) {
 			em->start = merge->start;
 			em->orig_start = merge->orig_start;
 			em->len += merge->len;
@@ -255,7 +246,6 @@ static void try_merge_map(struct extent_map_tree *tree, struct extent_map *em)
 			em->mod_len = (em->mod_len + em->mod_start) - merge->mod_start;
 			em->mod_start = merge->mod_start;
 			em->generation = max(em->generation, merge->generation);
-			em->flags |= EXTENT_FLAG_MERGED;
 
 			rb_erase_cached(&merge->rb_node, &tree->map);
 			RB_CLEAR_NODE(&merge->rb_node);
@@ -266,22 +256,20 @@ static void try_merge_map(struct extent_map_tree *tree, struct extent_map *em)
 	rb = rb_next(&em->rb_node);
 	if (rb)
 		merge = rb_entry(rb, struct extent_map, rb_node);
-	if (rb && can_merge_extent_map(merge) && mergeable_maps(em, merge)) {
+	if (rb && mergable_maps(em, merge)) {
 		em->len += merge->len;
 		em->block_len += merge->block_len;
 		rb_erase_cached(&merge->rb_node, &tree->map);
 		RB_CLEAR_NODE(&merge->rb_node);
 		em->mod_len = (merge->mod_start + merge->mod_len) - em->mod_start;
 		em->generation = max(em->generation, merge->generation);
-		em->flags |= EXTENT_FLAG_MERGED;
 		free_extent_map(merge);
 	}
 }
 
-/*
- * Unpin an extent from the cache.
- *
- * @inode:	the inode from which we are unpinning an extent range
+/**
+ * unpin_extent_cache - unpin an extent from the cache
+ * @tree:	tree to unpin the extent in
  * @start:	logical offset in the file
  * @len:	length of the extent
  * @gen:	generation that this extent has been modified in
@@ -289,15 +277,10 @@ static void try_merge_map(struct extent_map_tree *tree, struct extent_map *em)
  * Called after an extent has been written to disk properly.  Set the generation
  * to the generation that actually added the file item to the inode so we know
  * we need to sync this extent when we call fsync().
- *
- * Returns: 0	     on success
- * 	    -ENOENT  when the extent is not found in the tree
- * 	    -EUCLEAN if the found extent does not match the expected start
  */
-int unpin_extent_cache(struct btrfs_inode *inode, u64 start, u64 len, u64 gen)
+int unpin_extent_cache(struct extent_map_tree *tree, u64 start, u64 len,
+		       u64 gen)
 {
-	struct btrfs_fs_info *fs_info = inode->root->fs_info;
-	struct extent_map_tree *tree = &inode->extent_tree;
 	int ret = 0;
 	struct extent_map *em;
 	bool prealloc = false;
@@ -305,32 +288,19 @@ int unpin_extent_cache(struct btrfs_inode *inode, u64 start, u64 len, u64 gen)
 	write_lock(&tree->lock);
 	em = lookup_extent_mapping(tree, start, len);
 
-	if (WARN_ON(!em)) {
-		btrfs_warn(fs_info,
-"no extent map found for inode %llu (root %lld) when unpinning extent range [%llu, %llu), generation %llu",
-			   btrfs_ino(inode), btrfs_root_id(inode->root),
-			   start, start + len, gen);
-		ret = -ENOENT;
-		goto out;
-	}
+	WARN_ON(!em || em->start != start);
 
-	if (WARN_ON(em->start != start)) {
-		btrfs_warn(fs_info,
-"found extent map for inode %llu (root %lld) with unexpected start offset %llu when unpinning extent range [%llu, %llu), generation %llu",
-			   btrfs_ino(inode), btrfs_root_id(inode->root),
-			   em->start, start, start + len, gen);
-		ret = -EUCLEAN;
+	if (!em)
 		goto out;
-	}
 
 	em->generation = gen;
-	em->flags &= ~EXTENT_FLAG_PINNED;
+	clear_bit(EXTENT_FLAG_PINNED, &em->flags);
 	em->mod_start = em->start;
 	em->mod_len = em->len;
 
-	if (em->flags & EXTENT_FLAG_FILLING) {
+	if (test_bit(EXTENT_FLAG_FILLING, &em->flags)) {
 		prealloc = true;
-		em->flags &= ~EXTENT_FLAG_FILLING;
+		clear_bit(EXTENT_FLAG_FILLING, &em->flags);
 	}
 
 	try_merge_map(tree, em);
@@ -340,18 +310,16 @@ int unpin_extent_cache(struct btrfs_inode *inode, u64 start, u64 len, u64 gen)
 		em->mod_len = em->len;
 	}
 
+	free_extent_map(em);
 out:
 	write_unlock(&tree->lock);
-	free_extent_map(em);
 	return ret;
 
 }
 
 void clear_em_logging(struct extent_map_tree *tree, struct extent_map *em)
 {
-	lockdep_assert_held_write(&tree->lock);
-
-	em->flags &= ~EXTENT_FLAG_LOGGING;
+	clear_bit(EXTENT_FLAG_LOGGING, &em->flags);
 	if (extent_map_in_tree(em))
 		try_merge_map(tree, em);
 }
@@ -364,29 +332,55 @@ static inline void setup_extent_mapping(struct extent_map_tree *tree,
 	em->mod_start = em->start;
 	em->mod_len = em->len;
 
-	ASSERT(list_empty(&em->list));
-
 	if (modified)
-		list_add(&em->list, &tree->modified_extents);
+		list_move(&em->list, &tree->modified_extents);
 	else
 		try_merge_map(tree, em);
 }
 
-/*
- * Add new extent map to the extent tree
- *
+static void extent_map_device_set_bits(struct extent_map *em, unsigned bits)
+{
+	struct map_lookup *map = em->map_lookup;
+	u64 stripe_size = em->orig_block_len;
+	int i;
+
+	for (i = 0; i < map->num_stripes; i++) {
+		struct btrfs_bio_stripe *stripe = &map->stripes[i];
+		struct btrfs_device *device = stripe->dev;
+
+		set_extent_bits_nowait(&device->alloc_state, stripe->physical,
+				 stripe->physical + stripe_size - 1, bits);
+	}
+}
+
+static void extent_map_device_clear_bits(struct extent_map *em, unsigned bits)
+{
+	struct map_lookup *map = em->map_lookup;
+	u64 stripe_size = em->orig_block_len;
+	int i;
+
+	for (i = 0; i < map->num_stripes; i++) {
+		struct btrfs_bio_stripe *stripe = &map->stripes[i];
+		struct btrfs_device *device = stripe->dev;
+
+		__clear_extent_bit(&device->alloc_state, stripe->physical,
+				   stripe->physical + stripe_size - 1, bits,
+				   0, 0, NULL, GFP_NOWAIT, NULL);
+	}
+}
+
+/**
+ * add_extent_mapping - add new extent map to the extent tree
  * @tree:	tree to insert new map in
  * @em:		map to insert
- * @modified:	indicate whether the given @em should be added to the
- *	        modified list, which indicates the extent needs to be logged
  *
  * Insert @em into @tree or perform a simple forward/backward merge with
  * existing mappings.  The extent_map struct passed in will be inserted
  * into the tree directly, with an additional reference taken, or a
  * reference dropped if the merge attempt was successful.
  */
-static int add_extent_mapping(struct extent_map_tree *tree,
-			      struct extent_map *em, int modified)
+int add_extent_mapping(struct extent_map_tree *tree,
+		       struct extent_map *em, int modified)
 {
 	int ret = 0;
 
@@ -397,6 +391,10 @@ static int add_extent_mapping(struct extent_map_tree *tree,
 		goto out;
 
 	setup_extent_mapping(tree, em, modified);
+	if (test_bit(EXTENT_FLAG_FS_MAPPING, &em->flags)) {
+		extent_map_device_set_bits(em, CHUNK_ALLOCATED);
+		extent_map_device_clear_bits(em, CHUNK_TRIMMED);
+	}
 out:
 	return ret;
 }
@@ -407,13 +405,16 @@ __lookup_extent_mapping(struct extent_map_tree *tree,
 {
 	struct extent_map *em;
 	struct rb_node *rb_node;
-	struct rb_node *prev_or_next = NULL;
+	struct rb_node *prev = NULL;
+	struct rb_node *next = NULL;
 	u64 end = range_end(start, len);
 
-	rb_node = __tree_search(&tree->map.rb_root, start, &prev_or_next);
+	rb_node = __tree_search(&tree->map.rb_root, start, &prev, &next);
 	if (!rb_node) {
-		if (prev_or_next)
-			rb_node = prev_or_next;
+		if (prev)
+			rb_node = prev;
+		else if (next)
+			rb_node = next;
 		else
 			return NULL;
 	}
@@ -427,9 +428,8 @@ __lookup_extent_mapping(struct extent_map_tree *tree,
 	return em;
 }
 
-/*
- * Lookup extent_map that intersects @start + @len range.
- *
+/**
+ * lookup_extent_mapping - lookup extent_map
  * @tree:	tree to lookup in
  * @start:	byte offset to start the search
  * @len:	length of the lookup range
@@ -445,9 +445,8 @@ struct extent_map *lookup_extent_mapping(struct extent_map_tree *tree,
 	return __lookup_extent_mapping(tree, start, len, 1);
 }
 
-/*
- * Find a nearby extent map intersecting @start + @len (not an exact search).
- *
+/**
+ * search_extent_mapping - find a nearby extent map
  * @tree:	tree to lookup in
  * @start:	byte offset to start the search
  * @len:	length of the lookup range
@@ -463,36 +462,33 @@ struct extent_map *search_extent_mapping(struct extent_map_tree *tree,
 	return __lookup_extent_mapping(tree, start, len, 0);
 }
 
-/*
- * Remove an extent_map from the extent tree.
- *
+/**
+ * remove_extent_mapping - removes an extent_map from the extent tree
  * @tree:	extent tree to remove from
  * @em:		extent map being removed
  *
- * Remove @em from @tree.  No reference counts are dropped, and no checks
- * are done to see if the range is in use.
+ * Removes @em from @tree.  No reference counts are dropped, and no checks
+ * are done to see if the range is in use
  */
 void remove_extent_mapping(struct extent_map_tree *tree, struct extent_map *em)
 {
-	lockdep_assert_held_write(&tree->lock);
-
-	WARN_ON(em->flags & EXTENT_FLAG_PINNED);
+	WARN_ON(test_bit(EXTENT_FLAG_PINNED, &em->flags));
 	rb_erase_cached(&em->rb_node, &tree->map);
-	if (!(em->flags & EXTENT_FLAG_LOGGING))
+	if (!test_bit(EXTENT_FLAG_LOGGING, &em->flags))
 		list_del_init(&em->list);
+	if (test_bit(EXTENT_FLAG_FS_MAPPING, &em->flags))
+		extent_map_device_clear_bits(em, CHUNK_ALLOCATED);
 	RB_CLEAR_NODE(&em->rb_node);
 }
 
-static void replace_extent_mapping(struct extent_map_tree *tree,
-				   struct extent_map *cur,
-				   struct extent_map *new,
-				   int modified)
+void replace_extent_mapping(struct extent_map_tree *tree,
+			    struct extent_map *cur,
+			    struct extent_map *new,
+			    int modified)
 {
-	lockdep_assert_held_write(&tree->lock);
-
-	WARN_ON(cur->flags & EXTENT_FLAG_PINNED);
+	WARN_ON(test_bit(EXTENT_FLAG_PINNED, &cur->flags));
 	ASSERT(extent_map_in_tree(cur));
-	if (!(cur->flags & EXTENT_FLAG_LOGGING))
+	if (!test_bit(EXTENT_FLAG_LOGGING, &cur->flags))
 		list_del_init(&cur->list);
 	rb_replace_node_cached(&cur->rb_node, &new->rb_node, &tree->map);
 	RB_CLEAR_NODE(&cur->rb_node);
@@ -500,7 +496,7 @@ static void replace_extent_mapping(struct extent_map_tree *tree,
 	setup_extent_mapping(tree, new, modified);
 }
 
-static struct extent_map *next_extent_map(const struct extent_map *em)
+static struct extent_map *next_extent_map(struct extent_map *em)
 {
 	struct rb_node *next;
 
@@ -537,8 +533,7 @@ static noinline int merge_extent_mapping(struct extent_map_tree *em_tree,
 	u64 end;
 	u64 start_diff;
 
-	if (map_start < em->start || map_start >= extent_map_end(em))
-		return -EINVAL;
+	BUG_ON(map_start < em->start || map_start >= extent_map_end(em));
 
 	if (existing->start > map_start) {
 		next = existing;
@@ -556,21 +551,20 @@ static noinline int merge_extent_mapping(struct extent_map_tree *em_tree,
 	em->start = start;
 	em->len = end - start;
 	if (em->block_start < EXTENT_MAP_LAST_BYTE &&
-	    !extent_map_is_compressed(em)) {
+	    !test_bit(EXTENT_FLAG_COMPRESSED, &em->flags)) {
 		em->block_start += start_diff;
 		em->block_len = em->len;
 	}
 	return add_extent_mapping(em_tree, em, 0);
 }
 
-/*
- * Add extent mapping into em_tree.
- *
- * @fs_info:  the filesystem
- * @em_tree:  extent tree into which we want to insert the extent mapping
- * @em_in:    extent we are inserting
- * @start:    start of the logical range btrfs_get_extent() is requesting
- * @len:      length of the logical range btrfs_get_extent() is requesting
+/**
+ * btrfs_add_extent_mapping - add extent mapping into em_tree
+ * @fs_info - used for tracepoint
+ * @em_tree - the extent tree into which we want to insert the extent mapping
+ * @em_in   - extent we are inserting
+ * @start   - start of the logical range btrfs_get_extent() is requesting
+ * @len     - length of the logical range btrfs_get_extent() is requesting
  *
  * Note that @em_in's range may be different from [start, start+len),
  * but they must be overlapped.
@@ -591,13 +585,6 @@ int btrfs_add_extent_mapping(struct btrfs_fs_info *fs_info,
 	int ret;
 	struct extent_map *em = *em_in;
 
-	/*
-	 * Tree-checker should have rejected any inline extent with non-zero
-	 * file offset. Here just do a sanity check.
-	 */
-	if (em->block_start == EXTENT_MAP_INLINE)
-		ASSERT(em->start == 0);
-
 	ret = add_extent_mapping(em_tree, em, 0);
 	/* it is possible that someone inserted the extent into the tree
 	 * while we had the lock dropped.  It is also possible that
@@ -605,6 +592,8 @@ int btrfs_add_extent_mapping(struct btrfs_fs_info *fs_info,
 	 */
 	if (ret == -EEXIST) {
 		struct extent_map *existing;
+
+		ret = 0;
 
 		existing = search_extent_mapping(em_tree, start, len);
 
@@ -629,397 +618,18 @@ int btrfs_add_extent_mapping(struct btrfs_fs_info *fs_info,
 			 */
 			ret = merge_extent_mapping(em_tree, existing,
 						   em, start);
-			if (WARN_ON(ret)) {
+			if (ret) {
 				free_extent_map(em);
 				*em_in = NULL;
-				btrfs_warn(fs_info,
-"extent map merge error existing [%llu, %llu) with em [%llu, %llu) start %llu",
-					   existing->start, extent_map_end(existing),
-					   orig_start, orig_start + orig_len, start);
+				WARN_ONCE(ret,
+"unexpected error %d: merge existing(start %llu len %llu) with em(start %llu len %llu)\n",
+					  ret, existing->start, existing->len,
+					  orig_start, orig_len);
 			}
 			free_extent_map(existing);
 		}
 	}
 
 	ASSERT(ret == 0 || ret == -EEXIST);
-	return ret;
-}
-
-/*
- * Drop all extent maps from a tree in the fastest possible way, rescheduling
- * if needed. This avoids searching the tree, from the root down to the first
- * extent map, before each deletion.
- */
-static void drop_all_extent_maps_fast(struct extent_map_tree *tree)
-{
-	write_lock(&tree->lock);
-	while (!RB_EMPTY_ROOT(&tree->map.rb_root)) {
-		struct extent_map *em;
-		struct rb_node *node;
-
-		node = rb_first_cached(&tree->map);
-		em = rb_entry(node, struct extent_map, rb_node);
-		em->flags &= ~(EXTENT_FLAG_PINNED | EXTENT_FLAG_LOGGING);
-		remove_extent_mapping(tree, em);
-		free_extent_map(em);
-		cond_resched_rwlock_write(&tree->lock);
-	}
-	write_unlock(&tree->lock);
-}
-
-/*
- * Drop all extent maps in a given range.
- *
- * @inode:       The target inode.
- * @start:       Start offset of the range.
- * @end:         End offset of the range (inclusive value).
- * @skip_pinned: Indicate if pinned extent maps should be ignored or not.
- *
- * This drops all the extent maps that intersect the given range [@start, @end].
- * Extent maps that partially overlap the range and extend behind or beyond it,
- * are split.
- * The caller should have locked an appropriate file range in the inode's io
- * tree before calling this function.
- */
-void btrfs_drop_extent_map_range(struct btrfs_inode *inode, u64 start, u64 end,
-				 bool skip_pinned)
-{
-	struct extent_map *split;
-	struct extent_map *split2;
-	struct extent_map *em;
-	struct extent_map_tree *em_tree = &inode->extent_tree;
-	u64 len = end - start + 1;
-
-	WARN_ON(end < start);
-	if (end == (u64)-1) {
-		if (start == 0 && !skip_pinned) {
-			drop_all_extent_maps_fast(em_tree);
-			return;
-		}
-		len = (u64)-1;
-	} else {
-		/* Make end offset exclusive for use in the loop below. */
-		end++;
-	}
-
-	/*
-	 * It's ok if we fail to allocate the extent maps, see the comment near
-	 * the bottom of the loop below. We only need two spare extent maps in
-	 * the worst case, where the first extent map that intersects our range
-	 * starts before the range and the last extent map that intersects our
-	 * range ends after our range (and they might be the same extent map),
-	 * because we need to split those two extent maps at the boundaries.
-	 */
-	split = alloc_extent_map();
-	split2 = alloc_extent_map();
-
-	write_lock(&em_tree->lock);
-	em = lookup_extent_mapping(em_tree, start, len);
-
-	while (em) {
-		/* extent_map_end() returns exclusive value (last byte + 1). */
-		const u64 em_end = extent_map_end(em);
-		struct extent_map *next_em = NULL;
-		u64 gen;
-		unsigned long flags;
-		bool modified;
-		bool compressed;
-
-		if (em_end < end) {
-			next_em = next_extent_map(em);
-			if (next_em) {
-				if (next_em->start < end)
-					refcount_inc(&next_em->refs);
-				else
-					next_em = NULL;
-			}
-		}
-
-		if (skip_pinned && (em->flags & EXTENT_FLAG_PINNED)) {
-			start = em_end;
-			goto next;
-		}
-
-		flags = em->flags;
-		/*
-		 * In case we split the extent map, we want to preserve the
-		 * EXTENT_FLAG_LOGGING flag on our extent map, but we don't want
-		 * it on the new extent maps.
-		 */
-		em->flags &= ~(EXTENT_FLAG_PINNED | EXTENT_FLAG_LOGGING);
-		modified = !list_empty(&em->list);
-
-		/*
-		 * The extent map does not cross our target range, so no need to
-		 * split it, we can remove it directly.
-		 */
-		if (em->start >= start && em_end <= end)
-			goto remove_em;
-
-		gen = em->generation;
-		compressed = extent_map_is_compressed(em);
-
-		if (em->start < start) {
-			if (!split) {
-				split = split2;
-				split2 = NULL;
-				if (!split)
-					goto remove_em;
-			}
-			split->start = em->start;
-			split->len = start - em->start;
-
-			if (em->block_start < EXTENT_MAP_LAST_BYTE) {
-				split->orig_start = em->orig_start;
-				split->block_start = em->block_start;
-
-				if (compressed)
-					split->block_len = em->block_len;
-				else
-					split->block_len = split->len;
-				split->orig_block_len = max(split->block_len,
-						em->orig_block_len);
-				split->ram_bytes = em->ram_bytes;
-			} else {
-				split->orig_start = split->start;
-				split->block_len = 0;
-				split->block_start = em->block_start;
-				split->orig_block_len = 0;
-				split->ram_bytes = split->len;
-			}
-
-			split->generation = gen;
-			split->flags = flags;
-			replace_extent_mapping(em_tree, em, split, modified);
-			free_extent_map(split);
-			split = split2;
-			split2 = NULL;
-		}
-		if (em_end > end) {
-			if (!split) {
-				split = split2;
-				split2 = NULL;
-				if (!split)
-					goto remove_em;
-			}
-			split->start = end;
-			split->len = em_end - end;
-			split->block_start = em->block_start;
-			split->flags = flags;
-			split->generation = gen;
-
-			if (em->block_start < EXTENT_MAP_LAST_BYTE) {
-				split->orig_block_len = max(em->block_len,
-						    em->orig_block_len);
-
-				split->ram_bytes = em->ram_bytes;
-				if (compressed) {
-					split->block_len = em->block_len;
-					split->orig_start = em->orig_start;
-				} else {
-					const u64 diff = start + len - em->start;
-
-					split->block_len = split->len;
-					split->block_start += diff;
-					split->orig_start = em->orig_start;
-				}
-			} else {
-				split->ram_bytes = split->len;
-				split->orig_start = split->start;
-				split->block_len = 0;
-				split->orig_block_len = 0;
-			}
-
-			if (extent_map_in_tree(em)) {
-				replace_extent_mapping(em_tree, em, split,
-						       modified);
-			} else {
-				int ret;
-
-				ret = add_extent_mapping(em_tree, split,
-							 modified);
-				/* Logic error, shouldn't happen. */
-				ASSERT(ret == 0);
-				if (WARN_ON(ret != 0) && modified)
-					btrfs_set_inode_full_sync(inode);
-			}
-			free_extent_map(split);
-			split = NULL;
-		}
-remove_em:
-		if (extent_map_in_tree(em)) {
-			/*
-			 * If the extent map is still in the tree it means that
-			 * either of the following is true:
-			 *
-			 * 1) It fits entirely in our range (doesn't end beyond
-			 *    it or starts before it);
-			 *
-			 * 2) It starts before our range and/or ends after our
-			 *    range, and we were not able to allocate the extent
-			 *    maps for split operations, @split and @split2.
-			 *
-			 * If we are at case 2) then we just remove the entire
-			 * extent map - this is fine since if anyone needs it to
-			 * access the subranges outside our range, will just
-			 * load it again from the subvolume tree's file extent
-			 * item. However if the extent map was in the list of
-			 * modified extents, then we must mark the inode for a
-			 * full fsync, otherwise a fast fsync will miss this
-			 * extent if it's new and needs to be logged.
-			 */
-			if ((em->start < start || em_end > end) && modified) {
-				ASSERT(!split);
-				btrfs_set_inode_full_sync(inode);
-			}
-			remove_extent_mapping(em_tree, em);
-		}
-
-		/*
-		 * Once for the tree reference (we replaced or removed the
-		 * extent map from the tree).
-		 */
-		free_extent_map(em);
-next:
-		/* Once for us (for our lookup reference). */
-		free_extent_map(em);
-
-		em = next_em;
-	}
-
-	write_unlock(&em_tree->lock);
-
-	free_extent_map(split);
-	free_extent_map(split2);
-}
-
-/*
- * Replace a range in the inode's extent map tree with a new extent map.
- *
- * @inode:      The target inode.
- * @new_em:     The new extent map to add to the inode's extent map tree.
- * @modified:   Indicate if the new extent map should be added to the list of
- *              modified extents (for fast fsync tracking).
- *
- * Drops all the extent maps in the inode's extent map tree that intersect the
- * range of the new extent map and adds the new extent map to the tree.
- * The caller should have locked an appropriate file range in the inode's io
- * tree before calling this function.
- */
-int btrfs_replace_extent_map_range(struct btrfs_inode *inode,
-				   struct extent_map *new_em,
-				   bool modified)
-{
-	const u64 end = new_em->start + new_em->len - 1;
-	struct extent_map_tree *tree = &inode->extent_tree;
-	int ret;
-
-	ASSERT(!extent_map_in_tree(new_em));
-
-	/*
-	 * The caller has locked an appropriate file range in the inode's io
-	 * tree, but getting -EEXIST when adding the new extent map can still
-	 * happen in case there are extents that partially cover the range, and
-	 * this is due to two tasks operating on different parts of the extent.
-	 * See commit 18e83ac75bfe67 ("Btrfs: fix unexpected EEXIST from
-	 * btrfs_get_extent") for an example and details.
-	 */
-	do {
-		btrfs_drop_extent_map_range(inode, new_em->start, end, false);
-		write_lock(&tree->lock);
-		ret = add_extent_mapping(tree, new_em, modified);
-		write_unlock(&tree->lock);
-	} while (ret == -EEXIST);
-
-	return ret;
-}
-
-/*
- * Split off the first pre bytes from the extent_map at [start, start + len],
- * and set the block_start for it to new_logical.
- *
- * This function is used when an ordered_extent needs to be split.
- */
-int split_extent_map(struct btrfs_inode *inode, u64 start, u64 len, u64 pre,
-		     u64 new_logical)
-{
-	struct extent_map_tree *em_tree = &inode->extent_tree;
-	struct extent_map *em;
-	struct extent_map *split_pre = NULL;
-	struct extent_map *split_mid = NULL;
-	int ret = 0;
-	unsigned long flags;
-
-	ASSERT(pre != 0);
-	ASSERT(pre < len);
-
-	split_pre = alloc_extent_map();
-	if (!split_pre)
-		return -ENOMEM;
-	split_mid = alloc_extent_map();
-	if (!split_mid) {
-		ret = -ENOMEM;
-		goto out_free_pre;
-	}
-
-	lock_extent(&inode->io_tree, start, start + len - 1, NULL);
-	write_lock(&em_tree->lock);
-	em = lookup_extent_mapping(em_tree, start, len);
-	if (!em) {
-		ret = -EIO;
-		goto out_unlock;
-	}
-
-	ASSERT(em->len == len);
-	ASSERT(!extent_map_is_compressed(em));
-	ASSERT(em->block_start < EXTENT_MAP_LAST_BYTE);
-	ASSERT(em->flags & EXTENT_FLAG_PINNED);
-	ASSERT(!(em->flags & EXTENT_FLAG_LOGGING));
-	ASSERT(!list_empty(&em->list));
-
-	flags = em->flags;
-	em->flags &= ~EXTENT_FLAG_PINNED;
-
-	/* First, replace the em with a new extent_map starting from * em->start */
-	split_pre->start = em->start;
-	split_pre->len = pre;
-	split_pre->orig_start = split_pre->start;
-	split_pre->block_start = new_logical;
-	split_pre->block_len = split_pre->len;
-	split_pre->orig_block_len = split_pre->block_len;
-	split_pre->ram_bytes = split_pre->len;
-	split_pre->flags = flags;
-	split_pre->generation = em->generation;
-
-	replace_extent_mapping(em_tree, em, split_pre, 1);
-
-	/*
-	 * Now we only have an extent_map at:
-	 *     [em->start, em->start + pre]
-	 */
-
-	/* Insert the middle extent_map. */
-	split_mid->start = em->start + pre;
-	split_mid->len = em->len - pre;
-	split_mid->orig_start = split_mid->start;
-	split_mid->block_start = em->block_start + pre;
-	split_mid->block_len = split_mid->len;
-	split_mid->orig_block_len = split_mid->block_len;
-	split_mid->ram_bytes = split_mid->len;
-	split_mid->flags = flags;
-	split_mid->generation = em->generation;
-	add_extent_mapping(em_tree, split_mid, 1);
-
-	/* Once for us */
-	free_extent_map(em);
-	/* Once for the tree */
-	free_extent_map(em);
-
-out_unlock:
-	write_unlock(&em_tree->lock);
-	unlock_extent(&inode->io_tree, start, start + len - 1, NULL);
-	free_extent_map(split_mid);
-out_free_pre:
-	free_extent_map(split_pre);
 	return ret;
 }

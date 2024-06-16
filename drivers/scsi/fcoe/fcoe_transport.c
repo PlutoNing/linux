@@ -10,7 +10,6 @@
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/netdevice.h>
-#include <linux/ethtool.h>
 #include <linux/errno.h>
 #include <linux/crc32.h>
 #include <scsi/libfcoe.h>
@@ -183,9 +182,9 @@ void __fcoe_get_lesb(struct fc_lport *lport,
 	memset(lesb, 0, sizeof(*lesb));
 	for_each_possible_cpu(cpu) {
 		stats = per_cpu_ptr(lport->stats, cpu);
-		lfc += READ_ONCE(stats->LinkFailureCount);
-		vlfc += READ_ONCE(stats->VLinkFailureCount);
-		mdac += READ_ONCE(stats->MissDiscAdvCount);
+		lfc += stats->LinkFailureCount;
+		vlfc += stats->VLinkFailureCount;
+		mdac += stats->MissDiscAdvCount;
 	}
 	lesb->lesb_link_fail = htonl(lfc);
 	lesb->lesb_vlink_fail = htonl(vlfc);
@@ -383,7 +382,6 @@ EXPORT_SYMBOL_GPL(fcoe_clean_pending_queue);
 /**
  * fcoe_check_wait_queue() - Attempt to clear the transmit backlog
  * @lport: The local port whose backlog is to be cleared
- * @skb: The received FIP packet
  *
  * This empties the wait_queue, dequeues the head of the wait_queue queue
  * and calls fcoe_start_io() for each packet. If all skb have been
@@ -441,7 +439,7 @@ EXPORT_SYMBOL_GPL(fcoe_check_wait_queue);
 
 /**
  * fcoe_queue_timer() - The fcoe queue timer
- * @t: Timer context use to obtain the FCoE port
+ * @lport: The local port
  *
  * Calls fcoe_check_wait_queue on timeout
  */
@@ -674,7 +672,6 @@ static void fcoe_del_netdev_mapping(struct net_device *netdev)
 /**
  * fcoe_netdev_map_lookup - find the fcoe transport that matches the netdev on which
  * it was created
- * @netdev: The net device that the FCoE interface is on
  *
  * Returns : ptr to the fcoe transport that supports this netdev or NULL
  * if not found.
@@ -711,7 +708,7 @@ static struct net_device *fcoe_if_to_netdev(const char *buffer)
 	char ifname[IFNAMSIZ + 2];
 
 	if (buffer) {
-		strscpy(ifname, buffer, IFNAMSIZ);
+		strlcpy(ifname, buffer, IFNAMSIZ);
 		cp = ifname + strlen(ifname);
 		while (--cp >= ifname && *cp == '\n')
 			*cp = '\0';
@@ -745,7 +742,8 @@ static int libfcoe_device_notification(struct notifier_block *notifier,
 	return NOTIFY_OK;
 }
 
-ssize_t fcoe_ctlr_create_store(const char *buf, size_t count)
+ssize_t fcoe_ctlr_create_store(struct bus_type *bus,
+			       const char *buf, size_t count)
 {
 	struct net_device *netdev = NULL;
 	struct fcoe_transport *ft = NULL;
@@ -807,7 +805,8 @@ out_nodev:
 	return count;
 }
 
-ssize_t fcoe_ctlr_destroy_store(const char *buf, size_t count)
+ssize_t fcoe_ctlr_destroy_store(struct bus_type *bus,
+				const char *buf, size_t count)
 {
 	int rc = -ENODEV;
 	struct net_device *netdev = NULL;
@@ -861,7 +860,7 @@ static int fcoe_transport_create(const char *buffer,
 	int rc = -ENODEV;
 	struct net_device *netdev = NULL;
 	struct fcoe_transport *ft = NULL;
-	enum fip_mode fip_mode = (enum fip_mode)(uintptr_t)kp->arg;
+	enum fip_mode fip_mode = (enum fip_mode)kp->arg;
 
 	mutex_lock(&ft_mutex);
 

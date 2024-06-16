@@ -398,7 +398,7 @@ int zd_restore_settings(struct zd_mac *mac)
 	    mac->type == NL80211_IFTYPE_ADHOC ||
 	    mac->type == NL80211_IFTYPE_AP) {
 		if (mac->vif != NULL) {
-			beacon = ieee80211_beacon_get(mac->hw, mac->vif, 0);
+			beacon = ieee80211_beacon_get(mac->hw, mac->vif);
 			if (beacon)
 				zd_mac_config_beacon(mac->hw, beacon, false);
 		}
@@ -416,10 +416,11 @@ int zd_restore_settings(struct zd_mac *mac)
 
 /**
  * zd_mac_tx_status - reports tx status of a packet if required
- * @hw: a &struct ieee80211_hw pointer
- * @skb: a sk-buffer
+ * @hw - a &struct ieee80211_hw pointer
+ * @skb - a sk-buffer
+ * @flags: extra flags to set in the TX status info
  * @ackssi: ACK signal strength
- * @tx_status: success and/or retry
+ * @success - True for successful transmission of the frame
  *
  * This information calls ieee80211_tx_status_irqsafe() if required by the
  * control information. It copies the control information into the status
@@ -476,7 +477,7 @@ static void zd_mac_tx_status(struct ieee80211_hw *hw, struct sk_buff *skb,
 
 /**
  * zd_mac_tx_failed - callback for failed frames
- * @urb: pointer to the urb structure
+ * @dev: the mac80211 wireless device
  *
  * This function is called if a frame couldn't be successfully
  * transferred. The first frame from the tx queue, will be selected and
@@ -912,9 +913,9 @@ static int fill_ctrlset(struct zd_mac *mac,
 /**
  * zd_op_tx - transmits a network frame to the device
  *
- * @hw: a &struct ieee80211_hw pointer
- * @control: the control structure
+ * @dev: mac80211 hardware device
  * @skb: socket buffer
+ * @control: the control structure
  *
  * This function transmit an IEEE 802.11 network frame to the device. The
  * control block of the skbuff will be initialized. If necessary the incoming
@@ -945,7 +946,7 @@ fail:
 
 /**
  * filter_ack - filters incoming packets for acknowledgements
- * @hw: a &struct ieee80211_hw pointer
+ * @dev: the mac80211 device
  * @rx_hdr: received header
  * @stats: the status for the received packet
  *
@@ -1167,7 +1168,7 @@ static void zd_beacon_done(struct zd_mac *mac)
 	/*
 	 * Fetch next beacon so that tim_count is updated.
 	 */
-	beacon = ieee80211_beacon_get(mac->hw, mac->vif, 0);
+	beacon = ieee80211_beacon_get(mac->hw, mac->vif);
 	if (beacon)
 		zd_mac_config_beacon(mac->hw, beacon, true);
 
@@ -1278,20 +1279,19 @@ static void set_rts_cts(struct zd_mac *mac, unsigned int short_preamble)
 static void zd_op_bss_info_changed(struct ieee80211_hw *hw,
 				   struct ieee80211_vif *vif,
 				   struct ieee80211_bss_conf *bss_conf,
-				   u64 changes)
+				   u32 changes)
 {
 	struct zd_mac *mac = zd_hw_mac(hw);
 	int associated;
 
-	dev_dbg_f(zd_mac_dev(mac), "changes: %llx\n", changes);
+	dev_dbg_f(zd_mac_dev(mac), "changes: %x\n", changes);
 
 	if (mac->type == NL80211_IFTYPE_MESH_POINT ||
 	    mac->type == NL80211_IFTYPE_ADHOC ||
 	    mac->type == NL80211_IFTYPE_AP) {
 		associated = true;
 		if (changes & BSS_CHANGED_BEACON) {
-			struct sk_buff *beacon = ieee80211_beacon_get(hw, vif,
-								      0);
+			struct sk_buff *beacon = ieee80211_beacon_get(hw, vif);
 
 			if (beacon) {
 				zd_chip_disable_hwint(&mac->chip);
@@ -1343,12 +1343,7 @@ static u64 zd_op_get_tsf(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
 }
 
 static const struct ieee80211_ops zd_ops = {
-	.add_chanctx = ieee80211_emulate_add_chanctx,
-	.remove_chanctx = ieee80211_emulate_remove_chanctx,
-	.change_chanctx = ieee80211_emulate_change_chanctx,
-	.switch_vif_chanctx = ieee80211_emulate_switch_vif_chanctx,
 	.tx			= zd_op_tx,
-	.wake_tx_queue		= ieee80211_handle_wake_tx_queue,
 	.start			= zd_op_start,
 	.stop			= zd_op_stop,
 	.add_interface		= zd_op_add_interface,
@@ -1453,7 +1448,7 @@ static void beacon_watchdog_handler(struct work_struct *work)
 
 		zd_chip_disable_hwint(&mac->chip);
 
-		beacon = ieee80211_beacon_get(mac->hw, mac->vif, 0);
+		beacon = ieee80211_beacon_get(mac->hw, mac->vif);
 		if (beacon) {
 			zd_mac_free_cur_beacon(mac);
 

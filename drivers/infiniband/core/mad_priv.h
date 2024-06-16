@@ -79,13 +79,13 @@ struct ib_mad_private {
 	struct ib_mad_private_header header;
 	size_t mad_size;
 	struct ib_grh grh;
-	u8 mad[];
+	u8 mad[0];
 } __packed;
 
 struct ib_rmpp_segment {
 	struct list_head list;
 	u32 num;
-	u8 data[];
+	u8 data[0];
 };
 
 struct ib_mad_agent_private {
@@ -103,7 +103,7 @@ struct ib_mad_agent_private {
 	struct work_struct local_work;
 	struct list_head rmpp_list;
 
-	refcount_t refcount;
+	atomic_t refcount;
 	union {
 		struct completion comp;
 		struct rcu_head rcu;
@@ -115,6 +115,7 @@ struct ib_mad_snoop_private {
 	struct ib_mad_qp_info *qp_info;
 	int snoop_index;
 	int mad_snoop_flags;
+	atomic_t refcount;
 	struct completion comp;
 };
 

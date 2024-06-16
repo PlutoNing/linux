@@ -139,9 +139,9 @@ static struct attribute *mISDN_attrs[] = {
 };
 ATTRIBUTE_GROUPS(mISDN);
 
-static int mISDN_uevent(const struct device *dev, struct kobj_uevent_env *env)
+static int mISDN_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
-	const struct mISDNdevice *mdev = dev_to_mISDN(dev);
+	struct mISDNdevice *mdev = dev_to_mISDN(dev);
 
 	if (!mdev)
 		return 0;
@@ -152,11 +152,18 @@ static int mISDN_uevent(const struct device *dev, struct kobj_uevent_env *env)
 	return 0;
 }
 
+static void mISDN_class_release(struct class *cls)
+{
+	/* do nothing, it's static */
+}
+
 static struct class mISDN_class = {
 	.name = "mISDN",
+	.owner = THIS_MODULE,
 	.dev_uevent = mISDN_uevent,
 	.dev_groups = mISDN_groups,
 	.dev_release = mISDN_dev_release,
+	.class_release = mISDN_class_release,
 };
 
 static int
@@ -215,7 +222,7 @@ mISDN_register_device(struct mISDNdevice *dev,
 
 	err = get_free_devid();
 	if (err < 0)
-		return err;
+		goto error1;
 	dev->id = err;
 
 	device_initialize(&dev->dev);
@@ -226,12 +233,11 @@ mISDN_register_device(struct mISDNdevice *dev,
 	if (debug & DEBUG_CORE)
 		printk(KERN_DEBUG "mISDN_register %s %d\n",
 		       dev_name(&dev->dev), dev->id);
-	dev->dev.class = &mISDN_class;
-
 	err = create_stack(dev);
 	if (err)
 		goto error1;
 
+	dev->dev.class = &mISDN_class;
 	dev->dev.platform_data = dev;
 	dev->dev.parent = parent;
 	dev_set_drvdata(&dev->dev, dev);
@@ -243,8 +249,8 @@ mISDN_register_device(struct mISDNdevice *dev,
 
 error3:
 	delete_stack(dev);
+	return err;
 error1:
-	put_device(&dev->dev);
 	return err;
 
 }
@@ -375,7 +381,7 @@ mISDNInit(void)
 	err = mISDN_inittimer(&debug);
 	if (err)
 		goto error2;
-	err = Isdnl1_Init(&debug);
+	err = l1_init(&debug);
 	if (err)
 		goto error3;
 	err = Isdnl2_Init(&debug);
@@ -389,7 +395,7 @@ mISDNInit(void)
 error5:
 	Isdnl2_cleanup();
 error4:
-	Isdnl1_cleanup();
+	l1_cleanup();
 error3:
 	mISDN_timer_cleanup();
 error2:
@@ -402,7 +408,7 @@ static void mISDN_cleanup(void)
 {
 	misdn_sock_cleanup();
 	Isdnl2_cleanup();
-	Isdnl1_cleanup();
+	l1_cleanup();
 	mISDN_timer_cleanup();
 	class_unregister(&mISDN_class);
 

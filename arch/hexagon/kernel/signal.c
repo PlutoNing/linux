@@ -7,6 +7,7 @@
 
 #include <linux/linkage.h>
 #include <linux/syscalls.h>
+#include <linux/tracehook.h>
 #include <linux/sched/task_stack.h>
 
 #include <asm/registers.h>
@@ -154,7 +155,7 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 				regs->r00 = -EINTR;
 				break;
 			}
-			fallthrough;
+			/* Fall through */
 		case -ERESTARTNOINTR:
 			regs->r06 = regs->syscall_nr;
 			pt_set_elr(regs, pt_elr(regs) - 4);
@@ -220,7 +221,7 @@ no_restart:
  * Architecture-specific wrappers for signal-related system calls
  */
 
-SYSCALL_DEFINE0(rt_sigreturn)
+asmlinkage int sys_rt_sigreturn(void)
 {
 	struct pt_regs *regs = current_pt_regs();
 	struct rt_sigframe __user *frame;

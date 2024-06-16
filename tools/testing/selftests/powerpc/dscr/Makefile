@@ -7,6 +7,5 @@ top_srcdir = ../../../../..
 include ../../lib.mk
 
 $(OUTPUT)/dscr_default_test: LDLIBS += -lpthread
-$(OUTPUT)/dscr_explicit_test: LDLIBS += -lpthread
 
-$(TEST_GEN_PROGS): ../harness.c ../utils.c
+$(TEST_GEN_PROGS): ../harness.c

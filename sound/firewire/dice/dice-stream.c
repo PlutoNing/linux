@@ -8,8 +8,8 @@
 
 #include "dice.h"
 
-#define	READY_TIMEOUT_MS	200
-#define NOTIFICATION_TIMEOUT_MS	100
+#define	CALLBACK_TIMEOUT	200
+#define NOTIFICATION_TIMEOUT_MS	(2 * MSEC_PER_SEC)
 
 struct reg_params {
 	unsigned int count;
@@ -57,9 +57,13 @@ int snd_dice_stream_get_rate_mode(struct snd_dice *dice, unsigned int rate,
 	return -EINVAL;
 }
 
-static int select_clock(struct snd_dice *dice, unsigned int rate)
+/*
+ * This operation has an effect to synchronize GLOBAL_STATUS/GLOBAL_SAMPLE_RATE
+ * to GLOBAL_STATUS. Especially, just after powering on, these are different.
+ */
+static int ensure_phase_lock(struct snd_dice *dice, unsigned int rate)
 {
-	__be32 reg, new;
+	__be32 reg, nominal;
 	u32 data;
 	int i;
 	int err;
@@ -83,15 +87,24 @@ static int select_clock(struct snd_dice *dice, unsigned int rate)
 	if (completion_done(&dice->clock_accepted))
 		reinit_completion(&dice->clock_accepted);
 
-	new = cpu_to_be32(data);
+	reg = cpu_to_be32(data);
 	err = snd_dice_transaction_write_global(dice, GLOBAL_CLOCK_SELECT,
-						&new, sizeof(new));
+						&reg, sizeof(reg));
 	if (err < 0)
 		return err;
 
 	if (wait_for_completion_timeout(&dice->clock_accepted,
 			msecs_to_jiffies(NOTIFICATION_TIMEOUT_MS)) == 0) {
-		if (reg != new)
+		/*
+		 * Old versions of Dice firmware transfer no notification when
+		 * the same clock status as current one is set. In this case,
+		 * just check current clock status.
+		 */
+		err = snd_dice_transaction_read_global(dice, GLOBAL_STATUS,
+						&nominal, sizeof(nominal));
+		if (err < 0)
+			return err;
+		if (!(be32_to_cpu(nominal) & STATUS_SOURCE_LOCKED))
 			return -ETIMEDOUT;
 	}
 
@@ -168,7 +181,7 @@ static int keep_resources(struct snd_dice *dice, struct amdtp_stream *stream,
 	// as 'Dual Wire'.
 	// For this quirk, blocking mode is required and PCM buffer size should
 	// be aligned to SYT_INTERVAL.
-	double_pcm_frames = (rate > 96000 && !dice->disable_double_pcm_frames);
+	double_pcm_frames = rate > 96000;
 	if (double_pcm_frames) {
 		rate /= 2;
 		pcm_chs *= 2;
@@ -211,6 +224,7 @@ static int keep_dual_resources(struct snd_dice *dice, unsigned int rate,
 		struct amdtp_stream *stream;
 		struct fw_iso_resources *resources;
 		unsigned int pcm_cache;
+		unsigned int midi_cache;
 		unsigned int pcm_chs;
 		unsigned int midi_ports;
 
@@ -219,6 +233,7 @@ static int keep_dual_resources(struct snd_dice *dice, unsigned int rate,
 			resources = &dice->tx_resources[i];
 
 			pcm_cache = dice->tx_pcm_chs[i][mode];
+			midi_cache = dice->tx_midi_ports[i];
 			err = snd_dice_transaction_read_tx(dice,
 					params->size * i + TX_NUMBER_AUDIO,
 					reg, sizeof(reg));
@@ -227,6 +242,7 @@ static int keep_dual_resources(struct snd_dice *dice, unsigned int rate,
 			resources = &dice->rx_resources[i];
 
 			pcm_cache = dice->rx_pcm_chs[i][mode];
+			midi_cache = dice->rx_midi_ports[i];
 			err = snd_dice_transaction_read_rx(dice,
 					params->size * i + RX_NUMBER_AUDIO,
 					reg, sizeof(reg));
@@ -237,10 +253,10 @@ static int keep_dual_resources(struct snd_dice *dice, unsigned int rate,
 		midi_ports = be32_to_cpu(reg[1]);
 
 		// These are important for developer of this driver.
-		if (pcm_chs != pcm_cache) {
+		if (pcm_chs != pcm_cache || midi_ports != midi_cache) {
 			dev_info(&dice->unit->device,
-				 "cache mismatch: pcm: %u:%u, midi: %u\n",
-				 pcm_chs, pcm_cache, midi_ports);
+				 "cache mismatch: pcm: %u:%u, midi: %u:%u\n",
+				 pcm_chs, pcm_cache, midi_ports, midi_cache);
 			return -EPROTO;
 		}
 
@@ -262,9 +278,7 @@ static void finish_session(struct snd_dice *dice, struct reg_params *tx_params,
 	snd_dice_transaction_clear_enable(dice);
 }
 
-int snd_dice_stream_reserve_duplex(struct snd_dice *dice, unsigned int rate,
-				   unsigned int events_per_period,
-				   unsigned int events_per_buffer)
+int snd_dice_stream_reserve_duplex(struct snd_dice *dice, unsigned int rate)
 {
 	unsigned int curr_rate;
 	int err;
@@ -291,7 +305,7 @@ int snd_dice_stream_reserve_duplex(struct snd_dice *dice, unsigned int rate,
 		// Just after owning the unit (GLOBAL_OWNER), the unit can
 		// return invalid stream formats. Selecting clock parameters
 		// have an effect for the unit to refine it.
-		err = select_clock(dice, rate);
+		err = ensure_phase_lock(dice, rate);
 		if (err < 0)
 			return err;
 
@@ -308,11 +322,6 @@ int snd_dice_stream_reserve_duplex(struct snd_dice *dice, unsigned int rate,
 
 		err = keep_dual_resources(dice, rate, AMDTP_OUT_STREAM,
 					  &rx_params);
-		if (err < 0)
-			goto error;
-
-		err = amdtp_domain_set_events_per_period(&dice->domain,
-					events_per_period, events_per_buffer);
 		if (err < 0)
 			goto error;
 	}
@@ -446,17 +455,20 @@ int snd_dice_stream_start_duplex(struct snd_dice *dice)
 			goto error;
 		}
 
-		// MEMO: The device immediately starts packet transmission when enabled. Some
-		// devices are strictly to generate any discontinuity in the sequence of tx packet
-		// when they receives invalid sequence of presentation time in CIP header. The
-		// sequence replay for media clock recovery can suppress the behaviour.
-		err = amdtp_domain_start(&dice->domain, 0, true, false);
+		err = amdtp_domain_start(&dice->domain);
 		if (err < 0)
 			goto error;
 
-		if (!amdtp_domain_wait_ready(&dice->domain, READY_TIMEOUT_MS)) {
-			err = -ETIMEDOUT;
-			goto error;
+		for (i = 0; i < MAX_STREAMS; i++) {
+			if ((i < tx_params.count &&
+			    !amdtp_stream_wait_callback(&dice->tx_stream[i],
+							CALLBACK_TIMEOUT)) ||
+			    (i < rx_params.count &&
+			     !amdtp_stream_wait_callback(&dice->rx_stream[i],
+							 CALLBACK_TIMEOUT))) {
+				err = -ETIMEDOUT;
+				goto error;
+			}
 		}
 	}
 
@@ -477,10 +489,11 @@ void snd_dice_stream_stop_duplex(struct snd_dice *dice)
 	struct reg_params tx_params, rx_params;
 
 	if (dice->substreams_counter == 0) {
-		if (get_register_params(dice, &tx_params, &rx_params) >= 0)
+		if (get_register_params(dice, &tx_params, &rx_params) >= 0) {
+			amdtp_domain_stop(&dice->domain);
 			finish_session(dice, &tx_params, &rx_params);
+		}
 
-		amdtp_domain_stop(&dice->domain);
 		release_resources(dice);
 	}
 }
@@ -637,7 +650,7 @@ int snd_dice_stream_detect_current_formats(struct snd_dice *dice)
 	 * invalid stream formats. Selecting clock parameters have an effect
 	 * for the unit to refine it.
 	 */
-	err = select_clock(dice, rate);
+	err = ensure_phase_lock(dice, rate);
 	if (err < 0)
 		return err;
 

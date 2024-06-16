@@ -162,11 +162,11 @@ static unsigned int tifm_ms_write_data(struct tifm_ms *host,
 	case 3:
 		host->io_word |= buf[off + 2] << 16;
 		host->io_pos++;
-		fallthrough;
+		/* fall through */
 	case 2:
 		host->io_word |= buf[off + 1] << 8;
 		host->io_pos++;
-		fallthrough;
+		/* fall through */
 	case 1:
 		host->io_word |= buf[off];
 		host->io_pos++;
@@ -198,7 +198,7 @@ static unsigned int tifm_ms_transfer_data(struct tifm_ms *host)
 		host->block_pos);
 
 	while (length) {
-		unsigned int p_off;
+		unsigned int uninitialized_var(p_off);
 
 		if (host->req->long_data) {
 			pg = nth_page(sg_page(&host->req->sg),
@@ -279,8 +279,8 @@ static int tifm_ms_issue_cmd(struct tifm_ms *host)
 	if (host->use_dma) {
 		if (1 != tifm_map_sg(sock, &host->req->sg, 1,
 				     host->req->data_dir == READ
-				     ? DMA_FROM_DEVICE
-				     : DMA_TO_DEVICE)) {
+				     ? PCI_DMA_FROMDEVICE
+				     : PCI_DMA_TODEVICE)) {
 			host->req->error = -ENOMEM;
 			return host->req->error;
 		}
@@ -350,8 +350,8 @@ static void tifm_ms_complete_cmd(struct tifm_ms *host)
 	if (host->use_dma) {
 		tifm_unmap_sg(sock, &host->req->sg, 1,
 			      host->req->data_dir == READ
-			      ? DMA_FROM_DEVICE
-			      : DMA_TO_DEVICE);
+			      ? PCI_DMA_FROMDEVICE
+			      : PCI_DMA_TODEVICE);
 	}
 
 	writel((~TIFM_CTRL_LED) & readl(sock->addr + SOCK_CONTROL),
@@ -528,7 +528,7 @@ static int tifm_ms_set_param(struct memstick_host *msh,
 		} else
 			return -EINVAL;
 		break;
-	}
+	};
 
 	return 0;
 }
@@ -607,8 +607,8 @@ static void tifm_ms_remove(struct tifm_dev *sock)
 		if (host->use_dma)
 			tifm_unmap_sg(sock, &host->req->sg, 1,
 				      host->req->data_dir == READ
-				      ? DMA_TO_DEVICE
-				      : DMA_FROM_DEVICE);
+				      ? PCI_DMA_TODEVICE
+				      : PCI_DMA_FROMDEVICE);
 		host->req->error = -ETIME;
 
 		do {

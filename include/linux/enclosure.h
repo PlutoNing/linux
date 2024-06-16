@@ -101,7 +101,7 @@ struct enclosure_device {
 	struct device edev;
 	struct enclosure_component_callbacks *cb;
 	int components;
-	struct enclosure_component component[];
+	struct enclosure_component component[0];
 };
 
 static inline struct enclosure_device *

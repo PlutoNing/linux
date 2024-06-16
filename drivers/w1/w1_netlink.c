@@ -65,8 +65,7 @@ static void w1_unref_block(struct w1_cb_block *block)
 		u16 len = w1_reply_len(block);
 		if (len) {
 			cn_netlink_send_mult(block->first_cn, len,
-					     block->portid, 0,
-					     GFP_KERNEL, NULL, NULL);
+				block->portid, 0, GFP_KERNEL);
 		}
 		kfree(block);
 	}
@@ -84,8 +83,7 @@ static void w1_reply_make_space(struct w1_cb_block *block, u16 space)
 {
 	u16 len = w1_reply_len(block);
 	if (len + space >= block->maxlen) {
-		cn_netlink_send_mult(block->first_cn, len, block->portid,
-				     0, GFP_KERNEL, NULL, NULL);
+		cn_netlink_send_mult(block->first_cn, len, block->portid, 0, GFP_KERNEL);
 		block->first_cn->len = 0;
 		block->cn = NULL;
 		block->msg = NULL;
@@ -613,8 +611,7 @@ static void w1_cn_callback(struct cn_msg *cn, struct netlink_skb_parms *nsp)
 		}
 		atomic_set(&block->refcnt, 1);
 		block->portid = nsp->portid;
-		block->request_cn = *cn;
-		memcpy(block->request_cn.data, cn->data, cn->len);
+		memcpy(&block->request_cn, cn, sizeof(*cn) + cn->len);
 		node = (struct w1_cb_node *)(block->request_cn.data + cn->len);
 
 		/* Sneeky, when not bundling, reply_size is the allocated space

@@ -21,7 +21,6 @@
 static unsigned int garp_join_time __read_mostly = 200;
 module_param(garp_join_time, uint, 0644);
 MODULE_PARM_DESC(garp_join_time, "Join time in ms (default 200ms)");
-MODULE_DESCRIPTION("IEEE 802.1D Generic Attribute Registration Protocol (GARP)");
 MODULE_LICENSE("GPL");
 
 static const struct garp_state_trans {
@@ -202,19 +201,6 @@ static void garp_attr_destroy(struct garp_applicant *app, struct garp_attr *attr
 {
 	rb_erase(&attr->node, &app->gid);
 	kfree(attr);
-}
-
-static void garp_attr_destroy_all(struct garp_applicant *app)
-{
-	struct rb_node *node, *next;
-	struct garp_attr *attr;
-
-	for (node = rb_first(&app->gid);
-	     next = node ? rb_next(node) : NULL, node != NULL;
-	     node = next) {
-		attr = rb_entry(node, struct garp_attr, node);
-		garp_attr_destroy(app, attr);
-	}
 }
 
 static int garp_pdu_init(struct garp_applicant *app)
@@ -408,7 +394,7 @@ static void garp_join_timer_arm(struct garp_applicant *app)
 {
 	unsigned long delay;
 
-	delay = get_random_u32_below(msecs_to_jiffies(garp_join_time));
+	delay = (u64)msecs_to_jiffies(garp_join_time) * prandom_u32() >> 32;
 	mod_timer(&app->join_timer, jiffies + delay);
 }
 
@@ -619,11 +605,10 @@ void garp_uninit_applicant(struct net_device *dev, struct garp_application *appl
 
 	/* Delete timer and generate a final TRANSMIT_PDU event to flush out
 	 * all pending messages before the applicant is gone. */
-	timer_shutdown_sync(&app->join_timer);
+	del_timer_sync(&app->join_timer);
 
 	spin_lock_bh(&app->lock);
 	garp_gid_event(app, GARP_EVENT_TRANSMIT_PDU);
-	garp_attr_destroy_all(app);
 	garp_pdu_queue(app);
 	spin_unlock_bh(&app->lock);
 

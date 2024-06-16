@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2014-2017 Qualcomm Atheros, Inc.
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "core.h"
@@ -431,7 +430,7 @@ ath10k_dbg_sta_write_peer_debug_trigger(struct file *file,
 	}
 
 	ret = ath10k_wmi_peer_set_param(ar, arsta->arvif->vdev_id, sta->addr,
-					ar->wmi.peer_param->debug, peer_debug_trigger);
+					WMI_PEER_DEBUG, peer_debug_trigger);
 	if (ret) {
 		ath10k_warn(ar, "failed to set param to trigger peer tid logs for station ret: %d\n",
 			    ret);
@@ -499,7 +498,7 @@ static char *get_num_ampdu_subfrm_str(enum ath10k_ampdu_subfrm_num i)
 {
 	switch (i) {
 	case ATH10K_AMPDU_SUBFRM_NUM_10:
-		return "up to 10";
+		return "upto 10";
 	case ATH10K_AMPDU_SUBFRM_NUM_20:
 		return "11-20";
 	case ATH10K_AMPDU_SUBFRM_NUM_30:

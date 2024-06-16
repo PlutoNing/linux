@@ -300,7 +300,7 @@ TRACE_EVENT(aer_event,
 		 const u32 status,
 		 const u8 severity,
 		 const u8 tlp_header_valid,
-		 struct pcie_tlp_log *tlp),
+		 struct aer_header_log_regs *tlp),
 
 	TP_ARGS(dev_name, status, severity, tlp_header_valid, tlp),
 
@@ -318,10 +318,10 @@ TRACE_EVENT(aer_event,
 		__entry->severity	= severity;
 		__entry->tlp_header_valid = tlp_header_valid;
 		if (tlp_header_valid) {
-			__entry->tlp_header[0] = tlp->dw[0];
-			__entry->tlp_header[1] = tlp->dw[1];
-			__entry->tlp_header[2] = tlp->dw[2];
-			__entry->tlp_header[3] = tlp->dw[3];
+			__entry->tlp_header[0] = tlp->dw0;
+			__entry->tlp_header[1] = tlp->dw1;
+			__entry->tlp_header[2] = tlp->dw2;
+			__entry->tlp_header[3] = tlp->dw3;
 		}
 	),
 
@@ -358,6 +358,7 @@ TRACE_EVENT(aer_event,
 	EM ( MF_MSG_KERNEL_HIGH_ORDER, "high-order kernel page" )	\
 	EM ( MF_MSG_SLAB, "kernel slab page" )				\
 	EM ( MF_MSG_DIFFERENT_COMPOUND, "different compound page after locking" ) \
+	EM ( MF_MSG_POISONED_HUGE, "huge page already hardware poisoned" )	\
 	EM ( MF_MSG_HUGE, "huge page" )					\
 	EM ( MF_MSG_FREE_HUGE, "free huge page" )			\
 	EM ( MF_MSG_UNMAP_FAILED, "unmapping failed page" )		\
@@ -371,8 +372,7 @@ TRACE_EVENT(aer_event,
 	EM ( MF_MSG_CLEAN_LRU, "clean LRU page" )			\
 	EM ( MF_MSG_TRUNCATED_LRU, "already truncated LRU page" )	\
 	EM ( MF_MSG_BUDDY, "free buddy page" )				\
-	EM ( MF_MSG_DAX, "dax page" )					\
-	EM ( MF_MSG_UNSPLIT_THP, "unsplit thp" )			\
+	EM ( MF_MSG_BUDDY_2ND, "free buddy page (2nd try)" )		\
 	EMe ( MF_MSG_UNKNOWN, "unknown page" )
 
 /*

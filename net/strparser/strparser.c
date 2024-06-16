@@ -27,10 +27,18 @@
 
 static struct workqueue_struct *strp_wq;
 
+struct _strp_msg {
+	/* Internal cb structure. struct strp_msg must be first for passing
+	 * to upper layer.
+	 */
+	struct strp_msg strp;
+	int accum_len;
+};
+
 static inline struct _strp_msg *_strp_msg(struct sk_buff *skb)
 {
 	return (struct _strp_msg *)((void *)skb->cb +
-		offsetof(struct sk_skb_cb, strp));
+		offsetof(struct qdisc_skb_cb, data));
 }
 
 /* Lower lock held */
@@ -50,7 +58,7 @@ static void strp_abort_strp(struct strparser *strp, int err)
 
 		/* Report an error on the lower socket */
 		sk->sk_err = -err;
-		sk_error_report(sk);
+		sk->sk_error_report(sk);
 	}
 }
 
@@ -533,9 +541,6 @@ EXPORT_SYMBOL_GPL(strp_check_rcv);
 
 static int __init strp_dev_init(void)
 {
-	BUILD_BUG_ON(sizeof(struct sk_skb_cb) >
-		     sizeof_field(struct sk_buff, cb));
-
 	strp_wq = create_singlethread_workqueue("kstrp");
 	if (unlikely(!strp_wq))
 		return -ENOMEM;

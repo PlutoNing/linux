@@ -211,10 +211,15 @@ void sp_destroy(struct sp_device *sp)
 	sp_del_device(sp);
 }
 
-int sp_suspend(struct sp_device *sp)
+#ifdef CONFIG_PM
+int sp_suspend(struct sp_device *sp, pm_message_t state)
 {
+	int ret;
+
 	if (sp->dev_vdata->ccp_vdata) {
-		ccp_dev_suspend(sp);
+		ret = ccp_dev_suspend(sp, state);
+		if (ret)
+			return ret;
 	}
 
 	return 0;
@@ -222,12 +227,17 @@ int sp_suspend(struct sp_device *sp)
 
 int sp_resume(struct sp_device *sp)
 {
+	int ret;
+
 	if (sp->dev_vdata->ccp_vdata) {
-		ccp_dev_resume(sp);
+		ret = ccp_dev_resume(sp);
+		if (ret)
+			return ret;
 	}
 
 	return 0;
 }
+#endif
 
 struct sp_device *sp_get_psp_master_device(void)
 {

@@ -7,12 +7,10 @@
 #include <linux/linkage.h>
 #include <asm/page_types.h>
 #include <asm/kexec.h>
-#include <asm/nospec-branch.h>
 #include <asm/processor-flags.h>
 
 /*
- * Must be relocatable PIC code callable as a C function, in particular
- * there must be a plain RET and not jump to return thunk.
+ * Must be relocatable PIC code callable as a C function
  */
 
 #define PTR(x) (x << 2)
@@ -37,7 +35,8 @@
 #define CP_PA_BACKUP_PAGES_MAP	DATA(0x1c)
 
 	.text
-SYM_CODE_START_NOALIGN(relocate_kernel)
+	.globl relocate_kernel
+relocate_kernel:
 	/* Save the CPU context, used for jumping back */
 
 	pushl	%ebx
@@ -93,12 +92,9 @@ SYM_CODE_START_NOALIGN(relocate_kernel)
 	movl    %edi, %eax
 	addl    $(identity_mapped - relocate_kernel), %eax
 	pushl   %eax
-	ANNOTATE_UNRET_SAFE
 	ret
-	int3
-SYM_CODE_END(relocate_kernel)
 
-SYM_CODE_START_LOCAL_NOALIGN(identity_mapped)
+identity_mapped:
 	/* set return address to 0 if not preserving context */
 	pushl	$0
 	/* store the start address on the stack */
@@ -111,7 +107,7 @@ SYM_CODE_START_LOCAL_NOALIGN(identity_mapped)
 	 *  - Write protect disabled
 	 *  - No task switch
 	 *  - Don't do FP software emulation.
-	 *  - Protected mode enabled
+	 *  - Proctected mode enabled
 	 */
 	movl	%cr0, %eax
 	andl	$~(X86_CR0_PG | X86_CR0_AM | X86_CR0_WP | X86_CR0_TS | X86_CR0_EM), %eax
@@ -163,15 +159,12 @@ SYM_CODE_START_LOCAL_NOALIGN(identity_mapped)
 	xorl    %edx, %edx
 	xorl    %esi, %esi
 	xorl    %ebp, %ebp
-	ANNOTATE_UNRET_SAFE
 	ret
-	int3
 1:
 	popl	%edx
 	movl	CP_PA_SWAP_PAGE(%edi), %esp
 	addl	$PAGE_SIZE, %esp
 2:
-	ANNOTATE_RETPOLINE_SAFE
 	call	*%edx
 
 	/* get the re-entry point of the peer system */
@@ -197,12 +190,9 @@ SYM_CODE_START_LOCAL_NOALIGN(identity_mapped)
 	movl	%edi, %eax
 	addl	$(virtual_mapped - relocate_kernel), %eax
 	pushl	%eax
-	ANNOTATE_UNRET_SAFE
 	ret
-	int3
-SYM_CODE_END(identity_mapped)
 
-SYM_CODE_START_LOCAL_NOALIGN(virtual_mapped)
+virtual_mapped:
 	movl	CR4(%edi), %eax
 	movl	%eax, %cr4
 	movl	CR3(%edi), %eax
@@ -217,13 +207,10 @@ SYM_CODE_START_LOCAL_NOALIGN(virtual_mapped)
 	popl	%edi
 	popl	%esi
 	popl	%ebx
-	ANNOTATE_UNRET_SAFE
 	ret
-	int3
-SYM_CODE_END(virtual_mapped)
 
 	/* Do the copies */
-SYM_CODE_START_LOCAL_NOALIGN(swap_pages)
+swap_pages:
 	movl	8(%esp), %edx
 	movl	4(%esp), %ecx
 	pushl	%ebp
@@ -282,10 +269,7 @@ SYM_CODE_START_LOCAL_NOALIGN(swap_pages)
 	popl	%edi
 	popl	%ebx
 	popl	%ebp
-	ANNOTATE_UNRET_SAFE
 	ret
-	int3
-SYM_CODE_END(swap_pages)
 
 	.globl kexec_control_code_size
 .set kexec_control_code_size, . - relocate_kernel

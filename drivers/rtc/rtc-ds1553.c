@@ -249,6 +249,7 @@ static int ds1553_nvram_write(void *priv, unsigned int pos, void *val,
 
 static int ds1553_rtc_probe(struct platform_device *pdev)
 {
+	struct resource *res;
 	unsigned int cen, sec;
 	struct rtc_plat_data *pdata;
 	void __iomem *ioaddr;
@@ -267,7 +268,8 @@ static int ds1553_rtc_probe(struct platform_device *pdev)
 	if (!pdata)
 		return -ENOMEM;
 
-	ioaddr = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	ioaddr = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(ioaddr))
 		return PTR_ERR(ioaddr);
 	pdata->ioaddr = ioaddr;
@@ -294,8 +296,9 @@ static int ds1553_rtc_probe(struct platform_device *pdev)
 		return PTR_ERR(pdata->rtc);
 
 	pdata->rtc->ops = &ds1553_rtc_ops;
+	pdata->rtc->nvram_old_abi = true;
 
-	ret = devm_rtc_register_device(pdata->rtc);
+	ret = rtc_register_device(pdata->rtc);
 	if (ret)
 		return ret;
 
@@ -309,7 +312,8 @@ static int ds1553_rtc_probe(struct platform_device *pdev)
 		}
 	}
 
-	devm_rtc_nvmem_register(pdata->rtc, &nvmem_cfg);
+	if (rtc_nvmem_register(pdata->rtc, &nvmem_cfg))
+		dev_err(&pdev->dev, "unable to register nvmem\n");
 
 	return 0;
 }

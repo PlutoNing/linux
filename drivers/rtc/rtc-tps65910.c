@@ -18,7 +18,6 @@
 #include <linux/rtc.h>
 #include <linux/bcd.h>
 #include <linux/math64.h>
-#include <linux/property.h>
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
 #include <linux/mfd/tps65910.h>
@@ -406,30 +405,27 @@ static int tps65910_rtc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, tps_rtc);
 
 	irq  = platform_get_irq(pdev, 0);
-	if (irq < 0)
-		return irq;
+	if (irq <= 0) {
+		dev_warn(&pdev->dev, "Wake up is not possible as irq = %d\n",
+			irq);
+		return -ENXIO;
+	}
 
 	ret = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 		tps65910_rtc_interrupt, IRQF_TRIGGER_LOW,
 		dev_name(&pdev->dev), &pdev->dev);
-	if (ret < 0)
-		irq = -1;
-
-	tps_rtc->irq = irq;
-	if (irq != -1) {
-		if (device_property_present(tps65910->dev, "wakeup-source"))
-			device_init_wakeup(&pdev->dev, 1);
-		else
-			device_set_wakeup_capable(&pdev->dev, 1);
-	} else {
-		clear_bit(RTC_FEATURE_ALARM, tps_rtc->rtc->features);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "IRQ is not free.\n");
+		return ret;
 	}
+	tps_rtc->irq = irq;
+	device_set_wakeup_capable(&pdev->dev, 1);
 
 	tps_rtc->rtc->ops = &tps65910_rtc_ops;
 	tps_rtc->rtc->range_min = RTC_TIMESTAMP_BEGIN_2000;
 	tps_rtc->rtc->range_max = RTC_TIMESTAMP_END_2099;
 
-	return devm_rtc_register_device(tps_rtc->rtc);
+	return rtc_register_device(tps_rtc->rtc);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -464,6 +460,6 @@ static struct platform_driver tps65910_rtc_driver = {
 };
 
 module_platform_driver(tps65910_rtc_driver);
-MODULE_ALIAS("platform:tps65910-rtc");
+MODULE_ALIAS("platform:rtc-tps65910");
 MODULE_AUTHOR("Venu Byravarasu <vbyravarasu@nvidia.com>");
 MODULE_LICENSE("GPL");

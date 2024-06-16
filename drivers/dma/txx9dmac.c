@@ -601,13 +601,13 @@ scan_done:
 	}
 }
 
-static void txx9dmac_chan_tasklet(struct tasklet_struct *t)
+static void txx9dmac_chan_tasklet(unsigned long data)
 {
 	int irq;
 	u32 csr;
 	struct txx9dmac_chan *dc;
 
-	dc = from_tasklet(dc, t, tasklet);
+	dc = (struct txx9dmac_chan *)data;
 	csr = channel_readl(dc, CSR);
 	dev_vdbg(chan2dev(&dc->chan), "tasklet: status=%x\n", csr);
 
@@ -638,13 +638,13 @@ static irqreturn_t txx9dmac_chan_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void txx9dmac_tasklet(struct tasklet_struct *t)
+static void txx9dmac_tasklet(unsigned long data)
 {
 	int irq;
 	u32 csr;
 	struct txx9dmac_chan *dc;
 
-	struct txx9dmac_dev *ddev = from_tasklet(ddev, t, tasklet);
+	struct txx9dmac_dev *ddev = (struct txx9dmac_dev *)data;
 	u32 mcr;
 	int i;
 
@@ -1113,7 +1113,8 @@ static int __init txx9dmac_chan_probe(struct platform_device *pdev)
 		irq = platform_get_irq(pdev, 0);
 		if (irq < 0)
 			return irq;
-		tasklet_setup(&dc->tasklet, txx9dmac_chan_tasklet);
+		tasklet_init(&dc->tasklet, txx9dmac_chan_tasklet,
+				(unsigned long)dc);
 		dc->irq = irq;
 		err = devm_request_irq(&pdev->dev, dc->irq,
 			txx9dmac_chan_interrupt, 0, dev_name(&pdev->dev), dc);
@@ -1151,7 +1152,7 @@ static int __init txx9dmac_chan_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void txx9dmac_chan_remove(struct platform_device *pdev)
+static int txx9dmac_chan_remove(struct platform_device *pdev)
 {
 	struct txx9dmac_chan *dc = platform_get_drvdata(pdev);
 
@@ -1162,6 +1163,7 @@ static void txx9dmac_chan_remove(struct platform_device *pdev)
 		tasklet_kill(&dc->tasklet);
 	}
 	dc->ddev->chan[pdev->id % TXX9_DMA_MAX_NR_CHANNELS] = NULL;
+	return 0;
 }
 
 static int __init txx9dmac_probe(struct platform_device *pdev)
@@ -1198,7 +1200,8 @@ static int __init txx9dmac_probe(struct platform_device *pdev)
 
 	ddev->irq = platform_get_irq(pdev, 0);
 	if (ddev->irq >= 0) {
-		tasklet_setup(&ddev->tasklet, txx9dmac_tasklet);
+		tasklet_init(&ddev->tasklet, txx9dmac_tasklet,
+				(unsigned long)ddev);
 		err = devm_request_irq(&pdev->dev, ddev->irq,
 			txx9dmac_interrupt, 0, dev_name(&pdev->dev), ddev);
 		if (err)
@@ -1214,7 +1217,7 @@ static int __init txx9dmac_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void txx9dmac_remove(struct platform_device *pdev)
+static int txx9dmac_remove(struct platform_device *pdev)
 {
 	struct txx9dmac_dev *ddev = platform_get_drvdata(pdev);
 
@@ -1223,6 +1226,7 @@ static void txx9dmac_remove(struct platform_device *pdev)
 		devm_free_irq(&pdev->dev, ddev->irq, ddev);
 		tasklet_kill(&ddev->tasklet);
 	}
+	return 0;
 }
 
 static void txx9dmac_shutdown(struct platform_device *pdev)
@@ -1260,14 +1264,14 @@ static const struct dev_pm_ops txx9dmac_dev_pm_ops = {
 };
 
 static struct platform_driver txx9dmac_chan_driver = {
-	.remove_new	= txx9dmac_chan_remove,
+	.remove		= txx9dmac_chan_remove,
 	.driver = {
 		.name	= "txx9dmac-chan",
 	},
 };
 
 static struct platform_driver txx9dmac_driver = {
-	.remove_new	= txx9dmac_remove,
+	.remove		= txx9dmac_remove,
 	.shutdown	= txx9dmac_shutdown,
 	.driver = {
 		.name	= "txx9dmac",

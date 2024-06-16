@@ -17,7 +17,7 @@
 #include <linux/vfio.h>
 #include <linux/vgaarb.h>
 
-#include "vfio_pci_priv.h"
+#include "vfio_pci_private.h"
 
 #ifdef __LITTLE_ENDIAN
 #define vfio_ioread64	ioread64
@@ -37,72 +37,17 @@
 #define vfio_ioread8	ioread8
 #define vfio_iowrite8	iowrite8
 
-#define VFIO_IOWRITE(size) \
-int vfio_pci_core_iowrite##size(struct vfio_pci_core_device *vdev,	\
-			bool test_mem, u##size val, void __iomem *io)	\
-{									\
-	if (test_mem) {							\
-		down_read(&vdev->memory_lock);				\
-		if (!__vfio_pci_memory_enabled(vdev)) {			\
-			up_read(&vdev->memory_lock);			\
-			return -EIO;					\
-		}							\
-	}								\
-									\
-	vfio_iowrite##size(val, io);					\
-									\
-	if (test_mem)							\
-		up_read(&vdev->memory_lock);				\
-									\
-	return 0;							\
-}									\
-EXPORT_SYMBOL_GPL(vfio_pci_core_iowrite##size);
-
-VFIO_IOWRITE(8)
-VFIO_IOWRITE(16)
-VFIO_IOWRITE(32)
-#ifdef iowrite64
-VFIO_IOWRITE(64)
-#endif
-
-#define VFIO_IOREAD(size) \
-int vfio_pci_core_ioread##size(struct vfio_pci_core_device *vdev,	\
-			bool test_mem, u##size *val, void __iomem *io)	\
-{									\
-	if (test_mem) {							\
-		down_read(&vdev->memory_lock);				\
-		if (!__vfio_pci_memory_enabled(vdev)) {			\
-			up_read(&vdev->memory_lock);			\
-			return -EIO;					\
-		}							\
-	}								\
-									\
-	*val = vfio_ioread##size(io);					\
-									\
-	if (test_mem)							\
-		up_read(&vdev->memory_lock);				\
-									\
-	return 0;							\
-}									\
-EXPORT_SYMBOL_GPL(vfio_pci_core_ioread##size);
-
-VFIO_IOREAD(8)
-VFIO_IOREAD(16)
-VFIO_IOREAD(32)
-
 /*
  * Read or write from an __iomem region (MMIO or I/O port) with an excluded
  * range which is inaccessible.  The excluded range drops writes and fills
  * reads with -1.  This is intended for handling MSI-X vector tables and
  * leftover space for ROM BARs.
  */
-ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
-			       void __iomem *io, char __user *buf,
-			       loff_t off, size_t count, size_t x_start,
-			       size_t x_end, bool iswrite)
+static ssize_t do_io_rw(void __iomem *io, char __user *buf,
+			loff_t off, size_t count, size_t x_start,
+			size_t x_end, bool iswrite)
 {
 	ssize_t done = 0;
-	int ret;
 
 	while (count) {
 		size_t fillable, filled;
@@ -121,15 +66,9 @@ ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 				if (copy_from_user(&val, buf, 4))
 					return -EFAULT;
 
-				ret = vfio_pci_core_iowrite32(vdev, test_mem,
-							      val, io + off);
-				if (ret)
-					return ret;
+				vfio_iowrite32(val, io + off);
 			} else {
-				ret = vfio_pci_core_ioread32(vdev, test_mem,
-							     &val, io + off);
-				if (ret)
-					return ret;
+				val = vfio_ioread32(io + off);
 
 				if (copy_to_user(buf, &val, 4))
 					return -EFAULT;
@@ -143,15 +82,9 @@ ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 				if (copy_from_user(&val, buf, 2))
 					return -EFAULT;
 
-				ret = vfio_pci_core_iowrite16(vdev, test_mem,
-							      val, io + off);
-				if (ret)
-					return ret;
+				vfio_iowrite16(val, io + off);
 			} else {
-				ret = vfio_pci_core_ioread16(vdev, test_mem,
-							     &val, io + off);
-				if (ret)
-					return ret;
+				val = vfio_ioread16(io + off);
 
 				if (copy_to_user(buf, &val, 2))
 					return -EFAULT;
@@ -165,15 +98,9 @@ ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 				if (copy_from_user(&val, buf, 1))
 					return -EFAULT;
 
-				ret = vfio_pci_core_iowrite8(vdev, test_mem,
-							     val, io + off);
-				if (ret)
-					return ret;
+				vfio_iowrite8(val, io + off);
 			} else {
-				ret = vfio_pci_core_ioread8(vdev, test_mem,
-							    &val, io + off);
-				if (ret)
-					return ret;
+				val = vfio_ioread8(io + off);
 
 				if (copy_to_user(buf, &val, 1))
 					return -EFAULT;
@@ -201,9 +128,8 @@ ssize_t vfio_pci_core_do_io_rw(struct vfio_pci_core_device *vdev, bool test_mem,
 
 	return done;
 }
-EXPORT_SYMBOL_GPL(vfio_pci_core_do_io_rw);
 
-int vfio_pci_core_setup_barmap(struct vfio_pci_core_device *vdev, int bar)
+static int vfio_pci_setup_barmap(struct vfio_pci_device *vdev, int bar)
 {
 	struct pci_dev *pdev = vdev->pdev;
 	int ret;
@@ -226,9 +152,8 @@ int vfio_pci_core_setup_barmap(struct vfio_pci_core_device *vdev, int bar)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(vfio_pci_core_setup_barmap);
 
-ssize_t vfio_pci_bar_rw(struct vfio_pci_core_device *vdev, char __user *buf,
+ssize_t vfio_pci_bar_rw(struct vfio_pci_device *vdev, char __user *buf,
 			size_t count, loff_t *ppos, bool iswrite)
 {
 	struct pci_dev *pdev = vdev->pdev;
@@ -237,7 +162,6 @@ ssize_t vfio_pci_bar_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 	size_t x_start = 0, x_end = 0;
 	resource_size_t end;
 	void __iomem *io;
-	struct resource *res = &vdev->pdev->resource[bar];
 	ssize_t done;
 
 	if (pci_resource_start(pdev, bar))
@@ -260,17 +184,13 @@ ssize_t vfio_pci_bar_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 		 * filling large ROM BARs much faster.
 		 */
 		io = pci_map_rom(pdev, &x_start);
-		if (!io) {
-			done = -ENOMEM;
-			goto out;
-		}
+		if (!io)
+			return -ENOMEM;
 		x_end = end;
 	} else {
-		int ret = vfio_pci_core_setup_barmap(vdev, bar);
-		if (ret) {
-			done = ret;
-			goto out;
-		}
+		int ret = vfio_pci_setup_barmap(vdev, bar);
+		if (ret)
+			return ret;
 
 		io = vdev->barmap[bar];
 	}
@@ -280,20 +200,18 @@ ssize_t vfio_pci_bar_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 		x_end = vdev->msix_offset + vdev->msix_size;
 	}
 
-	done = vfio_pci_core_do_io_rw(vdev, res->flags & IORESOURCE_MEM, io, buf, pos,
-				      count, x_start, x_end, iswrite);
+	done = do_io_rw(io, buf, pos, count, x_start, x_end, iswrite);
 
 	if (done >= 0)
 		*ppos += done;
 
 	if (bar == PCI_ROM_RESOURCE)
 		pci_unmap_rom(pdev, io);
-out:
+
 	return done;
 }
 
-#ifdef CONFIG_VFIO_PCI_VGA
-ssize_t vfio_pci_vga_rw(struct vfio_pci_core_device *vdev, char __user *buf,
+ssize_t vfio_pci_vga_rw(struct vfio_pci_device *vdev, char __user *buf,
 			       size_t count, loff_t *ppos, bool iswrite)
 {
 	int ret;
@@ -312,7 +230,7 @@ ssize_t vfio_pci_vga_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 	switch ((u32)pos) {
 	case 0xa0000 ... 0xbffff:
 		count = min(count, (size_t)(0xc0000 - pos));
-		iomem = ioremap(0xa0000, 0xbffff - 0xa0000 + 1);
+		iomem = ioremap_nocache(0xa0000, 0xbffff - 0xa0000 + 1);
 		off = pos - 0xa0000;
 		rsrc = VGA_RSRC_LEGACY_MEM;
 		is_ioport = false;
@@ -344,13 +262,7 @@ ssize_t vfio_pci_vga_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 		return ret;
 	}
 
-	/*
-	 * VGA MMIO is a legacy, non-BAR resource that hopefully allows
-	 * probing, so we don't currently worry about access in relation
-	 * to the memory enable bit in the command register.
-	 */
-	done = vfio_pci_core_do_io_rw(vdev, false, iomem, buf, off, count,
-				      0, 0, iswrite);
+	done = do_io_rw(iomem, buf, off, count, 0, 0, iswrite);
 
 	vga_put(vdev->pdev, rsrc);
 
@@ -361,64 +273,33 @@ ssize_t vfio_pci_vga_rw(struct vfio_pci_core_device *vdev, char __user *buf,
 
 	return done;
 }
-#endif
-
-static void vfio_pci_ioeventfd_do_write(struct vfio_pci_ioeventfd *ioeventfd,
-					bool test_mem)
-{
-	switch (ioeventfd->count) {
-	case 1:
-		vfio_pci_core_iowrite8(ioeventfd->vdev, test_mem,
-				       ioeventfd->data, ioeventfd->addr);
-		break;
-	case 2:
-		vfio_pci_core_iowrite16(ioeventfd->vdev, test_mem,
-					ioeventfd->data, ioeventfd->addr);
-		break;
-	case 4:
-		vfio_pci_core_iowrite32(ioeventfd->vdev, test_mem,
-					ioeventfd->data, ioeventfd->addr);
-		break;
-#ifdef iowrite64
-	case 8:
-		vfio_pci_core_iowrite64(ioeventfd->vdev, test_mem,
-					ioeventfd->data, ioeventfd->addr);
-		break;
-#endif
-	}
-}
 
 static int vfio_pci_ioeventfd_handler(void *opaque, void *unused)
 {
 	struct vfio_pci_ioeventfd *ioeventfd = opaque;
-	struct vfio_pci_core_device *vdev = ioeventfd->vdev;
 
-	if (ioeventfd->test_mem) {
-		if (!down_read_trylock(&vdev->memory_lock))
-			return 1; /* Lock contended, use thread */
-		if (!__vfio_pci_memory_enabled(vdev)) {
-			up_read(&vdev->memory_lock);
-			return 0;
-		}
+	switch (ioeventfd->count) {
+	case 1:
+		vfio_iowrite8(ioeventfd->data, ioeventfd->addr);
+		break;
+	case 2:
+		vfio_iowrite16(ioeventfd->data, ioeventfd->addr);
+		break;
+	case 4:
+		vfio_iowrite32(ioeventfd->data, ioeventfd->addr);
+		break;
+#ifdef iowrite64
+	case 8:
+		vfio_iowrite64(ioeventfd->data, ioeventfd->addr);
+		break;
+#endif
 	}
-
-	vfio_pci_ioeventfd_do_write(ioeventfd, false);
-
-	if (ioeventfd->test_mem)
-		up_read(&vdev->memory_lock);
 
 	return 0;
 }
 
-static void vfio_pci_ioeventfd_thread(void *opaque, void *unused)
-{
-	struct vfio_pci_ioeventfd *ioeventfd = opaque;
-
-	vfio_pci_ioeventfd_do_write(ioeventfd, ioeventfd->test_mem);
-}
-
-int vfio_pci_ioeventfd(struct vfio_pci_core_device *vdev, loff_t offset,
-		       uint64_t data, int count, int fd)
+long vfio_pci_ioeventfd(struct vfio_pci_device *vdev, loff_t offset,
+			uint64_t data, int count, int fd)
 {
 	struct pci_dev *pdev = vdev->pdev;
 	loff_t pos = offset & VFIO_PCI_OFFSET_MASK;
@@ -443,7 +324,7 @@ int vfio_pci_ioeventfd(struct vfio_pci_core_device *vdev, loff_t offset,
 		return -EINVAL;
 #endif
 
-	ret = vfio_pci_core_setup_barmap(vdev, bar);
+	ret = vfio_pci_setup_barmap(vdev, bar);
 	if (ret)
 		return ret;
 
@@ -475,23 +356,20 @@ int vfio_pci_ioeventfd(struct vfio_pci_core_device *vdev, loff_t offset,
 		goto out_unlock;
 	}
 
-	ioeventfd = kzalloc(sizeof(*ioeventfd), GFP_KERNEL_ACCOUNT);
+	ioeventfd = kzalloc(sizeof(*ioeventfd), GFP_KERNEL);
 	if (!ioeventfd) {
 		ret = -ENOMEM;
 		goto out_unlock;
 	}
 
-	ioeventfd->vdev = vdev;
 	ioeventfd->addr = vdev->barmap[bar] + pos;
 	ioeventfd->data = data;
 	ioeventfd->pos = pos;
 	ioeventfd->bar = bar;
 	ioeventfd->count = count;
-	ioeventfd->test_mem = vdev->pdev->resource[bar].flags & IORESOURCE_MEM;
 
 	ret = vfio_virqfd_enable(ioeventfd, vfio_pci_ioeventfd_handler,
-				 vfio_pci_ioeventfd_thread, NULL,
-				 &ioeventfd->virqfd, fd);
+				 NULL, NULL, &ioeventfd->virqfd, fd);
 	if (ret) {
 		kfree(ioeventfd);
 		goto out_unlock;

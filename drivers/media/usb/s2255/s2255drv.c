@@ -767,6 +767,8 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 	if (fmt == NULL)
 		return -EINVAL;
 
+	field = f->fmt.pix.field;
+
 	dprintk(vc->dev, 50, "%s NTSC: %d suggested width: %d, height: %d\n",
 		__func__, is_ntsc, f->fmt.pix.width, f->fmt.pix.height);
 	if (is_ntsc) {
@@ -1487,7 +1489,7 @@ static void s2255_destroy(struct s2255_dev *dev)
 	/* board shutdown stops the read pipe if it is running */
 	s2255_board_shutdown(dev);
 	/* make sure firmware still not trying to load */
-	timer_shutdown_sync(&dev->timer);  /* only started in .probe and .open */
+	del_timer_sync(&dev->timer);  /* only started in .probe and .open */
 	if (dev->fw_data->fw_urb) {
 		usb_kill_urb(dev->fw_data->fw_urb);
 		usb_free_urb(dev->fw_data->fw_urb);
@@ -1647,11 +1649,11 @@ static int s2255_probe_v4l(struct s2255_dev *dev)
 		video_set_drvdata(&vc->vdev, vc);
 		if (video_nr == -1)
 			ret = video_register_device(&vc->vdev,
-						    VFL_TYPE_VIDEO,
+						    VFL_TYPE_GRABBER,
 						    video_nr);
 		else
 			ret = video_register_device(&vc->vdev,
-						    VFL_TYPE_VIDEO,
+						    VFL_TYPE_GRABBER,
 						    cur_nr + i);
 
 		if (ret) {
@@ -1882,7 +1884,7 @@ static long s2255_vendor_req(struct s2255_dev *dev, unsigned char Request,
 				    USB_TYPE_VENDOR | USB_RECIP_DEVICE |
 				    USB_DIR_IN,
 				    Value, Index, buf,
-				    TransferBufferLength, USB_CTRL_SET_TIMEOUT);
+				    TransferBufferLength, HZ * 5);
 
 		if (r >= 0)
 			memcpy(TransferBuffer, buf, TransferBufferLength);
@@ -1891,7 +1893,7 @@ static long s2255_vendor_req(struct s2255_dev *dev, unsigned char Request,
 		r = usb_control_msg(dev->udev, usb_sndctrlpipe(dev->udev, 0),
 				    Request, USB_TYPE_VENDOR | USB_RECIP_DEVICE,
 				    Value, Index, buf,
-				    TransferBufferLength, USB_CTRL_SET_TIMEOUT);
+				    TransferBufferLength, HZ * 5);
 	}
 	kfree(buf);
 	return r;
@@ -1906,10 +1908,9 @@ static int s2255_get_fx2fw(struct s2255_dev *dev)
 {
 	int fw;
 	int ret;
-	u8 transBuffer[2] = {};
-
-	ret = s2255_vendor_req(dev, S2255_VR_FW, 0, 0, transBuffer,
-			       sizeof(transBuffer), S2255_VR_IN);
+	unsigned char transBuffer[64];
+	ret = s2255_vendor_req(dev, S2255_VR_FW, 0, 0, transBuffer, 2,
+			       S2255_VR_IN);
 	if (ret < 0)
 		dprintk(dev, 2, "get fw error: %x\n", ret);
 	fw = transBuffer[0] + (transBuffer[1] << 8);
@@ -2323,7 +2324,7 @@ errorREQFW:
 errorFWDATA2:
 	usb_free_urb(dev->fw_data->fw_urb);
 errorFWURB:
-	timer_shutdown_sync(&dev->timer);
+	del_timer_sync(&dev->timer);
 errorEP:
 	usb_put_dev(dev->udev);
 errorUDEV:

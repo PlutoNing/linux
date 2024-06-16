@@ -7,7 +7,6 @@
  */
 #include <linux/indirect_call_wrapper.h>
 #include <linux/skbuff.h>
-#include <net/gro.h>
 #include <net/protocol.h>
 #include <net/tcp.h>
 #include <net/ip6_checksum.h>
@@ -36,8 +35,7 @@ INDIRECT_CALLABLE_SCOPE int tcp6_gro_complete(struct sk_buff *skb, int thoff)
 				  &iph->daddr, 0);
 	skb_shinfo(skb)->gso_type |= SKB_GSO_TCPV6;
 
-	tcp_gro_complete(skb);
-	return 0;
+	return tcp_gro_complete(skb);
 }
 
 static struct sk_buff *tcp6_gso_segment(struct sk_buff *skb,
@@ -66,15 +64,15 @@ static struct sk_buff *tcp6_gso_segment(struct sk_buff *skb,
 
 	return tcp_gso_segment(skb, features);
 }
+static const struct net_offload tcpv6_offload = {
+	.callbacks = {
+		.gso_segment	=	tcp6_gso_segment,
+		.gro_receive	=	tcp6_gro_receive,
+		.gro_complete	=	tcp6_gro_complete,
+	},
+};
 
 int __init tcpv6_offload_init(void)
 {
-	net_hotdata.tcpv6_offload = (struct net_offload) {
-		.callbacks = {
-			.gso_segment	=	tcp6_gso_segment,
-			.gro_receive	=	tcp6_gro_receive,
-			.gro_complete	=	tcp6_gro_complete,
-		},
-	};
-	return inet6_add_offload(&net_hotdata.tcpv6_offload, IPPROTO_TCP);
+	return inet6_add_offload(&tcpv6_offload, IPPROTO_TCP);
 }

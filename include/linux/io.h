@@ -23,19 +23,21 @@ void __iowrite64_copy(void __iomem *to, const void *from, size_t count);
 #ifdef CONFIG_MMU
 int ioremap_page_range(unsigned long addr, unsigned long end,
 		       phys_addr_t phys_addr, pgprot_t prot);
-int vmap_page_range(unsigned long addr, unsigned long end,
-		    phys_addr_t phys_addr, pgprot_t prot);
 #else
 static inline int ioremap_page_range(unsigned long addr, unsigned long end,
 				     phys_addr_t phys_addr, pgprot_t prot)
 {
 	return 0;
 }
-static inline int vmap_page_range(unsigned long addr, unsigned long end,
-				  phys_addr_t phys_addr, pgprot_t prot)
-{
-	return 0;
-}
+#endif
+
+#ifdef CONFIG_HAVE_ARCH_HUGE_VMAP
+void __init ioremap_huge_init(void);
+int arch_ioremap_p4d_supported(void);
+int arch_ioremap_pud_supported(void);
+int arch_ioremap_pmd_supported(void);
+#else
+static inline void ioremap_huge_init(void) { }
 #endif
 
 /*
@@ -62,7 +64,7 @@ static inline void devm_ioport_unmap(struct device *dev, void __iomem *addr)
 
 void __iomem *devm_ioremap(struct device *dev, resource_size_t offset,
 			   resource_size_t size);
-void __iomem *devm_ioremap_uc(struct device *dev, resource_size_t offset,
+void __iomem *devm_ioremap_nocache(struct device *dev, resource_size_t offset,
 				   resource_size_t size);
 void __iomem *devm_ioremap_wc(struct device *dev, resource_size_t offset,
 				   resource_size_t size);
@@ -75,28 +77,25 @@ void *devm_memremap(struct device *dev, resource_size_t offset,
 		size_t size, unsigned long flags);
 void devm_memunmap(struct device *dev, void *addr);
 
-/* architectures can override this */
-pgprot_t __init early_memremap_pgprot_adjust(resource_size_t phys_addr,
-					unsigned long size, pgprot_t prot);
-
+void *__devm_memremap_pages(struct device *dev, struct resource *res);
 
 #ifdef CONFIG_PCI
 /*
  * The PCI specifications (Rev 3.0, 3.2.5 "Transaction Ordering and
- * Posting") mandate non-posted configuration transactions. This default
- * implementation attempts to use the ioremap_np() API to provide this
- * on arches that support it, and falls back to ioremap() on those that
- * don't. Overriding this function is deprecated; arches that properly
- * support non-posted accesses should implement ioremap_np() instead, which
- * this default implementation can then use to return mappings compliant with
- * the PCI specification.
+ * Posting") mandate non-posted configuration transactions. There is
+ * no ioremap API in the kernel that can guarantee non-posted write
+ * semantics across arches so provide a default implementation for
+ * mapping PCI config space that defaults to ioremap_nocache(); arches
+ * should override it if they have memory mapping implementations that
+ * guarantee non-posted writes semantics to make the memory mapping
+ * compliant with the PCI specification.
  */
 #ifndef pci_remap_cfgspace
 #define pci_remap_cfgspace pci_remap_cfgspace
 static inline void __iomem *pci_remap_cfgspace(phys_addr_t offset,
 					       size_t size)
 {
-	return ioremap_np(offset, size) ?: ioremap(offset, size);
+	return ioremap_nocache(offset, size);
 }
 #endif
 #endif
@@ -142,8 +141,6 @@ static inline int arch_phys_wc_index(int handle)
 #endif
 #endif
 
-int devm_arch_phys_wc_add(struct device *dev, unsigned long base, unsigned long size);
-
 enum {
 	/* See memremap() kernel-doc for usage description... */
 	MEMREMAP_WB = 1 << 0,
@@ -177,8 +174,5 @@ static inline void arch_io_free_memtype_wc(resource_size_t base,
 {
 }
 #endif
-
-int devm_arch_io_reserve_memtype_wc(struct device *dev, resource_size_t start,
-				    resource_size_t size);
 
 #endif /* _LINUX_IO_H */

@@ -26,6 +26,7 @@
 
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@ucw.cz>");
 MODULE_DESCRIPTION("Joystick device interfaces");
+MODULE_SUPPORTED_DEVICE("input/js");
 MODULE_LICENSE("GPL");
 
 #define JOYDEV_MINOR_BASE	0
@@ -455,7 +456,7 @@ static int joydev_handle_JSIOCSAXMAP(struct joydev *joydev,
 	if (IS_ERR(abspam))
 		return PTR_ERR(abspam);
 
-	for (i = 0; i < len && i < joydev->nabs; i++) {
+	for (i = 0; i < joydev->nabs; i++) {
 		if (abspam[i] > ABS_MAX) {
 			retval = -EINVAL;
 			goto out;
@@ -479,9 +480,6 @@ static int joydev_handle_JSIOCSBTNMAP(struct joydev *joydev,
 	int i;
 	int retval = 0;
 
-	if (len % sizeof(*keypam))
-		return -EINVAL;
-
 	len = min(len, sizeof(joydev->keypam));
 
 	/* Validate the map. */
@@ -489,7 +487,7 @@ static int joydev_handle_JSIOCSBTNMAP(struct joydev *joydev,
 	if (IS_ERR(keypam))
 		return PTR_ERR(keypam);
 
-	for (i = 0; i < (len / 2) && i < joydev->nkey; i++) {
+	for (i = 0; i < joydev->nkey; i++) {
 		if (keypam[i] > KEY_MAX || keypam[i] < BTN_MISC) {
 			retval = -EINVAL;
 			goto out;
@@ -499,7 +497,7 @@ static int joydev_handle_JSIOCSBTNMAP(struct joydev *joydev,
 	memcpy(joydev->keypam, keypam, len);
 
 	for (i = 0; i < joydev->nkey; i++)
-		joydev->keymap[joydev->keypam[i] - BTN_MISC] = i;
+		joydev->keymap[keypam[i] - BTN_MISC] = i;
 
  out:
 	kfree(keypam);
@@ -746,7 +744,7 @@ static void joydev_cleanup(struct joydev *joydev)
 }
 
 /*
- * These codes are copied from hid-ids.h, unfortunately there is no common
+ * These codes are copied from from hid-ids.h, unfortunately there is no common
  * usb_ids/bt_ids.h header.
  */
 #define USB_VENDOR_ID_SONY			0x054c
@@ -757,12 +755,6 @@ static void joydev_cleanup(struct joydev *joydev)
 
 #define USB_VENDOR_ID_THQ			0x20d6
 #define USB_DEVICE_ID_THQ_PS3_UDRAW			0xcb17
-
-#define USB_VENDOR_ID_NINTENDO		0x057e
-#define USB_DEVICE_ID_NINTENDO_JOYCONL	0x2006
-#define USB_DEVICE_ID_NINTENDO_JOYCONR	0x2007
-#define USB_DEVICE_ID_NINTENDO_PROCON	0x2009
-#define USB_DEVICE_ID_NINTENDO_CHRGGRIP	0x200E
 
 #define ACCEL_DEV(vnd, prd)						\
 	{								\
@@ -795,10 +787,6 @@ static const struct input_device_id joydev_blacklist[] = {
 	ACCEL_DEV(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER_2),
 	ACCEL_DEV(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER_DONGLE),
 	ACCEL_DEV(USB_VENDOR_ID_THQ, USB_DEVICE_ID_THQ_PS3_UDRAW),
-	ACCEL_DEV(USB_VENDOR_ID_NINTENDO, USB_DEVICE_ID_NINTENDO_PROCON),
-	ACCEL_DEV(USB_VENDOR_ID_NINTENDO, USB_DEVICE_ID_NINTENDO_CHRGGRIP),
-	ACCEL_DEV(USB_VENDOR_ID_NINTENDO, USB_DEVICE_ID_NINTENDO_JOYCONL),
-	ACCEL_DEV(USB_VENDOR_ID_NINTENDO, USB_DEVICE_ID_NINTENDO_JOYCONR),
 	{ /* sentinel */ }
 };
 

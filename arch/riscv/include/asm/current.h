@@ -7,8 +7,8 @@
  */
 
 
-#ifndef _ASM_RISCV_CURRENT_H
-#define _ASM_RISCV_CURRENT_H
+#ifndef __ASM_CURRENT_H
+#define __ASM_CURRENT_H
 
 #include <linux/bug.h>
 #include <linux/compiler.h>
@@ -16,8 +16,6 @@
 #ifndef __ASSEMBLY__
 
 struct task_struct;
-
-register struct task_struct *riscv_current_is_tp __asm__("tp");
 
 /*
  * This only works because "struct thread_info" is at offset 0 from "struct
@@ -28,13 +26,12 @@ register struct task_struct *riscv_current_is_tp __asm__("tp");
  */
 static __always_inline struct task_struct *get_current(void)
 {
-	return riscv_current_is_tp;
+	register struct task_struct *tp __asm__("tp");
+	return tp;
 }
 
 #define current get_current()
 
-register unsigned long current_stack_pointer __asm__("sp");
-
 #endif /* __ASSEMBLY__ */
 
-#endif /* _ASM_RISCV_CURRENT_H */
+#endif /* __ASM_CURRENT_H */

@@ -97,6 +97,10 @@ static int fme_pr(struct platform_device *pdev, unsigned long arg)
 		return -EINVAL;
 	}
 
+	if (!access_ok((void __user *)(unsigned long)port_pr.buffer_address,
+		       port_pr.buffer_size))
+		return -EFAULT;
+
 	/*
 	 * align PR buffer per PR bandwidth, as HW ignores the extra padding
 	 * data automatically.
@@ -148,7 +152,7 @@ static int fme_pr(struct platform_device *pdev, unsigned long arg)
 
 	/*
 	 * it allows userspace to reset the PR region's logic by disabling and
-	 * reenabling the bridge to clear things out between acceleration runs.
+	 * reenabling the bridge to clear things out between accleration runs.
 	 * so no need to hold the bridges after partial reconfiguration.
 	 */
 	if (region->get_bridges)
@@ -164,7 +168,7 @@ free_exit:
 
 /**
  * dfl_fme_create_mgr - create fpga mgr platform device as child device
- * @feature: sub feature info
+ *
  * @pdata: fme platform_device's pdata
  *
  * Return: mgr platform device if successful, and error code otherwise.
@@ -273,7 +277,7 @@ static void dfl_fme_destroy_bridge(struct dfl_fme_bridge *fme_br)
 }
 
 /**
- * dfl_fme_destroy_bridges - destroy all fpga bridge platform device
+ * dfl_fme_destroy_bridge - destroy all fpga bridge platform device
  * @pdata: fme platform device's pdata
  */
 static void dfl_fme_destroy_bridges(struct dfl_feature_platform_data *pdata)

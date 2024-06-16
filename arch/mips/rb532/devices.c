@@ -58,27 +58,37 @@ EXPORT_SYMBOL(get_latch_u5);
 
 static struct resource korina_dev0_res[] = {
 	{
-		.name = "emac",
+		.name = "korina_regs",
 		.start = ETH0_BASE_ADDR,
 		.end = ETH0_BASE_ADDR + sizeof(struct eth_regs),
 		.flags = IORESOURCE_MEM,
 	 }, {
-		.name = "rx",
+		.name = "korina_rx",
 		.start = ETH0_DMA_RX_IRQ,
 		.end = ETH0_DMA_RX_IRQ,
 		.flags = IORESOURCE_IRQ
 	}, {
-		.name = "tx",
+		.name = "korina_tx",
 		.start = ETH0_DMA_TX_IRQ,
 		.end = ETH0_DMA_TX_IRQ,
 		.flags = IORESOURCE_IRQ
 	}, {
-		.name = "dma_rx",
+		.name = "korina_ovr",
+		.start = ETH0_RX_OVR_IRQ,
+		.end = ETH0_RX_OVR_IRQ,
+		.flags = IORESOURCE_IRQ
+	}, {
+		.name = "korina_und",
+		.start = ETH0_TX_UND_IRQ,
+		.end = ETH0_TX_UND_IRQ,
+		.flags = IORESOURCE_IRQ
+	}, {
+		.name = "korina_dma_rx",
 		.start = ETH0_RX_DMA_ADDR,
 		.end = ETH0_RX_DMA_ADDR + DMA_CHAN_OFFSET - 1,
 		.flags = IORESOURCE_MEM,
 	 }, {
-		.name = "dma_tx",
+		.name = "korina_dma_tx",
 		.start = ETH0_TX_DMA_ADDR,
 		.end = ETH0_TX_DMA_ADDR + DMA_CHAN_OFFSET - 1,
 		.flags = IORESOURCE_MEM,
@@ -95,9 +105,6 @@ static struct platform_device korina_dev0 = {
 	.name = "korina",
 	.resource = korina_dev0_res,
 	.num_resources = ARRAY_SIZE(korina_dev0_res),
-	.dev = {
-		.platform_data = &korina_dev0_data.mac,
-	}
 };
 
 static struct resource cf_slot0_res[] = {
@@ -279,7 +286,7 @@ static int __init plat_setup_devices(void)
 	nand_slot0_res[0].end = nand_slot0_res[0].start + 0x1000;
 
 	/* Read and map device controller 3 */
-	dev3.base = ioremap(readl(IDT434_REG_BASE + DEV3BASE), 1);
+	dev3.base = ioremap_nocache(readl(IDT434_REG_BASE + DEV3BASE), 1);
 
 	if (!dev3.base) {
 		printk(KERN_ERR "rb532: cannot remap device controller 3\n");
@@ -292,6 +299,8 @@ static int __init plat_setup_devices(void)
 	/* set the uart clock to the current cpu frequency */
 	rb532_uart_res[0].uartclk = idt_cpu_freq;
 
+	dev_set_drvdata(&korina_dev0.dev, &korina_dev0_data);
+
 	gpiod_add_lookup_table(&cf_slot0_gpio_table);
 	return platform_add_devices(rb532_devs, ARRAY_SIZE(rb532_devs));
 }
@@ -301,9 +310,11 @@ static int __init plat_setup_devices(void)
 static int __init setup_kmac(char *s)
 {
 	printk(KERN_INFO "korina mac = %s\n", s);
-	if (!mac_pton(s, korina_dev0_data.mac))
+	if (!mac_pton(s, korina_dev0_data.mac)) {
 		printk(KERN_ERR "Invalid mac\n");
-	return 1;
+		return -EINVAL;
+	}
+	return 0;
 }
 
 __setup("kmac=", setup_kmac);

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2012-2017 Red Hat, Inc.
  *
@@ -149,7 +148,7 @@ static bool __find_or_insert(struct dm_bio_prison_v2 *prison,
 
 static bool __get(struct dm_bio_prison_v2 *prison,
 		  struct dm_cell_key_v2 *key,
-		  unsigned int lock_level,
+		  unsigned lock_level,
 		  struct bio *inmate,
 		  struct dm_bio_prison_cell_v2 *cell_prealloc,
 		  struct dm_bio_prison_cell_v2 **cell)
@@ -172,16 +171,17 @@ static bool __get(struct dm_bio_prison_v2 *prison,
 
 bool dm_cell_get_v2(struct dm_bio_prison_v2 *prison,
 		    struct dm_cell_key_v2 *key,
-		    unsigned int lock_level,
+		    unsigned lock_level,
 		    struct bio *inmate,
 		    struct dm_bio_prison_cell_v2 *cell_prealloc,
 		    struct dm_bio_prison_cell_v2 **cell_result)
 {
 	int r;
+	unsigned long flags;
 
-	spin_lock_irq(&prison->lock);
+	spin_lock_irqsave(&prison->lock, flags);
 	r = __get(prison, key, lock_level, inmate, cell_prealloc, cell_result);
-	spin_unlock_irq(&prison->lock);
+	spin_unlock_irqrestore(&prison->lock, flags);
 
 	return r;
 }
@@ -195,7 +195,7 @@ static bool __put(struct dm_bio_prison_v2 *prison,
 
 	// FIXME: shared locks granted above the lock level could starve this
 	if (!cell->shared_count) {
-		if (cell->exclusive_lock) {
+		if (cell->exclusive_lock){
 			if (cell->quiesce_continuation) {
 				queue_work(prison->wq, cell->quiesce_continuation);
 				cell->quiesce_continuation = NULL;
@@ -225,7 +225,7 @@ EXPORT_SYMBOL_GPL(dm_cell_put_v2);
 
 static int __lock(struct dm_bio_prison_v2 *prison,
 		  struct dm_cell_key_v2 *key,
-		  unsigned int lock_level,
+		  unsigned lock_level,
 		  struct dm_bio_prison_cell_v2 *cell_prealloc,
 		  struct dm_bio_prison_cell_v2 **cell_result)
 {
@@ -256,15 +256,16 @@ static int __lock(struct dm_bio_prison_v2 *prison,
 
 int dm_cell_lock_v2(struct dm_bio_prison_v2 *prison,
 		    struct dm_cell_key_v2 *key,
-		    unsigned int lock_level,
+		    unsigned lock_level,
 		    struct dm_bio_prison_cell_v2 *cell_prealloc,
 		    struct dm_bio_prison_cell_v2 **cell_result)
 {
 	int r;
+	unsigned long flags;
 
-	spin_lock_irq(&prison->lock);
+	spin_lock_irqsave(&prison->lock, flags);
 	r = __lock(prison, key, lock_level, cell_prealloc, cell_result);
-	spin_unlock_irq(&prison->lock);
+	spin_unlock_irqrestore(&prison->lock, flags);
 
 	return r;
 }
@@ -284,15 +285,17 @@ void dm_cell_quiesce_v2(struct dm_bio_prison_v2 *prison,
 			struct dm_bio_prison_cell_v2 *cell,
 			struct work_struct *continuation)
 {
-	spin_lock_irq(&prison->lock);
+	unsigned long flags;
+
+	spin_lock_irqsave(&prison->lock, flags);
 	__quiesce(prison, cell, continuation);
-	spin_unlock_irq(&prison->lock);
+	spin_unlock_irqrestore(&prison->lock, flags);
 }
 EXPORT_SYMBOL_GPL(dm_cell_quiesce_v2);
 
 static int __promote(struct dm_bio_prison_v2 *prison,
 		     struct dm_bio_prison_cell_v2 *cell,
-		     unsigned int new_lock_level)
+		     unsigned new_lock_level)
 {
 	if (!cell->exclusive_lock)
 		return -EINVAL;
@@ -303,13 +306,14 @@ static int __promote(struct dm_bio_prison_v2 *prison,
 
 int dm_cell_lock_promote_v2(struct dm_bio_prison_v2 *prison,
 			    struct dm_bio_prison_cell_v2 *cell,
-			    unsigned int new_lock_level)
+			    unsigned new_lock_level)
 {
 	int r;
+	unsigned long flags;
 
-	spin_lock_irq(&prison->lock);
+	spin_lock_irqsave(&prison->lock, flags);
 	r = __promote(prison, cell, new_lock_level);
-	spin_unlock_irq(&prison->lock);
+	spin_unlock_irqrestore(&prison->lock, flags);
 
 	return r;
 }
@@ -325,7 +329,7 @@ static bool __unlock(struct dm_bio_prison_v2 *prison,
 	bio_list_init(&cell->bios);
 
 	if (cell->shared_count) {
-		cell->exclusive_lock = false;
+		cell->exclusive_lock = 0;
 		return false;
 	}
 
@@ -338,10 +342,11 @@ bool dm_cell_unlock_v2(struct dm_bio_prison_v2 *prison,
 		       struct bio_list *bios)
 {
 	bool r;
+	unsigned long flags;
 
-	spin_lock_irq(&prison->lock);
+	spin_lock_irqsave(&prison->lock, flags);
 	r = __unlock(prison, cell, bios);
-	spin_unlock_irq(&prison->lock);
+	spin_unlock_irqrestore(&prison->lock, flags);
 
 	return r;
 }

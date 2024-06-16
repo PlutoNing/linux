@@ -28,7 +28,7 @@ struct tcpa_event {
 	u32 event_type;
 	u8 pcr_value[20];	/* SHA1 */
 	u32 event_size;
-	u8 event_data[];
+	u8 event_data[0];
 };
 
 enum tcpa_event_types {
@@ -55,7 +55,7 @@ enum tcpa_event_types {
 struct tcpa_pc_event {
 	u32 event_id;
 	u32 event_size;
-	u8 event_data[];
+	u8 event_data[0];
 };
 
 enum tcpa_pc_event_ids {
@@ -81,8 +81,6 @@ struct tcg_efi_specid_event_algs {
 	u16 digest_size;
 } __packed;
 
-#define TCG_SPECID_SIG "Spec ID Event03"
-
 struct tcg_efi_specid_event_head {
 	u8 signature[16];
 	u32 platform_class;
@@ -99,12 +97,12 @@ struct tcg_pcr_event {
 	u32 event_type;
 	u8 digest[20];
 	u32 event_size;
-	u8 event[];
+	u8 event[0];
 } __packed;
 
 struct tcg_event_field {
 	u32 event_size;
-	u8 event[];
+	u8 event[0];
 } __packed;
 
 struct tcg_pcr_event2_head {
@@ -157,7 +155,7 @@ struct tcg_algorithm_info {
  * Return: size of the event on success, 0 on failure
  */
 
-static __always_inline int __calc_tpm2_event_size(struct tcg_pcr_event2_head *event,
+static inline int __calc_tpm2_event_size(struct tcg_pcr_event2_head *event,
 					 struct tcg_pcr_event *event_header,
 					 bool do_mapping)
 {
@@ -173,7 +171,6 @@ static __always_inline int __calc_tpm2_event_size(struct tcg_pcr_event2_head *ev
 	int i;
 	int j;
 	u32 count, event_type;
-	const u8 zero_digest[sizeof(event_header->digest)] = {0};
 
 	marker = event;
 	marker_start = marker;
@@ -198,29 +195,13 @@ static __always_inline int __calc_tpm2_event_size(struct tcg_pcr_event2_head *ev
 	 * The loop below will unmap these fields if the log is larger than
 	 * one page, so save them here for reference:
 	 */
-	count = event->count;
-	event_type = event->event_type;
-
-	/* Verify that it's the log header */
-	if (event_header->pcr_idx != 0 ||
-	    event_header->event_type != NO_ACTION ||
-	    memcmp(event_header->digest, zero_digest, sizeof(zero_digest))) {
-		size = 0;
-		goto out;
-	}
+	count = READ_ONCE(event->count);
+	event_type = READ_ONCE(event->event_type);
 
 	efispecid = (struct tcg_efi_specid_event_head *)event_header->event;
 
-	/*
-	 * Perform validation of the event in order to identify malformed
-	 * events. This function may be asked to parse arbitrary byte sequences
-	 * immediately following a valid event log. The caller expects this
-	 * function to recognize that the byte sequence is not a valid event
-	 * and to return an event size of 0.
-	 */
-	if (memcmp(efispecid->signature, TCG_SPECID_SIG,
-		   sizeof(TCG_SPECID_SIG)) ||
-	    !efispecid->num_algs || count != efispecid->num_algs) {
+	/* Check if event is malformed. */
+	if (count > efispecid->num_algs) {
 		size = 0;
 		goto out;
 	}

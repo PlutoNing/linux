@@ -138,7 +138,6 @@ struct msc {
 	struct list_head	win_list;
 	struct sg_table		single_sgt;
 	struct msc_window	*cur_win;
-	struct msc_window	*switch_on_unlock;
 	unsigned long		nr_pages;
 	unsigned long		single_sz;
 	unsigned int		single_wrap : 1;
@@ -155,13 +154,10 @@ struct msc {
 
 	struct list_head	iter_list;
 
-	bool			stop_on_full;
-
 	/* config */
 	unsigned int		enabled : 1,
 				wrap	: 1,
-				do_irq	: 1,
-				multi_is_broken : 1;
+				do_irq	: 1;
 	unsigned int		mode;
 	unsigned int		burst_len;
 	unsigned int		index;
@@ -658,11 +654,13 @@ static void msc_buffer_clear_hw_header(struct msc *msc)
 
 	list_for_each_entry(win, &msc->win_list, entry) {
 		unsigned int blk;
+		size_t hw_sz = sizeof(struct msc_block_desc) -
+			offsetof(struct msc_block_desc, hw_tag);
 
 		for_each_sg(win->sgt->sgl, sg, win->nr_segs, blk) {
 			struct msc_block_desc *bdesc = sg_virt(sg);
 
-			memset_startat(bdesc, 0, hw_tag);
+			memset(&bdesc->hw_tag, 0, hw_sz);
 		}
 	}
 }
@@ -720,6 +718,9 @@ static int msc_win_set_lockout(struct msc_window *win,
 
 	if (old != expect) {
 		ret = -EINVAL;
+		dev_warn_ratelimited(msc_dev(win->msc),
+				     "expected lockout state %d, got %d\n",
+				     expect, old);
 		goto unlock;
 	}
 
@@ -740,10 +741,6 @@ unlock:
 		/* from intel_th_msc_window_unlock(), don't warn if not locked */
 		if (expect == WIN_LOCKED && old == new)
 			return 0;
-
-		dev_warn_ratelimited(msc_dev(win->msc),
-				     "expected lockout state %d, got %d\n",
-				     expect, old);
 	}
 
 	return ret;
@@ -763,7 +760,7 @@ static int msc_configure(struct msc *msc)
 	lockdep_assert_held(&msc->buf_mutex);
 
 	if (msc->mode > MSC_MODE_MULTI)
-		return -EINVAL;
+		return -ENOTSUPP;
 
 	if (msc->mode == MSC_MODE_MULTI) {
 		if (msc_win_set_lockout(msc->cur_win, WIN_READY, WIN_INUSE))
@@ -1022,60 +1019,34 @@ err_nomem:
 }
 
 #ifdef CONFIG_X86
-static void msc_buffer_set_uc(struct msc *msc)
+static void msc_buffer_set_uc(struct msc_window *win, unsigned int nr_segs)
 {
 	struct scatterlist *sg_ptr;
-	struct msc_window *win;
 	int i;
 
-	if (msc->mode == MSC_MODE_SINGLE) {
-		set_memory_uc((unsigned long)msc->base, msc->nr_pages);
-		return;
-	}
-
-	list_for_each_entry(win, &msc->win_list, entry) {
-		for_each_sg(win->sgt->sgl, sg_ptr, win->nr_segs, i) {
-			/* Set the page as uncached */
-			set_memory_uc((unsigned long)sg_virt(sg_ptr),
-					PFN_DOWN(sg_ptr->length));
-		}
+	for_each_sg(win->sgt->sgl, sg_ptr, nr_segs, i) {
+		/* Set the page as uncached */
+		set_memory_uc((unsigned long)sg_virt(sg_ptr),
+			      PFN_DOWN(sg_ptr->length));
 	}
 }
 
-static void msc_buffer_set_wb(struct msc *msc)
+static void msc_buffer_set_wb(struct msc_window *win)
 {
 	struct scatterlist *sg_ptr;
-	struct msc_window *win;
 	int i;
 
-	if (msc->mode == MSC_MODE_SINGLE) {
-		set_memory_wb((unsigned long)msc->base, msc->nr_pages);
-		return;
-	}
-
-	list_for_each_entry(win, &msc->win_list, entry) {
-		for_each_sg(win->sgt->sgl, sg_ptr, win->nr_segs, i) {
-			/* Reset the page to write-back */
-			set_memory_wb((unsigned long)sg_virt(sg_ptr),
-					PFN_DOWN(sg_ptr->length));
-		}
+	for_each_sg(win->sgt->sgl, sg_ptr, win->nr_segs, i) {
+		/* Reset the page to write-back */
+		set_memory_wb((unsigned long)sg_virt(sg_ptr),
+			      PFN_DOWN(sg_ptr->length));
 	}
 }
 #else /* !X86 */
 static inline void
-msc_buffer_set_uc(struct msc *msc) {}
-static inline void msc_buffer_set_wb(struct msc *msc) {}
+msc_buffer_set_uc(struct msc_window *win, unsigned int nr_segs) {}
+static inline void msc_buffer_set_wb(struct msc_window *win) {}
 #endif /* CONFIG_X86 */
-
-static struct page *msc_sg_page(struct scatterlist *sg)
-{
-	void *addr = sg_virt(sg);
-
-	if (is_vmalloc_addr(addr))
-		return vmalloc_to_page(addr);
-
-	return sg_page(sg);
-}
 
 /**
  * msc_buffer_win_alloc() - alloc a window for a multiblock mode
@@ -1121,6 +1092,8 @@ static int msc_buffer_win_alloc(struct msc *msc, unsigned int nr_blocks)
 	if (ret <= 0)
 		goto err_nomem;
 
+	msc_buffer_set_uc(win, ret);
+
 	win->nr_segs = ret;
 	win->nr_blocks = nr_blocks;
 
@@ -1147,7 +1120,7 @@ static void __msc_buffer_win_free(struct msc *msc, struct msc_window *win)
 	int i;
 
 	for_each_sg(win->sgt->sgl, sg, win->nr_segs, i) {
-		struct page *page = msc_sg_page(sg);
+		struct page *page = sg_page(sg);
 
 		page->mapping = NULL;
 		dma_free_coherent(msc_dev(win->msc)->parent->parent, PAGE_SIZE,
@@ -1173,6 +1146,8 @@ static void msc_buffer_win_free(struct msc *msc, struct msc_window *win)
 		msc->base = NULL;
 		msc->base_addr = 0;
 	}
+
+	msc_buffer_set_wb(win);
 
 	if (msc->mbuf && msc->mbuf->free_window)
 		msc->mbuf->free_window(msc->mbuf_priv, win->sgt);
@@ -1280,8 +1255,6 @@ static int msc_buffer_multi_alloc(struct msc *msc, unsigned long *nr_pages,
  */
 static void msc_buffer_free(struct msc *msc)
 {
-	msc_buffer_set_wb(msc);
-
 	if (msc->mode == MSC_MODE_SINGLE)
 		msc_buffer_contig_free(msc);
 	else if (msc->mode == MSC_MODE_MULTI)
@@ -1321,12 +1294,10 @@ static int msc_buffer_alloc(struct msc *msc, unsigned long *nr_pages,
 	} else if (msc->mode == MSC_MODE_MULTI) {
 		ret = msc_buffer_multi_alloc(msc, nr_pages, nr_wins);
 	} else {
-		ret = -EINVAL;
+		ret = -ENOTSUPP;
 	}
 
 	if (!ret) {
-		msc_buffer_set_uc(msc);
-
 		/* allocation should be visible before the counter goes to 0 */
 		smp_mb__before_atomic();
 
@@ -1411,7 +1382,7 @@ found:
 	pgoff -= win->pgoff;
 
 	for_each_sg(win->sgt->sgl, sg, win->nr_segs, blk) {
-		struct page *page = msc_sg_page(sg);
+		struct page *page = sg_page(sg);
 		size_t pgsz = PFN_DOWN(sg->length);
 
 		if (pgoff < pgsz)
@@ -1559,7 +1530,7 @@ static ssize_t intel_th_msc_read(struct file *file, char __user *buf,
 		if (ret >= 0)
 			*ppos = iter->offset;
 	} else {
-		ret = -EINVAL;
+		ret = -ENOTSUPP;
 	}
 
 put_count:
@@ -1659,7 +1630,7 @@ out:
 		atomic_dec(&msc->user_count);
 
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-	vm_flags_set(vma, VM_DONTEXPAND | VM_DONTCOPY);
+	vma->vm_flags |= VM_DONTEXPAND | VM_DONTCOPY;
 	vma->vm_ops = &msc_mmap_ops;
 	return ret;
 }
@@ -1693,7 +1664,7 @@ static int intel_th_msc_init(struct msc *msc)
 {
 	atomic_set(&msc->user_count, -1);
 
-	msc->mode = msc->multi_is_broken ? MSC_MODE_SINGLE : MSC_MODE_MULTI;
+	msc->mode = MSC_MODE_MULTI;
 	mutex_init(&msc->buf_mutex);
 	INIT_LIST_HEAD(&msc->win_list);
 	INIT_LIST_HEAD(&msc->iter_list);
@@ -1705,12 +1676,9 @@ static int intel_th_msc_init(struct msc *msc)
 	return 0;
 }
 
-static int msc_win_switch(struct msc *msc)
+static void msc_win_switch(struct msc *msc)
 {
 	struct msc_window *first;
-
-	if (list_empty(&msc->win_list))
-		return -EINVAL;
 
 	first = list_first_entry(&msc->win_list, struct msc_window, entry);
 
@@ -1723,8 +1691,6 @@ static int msc_win_switch(struct msc *msc)
 	msc->base_addr = msc_win_base_dma(msc->cur_win);
 
 	intel_th_trace_switch(msc->thdev);
-
-	return 0;
 }
 
 /**
@@ -1745,10 +1711,6 @@ void intel_th_msc_window_unlock(struct device *dev, struct sg_table *sgt)
 		return;
 
 	msc_win_set_lockout(win, WIN_LOCKED, WIN_READY);
-	if (msc->switch_on_unlock == win) {
-		msc->switch_on_unlock = NULL;
-		msc_win_switch(msc);
-	}
 }
 EXPORT_SYMBOL_GPL(intel_th_msc_window_unlock);
 
@@ -1789,11 +1751,7 @@ static irqreturn_t intel_th_msc_interrupt(struct intel_th_device *thdev)
 
 	/* next window: if READY, proceed, if LOCKED, stop the trace */
 	if (msc_win_set_lockout(next_win, WIN_READY, WIN_INUSE)) {
-		if (msc->stop_on_full)
-			schedule_work(&msc->work);
-		else
-			msc->switch_on_unlock = next_win;
-
+		schedule_work(&msc->work);
 		return IRQ_HANDLED;
 	}
 
@@ -1913,9 +1871,6 @@ mode_store(struct device *dev, struct device_attribute *attr, const char *buf,
 	return -EINVAL;
 
 found:
-	if (i == MSC_MODE_MULTI && msc->multi_is_broken)
-		return -EOPNOTSUPP;
-
 	mutex_lock(&msc->buf_mutex);
 	ret = 0;
 
@@ -2026,7 +1981,7 @@ nr_pages_store(struct device *dev, struct device_attribute *attr,
 		}
 
 		nr_wins++;
-		rewin = krealloc_array(win, nr_wins, sizeof(*win), GFP_KERNEL);
+		rewin = krealloc(win, sizeof(*win) * nr_wins, GFP_KERNEL);
 		if (!rewin) {
 			kfree(win);
 			return -ENOMEM;
@@ -2070,15 +2025,16 @@ win_switch_store(struct device *dev, struct device_attribute *attr,
 	if (val != 1)
 		return -EINVAL;
 
-	ret = -EINVAL;
 	mutex_lock(&msc->buf_mutex);
 	/*
 	 * Window switch can only happen in the "multi" mode.
 	 * If a external buffer is engaged, they have the full
 	 * control over window switching.
 	 */
-	if (msc->mode == MSC_MODE_MULTI && !msc->mbuf)
-		ret = msc_win_switch(msc);
+	if (msc->mode != MSC_MODE_MULTI || msc->mbuf)
+		ret = -ENOTSUPP;
+	else
+		msc_win_switch(msc);
 	mutex_unlock(&msc->buf_mutex);
 
 	return ret ? ret : size;
@@ -2086,40 +2042,15 @@ win_switch_store(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_WO(win_switch);
 
-static ssize_t stop_on_full_show(struct device *dev,
-				 struct device_attribute *attr, char *buf)
-{
-	struct msc *msc = dev_get_drvdata(dev);
-
-	return sprintf(buf, "%d\n", msc->stop_on_full);
-}
-
-static ssize_t stop_on_full_store(struct device *dev,
-				  struct device_attribute *attr,
-				  const char *buf, size_t size)
-{
-	struct msc *msc = dev_get_drvdata(dev);
-	int ret;
-
-	ret = kstrtobool(buf, &msc->stop_on_full);
-	if (ret)
-		return ret;
-
-	return size;
-}
-
-static DEVICE_ATTR_RW(stop_on_full);
-
 static struct attribute *msc_output_attrs[] = {
 	&dev_attr_wrap.attr,
 	&dev_attr_mode.attr,
 	&dev_attr_nr_pages.attr,
 	&dev_attr_win_switch.attr,
-	&dev_attr_stop_on_full.attr,
 	NULL,
 };
 
-static const struct attribute_group msc_output_group = {
+static struct attribute_group msc_output_group = {
 	.attrs	= msc_output_attrs,
 };
 
@@ -2146,9 +2077,6 @@ static int intel_th_msc_probe(struct intel_th_device *thdev)
 	res = intel_th_device_get_resource(thdev, IORESOURCE_IRQ, 1);
 	if (!res)
 		msc->do_irq = 1;
-
-	if (INTEL_TH_CAP(to_intel_th(thdev), multi_is_broken))
-		msc->multi_is_broken = 1;
 
 	msc->index = thdev->id;
 

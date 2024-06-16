@@ -13,7 +13,6 @@
 #include <net/pkt_cls.h>
 #include <net/sock.h>
 #include <net/cls_cgroup.h>
-#include <net/tc_wrapper.h>
 
 struct cls_cgroup_head {
 	u32			handle;
@@ -23,9 +22,8 @@ struct cls_cgroup_head {
 	struct rcu_work		rwork;
 };
 
-TC_INDIRECT_SCOPE int cls_cgroup_classify(struct sk_buff *skb,
-					  const struct tcf_proto *tp,
-					  struct tcf_result *res)
+static int cls_cgroup_classify(struct sk_buff *skb, const struct tcf_proto *tp,
+			       struct tcf_result *res)
 {
 	struct cls_cgroup_head *head = rcu_dereference_bh(tp->root);
 	u32 classid = task_get_classid(skb);
@@ -78,7 +76,7 @@ static void cls_cgroup_destroy_work(struct work_struct *work)
 static int cls_cgroup_change(struct net *net, struct sk_buff *in_skb,
 			     struct tcf_proto *tp, unsigned long base,
 			     u32 handle, struct nlattr **tca,
-			     void **arg, u32 flags,
+			     void **arg, bool ovr, bool rtnl_held,
 			     struct netlink_ext_ack *extack)
 {
 	struct nlattr *tb[TCA_CGROUP_MAX + 1];
@@ -110,8 +108,8 @@ static int cls_cgroup_change(struct net *net, struct sk_buff *in_skb,
 	if (err < 0)
 		goto errout;
 
-	err = tcf_exts_validate(net, tp, tb, tca[TCA_RATE], &new->exts, flags,
-				extack);
+	err = tcf_exts_validate(net, tp, tb, tca[TCA_RATE], &new->exts, ovr,
+				true, extack);
 	if (err < 0)
 		goto errout;
 
@@ -209,7 +207,6 @@ static struct tcf_proto_ops cls_cgroup_ops __read_mostly = {
 	.dump		=	cls_cgroup_dump,
 	.owner		=	THIS_MODULE,
 };
-MODULE_ALIAS_NET_CLS("cgroup");
 
 static int __init init_cgroup_cls(void)
 {
@@ -223,5 +220,4 @@ static void __exit exit_cgroup_cls(void)
 
 module_init(init_cgroup_cls);
 module_exit(exit_cgroup_cls);
-MODULE_DESCRIPTION("TC cgroup classifier");
 MODULE_LICENSE("GPL");

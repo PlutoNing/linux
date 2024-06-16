@@ -23,6 +23,7 @@
 
 #define DRIVER_DESC "OHCI SPEAr driver"
 
+static const char hcd_name[] = "SPEAr-ohci";
 struct spear_ohci {
 	struct clk *clk;
 };
@@ -68,13 +69,14 @@ static int spear_ohci_hcd_drv_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	hcd->regs = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	hcd->regs = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(hcd->regs)) {
 		retval = PTR_ERR(hcd->regs);
 		goto err_put_hcd;
 	}
 
-	hcd->rsrc_start = res->start;
+	hcd->rsrc_start = pdev->resource[0].start;
 	hcd->rsrc_len = resource_size(res);
 
 	sohci_p = to_spear_ohci(hcd);
@@ -82,7 +84,7 @@ static int spear_ohci_hcd_drv_probe(struct platform_device *pdev)
 
 	clk_prepare_enable(sohci_p->clk);
 
-	retval = usb_add_hcd(hcd, irq, 0);
+	retval = usb_add_hcd(hcd, platform_get_irq(pdev, 0), 0);
 	if (retval == 0) {
 		device_wakeup_enable(hcd->self.controller);
 		return retval;
@@ -97,7 +99,7 @@ fail:
 	return retval;
 }
 
-static void spear_ohci_hcd_drv_remove(struct platform_device *pdev)
+static int spear_ohci_hcd_drv_remove(struct platform_device *pdev)
 {
 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
 	struct spear_ohci *sohci_p = to_spear_ohci(hcd);
@@ -107,6 +109,7 @@ static void spear_ohci_hcd_drv_remove(struct platform_device *pdev)
 		clk_disable_unprepare(sohci_p->clk);
 
 	usb_put_hcd(hcd);
+	return 0;
 }
 
 #if defined(CONFIG_PM)
@@ -157,7 +160,7 @@ MODULE_DEVICE_TABLE(of, spear_ohci_id_table);
 /* Driver definition to register with the platform bus */
 static struct platform_driver spear_ohci_hcd_driver = {
 	.probe =	spear_ohci_hcd_drv_probe,
-	.remove_new =	spear_ohci_hcd_drv_remove,
+	.remove =	spear_ohci_hcd_drv_remove,
 #ifdef CONFIG_PM
 	.suspend =	spear_ohci_hcd_drv_suspend,
 	.resume =	spear_ohci_hcd_drv_resume,
@@ -175,6 +178,8 @@ static int __init ohci_spear_init(void)
 {
 	if (usb_disabled())
 		return -ENODEV;
+
+	pr_info("%s: " DRIVER_DESC "\n", hcd_name);
 
 	ohci_init_driver(&ohci_spear_hc_driver, &spear_overrides);
 	return platform_driver_register(&spear_ohci_hcd_driver);

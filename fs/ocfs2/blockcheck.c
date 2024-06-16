@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
+/* -*- mode: c; c-basic-offset: 8; -*-
+ * vim: noexpandtab sw=8 ts=8 sts=0:
+ *
  * blockcheck.c
  *
  * Checksum and ECC codes for the OCFS2 userspace library.
@@ -122,7 +124,7 @@ u32 ocfs2_hamming_encode(u32 parity, void *data, unsigned int d, unsigned int nr
 		 * parity bits that are part of the bit number
 		 * representation.  Huh?
 		 *
-		 * <wikipedia href="https://en.wikipedia.org/wiki/Hamming_code">
+		 * <wikipedia href="http://en.wikipedia.org/wiki/Hamming_code">
 		 * In other words, the parity bit at position 2^k
 		 * checks bits in positions having bit k set in
 		 * their binary representation.  Conversely, for
@@ -227,7 +229,7 @@ static int blockcheck_u64_get(void *data, u64 *val)
 	*val = *(u64 *)data;
 	return 0;
 }
-DEFINE_DEBUGFS_ATTRIBUTE(blockcheck_fops, blockcheck_u64_get, NULL, "%llu\n");
+DEFINE_SIMPLE_ATTRIBUTE(blockcheck_fops, blockcheck_u64_get, NULL, "%llu\n");
 
 static void ocfs2_blockcheck_debug_remove(struct ocfs2_blockcheck_stats *stats)
 {

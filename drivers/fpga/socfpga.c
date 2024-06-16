@@ -545,17 +545,20 @@ static int socfpga_fpga_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct socfpga_fpga_priv *priv;
 	struct fpga_manager *mgr;
+	struct resource *res;
 	int ret;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
-	priv->fpga_base_addr = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	priv->fpga_base_addr = devm_ioremap_resource(dev, res);
 	if (IS_ERR(priv->fpga_base_addr))
 		return PTR_ERR(priv->fpga_base_addr);
 
-	priv->fpga_data_addr = devm_platform_ioremap_resource(pdev, 1);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	priv->fpga_data_addr = devm_ioremap_resource(dev, res);
 	if (IS_ERR(priv->fpga_data_addr))
 		return PTR_ERR(priv->fpga_data_addr);
 
@@ -568,9 +571,23 @@ static int socfpga_fpga_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	mgr = devm_fpga_mgr_register(dev, "Altera SOCFPGA FPGA Manager",
-				     &socfpga_fpga_ops, priv);
-	return PTR_ERR_OR_ZERO(mgr);
+	mgr = devm_fpga_mgr_create(dev, "Altera SOCFPGA FPGA Manager",
+				   &socfpga_fpga_ops, priv);
+	if (!mgr)
+		return -ENOMEM;
+
+	platform_set_drvdata(pdev, mgr);
+
+	return fpga_mgr_register(mgr);
+}
+
+static int socfpga_fpga_remove(struct platform_device *pdev)
+{
+	struct fpga_manager *mgr = platform_get_drvdata(pdev);
+
+	fpga_mgr_unregister(mgr);
+
+	return 0;
 }
 
 #ifdef CONFIG_OF
@@ -584,6 +601,7 @@ MODULE_DEVICE_TABLE(of, socfpga_fpga_of_match);
 
 static struct platform_driver socfpga_fpga_driver = {
 	.probe = socfpga_fpga_probe,
+	.remove = socfpga_fpga_remove,
 	.driver = {
 		.name	= "socfpga_fpga_manager",
 		.of_match_table = of_match_ptr(socfpga_fpga_of_match),

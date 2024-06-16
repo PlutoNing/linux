@@ -12,11 +12,9 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
-#include <linux/irqdomain.h>
 #include <linux/notifier.h>
 #include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/platform_device.h>
+#include <linux/of_platform.h>
 #include <linux/slab.h>
 #include <linux/memblock.h>
 
@@ -255,7 +253,7 @@ static irqreturn_t ioc_interrupt(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static int __init cell_iommu_find_ioc(int nid, unsigned long *base)
+static int cell_iommu_find_ioc(int nid, unsigned long *base)
 {
 	struct device_node *np;
 	struct resource r;
@@ -295,7 +293,7 @@ static int __init cell_iommu_find_ioc(int nid, unsigned long *base)
 	return -ENODEV;
 }
 
-static void __init cell_iommu_setup_stab(struct cbe_iommu *iommu,
+static void cell_iommu_setup_stab(struct cbe_iommu *iommu,
 				unsigned long dbase, unsigned long dsize,
 				unsigned long fbase, unsigned long fsize)
 {
@@ -315,7 +313,7 @@ static void __init cell_iommu_setup_stab(struct cbe_iommu *iommu,
 	memset(iommu->stab, 0, stab_size);
 }
 
-static unsigned long *__init cell_iommu_alloc_ptab(struct cbe_iommu *iommu,
+static unsigned long *cell_iommu_alloc_ptab(struct cbe_iommu *iommu,
 		unsigned long base, unsigned long size, unsigned long gap_base,
 		unsigned long gap_size, unsigned long page_shift)
 {
@@ -375,7 +373,7 @@ static unsigned long *__init cell_iommu_alloc_ptab(struct cbe_iommu *iommu,
 	return ptab;
 }
 
-static void __init cell_iommu_enable_hardware(struct cbe_iommu *iommu)
+static void cell_iommu_enable_hardware(struct cbe_iommu *iommu)
 {
 	int ret;
 	unsigned long reg, xlate_base;
@@ -415,7 +413,7 @@ static void __init cell_iommu_enable_hardware(struct cbe_iommu *iommu)
 	out_be64(iommu->cmd_regs + IOC_IOCmd_Cfg, reg);
 }
 
-static void __init cell_iommu_setup_hardware(struct cbe_iommu *iommu,
+static void cell_iommu_setup_hardware(struct cbe_iommu *iommu,
 	unsigned long base, unsigned long size)
 {
 	cell_iommu_setup_stab(iommu, base, size, 0, 0);
@@ -488,8 +486,7 @@ cell_iommu_setup_window(struct cbe_iommu *iommu, struct device_node *np,
 	window->table.it_size = size >> window->table.it_page_shift;
 	window->table.it_ops = &cell_iommu_ops;
 
-	if (!iommu_init_table(&window->table, iommu->nid, 0, 0))
-		panic("Failed to initialize iommu table");
+	iommu_init_table(&window->table, iommu->nid, 0, 0);
 
 	pr_debug("\tioid      %d\n", window->ioid);
 	pr_debug("\tblocksize %ld\n", window->table.it_blocksize);
@@ -584,7 +581,7 @@ static int cell_of_bus_notify(struct notifier_block *nb, unsigned long action,
 {
 	struct device *dev = data;
 
-	/* We are only interested in device addition */
+	/* We are only intereted in device addition */
 	if (action != BUS_NOTIFY_ADD_DEVICE)
 		return 0;
 
@@ -720,10 +717,8 @@ static int __init cell_iommu_init_disabled(void)
 	cell_disable_iommus();
 
 	/* If we have no Axon, we set up the spider DMA magic offset */
-	np = of_find_node_by_name(NULL, "axon");
-	if (!np)
+	if (of_find_node_by_name(NULL, "axon") == NULL)
 		cell_dma_nommu_offset = SPIDER_DMA_OFFSET;
-	of_node_put(np);
 
 	/* Now we need to check to see where the memory is mapped
 	 * in PCI space. We assume that all busses use the same dma
@@ -862,7 +857,7 @@ static bool cell_pci_iommu_bypass_supported(struct pci_dev *pdev, u64 mask)
 		cell_iommu_get_fixed_address(&pdev->dev) != OF_BAD_ADDR;
 }
 
-static void __init insert_16M_pte(unsigned long addr, unsigned long *ptab,
+static void insert_16M_pte(unsigned long addr, unsigned long *ptab,
 			   unsigned long base_pte)
 {
 	unsigned long segment, offset;
@@ -877,7 +872,7 @@ static void __init insert_16M_pte(unsigned long addr, unsigned long *ptab,
 	ptab[offset] = base_pte | (__pa(addr) & CBE_IOPTE_RPN_Mask);
 }
 
-static void __init cell_iommu_setup_fixed_ptab(struct cbe_iommu *iommu,
+static void cell_iommu_setup_fixed_ptab(struct cbe_iommu *iommu,
 	struct device_node *np, unsigned long dbase, unsigned long dsize,
 	unsigned long fbase, unsigned long fsize)
 {
@@ -948,7 +943,7 @@ static int __init cell_iommu_fixed_mapping_init(void)
 		fbase = max(fbase, dbase + dsize);
 	}
 
-	fbase = ALIGN(fbase, 1 << IO_SEGMENT_SHIFT);
+	fbase = _ALIGN_UP(fbase, 1 << IO_SEGMENT_SHIFT);
 	fsize = memblock_phys_mem_size();
 
 	if ((fbase + fsize) <= 0x800000000ul)
@@ -968,8 +963,8 @@ static int __init cell_iommu_fixed_mapping_init(void)
 		hend  = hbase + htab_size_bytes;
 
 		/* The window must start and end on a segment boundary */
-		if ((hbase != ALIGN(hbase, 1 << IO_SEGMENT_SHIFT)) ||
-		    (hend != ALIGN(hend, 1 << IO_SEGMENT_SHIFT))) {
+		if ((hbase != _ALIGN_UP(hbase, 1 << IO_SEGMENT_SHIFT)) ||
+		    (hend != _ALIGN_UP(hend, 1 << IO_SEGMENT_SHIFT))) {
 			pr_debug("iommu: hash window not segment aligned\n");
 			return -1;
 		}
@@ -981,7 +976,6 @@ static int __init cell_iommu_fixed_mapping_init(void)
 			if (hbase < dbase || (hend > (dbase + dsize))) {
 				pr_debug("iommu: hash window doesn't fit in"
 					 "real DMA window\n");
-				of_node_put(np);
 				return -1;
 			}
 		}

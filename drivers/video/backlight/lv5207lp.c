@@ -46,7 +46,12 @@ static int lv5207lp_write(struct lv5207lp *lv, u8 reg, u8 data)
 static int lv5207lp_backlight_update_status(struct backlight_device *backlight)
 {
 	struct lv5207lp *lv = bl_get_data(backlight);
-	int brightness = backlight_get_brightness(backlight);
+	int brightness = backlight->props.brightness;
+
+	if (backlight->props.power != FB_BLANK_UNBLANK ||
+	    backlight->props.fb_blank != FB_BLANK_UNBLANK ||
+	    backlight->props.state & (BL_CORE_SUSPENDED | BL_CORE_FBBLANK))
+		brightness = 0;
 
 	if (brightness) {
 		lv5207lp_write(lv, LV5207LP_CTRL1,
@@ -67,7 +72,7 @@ static int lv5207lp_backlight_check_fb(struct backlight_device *backlight,
 {
 	struct lv5207lp *lv = bl_get_data(backlight);
 
-	return !lv->pdata->dev || lv->pdata->dev == info->device;
+	return lv->pdata->fbdev == NULL || lv->pdata->fbdev == info->dev;
 }
 
 static const struct backlight_ops lv5207lp_backlight_ops = {
@@ -76,7 +81,8 @@ static const struct backlight_ops lv5207lp_backlight_ops = {
 	.check_fb	= lv5207lp_backlight_check_fb,
 };
 
-static int lv5207lp_probe(struct i2c_client *client)
+static int lv5207lp_probe(struct i2c_client *client,
+			  const struct i2c_device_id *id)
 {
 	struct lv5207lp_platform_data *pdata = dev_get_platdata(&client->dev);
 	struct backlight_device *backlight;
@@ -123,12 +129,14 @@ static int lv5207lp_probe(struct i2c_client *client)
 	return 0;
 }
 
-static void lv5207lp_remove(struct i2c_client *client)
+static int lv5207lp_remove(struct i2c_client *client)
 {
 	struct backlight_device *backlight = i2c_get_clientdata(client);
 
 	backlight->props.brightness = 0;
 	backlight_update_status(backlight);
+
+	return 0;
 }
 
 static const struct i2c_device_id lv5207lp_ids[] = {

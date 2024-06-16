@@ -23,7 +23,6 @@ int xfs_stats_format(struct xfsstats __percpu *stats, char *buf)
 	uint64_t	xs_xstrat_bytes = 0;
 	uint64_t	xs_write_bytes = 0;
 	uint64_t	xs_read_bytes = 0;
-	uint64_t	defer_relog = 0;
 
 	static const struct xstats_entry {
 		char	*desc;
@@ -50,9 +49,7 @@ int xfs_stats_format(struct xfsstats __percpu *stats, char *buf)
 		{ "ibt2",		xfsstats_offset(xs_fibt_2)	},
 		{ "fibt2",		xfsstats_offset(xs_rmap_2)	},
 		{ "rmapbt",		xfsstats_offset(xs_refcbt_2)	},
-		{ "refcntbt",		xfsstats_offset(xs_rmap_mem_2)	},
-		{ "rmapbt_mem",		xfsstats_offset(xs_rcbag_2)	},
-		{ "rcbagbt",		xfsstats_offset(xs_qm_dqreclaims)},
+		{ "refcntbt",		xfsstats_offset(xs_qm_dqreclaims)},
 		/* we print both series of quota information together */
 		{ "qm",			xfsstats_offset(xs_xstrat_bytes)},
 	};
@@ -60,27 +57,24 @@ int xfs_stats_format(struct xfsstats __percpu *stats, char *buf)
 	/* Loop over all stats groups */
 
 	for (i = j = 0; i < ARRAY_SIZE(xstats); i++) {
-		len += scnprintf(buf + len, PATH_MAX - len, "%s",
+		len += snprintf(buf + len, PATH_MAX - len, "%s",
 				xstats[i].desc);
 		/* inner loop does each group */
 		for (; j < xstats[i].endpoint; j++)
-			len += scnprintf(buf + len, PATH_MAX - len, " %u",
+			len += snprintf(buf + len, PATH_MAX - len, " %u",
 					counter_val(stats, j));
-		len += scnprintf(buf + len, PATH_MAX - len, "\n");
+		len += snprintf(buf + len, PATH_MAX - len, "\n");
 	}
 	/* extra precision counters */
 	for_each_possible_cpu(i) {
 		xs_xstrat_bytes += per_cpu_ptr(stats, i)->s.xs_xstrat_bytes;
 		xs_write_bytes += per_cpu_ptr(stats, i)->s.xs_write_bytes;
 		xs_read_bytes += per_cpu_ptr(stats, i)->s.xs_read_bytes;
-		defer_relog += per_cpu_ptr(stats, i)->s.defer_relog;
 	}
 
-	len += scnprintf(buf + len, PATH_MAX-len, "xpc %llu %llu %llu\n",
+	len += snprintf(buf + len, PATH_MAX-len, "xpc %Lu %Lu %Lu\n",
 			xs_xstrat_bytes, xs_write_bytes, xs_read_bytes);
-	len += scnprintf(buf + len, PATH_MAX-len, "defer_relog %llu\n",
-			defer_relog);
-	len += scnprintf(buf + len, PATH_MAX-len, "debug %u\n",
+	len += snprintf(buf + len, PATH_MAX-len, "debug %u\n",
 #if defined(DEBUG)
 		1);
 #else
@@ -127,7 +121,7 @@ static int xqmstat_proc_show(struct seq_file *m, void *v)
 {
 	int j;
 
-	seq_puts(m, "qm");
+	seq_printf(m, "qm");
 	for (j = XFSSTAT_START_XQMSTAT; j < XFSSTAT_END_XQMSTAT; j++)
 		seq_printf(m, " %u", counter_val(xfsstats.xs_stats, j));
 	seq_putc(m, '\n');

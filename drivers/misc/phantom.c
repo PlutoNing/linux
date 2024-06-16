@@ -35,11 +35,8 @@
 #define PHB_NOT_OH		2
 
 static DEFINE_MUTEX(phantom_mutex);
+static struct class *phantom_class;
 static int phantom_major;
-
-static const struct class phantom_class = {
-	.name = "phantom",
-};
 
 struct phantom_device {
 	unsigned int opened;
@@ -406,7 +403,7 @@ static int phantom_probe(struct pci_dev *pdev,
 		goto err_irq;
 	}
 
-	if (IS_ERR(device_create(&phantom_class, &pdev->dev,
+	if (IS_ERR(device_create(phantom_class, &pdev->dev,
 				 MKDEV(phantom_major, minor), NULL,
 				 "phantom%u", minor)))
 		dev_err(&pdev->dev, "can't create device\n");
@@ -439,7 +436,7 @@ static void phantom_remove(struct pci_dev *pdev)
 	struct phantom_device *pht = pci_get_drvdata(pdev);
 	unsigned int minor = MINOR(pht->cdev.dev);
 
-	device_destroy(&phantom_class, MKDEV(phantom_major, minor));
+	device_destroy(phantom_class, MKDEV(phantom_major, minor));
 
 	cdev_del(&pht->cdev);
 
@@ -460,26 +457,31 @@ static void phantom_remove(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 }
 
-static int __maybe_unused phantom_suspend(struct device *dev_d)
+#ifdef CONFIG_PM
+static int phantom_suspend(struct pci_dev *pdev, pm_message_t state)
 {
-	struct phantom_device *dev = dev_get_drvdata(dev_d);
+	struct phantom_device *dev = pci_get_drvdata(pdev);
 
 	iowrite32(0, dev->caddr + PHN_IRQCTL);
 	ioread32(dev->caddr + PHN_IRQCTL); /* PCI posting */
 
-	synchronize_irq(to_pci_dev(dev_d)->irq);
+	synchronize_irq(pdev->irq);
 
 	return 0;
 }
 
-static int __maybe_unused phantom_resume(struct device *dev_d)
+static int phantom_resume(struct pci_dev *pdev)
 {
-	struct phantom_device *dev = dev_get_drvdata(dev_d);
+	struct phantom_device *dev = pci_get_drvdata(pdev);
 
 	iowrite32(0, dev->caddr + PHN_IRQCTL);
 
 	return 0;
 }
+#else
+#define phantom_suspend	NULL
+#define phantom_resume	NULL
+#endif
 
 static struct pci_device_id phantom_pci_tbl[] = {
 	{ .vendor = PCI_VENDOR_ID_PLX, .device = PCI_DEVICE_ID_PLX_9050,
@@ -489,14 +491,13 @@ static struct pci_device_id phantom_pci_tbl[] = {
 };
 MODULE_DEVICE_TABLE(pci, phantom_pci_tbl);
 
-static SIMPLE_DEV_PM_OPS(phantom_pm_ops, phantom_suspend, phantom_resume);
-
 static struct pci_driver phantom_pci_driver = {
 	.name = "phantom",
 	.id_table = phantom_pci_tbl,
 	.probe = phantom_probe,
 	.remove = phantom_remove,
-	.driver.pm = &phantom_pm_ops,
+	.suspend = phantom_suspend,
+	.resume = phantom_resume
 };
 
 static CLASS_ATTR_STRING(version, 0444, PHANTOM_VERSION);
@@ -506,12 +507,13 @@ static int __init phantom_init(void)
 	int retval;
 	dev_t dev;
 
-	retval = class_register(&phantom_class);
-	if (retval) {
+	phantom_class = class_create(THIS_MODULE, "phantom");
+	if (IS_ERR(phantom_class)) {
+		retval = PTR_ERR(phantom_class);
 		printk(KERN_ERR "phantom: can't register phantom class\n");
 		goto err;
 	}
-	retval = class_create_file(&phantom_class, &class_attr_version.attr);
+	retval = class_create_file(phantom_class, &class_attr_version.attr);
 	if (retval) {
 		printk(KERN_ERR "phantom: can't create sysfs version file\n");
 		goto err_class;
@@ -537,9 +539,9 @@ static int __init phantom_init(void)
 err_unchr:
 	unregister_chrdev_region(dev, PHANTOM_MAX_MINORS);
 err_attr:
-	class_remove_file(&phantom_class, &class_attr_version.attr);
+	class_remove_file(phantom_class, &class_attr_version.attr);
 err_class:
-	class_unregister(&phantom_class);
+	class_destroy(phantom_class);
 err:
 	return retval;
 }
@@ -550,8 +552,8 @@ static void __exit phantom_exit(void)
 
 	unregister_chrdev_region(MKDEV(phantom_major, 0), PHANTOM_MAX_MINORS);
 
-	class_remove_file(&phantom_class, &class_attr_version.attr);
-	class_unregister(&phantom_class);
+	class_remove_file(phantom_class, &class_attr_version.attr);
+	class_destroy(phantom_class);
 
 	pr_debug("phantom: module successfully removed\n");
 }

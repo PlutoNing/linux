@@ -22,7 +22,7 @@ struct regcache_rbtree_node {
 	/* block of adjacent registers */
 	void *block;
 	/* Which registers are present */
-	unsigned long *cache_present;
+	long *cache_present;
 	/* base register handled by this block */
 	unsigned int base_reg;
 	/* number of registers available in the block */
@@ -277,18 +277,18 @@ static int regcache_rbtree_insert_to_block(struct regmap *map,
 
 	blk = krealloc(rbnode->block,
 		       blklen * map->cache_word_size,
-		       map->alloc_flags);
+		       GFP_KERNEL);
 	if (!blk)
 		return -ENOMEM;
-
-	rbnode->block = blk;
 
 	if (BITS_TO_LONGS(blklen) > BITS_TO_LONGS(rbnode->blklen)) {
 		present = krealloc(rbnode->cache_present,
 				   BITS_TO_LONGS(blklen) * sizeof(*present),
-				   map->alloc_flags);
-		if (!present)
+				   GFP_KERNEL);
+		if (!present) {
+			kfree(blk);
 			return -ENOMEM;
+		}
 
 		memset(present + BITS_TO_LONGS(rbnode->blklen), 0,
 		       (BITS_TO_LONGS(blklen) - BITS_TO_LONGS(rbnode->blklen))
@@ -305,6 +305,7 @@ static int regcache_rbtree_insert_to_block(struct regmap *map,
 	}
 
 	/* update the rbnode block, its size and the base register */
+	rbnode->block = blk;
 	rbnode->blklen = blklen;
 	rbnode->base_reg = base_reg;
 	rbnode->cache_present = present;
@@ -320,7 +321,7 @@ regcache_rbtree_node_alloc(struct regmap *map, unsigned int reg)
 	const struct regmap_range *range;
 	int i;
 
-	rbnode = kzalloc(sizeof(*rbnode), map->alloc_flags);
+	rbnode = kzalloc(sizeof(*rbnode), GFP_KERNEL);
 	if (!rbnode)
 		return NULL;
 
@@ -346,13 +347,13 @@ regcache_rbtree_node_alloc(struct regmap *map, unsigned int reg)
 	}
 
 	rbnode->block = kmalloc_array(rbnode->blklen, map->cache_word_size,
-				      map->alloc_flags);
+				      GFP_KERNEL);
 	if (!rbnode->block)
 		goto err_free;
 
 	rbnode->cache_present = kcalloc(BITS_TO_LONGS(rbnode->blklen),
 					sizeof(*rbnode->cache_present),
-					map->alloc_flags);
+					GFP_KERNEL);
 	if (!rbnode->cache_present)
 		goto err_free_block;
 
@@ -453,8 +454,7 @@ static int regcache_rbtree_write(struct regmap *map, unsigned int reg,
 		if (!rbnode)
 			return -ENOMEM;
 		regcache_rbtree_set_register(map, rbnode,
-					     (reg - rbnode->base_reg) / map->reg_stride,
-					     value);
+					     reg - rbnode->base_reg, value);
 		regcache_rbtree_insert(map, &rbtree_ctx->root, rbnode);
 		rbtree_ctx->cached_rbnode = rbnode;
 	}
@@ -471,8 +471,6 @@ static int regcache_rbtree_sync(struct regmap *map, unsigned int min,
 	unsigned int base_reg, top_reg;
 	unsigned int start, end;
 	int ret;
-
-	map->async = true;
 
 	rbtree_ctx = map->cache;
 	for (node = rb_first(&rbtree_ctx->root); node; node = rb_next(node)) {
@@ -501,8 +499,6 @@ static int regcache_rbtree_sync(struct regmap *map, unsigned int min,
 		if (ret != 0)
 			return ret;
 	}
-
-	map->async = false;
 
 	return regmap_async_complete(map);
 }

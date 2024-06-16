@@ -8,13 +8,9 @@
  */
 #ifndef _CRYPTO_SCOMP_INT_H
 #define _CRYPTO_SCOMP_INT_H
-
-#include <crypto/acompress.h>
-#include <crypto/algapi.h>
+#include <linux/crypto.h>
 
 #define SCOMP_SCRATCH_SIZE	131072
-
-struct acomp_req;
 
 struct crypto_scomp {
 	struct crypto_tfm base;
@@ -27,9 +23,7 @@ struct crypto_scomp {
  * @free_ctx:	Function frees context allocated with alloc_ctx
  * @compress:	Function performs a compress operation
  * @decompress:	Function performs a de-compress operation
- * @stat:	Statistics for compress algorithm
  * @base:	Common crypto API algorithm data structure
- * @calg:	Cmonn algorithm data structure shared with acomp
  */
 struct scomp_alg {
 	void *(*alloc_ctx)(struct crypto_scomp *tfm);
@@ -40,11 +34,7 @@ struct scomp_alg {
 	int (*decompress)(struct crypto_scomp *tfm, const u8 *src,
 			  unsigned int slen, u8 *dst, unsigned int *dlen,
 			  void *ctx);
-
-	union {
-		struct COMP_ALG_COMMON;
-		struct comp_alg_common calg;
-	};
+	struct crypto_alg base;
 };
 
 static inline struct scomp_alg *__crypto_scomp_alg(struct crypto_alg *alg)
@@ -99,6 +89,10 @@ static inline int crypto_scomp_decompress(struct crypto_scomp *tfm,
 						 ctx);
 }
 
+int crypto_init_scomp_ops_async(struct crypto_tfm *tfm);
+struct acomp_req *crypto_acomp_scomp_alloc_ctx(struct acomp_req *req);
+void crypto_acomp_scomp_free_ctx(struct acomp_req *req);
+
 /**
  * crypto_register_scomp() -- Register synchronous compression algorithm
  *
@@ -118,8 +112,10 @@ int crypto_register_scomp(struct scomp_alg *alg);
  * compression algorithm
  *
  * @alg:	algorithm definition
+ *
+ * Return: zero on success; error code in case of error
  */
-void crypto_unregister_scomp(struct scomp_alg *alg);
+int crypto_unregister_scomp(struct scomp_alg *alg);
 
 int crypto_register_scomps(struct scomp_alg *algs, int count);
 void crypto_unregister_scomps(struct scomp_alg *algs, int count);

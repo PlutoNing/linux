@@ -12,9 +12,9 @@
 #include <linux/notifier.h>
 #include <asm/probes.h>
 
-typedef u32 uprobe_opcode_t;
+typedef ppc_opcode_t uprobe_opcode_t;
 
-#define MAX_UINSN_BYTES		8
+#define MAX_UINSN_BYTES		4
 #define UPROBE_XOL_SLOT_BYTES	(MAX_UINSN_BYTES)
 
 /* The following alias is needed for reference from arch-agnostic code */
@@ -23,8 +23,8 @@ typedef u32 uprobe_opcode_t;
 
 struct arch_uprobe {
 	union {
-		u32 insn[2];
-		u32 ixol[2];
+		u32	insn;
+		u32	ixol;
 	};
 };
 

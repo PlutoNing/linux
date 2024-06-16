@@ -10,16 +10,17 @@
 #include <linux/io.h>
 #include <linux/init.h>
 #include <linux/clk.h>
-#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/ioport.h>
+#include <linux/of_device.h>
 #include <linux/gpio/driver.h>
 #include <linux/platform_device.h>
 #include <linux/spinlock.h>
 #include <linux/slab.h>
 
+#include "gpiolib.h"
 #include "gpiolib-acpi.h"
 
 /*
@@ -144,9 +145,7 @@ static int mb86s70_gpio_to_irq(struct gpio_chip *gc, unsigned int offset)
 
 	for (index = 0;; index++) {
 		irq = platform_get_irq(to_platform_device(gc->parent), index);
-		if (irq < 0)
-			return irq;
-		if (irq == 0)
+		if (irq <= 0)
 			break;
 		if (irq_get_irq_data(irq)->hwirq == offset)
 			return irq;
@@ -169,13 +168,15 @@ static int mb86s70_gpio_probe(struct platform_device *pdev)
 	if (IS_ERR(gchip->base))
 		return PTR_ERR(gchip->base);
 
-	gchip->clk = devm_clk_get_optional(&pdev->dev, NULL);
-	if (IS_ERR(gchip->clk))
-		return PTR_ERR(gchip->clk);
+	if (!has_acpi_companion(&pdev->dev)) {
+		gchip->clk = devm_clk_get(&pdev->dev, NULL);
+		if (IS_ERR(gchip->clk))
+			return PTR_ERR(gchip->clk);
 
-	ret = clk_prepare_enable(gchip->clk);
-	if (ret)
-		return ret;
+		ret = clk_prepare_enable(gchip->clk);
+		if (ret)
+			return ret;
+	}
 
 	spin_lock_init(&gchip->lock);
 
@@ -185,12 +186,14 @@ static int mb86s70_gpio_probe(struct platform_device *pdev)
 	gchip->gc.free = mb86s70_gpio_free;
 	gchip->gc.get = mb86s70_gpio_get;
 	gchip->gc.set = mb86s70_gpio_set;
-	gchip->gc.to_irq = mb86s70_gpio_to_irq;
 	gchip->gc.label = dev_name(&pdev->dev);
 	gchip->gc.ngpio = 32;
 	gchip->gc.owner = THIS_MODULE;
 	gchip->gc.parent = &pdev->dev;
 	gchip->gc.base = -1;
+
+	if (has_acpi_companion(&pdev->dev))
+		gchip->gc.to_irq = mb86s70_gpio_to_irq;
 
 	ret = gpiochip_add_data(&gchip->gc, gchip);
 	if (ret) {
@@ -199,18 +202,22 @@ static int mb86s70_gpio_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	acpi_gpiochip_request_interrupts(&gchip->gc);
+	if (has_acpi_companion(&pdev->dev))
+		acpi_gpiochip_request_interrupts(&gchip->gc);
 
 	return 0;
 }
 
-static void mb86s70_gpio_remove(struct platform_device *pdev)
+static int mb86s70_gpio_remove(struct platform_device *pdev)
 {
 	struct mb86s70_gpio_chip *gchip = platform_get_drvdata(pdev);
 
-	acpi_gpiochip_free_interrupts(&gchip->gc);
+	if (has_acpi_companion(&pdev->dev))
+		acpi_gpiochip_free_interrupts(&gchip->gc);
 	gpiochip_remove(&gchip->gc);
 	clk_disable_unprepare(gchip->clk);
+
+	return 0;
 }
 
 static const struct of_device_id mb86s70_gpio_dt_ids[] = {
@@ -234,7 +241,7 @@ static struct platform_driver mb86s70_gpio_driver = {
 		.acpi_match_table = ACPI_PTR(mb86s70_gpio_acpi_ids),
 	},
 	.probe = mb86s70_gpio_probe,
-	.remove_new = mb86s70_gpio_remove,
+	.remove = mb86s70_gpio_remove,
 };
 module_platform_driver(mb86s70_gpio_driver);
 

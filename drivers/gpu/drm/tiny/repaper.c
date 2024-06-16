@@ -14,9 +14,10 @@
  */
 
 #include <linux/delay.h>
+#include <linux/dma-buf.h>
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
-#include <linux/property.h>
+#include <linux/of_device.h>
 #include <linux/sched/clock.h>
 #include <linux/spi/spi.h>
 #include <linux/thermal.h>
@@ -25,23 +26,20 @@
 #include <drm/drm_connector.h>
 #include <drm/drm_damage_helper.h>
 #include <drm/drm_drv.h>
-#include <drm/drm_fb_dma_helper.h>
-#include <drm/drm_fbdev_generic.h>
+#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_fb_helper.h>
 #include <drm/drm_format_helper.h>
-#include <drm/drm_framebuffer.h>
-#include <drm/drm_gem_atomic_helper.h>
-#include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
-#include <drm/drm_managed.h>
 #include <drm/drm_modes.h>
 #include <drm/drm_rect.h>
+#include <drm/drm_vblank.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_simple_kms_helper.h>
 
 #define REPAPER_RID_G2_COG_ID	0x12
 
 enum repaper_model {
-	/* 0 is reserved to avoid clashing with NULL */
 	E1144CS021 = 1,
 	E1190CS021,
 	E2200CS021,
@@ -89,6 +87,7 @@ struct repaper_epd {
 	u8 *line_buffer;
 	void *current_frame;
 
+	bool enabled;
 	bool cleared;
 	bool partial;
 };
@@ -509,16 +508,37 @@ static void repaper_get_temperature(struct repaper_epd *epd)
 	epd->factored_stage_time = epd->stage_time * factor10x / 10;
 }
 
-static int repaper_fb_dirty(struct drm_framebuffer *fb,
-			    struct drm_format_conv_state *fmtcnv_state)
+static void repaper_gray8_to_mono_reversed(u8 *buf, u32 width, u32 height)
 {
-	struct drm_gem_dma_object *dma_obj = drm_fb_dma_get_gem_obj(fb, 0);
+	u8 *gray8 = buf, *mono = buf;
+	int y, xb, i;
+
+	for (y = 0; y < height; y++)
+		for (xb = 0; xb < width / 8; xb++) {
+			u8 byte = 0x00;
+
+			for (i = 0; i < 8; i++) {
+				int x = xb * 8 + i;
+
+				byte >>= 1;
+				if (gray8[y * width + x] >> 7)
+					byte |= BIT(7);
+			}
+			*mono++ = byte;
+		}
+}
+
+static int repaper_fb_dirty(struct drm_framebuffer *fb)
+{
+	struct drm_gem_cma_object *cma_obj = drm_fb_cma_get_gem_obj(fb, 0);
+	struct dma_buf_attachment *import_attach = cma_obj->base.import_attach;
 	struct repaper_epd *epd = drm_to_epd(fb->dev);
-	unsigned int dst_pitch = 0;
-	struct iosys_map dst, vmap;
 	struct drm_rect clip;
 	int idx, ret = 0;
 	u8 *buf = NULL;
+
+	if (!epd->enabled)
+		return 0;
 
 	if (!drm_dev_enter(fb->dev, &idx))
 		return -ENODEV;
@@ -534,21 +554,29 @@ static int repaper_fb_dirty(struct drm_framebuffer *fb,
 	DRM_DEBUG("Flushing [FB:%d] st=%ums\n", fb->base.id,
 		  epd->factored_stage_time);
 
-	buf = kmalloc(fb->width * fb->height / 8, GFP_KERNEL);
+	buf = kmalloc_array(fb->width, fb->height, GFP_KERNEL);
 	if (!buf) {
 		ret = -ENOMEM;
 		goto out_exit;
 	}
 
-	ret = drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE);
-	if (ret)
-		goto out_free;
+	if (import_attach) {
+		ret = dma_buf_begin_cpu_access(import_attach->dmabuf,
+					       DMA_FROM_DEVICE);
+		if (ret)
+			goto out_free;
+	}
 
-	iosys_map_set_vaddr(&dst, buf);
-	iosys_map_set_vaddr(&vmap, dma_obj->vaddr);
-	drm_fb_xrgb8888_to_mono(&dst, &dst_pitch, &vmap, fb, &clip, fmtcnv_state);
+	drm_fb_xrgb8888_to_gray8(buf, cma_obj->vaddr, fb, &clip);
 
-	drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
+	if (import_attach) {
+		ret = dma_buf_end_cpu_access(import_attach->dmabuf,
+					     DMA_FROM_DEVICE);
+		if (ret)
+			goto out_free;
+	}
+
+	repaper_gray8_to_mono_reversed(buf, fb->width, fb->height);
 
 	if (epd->partial) {
 		repaper_frame_data_repeat(epd, buf, epd->current_frame,
@@ -620,15 +648,6 @@ static void power_off(struct repaper_epd *epd)
 	gpiod_set_value_cansleep(epd->discharge, 1);
 	msleep(150);
 	gpiod_set_value_cansleep(epd->discharge, 0);
-}
-
-static enum drm_mode_status repaper_pipe_mode_valid(struct drm_simple_display_pipe *pipe,
-						    const struct drm_display_mode *mode)
-{
-	struct drm_crtc *crtc = &pipe->crtc;
-	struct repaper_epd *epd = drm_to_epd(crtc->dev);
-
-	return drm_crtc_helper_mode_valid_fixed(crtc, mode, epd->mode);
 }
 
 static void repaper_pipe_enable(struct drm_simple_display_pipe *pipe,
@@ -766,6 +785,7 @@ static void repaper_pipe_enable(struct drm_simple_display_pipe *pipe,
 	 */
 	repaper_write_val(spi, 0x02, 0x04);
 
+	epd->enabled = true;
 	epd->partial = false;
 out_exit:
 	drm_dev_exit(idx);
@@ -784,7 +804,12 @@ static void repaper_pipe_disable(struct drm_simple_display_pipe *pipe)
 	 * unplug.
 	 */
 
+	if (!epd->enabled)
+		return;
+
 	DRM_DEBUG_DRIVER("\n");
+
+	epd->enabled = false;
 
 	/* Nothing frame */
 	for (line = 0; line < epd->height; line++)
@@ -831,30 +856,46 @@ static void repaper_pipe_update(struct drm_simple_display_pipe *pipe,
 				struct drm_plane_state *old_state)
 {
 	struct drm_plane_state *state = pipe->plane.state;
-	struct drm_format_conv_state fmtcnv_state = DRM_FORMAT_CONV_STATE_INIT;
+	struct drm_crtc *crtc = &pipe->crtc;
 	struct drm_rect rect;
 
-	if (!pipe->crtc.state->active)
-		return;
-
 	if (drm_atomic_helper_damage_merged(old_state, state, &rect))
-		repaper_fb_dirty(state->fb, &fmtcnv_state);
+		repaper_fb_dirty(state->fb);
 
-	drm_format_conv_state_release(&fmtcnv_state);
+	if (crtc->state->event) {
+		spin_lock_irq(&crtc->dev->event_lock);
+		drm_crtc_send_vblank_event(crtc, crtc->state->event);
+		spin_unlock_irq(&crtc->dev->event_lock);
+		crtc->state->event = NULL;
+	}
 }
 
 static const struct drm_simple_display_pipe_funcs repaper_pipe_funcs = {
-	.mode_valid = repaper_pipe_mode_valid,
 	.enable = repaper_pipe_enable,
 	.disable = repaper_pipe_disable,
 	.update = repaper_pipe_update,
+	.prepare_fb = drm_gem_fb_simple_display_pipe_prepare_fb,
 };
 
 static int repaper_connector_get_modes(struct drm_connector *connector)
 {
 	struct repaper_epd *epd = drm_to_epd(connector->dev);
+	struct drm_display_mode *mode;
 
-	return drm_connector_helper_get_modes_fixed(connector, epd->mode);
+	mode = drm_mode_duplicate(connector->dev, epd->mode);
+	if (!mode) {
+		DRM_ERROR("Failed to duplicate mode\n");
+		return 0;
+	}
+
+	drm_mode_set_name(mode);
+	mode->type |= DRM_MODE_TYPE_PREFERRED;
+	drm_mode_probed_add(connector, mode);
+
+	connector->display_info.width_mm = mode->width_mm;
+	connector->display_info.height_mm = mode->height_mm;
+
+	return 1;
 }
 
 static const struct drm_connector_helper_funcs repaper_connector_hfuncs = {
@@ -874,6 +915,17 @@ static const struct drm_mode_config_funcs repaper_mode_config_funcs = {
 	.atomic_check = drm_atomic_helper_check,
 	.atomic_commit = drm_atomic_helper_commit,
 };
+
+static void repaper_release(struct drm_device *drm)
+{
+	struct repaper_epd *epd = drm_to_epd(drm);
+
+	DRM_DEBUG_DRIVER("\n");
+
+	drm_mode_config_cleanup(drm);
+	drm_dev_fini(drm);
+	kfree(epd);
+}
 
 static const uint32_t repaper_formats[] = {
 	DRM_FORMAT_XRGB8888,
@@ -907,12 +959,13 @@ static const struct drm_display_mode repaper_e2271cs021_mode = {
 static const u8 repaper_e2271cs021_cs[] = { 0x00, 0x00, 0x00, 0x7f,
 					    0xff, 0xfe, 0x00, 0x00 };
 
-DEFINE_DRM_GEM_DMA_FOPS(repaper_fops);
+DEFINE_DRM_GEM_CMA_FOPS(repaper_fops);
 
-static const struct drm_driver repaper_driver = {
+static struct drm_driver repaper_driver = {
 	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_ATOMIC,
 	.fops			= &repaper_fops,
-	DRM_GEM_DMA_DRIVER_OPS_VMAP,
+	.release		= repaper_release,
+	DRM_GEM_CMA_VMAP_DRIVER_OPS,
 	.name			= "repaper",
 	.desc			= "Pervasive Displays RePaper e-ink panels",
 	.date			= "20170405",
@@ -942,21 +995,21 @@ static int repaper_probe(struct spi_device *spi)
 {
 	const struct drm_display_mode *mode;
 	const struct spi_device_id *spi_id;
+	const struct of_device_id *match;
 	struct device *dev = &spi->dev;
 	enum repaper_model model;
 	const char *thermal_zone;
 	struct repaper_epd *epd;
 	size_t line_buffer_size;
 	struct drm_device *drm;
-	const void *match;
 	int ret;
 
-	match = device_get_match_data(dev);
+	match = of_match_device(repaper_of_match, dev);
 	if (match) {
-		model = (enum repaper_model)(uintptr_t)match;
+		model = (enum repaper_model)match->data;
 	} else {
 		spi_id = spi_get_device_id(spi);
-		model = (enum repaper_model)spi_id->driver_data;
+		model = spi_id->driver_data;
 	}
 
 	/* The SPI device is used to allocate dma memory */
@@ -968,16 +1021,19 @@ static int repaper_probe(struct spi_device *spi)
 		}
 	}
 
-	epd = devm_drm_dev_alloc(dev, &repaper_driver,
-				 struct repaper_epd, drm);
-	if (IS_ERR(epd))
-		return PTR_ERR(epd);
+	epd = kzalloc(sizeof(*epd), GFP_KERNEL);
+	if (!epd)
+		return -ENOMEM;
 
 	drm = &epd->drm;
 
-	ret = drmm_mode_config_init(drm);
-	if (ret)
+	ret = devm_drm_dev_init(dev, drm, &repaper_driver);
+	if (ret) {
+		kfree(epd);
 		return ret;
+	}
+
+	drm_mode_config_init(drm);
 	drm->mode_config.funcs = &repaper_mode_config_funcs;
 
 	epd->spi = spi;
@@ -1123,12 +1179,14 @@ static int repaper_probe(struct spi_device *spi)
 	return 0;
 }
 
-static void repaper_remove(struct spi_device *spi)
+static int repaper_remove(struct spi_device *spi)
 {
 	struct drm_device *drm = spi_get_drvdata(spi);
 
 	drm_dev_unplug(drm);
 	drm_atomic_helper_shutdown(drm);
+
+	return 0;
 }
 
 static void repaper_shutdown(struct spi_device *spi)
@@ -1139,6 +1197,7 @@ static void repaper_shutdown(struct spi_device *spi)
 static struct spi_driver repaper_spi_driver = {
 	.driver = {
 		.name = "repaper",
+		.owner = THIS_MODULE,
 		.of_match_table = repaper_of_match,
 	},
 	.id_table = repaper_id,

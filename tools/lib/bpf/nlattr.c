@@ -7,11 +7,10 @@
  */
 
 #include <errno.h>
+#include "nlattr.h"
+#include <linux/rtnetlink.h>
 #include <string.h>
 #include <stdio.h>
-#include <linux/rtnetlink.h>
-#include "nlattr.h"
-#include "libbpf_internal.h"
 
 static uint16_t nla_attr_minlen[LIBBPF_NLA_TYPE_MAX+1] = {
 	[LIBBPF_NLA_U8]		= sizeof(uint8_t),
@@ -27,12 +26,12 @@ static struct nlattr *nla_next(const struct nlattr *nla, int *remaining)
 	int totlen = NLA_ALIGN(nla->nla_len);
 
 	*remaining -= totlen;
-	return (struct nlattr *)((void *)nla + totlen);
+	return (struct nlattr *) ((char *) nla + totlen);
 }
 
 static int nla_ok(const struct nlattr *nla, int remaining)
 {
-	return remaining >= (int)sizeof(*nla) &&
+	return remaining >= sizeof(*nla) &&
 	       nla->nla_len >= sizeof(*nla) &&
 	       nla->nla_len <= remaining;
 }
@@ -122,8 +121,8 @@ int libbpf_nla_parse(struct nlattr *tb[], int maxtype, struct nlattr *head,
 		}
 
 		if (tb[type])
-			pr_warn("Attribute of type %#x found multiple times in message, "
-				"previous attribute is being ignored.\n", type);
+			fprintf(stderr, "Attribute of type %#x found multiple times in message, "
+				  "previous attribute is being ignored.\n", type);
 
 		tb[type] = nla;
 	}
@@ -178,18 +177,19 @@ int libbpf_nla_dump_errormsg(struct nlmsghdr *nlh)
 		hlen += nlmsg_len(&err->msg);
 
 	attr = (struct nlattr *) ((void *) err + hlen);
-	alen = (void *)nlh + nlh->nlmsg_len - (void *)attr;
+	alen = nlh->nlmsg_len - hlen;
 
 	if (libbpf_nla_parse(tb, NLMSGERR_ATTR_MAX, attr, alen,
 			     extack_policy) != 0) {
-		pr_warn("Failed to parse extended error attributes\n");
+		fprintf(stderr,
+			"Failed to parse extended error attributes\n");
 		return 0;
 	}
 
 	if (tb[NLMSGERR_ATTR_MSG])
 		errmsg = (char *) libbpf_nla_data(tb[NLMSGERR_ATTR_MSG]);
 
-	pr_warn("Kernel error message: %s\n", errmsg);
+	fprintf(stderr, "Kernel error message: %s\n", errmsg);
 
 	return 0;
 }

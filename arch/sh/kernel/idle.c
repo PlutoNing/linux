@@ -4,7 +4,6 @@
  *
  *  Copyright (C) 2002 - 2009  Paul Mundt
  */
-#include <linux/cpu.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/mm.h>
@@ -15,7 +14,7 @@
 #include <linux/irqflags.h>
 #include <linux/smp.h>
 #include <linux/atomic.h>
-#include <asm/processor.h>
+#include <asm/pgalloc.h>
 #include <asm/smp.h>
 #include <asm/bl_bit.h>
 
@@ -24,14 +23,13 @@ static void (*sh_idle)(void);
 void default_idle(void)
 {
 	set_bl_bit();
-	raw_local_irq_enable();
+	local_irq_enable();
 	/* Isn't this racy ? */
 	cpu_sleep();
-	raw_local_irq_disable();
 	clear_bl_bit();
 }
 
-void __noreturn arch_cpu_idle_dead(void)
+void arch_cpu_idle_dead(void)
 {
 	play_dead();
 }

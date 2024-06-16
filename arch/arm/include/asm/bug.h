@@ -82,12 +82,10 @@ void hook_ifault_code(int nr, int (*fn)(unsigned long, unsigned int,
 				       struct pt_regs *),
 		     int sig, int code, const char *name);
 
-extern asmlinkage void c_backtrace(unsigned long fp, int pmode,
-				   const char *loglvl);
+extern asmlinkage void c_backtrace(unsigned long fp, int pmode);
 
 struct mm_struct;
 void show_pte(const char *lvl, struct mm_struct *mm, unsigned long addr);
 extern void __show_regs(struct pt_regs *);
-extern void __show_regs_alloc_free(struct pt_regs *regs);
 
 #endif

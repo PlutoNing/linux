@@ -30,8 +30,6 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <signal.h>
-#include <sys/ioctl.h>
-#include <linux/iio/buffer.h>
 #include "iio_utils.h"
 
 /**
@@ -51,15 +49,12 @@ enum autochan {
  * Has the side effect of filling the channels[i].location values used
  * in processing the buffer output.
  **/
-static unsigned int size_from_channelarray(struct iio_channel_info *channels, int num_channels)
+int size_from_channelarray(struct iio_channel_info *channels, int num_channels)
 {
-	unsigned int bytes = 0;
-	int i = 0, max = 0;
-	unsigned int misalignment;
+	int bytes = 0;
+	int i = 0;
 
 	while (i < num_channels) {
-		if (channels[i].bytes > max)
-			max = channels[i].bytes;
 		if (bytes % channels[i].bytes == 0)
 			channels[i].location = bytes;
 		else
@@ -69,19 +64,11 @@ static unsigned int size_from_channelarray(struct iio_channel_info *channels, in
 		bytes = channels[i].location + channels[i].bytes;
 		i++;
 	}
-	/*
-	 * We want the data in next sample to also be properly aligned so
-	 * we'll add padding at the end if needed. Adding padding only
-	 * works for channel data which size is 2^n bytes.
-	 */
-	misalignment = bytes % max;
-	if (misalignment)
-		bytes += max - misalignment;
 
 	return bytes;
 }
 
-static void print1byte(uint8_t input, struct iio_channel_info *info)
+void print1byte(uint8_t input, struct iio_channel_info *info)
 {
 	/*
 	 * Shift before conversion to avoid sign extension
@@ -98,7 +85,7 @@ static void print1byte(uint8_t input, struct iio_channel_info *info)
 	}
 }
 
-static void print2byte(uint16_t input, struct iio_channel_info *info)
+void print2byte(uint16_t input, struct iio_channel_info *info)
 {
 	/* First swap if incorrect endian */
 	if (info->be)
@@ -121,7 +108,7 @@ static void print2byte(uint16_t input, struct iio_channel_info *info)
 	}
 }
 
-static void print4byte(uint32_t input, struct iio_channel_info *info)
+void print4byte(uint32_t input, struct iio_channel_info *info)
 {
 	/* First swap if incorrect endian */
 	if (info->be)
@@ -144,7 +131,7 @@ static void print4byte(uint32_t input, struct iio_channel_info *info)
 	}
 }
 
-static void print8byte(uint64_t input, struct iio_channel_info *info)
+void print8byte(uint64_t input, struct iio_channel_info *info)
 {
 	/* First swap if incorrect endian */
 	if (info->be)
@@ -180,8 +167,9 @@ static void print8byte(uint64_t input, struct iio_channel_info *info)
  *			      to fill the location offsets.
  * @num_channels:	number of channels
  **/
-static void process_scan(char *data, struct iio_channel_info *channels,
-			 int num_channels)
+void process_scan(char *data,
+		  struct iio_channel_info *channels,
+		  int num_channels)
 {
 	int k;
 
@@ -210,7 +198,7 @@ static void process_scan(char *data, struct iio_channel_info *channels,
 	printf("\n");
 }
 
-static int enable_disable_all_channels(char *dev_dir_name, int buffer_idx, int enable)
+static int enable_disable_all_channels(char *dev_dir_name, int enable)
 {
 	const struct dirent *ent;
 	char scanelemdir[256];
@@ -218,7 +206,7 @@ static int enable_disable_all_channels(char *dev_dir_name, int buffer_idx, int e
 	int ret;
 
 	snprintf(scanelemdir, sizeof(scanelemdir),
-		 FORMAT_SCAN_ELEMENTS_DIR, dev_dir_name, buffer_idx);
+		 FORMAT_SCAN_ELEMENTS_DIR, dev_dir_name);
 	scanelemdir[sizeof(scanelemdir)-1] = '\0';
 
 	dp = opendir(scanelemdir);
@@ -250,13 +238,12 @@ static int enable_disable_all_channels(char *dev_dir_name, int buffer_idx, int e
 	return 0;
 }
 
-static void print_usage(void)
+void print_usage(void)
 {
 	fprintf(stderr, "Usage: generic_buffer [options]...\n"
 		"Capture, convert and output data from IIO device buffer\n"
 		"  -a         Auto-activate all available channels\n"
 		"  -A         Force-activate ALL channels\n"
-		"  -b <n>     The buffer which to open (by index), default 0\n"
 		"  -c <n>     Do n conversions, or loop forever if n < 0\n"
 		"  -e         Disable wait for event (new data)\n"
 		"  -g         Use trigger-less mode\n"
@@ -270,13 +257,12 @@ static void print_usage(void)
 		"  -w <n>     Set delay between reads in us (event-less mode)\n");
 }
 
-static enum autochan autochannels = AUTOCHANNELS_DISABLED;
-static char *dev_dir_name = NULL;
-static char *buf_dir_name = NULL;
-static int buffer_idx = 0;
-static bool current_trigger_set = false;
+enum autochan autochannels = AUTOCHANNELS_DISABLED;
+char *dev_dir_name = NULL;
+char *buf_dir_name = NULL;
+bool current_trigger_set = false;
 
-static void cleanup(void)
+void cleanup(void)
 {
 	int ret;
 
@@ -301,21 +287,21 @@ static void cleanup(void)
 
 	/* Disable channels if auto-enabled */
 	if (dev_dir_name && autochannels == AUTOCHANNELS_ACTIVE) {
-		ret = enable_disable_all_channels(dev_dir_name, buffer_idx, 0);
+		ret = enable_disable_all_channels(dev_dir_name, 0);
 		if (ret)
 			fprintf(stderr, "Failed to disable all channels\n");
 		autochannels = AUTOCHANNELS_DISABLED;
 	}
 }
 
-static void sig_handler(int signum)
+void sig_handler(int signum)
 {
 	fprintf(stderr, "Caught signal %d\n", signum);
 	cleanup();
 	exit(-signum);
 }
 
-static void register_cleanup(void)
+void register_cleanup(void)
 {
 	struct sigaction sa = { .sa_handler = sig_handler };
 	const int signums[] = { SIGINT, SIGTERM, SIGABRT };
@@ -348,9 +334,7 @@ int main(int argc, char **argv)
 	unsigned long long j;
 	unsigned long toread;
 	int ret, c;
-	struct stat st;
-	int fd = -1;
-	int buf_fd = -1;
+	int fp = -1;
 
 	int num_channels = 0;
 	char *trigger_name = NULL, *device_name = NULL;
@@ -359,7 +343,7 @@ int main(int argc, char **argv)
 	ssize_t read_size;
 	int dev_num = -1, trig_num = -1;
 	char *buffer_access = NULL;
-	unsigned int scan_size;
+	int scan_size;
 	int noevents = 0;
 	int notrigger = 0;
 	char *dummy;
@@ -369,7 +353,7 @@ int main(int argc, char **argv)
 
 	register_cleanup();
 
-	while ((c = getopt_long(argc, argv, "aAb:c:egl:n:N:t:T:w:?", longopts,
+	while ((c = getopt_long(argc, argv, "aAc:egl:n:N:t:T:w:?", longopts,
 				NULL)) != -1) {
 		switch (c) {
 		case 'a':
@@ -378,20 +362,7 @@ int main(int argc, char **argv)
 		case 'A':
 			autochannels = AUTOCHANNELS_ENABLED;
 			force_autochannels = true;
-			break;
-		case 'b':
-			errno = 0;
-			buffer_idx = strtoll(optarg, &dummy, 10);
-			if (errno) {
-				ret = -errno;
-				goto error;
-			}
-			if (buffer_idx < 0) {
-				ret = -ERANGE;
-				goto error;
-			}
-
-			break;
+			break;	
 		case 'c':
 			errno = 0;
 			num_loops = strtoll(optarg, &dummy, 10);
@@ -548,7 +519,7 @@ int main(int argc, char **argv)
 	 * Parse the files in scan_elements to identify what channels are
 	 * present
 	 */
-	ret = build_channel_array(dev_dir_name, buffer_idx, &channels, &num_channels);
+	ret = build_channel_array(dev_dir_name, &channels, &num_channels);
 	if (ret) {
 		fprintf(stderr, "Problem reading scan element information\n"
 			"diag %s\n", dev_dir_name);
@@ -565,7 +536,7 @@ int main(int argc, char **argv)
 	    (autochannels == AUTOCHANNELS_ENABLED && force_autochannels)) {
 		fprintf(stderr, "Enabling all channels\n");
 
-		ret = enable_disable_all_channels(dev_dir_name, buffer_idx, 1);
+		ret = enable_disable_all_channels(dev_dir_name, 1);
 		if (ret) {
 			fprintf(stderr, "Failed to enable all channels\n");
 			goto error;
@@ -574,7 +545,7 @@ int main(int argc, char **argv)
 		/* This flags that we need to disable the channels again */
 		autochannels = AUTOCHANNELS_ACTIVE;
 
-		ret = build_channel_array(dev_dir_name, buffer_idx, &channels,
+		ret = build_channel_array(dev_dir_name, &channels,
 					  &num_channels);
 		if (ret) {
 			fprintf(stderr, "Problem reading scan element "
@@ -595,7 +566,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Enable channels manually in "
 			FORMAT_SCAN_ELEMENTS_DIR
 			"/*_en or pass -a to autoenable channels and "
-			"try again.\n", dev_dir_name, buffer_idx);
+			"try again.\n", dev_dir_name);
 		ret = -ENOENT;
 		goto error;
 	}
@@ -606,22 +577,9 @@ int main(int argc, char **argv)
 	 * be built rather than found.
 	 */
 	ret = asprintf(&buf_dir_name,
-		       "%siio:device%d/buffer%d", iio_dir, dev_num, buffer_idx);
+		       "%siio:device%d/buffer", iio_dir, dev_num);
 	if (ret < 0) {
 		ret = -ENOMEM;
-		goto error;
-	}
-
-	if (stat(buf_dir_name, &st)) {
-		fprintf(stderr, "Could not stat() '%s', got error %d: %s\n",
-			buf_dir_name, errno, strerror(errno));
-		ret = -errno;
-		goto error;
-	}
-
-	if (!S_ISDIR(st.st_mode)) {
-		fprintf(stderr, "File '%s' is not a directory\n", buf_dir_name);
-		ret = -EFAULT;
 		goto error;
 	}
 
@@ -641,35 +599,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	ret = asprintf(&buffer_access, "/dev/iio:device%d", dev_num);
-	if (ret < 0) {
-		ret = -ENOMEM;
-		goto error;
-	}
-
-	/* Attempt to open non blocking the access dev */
-	fd = open(buffer_access, O_RDONLY | O_NONBLOCK);
-	if (fd == -1) { /* TODO: If it isn't there make the node */
-		ret = -errno;
-		fprintf(stderr, "Failed to open %s\n", buffer_access);
-		goto error;
-	}
-
-	/* specify for which buffer index we want an FD */
-	buf_fd = buffer_idx;
-
-	ret = ioctl(fd, IIO_BUFFER_GET_FD_IOCTL, &buf_fd);
-	if (ret == -1 || buf_fd == -1) {
-		ret = -errno;
-		if (ret == -ENODEV || ret == -EINVAL)
-			fprintf(stderr,
-				"Device does not have this many buffers\n");
-		else
-			fprintf(stderr, "Failed to retrieve buffer fd\n");
-
-		goto error;
-	}
-
 	/* Setup ring buffer parameters */
 	ret = write_sysfs_int("length", buf_dir_name, buf_len);
 	if (ret < 0)
@@ -679,51 +608,35 @@ int main(int argc, char **argv)
 	ret = write_sysfs_int("enable", buf_dir_name, 1);
 	if (ret < 0) {
 		fprintf(stderr,
-			"Failed to enable buffer '%s': %s\n",
-			buf_dir_name, strerror(-ret));
+			"Failed to enable buffer: %s\n", strerror(-ret));
 		goto error;
 	}
 
 	scan_size = size_from_channelarray(channels, num_channels);
-
-	size_t total_buf_len = scan_size * buf_len;
-
-	if (scan_size > 0 && total_buf_len / scan_size != buf_len) {
-		ret = -EFAULT;
-		perror("Integer overflow happened when calculate scan_size * buf_len");
-		goto error;
-	}
-
-	data = malloc(total_buf_len);
+	data = malloc(scan_size * buf_len);
 	if (!data) {
 		ret = -ENOMEM;
 		goto error;
 	}
 
-	/**
-	 * This check is being done here for sanity reasons, however it
-	 * should be omitted under normal operation.
-	 * If this is buffer0, we check that we get EBUSY after this point.
-	 */
-	if (buffer_idx == 0) {
-		errno = 0;
-		read_size = read(fd, data, 1);
-		if (read_size > -1 || errno != EBUSY) {
-			ret = -EFAULT;
-			perror("Reading from '%s' should not be possible after ioctl()");
-			goto error;
-		}
+	ret = asprintf(&buffer_access, "/dev/iio:device%d", dev_num);
+	if (ret < 0) {
+		ret = -ENOMEM;
+		goto error;
 	}
 
-	/* close now the main chardev FD and let the buffer FD work */
-	if (close(fd) == -1)
-		perror("Failed to close character device file");
-	fd = -1;
+	/* Attempt to open non blocking the access dev */
+	fp = open(buffer_access, O_RDONLY | O_NONBLOCK);
+	if (fp == -1) { /* TODO: If it isn't there make the node */
+		ret = -errno;
+		fprintf(stderr, "Failed to open %s\n", buffer_access);
+		goto error;
+	}
 
 	for (j = 0; j < num_loops || num_loops < 0; j++) {
 		if (!noevents) {
 			struct pollfd pfd = {
-				.fd = buf_fd,
+				.fd = fp,
 				.events = POLLIN,
 			};
 
@@ -735,13 +648,13 @@ int main(int argc, char **argv)
 				continue;
 			}
 
+			toread = buf_len;
 		} else {
 			usleep(timedelay);
+			toread = 64;
 		}
 
-		toread = buf_len;
-
-		read_size = read(buf_fd, data, toread * scan_size);
+		read_size = read(fp, data, toread * scan_size);
 		if (read_size < 0) {
 			if (errno == EAGAIN) {
 				fprintf(stderr, "nothing available\n");
@@ -758,9 +671,7 @@ int main(int argc, char **argv)
 error:
 	cleanup();
 
-	if (fd >= 0 && close(fd) == -1)
-		perror("Failed to close character device");
-	if (buf_fd >= 0 && close(buf_fd) == -1)
+	if (fp >= 0 && close(fp) == -1)
 		perror("Failed to close buffer");
 	free(buffer_access);
 	free(data);

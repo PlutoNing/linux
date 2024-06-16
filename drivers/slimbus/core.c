@@ -81,7 +81,7 @@ static int slim_device_probe(struct device *dev)
 	return ret;
 }
 
-static void slim_device_remove(struct device *dev)
+static int slim_device_remove(struct device *dev)
 {
 	struct slim_device *sbdev = to_slim_device(dev);
 	struct slim_driver *sbdrv;
@@ -91,16 +91,18 @@ static void slim_device_remove(struct device *dev)
 		if (sbdrv->remove)
 			sbdrv->remove(sbdev);
 	}
+
+	return 0;
 }
 
-static int slim_device_uevent(const struct device *dev, struct kobj_uevent_env *env)
+static int slim_device_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
-	const struct slim_device *sbdev = to_slim_device(dev);
+	struct slim_device *sbdev = to_slim_device(dev);
 
 	return add_uevent_var(env, "MODALIAS=slim:%s", dev_name(&sbdev->dev));
 }
 
-const struct bus_type slimbus_bus = {
+struct bus_type slimbus_bus = {
 	.name		= "slimbus",
 	.match		= slim_device_match,
 	.probe		= slim_device_probe,
@@ -160,8 +162,9 @@ static int slim_add_device(struct slim_controller *ctrl,
 	sbdev->ctrl = ctrl;
 	INIT_LIST_HEAD(&sbdev->stream_list);
 	spin_lock_init(&sbdev->stream_list_lock);
-	sbdev->dev.of_node = of_node_get(node);
-	sbdev->dev.fwnode = of_fwnode_handle(node);
+
+	if (node)
+		sbdev->dev.of_node = of_node_get(node);
 
 	dev_set_name(&sbdev->dev, "%x:%x:%x:%x",
 				  sbdev->e_addr.manf_id,
@@ -250,7 +253,7 @@ int slim_register_controller(struct slim_controller *ctrl)
 {
 	int id;
 
-	id = ida_alloc(&ctrl_ida, GFP_KERNEL);
+	id = ida_simple_get(&ctrl_ida, 0, 0, GFP_KERNEL);
 	if (id < 0)
 		return id;
 
@@ -280,7 +283,6 @@ EXPORT_SYMBOL_GPL(slim_register_controller);
 /* slim_remove_device: Remove the effect of slim_add_device() */
 static void slim_remove_device(struct slim_device *sbdev)
 {
-	of_node_put(sbdev->dev.of_node);
 	device_unregister(&sbdev->dev);
 }
 
@@ -299,7 +301,9 @@ int slim_unregister_controller(struct slim_controller *ctrl)
 {
 	/* Remove all clients */
 	device_for_each_child(ctrl->dev, NULL, slim_ctrl_remove_device);
-	ida_free(&ctrl_ida, ctrl->id);
+	/* Enter Clock Pause */
+	slim_ctrl_clk_pause(ctrl, false, 0);
+	ida_simple_remove(&ctrl_ida, ctrl->id);
 
 	return 0;
 }
@@ -322,8 +326,8 @@ void slim_report_absent(struct slim_device *sbdev)
 	mutex_lock(&ctrl->lock);
 	sbdev->is_laddr_valid = false;
 	mutex_unlock(&ctrl->lock);
-	if (!ctrl->get_laddr)
-		ida_free(&ctrl->laddr_ida, sbdev->laddr);
+
+	ida_simple_remove(&ctrl->laddr_ida, sbdev->laddr);
 	slim_device_update_status(sbdev, SLIM_DEVICE_STATUS_DOWN);
 }
 EXPORT_SYMBOL_GPL(slim_report_absent);
@@ -436,8 +440,8 @@ static int slim_device_alloc_laddr(struct slim_device *sbdev,
 		if (ret < 0)
 			goto err;
 	} else if (report_present) {
-		ret = ida_alloc_max(&ctrl->laddr_ida,
-				    SLIM_LA_MANAGER - 1, GFP_KERNEL);
+		ret = ida_simple_get(&ctrl->laddr_ida,
+				     0, SLIM_LA_MANAGER - 1, GFP_KERNEL);
 		if (ret < 0)
 			goto err;
 

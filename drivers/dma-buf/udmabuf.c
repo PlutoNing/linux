@@ -2,7 +2,6 @@
 #include <linux/cred.h>
 #include <linux/device.h>
 #include <linux/dma-buf.h>
-#include <linux/dma-resv.h>
 #include <linux/highmem.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -12,33 +11,21 @@
 #include <linux/shmem_fs.h>
 #include <linux/slab.h>
 #include <linux/udmabuf.h>
-#include <linux/vmalloc.h>
-#include <linux/iosys-map.h>
 
-static int list_limit = 1024;
-module_param(list_limit, int, 0644);
-MODULE_PARM_DESC(list_limit, "udmabuf_create_list->count limit. Default is 1024.");
-
-static int size_limit_mb = 64;
-module_param(size_limit_mb, int, 0644);
-MODULE_PARM_DESC(size_limit_mb, "Max size of a dmabuf, in megabytes. Default is 64.");
+static const u32    list_limit = 1024;  /* udmabuf_create_list->count limit */
+static const size_t size_limit_mb = 64; /* total dmabuf size, in megabytes  */
 
 struct udmabuf {
 	pgoff_t pagecount;
 	struct page **pages;
-	struct sg_table *sg;
-	struct miscdevice *device;
 };
 
 static vm_fault_t udmabuf_vm_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
 	struct udmabuf *ubuf = vma->vm_private_data;
-	pgoff_t pgoff = vmf->pgoff;
 
-	if (pgoff >= ubuf->pagecount)
-		return VM_FAULT_SIGBUS;
-	vmf->page = ubuf->pages[pgoff];
+	vmf->page = ubuf->pages[vmf->pgoff];
 	get_page(vmf->page);
 	return 0;
 }
@@ -59,34 +46,10 @@ static int mmap_udmabuf(struct dma_buf *buf, struct vm_area_struct *vma)
 	return 0;
 }
 
-static int vmap_udmabuf(struct dma_buf *buf, struct iosys_map *map)
+static struct sg_table *map_udmabuf(struct dma_buf_attachment *at,
+				    enum dma_data_direction direction)
 {
-	struct udmabuf *ubuf = buf->priv;
-	void *vaddr;
-
-	dma_resv_assert_held(buf->resv);
-
-	vaddr = vm_map_ram(ubuf->pages, ubuf->pagecount, -1);
-	if (!vaddr)
-		return -EINVAL;
-
-	iosys_map_set_vaddr(map, vaddr);
-	return 0;
-}
-
-static void vunmap_udmabuf(struct dma_buf *buf, struct iosys_map *map)
-{
-	struct udmabuf *ubuf = buf->priv;
-
-	dma_resv_assert_held(buf->resv);
-
-	vm_unmap_ram(map->vaddr, ubuf->pagecount);
-}
-
-static struct sg_table *get_sg_table(struct device *dev, struct dma_buf *buf,
-				     enum dma_data_direction direction)
-{
-	struct udmabuf *ubuf = buf->priv;
+	struct udmabuf *ubuf = at->dmabuf->priv;
 	struct sg_table *sg;
 	int ret;
 
@@ -98,9 +61,10 @@ static struct sg_table *get_sg_table(struct device *dev, struct dma_buf *buf,
 					GFP_KERNEL);
 	if (ret < 0)
 		goto err;
-	ret = dma_map_sgtable(dev, sg, direction, 0);
-	if (ret < 0)
+	if (!dma_map_sg(at->dev, sg->sgl, sg->nents, direction)) {
+		ret = -EINVAL;
 		goto err;
+	}
 	return sg;
 
 err:
@@ -109,35 +73,19 @@ err:
 	return ERR_PTR(ret);
 }
 
-static void put_sg_table(struct device *dev, struct sg_table *sg,
-			 enum dma_data_direction direction)
-{
-	dma_unmap_sgtable(dev, sg, direction, 0);
-	sg_free_table(sg);
-	kfree(sg);
-}
-
-static struct sg_table *map_udmabuf(struct dma_buf_attachment *at,
-				    enum dma_data_direction direction)
-{
-	return get_sg_table(at->dev, at->dmabuf, direction);
-}
-
 static void unmap_udmabuf(struct dma_buf_attachment *at,
 			  struct sg_table *sg,
 			  enum dma_data_direction direction)
 {
-	return put_sg_table(at->dev, sg, direction);
+	dma_unmap_sg(at->dev, sg->sgl, sg->nents, direction);
+	sg_free_table(sg);
+	kfree(sg);
 }
 
 static void release_udmabuf(struct dma_buf *buf)
 {
 	struct udmabuf *ubuf = buf->priv;
-	struct device *dev = ubuf->device->this_device;
 	pgoff_t pg;
-
-	if (ubuf->sg)
-		put_sg_table(dev, ubuf->sg, DMA_BIDIRECTIONAL);
 
 	for (pg = 0; pg < ubuf->pagecount; pg++)
 		put_page(ubuf->pages[pg]);
@@ -145,62 +93,37 @@ static void release_udmabuf(struct dma_buf *buf)
 	kfree(ubuf);
 }
 
-static int begin_cpu_udmabuf(struct dma_buf *buf,
-			     enum dma_data_direction direction)
+static void *kmap_udmabuf(struct dma_buf *buf, unsigned long page_num)
 {
 	struct udmabuf *ubuf = buf->priv;
-	struct device *dev = ubuf->device->this_device;
-	int ret = 0;
+	struct page *page = ubuf->pages[page_num];
 
-	if (!ubuf->sg) {
-		ubuf->sg = get_sg_table(dev, buf, direction);
-		if (IS_ERR(ubuf->sg)) {
-			ret = PTR_ERR(ubuf->sg);
-			ubuf->sg = NULL;
-		}
-	} else {
-		dma_sync_sg_for_cpu(dev, ubuf->sg->sgl, ubuf->sg->nents,
-				    direction);
-	}
-
-	return ret;
+	return kmap(page);
 }
 
-static int end_cpu_udmabuf(struct dma_buf *buf,
-			   enum dma_data_direction direction)
+static void kunmap_udmabuf(struct dma_buf *buf, unsigned long page_num,
+			   void *vaddr)
 {
-	struct udmabuf *ubuf = buf->priv;
-	struct device *dev = ubuf->device->this_device;
-
-	if (!ubuf->sg)
-		return -EINVAL;
-
-	dma_sync_sg_for_device(dev, ubuf->sg->sgl, ubuf->sg->nents, direction);
-	return 0;
+	kunmap(vaddr);
 }
 
 static const struct dma_buf_ops udmabuf_ops = {
-	.cache_sgt_mapping = true,
-	.map_dma_buf	   = map_udmabuf,
-	.unmap_dma_buf	   = unmap_udmabuf,
-	.release	   = release_udmabuf,
-	.mmap		   = mmap_udmabuf,
-	.vmap		   = vmap_udmabuf,
-	.vunmap		   = vunmap_udmabuf,
-	.begin_cpu_access  = begin_cpu_udmabuf,
-	.end_cpu_access    = end_cpu_udmabuf,
+	.map_dma_buf	  = map_udmabuf,
+	.unmap_dma_buf	  = unmap_udmabuf,
+	.release	  = release_udmabuf,
+	.map		  = kmap_udmabuf,
+	.unmap		  = kunmap_udmabuf,
+	.mmap		  = mmap_udmabuf,
 };
 
 #define SEALS_WANTED (F_SEAL_SHRINK)
 #define SEALS_DENIED (F_SEAL_WRITE)
 
-static long udmabuf_create(struct miscdevice *device,
-			   struct udmabuf_create_list *head,
-			   struct udmabuf_create_item *list)
+static long udmabuf_create(const struct udmabuf_create_list *head,
+			   const struct udmabuf_create_item *list)
 {
 	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
 	struct file *memfd = NULL;
-	struct address_space *mapping = NULL;
 	struct udmabuf *ubuf;
 	struct dma_buf *buf;
 	pgoff_t pgoff, pgcnt, pgidx, pgbuf = 0, pglimit;
@@ -222,10 +145,6 @@ static long udmabuf_create(struct miscdevice *device,
 		if (ubuf->pagecount > pglimit)
 			goto err;
 	}
-
-	if (!ubuf->pagecount)
-		goto err;
-
 	ubuf->pages = kmalloc_array(ubuf->pagecount, sizeof(*ubuf->pages),
 				    GFP_KERNEL);
 	if (!ubuf->pages) {
@@ -239,8 +158,7 @@ static long udmabuf_create(struct miscdevice *device,
 		memfd = fget(list[i].memfd);
 		if (!memfd)
 			goto err;
-		mapping = memfd->f_mapping;
-		if (!shmem_mapping(mapping))
+		if (!shmem_mapping(file_inode(memfd)->i_mapping))
 			goto err;
 		seals = memfd_fcntl(memfd, F_GET_SEALS, 0);
 		if (seals == -EINVAL)
@@ -252,7 +170,8 @@ static long udmabuf_create(struct miscdevice *device,
 		pgoff = list[i].offset >> PAGE_SHIFT;
 		pgcnt = list[i].size   >> PAGE_SHIFT;
 		for (pgidx = 0; pgidx < pgcnt; pgidx++) {
-			page = shmem_read_mapping_page(mapping, pgoff + pgidx);
+			page = shmem_read_mapping_page(
+				file_inode(memfd)->i_mapping, pgoff + pgidx);
 			if (IS_ERR(page)) {
 				ret = PTR_ERR(page);
 				goto err;
@@ -268,7 +187,6 @@ static long udmabuf_create(struct miscdevice *device,
 	exp_info.priv = ubuf;
 	exp_info.flags = O_RDWR;
 
-	ubuf->device = device;
 	buf = dma_buf_export(&exp_info);
 	if (IS_ERR(buf)) {
 		ret = PTR_ERR(buf);
@@ -306,7 +224,7 @@ static long udmabuf_ioctl_create(struct file *filp, unsigned long arg)
 	list.offset = create.offset;
 	list.size   = create.size;
 
-	return udmabuf_create(filp->private_data, &head, &list);
+	return udmabuf_create(&head, &list);
 }
 
 static long udmabuf_ioctl_create_list(struct file *filp, unsigned long arg)
@@ -325,7 +243,7 @@ static long udmabuf_ioctl_create_list(struct file *filp, unsigned long arg)
 	if (IS_ERR(list))
 		return PTR_ERR(list);
 
-	ret = udmabuf_create(filp->private_data, &head, list);
+	ret = udmabuf_create(&head, list);
 	kfree(list);
 	return ret;
 }
@@ -352,9 +270,6 @@ static long udmabuf_ioctl(struct file *filp, unsigned int ioctl,
 static const struct file_operations udmabuf_fops = {
 	.owner		= THIS_MODULE,
 	.unlocked_ioctl = udmabuf_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl   = udmabuf_ioctl,
-#endif
 };
 
 static struct miscdevice udmabuf_misc = {
@@ -365,23 +280,7 @@ static struct miscdevice udmabuf_misc = {
 
 static int __init udmabuf_dev_init(void)
 {
-	int ret;
-
-	ret = misc_register(&udmabuf_misc);
-	if (ret < 0) {
-		pr_err("Could not initialize udmabuf device\n");
-		return ret;
-	}
-
-	ret = dma_coerce_mask_and_coherent(udmabuf_misc.this_device,
-					   DMA_BIT_MASK(64));
-	if (ret < 0) {
-		pr_err("Could not setup DMA mask for udmabuf device\n");
-		misc_deregister(&udmabuf_misc);
-		return ret;
-	}
-
-	return 0;
+	return misc_register(&udmabuf_misc);
 }
 
 static void __exit udmabuf_dev_exit(void)
@@ -393,3 +292,4 @@ module_init(udmabuf_dev_init)
 module_exit(udmabuf_dev_exit)
 
 MODULE_AUTHOR("Gerd Hoffmann <kraxel@redhat.com>");
+MODULE_LICENSE("GPL v2");

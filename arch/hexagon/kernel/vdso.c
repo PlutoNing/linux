@@ -10,7 +10,6 @@
 #include <linux/vmalloc.h>
 #include <linux/binfmts.h>
 
-#include <asm/elf.h>
 #include <asm/vdso.h>
 
 static struct page *vdso_page;
@@ -53,7 +52,7 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 	unsigned long vdso_base;
 	struct mm_struct *mm = current->mm;
 
-	if (mmap_write_lock_killable(mm))
+	if (down_write_killable(&mm->mmap_sem))
 		return -EINTR;
 
 	/* Try to get it loaded right near ld.so/glibc. */
@@ -77,7 +76,7 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 	mm->context.vdso = (void *)vdso_base;
 
 up_fail:
-	mmap_write_unlock(mm);
+	up_write(&mm->mmap_sem);
 	return ret;
 }
 

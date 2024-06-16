@@ -34,7 +34,7 @@ nvkm_ummu_sclass(struct nvkm_object *object, int index,
 {
 	struct nvkm_mmu *mmu = nvkm_ummu(object)->mmu;
 
-	if (mmu->func->mem.user.oclass) {
+	if (mmu->func->mem.user.oclass && oclass->client->super) {
 		if (index-- == 0) {
 			oclass->base = mmu->func->mem.user;
 			oclass->ctor = nvkm_umem_new;
@@ -111,17 +111,15 @@ nvkm_ummu_kind(struct nvkm_ummu *ummu, void *argv, u32 argc)
 	} *args = argv;
 	const u8 *kind = NULL;
 	int ret = -ENOSYS, count = 0;
-	u8 kind_inv = 0;
 
 	if (mmu->func->kind)
-		kind = mmu->func->kind(mmu, &count, &kind_inv);
+		kind = mmu->func->kind(mmu, &count);
 
 	if (!(ret = nvif_unpack(ret, &argv, &argc, args->v0, 0, 0, true))) {
 		if (argc != args->v0.count * sizeof(*args->v0.data))
 			return -EINVAL;
 		if (args->v0.count > count)
 			return -EINVAL;
-		args->v0.kind_inv = kind_inv;
 		memcpy(args->v0.data, kind, args->v0.count);
 	} else
 		return ret;
@@ -159,10 +157,9 @@ nvkm_ummu_new(struct nvkm_device *device, const struct nvkm_oclass *oclass,
 	struct nvkm_mmu *mmu = device->mmu;
 	struct nvkm_ummu *ummu;
 	int ret = -ENOSYS, kinds = 0;
-	u8 unused = 0;
 
 	if (mmu->func->kind)
-		mmu->func->kind(mmu, &kinds, &unused);
+		mmu->func->kind(mmu, &kinds);
 
 	if (!(ret = nvif_unpack(ret, &argv, &argc, args->v0, 0, 0, false))) {
 		args->v0.dmabits = mmu->dma_bits;

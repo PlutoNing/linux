@@ -8,7 +8,6 @@
  *
  */
 
-#include <linux/cleanup.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/module.h>
@@ -194,20 +193,18 @@ static void wm8994_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	for (i = 0; i < chip->ngpio; i++) {
 		int gpio = i + chip->base;
 		int reg;
+		const char *label;
 
 		/* We report the GPIO even if it's not requested since
 		 * we're also reporting things like alternate
 		 * functions which apply even when the GPIO is not in
 		 * use as a GPIO.
 		 */
-		char *label __free(kfree) = gpiochip_dup_line_label(chip, i);
-		if (IS_ERR(label)) {
-			dev_err(wm8994->dev, "Failed to duplicate label\n");
-			continue;
-		}
+		label = gpiochip_is_requested(chip, i);
+		if (!label)
+			label = "Unrequested";
 
-		seq_printf(s, " gpio-%-3d (%-20.20s) ", gpio,
-			   label ?: "Unrequested");
+		seq_printf(s, " gpio-%-3d (%-20.20s) ", gpio, label);
 
 		reg = wm8994_reg_read(wm8994, WM8994_GPIO_1 + i);
 		if (reg < 0) {
@@ -266,6 +263,7 @@ static int wm8994_gpio_probe(struct platform_device *pdev)
 	struct wm8994 *wm8994 = dev_get_drvdata(pdev->dev.parent);
 	struct wm8994_pdata *pdata = dev_get_platdata(wm8994->dev);
 	struct wm8994_gpio *wm8994_gpio;
+	int ret;
 
 	wm8994_gpio = devm_kzalloc(&pdev->dev, sizeof(*wm8994_gpio),
 				   GFP_KERNEL);
@@ -281,7 +279,17 @@ static int wm8994_gpio_probe(struct platform_device *pdev)
 	else
 		wm8994_gpio->gpio_chip.base = -1;
 
-	return devm_gpiochip_add_data(&pdev->dev, &wm8994_gpio->gpio_chip, wm8994_gpio);
+	ret = devm_gpiochip_add_data(&pdev->dev, &wm8994_gpio->gpio_chip,
+				     wm8994_gpio);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "Could not register gpiochip, %d\n",
+			ret);
+		return ret;
+	}
+
+	platform_set_drvdata(pdev, wm8994_gpio);
+
+	return ret;
 }
 
 static struct platform_driver wm8994_gpio_driver = {

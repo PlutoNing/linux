@@ -7,16 +7,14 @@
 
 #include <linux/clk.h>
 #include <linux/component.h>
-#include <linux/i2c.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
-#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
 
-#include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_encoder.h>
@@ -24,18 +22,25 @@
 #include <drm/drm_panel.h>
 #include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
-#include <drm/drm_simple_kms_helper.h>
 
 #include "sun4i_backend.h"
 #include "sun4i_crtc.h"
 #include "sun4i_drv.h"
 #include "sun4i_hdmi.h"
 
-#define drm_encoder_to_sun4i_hdmi(e)		\
-	container_of_const(e, struct sun4i_hdmi, encoder)
+static inline struct sun4i_hdmi *
+drm_encoder_to_sun4i_hdmi(struct drm_encoder *encoder)
+{
+	return container_of(encoder, struct sun4i_hdmi,
+			    encoder);
+}
 
-#define drm_connector_to_sun4i_hdmi(c)		\
-	container_of_const(c, struct sun4i_hdmi, connector)
+static inline struct sun4i_hdmi *
+drm_connector_to_sun4i_hdmi(struct drm_connector *connector)
+{
+	return container_of(connector, struct sun4i_hdmi,
+			    connector);
+}
 
 static int sun4i_hdmi_setup_avi_infoframes(struct sun4i_hdmi *hdmi,
 					   struct drm_display_mode *mode)
@@ -63,8 +68,19 @@ static int sun4i_hdmi_setup_avi_infoframes(struct sun4i_hdmi *hdmi,
 	return 0;
 }
 
-static void sun4i_hdmi_disable(struct drm_encoder *encoder,
-			       struct drm_atomic_state *state)
+static int sun4i_hdmi_atomic_check(struct drm_encoder *encoder,
+				   struct drm_crtc_state *crtc_state,
+				   struct drm_connector_state *conn_state)
+{
+	struct drm_display_mode *mode = &crtc_state->mode;
+
+	if (mode->flags & DRM_MODE_FLAG_DBLCLK)
+		return -EINVAL;
+
+	return 0;
+}
+
+static void sun4i_hdmi_disable(struct drm_encoder *encoder)
 {
 	struct sun4i_hdmi *hdmi = drm_encoder_to_sun4i_hdmi(encoder);
 	u32 val;
@@ -78,16 +94,35 @@ static void sun4i_hdmi_disable(struct drm_encoder *encoder,
 	clk_disable_unprepare(hdmi->tmds_clk);
 }
 
-static void sun4i_hdmi_enable(struct drm_encoder *encoder,
-			      struct drm_atomic_state *state)
+static void sun4i_hdmi_enable(struct drm_encoder *encoder)
 {
 	struct drm_display_mode *mode = &encoder->crtc->state->adjusted_mode;
 	struct sun4i_hdmi *hdmi = drm_encoder_to_sun4i_hdmi(encoder);
-	struct drm_display_info *display = &hdmi->connector.display_info;
-	unsigned int x, y;
 	u32 val = 0;
 
 	DRM_DEBUG_DRIVER("Enabling the HDMI Output\n");
+
+	clk_prepare_enable(hdmi->tmds_clk);
+
+	sun4i_hdmi_setup_avi_infoframes(hdmi, mode);
+	val |= SUN4I_HDMI_PKT_CTRL_TYPE(0, SUN4I_HDMI_PKT_AVI);
+	val |= SUN4I_HDMI_PKT_CTRL_TYPE(1, SUN4I_HDMI_PKT_END);
+	writel(val, hdmi->base + SUN4I_HDMI_PKT_CTRL_REG(0));
+
+	val = SUN4I_HDMI_VID_CTRL_ENABLE;
+	if (hdmi->hdmi_monitor)
+		val |= SUN4I_HDMI_VID_CTRL_HDMI_MODE;
+
+	writel(val, hdmi->base + SUN4I_HDMI_VID_CTRL_REG);
+}
+
+static void sun4i_hdmi_mode_set(struct drm_encoder *encoder,
+				struct drm_display_mode *mode,
+				struct drm_display_mode *adjusted_mode)
+{
+	struct sun4i_hdmi *hdmi = drm_encoder_to_sun4i_hdmi(encoder);
+	unsigned int x, y;
+	u32 val;
 
 	clk_set_rate(hdmi->mod_clk, mode->crtc_clock * 1000);
 	clk_set_rate(hdmi->tmds_clk, mode->crtc_clock * 1000);
@@ -140,76 +175,38 @@ static void sun4i_hdmi_enable(struct drm_encoder *encoder,
 		val |= SUN4I_HDMI_VID_TIMING_POL_VSYNC;
 
 	writel(val, hdmi->base + SUN4I_HDMI_VID_TIMING_POL_REG);
-
-	clk_prepare_enable(hdmi->tmds_clk);
-
-	sun4i_hdmi_setup_avi_infoframes(hdmi, mode);
-	val |= SUN4I_HDMI_PKT_CTRL_TYPE(0, SUN4I_HDMI_PKT_AVI);
-	val |= SUN4I_HDMI_PKT_CTRL_TYPE(1, SUN4I_HDMI_PKT_END);
-	writel(val, hdmi->base + SUN4I_HDMI_PKT_CTRL_REG(0));
-
-	val = SUN4I_HDMI_VID_CTRL_ENABLE;
-	if (display->is_hdmi)
-		val |= SUN4I_HDMI_VID_CTRL_HDMI_MODE;
-
-	writel(val, hdmi->base + SUN4I_HDMI_VID_CTRL_REG);
 }
 
-static const struct drm_encoder_helper_funcs sun4i_hdmi_helper_funcs = {
-	.atomic_disable	= sun4i_hdmi_disable,
-	.atomic_enable	= sun4i_hdmi_enable,
-};
-
-static enum drm_mode_status
-sun4i_hdmi_connector_clock_valid(const struct drm_connector *connector,
-				 const struct drm_display_mode *mode,
-				 unsigned long long clock)
+static enum drm_mode_status sun4i_hdmi_mode_valid(struct drm_encoder *encoder,
+					const struct drm_display_mode *mode)
 {
-	const struct sun4i_hdmi *hdmi = drm_connector_to_sun4i_hdmi(connector);
-	unsigned long diff = div_u64(clock, 200); /* +-0.5% allowed by HDMI spec */
+	struct sun4i_hdmi *hdmi = drm_encoder_to_sun4i_hdmi(encoder);
+	unsigned long rate = mode->clock * 1000;
+	unsigned long diff = rate / 200; /* +-0.5% allowed by HDMI spec */
 	long rounded_rate;
 
-	if (mode->flags & DRM_MODE_FLAG_DBLCLK)
-		return MODE_BAD;
-
 	/* 165 MHz is the typical max pixelclock frequency for HDMI <= 1.2 */
-	if (clock > 165000000)
+	if (rate > 165000000)
 		return MODE_CLOCK_HIGH;
-
-	rounded_rate = clk_round_rate(hdmi->tmds_clk, clock);
+	rounded_rate = clk_round_rate(hdmi->tmds_clk, rate);
 	if (rounded_rate > 0 &&
-	    max_t(unsigned long, rounded_rate, clock) -
-	    min_t(unsigned long, rounded_rate, clock) < diff)
+	    max_t(unsigned long, rounded_rate, rate) -
+	    min_t(unsigned long, rounded_rate, rate) < diff)
 		return MODE_OK;
-
 	return MODE_NOCLOCK;
 }
 
-static int sun4i_hdmi_connector_atomic_check(struct drm_connector *connector,
-					     struct drm_atomic_state *state)
-{
-	struct drm_connector_state *conn_state =
-		drm_atomic_get_new_connector_state(state, connector);
-	struct drm_crtc *crtc = conn_state->crtc;
-	struct drm_crtc_state *crtc_state = crtc->state;
-	struct drm_display_mode *mode = &crtc_state->adjusted_mode;
-	enum drm_mode_status status;
+static const struct drm_encoder_helper_funcs sun4i_hdmi_helper_funcs = {
+	.atomic_check	= sun4i_hdmi_atomic_check,
+	.disable	= sun4i_hdmi_disable,
+	.enable		= sun4i_hdmi_enable,
+	.mode_set	= sun4i_hdmi_mode_set,
+	.mode_valid	= sun4i_hdmi_mode_valid,
+};
 
-	status = sun4i_hdmi_connector_clock_valid(connector, mode,
-						  mode->clock * 1000);
-	if (status != MODE_OK)
-		return -EINVAL;
-
-	return 0;
-}
-
-static enum drm_mode_status
-sun4i_hdmi_connector_mode_valid(struct drm_connector *connector,
-				struct drm_display_mode *mode)
-{
-	return sun4i_hdmi_connector_clock_valid(connector, mode,
-						mode->clock * 1000);
-}
+static const struct drm_encoder_funcs sun4i_hdmi_funcs = {
+	.destroy	= drm_encoder_cleanup,
+};
 
 static int sun4i_hdmi_get_modes(struct drm_connector *connector)
 {
@@ -221,8 +218,9 @@ static int sun4i_hdmi_get_modes(struct drm_connector *connector)
 	if (!edid)
 		return 0;
 
+	hdmi->hdmi_monitor = drm_detect_hdmi_monitor(edid);
 	DRM_DEBUG_DRIVER("Monitor is %s monitor\n",
-			 connector->display_info.is_hdmi ? "an HDMI" : "a DVI");
+			 hdmi->hdmi_monitor ? "an HDMI" : "a DVI");
 
 	drm_connector_update_edid_property(connector, edid);
 	cec_s_phys_addr_from_edid(hdmi->cec_adap, edid);
@@ -255,8 +253,6 @@ static struct i2c_adapter *sun4i_hdmi_get_ddc(struct device *dev)
 }
 
 static const struct drm_connector_helper_funcs sun4i_hdmi_connector_helper_funcs = {
-	.atomic_check	= sun4i_hdmi_connector_atomic_check,
-	.mode_valid	= sun4i_hdmi_connector_mode_valid,
 	.get_modes	= sun4i_hdmi_get_modes,
 };
 
@@ -266,8 +262,9 @@ sun4i_hdmi_connector_detect(struct drm_connector *connector, bool force)
 	struct sun4i_hdmi *hdmi = drm_connector_to_sun4i_hdmi(connector);
 	unsigned long reg;
 
-	reg = readl(hdmi->base + SUN4I_HDMI_HPD_REG);
-	if (!(reg & SUN4I_HDMI_HPD_HIGH)) {
+	if (readl_poll_timeout(hdmi->base + SUN4I_HDMI_HPD_REG, reg,
+			       reg & SUN4I_HDMI_HPD_HIGH,
+			       0, 500000)) {
 		cec_phys_addr_invalidate(hdmi->cec_adap);
 		return connector_status_disconnected;
 	}
@@ -285,7 +282,7 @@ static const struct drm_connector_funcs sun4i_hdmi_connector_funcs = {
 };
 
 #ifdef CONFIG_DRM_SUN4I_HDMI_CEC
-static int sun4i_hdmi_cec_pin_read(struct cec_adapter *adap)
+static bool sun4i_hdmi_cec_pin_read(struct cec_adapter *adap)
 {
 	struct sun4i_hdmi *hdmi = cec_get_drvdata(adap);
 
@@ -493,9 +490,9 @@ static int sun4i_hdmi_bind(struct device *dev, struct device *master,
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct drm_device *drm = data;
-	struct cec_connector_info conn_info;
 	struct sun4i_drv *drv = drm->dev_private;
 	struct sun4i_hdmi *hdmi;
+	struct resource *res;
 	u32 reg;
 	int ret;
 
@@ -510,7 +507,8 @@ static int sun4i_hdmi_bind(struct device *dev, struct device *master,
 	if (!hdmi->variant)
 		return -EINVAL;
 
-	hdmi->base = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	hdmi->base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(hdmi->base)) {
 		dev_err(dev, "Couldn't map the HDMI encoder registers\n");
 		return PTR_ERR(hdmi->base);
@@ -612,8 +610,11 @@ static int sun4i_hdmi_bind(struct device *dev, struct device *master,
 
 	drm_encoder_helper_add(&hdmi->encoder,
 			       &sun4i_hdmi_helper_funcs);
-	ret = drm_simple_encoder_init(drm, &hdmi->encoder,
-				      DRM_MODE_ENCODER_TMDS);
+	ret = drm_encoder_init(drm,
+			       &hdmi->encoder,
+			       &sun4i_hdmi_funcs,
+			       DRM_MODE_ENCODER_TMDS,
+			       NULL);
 	if (ret) {
 		dev_err(dev, "Couldn't initialise the HDMI encoder\n");
 		goto err_put_ddc_i2c;
@@ -628,7 +629,8 @@ static int sun4i_hdmi_bind(struct device *dev, struct device *master,
 
 #ifdef CONFIG_DRM_SUN4I_HDMI_CEC
 	hdmi->cec_adap = cec_pin_allocate_adapter(&sun4i_hdmi_cec_pin_ops,
-		hdmi, "sun4i", CEC_CAP_DEFAULTS | CEC_CAP_CONNECTOR_INFO);
+		hdmi, "sun4i", CEC_CAP_TRANSMIT | CEC_CAP_LOG_ADDRS |
+		CEC_CAP_PASSTHROUGH | CEC_CAP_RC);
 	ret = PTR_ERR_OR_ZERO(hdmi->cec_adap);
 	if (ret < 0)
 		goto err_cleanup_connector;
@@ -647,8 +649,6 @@ static int sun4i_hdmi_bind(struct device *dev, struct device *master,
 			"Couldn't initialise the HDMI connector\n");
 		goto err_cleanup_connector;
 	}
-	cec_fill_conn_info_from_drm(&conn_info, &hdmi->connector);
-	cec_s_conn_info(hdmi->cec_adap, &conn_info);
 
 	/* There is no HPD interrupt, so we need to poll the controller */
 	hdmi->connector.polled = DRM_CONNECTOR_POLL_CONNECT |
@@ -683,6 +683,8 @@ static void sun4i_hdmi_unbind(struct device *dev, struct device *master,
 	struct sun4i_hdmi *hdmi = dev_get_drvdata(dev);
 
 	cec_unregister_adapter(hdmi->cec_adap);
+	drm_connector_cleanup(&hdmi->connector);
+	drm_encoder_cleanup(&hdmi->encoder);
 	i2c_del_adapter(hdmi->i2c);
 	i2c_put_adapter(hdmi->ddc_i2c);
 	clk_disable_unprepare(hdmi->mod_clk);
@@ -699,9 +701,11 @@ static int sun4i_hdmi_probe(struct platform_device *pdev)
 	return component_add(&pdev->dev, &sun4i_hdmi_ops);
 }
 
-static void sun4i_hdmi_remove(struct platform_device *pdev)
+static int sun4i_hdmi_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &sun4i_hdmi_ops);
+
+	return 0;
 }
 
 static const struct of_device_id sun4i_hdmi_of_table[] = {
@@ -714,7 +718,7 @@ MODULE_DEVICE_TABLE(of, sun4i_hdmi_of_table);
 
 static struct platform_driver sun4i_hdmi_driver = {
 	.probe		= sun4i_hdmi_probe,
-	.remove_new	= sun4i_hdmi_remove,
+	.remove		= sun4i_hdmi_remove,
 	.driver		= {
 		.name		= "sun4i-hdmi",
 		.of_match_table	= sun4i_hdmi_of_table,

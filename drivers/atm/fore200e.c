@@ -21,10 +21,10 @@
 #include <linux/module.h>
 #include <linux/atmdev.h>
 #include <linux/sonet.h>
+#include <linux/atm_suni.h>
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
-#include <linux/pgtable.h>
 #include <asm/io.h>
 #include <asm/string.h>
 #include <asm/page.h>
@@ -36,10 +36,11 @@
 
 #ifdef CONFIG_SBUS
 #include <linux/of.h>
-#include <linux/platform_device.h>
+#include <linux/of_device.h>
 #include <asm/idprom.h>
 #include <asm/openprom.h>
 #include <asm/oplib.h>
+#include <asm/pgtable.h>
 #endif
 
 #if defined(CONFIG_ATM_FORE200E_USE_TASKLET) /* defer interrupt work to a tasklet */
@@ -99,6 +100,8 @@ static LIST_HEAD(fore200e_boards);
 
 MODULE_AUTHOR("Christophe Lizzi - credits to Uwe Dannowski and Heikki Vatiainen");
 MODULE_DESCRIPTION("FORE Systems 200E-series ATM driver - version " FORE200E_VERSION);
+MODULE_SUPPORTED_DEVICE("PCA-200E, SBA-200E");
+
 
 static const int fore200e_rx_buf_nbr[ BUFFER_SCHEME_NBR ][ BUFFER_MAGN_NBR ] = {
     { BUFFER_S1_NBR, BUFFER_L1_NBR },
@@ -373,33 +376,33 @@ fore200e_shutdown(struct fore200e* fore200e)
     case FORE200E_STATE_COMPLETE:
 	kfree(fore200e->stats);
 
-	fallthrough;
+	/* fall through */
     case FORE200E_STATE_IRQ:
 	free_irq(fore200e->irq, fore200e->atm_dev);
 
-	fallthrough;
+	/* fall through */
     case FORE200E_STATE_ALLOC_BUF:
 	fore200e_free_rx_buf(fore200e);
 
-	fallthrough;
+	/* fall through */
     case FORE200E_STATE_INIT_BSQ:
 	fore200e_uninit_bs_queue(fore200e);
 
-	fallthrough;
+	/* fall through */
     case FORE200E_STATE_INIT_RXQ:
 	fore200e_dma_chunk_free(fore200e, &fore200e->host_rxq.status);
 	fore200e_dma_chunk_free(fore200e, &fore200e->host_rxq.rpd);
 
-	fallthrough;
+	/* fall through */
     case FORE200E_STATE_INIT_TXQ:
 	fore200e_dma_chunk_free(fore200e, &fore200e->host_txq.status);
 	fore200e_dma_chunk_free(fore200e, &fore200e->host_txq.tpd);
 
-	fallthrough;
+	/* fall through */
     case FORE200E_STATE_INIT_CMDQ:
 	fore200e_dma_chunk_free(fore200e, &fore200e->host_cmdq.status);
 
-	fallthrough;
+	/* fall through */
     case FORE200E_STATE_INITIALIZE:
 	/* nothing to do for that state */
 
@@ -412,7 +415,7 @@ fore200e_shutdown(struct fore200e* fore200e)
     case FORE200E_STATE_MAP:
 	fore200e->bus->unmap(fore200e);
 
-	fallthrough;
+	/* fall through */
     case FORE200E_STATE_CONFIGURE:
 	/* nothing to do for that state */
 
@@ -420,7 +423,6 @@ fore200e_shutdown(struct fore200e* fore200e)
 	/* XXX shouldn't we *start* by deregistering the device? */
 	atm_dev_deregister(fore200e->atm_dev);
 
-	fallthrough;
     case FORE200E_STATE_BLANK:
 	/* nothing to do for that state */
 	break;
@@ -1412,14 +1414,12 @@ fore200e_open(struct atm_vcc *vcc)
 static void
 fore200e_close(struct atm_vcc* vcc)
 {
+    struct fore200e*        fore200e = FORE200E_DEV(vcc->dev);
     struct fore200e_vcc*    fore200e_vcc;
-    struct fore200e*        fore200e;
     struct fore200e_vc_map* vc_map;
     unsigned long           flags;
 
     ASSERT(vcc);
-    fore200e = FORE200E_DEV(vcc->dev);
-
     ASSERT((vcc->vpi >= 0) && (vcc->vpi < 1<<FORE200E_VPI_BITS));
     ASSERT((vcc->vci >= 0) && (vcc->vci < 1<<FORE200E_VCI_BITS));
 
@@ -1464,10 +1464,10 @@ fore200e_close(struct atm_vcc* vcc)
 static int
 fore200e_send(struct atm_vcc *vcc, struct sk_buff *skb)
 {
-    struct fore200e*        fore200e;
-    struct fore200e_vcc*    fore200e_vcc;
+    struct fore200e*        fore200e     = FORE200E_DEV(vcc->dev);
+    struct fore200e_vcc*    fore200e_vcc = FORE200E_VCC(vcc);
     struct fore200e_vc_map* vc_map;
-    struct host_txq*        txq;
+    struct host_txq*        txq          = &fore200e->host_txq;
     struct host_txq_entry*  entry;
     struct tpd*             tpd;
     struct tpd_haddr        tpd_haddr;
@@ -1480,18 +1480,9 @@ fore200e_send(struct atm_vcc *vcc, struct sk_buff *skb)
     unsigned char*          data;
     unsigned long           flags;
 
-    if (!vcc)
-        return -EINVAL;
-
-    fore200e = FORE200E_DEV(vcc->dev);
-    fore200e_vcc = FORE200E_VCC(vcc);
-
-    if (!fore200e)
-        return -EINVAL;
-
-    txq = &fore200e->host_txq;
-    if (!fore200e_vcc)
-        return -EINVAL;
+    ASSERT(vcc);
+    ASSERT(fore200e);
+    ASSERT(fore200e_vcc);
 
     if (!test_bit(ATM_VF_READY, &vcc->flags)) {
 	DPRINTK(1, "VC %d.%d.%d not ready for tx\n", vcc->itf, vcc->vpi, vcc->vpi);
@@ -1707,6 +1698,31 @@ fore200e_getstats(struct fore200e* fore200e)
 
     return 0;
 }
+
+
+static int
+fore200e_getsockopt(struct atm_vcc* vcc, int level, int optname, void __user *optval, int optlen)
+{
+    /* struct fore200e* fore200e = FORE200E_DEV(vcc->dev); */
+
+    DPRINTK(2, "getsockopt %d.%d.%d, level = %d, optname = 0x%x, optval = 0x%p, optlen = %d\n",
+	    vcc->itf, vcc->vpi, vcc->vci, level, optname, optval, optlen);
+
+    return -EINVAL;
+}
+
+
+static int
+fore200e_setsockopt(struct atm_vcc* vcc, int level, int optname, void __user *optval, unsigned int optlen)
+{
+    /* struct fore200e* fore200e = FORE200E_DEV(vcc->dev); */
+    
+    DPRINTK(2, "setsockopt %d.%d.%d, level = %d, optname = 0x%x, optval = 0x%p, optlen = %d\n",
+	    vcc->itf, vcc->vpi, vcc->vci, level, optname, optval, optlen);
+    
+    return -EINVAL;
+}
+
 
 #if 0 /* currently unused */
 static int
@@ -2520,11 +2536,17 @@ static int fore200e_init(struct fore200e *fore200e, struct device *parent)
 }
 
 #ifdef CONFIG_SBUS
+static const struct of_device_id fore200e_sba_match[];
 static int fore200e_sba_probe(struct platform_device *op)
 {
+	const struct of_device_id *match;
 	struct fore200e *fore200e;
 	static int index = 0;
 	int err;
+
+	match = of_match_device(fore200e_sba_match, &op->dev);
+	if (!match)
+		return -EINVAL;
 
 	fore200e = kzalloc(sizeof(struct fore200e), GFP_KERNEL);
 	if (!fore200e)
@@ -2550,12 +2572,14 @@ static int fore200e_sba_probe(struct platform_device *op)
 	return 0;
 }
 
-static void fore200e_sba_remove(struct platform_device *op)
+static int fore200e_sba_remove(struct platform_device *op)
 {
 	struct fore200e *fore200e = dev_get_drvdata(&op->dev);
 
 	fore200e_shutdown(fore200e);
 	kfree(fore200e);
+
+	return 0;
 }
 
 static const struct of_device_id fore200e_sba_match[] = {
@@ -2572,7 +2596,7 @@ static struct platform_driver fore200e_sba_driver = {
 		.of_match_table = fore200e_sba_match,
 	},
 	.probe		= fore200e_sba_probe,
-	.remove_new	= fore200e_sba_remove,
+	.remove		= fore200e_sba_remove,
 };
 #endif
 
@@ -2991,6 +3015,8 @@ static const struct atmdev_ops fore200e_ops = {
 	.open       = fore200e_open,
 	.close      = fore200e_close,
 	.ioctl      = fore200e_ioctl,
+	.getsockopt = fore200e_getsockopt,
+	.setsockopt = fore200e_setsockopt,
 	.send       = fore200e_send,
 	.change_qos = fore200e_change_qos,
 	.proc_read  = fore200e_proc_read,

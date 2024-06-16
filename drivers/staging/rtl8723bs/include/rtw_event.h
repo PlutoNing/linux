@@ -60,7 +60,13 @@ struct stadel_event {
  int mac_id;
 };
 
-struct wmm_event {
+struct addba_event
+{
+	unsigned int tid;
+};
+
+struct wmm_event
+{
 	unsigned char wmm;
 };
 
@@ -76,12 +82,19 @@ struct fwevent {
 
 #define C2HEVENT_SZ			32
 
-struct event_node {
+struct event_node{
 	unsigned char *node;
 	unsigned char evt_code;
 	unsigned short evt_sz;
 	volatile int	*caller_ff_tail;
 	int	caller_ff_sz;
+};
+
+struct c2hevent_queue {
+	volatile int	head;
+	volatile int	tail;
+	struct	event_node	nodes[C2HEVENT_SZ];
+	unsigned char seq;
 };
 
 #define NETWORK_QUEUE_SZ	4

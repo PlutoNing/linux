@@ -47,7 +47,7 @@ ifeq ($(CSKYABI),abiv2)
 KBUILD_CFLAGS += -mno-stack-size
 endif
 
-ifdef CONFIG_FRAME_POINTER
+ifdef CONFIG_STACKTRACE
 KBUILD_CFLAGS += -mbacktrace
 endif
 
@@ -59,17 +59,25 @@ LDFLAGS += -EL
 
 KBUILD_AFLAGS += $(KBUILD_CFLAGS)
 
+head-y := arch/csky/kernel/head.o
+
+core-y += arch/csky/kernel/
+core-y += arch/csky/mm/
 core-y += arch/csky/$(CSKYABI)/
 
 libs-y += arch/csky/lib/ \
 	$(shell $(CC) $(KBUILD_CFLAGS) $(KCFLAGS) -print-libgcc-file-name)
 
 boot := arch/csky/boot
+core-y += $(boot)/dts/
 
 all: zImage
 
 zImage Image uImage: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
+
+archclean:
+	$(Q)$(MAKE) $(clean)=$(boot)
 
 define archhelp
   echo  '* zImage       - Compressed kernel image (arch/$(ARCH)/boot/zImage)'

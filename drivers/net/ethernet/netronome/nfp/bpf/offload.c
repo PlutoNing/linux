@@ -46,7 +46,9 @@ nfp_map_ptr_record(struct nfp_app_bpf *bpf, struct nfp_prog *nfp_prog,
 	/* Grab a single ref to the map for our record.  The prog destroy ndo
 	 * happens after free_used_maps().
 	 */
-	bpf_map_inc(map);
+	map = bpf_map_inc(map, false);
+	if (IS_ERR(map))
+		return PTR_ERR(map);
 
 	record = kmalloc(sizeof(*record), GFP_KERNEL);
 	if (!record) {
@@ -111,9 +113,7 @@ static int
 nfp_map_ptrs_record(struct nfp_app_bpf *bpf, struct nfp_prog *nfp_prog,
 		    struct bpf_prog *prog)
 {
-	int i, cnt, err = 0;
-
-	mutex_lock(&prog->aux->used_maps_mutex);
+	int i, cnt, err;
 
 	/* Quickly count the maps we will have to remember */
 	cnt = 0;
@@ -121,15 +121,13 @@ nfp_map_ptrs_record(struct nfp_app_bpf *bpf, struct nfp_prog *nfp_prog,
 		if (bpf_map_offload_neutral(prog->aux->used_maps[i]))
 			cnt++;
 	if (!cnt)
-		goto out;
+		return 0;
 
 	nfp_prog->map_records = kmalloc_array(cnt,
 					      sizeof(nfp_prog->map_records[0]),
 					      GFP_KERNEL);
-	if (!nfp_prog->map_records) {
-		err = -ENOMEM;
-		goto out;
-	}
+	if (!nfp_prog->map_records)
+		return -ENOMEM;
 
 	for (i = 0; i < prog->aux->used_map_cnt; i++)
 		if (bpf_map_offload_neutral(prog->aux->used_maps[i])) {
@@ -137,14 +135,12 @@ nfp_map_ptrs_record(struct nfp_app_bpf *bpf, struct nfp_prog *nfp_prog,
 						 prog->aux->used_maps[i]);
 			if (err) {
 				nfp_map_ptrs_forget(bpf, nfp_prog);
-				goto out;
+				return err;
 			}
 		}
 	WARN_ON(cnt != nfp_prog->map_records_cnt);
 
-out:
-	mutex_unlock(&prog->aux->used_maps_mutex);
-	return err;
+	return 0;
 }
 
 static int
@@ -380,7 +376,7 @@ nfp_bpf_map_alloc(struct nfp_app_bpf *bpf, struct bpf_offloaded_map *offmap)
 	}
 
 	use_map_size = DIV_ROUND_UP(offmap->map.value_size, 4) *
-		       sizeof_field(struct nfp_bpf_map, use_map[0]);
+		       FIELD_SIZEOF(struct nfp_bpf_map, use_map[0]);
 
 	nfp_map = kzalloc(sizeof(*nfp_map) + use_map_size, GFP_USER);
 	if (!nfp_map)
@@ -464,8 +460,8 @@ int nfp_bpf_event_output(struct nfp_app_bpf *bpf, const void *data,
 		return -EINVAL;
 
 	rcu_read_lock();
-	record = rhashtable_lookup(&bpf->maps_neutral, &map_id,
-				   nfp_bpf_maps_neutral_params);
+	record = rhashtable_lookup_fast(&bpf->maps_neutral, &map_id,
+					nfp_bpf_maps_neutral_params);
 	if (!record || map_id_full > U32_MAX) {
 		rcu_read_unlock();
 		cmsg_warn(bpf, "perf event: map id %lld (0x%llx) not recognized, dropping event\n",
@@ -481,28 +477,19 @@ int nfp_bpf_event_output(struct nfp_app_bpf *bpf, const void *data,
 	return 0;
 }
 
-bool nfp_bpf_offload_check_mtu(struct nfp_net *nn, struct bpf_prog *prog,
-			       unsigned int mtu)
-{
-	unsigned int fw_mtu, pkt_off;
-
-	fw_mtu = nn_readb(nn, NFP_NET_CFG_BPF_INL_MTU) * 64 - 32;
-	pkt_off = min(prog->aux->max_pkt_offset, mtu);
-
-	return fw_mtu < pkt_off;
-}
-
 static int
 nfp_net_bpf_load(struct nfp_net *nn, struct bpf_prog *prog,
 		 struct netlink_ext_ack *extack)
 {
 	struct nfp_prog *nfp_prog = prog->aux->offload->dev_priv;
-	unsigned int max_stack, max_prog_len;
+	unsigned int fw_mtu, pkt_off, max_stack, max_prog_len;
 	dma_addr_t dma_addr;
 	void *img;
 	int err;
 
-	if (nfp_bpf_offload_check_mtu(nn, prog, nn->dp.netdev->mtu)) {
+	fw_mtu = nn_readb(nn, NFP_NET_CFG_BPF_INL_MTU) * 64 - 32;
+	pkt_off = min(prog->aux->max_pkt_offset, nn->dp.netdev->mtu);
+	if (fw_mtu < pkt_off) {
 		NL_SET_ERR_MSG_MOD(extack, "BPF offload not supported with potential packet access beyond HW packet split boundary");
 		return -EOPNOTSUPP;
 	}

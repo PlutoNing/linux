@@ -7,7 +7,7 @@ Intro
 =====
 
 This document is designed to provide a list of the minimum levels of
-software necessary to run the current kernel version.
+software necessary to run the 4.x kernels.
 
 This document is originally based on my "Changes" file for 2.0.x kernels
 and therefore owes credit to the same people as that file (Jared Mauch,
@@ -29,17 +29,12 @@ you probably needn't concern yourself with pcmciautils.
 ====================== ===============  ========================================
         Program        Minimal version       Command to check the version
 ====================== ===============  ========================================
-GNU C                  5.1              gcc --version
-Clang/LLVM (optional)  13.0.1           clang --version
-Rust (optional)        1.76.0           rustc --version
-bindgen (optional)     0.65.1           bindgen --version
-GNU make               3.82             make --version
-bash                   4.2              bash --version
-binutils               2.25             ld -v
+GNU C                  4.6              gcc --version
+GNU make               3.81             make --version
+binutils               2.21             ld -v
 flex                   2.5.35           flex --version
 bison                  2.0              bison --version
-pahole                 1.16             pahole --version
-util-linux             2.10o            mount --version
+util-linux             2.10o            fdformat --version
 kmod                   13               depmod -V
 e2fsprogs              1.41.4           e2fsck -V
 jfsutils               1.1.3            fsck.jfs -V
@@ -52,16 +47,14 @@ quota-tools            3.09             quota -V
 PPP                    2.4.0            pppd --version
 nfs-utils              1.0.5            showmount --version
 procps                 3.2.0            ps --version
+oprofile               0.9              oprofiled --version
 udev                   081              udevd --version
 grub                   0.93             grub --version || grub-install --version
 mcelog                 0.6              mcelog --version
 iptables               1.4.2            iptables -V
 openssl & libcrypto    1.0.0            openssl version
 bc                     1.06.95          bc --version
-Sphinx\ [#f1]_         2.4.4            sphinx-build --version
-cpio                   any              cpio --version
-GNU tar                1.28             tar --version
-gtags (optional)       6.6.5            gtags --version
+Sphinx\ [#f1]_	       1.3		sphinx-build --version
 ====================== ===============  ========================================
 
 .. [#f1] Sphinx is needed only to build the Kernel documentation
@@ -75,53 +68,15 @@ GCC
 The gcc version requirements may vary depending on the type of CPU in your
 computer.
 
-Clang/LLVM (optional)
----------------------
-
-The latest formal release of clang and LLVM utils (according to
-`releases.llvm.org <https://releases.llvm.org>`_) are supported for building
-kernels. Older releases aren't guaranteed to work, and we may drop workarounds
-from the kernel that were used to support older versions. Please see additional
-docs on :ref:`Building Linux with Clang/LLVM <kbuild_llvm>`.
-
-Rust (optional)
----------------
-
-A particular version of the Rust toolchain is required. Newer versions may or
-may not work because the kernel depends on some unstable Rust features, for
-the moment.
-
-Each Rust toolchain comes with several "components", some of which are required
-(like ``rustc``) and some that are optional. The ``rust-src`` component (which
-is optional) needs to be installed to build the kernel. Other components are
-useful for developing.
-
-Please see Documentation/rust/quick-start.rst for instructions on how to
-satisfy the build requirements of Rust support. In particular, the ``Makefile``
-target ``rustavailable`` is useful to check why the Rust toolchain may not
-be detected.
-
-bindgen (optional)
-------------------
-
-``bindgen`` is used to generate the Rust bindings to the C side of the kernel.
-It depends on ``libclang``.
-
 Make
 ----
 
-You will need GNU make 3.82 or later to build the kernel.
-
-Bash
-----
-
-Some bash scripts are used for the kernel build.
-Bash 4.2 or newer is needed.
+You will need GNU make 3.81 or later to build the kernel.
 
 Binutils
 --------
 
-Binutils 2.25 or newer is needed to build the kernel.
+Binutils 2.21 or newer is needed to build the kernel.
 
 pkg-config
 ----------
@@ -143,16 +98,6 @@ Bison
 
 Since Linux 4.16, the build system generates parsers
 during build.  This requires bison 2.0 or later.
-
-pahole
-------
-
-Since Linux 5.2, if CONFIG_DEBUG_INFO_BTF is selected, the build system
-generates BTF (BPF Type Format) from DWARF in vmlinux, a bit later from kernel
-modules as well.  This requires pahole v1.16 or later.
-
-It is found in the 'dwarves' or 'pahole' distro packages or from
-https://fedorapeople.org/~acme/dwarves/.
 
 Perl
 ----
@@ -176,18 +121,6 @@ You will need openssl to build kernels 3.7 and higher if module signing is
 enabled.  You will also need openssl development packages to build kernels 4.3
 and higher.
 
-Tar
----
-
-GNU tar is needed if you want to enable access to the kernel headers via sysfs
-(CONFIG_IKHEADERS).
-
-gtags / GNU GLOBAL (optional)
------------------------------
-
-The kernel build requires GNU GLOBAL version 6.6.5 or later to generate
-tag files through ``make gtags``.  This is due to its use of the gtags
-``-C (--directory)`` flag.
 
 System utilities
 ****************
@@ -196,7 +129,7 @@ Architectural changes
 ---------------------
 
 DevFS has been obsoleted in favour of udev
-(https://www.kernel.org/pub/linux/utils/kernel/hotplug/)
+(http://www.kernel.org/pub/linux/utils/kernel/hotplug/)
 
 32-bit UID support is now in place.  Have fun!
 
@@ -213,7 +146,7 @@ Util-linux
 
 New versions of util-linux provide ``fdisk`` support for larger disks,
 support new options to mount, recognize more supported partition
-types, and similar goodies.
+types, have a fdformat which works with 2.4 kernels, and similar goodies.
 You'll probably want to upgrade.
 
 Ksymoops
@@ -387,12 +320,6 @@ Sphinx
 Please see :ref:`sphinx_install` in :ref:`Documentation/doc-guide/sphinx.rst <sphinxdoc>`
 for details about Sphinx requirements.
 
-rustdoc
--------
-
-``rustdoc`` is used to generate the documentation for Rust code. Please see
-Documentation/rust/general-information.rst for more information.
-
 Getting updated software
 ========================
 
@@ -404,30 +331,10 @@ gcc
 
 - <ftp://ftp.gnu.org/gnu/gcc/>
 
-Clang/LLVM
-----------
-
-- :ref:`Getting LLVM <getting_llvm>`.
-
-Rust
-----
-
-- Documentation/rust/quick-start.rst.
-
-bindgen
--------
-
-- Documentation/rust/quick-start.rst.
-
 Make
 ----
 
 - <ftp://ftp.gnu.org/gnu/make/>
-
-Bash
-----
-
-- <ftp://ftp.gnu.org/gnu/bash/>
 
 Binutils
 --------
@@ -476,24 +383,22 @@ Mkinitrd
 E2fsprogs
 ---------
 
-- <https://www.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/>
-- <https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git/>
+- <http://prdownloads.sourceforge.net/e2fsprogs/e2fsprogs-1.29.tar.gz>
 
 JFSutils
 --------
 
-- <https://jfs.sourceforge.net/>
+- <http://jfs.sourceforge.net/>
 
 Reiserfsprogs
 -------------
 
-- <https://git.kernel.org/pub/scm/linux/kernel/git/jeffm/reiserfsprogs.git/>
+- <http://www.kernel.org/pub/linux/utils/fs/reiserfs/>
 
 Xfsprogs
 --------
 
-- <https://git.kernel.org/pub/scm/fs/xfs/xfsprogs-dev.git>
-- <https://www.kernel.org/pub/linux/utils/fs/xfs/xfsprogs/>
+- <ftp://oss.sgi.com/projects/xfs/>
 
 Pcmciautils
 -----------
@@ -503,7 +408,7 @@ Pcmciautils
 Quota-tools
 -----------
 
-- <https://sourceforge.net/projects/linuxquota/>
+- <http://sourceforge.net/projects/linuxquota/>
 
 
 Intel P6 microcode
@@ -514,7 +419,7 @@ Intel P6 microcode
 udev
 ----
 
-- <https://www.freedesktop.org/software/systemd/man/udev.html>
+- <http://www.freedesktop.org/software/systemd/man/udev.html>
 
 FUSE
 ----
@@ -524,12 +429,7 @@ FUSE
 mcelog
 ------
 
-- <https://www.mcelog.org/>
-
-cpio
-----
-
-- <https://www.gnu.org/software/cpio/>
+- <http://www.mcelog.org/>
 
 Networking
 **********
@@ -537,20 +437,17 @@ Networking
 PPP
 ---
 
-- <https://download.samba.org/pub/ppp/>
-- <https://git.ozlabs.org/?p=ppp.git>
-- <https://github.com/paulusmack/ppp/>
+- <ftp://ftp.samba.org/pub/ppp/>
 
 NFS-utils
 ---------
 
-- <https://sourceforge.net/project/showfiles.php?group_id=14>
-- <https://nfs.sourceforge.net/>
+- <http://sourceforge.net/project/showfiles.php?group_id=14>
 
 Iptables
 --------
 
-- <https://netfilter.org/projects/iptables/index.html>
+- <http://www.iptables.org/downloads.html>
 
 Ip-route2
 ---------
@@ -560,7 +457,12 @@ Ip-route2
 OProfile
 --------
 
-- <https://oprofile.sf.net/download/>
+- <http://oprofile.sf.net/download/>
+
+NFS-Utils
+---------
+
+- <http://nfs.sourceforge.net/>
 
 Kernel documentation
 ********************
@@ -568,4 +470,4 @@ Kernel documentation
 Sphinx
 ------
 
-- <https://www.sphinx-doc.org/>
+- <http://www.sphinx-doc.org/>

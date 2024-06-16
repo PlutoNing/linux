@@ -89,6 +89,8 @@ static int write_cached_data (struct mtdblk_dev *mtdblk)
 
 	ret = erase_write (mtd, mtdblk->cache_offset,
 			   mtdblk->cache_size, mtdblk->cache_data);
+	if (ret)
+		return ret;
 
 	/*
 	 * Here we could arguably set the cache state to STATE_CLEAN.
@@ -96,14 +98,9 @@ static int write_cached_data (struct mtdblk_dev *mtdblk)
 	 * be notified if this content is altered on the flash by other
 	 * means.  Let's declare it empty and leave buffering tasks to
 	 * the buffer cache instead.
-	 *
-	 * If this cache_offset points to a bad block, data cannot be
-	 * written to the device. Clear cache_state to avoid writing to
-	 * bad blocks repeatedly.
 	 */
-	if (ret == 0 || ret == -EIO)
-		mtdblk->cache_state = STATE_EMPTY;
-	return ret;
+	mtdblk->cache_state = STATE_EMPTY;
+	return 0;
 }
 
 
@@ -153,7 +150,7 @@ static int do_cached_write (struct mtdblk_dev *mtdblk, unsigned long pos,
 				mtdblk->cache_state = STATE_EMPTY;
 				ret = mtd_read(mtd, sect_start, sect_size,
 					       &retlen, mtdblk->cache_data);
-				if (ret && !mtd_is_bitflip(ret))
+				if (ret)
 					return ret;
 				if (retlen != sect_size)
 					return -EIO;
@@ -188,12 +185,8 @@ static int do_cached_read (struct mtdblk_dev *mtdblk, unsigned long pos,
 	pr_debug("mtdblock: read on \"%s\" at 0x%lx, size 0x%x\n",
 			mtd->name, pos, len);
 
-	if (!sect_size) {
-		ret = mtd_read(mtd, pos, len, &retlen, buf);
-		if (ret && !mtd_is_bitflip(ret))
-			return ret;
-		return 0;
-	}
+	if (!sect_size)
+		return mtd_read(mtd, pos, len, &retlen, buf);
 
 	while (len > 0) {
 		unsigned long sect_start = (pos/sect_size)*sect_size;
@@ -213,7 +206,7 @@ static int do_cached_read (struct mtdblk_dev *mtdblk, unsigned long pos,
 			memcpy (buf, mtdblk->cache_data + offset, size);
 		} else {
 			ret = mtd_read(mtd, pos, size, &retlen, buf);
-			if (ret && !mtd_is_bitflip(ret))
+			if (ret)
 				return ret;
 			if (retlen != size)
 				return -EIO;
@@ -261,10 +254,6 @@ static int mtdblock_open(struct mtd_blktrans_dev *mbd)
 		return 0;
 	}
 
-	if (mtd_type_is_nand(mbd->mtd))
-		pr_warn_ratelimited("%s: MTD device '%s' is NAND, please consider using UBI block devices instead.\n",
-			mbd->tr->name, mbd->mtd->name);
-
 	/* OK, it's not open. Create cache info for it */
 	mtdblk->count = 1;
 	mutex_init(&mtdblk->cache_mutex);
@@ -294,7 +283,7 @@ static void mtdblock_release(struct mtd_blktrans_dev *mbd)
 		 * It was the last usage. Free the cache, but only sync if
 		 * opened for writing.
 		 */
-		if (mbd->writable)
+		if (mbd->file_mode & FMODE_WRITE)
 			mtd_sync(mbd->mtd);
 		vfree(mtdblk->cache_data);
 	}
@@ -305,13 +294,12 @@ static void mtdblock_release(struct mtd_blktrans_dev *mbd)
 static int mtdblock_flush(struct mtd_blktrans_dev *dev)
 {
 	struct mtdblk_dev *mtdblk = container_of(dev, struct mtdblk_dev, mbd);
-	int ret;
 
 	mutex_lock(&mtdblk->cache_mutex);
-	ret = write_cached_data(mtdblk);
+	write_cached_data(mtdblk);
 	mutex_unlock(&mtdblk->cache_mutex);
 	mtd_sync(dev->mtd);
-	return ret;
+	return 0;
 }
 
 static void mtdblock_add_mtd(struct mtd_blktrans_ops *tr, struct mtd_info *mtd)
@@ -354,7 +342,19 @@ static struct mtd_blktrans_ops mtdblock_tr = {
 	.owner		= THIS_MODULE,
 };
 
-module_mtd_blktrans(mtdblock_tr);
+static int __init init_mtdblock(void)
+{
+	return register_mtd_blktrans(&mtdblock_tr);
+}
+
+static void __exit cleanup_mtdblock(void)
+{
+	deregister_mtd_blktrans(&mtdblock_tr);
+}
+
+module_init(init_mtdblock);
+module_exit(cleanup_mtdblock);
+
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Nicolas Pitre <nico@fluxnic.net> et al.");

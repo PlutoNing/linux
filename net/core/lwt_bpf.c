@@ -2,7 +2,6 @@
 /* Copyright (c) 2016 Thomas Graf <tgraf@tgraf.ch>
  */
 
-#include <linux/filter.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/skbuff.h>
@@ -40,11 +39,12 @@ static int run_lwt_bpf(struct sk_buff *skb, struct bpf_lwt_prog *lwt,
 {
 	int ret;
 
-	/* Migration disable and BH disable are needed to protect per-cpu
-	 * redirect_info between BPF prog and skb_do_redirect().
+	/* Preempt disable is needed to protect per-cpu redirect_info between
+	 * BPF prog and skb_do_redirect(). The call_rcu in bpf_prog_put() and
+	 * access to maps strictly require a rcu_read_lock() for protection,
+	 * mixing with BH RCU lock doesn't work.
 	 */
-	migrate_disable();
-	local_bh_disable();
+	preempt_disable();
 	bpf_compute_data_pointers(skb);
 	ret = bpf_prog_run_save_cb(lwt->prog, skb);
 
@@ -60,8 +60,9 @@ static int run_lwt_bpf(struct sk_buff *skb, struct bpf_lwt_prog *lwt,
 			ret = BPF_OK;
 		} else {
 			skb_reset_mac_header(skb);
-			skb_do_redirect(skb);
-			ret = BPF_REDIRECT;
+			ret = skb_do_redirect(skb);
+			if (ret == 0)
+				ret = BPF_REDIRECT;
 		}
 		break;
 
@@ -77,8 +78,7 @@ static int run_lwt_bpf(struct sk_buff *skb, struct bpf_lwt_prog *lwt,
 		break;
 	}
 
-	local_bh_enable();
-	migrate_enable();
+	preempt_enable();
 
 	return ret;
 }
@@ -158,8 +158,10 @@ static int bpf_output(struct net *net, struct sock *sk, struct sk_buff *skb)
 	return dst->lwtstate->orig_output(net, sk, skb);
 }
 
-static int xmit_check_hhlen(struct sk_buff *skb, int hh_len)
+static int xmit_check_hhlen(struct sk_buff *skb)
 {
+	int hh_len = skb_dst(skb)->dev->hard_header_len;
+
 	if (skb_headroom(skb) < hh_len) {
 		int nhead = HH_DATA_ALIGN(hh_len - skb_headroom(skb));
 
@@ -228,7 +230,9 @@ static int bpf_lwt_xmit_reroute(struct sk_buff *skb)
 		fl6.daddr = iph6->daddr;
 		fl6.saddr = iph6->saddr;
 
-		dst = ipv6_stub->ipv6_dst_lookup_flow(net, skb->sk, &fl6, NULL);
+		err = ipv6_stub->ipv6_dst_lookup(net, skb->sk, &dst, &fl6);
+		if (unlikely(err))
+			goto err;
 		if (IS_ERR(dst)) {
 			err = PTR_ERR(dst);
 			goto err;
@@ -254,7 +258,7 @@ static int bpf_lwt_xmit_reroute(struct sk_buff *skb)
 
 	err = dst_output(dev_net(skb_dst(skb)->dev), skb->sk, skb);
 	if (unlikely(err))
-		return net_xmit_errno(err);
+		return err;
 
 	/* ip[6]_finish_output2 understand LWTUNNEL_XMIT_DONE */
 	return LWTUNNEL_XMIT_DONE;
@@ -271,7 +275,6 @@ static int bpf_xmit(struct sk_buff *skb)
 
 	bpf = bpf_lwt_lwtunnel(dst->lwtstate);
 	if (bpf->xmit.prog) {
-		int hh_len = dst->dev->hard_header_len;
 		__be16 proto = skb->protocol;
 		int ret;
 
@@ -289,7 +292,7 @@ static int bpf_xmit(struct sk_buff *skb)
 			/* If the header was expanded, headroom might be too
 			 * small for L2 header to come, expand as needed.
 			 */
-			ret = xmit_check_hhlen(skb, hh_len);
+			ret = xmit_check_hhlen(skb);
 			if (unlikely(ret))
 				return ret;
 
@@ -366,7 +369,7 @@ static const struct nla_policy bpf_nl_policy[LWT_BPF_MAX + 1] = {
 	[LWT_BPF_XMIT_HEADROOM]	= { .type = NLA_U32 },
 };
 
-static int bpf_build_state(struct net *net, struct nlattr *nla,
+static int bpf_build_state(struct nlattr *nla,
 			   unsigned int family, const void *cfg,
 			   struct lwtunnel_state **ts,
 			   struct netlink_ext_ack *extack)

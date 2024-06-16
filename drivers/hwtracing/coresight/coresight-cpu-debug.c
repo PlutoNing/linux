@@ -17,7 +17,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
-#include <linux/panic_notifier.h>
 #include <linux/pm_qos.h>
 #include <linux/slab.h>
 #include <linux/smp.h>
@@ -105,7 +104,7 @@ static DEFINE_PER_CPU(struct debug_drvdata *, debug_drvdata);
 static int debug_count;
 static struct dentry *debug_debugfs_dir;
 
-static bool debug_enable = IS_ENABLED(CONFIG_CORESIGHT_CPU_DEBUG_DEFAULT_ON);
+static bool debug_enable;
 module_param_named(enable, debug_enable, bool, 0600);
 MODULE_PARM_DESC(enable, "Control to enable coresight CPU debug functionality");
 
@@ -347,10 +346,10 @@ static void debug_init_arch_data(void *info)
 	switch (mode) {
 	case EDDEVID_IMPL_FULL:
 		drvdata->edvidsr_present = true;
-		fallthrough;
+		/* Fall through */
 	case EDDEVID_IMPL_EDPCSR_EDCIDSR:
 		drvdata->edcidsr_present = true;
-		fallthrough;
+		/* Fall through */
 	case EDDEVID_IMPL_EDPCSR:
 		/*
 		 * In ARM DDI 0487A.k, the EDDEVID1.PCSROffset is used to
@@ -380,10 +379,9 @@ static int debug_notifier_call(struct notifier_block *self,
 	int cpu;
 	struct debug_drvdata *drvdata;
 
-	/* Bail out if we can't acquire the mutex or the functionality is off */
-	if (!mutex_trylock(&debug_lock))
-		return NOTIFY_DONE;
+	mutex_lock(&debug_lock);
 
+	/* Bail out if the functionality is disabled */
 	if (!debug_enable)
 		goto skip_dump;
 
@@ -402,7 +400,7 @@ static int debug_notifier_call(struct notifier_block *self,
 
 skip_dump:
 	mutex_unlock(&debug_lock);
-	return NOTIFY_DONE;
+	return 0;
 }
 
 static struct notifier_block debug_notifier = {
@@ -589,11 +587,11 @@ static int debug_probe(struct amba_device *adev, const struct amba_id *id)
 
 	drvdata->base = base;
 
-	cpus_read_lock();
+	get_online_cpus();
 	per_cpu(debug_drvdata, drvdata->cpu) = drvdata;
 	ret = smp_call_function_single(drvdata->cpu, debug_init_arch_data,
 				       drvdata, 1);
-	cpus_read_unlock();
+	put_online_cpus();
 
 	if (ret) {
 		dev_err(dev, "CPU%d debug arch init failed\n", drvdata->cpu);
@@ -629,7 +627,7 @@ err:
 	return ret;
 }
 
-static void debug_remove(struct amba_device *adev)
+static int debug_remove(struct amba_device *adev)
 {
 	struct device *dev = &adev->dev;
 	struct debug_drvdata *drvdata = amba_get_drvdata(adev);
@@ -644,6 +642,8 @@ static void debug_remove(struct amba_device *adev)
 
 	if (!--debug_count)
 		debug_func_exit();
+
+	return 0;
 }
 
 static const struct amba_cs_uci_id uci_id_debug[] = {
@@ -664,8 +664,6 @@ static const struct amba_id debug_ids[] = {
 	CS_AMBA_UCI_ID(0x000f0211, uci_id_debug),	/* Qualcomm Kryo */
 	{},
 };
-
-MODULE_DEVICE_TABLE(amba, debug_ids);
 
 static struct amba_driver debug_driver = {
 	.drv = {

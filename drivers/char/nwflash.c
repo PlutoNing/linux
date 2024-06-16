@@ -576,7 +576,7 @@ static const struct file_operations flash_fops =
 
 static struct miscdevice flash_miscdev =
 {
-	NWFLASH_MINOR,
+	FLASH_MINOR,
 	"nwflash",
 	&flash_fops
 };

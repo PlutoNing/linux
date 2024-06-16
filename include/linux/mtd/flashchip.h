@@ -13,7 +13,6 @@
  */
 #include <linux/sched.h>
 #include <linux/mutex.h>
-#include <linux/wait.h>
 
 typedef enum {
 	FL_READY,
@@ -41,7 +40,7 @@ typedef enum {
 	FL_READING,
 	FL_CACHEDPRG,
 	/* These 4 come from onenand_state_t, which has been unified here */
-	FL_RESETTING,
+	FL_RESETING,
 	FL_OTPING,
 	FL_PREPARING_ERASE,
 	FL_VERIFYING_ERASE,

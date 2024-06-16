@@ -42,8 +42,8 @@ __exception_irq_entry orion_handle_irq(struct pt_regs *regs)
 			gc->mask_cache;
 		while (stat) {
 			u32 hwirq = __fls(stat);
-			generic_handle_domain_irq(orion_irq_domain,
-						  gc->irq_base + hwirq);
+			handle_domain_irq(orion_irq_domain,
+					  gc->irq_base + hwirq, regs);
 			stat &= ~(1 << hwirq);
 		}
 	}
@@ -57,7 +57,8 @@ static int __init orion_irq_init(struct device_node *np,
 	struct resource r;
 
 	/* count number of irq chips by valid reg addresses */
-	num_chips = of_address_count(np);
+	while (of_address_to_resource(np, num_chips, &r) == 0)
+		num_chips++;
 
 	orion_irq_domain = irq_domain_add_linear(np,
 				num_chips * ORION_IRQS_PER_CHIP,
@@ -116,7 +117,7 @@ static void orion_bridge_irq_handler(struct irq_desc *desc)
 	while (stat) {
 		u32 hwirq = __fls(stat);
 
-		generic_handle_domain_irq(d, gc->irq_base + hwirq);
+		generic_handle_irq(irq_find_mapping(d, gc->irq_base + hwirq));
 		stat &= ~(1 << hwirq);
 	}
 }

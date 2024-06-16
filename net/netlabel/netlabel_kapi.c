@@ -610,7 +610,7 @@ int netlbl_catmap_walk(struct netlbl_lsm_catmap *catmap, u32 offset)
 	struct netlbl_lsm_catmap *iter;
 	u32 idx;
 	u32 bit;
-	u64 bitmap;
+	NETLBL_CATMAP_MAPTYPE bitmap;
 
 	iter = _netlbl_catmap_getnode(&catmap, offset, _CM_F_WALK, 0);
 	if (iter == NULL)
@@ -666,8 +666,8 @@ int netlbl_catmap_walkrng(struct netlbl_lsm_catmap *catmap, u32 offset)
 	struct netlbl_lsm_catmap *prev = NULL;
 	u32 idx;
 	u32 bit;
-	u64 bitmask;
-	u64 bitmap;
+	NETLBL_CATMAP_MAPTYPE bitmask;
+	NETLBL_CATMAP_MAPTYPE bitmap;
 
 	iter = _netlbl_catmap_getnode(&catmap, offset, _CM_F_WALK, 0);
 	if (iter == NULL)
@@ -719,7 +719,7 @@ int netlbl_catmap_walkrng(struct netlbl_lsm_catmap *catmap, u32 offset)
  * it in @bitmap.  The @offset must be aligned to an unsigned long and will be
  * updated on return if different from what was requested; if the catmap is
  * empty at the requested offset and beyond, the @offset is set to (u32)-1.
- * Returns zero on success, negative values on failure.
+ * Returns zero on sucess, negative values on failure.
  *
  */
 int netlbl_catmap_getlong(struct netlbl_lsm_catmap *catmap,
@@ -733,12 +733,6 @@ int netlbl_catmap_getlong(struct netlbl_lsm_catmap *catmap,
 	/* only allow aligned offsets */
 	if ((off & (BITS_PER_LONG - 1)) != 0)
 		return -EINVAL;
-
-	/* a null catmap is equivalent to an empty one */
-	if (!catmap) {
-		*offset = (u32)-1;
-		return 0;
-	}
 
 	if (off < catmap->startbit) {
 		off = catmap->startbit;
@@ -857,8 +851,7 @@ int netlbl_catmap_setlong(struct netlbl_lsm_catmap **catmap,
 
 	offset -= iter->startbit;
 	idx = offset / NETLBL_CATMAP_MAPSIZE;
-	iter->bitmap[idx] |= (u64)bitmap
-			     << (offset % NETLBL_CATMAP_MAPSIZE);
+	iter->bitmap[idx] |= bitmap << (offset % NETLBL_CATMAP_MAPSIZE);
 
 	return 0;
 }
@@ -876,7 +869,7 @@ int netlbl_catmap_setlong(struct netlbl_lsm_catmap **catmap,
  * Description:
  * Starting at @offset, walk the bitmap from left to right until either the
  * desired bit is found or we reach the end.  Return the bit offset, -1 if
- * not found.
+ * not found, or -2 if error.
  */
 int netlbl_bitmap_walk(const unsigned char *bitmap, u32 bitmap_len,
 		       u32 offset, u8 state)
@@ -886,8 +879,6 @@ int netlbl_bitmap_walk(const unsigned char *bitmap, u32 bitmap_len,
 	unsigned char bitmask;
 	unsigned char byte;
 
-	if (offset >= bitmap_len)
-		return -1;
 	byte_offset = offset / 8;
 	byte = bitmap[byte_offset];
 	bit_spot = offset;

@@ -9,7 +9,8 @@
 	.code32
 	ALIGN
 
-SYM_CODE_START(wakeup_pmode_return)
+ENTRY(wakeup_pmode_return)
+wakeup_pmode_return:
 	movw	$__KERNEL_DS, %ax
 	movw	%ax, %ss
 	movw	%ax, %fs
@@ -38,7 +39,6 @@ SYM_CODE_START(wakeup_pmode_return)
 	# jump to place where we left off
 	movl	saved_eip, %eax
 	jmp	*%eax
-SYM_CODE_END(wakeup_pmode_return)
 
 bogus_magic:
 	jmp	bogus_magic
@@ -60,7 +60,7 @@ save_registers:
 	popl	saved_context_eflags
 
 	movl	$ret_point, saved_eip
-	RET
+	ret
 
 
 restore_registers:
@@ -70,9 +70,9 @@ restore_registers:
 	movl	saved_context_edi, %edi
 	pushl	saved_context_eflags
 	popfl
-	RET
+	ret
 
-SYM_CODE_START(do_suspend_lowlevel)
+ENTRY(do_suspend_lowlevel)
 	call	save_processor_state
 	call	save_registers
 	pushl	$3
@@ -86,12 +86,11 @@ SYM_CODE_START(do_suspend_lowlevel)
 ret_point:
 	call	restore_registers
 	call	restore_processor_state
-	RET
-SYM_CODE_END(do_suspend_lowlevel)
+	ret
 
 .data
 ALIGN
-SYM_DATA(saved_magic,	.long 0)
+ENTRY(saved_magic)	.long	0
 saved_eip:		.long 0
 
 # saved registers

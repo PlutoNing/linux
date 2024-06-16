@@ -17,7 +17,7 @@
 // Confidence: Moderate
 // Copyright: (C) 2011 Julia Lawall, INRIA/LIP6.
 // Copyright: (C) 2011 Gilles Muller, INRIA/LiP6.
-// URL: https://coccinelle.gitlabpages.inria.fr/website
+// URL: http://coccinelle.lip6.fr/
 // Comments:
 // Options: --no-includes --include-headers
 
@@ -52,6 +52,8 @@ expression x;
 |
  x = devm_ioremap(...)
 |
+ x = devm_ioremap_nocache(...)
+|
  x = devm_ioport_map(...)
 )
 
@@ -83,13 +85,17 @@ position p;
 |
  x = ioremap(...)
 |
+ x = ioremap_nocache(...)
+|
  x = ioport_map(...)
 )
 ...
 (
  kfree@p(x)
 |
- kfree_sensitive@p(x)
+ kzfree@p(x)
+|
+ __krealloc@p(x, ...)
 |
  krealloc@p(x, ...)
 |
@@ -112,7 +118,9 @@ position p != safe.p;
 (
 * kfree@p(x)
 |
-* kfree_sensitive@p(x)
+* kzfree@p(x)
+|
+* __krealloc@p(x, ...)
 |
 * krealloc@p(x, ...)
 |

@@ -36,13 +36,7 @@ struct mod_stats_caps {
 	bool dummy;
 };
 
-struct mod_stats_init_params {
-	unsigned int stats_enable;
-	unsigned int stats_entries;
-};
-
-struct mod_stats *mod_stats_create(struct dc *dc,
-		struct mod_stats_init_params *init_params);
+struct mod_stats *mod_stats_create(struct dc *dc);
 
 void mod_stats_destroy(struct mod_stats *mod_stats);
 
@@ -53,14 +47,14 @@ void mod_stats_dump(struct mod_stats *mod_stats);
 void mod_stats_reset_data(struct mod_stats *mod_stats);
 
 void mod_stats_update_event(struct mod_stats *mod_stats,
-		const char *event_string,
+		char *event_string,
 		unsigned int length);
 
 void mod_stats_update_flip(struct mod_stats *mod_stats,
-		unsigned long long timestamp_in_ns);
+		unsigned long timestamp_in_ns);
 
 void mod_stats_update_vupdate(struct mod_stats *mod_stats,
-		unsigned long long timestamp_in_ns);
+		unsigned long timestamp_in_ns);
 
 void mod_stats_update_freesync(struct mod_stats *mod_stats,
 		unsigned int v_total_min,

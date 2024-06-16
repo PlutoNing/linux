@@ -20,9 +20,8 @@
 #include <linux/io.h>
 #include <linux/mm.h>
 #include <linux/module.h>
-#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/of_dma.h>
-#include <linux/platform_device.h>
 #include <linux/slab.h>
 #include "virt-dma.h"
 
@@ -121,39 +120,30 @@
 #define BIT_FIELD(val, width, shift, newshift)	\
 		((((val) >> (shift)) & ((BIT(width)) - 1)) << (newshift))
 
-/* Frame count value is fixed as 1 */
-#define FCNT_VAL				0x1
-
 /**
- * enum owl_dmadesc_offsets - Describe DMA descriptor, hardware link
- * list for dma transfer
- * @OWL_DMADESC_NEXT_LLI: physical address of the next link list
- * @OWL_DMADESC_SADDR: source physical address
- * @OWL_DMADESC_DADDR: destination physical address
- * @OWL_DMADESC_FLEN: frame length
- * @OWL_DMADESC_SRC_STRIDE: source stride
- * @OWL_DMADESC_DST_STRIDE: destination stride
- * @OWL_DMADESC_CTRLA: dma_mode and linklist ctrl config
- * @OWL_DMADESC_CTRLB: interrupt config
- * @OWL_DMADESC_CONST_NUM: data for constant fill
- * @OWL_DMADESC_SIZE: max size of this enum
+ * struct owl_dma_lli_hw - Hardware link list for dma transfer
+ * @next_lli: physical address of the next link list
+ * @saddr: source physical address
+ * @daddr: destination physical address
+ * @flen: frame length
+ * @fcnt: frame count
+ * @src_stride: source stride
+ * @dst_stride: destination stride
+ * @ctrla: dma_mode and linklist ctrl config
+ * @ctrlb: interrupt config
+ * @const_num: data for constant fill
  */
-enum owl_dmadesc_offsets {
-	OWL_DMADESC_NEXT_LLI = 0,
-	OWL_DMADESC_SADDR,
-	OWL_DMADESC_DADDR,
-	OWL_DMADESC_FLEN,
-	OWL_DMADESC_SRC_STRIDE,
-	OWL_DMADESC_DST_STRIDE,
-	OWL_DMADESC_CTRLA,
-	OWL_DMADESC_CTRLB,
-	OWL_DMADESC_CONST_NUM,
-	OWL_DMADESC_SIZE
-};
-
-enum owl_dma_id {
-	S900_DMA,
-	S700_DMA,
+struct owl_dma_lli_hw {
+	u32	next_lli;
+	u32	saddr;
+	u32	daddr;
+	u32	flen:20;
+	u32	fcnt:12;
+	u32	src_stride;
+	u32	dst_stride;
+	u32	ctrla;
+	u32	ctrlb;
+	u32	const_num;
 };
 
 /**
@@ -163,7 +153,7 @@ enum owl_dma_id {
  * @node: node for txd's lli_list
  */
 struct owl_dma_lli {
-	u32			hw[OWL_DMADESC_SIZE];
+	struct  owl_dma_lli_hw	hw;
 	dma_addr_t		phys;
 	struct list_head	node;
 };
@@ -185,16 +175,18 @@ struct owl_dma_txd {
  * @id: physical index to this channel
  * @base: virtual memory base for the dma channel
  * @vchan: the virtual channel currently being served by this physical channel
+ * @lock: a lock to use when altering an instance of this struct
  */
 struct owl_dma_pchan {
 	u32			id;
 	void __iomem		*base;
 	struct owl_dma_vchan	*vchan;
+	spinlock_t		lock;
 };
 
 /**
- * struct owl_dma_vchan - Wrapper for DMA ENGINE channel
- * @vc: wrapped virtual channel
+ * struct owl_dma_pchan - Wrapper for DMA ENGINE channel
+ * @vc: wrappped virtual channel
  * @pchan: the physical channel utilized by this channel
  * @txd: active transaction on this channel
  * @cfg: slave configuration for this channel
@@ -220,7 +212,6 @@ struct owl_dma_vchan {
  * @pchans: array of data for the physical channels
  * @nr_vchans: the number of physical channels
  * @vchans: array of data for the physical channels
- * @devid: device id based on OWL SoC
  */
 struct owl_dma {
 	struct dma_device	dma;
@@ -235,7 +226,6 @@ struct owl_dma {
 
 	unsigned int		nr_vchans;
 	struct owl_dma_vchan	*vchans;
-	enum owl_dma_id		devid;
 };
 
 static void pchan_update(struct owl_dma_pchan *pchan, u32 reg,
@@ -325,18 +315,9 @@ static inline u32 llc_hw_ctrlb(u32 int_ctl)
 {
 	u32 ctl;
 
-	/*
-	 * Irrespective of the SoC, ctrlb value starts filling from
-	 * bit 18.
-	 */
 	ctl = BIT_FIELD(int_ctl, 7, 0, 18);
 
 	return ctl;
-}
-
-static u32 llc_hw_flen(struct owl_dma_lli *lli)
-{
-	return lli->hw[OWL_DMADESC_FLEN] & GENMASK(19, 0);
 }
 
 static void owl_dma_free_lli(struct owl_dma *od,
@@ -370,9 +351,8 @@ static struct owl_dma_lli *owl_dma_add_lli(struct owl_dma_txd *txd,
 		list_add_tail(&next->node, &txd->lli_list);
 
 	if (prev) {
-		prev->hw[OWL_DMADESC_NEXT_LLI] = next->phys;
-		prev->hw[OWL_DMADESC_CTRLA] |=
-					llc_hw_ctrla(OWL_DMA_MODE_LME, 0);
+		prev->hw.next_lli = next->phys;
+		prev->hw.ctrla |= llc_hw_ctrla(OWL_DMA_MODE_LME, 0);
 	}
 
 	return next;
@@ -385,8 +365,8 @@ static inline int owl_dma_cfg_lli(struct owl_dma_vchan *vchan,
 				  struct dma_slave_config *sconfig,
 				  bool is_cyclic)
 {
-	struct owl_dma *od = to_owl_dma(vchan->vc.chan.device);
-	u32 mode, ctrlb;
+	struct owl_dma_lli_hw *hw = &lli->hw;
+	u32 mode;
 
 	mode = OWL_DMA_MODE_PW(0);
 
@@ -427,40 +407,22 @@ static inline int owl_dma_cfg_lli(struct owl_dma_vchan *vchan,
 		return -EINVAL;
 	}
 
-	lli->hw[OWL_DMADESC_CTRLA] = llc_hw_ctrla(mode,
-						  OWL_DMA_LLC_SAV_LOAD_NEXT |
-						  OWL_DMA_LLC_DAV_LOAD_NEXT);
+	hw->next_lli = 0; /* One link list by default */
+	hw->saddr = src;
+	hw->daddr = dst;
+
+	hw->fcnt = 1; /* Frame count fixed as 1 */
+	hw->flen = len; /* Max frame length is 1MB */
+	hw->src_stride = 0;
+	hw->dst_stride = 0;
+	hw->ctrla = llc_hw_ctrla(mode,
+				 OWL_DMA_LLC_SAV_LOAD_NEXT |
+				 OWL_DMA_LLC_DAV_LOAD_NEXT);
 
 	if (is_cyclic)
-		ctrlb = llc_hw_ctrlb(OWL_DMA_INTCTL_BLOCK);
+		hw->ctrlb = llc_hw_ctrlb(OWL_DMA_INTCTL_BLOCK);
 	else
-		ctrlb = llc_hw_ctrlb(OWL_DMA_INTCTL_SUPER_BLOCK);
-
-	lli->hw[OWL_DMADESC_NEXT_LLI] = 0; /* One link list by default */
-	lli->hw[OWL_DMADESC_SADDR] = src;
-	lli->hw[OWL_DMADESC_DADDR] = dst;
-	lli->hw[OWL_DMADESC_SRC_STRIDE] = 0;
-	lli->hw[OWL_DMADESC_DST_STRIDE] = 0;
-
-	if (od->devid == S700_DMA) {
-		/* Max frame length is 1MB */
-		lli->hw[OWL_DMADESC_FLEN] = len;
-		/*
-		 * On S700, word starts from offset 0x1C is shared between
-		 * frame count and ctrlb, where first 12 bits are for frame
-		 * count and rest of 20 bits are for ctrlb.
-		 */
-		lli->hw[OWL_DMADESC_CTRLB] = FCNT_VAL | ctrlb;
-	} else {
-		/*
-		 * On S900, word starts from offset 0xC is shared between
-		 * frame length (max frame length is 1MB) and frame count,
-		 * where first 20 bits are for frame length and rest of
-		 * 12 bits are for frame count.
-		 */
-		lli->hw[OWL_DMADESC_FLEN] = len | FCNT_VAL << 20;
-		lli->hw[OWL_DMADESC_CTRLB] = ctrlb;
-	}
+		hw->ctrlb = llc_hw_ctrlb(OWL_DMA_INTCTL_SUPER_BLOCK);
 
 	return 0;
 }
@@ -475,14 +437,14 @@ static struct owl_dma_pchan *owl_dma_get_pchan(struct owl_dma *od,
 	for (i = 0; i < od->nr_pchans; i++) {
 		pchan = &od->pchans[i];
 
-		spin_lock_irqsave(&od->lock, flags);
+		spin_lock_irqsave(&pchan->lock, flags);
 		if (!pchan->vchan) {
 			pchan->vchan = vchan;
-			spin_unlock_irqrestore(&od->lock, flags);
+			spin_unlock_irqrestore(&pchan->lock, flags);
 			break;
 		}
 
-		spin_unlock_irqrestore(&od->lock, flags);
+		spin_unlock_irqrestore(&pchan->lock, flags);
 	}
 
 	return pchan;
@@ -622,7 +584,7 @@ static irqreturn_t owl_dma_interrupt(int irq, void *dev_id)
 
 		global_irq_pending = dma_readl(od, OWL_DMA_IRQ_PD0);
 
-		if (chan_irq_pending && !(global_irq_pending & BIT(i))) {
+		if (chan_irq_pending && !(global_irq_pending & BIT(i)))	{
 			dev_dbg(od->dma.dev,
 				"global and channel IRQ pending match err\n");
 
@@ -712,10 +674,9 @@ static int owl_dma_terminate_all(struct dma_chan *chan)
 	}
 
 	vchan_get_all_descriptors(&vchan->vc, &head);
+	vchan_dma_desc_free_list(&vchan->vc, &head);
 
 	spin_unlock_irqrestore(&vchan->vc.lock, flags);
-
-	vchan_dma_desc_free_list(&vchan->vc, &head);
 
 	return 0;
 }
@@ -792,7 +753,7 @@ static u32 owl_dma_getbytes_chan(struct owl_dma_vchan *vchan)
 			/* Start from the next active node */
 			if (lli->phys == next_lli_phy) {
 				list_for_each_entry(lli, &txd->lli_list, node)
-					bytes += llc_hw_flen(lli);
+					bytes += lli->hw.flen;
 				break;
 			}
 		}
@@ -823,7 +784,7 @@ static enum dma_status owl_dma_tx_status(struct dma_chan *chan,
 	if (vd) {
 		txd = to_owl_txd(&vd->tx);
 		list_for_each_entry(lli, &txd->lli_list, node)
-			bytes += llc_hw_flen(lli);
+			bytes += lli->hw.flen;
 	} else {
 		bytes = owl_dma_getbytes_chan(vchan);
 	}
@@ -1080,25 +1041,22 @@ static struct dma_chan *owl_dma_of_xlate(struct of_phandle_args *dma_spec,
 	return chan;
 }
 
-static const struct of_device_id owl_dma_match[] = {
-	{ .compatible = "actions,s500-dma", .data = (void *)S900_DMA,},
-	{ .compatible = "actions,s700-dma", .data = (void *)S700_DMA,},
-	{ .compatible = "actions,s900-dma", .data = (void *)S900_DMA,},
-	{ /* sentinel */ },
-};
-MODULE_DEVICE_TABLE(of, owl_dma_match);
-
 static int owl_dma_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct owl_dma *od;
+	struct resource *res;
 	int ret, i, nr_channels, nr_requests;
 
 	od = devm_kzalloc(&pdev->dev, sizeof(*od), GFP_KERNEL);
 	if (!od)
 		return -ENOMEM;
 
-	od->base = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res)
+		return -EINVAL;
+
+	od->base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(od->base))
 		return PTR_ERR(od->base);
 
@@ -1116,8 +1074,6 @@ static int owl_dma_probe(struct platform_device *pdev)
 
 	dev_info(&pdev->dev, "dma-channels %d, dma-requests %d\n",
 		 nr_channels, nr_requests);
-
-	od->devid = (uintptr_t)of_device_get_match_data(&pdev->dev);
 
 	od->nr_pchans = nr_channels;
 	od->nr_vchans = nr_requests;
@@ -1231,7 +1187,7 @@ err_pool_free:
 	return ret;
 }
 
-static void owl_dma_remove(struct platform_device *pdev)
+static int owl_dma_remove(struct platform_device *pdev)
 {
 	struct owl_dma *od = platform_get_drvdata(pdev);
 
@@ -1247,12 +1203,19 @@ static void owl_dma_remove(struct platform_device *pdev)
 	owl_dma_free(od);
 
 	clk_disable_unprepare(od->clk);
-	dma_pool_destroy(od->lli_pool);
+
+	return 0;
 }
+
+static const struct of_device_id owl_dma_match[] = {
+	{ .compatible = "actions,s900-dma", },
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, owl_dma_match);
 
 static struct platform_driver owl_dma_driver = {
 	.probe	= owl_dma_probe,
-	.remove_new = owl_dma_remove,
+	.remove	= owl_dma_remove,
 	.driver = {
 		.name = "dma-owl",
 		.of_match_table = of_match_ptr(owl_dma_match),

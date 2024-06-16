@@ -9,7 +9,6 @@
  * This file initializes the trap entry points
  */
 
-#include <linux/cpu.h>
 #include <linux/jiffies.h>
 #include <linux/mm.h>
 #include <linux/sched/signal.h>
@@ -122,34 +121,36 @@ dik_show_code(unsigned int *pc)
 }
 
 static void
-dik_show_trace(unsigned long *sp, const char *loglvl)
+dik_show_trace(unsigned long *sp)
 {
 	long i = 0;
-	printk("%sTrace:\n", loglvl);
+	printk("Trace:\n");
 	while (0x1ff8 & (unsigned long) sp) {
 		extern char _stext[], _etext[];
 		unsigned long tmp = *sp;
 		sp++;
-		if (!is_kernel_text(tmp))
+		if (tmp < (unsigned long) &_stext)
 			continue;
-		printk("%s[<%lx>] %pSR\n", loglvl, tmp, (void *)tmp);
+		if (tmp >= (unsigned long) &_etext)
+			continue;
+		printk("[<%lx>] %pSR\n", tmp, (void *)tmp);
 		if (i > 40) {
-			printk("%s ...", loglvl);
+			printk(" ...");
 			break;
 		}
 	}
-	printk("%s\n", loglvl);
+	printk("\n");
 }
 
 static int kstack_depth_to_print = 24;
 
-void show_stack(struct task_struct *task, unsigned long *sp, const char *loglvl)
+void show_stack(struct task_struct *task, unsigned long *sp)
 {
 	unsigned long *stack;
 	int i;
 
 	/*
-	 * debugging aid: "show_stack(NULL, NULL, KERN_EMERG);" prints the
+	 * debugging aid: "show_stack(NULL);" prints the
 	 * back trace for this cpu.
 	 */
 	if(sp==NULL)
@@ -162,14 +163,14 @@ void show_stack(struct task_struct *task, unsigned long *sp, const char *loglvl)
 		if ((i % 4) == 0) {
 			if (i)
 				pr_cont("\n");
-			printk("%s       ", loglvl);
+			printk("       ");
 		} else {
 			pr_cont(" ");
 		}
 		pr_cont("%016lx", *stack++);
 	}
 	pr_cont("\n");
-	dik_show_trace(sp, loglvl);
+	dik_show_trace(sp);
 }
 
 void
@@ -183,7 +184,7 @@ die_if_kernel(char * str, struct pt_regs *regs, long err, unsigned long *r9_15)
 	printk("%s(%d): %s %ld\n", current->comm, task_pid_nr(current), str, err);
 	dik_show_regs(regs, r9_15);
 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
-	dik_show_trace((unsigned long *)(regs+1), KERN_DEFAULT);
+	dik_show_trace((unsigned long *)(regs+1));
 	dik_show_code((unsigned int *)regs->pc);
 
 	if (test_and_set_thread_flag (TIF_DIE_IF_KERNEL)) {
@@ -191,7 +192,7 @@ die_if_kernel(char * str, struct pt_regs *regs, long err, unsigned long *r9_15)
 		local_irq_enable();
 		while (1);
 	}
-	make_task_dead(SIGSEGV);
+	do_exit(SIGSEGV);
 }
 
 #ifndef CONFIG_MATHEMU
@@ -226,7 +227,7 @@ do_entArith(unsigned long summary, unsigned long write_mask,
 	}
 	die_if_kernel("Arithmetic fault", regs, 0, NULL);
 
-	send_sig_fault_trapno(SIGFPE, si_code, (void __user *) regs->pc, 0, current);
+	send_sig_fault(SIGFPE, si_code, (void __user *) regs->pc, 0, current);
 }
 
 asmlinkage void
@@ -234,21 +235,7 @@ do_entIF(unsigned long type, struct pt_regs *regs)
 {
 	int signo, code;
 
-	if (type == 3) { /* FEN fault */
-		/* Irritating users can call PAL_clrfen to disable the
-		   FPU for the process.  The kernel will then trap in
-		   do_switch_stack and undo_switch_stack when we try
-		   to save and restore the FP registers.
-
-		   Given that GCC by default generates code that uses the
-		   FP registers, PAL_clrfen is not useful except for DoS
-		   attacks.  So turn the bleeding FPU back on and be done
-		   with it.  */
-		current_thread_info()->pcb.flags |= 1;
-		__reload_thread(&current_thread_info()->pcb);
-		return;
-	}
-	if (!user_mode(regs)) {
+	if ((regs->ps & ~IPL_MAX) == 0) {
 		if (type == 1) {
 			const unsigned int *data
 			  = (const unsigned int *) regs->pc;
@@ -281,13 +268,13 @@ do_entIF(unsigned long type, struct pt_regs *regs)
 			regs->pc -= 4;	/* make pc point to former bpt */
 		}
 
-		send_sig_fault(SIGTRAP, TRAP_BRKPT, (void __user *)regs->pc,
+		send_sig_fault(SIGTRAP, TRAP_BRKPT, (void __user *)regs->pc, 0,
 			       current);
 		return;
 
 	      case 1: /* bugcheck */
-		send_sig_fault_trapno(SIGTRAP, TRAP_UNK,
-				      (void __user *) regs->pc, 0, current);
+		send_sig_fault(SIGTRAP, TRAP_UNK, (void __user *) regs->pc, 0,
+			       current);
 		return;
 		
 	      case 2: /* gentrap */
@@ -348,8 +335,8 @@ do_entIF(unsigned long type, struct pt_regs *regs)
 			break;
 		}
 
-		send_sig_fault_trapno(signo, code, (void __user *) regs->pc,
-				      regs->r16, current);
+		send_sig_fault(signo, code, (void __user *) regs->pc, regs->r16,
+			       current);
 		return;
 
 	      case 4: /* opDEC */
@@ -373,20 +360,34 @@ do_entIF(unsigned long type, struct pt_regs *regs)
 			if (si_code == 0)
 				return;
 			if (si_code > 0) {
-				send_sig_fault_trapno(SIGFPE, si_code,
-						      (void __user *) regs->pc,
-						      0, current);
+				send_sig_fault(SIGFPE, si_code,
+					       (void __user *) regs->pc, 0,
+					       current);
 				return;
 			}
 		}
 		break;
+
+	      case 3: /* FEN fault */
+		/* Irritating users can call PAL_clrfen to disable the
+		   FPU for the process.  The kernel will then trap in
+		   do_switch_stack and undo_switch_stack when we try
+		   to save and restore the FP registers.
+
+		   Given that GCC by default generates code that uses the
+		   FP registers, PAL_clrfen is not useful except for DoS
+		   attacks.  So turn the bleeding FPU back on and be done
+		   with it.  */
+		current_thread_info()->pcb.flags |= 1;
+		__reload_thread(&current_thread_info()->pcb);
+		return;
 
 	      case 5: /* illoc */
 	      default: /* unexpected instruction-fault type */
 		      ;
 	}
 
-	send_sig_fault(SIGILL, ILL_ILLOPC, (void __user *)regs->pc, current);
+	send_sig_fault(SIGILL, ILL_ILLOPC, (void __user *)regs->pc, 0, current);
 }
 
 /* There is an ifdef in the PALcode in MILO that enables a 
@@ -401,7 +402,7 @@ do_entDbg(struct pt_regs *regs)
 {
 	die_if_kernel("Instruction fault", regs, 0, NULL);
 
-	force_sig_fault(SIGILL, ILL_ILLOPC, (void __user *)regs->pc);
+	force_sig_fault(SIGILL, ILL_ILLOPC, (void __user *)regs->pc, 0);
 }
 
 
@@ -576,7 +577,7 @@ do_entUna(void * va, unsigned long opcode, unsigned long reg,
 
 	printk("Bad unaligned kernel access at %016lx: %p %lx %lu\n",
 		pc, va, opcode, reg);
-	make_task_dead(SIGSEGV);
+	do_exit(SIGSEGV);
 
 got_exception:
 	/* Ok, we caught the exception, but we don't want it.  Is there
@@ -624,14 +625,14 @@ got_exception:
 	printk("gp = %016lx  sp = %p\n", regs->gp, regs+1);
 
 	dik_show_code((unsigned int *)pc);
-	dik_show_trace((unsigned long *)(regs+1), KERN_DEFAULT);
+	dik_show_trace((unsigned long *)(regs+1));
 
 	if (test_and_set_thread_flag (TIF_DIE_IF_KERNEL)) {
 		printk("die_if_kernel recursion detected.\n");
 		local_irq_enable();
 		while (1);
 	}
-	make_task_dead(SIGSEGV);
+	do_exit(SIGSEGV);
 }
 
 /*
@@ -729,7 +730,7 @@ do_entUnaUser(void __user * va, unsigned long opcode,
 	long error;
 
 	/* Check the UAC bits to decide what the user wants us to do
-	   with the unaligned access.  */
+	   with the unaliged access.  */
 
 	if (!(current_thread_info()->status & TS_UAC_NOPRINT)) {
 		if (__ratelimit(&ratelimit)) {
@@ -882,7 +883,7 @@ do_entUnaUser(void __user * va, unsigned long opcode,
 
 	case 0x26: /* sts */
 		fake_reg = s_reg_to_mem(alpha_read_fp_reg(reg));
-		fallthrough;
+		/* FALLTHRU */
 
 	case 0x2c: /* stl */
 		__asm__ __volatile__(
@@ -910,7 +911,7 @@ do_entUnaUser(void __user * va, unsigned long opcode,
 
 	case 0x27: /* stt */
 		fake_reg = alpha_read_fp_reg(reg);
-		fallthrough;
+		/* FALLTHRU */
 
 	case 0x2d: /* stq */
 		__asm__ __volatile__(
@@ -956,19 +957,19 @@ give_sigsegv:
 		si_code = SEGV_ACCERR;
 	else {
 		struct mm_struct *mm = current->mm;
-		mmap_read_lock(mm);
+		down_read(&mm->mmap_sem);
 		if (find_vma(mm, (unsigned long)va))
 			si_code = SEGV_ACCERR;
 		else
 			si_code = SEGV_MAPERR;
-		mmap_read_unlock(mm);
+		up_read(&mm->mmap_sem);
 	}
-	send_sig_fault(SIGSEGV, si_code, va, current);
+	send_sig_fault(SIGSEGV, si_code, va, 0, current);
 	return;
 
 give_sigbus:
 	regs->pc -= 4;
-	send_sig_fault(SIGBUS, BUS_ADRALN, va, current);
+	send_sig_fault(SIGBUS, BUS_ADRALN, va, 0, current);
 	return;
 }
 

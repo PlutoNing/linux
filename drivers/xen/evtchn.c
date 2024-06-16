@@ -83,9 +83,8 @@ struct per_user_data {
 struct user_evtchn {
 	struct rb_node node;
 	struct per_user_data *user;
-	evtchn_port_t port;
+	unsigned port;
 	bool enabled;
-	bool unbinding;
 };
 
 static void evtchn_free_ring(evtchn_port_t *ring)
@@ -139,8 +138,7 @@ static void del_evtchn(struct per_user_data *u, struct user_evtchn *evtchn)
 	kfree(evtchn);
 }
 
-static struct user_evtchn *find_evtchn(struct per_user_data *u,
-				       evtchn_port_t port)
+static struct user_evtchn *find_evtchn(struct per_user_data *u, unsigned port)
 {
 	struct rb_node *node = u->evtchns.rb_node;
 
@@ -163,28 +161,20 @@ static irqreturn_t evtchn_interrupt(int irq, void *data)
 {
 	struct user_evtchn *evtchn = data;
 	struct per_user_data *u = evtchn->user;
-	unsigned int prod, cons;
-
-	/* Handler might be called when tearing down the IRQ. */
-	if (evtchn->unbinding)
-		return IRQ_HANDLED;
 
 	WARN(!evtchn->enabled,
-	     "Interrupt for port %u, but apparently not enabled; per-user %p\n",
+	     "Interrupt for port %d, but apparently not enabled; per-user %p\n",
 	     evtchn->port, u);
 
+	disable_irq_nosync(irq);
 	evtchn->enabled = false;
 
 	spin_lock(&u->ring_prod_lock);
 
-	prod = READ_ONCE(u->ring_prod);
-	cons = READ_ONCE(u->ring_cons);
-
-	if ((prod - cons) < u->ring_size) {
-		*evtchn_ring_entry(u, prod) = evtchn->port;
-		smp_wmb(); /* Ensure ring contents visible */
-		WRITE_ONCE(u->ring_prod, prod + 1);
-		if (cons == prod) {
+	if ((u->ring_prod - u->ring_cons) < u->ring_size) {
+		*evtchn_ring_entry(u, u->ring_prod) = evtchn->port;
+		wmb(); /* Ensure ring contents visible */
+		if (u->ring_cons == u->ring_prod++) {
 			wake_up_interruptible(&u->evtchn_wait);
 			kill_fasync(&u->evtchn_async_queue,
 				    SIGIO, POLL_IN);
@@ -220,8 +210,8 @@ static ssize_t evtchn_read(struct file *file, char __user *buf,
 		if (u->ring_overflow)
 			goto unlock_out;
 
-		c = READ_ONCE(u->ring_cons);
-		p = READ_ONCE(u->ring_prod);
+		c = u->ring_cons;
+		p = u->ring_prod;
 		if (c != p)
 			break;
 
@@ -231,7 +221,7 @@ static ssize_t evtchn_read(struct file *file, char __user *buf,
 			return -EAGAIN;
 
 		rc = wait_event_interruptible(u->evtchn_wait,
-			READ_ONCE(u->ring_cons) != READ_ONCE(u->ring_prod));
+					      u->ring_cons != u->ring_prod);
 		if (rc)
 			return rc;
 	}
@@ -255,13 +245,13 @@ static ssize_t evtchn_read(struct file *file, char __user *buf,
 	}
 
 	rc = -EFAULT;
-	smp_rmb(); /* Ensure that we see the port before we copy it. */
+	rmb(); /* Ensure that we see the port before we copy it. */
 	if (copy_to_user(buf, evtchn_ring_entry(u, c), bytes1) ||
 	    ((bytes2 != 0) &&
 	     copy_to_user(&buf[bytes1], &u->ring[0], bytes2)))
 		goto unlock_out;
 
-	WRITE_ONCE(u->ring_cons, c + (bytes1 + bytes2) / sizeof(evtchn_port_t));
+	u->ring_cons += (bytes1 + bytes2) / sizeof(evtchn_port_t);
 	rc = bytes1 + bytes2;
 
  unlock_out:
@@ -296,13 +286,13 @@ static ssize_t evtchn_write(struct file *file, const char __user *buf,
 	mutex_lock(&u->bind_mutex);
 
 	for (i = 0; i < (count/sizeof(evtchn_port_t)); i++) {
-		evtchn_port_t port = kbuf[i];
+		unsigned port = kbuf[i];
 		struct user_evtchn *evtchn;
 
 		evtchn = find_evtchn(u, port);
 		if (evtchn && !evtchn->enabled) {
 			evtchn->enabled = true;
-			xen_irq_lateeoi(irq_from_evtchn(port), 0);
+			enable_irq(irq_from_evtchn(port));
 		}
 	}
 
@@ -371,10 +361,10 @@ static int evtchn_resize_ring(struct per_user_data *u)
 	return 0;
 }
 
-static int evtchn_bind_to_user(struct per_user_data *u, evtchn_port_t port,
-			       bool is_static)
+static int evtchn_bind_to_user(struct per_user_data *u, int port)
 {
 	struct user_evtchn *evtchn;
+	struct evtchn_close close;
 	int rc = 0;
 
 	/*
@@ -402,19 +392,19 @@ static int evtchn_bind_to_user(struct per_user_data *u, evtchn_port_t port,
 	if (rc < 0)
 		goto err;
 
-	rc = bind_evtchn_to_irqhandler_lateeoi(port, evtchn_interrupt, IRQF_SHARED,
-					       u->name, evtchn);
+	rc = bind_evtchn_to_irqhandler(port, evtchn_interrupt, 0,
+				       u->name, evtchn);
 	if (rc < 0)
 		goto err;
 
-	rc = evtchn_make_refcounted(port, is_static);
+	rc = evtchn_make_refcounted(port);
 	return rc;
 
 err:
 	/* bind failed, should close the port now */
-	if (!is_static)
-		xen_evtchn_close(port);
-
+	close.port = port;
+	if (HYPERVISOR_event_channel_op(EVTCHNOP_close, &close) != 0)
+		BUG();
 	del_evtchn(u, evtchn);
 	return rc;
 }
@@ -426,10 +416,39 @@ static void evtchn_unbind_from_user(struct per_user_data *u,
 
 	BUG_ON(irq < 0);
 
-	evtchn->unbinding = true;
 	unbind_from_irqhandler(irq, evtchn);
 
 	del_evtchn(u, evtchn);
+}
+
+static DEFINE_PER_CPU(int, bind_last_selected_cpu);
+
+static void evtchn_bind_interdom_next_vcpu(int evtchn)
+{
+	unsigned int selected_cpu, irq;
+	struct irq_desc *desc;
+	unsigned long flags;
+
+	irq = irq_from_evtchn(evtchn);
+	desc = irq_to_desc(irq);
+
+	if (!desc)
+		return;
+
+	raw_spin_lock_irqsave(&desc->lock, flags);
+	selected_cpu = this_cpu_read(bind_last_selected_cpu);
+	selected_cpu = cpumask_next_and(selected_cpu,
+			desc->irq_common_data.affinity, cpu_online_mask);
+
+	if (unlikely(selected_cpu >= nr_cpu_ids))
+		selected_cpu = cpumask_first_and(desc->irq_common_data.affinity,
+				cpu_online_mask);
+
+	this_cpu_write(bind_last_selected_cpu, selected_cpu);
+
+	/* unmask expects irqs to be disabled */
+	xen_set_affinity_evtchn(desc, selected_cpu);
+	raw_spin_unlock_irqrestore(&desc->lock, flags);
 }
 
 static long evtchn_ioctl(struct file *file,
@@ -462,7 +481,7 @@ static long evtchn_ioctl(struct file *file,
 		if (rc != 0)
 			break;
 
-		rc = evtchn_bind_to_user(u, bind_virq.port, false);
+		rc = evtchn_bind_to_user(u, bind_virq.port);
 		if (rc == 0)
 			rc = bind_virq.port;
 		break;
@@ -488,9 +507,11 @@ static long evtchn_ioctl(struct file *file,
 		if (rc != 0)
 			break;
 
-		rc = evtchn_bind_to_user(u, bind_interdomain.local_port, false);
-		if (rc == 0)
+		rc = evtchn_bind_to_user(u, bind_interdomain.local_port);
+		if (rc == 0) {
 			rc = bind_interdomain.local_port;
+			evtchn_bind_interdom_next_vcpu(rc);
+		}
 		break;
 	}
 
@@ -513,7 +534,7 @@ static long evtchn_ioctl(struct file *file,
 		if (rc != 0)
 			break;
 
-		rc = evtchn_bind_to_user(u, alloc_unbound.port, false);
+		rc = evtchn_bind_to_user(u, alloc_unbound.port);
 		if (rc == 0)
 			rc = alloc_unbound.port;
 		break;
@@ -542,23 +563,6 @@ static long evtchn_ioctl(struct file *file,
 		break;
 	}
 
-	case IOCTL_EVTCHN_BIND_STATIC: {
-		struct ioctl_evtchn_bind bind;
-		struct user_evtchn *evtchn;
-
-		rc = -EFAULT;
-		if (copy_from_user(&bind, uarg, sizeof(bind)))
-			break;
-
-		rc = -EISCONN;
-		evtchn = find_evtchn(u, bind.port);
-		if (evtchn)
-			break;
-
-		rc = evtchn_bind_to_user(u, bind.port, true);
-		break;
-	}
-
 	case IOCTL_EVTCHN_NOTIFY: {
 		struct ioctl_evtchn_notify notify;
 		struct user_evtchn *evtchn;
@@ -580,9 +584,7 @@ static long evtchn_ioctl(struct file *file,
 		/* Initialise the ring to empty. Clear errors. */
 		mutex_lock(&u->ring_cons_mutex);
 		spin_lock_irq(&u->ring_prod_lock);
-		WRITE_ONCE(u->ring_cons, 0);
-		WRITE_ONCE(u->ring_prod, 0);
-		u->ring_overflow = 0;
+		u->ring_cons = u->ring_prod = u->ring_overflow = 0;
 		spin_unlock_irq(&u->ring_prod_lock);
 		mutex_unlock(&u->ring_cons_mutex);
 		rc = 0;
@@ -625,7 +627,7 @@ static __poll_t evtchn_poll(struct file *file, poll_table *wait)
 	struct per_user_data *u = file->private_data;
 
 	poll_wait(file, &u->evtchn_wait, wait);
-	if (READ_ONCE(u->ring_cons) != READ_ONCE(u->ring_prod))
+	if (u->ring_cons != u->ring_prod)
 		mask |= EPOLLIN | EPOLLRDNORM;
 	if (u->ring_overflow)
 		mask = EPOLLERR;

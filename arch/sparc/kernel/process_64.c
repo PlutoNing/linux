@@ -9,6 +9,9 @@
 /*
  * This file handles the architecture-dependent parts of process handling..
  */
+
+#include <stdarg.h>
+
 #include <linux/errno.h>
 #include <linux/export.h>
 #include <linux/sched.h>
@@ -38,6 +41,7 @@
 #include <linux/uaccess.h>
 #include <asm/page.h>
 #include <asm/pgalloc.h>
+#include <asm/pgtable.h>
 #include <asm/processor.h>
 #include <asm/pstate.h>
 #include <asm/elf.h>
@@ -59,10 +63,11 @@ void arch_cpu_idle(void)
 {
 	if (tlb_type != hypervisor) {
 		touch_nmi_watchdog();
+		local_irq_enable();
 	} else {
 		unsigned long pstate;
 
-		raw_local_irq_enable();
+		local_irq_enable();
 
                 /* The sun4v sleeping code requires that we have PSTATE.IE cleared over
                  * the cpu sleep hypervisor call.
@@ -89,13 +94,11 @@ void arch_cpu_idle(void)
 			"wrpr %0, %%g0, %%pstate"
 			: "=&r" (pstate)
 			: "i" (PSTATE_IE));
-
-		raw_local_irq_disable();
 	}
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
-void __noreturn arch_cpu_idle_dead(void)
+void arch_cpu_idle_dead(void)
 {
 	sched_preempt_enable_no_resched();
 	cpu_play_dead();
@@ -107,13 +110,18 @@ static void show_regwindow32(struct pt_regs *regs)
 {
 	struct reg_window32 __user *rw;
 	struct reg_window32 r_w;
+	mm_segment_t old_fs;
 	
 	__asm__ __volatile__ ("flushw");
 	rw = compat_ptr((unsigned int)regs->u_regs[14]);
+	old_fs = get_fs();
+	set_fs (USER_DS);
 	if (copy_from_user (&r_w, rw, sizeof(r_w))) {
+		set_fs (old_fs);
 		return;
 	}
 
+	set_fs (old_fs);			
 	printk("l0: %08x l1: %08x l2: %08x l3: %08x "
 	       "l4: %08x l5: %08x l6: %08x l7: %08x\n",
 	       r_w.locals[0], r_w.locals[1], r_w.locals[2], r_w.locals[3],
@@ -132,6 +140,7 @@ static void show_regwindow(struct pt_regs *regs)
 	struct reg_window __user *rw;
 	struct reg_window *rwk;
 	struct reg_window r_w;
+	mm_segment_t old_fs;
 
 	if ((regs->tstate & TSTATE_PRIV) || !(test_thread_flag(TIF_32BIT))) {
 		__asm__ __volatile__ ("flushw");
@@ -140,10 +149,14 @@ static void show_regwindow(struct pt_regs *regs)
 		rwk = (struct reg_window *)
 			(regs->u_regs[14] + STACK_BIAS);
 		if (!(regs->tstate & TSTATE_PRIV)) {
+			old_fs = get_fs();
+			set_fs (USER_DS);
 			if (copy_from_user (&r_w, rw, sizeof(r_w))) {
+				set_fs (old_fs);
 				return;
 			}
 			rwk = &r_w;
+			set_fs (old_fs);			
 		}
 	} else {
 		show_regwindow32(regs);
@@ -182,7 +195,7 @@ void show_regs(struct pt_regs *regs)
 	       regs->u_regs[15]);
 	printk("RPC: <%pS>\n", (void *) regs->u_regs[15]);
 	show_regwindow(regs);
-	show_stack(current, (unsigned long *)regs->u_regs[UREG_FP], KERN_DEFAULT);
+	show_stack(current, (unsigned long *) regs->u_regs[UREG_FP]);
 }
 
 union global_cpu_snapshot global_cpu_snapshot[NR_CPUS];
@@ -236,7 +249,7 @@ static void __global_reg_poll(struct global_reg_snapshot *gp)
 	}
 }
 
-void arch_trigger_cpumask_backtrace(const cpumask_t *mask, int exclude_cpu)
+void arch_trigger_cpumask_backtrace(const cpumask_t *mask, bool exclude_self)
 {
 	struct thread_info *tp = current_thread_info();
 	struct pt_regs *regs = get_irq_regs();
@@ -252,7 +265,7 @@ void arch_trigger_cpumask_backtrace(const cpumask_t *mask, int exclude_cpu)
 
 	memset(global_cpu_snapshot, 0, sizeof(global_cpu_snapshot));
 
-	if (cpumask_test_cpu(this_cpu, mask) && this_cpu != exclude_cpu)
+	if (cpumask_test_cpu(this_cpu, mask) && !exclude_self)
 		__global_reg_self(tp, regs, this_cpu);
 
 	smp_fetch_global_regs();
@@ -260,7 +273,7 @@ void arch_trigger_cpumask_backtrace(const cpumask_t *mask, int exclude_cpu)
 	for_each_cpu(cpu, mask) {
 		struct global_reg_snapshot *gp;
 
-		if (cpu == exclude_cpu)
+		if (exclude_self && cpu == this_cpu)
 			continue;
 
 		gp = &global_cpu_snapshot[cpu].reg;
@@ -295,12 +308,12 @@ void arch_trigger_cpumask_backtrace(const cpumask_t *mask, int exclude_cpu)
 
 #ifdef CONFIG_MAGIC_SYSRQ
 
-static void sysrq_handle_globreg(u8 key)
+static void sysrq_handle_globreg(int key)
 {
 	trigger_all_cpu_backtrace();
 }
 
-static const struct sysrq_key_op sparc_globalreg_op = {
+static struct sysrq_key_op sparc_globalreg_op = {
 	.handler	= sysrq_handle_globreg,
 	.help_msg	= "global-regs(y)",
 	.action_msg	= "Show Global CPU Regs",
@@ -370,12 +383,12 @@ static void pmu_snapshot_all_cpus(void)
 	spin_unlock_irqrestore(&global_cpu_snapshot_lock, flags);
 }
 
-static void sysrq_handle_globpmu(u8 key)
+static void sysrq_handle_globpmu(int key)
 {
 	pmu_snapshot_all_cpus();
 }
 
-static const struct sysrq_key_op sparc_globalpmu_op = {
+static struct sysrq_key_op sparc_globalpmu_op = {
 	.handler	= sysrq_handle_globpmu,
 	.help_msg	= "global-pmu(x)",
 	.action_msg	= "Show Global PMU Regs",
@@ -446,7 +459,7 @@ static unsigned long clone_stackframe(unsigned long csp, unsigned long psp)
 
 	distance = fp - psp;
 	rval = (csp - distance);
-	if (raw_copy_in_user((void __user *)rval, (void __user *)psp, distance))
+	if (copy_in_user((void __user *) rval, (void __user *) psp, distance))
 		rval = 0;
 	else if (!stack_64bit) {
 		if (put_user(((u32)csp),
@@ -506,7 +519,7 @@ void synchronize_user_stack(void)
 
 static void stack_unaligned(unsigned long sp)
 {
-	force_sig_fault(SIGBUS, BUS_ADRALN, (void __user *) sp);
+	force_sig_fault(SIGBUS, BUS_ADRALN, (void __user *) sp, 0);
 }
 
 static const char uwfault32[] = KERN_INFO \
@@ -560,16 +573,48 @@ barf:
 	force_sig(SIGSEGV);
 }
 
+asmlinkage long sparc_do_fork(unsigned long clone_flags,
+			      unsigned long stack_start,
+			      struct pt_regs *regs,
+			      unsigned long stack_size)
+{
+	int __user *parent_tid_ptr, *child_tid_ptr;
+	unsigned long orig_i1 = regs->u_regs[UREG_I1];
+	long ret;
+
+#ifdef CONFIG_COMPAT
+	if (test_thread_flag(TIF_32BIT)) {
+		parent_tid_ptr = compat_ptr(regs->u_regs[UREG_I2]);
+		child_tid_ptr = compat_ptr(regs->u_regs[UREG_I4]);
+	} else
+#endif
+	{
+		parent_tid_ptr = (int __user *) regs->u_regs[UREG_I2];
+		child_tid_ptr = (int __user *) regs->u_regs[UREG_I4];
+	}
+
+	ret = do_fork(clone_flags, stack_start, stack_size,
+		      parent_tid_ptr, child_tid_ptr);
+
+	/* If we get an error and potentially restart the system
+	 * call, we're screwed because copy_thread() clobbered
+	 * the parent's %o1.  So detect that case and restore it
+	 * here.
+	 */
+	if ((unsigned long)ret >= -ERESTART_RESTARTBLOCK)
+		regs->u_regs[UREG_I1] = orig_i1;
+
+	return ret;
+}
+
 /* Copy a Sparc thread.  The fork() return value conventions
  * under SunOS are nothing short of bletcherous:
  * Parent -->  %o0 == childs  pid, %o1 == 0
  * Child  -->  %o0 == parents pid, %o1 == 1
  */
-int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
+int copy_thread(unsigned long clone_flags, unsigned long sp,
+		unsigned long arg, struct task_struct *p)
 {
-	unsigned long clone_flags = args->flags;
-	unsigned long sp = args->stack;
-	unsigned long tls = args->tls;
 	struct thread_info *t = task_thread_info(p);
 	struct pt_regs *regs = current_pt_regs();
 	struct sparc_stackf *parent_sf;
@@ -587,12 +632,13 @@ int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 				       sizeof(struct sparc_stackf));
 	t->fpsaved[0] = 0;
 
-	if (unlikely(args->fn)) {
+	if (unlikely(p->flags & PF_KTHREAD)) {
 		memset(child_trap_frame, 0, child_stack_sz);
 		__thread_flag_byte_ptr(t)[TI_FLAG_BYTE_CWP] = 
 			(current_pt_regs()->tstate + 1) & TSTATE_CWP;
-		t->kregs->u_regs[UREG_G1] = (unsigned long) args->fn;
-		t->kregs->u_regs[UREG_G2] = (unsigned long) args->fn_arg;
+		t->current_ds = ASI_P;
+		t->kregs->u_regs[UREG_G1] = sp; /* function */
+		t->kregs->u_regs[UREG_G2] = arg;
 		return 0;
 	}
 
@@ -605,6 +651,7 @@ int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 	t->kregs->u_regs[UREG_FP] = sp;
 	__thread_flag_byte_ptr(t)[TI_FLAG_BYTE_CWP] = 
 		(regs->tstate + 1) & TSTATE_CWP;
+	t->current_ds = ASI_AIUS;
 	if (sp != regs->u_regs[UREG_FP]) {
 		unsigned long csp;
 
@@ -624,7 +671,7 @@ int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 	regs->u_regs[UREG_I1] = 0;
 
 	if (clone_flags & CLONE_SETTLS)
-		t->kregs->u_regs[UREG_G7] = tls;
+		t->kregs->u_regs[UREG_G7] = regs->u_regs[UREG_I3];
 
 	return 0;
 }
@@ -654,13 +701,83 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 	return 0;
 }
 
-unsigned long __get_wchan(struct task_struct *task)
+typedef struct {
+	union {
+		unsigned int	pr_regs[32];
+		unsigned long	pr_dregs[16];
+	} pr_fr;
+	unsigned int __unused;
+	unsigned int	pr_fsr;
+	unsigned char	pr_qcnt;
+	unsigned char	pr_q_entrysize;
+	unsigned char	pr_en;
+	unsigned int	pr_q[64];
+} elf_fpregset_t32;
+
+/*
+ * fill in the fpu structure for a core dump.
+ */
+int dump_fpu (struct pt_regs * regs, elf_fpregset_t * fpregs)
+{
+	unsigned long *kfpregs = current_thread_info()->fpregs;
+	unsigned long fprs = current_thread_info()->fpsaved[0];
+
+	if (test_thread_flag(TIF_32BIT)) {
+		elf_fpregset_t32 *fpregs32 = (elf_fpregset_t32 *)fpregs;
+
+		if (fprs & FPRS_DL)
+			memcpy(&fpregs32->pr_fr.pr_regs[0], kfpregs,
+			       sizeof(unsigned int) * 32);
+		else
+			memset(&fpregs32->pr_fr.pr_regs[0], 0,
+			       sizeof(unsigned int) * 32);
+		fpregs32->pr_qcnt = 0;
+		fpregs32->pr_q_entrysize = 8;
+		memset(&fpregs32->pr_q[0], 0,
+		       (sizeof(unsigned int) * 64));
+		if (fprs & FPRS_FEF) {
+			fpregs32->pr_fsr = (unsigned int) current_thread_info()->xfsr[0];
+			fpregs32->pr_en = 1;
+		} else {
+			fpregs32->pr_fsr = 0;
+			fpregs32->pr_en = 0;
+		}
+	} else {
+		if(fprs & FPRS_DL)
+			memcpy(&fpregs->pr_regs[0], kfpregs,
+			       sizeof(unsigned int) * 32);
+		else
+			memset(&fpregs->pr_regs[0], 0,
+			       sizeof(unsigned int) * 32);
+		if(fprs & FPRS_DU)
+			memcpy(&fpregs->pr_regs[16], kfpregs+16,
+			       sizeof(unsigned int) * 32);
+		else
+			memset(&fpregs->pr_regs[16], 0,
+			       sizeof(unsigned int) * 32);
+		if(fprs & FPRS_FEF) {
+			fpregs->pr_fsr = current_thread_info()->xfsr[0];
+			fpregs->pr_gsr = current_thread_info()->gsr[0];
+		} else {
+			fpregs->pr_fsr = fpregs->pr_gsr = 0;
+		}
+		fpregs->pr_fprs = fprs;
+	}
+	return 1;
+}
+EXPORT_SYMBOL(dump_fpu);
+
+unsigned long get_wchan(struct task_struct *task)
 {
 	unsigned long pc, fp, bias = 0;
 	struct thread_info *tp;
 	struct reg_window *rw;
         unsigned long ret = 0;
 	int count = 0; 
+
+	if (!task || task == current ||
+            task->state == TASK_RUNNING)
+		goto out;
 
 	tp = task_thread_info(task);
 	bias = STACK_BIAS;

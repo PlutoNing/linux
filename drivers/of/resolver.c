@@ -321,11 +321,8 @@ int of_resolve_phandles(struct device_node *overlay)
 
 		err = of_property_read_string(tree_symbols,
 				prop->name, &refpath);
-		if (err) {
-			pr_err("node label '%s' not found in live devicetree symbols table\n",
-			       prop->name);
+		if (err)
 			goto out;
-		}
 
 		refnode = of_find_node_by_path(refpath);
 		if (!refnode) {

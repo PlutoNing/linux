@@ -16,10 +16,11 @@
 #include <linux/tcp.h>
 #include <linux/pkt_cls.h>
 #include <sys/socket.h>
-#include <bpf/bpf_helpers.h>
-#include <bpf/bpf_endian.h>
+#include "bpf_helpers.h"
+#include "bpf_endian.h"
 #include "test_iptunnel_common.h"
-#include "bpf_compiler.h"
+
+int _version SEC("version") = 1;
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -138,7 +139,7 @@ static __always_inline int handle_ipv4(struct xdp_md *xdp)
 	iph->ttl = 8;
 
 	next_iph = (__u16 *)iph;
-	__pragma_loop_unroll_full
+#pragma clang loop unroll(full)
 	for (i = 0; i < sizeof(*iph) >> 1; i++)
 		csum += *next_iph++;
 
@@ -209,7 +210,7 @@ static __always_inline int handle_ipv6(struct xdp_md *xdp)
 	return XDP_TX;
 }
 
-SEC("xdp")
+SEC("xdp_tx_iptunnel")
 int _xdp_tx_iptunnel(struct xdp_md *xdp)
 {
 	void *data_end = (void *)(long)xdp->data_end;

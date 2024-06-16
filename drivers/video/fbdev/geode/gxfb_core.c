@@ -15,7 +15,6 @@
  *
  * 16 MiB of framebuffer memory is assumed to be available.
  */
-#include <linux/aperture.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
@@ -266,13 +265,16 @@ static int gxfb_map_video_memory(struct fb_info *info, struct pci_dev *dev)
 	return 0;
 }
 
-static const struct fb_ops gxfb_ops = {
+static struct fb_ops gxfb_ops = {
 	.owner		= THIS_MODULE,
-	FB_DEFAULT_IOMEM_OPS,
 	.fb_check_var	= gxfb_check_var,
 	.fb_set_par	= gxfb_set_par,
 	.fb_setcolreg	= gxfb_setcolreg,
 	.fb_blank       = gxfb_blank,
+	/* No HW acceleration for now. */
+	.fb_fillrect	= cfb_fillrect,
+	.fb_copyarea	= cfb_copyarea,
+	.fb_imageblit	= cfb_imageblit,
 };
 
 static struct fb_info *gxfb_init_fbinfo(struct device *dev)
@@ -305,6 +307,7 @@ static struct fb_info *gxfb_init_fbinfo(struct device *dev)
 	info->var.vmode	= FB_VMODE_NONINTERLACED;
 
 	info->fbops		= &gxfb_ops;
+	info->flags		= FBINFO_DEFAULT;
 	info->node		= -1;
 
 	info->pseudo_palette	= (void *)par + sizeof(struct gxfb_par);
@@ -319,14 +322,17 @@ static struct fb_info *gxfb_init_fbinfo(struct device *dev)
 	return info;
 }
 
-static int __maybe_unused gxfb_suspend(struct device *dev)
+#ifdef CONFIG_PM
+static int gxfb_suspend(struct pci_dev *pdev, pm_message_t state)
 {
-	struct fb_info *info = dev_get_drvdata(dev);
+	struct fb_info *info = pci_get_drvdata(pdev);
 
-	console_lock();
-	gx_powerdown(info);
-	fb_set_suspend(info, 1);
-	console_unlock();
+	if (state.event == PM_EVENT_SUSPEND) {
+		console_lock();
+		gx_powerdown(info);
+		fb_set_suspend(info, 1);
+		console_unlock();
+	}
 
 	/* there's no point in setting PCI states; we emulate PCI, so
 	 * we don't end up getting power savings anyways */
@@ -334,9 +340,9 @@ static int __maybe_unused gxfb_suspend(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused gxfb_resume(struct device *dev)
+static int gxfb_resume(struct pci_dev *pdev)
 {
-	struct fb_info *info = dev_get_drvdata(dev);
+	struct fb_info *info = pci_get_drvdata(pdev);
 	int ret;
 
 	console_lock();
@@ -350,6 +356,7 @@ static int __maybe_unused gxfb_resume(struct device *dev)
 	console_unlock();
 	return 0;
 }
+#endif
 
 static int gxfb_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
@@ -360,10 +367,6 @@ static int gxfb_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	struct fb_videomode *modedb_ptr;
 	unsigned int modedb_size;
-
-	ret = aperture_remove_conflicting_pci_devices(pdev, "gxfb");
-	if (ret)
-		return ret;
 
 	info = gxfb_init_fbinfo(&pdev->dev);
 	if (!info)
@@ -464,23 +467,15 @@ static const struct pci_device_id gxfb_id_table[] = {
 
 MODULE_DEVICE_TABLE(pci, gxfb_id_table);
 
-static const struct dev_pm_ops gxfb_pm_ops = {
-#ifdef CONFIG_PM_SLEEP
-	.suspend	= gxfb_suspend,
-	.resume		= gxfb_resume,
-	.freeze		= NULL,
-	.thaw		= gxfb_resume,
-	.poweroff	= NULL,
-	.restore	= gxfb_resume,
-#endif
-};
-
 static struct pci_driver gxfb_driver = {
 	.name		= "gxfb",
 	.id_table	= gxfb_id_table,
 	.probe		= gxfb_probe,
 	.remove		= gxfb_remove,
-	.driver.pm	= &gxfb_pm_ops,
+#ifdef CONFIG_PM
+	.suspend	= gxfb_suspend,
+	.resume		= gxfb_resume,
+#endif
 };
 
 #ifndef MODULE
@@ -507,12 +502,7 @@ static int __init gxfb_init(void)
 {
 #ifndef MODULE
 	char *option = NULL;
-#endif
 
-	if (fb_modesetting_disabled("gxfb"))
-		return -ENODEV;
-
-#ifndef MODULE
 	if (fb_get_options("gxfb", &option))
 		return -ENODEV;
 

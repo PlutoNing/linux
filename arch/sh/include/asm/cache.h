@@ -8,19 +8,14 @@
  */
 #ifndef __ASM_SH_CACHE_H
 #define __ASM_SH_CACHE_H
+#ifdef __KERNEL__
 
 #include <linux/init.h>
 #include <cpu/cache.h>
 
 #define L1_CACHE_BYTES		(1 << L1_CACHE_SHIFT)
 
-/*
- * Some drivers need to perform DMA into kmalloc'ed buffers
- * and so we have to increase the kmalloc minalign for this.
- */
-#define ARCH_DMA_MINALIGN	L1_CACHE_BYTES
-
-#define __read_mostly __section(".data..read_mostly")
+#define __read_mostly __attribute__((__section__(".data..read_mostly")))
 
 #ifndef __ASSEMBLY__
 struct cache_info {
@@ -49,4 +44,5 @@ struct cache_info {
 	unsigned long flags;
 };
 #endif /* __ASSEMBLY__ */
+#endif /* __KERNEL__ */
 #endif /* __ASM_SH_CACHE_H */

@@ -186,7 +186,7 @@ struct asb100_data {
 	/* array of 2 pointers to subclients */
 	struct i2c_client *lm75[2];
 
-	bool valid;		/* true if following fields are valid */
+	char valid;		/* !=0 if following fields are valid */
 	u8 in[7];		/* Register value */
 	u8 in_max[7];		/* Register value */
 	u8 in_min[7];		/* Register value */
@@ -205,10 +205,11 @@ struct asb100_data {
 static int asb100_read_value(struct i2c_client *client, u16 reg);
 static void asb100_write_value(struct i2c_client *client, u16 reg, u16 val);
 
-static int asb100_probe(struct i2c_client *client);
+static int asb100_probe(struct i2c_client *client,
+			const struct i2c_device_id *id);
 static int asb100_detect(struct i2c_client *client,
 			 struct i2c_board_info *info);
-static void asb100_remove(struct i2c_client *client);
+static int asb100_remove(struct i2c_client *client);
 static struct asb100_data *asb100_update_device(struct device *dev);
 static void asb100_init_client(struct i2c_client *client);
 
@@ -769,12 +770,13 @@ static int asb100_detect(struct i2c_client *client,
 	if (val1 != 0x31 || val2 != 0x06)
 		return -ENODEV;
 
-	strscpy(info->type, "asb100", I2C_NAME_SIZE);
+	strlcpy(info->type, "asb100", I2C_NAME_SIZE);
 
 	return 0;
 }
 
-static int asb100_probe(struct i2c_client *client)
+static int asb100_probe(struct i2c_client *client,
+			const struct i2c_device_id *id)
 {
 	int err;
 	struct asb100_data *data;
@@ -822,7 +824,7 @@ ERROR3:
 	return err;
 }
 
-static void asb100_remove(struct i2c_client *client)
+static int asb100_remove(struct i2c_client *client)
 {
 	struct asb100_data *data = i2c_get_clientdata(client);
 
@@ -831,6 +833,8 @@ static void asb100_remove(struct i2c_client *client)
 
 	i2c_unregister_device(data->lm75[1]);
 	i2c_unregister_device(data->lm75[0]);
+
+	return 0;
 }
 
 /*
@@ -991,7 +995,7 @@ static struct asb100_data *asb100_update_device(struct device *dev)
 			(asb100_read_value(client, ASB100_REG_ALARM2) << 8);
 
 		data->last_updated = jiffies;
-		data->valid = true;
+		data->valid = 1;
 
 		dev_dbg(&client->dev, "... device update complete\n");
 	}

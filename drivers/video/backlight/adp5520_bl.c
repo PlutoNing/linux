@@ -65,7 +65,15 @@ static int adp5520_bl_set(struct backlight_device *bl, int brightness)
 
 static int adp5520_bl_update_status(struct backlight_device *bl)
 {
-	return adp5520_bl_set(bl, backlight_get_brightness(bl));
+	int brightness = bl->props.brightness;
+
+	if (bl->props.power != FB_BLANK_UNBLANK)
+		brightness = 0;
+
+	if (bl->props.fb_blank != FB_BLANK_UNBLANK)
+		brightness = 0;
+
+	return adp5520_bl_set(bl, brightness);
 }
 
 static int adp5520_bl_get_brightness(struct backlight_device *bl)
@@ -337,7 +345,7 @@ static int adp5520_bl_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void adp5520_bl_remove(struct platform_device *pdev)
+static int adp5520_bl_remove(struct platform_device *pdev)
 {
 	struct backlight_device *bl = platform_get_drvdata(pdev);
 	struct adp5520_bl *data = bl_get_data(bl);
@@ -347,6 +355,8 @@ static void adp5520_bl_remove(struct platform_device *pdev)
 	if (data->pdata->en_ambl_sens)
 		sysfs_remove_group(&bl->dev.kobj,
 				&adp5520_bl_attr_group);
+
+	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -375,7 +385,7 @@ static struct platform_driver adp5520_bl_driver = {
 		.pm	= &adp5520_bl_pm_ops,
 	},
 	.probe		= adp5520_bl_probe,
-	.remove_new	= adp5520_bl_remove,
+	.remove		= adp5520_bl_remove,
 };
 
 module_platform_driver(adp5520_bl_driver);

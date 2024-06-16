@@ -12,12 +12,15 @@
 #include <linux/file.h>
 #include <linux/module.h>
 #include <linux/slab.h>
-#include "vfio.h"
+
+#define DRIVER_VERSION  "0.1"
+#define DRIVER_AUTHOR   "Alex Williamson <alex.williamson@redhat.com>"
+#define DRIVER_DESC     "IRQFD support for VFIO bus drivers"
 
 static struct workqueue_struct *vfio_irqfd_cleanup_wq;
 static DEFINE_SPINLOCK(virqfd_lock);
 
-int __init vfio_virqfd_init(void)
+static int __init vfio_virqfd_init(void)
 {
 	vfio_irqfd_cleanup_wq =
 		create_singlethread_workqueue("vfio-irqfd-cleanup");
@@ -27,7 +30,7 @@ int __init vfio_virqfd_init(void)
 	return 0;
 }
 
-void vfio_virqfd_exit(void)
+static void __exit vfio_virqfd_exit(void)
 {
 	destroy_workqueue(vfio_irqfd_cleanup_wq);
 }
@@ -43,9 +46,6 @@ static int virqfd_wakeup(wait_queue_entry_t *wait, unsigned mode, int sync, void
 	__poll_t flags = key_to_poll(key);
 
 	if (flags & EPOLLIN) {
-		u64 cnt;
-		eventfd_ctx_do_read(virqfd->eventfd, &cnt);
-
 		/* An event has been signaled, call function */
 		if ((!virqfd->handler ||
 		     virqfd->handler(virqfd->opaque, virqfd->data)) &&
@@ -101,13 +101,6 @@ static void virqfd_inject(struct work_struct *work)
 		virqfd->thread(virqfd->opaque, virqfd->data);
 }
 
-static void virqfd_flush_inject(struct work_struct *work)
-{
-	struct virqfd *virqfd = container_of(work, struct virqfd, flush_inject);
-
-	flush_work(&virqfd->inject);
-}
-
 int vfio_virqfd_enable(void *opaque,
 		       int (*handler)(void *, void *),
 		       void (*thread)(void *, void *),
@@ -119,7 +112,7 @@ int vfio_virqfd_enable(void *opaque,
 	int ret = 0;
 	__poll_t events;
 
-	virqfd = kzalloc(sizeof(*virqfd), GFP_KERNEL_ACCOUNT);
+	virqfd = kzalloc(sizeof(*virqfd), GFP_KERNEL);
 	if (!virqfd)
 		return -ENOMEM;
 
@@ -131,7 +124,6 @@ int vfio_virqfd_enable(void *opaque,
 
 	INIT_WORK(&virqfd->shutdown, virqfd_shutdown);
 	INIT_WORK(&virqfd->inject, virqfd_inject);
-	INIT_WORK(&virqfd->flush_inject, virqfd_flush_inject);
 
 	irqfd = fdget(fd);
 	if (!irqfd.file) {
@@ -222,15 +214,10 @@ void vfio_virqfd_disable(struct virqfd **pvirqfd)
 }
 EXPORT_SYMBOL_GPL(vfio_virqfd_disable);
 
-void vfio_virqfd_flush_thread(struct virqfd **pvirqfd)
-{
-	unsigned long flags;
+module_init(vfio_virqfd_init);
+module_exit(vfio_virqfd_exit);
 
-	spin_lock_irqsave(&virqfd_lock, flags);
-	if (*pvirqfd && (*pvirqfd)->thread)
-		queue_work(vfio_irqfd_cleanup_wq, &(*pvirqfd)->flush_inject);
-	spin_unlock_irqrestore(&virqfd_lock, flags);
-
-	flush_workqueue(vfio_irqfd_cleanup_wq);
-}
-EXPORT_SYMBOL_GPL(vfio_virqfd_flush_thread);
+MODULE_VERSION(DRIVER_VERSION);
+MODULE_LICENSE("GPL v2");
+MODULE_AUTHOR(DRIVER_AUTHOR);
+MODULE_DESCRIPTION(DRIVER_DESC);

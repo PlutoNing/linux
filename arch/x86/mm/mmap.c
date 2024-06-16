@@ -18,9 +18,7 @@
 #include <linux/sched/signal.h>
 #include <linux/sched/mm.h>
 #include <linux/compat.h>
-#include <linux/elf-randomize.h>
 #include <asm/elf.h>
-#include <asm/io.h>
 
 #include "physaddr.h"
 
@@ -165,6 +163,8 @@ unsigned long get_mmap_base(int is_legacy)
 
 const char *arch_vma_name(struct vm_area_struct *vma)
 {
+	if (vma->vm_flags & VM_MPX)
+		return "[mpx]";
 	return NULL;
 }
 

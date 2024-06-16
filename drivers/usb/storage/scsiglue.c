@@ -135,8 +135,7 @@ static int slave_configure(struct scsi_device *sdev)
 	 * For such controllers we need to make sure the block layer sets
 	 * up bounce buffers in addressable memory.
 	 */
-	if (!hcd_uses_dma(bus_to_hcd(us->pusb_dev->bus)) ||
-			(bus_to_hcd(us->pusb_dev->bus)->localmem_pool != NULL))
+	if (!hcd_uses_dma(bus_to_hcd(us->pusb_dev->bus)))
 		blk_queue_bounce_limit(sdev->request_queue, BLK_BOUNCE_HIGH);
 
 	/*
@@ -178,13 +177,6 @@ static int slave_configure(struct scsi_device *sdev)
 		 * 192 bytes (that's what Windows uses).
 		 */
 		sdev->use_192_bytes_for_3f = 1;
-
-		/*
-		 * Some devices report generic values until the media has been
-		 * accessed. Force a READ(10) prior to querying device
-		 * characteristics.
-		 */
-		sdev->read_before_ms = 1;
 
 		/*
 		 * Some devices don't like MODE SENSE with page=0x3f,
@@ -305,7 +297,7 @@ static int slave_configure(struct scsi_device *sdev)
 	} else {
 
 		/*
-		 * Non-disk-type devices don't need to ignore any pages
+		 * Non-disk-type devices don't need to blacklist any pages
 		 * or to force 192-byte transfer lengths for MODE SENSE.
 		 * But they do need to use MODE SENSE(10).
 		 */
@@ -370,15 +362,15 @@ static int target_alloc(struct scsi_target *starget)
 
 /* queue a command */
 /* This is always called with scsi_lock(host) held */
-static int queuecommand_lck(struct scsi_cmnd *srb)
+static int queuecommand_lck(struct scsi_cmnd *srb,
+			void (*done)(struct scsi_cmnd *))
 {
-	void (*done)(struct scsi_cmnd *) = scsi_done;
 	struct us_data *us = host_to_us(srb->device->host);
 
 	/* check for state-transition errors */
 	if (us->srb != NULL) {
-		dev_err(&us->pusb_intf->dev,
-			"Error in %s: us->srb = %p\n", __func__, us->srb);
+		printk(KERN_ERR "usb-storage: Error in %s: us->srb = %p\n",
+			__func__, us->srb);
 		return SCSI_MLQUEUE_HOST_BUSY;
 	}
 
@@ -400,6 +392,7 @@ static int queuecommand_lck(struct scsi_cmnd *srb)
 	}
 
 	/* enqueue the command and wake up the control thread */
+	srb->scsi_done = done;
 	us->srb = srb;
 	complete(&us->cmnd_ready);
 
@@ -413,25 +406,22 @@ static DEF_SCSI_QCMD(queuecommand)
  ***********************************************************************/
 
 /* Command timeout and abort */
-static int command_abort_matching(struct us_data *us, struct scsi_cmnd *srb_match)
+static int command_abort(struct scsi_cmnd *srb)
 {
+	struct us_data *us = host_to_us(srb->device->host);
+
+	usb_stor_dbg(us, "%s called\n", __func__);
+
 	/*
 	 * us->srb together with the TIMED_OUT, RESETTING, and ABORTING
 	 * bits are protected by the host lock.
 	 */
 	scsi_lock(us_to_host(us));
 
-	/* is there any active pending command to abort ? */
-	if (!us->srb) {
+	/* Is this command still active? */
+	if (us->srb != srb) {
 		scsi_unlock(us_to_host(us));
 		usb_stor_dbg(us, "-- nothing to abort\n");
-		return SUCCESS;
-	}
-
-	/* Does the command match the passed srb if any ? */
-	if (srb_match && us->srb != srb_match) {
-		scsi_unlock(us_to_host(us));
-		usb_stor_dbg(us, "-- pending command mismatch\n");
 		return FAILED;
 	}
 
@@ -454,14 +444,6 @@ static int command_abort_matching(struct us_data *us, struct scsi_cmnd *srb_matc
 	return SUCCESS;
 }
 
-static int command_abort(struct scsi_cmnd *srb)
-{
-	struct us_data *us = host_to_us(srb->device->host);
-
-	usb_stor_dbg(us, "%s called\n", __func__);
-	return command_abort_matching(us, srb);
-}
-
 /*
  * This invokes the transport reset mechanism to reset the state of the
  * device
@@ -472,9 +454,6 @@ static int device_reset(struct scsi_cmnd *srb)
 	int result;
 
 	usb_stor_dbg(us, "%s called\n", __func__);
-
-	/* abort any pending command before reset */
-	command_abort_matching(us, NULL);
 
 	/* lock the device pointers and do the reset */
 	mutex_lock(&(us->dev_mutex));
@@ -608,12 +587,10 @@ static ssize_t max_sectors_store(struct device *dev, struct device_attribute *at
 }
 static DEVICE_ATTR_RW(max_sectors);
 
-static struct attribute *usb_sdev_attrs[] = {
-	&dev_attr_max_sectors.attr,
+static struct device_attribute *sysfs_device_attr_list[] = {
+	&dev_attr_max_sectors,
 	NULL,
 };
-
-ATTRIBUTE_GROUPS(usb_sdev);
 
 /*
  * this defines our host template, with which we'll allocate hosts
@@ -675,7 +652,7 @@ static const struct scsi_host_template usb_stor_host_template = {
 	.skip_settle_delay =		1,
 
 	/* sysfs device attributes */
-	.sdev_groups =			usb_sdev_groups,
+	.sdev_attrs =			sysfs_device_attr_list,
 
 	/* module management */
 	.module =			THIS_MODULE

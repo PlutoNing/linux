@@ -107,11 +107,8 @@
  * @ioarea: The resource created when we claimed the IO area.
  * @pdata: The platform data for this controller.
  * @cur_clk: The index of the current bus clock.
- * @ext_cd_irq: External card detect interrupt.
  * @clk_io: The clock for the internal bus interface.
- * @clk_rates: Clock frequencies.
  * @clk_bus: The clocks that are available for the SD/MMC bus clock.
- * @no_divider: No or non-standard internal clock divider.
  */
 struct sdhci_s3c {
 	struct sdhci_host	*host;
@@ -120,6 +117,7 @@ struct sdhci_s3c {
 	struct s3c_sdhci_platdata *pdata;
 	int			cur_clk;
 	int			ext_cd_irq;
+	int			ext_cd_gpio;
 
 	struct clk		*clk_io;
 	struct clk		*clk_bus[MAX_BUS_CLK];
@@ -129,9 +127,8 @@ struct sdhci_s3c {
 };
 
 /**
- * struct sdhci_s3c_drv_data - S3C SDHCI platform specific driver data
+ * struct sdhci_s3c_driver_data - S3C SDHCI platform specific driver data
  * @sdhci_quirks: sdhci host specific quirks.
- * @no_divider: no or non-standard internal clock divider.
  *
  * Specifies platform specific configuration of sdhci controller.
  * Note: A structure for driver specific platform data is used for future
@@ -436,12 +433,12 @@ static int sdhci_s3c_parse_dt(struct device *dev,
 	pdata->max_width = max_width;
 
 	/* get the card detection method */
-	if (of_property_read_bool(node, "broken-cd")) {
+	if (of_get_property(node, "broken-cd", NULL)) {
 		pdata->cd_type = S3C_SDHCI_CD_NONE;
 		return 0;
 	}
 
-	if (of_property_read_bool(node, "non-removable")) {
+	if (of_get_property(node, "non-removable", NULL)) {
 		pdata->cd_type = S3C_SDHCI_CD_PERMANENT;
 		return 0;
 	}
@@ -461,24 +458,30 @@ static int sdhci_s3c_parse_dt(struct device *dev,
 }
 #endif
 
-static inline const struct sdhci_s3c_drv_data *sdhci_s3c_get_driver_data(
+static const struct of_device_id sdhci_s3c_dt_match[];
+
+static inline struct sdhci_s3c_drv_data *sdhci_s3c_get_driver_data(
 			struct platform_device *pdev)
 {
 #ifdef CONFIG_OF
-	if (pdev->dev.of_node)
-		return of_device_get_match_data(&pdev->dev);
+	if (pdev->dev.of_node) {
+		const struct of_device_id *match;
+		match = of_match_node(sdhci_s3c_dt_match, pdev->dev.of_node);
+		return (struct sdhci_s3c_drv_data *)match->data;
+	}
 #endif
-	return (const struct sdhci_s3c_drv_data *)
+	return (struct sdhci_s3c_drv_data *)
 			platform_get_device_id(pdev)->driver_data;
 }
 
 static int sdhci_s3c_probe(struct platform_device *pdev)
 {
 	struct s3c_sdhci_platdata *pdata;
-	const struct sdhci_s3c_drv_data *drv_data;
+	struct sdhci_s3c_drv_data *drv_data;
 	struct device *dev = &pdev->dev;
 	struct sdhci_host *host;
 	struct sdhci_s3c *sc;
+	struct resource *res;
 	int ret, irq, ptr, clks;
 
 	if (!pdev->dev.platform_data && !pdev->dev.of_node) {
@@ -509,6 +512,7 @@ static int sdhci_s3c_probe(struct platform_device *pdev)
 			goto err_pdata_io_clk;
 	} else {
 		memcpy(pdata, pdev->dev.platform_data, sizeof(*pdata));
+		sc->ext_cd_gpio = -1; /* invalid gpio number */
 	}
 
 	drv_data = sdhci_s3c_get_driver_data(pdev);
@@ -551,7 +555,8 @@ static int sdhci_s3c_probe(struct platform_device *pdev)
 		goto err_no_busclks;
 	}
 
-	host->ioaddr = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	host->ioaddr = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(host->ioaddr)) {
 		ret = PTR_ERR(host->ioaddr);
 		goto err_req_regs;
@@ -604,7 +609,7 @@ static int sdhci_s3c_probe(struct platform_device *pdev)
 	switch (pdata->max_width) {
 	case 8:
 		host->mmc->caps |= MMC_CAP_8_BIT_DATA;
-		fallthrough;
+		/* Fall through */
 	case 4:
 		host->mmc->caps |= MMC_CAP_4_BIT_DATA;
 		break;
@@ -667,7 +672,7 @@ static int sdhci_s3c_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static void sdhci_s3c_remove(struct platform_device *pdev)
+static int sdhci_s3c_remove(struct platform_device *pdev)
 {
 	struct sdhci_host *host =  platform_get_drvdata(pdev);
 	struct sdhci_s3c *sc = sdhci_priv(host);
@@ -687,6 +692,8 @@ static void sdhci_s3c_remove(struct platform_device *pdev)
 	clk_disable_unprepare(sc->clk_io);
 
 	sdhci_free_host(host);
+
+	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -758,7 +765,7 @@ static const struct platform_device_id sdhci_s3c_driver_ids[] = {
 MODULE_DEVICE_TABLE(platform, sdhci_s3c_driver_ids);
 
 #ifdef CONFIG_OF
-static const struct sdhci_s3c_drv_data exynos4_sdhci_drv_data = {
+static struct sdhci_s3c_drv_data exynos4_sdhci_drv_data = {
 	.no_divider = true,
 };
 
@@ -773,11 +780,10 @@ MODULE_DEVICE_TABLE(of, sdhci_s3c_dt_match);
 
 static struct platform_driver sdhci_s3c_driver = {
 	.probe		= sdhci_s3c_probe,
-	.remove_new	= sdhci_s3c_remove,
+	.remove		= sdhci_s3c_remove,
 	.id_table	= sdhci_s3c_driver_ids,
 	.driver		= {
 		.name	= "s3c-sdhci",
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_match_ptr(sdhci_s3c_dt_match),
 		.pm	= &sdhci_s3c_pmops,
 	},
@@ -788,3 +794,4 @@ module_platform_driver(sdhci_s3c_driver);
 MODULE_DESCRIPTION("Samsung SDHCI (HSMMC) glue");
 MODULE_AUTHOR("Ben Dooks, <ben@simtec.co.uk>");
 MODULE_LICENSE("GPL v2");
+MODULE_ALIAS("platform:s3c-sdhci");

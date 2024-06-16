@@ -413,7 +413,7 @@ static int ADT7462_REG_VOLT(struct adt7462_data *data, int which)
 			return 0x95;
 		break;
 	}
-	return 0;
+	return -ENODEV;
 }
 
 /* Provide labels for sysfs */
@@ -435,7 +435,7 @@ static const char *voltage_label(struct adt7462_data *data, int which)
 		case 3:
 			return "+1.5V";
 		}
-		fallthrough;
+		/* fall through */
 	case 2:
 		if (!(data->pin_cfg[1] & ADT7462_PIN22_INPUT))
 			return "+12V3";
@@ -493,7 +493,7 @@ static const char *voltage_label(struct adt7462_data *data, int which)
 		case 3:
 			return "+1.5";
 		}
-		fallthrough;
+		/* fall through */
 	case 11:
 		if (data->pin_cfg[3] >> ADT7462_PIN28_SHIFT ==
 					ADT7462_PIN28_VOLT &&
@@ -531,7 +531,7 @@ static int voltage_multiplier(struct adt7462_data *data, int which)
 		case 3:
 			return 7800;
 		}
-		fallthrough;
+		/* fall through */
 	case 2:
 		if (!(data->pin_cfg[1] & ADT7462_PIN22_INPUT))
 			return 62500;
@@ -589,7 +589,7 @@ static int voltage_multiplier(struct adt7462_data *data, int which)
 		case 3:
 			return 7800;
 		}
-		fallthrough;
+		/* fall through */
 	case 11:
 	case 12:
 		if (data->pin_cfg[3] >> ADT7462_PIN28_SHIFT ==
@@ -1782,12 +1782,13 @@ static int adt7462_detect(struct i2c_client *client,
 	if (revision != ADT7462_REVISION)
 		return -ENODEV;
 
-	strscpy(info->type, "adt7462", I2C_NAME_SIZE);
+	strlcpy(info->type, "adt7462", I2C_NAME_SIZE);
 
 	return 0;
 }
 
-static int adt7462_probe(struct i2c_client *client)
+static int adt7462_probe(struct i2c_client *client,
+			 const struct i2c_device_id *id)
 {
 	struct device *dev = &client->dev;
 	struct adt7462_data *data;

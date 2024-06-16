@@ -13,12 +13,11 @@
 #include <linux/pci.h>
 #include <linux/string.h>
 #include <linux/init.h>
-#include <linux/pgtable.h>
-#include <linux/of_address.h>
-#include <linux/of_fdt.h>
 
 #include <asm/io.h>
+#include <asm/pgtable.h>
 #include <asm/irq.h>
+#include <asm/prom.h>
 #include <asm/machdep.h>
 #include <asm/pci-bridge.h>
 #include <asm/iommu.h>
@@ -43,7 +42,7 @@ static inline int config_access_valid(struct pci_dn *dn, int where)
 	return 0;
 }
 
-int rtas_pci_dn_read_config(struct pci_dn *pdn, int where, int size, u32 *val)
+int rtas_read_config(struct pci_dn *pdn, int where, int size, u32 *val)
 {
 	int returnval = -1;
 	unsigned long buid, addr;
@@ -87,7 +86,7 @@ static int rtas_pci_read_config(struct pci_bus *bus,
 	pdn = pci_get_pdn_by_devfn(bus, devfn);
 
 	/* Validity of pdn is checked in here */
-	ret = rtas_pci_dn_read_config(pdn, where, size, val);
+	ret = rtas_read_config(pdn, where, size, val);
 	if (*val == EEH_IO_ERROR_VALUE(size) &&
 	    eeh_dev_check_failure(pdn_to_eeh_dev(pdn)))
 		return PCIBIOS_DEVICE_NOT_FOUND;
@@ -95,7 +94,7 @@ static int rtas_pci_read_config(struct pci_bus *bus,
 	return ret;
 }
 
-int rtas_pci_dn_write_config(struct pci_dn *pdn, int where, int size, u32 val)
+int rtas_write_config(struct pci_dn *pdn, int where, int size, u32 val)
 {
 	unsigned long buid, addr;
 	int ret;
@@ -134,7 +133,7 @@ static int rtas_pci_write_config(struct pci_bus *bus,
 	pdn = pci_get_pdn_by_devfn(bus, devfn);
 
 	/* Validity of pdn is checked in here. */
-	return rtas_pci_dn_write_config(pdn, where, size, val);
+	return rtas_write_config(pdn, where, size, val);
 }
 
 static struct pci_ops rtas_pci_ops = {
@@ -191,10 +190,10 @@ static void python_countermeasures(struct device_node *dev)
 
 void __init init_pci_config_tokens(void)
 {
-	read_pci_config = rtas_function_token(RTAS_FN_READ_PCI_CONFIG);
-	write_pci_config = rtas_function_token(RTAS_FN_WRITE_PCI_CONFIG);
-	ibm_read_pci_config = rtas_function_token(RTAS_FN_IBM_READ_PCI_CONFIG);
-	ibm_write_pci_config = rtas_function_token(RTAS_FN_IBM_WRITE_PCI_CONFIG);
+	read_pci_config = rtas_token("read-pci-config");
+	write_pci_config = rtas_token("write-pci-config");
+	ibm_read_pci_config = rtas_token("ibm,read-pci-config");
+	ibm_write_pci_config = rtas_token("ibm,write-pci-config");
 }
 
 unsigned long get_phb_buid(struct device_node *phb)

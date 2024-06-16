@@ -25,7 +25,7 @@
 #include <linux/compiler.h>
 #include <linux/syscalls.h>
 #include <linux/uaccess.h>
-#include <linux/resume_user_mode.h>
+#include <linux/tracehook.h>
 
 #include <asm/abi.h>
 #include <asm/asm.h>
@@ -35,10 +35,10 @@
 #include <asm/sim.h>
 #include <asm/ucontext.h>
 #include <asm/cpu-features.h>
+#include <asm/war.h>
 #include <asm/dsp.h>
 #include <asm/inst.h>
 #include <asm/msa.h>
-#include <asm/syscalls.h>
 
 #include "signal-common.h"
 
@@ -52,7 +52,7 @@ struct sigframe {
 	/* Matches struct ucontext from its uc_mcontext field onwards */
 	struct sigcontext sf_sc;
 	sigset_t sf_mask;
-	unsigned long long sf_extcontext[];
+	unsigned long long sf_extcontext[0];
 };
 
 struct rt_sigframe {
@@ -545,12 +545,6 @@ int restore_sigcontext(struct pt_regs *regs, struct sigcontext __user *sc)
 	return err ?: protected_restore_fp_context(sc);
 }
 
-#ifdef CONFIG_WAR_ICACHE_REFILLS
-#define SIGMASK		~(cpu_icache_line_size()-1)
-#else
-#define SIGMASK		ALMASK
-#endif
-
 void __user *get_sigframe(struct ksignal *ksig, struct pt_regs *regs,
 			  size_t frame_size)
 {
@@ -563,14 +557,7 @@ void __user *get_sigframe(struct ksignal *ksig, struct pt_regs *regs,
 	sp = regs->regs[29];
 
 	/*
-	 * If we are on the alternate signal stack and would overflow it, don't.
-	 * Return an always-bogus address instead so we will die with SIGSEGV.
-	 */
-	if (on_sig_stack(sp) && !likely(on_sig_stack(sp - frame_size)))
-		return (void __user __force *)(-1UL);
-
-	/*
-	 * FPU emulator may have its own trampoline active just
+	 * FPU emulator may have it's own trampoline active just
 	 * above the user stack, 16-bytes before the next lowest
 	 * 16 byte boundary.  Try to avoid trashing it.
 	 */
@@ -578,7 +565,7 @@ void __user *get_sigframe(struct ksignal *ksig, struct pt_regs *regs,
 
 	sp = sigsp(sp, ksig);
 
-	return (void __user *)((sp - frame_size) & SIGMASK);
+	return (void __user *)((sp - frame_size) & (ICACHE_REFILLS_WORKAROUND_WAR ? ~(cpu_icache_line_size()-1) : ALMASK));
 }
 
 /*
@@ -754,25 +741,23 @@ static int setup_rt_frame(void *sig_return, struct ksignal *ksig,
 			  struct pt_regs *regs, sigset_t *set)
 {
 	struct rt_sigframe __user *frame;
+	int err = 0;
 
 	frame = get_sigframe(ksig, regs, sizeof(*frame));
 	if (!access_ok(frame, sizeof (*frame)))
 		return -EFAULT;
 
 	/* Create siginfo.  */
-	if (copy_siginfo_to_user(&frame->rs_info, &ksig->info))
-		return -EFAULT;
+	err |= copy_siginfo_to_user(&frame->rs_info, &ksig->info);
 
 	/* Create the ucontext.	 */
-	if (__put_user(0, &frame->rs_uc.uc_flags))
-		return -EFAULT;
-	if (__put_user(NULL, &frame->rs_uc.uc_link))
-		return -EFAULT;
-	if (__save_altstack(&frame->rs_uc.uc_stack, regs->regs[29]))
-		return -EFAULT;
-	if (setup_sigcontext(regs, &frame->rs_uc.uc_mcontext))
-		return -EFAULT;
-	if (__copy_to_user(&frame->rs_uc.uc_sigmask, set, sizeof(*set)))
+	err |= __put_user(0, &frame->rs_uc.uc_flags);
+	err |= __put_user(NULL, &frame->rs_uc.uc_link);
+	err |= __save_altstack(&frame->rs_uc.uc_stack, regs->regs[29]);
+	err |= setup_sigcontext(regs, &frame->rs_uc.uc_mcontext);
+	err |= __copy_to_user(&frame->rs_uc.uc_sigmask, set, sizeof(*set));
+
+	if (err)
 		return -EFAULT;
 
 	/*
@@ -839,7 +824,7 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 				regs->regs[2] = EINTR;
 				break;
 			}
-			fallthrough;
+		/* fallthrough */
 		case ERESTARTNOINTR:
 			regs->regs[7] = regs->regs[26];
 			regs->regs[2] = regs->regs[0];
@@ -912,11 +897,14 @@ asmlinkage void do_notify_resume(struct pt_regs *regs, void *unused,
 		uprobe_notify_resume(regs);
 
 	/* deal with pending signal delivery */
-	if (thread_info_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
+	if (thread_info_flags & _TIF_SIGPENDING)
 		do_signal(regs);
 
-	if (thread_info_flags & _TIF_NOTIFY_RESUME)
-		resume_user_mode_work(regs);
+	if (thread_info_flags & _TIF_NOTIFY_RESUME) {
+		clear_thread_flag(TIF_NOTIFY_RESUME);
+		tracehook_notify_resume(regs);
+		rseq_handle_notify_resume(NULL, regs);
+	}
 
 	user_enter();
 }

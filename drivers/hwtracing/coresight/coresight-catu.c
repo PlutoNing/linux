@@ -358,22 +358,33 @@ static int catu_alloc_etr_buf(struct tmc_drvdata *tmc_drvdata,
 	return 0;
 }
 
-static const struct etr_buf_operations etr_catu_buf_ops = {
+const struct etr_buf_operations etr_catu_buf_ops = {
 	.alloc = catu_alloc_etr_buf,
 	.free = catu_free_etr_buf,
 	.sync = catu_sync_etr_buf,
 	.get_data = catu_get_data_etr_buf,
 };
 
+coresight_simple_reg32(struct catu_drvdata, devid, CORESIGHT_DEVID);
+coresight_simple_reg32(struct catu_drvdata, control, CATU_CONTROL);
+coresight_simple_reg32(struct catu_drvdata, status, CATU_STATUS);
+coresight_simple_reg32(struct catu_drvdata, mode, CATU_MODE);
+coresight_simple_reg32(struct catu_drvdata, axictrl, CATU_AXICTRL);
+coresight_simple_reg32(struct catu_drvdata, irqen, CATU_IRQEN);
+coresight_simple_reg64(struct catu_drvdata, sladdr,
+		       CATU_SLADDRLO, CATU_SLADDRHI);
+coresight_simple_reg64(struct catu_drvdata, inaddr,
+		       CATU_INADDRLO, CATU_INADDRHI);
+
 static struct attribute *catu_mgmt_attrs[] = {
-	coresight_simple_reg32(devid, CORESIGHT_DEVID),
-	coresight_simple_reg32(control, CATU_CONTROL),
-	coresight_simple_reg32(status, CATU_STATUS),
-	coresight_simple_reg32(mode, CATU_MODE),
-	coresight_simple_reg32(axictrl, CATU_AXICTRL),
-	coresight_simple_reg32(irqen, CATU_IRQEN),
-	coresight_simple_reg64(sladdr, CATU_SLADDRLO, CATU_SLADDRHI),
-	coresight_simple_reg64(inaddr, CATU_INADDRLO, CATU_INADDRHI),
+	&dev_attr_devid.attr,
+	&dev_attr_control.attr,
+	&dev_attr_status.attr,
+	&dev_attr_mode.attr,
+	&dev_attr_axictrl.attr,
+	&dev_attr_irqen.attr,
+	&dev_attr_sladdr.attr,
+	&dev_attr_inaddr.attr,
 	NULL,
 };
 
@@ -390,23 +401,16 @@ static const struct attribute_group *catu_groups[] = {
 
 static inline int catu_wait_for_ready(struct catu_drvdata *drvdata)
 {
-	struct csdev_access *csa = &drvdata->csdev->access;
-
-	return coresight_timeout(csa, CATU_STATUS, CATU_STATUS_READY, 1);
+	return coresight_timeout(drvdata->base,
+				 CATU_STATUS, CATU_STATUS_READY, 1);
 }
 
-static int catu_enable_hw(struct catu_drvdata *drvdata, enum cs_mode cs_mode,
-			  void *data)
+static int catu_enable_hw(struct catu_drvdata *drvdata, void *data)
 {
 	int rc;
 	u32 control, mode;
-	struct etr_buf *etr_buf = NULL;
+	struct etr_buf *etr_buf = data;
 	struct device *dev = &drvdata->csdev->dev;
-	struct coresight_device *csdev = drvdata->csdev;
-	struct coresight_device *etrdev;
-	union coresight_dev_subtype etr_subtype = {
-		.sink_subtype = CORESIGHT_DEV_SUBTYPE_SINK_SYSMEM
-	};
 
 	if (catu_wait_for_ready(drvdata))
 		dev_warn(dev, "Timeout while waiting for READY\n");
@@ -417,17 +421,10 @@ static int catu_enable_hw(struct catu_drvdata *drvdata, enum cs_mode cs_mode,
 		return -EBUSY;
 	}
 
-	rc = coresight_claim_device_unlocked(csdev);
+	rc = coresight_claim_device_unlocked(drvdata->base);
 	if (rc)
 		return rc;
 
-	etrdev = coresight_find_input_type(
-		csdev->pdata, CORESIGHT_DEV_TYPE_SINK, etr_subtype);
-	if (etrdev) {
-		etr_buf = tmc_etr_get_buffer(etrdev, cs_mode, data);
-		if (IS_ERR(etr_buf))
-			return PTR_ERR(etr_buf);
-	}
 	control |= BIT(CATU_CONTROL_ENABLE);
 
 	if (etr_buf && etr_buf->mode == ETR_MODE_CATU) {
@@ -453,14 +450,13 @@ static int catu_enable_hw(struct catu_drvdata *drvdata, enum cs_mode cs_mode,
 	return 0;
 }
 
-static int catu_enable(struct coresight_device *csdev, enum cs_mode mode,
-		       void *data)
+static int catu_enable(struct coresight_device *csdev, void *data)
 {
 	int rc;
 	struct catu_drvdata *catu_drvdata = csdev_to_catu_drvdata(csdev);
 
 	CS_UNLOCK(catu_drvdata->base);
-	rc = catu_enable_hw(catu_drvdata, mode, data);
+	rc = catu_enable_hw(catu_drvdata, data);
 	CS_LOCK(catu_drvdata->base);
 	return rc;
 }
@@ -469,10 +465,9 @@ static int catu_disable_hw(struct catu_drvdata *drvdata)
 {
 	int rc = 0;
 	struct device *dev = &drvdata->csdev->dev;
-	struct coresight_device *csdev = drvdata->csdev;
 
 	catu_write_control(drvdata, 0);
-	coresight_disclaim_device_unlocked(csdev);
+	coresight_disclaim_device_unlocked(drvdata->base);
 	if (catu_wait_for_ready(drvdata)) {
 		dev_info(dev, "Timeout while waiting for READY\n");
 		rc = -EAGAIN;
@@ -556,7 +551,6 @@ static int catu_probe(struct amba_device *adev, const struct amba_id *id)
 	dev->platform_data = pdata;
 
 	drvdata->base = base;
-	catu_desc.access = CSDEV_ACCESS_IOMEM(base);
 	catu_desc.pdata = pdata;
 	catu_desc.dev = dev;
 	catu_desc.groups = catu_groups;
@@ -573,19 +567,13 @@ out:
 	return ret;
 }
 
-static void catu_remove(struct amba_device *adev)
-{
-	struct catu_drvdata *drvdata = dev_get_drvdata(&adev->dev);
-
-	coresight_unregister(drvdata->csdev);
-}
-
 static struct amba_id catu_ids[] = {
-	CS_AMBA_ID(0x000bb9ee),
+	{
+		.id	= 0x000bb9ee,
+		.mask	= 0x000fffff,
+	},
 	{},
 };
-
-MODULE_DEVICE_TABLE(amba, catu_ids);
 
 static struct amba_driver catu_driver = {
 	.drv = {
@@ -594,30 +582,7 @@ static struct amba_driver catu_driver = {
 		.suppress_bind_attrs	= true,
 	},
 	.probe				= catu_probe,
-	.remove				= catu_remove,
 	.id_table			= catu_ids,
 };
 
-static int __init catu_init(void)
-{
-	int ret;
-
-	ret = amba_driver_register(&catu_driver);
-	if (ret)
-		pr_info("Error registering catu driver\n");
-	tmc_etr_set_catu_ops(&etr_catu_buf_ops);
-	return ret;
-}
-
-static void __exit catu_exit(void)
-{
-	tmc_etr_remove_catu_ops();
-	amba_driver_unregister(&catu_driver);
-}
-
-module_init(catu_init);
-module_exit(catu_exit);
-
-MODULE_AUTHOR("Suzuki K Poulose <suzuki.poulose@arm.com>");
-MODULE_DESCRIPTION("Arm CoreSight Address Translation Unit (CATU) Driver");
-MODULE_LICENSE("GPL v2");
+builtin_amba_driver(catu_driver);

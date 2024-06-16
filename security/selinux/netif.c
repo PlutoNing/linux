@@ -36,6 +36,7 @@ struct sel_netif {
 };
 
 static u32 sel_netif_total;
+static LIST_HEAD(sel_netif_list);
 static DEFINE_SPINLOCK(sel_netif_lock);
 static struct list_head sel_netif_hash[SEL_NETIF_HASH_SIZE];
 
@@ -67,7 +68,7 @@ static inline u32 sel_netif_hashfn(const struct net *ns, int ifindex)
 static inline struct sel_netif *sel_netif_find(const struct net *ns,
 					       int ifindex)
 {
-	u32 idx = sel_netif_hashfn(ns, ifindex);
+	int idx = sel_netif_hashfn(ns, ifindex);
 	struct sel_netif *netif;
 
 	list_for_each_entry_rcu(netif, &sel_netif_hash[idx], list)
@@ -89,7 +90,7 @@ static inline struct sel_netif *sel_netif_find(const struct net *ns,
  */
 static int sel_netif_insert(struct sel_netif *netif)
 {
-	u32 idx;
+	int idx;
 
 	if (sel_netif_total >= SEL_NETIF_HASH_MAX)
 		return -ENOSPC;
@@ -123,7 +124,7 @@ static void sel_netif_destroy(struct sel_netif *netif)
  * @sid: interface SID
  *
  * Description:
- * This function determines the SID of a network interface by querying the
+ * This function determines the SID of a network interface by quering the
  * security policy.  The result is added to the network interface table to
  * speedup future queries.  Returns zero on success, negative values on
  * failure.
@@ -153,7 +154,7 @@ static int sel_netif_sid_slow(struct net *ns, int ifindex, u32 *sid)
 		goto out;
 	}
 
-	ret = security_netif_sid(dev->name, sid);
+	ret = security_netif_sid(&selinux_state, dev->name, sid);
 	if (ret != 0)
 		goto out;
 	new = kzalloc(sizeof(*new), GFP_ATOMIC);
@@ -265,7 +266,7 @@ static __init int sel_netif_init(void)
 {
 	int i;
 
-	if (!selinux_enabled_boot)
+	if (!selinux_enabled)
 		return 0;
 
 	for (i = 0; i < SEL_NETIF_HASH_SIZE; i++)

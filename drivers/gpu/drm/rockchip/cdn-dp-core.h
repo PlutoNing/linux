@@ -7,10 +7,9 @@
 #ifndef _CDN_DP_CORE_H
 #define _CDN_DP_CORE_H
 
-#include <drm/display/drm_dp_helper.h>
+#include <drm/drm_dp_helper.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
-#include <sound/hdmi-codec.h>
 
 #include "rockchip_drm_drv.h"
 
@@ -66,7 +65,7 @@ struct cdn_dp_device {
 	struct device *dev;
 	struct drm_device *drm_dev;
 	struct drm_connector connector;
-	struct rockchip_encoder encoder;
+	struct drm_encoder encoder;
 	struct drm_display_mode mode;
 	struct platform_device *audio_pdev;
 	struct work_struct event_work;
@@ -93,17 +92,13 @@ struct cdn_dp_device {
 	struct reset_control *core_rst;
 	struct audio_info audio_info;
 	struct video_info video_info;
+	struct drm_dp_link link;
 	struct cdn_dp_port *port[MAX_PHY];
 	u8 ports;
-	u8 max_lanes;
-	unsigned int max_rate;
 	u8 lanes;
 	int active_port;
 
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 	bool sink_has_audio;
-
-	hdmi_codec_plugged_cb plugged_cb;
-	struct device *codec_dev;
 };
 #endif  /* _CDN_DP_CORE_H */

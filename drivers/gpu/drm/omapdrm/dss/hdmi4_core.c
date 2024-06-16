@@ -2,7 +2,7 @@
 /*
  * HDMI TI81xx, TI38xx, TI OMAP4 etc IP driver Library
  *
- * Copyright (C) 2010-2011 Texas Instruments Incorporated - https://www.ti.com/
+ * Copyright (C) 2010-2011 Texas Instruments Incorporated - http://www.ti.com/
  * Authors: Yong Zhi
  *	Mythri pk <mythripk@ti.com>
  */
@@ -32,7 +32,7 @@ static inline void __iomem *hdmi_av_base(struct hdmi_core_data *core)
 	return core->base + HDMI_CORE_AV;
 }
 
-int hdmi4_core_ddc_init(struct hdmi_core_data *core)
+static int hdmi_core_ddc_init(struct hdmi_core_data *core)
 {
 	void __iomem *base = core->base;
 
@@ -74,11 +74,13 @@ int hdmi4_core_ddc_init(struct hdmi_core_data *core)
 	return 0;
 }
 
-int hdmi4_core_ddc_read(void *data, u8 *buf, unsigned int block, size_t len)
+static int hdmi_core_ddc_edid(struct hdmi_core_data *core,
+		u8 *pedid, int ext)
 {
-	struct hdmi_core_data *core = data;
 	void __iomem *base = core->base;
 	u32 i;
+	char checksum;
+	u32 offset = 0;
 
 	/* HDMI_CORE_DDC_STATUS_IN_PROG */
 	if (hdmi_wait_for_bit_change(base, HDMI_CORE_DDC_STATUS,
@@ -87,21 +89,24 @@ int hdmi4_core_ddc_read(void *data, u8 *buf, unsigned int block, size_t len)
 		return -ETIMEDOUT;
 	}
 
+	if (ext % 2 != 0)
+		offset = 0x80;
+
 	/* Load Segment Address Register */
-	REG_FLD_MOD(base, HDMI_CORE_DDC_SEGM, block / 2, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_DDC_SEGM, ext / 2, 7, 0);
 
 	/* Load Slave Address Register */
 	REG_FLD_MOD(base, HDMI_CORE_DDC_ADDR, 0xA0 >> 1, 7, 1);
 
 	/* Load Offset Address Register */
-	REG_FLD_MOD(base, HDMI_CORE_DDC_OFFSET, block % 2 ? 0x80 : 0, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_DDC_OFFSET, offset, 7, 0);
 
 	/* Load Byte Count */
-	REG_FLD_MOD(base, HDMI_CORE_DDC_COUNT1, len, 7, 0);
+	REG_FLD_MOD(base, HDMI_CORE_DDC_COUNT1, 0x80, 7, 0);
 	REG_FLD_MOD(base, HDMI_CORE_DDC_COUNT2, 0x0, 1, 0);
 
 	/* Set DDC_CMD */
-	if (block)
+	if (ext)
 		REG_FLD_MOD(base, HDMI_CORE_DDC_CMD, 0x4, 3, 0);
 	else
 		REG_FLD_MOD(base, HDMI_CORE_DDC_CMD, 0x2, 3, 0);
@@ -117,7 +122,7 @@ int hdmi4_core_ddc_read(void *data, u8 *buf, unsigned int block, size_t len)
 		return -EIO;
 	}
 
-	for (i = 0; i < len; ++i) {
+	for (i = 0; i < 0x80; ++i) {
 		int t;
 
 		/* IN_PROG */
@@ -136,10 +141,46 @@ int hdmi4_core_ddc_read(void *data, u8 *buf, unsigned int block, size_t len)
 			udelay(1);
 		}
 
-		buf[i] = REG_GET(base, HDMI_CORE_DDC_DATA, 7, 0);
+		pedid[i] = REG_GET(base, HDMI_CORE_DDC_DATA, 7, 0);
+	}
+
+	checksum = 0;
+	for (i = 0; i < 0x80; ++i)
+		checksum += pedid[i];
+
+	if (checksum != 0) {
+		DSSERR("E-EDID checksum failed!!\n");
+		return -EIO;
 	}
 
 	return 0;
+}
+
+int hdmi4_read_edid(struct hdmi_core_data *core, u8 *edid, int len)
+{
+	int r, l;
+
+	if (len < 128)
+		return -EINVAL;
+
+	r = hdmi_core_ddc_init(core);
+	if (r)
+		return r;
+
+	r = hdmi_core_ddc_edid(core, edid, 0);
+	if (r)
+		return r;
+
+	l = 128;
+
+	if (len >= 128 * 2 && edid[0x7e] > 0) {
+		r = hdmi_core_ddc_edid(core, edid + 0x80, 1);
+		if (r)
+			return r;
+		l += 128;
+	}
+
+	return l;
 }
 
 static void hdmi_core_init(struct hdmi_core_video_config *video_cfg)
@@ -501,9 +542,8 @@ static void hdmi_core_audio_config(struct hdmi_core_data *core,
 	}
 
 	/* Set ACR clock divisor */
-	if (cfg->use_mclk)
-		REG_FLD_MOD(av_base, HDMI_CORE_AV_FREQ_SVAL,
-			    cfg->mclk_mode, 2, 0);
+	REG_FLD_MOD(av_base,
+			HDMI_CORE_AV_FREQ_SVAL, cfg->mclk_mode, 2, 0);
 
 	r = hdmi_read_reg(av_base, HDMI_CORE_AV_ACR_CTRL);
 	/*
@@ -635,7 +675,7 @@ int hdmi4_audio_config(struct hdmi_core_data *core, struct hdmi_wp_data *wp,
 	struct hdmi_audio_format audio_format;
 	struct hdmi_audio_dma audio_dma;
 	struct hdmi_core_audio_config acore;
-	int n, cts, channel_count;
+	int err, n, cts, channel_count;
 	unsigned int fs_nr;
 	bool word_length_16b = false;
 
@@ -697,7 +737,7 @@ int hdmi4_audio_config(struct hdmi_core_data *core, struct hdmi_wp_data *wp,
 		return -EINVAL;
 	}
 
-	hdmi_compute_acr(pclk, fs_nr, &n, &cts);
+	err = hdmi_compute_acr(pclk, fs_nr, &n, &cts);
 
 	/* Audio clock regeneration settings */
 	acore.n = n;
@@ -870,6 +910,7 @@ static const struct soc_device_attribute hdmi4_soc_devices[] = {
 int hdmi4_core_init(struct platform_device *pdev, struct hdmi_core_data *core)
 {
 	const struct hdmi4_features *features;
+	struct resource *res;
 	const struct soc_device_attribute *soc;
 
 	soc = soc_device_match(hdmi4_soc_devices);
@@ -880,7 +921,8 @@ int hdmi4_core_init(struct platform_device *pdev, struct hdmi_core_data *core)
 	core->cts_swmode = features->cts_swmode;
 	core->audio_use_mclk = features->audio_use_mclk;
 
-	core->base = devm_platform_ioremap_resource_byname(pdev, "core");
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "core");
+	core->base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(core->base))
 		return PTR_ERR(core->base);
 

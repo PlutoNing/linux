@@ -215,8 +215,8 @@ static long ath79_wdt_ioctl(struct file *file, unsigned int cmd,
 		err = ath79_wdt_set_timeout(t);
 		if (err)
 			break;
-		fallthrough;
 
+		/* fallthrough */
 	case WDIOC_GETTIMEOUT:
 		err = put_user(timeout, p);
 		break;
@@ -234,7 +234,6 @@ static const struct file_operations ath79_wdt_fops = {
 	.llseek		= no_llseek,
 	.write		= ath79_wdt_write,
 	.unlocked_ioctl	= ath79_wdt_ioctl,
-	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= ath79_wdt_open,
 	.release	= ath79_wdt_release,
 };
@@ -257,13 +256,19 @@ static int ath79_wdt_probe(struct platform_device *pdev)
 	if (IS_ERR(wdt_base))
 		return PTR_ERR(wdt_base);
 
-	wdt_clk = devm_clk_get_enabled(&pdev->dev, "wdt");
+	wdt_clk = devm_clk_get(&pdev->dev, "wdt");
 	if (IS_ERR(wdt_clk))
 		return PTR_ERR(wdt_clk);
 
+	err = clk_prepare_enable(wdt_clk);
+	if (err)
+		return err;
+
 	wdt_freq = clk_get_rate(wdt_clk);
-	if (!wdt_freq)
-		return -EINVAL;
+	if (!wdt_freq) {
+		err = -EINVAL;
+		goto err_clk_disable;
+	}
 
 	max_timeout = (0xfffffffful / wdt_freq);
 	if (timeout < 1 || timeout > max_timeout) {
@@ -280,15 +285,21 @@ static int ath79_wdt_probe(struct platform_device *pdev)
 	if (err) {
 		dev_err(&pdev->dev,
 			"unable to register misc device, err=%d\n", err);
-		return err;
+		goto err_clk_disable;
 	}
 
 	return 0;
+
+err_clk_disable:
+	clk_disable_unprepare(wdt_clk);
+	return err;
 }
 
-static void ath79_wdt_remove(struct platform_device *pdev)
+static int ath79_wdt_remove(struct platform_device *pdev)
 {
 	misc_deregister(&ath79_wdt_miscdev);
+	clk_disable_unprepare(wdt_clk);
+	return 0;
 }
 
 static void ath79_wdt_shutdown(struct platform_device *pdev)
@@ -306,7 +317,7 @@ MODULE_DEVICE_TABLE(of, ath79_wdt_match);
 
 static struct platform_driver ath79_wdt_driver = {
 	.probe		= ath79_wdt_probe,
-	.remove_new	= ath79_wdt_remove,
+	.remove		= ath79_wdt_remove,
 	.shutdown	= ath79_wdt_shutdown,
 	.driver		= {
 		.name	= DRIVER_NAME,

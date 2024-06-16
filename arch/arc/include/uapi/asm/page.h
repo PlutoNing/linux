@@ -13,8 +13,10 @@
 #include <linux/const.h>
 
 /* PAGE_SHIFT determines the page size */
-#ifdef __KERNEL__
-#define PAGE_SHIFT CONFIG_PAGE_SHIFT
+#if defined(CONFIG_ARC_PAGE_SIZE_16K)
+#define PAGE_SHIFT 14
+#elif defined(CONFIG_ARC_PAGE_SIZE_4K)
+#define PAGE_SHIFT 12
 #else
 /*
  * Default 8k
@@ -30,5 +32,6 @@
 #define PAGE_OFFSET	_AC(0x80000000, UL)	/* Kernel starts at 2G onwrds */
 
 #define PAGE_MASK	(~(PAGE_SIZE-1))
+
 
 #endif /* _UAPI__ASM_ARC_PAGE_H */

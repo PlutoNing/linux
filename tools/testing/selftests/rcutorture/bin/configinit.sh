@@ -15,8 +15,9 @@
 #
 # Authors: Paul E. McKenney <paulmck@linux.ibm.com>
 
-T="`mktemp -d ${TMPDIR-/tmp}/configinit.sh.XXXXXX`"
+T=${TMPDIR-/tmp}/configinit.sh.$$
 trap 'rm -rf $T' 0
+mkdir $T
 
 # Capture config spec file.
 
@@ -31,11 +32,11 @@ if test -z "$TORTURE_TRUST_MAKE"
 then
 	make clean > $resdir/Make.clean 2>&1
 fi
-make $TORTURE_KMAKE_ARG $TORTURE_DEFCONFIG > $resdir/Make.defconfig.out 2>&1
+make $TORTURE_DEFCONFIG > $resdir/Make.defconfig.out 2>&1
 mv .config .config.sav
 sh $T/upd.sh < .config.sav > .config
 cp .config .config.new
-yes '' | make $TORTURE_KMAKE_ARG oldconfig > $resdir/Make.oldconfig.out 2> $resdir/Make.oldconfig.err
+yes '' | make oldconfig > $resdir/Make.oldconfig.out 2> $resdir/Make.oldconfig.err
 
 # verify new config matches specification.
 configcheck.sh .config $c

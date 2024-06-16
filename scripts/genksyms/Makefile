@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 
-hostprogs-always-y	+= genksyms
+hostprogs-y	:= genksyms
+always		:= $(hostprogs-y)
 
 genksyms-objs	:= genksyms.o parse.tab.o lex.lex.o
 
@@ -22,7 +23,7 @@ $(obj)/pars%.tab.c $(obj)/pars%.tab.h: $(src)/pars%.y FORCE
 
 endif
 
-# -I needed for generated C source to include headers in source tree
+# -I needed for generated C source (shipped source)
 HOSTCFLAGS_parse.tab.o := -I $(srctree)/$(src)
 HOSTCFLAGS_lex.lex.o := -I $(srctree)/$(src)
 

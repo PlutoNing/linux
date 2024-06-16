@@ -26,18 +26,14 @@
 #include "octeon_main.h"
 #include "octeon_network.h"
 
-MODULE_AUTHOR("Cavium Networks, <support@cavium.com>");
-MODULE_DESCRIPTION("Cavium LiquidIO Intelligent Server Adapter Core");
-MODULE_LICENSE("GPL");
-
 /* OOM task polling interval */
 #define LIO_OOM_POLL_INTERVAL_MS 250
 
 #define OCTNIC_MAX_SG  MAX_SKB_FRAGS
 
 /**
- * lio_delete_glists - Delete gather lists
- * @lio: per-network private data
+ * \brief Delete gather lists
+ * @param lio per-network private data
  */
 void lio_delete_glists(struct lio *lio)
 {
@@ -75,13 +71,10 @@ void lio_delete_glists(struct lio *lio)
 	kfree(lio->glist);
 	lio->glist = NULL;
 }
-EXPORT_SYMBOL_GPL(lio_delete_glists);
 
 /**
- * lio_setup_glists - Setup gather lists
- * @oct: octeon_device
- * @lio: per-network private data
- * @num_iqs: count of iqs to allocate
+ * \brief Setup gather lists
+ * @param lio per-network private data
  */
 int lio_setup_glists(struct octeon_device *oct, struct lio *lio, int num_iqs)
 {
@@ -159,7 +152,6 @@ int lio_setup_glists(struct octeon_device *oct, struct lio *lio, int num_iqs)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(lio_setup_glists);
 
 int liquidio_set_feature(struct net_device *netdev, int cmd, u16 param1)
 {
@@ -186,7 +178,6 @@ int liquidio_set_feature(struct net_device *netdev, int cmd, u16 param1)
 	}
 	return ret;
 }
-EXPORT_SYMBOL_GPL(liquidio_set_feature);
 
 void octeon_report_tx_completion_to_bql(void *txq, unsigned int pkts_compl,
 					unsigned int bytes_compl)
@@ -402,7 +393,6 @@ void liquidio_link_ctrl_cmd_completion(void *nctrl_ptr)
 			nctrl->ncmd.s.cmd);
 	}
 }
-EXPORT_SYMBOL_GPL(liquidio_link_ctrl_cmd_completion);
 
 void octeon_pf_changed_vf_macaddr(struct octeon_device *oct, u8 *mac)
 {
@@ -419,7 +409,7 @@ void octeon_pf_changed_vf_macaddr(struct octeon_device *oct, u8 *mac)
 
 	if (!ether_addr_equal(netdev->dev_addr, mac)) {
 		macaddr_changed = true;
-		eth_hw_addr_set(netdev, mac);
+		ether_addr_copy(netdev->dev_addr, mac);
 		ether_addr_copy(((u8 *)&lio->linfo.hw_addr) + 2, mac);
 		call_netdevice_notifiers(NETDEV_CHANGEADDR, netdev);
 	}
@@ -486,7 +476,6 @@ int setup_rx_oom_poll_fn(struct net_device *netdev)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(setup_rx_oom_poll_fn);
 
 void cleanup_rx_oom_poll_fn(struct net_device *netdev)
 {
@@ -499,12 +488,12 @@ void cleanup_rx_oom_poll_fn(struct net_device *netdev)
 		wq = &lio->rxq_status_wq[q_no];
 		if (wq->wq) {
 			cancel_delayed_work_sync(&wq->wk.work);
+			flush_workqueue(wq->wq);
 			destroy_workqueue(wq->wq);
 			wq->wq = NULL;
 		}
 	}
 }
-EXPORT_SYMBOL_GPL(cleanup_rx_oom_poll_fn);
 
 /* Runs in interrupt context. */
 static void lio_update_txq_status(struct octeon_device *oct, int iq_num)
@@ -532,12 +521,12 @@ static void lio_update_txq_status(struct octeon_device *oct, int iq_num)
 }
 
 /**
- * octeon_setup_droq - Setup output queue
- * @oct: octeon device
- * @q_no: which queue
- * @num_descs: how many descriptors
- * @desc_size: size of each descriptor
- * @app_ctx: application context
+ * \brief Setup output queue
+ * @param oct octeon device
+ * @param q_no which queue
+ * @param num_descs how many descriptors
+ * @param desc_size size of each descriptor
+ * @param app_ctx application context
  */
 static int octeon_setup_droq(struct octeon_device *oct, int q_no, int num_descs,
 			     int desc_size, void *app_ctx)
@@ -566,17 +555,16 @@ static int octeon_setup_droq(struct octeon_device *oct, int q_no, int num_descs,
 	return ret_val;
 }
 
-/**
- * liquidio_push_packet - Routine to push packets arriving on Octeon interface upto network layer.
- * @octeon_id:octeon device id.
- * @skbuff:   skbuff struct to be passed to network layer.
- * @len:      size of total data received.
- * @rh:       Control header associated with the packet
- * @param:    additional control data with the packet
- * @arg:      farg registered in droq_ops
+/** Routine to push packets arriving on Octeon interface upto network layer.
+ * @param oct_id   - octeon device id.
+ * @param skbuff   - skbuff struct to be passed to network layer.
+ * @param len      - size of total data received.
+ * @param rh       - Control header associated with the packet
+ * @param param    - additional control data with the packet
+ * @param arg      - farg registered in droq_ops
  */
 static void
-liquidio_push_packet(u32 __maybe_unused octeon_id,
+liquidio_push_packet(u32 octeon_id __attribute__((unused)),
 		     void *skbuff,
 		     u32 len,
 		     union octeon_rh *rh,
@@ -710,8 +698,8 @@ liquidio_push_packet(u32 __maybe_unused octeon_id,
 }
 
 /**
- * napi_schedule_wrapper - wrapper for calling napi_schedule
- * @param: parameters to pass to napi_schedule
+ * \brief wrapper for calling napi_schedule
+ * @param param parameters to pass to napi_schedule
  *
  * Used when scheduling on different CPUs
  */
@@ -723,8 +711,8 @@ static void napi_schedule_wrapper(void *param)
 }
 
 /**
- * liquidio_napi_drv_callback - callback when receive interrupt occurs and we are in NAPI mode
- * @arg: pointer to octeon output queue
+ * \brief callback when receive interrupt occurs and we are in NAPI mode
+ * @param arg pointer to octeon output queue
  */
 static void liquidio_napi_drv_callback(void *arg)
 {
@@ -738,15 +726,20 @@ static void liquidio_napi_drv_callback(void *arg)
 	    droq->cpu_id == this_cpu) {
 		napi_schedule_irqoff(&droq->napi);
 	} else {
-		INIT_CSD(&droq->csd, napi_schedule_wrapper, &droq->napi);
-		smp_call_function_single_async(droq->cpu_id, &droq->csd);
+		call_single_data_t *csd = &droq->csd;
+
+		csd->func = napi_schedule_wrapper;
+		csd->info = &droq->napi;
+		csd->flags = 0;
+
+		smp_call_function_single_async(droq->cpu_id, csd);
 	}
 }
 
 /**
- * liquidio_napi_poll - Entry point for NAPI polling
- * @napi: NAPI structure
- * @budget: maximum number of items to process
+ * \brief Entry point for NAPI polling
+ * @param napi NAPI structure
+ * @param budget maximum number of items to process
  */
 static int liquidio_napi_poll(struct napi_struct *napi, int budget)
 {
@@ -789,6 +782,7 @@ static int liquidio_napi_poll(struct napi_struct *napi, int budget)
 	if ((work_done < budget && tx_done) ||
 	    (iq && iq->pkt_in_done >= MAX_REG_CNT) ||
 	    (droq->pkt_count >= MAX_REG_CNT)) {
+		tx_done = 1;
 		napi_complete_done(napi, work_done);
 
 		octeon_enable_irq(droq->oct_dev, droq->q_no);
@@ -799,11 +793,9 @@ static int liquidio_napi_poll(struct napi_struct *napi, int budget)
 }
 
 /**
- * liquidio_setup_io_queues - Setup input and output queues
- * @octeon_dev: octeon device
- * @ifidx: Interface index
- * @num_iqs: input io queue count
- * @num_oqs: output io queue count
+ * \brief Setup input and output queues
+ * @param octeon_dev octeon device
+ * @param ifidx Interface index
  *
  * Note: Queues are with respect to the octeon device. Thus
  * an input queue is for egress packets, and output queues
@@ -861,7 +853,7 @@ int liquidio_setup_io_queues(struct octeon_device *octeon_dev, int ifidx,
 		napi = &droq->napi;
 		dev_dbg(&octeon_dev->pci_dev->dev, "netif_napi_add netdev:%llx oct:%llx\n",
 			(u64)netdev, (u64)octeon_dev);
-		netif_napi_add(netdev, napi, liquidio_napi_poll);
+		netif_napi_add(netdev, napi, liquidio_napi_poll, 64);
 
 		/* designate a CPU for this droq */
 		droq->cpu_id = cpu_id;
@@ -909,7 +901,6 @@ int liquidio_setup_io_queues(struct octeon_device *octeon_dev, int ifidx,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(liquidio_setup_io_queues);
 
 static
 int liquidio_schedule_msix_droq_pkt_handler(struct octeon_droq *droq, u64 ret)
@@ -937,7 +928,7 @@ int liquidio_schedule_msix_droq_pkt_handler(struct octeon_droq *droq, u64 ret)
 }
 
 irqreturn_t
-liquidio_msix_intr_handler(int __maybe_unused irq, void *dev)
+liquidio_msix_intr_handler(int irq __attribute__((unused)), void *dev)
 {
 	struct octeon_ioq_vector *ioq_vector = (struct octeon_ioq_vector *)dev;
 	struct octeon_device *oct = ioq_vector->oct_dev;
@@ -953,8 +944,8 @@ liquidio_msix_intr_handler(int __maybe_unused irq, void *dev)
 }
 
 /**
- * liquidio_schedule_droq_pkt_handlers - Droq packet processor sceduler
- * @oct: octeon device
+ * \brief Droq packet processor sceduler
+ * @param oct octeon device
  */
 static void liquidio_schedule_droq_pkt_handlers(struct octeon_device *oct)
 {
@@ -982,12 +973,13 @@ static void liquidio_schedule_droq_pkt_handlers(struct octeon_device *oct)
 }
 
 /**
- * liquidio_legacy_intr_handler - Interrupt handler for octeon
- * @irq: unused
- * @dev: octeon device
+ * \brief Interrupt handler for octeon
+ * @param irq unused
+ * @param dev octeon device
  */
 static
-irqreturn_t liquidio_legacy_intr_handler(int __maybe_unused irq, void *dev)
+irqreturn_t liquidio_legacy_intr_handler(int irq __attribute__((unused)),
+					 void *dev)
 {
 	struct octeon_device *oct = (struct octeon_device *)dev;
 	irqreturn_t ret;
@@ -1008,9 +1000,8 @@ irqreturn_t liquidio_legacy_intr_handler(int __maybe_unused irq, void *dev)
 }
 
 /**
- * octeon_setup_interrupt - Setup interrupt for octeon device
- * @oct: octeon device
- * @num_ioqs: number of queues
+ * \brief Setup interrupt for octeon device
+ * @param oct octeon device
  *
  *  Enable interrupt in Octeon device as given in the PCI interrupt mask.
  */
@@ -1093,7 +1084,7 @@ int octeon_setup_interrupt(struct octeon_device *oct, u32 num_ioqs)
 		dev_dbg(&oct->pci_dev->dev, "OCTEON: Enough MSI-X interrupts are allocated...\n");
 
 		num_ioq_vectors = oct->num_msix_irqs;
-		/* For PF, there is one non-ioq interrupt handler */
+		/** For PF, there is one non-ioq interrupt handler */
 		if (OCTEON_CN23XX_PF(oct)) {
 			num_ioq_vectors -= 1;
 
@@ -1136,13 +1127,13 @@ int octeon_setup_interrupt(struct octeon_device *oct, u32 num_ioqs)
 				dev_err(&oct->pci_dev->dev,
 					"Request_irq failed for MSIX interrupt Error: %d\n",
 					irqret);
-				/* Freeing the non-ioq irq vector here . */
+				/** Freeing the non-ioq irq vector here . */
 				free_irq(msix_entries[num_ioq_vectors].vector,
 					 oct);
 
 				while (i) {
 					i--;
-					/* clearing affinity mask. */
+					/** clearing affinity mask. */
 					irq_set_affinity_hint(
 						      msix_entries[i].vector,
 						      NULL);
@@ -1173,7 +1164,7 @@ int octeon_setup_interrupt(struct octeon_device *oct, u32 num_ioqs)
 			oct->flags |= LIO_FLAG_MSI_ENABLED;
 
 		/* allocate storage for the names assigned to the irq */
-		oct->irq_name_storage = kzalloc(INTRNAMSIZ, GFP_KERNEL);
+		oct->irq_name_storage = kcalloc(1, INTRNAMSIZ, GFP_KERNEL);
 		if (!oct->irq_name_storage)
 			return -ENOMEM;
 
@@ -1205,12 +1196,10 @@ int octeon_setup_interrupt(struct octeon_device *oct, u32 num_ioqs)
 	}
 	return 0;
 }
-EXPORT_SYMBOL_GPL(octeon_setup_interrupt);
 
 /**
- * liquidio_change_mtu - Net device change_mtu
- * @netdev: network device
- * @new_mtu: the new max transmit unit size
+ * \brief Net device change_mtu
+ * @param netdev network device
  */
 int liquidio_change_mtu(struct net_device *netdev, int new_mtu)
 {
@@ -1268,7 +1257,6 @@ int liquidio_change_mtu(struct net_device *netdev, int new_mtu)
 	WRITE_ONCE(sc->caller_is_done, true);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(liquidio_change_mtu);
 
 int lio_wait_for_clean_oq(struct octeon_device *oct)
 {
@@ -1292,7 +1280,6 @@ int lio_wait_for_clean_oq(struct octeon_device *oct)
 
 	return pending_pkts;
 }
-EXPORT_SYMBOL_GPL(lio_wait_for_clean_oq);
 
 static void
 octnet_nic_stats_callback(struct octeon_device *oct_dev,
@@ -1523,7 +1510,6 @@ lio_fetch_stats_exit:
 
 	return;
 }
-EXPORT_SYMBOL_GPL(lio_fetch_stats);
 
 int liquidio_set_speed(struct lio *lio, int speed)
 {
@@ -1674,7 +1660,6 @@ int liquidio_get_speed(struct lio *lio)
 
 	return retval;
 }
-EXPORT_SYMBOL_GPL(liquidio_get_speed);
 
 int liquidio_set_fec(struct lio *lio, int on_off)
 {
@@ -1828,4 +1813,3 @@ int liquidio_get_fec(struct lio *lio)
 
 	return retval;
 }
-EXPORT_SYMBOL_GPL(liquidio_get_fec);

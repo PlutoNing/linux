@@ -2,7 +2,6 @@
 #ifndef __ASM_PREEMPT_H
 #define __ASM_PREEMPT_H
 
-#include <linux/jump_label.h>
 #include <linux/thread_info.h>
 
 #define PREEMPT_NEED_RESCHED	BIT(32)
@@ -24,7 +23,7 @@ static inline void preempt_count_set(u64 pc)
 } while (0)
 
 #define init_idle_preempt_count(p, cpu) do { \
-	task_thread_info(p)->preempt_count = PREEMPT_DISABLED; \
+	task_thread_info(p)->preempt_count = PREEMPT_ENABLED; \
 } while (0)
 
 static inline void set_preempt_need_resched(void)
@@ -80,25 +79,11 @@ static inline bool should_resched(int preempt_offset)
 	return pc == preempt_offset;
 }
 
-#ifdef CONFIG_PREEMPTION
-
+#ifdef CONFIG_PREEMPT
 void preempt_schedule(void);
+#define __preempt_schedule() preempt_schedule()
 void preempt_schedule_notrace(void);
-
-#ifdef CONFIG_PREEMPT_DYNAMIC
-
-DECLARE_STATIC_KEY_TRUE(sk_dynamic_irqentry_exit_cond_resched);
-void dynamic_preempt_schedule(void);
-#define __preempt_schedule()		dynamic_preempt_schedule()
-void dynamic_preempt_schedule_notrace(void);
-#define __preempt_schedule_notrace()	dynamic_preempt_schedule_notrace()
-
-#else /* CONFIG_PREEMPT_DYNAMIC */
-
-#define __preempt_schedule()		preempt_schedule()
-#define __preempt_schedule_notrace()	preempt_schedule_notrace()
-
-#endif /* CONFIG_PREEMPT_DYNAMIC */
-#endif /* CONFIG_PREEMPTION */
+#define __preempt_schedule_notrace() preempt_schedule_notrace()
+#endif /* CONFIG_PREEMPT */
 
 #endif /* __ASM_PREEMPT_H */

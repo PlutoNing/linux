@@ -18,19 +18,8 @@
 #include "xfs_errortag.h"
 #include "xfs_error.h"
 #include "xfs_trace.h"
-#include "xfs_health.h"
 
-const struct xfs_name xfs_name_dotdot = {
-	.name	= (const unsigned char *)"..",
-	.len	= 2,
-	.type	= XFS_DIR3_FT_DIR,
-};
-
-const struct xfs_name xfs_name_dot = {
-	.name	= (const unsigned char *)".",
-	.len	= 1,
-	.type	= XFS_DIR3_FT_DIR,
-};
+struct xfs_name xfs_name_dotdot = { (unsigned char *)"..", 2, XFS_DIR3_FT_DIR };
 
 /*
  * Convert inode mode to directory entry filetype
@@ -63,27 +52,27 @@ xfs_mode_to_ftype(
  * ASCII case-insensitive (ie. A-Z) support for directories that was
  * used in IRIX.
  */
-xfs_dahash_t
+STATIC xfs_dahash_t
 xfs_ascii_ci_hashname(
-	const struct xfs_name	*name)
+	struct xfs_name	*name)
 {
-	xfs_dahash_t		hash;
-	int			i;
+	xfs_dahash_t	hash;
+	int		i;
 
 	for (i = 0, hash = 0; i < name->len; i++)
-		hash = xfs_ascii_ci_xfrm(name->name[i]) ^ rol32(hash, 7);
+		hash = tolower(name->name[i]) ^ rol32(hash, 7);
 
 	return hash;
 }
 
-enum xfs_dacmp
+STATIC enum xfs_dacmp
 xfs_ascii_ci_compname(
-	struct xfs_da_args	*args,
-	const unsigned char	*name,
-	int			len)
+	struct xfs_da_args *args,
+	const unsigned char *name,
+	int		len)
 {
-	enum xfs_dacmp		result;
-	int			i;
+	enum xfs_dacmp	result;
+	int		i;
 
 	if (args->namelen != len)
 		return XFS_CMP_DIFFERENT;
@@ -92,8 +81,7 @@ xfs_ascii_ci_compname(
 	for (i = 0; i < len; i++) {
 		if (args->name[i] == name[i])
 			continue;
-		if (xfs_ascii_ci_xfrm(args->name[i]) !=
-		    xfs_ascii_ci_xfrm(name[i]))
+		if (tolower(args->name[i]) != tolower(name[i]))
 			return XFS_CMP_DIFFERENT;
 		result = XFS_CMP_CASE;
 	}
@@ -101,23 +89,33 @@ xfs_ascii_ci_compname(
 	return result;
 }
 
+static const struct xfs_nameops xfs_ascii_ci_nameops = {
+	.hashname	= xfs_ascii_ci_hashname,
+	.compname	= xfs_ascii_ci_compname,
+};
+
 int
 xfs_da_mount(
 	struct xfs_mount	*mp)
 {
 	struct xfs_da_geometry	*dageo;
+	int			nodehdr_size;
 
 
 	ASSERT(mp->m_sb.sb_versionnum & XFS_SB_VERSION_DIRV2BIT);
 	ASSERT(xfs_dir2_dirblock_bytes(&mp->m_sb) <= XFS_MAX_BLOCKSIZE);
 
-	mp->m_dir_geo = kzalloc(sizeof(struct xfs_da_geometry),
-				GFP_KERNEL | __GFP_RETRY_MAYFAIL);
-	mp->m_attr_geo = kzalloc(sizeof(struct xfs_da_geometry),
-				GFP_KERNEL | __GFP_RETRY_MAYFAIL);
+	mp->m_dir_inode_ops = xfs_dir_get_ops(mp, NULL);
+	mp->m_nondir_inode_ops = xfs_nondir_get_ops(mp, NULL);
+
+	nodehdr_size = mp->m_dir_inode_ops->node_hdr_size;
+	mp->m_dir_geo = kmem_zalloc(sizeof(struct xfs_da_geometry),
+				    KM_MAYFAIL);
+	mp->m_attr_geo = kmem_zalloc(sizeof(struct xfs_da_geometry),
+				     KM_MAYFAIL);
 	if (!mp->m_dir_geo || !mp->m_attr_geo) {
-		kfree(mp->m_dir_geo);
-		kfree(mp->m_attr_geo);
+		kmem_free(mp->m_dir_geo);
+		kmem_free(mp->m_attr_geo);
 		return -ENOMEM;
 	}
 
@@ -127,27 +125,6 @@ xfs_da_mount(
 	dageo->fsblog = mp->m_sb.sb_blocklog;
 	dageo->blksize = xfs_dir2_dirblock_bytes(&mp->m_sb);
 	dageo->fsbcount = 1 << mp->m_sb.sb_dirblklog;
-	if (xfs_has_crc(mp)) {
-		dageo->node_hdr_size = sizeof(struct xfs_da3_node_hdr);
-		dageo->leaf_hdr_size = sizeof(struct xfs_dir3_leaf_hdr);
-		dageo->free_hdr_size = sizeof(struct xfs_dir3_free_hdr);
-		dageo->data_entry_offset =
-				sizeof(struct xfs_dir3_data_hdr);
-	} else {
-		dageo->node_hdr_size = sizeof(struct xfs_da_node_hdr);
-		dageo->leaf_hdr_size = sizeof(struct xfs_dir2_leaf_hdr);
-		dageo->free_hdr_size = sizeof(struct xfs_dir2_free_hdr);
-		dageo->data_entry_offset =
-				sizeof(struct xfs_dir2_data_hdr);
-	}
-	dageo->leaf_max_ents = (dageo->blksize - dageo->leaf_hdr_size) /
-			sizeof(struct xfs_dir2_leaf_entry);
-	dageo->free_max_bests = (dageo->blksize - dageo->free_hdr_size) /
-			sizeof(xfs_dir2_data_off_t);
-
-	dageo->data_first_offset = dageo->data_entry_offset +
-			xfs_dir2_data_entsize(mp, 1) +
-			xfs_dir2_data_entsize(mp, 2);
 
 	/*
 	 * Now we've set up the block conversion variables, we can calculate the
@@ -156,10 +133,8 @@ xfs_da_mount(
 	dageo->datablk = xfs_dir2_byte_to_da(dageo, XFS_DIR2_DATA_OFFSET);
 	dageo->leafblk = xfs_dir2_byte_to_da(dageo, XFS_DIR2_LEAF_OFFSET);
 	dageo->freeblk = xfs_dir2_byte_to_da(dageo, XFS_DIR2_FREE_OFFSET);
-	dageo->node_ents = (dageo->blksize - dageo->node_hdr_size) /
+	dageo->node_ents = (dageo->blksize - nodehdr_size) /
 				(uint)sizeof(xfs_da_node_entry_t);
-	dageo->max_extents = (XFS_DIR2_MAX_SPACES * XFS_DIR2_SPACE_SIZE) >>
-					mp->m_sb.sb_blocklog;
 	dageo->magicpct = (dageo->blksize * 37) / 100;
 
 	/* set up attribute geometry - single fsb only */
@@ -168,16 +143,15 @@ xfs_da_mount(
 	dageo->fsblog = mp->m_sb.sb_blocklog;
 	dageo->blksize = 1 << dageo->blklog;
 	dageo->fsbcount = 1;
-	dageo->node_hdr_size = mp->m_dir_geo->node_hdr_size;
-	dageo->node_ents = (dageo->blksize - dageo->node_hdr_size) /
+	dageo->node_ents = (dageo->blksize - nodehdr_size) /
 				(uint)sizeof(xfs_da_node_entry_t);
-
-	if (xfs_has_large_extent_counts(mp))
-		dageo->max_extents = XFS_MAX_EXTCNT_ATTR_FORK_LARGE;
-	else
-		dageo->max_extents = XFS_MAX_EXTCNT_ATTR_FORK_SMALL;
-
 	dageo->magicpct = (dageo->blksize * 37) / 100;
+
+	if (xfs_sb_version_hasasciici(&mp->m_sb))
+		mp->m_dirnameops = &xfs_ascii_ci_nameops;
+	else
+		mp->m_dirnameops = &xfs_default_nameops;
+
 	return 0;
 }
 
@@ -185,8 +159,8 @@ void
 xfs_da_unmount(
 	struct xfs_mount	*mp)
 {
-	kfree(mp->m_dir_geo);
-	kfree(mp->m_attr_geo);
+	kmem_free(mp->m_dir_geo);
+	kmem_free(mp->m_attr_geo);
 }
 
 /*
@@ -199,11 +173,11 @@ xfs_dir_isempty(
 	xfs_dir2_sf_hdr_t	*sfp;
 
 	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
-	if (dp->i_disk_size == 0)	/* might happen during shutdown. */
+	if (dp->i_d.di_size == 0)	/* might happen during shutdown. */
 		return 1;
-	if (dp->i_disk_size > xfs_inode_data_fork_size(dp))
+	if (dp->i_d.di_size > XFS_IFORK_DSIZE(dp))
 		return 0;
-	sfp = dp->i_df.if_data;
+	sfp = (xfs_dir2_sf_hdr_t *)dp->i_df.if_u1.if_data;
 	return !sfp->count;
 }
 
@@ -217,10 +191,10 @@ xfs_dir_ino_validate(
 {
 	bool		ino_ok = xfs_verify_dir_ino(mp, ino);
 
-	if (XFS_IS_CORRUPT(mp, !ino_ok) ||
-	    XFS_TEST_ERROR(false, mp, XFS_ERRTAG_DIR_INO_VALIDATE)) {
+	if (unlikely(XFS_TEST_ERROR(!ino_ok, mp, XFS_ERRTAG_DIR_INO_VALIDATE))) {
 		xfs_warn(mp, "Invalid inode number 0x%Lx",
 				(unsigned long long) ino);
+		XFS_ERROR_REPORT("xfs_dir_ino_validate", XFS_ERRLEVEL_LOW, mp);
 		return -EFSCORRUPTED;
 	}
 	return 0;
@@ -243,7 +217,7 @@ xfs_dir_init(
 	if (error)
 		return error;
 
-	args = kzalloc(sizeof(*args), GFP_KERNEL | __GFP_NOFAIL);
+	args = kmem_zalloc(sizeof(*args), KM_NOFS);
 	if (!args)
 		return -ENOMEM;
 
@@ -251,7 +225,7 @@ xfs_dir_init(
 	args->dp = dp;
 	args->trans = tp;
 	error = xfs_dir2_sf_create(args, pdp->i_ino);
-	kfree(args);
+	kmem_free(args);
 	return error;
 }
 
@@ -263,13 +237,13 @@ int
 xfs_dir_createname(
 	struct xfs_trans	*tp,
 	struct xfs_inode	*dp,
-	const struct xfs_name	*name,
+	struct xfs_name		*name,
 	xfs_ino_t		inum,		/* new entry inode number */
 	xfs_extlen_t		total)		/* bmap's total block count */
 {
 	struct xfs_da_args	*args;
 	int			rval;
-	bool			v;
+	int			v;		/* type-checking value */
 
 	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
 
@@ -280,7 +254,7 @@ xfs_dir_createname(
 		XFS_STATS_INC(dp->i_mount, xs_dir_create);
 	}
 
-	args = kzalloc(sizeof(*args), GFP_KERNEL | __GFP_NOFAIL);
+	args = kmem_zalloc(sizeof(*args), KM_NOFS);
 	if (!args)
 		return -ENOMEM;
 
@@ -288,7 +262,7 @@ xfs_dir_createname(
 	args->name = name->name;
 	args->namelen = name->len;
 	args->filetype = name->type;
-	args->hashval = xfs_dir2_hashname(dp->i_mount, name);
+	args->hashval = dp->i_mount->m_dirnameops->hashname(name);
 	args->inumber = inum;
 	args->dp = dp;
 	args->total = total;
@@ -298,7 +272,7 @@ xfs_dir_createname(
 	if (!inum)
 		args->op_flags |= XFS_DA_OP_JUSTCHECK;
 
-	if (dp->i_df.if_format == XFS_DINODE_FMT_LOCAL) {
+	if (dp->i_d.di_format == XFS_DINODE_FMT_LOCAL) {
 		rval = xfs_dir2_sf_addname(args);
 		goto out_free;
 	}
@@ -320,7 +294,7 @@ xfs_dir_createname(
 		rval = xfs_dir2_node_addname(args);
 
 out_free:
-	kfree(args);
+	kmem_free(args);
 	return rval;
 }
 
@@ -340,8 +314,7 @@ xfs_dir_cilookup_result(
 					!(args->op_flags & XFS_DA_OP_CILOOKUP))
 		return -EEXIST;
 
-	args->value = kmalloc(len,
-			GFP_KERNEL | __GFP_NOLOCKDEP | __GFP_RETRY_MAYFAIL);
+	args->value = kmem_alloc(len, KM_NOFS | KM_MAYFAIL);
 	if (!args->value)
 		return -ENOMEM;
 
@@ -358,27 +331,34 @@ xfs_dir_cilookup_result(
 
 int
 xfs_dir_lookup(
-	struct xfs_trans	*tp,
-	struct xfs_inode	*dp,
-	const struct xfs_name	*name,
-	xfs_ino_t		*inum,	  /* out: inode number */
-	struct xfs_name		*ci_name) /* out: actual name if CI match */
+	xfs_trans_t	*tp,
+	xfs_inode_t	*dp,
+	struct xfs_name	*name,
+	xfs_ino_t	*inum,		/* out: inode number */
+	struct xfs_name *ci_name)	/* out: actual name if CI match */
 {
-	struct xfs_da_args	*args;
-	int			rval;
-	bool			v;
-	int			lock_mode;
+	struct xfs_da_args *args;
+	int		rval;
+	int		v;		/* type-checking value */
+	int		lock_mode;
 
 	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
 	XFS_STATS_INC(dp->i_mount, xs_dir_lookup);
 
-	args = kzalloc(sizeof(*args),
-			GFP_KERNEL | __GFP_NOLOCKDEP | __GFP_NOFAIL);
+	/*
+	 * We need to use KM_NOFS here so that lockdep will not throw false
+	 * positive deadlock warnings on a non-transactional lookup path. It is
+	 * safe to recurse into inode recalim in that case, but lockdep can't
+	 * easily be taught about it. Hence KM_NOFS avoids having to add more
+	 * lockdep Doing this avoids having to add a bunch of lockdep class
+	 * annotations into the reclaim path for the ilock.
+	 */
+	args = kmem_zalloc(sizeof(*args), KM_NOFS);
 	args->geo = dp->i_mount->m_dir_geo;
 	args->name = name->name;
 	args->namelen = name->len;
 	args->filetype = name->type;
-	args->hashval = xfs_dir2_hashname(dp->i_mount, name);
+	args->hashval = dp->i_mount->m_dirnameops->hashname(name);
 	args->dp = dp;
 	args->whichfork = XFS_DATA_FORK;
 	args->trans = tp;
@@ -387,7 +367,7 @@ xfs_dir_lookup(
 		args->op_flags |= XFS_DA_OP_CILOOKUP;
 
 	lock_mode = xfs_ilock_data_map_shared(dp);
-	if (dp->i_df.if_format == XFS_DINODE_FMT_LOCAL) {
+	if (dp->i_d.di_format == XFS_DINODE_FMT_LOCAL) {
 		rval = xfs_dir2_sf_lookup(args);
 		goto out_check_rval;
 	}
@@ -420,7 +400,7 @@ out_check_rval:
 	}
 out_free:
 	xfs_iunlock(dp, lock_mode);
-	kfree(args);
+	kmem_free(args);
 	return rval;
 }
 
@@ -437,12 +417,12 @@ xfs_dir_removename(
 {
 	struct xfs_da_args	*args;
 	int			rval;
-	bool			v;
+	int			v;		/* type-checking value */
 
 	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
 	XFS_STATS_INC(dp->i_mount, xs_dir_remove);
 
-	args = kzalloc(sizeof(*args), GFP_KERNEL | __GFP_NOFAIL);
+	args = kmem_zalloc(sizeof(*args), KM_NOFS);
 	if (!args)
 		return -ENOMEM;
 
@@ -450,14 +430,14 @@ xfs_dir_removename(
 	args->name = name->name;
 	args->namelen = name->len;
 	args->filetype = name->type;
-	args->hashval = xfs_dir2_hashname(dp->i_mount, name);
+	args->hashval = dp->i_mount->m_dirnameops->hashname(name);
 	args->inumber = ino;
 	args->dp = dp;
 	args->total = total;
 	args->whichfork = XFS_DATA_FORK;
 	args->trans = tp;
 
-	if (dp->i_df.if_format == XFS_DINODE_FMT_LOCAL) {
+	if (dp->i_d.di_format == XFS_DINODE_FMT_LOCAL) {
 		rval = xfs_dir2_sf_removename(args);
 		goto out_free;
 	}
@@ -478,7 +458,7 @@ xfs_dir_removename(
 	else
 		rval = xfs_dir2_node_removename(args);
 out_free:
-	kfree(args);
+	kmem_free(args);
 	return rval;
 }
 
@@ -489,13 +469,13 @@ int
 xfs_dir_replace(
 	struct xfs_trans	*tp,
 	struct xfs_inode	*dp,
-	const struct xfs_name	*name,		/* name of entry to replace */
+	struct xfs_name		*name,		/* name of entry to replace */
 	xfs_ino_t		inum,		/* new inode number */
 	xfs_extlen_t		total)		/* bmap's total block count */
 {
 	struct xfs_da_args	*args;
 	int			rval;
-	bool			v;
+	int			v;		/* type-checking value */
 
 	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
 
@@ -503,7 +483,7 @@ xfs_dir_replace(
 	if (rval)
 		return rval;
 
-	args = kzalloc(sizeof(*args), GFP_KERNEL | __GFP_NOFAIL);
+	args = kmem_zalloc(sizeof(*args), KM_NOFS);
 	if (!args)
 		return -ENOMEM;
 
@@ -511,14 +491,14 @@ xfs_dir_replace(
 	args->name = name->name;
 	args->namelen = name->len;
 	args->filetype = name->type;
-	args->hashval = xfs_dir2_hashname(dp->i_mount, name);
+	args->hashval = dp->i_mount->m_dirnameops->hashname(name);
 	args->inumber = inum;
 	args->dp = dp;
 	args->total = total;
 	args->whichfork = XFS_DATA_FORK;
 	args->trans = tp;
 
-	if (dp->i_df.if_format == XFS_DINODE_FMT_LOCAL) {
+	if (dp->i_d.di_format == XFS_DINODE_FMT_LOCAL) {
 		rval = xfs_dir2_sf_replace(args);
 		goto out_free;
 	}
@@ -539,7 +519,7 @@ xfs_dir_replace(
 	else
 		rval = xfs_dir2_node_replace(args);
 out_free:
-	kfree(args);
+	kmem_free(args);
 	return rval;
 }
 
@@ -598,8 +578,8 @@ xfs_dir2_grow_inode(
 		xfs_fsize_t	size;		/* directory file (data) size */
 
 		size = XFS_FSB_TO_B(mp, bno + count);
-		if (size > dp->i_disk_size) {
-			dp->i_disk_size = size;
+		if (size > dp->i_d.di_size) {
+			dp->i_d.di_size = size;
 			xfs_trans_log_inode(args->trans, dp, XFS_ILOG_CORE);
 		}
 	}
@@ -612,25 +592,17 @@ xfs_dir2_grow_inode(
 int
 xfs_dir2_isblock(
 	struct xfs_da_args	*args,
-	bool			*isblock)
+	int			*vp)	/* out: 1 is block, 0 is not block */
 {
-	struct xfs_mount	*mp = args->dp->i_mount;
-	xfs_fileoff_t		eof;
-	int			error;
+	xfs_fileoff_t		last;	/* last file offset */
+	int			rval;
 
-	error = xfs_bmap_last_offset(args->dp, &eof, XFS_DATA_FORK);
-	if (error)
-		return error;
-
-	*isblock = false;
-	if (XFS_FSB_TO_B(mp, eof) != args->geo->blksize)
-		return 0;
-
-	*isblock = true;
-	if (XFS_IS_CORRUPT(mp, args->dp->i_disk_size != args->geo->blksize)) {
-		xfs_da_mark_sick(args);
+	if ((rval = xfs_bmap_last_offset(args->dp, &last, XFS_DATA_FORK)))
+		return rval;
+	rval = XFS_FSB_TO_B(args->dp->i_mount, last) == args->geo->blksize;
+	if (rval != 0 && args->dp->i_d.di_size != args->geo->blksize)
 		return -EFSCORRUPTED;
-	}
+	*vp = rval;
 	return 0;
 }
 
@@ -640,20 +612,14 @@ xfs_dir2_isblock(
 int
 xfs_dir2_isleaf(
 	struct xfs_da_args	*args,
-	bool			*isleaf)
+	int			*vp)	/* out: 1 is block, 0 is not block */
 {
-	xfs_fileoff_t		eof;
-	int			error;
+	xfs_fileoff_t		last;	/* last file offset */
+	int			rval;
 
-	error = xfs_bmap_last_offset(args->dp, &eof, XFS_DATA_FORK);
-	if (error)
-		return error;
-
-	*isleaf = false;
-	if (eof != args->geo->leafblk + args->geo->fsbcount)
-		return 0;
-
-	*isleaf = true;
+	if ((rval = xfs_bmap_last_offset(args->dp, &last, XFS_DATA_FORK)))
+		return rval;
+	*vp = last == args->geo->leafblk + args->geo->fsbcount;
 	return 0;
 }
 
@@ -713,7 +679,7 @@ xfs_dir2_shrink_inode(
 	/*
 	 * If the block isn't the last one in the directory, we're done.
 	 */
-	if (dp->i_disk_size > xfs_dir2_db_off_to_byte(args->geo, db + 1, 0))
+	if (dp->i_d.di_size > xfs_dir2_db_off_to_byte(args->geo, db + 1, 0))
 		return 0;
 	bno = da;
 	if ((error = xfs_bmap_last_before(tp, dp, &bno, XFS_DATA_FORK))) {
@@ -729,7 +695,7 @@ xfs_dir2_shrink_inode(
 	/*
 	 * Set the size to the new last block.
 	 */
-	dp->i_disk_size = XFS_FSB_TO_B(mp, bno);
+	dp->i_d.di_size = XFS_FSB_TO_B(mp, bno);
 	xfs_trans_log_inode(tp, dp, XFS_ILOG_CORE);
 	return 0;
 }
@@ -749,25 +715,4 @@ xfs_dir2_namecheck(
 
 	/* There shouldn't be any slashes or nulls here */
 	return !memchr(name, '/', length) && !memchr(name, 0, length);
-}
-
-xfs_dahash_t
-xfs_dir2_hashname(
-	struct xfs_mount	*mp,
-	const struct xfs_name	*name)
-{
-	if (unlikely(xfs_has_asciici(mp)))
-		return xfs_ascii_ci_hashname(name);
-	return xfs_da_hashname(name->name, name->len);
-}
-
-enum xfs_dacmp
-xfs_dir2_compname(
-	struct xfs_da_args	*args,
-	const unsigned char	*name,
-	int			len)
-{
-	if (unlikely(xfs_has_asciici(args->dp->i_mount)))
-		return xfs_ascii_ci_compname(args, name, len);
-	return xfs_da_compname(args, name, len);
 }

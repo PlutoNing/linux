@@ -13,8 +13,6 @@
 #include <linux/slab.h>
 #include <linux/thermal.h>
 
-#include "thermal_hwmon.h"
-
 struct gadc_thermal_info {
 	struct device *dev;
 	struct thermal_zone_device *tz_dev;
@@ -54,22 +52,23 @@ static int gadc_thermal_adc_to_temp(struct gadc_thermal_info *gti, int val)
 	return temp;
 }
 
-static int gadc_thermal_get_temp(struct thermal_zone_device *tz, int *temp)
+static int gadc_thermal_get_temp(void *data, int *temp)
 {
-	struct gadc_thermal_info *gti = thermal_zone_device_priv(tz);
+	struct gadc_thermal_info *gti = data;
 	int val;
 	int ret;
 
 	ret = iio_read_channel_processed(gti->channel, &val);
-	if (ret < 0)
+	if (ret < 0) {
+		dev_err(gti->dev, "IIO channel read failed %d\n", ret);
 		return ret;
-
+	}
 	*temp = gadc_thermal_adc_to_temp(gti, val);
 
 	return 0;
 }
 
-static const struct thermal_zone_device_ops gadc_thermal_ops = {
+static const struct thermal_zone_of_device_ops gadc_thermal_ops = {
 	.get_temp = gadc_thermal_get_temp,
 };
 
@@ -77,17 +76,13 @@ static int gadc_thermal_read_linear_lookup_table(struct device *dev,
 						 struct gadc_thermal_info *gti)
 {
 	struct device_node *np = dev->of_node;
-	enum iio_chan_type chan_type;
 	int ntable;
 	int ret;
 
 	ntable = of_property_count_elems_of_size(np, "temperature-lookup-table",
 						 sizeof(u32));
 	if (ntable <= 0) {
-		ret = iio_get_channel_type(gti->channel, &chan_type);
-		if (ret || chan_type != IIO_TEMP)
-			dev_notice(dev,
-				   "no lookup table, assuming DAC channel returns milliCelcius\n");
+		dev_notice(dev, "no lookup table, assuming DAC channel returns milliCelcius\n");
 		return 0;
 	}
 
@@ -129,32 +124,28 @@ static int gadc_thermal_probe(struct platform_device *pdev)
 	if (!gti)
 		return -ENOMEM;
 
-	gti->channel = devm_iio_channel_get(&pdev->dev, "sensor-channel");
-	if (IS_ERR(gti->channel)) {
-		ret = PTR_ERR(gti->channel);
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "IIO channel not found: %d\n", ret);
-		return ret;
-	}
-
 	ret = gadc_thermal_read_linear_lookup_table(&pdev->dev, gti);
 	if (ret < 0)
 		return ret;
 
 	gti->dev = &pdev->dev;
+	platform_set_drvdata(pdev, gti);
 
-	gti->tz_dev = devm_thermal_of_zone_register(&pdev->dev, 0, gti,
-						    &gadc_thermal_ops);
-	if (IS_ERR(gti->tz_dev)) {
-		ret = PTR_ERR(gti->tz_dev);
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev,
-				"Thermal zone sensor register failed: %d\n",
-				ret);
+	gti->channel = devm_iio_channel_get(&pdev->dev, "sensor-channel");
+	if (IS_ERR(gti->channel)) {
+		ret = PTR_ERR(gti->channel);
+		dev_err(&pdev->dev, "IIO channel not found: %d\n", ret);
 		return ret;
 	}
 
-	devm_thermal_add_hwmon_sysfs(&pdev->dev, gti->tz_dev);
+	gti->tz_dev = devm_thermal_zone_of_sensor_register(&pdev->dev, 0, gti,
+							   &gadc_thermal_ops);
+	if (IS_ERR(gti->tz_dev)) {
+		ret = PTR_ERR(gti->tz_dev);
+		dev_err(&pdev->dev, "Thermal zone sensor register failed: %d\n",
+			ret);
+		return ret;
+	}
 
 	return 0;
 }

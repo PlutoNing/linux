@@ -9,8 +9,6 @@
 #include <asm/assembler.h>
 #include <asm/virt.h>
 
-.arch armv7-a
-
 #ifndef ZIMAGE
 /*
  * For the kernel proper, we need to find out the CPU boot mode long after
@@ -26,38 +24,41 @@ ENTRY(__boot_cpu_mode)
 .text
 
 	/*
-	 * Save the primary CPU boot mode. Requires 2 scratch registers.
+	 * Save the primary CPU boot mode. Requires 3 scratch registers.
 	 */
-	.macro	store_primary_cpu_mode	reg1, reg2
+	.macro	store_primary_cpu_mode	reg1, reg2, reg3
 	mrs	\reg1, cpsr
 	and	\reg1, \reg1, #MODE_MASK
-	str_l	\reg1, __boot_cpu_mode, \reg2
+	adr	\reg2, .L__boot_cpu_mode_offset
+	ldr	\reg3, [\reg2]
+	str	\reg1, [\reg2, \reg3]
 	.endm
 
 	/*
 	 * Compare the current mode with the one saved on the primary CPU.
 	 * If they don't match, record that fact. The Z bit indicates
 	 * if there's a match or not.
-	 * Requires 2 additional scratch registers.
+	 * Requires 3 additionnal scratch registers.
 	 */
-	.macro	compare_cpu_mode_with_primary mode, reg1, reg2
-	adr_l	\reg2, __boot_cpu_mode
-	ldr	\reg1, [\reg2]
+	.macro	compare_cpu_mode_with_primary mode, reg1, reg2, reg3
+	adr	\reg2, .L__boot_cpu_mode_offset
+	ldr	\reg3, [\reg2]
+	ldr	\reg1, [\reg2, \reg3]
 	cmp	\mode, \reg1		@ matches primary CPU boot mode?
 	orrne	\reg1, \reg1, #BOOT_CPU_MODE_MISMATCH
-	strne	\reg1, [\reg2]		@ record what happened and give up
+	strne	\reg1, [\reg2, \reg3]	@ record what happened and give up
 	.endm
 
 #else	/* ZIMAGE */
 
-	.macro	store_primary_cpu_mode	reg1:req, reg2:req
+	.macro	store_primary_cpu_mode	reg1:req, reg2:req, reg3:req
 	.endm
 
 /*
  * The zImage loader only runs on one CPU, so we don't bother with mult-CPU
  * consistency checking:
  */
-	.macro	compare_cpu_mode_with_primary mode, reg1, reg2
+	.macro	compare_cpu_mode_with_primary mode, reg1, reg2, reg3
 	cmp	\mode, \mode
 	.endm
 
@@ -72,7 +73,7 @@ ENTRY(__boot_cpu_mode)
  */
 @ Call this from the primary CPU
 ENTRY(__hyp_stub_install)
-	store_primary_cpu_mode	r4, r5
+	store_primary_cpu_mode	r4, r5, r6
 ENDPROC(__hyp_stub_install)
 
 	@ fall through...
@@ -86,7 +87,7 @@ ENTRY(__hyp_stub_install_secondary)
 	 * If the secondary has booted with a different mode, give up
 	 * immediately.
 	 */
-	compare_cpu_mode_with_primary	r4, r5, r6
+	compare_cpu_mode_with_primary	r4, r5, r6, r7
 	retne	lr
 
 	/*
@@ -145,9 +146,10 @@ ARM_BE8(orr	r7, r7, #(1 << 25))     @ HSCTLR.EE
 #if !defined(ZIMAGE) && defined(CONFIG_ARM_ARCH_TIMER)
 	@ make CNTP_* and CNTPCT accessible from PL1
 	mrc	p15, 0, r7, c0, c1, 1	@ ID_PFR1
-	ubfx	r7, r7, #16, #4
-	teq	r7, #0
-	beq	1f
+	lsr	r7, #16
+	and	r7, #0xf
+	cmp	r7, #1
+	bne	1f
 	mrc	p15, 4, r7, c14, c1, 0	@ CNTHCTL
 	orr	r7, r7, #3		@ PL1PCEN | PL1PCTEN
 	mcr	p15, 4, r7, c14, c1, 0	@ CNTHCTL
@@ -188,19 +190,19 @@ ARM_BE8(orr	r7, r7, #(1 << 25))     @ HSCTLR.EE
 ENDPROC(__hyp_stub_install_secondary)
 
 __hyp_stub_do_trap:
-#ifdef ZIMAGE
 	teq	r0, #HVC_SET_VECTORS
 	bne	1f
-	/* Only the ZIMAGE stubs can change the HYP vectors */
 	mcr	p15, 4, r1, c12, c0, 0	@ set HVBAR
 	b	__hyp_stub_exit
-#endif
 
 1:	teq	r0, #HVC_SOFT_RESTART
-	bne	2f
+	bne	1f
 	bx	r1
 
-2:	ldr	r0, =HVC_STUB_ERR
+1:	teq	r0, #HVC_RESET_VECTORS
+	beq	__hyp_stub_exit
+
+	ldr	r0, =HVC_STUB_ERR
 	__ERET
 
 __hyp_stub_exit:
@@ -209,9 +211,26 @@ __hyp_stub_exit:
 ENDPROC(__hyp_stub_do_trap)
 
 /*
- * __hyp_set_vectors is only used when ZIMAGE must bounce between HYP
- * and SVC. For the kernel itself, the vectors are set once and for
- * all by the stubs.
+ * __hyp_set_vectors: Call this after boot to set the initial hypervisor
+ * vectors as part of hypervisor installation.  On an SMP system, this should
+ * be called on each CPU.
+ *
+ * r0 must be the physical address of the new vector table (which must lie in
+ * the bottom 4GB of physical address space.
+ *
+ * r0 must be 32-byte aligned.
+ *
+ * Before calling this, you must check that the stub hypervisor is installed
+ * everywhere, by waiting for any secondary CPUs to be brought up and then
+ * checking that BOOT_CPU_MODE_HAVE_HYP(__boot_cpu_mode) is true.
+ *
+ * If not, there is a pre-existing hypervisor, some CPUs failed to boot, or
+ * something else went wrong... in such cases, trying to install a new
+ * hypervisor is unlikely to work as desired.
+ *
+ * When you call into your shiny new hypervisor, sp_hyp will contain junk,
+ * so you will need to set that to something sensible at the new hypervisor's
+ * initialisation entry point.
  */
 ENTRY(__hyp_set_vectors)
 	mov	r1, r0
@@ -226,6 +245,18 @@ ENTRY(__hyp_soft_restart)
 	__HVC(0)
 	ret	lr
 ENDPROC(__hyp_soft_restart)
+
+ENTRY(__hyp_reset_vectors)
+	mov	r0, #HVC_RESET_VECTORS
+	__HVC(0)
+	ret	lr
+ENDPROC(__hyp_reset_vectors)
+
+#ifndef ZIMAGE
+.align 2
+.L__boot_cpu_mode_offset:
+	.long	__boot_cpu_mode - .
+#endif
 
 .align 5
 ENTRY(__hyp_stub_vectors)

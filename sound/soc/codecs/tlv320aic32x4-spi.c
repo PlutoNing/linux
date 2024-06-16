@@ -20,7 +20,6 @@ static int aic32x4_spi_probe(struct spi_device *spi)
 {
 	struct regmap *regmap;
 	struct regmap_config config;
-	enum aic32x4_type type;
 
 	config = aic32x4_regmap_config;
 	config.reg_bits = 7;
@@ -29,26 +28,24 @@ static int aic32x4_spi_probe(struct spi_device *spi)
 	config.read_flag_mask = 0x01;
 
 	regmap = devm_regmap_init_spi(spi, &config);
-	type = (uintptr_t)spi_get_device_match_data(spi);
-
-	return aic32x4_probe(&spi->dev, regmap, type);
+	return aic32x4_probe(&spi->dev, regmap);
 }
 
-static void aic32x4_spi_remove(struct spi_device *spi)
+static int aic32x4_spi_remove(struct spi_device *spi)
 {
-	aic32x4_remove(&spi->dev);
+	return aic32x4_remove(&spi->dev);
 }
 
 static const struct spi_device_id aic32x4_spi_id[] = {
-	{ "tlv320aic32x4", (kernel_ulong_t)AIC32X4_TYPE_AIC32X4 },
-	{ "tlv320aic32x6", (kernel_ulong_t)AIC32X4_TYPE_AIC32X6 },
+	{ "tlv320aic32x4", 0 },
+	{ "tlv320aic32x6", 1 },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(spi, aic32x4_spi_id);
 
 static const struct of_device_id aic32x4_of_id[] = {
-	{ .compatible = "ti,tlv320aic32x4", .data = (void *)AIC32X4_TYPE_AIC32X4 },
-	{ .compatible = "ti,tlv320aic32x6", .data = (void *)AIC32X4_TYPE_AIC32X6 },
+	{ .compatible = "ti,tlv320aic32x4", },
+	{ .compatible = "ti,tlv320aic32x6", },
 	{ /* senitel */ }
 };
 MODULE_DEVICE_TABLE(of, aic32x4_of_id);

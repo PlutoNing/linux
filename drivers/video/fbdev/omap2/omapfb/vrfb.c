@@ -339,7 +339,9 @@ static int __init vrfb_probe(struct platform_device *pdev)
 	int i;
 
 	/* first resource is the register res, the rest are vrfb contexts */
-	vrfb_base = devm_platform_ioremap_resource(pdev, 0);
+
+	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	vrfb_base = devm_ioremap_resource(&pdev->dev, mem);
 	if (IS_ERR(vrfb_base))
 		return PTR_ERR(vrfb_base);
 
@@ -368,10 +370,17 @@ static int __init vrfb_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static void __exit vrfb_remove(struct platform_device *pdev)
+{
+	vrfb_loaded = false;
+}
+
 static struct platform_driver vrfb_driver = {
 	.driver.name	= "omapvrfb",
+	.remove		= __exit_p(vrfb_remove),
 };
-builtin_platform_driver_probe(vrfb_driver, vrfb_probe);
+
+module_platform_driver_probe(vrfb_driver, vrfb_probe);
 
 MODULE_AUTHOR("Tomi Valkeinen <tomi.valkeinen@ti.com>");
 MODULE_DESCRIPTION("OMAP VRFB");

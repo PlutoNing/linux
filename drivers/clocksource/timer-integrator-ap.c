@@ -7,9 +7,9 @@
 
 #include <linux/clk.h>
 #include <linux/clocksource.h>
-#include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/of_platform.h>
 #include <linux/clockchips.h>
 #include <linux/interrupt.h>
 #include <linux/sched_clock.h>
@@ -123,6 +123,13 @@ static struct clock_event_device integrator_clockevent = {
 	.rating			= 300,
 };
 
+static struct irqaction integrator_timer_irq = {
+	.name		= "timer",
+	.flags		= IRQF_TIMER | IRQF_IRQPOLL,
+	.handler	= integrator_timer_interrupt,
+	.dev_id		= &integrator_clockevent,
+};
+
 static int integrator_clockevent_init(unsigned long inrate,
 				      void __iomem *base, int irq)
 {
@@ -142,9 +149,7 @@ static int integrator_clockevent_init(unsigned long inrate,
 	timer_reload = rate / HZ;
 	writel(ctrl, clkevt_base + TIMER_CTRL);
 
-	ret = request_irq(irq, integrator_timer_interrupt,
-			  IRQF_TIMER | IRQF_IRQPOLL, "timer",
-			  &integrator_clockevent);
+	ret = setup_irq(irq, &integrator_timer_irq);
 	if (ret)
 		return ret;
 

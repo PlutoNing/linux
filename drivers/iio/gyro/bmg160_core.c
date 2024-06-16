@@ -19,7 +19,6 @@
 #include <linux/iio/trigger_consumer.h>
 #include <linux/iio/triggered_buffer.h>
 #include <linux/regmap.h>
-#include <linux/regulator/consumer.h>
 #include "bmg160.h"
 
 #define BMG160_IRQ_NAME		"bmg160_event"
@@ -97,11 +96,7 @@ struct bmg160_data {
 	struct iio_trigger *motion_trig;
 	struct iio_mount_matrix orientation;
 	struct mutex mutex;
-	/* Ensure naturally aligned timestamp */
-	struct {
-		s16 chans[3];
-		s64 timestamp __aligned(8);
-	} scan;
+	s16 buffer[8];
 	u32 dps_range;
 	int ev_enable_state;
 	int slope_thres;
@@ -765,7 +760,7 @@ static int bmg160_write_event_config(struct iio_dev *indio_dev,
 		return 0;
 	}
 	/*
-	 * We will expect the enable and disable to do operation
+	 * We will expect the enable and disable to do operation in
 	 * in reverse order. This will happen here anyway as our
 	 * resume operation uses sync mode runtime pm calls, the
 	 * suspend operation will be delayed by autosuspend delay
@@ -885,12 +880,12 @@ static irqreturn_t bmg160_trigger_handler(int irq, void *p)
 
 	mutex_lock(&data->mutex);
 	ret = regmap_bulk_read(data->regmap, BMG160_REG_XOUT_L,
-			       data->scan.chans, AXIS_MAX * 2);
+			       data->buffer, AXIS_MAX * 2);
 	mutex_unlock(&data->mutex);
 	if (ret < 0)
 		goto err;
 
-	iio_push_to_buffers_with_timestamp(indio_dev, &data->scan,
+	iio_push_to_buffers_with_timestamp(indio_dev, data->buffer,
 					   pf->timestamp);
 err:
 	iio_trigger_notify_done(indio_dev->trig);
@@ -898,7 +893,7 @@ err:
 	return IRQ_HANDLED;
 }
 
-static void bmg160_trig_reen(struct iio_trigger *trig)
+static int bmg160_trig_try_reen(struct iio_trigger *trig)
 {
 	struct iio_dev *indio_dev = iio_trigger_get_drvdata(trig);
 	struct bmg160_data *data = iio_priv(indio_dev);
@@ -907,14 +902,18 @@ static void bmg160_trig_reen(struct iio_trigger *trig)
 
 	/* new data interrupts don't need ack */
 	if (data->dready_trigger_on)
-		return;
+		return 0;
 
 	/* Set latched mode interrupt and clear any latched interrupt */
 	ret = regmap_write(data->regmap, BMG160_REG_INT_RST_LATCH,
 			   BMG160_INT_MODE_LATCH_INT |
 			   BMG160_INT_MODE_LATCH_RESET);
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(dev, "Error writing reg_rst_latch\n");
+		return ret;
+	}
+
+	return 0;
 }
 
 static int bmg160_data_rdy_trigger_set_state(struct iio_trigger *trig,
@@ -962,7 +961,7 @@ static int bmg160_data_rdy_trigger_set_state(struct iio_trigger *trig,
 
 static const struct iio_trigger_ops bmg160_trigger_ops = {
 	.set_trigger_state = bmg160_data_rdy_trigger_set_state,
-	.reenable = bmg160_trig_reen,
+	.try_reenable = bmg160_trig_try_reen,
 };
 
 static irqreturn_t bmg160_event_handler(int irq, void *private)
@@ -1052,6 +1051,8 @@ static int bmg160_buffer_postdisable(struct iio_dev *indio_dev)
 
 static const struct iio_buffer_setup_ops bmg160_buffer_setup_ops = {
 	.preenable = bmg160_buffer_preenable,
+	.postenable = iio_triggered_buffer_postenable,
+	.predisable = iio_triggered_buffer_predisable,
 	.postdisable = bmg160_buffer_postdisable,
 };
 
@@ -1069,7 +1070,6 @@ static const char *bmg160_match_acpi_device(struct device *dev)
 int bmg160_core_probe(struct device *dev, struct regmap *regmap, int irq,
 		      const char *name)
 {
-	static const char * const regulators[] = { "vdd", "vddio" };
 	struct bmg160_data *data;
 	struct iio_dev *indio_dev;
 	int ret;
@@ -1083,12 +1083,8 @@ int bmg160_core_probe(struct device *dev, struct regmap *regmap, int irq,
 	data->irq = irq;
 	data->regmap = regmap;
 
-	ret = devm_regulator_bulk_get_enable(dev, ARRAY_SIZE(regulators),
-					     regulators);
-	if (ret)
-		return dev_err_probe(dev, ret, "Failed to get regulators\n");
-
-	ret = iio_read_mount_matrix(dev, &data->orientation);
+	ret = iio_read_mount_matrix(dev, "mount-matrix",
+				&data->orientation);
 	if (ret)
 		return ret;
 
@@ -1101,6 +1097,7 @@ int bmg160_core_probe(struct device *dev, struct regmap *regmap, int irq,
 	if (ACPI_HANDLE(dev))
 		name = bmg160_match_acpi_device(dev);
 
+	indio_dev->dev.parent = dev;
 	indio_dev->channels = bmg160_channels;
 	indio_dev->num_channels = ARRAY_SIZE(bmg160_channels);
 	indio_dev->name = name;
@@ -1122,23 +1119,25 @@ int bmg160_core_probe(struct device *dev, struct regmap *regmap, int irq,
 		data->dready_trig = devm_iio_trigger_alloc(dev,
 							   "%s-dev%d",
 							   indio_dev->name,
-							   iio_device_id(indio_dev));
+							   indio_dev->id);
 		if (!data->dready_trig)
 			return -ENOMEM;
 
 		data->motion_trig = devm_iio_trigger_alloc(dev,
 							  "%s-any-motion-dev%d",
 							  indio_dev->name,
-							  iio_device_id(indio_dev));
+							  indio_dev->id);
 		if (!data->motion_trig)
 			return -ENOMEM;
 
+		data->dready_trig->dev.parent = dev;
 		data->dready_trig->ops = &bmg160_trigger_ops;
 		iio_trigger_set_drvdata(data->dready_trig, indio_dev);
 		ret = iio_trigger_register(data->dready_trig);
 		if (ret)
 			return ret;
 
+		data->motion_trig->dev.parent = dev;
 		data->motion_trig->ops = &bmg160_trigger_ops;
 		iio_trigger_set_drvdata(data->motion_trig, indio_dev);
 		ret = iio_trigger_register(data->motion_trig);
@@ -1170,14 +1169,11 @@ int bmg160_core_probe(struct device *dev, struct regmap *regmap, int irq,
 	ret = iio_device_register(indio_dev);
 	if (ret < 0) {
 		dev_err(dev, "unable to register iio device\n");
-		goto err_pm_cleanup;
+		goto err_buffer_cleanup;
 	}
 
 	return 0;
 
-err_pm_cleanup:
-	pm_runtime_dont_use_autosuspend(dev);
-	pm_runtime_disable(dev);
 err_buffer_cleanup:
 	iio_triggered_buffer_cleanup(indio_dev);
 err_trigger_unregister:

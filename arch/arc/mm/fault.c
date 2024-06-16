@@ -13,7 +13,7 @@
 #include <linux/kdebug.h>
 #include <linux/perf_event.h>
 #include <linux/mm_types.h>
-#include <asm/entry.h>
+#include <asm/pgalloc.h>
 #include <asm/mmu.h>
 
 /*
@@ -30,38 +30,26 @@ noinline static int handle_kernel_vaddr_fault(unsigned long address)
 	 * with the 'reference' page table.
 	 */
 	pgd_t *pgd, *pgd_k;
-	p4d_t *p4d, *p4d_k;
 	pud_t *pud, *pud_k;
 	pmd_t *pmd, *pmd_k;
 
-	pgd = pgd_offset(current->active_mm, address);
+	pgd = pgd_offset_fast(current->active_mm, address);
 	pgd_k = pgd_offset_k(address);
 
-	if (pgd_none (*pgd_k))
+	if (!pgd_present(*pgd_k))
 		goto bad_area;
-	if (!pgd_present(*pgd))
-		set_pgd(pgd, *pgd_k);
 
-	p4d = p4d_offset(pgd, address);
-	p4d_k = p4d_offset(pgd_k, address);
-	if (p4d_none(*p4d_k))
+	pud = pud_offset(pgd, address);
+	pud_k = pud_offset(pgd_k, address);
+	if (!pud_present(*pud_k))
 		goto bad_area;
-	if (!p4d_present(*p4d))
-		set_p4d(p4d, *p4d_k);
-
-	pud = pud_offset(p4d, address);
-	pud_k = pud_offset(p4d_k, address);
-	if (pud_none(*pud_k))
-		goto bad_area;
-	if (!pud_present(*pud))
-		set_pud(pud, *pud_k);
 
 	pmd = pmd_offset(pud, address);
 	pmd_k = pmd_offset(pud_k, address);
-	if (pmd_none(*pmd_k))
+	if (!pmd_present(*pmd_k))
 		goto bad_area;
-	if (!pmd_present(*pmd))
-		set_pmd(pmd, *pmd_k);
+
+	set_pmd(pmd, *pmd_k);
 
 	/* XXX: create the TLB entry here */
 	return 0;
@@ -100,23 +88,28 @@ void do_page_fault(unsigned long address, struct pt_regs *regs)
 	if (faulthandler_disabled() || !mm)
 		goto no_context;
 
-	if (regs->ecr.cause & ECR_C_PROTV_STORE)	/* ST/EX */
+	if (regs->ecr_cause & ECR_C_PROTV_STORE)	/* ST/EX */
 		write = 1;
-	else if ((regs->ecr.vec == ECR_V_PROTV) &&
-	         (regs->ecr.cause == ECR_C_PROTV_INST_FETCH))
+	else if ((regs->ecr_vec == ECR_V_PROTV) &&
+	         (regs->ecr_cause == ECR_C_PROTV_INST_FETCH))
 		exec = 1;
 
-	flags = FAULT_FLAG_DEFAULT;
+	flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 	if (user_mode(regs))
 		flags |= FAULT_FLAG_USER;
 	if (write)
 		flags |= FAULT_FLAG_WRITE;
 
-	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, address);
 retry:
-	vma = lock_mm_and_find_vma(mm, address, regs);
+	down_read(&mm->mmap_sem);
+
+	vma = find_vma(mm, address);
 	if (!vma)
-		goto bad_area_nosemaphore;
+		goto bad_area;
+	if (unlikely(address < vma->vm_start)) {
+		if (!(vma->vm_flags & VM_GROWSDOWN) || expand_stack(vma, address))
+			goto bad_area;
+	}
 
 	/*
 	 * vm_area is good, now check permissions for this memory access
@@ -132,38 +125,56 @@ retry:
 		goto bad_area;
 	}
 
-	fault = handle_mm_fault(vma, address, flags, regs);
-
-	/* Quick path to respond to signals */
-	if (fault_signal_pending(fault, regs)) {
-		if (!user_mode(regs))
-			goto no_context;
-		return;
-	}
-
-	/* The fault is fully completed (including releasing mmap lock) */
-	if (fault & VM_FAULT_COMPLETED)
-		return;
+	fault = handle_mm_fault(vma, address, flags);
 
 	/*
-	 * Fault retry nuances, mmap_lock already relinquished by core mm
+	 * Fault retry nuances
 	 */
 	if (unlikely(fault & VM_FAULT_RETRY)) {
-		flags |= FAULT_FLAG_TRIED;
-		goto retry;
+
+		/*
+		 * If fault needs to be retried, handle any pending signals
+		 * first (by returning to user mode).
+		 * mmap_sem already relinquished by core mm for RETRY case
+		 */
+		if (fatal_signal_pending(current)) {
+			if (!user_mode(regs))
+				goto no_context;
+			return;
+		}
+		/*
+		 * retry state machine
+		 */
+		if (flags & FAULT_FLAG_ALLOW_RETRY) {
+			flags &= ~FAULT_FLAG_ALLOW_RETRY;
+			flags |= FAULT_FLAG_TRIED;
+			goto retry;
+		}
 	}
 
 bad_area:
-	mmap_read_unlock(mm);
+	up_read(&mm->mmap_sem);
 
-bad_area_nosemaphore:
 	/*
 	 * Major/minor page fault accounting
 	 * (in case of retry we only land here once)
 	 */
-	if (likely(!(fault & VM_FAULT_ERROR)))
+	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, address);
+
+	if (likely(!(fault & VM_FAULT_ERROR))) {
+		if (fault & VM_FAULT_MAJOR) {
+			tsk->maj_flt++;
+			perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1,
+				      regs, address);
+		} else {
+			tsk->min_flt++;
+			perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MIN, 1,
+				      regs, address);
+		}
+
 		/* Normal return path: fault Handled Gracefully */
 		return;
+	}
 
 	if (!user_mode(regs))
 		goto no_context;

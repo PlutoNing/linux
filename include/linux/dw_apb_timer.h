@@ -25,6 +25,7 @@ struct dw_apb_timer {
 struct dw_apb_clock_event_device {
 	struct clock_event_device		ced;
 	struct dw_apb_timer			timer;
+	struct irqaction			irqaction;
 	void					(*eoi)(struct dw_apb_timer *);
 };
 

@@ -182,15 +182,6 @@ struct rf_channel {
 };
 
 /*
- * Information structure for channel survey.
- */
-struct rt2x00_chan_survey {
-	u64 time_idle;
-	u64 time_busy;
-	u64 time_ext_busy;
-};
-
-/*
  * Channel information structure
  */
 struct channel_info {
@@ -232,7 +223,7 @@ struct link_qual {
 	 * VGC levels
 	 * Hardware driver will tune the VGC level during each call
 	 * to the link_tuner() callback function. This vgc_level is
-	 * determined based on the link quality statistics like
+	 * is determined based on the link quality statistics like
 	 * average RSSI and the false CCA count.
 	 *
 	 * In some cases the drivers need to differentiate between
@@ -334,7 +325,7 @@ struct link {
 	 */
 	struct delayed_work watchdog_work;
 	unsigned int watchdog_interval;
-	unsigned int watchdog;
+	bool watchdog_disabled;
 
 	/*
 	 * Work structure for scheduling periodic AGC adjustments.
@@ -527,11 +518,11 @@ struct rt2x00lib_ops {
 	/*
 	 * TX status tasklet handler.
 	 */
-	void (*txstatus_tasklet) (struct tasklet_struct *t);
-	void (*pretbtt_tasklet) (struct tasklet_struct *t);
-	void (*tbtt_tasklet) (struct tasklet_struct *t);
-	void (*rxdone_tasklet) (struct tasklet_struct *t);
-	void (*autowake_tasklet) (struct tasklet_struct *t);
+	void (*txstatus_tasklet) (unsigned long data);
+	void (*pretbtt_tasklet) (unsigned long data);
+	void (*tbtt_tasklet) (unsigned long data);
+	void (*rxdone_tasklet) (unsigned long data);
+	void (*autowake_tasklet) (unsigned long data);
 
 	/*
 	 * Device init handlers.
@@ -761,7 +752,6 @@ struct rt2x00_dev {
 	 */
 	struct ieee80211_hw *hw;
 	struct ieee80211_supported_band bands[NUM_NL80211_BANDS];
-	struct rt2x00_chan_survey *chan_survey;
 	enum nl80211_band curr_band;
 	int curr_freq;
 
@@ -925,9 +915,6 @@ struct rt2x00_dev {
 	 * Beacon interval.
 	 */
 	u16 beacon_int;
-
-	/* Rx/Tx DMA busy watchdog counter */
-	u16 rxdma_busy, txdma_busy;
 
 	/**
 	 * Timestamp of last received beacon
@@ -1266,12 +1253,6 @@ rt2x00_has_cap_external_lna_bg(struct rt2x00_dev *rt2x00dev)
 }
 
 static inline bool
-rt2x00_has_cap_external_pa(struct rt2x00_dev *rt2x00dev)
-{
-	return rt2x00_has_cap_flag(rt2x00dev, CAPABILITY_EXTERNAL_PA_TX0);
-}
-
-static inline bool
 rt2x00_has_cap_double_antenna(struct rt2x00_dev *rt2x00dev)
 {
 	return rt2x00_has_cap_flag(rt2x00dev, CAPABILITY_DOUBLE_ANTENNA);
@@ -1318,11 +1299,8 @@ void rt2x00queue_unmap_skb(struct queue_entry *entry);
  */
 static inline struct data_queue *
 rt2x00queue_get_tx_queue(struct rt2x00_dev *rt2x00dev,
-			 enum data_queue_qid queue)
+			 const enum data_queue_qid queue)
 {
-	if (queue >= rt2x00dev->ops->tx_queues && queue < IEEE80211_NUM_ACS)
-		queue = rt2x00dev->ops->tx_queues - 1;
-
 	if (queue < rt2x00dev->ops->tx_queues && rt2x00dev->tx)
 		return &rt2x00dev->tx[queue];
 
@@ -1461,8 +1439,6 @@ void rt2x00mac_tx(struct ieee80211_hw *hw,
 		  struct sk_buff *skb);
 int rt2x00mac_start(struct ieee80211_hw *hw);
 void rt2x00mac_stop(struct ieee80211_hw *hw);
-void rt2x00mac_reconfig_complete(struct ieee80211_hw *hw,
-				 enum ieee80211_reconfig_type reconfig_type);
 int rt2x00mac_add_interface(struct ieee80211_hw *hw,
 			    struct ieee80211_vif *vif);
 void rt2x00mac_remove_interface(struct ieee80211_hw *hw,
@@ -1491,10 +1467,9 @@ int rt2x00mac_get_stats(struct ieee80211_hw *hw,
 void rt2x00mac_bss_info_changed(struct ieee80211_hw *hw,
 				struct ieee80211_vif *vif,
 				struct ieee80211_bss_conf *bss_conf,
-				u64 changes);
+				u32 changes);
 int rt2x00mac_conf_tx(struct ieee80211_hw *hw,
-		      struct ieee80211_vif *vif,
-		      unsigned int link_id, u16 queue,
+		      struct ieee80211_vif *vif, u16 queue,
 		      const struct ieee80211_tx_queue_params *params);
 void rt2x00mac_rfkill_poll(struct ieee80211_hw *hw);
 void rt2x00mac_flush(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
@@ -1510,8 +1485,9 @@ bool rt2x00mac_tx_frames_pending(struct ieee80211_hw *hw);
  */
 int rt2x00lib_probe_dev(struct rt2x00_dev *rt2x00dev);
 void rt2x00lib_remove_dev(struct rt2x00_dev *rt2x00dev);
-
-int rt2x00lib_suspend(struct rt2x00_dev *rt2x00dev);
+#ifdef CONFIG_PM
+int rt2x00lib_suspend(struct rt2x00_dev *rt2x00dev, pm_message_t state);
 int rt2x00lib_resume(struct rt2x00_dev *rt2x00dev);
+#endif /* CONFIG_PM */
 
 #endif /* RT2X00_H */

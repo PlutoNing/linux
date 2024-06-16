@@ -242,10 +242,6 @@ static void reg_r(struct gspca_dev *gspca_dev,
 		gspca_err(gspca_dev, "reg_r: buffer overflow\n");
 		return;
 	}
-	if (len == 0) {
-		gspca_err(gspca_dev, "reg_r: zero-length read\n");
-		return;
-	}
 	if (gspca_dev->usb_err < 0)
 		return;
 	ret = usb_control_msg(gspca_dev->dev,
@@ -254,7 +250,7 @@ static void reg_r(struct gspca_dev *gspca_dev,
 			USB_DIR_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
 			0,		/* value */
 			index,
-			gspca_dev->usb_buf, len,
+			len ? gspca_dev->usb_buf : NULL, len,
 			500);
 	if (ret < 0) {
 		pr_err("reg_r err %d\n", ret);
@@ -555,7 +551,7 @@ static void init_ctl_reg(struct gspca_dev *gspca_dev)
 	case BRIDGE_SPCA504:
 	case BRIDGE_SPCA504C:
 		pollreg = 0;
-		fallthrough;
+		/* fall through */
 	default:
 /*	case BRIDGE_SPCA533: */
 /*	case BRIDGE_SPCA504B: */
@@ -638,7 +634,7 @@ static int sd_init(struct gspca_dev *gspca_dev)
 		reg_w_riv(gspca_dev, 0x00, 0x2000, 0x00);
 		reg_w_riv(gspca_dev, 0x00, 0x2301, 0x13);
 		reg_w_riv(gspca_dev, 0x00, 0x2306, 0x00);
-		fallthrough;
+		/* fall through */
 	case BRIDGE_SPCA533:
 		spca504B_PollingDataReady(gspca_dev);
 		spca50x_GetFirmware(gspca_dev);
@@ -731,7 +727,7 @@ static int sd_start(struct gspca_dev *gspca_dev)
 		case MegaImageVI:
 			reg_w_riv(gspca_dev, 0xf0, 0, 0);
 			spca504B_WaitCmdStatus(gspca_dev);
-			reg_w_riv(gspca_dev, 0xf0, 4, 0);
+			reg_r(gspca_dev, 0xf0, 4, 0);
 			spca504B_WaitCmdStatus(gspca_dev);
 			break;
 		default:

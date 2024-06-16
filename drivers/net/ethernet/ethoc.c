@@ -177,7 +177,6 @@ MODULE_PARM_DESC(buffer_size, "DMA buffer allocation size");
  * struct ethoc - driver-private device structure
  * @iobase:	pointer to I/O memory region
  * @membase:	pointer to buffer memory region
- * @big_endian: just big or little (endian)
  * @num_bd:	number of buffer descriptors
  * @num_tx:	number of send buffers
  * @cur_tx:	last send buffer written
@@ -190,10 +189,7 @@ MODULE_PARM_DESC(buffer_size, "DMA buffer allocation size");
  * @msg_enable:	device state flags
  * @lock:	device lock
  * @mdio:	MDIO bus for PHY access
- * @clk:	clock
  * @phy_id:	address of attached PHY
- * @old_link:	previous link info
- * @old_duplex: previous duplex info
  */
 struct ethoc {
 	void __iomem *iobase;
@@ -707,16 +703,20 @@ static int ethoc_mdio_probe(struct net_device *dev)
 	else
 		phy = phy_find_first(priv->mdio);
 
-	if (!phy)
-		return dev_err_probe(&dev->dev, -ENXIO, "no PHY found\n");
+	if (!phy) {
+		dev_err(&dev->dev, "no PHY found\n");
+		return -ENXIO;
+	}
 
 	priv->old_duplex = -1;
 	priv->old_link = -1;
 
 	err = phy_connect_direct(dev, phy, ethoc_mdio_poll,
 				 PHY_INTERFACE_MODE_GMII);
-	if (err)
-		return dev_err_probe(&dev->dev, err, "could not attach to PHY\n");
+	if (err) {
+		dev_err(&dev->dev, "could not attach to PHY\n");
+		return err;
+	}
 
 	phy_set_max_speed(phy, SPEED_100);
 
@@ -802,8 +802,8 @@ static int ethoc_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 
 static void ethoc_do_set_mac_address(struct net_device *dev)
 {
-	const unsigned char *mac = dev->dev_addr;
 	struct ethoc *priv = netdev_priv(dev);
+	unsigned char *mac = dev->dev_addr;
 
 	ethoc_write(priv, MAC_ADDR0, (mac[2] << 24) | (mac[3] << 16) |
 				     (mac[4] <<  8) | (mac[5] <<  0));
@@ -816,7 +816,7 @@ static int ethoc_set_mac_address(struct net_device *dev, void *p)
 
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
-	eth_hw_addr_set(dev, addr->sa_data);
+	memcpy(dev->dev_addr, addr->sa_data, ETH_ALEN);
 	ethoc_do_set_mac_address(dev);
 	return 0;
 }
@@ -869,7 +869,7 @@ static int ethoc_change_mtu(struct net_device *dev, int new_mtu)
 	return -ENOSYS;
 }
 
-static void ethoc_tx_timeout(struct net_device *dev, unsigned int txqueue)
+static void ethoc_tx_timeout(struct net_device *dev)
 {
 	struct ethoc *priv = netdev_priv(dev);
 	u32 pending = ethoc_read(priv, INT_SOURCE);
@@ -945,9 +945,7 @@ static void ethoc_get_regs(struct net_device *dev, struct ethtool_regs *regs,
 }
 
 static void ethoc_get_ringparam(struct net_device *dev,
-				struct ethtool_ringparam *ring,
-				struct kernel_ethtool_ringparam *kernel_ring,
-				struct netlink_ext_ack *extack)
+				struct ethtool_ringparam *ring)
 {
 	struct ethoc *priv = netdev_priv(dev);
 
@@ -963,9 +961,7 @@ static void ethoc_get_ringparam(struct net_device *dev,
 }
 
 static int ethoc_set_ringparam(struct net_device *dev,
-			       struct ethtool_ringparam *ring,
-			       struct kernel_ethtool_ringparam *kernel_ring,
-			       struct netlink_ext_ack *extack)
+			       struct ethtool_ringparam *ring)
 {
 	struct ethoc *priv = netdev_priv(dev);
 
@@ -1009,7 +1005,7 @@ static const struct ethtool_ops ethoc_ethtool_ops = {
 static const struct net_device_ops ethoc_netdev_ops = {
 	.ndo_open = ethoc_open,
 	.ndo_stop = ethoc_stop,
-	.ndo_eth_ioctl = ethoc_ioctl,
+	.ndo_do_ioctl = ethoc_ioctl,
 	.ndo_set_mac_address = ethoc_set_mac_address,
 	.ndo_set_rx_mode = ethoc_set_multicast_list,
 	.ndo_change_mtu = ethoc_change_mtu,
@@ -1019,7 +1015,7 @@ static const struct net_device_ops ethoc_netdev_ops = {
 
 /**
  * ethoc_probe - initialize OpenCores ethernet MAC
- * @pdev:	platform device
+ * pdev:	platform device
  */
 static int ethoc_probe(struct platform_device *pdev)
 {
@@ -1078,17 +1074,20 @@ static int ethoc_probe(struct platform_device *pdev)
 
 
 	/* obtain device IRQ number */
-	ret = platform_get_irq(pdev, 0);
-	if (ret < 0)
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "cannot obtain IRQ\n");
+		ret = -ENXIO;
 		goto free;
+	}
 
-	netdev->irq = ret;
+	netdev->irq = res->start;
 
 	/* setup driver-private data */
 	priv = netdev_priv(netdev);
 	priv->netdev = netdev;
 
-	priv->iobase = devm_ioremap(&pdev->dev, netdev->base_addr,
+	priv->iobase = devm_ioremap_nocache(&pdev->dev, netdev->base_addr,
 			resource_size(mmio));
 	if (!priv->iobase) {
 		dev_err(&pdev->dev, "cannot remap I/O memory space\n");
@@ -1097,7 +1096,7 @@ static int ethoc_probe(struct platform_device *pdev)
 	}
 
 	if (netdev->mem_end) {
-		priv->membase = devm_ioremap(&pdev->dev,
+		priv->membase = devm_ioremap_nocache(&pdev->dev,
 			netdev->mem_start, resource_size(mem));
 		if (!priv->membase) {
 			dev_err(&pdev->dev, "cannot remap memory space\n");
@@ -1145,22 +1144,22 @@ static int ethoc_probe(struct platform_device *pdev)
 
 	/* Allow the platform setup code to pass in a MAC address. */
 	if (pdata) {
-		eth_hw_addr_set(netdev, pdata->hwaddr);
+		ether_addr_copy(netdev->dev_addr, pdata->hwaddr);
 		priv->phy_id = pdata->phy_id;
 	} else {
-		of_get_ethdev_address(pdev->dev.of_node, netdev);
+		const void *mac;
+
+		mac = of_get_mac_address(pdev->dev.of_node);
+		if (!IS_ERR(mac))
+			ether_addr_copy(netdev->dev_addr, mac);
 		priv->phy_id = -1;
 	}
 
 	/* Check that the given MAC address is valid. If it isn't, read the
 	 * current MAC from the controller.
 	 */
-	if (!is_valid_ether_addr(netdev->dev_addr)) {
-		u8 addr[ETH_ALEN];
-
-		ethoc_get_mac_address(netdev, addr);
-		eth_hw_addr_set(netdev, addr);
-	}
+	if (!is_valid_ether_addr(netdev->dev_addr))
+		ethoc_get_mac_address(netdev, netdev->dev_addr);
 
 	/* Check the MAC again for validity, if it still isn't choose and
 	 * program a random one.
@@ -1208,7 +1207,7 @@ static int ethoc_probe(struct platform_device *pdev)
 	ret = mdiobus_register(priv->mdio);
 	if (ret) {
 		dev_err(&netdev->dev, "failed to register MDIO bus\n");
-		goto free3;
+		goto free2;
 	}
 
 	ret = ethoc_mdio_probe(netdev);
@@ -1224,7 +1223,7 @@ static int ethoc_probe(struct platform_device *pdev)
 	netdev->ethtool_ops = &ethoc_ethtool_ops;
 
 	/* setup NAPI */
-	netif_napi_add(netdev, &priv->napi, ethoc_poll);
+	netif_napi_add(netdev, &priv->napi, ethoc_poll, 64);
 
 	spin_lock_init(&priv->lock);
 
@@ -1240,7 +1239,6 @@ error2:
 	netif_napi_del(&priv->napi);
 error:
 	mdiobus_unregister(priv->mdio);
-free3:
 	mdiobus_free(priv->mdio);
 free2:
 	clk_disable_unprepare(priv->clk);
@@ -1254,7 +1252,7 @@ out:
  * ethoc_remove - shutdown OpenCores ethernet MAC
  * @pdev:	platform device
  */
-static void ethoc_remove(struct platform_device *pdev)
+static int ethoc_remove(struct platform_device *pdev)
 {
 	struct net_device *netdev = platform_get_drvdata(pdev);
 	struct ethoc *priv = netdev_priv(netdev);
@@ -1271,6 +1269,8 @@ static void ethoc_remove(struct platform_device *pdev)
 		unregister_netdev(netdev);
 		free_netdev(netdev);
 	}
+
+	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -1296,7 +1296,7 @@ MODULE_DEVICE_TABLE(of, ethoc_match);
 
 static struct platform_driver ethoc_driver = {
 	.probe   = ethoc_probe,
-	.remove_new = ethoc_remove,
+	.remove  = ethoc_remove,
 	.suspend = ethoc_suspend,
 	.resume  = ethoc_resume,
 	.driver  = {

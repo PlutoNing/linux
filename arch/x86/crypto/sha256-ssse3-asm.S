@@ -47,7 +47,6 @@
 ########################################################################
 
 #include <linux/linkage.h>
-#include <linux/cfi_types.h>
 
 ## assume buffers not aligned
 #define    MOVDQ movdqu
@@ -348,15 +347,14 @@ a = TMP_
 .endm
 
 ########################################################################
-## void sha256_transform_ssse3(struct sha256_state *state, const u8 *data,
-##			       int blocks);
-## arg 1 : pointer to state
-##	   (struct sha256_state is assumed to begin with u32 state[8])
+## void sha256_transform_ssse3(void *input_data, UINT32 digest[8], UINT64 num_blks)
+## arg 1 : pointer to digest
 ## arg 2 : pointer to input data
 ## arg 3 : Num blocks
 ########################################################################
 .text
-SYM_TYPED_FUNC_START(sha256_transform_ssse3)
+ENTRY(sha256_transform_ssse3)
+.align 32
 	pushq   %rbx
 	pushq   %r12
 	pushq   %r13
@@ -369,7 +367,7 @@ SYM_TYPED_FUNC_START(sha256_transform_ssse3)
 	and	$~15, %rsp
 
 	shl     $6, NUM_BLKS		 # convert to bytes
-	jz      .Ldone_hash
+	jz      done_hash
 	add     INP, NUM_BLKS
 	mov     NUM_BLKS, _INP_END(%rsp) # pointer to end of data
 
@@ -387,7 +385,7 @@ SYM_TYPED_FUNC_START(sha256_transform_ssse3)
 	movdqa  _SHUF_00BA(%rip), SHUF_00BA
 	movdqa  _SHUF_DC00(%rip), SHUF_DC00
 
-.Lloop0:
+loop0:
 	lea     K256(%rip), TBL
 
 	## byte swap first 16 dwords
@@ -401,7 +399,7 @@ SYM_TYPED_FUNC_START(sha256_transform_ssse3)
 	## schedule 48 input dwords, by doing 3 rounds of 16 each
 	mov     $3, SRND
 .align 16
-.Lloop1:
+loop1:
 	movdqa  (TBL), XFER
 	paddd   X0, XFER
 	movdqa  XFER, _XFER(%rsp)
@@ -424,10 +422,10 @@ SYM_TYPED_FUNC_START(sha256_transform_ssse3)
 	FOUR_ROUNDS_AND_SCHED
 
 	sub     $1, SRND
-	jne     .Lloop1
+	jne     loop1
 
 	mov     $2, SRND
-.Lloop2:
+loop2:
 	paddd   (TBL), X0
 	movdqa  X0, _XFER(%rsp)
 	DO_ROUND        0
@@ -446,7 +444,7 @@ SYM_TYPED_FUNC_START(sha256_transform_ssse3)
 	movdqa  X3, X1
 
 	sub     $1, SRND
-	jne     .Lloop2
+	jne     loop2
 
 	addm    (4*0)(CTX),a
 	addm    (4*1)(CTX),b
@@ -460,9 +458,9 @@ SYM_TYPED_FUNC_START(sha256_transform_ssse3)
 	mov     _INP(%rsp), INP
 	add     $64, INP
 	cmp     _INP_END(%rsp), INP
-	jne     .Lloop0
+	jne     loop0
 
-.Ldone_hash:
+done_hash:
 
 	mov	%rbp, %rsp
 	popq	%rbp
@@ -472,8 +470,8 @@ SYM_TYPED_FUNC_START(sha256_transform_ssse3)
 	popq    %r12
 	popq    %rbx
 
-	RET
-SYM_FUNC_END(sha256_transform_ssse3)
+	ret
+ENDPROC(sha256_transform_ssse3)
 
 .section	.rodata.cst256.K256, "aM", @progbits, 256
 .align 64

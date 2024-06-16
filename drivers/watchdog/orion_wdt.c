@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0-only
 /*
  * drivers/watchdog/orion_wdt.c
  *
@@ -6,6 +5,9 @@
  *
  * Author: Sylver Bruneau <sylver.bruneau@googlemail.com>
  *
+ * This file is licensed under  the terms of the GNU General Public
+ * License version 2. This program is licensed "as is" without any
+ * warranty of any kind, whether express or implied.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -50,7 +52,7 @@
 #define WDT_A370_RATIO		(1 << WDT_A370_RATIO_SHIFT)
 
 static bool nowayout = WATCHDOG_NOWAYOUT;
-static int heartbeat;		/* module parameter (seconds) */
+static int heartbeat = -1;		/* module parameter (seconds) */
 
 struct orion_watchdog;
 
@@ -172,7 +174,7 @@ static int armadaxp_wdt_clock_init(struct platform_device *pdev,
 		return ret;
 	}
 
-	/* Fix the wdt and timer1 clock frequency to 25MHz */
+	/* Fix the wdt and timer1 clock freqency to 25MHz */
 	val = WDT_AXP_FIXED_ENABLE_BIT | TIMER1_FIXED_ENABLE_BIT;
 	atomic_io_modify(dev->reg + TIMER_CTRL, val, val);
 
@@ -236,10 +238,8 @@ static int armada370_start(struct watchdog_device *wdt_dev)
 	atomic_io_modify(dev->reg + TIMER_A370_STATUS, WDT_A370_EXPIRED, 0);
 
 	/* Enable watchdog timer */
-	reg = dev->data->wdt_enable_bit;
-	if (dev->wdt.info->options & WDIOF_PRETIMEOUT)
-		reg |= TIMER1_ENABLE_BIT;
-	atomic_io_modify(dev->reg + TIMER_CTRL, reg, reg);
+	atomic_io_modify(dev->reg + TIMER_CTRL, dev->data->wdt_enable_bit,
+						dev->data->wdt_enable_bit);
 
 	/* Enable reset on watchdog */
 	reg = readl(dev->rstout);
@@ -312,7 +312,7 @@ static int armada375_stop(struct watchdog_device *wdt_dev)
 static int armada370_stop(struct watchdog_device *wdt_dev)
 {
 	struct orion_watchdog *dev = watchdog_get_drvdata(wdt_dev);
-	u32 reg, mask;
+	u32 reg;
 
 	/* Disable reset on watchdog */
 	reg = readl(dev->rstout);
@@ -320,10 +320,7 @@ static int armada370_stop(struct watchdog_device *wdt_dev)
 	writel(reg, dev->rstout);
 
 	/* Disable watchdog timer */
-	mask = dev->data->wdt_enable_bit;
-	if (wdt_dev->info->options & WDIOF_PRETIMEOUT)
-		mask |= TIMER1_ENABLE_BIT;
-	atomic_io_modify(dev->reg + TIMER_CTRL, mask, 0);
+	atomic_io_modify(dev->reg + TIMER_CTRL, dev->data->wdt_enable_bit, 0);
 
 	return 0;
 }
@@ -605,7 +602,7 @@ static int orion_wdt_probe(struct platform_device *pdev)
 		set_bit(WDOG_HW_RUNNING, &dev->wdt.status);
 
 	/* Request the IRQ only after the watchdog is disabled */
-	irq = platform_get_irq_optional(pdev, 0);
+	irq = platform_get_irq(pdev, 0);
 	if (irq > 0) {
 		/*
 		 * Not all supported platforms specify an interrupt for the
@@ -620,7 +617,7 @@ static int orion_wdt_probe(struct platform_device *pdev)
 	}
 
 	/* Optional 2nd interrupt for pretimeout */
-	irq = platform_get_irq_optional(pdev, 1);
+	irq = platform_get_irq(pdev, 1);
 	if (irq > 0) {
 		orion_wdt_info.options |= WDIOF_PRETIMEOUT;
 		ret = devm_request_irq(&pdev->dev, irq, orion_wdt_pre_irq,
@@ -647,7 +644,7 @@ disable_clk:
 	return ret;
 }
 
-static void orion_wdt_remove(struct platform_device *pdev)
+static int orion_wdt_remove(struct platform_device *pdev)
 {
 	struct watchdog_device *wdt_dev = platform_get_drvdata(pdev);
 	struct orion_watchdog *dev = watchdog_get_drvdata(wdt_dev);
@@ -655,6 +652,7 @@ static void orion_wdt_remove(struct platform_device *pdev)
 	watchdog_unregister_device(wdt_dev);
 	clk_disable_unprepare(dev->clk);
 	clk_put(dev->clk);
+	return 0;
 }
 
 static void orion_wdt_shutdown(struct platform_device *pdev)
@@ -665,7 +663,7 @@ static void orion_wdt_shutdown(struct platform_device *pdev)
 
 static struct platform_driver orion_wdt_driver = {
 	.probe		= orion_wdt_probe,
-	.remove_new	= orion_wdt_remove,
+	.remove		= orion_wdt_remove,
 	.shutdown	= orion_wdt_shutdown,
 	.driver		= {
 		.name	= "orion_wdt",

@@ -30,7 +30,6 @@
  */
 #include <linux/delay.h>
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/slab.h>
 MODULE_AUTHOR("Johannes Berg <johannes@sipsolutions.net>");
 MODULE_LICENSE("GPL");
@@ -98,7 +97,7 @@ static int onyx_dev_register(struct snd_device *dev)
 	return 0;
 }
 
-static const struct snd_device_ops ops = {
+static struct snd_device_ops ops = {
 	.dev_register = onyx_dev_register,
 };
 
@@ -414,7 +413,7 @@ static int onyx_snd_single_bit_put(struct snd_kcontrol *kcontrol,
 }
 
 #define SINGLE_BIT(n, type, description, address, mask, flags)	 	\
-static const struct snd_kcontrol_new n##_control = {			\
+static struct snd_kcontrol_new n##_control = {				\
 	.iface = SNDRV_CTL_ELEM_IFACE_##type,				\
 	.name = description,						\
 	.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,			\
@@ -544,7 +543,7 @@ static const struct snd_kcontrol_new onyx_spdif_ctrl = {
 
 /* our registers */
 
-static const u8 register_map[] = {
+static u8 register_map[] = {
 	ONYX_REG_DAC_ATTEN_LEFT,
 	ONYX_REG_DAC_ATTEN_RIGHT,
 	ONYX_REG_CONTROL,
@@ -560,7 +559,7 @@ static const u8 register_map[] = {
 	ONYX_REG_DIG_INFO4
 };
 
-static const u8 initial_values[ARRAY_SIZE(register_map)] = {
+static u8 initial_values[ARRAY_SIZE(register_map)] = {
 	0x80, 0x80, /* muted */
 	ONYX_MRST | ONYX_SRST, /* but handled specially! */
 	ONYX_MUTE_LEFT | ONYX_MUTE_RIGHT,
@@ -991,7 +990,8 @@ static void onyx_exit_codec(struct aoa_codec *codec)
 	onyx->codec.soundbus_dev->detach_codec(onyx->codec.soundbus_dev, onyx);
 }
 
-static int onyx_i2c_probe(struct i2c_client *client)
+static int onyx_i2c_probe(struct i2c_client *client,
+			  const struct i2c_device_id *id)
 {
 	struct device_node *node = client->dev.of_node;
 	struct onyx *onyx;
@@ -1013,7 +1013,7 @@ static int onyx_i2c_probe(struct i2c_client *client)
 		goto fail;
 	}
 
-	strscpy(onyx->codec.name, "onyx", MAX_CODEC_NAME_LEN);
+	strlcpy(onyx->codec.name, "onyx", MAX_CODEC_NAME_LEN);
 	onyx->codec.owner = THIS_MODULE;
 	onyx->codec.init = onyx_init_codec;
 	onyx->codec.exit = onyx_exit_codec;
@@ -1029,7 +1029,7 @@ static int onyx_i2c_probe(struct i2c_client *client)
 	return -ENODEV;
 }
 
-static void onyx_i2c_remove(struct i2c_client *client)
+static int onyx_i2c_remove(struct i2c_client *client)
 {
 	struct onyx *onyx = i2c_get_clientdata(client);
 
@@ -1037,6 +1037,7 @@ static void onyx_i2c_remove(struct i2c_client *client)
 	of_node_put(onyx->codec.node);
 	kfree(onyx->codec_info);
 	kfree(onyx);
+	return 0;
 }
 
 static const struct i2c_device_id onyx_i2c_id[] = {

@@ -56,12 +56,6 @@ struct mag3110_data {
 	int sleep_val;
 	struct regulator *vdd_reg;
 	struct regulator *vddio_reg;
-	/* Ensure natural alignment of timestamp */
-	struct {
-		__be16 channels[3];
-		u8 temperature;
-		s64 ts __aligned(8);
-	} scan;
 };
 
 static int mag3110_request(struct mag3110_data *data)
@@ -291,8 +285,7 @@ static int mag3110_read_raw(struct iio_dev *indio_dev,
 			if (ret < 0)
 				goto release;
 			*val = sign_extend32(
-				be16_to_cpu(buffer[chan->scan_index]),
-					    chan->scan_type.realbits - 1);
+				be16_to_cpu(buffer[chan->scan_index]), 15);
 			ret = IIO_VAL_INT;
 			break;
 		case IIO_TEMP: /* in 1 C / LSB */
@@ -307,8 +300,7 @@ static int mag3110_read_raw(struct iio_dev *indio_dev,
 			mutex_unlock(&data->lock);
 			if (ret < 0)
 				goto release;
-			*val = sign_extend32(ret,
-					     chan->scan_type.realbits - 1);
+			*val = sign_extend32(ret, 7);
 			ret = IIO_VAL_INT;
 			break;
 		default:
@@ -395,9 +387,10 @@ static irqreturn_t mag3110_trigger_handler(int irq, void *p)
 	struct iio_poll_func *pf = p;
 	struct iio_dev *indio_dev = pf->indio_dev;
 	struct mag3110_data *data = iio_priv(indio_dev);
+	u8 buffer[16]; /* 3 16-bit channels + 1 byte temp + padding + ts */
 	int ret;
 
-	ret = mag3110_read(data, data->scan.channels);
+	ret = mag3110_read(data, (__be16 *) buffer);
 	if (ret < 0)
 		goto done;
 
@@ -406,10 +399,10 @@ static irqreturn_t mag3110_trigger_handler(int irq, void *p)
 			MAG3110_DIE_TEMP);
 		if (ret < 0)
 			goto done;
-		data->scan.temperature = ret;
+		buffer[6] = ret;
 	}
 
-	iio_push_to_buffers_with_timestamp(indio_dev, &data->scan,
+	iio_push_to_buffers_with_timestamp(indio_dev, buffer,
 		iio_get_time_ns(indio_dev));
 
 done:
@@ -469,9 +462,9 @@ static const struct iio_info mag3110_info = {
 
 static const unsigned long mag3110_scan_masks[] = {0x7, 0xf, 0};
 
-static int mag3110_probe(struct i2c_client *client)
+static int mag3110_probe(struct i2c_client *client,
+			 const struct i2c_device_id *id)
 {
-	const struct i2c_device_id *id = i2c_client_get_device_id(client);
 	struct mag3110_data *data;
 	struct iio_dev *indio_dev;
 	int ret;
@@ -483,14 +476,22 @@ static int mag3110_probe(struct i2c_client *client)
 	data = iio_priv(indio_dev);
 
 	data->vdd_reg = devm_regulator_get(&client->dev, "vdd");
-	if (IS_ERR(data->vdd_reg))
-		return dev_err_probe(&client->dev, PTR_ERR(data->vdd_reg),
-				     "failed to get VDD regulator!\n");
+	if (IS_ERR(data->vdd_reg)) {
+		if (PTR_ERR(data->vdd_reg) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+
+		dev_err(&client->dev, "failed to get VDD regulator!\n");
+		return PTR_ERR(data->vdd_reg);
+	}
 
 	data->vddio_reg = devm_regulator_get(&client->dev, "vddio");
-	if (IS_ERR(data->vddio_reg))
-		return dev_err_probe(&client->dev, PTR_ERR(data->vddio_reg),
-				     "failed to get VDDIO regulator!\n");
+	if (IS_ERR(data->vddio_reg)) {
+		if (PTR_ERR(data->vddio_reg) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+
+		dev_err(&client->dev, "failed to get VDDIO regulator!\n");
+		return PTR_ERR(data->vddio_reg);
+	}
 
 	ret = regulator_enable(data->vdd_reg);
 	if (ret) {
@@ -518,6 +519,7 @@ static int mag3110_probe(struct i2c_client *client)
 	i2c_set_clientdata(client, indio_dev);
 	indio_dev->info = &mag3110_info;
 	indio_dev->name = id->name;
+	indio_dev->dev.parent = &client->dev;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->channels = mag3110_channels;
 	indio_dev->num_channels = ARRAY_SIZE(mag3110_channels);
@@ -559,7 +561,7 @@ disable_regulator_vdd:
 	return ret;
 }
 
-static void mag3110_remove(struct i2c_client *client)
+static int mag3110_remove(struct i2c_client *client)
 {
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 	struct mag3110_data *data = iio_priv(indio_dev);
@@ -569,8 +571,11 @@ static void mag3110_remove(struct i2c_client *client)
 	mag3110_standby(iio_priv(indio_dev));
 	regulator_disable(data->vddio_reg);
 	regulator_disable(data->vdd_reg);
+
+	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
 static int mag3110_suspend(struct device *dev)
 {
 	struct mag3110_data *data = iio_priv(i2c_get_clientdata(
@@ -620,8 +625,11 @@ static int mag3110_resume(struct device *dev)
 		data->ctrl_reg1);
 }
 
-static DEFINE_SIMPLE_DEV_PM_OPS(mag3110_pm_ops, mag3110_suspend,
-				mag3110_resume);
+static SIMPLE_DEV_PM_OPS(mag3110_pm_ops, mag3110_suspend, mag3110_resume);
+#define MAG3110_PM_OPS (&mag3110_pm_ops)
+#else
+#define MAG3110_PM_OPS NULL
+#endif
 
 static const struct i2c_device_id mag3110_id[] = {
 	{ "mag3110", 0 },
@@ -639,7 +647,7 @@ static struct i2c_driver mag3110_driver = {
 	.driver = {
 		.name	= "mag3110",
 		.of_match_table = mag3110_of_match,
-		.pm	= pm_sleep_ptr(&mag3110_pm_ops),
+		.pm	= MAG3110_PM_OPS,
 	},
 	.probe = mag3110_probe,
 	.remove = mag3110_remove,

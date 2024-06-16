@@ -243,10 +243,9 @@ struct i2c_mux_core *i2c_mux_alloc(struct i2c_adapter *parent,
 				   int (*deselect)(struct i2c_mux_core *, u32))
 {
 	struct i2c_mux_core *muxc;
-	size_t mux_size;
 
-	mux_size = struct_size(muxc, adapter, max_adapters);
-	muxc = devm_kzalloc(dev, size_add(mux_size, sizeof_priv), GFP_KERNEL);
+	muxc = devm_kzalloc(dev, struct_size(muxc, adapter, max_adapters)
+			    + sizeof_priv, GFP_KERNEL);
 	if (!muxc)
 		return NULL;
 	if (sizeof_priv)
@@ -341,7 +340,7 @@ int i2c_mux_add_adapter(struct i2c_mux_core *muxc,
 		priv->adap.lock_ops = &i2c_parent_lock_ops;
 
 	/* Sanity check on class */
-	if (i2c_mux_parent_classes(parent) & class & ~I2C_CLASS_DEPRECATED)
+	if (i2c_mux_parent_classes(parent) & class)
 		dev_err(&parent->dev,
 			"Segment %d behind mux can't share classes with ancestors\n",
 			chan_id);

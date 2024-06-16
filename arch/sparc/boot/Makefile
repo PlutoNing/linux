@@ -7,7 +7,7 @@
 ROOT_IMG	:= /usr/src/root.img
 ELFTOAOUT	:= elftoaout
 
-hostprogs	:= piggyback
+hostprogs-y	:= piggyback
 targets		:= tftpboot.img image zImage vmlinux.aout
 clean-files	:= System.map
 
@@ -22,18 +22,18 @@ ifeq ($(CONFIG_SPARC64),y)
 
 # Actual linking
 
-$(obj)/zImage: $(obj)/image FORCE
+$(obj)/zImage: $(obj)/image
 	$(call if_changed,gzip)
-	@$(kecho) 'Kernel: $@ is ready' '(#'$(or $(KBUILD_BUILD_VERSION),`cat .version`)')'
+	@echo '  kernel: $@ is ready'
 
 $(obj)/vmlinux.aout: vmlinux FORCE
 	$(call if_changed,elftoaout)
-	@$(kecho) 'Kernel: $@ is ready' '(#'$(or $(KBUILD_BUILD_VERSION),`cat .version`)')'
+	@echo '  kernel: $@ is ready'
 else
 
-$(obj)/zImage: $(obj)/image FORCE
+$(obj)/zImage: $(obj)/image
 	$(call if_changed,strip)
-	@$(kecho) 'Kernel: $@ is ready' '(#'$(or $(KBUILD_BUILD_VERSION),`cat .version`)')'
+	@echo '  kernel: $@ is ready'
 
 # The following lines make a readable image for U-Boot.
 #  uImage   - Binary file read by U-boot
@@ -44,7 +44,7 @@ OBJCOPYFLAGS_image.bin := -S -O binary -R .note -R .comment
 $(obj)/image.bin: $(obj)/image FORCE
 	$(call if_changed,objcopy)
 
-$(obj)/image.gz: $(obj)/image.bin FORCE
+$(obj)/image.gz: $(obj)/image.bin
 	$(call if_changed,gzip)
 
 UIMAGE_LOADADDR = $(CONFIG_UBOOT_LOAD_ADDR)
@@ -56,17 +56,21 @@ quiet_cmd_uimage.o = UIMAGE.O $@
                      -r -b binary $@ -o $@.o
 
 targets += uImage
-$(obj)/uImage: $(obj)/image.gz FORCE
+$(obj)/uImage: $(obj)/image.gz
 	$(call if_changed,uimage)
 	$(call if_changed,uimage.o)
-	@$(kecho) 'Kernel: $@ is ready' '(#'$(or $(KBUILD_BUILD_VERSION),`cat .version`)')'
+	@echo '  Image $@ is ready'
 
 endif
 
 $(obj)/image: vmlinux FORCE
 	$(call if_changed,strip)
-	@$(kecho) 'Kernel: $@ is ready' '(#'$(or $(KBUILD_BUILD_VERSION),`cat .version`)')'
+	@echo '  kernel: $@ is ready'
 
 $(obj)/tftpboot.img: $(obj)/image $(obj)/piggyback System.map $(ROOT_IMG) FORCE
 	$(call if_changed,elftoaout)
 	$(call if_changed,piggy)
+
+install:
+	sh $(srctree)/$(src)/install.sh $(KERNELRELEASE) $(obj)/zImage \
+		System.map "$(INSTALL_PATH)"

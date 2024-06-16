@@ -40,7 +40,7 @@ static int __init make_uml_dir(void)
 				__func__);
 			goto err;
 		}
-		strscpy(dir, home);
+		strlcpy(dir, home, sizeof(dir));
 		uml_dir++;
 	}
 	strlcat(dir, uml_dir, sizeof(dir));
@@ -97,7 +97,7 @@ static int remove_files_and_dir(char *dir)
 	while ((ent = readdir(directory)) != NULL) {
 		if (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, ".."))
 			continue;
-		len = strlen(dir) + strlen("/") + strlen(ent->d_name) + 1;
+		len = strlen(dir) + sizeof("/") + strlen(ent->d_name) + 1;
 		if (len > sizeof(file)) {
 			ret = -E2BIG;
 			goto out;
@@ -135,16 +135,24 @@ out:
  */
 static inline int is_umdir_used(char *dir)
 {
-	char pid[sizeof("nnnnnnnnn")], *end, *file;
-	int fd, p, n, err;
-	size_t filelen = strlen(dir) + sizeof("/pid") + 1;
+	char pid[sizeof("nnnnn\0")], *end, *file;
+	int dead, fd, p, n, err;
+	size_t filelen;
 
-	file = malloc(filelen);
-	if (!file)
-		return -ENOMEM;
+	err = asprintf(&file, "%s/pid", dir);
+	if (err < 0)
+		return 0;
 
-	snprintf(file, filelen, "%s/pid", dir);
+	filelen = strlen(file);
 
+	n = snprintf(file, filelen, "%s/pid", dir);
+	if (n >= filelen) {
+		printk(UM_KERN_ERR "is_umdir_used - pid filename too long\n");
+		err = -E2BIG;
+		goto out;
+	}
+
+	dead = 0;
 	fd = open(file, O_RDONLY);
 	if (fd < 0) {
 		fd = -errno;
@@ -209,15 +217,14 @@ static int umdir_take_if_dead(char *dir)
 
 static void __init create_pid_file(void)
 {
-	char pid[sizeof("nnnnnnnnn")], *file;
+	char pid[sizeof("nnnnn\0")], *file;
 	int fd, n;
 
-	n = strlen(uml_dir) + UMID_LEN + sizeof("/pid");
-	file = malloc(n);
+	file = malloc(strlen(uml_dir) + UMID_LEN + sizeof("/pid\0"));
 	if (!file)
 		return;
 
-	if (umid_file_name("pid", file, n))
+	if (umid_file_name("pid", file, sizeof(file)))
 		goto out;
 
 	fd = open(file, O_RDWR | O_CREAT | O_EXCL, 0644);
@@ -243,7 +250,7 @@ int __init set_umid(char *name)
 	if (strlen(name) > UMID_LEN - 1)
 		return -E2BIG;
 
-	strscpy(umid, name);
+	strlcpy(umid, name, sizeof(umid));
 
 	return 0;
 }
@@ -262,7 +269,7 @@ static int __init make_umid(void)
 	make_uml_dir();
 
 	if (*umid == '\0') {
-		strscpy(tmp, uml_dir);
+		strlcpy(tmp, uml_dir, sizeof(tmp));
 		strlcat(tmp, "XXXXXX", sizeof(tmp));
 		fd = mkstemp(tmp);
 		if (fd < 0) {

@@ -39,7 +39,8 @@ static struct ktstate kts;
 #ifndef MODULE
 static int __init aoe_iflist_setup(char *str)
 {
-	strscpy(aoe_iflist, str, IFLISTSZ);
+	strncpy(aoe_iflist, str, IFLISTSZ);
+	aoe_iflist[IFLISTSZ - 1] = '\0';
 	return 1;
 }
 
@@ -63,7 +64,6 @@ tx(int id) __must_hold(&txlock)
 			pr_warn("aoe: packet could not be sent on %s.  %s\n",
 				ifp ? ifp->name : "netif",
 				"consider increasing tx_queue_len");
-		dev_put(ifp);
 		spin_lock_irq(&txlock);
 	}
 	return 0;

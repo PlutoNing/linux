@@ -143,6 +143,13 @@ static struct clock_event_device ckevt_pxa_osmr0 = {
 	.resume			= pxa_timer_resume,
 };
 
+static struct irqaction pxa_ost0_irq = {
+	.name		= "ost0",
+	.flags		= IRQF_TIMER | IRQF_IRQPOLL,
+	.handler	= pxa_ost0_interrupt,
+	.dev_id		= &ckevt_pxa_osmr0,
+};
+
 static int __init pxa_timer_common_init(int irq, unsigned long clock_tick_rate)
 {
 	int ret;
@@ -154,8 +161,7 @@ static int __init pxa_timer_common_init(int irq, unsigned long clock_tick_rate)
 
 	ckevt_pxa_osmr0.cpumask = cpumask_of(0);
 
-	ret = request_irq(irq, pxa_ost0_interrupt, IRQF_TIMER | IRQF_IRQPOLL,
-			  "ost0", &ckevt_pxa_osmr0);
+	ret = setup_irq(irq, &pxa_ost0_irq);
 	if (ret) {
 		pr_err("Failed to setup irq\n");
 		return ret;

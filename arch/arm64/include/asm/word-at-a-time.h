@@ -9,8 +9,7 @@
 
 #ifndef __AARCH64EB__
 
-#include <linux/bitops.h>
-#include <linux/wordpart.h>
+#include <linux/kernel.h>
 
 struct word_at_a_time {
 	const unsigned long one_bits, high_bits;
@@ -54,19 +53,28 @@ static inline unsigned long find_zero(unsigned long mask)
  */
 static inline unsigned long load_unaligned_zeropad(const void *addr)
 {
-	unsigned long ret;
-
-	__mte_enable_tco_async();
+	unsigned long ret, offset;
 
 	/* Load word from unaligned pointer addr */
 	asm(
-	"1:	ldr	%0, %2\n"
+	"1:	ldr	%0, %3\n"
 	"2:\n"
-	_ASM_EXTABLE_LOAD_UNALIGNED_ZEROPAD(1b, 2b, %0, %1)
-	: "=&r" (ret)
+	"	.pushsection .fixup,\"ax\"\n"
+	"	.align 2\n"
+	"3:	and	%1, %2, #0x7\n"
+	"	bic	%2, %2, #0x7\n"
+	"	ldr	%0, [%2]\n"
+	"	lsl	%1, %1, #0x3\n"
+#ifndef __AARCH64EB__
+	"	lsr	%0, %0, %1\n"
+#else
+	"	lsl	%0, %0, %1\n"
+#endif
+	"	b	2b\n"
+	"	.popsection\n"
+	_ASM_EXTABLE(1b, 3b)
+	: "=&r" (ret), "=&r" (offset)
 	: "r" (addr), "Q" (*(unsigned long *)addr));
-
-	__mte_disable_tco_async();
 
 	return ret;
 }

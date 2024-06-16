@@ -17,8 +17,6 @@
  * that document.
  */
 
-#define DEBUG /* So dev_dbg() is always available. */
-
 #include <linux/kernel.h> /* For printk. */
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -122,10 +120,10 @@ struct si_sm_data {
 	unsigned long  error0_timeout;
 };
 
-static unsigned int init_kcs_data_with_state(struct si_sm_data *kcs,
-				  struct si_sm_io *io, enum kcs_states state)
+static unsigned int init_kcs_data(struct si_sm_data *kcs,
+				  struct si_sm_io *io)
 {
-	kcs->state = state;
+	kcs->state = KCS_IDLE;
 	kcs->io = io;
 	kcs->write_pos = 0;
 	kcs->write_count = 0;
@@ -138,12 +136,6 @@ static unsigned int init_kcs_data_with_state(struct si_sm_data *kcs,
 
 	/* Reserve 2 I/O bytes. */
 	return 2;
-}
-
-static unsigned int init_kcs_data(struct si_sm_data *kcs,
-				  struct si_sm_io *io)
-{
-	return init_kcs_data_with_state(kcs, io, KCS_IDLE);
 }
 
 static inline unsigned char read_status(struct si_sm_data *kcs)
@@ -195,8 +187,8 @@ static inline void start_error_recovery(struct si_sm_data *kcs, char *reason)
 	(kcs->error_retries)++;
 	if (kcs->error_retries > MAX_ERROR_RETRIES) {
 		if (kcs_debug & KCS_DEBUG_ENABLE)
-			dev_dbg(kcs->io->dev, "ipmi_kcs_sm: kcs hosed: %s\n",
-				reason);
+			printk(KERN_DEBUG "ipmi_kcs_sm: kcs hosed: %s\n",
+			       reason);
 		kcs->state = KCS_HOSED;
 	} else {
 		kcs->error0_timeout = jiffies + ERROR0_OBF_WAIT_JIFFIES;
@@ -276,13 +268,11 @@ static int start_kcs_transaction(struct si_sm_data *kcs, unsigned char *data,
 	if (size > MAX_KCS_WRITE_SIZE)
 		return IPMI_REQ_LEN_EXCEEDED_ERR;
 
-	if (kcs->state != KCS_IDLE) {
-		dev_warn(kcs->io->dev, "KCS in invalid state %d\n", kcs->state);
+	if ((kcs->state != KCS_IDLE) && (kcs->state != KCS_HOSED))
 		return IPMI_NOT_IN_MY_STATE_ERR;
-	}
 
 	if (kcs_debug & KCS_DEBUG_MSG) {
-		dev_dbg(kcs->io->dev, "%s -", __func__);
+		printk(KERN_DEBUG "start_kcs_transaction -");
 		for (i = 0; i < size; i++)
 			pr_cont(" %02x", data[i]);
 		pr_cont("\n");
@@ -341,8 +331,7 @@ static enum si_sm_result kcs_event(struct si_sm_data *kcs, long time)
 	status = read_status(kcs);
 
 	if (kcs_debug & KCS_DEBUG_STATES)
-		dev_dbg(kcs->io->dev,
-			"KCS: State = %d, %x\n", kcs->state, status);
+		printk(KERN_DEBUG "KCS: State = %d, %x\n", kcs->state, status);
 
 	/* All states wait for ibf, so just do it here. */
 	if (!check_ibf(kcs, status, time))
@@ -501,7 +490,7 @@ static enum si_sm_result kcs_event(struct si_sm_data *kcs, long time)
 	}
 
 	if (kcs->state == KCS_HOSED) {
-		init_kcs_data_with_state(kcs, kcs->io, KCS_ERROR0);
+		init_kcs_data(kcs, kcs->io);
 		return SI_SM_HOSED;
 	}
 

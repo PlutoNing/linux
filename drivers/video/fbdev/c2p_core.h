@@ -12,8 +12,6 @@
  *  for more details.
  */
 
-#include <linux/build_bug.h>
-
 
     /*
      *  Basic transpose step
@@ -28,6 +26,8 @@ static inline void _transp(u32 d[], unsigned int i1, unsigned int i2,
 	d[i2] ^= t << shift;
 }
 
+
+extern void c2p_unsupported(void);
 
 static __always_inline u32 get_mask(unsigned int n)
 {
@@ -48,7 +48,7 @@ static __always_inline u32 get_mask(unsigned int n)
 		return 0x0000ffff;
 	}
 
-	BUILD_BUG();
+	c2p_unsupported();
 	return 0;
 }
 
@@ -91,7 +91,7 @@ static __always_inline void transp8(u32 d[], unsigned int n, unsigned int m)
 		return;
 	}
 
-	BUILD_BUG();
+	c2p_unsupported();
 }
 
 
@@ -118,7 +118,7 @@ static __always_inline void transp4(u32 d[], unsigned int n, unsigned int m)
 		return;
 	}
 
-	BUILD_BUG();
+	c2p_unsupported();
 }
 
 
@@ -138,7 +138,7 @@ static __always_inline void transp4x(u32 d[], unsigned int n, unsigned int m)
 		return;
 	}
 
-	BUILD_BUG();
+	c2p_unsupported();
 }
 
 

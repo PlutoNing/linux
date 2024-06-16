@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Freescale Memory Controller kernel module
  *
@@ -8,7 +7,11 @@
  *
  * Author: Dave Jiang <djiang@mvista.com>
  *
- * 2006-2007 (c) MontaVista Software, Inc.
+ * 2006-2007 (c) MontaVista Software, Inc. This file is licensed under
+ * the terms of the GNU General Public License version 2. This program
+ * is licensed "as is" without any warranty of any kind, whether express
+ * or implied.
+ *
  */
 #ifndef _FSL_DDR_EDAC_H_
 #define _FSL_DDR_EDAC_H_
@@ -72,5 +75,5 @@ struct fsl_mc_pdata {
 	int irq;
 };
 int fsl_mc_err_probe(struct platform_device *op);
-void fsl_mc_err_remove(struct platform_device *op);
+int fsl_mc_err_remove(struct platform_device *op);
 #endif

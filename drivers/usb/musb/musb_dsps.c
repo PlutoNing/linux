@@ -15,7 +15,6 @@
  */
 
 #include <linux/io.h>
-#include <linux/irq.h>
 #include <linux/err.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
@@ -26,7 +25,9 @@
 #include <linux/sizes.h>
 
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include <linux/usb/of.h>
 
 #include <linux/debugfs.h>
@@ -35,7 +36,7 @@
 
 static const struct of_device_id musb_dsps_of_match[];
 
-/*
+/**
  * DSPS musb wrapper register offset.
  * FIXME: This should be expanded to have all the wrapper registers from TI DSPS
  * musb ips.
@@ -95,7 +96,7 @@ struct dsps_context {
 	u32 rx_mode;
 };
 
-/*
+/**
  * DSPS glue structure.
  */
 struct dsps_glue {
@@ -161,7 +162,7 @@ static void dsps_mod_timer_optional(struct dsps_glue *glue)
 
 #define USBSS_IRQ_PD_COMP	(1 << 2)
 
-/*
+/**
  * dsps_musb_enable - enable interrupts
  */
 static void dsps_musb_enable(struct musb *musb)
@@ -187,7 +188,7 @@ static void dsps_musb_enable(struct musb *musb)
 		dsps_mod_timer(glue, -1);
 }
 
-/*
+/**
  * dsps_musb_disable - disable HDRC and flush interrupts
  */
 static void dsps_musb_disable(struct musb *musb)
@@ -231,7 +232,7 @@ static int dsps_check_status(struct musb *musb, void *unused)
 			dsps_mod_timer_optional(glue);
 			break;
 		}
-		fallthrough;
+		/* fall through */
 
 	case OTG_STATE_A_WAIT_BCON:
 		/* keep VBUS on for host-only mode */
@@ -241,7 +242,7 @@ static int dsps_check_status(struct musb *musb, void *unused)
 		}
 		musb_writeb(musb->mregs, MUSB_DEVCTL, 0);
 		skip_session = 1;
-		fallthrough;
+		/* fall through */
 
 	case OTG_STATE_A_IDLE:
 	case OTG_STATE_B_IDLE:
@@ -410,7 +411,7 @@ static int dsps_musb_dbg_init(struct musb *musb, struct dsps_glue *glue)
 	char buf[128];
 
 	sprintf(buf, "%s.dsps", dev_name(musb->controller));
-	root = debugfs_create_dir(buf, usb_debug_root);
+	root = debugfs_create_dir(buf, NULL);
 	glue->dbgfs_root = root;
 
 	glue->regset.regs = dsps_musb_regs;
@@ -738,14 +739,12 @@ static int dsps_create_musb_pdev(struct dsps_glue *glue,
 	}
 	resources[0] = *res;
 
-	ret = platform_get_irq_byname(parent, "mc");
-	if (ret < 0)
-		return ret;
-
-	resources[1].start = ret;
-	resources[1].end = ret;
-	resources[1].flags = IORESOURCE_IRQ | irq_get_trigger_type(ret);
-	resources[1].name = "mc";
+	res = platform_get_resource_byname(parent, IORESOURCE_IRQ, "mc");
+	if (!res) {
+		dev_err(dev, "failed to get irq.\n");
+		return -EINVAL;
+	}
+	resources[1] = *res;
 
 	/* allocate the child platform device */
 	musb = platform_device_alloc("musb-hdrc",
@@ -796,7 +795,7 @@ static int dsps_create_musb_pdev(struct dsps_glue *glue,
 	case USB_SPEED_SUPER:
 		dev_warn(dev, "ignore incorrect maximum_speed "
 				"(super-speed) setting in dts");
-		fallthrough;
+		/* fall through */
 	default:
 		config->maximum_speed = USB_SPEED_HIGH;
 	}
@@ -849,7 +848,7 @@ static int dsps_setup_optional_vbus_irq(struct platform_device *pdev,
 
 	error = devm_request_threaded_irq(glue->dev, glue->vbus_irq,
 					  NULL, dsps_vbus_threaded_irq,
-					  IRQF_SHARED,
+					  IRQF_ONESHOT,
 					  "vbus", glue);
 	if (error) {
 		glue->vbus_irq = 0;
@@ -891,29 +890,28 @@ static int dsps_probe(struct platform_device *pdev)
 	if (!glue->usbss_base)
 		return -ENXIO;
 
+	if (usb_get_dr_mode(&pdev->dev) == USB_DR_MODE_PERIPHERAL) {
+		ret = dsps_setup_optional_vbus_irq(pdev, glue);
+		if (ret)
+			goto err_iounmap;
+	}
+
 	platform_set_drvdata(pdev, glue);
 	pm_runtime_enable(&pdev->dev);
 	ret = dsps_create_musb_pdev(glue, pdev);
 	if (ret)
 		goto err;
 
-	if (usb_get_dr_mode(&pdev->dev) == USB_DR_MODE_PERIPHERAL) {
-		ret = dsps_setup_optional_vbus_irq(pdev, glue);
-		if (ret)
-			goto unregister_pdev;
-	}
-
 	return 0;
 
-unregister_pdev:
-	platform_device_unregister(glue->musb);
 err:
 	pm_runtime_disable(&pdev->dev);
+err_iounmap:
 	iounmap(glue->usbss_base);
 	return ret;
 }
 
-static void dsps_remove(struct platform_device *pdev)
+static int dsps_remove(struct platform_device *pdev)
 {
 	struct dsps_glue *glue = platform_get_drvdata(pdev);
 
@@ -921,6 +919,8 @@ static void dsps_remove(struct platform_device *pdev)
 
 	pm_runtime_disable(&pdev->dev);
 	iounmap(glue->usbss_base);
+
+	return 0;
 }
 
 static const struct dsps_musb_wrapper am33xx_driver_data = {
@@ -1032,7 +1032,7 @@ static SIMPLE_DEV_PM_OPS(dsps_pm_ops, dsps_suspend, dsps_resume);
 
 static struct platform_driver dsps_usbss_driver = {
 	.probe		= dsps_probe,
-	.remove_new     = dsps_remove,
+	.remove         = dsps_remove,
 	.driver         = {
 		.name   = "musb-dsps",
 		.pm	= &dsps_pm_ops,

@@ -10,17 +10,19 @@ config CARL9170
 
 	  It needs a special firmware (carl9170-1.fw), which can be downloaded
 	  from our wiki here:
-	  <https://wireless.wiki.kernel.org/en/users/Drivers/carl9170>
+	  <http://wireless.kernel.org/en/users/Drivers/carl9170>
 
 	  If you choose to build a module, it'll be called carl9170.
 
 config CARL9170_LEDS
 	bool "SoftLED Support"
-	default y
 	depends on CARL9170
-	depends on MAC80211_LEDS
+	select MAC80211_LEDS
+	select LEDS_CLASS
+	select NEW_LEDS
+	default y
 	help
-	  This option is necessary, if you want your device's LEDs to blink.
+	  This option is necessary, if you want your device' LEDs to blink
 
 	  Say Y, unless you need the LEDs for firmware debugging.
 

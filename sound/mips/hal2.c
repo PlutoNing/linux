@@ -441,8 +441,7 @@ static inline void hal2_stop_adc(struct snd_hal2 *hal2)
 	hal2->adc.pbus.pbus->pbdma_ctrl = HPC3_PDMACTRL_LD;
 }
 
-static int hal2_alloc_dmabuf(struct snd_hal2 *hal2, struct hal2_codec *codec,
-		enum dma_data_direction buffer_dir)
+static int hal2_alloc_dmabuf(struct snd_hal2 *hal2, struct hal2_codec *codec)
 {
 	struct device *dev = hal2->card->dev;
 	struct hal2_desc *desc;
@@ -450,15 +449,15 @@ static int hal2_alloc_dmabuf(struct snd_hal2 *hal2, struct hal2_codec *codec,
 	int count = H2_BUF_SIZE / H2_BLOCK_SIZE;
 	int i;
 
-	codec->buffer = dma_alloc_noncoherent(dev, H2_BUF_SIZE, &buffer_dma,
-					buffer_dir, GFP_KERNEL);
+	codec->buffer = dma_alloc_attrs(dev, H2_BUF_SIZE, &buffer_dma,
+					GFP_KERNEL, DMA_ATTR_NON_CONSISTENT);
 	if (!codec->buffer)
 		return -ENOMEM;
-	desc = dma_alloc_noncoherent(dev, count * sizeof(struct hal2_desc),
-			&desc_dma, DMA_BIDIRECTIONAL, GFP_KERNEL);
+	desc = dma_alloc_attrs(dev, count * sizeof(struct hal2_desc),
+			       &desc_dma, GFP_KERNEL, DMA_ATTR_NON_CONSISTENT);
 	if (!desc) {
-		dma_free_noncoherent(dev, H2_BUF_SIZE, codec->buffer, buffer_dma,
-				buffer_dir);
+		dma_free_attrs(dev, H2_BUF_SIZE, codec->buffer, buffer_dma,
+			       DMA_ATTR_NON_CONSISTENT);
 		return -ENOMEM;
 	}
 	codec->buffer_dma = buffer_dma;
@@ -471,22 +470,20 @@ static int hal2_alloc_dmabuf(struct snd_hal2 *hal2, struct hal2_codec *codec,
 		      desc_dma : desc_dma + (i + 1) * sizeof(struct hal2_desc);
 		desc++;
 	}
-	dma_sync_single_for_device(dev, codec->desc_dma,
-				   count * sizeof(struct hal2_desc),
-				   DMA_BIDIRECTIONAL);
+	dma_cache_sync(dev, codec->desc, count * sizeof(struct hal2_desc),
+		       DMA_TO_DEVICE);
 	codec->desc_count = count;
 	return 0;
 }
 
-static void hal2_free_dmabuf(struct snd_hal2 *hal2, struct hal2_codec *codec,
-		enum dma_data_direction buffer_dir)
+static void hal2_free_dmabuf(struct snd_hal2 *hal2, struct hal2_codec *codec)
 {
 	struct device *dev = hal2->card->dev;
 
-	dma_free_noncoherent(dev, codec->desc_count * sizeof(struct hal2_desc),
-		       codec->desc, codec->desc_dma, DMA_BIDIRECTIONAL);
-	dma_free_noncoherent(dev, H2_BUF_SIZE, codec->buffer, codec->buffer_dma,
-			buffer_dir);
+	dma_free_attrs(dev, codec->desc_count * sizeof(struct hal2_desc),
+		       codec->desc, codec->desc_dma, DMA_ATTR_NON_CONSISTENT);
+	dma_free_attrs(dev, H2_BUF_SIZE, codec->buffer, codec->buffer_dma,
+		       DMA_ATTR_NON_CONSISTENT);
 }
 
 static const struct snd_pcm_hardware hal2_pcm_hw = {
@@ -508,20 +505,42 @@ static const struct snd_pcm_hardware hal2_pcm_hw = {
 	.periods_max =      1024,
 };
 
+static int hal2_pcm_hw_params(struct snd_pcm_substream *substream,
+			      struct snd_pcm_hw_params *params)
+{
+	int err;
+
+	err = snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
+	if (err < 0)
+		return err;
+
+	return 0;
+}
+
+static int hal2_pcm_hw_free(struct snd_pcm_substream *substream)
+{
+	return snd_pcm_lib_free_pages(substream);
+}
+
 static int hal2_playback_open(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_hal2 *hal2 = snd_pcm_substream_chip(substream);
+	int err;
 
 	runtime->hw = hal2_pcm_hw;
-	return hal2_alloc_dmabuf(hal2, &hal2->dac, DMA_TO_DEVICE);
+
+	err = hal2_alloc_dmabuf(hal2, &hal2->dac);
+	if (err)
+		return err;
+	return 0;
 }
 
 static int hal2_playback_close(struct snd_pcm_substream *substream)
 {
 	struct snd_hal2 *hal2 = snd_pcm_substream_chip(substream);
 
-	hal2_free_dmabuf(hal2, &hal2->dac, DMA_TO_DEVICE);
+	hal2_free_dmabuf(hal2, &hal2->dac);
 	return 0;
 }
 
@@ -577,9 +596,7 @@ static void hal2_playback_transfer(struct snd_pcm_substream *substream,
 	unsigned char *buf = hal2->dac.buffer + rec->hw_data;
 
 	memcpy(buf, substream->runtime->dma_area + rec->sw_data, bytes);
-	dma_sync_single_for_device(hal2->card->dev,
-			hal2->dac.buffer_dma + rec->hw_data, bytes,
-			DMA_TO_DEVICE);
+	dma_cache_sync(hal2->card->dev, buf, bytes, DMA_TO_DEVICE);
 
 }
 
@@ -597,16 +614,22 @@ static int hal2_capture_open(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_hal2 *hal2 = snd_pcm_substream_chip(substream);
+	struct hal2_codec *adc = &hal2->adc;
+	int err;
 
 	runtime->hw = hal2_pcm_hw;
-	return hal2_alloc_dmabuf(hal2, &hal2->adc, DMA_FROM_DEVICE);
+
+	err = hal2_alloc_dmabuf(hal2, adc);
+	if (err)
+		return err;
+	return 0;
 }
 
 static int hal2_capture_close(struct snd_pcm_substream *substream)
 {
 	struct snd_hal2 *hal2 = snd_pcm_substream_chip(substream);
 
-	hal2_free_dmabuf(hal2, &hal2->adc, DMA_FROM_DEVICE);
+	hal2_free_dmabuf(hal2, &hal2->adc);
 	return 0;
 }
 
@@ -661,9 +684,7 @@ static void hal2_capture_transfer(struct snd_pcm_substream *substream,
 	struct snd_hal2 *hal2 = snd_pcm_substream_chip(substream);
 	unsigned char *buf = hal2->adc.buffer + rec->hw_data;
 
-	dma_sync_single_for_cpu(hal2->card->dev,
-			hal2->adc.buffer_dma + rec->hw_data, bytes,
-			DMA_FROM_DEVICE);
+	dma_cache_sync(hal2->card->dev, buf, bytes, DMA_FROM_DEVICE);
 	memcpy(substream->runtime->dma_area + rec->sw_data, buf, bytes);
 }
 
@@ -680,6 +701,9 @@ static int hal2_capture_ack(struct snd_pcm_substream *substream)
 static const struct snd_pcm_ops hal2_playback_ops = {
 	.open =        hal2_playback_open,
 	.close =       hal2_playback_close,
+	.ioctl =       snd_pcm_lib_ioctl,
+	.hw_params =   hal2_pcm_hw_params,
+	.hw_free =     hal2_pcm_hw_free,
 	.prepare =     hal2_playback_prepare,
 	.trigger =     hal2_playback_trigger,
 	.pointer =     hal2_playback_pointer,
@@ -689,6 +713,9 @@ static const struct snd_pcm_ops hal2_playback_ops = {
 static const struct snd_pcm_ops hal2_capture_ops = {
 	.open =        hal2_capture_open,
 	.close =       hal2_capture_close,
+	.ioctl =       snd_pcm_lib_ioctl,
+	.hw_params =   hal2_pcm_hw_params,
+	.hw_free =     hal2_pcm_hw_free,
 	.prepare =     hal2_capture_prepare,
 	.trigger =     hal2_capture_trigger,
 	.pointer =     hal2_capture_pointer,
@@ -713,8 +740,9 @@ static int hal2_pcm_create(struct snd_hal2 *hal2)
 			&hal2_playback_ops);
 	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_CAPTURE,
 			&hal2_capture_ops);
-	snd_pcm_set_managed_buffer_all(pcm, SNDRV_DMA_TYPE_CONTINUOUS,
-				       NULL, 0, 1024 * 1024);
+	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_CONTINUOUS,
+					   snd_dma_continuous_data(GFP_KERNEL),
+					   0, 1024 * 1024);
 
 	return 0;
 }
@@ -728,7 +756,7 @@ static int hal2_dev_free(struct snd_device *device)
 	return 0;
 }
 
-static const struct snd_device_ops hal2_ops = {
+static struct snd_device_ops hal2_ops = {
 	.dev_free = hal2_dev_free,
 };
 
@@ -877,16 +905,17 @@ static int hal2_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void hal2_remove(struct platform_device *pdev)
+static int hal2_remove(struct platform_device *pdev)
 {
 	struct snd_card *card = platform_get_drvdata(pdev);
 
 	snd_card_free(card);
+	return 0;
 }
 
 static struct platform_driver hal2_driver = {
 	.probe	= hal2_probe,
-	.remove_new = hal2_remove,
+	.remove	= hal2_remove,
 	.driver = {
 		.name	= "sgihal2",
 	}

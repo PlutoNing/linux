@@ -6,9 +6,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -33,9 +30,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -65,9 +59,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -97,9 +88,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -129,9 +117,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -161,9 +146,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -193,9 +175,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -225,9 +204,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -252,9 +228,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -279,9 +252,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -311,9 +281,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -338,9 +305,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -370,9 +334,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -397,9 +358,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -429,9 +387,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -456,9 +411,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -483,9 +435,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -510,9 +459,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -542,9 +488,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -574,9 +517,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -601,9 +541,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -628,9 +565,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -660,9 +594,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -687,9 +618,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -701,7 +629,7 @@
         "cmdUnderTest": "$TC actions add action tunnel_key set src_ip 1.1.1.1 dst_ip 2.2.2.2 id 42 dst_port 6081 geneve_opts 0102:80:00880022 index 1",
         "expExitCode": "0",
         "verifyCmd": "$TC actions get action tunnel_key index 1",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt[s]? 0102:80:00880022.*index 1",
+        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt 0102:80:00880022.*index 1",
         "matchCount": "1",
         "teardown": [
             "$TC actions flush action tunnel_key"
@@ -714,9 +642,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -728,7 +653,7 @@
         "cmdUnderTest": "$TC actions add action tunnel_key set src_ip 1.1.1.1 dst_ip 2.2.2.2 id 42 dst_port 6081 geneve_opts 0102:80:00880022,0408:42:0040007611223344,0111:02:1020304011223344 index 1",
         "expExitCode": "0",
         "verifyCmd": "$TC actions get action tunnel_key index 1",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt[s]? 0102:80:00880022,0408:42:0040007611223344,0111:02:1020304011223344.*index 1",
+        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt 0102:80:00880022,0408:42:0040007611223344,0111:02:1020304011223344.*index 1",
         "matchCount": "1",
         "teardown": [
             "$TC actions flush action tunnel_key"
@@ -741,9 +666,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -755,7 +677,7 @@
         "cmdUnderTest": "$TC actions add action tunnel_key set src_ip 1.1.1.1 dst_ip 2.2.2.2 id 42 dst_port 6081 geneve_opts 824212:80:00880022 index 1",
         "expExitCode": "255",
         "verifyCmd": "$TC actions get action tunnel_key index 1",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt[s]? 824212:80:00880022.*index 1",
+        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt 824212:80:00880022.*index 1",
         "matchCount": "0",
         "teardown": [
             "$TC actions flush action tunnel_key"
@@ -768,9 +690,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -782,7 +701,7 @@
         "cmdUnderTest": "$TC actions add action tunnel_key set src_ip 1.1.1.1 dst_ip 2.2.2.2 id 42 dst_port 6081 geneve_opts 0102:4224:00880022 index 1",
         "expExitCode": "255",
         "verifyCmd": "$TC actions get action tunnel_key index 1",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt[s]? 0102:4224:00880022.*index 1",
+        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt 0102:4224:00880022.*index 1",
         "matchCount": "0",
         "teardown": [
             "$TC actions flush action tunnel_key"
@@ -795,9 +714,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -809,7 +725,7 @@
         "cmdUnderTest": "$TC actions add action tunnel_key set src_ip 1.1.1.1 dst_ip 2.2.2.2 id 42 dst_port 6081 geneve_opts 0102:80:4288 index 1",
         "expExitCode": "255",
         "verifyCmd": "$TC actions get action tunnel_key index 1",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt[s]? 0102:80:4288.*index 1",
+        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt 0102:80:4288.*index 1",
         "matchCount": "0",
         "teardown": [
             "$TC actions flush action tunnel_key"
@@ -822,9 +738,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -836,7 +749,7 @@
         "cmdUnderTest": "$TC actions add action tunnel_key set src_ip 1.1.1.1 dst_ip 2.2.2.2 id 42 dst_port 6081 geneve_opts 0102:80:4288428822 index 1",
         "expExitCode": "255",
         "verifyCmd": "$TC actions get action tunnel_key index 1",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt[s]? 0102:80:4288428822.*index 1",
+        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt 0102:80:4288428822.*index 1",
         "matchCount": "0",
         "teardown": [
             "$TC actions flush action tunnel_key"
@@ -849,9 +762,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -863,7 +773,7 @@
         "cmdUnderTest": "$TC actions add action tunnel_key set src_ip 1.1.1.1 dst_ip 2.2.2.2 id 42 dst_port 6081 geneve_opts 0102:80:00880022,0408:42: index 1",
         "expExitCode": "255",
         "verifyCmd": "$TC actions get action tunnel_key index 1",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt[s]? 0102:80:00880022,0408:42:.*index 1",
+        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*key_id 42.*dst_port 6081.*geneve_opt 0102:80:00880022,0408:42:.*index 1",
         "matchCount": "0",
         "teardown": [
             "$TC actions flush action tunnel_key"
@@ -876,9 +786,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -904,9 +811,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -914,12 +818,12 @@
                 1,
                 255
             ],
-            "$TC actions add action tunnel_key set src_ip 10.10.10.1 dst_ip 20.20.20.2 dst_port 3128 nocsum id 1 index 1 cookie 123456"
+            "$TC actions add action tunnel_key set src_ip 10.10.10.1 dst_ip 20.20.20.2 dst_port 3128 nocsum id 1 index 1 cookie aabbccddeeff112233445566778800a"
         ],
-        "cmdUnderTest": "$TC actions replace action tunnel_key set src_ip 11.11.11.1 dst_ip 21.21.21.2 dst_port 3129 id 11 csum reclassify index 1 cookie 123456",
+        "cmdUnderTest": "$TC actions replace action tunnel_key set src_ip 11.11.11.1 dst_ip 21.21.21.2 dst_port 3129 id 11 csum reclassify index 1 cookie a1b1c1d1",
         "expExitCode": "0",
         "verifyCmd": "$TC actions get action tunnel_key index 1",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 11.11.11.1.*dst_ip 21.21.21.2.*key_id 11.*dst_port 3129.*csum reclassify.*index 1.*cookie 123456",
+        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 11.11.11.1.*dst_ip 21.21.21.2.*key_id 11.*dst_port 3129.*csum reclassify.*index 1.*cookie a1b1c1d1",
         "matchCount": "1",
         "teardown": [
             "$TC actions flush action tunnel_key"
@@ -932,9 +836,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -963,9 +864,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -994,9 +892,6 @@
             "actions",
             "tunnel_key"
         ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
         "setup": [
             [
                 "$TC actions flush action tunnel_key",
@@ -1010,117 +905,6 @@
         "expExitCode": "255",
         "verifyCmd": "$TC actions get action tunnel_key index 90",
         "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 10.10.10.1.*dst_ip 20.20.20.2.*key_id 1.*dst_port 3128.*csum pass.*index 90 ref",
-        "matchCount": "1",
-        "teardown": [
-            "$TC actions flush action tunnel_key"
-        ]
-    },
-    {
-        "id": "0cd2",
-        "name": "Add tunnel_key set action with no_percpu flag",
-        "category": [
-            "actions",
-            "tunnel_key"
-        ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
-        "setup": [
-            [
-                "$TC actions flush action tunnel_key",
-                0,
-                1,
-                255
-            ]
-        ],
-        "cmdUnderTest": "$TC actions add action tunnel_key set src_ip 10.10.10.1 dst_ip 20.20.20.2 id 1 no_percpu",
-        "expExitCode": "0",
-        "verifyCmd": "$TC actions list action tunnel_key",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 10.10.10.1.*dst_ip 20.20.20.2.*key_id 1.*no_percpu",
-        "matchCount": "1",
-        "teardown": [
-            "$TC actions flush action tunnel_key"
-        ]
-    },
-    {
-        "id": "3671",
-        "name": "Delete tunnel_key set action with valid index",
-	"category": [
-            "actions",
-            "tunnel_key"
-        ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
-        "setup": [
-            [
-                "$TC actions flush action tunnel_key",
-                0,
-                1,
-                255
-            ],
-	    "$TC actions add action tunnel_key set src_ip 1.1.1.1 dst_ip 2.2.2.2 index 1"
-        ],
-        "cmdUnderTest": "$TC actions del action tunnel_key index 1",
-        "expExitCode": "0",
-        "verifyCmd": "$TC actions list action tunnel_key",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*index 1",
-        "matchCount": "0",
-        "teardown": [
-            "$TC actions flush action tunnel_key"
-        ]
-    },
-    {
-        "id": "8597",
-        "name": "Delete tunnel_key set action with invalid index",
-        "category": [
-            "actions",
-            "tunnel_key"
-        ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
-        "setup": [
-            [
-                "$TC actions flush action tunnel_key",
-                0,
-                1,
-                255
-            ],
-            "$TC actions add action tunnel_key set src_ip 1.1.1.1 dst_ip 2.2.2.2 index 1"
-        ],
-        "cmdUnderTest": "$TC actions del action tunnel_key index 10",
-        "expExitCode": "255",
-        "verifyCmd": "$TC actions list action tunnel_key",
-        "matchPattern": "action order [0-9]+: tunnel_key.*set.*src_ip 1.1.1.1.*dst_ip 2.2.2.2.*index 1",
-        "matchCount": "1",
-        "teardown": [
-            "$TC actions flush action tunnel_key"
-        ]
-    },
-    {
-        "id": "6bda",
-        "name": "Add tunnel_key action with nofrag option",
-        "category": [
-            "actions",
-            "tunnel_key"
-        ],
-        "plugins": {
-           "requires": "nsPlugin"
-        },
-        "dependsOn": "$TC actions add action tunnel_key help 2>&1 | grep -q nofrag",
-        "setup": [
-            [
-                "$TC action flush action tunnel_key",
-                0,
-                1,
-                255
-            ]
-        ],
-        "cmdUnderTest": "$TC actions add action tunnel_key set src_ip 10.10.10.1 dst_ip 10.10.10.2 id 1111 nofrag index 222",
-        "expExitCode": "0",
-        "verifyCmd": "$TC actions get action tunnel_key index 222",
-        "matchPattern": "action order [0-9]+: tunnel_key.*src_ip 10.10.10.1.*dst_ip 10.10.10.2.*key_id 1111.*csum.*nofrag pipe.*index 222",
         "matchCount": "1",
         "teardown": [
             "$TC actions flush action tunnel_key"

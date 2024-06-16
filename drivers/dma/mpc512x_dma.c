@@ -36,11 +36,11 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/slab.h>
-#include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/of_dma.h>
-#include <linux/platform_device.h>
+#include <linux/of_platform.h>
 
 #include <linux/random.h>
 
@@ -414,9 +414,9 @@ static void mpc_dma_process_completed(struct mpc_dma *mdma)
 }
 
 /* DMA Tasklet */
-static void mpc_dma_tasklet(struct tasklet_struct *t)
+static void mpc_dma_tasklet(unsigned long data)
 {
-	struct mpc_dma *mdma = from_tasklet(mdma, t, tasklet);
+	struct mpc_dma *mdma = (void *)data;
 	unsigned long flags;
 	uint es;
 
@@ -813,7 +813,6 @@ inline bool is_buswidth_valid(u8 buswidth, bool is_mpc8308)
 	case 16:
 		if (is_mpc8308)
 			return false;
-		break;
 	case 1:
 	case 2:
 	case 4:
@@ -1010,7 +1009,7 @@ static int mpc_dma_probe(struct platform_device *op)
 		list_add_tail(&mchan->chan.device_node, &dma->channels);
 	}
 
-	tasklet_setup(&mdma->tasklet, mpc_dma_tasklet);
+	tasklet_init(&mdma->tasklet, mpc_dma_tasklet, (unsigned long)mdma);
 
 	/*
 	 * Configure DMA Engine:
@@ -1084,7 +1083,7 @@ err:
 	return retval;
 }
 
-static void mpc_dma_remove(struct platform_device *op)
+static int mpc_dma_remove(struct platform_device *op)
 {
 	struct device *dev = &op->dev;
 	struct mpc_dma *mdma = dev_get_drvdata(dev);
@@ -1099,6 +1098,8 @@ static void mpc_dma_remove(struct platform_device *op)
 	free_irq(mdma->irq, mdma);
 	irq_dispose_mapping(mdma->irq);
 	tasklet_kill(&mdma->tasklet);
+
+	return 0;
 }
 
 static const struct of_device_id mpc_dma_match[] = {
@@ -1110,7 +1111,7 @@ MODULE_DEVICE_TABLE(of, mpc_dma_match);
 
 static struct platform_driver mpc_dma_driver = {
 	.probe		= mpc_dma_probe,
-	.remove_new	= mpc_dma_remove,
+	.remove		= mpc_dma_remove,
 	.driver = {
 		.name = DRV_NAME,
 		.of_match_table	= mpc_dma_match,

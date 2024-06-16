@@ -78,6 +78,7 @@ static void altera_ps2_close(struct serio *io)
 static int altera_ps2_probe(struct platform_device *pdev)
 {
 	struct ps2if *ps2if;
+	struct resource *res;
 	struct serio *serio;
 	int error, irq;
 
@@ -85,7 +86,8 @@ static int altera_ps2_probe(struct platform_device *pdev)
 	if (!ps2if)
 		return -ENOMEM;
 
-	ps2if->base = devm_platform_get_and_ioremap_resource(pdev, 0, NULL);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	ps2if->base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(ps2if->base))
 		return PTR_ERR(ps2if->base);
 
@@ -108,8 +110,8 @@ static int altera_ps2_probe(struct platform_device *pdev)
 	serio->write		= altera_ps2_write;
 	serio->open		= altera_ps2_open;
 	serio->close		= altera_ps2_close;
-	strscpy(serio->name, dev_name(&pdev->dev), sizeof(serio->name));
-	strscpy(serio->phys, dev_name(&pdev->dev), sizeof(serio->phys));
+	strlcpy(serio->name, dev_name(&pdev->dev), sizeof(serio->name));
+	strlcpy(serio->phys, dev_name(&pdev->dev), sizeof(serio->phys));
 	serio->port_data	= ps2if;
 	serio->dev.parent	= &pdev->dev;
 	ps2if->io		= serio;
@@ -125,11 +127,13 @@ static int altera_ps2_probe(struct platform_device *pdev)
 /*
  * Remove one device from this driver.
  */
-static void altera_ps2_remove(struct platform_device *pdev)
+static int altera_ps2_remove(struct platform_device *pdev)
 {
 	struct ps2if *ps2if = platform_get_drvdata(pdev);
 
 	serio_unregister_port(ps2if->io);
+
+	return 0;
 }
 
 #ifdef CONFIG_OF
@@ -146,7 +150,7 @@ MODULE_DEVICE_TABLE(of, altera_ps2_match);
  */
 static struct platform_driver altera_ps2_driver = {
 	.probe		= altera_ps2_probe,
-	.remove_new	= altera_ps2_remove,
+	.remove		= altera_ps2_remove,
 	.driver	= {
 		.name	= DRV_NAME,
 		.of_match_table = of_match_ptr(altera_ps2_match),

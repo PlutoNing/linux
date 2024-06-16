@@ -9,9 +9,7 @@
 #include <asm/sn/addrs.h>
 #include <asm/sn/nmi.h>
 #include <asm/sn/arch.h>
-#include <asm/sn/agent.h>
-
-#include "ip27-common.h"
+#include <asm/sn/sn0/hub.h>
 
 #if 0
 #define NODE_NUM_CPUS(n)	CNODE_NUM_CPUS(n)
@@ -19,13 +17,21 @@
 #define NODE_NUM_CPUS(n)	CPUS_PER_NODE
 #endif
 
-#define SEND_NMI(_nasid, _slice)	\
-	REMOTE_HUB_S((_nasid),  (PI_NMI_A + ((_slice) * PI_NMI_OFFSET)), 1)
+#define CNODEID_NONE (cnodeid_t)-1
 
 typedef unsigned long machreg_t;
 
 static arch_spinlock_t nmi_lock = __ARCH_SPIN_LOCK_UNLOCKED;
-static void nmi_dump(void);
+
+/*
+ * Let's see what else we need to do here. Set up sp, gp?
+ */
+void nmi_dump(void)
+{
+	void cont_nmi_dump(void);
+
+	cont_nmi_dump();
+}
 
 void install_cpu_nmi_handler(int slice)
 {
@@ -46,7 +52,7 @@ void install_cpu_nmi_handler(int slice)
  * into the eframe format for the node under consideration.
  */
 
-static void nmi_cpu_eframe_save(nasid_t nasid, int slice)
+void nmi_cpu_eframe_save(nasid_t nasid, int slice)
 {
 	struct reg_struct *nr;
 	int		i;
@@ -122,7 +128,7 @@ static void nmi_cpu_eframe_save(nasid_t nasid, int slice)
 	pr_emerg("\n");
 }
 
-static void nmi_dump_hub_irq(nasid_t nasid, int slice)
+void nmi_dump_hub_irq(nasid_t nasid, int slice)
 {
 	u64 mask0, mask1, pend0, pend1;
 
@@ -146,10 +152,16 @@ static void nmi_dump_hub_irq(nasid_t nasid, int slice)
  * Copy the cpu registers which have been saved in the IP27prom format
  * into the eframe format for the node under consideration.
  */
-static void nmi_node_eframe_save(nasid_t nasid)
+void nmi_node_eframe_save(cnodeid_t  cnode)
 {
+	nasid_t nasid;
 	int slice;
 
+	/* Make sure that we have a valid node */
+	if (cnode == CNODEID_NONE)
+		return;
+
+	nasid = COMPACT_TO_NASID_NODEID(cnode);
 	if (nasid == INVALID_NASID)
 		return;
 
@@ -163,15 +175,17 @@ static void nmi_node_eframe_save(nasid_t nasid)
 /*
  * Save the nmi cpu registers for all cpus in the system.
  */
-static void nmi_eframes_save(void)
+void
+nmi_eframes_save(void)
 {
-	nasid_t nasid;
+	cnodeid_t	cnode;
 
-	for_each_online_node(nasid)
-		nmi_node_eframe_save(nasid);
+	for_each_online_node(cnode)
+		nmi_node_eframe_save(cnode);
 }
 
-static void nmi_dump(void)
+void
+cont_nmi_dump(void)
 {
 #ifndef REAL_NMI_SIGNAL
 	static atomic_t nmied_cpus = ATOMIC_INIT(0);

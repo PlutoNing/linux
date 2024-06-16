@@ -73,8 +73,10 @@ static int board_added(struct controller *ctrl)
 
 	/* Check link training status */
 	retval = pciehp_check_link_status(ctrl);
-	if (retval)
+	if (retval) {
+		ctrl_err(ctrl, "Failed to check link status\n");
 		goto err_exit;
+	}
 
 	/* Check for a power fault */
 	if (ctrl->power_fault_detected || pciehp_query_power_fault(ctrl)) {
@@ -166,11 +168,11 @@ void pciehp_handle_button_press(struct controller *ctrl)
 	case ON_STATE:
 		if (ctrl->state == ON_STATE) {
 			ctrl->state = BLINKINGOFF_STATE;
-			ctrl_info(ctrl, "Slot(%s): Button press: will power off in 5 sec\n",
+			ctrl_info(ctrl, "Slot(%s): Powering off due to button press\n",
 				  slot_name(ctrl));
 		} else {
 			ctrl->state = BLINKINGON_STATE;
-			ctrl_info(ctrl, "Slot(%s): Button press: will power on in 5 sec\n",
+			ctrl_info(ctrl, "Slot(%s) Powering on due to button press\n",
 				  slot_name(ctrl));
 		}
 		/* blink power indicator and turn off attention */
@@ -185,23 +187,22 @@ void pciehp_handle_button_press(struct controller *ctrl)
 		 * press the attention again before the 5 sec. limit
 		 * expires to cancel hot-add or hot-remove
 		 */
+		ctrl_info(ctrl, "Slot(%s): Button cancel\n", slot_name(ctrl));
 		cancel_delayed_work(&ctrl->button_work);
 		if (ctrl->state == BLINKINGOFF_STATE) {
 			ctrl->state = ON_STATE;
 			pciehp_set_indicators(ctrl, PCI_EXP_SLTCTL_PWR_IND_ON,
 					      PCI_EXP_SLTCTL_ATTN_IND_OFF);
-			ctrl_info(ctrl, "Slot(%s): Button press: canceling request to power off\n",
-				  slot_name(ctrl));
 		} else {
 			ctrl->state = OFF_STATE;
 			pciehp_set_indicators(ctrl, PCI_EXP_SLTCTL_PWR_IND_OFF,
 					      PCI_EXP_SLTCTL_ATTN_IND_OFF);
-			ctrl_info(ctrl, "Slot(%s): Button press: canceling request to power on\n",
-				  slot_name(ctrl));
 		}
+		ctrl_info(ctrl, "Slot(%s): Action canceled due to button press\n",
+			  slot_name(ctrl));
 		break;
 	default:
-		ctrl_err(ctrl, "Slot(%s): Button press: ignoring invalid state %#x\n",
+		ctrl_err(ctrl, "Slot(%s): Ignoring invalid state %#x\n",
 			 slot_name(ctrl), ctrl->state);
 		break;
 	}
@@ -225,7 +226,7 @@ void pciehp_handle_disable_request(struct controller *ctrl)
 
 void pciehp_handle_presence_or_link_change(struct controller *ctrl, u32 events)
 {
-	int present, link_active;
+	bool present, link_active;
 
 	/*
 	 * If the slot is on and presence or link has changed, turn it off.
@@ -235,7 +236,7 @@ void pciehp_handle_presence_or_link_change(struct controller *ctrl, u32 events)
 	switch (ctrl->state) {
 	case BLINKINGOFF_STATE:
 		cancel_delayed_work(&ctrl->button_work);
-		fallthrough;
+		/* fall through */
 	case ON_STATE:
 		ctrl->state = POWEROFF_STATE;
 		mutex_unlock(&ctrl->state_lock);
@@ -256,15 +257,7 @@ void pciehp_handle_presence_or_link_change(struct controller *ctrl, u32 events)
 	mutex_lock(&ctrl->state_lock);
 	present = pciehp_card_present(ctrl);
 	link_active = pciehp_check_link_active(ctrl);
-	if (present <= 0 && link_active <= 0) {
-		if (ctrl->state == BLINKINGON_STATE) {
-			ctrl->state = OFF_STATE;
-			cancel_delayed_work(&ctrl->button_work);
-			pciehp_set_indicators(ctrl, PCI_EXP_SLTCTL_PWR_IND_OFF,
-					      INDICATOR_NOOP);
-			ctrl_info(ctrl, "Slot(%s): Card not present\n",
-				  slot_name(ctrl));
-		}
+	if (!present && !link_active) {
 		mutex_unlock(&ctrl->state_lock);
 		return;
 	}
@@ -272,7 +265,7 @@ void pciehp_handle_presence_or_link_change(struct controller *ctrl, u32 events)
 	switch (ctrl->state) {
 	case BLINKINGON_STATE:
 		cancel_delayed_work(&ctrl->button_work);
-		fallthrough;
+		/* fall through */
 	case OFF_STATE:
 		ctrl->state = POWERON_STATE;
 		mutex_unlock(&ctrl->state_lock);
@@ -382,8 +375,7 @@ int pciehp_sysfs_enable_slot(struct hotplug_slot *hotplug_slot)
 		ctrl->request_result = -ENODEV;
 		pciehp_request(ctrl, PCI_EXP_SLTSTA_PDC);
 		wait_event(ctrl->requester,
-			   !atomic_read(&ctrl->pending_events) &&
-			   !ctrl->ist_running);
+			   !atomic_read(&ctrl->pending_events));
 		return ctrl->request_result;
 	case POWERON_STATE:
 		ctrl_info(ctrl, "Slot(%s): Already in powering on state\n",
@@ -416,8 +408,7 @@ int pciehp_sysfs_disable_slot(struct hotplug_slot *hotplug_slot)
 		mutex_unlock(&ctrl->state_lock);
 		pciehp_request(ctrl, DISABLE_SLOT);
 		wait_event(ctrl->requester,
-			   !atomic_read(&ctrl->pending_events) &&
-			   !ctrl->ist_running);
+			   !atomic_read(&ctrl->pending_events));
 		return ctrl->request_result;
 	case POWEROFF_STATE:
 		ctrl_info(ctrl, "Slot(%s): Already in powering off state\n",

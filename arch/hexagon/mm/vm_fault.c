@@ -11,15 +11,14 @@
  * execptions.
  */
 
+#include <asm/pgtable.h>
 #include <asm/traps.h>
-#include <asm/vm_fault.h>
 #include <linux/uaccess.h>
 #include <linux/mm.h>
 #include <linux/sched/signal.h>
 #include <linux/signal.h>
 #include <linux/extable.h>
 #include <linux/hardirq.h>
-#include <linux/perf_event.h>
 
 /*
  * Decode of hardware exception sends us to one of several
@@ -34,7 +33,7 @@
 /*
  * Canonical page fault handler
  */
-static void do_page_fault(unsigned long address, long cause, struct pt_regs *regs)
+void do_page_fault(unsigned long address, long cause, struct pt_regs *regs)
 {
 	struct vm_area_struct *vma;
 	struct mm_struct *mm = current->mm;
@@ -42,7 +41,7 @@ static void do_page_fault(unsigned long address, long cause, struct pt_regs *reg
 	int si_code = SEGV_MAPERR;
 	vm_fault_t fault;
 	const struct exception_table_entry *fixup;
-	unsigned int flags = FAULT_FLAG_DEFAULT;
+	unsigned int flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
 	/*
 	 * If we're in an interrupt or have no user context,
@@ -55,13 +54,22 @@ static void do_page_fault(unsigned long address, long cause, struct pt_regs *reg
 
 	if (user_mode(regs))
 		flags |= FAULT_FLAG_USER;
-
-	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, address);
 retry:
-	vma = lock_mm_and_find_vma(mm, address, regs);
-	if (unlikely(!vma))
-		goto bad_area_nosemaphore;
+	down_read(&mm->mmap_sem);
+	vma = find_vma(mm, address);
+	if (!vma)
+		goto bad_area;
 
+	if (vma->vm_start <= address)
+		goto good_area;
+
+	if (!(vma->vm_flags & VM_GROWSDOWN))
+		goto bad_area;
+
+	if (expand_stack(vma, address))
+		goto bad_area;
+
+good_area:
 	/* Address space is OK.  Now check access rights. */
 	si_code = SEGV_ACCERR;
 
@@ -81,30 +89,30 @@ retry:
 		break;
 	}
 
-	fault = handle_mm_fault(vma, address, flags, regs);
+	fault = handle_mm_fault(vma, address, flags);
 
-	if (fault_signal_pending(fault, regs)) {
-		if (!user_mode(regs))
-			goto no_context;
-		return;
-	}
-
-	/* The fault is fully completed (including releasing mmap lock) */
-	if (fault & VM_FAULT_COMPLETED)
+	if ((fault & VM_FAULT_RETRY) && fatal_signal_pending(current))
 		return;
 
 	/* The most common case -- we are done. */
 	if (likely(!(fault & VM_FAULT_ERROR))) {
-		if (fault & VM_FAULT_RETRY) {
-			flags |= FAULT_FLAG_TRIED;
-			goto retry;
+		if (flags & FAULT_FLAG_ALLOW_RETRY) {
+			if (fault & VM_FAULT_MAJOR)
+				current->maj_flt++;
+			else
+				current->min_flt++;
+			if (fault & VM_FAULT_RETRY) {
+				flags &= ~FAULT_FLAG_ALLOW_RETRY;
+				flags |= FAULT_FLAG_TRIED;
+				goto retry;
+			}
 		}
 
-		mmap_read_unlock(mm);
+		up_read(&mm->mmap_sem);
 		return;
 	}
 
-	mmap_read_unlock(mm);
+	up_read(&mm->mmap_sem);
 
 	/* Handle copyin/out exception cases */
 	if (!user_mode(regs))
@@ -131,9 +139,8 @@ retry:
 	return;
 
 bad_area:
-	mmap_read_unlock(mm);
+	up_read(&mm->mmap_sem);
 
-bad_area_nosemaphore:
 	if (user_mode(regs)) {
 		force_sig_fault(SIGSEGV, si_code, (void __user *)address);
 		return;

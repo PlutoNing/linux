@@ -4,7 +4,9 @@
 #
 
 config PINCTRL_SPRD
-	tristate
+	bool "Spreadtrum pinctrl driver"
+	depends on OF
+	depends on ARCH_SPRD || COMPILE_TEST
 	select PINMUX
 	select PINCONF
 	select GENERIC_PINCONF
@@ -13,9 +15,7 @@ config PINCTRL_SPRD
 	  Say Y here to enable Spreadtrum pinctrl driver
 
 config PINCTRL_SPRD_SC9860
-	tristate "Spreadtrum SC9860 pinctrl driver"
-	depends on OF
-	depends on ARCH_SPRD || COMPILE_TEST
-	select PINCTRL_SPRD
+	bool "Spreadtrum SC9860 pinctrl driver"
+	depends on PINCTRL_SPRD
 	help
 	  Say Y here to enable Spreadtrum SC9860 pinctrl driver

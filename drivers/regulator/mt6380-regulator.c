@@ -152,15 +152,15 @@ struct mt6380_regulator_info {
 	.modeset_mask = _modeset_mask,					\
 }
 
-static const struct linear_range buck_volt_range1[] = {
+static const struct regulator_linear_range buck_volt_range1[] = {
 	REGULATOR_LINEAR_RANGE(600000, 0, 0xfe, 6250),
 };
 
-static const struct linear_range buck_volt_range2[] = {
+static const struct regulator_linear_range buck_volt_range2[] = {
 	REGULATOR_LINEAR_RANGE(600000, 0, 0xfe, 6250),
 };
 
-static const struct linear_range buck_volt_range3[] = {
+static const struct regulator_linear_range buck_volt_range3[] = {
 	REGULATOR_LINEAR_RANGE(1200000, 0, 0x3c, 25000),
 };
 
@@ -183,7 +183,7 @@ static const unsigned int ldo_volt_table4[] = {
 static int mt6380_regulator_set_mode(struct regulator_dev *rdev,
 				     unsigned int mode)
 {
-	int val = 0;
+	int ret, val = 0;
 	struct mt6380_regulator_info *info = rdev_get_drvdata(rdev);
 
 	switch (mode) {
@@ -199,8 +199,10 @@ static int mt6380_regulator_set_mode(struct regulator_dev *rdev,
 
 	val <<= ffs(info->modeset_mask) - 1;
 
-	return regmap_update_bits(rdev->regmap, info->modeset_reg,
+	ret = regmap_update_bits(rdev->regmap, info->modeset_reg,
 				 info->modeset_mask, val);
+
+	return ret;
 }
 
 static unsigned int mt6380_regulator_get_mode(struct regulator_dev *rdev)
@@ -319,7 +321,7 @@ static const struct platform_device_id mt6380_platform_ids[] = {
 };
 MODULE_DEVICE_TABLE(platform, mt6380_platform_ids);
 
-static const struct of_device_id  __maybe_unused mt6380_of_match[] = {
+static const struct of_device_id mt6380_of_match[] = {
 	{ .compatible = "mediatek,mt6380-regulator", },
 	{ /* sentinel */ },
 };
@@ -328,7 +330,6 @@ MODULE_DEVICE_TABLE(of, mt6380_of_match);
 static struct platform_driver mt6380_regulator_driver = {
 	.driver = {
 		.name = "mt6380-regulator",
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_match_ptr(mt6380_of_match),
 	},
 	.probe = mt6380_regulator_probe,

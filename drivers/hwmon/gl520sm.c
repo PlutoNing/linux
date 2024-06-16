@@ -64,7 +64,7 @@ struct gl520_data {
 	struct i2c_client *client;
 	const struct attribute_group *groups[3];
 	struct mutex update_lock;
-	bool valid;		/* false until the following fields are valid */
+	char valid;		/* zero until the following fields are valid */
 	unsigned long last_updated;	/* in jiffies */
 
 	u8 vid;
@@ -174,7 +174,7 @@ static struct gl520_data *gl520_update_device(struct device *dev)
 		}
 
 		data->last_updated = jiffies;
-		data->valid = true;
+		data->valid = 1;
 	}
 
 	mutex_unlock(&data->update_lock);
@@ -811,7 +811,7 @@ static int gl520_detect(struct i2c_client *client, struct i2c_board_info *info)
 		return -ENODEV;
 	}
 
-	strscpy(info->type, "gl520sm", I2C_NAME_SIZE);
+	strlcpy(info->type, "gl520sm", I2C_NAME_SIZE);
 
 	return 0;
 }
@@ -854,7 +854,8 @@ static void gl520_init_client(struct i2c_client *client)
 	gl520_write_value(client, GL520_REG_BEEP_MASK, data->beep_mask);
 }
 
-static int gl520_probe(struct i2c_client *client)
+static int gl520_probe(struct i2c_client *client,
+		       const struct i2c_device_id *id)
 {
 	struct device *dev = &client->dev;
 	struct device *hwmon_dev;

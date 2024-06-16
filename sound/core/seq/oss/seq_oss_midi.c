@@ -37,7 +37,6 @@ struct seq_oss_midi {
 	struct snd_midi_event *coder;	/* MIDI event coder */
 	struct seq_oss_devinfo *devinfo;	/* assigned OSSseq device */
 	snd_use_lock_t use_lock;
-	struct mutex open_mutex;
 };
 
 
@@ -64,13 +63,16 @@ static int send_midi_event(struct seq_oss_devinfo *dp, struct snd_seq_event *ev,
 int
 snd_seq_oss_midi_lookup_ports(int client)
 {
-	struct snd_seq_client_info *clinfo __free(kfree) = NULL;
-	struct snd_seq_port_info *pinfo __free(kfree) = NULL;
+	struct snd_seq_client_info *clinfo;
+	struct snd_seq_port_info *pinfo;
 
 	clinfo = kzalloc(sizeof(*clinfo), GFP_KERNEL);
 	pinfo = kzalloc(sizeof(*pinfo), GFP_KERNEL);
-	if (!clinfo || !pinfo)
+	if (! clinfo || ! pinfo) {
+		kfree(clinfo);
+		kfree(pinfo);
 		return -ENOMEM;
+	}
 	clinfo->client = -1;
 	while (snd_seq_kernel_client_ctl(client, SNDRV_SEQ_IOCTL_QUERY_NEXT_CLIENT, clinfo) == 0) {
 		if (clinfo->client == client)
@@ -80,6 +82,8 @@ snd_seq_oss_midi_lookup_ports(int client)
 		while (snd_seq_kernel_client_ctl(client, SNDRV_SEQ_IOCTL_QUERY_NEXT_PORT, pinfo) == 0)
 			snd_seq_oss_midi_check_new_port(pinfo);
 	}
+	kfree(clinfo);
+	kfree(pinfo);
 	return 0;
 }
 
@@ -148,8 +152,7 @@ snd_seq_oss_midi_check_new_port(struct snd_seq_port_info *pinfo)
 	/*
 	 * look for the identical slot
 	 */
-	mdev = find_slot(pinfo->addr.client, pinfo->addr.port);
-	if (mdev) {
+	if ((mdev = find_slot(pinfo->addr.client, pinfo->addr.port)) != NULL) {
 		/* already exists */
 		snd_use_lock_free(&mdev->use_lock);
 		return 0;
@@ -168,10 +171,9 @@ snd_seq_oss_midi_check_new_port(struct snd_seq_port_info *pinfo)
 	mdev->flags = pinfo->capability;
 	mdev->opened = 0;
 	snd_use_lock_init(&mdev->use_lock);
-	mutex_init(&mdev->open_mutex);
 
 	/* copy and truncate the name of synth device */
-	strscpy(mdev->name, pinfo->name, sizeof(mdev->name));
+	strlcpy(mdev->name, pinfo->name, sizeof(mdev->name));
 
 	/* create MIDI coder */
 	if (snd_midi_event_new(MAX_MIDI_EVENT_BUF, &mdev->coder) < 0) {
@@ -216,8 +218,7 @@ snd_seq_oss_midi_check_exit_port(int client, int port)
 	unsigned long flags;
 	int index;
 
-	mdev = find_slot(client, port);
-	if (mdev) {
+	if ((mdev = find_slot(client, port)) != NULL) {
 		spin_lock_irqsave(&register_lock, flags);
 		midi_devs[mdev->seq_device] = NULL;
 		spin_unlock_irqrestore(&register_lock, flags);
@@ -249,8 +250,7 @@ snd_seq_oss_midi_clear_all(void)
 
 	spin_lock_irqsave(&register_lock, flags);
 	for (i = 0; i < max_midi_devs; i++) {
-		mdev = midi_devs[i];
-		if (mdev) {
+		if ((mdev = midi_devs[i]) != NULL) {
 			snd_midi_event_free(mdev->coder);
 			kfree(mdev);
 			midi_devs[i] = NULL;
@@ -267,9 +267,7 @@ snd_seq_oss_midi_clear_all(void)
 void
 snd_seq_oss_midi_setup(struct seq_oss_devinfo *dp)
 {
-	spin_lock_irq(&register_lock);
 	dp->max_mididev = max_midi_devs;
-	spin_unlock_irq(&register_lock);
 }
 
 /*
@@ -319,17 +317,14 @@ snd_seq_oss_midi_open(struct seq_oss_devinfo *dp, int dev, int fmode)
 	int perm;
 	struct seq_oss_midi *mdev;
 	struct snd_seq_port_subscribe subs;
-	int err;
 
-	mdev = get_mididev(dp, dev);
-	if (!mdev)
+	if ((mdev = get_mididev(dp, dev)) == NULL)
 		return -ENODEV;
 
-	mutex_lock(&mdev->open_mutex);
 	/* already used? */
 	if (mdev->opened && mdev->devinfo != dp) {
-		err = -EBUSY;
-		goto unlock;
+		snd_use_lock_free(&mdev->use_lock);
+		return -EBUSY;
 	}
 
 	perm = 0;
@@ -339,14 +334,14 @@ snd_seq_oss_midi_open(struct seq_oss_devinfo *dp, int dev, int fmode)
 		perm |= PERM_READ;
 	perm &= mdev->flags;
 	if (perm == 0) {
-		err = -ENXIO;
-		goto unlock;
+		snd_use_lock_free(&mdev->use_lock);
+		return -ENXIO;
 	}
 
 	/* already opened? */
 	if ((mdev->opened & perm) == perm) {
-		err = 0;
-		goto unlock;
+		snd_use_lock_free(&mdev->use_lock);
+		return 0;
 	}
 
 	perm &= ~mdev->opened;
@@ -371,17 +366,13 @@ snd_seq_oss_midi_open(struct seq_oss_devinfo *dp, int dev, int fmode)
 	}
 
 	if (! mdev->opened) {
-		err = -ENXIO;
-		goto unlock;
+		snd_use_lock_free(&mdev->use_lock);
+		return -ENXIO;
 	}
 
 	mdev->devinfo = dp;
-	err = 0;
-
- unlock:
-	mutex_unlock(&mdev->open_mutex);
 	snd_use_lock_free(&mdev->use_lock);
-	return err;
+	return 0;
 }
 
 /*
@@ -393,12 +384,12 @@ snd_seq_oss_midi_close(struct seq_oss_devinfo *dp, int dev)
 	struct seq_oss_midi *mdev;
 	struct snd_seq_port_subscribe subs;
 
-	mdev = get_mididev(dp, dev);
-	if (!mdev)
+	if ((mdev = get_mididev(dp, dev)) == NULL)
 		return -ENODEV;
-	mutex_lock(&mdev->open_mutex);
-	if (!mdev->opened || mdev->devinfo != dp)
-		goto unlock;
+	if (! mdev->opened || mdev->devinfo != dp) {
+		snd_use_lock_free(&mdev->use_lock);
+		return 0;
+	}
 
 	memset(&subs, 0, sizeof(subs));
 	if (mdev->opened & PERM_WRITE) {
@@ -417,8 +408,6 @@ snd_seq_oss_midi_close(struct seq_oss_devinfo *dp, int dev)
 	mdev->opened = 0;
 	mdev->devinfo = NULL;
 
- unlock:
-	mutex_unlock(&mdev->open_mutex);
 	snd_use_lock_free(&mdev->use_lock);
 	return 0;
 }
@@ -432,8 +421,7 @@ snd_seq_oss_midi_filemode(struct seq_oss_devinfo *dp, int dev)
 	struct seq_oss_midi *mdev;
 	int mode;
 
-	mdev = get_mididev(dp, dev);
-	if (!mdev)
+	if ((mdev = get_mididev(dp, dev)) == NULL)
 		return 0;
 
 	mode = 0;
@@ -455,8 +443,7 @@ snd_seq_oss_midi_reset(struct seq_oss_devinfo *dp, int dev)
 {
 	struct seq_oss_midi *mdev;
 
-	mdev = get_mididev(dp, dev);
-	if (!mdev)
+	if ((mdev = get_mididev(dp, dev)) == NULL)
 		return;
 	if (! mdev->opened) {
 		snd_use_lock_free(&mdev->use_lock);
@@ -504,8 +491,7 @@ snd_seq_oss_midi_get_addr(struct seq_oss_devinfo *dp, int dev, struct snd_seq_ad
 {
 	struct seq_oss_midi *mdev;
 
-	mdev = get_mididev(dp, dev);
-	if (!mdev)
+	if ((mdev = get_mididev(dp, dev)) == NULL)
 		return;
 	addr->client = mdev->client;
 	addr->port = mdev->port;
@@ -525,8 +511,7 @@ snd_seq_oss_midi_input(struct snd_seq_event *ev, int direct, void *private_data)
 
 	if (dp->readq == NULL)
 		return 0;
-	mdev = find_slot(ev->source.client, ev->source.port);
-	if (!mdev)
+	if ((mdev = find_slot(ev->source.client, ev->source.port)) == NULL)
 		return 0;
 	if (! (mdev->opened & PERM_READ)) {
 		snd_use_lock_free(&mdev->use_lock);
@@ -617,7 +602,6 @@ send_midi_event(struct seq_oss_devinfo *dp, struct snd_seq_event *ev, struct seq
 		len = snd_seq_oss_timer_start(dp->timer);
 	if (ev->type == SNDRV_SEQ_EVENT_SYSEX) {
 		snd_seq_oss_readq_sysex(dp->readq, mdev->seq_device, ev);
-		snd_midi_event_reset_decode(mdev->coder);
 	} else {
 		len = snd_midi_event_decode(mdev->coder, msg, sizeof(msg), ev);
 		if (len > 0)
@@ -638,8 +622,7 @@ snd_seq_oss_midi_putc(struct seq_oss_devinfo *dp, int dev, unsigned char c, stru
 {
 	struct seq_oss_midi *mdev;
 
-	mdev = get_mididev(dp, dev);
-	if (!mdev)
+	if ((mdev = get_mididev(dp, dev)) == NULL)
 		return -ENODEV;
 	if (snd_midi_event_encode_byte(mdev->coder, c, ev)) {
 		snd_seq_oss_fill_addr(dp, ev, mdev->client, mdev->port);
@@ -658,13 +641,12 @@ snd_seq_oss_midi_make_info(struct seq_oss_devinfo *dp, int dev, struct midi_info
 {
 	struct seq_oss_midi *mdev;
 
-	mdev = get_mididev(dp, dev);
-	if (!mdev)
+	if ((mdev = get_mididev(dp, dev)) == NULL)
 		return -ENXIO;
 	inf->device = dev;
 	inf->dev_type = 0; /* FIXME: ?? */
 	inf->capabilities = 0; /* FIXME: ?? */
-	strscpy(inf->name, mdev->name, sizeof(inf->name));
+	strlcpy(inf->name, mdev->name, sizeof(inf->name));
 	snd_use_lock_free(&mdev->use_lock);
 	return 0;
 }

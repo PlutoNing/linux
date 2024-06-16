@@ -4,7 +4,7 @@
  *
  * Module interface and handling of zfcp data structures.
  *
- * Copyright IBM Corp. 2002, 2020
+ * Copyright IBM Corp. 2002, 2017
  */
 
 /*
@@ -25,7 +25,6 @@
  *            Martin Petermann
  *            Sven Schuetz
  *            Steffen Maier
- *	      Benjamin Block
  */
 
 #define KMSG_COMPONENT "zfcp"
@@ -37,7 +36,6 @@
 #include "zfcp_ext.h"
 #include "zfcp_fc.h"
 #include "zfcp_reqlist.h"
-#include "zfcp_diag.h"
 
 #define ZFCP_BUS_ID_SIZE	20
 
@@ -103,7 +101,7 @@ static void __init zfcp_init_device_setup(char *devstr)
 	token = strsep(&str, ",");
 	if (!token || strlen(token) >= ZFCP_BUS_ID_SIZE)
 		goto err_out;
-	strscpy(busid, token, ZFCP_BUS_ID_SIZE);
+	strlcpy(busid, token, ZFCP_BUS_ID_SIZE);
 
 	token = strsep(&str, ",");
 	if (!token || kstrtoull(token, 0, (unsigned long long *) &wwpn))
@@ -292,14 +290,6 @@ static void _zfcp_status_read_scheduler(struct work_struct *work)
 					     stat_work));
 }
 
-static void zfcp_version_change_lost_work(struct work_struct *work)
-{
-	struct zfcp_adapter *adapter = container_of(work, struct zfcp_adapter,
-						    version_change_lost_work);
-
-	zfcp_fsf_exchange_config_data_sync(adapter->qdio, NULL);
-}
-
 static void zfcp_print_sl(struct seq_file *m, struct service_level *sl)
 {
 	struct zfcp_adapter *adapter =
@@ -361,15 +351,10 @@ struct zfcp_adapter *zfcp_adapter_enqueue(struct ccw_device *ccw_device)
 	INIT_WORK(&adapter->stat_work, _zfcp_status_read_scheduler);
 	INIT_DELAYED_WORK(&adapter->scan_work, zfcp_fc_scan_ports);
 	INIT_WORK(&adapter->ns_up_work, zfcp_fc_sym_name_update);
-	INIT_WORK(&adapter->version_change_lost_work,
-		  zfcp_version_change_lost_work);
 
 	adapter->next_port_scan = jiffies;
 
 	adapter->erp_action.adapter = adapter;
-
-	if (zfcp_diag_adapter_setup(adapter))
-		goto failed;
 
 	if (zfcp_qdio_setup(adapter))
 		goto failed;
@@ -413,33 +398,20 @@ struct zfcp_adapter *zfcp_adapter_enqueue(struct ccw_device *ccw_device)
 
 	dev_set_drvdata(&ccw_device->dev, adapter);
 
-	if (device_add_groups(&ccw_device->dev, zfcp_sysfs_adapter_attr_groups))
-		goto err_sysfs;
+	if (sysfs_create_group(&ccw_device->dev.kobj,
+			       &zfcp_sysfs_adapter_attrs))
+		goto failed;
 
 	/* report size limit per scatter-gather segment */
 	adapter->ccw_device->dev.dma_parms = &adapter->dma_parms;
 
 	adapter->stat_read_buf_num = FSF_STATUS_READS_RECOM;
 
-	return adapter;
+	if (!zfcp_scsi_adapter_register(adapter))
+		return adapter;
 
-err_sysfs:
 failed:
-	/* TODO: make this more fine-granular */
-	cancel_delayed_work_sync(&adapter->scan_work);
-	cancel_work_sync(&adapter->stat_work);
-	cancel_work_sync(&adapter->ns_up_work);
-	cancel_work_sync(&adapter->version_change_lost_work);
-	zfcp_destroy_adapter_work_queue(adapter);
-
-	zfcp_fc_wka_ports_force_offline(adapter->gs);
-	zfcp_scsi_adapter_unregister(adapter);
-
-	zfcp_erp_thread_kill(adapter);
-	zfcp_dbf_adapter_unregister(adapter);
-	zfcp_qdio_destroy(adapter->qdio);
-
-	zfcp_ccw_adapter_put(adapter); /* final put to release */
+	zfcp_adapter_unregister(adapter);
 	return ERR_PTR(-ENOMEM);
 }
 
@@ -450,12 +422,11 @@ void zfcp_adapter_unregister(struct zfcp_adapter *adapter)
 	cancel_delayed_work_sync(&adapter->scan_work);
 	cancel_work_sync(&adapter->stat_work);
 	cancel_work_sync(&adapter->ns_up_work);
-	cancel_work_sync(&adapter->version_change_lost_work);
 	zfcp_destroy_adapter_work_queue(adapter);
 
 	zfcp_fc_wka_ports_force_offline(adapter->gs);
 	zfcp_scsi_adapter_unregister(adapter);
-	device_remove_groups(&cdev->dev, zfcp_sysfs_adapter_attr_groups);
+	sysfs_remove_group(&cdev->dev.kobj, &zfcp_sysfs_adapter_attrs);
 
 	zfcp_erp_thread_kill(adapter);
 	zfcp_dbf_adapter_unregister(adapter);
@@ -478,7 +449,6 @@ void zfcp_adapter_release(struct kref *ref)
 	dev_set_drvdata(&adapter->ccw_device->dev, NULL);
 	zfcp_fc_gs_destroy(adapter);
 	zfcp_free_low_mem_buffers(adapter);
-	zfcp_diag_adapter_free(adapter);
 	kfree(adapter->req_list);
 	kfree(adapter->fc_stats);
 	kfree(adapter->stats_reset_data);
@@ -518,12 +488,12 @@ struct zfcp_port *zfcp_port_enqueue(struct zfcp_adapter *adapter, u64 wwpn,
 	if (port) {
 		put_device(&port->dev);
 		retval = -EEXIST;
-		goto err_put;
+		goto err_out;
 	}
 
 	port = kzalloc(sizeof(struct zfcp_port), GFP_KERNEL);
 	if (!port)
-		goto err_put;
+		goto err_out;
 
 	rwlock_init(&port->unit_list_lock);
 	INIT_LIST_HEAD(&port->unit_list);
@@ -546,7 +516,7 @@ struct zfcp_port *zfcp_port_enqueue(struct zfcp_adapter *adapter, u64 wwpn,
 
 	if (dev_set_name(&port->dev, "0x%016llx", (unsigned long long)wwpn)) {
 		kfree(port);
-		goto err_put;
+		goto err_out;
 	}
 	retval = -EINVAL;
 
@@ -563,8 +533,7 @@ struct zfcp_port *zfcp_port_enqueue(struct zfcp_adapter *adapter, u64 wwpn,
 
 	return port;
 
-err_put:
-	zfcp_ccw_adapter_put(adapter);
 err_out:
+	zfcp_ccw_adapter_put(adapter);
 	return ERR_PTR(retval);
 }

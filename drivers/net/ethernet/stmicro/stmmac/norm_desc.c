@@ -12,9 +12,10 @@
 #include "common.h"
 #include "descs_com.h"
 
-static int ndesc_get_tx_status(struct stmmac_extra_stats *x,
+static int ndesc_get_tx_status(void *data, struct stmmac_extra_stats *x,
 			       struct dma_desc *p, void __iomem *ioaddr)
 {
+	struct net_device_stats *stats = (struct net_device_stats *)data;
 	unsigned int tdes0 = le32_to_cpu(p->des0);
 	unsigned int tdes1 = le32_to_cpu(p->des1);
 	int ret = tx_done;
@@ -30,12 +31,15 @@ static int ndesc_get_tx_status(struct stmmac_extra_stats *x,
 	if (unlikely(tdes0 & TDES0_ERROR_SUMMARY)) {
 		if (unlikely(tdes0 & TDES0_UNDERFLOW_ERROR)) {
 			x->tx_underflow++;
+			stats->tx_fifo_errors++;
 		}
 		if (unlikely(tdes0 & TDES0_NO_CARRIER)) {
 			x->tx_carrier++;
+			stats->tx_carrier_errors++;
 		}
 		if (unlikely(tdes0 & TDES0_LOSS_CARRIER)) {
 			x->tx_losscarrier++;
+			stats->tx_carrier_errors++;
 		}
 		if (unlikely((tdes0 & TDES0_EXCESSIVE_DEFERRAL) ||
 			     (tdes0 & TDES0_EXCESSIVE_COLLISIONS) ||
@@ -43,7 +47,7 @@ static int ndesc_get_tx_status(struct stmmac_extra_stats *x,
 			unsigned int collisions;
 
 			collisions = (tdes0 & TDES0_COLLISION_COUNT_MASK) >> 3;
-			x->tx_collision += collisions;
+			stats->collisions += collisions;
 		}
 		ret = tx_err;
 	}
@@ -66,17 +70,18 @@ static int ndesc_get_tx_len(struct dma_desc *p)
  * and, if required, updates the multicast statistics.
  * In case of success, it returns good_frame because the GMAC device
  * is supposed to be able to compute the csum in HW. */
-static int ndesc_get_rx_status(struct stmmac_extra_stats *x,
+static int ndesc_get_rx_status(void *data, struct stmmac_extra_stats *x,
 			       struct dma_desc *p)
 {
 	int ret = good_frame;
 	unsigned int rdes0 = le32_to_cpu(p->des0);
+	struct net_device_stats *stats = (struct net_device_stats *)data;
 
 	if (unlikely(rdes0 & RDES0_OWN))
 		return dma_own;
 
 	if (unlikely(!(rdes0 & RDES0_LAST_DESCRIPTOR))) {
-		x->rx_length++;
+		stats->rx_length_errors++;
 		return discard_frame;
 	}
 
@@ -91,9 +96,11 @@ static int ndesc_get_rx_status(struct stmmac_extra_stats *x,
 			x->ipc_csum_error++;
 		if (unlikely(rdes0 & RDES0_COLLISION)) {
 			x->rx_collision++;
+			stats->collisions++;
 		}
 		if (unlikely(rdes0 & RDES0_CRC_ERROR)) {
 			x->rx_crc_errors++;
+			stats->rx_crc_errors++;
 		}
 		ret = discard_frame;
 	}
@@ -262,27 +269,29 @@ static int ndesc_get_rx_timestamp_status(void *desc, void *next_desc, u32 ats)
 		return 1;
 }
 
-static void ndesc_display_ring(void *head, unsigned int size, bool rx,
-			       dma_addr_t dma_rx_phy, unsigned int desc_size)
+static void ndesc_display_ring(void *head, unsigned int size, bool rx)
 {
 	struct dma_desc *p = (struct dma_desc *)head;
-	dma_addr_t dma_addr;
 	int i;
 
 	pr_info("%s descriptor ring:\n", rx ? "RX" : "TX");
 
 	for (i = 0; i < size; i++) {
 		u64 x;
-		dma_addr = dma_rx_phy + i * sizeof(*p);
 
 		x = *(u64 *)p;
-		pr_info("%03d [%pad]: 0x%x 0x%x 0x%x 0x%x",
-			i, &dma_addr,
+		pr_info("%03d [0x%x]: 0x%x 0x%x 0x%x 0x%x",
+			i, (unsigned int)virt_to_phys(p),
 			(unsigned int)x, (unsigned int)(x >> 32),
 			p->des2, p->des3);
 		p++;
 	}
 	pr_info("\n");
+}
+
+static void ndesc_get_addr(struct dma_desc *p, unsigned int *addr)
+{
+	*addr = le32_to_cpu(p->des2);
 }
 
 static void ndesc_set_addr(struct dma_desc *p, dma_addr_t addr)
@@ -314,6 +323,7 @@ const struct stmmac_desc_ops ndesc_ops = {
 	.get_timestamp = ndesc_get_timestamp,
 	.get_rx_timestamp_status = ndesc_get_rx_timestamp_status,
 	.display_ring = ndesc_display_ring,
+	.get_addr = ndesc_get_addr,
 	.set_addr = ndesc_set_addr,
 	.clear = ndesc_clear,
 };

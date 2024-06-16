@@ -19,8 +19,7 @@
 #include <linux/interrupt.h>
 #include <linux/wait.h>
 #include <linux/i2c.h>
-#include <linux/of.h>
-#include <linux/property.h>
+#include <linux/of_device.h>
 #include "tpm.h"
 
 /* I2C interface offsets */
@@ -523,7 +522,8 @@ static int get_vid(struct i2c_client *client, u32 *res)
 	return 0;
 }
 
-static int i2c_nuvoton_probe(struct i2c_client *client)
+static int i2c_nuvoton_probe(struct i2c_client *client,
+			     const struct i2c_device_id *id)
 {
 	int rc;
 	struct tpm_chip *chip;
@@ -546,8 +546,15 @@ static int i2c_nuvoton_probe(struct i2c_client *client)
 	if (!priv)
 		return -ENOMEM;
 
-	if (i2c_get_match_data(client))
-		chip->flags |= TPM_CHIP_FLAG_TPM2;
+	if (dev->of_node) {
+		const struct of_device_id *of_id;
+
+		of_id = of_match_device(dev->driver->of_match_table, dev);
+		if (of_id && of_id->data == OF_IS_TPM2)
+			chip->flags |= TPM_CHIP_FLAG_TPM2;
+	} else
+		if (id->driver_data == I2C_IS_TPM2)
+			chip->flags |= TPM_CHIP_FLAG_TPM2;
 
 	init_waitqueue_head(&priv->read_queue);
 
@@ -615,11 +622,12 @@ static int i2c_nuvoton_probe(struct i2c_client *client)
 	return tpm_chip_register(chip);
 }
 
-static void i2c_nuvoton_remove(struct i2c_client *client)
+static int i2c_nuvoton_remove(struct i2c_client *client)
 {
 	struct tpm_chip *chip = i2c_get_clientdata(client);
 
 	tpm_chip_unregister(chip);
+	return 0;
 }
 
 static const struct i2c_device_id i2c_nuvoton_id[] = {
@@ -654,6 +662,6 @@ static struct i2c_driver i2c_nuvoton_driver = {
 
 module_i2c_driver(i2c_nuvoton_driver);
 
-MODULE_AUTHOR("Dan Morav <dan.morav@nuvoton.com>");
+MODULE_AUTHOR("Dan Morav (dan.morav@nuvoton.com)");
 MODULE_DESCRIPTION("Nuvoton TPM I2C Driver");
 MODULE_LICENSE("GPL");

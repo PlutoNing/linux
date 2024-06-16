@@ -30,64 +30,56 @@
  *	the implementation assumes non-aliasing VIPT D-cache and (aliasing)
  *	VIPT I-cache.
  *
- *	All functions below apply to the interval [start, end)
- *		- start  - virtual start address (inclusive)
- *		- end    - virtual end address (exclusive)
+ *	flush_cache_mm(mm)
  *
- *	caches_clean_inval_pou(start, end)
+ *		Clean and invalidate all user space cache entries
+ *		before a change of page tables.
  *
- *		Ensure coherency between the I-cache and the D-cache region to
- *		the Point of Unification.
+ *	flush_icache_range(start, end)
  *
- *	caches_clean_inval_user_pou(start, end)
+ *		Ensure coherency between the I-cache and the D-cache in the
+ *		region described by start, end.
+ *		- start  - virtual start address
+ *		- end    - virtual end address
  *
- *		Ensure coherency between the I-cache and the D-cache region to
- *		the Point of Unification.
- *		Use only if the region might access user memory.
+ *	invalidate_icache_range(start, end)
  *
- *	icache_inval_pou(start, end)
+ *		Invalidate the I-cache in the region described by start, end.
+ *		- start  - virtual start address
+ *		- end    - virtual end address
  *
- *		Invalidate I-cache region to the Point of Unification.
+ *	__flush_cache_user_range(start, end)
  *
- *	dcache_clean_inval_poc(start, end)
+ *		Ensure coherency between the I-cache and the D-cache in the
+ *		region described by start, end.
+ *		- start  - virtual start address
+ *		- end    - virtual end address
  *
- *		Clean and invalidate D-cache region to the Point of Coherency.
+ *	__flush_dcache_area(kaddr, size)
  *
- *	dcache_inval_poc(start, end)
- *
- *		Invalidate D-cache region to the Point of Coherency.
- *
- *	dcache_clean_poc(start, end)
- *
- *		Clean D-cache region to the Point of Coherency.
- *
- *	dcache_clean_pop(start, end)
- *
- *		Clean D-cache region to the Point of Persistence.
- *
- *	dcache_clean_pou(start, end)
- *
- *		Clean D-cache region to the Point of Unification.
+ *		Ensure that the data held in page is written back.
+ *		- kaddr  - page address
+ *		- size   - region size
  */
-extern void caches_clean_inval_pou(unsigned long start, unsigned long end);
-extern void icache_inval_pou(unsigned long start, unsigned long end);
-extern void dcache_clean_inval_poc(unsigned long start, unsigned long end);
-extern void dcache_inval_poc(unsigned long start, unsigned long end);
-extern void dcache_clean_poc(unsigned long start, unsigned long end);
-extern void dcache_clean_pop(unsigned long start, unsigned long end);
-extern void dcache_clean_pou(unsigned long start, unsigned long end);
-extern long caches_clean_inval_user_pou(unsigned long start, unsigned long end);
-extern void sync_icache_aliases(unsigned long start, unsigned long end);
+extern void __flush_icache_range(unsigned long start, unsigned long end);
+extern int  invalidate_icache_range(unsigned long start, unsigned long end);
+extern void __flush_dcache_area(void *addr, size_t len);
+extern void __inval_dcache_area(void *addr, size_t len);
+extern void __clean_dcache_area_poc(void *addr, size_t len);
+extern void __clean_dcache_area_pop(void *addr, size_t len);
+extern void __clean_dcache_area_pou(void *addr, size_t len);
+extern long __flush_cache_user_range(unsigned long start, unsigned long end);
+extern void sync_icache_aliases(void *kaddr, unsigned long len);
 
 static inline void flush_icache_range(unsigned long start, unsigned long end)
 {
-	caches_clean_inval_pou(start, end);
+	__flush_icache_range(start, end);
 
 	/*
 	 * IPI all online CPUs so that they undergo a context synchronization
 	 * event and are forced to refetch the new instructions.
 	 */
-
+#ifdef CONFIG_KGDB
 	/*
 	 * KGDB performs cache maintenance with interrupts disabled, so we
 	 * will deadlock trying to IPI the secondary CPUs. In theory, we can
@@ -97,12 +89,32 @@ static inline void flush_icache_range(unsigned long start, unsigned long end)
 	 * the patching operation, so we don't need extra IPIs here anyway.
 	 * In which case, add a KGDB-specific bodge and return early.
 	 */
-	if (in_dbg_master())
+	if (kgdb_connected && irqs_disabled())
 		return;
-
+#endif
 	kick_all_cpus_sync();
 }
-#define flush_icache_range flush_icache_range
+
+static inline void flush_cache_mm(struct mm_struct *mm)
+{
+}
+
+static inline void flush_cache_page(struct vm_area_struct *vma,
+				    unsigned long user_addr, unsigned long pfn)
+{
+}
+
+static inline void flush_cache_range(struct vm_area_struct *vma,
+				     unsigned long start, unsigned long end)
+{
+}
+
+/*
+ * Cache maintenance functions used by the DMA API. No to be used directly.
+ */
+extern void __dma_map_area(const void *, size_t, int);
+extern void __dma_unmap_area(const void *, size_t, int);
+extern void __dma_flush_area(const void *, size_t);
 
 /*
  * Copy user data from/to a page which is mapped into a different
@@ -111,10 +123,15 @@ static inline void flush_icache_range(unsigned long start, unsigned long end)
  */
 extern void copy_to_user_page(struct vm_area_struct *, struct page *,
 	unsigned long, void *, const void *, unsigned long);
-#define copy_to_user_page copy_to_user_page
+#define copy_from_user_page(vma, page, vaddr, dst, src, len) \
+	do {							\
+		memcpy(dst, src, len);				\
+	} while (0)
+
+#define flush_cache_dup_mm(mm) flush_cache_mm(mm)
 
 /*
- * flush_dcache_folio is used when the kernel has written to the page
+ * flush_dcache_page is used when the kernel has written to the page
  * cache page at virtual address page->virtual.
  *
  * If this page isn't mapped (ie, page_mapping == NULL), or it might
@@ -127,18 +144,39 @@ extern void copy_to_user_page(struct vm_area_struct *, struct page *,
  */
 #define ARCH_IMPLEMENTS_FLUSH_DCACHE_PAGE 1
 extern void flush_dcache_page(struct page *);
-void flush_dcache_folio(struct folio *);
-#define flush_dcache_folio flush_dcache_folio
 
-static __always_inline void icache_inval_all_pou(void)
+static inline void __flush_icache_all(void)
 {
-	if (alternative_has_cap_unlikely(ARM64_HAS_CACHE_DIC))
+	if (cpus_have_const_cap(ARM64_HAS_CACHE_DIC))
 		return;
 
 	asm("ic	ialluis");
 	dsb(ish);
 }
 
-#include <asm-generic/cacheflush.h>
+#define flush_dcache_mmap_lock(mapping)		do { } while (0)
+#define flush_dcache_mmap_unlock(mapping)	do { } while (0)
 
-#endif /* __ASM_CACHEFLUSH_H */
+/*
+ * We don't appear to need to do anything here.  In fact, if we did, we'd
+ * duplicate cache flushing elsewhere performed by flush_dcache_page().
+ */
+#define flush_icache_page(vma,page)	do { } while (0)
+
+/*
+ * Not required on AArch64 (PIPT or VIPT non-aliasing D-cache).
+ */
+static inline void flush_cache_vmap(unsigned long start, unsigned long end)
+{
+}
+
+static inline void flush_cache_vunmap(unsigned long start, unsigned long end)
+{
+}
+
+int set_memory_valid(unsigned long addr, int numpages, int enable);
+
+int set_direct_map_invalid_noflush(struct page *page);
+int set_direct_map_default_noflush(struct page *page);
+
+#endif

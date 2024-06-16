@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-/*
+/* -*- mode: c; c-basic-offset: 8; -*-
+ * vim: noexpandtab sw=8 ts=8 sts=0:
+ *
  * configfs.h - definitions for the device driver filesystem
  *
  * Based on sysfs:
@@ -11,7 +13,7 @@
  *
  * configfs Copyright (C) 2005 Oracle.  All rights reserved.
  *
- * Please read Documentation/filesystems/configfs.rst before using
+ * Please read Documentation/filesystems/configfs/configfs.txt before using
  * the configfs interface, ESPECIALLY the parts about reference counts and
  * item destructors.
  */
@@ -204,6 +206,8 @@ static struct configfs_bin_attribute _pfx##attr_##_name = {	\
  * group children.  default_groups may coexist alongsize make_group() or
  * make_item(), but if the group wishes to have only default_groups
  * children (disallowing mkdir(2)), it need not provide either function.
+ * If the group has commit(), it supports pending and committed (active)
+ * items.
  */
 struct configfs_item_operations {
 	void (*release)(struct config_item *);
@@ -214,6 +218,7 @@ struct configfs_item_operations {
 struct configfs_group_operations {
 	struct config_item *(*make_item)(struct config_group *group, const char *name);
 	struct config_group *(*make_group)(struct config_group *group, const char *name);
+	int (*commit_item)(struct config_item *item);
 	void (*disconnect_notify)(struct config_group *group, struct config_item *item);
 	void (*drop_item)(struct config_group *group, struct config_item *item);
 };

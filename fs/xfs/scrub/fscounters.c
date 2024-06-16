@@ -1,28 +1,21 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2019-2023 Oracle.  All Rights Reserved.
- * Author: Darrick J. Wong <djwong@kernel.org>
+ * Copyright (C) 2019 Oracle.  All Rights Reserved.
+ * Author: Darrick J. Wong <darrick.wong@oracle.com>
  */
 #include "xfs.h"
 #include "xfs_fs.h"
 #include "xfs_shared.h"
 #include "xfs_format.h"
 #include "xfs_trans_resv.h"
-#include "xfs_log_format.h"
-#include "xfs_trans.h"
 #include "xfs_mount.h"
+#include "xfs_sb.h"
 #include "xfs_alloc.h"
 #include "xfs_ialloc.h"
 #include "xfs_health.h"
-#include "xfs_btree.h"
-#include "xfs_ag.h"
-#include "xfs_rtbitmap.h"
-#include "xfs_inode.h"
-#include "xfs_icache.h"
 #include "scrub/scrub.h"
 #include "scrub/common.h"
 #include "scrub/trace.h"
-#include "scrub/fscounters.h"
 
 /*
  * FS Summary Counters
@@ -77,35 +70,42 @@ xchk_fscount_warmup(
 	xfs_agnumber_t		agno;
 	int			error = 0;
 
-	for_each_perag(mp, agno, pag) {
-		if (xchk_should_terminate(sc, &error))
-			break;
-		if (xfs_perag_initialised_agi(pag) &&
-		    xfs_perag_initialised_agf(pag))
-			continue;
+	for (agno = 0; agno < mp->m_sb.sb_agcount; agno++) {
+		pag = xfs_perag_get(mp, agno);
+
+		if (pag->pagi_init && pag->pagf_init)
+			goto next_loop_perag;
 
 		/* Lock both AG headers. */
-		error = xfs_ialloc_read_agi(pag, sc->tp, &agi_bp);
+		error = xfs_ialloc_read_agi(mp, sc->tp, agno, &agi_bp);
 		if (error)
 			break;
-		error = xfs_alloc_read_agf(pag, sc->tp, 0, &agf_bp);
+		error = xfs_alloc_read_agf(mp, sc->tp, agno, 0, &agf_bp);
 		if (error)
+			break;
+		error = -ENOMEM;
+		if (!agf_bp || !agi_bp)
 			break;
 
 		/*
 		 * These are supposed to be initialized by the header read
 		 * function.
 		 */
-		if (!xfs_perag_initialised_agi(pag) ||
-		    !xfs_perag_initialised_agf(pag)) {
-			error = -EFSCORRUPTED;
+		error = -EFSCORRUPTED;
+		if (!pag->pagi_init || !pag->pagf_init)
 			break;
-		}
 
 		xfs_buf_relse(agf_bp);
 		agf_bp = NULL;
 		xfs_buf_relse(agi_bp);
 		agi_bp = NULL;
+next_loop_perag:
+		xfs_perag_put(pag);
+		pag = NULL;
+		error = 0;
+
+		if (fatal_signal_pending(current))
+			break;
 	}
 
 	if (agf_bp)
@@ -113,106 +113,22 @@ xchk_fscount_warmup(
 	if (agi_bp)
 		xfs_buf_relse(agi_bp);
 	if (pag)
-		xfs_perag_rele(pag);
+		xfs_perag_put(pag);
 	return error;
-}
-
-static inline int
-xchk_fsfreeze(
-	struct xfs_scrub	*sc)
-{
-	int			error;
-
-	error = freeze_super(sc->mp->m_super, FREEZE_HOLDER_KERNEL);
-	trace_xchk_fsfreeze(sc, error);
-	return error;
-}
-
-static inline int
-xchk_fsthaw(
-	struct xfs_scrub	*sc)
-{
-	int			error;
-
-	/* This should always succeed, we have a kernel freeze */
-	error = thaw_super(sc->mp->m_super, FREEZE_HOLDER_KERNEL);
-	trace_xchk_fsthaw(sc, error);
-	return error;
-}
-
-/*
- * We couldn't stabilize the filesystem long enough to sample all the variables
- * that comprise the summary counters and compare them to the percpu counters.
- * We need to disable all writer threads, which means taking the first two
- * freeze levels to put userspace to sleep, and the third freeze level to
- * prevent background threads from starting new transactions.  Take one level
- * more to prevent other callers from unfreezing the filesystem while we run.
- */
-STATIC int
-xchk_fscounters_freeze(
-	struct xfs_scrub	*sc)
-{
-	struct xchk_fscounters	*fsc = sc->buf;
-	int			error = 0;
-
-	if (sc->flags & XCHK_HAVE_FREEZE_PROT) {
-		sc->flags &= ~XCHK_HAVE_FREEZE_PROT;
-		mnt_drop_write_file(sc->file);
-	}
-
-	/* Try to grab a kernel freeze. */
-	while ((error = xchk_fsfreeze(sc)) == -EBUSY) {
-		if (xchk_should_terminate(sc, &error))
-			return error;
-
-		delay(HZ / 10);
-	}
-	if (error)
-		return error;
-
-	fsc->frozen = true;
-	return 0;
-}
-
-/* Thaw the filesystem after checking or repairing fscounters. */
-STATIC void
-xchk_fscounters_cleanup(
-	void			*buf)
-{
-	struct xchk_fscounters	*fsc = buf;
-	struct xfs_scrub	*sc = fsc->sc;
-	int			error;
-
-	if (!fsc->frozen)
-		return;
-
-	error = xchk_fsthaw(sc);
-	if (error)
-		xfs_emerg(sc->mp, "still frozen after scrub, err=%d", error);
-	else
-		fsc->frozen = false;
 }
 
 int
 xchk_setup_fscounters(
-	struct xfs_scrub	*sc)
+	struct xfs_scrub	*sc,
+	struct xfs_inode	*ip)
 {
 	struct xchk_fscounters	*fsc;
 	int			error;
 
-	/*
-	 * If the AGF doesn't track btreeblks, we have to lock the AGF to count
-	 * btree block usage by walking the actual btrees.
-	 */
-	if (!xfs_has_lazysbcount(sc->mp))
-		xchk_fsgates_enable(sc, XCHK_FSGATES_DRAIN);
-
-	sc->buf = kzalloc(sizeof(struct xchk_fscounters), XCHK_GFP_FLAGS);
+	sc->buf = kmem_zalloc(sizeof(struct xchk_fscounters), 0);
 	if (!sc->buf)
 		return -ENOMEM;
-	sc->buf_cleanup = xchk_fscounters_cleanup;
 	fsc = sc->buf;
-	fsc->sc = sc;
 
 	xfs_icount_range(sc->mp, &fsc->icount_min, &fsc->icount_max);
 
@@ -222,65 +138,13 @@ xchk_setup_fscounters(
 		return error;
 
 	/*
-	 * Pause all writer activity in the filesystem while we're scrubbing to
-	 * reduce the likelihood of background perturbations to the counters
-	 * throwing off our calculations.
-	 *
-	 * If we're repairing, we need to prevent any other thread from
-	 * changing the global fs summary counters while we're repairing them.
-	 * This requires the fs to be frozen, which will disable background
-	 * reclaim and purge all inactive inodes.
+	 * Pause background reclaim while we're scrubbing to reduce the
+	 * likelihood of background perturbations to the counters throwing off
+	 * our calculations.
 	 */
-	if ((sc->flags & XCHK_TRY_HARDER) || xchk_could_repair(sc)) {
-		error = xchk_fscounters_freeze(sc);
-		if (error)
-			return error;
-	}
+	xchk_stop_reaping(sc);
 
-	return xchk_trans_alloc_empty(sc);
-}
-
-/*
- * Part 1: Collecting filesystem summary counts.  For each AG, we add its
- * summary counts (total inodes, free inodes, free data blocks) to an incore
- * copy of the overall filesystem summary counts.
- *
- * To avoid false corruption reports in part 2, any failure in this part must
- * set the INCOMPLETE flag even when a negative errno is returned.  This care
- * must be taken with certain errno values (i.e. EFSBADCRC, EFSCORRUPTED,
- * ECANCELED) that are absorbed into a scrub state flag update by
- * xchk_*_process_error.  Scrub and repair share the same incore data
- * structures, so the INCOMPLETE flag is critical to prevent a repair based on
- * insufficient information.
- */
-
-/* Count free space btree blocks manually for pre-lazysbcount filesystems. */
-static int
-xchk_fscount_btreeblks(
-	struct xfs_scrub	*sc,
-	struct xchk_fscounters	*fsc,
-	xfs_agnumber_t		agno)
-{
-	xfs_extlen_t		blocks;
-	int			error;
-
-	error = xchk_ag_init_existing(sc, agno, &sc->sa);
-	if (error)
-		goto out_free;
-
-	error = xfs_btree_count_blocks(sc->sa.bno_cur, &blocks);
-	if (error)
-		goto out_free;
-	fsc->fdblocks += blocks - 1;
-
-	error = xfs_btree_count_blocks(sc->sa.cnt_cur, &blocks);
-	if (error)
-		goto out_free;
-	fsc->fdblocks += blocks - 1;
-
-out_free:
-	xchk_ag_free(sc, &sc->sa);
-	return error;
+	return xchk_trans_alloc(sc, 0);
 }
 
 /*
@@ -299,22 +163,19 @@ xchk_fscount_aggregate_agcounts(
 	uint64_t		delayed;
 	xfs_agnumber_t		agno;
 	int			tries = 8;
-	int			error = 0;
 
 retry:
 	fsc->icount = 0;
 	fsc->ifree = 0;
 	fsc->fdblocks = 0;
 
-	for_each_perag(mp, agno, pag) {
-		if (xchk_should_terminate(sc, &error))
-			break;
+	for (agno = 0; agno < mp->m_sb.sb_agcount; agno++) {
+		pag = xfs_perag_get(mp, agno);
 
 		/* This somehow got unset since the warmup? */
-		if (!xfs_perag_initialised_agi(pag) ||
-		    !xfs_perag_initialised_agf(pag)) {
-			error = -EFSCORRUPTED;
-			break;
+		if (!pag->pagi_init || !pag->pagf_init) {
+			xfs_perag_put(pag);
+			return -EFSCORRUPTED;
 		}
 
 		/* Count all the inodes */
@@ -324,13 +185,7 @@ retry:
 		/* Add up the free/freelist/bnobt/cntbt blocks */
 		fsc->fdblocks += pag->pagf_freeblks;
 		fsc->fdblocks += pag->pagf_flcount;
-		if (xfs_has_lazysbcount(sc->mp)) {
-			fsc->fdblocks += pag->pagf_btreeblks;
-		} else {
-			error = xchk_fscount_btreeblks(sc, fsc, agno);
-			if (error)
-				break;
-		}
+		fsc->fdblocks += pag->pagf_btreeblks;
 
 		/*
 		 * Per-AG reservations are taken out of the incore counters,
@@ -339,12 +194,10 @@ retry:
 		fsc->fdblocks -= pag->pag_meta_resv.ar_reserved;
 		fsc->fdblocks -= pag->pag_rmapbt_resv.ar_orig_reserved;
 
-	}
-	if (pag)
-		xfs_perag_rele(pag);
-	if (error) {
-		xchk_set_incomplete(sc);
-		return error;
+		xfs_perag_put(pag);
+
+		if (fatal_signal_pending(current))
+			break;
 	}
 
 	/*
@@ -379,69 +232,12 @@ retry:
 	if (fsc->ifree > fsc->icount) {
 		if (tries--)
 			goto retry;
-		return -EDEADLOCK;
-	}
-
-	return 0;
-}
-
-#ifdef CONFIG_XFS_RT
-STATIC int
-xchk_fscount_add_frextent(
-	struct xfs_mount		*mp,
-	struct xfs_trans		*tp,
-	const struct xfs_rtalloc_rec	*rec,
-	void				*priv)
-{
-	struct xchk_fscounters		*fsc = priv;
-	int				error = 0;
-
-	fsc->frextents += rec->ar_extcount;
-
-	xchk_should_terminate(fsc->sc, &error);
-	return error;
-}
-
-/* Calculate the number of free realtime extents from the realtime bitmap. */
-STATIC int
-xchk_fscount_count_frextents(
-	struct xfs_scrub	*sc,
-	struct xchk_fscounters	*fsc)
-{
-	struct xfs_mount	*mp = sc->mp;
-	int			error;
-
-	fsc->frextents = 0;
-	if (!xfs_has_realtime(mp))
-		return 0;
-
-	xfs_ilock(sc->mp->m_rbmip, XFS_ILOCK_SHARED | XFS_ILOCK_RTBITMAP);
-	error = xfs_rtalloc_query_all(sc->mp, sc->tp,
-			xchk_fscount_add_frextent, fsc);
-	if (error) {
 		xchk_set_incomplete(sc);
-		goto out_unlock;
+		return 0;
 	}
 
-out_unlock:
-	xfs_iunlock(sc->mp->m_rbmip, XFS_ILOCK_SHARED | XFS_ILOCK_RTBITMAP);
-	return error;
-}
-#else
-STATIC int
-xchk_fscount_count_frextents(
-	struct xfs_scrub	*sc,
-	struct xchk_fscounters	*fsc)
-{
-	fsc->frextents = 0;
 	return 0;
 }
-#endif /* CONFIG_XFS_RT */
-
-/*
- * Part 2: Comparing filesystem summary counters.  All we have to do here is
- * sum the percpu counters and compare them to what we've observed.
- */
 
 /*
  * Is the @counter reasonably close to the @expected value?
@@ -455,8 +251,6 @@ xchk_fscount_count_frextents(
  * Otherwise, we /might/ have a problem.  If the change in the summations is
  * more than we want to tolerate, the filesystem is probably busy and we should
  * just send back INCOMPLETE and see if userspace will try again.
- *
- * If we're repairing then we require an exact match.
  */
 static inline bool
 xchk_fscount_within_range(
@@ -479,10 +273,6 @@ xchk_fscount_within_range(
 	if (curr_value == expected)
 		return true;
 
-	/* We require exact matches when repair is running. */
-	if (sc->sm->sm_flags & XFS_SCRUB_IFLAG_REPAIR)
-		return false;
-
 	min_value = min(old_value, curr_value);
 	max_value = max(old_value, curr_value);
 
@@ -490,7 +280,21 @@ xchk_fscount_within_range(
 	if (expected >= min_value && expected <= max_value)
 		return true;
 
-	/* Everything else is bad. */
+	/*
+	 * If the difference between the two summations is too large, the fs
+	 * might just be busy and so we'll mark the scrub incomplete.  Return
+	 * true here so that we don't mark the counter corrupt.
+	 *
+	 * XXX: In the future when userspace can grant scrub permission to
+	 * quiesce the filesystem to solve the outsized variance problem, this
+	 * check should be moved up and the return code changed to signal to
+	 * userspace that we need quiesce permission.
+	 */
+	if (max_value - min_value >= XCHK_FSCOUNT_MIN_VARIANCE) {
+		xchk_set_incomplete(sc);
+		return true;
+	}
+
 	return false;
 }
 
@@ -501,36 +305,17 @@ xchk_fscounters(
 {
 	struct xfs_mount	*mp = sc->mp;
 	struct xchk_fscounters	*fsc = sc->buf;
-	int64_t			icount, ifree, fdblocks, frextents;
-	bool			try_again = false;
+	int64_t			icount, ifree, fdblocks;
 	int			error;
 
 	/* Snapshot the percpu counters. */
 	icount = percpu_counter_sum(&mp->m_icount);
 	ifree = percpu_counter_sum(&mp->m_ifree);
 	fdblocks = percpu_counter_sum(&mp->m_fdblocks);
-	frextents = percpu_counter_sum(&mp->m_frextents);
 
 	/* No negative values, please! */
-	if (icount < 0 || ifree < 0)
+	if (icount < 0 || ifree < 0 || fdblocks < 0)
 		xchk_set_corrupt(sc);
-
-	/*
-	 * If the filesystem is not frozen, the counter summation calls above
-	 * can race with xfs_mod_freecounter, which subtracts a requested space
-	 * reservation from the counter and undoes the subtraction if that made
-	 * the counter go negative.  Therefore, it's possible to see negative
-	 * values here, and we should only flag that as a corruption if we
-	 * froze the fs.  This is much more likely to happen with frextents
-	 * since there are no reserved pools.
-	 */
-	if (fdblocks < 0 || frextents < 0) {
-		if (!fsc->frozen)
-			return -EDEADLOCK;
-
-		xchk_set_corrupt(sc);
-		return 0;
-	}
 
 	/* See if icount is obviously wrong. */
 	if (icount < fsc->icount_min || icount > fsc->icount_max)
@@ -538,10 +323,6 @@ xchk_fscounters(
 
 	/* See if fdblocks is obviously wrong. */
 	if (fdblocks > mp->m_sb.sb_dblocks)
-		xchk_set_corrupt(sc);
-
-	/* See if frextents is obviously wrong. */
-	if (frextents > mp->m_sb.sb_rextents)
 		xchk_set_corrupt(sc);
 
 	/*
@@ -555,53 +336,19 @@ xchk_fscounters(
 	error = xchk_fscount_aggregate_agcounts(sc, fsc);
 	if (!xchk_process_error(sc, 0, XFS_SB_BLOCK(mp), &error))
 		return error;
-
-	/* Count the free extents counter for rt volumes. */
-	error = xchk_fscount_count_frextents(sc, fsc);
-	if (!xchk_process_error(sc, 0, XFS_SB_BLOCK(mp), &error))
-		return error;
 	if (sc->sm->sm_flags & XFS_SCRUB_OFLAG_INCOMPLETE)
 		return 0;
 
-	/*
-	 * Compare the in-core counters with whatever we counted.  If the fs is
-	 * frozen, we treat the discrepancy as a corruption because the freeze
-	 * should have stabilized the counter values.  Otherwise, we need
-	 * userspace to call us back having granted us freeze permission.
-	 */
-	if (!xchk_fscount_within_range(sc, icount, &mp->m_icount,
-				fsc->icount)) {
-		if (fsc->frozen)
-			xchk_set_corrupt(sc);
-		else
-			try_again = true;
-	}
+	/* Compare the in-core counters with whatever we counted. */
+	if (!xchk_fscount_within_range(sc, icount, &mp->m_icount, fsc->icount))
+		xchk_set_corrupt(sc);
 
-	if (!xchk_fscount_within_range(sc, ifree, &mp->m_ifree, fsc->ifree)) {
-		if (fsc->frozen)
-			xchk_set_corrupt(sc);
-		else
-			try_again = true;
-	}
+	if (!xchk_fscount_within_range(sc, ifree, &mp->m_ifree, fsc->ifree))
+		xchk_set_corrupt(sc);
 
 	if (!xchk_fscount_within_range(sc, fdblocks, &mp->m_fdblocks,
-			fsc->fdblocks)) {
-		if (fsc->frozen)
-			xchk_set_corrupt(sc);
-		else
-			try_again = true;
-	}
-
-	if (!xchk_fscount_within_range(sc, frextents, &mp->m_frextents,
-			fsc->frextents)) {
-		if (fsc->frozen)
-			xchk_set_corrupt(sc);
-		else
-			try_again = true;
-	}
-
-	if (try_again)
-		return -EDEADLOCK;
+			fsc->fdblocks))
+		xchk_set_corrupt(sc);
 
 	return 0;
 }

@@ -26,7 +26,6 @@
 #include <asm/mmu_context.h>
 #include <asm/ptrace.h>
 #include <asm/highmem.h>		/* For VMALLOC_END */
-#include <asm/traps.h>
 #include <linux/kdebug.h>
 
 int show_unhandled_signals = 1;
@@ -36,7 +35,7 @@ int show_unhandled_signals = 1;
  * and the problem, and then passes it off to one of the appropriate
  * routines.
  */
-static void __do_page_fault(struct pt_regs *regs, unsigned long write,
+static void __kprobes __do_page_fault(struct pt_regs *regs, unsigned long write,
 	unsigned long address)
 {
 	struct vm_area_struct * vma = NULL;
@@ -45,7 +44,7 @@ static void __do_page_fault(struct pt_regs *regs, unsigned long write,
 	const int field = sizeof(unsigned long) * 2;
 	int si_code;
 	vm_fault_t fault;
-	unsigned int flags = FAULT_FLAG_DEFAULT;
+	unsigned int flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
 	static DEFINE_RATELIMIT_STATE(ratelimit_state, 5 * HZ, 10);
 
@@ -97,16 +96,22 @@ static void __do_page_fault(struct pt_regs *regs, unsigned long write,
 
 	if (user_mode(regs))
 		flags |= FAULT_FLAG_USER;
-
-	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, address);
 retry:
-	vma = lock_mm_and_find_vma(mm, address, regs);
+	down_read(&mm->mmap_sem);
+	vma = find_vma(mm, address);
 	if (!vma)
-		goto bad_area_nosemaphore;
+		goto bad_area;
+	if (vma->vm_start <= address)
+		goto good_area;
+	if (!(vma->vm_flags & VM_GROWSDOWN))
+		goto bad_area;
+	if (expand_stack(vma, address))
+		goto bad_area;
 /*
  * Ok, we have a good vm_area for this memory access, so
  * we can handle it..
  */
+good_area:
 	si_code = SEGV_ACCERR;
 
 	if (write) {
@@ -137,7 +142,7 @@ retry:
 				goto bad_area;
 			}
 		} else {
-			if (unlikely(!vma_is_accessible(vma)))
+			if (!(vma->vm_flags & (VM_READ | VM_WRITE | VM_EXEC)))
 				goto bad_area;
 		}
 	}
@@ -147,18 +152,12 @@ retry:
 	 * make sure we exit gracefully rather than endlessly redo
 	 * the fault.
 	 */
-	fault = handle_mm_fault(vma, address, flags, regs);
+	fault = handle_mm_fault(vma, address, flags);
 
-	if (fault_signal_pending(fault, regs)) {
-		if (!user_mode(regs))
-			goto no_context;
-		return;
-	}
-
-	/* The fault is fully completed (including releasing mmap lock) */
-	if (fault & VM_FAULT_COMPLETED)
+	if ((fault & VM_FAULT_RETRY) && fatal_signal_pending(current))
 		return;
 
+	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, address);
 	if (unlikely(fault & VM_FAULT_ERROR)) {
 		if (fault & VM_FAULT_OOM)
 			goto out_of_memory;
@@ -168,20 +167,31 @@ retry:
 			goto do_sigbus;
 		BUG();
 	}
+	if (flags & FAULT_FLAG_ALLOW_RETRY) {
+		if (fault & VM_FAULT_MAJOR) {
+			perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1,
+						  regs, address);
+			tsk->maj_flt++;
+		} else {
+			perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MIN, 1,
+						  regs, address);
+			tsk->min_flt++;
+		}
+		if (fault & VM_FAULT_RETRY) {
+			flags &= ~FAULT_FLAG_ALLOW_RETRY;
+			flags |= FAULT_FLAG_TRIED;
 
-	if (fault & VM_FAULT_RETRY) {
-		flags |= FAULT_FLAG_TRIED;
+			/*
+			 * No need to up_read(&mm->mmap_sem) as we would
+			 * have already released it in __lock_page_or_retry
+			 * in mm/filemap.c.
+			 */
 
-		/*
-		 * No need to mmap_read_unlock(mm) as we would
-		 * have already released it in __lock_page_or_retry
-		 * in mm/filemap.c.
-		 */
-
-		goto retry;
+			goto retry;
+		}
 	}
 
-	mmap_read_unlock(mm);
+	up_read(&mm->mmap_sem);
 	return;
 
 /*
@@ -189,7 +199,7 @@ retry:
  * Fix it, but check if it's kernel or user first..
  */
 bad_area:
-	mmap_read_unlock(mm);
+	up_read(&mm->mmap_sem);
 
 bad_area_nosemaphore:
 	/* User mode accesses just cause a SIGSEGV */
@@ -241,14 +251,14 @@ out_of_memory:
 	 * We ran out of memory, call the OOM killer, and return the userspace
 	 * (which will retry the fault, or kill us if we got oom-killed).
 	 */
-	mmap_read_unlock(mm);
+	up_read(&mm->mmap_sem);
 	if (!user_mode(regs))
 		goto no_context;
 	pagefault_out_of_memory();
 	return;
 
 do_sigbus:
-	mmap_read_unlock(mm);
+	up_read(&mm->mmap_sem);
 
 	/* Kernel mode? Handle exceptions or die */
 	if (!user_mode(regs))
@@ -282,9 +292,8 @@ vmalloc_fault:
 		 * Do _not_ use "tsk" here. We might be inside
 		 * an interrupt in the middle of a task switch..
 		 */
-		int offset = pgd_index(address);
+		int offset = __pgd_offset(address);
 		pgd_t *pgd, *pgd_k;
-		p4d_t *p4d, *p4d_k;
 		pud_t *pud, *pud_k;
 		pmd_t *pmd, *pmd_k;
 		pte_t *pte_k;
@@ -296,13 +305,8 @@ vmalloc_fault:
 			goto no_context;
 		set_pgd(pgd, *pgd_k);
 
-		p4d = p4d_offset(pgd, address);
-		p4d_k = p4d_offset(pgd_k, address);
-		if (!p4d_present(*p4d_k))
-			goto no_context;
-
-		pud = pud_offset(p4d, address);
-		pud_k = pud_offset(p4d_k, address);
+		pud = pud_offset(pgd, address);
+		pud_k = pud_offset(pgd_k, address);
 		if (!pud_present(*pud_k))
 			goto no_context;
 
@@ -319,9 +323,8 @@ vmalloc_fault:
 	}
 #endif
 }
-NOKPROBE_SYMBOL(__do_page_fault);
 
-asmlinkage void do_page_fault(struct pt_regs *regs,
+asmlinkage void __kprobes do_page_fault(struct pt_regs *regs,
 	unsigned long write, unsigned long address)
 {
 	enum ctx_state prev_state;
@@ -330,4 +333,3 @@ asmlinkage void do_page_fault(struct pt_regs *regs,
 	__do_page_fault(regs, write, address);
 	exception_exit(prev_state);
 }
-NOKPROBE_SYMBOL(do_page_fault);

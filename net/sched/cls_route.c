@@ -17,7 +17,6 @@
 #include <net/netlink.h>
 #include <net/act_api.h>
 #include <net/pkt_cls.h>
-#include <net/tc_wrapper.h>
 
 /*
  * 1. For now we assume that route tags < 256.
@@ -122,9 +121,8 @@ static inline int route4_hash_wild(void)
 	return 0;						\
 }
 
-TC_INDIRECT_SCOPE int route4_classify(struct sk_buff *skb,
-				      const struct tcf_proto *tp,
-				      struct tcf_result *res)
+static int route4_classify(struct sk_buff *skb, const struct tcf_proto *tp,
+			   struct tcf_result *res)
 {
 	struct route4_head *head = rcu_dereference_bh(tp->root);
 	struct dst_entry *dst;
@@ -375,16 +373,16 @@ out:
 
 static const struct nla_policy route4_policy[TCA_ROUTE4_MAX + 1] = {
 	[TCA_ROUTE4_CLASSID]	= { .type = NLA_U32 },
-	[TCA_ROUTE4_TO]		= NLA_POLICY_MAX(NLA_U32, 0xFF),
-	[TCA_ROUTE4_FROM]	= NLA_POLICY_MAX(NLA_U32, 0xFF),
-	[TCA_ROUTE4_IIF]	= NLA_POLICY_MAX(NLA_U32, 0x7FFF),
+	[TCA_ROUTE4_TO]		= { .type = NLA_U32 },
+	[TCA_ROUTE4_FROM]	= { .type = NLA_U32 },
+	[TCA_ROUTE4_IIF]	= { .type = NLA_U32 },
 };
 
 static int route4_set_parms(struct net *net, struct tcf_proto *tp,
 			    unsigned long base, struct route4_filter *f,
 			    u32 handle, struct route4_head *head,
 			    struct nlattr **tb, struct nlattr *est, int new,
-			    u32 flags, struct netlink_ext_ack *extack)
+			    bool ovr, struct netlink_ext_ack *extack)
 {
 	u32 id = 0, to = 0, nhandle = 0x8000;
 	struct route4_filter *fp;
@@ -392,47 +390,38 @@ static int route4_set_parms(struct net *net, struct tcf_proto *tp,
 	struct route4_bucket *b;
 	int err;
 
-	err = tcf_exts_validate(net, tp, tb, est, &f->exts, flags, extack);
+	err = tcf_exts_validate(net, tp, tb, est, &f->exts, ovr, true, extack);
 	if (err < 0)
 		return err;
 
 	if (tb[TCA_ROUTE4_TO]) {
-		if (new && handle & 0x8000) {
-			NL_SET_ERR_MSG(extack, "Invalid handle");
+		if (new && handle & 0x8000)
 			return -EINVAL;
-		}
 		to = nla_get_u32(tb[TCA_ROUTE4_TO]);
+		if (to > 0xFF)
+			return -EINVAL;
 		nhandle = to;
 	}
 
-	if (tb[TCA_ROUTE4_FROM] && tb[TCA_ROUTE4_IIF]) {
-		NL_SET_ERR_MSG_ATTR(extack, tb[TCA_ROUTE4_FROM],
-				    "'from' and 'fromif' are mutually exclusive");
-		return -EINVAL;
-	}
-
 	if (tb[TCA_ROUTE4_FROM]) {
+		if (tb[TCA_ROUTE4_IIF])
+			return -EINVAL;
 		id = nla_get_u32(tb[TCA_ROUTE4_FROM]);
+		if (id > 0xFF)
+			return -EINVAL;
 		nhandle |= id << 16;
 	} else if (tb[TCA_ROUTE4_IIF]) {
 		id = nla_get_u32(tb[TCA_ROUTE4_IIF]);
+		if (id > 0x7FFF)
+			return -EINVAL;
 		nhandle |= (id | 0x8000) << 16;
 	} else
 		nhandle |= 0xFFFF << 16;
 
 	if (handle && new) {
 		nhandle |= handle & 0x7F00;
-		if (nhandle != handle) {
-			NL_SET_ERR_MSG_FMT(extack,
-					   "Handle mismatch constructed: %x (expected: %x)",
-					   handle, nhandle);
+		if (nhandle != handle)
 			return -EINVAL;
-		}
-	}
-
-	if (!nhandle) {
-		NL_SET_ERR_MSG(extack, "Replacing with handle of 0 is invalid");
-		return -EINVAL;
 	}
 
 	h1 = to_hash(nhandle);
@@ -475,35 +464,29 @@ static int route4_set_parms(struct net *net, struct tcf_proto *tp,
 
 static int route4_change(struct net *net, struct sk_buff *in_skb,
 			 struct tcf_proto *tp, unsigned long base, u32 handle,
-			 struct nlattr **tca, void **arg, u32 flags,
-			 struct netlink_ext_ack *extack)
+			 struct nlattr **tca, void **arg, bool ovr,
+			 bool rtnl_held, struct netlink_ext_ack *extack)
 {
 	struct route4_head *head = rtnl_dereference(tp->root);
 	struct route4_filter __rcu **fp;
 	struct route4_filter *fold, *f1, *pfp, *f = NULL;
 	struct route4_bucket *b;
+	struct nlattr *opt = tca[TCA_OPTIONS];
 	struct nlattr *tb[TCA_ROUTE4_MAX + 1];
 	unsigned int h, th;
 	int err;
 	bool new = true;
 
-	if (!handle) {
-		NL_SET_ERR_MSG(extack, "Creating with handle of 0 is invalid");
-		return -EINVAL;
-	}
+	if (opt == NULL)
+		return handle ? -EINVAL : 0;
 
-	if (NL_REQ_ATTR_CHECK(extack, NULL, tca, TCA_OPTIONS)) {
-		NL_SET_ERR_MSG_MOD(extack, "Missing options");
-		return -EINVAL;
-	}
-
-	err = nla_parse_nested_deprecated(tb, TCA_ROUTE4_MAX, tca[TCA_OPTIONS],
+	err = nla_parse_nested_deprecated(tb, TCA_ROUTE4_MAX, opt,
 					  route4_policy, NULL);
 	if (err < 0)
 		return err;
 
 	fold = *arg;
-	if (fold && fold->handle != handle)
+	if (fold && handle && fold->handle != handle)
 			return -EINVAL;
 
 	err = -ENOBUFS;
@@ -518,6 +501,7 @@ static int route4_change(struct net *net, struct sk_buff *in_skb,
 	if (fold) {
 		f->id = fold->id;
 		f->iif = fold->iif;
+		f->res = fold->res;
 		f->handle = fold->handle;
 
 		f->tp = fold->tp;
@@ -526,7 +510,7 @@ static int route4_change(struct net *net, struct sk_buff *in_skb,
 	}
 
 	err = route4_set_parms(net, tp, base, f, handle, head, tb,
-			       tca[TCA_RATE], new, flags, extack);
+			       tca[TCA_RATE], new, ovr, extack);
 	if (err < 0)
 		goto errout;
 
@@ -542,7 +526,7 @@ static int route4_change(struct net *net, struct sk_buff *in_skb,
 	rcu_assign_pointer(f->next, f1);
 	rcu_assign_pointer(*fp, f);
 
-	if (fold) {
+	if (fold && fold->handle && f->handle != fold->handle) {
 		th = to_hash(fold->handle);
 		h = from_hash(fold->handle >> 16);
 		b = rtnl_dereference(head->table[th]);
@@ -550,8 +534,8 @@ static int route4_change(struct net *net, struct sk_buff *in_skb,
 			fp = &b->ht[h];
 			for (pfp = rtnl_dereference(*fp); pfp;
 			     fp = &pfp->next, pfp = rtnl_dereference(*fp)) {
-				if (pfp == fold) {
-					rcu_assign_pointer(*fp, fold->next);
+				if (pfp == f) {
+					*fp = f->next;
 					break;
 				}
 			}
@@ -593,8 +577,15 @@ static void route4_walk(struct tcf_proto *tp, struct tcf_walker *arg,
 				for (f = rtnl_dereference(b->ht[h1]);
 				     f;
 				     f = rtnl_dereference(f->next)) {
-					if (!tc_cls_stats_dump(tp, arg, f))
+					if (arg->count < arg->skip) {
+						arg->count++;
+						continue;
+					}
+					if (arg->fn(tp, f, arg) < 0) {
+						arg->stop = 1;
 						return;
+					}
+					arg->count++;
 				}
 			}
 		}
@@ -650,12 +641,12 @@ nla_put_failure:
 	return -1;
 }
 
-static void route4_bind_class(void *fh, u32 classid, unsigned long cl, void *q,
-			      unsigned long base)
+static void route4_bind_class(void *fh, u32 classid, unsigned long cl)
 {
 	struct route4_filter *f = fh;
 
-	tc_cls_bind_class(classid, cl, q, &f->res, base);
+	if (f && f->res.classid == classid)
+		f->res.class = cl;
 }
 
 static struct tcf_proto_ops cls_route4_ops __read_mostly = {
@@ -671,7 +662,6 @@ static struct tcf_proto_ops cls_route4_ops __read_mostly = {
 	.bind_class	=	route4_bind_class,
 	.owner		=	THIS_MODULE,
 };
-MODULE_ALIAS_NET_CLS("route");
 
 static int __init init_route4(void)
 {
@@ -685,5 +675,4 @@ static void __exit exit_route4(void)
 
 module_init(init_route4)
 module_exit(exit_route4)
-MODULE_DESCRIPTION("Routing table realm based TC classifier");
 MODULE_LICENSE("GPL");

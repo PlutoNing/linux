@@ -138,6 +138,9 @@ static unsigned short LDT3(int idx)
 	return (idx << 3) | 7;
 }
 
+/* Our sigaltstack scratch space. */
+static char altstack_data[SIGSTKSZ];
+
 static void sethandler(int sig, void (*handler)(int, siginfo_t *, void *),
 		       int flags)
 {
@@ -448,19 +451,6 @@ static void sigusr1(int sig, siginfo_t *info, void *ctx_void)
 	ctx->uc_mcontext.gregs[REG_SP] = (unsigned long)0x8badf00d5aadc0deULL;
 	ctx->uc_mcontext.gregs[REG_CX] = 0;
 
-#ifdef __i386__
-	/*
-	 * Make sure the kernel doesn't inadvertently use DS or ES-relative
-	 * accesses in a region where user DS or ES is loaded.
-	 *
-	 * Skip this for 64-bit builds because long mode doesn't care about
-	 * DS and ES and skipping it increases test coverage a little bit,
-	 * since 64-bit kernels can still run the 32-bit build.
-	 */
-	ctx->uc_mcontext.gregs[REG_DS] = 0;
-	ctx->uc_mcontext.gregs[REG_ES] = 0;
-#endif
-
 	memcpy(&requested_regs, &ctx->uc_mcontext.gregs, sizeof(gregset_t));
 	requested_regs[REG_CX] = *ssptr(ctx);	/* The asm code does this. */
 
@@ -768,8 +758,7 @@ int main()
 	setup_ldt();
 
 	stack_t stack = {
-		/* Our sigaltstack scratch space. */
-		.ss_sp = malloc(sizeof(char) * SIGSTKSZ),
+		.ss_sp = altstack_data,
 		.ss_size = SIGSTKSZ,
 	};
 	if (sigaltstack(&stack, NULL) != 0)
@@ -870,6 +859,5 @@ int main()
 	total_nerrs += test_nonstrict_ss();
 #endif
 
-	free(stack.ss_sp);
 	return total_nerrs ? 1 : 0;
 }

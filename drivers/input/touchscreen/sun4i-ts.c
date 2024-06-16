@@ -22,7 +22,7 @@
  * in the kernel). So this driver offers straight forward, reliable single
  * touch functionality only.
  *
- * s.a. A20 User Manual "1.15 TP" (Documentation/arch/arm/sunxi.rst)
+ * s.a. A20 User Manual "1.15 TP" (Documentation/arm/sunxi.rst)
  * (looks like the description in the A20 User Manual v1.3 is better
  * than the one in the A10 User Manual v.1.5)
  */
@@ -192,12 +192,12 @@ static int sun4i_get_temp(const struct sun4i_ts_data *ts, int *temp)
 	return 0;
 }
 
-static int sun4i_get_tz_temp(struct thermal_zone_device *tz, int *temp)
+static int sun4i_get_tz_temp(void *data, int *temp)
 {
-	return sun4i_get_temp(thermal_zone_device_priv(tz), temp);
+	return sun4i_get_temp(data, temp);
 }
 
-static const struct thermal_zone_device_ops sun4i_ts_tz_ops = {
+static const struct thermal_zone_of_device_ops sun4i_ts_tz_ops = {
 	.get_temp = sun4i_get_tz_temp,
 };
 
@@ -237,7 +237,6 @@ static int sun4i_ts_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
 	struct device *hwmon;
-	struct thermal_zone_device *thermal;
 	int error;
 	u32 reg;
 	bool ts_attached;
@@ -356,10 +355,7 @@ static int sun4i_ts_probe(struct platform_device *pdev)
 	if (IS_ERR(hwmon))
 		return PTR_ERR(hwmon);
 
-	thermal = devm_thermal_of_zone_register(ts->dev, 0, ts,
-						&sun4i_ts_tz_ops);
-	if (IS_ERR(thermal))
-		return PTR_ERR(thermal);
+	devm_thermal_zone_of_sensor_register(ts->dev, 0, ts, &sun4i_ts_tz_ops);
 
 	writel(TEMP_IRQ_EN(1), ts->base + TP_INT_FIFOC);
 
@@ -375,7 +371,7 @@ static int sun4i_ts_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void sun4i_ts_remove(struct platform_device *pdev)
+static int sun4i_ts_remove(struct platform_device *pdev)
 {
 	struct sun4i_ts_data *ts = platform_get_drvdata(pdev);
 
@@ -385,6 +381,8 @@ static void sun4i_ts_remove(struct platform_device *pdev)
 
 	/* Deactivate all IRQs */
 	writel(0, ts->base + TP_INT_FIFOC);
+
+	return 0;
 }
 
 static const struct of_device_id sun4i_ts_of_match[] = {
@@ -398,10 +396,10 @@ MODULE_DEVICE_TABLE(of, sun4i_ts_of_match);
 static struct platform_driver sun4i_ts_driver = {
 	.driver = {
 		.name	= "sun4i-ts",
-		.of_match_table = sun4i_ts_of_match,
+		.of_match_table = of_match_ptr(sun4i_ts_of_match),
 	},
 	.probe	= sun4i_ts_probe,
-	.remove_new = sun4i_ts_remove,
+	.remove	= sun4i_ts_remove,
 };
 
 module_platform_driver(sun4i_ts_driver);

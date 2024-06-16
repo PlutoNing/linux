@@ -2,7 +2,7 @@
 /*
  * net/sched/sch_fq.c Fair Queue Packet Scheduler (per flow pacing)
  *
- *  Copyright (C) 2013-2023 Eric Dumazet <edumazet@google.com>
+ *  Copyright (C) 2013-2015 Eric Dumazet <edumazet@google.com>
  *
  *  Meant to be mostly used for locally generated traffic :
  *  Fast classification depends on skb->sk being set before reaching us.
@@ -51,8 +51,7 @@
 #include <net/tcp.h>
 
 struct fq_skb_cb {
-	u64	time_to_send;
-	u8	band;
+	u64	        time_to_send;
 };
 
 static inline struct fq_skb_cb *fq_skb_cb(struct sk_buff *skb)
@@ -67,28 +66,18 @@ static inline struct fq_skb_cb *fq_skb_cb(struct sk_buff *skb)
  * in linear list (head,tail), otherwise are placed in a rbtree (t_root).
  */
 struct fq_flow {
-/* First cache line : used in fq_gc(), fq_enqueue(), fq_dequeue() */
 	struct rb_root	t_root;
 	struct sk_buff	*head;		/* list of skbs for this flow : first skb */
 	union {
 		struct sk_buff *tail;	/* last skb in the list */
-		unsigned long  age;	/* (jiffies | 1UL) when flow was emptied, for gc */
+		unsigned long  age;	/* jiffies when flow was emptied, for gc */
 	};
-	union {
-		struct rb_node	fq_node;	/* anchor in fq_root[] trees */
-		/* Following field is only used for q->internal,
-		 * because q->internal is not hashed in fq_root[]
-		 */
-		u64		stat_fastpath_packets;
-	};
+	struct rb_node	fq_node;	/* anchor in fq_root[] trees */
 	struct sock	*sk;
-	u32		socket_hash;	/* sk_hash */
 	int		qlen;		/* number of packets in flow queue */
-
-/* Second cache line */
 	int		credit;
-	int		band;
-	struct fq_flow *next;		/* next pointer in RR lists */
+	u32		socket_hash;	/* sk_hash */
+	struct fq_flow *next;		/* next pointer in RR lists, or &detached */
 
 	struct rb_node  rate_node;	/* anchor in q->delayed tree */
 	u64		time_next_packet;
@@ -99,106 +88,63 @@ struct fq_flow_head {
 	struct fq_flow *last;
 };
 
-struct fq_perband_flows {
-	struct fq_flow_head new_flows;
-	struct fq_flow_head old_flows;
-	int		    credit;
-	int		    quantum; /* based on band nr : 576KB, 192KB, 64KB */
-};
-
 struct fq_sched_data {
-/* Read mostly cache line */
+	struct fq_flow_head new_flows;
 
+	struct fq_flow_head old_flows;
+
+	struct rb_root	delayed;	/* for rate limited flows */
+	u64		time_next_delayed_flow;
+	unsigned long	unthrottle_latency_ns;
+
+	struct fq_flow	internal;	/* for non classified or high prio packets */
 	u32		quantum;
 	u32		initial_quantum;
 	u32		flow_refill_delay;
 	u32		flow_plimit;	/* max packets per flow */
 	unsigned long	flow_max_rate;	/* optional max rate per flow */
 	u64		ce_threshold;
-	u64		horizon;	/* horizon in ns */
 	u32		orphan_mask;	/* mask for orphaned skb */
 	u32		low_rate_threshold;
 	struct rb_root	*fq_root;
 	u8		rate_enable;
 	u8		fq_trees_log;
-	u8		horizon_drop;
-	u8		prio2band[(TC_PRIO_MAX + 1) >> 2];
-	u32		timer_slack; /* hrtimer slack in ns */
 
-/* Read/Write fields. */
-
-	unsigned int band_nr; /* band being serviced in fq_dequeue() */
-
-	struct fq_perband_flows band_flows[FQ_BANDS];
-
-	struct fq_flow	internal;	/* fastpath queue. */
-	struct rb_root	delayed;	/* for rate limited flows */
-	u64		time_next_delayed_flow;
-	unsigned long	unthrottle_latency_ns;
-
-	u32		band_pkt_count[FQ_BANDS];
 	u32		flows;
-	u32		inactive_flows; /* Flows with no packet to send. */
+	u32		inactive_flows;
 	u32		throttled_flows;
 
-	u64		stat_throttled;
-	struct qdisc_watchdog watchdog;
 	u64		stat_gc_flows;
-
-/* Seldom used fields. */
-
-	u64		stat_band_drops[FQ_BANDS];
+	u64		stat_internal_packets;
+	u64		stat_throttled;
 	u64		stat_ce_mark;
-	u64		stat_horizon_drops;
-	u64		stat_horizon_caps;
 	u64		stat_flows_plimit;
 	u64		stat_pkts_too_long;
 	u64		stat_allocation_errors;
+	struct qdisc_watchdog watchdog;
 };
 
-/* return the i-th 2-bit value ("crumb") */
-static u8 fq_prio2band(const u8 *prio2band, unsigned int prio)
-{
-	return (prio2band[prio / 4] >> (2 * (prio & 0x3))) & 0x3;
-}
+/* special value to mark a detached flow (not on old/new list) */
+static struct fq_flow detached, throttled;
 
-/*
- * f->tail and f->age share the same location.
- * We can use the low order bit to differentiate if this location points
- * to a sk_buff or contains a jiffies value, if we force this value to be odd.
- * This assumes f->tail low order bit must be 0 since alignof(struct sk_buff) >= 2
- */
 static void fq_flow_set_detached(struct fq_flow *f)
 {
-	f->age = jiffies | 1UL;
+	f->next = &detached;
+	f->age = jiffies;
 }
 
 static bool fq_flow_is_detached(const struct fq_flow *f)
 {
-	return !!(f->age & 1UL);
+	return f->next == &detached;
 }
-
-/* special value to mark a throttled flow (not on old/new list) */
-static struct fq_flow throttled;
 
 static bool fq_flow_is_throttled(const struct fq_flow *f)
 {
 	return f->next == &throttled;
 }
 
-enum new_flow {
-	NEW_FLOW,
-	OLD_FLOW
-};
-
-static void fq_flow_add_tail(struct fq_sched_data *q, struct fq_flow *flow,
-			     enum new_flow list_sel)
+static void fq_flow_add_tail(struct fq_flow_head *head, struct fq_flow *flow)
 {
-	struct fq_perband_flows *pband = &q->band_flows[flow->band];
-	struct fq_flow_head *head = (list_sel == NEW_FLOW) ?
-					&pband->new_flows :
-					&pband->old_flows;
-
 	if (head->first)
 		head->last->next = flow;
 	else
@@ -211,7 +157,7 @@ static void fq_flow_unset_throttled(struct fq_sched_data *q, struct fq_flow *f)
 {
 	rb_erase(&f->rate_node, &q->delayed);
 	q->throttled_flows--;
-	fq_flow_add_tail(q, f, OLD_FLOW);
+	fq_flow_add_tail(&q->old_flows, f);
 }
 
 static void fq_flow_set_throttled(struct fq_sched_data *q, struct fq_flow *f)
@@ -256,10 +202,9 @@ static void fq_gc(struct fq_sched_data *q,
 		  struct rb_root *root,
 		  struct sock *sk)
 {
+	struct fq_flow *f, *tofree[FQ_GC_MAX];
 	struct rb_node **p, *parent;
-	void *tofree[FQ_GC_MAX];
-	struct fq_flow *f;
-	int i, fcnt = 0;
+	int fcnt = 0;
 
 	p = &root->rb_node;
 	parent = NULL;
@@ -282,74 +227,27 @@ static void fq_gc(struct fq_sched_data *q,
 			p = &parent->rb_left;
 	}
 
-	if (!fcnt)
-		return;
-
-	for (i = fcnt; i > 0; ) {
-		f = tofree[--i];
-		rb_erase(&f->fq_node, root);
-	}
 	q->flows -= fcnt;
 	q->inactive_flows -= fcnt;
 	q->stat_gc_flows += fcnt;
+	while (fcnt) {
+		struct fq_flow *f = tofree[--fcnt];
 
-	kmem_cache_free_bulk(fq_flow_cachep, fcnt, tofree);
-}
-
-/* Fast path can be used if :
- * 1) Packet tstamp is in the past.
- * 2) FQ qlen == 0   OR
- *   (no flow is currently eligible for transmit,
- *    AND fast path queue has less than 8 packets)
- * 3) No SO_MAX_PACING_RATE on the socket (if any).
- * 4) No @maxrate attribute on this qdisc,
- *
- * FQ can not use generic TCQ_F_CAN_BYPASS infrastructure.
- */
-static bool fq_fastpath_check(const struct Qdisc *sch, struct sk_buff *skb,
-			      u64 now)
-{
-	const struct fq_sched_data *q = qdisc_priv(sch);
-	const struct sock *sk;
-
-	if (fq_skb_cb(skb)->time_to_send > now)
-		return false;
-
-	if (sch->q.qlen != 0) {
-		/* Even if some packets are stored in this qdisc,
-		 * we can still enable fast path if all of them are
-		 * scheduled in the future (ie no flows are eligible)
-		 * or in the fast path queue.
-		 */
-		if (q->flows != q->inactive_flows + q->throttled_flows)
-			return false;
-
-		/* Do not allow fast path queue to explode, we want Fair Queue mode
-		 * under pressure.
-		 */
-		if (q->internal.qlen >= 8)
-			return false;
+		rb_erase(&f->fq_node, root);
+		kmem_cache_free(fq_flow_cachep, f);
 	}
-
-	sk = skb->sk;
-	if (sk && sk_fullsock(sk) && !sk_is_tcp(sk) &&
-	    sk->sk_max_pacing_rate != ~0UL)
-		return false;
-
-	if (q->flow_max_rate != ~0UL)
-		return false;
-
-	return true;
 }
 
-static struct fq_flow *fq_classify(struct Qdisc *sch, struct sk_buff *skb,
-				   u64 now)
+static struct fq_flow *fq_classify(struct sk_buff *skb, struct fq_sched_data *q)
 {
-	struct fq_sched_data *q = qdisc_priv(sch);
 	struct rb_node **p, *parent;
 	struct sock *sk = skb->sk;
 	struct rb_root *root;
 	struct fq_flow *f;
+
+	/* warning: no starvation prevention... */
+	if (unlikely((skb->priority & TC_PRIO_MAX) == TC_PRIO_CONTROL))
+		return &q->internal;
 
 	/* SYNACK messages are attached to a TCP_NEW_SYN_RECV request socket
 	 * or a listener (SYNCOOKIE mode)
@@ -381,18 +279,11 @@ static struct fq_flow *fq_classify(struct Qdisc *sch, struct sk_buff *skb,
 		sk = (struct sock *)((hash << 1) | 1UL);
 	}
 
-	if (fq_fastpath_check(sch, skb, now)) {
-		q->internal.stat_fastpath_packets++;
-		if (skb->sk == sk && q->rate_enable &&
-		    READ_ONCE(sk->sk_pacing_status) != SK_PACING_FQ)
-			smp_store_release(&sk->sk_pacing_status,
-					  SK_PACING_FQ);
-		return &q->internal;
-	}
-
 	root = &q->fq_root[hash_ptr(sk, q->fq_trees_log)];
 
-	fq_gc(q, root, sk);
+	if (q->flows >= (2U << q->fq_trees_log) &&
+	    q->inactive_flows > q->flows/2)
+		fq_gc(q, root, sk);
 
 	p = &root->rb_node;
 	parent = NULL;
@@ -410,9 +301,6 @@ static struct fq_flow *fq_classify(struct Qdisc *sch, struct sk_buff *skb,
 				     f->socket_hash != sk->sk_hash)) {
 				f->credit = q->initial_quantum;
 				f->socket_hash = sk->sk_hash;
-				if (q->rate_enable)
-					smp_store_release(&sk->sk_pacing_status,
-							  SK_PACING_FQ);
 				if (fq_flow_is_throttled(f))
 					fq_flow_unset_throttled(q, f);
 				f->time_next_packet = 0ULL;
@@ -434,12 +322,8 @@ static struct fq_flow *fq_classify(struct Qdisc *sch, struct sk_buff *skb,
 
 	fq_flow_set_detached(f);
 	f->sk = sk;
-	if (skb->sk == sk) {
+	if (skb->sk == sk)
 		f->socket_hash = sk->sk_hash;
-		if (q->rate_enable)
-			smp_store_release(&sk->sk_pacing_status,
-					  SK_PACING_FQ);
-	}
 	f->credit = q->initial_quantum;
 
 	rb_link_node(&f->fq_node, parent, p);
@@ -477,22 +361,27 @@ static void fq_erase_head(struct Qdisc *sch, struct fq_flow *flow,
 	}
 }
 
-/* Remove one skb from flow queue.
- * This skb must be the return value of prior fq_peek().
- */
-static void fq_dequeue_skb(struct Qdisc *sch, struct fq_flow *flow,
-			   struct sk_buff *skb)
+/* remove one skb from head of flow queue */
+static struct sk_buff *fq_dequeue_head(struct Qdisc *sch, struct fq_flow *flow)
 {
-	fq_erase_head(sch, flow, skb);
-	skb_mark_not_on_list(skb);
-	qdisc_qstats_backlog_dec(sch, skb);
-	sch->q.qlen--;
+	struct sk_buff *skb = fq_peek(flow);
+
+	if (skb) {
+		fq_erase_head(sch, flow, skb);
+		skb_mark_not_on_list(skb);
+		flow->qlen--;
+		qdisc_qstats_backlog_dec(sch, skb);
+		sch->q.qlen--;
+	}
+	return skb;
 }
 
 static void flow_queue_add(struct fq_flow *flow, struct sk_buff *skb)
 {
 	struct rb_node **p, *parent;
 	struct sk_buff *head, *aux;
+
+	fq_skb_cb(skb)->time_to_send = skb->tstamp ?: ktime_get_ns();
 
 	head = flow->head;
 	if (!head ||
@@ -521,68 +410,44 @@ static void flow_queue_add(struct fq_flow *flow, struct sk_buff *skb)
 	rb_insert_color(&skb->rbnode, &flow->t_root);
 }
 
-static bool fq_packet_beyond_horizon(const struct sk_buff *skb,
-				     const struct fq_sched_data *q, u64 now)
-{
-	return unlikely((s64)skb->tstamp > (s64)(now + q->horizon));
-}
-
 static int fq_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 		      struct sk_buff **to_free)
 {
 	struct fq_sched_data *q = qdisc_priv(sch);
 	struct fq_flow *f;
-	u64 now;
-	u8 band;
 
-	band = fq_prio2band(q->prio2band, skb->priority & TC_PRIO_MAX);
-	if (unlikely(q->band_pkt_count[band] >= sch->limit)) {
-		q->stat_band_drops[band]++;
+	if (unlikely(sch->q.qlen >= sch->limit))
+		return qdisc_drop(skb, sch, to_free);
+
+	f = fq_classify(skb, q);
+	if (unlikely(f->qlen >= q->flow_plimit && f != &q->internal)) {
+		q->stat_flows_plimit++;
 		return qdisc_drop(skb, sch, to_free);
 	}
 
-	now = ktime_get_ns();
-	if (!skb->tstamp) {
-		fq_skb_cb(skb)->time_to_send = now;
-	} else {
-		/* Check if packet timestamp is too far in the future. */
-		if (fq_packet_beyond_horizon(skb, q, now)) {
-			if (q->horizon_drop) {
-					q->stat_horizon_drops++;
-					return qdisc_drop(skb, sch, to_free);
-			}
-			q->stat_horizon_caps++;
-			skb->tstamp = now + q->horizon;
-		}
-		fq_skb_cb(skb)->time_to_send = skb->tstamp;
-	}
-
-	f = fq_classify(sch, skb, now);
-
-	if (f != &q->internal) {
-		if (unlikely(f->qlen >= q->flow_plimit)) {
-			q->stat_flows_plimit++;
-			return qdisc_drop(skb, sch, to_free);
-		}
-
-		if (fq_flow_is_detached(f)) {
-			fq_flow_add_tail(q, f, NEW_FLOW);
-			if (time_after(jiffies, f->age + q->flow_refill_delay))
-				f->credit = max_t(u32, f->credit, q->quantum);
-		}
-
-		f->band = band;
-		q->band_pkt_count[band]++;
-		fq_skb_cb(skb)->band = band;
-		if (f->qlen == 0)
-			q->inactive_flows--;
-	}
-
 	f->qlen++;
+	qdisc_qstats_backlog_inc(sch, skb);
+	if (fq_flow_is_detached(f)) {
+		struct sock *sk = skb->sk;
+
+		fq_flow_add_tail(&q->new_flows, f);
+		if (time_after(jiffies, f->age + q->flow_refill_delay))
+			f->credit = max_t(u32, f->credit, q->quantum);
+		if (sk && q->rate_enable) {
+			if (unlikely(smp_load_acquire(&sk->sk_pacing_status) !=
+				     SK_PACING_FQ))
+				smp_store_release(&sk->sk_pacing_status,
+						  SK_PACING_FQ);
+		}
+		q->inactive_flows--;
+	}
+
 	/* Note: this overwrites f->age */
 	flow_queue_add(f, skb);
 
-	qdisc_qstats_backlog_inc(sch, skb);
+	if (unlikely(f == &q->internal)) {
+		q->stat_internal_packets++;
+	}
 	sch->q.qlen++;
 
 	return NET_XMIT_SUCCESS;
@@ -615,66 +480,42 @@ static void fq_check_throttled(struct fq_sched_data *q, u64 now)
 	}
 }
 
-static struct fq_flow_head *fq_pband_head_select(struct fq_perband_flows *pband)
-{
-	if (pband->credit <= 0)
-		return NULL;
-
-	if (pband->new_flows.first)
-		return &pband->new_flows;
-
-	return pband->old_flows.first ? &pband->old_flows : NULL;
-}
-
 static struct sk_buff *fq_dequeue(struct Qdisc *sch)
 {
 	struct fq_sched_data *q = qdisc_priv(sch);
-	struct fq_perband_flows *pband;
 	struct fq_flow_head *head;
 	struct sk_buff *skb;
 	struct fq_flow *f;
 	unsigned long rate;
-	int retry;
 	u32 plen;
 	u64 now;
 
 	if (!sch->q.qlen)
 		return NULL;
 
-	skb = fq_peek(&q->internal);
-	if (unlikely(skb)) {
-		q->internal.qlen--;
-		fq_dequeue_skb(sch, &q->internal, skb);
+	skb = fq_dequeue_head(sch, &q->internal);
+	if (skb)
 		goto out;
-	}
 
 	now = ktime_get_ns();
 	fq_check_throttled(q, now);
-	retry = 0;
-	pband = &q->band_flows[q->band_nr];
 begin:
-	head = fq_pband_head_select(pband);
-	if (!head) {
-		while (++retry <= FQ_BANDS) {
-			if (++q->band_nr == FQ_BANDS)
-				q->band_nr = 0;
-			pband = &q->band_flows[q->band_nr];
-			pband->credit = min(pband->credit + pband->quantum,
-					    pband->quantum);
-			goto begin;
+	head = &q->new_flows;
+	if (!head->first) {
+		head = &q->old_flows;
+		if (!head->first) {
+			if (q->time_next_delayed_flow != ~0ULL)
+				qdisc_watchdog_schedule_ns(&q->watchdog,
+							   q->time_next_delayed_flow);
+			return NULL;
 		}
-		if (q->time_next_delayed_flow != ~0ULL)
-			qdisc_watchdog_schedule_range_ns(&q->watchdog,
-							q->time_next_delayed_flow,
-							q->timer_slack);
-		return NULL;
 	}
 	f = head->first;
-	retry = 0;
+
 	if (f->credit <= 0) {
 		f->credit += q->quantum;
 		head->first = f->next;
-		fq_flow_add_tail(q, f, OLD_FLOW);
+		fq_flow_add_tail(&q->old_flows, f);
 		goto begin;
 	}
 
@@ -689,28 +530,28 @@ begin:
 			fq_flow_set_throttled(q, f);
 			goto begin;
 		}
-		prefetch(&skb->end);
-		if ((s64)(now - time_next_packet - q->ce_threshold) > 0) {
+		if (time_next_packet &&
+		    (s64)(now - time_next_packet - q->ce_threshold) > 0) {
 			INET_ECN_set_ce(skb);
 			q->stat_ce_mark++;
 		}
-		if (--f->qlen == 0)
-			q->inactive_flows++;
-		q->band_pkt_count[fq_skb_cb(skb)->band]--;
-		fq_dequeue_skb(sch, f, skb);
-	} else {
+	}
+
+	skb = fq_dequeue_head(sch, f);
+	if (!skb) {
 		head->first = f->next;
 		/* force a pass through old_flows to prevent starvation */
-		if (head == &pband->new_flows) {
-			fq_flow_add_tail(q, f, OLD_FLOW);
+		if ((head == &q->new_flows) && q->old_flows.first) {
+			fq_flow_add_tail(&q->old_flows, f);
 		} else {
 			fq_flow_set_detached(f);
+			q->inactive_flows++;
 		}
 		goto begin;
 	}
+	prefetch(&skb->end);
 	plen = qdisc_pkt_len(skb);
 	f->credit -= plen;
-	pband->credit -= plen;
 
 	if (!q->rate_enable)
 		goto out;
@@ -723,7 +564,7 @@ begin:
 	 */
 	if (!skb->tstamp) {
 		if (skb->sk)
-			rate = min(READ_ONCE(skb->sk->sk_pacing_rate), rate);
+			rate = min(skb->sk->sk_pacing_rate, rate);
 
 		if (rate <= q->low_rate_threshold) {
 			f->credit = 0;
@@ -802,10 +643,8 @@ static void fq_reset(struct Qdisc *sch)
 			kmem_cache_free(fq_flow_cachep, f);
 		}
 	}
-	for (idx = 0; idx < FQ_BANDS; idx++) {
-		q->band_flows[idx].new_flows.first = NULL;
-		q->band_flows[idx].old_flows.first = NULL;
-	}
+	q->new_flows.first	= NULL;
+	q->old_flows.first	= NULL;
 	q->delayed		= RB_ROOT;
 	q->flows		= 0;
 	q->inactive_flows	= 0;
@@ -897,92 +736,19 @@ static int fq_resize(struct Qdisc *sch, u32 log)
 	return 0;
 }
 
-static const struct netlink_range_validation iq_range = {
-	.max = INT_MAX,
-};
-
 static const struct nla_policy fq_policy[TCA_FQ_MAX + 1] = {
-	[TCA_FQ_UNSPEC]			= { .strict_start_type = TCA_FQ_TIMER_SLACK },
-
 	[TCA_FQ_PLIMIT]			= { .type = NLA_U32 },
 	[TCA_FQ_FLOW_PLIMIT]		= { .type = NLA_U32 },
 	[TCA_FQ_QUANTUM]		= { .type = NLA_U32 },
-	[TCA_FQ_INITIAL_QUANTUM]	= NLA_POLICY_FULL_RANGE(NLA_U32, &iq_range),
+	[TCA_FQ_INITIAL_QUANTUM]	= { .type = NLA_U32 },
 	[TCA_FQ_RATE_ENABLE]		= { .type = NLA_U32 },
 	[TCA_FQ_FLOW_DEFAULT_RATE]	= { .type = NLA_U32 },
 	[TCA_FQ_FLOW_MAX_RATE]		= { .type = NLA_U32 },
 	[TCA_FQ_BUCKETS_LOG]		= { .type = NLA_U32 },
 	[TCA_FQ_FLOW_REFILL_DELAY]	= { .type = NLA_U32 },
-	[TCA_FQ_ORPHAN_MASK]		= { .type = NLA_U32 },
 	[TCA_FQ_LOW_RATE_THRESHOLD]	= { .type = NLA_U32 },
 	[TCA_FQ_CE_THRESHOLD]		= { .type = NLA_U32 },
-	[TCA_FQ_TIMER_SLACK]		= { .type = NLA_U32 },
-	[TCA_FQ_HORIZON]		= { .type = NLA_U32 },
-	[TCA_FQ_HORIZON_DROP]		= { .type = NLA_U8 },
-	[TCA_FQ_PRIOMAP]		= NLA_POLICY_EXACT_LEN(sizeof(struct tc_prio_qopt)),
-	[TCA_FQ_WEIGHTS]		= NLA_POLICY_EXACT_LEN(FQ_BANDS * sizeof(s32)),
 };
-
-/* compress a u8 array with all elems <= 3 to an array of 2-bit fields */
-static void fq_prio2band_compress_crumb(const u8 *in, u8 *out)
-{
-	const int num_elems = TC_PRIO_MAX + 1;
-	int i;
-
-	memset(out, 0, num_elems / 4);
-	for (i = 0; i < num_elems; i++)
-		out[i / 4] |= in[i] << (2 * (i & 0x3));
-}
-
-static void fq_prio2band_decompress_crumb(const u8 *in, u8 *out)
-{
-	const int num_elems = TC_PRIO_MAX + 1;
-	int i;
-
-	for (i = 0; i < num_elems; i++)
-		out[i] = fq_prio2band(in, i);
-}
-
-static int fq_load_weights(struct fq_sched_data *q,
-			   const struct nlattr *attr,
-			   struct netlink_ext_ack *extack)
-{
-	s32 *weights = nla_data(attr);
-	int i;
-
-	for (i = 0; i < FQ_BANDS; i++) {
-		if (weights[i] < FQ_MIN_WEIGHT) {
-			NL_SET_ERR_MSG_FMT_MOD(extack, "Weight %d less that minimum allowed %d",
-					       weights[i], FQ_MIN_WEIGHT);
-			return -EINVAL;
-		}
-	}
-	for (i = 0; i < FQ_BANDS; i++)
-		q->band_flows[i].quantum = weights[i];
-	return 0;
-}
-
-static int fq_load_priomap(struct fq_sched_data *q,
-			   const struct nlattr *attr,
-			   struct netlink_ext_ack *extack)
-{
-	const struct tc_prio_qopt *map = nla_data(attr);
-	int i;
-
-	if (map->bands != FQ_BANDS) {
-		NL_SET_ERR_MSG_MOD(extack, "FQ only supports 3 bands");
-		return -EINVAL;
-	}
-	for (i = 0; i < TC_PRIO_MAX + 1; i++) {
-		if (map->priomap[i] >= FQ_BANDS) {
-			NL_SET_ERR_MSG_FMT_MOD(extack, "FQ priomap field %d maps to a too high band %d",
-					       i, map->priomap[i]);
-			return -EINVAL;
-		}
-	}
-	fq_prio2band_compress_crumb(map->priomap, q->prio2band);
-	return 0;
-}
 
 static int fq_change(struct Qdisc *sch, struct nlattr *opt,
 		     struct netlink_ext_ack *extack)
@@ -992,6 +758,9 @@ static int fq_change(struct Qdisc *sch, struct nlattr *opt,
 	int err, drop_count = 0;
 	unsigned drop_len = 0;
 	u32 fq_log;
+
+	if (!opt)
+		return -EINVAL;
 
 	err = nla_parse_nested_deprecated(tb, TCA_FQ_MAX, opt, fq_policy,
 					  NULL);
@@ -1019,12 +788,10 @@ static int fq_change(struct Qdisc *sch, struct nlattr *opt,
 	if (tb[TCA_FQ_QUANTUM]) {
 		u32 quantum = nla_get_u32(tb[TCA_FQ_QUANTUM]);
 
-		if (quantum > 0 && quantum <= (1 << 20)) {
+		if (quantum > 0)
 			q->quantum = quantum;
-		} else {
-			NL_SET_ERR_MSG_MOD(extack, "invalid quantum");
+		else
 			err = -EINVAL;
-		}
 	}
 
 	if (tb[TCA_FQ_INITIAL_QUANTUM])
@@ -1058,12 +825,6 @@ static int fq_change(struct Qdisc *sch, struct nlattr *opt,
 		q->flow_refill_delay = usecs_to_jiffies(usecs_delay);
 	}
 
-	if (!err && tb[TCA_FQ_PRIOMAP])
-		err = fq_load_priomap(q, tb[TCA_FQ_PRIOMAP], extack);
-
-	if (!err && tb[TCA_FQ_WEIGHTS])
-		err = fq_load_weights(q, tb[TCA_FQ_WEIGHTS], extack);
-
 	if (tb[TCA_FQ_ORPHAN_MASK])
 		q->orphan_mask = nla_get_u32(tb[TCA_FQ_ORPHAN_MASK]);
 
@@ -1071,18 +832,7 @@ static int fq_change(struct Qdisc *sch, struct nlattr *opt,
 		q->ce_threshold = (u64)NSEC_PER_USEC *
 				  nla_get_u32(tb[TCA_FQ_CE_THRESHOLD]);
 
-	if (tb[TCA_FQ_TIMER_SLACK])
-		q->timer_slack = nla_get_u32(tb[TCA_FQ_TIMER_SLACK]);
-
-	if (tb[TCA_FQ_HORIZON])
-		q->horizon = (u64)NSEC_PER_USEC *
-				  nla_get_u32(tb[TCA_FQ_HORIZON]);
-
-	if (tb[TCA_FQ_HORIZON_DROP])
-		q->horizon_drop = nla_get_u8(tb[TCA_FQ_HORIZON_DROP]);
-
 	if (!err) {
-
 		sch_tree_unlock(sch);
 		err = fq_resize(sch, fq_log);
 		sch_tree_lock(sch);
@@ -1115,7 +865,7 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
 		   struct netlink_ext_ack *extack)
 {
 	struct fq_sched_data *q = qdisc_priv(sch);
-	int i, err;
+	int err;
 
 	sch->limit		= 10000;
 	q->flow_plimit		= 100;
@@ -1125,28 +875,17 @@ static int fq_init(struct Qdisc *sch, struct nlattr *opt,
 	q->flow_max_rate	= ~0UL;
 	q->time_next_delayed_flow = ~0ULL;
 	q->rate_enable		= 1;
-	for (i = 0; i < FQ_BANDS; i++) {
-		q->band_flows[i].new_flows.first = NULL;
-		q->band_flows[i].old_flows.first = NULL;
-	}
-	q->band_flows[0].quantum = 9 << 16;
-	q->band_flows[1].quantum = 3 << 16;
-	q->band_flows[2].quantum = 1 << 16;
+	q->new_flows.first	= NULL;
+	q->old_flows.first	= NULL;
 	q->delayed		= RB_ROOT;
 	q->fq_root		= NULL;
 	q->fq_trees_log		= ilog2(1024);
 	q->orphan_mask		= 1024 - 1;
 	q->low_rate_threshold	= 550000 / 8;
 
-	q->timer_slack = 10 * NSEC_PER_USEC; /* 10 usec of hrtimer slack */
-
-	q->horizon = 10ULL * NSEC_PER_SEC; /* 10 seconds */
-	q->horizon_drop = 1; /* by default, drop packets beyond horizon */
-
 	/* Default ce_threshold of 4294 seconds */
 	q->ce_threshold		= (u64)NSEC_PER_USEC * ~0U;
 
-	fq_prio2band_compress_crumb(sch_default_prio2band, q->prio2band);
 	qdisc_watchdog_init_clockid(&q->watchdog, sch, CLOCK_MONOTONIC);
 
 	if (opt)
@@ -1161,12 +900,7 @@ static int fq_dump(struct Qdisc *sch, struct sk_buff *skb)
 {
 	struct fq_sched_data *q = qdisc_priv(sch);
 	u64 ce_threshold = q->ce_threshold;
-	struct tc_prio_qopt prio = {
-		.bands = FQ_BANDS,
-	};
-	u64 horizon = q->horizon;
 	struct nlattr *opts;
-	s32 weights[3];
 
 	opts = nla_nest_start_noflag(skb, TCA_OPTIONS);
 	if (opts == NULL)
@@ -1175,7 +909,6 @@ static int fq_dump(struct Qdisc *sch, struct sk_buff *skb)
 	/* TCA_FQ_FLOW_DEFAULT_RATE is not used anymore */
 
 	do_div(ce_threshold, NSEC_PER_USEC);
-	do_div(horizon, NSEC_PER_USEC);
 
 	if (nla_put_u32(skb, TCA_FQ_PLIMIT, sch->limit) ||
 	    nla_put_u32(skb, TCA_FQ_FLOW_PLIMIT, q->flow_plimit) ||
@@ -1190,20 +923,7 @@ static int fq_dump(struct Qdisc *sch, struct sk_buff *skb)
 	    nla_put_u32(skb, TCA_FQ_LOW_RATE_THRESHOLD,
 			q->low_rate_threshold) ||
 	    nla_put_u32(skb, TCA_FQ_CE_THRESHOLD, (u32)ce_threshold) ||
-	    nla_put_u32(skb, TCA_FQ_BUCKETS_LOG, q->fq_trees_log) ||
-	    nla_put_u32(skb, TCA_FQ_TIMER_SLACK, q->timer_slack) ||
-	    nla_put_u32(skb, TCA_FQ_HORIZON, (u32)horizon) ||
-	    nla_put_u8(skb, TCA_FQ_HORIZON_DROP, q->horizon_drop))
-		goto nla_put_failure;
-
-	fq_prio2band_decompress_crumb(q->prio2band, prio.priomap);
-	if (nla_put(skb, TCA_FQ_PRIOMAP, sizeof(prio), &prio))
-		goto nla_put_failure;
-
-	weights[0] = q->band_flows[0].quantum;
-	weights[1] = q->band_flows[1].quantum;
-	weights[2] = q->band_flows[2].quantum;
-	if (nla_put(skb, TCA_FQ_WEIGHTS, sizeof(weights), &weights))
+	    nla_put_u32(skb, TCA_FQ_BUCKETS_LOG, q->fq_trees_log))
 		goto nla_put_failure;
 
 	return nla_nest_end(skb, opts);
@@ -1216,34 +936,23 @@ static int fq_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 {
 	struct fq_sched_data *q = qdisc_priv(sch);
 	struct tc_fq_qd_stats st;
-	int i;
-
-	st.pad = 0;
 
 	sch_tree_lock(sch);
 
 	st.gc_flows		  = q->stat_gc_flows;
-	st.highprio_packets	  = 0;
-	st.fastpath_packets	  = q->internal.stat_fastpath_packets;
+	st.highprio_packets	  = q->stat_internal_packets;
 	st.tcp_retrans		  = 0;
 	st.throttled		  = q->stat_throttled;
 	st.flows_plimit		  = q->stat_flows_plimit;
 	st.pkts_too_long	  = q->stat_pkts_too_long;
 	st.allocation_errors	  = q->stat_allocation_errors;
-	st.time_next_delayed_flow = q->time_next_delayed_flow + q->timer_slack -
-				    ktime_get_ns();
+	st.time_next_delayed_flow = q->time_next_delayed_flow - ktime_get_ns();
 	st.flows		  = q->flows;
 	st.inactive_flows	  = q->inactive_flows;
 	st.throttled_flows	  = q->throttled_flows;
 	st.unthrottle_latency_ns  = min_t(unsigned long,
 					  q->unthrottle_latency_ns, ~0U);
 	st.ce_mark		  = q->stat_ce_mark;
-	st.horizon_drops	  = q->stat_horizon_drops;
-	st.horizon_caps		  = q->stat_horizon_caps;
-	for (i = 0; i < FQ_BANDS; i++) {
-		st.band_drops[i]  = q->stat_band_drops[i];
-		st.band_pkt_count[i] = q->band_pkt_count[i];
-	}
 	sch_tree_unlock(sch);
 
 	return gnet_stats_copy_app(d, &st, sizeof(st));
@@ -1264,7 +973,6 @@ static struct Qdisc_ops fq_qdisc_ops __read_mostly = {
 	.dump_stats	=	fq_dump_stats,
 	.owner		=	THIS_MODULE,
 };
-MODULE_ALIAS_NET_SCH("fq");
 
 static int __init fq_module_init(void)
 {
@@ -1272,7 +980,7 @@ static int __init fq_module_init(void)
 
 	fq_flow_cachep = kmem_cache_create("fq_flow_cache",
 					   sizeof(struct fq_flow),
-					   0, SLAB_HWCACHE_ALIGN, NULL);
+					   0, 0, NULL);
 	if (!fq_flow_cachep)
 		return -ENOMEM;
 
@@ -1292,4 +1000,3 @@ module_init(fq_module_init)
 module_exit(fq_module_exit)
 MODULE_AUTHOR("Eric Dumazet");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Fair Queue Packet Scheduler");

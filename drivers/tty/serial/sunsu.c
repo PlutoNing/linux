@@ -37,12 +37,16 @@
 #include <linux/serial_reg.h>
 #include <linux/init.h>
 #include <linux/delay.h>
-#include <linux/of.h>
-#include <linux/platform_device.h>
+#include <linux/of_device.h>
 
-#include <linux/io.h>
+#include <asm/io.h>
 #include <asm/irq.h>
+#include <asm/prom.h>
 #include <asm/setup.h>
+
+#if defined(CONFIG_SERIAL_SUNSU_CONSOLE) && defined(CONFIG_MAGIC_SYSRQ)
+#define SUPPORT_SYSRQ
+#endif
 
 #include <linux/serial_core.h>
 #include <linux/sunserialcore.h>
@@ -127,8 +131,7 @@ static void serial_out(struct uart_sunsu_port *up, int offset, int value)
 	 * gate outputs a logical one. Since we use level triggered interrupts
 	 * we have lockup and watchdog reset. We cannot mask IRQ because
 	 * keyboard shares IRQ with us (Word has it as Bob Smelik's design).
-	 * This problem is similar to what Alpha people suffer, see
-	 * 8250_alpha.c.
+	 * This problem is similar to what Alpha people suffer, see serial.c.
 	 */
 	if (offset == UART_MCR)
 		value |= UART_MCR_OUT2;
@@ -212,9 +215,9 @@ static void enable_rsa(struct uart_sunsu_port *up)
 {
 	if (up->port.type == PORT_RSA) {
 		if (up->port.uartclk != SERIAL_RSA_BAUD_BASE * 16) {
-			uart_port_lock_irq(&up->port);
+			spin_lock_irq(&up->port.lock);
 			__enable_rsa(up);
-			uart_port_unlock_irq(&up->port);
+			spin_unlock_irq(&up->port.lock);
 		}
 		if (up->port.uartclk == SERIAL_RSA_BAUD_BASE * 16)
 			serial_outp(up, UART_RSA_FRR, 0);
@@ -234,7 +237,7 @@ static void disable_rsa(struct uart_sunsu_port *up)
 
 	if (up->port.type == PORT_RSA &&
 	    up->port.uartclk == SERIAL_RSA_BAUD_BASE * 16) {
-		uart_port_lock_irq(&up->port);
+		spin_lock_irq(&up->port.lock);
 
 		mode = serial_inp(up, UART_RSA_MSR);
 		result = !(mode & UART_RSA_MSR_FIFO);
@@ -247,7 +250,7 @@ static void disable_rsa(struct uart_sunsu_port *up)
 
 		if (result)
 			up->port.uartclk = SERIAL_RSA_BAUD_BASE_LO * 16;
-		uart_port_unlock_irq(&up->port);
+		spin_unlock_irq(&up->port.lock);
 	}
 }
 #endif /* CONFIG_SERIAL_8250_RSA */
@@ -311,10 +314,10 @@ static void sunsu_enable_ms(struct uart_port *port)
 		container_of(port, struct uart_sunsu_port, port);
 	unsigned long flags;
 
-	uart_port_lock_irqsave(&up->port, &flags);
+	spin_lock_irqsave(&up->port.lock, flags);
 	up->ier |= UART_IER_MSI;
 	serial_out(up, UART_IER, up->ier);
-	uart_port_unlock_irqrestore(&up->port, flags);
+	spin_unlock_irqrestore(&up->port.lock, flags);
 }
 
 static void
@@ -417,7 +420,8 @@ static void transmit_chars(struct uart_sunsu_port *up)
 	count = up->port.fifosize;
 	do {
 		serial_out(up, UART_TX, xmit->buf[xmit->tail]);
-		uart_xmit_advance(&up->port, 1);
+		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
+		up->port.icount.tx++;
 		if (uart_circ_empty(xmit))
 			break;
 	} while (--count > 0);
@@ -456,7 +460,7 @@ static irqreturn_t sunsu_serial_interrupt(int irq, void *dev_id)
 	unsigned long flags;
 	unsigned char status;
 
-	uart_port_lock_irqsave(&up->port, &flags);
+	spin_lock_irqsave(&up->port.lock, flags);
 
 	do {
 		status = serial_inp(up, UART_LSR);
@@ -466,11 +470,15 @@ static irqreturn_t sunsu_serial_interrupt(int irq, void *dev_id)
 		if (status & UART_LSR_THRE)
 			transmit_chars(up);
 
+		spin_unlock_irqrestore(&up->port.lock, flags);
+
 		tty_flip_buffer_push(&up->port.state->port);
+
+		spin_lock_irqsave(&up->port.lock, flags);
 
 	} while (!(serial_in(up, UART_IIR) & UART_IIR_NO_INT));
 
-	uart_port_unlock_irqrestore(&up->port, flags);
+	spin_unlock_irqrestore(&up->port.lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -510,7 +518,7 @@ static void receive_kbd_ms_chars(struct uart_sunsu_port *up, int is_break)
 			switch (ret) {
 			case 2:
 				sunsu_change_mouse_baud(up);
-				fallthrough;
+				/* fallthru */
 			case 1:
 				break;
 
@@ -545,9 +553,9 @@ static unsigned int sunsu_tx_empty(struct uart_port *port)
 	unsigned long flags;
 	unsigned int ret;
 
-	uart_port_lock_irqsave(&up->port, &flags);
+	spin_lock_irqsave(&up->port.lock, flags);
 	ret = serial_in(up, UART_LSR) & UART_LSR_TEMT ? TIOCSER_TEMT : 0;
-	uart_port_unlock_irqrestore(&up->port, flags);
+	spin_unlock_irqrestore(&up->port.lock, flags);
 
 	return ret;
 }
@@ -599,13 +607,13 @@ static void sunsu_break_ctl(struct uart_port *port, int break_state)
 		container_of(port, struct uart_sunsu_port, port);
 	unsigned long flags;
 
-	uart_port_lock_irqsave(&up->port, &flags);
+	spin_lock_irqsave(&up->port.lock, flags);
 	if (break_state == -1)
 		up->lcr |= UART_LCR_SBC;
 	else
 		up->lcr &= ~UART_LCR_SBC;
 	serial_out(up, UART_LCR, up->lcr);
-	uart_port_unlock_irqrestore(&up->port, flags);
+	spin_unlock_irqrestore(&up->port.lock, flags);
 }
 
 static int sunsu_startup(struct uart_port *port)
@@ -683,12 +691,12 @@ static int sunsu_startup(struct uart_port *port)
 	 */
 	serial_outp(up, UART_LCR, UART_LCR_WLEN8);
 
-	uart_port_lock_irqsave(&up->port, &flags);
+	spin_lock_irqsave(&up->port.lock, flags);
 
 	up->port.mctrl |= TIOCM_OUT2;
 
 	sunsu_set_mctrl(&up->port, up->port.mctrl);
-	uart_port_unlock_irqrestore(&up->port, flags);
+	spin_unlock_irqrestore(&up->port.lock, flags);
 
 	/*
 	 * Finally, enable interrupts.  Note: Modem status interrupts
@@ -731,7 +739,7 @@ static void sunsu_shutdown(struct uart_port *port)
 	up->ier = 0;
 	serial_outp(up, UART_IER, 0);
 
-	uart_port_lock_irqsave(&up->port, &flags);
+	spin_lock_irqsave(&up->port.lock, flags);
 	if (up->port.flags & UPF_FOURPORT) {
 		/* reset interrupts on the AST Fourport board */
 		inb((up->port.iobase & 0xfe0) | 0x1f);
@@ -740,7 +748,7 @@ static void sunsu_shutdown(struct uart_port *port)
 		up->port.mctrl &= ~TIOCM_OUT2;
 
 	sunsu_set_mctrl(&up->port, up->port.mctrl);
-	uart_port_unlock_irqrestore(&up->port, flags);
+	spin_unlock_irqrestore(&up->port.lock, flags);
 
 	/*
 	 * Disable break condition and FIFOs
@@ -797,8 +805,10 @@ sunsu_change_speed(struct uart_port *port, unsigned int cflag,
 		cval |= UART_LCR_PARITY;
 	if (!(cflag & PARODD))
 		cval |= UART_LCR_EPAR;
+#ifdef CMSPAR
 	if (cflag & CMSPAR)
 		cval |= UART_LCR_SPAR;
+#endif
 
 	/*
 	 * Work around a bug in the Oxford Semiconductor 952 rev B
@@ -826,7 +836,7 @@ sunsu_change_speed(struct uart_port *port, unsigned int cflag,
 	 * Ok, we're now changing the port state.  Do it with
 	 * interrupts disabled.
 	 */
-	uart_port_lock_irqsave(&up->port, &flags);
+	spin_lock_irqsave(&up->port.lock, flags);
 
 	/*
 	 * Update the per-port timeout.
@@ -891,12 +901,12 @@ sunsu_change_speed(struct uart_port *port, unsigned int cflag,
 
 	up->cflag = cflag;
 
-	uart_port_unlock_irqrestore(&up->port, flags);
+	spin_unlock_irqrestore(&up->port.lock, flags);
 }
 
 static void
 sunsu_set_termios(struct uart_port *port, struct ktermios *termios,
-		  const struct ktermios *old)
+		  struct ktermios *old)
 {
 	unsigned int baud, quot;
 
@@ -1038,7 +1048,7 @@ static void sunsu_autoconfig(struct uart_sunsu_port *up)
 	up->type_probed = PORT_UNKNOWN;
 	up->port.iotype = UPIO_MEM;
 
-	uart_port_lock_irqsave(&up->port, &flags);
+	spin_lock_irqsave(&up->port.lock, flags);
 
 	if (!(up->port.flags & UPF_BUGGY_UART)) {
 		/*
@@ -1173,7 +1183,7 @@ static void sunsu_autoconfig(struct uart_sunsu_port *up)
 	serial_outp(up, UART_IER, 0);
 
 out:
-	uart_port_unlock_irqrestore(&up->port, flags);
+	spin_unlock_irqrestore(&up->port.lock, flags);
 }
 
 static struct uart_driver sunsu_reg = {
@@ -1216,13 +1226,13 @@ static int sunsu_kbd_ms_init(struct uart_sunsu_port *up)
 	serio->id.type = SERIO_RS232;
 	if (up->su_type == SU_PORT_KBD) {
 		serio->id.proto = SERIO_SUNKBD;
-		strscpy(serio->name, "sukbd", sizeof(serio->name));
+		strlcpy(serio->name, "sukbd", sizeof(serio->name));
 	} else {
 		serio->id.proto = SERIO_SUN;
 		serio->id.extra = 1;
-		strscpy(serio->name, "sums", sizeof(serio->name));
+		strlcpy(serio->name, "sums", sizeof(serio->name));
 	}
-	strscpy(serio->phys,
+	strlcpy(serio->phys,
 		(!(up->port.line & 1) ? "su/serio0" : "su/serio1"),
 		sizeof(serio->phys));
 
@@ -1248,6 +1258,8 @@ static int sunsu_kbd_ms_init(struct uart_sunsu_port *up)
 
 #ifdef CONFIG_SERIAL_SUNSU_CONSOLE
 
+#define BOTH_EMPTY (UART_LSR_TEMT | UART_LSR_THRE)
+
 /*
  *	Wait for transmitter & holding register to empty
  */
@@ -1265,7 +1277,7 @@ static void wait_for_xmitr(struct uart_sunsu_port *up)
 		if (--tmout == 0)
 			break;
 		udelay(1);
-	} while (!uart_lsr_tx_empty(status));
+	} while ((status & BOTH_EMPTY) != BOTH_EMPTY);
 
 	/* Wait up to 1s for flow control if necessary */
 	if (up->port.flags & UPF_CONS_FLOW) {
@@ -1276,7 +1288,7 @@ static void wait_for_xmitr(struct uart_sunsu_port *up)
 	}
 }
 
-static void sunsu_console_putchar(struct uart_port *port, unsigned char ch)
+static void sunsu_console_putchar(struct uart_port *port, int ch)
 {
 	struct uart_sunsu_port *up =
 		container_of(port, struct uart_sunsu_port, port);
@@ -1298,9 +1310,9 @@ static void sunsu_console_write(struct console *co, const char *s,
 	int locked = 1;
 
 	if (up->port.sysrq || oops_in_progress)
-		locked = uart_port_trylock_irqsave(&up->port, &flags);
+		locked = spin_trylock_irqsave(&up->port.lock, flags);
 	else
-		uart_port_lock_irqsave(&up->port, &flags);
+		spin_lock_irqsave(&up->port.lock, flags);
 
 	/*
 	 *	First save the UER then disable the interrupts
@@ -1318,7 +1330,7 @@ static void sunsu_console_write(struct console *co, const char *s,
 	serial_out(up, UART_IER, ier);
 
 	if (locked)
-		uart_port_unlock_irqrestore(&up->port, flags);
+		spin_unlock_irqrestore(&up->port.lock, flags);
 }
 
 /*
@@ -1463,7 +1475,6 @@ static int su_probe(struct platform_device *op)
 
 	up->port.type = PORT_UNKNOWN;
 	up->port.uartclk = (SU_BASE_BAUD * 16);
-	up->port.has_sysrq = IS_ENABLED(CONFIG_SERIAL_SUNSU_CONSOLE);
 
 	err = 0;
 	if (up->su_type == SU_PORT_KBD || up->su_type == SU_PORT_MS) {
@@ -1515,7 +1526,7 @@ out_unmap:
 	return err;
 }
 
-static void su_remove(struct platform_device *op)
+static int su_remove(struct platform_device *op)
 {
 	struct uart_sunsu_port *up = platform_get_drvdata(op);
 	bool kbdms = false;
@@ -1536,6 +1547,8 @@ static void su_remove(struct platform_device *op)
 
 	if (kbdms)
 		kfree(up);
+
+	return 0;
 }
 
 static const struct of_device_id su_match[] = {
@@ -1563,7 +1576,7 @@ static struct platform_driver su_driver = {
 		.of_match_table = su_match,
 	},
 	.probe		= su_probe,
-	.remove_new	= su_remove,
+	.remove		= su_remove,
 };
 
 static int __init sunsu_init(void)

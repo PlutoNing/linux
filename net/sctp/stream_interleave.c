@@ -241,8 +241,9 @@ out:
 	if (!first_frag)
 		return NULL;
 
-	retval = sctp_make_reassembled_event(ulpq->asoc->base.net, &ulpq->reasm,
-					     first_frag, last_frag);
+	retval = sctp_make_reassembled_event(sock_net(ulpq->asoc->base.sk),
+					     &ulpq->reasm, first_frag,
+					     last_frag);
 	if (retval) {
 		sin->fsn = next_fsn;
 		if (is_last) {
@@ -325,7 +326,7 @@ static struct sctp_ulpevent *sctp_intl_retrieve_reassembled(
 
 	pd_point = sctp_sk(asoc->base.sk)->pd_point;
 	if (pd_point && pd_point <= pd_len) {
-		retval = sctp_make_reassembled_event(asoc->base.net,
+		retval = sctp_make_reassembled_event(sock_net(asoc->base.sk),
 						     &ulpq->reasm,
 						     pd_first, pd_last);
 		if (retval) {
@@ -336,7 +337,8 @@ static struct sctp_ulpevent *sctp_intl_retrieve_reassembled(
 	goto out;
 
 found:
-	retval = sctp_make_reassembled_event(asoc->base.net, &ulpq->reasm,
+	retval = sctp_make_reassembled_event(sock_net(asoc->base.sk),
+					     &ulpq->reasm,
 					     first_frag, pos);
 	if (retval)
 		retval->msg_flags |= MSG_EOR;
@@ -490,8 +492,11 @@ static int sctp_enqueue_event(struct sctp_ulpq *ulpq,
 	if (!sctp_ulpevent_is_enabled(event, ulpq->asoc->subscribe))
 		goto out_free;
 
-	skb_queue_splice_tail_init(skb_list,
-				   &sk->sk_receive_queue);
+	if (skb_list)
+		skb_queue_splice_tail_init(skb_list,
+					   &sk->sk_receive_queue);
+	else
+		__skb_queue_tail(&sk->sk_receive_queue, skb);
 
 	if (!sp->data_ready_signalled) {
 		sp->data_ready_signalled = 1;
@@ -501,7 +506,10 @@ static int sctp_enqueue_event(struct sctp_ulpq *ulpq,
 	return 1;
 
 out_free:
-	sctp_queue_purge_ulpevents(skb_list);
+	if (skb_list)
+		sctp_queue_purge_ulpevents(skb_list);
+	else
+		sctp_ulpevent_free(event);
 
 	return 0;
 }
@@ -622,7 +630,7 @@ out:
 	if (!first_frag)
 		return NULL;
 
-	retval = sctp_make_reassembled_event(ulpq->asoc->base.net,
+	retval = sctp_make_reassembled_event(sock_net(ulpq->asoc->base.sk),
 					     &ulpq->reasm_uo, first_frag,
 					     last_frag);
 	if (retval) {
@@ -708,7 +716,7 @@ static struct sctp_ulpevent *sctp_intl_retrieve_reassembled_uo(
 
 	pd_point = sctp_sk(asoc->base.sk)->pd_point;
 	if (pd_point && pd_point <= pd_len) {
-		retval = sctp_make_reassembled_event(asoc->base.net,
+		retval = sctp_make_reassembled_event(sock_net(asoc->base.sk),
 						     &ulpq->reasm_uo,
 						     pd_first, pd_last);
 		if (retval) {
@@ -719,7 +727,8 @@ static struct sctp_ulpevent *sctp_intl_retrieve_reassembled_uo(
 	goto out;
 
 found:
-	retval = sctp_make_reassembled_event(asoc->base.net, &ulpq->reasm_uo,
+	retval = sctp_make_reassembled_event(sock_net(asoc->base.sk),
+					     &ulpq->reasm_uo,
 					     first_frag, pos);
 	if (retval)
 		retval->msg_flags |= MSG_EOR;
@@ -805,7 +814,7 @@ static struct sctp_ulpevent *sctp_intl_retrieve_first_uo(struct sctp_ulpq *ulpq)
 		return NULL;
 
 out:
-	retval = sctp_make_reassembled_event(ulpq->asoc->base.net,
+	retval = sctp_make_reassembled_event(sock_net(ulpq->asoc->base.sk),
 					     &ulpq->reasm_uo, first_frag,
 					     last_frag);
 	if (retval) {
@@ -912,7 +921,7 @@ static struct sctp_ulpevent *sctp_intl_retrieve_first(struct sctp_ulpq *ulpq)
 		return NULL;
 
 out:
-	retval = sctp_make_reassembled_event(ulpq->asoc->base.net,
+	retval = sctp_make_reassembled_event(sock_net(ulpq->asoc->base.sk),
 					     &ulpq->reasm, first_frag,
 					     last_frag);
 	if (retval) {
@@ -973,6 +982,8 @@ static void sctp_renege_events(struct sctp_ulpq *ulpq, struct sctp_chunk *chunk,
 
 	if (freed >= needed && sctp_ulpevent_idata(ulpq, chunk, gfp) <= 0)
 		sctp_intl_start_pd(ulpq, gfp);
+
+	sk_mem_reclaim(asoc->base.sk);
 }
 
 static void sctp_intl_stream_abort_pd(struct sctp_ulpq *ulpq, __u16 sid,
@@ -1148,14 +1159,13 @@ static void sctp_generate_iftsn(struct sctp_outq *q, __u32 ctsn)
 
 	if (ftsn_chunk) {
 		list_add_tail(&ftsn_chunk->list, &q->control_chunk_list);
-		SCTP_INC_STATS(asoc->base.net, SCTP_MIB_OUTCTRLCHUNKS);
+		SCTP_INC_STATS(sock_net(asoc->base.sk), SCTP_MIB_OUTCTRLCHUNKS);
 	}
 }
 
 #define _sctp_walk_ifwdtsn(pos, chunk, end) \
-	for (pos = (void *)(chunk->subh.ifwdtsn_hdr + 1); \
-	     (void *)pos <= (void *)(chunk->subh.ifwdtsn_hdr + 1) + (end) - \
-			    sizeof(struct sctp_ifwdtsn_skip); pos++)
+	for (pos = chunk->subh.ifwdtsn_hdr->skip; \
+	     (void *)pos < (void *)chunk->subh.ifwdtsn_hdr->skip + (end); pos++)
 
 #define sctp_walk_ifwdtsn(pos, ch) \
 	_sctp_walk_ifwdtsn((pos), (ch), ntohs((ch)->chunk_hdr->length) - \

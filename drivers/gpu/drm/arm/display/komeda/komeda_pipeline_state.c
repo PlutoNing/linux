@@ -285,7 +285,6 @@ komeda_layer_check_cfg(struct komeda_layer *layer,
 		       struct komeda_data_flow_cfg *dflow)
 {
 	u32 src_x, src_y, src_w, src_h;
-	u32 line_sz, max_line_sz;
 
 	if (!komeda_fb_is_layer_supported(kfb, layer->layer_type, dflow->rot))
 		return -EINVAL;
@@ -305,29 +304,13 @@ komeda_layer_check_cfg(struct komeda_layer *layer,
 	if (komeda_fb_check_src_coords(kfb, src_x, src_y, src_w, src_h))
 		return -EINVAL;
 
-	if (!malidp_in_range(&layer->hsize_in, src_w)) {
+	if (!in_range(&layer->hsize_in, src_w)) {
 		DRM_DEBUG_ATOMIC("invalidate src_w %d.\n", src_w);
 		return -EINVAL;
 	}
 
-	if (!malidp_in_range(&layer->vsize_in, src_h)) {
+	if (!in_range(&layer->vsize_in, src_h)) {
 		DRM_DEBUG_ATOMIC("invalidate src_h %d.\n", src_h);
-		return -EINVAL;
-	}
-
-	if (drm_rotation_90_or_270(dflow->rot))
-		line_sz = dflow->in_h;
-	else
-		line_sz = dflow->in_w;
-
-	if (kfb->base.format->hsub > 1)
-		max_line_sz = layer->yuv_line_sz;
-	else
-		max_line_sz = layer->line_sz;
-
-	if (line_sz > max_line_sz) {
-		DRM_DEBUG_ATOMIC("Required line_sz: %d exceeds the max size %d\n",
-				 line_sz, max_line_sz);
 		return -EINVAL;
 	}
 
@@ -452,14 +435,14 @@ komeda_scaler_check_cfg(struct komeda_scaler *scaler,
 	hsize_out = dflow->out_w;
 	vsize_out = dflow->out_h;
 
-	if (!malidp_in_range(&scaler->hsize, hsize_in) ||
-	    !malidp_in_range(&scaler->hsize, hsize_out)) {
+	if (!in_range(&scaler->hsize, hsize_in) ||
+	    !in_range(&scaler->hsize, hsize_out)) {
 		DRM_DEBUG_ATOMIC("Invalid horizontal sizes");
 		return -EINVAL;
 	}
 
-	if (!malidp_in_range(&scaler->vsize, vsize_in) ||
-	    !malidp_in_range(&scaler->vsize, vsize_out)) {
+	if (!in_range(&scaler->vsize, vsize_in) ||
+	    !in_range(&scaler->vsize, vsize_out)) {
 		DRM_DEBUG_ATOMIC("Invalid vertical sizes");
 		return -EINVAL;
 	}
@@ -574,13 +557,13 @@ komeda_splitter_validate(struct komeda_splitter *splitter,
 		return -EINVAL;
 	}
 
-	if (!malidp_in_range(&splitter->hsize, dflow->in_w)) {
+	if (!in_range(&splitter->hsize, dflow->in_w)) {
 		DRM_DEBUG_ATOMIC("split in_w:%d is out of the acceptable range.\n",
 				 dflow->in_w);
 		return -EINVAL;
 	}
 
-	if (!malidp_in_range(&splitter->vsize, dflow->in_h)) {
+	if (!in_range(&splitter->vsize, dflow->in_h)) {
 		DRM_DEBUG_ATOMIC("split in_h: %d exceeds the acceptable range.\n",
 				 dflow->in_h);
 		return -EINVAL;
@@ -624,13 +607,13 @@ komeda_merger_validate(struct komeda_merger *merger,
 		return -EINVAL;
 	}
 
-	if (!malidp_in_range(&merger->hsize_merged, output->out_w)) {
+	if (!in_range(&merger->hsize_merged, output->out_w)) {
 		DRM_DEBUG_ATOMIC("merged_w: %d is out of the accepted range.\n",
 				 output->out_w);
 		return -EINVAL;
 	}
 
-	if (!malidp_in_range(&merger->vsize_merged, output->out_h)) {
+	if (!in_range(&merger->vsize_merged, output->out_h)) {
 		DRM_DEBUG_ATOMIC("merged_h: %d is out of the accepted range.\n",
 				 output->out_h);
 		return -EINVAL;
@@ -704,10 +687,10 @@ komeda_compiz_set_input(struct komeda_compiz *compiz,
 	cin->layer_alpha = dflow->layer_alpha;
 
 	old_st = komeda_component_get_old_state(&compiz->base, drm_st);
+	WARN_ON(!old_st);
 
 	/* compare with old to check if this input has been changed */
-	if (WARN_ON(!old_st) ||
-	    memcmp(&(to_compiz_st(old_st)->cins[idx]), cin, sizeof(*cin)))
+	if (memcmp(&(to_compiz_st(old_st)->cins[idx]), cin, sizeof(*cin)))
 		c_st->changed_active_inputs |= BIT(idx);
 
 	komeda_component_add_input(c_st, &dflow->input, idx);
@@ -760,7 +743,6 @@ komeda_improc_validate(struct komeda_improc *improc,
 		       struct komeda_data_flow_cfg *dflow)
 {
 	struct drm_crtc *crtc = kcrtc_st->base.crtc;
-	struct drm_crtc_state *crtc_st = &kcrtc_st->base;
 	struct komeda_component_state *c_st;
 	struct komeda_improc_state *st;
 
@@ -773,40 +755,6 @@ komeda_improc_validate(struct komeda_improc *improc,
 
 	st->hsize = dflow->in_w;
 	st->vsize = dflow->in_h;
-
-	if (drm_atomic_crtc_needs_modeset(crtc_st)) {
-		u32 output_depths, output_formats;
-		u32 avail_depths, avail_formats;
-
-		komeda_crtc_get_color_config(crtc_st, &output_depths,
-					     &output_formats);
-
-		avail_depths = output_depths & improc->supported_color_depths;
-		if (avail_depths == 0) {
-			DRM_DEBUG_ATOMIC("No available color depths, conn depths: 0x%x & display: 0x%x\n",
-					 output_depths,
-					 improc->supported_color_depths);
-			return -EINVAL;
-		}
-
-		avail_formats = output_formats &
-				improc->supported_color_formats;
-		if (!avail_formats) {
-			DRM_DEBUG_ATOMIC("No available color_formats, conn formats 0x%x & display: 0x%x\n",
-					 output_formats,
-					 improc->supported_color_formats);
-			return -EINVAL;
-		}
-
-		st->color_depth = __fls(avail_depths);
-		st->color_format = BIT(__ffs(avail_formats));
-	}
-
-	if (kcrtc_st->base.color_mgmt_changed) {
-		drm_lut_to_fgamma_coeffs(kcrtc_st->base.gamma_lut,
-					 st->fgamma_coeffs);
-		drm_ctm_to_coeffs(kcrtc_st->base.ctm, st->ctm_coeffs);
-	}
 
 	komeda_component_add_input(&st->base, &dflow->input, 0);
 	komeda_component_set_output(&dflow->input, &improc->base, 0);
@@ -866,8 +814,8 @@ void komeda_complete_data_flow_cfg(struct komeda_layer *layer,
 	 * input/output range.
 	 */
 	if (dflow->en_scaling && scaler)
-		dflow->en_split = !malidp_in_range(&scaler->hsize, dflow->in_w) ||
-				  !malidp_in_range(&scaler->hsize, dflow->out_w);
+		dflow->en_split = !in_range(&scaler->hsize, dflow->in_w) ||
+				  !in_range(&scaler->hsize, dflow->out_w);
 }
 
 static bool merger_is_available(struct komeda_pipeline *pipe,
@@ -1223,7 +1171,7 @@ int komeda_build_display_data_flow(struct komeda_crtc *kcrtc,
 	return 0;
 }
 
-static int
+static void
 komeda_pipeline_unbound_components(struct komeda_pipeline *pipe,
 				   struct komeda_pipeline_state *new)
 {
@@ -1231,24 +1179,19 @@ komeda_pipeline_unbound_components(struct komeda_pipeline *pipe,
 	struct komeda_pipeline_state *old = priv_to_pipe_st(pipe->obj.state);
 	struct komeda_component_state *c_st;
 	struct komeda_component *c;
-	u32 id;
-	unsigned long disabling_comps;
+	u32 disabling_comps, id;
 
 	WARN_ON(!old);
 
 	disabling_comps = (~new->active_comps) & old->active_comps;
 
 	/* unbound all disabling component */
-	for_each_set_bit(id, &disabling_comps, 32) {
+	dp_for_each_set_bit(id, disabling_comps) {
 		c = komeda_pipeline_get_component(pipe, id);
 		c_st = komeda_component_get_state_and_set_user(c,
 				drm_st, NULL, new->crtc);
-		if (PTR_ERR(c_st) == -EDEADLK)
-			return -EDEADLK;
 		WARN_ON(IS_ERR(c_st));
 	}
-
-	return 0;
 }
 
 /* release unclaimed pipeline resource */
@@ -1270,41 +1213,26 @@ int komeda_release_unclaimed_resources(struct komeda_pipeline *pipe,
 	if (WARN_ON(IS_ERR_OR_NULL(st)))
 		return -EINVAL;
 
-	return komeda_pipeline_unbound_components(pipe, st);
+	komeda_pipeline_unbound_components(pipe, st);
 
+	return 0;
 }
 
-/* Since standalone disabled components must be disabled separately and in the
- * last, So a complete disable operation may needs to call pipeline_disable
- * twice (two phase disabling).
- * Phase 1: disable the common components, flush it.
- * Phase 2: disable the standalone disabled components, flush it.
- *
- * RETURNS:
- * true: disable is not complete, needs a phase 2 disable.
- * false: disable is complete.
- */
-bool komeda_pipeline_disable(struct komeda_pipeline *pipe,
+void komeda_pipeline_disable(struct komeda_pipeline *pipe,
 			     struct drm_atomic_state *old_state)
 {
 	struct komeda_pipeline_state *old;
 	struct komeda_component *c;
 	struct komeda_component_state *c_st;
-	u32 id;
-	unsigned long disabling_comps;
+	u32 id, disabling_comps = 0;
 
 	old = komeda_pipeline_get_old_state(pipe, old_state);
 
-	disabling_comps = old->active_comps &
-			  (~pipe->standalone_disabled_comps);
-	if (!disabling_comps)
-		disabling_comps = old->active_comps &
-				  pipe->standalone_disabled_comps;
+	disabling_comps = old->active_comps;
+	DRM_DEBUG_ATOMIC("PIPE%d: disabling_comps: 0x%x.\n",
+			 pipe->id, disabling_comps);
 
-	DRM_DEBUG_ATOMIC("PIPE%d: active_comps: 0x%x, disabling_comps: 0x%lx.\n",
-			 pipe->id, old->active_comps, disabling_comps);
-
-	for_each_set_bit(id, &disabling_comps, 32) {
+	dp_for_each_set_bit(id, disabling_comps) {
 		c = komeda_pipeline_get_component(pipe, id);
 		c_st = priv_to_comp_st(c->obj.state);
 
@@ -1320,13 +1248,6 @@ bool komeda_pipeline_disable(struct komeda_pipeline *pipe,
 
 		c->funcs->disable(c);
 	}
-
-	/* Update the pipeline state, if there are components that are still
-	 * active, return true for calling the phase 2 disable.
-	 */
-	old->active_comps &= ~disabling_comps;
-
-	return old->active_comps ? true : false;
 }
 
 void komeda_pipeline_update(struct komeda_pipeline *pipe,
@@ -1335,17 +1256,16 @@ void komeda_pipeline_update(struct komeda_pipeline *pipe,
 	struct komeda_pipeline_state *new = priv_to_pipe_st(pipe->obj.state);
 	struct komeda_pipeline_state *old;
 	struct komeda_component *c;
-	u32 id;
-	unsigned long changed_comps;
+	u32 id, changed_comps = 0;
 
 	old = komeda_pipeline_get_old_state(pipe, old_state);
 
 	changed_comps = new->active_comps | old->active_comps;
 
-	DRM_DEBUG_ATOMIC("PIPE%d: active_comps: 0x%x, changed: 0x%lx.\n",
+	DRM_DEBUG_ATOMIC("PIPE%d: active_comps: 0x%x, changed: 0x%x.\n",
 			 pipe->id, new->active_comps, changed_comps);
 
-	for_each_set_bit(id, &changed_comps, 32) {
+	dp_for_each_set_bit(id, changed_comps) {
 		c = komeda_pipeline_get_component(pipe, id);
 
 		if (new->active_comps & BIT(c->id))

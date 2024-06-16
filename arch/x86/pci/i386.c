@@ -34,7 +34,7 @@
 #include <linux/errno.h>
 #include <linux/memblock.h>
 
-#include <asm/memtype.h>
+#include <asm/pat.h>
 #include <asm/e820/api.h>
 #include <asm/pci_x86.h>
 #include <asm/io_apic.h>
@@ -366,9 +366,9 @@ static int __init pcibios_assign_resources(void)
 	return 0;
 }
 
-/*
- * This is an fs_initcall (one below subsys_initcall) in order to reserve
- * resources properly.
+/**
+ * called in fs_initcall (one below subsys_initcall),
+ * give a chance for motherboard reserve resources
  */
 fs_initcall(pcibios_assign_resources);
 

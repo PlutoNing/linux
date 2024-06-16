@@ -175,6 +175,19 @@ static inline u16 count_to_clock_divider(unsigned int d)
 	return (u16) d;
 }
 
+static inline u16 ns_to_clock_divider(unsigned int ns)
+{
+	return count_to_clock_divider(
+		DIV_ROUND_CLOSEST(CX23888_IR_REFCLK_FREQ / 1000000 * ns, 1000));
+}
+
+static inline unsigned int clock_divider_to_ns(unsigned int divider)
+{
+	/* Period of the Rx or Tx clock in ns */
+	return DIV_ROUND_CLOSEST((divider + 1) * 1000,
+				 CX23888_IR_REFCLK_FREQ / 1000000);
+}
+
 static inline u16 carrier_freq_to_clock_divider(unsigned int freq)
 {
 	return count_to_clock_divider(
@@ -184,6 +197,13 @@ static inline u16 carrier_freq_to_clock_divider(unsigned int freq)
 static inline unsigned int clock_divider_to_carrier_freq(unsigned int divider)
 {
 	return DIV_ROUND_CLOSEST(CX23888_IR_REFCLK_FREQ, (divider + 1) * 16);
+}
+
+static inline u16 freq_to_clock_divider(unsigned int freq,
+					unsigned int rollovers)
+{
+	return count_to_clock_divider(
+		   DIV_ROUND_CLOSEST(CX23888_IR_REFCLK_FREQ, freq * rollovers));
 }
 
 static inline unsigned int clock_divider_to_freq(unsigned int divider,
@@ -235,7 +255,7 @@ static u32 clock_divider_to_resolution(u16 divider)
 {
 	/*
 	 * Resolution is the duration of 1 tick of the readable portion of
-	 * the pulse width counter as read from the FIFO.  The two lsb's are
+	 * of the pulse width counter as read from the FIFO.  The two lsb's are
 	 * not readable, hence the << 2.  This function returns ns.
 	 */
 	return DIV_ROUND_CLOSEST((1 << 2)  * ((u32) divider + 1) * 1000,
@@ -663,7 +683,7 @@ static int cx23888_ir_rx_read(struct v4l2_subdev *sd, u8 *buf, size_t count,
 		}
 
 		v = (unsigned) pulse_width_count_to_ns(
-				  (u16)(p->hw_fifo_data & FIFO_RXTX), divider) / 1000;
+				  (u16) (p->hw_fifo_data & FIFO_RXTX), divider);
 		if (v > IR_MAX_DURATION)
 			v = IR_MAX_DURATION;
 
@@ -1147,11 +1167,8 @@ int cx23888_ir_probe(struct cx23885_dev *dev)
 		return -ENOMEM;
 
 	spin_lock_init(&state->rx_kfifo_lock);
-	if (kfifo_alloc(&state->rx_kfifo, CX23888_IR_RX_KFIFO_SIZE,
-			GFP_KERNEL)) {
-		kfree(state);
+	if (kfifo_alloc(&state->rx_kfifo, CX23888_IR_RX_KFIFO_SIZE, GFP_KERNEL))
 		return -ENOMEM;
-	}
 
 	state->dev = dev;
 	sd = &state->sd;

@@ -25,10 +25,6 @@ root_check_run_with_sudo "$@"
 
 # Parameter parsing via include
 source ${basedir}/parameters.sh
-
-# Trap EXIT first
-trap_exit
-
 # Set some default params, if they didn't get set
 if [ -z "$DEST_IP" ]; then
     [ -z "$IP6" ] && DEST_IP="198.18.0.42" || DEST_IP="FD00::1"
@@ -37,24 +33,23 @@ fi
 [ -z "$BURST" ]     && BURST=32
 [ -z "$CLONE_SKB" ] && CLONE_SKB="0" # No need for clones when bursting
 [ -z "$COUNT" ]     && COUNT="0" # Zero means indefinitely
-if [ -n "$DEST_IP" ]; then
-    validate_addr${IP6} $DEST_IP
-    read -r DST_MIN DST_MAX <<< $(parse_addr${IP6} $DEST_IP)
-fi
 if [ -n "$DST_PORT" ]; then
-    read -r UDP_DST_MIN UDP_DST_MAX <<< $(parse_ports $DST_PORT)
-    validate_ports $UDP_DST_MIN $UDP_DST_MAX
+    read -r DST_MIN DST_MAX <<< $(parse_ports $DST_PORT)
+    validate_ports $DST_MIN $DST_MAX
 fi
 
+# Base Config
+DELAY="0"  # Zero means max speed
+
 # General cleanup everything since last run
-[ -z "$APPEND" ] && pg_ctrl "reset"
+pg_ctrl "reset"
 
 # Threads are specified with parameter -t value in $THREADS
 for ((thread = $F_THREAD; thread <= $L_THREAD; thread++)); do
     dev=${DEV}@${thread}
 
     # Add remove all other devices and add_device $dev to thread
-    [ -z "$APPEND" ] && pg_thread $thread "rem_device_all"
+    pg_thread $thread "rem_device_all"
     pg_thread $thread "add_device" $dev
 
     # Base config
@@ -67,17 +62,14 @@ for ((thread = $F_THREAD; thread <= $L_THREAD; thread++)); do
 
     # Destination
     pg_set $dev "dst_mac $DST_MAC"
-    pg_set $dev "dst${IP6}_min $DST_MIN"
-    pg_set $dev "dst${IP6}_max $DST_MAX"
+    pg_set $dev "dst$IP6 $DEST_IP"
 
     if [ -n "$DST_PORT" ]; then
 	# Single destination port or random port range
 	pg_set $dev "flag UDPDST_RND"
-	pg_set $dev "udp_dst_min $UDP_DST_MIN"
-	pg_set $dev "udp_dst_max $UDP_DST_MAX"
+	pg_set $dev "udp_dst_min $DST_MIN"
+	pg_set $dev "udp_dst_max $DST_MAX"
     fi
-
-    [ ! -z "$UDP_CSUM" ] && pg_set $dev "flag UDPCSUM"
 
     # Setup burst, for easy testing -b 0 disable bursting
     # (internally in pktgen default and minimum burst=1)
@@ -89,7 +81,7 @@ for ((thread = $F_THREAD; thread <= $L_THREAD; thread++)); do
 done
 
 # Run if user hits control-c
-function print_result() {
+function control_c() {
     # Print results
     for ((thread = $F_THREAD; thread <= $L_THREAD; thread++)); do
 	dev=${DEV}@${thread}
@@ -98,13 +90,7 @@ function print_result() {
     done
 }
 # trap keyboard interrupt (Ctrl-C)
-trap true SIGINT
+trap control_c SIGINT
 
-if [ -z "$APPEND" ]; then
-    echo "Running... ctrl^C to stop" >&2
-    pg_ctrl "start"
-
-    print_result
-else
-    echo "Append mode: config done. Do more or use 'pg_ctrl start' to run"
-fi
+echo "Running... ctrl^C to stop" >&2
+pg_ctrl "start"

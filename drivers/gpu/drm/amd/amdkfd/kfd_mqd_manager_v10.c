@@ -1,6 +1,5 @@
-// SPDX-License-Identifier: GPL-2.0 OR MIT
 /*
- * Copyright 2018-2022 Advanced Micro Devices, Inc.
+ * Copyright 2018 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -43,16 +42,16 @@ static inline struct v10_sdma_mqd *get_sdma_mqd(void *mqd)
 }
 
 static void update_cu_mask(struct mqd_manager *mm, void *mqd,
-			struct mqd_update_info *minfo)
+			   struct queue_properties *q)
 {
 	struct v10_compute_mqd *m;
 	uint32_t se_mask[4] = {0}; /* 4 is the max # of SEs */
 
-	if (!minfo || !minfo->cu_mask.ptr)
+	if (q->cu_mask_count == 0)
 		return;
 
 	mqd_symmetrically_map_cu_mask(mm,
-		minfo->cu_mask.ptr, minfo->cu_mask.count, se_mask, 0);
+		q->cu_mask, q->cu_mask_count, se_mask);
 
 	m = get_mqd(mqd);
 	m->compute_static_thread_mgmt_se0 = se_mask[0];
@@ -67,22 +66,38 @@ static void update_cu_mask(struct mqd_manager *mm, void *mqd,
 		m->compute_static_thread_mgmt_se3);
 }
 
-static void set_priority(struct v10_compute_mqd *m, struct queue_properties *q)
-{
-	m->cp_hqd_pipe_priority = pipe_priority_map[q->priority];
-	m->cp_hqd_queue_priority = q->priority;
-}
-
-static struct kfd_mem_obj *allocate_mqd(struct kfd_node *kfd,
+static struct kfd_mem_obj *allocate_mqd(struct kfd_dev *kfd,
 		struct queue_properties *q)
 {
-	struct kfd_mem_obj *mqd_mem_obj;
+	int retval;
+	struct kfd_mem_obj *mqd_mem_obj = NULL;
 
-	if (kfd_gtt_sa_allocate(kfd, sizeof(struct v10_compute_mqd),
-			&mqd_mem_obj))
+	/* From V9,  for CWSR, the control stack is located on the next page
+	 * boundary after the mqd, we will use the gtt allocation function
+	 * instead of sub-allocation function.
+	 */
+	if (kfd->cwsr_enabled && (q->type == KFD_QUEUE_TYPE_COMPUTE)) {
+		mqd_mem_obj = kzalloc(sizeof(struct kfd_mem_obj), GFP_NOIO);
+		if (!mqd_mem_obj)
+			return NULL;
+		retval = amdgpu_amdkfd_alloc_gtt_mem(kfd->kgd,
+			ALIGN(q->ctl_stack_size, PAGE_SIZE) +
+				ALIGN(sizeof(struct v10_compute_mqd), PAGE_SIZE),
+			&(mqd_mem_obj->gtt_mem),
+			&(mqd_mem_obj->gpu_addr),
+			(void *)&(mqd_mem_obj->cpu_ptr), true);
+	} else {
+		retval = kfd_gtt_sa_allocate(kfd, sizeof(struct v10_compute_mqd),
+				&mqd_mem_obj);
+	}
+
+	if (retval) {
+		kfree(mqd_mem_obj);
 		return NULL;
+	}
 
 	return mqd_mem_obj;
+
 }
 
 static void init_mqd(struct mqd_manager *mm, void **mqd,
@@ -114,19 +129,17 @@ static void init_mqd(struct mqd_manager *mm, void **mqd,
 
 	m->cp_hqd_quantum = 1 << CP_HQD_QUANTUM__QUANTUM_EN__SHIFT |
 			1 << CP_HQD_QUANTUM__QUANTUM_SCALE__SHIFT |
-			1 << CP_HQD_QUANTUM__QUANTUM_DURATION__SHIFT;
+			10 << CP_HQD_QUANTUM__QUANTUM_DURATION__SHIFT;
 
-	/* Set cp_hqd_hq_scheduler0 bit 14 to 1 to have the CP set up the
-	 * DISPATCH_PTR.  This is required for the kfd debugger
-	 */
-	m->cp_hqd_hq_scheduler0 = 1 << 14;
+	m->cp_hqd_pipe_priority = 1;
+	m->cp_hqd_queue_priority = 15;
 
 	if (q->format == KFD_QUEUE_FORMAT_AQL) {
 		m->cp_hqd_aql_control =
 			1 << CP_HQD_AQL_CONTROL__CONTROL0__SHIFT;
 	}
 
-	if (mm->dev->kfd->cwsr_enabled) {
+	if (mm->dev->cwsr_enabled) {
 		m->cp_hqd_persistent_state |=
 			(1 << CP_HQD_PERSISTENT_STATE__QSWITCH_MODE__SHIFT);
 		m->cp_hqd_ctx_save_base_addr_lo =
@@ -142,7 +155,7 @@ static void init_mqd(struct mqd_manager *mm, void **mqd,
 	*mqd = m;
 	if (gart_addr)
 		*gart_addr = addr;
-	mm->update_mqd(mm, m, q, NULL);
+	mm->update_mqd(mm, m, q);
 }
 
 static int load_mqd(struct mqd_manager *mm, void *mqd,
@@ -153,15 +166,14 @@ static int load_mqd(struct mqd_manager *mm, void *mqd,
 	/* AQL write pointer counts in 64B packets, PM4/CP counts in dwords. */
 	uint32_t wptr_shift = (p->format == KFD_QUEUE_FORMAT_AQL ? 4 : 0);
 
-	r = mm->dev->kfd2kgd->hqd_load(mm->dev->adev, mqd, pipe_id, queue_id,
+	r = mm->dev->kfd2kgd->hqd_load(mm->dev->kgd, mqd, pipe_id, queue_id,
 					  (uint32_t __user *)p->write_ptr,
-					  wptr_shift, 0, mms, 0);
+					  wptr_shift, 0, mms);
 	return r;
 }
 
 static void update_mqd(struct mqd_manager *mm, void *mqd,
-			struct queue_properties *q,
-			struct mqd_update_info *minfo)
+		      struct queue_properties *q)
 {
 	struct v10_compute_mqd *m;
 
@@ -170,7 +182,6 @@ static void update_mqd(struct mqd_manager *mm, void *mqd,
 	m->cp_hqd_pq_control = 5 << CP_HQD_PQ_CONTROL__RPTR_BLOCK_SIZE__SHIFT;
 	m->cp_hqd_pq_control |=
 			ffs(q->queue_size / sizeof(unsigned int)) - 1 - 1;
-	m->cp_hqd_pq_control |= CP_HQD_PQ_CONTROL__UNORD_DISPATCH_MASK;
 	pr_debug("cp_hqd_pq_control 0x%x\n", m->cp_hqd_pq_control);
 
 	m->cp_hqd_pq_base_lo = lower_32_bits((uint64_t)q->queue_address >> 8);
@@ -211,98 +222,74 @@ static void update_mqd(struct mqd_manager *mm, void *mqd,
 		/* GC 10 removed WPP_CLAMP from PQ Control */
 		m->cp_hqd_pq_control |= CP_HQD_PQ_CONTROL__NO_UPDATE_RPTR_MASK |
 				2 << CP_HQD_PQ_CONTROL__SLOT_BASED_WPTR__SHIFT |
-				1 << CP_HQD_PQ_CONTROL__QUEUE_FULL_EN__SHIFT;
+				1 << CP_HQD_PQ_CONTROL__QUEUE_FULL_EN__SHIFT ;
 		m->cp_hqd_pq_doorbell_control |=
 			1 << CP_HQD_PQ_DOORBELL_CONTROL__DOORBELL_BIF_DROP__SHIFT;
 	}
-	if (mm->dev->kfd->cwsr_enabled)
+	if (mm->dev->cwsr_enabled)
 		m->cp_hqd_ctx_save_control = 0;
 
-	update_cu_mask(mm, mqd, minfo);
-	set_priority(m, q);
+	update_cu_mask(mm, mqd, q);
 
-	q->is_active = QUEUE_IS_ACTIVE(*q);
+	q->is_active = (q->queue_size > 0 &&
+			q->queue_address != 0 &&
+			q->queue_percent > 0 &&
+			!q->is_evicted);
 }
 
-static uint32_t read_doorbell_id(void *mqd)
+static int destroy_mqd(struct mqd_manager *mm, void *mqd,
+		       enum kfd_preempt_type type,
+		       unsigned int timeout, uint32_t pipe_id,
+		       uint32_t queue_id)
 {
-	struct v10_compute_mqd *m = (struct v10_compute_mqd *)mqd;
+	return mm->dev->kfd2kgd->hqd_destroy
+		(mm->dev->kgd, mqd, type, timeout,
+		 pipe_id, queue_id);
+}
 
-	return m->queue_doorbell_id0;
+static void free_mqd(struct mqd_manager *mm, void *mqd,
+			struct kfd_mem_obj *mqd_mem_obj)
+{
+	struct kfd_dev *kfd = mm->dev;
+
+	if (mqd_mem_obj->gtt_mem) {
+		amdgpu_amdkfd_free_gtt_mem(kfd->kgd, mqd_mem_obj->gtt_mem);
+		kfree(mqd_mem_obj);
+	} else {
+		kfd_gtt_sa_free(mm->dev, mqd_mem_obj);
+	}
+}
+
+static bool is_occupied(struct mqd_manager *mm, void *mqd,
+			uint64_t queue_address,	uint32_t pipe_id,
+			uint32_t queue_id)
+{
+	return mm->dev->kfd2kgd->hqd_is_occupied(
+		mm->dev->kgd, queue_address,
+		pipe_id, queue_id);
 }
 
 static int get_wave_state(struct mqd_manager *mm, void *mqd,
-			  struct queue_properties *q,
 			  void __user *ctl_stack,
 			  u32 *ctl_stack_used_size,
 			  u32 *save_area_used_size)
 {
 	struct v10_compute_mqd *m;
-	struct kfd_context_save_area_header header;
+
+	/* Control stack is located one page after MQD. */
+	void *mqd_ctl_stack = (void *)((uintptr_t)mqd + PAGE_SIZE);
 
 	m = get_mqd(mqd);
 
-	/* Control stack is written backwards, while workgroup context data
-	 * is written forwards. Both starts from m->cp_hqd_cntl_stack_size.
-	 * Current position is at m->cp_hqd_cntl_stack_offset and
-	 * m->cp_hqd_wg_state_offset, respectively.
-	 */
 	*ctl_stack_used_size = m->cp_hqd_cntl_stack_size -
 		m->cp_hqd_cntl_stack_offset;
 	*save_area_used_size = m->cp_hqd_wg_state_offset -
 		m->cp_hqd_cntl_stack_size;
 
-	/* Control stack is not copied to user mode for GFXv10 because
-	 * it's part of the context save area that is already
-	 * accessible to user mode
-	 */
-
-	header.wave_state.control_stack_size = *ctl_stack_used_size;
-	header.wave_state.wave_state_size = *save_area_used_size;
-
-	header.wave_state.wave_state_offset = m->cp_hqd_wg_state_offset;
-	header.wave_state.control_stack_offset = m->cp_hqd_cntl_stack_offset;
-
-	if (copy_to_user(ctl_stack, &header, sizeof(header.wave_state)))
+	if (copy_to_user(ctl_stack, mqd_ctl_stack, m->cp_hqd_cntl_stack_size))
 		return -EFAULT;
 
 	return 0;
-}
-
-static void checkpoint_mqd(struct mqd_manager *mm, void *mqd, void *mqd_dst, void *ctl_stack_dst)
-{
-	struct v10_compute_mqd *m;
-
-	m = get_mqd(mqd);
-
-	memcpy(mqd_dst, m, sizeof(struct v10_compute_mqd));
-}
-
-static void restore_mqd(struct mqd_manager *mm, void **mqd,
-			struct kfd_mem_obj *mqd_mem_obj, uint64_t *gart_addr,
-			struct queue_properties *qp,
-			const void *mqd_src,
-			const void *ctl_stack_src, const u32 ctl_stack_size)
-{
-	uint64_t addr;
-	struct v10_compute_mqd *m;
-
-	m = (struct v10_compute_mqd *) mqd_mem_obj->cpu_ptr;
-	addr = mqd_mem_obj->gpu_addr;
-
-	memcpy(m, mqd_src, sizeof(*m));
-
-	*mqd = m;
-	if (gart_addr)
-		*gart_addr = addr;
-
-	m->cp_hqd_pq_doorbell_control =
-		qp->doorbell_off <<
-			CP_HQD_PQ_DOORBELL_CONTROL__DOORBELL_OFFSET__SHIFT;
-	pr_debug("cp_hqd_pq_doorbell_control 0x%x\n",
-			m->cp_hqd_pq_doorbell_control);
-
-	qp->is_active = 0;
 }
 
 static void init_mqd_hiq(struct mqd_manager *mm, void **mqd,
@@ -319,24 +306,16 @@ static void init_mqd_hiq(struct mqd_manager *mm, void **mqd,
 			1 << CP_HQD_PQ_CONTROL__KMD_QUEUE__SHIFT;
 }
 
-static int destroy_hiq_mqd(struct mqd_manager *mm, void *mqd,
-			enum kfd_preempt_type type, unsigned int timeout,
-			uint32_t pipe_id, uint32_t queue_id)
+static void update_mqd_hiq(struct mqd_manager *mm, void *mqd,
+			struct queue_properties *q)
 {
-	int err;
 	struct v10_compute_mqd *m;
-	u32 doorbell_off;
 
+	update_mqd(mm, mqd, q);
+
+	/* TODO: what's the point? update_mqd already does this. */
 	m = get_mqd(mqd);
-
-	doorbell_off = m->cp_hqd_pq_doorbell_control >>
-			CP_HQD_PQ_DOORBELL_CONTROL__DOORBELL_OFFSET__SHIFT;
-
-	err = amdgpu_amdkfd_unmap_hiq(mm->dev->adev, doorbell_off, 0);
-	if (err)
-		pr_debug("Destroy HIQ MQD failed: %d\n", err);
-
-	return err;
+	m->cp_hqd_vmid = q->vmid;
 }
 
 static void init_mqd_sdma(struct mqd_manager *mm, void **mqd,
@@ -353,14 +332,22 @@ static void init_mqd_sdma(struct mqd_manager *mm, void **mqd,
 	if (gart_addr)
 		*gart_addr = mqd_mem_obj->gpu_addr;
 
-	mm->update_mqd(mm, m, q, NULL);
+	mm->update_mqd(mm, m, q);
+}
+
+static int load_mqd_sdma(struct mqd_manager *mm, void *mqd,
+		uint32_t pipe_id, uint32_t queue_id,
+		struct queue_properties *p, struct mm_struct *mms)
+{
+	return mm->dev->kfd2kgd->hqd_sdma_load(mm->dev->kgd, mqd,
+					       (uint32_t __user *)p->write_ptr,
+					       mms);
 }
 
 #define SDMA_RLC_DUMMY_DEFAULT 0xf
 
 static void update_mqd_sdma(struct mqd_manager *mm, void *mqd,
-			struct queue_properties *q,
-			struct mqd_update_info *minfo)
+		struct queue_properties *q)
 {
 	struct v10_sdma_mqd *m;
 
@@ -382,44 +369,30 @@ static void update_mqd_sdma(struct mqd_manager *mm, void *mqd,
 	m->sdma_queue_id = q->sdma_queue_id;
 	m->sdmax_rlcx_dummy_reg = SDMA_RLC_DUMMY_DEFAULT;
 
-	q->is_active = QUEUE_IS_ACTIVE(*q);
+
+	q->is_active = (q->queue_size > 0 &&
+			q->queue_address != 0 &&
+			q->queue_percent > 0 &&
+			!q->is_evicted);
 }
 
-static void checkpoint_mqd_sdma(struct mqd_manager *mm,
-				void *mqd,
-				void *mqd_dst,
-				void *ctl_stack_dst)
+/*
+ *  * preempt type here is ignored because there is only one way
+ *  * to preempt sdma queue
+ */
+static int destroy_mqd_sdma(struct mqd_manager *mm, void *mqd,
+		enum kfd_preempt_type type,
+		unsigned int timeout, uint32_t pipe_id,
+		uint32_t queue_id)
 {
-	struct v10_sdma_mqd *m;
-
-	m = get_sdma_mqd(mqd);
-
-	memcpy(mqd_dst, m, sizeof(struct v10_sdma_mqd));
+	return mm->dev->kfd2kgd->hqd_sdma_destroy(mm->dev->kgd, mqd, timeout);
 }
 
-static void restore_mqd_sdma(struct mqd_manager *mm, void **mqd,
-			     struct kfd_mem_obj *mqd_mem_obj, uint64_t *gart_addr,
-			     struct queue_properties *qp,
-			     const void *mqd_src,
-			     const void *ctl_stack_src,
-			     const u32 ctl_stack_size)
+static bool is_occupied_sdma(struct mqd_manager *mm, void *mqd,
+		uint64_t queue_address, uint32_t pipe_id,
+		uint32_t queue_id)
 {
-	uint64_t addr;
-	struct v10_sdma_mqd *m;
-
-	m = (struct v10_sdma_mqd *) mqd_mem_obj->cpu_ptr;
-	addr = mqd_mem_obj->gpu_addr;
-
-	memcpy(m, mqd_src, sizeof(*m));
-
-	m->sdmax_rlcx_doorbell_offset =
-		qp->doorbell_off << SDMA0_RLC0_DOORBELL_OFFSET__OFFSET__SHIFT;
-
-	*mqd = m;
-	if (gart_addr)
-		*gart_addr = addr;
-
-	qp->is_active = 0;
+	return mm->dev->kfd2kgd->hqd_sdma_is_occupied(mm->dev->kgd, mqd);
 }
 
 #if defined(CONFIG_DEBUG_FS)
@@ -441,14 +414,14 @@ static int debugfs_show_mqd_sdma(struct seq_file *m, void *data)
 #endif
 
 struct mqd_manager *mqd_manager_init_v10(enum KFD_MQD_TYPE type,
-		struct kfd_node *dev)
+		struct kfd_dev *dev)
 {
 	struct mqd_manager *mqd;
 
 	if (WARN_ON(type >= KFD_MQD_TYPE_MAX))
 		return NULL;
 
-	mqd = kzalloc(sizeof(*mqd), GFP_KERNEL);
+	mqd = kzalloc(sizeof(*mqd), GFP_NOIO);
 	if (!mqd)
 		return NULL;
 
@@ -456,19 +429,17 @@ struct mqd_manager *mqd_manager_init_v10(enum KFD_MQD_TYPE type,
 
 	switch (type) {
 	case KFD_MQD_TYPE_CP:
+	case KFD_MQD_TYPE_COMPUTE:
 		pr_debug("%s@%i\n", __func__, __LINE__);
 		mqd->allocate_mqd = allocate_mqd;
 		mqd->init_mqd = init_mqd;
-		mqd->free_mqd = kfd_free_mqd_cp;
+		mqd->free_mqd = free_mqd;
 		mqd->load_mqd = load_mqd;
 		mqd->update_mqd = update_mqd;
-		mqd->destroy_mqd = kfd_destroy_mqd_cp;
-		mqd->is_occupied = kfd_is_occupied_cp;
+		mqd->destroy_mqd = destroy_mqd;
+		mqd->is_occupied = is_occupied;
 		mqd->mqd_size = sizeof(struct v10_compute_mqd);
 		mqd->get_wave_state = get_wave_state;
-		mqd->checkpoint_mqd = checkpoint_mqd;
-		mqd->restore_mqd = restore_mqd;
-		mqd->mqd_stride = kfd_mqd_stride;
 #if defined(CONFIG_DEBUG_FS)
 		mqd->debugfs_show_mqd = debugfs_show_mqd;
 #endif
@@ -479,26 +450,24 @@ struct mqd_manager *mqd_manager_init_v10(enum KFD_MQD_TYPE type,
 		mqd->allocate_mqd = allocate_hiq_mqd;
 		mqd->init_mqd = init_mqd_hiq;
 		mqd->free_mqd = free_mqd_hiq_sdma;
-		mqd->load_mqd = kfd_hiq_load_mqd_kiq;
-		mqd->update_mqd = update_mqd;
-		mqd->destroy_mqd = destroy_hiq_mqd;
-		mqd->is_occupied = kfd_is_occupied_cp;
+		mqd->load_mqd = load_mqd;
+		mqd->update_mqd = update_mqd_hiq;
+		mqd->destroy_mqd = destroy_mqd;
+		mqd->is_occupied = is_occupied;
 		mqd->mqd_size = sizeof(struct v10_compute_mqd);
-		mqd->mqd_stride = kfd_mqd_stride;
 #if defined(CONFIG_DEBUG_FS)
 		mqd->debugfs_show_mqd = debugfs_show_mqd;
 #endif
-		mqd->read_doorbell_id = read_doorbell_id;
 		pr_debug("%s@%i\n", __func__, __LINE__);
 		break;
 	case KFD_MQD_TYPE_DIQ:
-		mqd->allocate_mqd = allocate_mqd;
+		mqd->allocate_mqd = allocate_hiq_mqd;
 		mqd->init_mqd = init_mqd_hiq;
-		mqd->free_mqd = kfd_free_mqd_cp;
+		mqd->free_mqd = free_mqd;
 		mqd->load_mqd = load_mqd;
-		mqd->update_mqd = update_mqd;
-		mqd->destroy_mqd = kfd_destroy_mqd_cp;
-		mqd->is_occupied = kfd_is_occupied_cp;
+		mqd->update_mqd = update_mqd_hiq;
+		mqd->destroy_mqd = destroy_mqd;
+		mqd->is_occupied = is_occupied;
 		mqd->mqd_size = sizeof(struct v10_compute_mqd);
 #if defined(CONFIG_DEBUG_FS)
 		mqd->debugfs_show_mqd = debugfs_show_mqd;
@@ -509,14 +478,11 @@ struct mqd_manager *mqd_manager_init_v10(enum KFD_MQD_TYPE type,
 		mqd->allocate_mqd = allocate_sdma_mqd;
 		mqd->init_mqd = init_mqd_sdma;
 		mqd->free_mqd = free_mqd_hiq_sdma;
-		mqd->load_mqd = kfd_load_mqd_sdma;
+		mqd->load_mqd = load_mqd_sdma;
 		mqd->update_mqd = update_mqd_sdma;
-		mqd->destroy_mqd = kfd_destroy_mqd_sdma;
-		mqd->is_occupied = kfd_is_occupied_sdma;
-		mqd->checkpoint_mqd = checkpoint_mqd_sdma;
-		mqd->restore_mqd = restore_mqd_sdma;
+		mqd->destroy_mqd = destroy_mqd_sdma;
+		mqd->is_occupied = is_occupied_sdma;
 		mqd->mqd_size = sizeof(struct v10_sdma_mqd);
-		mqd->mqd_stride = kfd_mqd_stride;
 #if defined(CONFIG_DEBUG_FS)
 		mqd->debugfs_show_mqd = debugfs_show_mqd_sdma;
 #endif

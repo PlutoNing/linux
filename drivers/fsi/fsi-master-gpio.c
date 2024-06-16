@@ -678,8 +678,7 @@ static void fsi_master_gpio_init_external(struct fsi_master_gpio *master)
 	gpiod_direction_input(master->gpio_data);
 }
 
-static int fsi_master_gpio_link_enable(struct fsi_master *_master, int link,
-				       bool enable)
+static int fsi_master_gpio_link_enable(struct fsi_master *_master, int link)
 {
 	struct fsi_master_gpio *master = to_fsi_master_gpio(_master);
 	int rc = -EBUSY;
@@ -689,7 +688,7 @@ static int fsi_master_gpio_link_enable(struct fsi_master *_master, int link,
 
 	mutex_lock(&master->cmd_lock);
 	if (!master->external_mode) {
-		gpiod_set_value(master->gpio_enable, enable ? 1 : 0);
+		gpiod_set_value(master->gpio_enable, 1);
 		rc = 0;
 	}
 	mutex_unlock(&master->cmd_lock);
@@ -761,7 +760,7 @@ static DEVICE_ATTR(external_mode, 0664,
 
 static void fsi_master_gpio_release(struct device *dev)
 {
-	struct fsi_master_gpio *master = to_fsi_master_gpio(to_fsi_master(dev));
+	struct fsi_master_gpio *master = to_fsi_master_gpio(dev_to_fsi_master(dev));
 
 	of_node_put(dev_of_node(master->dev));
 
@@ -882,7 +881,6 @@ static const struct of_device_id fsi_master_gpio_match[] = {
 	{ .compatible = "fsi-master-gpio" },
 	{ },
 };
-MODULE_DEVICE_TABLE(of, fsi_master_gpio_match);
 
 static struct platform_driver fsi_master_gpio_driver = {
 	.driver = {

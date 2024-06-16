@@ -7,8 +7,7 @@
 #include <linux/interrupt.h>
 #include <linux/etherdevice.h>
 #include <linux/platform_device.h>
-#include <linux/property.h>
-#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/of_net.h>
 #include <linux/of_mdio.h>
 #include <linux/reset.h>
@@ -430,7 +429,7 @@ static void hix5hd2_port_disable(struct hix5hd2_priv *priv)
 static void hix5hd2_hw_set_mac_addr(struct net_device *dev)
 {
 	struct hix5hd2_priv *priv = netdev_priv(dev);
-	const unsigned char *mac = dev->dev_addr;
+	unsigned char *mac = dev->dev_addr;
 	u32 val;
 
 	val = mac[1] | (mac[0] << 8);
@@ -551,7 +550,7 @@ static int hix5hd2_rx(struct net_device *dev, int limit)
 		skb->protocol = eth_type_trans(skb, dev);
 		napi_gro_receive(&priv->napi, skb);
 		dev->stats.rx_packets++;
-		dev->stats.rx_bytes += len;
+		dev->stats.rx_bytes += skb->len;
 next:
 		pos = dma_ring_incr(pos, RX_DESC_NUM);
 	}
@@ -894,7 +893,7 @@ static void hix5hd2_tx_timeout_task(struct work_struct *work)
 	hix5hd2_net_open(priv->netdev);
 }
 
-static void hix5hd2_net_timeout(struct net_device *dev, unsigned int txqueue)
+static void hix5hd2_net_timeout(struct net_device *dev)
 {
 	struct hix5hd2_priv *priv = netdev_priv(dev);
 
@@ -1025,9 +1024,9 @@ static int hix5hd2_init_sg_desc_queue(struct hix5hd2_priv *priv)
 	struct sg_desc *desc;
 	dma_addr_t phys_addr;
 
-	desc = dma_alloc_coherent(priv->dev,
-				  TX_DESC_NUM * sizeof(struct sg_desc),
-				  &phys_addr, GFP_KERNEL);
+	desc = (struct sg_desc *)dma_alloc_coherent(priv->dev,
+				TX_DESC_NUM * sizeof(struct sg_desc),
+				&phys_addr, GFP_KERNEL);
 	if (!desc)
 		return -ENOMEM;
 
@@ -1095,9 +1094,11 @@ static int hix5hd2_dev_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct device_node *node = dev->of_node;
+	const struct of_device_id *of_id = NULL;
 	struct net_device *ndev;
 	struct hix5hd2_priv *priv;
 	struct mii_bus *bus;
+	const char *mac_addr;
 	int ret;
 
 	ndev = alloc_etherdev(sizeof(struct hix5hd2_priv));
@@ -1110,7 +1111,12 @@ static int hix5hd2_dev_probe(struct platform_device *pdev)
 	priv->dev = dev;
 	priv->netdev = ndev;
 
-	priv->hw_cap = (unsigned long)device_get_match_data(dev);
+	of_id = of_match_device(hix5hd2_of_match, dev);
+	if (!of_id) {
+		ret = -EINVAL;
+		goto out_free_netdev;
+	}
+	priv->hw_cap = (unsigned long)of_id->data;
 
 	priv->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(priv->base)) {
@@ -1187,9 +1193,10 @@ static int hix5hd2_dev_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_free_mdio;
 
-	ret = of_get_phy_mode(node, &priv->phy_mode);
-	if (ret) {
+	priv->phy_mode = of_get_phy_mode(node);
+	if ((int)priv->phy_mode < 0) {
 		netdev_err(ndev, "not find phy-mode\n");
+		ret = -EINVAL;
 		goto err_mdiobus;
 	}
 
@@ -1201,8 +1208,9 @@ static int hix5hd2_dev_probe(struct platform_device *pdev)
 	}
 
 	ndev->irq = platform_get_irq(pdev, 0);
-	if (ndev->irq < 0) {
-		ret = ndev->irq;
+	if (ndev->irq <= 0) {
+		netdev_err(ndev, "No irq resource\n");
+		ret = -EINVAL;
 		goto out_phy_node;
 	}
 
@@ -1213,8 +1221,10 @@ static int hix5hd2_dev_probe(struct platform_device *pdev)
 		goto out_phy_node;
 	}
 
-	ret = of_get_ethdev_address(node, ndev);
-	if (ret) {
+	mac_addr = of_get_mac_address(node);
+	if (!IS_ERR(mac_addr))
+		ether_addr_copy(ndev->dev_addr, mac_addr);
+	if (!is_valid_ether_addr(ndev->dev_addr)) {
 		eth_hw_addr_random(ndev);
 		netdev_warn(ndev, "using random MAC address %pM\n",
 			    ndev->dev_addr);
@@ -1237,7 +1247,7 @@ static int hix5hd2_dev_probe(struct platform_device *pdev)
 	if (ret)
 		goto out_phy_node;
 
-	netif_napi_add(ndev, &priv->napi, hix5hd2_poll);
+	netif_napi_add(ndev, &priv->napi, hix5hd2_poll, NAPI_POLL_WEIGHT);
 
 	if (HAS_CAP_TSO(priv->hw_cap)) {
 		ret = hix5hd2_init_sg_desc_queue(priv);
@@ -1277,7 +1287,7 @@ out_free_netdev:
 	return ret;
 }
 
-static void hix5hd2_dev_remove(struct platform_device *pdev)
+static int hix5hd2_dev_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct hix5hd2_priv *priv = netdev_priv(ndev);
@@ -1293,6 +1303,8 @@ static void hix5hd2_dev_remove(struct platform_device *pdev)
 	of_node_put(priv->phy_node);
 	cancel_work_sync(&priv->tx_timeout_task);
 	free_netdev(ndev);
+
+	return 0;
 }
 
 static const struct of_device_id hix5hd2_of_match[] = {
@@ -1312,7 +1324,7 @@ static struct platform_driver hix5hd2_dev_driver = {
 		.of_match_table = hix5hd2_of_match,
 	},
 	.probe = hix5hd2_dev_probe,
-	.remove_new = hix5hd2_dev_remove,
+	.remove = hix5hd2_dev_remove,
 };
 
 module_platform_driver(hix5hd2_dev_driver);

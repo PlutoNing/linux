@@ -32,7 +32,7 @@ struct vpd_cbmem {
 	u32 version;
 	u32 ro_size;
 	u32 rw_size;
-	u8  blob[];
+	u8  blob[0];
 };
 
 struct vpd_section {
@@ -298,19 +298,15 @@ static int vpd_probe(struct coreboot_device *dev)
 	return 0;
 }
 
-static void vpd_remove(struct coreboot_device *dev)
+static int vpd_remove(struct coreboot_device *dev)
 {
 	vpd_section_destroy(&ro_vpd);
 	vpd_section_destroy(&rw_vpd);
 
 	kobject_put(vpd_kobj);
-}
 
-static const struct coreboot_device_id vpd_ids[] = {
-	{ .tag = CB_TAG_VPD },
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(coreboot, vpd_ids);
+	return 0;
+}
 
 static struct coreboot_driver vpd_driver = {
 	.probe = vpd_probe,
@@ -318,7 +314,7 @@ static struct coreboot_driver vpd_driver = {
 	.drv = {
 		.name = "vpd",
 	},
-	.id_table = vpd_ids,
+	.tag = CB_TAG_VPD,
 };
 module_coreboot_driver(vpd_driver);
 

@@ -516,6 +516,9 @@ static int hhf_change(struct Qdisc *sch, struct nlattr *opt,
 	u32 new_quantum = q->quantum;
 	u32 new_hhf_non_hh_weight = q->hhf_non_hh_weight;
 
+	if (!opt)
+		return -EINVAL;
+
 	err = nla_parse_nested_deprecated(tb, TCA_HHF_MAX, opt, hhf_policy,
 					  NULL);
 	if (err < 0)
@@ -702,7 +705,6 @@ static struct Qdisc_ops hhf_qdisc_ops __read_mostly = {
 	.dump_stats	=	hhf_dump_stats,
 	.owner		=	THIS_MODULE,
 };
-MODULE_ALIAS_NET_SCH("hhf");
 
 static int __init hhf_module_init(void)
 {
@@ -719,4 +721,3 @@ module_exit(hhf_module_exit)
 MODULE_AUTHOR("Terry Lam");
 MODULE_AUTHOR("Nandita Dukkipati");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Heavy-Hitter Filter (HHF)");

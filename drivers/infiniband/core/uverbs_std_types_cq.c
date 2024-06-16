@@ -33,7 +33,6 @@
 #include <rdma/uverbs_std_types.h>
 #include "rdma_core.h"
 #include "uverbs.h"
-#include "restrack.h"
 
 static int uverbs_free_cq(struct ib_uobject *uobject,
 			  enum rdma_remove_reason why,
@@ -42,20 +41,21 @@ static int uverbs_free_cq(struct ib_uobject *uobject,
 	struct ib_cq *cq = uobject->object;
 	struct ib_uverbs_event_queue *ev_queue = cq->cq_context;
 	struct ib_ucq_object *ucq =
-		container_of(uobject, struct ib_ucq_object, uevent.uobject);
+		container_of(uobject, struct ib_ucq_object, uobject);
 	int ret;
 
 	ret = ib_destroy_cq_user(cq, &attrs->driver_udata);
-	if (ret)
+	if (ib_is_destroy_retryable(ret, why, uobject))
 		return ret;
 
 	ib_uverbs_release_ucq(
+		attrs->ufile,
 		ev_queue ? container_of(ev_queue,
 					struct ib_uverbs_completion_event_file,
 					ev_queue) :
 			   NULL,
 		ucq);
-	return 0;
+	return ret;
 }
 
 static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
@@ -63,7 +63,7 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 {
 	struct ib_ucq_object *obj = container_of(
 		uverbs_attr_get_uobject(attrs, UVERBS_ATTR_CREATE_CQ_HANDLE),
-		typeof(*obj), uevent.uobject);
+		typeof(*obj), uobject);
 	struct ib_device *ib_dev = attrs->context->device;
 	int ret;
 	u64 user_handle;
@@ -101,16 +101,15 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 		uverbs_uobject_get(ev_file_uobj);
 	}
 
-	obj->uevent.event_file = ib_uverbs_get_async_event(
-		attrs, UVERBS_ATTR_CREATE_CQ_EVENT_FD);
-
 	if (attr.comp_vector >= attrs->ufile->device->num_comp_vectors) {
 		ret = -EINVAL;
 		goto err_event_file;
 	}
 
+	obj->comp_events_reported  = 0;
+	obj->async_events_reported = 0;
 	INIT_LIST_HEAD(&obj->comp_list);
-	INIT_LIST_HEAD(&obj->uevent.event_list);
+	INIT_LIST_HEAD(&obj->async_list);
 
 	cq = rdma_zalloc_drv_obj(ib_dev, ib_cq);
 	if (!cq) {
@@ -119,34 +118,33 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_CREATE)(
 	}
 
 	cq->device        = ib_dev;
-	cq->uobject       = obj;
+	cq->uobject       = &obj->uobject;
 	cq->comp_handler  = ib_uverbs_comp_handler;
 	cq->event_handler = ib_uverbs_cq_event_handler;
 	cq->cq_context    = ev_file ? &ev_file->ev_queue : NULL;
 	atomic_set(&cq->usecnt, 0);
-
-	rdma_restrack_new(&cq->res, RDMA_RESTRACK_CQ);
-	rdma_restrack_set_name(&cq->res, NULL);
+	cq->res.type = RDMA_RESTRACK_CQ;
 
 	ret = ib_dev->ops.create_cq(cq, &attr, &attrs->driver_udata);
 	if (ret)
 		goto err_free;
 
-	obj->uevent.uobject.object = cq;
-	obj->uevent.uobject.user_handle = user_handle;
-	rdma_restrack_add(&cq->res);
-	uverbs_finalize_uobj_create(attrs, UVERBS_ATTR_CREATE_CQ_HANDLE);
+	obj->uobject.object = cq;
+	obj->uobject.user_handle = user_handle;
+	rdma_restrack_uadd(&cq->res);
 
 	ret = uverbs_copy_to(attrs, UVERBS_ATTR_CREATE_CQ_RESP_CQE, &cq->cqe,
 			     sizeof(cq->cqe));
-	return ret;
+	if (ret)
+		goto err_cq;
 
+	return 0;
+err_cq:
+	ib_destroy_cq_user(cq, uverbs_get_cleared_udata(attrs));
+	cq = NULL;
 err_free:
-	rdma_restrack_put(&cq->res);
 	kfree(cq);
 err_event_file:
-	if (obj->uevent.event_file)
-		uverbs_uobject_put(&obj->uevent.event_file->uobj);
 	if (ev_file)
 		uverbs_uobject_put(ev_file_uobj);
 	return ret;
@@ -176,10 +174,6 @@ DECLARE_UVERBS_NAMED_METHOD(
 	UVERBS_ATTR_PTR_OUT(UVERBS_ATTR_CREATE_CQ_RESP_CQE,
 			    UVERBS_ATTR_TYPE(u32),
 			    UA_MANDATORY),
-	UVERBS_ATTR_FD(UVERBS_ATTR_CREATE_CQ_EVENT_FD,
-		       UVERBS_OBJECT_ASYNC_EVENT,
-		       UVERBS_ACCESS_READ,
-		       UA_OPTIONAL),
 	UVERBS_ATTR_UHW());
 
 static int UVERBS_HANDLER(UVERBS_METHOD_CQ_DESTROY)(
@@ -188,10 +182,10 @@ static int UVERBS_HANDLER(UVERBS_METHOD_CQ_DESTROY)(
 	struct ib_uobject *uobj =
 		uverbs_attr_get_uobject(attrs, UVERBS_ATTR_DESTROY_CQ_HANDLE);
 	struct ib_ucq_object *obj =
-		container_of(uobj, struct ib_ucq_object, uevent.uobject);
+		container_of(uobj, struct ib_ucq_object, uobject);
 	struct ib_uverbs_destroy_cq_resp resp = {
 		.comp_events_reported = obj->comp_events_reported,
-		.async_events_reported = obj->uevent.events_reported
+		.async_events_reported = obj->async_events_reported
 	};
 
 	return uverbs_copy_to(attrs, UVERBS_ATTR_DESTROY_CQ_RESP, &resp,
@@ -211,8 +205,11 @@ DECLARE_UVERBS_NAMED_METHOD(
 DECLARE_UVERBS_NAMED_OBJECT(
 	UVERBS_OBJECT_CQ,
 	UVERBS_TYPE_ALLOC_IDR_SZ(sizeof(struct ib_ucq_object), uverbs_free_cq),
+
+#if IS_ENABLED(CONFIG_INFINIBAND_EXP_LEGACY_VERBS_NEW_UAPI)
 	&UVERBS_METHOD(UVERBS_METHOD_CQ_CREATE),
 	&UVERBS_METHOD(UVERBS_METHOD_CQ_DESTROY)
+#endif
 );
 
 const struct uapi_definition uverbs_def_obj_cq[] = {

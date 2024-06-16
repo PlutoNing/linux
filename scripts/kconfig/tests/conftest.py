@@ -53,10 +53,6 @@ class Conf:
         # Override 'srctree' environment to make the test as the top directory
         extra_env['srctree'] = self._test_dir
 
-        # Clear KCONFIG_DEFCONFIG_LIST to keep unit tests from being affected
-        # by the user's environment.
-        extra_env['KCONFIG_DEFCONFIG_LIST'] = ''
-
         # Run Kconfig in a temporary directory.
         # This directory is automatically removed when done.
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -154,10 +150,12 @@ class Conf:
         defconfig_path = os.path.join(self._test_dir, defconfig)
         return self._run_conf('--defconfig={}'.format(defconfig_path))
 
-    def _allconfig(self, mode, all_config, extra_env={}):
+    def _allconfig(self, mode, all_config):
         if all_config:
             all_config_path = os.path.join(self._test_dir, all_config)
-            extra_env['KCONFIG_ALLCONFIG'] = all_config_path
+            extra_env = {'KCONFIG_ALLCONFIG': all_config_path}
+        else:
+            extra_env = {}
 
         return self._run_conf('--{}config'.format(mode), extra_env=extra_env)
 
@@ -193,19 +191,13 @@ class Conf:
         """
         return self._allconfig('alldef', all_config)
 
-    def randconfig(self, all_config=None, seed=None):
+    def randconfig(self, all_config=None):
         """Run randconfig.
 
         all_config: fragment config file for KCONFIG_ALLCONFIG (optional)
-        seed: the seed for randconfig (optional)
         returncode: exit status of the Kconfig executable
         """
-        if seed is not None:
-            extra_env = {'KCONFIG_SEED': hex(seed)}
-        else:
-            extra_env = {}
-
-        return self._allconfig('rand', all_config, extra_env=extra_env)
+        return self._allconfig('rand', all_config)
 
     def savedefconfig(self, dot_config):
         """Run savedefconfig.

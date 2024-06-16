@@ -1,4 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-only
-userprogs-always-y += test-fsmount test-statx
+# List of programs to build
+hostprogs-y := \
+	test-fsmount \
+	test-statx
 
-userccflags += -I usr/include
+# Tell kbuild to always build the programs
+always := $(hostprogs-y)
+
+HOSTCFLAGS_test-fsmount.o += -I$(objtree)/usr/include
+HOSTCFLAGS_test-statx.o += -I$(objtree)/usr/include

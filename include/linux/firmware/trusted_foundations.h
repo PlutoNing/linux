@@ -32,7 +32,6 @@
 #define TF_PM_MODE_LP1_NO_MC_CLK	2
 #define TF_PM_MODE_LP2			3
 #define TF_PM_MODE_LP2_NOFLUSH_L2	4
-#define TF_PM_MODE_NONE			5
 
 struct trusted_foundations_platform_data {
 	unsigned int version_major;
@@ -71,16 +70,12 @@ static inline void register_trusted_foundations(
 
 static inline void of_register_trusted_foundations(void)
 {
-	struct device_node *np = of_find_compatible_node(NULL, NULL, "tlm,trusted-foundations");
-
-	if (!np)
-		return;
-	of_node_put(np);
 	/*
 	 * If we find the target should enable TF but does not support it,
 	 * fail as the system won't be able to do much anyway
 	 */
-	register_trusted_foundations(NULL);
+	if (of_find_compatible_node(NULL, NULL, "tlm,trusted-foundations"))
+		register_trusted_foundations(NULL);
 }
 
 static inline bool trusted_foundations_registered(void)

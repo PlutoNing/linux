@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/slab.h>
+#include <asm/prom.h>
 #include <asm/rtas.h>
 #include <asm/firmware.h>
 #include <asm/machdep.h>
@@ -23,6 +24,7 @@
 #include <asm/topology.h>
 
 #include "pseries.h"
+#include "offline_states.h"
 
 static struct device_node *pmem_node;
 
@@ -138,19 +140,13 @@ int dlpar_hp_pmem(struct pseries_hp_errorlog *hp_elog)
 	return rc;
 }
 
-static const struct of_device_id drc_pmem_match[] = {
+const struct of_device_id drc_pmem_match[] = {
 	{ .type = "ibm,persistent-memory", },
 	{}
 };
 
 static int pseries_pmem_init(void)
 {
-	/*
-	 * Only supported on POWER8 and above.
-	 */
-	if (!cpu_has_feature(CPU_FTR_ARCH_207S))
-		return 0;
-
 	pmem_node = of_find_node_by_type(NULL, "ibm,persistent-memory");
 	if (!pmem_node)
 		return 0;

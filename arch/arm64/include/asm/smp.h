@@ -46,14 +46,19 @@ DECLARE_PER_CPU_READ_MOSTLY(int, cpu_number);
  * Logical CPU mapping.
  */
 extern u64 __cpu_logical_map[NR_CPUS];
-extern u64 cpu_logical_map(unsigned int cpu);
-
-static inline void set_cpu_logical_map(unsigned int cpu, u64 hwid)
-{
-	__cpu_logical_map[cpu] = hwid;
-}
+#define cpu_logical_map(cpu)    __cpu_logical_map[cpu]
 
 struct seq_file;
+
+/*
+ * generate IPI list text
+ */
+extern void show_ipi_list(struct seq_file *p, int prec);
+
+/*
+ * Called from C code, this handles an IPI.
+ */
+extern void handle_IPI(int ipinr, struct pt_regs *regs);
 
 /*
  * Discover the set of possible CPUs and determine their
@@ -62,9 +67,11 @@ struct seq_file;
 extern void smp_init_cpus(void);
 
 /*
- * Register IPI interrupts with the arch SMP code
+ * Provide a function to raise an IPI cross call on CPUs in callmap.
  */
-extern void set_smp_ipi_range(int ipi_base, int nr_ipi);
+extern void set_smp_cross_call(void (*)(const struct cpumask *, unsigned int));
+
+extern void (*__smp_cross_call)(const struct cpumask *, unsigned int);
 
 /*
  * Called from the secondary holding pen, this is the secondary CPU entry point.
@@ -73,10 +80,12 @@ asmlinkage void secondary_start_kernel(void);
 
 /*
  * Initial data for bringing up a secondary CPU.
+ * @stack  - sp for the secondary CPU
  * @status - Result passed back from the secondary CPU to
  *           indicate failure.
  */
 struct secondary_data {
+	void *stack;
 	struct task_struct *task;
 	long status;
 };
@@ -89,9 +98,9 @@ extern void arch_send_call_function_single_ipi(int cpu);
 extern void arch_send_call_function_ipi_mask(const struct cpumask *mask);
 
 #ifdef CONFIG_ARM64_ACPI_PARKING_PROTOCOL
-extern void arch_send_wakeup_ipi(unsigned int cpu);
+extern void arch_send_wakeup_ipi_mask(const struct cpumask *mask);
 #else
-static inline void arch_send_wakeup_ipi(unsigned int cpu)
+static inline void arch_send_wakeup_ipi_mask(const struct cpumask *mask)
 {
 	BUILD_BUG();
 }
@@ -99,11 +108,11 @@ static inline void arch_send_wakeup_ipi(unsigned int cpu)
 
 extern int __cpu_disable(void);
 
-static inline void __cpu_die(unsigned int cpu) { }
-extern void __noreturn cpu_die(void);
-extern void __noreturn cpu_die_early(void);
+extern void __cpu_die(unsigned int cpu);
+extern void cpu_die(void);
+extern void cpu_die_early(void);
 
-static inline void __noreturn cpu_park_loop(void)
+static inline void cpu_park_loop(void)
 {
 	for (;;) {
 		wfe();
@@ -123,7 +132,7 @@ static inline void update_cpu_boot_status(int val)
  * which calls for a kernel panic. Update the boot status and park the calling
  * CPU.
  */
-static inline void __noreturn cpu_panic_kernel(void)
+static inline void cpu_panic_kernel(void)
 {
 	update_cpu_boot_status(CPU_PANIC_KERNEL);
 	cpu_park_loop();

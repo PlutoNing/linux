@@ -8,6 +8,7 @@
 #define _DNET_H
 
 #define DRV_NAME		"dnet"
+#define DRV_VERSION		"0.9.1"
 #define PFX				DRV_NAME ": "
 
 /* Register access macros */

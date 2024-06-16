@@ -5,8 +5,8 @@
  */
 
 #include <linux/slab.h>
-#include "messages.h"
 #include "ulist.h"
+#include "ctree.h"
 
 /*
  * ulist is a generic data structure to hold a collection of unique u64
@@ -37,9 +37,8 @@
  * loop would be similar to the above.
  */
 
-/*
- * Freshly initialize a ulist.
- *
+/**
+ * ulist_init - freshly initialize a ulist
  * @ulist:	the ulist to initialize
  *
  * Note: don't use this function to init an already used ulist, use
@@ -52,9 +51,8 @@ void ulist_init(struct ulist *ulist)
 	ulist->nnodes = 0;
 }
 
-/*
- * Free up additionally allocated memory for the ulist.
- *
+/**
+ * ulist_release - free up additionally allocated memory for the ulist
  * @ulist:	the ulist from which to free the additional memory
  *
  * This is useful in cases where the base 'struct ulist' has been statically
@@ -72,9 +70,8 @@ void ulist_release(struct ulist *ulist)
 	INIT_LIST_HEAD(&ulist->nodes);
 }
 
-/*
- * Prepare a ulist for reuse.
- *
+/**
+ * ulist_reinit - prepare a ulist for reuse
  * @ulist:	ulist to be reused
  *
  * Free up all additional memory allocated for the list elements and reinit
@@ -86,9 +83,8 @@ void ulist_reinit(struct ulist *ulist)
 	ulist_init(ulist);
 }
 
-/*
- * Dynamically allocate a ulist.
- *
+/**
+ * ulist_alloc - dynamically allocate a ulist
  * @gfp_mask:	allocation flags to for base allocation
  *
  * The allocated ulist will be returned in an initialized state.
@@ -105,9 +101,8 @@ struct ulist *ulist_alloc(gfp_t gfp_mask)
 	return ulist;
 }
 
-/*
- * Free dynamically allocated ulist.
- *
+/**
+ * ulist_free - free dynamically allocated ulist
  * @ulist:	ulist to free
  *
  * It is not necessary to call ulist_release before.
@@ -168,9 +163,8 @@ static int ulist_rbtree_insert(struct ulist *ulist, struct ulist_node *ins)
 	return 0;
 }
 
-/*
- * Add an element to the ulist.
- *
+/**
+ * ulist_add - add an element to the ulist
  * @ulist:	ulist to add the element to
  * @val:	value to add to ulist
  * @aux:	auxiliary value to store along with val
@@ -222,8 +216,7 @@ int ulist_add_merge(struct ulist *ulist, u64 val, u64 aux,
 }
 
 /*
- * Delete one node from ulist.
- *
+ * ulist_del - delete one node from ulist
  * @ulist:	ulist to remove node from
  * @val:	value to delete
  * @aux:	aux to delete
@@ -249,9 +242,8 @@ int ulist_del(struct ulist *ulist, u64 val, u64 aux)
 	return 0;
 }
 
-/*
- * Iterate ulist.
- *
+/**
+ * ulist_next - iterate ulist
  * @ulist:	ulist to iterate
  * @uiter:	iterator variable, initialized with ULIST_ITER_INIT(&iterator)
  *
@@ -266,7 +258,7 @@ int ulist_del(struct ulist *ulist, u64 val, u64 aux)
  * It is allowed to call ulist_add during an enumeration. Newly added items
  * are guaranteed to show up in the running enumeration.
  */
-struct ulist_node *ulist_next(const struct ulist *ulist, struct ulist_iterator *uiter)
+struct ulist_node *ulist_next(struct ulist *ulist, struct ulist_iterator *uiter)
 {
 	struct ulist_node *node;
 

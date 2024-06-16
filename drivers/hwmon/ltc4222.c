@@ -94,7 +94,7 @@ static ssize_t ltc4222_value_show(struct device *dev,
 	value = ltc4222_get_value(dev, attr->index);
 	if (value < 0)
 		return value;
-	return sysfs_emit(buf, "%d\n", value);
+	return snprintf(buf, PAGE_SIZE, "%d\n", value);
 }
 
 static ssize_t ltc4222_bool_show(struct device *dev,
@@ -112,7 +112,7 @@ static ssize_t ltc4222_bool_show(struct device *dev,
 	if (fault)		/* Clear reported faults in chip register */
 		regmap_update_bits(regmap, attr->nr, attr->index, 0);
 
-	return sysfs_emit(buf, "%d\n", !!fault);
+	return snprintf(buf, PAGE_SIZE, "%d\n", !!fault);
 }
 
 /* Voltages */
@@ -177,7 +177,8 @@ static const struct regmap_config ltc4222_regmap_config = {
 	.max_register = LTC4222_ADC_CONTROL,
 };
 
-static int ltc4222_probe(struct i2c_client *client)
+static int ltc4222_probe(struct i2c_client *client,
+			 const struct i2c_device_id *id)
 {
 	struct device *dev = &client->dev;
 	struct device *hwmon_dev;

@@ -290,7 +290,7 @@ static int wm831x_ts_probe(struct platform_device *pdev)
 		default:
 			dev_err(&pdev->dev, "Unsupported ISEL setting: %d\n",
 				pdata->isel);
-			fallthrough;
+			/* Fall through */
 		case 200:
 		case 0:
 			wm831x_set_bits(wm831x, WM831X_TOUCH_CONTROL_2,
@@ -317,13 +317,14 @@ static int wm831x_ts_probe(struct platform_device *pdev)
 
 	error = request_threaded_irq(wm831x_ts->data_irq,
 				     NULL, wm831x_ts_data_irq,
-				     irqf | IRQF_ONESHOT | IRQF_NO_AUTOEN,
+				     irqf | IRQF_ONESHOT,
 				     "Touchscreen data", wm831x_ts);
 	if (error) {
 		dev_err(&pdev->dev, "Failed to request data IRQ %d: %d\n",
 			wm831x_ts->data_irq, error);
 		goto err_alloc;
 	}
+	disable_irq(wm831x_ts->data_irq);
 
 	if (pdata && pdata->pd_irqf)
 		irqf = pdata->pd_irqf;
@@ -374,12 +375,14 @@ err_alloc:
 	return error;
 }
 
-static void wm831x_ts_remove(struct platform_device *pdev)
+static int wm831x_ts_remove(struct platform_device *pdev)
 {
 	struct wm831x_ts *wm831x_ts = platform_get_drvdata(pdev);
 
 	free_irq(wm831x_ts->pd_irq, wm831x_ts);
 	free_irq(wm831x_ts->data_irq, wm831x_ts);
+
+	return 0;
 }
 
 static struct platform_driver wm831x_ts_driver = {
@@ -387,7 +390,7 @@ static struct platform_driver wm831x_ts_driver = {
 		.name = "wm831x-touch",
 	},
 	.probe = wm831x_ts_probe,
-	.remove_new = wm831x_ts_remove,
+	.remove = wm831x_ts_remove,
 };
 module_platform_driver(wm831x_ts_driver);
 

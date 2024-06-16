@@ -10,6 +10,10 @@
  *
  ******************************************************************************/
 
+#ifndef	lint
+static char const ID_sccs[] = "@(#)hwmtm.c	1.40 99/05/31 (C) SK" ;
+#endif
+
 #define	HWMTM
 
 #ifndef FDDI
@@ -38,10 +42,10 @@
 	-------------------------------------------------------------
 */
 #ifdef COMMON_MB_POOL
-static	SMbuf *mb_start;
-static	SMbuf *mb_free;
+static	SMbuf *mb_start = 0 ;
+static	SMbuf *mb_free = 0 ;
 static	int mb_init = FALSE ;
-static	int call_count;
+static	int call_count = 0 ;
 #endif
 
 /*

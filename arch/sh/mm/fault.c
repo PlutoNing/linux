@@ -47,13 +47,12 @@ static void show_pte(struct mm_struct *mm, unsigned long addr)
 			pgd = swapper_pg_dir;
 	}
 
-	pr_alert("pgd = %p\n", pgd);
+	printk(KERN_ALERT "pgd = %p\n", pgd);
 	pgd += pgd_index(addr);
-	pr_alert("[%08lx] *pgd=%0*llx", addr, (u32)(sizeof(*pgd) * 2),
-		 (u64)pgd_val(*pgd));
+	printk(KERN_ALERT "[%08lx] *pgd=%0*Lx", addr,
+	       (u32)(sizeof(*pgd) * 2), (u64)pgd_val(*pgd));
 
 	do {
-		p4d_t *p4d;
 		pud_t *pud;
 		pmd_t *pmd;
 		pte_t *pte;
@@ -62,46 +61,33 @@ static void show_pte(struct mm_struct *mm, unsigned long addr)
 			break;
 
 		if (pgd_bad(*pgd)) {
-			pr_cont("(bad)");
+			printk("(bad)");
 			break;
 		}
 
-		p4d = p4d_offset(pgd, addr);
-		if (PTRS_PER_P4D != 1)
-			pr_cont(", *p4d=%0*Lx", (u32)(sizeof(*p4d) * 2),
-			        (u64)p4d_val(*p4d));
-
-		if (p4d_none(*p4d))
-			break;
-
-		if (p4d_bad(*p4d)) {
-			pr_cont("(bad)");
-			break;
-		}
-
-		pud = pud_offset(p4d, addr);
+		pud = pud_offset(pgd, addr);
 		if (PTRS_PER_PUD != 1)
-			pr_cont(", *pud=%0*llx", (u32)(sizeof(*pud) * 2),
-				(u64)pud_val(*pud));
+			printk(", *pud=%0*Lx", (u32)(sizeof(*pud) * 2),
+			       (u64)pud_val(*pud));
 
 		if (pud_none(*pud))
 			break;
 
 		if (pud_bad(*pud)) {
-			pr_cont("(bad)");
+			printk("(bad)");
 			break;
 		}
 
 		pmd = pmd_offset(pud, addr);
 		if (PTRS_PER_PMD != 1)
-			pr_cont(", *pmd=%0*llx", (u32)(sizeof(*pmd) * 2),
-				(u64)pmd_val(*pmd));
+			printk(", *pmd=%0*Lx", (u32)(sizeof(*pmd) * 2),
+			       (u64)pmd_val(*pmd));
 
 		if (pmd_none(*pmd))
 			break;
 
 		if (pmd_bad(*pmd)) {
-			pr_cont("(bad)");
+			printk("(bad)");
 			break;
 		}
 
@@ -110,18 +96,17 @@ static void show_pte(struct mm_struct *mm, unsigned long addr)
 			break;
 
 		pte = pte_offset_kernel(pmd, addr);
-		pr_cont(", *pte=%0*llx", (u32)(sizeof(*pte) * 2),
-			(u64)pte_val(*pte));
+		printk(", *pte=%0*Lx", (u32)(sizeof(*pte) * 2),
+		       (u64)pte_val(*pte));
 	} while (0);
 
-	pr_cont("\n");
+	printk("\n");
 }
 
 static inline pmd_t *vmalloc_sync_one(pgd_t *pgd, unsigned long address)
 {
 	unsigned index = pgd_index(address);
 	pgd_t *pgd_k;
-	p4d_t *p4d, *p4d_k;
 	pud_t *pud, *pud_k;
 	pmd_t *pmd, *pmd_k;
 
@@ -131,13 +116,8 @@ static inline pmd_t *vmalloc_sync_one(pgd_t *pgd, unsigned long address)
 	if (!pgd_present(*pgd_k))
 		return NULL;
 
-	p4d = p4d_offset(pgd, address);
-	p4d_k = p4d_offset(pgd_k, address);
-	if (!p4d_present(*p4d_k))
-		return NULL;
-
-	pud = pud_offset(p4d, address);
-	pud_k = pud_offset(p4d_k, address);
+	pud = pud_offset(pgd, address);
+	pud_k = pud_offset(pgd_k, address);
 	if (!pud_present(*pud_k))
 		return NULL;
 
@@ -208,11 +188,14 @@ show_fault_oops(struct pt_regs *regs, unsigned long address)
 	if (!oops_may_print())
 		return;
 
-	pr_alert("BUG: unable to handle kernel %s at %08lx\n",
-		 address < PAGE_SIZE ? "NULL pointer dereference"
-				     : "paging request",
-		 address);
-	pr_alert("PC:");
+	printk(KERN_ALERT "BUG: unable to handle kernel ");
+	if (address < PAGE_SIZE)
+		printk(KERN_CONT "NULL pointer dereference");
+	else
+		printk(KERN_CONT "paging request");
+
+	printk(KERN_CONT " at %08lx\n", address);
+	printk(KERN_ALERT "PC:");
 	printk_address(regs->pc, 1);
 
 	show_pte(NULL, address);
@@ -238,6 +221,8 @@ no_context(struct pt_regs *regs, unsigned long error_code,
 	show_fault_oops(regs, address);
 
 	die("Oops", regs, error_code);
+	bust_spinlocks(0);
+	do_exit(SIGKILL);
 }
 
 static void
@@ -276,7 +261,7 @@ __bad_area(struct pt_regs *regs, unsigned long error_code,
 	 * Something tried to access memory that isn't in our memory map..
 	 * Fix it, but check if it's kernel or user first..
 	 */
-	mmap_read_unlock(mm);
+	up_read(&mm->mmap_sem);
 
 	__bad_area_nosemaphore(regs, error_code, address, si_code);
 }
@@ -300,7 +285,7 @@ do_sigbus(struct pt_regs *regs, unsigned long error_code, unsigned long address)
 	struct task_struct *tsk = current;
 	struct mm_struct *mm = tsk->mm;
 
-	mmap_read_unlock(mm);
+	up_read(&mm->mmap_sem);
 
 	/* Kernel mode? Handle exceptions or die: */
 	if (!user_mode(regs))
@@ -317,15 +302,13 @@ mm_fault_error(struct pt_regs *regs, unsigned long error_code,
 	 * Pagefault was interrupted by SIGKILL. We have no reason to
 	 * continue pagefault.
 	 */
-	if (fault_signal_pending(fault, regs)) {
+	if (fatal_signal_pending(current)) {
+		if (!(fault & VM_FAULT_RETRY))
+			up_read(&current->mm->mmap_sem);
 		if (!user_mode(regs))
 			no_context(regs, error_code, address);
 		return 1;
 	}
-
-	/* Release mmap_lock first if necessary */
-	if (!(fault & VM_FAULT_RETRY))
-		mmap_read_unlock(current->mm);
 
 	if (!(fault & VM_FAULT_ERROR))
 		return 0;
@@ -333,9 +316,11 @@ mm_fault_error(struct pt_regs *regs, unsigned long error_code,
 	if (fault & VM_FAULT_OOM) {
 		/* Kernel mode? Handle exceptions or die: */
 		if (!user_mode(regs)) {
+			up_read(&current->mm->mmap_sem);
 			no_context(regs, error_code, address);
 			return 1;
 		}
+		up_read(&current->mm->mmap_sem);
 
 		/*
 		 * We ran out of memory, call the OOM killer, and return the
@@ -370,7 +355,7 @@ static inline int access_error(int error_code, struct vm_area_struct *vma)
 		return 1;
 
 	/* read, not present: */
-	if (unlikely(!vma_is_accessible(vma)))
+	if (unlikely(!(vma->vm_flags & (VM_READ | VM_EXEC | VM_WRITE))))
 		return 1;
 
 	return 0;
@@ -395,7 +380,7 @@ asmlinkage void __kprobes do_page_fault(struct pt_regs *regs,
 	struct mm_struct *mm;
 	struct vm_area_struct * vma;
 	vm_fault_t fault;
-	unsigned int flags = FAULT_FLAG_DEFAULT;
+	unsigned int flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
 	tsk = current;
 	mm = tsk->mm;
@@ -439,9 +424,21 @@ asmlinkage void __kprobes do_page_fault(struct pt_regs *regs,
 	}
 
 retry:
-	vma = lock_mm_and_find_vma(mm, address, regs);
+	down_read(&mm->mmap_sem);
+
+	vma = find_vma(mm, address);
 	if (unlikely(!vma)) {
-		bad_area_nosemaphore(regs, error_code, address);
+		bad_area(regs, error_code, address);
+		return;
+	}
+	if (likely(vma->vm_start <= address))
+		goto good_area;
+	if (unlikely(!(vma->vm_flags & VM_GROWSDOWN))) {
+		bad_area(regs, error_code, address);
+		return;
+	}
+	if (unlikely(expand_stack(vma, address))) {
+		bad_area(regs, error_code, address);
 		return;
 	}
 
@@ -449,6 +446,7 @@ retry:
 	 * Ok, we have a good vm_area for this memory access, so
 	 * we can handle it..
 	 */
+good_area:
 	if (unlikely(access_error(error_code, vma))) {
 		bad_area_access_error(regs, error_code, address);
 		return;
@@ -466,26 +464,34 @@ retry:
 	 * make sure we exit gracefully rather than endlessly redo
 	 * the fault.
 	 */
-	fault = handle_mm_fault(vma, address, flags, regs);
+	fault = handle_mm_fault(vma, address, flags);
 
 	if (unlikely(fault & (VM_FAULT_RETRY | VM_FAULT_ERROR)))
 		if (mm_fault_error(regs, error_code, address, fault))
 			return;
 
-	/* The fault is fully completed (including releasing mmap lock) */
-	if (fault & VM_FAULT_COMPLETED)
-		return;
+	if (flags & FAULT_FLAG_ALLOW_RETRY) {
+		if (fault & VM_FAULT_MAJOR) {
+			tsk->maj_flt++;
+			perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1,
+				      regs, address);
+		} else {
+			tsk->min_flt++;
+			perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MIN, 1,
+				      regs, address);
+		}
+		if (fault & VM_FAULT_RETRY) {
+			flags &= ~FAULT_FLAG_ALLOW_RETRY;
+			flags |= FAULT_FLAG_TRIED;
 
-	if (fault & VM_FAULT_RETRY) {
-		flags |= FAULT_FLAG_TRIED;
-
-		/*
-		 * No need to mmap_read_unlock(mm) as we would
-		 * have already released it in __lock_page_or_retry
-		 * in mm/filemap.c.
-		 */
-		goto retry;
+			/*
+			 * No need to up_read(&mm->mmap_sem) as we would
+			 * have already released it in __lock_page_or_retry
+			 * in mm/filemap.c.
+			 */
+			goto retry;
+		}
 	}
 
-	mmap_read_unlock(mm);
+	up_read(&mm->mmap_sem);
 }

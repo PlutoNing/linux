@@ -9,7 +9,7 @@
  * Copyright (c) 2009-2010 by:
  *	 Mauro Carvalho Chehab
  *
- * Red Hat Inc. https://www.redhat.com
+ * Red Hat Inc. http://www.redhat.com
  *
  * Forked and adapted from the i5400_edac driver
  *
@@ -376,7 +376,7 @@ static const struct pci_id_table pci_dev_table[] = {
 	PCI_ID_TABLE_ENTRY(pci_dev_descr_i7core_nehalem),
 	PCI_ID_TABLE_ENTRY(pci_dev_descr_lynnfield),
 	PCI_ID_TABLE_ENTRY(pci_dev_descr_i7core_westmere),
-	{ NULL, }
+	{0,}			/* 0 terminated list. */
 };
 
 /*
@@ -385,7 +385,7 @@ static const struct pci_id_table pci_dev_table[] = {
 static const struct pci_device_id i7core_pci_tbl[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_X58_HUB_MGMT)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_LYNNFIELD_QPI_LINK0)},
-	{ 0, }
+	{0,}			/* 0 terminated list. */
 };
 
 /****************************************************************************
@@ -585,7 +585,8 @@ static int get_dimm_config(struct mem_ctl_info *mci)
 			if (!DIMM_PRESENT(dimm_dod[j]))
 				continue;
 
-			dimm = edac_get_dimm(mci, i, j, 0);
+			dimm = EDAC_DIMM_PTR(mci->layers, mci->dimms, mci->n_layers,
+				       i, j, 0);
 			banks = numbank(MC_DOD_NUMBANK(dimm_dod[j]));
 			ranks = numrank(MC_DOD_NUMRANK(dimm_dod[j]));
 			rows = numrow(MC_DOD_NUMROW(dimm_dod[j]));
@@ -1710,9 +1711,9 @@ static void i7core_mce_output_error(struct mem_ctl_info *mci,
 	if (uncorrected_error) {
 		core_err_cnt = 1;
 		if (ripv)
-			tp_event = HW_EVENT_ERR_UNCORRECTED;
-		else
 			tp_event = HW_EVENT_ERR_FATAL;
+		else
+			tp_event = HW_EVENT_ERR_UNCORRECTED;
 	} else {
 		tp_event = HW_EVENT_ERR_CORRECTED;
 	}
@@ -1815,7 +1816,7 @@ static int i7core_mce_check_error(struct notifier_block *nb, unsigned long val,
 	struct mem_ctl_info *mci;
 
 	i7_dev = get_i7core_dev(mce->socketid);
-	if (!i7_dev || (mce->kflags & MCE_HANDLED_CEC))
+	if (!i7_dev)
 		return NOTIFY_DONE;
 
 	mci = i7_dev->mci;
@@ -1834,8 +1835,7 @@ static int i7core_mce_check_error(struct notifier_block *nb, unsigned long val,
 	i7core_check_error(mci, mce);
 
 	/* Advise mcelog that the errors were handled */
-	mce->kflags |= MCE_HANDLED_EDAC;
-	return NOTIFY_OK;
+	return NOTIFY_STOP;
 }
 
 static struct notifier_block i7_mce_dec = {
@@ -2391,7 +2391,7 @@ module_exit(i7core_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Mauro Carvalho Chehab");
-MODULE_AUTHOR("Red Hat Inc. (https://www.redhat.com)");
+MODULE_AUTHOR("Red Hat Inc. (http://www.redhat.com)");
 MODULE_DESCRIPTION("MC Driver for Intel i7 Core memory controllers - "
 		   I7CORE_REVISION);
 

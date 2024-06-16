@@ -139,7 +139,7 @@ static struct regulator_ops anatop_rops = {
 	.map_voltage = regulator_map_voltage_linear,
 };
 
-static const struct regulator_ops anatop_core_rops = {
+static struct regulator_ops anatop_core_rops = {
 	.enable = anatop_regmap_enable,
 	.disable = anatop_regmap_disable,
 	.is_enabled = anatop_regmap_is_enabled,
@@ -305,13 +305,9 @@ static int anatop_regulator_probe(struct platform_device *pdev)
 	/* register regulator */
 	rdev = devm_regulator_register(dev, rdesc, &config);
 	if (IS_ERR(rdev)) {
-		ret = PTR_ERR(rdev);
-		if (ret == -EPROBE_DEFER)
-			dev_dbg(dev, "failed to register %s, deferring...\n",
-				rdesc->name);
-		else
-			dev_err(dev, "failed to register %s\n", rdesc->name);
-		return ret;
+		dev_err(dev, "failed to register %s\n",
+			rdesc->name);
+		return PTR_ERR(rdev);
 	}
 
 	platform_set_drvdata(pdev, rdev);
@@ -328,7 +324,6 @@ MODULE_DEVICE_TABLE(of, of_anatop_regulator_match_tbl);
 static struct platform_driver anatop_regulator_driver = {
 	.driver = {
 		.name	= "anatop_regulator",
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = of_anatop_regulator_match_tbl,
 	},
 	.probe	= anatop_regulator_probe,

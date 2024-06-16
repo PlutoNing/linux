@@ -6,7 +6,6 @@
  * Built from gxfb (which is Copyright (C) 2006 Arcom Control Systems Ltd.)
  */
 
-#include <linux/aperture.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/errno.h>
@@ -235,9 +234,6 @@ static void get_modedb(struct fb_videomode **modedb, unsigned int *size)
 
 static int lxfb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
 {
-	if (!var->pixclock)
-		return -EINVAL;
-
 	if (var->xres > 1920 || var->yres > 1440)
 		return -EINVAL;
 
@@ -390,13 +386,16 @@ static int lxfb_map_video_memory(struct fb_info *info, struct pci_dev *dev)
 	return 0;
 }
 
-static const struct fb_ops lxfb_ops = {
+static struct fb_ops lxfb_ops = {
 	.owner		= THIS_MODULE,
-	FB_DEFAULT_IOMEM_OPS,
 	.fb_check_var	= lxfb_check_var,
 	.fb_set_par	= lxfb_set_par,
 	.fb_setcolreg	= lxfb_setcolreg,
 	.fb_blank       = lxfb_blank,
+	/* No HW acceleration for now. */
+	.fb_fillrect	= cfb_fillrect,
+	.fb_copyarea	= cfb_copyarea,
+	.fb_imageblit	= cfb_imageblit,
 };
 
 static struct fb_info *lxfb_init_fbinfo(struct device *dev)
@@ -429,6 +428,7 @@ static struct fb_info *lxfb_init_fbinfo(struct device *dev)
 	info->var.vmode	= FB_VMODE_NONINTERLACED;
 
 	info->fbops		= &lxfb_ops;
+	info->flags		= FBINFO_DEFAULT;
 	info->node		= -1;
 
 	info->pseudo_palette	= (void *)par + sizeof(struct lxfb_par);
@@ -443,14 +443,17 @@ static struct fb_info *lxfb_init_fbinfo(struct device *dev)
 	return info;
 }
 
-static int __maybe_unused lxfb_suspend(struct device *dev)
+#ifdef CONFIG_PM
+static int lxfb_suspend(struct pci_dev *pdev, pm_message_t state)
 {
-	struct fb_info *info = dev_get_drvdata(dev);
+	struct fb_info *info = pci_get_drvdata(pdev);
 
-	console_lock();
-	lx_powerdown(info);
-	fb_set_suspend(info, 1);
-	console_unlock();
+	if (state.event == PM_EVENT_SUSPEND) {
+		console_lock();
+		lx_powerdown(info);
+		fb_set_suspend(info, 1);
+		console_unlock();
+	}
 
 	/* there's no point in setting PCI states; we emulate PCI, so
 	 * we don't end up getting power savings anyways */
@@ -458,9 +461,9 @@ static int __maybe_unused lxfb_suspend(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused lxfb_resume(struct device *dev)
+static int lxfb_resume(struct pci_dev *pdev)
 {
-	struct fb_info *info = dev_get_drvdata(dev);
+	struct fb_info *info = pci_get_drvdata(pdev);
 	int ret;
 
 	console_lock();
@@ -474,6 +477,10 @@ static int __maybe_unused lxfb_resume(struct device *dev)
 	console_unlock();
 	return 0;
 }
+#else
+#define lxfb_suspend NULL
+#define lxfb_resume NULL
+#endif
 
 static int lxfb_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
@@ -483,10 +490,6 @@ static int lxfb_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	struct fb_videomode *modedb_ptr;
 	unsigned int modedb_size;
-
-	ret = aperture_remove_conflicting_pci_devices(pdev, "lxfb");
-	if (ret)
-		return ret;
 
 	info = lxfb_init_fbinfo(&pdev->dev);
 
@@ -597,23 +600,13 @@ static struct pci_device_id lxfb_id_table[] = {
 
 MODULE_DEVICE_TABLE(pci, lxfb_id_table);
 
-static const struct dev_pm_ops lxfb_pm_ops = {
-#ifdef CONFIG_PM_SLEEP
-	.suspend	= lxfb_suspend,
-	.resume		= lxfb_resume,
-	.freeze		= NULL,
-	.thaw		= lxfb_resume,
-	.poweroff	= NULL,
-	.restore	= lxfb_resume,
-#endif
-};
-
 static struct pci_driver lxfb_driver = {
 	.name		= "lxfb",
 	.id_table	= lxfb_id_table,
 	.probe		= lxfb_probe,
 	.remove		= lxfb_remove,
-	.driver.pm	= &lxfb_pm_ops,
+	.suspend	= lxfb_suspend,
+	.resume		= lxfb_resume,
 };
 
 #ifndef MODULE
@@ -646,12 +639,7 @@ static int __init lxfb_init(void)
 {
 #ifndef MODULE
 	char *option = NULL;
-#endif
 
-	if (fb_modesetting_disabled("lxfb"))
-		return -ENODEV;
-
-#ifndef MODULE
 	if (fb_get_options("lxfb", &option))
 		return -ENODEV;
 

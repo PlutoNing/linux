@@ -651,7 +651,7 @@ static long pcwd_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			return -EINVAL;
 
 		pcwd_keepalive();
-		fallthrough;
+		/* Fall through */
 
 	case WDIOC_GETTIMEOUT:
 		return put_user(heartbeat, argp);
@@ -752,7 +752,6 @@ static const struct file_operations pcwd_fops = {
 	.llseek		= no_llseek,
 	.write		= pcwd_write,
 	.unlocked_ioctl	= pcwd_ioctl,
-	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= pcwd_open,
 	.release	= pcwd_close,
 };
@@ -951,10 +950,13 @@ error_request_region:
 	return ret;
 }
 
-static void pcwd_isa_remove(struct device *dev, unsigned int id)
+static int pcwd_isa_remove(struct device *dev, unsigned int id)
 {
 	if (debug >= DEBUG)
 		pr_debug("pcwd_isa_remove id=%d\n", id);
+
+	if (!pcwd_private.io_addr)
+		return 1;
 
 	/*  Disable the board  */
 	if (!nowayout)
@@ -968,6 +970,8 @@ static void pcwd_isa_remove(struct device *dev, unsigned int id)
 			(pcwd_private.revision == PCWD_REVISION_A) ? 2 : 4);
 	pcwd_private.io_addr = 0x0000;
 	cards_found--;
+
+	return 0;
 }
 
 static void pcwd_isa_shutdown(struct device *dev, unsigned int id)

@@ -70,24 +70,24 @@ struct catu_drvdata {
 static inline u32							\
 catu_read_##name(struct catu_drvdata *drvdata)				\
 {									\
-	return csdev_access_relaxed_read32(&drvdata->csdev->access, offset); \
+	return coresight_read_reg_pair(drvdata->base, offset, -1);	\
 }									\
 static inline void							\
 catu_write_##name(struct catu_drvdata *drvdata, u32 val)		\
 {									\
-	csdev_access_relaxed_write32(&drvdata->csdev->access, val, offset); \
+	coresight_write_reg_pair(drvdata->base, val, offset, -1);	\
 }
 
 #define CATU_REG_PAIR(name, lo_off, hi_off)				\
 static inline u64							\
 catu_read_##name(struct catu_drvdata *drvdata)				\
 {									\
-	return csdev_access_relaxed_read_pair(&drvdata->csdev->access, lo_off, hi_off); \
+	return coresight_read_reg_pair(drvdata->base, lo_off, hi_off);	\
 }									\
 static inline void							\
 catu_write_##name(struct catu_drvdata *drvdata, u64 val)		\
 {									\
-	csdev_access_relaxed_write_pair(&drvdata->csdev->access, val, lo_off, hi_off); \
+	coresight_write_reg_pair(drvdata->base, val, lo_off, hi_off);	\
 }
 
 CATU_REG32(control, CATU_CONTROL);
@@ -107,5 +107,7 @@ static inline bool coresight_is_catu_device(struct coresight_device *csdev)
 		return false;
 	return true;
 }
+
+extern const struct etr_buf_operations etr_catu_buf_ops;
 
 #endif

@@ -133,10 +133,11 @@ static void digicolor_uart_rx(struct uart_port *port)
 {
 	unsigned long flags;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 
 	while (1) {
-		u8 status, ch, ch_flag;
+		u8 status, ch;
+		unsigned int ch_flag;
 
 		if (digicolor_uart_rx_empty(port))
 			break;
@@ -172,7 +173,7 @@ static void digicolor_uart_rx(struct uart_port *port)
 				 ch_flag);
 	}
 
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 
 	tty_flip_buffer_push(&port->state->port);
 }
@@ -185,7 +186,7 @@ static void digicolor_uart_tx(struct uart_port *port)
 	if (digicolor_uart_tx_full(port))
 		return;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 
 	if (port->x_char) {
 		writeb_relaxed(port->x_char, port->membase + UA_EMI_REC);
@@ -201,7 +202,8 @@ static void digicolor_uart_tx(struct uart_port *port)
 
 	while (!uart_circ_empty(xmit)) {
 		writeb(xmit->buf[xmit->tail], port->membase + UA_EMI_REC);
-		uart_xmit_advance(port, 1);
+		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
+		port->icount.tx++;
 
 		if (digicolor_uart_tx_full(port))
 			break;
@@ -211,7 +213,7 @@ static void digicolor_uart_tx(struct uart_port *port)
 		uart_write_wakeup(port);
 
 out:
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static irqreturn_t digicolor_uart_int(int irq, void *dev_id)
@@ -285,7 +287,7 @@ static void digicolor_uart_shutdown(struct uart_port *port)
 
 static void digicolor_uart_set_termios(struct uart_port *port,
 				       struct ktermios *termios,
-				       const struct ktermios *old)
+				       struct ktermios *old)
 {
 	unsigned int baud, divisor;
 	u8 config = 0;
@@ -307,8 +309,6 @@ static void digicolor_uart_set_termios(struct uart_port *port,
 	case CS8:
 	default:
 		config |= UA_CONFIG_CHAR_LEN;
-		termios->c_cflag &= ~CSIZE;
-		termios->c_cflag |= CS8;
 		break;
 	}
 
@@ -333,7 +333,7 @@ static void digicolor_uart_set_termios(struct uart_port *port,
 		port->ignore_status_mask |= UA_STATUS_OVERRUN_ERR
 			| UA_STATUS_PARITY_ERR | UA_STATUS_FRAME_ERR;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 
 	uart_update_timeout(port, termios->c_cflag, baud);
 
@@ -341,7 +341,7 @@ static void digicolor_uart_set_termios(struct uart_port *port,
 	writeb_relaxed(divisor & 0xff, port->membase + UA_HBAUD_LO);
 	writeb_relaxed(divisor >> 8, port->membase + UA_HBAUD_HI);
 
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static const char *digicolor_uart_type(struct uart_port *port)
@@ -381,7 +381,7 @@ static const struct uart_ops digicolor_uart_ops = {
 	.request_port	= digicolor_uart_request_port,
 };
 
-static void digicolor_uart_console_putchar(struct uart_port *port, unsigned char ch)
+static void digicolor_uart_console_putchar(struct uart_port *port, int ch)
 {
 	while (digicolor_uart_tx_full(port))
 		cpu_relax();
@@ -398,14 +398,14 @@ static void digicolor_uart_console_write(struct console *co, const char *c,
 	int locked = 1;
 
 	if (oops_in_progress)
-		locked = uart_port_trylock_irqsave(port, &flags);
+		locked = spin_trylock_irqsave(&port->lock, flags);
 	else
-		uart_port_lock_irqsave(port, &flags);
+		spin_lock_irqsave(&port->lock, flags);
 
 	uart_console_write(port, c, n, digicolor_uart_console_putchar);
 
 	if (locked)
-		uart_port_unlock_irqrestore(port, flags);
+		spin_unlock_irqrestore(&port->lock, flags);
 
 	/* Wait for transmitter to become empty */
 	do {
@@ -471,10 +471,11 @@ static int digicolor_uart_probe(struct platform_device *pdev)
 	if (IS_ERR(uart_clk))
 		return PTR_ERR(uart_clk);
 
-	dp->port.membase = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	dp->port.mapbase = res->start;
+	dp->port.membase = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(dp->port.membase))
 		return PTR_ERR(dp->port.membase);
-	dp->port.mapbase = res->start;
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
@@ -503,11 +504,13 @@ static int digicolor_uart_probe(struct platform_device *pdev)
 	return uart_add_one_port(&digicolor_uart, &dp->port);
 }
 
-static void digicolor_uart_remove(struct platform_device *pdev)
+static int digicolor_uart_remove(struct platform_device *pdev)
 {
 	struct uart_port *port = platform_get_drvdata(pdev);
 
 	uart_remove_one_port(&digicolor_uart, port);
+
+	return 0;
 }
 
 static const struct of_device_id digicolor_uart_dt_ids[] = {
@@ -522,7 +525,7 @@ static struct platform_driver digicolor_uart_platform = {
 		.of_match_table	= of_match_ptr(digicolor_uart_dt_ids),
 	},
 	.probe	= digicolor_uart_probe,
-	.remove_new = digicolor_uart_remove,
+	.remove	= digicolor_uart_remove,
 };
 
 static int __init digicolor_uart_init(void)

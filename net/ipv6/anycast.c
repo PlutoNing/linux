@@ -183,7 +183,7 @@ int ipv6_sock_ac_drop(struct sock *sk, int ifindex, const struct in6_addr *addr)
 	return 0;
 }
 
-void __ipv6_sock_ac_close(struct sock *sk)
+void ipv6_sock_ac_close(struct sock *sk)
 {
 	struct ipv6_pinfo *np = inet6_sk(sk);
 	struct net_device *dev = NULL;
@@ -191,7 +191,10 @@ void __ipv6_sock_ac_close(struct sock *sk)
 	struct net *net = sock_net(sk);
 	int	prev_index;
 
-	ASSERT_RTNL();
+	if (!np->ipv6_ac_list)
+		return;
+
+	rtnl_lock();
 	pac = np->ipv6_ac_list;
 	np->ipv6_ac_list = NULL;
 
@@ -208,16 +211,6 @@ void __ipv6_sock_ac_close(struct sock *sk)
 		sock_kfree_s(sk, pac, sizeof(*pac));
 		pac = next;
 	}
-}
-
-void ipv6_sock_ac_close(struct sock *sk)
-{
-	struct ipv6_pinfo *np = inet6_sk(sk);
-
-	if (!np->ipv6_ac_list)
-		return;
-	rtnl_lock();
-	__ipv6_sock_ac_close(sk);
 	rtnl_unlock();
 }
 
@@ -296,8 +289,7 @@ int __ipv6_dev_ac_inc(struct inet6_dev *idev, const struct in6_addr *addr)
 		goto out;
 	}
 
-	for (aca = rtnl_dereference(idev->ac_list); aca;
-	     aca = rtnl_dereference(aca->aca_next)) {
+	for (aca = idev->ac_list; aca; aca = aca->aca_next) {
 		if (ipv6_addr_equal(&aca->aca_addr, addr)) {
 			aca->aca_users++;
 			err = 0;
@@ -306,7 +298,7 @@ int __ipv6_dev_ac_inc(struct inet6_dev *idev, const struct in6_addr *addr)
 	}
 
 	net = dev_net(idev->dev);
-	f6i = addrconf_f6i_alloc(net, idev, addr, true, GFP_ATOMIC, NULL);
+	f6i = addrconf_f6i_alloc(net, idev, addr, true, GFP_ATOMIC);
 	if (IS_ERR(f6i)) {
 		err = PTR_ERR(f6i);
 		goto out;
@@ -318,13 +310,13 @@ int __ipv6_dev_ac_inc(struct inet6_dev *idev, const struct in6_addr *addr)
 		goto out;
 	}
 
+	aca->aca_next = idev->ac_list;
+	idev->ac_list = aca;
+
 	/* Hold this for addrconf_join_solict() below before we unlock,
 	 * it is already exposed via idev->ac_list.
 	 */
 	aca_get(aca);
-	aca->aca_next = idev->ac_list;
-	rcu_assign_pointer(idev->ac_list, aca);
-
 	write_unlock_bh(&idev->lock);
 
 	ipv6_add_acaddr_hash(net, aca);
@@ -351,8 +343,7 @@ int __ipv6_dev_ac_dec(struct inet6_dev *idev, const struct in6_addr *addr)
 
 	write_lock_bh(&idev->lock);
 	prev_aca = NULL;
-	for (aca = rtnl_dereference(idev->ac_list); aca;
-	     aca = rtnl_dereference(aca->aca_next)) {
+	for (aca = idev->ac_list; aca; aca = aca->aca_next) {
 		if (ipv6_addr_equal(&aca->aca_addr, addr))
 			break;
 		prev_aca = aca;
@@ -366,14 +357,14 @@ int __ipv6_dev_ac_dec(struct inet6_dev *idev, const struct in6_addr *addr)
 		return 0;
 	}
 	if (prev_aca)
-		rcu_assign_pointer(prev_aca->aca_next, aca->aca_next);
+		prev_aca->aca_next = aca->aca_next;
 	else
-		rcu_assign_pointer(idev->ac_list, aca->aca_next);
+		idev->ac_list = aca->aca_next;
 	write_unlock_bh(&idev->lock);
 	ipv6_del_acaddr_hash(aca);
 	addrconf_leave_solict(idev, &aca->aca_addr);
 
-	ip6_del_rt(dev_net(idev->dev), aca->aca_rt, false);
+	ip6_del_rt(dev_net(idev->dev), aca->aca_rt);
 
 	aca_put(aca);
 	return 0;
@@ -394,15 +385,15 @@ void ipv6_ac_destroy_dev(struct inet6_dev *idev)
 	struct ifacaddr6 *aca;
 
 	write_lock_bh(&idev->lock);
-	while ((aca = rtnl_dereference(idev->ac_list)) != NULL) {
-		rcu_assign_pointer(idev->ac_list, aca->aca_next);
+	while ((aca = idev->ac_list) != NULL) {
+		idev->ac_list = aca->aca_next;
 		write_unlock_bh(&idev->lock);
 
 		ipv6_del_acaddr_hash(aca);
 
 		addrconf_leave_solict(idev, &aca->aca_addr);
 
-		ip6_del_rt(dev_net(idev->dev), aca->aca_rt, false);
+		ip6_del_rt(dev_net(idev->dev), aca->aca_rt);
 
 		aca_put(aca);
 
@@ -422,10 +413,11 @@ static bool ipv6_chk_acast_dev(struct net_device *dev, const struct in6_addr *ad
 
 	idev = __in6_dev_get(dev);
 	if (idev) {
-		for (aca = rcu_dereference(idev->ac_list); aca;
-		     aca = rcu_dereference(aca->aca_next))
+		read_lock_bh(&idev->lock);
+		for (aca = idev->ac_list; aca; aca = aca->aca_next)
 			if (ipv6_addr_equal(&aca->aca_addr, addr))
 				break;
+		read_unlock_bh(&idev->lock);
 		return aca != NULL;
 	}
 	return false;
@@ -478,25 +470,30 @@ bool ipv6_chk_acast_addr_src(struct net *net, struct net_device *dev,
 struct ac6_iter_state {
 	struct seq_net_private p;
 	struct net_device *dev;
+	struct inet6_dev *idev;
 };
 
 #define ac6_seq_private(seq)	((struct ac6_iter_state *)(seq)->private)
 
 static inline struct ifacaddr6 *ac6_get_first(struct seq_file *seq)
 {
+	struct ifacaddr6 *im = NULL;
 	struct ac6_iter_state *state = ac6_seq_private(seq);
 	struct net *net = seq_file_net(seq);
-	struct ifacaddr6 *im = NULL;
 
+	state->idev = NULL;
 	for_each_netdev_rcu(net, state->dev) {
 		struct inet6_dev *idev;
-
 		idev = __in6_dev_get(state->dev);
 		if (!idev)
 			continue;
-		im = rcu_dereference(idev->ac_list);
-		if (im)
+		read_lock_bh(&idev->lock);
+		im = idev->ac_list;
+		if (im) {
+			state->idev = idev;
 			break;
+		}
+		read_unlock_bh(&idev->lock);
 	}
 	return im;
 }
@@ -504,17 +501,22 @@ static inline struct ifacaddr6 *ac6_get_first(struct seq_file *seq)
 static struct ifacaddr6 *ac6_get_next(struct seq_file *seq, struct ifacaddr6 *im)
 {
 	struct ac6_iter_state *state = ac6_seq_private(seq);
-	struct inet6_dev *idev;
 
-	im = rcu_dereference(im->aca_next);
+	im = im->aca_next;
 	while (!im) {
+		if (likely(state->idev != NULL))
+			read_unlock_bh(&state->idev->lock);
+
 		state->dev = next_net_device_rcu(state->dev);
-		if (!state->dev)
+		if (!state->dev) {
+			state->idev = NULL;
 			break;
-		idev = __in6_dev_get(state->dev);
-		if (!idev)
+		}
+		state->idev = __in6_dev_get(state->dev);
+		if (!state->idev)
 			continue;
-		im = rcu_dereference(idev->ac_list);
+		read_lock_bh(&state->idev->lock);
+		im = state->idev->ac_list;
 	}
 	return im;
 }
@@ -546,6 +548,12 @@ static void *ac6_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 static void ac6_seq_stop(struct seq_file *seq, void *v)
 	__releases(RCU)
 {
+	struct ac6_iter_state *state = ac6_seq_private(seq);
+
+	if (likely(state->idev != NULL)) {
+		read_unlock_bh(&state->idev->lock);
+		state->idev = NULL;
+	}
 	rcu_read_unlock();
 }
 

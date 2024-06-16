@@ -18,37 +18,35 @@
 #include <linux/timex.h>
 #include <linux/errno.h>
 #include <linux/profile.h>
-#include <linux/stacktrace.h>
 #include <linux/syscore_ops.h>
 #include <linux/timer.h>
 #include <linux/irq.h>
 #include <linux/delay.h>
 #include <linux/clocksource.h>
-#include <linux/of_clk.h>
+#include <linux/clk-provider.h>
 #include <linux/acpi.h>
 
 #include <clocksource/arm_arch_timer.h>
 
 #include <asm/thread_info.h>
-#include <asm/paravirt.h>
-
-static bool profile_pc_cb(void *arg, unsigned long pc)
-{
-	unsigned long *prof_pc = arg;
-
-	if (in_lock_functions(pc))
-		return true;
-	*prof_pc = pc;
-	return false;
-}
+#include <asm/stacktrace.h>
 
 unsigned long profile_pc(struct pt_regs *regs)
 {
-	unsigned long prof_pc = 0;
+	struct stackframe frame;
 
-	arch_stack_walk(profile_pc_cb, &prof_pc, current, regs);
+	if (!in_lock_functions(regs->pc))
+		return regs->pc;
 
-	return prof_pc;
+	start_backtrace(&frame, regs->regs[29], regs->pc);
+
+	do {
+		int ret = unwind_frame(NULL, &frame);
+		if (ret < 0)
+			return 0;
+	} while (in_lock_functions(frame.pc));
+
+	return frame.pc;
 }
 EXPORT_SYMBOL(profile_pc);
 
@@ -67,6 +65,4 @@ void __init time_init(void)
 
 	/* Calibrate the delay loop directly */
 	lpj_fine = arch_timer_rate / HZ;
-
-	pv_time_init();
 }

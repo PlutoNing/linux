@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /******************************************************************************
  *
- * Copyright(c) 2008 - 2014, 2022 Intel Corporation. All rights reserved.
+ * Copyright(c) 2008 - 2014 Intel Corporation. All rights reserved.
+ *
+ * Contact Information:
+ *  Intel Linux Wireless <linuxwifi@intel.com>
+ * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
+ *
  *****************************************************************************/
 #include <linux/etherdevice.h>
 #include <linux/kernel.h>
@@ -105,7 +110,7 @@ int iwlagn_manage_ibss_station(struct iwl_priv *priv,
 				  vif->bss_conf.bssid);
 }
 
-/*
+/**
  * iwlagn_txfifo_flush: send REPLY_TXFIFO_FLUSH command to uCode
  *
  * pre-requirements:
@@ -441,7 +446,7 @@ static void iwlagn_bt_traffic_change_work(struct work_struct *work)
 		priv->current_ht_config.smps = smps_request;
 		for_each_context(priv, ctx) {
 			if (ctx->vif && ctx->vif->type == NL80211_IFTYPE_STATION)
-				ieee80211_request_smps(ctx->vif, 0, smps_request);
+				ieee80211_request_smps(ctx->vif, smps_request);
 		}
 	}
 
@@ -764,7 +769,7 @@ static u8 iwl_count_chain_bitmap(u32 chain_bitmap)
 	return res;
 }
 
-/*
+/**
  * iwlagn_set_rxon_chain - Set up Rx chain usage in "staging" RXON image
  *
  * Selects how many and which Rx receivers/antennas/chains to use.

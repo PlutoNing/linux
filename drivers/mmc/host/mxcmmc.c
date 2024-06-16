@@ -31,6 +31,7 @@
 #include <linux/dmaengine.h>
 #include <linux/types.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/of_dma.h>
 #include <linux/mmc/slot-gpio.h>
 
@@ -38,7 +39,7 @@
 #include <asm/irq.h>
 #include <linux/platform_data/mmc-mxcmmc.h>
 
-#include <linux/dma/imx-dma.h>
+#include <linux/platform_data/dma-imx.h>
 
 #define DRIVER_NAME "mxc-mmc"
 #define MXCMCI_TIMEOUT_MS 10000
@@ -156,16 +157,32 @@ struct mxcmci_host {
 	enum mxcmci_type	devtype;
 };
 
+static const struct platform_device_id mxcmci_devtype[] = {
+	{
+		.name = "imx21-mmc",
+		.driver_data = IMX21_MMC,
+	}, {
+		.name = "imx31-mmc",
+		.driver_data = IMX31_MMC,
+	}, {
+		.name = "mpc512x-sdhc",
+		.driver_data = MPC512X_MMC,
+	}, {
+		/* sentinel */
+	}
+};
+MODULE_DEVICE_TABLE(platform, mxcmci_devtype);
+
 static const struct of_device_id mxcmci_of_match[] = {
 	{
 		.compatible = "fsl,imx21-mmc",
-		.data = (void *) IMX21_MMC,
+		.data = &mxcmci_devtype[IMX21_MMC],
 	}, {
 		.compatible = "fsl,imx31-mmc",
-		.data = (void *) IMX31_MMC,
+		.data = &mxcmci_devtype[IMX31_MMC],
 	}, {
 		.compatible = "fsl,mpc5121-sdhc",
-		.data = (void *) MPC512X_MMC,
+		.data = &mxcmci_devtype[MPC512X_MMC],
 	}, {
 		/* sentinel */
 	}
@@ -266,18 +283,11 @@ static inline void buffer_swap32(u32 *buf, int len)
 
 static void mxcmci_swap_buffers(struct mmc_data *data)
 {
-	struct sg_mapping_iter sgm;
-	u32 *buf;
+	struct scatterlist *sg;
+	int i;
 
-	sg_miter_start(&sgm, data->sg, data->sg_len,
-		       SG_MITER_TO_SG | SG_MITER_FROM_SG);
-
-	while (sg_miter_next(&sgm)) {
-		buf = sgm.addr;
-		buffer_swap32(buf, sgm.length);
-	}
-
-	sg_miter_stop(&sgm);
+	for_each_sg(data->sg, sg, data->sg_len, i)
+		buffer_swap32(sg_virt(sg), sg->length);
 }
 #else
 static inline void mxcmci_swap_buffers(struct mmc_data *data) {}
@@ -533,9 +543,10 @@ static int mxcmci_poll_status(struct mxcmci_host *host, u32 mask)
 	} while (1);
 }
 
-static int mxcmci_pull(struct mxcmci_host *host, u32 *buf, int bytes)
+static int mxcmci_pull(struct mxcmci_host *host, void *_buf, int bytes)
 {
 	unsigned int stat;
+	u32 *buf = _buf;
 
 	while (bytes > 3) {
 		stat = mxcmci_poll_status(host,
@@ -561,9 +572,10 @@ static int mxcmci_pull(struct mxcmci_host *host, u32 *buf, int bytes)
 	return 0;
 }
 
-static int mxcmci_push(struct mxcmci_host *host, u32 *buf, int bytes)
+static int mxcmci_push(struct mxcmci_host *host, void *_buf, int bytes)
 {
 	unsigned int stat;
+	u32 *buf = _buf;
 
 	while (bytes > 3) {
 		stat = mxcmci_poll_status(host, STATUS_BUF_WRITE_RDY);
@@ -591,39 +603,31 @@ static int mxcmci_push(struct mxcmci_host *host, u32 *buf, int bytes)
 static int mxcmci_transfer_data(struct mxcmci_host *host)
 {
 	struct mmc_data *data = host->req->data;
-	struct sg_mapping_iter sgm;
-	int stat;
-	u32 *buf;
+	struct scatterlist *sg;
+	int stat, i;
 
 	host->data = data;
 	host->datasize = 0;
-	sg_miter_start(&sgm, data->sg, data->sg_len,
-		       (data->flags & MMC_DATA_READ) ? SG_MITER_TO_SG : SG_MITER_FROM_SG);
 
 	if (data->flags & MMC_DATA_READ) {
-		while (sg_miter_next(&sgm)) {
-			buf = sgm.addr;
-			stat = mxcmci_pull(host, buf, sgm.length);
+		for_each_sg(data->sg, sg, data->sg_len, i) {
+			stat = mxcmci_pull(host, sg_virt(sg), sg->length);
 			if (stat)
-				goto transfer_error;
-			host->datasize += sgm.length;
+				return stat;
+			host->datasize += sg->length;
 		}
 	} else {
-		while (sg_miter_next(&sgm)) {
-			buf = sgm.addr;
-			stat = mxcmci_push(host, buf, sgm.length);
+		for_each_sg(data->sg, sg, data->sg_len, i) {
+			stat = mxcmci_push(host, sg_virt(sg), sg->length);
 			if (stat)
-				goto transfer_error;
-			host->datasize += sgm.length;
+				return stat;
+			host->datasize += sg->length;
 		}
 		stat = mxcmci_poll_status(host, STATUS_WRITE_OP_DONE);
 		if (stat)
-			goto transfer_error;
+			return stat;
 	}
-
-transfer_error:
-	sg_miter_stop(&sgm);
-	return stat;
+	return 0;
 }
 
 static void mxcmci_datawork(struct work_struct *work)
@@ -935,7 +939,7 @@ static void mxcmci_init_card(struct mmc_host *host, struct mmc_card *card)
 	 * One way to prevent this is to only allow 1-bit transfers.
 	 */
 
-	if (is_imx31_mmc(mxcmci) && mmc_card_sdio(card))
+	if (is_imx31_mmc(mxcmci) && card->type == MMC_TYPE_SDIO)
 		host->caps &= ~MMC_CAP_4_BIT_DATA;
 	else
 		host->caps |= MMC_CAP_4_BIT_DATA;
@@ -997,10 +1001,14 @@ static int mxcmci_probe(struct platform_device *pdev)
 	int ret = 0, irq;
 	bool dat3_card_detect = false;
 	dma_cap_mask_t mask;
+	const struct of_device_id *of_id;
 	struct imxmmc_platform_data *pdata = pdev->dev.platform_data;
 
 	pr_info("i.MX/MPC512x SDHC driver\n");
 
+	of_id = of_match_device(mxcmci_of_match, &pdev->dev);
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return irq;
@@ -1011,7 +1019,7 @@ static int mxcmci_probe(struct platform_device *pdev)
 
 	host = mmc_priv(mmc);
 
-	host->base = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
+	host->base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(host->base)) {
 		ret = PTR_ERR(host->base);
 		goto out_free;
@@ -1036,7 +1044,12 @@ static int mxcmci_probe(struct platform_device *pdev)
 	mmc->max_req_size = mmc->max_blk_size * mmc->max_blk_count;
 	mmc->max_seg_size = mmc->max_req_size;
 
-	host->devtype = (uintptr_t)of_device_get_match_data(&pdev->dev);
+	if (of_id) {
+		const struct platform_device_id *id_entry = of_id->data;
+		host->devtype = id_entry->driver_data;
+	} else {
+		host->devtype = pdev->id_entry->driver_data;
+	}
 
 	/* adjust max_segs after devtype detection */
 	if (!is_mpc512x_mmc(host))
@@ -1108,16 +1121,7 @@ static int mxcmci_probe(struct platform_device *pdev)
 	mxcmci_writel(host, host->default_irq_mask, MMC_REG_INT_CNTR);
 
 	if (!host->pdata) {
-		host->dma = dma_request_chan(&pdev->dev, "rx-tx");
-		if (IS_ERR(host->dma)) {
-			if (PTR_ERR(host->dma) == -EPROBE_DEFER) {
-				ret = -EPROBE_DEFER;
-				goto out_clk_put;
-			}
-
-			/* Ignore errors to fall back to PIO mode */
-			host->dma = NULL;
-		}
+		host->dma = dma_request_slave_channel(&pdev->dev, "rx-tx");
 	} else {
 		res = platform_get_resource(pdev, IORESOURCE_DMA, 0);
 		if (res) {
@@ -1154,9 +1158,7 @@ static int mxcmci_probe(struct platform_device *pdev)
 
 	timer_setup(&host->watchdog, mxcmci_watchdog, 0);
 
-	ret = mmc_add_host(mmc);
-	if (ret)
-		goto out_free_dma;
+	mmc_add_host(mmc);
 
 	return 0;
 
@@ -1175,7 +1177,7 @@ out_free:
 	return ret;
 }
 
-static void mxcmci_remove(struct platform_device *pdev)
+static int mxcmci_remove(struct platform_device *pdev)
 {
 	struct mmc_host *mmc = platform_get_drvdata(pdev);
 	struct mxcmci_host *host = mmc_priv(mmc);
@@ -1192,8 +1194,11 @@ static void mxcmci_remove(struct platform_device *pdev)
 	clk_disable_unprepare(host->clk_ipg);
 
 	mmc_free_host(mmc);
+
+	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
 static int mxcmci_suspend(struct device *dev)
 {
 	struct mmc_host *mmc = dev_get_drvdata(dev);
@@ -1220,16 +1225,17 @@ static int mxcmci_resume(struct device *dev)
 
 	return ret;
 }
+#endif
 
-static DEFINE_SIMPLE_DEV_PM_OPS(mxcmci_pm_ops, mxcmci_suspend, mxcmci_resume);
+static SIMPLE_DEV_PM_OPS(mxcmci_pm_ops, mxcmci_suspend, mxcmci_resume);
 
 static struct platform_driver mxcmci_driver = {
 	.probe		= mxcmci_probe,
-	.remove_new	= mxcmci_remove,
+	.remove		= mxcmci_remove,
+	.id_table	= mxcmci_devtype,
 	.driver		= {
 		.name		= DRIVER_NAME,
-		.probe_type	= PROBE_PREFER_ASYNCHRONOUS,
-		.pm	= pm_sleep_ptr(&mxcmci_pm_ops),
+		.pm	= &mxcmci_pm_ops,
 		.of_match_table	= mxcmci_of_match,
 	}
 };

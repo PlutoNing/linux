@@ -244,6 +244,11 @@ static inline u32 i5100_nrecmema_rank(u32 a)
 	return a >>  8 & ((1 << 3) - 1);
 }
 
+static inline u32 i5100_nrecmema_dm_buf_id(u32 a)
+{
+	return a & ((1 << 8) - 1);
+}
+
 static inline u32 i5100_nrecmemb_cas(u32 a)
 {
 	return a >> 16 & ((1 << 13) - 1);
@@ -252,6 +257,11 @@ static inline u32 i5100_nrecmemb_cas(u32 a)
 static inline u32 i5100_nrecmemb_ras(u32 a)
 {
 	return a & ((1 << 16) - 1);
+}
+
+static inline u32 i5100_redmemb_ecc_locator(u32 a)
+{
+	return a & ((1 << 18) - 1);
 }
 
 static inline u32 i5100_recmema_merr(u32 a)
@@ -476,6 +486,7 @@ static void i5100_read_log(struct mem_ctl_info *mci, int chan,
 	u32 dw;
 	u32 dw2;
 	unsigned syndrome = 0;
+	unsigned ecc_loc = 0;
 	unsigned merr;
 	unsigned bank;
 	unsigned rank;
@@ -488,6 +499,7 @@ static void i5100_read_log(struct mem_ctl_info *mci, int chan,
 		pci_read_config_dword(pdev, I5100_REDMEMA, &dw2);
 		syndrome = dw2;
 		pci_read_config_dword(pdev, I5100_REDMEMB, &dw2);
+		ecc_loc = i5100_redmemb_ecc_locator(dw2);
 	}
 
 	if (i5100_validlog_recmemvalid(dw)) {
@@ -701,6 +713,7 @@ static int i5100_read_spd_byte(const struct mem_ctl_info *mci,
 {
 	struct i5100_priv *priv = mci->pvt_info;
 	u16 w;
+	unsigned long et;
 
 	pci_read_config_word(priv->mc, I5100_SPDDATA, &w);
 	if (i5100_spddata_busy(w))
@@ -711,6 +724,7 @@ static int i5100_read_spd_byte(const struct mem_ctl_info *mci,
 						   0, 0));
 
 	/* wait up to 100ms */
+	et = jiffies + HZ / 10;
 	udelay(100);
 	while (1) {
 		pci_read_config_word(priv->mc, I5100_SPDDATA, &w);
@@ -834,16 +848,20 @@ static void i5100_init_interleaving(struct pci_dev *pdev,
 
 static void i5100_init_csrows(struct mem_ctl_info *mci)
 {
+	int i;
 	struct i5100_priv *priv = mci->pvt_info;
-	struct dimm_info *dimm;
 
-	mci_for_each_dimm(mci, dimm) {
-		const unsigned long npages = i5100_npages(mci, dimm->idx);
-		const unsigned int chan = i5100_csrow_to_chan(mci, dimm->idx);
-		const unsigned int rank = i5100_csrow_to_rank(mci, dimm->idx);
+	for (i = 0; i < mci->tot_dimms; i++) {
+		struct dimm_info *dimm;
+		const unsigned long npages = i5100_npages(mci, i);
+		const unsigned int chan = i5100_csrow_to_chan(mci, i);
+		const unsigned int rank = i5100_csrow_to_rank(mci, i);
 
 		if (!npages)
 			continue;
+
+		dimm = EDAC_DIMM_PTR(mci->layers, mci->dimms, mci->n_layers,
+			       chan, rank, 0);
 
 		dimm->nr_pages = npages;
 		dimm->grain = 32;
@@ -909,7 +927,7 @@ static void i5100_do_inject(struct mem_ctl_info *mci)
 	 *
 	 * The injection code don't work without setting this register.
 	 * The register needs to be flipped off then on else the hardware
-	 * will only perform the first injection.
+	 * will only preform the first injection.
 	 *
 	 * Stop condition bits 7:4
 	 * 1010 - Stop after one injection
@@ -1056,14 +1074,15 @@ static int i5100_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 				    PCI_DEVICE_ID_INTEL_5100_19, 0);
 	if (!einj) {
 		ret = -ENODEV;
-		goto bail_mc_free;
+		goto bail_einj;
 	}
 
 	rc = pci_enable_device(einj);
 	if (rc < 0) {
 		ret = rc;
-		goto bail_einj;
+		goto bail_disable_einj;
 	}
+
 
 	mci->pdev = &pdev->dev;
 
@@ -1130,13 +1149,13 @@ static int i5100_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 bail_scrub:
 	priv->scrub_enable = 0;
 	cancel_delayed_work_sync(&(priv->i5100_scrubbing));
+	edac_mc_free(mci);
+
+bail_disable_einj:
 	pci_disable_device(einj);
 
 bail_einj:
 	pci_dev_put(einj);
-
-bail_mc_free:
-	edac_mc_free(mci);
 
 bail_disable_ch1:
 	pci_disable_device(ch1mm);
@@ -1220,5 +1239,6 @@ module_init(i5100_init);
 module_exit(i5100_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Arthur Jones <ajones@riverbed.com>");
+MODULE_AUTHOR
+    ("Arthur Jones <ajones@riverbed.com>");
 MODULE_DESCRIPTION("MC Driver for Intel I5100 memory controllers");

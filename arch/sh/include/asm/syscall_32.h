@@ -40,7 +40,10 @@ static inline void syscall_set_return_value(struct task_struct *task,
 					    struct pt_regs *regs,
 					    int error, long val)
 {
-	regs->regs[0] = (long) error ?: val;
+	if (error)
+		regs->regs[0] = -error;
+	else
+		regs->regs[0] = val;
 }
 
 static inline void syscall_get_arguments(struct task_struct *task,
@@ -55,6 +58,18 @@ static inline void syscall_get_arguments(struct task_struct *task,
 	args[2] = regs->regs[6];
 	args[1] = regs->regs[5];
 	args[0] = regs->regs[4];
+}
+
+static inline void syscall_set_arguments(struct task_struct *task,
+					 struct pt_regs *regs,
+					 const unsigned long *args)
+{
+	regs->regs[1] = args[5];
+	regs->regs[0] = args[4];
+	regs->regs[7] = args[3];
+	regs->regs[6] = args[2];
+	regs->regs[5] = args[1];
+	regs->regs[4] = args[0];
 }
 
 static inline int syscall_get_arch(struct task_struct *task)

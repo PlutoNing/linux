@@ -13,11 +13,6 @@ NETIFS[p5]=veth4
 NETIFS[p6]=veth5
 NETIFS[p7]=veth6
 NETIFS[p8]=veth7
-NETIFS[p9]=veth8
-NETIFS[p10]=veth9
-
-# Port that does not have a cable connected.
-NETIF_NO_CABLE=eth8
 
 ##############################################################################
 # Defines
@@ -28,8 +23,6 @@ PING=ping
 PING6=ping6
 # Packet generator. Some distributions use 'mz'.
 MZ=mausezahn
-# mausezahn delay between transmissions in microseconds.
-MZ_DELAY=0
 # Time to wait after interfaces participating in the test are all UP
 WAIT_TIME=5
 # Whether to pause on failure or not.
@@ -43,11 +36,3 @@ NETIF_CREATE=yes
 # Timeout (in seconds) before ping exits regardless of how many packets have
 # been sent or received
 PING_TIMEOUT=5
-# Minimum ageing_time (in centiseconds) supported by hardware
-LOW_AGEING_TIME=1000
-# Flag for tc match, supposed to be skip_sw/skip_hw which means do not process
-# filter by software/hardware
-TC_FLAG=skip_hw
-# IPv6 traceroute utility name.
-TROUTE6=traceroute6
-

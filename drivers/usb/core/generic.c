@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * drivers/usb/core/generic.c - generic driver for USB devices (not interfaces)
+ * drivers/usb/generic.c - generic driver for USB devices (not interfaces)
  *
  * (C) Copyright 2005 Greg Kroah-Hartman <gregkh@suse.de>
  *
@@ -59,25 +59,9 @@ int usb_choose_configuration(struct usb_device *udev)
 	int num_configs;
 	int insufficient_power = 0;
 	struct usb_host_config *c, *best;
-	struct usb_device_driver *udriver;
-
-	/*
-	 * If a USB device (not an interface) doesn't have a driver then the
-	 * kernel has no business trying to select or install a configuration
-	 * for it.
-	 */
-	if (!udev->dev.driver)
-		return -1;
-	udriver = to_usb_device_driver(udev->dev.driver);
 
 	if (usb_device_is_owned(udev))
 		return 0;
-
-	if (udriver->choose_configuration) {
-		i = udriver->choose_configuration(udev);
-		if (i >= 0)
-			return i;
-	}
 
 	best = NULL;
 	c = udev->config;
@@ -211,35 +195,7 @@ int usb_choose_configuration(struct usb_device *udev)
 }
 EXPORT_SYMBOL_GPL(usb_choose_configuration);
 
-static int __check_for_non_generic_match(struct device_driver *drv, void *data)
-{
-	struct usb_device *udev = data;
-	struct usb_device_driver *udrv;
-
-	if (!is_usb_device_driver(drv))
-		return 0;
-	udrv = to_usb_device_driver(drv);
-	if (udrv == &usb_generic_driver)
-		return 0;
-	return usb_driver_applicable(udev, udrv);
-}
-
-static bool usb_generic_driver_match(struct usb_device *udev)
-{
-	if (udev->use_generic_driver)
-		return true;
-
-	/*
-	 * If any other driver wants the device, leave the device to this other
-	 * driver.
-	 */
-	if (bus_for_each_drv(&usb_bus_type, NULL, udev, __check_for_non_generic_match))
-		return false;
-
-	return true;
-}
-
-int usb_generic_driver_probe(struct usb_device *udev)
+static int generic_probe(struct usb_device *udev)
 {
 	int err, c;
 
@@ -266,7 +222,7 @@ int usb_generic_driver_probe(struct usb_device *udev)
 	return 0;
 }
 
-void usb_generic_driver_disconnect(struct usb_device *udev)
+static void generic_disconnect(struct usb_device *udev)
 {
 	usb_notify_remove_device(udev);
 
@@ -278,7 +234,7 @@ void usb_generic_driver_disconnect(struct usb_device *udev)
 
 #ifdef	CONFIG_PM
 
-int usb_generic_driver_suspend(struct usb_device *udev, pm_message_t msg)
+static int generic_suspend(struct usb_device *udev, pm_message_t msg)
 {
 	int rc;
 
@@ -306,7 +262,7 @@ int usb_generic_driver_suspend(struct usb_device *udev, pm_message_t msg)
 	return rc;
 }
 
-int usb_generic_driver_resume(struct usb_device *udev, pm_message_t msg)
+static int generic_resume(struct usb_device *udev, pm_message_t msg)
 {
 	int rc;
 
@@ -329,12 +285,11 @@ int usb_generic_driver_resume(struct usb_device *udev, pm_message_t msg)
 
 struct usb_device_driver usb_generic_driver = {
 	.name =	"usb",
-	.match = usb_generic_driver_match,
-	.probe = usb_generic_driver_probe,
-	.disconnect = usb_generic_driver_disconnect,
+	.probe = generic_probe,
+	.disconnect = generic_disconnect,
 #ifdef	CONFIG_PM
-	.suspend = usb_generic_driver_suspend,
-	.resume = usb_generic_driver_resume,
+	.suspend = generic_suspend,
+	.resume = generic_resume,
 #endif
 	.supports_autosuspend = 1,
 };

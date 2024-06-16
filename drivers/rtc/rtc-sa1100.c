@@ -111,17 +111,20 @@ static int sa1100_rtc_read_time(struct device *dev, struct rtc_time *tm)
 {
 	struct sa1100_rtc *info = dev_get_drvdata(dev);
 
-	rtc_time64_to_tm(readl_relaxed(info->rcnr), tm);
+	rtc_time_to_tm(readl_relaxed(info->rcnr), tm);
 	return 0;
 }
 
 static int sa1100_rtc_set_time(struct device *dev, struct rtc_time *tm)
 {
 	struct sa1100_rtc *info = dev_get_drvdata(dev);
+	unsigned long time;
+	int ret;
 
-	writel_relaxed(rtc_tm_to_time64(tm), info->rcnr);
-
-	return 0;
+	ret = rtc_tm_to_time(tm, &time);
+	if (ret == 0)
+		writel_relaxed(time, info->rcnr);
+	return ret;
 }
 
 static int sa1100_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alrm)
@@ -138,18 +141,24 @@ static int sa1100_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 static int sa1100_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 {
 	struct sa1100_rtc *info = dev_get_drvdata(dev);
+	unsigned long time;
+	int ret;
 
 	spin_lock_irq(&info->lock);
+	ret = rtc_tm_to_time(&alrm->time, &time);
+	if (ret != 0)
+		goto out;
 	writel_relaxed(readl_relaxed(info->rtsr) &
 		(RTSR_HZE | RTSR_ALE | RTSR_AL), info->rtsr);
-	writel_relaxed(rtc_tm_to_time64(&alrm->time), info->rtar);
+	writel_relaxed(time, info->rtar);
 	if (alrm->enabled)
 		writel_relaxed(readl_relaxed(info->rtsr) | RTSR_ALE, info->rtsr);
 	else
 		writel_relaxed(readl_relaxed(info->rtsr) & ~RTSR_ALE, info->rtsr);
+out:
 	spin_unlock_irq(&info->lock);
 
-	return 0;
+	return ret;
 }
 
 static int sa1100_rtc_proc(struct device *dev, struct seq_file *seq)
@@ -173,6 +182,7 @@ static const struct rtc_class_ops sa1100_rtc_ops = {
 
 int sa1100_rtc_init(struct platform_device *pdev, struct sa1100_rtc *info)
 {
+	struct rtc_device *rtc;
 	int ret;
 
 	spin_lock_init(&info->lock);
@@ -201,15 +211,15 @@ int sa1100_rtc_init(struct platform_device *pdev, struct sa1100_rtc *info)
 		writel_relaxed(0, info->rcnr);
 	}
 
-	info->rtc->ops = &sa1100_rtc_ops;
-	info->rtc->max_user_freq = RTC_FREQ;
-	info->rtc->range_max = U32_MAX;
-
-	ret = devm_rtc_register_device(info->rtc);
-	if (ret) {
+	rtc = devm_rtc_device_register(&pdev->dev, pdev->name, &sa1100_rtc_ops,
+					THIS_MODULE);
+	if (IS_ERR(rtc)) {
 		clk_disable_unprepare(info->clk);
-		return ret;
+		return PTR_ERR(rtc);
 	}
+	info->rtc = rtc;
+
+	rtc->max_user_freq = RTC_FREQ;
 
 	/* Fix for a nasty initialization problem the in SA11xx RTSR register.
 	 * See also the comments in sa1100_rtc_interrupt().
@@ -242,6 +252,7 @@ EXPORT_SYMBOL_GPL(sa1100_rtc_init);
 static int sa1100_rtc_probe(struct platform_device *pdev)
 {
 	struct sa1100_rtc *info;
+	struct resource *iores;
 	void __iomem *base;
 	int irq_1hz, irq_alarm;
 	int ret;
@@ -257,10 +268,6 @@ static int sa1100_rtc_probe(struct platform_device *pdev)
 	info->irq_1hz = irq_1hz;
 	info->irq_alarm = irq_alarm;
 
-	info->rtc = devm_rtc_allocate_device(&pdev->dev);
-	if (IS_ERR(info->rtc))
-		return PTR_ERR(info->rtc);
-
 	ret = devm_request_irq(&pdev->dev, irq_1hz, sa1100_rtc_interrupt, 0,
 			       "rtc 1Hz", &pdev->dev);
 	if (ret) {
@@ -274,7 +281,8 @@ static int sa1100_rtc_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	base = devm_platform_ioremap_resource(pdev, 0);
+	iores = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	base = devm_ioremap_resource(&pdev->dev, iores);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
@@ -297,7 +305,7 @@ static int sa1100_rtc_probe(struct platform_device *pdev)
 	return sa1100_rtc_init(pdev, info);
 }
 
-static void sa1100_rtc_remove(struct platform_device *pdev)
+static int sa1100_rtc_remove(struct platform_device *pdev)
 {
 	struct sa1100_rtc *info = platform_get_drvdata(pdev);
 
@@ -307,6 +315,8 @@ static void sa1100_rtc_remove(struct platform_device *pdev)
 		spin_unlock_irq(&info->lock);
 		clk_disable_unprepare(info->clk);
 	}
+
+	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -341,7 +351,7 @@ MODULE_DEVICE_TABLE(of, sa1100_rtc_dt_ids);
 
 static struct platform_driver sa1100_rtc_driver = {
 	.probe		= sa1100_rtc_probe,
-	.remove_new	= sa1100_rtc_remove,
+	.remove		= sa1100_rtc_remove,
 	.driver		= {
 		.name	= "sa1100-rtc",
 		.pm	= &sa1100_rtc_pm_ops,

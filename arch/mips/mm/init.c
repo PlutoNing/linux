@@ -36,10 +36,11 @@
 #include <asm/cachectl.h>
 #include <asm/cpu.h>
 #include <asm/dma.h>
+#include <asm/kmap_types.h>
 #include <asm/maar.h>
 #include <asm/mmu_context.h>
-#include <asm/mmzone.h>
 #include <asm/sections.h>
+#include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/tlb.h>
 #include <asm/fixmap.h>
@@ -83,13 +84,13 @@ void setup_zero_pages(void)
 static void *__kmap_pgprot(struct page *page, unsigned long addr, pgprot_t prot)
 {
 	enum fixed_addresses idx;
-	unsigned int old_mmid;
+	unsigned int uninitialized_var(old_mmid);
 	unsigned long vaddr, flags, entrylo;
 	unsigned long old_ctx;
 	pte_t pte;
 	int tlbidx;
 
-	BUG_ON(folio_test_dcache_dirty(page_folio(page)));
+	BUG_ON(Page_dcache_dirty(page));
 
 	preempt_disable();
 	pagefault_disable();
@@ -170,12 +171,11 @@ void kunmap_coherent(void)
 void copy_user_highpage(struct page *to, struct page *from,
 	unsigned long vaddr, struct vm_area_struct *vma)
 {
-	struct folio *src = page_folio(from);
 	void *vfrom, *vto;
 
 	vto = kmap_atomic(to);
 	if (cpu_has_dc_aliases &&
-	    folio_mapped(src) && !folio_test_dcache_dirty(src)) {
+	    page_mapcount(from) && !Page_dcache_dirty(from)) {
 		vfrom = kmap_coherent(from, vaddr);
 		copy_page(vto, vfrom);
 		kunmap_coherent();
@@ -196,17 +196,15 @@ void copy_to_user_page(struct vm_area_struct *vma,
 	struct page *page, unsigned long vaddr, void *dst, const void *src,
 	unsigned long len)
 {
-	struct folio *folio = page_folio(page);
-
 	if (cpu_has_dc_aliases &&
-	    folio_mapped(folio) && !folio_test_dcache_dirty(folio)) {
+	    page_mapcount(page) && !Page_dcache_dirty(page)) {
 		void *vto = kmap_coherent(page, vaddr) + (vaddr & ~PAGE_MASK);
 		memcpy(vto, src, len);
 		kunmap_coherent();
 	} else {
 		memcpy(dst, src, len);
 		if (cpu_has_dc_aliases)
-			folio_set_dcache_dirty(folio);
+			SetPageDcacheDirty(page);
 	}
 	if (vma->vm_flags & VM_EXEC)
 		flush_cache_page(vma, vaddr, page_to_pfn(page));
@@ -216,17 +214,15 @@ void copy_from_user_page(struct vm_area_struct *vma,
 	struct page *page, unsigned long vaddr, void *dst, const void *src,
 	unsigned long len)
 {
-	struct folio *folio = page_folio(page);
-
 	if (cpu_has_dc_aliases &&
-	    folio_mapped(folio) && !folio_test_dcache_dirty(folio)) {
+	    page_mapcount(page) && !Page_dcache_dirty(page)) {
 		void *vfrom = kmap_coherent(page, vaddr) + (vaddr & ~PAGE_MASK);
 		memcpy(dst, vfrom, len);
 		kunmap_coherent();
 	} else {
 		memcpy(dst, src, len);
 		if (cpu_has_dc_aliases)
-			folio_set_dcache_dirty(folio);
+			SetPageDcacheDirty(page);
 	}
 }
 EXPORT_SYMBOL_GPL(copy_from_user_page);
@@ -243,9 +239,9 @@ void __init fixrange_init(unsigned long start, unsigned long end,
 	unsigned long vaddr;
 
 	vaddr = start;
-	i = pgd_index(vaddr);
-	j = pud_index(vaddr);
-	k = pmd_index(vaddr);
+	i = __pgd_offset(vaddr);
+	j = __pud_offset(vaddr);
+	k = __pmd_offset(vaddr);
 	pgd = pgd_base + i;
 
 	for ( ; (i < PTRS_PER_PGD) && (vaddr < end); pgd++, i++) {
@@ -362,23 +358,17 @@ void maar_init(void)
 		write_c0_maari(i);
 		back_to_back_c0_hazard();
 		upper = read_c0_maar();
-#ifdef CONFIG_XPA
-		upper |= (phys_addr_t)readx_c0_maar() << MIPS_MAARX_ADDR_SHIFT;
-#endif
 
 		write_c0_maari(i + 1);
 		back_to_back_c0_hazard();
 		lower = read_c0_maar();
-#ifdef CONFIG_XPA
-		lower |= (phys_addr_t)readx_c0_maar() << MIPS_MAARX_ADDR_SHIFT;
-#endif
 
 		attr = lower & upper;
 		lower = (lower & MIPS_MAAR_ADDR) << 4;
 		upper = ((upper & MIPS_MAAR_ADDR) << 4) | 0xffff;
 
 		pr_info("  [%d]: ", i / 2);
-		if ((attr & MIPS_MAAR_V) != MIPS_MAAR_V) {
+		if (!(attr & MIPS_MAAR_VL)) {
 			pr_cont("disabled\n");
 			continue;
 		}
@@ -400,13 +390,16 @@ void maar_init(void)
 	}
 }
 
-#ifndef CONFIG_NUMA
+#ifndef CONFIG_NEED_MULTIPLE_NODES
 void __init paging_init(void)
 {
 	unsigned long max_zone_pfns[MAX_NR_ZONES];
 
 	pagetable_init();
 
+#ifdef CONFIG_HIGHMEM
+	kmap_init();
+#endif
 #ifdef CONFIG_ZONE_DMA
 	max_zone_pfns[ZONE_DMA] = MAX_DMA_PFN;
 #endif
@@ -422,19 +415,10 @@ void __init paging_init(void)
 		       " %ldk highmem ignored\n",
 		       (highend_pfn - max_low_pfn) << (PAGE_SHIFT - 10));
 		max_zone_pfns[ZONE_HIGHMEM] = max_low_pfn;
-
-		max_mapnr = max_low_pfn;
-	} else if (highend_pfn) {
-		max_mapnr = highend_pfn;
-	} else {
-		max_mapnr = max_low_pfn;
 	}
-#else
-	max_mapnr = max_low_pfn;
 #endif
-	high_memory = (void *) __va(max_low_pfn << PAGE_SHIFT);
 
-	free_area_init(max_zone_pfns);
+	free_area_init_nodes(max_zone_pfns);
 }
 
 #ifdef CONFIG_64BIT
@@ -463,15 +447,26 @@ static inline void __init mem_init_free_highmem(void)
 void __init mem_init(void)
 {
 	/*
-	 * When PFN_PTE_SHIFT is greater than PAGE_SHIFT we won't have enough PTE
+	 * When _PFN_SHIFT is greater than PAGE_SHIFT we won't have enough PTE
 	 * bits to hold a full 32b physical address on MIPS32 systems.
 	 */
-	BUILD_BUG_ON(IS_ENABLED(CONFIG_32BIT) && (PFN_PTE_SHIFT > PAGE_SHIFT));
+	BUILD_BUG_ON(IS_ENABLED(CONFIG_32BIT) && (_PFN_SHIFT > PAGE_SHIFT));
+
+#ifdef CONFIG_HIGHMEM
+#ifdef CONFIG_DISCONTIGMEM
+#error "CONFIG_HIGHMEM and CONFIG_DISCONTIGMEM dont work together yet"
+#endif
+	max_mapnr = highend_pfn ? highend_pfn : max_low_pfn;
+#else
+	max_mapnr = max_low_pfn;
+#endif
+	high_memory = (void *) __va(max_low_pfn << PAGE_SHIFT);
 
 	maar_init();
 	memblock_free_all();
 	setup_zero_pages();	/* Setup zeroed pages.  */
 	mem_init_free_highmem();
+	mem_init_print_info(NULL);
 
 #ifdef CONFIG_64BIT
 	if ((unsigned long) &_text > (unsigned long) CKSEG0)
@@ -481,7 +476,7 @@ void __init mem_init(void)
 				0x80000000 - 4, KCORE_TEXT);
 #endif
 }
-#endif /* !CONFIG_NUMA */
+#endif /* !CONFIG_NEED_MULTIPLE_NODES */
 
 void free_init_pages(const char *what, unsigned long begin, unsigned long end)
 {
@@ -499,11 +494,6 @@ void free_init_pages(const char *what, unsigned long begin, unsigned long end)
 
 void (*free_init_pages_eva)(void *begin, void *end) = NULL;
 
-void __weak __init prom_free_prom_memory(void)
-{
-	/* nothing to do */
-}
-
 void __ref free_initmem(void)
 {
 	prom_free_prom_memory();
@@ -518,43 +508,6 @@ void __ref free_initmem(void)
 		free_initmem_default(POISON_FREE_INITMEM);
 }
 
-#ifdef CONFIG_HAVE_SETUP_PER_CPU_AREA
-unsigned long __per_cpu_offset[NR_CPUS] __read_mostly;
-EXPORT_SYMBOL(__per_cpu_offset);
-
-static int __init pcpu_cpu_distance(unsigned int from, unsigned int to)
-{
-	return node_distance(cpu_to_node(from), cpu_to_node(to));
-}
-
-static int __init pcpu_cpu_to_node(int cpu)
-{
-	return cpu_to_node(cpu);
-}
-
-void __init setup_per_cpu_areas(void)
-{
-	unsigned long delta;
-	unsigned int cpu;
-	int rc;
-
-	/*
-	 * Always reserve area for module percpu variables.  That's
-	 * what the legacy allocator did.
-	 */
-	rc = pcpu_embed_first_chunk(PERCPU_MODULE_RESERVE,
-				    PERCPU_DYNAMIC_RESERVE, PAGE_SIZE,
-				    pcpu_cpu_distance,
-				    pcpu_cpu_to_node);
-	if (rc < 0)
-		panic("Failed to initialize percpu areas.");
-
-	delta = (unsigned long)pcpu_base_addr - (unsigned long)__per_cpu_start;
-	for_each_possible_cpu(cpu)
-		__per_cpu_offset[cpu] = delta + pcpu_unit_offsets[cpu];
-}
-#endif
-
 #ifndef CONFIG_MIPS_PGD_C0_CONTEXT
 unsigned long pgd_current[NR_CPUS];
 #endif
@@ -566,7 +519,7 @@ unsigned long pgd_current[NR_CPUS];
  * size, and waste space.  So we place it in its own section and align
  * it in the linker script.
  */
-pgd_t swapper_pg_dir[PTRS_PER_PGD] __section(".bss..swapper_pg_dir");
+pgd_t swapper_pg_dir[PTRS_PER_PGD] __section(.bss..swapper_pg_dir);
 #ifndef __PAGETABLE_PUD_FOLDED
 pud_t invalid_pud_table[PTRS_PER_PUD] __page_aligned_bss;
 #endif

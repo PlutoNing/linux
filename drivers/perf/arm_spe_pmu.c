@@ -12,7 +12,6 @@
 #define DRVNAME					PMUNAME "_pmu"
 #define pr_fmt(fmt)				DRVNAME ": " fmt
 
-#include <linux/bitfield.h>
 #include <linux/bitops.h>
 #include <linux/bug.h>
 #include <linux/capability.h>
@@ -25,7 +24,8 @@
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/module.h>
-#include <linux/of.h>
+#include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/perf_event.h>
 #include <linux/perf/arm_pmu.h>
 #include <linux/platform_device.h>
@@ -38,26 +38,6 @@
 #include <asm/cpufeature.h>
 #include <asm/mmu.h>
 #include <asm/sysreg.h>
-
-/*
- * Cache if the event is allowed to trace Context information.
- * This allows us to perform the check, i.e, perfmon_capable(),
- * in the context of the event owner, once, during the event_init().
- */
-#define SPE_PMU_HW_FLAGS_CX			0x00001
-
-static_assert((PERF_EVENT_FLAG_ARCH & SPE_PMU_HW_FLAGS_CX) == SPE_PMU_HW_FLAGS_CX);
-
-static void set_spe_event_has_cx(struct perf_event *event)
-{
-	if (IS_ENABLED(CONFIG_PID_IN_CONTEXTIDR) && perfmon_capable())
-		event->hw.flags |= SPE_PMU_HW_FLAGS_CX;
-}
-
-static bool get_spe_event_has_cx(struct perf_event *event)
-{
-	return !!(event->hw.flags & SPE_PMU_HW_FLAGS_CX);
-}
 
 #define ARM_SPE_BUF_PAD_BYTE			0
 
@@ -74,7 +54,7 @@ struct arm_spe_pmu {
 	struct hlist_node			hotplug_node;
 
 	int					irq; /* PPI */
-	u16					pmsver;
+
 	u16					min_period;
 	u16					counter_sz;
 
@@ -84,7 +64,6 @@ struct arm_spe_pmu {
 #define SPE_PMU_FEAT_ARCH_INST			(1UL << 3)
 #define SPE_PMU_FEAT_LDS			(1UL << 4)
 #define SPE_PMU_FEAT_ERND			(1UL << 5)
-#define SPE_PMU_FEAT_INV_FILT_EVT		(1UL << 6)
 #define SPE_PMU_FEAT_DEV_PROBED			(1UL << 63)
 	u64					features;
 
@@ -147,7 +126,8 @@ static ssize_t arm_spe_pmu_cap_show(struct device *dev,
 		container_of(attr, struct dev_ext_attribute, attr);
 	int cap = (long)ea->var;
 
-	return sysfs_emit(buf, "%u\n", arm_spe_pmu_cap_get(spe_pmu, cap));
+	return snprintf(buf, PAGE_SIZE, "%u\n",
+		arm_spe_pmu_cap_get(spe_pmu, cap));
 }
 
 #define SPE_EXT_ATTR_ENTRY(_name, _func, _var)				\
@@ -166,7 +146,7 @@ static struct attribute *arm_spe_pmu_cap_attr[] = {
 	NULL,
 };
 
-static const struct attribute_group arm_spe_pmu_cap_group = {
+static struct attribute_group arm_spe_pmu_cap_group = {
 	.name	= "caps",
 	.attrs	= arm_spe_pmu_cap_attr,
 };
@@ -202,9 +182,27 @@ static const struct attribute_group arm_spe_pmu_cap_group = {
 #define ATTR_CFG_FLD_min_latency_LO		0
 #define ATTR_CFG_FLD_min_latency_HI		11
 
-#define ATTR_CFG_FLD_inv_event_filter_CFG	config3	/* PMSNEVFR_EL1 */
-#define ATTR_CFG_FLD_inv_event_filter_LO	0
-#define ATTR_CFG_FLD_inv_event_filter_HI	63
+/* Why does everything I do descend into this? */
+#define __GEN_PMU_FORMAT_ATTR(cfg, lo, hi)				\
+	(lo) == (hi) ? #cfg ":" #lo "\n" : #cfg ":" #lo "-" #hi
+
+#define _GEN_PMU_FORMAT_ATTR(cfg, lo, hi)				\
+	__GEN_PMU_FORMAT_ATTR(cfg, lo, hi)
+
+#define GEN_PMU_FORMAT_ATTR(name)					\
+	PMU_FORMAT_ATTR(name,						\
+	_GEN_PMU_FORMAT_ATTR(ATTR_CFG_FLD_##name##_CFG,			\
+			     ATTR_CFG_FLD_##name##_LO,			\
+			     ATTR_CFG_FLD_##name##_HI))
+
+#define _ATTR_CFG_GET_FLD(attr, cfg, lo, hi)				\
+	((((attr)->cfg) >> lo) & GENMASK(hi - lo, 0))
+
+#define ATTR_CFG_GET_FLD(attr, name)					\
+	_ATTR_CFG_GET_FLD(attr,						\
+			  ATTR_CFG_FLD_##name##_CFG,			\
+			  ATTR_CFG_FLD_##name##_LO,			\
+			  ATTR_CFG_FLD_##name##_HI)
 
 GEN_PMU_FORMAT_ATTR(ts_enable);
 GEN_PMU_FORMAT_ATTR(pa_enable);
@@ -214,7 +212,6 @@ GEN_PMU_FORMAT_ATTR(branch_filter);
 GEN_PMU_FORMAT_ATTR(load_filter);
 GEN_PMU_FORMAT_ATTR(store_filter);
 GEN_PMU_FORMAT_ATTR(event_filter);
-GEN_PMU_FORMAT_ATTR(inv_event_filter);
 GEN_PMU_FORMAT_ATTR(min_latency);
 
 static struct attribute *arm_spe_pmu_formats_attr[] = {
@@ -226,45 +223,31 @@ static struct attribute *arm_spe_pmu_formats_attr[] = {
 	&format_attr_load_filter.attr,
 	&format_attr_store_filter.attr,
 	&format_attr_event_filter.attr,
-	&format_attr_inv_event_filter.attr,
 	&format_attr_min_latency.attr,
 	NULL,
 };
 
-static umode_t arm_spe_pmu_format_attr_is_visible(struct kobject *kobj,
-						  struct attribute *attr,
-						  int unused)
-	{
-	struct device *dev = kobj_to_dev(kobj);
-	struct arm_spe_pmu *spe_pmu = dev_get_drvdata(dev);
-
-	if (attr == &format_attr_inv_event_filter.attr && !(spe_pmu->features & SPE_PMU_FEAT_INV_FILT_EVT))
-		return 0;
-
-	return attr->mode;
-}
-
-static const struct attribute_group arm_spe_pmu_format_group = {
+static struct attribute_group arm_spe_pmu_format_group = {
 	.name	= "format",
-	.is_visible = arm_spe_pmu_format_attr_is_visible,
 	.attrs	= arm_spe_pmu_formats_attr,
 };
 
-static ssize_t cpumask_show(struct device *dev,
-			    struct device_attribute *attr, char *buf)
+static ssize_t arm_spe_pmu_get_attr_cpumask(struct device *dev,
+					    struct device_attribute *attr,
+					    char *buf)
 {
 	struct arm_spe_pmu *spe_pmu = dev_get_drvdata(dev);
 
 	return cpumap_print_to_pagebuf(true, buf, &spe_pmu->supported_cpus);
 }
-static DEVICE_ATTR_RO(cpumask);
+static DEVICE_ATTR(cpumask, S_IRUGO, arm_spe_pmu_get_attr_cpumask, NULL);
 
 static struct attribute *arm_spe_pmu_attrs[] = {
 	&dev_attr_cpumask.attr,
 	NULL,
 };
 
-static const struct attribute_group arm_spe_pmu_group = {
+static struct attribute_group arm_spe_pmu_group = {
 	.attrs	= arm_spe_pmu_attrs,
 };
 
@@ -281,18 +264,18 @@ static u64 arm_spe_event_to_pmscr(struct perf_event *event)
 	struct perf_event_attr *attr = &event->attr;
 	u64 reg = 0;
 
-	reg |= FIELD_PREP(PMSCR_EL1_TS, ATTR_CFG_GET_FLD(attr, ts_enable));
-	reg |= FIELD_PREP(PMSCR_EL1_PA, ATTR_CFG_GET_FLD(attr, pa_enable));
-	reg |= FIELD_PREP(PMSCR_EL1_PCT, ATTR_CFG_GET_FLD(attr, pct_enable));
+	reg |= ATTR_CFG_GET_FLD(attr, ts_enable) << SYS_PMSCR_EL1_TS_SHIFT;
+	reg |= ATTR_CFG_GET_FLD(attr, pa_enable) << SYS_PMSCR_EL1_PA_SHIFT;
+	reg |= ATTR_CFG_GET_FLD(attr, pct_enable) << SYS_PMSCR_EL1_PCT_SHIFT;
 
 	if (!attr->exclude_user)
-		reg |= PMSCR_EL1_E0SPE;
+		reg |= BIT(SYS_PMSCR_EL1_E0SPE_SHIFT);
 
 	if (!attr->exclude_kernel)
-		reg |= PMSCR_EL1_E1SPE;
+		reg |= BIT(SYS_PMSCR_EL1_E1SPE_SHIFT);
 
-	if (get_spe_event_has_cx(event))
-		reg |= PMSCR_EL1_CX;
+	if (IS_ENABLED(CONFIG_PID_IN_CONTEXTIDR) && capable(CAP_SYS_ADMIN))
+		reg |= BIT(SYS_PMSCR_EL1_CX_SHIFT);
 
 	return reg;
 }
@@ -301,7 +284,8 @@ static void arm_spe_event_sanitise_period(struct perf_event *event)
 {
 	struct arm_spe_pmu *spe_pmu = to_spe_pmu(event->pmu);
 	u64 period = event->hw.sample_period;
-	u64 max_period = PMSIRR_EL1_INTERVAL_MASK;
+	u64 max_period = SYS_PMSIRR_EL1_INTERVAL_MASK
+			 << SYS_PMSIRR_EL1_INTERVAL_SHIFT;
 
 	if (period < spe_pmu->min_period)
 		period = spe_pmu->min_period;
@@ -320,7 +304,7 @@ static u64 arm_spe_event_to_pmsirr(struct perf_event *event)
 
 	arm_spe_event_sanitise_period(event);
 
-	reg |= FIELD_PREP(PMSIRR_EL1_RND, ATTR_CFG_GET_FLD(attr, jitter));
+	reg |= ATTR_CFG_GET_FLD(attr, jitter) << SYS_PMSIRR_EL1_RND_SHIFT;
 	reg |= event->hw.sample_period;
 
 	return reg;
@@ -331,21 +315,18 @@ static u64 arm_spe_event_to_pmsfcr(struct perf_event *event)
 	struct perf_event_attr *attr = &event->attr;
 	u64 reg = 0;
 
-	reg |= FIELD_PREP(PMSFCR_EL1_LD, ATTR_CFG_GET_FLD(attr, load_filter));
-	reg |= FIELD_PREP(PMSFCR_EL1_ST, ATTR_CFG_GET_FLD(attr, store_filter));
-	reg |= FIELD_PREP(PMSFCR_EL1_B, ATTR_CFG_GET_FLD(attr, branch_filter));
+	reg |= ATTR_CFG_GET_FLD(attr, load_filter) << SYS_PMSFCR_EL1_LD_SHIFT;
+	reg |= ATTR_CFG_GET_FLD(attr, store_filter) << SYS_PMSFCR_EL1_ST_SHIFT;
+	reg |= ATTR_CFG_GET_FLD(attr, branch_filter) << SYS_PMSFCR_EL1_B_SHIFT;
 
 	if (reg)
-		reg |= PMSFCR_EL1_FT;
+		reg |= BIT(SYS_PMSFCR_EL1_FT_SHIFT);
 
 	if (ATTR_CFG_GET_FLD(attr, event_filter))
-		reg |= PMSFCR_EL1_FE;
-
-	if (ATTR_CFG_GET_FLD(attr, inv_event_filter))
-		reg |= PMSFCR_EL1_FnE;
+		reg |= BIT(SYS_PMSFCR_EL1_FE_SHIFT);
 
 	if (ATTR_CFG_GET_FLD(attr, min_latency))
-		reg |= PMSFCR_EL1_FL;
+		reg |= BIT(SYS_PMSFCR_EL1_FL_SHIFT);
 
 	return reg;
 }
@@ -356,16 +337,11 @@ static u64 arm_spe_event_to_pmsevfr(struct perf_event *event)
 	return ATTR_CFG_GET_FLD(attr, event_filter);
 }
 
-static u64 arm_spe_event_to_pmsnevfr(struct perf_event *event)
-{
-	struct perf_event_attr *attr = &event->attr;
-	return ATTR_CFG_GET_FLD(attr, inv_event_filter);
-}
-
 static u64 arm_spe_event_to_pmslatfr(struct perf_event *event)
 {
 	struct perf_event_attr *attr = &event->attr;
-	return FIELD_PREP(PMSLATFR_EL1_MINLAT, ATTR_CFG_GET_FLD(attr, min_latency));
+	return ATTR_CFG_GET_FLD(attr, min_latency)
+	       << SYS_PMSLATFR_EL1_MINLAT_SHIFT;
 }
 
 static void arm_spe_pmu_pad_buf(struct perf_output_handle *handle, int len)
@@ -517,7 +493,7 @@ static void arm_spe_perf_aux_output_begin(struct perf_output_handle *handle,
 	limit = buf->snapshot ? arm_spe_pmu_next_snapshot_off(handle)
 			      : arm_spe_pmu_next_off(handle);
 	if (limit)
-		limit |= PMBLIMITR_EL1_E;
+		limit |= BIT(SYS_PMBLIMITR_EL1_E_SHIFT);
 
 	limit += (u64)buf->base;
 	base = (u64)buf->base + PERF_IDX2OFF(handle->head, buf);
@@ -576,28 +552,28 @@ arm_spe_pmu_buf_get_fault_act(struct perf_output_handle *handle)
 
 	/* Service required? */
 	pmbsr = read_sysreg_s(SYS_PMBSR_EL1);
-	if (!FIELD_GET(PMBSR_EL1_S, pmbsr))
+	if (!(pmbsr & BIT(SYS_PMBSR_EL1_S_SHIFT)))
 		return SPE_PMU_BUF_FAULT_ACT_SPURIOUS;
 
 	/*
 	 * If we've lost data, disable profiling and also set the PARTIAL
 	 * flag to indicate that the last record is corrupted.
 	 */
-	if (FIELD_GET(PMBSR_EL1_DL, pmbsr))
+	if (pmbsr & BIT(SYS_PMBSR_EL1_DL_SHIFT))
 		perf_aux_output_flag(handle, PERF_AUX_FLAG_TRUNCATED |
 					     PERF_AUX_FLAG_PARTIAL);
 
 	/* Report collisions to userspace so that it can up the period */
-	if (FIELD_GET(PMBSR_EL1_COLL, pmbsr))
+	if (pmbsr & BIT(SYS_PMBSR_EL1_COLL_SHIFT))
 		perf_aux_output_flag(handle, PERF_AUX_FLAG_COLLISION);
 
 	/* We only expect buffer management events */
-	switch (FIELD_GET(PMBSR_EL1_EC, pmbsr)) {
-	case PMBSR_EL1_EC_BUF:
+	switch (pmbsr & (SYS_PMBSR_EL1_EC_MASK << SYS_PMBSR_EL1_EC_SHIFT)) {
+	case SYS_PMBSR_EL1_EC_BUF:
 		/* Handled below */
 		break;
-	case PMBSR_EL1_EC_FAULT_S1:
-	case PMBSR_EL1_EC_FAULT_S2:
+	case SYS_PMBSR_EL1_EC_FAULT_S1:
+	case SYS_PMBSR_EL1_EC_FAULT_S2:
 		err_str = "Unexpected buffer fault";
 		goto out_err;
 	default:
@@ -606,8 +582,9 @@ arm_spe_pmu_buf_get_fault_act(struct perf_output_handle *handle)
 	}
 
 	/* Buffer management event */
-	switch (FIELD_GET(PMBSR_EL1_BUF_BSC_MASK, pmbsr)) {
-	case PMBSR_EL1_BUF_BSC_FULL:
+	switch (pmbsr &
+		(SYS_PMBSR_EL1_BUF_BSC_MASK << SYS_PMBSR_EL1_BUF_BSC_SHIFT)) {
+	case SYS_PMBSR_EL1_BUF_BSC_FULL:
 		ret = SPE_PMU_BUF_FAULT_ACT_OK;
 		goto out_stop;
 	default:
@@ -678,20 +655,6 @@ static irqreturn_t arm_spe_pmu_irq_handler(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
-static u64 arm_spe_pmsevfr_res0(u16 pmsver)
-{
-	switch (pmsver) {
-	case ID_AA64DFR0_EL1_PMSVer_IMP:
-		return PMSEVFR_EL1_RES0_IMP;
-	case ID_AA64DFR0_EL1_PMSVer_V1P1:
-		return PMSEVFR_EL1_RES0_V1P1;
-	case ID_AA64DFR0_EL1_PMSVer_V1P2:
-	/* Return the highest version we support in default */
-	default:
-		return PMSEVFR_EL1_RES0_V1P2;
-	}
-}
-
 /* Perf callbacks */
 static int arm_spe_pmu_event_init(struct perf_event *event)
 {
@@ -707,10 +670,7 @@ static int arm_spe_pmu_event_init(struct perf_event *event)
 	    !cpumask_test_cpu(event->cpu, &spe_pmu->supported_cpus))
 		return -ENOENT;
 
-	if (arm_spe_event_to_pmsevfr(event) & arm_spe_pmsevfr_res0(spe_pmu->pmsver))
-		return -EOPNOTSUPP;
-
-	if (arm_spe_event_to_pmsnevfr(event) & arm_spe_pmsevfr_res0(spe_pmu->pmsver))
+	if (arm_spe_event_to_pmsevfr(event) & SYS_PMSEVFR_EL1_RES0)
 		return -EOPNOTSUPP;
 
 	if (attr->exclude_idle)
@@ -727,26 +687,23 @@ static int arm_spe_pmu_event_init(struct perf_event *event)
 		return -EINVAL;
 
 	reg = arm_spe_event_to_pmsfcr(event);
-	if ((FIELD_GET(PMSFCR_EL1_FE, reg)) &&
+	if ((reg & BIT(SYS_PMSFCR_EL1_FE_SHIFT)) &&
 	    !(spe_pmu->features & SPE_PMU_FEAT_FILT_EVT))
 		return -EOPNOTSUPP;
 
-	if ((FIELD_GET(PMSFCR_EL1_FnE, reg)) &&
-	    !(spe_pmu->features & SPE_PMU_FEAT_INV_FILT_EVT))
-		return -EOPNOTSUPP;
-
-	if ((FIELD_GET(PMSFCR_EL1_FT, reg)) &&
+	if ((reg & BIT(SYS_PMSFCR_EL1_FT_SHIFT)) &&
 	    !(spe_pmu->features & SPE_PMU_FEAT_FILT_TYP))
 		return -EOPNOTSUPP;
 
-	if ((FIELD_GET(PMSFCR_EL1_FL, reg)) &&
+	if ((reg & BIT(SYS_PMSFCR_EL1_FL_SHIFT)) &&
 	    !(spe_pmu->features & SPE_PMU_FEAT_FILT_LAT))
 		return -EOPNOTSUPP;
 
-	set_spe_event_has_cx(event);
 	reg = arm_spe_event_to_pmscr(event);
-	if (!perfmon_capable() &&
-	    (reg & (PMSCR_EL1_PA | PMSCR_EL1_PCT)))
+	if (!capable(CAP_SYS_ADMIN) &&
+	    (reg & (BIT(SYS_PMSCR_EL1_PA_SHIFT) |
+		    BIT(SYS_PMSCR_EL1_CX_SHIFT) |
+		    BIT(SYS_PMSCR_EL1_PCT_SHIFT))))
 		return -EACCES;
 
 	return 0;
@@ -769,11 +726,6 @@ static void arm_spe_pmu_start(struct perf_event *event, int flags)
 
 	reg = arm_spe_event_to_pmsevfr(event);
 	write_sysreg_s(reg, SYS_PMSEVFR_EL1);
-
-	if (spe_pmu->features & SPE_PMU_FEAT_INV_FILT_EVT) {
-		reg = arm_spe_event_to_pmsnevfr(event);
-		write_sysreg_s(reg, SYS_PMSNEVFR_EL1);
-	}
 
 	reg = arm_spe_event_to_pmslatfr(event);
 	write_sysreg_s(reg, SYS_PMSLATFR_EL1);
@@ -879,7 +831,7 @@ static void *arm_spe_pmu_setup_aux(struct perf_event *event, void **pages,
 	 * parts and give userspace a fighting chance of getting some
 	 * useful data out of it.
 	 */
-	if (snapshot && (nr_pages & 1))
+	if (!nr_pages || (snapshot && (nr_pages & 1)))
 		return NULL;
 
 	if (cpu == -1)
@@ -978,25 +930,24 @@ static void __arm_spe_pmu_dev_probe(void *info)
 	struct device *dev = &spe_pmu->pdev->dev;
 
 	fld = cpuid_feature_extract_unsigned_field(read_cpuid(ID_AA64DFR0_EL1),
-						   ID_AA64DFR0_EL1_PMSVer_SHIFT);
+						   ID_AA64DFR0_PMSVER_SHIFT);
 	if (!fld) {
 		dev_err(dev,
 			"unsupported ID_AA64DFR0_EL1.PMSVer [%d] on CPU %d\n",
 			fld, smp_processor_id());
 		return;
 	}
-	spe_pmu->pmsver = (u16)fld;
 
 	/* Read PMBIDR first to determine whether or not we have access */
 	reg = read_sysreg_s(SYS_PMBIDR_EL1);
-	if (FIELD_GET(PMBIDR_EL1_P, reg)) {
+	if (reg & BIT(SYS_PMBIDR_EL1_P_SHIFT)) {
 		dev_err(dev,
 			"profiling buffer owned by higher exception level\n");
 		return;
 	}
 
 	/* Minimum alignment. If it's out-of-range, then fail the probe */
-	fld = FIELD_GET(PMBIDR_EL1_ALIGN, reg);
+	fld = reg >> SYS_PMBIDR_EL1_ALIGN_SHIFT & SYS_PMBIDR_EL1_ALIGN_MASK;
 	spe_pmu->align = 1 << fld;
 	if (spe_pmu->align > SZ_2K) {
 		dev_err(dev, "unsupported PMBIDR.Align [%d] on CPU %d\n",
@@ -1006,61 +957,58 @@ static void __arm_spe_pmu_dev_probe(void *info)
 
 	/* It's now safe to read PMSIDR and figure out what we've got */
 	reg = read_sysreg_s(SYS_PMSIDR_EL1);
-	if (FIELD_GET(PMSIDR_EL1_FE, reg))
+	if (reg & BIT(SYS_PMSIDR_EL1_FE_SHIFT))
 		spe_pmu->features |= SPE_PMU_FEAT_FILT_EVT;
 
-	if (FIELD_GET(PMSIDR_EL1_FnE, reg))
-		spe_pmu->features |= SPE_PMU_FEAT_INV_FILT_EVT;
-
-	if (FIELD_GET(PMSIDR_EL1_FT, reg))
+	if (reg & BIT(SYS_PMSIDR_EL1_FT_SHIFT))
 		spe_pmu->features |= SPE_PMU_FEAT_FILT_TYP;
 
-	if (FIELD_GET(PMSIDR_EL1_FL, reg))
+	if (reg & BIT(SYS_PMSIDR_EL1_FL_SHIFT))
 		spe_pmu->features |= SPE_PMU_FEAT_FILT_LAT;
 
-	if (FIELD_GET(PMSIDR_EL1_ARCHINST, reg))
+	if (reg & BIT(SYS_PMSIDR_EL1_ARCHINST_SHIFT))
 		spe_pmu->features |= SPE_PMU_FEAT_ARCH_INST;
 
-	if (FIELD_GET(PMSIDR_EL1_LDS, reg))
+	if (reg & BIT(SYS_PMSIDR_EL1_LDS_SHIFT))
 		spe_pmu->features |= SPE_PMU_FEAT_LDS;
 
-	if (FIELD_GET(PMSIDR_EL1_ERND, reg))
+	if (reg & BIT(SYS_PMSIDR_EL1_ERND_SHIFT))
 		spe_pmu->features |= SPE_PMU_FEAT_ERND;
 
 	/* This field has a spaced out encoding, so just use a look-up */
-	fld = FIELD_GET(PMSIDR_EL1_INTERVAL, reg);
+	fld = reg >> SYS_PMSIDR_EL1_INTERVAL_SHIFT & SYS_PMSIDR_EL1_INTERVAL_MASK;
 	switch (fld) {
-	case PMSIDR_EL1_INTERVAL_256:
+	case 0:
 		spe_pmu->min_period = 256;
 		break;
-	case PMSIDR_EL1_INTERVAL_512:
+	case 2:
 		spe_pmu->min_period = 512;
 		break;
-	case PMSIDR_EL1_INTERVAL_768:
+	case 3:
 		spe_pmu->min_period = 768;
 		break;
-	case PMSIDR_EL1_INTERVAL_1024:
+	case 4:
 		spe_pmu->min_period = 1024;
 		break;
-	case PMSIDR_EL1_INTERVAL_1536:
+	case 5:
 		spe_pmu->min_period = 1536;
 		break;
-	case PMSIDR_EL1_INTERVAL_2048:
+	case 6:
 		spe_pmu->min_period = 2048;
 		break;
-	case PMSIDR_EL1_INTERVAL_3072:
+	case 7:
 		spe_pmu->min_period = 3072;
 		break;
 	default:
 		dev_warn(dev, "unknown PMSIDR_EL1.Interval [%d]; assuming 8\n",
 			 fld);
-		fallthrough;
-	case PMSIDR_EL1_INTERVAL_4096:
+		/* Fallthrough */
+	case 8:
 		spe_pmu->min_period = 4096;
 	}
 
 	/* Maximum record size. If it's out-of-range, then fail the probe */
-	fld = FIELD_GET(PMSIDR_EL1_MAXSIZE, reg);
+	fld = reg >> SYS_PMSIDR_EL1_MAXSIZE_SHIFT & SYS_PMSIDR_EL1_MAXSIZE_MASK;
 	spe_pmu->max_record_sz = 1 << fld;
 	if (spe_pmu->max_record_sz > SZ_2K || spe_pmu->max_record_sz < 16) {
 		dev_err(dev, "unsupported PMSIDR_EL1.MaxSize [%d] on CPU %d\n",
@@ -1068,25 +1016,23 @@ static void __arm_spe_pmu_dev_probe(void *info)
 		return;
 	}
 
-	fld = FIELD_GET(PMSIDR_EL1_COUNTSIZE, reg);
+	fld = reg >> SYS_PMSIDR_EL1_COUNTSIZE_SHIFT & SYS_PMSIDR_EL1_COUNTSIZE_MASK;
 	switch (fld) {
 	default:
 		dev_warn(dev, "unknown PMSIDR_EL1.CountSize [%d]; assuming 2\n",
 			 fld);
-		fallthrough;
-	case PMSIDR_EL1_COUNTSIZE_12_BIT_SAT:
+		/* Fallthrough */
+	case 2:
 		spe_pmu->counter_sz = 12;
-		break;
-	case PMSIDR_EL1_COUNTSIZE_16_BIT_SAT:
-		spe_pmu->counter_sz = 16;
 	}
 
 	dev_info(dev,
-		 "probed SPEv1.%d for CPUs %*pbl [max_record_sz %u, align %u, features 0x%llx]\n",
-		 spe_pmu->pmsver - 1, cpumask_pr_args(&spe_pmu->supported_cpus),
+		 "probed for CPUs %*pbl [max_record_sz %u, align %u, features 0x%llx]\n",
+		 cpumask_pr_args(&spe_pmu->supported_cpus),
 		 spe_pmu->max_record_sz, spe_pmu->align, spe_pmu->features);
 
 	spe_pmu->features |= SPE_PMU_FEAT_DEV_PROBED;
+	return;
 }
 
 static void __arm_spe_pmu_reset_local(void)
@@ -1187,8 +1133,10 @@ static int arm_spe_pmu_irq_probe(struct arm_spe_pmu *spe_pmu)
 	struct platform_device *pdev = spe_pmu->pdev;
 	int irq = platform_get_irq(pdev, 0);
 
-	if (irq < 0)
+	if (irq < 0) {
+		dev_err(&pdev->dev, "failed to get IRQ (%d)\n", irq);
 		return -ENXIO;
+	}
 
 	if (!irq_is_percpu(irq)) {
 		dev_err(&pdev->dev, "expected PPI but got SPI (%d)\n", irq);
@@ -1232,8 +1180,10 @@ static int arm_spe_pmu_device_probe(struct platform_device *pdev)
 	}
 
 	spe_pmu = devm_kzalloc(dev, sizeof(*spe_pmu), GFP_KERNEL);
-	if (!spe_pmu)
+	if (!spe_pmu) {
+		dev_err(dev, "failed to allocate spe_pmu\n");
 		return -ENOMEM;
+	}
 
 	spe_pmu->handle = alloc_percpu(typeof(*spe_pmu->handle));
 	if (!spe_pmu->handle)
@@ -1263,13 +1213,14 @@ out_free_handle:
 	return ret;
 }
 
-static void arm_spe_pmu_device_remove(struct platform_device *pdev)
+static int arm_spe_pmu_device_remove(struct platform_device *pdev)
 {
 	struct arm_spe_pmu *spe_pmu = platform_get_drvdata(pdev);
 
 	arm_spe_pmu_perf_destroy(spe_pmu);
 	arm_spe_pmu_dev_teardown(spe_pmu);
 	free_percpu(spe_pmu->handle);
+	return 0;
 }
 
 static struct platform_driver arm_spe_pmu_driver = {
@@ -1277,10 +1228,9 @@ static struct platform_driver arm_spe_pmu_driver = {
 	.driver	= {
 		.name		= DRVNAME,
 		.of_match_table	= of_match_ptr(arm_spe_pmu_of_match),
-		.suppress_bind_attrs = true,
 	},
 	.probe	= arm_spe_pmu_device_probe,
-	.remove_new = arm_spe_pmu_device_remove,
+	.remove	= arm_spe_pmu_device_remove,
 };
 
 static int __init arm_spe_pmu_init(void)

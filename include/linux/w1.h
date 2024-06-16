@@ -262,14 +262,13 @@ struct w1_family_ops {
  * @family_entry:	family linked list
  * @fid:		8 bit family identifier
  * @fops:		operations for this family
- * @of_match_table: open firmware match table
  * @refcnt:		reference counter
  */
 struct w1_family {
 	struct list_head	family_entry;
 	u8			fid;
 
-	const struct w1_family_ops *fops;
+	struct w1_family_ops	*fops;
 
 	const struct of_device_id *of_match_table;
 
@@ -280,7 +279,7 @@ int w1_register_family(struct w1_family *family);
 void w1_unregister_family(struct w1_family *family);
 
 /**
- * module_w1_family() - Helper macro for registering a 1-Wire families
+ * module_w1_driver() - Helper macro for registering a 1-Wire families
  * @__w1_family: w1_family struct
  *
  * Helper macro for 1-Wire families which do not do anything special in module

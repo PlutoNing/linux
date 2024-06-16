@@ -175,6 +175,7 @@ static irqreturn_t dc_rtc_irq(int irq, void *dev_id)
 
 static int __init dc_rtc_probe(struct platform_device *pdev)
 {
+	struct resource *res;
 	struct dc_rtc *rtc;
 	int irq, ret;
 
@@ -182,7 +183,8 @@ static int __init dc_rtc_probe(struct platform_device *pdev)
 	if (!rtc)
 		return -ENOMEM;
 
-	rtc->regs = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	rtc->regs = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(rtc->regs))
 		return PTR_ERR(rtc->regs);
 
@@ -202,10 +204,10 @@ static int __init dc_rtc_probe(struct platform_device *pdev)
 	rtc->rtc_dev->ops = &dc_rtc_ops;
 	rtc->rtc_dev->range_max = U32_MAX;
 
-	return devm_rtc_register_device(rtc->rtc_dev);
+	return rtc_register_device(rtc->rtc_dev);
 }
 
-static const __maybe_unused struct of_device_id dc_dt_ids[] = {
+static const struct of_device_id dc_dt_ids[] = {
 	{ .compatible = "cnxt,cx92755-rtc" },
 	{ /* sentinel */ }
 };

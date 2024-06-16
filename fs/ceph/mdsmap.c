@@ -7,52 +7,39 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 
+#include <linux/ceph/mdsmap.h>
 #include <linux/ceph/messenger.h>
 #include <linux/ceph/decode.h>
 
-#include "mdsmap.h"
-#include "mds_client.h"
 #include "super.h"
 
-#define CEPH_MDS_IS_READY(i, ignore_laggy) \
-	(m->m_info[i].state > 0 && ignore_laggy ? true : !m->m_info[i].laggy)
-
-static int __mdsmap_get_random_mds(struct ceph_mdsmap *m, bool ignore_laggy)
-{
-	int n = 0;
-	int i, j;
-
-	/* count */
-	for (i = 0; i < m->possible_max_rank; i++)
-		if (CEPH_MDS_IS_READY(i, ignore_laggy))
-			n++;
-	if (n == 0)
-		return -1;
-
-	/* pick */
-	n = get_random_u32_below(n);
-	for (j = 0, i = 0; i < m->possible_max_rank; i++) {
-		if (CEPH_MDS_IS_READY(i, ignore_laggy))
-			j++;
-		if (j > n)
-			break;
-	}
-
-	return i;
-}
 
 /*
  * choose a random mds that is "up" (i.e. has a state > 0), or -1.
  */
 int ceph_mdsmap_get_random_mds(struct ceph_mdsmap *m)
 {
-	int mds;
+	int n = 0;
+	int i;
 
-	mds = __mdsmap_get_random_mds(m, false);
-	if (mds == m->possible_max_rank || mds == -1)
-		mds = __mdsmap_get_random_mds(m, true);
+	/* special case for one mds */
+	if (1 == m->m_num_mds && m->m_info[0].state > 0)
+		return 0;
 
-	return mds == m->possible_max_rank ? -1 : mds;
+	/* count */
+	for (i = 0; i < m->m_num_mds; i++)
+		if (m->m_info[i].state > 0)
+			n++;
+	if (n == 0)
+		return -1;
+
+	/* pick */
+	n = prandom_u32() % n;
+	for (i = 0; n > 0; i++, n--)
+		while (m->m_info[i].state <= 0)
+			i++;
+
+	return i;
 }
 
 #define __decode_and_drop_type(p, end, type, bad)		\
@@ -115,17 +102,14 @@ bad:
  * Ignore any fields we don't care about (there are quite a few of
  * them).
  */
-struct ceph_mdsmap *ceph_mdsmap_decode(struct ceph_mds_client *mdsc, void **p,
-				       void *end, bool msgr2)
+struct ceph_mdsmap *ceph_mdsmap_decode(void **p, void *end)
 {
-	struct ceph_client *cl = mdsc->fsc->client;
 	struct ceph_mdsmap *m;
 	const void *start = *p;
 	int i, j, n;
 	int err;
-	u8 mdsmap_v;
+	u8 mdsmap_v, mdsmap_cv;
 	u16 mdsmap_ev;
-	u32 target;
 
 	m = kzalloc(sizeof(*m), GFP_NOFS);
 	if (!m)
@@ -133,7 +117,7 @@ struct ceph_mdsmap *ceph_mdsmap_decode(struct ceph_mds_client *mdsc, void **p,
 
 	ceph_decode_need(p, end, 1 + 1, bad);
 	mdsmap_v = ceph_decode_8(p);
-	*p += sizeof(u8);			/* mdsmap_cv */
+	mdsmap_cv = ceph_decode_8(p);
 	if (mdsmap_v >= 4) {
 	       u32 mdsmap_len;
 	       ceph_decode_32_safe(p, end, mdsmap_len, bad);
@@ -151,33 +135,19 @@ struct ceph_mdsmap *ceph_mdsmap_decode(struct ceph_mds_client *mdsc, void **p,
 	m->m_session_autoclose = ceph_decode_32(p);
 	m->m_max_file_size = ceph_decode_64(p);
 	m->m_max_mds = ceph_decode_32(p);
+	m->m_num_mds = m->m_max_mds;
 
-	/*
-	 * pick out the active nodes as the m_num_active_mds, the
-	 * m_num_active_mds maybe larger than m_max_mds when decreasing
-	 * the max_mds in cluster side, in other case it should less
-	 * than or equal to m_max_mds.
-	 */
-	m->m_num_active_mds = n = ceph_decode_32(p);
-
-	/*
-	 * the possible max rank, it maybe larger than the m_num_active_mds,
-	 * for example if the mds_max == 2 in the cluster, when the MDS(0)
-	 * was laggy and being replaced by a new MDS, we will temporarily
-	 * receive a new mds map with n_num_mds == 1 and the active MDS(1),
-	 * and the mds rank >= m_num_active_mds.
-	 */
-	m->possible_max_rank = max(m->m_num_active_mds, m->m_max_mds);
-
-	m->m_info = kcalloc(m->possible_max_rank, sizeof(*m->m_info), GFP_NOFS);
+	m->m_info = kcalloc(m->m_num_mds, sizeof(*m->m_info), GFP_NOFS);
 	if (!m->m_info)
 		goto nomem;
 
 	/* pick out active nodes from mds_info (state > 0) */
+	n = ceph_decode_32(p);
 	for (i = 0; i < n; i++) {
 		u64 global_id;
 		u32 namelen;
 		s32 mds, inc, state;
+		u64 state_seq;
 		u8 info_v;
 		void *info_end = NULL;
 		struct ceph_entity_addr addr;
@@ -185,15 +155,15 @@ struct ceph_mdsmap *ceph_mdsmap_decode(struct ceph_mds_client *mdsc, void **p,
 		void *pexport_targets = NULL;
 		struct ceph_timespec laggy_since;
 		struct ceph_mds_info *info;
-		bool laggy;
 
 		ceph_decode_need(p, end, sizeof(u64) + 1, bad);
 		global_id = ceph_decode_64(p);
 		info_v= ceph_decode_8(p);
 		if (info_v >= 4) {
 			u32 info_len;
+			u8 info_cv;
 			ceph_decode_need(p, end, 1 + sizeof(u32), bad);
-			*p += sizeof(u8);	/* info_cv */
+			info_cv = ceph_decode_8(p);
 			info_len = ceph_decode_32(p);
 			info_end = *p + info_len;
 			if (info_end > end)
@@ -205,20 +175,18 @@ struct ceph_mdsmap *ceph_mdsmap_decode(struct ceph_mds_client *mdsc, void **p,
 		namelen = ceph_decode_32(p);  /* skip mds name */
 		*p += namelen;
 
-		ceph_decode_32_safe(p, end, mds, bad);
-		ceph_decode_32_safe(p, end, inc, bad);
-		ceph_decode_32_safe(p, end, state, bad);
-		*p += sizeof(u64);		/* state_seq */
-		if (info_v >= 8)
-			err = ceph_decode_entity_addrvec(p, end, msgr2, &addr);
-		else
-			err = ceph_decode_entity_addr(p, end, &addr);
+		ceph_decode_need(p, end,
+				 4*sizeof(u32) + sizeof(u64) +
+				 sizeof(addr) + sizeof(struct ceph_timespec),
+				 bad);
+		mds = ceph_decode_32(p);
+		inc = ceph_decode_32(p);
+		state = ceph_decode_32(p);
+		state_seq = ceph_decode_64(p);
+		err = ceph_decode_entity_addr(p, end, &addr);
 		if (err)
 			goto corrupt;
-
-		ceph_decode_copy_safe(p, end, &laggy_since, sizeof(laggy_since),
-				      bad);
-		laggy = laggy_since.tv_sec != 0 || laggy_since.tv_nsec != 0;
+		ceph_decode_copy(p, &laggy_since, sizeof(laggy_since));
 		*p += sizeof(u32);
 		ceph_decode_32_safe(p, end, namelen, bad);
 		*p += namelen;
@@ -236,39 +204,51 @@ struct ceph_mdsmap *ceph_mdsmap_decode(struct ceph_mds_client *mdsc, void **p,
 			*p = info_end;
 		}
 
-		doutc(cl, "%d/%d %lld mds%d.%d %s %s%s\n", i+1, n, global_id,
-		      mds, inc, ceph_pr_addr(&addr),
-		      ceph_mds_state_name(state), laggy ? "(laggy)" : "");
+		dout("mdsmap_decode %d/%d %lld mds%d.%d %s %s\n",
+		     i+1, n, global_id, mds, inc,
+		     ceph_pr_addr(&addr),
+		     ceph_mds_state_name(state));
 
-		if (mds < 0 || mds >= m->possible_max_rank) {
-			pr_warn_client(cl, "got incorrect mds(%d)\n", mds);
+		if (mds < 0 || state <= 0)
 			continue;
-		}
 
-		if (state <= 0) {
-			doutc(cl, "got incorrect state(%s)\n",
-			      ceph_mds_state_name(state));
-			continue;
+		if (mds >= m->m_num_mds) {
+			int new_num = max(mds + 1, m->m_num_mds * 2);
+			void *new_m_info = krealloc(m->m_info,
+						new_num * sizeof(*m->m_info),
+						GFP_NOFS | __GFP_ZERO);
+			if (!new_m_info)
+				goto nomem;
+			m->m_info = new_m_info;
+			m->m_num_mds = new_num;
 		}
 
 		info = &m->m_info[mds];
 		info->global_id = global_id;
 		info->state = state;
 		info->addr = addr;
-		info->laggy = laggy;
+		info->laggy = (laggy_since.tv_sec != 0 ||
+			       laggy_since.tv_nsec != 0);
 		info->num_export_targets = num_export_targets;
 		if (num_export_targets) {
 			info->export_targets = kcalloc(num_export_targets,
 						       sizeof(u32), GFP_NOFS);
 			if (!info->export_targets)
 				goto nomem;
-			for (j = 0; j < num_export_targets; j++) {
-				target = ceph_decode_32(&pexport_targets);
-				info->export_targets[j] = target;
-			}
+			for (j = 0; j < num_export_targets; j++)
+				info->export_targets[j] =
+				       ceph_decode_32(&pexport_targets);
 		} else {
 			info->export_targets = NULL;
 		}
+	}
+	if (m->m_num_mds > m->m_max_mds) {
+		/* find max up mds */
+		for (i = m->m_num_mds; i >= m->m_max_mds; i--) {
+			if (i == 0 || m->m_info[i-1].state > 0)
+				break;
+		}
+		m->m_num_mds = i;
 	}
 
 	/* pg_pools */
@@ -311,14 +291,14 @@ struct ceph_mdsmap *ceph_mdsmap_decode(struct ceph_mds_client *mdsc, void **p,
 
 		for (i = 0; i < n; i++) {
 			s32 mds = ceph_decode_32(p);
-			if (mds >= 0 && mds < m->possible_max_rank) {
+			if (mds >= 0 && mds < m->m_num_mds) {
 				if (m->m_info[mds].laggy)
 					num_laggy++;
 			}
 		}
 		m->m_num_laggy = num_laggy;
 
-		if (n > m->possible_max_rank) {
+		if (n > m->m_num_mds) {
 			void *new_m_info = krealloc(m->m_info,
 						    n * sizeof(*m->m_info),
 						    GFP_NOFS | __GFP_ZERO);
@@ -326,7 +306,7 @@ struct ceph_mdsmap *ceph_mdsmap_decode(struct ceph_mds_client *mdsc, void **p,
 				goto nomem;
 			m->m_info = new_m_info;
 		}
-		m->possible_max_rank = n;
+		m->m_num_mds = n;
 	}
 
 	/* inc */
@@ -353,10 +333,12 @@ struct ceph_mdsmap *ceph_mdsmap_decode(struct ceph_mds_client *mdsc, void **p,
 		__decode_and_drop_type(p, end, u8, bad_ext);
 	}
 	if (mdsmap_ev >= 8) {
+		u32 name_len;
 		/* enabled */
 		ceph_decode_8_safe(p, end, m->m_enabled, bad_ext);
-		/* fs_name */
-		ceph_decode_skip_string(p, end, bad_ext);
+		ceph_decode_32_safe(p, end, name_len, bad_ext);
+		ceph_decode_need(p, end, name_len, bad_ext);
+		*p += name_len;
 	}
 	/* damaged */
 	if (mdsmap_ev >= 9) {
@@ -369,34 +351,15 @@ struct ceph_mdsmap *ceph_mdsmap_decode(struct ceph_mds_client *mdsc, void **p,
 	} else {
 		m->m_damaged = false;
 	}
-	if (mdsmap_ev >= 17) {
-		/* balancer */
-		ceph_decode_skip_string(p, end, bad_ext);
-		/* standby_count_wanted */
-		ceph_decode_skip_32(p, end, bad_ext);
-		/* old_max_mds */
-		ceph_decode_skip_32(p, end, bad_ext);
-		/* min_compat_client */
-		ceph_decode_skip_8(p, end, bad_ext);
-		/* required_client_features */
-		ceph_decode_skip_set(p, end, 64, bad_ext);
-		/* bal_rank_mask */
-		ceph_decode_skip_string(p, end, bad_ext);
-	}
-	if (mdsmap_ev >= 18) {
-		ceph_decode_64_safe(p, end, m->m_max_xattr_size, bad_ext);
-	}
 bad_ext:
-	doutc(cl, "m_enabled: %d, m_damaged: %d, m_num_laggy: %d\n",
-	      !!m->m_enabled, !!m->m_damaged, m->m_num_laggy);
 	*p = end;
-	doutc(cl, "success epoch %u\n", m->m_epoch);
+	dout("mdsmap_decode success epoch %u\n", m->m_epoch);
 	return m;
 nomem:
 	err = -ENOMEM;
 	goto out_err;
 corrupt:
-	pr_err_client(cl, "corrupt mdsmap\n");
+	pr_err("corrupt mdsmap\n");
 	print_hex_dump(KERN_DEBUG, "mdsmap: ",
 		       DUMP_PREFIX_OFFSET, 16, 1,
 		       start, end - start, true);
@@ -412,11 +375,9 @@ void ceph_mdsmap_destroy(struct ceph_mdsmap *m)
 {
 	int i;
 
-	if (m->m_info) {
-		for (i = 0; i < m->possible_max_rank; i++)
-			kfree(m->m_info[i].export_targets);
-		kfree(m->m_info);
-	}
+	for (i = 0; i < m->m_num_mds; i++)
+		kfree(m->m_info[i].export_targets);
+	kfree(m->m_info);
 	kfree(m->m_data_pg_pools);
 	kfree(m);
 }
@@ -428,9 +389,9 @@ bool ceph_mdsmap_is_cluster_available(struct ceph_mdsmap *m)
 		return false;
 	if (m->m_damaged)
 		return false;
-	if (m->m_num_laggy == m->m_num_active_mds)
+	if (m->m_num_laggy > 0)
 		return false;
-	for (i = 0; i < m->possible_max_rank; i++) {
+	for (i = 0; i < m->m_num_mds; i++) {
 		if (m->m_info[i].state == CEPH_MDS_STATE_ACTIVE)
 			nr_active++;
 	}

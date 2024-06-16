@@ -1,0 +1,15 @@
+  DESCEND  objtool
+  CALL    scripts/atomic/check-atomics.sh
+  CALL    scripts/checksyscalls.sh
+  CHK     include/generated/compile.h
+  AS      arch/x86/entry/thunk_64.o
+  AS      arch/x86/entry/entry_64_compat.o
+arch/x86/entry/thunk_64.o: warning: objtool: missing symbol table
+make[2]: *** [scripts/Makefile.build:357：arch/x86/entry/thunk_64.o] 错误 1
+make[2]: *** 正在删除文件“arch/x86/entry/thunk_64.o”
+make[2]: *** 正在等待未完成的任务....
+  CC      arch/x86/entry/syscall_64.o
+  CC      arch/x86/entry/common.o
+make[1]: *** [scripts/Makefile.build:509：arch/x86/entry] 错误 2
+make: *** [Makefile:1653：arch/x86] 错误 2
+make: *** 正在等待未完成的任务....

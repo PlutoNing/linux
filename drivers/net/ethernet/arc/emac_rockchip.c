@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-/*
+/**
  * emac-rockchip.c - Rockchip EMAC specific glue layer
  *
  * Copyright (C) 2014 Romain Perier <romain.perier@gmail.com>
@@ -16,6 +16,7 @@
 #include "emac.h"
 
 #define DRV_NAME        "rockchip_emac"
+#define DRV_VERSION     "1.1"
 
 struct emac_rockchip_soc_data {
 	unsigned int grf_offset;
@@ -96,9 +97,8 @@ static int emac_rockchip_probe(struct platform_device *pdev)
 	struct net_device *ndev;
 	struct rockchip_priv_data *priv;
 	const struct of_device_id *match;
-	phy_interface_t interface;
 	u32 data;
-	int err;
+	int err, interface;
 
 	if (!pdev->dev.of_node)
 		return -ENODEV;
@@ -111,11 +111,10 @@ static int emac_rockchip_probe(struct platform_device *pdev)
 
 	priv = netdev_priv(ndev);
 	priv->emac.drv_name = DRV_NAME;
+	priv->emac.drv_version = DRV_VERSION;
 	priv->emac.set_mac_speed = emac_rockchip_set_mac_speed;
 
-	err = of_get_phy_mode(dev->of_node, &interface);
-	if (err)
-		goto out_netdev;
+	interface = of_get_phy_mode(dev->of_node);
 
 	/* RK3036/RK3066/RK3188 SoCs only support RMII */
 	if (interface != PHY_INTERFACE_MODE_RMII) {
@@ -244,12 +243,13 @@ out_netdev:
 	return err;
 }
 
-static void emac_rockchip_remove(struct platform_device *pdev)
+static int emac_rockchip_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct rockchip_priv_data *priv = netdev_priv(ndev);
+	int err;
 
-	arc_emac_remove(ndev);
+	err = arc_emac_remove(ndev);
 
 	clk_disable_unprepare(priv->refclk);
 
@@ -260,11 +260,12 @@ static void emac_rockchip_remove(struct platform_device *pdev)
 		clk_disable_unprepare(priv->macclk);
 
 	free_netdev(ndev);
+	return err;
 }
 
 static struct platform_driver emac_rockchip_driver = {
 	.probe = emac_rockchip_probe,
-	.remove_new = emac_rockchip_remove,
+	.remove = emac_rockchip_remove,
 	.driver = {
 		.name = DRV_NAME,
 		.of_match_table  = emac_rockchip_dt_ids,

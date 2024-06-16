@@ -3,6 +3,7 @@
 #include <linux/gfp.h>
 #include <linux/hugetlb.h>
 #include <asm/pgalloc.h>
+#include <asm/pgtable.h>
 #include <asm/tlb.h>
 #include <asm/fixmap.h>
 #include <asm/mtrr.h>
@@ -16,14 +17,6 @@ EXPORT_SYMBOL(physical_mask);
 #define PGTABLE_HIGHMEM __GFP_HIGHMEM
 #else
 #define PGTABLE_HIGHMEM 0
-#endif
-
-#ifndef CONFIG_PARAVIRT
-static inline
-void paravirt_tlb_remove_table(struct mmu_gather *tlb, void *table)
-{
-	tlb_remove_page(tlb, table);
-}
 #endif
 
 gfp_t __userpte_alloc_gfp = GFP_PGTABLE_USER | PGTABLE_HIGHMEM;
@@ -52,7 +45,7 @@ early_param("userpte", setup_userpte);
 
 void ___pte_free_tlb(struct mmu_gather *tlb, struct page *pte)
 {
-	pagetable_pte_dtor(page_ptdesc(pte));
+	pgtable_pte_page_dtor(pte);
 	paravirt_release_pte(page_to_pfn(pte));
 	paravirt_tlb_remove_table(tlb, pte);
 }
@@ -60,7 +53,7 @@ void ___pte_free_tlb(struct mmu_gather *tlb, struct page *pte)
 #if CONFIG_PGTABLE_LEVELS > 2
 void ___pmd_free_tlb(struct mmu_gather *tlb, pmd_t *pmd)
 {
-	struct ptdesc *ptdesc = virt_to_ptdesc(pmd);
+	struct page *page = virt_to_page(pmd);
 	paravirt_release_pmd(__pa(pmd) >> PAGE_SHIFT);
 	/*
 	 * NOTE! For PAE, any changes to the top page-directory-pointer-table
@@ -69,16 +62,13 @@ void ___pmd_free_tlb(struct mmu_gather *tlb, pmd_t *pmd)
 #ifdef CONFIG_X86_PAE
 	tlb->need_flush_all = 1;
 #endif
-	pagetable_pmd_dtor(ptdesc);
-	paravirt_tlb_remove_table(tlb, ptdesc_page(ptdesc));
+	pgtable_pmd_page_dtor(page);
+	paravirt_tlb_remove_table(tlb, page);
 }
 
 #if CONFIG_PGTABLE_LEVELS > 3
 void ___pud_free_tlb(struct mmu_gather *tlb, pud_t *pud)
 {
-	struct ptdesc *ptdesc = virt_to_ptdesc(pud);
-
-	pagetable_pud_dtor(ptdesc);
 	paravirt_release_pud(__pa(pud) >> PAGE_SHIFT);
 	paravirt_tlb_remove_table(tlb, virt_to_page(pud));
 }
@@ -95,16 +85,16 @@ void ___p4d_free_tlb(struct mmu_gather *tlb, p4d_t *p4d)
 
 static inline void pgd_list_add(pgd_t *pgd)
 {
-	struct ptdesc *ptdesc = virt_to_ptdesc(pgd);
+	struct page *page = virt_to_page(pgd);
 
-	list_add(&ptdesc->pt_list, &pgd_list);
+	list_add(&page->lru, &pgd_list);
 }
 
 static inline void pgd_list_del(pgd_t *pgd)
 {
-	struct ptdesc *ptdesc = virt_to_ptdesc(pgd);
+	struct page *page = virt_to_page(pgd);
 
-	list_del(&ptdesc->pt_list);
+	list_del(&page->lru);
 }
 
 #define UNSHARED_PTRS_PER_PGD				\
@@ -115,12 +105,12 @@ static inline void pgd_list_del(pgd_t *pgd)
 
 static void pgd_set_mm(pgd_t *pgd, struct mm_struct *mm)
 {
-	virt_to_ptdesc(pgd)->pt_mm = mm;
+	virt_to_page(pgd)->pt_mm = mm;
 }
 
 struct mm_struct *pgd_page_get_mm(struct page *page)
 {
-	return page_ptdesc(page)->pt_mm;
+	return page->pt_mm;
 }
 
 static void pgd_ctor(struct mm_struct *mm, pgd_t *pgd)
@@ -216,14 +206,11 @@ void pud_populate(struct mm_struct *mm, pud_t *pudp, pmd_t *pmd)
 static void free_pmds(struct mm_struct *mm, pmd_t *pmds[], int count)
 {
 	int i;
-	struct ptdesc *ptdesc;
 
 	for (i = 0; i < count; i++)
 		if (pmds[i]) {
-			ptdesc = virt_to_ptdesc(pmds[i]);
-
-			pagetable_pmd_dtor(ptdesc);
-			pagetable_free(ptdesc);
+			pgtable_pmd_page_dtor(virt_to_page(pmds[i]));
+			free_page((unsigned long)pmds[i]);
 			mm_dec_nr_pmds(mm);
 		}
 }
@@ -236,24 +223,18 @@ static int preallocate_pmds(struct mm_struct *mm, pmd_t *pmds[], int count)
 
 	if (mm == &init_mm)
 		gfp &= ~__GFP_ACCOUNT;
-	gfp &= ~__GFP_HIGHMEM;
 
 	for (i = 0; i < count; i++) {
-		pmd_t *pmd = NULL;
-		struct ptdesc *ptdesc = pagetable_alloc(gfp, 0);
-
-		if (!ptdesc)
+		pmd_t *pmd = (pmd_t *)__get_free_page(gfp);
+		if (!pmd)
 			failed = true;
-		if (ptdesc && !pagetable_pmd_ctor(ptdesc)) {
-			pagetable_free(ptdesc);
-			ptdesc = NULL;
+		if (pmd && !pgtable_pmd_page_ctor(virt_to_page(pmd))) {
+			free_page((unsigned long)pmd);
+			pmd = NULL;
 			failed = true;
 		}
-		if (ptdesc) {
+		if (pmd)
 			mm_inc_nr_pmds(mm);
-			pmd = ptdesc_address(ptdesc);
-		}
-
 		pmds[i] = pmd;
 	}
 
@@ -293,7 +274,7 @@ static void pgd_mop_up_pmds(struct mm_struct *mm, pgd_t *pgdp)
 	for (i = 0; i < PREALLOCATED_PMDS; i++)
 		mop_up_one_pmd(mm, &pgdp[i]);
 
-#ifdef CONFIG_MITIGATION_PAGE_TABLE_ISOLATION
+#ifdef CONFIG_PAGE_TABLE_ISOLATION
 
 	if (!boot_cpu_has(X86_FEATURE_PTI))
 		return;
@@ -311,6 +292,9 @@ static void pgd_prepopulate_pmd(struct mm_struct *mm, pgd_t *pgd, pmd_t *pmds[])
 	pud_t *pud;
 	int i;
 
+	if (PREALLOCATED_PMDS == 0) /* Work around gcc-3.4.x bug */
+		return;
+
 	p4d = p4d_offset(pgd, 0);
 	pud = pud_offset(p4d, 0);
 
@@ -325,7 +309,7 @@ static void pgd_prepopulate_pmd(struct mm_struct *mm, pgd_t *pgd, pmd_t *pmds[])
 	}
 }
 
-#ifdef CONFIG_MITIGATION_PAGE_TABLE_ISOLATION
+#ifdef CONFIG_PAGE_TABLE_ISOLATION
 static void pgd_prepopulate_user_pmd(struct mm_struct *mm,
 				     pgd_t *k_pgd, pmd_t *pmds[])
 {
@@ -443,12 +427,10 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 
 	mm->pgd = pgd;
 
-	if (sizeof(pmds) != 0 &&
-			preallocate_pmds(mm, pmds, PREALLOCATED_PMDS) != 0)
+	if (preallocate_pmds(mm, pmds, PREALLOCATED_PMDS) != 0)
 		goto out_free_pgd;
 
-	if (sizeof(u_pmds) != 0 &&
-			preallocate_pmds(mm, u_pmds, PREALLOCATED_USER_PMDS) != 0)
+	if (preallocate_pmds(mm, u_pmds, PREALLOCATED_USER_PMDS) != 0)
 		goto out_free_pmds;
 
 	if (paravirt_pgd_alloc(mm) != 0)
@@ -462,22 +444,17 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 	spin_lock(&pgd_lock);
 
 	pgd_ctor(mm, pgd);
-	if (sizeof(pmds) != 0)
-		pgd_prepopulate_pmd(mm, pgd, pmds);
-
-	if (sizeof(u_pmds) != 0)
-		pgd_prepopulate_user_pmd(mm, pgd, u_pmds);
+	pgd_prepopulate_pmd(mm, pgd, pmds);
+	pgd_prepopulate_user_pmd(mm, pgd, u_pmds);
 
 	spin_unlock(&pgd_lock);
 
 	return pgd;
 
 out_free_user_pmds:
-	if (sizeof(u_pmds) != 0)
-		free_pmds(mm, u_pmds, PREALLOCATED_USER_PMDS);
+	free_pmds(mm, u_pmds, PREALLOCATED_USER_PMDS);
 out_free_pmds:
-	if (sizeof(pmds) != 0)
-		free_pmds(mm, pmds, PREALLOCATED_PMDS);
+	free_pmds(mm, pmds, PREALLOCATED_PMDS);
 out_free_pgd:
 	_pgd_free(pgd);
 out:
@@ -566,7 +543,7 @@ int ptep_test_and_clear_young(struct vm_area_struct *vma,
 	return ret;
 }
 
-#if defined(CONFIG_TRANSPARENT_HUGEPAGE) || defined(CONFIG_ARCH_HAS_NONLEAF_PMD_YOUNG)
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 			      unsigned long addr, pmd_t *pmdp)
 {
@@ -578,9 +555,6 @@ int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 
 	return ret;
 }
-#endif
-
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 int pudp_test_and_clear_young(struct vm_area_struct *vma,
 			      unsigned long addr, pud_t *pudp)
 {
@@ -627,16 +601,6 @@ int pmdp_clear_flush_young(struct vm_area_struct *vma,
 
 	return young;
 }
-
-pmd_t pmdp_invalidate_ad(struct vm_area_struct *vma, unsigned long address,
-			 pmd_t *pmdp)
-{
-	/*
-	 * No flush is necessary. Once an invalid PTE is established, the PTE's
-	 * access and dirty bits cannot be updated.
-	 */
-	return pmdp_establish(vma, address, pmdp, pmd_mkinvalid(*pmdp));
-}
 #endif
 
 /**
@@ -679,8 +643,8 @@ void __native_set_fixmap(enum fixed_addresses idx, pte_t pte)
 	fixmaps_set++;
 }
 
-void native_set_fixmap(unsigned /* enum fixed_addresses */ idx,
-		       phys_addr_t phys, pgprot_t flags)
+void native_set_fixmap(enum fixed_addresses idx, phys_addr_t phys,
+		       pgprot_t flags)
 {
 	/* Sanitize 'prot' against any unsupported bits: */
 	pgprot_val(flags) &= __default_kernel_pte_mask;
@@ -705,8 +669,9 @@ int p4d_set_huge(p4d_t *p4d, phys_addr_t addr, pgprot_t prot)
  *
  * No 512GB pages yet -- always return 0
  */
-void p4d_clear_huge(p4d_t *p4d)
+int p4d_clear_huge(p4d_t *p4d)
 {
+	return 0;
 }
 #endif
 
@@ -714,8 +679,14 @@ void p4d_clear_huge(p4d_t *p4d)
  * pud_set_huge - setup kernel PUD mapping
  *
  * MTRRs can override PAT memory types with 4KiB granularity. Therefore, this
- * function sets up a huge page only if the complete range has the same MTRR
- * caching mode.
+ * function sets up a huge page only if any of the following conditions are met:
+ *
+ * - MTRRs are disabled, or
+ *
+ * - MTRRs are enabled and the range is completely covered by a single MTRR, or
+ *
+ * - MTRRs are enabled and the corresponding MTRR memory type is WB, which
+ *   has no effect on the requested PAT memory type.
  *
  * Callers should try to decrease page size (1GB -> 2MB -> 4K) if the bigger
  * page mapping attempt fails.
@@ -724,19 +695,22 @@ void p4d_clear_huge(p4d_t *p4d)
  */
 int pud_set_huge(pud_t *pud, phys_addr_t addr, pgprot_t prot)
 {
-	u8 uniform;
+	u8 mtrr, uniform;
 
-	mtrr_type_lookup(addr, addr + PUD_SIZE, &uniform);
-	if (!uniform)
+	mtrr = mtrr_type_lookup(addr, addr + PUD_SIZE, &uniform);
+	if ((mtrr != MTRR_TYPE_INVALID) && (!uniform) &&
+	    (mtrr != MTRR_TYPE_WRBACK))
 		return 0;
 
 	/* Bail out if we are we on a populated non-leaf entry: */
 	if (pud_present(*pud) && !pud_huge(*pud))
 		return 0;
 
+	prot = pgprot_4k_2_large(prot);
+
 	set_pte((pte_t *)pud, pfn_pte(
 		(u64)addr >> PAGE_SHIFT,
-		__pgprot(protval_4k_2_large(pgprot_val(prot)) | _PAGE_PSE)));
+		__pgprot(pgprot_val(prot) | _PAGE_PSE)));
 
 	return 1;
 }
@@ -750,10 +724,11 @@ int pud_set_huge(pud_t *pud, phys_addr_t addr, pgprot_t prot)
  */
 int pmd_set_huge(pmd_t *pmd, phys_addr_t addr, pgprot_t prot)
 {
-	u8 uniform;
+	u8 mtrr, uniform;
 
-	mtrr_type_lookup(addr, addr + PMD_SIZE, &uniform);
-	if (!uniform) {
+	mtrr = mtrr_type_lookup(addr, addr + PMD_SIZE, &uniform);
+	if ((mtrr != MTRR_TYPE_INVALID) && (!uniform) &&
+	    (mtrr != MTRR_TYPE_WRBACK)) {
 		pr_warn_once("%s: Cannot satisfy [mem %#010llx-%#010llx] with a huge-page mapping due to MTRR override.\n",
 			     __func__, addr, addr + PMD_SIZE);
 		return 0;
@@ -763,9 +738,11 @@ int pmd_set_huge(pmd_t *pmd, phys_addr_t addr, pgprot_t prot)
 	if (pmd_present(*pmd) && !pmd_huge(*pmd))
 		return 0;
 
+	prot = pgprot_4k_2_large(prot);
+
 	set_pte((pte_t *)pmd, pfn_pte(
 		(u64)addr >> PAGE_SHIFT,
-		__pgprot(protval_4k_2_large(pgprot_val(prot)) | _PAGE_PSE)));
+		__pgprot(pgprot_val(prot) | _PAGE_PSE)));
 
 	return 1;
 }
@@ -777,7 +754,7 @@ int pmd_set_huge(pmd_t *pmd, phys_addr_t addr, pgprot_t prot)
  */
 int pud_clear_huge(pud_t *pud)
 {
-	if (pud_leaf(*pud)) {
+	if (pud_large(*pud)) {
 		pud_clear(pud);
 		return 1;
 	}
@@ -792,11 +769,19 @@ int pud_clear_huge(pud_t *pud)
  */
 int pmd_clear_huge(pmd_t *pmd)
 {
-	if (pmd_leaf(*pmd)) {
+	if (pmd_large(*pmd)) {
 		pmd_clear(pmd);
 		return 1;
 	}
 
+	return 0;
+}
+
+/*
+ * Until we support 512GB pages, skip them in the vmap area.
+ */
+int p4d_free_pud_page(p4d_t *p4d, unsigned long addr)
+{
 	return 0;
 }
 
@@ -817,7 +802,7 @@ int pud_free_pmd_page(pud_t *pud, unsigned long addr)
 	pte_t *pte;
 	int i;
 
-	pmd = pud_pgtable(*pud);
+	pmd = (pmd_t *)pud_page_vaddr(*pud);
 	pmd_sv = (pmd_t *)__get_free_page(GFP_KERNEL);
 	if (!pmd_sv)
 		return 0;
@@ -841,8 +826,6 @@ int pud_free_pmd_page(pud_t *pud, unsigned long addr)
 	}
 
 	free_page((unsigned long)pmd_sv);
-
-	pagetable_pmd_dtor(virt_to_ptdesc(pmd));
 	free_page((unsigned long)pmd);
 
 	return 1;
@@ -873,6 +856,11 @@ int pmd_free_pte_page(pmd_t *pmd, unsigned long addr)
 
 #else /* !CONFIG_X86_64 */
 
+int pud_free_pmd_page(pud_t *pud, unsigned long addr)
+{
+	return pud_none(*pud);
+}
+
 /*
  * Disable free page handling on x86-PAE. This assures that ioremap()
  * does not update sync'd pmd entries. See vmalloc_sync_one().
@@ -884,43 +872,3 @@ int pmd_free_pte_page(pmd_t *pmd, unsigned long addr)
 
 #endif /* CONFIG_X86_64 */
 #endif	/* CONFIG_HAVE_ARCH_HUGE_VMAP */
-
-pte_t pte_mkwrite(pte_t pte, struct vm_area_struct *vma)
-{
-	if (vma->vm_flags & VM_SHADOW_STACK)
-		return pte_mkwrite_shstk(pte);
-
-	pte = pte_mkwrite_novma(pte);
-
-	return pte_clear_saveddirty(pte);
-}
-
-pmd_t pmd_mkwrite(pmd_t pmd, struct vm_area_struct *vma)
-{
-	if (vma->vm_flags & VM_SHADOW_STACK)
-		return pmd_mkwrite_shstk(pmd);
-
-	pmd = pmd_mkwrite_novma(pmd);
-
-	return pmd_clear_saveddirty(pmd);
-}
-
-void arch_check_zapped_pte(struct vm_area_struct *vma, pte_t pte)
-{
-	/*
-	 * Hardware before shadow stack can (rarely) set Dirty=1
-	 * on a Write=0 PTE. So the below condition
-	 * only indicates a software bug when shadow stack is
-	 * supported by the HW. This checking is covered in
-	 * pte_shstk().
-	 */
-	VM_WARN_ON_ONCE(!(vma->vm_flags & VM_SHADOW_STACK) &&
-			pte_shstk(pte));
-}
-
-void arch_check_zapped_pmd(struct vm_area_struct *vma, pmd_t pmd)
-{
-	/* See note in arch_check_zapped_pte() */
-	VM_WARN_ON_ONCE(!(vma->vm_flags & VM_SHADOW_STACK) &&
-			pmd_shstk(pmd));
-}

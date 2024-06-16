@@ -15,7 +15,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/sysfs.h>
-#include <sound/ac97_codec.h>
 #include <sound/ac97/codec.h>
 #include <sound/ac97/controller.h>
 #include <sound/ac97/regs.h>
@@ -28,6 +27,8 @@
 static DEFINE_MUTEX(ac97_controllers_mutex);
 static DEFINE_IDR(ac97_adapter_idr);
 static LIST_HEAD(ac97_controllers);
+
+static struct bus_type ac97_bus_type;
 
 static inline struct ac97_controller*
 to_ac97_controller(struct device *ac97_adapter)
@@ -272,7 +273,7 @@ static struct attribute *ac97_controller_device_attrs[] = {
 	NULL
 };
 
-static const struct attribute_group ac97_adapter_attr_group = {
+static struct attribute_group ac97_adapter_attr_group = {
 	.name	= "ac97_operations",
 	.attrs	= ac97_controller_device_attrs,
 };
@@ -459,9 +460,9 @@ static ssize_t vendor_id_show(struct device *dev,
 {
 	struct ac97_codec_device *codec = to_ac97_device(dev);
 
-	return sysfs_emit(buf, "%08x", codec->vendor_id);
+	return sprintf(buf, "%08x", codec->vendor_id);
 }
-static DEVICE_ATTR_RO(vendor_id);
+DEVICE_ATTR_RO(vendor_id);
 
 static struct attribute *ac97_dev_attrs[] = {
 	&dev_attr_vendor_id.attr,
@@ -513,24 +514,27 @@ static int ac97_bus_probe(struct device *dev)
 	return ret;
 }
 
-static void ac97_bus_remove(struct device *dev)
+static int ac97_bus_remove(struct device *dev)
 {
 	struct ac97_codec_device *adev = to_ac97_device(dev);
 	struct ac97_codec_driver *adrv = to_ac97_driver(dev->driver);
 	int ret;
 
-	ret = pm_runtime_resume_and_get(dev);
+	ret = pm_runtime_get_sync(dev);
 	if (ret < 0)
-		return;
+		return ret;
 
-	adrv->remove(adev);
+	ret = adrv->remove(adev);
 	pm_runtime_put_noidle(dev);
-	ac97_put_disable_clk(adev);
+	if (ret == 0)
+		ac97_put_disable_clk(adev);
 
 	pm_runtime_disable(dev);
+
+	return ret;
 }
 
-const struct bus_type ac97_bus_type = {
+static struct bus_type ac97_bus_type = {
 	.name		= "ac97bus",
 	.dev_groups	= ac97_dev_groups,
 	.match		= ac97_bus_match,

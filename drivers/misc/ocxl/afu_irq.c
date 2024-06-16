@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 // Copyright 2017 IBM Corp.
 #include <linux/interrupt.h>
-#include <linux/irqdomain.h>
 #include <asm/pnv-ocxl.h>
-#include <asm/xive.h>
 #include "ocxl_internal.h"
 #include "trace.h"
 
@@ -12,6 +10,7 @@ struct afu_irq {
 	int hw_irq;
 	unsigned int virq;
 	char *name;
+	u64 trigger_page;
 	irqreturn_t (*handler)(void *private);
 	void (*free_private)(void *private);
 	void *private;
@@ -57,7 +56,7 @@ EXPORT_SYMBOL_GPL(ocxl_irq_set_handler);
 
 static irqreturn_t afu_irq_handler(int virq, void *data)
 {
-	struct afu_irq *irq = data;
+	struct afu_irq *irq = (struct afu_irq *) data;
 
 	trace_ocxl_afu_irq_receive(virq);
 
@@ -125,7 +124,8 @@ int ocxl_afu_irq_alloc(struct ocxl_context *ctx, int *irq_id)
 		goto err_unlock;
 	}
 
-	rc = ocxl_link_irq_alloc(ctx->afu->fn->link, &irq->hw_irq);
+	rc = ocxl_link_irq_alloc(ctx->afu->fn->link, &irq->hw_irq,
+				&irq->trigger_page);
 	if (rc)
 		goto err_idr;
 
@@ -196,16 +196,13 @@ void ocxl_afu_irq_free_all(struct ocxl_context *ctx)
 
 u64 ocxl_afu_irq_get_addr(struct ocxl_context *ctx, int irq_id)
 {
-	struct xive_irq_data *xd;
 	struct afu_irq *irq;
 	u64 addr = 0;
 
 	mutex_lock(&ctx->irq_lock);
 	irq = idr_find(&ctx->irq_idr, irq_id);
-	if (irq) {
-		xd = irq_get_handler_data(irq->virq);
-		addr = xd ? xd->trig_page : 0;
-	}
+	if (irq)
+		addr = irq->trigger_page;
 	mutex_unlock(&ctx->irq_lock);
 	return addr;
 }

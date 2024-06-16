@@ -50,7 +50,7 @@ struct hfi_msg_event_notify_pkt {
 	u32 event_id;
 	u32 event_data1;
 	u32 event_data2;
-	u32 ext_event_data[];
+	u32 ext_event_data[1];
 };
 
 struct hfi_msg_event_release_buffer_ref_pkt {
@@ -63,7 +63,7 @@ struct hfi_msg_sys_init_done_pkt {
 	struct hfi_pkt_hdr hdr;
 	u32 error_type;
 	u32 num_properties;
-	u32 data[];
+	u32 data[1];
 };
 
 struct hfi_msg_sys_pc_prep_done_pkt {
@@ -81,7 +81,7 @@ struct hfi_msg_session_init_done_pkt {
 	struct hfi_session_hdr_pkt shdr;
 	u32 error_type;
 	u32 num_properties;
-	u32 data[];
+	u32 data[1];
 };
 
 struct hfi_msg_session_end_done_pkt {
@@ -113,8 +113,7 @@ struct hfi_msg_sys_ping_ack_pkt {
 struct hfi_msg_sys_property_info_pkt {
 	struct hfi_pkt_hdr hdr;
 	u32 num_properties;
-	u32 property;
-	u8 data[];
+	u32 data[1];
 };
 
 struct hfi_msg_session_load_resources_done_pkt {
@@ -156,7 +155,7 @@ struct hfi_msg_session_empty_buffer_done_pkt {
 	u32 input_tag;
 	u32 packet_buffer;
 	u32 extradata_buffer;
-	u32 data[];
+	u32 data[0];
 };
 
 struct hfi_msg_session_fbd_compressed_pkt {
@@ -176,7 +175,7 @@ struct hfi_msg_session_fbd_compressed_pkt {
 	u32 picture_type;
 	u32 packet_buffer;
 	u32 extradata_buffer;
-	u32 data[];
+	u32 data[0];
 };
 
 struct hfi_msg_session_fbd_uncompressed_plane0_pkt {
@@ -203,7 +202,7 @@ struct hfi_msg_session_fbd_uncompressed_plane0_pkt {
 	u32 picture_type;
 	u32 packet_buffer;
 	u32 extradata_buffer;
-	u32 data[];
+	u32 data[0];
 };
 
 struct hfi_msg_session_fbd_uncompressed_plane1_pkt {
@@ -212,7 +211,7 @@ struct hfi_msg_session_fbd_uncompressed_plane1_pkt {
 	u32 filled_len;
 	u32 offset;
 	u32 packet_buffer2;
-	u32 data[];
+	u32 data[0];
 };
 
 struct hfi_msg_session_fbd_uncompressed_plane2_pkt {
@@ -221,21 +220,20 @@ struct hfi_msg_session_fbd_uncompressed_plane2_pkt {
 	u32 filled_len;
 	u32 offset;
 	u32 packet_buffer3;
-	u32 data[];
+	u32 data[0];
 };
 
 struct hfi_msg_session_parse_sequence_header_done_pkt {
 	struct hfi_session_hdr_pkt shdr;
 	u32 error_type;
 	u32 num_properties;
-	u32 data[];
+	u32 data[1];
 };
 
 struct hfi_msg_session_property_info_pkt {
 	struct hfi_session_hdr_pkt shdr;
 	u32 num_properties;
-	u32 property;
-	u8 data[];
+	u32 data[1];
 };
 
 struct hfi_msg_session_release_resources_done_pkt {
@@ -247,7 +245,7 @@ struct hfi_msg_session_release_buffers_done_pkt {
 	struct hfi_session_hdr_pkt shdr;
 	u32 error_type;
 	u32 num_buffers;
-	u32 buffer_info[];
+	u32 buffer_info[1];
 };
 
 struct hfi_msg_sys_debug_pkt {
@@ -256,7 +254,7 @@ struct hfi_msg_sys_debug_pkt {
 	u32 msg_size;
 	u32 time_stamp_hi;
 	u32 time_stamp_lo;
-	u8 msg_data[];
+	u8 msg_data[1];
 };
 
 struct hfi_msg_sys_coverage_pkt {
@@ -264,7 +262,7 @@ struct hfi_msg_sys_coverage_pkt {
 	u32 msg_size;
 	u32 time_stamp_hi;
 	u32 time_stamp_lo;
-	u8 msg_data[];
+	u8 msg_data[1];
 };
 
 struct venus_core;

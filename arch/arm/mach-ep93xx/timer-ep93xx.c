@@ -9,7 +9,6 @@
 #include <linux/io.h>
 #include <asm/mach/time.h>
 #include "soc.h"
-#include "platform.h"
 
 /*************************************************************************
  * Timer handling for EP93xx
@@ -61,7 +60,7 @@ static u64 notrace ep93xx_read_sched_clock(void)
 	return ret;
 }
 
-static u64 ep93xx_clocksource_read(struct clocksource *c)
+u64 ep93xx_clocksource_read(struct clocksource *c)
 {
 	u64 ret;
 
@@ -118,11 +117,15 @@ static irqreturn_t ep93xx_timer_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static struct irqaction ep93xx_timer_irq = {
+	.name		= "ep93xx timer",
+	.flags		= IRQF_TIMER | IRQF_IRQPOLL,
+	.handler	= ep93xx_timer_interrupt,
+	.dev_id		= &ep93xx_clockevent,
+};
+
 void __init ep93xx_timer_init(void)
 {
-	int irq = IRQ_EP93XX_TIMER3;
-	unsigned long flags = IRQF_TIMER | IRQF_IRQPOLL;
-
 	/* Enable and register clocksource and sched_clock on timer 4 */
 	writel(EP93XX_TIMER4_VALUE_HIGH_ENABLE,
 	       EP93XX_TIMER4_VALUE_HIGH);
@@ -133,9 +136,7 @@ void __init ep93xx_timer_init(void)
 			     EP93XX_TIMER4_RATE);
 
 	/* Set up clockevent on timer 3 */
-	if (request_irq(irq, ep93xx_timer_interrupt, flags, "ep93xx timer",
-			&ep93xx_clockevent))
-		pr_err("Failed to request irq %d (ep93xx timer)\n", irq);
+	setup_irq(IRQ_EP93XX_TIMER3, &ep93xx_timer_irq);
 	clockevents_config_and_register(&ep93xx_clockevent,
 					EP93XX_TIMER123_RATE,
 					1,

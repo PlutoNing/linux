@@ -8,15 +8,10 @@
 #include <linux/uio.h>
 #include <linux/falloc.h>
 #include <linux/file.h>
-#include <linux/fs.h>
 #include "nvmet.h"
 
+#define NVMET_MAX_MPOOL_BVEC		16
 #define NVMET_MIN_MPOOL_OBJ		16
-
-void nvmet_file_ns_revalidate(struct nvmet_ns *ns)
-{
-	ns->size = i_size_read(ns->file->f_mapping->host);
-}
 
 void nvmet_file_ns_disable(struct nvmet_ns *ns)
 {
@@ -25,6 +20,8 @@ void nvmet_file_ns_disable(struct nvmet_ns *ns)
 			flush_workqueue(buffered_io_wq);
 		mempool_destroy(ns->bvec_pool);
 		ns->bvec_pool = NULL;
+		kmem_cache_destroy(ns->bvec_cache);
+		ns->bvec_cache = NULL;
 		fput(ns->file);
 		ns->file = NULL;
 	}
@@ -33,22 +30,25 @@ void nvmet_file_ns_disable(struct nvmet_ns *ns)
 int nvmet_file_ns_enable(struct nvmet_ns *ns)
 {
 	int flags = O_RDWR | O_LARGEFILE;
-	int ret = 0;
+	struct kstat stat;
+	int ret;
 
 	if (!ns->buffered_io)
 		flags |= O_DIRECT;
 
 	ns->file = filp_open(ns->device_path, flags, 0);
 	if (IS_ERR(ns->file)) {
-		ret = PTR_ERR(ns->file);
-		pr_err("failed to open file %s: (%d)\n",
-			ns->device_path, ret);
-		ns->file = NULL;
-		return ret;
+		pr_err("failed to open file %s: (%ld)\n",
+				ns->device_path, PTR_ERR(ns->file));
+		return PTR_ERR(ns->file);
 	}
 
-	nvmet_file_ns_revalidate(ns);
+	ret = vfs_getattr(&ns->file->f_path,
+			&stat, STATX_SIZE, AT_STATX_FORCE_SYNC);
+	if (ret)
+		goto err;
 
+	ns->size = stat.size;
 	/*
 	 * i_blkbits can be greater than the universally accepted upper bound,
 	 * so make sure we export a sane namespace lba_shift.
@@ -56,8 +56,16 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
 	ns->blksize_shift = min_t(u8,
 			file_inode(ns->file)->i_blkbits, 12);
 
+	ns->bvec_cache = kmem_cache_create("nvmet-bvec",
+			NVMET_MAX_MPOOL_BVEC * sizeof(struct bio_vec),
+			0, SLAB_HWCACHE_ALIGN, NULL);
+	if (!ns->bvec_cache) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
 	ns->bvec_pool = mempool_create(NVMET_MIN_MPOOL_OBJ, mempool_alloc_slab,
-			mempool_free_slab, nvmet_bvec_cache);
+			mempool_free_slab, ns->bvec_cache);
 
 	if (!ns->bvec_pool) {
 		ret = -ENOMEM;
@@ -66,11 +74,17 @@ int nvmet_file_ns_enable(struct nvmet_ns *ns)
 
 	return ret;
 err:
-	fput(ns->file);
-	ns->file = NULL;
 	ns->size = 0;
 	ns->blksize_shift = 0;
+	nvmet_file_ns_disable(ns);
 	return ret;
+}
+
+static void nvmet_file_init_bvec(struct bio_vec *bv, struct scatterlist *sg)
+{
+	bv->bv_page = sg_page(sg);
+	bv->bv_offset = sg->offset;
+	bv->bv_len = sg->length;
 }
 
 static ssize_t nvmet_file_submit_bvec(struct nvmet_req *req, loff_t pos,
@@ -85,22 +99,22 @@ static ssize_t nvmet_file_submit_bvec(struct nvmet_req *req, loff_t pos,
 		if (req->cmd->rw.control & cpu_to_le16(NVME_RW_FUA))
 			ki_flags |= IOCB_DSYNC;
 		call_iter = req->ns->file->f_op->write_iter;
-		rw = ITER_SOURCE;
+		rw = WRITE;
 	} else {
 		call_iter = req->ns->file->f_op->read_iter;
-		rw = ITER_DEST;
+		rw = READ;
 	}
 
 	iov_iter_bvec(&iter, rw, req->f.bvec, nr_segs, count);
 
 	iocb->ki_pos = pos;
 	iocb->ki_filp = req->ns->file;
-	iocb->ki_flags = ki_flags | iocb->ki_filp->f_iocb_flags;
+	iocb->ki_flags = ki_flags | iocb_flags(req->ns->file);
 
 	return call_iter(iocb, &iter);
 }
 
-static void nvmet_file_io_done(struct kiocb *iocb, long ret)
+static void nvmet_file_io_done(struct kiocb *iocb, long ret, long ret2)
 {
 	struct nvmet_req *req = container_of(iocb, struct nvmet_req, f.iocb);
 	u16 status = NVME_SC_SUCCESS;
@@ -112,7 +126,7 @@ static void nvmet_file_io_done(struct kiocb *iocb, long ret)
 			mempool_free(req->f.bvec, req->ns->bvec_pool);
 	}
 
-	if (unlikely(ret != req->transfer_len))
+	if (unlikely(ret != req->data_len))
 		status = errno_to_nvme_status(req, ret);
 	nvmet_req_complete(req, status);
 }
@@ -132,15 +146,14 @@ static bool nvmet_file_execute_io(struct nvmet_req *req, int ki_flags)
 		is_sync = true;
 
 	pos = le64_to_cpu(req->cmd->rw.slba) << req->ns->blksize_shift;
-	if (unlikely(pos + req->transfer_len > req->ns->size)) {
+	if (unlikely(pos + req->data_len > req->ns->size)) {
 		nvmet_req_complete(req, errno_to_nvme_status(req, -ENOSPC));
 		return true;
 	}
 
 	memset(&req->f.iocb, 0, sizeof(struct kiocb));
 	for_each_sg(req->sg, sg, req->sg_cnt, i) {
-		bvec_set_page(&req->f.bvec[bv_cnt], sg_page(sg), sg->length,
-			      sg->offset);
+		nvmet_file_init_bvec(&req->f.bvec[bv_cnt], sg);
 		len += req->f.bvec[bv_cnt].bv_len;
 		total_len += req->f.bvec[bv_cnt].bv_len;
 		bv_cnt++;
@@ -160,7 +173,7 @@ static bool nvmet_file_execute_io(struct nvmet_req *req, int ki_flags)
 		nr_bvec--;
 	}
 
-	if (WARN_ON_ONCE(total_len != req->transfer_len)) {
+	if (WARN_ON_ONCE(total_len != req->data_len)) {
 		ret = -EIO;
 		goto complete;
 	}
@@ -198,7 +211,7 @@ static bool nvmet_file_execute_io(struct nvmet_req *req, int ki_flags)
 	}
 
 complete:
-	nvmet_file_io_done(&req->f.iocb, ret);
+	nvmet_file_io_done(&req->f.iocb, ret, 0);
 	return true;
 }
 
@@ -218,9 +231,6 @@ static void nvmet_file_submit_buffered_io(struct nvmet_req *req)
 static void nvmet_file_execute_rw(struct nvmet_req *req)
 {
 	ssize_t nr_bvec = req->sg_cnt;
-
-	if (!nvmet_check_transfer_len(req, nvmet_rw_data_len(req)))
-		return;
 
 	if (!req->sg_cnt || !nr_bvec) {
 		nvmet_req_complete(req, 0);
@@ -242,8 +252,7 @@ static void nvmet_file_execute_rw(struct nvmet_req *req)
 
 	if (req->ns->buffered_io) {
 		if (likely(!req->f.mpool_alloc) &&
-		    (req->ns->file->f_mode & FMODE_NOWAIT) &&
-		    nvmet_file_execute_io(req, IOCB_NOWAIT))
+				nvmet_file_execute_io(req, IOCB_NOWAIT))
 			return;
 		nvmet_file_submit_buffered_io(req);
 	} else
@@ -264,10 +273,8 @@ static void nvmet_file_flush_work(struct work_struct *w)
 
 static void nvmet_file_execute_flush(struct nvmet_req *req)
 {
-	if (!nvmet_check_transfer_len(req, 0))
-		return;
 	INIT_WORK(&req->f.work, nvmet_file_flush_work);
-	queue_work(nvmet_wq, &req->f.work);
+	schedule_work(&req->f.work);
 }
 
 static void nvmet_file_execute_discard(struct nvmet_req *req)
@@ -324,10 +331,8 @@ static void nvmet_file_dsm_work(struct work_struct *w)
 
 static void nvmet_file_execute_dsm(struct nvmet_req *req)
 {
-	if (!nvmet_check_data_len_lte(req, nvmet_dsm_len(req)))
-		return;
 	INIT_WORK(&req->f.work, nvmet_file_dsm_work);
-	queue_work(nvmet_wq, &req->f.work);
+	schedule_work(&req->f.work);
 }
 
 static void nvmet_file_write_zeroes_work(struct work_struct *w)
@@ -354,29 +359,37 @@ static void nvmet_file_write_zeroes_work(struct work_struct *w)
 
 static void nvmet_file_execute_write_zeroes(struct nvmet_req *req)
 {
-	if (!nvmet_check_transfer_len(req, 0))
-		return;
 	INIT_WORK(&req->f.work, nvmet_file_write_zeroes_work);
-	queue_work(nvmet_wq, &req->f.work);
+	schedule_work(&req->f.work);
 }
 
 u16 nvmet_file_parse_io_cmd(struct nvmet_req *req)
 {
-	switch (req->cmd->common.opcode) {
+	struct nvme_command *cmd = req->cmd;
+
+	switch (cmd->common.opcode) {
 	case nvme_cmd_read:
 	case nvme_cmd_write:
 		req->execute = nvmet_file_execute_rw;
+		req->data_len = nvmet_rw_len(req);
 		return 0;
 	case nvme_cmd_flush:
 		req->execute = nvmet_file_execute_flush;
+		req->data_len = 0;
 		return 0;
 	case nvme_cmd_dsm:
 		req->execute = nvmet_file_execute_dsm;
+		req->data_len = (le32_to_cpu(cmd->dsm.nr) + 1) *
+			sizeof(struct nvme_dsm_range);
 		return 0;
 	case nvme_cmd_write_zeroes:
 		req->execute = nvmet_file_execute_write_zeroes;
+		req->data_len = 0;
 		return 0;
 	default:
-		return nvmet_report_invalid_opcode(req);
+		pr_err("unhandled cmd for file ns %d on qid %d\n",
+				cmd->common.opcode, req->sq->qid);
+		req->error_loc = offsetof(struct nvme_common_command, opcode);
+		return NVME_SC_INVALID_OPCODE | NVME_SC_DNR;
 	}
 }

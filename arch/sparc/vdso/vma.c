@@ -354,7 +354,7 @@ static unsigned long vdso_addr(unsigned long start, unsigned int len)
 	unsigned int offset;
 
 	/* This loses some more bits than a modulo, but is cheaper */
-	offset = get_random_u32_below(PTRS_PER_PTE);
+	offset = get_random_int() & (PTRS_PER_PTE - 1);
 	return start + (offset << PAGE_SHIFT);
 }
 
@@ -366,7 +366,7 @@ static int map_vdso(const struct vdso_image *image,
 	unsigned long text_start, addr = 0;
 	int ret = 0;
 
-	mmap_write_lock(mm);
+	down_write(&mm->mmap_sem);
 
 	/*
 	 * First, get an unmapped region: then randomize it, and make sure that
@@ -422,7 +422,7 @@ up_fail:
 	if (ret)
 		current->mm->context.vdso = NULL;
 
-	mmap_write_unlock(mm);
+	up_write(&mm->mmap_sem);
 	return ret;
 }
 
@@ -449,8 +449,9 @@ static __init int vdso_setup(char *s)
 	unsigned long val;
 
 	err = kstrtoul(s, 10, &val);
-	if (!err)
-		vdso_enabled = val;
-	return 1;
+	if (err)
+		return err;
+	vdso_enabled = val;
+	return 0;
 }
 __setup("vdso=", vdso_setup);

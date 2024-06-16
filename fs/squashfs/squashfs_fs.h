@@ -17,7 +17,6 @@
 
 /* size of metadata (inode and directory) blocks */
 #define SQUASHFS_METADATA_SIZE		8192
-#define SQUASHFS_BLOCK_OFFSET		2
 
 /* default size of block device I/O */
 #ifdef CONFIG_SQUASHFS_4K_DEVBLK_SIZE
@@ -183,7 +182,7 @@ static inline int squashfs_block_size(__le32 raw)
 #define SQUASHFS_ID_BLOCK_BYTES(A)	(SQUASHFS_ID_BLOCKS(A) *\
 					sizeof(u64))
 /* xattr id lookup table defines */
-#define SQUASHFS_XATTR_BYTES(A)		(((u64) (A)) * sizeof(struct squashfs_xattr_id))
+#define SQUASHFS_XATTR_BYTES(A)		((A) * sizeof(struct squashfs_xattr_id))
 
 #define SQUASHFS_XATTR_BLOCK(A)		(SQUASHFS_XATTR_BYTES(A) / \
 					SQUASHFS_METADATA_SIZE)
@@ -263,7 +262,7 @@ struct squashfs_dir_index {
 	__le32			index;
 	__le32			start_block;
 	__le32			size;
-	unsigned char		name[];
+	unsigned char		name[0];
 };
 
 struct squashfs_base_inode {
@@ -328,7 +327,7 @@ struct squashfs_symlink_inode {
 	__le32			inode_number;
 	__le32			nlink;
 	__le32			symlink_size;
-	char			symlink[];
+	char			symlink[0];
 };
 
 struct squashfs_reg_inode {
@@ -342,7 +341,7 @@ struct squashfs_reg_inode {
 	__le32			fragment;
 	__le32			offset;
 	__le32			file_size;
-	__le16			block_list[];
+	__le16			block_list[0];
 };
 
 struct squashfs_lreg_inode {
@@ -359,7 +358,7 @@ struct squashfs_lreg_inode {
 	__le32			fragment;
 	__le32			offset;
 	__le32			xattr;
-	__le16			block_list[];
+	__le16			block_list[0];
 };
 
 struct squashfs_dir_inode {
@@ -390,7 +389,7 @@ struct squashfs_ldir_inode {
 	__le16			i_count;
 	__le16			offset;
 	__le32			xattr;
-	struct squashfs_dir_index	index[];
+	struct squashfs_dir_index	index[0];
 };
 
 union squashfs_inode {
@@ -411,7 +410,7 @@ struct squashfs_dir_entry {
 	__le16			inode_number;
 	__le16			type;
 	__le16			size;
-	char			name[];
+	char			name[0];
 };
 
 struct squashfs_dir_header {
@@ -429,12 +428,12 @@ struct squashfs_fragment_entry {
 struct squashfs_xattr_entry {
 	__le16			type;
 	__le16			size;
-	char			data[];
+	char			data[0];
 };
 
 struct squashfs_xattr_val {
 	__le32			vsize;
-	char			value[];
+	char			value[0];
 };
 
 struct squashfs_xattr_id {

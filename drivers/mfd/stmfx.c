@@ -53,7 +53,7 @@ static const struct regmap_config stmfx_regmap_config = {
 	.max_register	= STMFX_REG_MAX,
 	.volatile_reg	= stmfx_reg_volatile,
 	.writeable_reg	= stmfx_reg_writeable,
-	.cache_type	= REGCACHE_MAPLE,
+	.cache_type	= REGCACHE_RBTREE,
 };
 
 static const struct resource stmfx_pinctrl_resources[] = {
@@ -287,21 +287,14 @@ static int stmfx_irq_init(struct i2c_client *client)
 
 	ret = regmap_write(stmfx->map, STMFX_REG_IRQ_OUT_PIN, irqoutpin);
 	if (ret)
-		goto irq_exit;
+		return ret;
 
 	ret = devm_request_threaded_irq(stmfx->dev, client->irq,
 					NULL, stmfx_irq_handler,
 					irqtrigger | IRQF_ONESHOT,
 					"stmfx", stmfx);
 	if (ret)
-		goto irq_exit;
-
-	stmfx->irq = client->irq;
-
-	return 0;
-
-irq_exit:
-	stmfx_irq_exit(client);
+		stmfx_irq_exit(client);
 
 	return ret;
 }
@@ -329,10 +322,13 @@ static int stmfx_chip_init(struct i2c_client *client)
 
 	stmfx->vdd = devm_regulator_get_optional(&client->dev, "vdd");
 	ret = PTR_ERR_OR_ZERO(stmfx->vdd);
-	if (ret) {
+	if (ret == -ENODEV) {
 		stmfx->vdd = NULL;
-		if (ret != -ENODEV)
-			return dev_err_probe(&client->dev, ret, "Failed to get VDD regulator\n");
+	} else if (ret == -EPROBE_DEFER) {
+		return ret;
+	} else if (ret) {
+		dev_err(&client->dev, "Failed to get VDD regulator: %d\n", ret);
+		return ret;
 	}
 
 	if (stmfx->vdd) {
@@ -386,30 +382,26 @@ static int stmfx_chip_init(struct i2c_client *client)
 
 err:
 	if (stmfx->vdd)
-		regulator_disable(stmfx->vdd);
+		return regulator_disable(stmfx->vdd);
 
 	return ret;
 }
 
-static void stmfx_chip_exit(struct i2c_client *client)
+static int stmfx_chip_exit(struct i2c_client *client)
 {
 	struct stmfx *stmfx = i2c_get_clientdata(client);
 
 	regmap_write(stmfx->map, STMFX_REG_IRQ_SRC_EN, 0);
 	regmap_write(stmfx->map, STMFX_REG_SYS_CTRL, 0);
 
-	if (stmfx->vdd) {
-		int ret;
+	if (stmfx->vdd)
+		return regulator_disable(stmfx->vdd);
 
-		ret = regulator_disable(stmfx->vdd);
-		if (ret)
-			dev_err(&client->dev,
-				"Failed to disable vdd regulator: %pe\n",
-				ERR_PTR(ret));
-	}
+	return 0;
 }
 
-static int stmfx_probe(struct i2c_client *client)
+static int stmfx_probe(struct i2c_client *client,
+		       const struct i2c_device_id *id)
 {
 	struct device *dev = &client->dev;
 	struct stmfx *stmfx;
@@ -465,13 +457,14 @@ err_chip_exit:
 	return ret;
 }
 
-static void stmfx_remove(struct i2c_client *client)
+static int stmfx_remove(struct i2c_client *client)
 {
 	stmfx_irq_exit(client);
 
-	stmfx_chip_exit(client);
+	return stmfx_chip_exit(client);
 }
 
+#ifdef CONFIG_PM_SLEEP
 static int stmfx_suspend(struct device *dev)
 {
 	struct stmfx *stmfx = dev_get_drvdata(dev);
@@ -487,8 +480,6 @@ static int stmfx_suspend(struct device *dev)
 			      sizeof(stmfx->bkp_irqoutpin));
 	if (ret)
 		return ret;
-
-	disable_irq(stmfx->irq);
 
 	if (stmfx->vdd)
 		return regulator_disable(stmfx->vdd);
@@ -510,13 +501,6 @@ static int stmfx_resume(struct device *dev)
 		}
 	}
 
-	/* Reset STMFX - supply has been stopped during suspend */
-	ret = stmfx_chip_reset(stmfx);
-	if (ret) {
-		dev_err(stmfx->dev, "Failed to reset chip: %d\n", ret);
-		return ret;
-	}
-
 	ret = regmap_raw_write(stmfx->map, STMFX_REG_SYS_CTRL,
 			       &stmfx->bkp_sysctrl, sizeof(stmfx->bkp_sysctrl));
 	if (ret)
@@ -533,12 +517,11 @@ static int stmfx_resume(struct device *dev)
 	if (ret)
 		return ret;
 
-	enable_irq(stmfx->irq);
-
 	return 0;
 }
+#endif
 
-static DEFINE_SIMPLE_DEV_PM_OPS(stmfx_dev_pm_ops, stmfx_suspend, stmfx_resume);
+static SIMPLE_DEV_PM_OPS(stmfx_dev_pm_ops, stmfx_suspend, stmfx_resume);
 
 static const struct of_device_id stmfx_of_match[] = {
 	{ .compatible = "st,stmfx-0300", },
@@ -549,8 +532,8 @@ MODULE_DEVICE_TABLE(of, stmfx_of_match);
 static struct i2c_driver stmfx_driver = {
 	.driver = {
 		.name = "stmfx-core",
-		.of_match_table = stmfx_of_match,
-		.pm = pm_sleep_ptr(&stmfx_dev_pm_ops),
+		.of_match_table = of_match_ptr(stmfx_of_match),
+		.pm = &stmfx_dev_pm_ops,
 	},
 	.probe = stmfx_probe,
 	.remove = stmfx_remove,

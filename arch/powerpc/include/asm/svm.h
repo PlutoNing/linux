@@ -10,8 +10,6 @@
 
 #ifdef CONFIG_PPC_SVM
 
-#include <asm/reg.h>
-
 static inline bool is_secure_guest(void)
 {
 	return mfmsr() & MSR_S;

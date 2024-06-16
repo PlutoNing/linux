@@ -12,7 +12,7 @@
  * pages =        {},
  * month =        {June},
  *}
- * Used by the iSCSI driver, possibly others, and derived from
+ * Used by the iSCSI driver, possibly others, and derived from the
  * the iscsi-crc.c module of the linux-iscsi driver at
  * http://linux-iscsi.sourceforge.net.
  *
@@ -64,6 +64,12 @@ static void __exit libcrc32c_mod_fini(void)
 {
 	crypto_free_shash(tfm);
 }
+
+const char *crc32c_impl(void)
+{
+	return crypto_shash_driver_name(tfm);
+}
+EXPORT_SYMBOL(crc32c_impl);
 
 module_init(libcrc32c_mod_init);
 module_exit(libcrc32c_mod_fini);

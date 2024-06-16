@@ -308,7 +308,8 @@ static int read_adapter_irq_config(struct cxl *adapter, struct device_node *np)
 		cur = &adapter->guest->irq_avail[i];
 		cur->offset = be32_to_cpu(ranges[i * 2]);
 		cur->range  = be32_to_cpu(ranges[i * 2 + 1]);
-		cur->bitmap = bitmap_zalloc(cur->range, GFP_KERNEL);
+		cur->bitmap = kcalloc(BITS_TO_LONGS(cur->range),
+				sizeof(*cur->bitmap), GFP_KERNEL);
 		if (cur->bitmap == NULL)
 			goto err;
 		if (cur->offset < adapter->guest->irq_base_offset)
@@ -325,7 +326,7 @@ static int read_adapter_irq_config(struct cxl *adapter, struct device_node *np)
 err:
 	for (i--; i >= 0; i--) {
 		cur = &adapter->guest->irq_avail[i];
-		bitmap_free(cur->bitmap);
+		kfree(cur->bitmap);
 	}
 	kfree(adapter->guest->irq_avail);
 	adapter->guest->irq_avail = NULL;
@@ -431,7 +432,7 @@ int cxl_of_read_adapter_properties(struct cxl *adapter, struct device_node *np)
 	return 0;
 }
 
-static void cxl_of_remove(struct platform_device *pdev)
+static int cxl_of_remove(struct platform_device *pdev)
 {
 	struct cxl *adapter;
 	int afu;
@@ -441,6 +442,7 @@ static void cxl_of_remove(struct platform_device *pdev)
 		cxl_guest_remove_afu(adapter->afu[afu]);
 
 	cxl_guest_remove_adapter(adapter);
+	return 0;
 }
 
 static void cxl_of_shutdown(struct platform_device *pdev)
@@ -500,6 +502,6 @@ struct platform_driver cxl_of_driver = {
 		.owner = THIS_MODULE
 	},
 	.probe = cxl_of_probe,
-	.remove_new = cxl_of_remove,
+	.remove = cxl_of_remove,
 	.shutdown = cxl_of_shutdown,
 };

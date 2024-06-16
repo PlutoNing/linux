@@ -1,7 +1,33 @@
-// SPDX-License-Identifier: (GPL-2.0-only OR BSD-3-Clause)
 /* QLogic qed NIC Driver
  * Copyright (c) 2015-2017  QLogic Corporation
- * Copyright (c) 2019-2020 Marvell International Ltd.
+ *
+ * This software is available to you under a choice of one of two
+ * licenses.  You may choose to be licensed under the terms of the GNU
+ * General Public License (GPL) Version 2, available from the file
+ * COPYING in the main directory of this source tree, or the
+ * OpenIB.org BSD license below:
+ *
+ *     Redistribution and use in source and binary forms, with or
+ *     without modification, are permitted provided that the following
+ *     conditions are met:
+ *
+ *      - Redistributions of source code must retain the above
+ *        copyright notice, this list of conditions and the following
+ *        disclaimer.
+ *
+ *      - Redistributions in binary form must reproduce the above
+ *        copyright notice, this list of conditions and the following
+ *        disclaimer in the documentation and /or other materials
+ *        provided with the distribution.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
 
 #include <linux/types.h>
@@ -36,7 +62,7 @@ struct qed_sb_sp_info {
 	struct qed_sb_info sb_info;
 
 	/* per protocol index data */
-	struct qed_pi_info pi_info_arr[PIS_PER_SB];
+	struct qed_pi_info pi_info_arr[PIS_PER_SB_E4];
 };
 
 enum qed_attention_type {
@@ -70,7 +96,6 @@ struct aeu_invert_reg_bit {
 #define ATTENTION_BB(value)             (value << ATTENTION_BB_SHIFT)
 #define ATTENTION_BB_DIFFERENT          BIT(23)
 
-#define ATTENTION_CLEAR_ENABLE          BIT(28)
 	unsigned int flags;
 
 	/* Callback to call if attention will be triggered */
@@ -231,10 +256,9 @@ out:
 #define PGLUE_ATTENTION_ZLR_VALID		(1 << 25)
 #define PGLUE_ATTENTION_ILT_VALID		(1 << 23)
 
-int qed_pglueb_rbc_attn_handler(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
-				bool hw_init)
+int qed_pglueb_rbc_attn_handler(struct qed_hwfn *p_hwfn,
+				struct qed_ptt *p_ptt)
 {
-	char msg[256];
 	u32 tmp;
 
 	tmp = qed_rd(p_hwfn, p_ptt, PGLUE_B_REG_TX_ERR_WR_DETAILS2);
@@ -248,23 +272,22 @@ int qed_pglueb_rbc_attn_handler(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
 		details = qed_rd(p_hwfn, p_ptt,
 				 PGLUE_B_REG_TX_ERR_WR_DETAILS);
 
-		snprintf(msg, sizeof(msg),
-			 "Illegal write by chip to [%08x:%08x] blocked.\n"
-			 "Details: %08x [PFID %02x, VFID %02x, VF_VALID %02x]\n"
-			 "Details2 %08x [Was_error %02x BME deassert %02x FID_enable deassert %02x]",
-			 addr_hi, addr_lo, details,
-			 (u8)GET_FIELD(details, PGLUE_ATTENTION_DETAILS_PFID),
-			 (u8)GET_FIELD(details, PGLUE_ATTENTION_DETAILS_VFID),
-			 !!GET_FIELD(details, PGLUE_ATTENTION_DETAILS_VF_VALID),
-			 tmp,
-			 !!GET_FIELD(tmp, PGLUE_ATTENTION_DETAILS2_WAS_ERR),
-			 !!GET_FIELD(tmp, PGLUE_ATTENTION_DETAILS2_BME),
-			 !!GET_FIELD(tmp, PGLUE_ATTENTION_DETAILS2_FID_EN));
-
-		if (hw_init)
-			DP_VERBOSE(p_hwfn, NETIF_MSG_INTR, "%s\n", msg);
-		else
-			DP_NOTICE(p_hwfn, "%s\n", msg);
+		DP_NOTICE(p_hwfn,
+			  "Illegal write by chip to [%08x:%08x] blocked.\n"
+			  "Details: %08x [PFID %02x, VFID %02x, VF_VALID %02x]\n"
+			  "Details2 %08x [Was_error %02x BME deassert %02x FID_enable deassert %02x]\n",
+			  addr_hi, addr_lo, details,
+			  (u8)GET_FIELD(details, PGLUE_ATTENTION_DETAILS_PFID),
+			  (u8)GET_FIELD(details, PGLUE_ATTENTION_DETAILS_VFID),
+			  GET_FIELD(details,
+				    PGLUE_ATTENTION_DETAILS_VF_VALID) ? 1 : 0,
+			  tmp,
+			  GET_FIELD(tmp,
+				    PGLUE_ATTENTION_DETAILS2_WAS_ERR) ? 1 : 0,
+			  GET_FIELD(tmp,
+				    PGLUE_ATTENTION_DETAILS2_BME) ? 1 : 0,
+			  GET_FIELD(tmp,
+				    PGLUE_ATTENTION_DETAILS2_FID_EN) ? 1 : 0);
 	}
 
 	tmp = qed_rd(p_hwfn, p_ptt, PGLUE_B_REG_TX_ERR_RD_DETAILS2);
@@ -297,14 +320,8 @@ int qed_pglueb_rbc_attn_handler(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
 	}
 
 	tmp = qed_rd(p_hwfn, p_ptt, PGLUE_B_REG_TX_ERR_WR_DETAILS_ICPL);
-	if (tmp & PGLUE_ATTENTION_ICPL_VALID) {
-		snprintf(msg, sizeof(msg), "ICPL error - %08x", tmp);
-
-		if (hw_init)
-			DP_VERBOSE(p_hwfn, NETIF_MSG_INTR, "%s\n", msg);
-		else
-			DP_NOTICE(p_hwfn, "%s\n", msg);
-	}
+	if (tmp & PGLUE_ATTENTION_ICPL_VALID)
+		DP_NOTICE(p_hwfn, "ICPL error - %08x\n", tmp);
 
 	tmp = qed_rd(p_hwfn, p_ptt, PGLUE_B_REG_MASTER_ZLR_ERR_DETAILS);
 	if (tmp & PGLUE_ATTENTION_ZLR_VALID) {
@@ -343,25 +360,7 @@ int qed_pglueb_rbc_attn_handler(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
 
 static int qed_pglueb_rbc_attn_cb(struct qed_hwfn *p_hwfn)
 {
-	return qed_pglueb_rbc_attn_handler(p_hwfn, p_hwfn->p_dpc_ptt, false);
-}
-
-static int qed_fw_assertion(struct qed_hwfn *p_hwfn)
-{
-	qed_hw_err_notify(p_hwfn, p_hwfn->p_dpc_ptt, QED_HW_ERR_FW_ASSERT,
-			  "FW assertion!\n");
-
-	/* Clear assert indications */
-	qed_wr(p_hwfn, p_hwfn->p_dpc_ptt, MISC_REG_AEU_GENERAL_ATTN_32, 0);
-
-	return -EINVAL;
-}
-
-static int qed_general_attention_35(struct qed_hwfn *p_hwfn)
-{
-	DP_INFO(p_hwfn, "General attention 35!\n");
-
-	return 0;
+	return qed_pglueb_rbc_attn_handler(p_hwfn, p_hwfn->p_dpc_ptt);
 }
 
 #define QED_DORQ_ATTENTION_REASON_MASK  (0xfffff)
@@ -467,19 +466,12 @@ static int qed_dorq_attn_int_sts(struct qed_hwfn *p_hwfn)
 	u32 int_sts, first_drop_reason, details, address, all_drops_reason;
 	struct qed_ptt *p_ptt = p_hwfn->p_dpc_ptt;
 
-	int_sts = qed_rd(p_hwfn, p_ptt, DORQ_REG_INT_STS);
-	if (int_sts == 0xdeadbeaf) {
-		DP_NOTICE(p_hwfn->cdev,
-			  "DORQ is being reset, skipping int_sts handler\n");
-
-		return 0;
-	}
-
 	/* int_sts may be zero since all PFs were interrupted for doorbell
 	 * overflow but another one already handled it. Can abort here. If
 	 * This PF also requires overflow recovery we will be interrupted again.
 	 * The masked almost full indication may also be set. Ignoring.
 	 */
+	int_sts = qed_rd(p_hwfn, p_ptt, DORQ_REG_INT_STS);
 	if (!(int_sts & ~DORQ_REG_INT_STS_DORQ_FIFO_AFULL))
 		return 0;
 
@@ -538,9 +530,6 @@ static int qed_dorq_attn_int_sts(struct qed_hwfn *p_hwfn)
 
 static int qed_dorq_attn_cb(struct qed_hwfn *p_hwfn)
 {
-	if (p_hwfn->cdev->recov_in_prog)
-		return 0;
-
 	p_hwfn->db_recovery_info.dorq_attn = true;
 	qed_dorq_attn_overflow(p_hwfn);
 
@@ -616,15 +605,13 @@ static struct aeu_invert_reg aeu_descs[NUM_ATTN_REGS] = {
 
 	{
 		{       /* After Invert 4 */
-			{"General Attention 32", ATTENTION_SINGLE |
-			 ATTENTION_CLEAR_ENABLE, qed_fw_assertion,
-			 MAX_BLOCK_ID},
+			{"General Attention 32", ATTENTION_SINGLE,
+			 NULL, MAX_BLOCK_ID},
 			{"General Attention %d",
 			 (2 << ATTENTION_LENGTH_SHIFT) |
 			 (33 << ATTENTION_OFFSET_SHIFT), NULL, MAX_BLOCK_ID},
-			{"General Attention 35", ATTENTION_SINGLE |
-			 ATTENTION_CLEAR_ENABLE, qed_general_attention_35,
-			 MAX_BLOCK_ID},
+			{"General Attention 35", ATTENTION_SINGLE,
+			 NULL, MAX_BLOCK_ID},
 			{"NWS Parity",
 			 ATTENTION_PAR | ATTENTION_BB_DIFFERENT |
 			 ATTENTION_BB(AEU_INVERT_REG_SPECIAL_CNIG_0),
@@ -837,12 +824,11 @@ static inline u16 qed_attn_update_idx(struct qed_hwfn *p_hwfn,
 }
 
 /**
- * qed_int_assertion() - Handle asserted attention bits.
+ *  @brief qed_int_assertion - handles asserted attention bits
  *
- * @p_hwfn: HW device data.
- * @asserted_bits: Newly asserted bits.
- *
- * Return: Zero value.
+ *  @param p_hwfn
+ *  @param asserted_bits newly asserted bits
+ *  @return int
  */
 static int qed_int_assertion(struct qed_hwfn *p_hwfn, u16 asserted_bits)
 {
@@ -902,17 +888,16 @@ static void qed_int_attn_print(struct qed_hwfn *p_hwfn,
 }
 
 /**
- * qed_int_deassertion_aeu_bit() - Handles the effects of a single
- * cause of the attention.
+ * @brief qed_int_deassertion_aeu_bit - handles the effects of a single
+ * cause of the attention
  *
- * @p_hwfn: HW device data.
- * @p_aeu: Descriptor of an AEU bit which caused the attention.
- * @aeu_en_reg: Register offset of the AEU enable reg. which configured
- *              this bit to this group.
- * @p_bit_name: AEU bit description for logging purposes.
- * @bitmask: Index of this bit in the aeu_en_reg.
+ * @param p_hwfn
+ * @param p_aeu - descriptor of an AEU bit which caused the attention
+ * @param aeu_en_reg - register offset of the AEU enable reg. which configured
+ *  this bit to this group.
+ * @param bit_index - index of this bit in the aeu_en_reg
  *
- * Return: Zero on success, negative errno otherwise.
+ * @return int
  */
 static int
 qed_int_deassertion_aeu_bit(struct qed_hwfn *p_hwfn,
@@ -942,12 +927,9 @@ qed_int_deassertion_aeu_bit(struct qed_hwfn *p_hwfn,
 		qed_int_attn_print(p_hwfn, p_aeu->block_index,
 				   ATTN_TYPE_INTERRUPT, !b_fatal);
 
-	/* Reach assertion if attention is fatal */
-	if (b_fatal)
-		qed_hw_err_notify(p_hwfn, p_hwfn->p_dpc_ptt, QED_HW_ERR_HW_ATTN,
-				  "`%s': Fatal attention\n",
-				  p_bit_name);
-	else /* If the attention is benign, no need to prevent it */
+
+	/* If the attention is benign, no need to prevent it */
+	if (!rc)
 		goto out;
 
 	/* Prevent this Attention from being asserted in the future */
@@ -956,24 +938,17 @@ qed_int_deassertion_aeu_bit(struct qed_hwfn *p_hwfn,
 	DP_INFO(p_hwfn, "`%s' - Disabled future attentions\n",
 		p_bit_name);
 
-	/* Re-enable FW aassertion (Gen 32) interrupts */
-	val = qed_rd(p_hwfn, p_hwfn->p_dpc_ptt,
-		     MISC_REG_AEU_ENABLE4_IGU_OUT_0);
-	val |= MISC_REG_AEU_ENABLE4_IGU_OUT_0_GENERAL_ATTN32;
-	qed_wr(p_hwfn, p_hwfn->p_dpc_ptt,
-	       MISC_REG_AEU_ENABLE4_IGU_OUT_0, val);
-
 out:
 	return rc;
 }
 
 /**
- * qed_int_deassertion_parity() - Handle a single parity AEU source.
+ * @brief qed_int_deassertion_parity - handle a single parity AEU source
  *
- * @p_hwfn: HW device data.
- * @p_aeu: Descriptor of an AEU bit which caused the parity.
- * @aeu_en_reg: Address of the AEU enable register.
- * @bit_index: Index (0-31) of an AEU bit.
+ * @param p_hwfn
+ * @param p_aeu - descriptor of an AEU bit which caused the parity
+ * @param aeu_en_reg - address of the AEU enable register
+ * @param bit_index
  */
 static void qed_int_deassertion_parity(struct qed_hwfn *p_hwfn,
 				       struct aeu_invert_reg_bit *p_aeu,
@@ -1006,13 +981,12 @@ static void qed_int_deassertion_parity(struct qed_hwfn *p_hwfn,
 }
 
 /**
- * qed_int_deassertion() - Handle deassertion of previously asserted
- * attentions.
+ * @brief - handles deassertion of previously asserted attentions.
  *
- * @p_hwfn: HW device data.
- * @deasserted_bits: newly deasserted bits.
+ * @param p_hwfn
+ * @param deasserted_bits - newly deasserted bits
+ * @return int
  *
- * Return: Zero value.
  */
 static int qed_int_deassertion(struct qed_hwfn  *p_hwfn,
 			       u16 deasserted_bits)
@@ -1045,7 +1019,7 @@ static int qed_int_deassertion(struct qed_hwfn  *p_hwfn,
 		if (!parities)
 			continue;
 
-		for (j = 0, bit_idx = 0; bit_idx < 32 && j < 32; j++) {
+		for (j = 0, bit_idx = 0; bit_idx < 32; j++) {
 			struct aeu_invert_reg_bit *p_bit = &p_aeu->bits[j];
 
 			if (qed_int_is_parity_flag(p_hwfn, p_bit) &&
@@ -1083,7 +1057,7 @@ static int qed_int_deassertion(struct qed_hwfn  *p_hwfn,
 			 * to current group, making them responsible for the
 			 * previous assertion.
 			 */
-			for (j = 0, bit_idx = 0; bit_idx < 32 && j < 32; j++) {
+			for (j = 0, bit_idx = 0; bit_idx < 32; j++) {
 				long unsigned int bitmask;
 				u8 bit, bit_len;
 
@@ -1110,7 +1084,7 @@ static int qed_int_deassertion(struct qed_hwfn  *p_hwfn,
 								 bit_len);
 
 					/* Some bits represent more than a
-					 * single interrupt. Correctly print
+					 * a single interrupt. Correctly print
 					 * their name.
 					 */
 					if (ATTENTION_LENGTH(flags) > 2 ||
@@ -1119,7 +1093,7 @@ static int qed_int_deassertion(struct qed_hwfn  *p_hwfn,
 						snprintf(bit_name, 30,
 							 p_aeu->bit_name, num);
 					else
-						strscpy(bit_name,
+						strlcpy(bit_name,
 							p_aeu->bit_name, 30);
 
 					/* We now need to pass bitmask in its
@@ -1198,8 +1172,7 @@ static int qed_int_attentions(struct qed_hwfn *p_hwfn)
 			index, attn_bits, attn_acks, asserted_bits,
 			deasserted_bits, p_sb_attn_sw->known_attn);
 	} else if (asserted_bits == 0x100) {
-		DP_VERBOSE(p_hwfn, NETIF_MSG_INTR,
-			   "MFW indication via attention\n");
+		DP_INFO(p_hwfn, "MFW indication via attention\n");
 	} else {
 		DP_VERBOSE(p_hwfn, NETIF_MSG_INTR,
 			   "MFW indication [deassertion]\n");
@@ -1220,15 +1193,16 @@ static int qed_int_attentions(struct qed_hwfn *p_hwfn)
 static void qed_sb_ack_attn(struct qed_hwfn *p_hwfn,
 			    void __iomem *igu_addr, u32 ack_cons)
 {
-	u32 igu_ack;
+	struct igu_prod_cons_update igu_ack = { 0 };
 
-	igu_ack = ((ack_cons << IGU_PROD_CONS_UPDATE_SB_INDEX_SHIFT) |
-		   (1 << IGU_PROD_CONS_UPDATE_UPDATE_FLAG_SHIFT) |
-		   (IGU_INT_NOP << IGU_PROD_CONS_UPDATE_ENABLE_INT_SHIFT) |
-		   (IGU_SEG_ACCESS_ATTN <<
-		    IGU_PROD_CONS_UPDATE_SEGMENT_ACCESS_SHIFT));
+	igu_ack.sb_id_and_flags =
+		((ack_cons << IGU_PROD_CONS_UPDATE_SB_INDEX_SHIFT) |
+		 (1 << IGU_PROD_CONS_UPDATE_UPDATE_FLAG_SHIFT) |
+		 (IGU_INT_NOP << IGU_PROD_CONS_UPDATE_ENABLE_INT_SHIFT) |
+		 (IGU_SEG_ACCESS_ATTN <<
+		  IGU_PROD_CONS_UPDATE_SEGMENT_ACCESS_SHIFT));
 
-	DIRECT_REG_WR(igu_addr, igu_ack);
+	DIRECT_REG_WR(igu_addr, igu_ack.sb_id_and_flags);
 
 	/* Both segments (interrupts & acks) are written to same place address;
 	 * Need to guarantee all commands will be received (in-order) by HW.
@@ -1236,9 +1210,9 @@ static void qed_sb_ack_attn(struct qed_hwfn *p_hwfn,
 	barrier();
 }
 
-void qed_int_sp_dpc(struct tasklet_struct *t)
+void qed_int_sp_dpc(unsigned long hwfn_cookie)
 {
-	struct qed_hwfn *p_hwfn = from_tasklet(p_hwfn, t, sp_dpc);
+	struct qed_hwfn *p_hwfn = (struct qed_hwfn *)hwfn_cookie;
 	struct qed_pi_info *pi_info = NULL;
 	struct qed_sb_attn_info *sb_attn;
 	struct qed_sb_info *sb_info;
@@ -1382,7 +1356,7 @@ static void qed_int_sb_attn_init(struct qed_hwfn *p_hwfn,
 	memset(sb_info->parity_mask, 0, sizeof(u32) * NUM_ATTN_REGS);
 	for (i = 0; i < NUM_ATTN_REGS; i++) {
 		/* j is array index, k is bit index */
-		for (j = 0, k = 0; k < 32 && j < 32; j++) {
+		for (j = 0, k = 0; k < 32; j++) {
 			struct aeu_invert_reg_bit *p_aeu;
 
 			p_aeu = &aeu_descs[i].bits[j];
@@ -1442,16 +1416,16 @@ void qed_init_cau_sb_entry(struct qed_hwfn *p_hwfn,
 			   u8 pf_id, u16 vf_number, u8 vf_valid)
 {
 	struct qed_dev *cdev = p_hwfn->cdev;
-	u32 cau_state, params = 0, data = 0;
+	u32 cau_state;
 	u8 timer_res;
 
 	memset(p_sb_entry, 0, sizeof(*p_sb_entry));
 
-	SET_FIELD(params, CAU_SB_ENTRY_PF_NUMBER, pf_id);
-	SET_FIELD(params, CAU_SB_ENTRY_VF_NUMBER, vf_number);
-	SET_FIELD(params, CAU_SB_ENTRY_VF_VALID, vf_valid);
-	SET_FIELD(params, CAU_SB_ENTRY_SB_TIMESET0, 0x7F);
-	SET_FIELD(params, CAU_SB_ENTRY_SB_TIMESET1, 0x7F);
+	SET_FIELD(p_sb_entry->params, CAU_SB_ENTRY_PF_NUMBER, pf_id);
+	SET_FIELD(p_sb_entry->params, CAU_SB_ENTRY_VF_NUMBER, vf_number);
+	SET_FIELD(p_sb_entry->params, CAU_SB_ENTRY_VF_VALID, vf_valid);
+	SET_FIELD(p_sb_entry->params, CAU_SB_ENTRY_SB_TIMESET0, 0x7F);
+	SET_FIELD(p_sb_entry->params, CAU_SB_ENTRY_SB_TIMESET1, 0x7F);
 
 	cau_state = CAU_HC_DISABLE_STATE;
 
@@ -1470,8 +1444,7 @@ void qed_init_cau_sb_entry(struct qed_hwfn *p_hwfn,
 		timer_res = 1;
 	else
 		timer_res = 2;
-
-	SET_FIELD(params, CAU_SB_ENTRY_TIMER_RES0, timer_res);
+	SET_FIELD(p_sb_entry->params, CAU_SB_ENTRY_TIMER_RES0, timer_res);
 
 	if (cdev->tx_coalesce_usecs <= 0x7F)
 		timer_res = 0;
@@ -1479,13 +1452,10 @@ void qed_init_cau_sb_entry(struct qed_hwfn *p_hwfn,
 		timer_res = 1;
 	else
 		timer_res = 2;
+	SET_FIELD(p_sb_entry->params, CAU_SB_ENTRY_TIMER_RES1, timer_res);
 
-	SET_FIELD(params, CAU_SB_ENTRY_TIMER_RES1, timer_res);
-	p_sb_entry->params = cpu_to_le32(params);
-
-	SET_FIELD(data, CAU_SB_ENTRY_STATE0, cau_state);
-	SET_FIELD(data, CAU_SB_ENTRY_STATE1, cau_state);
-	p_sb_entry->data = cpu_to_le32(data);
+	SET_FIELD(p_sb_entry->data, CAU_SB_ENTRY_STATE0, cau_state);
+	SET_FIELD(p_sb_entry->data, CAU_SB_ENTRY_STATE1, cau_state);
 }
 
 static void qed_int_cau_conf_pi(struct qed_hwfn *p_hwfn,
@@ -1495,27 +1465,31 @@ static void qed_int_cau_conf_pi(struct qed_hwfn *p_hwfn,
 				enum qed_coalescing_fsm coalescing_fsm,
 				u8 timeset)
 {
+	struct cau_pi_entry pi_entry;
 	u32 sb_offset, pi_offset;
-	u32 prod = 0;
 
 	if (IS_VF(p_hwfn->cdev))
 		return;
 
-	SET_FIELD(prod, CAU_PI_ENTRY_PI_TIMESET, timeset);
+	sb_offset = igu_sb_id * PIS_PER_SB_E4;
+	memset(&pi_entry, 0, sizeof(struct cau_pi_entry));
+
+	SET_FIELD(pi_entry.prod, CAU_PI_ENTRY_PI_TIMESET, timeset);
 	if (coalescing_fsm == QED_COAL_RX_STATE_MACHINE)
-		SET_FIELD(prod, CAU_PI_ENTRY_FSM_SEL, 0);
+		SET_FIELD(pi_entry.prod, CAU_PI_ENTRY_FSM_SEL, 0);
 	else
-		SET_FIELD(prod, CAU_PI_ENTRY_FSM_SEL, 1);
+		SET_FIELD(pi_entry.prod, CAU_PI_ENTRY_FSM_SEL, 1);
 
-	sb_offset = igu_sb_id * PIS_PER_SB;
 	pi_offset = sb_offset + pi_index;
-
-	if (p_hwfn->hw_init_done)
+	if (p_hwfn->hw_init_done) {
 		qed_wr(p_hwfn, p_ptt,
-		       CAU_REG_PI_MEMORY + pi_offset * sizeof(u32), prod);
-	else
-		STORE_RT_REG(p_hwfn, CAU_REG_PI_MEMORY_RT_OFFSET + pi_offset,
-			     prod);
+		       CAU_REG_PI_MEMORY + pi_offset * sizeof(u32),
+		       *((u32 *)&(pi_entry)));
+	} else {
+		STORE_RT_REG(p_hwfn,
+			     CAU_REG_PI_MEMORY_RT_OFFSET + pi_offset,
+			     *((u32 *)&(pi_entry)));
+	}
 }
 
 void qed_int_cau_conf_sb(struct qed_hwfn *p_hwfn,
@@ -2272,9 +2246,9 @@ int qed_int_igu_read_cam(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt)
 }
 
 /**
- * qed_int_igu_init_rt() - Initialize IGU runtime registers.
+ * @brief Initialize igu runtime registers
  *
- * @p_hwfn: HW device data.
+ * @param p_hwfn
  */
 void qed_int_igu_init_rt(struct qed_hwfn *p_hwfn)
 {
@@ -2305,13 +2279,33 @@ u64 qed_int_igu_read_sisr_reg(struct qed_hwfn *p_hwfn)
 
 static void qed_int_sp_dpc_setup(struct qed_hwfn *p_hwfn)
 {
-	tasklet_setup(&p_hwfn->sp_dpc, qed_int_sp_dpc);
+	tasklet_init(p_hwfn->sp_dpc,
+		     qed_int_sp_dpc, (unsigned long)p_hwfn);
 	p_hwfn->b_sp_dpc_enabled = true;
+}
+
+static int qed_int_sp_dpc_alloc(struct qed_hwfn *p_hwfn)
+{
+	p_hwfn->sp_dpc = kmalloc(sizeof(*p_hwfn->sp_dpc), GFP_KERNEL);
+	if (!p_hwfn->sp_dpc)
+		return -ENOMEM;
+
+	return 0;
+}
+
+static void qed_int_sp_dpc_free(struct qed_hwfn *p_hwfn)
+{
+	kfree(p_hwfn->sp_dpc);
+	p_hwfn->sp_dpc = NULL;
 }
 
 int qed_int_alloc(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt)
 {
 	int rc = 0;
+
+	rc = qed_int_sp_dpc_alloc(p_hwfn);
+	if (rc)
+		return rc;
 
 	rc = qed_int_sp_sb_alloc(p_hwfn, p_ptt);
 	if (rc)
@@ -2326,6 +2320,7 @@ void qed_int_free(struct qed_hwfn *p_hwfn)
 {
 	qed_int_sp_sb_free(p_hwfn);
 	qed_int_sb_attn_free(p_hwfn);
+	qed_int_sp_dpc_free(p_hwfn);
 }
 
 void qed_int_setup(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt)
@@ -2354,16 +2349,10 @@ void qed_int_disable_post_isr_release(struct qed_dev *cdev)
 		cdev->hwfns[i].b_int_requested = false;
 }
 
-void qed_int_attn_clr_enable(struct qed_dev *cdev, bool clr_enable)
-{
-	cdev->attn_clr_en = clr_enable;
-}
-
 int qed_int_set_timer_res(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
 			  u8 timer_res, u16 sb_id, bool tx)
 {
 	struct cau_sb_entry sb_entry;
-	u32 params;
 	int rc;
 
 	if (!p_hwfn->hw_init_done) {
@@ -2379,14 +2368,10 @@ int qed_int_set_timer_res(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
 		return rc;
 	}
 
-	params = le32_to_cpu(sb_entry.params);
-
 	if (tx)
-		SET_FIELD(params, CAU_SB_ENTRY_TIMER_RES1, timer_res);
+		SET_FIELD(sb_entry.params, CAU_SB_ENTRY_TIMER_RES1, timer_res);
 	else
-		SET_FIELD(params, CAU_SB_ENTRY_TIMER_RES0, timer_res);
-
-	sb_entry.params = cpu_to_le32(params);
+		SET_FIELD(sb_entry.params, CAU_SB_ENTRY_TIMER_RES0, timer_res);
 
 	rc = qed_dmae_host2grc(p_hwfn, p_ptt,
 			       (u64)(uintptr_t)&sb_entry,
@@ -2398,26 +2383,4 @@ int qed_int_set_timer_res(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
 	}
 
 	return rc;
-}
-
-int qed_int_get_sb_dbg(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
-		       struct qed_sb_info *p_sb, struct qed_sb_info_dbg *p_info)
-{
-	u16 sbid = p_sb->igu_sb_id;
-	u32 i;
-
-	if (IS_VF(p_hwfn->cdev))
-		return -EINVAL;
-
-	if (sbid >= NUM_OF_SBS(p_hwfn->cdev))
-		return -EINVAL;
-
-	p_info->igu_prod = qed_rd(p_hwfn, p_ptt, IGU_REG_PRODUCER_MEMORY + sbid * 4);
-	p_info->igu_cons = qed_rd(p_hwfn, p_ptt, IGU_REG_CONSUMER_MEM + sbid * 4);
-
-	for (i = 0; i < PIS_PER_SB; i++)
-		p_info->pi[i] = (u16)qed_rd(p_hwfn, p_ptt,
-					    CAU_REG_PI_MEMORY + sbid * 4 * PIS_PER_SB + i * 4);
-
-	return 0;
 }

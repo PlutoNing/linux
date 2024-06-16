@@ -28,7 +28,6 @@ struct ad198x_spec {
 	hda_nid_t eapd_nid;
 
 	unsigned int beep_amp;	/* beep amp value, set via set_beep_amp() */
-	int num_smux_conns;
 };
 
 
@@ -72,7 +71,7 @@ static int create_beep_ctls(struct hda_codec *codec)
 #define create_beep_ctls(codec)		0
 #endif
 
-#ifdef CONFIG_PM
+
 static void ad198x_power_eapd_write(struct hda_codec *codec, hda_nid_t front,
 				hda_nid_t hp)
 {
@@ -112,10 +111,16 @@ static void ad198x_power_eapd(struct hda_codec *codec)
 	}
 }
 
-static int ad198x_suspend(struct hda_codec *codec)
+static void ad198x_shutup(struct hda_codec *codec)
 {
 	snd_hda_shutup_pins(codec);
 	ad198x_power_eapd(codec);
+}
+
+#ifdef CONFIG_PM
+static int ad198x_suspend(struct hda_codec *codec)
+{
+	ad198x_shutup(codec);
 	return 0;
 }
 #endif
@@ -162,6 +167,7 @@ static const struct hda_codec_ops ad198x_auto_patch_ops = {
 	.check_power_status = snd_hda_gen_check_power_status,
 	.suspend = ad198x_suspend,
 #endif
+	.reboot_notify = ad198x_shutup,
 };
 
 
@@ -383,7 +389,7 @@ static int patch_ad1986a(struct hda_codec *codec)
 {
 	int err;
 	struct ad198x_spec *spec;
-	static const hda_nid_t preferred_pairs[] = {
+	static hda_nid_t preferred_pairs[] = {
 		0x1a, 0x03,
 		0x1b, 0x03,
 		0x1c, 0x04,
@@ -447,7 +453,8 @@ static int ad1983_auto_smux_enum_info(struct snd_kcontrol *kcontrol,
 	struct ad198x_spec *spec = codec->spec;
 	static const char * const texts2[] = { "PCM", "ADC" };
 	static const char * const texts3[] = { "PCM", "ADC1", "ADC2" };
-	int num_conns = spec->num_smux_conns;
+	hda_nid_t dig_out = spec->gen.multiout.dig_out_nid;
+	int num_conns = snd_hda_get_num_conns(codec, dig_out);
 
 	if (num_conns == 2)
 		return snd_hda_enum_helper_info(kcontrol, uinfo, 2, texts2);
@@ -474,7 +481,7 @@ static int ad1983_auto_smux_enum_put(struct snd_kcontrol *kcontrol,
 	struct ad198x_spec *spec = codec->spec;
 	unsigned int val = ucontrol->value.enumerated.item[0];
 	hda_nid_t dig_out = spec->gen.multiout.dig_out_nid;
-	int num_conns = spec->num_smux_conns;
+	int num_conns = snd_hda_get_num_conns(codec, dig_out);
 
 	if (val >= num_conns)
 		return -EINVAL;
@@ -505,7 +512,6 @@ static int ad1983_add_spdif_mux_ctl(struct hda_codec *codec)
 	num_conns = snd_hda_get_num_conns(codec, dig_out);
 	if (num_conns != 2 && num_conns != 3)
 		return 0;
-	spec->num_smux_conns = num_conns;
 	if (!snd_hda_gen_add_kctl(&spec->gen, NULL, &ad1983_auto_smux_mixer))
 		return -ENOMEM;
 	return 0;
@@ -513,9 +519,9 @@ static int ad1983_add_spdif_mux_ctl(struct hda_codec *codec)
 
 static int patch_ad1983(struct hda_codec *codec)
 {
-	static const hda_nid_t conn_0c[] = { 0x08 };
-	static const hda_nid_t conn_0d[] = { 0x09 };
 	struct ad198x_spec *spec;
+	static hda_nid_t conn_0c[] = { 0x08 };
+	static hda_nid_t conn_0d[] = { 0x09 };
 	int err;
 
 	err = alloc_ad_spec(codec);
@@ -724,12 +730,10 @@ static int ad1988_auto_smux_enum_info(struct snd_kcontrol *kcontrol,
 				      struct snd_ctl_elem_info *uinfo)
 {
 	struct hda_codec *codec = snd_kcontrol_chip(kcontrol);
-	struct ad198x_spec *spec = codec->spec;
 	static const char * const texts[] = {
 		"PCM", "ADC1", "ADC2", "ADC3",
 	};
-	int num_conns = spec->num_smux_conns;
-
+	int num_conns = snd_hda_get_num_conns(codec, 0x0b) + 1;
 	if (num_conns > 4)
 		num_conns = 4;
 	return snd_hda_enum_helper_info(kcontrol, uinfo, num_conns, texts);
@@ -752,7 +756,7 @@ static int ad1988_auto_smux_enum_put(struct snd_kcontrol *kcontrol,
 	struct ad198x_spec *spec = codec->spec;
 	unsigned int val = ucontrol->value.enumerated.item[0];
 	struct nid_path *path;
-	int num_conns = spec->num_smux_conns;
+	int num_conns = snd_hda_get_num_conns(codec, 0x0b) + 1;
 
 	if (val >= num_conns)
 		return -EINVAL;
@@ -808,7 +812,7 @@ static int ad1988_add_spdif_mux_ctl(struct hda_codec *codec)
 	/* we create four static faked paths, since AD codecs have odd
 	 * widget connections regarding the SPDIF out source
 	 */
-	static const struct nid_path fake_paths[4] = {
+	static struct nid_path fake_paths[4] = {
 		{
 			.depth = 3,
 			.path = { 0x02, 0x1d, 0x1b },
@@ -843,7 +847,6 @@ static int ad1988_add_spdif_mux_ctl(struct hda_codec *codec)
 	num_conns = snd_hda_get_num_conns(codec, 0x0b) + 1;
 	if (num_conns != 3 && num_conns != 4)
 		return 0;
-	spec->num_smux_conns = num_conns;
 
 	for (i = 0; i < num_conns; i++) {
 		struct nid_path *path = snd_array_new(&spec->gen.paths);

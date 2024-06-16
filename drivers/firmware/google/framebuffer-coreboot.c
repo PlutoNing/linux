@@ -36,9 +36,6 @@ static int framebuffer_probe(struct coreboot_device *dev)
 		.format = NULL,
 	};
 
-	if (!fb->physical_address)
-		return -ENODEV;
-
 	for (i = 0; i < ARRAY_SIZE(formats); ++i) {
 		if (fb->bits_per_pixel     == formats[i].bits_per_pixel &&
 		    fb->red_mask_pos       == formats[i].red.offset &&
@@ -46,7 +43,9 @@ static int framebuffer_probe(struct coreboot_device *dev)
 		    fb->green_mask_pos     == formats[i].green.offset &&
 		    fb->green_mask_size    == formats[i].green.length &&
 		    fb->blue_mask_pos      == formats[i].blue.offset &&
-		    fb->blue_mask_size     == formats[i].blue.length)
+		    fb->blue_mask_size     == formats[i].blue.length &&
+		    fb->reserved_mask_pos  == formats[i].transp.offset &&
+		    fb->reserved_mask_size == formats[i].transp.length)
 			pdata.format = formats[i].name;
 	}
 	if (!pdata.format)
@@ -73,18 +72,14 @@ static int framebuffer_probe(struct coreboot_device *dev)
 	return PTR_ERR_OR_ZERO(pdev);
 }
 
-static void framebuffer_remove(struct coreboot_device *dev)
+static int framebuffer_remove(struct coreboot_device *dev)
 {
 	struct platform_device *pdev = dev_get_drvdata(&dev->dev);
 
 	platform_device_unregister(pdev);
-}
 
-static const struct coreboot_device_id framebuffer_ids[] = {
-	{ .tag = CB_TAG_FRAMEBUFFER },
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(coreboot, framebuffer_ids);
+	return 0;
+}
 
 static struct coreboot_driver framebuffer_driver = {
 	.probe = framebuffer_probe,
@@ -92,7 +87,7 @@ static struct coreboot_driver framebuffer_driver = {
 	.drv = {
 		.name = "framebuffer",
 	},
-	.id_table = framebuffer_ids,
+	.tag = CB_TAG_FRAMEBUFFER,
 };
 module_coreboot_driver(framebuffer_driver);
 

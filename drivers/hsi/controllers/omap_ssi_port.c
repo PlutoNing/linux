@@ -151,17 +151,23 @@ static int ssi_div_set(void *data, u64 val)
 
 DEFINE_DEBUGFS_ATTRIBUTE(ssi_sst_div_fops, ssi_div_get, ssi_div_set, "%llu\n");
 
-static void ssi_debug_add_port(struct omap_ssi_port *omap_port,
+static int ssi_debug_add_port(struct omap_ssi_port *omap_port,
 				     struct dentry *dir)
 {
 	struct hsi_port *port = to_hsi_port(omap_port->dev);
 
 	dir = debugfs_create_dir(dev_name(omap_port->dev), dir);
+	if (!dir)
+		return -ENOMEM;
 	omap_port->dir = dir;
 	debugfs_create_file("regs", S_IRUGO, dir, port, &ssi_port_regs_fops);
 	dir = debugfs_create_dir("sst", dir);
+	if (!dir)
+		return -ENOMEM;
 	debugfs_create_file_unsafe("divisor", 0644, dir, port,
 				   &ssi_sst_div_fops);
+
+	return 0;
 }
 #endif
 
@@ -224,10 +230,10 @@ static int ssi_start_dma(struct hsi_msg *msg, int lch)
 	if (msg->ttype == HSI_MSG_READ) {
 		err = dma_map_sg(&ssi->device, msg->sgt.sgl, msg->sgt.nents,
 							DMA_FROM_DEVICE);
-		if (!err) {
+		if (err < 0) {
 			dev_dbg(&ssi->device, "DMA map SG failed !\n");
 			pm_runtime_put_autosuspend(omap_port->pdev);
-			return -EIO;
+			return err;
 		}
 		csdp = SSI_DST_BURST_4x32_BIT | SSI_DST_MEMORY_PORT |
 			SSI_SRC_SINGLE_ACCESS0 | SSI_SRC_PERIPHERAL_PORT |
@@ -241,10 +247,10 @@ static int ssi_start_dma(struct hsi_msg *msg, int lch)
 	} else {
 		err = dma_map_sg(&ssi->device, msg->sgt.sgl, msg->sgt.nents,
 							DMA_TO_DEVICE);
-		if (!err) {
+		if (err < 0) {
 			dev_dbg(&ssi->device, "DMA map SG failed !\n");
 			pm_runtime_put_autosuspend(omap_port->pdev);
-			return -EIO;
+			return err;
 		}
 		csdp = SSI_SRC_BURST_4x32_BIT | SSI_SRC_MEMORY_PORT |
 			SSI_DST_SINGLE_ACCESS0 | SSI_DST_PERIPHERAL_PORT |
@@ -1211,7 +1217,11 @@ static int ssi_port_probe(struct platform_device *pd)
 	pm_runtime_enable(omap_port->pdev);
 
 #ifdef CONFIG_DEBUG_FS
-	ssi_debug_add_port(omap_port, omap_ssi->dir);
+	err = ssi_debug_add_port(omap_port, omap_ssi->dir);
+	if (err < 0) {
+		pm_runtime_disable(omap_port->pdev);
+		goto error;
+	}
 #endif
 
 	hsi_add_clients_from_dt(port, np);

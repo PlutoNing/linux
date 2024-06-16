@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0
 
+#include <linux/blk-mq.h>
 #include <linux/blk-pm.h>
 #include <linux/blkdev.h>
 #include <linux/pm_runtime.h>
 #include "blk-mq.h"
+#include "blk-mq-tag.h"
 
 /**
  * blk_pm_runtime_init - Block layer runtime PM initialization routine
@@ -65,10 +67,6 @@ int blk_pre_runtime_suspend(struct request_queue *q)
 
 	WARN_ON_ONCE(q->rpm_status != RPM_ACTIVE);
 
-	spin_lock_irq(&q->queue_lock);
-	q->rpm_status = RPM_SUSPENDING;
-	spin_unlock_irq(&q->queue_lock);
-
 	/*
 	 * Increase the pm_only counter before checking whether any
 	 * non-PM blk_queue_enter() calls are in progress to avoid that any
@@ -91,14 +89,15 @@ int blk_pre_runtime_suspend(struct request_queue *q)
 	/* Switch q_usage_counter back to per-cpu mode. */
 	blk_mq_unfreeze_queue(q);
 
-	if (ret < 0) {
-		spin_lock_irq(&q->queue_lock);
-		q->rpm_status = RPM_ACTIVE;
+	spin_lock_irq(&q->queue_lock);
+	if (ret < 0)
 		pm_runtime_mark_last_busy(q->dev);
-		spin_unlock_irq(&q->queue_lock);
+	else
+		q->rpm_status = RPM_SUSPENDING;
+	spin_unlock_irq(&q->queue_lock);
 
+	if (ret)
 		blk_clear_pm_only(q);
-	}
 
 	return ret;
 }
@@ -161,31 +160,59 @@ EXPORT_SYMBOL(blk_pre_runtime_resume);
 /**
  * blk_post_runtime_resume - Post runtime resume processing
  * @q: the queue of the device
+ * @err: return value of the device's runtime_resume function
  *
  * Description:
- *    Restart the queue of a runtime suspended device. It does this regardless
- *    of whether the device's runtime-resume succeeded; even if it failed the
- *    driver or error handler will need to communicate with the device.
+ *    Update the queue's runtime status according to the return value of the
+ *    device's runtime_resume function. If it is successfully resumed, process
+ *    the requests that are queued into the device's queue when it is resuming
+ *    and then mark last busy and initiate autosuspend for it.
  *
  *    This function should be called near the end of the device's
- *    runtime_resume callback to correct queue runtime PM status and re-enable
- *    peeking requests from the queue.
+ *    runtime_resume callback.
  */
-void blk_post_runtime_resume(struct request_queue *q)
+void blk_post_runtime_resume(struct request_queue *q, int err)
 {
-	int old_status;
-
 	if (!q->dev)
 		return;
 
 	spin_lock_irq(&q->queue_lock);
-	old_status = q->rpm_status;
-	q->rpm_status = RPM_ACTIVE;
-	pm_runtime_mark_last_busy(q->dev);
-	pm_request_autosuspend(q->dev);
+	if (!err) {
+		q->rpm_status = RPM_ACTIVE;
+		pm_runtime_mark_last_busy(q->dev);
+		pm_request_autosuspend(q->dev);
+	} else {
+		q->rpm_status = RPM_SUSPENDED;
+	}
 	spin_unlock_irq(&q->queue_lock);
 
-	if (old_status != RPM_ACTIVE)
+	if (!err)
 		blk_clear_pm_only(q);
 }
 EXPORT_SYMBOL(blk_post_runtime_resume);
+
+/**
+ * blk_set_runtime_active - Force runtime status of the queue to be active
+ * @q: the queue of the device
+ *
+ * If the device is left runtime suspended during system suspend the resume
+ * hook typically resumes the device and corrects runtime status
+ * accordingly. However, that does not affect the queue runtime PM status
+ * which is still "suspended". This prevents processing requests from the
+ * queue.
+ *
+ * This function can be used in driver's resume hook to correct queue
+ * runtime PM status and re-enable peeking requests from the queue. It
+ * should be called before first request is added to the queue.
+ */
+void blk_set_runtime_active(struct request_queue *q)
+{
+	if (q->dev) {
+		spin_lock_irq(&q->queue_lock);
+		q->rpm_status = RPM_ACTIVE;
+		pm_runtime_mark_last_busy(q->dev);
+		pm_request_autosuspend(q->dev);
+		spin_unlock_irq(&q->queue_lock);
+	}
+}
+EXPORT_SYMBOL(blk_set_runtime_active);

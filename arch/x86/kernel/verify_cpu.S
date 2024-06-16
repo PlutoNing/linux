@@ -31,7 +31,7 @@
 #include <asm/cpufeatures.h>
 #include <asm/msr-index.h>
 
-SYM_FUNC_START_LOCAL(verify_cpu)
+ENTRY(verify_cpu)
 	pushf				# Save caller passed flags
 	push	$0			# Kill any dangerous flags
 	popf
@@ -132,9 +132,9 @@ SYM_FUNC_START_LOCAL(verify_cpu)
 .Lverify_cpu_no_longmode:
 	popf				# Restore caller passed flags
 	movl $1,%eax
-	RET
+	ret
 .Lverify_cpu_sse_ok:
 	popf				# Restore caller passed flags
 	xorl %eax, %eax
-	RET
-SYM_FUNC_END(verify_cpu)
+	ret
+ENDPROC(verify_cpu)

@@ -9,9 +9,10 @@ static void __rdmsr_on_cpu(void *info)
 {
 	struct msr_info *rv = info;
 	struct msr *reg;
+	int this_cpu = raw_smp_processor_id();
 
 	if (rv->msrs)
-		reg = this_cpu_ptr(rv->msrs);
+		reg = per_cpu_ptr(rv->msrs, this_cpu);
 	else
 		reg = &rv->reg;
 
@@ -22,9 +23,10 @@ static void __wrmsr_on_cpu(void *info)
 {
 	struct msr_info *rv = info;
 	struct msr *reg;
+	int this_cpu = raw_smp_processor_id();
 
 	if (rv->msrs)
-		reg = this_cpu_ptr(rv->msrs);
+		reg = per_cpu_ptr(rv->msrs, this_cpu);
 	else
 		reg = &rv->reg;
 
@@ -95,7 +97,7 @@ int wrmsrl_on_cpu(unsigned int cpu, u32 msr_no, u64 q)
 EXPORT_SYMBOL(wrmsrl_on_cpu);
 
 static void __rwmsr_on_cpus(const struct cpumask *mask, u32 msr_no,
-			    struct msr __percpu *msrs,
+			    struct msr *msrs,
 			    void (*msr_func) (void *info))
 {
 	struct msr_info rv;
@@ -122,7 +124,7 @@ static void __rwmsr_on_cpus(const struct cpumask *mask, u32 msr_no,
  * @msrs:       array of MSR values
  *
  */
-void rdmsr_on_cpus(const struct cpumask *mask, u32 msr_no, struct msr __percpu *msrs)
+void rdmsr_on_cpus(const struct cpumask *mask, u32 msr_no, struct msr *msrs)
 {
 	__rwmsr_on_cpus(mask, msr_no, msrs, __rdmsr_on_cpu);
 }
@@ -136,7 +138,7 @@ EXPORT_SYMBOL(rdmsr_on_cpus);
  * @msrs:       array of MSR values
  *
  */
-void wrmsr_on_cpus(const struct cpumask *mask, u32 msr_no, struct msr __percpu *msrs)
+void wrmsr_on_cpus(const struct cpumask *mask, u32 msr_no, struct msr *msrs)
 {
 	__rwmsr_on_cpus(mask, msr_no, msrs, __wrmsr_on_cpu);
 }
@@ -167,10 +169,11 @@ static void __wrmsr_safe_on_cpu(void *info)
 int rdmsr_safe_on_cpu(unsigned int cpu, u32 msr_no, u32 *l, u32 *h)
 {
 	struct msr_info_completion rv;
-	call_single_data_t csd;
+	call_single_data_t csd = {
+		.func	= __rdmsr_safe_on_cpu,
+		.info	= &rv,
+	};
 	int err;
-
-	INIT_CSD(&csd, __rdmsr_safe_on_cpu, &rv);
 
 	memset(&rv, 0, sizeof(rv));
 	init_completion(&rv.done);
@@ -250,7 +253,7 @@ static void __wrmsr_safe_regs_on_cpu(void *info)
 	rv->err = wrmsr_safe_regs(rv->regs);
 }
 
-int rdmsr_safe_regs_on_cpu(unsigned int cpu, u32 regs[8])
+int rdmsr_safe_regs_on_cpu(unsigned int cpu, u32 *regs)
 {
 	int err;
 	struct msr_regs_info rv;
@@ -263,7 +266,7 @@ int rdmsr_safe_regs_on_cpu(unsigned int cpu, u32 regs[8])
 }
 EXPORT_SYMBOL(rdmsr_safe_regs_on_cpu);
 
-int wrmsr_safe_regs_on_cpu(unsigned int cpu, u32 regs[8])
+int wrmsr_safe_regs_on_cpu(unsigned int cpu, u32 *regs)
 {
 	int err;
 	struct msr_regs_info rv;

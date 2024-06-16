@@ -31,7 +31,7 @@
 #define MAX_CCPS 32
 
 /* Limit CCP use to a specifed number of queues per device */
-static unsigned int nqueues;
+static unsigned int nqueues = 0;
 module_param(nqueues, uint, 0444);
 MODULE_PARM_DESC(nqueues, "Number of queues per CCP (minimum 1; default: all available)");
 
@@ -470,7 +470,7 @@ int ccp_cmd_queue_thread(void *data)
 /**
  * ccp_alloc_struct - allocate and initialize the ccp_device struct
  *
- * @sp: sp_device struct of the CCP
+ * @dev: device struct of the CCP
  */
 struct ccp_device *ccp_alloc_struct(struct sp_device *sp)
 {
@@ -531,6 +531,7 @@ int ccp_trng_read(struct hwrng *rng, void *data, size_t max, bool wait)
 	return len;
 }
 
+#ifdef CONFIG_PM
 bool ccp_queues_suspended(struct ccp_device *ccp)
 {
 	unsigned int suspended = 0;
@@ -548,7 +549,7 @@ bool ccp_queues_suspended(struct ccp_device *ccp)
 	return ccp->cmd_q_count == suspended;
 }
 
-void ccp_dev_suspend(struct sp_device *sp)
+int ccp_dev_suspend(struct sp_device *sp, pm_message_t state)
 {
 	struct ccp_device *ccp = sp->ccp_data;
 	unsigned long flags;
@@ -556,7 +557,7 @@ void ccp_dev_suspend(struct sp_device *sp)
 
 	/* If there's no device there's nothing to do */
 	if (!ccp)
-		return;
+		return 0;
 
 	spin_lock_irqsave(&ccp->cmd_lock, flags);
 
@@ -572,9 +573,11 @@ void ccp_dev_suspend(struct sp_device *sp)
 	while (!ccp_queues_suspended(ccp))
 		wait_event_interruptible(ccp->suspend_queue,
 					 ccp_queues_suspended(ccp));
+
+	return 0;
 }
 
-void ccp_dev_resume(struct sp_device *sp)
+int ccp_dev_resume(struct sp_device *sp)
 {
 	struct ccp_device *ccp = sp->ccp_data;
 	unsigned long flags;
@@ -582,7 +585,7 @@ void ccp_dev_resume(struct sp_device *sp)
 
 	/* If there's no device there's nothing to do */
 	if (!ccp)
-		return;
+		return 0;
 
 	spin_lock_irqsave(&ccp->cmd_lock, flags);
 
@@ -595,7 +598,10 @@ void ccp_dev_resume(struct sp_device *sp)
 	}
 
 	spin_unlock_irqrestore(&ccp->cmd_lock, flags);
+
+	return 0;
 }
+#endif
 
 int ccp_dev_init(struct sp_device *sp)
 {
@@ -635,26 +641,17 @@ int ccp_dev_init(struct sp_device *sp)
 		ccp->vdata->setup(ccp);
 
 	ret = ccp->vdata->perform->init(ccp);
-	if (ret) {
-		/* A positive number means that the device cannot be initialized,
-		 * but no additional message is required.
-		 */
-		if (ret > 0)
-			goto e_quiet;
-
-		/* An unexpected problem occurred, and should be reported in the log */
+	if (ret)
 		goto e_err;
-	}
 
 	dev_notice(dev, "ccp enabled\n");
 
 	return 0;
 
 e_err:
-	dev_notice(dev, "ccp initialization failed\n");
-
-e_quiet:
 	sp->ccp_data = NULL;
+
+	dev_notice(dev, "ccp initialization failed\n");
 
 	return ret;
 }

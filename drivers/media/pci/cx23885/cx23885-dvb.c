@@ -28,7 +28,7 @@
 #include "xc5000.h"
 #include "max2165.h"
 #include "tda10048.h"
-#include "xc2028.h"
+#include "tuner-xc2028.h"
 #include "tuner-simple.h"
 #include "dib7000p.h"
 #include "dib0070.h"
@@ -1159,8 +1159,8 @@ static int dvb_register_ci_mac(struct cx23885_tsport *port)
 		info.addr = 0x40;
 		info.platform_data = &sp2_config;
 		request_module(info.type);
-		client_ci = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-		if (!i2c_client_has_driver(client_ci))
+		client_ci = i2c_new_device(&i2c_bus->i2c_adap, &info);
+		if (client_ci == NULL || client_ci->dev.driver == NULL)
 			return -ENODEV;
 		if (!try_module_get(client_ci->dev.driver->owner)) {
 			i2c_unregister_device(client_ci);
@@ -1826,8 +1826,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x05;
 			info.platform_data = &tda10071_pdata;
 			request_module("tda10071");
-			client_demod = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-			if (!i2c_client_has_driver(client_demod))
+			client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+			if (!client_demod || !client_demod->dev.driver)
 				goto frontend_detach;
 			if (!try_module_get(client_demod->dev.driver->owner)) {
 				i2c_unregister_device(client_demod);
@@ -1843,8 +1843,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x0b;
 			info.platform_data = &a8293_pdata;
 			request_module("a8293");
-			client_sec = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-			if (!i2c_client_has_driver(client_sec))
+			client_sec = i2c_new_device(&i2c_bus->i2c_adap, &info);
+			if (!client_sec || !client_sec->dev.driver)
 				goto frontend_detach;
 			if (!try_module_get(client_sec->dev.driver->owner)) {
 				i2c_unregister_device(client_sec);
@@ -1864,8 +1864,9 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x64;
 			info.platform_data = &si2165_pdata;
 			request_module(info.type);
-			client_demod = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-			if (!i2c_client_has_driver(client_demod))
+			client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+			if (client_demod == NULL ||
+					client_demod->dev.driver == NULL)
 				goto frontend_detach;
 			if (!try_module_get(client_demod->dev.driver->owner)) {
 				i2c_unregister_device(client_demod);
@@ -1897,8 +1898,8 @@ static int dvb_register(struct cx23885_tsport *port)
 		info.addr = 0x05;
 		info.platform_data = &tda10071_pdata;
 		request_module("tda10071");
-		client_demod = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-		if (!i2c_client_has_driver(client_demod))
+		client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+		if (!client_demod || !client_demod->dev.driver)
 			goto frontend_detach;
 		if (!try_module_get(client_demod->dev.driver->owner)) {
 			i2c_unregister_device(client_demod);
@@ -1914,8 +1915,8 @@ static int dvb_register(struct cx23885_tsport *port)
 		info.addr = 0x0b;
 		info.platform_data = &a8293_pdata;
 		request_module("a8293");
-		client_sec = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-		if (!i2c_client_has_driver(client_sec))
+		client_sec = i2c_new_device(&i2c_bus->i2c_adap, &info);
+		if (!client_sec || !client_sec->dev.driver)
 			goto frontend_detach;
 		if (!try_module_get(client_sec->dev.driver->owner)) {
 			i2c_unregister_device(client_sec);
@@ -1947,8 +1948,9 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x60;
 			info.platform_data = &ts2020_config;
 			request_module(info.type);
-			client_tuner = i2c_new_client_device(adapter, &info);
-			if (!i2c_client_has_driver(client_tuner))
+			client_tuner = i2c_new_device(adapter, &info);
+			if (client_tuner == NULL ||
+					client_tuner->dev.driver == NULL)
 				goto frontend_detach;
 			if (!try_module_get(client_tuner->dev.driver->owner)) {
 				i2c_unregister_device(client_tuner);
@@ -1983,8 +1985,9 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x64;
 			info.platform_data = &si2168_config;
 			request_module(info.type);
-			client_demod = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-			if (!i2c_client_has_driver(client_demod))
+			client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+			if (client_demod == NULL ||
+					client_demod->dev.driver == NULL)
 				goto frontend_detach;
 			if (!try_module_get(client_demod->dev.driver->owner)) {
 				i2c_unregister_device(client_demod);
@@ -2001,8 +2004,9 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x60;
 			info.platform_data = &si2157_config;
 			request_module(info.type);
-			client_tuner = i2c_new_client_device(adapter, &info);
-			if (!i2c_client_has_driver(client_tuner))
+			client_tuner = i2c_new_device(adapter, &info);
+			if (client_tuner == NULL ||
+					client_tuner->dev.driver == NULL)
 				goto frontend_detach;
 
 			if (!try_module_get(client_tuner->dev.driver->owner)) {
@@ -2028,8 +2032,8 @@ static int dvb_register(struct cx23885_tsport *port)
 		info.addr = 0x64;
 		info.platform_data = &si2168_config;
 		request_module(info.type);
-		client_demod = i2c_new_client_device(&i2c_bus2->i2c_adap, &info);
-		if (!i2c_client_has_driver(client_demod))
+		client_demod = i2c_new_device(&i2c_bus2->i2c_adap, &info);
+		if (client_demod == NULL || client_demod->dev.driver == NULL)
 			goto frontend_detach;
 		if (!try_module_get(client_demod->dev.driver->owner)) {
 			i2c_unregister_device(client_demod);
@@ -2046,8 +2050,9 @@ static int dvb_register(struct cx23885_tsport *port)
 		info.addr = 0x60;
 		info.platform_data = &si2157_config;
 		request_module(info.type);
-		client_tuner = i2c_new_client_device(adapter, &info);
-		if (!i2c_client_has_driver(client_tuner))
+		client_tuner = i2c_new_device(adapter, &info);
+		if (client_tuner == NULL ||
+				client_tuner->dev.driver == NULL)
 			goto frontend_detach;
 		if (!try_module_get(client_tuner->dev.driver->owner)) {
 			i2c_unregister_device(client_tuner);
@@ -2075,8 +2080,8 @@ static int dvb_register(struct cx23885_tsport *port)
 		info.addr = 0x60;
 		info.platform_data = &ts2020_config;
 		request_module(info.type);
-		client_tuner = i2c_new_client_device(adapter, &info);
-		if (!i2c_client_has_driver(client_tuner))
+		client_tuner = i2c_new_device(adapter, &info);
+		if (client_tuner == NULL || client_tuner->dev.driver == NULL)
 			goto frontend_detach;
 		if (!try_module_get(client_tuner->dev.driver->owner)) {
 			i2c_unregister_device(client_tuner);
@@ -2124,8 +2129,8 @@ static int dvb_register(struct cx23885_tsport *port)
 		info.addr = 0x68;
 		info.platform_data = &m88ds3103_pdata;
 		request_module(info.type);
-		client_demod = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-		if (!i2c_client_has_driver(client_demod))
+		client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+		if (client_demod == NULL || client_demod->dev.driver == NULL)
 			goto frontend_detach;
 		if (!try_module_get(client_demod->dev.driver->owner)) {
 			i2c_unregister_device(client_demod);
@@ -2144,8 +2149,8 @@ static int dvb_register(struct cx23885_tsport *port)
 		info.addr = 0x60;
 		info.platform_data = &ts2020_config;
 		request_module(info.type);
-		client_tuner = i2c_new_client_device(adapter, &info);
-		if (!i2c_client_has_driver(client_tuner))
+		client_tuner = i2c_new_device(adapter, &info);
+		if (client_tuner == NULL || client_tuner->dev.driver == NULL)
 			goto frontend_detach;
 		if (!try_module_get(client_tuner->dev.driver->owner)) {
 			i2c_unregister_device(client_tuner);
@@ -2189,8 +2194,8 @@ static int dvb_register(struct cx23885_tsport *port)
 		info.addr = 0x64;
 		info.platform_data = &si2168_config;
 		request_module(info.type);
-		client_demod = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-		if (!i2c_client_has_driver(client_demod))
+		client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+		if (client_demod == NULL || client_demod->dev.driver == NULL)
 			goto frontend_detach;
 		if (!try_module_get(client_demod->dev.driver->owner)) {
 			i2c_unregister_device(client_demod);
@@ -2207,8 +2212,9 @@ static int dvb_register(struct cx23885_tsport *port)
 		info.addr = 0x60;
 		info.platform_data = &si2157_config;
 		request_module(info.type);
-		client_tuner = i2c_new_client_device(adapter, &info);
-		if (!i2c_client_has_driver(client_tuner))
+		client_tuner = i2c_new_device(adapter, &info);
+		if (client_tuner == NULL ||
+				client_tuner->dev.driver == NULL)
 			goto frontend_detach;
 		if (!try_module_get(client_tuner->dev.driver->owner)) {
 			i2c_unregister_device(client_tuner);
@@ -2239,8 +2245,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x0b;
 			info.platform_data = &a8293_pdata;
 			request_module("a8293");
-			client_sec = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-			if (!i2c_client_has_driver(client_sec))
+			client_sec = i2c_new_device(&i2c_bus->i2c_adap, &info);
+			if (!client_sec || !client_sec->dev.driver)
 				goto frontend_detach;
 			if (!try_module_get(client_sec->dev.driver->owner)) {
 				i2c_unregister_device(client_sec);
@@ -2256,8 +2262,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x21;
 			info.platform_data = &m88rs6000t_config;
 			request_module("%s", info.type);
-			client_tuner = i2c_new_client_device(adapter, &info);
-			if (!i2c_client_has_driver(client_tuner))
+			client_tuner = i2c_new_device(adapter, &info);
+			if (!client_tuner || !client_tuner->dev.driver)
 				goto frontend_detach;
 			if (!try_module_get(client_tuner->dev.driver->owner)) {
 				i2c_unregister_device(client_tuner);
@@ -2281,8 +2287,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x64;
 			info.platform_data = &si2168_config;
 			request_module("%s", info.type);
-			client_demod = i2c_new_client_device(&i2c_bus->i2c_adap, &info);
-			if (!i2c_client_has_driver(client_demod))
+			client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+			if (!client_demod || !client_demod->dev.driver)
 				goto frontend_detach;
 			if (!try_module_get(client_demod->dev.driver->owner)) {
 				i2c_unregister_device(client_demod);
@@ -2299,8 +2305,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x60;
 			info.platform_data = &si2157_config;
 			request_module("%s", info.type);
-			client_tuner = i2c_new_client_device(&i2c_bus2->i2c_adap, &info);
-			if (!i2c_client_has_driver(client_tuner)) {
+			client_tuner = i2c_new_device(&i2c_bus2->i2c_adap, &info);
+			if (!client_tuner || !client_tuner->dev.driver) {
 				module_put(client_demod->dev.driver->owner);
 				i2c_unregister_device(client_demod);
 				port->i2c_client_demod = NULL;
@@ -2314,12 +2320,6 @@ static int dvb_register(struct cx23885_tsport *port)
 				goto frontend_detach;
 			}
 			port->i2c_client_tuner = client_tuner;
-
-			dev->ts1.analog_fe.tuner_priv = client_tuner;
-			memcpy(&dev->ts1.analog_fe.ops.tuner_ops,
-			       &fe0->dvb.frontend->ops.tuner_ops,
-			       sizeof(struct dvb_tuner_ops));
-
 			break;
 		}
 		break;
@@ -2340,8 +2340,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x64;
 			info.platform_data = &si2168_config;
 			request_module("%s", info.type);
-			client_demod = i2c_new_client_device(&dev->i2c_bus[0].i2c_adap, &info);
-			if (!i2c_client_has_driver(client_demod))
+			client_demod = i2c_new_device(&dev->i2c_bus[0].i2c_adap, &info);
+			if (!client_demod || !client_demod->dev.driver)
 				goto frontend_detach;
 			if (!try_module_get(client_demod->dev.driver->owner)) {
 				i2c_unregister_device(client_demod);
@@ -2358,8 +2358,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x60;
 			info.platform_data = &si2157_config;
 			request_module("%s", info.type);
-			client_tuner = i2c_new_client_device(&dev->i2c_bus[1].i2c_adap, &info);
-			if (!i2c_client_has_driver(client_tuner)) {
+			client_tuner = i2c_new_device(&dev->i2c_bus[1].i2c_adap, &info);
+			if (!client_tuner || !client_tuner->dev.driver) {
 				module_put(client_demod->dev.driver->owner);
 				i2c_unregister_device(client_demod);
 				port->i2c_client_demod = NULL;
@@ -2373,16 +2373,6 @@ static int dvb_register(struct cx23885_tsport *port)
 				goto frontend_detach;
 			}
 			port->i2c_client_tuner = client_tuner;
-
-			/* we only attach tuner for analog on the 888 version */
-			if (dev->board == CX23885_BOARD_HAUPPAUGE_QUADHD_DVB) {
-				pr_info("%s(): QUADHD_DVB analog setup\n",
-					__func__);
-				dev->ts1.analog_fe.tuner_priv = client_tuner;
-				memcpy(&dev->ts1.analog_fe.ops.tuner_ops,
-				       &fe0->dvb.frontend->ops.tuner_ops,
-				       sizeof(struct dvb_tuner_ops));
-			}
 			break;
 
 		/* port c - terrestrial/cable */
@@ -2397,8 +2387,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x66;
 			info.platform_data = &si2168_config;
 			request_module("%s", info.type);
-			client_demod = i2c_new_client_device(&dev->i2c_bus[0].i2c_adap, &info);
-			if (!i2c_client_has_driver(client_demod))
+			client_demod = i2c_new_device(&dev->i2c_bus[0].i2c_adap, &info);
+			if (!client_demod || !client_demod->dev.driver)
 				goto frontend_detach;
 			if (!try_module_get(client_demod->dev.driver->owner)) {
 				i2c_unregister_device(client_demod);
@@ -2415,8 +2405,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x62;
 			info.platform_data = &si2157_config;
 			request_module("%s", info.type);
-			client_tuner = i2c_new_client_device(&dev->i2c_bus[1].i2c_adap, &info);
-			if (!i2c_client_has_driver(client_tuner)) {
+			client_tuner = i2c_new_device(&dev->i2c_bus[1].i2c_adap, &info);
+			if (!client_tuner || !client_tuner->dev.driver) {
 				module_put(client_demod->dev.driver->owner);
 				i2c_unregister_device(client_demod);
 				port->i2c_client_demod = NULL;
@@ -2457,25 +2447,21 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x60;
 			info.platform_data = &si2157_config;
 			request_module("%s", info.type);
-			client_tuner = i2c_new_client_device(&dev->i2c_bus[1].i2c_adap, &info);
-			if (!i2c_client_has_driver(client_tuner)) {
+			client_tuner = i2c_new_device(&dev->i2c_bus[1].i2c_adap, &info);
+			if (!client_tuner || !client_tuner->dev.driver) {
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
 				goto frontend_detach;
 			}
 			if (!try_module_get(client_tuner->dev.driver->owner)) {
 				i2c_unregister_device(client_tuner);
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
 				goto frontend_detach;
 			}
 			port->i2c_client_tuner = client_tuner;
-
-			/* we only attach tuner for analog on the 888 version */
-			if (dev->board == CX23885_BOARD_HAUPPAUGE_QUADHD_ATSC) {
-				pr_info("%s(): QUADHD_ATSC analog setup\n",
-					__func__);
-				dev->ts1.analog_fe.tuner_priv = client_tuner;
-				memcpy(&dev->ts1.analog_fe.ops.tuner_ops,
-				       &fe0->dvb.frontend->ops.tuner_ops,
-				       sizeof(struct dvb_tuner_ops));
-			}
 			break;
 
 		/* port c - terrestrial/cable */
@@ -2497,12 +2483,18 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x62;
 			info.platform_data = &si2157_config;
 			request_module("%s", info.type);
-			client_tuner = i2c_new_client_device(&dev->i2c_bus[1].i2c_adap, &info);
-			if (!i2c_client_has_driver(client_tuner)) {
+			client_tuner = i2c_new_device(&dev->i2c_bus[1].i2c_adap, &info);
+			if (!client_tuner || !client_tuner->dev.driver) {
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
 				goto frontend_detach;
 			}
 			if (!try_module_get(client_tuner->dev.driver->owner)) {
 				i2c_unregister_device(client_tuner);
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
 				goto frontend_detach;
 			}
 			port->i2c_client_tuner = client_tuner;
@@ -2531,8 +2523,8 @@ static int dvb_register(struct cx23885_tsport *port)
 			info.addr = 0x60;
 			info.platform_data = &si2157_config;
 			request_module("%s", info.type);
-			client_tuner = i2c_new_client_device(&dev->i2c_bus[1].i2c_adap, &info);
-			if (!i2c_client_has_driver(client_tuner))
+			client_tuner = i2c_new_device(&dev->i2c_bus[1].i2c_adap, &info);
+			if (!client_tuner || !client_tuner->dev.driver)
 				goto frontend_detach;
 
 			if (!try_module_get(client_tuner->dev.driver->owner)) {
@@ -2541,11 +2533,6 @@ static int dvb_register(struct cx23885_tsport *port)
 				goto frontend_detach;
 			}
 			port->i2c_client_tuner = client_tuner;
-
-			dev->ts1.analog_fe.tuner_priv = client_tuner;
-			memcpy(&dev->ts1.analog_fe.ops.tuner_ops,
-			       &fe0->dvb.frontend->ops.tuner_ops,
-			       sizeof(struct dvb_tuner_ops));
 			break;
 		}
 		break;
@@ -2667,7 +2654,7 @@ int cx23885_dvb_register(struct cx23885_tsport *port)
 		q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		q->io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF | VB2_READ;
 		q->gfp_flags = GFP_DMA32;
-		q->min_queued_buffers = 2;
+		q->min_buffers_needed = 2;
 		q->drv_priv = port;
 		q->buf_struct_size = sizeof(struct cx23885_buffer);
 		q->ops = &dvb_qops;

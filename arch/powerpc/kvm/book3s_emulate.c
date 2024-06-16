@@ -61,6 +61,10 @@
 #define SPRN_GQR6		918
 #define SPRN_GQR7		919
 
+/* Book3S_32 defines mfsrin(v) - but that messes up our abstract
+ * function pointers, so let's just disable the define. */
+#undef mfsrin
+
 enum priv_level {
 	PRIV_PROBLEM = 0,
 	PRIV_SUPER = 1,
@@ -231,7 +235,7 @@ void kvmppc_emulate_tabort(struct kvm_vcpu *vcpu, int ra_val)
 
 #endif
 
-int kvmppc_core_emulate_op_pr(struct kvm_vcpu *vcpu,
+int kvmppc_core_emulate_op_pr(struct kvm_run *run, struct kvm_vcpu *vcpu,
 			      unsigned int inst, int *advance)
 {
 	int emulated = EMULATE_DONE;
@@ -268,7 +272,7 @@ int kvmppc_core_emulate_op_pr(struct kvm_vcpu *vcpu,
 
 			/*
 			 * add rules to fit in ISA specification regarding TM
-			 * state transition in TM disable/Suspended state,
+			 * state transistion in TM disable/Suspended state,
 			 * and target TM state is TM inactive(00) state. (the
 			 * change should be suppressed).
 			 */
@@ -367,13 +371,13 @@ int kvmppc_core_emulate_op_pr(struct kvm_vcpu *vcpu,
 			if (kvmppc_h_pr(vcpu, cmd) == EMULATE_DONE)
 				break;
 
-			vcpu->run->papr_hcall.nr = cmd;
+			run->papr_hcall.nr = cmd;
 			for (i = 0; i < 9; ++i) {
 				ulong gpr = kvmppc_get_gpr(vcpu, 4 + i);
-				vcpu->run->papr_hcall.args[i] = gpr;
+				run->papr_hcall.args[i] = gpr;
 			}
 
-			vcpu->run->exit_reason = KVM_EXIT_PAPR_HCALL;
+			run->exit_reason = KVM_EXIT_PAPR_HCALL;
 			vcpu->arch.hcall_needed = 1;
 			emulated = EMULATE_EXIT_USER;
 			break;
@@ -625,7 +629,7 @@ int kvmppc_core_emulate_op_pr(struct kvm_vcpu *vcpu,
 	}
 
 	if (emulated == EMULATE_FAIL)
-		emulated = kvmppc_emulate_paired_single(vcpu);
+		emulated = kvmppc_emulate_paired_single(run, vcpu);
 
 	return emulated;
 }
@@ -836,9 +840,6 @@ int kvmppc_core_emulate_mtspr_pr(struct kvm_vcpu *vcpu, int sprn, ulong spr_val)
 	case SPRN_MMCR1:
 	case SPRN_MMCR2:
 	case SPRN_UMMCR2:
-	case SPRN_UAMOR:
-	case SPRN_IAMR:
-	case SPRN_AMR:
 #endif
 		break;
 unprivileged:
@@ -1003,9 +1004,6 @@ int kvmppc_core_emulate_mfspr_pr(struct kvm_vcpu *vcpu, int sprn, ulong *spr_val
 	case SPRN_MMCR2:
 	case SPRN_UMMCR2:
 	case SPRN_TIR:
-	case SPRN_UAMOR:
-	case SPRN_IAMR:
-	case SPRN_AMR:
 #endif
 		*spr_val = 0;
 		break;

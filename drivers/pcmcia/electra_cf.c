@@ -178,9 +178,10 @@ static int electra_cf_probe(struct platform_device *ofdev)
 	struct device_node *np = ofdev->dev.of_node;
 	struct electra_cf_socket   *cf;
 	struct resource mem, io;
-	int status = -ENOMEM;
+	int status;
 	const unsigned int *prop;
 	int err;
+	struct vm_struct *area;
 
 	err = of_address_to_resource(np, 0, &mem);
 	if (err)
@@ -201,19 +202,30 @@ static int electra_cf_probe(struct platform_device *ofdev)
 	cf->mem_phys = mem.start;
 	cf->mem_size = PAGE_ALIGN(resource_size(&mem));
 	cf->mem_base = ioremap(cf->mem_phys, cf->mem_size);
-	if (!cf->mem_base)
-		goto out_free_cf;
 	cf->io_size = PAGE_ALIGN(resource_size(&io));
-	cf->io_virt = ioremap_phb(io.start, cf->io_size);
-	if (!cf->io_virt)
-		goto out_unmap_mem;
+
+	area = __get_vm_area(cf->io_size, 0, PHB_IO_BASE, PHB_IO_END);
+	if (area == NULL) {
+		status = -ENOMEM;
+		goto fail1;
+	}
+
+	cf->io_virt = (void __iomem *)(area->addr);
 
 	cf->gpio_base = ioremap(0xfc103000, 0x1000);
-	if (!cf->gpio_base)
-		goto out_unmap_virt;
 	dev_set_drvdata(device, cf);
 
+	if (!cf->mem_base || !cf->io_virt || !cf->gpio_base ||
+	    (__ioremap_at(io.start, cf->io_virt, cf->io_size,
+			  pgprot_noncached(PAGE_KERNEL)) == NULL)) {
+		dev_err(device, "can't ioremap ranges\n");
+		status = -ENOMEM;
+		goto fail1;
+	}
+
+
 	cf->io_base = (unsigned long)cf->io_virt - VMALLOC_END;
+
 	cf->iomem.start = (unsigned long)cf->mem_base;
 	cf->iomem.end = (unsigned long)cf->mem_base + (mem.end - mem.start);
 	cf->iomem.flags = IORESOURCE_MEM;
@@ -228,8 +240,6 @@ static int electra_cf_probe(struct platform_device *ofdev)
 	}
 
 	cf->socket.pci_irq = cf->irq;
-
-	status = -EINVAL;
 
 	prop = of_get_property(np, "card-detect-gpio", NULL);
 	if (!prop)
@@ -295,19 +305,20 @@ fail1:
 	if (cf->irq)
 		free_irq(cf->irq, cf);
 
-	iounmap(cf->gpio_base);
-out_unmap_virt:
-	device_init_wakeup(&ofdev->dev, 0);
-	iounmap(cf->io_virt);
-out_unmap_mem:
-	iounmap(cf->mem_base);
-out_free_cf:
+	if (cf->io_virt)
+		__iounmap_at(cf->io_virt, cf->io_size);
+	if (cf->mem_base)
+		iounmap(cf->mem_base);
+	if (cf->gpio_base)
+		iounmap(cf->gpio_base);
+	if (area)
+		device_init_wakeup(&ofdev->dev, 0);
 	kfree(cf);
 	return status;
 
 }
 
-static void electra_cf_remove(struct platform_device *ofdev)
+static int electra_cf_remove(struct platform_device *ofdev)
 {
 	struct device *device = &ofdev->dev;
 	struct electra_cf_socket *cf;
@@ -317,15 +328,17 @@ static void electra_cf_remove(struct platform_device *ofdev)
 	cf->active = 0;
 	pcmcia_unregister_socket(&cf->socket);
 	free_irq(cf->irq, cf);
-	timer_shutdown_sync(&cf->timer);
+	del_timer_sync(&cf->timer);
 
-	iounmap(cf->io_virt);
+	__iounmap_at(cf->io_virt, cf->io_size);
 	iounmap(cf->mem_base);
 	iounmap(cf->gpio_base);
 	release_mem_region(cf->mem_phys, cf->mem_size);
 	release_region(cf->io_base, cf->io_size);
 
 	kfree(cf);
+
+	return 0;
 }
 
 static const struct of_device_id electra_cf_match[] = {
@@ -342,7 +355,7 @@ static struct platform_driver electra_cf_driver = {
 		.of_match_table = electra_cf_match,
 	},
 	.probe	  = electra_cf_probe,
-	.remove_new = electra_cf_remove,
+	.remove   = electra_cf_remove,
 };
 
 module_platform_driver(electra_cf_driver);

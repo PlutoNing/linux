@@ -1,3 +1,5 @@
+.. _pullrequests:
+
 Creating Pull Requests
 ======================
 
@@ -13,7 +15,7 @@ please direct abuse to Tobin C. Harding <me@tobin.cc>.
 
 Original email thread::
 
-	https://lore.kernel.org/r/20171114110500.GA21175@kroah.com
+	http://lkml.kernel.org/r/20171114110500.GA21175@kroah.com
 
 
 Create Branch
@@ -39,7 +41,7 @@ named ``char-misc-next``, you would be using the following command::
 
 that will create a signed tag called ``char-misc-4.15-rc1`` based on the
 last commit in the ``char-misc-next`` branch, and sign it with your gpg key
-(see Documentation/maintainer/configure-git.rst).
+(see :ref:`Documentation/maintainer/configure-git.rst <configuregit>`).
 
 Linus will only accept pull requests based on a signed tag. Other
 maintainers may differ.

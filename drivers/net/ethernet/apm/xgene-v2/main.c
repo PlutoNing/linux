@@ -36,7 +36,7 @@ static int xge_get_resources(struct xge_pdata *pdata)
 		return -ENOMEM;
 	}
 
-	if (device_get_ethdev_address(dev, ndev))
+	if (!device_get_mac_address(dev, ndev->dev_addr, ETH_ALEN))
 		eth_hw_addr_random(ndev);
 
 	memcpy(ndev->perm_addr, ndev->dev_addr, ndev->addr_len);
@@ -575,7 +575,7 @@ static void xge_free_pending_skb(struct net_device *ndev)
 	}
 }
 
-static void xge_timeout(struct net_device *ndev, unsigned int txqueue)
+static void xge_timeout(struct net_device *ndev)
 {
 	struct xge_pdata *pdata = netdev_priv(ndev);
 
@@ -672,25 +672,23 @@ static int xge_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
-	netif_napi_add(ndev, &pdata->napi, xge_napi);
+	netif_napi_add(ndev, &pdata->napi, xge_napi, NAPI_POLL_WEIGHT);
 
 	ret = register_netdev(ndev);
 	if (ret) {
 		netdev_err(ndev, "Failed to register netdev\n");
-		goto err_mdio_remove;
+		goto err;
 	}
 
 	return 0;
 
-err_mdio_remove:
-	xge_mdio_remove(ndev);
 err:
 	free_netdev(ndev);
 
 	return ret;
 }
 
-static void xge_remove(struct platform_device *pdev)
+static int xge_remove(struct platform_device *pdev)
 {
 	struct xge_pdata *pdata;
 	struct net_device *ndev;
@@ -706,6 +704,8 @@ static void xge_remove(struct platform_device *pdev)
 	xge_mdio_remove(ndev);
 	unregister_netdev(ndev);
 	free_netdev(ndev);
+
+	return 0;
 }
 
 static void xge_shutdown(struct platform_device *pdev)
@@ -734,11 +734,12 @@ static struct platform_driver xge_driver = {
 		   .acpi_match_table = ACPI_PTR(xge_acpi_match),
 	},
 	.probe = xge_probe,
-	.remove_new = xge_remove,
+	.remove = xge_remove,
 	.shutdown = xge_shutdown,
 };
 module_platform_driver(xge_driver);
 
 MODULE_DESCRIPTION("APM X-Gene SoC Ethernet v2 driver");
 MODULE_AUTHOR("Iyappan Subramanian <isubramanian@apm.com>");
+MODULE_VERSION(XGENE_ENET_V2_VERSION);
 MODULE_LICENSE("GPL");

@@ -11,7 +11,7 @@
 
 #include <linux/err.h>
 #include <linux/init.h>
-#include <linux/mod_devicetable.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include "pinctrl-spear3xx.h"
 
@@ -379,6 +379,8 @@ static const struct of_device_id spear310_pinctrl_of_match[] = {
 
 static int spear310_pinctrl_probe(struct platform_device *pdev)
 {
+	int ret;
+
 	spear3xx_machdata.groups = spear310_pingroups;
 	spear3xx_machdata.ngroups = ARRAY_SIZE(spear310_pingroups);
 	spear3xx_machdata.functions = spear310_functions;
@@ -390,7 +392,11 @@ static int spear310_pinctrl_probe(struct platform_device *pdev)
 
 	spear3xx_machdata.modes_supported = false;
 
-	return spear_pinctrl_probe(pdev, &spear3xx_machdata);
+	ret = spear_pinctrl_probe(pdev, &spear3xx_machdata);
+	if (ret)
+		return ret;
+
+	return 0;
 }
 
 static struct platform_driver spear310_pinctrl_driver = {

@@ -11,7 +11,7 @@
 
 static LIST_HEAD(llc_engines);
 
-int __init nfc_llc_init(void)
+int nfc_llc_init(void)
 {
 	int r;
 
@@ -30,22 +30,18 @@ exit:
 	return r;
 }
 
-static void nfc_llc_del_engine(struct nfc_llc_engine *llc_engine)
-{
-	list_del(&llc_engine->entry);
-	kfree_const(llc_engine->name);
-	kfree(llc_engine);
-}
-
 void nfc_llc_exit(void)
 {
 	struct nfc_llc_engine *llc_engine, *n;
 
-	list_for_each_entry_safe(llc_engine, n, &llc_engines, entry)
-		nfc_llc_del_engine(llc_engine);
+	list_for_each_entry_safe(llc_engine, n, &llc_engines, entry) {
+		list_del(&llc_engine->entry);
+		kfree(llc_engine->name);
+		kfree(llc_engine);
+	}
 }
 
-int nfc_llc_register(const char *name, const struct nfc_llc_ops *ops)
+int nfc_llc_register(const char *name, struct nfc_llc_ops *ops)
 {
 	struct nfc_llc_engine *llc_engine;
 
@@ -53,7 +49,7 @@ int nfc_llc_register(const char *name, const struct nfc_llc_ops *ops)
 	if (llc_engine == NULL)
 		return -ENOMEM;
 
-	llc_engine->name = kstrdup_const(name, GFP_KERNEL);
+	llc_engine->name = kstrdup(name, GFP_KERNEL);
 	if (llc_engine->name == NULL) {
 		kfree(llc_engine);
 		return -ENOMEM;
@@ -86,7 +82,9 @@ void nfc_llc_unregister(const char *name)
 	if (llc_engine == NULL)
 		return;
 
-	nfc_llc_del_engine(llc_engine);
+	list_del(&llc_engine->entry);
+	kfree(llc_engine->name);
+	kfree(llc_engine);
 }
 
 struct nfc_llc *nfc_llc_allocate(const char *name, struct nfc_hci_dev *hdev,

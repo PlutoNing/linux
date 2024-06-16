@@ -28,10 +28,8 @@ static inline bool is_tcf_tunnel_set(const struct tc_action *a)
 {
 #ifdef CONFIG_NET_CLS_ACT
 	struct tcf_tunnel_key *t = to_tunnel_key(a);
-	struct tcf_tunnel_key_params *params;
+	struct tcf_tunnel_key_params *params = rtnl_dereference(t->params);
 
-	params = rcu_dereference_protected(t->params,
-					   lockdep_is_held(&a->tcfa_lock));
 	if (a->ops && a->ops->id == TCA_ID_TUNNEL_KEY)
 		return params->tcft_action == TCA_TUNNEL_KEY_ACT_SET;
 #endif
@@ -42,10 +40,8 @@ static inline bool is_tcf_tunnel_release(const struct tc_action *a)
 {
 #ifdef CONFIG_NET_CLS_ACT
 	struct tcf_tunnel_key *t = to_tunnel_key(a);
-	struct tcf_tunnel_key_params *params;
+	struct tcf_tunnel_key_params *params = rtnl_dereference(t->params);
 
-	params = rcu_dereference_protected(t->params,
-					   lockdep_is_held(&a->tcfa_lock));
 	if (a->ops && a->ops->id == TCA_ID_TUNNEL_KEY)
 		return params->tcft_action == TCA_TUNNEL_KEY_ACT_RELEASE;
 #endif
@@ -56,10 +52,7 @@ static inline struct ip_tunnel_info *tcf_tunnel_info(const struct tc_action *a)
 {
 #ifdef CONFIG_NET_CLS_ACT
 	struct tcf_tunnel_key *t = to_tunnel_key(a);
-	struct tcf_tunnel_key_params *params;
-
-	params = rcu_dereference_protected(t->params,
-					   lockdep_is_held(&a->tcfa_lock));
+	struct tcf_tunnel_key_params *params = rtnl_dereference(t->params);
 
 	return &params->tcft_enc_metadata->u.tun_info;
 #else
@@ -76,7 +69,7 @@ tcf_tunnel_info_copy(const struct tc_action *a)
 	if (tun) {
 		size_t tun_size = sizeof(*tun) + tun->options_len;
 		struct ip_tunnel_info *tun_copy = kmemdup(tun, tun_size,
-							  GFP_ATOMIC);
+							  GFP_KERNEL);
 
 		return tun_copy;
 	}

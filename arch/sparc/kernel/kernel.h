@@ -14,11 +14,6 @@ extern const char *sparc_pmu_type;
 extern unsigned int fsr_storage;
 extern int ncpus_probed;
 
-/* process{_32,_64}.c */
-asmlinkage long sparc_clone(struct pt_regs *regs);
-asmlinkage long sparc_fork(struct pt_regs *regs);
-asmlinkage long sparc_vfork(struct pt_regs *regs);
-
 #ifdef CONFIG_SPARC64
 /* setup_64.c */
 struct seq_file;
@@ -91,6 +86,7 @@ extern int static_irq_count;
 extern spinlock_t irq_action_lock;
 
 void unexpected_irq(int irq, void *dev_id, struct pt_regs * regs);
+void init_IRQ(void);
 
 /* sun4m_irq.c */
 void sun4m_init_IRQ(void);
@@ -138,10 +134,10 @@ extern unsigned int t_nmi[];
 extern unsigned int linux_trap_ipi15_sun4d[];
 extern unsigned int linux_trap_ipi15_sun4m[];
 
-extern struct tt_entry trapbase[];
-extern struct tt_entry trapbase_cpu1[];
-extern struct tt_entry trapbase_cpu2[];
-extern struct tt_entry trapbase_cpu3[];
+extern struct tt_entry trapbase;
+extern struct tt_entry trapbase_cpu1;
+extern struct tt_entry trapbase_cpu2;
+extern struct tt_entry trapbase_cpu3;
 
 extern char cputypval[];
 
@@ -156,6 +152,12 @@ void floppy_hardint(void);
 /* trampoline_32.S */
 extern unsigned long sun4m_cpu_startup;
 extern unsigned long sun4d_cpu_startup;
+
+/* process_32.c */
+asmlinkage int sparc_do_fork(unsigned long clone_flags,
+                             unsigned long stack_start,
+                             struct pt_regs *regs,
+                             unsigned long stack_size);
 
 /* signal_32.c */
 asmlinkage void do_sigreturn(struct pt_regs *regs);

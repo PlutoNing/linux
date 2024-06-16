@@ -62,10 +62,11 @@ static const unsigned short normal_i2c[] = { 0x2e, I2C_CLIENT_END };
  * Functions declaration
  */
 
-static int w83l785ts_probe(struct i2c_client *client);
+static int w83l785ts_probe(struct i2c_client *client,
+			   const struct i2c_device_id *id);
 static int w83l785ts_detect(struct i2c_client *client,
 			    struct i2c_board_info *info);
-static void w83l785ts_remove(struct i2c_client *client);
+static int w83l785ts_remove(struct i2c_client *client);
 static u8 w83l785ts_read_value(struct i2c_client *client, u8 reg, u8 defval);
 static struct w83l785ts_data *w83l785ts_update_device(struct device *dev);
 
@@ -98,7 +99,7 @@ static struct i2c_driver w83l785ts_driver = {
 struct w83l785ts_data {
 	struct device *hwmon_dev;
 	struct mutex update_lock;
-	bool valid; /* false until following fields are valid */
+	char valid; /* zero until following fields are valid */
 	unsigned long last_updated; /* in jiffies */
 
 	/* registers values */
@@ -157,12 +158,13 @@ static int w83l785ts_detect(struct i2c_client *client,
 		return -ENODEV;
 	}
 
-	strscpy(info->type, "w83l785ts", I2C_NAME_SIZE);
+	strlcpy(info->type, "w83l785ts", I2C_NAME_SIZE);
 
 	return 0;
 }
 
-static int w83l785ts_probe(struct i2c_client *client)
+static int w83l785ts_probe(struct i2c_client *client,
+			   const struct i2c_device_id *id)
 {
 	struct w83l785ts_data *data;
 	struct device *dev = &client->dev;
@@ -203,7 +205,7 @@ exit_remove:
 	return err;
 }
 
-static void w83l785ts_remove(struct i2c_client *client)
+static int w83l785ts_remove(struct i2c_client *client)
 {
 	struct w83l785ts_data *data = i2c_get_clientdata(client);
 
@@ -212,6 +214,8 @@ static void w83l785ts_remove(struct i2c_client *client)
 			   &sensor_dev_attr_temp1_input.dev_attr);
 	device_remove_file(&client->dev,
 			   &sensor_dev_attr_temp1_max.dev_attr);
+
+	return 0;
 }
 
 static u8 w83l785ts_read_value(struct i2c_client *client, u8 reg, u8 defval)
@@ -268,7 +272,7 @@ static struct w83l785ts_data *w83l785ts_update_device(struct device *dev)
 				W83L785TS_REG_TEMP_OVER, data->temp[1]);
 
 		data->last_updated = jiffies;
-		data->valid = true;
+		data->valid = 1;
 	}
 
 	mutex_unlock(&data->update_lock);

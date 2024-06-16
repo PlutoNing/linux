@@ -10,8 +10,6 @@
 #include <asm/reg.h>
 #include <asm/cputable.h>
 
-#include "internal.h"
-
 /*
  * Bits in event code for POWER7
  */
@@ -81,7 +79,7 @@ enum {
  */
 
 static int power7_get_constraint(u64 event, unsigned long *maskp,
-				 unsigned long *valp, u64 event_config1 __maybe_unused)
+				 unsigned long *valp)
 {
 	int pmc, sh, unit;
 	unsigned long mask = 0, value = 0;
@@ -244,9 +242,7 @@ static int power7_marked_instr_event(u64 event)
 }
 
 static int power7_compute_mmcr(u64 event[], int n_ev,
-			       unsigned int hwc[], struct mmcr_regs *mmcr,
-			       struct perf_event *pevents[],
-			       u32 flags __maybe_unused)
+			       unsigned int hwc[], unsigned long mmcr[], struct perf_event *pevents[])
 {
 	unsigned long mmcr1 = 0;
 	unsigned long mmcra = MMCRA_SDAR_DCACHE_MISS | MMCRA_SDAR_ERAT_MISS;
@@ -302,20 +298,20 @@ static int power7_compute_mmcr(u64 event[], int n_ev,
 	}
 
 	/* Return MMCRx values */
-	mmcr->mmcr0 = 0;
+	mmcr[0] = 0;
 	if (pmc_inuse & 1)
-		mmcr->mmcr0 = MMCR0_PMC1CE;
+		mmcr[0] = MMCR0_PMC1CE;
 	if (pmc_inuse & 0x3e)
-		mmcr->mmcr0 |= MMCR0_PMCjCE;
-	mmcr->mmcr1 = mmcr1;
-	mmcr->mmcra = mmcra;
+		mmcr[0] |= MMCR0_PMCjCE;
+	mmcr[1] = mmcr1;
+	mmcr[2] = mmcra;
 	return 0;
 }
 
-static void power7_disable_pmc(unsigned int pmc, struct mmcr_regs *mmcr)
+static void power7_disable_pmc(unsigned int pmc, unsigned long mmcr[])
 {
 	if (pmc <= 3)
-		mmcr->mmcr1 &= ~(0xffUL << MMCR1_PMCSEL_SH(pmc));
+		mmcr[1] &= ~(0xffUL << MMCR1_PMCSEL_SH(pmc));
 }
 
 static int power7_generic_events[] = {
@@ -336,7 +332,7 @@ static int power7_generic_events[] = {
  * 0 means not supported, -1 means nonsensical, other values
  * are event codes.
  */
-static u64 power7_cache_events[C(MAX)][C(OP_MAX)][C(RESULT_MAX)] = {
+static int power7_cache_events[C(MAX)][C(OP_MAX)][C(RESULT_MAX)] = {
 	[C(L1D)] = {		/* 	RESULT_ACCESS	RESULT_MISS */
 		[C(OP_READ)] = {	0xc880,		0x400f0	},
 		[C(OP_WRITE)] = {	0,		0x300f0	},
@@ -405,7 +401,7 @@ static struct attribute *power7_events_attr[] = {
 	NULL
 };
 
-static const struct attribute_group power7_pmu_events_group = {
+static struct attribute_group power7_pmu_events_group = {
 	.name = "events",
 	.attrs = power7_events_attr,
 };
@@ -417,7 +413,7 @@ static struct attribute *power7_pmu_format_attr[] = {
 	NULL,
 };
 
-static const struct attribute_group power7_pmu_format_group = {
+static struct attribute_group power7_pmu_format_group = {
 	.name = "format",
 	.attrs = power7_pmu_format_attr,
 };
@@ -445,14 +441,13 @@ static struct power_pmu power7_pmu = {
 	.cache_events		= &power7_cache_events,
 };
 
-int __init init_power7_pmu(void)
+int init_power7_pmu(void)
 {
-	unsigned int pvr = mfspr(SPRN_PVR);
-
-	if (PVR_VER(pvr) != PVR_POWER7 && PVR_VER(pvr) != PVR_POWER7p)
+	if (!cur_cpu_spec->oprofile_cpu_type ||
+	    strcmp(cur_cpu_spec->oprofile_cpu_type, "ppc64/power7"))
 		return -ENODEV;
 
-	if (PVR_VER(pvr) == PVR_POWER7p)
+	if (pvr_version_is(PVR_POWER7p))
 		power7_pmu.flags |= PPMU_SIAR_VALID;
 
 	return register_power_pmu(&power7_pmu);

@@ -3,7 +3,6 @@
 //
 // Copyright (C) 2013 Google, Inc.
 
-#include <linux/acpi.h>
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/platform_data/cros_ec_commands.h>
@@ -107,7 +106,7 @@ static int ec_i2c_construct_message(u8 *buf, const struct i2c_msg i2c_msgs[],
 /**
  * ec_i2c_count_response - Count bytes needed for ec_i2c_parse_response
  *
- * @i2c_msgs: The i2c messages to fill up.
+ * @i2c_msgs: The i2c messages to to fill up.
  * @num: The number of i2c messages expected.
  *
  * Returns the number of response bytes expeced.
@@ -131,7 +130,7 @@ static int ec_i2c_count_response(struct i2c_msg i2c_msgs[], int num)
  * We'll take the EC's response and copy it back into msgs.
  *
  * @buf: The buffer to parse.
- * @i2c_msgs: The i2c messages to fill up.
+ * @i2c_msgs: The i2c messages to to fill up.
  * @num: The number of i2c messages; will be modified to include the actual
  *	 number received.
  *
@@ -241,6 +240,7 @@ static const struct i2c_algorithm ec_i2c_algorithm = {
 
 static int ec_i2c_probe(struct platform_device *pdev)
 {
+	struct device_node *np = pdev->dev.of_node;
 	struct cros_ec_device *ec = dev_get_drvdata(pdev->dev.parent);
 	struct device *dev = &pdev->dev;
 	struct ec_i2c_device *bus = NULL;
@@ -256,7 +256,7 @@ static int ec_i2c_probe(struct platform_device *pdev)
 	if (bus == NULL)
 		return -ENOMEM;
 
-	err = device_property_read_u32(dev, "google,remote-bus", &remote_bus);
+	err = of_property_read_u32(np, "google,remote-bus", &remote_bus);
 	if (err) {
 		dev_err(dev, "Couldn't read remote-bus property\n");
 		return err;
@@ -267,13 +267,12 @@ static int ec_i2c_probe(struct platform_device *pdev)
 	bus->dev = dev;
 
 	bus->adap.owner = THIS_MODULE;
-	strscpy(bus->adap.name, "cros-ec-i2c-tunnel", sizeof(bus->adap.name));
+	strlcpy(bus->adap.name, "cros-ec-i2c-tunnel", sizeof(bus->adap.name));
 	bus->adap.algo = &ec_i2c_algorithm;
 	bus->adap.algo_data = bus;
 	bus->adap.dev.parent = &pdev->dev;
-	bus->adap.dev.of_node = pdev->dev.of_node;
+	bus->adap.dev.of_node = np;
 	bus->adap.retries = I2C_MAX_RETRIES;
-	ACPI_COMPANION_SET(&bus->adap.dev, ACPI_COMPANION(&pdev->dev));
 
 	err = i2c_add_adapter(&bus->adap);
 	if (err)
@@ -283,31 +282,28 @@ static int ec_i2c_probe(struct platform_device *pdev)
 	return err;
 }
 
-static void ec_i2c_remove(struct platform_device *dev)
+static int ec_i2c_remove(struct platform_device *dev)
 {
 	struct ec_i2c_device *bus = platform_get_drvdata(dev);
 
 	i2c_del_adapter(&bus->adap);
+
+	return 0;
 }
 
-static const struct of_device_id cros_ec_i2c_of_match[] __maybe_unused = {
+#ifdef CONFIG_OF
+static const struct of_device_id cros_ec_i2c_of_match[] = {
 	{ .compatible = "google,cros-ec-i2c-tunnel" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, cros_ec_i2c_of_match);
-
-static const struct acpi_device_id cros_ec_i2c_tunnel_acpi_id[] __maybe_unused = {
-	{ "GOOG0012", 0 },
-	{ }
-};
-MODULE_DEVICE_TABLE(acpi, cros_ec_i2c_tunnel_acpi_id);
+#endif
 
 static struct platform_driver ec_i2c_tunnel_driver = {
 	.probe = ec_i2c_probe,
-	.remove_new = ec_i2c_remove,
+	.remove = ec_i2c_remove,
 	.driver = {
 		.name = "cros-ec-i2c-tunnel",
-		.acpi_match_table = ACPI_PTR(cros_ec_i2c_tunnel_acpi_id),
 		.of_match_table = of_match_ptr(cros_ec_i2c_of_match),
 	},
 };

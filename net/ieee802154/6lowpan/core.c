@@ -47,7 +47,6 @@
 #include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/ieee802154.h>
-#include <linux/if_arp.h>
 
 #include <net/ipv6.h>
 
@@ -58,13 +57,6 @@ static int open_count;
 static const struct header_ops lowpan_header_ops = {
 	.create	= lowpan_header_create,
 };
-
-static int lowpan_dev_init(struct net_device *ldev)
-{
-	netdev_lockdep_set_classes(ldev);
-
-	return 0;
-}
 
 static int lowpan_open(struct net_device *dev)
 {
@@ -93,11 +85,10 @@ static int lowpan_neigh_construct(struct net_device *dev, struct neighbour *n)
 
 static int lowpan_get_iflink(const struct net_device *dev)
 {
-	return READ_ONCE(lowpan_802154_dev(dev)->wdev->ifindex);
+	return lowpan_802154_dev(dev)->wdev->ifindex;
 }
 
 static const struct net_device_ops lowpan_netdev_ops = {
-	.ndo_init		= lowpan_dev_init,
 	.ndo_start_xmit		= lowpan_xmit,
 	.ndo_open		= lowpan_open,
 	.ndo_stop		= lowpan_stop,
@@ -158,7 +149,7 @@ static int lowpan_newlink(struct net *src_net, struct net_device *ldev,
 
 	lowpan_802154_dev(ldev)->wdev = wdev;
 	/* Set the lowpan hardware address to the wpan hardware address. */
-	__dev_addr_set(ldev, wdev->dev_addr, IEEE802154_ADDR_LEN);
+	memcpy(ldev->dev_addr, wdev->dev_addr, IEEE802154_ADDR_LEN);
 	/* We need headroom for possible wpan_dev_hard_header call and tailroom
 	 * for encryption/fcs handling. The lowpan interface will replace
 	 * the IPv6 header with 6LoWPAN header. At worst case the 6LoWPAN
@@ -280,6 +271,5 @@ static void __exit lowpan_cleanup_module(void)
 
 module_init(lowpan_init_module);
 module_exit(lowpan_cleanup_module);
-MODULE_DESCRIPTION("IPv6 over Low power Wireless Personal Area Network IEEE 802.15.4 core");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_RTNL_LINK("lowpan");

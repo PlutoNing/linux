@@ -207,7 +207,7 @@
 	xor	%esi,		d ## D;\
 	ror	$1,		d ## D;
 
-SYM_FUNC_START(twofish_enc_blk)
+ENTRY(twofish_enc_blk)
 	push	%ebp			/* save registers according to calling convention*/
 	push    %ebx
 	push    %esi
@@ -260,10 +260,10 @@ SYM_FUNC_START(twofish_enc_blk)
 	pop	%ebx
 	pop	%ebp
 	mov	$1,	%eax
-	RET
-SYM_FUNC_END(twofish_enc_blk)
+	ret
+ENDPROC(twofish_enc_blk)
 
-SYM_FUNC_START(twofish_dec_blk)
+ENTRY(twofish_dec_blk)
 	push	%ebp			/* save registers according to calling convention*/
 	push    %ebx
 	push    %esi
@@ -317,5 +317,5 @@ SYM_FUNC_START(twofish_dec_blk)
 	pop	%ebx
 	pop	%ebp
 	mov	$1,	%eax
-	RET
-SYM_FUNC_END(twofish_dec_blk)
+	ret
+ENDPROC(twofish_dec_blk)

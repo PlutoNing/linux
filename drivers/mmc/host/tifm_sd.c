@@ -73,8 +73,6 @@ module_param(fixed_timeout, bool, 0644);
 
 #define TIFM_MMCSD_MAX_BLOCK_SIZE  0x0800UL
 
-#define TIFM_MMCSD_REQ_TIMEOUT_MS  1000
-
 enum {
 	CMD_READY    = 0x0001,
 	FIFO_READY   = 0x0002,
@@ -116,7 +114,7 @@ static void tifm_sd_read_fifo(struct tifm_sd *host, struct page *pg,
 	unsigned char *buf;
 	unsigned int pos = 0, val;
 
-	buf = kmap_local_page(pg) + off;
+	buf = kmap_atomic(pg) + off;
 	if (host->cmd_flags & DATA_CARRY) {
 		buf[pos++] = host->bounce_buf_data[0];
 		host->cmd_flags &= ~DATA_CARRY;
@@ -132,7 +130,7 @@ static void tifm_sd_read_fifo(struct tifm_sd *host, struct page *pg,
 		}
 		buf[pos++] = (val >> 8) & 0xff;
 	}
-	kunmap_local(buf - off);
+	kunmap_atomic(buf - off);
 }
 
 static void tifm_sd_write_fifo(struct tifm_sd *host, struct page *pg,
@@ -142,7 +140,7 @@ static void tifm_sd_write_fifo(struct tifm_sd *host, struct page *pg,
 	unsigned char *buf;
 	unsigned int pos = 0, val;
 
-	buf = kmap_local_page(pg) + off;
+	buf = kmap_atomic(pg) + off;
 	if (host->cmd_flags & DATA_CARRY) {
 		val = host->bounce_buf_data[0] | ((buf[pos++] << 8) & 0xff00);
 		writel(val, sock->addr + SOCK_MMCSD_DATA);
@@ -159,7 +157,7 @@ static void tifm_sd_write_fifo(struct tifm_sd *host, struct page *pg,
 		val |= (buf[pos++] << 8) & 0xff00;
 		writel(val, sock->addr + SOCK_MMCSD_DATA);
 	}
-	kunmap_local(buf - off);
+	kunmap_atomic(buf - off);
 }
 
 static void tifm_sd_transfer_data(struct tifm_sd *host)
@@ -210,13 +208,13 @@ static void tifm_sd_copy_page(struct page *dst, unsigned int dst_off,
 			      struct page *src, unsigned int src_off,
 			      unsigned int count)
 {
-	unsigned char *src_buf = kmap_local_page(src) + src_off;
-	unsigned char *dst_buf = kmap_local_page(dst) + dst_off;
+	unsigned char *src_buf = kmap_atomic(src) + src_off;
+	unsigned char *dst_buf = kmap_atomic(dst) + dst_off;
 
 	memcpy(dst_buf, src_buf, count);
 
-	kunmap_local(dst_buf - dst_off);
-	kunmap_local(src_buf - src_off);
+	kunmap_atomic(dst_buf - dst_off);
+	kunmap_atomic(src_buf - src_off);
 }
 
 static void tifm_sd_bounce_block(struct tifm_sd *host, struct mmc_data *r_data)
@@ -264,13 +262,16 @@ static int tifm_sd_set_dma_data(struct tifm_sd *host, struct mmc_data *r_data)
 	unsigned int t_size = TIFM_DMA_TSIZE * r_data->blksz;
 	unsigned int dma_len, dma_blk_cnt, dma_off;
 	struct scatterlist *sg = NULL;
+	unsigned long flags;
 
 	if (host->sg_pos == host->sg_len)
 		return 1;
 
 	if (host->cmd_flags & DATA_CARRY) {
 		host->cmd_flags &= ~DATA_CARRY;
+		local_irq_save(flags);
 		tifm_sd_bounce_block(host, r_data);
+		local_irq_restore(flags);
 		if (host->sg_pos == host->sg_len)
 			return 1;
 	}
@@ -297,9 +298,11 @@ static int tifm_sd_set_dma_data(struct tifm_sd *host, struct mmc_data *r_data)
 	if (dma_blk_cnt)
 		sg = &r_data->sg[host->sg_pos];
 	else if (dma_len) {
-		if (r_data->flags & MMC_DATA_WRITE)
+		if (r_data->flags & MMC_DATA_WRITE) {
+			local_irq_save(flags);
 			tifm_sd_bounce_block(host, r_data);
-		else
+			local_irq_restore(flags);
+		} else
 			host->cmd_flags |= DATA_CARRY;
 
 		sg = &host->bounce_buf;
@@ -330,7 +333,7 @@ static unsigned int tifm_sd_op_flags(struct mmc_command *cmd)
 		break;
 	case MMC_RSP_R1B:
 		rc |= TIFM_MMCSD_RSP_BUSY;
-		fallthrough;
+		/* fall-through */
 	case MMC_RSP_R1:
 		rc |= TIFM_MMCSD_RSP_R1;
 		break;
@@ -501,6 +504,7 @@ static void tifm_sd_card_event(struct tifm_dev *sock)
 	unsigned int host_status = 0;
 	int cmd_error = 0;
 	struct mmc_command *cmd = NULL;
+	unsigned long flags;
 
 	spin_lock(&sock->lock);
 	host = mmc_priv((struct mmc_host*)tifm_get_drvdata(sock));
@@ -564,7 +568,9 @@ static void tifm_sd_card_event(struct tifm_dev *sock)
 
 			if (host_status & (TIFM_MMCSD_AE | TIFM_MMCSD_AF
 					   | TIFM_MMCSD_BRS)) {
+				local_irq_save(flags);
 				tifm_sd_transfer_data(host);
+				local_irq_restore(flags);
 				host_status &= ~TIFM_MMCSD_AE;
 			}
 		}
@@ -661,8 +667,8 @@ static void tifm_sd_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 			if(1 != tifm_map_sg(sock, &host->bounce_buf, 1,
 					    r_data->flags & MMC_DATA_WRITE
-					    ? DMA_TO_DEVICE
-					    : DMA_FROM_DEVICE)) {
+					    ? PCI_DMA_TODEVICE
+					    : PCI_DMA_FROMDEVICE)) {
 				pr_err("%s : scatterlist map failed\n",
 				       dev_name(&sock->dev));
 				mrq->cmd->error = -ENOMEM;
@@ -672,15 +678,15 @@ static void tifm_sd_request(struct mmc_host *mmc, struct mmc_request *mrq)
 						   r_data->sg_len,
 						   r_data->flags
 						   & MMC_DATA_WRITE
-						   ? DMA_TO_DEVICE
-						   : DMA_FROM_DEVICE);
+						   ? PCI_DMA_TODEVICE
+						   : PCI_DMA_FROMDEVICE);
 			if (host->sg_len < 1) {
 				pr_err("%s : scatterlist map failed\n",
 				       dev_name(&sock->dev));
 				tifm_unmap_sg(sock, &host->bounce_buf, 1,
 					      r_data->flags & MMC_DATA_WRITE
-					      ? DMA_TO_DEVICE
-					      : DMA_FROM_DEVICE);
+					      ? PCI_DMA_TODEVICE
+					      : PCI_DMA_FROMDEVICE);
 				mrq->cmd->error = -ENOMEM;
 				goto err_out;
 			}
@@ -723,9 +729,9 @@ err_out:
 	mmc_request_done(mmc, mrq);
 }
 
-static void tifm_sd_end_cmd(struct tasklet_struct *t)
+static void tifm_sd_end_cmd(unsigned long data)
 {
-	struct tifm_sd *host = from_tasklet(host, t, finish_tasklet);
+	struct tifm_sd *host = (struct tifm_sd*)data;
 	struct tifm_dev *sock = host->dev;
 	struct mmc_host *mmc = tifm_get_drvdata(sock);
 	struct mmc_request *mrq;
@@ -754,10 +760,10 @@ static void tifm_sd_end_cmd(struct tasklet_struct *t)
 		} else {
 			tifm_unmap_sg(sock, &host->bounce_buf, 1,
 				      (r_data->flags & MMC_DATA_WRITE)
-				      ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+				      ? PCI_DMA_TODEVICE : PCI_DMA_FROMDEVICE);
 			tifm_unmap_sg(sock, r_data->sg, r_data->sg_len,
 				      (r_data->flags & MMC_DATA_WRITE)
-				      ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+				      ? PCI_DMA_TODEVICE : PCI_DMA_FROMDEVICE);
 		}
 
 		r_data->bytes_xfered = r_data->blocks
@@ -953,14 +959,10 @@ static int tifm_sd_probe(struct tifm_dev *sock)
 	host = mmc_priv(mmc);
 	tifm_set_drvdata(sock, mmc);
 	host->dev = sock;
-	host->timeout_jiffies = msecs_to_jiffies(TIFM_MMCSD_REQ_TIMEOUT_MS);
-	/*
-	 * We use a fixed request timeout of 1s, hence inform the core about it.
-	 * A future improvement should instead respect the cmd->busy_timeout.
-	 */
-	mmc->max_busy_timeout = TIFM_MMCSD_REQ_TIMEOUT_MS;
+	host->timeout_jiffies = msecs_to_jiffies(1000);
 
-	tasklet_setup(&host->finish_tasklet, tifm_sd_end_cmd);
+	tasklet_init(&host->finish_tasklet, tifm_sd_end_cmd,
+		     (unsigned long)host);
 	timer_setup(&host->timer, tifm_sd_abort, 0);
 
 	mmc->ops = &tifm_sd_ops;

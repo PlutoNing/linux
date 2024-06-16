@@ -305,7 +305,7 @@ error:
 	kfree(state);
 	return NULL;
 }
-EXPORT_SYMBOL_GPL(cx24120_attach);
+EXPORT_SYMBOL(cx24120_attach);
 
 static int cx24120_test_rom(struct cx24120_state *state)
 {
@@ -363,7 +363,6 @@ static void cx24120_check_cmd(struct cx24120_state *state, u8 id)
 	case CMD_DISEQC_BURST:
 		cx24120_msg_mpeg_output_global_config(state, 0);
 		/* Old driver would do a msleep(100) here */
-		return;
 	default:
 		return;
 	}
@@ -973,9 +972,7 @@ static void cx24120_set_clock_ratios(struct dvb_frontend *fe)
 	cmd.arg[8] = (clock_ratios_table[idx].rate >> 8) & 0xff;
 	cmd.arg[9] = (clock_ratios_table[idx].rate >> 0) & 0xff;
 
-	ret = cx24120_message_send(state, &cmd);
-	if (ret != 0)
-		return;
+	cx24120_message_send(state, &cmd);
 
 	/* Calculate ber window rates for stat work */
 	cx24120_calculate_ber_window(state, clock_ratios_table[idx].rate);

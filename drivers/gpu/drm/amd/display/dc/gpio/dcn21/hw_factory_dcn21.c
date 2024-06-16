@@ -22,6 +22,7 @@
  * Authors: AMD
  *
  */
+#if defined(CONFIG_DRM_AMD_DC_DCN2_0)
 #include "dm_services.h"
 #include "include/gpio_types.h"
 #include "../hw_factory.h"
@@ -202,7 +203,7 @@ static void define_hpd_registers(struct hw_gpio_pin *pin, uint32_t en)
 }
 
 
-/* function table */
+/* fucntion table */
 static const struct hw_factory_funcs funcs = {
 	.init_ddc_data = dal_hw_ddc_init,
 	.init_generic = dal_hw_generic_init,
@@ -238,3 +239,4 @@ void dal_hw_factory_dcn21_init(struct hw_factory *factory)
 	factory->funcs = &funcs;
 }
 
+#endif

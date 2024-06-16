@@ -91,42 +91,62 @@ static int siox_gpio_probe(struct platform_device *pdev)
 	int ret;
 	struct siox_master *smaster;
 
-	smaster = devm_siox_master_alloc(dev, sizeof(*ddata));
-	if (!smaster)
-		return dev_err_probe(dev, -ENOMEM,
-				     "failed to allocate siox master\n");
+	smaster = siox_master_alloc(&pdev->dev, sizeof(*ddata));
+	if (!smaster) {
+		dev_err(dev, "failed to allocate siox master\n");
+		return -ENOMEM;
+	}
 
 	platform_set_drvdata(pdev, smaster);
 	ddata = siox_master_get_devdata(smaster);
 
 	ddata->din = devm_gpiod_get(dev, "din", GPIOD_IN);
-	if (IS_ERR(ddata->din))
-		return dev_err_probe(dev, PTR_ERR(ddata->din),
-				     "Failed to get din GPIO\n");
+	if (IS_ERR(ddata->din)) {
+		ret = PTR_ERR(ddata->din);
+		dev_err(dev, "Failed to get %s GPIO: %d\n", "din", ret);
+		goto err;
+	}
 
 	ddata->dout = devm_gpiod_get(dev, "dout", GPIOD_OUT_LOW);
-	if (IS_ERR(ddata->dout))
-		return dev_err_probe(dev, PTR_ERR(ddata->dout),
-				     "Failed to get dout GPIO\n");
+	if (IS_ERR(ddata->dout)) {
+		ret = PTR_ERR(ddata->dout);
+		dev_err(dev, "Failed to get %s GPIO: %d\n", "dout", ret);
+		goto err;
+	}
 
 	ddata->dclk = devm_gpiod_get(dev, "dclk", GPIOD_OUT_LOW);
-	if (IS_ERR(ddata->dclk))
-		return dev_err_probe(dev, PTR_ERR(ddata->dclk),
-				     "Failed to get dclk GPIO\n");
+	if (IS_ERR(ddata->dclk)) {
+		ret = PTR_ERR(ddata->dclk);
+		dev_err(dev, "Failed to get %s GPIO: %d\n", "dclk", ret);
+		goto err;
+	}
 
 	ddata->dld = devm_gpiod_get(dev, "dld", GPIOD_OUT_LOW);
-	if (IS_ERR(ddata->dld))
-		return dev_err_probe(dev, PTR_ERR(ddata->dld),
-				     "Failed to get dld GPIO\n");
+	if (IS_ERR(ddata->dld)) {
+		ret = PTR_ERR(ddata->dld);
+		dev_err(dev, "Failed to get %s GPIO: %d\n", "dld", ret);
+		goto err;
+	}
 
 	smaster->pushpull = siox_gpio_pushpull;
 	/* XXX: determine automatically like spi does */
 	smaster->busno = 0;
 
-	ret = devm_siox_master_register(dev, smaster);
-	if (ret)
-		return dev_err_probe(dev, ret,
-				     "Failed to register siox master\n");
+	ret = siox_master_register(smaster);
+	if (ret) {
+		dev_err(dev, "Failed to register siox master: %d\n", ret);
+err:
+		siox_master_put(smaster);
+	}
+
+	return ret;
+}
+
+static int siox_gpio_remove(struct platform_device *pdev)
+{
+	struct siox_master *master = platform_get_drvdata(pdev);
+
+	siox_master_unregister(master);
 
 	return 0;
 }
@@ -139,6 +159,7 @@ MODULE_DEVICE_TABLE(of, siox_gpio_dt_ids);
 
 static struct platform_driver siox_gpio_driver = {
 	.probe = siox_gpio_probe,
+	.remove = siox_gpio_remove,
 
 	.driver = {
 		.name = DRIVER_NAME,

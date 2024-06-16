@@ -21,10 +21,9 @@
 #include <linux/namei.h>
 #include <linux/pagemap.h>
 #include <linux/poll.h>
-#include <linux/of.h>
-#include <linux/seq_file.h>
 #include <linux/slab.h>
 
+#include <asm/prom.h>
 #include <asm/spu.h>
 #include <asm/spu_priv1.h>
 #include <linux/uaccess.h>
@@ -86,21 +85,20 @@ spufs_new_inode(struct super_block *sb, umode_t mode)
 	inode->i_mode = mode;
 	inode->i_uid = current_fsuid();
 	inode->i_gid = current_fsgid();
-	simple_inode_init_ts(inode);
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
 out:
 	return inode;
 }
 
 static int
-spufs_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
-	      struct iattr *attr)
+spufs_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	struct inode *inode = d_inode(dentry);
 
 	if ((attr->ia_valid & ATTR_SIZE) &&
 	    (attr->ia_size != inode->i_size))
 		return -EINVAL;
-	setattr_copy(&nop_mnt_idmap, inode, attr);
+	setattr_copy(inode, attr);
 	mark_inode_dirty(inode);
 	return 0;
 }
@@ -145,11 +143,10 @@ spufs_evict_inode(struct inode *inode)
 
 static void spufs_prune_dir(struct dentry *dir)
 {
-	struct dentry *dentry;
-	struct hlist_node *n;
+	struct dentry *dentry, *tmp;
 
 	inode_lock(d_inode(dir));
-	hlist_for_each_entry_safe(dentry, n, &dir->d_children, d_sib) {
+	list_for_each_entry_safe(dentry, tmp, &dir->d_subdirs, d_child) {
 		spin_lock(&dentry->d_lock);
 		if (simple_positive(dentry)) {
 			dget_dlock(dentry);
@@ -201,12 +198,14 @@ static int spufs_fill_dir(struct dentry *dir,
 
 static int spufs_dir_close(struct inode *inode, struct file *file)
 {
+	struct spu_context *ctx;
 	struct inode *parent;
 	struct dentry *dir;
 	int ret;
 
 	dir = file->f_path.dentry;
 	parent = d_inode(dir->d_parent);
+	ctx = SPUFS_I(d_inode(dir))->i_ctx;
 
 	inode_lock_nested(parent, I_MUTEX_PARENT);
 	ret = spufs_rmdir(parent, dir);
@@ -238,7 +237,10 @@ spufs_mkdir(struct inode *dir, struct dentry *dentry, unsigned int flags,
 	if (!inode)
 		return -ENOSPC;
 
-	inode_init_owner(&nop_mnt_idmap, inode, dir, mode | S_IFDIR);
+	if (dir->i_mode & S_ISGID) {
+		inode->i_gid = dir->i_gid;
+		inode->i_mode &= S_ISGID;
+	}
 	ctx = alloc_spu_context(SPUFS_I(dir)->i_gang); /* XXX gang */
 	SPUFS_I(inode)->i_ctx = ctx;
 	if (!ctx) {
@@ -276,7 +278,7 @@ spufs_mkdir(struct inode *dir, struct dentry *dentry, unsigned int flags,
 	return ret;
 }
 
-static int spufs_context_open(const struct path *path)
+static int spufs_context_open(struct path *path)
 {
 	int ret;
 	struct file *filp;
@@ -469,7 +471,10 @@ spufs_mkgang(struct inode *dir, struct dentry *dentry, umode_t mode)
 		goto out;
 
 	ret = 0;
-	inode_init_owner(&nop_mnt_idmap, inode, dir, mode | S_IFDIR);
+	if (dir->i_mode & S_ISGID) {
+		inode->i_gid = dir->i_gid;
+		inode->i_mode &= S_ISGID;
+	}
 	gang = alloc_spu_gang();
 	SPUFS_I(inode)->i_ctx = NULL;
 	SPUFS_I(inode)->i_gang = gang;
@@ -492,7 +497,7 @@ out:
 	return ret;
 }
 
-static int spufs_gang_open(const struct path *path)
+static int spufs_gang_open(struct path *path)
 {
 	int ret;
 	struct file *filp;
@@ -537,7 +542,7 @@ static int spufs_create_gang(struct inode *inode,
 
 static struct file_system_type spufs_type;
 
-long spufs_create(const struct path *path, struct dentry *dentry,
+long spufs_create(struct path *path, struct dentry *dentry,
 		unsigned int flags, umode_t mode, struct file *filp)
 {
 	struct inode *dir = d_inode(path->dentry);
@@ -580,12 +585,17 @@ enum {
 	Opt_uid, Opt_gid, Opt_mode, Opt_debug,
 };
 
-static const struct fs_parameter_spec spufs_fs_parameters[] = {
+static const struct fs_parameter_spec spufs_param_specs[] = {
 	fsparam_u32	("gid",				Opt_gid),
 	fsparam_u32oct	("mode",			Opt_mode),
 	fsparam_u32	("uid",				Opt_uid),
 	fsparam_flag	("debug",			Opt_debug),
 	{}
+};
+
+static const struct fs_parameter_description spufs_fs_parameters = {
+	.name		= "spufs",
+	.specs		= spufs_param_specs,
 };
 
 static int spufs_show_options(struct seq_file *m, struct dentry *root)
@@ -615,7 +625,7 @@ static int spufs_parse_param(struct fs_context *fc, struct fs_parameter *param)
 	kgid_t gid;
 	int opt;
 
-	opt = fs_parse(fc, spufs_fs_parameters, param, &result);
+	opt = fs_parse(fc, &spufs_fs_parameters, param, &result);
 	if (opt < 0)
 		return opt;
 
@@ -649,7 +659,7 @@ static void spufs_exit_isolated_loader(void)
 			get_order(isolated_loader_size));
 }
 
-static void __init
+static void
 spufs_init_isolated_loader(void)
 {
 	struct device_node *dn;
@@ -661,7 +671,6 @@ spufs_init_isolated_loader(void)
 		return;
 
 	loader = of_get_property(dn, "loader", &size);
-	of_node_put(dn);
 	if (!loader)
 		return;
 
@@ -767,7 +776,7 @@ static struct file_system_type spufs_type = {
 	.owner = THIS_MODULE,
 	.name = "spufs",
 	.init_fs_context = spufs_init_fs_context,
-	.parameters	= spufs_fs_parameters,
+	.parameters	= &spufs_fs_parameters,
 	.kill_sb = kill_litter_super,
 };
 MODULE_ALIAS_FS("spufs");

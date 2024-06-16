@@ -52,7 +52,7 @@ struct iscsi_bsg_host_vendor {
 	uint64_t vendor_id;
 
 	/* start of vendor command area */
-	uint32_t vendor_cmd[];
+	uint32_t vendor_cmd[0];
 };
 
 /* Response:
@@ -84,7 +84,7 @@ struct iscsi_bsg_reply {
 	 */
 	uint32_t result;
 
-	/* If there was reply_payload, how much was received ? */
+	/* If there was reply_payload, how much was recevied ? */
 	uint32_t reply_payload_rcv_len;
 
 	union {

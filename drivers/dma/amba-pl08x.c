@@ -231,7 +231,7 @@ enum pl08x_dma_chan_state {
 
 /**
  * struct pl08x_dma_chan - this structure wraps a DMA ENGINE channel
- * @vc: wrapped virtual channel
+ * @vc: wrappped virtual channel
  * @phychan: the physical channel utilized by this channel, if there is one
  * @name: name of channel
  * @cd: channel platform data
@@ -1535,6 +1535,14 @@ static void pl08x_free_chan_resources(struct dma_chan *chan)
 	vchan_free_chan_resources(to_virt_chan(chan));
 }
 
+static struct dma_async_tx_descriptor *pl08x_prep_dma_interrupt(
+		struct dma_chan *chan, unsigned long flags)
+{
+	struct dma_async_tx_descriptor *retval = NULL;
+
+	return retval;
+}
+
 /*
  * Code accessing dma_async_is_complete() in a tight loop may give problems.
  * If slaves are relying on interrupts to signal completion this function
@@ -1759,7 +1767,7 @@ static u32 pl08x_memcpy_cctl(struct pl08x_driver_data *pl08x)
 	default:
 		dev_err(&pl08x->adev->dev,
 			"illegal burst size for memcpy, set to 1\n");
-		fallthrough;
+		/* Fall through */
 	case PL08X_BURST_SZ_1:
 		cctl |= PL080_BSIZE_1 << PL080_CONTROL_SB_SIZE_SHIFT |
 			PL080_BSIZE_1 << PL080_CONTROL_DB_SIZE_SHIFT;
@@ -1798,7 +1806,7 @@ static u32 pl08x_memcpy_cctl(struct pl08x_driver_data *pl08x)
 	default:
 		dev_err(&pl08x->adev->dev,
 			"illegal bus width for memcpy, set to 8 bits\n");
-		fallthrough;
+		/* Fall through */
 	case PL08X_BUS_WIDTH_8_BITS:
 		cctl |= PL080_WIDTH_8BIT << PL080_CONTROL_SWIDTH_SHIFT |
 			PL080_WIDTH_8BIT << PL080_CONTROL_DWIDTH_SHIFT;
@@ -1842,7 +1850,7 @@ static u32 pl08x_ftdmac020_memcpy_cctl(struct pl08x_driver_data *pl08x)
 	default:
 		dev_err(&pl08x->adev->dev,
 			"illegal bus width for memcpy, set to 8 bits\n");
-		fallthrough;
+		/* Fall through */
 	case PL08X_BUS_WIDTH_8_BITS:
 		cctl |= PL080_WIDTH_8BIT << FTDMAC020_LLI_SRC_WIDTH_SHIFT |
 			PL080_WIDTH_8BIT << FTDMAC020_LLI_DST_WIDTH_SHIFT;
@@ -2239,7 +2247,7 @@ static int pl08x_resume(struct dma_chan *chan)
 bool pl08x_filter_id(struct dma_chan *chan, void *chan_id)
 {
 	struct pl08x_dma_chan *plchan;
-	const char *name = chan_id;
+	char *name = chan_id;
 
 	/* Reject channels for devices not bound to this driver */
 	if (chan->device->dev->driver != &pl08x_amba_driver.drv)
@@ -2367,7 +2375,7 @@ static int pl08x_dma_init_virtual_channels(struct pl08x_driver_data *pl08x,
 	INIT_LIST_HEAD(&dmadev->channels);
 
 	/*
-	 * Register as many memcpy as we have physical channels,
+	 * Register as many many memcpy as we have physical channels,
 	 * we won't always be able to use all but the code will have
 	 * to cope with that situation.
 	 */
@@ -2604,7 +2612,7 @@ static int pl08x_of_probe(struct amba_device *adev,
 	switch (val) {
 	default:
 		dev_err(&adev->dev, "illegal burst size for memcpy, set to 1\n");
-		fallthrough;
+		/* Fall through */
 	case 1:
 		pd->memcpy_burst_size = PL08X_BURST_SZ_1;
 		break;
@@ -2639,7 +2647,7 @@ static int pl08x_of_probe(struct amba_device *adev,
 	switch (val) {
 	default:
 		dev_err(&adev->dev, "illegal bus width for memcpy, set to 8 bits\n");
-		fallthrough;
+		/* Fall through */
 	case 8:
 		pd->memcpy_bus_width = PL08X_BUS_WIDTH_8_BITS;
 		break;
@@ -2752,6 +2760,7 @@ static int pl08x_probe(struct amba_device *adev, const struct amba_id *id)
 	pl08x->memcpy.dev = &adev->dev;
 	pl08x->memcpy.device_free_chan_resources = pl08x_free_chan_resources;
 	pl08x->memcpy.device_prep_dma_memcpy = pl08x_prep_dma_memcpy;
+	pl08x->memcpy.device_prep_dma_interrupt = pl08x_prep_dma_interrupt;
 	pl08x->memcpy.device_tx_status = pl08x_dma_tx_status;
 	pl08x->memcpy.device_issue_pending = pl08x_issue_pending;
 	pl08x->memcpy.device_config = pl08x_config;
@@ -2778,6 +2787,8 @@ static int pl08x_probe(struct amba_device *adev, const struct amba_id *id)
 		pl08x->slave.dev = &adev->dev;
 		pl08x->slave.device_free_chan_resources =
 			pl08x_free_chan_resources;
+		pl08x->slave.device_prep_dma_interrupt =
+			pl08x_prep_dma_interrupt;
 		pl08x->slave.device_tx_status = pl08x_dma_tx_status;
 		pl08x->slave.device_issue_pending = pl08x_issue_pending;
 		pl08x->slave.device_prep_slave_sg = pl08x_prep_slave_sg;

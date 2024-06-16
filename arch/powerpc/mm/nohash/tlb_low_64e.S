@@ -6,7 +6,6 @@
  *      Ben. Herrenschmidt (benh@kernel.crashing.org), IBM Corp.
  */
 
-#include <linux/pgtable.h>
 #include <asm/processor.h>
 #include <asm/reg.h>
 #include <asm/page.h>
@@ -14,6 +13,7 @@
 #include <asm/ppc_asm.h>
 #include <asm/asm-offsets.h>
 #include <asm/cputable.h>
+#include <asm/pgtable.h>
 #include <asm/exception-64e.h>
 #include <asm/ppc-opcode.h>
 #include <asm/kvm_asm.h>
@@ -61,6 +61,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_EMB_HV)
 	ld	r14,PACAPGD(r13)
 	std	r15,EX_TLB_R15(r12)
 	std	r10,EX_TLB_CR(r12)
+#ifdef CONFIG_PPC_FSL_BOOK3E
 START_BTB_FLUSH_SECTION
 	mfspr r11, SPRN_SRR1
 	andi. r10,r11,MSR_PR
@@ -69,17 +70,22 @@ START_BTB_FLUSH_SECTION
 1:
 END_BTB_FLUSH_SECTION
 	std	r7,EX_TLB_R7(r12)
+#endif
+	TLB_MISS_PROLOG_STATS
 .endm
 
 .macro tlb_epilog_bolted
 	ld	r14,EX_TLB_CR(r12)
+#ifdef CONFIG_PPC_FSL_BOOK3E
 	ld	r7,EX_TLB_R7(r12)
+#endif
 	ld	r10,EX_TLB_R10(r12)
 	ld	r11,EX_TLB_R11(r12)
 	ld	r13,EX_TLB_R13(r12)
 	mtcr	r14
 	ld	r14,EX_TLB_R14(r12)
 	ld	r15,EX_TLB_R15(r12)
+	TLB_MISS_RESTORE_STATS
 	ld	r16,EX_TLB_R16(r12)
 	mfspr	r12,SPRN_SPRG_GEN_SCRATCH
 .endm
@@ -122,14 +128,8 @@ END_BTB_FLUSH_SECTION
 	ori	r10,r10,_PAGE_PRESENT
 	oris	r11,r10,_PAGE_ACCESSED@h
 
+	TLB_MISS_STATS_SAVE_INFO_BOLTED
 	bne	tlb_miss_kernel_bolted
-
-tlb_miss_user_bolted:
-#ifdef CONFIG_PPC_KUAP
-	mfspr	r10,SPRN_MAS1
-	rlwinm.	r10,r10,0,0x3fff0000
-	beq-	tlb_miss_fault_bolted /* KUAP fault */
-#endif
 
 tlb_miss_common_bolted:
 /*
@@ -148,7 +148,16 @@ tlb_miss_common_bolted:
 	clrrdi	r15,r15,3
 	beq	tlb_miss_fault_bolted	/* No PGDIR, bail */
 
+BEGIN_MMU_FTR_SECTION
+	/* Set the TLB reservation and search for existing entry. Then load
+	 * the entry.
+	 */
+	PPC_TLBSRX_DOT(0,R16)
 	ldx	r14,r14,r15		/* grab pgd entry */
+	beq	tlb_miss_done_bolted	/* tlb exists already, bail */
+MMU_FTR_SECTION_ELSE
+	ldx	r14,r14,r15		/* grab pgd entry */
+ALT_MMU_FTR_SECTION_END_IFSET(MMU_FTR_USE_TLBRSRV)
 
 	rldicl	r15,r16,64-PUD_SHIFT+3,64-PUD_INDEX_SIZE-3
 	clrrdi	r15,r15,3
@@ -200,6 +209,7 @@ tlb_miss_common_bolted:
 	tlbwe
 
 tlb_miss_done_bolted:
+	TLB_MISS_STATS_X(MMSTAT_TLB_MISS_NORM_OK)
 	tlb_epilog_bolted
 	rfi
 
@@ -209,20 +219,21 @@ itlb_miss_kernel_bolted:
 tlb_miss_kernel_bolted:
 	mfspr	r10,SPRN_MAS1
 	ld	r14,PACA_KERNELPGD(r13)
-	srdi	r15,r16,44		/* get kernel region */
-	andi.	r15,r15,1		/* Check for vmalloc region */
+	cmpldi	cr0,r15,8		/* Check for vmalloc region */
 	rlwinm	r10,r10,0,16,1		/* Clear TID */
 	mtspr	SPRN_MAS1,r10
-	bne+	tlb_miss_common_bolted
+	beq+	tlb_miss_common_bolted
 
 tlb_miss_fault_bolted:
 	/* We need to check if it was an instruction miss */
-	andi.	r10,r11,_PAGE_BAP_UX|_PAGE_BAP_SX
+	andi.	r10,r11,_PAGE_EXEC|_PAGE_BAP_SX
 	bne	itlb_miss_fault_bolted
 dtlb_miss_fault_bolted:
+	TLB_MISS_STATS_D(MMSTAT_TLB_MISS_NORM_FAULT)
 	tlb_epilog_bolted
 	b	exc_data_storage_book3e
 itlb_miss_fault_bolted:
+	TLB_MISS_STATS_I(MMSTAT_TLB_MISS_NORM_FAULT)
 	tlb_epilog_bolted
 	b	exc_instruction_storage_book3e
 
@@ -232,18 +243,20 @@ itlb_miss_fault_bolted:
 
 	rldicl.	r10,r16,64-PGTABLE_EADDR_SIZE,PGTABLE_EADDR_SIZE+4
 	srdi	r15,r16,60		/* get region */
+	TLB_MISS_STATS_SAVE_INFO_BOLTED
 	bne-	itlb_miss_fault_bolted
 
-	li	r11,_PAGE_PRESENT|_PAGE_BAP_UX	/* Base perm */
+	li	r11,_PAGE_PRESENT|_PAGE_EXEC	/* Base perm */
 
 	/* We do the user/kernel test for the PID here along with the RW test
 	 */
 
 	cmpldi	cr0,r15,0			/* Check for user region */
 	oris	r11,r11,_PAGE_ACCESSED@h
-	beq	tlb_miss_user_bolted
+	beq	tlb_miss_common_bolted
 	b	itlb_miss_kernel_bolted
 
+#ifdef CONFIG_PPC_FSL_BOOK3E
 /*
  * TLB miss handling for e6500 and derivatives, using hardware tablewalk.
  *
@@ -263,6 +276,7 @@ itlb_miss_fault_bolted:
 	srdi.	r15,r16,60		/* get region */
 	ori	r16,r16,1
 
+	TLB_MISS_STATS_SAVE_INFO_BOLTED
 	bne	tlb_miss_kernel_e6500	/* user/kernel test */
 
 	b	tlb_miss_common_e6500
@@ -274,6 +288,7 @@ itlb_miss_fault_bolted:
 	srdi.	r15,r16,60		/* get region */
 	rldicr	r16,r16,0,62
 
+	TLB_MISS_STATS_SAVE_INFO_BOLTED
 	bne	tlb_miss_kernel_e6500	/* user vs kernel check */
 
 /*
@@ -351,7 +366,7 @@ END_FTR_SECTION_NESTED(CPU_FTR_EMB_HV,CPU_FTR_EMB_HV,532)
 
 	mfspr	r15,SPRN_MAS2
 	isync
-	PPC_TLBILX_VA(0,R15)
+	tlbilxva 0,r15
 	isync
 
 	mtspr	SPRN_MAS6,r10
@@ -445,6 +460,7 @@ END_FTR_SECTION_IFSET(CPU_FTR_SMT)
 	.endm
 
 	tlb_unlock_e6500
+	TLB_MISS_STATS_X(MMSTAT_TLB_MISS_NORM_OK)
 	tlb_epilog_bolted
 	rfi
 
@@ -494,9 +510,7 @@ tlb_miss_huge_e6500:
 
 tlb_miss_kernel_e6500:
 	ld	r14,PACA_KERNELPGD(r13)
-	srdi	r15,r16,44		/* get kernel region */
-	xoris	r15,r15,0xc		/* Check for vmalloc region */
-	cmplwi	cr1,r15,1
+	cmpldi	cr1,r15,8		/* Check for vmalloc region */
 	beq+	cr1,tlb_miss_common_e6500
 
 tlb_miss_fault_e6500:
@@ -505,11 +519,14 @@ tlb_miss_fault_e6500:
 	andi.	r16,r16,1
 	bne	itlb_miss_fault_e6500
 dtlb_miss_fault_e6500:
+	TLB_MISS_STATS_D(MMSTAT_TLB_MISS_NORM_FAULT)
 	tlb_epilog_bolted
 	b	exc_data_storage_book3e
 itlb_miss_fault_e6500:
+	TLB_MISS_STATS_I(MMSTAT_TLB_MISS_NORM_FAULT)
 	tlb_epilog_bolted
 	b	exc_instruction_storage_book3e
+#endif /* CONFIG_PPC_FSL_BOOK3E */
 
 /**********************************************************************
  *                                                                    *
@@ -529,18 +546,17 @@ itlb_miss_fault_e6500:
 	 */
 	mfspr	r14,SPRN_ESR
 	mfspr	r16,SPRN_DEAR		/* get faulting address */
-	srdi	r15,r16,44		/* get region */
-	xoris	r15,r15,0xc
-	cmpldi	cr0,r15,0		/* linear mapping ? */
+	srdi	r15,r16,60		/* get region */
+	cmpldi	cr0,r15,0xc		/* linear mapping ? */
+	TLB_MISS_STATS_SAVE_INFO
 	beq	tlb_load_linear		/* yes -> go to linear map load */
-	cmpldi	cr1,r15,1		/* vmalloc mapping ? */
 
 	/* The page tables are mapped virtually linear. At this point, though,
 	 * we don't know whether we are trying to fault in a first level
 	 * virtual address or a virtual page table address. We can get that
 	 * from bit 0x1 of the region ID which we have set for a page table
 	 */
-	andis.	r10,r15,0x1
+	andi.	r10,r15,0x1
 	bne-	virt_page_table_tlb_miss
 
 	std	r14,EX_TLB_ESR(r12);	/* save ESR */
@@ -552,7 +568,7 @@ itlb_miss_fault_e6500:
 
 	/* We do the user/kernel test for the PID here along with the RW test
 	 */
-	srdi.	r15,r16,60		/* Check for user region */
+	cmpldi	cr0,r15,0		/* Check for user region */
 
 	/* We pre-test some combination of permissions to avoid double
 	 * faults:
@@ -573,16 +589,18 @@ itlb_miss_fault_e6500:
 	 */
 	rlwimi	r11,r14,32-19,27,27
 	rlwimi	r11,r14,32-16,19,19
-	beq	normal_tlb_miss_user
+	beq	normal_tlb_miss
 	/* XXX replace the RMW cycles with immediate loads + writes */
 1:	mfspr	r10,SPRN_MAS1
+	cmpldi	cr0,r15,8		/* Check for vmalloc region */
 	rlwinm	r10,r10,0,16,1		/* Clear TID */
 	mtspr	SPRN_MAS1,r10
-	beq+	cr1,normal_tlb_miss
+	beq+	normal_tlb_miss
 
 	/* We got a crappy address, just fault with whatever DEAR and ESR
 	 * are here
 	 */
+	TLB_MISS_STATS_D(MMSTAT_TLB_MISS_NORM_FAULT)
 	TLB_MISS_EPILOG_ERROR
 	b	exc_data_storage_book3e
 
@@ -604,30 +622,31 @@ itlb_miss_fault_e6500:
 	 *
 	 * Faulting address is SRR0 which is already in r16
 	 */
-	srdi	r15,r16,44		/* get region */
-	xoris	r15,r15,0xc
-	cmpldi	cr0,r15,0		/* linear mapping ? */
+	srdi	r15,r16,60		/* get region */
+	cmpldi	cr0,r15,0xc		/* linear mapping ? */
+	TLB_MISS_STATS_SAVE_INFO
 	beq	tlb_load_linear		/* yes -> go to linear map load */
-	cmpldi	cr1,r15,1		/* vmalloc mapping ? */
 
 	/* We do the user/kernel test for the PID here along with the RW test
 	 */
-	li	r11,_PAGE_PRESENT|_PAGE_BAP_UX	/* Base perm */
+	li	r11,_PAGE_PRESENT|_PAGE_EXEC	/* Base perm */
 	oris	r11,r11,_PAGE_ACCESSED@h
 
-	srdi.	r15,r16,60			/* Check for user region */
+	cmpldi	cr0,r15,0			/* Check for user region */
 	std	r14,EX_TLB_ESR(r12)		/* write crazy -1 to frame */
-	beq	normal_tlb_miss_user
+	beq	normal_tlb_miss
 
 	li	r11,_PAGE_PRESENT|_PAGE_BAP_SX	/* Base perm */
 	oris	r11,r11,_PAGE_ACCESSED@h
 	/* XXX replace the RMW cycles with immediate loads + writes */
 	mfspr	r10,SPRN_MAS1
+	cmpldi	cr0,r15,8			/* Check for vmalloc region */
 	rlwinm	r10,r10,0,16,1			/* Clear TID */
 	mtspr	SPRN_MAS1,r10
-	beq+	cr1,normal_tlb_miss
+	beq+	normal_tlb_miss
 
 	/* We got a crappy address, just fault */
+	TLB_MISS_STATS_I(MMSTAT_TLB_MISS_NORM_FAULT)
 	TLB_MISS_EPILOG_ERROR
 	b	exc_instruction_storage_book3e
 
@@ -643,12 +662,6 @@ itlb_miss_fault_e6500:
  * r11 = PTE permission mask
  * r10 = crap (free to use)
  */
-normal_tlb_miss_user:
-#ifdef CONFIG_PPC_KUAP
-	mfspr	r14,SPRN_MAS1
-	rlwinm.	r14,r14,0,0x3fff0000
-	beq-	normal_tlb_miss_access_fault /* KUAP fault */
-#endif
 normal_tlb_miss:
 	/* So we first construct the page table address. We do that by
 	 * shifting the bottom of the address (not the region ID) by
@@ -658,14 +671,22 @@ normal_tlb_miss:
 	 * NOTE: For 64K pages, we do things slightly differently in
 	 * order to handle the weird page table format used by linux
 	 */
-	srdi	r15,r16,44
-	oris	r10,r15,0x1
+	ori	r10,r15,0x1
 	rldicl	r14,r16,64-(PAGE_SHIFT-3),PAGE_SHIFT-3+4
-	sldi	r15,r10,44
-	clrrdi	r14,r14,19
+	sldi	r15,r10,60
+	clrrdi	r14,r14,3
 	or	r10,r15,r14
 
+BEGIN_MMU_FTR_SECTION
+	/* Set the TLB reservation and search for existing entry. Then load
+	 * the entry.
+	 */
+	PPC_TLBSRX_DOT(0,R16)
 	ld	r14,0(r10)
+	beq	normal_tlb_miss_done
+MMU_FTR_SECTION_ELSE
+	ld	r14,0(r10)
+ALT_MMU_FTR_SECTION_END_IFSET(MMU_FTR_USE_TLBRSRV)
 
 finish_normal_tlb_miss:
 	/* Check if required permissions are met */
@@ -684,13 +705,13 @@ finish_normal_tlb_miss:
 	 *
 	 * TODO: mix up code below for better scheduling
 	 */
-	clrrdi	r10,r16,12		/* Clear low crap in EA */
-	rlwimi	r10,r14,32-19,27,31	/* Insert WIMGE */
-	mtspr	SPRN_MAS2,r10
+	clrrdi	r11,r16,12		/* Clear low crap in EA */
+	rlwimi	r11,r14,32-19,27,31	/* Insert WIMGE */
+	mtspr	SPRN_MAS2,r11
 
 	/* Check page size, if not standard, update MAS1 */
-	rldicl	r10,r14,64-8,64-8
-	cmpldi	cr0,r10,BOOK3E_PAGESZ_4K
+	rldicl	r11,r14,64-8,64-8
+	cmpldi	cr0,r11,BOOK3E_PAGESZ_4K
 	beq-	1f
 	mfspr	r11,SPRN_MAS1
 	rlwimi	r11,r14,31,21,24
@@ -709,9 +730,13 @@ finish_normal_tlb_miss:
 	li	r11,MAS3_SW|MAS3_UW
 	andc	r15,r15,r11
 1:
+BEGIN_MMU_FTR_SECTION
 	srdi	r16,r15,32
 	mtspr	SPRN_MAS3,r15
 	mtspr	SPRN_MAS7,r16
+MMU_FTR_SECTION_ELSE
+	mtspr	SPRN_MAS7_MAS3,r15
+ALT_MMU_FTR_SECTION_END_IFCLR(MMU_FTR_USE_PAIRED_MAS)
 
 	tlbwe
 
@@ -720,20 +745,23 @@ normal_tlb_miss_done:
 	 * level 0 and just going back to userland. They are only needed
 	 * if you are going to take an access fault
 	 */
+	TLB_MISS_STATS_X(MMSTAT_TLB_MISS_NORM_OK)
 	TLB_MISS_EPILOG_SUCCESS
 	rfi
 
 normal_tlb_miss_access_fault:
 	/* We need to check if it was an instruction miss */
-	andi.	r10,r11,_PAGE_BAP_UX
+	andi.	r10,r11,_PAGE_EXEC
 	bne	1f
 	ld	r14,EX_TLB_DEAR(r12)
 	ld	r15,EX_TLB_ESR(r12)
 	mtspr	SPRN_DEAR,r14
 	mtspr	SPRN_ESR,r15
+	TLB_MISS_STATS_D(MMSTAT_TLB_MISS_NORM_FAULT)
 	TLB_MISS_EPILOG_ERROR
 	b	exc_data_storage_book3e
-1:	TLB_MISS_EPILOG_ERROR
+1:	TLB_MISS_STATS_I(MMSTAT_TLB_MISS_NORM_FAULT)
+	TLB_MISS_EPILOG_ERROR
 	b	exc_instruction_storage_book3e
 
 
@@ -763,7 +791,6 @@ normal_tlb_miss_access_fault:
  */
 virt_page_table_tlb_miss:
 	/* Are we hitting a kernel page table ? */
-	srdi	r15,r16,60
 	andi.	r10,r15,0x8
 
 	/* The cool thing now is that r10 contains 0 for user and 8 for kernel,
@@ -778,22 +805,19 @@ virt_page_table_tlb_miss:
 	mfspr	r10,SPRN_MAS1
 	rlwinm	r10,r10,0,16,1			/* Clear TID */
 	mtspr	SPRN_MAS1,r10
-#ifdef CONFIG_PPC_KUAP
-	b	2f
 1:
-	mfspr	r10,SPRN_MAS1
-	rlwinm.	r10,r10,0,0x3fff0000
-	beq-	virt_page_table_tlb_miss_fault /* KUAP fault */
-2:
-#else
-1:
-#endif
+BEGIN_MMU_FTR_SECTION
+	/* Search if we already have a TLB entry for that virtual address, and
+	 * if we do, bail out.
+	 */
+	PPC_TLBSRX_DOT(0,R16)
+	beq	virt_page_table_tlb_miss_done
+END_MMU_FTR_SECTION_IFSET(MMU_FTR_USE_TLBRSRV)
 
 	/* Now, we need to walk the page tables. First check if we are in
 	 * range.
 	 */
-	rldicl	r10,r16,64-(VPTE_INDEX_SIZE+3),VPTE_INDEX_SIZE+3+4
-	cmpldi	r10,0x80
+	rldicl.	r10,r16,64-(VPTE_INDEX_SIZE+3),VPTE_INDEX_SIZE+3+4
 	bne-	virt_page_table_tlb_miss_fault
 
 	/* Get the PGD pointer */
@@ -839,13 +863,43 @@ virt_page_table_tlb_miss:
 	clrldi	r11,r15,4		/* remove region ID from RPN */
 	ori	r10,r11,1		/* Or-in SR */
 
+BEGIN_MMU_FTR_SECTION
 	srdi	r16,r10,32
 	mtspr	SPRN_MAS3,r10
 	mtspr	SPRN_MAS7,r16
+MMU_FTR_SECTION_ELSE
+	mtspr	SPRN_MAS7_MAS3,r10
+ALT_MMU_FTR_SECTION_END_IFCLR(MMU_FTR_USE_PAIRED_MAS)
 
 	tlbwe
 
+BEGIN_MMU_FTR_SECTION
+virt_page_table_tlb_miss_done:
+
+	/* We have overridden MAS2:EPN but currently our primary TLB miss
+	 * handler will always restore it so that should not be an issue,
+	 * if we ever optimize the primary handler to not write MAS2 on
+	 * some cases, we'll have to restore MAS2:EPN here based on the
+	 * original fault's DEAR. If we do that we have to modify the
+	 * ITLB miss handler to also store SRR0 in the exception frame
+	 * as DEAR.
+	 *
+	 * However, one nasty thing we did is we cleared the reservation
+	 * (well, potentially we did). We do a trick here thus if we
+	 * are not a level 0 exception (we interrupted the TLB miss) we
+	 * offset the return address by -4 in order to replay the tlbsrx
+	 * instruction there
+	 */
+	subf	r10,r13,r12
+	cmpldi	cr0,r10,PACA_EXTLB+EX_TLB_SIZE
+	bne-	1f
+	ld	r11,PACA_EXTLB+EX_TLB_SIZE+EX_TLB_SRR0(r13)
+	addi	r10,r11,-4
+	std	r10,PACA_EXTLB+EX_TLB_SIZE+EX_TLB_SRR0(r13)
+1:
+END_MMU_FTR_SECTION_IFSET(MMU_FTR_USE_TLBRSRV)
 	/* Return to caller, normal case */
+	TLB_MISS_STATS_X(MMSTAT_TLB_MISS_PT_OK);
 	TLB_MISS_EPILOG_SUCCESS
 	rfi
 
@@ -881,15 +935,18 @@ virt_page_table_tlb_miss_fault:
 	beq	1f
 	mtspr	SPRN_DEAR,r15
 	mtspr	SPRN_ESR,r16
+	TLB_MISS_STATS_D(MMSTAT_TLB_MISS_PT_FAULT);
 	TLB_MISS_EPILOG_ERROR
 	b	exc_data_storage_book3e
-1:	TLB_MISS_EPILOG_ERROR
+1:	TLB_MISS_STATS_I(MMSTAT_TLB_MISS_PT_FAULT);
+	TLB_MISS_EPILOG_ERROR
 	b	exc_instruction_storage_book3e
 
 virt_page_table_tlb_miss_whacko_fault:
 	/* The linear fault will restart everything so ESR and DEAR will
 	 * not have been clobbered, let's just fault with what we have
 	 */
+	TLB_MISS_STATS_X(MMSTAT_TLB_MISS_PT_FAULT);
 	TLB_MISS_EPILOG_ERROR
 	b	exc_data_storage_book3e
 
@@ -912,28 +969,29 @@ virt_page_table_tlb_miss_whacko_fault:
 	 */
 	mfspr	r14,SPRN_ESR
 	mfspr	r16,SPRN_DEAR		/* get faulting address */
-	srdi	r11,r16,44		/* get region */
-	xoris	r11,r11,0xc
-	cmpldi	cr0,r11,0		/* linear mapping ? */
+	srdi	r11,r16,60		/* get region */
+	cmpldi	cr0,r11,0xc		/* linear mapping ? */
+	TLB_MISS_STATS_SAVE_INFO
 	beq	tlb_load_linear		/* yes -> go to linear map load */
-	cmpldi	cr1,r11,1		/* vmalloc mapping ? */
 
 	/* We do the user/kernel test for the PID here along with the RW test
 	 */
-	srdi.	r11,r16,60		/* Check for user region */
+	cmpldi	cr0,r11,0		/* Check for user region */
 	ld	r15,PACAPGD(r13)	/* Load user pgdir */
 	beq	htw_tlb_miss
 
 	/* XXX replace the RMW cycles with immediate loads + writes */
 1:	mfspr	r10,SPRN_MAS1
+	cmpldi	cr0,r11,8		/* Check for vmalloc region */
 	rlwinm	r10,r10,0,16,1		/* Clear TID */
 	mtspr	SPRN_MAS1,r10
 	ld	r15,PACA_KERNELPGD(r13)	/* Load kernel pgdir */
-	beq+	cr1,htw_tlb_miss
+	beq+	htw_tlb_miss
 
 	/* We got a crappy address, just fault with whatever DEAR and ESR
 	 * are here
 	 */
+	TLB_MISS_STATS_D(MMSTAT_TLB_MISS_NORM_FAULT)
 	TLB_MISS_EPILOG_ERROR
 	b	exc_data_storage_book3e
 
@@ -955,26 +1013,27 @@ virt_page_table_tlb_miss_whacko_fault:
 	 *
 	 * Faulting address is SRR0 which is already in r16
 	 */
-	srdi	r11,r16,44		/* get region */
-	xoris	r11,r11,0xc
-	cmpldi	cr0,r11,0		/* linear mapping ? */
+	srdi	r11,r16,60		/* get region */
+	cmpldi	cr0,r11,0xc		/* linear mapping ? */
+	TLB_MISS_STATS_SAVE_INFO
 	beq	tlb_load_linear		/* yes -> go to linear map load */
-	cmpldi	cr1,r11,1		/* vmalloc mapping ? */
 
 	/* We do the user/kernel test for the PID here along with the RW test
 	 */
-	srdi.	r11,r16,60		/* Check for user region */
+	cmpldi	cr0,r11,0			/* Check for user region */
 	ld	r15,PACAPGD(r13)		/* Load user pgdir */
 	beq	htw_tlb_miss
 
 	/* XXX replace the RMW cycles with immediate loads + writes */
 1:	mfspr	r10,SPRN_MAS1
+	cmpldi	cr0,r11,8			/* Check for vmalloc region */
 	rlwinm	r10,r10,0,16,1			/* Clear TID */
 	mtspr	SPRN_MAS1,r10
 	ld	r15,PACA_KERNELPGD(r13)		/* Load kernel pgdir */
 	beq+	htw_tlb_miss
 
 	/* We got a crappy address, just fault */
+	TLB_MISS_STATS_I(MMSTAT_TLB_MISS_NORM_FAULT)
 	TLB_MISS_EPILOG_ERROR
 	b	exc_instruction_storage_book3e
 
@@ -995,11 +1054,6 @@ virt_page_table_tlb_miss_whacko_fault:
  * avoid too much complication, it will save/restore things for us
  */
 htw_tlb_miss:
-#ifdef CONFIG_PPC_KUAP
-	mfspr	r10,SPRN_MAS1
-	rlwinm.	r10,r10,0,0x3fff0000
-	beq-	htw_tlb_miss_fault /* KUAP fault */
-#endif
 	/* Search if we already have a TLB entry for that virtual address, and
 	 * if we do, bail out.
 	 *
@@ -1061,9 +1115,13 @@ htw_tlb_miss:
 	 */
 	ori	r10,r15,(BOOK3E_PAGESZ_4K << MAS3_SPSIZE_SHIFT)
 
+BEGIN_MMU_FTR_SECTION
 	srdi	r16,r10,32
 	mtspr	SPRN_MAS3,r10
 	mtspr	SPRN_MAS7,r16
+MMU_FTR_SECTION_ELSE
+	mtspr	SPRN_MAS7_MAS3,r10
+ALT_MMU_FTR_SECTION_END_IFCLR(MMU_FTR_USE_PAIRED_MAS)
 
 	tlbwe
 
@@ -1072,6 +1130,7 @@ htw_tlb_miss_done:
 	 * level 0 and just going back to userland. They are only needed
 	 * if you are going to take an access fault
 	 */
+	TLB_MISS_STATS_X(MMSTAT_TLB_MISS_PT_OK)
 	TLB_MISS_EPILOG_SUCCESS
 	rfi
 
@@ -1083,9 +1142,11 @@ htw_tlb_miss_fault:
 	beq	1f
 	mtspr	SPRN_DEAR,r16
 	mtspr	SPRN_ESR,r14
+	TLB_MISS_STATS_D(MMSTAT_TLB_MISS_PT_FAULT)
 	TLB_MISS_EPILOG_ERROR
 	b	exc_data_storage_book3e
-1:	TLB_MISS_EPILOG_ERROR
+1:	TLB_MISS_STATS_I(MMSTAT_TLB_MISS_PT_FAULT)
+	TLB_MISS_EPILOG_ERROR
 	b	exc_instruction_storage_book3e
 
 /*
@@ -1118,8 +1179,8 @@ tlb_load_linear:
 	 * we only use 1G pages for now. That might have to be changed in a
 	 * final implementation, especially when dealing with hypervisors
 	 */
-	__LOAD_PACA_TOC(r11)
-	LOAD_REG_ADDR_ALTTOC(r11, r11, linear_map_top)
+	ld	r11,PACATOC(r13)
+	ld	r11,linear_map_top@got(r11)
 	ld	r10,0(r11)
 	tovirt(10,10)
 	cmpld	cr0,r16,r10
@@ -1144,9 +1205,13 @@ tlb_load_linear:
 	clrldi	r10,r10,4		/* clear region bits */
 	ori	r10,r10,MAS3_SR|MAS3_SW|MAS3_SX
 
+BEGIN_MMU_FTR_SECTION
 	srdi	r16,r10,32
 	mtspr	SPRN_MAS3,r10
 	mtspr	SPRN_MAS7,r16
+MMU_FTR_SECTION_ELSE
+	mtspr	SPRN_MAS7_MAS3,r10
+ALT_MMU_FTR_SECTION_END_IFCLR(MMU_FTR_USE_PAIRED_MAS)
 
 	tlbwe
 
@@ -1156,6 +1221,7 @@ tlb_load_linear_done:
 	 * We do that because we can't resume a fault within a TLB
 	 * miss handler, due to MAS and TLB reservation being clobbered.
 	 */
+	TLB_MISS_STATS_X(MMSTAT_TLB_MISS_LINEAR)
 	TLB_MISS_EPILOG_ERROR
 	rfi
 
@@ -1167,3 +1233,13 @@ tlb_load_linear_fault:
 	b	exc_data_storage_book3e
 1:	TLB_MISS_EPILOG_ERROR_SPECIAL
 	b	exc_instruction_storage_book3e
+
+
+#ifdef CONFIG_BOOK3E_MMU_TLB_STATS
+.tlb_stat_inc:
+1:	ldarx	r8,0,r9
+	addi	r8,r8,1
+	stdcx.	r8,0,r9
+	bne-	1b
+	blr
+#endif

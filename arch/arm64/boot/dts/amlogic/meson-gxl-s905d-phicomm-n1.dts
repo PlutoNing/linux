@@ -18,7 +18,7 @@
 	leds {
 		compatible = "gpio-leds";
 
-		led {
+		status {
 			label = "n1:white:status";
 			gpios = <&gpio_ao GPIOAO_9 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
@@ -28,8 +28,4 @@
 
 &cvbs_vdac_port {
 	status = "disabled";
-};
-
-&usb {
-	dr_mode = "host";
 };

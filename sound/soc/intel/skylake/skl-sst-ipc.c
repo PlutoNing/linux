@@ -489,7 +489,7 @@ void skl_ipc_process_reply(struct sst_generic_ipc *ipc,
 irqreturn_t skl_dsp_irq_thread_handler(int irq, void *context)
 {
 	struct sst_dsp *dsp = context;
-	struct skl_dev *skl = dsp->thread_context;
+	struct skl_dev *skl = sst_dsp_get_thread_context(dsp);
 	struct sst_generic_ipc *ipc = &skl->ipc;
 	struct skl_ipc_header header = {0};
 	u32 hipcie, hipct, hipcte;
@@ -1003,10 +1003,8 @@ int skl_ipc_get_large_config(struct sst_generic_ipc *ipc,
 
 	reply.size = (reply.header >> 32) & IPC_DATA_OFFSET_SZ_MASK;
 	buf = krealloc(reply.data, reply.size, GFP_KERNEL);
-	if (!buf) {
-		kfree(reply.data);
+	if (!buf)
 		return -ENOMEM;
-	}
 	*payload = buf;
 	*bytes = reply.size;
 

@@ -16,7 +16,7 @@
 int efi_tpm_final_log_size;
 EXPORT_SYMBOL(efi_tpm_final_log_size);
 
-static int __init tpm2_calc_event_log_size(void *data, int count, void *size_info)
+static int tpm2_calc_event_log_size(void *data, int count, void *size_info)
 {
 	struct tcg_pcr_event2_head *header;
 	int event_size, size = 0;
@@ -62,13 +62,8 @@ int __init efi_tpm_eventlog_init(void)
 	tbl_size = sizeof(*log_tbl) + log_tbl->size;
 	memblock_reserve(efi.tpm_log, tbl_size);
 
-	if (efi.tpm_final_log == EFI_INVALID_TABLE_ADDR) {
-		pr_info("TPM Final Events table not present\n");
+	if (efi.tpm_final_log == EFI_INVALID_TABLE_ADDR)
 		goto out;
-	} else if (log_tbl->version != EFI_TCG2_EVENT_LOG_FORMAT_TCG_2) {
-		pr_warn(FW_BUG "TPM Final Events table invalid\n");
-		goto out;
-	}
 
 	final_tbl = early_memremap(efi.tpm_final_log, sizeof(*final_tbl));
 
@@ -97,7 +92,7 @@ int __init efi_tpm_eventlog_init(void)
 		goto out_calc;
 	}
 
-	memblock_reserve(efi.tpm_final_log,
+	memblock_reserve((unsigned long)final_tbl,
 			 tbl_size + sizeof(*final_tbl));
 	efi_tpm_final_log_size = tbl_size;
 

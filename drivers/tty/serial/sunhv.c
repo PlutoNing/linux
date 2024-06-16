@@ -17,13 +17,17 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/init.h>
-#include <linux/of.h>
-#include <linux/platform_device.h>
+#include <linux/of_device.h>
 
 #include <asm/hypervisor.h>
 #include <asm/spitfire.h>
+#include <asm/prom.h>
 #include <asm/irq.h>
 #include <asm/setup.h>
+
+#if defined(CONFIG_MAGIC_SYSRQ)
+#define SUPPORT_SYSRQ
+#endif
 
 #include <linux/serial_core.h>
 #include <linux/sunserialcore.h>
@@ -47,7 +51,8 @@ static void transmit_chars_putchar(struct uart_port *port, struct circ_buf *xmit
 		if (status != HV_EOK)
 			break;
 
-		uart_xmit_advance(port, 1);
+		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
+		port->icount.tx++;
 	}
 }
 
@@ -62,7 +67,8 @@ static void transmit_chars_write(struct uart_port *port, struct circ_buf *xmit)
 		status = sun4v_con_write(ra, len, &sent);
 		if (status != HV_EOK)
 			break;
-		uart_xmit_advance(port, sent);
+		xmit->tail = (xmit->tail + sent) & (UART_XMIT_SIZE - 1);
+		port->icount.tx += sent;
 	}
 }
 
@@ -87,10 +93,10 @@ static int receive_chars_getchar(struct uart_port *port)
 
 		if (c == CON_HUP) {
 			hung_up = 1;
-			uart_handle_dcd_change(port, false);
+			uart_handle_dcd_change(port, 0);
 		} else if (hung_up) {
 			hung_up = 0;
-			uart_handle_dcd_change(port, true);
+			uart_handle_dcd_change(port, 1);
 		}
 
 		if (port->state == NULL) {
@@ -133,7 +139,7 @@ static int receive_chars_read(struct uart_port *port)
 				bytes_read = 1;
 			} else if (stat == CON_HUP) {
 				hung_up = 1;
-				uart_handle_dcd_change(port, false);
+				uart_handle_dcd_change(port, 0);
 				continue;
 			} else {
 				/* HV_EWOULDBLOCK, etc.  */
@@ -143,7 +149,7 @@ static int receive_chars_read(struct uart_port *port)
 
 		if (hung_up) {
 			hung_up = 0;
-			uart_handle_dcd_change(port, true);
+			uart_handle_dcd_change(port, 1);
 		}
 
 		if (port->sysrq != 0 &&  *con_read_page) {
@@ -217,10 +223,10 @@ static irqreturn_t sunhv_interrupt(int irq, void *dev_id)
 	struct tty_port *tport;
 	unsigned long flags;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 	tport = receive_chars(port);
 	transmit_chars(port);
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 
 	if (tport)
 		tty_flip_buffer_push(tport);
@@ -271,7 +277,7 @@ static void sunhv_send_xchar(struct uart_port *port, char ch)
 	if (ch == __DISABLED_CHAR)
 		return;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 
 	while (limit-- > 0) {
 		long status = sun4v_con_putchar(ch);
@@ -280,7 +286,7 @@ static void sunhv_send_xchar(struct uart_port *port, char ch)
 		udelay(1);
 	}
 
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 }
 
 /* port->lock held by caller.  */
@@ -295,7 +301,7 @@ static void sunhv_break_ctl(struct uart_port *port, int break_state)
 		unsigned long flags;
 		int limit = 10000;
 
-		uart_port_lock_irqsave(port, &flags);
+		spin_lock_irqsave(&port->lock, flags);
 
 		while (limit-- > 0) {
 			long status = sun4v_con_putchar(CON_BREAK);
@@ -304,7 +310,7 @@ static void sunhv_break_ctl(struct uart_port *port, int break_state)
 			udelay(1);
 		}
 
-		uart_port_unlock_irqrestore(port, flags);
+		spin_unlock_irqrestore(&port->lock, flags);
 	}
 }
 
@@ -321,14 +327,14 @@ static void sunhv_shutdown(struct uart_port *port)
 
 /* port->lock is not held.  */
 static void sunhv_set_termios(struct uart_port *port, struct ktermios *termios,
-			      const struct ktermios *old)
+			      struct ktermios *old)
 {
 	unsigned int baud = uart_get_baud_rate(port, termios, old, 0, 4000000);
 	unsigned int quot = uart_get_divisor(port, baud);
 	unsigned int iflag, cflag;
 	unsigned long flags;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 
 	iflag = termios->c_iflag;
 	cflag = termios->c_cflag;
@@ -343,7 +349,7 @@ static void sunhv_set_termios(struct uart_port *port, struct ktermios *termios,
 	uart_update_timeout(port, cflag,
 			    (port->uartclk / (16 * quot)));
 
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static const char *sunhv_type(struct uart_port *port)
@@ -437,9 +443,9 @@ static void sunhv_console_write_paged(struct console *con, const char *s, unsign
 	int locked = 1;
 
 	if (port->sysrq || oops_in_progress)
-		locked = uart_port_trylock_irqsave(port, &flags);
+		locked = spin_trylock_irqsave(&port->lock, flags);
 	else
-		uart_port_lock_irqsave(port, &flags);
+		spin_lock_irqsave(&port->lock, flags);
 
 	while (n > 0) {
 		unsigned long ra = __pa(con_write_page);
@@ -470,7 +476,7 @@ static void sunhv_console_write_paged(struct console *con, const char *s, unsign
 	}
 
 	if (locked)
-		uart_port_unlock_irqrestore(port, flags);
+		spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static inline void sunhv_console_putchar(struct uart_port *port, char c)
@@ -492,9 +498,9 @@ static void sunhv_console_write_bychar(struct console *con, const char *s, unsig
 	int i, locked = 1;
 
 	if (port->sysrq || oops_in_progress)
-		locked = uart_port_trylock_irqsave(port, &flags);
+		locked = spin_trylock_irqsave(&port->lock, flags);
 	else
-		uart_port_lock_irqsave(port, &flags);
+		spin_lock_irqsave(&port->lock, flags);
 
 	for (i = 0; i < n; i++) {
 		if (*s == '\n')
@@ -503,7 +509,7 @@ static void sunhv_console_write_bychar(struct console *con, const char *s, unsig
 	}
 
 	if (locked)
-		uart_port_unlock_irqrestore(port, flags);
+		spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static struct console sunhv_console = {
@@ -546,7 +552,6 @@ static int hv_probe(struct platform_device *op)
 
 	sunhv_port = port;
 
-	port->has_sysrq = 1;
 	port->line = 0;
 	port->ops = &sunhv_pops;
 	port->type = PORT_SUNHV;
@@ -595,7 +600,7 @@ out_free_port:
 	return err;
 }
 
-static void hv_remove(struct platform_device *dev)
+static int hv_remove(struct platform_device *dev)
 {
 	struct uart_port *port = platform_get_drvdata(dev);
 
@@ -608,6 +613,8 @@ static void hv_remove(struct platform_device *dev)
 	kfree(con_write_page);
 	kfree(port);
 	sunhv_port = NULL;
+
+	return 0;
 }
 
 static const struct of_device_id hv_match[] = {
@@ -628,7 +635,7 @@ static struct platform_driver hv_driver = {
 		.of_match_table = hv_match,
 	},
 	.probe		= hv_probe,
-	.remove_new	= hv_remove,
+	.remove		= hv_remove,
 };
 
 static int __init sunhv_init(void)

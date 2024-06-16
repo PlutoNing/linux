@@ -23,6 +23,8 @@
  *
  */
 
+#include <linux/slab.h>
+
 #include "dm_services.h"
 
 #include "include/logger_interface.h"
@@ -64,27 +66,27 @@ static bool hpd_ack(
 	return true;
 }
 
-static struct irq_source_info_funcs hpd_irq_info_funcs  = {
+static const struct irq_source_info_funcs hpd_irq_info_funcs = {
 	.set = NULL,
 	.ack = hpd_ack
 };
 
-static struct irq_source_info_funcs hpd_rx_irq_info_funcs = {
+static const struct irq_source_info_funcs hpd_rx_irq_info_funcs = {
 	.set = NULL,
 	.ack = NULL
 };
 
-static struct irq_source_info_funcs pflip_irq_info_funcs = {
+static const struct irq_source_info_funcs pflip_irq_info_funcs = {
 	.set = NULL,
 	.ack = NULL
 };
 
-static struct irq_source_info_funcs vblank_irq_info_funcs = {
+static const struct irq_source_info_funcs vblank_irq_info_funcs = {
 	.set = dce110_vblank_set,
 	.ack = NULL
 };
 
-static struct irq_source_info_funcs vupdate_irq_info_funcs = {
+static const struct irq_source_info_funcs vupdate_irq_info_funcs = {
 	.set = NULL,
 	.ack = NULL
 };
@@ -184,7 +186,7 @@ static struct irq_source_info_funcs vupdate_irq_info_funcs = {
 	[DC_IRQ_SOURCE_DC ## reg_num ## UNDERFLOW] = dummy_irq_entry()
 
 
-static struct irq_source_info_funcs dummy_irq_info_funcs = {
+static const struct irq_source_info_funcs dummy_irq_info_funcs = {
 	.set = dal_irq_service_dummy_set,
 	.ack = dal_irq_service_dummy_ack
 };
@@ -281,7 +283,7 @@ static const struct irq_service_funcs irq_service_funcs_dce80 = {
 		.to_dal_irq_source = to_dal_irq_source_dce110
 };
 
-static void dce80_irq_construct(
+static void construct(
 	struct irq_service *irq_service,
 	struct irq_service_init_data *init_data)
 {
@@ -300,7 +302,7 @@ struct irq_service *dal_irq_service_dce80_create(
 	if (!irq_service)
 		return NULL;
 
-	dce80_irq_construct(irq_service, init_data);
+	construct(irq_service, init_data);
 	return irq_service;
 }
 

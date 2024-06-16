@@ -2,8 +2,11 @@
  *
  * soc-component.h
  *
- * Copyright (C) 2019 Renesas Electronics Corp.
- * Kuninori Morimoto <kuninori.morimoto.gx@renesas.com>
+ * Copyright (c) 2019 Kuninori Morimoto <kuninori.morimoto.gx@renesas.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 #ifndef __SOC_COMPONENT_H
 #define __SOC_COMPONENT_H
@@ -26,44 +29,6 @@
 	     order++)
 
 /* component interface */
-struct snd_compress_ops {
-	int (*open)(struct snd_soc_component *component,
-		    struct snd_compr_stream *stream);
-	int (*free)(struct snd_soc_component *component,
-		    struct snd_compr_stream *stream);
-	int (*set_params)(struct snd_soc_component *component,
-			  struct snd_compr_stream *stream,
-			  struct snd_compr_params *params);
-	int (*get_params)(struct snd_soc_component *component,
-			  struct snd_compr_stream *stream,
-			  struct snd_codec *params);
-	int (*set_metadata)(struct snd_soc_component *component,
-			    struct snd_compr_stream *stream,
-			    struct snd_compr_metadata *metadata);
-	int (*get_metadata)(struct snd_soc_component *component,
-			    struct snd_compr_stream *stream,
-			    struct snd_compr_metadata *metadata);
-	int (*trigger)(struct snd_soc_component *component,
-		       struct snd_compr_stream *stream, int cmd);
-	int (*pointer)(struct snd_soc_component *component,
-		       struct snd_compr_stream *stream,
-		       struct snd_compr_tstamp *tstamp);
-	int (*copy)(struct snd_soc_component *component,
-		    struct snd_compr_stream *stream, char __user *buf,
-		    size_t count);
-	int (*mmap)(struct snd_soc_component *component,
-		    struct snd_compr_stream *stream,
-		    struct vm_area_struct *vma);
-	int (*ack)(struct snd_soc_component *component,
-		   struct snd_compr_stream *stream, size_t bytes);
-	int (*get_caps)(struct snd_soc_component *component,
-			struct snd_compr_stream *stream,
-			struct snd_compr_caps *caps);
-	int (*get_codec_caps)(struct snd_soc_component *component,
-			      struct snd_compr_stream *stream,
-			      struct snd_compr_codec_caps *codec);
-};
-
 struct snd_soc_component_driver {
 	const char *name;
 
@@ -86,10 +51,8 @@ struct snd_soc_component_driver {
 		     unsigned int reg, unsigned int val);
 
 	/* pcm creation and destruction */
-	int (*pcm_construct)(struct snd_soc_component *component,
-			     struct snd_soc_pcm_runtime *rtd);
-	void (*pcm_destruct)(struct snd_soc_component *component,
-			     struct snd_pcm *pcm);
+	int (*pcm_new)(struct snd_soc_pcm_runtime *rtd);
+	void (*pcm_free)(struct snd_pcm *pcm);
 
 	/* component wide operations */
 	int (*set_sysclk)(struct snd_soc_component *component,
@@ -98,11 +61,10 @@ struct snd_soc_component_driver {
 		       int source, unsigned int freq_in, unsigned int freq_out);
 	int (*set_jack)(struct snd_soc_component *component,
 			struct snd_soc_jack *jack,  void *data);
-	int (*get_jack_type)(struct snd_soc_component *component);
 
 	/* DT */
 	int (*of_xlate_dai_name)(struct snd_soc_component *component,
-				 const struct of_phandle_args *args,
+				 struct of_phandle_args *args,
 				 const char **dai_name);
 	int (*of_xlate_dai_id)(struct snd_soc_component *comment,
 			       struct device_node *endpoint);
@@ -112,60 +74,12 @@ struct snd_soc_component_driver {
 	int (*set_bias_level)(struct snd_soc_component *component,
 			      enum snd_soc_bias_level level);
 
-	int (*open)(struct snd_soc_component *component,
-		    struct snd_pcm_substream *substream);
-	int (*close)(struct snd_soc_component *component,
-		     struct snd_pcm_substream *substream);
-	int (*ioctl)(struct snd_soc_component *component,
-		     struct snd_pcm_substream *substream,
-		     unsigned int cmd, void *arg);
-	int (*hw_params)(struct snd_soc_component *component,
-			 struct snd_pcm_substream *substream,
-			 struct snd_pcm_hw_params *params);
-	int (*hw_free)(struct snd_soc_component *component,
-		       struct snd_pcm_substream *substream);
-	int (*prepare)(struct snd_soc_component *component,
-		       struct snd_pcm_substream *substream);
-	int (*trigger)(struct snd_soc_component *component,
-		       struct snd_pcm_substream *substream, int cmd);
-	int (*sync_stop)(struct snd_soc_component *component,
-			 struct snd_pcm_substream *substream);
-	snd_pcm_uframes_t (*pointer)(struct snd_soc_component *component,
-				     struct snd_pcm_substream *substream);
-	int (*get_time_info)(struct snd_soc_component *component,
-		struct snd_pcm_substream *substream, struct timespec64 *system_ts,
-		struct timespec64 *audio_ts,
-		struct snd_pcm_audio_tstamp_config *audio_tstamp_config,
-		struct snd_pcm_audio_tstamp_report *audio_tstamp_report);
-	int (*copy)(struct snd_soc_component *component,
-		    struct snd_pcm_substream *substream, int channel,
-		    unsigned long pos, struct iov_iter *iter,
-		    unsigned long bytes);
-	struct page *(*page)(struct snd_soc_component *component,
-			     struct snd_pcm_substream *substream,
-			     unsigned long offset);
-	int (*mmap)(struct snd_soc_component *component,
-		    struct snd_pcm_substream *substream,
-		    struct vm_area_struct *vma);
-	int (*ack)(struct snd_soc_component *component,
-		   struct snd_pcm_substream *substream);
-	snd_pcm_sframes_t (*delay)(struct snd_soc_component *component,
-				   struct snd_pcm_substream *substream);
-
-	const struct snd_compress_ops *compress_ops;
+	const struct snd_pcm_ops *ops;
+	const struct snd_compr_ops *compr_ops;
 
 	/* probe ordering - for components with runtime dependencies */
 	int probe_order;
 	int remove_order;
-
-	/*
-	 * soc_pcm_trigger() start/stop sequence.
-	 * see also
-	 *	snd_soc_dai_link
-	 *	soc_pcm_trigger()
-	 */
-	enum snd_soc_trigger_order trigger_start;
-	enum snd_soc_trigger_order trigger_stop;
 
 	/*
 	 * signal if the module handling the component should not be removed
@@ -179,17 +93,8 @@ struct snd_soc_component_driver {
 	unsigned int idle_bias_on:1;
 	unsigned int suspend_bias_off:1;
 	unsigned int use_pmdown_time:1; /* care pmdown_time at stop */
-	/*
-	 * Indicates that the component does not care about the endianness of
-	 * PCM audio data and the core will ensure that both LE and BE variants
-	 * of each used format are present. Typically this is because the
-	 * component sits behind a bus that abstracts away the endian of the
-	 * original data, ie. one for which the transmission endian is defined
-	 * (I2S/SLIMbus/SoundWire), or the concept of endian doesn't exist (PDM,
-	 * analogue).
-	 */
 	unsigned int endianness:1;
-	unsigned int legacy_dai_naming:1;
+	unsigned int non_legacy_dai_naming:1;
 
 	/* this component uses topology and ignore machine driver FEs */
 	const char *ignore_machine;
@@ -198,10 +103,6 @@ struct snd_soc_component_driver {
 				  struct snd_pcm_hw_params *params);
 	bool use_dai_pcm_id;	/* use DAI link PCM ID as PCM device number */
 	int be_pcm_base;	/* base device ID for all BE PCMs */
-
-#ifdef CONFIG_DEBUG_FS
-	const char *debugfs_prefix;
-#endif
 };
 
 struct snd_soc_component {
@@ -244,16 +145,10 @@ struct snd_soc_component {
 	/* machine specific init */
 	int (*init)(struct snd_soc_component *component);
 
-	/* function mark */
-	void *mark_module;
-	struct snd_pcm_substream *mark_open;
-	struct snd_pcm_substream *mark_hw_params;
-	struct snd_pcm_substream *mark_trigger;
-	struct snd_compr_stream  *mark_compr_open;
-	void *mark_pm;
-
+#ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_root;
 	const char *debugfs_prefix;
+#endif
 };
 
 #define for_each_component_dais(component, dai)\
@@ -358,13 +253,10 @@ static inline int snd_soc_component_cache_sync(
 	return regcache_sync(component->regmap);
 }
 
-void snd_soc_component_set_aux(struct snd_soc_component *component,
-			       struct snd_soc_aux_dev *aux);
-int snd_soc_component_init(struct snd_soc_component *component);
-int snd_soc_component_is_dummy(struct snd_soc_component *component);
-
 /* component IO */
-unsigned int snd_soc_component_read(struct snd_soc_component *component,
+int snd_soc_component_read(struct snd_soc_component *component,
+			   unsigned int reg, unsigned int *val);
+unsigned int snd_soc_component_read32(struct snd_soc_component *component,
 				      unsigned int reg);
 int snd_soc_component_write(struct snd_soc_component *component,
 			    unsigned int reg, unsigned int val);
@@ -379,12 +271,6 @@ int snd_soc_component_test_bits(struct snd_soc_component *component,
 				unsigned int reg, unsigned int mask,
 				unsigned int value);
 
-unsigned int snd_soc_component_read_field(struct snd_soc_component *component,
-					  unsigned int reg, unsigned int mask);
-int snd_soc_component_write_field(struct snd_soc_component *component,
-				  unsigned int reg, unsigned int mask,
-				  unsigned int val);
-
 /* component wide operations */
 int snd_soc_component_set_sysclk(struct snd_soc_component *component,
 				 int clk_id, int source,
@@ -394,7 +280,6 @@ int snd_soc_component_set_pll(struct snd_soc_component *component, int pll_id,
 			      unsigned int freq_out);
 int snd_soc_component_set_jack(struct snd_soc_component *component,
 			       struct snd_soc_jack *jack, void *data);
-int snd_soc_component_get_jack_type(struct snd_soc_component *component);
 
 void snd_soc_component_seq_notifier(struct snd_soc_component *component,
 				    enum snd_soc_dapm_type type, int subseq);
@@ -403,7 +288,6 @@ int snd_soc_component_stream_event(struct snd_soc_component *component,
 int snd_soc_component_set_bias_level(struct snd_soc_component *component,
 				     enum snd_soc_bias_level level);
 
-void snd_soc_component_setup_regmap(struct snd_soc_component *component);
 #ifdef CONFIG_REGMAP
 void snd_soc_component_init_regmap(struct snd_soc_component *component,
 				   struct regmap *regmap);
@@ -411,17 +295,17 @@ void snd_soc_component_exit_regmap(struct snd_soc_component *component);
 #endif
 
 #define snd_soc_component_module_get_when_probe(component)\
-	snd_soc_component_module_get(component, NULL, 0)
-#define snd_soc_component_module_get_when_open(component, substream)	\
-	snd_soc_component_module_get(component, substream, 1)
+	snd_soc_component_module_get(component, 0)
+#define snd_soc_component_module_get_when_open(component)	\
+	snd_soc_component_module_get(component, 1)
 int snd_soc_component_module_get(struct snd_soc_component *component,
-				 void *mark, int upon_open);
+				 int upon_open);
 #define snd_soc_component_module_put_when_remove(component)	\
-	snd_soc_component_module_put(component, NULL, 0, 0)
-#define snd_soc_component_module_put_when_close(component, substream, rollback) \
-	snd_soc_component_module_put(component, substream, 1, rollback)
+	snd_soc_component_module_put(component, 0)
+#define snd_soc_component_module_put_when_close(component)	\
+	snd_soc_component_module_put(component, 1)
 void snd_soc_component_module_put(struct snd_soc_component *component,
-				  void *mark, int upon_open, int rollback);
+				  int upon_open);
 
 static inline void snd_soc_component_set_drvdata(struct snd_soc_component *c,
 						 void *data)
@@ -434,10 +318,10 @@ static inline void *snd_soc_component_get_drvdata(struct snd_soc_component *c)
 	return dev_get_drvdata(c->dev);
 }
 
-static inline unsigned int
-snd_soc_component_active(struct snd_soc_component *component)
+static inline bool snd_soc_component_is_active(
+	struct snd_soc_component *component)
 {
-	return component->active;
+	return component->active != 0;
 }
 
 /* component pin */
@@ -461,16 +345,21 @@ int snd_soc_component_force_enable_pin_unlocked(
 	struct snd_soc_component *component,
 	const char *pin);
 
-/* component controls */
-int snd_soc_component_notify_control(struct snd_soc_component *component,
-				     const char * const ctl);
-
 /* component driver ops */
 int snd_soc_component_open(struct snd_soc_component *component,
 			   struct snd_pcm_substream *substream);
 int snd_soc_component_close(struct snd_soc_component *component,
-			    struct snd_pcm_substream *substream,
-			    int rollback);
+			    struct snd_pcm_substream *substream);
+int snd_soc_component_prepare(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream);
+int snd_soc_component_hw_params(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream,
+				struct snd_pcm_hw_params *params);
+int snd_soc_component_hw_free(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream);
+int snd_soc_component_trigger(struct snd_soc_component *component,
+			      struct snd_pcm_substream *substream,
+			      int cmd);
 void snd_soc_component_suspend(struct snd_soc_component *component);
 void snd_soc_component_resume(struct snd_soc_component *component);
 int snd_soc_component_is_suspended(struct snd_soc_component *component);
@@ -479,58 +368,20 @@ void snd_soc_component_remove(struct snd_soc_component *component);
 int snd_soc_component_of_xlate_dai_id(struct snd_soc_component *component,
 				      struct device_node *ep);
 int snd_soc_component_of_xlate_dai_name(struct snd_soc_component *component,
-					const struct of_phandle_args *args,
+					struct of_phandle_args *args,
 					const char **dai_name);
-int snd_soc_component_compr_open(struct snd_soc_component *component,
-				 struct snd_compr_stream *cstream);
-void snd_soc_component_compr_free(struct snd_soc_component *component,
-				  struct snd_compr_stream *cstream,
-				  int rollback);
-int snd_soc_component_compr_trigger(struct snd_compr_stream *cstream, int cmd);
-int snd_soc_component_compr_set_params(struct snd_compr_stream *cstream,
-				       struct snd_compr_params *params);
-int snd_soc_component_compr_get_params(struct snd_compr_stream *cstream,
-				       struct snd_codec *params);
-int snd_soc_component_compr_get_caps(struct snd_compr_stream *cstream,
-				     struct snd_compr_caps *caps);
-int snd_soc_component_compr_get_codec_caps(struct snd_compr_stream *cstream,
-					   struct snd_compr_codec_caps *codec);
-int snd_soc_component_compr_ack(struct snd_compr_stream *cstream, size_t bytes);
-int snd_soc_component_compr_pointer(struct snd_compr_stream *cstream,
-				    struct snd_compr_tstamp *tstamp);
-int snd_soc_component_compr_copy(struct snd_compr_stream *cstream,
-				 char __user *buf, size_t count);
-int snd_soc_component_compr_set_metadata(struct snd_compr_stream *cstream,
-					 struct snd_compr_metadata *metadata);
-int snd_soc_component_compr_get_metadata(struct snd_compr_stream *cstream,
-					 struct snd_compr_metadata *metadata);
 
 int snd_soc_pcm_component_pointer(struct snd_pcm_substream *substream);
 int snd_soc_pcm_component_ioctl(struct snd_pcm_substream *substream,
 				unsigned int cmd, void *arg);
-int snd_soc_pcm_component_sync_stop(struct snd_pcm_substream *substream);
-int snd_soc_pcm_component_copy(struct snd_pcm_substream *substream,
-			       int channel, unsigned long pos,
-			       struct iov_iter *iter, unsigned long bytes);
+int snd_soc_pcm_component_copy_user(struct snd_pcm_substream *substream,
+				    int channel, unsigned long pos,
+				    void __user *buf, unsigned long bytes);
 struct page *snd_soc_pcm_component_page(struct snd_pcm_substream *substream,
 					unsigned long offset);
 int snd_soc_pcm_component_mmap(struct snd_pcm_substream *substream,
 			       struct vm_area_struct *vma);
-int snd_soc_pcm_component_new(struct snd_soc_pcm_runtime *rtd);
-void snd_soc_pcm_component_free(struct snd_soc_pcm_runtime *rtd);
-int snd_soc_pcm_component_prepare(struct snd_pcm_substream *substream);
-int snd_soc_pcm_component_hw_params(struct snd_pcm_substream *substream,
-				    struct snd_pcm_hw_params *params);
-void snd_soc_pcm_component_hw_free(struct snd_pcm_substream *substream,
-				   int rollback);
-int snd_soc_pcm_component_trigger(struct snd_pcm_substream *substream,
-				  int cmd, int rollback);
-int snd_soc_pcm_component_pm_runtime_get(struct snd_soc_pcm_runtime *rtd,
-					 void *stream);
-void snd_soc_pcm_component_pm_runtime_put(struct snd_soc_pcm_runtime *rtd,
-					  void *stream, int rollback);
-int snd_soc_pcm_component_ack(struct snd_pcm_substream *substream);
-void snd_soc_pcm_component_delay(struct snd_pcm_substream *substream,
-				 snd_pcm_sframes_t *cpu_delay, snd_pcm_sframes_t *codec_delay);
+int snd_soc_pcm_component_new(struct snd_pcm *pcm);
+void snd_soc_pcm_component_free(struct snd_pcm *pcm);
 
 #endif /* __SOC_COMPONENT_H */

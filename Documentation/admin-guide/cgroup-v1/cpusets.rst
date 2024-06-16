@@ -1,5 +1,3 @@
-.. _cpusets:
-
 =======
 CPUSETS
 =======
@@ -179,7 +177,7 @@ files describing that cpuset:
  - cpuset.mem_hardwall flag:  is memory allocation hardwalled
  - cpuset.memory_pressure: measure of how much paging pressure in cpuset
  - cpuset.memory_spread_page flag: if set, spread page cache evenly on allowed nodes
- - cpuset.memory_spread_slab flag: OBSOLETE. Doesn't have any function.
+ - cpuset.memory_spread_slab flag: if set, spread slab cache evenly on allowed nodes
  - cpuset.sched_load_balance flag: if set, load balance within CPUs on that cpuset
  - cpuset.sched_relax_domain_level: the searching range when migrating tasks
 
@@ -224,17 +222,6 @@ read-only.  The cpus file automatically tracks the value of
 cpu_online_mask using a CPU hotplug notifier, and the mems file
 automatically tracks the value of node_states[N_MEMORY]--i.e.,
 nodes with memory--using the cpuset_track_online_nodes() hook.
-
-The cpuset.effective_cpus and cpuset.effective_mems files are
-normally read-only copies of cpuset.cpus and cpuset.mems files
-respectively.  If the cpuset cgroup filesystem is mounted with the
-special "cpuset_v2_mode" option, the behavior of these files will become
-similar to the corresponding files in cpuset v2.  In other words, hotplug
-events will not change cpuset.cpus and cpuset.mems.  Those events will
-only affect cpuset.effective_cpus and cpuset.effective_mems which show
-the actual cpus and memory nodes that are currently used by this cpuset.
-See Documentation/admin-guide/cgroup-v2.rst for more information about
-cpuset v2 behavior.
 
 
 1.4 What are exclusive cpusets ?
@@ -719,7 +706,7 @@ There are ways to query or modify cpusets:
    cat, rmdir commands from the shell, or their equivalent from C.
  - via the C library libcpuset.
  - via the C library libcgroup.
-   (https://github.com/libcgroup/libcgroup/)
+   (http://sourceforge.net/projects/libcg/)
  - via the python application cset.
    (http://code.google.com/p/cpuset/)
 

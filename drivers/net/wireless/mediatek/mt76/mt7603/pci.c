@@ -7,7 +7,7 @@
 #include "mt7603.h"
 
 static const struct pci_device_id mt76pci_device_table[] = {
-	{ PCI_DEVICE(PCI_VENDOR_ID_MEDIATEK, 0x7603) },
+	{ PCI_DEVICE(0x14c3, 0x7603) },
 	{ },
 };
 
@@ -28,7 +28,7 @@ mt76pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	pci_set_master(pdev);
 
-	ret = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32));
+	ret = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
 	if (ret)
 		return ret;
 
@@ -44,8 +44,6 @@ mt76pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		    (mt76_rr(dev, MT_HW_REV) & 0xff);
 	dev_info(mdev->dev, "ASIC revision: %04x\n", mdev->rev);
 
-	mt76_wr(dev, MT_INT_MASK_CSR, 0);
-
 	ret = devm_request_irq(mdev->dev, pdev->irq, mt7603_irq_handler,
 			       IRQF_SHARED, KBUILD_MODNAME, dev);
 	if (ret)
@@ -57,8 +55,7 @@ mt76pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	return 0;
 error:
-	mt76_free_device(&dev->mt76);
-
+	ieee80211_free_hw(mt76_hw(dev));
 	return ret;
 }
 

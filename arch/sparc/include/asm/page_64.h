@@ -4,7 +4,8 @@
 
 #include <linux/const.h>
 
-#define PAGE_SHIFT   CONFIG_PAGE_SHIFT
+#define PAGE_SHIFT   13
+
 #define PAGE_SIZE    (_AC(1,UL) << PAGE_SHIFT)
 #define PAGE_MASK    (~(PAGE_SIZE-1))
 
@@ -156,6 +157,9 @@ extern unsigned long PAGE_OFFSET;
 #define phys_to_virt __va
 
 #endif /* !(__ASSEMBLY__) */
+
+#define VM_DATA_DEFAULT_FLAGS	(VM_READ | VM_WRITE | VM_EXEC | \
+				 VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)
 
 #include <asm-generic/getorder.h>
 

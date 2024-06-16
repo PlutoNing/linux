@@ -13,6 +13,7 @@
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/types.h>
+#include <linux/genhd.h>
 #include <linux/blkdev.h>
 #include <linux/hdreg.h>
 #include <linux/slab.h>
@@ -54,12 +55,13 @@ struct nfhd_device {
 	int id;
 	u32 blocks, bsize;
 	int bshift;
+	struct request_queue *queue;
 	struct gendisk *disk;
 };
 
-static void nfhd_submit_bio(struct bio *bio)
+static blk_qc_t nfhd_make_request(struct request_queue *queue, struct bio *bio)
 {
-	struct nfhd_device *dev = bio->bi_bdev->bd_disk->private_data;
+	struct nfhd_device *dev = queue->queuedata;
 	struct bio_vec bvec;
 	struct bvec_iter iter;
 	int dir, len, shift;
@@ -75,6 +77,7 @@ static void nfhd_submit_bio(struct bio *bio)
 		sec += len;
 	}
 	bio_endio(bio);
+	return BLK_QC_T_NONE;
 }
 
 static int nfhd_getgeo(struct block_device *bdev, struct hd_geometry *geo)
@@ -90,18 +93,13 @@ static int nfhd_getgeo(struct block_device *bdev, struct hd_geometry *geo)
 
 static const struct block_device_operations nfhd_ops = {
 	.owner	= THIS_MODULE,
-	.submit_bio = nfhd_submit_bio,
 	.getgeo	= nfhd_getgeo,
 };
 
 static int __init nfhd_init_one(int id, u32 blocks, u32 bsize)
 {
-	struct queue_limits lim = {
-		.logical_block_size	= bsize,
-	};
 	struct nfhd_device *dev;
 	int dev_id = id - NFHD_DEV_OFFSET;
-	int err = -ENOMEM;
 
 	pr_info("nfhd%u: found device with %u blocks (%u bytes)\n", dev_id,
 		blocks, bsize);
@@ -120,33 +118,38 @@ static int __init nfhd_init_one(int id, u32 blocks, u32 bsize)
 	dev->bsize = bsize;
 	dev->bshift = ffs(bsize) - 10;
 
-	dev->disk = blk_alloc_disk(&lim, NUMA_NO_NODE);
-	if (IS_ERR(dev->disk)) {
-		err = PTR_ERR(dev->disk);
+	dev->queue = blk_alloc_queue(GFP_KERNEL);
+	if (dev->queue == NULL)
 		goto free_dev;
-	}
+
+	dev->queue->queuedata = dev;
+	blk_queue_make_request(dev->queue, nfhd_make_request);
+	blk_queue_logical_block_size(dev->queue, bsize);
+
+	dev->disk = alloc_disk(16);
+	if (!dev->disk)
+		goto free_queue;
 
 	dev->disk->major = major_num;
 	dev->disk->first_minor = dev_id * 16;
-	dev->disk->minors = 16;
 	dev->disk->fops = &nfhd_ops;
 	dev->disk->private_data = dev;
 	sprintf(dev->disk->disk_name, "nfhd%u", dev_id);
 	set_capacity(dev->disk, (sector_t)blocks * (bsize / 512));
-	err = add_disk(dev->disk);
-	if (err)
-		goto out_cleanup_disk;
+	dev->disk->queue = dev->queue;
+
+	add_disk(dev->disk);
 
 	list_add_tail(&dev->list, &nfhd_list);
 
 	return 0;
 
-out_cleanup_disk:
-	put_disk(dev->disk);
+free_queue:
+	blk_cleanup_queue(dev->queue);
 free_dev:
 	kfree(dev);
 out:
-	return err;
+	return -ENOMEM;
 }
 
 static int __init nfhd_init(void)
@@ -185,6 +188,7 @@ static void __exit nfhd_exit(void)
 		list_del(&dev->list);
 		del_gendisk(dev->disk);
 		put_disk(dev->disk);
+		blk_cleanup_queue(dev->queue);
 		kfree(dev);
 	}
 	unregister_blkdev(major_num, "nfhd");

@@ -13,6 +13,7 @@
 #include <crypto/scatterwalk.h>
 #include <crypto/gcm.h>
 #include <crypto/hash.h>
+#include "internal.h"
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -110,6 +111,8 @@ static int crypto_gcm_setkey(struct crypto_aead *aead, const u8 *key,
 	crypto_skcipher_set_flags(ctr, crypto_aead_get_flags(aead) &
 				       CRYPTO_TFM_REQ_MASK);
 	err = crypto_skcipher_setkey(ctr, key, keylen);
+	crypto_aead_set_flags(aead, crypto_skcipher_get_flags(ctr) &
+				    CRYPTO_TFM_RES_MASK);
 	if (err)
 		return err;
 
@@ -138,8 +141,11 @@ static int crypto_gcm_setkey(struct crypto_aead *aead, const u8 *key,
 	crypto_ahash_set_flags(ghash, crypto_aead_get_flags(aead) &
 			       CRYPTO_TFM_REQ_MASK);
 	err = crypto_ahash_setkey(ghash, (u8 *)&data->hash, sizeof(be128));
+	crypto_aead_set_flags(aead, crypto_ahash_get_flags(ghash) &
+			      CRYPTO_TFM_RES_MASK);
+
 out:
-	kfree_sensitive(data);
+	kzfree(data);
 	return err;
 }
 
@@ -197,7 +203,7 @@ static inline unsigned int gcm_remain(unsigned int len)
 	return len ? 16 - len : 0;
 }
 
-static void gcm_hash_len_done(void *data, int err);
+static void gcm_hash_len_done(struct crypto_async_request *areq, int err);
 
 static int gcm_hash_update(struct aead_request *req,
 			   crypto_completion_t compl,
@@ -246,9 +252,9 @@ static int gcm_hash_len_continue(struct aead_request *req, u32 flags)
 	return gctx->complete(req, flags);
 }
 
-static void gcm_hash_len_done(void *data, int err)
+static void gcm_hash_len_done(struct crypto_async_request *areq, int err)
 {
-	struct aead_request *req = data;
+	struct aead_request *req = areq->data;
 
 	if (err)
 		goto out;
@@ -267,9 +273,10 @@ static int gcm_hash_crypt_remain_continue(struct aead_request *req, u32 flags)
 	       gcm_hash_len_continue(req, flags);
 }
 
-static void gcm_hash_crypt_remain_done(void *data, int err)
+static void gcm_hash_crypt_remain_done(struct crypto_async_request *areq,
+				       int err)
 {
-	struct aead_request *req = data;
+	struct aead_request *req = areq->data;
 
 	if (err)
 		goto out;
@@ -297,9 +304,9 @@ static int gcm_hash_crypt_continue(struct aead_request *req, u32 flags)
 	return gcm_hash_crypt_remain_continue(req, flags);
 }
 
-static void gcm_hash_crypt_done(void *data, int err)
+static void gcm_hash_crypt_done(struct crypto_async_request *areq, int err)
 {
-	struct aead_request *req = data;
+	struct aead_request *req = areq->data;
 
 	if (err)
 		goto out;
@@ -325,9 +332,10 @@ static int gcm_hash_assoc_remain_continue(struct aead_request *req, u32 flags)
 	return gcm_hash_crypt_remain_continue(req, flags);
 }
 
-static void gcm_hash_assoc_remain_done(void *data, int err)
+static void gcm_hash_assoc_remain_done(struct crypto_async_request *areq,
+				       int err)
 {
-	struct aead_request *req = data;
+	struct aead_request *req = areq->data;
 
 	if (err)
 		goto out;
@@ -353,9 +361,9 @@ static int gcm_hash_assoc_continue(struct aead_request *req, u32 flags)
 	return gcm_hash_assoc_remain_continue(req, flags);
 }
 
-static void gcm_hash_assoc_done(void *data, int err)
+static void gcm_hash_assoc_done(struct crypto_async_request *areq, int err)
 {
-	struct aead_request *req = data;
+	struct aead_request *req = areq->data;
 
 	if (err)
 		goto out;
@@ -378,9 +386,9 @@ static int gcm_hash_init_continue(struct aead_request *req, u32 flags)
 	return gcm_hash_assoc_remain_continue(req, flags);
 }
 
-static void gcm_hash_init_done(void *data, int err)
+static void gcm_hash_init_done(struct crypto_async_request *areq, int err)
 {
-	struct aead_request *req = data;
+	struct aead_request *req = areq->data;
 
 	if (err)
 		goto out;
@@ -431,9 +439,9 @@ static int gcm_encrypt_continue(struct aead_request *req, u32 flags)
 	return gcm_hash(req, flags);
 }
 
-static void gcm_encrypt_done(void *data, int err)
+static void gcm_encrypt_done(struct crypto_async_request *areq, int err)
 {
-	struct aead_request *req = data;
+	struct aead_request *req = areq->data;
 
 	if (err)
 		goto out;
@@ -475,9 +483,9 @@ static int crypto_gcm_verify(struct aead_request *req)
 	return crypto_memneq(iauth_tag, auth_tag, authsize) ? -EBADMSG : 0;
 }
 
-static void gcm_decrypt_done(void *data, int err)
+static void gcm_decrypt_done(struct crypto_async_request *areq, int err)
 {
-	struct aead_request *req = data;
+	struct aead_request *req = areq->data;
 
 	if (!err)
 		err = crypto_gcm_verify(req);
@@ -576,63 +584,84 @@ static int crypto_gcm_create_common(struct crypto_template *tmpl,
 				    const char *ctr_name,
 				    const char *ghash_name)
 {
-	struct skcipher_alg_common *ctr;
-	u32 mask;
+	struct crypto_attr_type *algt;
 	struct aead_instance *inst;
-	struct gcm_instance_ctx *ctx;
+	struct skcipher_alg *ctr;
+	struct crypto_alg *ghash_alg;
 	struct hash_alg_common *ghash;
+	struct gcm_instance_ctx *ctx;
 	int err;
 
-	err = crypto_check_attr_type(tb, CRYPTO_ALG_TYPE_AEAD, &mask);
-	if (err)
-		return err;
+	algt = crypto_get_attr_type(tb);
+	if (IS_ERR(algt))
+		return PTR_ERR(algt);
 
+	if ((algt->type ^ CRYPTO_ALG_TYPE_AEAD) & algt->mask)
+		return -EINVAL;
+
+	ghash_alg = crypto_find_alg(ghash_name, &crypto_ahash_type,
+				    CRYPTO_ALG_TYPE_HASH,
+				    CRYPTO_ALG_TYPE_AHASH_MASK |
+				    crypto_requires_sync(algt->type,
+							 algt->mask));
+	if (IS_ERR(ghash_alg))
+		return PTR_ERR(ghash_alg);
+
+	ghash = __crypto_hash_alg_common(ghash_alg);
+
+	err = -ENOMEM;
 	inst = kzalloc(sizeof(*inst) + sizeof(*ctx), GFP_KERNEL);
 	if (!inst)
-		return -ENOMEM;
-	ctx = aead_instance_ctx(inst);
+		goto out_put_ghash;
 
-	err = crypto_grab_ahash(&ctx->ghash, aead_crypto_instance(inst),
-				ghash_name, 0, mask);
+	ctx = aead_instance_ctx(inst);
+	err = crypto_init_ahash_spawn(&ctx->ghash, ghash,
+				      aead_crypto_instance(inst));
 	if (err)
 		goto err_free_inst;
-	ghash = crypto_spawn_ahash_alg(&ctx->ghash);
 
 	err = -EINVAL;
 	if (strcmp(ghash->base.cra_name, "ghash") != 0 ||
 	    ghash->digestsize != 16)
-		goto err_free_inst;
+		goto err_drop_ghash;
 
-	err = crypto_grab_skcipher(&ctx->ctr, aead_crypto_instance(inst),
-				   ctr_name, 0, mask);
+	crypto_set_skcipher_spawn(&ctx->ctr, aead_crypto_instance(inst));
+	err = crypto_grab_skcipher(&ctx->ctr, ctr_name, 0,
+				   crypto_requires_sync(algt->type,
+							algt->mask));
 	if (err)
-		goto err_free_inst;
-	ctr = crypto_spawn_skcipher_alg_common(&ctx->ctr);
+		goto err_drop_ghash;
+
+	ctr = crypto_spawn_skcipher_alg(&ctx->ctr);
 
 	/* The skcipher algorithm must be CTR mode, using 16-byte blocks. */
 	err = -EINVAL;
 	if (strncmp(ctr->base.cra_name, "ctr(", 4) != 0 ||
-	    ctr->ivsize != 16 || ctr->base.cra_blocksize != 1)
-		goto err_free_inst;
+	    crypto_skcipher_alg_ivsize(ctr) != 16 ||
+	    ctr->base.cra_blocksize != 1)
+		goto out_put_ctr;
 
 	err = -ENAMETOOLONG;
 	if (snprintf(inst->alg.base.cra_name, CRYPTO_MAX_ALG_NAME,
 		     "gcm(%s", ctr->base.cra_name + 4) >= CRYPTO_MAX_ALG_NAME)
-		goto err_free_inst;
+		goto out_put_ctr;
 
 	if (snprintf(inst->alg.base.cra_driver_name, CRYPTO_MAX_ALG_NAME,
 		     "gcm_base(%s,%s)", ctr->base.cra_driver_name,
-		     ghash->base.cra_driver_name) >=
+		     ghash_alg->cra_driver_name) >=
 	    CRYPTO_MAX_ALG_NAME)
-		goto err_free_inst;
+		goto out_put_ctr;
 
+	inst->alg.base.cra_flags = (ghash->base.cra_flags |
+				    ctr->base.cra_flags) & CRYPTO_ALG_ASYNC;
 	inst->alg.base.cra_priority = (ghash->base.cra_priority +
 				       ctr->base.cra_priority) / 2;
 	inst->alg.base.cra_blocksize = 1;
-	inst->alg.base.cra_alignmask = ctr->base.cra_alignmask;
+	inst->alg.base.cra_alignmask = ghash->base.cra_alignmask |
+				       ctr->base.cra_alignmask;
 	inst->alg.base.cra_ctxsize = sizeof(struct crypto_gcm_ctx);
 	inst->alg.ivsize = GCM_AES_IV_SIZE;
-	inst->alg.chunksize = ctr->chunksize;
+	inst->alg.chunksize = crypto_skcipher_alg_chunksize(ctr);
 	inst->alg.maxauthsize = 16;
 	inst->alg.init = crypto_gcm_init_tfm;
 	inst->alg.exit = crypto_gcm_exit_tfm;
@@ -644,11 +673,20 @@ static int crypto_gcm_create_common(struct crypto_template *tmpl,
 	inst->free = crypto_gcm_free;
 
 	err = aead_register_instance(tmpl, inst);
-	if (err) {
-err_free_inst:
-		crypto_gcm_free(inst);
-	}
+	if (err)
+		goto out_put_ctr;
+
+out_put_ghash:
+	crypto_mod_put(ghash_alg);
 	return err;
+
+out_put_ctr:
+	crypto_drop_skcipher(&ctx->ctr);
+err_drop_ghash:
+	crypto_drop_ahash(&ctx->ghash);
+err_free_inst:
+	kfree(inst);
+	goto out_put_ghash;
 }
 
 static int crypto_gcm_create(struct crypto_template *tmpl, struct rtattr **tb)
@@ -689,6 +727,7 @@ static int crypto_rfc4106_setkey(struct crypto_aead *parent, const u8 *key,
 {
 	struct crypto_rfc4106_ctx *ctx = crypto_aead_ctx(parent);
 	struct crypto_aead *child = ctx->child;
+	int err;
 
 	if (keylen < 4)
 		return -EINVAL;
@@ -699,7 +738,11 @@ static int crypto_rfc4106_setkey(struct crypto_aead *parent, const u8 *key,
 	crypto_aead_clear_flags(child, CRYPTO_TFM_REQ_MASK);
 	crypto_aead_set_flags(child, crypto_aead_get_flags(parent) &
 				     CRYPTO_TFM_REQ_MASK);
-	return crypto_aead_setkey(child, key, keylen);
+	err = crypto_aead_setkey(child, key, keylen);
+	crypto_aead_set_flags(parent, crypto_aead_get_flags(child) &
+				      CRYPTO_TFM_RES_MASK);
+
+	return err;
 }
 
 static int crypto_rfc4106_setauthsize(struct crypto_aead *parent,
@@ -823,25 +866,34 @@ static void crypto_rfc4106_free(struct aead_instance *inst)
 static int crypto_rfc4106_create(struct crypto_template *tmpl,
 				 struct rtattr **tb)
 {
-	u32 mask;
+	struct crypto_attr_type *algt;
 	struct aead_instance *inst;
 	struct crypto_aead_spawn *spawn;
 	struct aead_alg *alg;
+	const char *ccm_name;
 	int err;
 
-	err = crypto_check_attr_type(tb, CRYPTO_ALG_TYPE_AEAD, &mask);
-	if (err)
-		return err;
+	algt = crypto_get_attr_type(tb);
+	if (IS_ERR(algt))
+		return PTR_ERR(algt);
+
+	if ((algt->type ^ CRYPTO_ALG_TYPE_AEAD) & algt->mask)
+		return -EINVAL;
+
+	ccm_name = crypto_attr_alg_name(tb[1]);
+	if (IS_ERR(ccm_name))
+		return PTR_ERR(ccm_name);
 
 	inst = kzalloc(sizeof(*inst) + sizeof(*spawn), GFP_KERNEL);
 	if (!inst)
 		return -ENOMEM;
 
 	spawn = aead_instance_ctx(inst);
-	err = crypto_grab_aead(spawn, aead_crypto_instance(inst),
-			       crypto_attr_alg_name(tb[1]), 0, mask);
+	crypto_set_aead_spawn(spawn, aead_crypto_instance(inst));
+	err = crypto_grab_aead(spawn, ccm_name, 0,
+			       crypto_requires_sync(algt->type, algt->mask));
 	if (err)
-		goto err_free_inst;
+		goto out_free_inst;
 
 	alg = crypto_spawn_aead_alg(spawn);
 
@@ -849,11 +901,11 @@ static int crypto_rfc4106_create(struct crypto_template *tmpl,
 
 	/* Underlying IV size must be 12. */
 	if (crypto_aead_alg_ivsize(alg) != GCM_AES_IV_SIZE)
-		goto err_free_inst;
+		goto out_drop_alg;
 
 	/* Not a stream cipher? */
 	if (alg->base.cra_blocksize != 1)
-		goto err_free_inst;
+		goto out_drop_alg;
 
 	err = -ENAMETOOLONG;
 	if (snprintf(inst->alg.base.cra_name, CRYPTO_MAX_ALG_NAME,
@@ -862,8 +914,9 @@ static int crypto_rfc4106_create(struct crypto_template *tmpl,
 	    snprintf(inst->alg.base.cra_driver_name, CRYPTO_MAX_ALG_NAME,
 		     "rfc4106(%s)", alg->base.cra_driver_name) >=
 	    CRYPTO_MAX_ALG_NAME)
-		goto err_free_inst;
+		goto out_drop_alg;
 
+	inst->alg.base.cra_flags = alg->base.cra_flags & CRYPTO_ALG_ASYNC;
 	inst->alg.base.cra_priority = alg->base.cra_priority;
 	inst->alg.base.cra_blocksize = 1;
 	inst->alg.base.cra_alignmask = alg->base.cra_alignmask;
@@ -885,11 +938,17 @@ static int crypto_rfc4106_create(struct crypto_template *tmpl,
 	inst->free = crypto_rfc4106_free;
 
 	err = aead_register_instance(tmpl, inst);
-	if (err) {
-err_free_inst:
-		crypto_rfc4106_free(inst);
-	}
+	if (err)
+		goto out_drop_alg;
+
+out:
 	return err;
+
+out_drop_alg:
+	crypto_drop_aead(spawn);
+out_free_inst:
+	kfree(inst);
+	goto out;
 }
 
 static int crypto_rfc4543_setkey(struct crypto_aead *parent, const u8 *key,
@@ -897,6 +956,7 @@ static int crypto_rfc4543_setkey(struct crypto_aead *parent, const u8 *key,
 {
 	struct crypto_rfc4543_ctx *ctx = crypto_aead_ctx(parent);
 	struct crypto_aead *child = ctx->child;
+	int err;
 
 	if (keylen < 4)
 		return -EINVAL;
@@ -907,7 +967,11 @@ static int crypto_rfc4543_setkey(struct crypto_aead *parent, const u8 *key,
 	crypto_aead_clear_flags(child, CRYPTO_TFM_REQ_MASK);
 	crypto_aead_set_flags(child, crypto_aead_get_flags(parent) &
 				     CRYPTO_TFM_REQ_MASK);
-	return crypto_aead_setkey(child, key, keylen);
+	err = crypto_aead_setkey(child, key, keylen);
+	crypto_aead_set_flags(parent, crypto_aead_get_flags(child) &
+				      CRYPTO_TFM_RES_MASK);
+
+	return err;
 }
 
 static int crypto_rfc4543_setauthsize(struct crypto_aead *parent,
@@ -1038,37 +1102,48 @@ static void crypto_rfc4543_free(struct aead_instance *inst)
 static int crypto_rfc4543_create(struct crypto_template *tmpl,
 				struct rtattr **tb)
 {
-	u32 mask;
+	struct crypto_attr_type *algt;
 	struct aead_instance *inst;
+	struct crypto_aead_spawn *spawn;
 	struct aead_alg *alg;
 	struct crypto_rfc4543_instance_ctx *ctx;
+	const char *ccm_name;
 	int err;
 
-	err = crypto_check_attr_type(tb, CRYPTO_ALG_TYPE_AEAD, &mask);
-	if (err)
-		return err;
+	algt = crypto_get_attr_type(tb);
+	if (IS_ERR(algt))
+		return PTR_ERR(algt);
+
+	if ((algt->type ^ CRYPTO_ALG_TYPE_AEAD) & algt->mask)
+		return -EINVAL;
+
+	ccm_name = crypto_attr_alg_name(tb[1]);
+	if (IS_ERR(ccm_name))
+		return PTR_ERR(ccm_name);
 
 	inst = kzalloc(sizeof(*inst) + sizeof(*ctx), GFP_KERNEL);
 	if (!inst)
 		return -ENOMEM;
 
 	ctx = aead_instance_ctx(inst);
-	err = crypto_grab_aead(&ctx->aead, aead_crypto_instance(inst),
-			       crypto_attr_alg_name(tb[1]), 0, mask);
+	spawn = &ctx->aead;
+	crypto_set_aead_spawn(spawn, aead_crypto_instance(inst));
+	err = crypto_grab_aead(spawn, ccm_name, 0,
+			       crypto_requires_sync(algt->type, algt->mask));
 	if (err)
-		goto err_free_inst;
+		goto out_free_inst;
 
-	alg = crypto_spawn_aead_alg(&ctx->aead);
+	alg = crypto_spawn_aead_alg(spawn);
 
 	err = -EINVAL;
 
 	/* Underlying IV size must be 12. */
 	if (crypto_aead_alg_ivsize(alg) != GCM_AES_IV_SIZE)
-		goto err_free_inst;
+		goto out_drop_alg;
 
 	/* Not a stream cipher? */
 	if (alg->base.cra_blocksize != 1)
-		goto err_free_inst;
+		goto out_drop_alg;
 
 	err = -ENAMETOOLONG;
 	if (snprintf(inst->alg.base.cra_name, CRYPTO_MAX_ALG_NAME,
@@ -1077,8 +1152,9 @@ static int crypto_rfc4543_create(struct crypto_template *tmpl,
 	    snprintf(inst->alg.base.cra_driver_name, CRYPTO_MAX_ALG_NAME,
 		     "rfc4543(%s)", alg->base.cra_driver_name) >=
 	    CRYPTO_MAX_ALG_NAME)
-		goto err_free_inst;
+		goto out_drop_alg;
 
+	inst->alg.base.cra_flags = alg->base.cra_flags & CRYPTO_ALG_ASYNC;
 	inst->alg.base.cra_priority = alg->base.cra_priority;
 	inst->alg.base.cra_blocksize = 1;
 	inst->alg.base.cra_alignmask = alg->base.cra_alignmask;
@@ -1097,14 +1173,20 @@ static int crypto_rfc4543_create(struct crypto_template *tmpl,
 	inst->alg.encrypt = crypto_rfc4543_encrypt;
 	inst->alg.decrypt = crypto_rfc4543_decrypt;
 
-	inst->free = crypto_rfc4543_free;
+	inst->free = crypto_rfc4543_free,
 
 	err = aead_register_instance(tmpl, inst);
-	if (err) {
-err_free_inst:
-		crypto_rfc4543_free(inst);
-	}
+	if (err)
+		goto out_drop_alg;
+
+out:
 	return err;
+
+out_drop_alg:
+	crypto_drop_aead(spawn);
+out_free_inst:
+	kfree(inst);
+	goto out;
 }
 
 static struct crypto_template crypto_gcm_tmpls[] = {

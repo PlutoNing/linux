@@ -13,7 +13,6 @@
  *    Dharam Kumar <dharam.kr@samsung.com>
  */
 #include <drm/bridge/mhl.h>
-#include <drm/drm_bridge.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
 
@@ -836,39 +835,53 @@ static int sii9234_init_resources(struct sii9234 *ctx,
 	ctx->supplies[3].supply = "cvcc12";
 	ret = devm_regulator_bulk_get(ctx->dev, 4, ctx->supplies);
 	if (ret) {
-		if (ret != -EPROBE_DEFER)
-			dev_err(ctx->dev, "regulator_bulk failed\n");
+		dev_err(ctx->dev, "regulator_bulk failed\n");
 		return ret;
 	}
 
 	ctx->client[I2C_MHL] = client;
 
-	ctx->client[I2C_TPI] = devm_i2c_new_dummy_device(&client->dev, adapter,
-							 I2C_TPI_ADDR);
-	if (IS_ERR(ctx->client[I2C_TPI])) {
+	ctx->client[I2C_TPI] = i2c_new_dummy(adapter, I2C_TPI_ADDR);
+	if (!ctx->client[I2C_TPI]) {
 		dev_err(ctx->dev, "failed to create TPI client\n");
-		return PTR_ERR(ctx->client[I2C_TPI]);
+		return -ENODEV;
 	}
 
-	ctx->client[I2C_HDMI] = devm_i2c_new_dummy_device(&client->dev, adapter,
-							  I2C_HDMI_ADDR);
-	if (IS_ERR(ctx->client[I2C_HDMI])) {
+	ctx->client[I2C_HDMI] = i2c_new_dummy(adapter, I2C_HDMI_ADDR);
+	if (!ctx->client[I2C_HDMI]) {
 		dev_err(ctx->dev, "failed to create HDMI RX client\n");
-		return PTR_ERR(ctx->client[I2C_HDMI]);
+		goto fail_tpi;
 	}
 
-	ctx->client[I2C_CBUS] = devm_i2c_new_dummy_device(&client->dev, adapter,
-							  I2C_CBUS_ADDR);
-	if (IS_ERR(ctx->client[I2C_CBUS])) {
+	ctx->client[I2C_CBUS] = i2c_new_dummy(adapter, I2C_CBUS_ADDR);
+	if (!ctx->client[I2C_CBUS]) {
 		dev_err(ctx->dev, "failed to create CBUS client\n");
-		return PTR_ERR(ctx->client[I2C_CBUS]);
+		goto fail_hdmi;
 	}
 
 	return 0;
+
+fail_hdmi:
+	i2c_unregister_device(ctx->client[I2C_HDMI]);
+fail_tpi:
+	i2c_unregister_device(ctx->client[I2C_TPI]);
+
+	return -ENODEV;
+}
+
+static void sii9234_deinit_resources(struct sii9234 *ctx)
+{
+	i2c_unregister_device(ctx->client[I2C_CBUS]);
+	i2c_unregister_device(ctx->client[I2C_HDMI]);
+	i2c_unregister_device(ctx->client[I2C_TPI]);
+}
+
+static inline struct sii9234 *bridge_to_sii9234(struct drm_bridge *bridge)
+{
+	return container_of(bridge, struct sii9234, bridge);
 }
 
 static enum drm_mode_status sii9234_mode_valid(struct drm_bridge *bridge,
-					 const struct drm_display_info *info,
 					 const struct drm_display_mode *mode)
 {
 	if (mode->clock > MHL1_MAX_CLK)
@@ -881,7 +894,8 @@ static const struct drm_bridge_funcs sii9234_bridge_funcs = {
 	.mode_valid = sii9234_mode_valid,
 };
 
-static int sii9234_probe(struct i2c_client *client)
+static int sii9234_probe(struct i2c_client *client,
+			 const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = client->adapter;
 	struct sii9234 *ctx;
@@ -930,12 +944,15 @@ static int sii9234_probe(struct i2c_client *client)
 	return 0;
 }
 
-static void sii9234_remove(struct i2c_client *client)
+static int sii9234_remove(struct i2c_client *client)
 {
 	struct sii9234 *ctx = i2c_get_clientdata(client);
 
 	sii9234_cable_out(ctx);
 	drm_bridge_remove(&ctx->bridge);
+	sii9234_deinit_resources(ctx);
+
+	return 0;
 }
 
 static const struct of_device_id sii9234_dt_match[] = {

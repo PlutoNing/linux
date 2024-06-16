@@ -10,11 +10,11 @@
  *
  * setjmp/longjmp code by Paul Mackerras.
  */
-#include <linux/export.h>
 #include <asm/ppc_asm.h>
 #include <asm/unistd.h>
 #include <asm/asm-compat.h>
 #include <asm/asm-offsets.h>
+#include <asm/export.h>
 
 	.text
 
@@ -29,15 +29,13 @@ _GLOBAL(reloc_offset)
 	li	r3, 0
 _GLOBAL(add_reloc_offset)
 	mflr	r0
-	bcl	20,31,$+4
+	bl	1f
 1:	mflr	r5
 	PPC_LL	r4,(2f-1b)(r5)
 	subf	r5,r4,r5
 	add	r3,r3,r5
 	mtlr	r0
 	blr
-_ASM_NOKPROBE_SYMBOL(reloc_offset)
-_ASM_NOKPROBE_SYMBOL(add_reloc_offset)
 
 	.align	3
 2:	PPC_LONG 1b
@@ -112,7 +110,7 @@ _GLOBAL(longjmp)
 	li	r3, 1
 	blr
 
-_GLOBAL(current_stack_frame)
+_GLOBAL(current_stack_pointer)
 	PPC_LL	r3,0(r1)
 	blr
-EXPORT_SYMBOL(current_stack_frame)
+EXPORT_SYMBOL(current_stack_pointer)

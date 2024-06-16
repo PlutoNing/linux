@@ -1,3 +1,4 @@
+#if defined(CONFIG_DRM_AMD_DC_DCN2_0)
 
 /*
  * Copyright 2017 Advanced Micro Devices, Inc.
@@ -26,7 +27,7 @@
 #ifndef __DSCC_TYPES_H__
 #define __DSCC_TYPES_H__
 
-#include <drm/display/drm_dsc.h>
+#include <drm/drm_dsc.h>
 
 #ifndef NUM_BUF_RANGES
 #define NUM_BUF_RANGES 15
@@ -46,10 +47,8 @@ struct dsc_parameters {
 	uint32_t rc_buffer_model_size;
 };
 
-struct rc_params;
+int dscc_compute_dsc_parameters(const struct drm_dsc_config *pps, struct dsc_parameters *dsc_params);
 
-int dscc_compute_dsc_parameters(const struct drm_dsc_config *pps,
-		const struct rc_params *rc,
-		struct dsc_parameters *dsc_params);
 #endif
 
+#endif

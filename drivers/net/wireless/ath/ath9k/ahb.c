@@ -92,15 +92,19 @@ static int ath_ahb_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-	mem = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	mem = devm_ioremap_nocache(&pdev->dev, res->start, resource_size(res));
 	if (mem == NULL) {
 		dev_err(&pdev->dev, "ioremap failed\n");
 		return -ENOMEM;
 	}
 
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0)
-		return irq;
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (res == NULL) {
+		dev_err(&pdev->dev, "no IRQ resource found\n");
+		return -ENXIO;
+	}
+
+	irq = res->start;
 
 	ath9k_fill_chanctx_ops();
 	hw = ieee80211_alloc_hw(sizeof(struct ath_softc), &ath9k_ops);
@@ -132,8 +136,8 @@ static int ath_ahb_probe(struct platform_device *pdev)
 
 	ah = sc->sc_ah;
 	ath9k_hw_name(ah, hw_name, sizeof(hw_name));
-	wiphy_info(hw->wiphy, "%s mem=0x%p, irq=%d\n",
-		   hw_name, mem, irq);
+	wiphy_info(hw->wiphy, "%s mem=0x%lx, irq=%d\n",
+		   hw_name, (unsigned long)mem, irq);
 
 	return 0;
 
@@ -144,7 +148,7 @@ static int ath_ahb_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static void ath_ahb_remove(struct platform_device *pdev)
+static int ath_ahb_remove(struct platform_device *pdev)
 {
 	struct ieee80211_hw *hw = platform_get_drvdata(pdev);
 
@@ -155,11 +159,13 @@ static void ath_ahb_remove(struct platform_device *pdev)
 		free_irq(sc->irq, sc);
 		ieee80211_free_hw(sc->hw);
 	}
+
+	return 0;
 }
 
 static struct platform_driver ath_ahb_driver = {
 	.probe      = ath_ahb_probe,
-	.remove_new = ath_ahb_remove,
+	.remove     = ath_ahb_remove,
 	.driver		= {
 		.name	= "ath9k",
 	},

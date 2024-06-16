@@ -300,9 +300,7 @@ static s32 e1000_init_phy_workarounds_pchlan(struct e1000_hw *hw)
 	 * so forcibly disable it.
 	 */
 	hw->dev_spec.ich8lan.ulp_state = e1000_ulp_state_unknown;
-	ret_val = e1000_disable_ulp_lpt_lp(hw, true);
-	if (ret_val)
-		e_warn("Failed to disable ULP\n");
+	e1000_disable_ulp_lpt_lp(hw, true);
 
 	ret_val = hw->phy.ops.acquire(hw);
 	if (ret_val) {
@@ -318,12 +316,6 @@ static s32 e1000_init_phy_workarounds_pchlan(struct e1000_hw *hw)
 	case e1000_pch_lpt:
 	case e1000_pch_spt:
 	case e1000_pch_cnp:
-	case e1000_pch_tgp:
-	case e1000_pch_adp:
-	case e1000_pch_mtp:
-	case e1000_pch_lnp:
-	case e1000_pch_ptp:
-	case e1000_pch_nvp:
 		if (e1000_phy_is_accessible_pchlan(hw))
 			break;
 
@@ -340,12 +332,12 @@ static s32 e1000_init_phy_workarounds_pchlan(struct e1000_hw *hw)
 		 */
 		msleep(50);
 
-		fallthrough;
+		/* fall-through */
 	case e1000_pch2lan:
 		if (e1000_phy_is_accessible_pchlan(hw))
 			break;
 
-		fallthrough;
+		/* fall-through */
 	case e1000_pchlan:
 		if ((hw->mac.type == e1000_pchlan) &&
 		    (fwsm & E1000_ICH_FWSM_FW_VALID))
@@ -461,17 +453,11 @@ static s32 e1000_init_phy_params_pchlan(struct e1000_hw *hw)
 				return ret_val;
 			if ((phy->id != 0) && (phy->id != PHY_REVISION_MASK))
 				break;
-			fallthrough;
+			/* fall-through */
 		case e1000_pch2lan:
 		case e1000_pch_lpt:
 		case e1000_pch_spt:
 		case e1000_pch_cnp:
-		case e1000_pch_tgp:
-		case e1000_pch_adp:
-		case e1000_pch_mtp:
-		case e1000_pch_lnp:
-		case e1000_pch_ptp:
-		case e1000_pch_nvp:
 			/* In case the PHY needs to be in mdio slow mode,
 			 * set slow mode and try to get the PHY id again.
 			 */
@@ -710,16 +696,10 @@ static s32 e1000_init_mac_params_ich8lan(struct e1000_hw *hw)
 	case e1000_pch2lan:
 		mac->rar_entry_count = E1000_PCH2_RAR_ENTRIES;
 		mac->ops.rar_set = e1000_rar_set_pch2lan;
-		fallthrough;
+		/* fall-through */
 	case e1000_pch_lpt:
 	case e1000_pch_spt:
 	case e1000_pch_cnp:
-	case e1000_pch_tgp:
-	case e1000_pch_adp:
-	case e1000_pch_mtp:
-	case e1000_pch_lnp:
-	case e1000_pch_ptp:
-	case e1000_pch_nvp:
 	case e1000_pchlan:
 		/* check management mode */
 		mac->ops.check_mng_mode = e1000_check_mng_mode_pchlan;
@@ -755,7 +735,7 @@ static s32 e1000_init_mac_params_ich8lan(struct e1000_hw *hw)
 /**
  *  __e1000_access_emi_reg_locked - Read/write EMI register
  *  @hw: pointer to the HW structure
- *  @address: EMI address to program
+ *  @addr: EMI address to program
  *  @data: pointer to value to read/write from/to the EMI address
  *  @read: boolean flag to indicate read or write
  *
@@ -1015,8 +995,6 @@ static s32 e1000_platform_pm_pch_lpt(struct e1000_hw *hw, bool link)
 {
 	u32 reg = link << (E1000_LTRV_REQ_SHIFT + E1000_LTRV_NOSNOOP_SHIFT) |
 	    link << E1000_LTRV_REQ_SHIFT | E1000_LTRV_SEND;
-	u32 max_ltr_enc_d = 0;	/* maximum LTR decoded by platform */
-	u32 lat_enc_d = 0;	/* latency decoded */
 	u16 lat_enc = 0;	/* latency encoded */
 
 	if (link) {
@@ -1070,15 +1048,7 @@ static s32 e1000_platform_pm_pch_lpt(struct e1000_hw *hw, bool link)
 				     E1000_PCI_LTR_CAP_LPT + 2, &max_nosnoop);
 		max_ltr_enc = max_t(u16, max_snoop, max_nosnoop);
 
-		lat_enc_d = (lat_enc & E1000_LTRV_VALUE_MASK) *
-			     (1U << (E1000_LTRV_SCALE_FACTOR *
-			     FIELD_GET(E1000_LTRV_SCALE_MASK, lat_enc)));
-
-		max_ltr_enc_d = (max_ltr_enc & E1000_LTRV_VALUE_MASK) *
-			(1U << (E1000_LTRV_SCALE_FACTOR *
-				FIELD_GET(E1000_LTRV_SCALE_MASK, max_ltr_enc)));
-
-		if (lat_enc_d > max_ltr_enc_d)
+		if (lat_enc > max_ltr_enc)
 			lat_enc = max_ltr_enc;
 	}
 
@@ -1259,9 +1229,6 @@ static s32 e1000_disable_ulp_lpt_lp(struct e1000_hw *hw, bool force)
 		return 0;
 
 	if (er32(FWSM) & E1000_ICH_FWSM_FW_VALID) {
-		struct e1000_adapter *adapter = hw->adapter;
-		bool firmware_bug = false;
-
 		if (force) {
 			/* Request ME un-configure ULP mode in the PHY */
 			mac_reg = er32(H2ME);
@@ -1270,26 +1237,16 @@ static s32 e1000_disable_ulp_lpt_lp(struct e1000_hw *hw, bool force)
 			ew32(H2ME, mac_reg);
 		}
 
-		/* Poll up to 2.5 seconds for ME to clear ULP_CFG_DONE.
-		 * If this takes more than 1 second, show a warning indicating a
-		 * firmware bug
-		 */
+		/* Poll up to 300msec for ME to clear ULP_CFG_DONE. */
 		while (er32(FWSM) & E1000_FWSM_ULP_CFG_DONE) {
-			if (i++ == 250) {
+			if (i++ == 30) {
 				ret_val = -E1000_ERR_PHY;
 				goto out;
 			}
-			if (i > 100 && !firmware_bug)
-				firmware_bug = true;
 
 			usleep_range(10000, 11000);
 		}
-		if (firmware_bug)
-			e_warn("ULP_CONFIG_DONE took %d msec. This is a firmware bug\n",
-			       i * 10);
-		else
-			e_dbg("ULP_CONFIG_DONE cleared after %d msec\n",
-			      i * 10);
+		e_dbg("ULP_CONFIG_DONE cleared after %dmsec\n", i * 10);
 
 		if (force) {
 			mac_reg = er32(H2ME);
@@ -1592,7 +1549,7 @@ static s32 e1000_check_for_copper_link_ich8lan(struct e1000_hw *hw)
 		ret_val = e1000_k1_workaround_lv(hw);
 		if (ret_val)
 			return ret_val;
-		fallthrough;
+		/* fall-thru */
 	case e1000_pchlan:
 		if (hw->phy.type == e1000_phy_82578) {
 			ret_val = e1000_link_stall_workaround_hv(hw);
@@ -1681,12 +1638,6 @@ static s32 e1000_get_variants_ich8lan(struct e1000_adapter *adapter)
 	case e1000_pch_lpt:
 	case e1000_pch_spt:
 	case e1000_pch_cnp:
-	case e1000_pch_tgp:
-	case e1000_pch_adp:
-	case e1000_pch_mtp:
-	case e1000_pch_lnp:
-	case e1000_pch_ptp:
-	case e1000_pch_nvp:
 		rc = e1000_init_phy_params_pchlan(hw);
 		break;
 	default:
@@ -2073,7 +2024,8 @@ static s32 e1000_write_smbus_addr(struct e1000_hw *hw)
 {
 	u16 phy_data;
 	u32 strap = er32(STRAP);
-	u32 freq = FIELD_GET(E1000_STRAP_SMT_FREQ_MASK, strap);
+	u32 freq = (strap & E1000_STRAP_SMT_FREQ_MASK) >>
+	    E1000_STRAP_SMT_FREQ_SHIFT;
 	s32 ret_val;
 
 	strap &= E1000_STRAP_SMBUS_ADDRESS_MASK;
@@ -2132,18 +2084,12 @@ static s32 e1000_sw_lcd_config_ich8lan(struct e1000_hw *hw)
 			sw_cfg_mask = E1000_FEXTNVM_SW_CONFIG;
 			break;
 		}
-		fallthrough;
+		/* Fall-thru */
 	case e1000_pchlan:
 	case e1000_pch2lan:
 	case e1000_pch_lpt:
 	case e1000_pch_spt:
 	case e1000_pch_cnp:
-	case e1000_pch_tgp:
-	case e1000_pch_adp:
-	case e1000_pch_mtp:
-	case e1000_pch_lnp:
-	case e1000_pch_ptp:
-	case e1000_pch_nvp:
 		sw_cfg_mask = E1000_FEXTNVM_SW_CONFIG_ICH8M;
 		break;
 	default:
@@ -2308,7 +2254,7 @@ release:
 /**
  *  e1000_configure_k1_ich8lan - Configure K1 power state
  *  @hw: pointer to the HW structure
- *  @k1_enable: K1 state to configure
+ *  @enable: K1 state to configure
  *
  *  Configure the K1 power state based on the provided parameter.
  *  Assumes semaphore already acquired.
@@ -2447,10 +2393,8 @@ static s32 e1000_set_mdio_slow_mode_hv(struct e1000_hw *hw)
 }
 
 /**
- *  e1000_hv_phy_workarounds_ich8lan - apply PHY workarounds
- *  @hw: pointer to the HW structure
- *
- *  A series of PHY workarounds to be done after every PHY reset.
+ *  e1000_hv_phy_workarounds_ich8lan - A series of Phy workarounds to be
+ *  done after every PHY reset.
  **/
 static s32 e1000_hv_phy_workarounds_ich8lan(struct e1000_hw *hw)
 {
@@ -2559,7 +2503,8 @@ void e1000_copy_rx_addrs_to_phy_ich8lan(struct e1000_hw *hw)
 		hw->phy.ops.write_reg_page(hw, BM_RAR_H(i),
 					   (u16)(mac_reg & 0xFFFF));
 		hw->phy.ops.write_reg_page(hw, BM_RAR_CTRL(i),
-					   (u16)((mac_reg & E1000_RAH_AV) >> 16));
+					   (u16)((mac_reg & E1000_RAH_AV)
+						 >> 16));
 	}
 
 	e1000_disable_phy_wakeup_reg_access_bm(hw, &phy_reg);
@@ -2737,10 +2682,8 @@ s32 e1000_lv_jumbo_workaround_ich8lan(struct e1000_hw *hw, bool enable)
 }
 
 /**
- *  e1000_lv_phy_workarounds_ich8lan - apply ich8 specific workarounds
- *  @hw: pointer to the HW structure
- *
- *  A series of PHY workarounds to be done after every PHY reset.
+ *  e1000_lv_phy_workarounds_ich8lan - A series of Phy workarounds to be
+ *  done after every PHY reset.
  **/
 static s32 e1000_lv_phy_workarounds_ich8lan(struct e1000_hw *hw)
 {
@@ -2770,7 +2713,7 @@ release:
 }
 
 /**
- *  e1000_k1_workaround_lv - K1 Si workaround
+ *  e1000_k1_gig_workaround_lv - K1 Si workaround
  *  @hw:   pointer to the HW structure
  *
  *  Workaround to set the K1 beacon duration for 82579 parts in 10Mbps
@@ -3184,12 +3127,6 @@ static s32 e1000_valid_nvm_bank_detect_ich8lan(struct e1000_hw *hw, u32 *bank)
 	switch (hw->mac.type) {
 	case e1000_pch_spt:
 	case e1000_pch_cnp:
-	case e1000_pch_tgp:
-	case e1000_pch_adp:
-	case e1000_pch_mtp:
-	case e1000_pch_lnp:
-	case e1000_pch_ptp:
-	case e1000_pch_nvp:
 		bank1_offset = nvm->flash_bank_size;
 		act_offset = E1000_ICH_NVM_SIG_WORD;
 
@@ -3201,7 +3138,7 @@ static s32 e1000_valid_nvm_bank_detect_ich8lan(struct e1000_hw *hw, u32 *bank)
 							 &nvm_dword);
 		if (ret_val)
 			return ret_val;
-		sig_byte = FIELD_GET(0xFF00, nvm_dword);
+		sig_byte = (u8)((nvm_dword & 0xFF00) >> 8);
 		if ((sig_byte & E1000_ICH_NVM_VALID_SIG_MASK) ==
 		    E1000_ICH_NVM_SIG_VALUE) {
 			*bank = 0;
@@ -3214,7 +3151,7 @@ static s32 e1000_valid_nvm_bank_detect_ich8lan(struct e1000_hw *hw, u32 *bank)
 							 &nvm_dword);
 		if (ret_val)
 			return ret_val;
-		sig_byte = FIELD_GET(0xFF00, nvm_dword);
+		sig_byte = (u8)((nvm_dword & 0xFF00) >> 8);
 		if ((sig_byte & E1000_ICH_NVM_VALID_SIG_MASK) ==
 		    E1000_ICH_NVM_SIG_VALUE) {
 			*bank = 1;
@@ -3236,7 +3173,7 @@ static s32 e1000_valid_nvm_bank_detect_ich8lan(struct e1000_hw *hw, u32 *bank)
 			return 0;
 		}
 		e_dbg("Unable to determine valid NVM bank via EEC - reading flash signature\n");
-		fallthrough;
+		/* fall-thru */
 	default:
 		/* set bank to 0 in case flash read fails */
 		*bank = 0;
@@ -3914,6 +3851,13 @@ static s32 e1000_update_nvm_checksum_spt(struct e1000_hw *hw)
 	if (ret_val)
 		goto release;
 
+	/* And invalidate the previously valid segment by setting
+	 * its signature word (0x13) high_byte to 0b. This can be
+	 * done without an erase because flash erase sets all bits
+	 * to 1's. We can write 1's to 0's without an erase
+	 */
+	act_offset = (old_bank_offset + E1000_ICH_NVM_SIG_WORD) * 2 + 1;
+
 	/* offset in words but we read dword */
 	act_offset = old_bank_offset + E1000_ICH_NVM_SIG_WORD - 1;
 	ret_val = e1000_read_flash_dword_ich8lan(hw, act_offset, &dword);
@@ -4126,12 +4070,6 @@ static s32 e1000_validate_nvm_checksum_ich8lan(struct e1000_hw *hw)
 	case e1000_pch_lpt:
 	case e1000_pch_spt:
 	case e1000_pch_cnp:
-	case e1000_pch_tgp:
-	case e1000_pch_adp:
-	case e1000_pch_mtp:
-	case e1000_pch_lnp:
-	case e1000_pch_ptp:
-	case e1000_pch_nvp:
 		word = NVM_COMPAT;
 		valid_csum_mask = NVM_COMPAT_VALID_CSUM;
 		break;
@@ -4146,17 +4084,13 @@ static s32 e1000_validate_nvm_checksum_ich8lan(struct e1000_hw *hw)
 		return ret_val;
 
 	if (!(data & valid_csum_mask)) {
-		e_dbg("NVM Checksum valid bit not set\n");
-
-		if (hw->mac.type < e1000_pch_tgp) {
-			data |= valid_csum_mask;
-			ret_val = e1000_write_nvm(hw, word, 1, &data);
-			if (ret_val)
-				return ret_val;
-			ret_val = e1000e_update_nvm_checksum(hw);
-			if (ret_val)
-				return ret_val;
-		}
+		data |= valid_csum_mask;
+		ret_val = e1000_write_nvm(hw, word, 1, &data);
+		if (ret_val)
+			return ret_val;
+		ret_val = e1000e_update_nvm_checksum(hw);
+		if (ret_val)
+			return ret_val;
 	}
 
 	return e1000e_validate_nvm_checksum_generic(hw);
@@ -4674,7 +4608,7 @@ static s32 e1000_id_led_init_pchlan(struct e1000_hw *hw)
  *  @hw: pointer to the HW structure
  *
  *  ICH8 use the PCI Express bus, but does not contain a PCI Express Capability
- *  register, so the bus width is hard coded.
+ *  register, so the the bus width is hard coded.
  **/
 static s32 e1000_get_bus_info_ich8lan(struct e1000_hw *hw)
 {
@@ -4823,7 +4757,7 @@ static s32 e1000_reset_hw_ich8lan(struct e1000_hw *hw)
 static s32 e1000_init_hw_ich8lan(struct e1000_hw *hw)
 {
 	struct e1000_mac_info *mac = &hw->mac;
-	u32 ctrl_ext, txdctl, snoop, fflt_dbg;
+	u32 ctrl_ext, txdctl, snoop;
 	s32 ret_val;
 	u16 i;
 
@@ -4881,15 +4815,6 @@ static s32 e1000_init_hw_ich8lan(struct e1000_hw *hw)
 	else
 		snoop = (u32)~(PCIE_NO_SNOOP_ALL);
 	e1000e_set_pcie_no_snoop(hw, snoop);
-
-	/* Enable workaround for packet loss issue on TGP PCH
-	 * Do not gate DMA clock from the modPHY block
-	 */
-	if (mac->type >= e1000_pch_tgp) {
-		fflt_dbg = er32(FFLT_DBG);
-		fflt_dbg |= E1000_FFLT_DBG_DONT_GATE_WAKE_DMA_CLK;
-		ew32(FFLT_DBG, fflt_dbg);
-	}
 
 	ctrl_ext = er32(CTRL_EXT);
 	ctrl_ext |= E1000_CTRL_EXT_RO_DIS;
@@ -5264,7 +5189,7 @@ void e1000e_set_kmrn_lock_loss_workaround_ich8lan(struct e1000_hw *hw,
 }
 
 /**
- *  e1000e_igp3_phy_powerdown_workaround_ich8lan - Power down workaround on D3
+ *  e1000_ipg3_phy_powerdown_workaround_ich8lan - Power down workaround on D3
  *  @hw: pointer to the HW structure
  *
  *  Workaround for 82566 power-down on D3 entry:
@@ -5994,66 +5919,6 @@ const struct e1000_info e1000_pch_spt_info = {
 
 const struct e1000_info e1000_pch_cnp_info = {
 	.mac			= e1000_pch_cnp,
-	.flags			= FLAG_IS_ICH
-				  | FLAG_HAS_WOL
-				  | FLAG_HAS_HW_TIMESTAMP
-				  | FLAG_HAS_CTRLEXT_ON_LOAD
-				  | FLAG_HAS_AMT
-				  | FLAG_HAS_FLASH
-				  | FLAG_HAS_JUMBO_FRAMES
-				  | FLAG_APME_IN_WUC,
-	.flags2			= FLAG2_HAS_PHY_STATS
-				  | FLAG2_HAS_EEE,
-	.pba			= 26,
-	.max_hw_frame_size	= 9022,
-	.get_variants		= e1000_get_variants_ich8lan,
-	.mac_ops		= &ich8_mac_ops,
-	.phy_ops		= &ich8_phy_ops,
-	.nvm_ops		= &spt_nvm_ops,
-};
-
-const struct e1000_info e1000_pch_tgp_info = {
-	.mac			= e1000_pch_tgp,
-	.flags			= FLAG_IS_ICH
-				  | FLAG_HAS_WOL
-				  | FLAG_HAS_HW_TIMESTAMP
-				  | FLAG_HAS_CTRLEXT_ON_LOAD
-				  | FLAG_HAS_AMT
-				  | FLAG_HAS_FLASH
-				  | FLAG_HAS_JUMBO_FRAMES
-				  | FLAG_APME_IN_WUC,
-	.flags2			= FLAG2_HAS_PHY_STATS
-				  | FLAG2_HAS_EEE,
-	.pba			= 26,
-	.max_hw_frame_size	= 9022,
-	.get_variants		= e1000_get_variants_ich8lan,
-	.mac_ops		= &ich8_mac_ops,
-	.phy_ops		= &ich8_phy_ops,
-	.nvm_ops		= &spt_nvm_ops,
-};
-
-const struct e1000_info e1000_pch_adp_info = {
-	.mac			= e1000_pch_adp,
-	.flags			= FLAG_IS_ICH
-				  | FLAG_HAS_WOL
-				  | FLAG_HAS_HW_TIMESTAMP
-				  | FLAG_HAS_CTRLEXT_ON_LOAD
-				  | FLAG_HAS_AMT
-				  | FLAG_HAS_FLASH
-				  | FLAG_HAS_JUMBO_FRAMES
-				  | FLAG_APME_IN_WUC,
-	.flags2			= FLAG2_HAS_PHY_STATS
-				  | FLAG2_HAS_EEE,
-	.pba			= 26,
-	.max_hw_frame_size	= 9022,
-	.get_variants		= e1000_get_variants_ich8lan,
-	.mac_ops		= &ich8_mac_ops,
-	.phy_ops		= &ich8_phy_ops,
-	.nvm_ops		= &spt_nvm_ops,
-};
-
-const struct e1000_info e1000_pch_mtp_info = {
-	.mac			= e1000_pch_mtp,
 	.flags			= FLAG_IS_ICH
 				  | FLAG_HAS_WOL
 				  | FLAG_HAS_HW_TIMESTAMP

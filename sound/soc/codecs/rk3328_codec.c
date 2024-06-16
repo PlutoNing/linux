@@ -7,10 +7,10 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/device.h>
-#include <linux/gpio/consumer.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/mfd/syscon.h>
 #include <sound/dmaengine_pcm.h>
@@ -31,7 +31,7 @@
 
 struct rk3328_codec_priv {
 	struct regmap *regmap;
-	struct gpio_desc *mute;
+	struct regmap *grf;
 	struct clk *mclk;
 	struct clk *pclk;
 	unsigned int sclk;
@@ -68,11 +68,11 @@ static int rk3328_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 		snd_soc_component_get_drvdata(dai->component);
 	unsigned int val;
 
-	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
-	case SND_SOC_DAIFMT_CBC_CFC:
+	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
+	case SND_SOC_DAIFMT_CBS_CFS:
 		val = PIN_DIRECTION_IN | DAC_I2S_MODE_SLAVE;
 		break;
-	case SND_SOC_DAIFMT_CBP_CFP:
+	case SND_SOC_DAIFMT_CBM_CFM:
 		val = PIN_DIRECTION_OUT | DAC_I2S_MODE_MASTER;
 		break;
 	default:
@@ -106,7 +106,17 @@ static int rk3328_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	return 0;
 }
 
-static int rk3328_mute_stream(struct snd_soc_dai *dai, int mute, int direction)
+static void rk3328_analog_output(struct rk3328_codec_priv *rk3328, int mute)
+{
+	unsigned int val = BIT(17);
+
+	if (mute)
+		val |= BIT(1);
+
+	regmap_write(rk3328->grf, RK3328_GRF_SOC_CON10, val);
+}
+
+static int rk3328_digital_mute(struct snd_soc_dai *dai, int mute)
 {
 	struct rk3328_codec_priv *rk3328 =
 		snd_soc_component_get_drvdata(dai->component);
@@ -195,7 +205,7 @@ static int rk3328_codec_open_playback(struct rk3328_codec_priv *rk3328)
 	}
 
 	msleep(rk3328->spk_depop_time);
-	gpiod_set_value(rk3328->mute, 0);
+	rk3328_analog_output(rk3328, 1);
 
 	regmap_update_bits(rk3328->regmap, HPOUTL_GAIN_CTRL,
 			   HPOUTL_GAIN_MASK, OUT_VOLUME);
@@ -236,7 +246,7 @@ static int rk3328_codec_close_playback(struct rk3328_codec_priv *rk3328)
 {
 	size_t i;
 
-	gpiod_set_value(rk3328->mute, 1);
+	rk3328_analog_output(rk3328, 0);
 
 	regmap_update_bits(rk3328->regmap, HPOUTL_GAIN_CTRL,
 			   HPOUTL_GAIN_MASK, 0);
@@ -315,10 +325,9 @@ static void rk3328_pcm_shutdown(struct snd_pcm_substream *substream,
 static const struct snd_soc_dai_ops rk3328_dai_ops = {
 	.hw_params = rk3328_hw_params,
 	.set_fmt = rk3328_set_dai_fmt,
-	.mute_stream = rk3328_mute_stream,
+	.digital_mute = rk3328_digital_mute,
 	.startup = rk3328_pcm_startup,
 	.shutdown = rk3328_pcm_shutdown,
-	.no_capture_mute = 1,
 };
 
 static struct snd_soc_dai_driver rk3328_dai[] = {
@@ -437,6 +446,7 @@ static int rk3328_platform_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "missing 'rockchip,grf'\n");
 		return PTR_ERR(grf);
 	}
+	rk3328->grf = grf;
 	/* enable i2s_acodec_en */
 	regmap_write(grf, RK3328_GRF_SOC_CON2,
 		     (BIT(14) << 16 | BIT(14)));
@@ -448,18 +458,7 @@ static int rk3328_platform_probe(struct platform_device *pdev)
 		rk3328->spk_depop_time = 200;
 	}
 
-	rk3328->mute = gpiod_get_optional(&pdev->dev, "mute", GPIOD_OUT_HIGH);
-	if (IS_ERR(rk3328->mute))
-		return PTR_ERR(rk3328->mute);
-	/*
-	 * Rock64 is the only supported platform to have widely relied on
-	 * this; if we do happen to come across an old DTB, just leave the
-	 * external mute forced off.
-	 */
-	if (!rk3328->mute && of_machine_is_compatible("pine64,rock64")) {
-		dev_warn(&pdev->dev, "assuming implicit control of GPIO_MUTE; update devicetree if possible\n");
-		regmap_write(grf, RK3328_GRF_SOC_CON10, BIT(17) | BIT(1));
-	}
+	rk3328_analog_output(rk3328, 0);
 
 	rk3328->mclk = devm_clk_get(&pdev->dev, "mclk");
 	if (IS_ERR(rk3328->mclk))
@@ -473,48 +472,32 @@ static int rk3328_platform_probe(struct platform_device *pdev)
 	rk3328->pclk = devm_clk_get(&pdev->dev, "pclk");
 	if (IS_ERR(rk3328->pclk)) {
 		dev_err(&pdev->dev, "can't get acodec pclk\n");
-		ret = PTR_ERR(rk3328->pclk);
-		goto err_unprepare_mclk;
+		return PTR_ERR(rk3328->pclk);
 	}
 
 	ret = clk_prepare_enable(rk3328->pclk);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to enable acodec pclk\n");
-		goto err_unprepare_mclk;
+		return ret;
 	}
 
 	base = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(base)) {
-		ret = PTR_ERR(base);
-		goto err_unprepare_pclk;
-	}
+	if (IS_ERR(base))
+		return PTR_ERR(base);
 
 	rk3328->regmap = devm_regmap_init_mmio(&pdev->dev, base,
 					       &rk3328_codec_regmap_config);
-	if (IS_ERR(rk3328->regmap)) {
-		ret = PTR_ERR(rk3328->regmap);
-		goto err_unprepare_pclk;
-	}
+	if (IS_ERR(rk3328->regmap))
+		return PTR_ERR(rk3328->regmap);
 
 	platform_set_drvdata(pdev, rk3328);
 
-	ret = devm_snd_soc_register_component(&pdev->dev, &soc_codec_rk3328,
+	return devm_snd_soc_register_component(&pdev->dev, &soc_codec_rk3328,
 					       rk3328_dai,
 					       ARRAY_SIZE(rk3328_dai));
-	if (ret)
-		goto err_unprepare_pclk;
-
-	return 0;
-
-err_unprepare_pclk:
-	clk_disable_unprepare(rk3328->pclk);
-
-err_unprepare_mclk:
-	clk_disable_unprepare(rk3328->mclk);
-	return ret;
 }
 
-static const struct of_device_id rk3328_codec_of_match[] __maybe_unused = {
+static const struct of_device_id rk3328_codec_of_match[] = {
 		{ .compatible = "rockchip,rk3328-codec", },
 		{},
 };

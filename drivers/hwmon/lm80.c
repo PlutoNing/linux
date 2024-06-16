@@ -117,7 +117,7 @@ struct lm80_data {
 	struct i2c_client *client;
 	struct mutex update_lock;
 	char error;		/* !=0 if error occurred during last update */
-	bool valid;		/* true if following fields are valid */
+	char valid;		/* !=0 if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
 
 	u8 in[i_num_in][7];	/* Register value, 1st index is enum in_index */
@@ -236,14 +236,14 @@ static struct lm80_data *lm80_update_device(struct device *dev)
 		data->alarms = prev_rv + (rv << 8);
 
 		data->last_updated = jiffies;
-		data->valid = true;
+		data->valid = 1;
 		data->error = 0;
 	}
 	goto done;
 
 abort:
 	ret = ERR_PTR(rv);
-	data->valid = false;
+	data->valid = 0;
 	data->error = 1;
 
 done:
@@ -586,16 +586,18 @@ static int lm80_detect(struct i2c_client *client, struct i2c_board_info *info)
 		name = "lm80";
 	}
 
-	strscpy(info->type, name, I2C_NAME_SIZE);
+	strlcpy(info->type, name, I2C_NAME_SIZE);
 
 	return 0;
 }
 
-static int lm80_probe(struct i2c_client *client)
+static int lm80_probe(struct i2c_client *client,
+		      const struct i2c_device_id *id)
 {
 	struct device *dev = &client->dev;
 	struct device *hwmon_dev;
 	struct lm80_data *data;
+	int rv;
 
 	data = devm_kzalloc(dev, sizeof(struct lm80_data), GFP_KERNEL);
 	if (!data)
@@ -608,8 +610,14 @@ static int lm80_probe(struct i2c_client *client)
 	lm80_init_client(client);
 
 	/* A few vars need to be filled upon startup */
-	data->fan[f_min][0] = lm80_read_value(client, LM80_REG_FAN_MIN(1));
-	data->fan[f_min][1] = lm80_read_value(client, LM80_REG_FAN_MIN(2));
+	rv = lm80_read_value(client, LM80_REG_FAN_MIN(1));
+	if (rv < 0)
+		return rv;
+	data->fan[f_min][0] = rv;
+	rv = lm80_read_value(client, LM80_REG_FAN_MIN(2));
+	if (rv < 0)
+		return rv;
+	data->fan[f_min][1] = rv;
 
 	hwmon_dev = devm_hwmon_device_register_with_groups(dev, client->name,
 							   data, lm80_groups);

@@ -20,12 +20,13 @@
 #include <sched.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <inttypes.h>
 
 #include "tm.h"
 
 int tm_poison_test(void)
 {
-	int cpu, pid;
+	int pid;
 	cpu_set_t cpuset;
 	uint64_t poison = 0xdeadbeefc0dec0fe;
 	uint64_t unknown = 0;
@@ -33,15 +34,11 @@ int tm_poison_test(void)
 	bool fail_vr = false;
 
 	SKIP_IF(!have_htm());
-	SKIP_IF(htm_is_synthetic());
 
-	cpu = pick_online_cpu();
-	FAIL_IF(cpu < 0);
-
-	// Attach both Child and Parent to the same CPU
+	/* Attach both Child and Parent to CPU 0 */
 	CPU_ZERO(&cpuset);
-	CPU_SET(cpu, &cpuset);
-	FAIL_IF(sched_setaffinity(0, sizeof(cpuset), &cpuset) != 0);
+	CPU_SET(0, &cpuset);
+	sched_setaffinity(0, sizeof(cpuset), &cpuset);
 
 	pid = fork();
 	if (!pid) {

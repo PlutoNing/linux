@@ -125,15 +125,16 @@ static int __init amimouse_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void __exit amimouse_remove(struct platform_device *pdev)
+static int __exit amimouse_remove(struct platform_device *pdev)
 {
 	struct input_dev *dev = platform_get_drvdata(pdev);
 
 	input_unregister_device(dev);
+	return 0;
 }
 
 static struct platform_driver amimouse_driver = {
-	.remove_new = __exit_p(amimouse_remove),
+	.remove = __exit_p(amimouse_remove),
 	.driver   = {
 		.name	= "amiga-mouse",
 	},

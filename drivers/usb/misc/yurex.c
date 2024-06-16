@@ -34,8 +34,6 @@
 #define YUREX_BUF_SIZE		8
 #define YUREX_WRITE_TIMEOUT	(HZ*2)
 
-#define MAX_S64_STRLEN 20 /* {-}922337203685477580{7,8} */
-
 /* table of devices that work with this driver */
 static struct usb_device_id yurex_table[] = {
 	{ USB_DEVICE(YUREX_VENDOR_ID, YUREX_PRODUCT_ID) },
@@ -98,13 +96,15 @@ static void yurex_delete(struct kref *kref)
 	if (dev->cntl_urb) {
 		usb_kill_urb(dev->cntl_urb);
 		kfree(dev->cntl_req);
-		usb_free_coherent(dev->udev, YUREX_BUF_SIZE,
+		if (dev->cntl_buffer)
+			usb_free_coherent(dev->udev, YUREX_BUF_SIZE,
 				dev->cntl_buffer, dev->cntl_urb->transfer_dma);
 		usb_free_urb(dev->cntl_urb);
 	}
 	if (dev->urb) {
 		usb_kill_urb(dev->urb);
-		usb_free_coherent(dev->udev, YUREX_BUF_SIZE,
+		if (dev->int_buffer)
+			usb_free_coherent(dev->udev, YUREX_BUF_SIZE,
 				dev->int_buffer, dev->urb->transfer_dma);
 		usb_free_urb(dev->urb);
 	}
@@ -139,7 +139,6 @@ static void yurex_interrupt(struct urb *urb)
 		dev_err(&dev->interface->dev,
 			"%s - overflow with length %d, actual length is %d\n",
 			__func__, YUREX_BUF_SIZE, dev->urb->actual_length);
-		return;
 	case -ECONNRESET:
 	case -ENOENT:
 	case -ESHUTDOWN:
@@ -403,7 +402,7 @@ static ssize_t yurex_read(struct file *file, char __user *buffer, size_t count,
 {
 	struct usb_yurex *dev;
 	int len = 0;
-	char in_buffer[MAX_S64_STRLEN];
+	char in_buffer[20];
 	unsigned long flags;
 
 	dev = file->private_data;
@@ -414,15 +413,13 @@ static ssize_t yurex_read(struct file *file, char __user *buffer, size_t count,
 		return -ENODEV;
 	}
 
-	if (WARN_ON_ONCE(dev->bbu > S64_MAX || dev->bbu < S64_MIN)) {
-		mutex_unlock(&dev->io_mutex);
-		return -EIO;
-	}
-
 	spin_lock_irqsave(&dev->lock, flags);
-	scnprintf(in_buffer, MAX_S64_STRLEN, "%lld\n", dev->bbu);
+	len = snprintf(in_buffer, 20, "%lld\n", dev->bbu);
 	spin_unlock_irqrestore(&dev->lock, flags);
 	mutex_unlock(&dev->io_mutex);
+
+	if (WARN_ON_ONCE(len >= sizeof(in_buffer)))
+		return -EIO;
 
 	return simple_read_from_buffer(buffer, count, ppos, in_buffer, len);
 }
@@ -475,7 +472,7 @@ static ssize_t yurex_write(struct file *file, const char __user *user_buffer,
 		break;
 	case CMD_SET:
 		data++;
-		fallthrough;
+		/* FALL THROUGH */
 	case '0' ... '9':
 		set = 1;
 		c = c2 = simple_strtoull(data, NULL, 0);
@@ -495,13 +492,10 @@ static ssize_t yurex_write(struct file *file, const char __user *user_buffer,
 	prepare_to_wait(&dev->waitq, &wait, TASK_INTERRUPTIBLE);
 	dev_dbg(&dev->interface->dev, "%s - submit %c\n", __func__,
 		dev->cntl_buffer[0]);
-	retval = usb_submit_urb(dev->cntl_urb, GFP_ATOMIC);
+	retval = usb_submit_urb(dev->cntl_urb, GFP_KERNEL);
 	if (retval >= 0)
 		timeout = schedule_timeout(YUREX_WRITE_TIMEOUT);
 	finish_wait(&dev->waitq, &wait);
-
-	/* make sure URB is idle after timeout or (spurious) CMD_ACK */
-	usb_kill_urb(dev->cntl_urb);
 
 	mutex_unlock(&dev->io_mutex);
 

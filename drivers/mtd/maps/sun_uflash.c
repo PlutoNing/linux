@@ -14,7 +14,7 @@
 #include <linux/errno.h>
 #include <linux/ioport.h>
 #include <linux/of.h>
-#include <linux/platform_device.h>
+#include <linux/of_device.h>
 #include <linux/slab.h>
 #include <asm/prom.h>
 #include <linux/uaccess.h>
@@ -32,6 +32,7 @@
 
 MODULE_AUTHOR("Eric Brower <ebrower@usa.net>");
 MODULE_DESCRIPTION("User-programmable flash device on Sun Microsystems boardsets");
+MODULE_SUPPORTED_DEVICE(DRIVER_NAME);
 MODULE_LICENSE("GPL");
 MODULE_VERSION("2.1");
 
@@ -47,7 +48,7 @@ struct map_info uflash_map_templ = {
 	.bankwidth =	UFLASH_BUSWIDTH,
 };
 
-static int uflash_devinit(struct platform_device *op, struct device_node *dp)
+int uflash_devinit(struct platform_device *op, struct device_node *dp)
 {
 	struct uflash_dev *up;
 
@@ -62,8 +63,10 @@ static int uflash_devinit(struct platform_device *op, struct device_node *dp)
 	}
 
 	up = kzalloc(sizeof(struct uflash_dev), GFP_KERNEL);
-	if (!up)
+	if (!up) {
+		printk(KERN_ERR PFX "Cannot allocate struct uflash_dev\n");
 		return -ENOMEM;
+	}
 
 	/* copy defaults and tweak parameters */
 	memcpy(&up->map, &uflash_map_templ, sizeof(uflash_map_templ));
@@ -112,13 +115,13 @@ static int uflash_probe(struct platform_device *op)
 	/* Flashprom must have the "user" property in order to
 	 * be used by this driver.
 	 */
-	if (!of_property_read_bool(dp, "user"))
+	if (!of_find_property(dp, "user", NULL))
 		return -ENODEV;
 
 	return uflash_devinit(op, dp);
 }
 
-static void uflash_remove(struct platform_device *op)
+static int uflash_remove(struct platform_device *op)
 {
 	struct uflash_dev *up = dev_get_drvdata(&op->dev);
 
@@ -132,6 +135,8 @@ static void uflash_remove(struct platform_device *op)
 	}
 
 	kfree(up);
+
+	return 0;
 }
 
 static const struct of_device_id uflash_match[] = {
@@ -149,7 +154,7 @@ static struct platform_driver uflash_driver = {
 		.of_match_table = uflash_match,
 	},
 	.probe		= uflash_probe,
-	.remove_new	= uflash_remove,
+	.remove		= uflash_remove,
 };
 
 module_platform_driver(uflash_driver);

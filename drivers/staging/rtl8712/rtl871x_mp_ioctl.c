@@ -149,30 +149,26 @@ static int mp_start_test(struct _adapter *padapter)
 	struct mp_priv *pmppriv = &padapter->mppriv;
 	struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
 	struct wlan_network *tgt_network = &pmlmepriv->cur_network;
-	struct wlan_bssid_ex *bssid;
+	struct wlan_bssid_ex bssid;
 	struct sta_info *psta;
 	unsigned long length;
 	unsigned long irqL;
 	int res = 0;
 
-	bssid = kzalloc(sizeof(*bssid), GFP_KERNEL);
-	if (!bssid)
-		return -ENOMEM;
-
 	/* 3 1. initialize a new struct wlan_bssid_ex */
-	memcpy(bssid->MacAddress, pmppriv->network_macaddr, ETH_ALEN);
-	bssid->Ssid.SsidLength = 16;
-	memcpy(bssid->Ssid.Ssid, (unsigned char *)"mp_pseudo_adhoc",
-		bssid->Ssid.SsidLength);
-	bssid->InfrastructureMode = Ndis802_11IBSS;
-	bssid->NetworkTypeInUse = Ndis802_11DS;
-	bssid->IELength = 0;
-	length = r8712_get_wlan_bssid_ex_sz(bssid);
+	memcpy(bssid.MacAddress, pmppriv->network_macaddr, ETH_ALEN);
+	bssid.Ssid.SsidLength = 16;
+	memcpy(bssid.Ssid.Ssid, (unsigned char *)"mp_pseudo_adhoc",
+		bssid.Ssid.SsidLength);
+	bssid.InfrastructureMode = Ndis802_11IBSS;
+	bssid.NetworkTypeInUse = Ndis802_11DS;
+	bssid.IELength = 0;
+	length = r8712_get_wlan_bssid_ex_sz(&bssid);
 	if (length % 4) {
 		/*round up to multiple of 4 bytes.*/
-		bssid->Length = ((length >> 2) + 1) << 2;
+		bssid.Length = ((length >> 2) + 1) << 2;
 	} else {
-		bssid->Length = length;
+		bssid.Length = length;
 	}
 	spin_lock_irqsave(&pmlmepriv->lock, irqL);
 	if (check_fwstate(pmlmepriv, WIFI_MP_STATE))
@@ -189,22 +185,21 @@ static int mp_start_test(struct _adapter *padapter)
 				 tgt_network->network.MacAddress);
 	if (psta)
 		r8712_free_stainfo(padapter, psta);
-	psta = r8712_alloc_stainfo(&padapter->stapriv, bssid->MacAddress);
-	if (!psta) {
+	psta = r8712_alloc_stainfo(&padapter->stapriv, bssid.MacAddress);
+	if (psta == NULL) {
 		res = -ENOMEM;
 		goto end_of_mp_start_test;
 	}
 	/* 3 3. join pseudo AdHoc */
 	tgt_network->join_res = 1;
 	tgt_network->aid = psta->aid = 1;
-	memcpy(&tgt_network->network, bssid, length);
+	memcpy(&tgt_network->network, &bssid, length);
 	_clr_fwstate_(pmlmepriv, _FW_UNDER_LINKING);
 	r8712_os_indicate_connect(padapter);
 	/* Set to LINKED STATE for MP TRX Testing */
 	set_fwstate(pmlmepriv, _FW_LINKED);
 end_of_mp_start_test:
 	spin_unlock_irqrestore(&pmlmepriv->lock, irqL);
-	kfree(bssid);
 	return res;
 }
 
@@ -236,7 +231,8 @@ end_of_mp_stop_test:
 	return _SUCCESS;
 }
 
-uint oid_rt_pro_set_data_rate_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_set_data_rate_hdl(struct oid_par_priv
+					 *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -287,15 +283,17 @@ uint oid_rt_pro_stop_test_hdl(struct oid_par_priv *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
+	uint status = RNDIS_STATUS_SUCCESS;
 
 	if (poid_par_priv->type_of_oid != SET_OID)
 		return RNDIS_STATUS_NOT_ACCEPTED;
 	if (mp_stop_test(Adapter) == _FAIL)
-		return RNDIS_STATUS_NOT_ACCEPTED;
-	return RNDIS_STATUS_SUCCESS;
+		status = RNDIS_STATUS_NOT_ACCEPTED;
+	return status;
 }
 
-uint oid_rt_pro_set_channel_direct_call_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_set_channel_direct_call_hdl(struct oid_par_priv
+						   *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -330,7 +328,8 @@ uint oid_rt_pro_set_antenna_bb_hdl(struct oid_par_priv *poid_par_priv)
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_pro_set_tx_power_control_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_set_tx_power_control_hdl(
+					struct oid_par_priv *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -348,61 +347,71 @@ uint oid_rt_pro_set_tx_power_control_hdl(struct oid_par_priv *poid_par_priv)
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_pro_query_tx_packet_sent_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_query_tx_packet_sent_hdl(
+					struct oid_par_priv *poid_par_priv)
 {
+	uint status = RNDIS_STATUS_SUCCESS;
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
 
-	if (poid_par_priv->type_of_oid != QUERY_OID)
-		return RNDIS_STATUS_NOT_ACCEPTED;
-
+	if (poid_par_priv->type_of_oid != QUERY_OID) {
+		status = RNDIS_STATUS_NOT_ACCEPTED;
+		return status;
+	}
 	if (poid_par_priv->information_buf_len == sizeof(u32)) {
 		*(u32 *)poid_par_priv->information_buf =
 					Adapter->mppriv.tx_pktcount;
 		*poid_par_priv->bytes_rw = poid_par_priv->information_buf_len;
 	} else {
-		return RNDIS_STATUS_INVALID_LENGTH;
+		status = RNDIS_STATUS_INVALID_LENGTH;
 	}
-	return RNDIS_STATUS_SUCCESS;
+	return status;
 }
 
-uint oid_rt_pro_query_rx_packet_received_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_query_rx_packet_received_hdl(
+					struct oid_par_priv *poid_par_priv)
 {
+	uint status = RNDIS_STATUS_SUCCESS;
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
 
-	if (poid_par_priv->type_of_oid != QUERY_OID)
-		return RNDIS_STATUS_NOT_ACCEPTED;
-
+	if (poid_par_priv->type_of_oid != QUERY_OID) {
+		status = RNDIS_STATUS_NOT_ACCEPTED;
+		return status;
+	}
 	if (poid_par_priv->information_buf_len == sizeof(u32)) {
 		*(u32 *)poid_par_priv->information_buf =
 					Adapter->mppriv.rx_pktcount;
 		*poid_par_priv->bytes_rw = poid_par_priv->information_buf_len;
 	} else {
-		return RNDIS_STATUS_INVALID_LENGTH;
+		status = RNDIS_STATUS_INVALID_LENGTH;
 	}
-	return RNDIS_STATUS_SUCCESS;
+	return status;
 }
 
-uint oid_rt_pro_query_rx_packet_crc32_error_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_query_rx_packet_crc32_error_hdl(
+					struct oid_par_priv *poid_par_priv)
 {
+	uint status = RNDIS_STATUS_SUCCESS;
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
 
-	if (poid_par_priv->type_of_oid != QUERY_OID)
-		return RNDIS_STATUS_NOT_ACCEPTED;
-
+	if (poid_par_priv->type_of_oid != QUERY_OID) {
+		status = RNDIS_STATUS_NOT_ACCEPTED;
+		return status;
+	}
 	if (poid_par_priv->information_buf_len == sizeof(u32)) {
 		*(u32 *)poid_par_priv->information_buf =
 					Adapter->mppriv.rx_crcerrpktcount;
 		*poid_par_priv->bytes_rw = poid_par_priv->information_buf_len;
 	} else {
-		return RNDIS_STATUS_INVALID_LENGTH;
+		status = RNDIS_STATUS_INVALID_LENGTH;
 	}
-	return RNDIS_STATUS_SUCCESS;
+	return status;
 }
 
-uint oid_rt_pro_reset_tx_packet_sent_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_reset_tx_packet_sent_hdl(struct oid_par_priv
+						*poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -413,8 +422,10 @@ uint oid_rt_pro_reset_tx_packet_sent_hdl(struct oid_par_priv *poid_par_priv)
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_pro_reset_rx_packet_received_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_reset_rx_packet_received_hdl(struct oid_par_priv
+						    *poid_par_priv)
 {
+	uint status = RNDIS_STATUS_SUCCESS;
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
 
@@ -424,12 +435,13 @@ uint oid_rt_pro_reset_rx_packet_received_hdl(struct oid_par_priv *poid_par_priv)
 		Adapter->mppriv.rx_pktcount = 0;
 		Adapter->mppriv.rx_crcerrpktcount = 0;
 	} else {
-		return RNDIS_STATUS_INVALID_LENGTH;
+		status = RNDIS_STATUS_INVALID_LENGTH;
 	}
-	return RNDIS_STATUS_SUCCESS;
+	return status;
 }
 
-uint oid_rt_reset_phy_rx_packet_count_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_reset_phy_rx_packet_count_hdl(struct oid_par_priv
+						 *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -440,7 +452,8 @@ uint oid_rt_reset_phy_rx_packet_count_hdl(struct oid_par_priv *poid_par_priv)
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_get_phy_rx_packet_received_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_get_phy_rx_packet_received_hdl(struct oid_par_priv
+						  *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -455,7 +468,8 @@ uint oid_rt_get_phy_rx_packet_received_hdl(struct oid_par_priv *poid_par_priv)
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_get_phy_rx_packet_crc32_error_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_get_phy_rx_packet_crc32_error_hdl(struct oid_par_priv
+						     *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -470,7 +484,8 @@ uint oid_rt_get_phy_rx_packet_crc32_error_hdl(struct oid_par_priv *poid_par_priv
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_pro_set_modulation_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_set_modulation_hdl(struct oid_par_priv
+					  *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -482,7 +497,8 @@ uint oid_rt_pro_set_modulation_hdl(struct oid_par_priv *poid_par_priv)
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_pro_set_continuous_tx_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_set_continuous_tx_hdl(struct oid_par_priv
+					     *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -495,7 +511,8 @@ uint oid_rt_pro_set_continuous_tx_hdl(struct oid_par_priv *poid_par_priv)
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_pro_set_single_carrier_tx_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_set_single_carrier_tx_hdl(struct oid_par_priv
+						 *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -508,7 +525,8 @@ uint oid_rt_pro_set_single_carrier_tx_hdl(struct oid_par_priv *poid_par_priv)
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_pro_set_carrier_suppression_tx_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_set_carrier_suppression_tx_hdl(struct oid_par_priv
+						      *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -521,7 +539,8 @@ uint oid_rt_pro_set_carrier_suppression_tx_hdl(struct oid_par_priv *poid_par_pri
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_pro_set_single_tone_tx_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_set_single_tone_tx_hdl(struct oid_par_priv
+					      *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -534,7 +553,8 @@ uint oid_rt_pro_set_single_tone_tx_hdl(struct oid_par_priv *poid_par_priv)
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_pro_read_register_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_pro_read_register_hdl(struct oid_par_priv
+					 *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -686,7 +706,6 @@ uint oid_rt_pro_read_efuse_hdl(struct oid_par_priv *poid_par_priv)
 	*poid_par_priv->bytes_rw = poid_par_priv->information_buf_len;
 	return status;
 }
-
 /*------------------------------------------------------------------------*/
 uint oid_rt_pro_write_efuse_hdl(struct oid_par_priv *poid_par_priv)
 {
@@ -714,10 +733,10 @@ uint oid_rt_pro_write_efuse_hdl(struct oid_par_priv *poid_par_priv)
 		status = RNDIS_STATUS_FAILURE;
 	return status;
 }
-
 /*----------------------------------------------------------------------*/
 
-uint oid_rt_get_efuse_current_size_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_get_efuse_current_size_hdl(struct oid_par_priv
+					      *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -810,7 +829,8 @@ uint oid_rt_set_bandwidth_hdl(struct oid_par_priv *poid_par_priv)
 	return RNDIS_STATUS_SUCCESS;
 }
 
-uint oid_rt_set_rx_packet_type_hdl(struct oid_par_priv *poid_par_priv)
+uint oid_rt_set_rx_packet_type_hdl(struct oid_par_priv
+					   *poid_par_priv)
 {
 	struct _adapter *Adapter = (struct _adapter *)
 				   (poid_par_priv->adapter_context);
@@ -856,7 +876,6 @@ unsigned int mp_ioctl_xmit_packet_hdl(struct oid_par_priv *poid_par_priv)
 {
 	return _SUCCESS;
 }
-
 /*-------------------------------------------------------------------------*/
 uint oid_rt_set_power_down_hdl(struct oid_par_priv *poid_par_priv)
 {

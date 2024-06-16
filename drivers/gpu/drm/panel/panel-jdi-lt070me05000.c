@@ -5,6 +5,10 @@
  *
  * Copyright (C) 2016 Linaro Ltd
  * Author: Sumit Semwal <sumit.semwal@linaro.org>
+ *
+ * From internet archives, the panel for Nexus 7 2nd Gen, 2013 model is a
+ * JDI model LT070ME05000, and its data sheet is at:
+ * http://panelone.net/en/7-0-inch/JDI_LT070ME05000_7.0_inch-datasheet
  */
 
 #include <linux/backlight.h>
@@ -292,30 +296,30 @@ static const struct drm_display_mode default_mode = {
 		.vsync_start = 1920 + 3,
 		.vsync_end = 1920 + 3 + 5,
 		.vtotal = 1920 + 3 + 5 + 6,
+		.vrefresh = 60,
 		.flags = 0,
 };
 
-static int jdi_panel_get_modes(struct drm_panel *panel,
-			       struct drm_connector *connector)
+static int jdi_panel_get_modes(struct drm_panel *panel)
 {
 	struct drm_display_mode *mode;
 	struct jdi_panel *jdi = to_jdi_panel(panel);
 	struct device *dev = &jdi->dsi->dev;
 
-	mode = drm_mode_duplicate(connector->dev, &default_mode);
+	mode = drm_mode_duplicate(panel->drm, &default_mode);
 	if (!mode) {
 		dev_err(dev, "failed to add mode %ux%ux@%u\n",
 			default_mode.hdisplay, default_mode.vdisplay,
-			drm_mode_vrefresh(&default_mode));
+			default_mode.vrefresh);
 		return -ENOMEM;
 	}
 
 	drm_mode_set_name(mode);
 
-	drm_mode_probed_add(connector, mode);
+	drm_mode_probed_add(panel->connector, mode);
 
-	connector->display_info.width_mm = 95;
-	connector->display_info.height_mm = 151;
+	panel->connector->display_info.width_mm = 95;
+	panel->connector->display_info.height_mm = 151;
 
 	return 1;
 }
@@ -400,37 +404,46 @@ static int jdi_panel_add(struct jdi_panel *jdi)
 
 	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(jdi->supplies),
 				      jdi->supplies);
-	if (ret < 0)
-		return dev_err_probe(dev, ret,
-				     "failed to init regulator, ret=%d\n", ret);
+	if (ret < 0) {
+		dev_err(dev, "failed to init regulator, ret=%d\n", ret);
+		return ret;
+	}
 
 	jdi->enable_gpio = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
 	if (IS_ERR(jdi->enable_gpio)) {
-		return dev_err_probe(dev, PTR_ERR(jdi->enable_gpio),
-				     "cannot get enable-gpio %d\n", ret);
+		ret = PTR_ERR(jdi->enable_gpio);
+		dev_err(dev, "cannot get enable-gpio %d\n", ret);
+		return ret;
 	}
 
 	jdi->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
-	if (IS_ERR(jdi->reset_gpio))
-		return dev_err_probe(dev, PTR_ERR(jdi->reset_gpio),
-				     "cannot get reset-gpios %d\n", ret);
+	if (IS_ERR(jdi->reset_gpio)) {
+		ret = PTR_ERR(jdi->reset_gpio);
+		dev_err(dev, "cannot get reset-gpios %d\n", ret);
+		return ret;
+	}
 
 	jdi->dcdc_en_gpio = devm_gpiod_get(dev, "dcdc-en", GPIOD_OUT_LOW);
-	if (IS_ERR(jdi->dcdc_en_gpio))
-		return dev_err_probe(dev, PTR_ERR(jdi->dcdc_en_gpio),
-				     "cannot get dcdc-en-gpio %d\n", ret);
+	if (IS_ERR(jdi->dcdc_en_gpio)) {
+		ret = PTR_ERR(jdi->dcdc_en_gpio);
+		dev_err(dev, "cannot get dcdc-en-gpio %d\n", ret);
+		return ret;
+	}
 
 	jdi->backlight = drm_panel_create_dsi_backlight(jdi->dsi);
-	if (IS_ERR(jdi->backlight))
-		return dev_err_probe(dev, PTR_ERR(jdi->backlight),
-				     "failed to register backlight %d\n", ret);
+	if (IS_ERR(jdi->backlight)) {
+		ret = PTR_ERR(jdi->backlight);
+		dev_err(dev, "failed to register backlight %d\n", ret);
+		return ret;
+	}
 
-	drm_panel_init(&jdi->base, &jdi->dsi->dev, &jdi_panel_funcs,
-		       DRM_MODE_CONNECTOR_DSI);
+	drm_panel_init(&jdi->base);
+	jdi->base.funcs = &jdi_panel_funcs;
+	jdi->base.dev = &jdi->dsi->dev;
 
-	drm_panel_add(&jdi->base);
+	ret = drm_panel_add(&jdi->base);
 
-	return 0;
+	return ret;
 }
 
 static void jdi_panel_del(struct jdi_panel *jdi)
@@ -461,16 +474,10 @@ static int jdi_panel_probe(struct mipi_dsi_device *dsi)
 	if (ret < 0)
 		return ret;
 
-	ret = mipi_dsi_attach(dsi);
-	if (ret < 0) {
-		jdi_panel_del(jdi);
-		return ret;
-	}
-
-	return 0;
+	return mipi_dsi_attach(dsi);
 }
 
-static void jdi_panel_remove(struct mipi_dsi_device *dsi)
+static int jdi_panel_remove(struct mipi_dsi_device *dsi)
 {
 	struct jdi_panel *jdi = mipi_dsi_get_drvdata(dsi);
 	int ret;
@@ -485,6 +492,8 @@ static void jdi_panel_remove(struct mipi_dsi_device *dsi)
 			ret);
 
 	jdi_panel_del(jdi);
+
+	return 0;
 }
 
 static void jdi_panel_shutdown(struct mipi_dsi_device *dsi)

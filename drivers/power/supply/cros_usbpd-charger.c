@@ -5,10 +5,10 @@
  * Copyright (c) 2014 - 2018 Google, Inc
  */
 
+#include <linux/mfd/cros_ec.h>
 #include <linux/module.h>
 #include <linux/platform_data/cros_ec_commands.h>
 #include <linux/platform_data/cros_ec_proto.h>
-#include <linux/platform_data/cros_usbpd_notify.h>
 #include <linux/platform_device.h>
 #include <linux/power_supply.h>
 #include <linux/slab.h>
@@ -104,7 +104,7 @@ static int cros_usbpd_charger_ec_command(struct charger_data *charger,
 	struct cros_ec_command *msg;
 	int ret;
 
-	msg = kzalloc(struct_size(msg, data, max(outsize, insize)), GFP_KERNEL);
+	msg = kzalloc(sizeof(*msg) + max(outsize, insize), GFP_KERNEL);
 	if (!msg)
 		return -ENOMEM;
 
@@ -132,8 +132,11 @@ static int cros_usbpd_charger_get_num_ports(struct charger_data *charger)
 	ret = cros_usbpd_charger_ec_command(charger, 0,
 					    EC_CMD_CHARGE_PORT_COUNT,
 					    NULL, 0, &resp, sizeof(resp));
-	if (ret < 0)
+	if (ret < 0) {
+		dev_err(charger->dev,
+			"Unable to get the number of ports (err:0x%x)\n", ret);
 		return ret;
+	}
 
 	return resp.port_count;
 }
@@ -145,8 +148,11 @@ static int cros_usbpd_charger_get_usbpd_num_ports(struct charger_data *charger)
 
 	ret = cros_usbpd_charger_ec_command(charger, 0, EC_CMD_USB_PD_PORTS,
 					    NULL, 0, &resp, sizeof(resp));
-	if (ret < 0)
+	if (ret < 0) {
+		dev_err(charger->dev,
+			"Unable to get the number or ports (err:0x%x)\n", ret);
 		return ret;
+	}
 
 	return resp.num_ports;
 }
@@ -276,7 +282,7 @@ static int cros_usbpd_charger_get_power_info(struct port_data *port)
 		port->psy_current_max = 0;
 		break;
 	default:
-		dev_dbg(dev, "Port %d: default case!\n", port->port_number);
+		dev_err(dev, "Port %d: default case!\n", port->port_number);
 		port->psy_usb_type = POWER_SUPPLY_USB_TYPE_SDP;
 	}
 
@@ -383,7 +389,7 @@ static int cros_usbpd_charger_get_prop(struct power_supply *psy,
 		 */
 		if (ec_device->mkbp_event_supported || port->psy_online)
 			break;
-		fallthrough;
+		/* fall through */
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
@@ -518,21 +524,32 @@ static int cros_usbpd_charger_property_is_writeable(struct power_supply *psy,
 }
 
 static int cros_usbpd_charger_ec_event(struct notifier_block *nb,
-				       unsigned long host_event,
+				       unsigned long queued_during_suspend,
 				       void *_notify)
 {
-	struct charger_data *charger = container_of(nb, struct charger_data,
-						    notifier);
+	struct cros_ec_device *ec_device;
+	struct charger_data *charger;
+	u32 host_event;
 
-	cros_usbpd_charger_power_changed(charger->ports[0]->psy);
-	return NOTIFY_OK;
+	charger = container_of(nb, struct charger_data, notifier);
+	ec_device = charger->ec_device;
+
+	host_event = cros_ec_get_host_event(ec_device);
+	if (host_event & EC_HOST_EVENT_MASK(EC_HOST_EVENT_PD_MCU)) {
+		cros_usbpd_charger_power_changed(charger->ports[0]->psy);
+		return NOTIFY_OK;
+	} else {
+		return NOTIFY_DONE;
+	}
 }
 
 static void cros_usbpd_charger_unregister_notifier(void *data)
 {
 	struct charger_data *charger = data;
+	struct cros_ec_device *ec_device = charger->ec_device;
 
-	cros_usbpd_unregister_notify(&charger->notifier);
+	blocking_notifier_chain_unregister(&ec_device->event_notifier,
+					   &charger->notifier);
 }
 
 static int cros_usbpd_charger_probe(struct platform_device *pd)
@@ -666,17 +683,21 @@ static int cros_usbpd_charger_probe(struct platform_device *pd)
 		goto fail;
 	}
 
-	/* Get PD events from the EC */
-	charger->notifier.notifier_call = cros_usbpd_charger_ec_event;
-	ret = cros_usbpd_register_notify(&charger->notifier);
-	if (ret < 0) {
-		dev_warn(dev, "failed to register notifier\n");
-	} else {
-		ret = devm_add_action_or_reset(dev,
-				cros_usbpd_charger_unregister_notifier,
-				charger);
-		if (ret < 0)
-			goto fail;
+	if (ec_device->mkbp_event_supported) {
+		/* Get PD events from the EC */
+		charger->notifier.notifier_call = cros_usbpd_charger_ec_event;
+		ret = blocking_notifier_chain_register(
+						&ec_device->event_notifier,
+						&charger->notifier);
+		if (ret < 0) {
+			dev_warn(dev, "failed to register notifier\n");
+		} else {
+			ret = devm_add_action_or_reset(dev,
+					cros_usbpd_charger_unregister_notifier,
+					charger);
+			if (ret < 0)
+				goto fail;
+		}
 	}
 
 	return 0;

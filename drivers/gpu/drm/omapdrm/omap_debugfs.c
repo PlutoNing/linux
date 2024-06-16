@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2011 Texas Instruments Incorporated - https://www.ti.com/
+ * Copyright (C) 2011 Texas Instruments Incorporated - http://www.ti.com/
  * Author: Rob Clark <rob.clark@linaro.org>
  */
 
@@ -10,7 +10,6 @@
 #include <drm/drm_debugfs.h>
 #include <drm/drm_file.h>
 #include <drm/drm_fb_helper.h>
-#include <drm/drm_framebuffer.h>
 
 #include "omap_drv.h"
 #include "omap_dmm_tiler.h"
@@ -47,15 +46,15 @@ static int fb_show(struct seq_file *m, void *arg)
 {
 	struct drm_info_node *node = (struct drm_info_node *) m->private;
 	struct drm_device *dev = node->minor->dev;
-	struct drm_fb_helper *helper = dev->fb_helper;
+	struct omap_drm_private *priv = dev->dev_private;
 	struct drm_framebuffer *fb;
 
 	seq_printf(m, "fbcon ");
-	omap_framebuffer_describe(helper->fb, m);
+	omap_framebuffer_describe(priv->fbdev->fb, m);
 
 	mutex_lock(&dev->mode_config.fb_lock);
 	list_for_each_entry(fb, &dev->mode_config.fb_list, head) {
-		if (fb == helper->fb)
+		if (fb == priv->fbdev->fb)
 			continue;
 
 		seq_printf(m, "user ");
@@ -81,16 +80,31 @@ static struct drm_info_list omap_dmm_debugfs_list[] = {
 	{"tiler_map", tiler_map_show, 0},
 };
 
-void omap_debugfs_init(struct drm_minor *minor)
+int omap_debugfs_init(struct drm_minor *minor)
 {
-	drm_debugfs_create_files(omap_debugfs_list,
-				 ARRAY_SIZE(omap_debugfs_list),
-				 minor->debugfs_root, minor);
+	struct drm_device *dev = minor->dev;
+	int ret;
+
+	ret = drm_debugfs_create_files(omap_debugfs_list,
+			ARRAY_SIZE(omap_debugfs_list),
+			minor->debugfs_root, minor);
+
+	if (ret) {
+		dev_err(dev->dev, "could not install omap_debugfs_list\n");
+		return ret;
+	}
 
 	if (dmm_is_available())
-		drm_debugfs_create_files(omap_dmm_debugfs_list,
-					 ARRAY_SIZE(omap_dmm_debugfs_list),
-					 minor->debugfs_root, minor);
+		ret = drm_debugfs_create_files(omap_dmm_debugfs_list,
+				ARRAY_SIZE(omap_dmm_debugfs_list),
+				minor->debugfs_root, minor);
+
+	if (ret) {
+		dev_err(dev->dev, "could not install omap_dmm_debugfs_list\n");
+		return ret;
+	}
+
+	return ret;
 }
 
 #endif

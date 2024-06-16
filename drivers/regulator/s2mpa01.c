@@ -5,6 +5,7 @@
 
 #include <linux/bug.h>
 #include <linux/err.h>
+#include <linux/gpio.h>
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -339,6 +340,7 @@ static const struct regulator_desc regulators[] = {
 static int s2mpa01_pmic_probe(struct platform_device *pdev)
 {
 	struct sec_pmic_dev *iodev = dev_get_drvdata(pdev->dev.parent);
+	struct sec_platform_data *pdata = dev_get_platdata(iodev->dev);
 	struct regulator_config config = { };
 	struct s2mpa01_info *s2mpa01;
 	int i;
@@ -353,6 +355,9 @@ static int s2mpa01_pmic_probe(struct platform_device *pdev)
 
 	for (i = 0; i < S2MPA01_REGULATOR_MAX; i++) {
 		struct regulator_dev *rdev;
+
+		if (pdata)
+			config.init_data = pdata->regulators[i].initdata;
 
 		rdev = devm_regulator_register(&pdev->dev,
 						&regulators[i], &config);
@@ -375,7 +380,6 @@ MODULE_DEVICE_TABLE(platform, s2mpa01_pmic_id);
 static struct platform_driver s2mpa01_pmic_driver = {
 	.driver = {
 		.name = "s2mpa01-pmic",
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 	},
 	.probe = s2mpa01_pmic_probe,
 	.id_table = s2mpa01_pmic_id,
@@ -386,5 +390,5 @@ module_platform_driver(s2mpa01_pmic_driver);
 /* Module information */
 MODULE_AUTHOR("Sangbeom Kim <sbkim73@samsung.com>");
 MODULE_AUTHOR("Sachin Kamat <sachin.kamat@samsung.com>");
-MODULE_DESCRIPTION("Samsung S2MPA01 Regulator Driver");
+MODULE_DESCRIPTION("SAMSUNG S2MPA01 Regulator Driver");
 MODULE_LICENSE("GPL");

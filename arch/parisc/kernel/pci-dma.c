@@ -3,7 +3,7 @@
 ** PARISC 1.1 Dynamic DMA mapping support.
 ** This implementation is for PA-RISC platforms that do not support
 ** I/O TLBs (aka DMA address translation hardware).
-** See Documentation/core-api/dma-api-howto.rst for interface definitions.
+** See Documentation/DMA-API-HOWTO.txt for interface definitions.
 **
 **      (c) Copyright 1999,2000 Hewlett-Packard Company
 **      (c) Copyright 2000 Grant Grundler
@@ -26,20 +26,21 @@
 #include <linux/string.h>
 #include <linux/types.h>
 #include <linux/dma-direct.h>
-#include <linux/dma-map-ops.h>
+#include <linux/dma-noncoherent.h>
 
 #include <asm/cacheflush.h>
 #include <asm/dma.h>    /* for DMA_CHUNK_SIZE */
 #include <asm/io.h>
 #include <asm/page.h>	/* get_order */
+#include <asm/pgalloc.h>
 #include <linux/uaccess.h>
 #include <asm/tlbflush.h>	/* for purge_tlb_*() macros */
 
 static struct proc_dir_entry * proc_gsc_root __read_mostly = NULL;
-static unsigned long pcxl_used_bytes __read_mostly;
-static unsigned long pcxl_used_pages __read_mostly;
+static unsigned long pcxl_used_bytes __read_mostly = 0;
+static unsigned long pcxl_used_pages __read_mostly = 0;
 
-unsigned long pcxl_dma_start __ro_after_init; /* pcxl dma mapping area start */
+extern unsigned long pcxl_dma_start; /* Start of pcxl dma mapping area */
 static DEFINE_SPINLOCK(pcxl_res_lock);
 static char    *pcxl_res_map;
 static int     pcxl_res_hint;
@@ -91,7 +92,7 @@ static inline int map_pte_uncached(pte_t * pte,
 			printk(KERN_ERR "map_pte_uncached: page already exists\n");
 		purge_tlb_start(flags);
 		set_pte(pte, __mk_pte(*paddr_ptr, PAGE_KERNEL_UNC));
-		pdtlb(SR_KERNEL, orig_vaddr);
+		pdtlb_kernel(orig_vaddr);
 		purge_tlb_end(flags);
 		vaddr += PAGE_SIZE;
 		orig_vaddr += PAGE_SIZE;
@@ -132,14 +133,9 @@ static inline int map_uncached_pages(unsigned long vaddr, unsigned long size,
 
 	dir = pgd_offset_k(vaddr);
 	do {
-		p4d_t *p4d;
-		pud_t *pud;
 		pmd_t *pmd;
-
-		p4d = p4d_offset(dir, vaddr);
-		pud = pud_offset(p4d, vaddr);
-		pmd = pmd_alloc(NULL, pud, vaddr);
-
+		
+		pmd = pmd_alloc(NULL, dir, vaddr);
 		if (!pmd)
 			return -ENOMEM;
 		if (map_pmd_uncached(pmd, vaddr, end - vaddr, &paddr))
@@ -164,7 +160,7 @@ static inline void unmap_uncached_pte(pmd_t * pmd, unsigned long vaddr,
 		pmd_clear(pmd);
 		return;
 	}
-	pte = pte_offset_kernel(pmd, vaddr);
+	pte = pte_offset_map(pmd, vaddr);
 	vaddr &= ~PMD_MASK;
 	end = vaddr + size;
 	if (end > PMD_SIZE)
@@ -175,7 +171,7 @@ static inline void unmap_uncached_pte(pmd_t * pmd, unsigned long vaddr,
 
 		pte_clear(&init_mm, vaddr, pte);
 		purge_tlb_start(flags);
-		pdtlb(SR_KERNEL, orig_vaddr);
+		pdtlb_kernel(orig_vaddr);
 		purge_tlb_end(flags);
 		vaddr += PAGE_SIZE;
 		orig_vaddr += PAGE_SIZE;
@@ -200,7 +196,7 @@ static inline void unmap_uncached_pmd(pgd_t * dir, unsigned long vaddr,
 		pgd_clear(dir);
 		return;
 	}
-	pmd = pmd_offset(pud_offset(p4d_offset(dir, vaddr), vaddr), vaddr);
+	pmd = pmd_offset(dir, vaddr);
 	vaddr &= ~PGDIR_MASK;
 	end = vaddr + size;
 	if (end > PGDIR_SIZE)
@@ -245,7 +241,7 @@ static void unmap_uncached_pages(unsigned long vaddr, unsigned long size)
        PCXL_SEARCH_LOOP(idx, mask, size); \
 }
 
-static unsigned long
+unsigned long
 pcxl_alloc_range(size_t size)
 {
 	int res_idx;
@@ -335,7 +331,7 @@ pcxl_free_range(unsigned long vaddr, size_t size)
 	dump_resmap();
 }
 
-static int __maybe_unused proc_pcxl_dma_show(struct seq_file *m, void *v)
+static int proc_pcxl_dma_show(struct seq_file *m, void *v)
 {
 #if 0
 	u_long i = 0;
@@ -381,7 +377,7 @@ pcxl_dma_init(void)
 	pcxl_res_map = (char *)__get_free_pages(GFP_KERNEL,
 					    get_order(pcxl_res_size));
 	memset(pcxl_res_map, 0, pcxl_res_size);
-	proc_gsc_root = proc_mkdir("bus/gsc", NULL);
+	proc_gsc_root = proc_mkdir("gsc", NULL);
 	if (!proc_gsc_root)
     		printk(KERN_WARNING
 			"pcxl_dma_init: Unable to create gsc /proc dir entry\n");
@@ -417,6 +413,14 @@ void *arch_dma_alloc(struct device *dev, size_t size,
 	map_uncached_pages(vaddr, size, paddr);
 	*dma_handle = (dma_addr_t) paddr;
 
+#if 0
+/* This probably isn't needed to support EISA cards.
+** ISA cards will certainly only support 24-bit DMA addressing.
+** Not clear if we can, want, or need to support ISA.
+*/
+	if (!dev || *dev->coherent_dma_mask < 0xffffffff)
+		gfp |= GFP_DMA;
+#endif
 	return (void *)vaddr;
 }
 
@@ -435,30 +439,20 @@ void arch_dma_free(struct device *dev, size_t size, void *vaddr,
 	free_pages((unsigned long)__va(dma_handle), order);
 }
 
-void arch_sync_dma_for_device(phys_addr_t paddr, size_t size,
-		enum dma_data_direction dir)
+void arch_sync_dma_for_device(struct device *dev, phys_addr_t paddr,
+		size_t size, enum dma_data_direction dir)
 {
-	/*
-	 * fdc: The data cache line is written back to memory, if and only if
-	 * it is dirty, and then invalidated from the data cache.
-	 */
 	flush_kernel_dcache_range((unsigned long)phys_to_virt(paddr), size);
 }
 
-void arch_sync_dma_for_cpu(phys_addr_t paddr, size_t size,
-		enum dma_data_direction dir)
+void arch_sync_dma_for_cpu(struct device *dev, phys_addr_t paddr,
+		size_t size, enum dma_data_direction dir)
 {
-	unsigned long addr = (unsigned long) phys_to_virt(paddr);
+	flush_kernel_dcache_range((unsigned long)phys_to_virt(paddr), size);
+}
 
-	switch (dir) {
-	case DMA_TO_DEVICE:
-	case DMA_BIDIRECTIONAL:
-		flush_kernel_dcache_range(addr, size);
-		return;
-	case DMA_FROM_DEVICE:
-		purge_kernel_dcache_range_asm(addr, addr + size);
-		return;
-	default:
-		BUG();
-	}
+void arch_dma_cache_sync(struct device *dev, void *vaddr, size_t size,
+	       enum dma_data_direction direction)
+{
+	flush_kernel_dcache_range((unsigned long)vaddr, size);
 }

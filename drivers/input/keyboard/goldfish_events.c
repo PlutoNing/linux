@@ -30,7 +30,7 @@ struct event_dev {
 	struct input_dev *input;
 	int irq;
 	void __iomem *addr;
-	char name[];
+	char name[0];
 };
 
 static irqreturn_t events_interrupt(int irq, void *dev_id)

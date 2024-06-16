@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (c) 2015 Linaro Ltd.
- * Copyright (c) 2015 HiSilicon Limited.
+ * Copyright (c) 2015 Hisilicon Limited.
  */
 
 #include <linux/mfd/syscon.h>
-#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/phy/phy.h>

@@ -91,7 +91,7 @@ static ssize_t vtpm_proxy_fops_read(struct file *filp, char __user *buf,
 
 	len = proxy_dev->req_len;
 
-	if (count < len || len > sizeof(proxy_dev->buffer)) {
+	if (count < len) {
 		mutex_unlock(&proxy_dev->buf_lock);
 		pr_debug("Invalid size in recv: count=%zd, req_len=%zd\n",
 			 count, len);
@@ -670,10 +670,20 @@ static long vtpmx_fops_ioctl(struct file *f, unsigned int ioctl,
 	}
 }
 
+#ifdef CONFIG_COMPAT
+static long vtpmx_fops_compat_ioctl(struct file *f, unsigned int ioctl,
+					  unsigned long arg)
+{
+	return vtpmx_fops_ioctl(f, ioctl, (unsigned long)compat_ptr(arg));
+}
+#endif
+
 static const struct file_operations vtpmx_fops = {
 	.owner = THIS_MODULE,
 	.unlocked_ioctl = vtpmx_fops_ioctl,
-	.compat_ioctl = compat_ptr_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = vtpmx_fops_compat_ioctl,
+#endif
 	.llseek = noop_llseek,
 };
 
@@ -683,21 +693,37 @@ static struct miscdevice vtpmx_miscdev = {
 	.fops = &vtpmx_fops,
 };
 
+static int vtpmx_init(void)
+{
+	return misc_register(&vtpmx_miscdev);
+}
+
+static void vtpmx_cleanup(void)
+{
+	misc_deregister(&vtpmx_miscdev);
+}
+
 static int __init vtpm_module_init(void)
 {
 	int rc;
 
+	rc = vtpmx_init();
+	if (rc) {
+		pr_err("couldn't create vtpmx device\n");
+		return rc;
+	}
+
 	workqueue = create_workqueue("tpm-vtpm");
 	if (!workqueue) {
 		pr_err("couldn't create workqueue\n");
-		return -ENOMEM;
+		rc = -ENOMEM;
+		goto err_vtpmx_cleanup;
 	}
 
-	rc = misc_register(&vtpmx_miscdev);
-	if (rc) {
-		pr_err("couldn't create vtpmx device\n");
-		destroy_workqueue(workqueue);
-	}
+	return 0;
+
+err_vtpmx_cleanup:
+	vtpmx_cleanup();
 
 	return rc;
 }
@@ -705,13 +731,13 @@ static int __init vtpm_module_init(void)
 static void __exit vtpm_module_exit(void)
 {
 	destroy_workqueue(workqueue);
-	misc_deregister(&vtpmx_miscdev);
+	vtpmx_cleanup();
 }
 
 module_init(vtpm_module_init);
 module_exit(vtpm_module_exit);
 
-MODULE_AUTHOR("Stefan Berger <stefanb@us.ibm.com>");
+MODULE_AUTHOR("Stefan Berger (stefanb@us.ibm.com)");
 MODULE_DESCRIPTION("vTPM Driver");
 MODULE_VERSION("0.1");
 MODULE_LICENSE("GPL");

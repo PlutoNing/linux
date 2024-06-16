@@ -32,7 +32,7 @@
 struct ts_fsm
 {
 	unsigned int		ntokens;
-	struct ts_fsm_token	tokens[];
+	struct ts_fsm_token	tokens[0];
 };
 
 /* other values derived from ctype.h */
@@ -193,7 +193,7 @@ startover:
 				TOKEN_MISMATCH();
 
 			block_idx++;
-			fallthrough;
+			/* fall through */
 
 		case TS_FSM_ANY:
 			if (next == NULL)

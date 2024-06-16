@@ -2,7 +2,7 @@
 /*
  * Hisilicon's Hi6220 mailbox driver
  *
- * Copyright (c) 2015 HiSilicon Limited.
+ * Copyright (c) 2015 Hisilicon Limited.
  * Copyright (c) 2015 Linaro Limited.
  *
  * Author: Leo Yan <leo.yan@linaro.org>
@@ -15,7 +15,6 @@
 #include <linux/kfifo.h>
 #include <linux/mailbox_controller.h>
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
@@ -265,6 +264,7 @@ static int hi6220_mbox_probe(struct platform_device *pdev)
 	struct device_node *node = pdev->dev.of_node;
 	struct device *dev = &pdev->dev;
 	struct hi6220_mbox *mbox;
+	struct resource *res;
 	int i, err;
 
 	mbox = devm_kzalloc(dev, sizeof(*mbox), GFP_KERNEL);
@@ -287,13 +287,15 @@ static int hi6220_mbox_probe(struct platform_device *pdev)
 	if (mbox->irq < 0)
 		return mbox->irq;
 
-	mbox->ipc = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	mbox->ipc = devm_ioremap_resource(dev, res);
 	if (IS_ERR(mbox->ipc)) {
 		dev_err(dev, "ioremap ipc failed\n");
 		return PTR_ERR(mbox->ipc);
 	}
 
-	mbox->base = devm_platform_ioremap_resource(pdev, 1);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	mbox->base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(mbox->base)) {
 		dev_err(dev, "ioremap buffer failed\n");
 		return PTR_ERR(mbox->base);
@@ -326,7 +328,10 @@ static int hi6220_mbox_probe(struct platform_device *pdev)
 	writel(~0x0, ACK_INT_CLR_REG(mbox->ipc));
 
 	/* use interrupt for tx's ack */
-	mbox->tx_irq_mode = !of_property_read_bool(node, "hi6220,mbox-tx-noirq");
+	if (of_find_property(node, "hi6220,mbox-tx-noirq", NULL))
+		mbox->tx_irq_mode = false;
+	else
+		mbox->tx_irq_mode = true;
 
 	if (mbox->tx_irq_mode)
 		mbox->controller.txdone_irq = true;
@@ -349,6 +354,7 @@ static int hi6220_mbox_probe(struct platform_device *pdev)
 static struct platform_driver hi6220_mbox_driver = {
 	.driver = {
 		.name = "hi6220-mbox",
+		.owner = THIS_MODULE,
 		.of_match_table = hi6220_mbox_of_match,
 	},
 	.probe	= hi6220_mbox_probe,

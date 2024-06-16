@@ -11,7 +11,6 @@
  */
 
 #include <linux/init.h>
-#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/err.h>
@@ -19,6 +18,7 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
+#include <linux/of_device.h>
 
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -95,7 +95,7 @@ static int omap_dmic_dai_startup(struct snd_pcm_substream *substream,
 
 	mutex_lock(&dmic->mutex);
 
-	if (!snd_soc_dai_active(dai))
+	if (!dai->active)
 		dmic->active = 1;
 	else
 		ret = -EBUSY;
@@ -112,9 +112,9 @@ static void omap_dmic_dai_shutdown(struct snd_pcm_substream *substream,
 
 	mutex_lock(&dmic->mutex);
 
-	cpu_latency_qos_remove_request(&dmic->pm_qos_req);
+	pm_qos_remove_request(&dmic->pm_qos_req);
 
-	if (!snd_soc_dai_active(dai))
+	if (!dai->active)
 		dmic->active = 0;
 
 	mutex_unlock(&dmic->mutex);
@@ -203,10 +203,10 @@ static int omap_dmic_dai_hw_params(struct snd_pcm_substream *substream,
 	switch (channels) {
 	case 6:
 		dmic->ch_enabled |= OMAP_DMIC_UP3_ENABLE;
-		fallthrough;
+		/* fall through */
 	case 4:
 		dmic->ch_enabled |= OMAP_DMIC_UP2_ENABLE;
-		fallthrough;
+		/* fall through */
 	case 2:
 		dmic->ch_enabled |= OMAP_DMIC_UP1_ENABLE;
 		break;
@@ -230,9 +230,8 @@ static int omap_dmic_dai_prepare(struct snd_pcm_substream *substream,
 	struct omap_dmic *dmic = snd_soc_dai_get_drvdata(dai);
 	u32 ctrl;
 
-	if (cpu_latency_qos_request_active(&dmic->pm_qos_req))
-		cpu_latency_qos_update_request(&dmic->pm_qos_req,
-					       dmic->latency);
+	if (pm_qos_request_active(&dmic->pm_qos_req))
+		pm_qos_update_request(&dmic->pm_qos_req, dmic->latency);
 
 	/* Configure uplink threshold */
 	omap_dmic_write(dmic, OMAP_DMIC_FIFO_CTRL_REG, dmic->threshold);
@@ -401,6 +400,15 @@ static int omap_dmic_set_dai_sysclk(struct snd_soc_dai *dai, int clk_id,
 	return -EINVAL;
 }
 
+static const struct snd_soc_dai_ops omap_dmic_dai_ops = {
+	.startup	= omap_dmic_dai_startup,
+	.shutdown	= omap_dmic_dai_shutdown,
+	.hw_params	= omap_dmic_dai_hw_params,
+	.prepare	= omap_dmic_dai_prepare,
+	.trigger	= omap_dmic_dai_trigger,
+	.set_sysclk	= omap_dmic_set_dai_sysclk,
+};
+
 static int omap_dmic_probe(struct snd_soc_dai *dai)
 {
 	struct omap_dmic *dmic = snd_soc_dai_get_drvdata(dai);
@@ -429,19 +437,10 @@ static int omap_dmic_remove(struct snd_soc_dai *dai)
 	return 0;
 }
 
-static const struct snd_soc_dai_ops omap_dmic_dai_ops = {
-	.probe		= omap_dmic_probe,
-	.remove		= omap_dmic_remove,
-	.startup	= omap_dmic_dai_startup,
-	.shutdown	= omap_dmic_dai_shutdown,
-	.hw_params	= omap_dmic_dai_hw_params,
-	.prepare	= omap_dmic_dai_prepare,
-	.trigger	= omap_dmic_dai_trigger,
-	.set_sysclk	= omap_dmic_set_dai_sysclk,
-};
-
 static struct snd_soc_dai_driver omap_dmic_dai = {
 	.name = "omap-dmic",
+	.probe = omap_dmic_probe,
+	.remove = omap_dmic_remove,
 	.capture = {
 		.channels_min = 2,
 		.channels_max = 6,
@@ -453,8 +452,7 @@ static struct snd_soc_dai_driver omap_dmic_dai = {
 };
 
 static const struct snd_soc_component_driver omap_dmic_component = {
-	.name			= "omap-dmic",
-	.legacy_dai_naming	= 1,
+	.name		= "omap-dmic",
 };
 
 static int asoc_dmic_probe(struct platform_device *pdev)
@@ -475,7 +473,7 @@ static int asoc_dmic_probe(struct platform_device *pdev)
 
 	dmic->fclk = devm_clk_get(dmic->dev, "fck");
 	if (IS_ERR(dmic->fclk)) {
-		dev_err(dmic->dev, "can't get fck\n");
+		dev_err(dmic->dev, "cant get fck\n");
 		return -ENODEV;
 	}
 
@@ -488,9 +486,11 @@ static int asoc_dmic_probe(struct platform_device *pdev)
 
 	dmic->dma_data.filter_data = "up_link";
 
-	dmic->io_base = devm_platform_ioremap_resource_byname(pdev, "mpu");
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mpu");
+	dmic->io_base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(dmic->io_base))
 		return PTR_ERR(dmic->io_base);
+
 
 	ret = devm_snd_soc_register_component(&pdev->dev,
 					      &omap_dmic_component,

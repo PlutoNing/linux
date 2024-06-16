@@ -15,8 +15,6 @@
 #include "armada_gem.h"
 #include "armada_ioctlP.h"
 
-MODULE_IMPORT_NS(DMA_BUF);
-
 static vm_fault_t armada_gem_vm_fault(struct vm_fault *vmf)
 {
 	struct drm_gem_object *gobj = vmf->vma->vm_private_data;
@@ -27,7 +25,7 @@ static vm_fault_t armada_gem_vm_fault(struct vm_fault *vmf)
 	return vmf_insert_pfn(vmf->vma, vmf->address, pfn);
 }
 
-static const struct vm_operations_struct armada_gem_vm_ops = {
+const struct vm_operations_struct armada_gem_vm_ops = {
 	.fault	= armada_gem_vm_fault,
 	.open	= drm_gem_vm_open,
 	.close	= drm_gem_vm_close,
@@ -41,7 +39,7 @@ static size_t roundup_gem_size(size_t size)
 void armada_gem_free_object(struct drm_gem_object *obj)
 {
 	struct armada_gem_object *dobj = drm_to_armada_gem(obj);
-	struct armada_private *priv = drm_to_armada_dev(obj->dev);
+	struct armada_private *priv = obj->dev->dev_private;
 
 	DRM_DEBUG_DRIVER("release obj %p\n", dobj);
 
@@ -66,8 +64,8 @@ void armada_gem_free_object(struct drm_gem_object *obj)
 	if (dobj->obj.import_attach) {
 		/* We only ever display imported data */
 		if (dobj->sgt)
-			dma_buf_unmap_attachment_unlocked(dobj->obj.import_attach,
-							  dobj->sgt, DMA_TO_DEVICE);
+			dma_buf_unmap_attachment(dobj->obj.import_attach,
+						 dobj->sgt, DMA_TO_DEVICE);
 		drm_prime_gem_destroy(&dobj->obj, NULL);
 	}
 
@@ -79,7 +77,7 @@ void armada_gem_free_object(struct drm_gem_object *obj)
 int
 armada_gem_linear_back(struct drm_device *dev, struct armada_gem_object *obj)
 {
-	struct armada_private *priv = drm_to_armada_dev(dev);
+	struct armada_private *priv = dev->dev_private;
 	size_t size = obj->obj.size;
 
 	if (obj->page || obj->linear)
@@ -107,11 +105,11 @@ armada_gem_linear_back(struct drm_device *dev, struct armada_gem_object *obj)
 	}
 
 	/*
-	 * We could grab something from DMA if it's enabled, but that
+	 * We could grab something from CMA if it's enabled, but that
 	 * involves building in a problem:
 	 *
-	 * GEM DMA helper interface uses dma_alloc_coherent(), which provides
-	 * us with an CPU virtual address and a device address.
+	 * CMA's interface uses dma_alloc_coherent(), which provides us
+	 * with an CPU virtual address and a device address.
 	 *
 	 * The CPU virtual address may be either an address in the kernel
 	 * direct mapped region (for example, as it would be on x86) or
@@ -186,12 +184,6 @@ armada_gem_map_object(struct drm_device *dev, struct armada_gem_object *dobj)
 	return dobj->addr;
 }
 
-static const struct drm_gem_object_funcs armada_gem_object_funcs = {
-	.free = armada_gem_free_object,
-	.export = armada_gem_prime_export,
-	.vm_ops = &armada_gem_vm_ops,
-};
-
 struct armada_gem_object *
 armada_gem_alloc_private_object(struct drm_device *dev, size_t size)
 {
@@ -202,8 +194,6 @@ armada_gem_alloc_private_object(struct drm_device *dev, size_t size)
 	obj = kzalloc(sizeof(*obj), GFP_KERNEL);
 	if (!obj)
 		return NULL;
-
-	obj->obj.funcs = &armada_gem_object_funcs;
 
 	drm_gem_private_object_init(dev, &obj->obj, size);
 
@@ -223,8 +213,6 @@ static struct armada_gem_object *armada_gem_alloc_object(struct drm_device *dev,
 	obj = kzalloc(sizeof(*obj), GFP_KERNEL);
 	if (!obj)
 		return NULL;
-
-	obj->obj.funcs = &armada_gem_object_funcs;
 
 	if (drm_gem_object_init(dev, &obj->obj, size)) {
 		kfree(obj);
@@ -268,7 +256,7 @@ int armada_gem_dumb_create(struct drm_file *file, struct drm_device *dev,
 	/* drop reference from allocate - handle holds it now */
 	DRM_DEBUG_DRIVER("obj %p size %zu handle %#x\n", dobj, size, handle);
  err:
-	drm_gem_object_put(&dobj->obj);
+	drm_gem_object_put_unlocked(&dobj->obj);
 	return ret;
 }
 
@@ -300,7 +288,7 @@ int armada_gem_create_ioctl(struct drm_device *dev, void *data,
 	/* drop reference from allocate - handle holds it now */
 	DRM_DEBUG_DRIVER("obj %p size %zu handle %#x\n", dobj, size, handle);
  err:
-	drm_gem_object_put(&dobj->obj);
+	drm_gem_object_put_unlocked(&dobj->obj);
 	return ret;
 }
 
@@ -317,13 +305,13 @@ int armada_gem_mmap_ioctl(struct drm_device *dev, void *data,
 		return -ENOENT;
 
 	if (!dobj->obj.filp) {
-		drm_gem_object_put(&dobj->obj);
+		drm_gem_object_put_unlocked(&dobj->obj);
 		return -EINVAL;
 	}
 
 	addr = vm_mmap(dobj->obj.filp, 0, args->size, PROT_READ | PROT_WRITE,
 		       MAP_SHARED, args->offset);
-	drm_gem_object_put(&dobj->obj);
+	drm_gem_object_put_unlocked(&dobj->obj);
 	if (IS_ERR_VALUE(addr))
 		return addr;
 
@@ -338,7 +326,7 @@ int armada_gem_pwrite_ioctl(struct drm_device *dev, void *data,
 	struct drm_armada_gem_pwrite *args = data;
 	struct armada_gem_object *dobj;
 	char __user *ptr;
-	int ret = 0;
+	int ret;
 
 	DRM_DEBUG_DRIVER("handle %u off %u size %u ptr 0x%llx\n",
 		args->handle, args->offset, args->size, args->ptr);
@@ -351,8 +339,9 @@ int armada_gem_pwrite_ioctl(struct drm_device *dev, void *data,
 	if (!access_ok(ptr, args->size))
 		return -EFAULT;
 
-	if (fault_in_readable(ptr, args->size))
-		return -EFAULT;
+	ret = fault_in_pages_readable(ptr, args->size);
+	if (ret)
+		return ret;
 
 	dobj = armada_gem_object_lookup(file, args->handle);
 	if (dobj == NULL)
@@ -377,7 +366,7 @@ int armada_gem_pwrite_ioctl(struct drm_device *dev, void *data,
 	}
 
  unref:
-	drm_gem_object_put(&dobj->obj);
+	drm_gem_object_put_unlocked(&dobj->obj);
 	return ret;
 }
 
@@ -390,7 +379,7 @@ armada_gem_prime_map_dma_buf(struct dma_buf_attachment *attach,
 	struct armada_gem_object *dobj = drm_to_armada_gem(obj);
 	struct scatterlist *sg;
 	struct sg_table *sgt;
-	int i;
+	int i, num;
 
 	sgt = kmalloc(sizeof(*sgt), GFP_KERNEL);
 	if (!sgt)
@@ -406,18 +395,22 @@ armada_gem_prime_map_dma_buf(struct dma_buf_attachment *attach,
 
 		mapping = dobj->obj.filp->f_mapping;
 
-		for_each_sgtable_sg(sgt, sg, i) {
+		for_each_sg(sgt->sgl, sg, count, i) {
 			struct page *page;
 
 			page = shmem_read_mapping_page(mapping, i);
-			if (IS_ERR(page))
+			if (IS_ERR(page)) {
+				num = i;
 				goto release;
+			}
 
 			sg_set_page(sg, page, PAGE_SIZE, 0);
 		}
 
-		if (dma_map_sgtable(attach->dev, sgt, dir, 0))
+		if (dma_map_sg(attach->dev, sgt->sgl, sgt->nents, dir) == 0) {
+			num = sgt->nents;
 			goto release;
+		}
 	} else if (dobj->page) {
 		/* Single contiguous page */
 		if (sg_alloc_table(sgt, 1, GFP_KERNEL))
@@ -425,7 +418,7 @@ armada_gem_prime_map_dma_buf(struct dma_buf_attachment *attach,
 
 		sg_set_page(sgt->sgl, dobj->page, dobj->obj.size, 0);
 
-		if (dma_map_sgtable(attach->dev, sgt, dir, 0))
+		if (dma_map_sg(attach->dev, sgt->sgl, sgt->nents, dir) == 0)
 			goto free_table;
 	} else if (dobj->linear) {
 		/* Single contiguous physical region - no struct page */
@@ -439,9 +432,8 @@ armada_gem_prime_map_dma_buf(struct dma_buf_attachment *attach,
 	return sgt;
 
  release:
-	for_each_sgtable_sg(sgt, sg, i)
-		if (sg_page(sg))
-			put_page(sg_page(sg));
+	for_each_sg(sgt->sgl, sg, num, i)
+		put_page(sg_page(sg));
  free_table:
 	sg_free_table(sgt);
  free_sgt:
@@ -457,17 +449,26 @@ static void armada_gem_prime_unmap_dma_buf(struct dma_buf_attachment *attach,
 	int i;
 
 	if (!dobj->linear)
-		dma_unmap_sgtable(attach->dev, sgt, dir, 0);
+		dma_unmap_sg(attach->dev, sgt->sgl, sgt->nents, dir);
 
 	if (dobj->obj.filp) {
 		struct scatterlist *sg;
-
-		for_each_sgtable_sg(sgt, sg, i)
+		for_each_sg(sgt->sgl, sg, sgt->nents, i)
 			put_page(sg_page(sg));
 	}
 
 	sg_free_table(sgt);
 	kfree(sgt);
+}
+
+static void *armada_gem_dmabuf_no_kmap(struct dma_buf *buf, unsigned long n)
+{
+	return NULL;
+}
+
+static void
+armada_gem_dmabuf_no_kunmap(struct dma_buf *buf, unsigned long n, void *addr)
+{
 }
 
 static int
@@ -480,6 +481,8 @@ static const struct dma_buf_ops armada_gem_prime_dmabuf_ops = {
 	.map_dma_buf	= armada_gem_prime_map_dma_buf,
 	.unmap_dma_buf	= armada_gem_prime_unmap_dma_buf,
 	.release	= drm_gem_dmabuf_release,
+	.map		= armada_gem_dmabuf_no_kmap,
+	.unmap		= armada_gem_dmabuf_no_kunmap,
 	.mmap		= armada_gem_dmabuf_mmap,
 };
 
@@ -539,8 +542,8 @@ int armada_gem_map_import(struct armada_gem_object *dobj)
 {
 	int ret;
 
-	dobj->sgt = dma_buf_map_attachment_unlocked(dobj->obj.import_attach,
-						    DMA_TO_DEVICE);
+	dobj->sgt = dma_buf_map_attachment(dobj->obj.import_attach,
+					   DMA_TO_DEVICE);
 	if (IS_ERR(dobj->sgt)) {
 		ret = PTR_ERR(dobj->sgt);
 		dobj->sgt = NULL;

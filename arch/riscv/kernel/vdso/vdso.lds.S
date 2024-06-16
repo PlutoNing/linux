@@ -2,17 +2,11 @@
 /*
  * Copyright (C) 2012 Regents of the University of California
  */
-#include <asm/page.h>
-#include <asm/vdso.h>
 
 OUTPUT_ARCH(riscv)
 
 SECTIONS
 {
-	PROVIDE(_vdso_data = . - __VVAR_PAGES * PAGE_SIZE);
-#ifdef CONFIG_TIME_NS
-	PROVIDE(_timens_data = _vdso_data + PAGE_SIZE);
-#endif
 	. = SIZEOF_HEADERS;
 
 	.hash		: { *(.hash) }			:text
@@ -23,31 +17,28 @@ SECTIONS
 	.gnu.version_d	: { *(.gnu.version_d) }
 	.gnu.version_r	: { *(.gnu.version_r) }
 
-	.dynamic	: { *(.dynamic) }		:text	:dynamic
-
-	.rodata		: {
-		*(.rodata .rodata.* .gnu.linkonce.r.*)
-		*(.got.plt) *(.got)
-		*(.data .data.* .gnu.linkonce.d.*)
-		*(.dynbss)
-		*(.bss .bss.* .gnu.linkonce.b.*)
-	}
-
 	.note		: { *(.note.*) }		:text	:note
+	.dynamic	: { *(.dynamic) }		:text	:dynamic
 
 	.eh_frame_hdr	: { *(.eh_frame_hdr) }		:text	:eh_frame_hdr
 	.eh_frame	: { KEEP (*(.eh_frame)) }	:text
 
+	.rodata		: { *(.rodata .rodata.* .gnu.linkonce.r.*) }
+
 	/*
-	 * Text is well-separated from actual data: there's plenty of
-	 * stuff that isn't used at runtime in between.
+	 * This linker script is used both with -r and with -shared.
+	 * For the layouts to match, we need to skip more than enough
+	 * space for the dynamic symbol table, etc. If this amount is
+	 * insufficient, ld -shared will error; simply increase it here.
 	 */
-	. = ALIGN(16);
+	. = 0x800;
 	.text		: { *(.text .text.*) }		:text
 
-	. = ALIGN(4);
-	.alternative : {
-		*(.alternative)
+	.data		: {
+		*(.got.plt) *(.got)
+		*(.data .data.* .gnu.linkonce.d.*)
+		*(.dynbss)
+		*(.bss .bss.* .gnu.linkonce.b.*)
 	}
 }
 
@@ -71,16 +62,11 @@ VERSION
 	LINUX_4.15 {
 	global:
 		__vdso_rt_sigreturn;
-#ifdef HAS_VGETTIMEOFDAY
 		__vdso_gettimeofday;
 		__vdso_clock_gettime;
 		__vdso_clock_getres;
-#endif
 		__vdso_getcpu;
 		__vdso_flush_icache;
-#ifndef COMPAT_VDSO
-		__vdso_riscv_hwprobe;
-#endif
 	local: *;
 	};
 }

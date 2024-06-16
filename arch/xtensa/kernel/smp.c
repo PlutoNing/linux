@@ -21,7 +21,6 @@
 #include <linux/irq.h>
 #include <linux/kdebug.h>
 #include <linux/module.h>
-#include <linux/profile.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/hotplug.h>
 #include <linux/sched/task_stack.h>
@@ -31,7 +30,6 @@
 #include <linux/thread_info.h>
 
 #include <asm/cacheflush.h>
-#include <asm/coprocessor.h>
 #include <asm/kdebug.h>
 #include <asm/mmu_context.h>
 #include <asm/mxregs.h>
@@ -55,12 +53,16 @@ static void system_flush_invalidate_dcache_range(unsigned long start,
 #define IPI_IRQ	0
 
 static irqreturn_t ipi_interrupt(int irq, void *dev_id);
+static struct irqaction ipi_irqaction = {
+	.handler =	ipi_interrupt,
+	.flags =	IRQF_PERCPU,
+	.name =		"ipi",
+};
 
 void ipi_init(void)
 {
 	unsigned irq = irq_create_mapping(NULL, IPI_IRQ);
-	if (request_irq(irq, ipi_interrupt, IRQF_PERCPU, "ipi", NULL))
-		pr_err("Failed to request irq %u (ipi)\n", irq);
+	setup_irq(irq, &ipi_irqaction);
 }
 
 static inline unsigned int get_core_count(void)
@@ -147,6 +149,7 @@ void secondary_start_kernel(void)
 	cpumask_set_cpu(cpu, mm_cpumask(mm));
 	enter_lazy_tlb(mm, current);
 
+	preempt_disable();
 	trace_hardirqs_off();
 
 	calibrate_delay();
@@ -274,12 +277,6 @@ int __cpu_disable(void)
 	 */
 	set_cpu_online(cpu, false);
 
-#if XTENSA_HAVE_COPROCESSORS
-	/*
-	 * Flush coprocessor contexts that are active on the current CPU.
-	 */
-	local_coprocessors_flush_release_all();
-#endif
 	/*
 	 * OK - migrate IRQs away from this CPU
 	 */
@@ -323,7 +320,7 @@ void __cpu_die(unsigned int cpu)
 	pr_err("CPU%u: unable to kill\n", cpu);
 }
 
-void __noreturn arch_cpu_idle_dead(void)
+void arch_cpu_idle_dead(void)
 {
 	cpu_die();
 }
@@ -342,8 +339,6 @@ void __ref cpu_die(void)
 	__asm__ __volatile__(
 			"	movi	a2, cpu_restart\n"
 			"	jx	a2\n");
-
-	BUG();
 }
 
 #endif /* CONFIG_HOTPLUG_CPU */
@@ -392,7 +387,7 @@ void arch_send_call_function_single_ipi(int cpu)
 	send_ipi_message(cpumask_of(cpu), IPI_CALL_FUNC);
 }
 
-void arch_smp_send_reschedule(int cpu)
+void smp_send_reschedule(int cpu)
 {
 	send_ipi_message(cpumask_of(cpu), IPI_RESCHEDULE);
 }

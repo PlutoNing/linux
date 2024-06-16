@@ -103,7 +103,7 @@ static int serport_ldisc_open(struct tty_struct *tty)
 
 static void serport_ldisc_close(struct tty_struct *tty)
 {
-	struct serport *serport = tty->disc_data;
+	struct serport *serport = (struct serport *) tty->disc_data;
 
 	kfree(serport);
 }
@@ -114,10 +114,9 @@ static void serport_ldisc_close(struct tty_struct *tty)
  * 'interrupt' routine.
  */
 
-static void serport_ldisc_receive(struct tty_struct *tty, const u8 *cp,
-				  const u8 *fp, size_t count)
+static void serport_ldisc_receive(struct tty_struct *tty, const unsigned char *cp, char *fp, int count)
 {
-	struct serport *serport = tty->disc_data;
+	struct serport *serport = (struct serport*) tty->disc_data;
 	unsigned long flags;
 	unsigned int ch_flags = 0;
 	int i;
@@ -157,11 +156,9 @@ out:
  * returning 0 characters.
  */
 
-static ssize_t serport_ldisc_read(struct tty_struct * tty, struct file * file,
-				  u8 *kbuf, size_t nr, void **cookie,
-				  unsigned long offset)
+static ssize_t serport_ldisc_read(struct tty_struct * tty, struct file * file, unsigned char __user * buf, size_t nr)
 {
-	struct serport *serport = tty->disc_data;
+	struct serport *serport = (struct serport*) tty->disc_data;
 	struct serio *serio;
 
 	if (test_and_set_bit(SERPORT_BUSY, &serport->flags))
@@ -171,7 +168,7 @@ static ssize_t serport_ldisc_read(struct tty_struct * tty, struct file * file,
 	if (!serio)
 		return -ENOMEM;
 
-	strscpy(serio->name, "Serial port", sizeof(serio->name));
+	strlcpy(serio->name, "Serial port", sizeof(serio->name));
 	snprintf(serio->phys, sizeof(serio->phys), "%s/serio0", tty_name(tty));
 	serio->id = serport->id;
 	serio->id.type = SERIO_RS232;
@@ -207,8 +204,8 @@ static void serport_set_type(struct tty_struct *tty, unsigned long type)
  * serport_ldisc_ioctl() allows to set the port protocol, and device ID
  */
 
-static int serport_ldisc_ioctl(struct tty_struct *tty, unsigned int cmd,
-			       unsigned long arg)
+static int serport_ldisc_ioctl(struct tty_struct *tty, struct file *file,
+			       unsigned int cmd, unsigned long arg)
 {
 	if (cmd == SPIOCSTYPE) {
 		unsigned long type;
@@ -226,6 +223,7 @@ static int serport_ldisc_ioctl(struct tty_struct *tty, unsigned int cmd,
 #ifdef CONFIG_COMPAT
 #define COMPAT_SPIOCSTYPE	_IOW('q', 0x01, compat_ulong_t)
 static int serport_ldisc_compat_ioctl(struct tty_struct *tty,
+				       struct file *file,
 				       unsigned int cmd, unsigned long arg)
 {
 	if (cmd == COMPAT_SPIOCSTYPE) {
@@ -243,9 +241,9 @@ static int serport_ldisc_compat_ioctl(struct tty_struct *tty,
 }
 #endif
 
-static void serport_ldisc_hangup(struct tty_struct *tty)
+static int serport_ldisc_hangup(struct tty_struct *tty)
 {
-	struct serport *serport = tty->disc_data;
+	struct serport *serport = (struct serport *) tty->disc_data;
 	unsigned long flags;
 
 	spin_lock_irqsave(&serport->lock, flags);
@@ -253,11 +251,12 @@ static void serport_ldisc_hangup(struct tty_struct *tty)
 	spin_unlock_irqrestore(&serport->lock, flags);
 
 	wake_up_interruptible(&serport->wait);
+	return 0;
 }
 
 static void serport_ldisc_write_wakeup(struct tty_struct * tty)
 {
-	struct serport *serport = tty->disc_data;
+	struct serport *serport = (struct serport *) tty->disc_data;
 	unsigned long flags;
 
 	spin_lock_irqsave(&serport->lock, flags);
@@ -272,7 +271,6 @@ static void serport_ldisc_write_wakeup(struct tty_struct * tty)
 
 static struct tty_ldisc_ops serport_ldisc = {
 	.owner =	THIS_MODULE,
-	.num =		N_MOUSE,
 	.name =		"input",
 	.open =		serport_ldisc_open,
 	.close =	serport_ldisc_close,
@@ -293,7 +291,7 @@ static struct tty_ldisc_ops serport_ldisc = {
 static int __init serport_init(void)
 {
 	int retval;
-	retval = tty_register_ldisc(&serport_ldisc);
+	retval = tty_register_ldisc(N_MOUSE, &serport_ldisc);
 	if (retval)
 		printk(KERN_ERR "serport.c: Error registering line discipline.\n");
 
@@ -302,7 +300,7 @@ static int __init serport_init(void)
 
 static void __exit serport_exit(void)
 {
-	tty_unregister_ldisc(&serport_ldisc);
+	tty_unregister_ldisc(N_MOUSE);
 }
 
 module_init(serport_init);

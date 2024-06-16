@@ -23,6 +23,8 @@
  *
  */
 
+#include <linux/slab.h>
+
 #include "dm_services.h"
 
 #include "include/logger_interface.h"
@@ -38,7 +40,7 @@
 
 #include "ivsrcid/dcn/irqsrcs_dcn_1_0.h"
 
-static enum dc_irq_source to_dal_irq_source_dcn20(
+enum dc_irq_source to_dal_irq_source_dcn20(
 		struct irq_service *irq_service,
 		uint32_t src_id,
 		uint32_t ext_id)
@@ -56,18 +58,6 @@ static enum dc_irq_source to_dal_irq_source_dcn20(
 		return DC_IRQ_SOURCE_VBLANK5;
 	case DCN_1_0__SRCID__DC_D6_OTG_VSTARTUP:
 		return DC_IRQ_SOURCE_VBLANK6;
-	case DCN_1_0__SRCID__OTG1_VERTICAL_INTERRUPT0_CONTROL:
-		return DC_IRQ_SOURCE_DC1_VLINE0;
-	case DCN_1_0__SRCID__OTG2_VERTICAL_INTERRUPT0_CONTROL:
-		return DC_IRQ_SOURCE_DC2_VLINE0;
-	case DCN_1_0__SRCID__OTG3_VERTICAL_INTERRUPT0_CONTROL:
-		return DC_IRQ_SOURCE_DC3_VLINE0;
-	case DCN_1_0__SRCID__OTG4_VERTICAL_INTERRUPT0_CONTROL:
-		return DC_IRQ_SOURCE_DC4_VLINE0;
-	case DCN_1_0__SRCID__OTG5_VERTICAL_INTERRUPT0_CONTROL:
-		return DC_IRQ_SOURCE_DC5_VLINE0;
-	case DCN_1_0__SRCID__OTG6_VERTICAL_INTERRUPT0_CONTROL:
-		return DC_IRQ_SOURCE_DC6_VLINE0;
 	case DCN_1_0__SRCID__HUBP0_FLIP_INTERRUPT:
 		return DC_IRQ_SOURCE_PFLIP1;
 	case DCN_1_0__SRCID__HUBP1_FLIP_INTERRUPT:
@@ -157,32 +147,27 @@ static bool hpd_ack(
 	return true;
 }
 
-static struct irq_source_info_funcs hpd_irq_info_funcs  = {
+static const struct irq_source_info_funcs hpd_irq_info_funcs = {
 	.set = NULL,
 	.ack = hpd_ack
 };
 
-static struct irq_source_info_funcs hpd_rx_irq_info_funcs = {
+static const struct irq_source_info_funcs hpd_rx_irq_info_funcs = {
 	.set = NULL,
 	.ack = NULL
 };
 
-static struct irq_source_info_funcs pflip_irq_info_funcs = {
+static const struct irq_source_info_funcs pflip_irq_info_funcs = {
 	.set = NULL,
 	.ack = NULL
 };
 
-static struct irq_source_info_funcs vblank_irq_info_funcs = {
+static const struct irq_source_info_funcs vblank_irq_info_funcs = {
 	.set = NULL,
 	.ack = NULL
 };
 
-static struct irq_source_info_funcs vupdate_no_lock_irq_info_funcs = {
-	.set = NULL,
-	.ack = NULL
-};
-
-static struct irq_source_info_funcs vline0_irq_info_funcs = {
+static const struct irq_source_info_funcs vupdate_no_lock_irq_info_funcs = {
 	.set = NULL,
 	.ack = NULL
 };
@@ -260,14 +245,6 @@ static struct irq_source_info_funcs vline0_irq_info_funcs = {
 		.funcs = &vblank_irq_info_funcs\
 	}
 
-#define vline0_int_entry(reg_num)\
-	[DC_IRQ_SOURCE_DC1_VLINE0 + reg_num] = {\
-		IRQ_REG_ENTRY(OTG, reg_num,\
-			OTG_VERTICAL_INTERRUPT0_CONTROL, OTG_VERTICAL_INTERRUPT0_INT_ENABLE,\
-			OTG_VERTICAL_INTERRUPT0_CONTROL, OTG_VERTICAL_INTERRUPT0_CLEAR),\
-		.funcs = &vline0_irq_info_funcs\
-	}
-
 #define dummy_irq_entry() \
 	{\
 		.funcs = &dummy_irq_info_funcs\
@@ -285,7 +262,7 @@ static struct irq_source_info_funcs vline0_irq_info_funcs = {
 #define dc_underflow_int_entry(reg_num) \
 	[DC_IRQ_SOURCE_DC ## reg_num ## UNDERFLOW] = dummy_irq_entry()
 
-static struct irq_source_info_funcs dummy_irq_info_funcs = {
+static const struct irq_source_info_funcs dummy_irq_info_funcs = {
 	.set = dal_irq_service_dummy_set,
 	.ack = dal_irq_service_dummy_ack
 };
@@ -322,8 +299,8 @@ irq_source_info_dcn20[DAL_IRQ_SOURCES_NUMBER] = {
 	pflip_int_entry(1),
 	pflip_int_entry(2),
 	pflip_int_entry(3),
-	pflip_int_entry(4),
-	pflip_int_entry(5),
+	[DC_IRQ_SOURCE_PFLIP5] = dummy_irq_entry(),
+	[DC_IRQ_SOURCE_PFLIP6] = dummy_irq_entry(),
 	[DC_IRQ_SOURCE_PFLIP_UNDERLAY0] = dummy_irq_entry(),
 	gpio_pad_int_entry(0),
 	gpio_pad_int_entry(1),
@@ -376,19 +353,13 @@ irq_source_info_dcn20[DAL_IRQ_SOURCES_NUMBER] = {
 	vblank_int_entry(3),
 	vblank_int_entry(4),
 	vblank_int_entry(5),
-	vline0_int_entry(0),
-	vline0_int_entry(1),
-	vline0_int_entry(2),
-	vline0_int_entry(3),
-	vline0_int_entry(4),
-	vline0_int_entry(5),
 };
 
 static const struct irq_service_funcs irq_service_funcs_dcn20 = {
 		.to_dal_irq_source = to_dal_irq_source_dcn20
 };
 
-static void dcn20_irq_construct(
+static void construct(
 	struct irq_service *irq_service,
 	struct irq_service_init_data *init_data)
 {
@@ -407,6 +378,6 @@ struct irq_service *dal_irq_service_dcn20_create(
 	if (!irq_service)
 		return NULL;
 
-	dcn20_irq_construct(irq_service, init_data);
+	construct(irq_service, init_data);
 	return irq_service;
 }

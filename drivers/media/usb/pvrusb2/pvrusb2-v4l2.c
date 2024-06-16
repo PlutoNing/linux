@@ -640,6 +640,10 @@ static int pvr2_s_ext_ctrls(struct file *file, void *priv,
 	unsigned int idx;
 	int ret;
 
+	/* Default value cannot be changed */
+	if (ctls->which == V4L2_CTRL_WHICH_DEF_VAL)
+		return -EINVAL;
+
 	ret = 0;
 	for (idx = 0; idx < ctls->count; idx++) {
 		ctrl = ctls->controls + idx;
@@ -894,12 +898,8 @@ static void pvr2_v4l2_internal_check(struct pvr2_channel *chp)
 	pvr2_v4l2_dev_disassociate_parent(vp->dev_video);
 	pvr2_v4l2_dev_disassociate_parent(vp->dev_radio);
 	if (!list_empty(&vp->dev_video->devbase.fh_list) ||
-	    (vp->dev_radio &&
-	     !list_empty(&vp->dev_radio->devbase.fh_list))) {
-		pvr2_trace(PVR2_TRACE_STRUCT,
-			   "pvr2_v4l2 internal_check exit-empty id=%p", vp);
+	    !list_empty(&vp->dev_radio->devbase.fh_list))
 		return;
-	}
 	pvr2_v4l2_destroy_no_lock(vp);
 }
 
@@ -935,8 +935,7 @@ static int pvr2_v4l2_release(struct file *file)
 	kfree(fhp);
 	if (vp->channel.mc_head->disconnect_flag &&
 	    list_empty(&vp->dev_video->devbase.fh_list) &&
-	    (!vp->dev_radio ||
-	     list_empty(&vp->dev_radio->devbase.fh_list))) {
+	    list_empty(&vp->dev_radio->devbase.fh_list)) {
 		pvr2_v4l2_destroy_no_lock(vp);
 	}
 	return 0;
@@ -1033,10 +1032,8 @@ static int pvr2_v4l2_open(struct file *file)
 }
 
 
-static void pvr2_v4l2_notify(void *ptr)
+static void pvr2_v4l2_notify(struct pvr2_v4l2_fh *fhp)
 {
-	struct pvr2_v4l2_fh *fhp = ptr;
-
 	wake_up(&fhp->wait_data);
 }
 
@@ -1069,7 +1066,7 @@ static int pvr2_v4l2_iosetup(struct pvr2_v4l2_fh *fh)
 
 	hdw = fh->channel.mc_head->hdw;
 	sp = fh->pdi->stream->stream;
-	pvr2_stream_set_callback(sp, pvr2_v4l2_notify, fh);
+	pvr2_stream_set_callback(sp,(pvr2_stream_callback)pvr2_v4l2_notify,fh);
 	pvr2_hdw_set_stream_type(hdw,fh->pdi->config);
 	if ((ret = pvr2_hdw_set_streaming(hdw,!0)) < 0) return ret;
 	return pvr2_ioread_set_enabled(fh->rhp,!0);
@@ -1194,12 +1191,17 @@ static void pvr2_v4l2_dev_init(struct pvr2_v4l2_dev *dip,
 	hdw = vp->channel.mc_head->hdw;
 	dip->v4l_type = v4l_type;
 	switch (v4l_type) {
-	case VFL_TYPE_VIDEO:
+	case VFL_TYPE_GRABBER:
 		dip->stream = &vp->channel.mc_head->video_stream;
 		dip->config = pvr2_config_mpeg;
 		dip->minor_type = pvr2_v4l_type_video;
 		nr_ptr = video_nr;
 		caps |= V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_AUDIO;
+		if (!dip->stream) {
+			pr_err(KBUILD_MODNAME
+				": Failed to set up pvrusb2 v4l video dev due to missing stream instance\n");
+			return;
+		}
 		break;
 	case VFL_TYPE_VBI:
 		dip->config = pvr2_config_vbi;
@@ -1269,7 +1271,7 @@ struct pvr2_v4l2 *pvr2_v4l2_create(struct pvr2_context *mnp)
 	/* register streams */
 	vp->dev_video = kzalloc(sizeof(*vp->dev_video),GFP_KERNEL);
 	if (!vp->dev_video) goto fail;
-	pvr2_v4l2_dev_init(vp->dev_video,vp,VFL_TYPE_VIDEO);
+	pvr2_v4l2_dev_init(vp->dev_video,vp,VFL_TYPE_GRABBER);
 	if (pvr2_hdw_get_input_available(vp->channel.mc_head->hdw) &
 	    (1 << PVR2_CVAL_INPUT_RADIO)) {
 		vp->dev_radio = kzalloc(sizeof(*vp->dev_radio),GFP_KERNEL);

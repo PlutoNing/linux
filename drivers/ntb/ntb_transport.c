@@ -304,7 +304,7 @@ static int ntb_transport_bus_probe(struct device *dev)
 	return rc;
 }
 
-static void ntb_transport_bus_remove(struct device *dev)
+static int ntb_transport_bus_remove(struct device *dev)
 {
 	const struct ntb_transport_client *client;
 
@@ -312,6 +312,8 @@ static void ntb_transport_bus_remove(struct device *dev)
 	client->remove(dev);
 
 	put_device(dev);
+
+	return 0;
 }
 
 static struct bus_type ntb_transport_bus = {
@@ -410,7 +412,7 @@ int ntb_transport_register_client_dev(char *device_name)
 
 		rc = device_register(dev);
 		if (rc) {
-			put_device(dev);
+			kfree(client_dev);
 			goto err;
 		}
 
@@ -479,70 +481,70 @@ static ssize_t debugfs_read(struct file *filp, char __user *ubuf, size_t count,
 		return -ENOMEM;
 
 	out_offset = 0;
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "\nNTB QP stats:\n\n");
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_bytes - \t%llu\n", qp->rx_bytes);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_pkts - \t%llu\n", qp->rx_pkts);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_memcpy - \t%llu\n", qp->rx_memcpy);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_async - \t%llu\n", qp->rx_async);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_ring_empty - %llu\n", qp->rx_ring_empty);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_err_no_buf - %llu\n", qp->rx_err_no_buf);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_err_oflow - \t%llu\n", qp->rx_err_oflow);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_err_ver - \t%llu\n", qp->rx_err_ver);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_buff - \t0x%p\n", qp->rx_buff);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_index - \t%u\n", qp->rx_index);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_max_entry - \t%u\n", qp->rx_max_entry);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "rx_alloc_entry - \t%u\n\n", qp->rx_alloc_entry);
 
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "tx_bytes - \t%llu\n", qp->tx_bytes);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "tx_pkts - \t%llu\n", qp->tx_pkts);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "tx_memcpy - \t%llu\n", qp->tx_memcpy);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "tx_async - \t%llu\n", qp->tx_async);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "tx_ring_full - \t%llu\n", qp->tx_ring_full);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "tx_err_no_buf - %llu\n", qp->tx_err_no_buf);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "tx_mw - \t0x%p\n", qp->tx_mw);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "tx_index (H) - \t%u\n", qp->tx_index);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "RRI (T) - \t%u\n",
 			       qp->remote_rx_info->entry);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "tx_max_entry - \t%u\n", qp->tx_max_entry);
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "free tx - \t%u\n",
 			       ntb_transport_tx_free_entry(qp));
 
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "\n");
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "Using TX DMA - \t%s\n",
 			       qp->tx_dma_chan ? "Yes" : "No");
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "Using RX DMA - \t%s\n",
 			       qp->rx_dma_chan ? "Yes" : "No");
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "QP Link - \t%s\n",
 			       qp->link_is_up ? "Up" : "Down");
-	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
+	out_offset += snprintf(buf + out_offset, out_count - out_offset,
 			       "\n");
 
 	if (out_offset > out_count)
@@ -909,7 +911,7 @@ static int ntb_set_mw(struct ntb_transport_ctx *nt, int num_mw,
 	return 0;
 }
 
-static void ntb_qp_link_context_reset(struct ntb_transport_qp *qp)
+static void ntb_qp_link_down_reset(struct ntb_transport_qp *qp)
 {
 	qp->link_is_up = false;
 	qp->active = false;
@@ -930,13 +932,6 @@ static void ntb_qp_link_context_reset(struct ntb_transport_qp *qp)
 	qp->tx_err_no_buf = 0;
 	qp->tx_memcpy = 0;
 	qp->tx_async = 0;
-}
-
-static void ntb_qp_link_down_reset(struct ntb_transport_qp *qp)
-{
-	ntb_qp_link_context_reset(qp);
-	if (qp->remote_rx_info)
-		qp->remote_rx_info->entry = qp->rx_max_entry - 1;
 }
 
 static void ntb_qp_link_cleanup(struct ntb_transport_qp *qp)
@@ -1181,7 +1176,7 @@ static int ntb_transport_init_queue(struct ntb_transport_ctx *nt,
 	qp->ndev = nt->ndev;
 	qp->client_ready = false;
 	qp->event_handler = NULL;
-	ntb_qp_link_context_reset(qp);
+	ntb_qp_link_down_reset(qp);
 
 	if (mw_num < qp_count % mw_count)
 		num_qps_mw = qp_count / mw_count + 1;
@@ -1488,7 +1483,7 @@ static void ntb_rx_copy_callback(void *data,
 		case DMA_TRANS_READ_FAILED:
 		case DMA_TRANS_WRITE_FAILED:
 			entry->errors++;
-			fallthrough;
+			/* fall through */
 		case DMA_TRANS_ABORTED:
 		{
 			struct ntb_transport_qp *qp = entry->qp;
@@ -1744,7 +1739,7 @@ static void ntb_tx_copy_callback(void *data,
 		case DMA_TRANS_READ_FAILED:
 		case DMA_TRANS_WRITE_FAILED:
 			entry->errors++;
-			fallthrough;
+			/* fall through */
 		case DMA_TRANS_ABORTED:
 		{
 			void __iomem *offset =
@@ -1901,7 +1896,7 @@ err:
 static int ntb_process_tx(struct ntb_transport_qp *qp,
 			  struct ntb_queue_entry *entry)
 {
-	if (!ntb_transport_tx_free_entry(qp)) {
+	if (qp->tx_index == qp->remote_rx_info->entry) {
 		qp->tx_ring_full++;
 		return -EAGAIN;
 	}
@@ -2283,12 +2278,8 @@ int ntb_transport_tx_enqueue(struct ntb_transport_qp *qp, void *cb, void *data,
 	struct ntb_queue_entry *entry;
 	int rc;
 
-	if (!qp || !len)
+	if (!qp || !qp->link_is_up || !len)
 		return -EINVAL;
-
-	/* If the qp link is down already, just ignore. */
-	if (!qp->link_is_up)
-		return 0;
 
 	entry = ntb_list_rm(&qp->ntb_tx_free_q_lock, &qp->tx_free_q);
 	if (!entry) {
@@ -2429,7 +2420,7 @@ unsigned int ntb_transport_tx_free_entry(struct ntb_transport_qp *qp)
 	unsigned int head = qp->tx_index;
 	unsigned int tail = qp->remote_rx_info->entry;
 
-	return tail >= head ? tail - head : qp->tx_max_entry + tail - head;
+	return tail > head ? tail - head : qp->tx_max_entry + tail - head;
 }
 EXPORT_SYMBOL_GPL(ntb_transport_tx_free_entry);
 

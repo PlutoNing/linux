@@ -15,7 +15,7 @@
 #include <linux/memblock.h>
 #include <linux/err.h>
 #include <linux/clk.h>
-#include <linux/of_clk.h>
+#include <linux/clk-provider.h>
 #include <linux/of_fdt.h>
 #include <linux/irqchip.h>
 
@@ -23,6 +23,7 @@
 #include <asm/idle.h>
 #include <asm/time.h>		/* for mips_hpt_frequency */
 #include <asm/reboot.h>		/* for _machine_{restart,halt} */
+#include <asm/mips_machine.h>
 #include <asm/prom.h>
 #include <asm/fw/fw.h>
 
@@ -33,6 +34,15 @@
 #define ATH79_SYS_TYPE_LEN	64
 
 static char ath79_sys_type[ATH79_SYS_TYPE_LEN];
+
+static void ath79_restart(char *command)
+{
+	local_irq_disable();
+	ath79_device_reset_set(AR71XX_RESET_FULL_CHIP);
+	for (;;)
+		if (cpu_wait)
+			cpu_wait();
+}
 
 static void ath79_halt(void)
 {
@@ -143,7 +153,8 @@ static void __init ath79_detect_sys_type(void)
 	case REV_ID_MAJOR_QCA9533_V2:
 		ver = 2;
 		ath79_soc_rev = 2;
-		fallthrough;
+		/* fall through */
+
 	case REV_ID_MAJOR_QCA9533:
 		ath79_soc = ATH79_SOC_QCA9533;
 		chip = "9533";
@@ -165,12 +176,6 @@ static void __init ath79_detect_sys_type(void)
 	case REV_ID_MAJOR_QCA956X:
 		ath79_soc = ATH79_SOC_QCA956X;
 		chip = "956X";
-		rev = id & QCA956X_REV_ID_REVISION_MASK;
-		break;
-
-	case REV_ID_MAJOR_QCN550X:
-		ath79_soc = ATH79_SOC_QCA956X;
-		chip = "550X";
 		rev = id & QCA956X_REV_ID_REVISION_MASK;
 		break;
 
@@ -210,27 +215,27 @@ unsigned int get_c0_compare_int(void)
 
 void __init plat_mem_setup(void)
 {
-	void *dtb;
+	unsigned long fdt_start;
 
 	set_io_port_base(KSEG1);
 
 	/* Get the position of the FDT passed by the bootloader */
-	dtb = (void *)fw_getenvl("fdt_start");
-	if (dtb == NULL)
-		dtb = get_fdt();
+	fdt_start = fw_getenvl("fdt_start");
+	if (fdt_start)
+		__dt_setup_arch((void *)KSEG0ADDR(fdt_start));
+	else if (fw_passed_dtb)
+		__dt_setup_arch((void *)KSEG0ADDR(fw_passed_dtb));
 
-	if (dtb)
-		__dt_setup_arch((void *)KSEG0ADDR(dtb));
-
-	ath79_reset_base = ioremap(AR71XX_RESET_BASE,
+	ath79_reset_base = ioremap_nocache(AR71XX_RESET_BASE,
 					   AR71XX_RESET_SIZE);
-	ath79_pll_base = ioremap(AR71XX_PLL_BASE,
+	ath79_pll_base = ioremap_nocache(AR71XX_PLL_BASE,
 					 AR71XX_PLL_SIZE);
 	ath79_detect_sys_type();
 	ath79_ddr_ctrl_init();
 
 	detect_memory_region(0, ATH79_MEM_SIZE_MIN, ATH79_MEM_SIZE_MAX);
 
+	_machine_restart = ath79_restart;
 	_machine_halt = ath79_halt;
 	pm_power_off = ath79_halt;
 }
@@ -268,4 +273,9 @@ void __init plat_time_init(void)
 void __init arch_init_irq(void)
 {
 	irqchip_init();
+}
+
+void __init device_tree_init(void)
+{
+	unflatten_and_copy_device_tree();
 }

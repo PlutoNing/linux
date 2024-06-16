@@ -17,16 +17,16 @@ static inline int __pure __get_cpu_type(const int cpu_type)
 	switch (cpu_type) {
 #if defined(CONFIG_SYS_HAS_CPU_LOONGSON2E) || \
     defined(CONFIG_SYS_HAS_CPU_LOONGSON2F)
-	case CPU_LOONGSON2EF:
+	case CPU_LOONGSON2:
 #endif
 
-#ifdef CONFIG_SYS_HAS_CPU_LOONGSON64
-	case CPU_LOONGSON64:
+#ifdef CONFIG_SYS_HAS_CPU_LOONGSON3
+	case CPU_LOONGSON3:
 #endif
 
 #if defined(CONFIG_SYS_HAS_CPU_LOONGSON1B) || \
     defined(CONFIG_SYS_HAS_CPU_LOONGSON1C)
-	case CPU_LOONGSON32:
+	case CPU_LOONGSON1:
 #endif
 
 #ifdef CONFIG_SYS_HAS_CPU_MIPS32_R1
@@ -47,23 +47,17 @@ static inline int __pure __get_cpu_type(const int cpu_type)
 	case CPU_34K:
 	case CPU_1004K:
 	case CPU_74K:
-	case CPU_1074K:
 	case CPU_M14KC:
 	case CPU_M14KEC:
 	case CPU_INTERAPTIV:
 	case CPU_PROAPTIV:
-#endif
-
-#ifdef CONFIG_SYS_HAS_CPU_MIPS32_R5
-	case CPU_M5150:
 	case CPU_P5600:
+	case CPU_M5150:
 #endif
 
 #if defined(CONFIG_SYS_HAS_CPU_MIPS32_R2) || \
-    defined(CONFIG_SYS_HAS_CPU_MIPS32_R5) || \
     defined(CONFIG_SYS_HAS_CPU_MIPS32_R6) || \
     defined(CONFIG_SYS_HAS_CPU_MIPS64_R2) || \
-    defined(CONFIG_SYS_HAS_CPU_MIPS64_R5) || \
     defined(CONFIG_SYS_HAS_CPU_MIPS64_R6)
 	case CPU_QEMU_GENERIC:
 #endif
@@ -105,9 +99,21 @@ static inline int __pure __get_cpu_type(const int cpu_type)
 	case CPU_R3081E:
 #endif
 
-#ifdef CONFIG_SYS_HAS_CPU_R4300
-	case CPU_R4300:
-	case CPU_R4310:
+#ifdef CONFIG_SYS_HAS_CPU_TX39XX
+	case CPU_TX3912:
+	case CPU_TX3922:
+	case CPU_TX3927:
+#endif
+
+#ifdef CONFIG_SYS_HAS_CPU_VR41XX
+	case CPU_VR41XX:
+	case CPU_VR4111:
+	case CPU_VR4121:
+	case CPU_VR4122:
+	case CPU_VR4131:
+	case CPU_VR4133:
+	case CPU_VR4181:
+	case CPU_VR4181A:
 #endif
 
 #ifdef CONFIG_SYS_HAS_CPU_R4X00
@@ -177,6 +183,14 @@ static inline int __pure __get_cpu_type(const int cpu_type)
 
 #ifdef CONFIG_SYS_HAS_CPU_BMIPS5000
 	case CPU_BMIPS5000:
+#endif
+
+#ifdef CONFIG_SYS_HAS_CPU_XLP
+	case CPU_XLP:
+#endif
+
+#ifdef CONFIG_SYS_HAS_CPU_XLR
+	case CPU_XLR:
 #endif
 		break;
 	default:

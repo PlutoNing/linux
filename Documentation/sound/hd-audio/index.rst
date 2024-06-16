@@ -8,5 +8,3 @@ HD-Audio
    models
    controls
    dp-mst
-   realtek-pc-beep
-   intel-multi-link

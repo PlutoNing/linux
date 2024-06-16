@@ -12,7 +12,6 @@
 
 #include <linux/errno.h>
 #include <linux/module.h>
-#include <linux/reboot.h>
 #include <linux/types.h>
 #include <linux/mm.h>
 #include <linux/tty.h>
@@ -25,7 +24,6 @@
 #include <linux/init.h>
 #include <linux/vt_kern.h>
 #include <linux/platform_device.h>
-#include <linux/ata_platform.h>
 #include <linux/adb.h>
 #include <linux/cuda.h>
 #include <linux/pmu.h>
@@ -38,6 +36,7 @@
 
 #include <asm/io.h>
 #include <asm/irq.h>
+#include <asm/pgtable.h>
 #include <asm/machdep.h>
 
 #include <asm/macintosh.h>
@@ -48,9 +47,6 @@
 #include <asm/mac_via.h>
 #include <asm/mac_oss.h>
 #include <asm/mac_psc.h>
-#include <asm/config.h>
-
-#include "mac.h"
 
 /* Mac bootinfo struct */
 struct mac_booter_data mac_bi_data;
@@ -58,13 +54,25 @@ struct mac_booter_data mac_bi_data;
 /* The phys. video addr. - might be bogus on some machines */
 static unsigned long mac_orig_videoaddr;
 
+extern int mac_hwclk(int, struct rtc_time *);
+extern void iop_preinit(void);
+extern void iop_init(void);
+extern void via_init(void);
+extern void via_init_clock(irq_handler_t func);
+extern void via_flush_cache(void);
+extern void oss_init(void);
+extern void psc_init(void);
+extern void baboon_init(void);
+
+extern void mac_mksound(unsigned int, unsigned int);
+
 static void mac_get_model(char *str);
 static void mac_identify(void);
 static void mac_report_hardware(void);
 
-static void __init mac_sched_init(void)
+static void __init mac_sched_init(irq_handler_t vector)
 {
-	via_init_clock();
+	via_init_clock(vector);
 }
 
 /*
@@ -122,6 +130,21 @@ int __init mac_parse_bootinfo(const struct bi_record *record)
 	return unknown;
 }
 
+/*
+ * Flip into 24bit mode for an instant - flushes the L2 cache card. We
+ * have to disable interrupts for this. Our IRQ handlers will crap
+ * themselves if they take an IRQ in 24bit mode!
+ */
+
+static void mac_cache_card_flush(int writeback)
+{
+	unsigned long flags;
+
+	local_irq_save(flags);
+	via_flush_cache();
+	local_irq_restore(flags);
+}
+
 void __init config_mac(void)
 {
 	if (!MACH_IS_MAC)
@@ -133,6 +156,8 @@ void __init config_mac(void)
 	mach_hwclk = mac_hwclk;
 	mach_reset = mac_reset;
 	mach_halt = mac_poweroff;
+	mach_power_off = mac_poweroff;
+	mach_max_dma_address = 0xffffffff;
 #if IS_ENABLED(CONFIG_INPUT_M68K_BEEP)
 	mach_beep = mac_mksound;
 #endif
@@ -150,10 +175,9 @@ void __init config_mac(void)
 	 * not.
 	 */
 
-	if (macintosh_config->ident == MAC_MODEL_IICI)
-		mach_l2_flush = via_l2_flush;
-
-	register_platform_power_off(mac_poweroff);
+	if (macintosh_config->ident == MAC_MODEL_IICI
+	    || macintosh_config->ident == MAC_MODEL_IIFX)
+		mach_l2_flush = mac_cache_card_flush;
 }
 
 
@@ -770,12 +794,16 @@ static struct resource scc_b_rsrcs[] = {
 struct platform_device scc_a_pdev = {
 	.name           = "scc",
 	.id             = 0,
+	.num_resources  = ARRAY_SIZE(scc_a_rsrcs),
+	.resource       = scc_a_rsrcs,
 };
 EXPORT_SYMBOL(scc_a_pdev);
 
 struct platform_device scc_b_pdev = {
 	.name           = "scc",
 	.id             = 1,
+	.num_resources  = ARRAY_SIZE(scc_b_rsrcs),
+	.resource       = scc_b_rsrcs,
 };
 EXPORT_SYMBOL(scc_b_pdev);
 
@@ -802,15 +830,10 @@ static void __init mac_identify(void)
 
 	/* Set up serial port resources for the console initcall. */
 
-	scc_a_rsrcs[0].start     = (resource_size_t)mac_bi_data.sccbase + 2;
-	scc_a_rsrcs[0].end       = scc_a_rsrcs[0].start;
-	scc_a_pdev.num_resources = ARRAY_SIZE(scc_a_rsrcs);
-	scc_a_pdev.resource      = scc_a_rsrcs;
-
-	scc_b_rsrcs[0].start     = (resource_size_t)mac_bi_data.sccbase;
-	scc_b_rsrcs[0].end       = scc_b_rsrcs[0].start;
-	scc_b_pdev.num_resources = ARRAY_SIZE(scc_b_rsrcs);
-	scc_b_pdev.resource      = scc_b_rsrcs;
+	scc_a_rsrcs[0].start = (resource_size_t) mac_bi_data.sccbase + 2;
+	scc_a_rsrcs[0].end   = scc_a_rsrcs[0].start;
+	scc_b_rsrcs[0].start = (resource_size_t) mac_bi_data.sccbase;
+	scc_b_rsrcs[0].end   = scc_b_rsrcs[0].start;
 
 	switch (macintosh_config->scc_type) {
 	case MAC_SCC_PSC:
@@ -828,6 +851,13 @@ static void __init mac_identify(void)
 		}
 		break;
 	}
+
+	/*
+	 * We need to pre-init the IOPs, if any. Otherwise
+	 * the serial console won't work if the user had
+	 * the serial ports set to "Faster" mode in MacOS.
+	 */
+	iop_preinit();
 
 	pr_info("Detected Macintosh model: %d\n", model);
 
@@ -928,29 +958,7 @@ static const struct resource mac_scsi_ccl_rsrc[] __initconst = {
 	},
 };
 
-static const struct resource mac_pata_quadra_rsrc[] __initconst = {
-	DEFINE_RES_MEM(0x50F1A000, 0x38),
-	DEFINE_RES_MEM(0x50F1A038, 0x04),
-	DEFINE_RES_IRQ(IRQ_NUBUS_F),
-};
-
-static const struct resource mac_pata_pb_rsrc[] __initconst = {
-	DEFINE_RES_MEM(0x50F1A000, 0x38),
-	DEFINE_RES_MEM(0x50F1A038, 0x04),
-	DEFINE_RES_IRQ(IRQ_NUBUS_C),
-};
-
-static const struct resource mac_pata_baboon_rsrc[] __initconst = {
-	DEFINE_RES_MEM(0x50F1A000, 0x38),
-	DEFINE_RES_MEM(0x50F1A038, 0x04),
-	DEFINE_RES_IRQ(IRQ_BABOON_1),
-};
-
-static const struct pata_platform_info mac_pata_data __initconst = {
-	.ioport_shift = 2,
-};
-
-static int __init mac_platform_init(void)
+int __init mac_platform_init(void)
 {
 	phys_addr_t swim_base = 0;
 
@@ -1028,7 +1036,7 @@ static int __init mac_platform_init(void)
 		 */
 		platform_device_register_simple("mac_scsi", 1,
 			mac_scsi_duo_rsrc, ARRAY_SIZE(mac_scsi_duo_rsrc));
-		fallthrough;
+		/* fall through */
 	case MAC_SCSI_OLD:
 		/* Addresses from Developer Notes for Duo System,
 		 * PowerBook 180 & 160, 140 & 170, Macintosh IIsi
@@ -1055,28 +1063,6 @@ static int __init mac_platform_init(void)
 		 */
 		platform_device_register_simple("mac_scsi", 0,
 			mac_scsi_ccl_rsrc, ARRAY_SIZE(mac_scsi_ccl_rsrc));
-		break;
-	}
-
-	/*
-	 * IDE device
-	 */
-
-	switch (macintosh_config->ide_type) {
-	case MAC_IDE_QUADRA:
-		platform_device_register_resndata(NULL, "pata_platform", -1,
-			mac_pata_quadra_rsrc, ARRAY_SIZE(mac_pata_quadra_rsrc),
-			&mac_pata_data, sizeof(mac_pata_data));
-		break;
-	case MAC_IDE_PB:
-		platform_device_register_resndata(NULL, "pata_platform", -1,
-			mac_pata_pb_rsrc, ARRAY_SIZE(mac_pata_pb_rsrc),
-			&mac_pata_data, sizeof(mac_pata_data));
-		break;
-	case MAC_IDE_BABOON:
-		platform_device_register_resndata(NULL, "pata_platform", -1,
-			mac_pata_baboon_rsrc, ARRAY_SIZE(mac_pata_baboon_rsrc),
-			&mac_pata_data, sizeof(mac_pata_data));
 		break;
 	}
 

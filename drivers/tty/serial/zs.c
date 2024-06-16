@@ -44,6 +44,10 @@
  * complicated and prevents the use of some automatic modes of operation.
  */
 
+#if defined(CONFIG_SERIAL_ZS_CONSOLE) && defined(CONFIG_MAGIC_SYSRQ)
+#define SUPPORT_SYSRQ
+#endif
+
 #include <linux/bug.h>
 #include <linux/console.h>
 #include <linux/delay.h>
@@ -539,9 +543,8 @@ static void zs_receive_chars(struct zs_port *zport)
 	struct uart_port *uport = &zport->port;
 	struct zs_scc *scc = zport->scc;
 	struct uart_icount *icount;
-	unsigned int avail, status;
+	unsigned int avail, status, ch, flag;
 	int count;
-	u8 ch, flag;
 
 	for (count = 16; count; count--) {
 		spin_lock(&scc->zlock);
@@ -624,7 +627,8 @@ static void zs_raw_transmit_chars(struct zs_port *zport)
 
 	/* Send char.  */
 	write_zsdata(zport, xmit->buf[xmit->tail]);
-	uart_xmit_advance(&zport->port, 1);
+	xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
+	zport->port.icount.tx++;
 
 	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
 		uart_write_wakeup(&zport->port);
@@ -846,7 +850,7 @@ static void zs_reset(struct zs_port *zport)
 }
 
 static void zs_set_termios(struct uart_port *uport, struct ktermios *termios,
-			   const struct ktermios *old_termios)
+			   struct ktermios *old_termios)
 {
 	struct zs_port *zport = to_zport(uport);
 	struct zs_scc *scc = zport->scc;
@@ -981,14 +985,14 @@ static const char *zs_type(struct uart_port *uport)
 static void zs_release_port(struct uart_port *uport)
 {
 	iounmap(uport->membase);
-	uport->membase = NULL;
+	uport->membase = 0;
 	release_mem_region(uport->mapbase, ZS_CHAN_IO_SIZE);
 }
 
 static int zs_map_port(struct uart_port *uport)
 {
 	if (!uport->membase)
-		uport->membase = ioremap(uport->mapbase,
+		uport->membase = ioremap_nocache(uport->mapbase,
 						 ZS_CHAN_IO_SIZE);
 	if (!uport->membase) {
 		printk(KERN_ERR "zs: Cannot map MMIO\n");
@@ -1102,7 +1106,6 @@ static int __init zs_probe_sccs(void)
 			zport->scc	= &zs_sccs[chip];
 			zport->clk_mode	= 16;
 
-			uport->has_sysrq = IS_ENABLED(CONFIG_SERIAL_ZS_CONSOLE);
 			uport->irq	= zs_parms.irq[chip];
 			uport->uartclk	= ZS_CLOCK;
 			uport->fifosize	= 1;
@@ -1124,7 +1127,7 @@ static int __init zs_probe_sccs(void)
 
 
 #ifdef CONFIG_SERIAL_ZS_CONSOLE
-static void zs_console_putchar(struct uart_port *uport, unsigned char ch)
+static void zs_console_putchar(struct uart_port *uport, int ch)
 {
 	struct zs_port *zport = to_zport(uport);
 	struct zs_scc *scc = zport->scc;

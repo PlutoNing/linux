@@ -10,11 +10,12 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
-#include <linux/gpio/consumer.h>
+#include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/media.h>
 #include <linux/module.h>
+#include <linux/of_gpio.h>
 #include <linux/of_graph.h>
 #include <linux/regulator/consumer.h>
 #include <linux/sizes.h>
@@ -26,6 +27,7 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-mediabus.h>
+#include <media/i2c/s5c73m3.h>
 #include <media/v4l2-fwnode.h>
 
 #include "s5c73m3.h"
@@ -435,7 +437,7 @@ static int __s5c73m3_s_stream(struct s5c73m3 *state, struct v4l2_subdev *sd,
 	state->streaming = !!on;
 
 	if (!on)
-		return 0;
+		return ret;
 
 	if (state->apply_fiv) {
 		ret = s5c73m3_set_frame_rate(state);
@@ -815,10 +817,11 @@ static const struct s5c73m3_frame_size *s5c73m3_find_frame_size(
 }
 
 static void s5c73m3_oif_try_format(struct s5c73m3 *state,
-				   struct v4l2_subdev_state *sd_state,
+				   struct v4l2_subdev_pad_config *cfg,
 				   struct v4l2_subdev_format *fmt,
 				   const struct s5c73m3_frame_size **fs)
 {
+	struct v4l2_subdev *sd = &state->sensor_sd;
 	u32 code;
 
 	switch (fmt->pad) {
@@ -840,8 +843,10 @@ static void s5c73m3_oif_try_format(struct s5c73m3 *state,
 		if (fmt->which == V4L2_SUBDEV_FORMAT_ACTIVE)
 			*fs = state->oif_pix_size[RES_ISP];
 		else
-			*fs = s5c73m3_find_frame_size(v4l2_subdev_state_get_format(sd_state, OIF_ISP_PAD),
-						      RES_ISP);
+			*fs = s5c73m3_find_frame_size(
+						v4l2_subdev_get_try_format(sd, cfg,
+							OIF_ISP_PAD),
+						RES_ISP);
 		break;
 	}
 
@@ -849,7 +854,7 @@ static void s5c73m3_oif_try_format(struct s5c73m3 *state,
 }
 
 static void s5c73m3_try_format(struct s5c73m3 *state,
-			      struct v4l2_subdev_state *sd_state,
+			      struct v4l2_subdev_pad_config *cfg,
 			      struct v4l2_subdev_format *fmt,
 			      const struct s5c73m3_frame_size **fs)
 {
@@ -866,18 +871,10 @@ static void s5c73m3_try_format(struct s5c73m3 *state,
 	s5c73m3_fill_mbus_fmt(&fmt->format, *fs, code);
 }
 
-static int s5c73m3_oif_get_frame_interval(struct v4l2_subdev *sd,
-					  struct v4l2_subdev_state *sd_state,
-					  struct v4l2_subdev_frame_interval *fi)
+static int s5c73m3_oif_g_frame_interval(struct v4l2_subdev *sd,
+				   struct v4l2_subdev_frame_interval *fi)
 {
 	struct s5c73m3 *state = oif_sd_to_s5c73m3(sd);
-
-	/*
-	 * FIXME: Implement support for V4L2_SUBDEV_FORMAT_TRY, using the V4L2
-	 * subdev active state API.
-	 */
-	if (fi->which != V4L2_SUBDEV_FORMAT_ACTIVE)
-		return -EINVAL;
 
 	if (fi->pad != OIF_SOURCE_PAD)
 		return -EINVAL;
@@ -923,19 +920,11 @@ static int __s5c73m3_set_frame_interval(struct s5c73m3 *state,
 	return 0;
 }
 
-static int s5c73m3_oif_set_frame_interval(struct v4l2_subdev *sd,
-					  struct v4l2_subdev_state *sd_state,
-					  struct v4l2_subdev_frame_interval *fi)
+static int s5c73m3_oif_s_frame_interval(struct v4l2_subdev *sd,
+				   struct v4l2_subdev_frame_interval *fi)
 {
 	struct s5c73m3 *state = oif_sd_to_s5c73m3(sd);
 	int ret;
-
-	/*
-	 * FIXME: Implement support for V4L2_SUBDEV_FORMAT_TRY, using the V4L2
-	 * subdev active state API.
-	 */
-	if (fi->which != V4L2_SUBDEV_FORMAT_ACTIVE)
-		return -EINVAL;
 
 	if (fi->pad != OIF_SOURCE_PAD)
 		return -EINVAL;
@@ -957,7 +946,7 @@ static int s5c73m3_oif_set_frame_interval(struct v4l2_subdev *sd,
 }
 
 static int s5c73m3_oif_enum_frame_interval(struct v4l2_subdev *sd,
-			      struct v4l2_subdev_state *sd_state,
+			      struct v4l2_subdev_pad_config *cfg,
 			      struct v4l2_subdev_frame_interval_enum *fie)
 {
 	struct s5c73m3 *state = oif_sd_to_s5c73m3(sd);
@@ -995,7 +984,7 @@ static int s5c73m3_oif_get_pad_code(int pad, int index)
 }
 
 static int s5c73m3_get_fmt(struct v4l2_subdev *sd,
-			   struct v4l2_subdev_state *sd_state,
+			   struct v4l2_subdev_pad_config *cfg,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct s5c73m3 *state = sensor_sd_to_s5c73m3(sd);
@@ -1003,8 +992,7 @@ static int s5c73m3_get_fmt(struct v4l2_subdev *sd,
 	u32 code;
 
 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
-		fmt->format = *v4l2_subdev_state_get_format(sd_state,
-							    fmt->pad);
+		fmt->format = *v4l2_subdev_get_try_format(sd, cfg, fmt->pad);
 		return 0;
 	}
 
@@ -1030,7 +1018,7 @@ static int s5c73m3_get_fmt(struct v4l2_subdev *sd,
 }
 
 static int s5c73m3_oif_get_fmt(struct v4l2_subdev *sd,
-			   struct v4l2_subdev_state *sd_state,
+			   struct v4l2_subdev_pad_config *cfg,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct s5c73m3 *state = oif_sd_to_s5c73m3(sd);
@@ -1038,8 +1026,7 @@ static int s5c73m3_oif_get_fmt(struct v4l2_subdev *sd,
 	u32 code;
 
 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
-		fmt->format = *v4l2_subdev_state_get_format(sd_state,
-							    fmt->pad);
+		fmt->format = *v4l2_subdev_get_try_format(sd, cfg, fmt->pad);
 		return 0;
 	}
 
@@ -1069,7 +1056,7 @@ static int s5c73m3_oif_get_fmt(struct v4l2_subdev *sd,
 }
 
 static int s5c73m3_set_fmt(struct v4l2_subdev *sd,
-			   struct v4l2_subdev_state *sd_state,
+			   struct v4l2_subdev_pad_config *cfg,
 			   struct v4l2_subdev_format *fmt)
 {
 	const struct s5c73m3_frame_size *frame_size = NULL;
@@ -1079,10 +1066,10 @@ static int s5c73m3_set_fmt(struct v4l2_subdev *sd,
 
 	mutex_lock(&state->lock);
 
-	s5c73m3_try_format(state, sd_state, fmt, &frame_size);
+	s5c73m3_try_format(state, cfg, fmt, &frame_size);
 
 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
-		mf = v4l2_subdev_state_get_format(sd_state, fmt->pad);
+		mf = v4l2_subdev_get_try_format(sd, cfg, fmt->pad);
 		*mf = fmt->format;
 	} else {
 		switch (fmt->pad) {
@@ -1108,7 +1095,7 @@ static int s5c73m3_set_fmt(struct v4l2_subdev *sd,
 }
 
 static int s5c73m3_oif_set_fmt(struct v4l2_subdev *sd,
-			 struct v4l2_subdev_state *sd_state,
+			 struct v4l2_subdev_pad_config *cfg,
 			 struct v4l2_subdev_format *fmt)
 {
 	const struct s5c73m3_frame_size *frame_size = NULL;
@@ -1118,14 +1105,13 @@ static int s5c73m3_oif_set_fmt(struct v4l2_subdev *sd,
 
 	mutex_lock(&state->lock);
 
-	s5c73m3_oif_try_format(state, sd_state, fmt, &frame_size);
+	s5c73m3_oif_try_format(state, cfg, fmt, &frame_size);
 
 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
-		mf = v4l2_subdev_state_get_format(sd_state, fmt->pad);
+		mf = v4l2_subdev_get_try_format(sd, cfg, fmt->pad);
 		*mf = fmt->format;
 		if (fmt->pad == OIF_ISP_PAD) {
-			mf = v4l2_subdev_state_get_format(sd_state,
-							  OIF_SOURCE_PAD);
+			mf = v4l2_subdev_get_try_format(sd, cfg, OIF_SOURCE_PAD);
 			mf->width = fmt->format.width;
 			mf->height = fmt->format.height;
 		}
@@ -1197,7 +1183,7 @@ static int s5c73m3_oif_set_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
 }
 
 static int s5c73m3_enum_mbus_code(struct v4l2_subdev *sd,
-				  struct v4l2_subdev_state *sd_state,
+				  struct v4l2_subdev_pad_config *cfg,
 				  struct v4l2_subdev_mbus_code_enum *code)
 {
 	static const int codes[] = {
@@ -1213,7 +1199,7 @@ static int s5c73m3_enum_mbus_code(struct v4l2_subdev *sd,
 }
 
 static int s5c73m3_oif_enum_mbus_code(struct v4l2_subdev *sd,
-				struct v4l2_subdev_state *sd_state,
+				struct v4l2_subdev_pad_config *cfg,
 				struct v4l2_subdev_mbus_code_enum *code)
 {
 	int ret;
@@ -1228,7 +1214,7 @@ static int s5c73m3_oif_enum_mbus_code(struct v4l2_subdev *sd,
 }
 
 static int s5c73m3_enum_frame_size(struct v4l2_subdev *sd,
-				   struct v4l2_subdev_state *sd_state,
+				   struct v4l2_subdev_pad_config *cfg,
 				   struct v4l2_subdev_frame_size_enum *fse)
 {
 	int idx;
@@ -1255,7 +1241,7 @@ static int s5c73m3_enum_frame_size(struct v4l2_subdev *sd,
 }
 
 static int s5c73m3_oif_enum_frame_size(struct v4l2_subdev *sd,
-				   struct v4l2_subdev_state *sd_state,
+				   struct v4l2_subdev_pad_config *cfg,
 				   struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct s5c73m3 *state = oif_sd_to_s5c73m3(sd);
@@ -1273,8 +1259,8 @@ static int s5c73m3_oif_enum_frame_size(struct v4l2_subdev *sd,
 			if (fse->which == V4L2_SUBDEV_FORMAT_TRY) {
 				struct v4l2_mbus_framefmt *mf;
 
-				mf = v4l2_subdev_state_get_format(sd_state,
-								  OIF_ISP_PAD);
+				mf = v4l2_subdev_get_try_format(sd, cfg,
+								OIF_ISP_PAD);
 
 				w = mf->width;
 				h = mf->height;
@@ -1329,11 +1315,11 @@ static int s5c73m3_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 {
 	struct v4l2_mbus_framefmt *mf;
 
-	mf = v4l2_subdev_state_get_format(fh->state, S5C73M3_ISP_PAD);
+	mf = v4l2_subdev_get_try_format(sd, fh->pad, S5C73M3_ISP_PAD);
 	s5c73m3_fill_mbus_fmt(mf, &s5c73m3_isp_resolutions[1],
 						S5C73M3_ISP_FMT);
 
-	mf = v4l2_subdev_state_get_format(fh->state, S5C73M3_JPEG_PAD);
+	mf = v4l2_subdev_get_try_format(sd, fh->pad, S5C73M3_JPEG_PAD);
 	s5c73m3_fill_mbus_fmt(mf, &s5c73m3_jpeg_resolutions[1],
 					S5C73M3_JPEG_FMT);
 
@@ -1344,18 +1330,36 @@ static int s5c73m3_oif_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 {
 	struct v4l2_mbus_framefmt *mf;
 
-	mf = v4l2_subdev_state_get_format(fh->state, OIF_ISP_PAD);
+	mf = v4l2_subdev_get_try_format(sd, fh->pad, OIF_ISP_PAD);
 	s5c73m3_fill_mbus_fmt(mf, &s5c73m3_isp_resolutions[1],
 						S5C73M3_ISP_FMT);
 
-	mf = v4l2_subdev_state_get_format(fh->state, OIF_JPEG_PAD);
+	mf = v4l2_subdev_get_try_format(sd, fh->pad, OIF_JPEG_PAD);
 	s5c73m3_fill_mbus_fmt(mf, &s5c73m3_jpeg_resolutions[1],
 					S5C73M3_JPEG_FMT);
 
-	mf = v4l2_subdev_state_get_format(fh->state, OIF_SOURCE_PAD);
+	mf = v4l2_subdev_get_try_format(sd, fh->pad, OIF_SOURCE_PAD);
 	s5c73m3_fill_mbus_fmt(mf, &s5c73m3_isp_resolutions[1],
 						S5C73M3_ISP_FMT);
 	return 0;
+}
+
+static int s5c73m3_gpio_set_value(struct s5c73m3 *priv, int id, u32 val)
+{
+	if (!gpio_is_valid(priv->gpio[id].gpio))
+		return 0;
+	gpio_set_value(priv->gpio[id].gpio, !!val);
+	return 1;
+}
+
+static int s5c73m3_gpio_assert(struct s5c73m3 *priv, int id)
+{
+	return s5c73m3_gpio_set_value(priv, id, priv->gpio[id].level);
+}
+
+static int s5c73m3_gpio_deassert(struct s5c73m3 *priv, int id)
+{
+	return s5c73m3_gpio_set_value(priv, id, !priv->gpio[id].level);
 }
 
 static int __s5c73m3_power_on(struct s5c73m3 *state)
@@ -1379,9 +1383,10 @@ static int __s5c73m3_power_on(struct s5c73m3 *state)
 	v4l2_dbg(1, s5c73m3_dbg, &state->oif_sd, "clock frequency: %ld\n",
 					clk_get_rate(state->clock));
 
-	gpiod_set_value(state->stby, 0);
+	s5c73m3_gpio_deassert(state, STBY);
 	usleep_range(100, 200);
-	gpiod_set_value(state->reset, 0);
+
+	s5c73m3_gpio_deassert(state, RST);
 	usleep_range(50, 100);
 
 	return 0;
@@ -1396,10 +1401,11 @@ static int __s5c73m3_power_off(struct s5c73m3 *state)
 {
 	int i, ret;
 
-	gpiod_set_value(state->reset, 1);
-	usleep_range(10, 50);
-	gpiod_set_value(state->stby, 1);
-	usleep_range(100, 200);
+	if (s5c73m3_gpio_assert(state, RST))
+		usleep_range(10, 50);
+
+	if (s5c73m3_gpio_assert(state, STBY))
+		usleep_range(100, 200);
 
 	clk_disable_unprepare(state->clock);
 
@@ -1513,8 +1519,6 @@ static const struct v4l2_subdev_pad_ops s5c73m3_oif_pad_ops = {
 	.enum_frame_interval	= s5c73m3_oif_enum_frame_interval,
 	.get_fmt		= s5c73m3_oif_get_fmt,
 	.set_fmt		= s5c73m3_oif_set_fmt,
-	.get_frame_interval	= s5c73m3_oif_get_frame_interval,
-	.set_frame_interval	= s5c73m3_oif_set_frame_interval,
 	.get_frame_desc		= s5c73m3_oif_get_frame_desc,
 	.set_frame_desc		= s5c73m3_oif_set_frame_desc,
 };
@@ -1526,6 +1530,8 @@ static const struct v4l2_subdev_core_ops s5c73m3_oif_core_ops = {
 
 static const struct v4l2_subdev_video_ops s5c73m3_oif_video_ops = {
 	.s_stream		= s5c73m3_oif_s_stream,
+	.g_frame_interval	= s5c73m3_oif_g_frame_interval,
+	.s_frame_interval	= s5c73m3_oif_s_frame_interval,
 };
 
 static const struct v4l2_subdev_ops oif_subdev_ops = {
@@ -1534,16 +1540,75 @@ static const struct v4l2_subdev_ops oif_subdev_ops = {
 	.video	= &s5c73m3_oif_video_ops,
 };
 
-static int s5c73m3_get_dt_data(struct s5c73m3 *state)
+static int s5c73m3_configure_gpios(struct s5c73m3 *state)
+{
+	static const char * const gpio_names[] = {
+		"S5C73M3_STBY", "S5C73M3_RST"
+	};
+	struct i2c_client *c = state->i2c_client;
+	struct s5c73m3_gpio *g = state->gpio;
+	int ret, i;
+
+	for (i = 0; i < GPIO_NUM; ++i) {
+		unsigned int flags = GPIOF_DIR_OUT;
+		if (g[i].level)
+			flags |= GPIOF_INIT_HIGH;
+		ret = devm_gpio_request_one(&c->dev, g[i].gpio, flags,
+					    gpio_names[i]);
+		if (ret) {
+			v4l2_err(c, "failed to request gpio %s\n",
+				 gpio_names[i]);
+			return ret;
+		}
+	}
+	return 0;
+}
+
+static int s5c73m3_parse_gpios(struct s5c73m3 *state)
+{
+	static const char * const prop_names[] = {
+		"standby-gpios", "xshutdown-gpios",
+	};
+	struct device *dev = &state->i2c_client->dev;
+	struct device_node *node = dev->of_node;
+	int ret, i;
+
+	for (i = 0; i < GPIO_NUM; ++i) {
+		enum of_gpio_flags of_flags;
+
+		ret = of_get_named_gpio_flags(node, prop_names[i],
+					      0, &of_flags);
+		if (ret < 0) {
+			dev_err(dev, "failed to parse %s DT property\n",
+				prop_names[i]);
+			return -EINVAL;
+		}
+		state->gpio[i].gpio = ret;
+		state->gpio[i].level = !(of_flags & OF_GPIO_ACTIVE_LOW);
+	}
+	return 0;
+}
+
+static int s5c73m3_get_platform_data(struct s5c73m3 *state)
 {
 	struct device *dev = &state->i2c_client->dev;
+	const struct s5c73m3_platform_data *pdata = dev->platform_data;
 	struct device_node *node = dev->of_node;
 	struct device_node *node_ep;
 	struct v4l2_fwnode_endpoint ep = { .bus_type = 0 };
 	int ret;
 
-	if (!node)
-		return -EINVAL;
+	if (!node) {
+		if (!pdata) {
+			dev_err(dev, "Platform data not specified\n");
+			return -EINVAL;
+		}
+
+		state->mclk_frequency = pdata->mclk_frequency;
+		state->gpio[STBY] = pdata->gpio_stby;
+		state->gpio[RST] = pdata->gpio_reset;
+		return 0;
+	}
 
 	state->clock = devm_clk_get(dev, S5C73M3_CLK_NAME);
 	if (IS_ERR(state->clock))
@@ -1556,19 +1621,11 @@ static int s5c73m3_get_dt_data(struct s5c73m3 *state)
 					state->mclk_frequency);
 	}
 
-	/* Request GPIO lines asserted */
-	state->stby = devm_gpiod_get(dev, "standby", GPIOD_OUT_HIGH);
-	if (IS_ERR(state->stby))
-		return dev_err_probe(dev, PTR_ERR(state->stby),
-				     "failed to request gpio S5C73M3_STBY\n");
-	gpiod_set_consumer_name(state->stby, "S5C73M3_STBY");
-	state->reset = devm_gpiod_get(dev, "xshutdown", GPIOD_OUT_HIGH);
-	if (IS_ERR(state->reset))
-		return dev_err_probe(dev, PTR_ERR(state->reset),
-				     "failed to request gpio S5C73M3_RST\n");
-	gpiod_set_consumer_name(state->reset, "S5C73M3_RST");
+	ret = s5c73m3_parse_gpios(state);
+	if (ret < 0)
+		return -EINVAL;
 
-	node_ep = of_graph_get_endpoint_by_regs(node, 0, -1);
+	node_ep = of_graph_get_next_endpoint(node, NULL);
 	if (!node_ep) {
 		dev_warn(dev, "no endpoint defined for node: %pOF\n", node);
 		return 0;
@@ -1606,7 +1663,7 @@ static int s5c73m3_probe(struct i2c_client *client)
 		return -ENOMEM;
 
 	state->i2c_client = client;
-	ret = s5c73m3_get_dt_data(state);
+	ret = s5c73m3_get_platform_data(state);
 	if (ret < 0)
 		return ret;
 
@@ -1647,6 +1704,10 @@ static int s5c73m3_probe(struct i2c_client *client)
 							state->oif_pads);
 	if (ret < 0)
 		return ret;
+
+	ret = s5c73m3_configure_gpios(state);
+	if (ret)
+		goto out_err;
 
 	for (i = 0; i < S5C73M3_MAX_SUPPLIES; i++)
 		state->supplies[i].supply = s5c73m3_supply_names[i];
@@ -1706,7 +1767,7 @@ out_err:
 	return ret;
 }
 
-static void s5c73m3_remove(struct i2c_client *client)
+static int s5c73m3_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *oif_sd = i2c_get_clientdata(client);
 	struct s5c73m3 *state = oif_sd_to_s5c73m3(oif_sd);
@@ -1721,6 +1782,8 @@ static void s5c73m3_remove(struct i2c_client *client)
 	media_entity_cleanup(&sensor_sd->entity);
 
 	s5c73m3_unregister_spi_driver(state);
+
+	return 0;
 }
 
 static const struct i2c_device_id s5c73m3_id[] = {
@@ -1742,7 +1805,7 @@ static struct i2c_driver s5c73m3_i2c_driver = {
 		.of_match_table = of_match_ptr(s5c73m3_of_match),
 		.name	= DRIVER_NAME,
 	},
-	.probe		= s5c73m3_probe,
+	.probe_new	= s5c73m3_probe,
 	.remove		= s5c73m3_remove,
 	.id_table	= s5c73m3_id,
 };

@@ -4,6 +4,6 @@
 
 #include <linux/debugfs.h>
 
-struct dentry *ras_get_debugfs_root(void);
+extern struct dentry *ras_debugfs_dir;
 
 #endif /* __RAS_DEBUGFS_H__ */

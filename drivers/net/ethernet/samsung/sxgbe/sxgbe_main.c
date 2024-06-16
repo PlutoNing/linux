@@ -89,7 +89,7 @@ static void sxgbe_enable_eee_mode(const struct sxgbe_priv_data *priv)
 
 void sxgbe_disable_eee_mode(struct sxgbe_priv_data * const priv)
 {
-	/* Exit and disable EEE in case of we are in LPI state. */
+	/* Exit and disable EEE in case of we are are in LPI state. */
 	priv->hw->mac->reset_eee_mode(priv->ioaddr);
 	del_timer_sync(&priv->eee_ctrl_timer);
 	priv->tx_path_in_lpi_mode = false;
@@ -97,7 +97,7 @@ void sxgbe_disable_eee_mode(struct sxgbe_priv_data * const priv)
 
 /**
  * sxgbe_eee_ctrl_timer
- * @t: timer list containing a data
+ * @arg : data hook
  * Description:
  *  If there is no data transfer and if we are not in LPI state,
  *  then MAC Transmitter can be moved to LPI state.
@@ -127,9 +127,10 @@ bool sxgbe_eee_init(struct sxgbe_priv_data * const priv)
 	/* MAC core supports the EEE feature. */
 	if (priv->hw_cap.eee) {
 		/* Check if the PHY supports EEE */
-		if (phy_init_eee(ndev->phydev, true))
+		if (phy_init_eee(ndev->phydev, 1))
 			return false;
 
+		priv->eee_active = 1;
 		timer_setup(&priv->eee_ctrl_timer, sxgbe_eee_ctrl_timer, 0);
 		priv->eee_ctrl_timer.expires = SXGBE_LPI_TIMER(eee_timer);
 		add_timer(&priv->eee_ctrl_timer);
@@ -254,7 +255,7 @@ static void sxgbe_adjust_link(struct net_device *dev)
 
 /**
  * sxgbe_init_phy - PHY initialization
- * @ndev: net device structure
+ * @dev: net device structure
  * Description: it initializes the driver's PHY state, and attaches the PHY
  * to the mac driver.
  *  Return value:
@@ -363,11 +364,8 @@ static int sxgbe_init_rx_buffers(struct net_device *dev,
 /**
  * sxgbe_free_rx_buffers - free what sxgbe_init_rx_buffers() allocated
  * @dev: net device structure
- * @p: dec pointer
- * @i: index
- * @dma_buf_sz: size
  * @rx_ring: ring to be freed
- *
+ * @rx_rsize: ring size
  * Description:  this function initializes the DMA RX descriptor
  */
 static void sxgbe_free_rx_buffers(struct net_device *dev,
@@ -385,7 +383,6 @@ static void sxgbe_free_rx_buffers(struct net_device *dev,
 /**
  * init_tx_ring - init the TX descriptor ring
  * @dev: net device structure
- * @queue_no: queue
  * @tx_ring: ring to be initialised
  * @tx_rsize: ring size
  * Description:  this function initializes the DMA TX descriptor
@@ -452,7 +449,6 @@ static void free_rx_ring(struct device *dev, struct sxgbe_rx_queue *rx_ring,
 /**
  * init_rx_ring - init the RX descriptor ring
  * @dev: net device structure
- * @queue_no: queue
  * @rx_ring: ring to be initialised
  * @rx_rsize: ring size
  * Description:  this function initializes the DMA RX descriptor
@@ -552,7 +548,7 @@ static void free_tx_ring(struct device *dev, struct sxgbe_tx_queue *tx_ring,
 
 /**
  * init_dma_desc_rings - init the RX/TX descriptor rings
- * @netd: net device structure
+ * @dev: net device structure
  * Description:  this function initializes the DMA RX/TX descriptors
  * and allocates the socket buffers. It suppors the chained and ring
  * modes.
@@ -728,7 +724,7 @@ static void sxgbe_mtl_operation_mode(struct sxgbe_priv_data *priv)
 
 /**
  * sxgbe_tx_queue_clean:
- * @tqueue: queue pointer
+ * @priv: driver private structure
  * Description: it reclaims resources after transmission completes.
  */
 static void sxgbe_tx_queue_clean(struct sxgbe_tx_queue *tqueue)
@@ -788,7 +784,7 @@ static void sxgbe_tx_queue_clean(struct sxgbe_tx_queue *tqueue)
 }
 
 /**
- * sxgbe_tx_all_clean:
+ * sxgbe_tx_clean:
  * @priv: driver private structure
  * Description: it reclaims resources after transmission completes.
  */
@@ -811,7 +807,6 @@ static void sxgbe_tx_all_clean(struct sxgbe_priv_data * const priv)
 /**
  * sxgbe_restart_tx_queue: irq tx error mng function
  * @priv: driver private structure
- * @queue_num: queue number
  * Description: it cleans the descriptors and restarts the transmission
  * in case of errors.
  */
@@ -930,13 +925,10 @@ static int sxgbe_get_hw_features(struct sxgbe_priv_data * const priv)
 static void sxgbe_check_ether_addr(struct sxgbe_priv_data *priv)
 {
 	if (!is_valid_ether_addr(priv->dev->dev_addr)) {
-		u8 addr[ETH_ALEN];
-
 		priv->hw->mac->get_umac_addr((void __iomem *)
-					     priv->ioaddr, addr, 0);
-		if (is_valid_ether_addr(addr))
-			eth_hw_addr_set(priv->dev, addr);
-		else
+					     priv->ioaddr,
+					     priv->dev->dev_addr, 0);
+		if (!is_valid_ether_addr(priv->dev->dev_addr))
 			eth_hw_addr_random(priv->dev);
 	}
 	dev_info(priv->device, "device MAC address %pM\n",
@@ -1017,7 +1009,7 @@ static void sxgbe_tx_timer(struct timer_list *t)
 }
 
 /**
- * sxgbe_tx_init_coalesce: init tx mitigation options.
+ * sxgbe_init_tx_coalesce: init tx mitigation options.
  * @priv: driver private structure
  * Description:
  * This inits the transmit coalesce parameters: i.e. timer rate,
@@ -1575,13 +1567,12 @@ static int sxgbe_poll(struct napi_struct *napi, int budget)
 /**
  *  sxgbe_tx_timeout
  *  @dev : Pointer to net device structure
- *  @txqueue: index of the hanging queue
  *  Description: this function is called when a packet transmission fails to
  *   complete within a reasonable time. The driver will mark the error in the
  *   netdev structure and arrange for the device to be reset to a sane state
  *   in order to transmit a new packet.
  */
-static void sxgbe_tx_timeout(struct net_device *dev, unsigned int txqueue)
+static void sxgbe_tx_timeout(struct net_device *dev)
 {
 	struct sxgbe_priv_data *priv = netdev_priv(dev);
 
@@ -1948,7 +1939,9 @@ static int sxgbe_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	case SIOCGMIIPHY:
 	case SIOCGMIIREG:
 	case SIOCSMIIREG:
-		ret = phy_do_ioctl(dev, rq, cmd);
+		if (!dev->phydev)
+			return -EINVAL;
+		ret = phy_mii_ioctl(dev->phydev, rq, cmd);
 		break;
 	default:
 		break;
@@ -1966,7 +1959,7 @@ static const struct net_device_ops sxgbe_netdev_ops = {
 	.ndo_set_features	= sxgbe_set_features,
 	.ndo_set_rx_mode	= sxgbe_set_rx_mode,
 	.ndo_tx_timeout		= sxgbe_tx_timeout,
-	.ndo_eth_ioctl		= sxgbe_ioctl,
+	.ndo_do_ioctl		= sxgbe_ioctl,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= sxgbe_poll_controller,
 #endif
@@ -2142,7 +2135,7 @@ struct sxgbe_priv_data *sxgbe_drv_probe(struct device *device,
 		pr_info("Enable RX Mitigation via HW Watchdog Timer\n");
 	}
 
-	netif_napi_add(ndev, &priv->napi, sxgbe_poll);
+	netif_napi_add(ndev, &priv->napi, sxgbe_poll, 64);
 
 	spin_lock_init(&priv->stats_lock);
 
@@ -2202,7 +2195,7 @@ error_free_netdev:
  * Description: this function resets the TX/RX processes, disables the MAC RX/TX
  * changes the link status, releases the DMA descriptor rings.
  */
-void sxgbe_drv_remove(struct net_device *ndev)
+int sxgbe_drv_remove(struct net_device *ndev)
 {
 	struct sxgbe_priv_data *priv = netdev_priv(ndev);
 	u8 queue_num;
@@ -2230,6 +2223,8 @@ void sxgbe_drv_remove(struct net_device *ndev)
 	kfree(priv->hw);
 
 	free_netdev(ndev);
+
+	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -2282,18 +2277,18 @@ static int __init sxgbe_cmdline_opt(char *str)
 	char *opt;
 
 	if (!str || !*str)
-		return 1;
+		return -EINVAL;
 	while ((opt = strsep(&str, ",")) != NULL) {
-		if (!strncmp(opt, "eee_timer:", 10)) {
+		if (!strncmp(opt, "eee_timer:", 6)) {
 			if (kstrtoint(opt + 10, 0, &eee_timer))
 				goto err;
 		}
 	}
-	return 1;
+	return 0;
 
 err:
 	pr_err("%s: ERROR broken module parameter conversion\n", __func__);
-	return 1;
+	return -EINVAL;
 }
 
 __setup("sxgbeeth=", sxgbe_cmdline_opt);
@@ -2301,7 +2296,7 @@ __setup("sxgbeeth=", sxgbe_cmdline_opt);
 
 
 
-MODULE_DESCRIPTION("Samsung 10G/2.5G/1G Ethernet PLATFORM driver");
+MODULE_DESCRIPTION("SAMSUNG 10G/2.5G/1G Ethernet PLATFORM driver");
 
 MODULE_PARM_DESC(debug, "Message Level (-1: default, 0: no output, 16: all)");
 MODULE_PARM_DESC(eee_timer, "EEE-LPI Default LS timer value");

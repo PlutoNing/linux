@@ -32,6 +32,9 @@ struct kprobe;
 
 void arch_remove_kprobe(struct kprobe *p);
 
+int kprobe_exceptions_notify(struct notifier_block *self,
+			     unsigned long val, void *data);
+
 struct prev_kprobe {
 	struct kprobe *kp;
 	unsigned long status;
@@ -43,7 +46,7 @@ struct kprobe_ctlblk {
 };
 
 int kprobe_fault_handler(struct pt_regs *regs, unsigned long cause);
-void __kretprobe_trampoline(void);
+void kretprobe_trampoline(void);
 void trap_is_kprobe(unsigned long address, struct pt_regs *regs);
 #else
 #define trap_is_kprobe(address, regs)

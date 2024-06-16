@@ -3,7 +3,7 @@
 #include <linux/signal.h>
 #include <linux/uaccess.h>
 #include <linux/syscalls.h>
-#include <linux/resume_user_mode.h>
+#include <linux/tracehook.h>
 
 #include <asm/traps.h>
 #include <asm/ucontext.h>
@@ -52,13 +52,9 @@ static long restore_sigcontext(struct pt_regs *regs,
 	struct sigcontext __user *sc)
 {
 	int err = 0;
-	unsigned long sr = regs->sr;
 
 	/* sc_pt_regs is structured the same as the start of pt_regs */
 	err |= __copy_from_user(regs, &sc->sc_pt_regs, sizeof(struct pt_regs));
-
-	/* BIT(0) of regs->sr is Condition Code/Carry bit */
-	regs->sr = (sr & ~1) | (regs->sr & 1);
 
 	/* Restore the floating-point state. */
 	err |= restore_fpu_state(sc);
@@ -136,8 +132,9 @@ static inline void __user *get_sigframe(struct ksignal *ksig,
 static int
 setup_rt_frame(struct ksignal *ksig, sigset_t *set, struct pt_regs *regs)
 {
-	struct rt_sigframe __user *frame;
+	struct rt_sigframe *frame;
 	int err = 0;
+	struct csky_vdso *vdso = current->mm->context.vdso;
 
 	frame = get_sigframe(ksig, regs, sizeof(*frame));
 	if (!access_ok(frame, sizeof(*frame)))
@@ -155,8 +152,7 @@ setup_rt_frame(struct ksignal *ksig, sigset_t *set, struct pt_regs *regs)
 		return -EFAULT;
 
 	/* Set up to return from userspace. */
-	regs->lr = (unsigned long)VDSO_SYMBOL(
-		current->mm->context.vdso, rt_sigreturn);
+	regs->lr = (unsigned long)(vdso->rt_signal_retcode);
 
 	/*
 	 * Set up registers for signal handler.
@@ -196,7 +192,7 @@ static void handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 				regs->a0 = -EINTR;
 				break;
 			}
-			fallthrough;
+			/* fallthrough */
 		case -ERESTARTNOINTR:
 			regs->a0 = regs->orig_a0;
 			regs->pc -= TRAP0_SIZE;
@@ -255,13 +251,12 @@ static void do_signal(struct pt_regs *regs)
 asmlinkage void do_notify_resume(struct pt_regs *regs,
 	unsigned long thread_info_flags)
 {
-	if (thread_info_flags & _TIF_UPROBE)
-		uprobe_notify_resume(regs);
-
 	/* Handle pending signal delivery */
-	if (thread_info_flags & (_TIF_SIGPENDING | _TIF_NOTIFY_SIGNAL))
+	if (thread_info_flags & _TIF_SIGPENDING)
 		do_signal(regs);
 
-	if (thread_info_flags & _TIF_NOTIFY_RESUME)
-		resume_user_mode_work(regs);
+	if (thread_info_flags & _TIF_NOTIFY_RESUME) {
+		clear_thread_flag(TIF_NOTIFY_RESUME);
+		tracehook_notify_resume(regs);
+	}
 }

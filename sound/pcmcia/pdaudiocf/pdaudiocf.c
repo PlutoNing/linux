@@ -22,6 +22,7 @@
 MODULE_AUTHOR("Jaroslav Kysela <perex@perex.cz>");
 MODULE_DESCRIPTION("Sound Core " CARD_NAME);
 MODULE_LICENSE("GPL");
+MODULE_SUPPORTED_DEVICE("{{Sound Core," CARD_NAME "}}");
 
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;	/* Index 0-MAX */
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;	/* ID for this card */
@@ -81,7 +82,7 @@ static int snd_pdacf_probe(struct pcmcia_device *link)
 	int i, err;
 	struct snd_pdacf *pdacf;
 	struct snd_card *card;
-	static const struct snd_device_ops ops = {
+	static struct snd_device_ops ops = {
 		.dev_free =	snd_pdacf_dev_free,
 	};
 
@@ -138,7 +139,6 @@ static int snd_pdacf_probe(struct pcmcia_device *link)
 
 /**
  * snd_pdacf_assign_resources - initialize the hardware and card instance.
- * @pdacf: context
  * @port: i/o port for the card
  * @irq: irq number for the card
  *
@@ -170,8 +170,7 @@ static int snd_pdacf_assign_resources(struct snd_pdacf *pdacf, int port, int irq
 	if (err < 0)
 		return err;
 
-	err = snd_card_register(card);
-	if (err < 0)
+	if ((err = snd_card_register(card)) < 0)
 		return err;
 
 	return 0;
@@ -225,7 +224,6 @@ static int pdacf_config(struct pcmcia_device *link)
 					link->irq) < 0)
 		goto failed;
 
-	pdacf->card->sync_irq = link->irq;
 	return 0;
 
  failed:

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Freescale Memory Controller kernel module
  *
@@ -10,7 +9,10 @@
  *
  * Author: Dave Jiang <djiang@mvista.com>
  *
- * 2006-2007 (c) MontaVista Software, Inc.
+ * 2006-2007 (c) MontaVista Software, Inc. This file is licensed under
+ * the terms of the GNU General Public License version 2. This program
+ * is licensed "as is" without any warranty of any kind, whether express
+ * or implied.
  */
 #include <linux/module.h>
 #include <linux/init.h>
@@ -22,7 +24,8 @@
 #include <linux/smp.h>
 #include <linux/gfp.h>
 
-#include <linux/of.h>
+#include <linux/of_platform.h>
+#include <linux/of_device.h>
 #include <linux/of_address.h>
 #include "edac_module.h"
 #include "fsl_ddr_edac.h"
@@ -612,7 +615,7 @@ err:
 	return res;
 }
 
-void fsl_mc_err_remove(struct platform_device *op)
+int fsl_mc_err_remove(struct platform_device *op)
 {
 	struct mem_ctl_info *mci = dev_get_drvdata(&op->dev);
 	struct fsl_mc_pdata *pdata = mci->pvt_info;
@@ -629,4 +632,5 @@ void fsl_mc_err_remove(struct platform_device *op)
 
 	edac_mc_del_mc(&op->dev);
 	edac_mc_free(mci);
+	return 0;
 }

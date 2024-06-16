@@ -23,7 +23,7 @@ static void snd_opl3_note_off_unsafe(void *p, int note, int vel,
  * it saves a lot of log() calculations. (Rob Hooft <hooft@chem.ruu.nl>)
  */
 
-static const char opl3_volume_table[128] =
+static char opl3_volume_table[128] =
 {
 	-63, -48, -40, -35, -32, -29, -27, -26,
 	-24, -23, -21, -20, -19, -18, -18, -17,
@@ -69,7 +69,7 @@ void snd_opl3_calc_volume(unsigned char *volbyte, int vel,
 /*
  * Converts the note frequency to block and fnum values for the FM chip
  */
-static const short opl3_note_table[16] =
+static short opl3_note_table[16] =
 {
 	305, 323,	/* for pitch bending, -2 semitones */
 	343, 363, 385, 408, 432, 458, 485, 514, 544, 577, 611, 647,
@@ -180,7 +180,8 @@ static int opl3_get_voice(struct snd_opl3 *opl3, int instr_4op,
 			if (vp2->state == SNDRV_OPL3_ST_ON_2OP) {
 				/* kill two voices, EXPENSIVE */
 				bp++;
-				voice_time = max(voice_time, vp2->time);
+				voice_time = (voice_time > vp->time) ?
+					voice_time : vp->time;
 			}
 		} else {
 			/* allocate 2op voice */
@@ -265,7 +266,7 @@ static void snd_opl3_start_timer(struct snd_opl3 *opl3)
 /* ------------------------------ */
 
 
-static const int snd_opl3_oss_map[MAX_OPL3_VOICES] = {
+static int snd_opl3_oss_map[MAX_OPL3_VOICES] = {
 	0, 1, 2, 9, 10, 11, 6, 7, 8, 15, 16, 17, 3, 4 ,5, 12, 13, 14
 };
 
@@ -353,7 +354,7 @@ void snd_opl3_note_on(void *p, int note, int vel, struct snd_midi_channel *chan)
 			instr_4op = 1;
 			break;
 		}
-		fallthrough;
+		/* fall through */
 	default:
 		spin_unlock_irqrestore(&opl3->voice_lock, flags);
 		return;
@@ -397,7 +398,7 @@ void snd_opl3_note_on(void *p, int note, int vel, struct snd_midi_channel *chan)
 	}
 	if (instr_4op) {
 		vp2 = &opl3->voices[voice + 3];
-		if (vp2->state > 0) {
+		if (vp->state > 0) {
 			opl3_reg = reg_side | (OPL3_REG_KEYON_BLOCK +
 					       voice_offset + 3);
 			reg_val = vp->keyon_reg & ~OPL3_KEYON_BIT;
@@ -442,7 +443,7 @@ void snd_opl3_note_on(void *p, int note, int vel, struct snd_midi_channel *chan)
 		switch (connection) {
 		case 0x03:
 			snd_opl3_calc_volume(&vol_op[2], vel, chan);
-			fallthrough;
+			/* fallthru */
 		case 0x02:
 			snd_opl3_calc_volume(&vol_op[0], vel, chan);
 			break;

@@ -100,7 +100,7 @@ static struct inode *affs_alloc_inode(struct super_block *sb)
 {
 	struct affs_inode_info *i;
 
-	i = alloc_inode_sb(sb, affs_inode_cachep, GFP_KERNEL);
+	i = kmem_cache_alloc(affs_inode_cachep, GFP_KERNEL);
 	if (!i)
 		return NULL;
 
@@ -121,8 +121,8 @@ static void init_once(void *foo)
 {
 	struct affs_inode_info *ei = (struct affs_inode_info *) foo;
 
-	mutex_init(&ei->i_link_lock);
-	mutex_init(&ei->i_ext_lock);
+	sema_init(&ei->i_link_lock, 1);
+	sema_init(&ei->i_ext_lock, 1);
 	inode_init_once(&ei->vfs_inode);
 }
 
@@ -130,7 +130,8 @@ static int __init init_inodecache(void)
 {
 	affs_inode_cachep = kmem_cache_create("affs_inode_cache",
 					     sizeof(struct affs_inode_info),
-					     0, (SLAB_RECLAIM_ACCOUNT | SLAB_ACCOUNT),
+					     0, (SLAB_RECLAIM_ACCOUNT|
+						SLAB_MEM_SPREAD|SLAB_ACCOUNT),
 					     init_once);
 	if (affs_inode_cachep == NULL)
 		return -ENOMEM;
@@ -275,7 +276,7 @@ parse_options(char *options, kuid_t *uid, kgid_t *gid, int *mode, int *reserved,
 			char *vol = match_strdup(&args[0]);
 			if (!vol)
 				return 0;
-			strscpy(volume, vol, 32);
+			strlcpy(volume, vol, 32);
 			kfree(vol);
 			break;
 		}
@@ -388,7 +389,7 @@ static int affs_fill_super(struct super_block *sb, void *data, int silent)
 	 * blocks, we will have to change it.
 	 */
 
-	size = bdev_nr_sectors(sb->s_bdev);
+	size = i_size_read(sb->s_bdev->bd_inode) >> 9;
 	pr_debug("initial blocksize=%d, #blocks=%d\n", 512, size);
 
 	affs_set_blocksize(sb, PAGE_SIZE);
@@ -473,7 +474,7 @@ got_root:
 	case MUFS_INTLFFS:
 	case MUFS_DCFFS:
 		affs_set_opt(sbi->s_flags, SF_MUFS);
-		fallthrough;
+		/* fall thru */
 	case FS_INTLFFS:
 	case FS_DCFFS:
 		affs_set_opt(sbi->s_flags, SF_INTL);
@@ -485,7 +486,7 @@ got_root:
 		break;
 	case MUFS_OFS:
 		affs_set_opt(sbi->s_flags, SF_MUFS);
-		fallthrough;
+		/* fall through */
 	case FS_OFS:
 		affs_set_opt(sbi->s_flags, SF_OFS);
 		sb->s_flags |= SB_NOEXEC;
@@ -493,7 +494,7 @@ got_root:
 	case MUFS_DCOFS:
 	case MUFS_INTLOFS:
 		affs_set_opt(sbi->s_flags, SF_MUFS);
-		fallthrough;
+		/* fall through */
 	case FS_DCOFS:
 	case FS_INTLOFS:
 		affs_set_opt(sbi->s_flags, SF_INTL);
@@ -560,8 +561,13 @@ affs_remount(struct super_block *sb, int *flags, char *data)
 	int			 root_block;
 	unsigned long		 mount_flags;
 	int			 res = 0;
+	char			*new_opts;
 	char			 volume[32];
 	char			*prefix = NULL;
+
+	new_opts = kstrdup(data, GFP_KERNEL);
+	if (data && !new_opts)
+		return -ENOMEM;
 
 	pr_debug("%s(flags=0x%x,opts=\"%s\")\n", __func__, *flags, data);
 
@@ -573,6 +579,7 @@ affs_remount(struct super_block *sb, int *flags, char *data)
 			   &blocksize, &prefix, volume,
 			   &mount_flags)) {
 		kfree(prefix);
+		kfree(new_opts);
 		return -EINVAL;
 	}
 
@@ -619,7 +626,8 @@ affs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	buf->f_blocks  = AFFS_SB(sb)->s_partition_size - AFFS_SB(sb)->s_reserved;
 	buf->f_bfree   = free;
 	buf->f_bavail  = free;
-	buf->f_fsid    = u64_to_fsid(id);
+	buf->f_fsid.val[0] = (u32)id;
+	buf->f_fsid.val[1] = (u32)(id >> 32);
 	buf->f_namelen = AFFSNAMEMAX;
 	return 0;
 }
@@ -639,7 +647,7 @@ static void affs_kill_sb(struct super_block *sb)
 		affs_brelse(sbi->s_root_bh);
 		kfree(sbi->s_prefix);
 		mutex_destroy(&sbi->s_bmlock);
-		kfree_rcu(sbi, rcu);
+		kfree(sbi);
 	}
 }
 

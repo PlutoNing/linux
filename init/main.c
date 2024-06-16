@@ -28,25 +28,19 @@
 #include <linux/initrd.h>
 #include <linux/memblock.h>
 #include <linux/acpi.h>
-#include <linux/bootconfig.h>
 #include <linux/console.h>
 #include <linux/nmi.h>
 #include <linux/percpu.h>
 #include <linux/kmod.h>
-#include <linux/kprobes.h>
-#include <linux/kmsan.h>
 #include <linux/vmalloc.h>
 #include <linux/kernel_stat.h>
 #include <linux/start_kernel.h>
 #include <linux/security.h>
 #include <linux/smp.h>
 #include <linux/profile.h>
-#include <linux/kfence.h>
 #include <linux/rcupdate.h>
-#include <linux/srcu.h>
 #include <linux/moduleparam.h>
 #include <linux/kallsyms.h>
-#include <linux/buildid.h>
 #include <linux/writeback.h>
 #include <linux/cpu.h>
 #include <linux/cpuset.h>
@@ -62,13 +56,14 @@
 #include <linux/rmap.h>
 #include <linux/mempolicy.h>
 #include <linux/key.h>
+#include <linux/buffer_head.h>
+#include <linux/page_ext.h>
 #include <linux/debug_locks.h>
 #include <linux/debugobjects.h>
 #include <linux/lockdep.h>
 #include <linux/kmemleak.h>
-#include <linux/padata.h>
 #include <linux/pid_namespace.h>
-#include <linux/device/driver.h>
+#include <linux/device.h>
 #include <linux/kthread.h>
 #include <linux/sched.h>
 #include <linux/sched/init.h>
@@ -77,18 +72,19 @@
 #include <linux/kgdb.h>
 #include <linux/ftrace.h>
 #include <linux/async.h>
+#include <linux/sfi.h>
 #include <linux/shmem_fs.h>
 #include <linux/slab.h>
 #include <linux/perf_event.h>
 #include <linux/ptrace.h>
 #include <linux/pti.h>
 #include <linux/blkdev.h>
+#include <linux/elevator.h>
 #include <linux/sched/clock.h>
 #include <linux/sched/task.h>
 #include <linux/sched/task_stack.h>
 #include <linux/context_tracking.h>
 #include <linux/random.h>
-#include <linux/moduleloader.h>
 #include <linux/list.h>
 #include <linux/integrity.h>
 #include <linux/proc_ns.h>
@@ -96,15 +92,10 @@
 #include <linux/cache.h>
 #include <linux/rodata_test.h>
 #include <linux/jump_label.h>
-#include <linux/kcsan.h>
-#include <linux/init_syscalls.h>
-#include <linux/stackdepot.h>
-#include <linux/randomize_kstack.h>
-#include <linux/pidfs.h>
-#include <linux/ptdump.h>
-#include <net/net_namespace.h>
+#include <linux/mem_encrypt.h>
 
 #include <asm/io.h>
+#include <asm/bugs.h>
 #include <asm/setup.h>
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
@@ -112,9 +103,10 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/initcall.h>
 
-#include <kunit/test.h>
-
 static int kernel_init(void *);
+
+extern void init_IRQ(void);
+extern void radix_tree_init(void);
 
 /*
  * Debug helper: via this flag we know that we are in 'early bootup code'
@@ -134,32 +126,21 @@ EXPORT_SYMBOL(system_state);
 #define MAX_INIT_ARGS CONFIG_INIT_ENV_ARG_LIMIT
 #define MAX_INIT_ENVS CONFIG_INIT_ENV_ARG_LIMIT
 
+extern void time_init(void);
 /* Default late time init is NULL. archs can override this later. */
 void (*__initdata late_time_init)(void);
 
 /* Untouched command line saved by arch-specific code. */
 char __initdata boot_command_line[COMMAND_LINE_SIZE];
 /* Untouched saved command line (eg. for /proc) */
-char *saved_command_line __ro_after_init;
-unsigned int saved_command_line_len __ro_after_init;
+char *saved_command_line;
 /* Command line for parameter parsing */
 static char *static_command_line;
-/* Untouched extra command line */
-static char *extra_command_line;
-/* Extra init arguments */
-static char *extra_init_args;
-
-#ifdef CONFIG_BOOT_CONFIG
-/* Is bootconfig on command line? */
-static bool bootconfig_found;
-static size_t initargs_offs;
-#else
-# define bootconfig_found false
-# define initargs_offs 0
-#endif
+/* Command line for per-initcall parameter parsing */
+static char *initcall_command_line;
 
 static char *execute_command;
-static char *ramdisk_execute_command = "/init";
+static char *ramdisk_execute_command;
 
 /*
  * Used to generate warnings if static_key manipulation functions are used
@@ -191,6 +172,8 @@ __setup("reset_devices", set_reset_devices);
 static const char *argv_init[MAX_INIT_ARGS+2] = { "init", NULL, };
 const char *envp_init[MAX_INIT_ENVS+2] = { "HOME=/", "TERM=linux", NULL, };
 static const char *panic_later, *panic_param;
+
+extern const struct obs_kernel_param __setup_start[], __setup_end[];
 
 static bool __init obsolete_checksetup(char *line)
 {
@@ -262,233 +245,9 @@ static int __init loglevel(char *str)
 
 early_param("loglevel", loglevel);
 
-#ifdef CONFIG_BLK_DEV_INITRD
-static void * __init get_boot_config_from_initrd(size_t *_size)
-{
-	u32 size, csum;
-	char *data;
-	u32 *hdr;
-	int i;
-
-	if (!initrd_end)
-		return NULL;
-
-	data = (char *)initrd_end - BOOTCONFIG_MAGIC_LEN;
-	/*
-	 * Since Grub may align the size of initrd to 4, we must
-	 * check the preceding 3 bytes as well.
-	 */
-	for (i = 0; i < 4; i++) {
-		if (!memcmp(data, BOOTCONFIG_MAGIC, BOOTCONFIG_MAGIC_LEN))
-			goto found;
-		data--;
-	}
-	return NULL;
-
-found:
-	hdr = (u32 *)(data - 8);
-	size = le32_to_cpu(hdr[0]);
-	csum = le32_to_cpu(hdr[1]);
-
-	data = ((void *)hdr) - size;
-	if ((unsigned long)data < initrd_start) {
-		pr_err("bootconfig size %d is greater than initrd size %ld\n",
-			size, initrd_end - initrd_start);
-		return NULL;
-	}
-
-	if (xbc_calc_checksum(data, size) != csum) {
-		pr_err("bootconfig checksum failed\n");
-		return NULL;
-	}
-
-	/* Remove bootconfig from initramfs/initrd */
-	initrd_end = (unsigned long)data;
-	if (_size)
-		*_size = size;
-
-	return data;
-}
-#else
-static void * __init get_boot_config_from_initrd(size_t *_size)
-{
-	return NULL;
-}
-#endif
-
-#ifdef CONFIG_BOOT_CONFIG
-
-static char xbc_namebuf[XBC_KEYLEN_MAX] __initdata;
-
-#define rest(dst, end) ((end) > (dst) ? (end) - (dst) : 0)
-
-static int __init xbc_snprint_cmdline(char *buf, size_t size,
-				      struct xbc_node *root)
-{
-	struct xbc_node *knode, *vnode;
-	char *end = buf + size;
-	const char *val;
-	int ret;
-
-	xbc_node_for_each_key_value(root, knode, val) {
-		ret = xbc_node_compose_key_after(root, knode,
-					xbc_namebuf, XBC_KEYLEN_MAX);
-		if (ret < 0)
-			return ret;
-
-		vnode = xbc_node_get_child(knode);
-		if (!vnode) {
-			ret = snprintf(buf, rest(buf, end), "%s ", xbc_namebuf);
-			if (ret < 0)
-				return ret;
-			buf += ret;
-			continue;
-		}
-		xbc_array_for_each_value(vnode, val) {
-			ret = snprintf(buf, rest(buf, end), "%s=\"%s\" ",
-				       xbc_namebuf, val);
-			if (ret < 0)
-				return ret;
-			buf += ret;
-		}
-	}
-
-	return buf - (end - size);
-}
-#undef rest
-
-/* Make an extra command line under given key word */
-static char * __init xbc_make_cmdline(const char *key)
-{
-	struct xbc_node *root;
-	char *new_cmdline;
-	int ret, len = 0;
-
-	root = xbc_find_node(key);
-	if (!root)
-		return NULL;
-
-	/* Count required buffer size */
-	len = xbc_snprint_cmdline(NULL, 0, root);
-	if (len <= 0)
-		return NULL;
-
-	new_cmdline = memblock_alloc(len + 1, SMP_CACHE_BYTES);
-	if (!new_cmdline) {
-		pr_err("Failed to allocate memory for extra kernel cmdline.\n");
-		return NULL;
-	}
-
-	ret = xbc_snprint_cmdline(new_cmdline, len + 1, root);
-	if (ret < 0 || ret > len) {
-		pr_err("Failed to print extra kernel cmdline.\n");
-		memblock_free(new_cmdline, len + 1);
-		return NULL;
-	}
-
-	return new_cmdline;
-}
-
-static int __init bootconfig_params(char *param, char *val,
-				    const char *unused, void *arg)
-{
-	if (strcmp(param, "bootconfig") == 0) {
-		bootconfig_found = true;
-	}
-	return 0;
-}
-
-static int __init warn_bootconfig(char *str)
-{
-	/* The 'bootconfig' has been handled by bootconfig_params(). */
-	return 0;
-}
-
-static void __init setup_boot_config(void)
-{
-	static char tmp_cmdline[COMMAND_LINE_SIZE] __initdata;
-	const char *msg, *data;
-	int pos, ret;
-	size_t size;
-	char *err;
-
-	/* Cut out the bootconfig data even if we have no bootconfig option */
-	data = get_boot_config_from_initrd(&size);
-	/* If there is no bootconfig in initrd, try embedded one. */
-	if (!data)
-		data = xbc_get_embedded_bootconfig(&size);
-
-	strscpy(tmp_cmdline, boot_command_line, COMMAND_LINE_SIZE);
-	err = parse_args("bootconfig", tmp_cmdline, NULL, 0, 0, 0, NULL,
-			 bootconfig_params);
-
-	if (IS_ERR(err) || !(bootconfig_found || IS_ENABLED(CONFIG_BOOT_CONFIG_FORCE)))
-		return;
-
-	/* parse_args() stops at the next param of '--' and returns an address */
-	if (err)
-		initargs_offs = err - tmp_cmdline;
-
-	if (!data) {
-		/* If user intended to use bootconfig, show an error level message */
-		if (bootconfig_found)
-			pr_err("'bootconfig' found on command line, but no bootconfig found\n");
-		else
-			pr_info("No bootconfig data provided, so skipping bootconfig");
-		return;
-	}
-
-	if (size >= XBC_DATA_MAX) {
-		pr_err("bootconfig size %ld greater than max size %d\n",
-			(long)size, XBC_DATA_MAX);
-		return;
-	}
-
-	ret = xbc_init(data, size, &msg, &pos);
-	if (ret < 0) {
-		if (pos < 0)
-			pr_err("Failed to init bootconfig: %s.\n", msg);
-		else
-			pr_err("Failed to parse bootconfig: %s at %d.\n",
-				msg, pos);
-	} else {
-		xbc_get_info(&ret, NULL);
-		pr_info("Load bootconfig: %ld bytes %d nodes\n", (long)size, ret);
-		/* keys starting with "kernel." are passed via cmdline */
-		extra_command_line = xbc_make_cmdline("kernel");
-		/* Also, "init." keys are init arguments */
-		extra_init_args = xbc_make_cmdline("init");
-	}
-	return;
-}
-
-static void __init exit_boot_config(void)
-{
-	xbc_exit();
-}
-
-#else	/* !CONFIG_BOOT_CONFIG */
-
-static void __init setup_boot_config(void)
-{
-	/* Remove bootconfig data from initrd */
-	get_boot_config_from_initrd(NULL);
-}
-
-static int __init warn_bootconfig(char *str)
-{
-	pr_warn("WARNING: 'bootconfig' found on the kernel command line but CONFIG_BOOT_CONFIG is not set.\n");
-	return 0;
-}
-
-#define exit_boot_config()	do {} while (0)
-
-#endif	/* CONFIG_BOOT_CONFIG */
-
-early_param("bootconfig", warn_bootconfig);
-
 /* Change NUL term back to "=", to make "param" the whole string. */
-static void __init repair_env_string(char *param, char *val)
+static int __init repair_env_string(char *param, char *val,
+				    const char *unused, void *arg)
 {
 	if (val) {
 		/* param=val or param="val"? */
@@ -497,9 +256,11 @@ static void __init repair_env_string(char *param, char *val)
 		else if (val == param+strlen(param)+2) {
 			val[-2] = '=';
 			memmove(val-1, val, strlen(val)+1);
+			val--;
 		} else
 			BUG();
 	}
+	return 0;
 }
 
 /* Anything after -- gets handed straight to init. */
@@ -511,7 +272,7 @@ static int __init set_init_arg(char *param, char *val,
 	if (panic_later)
 		return 0;
 
-	repair_env_string(param, val);
+	repair_env_string(param, val, unused, NULL);
 
 	for (i = 0; argv_init[i]; i++) {
 		if (i == MAX_INIT_ARGS) {
@@ -531,20 +292,14 @@ static int __init set_init_arg(char *param, char *val,
 static int __init unknown_bootoption(char *param, char *val,
 				     const char *unused, void *arg)
 {
-	size_t len = strlen(param);
-
-	/* Handle params aliased to sysctls */
-	if (sysctl_is_alias(param))
-		return 0;
-
-	repair_env_string(param, val);
+	repair_env_string(param, val, unused, NULL);
 
 	/* Handle obsolete-style parameters */
 	if (obsolete_checksetup(param))
 		return 0;
 
 	/* Unused module parameter. */
-	if (strnchr(param, len, '.'))
+	if (strchr(param, '.') && (!val || strchr(param, '.') < val))
 		return 0;
 
 	if (panic_later)
@@ -558,7 +313,7 @@ static int __init unknown_bootoption(char *param, char *val,
 				panic_later = "env";
 				panic_param = param;
 			}
-			if (!strncmp(param, envp_init[i], len+1))
+			if (!strncmp(param, envp_init[i], val - param))
 				break;
 		}
 		envp_init[i] = param;
@@ -606,6 +361,7 @@ static int __init rdinit_setup(char *str)
 __setup("rdinit=", rdinit_setup);
 
 #ifndef CONFIG_SMP
+static const unsigned int setup_max_cpus = NR_CPUS;
 static inline void setup_nr_cpu_ids(void) { }
 static inline void smp_prepare_cpus(unsigned int maxcpus) { }
 #endif
@@ -618,58 +374,22 @@ static inline void smp_prepare_cpus(unsigned int maxcpus) { }
  */
 static void __init setup_command_line(char *command_line)
 {
-	size_t len, xlen = 0, ilen = 0;
+	size_t len = strlen(boot_command_line) + 1;
 
-	if (extra_command_line)
-		xlen = strlen(extra_command_line);
-	if (extra_init_args)
-		ilen = strlen(extra_init_args) + 4; /* for " -- " */
-
-	len = xlen + strlen(boot_command_line) + 1;
-
-	saved_command_line = memblock_alloc(len + ilen, SMP_CACHE_BYTES);
+	saved_command_line = memblock_alloc(len, SMP_CACHE_BYTES);
 	if (!saved_command_line)
-		panic("%s: Failed to allocate %zu bytes\n", __func__, len + ilen);
+		panic("%s: Failed to allocate %zu bytes\n", __func__, len);
+
+	initcall_command_line =	memblock_alloc(len, SMP_CACHE_BYTES);
+	if (!initcall_command_line)
+		panic("%s: Failed to allocate %zu bytes\n", __func__, len);
 
 	static_command_line = memblock_alloc(len, SMP_CACHE_BYTES);
 	if (!static_command_line)
 		panic("%s: Failed to allocate %zu bytes\n", __func__, len);
 
-	if (xlen) {
-		/*
-		 * We have to put extra_command_line before boot command
-		 * lines because there could be dashes (separator of init
-		 * command line) in the command lines.
-		 */
-		strcpy(saved_command_line, extra_command_line);
-		strcpy(static_command_line, extra_command_line);
-	}
-	strcpy(saved_command_line + xlen, boot_command_line);
-	strcpy(static_command_line + xlen, command_line);
-
-	if (ilen) {
-		/*
-		 * Append supplemental init boot args to saved_command_line
-		 * so that user can check what command line options passed
-		 * to init.
-		 * The order should always be
-		 * " -- "[bootconfig init-param][cmdline init-param]
-		 */
-		if (initargs_offs) {
-			len = xlen + initargs_offs;
-			strcpy(saved_command_line + len, extra_init_args);
-			len += ilen - 4;	/* strlen(extra_init_args) */
-			strcpy(saved_command_line + len,
-				boot_command_line + initargs_offs - 1);
-		} else {
-			len = strlen(saved_command_line);
-			strcpy(saved_command_line + len, " -- ");
-			len += 4;
-			strcpy(saved_command_line + len, extra_init_args);
-		}
-	}
-
-	saved_command_line_len = strlen(saved_command_line);
+	strcpy(saved_command_line, boot_command_line);
+	strcpy(static_command_line, command_line);
 }
 
 /*
@@ -683,7 +403,7 @@ static void __init setup_command_line(char *command_line)
 
 static __initdata DECLARE_COMPLETION(kthreadd_done);
 
-static noinline void __ref __noreturn rest_init(void)
+noinline void __ref rest_init(void)
 {
 	struct task_struct *tsk;
 	int pid;
@@ -694,7 +414,7 @@ static noinline void __ref __noreturn rest_init(void)
 	 * the init task will end up wanting to create kthreads, which, if
 	 * we schedule it before we create kthreadd, will OOPS.
 	 */
-	pid = user_mode_thread(kernel_init, NULL, CLONE_FS);
+	pid = kernel_thread(kernel_init, NULL, CLONE_FS);
 	/*
 	 * Pin init on the boot CPU. Task migration is not properly working
 	 * until sched_init_smp() has been run. It will set the allowed
@@ -702,12 +422,11 @@ static noinline void __ref __noreturn rest_init(void)
 	 */
 	rcu_read_lock();
 	tsk = find_task_by_pid_ns(pid, &init_pid_ns);
-	tsk->flags |= PF_NO_SETAFFINITY;
 	set_cpus_allowed_ptr(tsk, cpumask_of(smp_processor_id()));
 	rcu_read_unlock();
 
 	numa_default_policy();
-	pid = kernel_thread(kthreadd, NULL, NULL, CLONE_FS | CLONE_FILES);
+	pid = kernel_thread(kthreadd, NULL, CLONE_FS | CLONE_FILES);
 	rcu_read_lock();
 	kthreadd_task = find_task_by_pid_ns(pid, &init_pid_ns);
 	rcu_read_unlock();
@@ -767,7 +486,7 @@ void __init parse_early_param(void)
 		return;
 
 	/* All fall through to do_early_param. */
-	strscpy(tmp_cmdline, boot_command_line, COMMAND_LINE_SIZE);
+	strlcpy(tmp_cmdline, boot_command_line, COMMAND_LINE_SIZE);
 	parse_early_options(tmp_cmdline);
 	done = 1;
 }
@@ -778,21 +497,17 @@ void __init __weak smp_setup_processor_id(void)
 {
 }
 
-void __init __weak smp_prepare_boot_cpu(void)
-{
-}
-
 # if THREAD_SIZE >= PAGE_SIZE
 void __init __weak thread_stack_cache_init(void)
 {
 }
 #endif
 
+void __init __weak mem_encrypt_init(void) { }
+
 void __init __weak poking_init(void) { }
 
 void __init __weak pgtable_cache_init(void) { }
-
-void __init __weak trap_init(void) { }
 
 bool initcall_debug;
 core_param(initcall_debug, initcall_debug, bool, 0644);
@@ -805,74 +520,59 @@ static inline void initcall_debug_enable(void)
 }
 #endif
 
-#ifdef CONFIG_RANDOMIZE_KSTACK_OFFSET
-DEFINE_STATIC_KEY_MAYBE_RO(CONFIG_RANDOMIZE_KSTACK_OFFSET_DEFAULT,
-			   randomize_kstack_offset);
-DEFINE_PER_CPU(u32, kstack_offset);
-
-static int __init early_randomize_kstack_offset(char *buf)
+/* Report memory auto-initialization states for this boot. */
+static void __init report_meminit(void)
 {
-	int ret;
-	bool bool_result;
+	const char *stack;
 
-	ret = kstrtobool(buf, &bool_result);
-	if (ret)
-		return ret;
-
-	if (bool_result)
-		static_branch_enable(&randomize_kstack_offset);
+	if (IS_ENABLED(CONFIG_INIT_STACK_ALL))
+		stack = "all";
+	else if (IS_ENABLED(CONFIG_GCC_PLUGIN_STRUCTLEAK_BYREF_ALL))
+		stack = "byref_all";
+	else if (IS_ENABLED(CONFIG_GCC_PLUGIN_STRUCTLEAK_BYREF))
+		stack = "byref";
+	else if (IS_ENABLED(CONFIG_GCC_PLUGIN_STRUCTLEAK_USER))
+		stack = "__user";
 	else
-		static_branch_disable(&randomize_kstack_offset);
-	return 0;
-}
-early_param("randomize_kstack_offset", early_randomize_kstack_offset);
-#endif
+		stack = "off";
 
-static void __init print_unknown_bootoptions(void)
+	pr_info("mem auto-init: stack:%s, heap alloc:%s, heap free:%s\n",
+		stack, want_init_on_alloc(GFP_KERNEL) ? "on" : "off",
+		want_init_on_free() ? "on" : "off");
+	if (want_init_on_free())
+		pr_info("mem auto-init: clearing system memory may take some time...\n");
+}
+
+/*
+ * Set up kernel memory allocators
+ */
+static void __init mm_init(void)
 {
-	char *unknown_options;
-	char *end;
-	const char *const *p;
-	size_t len;
-
-	if (panic_later || (!argv_init[1] && !envp_init[2]))
-		return;
-
 	/*
-	 * Determine how many options we have to print out, plus a space
-	 * before each
+	 * page_ext requires contiguous pages,
+	 * bigger than MAX_ORDER unless SPARSEMEM.
 	 */
-	len = 1; /* null terminator */
-	for (p = &argv_init[1]; *p; p++) {
-		len++;
-		len += strlen(*p);
-	}
-	for (p = &envp_init[2]; *p; p++) {
-		len++;
-		len += strlen(*p);
-	}
-
-	unknown_options = memblock_alloc(len, SMP_CACHE_BYTES);
-	if (!unknown_options) {
-		pr_err("%s: Failed to allocate %zu bytes\n",
-			__func__, len);
-		return;
-	}
-	end = unknown_options;
-
-	for (p = &argv_init[1]; *p; p++)
-		end += sprintf(end, " %s", *p);
-	for (p = &envp_init[2]; *p; p++)
-		end += sprintf(end, " %s", *p);
-
-	/* Start at unknown_options[1] to skip the initial space */
-	pr_notice("Unknown kernel command line parameters \"%s\", will be passed to user space.\n",
-		&unknown_options[1]);
-	memblock_free(unknown_options, len);
+	page_ext_init_flatmem();
+	report_meminit();
+	mem_init();
+	kmem_cache_init();
+	kmemleak_init();
+	pgtable_init();
+	debug_objects_mem_init();
+	vmalloc_init();
+	ioremap_huge_init();
+	/* Should be run before the first non-init thread is created */
+	init_espfix_bsp();
+	/* Should be run after espfix64 is set up. */
+	pti_init();
 }
 
-asmlinkage __visible __init __no_sanitize_address __noreturn __no_stack_protector
-void start_kernel(void)
+void __init __weak arch_call_rest_init(void)
+{
+	rest_init();
+}
+
+asmlinkage __visible void __init start_kernel(void)
 {
 	char *command_line;
 	char *after_dashes;
@@ -880,7 +580,6 @@ void start_kernel(void)
 	set_task_stack_end_magic(&init_task);
 	smp_setup_processor_id();
 	debug_objects_early_init();
-	init_vmlinux_build_id();
 
 	cgroup_init_early();
 
@@ -896,14 +595,16 @@ void start_kernel(void)
 	pr_notice("%s", linux_banner);
 	early_security_init();
 	setup_arch(&command_line);
-	setup_boot_config();
 	setup_command_line(command_line);
 	setup_nr_cpu_ids();
 	setup_per_cpu_areas();
 	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
 	boot_cpu_hotplug_init();
 
-	pr_notice("Kernel command line: %s\n", saved_command_line);
+	build_all_zonelists(NULL);
+	page_alloc_init();
+
+	pr_notice("Kernel command line: %s\n", boot_command_line);
 	/* parameters may set static keys */
 	jump_label_init();
 	parse_early_param();
@@ -911,27 +612,20 @@ void start_kernel(void)
 				  static_command_line, __start___param,
 				  __stop___param - __start___param,
 				  -1, -1, NULL, &unknown_bootoption);
-	print_unknown_bootoptions();
 	if (!IS_ERR_OR_NULL(after_dashes))
 		parse_args("Setting init args", after_dashes, NULL, 0, -1, -1,
 			   NULL, set_init_arg);
-	if (extra_init_args)
-		parse_args("Setting extra init args", extra_init_args,
-			   NULL, 0, -1, -1, NULL, set_init_arg);
-
-	/* Architectural and non-timekeeping rng init, before allocator init */
-	random_init_early(command_line);
 
 	/*
 	 * These use large bootmem allocations and must precede
-	 * initalization of page allocator
+	 * kmem_cache_init()
 	 */
 	setup_log_buf(0);
 	vfs_caches_init_early();
 	sort_main_extable();
 	trap_init();
-	mm_core_init();
-	poking_init();
+	mm_init();
+
 	ftrace_init();
 
 	/* trace_printk can be enabled here */
@@ -943,12 +637,15 @@ void start_kernel(void)
 	 * time - but meanwhile we still have a functioning scheduler.
 	 */
 	sched_init();
-
+	/*
+	 * Disable preemption - early bootup scheduling is extremely
+	 * fragile until we cpu_idle() for the first time.
+	 */
+	preempt_disable();
 	if (WARN(!irqs_disabled(),
 		 "Interrupts were enabled *very* early, fixing it\n"))
 		local_irq_disable();
 	radix_tree_init();
-	maple_tree_init();
 
 	/*
 	 * Set up housekeeping before setting up workqueues to allow the unbound
@@ -978,19 +675,25 @@ void start_kernel(void)
 	tick_init();
 	rcu_init_nohz();
 	init_timers();
-	srcu_init();
 	hrtimers_init();
 	softirq_init();
 	timekeeping_init();
-	time_init();
 
-	/* This must be after timekeeping is initialized */
-	random_init();
-
-	/* These make use of the fully initialized rng */
-	kfence_init();
+	/*
+	 * For best initial stack canary entropy, prepare it after:
+	 * - setup_arch() for any UEFI RNG entropy and boot cmdline access
+	 * - timekeeping_init() for ktime entropy used in rand_initialize()
+	 * - rand_initialize() to get any arch-specific entropy like RDRAND
+	 * - add_latent_entropy() to get any latent entropy
+	 * - adding command line entropy
+	 */
+	rand_initialize();
+	add_latent_entropy();
+	add_device_randomness(command_line, strlen(command_line));
 	boot_init_stack_canary();
 
+	time_init();
+	printk_safe_init();
 	perf_event_init();
 	profile_init();
 	call_function_init();
@@ -1020,6 +723,14 @@ void start_kernel(void)
 	 */
 	locking_selftest();
 
+	/*
+	 * This needs to be called before any devices perform DMA
+	 * operations that might use the SWIOTLB bounce buffers. It will
+	 * mark the bounce buffers as decrypted so that their usage will
+	 * not cause "plain-text" data to be decrypted when accessed.
+	 */
+	mem_encrypt_init();
+
 #ifdef CONFIG_BLK_DEV_INITRD
 	if (initrd_start && !initrd_below_start_ok &&
 	    page_to_pfn(virt_to_page((void *)initrd_start)) < min_low_pfn) {
@@ -1036,9 +747,6 @@ void start_kernel(void)
 		late_time_init();
 	sched_clock_init();
 	calibrate_delay();
-
-	arch_cpu_finalize_init();
-
 	pid_idr_init();
 	anon_vma_init();
 #ifdef CONFIG_X86
@@ -1050,48 +758,36 @@ void start_kernel(void)
 	fork_init();
 	proc_caches_init();
 	uts_ns_init();
+	buffer_init();
 	key_init();
 	security_init();
 	dbg_late_init();
-	net_ns_init();
 	vfs_caches_init();
 	pagecache_init();
 	signals_init();
 	seq_file_init();
 	proc_root_init();
 	nsfs_init();
-	pidfs_init();
 	cpuset_init();
 	cgroup_init();
 	taskstats_init_early();
 	delayacct_init();
 
+	poking_init();
+	check_bugs();
+
 	acpi_subsystem_init();
 	arch_post_acpi_subsys_init();
-	kcsan_init();
+	sfi_init_late();
 
 	/* Do the rest non-__init'ed, we're now alive */
-	rest_init();
-
-	/*
-	 * Avoid stack canaries in callers of boot_init_stack_canary for gcc-10
-	 * and older.
-	 */
-#if !__has_attribute(__no_stack_protector__)
-	prevent_tail_call_optimization();
-#endif
+	arch_call_rest_init();
 }
 
 /* Call all constructor functions linked into the kernel. */
 static void __init do_ctors(void)
 {
-/*
- * For UML, the constructors have already been called by the
- * normal setup code as it's just a normal ELF binary, so we
- * cannot do it again - but we do need CONFIG_CONSTRUCTORS
- * even on UML for modules.
- */
-#if defined(CONFIG_CONSTRUCTORS) && !defined(CONFIG_UML)
+#ifdef CONFIG_CONSTRUCTORS
 	ctor_fn_t *fn = (ctor_fn_t *) __ctors_start;
 
 	for (; fn < (ctor_fn_t *) __ctors_end; fn++)
@@ -1132,7 +828,7 @@ static int __init initcall_blacklist(char *str)
 		}
 	} while (str_entry);
 
-	return 1;
+	return 0;
 }
 
 static bool __init_or_module initcall_blacklisted(initcall_t fn)
@@ -1179,7 +875,7 @@ __setup("initcall_blacklist=", initcall_blacklist);
 static __init_or_module void
 trace_initcall_start_cb(void *data, initcall_t fn)
 {
-	ktime_t *calltime = data;
+	ktime_t *calltime = (ktime_t *)data;
 
 	printk(KERN_DEBUG "calling  %pS @ %i\n", fn, task_pid_nr(current));
 	*calltime = ktime_get();
@@ -1188,11 +884,15 @@ trace_initcall_start_cb(void *data, initcall_t fn)
 static __init_or_module void
 trace_initcall_finish_cb(void *data, initcall_t fn, int ret)
 {
-	ktime_t rettime, *calltime = data;
+	ktime_t *calltime = (ktime_t *)data;
+	ktime_t delta, rettime;
+	unsigned long long duration;
 
 	rettime = ktime_get();
+	delta = ktime_sub(rettime, *calltime);
+	duration = (unsigned long long) ktime_to_ns(delta) >> 10;
 	printk(KERN_DEBUG "initcall %pS returned %d after %lld usecs\n",
-		 fn, ret, (unsigned long long)ktime_us_delta(rettime, *calltime));
+		 fn, ret, duration);
 }
 
 static ktime_t initcall_calltime;
@@ -1255,6 +955,17 @@ int __init_or_module do_one_initcall(initcall_t fn)
 }
 
 
+extern initcall_entry_t __initcall_start[];
+extern initcall_entry_t __initcall0_start[];
+extern initcall_entry_t __initcall1_start[];
+extern initcall_entry_t __initcall2_start[];
+extern initcall_entry_t __initcall3_start[];
+extern initcall_entry_t __initcall4_start[];
+extern initcall_entry_t __initcall5_start[];
+extern initcall_entry_t __initcall6_start[];
+extern initcall_entry_t __initcall7_start[];
+extern initcall_entry_t __initcall_end[];
+
 static initcall_entry_t *initcall_levels[] __initdata = {
 	__initcall0_start,
 	__initcall1_start,
@@ -1279,21 +990,16 @@ static const char *initcall_level_names[] __initdata = {
 	"late",
 };
 
-static int __init ignore_unknown_bootoption(char *param, char *val,
-			       const char *unused, void *arg)
-{
-	return 0;
-}
-
-static void __init do_initcall_level(int level, char *command_line)
+static void __init do_initcall_level(int level)
 {
 	initcall_entry_t *fn;
 
+	strcpy(initcall_command_line, saved_command_line);
 	parse_args(initcall_level_names[level],
-		   command_line, __start___param,
+		   initcall_command_line, __start___param,
 		   __stop___param - __start___param,
 		   level, level,
-		   NULL, ignore_unknown_bootoption);
+		   NULL, &repair_env_string);
 
 	trace_initcall_level(initcall_level_names[level]);
 	for (fn = initcall_levels[level]; fn < initcall_levels[level+1]; fn++)
@@ -1303,20 +1009,9 @@ static void __init do_initcall_level(int level, char *command_line)
 static void __init do_initcalls(void)
 {
 	int level;
-	size_t len = saved_command_line_len + 1;
-	char *command_line;
 
-	command_line = kzalloc(len, GFP_KERNEL);
-	if (!command_line)
-		panic("%s: Failed to allocate %zu bytes\n", __func__, len);
-
-	for (level = 0; level < ARRAY_SIZE(initcall_levels) - 1; level++) {
-		/* Parser modifies command_line, restore it each time */
-		strcpy(command_line, saved_command_line);
-		do_initcall_level(level, command_line);
-	}
-
-	kfree(command_line);
+	for (level = 0; level < ARRAY_SIZE(initcall_levels) - 1; level++)
+		do_initcall_level(level);
 }
 
 /*
@@ -1332,6 +1027,7 @@ static void __init do_basic_setup(void)
 	driver_init();
 	init_irq_proc();
 	do_ctors();
+	usermodehelper_enable();
 	do_initcalls();
 }
 
@@ -1346,17 +1042,11 @@ static void __init do_pre_smp_initcalls(void)
 
 static int run_init_process(const char *init_filename)
 {
-	const char *const *p;
-
 	argv_init[0] = init_filename;
 	pr_info("Run %s as init process\n", init_filename);
-	pr_debug("  with arguments:\n");
-	for (p = argv_init; *p; p++)
-		pr_debug("    %s\n", *p);
-	pr_debug("  with environment:\n");
-	for (p = envp_init; *p; p++)
-		pr_debug("    %s\n", *p);
-	return kernel_execve(init_filename, argv_init, envp_init);
+	return do_execve(getname_kernel(init_filename),
+		(const char __user *const __user *)argv_init,
+		(const char __user *const __user *)envp_init);
 }
 
 static int try_to_run_init_process(const char *init_filename)
@@ -1377,48 +1067,35 @@ static noinline void __init kernel_init_freeable(void);
 
 #if defined(CONFIG_STRICT_KERNEL_RWX) || defined(CONFIG_STRICT_MODULE_RWX)
 bool rodata_enabled __ro_after_init = true;
-
-#ifndef arch_parse_debug_rodata
-static inline bool arch_parse_debug_rodata(char *str) { return false; }
-#endif
-
 static int __init set_debug_rodata(char *str)
 {
-	if (arch_parse_debug_rodata(str))
-		return 0;
-
-	if (str && !strcmp(str, "on"))
-		rodata_enabled = true;
-	else if (str && !strcmp(str, "off"))
-		rodata_enabled = false;
-	else
-		pr_warn("Invalid option string for rodata: '%s'\n", str);
-	return 0;
+	return strtobool(str, &rodata_enabled);
 }
-early_param("rodata", set_debug_rodata);
+__setup("rodata=", set_debug_rodata);
 #endif
 
+#ifdef CONFIG_STRICT_KERNEL_RWX
 static void mark_readonly(void)
 {
-	if (IS_ENABLED(CONFIG_STRICT_KERNEL_RWX) && rodata_enabled) {
+	if (rodata_enabled) {
 		/*
 		 * load_module() results in W+X mappings, which are cleaned
-		 * up with init_free_wq. Let's make sure that queued work is
+		 * up with call_rcu().  Let's make sure that queued work is
 		 * flushed so that we don't hit false positives looking for
 		 * insecure pages which are W+X.
 		 */
-		flush_module_init_free_work();
+		rcu_barrier();
 		mark_rodata_ro();
-		debug_checkwx();
 		rodata_test();
-	} else if (IS_ENABLED(CONFIG_STRICT_KERNEL_RWX)) {
+	} else
 		pr_info("Kernel memory protection disabled.\n");
-	} else if (IS_ENABLED(CONFIG_ARCH_HAS_STRICT_KERNEL_RWX)) {
-		pr_warn("Kernel memory protection not selected by kernel config.\n");
-	} else {
-		pr_warn("This architecture does not have kernel memory protection.\n");
-	}
 }
+#else
+static inline void mark_readonly(void)
+{
+	pr_warn("This architecture does not have kernel memory protection.\n");
+}
+#endif
 
 void __weak free_initmem(void)
 {
@@ -1429,20 +1106,10 @@ static int __ref kernel_init(void *unused)
 {
 	int ret;
 
-	/*
-	 * Wait until kthreadd is all set-up.
-	 */
-	wait_for_completion(&kthreadd_done);
-
 	kernel_init_freeable();
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
-
-	system_state = SYSTEM_FREEING_INITMEM;
-	kprobe_free_init_mem();
 	ftrace_free_init_mem();
-	kgdb_free_init_mem();
-	exit_boot_config();
 	free_initmem();
 	mark_readonly();
 
@@ -1456,8 +1123,6 @@ static int __ref kernel_init(void *unused)
 	numa_default_policy();
 
 	rcu_end_inkernel_boot();
-
-	do_sysctl_args();
 
 	if (ramdisk_execute_command) {
 		ret = run_init_process(ramdisk_execute_command);
@@ -1480,16 +1145,6 @@ static int __ref kernel_init(void *unused)
 		panic("Requested init %s failed (error %d).",
 		      execute_command, ret);
 	}
-
-	if (CONFIG_DEFAULT_INIT[0] != '\0') {
-		ret = run_init_process(CONFIG_DEFAULT_INIT);
-		if (ret)
-			pr_err("Default init %s failed (error %d)\n",
-			       CONFIG_DEFAULT_INIT, ret);
-		else
-			return 0;
-	}
-
 	if (!try_to_run_init_process("/sbin/init") ||
 	    !try_to_run_init_process("/etc/init") ||
 	    !try_to_run_init_process("/bin/init") ||
@@ -1500,23 +1155,13 @@ static int __ref kernel_init(void *unused)
 	      "See Linux Documentation/admin-guide/init.rst for guidance.");
 }
 
-/* Open /dev/console, for stdin/stdout/stderr, this should never fail */
-void __init console_on_rootfs(void)
-{
-	struct file *file = filp_open("/dev/console", O_RDWR, 0);
-
-	if (IS_ERR(file)) {
-		pr_err("Warning: unable to open an initial console.\n");
-		return;
-	}
-	init_dup(file);
-	init_dup(file);
-	init_dup(file);
-	fput(file);
-}
-
 static noinline void __init kernel_init_freeable(void)
 {
+	/*
+	 * Wait until kthreadd is all set-up.
+	 */
+	wait_for_completion(&kthreadd_done);
+
 	/* Now the scheduler is fully set up and can do blocking allocations */
 	gfp_allowed_mask = __GFP_BITS_MASK;
 
@@ -1525,7 +1170,7 @@ static noinline void __init kernel_init_freeable(void)
 	 */
 	set_mems_allowed(node_states[N_MEMORY]);
 
-	cad_pid = get_pid(task_pid(current));
+	cad_pid = task_pid(current);
 
 	smp_prepare_cpus(setup_max_cpus);
 
@@ -1533,30 +1178,34 @@ static noinline void __init kernel_init_freeable(void)
 
 	init_mm_internals();
 
-	rcu_init_tasks_generic();
 	do_pre_smp_initcalls();
 	lockup_detector_init();
 
 	smp_init();
 	sched_init_smp();
 
-	workqueue_init_topology();
-	async_init();
-	padata_init();
 	page_alloc_init_late();
+	/* Initialize page ext after all struct pages are initialized. */
+	page_ext_init();
 
 	do_basic_setup();
 
-	kunit_run_all_tests();
+	/* Open the /dev/console on the rootfs, this should never fail */
+	if (ksys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)
+		pr_err("Warning: unable to open an initial console.\n");
 
-	wait_for_initramfs();
-	console_on_rootfs();
-
+	(void) ksys_dup(0);
+	(void) ksys_dup(0);
 	/*
 	 * check if there is an early userspace init.  If yes, let it do all
 	 * the work
 	 */
-	if (init_eaccess(ramdisk_execute_command) != 0) {
+
+	if (!ramdisk_execute_command)
+		ramdisk_execute_command = "/init";
+
+	if (ksys_access((const char __user *)
+			ramdisk_execute_command, 0) != 0) {
 		ramdisk_execute_command = NULL;
 		prepare_namespace();
 	}

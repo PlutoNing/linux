@@ -34,7 +34,9 @@
 #include <net/addrconf.h>
 #include <net/xfrm.h>
 
+#include <linux/cryptohash.h>
 #include <crypto/hash.h>
+#include <crypto/sha.h>
 #include <net/seg6.h>
 #include <net/genetlink.h>
 #include <net/seg6_hmac.h>
@@ -241,7 +243,6 @@ bool seg6_hmac_validate_skb(struct sk_buff *skb)
 	struct sr6_tlv_hmac *tlv;
 	struct ipv6_sr_hdr *srh;
 	struct inet6_dev *idev;
-	int require_hmac;
 
 	idev = __in6_dev_get(skb->dev);
 
@@ -249,17 +250,16 @@ bool seg6_hmac_validate_skb(struct sk_buff *skb)
 
 	tlv = seg6_get_tlv_hmac(srh);
 
-	require_hmac = READ_ONCE(idev->cnf.seg6_require_hmac);
 	/* mandatory check but no tlv */
-	if (require_hmac > 0 && !tlv)
+	if (idev->cnf.seg6_require_hmac > 0 && !tlv)
 		return false;
 
 	/* no check */
-	if (require_hmac < 0)
+	if (idev->cnf.seg6_require_hmac < 0)
 		return true;
 
 	/* check only if present */
-	if (require_hmac == 0 && !tlv)
+	if (idev->cnf.seg6_require_hmac == 0 && !tlv)
 		return true;
 
 	/* now, seg6_require_hmac >= 0 && tlv */
@@ -401,13 +401,17 @@ int __init seg6_hmac_init(void)
 {
 	return seg6_hmac_init_algo();
 }
+EXPORT_SYMBOL(seg6_hmac_init);
 
 int __net_init seg6_hmac_net_init(struct net *net)
 {
 	struct seg6_pernet_data *sdata = seg6_pernet(net);
 
-	return rhashtable_init(&sdata->hmac_infos, &rht_params);
+	rhashtable_init(&sdata->hmac_infos, &rht_params);
+
+	return 0;
 }
+EXPORT_SYMBOL(seg6_hmac_net_init);
 
 void seg6_hmac_exit(void)
 {

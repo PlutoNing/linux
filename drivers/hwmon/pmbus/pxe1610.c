@@ -19,39 +19,26 @@
 static int pxe1610_identify(struct i2c_client *client,
 			     struct pmbus_driver_info *info)
 {
-	int i;
+	if (pmbus_check_byte_register(client, 0, PMBUS_VOUT_MODE)) {
+		u8 vout_mode;
+		int ret;
 
-	for (i = 0; i < PXE1610_NUM_PAGES; i++) {
-		if (pmbus_check_byte_register(client, i, PMBUS_VOUT_MODE)) {
-			u8 vout_mode;
-			int ret;
+		/* Read the register with VOUT scaling value.*/
+		ret = pmbus_read_byte_data(client, 0, PMBUS_VOUT_MODE);
+		if (ret < 0)
+			return ret;
 
-			/* Read the register with VOUT scaling value.*/
-			ret = pmbus_read_byte_data(client, i, PMBUS_VOUT_MODE);
-			if (ret < 0)
-				return ret;
+		vout_mode = ret & GENMASK(4, 0);
 
-			vout_mode = ret & GENMASK(4, 0);
-
-			switch (vout_mode) {
-			case 1:
-				info->vrm_version[i] = vr12;
-				break;
-			case 2:
-				info->vrm_version[i] = vr13;
-				break;
-			default:
-				/*
-				 * If prior pages are available limit operation
-				 * to them
-				 */
-				if (i != 0) {
-					info->pages = i;
-					return 0;
-				}
-
-				return -ENODEV;
-			}
+		switch (vout_mode) {
+		case 1:
+			info->vrm_version = vr12;
+			break;
+		case 2:
+			info->vrm_version = vr13;
+			break;
+		default:
+			return -ENODEV;
 		}
 	}
 
@@ -87,7 +74,8 @@ static struct pmbus_driver_info pxe1610_info = {
 	.identify = pxe1610_identify,
 };
 
-static int pxe1610_probe(struct i2c_client *client)
+static int pxe1610_probe(struct i2c_client *client,
+			  const struct i2c_device_id *id)
 {
 	struct pmbus_driver_info *info;
 	u8 buf[I2C_SMBUS_BLOCK_MAX];
@@ -123,7 +111,7 @@ static int pxe1610_probe(struct i2c_client *client)
 	if (!info)
 		return -ENOMEM;
 
-	return pmbus_do_probe(client, info);
+	return pmbus_do_probe(client, id, info);
 }
 
 static const struct i2c_device_id pxe1610_id[] = {
@@ -140,6 +128,7 @@ static struct i2c_driver pxe1610_driver = {
 			.name = "pxe1610",
 			},
 	.probe = pxe1610_probe,
+	.remove = pmbus_do_remove,
 	.id_table = pxe1610_id,
 };
 
@@ -148,4 +137,3 @@ module_i2c_driver(pxe1610_driver);
 MODULE_AUTHOR("Vijay Khemka <vijaykhemka@fb.com>");
 MODULE_DESCRIPTION("PMBus driver for Infineon PXE1610, PXE1110 and PXM1310");
 MODULE_LICENSE("GPL");
-MODULE_IMPORT_NS(PMBUS);

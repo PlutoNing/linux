@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
 /*
- * Copyright(c) 2018 - 2020 Intel Corporation.
+ * Copyright(c) 2018 Intel Corporation.
  *
  */
 
@@ -194,7 +194,7 @@ void tid_rdma_opfn_init(struct rvt_qp *qp, struct tid_rdma_params *p)
 {
 	struct hfi1_qp_priv *priv = qp->priv;
 
-	p->qp = (RVT_KDETH_QP_PREFIX << 16) | priv->rcd->ctxt;
+	p->qp = (kdeth_qp << 16) | priv->rcd->ctxt;
 	p->max_len = TID_RDMA_MAX_SEGMENT_SIZE;
 	p->jkey = priv->rcd->jkey;
 	p->max_read = TID_RDMA_MAX_READ_SEGS_PER_REQ;
@@ -309,13 +309,12 @@ int hfi1_kern_exp_rcv_init(struct hfi1_ctxtdata *rcd, int reinit)
 
 /**
  * qp_to_rcd - determine the receive context used by a qp
- * @rdi: rvt dev struct
- * @qp: the qp
+ * @qp - the qp
  *
  * This routine returns the receive context associated
  * with a a qp's qpn.
  *
- * Return: the context.
+ * Returns the context.
  */
 static struct hfi1_ctxtdata *qp_to_rcd(struct rvt_dev_info *rdi,
 				       struct rvt_qp *qp)
@@ -485,7 +484,6 @@ static struct rvt_qp *first_qp(struct hfi1_ctxtdata *rcd,
 /**
  * kernel_tid_waiters - determine rcd wait
  * @rcd: the receive context
- * @queue: the queue to operate on
  * @qp: the head of the qp being processed
  *
  * This routine will return false IFF
@@ -519,9 +517,7 @@ static bool kernel_tid_waiters(struct hfi1_ctxtdata *rcd,
 
 /**
  * dequeue_tid_waiter - dequeue the qp from the list
- * @rcd: the receive context
- * @queue: the queue to operate on
- * @qp: the qp to remove the wait list
+ * @qp - the qp to remove the wait list
  *
  * This routine removes the indicated qp from the
  * wait list if it is there.
@@ -553,7 +549,6 @@ static void dequeue_tid_waiter(struct hfi1_ctxtdata *rcd,
 /**
  * queue_qp_for_tid_wait - suspend QP on tid space
  * @rcd: the receive context
- * @queue: the queue to operate on
  * @qp: the qp
  *
  * The qp is inserted at the tail of the rcd
@@ -598,14 +593,14 @@ static void __trigger_tid_waiter(struct rvt_qp *qp)
 
 /**
  * tid_rdma_schedule_tid_wakeup - schedule wakeup for a qp
- * @qp: the qp
+ * @qp - the qp
  *
  * trigger a schedule or a waiting qp in a deadlock
  * safe manner.  The qp reference is held prior
  * to this call via first_qp().
  *
  * If the qp trigger was already scheduled (!rval)
- * the reference is dropped, otherwise the resume
+ * the the reference is dropped, otherwise the resume
  * or the destroy cancel will dispatch the reference.
  */
 static void tid_rdma_schedule_tid_wakeup(struct rvt_qp *qp)
@@ -635,7 +630,7 @@ static void tid_rdma_schedule_tid_wakeup(struct rvt_qp *qp)
 
 /**
  * tid_rdma_trigger_resume - field a trigger work request
- * @work: the work item
+ * @work - the work item
  *
  * Complete the off qp trigger processing by directly
  * calling the progress routine.
@@ -659,7 +654,7 @@ static void tid_rdma_trigger_resume(struct work_struct *work)
 	rvt_put_qp(qp);
 }
 
-/*
+/**
  * tid_rdma_flush_wait - unwind any tid space wait
  *
  * This is called when resetting a qp to
@@ -698,8 +693,8 @@ void hfi1_tid_rdma_flush_wait(struct rvt_qp *qp)
 /* Flow functions */
 /**
  * kern_reserve_flow - allocate a hardware flow
- * @rcd: the context to use for allocation
- * @last: the index of the preferred flow. Use RXE_NUM_TID_FLOWS to
+ * @rcd - the context to use for allocation
+ * @last - the index of the preferred flow. Use RXE_NUM_TID_FLOWS to
  *         signify "don't care".
  *
  * Use a bit mask based allocation to reserve a hardware
@@ -710,7 +705,7 @@ void hfi1_tid_rdma_flush_wait(struct rvt_qp *qp)
  * The exp_lock must be held.
  *
  * Return:
- * On success: a value positive value between 0 and RXE_NUM_TID_FLOWS - 1
+ * On success: a value postive value between 0 and RXE_NUM_TID_FLOWS - 1
  * On failure: -EAGAIN
  */
 static int kern_reserve_flow(struct hfi1_ctxtdata *rcd, int last)
@@ -850,7 +845,7 @@ void hfi1_kern_init_ctxt_generations(struct hfi1_ctxtdata *rcd)
 	int i;
 
 	for (i = 0; i < RXE_NUM_TID_FLOWS; i++) {
-		rcd->flows[i].generation = mask_generation(get_random_u32());
+		rcd->flows[i].generation = mask_generation(prandom_u32());
 		kern_set_hw_flow(rcd, KERN_GENERATION_RESERVED, i);
 	}
 }
@@ -865,10 +860,9 @@ static u8 trdma_pset_order(struct tid_rdma_pageset *s)
 
 /**
  * tid_rdma_find_phys_blocks_4k - get groups base on mr info
- * @flow: overall info for a TID RDMA segment
- * @pages: pointer to an array of page structs
- * @npages: number of pages
- * @list: page set array to return
+ * @npages - number of pages
+ * @pages - pointer to an array of page structs
+ * @list - page set array to return
  *
  * This routine returns the number of groups associated with
  * the current sge information.  This implementation is based
@@ -955,10 +949,10 @@ static u32 tid_rdma_find_phys_blocks_4k(struct tid_rdma_flow *flow,
 
 /**
  * tid_flush_pages - dump out pages into pagesets
- * @list: list of pagesets
- * @idx: pointer to current page index
- * @pages: number of pages to dump
- * @sets: current number of pagesset
+ * @list - list of pagesets
+ * @idx - pointer to current page index
+ * @pages - number of pages to dump
+ * @sets - current number of pagesset
  *
  * This routine flushes out accumuated pages.
  *
@@ -996,10 +990,9 @@ static u32 tid_flush_pages(struct tid_rdma_pageset *list,
 
 /**
  * tid_rdma_find_phys_blocks_8k - get groups base on mr info
- * @flow: overall info for a TID RDMA segment
- * @pages: pointer to an array of page structs
- * @npages: number of pages
- * @list: page set array to return
+ * @pages - pointer to an array of page structs
+ * @npages - number of pages
+ * @list - page set array to return
  *
  * This routine parses an array of pages to compute pagesets
  * in an 8k compatible way.
@@ -1007,7 +1000,7 @@ static u32 tid_flush_pages(struct tid_rdma_pageset *list,
  * pages are tested two at a time, i, i + 1 for contiguous
  * pages and i - 1 and i contiguous pages.
  *
- * If any condition is false, any accumulated pages are flushed and
+ * If any condition is false, any accumlated pages are flushed and
  * v0,v1 are emitted as separate PAGE_SIZE pagesets
  *
  * Otherwise, the current 8k is totaled for a future flush.
@@ -1071,7 +1064,7 @@ static u32 tid_rdma_find_phys_blocks_8k(struct tid_rdma_flow *flow,
 	return sets;
 }
 
-/*
+/**
  * Find pages for one segment of a sge array represented by @ss. The function
  * does not check the sge, the sge must have been checked for alignment with a
  * prior call to hfi1_kern_trdma_ok. Other sge checking is done as part of
@@ -1115,7 +1108,7 @@ static u32 kern_find_pages(struct tid_rdma_flow *flow,
 	}
 
 	flow->length = flow->req->seg_len - length;
-	*last = req->isge != ss->num_sge;
+	*last = req->isge == ss->num_sge ? false : true;
 	return i;
 }
 
@@ -1434,7 +1427,7 @@ static void kern_program_rcvarray(struct tid_rdma_flow *flow)
  * (5) computes a tidarray with formatted TID entries which can be sent
  *     to the sender
  * (6) Reserves and programs HW flows.
- * (7) It also manages queueing the QP when TID/flow resources are not
+ * (7) It also manages queing the QP when TID/flow resources are not
  *     available.
  *
  * @req points to struct tid_rdma_request of which the segments are a part. The
@@ -1604,8 +1597,8 @@ void hfi1_kern_exp_rcv_clear_all(struct tid_rdma_request *req)
 }
 
 /**
- * hfi1_kern_exp_rcv_free_flows - free previously allocated flow information
- * @req: the tid rdma request to be cleaned
+ * hfi1_kern_exp_rcv_free_flows - free priviously allocated flow information
+ * @req - the tid rdma request to be cleaned
  */
 static void hfi1_kern_exp_rcv_free_flows(struct tid_rdma_request *req)
 {
@@ -2055,7 +2048,7 @@ static int tid_rdma_rcv_error(struct hfi1_packet *packet,
 		 * req->clear_tail is advanced). However, when an earlier
 		 * request is received, this request will not be complete any
 		 * more (qp->s_tail_ack_queue is moved back, see below).
-		 * Consequently, we need to update the TID flow info every time
+		 * Consequently, we need to update the TID flow info everytime
 		 * a duplicate request is received.
 		 */
 		bth0 = be32_to_cpu(ohdr->bth[0]);
@@ -2219,7 +2212,7 @@ void hfi1_rc_rcv_tid_rdma_read_req(struct hfi1_packet *packet)
 	/*
 	 * 1. Verify TID RDMA READ REQ as per IB_OPCODE_RC_RDMA_READ
 	 *    (see hfi1_rc_rcv())
-	 * 2. Put TID RDMA READ REQ into the response queue (s_ack_queue)
+	 * 2. Put TID RDMA READ REQ into the response queueu (s_ack_queue)
 	 *     - Setup struct tid_rdma_req with request info
 	 *     - Initialize struct tid_rdma_flow info;
 	 *     - Copy TID entries;
@@ -2439,7 +2432,7 @@ find_tid_request(struct rvt_qp *qp, u32 psn, enum ib_wr_opcode opcode)
 
 void hfi1_rc_rcv_tid_rdma_read_resp(struct hfi1_packet *packet)
 {
-	/* HANDLER FOR TID RDMA READ RESPONSE packet (Requester side) */
+	/* HANDLER FOR TID RDMA READ RESPONSE packet (Requestor side */
 
 	/*
 	 * 1. Find matching SWQE
@@ -2833,7 +2826,6 @@ static bool handle_read_kdeth_eflags(struct hfi1_ctxtdata *rcd,
 		default:
 			break;
 		}
-		break;
 	default:
 		break;
 	}
@@ -3013,7 +3005,6 @@ bool hfi1_handle_kdeth_eflags(struct hfi1_ctxtdata *rcd,
 		default:
 			break;
 		}
-		break;
 	default:
 		break;
 	}
@@ -3224,13 +3215,11 @@ bool hfi1_tid_rdma_wqe_interlock(struct rvt_qp *qp, struct rvt_swqe *wqe)
 	case IB_WR_ATOMIC_CMP_AND_SWP:
 	case IB_WR_ATOMIC_FETCH_AND_ADD:
 	case IB_WR_RDMA_WRITE:
-	case IB_WR_RDMA_WRITE_WITH_IMM:
 		switch (prev->wr.opcode) {
 		case IB_WR_TID_RDMA_WRITE:
 			req = wqe_to_tid_req(prev);
 			if (req->ack_seg != req->total_segs)
 				goto interlock;
-			break;
 		default:
 			break;
 		}
@@ -3238,7 +3227,7 @@ bool hfi1_tid_rdma_wqe_interlock(struct rvt_qp *qp, struct rvt_swqe *wqe)
 	case IB_WR_RDMA_READ:
 		if (prev->wr.opcode != IB_WR_TID_RDMA_WRITE)
 			break;
-		fallthrough;
+		/* fall through */
 	case IB_WR_TID_RDMA_READ:
 		switch (prev->wr.opcode) {
 		case IB_WR_RDMA_READ:
@@ -3249,11 +3238,9 @@ bool hfi1_tid_rdma_wqe_interlock(struct rvt_qp *qp, struct rvt_swqe *wqe)
 			req = wqe_to_tid_req(prev);
 			if (req->ack_seg != req->total_segs)
 				goto interlock;
-			break;
 		default:
 			break;
 		}
-		break;
 	default:
 		break;
 	}
@@ -3442,7 +3429,7 @@ static u32 hfi1_compute_tid_rnr_timeout(struct rvt_qp *qp, u32 to_seg)
 	return 0;
 }
 
-/*
+/**
  * Central place for resource allocation at TID write responder,
  * is called from write_req and write_data interrupt handlers as
  * well as the send thread when a queued QP is scheduled for
@@ -3649,7 +3636,7 @@ void hfi1_rc_rcv_tid_rdma_write_req(struct hfi1_packet *packet)
 	 * 1. Verify TID RDMA WRITE REQ as per IB_OPCODE_RC_RDMA_WRITE_FIRST
 	 *    (see hfi1_rc_rcv())
 	 *     - Don't allow 0-length requests.
-	 * 2. Put TID RDMA WRITE REQ into the response queue (s_ack_queue)
+	 * 2. Put TID RDMA WRITE REQ into the response queueu (s_ack_queue)
 	 *     - Setup struct tid_rdma_req with request info
 	 *     - Prepare struct tid_rdma_flow array?
 	 * 3. Set the qp->s_ack_state as state diagram in design doc.
@@ -4026,7 +4013,7 @@ unlock_r_lock:
 
 void hfi1_rc_rcv_tid_rdma_write_resp(struct hfi1_packet *packet)
 {
-	/* HANDLER FOR TID RDMA WRITE RESPONSE packet (Requester side) */
+	/* HANDLER FOR TID RDMA WRITE RESPONSE packet (Requestor side */
 
 	/*
 	 * 1. Find matching SWQE
@@ -4646,15 +4633,6 @@ void hfi1_rc_rcv_tid_rdma_ack(struct hfi1_packet *packet)
 			 */
 			fpsn = full_flow_psn(flow, flow->flow_state.spsn);
 			req->r_ack_psn = psn;
-			/*
-			 * If resync_psn points to the last flow PSN for a
-			 * segment and the new segment (likely from a new
-			 * request) starts with a new generation number, we
-			 * need to adjust resync_psn accordingly.
-			 */
-			if (flow->flow_state.generation !=
-			    (resync_psn >> HFI1_KDETH_BTH_SEQ_SHIFT))
-				resync_psn = mask_psn(fpsn - 1);
 			flow->resync_npkts +=
 				delta_psn(mask_psn(resync_psn + 1), fpsn);
 			/*
@@ -5080,7 +5058,7 @@ int hfi1_make_tid_rdma_pkt(struct rvt_qp *qp, struct hfi1_pkt_state *ps)
 		if (priv->s_state == TID_OP(WRITE_REQ))
 			hfi1_tid_rdma_restart_req(qp, wqe, &bth2);
 		priv->s_state = TID_OP(WRITE_DATA);
-		fallthrough;
+		/* fall through */
 
 	case TID_OP(WRITE_DATA):
 		/*
@@ -5174,7 +5152,7 @@ bail_no_tx:
 	priv->s_flags &= ~RVT_S_BUSY;
 	/*
 	 * If we didn't get a txreq, the QP will be woken up later to try
-	 * again, set the flags to the wake up which work item to wake
+	 * again, set the flags to the the wake up which work item to wake
 	 * up.
 	 * (A better algorithm should be found to do this and generalize the
 	 * sleep/wakeup flags.)
@@ -5419,10 +5397,7 @@ static bool _hfi1_schedule_tid_send(struct rvt_qp *qp)
 	struct hfi1_ibport *ibp =
 		to_iport(qp->ibqp.device, qp->port_num);
 	struct hfi1_pportdata *ppd = ppd_from_ibp(ibp);
-	struct hfi1_devdata *dd = ppd->dd;
-
-	if ((dd->flags & HFI1_SHUTDOWN))
-		return true;
+	struct hfi1_devdata *dd = dd_from_ibdev(qp->ibqp.device);
 
 	return iowait_tid_schedule(&priv->s_iowait, ppd->hfi1_wq,
 				   priv->s_sde ?
@@ -5440,9 +5415,8 @@ static bool _hfi1_schedule_tid_send(struct rvt_qp *qp)
  * the two state machines can step on each other with respect to the
  * RVT_S_BUSY flag.
  * Therefore, a modified test is used.
- *
- * Return: %true if the second leg is scheduled;
- *  %false if the second leg is not scheduled.
+ * @return true if the second leg is scheduled;
+ *  false if the second leg is not scheduled.
  */
 bool hfi1_schedule_tid_send(struct rvt_qp *qp)
 {

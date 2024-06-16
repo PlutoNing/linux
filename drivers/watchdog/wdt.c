@@ -389,7 +389,7 @@ static long wdt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		if (wdt_set_heartbeat(new_heartbeat))
 			return -EINVAL;
 		wdt_ping();
-		fallthrough;
+		/* Fall through */
 	case WDIOC_GETTIMEOUT:
 		return put_user(heartbeat, p);
 	default:
@@ -494,7 +494,7 @@ static int wdt_temp_release(struct inode *inode, struct file *file)
 }
 
 /**
- *	wdt_notify_sys:
+ *	notify_sys:
  *	@this: our notifier block
  *	@code: the event being reported
  *	@unused: unused
@@ -523,7 +523,6 @@ static const struct file_operations wdt_fops = {
 	.llseek		= no_llseek,
 	.write		= wdt_write,
 	.unlocked_ioctl	= wdt_ioctl,
-	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= wdt_open,
 	.release	= wdt_release,
 };
@@ -558,7 +557,7 @@ static struct notifier_block wdt_notifier = {
 };
 
 /**
- *	wdt_exit:
+ *	cleanup_module:
  *
  *	Unload the watchdog. You cannot do this with any file handles open.
  *	If your watchdog is set to continue ticking on close and you unload

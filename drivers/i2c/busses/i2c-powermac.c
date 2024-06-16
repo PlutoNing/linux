@@ -15,7 +15,7 @@
 #include <linux/device.h>
 #include <linux/platform_device.h>
 #include <linux/of_irq.h>
-
+#include <asm/prom.h>
 #include <asm/pmac_low_i2c.h>
 
 MODULE_AUTHOR("Benjamin Herrenschmidt <benh@kernel.crashing.org>");
@@ -76,6 +76,11 @@ static s32 i2c_powermac_smbus_xfer(	struct i2c_adapter*	adap,
 	 * but I think the current API makes no sense and I don't want
 	 * any driver that I haven't verified for correctness to go
 	 * anywhere near a pmac i2c bus anyway ...
+	 *
+	 * I'm also not completely sure what kind of phases to do between
+	 * the actual command and the data (what I am _supposed_ to do that
+	 * is). For now, I assume writes are a single stream and reads have
+	 * a repeat start/addr phase (but not stop in between)
 	 */
         case I2C_SMBUS_BLOCK_DATA:
 		buf = data->block;
@@ -188,30 +193,32 @@ static const struct i2c_adapter_quirks i2c_powermac_quirks = {
 	.max_num_msgs = 1,
 };
 
-static void i2c_powermac_remove(struct platform_device *dev)
+static int i2c_powermac_remove(struct platform_device *dev)
 {
 	struct i2c_adapter	*adapter = platform_get_drvdata(dev);
 
 	i2c_del_adapter(adapter);
 	memset(adapter, 0, sizeof(*adapter));
+
+	return 0;
 }
 
 static u32 i2c_powermac_get_addr(struct i2c_adapter *adap,
 					   struct pmac_i2c_bus *bus,
 					   struct device_node *node)
 {
-	u32 prop;
-	int ret;
+	const __be32 *prop;
+	int len;
 
 	/* First check for valid "reg" */
-	ret = of_property_read_u32(node, "reg", &prop);
-	if (ret == 0)
-		return (prop & 0xff) >> 1;
+	prop = of_get_property(node, "reg", &len);
+	if (prop && (len >= sizeof(int)))
+		return (be32_to_cpup(prop) & 0xff) >> 1;
 
 	/* Then check old-style "i2c-address" */
-	ret = of_property_read_u32(node, "i2c-address", &prop);
-	if (ret == 0)
-		return (prop & 0xff) >> 1;
+	prop = of_get_property(node, "i2c-address", &len);
+	if (prop && (len >= sizeof(int)))
+		return (be32_to_cpup(prop) & 0xff) >> 1;
 
 	/* Now handle some devices with missing "reg" properties */
 	if (of_node_name_eq(node, "cereal"))
@@ -231,10 +238,10 @@ static void i2c_powermac_create_one(struct i2c_adapter *adap,
 	struct i2c_board_info info = {};
 	struct i2c_client *newdev;
 
-	strscpy(info.type, type, sizeof(info.type));
+	strncpy(info.type, type, sizeof(info.type));
 	info.addr = addr;
-	newdev = i2c_new_client_device(adap, &info);
-	if (IS_ERR(newdev))
+	newdev = i2c_new_device(adap, &info);
+	if (!newdev)
 		dev_err(&adap->dev,
 			"i2c-powermac: Failure to register missing %s\n",
 			type);
@@ -272,17 +279,18 @@ static bool i2c_powermac_get_type(struct i2c_adapter *adap,
 {
 	char tmp[16];
 
-	/*
-	 * Note: we do _NOT_ want the standard i2c drivers to match with any of
-	 * our powermac stuff unless they have been specifically modified to
-	 * handle it on a case by case basis. For example, for thermal control,
-	 * things like lm75 etc... shall match with their corresponding
-	 * windfarm drivers, _NOT_ the generic ones, so we force a prefix of
-	 * 'MAC', onto the modalias to make that happen
+	/* Note: we to _NOT_ want the standard
+	 * i2c drivers to match with any of our powermac stuff
+	 * unless they have been specifically modified to handle
+	 * it on a case by case basis. For example, for thermal
+	 * control, things like lm75 etc... shall match with their
+	 * corresponding windfarm drivers, _NOT_ the generic ones,
+	 * so we force a prefix of AAPL, onto the modalias to
+	 * make that happen
 	 */
 
 	/* First try proper modalias */
-	if (of_alias_from_compatible(node, tmp, sizeof(tmp)) >= 0) {
+	if (of_modalias_node(node, tmp, sizeof(tmp)) >= 0) {
 		snprintf(type, type_size, "MAC,%s", tmp);
 		return true;
 	}
@@ -308,7 +316,7 @@ static void i2c_powermac_register_devices(struct i2c_adapter *adap,
 {
 	struct i2c_client *newdev;
 	struct device_node *node;
-	bool found_onyx = false;
+	bool found_onyx = 0;
 
 	/*
 	 * In some cases we end up with the via-pmu node itself, in this
@@ -351,8 +359,8 @@ static void i2c_powermac_register_devices(struct i2c_adapter *adap,
 		info.irq = irq_of_parse_and_map(node, 0);
 		info.of_node = of_node_get(node);
 
-		newdev = i2c_new_client_device(adap, &info);
-		if (IS_ERR(newdev)) {
+		newdev = i2c_new_device(adap, &info);
+		if (!newdev) {
 			dev_err(&adap->dev, "i2c-powermac: Failure to register"
 				" %pOF\n", node);
 			of_node_put(node);
@@ -437,7 +445,7 @@ static int i2c_powermac_probe(struct platform_device *dev)
 
 static struct platform_driver i2c_powermac_driver = {
 	.probe = i2c_powermac_probe,
-	.remove_new = i2c_powermac_remove,
+	.remove = i2c_powermac_remove,
 	.driver = {
 		.name = "i2c-powermac",
 		.bus = &platform_bus_type,

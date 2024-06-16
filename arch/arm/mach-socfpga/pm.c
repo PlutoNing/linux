@@ -13,9 +13,7 @@
 #include <linux/genalloc.h>
 #include <linux/init.h>
 #include <linux/io.h>
-#include <linux/of.h>
 #include <linux/of_platform.h>
-#include <linux/platform_device.h>
 #include <linux/suspend.h>
 #include <asm/suspend.h>
 #include <asm/fncpy.h>
@@ -51,14 +49,14 @@ static int socfpga_setup_ocram_self_refresh(void)
 	if (!ocram_pool) {
 		pr_warn("%s: ocram pool unavailable!\n", __func__);
 		ret = -ENODEV;
-		goto put_device;
+		goto put_node;
 	}
 
 	ocram_base = gen_pool_alloc(ocram_pool, socfpga_sdram_self_refresh_sz);
 	if (!ocram_base) {
 		pr_warn("%s: unable to alloc ocram!\n", __func__);
 		ret = -ENOMEM;
-		goto put_device;
+		goto put_node;
 	}
 
 	ocram_pbase = gen_pool_virt_to_phys(ocram_pool, ocram_base);
@@ -69,7 +67,7 @@ static int socfpga_setup_ocram_self_refresh(void)
 	if (!suspend_ocram_base) {
 		pr_warn("%s: __arm_ioremap_exec failed!\n", __func__);
 		ret = -ENOMEM;
-		goto put_device;
+		goto put_node;
 	}
 
 	/* Copy the code that puts DDR in self refresh to ocram */
@@ -83,8 +81,6 @@ static int socfpga_setup_ocram_self_refresh(void)
 	if (!socfpga_sdram_self_refresh_in_ocram)
 		ret = -EFAULT;
 
-put_device:
-	put_device(&pdev->dev);
 put_node:
 	of_node_put(np);
 

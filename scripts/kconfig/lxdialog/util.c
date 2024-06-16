@@ -29,6 +29,10 @@ static void set_mono_theme(void)
 	dlg.button_label_active.atr = A_REVERSE;
 	dlg.button_label_inactive.atr = A_NORMAL;
 	dlg.inputbox.atr = A_NORMAL;
+	dlg.inputbox_border.atr = A_NORMAL;
+	dlg.searchbox.atr = A_NORMAL;
+	dlg.searchbox_title.atr = A_BOLD;
+	dlg.searchbox_border.atr = A_NORMAL;
 	dlg.position_indicator.atr = A_BOLD;
 	dlg.menubox.atr = A_NORMAL;
 	dlg.menubox_border.atr = A_NORMAL;
@@ -65,6 +69,10 @@ static void set_classic_theme(void)
 	DLG_COLOR(button_label_active,   COLOR_YELLOW, COLOR_BLUE,   true);
 	DLG_COLOR(button_label_inactive, COLOR_BLACK,  COLOR_WHITE,  true);
 	DLG_COLOR(inputbox,              COLOR_BLACK,  COLOR_WHITE,  false);
+	DLG_COLOR(inputbox_border,       COLOR_BLACK,  COLOR_WHITE,  false);
+	DLG_COLOR(searchbox,             COLOR_BLACK,  COLOR_WHITE,  false);
+	DLG_COLOR(searchbox_title,       COLOR_YELLOW, COLOR_WHITE,  true);
+	DLG_COLOR(searchbox_border,      COLOR_WHITE,  COLOR_WHITE,  true);
 	DLG_COLOR(position_indicator,    COLOR_YELLOW, COLOR_WHITE,  true);
 	DLG_COLOR(menubox,               COLOR_BLACK,  COLOR_WHITE,  false);
 	DLG_COLOR(menubox_border,        COLOR_WHITE,  COLOR_WHITE,  true);
@@ -93,9 +101,14 @@ static void set_blackbg_theme(void)
 	DLG_COLOR(button_key_active,     COLOR_YELLOW, COLOR_RED,   true);
 	DLG_COLOR(button_key_inactive,   COLOR_RED,    COLOR_BLACK, false);
 	DLG_COLOR(button_label_active,   COLOR_WHITE,  COLOR_RED,   false);
-	DLG_COLOR(button_label_inactive, COLOR_WHITE,  COLOR_BLACK, false);
+	DLG_COLOR(button_label_inactive, COLOR_BLACK,  COLOR_BLACK, true);
 
 	DLG_COLOR(inputbox,         COLOR_YELLOW, COLOR_BLACK, false);
+	DLG_COLOR(inputbox_border,  COLOR_YELLOW, COLOR_BLACK, false);
+
+	DLG_COLOR(searchbox,        COLOR_YELLOW, COLOR_BLACK, false);
+	DLG_COLOR(searchbox_title,  COLOR_YELLOW, COLOR_BLACK, true);
+	DLG_COLOR(searchbox_border, COLOR_BLACK,  COLOR_BLACK, true);
 
 	DLG_COLOR(position_indicator, COLOR_RED, COLOR_BLACK,  false);
 
@@ -123,6 +136,7 @@ static void set_bluetitle_theme(void)
 	DLG_COLOR(title,               COLOR_BLUE,   COLOR_WHITE, true);
 	DLG_COLOR(button_key_active,   COLOR_YELLOW, COLOR_BLUE,  true);
 	DLG_COLOR(button_label_active, COLOR_WHITE,  COLOR_BLUE,  true);
+	DLG_COLOR(searchbox_title,     COLOR_BLUE,   COLOR_WHITE, true);
 	DLG_COLOR(position_indicator,  COLOR_BLUE,   COLOR_WHITE, true);
 	DLG_COLOR(tag,                 COLOR_BLUE,   COLOR_WHITE, true);
 	DLG_COLOR(tag_key,             COLOR_BLUE,   COLOR_WHITE, true);
@@ -175,6 +189,10 @@ static void init_dialog_colors(void)
 	init_one_color(&dlg.button_label_active);
 	init_one_color(&dlg.button_label_inactive);
 	init_one_color(&dlg.inputbox);
+	init_one_color(&dlg.inputbox_border);
+	init_one_color(&dlg.searchbox);
+	init_one_color(&dlg.searchbox_title);
+	init_one_color(&dlg.searchbox_border);
 	init_one_color(&dlg.position_indicator);
 	init_one_color(&dlg.menubox);
 	init_one_color(&dlg.menubox_border);
@@ -345,7 +363,7 @@ void print_title(WINDOW *dialog, const char *title, int width)
 /*
  * Print a string of text in a window, automatically wrap around to the
  * next line if the string is too long to fit on one line. Newline
- * characters '\n' are properly processed.  We start on a new line
+ * characters '\n' are propperly processed.  We start on a new line
  * if there is no room for at least 4 nonblanks following a double-space.
  */
 void print_autowrap(WINDOW * win, const char *prompt, int width, int y, int x)
@@ -523,7 +541,7 @@ int first_alpha(const char *string, const char *exempt)
  * lxdialog suggest <ESC> <ESC> which is correctly translated to two
  * times esc. But then we need to ignore the second esc to avoid stepping
  * out one menu too much. Filter away all escaped key sequences since
- * keypad(FALSE) turn off ncurses support for escape sequences - and that's
+ * keypad(FALSE) turn off ncurses support for escape sequences - and thats
  * needed to make notimeout() do as expected.
  */
 int on_key_esc(WINDOW *win)

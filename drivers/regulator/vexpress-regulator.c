@@ -8,8 +8,7 @@
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/module.h>
-#include <linux/mod_devicetable.h>
-#include <linux/platform_device.h>
+#include <linux/of_device.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/of_regulator.h>
@@ -76,7 +75,10 @@ static int vexpress_regulator_probe(struct platform_device *pdev)
 	config.of_node = pdev->dev.of_node;
 
 	rdev = devm_regulator_register(&pdev->dev, desc, &config);
-	return PTR_ERR_OR_ZERO(rdev);
+	if (IS_ERR(rdev))
+		return PTR_ERR(rdev);
+
+	return 0;
 }
 
 static const struct of_device_id vexpress_regulator_of_match[] = {
@@ -89,7 +91,6 @@ static struct platform_driver vexpress_regulator_driver = {
 	.probe = vexpress_regulator_probe,
 	.driver	= {
 		.name = DRVNAME,
-		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = vexpress_regulator_of_match,
 	},
 };

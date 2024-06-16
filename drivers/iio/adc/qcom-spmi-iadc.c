@@ -13,6 +13,7 @@
 #include <linux/mutex.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/slab.h>
@@ -552,6 +553,8 @@ static int iadc_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	indio_dev->dev.parent = dev;
+	indio_dev->dev.of_node = node;
 	indio_dev->name = pdev->name;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &iadc_info;

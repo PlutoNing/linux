@@ -42,10 +42,9 @@
 #endif
 
 /* Setting contexts because the test will crash and we want to recover */
-ucontext_t init_context;
+ucontext_t init_context, main_context;
 
-/* count is changed in the signal handler, so it must be volatile */
-static volatile int count;
+static int count, first_time;
 
 void usr_signal_handler(int signo, siginfo_t *si, void *uc)
 {
@@ -99,6 +98,11 @@ void usr_signal_handler(int signo, siginfo_t *si, void *uc)
 
 void seg_signal_handler(int signo, siginfo_t *si, void *uc)
 {
+	if (count == COUNT_MAX) {
+		/* Return to tm_signal_force_msr() and exit */
+		setcontext(&main_context);
+	}
+
 	count++;
 
 	/* Reexecute the test */
@@ -122,41 +126,37 @@ void tm_trap_test(void)
 	 */
 	getcontext(&init_context);
 
-	while (count < COUNT_MAX) {
-		/* Allocated an alternative signal stack area */
-		ss.ss_sp = mmap(NULL, SIGSTKSZ, PROT_READ | PROT_WRITE,
-				MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
-		ss.ss_size = SIGSTKSZ;
-		ss.ss_flags = 0;
+	/* Allocated an alternative signal stack area */
+	ss.ss_sp = mmap(NULL, SIGSTKSZ, PROT_READ | PROT_WRITE,
+			MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+	ss.ss_size = SIGSTKSZ;
+	ss.ss_flags = 0;
 
-		if (ss.ss_sp == (void *)-1) {
-			perror("mmap error\n");
-			exit(-1);
-		}
-
-		/* Force the allocation through a page fault */
-		if (madvise(ss.ss_sp, SIGSTKSZ, MADV_DONTNEED)) {
-			perror("madvise\n");
-			exit(-1);
-		}
-
-		/*
-		 * Setting an alternative stack to generate a page fault when
-		 * the signal is raised.
-		 */
-		if (sigaltstack(&ss, NULL)) {
-			perror("sigaltstack\n");
-			exit(-1);
-		}
-
-		/* The signal handler will enable MSR_TS */
-		sigaction(SIGUSR1, &usr_sa, NULL);
-		/* If it does not crash, it might segfault, avoid it to retest */
-		sigaction(SIGSEGV, &seg_sa, NULL);
-
-		raise(SIGUSR1);
-		count++;
+	if (ss.ss_sp == (void *)-1) {
+		perror("mmap error\n");
+		exit(-1);
 	}
+
+	/* Force the allocation through a page fault */
+	if (madvise(ss.ss_sp, SIGSTKSZ, MADV_DONTNEED)) {
+		perror("madvise\n");
+		exit(-1);
+	}
+
+	/* Setting an alternative stack to generate a page fault when
+	 * the signal is raised.
+	 */
+	if (sigaltstack(&ss, NULL)) {
+		perror("sigaltstack\n");
+		exit(-1);
+	}
+
+	/* The signal handler will enable MSR_TS */
+	sigaction(SIGUSR1, &usr_sa, NULL);
+	/* If it does not crash, it will segfault, avoid it to retest */
+	sigaction(SIGSEGV, &seg_sa, NULL);
+
+	raise(SIGUSR1);
 }
 
 int tm_signal_context_force_tm(void)
@@ -169,7 +169,11 @@ int tm_signal_context_force_tm(void)
 	 */
 	SKIP_IF(!is_ppc64le());
 
-	tm_trap_test();
+	/* Will get back here after COUNT_MAX interactions */
+	getcontext(&main_context);
+
+	if (!first_time++)
+		tm_trap_test();
 
 	return EXIT_SUCCESS;
 }

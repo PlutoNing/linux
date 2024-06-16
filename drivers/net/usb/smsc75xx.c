@@ -90,9 +90,7 @@ static int __must_check __smsc75xx_read_reg(struct usbnet *dev, u32 index,
 	ret = fn(dev, USB_VENDOR_REQUEST_READ_REGISTER, USB_DIR_IN
 		 | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
 		 0, index, &buf, 4);
-	if (unlikely(ret < 4)) {
-		ret = ret < 0 ? ret : -ENODATA;
-
+	if (unlikely(ret < 0)) {
 		netdev_warn(dev->net, "Failed to read reg index 0x%08x: %d\n",
 			    index, ret);
 		return ret;
@@ -743,8 +741,8 @@ static const struct ethtool_ops smsc75xx_ethtool_ops = {
 	.set_eeprom	= smsc75xx_ethtool_set_eeprom,
 	.get_wol	= smsc75xx_ethtool_get_wol,
 	.set_wol	= smsc75xx_ethtool_set_wol,
-	.get_link_ksettings	= usbnet_get_link_ksettings_mii,
-	.set_link_ksettings	= usbnet_set_link_ksettings_mii,
+	.get_link_ksettings	= usbnet_get_link_ksettings,
+	.set_link_ksettings	= usbnet_set_link_ksettings,
 };
 
 static int smsc75xx_ioctl(struct net_device *netdev, struct ifreq *rq, int cmd)
@@ -759,20 +757,18 @@ static int smsc75xx_ioctl(struct net_device *netdev, struct ifreq *rq, int cmd)
 
 static void smsc75xx_init_mac_address(struct usbnet *dev)
 {
-	u8 addr[ETH_ALEN];
+	const u8 *mac_addr;
 
 	/* maybe the boot loader passed the MAC address in devicetree */
-	if (!platform_get_ethdev_address(&dev->udev->dev, dev->net)) {
-		if (is_valid_ether_addr(dev->net->dev_addr)) {
-			/* device tree values are valid so use them */
-			netif_dbg(dev, ifup, dev->net, "MAC address read from the device tree\n");
-			return;
-		}
+	mac_addr = of_get_mac_address(dev->udev->dev.of_node);
+	if (!IS_ERR(mac_addr)) {
+		ether_addr_copy(dev->net->dev_addr, mac_addr);
+		return;
 	}
 
 	/* try reading mac address from EEPROM */
-	if (smsc75xx_read_eeprom(dev, EEPROM_MAC_OFFSET, ETH_ALEN, addr) == 0) {
-		eth_hw_addr_set(dev->net, addr);
+	if (smsc75xx_read_eeprom(dev, EEPROM_MAC_OFFSET, ETH_ALEN,
+			dev->net->dev_addr) == 0) {
 		if (is_valid_ether_addr(dev->net->dev_addr)) {
 			/* eeprom values are valid so use them */
 			netif_dbg(dev, ifup, dev->net,
@@ -1438,11 +1434,11 @@ static const struct net_device_ops smsc75xx_netdev_ops = {
 	.ndo_stop		= usbnet_stop,
 	.ndo_start_xmit		= usbnet_start_xmit,
 	.ndo_tx_timeout		= usbnet_tx_timeout,
-	.ndo_get_stats64	= dev_get_tstats64,
+	.ndo_get_stats64	= usbnet_get_stats64,
 	.ndo_change_mtu		= smsc75xx_change_mtu,
 	.ndo_set_mac_address 	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
-	.ndo_eth_ioctl		= smsc75xx_ioctl,
+	.ndo_do_ioctl 		= smsc75xx_ioctl,
 	.ndo_set_rx_mode	= smsc75xx_set_multicast,
 	.ndo_set_features	= smsc75xx_set_features,
 };
@@ -1486,7 +1482,7 @@ static int smsc75xx_bind(struct usbnet *dev, struct usb_interface *intf)
 	ret = smsc75xx_wait_ready(dev, 0);
 	if (ret < 0) {
 		netdev_warn(dev->net, "device not ready in smsc75xx_bind\n");
-		goto free_pdata;
+		return ret;
 	}
 
 	smsc75xx_init_mac_address(dev);
@@ -1495,7 +1491,7 @@ static int smsc75xx_bind(struct usbnet *dev, struct usb_interface *intf)
 	ret = smsc75xx_reset(dev);
 	if (ret < 0) {
 		netdev_warn(dev->net, "smsc75xx_reset error %d\n", ret);
-		goto cancel_work;
+		return ret;
 	}
 
 	dev->net->netdev_ops = &smsc75xx_netdev_ops;
@@ -1505,13 +1501,6 @@ static int smsc75xx_bind(struct usbnet *dev, struct usb_interface *intf)
 	dev->hard_mtu = dev->net->mtu + dev->net->hard_header_len;
 	dev->net->max_mtu = MAX_SINGLE_PACKET_SIZE;
 	return 0;
-
-cancel_work:
-	cancel_work_sync(&pdata->set_multicast);
-free_pdata:
-	kfree(pdata);
-	dev->data[0] = 0;
-	return ret;
 }
 
 static void smsc75xx_unbind(struct usbnet *dev, struct usb_interface *intf)
@@ -1521,6 +1510,7 @@ static void smsc75xx_unbind(struct usbnet *dev, struct usb_interface *intf)
 		cancel_work_sync(&pdata->set_multicast);
 		netif_dbg(dev, ifdown, dev->net, "free pdata\n");
 		kfree(pdata);
+		pdata = NULL;
 		dev->data[0] = 0;
 	}
 }
@@ -2201,13 +2191,6 @@ static int smsc75xx_rx_fixup(struct usbnet *dev, struct sk_buff *skb)
 		/* get the packet length */
 		size = (rx_cmd_a & RX_CMD_A_LEN) - RXW_PADDING;
 		align_count = (4 - ((size + RXW_PADDING) % 4)) % 4;
-
-		if (unlikely(size > skb->len)) {
-			netif_dbg(dev, rx_err, dev->net,
-				  "size err rx_cmd_a=0x%08x\n",
-				  rx_cmd_a);
-			return 0;
-		}
 
 		if (unlikely(rx_cmd_a & RX_CMD_A_RED)) {
 			netif_dbg(dev, rx_err, dev->net,

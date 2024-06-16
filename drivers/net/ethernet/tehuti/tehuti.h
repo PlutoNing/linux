@@ -330,7 +330,7 @@ struct txd_desc {
 	u16 length;
 	u32 va_lo;
 	u32 va_hi;
-	struct pbl pbl[];	/* Fragments */
+	struct pbl pbl[0];	/* Fragments */
 } __packed;
 
 /* Register region size */

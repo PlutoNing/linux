@@ -19,16 +19,16 @@ MODULE_PARM_DESC(num, "number of emulated controllers");
 
 static struct platform_driver vudc_driver = {
 	.probe		= vudc_probe,
-	.remove_new	= vudc_remove,
+	.remove		= vudc_remove,
 	.driver		= {
 		.name	= GADGET_NAME,
 		.dev_groups = vudc_groups,
 	},
 };
 
-static LIST_HEAD(vudc_devices);
+static struct list_head vudc_devices = LIST_HEAD_INIT(vudc_devices);
 
-static int __init vudc_init(void)
+static int __init init(void)
 {
 	int retval = -ENOMEM;
 	int i;
@@ -86,9 +86,9 @@ cleanup:
 out:
 	return retval;
 }
-module_init(vudc_init);
+module_init(init);
 
-static void __exit vudc_cleanup(void)
+static void __exit cleanup(void)
 {
 	struct vudc_device *udc_dev = NULL, *udc_dev2 = NULL;
 
@@ -103,7 +103,7 @@ static void __exit vudc_cleanup(void)
 	}
 	platform_driver_unregister(&vudc_driver);
 }
-module_exit(vudc_cleanup);
+module_exit(cleanup);
 
 MODULE_DESCRIPTION("USB over IP Device Controller");
 MODULE_AUTHOR("Krzysztof Opasiak, Karol Kosik, Igor Kotrasinski");

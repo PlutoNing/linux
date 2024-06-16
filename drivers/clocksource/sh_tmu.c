@@ -24,10 +24,6 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
-#ifdef CONFIG_SUPERH
-#include <asm/platform_early.h>
-#endif
-
 enum sh_tmu_model {
 	SH_TMU,
 	SH_TMU_SH3,
@@ -292,7 +288,7 @@ static void sh_tmu_clocksource_suspend(struct clocksource *cs)
 
 	if (--ch->enable_count == 0) {
 		__sh_tmu_disable(ch);
-		dev_pm_genpd_suspend(&ch->tmu->pdev->dev);
+		pm_genpd_syscore_poweroff(&ch->tmu->pdev->dev);
 	}
 }
 
@@ -304,7 +300,7 @@ static void sh_tmu_clocksource_resume(struct clocksource *cs)
 		return;
 
 	if (ch->enable_count++ == 0) {
-		dev_pm_genpd_resume(&ch->tmu->pdev->dev);
+		pm_genpd_syscore_poweron(&ch->tmu->pdev->dev);
 		__sh_tmu_enable(ch);
 	}
 }
@@ -394,12 +390,12 @@ static int sh_tmu_clock_event_next(unsigned long delta,
 
 static void sh_tmu_clock_event_suspend(struct clock_event_device *ced)
 {
-	dev_pm_genpd_suspend(&ced_to_sh_tmu(ced)->tmu->pdev->dev);
+	pm_genpd_syscore_poweroff(&ced_to_sh_tmu(ced)->tmu->pdev->dev);
 }
 
 static void sh_tmu_clock_event_resume(struct clock_event_device *ced)
 {
-	dev_pm_genpd_resume(&ced_to_sh_tmu(ced)->tmu->pdev->dev);
+	pm_genpd_syscore_poweron(&ced_to_sh_tmu(ced)->tmu->pdev->dev);
 }
 
 static void sh_tmu_register_clockevent(struct sh_tmu_channel *ch,
@@ -486,7 +482,7 @@ static int sh_tmu_map_memory(struct sh_tmu_device *tmu)
 		return -ENXIO;
 	}
 
-	tmu->mapbase = ioremap(res->start, resource_size(res));
+	tmu->mapbase = ioremap_nocache(res->start, resource_size(res));
 	if (tmu->mapbase == NULL)
 		return -ENXIO;
 
@@ -599,7 +595,7 @@ static int sh_tmu_probe(struct platform_device *pdev)
 	struct sh_tmu_device *tmu = platform_get_drvdata(pdev);
 	int ret;
 
-	if (!is_sh_early_platform_device(pdev)) {
+	if (!is_early_platform_device(pdev)) {
 		pm_runtime_set_active(&pdev->dev);
 		pm_runtime_enable(&pdev->dev);
 	}
@@ -619,8 +615,7 @@ static int sh_tmu_probe(struct platform_device *pdev)
 		pm_runtime_idle(&pdev->dev);
 		return ret;
 	}
-
-	if (is_sh_early_platform_device(pdev))
+	if (is_early_platform_device(pdev))
 		return 0;
 
  out:
@@ -630,6 +625,11 @@ static int sh_tmu_probe(struct platform_device *pdev)
 		pm_runtime_idle(&pdev->dev);
 
 	return 0;
+}
+
+static int sh_tmu_remove(struct platform_device *pdev)
+{
+	return -EBUSY; /* cannot unregister clockevent and clocksource */
 }
 
 static const struct platform_device_id sh_tmu_id_table[] = {
@@ -647,10 +647,10 @@ MODULE_DEVICE_TABLE(of, sh_tmu_of_table);
 
 static struct platform_driver sh_tmu_device_driver = {
 	.probe		= sh_tmu_probe,
+	.remove		= sh_tmu_remove,
 	.driver		= {
 		.name	= "sh_tmu",
 		.of_match_table = of_match_ptr(sh_tmu_of_table),
-		.suppress_bind_attrs = true,
 	},
 	.id_table	= sh_tmu_id_table,
 };
@@ -665,12 +665,10 @@ static void __exit sh_tmu_exit(void)
 	platform_driver_unregister(&sh_tmu_device_driver);
 }
 
-#ifdef CONFIG_SUPERH
-sh_early_platform_init("earlytimer", &sh_tmu_device_driver);
-#endif
-
+early_platform_init("earlytimer", &sh_tmu_device_driver);
 subsys_initcall(sh_tmu_init);
 module_exit(sh_tmu_exit);
 
 MODULE_AUTHOR("Magnus Damm");
 MODULE_DESCRIPTION("SuperH TMU Timer Driver");
+MODULE_LICENSE("GPL v2");

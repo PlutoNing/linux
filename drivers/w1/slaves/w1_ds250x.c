@@ -168,7 +168,6 @@ static int w1_eprom_add_slave(struct w1_slave *sl)
 	struct nvmem_device *nvmem;
 	struct nvmem_config nvmem_cfg = {
 		.dev = &sl->dev,
-		.add_legacy_fixed_of_cells = true,
 		.reg_read = w1_nvmem_read,
 		.type = NVMEM_TYPE_OTP,
 		.read_only = true,
@@ -216,7 +215,7 @@ static int w1_eprom_add_slave(struct w1_slave *sl)
 	return PTR_ERR_OR_ZERO(nvmem);
 }
 
-static const struct w1_family_ops w1_eprom_fops = {
+static struct w1_family_ops w1_eprom_fops = {
 	.add_slave	= w1_eprom_add_slave,
 };
 

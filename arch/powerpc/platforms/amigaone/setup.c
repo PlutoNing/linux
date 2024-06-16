@@ -8,7 +8,6 @@
  * Copyright 2003 by Hans-Joerg Frieden and Thomas Frieden
  */
 
-#include <linux/irqdomain.h>
 #include <linux/kernel.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -25,7 +24,7 @@
 
 extern void __flush_disable_L1(void);
 
-static void amigaone_show_cpuinfo(struct seq_file *m)
+void amigaone_show_cpuinfo(struct seq_file *m)
 {
 	seq_printf(m, "vendor\t\t: Eyetech Ltd.\n");
 }
@@ -65,13 +64,7 @@ static int __init amigaone_add_bridge(struct device_node *dev)
 	return 0;
 }
 
-static void __init amigaone_setup_arch(void)
-{
-	if (ppc_md.progress)
-		ppc_md.progress("Linux/PPC "UTS_RELEASE"\n", 0);
-}
-
-static void __init amigaone_discover_phbs(void)
+void __init amigaone_setup_arch(void)
 {
 	struct device_node *np;
 	int phb = -ENODEV;
@@ -81,9 +74,12 @@ static void __init amigaone_discover_phbs(void)
 		phb = amigaone_add_bridge(np);
 
 	BUG_ON(phb != 0);
+
+	if (ppc_md.progress)
+		ppc_md.progress("Linux/PPC "UTS_RELEASE"\n", 0);
 }
 
-static void __init amigaone_init_IRQ(void)
+void __init amigaone_init_IRQ(void)
 {
 	struct device_node *pic, *np = NULL;
 	const unsigned long *prop = NULL;
@@ -123,7 +119,7 @@ static int __init request_isa_regions(void)
 }
 machine_device_initcall(amigaone, request_isa_regions);
 
-static void __noreturn amigaone_restart(char *cmd)
+void __noreturn amigaone_restart(char *cmd)
 {
 	local_irq_disable();
 
@@ -143,26 +139,30 @@ static void __noreturn amigaone_restart(char *cmd)
 
 static int __init amigaone_probe(void)
 {
-	/*
-	 * Coherent memory access cause complete system lockup! Thus
-	 * disable this CPU feature, even if the CPU needs it.
-	 */
-	cur_cpu_spec->cpu_features &= ~CPU_FTR_NEED_COHERENT;
+	if (of_machine_is_compatible("eyetech,amigaone")) {
+		/*
+		 * Coherent memory access cause complete system lockup! Thus
+		 * disable this CPU feature, even if the CPU needs it.
+		 */
+		cur_cpu_spec->cpu_features &= ~CPU_FTR_NEED_COHERENT;
 
-	DMA_MODE_READ = 0x44;
-	DMA_MODE_WRITE = 0x48;
+		ISA_DMA_THRESHOLD = 0x00ffffff;
+		DMA_MODE_READ = 0x44;
+		DMA_MODE_WRITE = 0x48;
 
-	return 1;
+		return 1;
+	}
+
+	return 0;
 }
 
 define_machine(amigaone) {
 	.name			= "AmigaOne",
-	.compatible		= "eyetech,amigaone",
 	.probe			= amigaone_probe,
 	.setup_arch		= amigaone_setup_arch,
-	.discover_phbs		= amigaone_discover_phbs,
 	.show_cpuinfo		= amigaone_show_cpuinfo,
 	.init_IRQ		= amigaone_init_IRQ,
 	.restart		= amigaone_restart,
+	.calibrate_decr		= generic_calibrate_decr,
 	.progress		= udbg_progress,
 };

@@ -46,10 +46,12 @@ static const struct snd_pcm_hardware sprd_pcm_hardware = {
 	.buffer_bytes_max = 64 * 1024,
 };
 
-static int sprd_pcm_open(struct snd_soc_component *component,
-			 struct snd_pcm_substream *substream)
+static int sprd_pcm_open(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_component *component =
+		snd_soc_rtdcom_lookup(rtd, DRV_NAME);
 	struct device *dev = component->dev;
 	struct sprd_pcm_dma_private *dma_private;
 	int hw_chan = SPRD_PCM_CHANNEL_MAX;
@@ -109,11 +111,13 @@ error:
 	return ret;
 }
 
-static int sprd_pcm_close(struct snd_soc_component *component,
-			  struct snd_pcm_substream *substream)
+static int sprd_pcm_close(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct sprd_pcm_dma_private *dma_private = runtime->private_data;
+	struct snd_soc_component *component =
+		snd_soc_rtdcom_lookup(rtd, DRV_NAME);
 	struct device *dev = component->dev;
 	int size = runtime->hw.periods_max * SPRD_PCM_DMA_LINKLIST_SIZE;
 	int i;
@@ -153,12 +157,14 @@ static void sprd_pcm_release_dma_channel(struct snd_pcm_substream *substream)
 	}
 }
 
-static int sprd_pcm_request_dma_channel(struct snd_soc_component *component,
-					struct snd_pcm_substream *substream,
+static int sprd_pcm_request_dma_channel(struct snd_pcm_substream *substream,
 					int channels)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct sprd_pcm_dma_private *dma_private = runtime->private_data;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_component *component =
+		snd_soc_rtdcom_lookup(rtd, DRV_NAME);
 	struct device *dev = component->dev;
 	struct sprd_pcm_dma_params *dma_params = dma_private->params;
 	int i;
@@ -184,13 +190,14 @@ static int sprd_pcm_request_dma_channel(struct snd_soc_component *component,
 	return 0;
 }
 
-static int sprd_pcm_hw_params(struct snd_soc_component *component,
-			      struct snd_pcm_substream *substream,
+static int sprd_pcm_hw_params(struct snd_pcm_substream *substream,
 			      struct snd_pcm_hw_params *params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct sprd_pcm_dma_private *dma_private = runtime->private_data;
-	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_component *component =
+		snd_soc_rtdcom_lookup(rtd, DRV_NAME);
 	struct sprd_pcm_dma_params *dma_params;
 	size_t totsize = params_buffer_bytes(params);
 	size_t period = params_period_bytes(params);
@@ -200,21 +207,25 @@ static int sprd_pcm_hw_params(struct snd_soc_component *component,
 	unsigned long flags;
 	int ret, i, j, sg_num;
 
-	dma_params = snd_soc_dai_get_dma_data(snd_soc_rtd_to_cpu(rtd, 0), substream);
+	dma_params = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
 	if (!dma_params) {
 		dev_warn(component->dev, "no dma parameters setting\n");
 		dma_private->params = NULL;
+		snd_pcm_set_runtime_buffer(substream, &substream->dma_buffer);
+		runtime->dma_bytes = totsize;
 		return 0;
 	}
 
 	if (!dma_private->params) {
 		dma_private->params = dma_params;
-		ret = sprd_pcm_request_dma_channel(component,
-						   substream, channels);
+		ret = sprd_pcm_request_dma_channel(substream, channels);
 		if (ret)
 			return ret;
 	}
 
+	snd_pcm_set_runtime_buffer(substream, &substream->dma_buffer);
+
+	runtime->dma_bytes = totsize;
 	sg_num = totsize / period;
 	dma_private->dma_addr_offset = totsize / channels;
 
@@ -302,19 +313,21 @@ sg_err:
 	return ret;
 }
 
-static int sprd_pcm_hw_free(struct snd_soc_component *component,
-			    struct snd_pcm_substream *substream)
+static int sprd_pcm_hw_free(struct snd_pcm_substream *substream)
 {
+	snd_pcm_set_runtime_buffer(substream, NULL);
 	sprd_pcm_release_dma_channel(substream);
 
 	return 0;
 }
 
-static int sprd_pcm_trigger(struct snd_soc_component *component,
-			    struct snd_pcm_substream *substream, int cmd)
+static int sprd_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 {
 	struct sprd_pcm_dma_private *dma_private =
 		substream->runtime->private_data;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_component *component =
+		snd_soc_rtdcom_lookup(rtd, DRV_NAME);
 	int ret = 0, i;
 
 	switch (cmd) {
@@ -374,11 +387,13 @@ static int sprd_pcm_trigger(struct snd_soc_component *component,
 	return ret;
 }
 
-static snd_pcm_uframes_t sprd_pcm_pointer(struct snd_soc_component *component,
-					  struct snd_pcm_substream *substream)
+static snd_pcm_uframes_t sprd_pcm_pointer(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct sprd_pcm_dma_private *dma_private = runtime->private_data;
+	struct snd_soc_component *component =
+		snd_soc_rtdcom_lookup(rtd, DRV_NAME);
 	int pointer[SPRD_PCM_CHANNEL_MAX];
 	int bytes_of_pointer = 0, sel_max = 0, i;
 	snd_pcm_uframes_t x;
@@ -429,32 +444,89 @@ static snd_pcm_uframes_t sprd_pcm_pointer(struct snd_soc_component *component,
 	return x;
 }
 
-static int sprd_pcm_new(struct snd_soc_component *component,
-			struct snd_soc_pcm_runtime *rtd)
+static int sprd_pcm_mmap(struct snd_pcm_substream *substream,
+			 struct vm_area_struct *vma)
+{
+	struct snd_pcm_runtime *runtime = substream->runtime;
+
+	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+	return remap_pfn_range(vma, vma->vm_start,
+			       runtime->dma_addr >> PAGE_SHIFT,
+			       vma->vm_end - vma->vm_start,
+			       vma->vm_page_prot);
+}
+
+static struct snd_pcm_ops sprd_pcm_ops = {
+	.open = sprd_pcm_open,
+	.close = sprd_pcm_close,
+	.ioctl = snd_pcm_lib_ioctl,
+	.hw_params = sprd_pcm_hw_params,
+	.hw_free = sprd_pcm_hw_free,
+	.trigger = sprd_pcm_trigger,
+	.pointer = sprd_pcm_pointer,
+	.mmap = sprd_pcm_mmap,
+};
+
+static int sprd_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_card *card = rtd->card->snd_card;
 	struct snd_pcm *pcm = rtd->pcm;
+	struct snd_pcm_substream *substream;
 	int ret;
 
 	ret = dma_coerce_mask_and_coherent(card->dev, DMA_BIT_MASK(32));
 	if (ret)
 		return ret;
 
-	return snd_pcm_set_fixed_buffer_all(pcm, SNDRV_DMA_TYPE_DEV,
-					    card->dev,
-					    sprd_pcm_hardware.buffer_bytes_max);
+	substream = pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
+	if (substream) {
+		ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, card->dev,
+					  sprd_pcm_hardware.buffer_bytes_max,
+					  &substream->dma_buffer);
+		if (ret) {
+			dev_err(card->dev,
+				"can't alloc playback dma buffer: %d\n", ret);
+			return ret;
+		}
+	}
+
+	substream = pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream;
+	if (substream) {
+		ret = snd_dma_alloc_pages(SNDRV_DMA_TYPE_DEV, card->dev,
+					  sprd_pcm_hardware.buffer_bytes_max,
+					  &substream->dma_buffer);
+		if (ret) {
+			dev_err(card->dev,
+				"can't alloc capture dma buffer: %d\n", ret);
+			snd_dma_free_pages(&pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream->dma_buffer);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+static void sprd_pcm_free(struct snd_pcm *pcm)
+{
+	struct snd_pcm_substream *substream;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(pcm->streams); i++) {
+		substream = pcm->streams[i].substream;
+		if (substream) {
+			snd_dma_free_pages(&substream->dma_buffer);
+			substream->dma_buffer.area = NULL;
+			substream->dma_buffer.addr = 0;
+		}
+	}
 }
 
 static const struct snd_soc_component_driver sprd_soc_component = {
 	.name		= DRV_NAME,
-	.open		= sprd_pcm_open,
-	.close		= sprd_pcm_close,
-	.hw_params	= sprd_pcm_hw_params,
-	.hw_free	= sprd_pcm_hw_free,
-	.trigger	= sprd_pcm_trigger,
-	.pointer	= sprd_pcm_pointer,
-	.pcm_construct	= sprd_pcm_new,
-	.compress_ops	= &sprd_platform_compress_ops,
+	.ops		= &sprd_pcm_ops,
+	.compr_ops	= &sprd_platform_compr_ops,
+	.pcm_new	= sprd_pcm_new,
+	.pcm_free	= sprd_pcm_free,
 };
 
 static int sprd_soc_platform_probe(struct platform_device *pdev)

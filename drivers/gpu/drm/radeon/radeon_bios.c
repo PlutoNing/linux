@@ -26,11 +26,11 @@
  *          Jerome Glisse
  */
 
-#include <linux/acpi.h>
-#include <linux/pci.h>
 #include <linux/slab.h>
+#include <linux/acpi.h>
 
 #include <drm/drm_device.h>
+#include <drm/drm_pci.h>
 
 #include "atom.h"
 #include "radeon.h"
@@ -108,33 +108,25 @@ static bool radeon_read_bios(struct radeon_device *rdev)
 
 static bool radeon_read_platform_bios(struct radeon_device *rdev)
 {
-	phys_addr_t rom = rdev->pdev->rom;
-	size_t romlen = rdev->pdev->romlen;
-	void __iomem *bios;
+	uint8_t __iomem *bios;
+	size_t size;
 
 	rdev->bios = NULL;
 
-	if (!rom || romlen == 0)
+	bios = pci_platform_rom(rdev->pdev, &size);
+	if (!bios) {
 		return false;
+	}
 
-	rdev->bios = kzalloc(romlen, GFP_KERNEL);
-	if (!rdev->bios)
+	if (size == 0 || bios[0] != 0x55 || bios[1] != 0xaa) {
 		return false;
-
-	bios = ioremap(rom, romlen);
-	if (!bios)
-		goto free_bios;
-
-	memcpy_fromio(rdev->bios, bios, romlen);
-	iounmap(bios);
-
-	if (rdev->bios[0] != 0x55 || rdev->bios[1] != 0xaa)
-		goto free_bios;
+	}
+	rdev->bios = kmemdup(bios, size, GFP_KERNEL);
+	if (rdev->bios == NULL) {
+		return false;
+	}
 
 	return true;
-free_bios:
-	kfree(rdev->bios);
-	return false;
 }
 
 #ifdef CONFIG_ACPI
@@ -199,25 +191,34 @@ static bool radeon_atrm_get_bios(struct radeon_device *rdev)
 	if (rdev->flags & RADEON_IS_IGP)
 		return false;
 
-	while ((pdev = pci_get_base_class(PCI_BASE_CLASS_DISPLAY, pdev))) {
-		if ((pdev->class != PCI_CLASS_DISPLAY_VGA << 8) &&
-		    (pdev->class != PCI_CLASS_DISPLAY_OTHER << 8))
-			continue;
-
+	while ((pdev = pci_get_class(PCI_CLASS_DISPLAY_VGA << 8, pdev)) != NULL) {
 		dhandle = ACPI_HANDLE(&pdev->dev);
 		if (!dhandle)
 			continue;
 
 		status = acpi_get_handle(dhandle, "ATRM", &atrm_handle);
-		if (ACPI_SUCCESS(status)) {
+		if (!ACPI_FAILURE(status)) {
 			found = true;
 			break;
 		}
 	}
 
+	if (!found) {
+		while ((pdev = pci_get_class(PCI_CLASS_DISPLAY_OTHER << 8, pdev)) != NULL) {
+			dhandle = ACPI_HANDLE(&pdev->dev);
+			if (!dhandle)
+				continue;
+
+			status = acpi_get_handle(dhandle, "ATRM", &atrm_handle);
+			if (!ACPI_FAILURE(status)) {
+				found = true;
+				break;
+			}
+		}
+	}
+
 	if (!found)
 		return false;
-	pci_dev_put(pdev);
 
 	rdev->bios = kmalloc(size, GFP_KERNEL);
 	if (!rdev->bios) {
@@ -519,7 +520,7 @@ static bool legacy_read_disabled_bios(struct radeon_device *rdev)
 	crtc_ext_cntl = RREG32(RADEON_CRTC_EXT_CNTL);
 	fp2_gen_cntl = 0;
 
-	if (rdev->pdev->device == PCI_DEVICE_ID_ATI_RADEON_QY) {
+	if (rdev->ddev->pdev->device == PCI_DEVICE_ID_ATI_RADEON_QY) {
 		fp2_gen_cntl = RREG32(RADEON_FP2_GEN_CNTL);
 	}
 
@@ -556,7 +557,7 @@ static bool legacy_read_disabled_bios(struct radeon_device *rdev)
 		(RADEON_CRTC_SYNC_TRISTAT |
 		 RADEON_CRTC_DISPLAY_DIS)));
 
-	if (rdev->pdev->device == PCI_DEVICE_ID_ATI_RADEON_QY) {
+	if (rdev->ddev->pdev->device == PCI_DEVICE_ID_ATI_RADEON_QY) {
 		WREG32(RADEON_FP2_GEN_CNTL, (fp2_gen_cntl & ~RADEON_FP2_ON));
 	}
 
@@ -574,7 +575,7 @@ static bool legacy_read_disabled_bios(struct radeon_device *rdev)
 		WREG32(RADEON_CRTC2_GEN_CNTL, crtc2_gen_cntl);
 	}
 	WREG32(RADEON_CRTC_EXT_CNTL, crtc_ext_cntl);
-	if (rdev->pdev->device == PCI_DEVICE_ID_ATI_RADEON_QY) {
+	if (rdev->ddev->pdev->device == PCI_DEVICE_ID_ATI_RADEON_QY) {
 		WREG32(RADEON_FP2_GEN_CNTL, fp2_gen_cntl);
 	}
 	return r;
@@ -603,14 +604,13 @@ static bool radeon_acpi_vfct_bios(struct radeon_device *rdev)
 	acpi_size tbl_size;
 	UEFI_ACPI_VFCT *vfct;
 	unsigned offset;
-	bool r = false;
 
 	if (!ACPI_SUCCESS(acpi_get_table("VFCT", 1, &hdr)))
 		return false;
 	tbl_size = hdr->length;
 	if (tbl_size < sizeof(UEFI_ACPI_VFCT)) {
 		DRM_ERROR("ACPI VFCT table present but broken (too short #1)\n");
-		goto out;
+		return false;
 	}
 
 	vfct = (UEFI_ACPI_VFCT *)hdr;
@@ -623,13 +623,13 @@ static bool radeon_acpi_vfct_bios(struct radeon_device *rdev)
 		offset += sizeof(VFCT_IMAGE_HEADER);
 		if (offset > tbl_size) {
 			DRM_ERROR("ACPI VFCT image header truncated\n");
-			goto out;
+			return false;
 		}
 
 		offset += vhdr->ImageLength;
 		if (offset > tbl_size) {
 			DRM_ERROR("ACPI VFCT image truncated\n");
-			goto out;
+			return false;
 		}
 
 		if (vhdr->ImageLength &&
@@ -641,18 +641,15 @@ static bool radeon_acpi_vfct_bios(struct radeon_device *rdev)
 			rdev->bios = kmemdup(&vbios->VbiosContent,
 					     vhdr->ImageLength,
 					     GFP_KERNEL);
-			if (rdev->bios)
-				r = true;
 
-			goto out;
+			if (!rdev->bios)
+				return false;
+			return true;
 		}
 	}
 
 	DRM_ERROR("ACPI VFCT table present but broken (too short #2)\n");
-
-out:
-	acpi_put_table(hdr);
-	return r;
+	return false;
 }
 #else
 static inline bool radeon_acpi_vfct_bios(struct radeon_device *rdev)
@@ -667,17 +664,17 @@ bool radeon_get_bios(struct radeon_device *rdev)
 	uint16_t tmp;
 
 	r = radeon_atrm_get_bios(rdev);
-	if (!r)
+	if (r == false)
 		r = radeon_acpi_vfct_bios(rdev);
-	if (!r)
+	if (r == false)
 		r = igp_read_bios_from_vram(rdev);
-	if (!r)
+	if (r == false)
 		r = radeon_read_bios(rdev);
-	if (!r)
+	if (r == false)
 		r = radeon_read_disabled_bios(rdev);
-	if (!r)
+	if (r == false)
 		r = radeon_read_platform_bios(rdev);
-	if (!r || rdev->bios == NULL) {
+	if (r == false || rdev->bios == NULL) {
 		DRM_ERROR("Unable to locate a BIOS ROM\n");
 		rdev->bios = NULL;
 		return false;

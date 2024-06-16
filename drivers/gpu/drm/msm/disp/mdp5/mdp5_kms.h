@@ -40,6 +40,7 @@ struct mdp5_kms {
 	 * Global private object state, Do not access directly, use
 	 * mdp5_global_get_state()
 	 */
+	struct drm_modeset_lock glob_state_lock;
 	struct drm_private_obj glob_state;
 
 	struct mdp5_smp *smp;
@@ -52,8 +53,6 @@ struct mdp5_kms {
 	struct clk *ahb_clk;
 	struct clk *core_clk;
 	struct clk *lut_clk;
-	struct clk *tbu_clk;
-	struct clk *tbu_rt_clk;
 	struct clk *vsync_clk;
 
 	/*
@@ -97,13 +96,13 @@ struct mdp5_plane_state {
 	struct mdp5_hw_pipe *hwpipe;
 	struct mdp5_hw_pipe *r_hwpipe;	/* right hwpipe */
 
+	/* aligned with property */
+	uint8_t premultiplied;
+	uint8_t zpos;
+	uint8_t alpha;
+
 	/* assigned by crtc blender */
 	enum mdp_mixer_stage_id stage;
-
-	/* whether attached CRTC needs pixel data explicitly flushed to
-	 * display (ex. DSI command mode display)
-	 */
-	bool needs_dirtyfb;
 };
 #define to_mdp5_plane_state(x) \
 		container_of(x, struct mdp5_plane_state, base)
@@ -290,6 +289,8 @@ struct drm_crtc *mdp5_crtc_init(struct drm_device *dev,
 
 struct drm_encoder *mdp5_encoder_init(struct drm_device *dev,
 		struct mdp5_interface *intf, struct mdp5_ctl *ctl);
+int mdp5_vid_encoder_set_split_display(struct drm_encoder *encoder,
+				       struct drm_encoder *slave_encoder);
 void mdp5_encoder_set_intf_mode(struct drm_encoder *encoder, bool cmd_mode);
 int mdp5_encoder_get_linecount(struct drm_encoder *encoder);
 u32 mdp5_encoder_get_framecount(struct drm_encoder *encoder);
@@ -300,6 +301,8 @@ void mdp5_cmd_encoder_mode_set(struct drm_encoder *encoder,
 			       struct drm_display_mode *adjusted_mode);
 void mdp5_cmd_encoder_disable(struct drm_encoder *encoder);
 void mdp5_cmd_encoder_enable(struct drm_encoder *encoder);
+int mdp5_cmd_encoder_set_split_display(struct drm_encoder *encoder,
+				       struct drm_encoder *slave_encoder);
 #else
 static inline void mdp5_cmd_encoder_mode_set(struct drm_encoder *encoder,
 					     struct drm_display_mode *mode,
@@ -311,6 +314,11 @@ static inline void mdp5_cmd_encoder_disable(struct drm_encoder *encoder)
 }
 static inline void mdp5_cmd_encoder_enable(struct drm_encoder *encoder)
 {
+}
+static inline int mdp5_cmd_encoder_set_split_display(
+	struct drm_encoder *encoder, struct drm_encoder *slave_encoder)
+{
+	return -EINVAL;
 }
 #endif
 

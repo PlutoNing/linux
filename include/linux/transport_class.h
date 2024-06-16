@@ -62,22 +62,16 @@ struct transport_container {
 	container_of(x, struct transport_container, ac)
 
 void transport_remove_device(struct device *);
-int transport_add_device(struct device *);
+void transport_add_device(struct device *);
 void transport_setup_device(struct device *);
 void transport_configure_device(struct device *);
 void transport_destroy_device(struct device *);
 
-static inline int
+static inline void
 transport_register_device(struct device *dev)
 {
-	int ret;
-
 	transport_setup_device(dev);
-	ret = transport_add_device(dev);
-	if (ret)
-		transport_destroy_device(dev);
-
-	return ret;
+	transport_add_device(dev);
 }
 
 static inline void

@@ -7,6 +7,7 @@
 #include <linux/etherdevice.h>
 #include "hclge_cmd.h"
 
+#define HCLGE_DBG_BUF_LEN	   256
 #define HCLGE_DBG_MNG_TBL_MAX	   64
 
 #define HCLGE_DBG_MNG_VLAN_MASK_B  BIT(0)
@@ -33,6 +34,8 @@
 #define HCLGE_DBG_DFX_TQP_OFFSET   11
 
 #define HCLGE_DBG_DFX_SSU_2_OFFSET 12
+
+#pragma pack(1)
 
 struct hclge_qos_pri_map_cmd {
 	u8 pri0_tc  : 4,
@@ -69,11 +72,6 @@ struct hclge_dbg_reg_common_msg {
 	enum hclge_opcode_type cmd;
 };
 
-struct hclge_dbg_tcam_msg {
-	u8 stage;
-	u32 loc;
-};
-
 #define	HCLGE_DBG_MAX_DFX_MSG_LEN	60
 struct hclge_dbg_dfx_message {
 	int flag;
@@ -82,24 +80,14 @@ struct hclge_dbg_dfx_message {
 
 #define HCLGE_DBG_MAC_REG_TYPE_LEN	32
 struct hclge_dbg_reg_type_info {
-	enum hnae3_dbg_cmd cmd;
-	const struct hclge_dbg_dfx_message *dfx_msg;
+	const char *reg_type;
+	struct hclge_dbg_dfx_message *dfx_msg;
 	struct hclge_dbg_reg_common_msg reg_msg;
 };
 
-struct hclge_dbg_func {
-	enum hnae3_dbg_cmd cmd;
-	int (*dbg_dump)(struct hclge_dev *hdev, char *buf, int len);
-	int (*dbg_dump_reg)(struct hclge_dev *hdev, enum hnae3_dbg_cmd cmd,
-			    char *buf, int len);
-};
+#pragma pack()
 
-struct hclge_dbg_status_dfx_info {
-	u32  offset;
-	char message[HCLGE_DBG_MAX_DFX_MSG_LEN];
-};
-
-static const struct hclge_dbg_dfx_message hclge_dbg_bios_common_reg[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_bios_common_reg[] = {
 	{false, "Reserved"},
 	{true,	"BP_CPU_STATE"},
 	{true,	"DFX_MSIX_INFO_NIC_0"},
@@ -115,7 +103,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_bios_common_reg[] = {
 	{false, "Reserved"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_ssu_reg_0[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_ssu_reg_0[] = {
 	{false, "Reserved"},
 	{true,	"SSU_ETS_PORT_STATUS"},
 	{true,	"SSU_ETS_TCG_STATUS"},
@@ -187,7 +175,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_ssu_reg_0[] = {
 	{false, "Reserved"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_ssu_reg_1[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_ssu_reg_1[] = {
 	{true,	"prt_id"},
 	{true,	"PACKET_TC_CURR_BUFFER_CNT_0"},
 	{true,	"PACKET_TC_CURR_BUFFER_CNT_1"},
@@ -294,7 +282,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_ssu_reg_1[] = {
 	{false, "Reserved"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_ssu_reg_2[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_ssu_reg_2[] = {
 	{true,	"OQ_INDEX"},
 	{true,	"QUEUE_CNT"},
 	{false, "Reserved"},
@@ -303,7 +291,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_ssu_reg_2[] = {
 	{false, "Reserved"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_igu_egu_reg[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_igu_egu_reg[] = {
 	{true,	"prt_id"},
 	{true,	"IGU_RX_ERR_PKT"},
 	{true,	"IGU_RX_NO_SOF_PKT"},
@@ -326,10 +314,10 @@ static const struct hclge_dbg_dfx_message hclge_dbg_igu_egu_reg[] = {
 	{true,	"IGU_RX_OUT_UDP0_PKT"},
 
 	{true,	"IGU_RX_IN_UDP0_PKT"},
-	{true,	"IGU_MC_CAR_DROP_PKT_L"},
-	{true,	"IGU_MC_CAR_DROP_PKT_H"},
-	{true,	"IGU_BC_CAR_DROP_PKT_L"},
-	{true,	"IGU_BC_CAR_DROP_PKT_H"},
+	{false, "Reserved"},
+	{false, "Reserved"},
+	{false, "Reserved"},
+	{false, "Reserved"},
 	{false, "Reserved"},
 
 	{true,	"IGU_RX_OVERSIZE_PKT_L"},
@@ -368,7 +356,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_igu_egu_reg[] = {
 	{false,	"Reserved"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_rpu_reg_0[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_rpu_reg_0[] = {
 	{true, "tc_queue_num"},
 	{true, "FSM_DFX_ST0"},
 	{true, "FSM_DFX_ST1"},
@@ -377,7 +365,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_rpu_reg_0[] = {
 	{true, "BUF_WAIT_TIMEOUT_QID"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_rpu_reg_1[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_rpu_reg_1[] = {
 	{false, "Reserved"},
 	{true,	"FIFO_DFX_ST0"},
 	{true,	"FIFO_DFX_ST1"},
@@ -393,7 +381,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_rpu_reg_1[] = {
 	{false, "Reserved"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_ncsi_reg[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_ncsi_reg[] = {
 	{false, "Reserved"},
 	{true,	"NCSI_EGU_TX_FIFO_STS"},
 	{true,	"NCSI_PAUSE_STATUS"},
@@ -465,7 +453,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_ncsi_reg[] = {
 	{true,	"NCSI_MAC_RX_PAUSE_FRAMES"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_rtc_reg[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_rtc_reg[] = {
 	{false, "Reserved"},
 	{true,	"LGE_IGU_AFIFO_DFX_0"},
 	{true,	"LGE_IGU_AFIFO_DFX_1"},
@@ -495,7 +483,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_rtc_reg[] = {
 	{false, "Reserved"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_ppp_reg[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_ppp_reg[] = {
 	{false, "Reserved"},
 	{true,	"DROP_FROM_PRT_PKT_CNT"},
 	{true,	"DROP_FROM_HOST_PKT_CNT"},
@@ -651,7 +639,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_ppp_reg[] = {
 	{false, "Reserved"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_rcb_reg[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_rcb_reg[] = {
 	{false, "Reserved"},
 	{true,	"FSM_DFX_ST0"},
 	{true,	"FSM_DFX_ST1"},
@@ -723,7 +711,7 @@ static const struct hclge_dbg_dfx_message hclge_dbg_rcb_reg[] = {
 	{false, "Reserved"},
 };
 
-static const struct hclge_dbg_dfx_message hclge_dbg_tqp_reg[] = {
+static struct hclge_dbg_dfx_message hclge_dbg_tqp_reg[] = {
 	{true, "q_num"},
 	{true, "RCB_CFG_RX_RING_TAIL"},
 	{true, "RCB_CFG_RX_RING_HEAD"},
@@ -737,38 +725,6 @@ static const struct hclge_dbg_dfx_message hclge_dbg_tqp_reg[] = {
 	{true, "RCB_CFG_TX_RING_FBDNUM"},
 	{true, "RCB_CFG_TX_RING_OFFSET"},
 	{true, "RCB_CFG_TX_RING_EBDNUM"},
-};
-
-#define HCLGE_DBG_INFO_LEN			256
-#define HCLGE_DBG_VLAN_FLTR_INFO_LEN		256
-#define HCLGE_DBG_VLAN_OFFLOAD_INFO_LEN		512
-#define HCLGE_DBG_ID_LEN			16
-#define HCLGE_DBG_ITEM_NAME_LEN			32
-#define HCLGE_DBG_DATA_STR_LEN			32
-#define HCLGE_DBG_TM_INFO_LEN			256
-
-#define HCLGE_BILLION_NANO_SECONDS	1000000000
-
-struct hclge_dbg_item {
-	char name[HCLGE_DBG_ITEM_NAME_LEN];
-	u16 interval; /* blank numbers after the item */
-};
-
-struct hclge_dbg_vlan_cfg {
-	u16 pvid;
-	u8 accept_tag1;
-	u8 accept_tag2;
-	u8 accept_untag1;
-	u8 accept_untag2;
-	u8 insert_tag1;
-	u8 insert_tag2;
-	u8 shift_tag;
-	u8 strip_tag1;
-	u8 strip_tag2;
-	u8 drop_tag1;
-	u8 drop_tag2;
-	u8 pri_only1;
-	u8 pri_only2;
 };
 
 #endif

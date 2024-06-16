@@ -22,13 +22,14 @@
 #include <linux/io.h>
 #include "slic_ds26522.h"
 
+#define DRV_NAME "ds26522"
+
 #define SLIC_TRANS_LEN 1
 #define SLIC_TWO_LEN 2
 #define SLIC_THREE_LEN 3
 
 static struct spi_device *g_spi;
 
-MODULE_DESCRIPTION("Slic Maxim DS26522 driver");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Zhao Qiang<B45475@freescale.com>");
 
@@ -195,9 +196,10 @@ static int slic_ds26522_init_configure(struct spi_device *spi)
 	return 0;
 }
 
-static void slic_ds26522_remove(struct spi_device *spi)
+static int slic_ds26522_remove(struct spi_device *spi)
 {
 	pr_info("DS26522 module uninstalled\n");
+	return 0;
 }
 
 static int slic_ds26522_probe(struct spi_device *spi)
@@ -212,7 +214,7 @@ static int slic_ds26522_probe(struct spi_device *spi)
 
 	ret = slic_ds26522_init_configure(spi);
 	if (ret == 0)
-		pr_info("DS26522 cs%d configured\n", spi_get_chipselect(spi, 0));
+		pr_info("DS26522 cs%d configured\n", spi->chip_select);
 
 	return ret;
 }

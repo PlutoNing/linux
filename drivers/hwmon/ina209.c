@@ -14,7 +14,7 @@
  *	Thanks to Jan Volkering
  *
  * Datasheet:
- * https://www.ti.com/lit/gpn/ina209
+ * http://www.ti.com/lit/gpn/ina209
  */
 
 #include <linux/kernel.h>
@@ -259,7 +259,7 @@ static ssize_t ina209_interval_show(struct device *dev,
 {
 	struct ina209_data *data = dev_get_drvdata(dev);
 
-	return sysfs_emit(buf, "%d\n", data->update_interval);
+	return snprintf(buf, PAGE_SIZE, "%d\n", data->update_interval);
 }
 
 /*
@@ -343,7 +343,7 @@ static ssize_t ina209_value_show(struct device *dev,
 		return PTR_ERR(data);
 
 	val = ina209_from_reg(attr->index, data->regs[attr->index]);
-	return sysfs_emit(buf, "%ld\n", val);
+	return snprintf(buf, PAGE_SIZE, "%ld\n", val);
 }
 
 static ssize_t ina209_alarm_show(struct device *dev,
@@ -363,7 +363,7 @@ static ssize_t ina209_alarm_show(struct device *dev,
 	 * All alarms are in the INA209_STATUS register. To avoid a long
 	 * switch statement, the mask is passed in attr->index
 	 */
-	return sysfs_emit(buf, "%u\n", !!(status & mask));
+	return snprintf(buf, PAGE_SIZE, "%u\n", !!(status & mask));
 }
 
 /* Shunt voltage, history, limits, alarms */
@@ -531,7 +531,8 @@ static int ina209_init_client(struct i2c_client *client,
 	return 0;
 }
 
-static int ina209_probe(struct i2c_client *client)
+static int ina209_probe(struct i2c_client *client,
+			const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = client->adapter;
 	struct ina209_data *data;
@@ -568,11 +569,13 @@ out_restore_conf:
 	return ret;
 }
 
-static void ina209_remove(struct i2c_client *client)
+static int ina209_remove(struct i2c_client *client)
 {
 	struct ina209_data *data = i2c_get_clientdata(client);
 
 	ina209_restore_conf(client, data);
+
+	return 0;
 }
 
 static const struct i2c_device_id ina209_id[] = {
@@ -589,6 +592,7 @@ MODULE_DEVICE_TABLE(of, ina209_of_match);
 
 /* This is the driver that will be inserted */
 static struct i2c_driver ina209_driver = {
+	.class		= I2C_CLASS_HWMON,
 	.driver = {
 		.name	= "ina209",
 		.of_match_table = of_match_ptr(ina209_of_match),

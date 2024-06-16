@@ -11,7 +11,6 @@
  * spi-atmel.c, Copyright (C) 2006 Atmel Corporation
  */
 
-#include <linux/cleanup.h>
 #include <linux/clk.h>
 #include <linux/completion.h>
 #include <linux/debugfs.h>
@@ -25,12 +24,11 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-#include <linux/platform_device.h>
+#include <linux/of_device.h>
 #include <linux/gpio/consumer.h>
-#include <linux/gpio/machine.h> /* FIXME: using GPIO lookup tables */
+#include <linux/gpio/machine.h> /* FIXME: using chip internals */
+#include <linux/gpio/driver.h> /* FIXME: using chip internals */
 #include <linux/of_irq.h>
-#include <linux/overflow.h>
-#include <linux/slab.h>
 #include <linux/spi/spi.h>
 
 /* SPI register offsets */
@@ -70,13 +68,14 @@
 #define BCM2835_SPI_FIFO_SIZE		64
 #define BCM2835_SPI_FIFO_SIZE_3_4	48
 #define BCM2835_SPI_DMA_MIN_LENGTH	96
+#define BCM2835_SPI_NUM_CS		3   /* raise as necessary */
 #define BCM2835_SPI_MODE_BITS	(SPI_CPOL | SPI_CPHA | SPI_CS_HIGH \
 				| SPI_NO_CS | SPI_3WIRE)
 
 #define DRV_NAME	"spi-bcm2835"
 
 /* define polling limits */
-static unsigned int polling_limit_us = 30;
+unsigned int polling_limit_us = 30;
 module_param(polling_limit_us, uint, 0664);
 MODULE_PARM_DESC(polling_limit_us,
 		 "time in us to run a transfer in polling mode\n");
@@ -85,11 +84,8 @@ MODULE_PARM_DESC(polling_limit_us,
  * struct bcm2835_spi - BCM2835 SPI controller
  * @regs: base address of register map
  * @clk: core clock, divided to calculate serial clock
- * @cs_gpio: chip-select GPIO descriptor
- * @clk_hz: core clock cached speed
  * @irq: interrupt, signals TX FIFO empty or RX FIFO ¾ full
  * @tfr: SPI transfer currently processed
- * @ctlr: SPI controller reverse lookup
  * @tx_buf: pointer whence next transmitted byte is read
  * @rx_buf: pointer where next received byte is written
  * @tx_len: remaining bytes to transmit
@@ -99,6 +95,8 @@ MODULE_PARM_DESC(polling_limit_us,
  * @rx_prologue: bytes received without DMA if first RX sglist entry's
  *	length is not a multiple of 4 (to overcome hardware limitation)
  * @tx_spillover: whether @tx_prologue spills over to second TX sglist entry
+ * @prepare_cs: precalculated CS register value for ->prepare_message()
+ *	(uses slave-specific clock polarity and phase settings)
  * @debugfs_dir: the debugfs directory - neede to remove debugfs when
  *      unloading the module
  * @count_transfer_polling: count of how often polling mode is used
@@ -108,7 +106,7 @@ MODULE_PARM_DESC(polling_limit_us,
  *      These are counted as well in @count_transfer_polling and
  *      @count_transfer_irq
  * @count_transfer_dma: count how often dma mode is used
- * @target: SPI target currently selected
+ * @chip_select: SPI slave currently selected
  *	(used by bcm2835_spi_dma_tx_done() to write @clear_rx_cs)
  * @tx_dma_active: whether a TX DMA descriptor is in progress
  * @rx_dma_active: whether a RX DMA descriptor is in progress
@@ -116,15 +114,17 @@ MODULE_PARM_DESC(polling_limit_us,
  * @fill_tx_desc: preallocated TX DMA descriptor used for RX-only transfers
  *	(cyclically copies from zero page to TX FIFO)
  * @fill_tx_addr: bus address of zero page
+ * @clear_rx_desc: preallocated RX DMA descriptor used for TX-only transfers
+ *	(cyclically clears RX FIFO by writing @clear_rx_cs to CS register)
+ * @clear_rx_addr: bus address of @clear_rx_cs
+ * @clear_rx_cs: precalculated CS register value to clear RX FIFO
+ *	(uses slave-specific clock polarity and phase settings)
  */
 struct bcm2835_spi {
 	void __iomem *regs;
 	struct clk *clk;
-	struct gpio_desc *cs_gpio;
-	unsigned long clk_hz;
 	int irq;
 	struct spi_transfer *tfr;
-	struct spi_controller *ctlr;
 	const u8 *tx_buf;
 	u8 *rx_buf;
 	int tx_len;
@@ -132,6 +132,7 @@ struct bcm2835_spi {
 	int tx_prologue;
 	int rx_prologue;
 	unsigned int tx_spillover;
+	u32 prepare_cs[BCM2835_SPI_NUM_CS];
 
 	struct dentry *debugfs_dir;
 	u64 count_transfer_polling;
@@ -139,28 +140,14 @@ struct bcm2835_spi {
 	u64 count_transfer_irq_after_polling;
 	u64 count_transfer_dma;
 
-	struct bcm2835_spidev *target;
+	u8 chip_select;
 	unsigned int tx_dma_active;
 	unsigned int rx_dma_active;
 	struct dma_async_tx_descriptor *fill_tx_desc;
 	dma_addr_t fill_tx_addr;
-};
-
-/**
- * struct bcm2835_spidev - BCM2835 SPI target
- * @prepare_cs: precalculated CS register value for ->prepare_message()
- *	(uses target-specific clock polarity and phase settings)
- * @clear_rx_desc: preallocated RX DMA descriptor used for TX-only transfers
- *	(cyclically clears RX FIFO by writing @clear_rx_cs to CS register)
- * @clear_rx_addr: bus address of @clear_rx_cs
- * @clear_rx_cs: precalculated CS register value to clear RX FIFO
- *	(uses target-specific clock polarity and phase settings)
- */
-struct bcm2835_spidev {
-	u32 prepare_cs;
-	struct dma_async_tx_descriptor *clear_rx_desc;
+	struct dma_async_tx_descriptor *clear_rx_desc[BCM2835_SPI_NUM_CS];
 	dma_addr_t clear_rx_addr;
-	u32 clear_rx_cs ____cacheline_aligned;
+	u32 clear_rx_cs[BCM2835_SPI_NUM_CS] ____cacheline_aligned;
 };
 
 #if defined(CONFIG_DEBUG_FS)
@@ -204,12 +191,12 @@ static void bcm2835_debugfs_remove(struct bcm2835_spi *bs)
 }
 #endif /* CONFIG_DEBUG_FS */
 
-static inline u32 bcm2835_rd(struct bcm2835_spi *bs, unsigned int reg)
+static inline u32 bcm2835_rd(struct bcm2835_spi *bs, unsigned reg)
 {
 	return readl(bs->regs + reg);
 }
 
-static inline void bcm2835_wr(struct bcm2835_spi *bs, unsigned int reg, u32 val)
+static inline void bcm2835_wr(struct bcm2835_spi *bs, unsigned reg, u32 val)
 {
 	writel(val, bs->regs + reg);
 }
@@ -256,13 +243,13 @@ static inline void bcm2835_rd_fifo_count(struct bcm2835_spi *bs, int count)
 
 	bs->rx_len -= count;
 
-	do {
+	while (count > 0) {
 		val = bcm2835_rd(bs, BCM2835_SPI_FIFO);
 		len = min(count, 4);
 		memcpy(bs->rx_buf, &val, len);
 		bs->rx_buf += len;
 		count -= 4;
-	} while (count > 0);
+	}
 }
 
 /**
@@ -282,7 +269,7 @@ static inline void bcm2835_wr_fifo_count(struct bcm2835_spi *bs, int count)
 
 	bs->tx_len -= count;
 
-	do {
+	while (count > 0) {
 		if (bs->tx_buf) {
 			len = min(count, 4);
 			memcpy(&val, bs->tx_buf, len);
@@ -292,7 +279,7 @@ static inline void bcm2835_wr_fifo_count(struct bcm2835_spi *bs, int count)
 		}
 		bcm2835_wr(bs, BCM2835_SPI_FIFO, val);
 		count -= 4;
-	} while (count > 0);
+	}
 }
 
 /**
@@ -321,11 +308,12 @@ static inline void bcm2835_rd_fifo_blind(struct bcm2835_spi *bs, int count)
 	count = min(count, bs->rx_len);
 	bs->rx_len -= count;
 
-	do {
+	while (count) {
 		val = bcm2835_rd(bs, BCM2835_SPI_FIFO);
 		if (bs->rx_buf)
 			*bs->rx_buf++ = val;
-	} while (--count);
+		count--;
+	}
 }
 
 /**
@@ -340,14 +328,16 @@ static inline void bcm2835_wr_fifo_blind(struct bcm2835_spi *bs, int count)
 	count = min(count, bs->tx_len);
 	bs->tx_len -= count;
 
-	do {
+	while (count) {
 		val = bs->tx_buf ? *bs->tx_buf++ : 0;
 		bcm2835_wr(bs, BCM2835_SPI_FIFO, val);
-	} while (--count);
+		count--;
+	}
 }
 
-static void bcm2835_spi_reset_hw(struct bcm2835_spi *bs)
+static void bcm2835_spi_reset_hw(struct spi_controller *ctlr)
 {
+	struct bcm2835_spi *bs = spi_controller_get_devdata(ctlr);
 	u32 cs = bcm2835_rd(bs, BCM2835_SPI_CS);
 
 	/* Disable SPI interrupts and transfer */
@@ -373,12 +363,9 @@ static void bcm2835_spi_reset_hw(struct bcm2835_spi *bs)
 
 static irqreturn_t bcm2835_spi_interrupt(int irq, void *dev_id)
 {
-	struct bcm2835_spi *bs = dev_id;
+	struct spi_controller *ctlr = dev_id;
+	struct bcm2835_spi *bs = spi_controller_get_devdata(ctlr);
 	u32 cs = bcm2835_rd(bs, BCM2835_SPI_CS);
-
-	/* Bail out early if interrupts are not enabled */
-	if (!(cs & BCM2835_SPI_CS_INTR))
-		return IRQ_NONE;
 
 	/*
 	 * An interrupt is signaled either if DONE is set (TX FIFO empty)
@@ -399,9 +386,9 @@ static irqreturn_t bcm2835_spi_interrupt(int irq, void *dev_id)
 
 	if (!bs->rx_len) {
 		/* Transfer complete - reset SPI HW */
-		bcm2835_spi_reset_hw(bs);
+		bcm2835_spi_reset_hw(ctlr);
 		/* wake up the framework */
-		spi_finalize_current_transfer(bs->ctlr);
+		complete(&ctlr->xfer_completion);
 	}
 
 	return IRQ_HANDLED;
@@ -438,7 +425,7 @@ static int bcm2835_spi_transfer_one_irq(struct spi_controller *ctlr,
 
 /**
  * bcm2835_spi_transfer_prologue() - transfer first few bytes without DMA
- * @ctlr: SPI host controller
+ * @ctlr: SPI master controller
  * @tfr: SPI transfer
  * @bs: BCM2835 SPI controller
  * @cs: CS register
@@ -600,7 +587,7 @@ out:
 
 /**
  * bcm2835_spi_dma_rx_done() - callback for DMA RX channel
- * @data: SPI host controller
+ * @data: SPI master controller
  *
  * Used for bidirectional and RX-only transfers.
  */
@@ -620,15 +607,15 @@ static void bcm2835_spi_dma_rx_done(void *data)
 	bcm2835_spi_undo_prologue(bs);
 
 	/* reset fifo and HW */
-	bcm2835_spi_reset_hw(bs);
+	bcm2835_spi_reset_hw(ctlr);
 
 	/* and mark as completed */;
-	spi_finalize_current_transfer(ctlr);
+	complete(&ctlr->xfer_completion);
 }
 
 /**
  * bcm2835_spi_dma_tx_done() - callback for DMA TX channel
- * @data: SPI host controller
+ * @data: SPI master controller
  *
  * Used for TX-only transfers.
  */
@@ -639,7 +626,8 @@ static void bcm2835_spi_dma_tx_done(void *data)
 
 	/* busy-wait for TX FIFO to empty */
 	while (!(bcm2835_rd(bs, BCM2835_SPI_CS) & BCM2835_SPI_CS_DONE))
-		bcm2835_wr(bs, BCM2835_SPI_CS, bs->target->clear_rx_cs);
+		bcm2835_wr(bs, BCM2835_SPI_CS,
+			   bs->clear_rx_cs[bs->chip_select]);
 
 	bs->tx_dma_active = false;
 	smp_wmb();
@@ -653,25 +641,25 @@ static void bcm2835_spi_dma_tx_done(void *data)
 		dmaengine_terminate_async(ctlr->dma_rx);
 
 	bcm2835_spi_undo_prologue(bs);
-	bcm2835_spi_reset_hw(bs);
-	spi_finalize_current_transfer(ctlr);
+	bcm2835_spi_reset_hw(ctlr);
+	complete(&ctlr->xfer_completion);
 }
 
 /**
  * bcm2835_spi_prepare_sg() - prepare and submit DMA descriptor for sglist
- * @ctlr: SPI host controller
+ * @ctlr: SPI master controller
+ * @spi: SPI slave
  * @tfr: SPI transfer
  * @bs: BCM2835 SPI controller
- * @target: BCM2835 SPI target
  * @is_tx: whether to submit DMA descriptor for TX or RX sglist
  *
  * Prepare and submit a DMA descriptor for the TX or RX sglist of @tfr.
  * Return 0 on success or a negative error number.
  */
 static int bcm2835_spi_prepare_sg(struct spi_controller *ctlr,
+				  struct spi_device *spi,
 				  struct spi_transfer *tfr,
 				  struct bcm2835_spi *bs,
-				  struct bcm2835_spidev *target,
 				  bool is_tx)
 {
 	struct dma_chan *chan;
@@ -711,7 +699,7 @@ static int bcm2835_spi_prepare_sg(struct spi_controller *ctlr,
 	} else if (!tfr->rx_buf) {
 		desc->callback = bcm2835_spi_dma_tx_done;
 		desc->callback_param = ctlr;
-		bs->target = target;
+		bs->chip_select = spi->chip_select;
 	}
 
 	/* submit it to DMA-engine */
@@ -722,9 +710,9 @@ static int bcm2835_spi_prepare_sg(struct spi_controller *ctlr,
 
 /**
  * bcm2835_spi_transfer_one_dma() - perform SPI transfer using DMA engine
- * @ctlr: SPI host controller
+ * @ctlr: SPI master controller
+ * @spi: SPI slave
  * @tfr: SPI transfer
- * @target: BCM2835 SPI target
  * @cs: CS register
  *
  * For *bidirectional* transfers (both tx_buf and rx_buf are non-%NULL), set up
@@ -736,7 +724,7 @@ static int bcm2835_spi_prepare_sg(struct spi_controller *ctlr,
  * clear the RX FIFO by setting the CLEAR_RX bit in the CS register.
  *
  * The CS register value is precalculated in bcm2835_spi_setup().  Normally
- * this is called only once, on target registration.  A DMA descriptor to write
+ * this is called only once, on slave registration.  A DMA descriptor to write
  * this value is preallocated in bcm2835_dma_init().  All that's left to do
  * when performing a TX-only transfer is to submit this descriptor to the RX
  * DMA channel.  Latency is thereby minimized.  The descriptor does not
@@ -768,8 +756,8 @@ static int bcm2835_spi_prepare_sg(struct spi_controller *ctlr,
  * performed at the end of an RX-only transfer.
  */
 static int bcm2835_spi_transfer_one_dma(struct spi_controller *ctlr,
+					struct spi_device *spi,
 					struct spi_transfer *tfr,
-					struct bcm2835_spidev *target,
 					u32 cs)
 {
 	struct bcm2835_spi *bs = spi_controller_get_devdata(ctlr);
@@ -787,7 +775,7 @@ static int bcm2835_spi_transfer_one_dma(struct spi_controller *ctlr,
 
 	/* setup tx-DMA */
 	if (bs->tx_buf) {
-		ret = bcm2835_spi_prepare_sg(ctlr, tfr, bs, target, true);
+		ret = bcm2835_spi_prepare_sg(ctlr, spi, tfr, bs, true);
 	} else {
 		cookie = dmaengine_submit(bs->fill_tx_desc);
 		ret = dma_submit_error(cookie);
@@ -813,9 +801,9 @@ static int bcm2835_spi_transfer_one_dma(struct spi_controller *ctlr,
 	 * this saves 10us or more.
 	 */
 	if (bs->rx_buf) {
-		ret = bcm2835_spi_prepare_sg(ctlr, tfr, bs, target, false);
+		ret = bcm2835_spi_prepare_sg(ctlr, spi, tfr, bs, false);
 	} else {
-		cookie = dmaengine_submit(target->clear_rx_desc);
+		cookie = dmaengine_submit(bs->clear_rx_desc[spi->chip_select]);
 		ret = dma_submit_error(cookie);
 	}
 	if (ret) {
@@ -837,14 +825,14 @@ static int bcm2835_spi_transfer_one_dma(struct spi_controller *ctlr,
 	if (!bs->rx_buf && !bs->tx_dma_active &&
 	    cmpxchg(&bs->rx_dma_active, true, false)) {
 		dmaengine_terminate_async(ctlr->dma_rx);
-		bcm2835_spi_reset_hw(bs);
+		bcm2835_spi_reset_hw(ctlr);
 	}
 
 	/* wait for wakeup in framework */
 	return 1;
 
 err_reset_hw:
-	bcm2835_spi_reset_hw(bs);
+	bcm2835_spi_reset_hw(ctlr);
 	bcm2835_spi_undo_prologue(bs);
 	return ret;
 }
@@ -864,6 +852,8 @@ static bool bcm2835_spi_can_dma(struct spi_controller *ctlr,
 static void bcm2835_dma_release(struct spi_controller *ctlr,
 				struct bcm2835_spi *bs)
 {
+	int i;
+
 	if (ctlr->dma_tx) {
 		dmaengine_terminate_sync(ctlr->dma_tx);
 
@@ -882,41 +872,47 @@ static void bcm2835_dma_release(struct spi_controller *ctlr,
 
 	if (ctlr->dma_rx) {
 		dmaengine_terminate_sync(ctlr->dma_rx);
+
+		for (i = 0; i < BCM2835_SPI_NUM_CS; i++)
+			if (bs->clear_rx_desc[i])
+				dmaengine_desc_free(bs->clear_rx_desc[i]);
+
+		if (bs->clear_rx_addr)
+			dma_unmap_single(ctlr->dma_rx->device->dev,
+					 bs->clear_rx_addr,
+					 sizeof(bs->clear_rx_cs),
+					 DMA_TO_DEVICE);
+
 		dma_release_channel(ctlr->dma_rx);
 		ctlr->dma_rx = NULL;
 	}
 }
 
-static int bcm2835_dma_init(struct spi_controller *ctlr, struct device *dev,
-			    struct bcm2835_spi *bs)
+static void bcm2835_dma_init(struct spi_controller *ctlr, struct device *dev,
+			     struct bcm2835_spi *bs)
 {
 	struct dma_slave_config slave_config;
 	const __be32 *addr;
 	dma_addr_t dma_reg_base;
-	int ret;
+	int ret, i;
 
 	/* base address in dma-space */
 	addr = of_get_address(ctlr->dev.of_node, 0, NULL, NULL);
 	if (!addr) {
 		dev_err(dev, "could not get DMA-register address - not using dma mode\n");
-		/* Fall back to interrupt mode */
-		return 0;
+		goto err;
 	}
 	dma_reg_base = be32_to_cpup(addr);
 
 	/* get tx/rx dma */
-	ctlr->dma_tx = dma_request_chan(dev, "tx");
-	if (IS_ERR(ctlr->dma_tx)) {
-		ret = dev_err_probe(dev, PTR_ERR(ctlr->dma_tx),
-			"no tx-dma configuration found - not using dma mode\n");
-		ctlr->dma_tx = NULL;
+	ctlr->dma_tx = dma_request_slave_channel(dev, "tx");
+	if (!ctlr->dma_tx) {
+		dev_err(dev, "no tx-dma configuration found - not using dma mode\n");
 		goto err;
 	}
-	ctlr->dma_rx = dma_request_chan(dev, "rx");
-	if (IS_ERR(ctlr->dma_rx)) {
-		ret = dev_err_probe(dev, PTR_ERR(ctlr->dma_rx),
-			"no rx-dma configuration found - not using dma mode\n");
-		ctlr->dma_rx = NULL;
+	ctlr->dma_rx = dma_request_slave_channel(dev, "rx");
+	if (!ctlr->dma_rx) {
+		dev_err(dev, "no rx-dma configuration found - not using dma mode\n");
 		goto err_release;
 	}
 
@@ -939,7 +935,6 @@ static int bcm2835_dma_init(struct spi_controller *ctlr, struct device *dev,
 	if (dma_mapping_error(ctlr->dma_tx->device->dev, bs->fill_tx_addr)) {
 		dev_err(dev, "cannot map zero page - not using DMA mode\n");
 		bs->fill_tx_addr = 0;
-		ret = -ENOMEM;
 		goto err_release;
 	}
 
@@ -949,7 +944,6 @@ static int bcm2835_dma_init(struct spi_controller *ctlr, struct device *dev,
 						     DMA_MEM_TO_DEV, 0);
 	if (!bs->fill_tx_desc) {
 		dev_err(dev, "cannot prepare fill_tx_desc - not using DMA mode\n");
-		ret = -ENOMEM;
 		goto err_release;
 	}
 
@@ -973,10 +967,37 @@ static int bcm2835_dma_init(struct spi_controller *ctlr, struct device *dev,
 	if (ret)
 		goto err_config;
 
+	bs->clear_rx_addr = dma_map_single(ctlr->dma_rx->device->dev,
+					   bs->clear_rx_cs,
+					   sizeof(bs->clear_rx_cs),
+					   DMA_TO_DEVICE);
+	if (dma_mapping_error(ctlr->dma_rx->device->dev, bs->clear_rx_addr)) {
+		dev_err(dev, "cannot map clear_rx_cs - not using DMA mode\n");
+		bs->clear_rx_addr = 0;
+		goto err_release;
+	}
+
+	for (i = 0; i < BCM2835_SPI_NUM_CS; i++) {
+		bs->clear_rx_desc[i] = dmaengine_prep_dma_cyclic(ctlr->dma_rx,
+					   bs->clear_rx_addr + i * sizeof(u32),
+					   sizeof(u32), 0,
+					   DMA_MEM_TO_DEV, 0);
+		if (!bs->clear_rx_desc[i]) {
+			dev_err(dev, "cannot prepare clear_rx_desc - not using DMA mode\n");
+			goto err_release;
+		}
+
+		ret = dmaengine_desc_set_reuse(bs->clear_rx_desc[i]);
+		if (ret) {
+			dev_err(dev, "cannot reuse clear_rx_desc - not using DMA mode\n");
+			goto err_release;
+		}
+	}
+
 	/* all went well, so set can_dma */
 	ctlr->can_dma = bcm2835_spi_can_dma;
 
-	return 0;
+	return;
 
 err_config:
 	dev_err(dev, "issue configuring dma: %d - not using DMA mode\n",
@@ -984,14 +1005,7 @@ err_config:
 err_release:
 	bcm2835_dma_release(ctlr, bs);
 err:
-	/*
-	 * Only report error for deferred probing, otherwise fall back to
-	 * interrupt mode
-	 */
-	if (ret != -EPROBE_DEFER)
-		ret = 0;
-
-	return ret;
+	return;
 }
 
 static int bcm2835_spi_transfer_one_poll(struct spi_controller *ctlr,
@@ -1044,7 +1058,7 @@ static int bcm2835_spi_transfer_one_poll(struct spi_controller *ctlr,
 	}
 
 	/* Transfer complete - reset SPI HW */
-	bcm2835_spi_reset_hw(bs);
+	bcm2835_spi_reset_hw(ctlr);
 	/* and return without waiting for completion */
 	return 0;
 }
@@ -1054,19 +1068,19 @@ static int bcm2835_spi_transfer_one(struct spi_controller *ctlr,
 				    struct spi_transfer *tfr)
 {
 	struct bcm2835_spi *bs = spi_controller_get_devdata(ctlr);
-	struct bcm2835_spidev *target = spi_get_ctldata(spi);
-	unsigned long spi_hz, cdiv;
+	unsigned long spi_hz, clk_hz, cdiv, spi_used_hz;
 	unsigned long hz_per_byte, byte_limit;
-	u32 cs = target->prepare_cs;
+	u32 cs = bs->prepare_cs[spi->chip_select];
 
 	/* set clock */
 	spi_hz = tfr->speed_hz;
+	clk_hz = clk_get_rate(bs->clk);
 
-	if (spi_hz >= bs->clk_hz / 2) {
+	if (spi_hz >= clk_hz / 2) {
 		cdiv = 2; /* clk_hz/2 is the fastest we can go */
 	} else if (spi_hz) {
 		/* CDIV must be a multiple of two */
-		cdiv = DIV_ROUND_UP(bs->clk_hz, spi_hz);
+		cdiv = DIV_ROUND_UP(clk_hz, spi_hz);
 		cdiv += (cdiv % 2);
 
 		if (cdiv >= 65536)
@@ -1074,7 +1088,7 @@ static int bcm2835_spi_transfer_one(struct spi_controller *ctlr,
 	} else {
 		cdiv = 0; /* 0 is the slowest we can go */
 	}
-	tfr->effective_speed_hz = cdiv ? (bs->clk_hz / cdiv) : (bs->clk_hz / 65536);
+	spi_used_hz = cdiv ? (clk_hz / cdiv) : (clk_hz / 65536);
 	bcm2835_wr(bs, BCM2835_SPI_CLK, cdiv);
 
 	/* handle all the 3-wire mode */
@@ -1094,7 +1108,7 @@ static int bcm2835_spi_transfer_one(struct spi_controller *ctlr,
 	 * per 300,000 Hz of bus clock.
 	 */
 	hz_per_byte = polling_limit_us ? (9 * 1000000) / polling_limit_us : 0;
-	byte_limit = hz_per_byte ? tfr->effective_speed_hz / hz_per_byte : 1;
+	byte_limit = hz_per_byte ? spi_used_hz / hz_per_byte : 1;
 
 	/* run in polling mode for short transfers */
 	if (tfr->len < byte_limit)
@@ -1105,7 +1119,7 @@ static int bcm2835_spi_transfer_one(struct spi_controller *ctlr,
 	 * this 1 idle clock cycle pattern but runs the spi clock without gaps
 	 */
 	if (ctlr->can_dma && bcm2835_spi_can_dma(ctlr, spi, tfr))
-		return bcm2835_spi_transfer_one_dma(ctlr, tfr, target, cs);
+		return bcm2835_spi_transfer_one_dma(ctlr, spi, tfr, cs);
 
 	/* run in interrupt-mode */
 	return bcm2835_spi_transfer_one_irq(ctlr, spi, tfr, cs, true);
@@ -1116,13 +1130,25 @@ static int bcm2835_spi_prepare_message(struct spi_controller *ctlr,
 {
 	struct spi_device *spi = msg->spi;
 	struct bcm2835_spi *bs = spi_controller_get_devdata(ctlr);
-	struct bcm2835_spidev *target = spi_get_ctldata(spi);
+	int ret;
+
+	if (ctlr->can_dma) {
+		/*
+		 * DMA transfers are limited to 16 bit (0 to 65535 bytes) by
+		 * the SPI HW due to DLEN. Split up transfers (32-bit FIFO
+		 * aligned) if the limit is exceeded.
+		 */
+		ret = spi_split_transfers_maxsize(ctlr, msg, 65532,
+						  GFP_KERNEL | GFP_DMA);
+		if (ret)
+			return ret;
+	}
 
 	/*
 	 * Set up clock polarity before spi_transfer_one_message() asserts
 	 * chip select to avoid a gratuitous clock signal edge.
 	 */
-	bcm2835_wr(bs, BCM2835_SPI_CS, target->prepare_cs);
+	bcm2835_wr(bs, BCM2835_SPI_CS, bs->prepare_cs[spi->chip_select]);
 
 	return 0;
 }
@@ -1133,116 +1159,31 @@ static void bcm2835_spi_handle_err(struct spi_controller *ctlr,
 	struct bcm2835_spi *bs = spi_controller_get_devdata(ctlr);
 
 	/* if an error occurred and we have an active dma, then terminate */
-	if (ctlr->dma_tx) {
-		dmaengine_terminate_sync(ctlr->dma_tx);
-		bs->tx_dma_active = false;
-	}
-	if (ctlr->dma_rx) {
-		dmaengine_terminate_sync(ctlr->dma_rx);
-		bs->rx_dma_active = false;
-	}
+	dmaengine_terminate_sync(ctlr->dma_tx);
+	bs->tx_dma_active = false;
+	dmaengine_terminate_sync(ctlr->dma_rx);
+	bs->rx_dma_active = false;
 	bcm2835_spi_undo_prologue(bs);
 
 	/* and reset */
-	bcm2835_spi_reset_hw(bs);
+	bcm2835_spi_reset_hw(ctlr);
 }
 
-static void bcm2835_spi_cleanup(struct spi_device *spi)
+static int chip_match_name(struct gpio_chip *chip, void *data)
 {
-	struct bcm2835_spidev *target = spi_get_ctldata(spi);
-	struct spi_controller *ctlr = spi->controller;
-	struct bcm2835_spi *bs = spi_controller_get_devdata(ctlr);
-
-	if (target->clear_rx_desc)
-		dmaengine_desc_free(target->clear_rx_desc);
-
-	if (target->clear_rx_addr)
-		dma_unmap_single(ctlr->dma_rx->device->dev,
-				 target->clear_rx_addr,
-				 sizeof(u32),
-				 DMA_TO_DEVICE);
-
-	gpiod_put(bs->cs_gpio);
-	spi_set_csgpiod(spi, 0, NULL);
-
-	kfree(target);
-}
-
-static int bcm2835_spi_setup_dma(struct spi_controller *ctlr,
-				 struct spi_device *spi,
-				 struct bcm2835_spi *bs,
-				 struct bcm2835_spidev *target)
-{
-	int ret;
-
-	if (!ctlr->dma_rx)
-		return 0;
-
-	target->clear_rx_addr = dma_map_single(ctlr->dma_rx->device->dev,
-					       &target->clear_rx_cs,
-					       sizeof(u32),
-					       DMA_TO_DEVICE);
-	if (dma_mapping_error(ctlr->dma_rx->device->dev, target->clear_rx_addr)) {
-		dev_err(&spi->dev, "cannot map clear_rx_cs\n");
-		target->clear_rx_addr = 0;
-		return -ENOMEM;
-	}
-
-	target->clear_rx_desc = dmaengine_prep_dma_cyclic(ctlr->dma_rx,
-						          target->clear_rx_addr,
-						          sizeof(u32), 0,
-						          DMA_MEM_TO_DEV, 0);
-	if (!target->clear_rx_desc) {
-		dev_err(&spi->dev, "cannot prepare clear_rx_desc\n");
-		return -ENOMEM;
-	}
-
-	ret = dmaengine_desc_set_reuse(target->clear_rx_desc);
-	if (ret) {
-		dev_err(&spi->dev, "cannot reuse clear_rx_desc\n");
-		return ret;
-	}
-
-	return 0;
-}
-
-static size_t bcm2835_spi_max_transfer_size(struct spi_device *spi)
-{
-	/*
-	 * DMA transfers are limited to 16 bit (0 to 65535 bytes) by
-	 * the SPI HW due to DLEN. Split up transfers (32-bit FIFO
-	 * aligned) if the limit is exceeded.
-	 */
-	if (spi->controller->can_dma)
-		return 65532;
-
-	return SIZE_MAX;
+	return !strcmp(chip->label, data);
 }
 
 static int bcm2835_spi_setup(struct spi_device *spi)
 {
 	struct spi_controller *ctlr = spi->controller;
 	struct bcm2835_spi *bs = spi_controller_get_devdata(ctlr);
-	struct bcm2835_spidev *target = spi_get_ctldata(spi);
-	struct gpiod_lookup_table *lookup __free(kfree) = NULL;
-	int ret;
+	struct gpio_chip *chip;
+	enum gpio_lookup_flags lflags;
 	u32 cs;
 
-	if (!target) {
-		target = kzalloc(ALIGN(sizeof(*target), dma_get_cache_alignment()),
-			      GFP_KERNEL);
-		if (!target)
-			return -ENOMEM;
-
-		spi_set_ctldata(spi, target);
-
-		ret = bcm2835_spi_setup_dma(ctlr, spi, bs, target);
-		if (ret)
-			goto err_cleanup;
-	}
-
 	/*
-	 * Precalculate SPI target's CS register value for ->prepare_message():
+	 * Precalculate SPI slave's CS register value for ->prepare_message():
 	 * The driver always uses software-controlled GPIO chip select, hence
 	 * set the hardware-controlled native chip select to an invalid value
 	 * to prevent it from interfering.
@@ -1252,19 +1193,20 @@ static int bcm2835_spi_setup(struct spi_device *spi)
 		cs |= BCM2835_SPI_CS_CPOL;
 	if (spi->mode & SPI_CPHA)
 		cs |= BCM2835_SPI_CS_CPHA;
-	target->prepare_cs = cs;
+	bs->prepare_cs[spi->chip_select] = cs;
 
 	/*
-	 * Precalculate SPI target's CS register value to clear RX FIFO
+	 * Precalculate SPI slave's CS register value to clear RX FIFO
 	 * in case of a TX-only DMA transfer.
 	 */
 	if (ctlr->dma_rx) {
-		target->clear_rx_cs = cs | BCM2835_SPI_CS_TA |
-					BCM2835_SPI_CS_DMAEN |
-					BCM2835_SPI_CS_CLEAR_RX;
+		bs->clear_rx_cs[spi->chip_select] = cs |
+						    BCM2835_SPI_CS_TA |
+						    BCM2835_SPI_CS_DMAEN |
+						    BCM2835_SPI_CS_CLEAR_RX;
 		dma_sync_single_for_device(ctlr->dma_rx->device->dev,
-					   target->clear_rx_addr,
-					   sizeof(u32),
+					   bs->clear_rx_addr,
+					   sizeof(bs->clear_rx_cs),
 					   DMA_TO_DEVICE);
 	}
 
@@ -1277,59 +1219,56 @@ static int bcm2835_spi_setup(struct spi_device *spi)
 	 * The SPI core has successfully requested the CS GPIO line from the
 	 * device tree, so we are done.
 	 */
-	if (spi_get_csgpiod(spi, 0))
+	if (spi->cs_gpiod)
 		return 0;
-	if (spi_get_chipselect(spi, 0) > 1) {
+	if (spi->chip_select > 1) {
 		/* error in the case of native CS requested with CS > 1
 		 * officially there is a CS2, but it is not documented
 		 * which GPIO is connected with that...
 		 */
 		dev_err(&spi->dev,
 			"setup: only two native chip-selects are supported\n");
-		ret = -EINVAL;
-		goto err_cleanup;
+		return -EINVAL;
 	}
 
 	/*
-	 * TODO: The code below is a slightly better alternative to the utter
-	 * abuse of the GPIO API that I found here before. It creates a
-	 * temporary lookup table, assigns it to the SPI device, gets the GPIO
-	 * descriptor and then releases the lookup table.
+	 * Translate native CS to GPIO
 	 *
-	 * More on the problem that it addresses:
-	 *   https://www.spinics.net/lists/linux-gpio/msg36218.html
+	 * FIXME: poking around in the gpiolib internals like this is
+	 * not very good practice. Find a way to locate the real problem
+	 * and fix it. Why is the GPIO descriptor in spi->cs_gpiod
+	 * sometimes not assigned correctly? Erroneous device trees?
 	 */
-	lookup = kzalloc(struct_size(lookup, table, 2), GFP_KERNEL);
-	if (!lookup) {
-		ret = -ENOMEM;
-		goto err_cleanup;
-	}
 
-	lookup->dev_id = dev_name(&spi->dev);
-	lookup->table[0] = GPIO_LOOKUP("pinctrl-bcm2835",
-				       8 - (spi_get_chipselect(spi, 0)),
-				       "cs", GPIO_LOOKUP_FLAGS_DEFAULT);
+	/* get the gpio chip for the base */
+	chip = gpiochip_find("pinctrl-bcm2835", chip_match_name);
+	if (!chip)
+		return 0;
 
-	gpiod_add_lookup_table(lookup);
-
-	bs->cs_gpio = gpiod_get(&spi->dev, "cs", GPIOD_OUT_LOW);
-	gpiod_remove_lookup_table(lookup);
-	if (IS_ERR(bs->cs_gpio)) {
-		ret = PTR_ERR(bs->cs_gpio);
-		goto err_cleanup;
-	}
-
-	spi_set_csgpiod(spi, 0, bs->cs_gpio);
+	/*
+	 * Retrieve the corresponding GPIO line used for CS.
+	 * The inversion semantics will be handled by the GPIO core
+	 * code, so we pass GPIOS_OUT_LOW for "unasserted" and
+	 * the correct flag for inversion semantics. The SPI_CS_HIGH
+	 * on spi->mode cannot be checked for polarity in this case
+	 * as the flag use_gpio_descriptors enforces SPI_CS_HIGH.
+	 */
+	if (of_property_read_bool(spi->dev.of_node, "spi-cs-high"))
+		lflags = GPIO_ACTIVE_HIGH;
+	else
+		lflags = GPIO_ACTIVE_LOW;
+	spi->cs_gpiod = gpiochip_request_own_desc(chip, 8 - spi->chip_select,
+						  DRV_NAME,
+						  lflags,
+						  GPIOD_OUT_LOW);
+	if (IS_ERR(spi->cs_gpiod))
+		return PTR_ERR(spi->cs_gpiod);
 
 	/* and set up the "mode" and level */
 	dev_info(&spi->dev, "setting up native-CS%i to use GPIO\n",
-		 spi_get_chipselect(spi, 0));
+		 spi->chip_select);
 
 	return 0;
-
-err_cleanup:
-	bcm2835_spi_cleanup(spi);
-	return ret;
 }
 
 static int bcm2835_spi_probe(struct platform_device *pdev)
@@ -1338,7 +1277,8 @@ static int bcm2835_spi_probe(struct platform_device *pdev)
 	struct bcm2835_spi *bs;
 	int err;
 
-	ctlr = devm_spi_alloc_host(&pdev->dev, sizeof(*bs));
+	ctlr = spi_alloc_master(&pdev->dev, ALIGN(sizeof(*bs),
+						  dma_get_cache_alignment()));
 	if (!ctlr)
 		return -ENOMEM;
 
@@ -1347,80 +1287,83 @@ static int bcm2835_spi_probe(struct platform_device *pdev)
 	ctlr->use_gpio_descriptors = true;
 	ctlr->mode_bits = BCM2835_SPI_MODE_BITS;
 	ctlr->bits_per_word_mask = SPI_BPW_MASK(8);
-	ctlr->num_chipselect = 3;
-	ctlr->max_transfer_size = bcm2835_spi_max_transfer_size;
+	ctlr->num_chipselect = BCM2835_SPI_NUM_CS;
 	ctlr->setup = bcm2835_spi_setup;
-	ctlr->cleanup = bcm2835_spi_cleanup;
 	ctlr->transfer_one = bcm2835_spi_transfer_one;
 	ctlr->handle_err = bcm2835_spi_handle_err;
 	ctlr->prepare_message = bcm2835_spi_prepare_message;
 	ctlr->dev.of_node = pdev->dev.of_node;
 
 	bs = spi_controller_get_devdata(ctlr);
-	bs->ctlr = ctlr;
 
 	bs->regs = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(bs->regs))
-		return PTR_ERR(bs->regs);
+	if (IS_ERR(bs->regs)) {
+		err = PTR_ERR(bs->regs);
+		goto out_controller_put;
+	}
 
-	bs->clk = devm_clk_get_enabled(&pdev->dev, NULL);
-	if (IS_ERR(bs->clk))
-		return dev_err_probe(&pdev->dev, PTR_ERR(bs->clk),
-				     "could not get clk\n");
-
-	ctlr->max_speed_hz = clk_get_rate(bs->clk) / 2;
+	bs->clk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(bs->clk)) {
+		err = PTR_ERR(bs->clk);
+		dev_err(&pdev->dev, "could not get clk: %d\n", err);
+		goto out_controller_put;
+	}
 
 	bs->irq = platform_get_irq(pdev, 0);
-	if (bs->irq < 0)
-		return bs->irq;
+	if (bs->irq <= 0) {
+		err = bs->irq ? bs->irq : -ENODEV;
+		goto out_controller_put;
+	}
 
-	bs->clk_hz = clk_get_rate(bs->clk);
+	clk_prepare_enable(bs->clk);
 
-	err = bcm2835_dma_init(ctlr, &pdev->dev, bs);
-	if (err)
-		return err;
+	bcm2835_dma_init(ctlr, &pdev->dev, bs);
 
 	/* initialise the hardware with the default polarities */
 	bcm2835_wr(bs, BCM2835_SPI_CS,
 		   BCM2835_SPI_CS_CLEAR_RX | BCM2835_SPI_CS_CLEAR_TX);
 
-	err = devm_request_irq(&pdev->dev, bs->irq, bcm2835_spi_interrupt,
-			       IRQF_SHARED, dev_name(&pdev->dev), bs);
+	err = devm_request_irq(&pdev->dev, bs->irq, bcm2835_spi_interrupt, 0,
+			       dev_name(&pdev->dev), ctlr);
 	if (err) {
 		dev_err(&pdev->dev, "could not request IRQ: %d\n", err);
-		goto out_dma_release;
+		goto out_clk_disable;
 	}
 
-	err = spi_register_controller(ctlr);
+	err = devm_spi_register_controller(&pdev->dev, ctlr);
 	if (err) {
 		dev_err(&pdev->dev, "could not register SPI controller: %d\n",
 			err);
-		goto out_dma_release;
+		goto out_clk_disable;
 	}
 
 	bcm2835_debugfs_create(bs, dev_name(&pdev->dev));
 
 	return 0;
 
-out_dma_release:
-	bcm2835_dma_release(ctlr, bs);
+out_clk_disable:
+	clk_disable_unprepare(bs->clk);
+out_controller_put:
+	spi_controller_put(ctlr);
 	return err;
 }
 
-static void bcm2835_spi_remove(struct platform_device *pdev)
+static int bcm2835_spi_remove(struct platform_device *pdev)
 {
 	struct spi_controller *ctlr = platform_get_drvdata(pdev);
 	struct bcm2835_spi *bs = spi_controller_get_devdata(ctlr);
 
 	bcm2835_debugfs_remove(bs);
 
-	spi_unregister_controller(ctlr);
-
-	bcm2835_dma_release(ctlr, bs);
-
 	/* Clear FIFOs, and disable the HW block */
 	bcm2835_wr(bs, BCM2835_SPI_CS,
 		   BCM2835_SPI_CS_CLEAR_RX | BCM2835_SPI_CS_CLEAR_TX);
+
+	clk_disable_unprepare(bs->clk);
+
+	bcm2835_dma_release(ctlr, bs);
+
+	return 0;
 }
 
 static const struct of_device_id bcm2835_spi_match[] = {
@@ -1435,8 +1378,7 @@ static struct platform_driver bcm2835_spi_driver = {
 		.of_match_table	= bcm2835_spi_match,
 	},
 	.probe		= bcm2835_spi_probe,
-	.remove_new	= bcm2835_spi_remove,
-	.shutdown	= bcm2835_spi_remove,
+	.remove		= bcm2835_spi_remove,
 };
 module_platform_driver(bcm2835_spi_driver);
 

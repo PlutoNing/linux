@@ -8,6 +8,8 @@
 #ifndef _LINUX_SUNRPC_XPRTSOCK_H
 #define _LINUX_SUNRPC_XPRTSOCK_H
 
+#ifdef __KERNEL__
+
 int		init_socket_xprt(void);
 void		cleanup_socket_xprt(void);
 
@@ -57,11 +59,9 @@ struct sock_xprt {
 	struct work_struct	error_worker;
 	struct work_struct	recv_worker;
 	struct mutex		recv_mutex;
-	struct completion	handshake_done;
 	struct sockaddr_storage	srcaddr;
 	unsigned short		srcport;
 	int			xprt_err;
-	struct rpc_clnt		*clnt;
 
 	/*
 	 * UDP socket buffer size parameters
@@ -90,8 +90,7 @@ struct sock_xprt {
 #define XPRT_SOCK_WAKE_WRITE	(5)
 #define XPRT_SOCK_WAKE_PENDING	(6)
 #define XPRT_SOCK_WAKE_DISCONNECT	(7)
-#define XPRT_SOCK_CONNECT_SENT	(8)
-#define XPRT_SOCK_NOSPACE	(9)
-#define XPRT_SOCK_IGNORE_RECV	(10)
+
+#endif /* __KERNEL__ */
 
 #endif /* _LINUX_SUNRPC_XPRTSOCK_H */

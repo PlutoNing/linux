@@ -54,7 +54,7 @@ int __cvmx_helper_xaui_enumerate(int interface)
 		return 1;
 }
 
-/*
+/**
  * Probe a XAUI interface and determine the number of ports
  * connected to it. The XAUI interface should still be down
  * after this call.
@@ -102,7 +102,7 @@ int __cvmx_helper_xaui_probe(int interface)
 	return __cvmx_helper_xaui_enumerate(interface);
 }
 
-/*
+/**
  * Bringup and enable a XAUI interface. After this call packet
  * I/O should be fully functional. This is called with IPD
  * enabled but PKO disabled.
@@ -156,9 +156,8 @@ int __cvmx_helper_xaui_enable(int interface)
 	xauiCtl.u64 = cvmx_read_csr(CVMX_PCSXX_CONTROL1_REG(interface));
 	xauiCtl.s.lo_pwr = 0;
 
-	/* Issuing a reset here seems to hang some CN66XX/CN68XX chips. */
-	if (!OCTEON_IS_MODEL(OCTEON_CN66XX) &&
-	    !OCTEON_IS_MODEL(OCTEON_CN68XX_PASS1_X) &&
+	/* Issuing a reset here seems to hang some CN68XX chips. */
+	if (!OCTEON_IS_MODEL(OCTEON_CN68XX_PASS1_X) &&
 	    !OCTEON_IS_MODEL(OCTEON_CN68XX_PASS2_X))
 		xauiCtl.s.reset = 1;
 
@@ -250,7 +249,7 @@ int __cvmx_helper_xaui_enable(int interface)
 	return 0;
 }
 
-/*
+/**
  * Return the link state of an IPD/PKO port as returned by
  * auto negotiation. The result of this function may not match
  * Octeon's link config if auto negotiation has changed since
@@ -260,13 +259,13 @@ int __cvmx_helper_xaui_enable(int interface)
  *
  * Returns Link state
  */
-union cvmx_helper_link_info __cvmx_helper_xaui_link_get(int ipd_port)
+cvmx_helper_link_info_t __cvmx_helper_xaui_link_get(int ipd_port)
 {
 	int interface = cvmx_helper_get_interface_num(ipd_port);
 	union cvmx_gmxx_tx_xaui_ctl gmxx_tx_xaui_ctl;
 	union cvmx_gmxx_rx_xaui_ctl gmxx_rx_xaui_ctl;
 	union cvmx_pcsxx_status1_reg pcsxx_status1_reg;
-	union cvmx_helper_link_info result;
+	cvmx_helper_link_info_t result;
 
 	gmxx_tx_xaui_ctl.u64 = cvmx_read_csr(CVMX_GMXX_TX_XAUI_CTL(interface));
 	gmxx_rx_xaui_ctl.u64 = cvmx_read_csr(CVMX_GMXX_RX_XAUI_CTL(interface));
@@ -289,7 +288,7 @@ union cvmx_helper_link_info __cvmx_helper_xaui_link_get(int ipd_port)
 	return result;
 }
 
-/*
+/**
  * Configure an IPD/PKO port for the specified link state. This
  * function does not influence auto negotiation at the PHY level.
  * The passed link state must always match the link state returned
@@ -300,7 +299,7 @@ union cvmx_helper_link_info __cvmx_helper_xaui_link_get(int ipd_port)
  *
  * Returns Zero on success, negative on failure
  */
-int __cvmx_helper_xaui_link_set(int ipd_port, union cvmx_helper_link_info link_info)
+int __cvmx_helper_xaui_link_set(int ipd_port, cvmx_helper_link_info_t link_info)
 {
 	int interface = cvmx_helper_get_interface_num(ipd_port);
 	union cvmx_gmxx_tx_xaui_ctl gmxx_tx_xaui_ctl;

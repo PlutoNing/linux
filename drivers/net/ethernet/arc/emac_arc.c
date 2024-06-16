@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /**
- * DOC: emac_arc.c - ARC EMAC specific glue layer
+ * emac_arc.c - ARC EMAC specific glue layer
  *
  * Copyright (C) 2014 Romain Perier
  *
@@ -15,14 +15,14 @@
 #include "emac.h"
 
 #define DRV_NAME    "emac_arc"
+#define DRV_VERSION "1.0"
 
 static int emac_arc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct arc_emac_priv *priv;
-	phy_interface_t interface;
 	struct net_device *ndev;
-	int err;
+	struct arc_emac_priv *priv;
+	int interface, err;
 
 	if (!dev->of_node)
 		return -ENODEV;
@@ -35,14 +35,11 @@ static int emac_arc_probe(struct platform_device *pdev)
 
 	priv = netdev_priv(ndev);
 	priv->drv_name = DRV_NAME;
+	priv->drv_version = DRV_VERSION;
 
-	err = of_get_phy_mode(dev->of_node, &interface);
-	if (err) {
-		if (err == -ENODEV)
-			interface = PHY_INTERFACE_MODE_MII;
-		else
-			goto out_netdev;
-	}
+	interface = of_get_phy_mode(dev->of_node);
+	if (interface < 0)
+		interface = PHY_INTERFACE_MODE_MII;
 
 	priv->clk = devm_clk_get(dev, "hclk");
 	if (IS_ERR(priv->clk)) {
@@ -58,12 +55,14 @@ out_netdev:
 	return err;
 }
 
-static void emac_arc_remove(struct platform_device *pdev)
+static int emac_arc_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
+	int err;
 
-	arc_emac_remove(ndev);
+	err = arc_emac_remove(ndev);
 	free_netdev(ndev);
+	return err;
 }
 
 static const struct of_device_id emac_arc_dt_ids[] = {
@@ -74,7 +73,7 @@ MODULE_DEVICE_TABLE(of, emac_arc_dt_ids);
 
 static struct platform_driver emac_arc_driver = {
 	.probe = emac_arc_probe,
-	.remove_new = emac_arc_remove,
+	.remove = emac_arc_remove,
 	.driver = {
 		.name = DRV_NAME,
 		.of_match_table  = emac_arc_dt_ids,

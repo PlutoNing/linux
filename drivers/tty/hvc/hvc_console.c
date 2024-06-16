@@ -49,7 +49,7 @@
 #define N_OUTBUF	16
 #define N_INBUF		16
 
-#define __ALIGNED__ __attribute__((__aligned__(L1_CACHE_BYTES)))
+#define __ALIGNED__ __attribute__((__aligned__(sizeof(long))))
 
 static struct tty_driver *hvc_driver;
 static struct task_struct *hvc_task;
@@ -264,8 +264,8 @@ static void hvc_port_destruct(struct tty_port *port)
 
 static void hvc_check_console(int index)
 {
-	/* Already registered, bail out */
-	if (console_is_registered(&hvc_console))
+	/* Already enabled, bail out */
+	if (hvc_console.flags & CON_ENABLED)
 		return;
 
  	/* If this index is what the user requested, then register
@@ -292,7 +292,7 @@ int hvc_instantiate(uint32_t vtermno, int index, const struct hv_ops *ops)
 	if (vtermnos[index] != -1)
 		return -1;
 
-	/* make sure no tty has been registered in this index */
+	/* make sure no no tty has been registered in this index */
 	hp = hvc_get_by_index(index);
 	if (hp) {
 		tty_port_put(&hp->port);
@@ -301,6 +301,10 @@ int hvc_instantiate(uint32_t vtermno, int index, const struct hv_ops *ops)
 
 	vtermnos[index] = vtermno;
 	cons_ops[index] = ops;
+
+	/* reserve all indices up to and including this index */
+	if (last_hvc < index)
+		last_hvc = index;
 
 	/* check if we need to re-register the kernel console */
 	hvc_check_console(index);
@@ -371,14 +375,15 @@ static int hvc_open(struct tty_struct *tty, struct file * filp)
 	 * tty fields and return the kref reference.
 	 */
 	if (rc) {
+		tty_port_tty_set(&hp->port, NULL);
+		tty->driver_data = NULL;
+		tty_port_put(&hp->port);
 		printk(KERN_ERR "hvc_open: request_irq failed with rc %d.\n", rc);
-	} else {
+	} else
 		/* We are ready... raise DTR/RTS */
 		if (C_BAUD(tty))
 			if (hp->ops->dtr_rts)
-				hp->ops->dtr_rts(hp, true);
-		tty_port_set_initialized(&hp->port, true);
-	}
+				hp->ops->dtr_rts(hp, 1);
 
 	/* Force wakeup of the polling thread */
 	hvc_kick();
@@ -388,11 +393,21 @@ static int hvc_open(struct tty_struct *tty, struct file * filp)
 
 static void hvc_close(struct tty_struct *tty, struct file * filp)
 {
-	struct hvc_struct *hp = tty->driver_data;
+	struct hvc_struct *hp;
 	unsigned long flags;
 
 	if (tty_hung_up_p(filp))
 		return;
+
+	/*
+	 * No driver_data means that this close was issued after a failed
+	 * hvc_open by the tty layer's release_dev() function and we can just
+	 * exit cleanly because the kref reference wasn't made.
+	 */
+	if (!tty->driver_data)
+		return;
+
+	hp = tty->driver_data;
 
 	spin_lock_irqsave(&hp->port.lock, flags);
 
@@ -401,12 +416,9 @@ static void hvc_close(struct tty_struct *tty, struct file * filp)
 		/* We are done with the tty pointer now. */
 		tty_port_tty_set(&hp->port, NULL);
 
-		if (!tty_port_initialized(&hp->port))
-			return;
-
 		if (C_HUPCL(tty))
 			if (hp->ops->dtr_rts)
-				hp->ops->dtr_rts(hp, false);
+				hp->ops->dtr_rts(hp, 0);
 
 		if (hp->ops->notifier_del)
 			hp->ops->notifier_del(hp, hp->data);
@@ -420,7 +432,6 @@ static void hvc_close(struct tty_struct *tty, struct file * filp)
 		 * waking periodically to check chars_in_buffer().
 		 */
 		tty_wait_until_sent(tty, HVC_CLOSE_WAIT);
-		tty_port_set_initialized(&hp->port, false);
 	} else {
 		if (hp->port.count < 0)
 			printk(KERN_ERR "hvc_close %X: oops, count is %d\n",
@@ -496,11 +507,11 @@ static int hvc_push(struct hvc_struct *hp)
 	return n;
 }
 
-static ssize_t hvc_write(struct tty_struct *tty, const u8 *buf, size_t count)
+static int hvc_write(struct tty_struct *tty, const unsigned char *buf, int count)
 {
 	struct hvc_struct *hp = tty->driver_data;
 	unsigned long flags;
-	size_t rsize, written = 0;
+	int rsize, written = 0;
 
 	/* This write was probably executed during a tty close. */
 	if (!hp)
@@ -586,7 +597,7 @@ static void hvc_set_winsz(struct work_struct *work)
  * how much write room the driver can guarantee will be sent OR BUFFERED.  This
  * driver MUST honor the return value.
  */
-static unsigned int hvc_write_room(struct tty_struct *tty)
+static int hvc_write_room(struct tty_struct *tty)
 {
 	struct hvc_struct *hp = tty->driver_data;
 
@@ -596,7 +607,7 @@ static unsigned int hvc_write_room(struct tty_struct *tty)
 	return hp->outbuf_size - hp->n_outbuf;
 }
 
-static unsigned int hvc_chars_in_buffer(struct tty_struct *tty)
+static int hvc_chars_in_buffer(struct tty_struct *tty)
 {
 	struct hvc_struct *hp = tty->driver_data;
 
@@ -620,7 +631,7 @@ static u32 timeout = MIN_TIMEOUT;
 /*
  * Maximum number of bytes to get from the console driver if hvc_poll is
  * called from driver (and can't sleep). Any more than this and we break
- * and start polling with khvcd. This value was derived from an OpenBMC
+ * and start polling with khvcd. This value was derived from from an OpenBMC
  * console with the OPAL driver that results in about 0.25ms interrupts off
  * latency.
  */
@@ -922,7 +933,8 @@ struct hvc_struct *hvc_alloc(uint32_t vtermno, int data,
 			return ERR_PTR(err);
 	}
 
-	hp = kzalloc(struct_size(hp, outbuf, outbuf_size), GFP_KERNEL);
+	hp = kzalloc(ALIGN(sizeof(*hp), sizeof(long)) + outbuf_size,
+			GFP_KERNEL);
 	if (!hp)
 		return ERR_PTR(-ENOMEM);
 
@@ -930,6 +942,7 @@ struct hvc_struct *hvc_alloc(uint32_t vtermno, int data,
 	hp->data = data;
 	hp->ops = ops;
 	hp->outbuf_size = outbuf_size;
+	hp->outbuf = &((char *)hp)[ALIGN(sizeof(*hp), sizeof(long))];
 
 	tty_port_init(&hp->port);
 	hp->port.ops = &hvc_port_ops;
@@ -947,22 +960,13 @@ struct hvc_struct *hvc_alloc(uint32_t vtermno, int data,
 		    cons_ops[i] == hp->ops)
 			break;
 
-	if (i >= MAX_NR_HVC_CONSOLES) {
-
-		/* find 'empty' slot for console */
-		for (i = 0; i < MAX_NR_HVC_CONSOLES && vtermnos[i] != -1; i++) {
-		}
-
-		/* no matching slot, just use a counter */
-		if (i == MAX_NR_HVC_CONSOLES)
-			i = ++last_hvc + MAX_NR_HVC_CONSOLES;
-	}
+	/* no matching slot, just use a counter */
+	if (i >= MAX_NR_HVC_CONSOLES)
+		i = ++last_hvc;
 
 	hp->index = i;
-	if (i < MAX_NR_HVC_CONSOLES) {
-		cons_ops[i] = ops;
-		vtermnos[i] = vtermno;
-	}
+	cons_ops[i] = ops;
+	vtermnos[i] = vtermno;
 
 	list_add_tail(&(hp->next), &hvc_structs);
 	mutex_unlock(&hvc_structs_mutex);
@@ -974,7 +978,7 @@ struct hvc_struct *hvc_alloc(uint32_t vtermno, int data,
 }
 EXPORT_SYMBOL_GPL(hvc_alloc);
 
-void hvc_remove(struct hvc_struct *hp)
+int hvc_remove(struct hvc_struct *hp)
 {
 	unsigned long flags;
 	struct tty_struct *tty;
@@ -1008,6 +1012,7 @@ void hvc_remove(struct hvc_struct *hp)
 		tty_vhangup(tty);
 		tty_kref_put(tty);
 	}
+	return 0;
 }
 EXPORT_SYMBOL_GPL(hvc_remove);
 
@@ -1018,10 +1023,9 @@ static int hvc_init(void)
 	int err;
 
 	/* We need more than hvc_count adapters due to hotplug additions. */
-	drv = tty_alloc_driver(HVC_ALLOC_TTY_ADAPTERS, TTY_DRIVER_REAL_RAW |
-			TTY_DRIVER_RESET_TERMIOS);
-	if (IS_ERR(drv)) {
-		err = PTR_ERR(drv);
+	drv = alloc_tty_driver(HVC_ALLOC_TTY_ADAPTERS);
+	if (!drv) {
+		err = -ENOMEM;
 		goto out;
 	}
 
@@ -1031,6 +1035,7 @@ static int hvc_init(void)
 	drv->minor_start = HVC_MINOR;
 	drv->type = TTY_DRIVER_TYPE_SYSTEM;
 	drv->init_termios = tty_std_termios;
+	drv->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_RESET_TERMIOS;
 	tty_set_operations(drv, &hvc_ops);
 
 	/* Always start the kthread because there can be hotplug vty adapters
@@ -1060,7 +1065,7 @@ stop_thread:
 	kthread_stop(hvc_task);
 	hvc_task = NULL;
 put_tty:
-	tty_driver_kref_put(drv);
+	put_tty_driver(drv);
 out:
 	return err;
 }

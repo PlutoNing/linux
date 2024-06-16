@@ -53,13 +53,13 @@ srmcons_do_receive_chars(struct tty_port *port)
 	do {
 		result.as_long = callback_getc(0);
 		if (result.bits.status < 2) {
-			tty_insert_flip_char(port, (u8)result.bits.c, 0);
+			tty_insert_flip_char(port, (char)result.bits.c, 0);
 			count++;
 		}
 	} while((result.bits.status & 1) && (++loops < 10));
 
 	if (count)
-		tty_flip_buffer_push(port);
+		tty_schedule_flip(port);
 
 	return count;
 }
@@ -88,27 +88,30 @@ srmcons_receive_chars(struct timer_list *t)
 }
 
 /* called with callback_lock held */
-static void
-srmcons_do_write(struct tty_port *port, const u8 *buf, size_t count)
+static int
+srmcons_do_write(struct tty_port *port, const char *buf, int count)
 {
-	size_t c;
+	static char str_cr[1] = "\r";
+	long c, remaining = count;
 	srmcons_result result;
+	char *cur;
+	int need_cr;
 
-	while (count > 0) {
-		bool need_cr = false;
+	for (cur = (char *)buf; remaining > 0; ) {
+		need_cr = 0;
 		/* 
 		 * Break it up into reasonable size chunks to allow a chance
 		 * for input to get in
 		 */
-		for (c = 0; c < min_t(size_t, 128U, count) && !need_cr; c++)
-			if (buf[c] == '\n')
-				need_cr = true;
+		for (c = 0; c < min_t(long, 128L, remaining) && !need_cr; c++)
+			if (cur[c] == '\n')
+				need_cr = 1;
 		
 		while (c > 0) {
-			result.as_long = callback_puts(0, buf, c);
+			result.as_long = callback_puts(0, cur, c);
 			c -= result.bits.c;
-			count -= result.bits.c;
-			buf += result.bits.c;
+			remaining -= result.bits.c;
+			cur += result.bits.c;
 
 			/*
 			 * Check for pending input iff a tty port was provided
@@ -118,29 +121,37 @@ srmcons_do_write(struct tty_port *port, const u8 *buf, size_t count)
 		}
 
 		while (need_cr) {
-			result.as_long = callback_puts(0, "\r", 1);
+			result.as_long = callback_puts(0, str_cr, 1);
 			if (result.bits.c > 0)
-				need_cr = false;
+				need_cr = 0;
 		}
 	}
+	return count;
 }
 
-static ssize_t
-srmcons_write(struct tty_struct *tty, const u8 *buf, size_t count)
+static int
+srmcons_write(struct tty_struct *tty,
+	      const unsigned char *buf, int count)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&srmcons_callback_lock, flags);
-	srmcons_do_write(tty->port, buf, count);
+	srmcons_do_write(tty->port, (const char *) buf, count);
 	spin_unlock_irqrestore(&srmcons_callback_lock, flags);
 
 	return count;
 }
 
-static unsigned int
+static int
 srmcons_write_room(struct tty_struct *tty)
 {
 	return 512;
+}
+
+static int
+srmcons_chars_in_buffer(struct tty_struct *tty)
+{
+	return 0;
 }
 
 static int
@@ -189,6 +200,7 @@ static const struct tty_operations srmcons_ops = {
 	.close		= srmcons_close,
 	.write		= srmcons_write,
 	.write_room	= srmcons_write_room,
+	.chars_in_buffer= srmcons_chars_in_buffer,
 };
 
 static int __init
@@ -199,9 +211,9 @@ srmcons_init(void)
 		struct tty_driver *driver;
 		int err;
 
-		driver = tty_alloc_driver(MAX_SRM_CONSOLE_DEVICES, 0);
-		if (IS_ERR(driver))
-			return PTR_ERR(driver);
+		driver = alloc_tty_driver(MAX_SRM_CONSOLE_DEVICES);
+		if (!driver)
+			return -ENOMEM;
 
 		tty_port_init(&srmcons_singleton.port);
 
@@ -216,7 +228,7 @@ srmcons_init(void)
 		tty_port_link_device(&srmcons_singleton.port, driver, 0);
 		err = tty_register_driver(driver);
 		if (err) {
-			tty_driver_kref_put(driver);
+			put_tty_driver(driver);
 			tty_port_destroy(&srmcons_singleton.port);
 			return err;
 		}

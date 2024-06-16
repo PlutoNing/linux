@@ -17,6 +17,7 @@
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
 #include <linux/firmware.h>
+#include <linux/gpio.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -418,7 +419,7 @@ static int rt5514_dsp_voice_wake_up_put(struct snd_kcontrol *kcontrol,
 		}
 	}
 
-	return 1;
+	return 0;
 }
 
 static const struct snd_kcontrol_new rt5514_snd_controls[] = {
@@ -493,7 +494,7 @@ static const struct snd_kcontrol_new rt5514_sto2_dmic_mux =
  */
 static int rt5514_calc_dmic_clk(struct snd_soc_component *component, int rate)
 {
-	static const int div[] = {2, 3, 4, 8, 12, 16, 24, 32};
+	int div[] = {2, 3, 4, 8, 12, 16, 24, 32};
 	int i;
 
 	if (rate < 1000000 * div[0]) {
@@ -935,7 +936,7 @@ static int rt5514_set_dai_pll(struct snd_soc_dai *dai, int pll_id, int source,
 
 	ret = rl6231_pll_calc(freq_in, freq_out, &pll_code);
 	if (ret < 0) {
-		dev_err(component->dev, "Unsupported input clock %d\n", freq_in);
+		dev_err(component->dev, "Unsupport input clock %d\n", freq_in);
 		return ret;
 	}
 
@@ -1054,6 +1055,9 @@ static int rt5514_set_bias_level(struct snd_soc_component *component,
 
 	switch (level) {
 	case SND_SOC_BIAS_PREPARE:
+		if (IS_ERR(rt5514->mclk))
+			break;
+
 		if (snd_soc_component_get_bias_level(component) == SND_SOC_BIAS_ON) {
 			clk_disable_unprepare(rt5514->mclk);
 		} else {
@@ -1094,9 +1098,9 @@ static int rt5514_probe(struct snd_soc_component *component)
 	struct platform_device *pdev = container_of(component->dev,
 						   struct platform_device, dev);
 
-	rt5514->mclk = devm_clk_get_optional(component->dev, "mclk");
-	if (IS_ERR(rt5514->mclk))
-		return PTR_ERR(rt5514->mclk);
+	rt5514->mclk = devm_clk_get(component->dev, "mclk");
+	if (PTR_ERR(rt5514->mclk) == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
 
 	if (rt5514->pdata.dsp_calib_clk_name) {
 		rt5514->dsp_calib_clk = devm_clk_get(&pdev->dev,
@@ -1169,6 +1173,7 @@ static const struct snd_soc_component_driver soc_component_dev_rt5514 = {
 	.num_dapm_routes	= ARRAY_SIZE(rt5514_dapm_routes),
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
+	.non_legacy_dai_naming	= 1,
 };
 
 static const struct regmap_config rt5514_i2c_regmap = {
@@ -1191,7 +1196,7 @@ static const struct regmap_config rt5514_regmap = {
 	.reg_read = rt5514_i2c_read,
 	.reg_write = rt5514_i2c_write,
 
-	.cache_type = REGCACHE_MAPLE,
+	.cache_type = REGCACHE_RBTREE,
 	.reg_defaults = rt5514_reg,
 	.num_reg_defaults = ARRAY_SIZE(rt5514_reg),
 	.use_single_read = true,
@@ -1247,7 +1252,8 @@ static __maybe_unused int rt5514_i2c_resume(struct device *dev)
 	return 0;
 }
 
-static int rt5514_i2c_probe(struct i2c_client *i2c)
+static int rt5514_i2c_probe(struct i2c_client *i2c,
+		    const struct i2c_device_id *id)
 {
 	struct rt5514_platform_data *pdata = dev_get_platdata(&i2c->dev);
 	struct rt5514_priv *rt5514;

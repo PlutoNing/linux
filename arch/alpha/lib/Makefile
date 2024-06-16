@@ -4,6 +4,7 @@
 #
 
 asflags-y := $(KBUILD_CFLAGS)
+ccflags-y := -Werror
 
 # Many of these routines have implementations tuned for ev6.
 # Choose them iff we're targeting ev6 specifically.
@@ -13,7 +14,6 @@ ev6-$(CONFIG_ALPHA_EV6) := ev6-
 ev67-$(CONFIG_ALPHA_EV67) := ev67-
 
 lib-y =	__divqu.o __remqu.o __divlu.o __remlu.o \
-	udiv-qrnnd.o \
 	udelay.o \
 	$(ev6-y)memset.o \
 	$(ev6-y)memcpy.o \

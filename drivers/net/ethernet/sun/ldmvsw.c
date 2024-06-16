@@ -63,8 +63,8 @@ static struct vio_version vsw_versions[] = {
 static void vsw_get_drvinfo(struct net_device *dev,
 			    struct ethtool_drvinfo *info)
 {
-	strscpy(info->driver, DRV_MODULE_NAME, sizeof(info->driver));
-	strscpy(info->version, DRV_MODULE_VERSION, sizeof(info->version));
+	strlcpy(info->driver, DRV_MODULE_NAME, sizeof(info->driver));
+	strlcpy(info->version, DRV_MODULE_VERSION, sizeof(info->version));
 }
 
 static u32 vsw_get_msglevel(struct net_device *dev)
@@ -124,7 +124,7 @@ static void vsw_set_rx_mode(struct net_device *dev)
 	return sunvnet_set_rx_mode_common(dev, port->vp);
 }
 
-static int ldmvsw_open(struct net_device *dev)
+int ldmvsw_open(struct net_device *dev)
 {
 	struct vnet_port *port = netdev_priv(dev);
 	struct vio_driver_state *vio = &port->vio;
@@ -136,6 +136,7 @@ static int ldmvsw_open(struct net_device *dev)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(ldmvsw_open);
 
 #ifdef CONFIG_NET_POLL_CONTROLLER
 static void vsw_poll_controller(struct net_device *dev)
@@ -229,6 +230,7 @@ static struct net_device *vsw_alloc_netdev(u8 hwaddr[],
 {
 	struct net_device *dev;
 	struct vnet_port *port;
+	int i;
 
 	dev = alloc_etherdev_mqs(sizeof(*port), VNET_MAX_TXQS, 1);
 	if (!dev)
@@ -236,8 +238,10 @@ static struct net_device *vsw_alloc_netdev(u8 hwaddr[],
 	dev->needed_headroom = VNET_PACKET_SKIP + 8;
 	dev->needed_tailroom = 8;
 
-	eth_hw_addr_set(dev, hwaddr);
-	ether_addr_copy(dev->perm_addr, dev->dev_addr);
+	for (i = 0; i < ETH_ALEN; i++) {
+		dev->dev_addr[i] = hwaddr[i];
+		dev->perm_addr[i] = dev->dev_addr[i];
+	}
 
 	sprintf(dev->name, "vif%d.%d", (int)handle, (int)port_id);
 
@@ -285,9 +289,6 @@ static int vsw_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	u64 handle;
 
 	hp = mdesc_grab();
-
-	if (!hp)
-		return -ENODEV;
 
 	rmac = mdesc_get_property(hp, vdev->mp, remote_macaddr_prop, &len);
 	err = -ENODEV;
@@ -337,7 +338,7 @@ static int vsw_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	port->tsolen = 0;
 
 	/* Mark the port as belonging to ldmvsw which directs the
-	 * common code to use the net_device in the vnet_port
+	 * the common code to use the net_device in the vnet_port
 	 * rather than the net_device in the vnet (which is used
 	 * by sunvnet). This bit is used by the VNET_PORT_TO_NET_DEVICE
 	 * macro.
@@ -356,7 +357,8 @@ static int vsw_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 
 	dev_set_drvdata(&vdev->dev, port);
 
-	netif_napi_add(dev, &port->napi, sunvnet_poll_common);
+	netif_napi_add(dev, &port->napi, sunvnet_poll_common,
+		       NAPI_POLL_WEIGHT);
 
 	spin_lock_irqsave(&vp->lock, flags);
 	list_add_rcu(&port->list, &vp->port_list);
@@ -402,7 +404,7 @@ err_out_free_dev:
 	return err;
 }
 
-static void vsw_port_remove(struct vio_dev *vdev)
+static int vsw_port_remove(struct vio_dev *vdev)
 {
 	struct vnet_port *port = dev_get_drvdata(&vdev->dev);
 	unsigned long flags;
@@ -428,6 +430,8 @@ static void vsw_port_remove(struct vio_dev *vdev)
 
 		free_netdev(port->dev);
 	}
+
+	return 0;
 }
 
 static void vsw_cleanup(void)

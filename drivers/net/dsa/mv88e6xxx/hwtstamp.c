@@ -100,6 +100,10 @@ static int mv88e6xxx_set_hwtstamp_config(struct mv88e6xxx_chip *chip, int port,
 	 */
 	clear_bit_unlock(MV88E6XXX_HWTSTAMP_ENABLED, &ps->state);
 
+	/* reserved for future extensions */
+	if (config->flags)
+		return -EINVAL;
+
 	switch (config->tx_type) {
 	case HWTSTAMP_TX_OFF:
 		tstamp_enable = false;
@@ -207,20 +211,49 @@ int mv88e6xxx_port_hwtstamp_get(struct dsa_switch *ds, int port,
 		-EFAULT : 0;
 }
 
+/* Get the start of the PTP header in this skb */
+static u8 *parse_ptp_header(struct sk_buff *skb, unsigned int type)
+{
+	u8 *data = skb_mac_header(skb);
+	unsigned int offset = 0;
+
+	if (type & PTP_CLASS_VLAN)
+		offset += VLAN_HLEN;
+
+	switch (type & PTP_CLASS_PMASK) {
+	case PTP_CLASS_IPV4:
+		offset += ETH_HLEN + IPV4_HLEN(data + offset) + UDP_HLEN;
+		break;
+	case PTP_CLASS_IPV6:
+		offset += ETH_HLEN + IP6_HLEN + UDP_HLEN;
+		break;
+	case PTP_CLASS_L2:
+		offset += ETH_HLEN;
+		break;
+	default:
+		return NULL;
+	}
+
+	/* Ensure that the entire header is present in this packet. */
+	if (skb->len + ETH_HLEN < offset + 34)
+		return NULL;
+
+	return data + offset;
+}
+
 /* Returns a pointer to the PTP header if the caller should time stamp,
  * or NULL if the caller should not.
  */
-static struct ptp_header *mv88e6xxx_should_tstamp(struct mv88e6xxx_chip *chip,
-						  int port, struct sk_buff *skb,
-						  unsigned int type)
+static u8 *mv88e6xxx_should_tstamp(struct mv88e6xxx_chip *chip, int port,
+				   struct sk_buff *skb, unsigned int type)
 {
 	struct mv88e6xxx_port_hwtstamp *ps = &chip->port_hwtstamp[port];
-	struct ptp_header *hdr;
+	u8 *hdr;
 
 	if (!chip->info->ptp_support)
 		return NULL;
 
-	hdr = ptp_parse_header(skb, type);
+	hdr = parse_ptp_header(skb, type);
 	if (!hdr)
 		return NULL;
 
@@ -242,11 +275,12 @@ static int mv88e6xxx_ts_valid(u16 status)
 static int seq_match(struct sk_buff *skb, u16 ts_seqid)
 {
 	unsigned int type = SKB_PTP_TYPE(skb);
-	struct ptp_header *hdr;
+	u8 *hdr = parse_ptp_header(skb, type);
+	__be16 *seqid;
 
-	hdr = ptp_parse_header(skb, type);
+	seqid = (__be16 *)(hdr + OFF_PTP_SEQUENCE_ID);
 
-	return ts_seqid == ntohs(hdr->sequence_id);
+	return ts_seqid == ntohs(*seqid);
 }
 
 static void mv88e6xxx_get_rxts(struct mv88e6xxx_chip *chip,
@@ -301,7 +335,7 @@ static void mv88e6xxx_get_rxts(struct mv88e6xxx_chip *chip,
 			shwt->hwtstamp = ns_to_ktime(ns);
 			status &= ~MV88E6XXX_PTP_TS_VALID;
 		}
-		netif_rx(skb);
+		netif_rx_ni(skb);
 	}
 }
 
@@ -323,9 +357,9 @@ static void mv88e6xxx_rxtstamp_work(struct mv88e6xxx_chip *chip,
 				   &ps->rx_queue2);
 }
 
-static int is_pdelay_resp(const struct ptp_header *hdr)
+static int is_pdelay_resp(u8 *msgtype)
 {
-	return (hdr->tsmt & 0xf) == 3;
+	return (*msgtype & 0xf) == 3;
 }
 
 bool mv88e6xxx_port_rxtstamp(struct dsa_switch *ds, int port,
@@ -333,7 +367,7 @@ bool mv88e6xxx_port_rxtstamp(struct dsa_switch *ds, int port,
 {
 	struct mv88e6xxx_port_hwtstamp *ps;
 	struct mv88e6xxx_chip *chip;
-	struct ptp_header *hdr;
+	u8 *hdr;
 
 	chip = ds->priv;
 	ps = &chip->port_hwtstamp[port];
@@ -464,38 +498,33 @@ long mv88e6xxx_hwtstamp_work(struct ptp_clock_info *ptp)
 	return restart ? 1 : -1;
 }
 
-void mv88e6xxx_port_txtstamp(struct dsa_switch *ds, int port,
-			     struct sk_buff *skb)
+bool mv88e6xxx_port_txtstamp(struct dsa_switch *ds, int port,
+			     struct sk_buff *clone, unsigned int type)
 {
 	struct mv88e6xxx_chip *chip = ds->priv;
 	struct mv88e6xxx_port_hwtstamp *ps = &chip->port_hwtstamp[port];
-	struct ptp_header *hdr;
-	struct sk_buff *clone;
-	unsigned int type;
+	__be16 *seq_ptr;
+	u8 *hdr;
 
-	type = ptp_classify_raw(skb);
-	if (type == PTP_CLASS_NONE)
-		return;
+	if (!(skb_shinfo(clone)->tx_flags & SKBTX_HW_TSTAMP))
+		return false;
 
-	hdr = mv88e6xxx_should_tstamp(chip, port, skb, type);
+	hdr = mv88e6xxx_should_tstamp(chip, port, clone, type);
 	if (!hdr)
-		return;
+		return false;
 
-	clone = skb_clone_sk(skb);
-	if (!clone)
-		return;
+	seq_ptr = (__be16 *)(hdr + OFF_PTP_SEQUENCE_ID);
 
 	if (test_and_set_bit_lock(MV88E6XXX_HWTSTAMP_TX_IN_PROGRESS,
-				  &ps->state)) {
-		kfree_skb(clone);
-		return;
-	}
+				  &ps->state))
+		return false;
 
 	ps->tx_skb = clone;
 	ps->tx_tstamp_start = jiffies;
-	ps->tx_seq_id = be16_to_cpu(hdr->sequence_id);
+	ps->tx_seq_id = be16_to_cpup(seq_ptr);
 
 	ptp_schedule_worker(chip->ptp_clock, 0);
+	return true;
 }
 
 int mv88e6165_global_disable(struct mv88e6xxx_chip *chip)

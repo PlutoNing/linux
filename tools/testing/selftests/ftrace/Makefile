@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0
 all:
 
-TEST_PROGS_EXTENDED := ftracetest
-TEST_PROGS := ftracetest-ktap
-TEST_FILES := test.d settings
+TEST_PROGS := ftracetest
+TEST_FILES := test.d
 EXTRA_CLEAN := $(OUTPUT)/logs/*
 
 include ../lib.mk

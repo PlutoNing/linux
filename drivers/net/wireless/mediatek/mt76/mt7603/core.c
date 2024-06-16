@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: ISC
 
 #include "mt7603.h"
-#include "../trace.h"
 
 void mt7603_rx_poll_complete(struct mt76_dev *mdev, enum mt76_rxq_id q)
 {
@@ -18,10 +17,8 @@ irqreturn_t mt7603_irq_handler(int irq, void *dev_instance)
 	intr = mt76_rr(dev, MT_INT_SOURCE_CSR);
 	mt76_wr(dev, MT_INT_SOURCE_CSR, intr);
 
-	if (!test_bit(MT76_STATE_INITIALIZED, &dev->mphy.state))
+	if (!test_bit(MT76_STATE_INITIALIZED, &dev->mt76.state))
 		return IRQ_NONE;
-
-	trace_dev_irq(&dev->mt76, intr, dev->mt76.mmio.irqmask);
 
 	intr &= dev->mt76.mmio.irqmask;
 
@@ -42,13 +39,11 @@ irqreturn_t mt7603_irq_handler(int irq, void *dev_instance)
 	}
 
 	if (intr & MT_INT_RX_DONE(0)) {
-		dev->rx_pse_check = 0;
 		mt7603_irq_disable(dev, MT_INT_RX_DONE(0));
 		napi_schedule(&dev->mt76.napi[0]);
 	}
 
 	if (intr & MT_INT_RX_DONE(1)) {
-		dev->rx_pse_check = 0;
 		mt7603_irq_disable(dev, MT_INT_RX_DONE(1));
 		napi_schedule(&dev->mt76.napi[1]);
 	}

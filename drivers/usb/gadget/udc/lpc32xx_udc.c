@@ -127,6 +127,7 @@ struct lpc32xx_udc {
 	struct usb_gadget_driver *driver;
 	struct platform_device	*pdev;
 	struct device		*dev;
+	struct dentry		*pde;
 	spinlock_t		lock;
 	struct i2c_client	*isp1301_i2c_client;
 
@@ -494,7 +495,7 @@ static void proc_ep_show(struct seq_file *s, struct lpc32xx_ep *ep)
 	}
 }
 
-static int udc_show(struct seq_file *s, void *unused)
+static int proc_udc_show(struct seq_file *s, void *unused)
 {
 	struct lpc32xx_udc *udc = s->private;
 	struct lpc32xx_ep *ep;
@@ -523,16 +524,27 @@ static int udc_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-DEFINE_SHOW_ATTRIBUTE(udc);
+static int proc_udc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, proc_udc_show, PDE_DATA(inode));
+}
+
+static const struct file_operations proc_ops = {
+	.owner		= THIS_MODULE,
+	.open		= proc_udc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static void create_debug_file(struct lpc32xx_udc *udc)
 {
-	debugfs_create_file(debug_filename, 0, NULL, udc, &udc_fops);
+	udc->pde = debugfs_create_file(debug_filename, 0, NULL, udc, &proc_ops);
 }
 
 static void remove_debug_file(struct lpc32xx_udc *udc)
 {
-	debugfs_lookup_and_remove(debug_filename, NULL);
+	debugfs_remove(udc->pde);
 }
 
 #else
@@ -1602,17 +1614,17 @@ static int lpc32xx_ep_enable(struct usb_ep *_ep,
 			     const struct usb_endpoint_descriptor *desc)
 {
 	struct lpc32xx_ep *ep = container_of(_ep, struct lpc32xx_ep, ep);
-	struct lpc32xx_udc *udc;
+	struct lpc32xx_udc *udc = ep->udc;
 	u16 maxpacket;
 	u32 tmp;
 	unsigned long flags;
 
 	/* Verify EP data */
 	if ((!_ep) || (!ep) || (!desc) ||
-	    (desc->bDescriptorType != USB_DT_ENDPOINT))
+	    (desc->bDescriptorType != USB_DT_ENDPOINT)) {
+		dev_dbg(udc->dev, "bad ep or descriptor\n");
 		return -EINVAL;
-
-	udc = ep->udc;
+	}
 	maxpacket = usb_endpoint_maxp(desc);
 	if ((maxpacket == 0) || (maxpacket > ep->maxpacket)) {
 		dev_dbg(udc->dev, "bad ep descriptor's packet size\n");
@@ -1830,7 +1842,7 @@ static int lpc32xx_ep_queue(struct usb_ep *_ep,
 static int lpc32xx_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct lpc32xx_ep *ep;
-	struct lpc32xx_request *req = NULL, *iter;
+	struct lpc32xx_request *req;
 	unsigned long flags;
 
 	ep = container_of(_ep, struct lpc32xx_ep, ep);
@@ -1840,13 +1852,11 @@ static int lpc32xx_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	spin_lock_irqsave(&ep->udc->lock, flags);
 
 	/* make sure it's actually queued on this endpoint */
-	list_for_each_entry(iter, &ep->queue, queue) {
-		if (&iter->req != _req)
-			continue;
-		req = iter;
-		break;
+	list_for_each_entry(req, &ep->queue, queue) {
+		if (&req->req == _req)
+			break;
 	}
-	if (!req) {
+	if (&req->req != _req) {
 		spin_unlock_irqrestore(&ep->udc->lock, flags);
 		return -EINVAL;
 	}
@@ -1862,7 +1872,7 @@ static int lpc32xx_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 static int lpc32xx_ep_set_halt(struct usb_ep *_ep, int value)
 {
 	struct lpc32xx_ep *ep = container_of(_ep, struct lpc32xx_ep, ep);
-	struct lpc32xx_udc *udc;
+	struct lpc32xx_udc *udc = ep->udc;
 	unsigned long flags;
 
 	if ((!ep) || (ep->hwep_num <= 1))
@@ -1872,7 +1882,6 @@ static int lpc32xx_ep_set_halt(struct usb_ep *_ep, int value)
 	if (ep->is_in)
 		return -EAGAIN;
 
-	udc = ep->udc;
 	spin_lock_irqsave(&udc->lock, flags);
 
 	if (value == 1) {
@@ -1916,7 +1925,7 @@ static const struct usb_ep_ops lpc32xx_ep_ops = {
 };
 
 /* Send a ZLP on a non-0 IN EP */
-static void udc_send_in_zlp(struct lpc32xx_udc *udc, struct lpc32xx_ep *ep)
+void udc_send_in_zlp(struct lpc32xx_udc *udc, struct lpc32xx_ep *ep)
 {
 	/* Clear EP status */
 	udc_clearep_getsts(udc, ep->hwep_num);
@@ -1930,7 +1939,7 @@ static void udc_send_in_zlp(struct lpc32xx_udc *udc, struct lpc32xx_ep *ep)
  * This function will only be called when a delayed ZLP needs to be sent out
  * after a DMA transfer has filled both buffers.
  */
-static void udc_handle_eps(struct lpc32xx_udc *udc, struct lpc32xx_ep *ep)
+void udc_handle_eps(struct lpc32xx_udc *udc, struct lpc32xx_ep *ep)
 {
 	u32 epstatus;
 	struct lpc32xx_request *req;
@@ -2976,7 +2985,7 @@ static void lpc32xx_rmwkup_chg(int remote_wakup_enable)
 	/* Enable or disable USB remote wakeup */
 }
 
-static struct lpc32xx_usbd_cfg lpc32xx_usbddata = {
+struct lpc32xx_usbd_cfg lpc32xx_usbddata = {
 	.vbus_drv_pol = 0,
 	.conn_chgb = &lpc32xx_usbd_conn_chg,
 	.susp_chgb = &lpc32xx_usbd_susp_chg,
@@ -2991,6 +3000,7 @@ static int lpc32xx_udc_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct lpc32xx_udc *udc;
 	int retval, i;
+	struct resource *res;
 	dma_addr_t dma_handle;
 	struct device_node *isp1301_node;
 
@@ -3016,7 +3026,6 @@ static int lpc32xx_udc_probe(struct platform_device *pdev)
 	}
 
 	udc->isp1301_i2c_client = isp1301_get_client(isp1301_node);
-	of_node_put(isp1301_node);
 	if (!udc->isp1301_i2c_client) {
 		return -EPROBE_DEFER;
 	}
@@ -3039,6 +3048,9 @@ static int lpc32xx_udc_probe(struct platform_device *pdev)
 	 *  IORESOURCE_IRQ, USB device interrupt number
 	 *  IORESOURCE_IRQ, USB transceiver interrupt number
 	 */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res)
+		return -ENXIO;
 
 	spin_lock_init(&udc->lock);
 
@@ -3049,7 +3061,7 @@ static int lpc32xx_udc_probe(struct platform_device *pdev)
 			return udc->udp_irq[i];
 	}
 
-	udc->udp_baseaddr = devm_platform_ioremap_resource(pdev, 0);
+	udc->udp_baseaddr = devm_ioremap_resource(dev, res);
 	if (IS_ERR(udc->udp_baseaddr)) {
 		dev_err(udc->dev, "IO map failure\n");
 		return PTR_ERR(udc->udp_baseaddr);
@@ -3174,16 +3186,13 @@ i2c_fail:
 	return retval;
 }
 
-static void lpc32xx_udc_remove(struct platform_device *pdev)
+static int lpc32xx_udc_remove(struct platform_device *pdev)
 {
 	struct lpc32xx_udc *udc = platform_get_drvdata(pdev);
 
 	usb_del_gadget_udc(&udc->gadget);
-	if (udc->driver) {
-		dev_err(&pdev->dev,
-			"Driver still in use but removing anyhow\n");
-		return;
-	}
+	if (udc->driver)
+		return -EBUSY;
 
 	udc_clk_set(udc, 1);
 	udc_disable(udc);
@@ -3197,6 +3206,8 @@ static void lpc32xx_udc_remove(struct platform_device *pdev)
 			  udc->udca_v_base, udc->udca_p_base);
 
 	clk_disable_unprepare(udc->usb_slv_clk);
+
+	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -3255,18 +3266,17 @@ MODULE_DEVICE_TABLE(of, lpc32xx_udc_of_match);
 #endif
 
 static struct platform_driver lpc32xx_udc_driver = {
-	.probe		= lpc32xx_udc_probe,
-	.remove_new	= lpc32xx_udc_remove,
+	.remove		= lpc32xx_udc_remove,
 	.shutdown	= lpc32xx_udc_shutdown,
 	.suspend	= lpc32xx_udc_suspend,
 	.resume		= lpc32xx_udc_resume,
 	.driver		= {
-		.name	= driver_name,
+		.name	= (char *) driver_name,
 		.of_match_table = of_match_ptr(lpc32xx_udc_of_match),
 	},
 };
 
-module_platform_driver(lpc32xx_udc_driver);
+module_platform_driver_probe(lpc32xx_udc_driver, lpc32xx_udc_probe);
 
 MODULE_DESCRIPTION("LPC32XX udc driver");
 MODULE_AUTHOR("Kevin Wells <kevin.wells@nxp.com>");

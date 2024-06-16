@@ -7,12 +7,6 @@ OUTPUT_ARCH(ELF_ARCH)
 ENTRY(_start)
 jiffies = jiffies_64;
 
-VERSION {
-  {
-    local: *;
-  };
-}
-
 SECTIONS
 {
   /* This must contain the right address - not quite the default ELF one.*/
@@ -25,16 +19,17 @@ SECTIONS
   __binary_start = START;
 
   . = START + SIZEOF_HEADERS;
-  . = ALIGN(PAGE_SIZE);
 
   _text = .;
   INIT_TEXT_SECTION(0)
+  . = ALIGN(PAGE_SIZE);
 
   .text      :
   {
     _stext = .;
     TEXT_TEXT
     SCHED_TEXT
+    CPUIDLE_TEXT
     LOCK_TEXT
     IRQENTRY_TEXT
     SOFTIRQENTRY_TEXT
@@ -94,7 +89,6 @@ SECTIONS
   }
 
   .got           : { *(.got.plt) *(.got) }
-  .eh_frame       : { KEEP (*(.eh_frame)) }
   .dynamic       : { *(.dynamic) }
   .tdata	  : { *(.tdata .tdata.* .gnu.linkonce.td.*) }
   .tbss		  : { *(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon) }
@@ -114,8 +108,8 @@ SECTIONS
   PROVIDE (end = .);
 
   STABS_DEBUG
+
   DWARF_DEBUG
-  ELF_DETAILS
 
   DISCARDS
 }

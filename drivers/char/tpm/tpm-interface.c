@@ -23,7 +23,6 @@
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
-#include <linux/suspend.h>
 #include <linux/freezer.h>
 #include <linux/tpm_eventlog.h>
 
@@ -323,7 +322,7 @@ int tpm_pcr_extend(struct tpm_chip *chip, u32 pcr_idx,
 
 	for (i = 0; i < chip->nr_allocated_banks; i++) {
 		if (digests[i].alg_id != chip->allocated_banks[i].alg_id) {
-			rc = -EINVAL;
+			rc = EINVAL;
 			goto out;
 		}
 	}
@@ -395,28 +394,18 @@ int tpm_pm_suspend(struct device *dev)
 		return -ENODEV;
 
 	if (chip->flags & TPM_CHIP_FLAG_ALWAYS_POWERED)
-		goto suspended;
+		return 0;
 
-	if ((chip->flags & TPM_CHIP_FLAG_FIRMWARE_POWER_MANAGED) &&
-	    !pm_suspend_via_firmware())
-		goto suspended;
-
-	rc = tpm_try_get_ops(chip);
-	if (!rc) {
+	if (!tpm_chip_start(chip)) {
 		if (chip->flags & TPM_CHIP_FLAG_TPM2)
 			tpm2_shutdown(chip, TPM2_SU_STATE);
 		else
 			rc = tpm1_pm_suspend(chip, tpm_suspend_pcr);
 
-		tpm_put_ops(chip);
+		tpm_chip_stop(chip);
 	}
 
-suspended:
-	chip->flags |= TPM_CHIP_FLAG_SUSPENDED;
-
-	if (rc)
-		dev_err(dev, "Ignoring error %d while suspending\n", rc);
-	return 0;
+	return rc;
 }
 EXPORT_SYMBOL_GPL(tpm_pm_suspend);
 
@@ -430,14 +419,6 @@ int tpm_pm_resume(struct device *dev)
 
 	if (chip == NULL)
 		return -ENODEV;
-
-	chip->flags &= ~TPM_CHIP_FLAG_SUSPENDED;
-
-	/*
-	 * Guarantee that SUSPENDED is written last, so that hwrng does not
-	 * activate before the chip has been fully resumed.
-	 */
-	wmb();
 
 	return 0;
 }
@@ -472,19 +453,76 @@ int tpm_get_random(struct tpm_chip *chip, u8 *out, size_t max)
 }
 EXPORT_SYMBOL_GPL(tpm_get_random);
 
+/**
+ * tpm_seal_trusted() - seal a trusted key payload
+ * @chip:	a &struct tpm_chip instance, %NULL for the default chip
+ * @options:	authentication values and other options
+ * @payload:	the key data in clear and encrypted form
+ *
+ * Note: only TPM 2.0 chip are supported. TPM 1.x implementation is located in
+ * the keyring subsystem.
+ *
+ * Return: same as with tpm_transmit_cmd()
+ */
+int tpm_seal_trusted(struct tpm_chip *chip, struct trusted_key_payload *payload,
+		     struct trusted_key_options *options)
+{
+	int rc;
+
+	chip = tpm_find_get_ops(chip);
+	if (!chip || !(chip->flags & TPM_CHIP_FLAG_TPM2))
+		return -ENODEV;
+
+	rc = tpm2_seal_trusted(chip, payload, options);
+
+	tpm_put_ops(chip);
+	return rc;
+}
+EXPORT_SYMBOL_GPL(tpm_seal_trusted);
+
+/**
+ * tpm_unseal_trusted() - unseal a trusted key
+ * @chip:	a &struct tpm_chip instance, %NULL for the default chip
+ * @options:	authentication values and other options
+ * @payload:	the key data in clear and encrypted form
+ *
+ * Note: only TPM 2.0 chip are supported. TPM 1.x implementation is located in
+ * the keyring subsystem.
+ *
+ * Return: same as with tpm_transmit_cmd()
+ */
+int tpm_unseal_trusted(struct tpm_chip *chip,
+		       struct trusted_key_payload *payload,
+		       struct trusted_key_options *options)
+{
+	int rc;
+
+	chip = tpm_find_get_ops(chip);
+	if (!chip || !(chip->flags & TPM_CHIP_FLAG_TPM2))
+		return -ENODEV;
+
+	rc = tpm2_unseal_trusted(chip, payload, options);
+
+	tpm_put_ops(chip);
+
+	return rc;
+}
+EXPORT_SYMBOL_GPL(tpm_unseal_trusted);
+
 static int __init tpm_init(void)
 {
 	int rc;
 
-	rc = class_register(&tpm_class);
-	if (rc) {
+	tpm_class = class_create(THIS_MODULE, "tpm");
+	if (IS_ERR(tpm_class)) {
 		pr_err("couldn't create tpm class\n");
-		return rc;
+		return PTR_ERR(tpm_class);
 	}
 
-	rc = class_register(&tpmrm_class);
-	if (rc) {
+	tpmrm_class = class_create(THIS_MODULE, "tpmrm");
+	if (IS_ERR(tpmrm_class)) {
 		pr_err("couldn't create tpmrm class\n");
+		rc = PTR_ERR(tpmrm_class);
 		goto out_destroy_tpm_class;
 	}
 
@@ -505,9 +543,9 @@ static int __init tpm_init(void)
 out_unreg_chrdev:
 	unregister_chrdev_region(tpm_devt, 2 * TPM_NUM_DEVICES);
 out_destroy_tpmrm_class:
-	class_unregister(&tpmrm_class);
+	class_destroy(tpmrm_class);
 out_destroy_tpm_class:
-	class_unregister(&tpm_class);
+	class_destroy(tpm_class);
 
 	return rc;
 }
@@ -515,8 +553,8 @@ out_destroy_tpm_class:
 static void __exit tpm_exit(void)
 {
 	idr_destroy(&dev_nums_idr);
-	class_unregister(&tpm_class);
-	class_unregister(&tpmrm_class);
+	class_destroy(tpm_class);
+	class_destroy(tpmrm_class);
 	unregister_chrdev_region(tpm_devt, 2*TPM_NUM_DEVICES);
 	tpm_dev_common_exit();
 }
@@ -524,7 +562,7 @@ static void __exit tpm_exit(void)
 subsys_initcall(tpm_init);
 module_exit(tpm_exit);
 
-MODULE_AUTHOR("Leendert van Doorn <leendert@watson.ibm.com>");
+MODULE_AUTHOR("Leendert van Doorn (leendert@watson.ibm.com)");
 MODULE_DESCRIPTION("TPM Driver");
 MODULE_VERSION("2.0");
 MODULE_LICENSE("GPL");

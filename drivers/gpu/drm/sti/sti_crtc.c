@@ -11,6 +11,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_device.h>
+#include <drm/drm_plane_helper.h>
 #include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_vblank.h>
@@ -22,7 +23,7 @@
 #include "sti_vtg.h"
 
 static void sti_crtc_atomic_enable(struct drm_crtc *crtc,
-				   struct drm_atomic_state *state)
+				   struct drm_crtc_state *old_state)
 {
 	struct sti_mixer *mixer = to_sti_mixer(crtc);
 
@@ -34,7 +35,7 @@ static void sti_crtc_atomic_enable(struct drm_crtc *crtc,
 }
 
 static void sti_crtc_atomic_disable(struct drm_crtc *crtc,
-				    struct drm_atomic_state *state)
+				    struct drm_crtc_state *old_state)
 {
 	struct sti_mixer *mixer = to_sti_mixer(crtc);
 
@@ -132,7 +133,7 @@ sti_crtc_mode_set_nofb(struct drm_crtc *crtc)
 }
 
 static void sti_crtc_atomic_flush(struct drm_crtc *crtc,
-				  struct drm_atomic_state *state)
+				  struct drm_crtc_state *old_crtc_state)
 {
 	struct drm_device *drm_dev = crtc->dev;
 	struct sti_mixer *mixer = to_sti_mixer(crtc);
@@ -278,13 +279,12 @@ int sti_crtc_vblank_cb(struct notifier_block *nb,
 	return 0;
 }
 
-static int sti_crtc_enable_vblank(struct drm_crtc *crtc)
+int sti_crtc_enable_vblank(struct drm_device *dev, unsigned int pipe)
 {
-	struct drm_device *dev = crtc->dev;
-	unsigned int pipe = crtc->index;
 	struct sti_private *dev_priv = dev->dev_private;
 	struct sti_compositor *compo = dev_priv->compo;
 	struct notifier_block *vtg_vblank_nb = &compo->vtg_vblank_nb[pipe];
+	struct drm_crtc *crtc = &compo->mixer[pipe]->drm_crtc;
 	struct sti_vtg *vtg = compo->vtg[pipe];
 
 	DRM_DEBUG_DRIVER("\n");
@@ -297,10 +297,8 @@ static int sti_crtc_enable_vblank(struct drm_crtc *crtc)
 	return 0;
 }
 
-static void sti_crtc_disable_vblank(struct drm_crtc *crtc)
+void sti_crtc_disable_vblank(struct drm_device *drm_dev, unsigned int pipe)
 {
-	struct drm_device *drm_dev = crtc->dev;
-	unsigned int pipe = crtc->index;
 	struct sti_private *priv = drm_dev->dev_private;
 	struct sti_compositor *compo = priv->compo;
 	struct notifier_block *vtg_vblank_nb = &compo->vtg_vblank_nb[pipe];
@@ -318,7 +316,7 @@ static int sti_crtc_late_register(struct drm_crtc *crtc)
 	struct sti_compositor *compo = dev_get_drvdata(mixer->dev);
 
 	if (drm_crtc_index(crtc) == 0)
-		sti_compositor_debugfs_init(compo, crtc->dev->primary);
+		return sti_compositor_debugfs_init(compo, crtc->dev->primary);
 
 	return 0;
 }
@@ -332,8 +330,6 @@ static const struct drm_crtc_funcs sti_crtc_funcs = {
 	.atomic_duplicate_state = drm_atomic_helper_crtc_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_crtc_destroy_state,
 	.late_register = sti_crtc_late_register,
-	.enable_vblank = sti_crtc_enable_vblank,
-	.disable_vblank = sti_crtc_disable_vblank,
 };
 
 bool sti_crtc_is_main(struct drm_crtc *crtc)

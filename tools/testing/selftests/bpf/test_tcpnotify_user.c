@@ -19,12 +19,12 @@
 #include <linux/perf_event.h>
 #include <linux/err.h>
 
+#include "bpf_rlimit.h"
 #include "bpf_util.h"
 #include "cgroup_helpers.h"
 
 #include "test_tcpnotify.h"
 #include "trace_helpers.h"
-#include "testing_helpers.h"
 
 #define SOCKET_BUFFER_SIZE (getpagesize() < 8192L ? getpagesize() : 8192L)
 
@@ -69,8 +69,9 @@ int verify_result(const struct tcpnotify_globals *result)
 
 int main(int argc, char **argv)
 {
-	const char *file = "test_tcpnotify_kern.bpf.o";
+	const char *file = "test_tcpnotify_kern.o";
 	struct bpf_map *perf_map, *global_map;
+	struct perf_buffer_opts pb_opts = {};
 	struct tcpnotify_globals g = {0};
 	struct perf_buffer *pb = NULL;
 	const char *cg_path = "/foo";
@@ -81,17 +82,21 @@ int main(int argc, char **argv)
 	cpu_set_t cpuset;
 	__u32 key = 0;
 
-	libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
-
 	CPU_ZERO(&cpuset);
 	CPU_SET(0, &cpuset);
 	pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
 
-	cg_fd = cgroup_setup_and_join(cg_path);
+	if (setup_cgroup_environment())
+		goto err;
+
+	cg_fd = create_and_get_cgroup(cg_path);
 	if (cg_fd < 0)
 		goto err;
 
-	if (bpf_prog_test_load(file, BPF_PROG_TYPE_SOCK_OPS, &obj, &prog_fd)) {
+	if (join_cgroup(cg_path))
+		goto err;
+
+	if (bpf_prog_load(file, BPF_PROG_TYPE_SOCK_OPS, &obj, &prog_fd)) {
 		printf("FAILED: load_bpf_file failed for: %s\n", file);
 		goto err;
 	}
@@ -115,8 +120,9 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	pb = perf_buffer__new(bpf_map__fd(perf_map), 8, dummyfn, NULL, NULL, NULL);
-	if (!pb)
+	pb_opts.sample_cb = dummyfn;
+	pb = perf_buffer__new(bpf_map__fd(perf_map), 8, &pb_opts);
+	if (IS_ERR(pb))
 		goto err;
 
 	pthread_create(&tid, NULL, poller_thread, pb);
@@ -124,24 +130,17 @@ int main(int argc, char **argv)
 	sprintf(test_script,
 		"iptables -A INPUT -p tcp --dport %d -j DROP",
 		TESTPORT);
-	if (system(test_script)) {
-		printf("FAILED: execute command: %s, err %d\n", test_script, -errno);
-		goto err;
-	}
+	system(test_script);
 
 	sprintf(test_script,
 		"nc 127.0.0.1 %d < /etc/passwd > /dev/null 2>&1 ",
 		TESTPORT);
-	if (system(test_script))
-		printf("execute command: %s, err %d\n", test_script, -errno);
+	system(test_script);
 
 	sprintf(test_script,
 		"iptables -D INPUT -p tcp --dport %d -j DROP",
 		TESTPORT);
-	if (system(test_script)) {
-		printf("FAILED: execute command: %s, err %d\n", test_script, -errno);
-		goto err;
-	}
+	system(test_script);
 
 	rv = bpf_map_lookup_elem(bpf_map__fd(global_map), &key, &g);
 	if (rv != 0) {
@@ -163,6 +162,7 @@ err:
 	bpf_prog_detach(cg_fd, BPF_CGROUP_SOCK_OPS);
 	close(cg_fd);
 	cleanup_cgroup_environment();
-	perf_buffer__free(pb);
+	if (!IS_ERR_OR_NULL(pb))
+		perf_buffer__free(pb);
 	return error;
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * NILFS B-tree.
+ * btree.c - NILFS B-tree.
  *
  * Copyright (C) 2005-2008 Nippon Telegraph and Telephone Corporation.
  *
@@ -58,8 +58,7 @@ static void nilfs_btree_free_path(struct nilfs_btree_path *path)
 static int nilfs_btree_get_new_block(const struct nilfs_bmap *btree,
 				     __u64 ptr, struct buffer_head **bhp)
 {
-	struct inode *btnc_inode = NILFS_BMAP_I(btree)->i_assoc_inode;
-	struct address_space *btnc = btnc_inode->i_mapping;
+	struct address_space *btnc = &NILFS_BMAP_I(btree)->i_btnode_cache;
 	struct buffer_head *bh;
 
 	bh = nilfs_btnode_create_block(btnc, ptr);
@@ -352,10 +351,10 @@ static int nilfs_btree_node_broken(const struct nilfs_btree_node *node,
 		     (flags & NILFS_BTREE_NODE_ROOT) ||
 		     nchildren < 0 ||
 		     nchildren > NILFS_BTREE_NODE_NCHILDREN_MAX(size))) {
-		nilfs_crit(inode->i_sb,
-			   "bad btree node (ino=%lu, blocknr=%llu): level = %d, flags = 0x%x, nchildren = %d",
-			   inode->i_ino, (unsigned long long)blocknr, level,
-			   flags, nchildren);
+		nilfs_msg(inode->i_sb, KERN_CRIT,
+			  "bad btree node (ino=%lu, blocknr=%llu): level = %d, flags = 0x%x, nchildren = %d",
+			  inode->i_ino, (unsigned long long)blocknr, level,
+			  flags, nchildren);
 		ret = 1;
 	}
 	return ret;
@@ -382,9 +381,9 @@ static int nilfs_btree_root_broken(const struct nilfs_btree_node *node,
 		     level >= NILFS_BTREE_LEVEL_MAX ||
 		     nchildren < 0 ||
 		     nchildren > NILFS_BTREE_ROOT_NCHILDREN_MAX)) {
-		nilfs_crit(inode->i_sb,
-			   "bad btree root (ino=%lu): level = %d, flags = 0x%x, nchildren = %d",
-			   inode->i_ino, level, flags, nchildren);
+		nilfs_msg(inode->i_sb, KERN_CRIT,
+			  "bad btree root (ino=%lu): level = %d, flags = 0x%x, nchildren = %d",
+			  inode->i_ino, level, flags, nchildren);
 		ret = 1;
 	}
 	return ret;
@@ -398,7 +397,7 @@ int nilfs_btree_broken_node_block(struct buffer_head *bh)
 	if (buffer_nilfs_checked(bh))
 		return 0;
 
-	inode = bh->b_folio->mapping->host;
+	inode = bh->b_page->mapping->host;
 	ret = nilfs_btree_node_broken((struct nilfs_btree_node *)bh->b_data,
 				      bh->b_size, inode, bh->b_blocknr);
 	if (likely(!ret))
@@ -451,10 +450,10 @@ static int nilfs_btree_bad_node(const struct nilfs_bmap *btree,
 {
 	if (unlikely(nilfs_btree_node_get_level(node) != level)) {
 		dump_stack();
-		nilfs_crit(btree->b_inode->i_sb,
-			   "btree level mismatch (ino=%lu): %d != %d",
-			   btree->b_inode->i_ino,
-			   nilfs_btree_node_get_level(node), level);
+		nilfs_msg(btree->b_inode->i_sb, KERN_CRIT,
+			  "btree level mismatch (ino=%lu): %d != %d",
+			  btree->b_inode->i_ino,
+			  nilfs_btree_node_get_level(node), level);
 		return 1;
 	}
 	return 0;
@@ -471,27 +470,17 @@ static int __nilfs_btree_get_block(const struct nilfs_bmap *btree, __u64 ptr,
 				   struct buffer_head **bhp,
 				   const struct nilfs_btree_readahead_info *ra)
 {
-	struct inode *btnc_inode = NILFS_BMAP_I(btree)->i_assoc_inode;
-	struct address_space *btnc = btnc_inode->i_mapping;
+	struct address_space *btnc = &NILFS_BMAP_I(btree)->i_btnode_cache;
 	struct buffer_head *bh, *ra_bh;
 	sector_t submit_ptr = 0;
 	int ret;
 
-	ret = nilfs_btnode_submit_block(btnc, ptr, 0, REQ_OP_READ, &bh,
+	ret = nilfs_btnode_submit_block(btnc, ptr, 0, REQ_OP_READ, 0, &bh,
 					&submit_ptr);
 	if (ret) {
-		if (likely(ret == -EEXIST))
-			goto out_check;
-		if (ret == -ENOENT) {
-			/*
-			 * Block address translation failed due to invalid
-			 * value of 'ptr'.  In this case, return internal code
-			 * -EINVAL (broken bmap) to notify bmap layer of fatal
-			 * metadata corruption.
-			 */
-			ret = -EINVAL;
-		}
-		return ret;
+		if (ret != -EEXIST)
+			return ret;
+		goto out_check;
 	}
 
 	if (ra) {
@@ -504,8 +493,8 @@ static int __nilfs_btree_get_block(const struct nilfs_bmap *btree, __u64 ptr,
 			ptr2 = nilfs_btree_node_get_ptr(ra->node, i, ra->ncmax);
 
 			ret = nilfs_btnode_submit_block(btnc, ptr2, 0,
-						REQ_OP_READ | REQ_RAHEAD,
-						&ra_bh, &submit_ptr);
+							REQ_OP_READ, REQ_RAHEAD,
+							&ra_bh, &submit_ptr);
 			if (likely(!ret || ret == -EEXIST))
 				brelse(ra_bh);
 			else if (ret != -EBUSY)
@@ -519,7 +508,7 @@ static int __nilfs_btree_get_block(const struct nilfs_bmap *btree, __u64 ptr,
 
  out_no_wait:
 	if (!buffer_uptodate(bh)) {
-		nilfs_err(btree->b_inode->i_sb,
+		nilfs_msg(btree->b_inode->i_sb, KERN_ERR,
 			  "I/O error reading b-tree node block (ino=%lu, blocknr=%llu)",
 			  btree->b_inode->i_ino, (unsigned long long)ptr);
 		brelse(bh);
@@ -724,7 +713,7 @@ static int nilfs_btree_lookup_contig(const struct nilfs_bmap *btree,
 		dat = nilfs_bmap_get_dat(btree);
 		ret = nilfs_dat_translate(dat, ptr, &blocknr);
 		if (ret < 0)
-			goto dat_error;
+			goto out;
 		ptr = blocknr;
 	}
 	cnt = 1;
@@ -743,12 +732,13 @@ static int nilfs_btree_lookup_contig(const struct nilfs_bmap *btree,
 			if (dat) {
 				ret = nilfs_dat_translate(dat, ptr2, &blocknr);
 				if (ret < 0)
-					goto dat_error;
+					goto out;
 				ptr2 = blocknr;
 			}
 			if (ptr2 != ptr + cnt || ++cnt == maxblocks)
 				goto end;
 			index++;
+			continue;
 		}
 		if (level == maxlevel)
 			break;
@@ -781,11 +771,6 @@ static int nilfs_btree_lookup_contig(const struct nilfs_bmap *btree,
  out:
 	nilfs_btree_free_path(path);
 	return ret;
-
- dat_error:
-	if (ret == -ENOENT)
-		ret = -EINVAL;  /* Notify bmap layer of metadata corruption */
-	goto out;
 }
 
 static void nilfs_btree_promote_key(struct nilfs_bmap *btree,
@@ -1682,7 +1667,8 @@ static int nilfs_btree_check_delete(struct nilfs_bmap *btree, __u64 key)
 	maxkey = nilfs_btree_node_get_key(node, nchildren - 1);
 	nextmaxkey = (nchildren > 1) ?
 		nilfs_btree_node_get_key(node, nchildren - 2) : 0;
-	brelse(bh);
+	if (bh != NULL)
+		brelse(bh);
 
 	return (maxkey == key) && (nextmaxkey < NILFS_BMAP_LARGE_LOW);
 }
@@ -1730,7 +1716,8 @@ static int nilfs_btree_gather_data(struct nilfs_bmap *btree,
 		ptrs[i] = le64_to_cpu(dptrs[i]);
 	}
 
-	brelse(bh);
+	if (bh != NULL)
+		brelse(bh);
 
 	return nitems;
 }
@@ -1754,10 +1741,6 @@ nilfs_btree_prepare_convert_and_insert(struct nilfs_bmap *btree, __u64 key,
 		dreq->bpr_ptr = nilfs_btree_find_target_v(btree, NULL, key);
 		dat = nilfs_bmap_get_dat(btree);
 	}
-
-	ret = nilfs_attach_btree_node_cache(&NILFS_BMAP_I(btree)->vfs_inode);
-	if (ret < 0)
-		return ret;
 
 	ret = nilfs_bmap_prepare_alloc_ptr(btree, dreq, dat);
 	if (ret < 0)
@@ -1931,7 +1914,7 @@ static int nilfs_btree_prepare_update_v(struct nilfs_bmap *btree,
 		path[level].bp_ctxt.newkey = path[level].bp_newreq.bpr_ptr;
 		path[level].bp_ctxt.bh = path[level].bp_bh;
 		ret = nilfs_btnode_prepare_change_key(
-			NILFS_BMAP_I(btree)->i_assoc_inode->i_mapping,
+			&NILFS_BMAP_I(btree)->i_btnode_cache,
 			&path[level].bp_ctxt);
 		if (ret < 0) {
 			nilfs_dat_abort_update(dat,
@@ -1957,7 +1940,7 @@ static void nilfs_btree_commit_update_v(struct nilfs_bmap *btree,
 
 	if (buffer_nilfs_node(path[level].bp_bh)) {
 		nilfs_btnode_commit_change_key(
-			NILFS_BMAP_I(btree)->i_assoc_inode->i_mapping,
+			&NILFS_BMAP_I(btree)->i_btnode_cache,
 			&path[level].bp_ctxt);
 		path[level].bp_bh = path[level].bp_ctxt.bh;
 	}
@@ -1976,7 +1959,7 @@ static void nilfs_btree_abort_update_v(struct nilfs_bmap *btree,
 			       &path[level].bp_newreq.bpr_req);
 	if (buffer_nilfs_node(path[level].bp_bh))
 		nilfs_btnode_abort_change_key(
-			NILFS_BMAP_I(btree)->i_assoc_inode->i_mapping,
+			&NILFS_BMAP_I(btree)->i_btnode_cache,
 			&path[level].bp_ctxt);
 }
 
@@ -2091,10 +2074,10 @@ static int nilfs_btree_propagate(struct nilfs_bmap *btree,
 	ret = nilfs_btree_do_lookup(btree, path, key, NULL, level + 1, 0);
 	if (ret < 0) {
 		if (unlikely(ret == -ENOENT))
-			nilfs_crit(btree->b_inode->i_sb,
-				   "writing node/leaf block does not appear in b-tree (ino=%lu) at key=%llu, level=%d",
-				   btree->b_inode->i_ino,
-				   (unsigned long long)key, level);
+			nilfs_msg(btree->b_inode->i_sb, KERN_CRIT,
+				  "writing node/leaf block does not appear in b-tree (ino=%lu) at key=%llu, level=%d",
+				  btree->b_inode->i_ino,
+				  (unsigned long long)key, level);
 		goto out;
 	}
 
@@ -2131,11 +2114,11 @@ static void nilfs_btree_add_dirty_buffer(struct nilfs_bmap *btree,
 	if (level < NILFS_BTREE_LEVEL_NODE_MIN ||
 	    level >= NILFS_BTREE_LEVEL_MAX) {
 		dump_stack();
-		nilfs_warn(btree->b_inode->i_sb,
-			   "invalid btree level: %d (key=%llu, ino=%lu, blocknr=%llu)",
-			   level, (unsigned long long)key,
-			   btree->b_inode->i_ino,
-			   (unsigned long long)bh->b_blocknr);
+		nilfs_msg(btree->b_inode->i_sb, KERN_WARNING,
+			  "invalid btree level: %d (key=%llu, ino=%lu, blocknr=%llu)",
+			  level, (unsigned long long)key,
+			  btree->b_inode->i_ino,
+			  (unsigned long long)bh->b_blocknr);
 		return;
 	}
 
@@ -2152,10 +2135,9 @@ static void nilfs_btree_add_dirty_buffer(struct nilfs_bmap *btree,
 static void nilfs_btree_lookup_dirty_buffers(struct nilfs_bmap *btree,
 					     struct list_head *listp)
 {
-	struct inode *btnc_inode = NILFS_BMAP_I(btree)->i_assoc_inode;
-	struct address_space *btcache = btnc_inode->i_mapping;
+	struct address_space *btcache = &NILFS_BMAP_I(btree)->i_btnode_cache;
 	struct list_head lists[NILFS_BTREE_LEVEL_MAX];
-	struct folio_batch fbatch;
+	struct pagevec pvec;
 	struct buffer_head *bh, *head;
 	pgoff_t index = 0;
 	int level, i;
@@ -2165,19 +2147,19 @@ static void nilfs_btree_lookup_dirty_buffers(struct nilfs_bmap *btree,
 	     level++)
 		INIT_LIST_HEAD(&lists[level]);
 
-	folio_batch_init(&fbatch);
+	pagevec_init(&pvec);
 
-	while (filemap_get_folios_tag(btcache, &index, (pgoff_t)-1,
-				PAGECACHE_TAG_DIRTY, &fbatch)) {
-		for (i = 0; i < folio_batch_count(&fbatch); i++) {
-			bh = head = folio_buffers(fbatch.folios[i]);
+	while (pagevec_lookup_tag(&pvec, btcache, &index,
+					PAGECACHE_TAG_DIRTY)) {
+		for (i = 0; i < pagevec_count(&pvec); i++) {
+			bh = head = page_buffers(pvec.pages[i]);
 			do {
 				if (buffer_dirty(bh))
 					nilfs_btree_add_dirty_buffer(btree,
 								     lists, bh);
 			} while ((bh = bh->b_this_page) != head);
 		}
-		folio_batch_release(&fbatch);
+		pagevec_release(&pvec);
 		cond_resched();
 	}
 
@@ -2207,12 +2189,12 @@ static int nilfs_btree_assign_p(struct nilfs_bmap *btree,
 		path[level].bp_ctxt.newkey = blocknr;
 		path[level].bp_ctxt.bh = *bh;
 		ret = nilfs_btnode_prepare_change_key(
-			NILFS_BMAP_I(btree)->i_assoc_inode->i_mapping,
+			&NILFS_BMAP_I(btree)->i_btnode_cache,
 			&path[level].bp_ctxt);
 		if (ret < 0)
 			return ret;
 		nilfs_btnode_commit_change_key(
-			NILFS_BMAP_I(btree)->i_assoc_inode->i_mapping,
+			&NILFS_BMAP_I(btree)->i_btnode_cache,
 			&path[level].bp_ctxt);
 		*bh = path[level].bp_ctxt.bh;
 	}
@@ -2224,7 +2206,6 @@ static int nilfs_btree_assign_p(struct nilfs_bmap *btree,
 	/* on-disk format */
 	binfo->bi_dat.bi_blkoff = cpu_to_le64(key);
 	binfo->bi_dat.bi_level = level;
-	memset(binfo->bi_dat.bi_pad, 0, sizeof(binfo->bi_dat.bi_pad));
 
 	return 0;
 }
@@ -2418,10 +2399,6 @@ int nilfs_btree_init(struct nilfs_bmap *bmap)
 
 	if (nilfs_btree_root_broken(nilfs_btree_get_root(bmap), bmap->b_inode))
 		ret = -EIO;
-	else
-		ret = nilfs_attach_btree_node_cache(
-			&NILFS_BMAP_I(bmap)->vfs_inode);
-
 	return ret;
 }
 

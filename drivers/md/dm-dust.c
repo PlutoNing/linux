@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2018 Red Hat, Inc.
  *
@@ -17,7 +17,6 @@
 struct badblock {
 	struct rb_node node;
 	sector_t bb;
-	unsigned char wr_fail_cnt;
 };
 
 struct dust_device {
@@ -102,8 +101,7 @@ static int dust_remove_block(struct dust_device *dd, unsigned long long block)
 	return 0;
 }
 
-static int dust_add_block(struct dust_device *dd, unsigned long long block,
-			  unsigned char wr_fail_cnt)
+static int dust_add_block(struct dust_device *dd, unsigned long long block)
 {
 	struct badblock *bblock;
 	unsigned long flags;
@@ -117,7 +115,6 @@ static int dust_add_block(struct dust_device *dd, unsigned long long block,
 
 	spin_lock_irqsave(&dd->dust_lock, flags);
 	bblock->bb = block;
-	bblock->wr_fail_cnt = wr_fail_cnt;
 	if (!dust_rb_insert(&dd->badblocklist, bblock)) {
 		if (!dd->quiet_mode) {
 			DMERR("%s: block %llu already in badblocklist",
@@ -129,31 +126,27 @@ static int dust_add_block(struct dust_device *dd, unsigned long long block,
 	}
 
 	dd->badblock_count++;
-	if (!dd->quiet_mode) {
-		DMINFO("%s: badblock added at block %llu with write fail count %u",
-		       __func__, block, wr_fail_cnt);
-	}
+	if (!dd->quiet_mode)
+		DMINFO("%s: badblock added at block %llu", __func__, block);
 	spin_unlock_irqrestore(&dd->dust_lock, flags);
 
 	return 0;
 }
 
-static int dust_query_block(struct dust_device *dd, unsigned long long block, char *result,
-			    unsigned int maxlen, unsigned int *sz_ptr)
+static int dust_query_block(struct dust_device *dd, unsigned long long block)
 {
 	struct badblock *bblock;
 	unsigned long flags;
-	unsigned int sz = *sz_ptr;
 
 	spin_lock_irqsave(&dd->dust_lock, flags);
 	bblock = dust_rb_search(&dd->badblocklist, block);
 	if (bblock != NULL)
-		DMEMIT("%s: block %llu found in badblocklist", __func__, block);
+		DMINFO("%s: block %llu found in badblocklist", __func__, block);
 	else
-		DMEMIT("%s: block %llu not found in badblocklist", __func__, block);
+		DMINFO("%s: block %llu not found in badblocklist", __func__, block);
 	spin_unlock_irqrestore(&dd->dust_lock, flags);
 
-	return 1;
+	return 0;
 }
 
 static int __dust_map_read(struct dust_device *dd, sector_t thisblock)
@@ -170,26 +163,21 @@ static int dust_map_read(struct dust_device *dd, sector_t thisblock,
 			 bool fail_read_on_bb)
 {
 	unsigned long flags;
-	int r = DM_MAPIO_REMAPPED;
+	int ret = DM_MAPIO_REMAPPED;
 
 	if (fail_read_on_bb) {
 		thisblock >>= dd->sect_per_block_shift;
 		spin_lock_irqsave(&dd->dust_lock, flags);
-		r = __dust_map_read(dd, thisblock);
+		ret = __dust_map_read(dd, thisblock);
 		spin_unlock_irqrestore(&dd->dust_lock, flags);
 	}
 
-	return r;
+	return ret;
 }
 
-static int __dust_map_write(struct dust_device *dd, sector_t thisblock)
+static void __dust_map_write(struct dust_device *dd, sector_t thisblock)
 {
 	struct badblock *bblk = dust_rb_search(&dd->badblocklist, thisblock);
-
-	if (bblk && bblk->wr_fail_cnt > 0) {
-		bblk->wr_fail_cnt--;
-		return DM_MAPIO_KILL;
-	}
 
 	if (bblk) {
 		rb_erase(&bblk->node, &dd->badblocklist);
@@ -201,40 +189,37 @@ static int __dust_map_write(struct dust_device *dd, sector_t thisblock)
 			       (unsigned long long)thisblock);
 		}
 	}
-
-	return DM_MAPIO_REMAPPED;
 }
 
 static int dust_map_write(struct dust_device *dd, sector_t thisblock,
 			  bool fail_read_on_bb)
 {
 	unsigned long flags;
-	int r = DM_MAPIO_REMAPPED;
 
 	if (fail_read_on_bb) {
 		thisblock >>= dd->sect_per_block_shift;
 		spin_lock_irqsave(&dd->dust_lock, flags);
-		r = __dust_map_write(dd, thisblock);
+		__dust_map_write(dd, thisblock);
 		spin_unlock_irqrestore(&dd->dust_lock, flags);
 	}
 
-	return r;
+	return DM_MAPIO_REMAPPED;
 }
 
 static int dust_map(struct dm_target *ti, struct bio *bio)
 {
 	struct dust_device *dd = ti->private;
-	int r;
+	int ret;
 
 	bio_set_dev(bio, dd->dev->bdev);
 	bio->bi_iter.bi_sector = dd->start + dm_target_offset(ti, bio->bi_iter.bi_sector);
 
 	if (bio_data_dir(bio) == READ)
-		r = dust_map_read(dd, bio->bi_iter.bi_sector, dd->fail_read_on_bb);
+		ret = dust_map_read(dd, bio->bi_iter.bi_sector, dd->fail_read_on_bb);
 	else
-		r = dust_map_write(dd, bio->bi_iter.bi_sector, dd->fail_read_on_bb);
+		ret = dust_map_write(dd, bio->bi_iter.bi_sector, dd->fail_read_on_bb);
 
-	return r;
+	return ret;
 }
 
 static bool __dust_clear_badblocks(struct rb_root *tree,
@@ -261,13 +246,11 @@ static bool __dust_clear_badblocks(struct rb_root *tree,
 	return true;
 }
 
-static int dust_clear_badblocks(struct dust_device *dd, char *result, unsigned int maxlen,
-				unsigned int *sz_ptr)
+static int dust_clear_badblocks(struct dust_device *dd)
 {
 	unsigned long flags;
 	struct rb_root badblocklist;
 	unsigned long long badblock_count;
-	unsigned int sz = *sz_ptr;
 
 	spin_lock_irqsave(&dd->dust_lock, flags);
 	badblocklist = dd->badblocklist;
@@ -277,36 +260,11 @@ static int dust_clear_badblocks(struct dust_device *dd, char *result, unsigned i
 	spin_unlock_irqrestore(&dd->dust_lock, flags);
 
 	if (!__dust_clear_badblocks(&badblocklist, badblock_count))
-		DMEMIT("%s: no badblocks found", __func__);
+		DMINFO("%s: no badblocks found", __func__);
 	else
-		DMEMIT("%s: badblocks cleared", __func__);
+		DMINFO("%s: badblocks cleared", __func__);
 
-	return 1;
-}
-
-static int dust_list_badblocks(struct dust_device *dd, char *result, unsigned int maxlen,
-				unsigned int *sz_ptr)
-{
-	unsigned long flags;
-	struct rb_root badblocklist;
-	struct rb_node *node;
-	struct badblock *bblk;
-	unsigned int sz = *sz_ptr;
-	unsigned long long num = 0;
-
-	spin_lock_irqsave(&dd->dust_lock, flags);
-	badblocklist = dd->badblocklist;
-	for (node = rb_first(&badblocklist); node; node = rb_next(node)) {
-		bblk = rb_entry(node, struct badblock, node);
-		DMEMIT("%llu\n", bblk->bb);
-		num++;
-	}
-
-	spin_unlock_irqrestore(&dd->dust_lock, flags);
-	if (!num)
-		DMEMIT("No blocks in badblocklist");
-
-	return 1;
+	return 0;
 }
 
 /*
@@ -412,17 +370,14 @@ static void dust_dtr(struct dm_target *ti)
 }
 
 static int dust_message(struct dm_target *ti, unsigned int argc, char **argv,
-			char *result, unsigned int maxlen)
+			char *result_buf, unsigned int maxlen)
 {
 	struct dust_device *dd = ti->private;
-	sector_t size = bdev_nr_sectors(dd->dev->bdev);
+	sector_t size = i_size_read(dd->dev->bdev->bd_inode) >> SECTOR_SHIFT;
 	bool invalid_msg = false;
-	int r = -EINVAL;
+	int result = -EINVAL;
 	unsigned long long tmp, block;
-	unsigned char wr_fail_cnt;
-	unsigned int tmp_ui;
 	unsigned long flags;
-	unsigned int sz = 0;
 	char dummy;
 
 	if (argc == 1) {
@@ -433,71 +388,45 @@ static int dust_message(struct dm_target *ti, unsigned int argc, char **argv,
 		} else if (!strcasecmp(argv[0], "disable")) {
 			DMINFO("disabling read failures on bad sectors");
 			dd->fail_read_on_bb = false;
-			r = 0;
+			result = 0;
 		} else if (!strcasecmp(argv[0], "enable")) {
 			DMINFO("enabling read failures on bad sectors");
 			dd->fail_read_on_bb = true;
-			r = 0;
+			result = 0;
 		} else if (!strcasecmp(argv[0], "countbadblocks")) {
 			spin_lock_irqsave(&dd->dust_lock, flags);
-			DMEMIT("countbadblocks: %llu badblock(s) found",
+			DMINFO("countbadblocks: %llu badblock(s) found",
 			       dd->badblock_count);
 			spin_unlock_irqrestore(&dd->dust_lock, flags);
-			r = 1;
+			result = 0;
 		} else if (!strcasecmp(argv[0], "clearbadblocks")) {
-			r = dust_clear_badblocks(dd, result, maxlen, &sz);
+			result = dust_clear_badblocks(dd);
 		} else if (!strcasecmp(argv[0], "quiet")) {
 			if (!dd->quiet_mode)
 				dd->quiet_mode = true;
 			else
 				dd->quiet_mode = false;
-			r = 0;
-		} else if (!strcasecmp(argv[0], "listbadblocks")) {
-			r = dust_list_badblocks(dd, result, maxlen, &sz);
+			result = 0;
 		} else {
 			invalid_msg = true;
 		}
 	} else if (argc == 2) {
 		if (sscanf(argv[1], "%llu%c", &tmp, &dummy) != 1)
-			return r;
+			return result;
 
 		block = tmp;
 		sector_div(size, dd->sect_per_block);
 		if (block > size) {
 			DMERR("selected block value out of range");
-			return r;
+			return result;
 		}
 
 		if (!strcasecmp(argv[0], "addbadblock"))
-			r = dust_add_block(dd, block, 0);
+			result = dust_add_block(dd, block);
 		else if (!strcasecmp(argv[0], "removebadblock"))
-			r = dust_remove_block(dd, block);
+			result = dust_remove_block(dd, block);
 		else if (!strcasecmp(argv[0], "queryblock"))
-			r = dust_query_block(dd, block, result, maxlen, &sz);
-		else
-			invalid_msg = true;
-
-	} else if (argc == 3) {
-		if (sscanf(argv[1], "%llu%c", &tmp, &dummy) != 1)
-			return r;
-
-		if (sscanf(argv[2], "%u%c", &tmp_ui, &dummy) != 1)
-			return r;
-
-		block = tmp;
-		if (tmp_ui > 255) {
-			DMERR("selected write fail count out of range");
-			return r;
-		}
-		wr_fail_cnt = tmp_ui;
-		sector_div(size, dd->sect_per_block);
-		if (block > size) {
-			DMERR("selected block value out of range");
-			return r;
-		}
-
-		if (!strcasecmp(argv[0], "addbadblock"))
-			r = dust_add_block(dd, block, wr_fail_cnt);
+			result = dust_query_block(dd, block);
 		else
 			invalid_msg = true;
 
@@ -507,7 +436,7 @@ static int dust_message(struct dm_target *ti, unsigned int argc, char **argv,
 	if (invalid_msg)
 		DMERR("unrecognized message '%s' received", argv[0]);
 
-	return r;
+	return result;
 }
 
 static void dust_status(struct dm_target *ti, status_type_t type,
@@ -527,10 +456,6 @@ static void dust_status(struct dm_target *ti, status_type_t type,
 		DMEMIT("%s %llu %u", dd->dev->name,
 		       (unsigned long long)dd->start, dd->blksz);
 		break;
-
-	case STATUSTYPE_IMA:
-		*result = '\0';
-		break;
 	}
 }
 
@@ -544,7 +469,8 @@ static int dust_prepare_ioctl(struct dm_target *ti, struct block_device **bdev)
 	/*
 	 * Only pass ioctls through if the device sizes match exactly.
 	 */
-	if (dd->start || ti->len != bdev_nr_sectors(dev->bdev))
+	if (dd->start ||
+	    ti->len != i_size_read(dev->bdev->bd_inode) >> SECTOR_SHIFT)
 		return 1;
 
 	return 0;
@@ -570,8 +496,25 @@ static struct target_type dust_target = {
 	.status = dust_status,
 	.prepare_ioctl = dust_prepare_ioctl,
 };
-module_dm(dust);
+
+static int __init dm_dust_init(void)
+{
+	int result = dm_register_target(&dust_target);
+
+	if (result < 0)
+		DMERR("dm_register_target failed %d", result);
+
+	return result;
+}
+
+static void __exit dm_dust_exit(void)
+{
+	dm_unregister_target(&dust_target);
+}
+
+module_init(dm_dust_init);
+module_exit(dm_dust_exit);
 
 MODULE_DESCRIPTION(DM_NAME " dust test target");
-MODULE_AUTHOR("Bryan Gurney <dm-devel@lists.linux.dev>");
+MODULE_AUTHOR("Bryan Gurney <dm-devel@redhat.com>");
 MODULE_LICENSE("GPL");

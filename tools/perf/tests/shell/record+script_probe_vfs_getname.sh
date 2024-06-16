@@ -9,26 +9,24 @@
 # SPDX-License-Identifier: GPL-2.0
 # Arnaldo Carvalho de Melo <acme@kernel.org>, 2017
 
-# shellcheck source=lib/probe.sh
-. "$(dirname "$0")/lib/probe.sh"
+. $(dirname $0)/lib/probe.sh
 
 skip_if_no_perf_probe || exit 2
 
-# shellcheck source=lib/probe_vfs_getname.sh
-. "$(dirname "$0")/lib/probe_vfs_getname.sh"
+. $(dirname $0)/lib/probe_vfs_getname.sh
+
+perfdata=$(mktemp /tmp/__perf_test.perf.data.XXXXX)
+file=$(mktemp /tmp/temporary_file.XXXXX)
 
 record_open_file() {
 	echo "Recording open file:"
-	# Check presence of libtraceevent support to run perf record
-	skip_no_probe_record_support "probe:vfs_getname*"
-	[ $? -eq 2 ] && return 2
-	perf record -o ${perfdata} -e probe:vfs_getname\* touch $file
+	perf record -o ${perfdata} -e probe:vfs_getname touch $file
 }
 
 perf_script_filenames() {
 	echo "Looking at perf.data file for vfs_getname records for the file we touched:"
 	perf script -i ${perfdata} | \
-	grep -E " +touch +[0-9]+ +\[[0-9]+\] +[0-9]+\.[0-9]+: +probe:vfs_getname[_0-9]*: +\([[:xdigit:]]+\) +pathname=\"${file}\""
+	egrep " +touch +[0-9]+ +\[[0-9]+\] +[0-9]+\.[0-9]+: +probe:vfs_getname: +\([[:xdigit:]]+\) +pathname=\"${file}\""
 }
 
 add_probe_vfs_getname || skip_if_no_debuginfo
@@ -36,9 +34,6 @@ err=$?
 if [ $err -ne 0 ] ; then
 	exit $err
 fi
-
-perfdata=$(mktemp /tmp/__perf_test.perf.data.XXXXX)
-file=$(mktemp /tmp/temporary_file.XXXXX)
 
 record_open_file && perf_script_filenames
 err=$?

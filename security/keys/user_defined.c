@@ -82,7 +82,7 @@ EXPORT_SYMBOL_GPL(user_preparse);
  */
 void user_free_preparse(struct key_preparsed_payload *prep)
 {
-	kfree_sensitive(prep->payload.data[0]);
+	kzfree(prep->payload.data[0]);
 }
 EXPORT_SYMBOL_GPL(user_free_preparse);
 
@@ -91,7 +91,7 @@ static void user_free_payload_rcu(struct rcu_head *head)
 	struct user_key_payload *payload;
 
 	payload = container_of(head, struct user_key_payload, rcu);
-	kfree_sensitive(payload);
+	kzfree(payload);
 }
 
 /*
@@ -147,7 +147,7 @@ void user_destroy(struct key *key)
 {
 	struct user_key_payload *upayload = key->payload.data[0];
 
-	kfree_sensitive(upayload);
+	kzfree(upayload);
 }
 
 EXPORT_SYMBOL_GPL(user_destroy);
@@ -168,7 +168,7 @@ EXPORT_SYMBOL_GPL(user_describe);
  * read the key data
  * - the key's semaphore is read-locked
  */
-long user_read(const struct key *key, char *buffer, size_t buflen)
+long user_read(const struct key *key, char __user *buffer, size_t buflen)
 {
 	const struct user_key_payload *upayload;
 	long ret;
@@ -181,7 +181,8 @@ long user_read(const struct key *key, char *buffer, size_t buflen)
 		if (buflen > upayload->datalen)
 			buflen = upayload->datalen;
 
-		memcpy(buffer, upayload->data, buflen);
+		if (copy_to_user(buffer, upayload->data, buflen) != 0)
+			ret = -EFAULT;
 	}
 
 	return ret;

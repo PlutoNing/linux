@@ -9,12 +9,12 @@
  * @data: message payload
  *
  * This is the structure for data used in mbox_send_message
- * the maximum length of data buffer is fixed to 32 bytes.
+ * the maximum length of data buffer is fixed to 12 bytes.
  * Client is supposed to be aware of this.
  */
 struct zynqmp_ipi_message {
 	size_t len;
-	u8 data[];
+	u8 data[0];
 };
 
 #endif /* _LINUX_ZYNQMP_IPI_MESSAGE_H_ */

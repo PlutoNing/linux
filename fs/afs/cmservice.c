@@ -13,8 +13,6 @@
 #include "internal.h"
 #include "afs_cm.h"
 #include "protocol_yfs.h"
-#define RXRPC_TRACE_ONLY_DEFINE_ENUMS
-#include <trace/events/rxrpc.h>
 
 static int afs_deliver_cb_init_call_back_state(struct afs_call *);
 static int afs_deliver_cb_init_call_back_state3(struct afs_call *);
@@ -31,11 +29,16 @@ static void SRXAFSCB_TellMeAboutYourself(struct work_struct *);
 
 static int afs_deliver_yfs_cb_callback(struct afs_call *);
 
+#define CM_NAME(name) \
+	char afs_SRXCB##name##_name[] __tracepoint_string =	\
+		"CB." #name
+
 /*
  * CB.CallBack operation type
  */
+static CM_NAME(CallBack);
 static const struct afs_call_type afs_SRXCBCallBack = {
-	.name		= "CB.CallBack",
+	.name		= afs_SRXCBCallBack_name,
 	.deliver	= afs_deliver_cb_callback,
 	.destructor	= afs_cm_destructor,
 	.work		= SRXAFSCB_CallBack,
@@ -44,8 +47,9 @@ static const struct afs_call_type afs_SRXCBCallBack = {
 /*
  * CB.InitCallBackState operation type
  */
+static CM_NAME(InitCallBackState);
 static const struct afs_call_type afs_SRXCBInitCallBackState = {
-	.name		= "CB.InitCallBackState",
+	.name		= afs_SRXCBInitCallBackState_name,
 	.deliver	= afs_deliver_cb_init_call_back_state,
 	.destructor	= afs_cm_destructor,
 	.work		= SRXAFSCB_InitCallBackState,
@@ -54,8 +58,9 @@ static const struct afs_call_type afs_SRXCBInitCallBackState = {
 /*
  * CB.InitCallBackState3 operation type
  */
+static CM_NAME(InitCallBackState3);
 static const struct afs_call_type afs_SRXCBInitCallBackState3 = {
-	.name		= "CB.InitCallBackState3",
+	.name		= afs_SRXCBInitCallBackState3_name,
 	.deliver	= afs_deliver_cb_init_call_back_state3,
 	.destructor	= afs_cm_destructor,
 	.work		= SRXAFSCB_InitCallBackState,
@@ -64,8 +69,9 @@ static const struct afs_call_type afs_SRXCBInitCallBackState3 = {
 /*
  * CB.Probe operation type
  */
+static CM_NAME(Probe);
 static const struct afs_call_type afs_SRXCBProbe = {
-	.name		= "CB.Probe",
+	.name		= afs_SRXCBProbe_name,
 	.deliver	= afs_deliver_cb_probe,
 	.destructor	= afs_cm_destructor,
 	.work		= SRXAFSCB_Probe,
@@ -74,8 +80,9 @@ static const struct afs_call_type afs_SRXCBProbe = {
 /*
  * CB.ProbeUuid operation type
  */
+static CM_NAME(ProbeUuid);
 static const struct afs_call_type afs_SRXCBProbeUuid = {
-	.name		= "CB.ProbeUuid",
+	.name		= afs_SRXCBProbeUuid_name,
 	.deliver	= afs_deliver_cb_probe_uuid,
 	.destructor	= afs_cm_destructor,
 	.work		= SRXAFSCB_ProbeUuid,
@@ -84,8 +91,9 @@ static const struct afs_call_type afs_SRXCBProbeUuid = {
 /*
  * CB.TellMeAboutYourself operation type
  */
+static CM_NAME(TellMeAboutYourself);
 static const struct afs_call_type afs_SRXCBTellMeAboutYourself = {
-	.name		= "CB.TellMeAboutYourself",
+	.name		= afs_SRXCBTellMeAboutYourself_name,
 	.deliver	= afs_deliver_cb_tell_me_about_yourself,
 	.destructor	= afs_cm_destructor,
 	.work		= SRXAFSCB_TellMeAboutYourself,
@@ -94,8 +102,9 @@ static const struct afs_call_type afs_SRXCBTellMeAboutYourself = {
 /*
  * YFS CB.CallBack operation type
  */
+static CM_NAME(YFS_CallBack);
 static const struct afs_call_type afs_SRXYFSCB_CallBack = {
-	.name		= "YFSCB.CallBack",
+	.name		= afs_SRXCBYFS_CallBack_name,
 	.deliver	= afs_deliver_yfs_cb_callback,
 	.destructor	= afs_cm_destructor,
 	.work		= SRXAFSCB_CallBack,
@@ -108,6 +117,8 @@ static const struct afs_call_type afs_SRXYFSCB_CallBack = {
 bool afs_cm_incoming_call(struct afs_call *call)
 {
 	_enter("{%u, CB.OP %u}", call->service_id, call->operation_ID);
+
+	call->epoch = rxrpc_kernel_get_epoch(call->net->socket, call->rxcall);
 
 	switch (call->operation_ID) {
 	case CBCallBack:
@@ -139,6 +150,49 @@ bool afs_cm_incoming_call(struct afs_call *call)
 }
 
 /*
+ * Record a probe to the cache manager from a server.
+ */
+static int afs_record_cm_probe(struct afs_call *call, struct afs_server *server)
+{
+	_enter("");
+
+	if (test_bit(AFS_SERVER_FL_HAVE_EPOCH, &server->flags) &&
+	    !test_bit(AFS_SERVER_FL_PROBING, &server->flags)) {
+		if (server->cm_epoch == call->epoch)
+			return 0;
+
+		if (!server->probe.said_rebooted) {
+			pr_notice("kAFS: FS rebooted %pU\n", &server->uuid);
+			server->probe.said_rebooted = true;
+		}
+	}
+
+	spin_lock(&server->probe_lock);
+
+	if (!test_bit(AFS_SERVER_FL_HAVE_EPOCH, &server->flags)) {
+		server->cm_epoch = call->epoch;
+		server->probe.cm_epoch = call->epoch;
+		goto out;
+	}
+
+	if (server->probe.cm_probed &&
+	    call->epoch != server->probe.cm_epoch &&
+	    !server->probe.said_inconsistent) {
+		pr_notice("kAFS: FS endpoints inconsistent %pU\n",
+			  &server->uuid);
+		server->probe.said_inconsistent = true;
+	}
+
+	if (!server->probe.cm_probed || call->epoch == server->cm_epoch)
+		server->probe.cm_epoch = server->cm_epoch;
+
+out:
+	server->probe.cm_probed = true;
+	spin_unlock(&server->probe_lock);
+	return 0;
+}
+
+/*
  * Find the server record by peer address and record a probe to the cache
  * manager from a server.
  */
@@ -146,18 +200,17 @@ static int afs_find_cm_server_by_peer(struct afs_call *call)
 {
 	struct sockaddr_rxrpc srx;
 	struct afs_server *server;
-	struct rxrpc_peer *peer;
 
-	peer = rxrpc_kernel_get_call_peer(call->net->socket, call->rxcall);
+	rxrpc_kernel_get_peer(call->net->socket, call->rxcall, &srx);
 
-	server = afs_find_server(call->net, peer);
+	server = afs_find_server(call->net, &srx);
 	if (!server) {
 		trace_afs_cm_no_server(call, &srx);
 		return 0;
 	}
 
 	call->server = server;
-	return 0;
+	return afs_record_cm_probe(call, server);
 }
 
 /*
@@ -178,7 +231,7 @@ static int afs_find_cm_server_by_uuid(struct afs_call *call,
 	}
 
 	call->server = server;
-	return 0;
+	return afs_record_cm_probe(call, server);
 }
 
 /*
@@ -188,17 +241,6 @@ static void afs_cm_destructor(struct afs_call *call)
 {
 	kfree(call->buffer);
 	call->buffer = NULL;
-}
-
-/*
- * Abort a service call from within an action function.
- */
-static void afs_abort_service_call(struct afs_call *call, u32 abort_code, int error,
-				   enum rxrpc_abort_reason why)
-{
-	rxrpc_kernel_abort_call(call->net->socket, call->rxcall,
-				abort_code, error, why);
-	afs_set_call_complete(call, error, 0);
 }
 
 /*
@@ -215,9 +257,7 @@ static void SRXAFSCB_CallBack(struct work_struct *work)
 	 * to maintain cache coherency.
 	 */
 	if (call->server) {
-		trace_afs_server(call->server->debug_id,
-				 refcount_read(&call->server->ref),
-				 atomic_read(&call->server->active),
+		trace_afs_server(call->server, atomic_read(&call->server->usage),
 				 afs_server_trace_callback);
 		afs_break_callbacks(call->server, call->count, call->request);
 	}
@@ -244,7 +284,7 @@ static int afs_deliver_cb_callback(struct afs_call *call)
 		call->unmarshall++;
 
 		/* extract the FID array and its count in two steps */
-		fallthrough;
+		/* fall through */
 	case 1:
 		_debug("extract FID count");
 		ret = afs_extract_data(call, true);
@@ -254,7 +294,8 @@ static int afs_deliver_cb_callback(struct afs_call *call)
 		call->count = ntohl(call->tmp);
 		_debug("FID count: %u", call->count);
 		if (call->count > AFSCBMAX)
-			return afs_protocol_error(call, afs_eproto_cb_fid_count);
+			return afs_protocol_error(call, -EBADMSG,
+						  afs_eproto_cb_fid_count);
 
 		call->buffer = kmalloc(array3_size(call->count, 3, 4),
 				       GFP_KERNEL);
@@ -263,7 +304,7 @@ static int afs_deliver_cb_callback(struct afs_call *call)
 		afs_extract_to_buf(call, call->count * 3 * 4);
 		call->unmarshall++;
 
-		fallthrough;
+		/* Fall through */
 	case 2:
 		_debug("extract FID array");
 		ret = afs_extract_data(call, true);
@@ -289,7 +330,7 @@ static int afs_deliver_cb_callback(struct afs_call *call)
 		call->unmarshall++;
 
 		/* extract the callback array and its count in two steps */
-		fallthrough;
+		/* fall through */
 	case 3:
 		_debug("extract CB count");
 		ret = afs_extract_data(call, true);
@@ -299,23 +340,22 @@ static int afs_deliver_cb_callback(struct afs_call *call)
 		call->count2 = ntohl(call->tmp);
 		_debug("CB count: %u", call->count2);
 		if (call->count2 != call->count && call->count2 != 0)
-			return afs_protocol_error(call, afs_eproto_cb_count);
-		call->iter = &call->def_iter;
-		iov_iter_discard(&call->def_iter, ITER_DEST, call->count2 * 3 * 4);
+			return afs_protocol_error(call, -EBADMSG,
+						  afs_eproto_cb_count);
+		call->_iter = &call->iter;
+		iov_iter_discard(&call->iter, READ, call->count2 * 3 * 4);
 		call->unmarshall++;
 
-		fallthrough;
+		/* Fall through */
 	case 4:
 		_debug("extract discard %zu/%u",
-		       iov_iter_count(call->iter), call->count2 * 3 * 4);
+		       iov_iter_count(&call->iter), call->count2 * 3 * 4);
 
 		ret = afs_extract_data(call, false);
 		if (ret < 0)
 			return ret;
 
 		call->unmarshall++;
-		fallthrough;
-
 	case 5:
 		break;
 	}
@@ -385,7 +425,7 @@ static int afs_deliver_cb_init_call_back_state3(struct afs_call *call)
 		afs_extract_to_buf(call, 11 * sizeof(__be32));
 		call->unmarshall++;
 
-		fallthrough;
+		/* Fall through */
 	case 1:
 		_debug("extract UUID");
 		ret = afs_extract_data(call, false);
@@ -412,7 +452,6 @@ static int afs_deliver_cb_init_call_back_state3(struct afs_call *call)
 			r->node[loop] = ntohl(b[loop + 5]);
 
 		call->unmarshall++;
-		fallthrough;
 
 	case 2:
 		break;
@@ -459,8 +498,7 @@ static int afs_deliver_cb_probe(struct afs_call *call)
 }
 
 /*
- * Allow the fileserver to quickly find out if the cache manager has been
- * rebooted.
+ * allow the fileserver to quickly find out if the fileserver has been rebooted
  */
 static void SRXAFSCB_ProbeUuid(struct work_struct *work)
 {
@@ -472,7 +510,8 @@ static void SRXAFSCB_ProbeUuid(struct work_struct *work)
 	if (memcmp(r, &call->net->uuid, sizeof(call->net->uuid)) == 0)
 		afs_send_empty_reply(call);
 	else
-		afs_abort_service_call(call, 1, 1, afs_abort_probeuuid_negative);
+		rxrpc_kernel_abort_call(call->net->socket, call->rxcall,
+					1, 1, "K-1");
 
 	afs_put_call(call);
 	_leave("");
@@ -498,7 +537,7 @@ static int afs_deliver_cb_probe_uuid(struct afs_call *call)
 		afs_extract_to_buf(call, 11 * sizeof(__be32));
 		call->unmarshall++;
 
-		fallthrough;
+		/* Fall through */
 	case 1:
 		_debug("extract UUID");
 		ret = afs_extract_data(call, false);
@@ -525,7 +564,6 @@ static int afs_deliver_cb_probe_uuid(struct afs_call *call)
 			r->node[loop] = ntohl(b[loop + 5]);
 
 		call->unmarshall++;
-		fallthrough;
 
 	case 2:
 		break;
@@ -533,7 +571,7 @@ static int afs_deliver_cb_probe_uuid(struct afs_call *call)
 
 	if (!afs_check_call_state(call, AFS_CALL_SV_REPLYING))
 		return afs_io_error(call, afs_io_error_cm_reply);
-	return afs_find_cm_server_by_peer(call);
+	return afs_find_cm_server_by_uuid(call, call->request);
 }
 
 /*
@@ -614,7 +652,7 @@ static int afs_deliver_yfs_cb_callback(struct afs_call *call)
 		call->unmarshall++;
 
 		/* extract the FID array and its count in two steps */
-		fallthrough;
+		/* Fall through */
 	case 1:
 		_debug("extract FID count");
 		ret = afs_extract_data(call, true);
@@ -624,7 +662,8 @@ static int afs_deliver_yfs_cb_callback(struct afs_call *call)
 		call->count = ntohl(call->tmp);
 		_debug("FID count: %u", call->count);
 		if (call->count > YFSCBMAX)
-			return afs_protocol_error(call, afs_eproto_cb_fid_count);
+			return afs_protocol_error(call, -EBADMSG,
+						  afs_eproto_cb_fid_count);
 
 		size = array_size(call->count, sizeof(struct yfs_xdr_YFSFid));
 		call->buffer = kmalloc(size, GFP_KERNEL);
@@ -633,7 +672,7 @@ static int afs_deliver_yfs_cb_callback(struct afs_call *call)
 		afs_extract_to_buf(call, size);
 		call->unmarshall++;
 
-		fallthrough;
+		/* Fall through */
 	case 2:
 		_debug("extract FID array");
 		ret = afs_extract_data(call, false);
@@ -659,7 +698,6 @@ static int afs_deliver_yfs_cb_callback(struct afs_call *call)
 
 		afs_extract_to_tmp(call);
 		call->unmarshall++;
-		fallthrough;
 
 	case 3:
 		break;

@@ -11,6 +11,7 @@
 #include <linux/pm_wakeirq.h>
 #include <linux/clk.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 
 #define RTC_INPUT_CLK_32768HZ	(0x00 << 5)
 #define RTC_INPUT_CLK_32000HZ	(0x01 << 5)
@@ -69,12 +70,27 @@ struct rtc_plat_data {
 	enum imx_rtc_type devtype;
 };
 
+static const struct platform_device_id imx_rtc_devtype[] = {
+	{
+		.name = "imx1-rtc",
+		.driver_data = IMX1_RTC,
+	}, {
+		.name = "imx21-rtc",
+		.driver_data = IMX21_RTC,
+	}, {
+		/* sentinel */
+	}
+};
+MODULE_DEVICE_TABLE(platform, imx_rtc_devtype);
+
+#ifdef CONFIG_OF
 static const struct of_device_id imx_rtc_dt_ids[] = {
 	{ .compatible = "fsl,imx1-rtc", .data = (const void *)IMX1_RTC },
 	{ .compatible = "fsl,imx21-rtc", .data = (const void *)IMX21_RTC },
 	{}
 };
 MODULE_DEVICE_TABLE(of, imx_rtc_dt_ids);
+#endif
 
 static inline int is_imx1_rtc(struct rtc_plat_data *data)
 {
@@ -188,10 +204,11 @@ static irqreturn_t mxc_rtc_interrupt(int irq, void *dev_id)
 	struct platform_device *pdev = dev_id;
 	struct rtc_plat_data *pdata = platform_get_drvdata(pdev);
 	void __iomem *ioaddr = pdata->ioaddr;
+	unsigned long flags;
 	u32 status;
 	u32 events = 0;
 
-	spin_lock(&pdata->rtc->irq_lock);
+	spin_lock_irqsave(&pdata->rtc->irq_lock, flags);
 	status = readw(ioaddr + RTC_RTCISR) & readw(ioaddr + RTC_RTCIENR);
 	/* clear interrupt sources */
 	writew(status, ioaddr + RTC_RTCISR);
@@ -207,7 +224,7 @@ static irqreturn_t mxc_rtc_interrupt(int irq, void *dev_id)
 		events |= (RTC_PF | RTC_IRQF);
 
 	rtc_update_irq(pdata->rtc, 1, events);
-	spin_unlock(&pdata->rtc->irq_lock);
+	spin_unlock_irqrestore(&pdata->rtc->irq_lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -297,12 +314,17 @@ static int mxc_rtc_probe(struct platform_device *pdev)
 	u32 reg;
 	unsigned long rate;
 	int ret;
+	const struct of_device_id *of_id;
 
 	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
 	if (!pdata)
 		return -ENOMEM;
 
-	pdata->devtype = (uintptr_t)of_device_get_match_data(&pdev->dev);
+	of_id = of_match_device(imx_rtc_dt_ids, &pdev->dev);
+	if (of_id)
+		pdata->devtype = (enum imx_rtc_type)of_id->data;
+	else
+		pdata->devtype = pdev->id_entry->driver_data;
 
 	pdata->ioaddr = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(pdata->ioaddr))
@@ -332,17 +354,26 @@ static int mxc_rtc_probe(struct platform_device *pdev)
 		rtc->range_max = (1 << 16) * 86400ULL - 1;
 	}
 
-	pdata->clk_ipg = devm_clk_get_enabled(&pdev->dev, "ipg");
+	pdata->clk_ipg = devm_clk_get(&pdev->dev, "ipg");
 	if (IS_ERR(pdata->clk_ipg)) {
 		dev_err(&pdev->dev, "unable to get ipg clock!\n");
 		return PTR_ERR(pdata->clk_ipg);
 	}
 
-	pdata->clk_ref = devm_clk_get_enabled(&pdev->dev, "ref");
+	ret = clk_prepare_enable(pdata->clk_ipg);
+	if (ret)
+		return ret;
+
+	pdata->clk_ref = devm_clk_get(&pdev->dev, "ref");
 	if (IS_ERR(pdata->clk_ref)) {
 		dev_err(&pdev->dev, "unable to get ref clock!\n");
-		return PTR_ERR(pdata->clk_ref);
+		ret = PTR_ERR(pdata->clk_ref);
+		goto exit_put_clk_ipg;
 	}
+
+	ret = clk_prepare_enable(pdata->clk_ref);
+	if (ret)
+		goto exit_put_clk_ipg;
 
 	rate = clk_get_rate(pdata->clk_ref);
 
@@ -354,14 +385,16 @@ static int mxc_rtc_probe(struct platform_device *pdev)
 		reg = RTC_INPUT_CLK_38400HZ;
 	else {
 		dev_err(&pdev->dev, "rtc clock is not valid (%lu)\n", rate);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto exit_put_clk_ref;
 	}
 
 	reg |= RTC_ENABLE_BIT;
 	writew(reg, (pdata->ioaddr + RTC_RTCCTL));
 	if (((readw(pdata->ioaddr + RTC_RTCCTL)) & RTC_ENABLE_BIT) == 0) {
 		dev_err(&pdev->dev, "hardware module can't be enabled!\n");
-		return -EIO;
+		ret = -EIO;
+		goto exit_put_clk_ref;
 	}
 
 	platform_set_drvdata(pdev, pdata);
@@ -383,17 +416,38 @@ static int mxc_rtc_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "failed to enable irq wake\n");
 	}
 
-	ret = devm_rtc_register_device(rtc);
+	ret = rtc_register_device(rtc);
+	if (ret)
+		goto exit_put_clk_ref;
+
+	return 0;
+
+exit_put_clk_ref:
+	clk_disable_unprepare(pdata->clk_ref);
+exit_put_clk_ipg:
+	clk_disable_unprepare(pdata->clk_ipg);
 
 	return ret;
+}
+
+static int mxc_rtc_remove(struct platform_device *pdev)
+{
+	struct rtc_plat_data *pdata = platform_get_drvdata(pdev);
+
+	clk_disable_unprepare(pdata->clk_ref);
+	clk_disable_unprepare(pdata->clk_ipg);
+
+	return 0;
 }
 
 static struct platform_driver mxc_rtc_driver = {
 	.driver = {
 		   .name	= "mxc_rtc",
-		   .of_match_table = imx_rtc_dt_ids,
+		   .of_match_table = of_match_ptr(imx_rtc_dt_ids),
 	},
+	.id_table = imx_rtc_devtype,
 	.probe = mxc_rtc_probe,
+	.remove = mxc_rtc_remove,
 };
 
 module_platform_driver(mxc_rtc_driver)

@@ -5,7 +5,6 @@
  *  Copyright (C) 1997-1999 Russell King
  */
 #include <linux/buffer_head.h>
-#include <linux/mpage.h>
 #include <linux/writeback.h>
 #include "adfs.h"
 
@@ -21,8 +20,7 @@ adfs_get_block(struct inode *inode, sector_t block, struct buffer_head *bh,
 		if (block >= inode->i_blocks)
 			goto abort_toobig;
 
-		block = __adfs_block_map(inode->i_sb, ADFS_I(inode)->indaddr,
-					 block);
+		block = __adfs_block_map(inode->i_sb, inode->i_ino, block);
 		if (block)
 			map_bh(bh, inode->i_sb, block);
 		return 0;
@@ -34,15 +32,14 @@ abort_toobig:
 	return 0;
 }
 
-static int adfs_writepages(struct address_space *mapping,
-		struct writeback_control *wbc)
+static int adfs_writepage(struct page *page, struct writeback_control *wbc)
 {
-	return mpage_writepages(mapping, wbc, adfs_get_block);
+	return block_write_full_page(page, adfs_get_block, wbc);
 }
 
-static int adfs_read_folio(struct file *file, struct folio *folio)
+static int adfs_readpage(struct file *file, struct page *page)
 {
-	return block_read_full_folio(folio, adfs_get_block);
+	return block_read_full_page(page, adfs_get_block);
 }
 
 static void adfs_write_failed(struct address_space *mapping, loff_t to)
@@ -54,13 +51,13 @@ static void adfs_write_failed(struct address_space *mapping, loff_t to)
 }
 
 static int adfs_write_begin(struct file *file, struct address_space *mapping,
-			loff_t pos, unsigned len,
+			loff_t pos, unsigned len, unsigned flags,
 			struct page **pagep, void **fsdata)
 {
 	int ret;
 
 	*pagep = NULL;
-	ret = cont_write_begin(file, mapping, pos, len, pagep, fsdata,
+	ret = cont_write_begin(file, mapping, pos, len, flags, pagep, fsdata,
 				adfs_get_block,
 				&ADFS_I(mapping->host)->mmu_private);
 	if (unlikely(ret))
@@ -75,14 +72,11 @@ static sector_t _adfs_bmap(struct address_space *mapping, sector_t block)
 }
 
 static const struct address_space_operations adfs_aops = {
-	.dirty_folio	= block_dirty_folio,
-	.invalidate_folio = block_invalidate_folio,
-	.read_folio	= adfs_read_folio,
-	.writepages	= adfs_writepages,
+	.readpage	= adfs_readpage,
+	.writepage	= adfs_writepage,
 	.write_begin	= adfs_write_begin,
 	.write_end	= generic_write_end,
-	.migrate_folio	= buffer_migrate_folio,
-	.bmap		= _adfs_bmap,
+	.bmap		= _adfs_bmap
 };
 
 /*
@@ -132,29 +126,29 @@ adfs_atts2mode(struct super_block *sb, struct inode *inode)
  * Convert Linux permission to ADFS attribute.  We try to do the reverse
  * of atts2mode, but there is not a 1:1 translation.
  */
-static int adfs_mode2atts(struct super_block *sb, struct inode *inode,
-			  umode_t ia_mode)
+static int
+adfs_mode2atts(struct super_block *sb, struct inode *inode)
 {
-	struct adfs_sb_info *asb = ADFS_SB(sb);
 	umode_t mode;
 	int attr;
+	struct adfs_sb_info *asb = ADFS_SB(sb);
 
 	/* FIXME: should we be able to alter a link? */
 	if (S_ISLNK(inode->i_mode))
 		return ADFS_I(inode)->attr;
 
-	/* Directories do not have read/write permissions on the media */
 	if (S_ISDIR(inode->i_mode))
-		return ADFS_NDA_DIRECTORY;
+		attr = ADFS_NDA_DIRECTORY;
+	else
+		attr = 0;
 
-	attr = 0;
-	mode = ia_mode & asb->s_owner_mask;
+	mode = inode->i_mode & asb->s_owner_mask;
 	if (mode & S_IRUGO)
 		attr |= ADFS_NDA_OWNER_READ;
 	if (mode & S_IWUGO)
 		attr |= ADFS_NDA_OWNER_WRITE;
 
-	mode = ia_mode & asb->s_other_mask;
+	mode = inode->i_mode & asb->s_other_mask;
 	mode &= ~asb->s_owner_mask;
 	if (mode & S_IRUGO)
 		attr |= ADFS_NDA_PUBLIC_READ;
@@ -163,8 +157,6 @@ static int adfs_mode2atts(struct super_block *sb, struct inode *inode,
 
 	return attr;
 }
-
-static const s64 nsec_unix_epoch_diff_risc_os_epoch = 2208988800000000000LL;
 
 /*
  * Convert an ADFS time to Unix time.  ADFS has a 40-bit centi-second time
@@ -178,6 +170,8 @@ adfs_adfs2unix_time(struct timespec64 *tv, struct inode *inode)
 	/* 01 Jan 1970 00:00:00 (Unix epoch) as nanoseconds since
 	 * 01 Jan 1900 00:00:00 (RISC OS epoch)
 	 */
+	static const s64 nsec_unix_epoch_diff_risc_os_epoch =
+							2208988800000000000LL;
 	s64 nsec;
 
 	if (!adfs_inode_is_stamped(inode))
@@ -210,23 +204,24 @@ adfs_adfs2unix_time(struct timespec64 *tv, struct inode *inode)
 	return;
 }
 
-/* Convert an Unix time to ADFS time for an entry that is already stamped. */
-static void adfs_unix2adfs_time(struct inode *inode,
-				const struct timespec64 *ts)
+/*
+ * Convert an Unix time to ADFS time.  We only do this if the entry has a
+ * time/date stamp already.
+ */
+static void
+adfs_unix2adfs_time(struct inode *inode, unsigned int secs)
 {
-	s64 cs, nsec = timespec64_to_ns(ts);
+	unsigned int high, low;
 
-	/* convert from Unix to RISC OS epoch */
-	nsec += nsec_unix_epoch_diff_risc_os_epoch;
+	if (adfs_inode_is_stamped(inode)) {
+		/* convert 32-bit seconds to 40-bit centi-seconds */
+		low  = (secs & 255) * 100;
+		high = (secs / 256) * 100 + (low >> 8) + 0x336e996a;
 
-	/* convert from nanoseconds to centiseconds */
-	cs = div_s64(nsec, 10000000);
-
-	cs = clamp_t(s64, cs, 0, 0xffffffffff);
-
-	ADFS_I(inode)->loadaddr &= ~0xff;
-	ADFS_I(inode)->loadaddr |= (cs >> 32) & 0xff;
-	ADFS_I(inode)->execaddr = cs;
+		ADFS_I(inode)->loadaddr = (high >> 24) |
+				(ADFS_I(inode)->loadaddr & ~0xff);
+		ADFS_I(inode)->execaddr = (low & 255) | (high << 8);
+	}
 }
 
 /*
@@ -245,7 +240,6 @@ struct inode *
 adfs_iget(struct super_block *sb, struct object_info *obj)
 {
 	struct inode *inode;
-	struct timespec64 ts;
 
 	inode = new_inode(sb);
 	if (!inode)
@@ -266,16 +260,14 @@ adfs_iget(struct super_block *sb, struct object_info *obj)
 	 * for cross-directory renames.
 	 */
 	ADFS_I(inode)->parent_id = obj->parent_id;
-	ADFS_I(inode)->indaddr   = obj->indaddr;
 	ADFS_I(inode)->loadaddr  = obj->loadaddr;
 	ADFS_I(inode)->execaddr  = obj->execaddr;
 	ADFS_I(inode)->attr      = obj->attr;
 
 	inode->i_mode	 = adfs_atts2mode(sb, inode);
-	adfs_adfs2unix_time(&ts, inode);
-	inode_set_atime_to_ts(inode, ts);
-	inode_set_mtime_to_ts(inode, ts);
-	inode_set_ctime_to_ts(inode, ts);
+	adfs_adfs2unix_time(&inode->i_mtime, inode);
+	inode->i_atime = inode->i_mtime;
+	inode->i_ctime = inode->i_mtime;
 
 	if (S_ISDIR(inode->i_mode)) {
 		inode->i_op	= &adfs_dir_inode_operations;
@@ -299,15 +291,14 @@ out:
  * later.
  */
 int
-adfs_notify_change(struct mnt_idmap *idmap, struct dentry *dentry,
-		   struct iattr *attr)
+adfs_notify_change(struct dentry *dentry, struct iattr *attr)
 {
 	struct inode *inode = d_inode(dentry);
 	struct super_block *sb = inode->i_sb;
 	unsigned int ia_valid = attr->ia_valid;
 	int error;
 	
-	error = setattr_prepare(&nop_mnt_idmap, dentry, attr);
+	error = setattr_prepare(dentry, attr);
 
 	/*
 	 * we can't change the UID or GID of any file -
@@ -324,22 +315,20 @@ adfs_notify_change(struct mnt_idmap *idmap, struct dentry *dentry,
 	if (ia_valid & ATTR_SIZE)
 		truncate_setsize(inode, attr->ia_size);
 
-	if (ia_valid & ATTR_MTIME && adfs_inode_is_stamped(inode)) {
-		adfs_unix2adfs_time(inode, &attr->ia_mtime);
-		adfs_adfs2unix_time(&attr->ia_mtime, inode);
-		inode_set_mtime_to_ts(inode, attr->ia_mtime);
+	if (ia_valid & ATTR_MTIME) {
+		inode->i_mtime = attr->ia_mtime;
+		adfs_unix2adfs_time(inode, attr->ia_mtime.tv_sec);
 	}
-
 	/*
 	 * FIXME: should we make these == to i_mtime since we don't
 	 * have the ability to represent them in our filesystem?
 	 */
 	if (ia_valid & ATTR_ATIME)
-		inode_set_atime_to_ts(inode, attr->ia_atime);
+		inode->i_atime = attr->ia_atime;
 	if (ia_valid & ATTR_CTIME)
-		inode_set_ctime_to_ts(inode, attr->ia_ctime);
+		inode->i_ctime = attr->ia_ctime;
 	if (ia_valid & ATTR_MODE) {
-		ADFS_I(inode)->attr = adfs_mode2atts(sb, inode, attr->ia_mode);
+		ADFS_I(inode)->attr = adfs_mode2atts(sb, inode);
 		inode->i_mode = adfs_atts2mode(sb, inode);
 	}
 
@@ -362,8 +351,9 @@ int adfs_write_inode(struct inode *inode, struct writeback_control *wbc)
 {
 	struct super_block *sb = inode->i_sb;
 	struct object_info obj;
+	int ret;
 
-	obj.indaddr	= ADFS_I(inode)->indaddr;
+	obj.indaddr	= inode->i_ino;
 	obj.name_len	= 0;
 	obj.parent_id	= ADFS_I(inode)->parent_id;
 	obj.loadaddr	= ADFS_I(inode)->loadaddr;
@@ -371,5 +361,6 @@ int adfs_write_inode(struct inode *inode, struct writeback_control *wbc)
 	obj.attr	= ADFS_I(inode)->attr;
 	obj.size	= inode->i_size;
 
-	return adfs_dir_update(sb, &obj, wbc->sync_mode == WB_SYNC_ALL);
+	ret = adfs_dir_update(sb, &obj, wbc->sync_mode == WB_SYNC_ALL);
+	return ret;
 }

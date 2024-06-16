@@ -11,6 +11,6 @@
 
 #define NR_IRQS 328
 
-#include <asm/mach-generic/irq.h>
+#include_next <irq.h>
 
 #endif

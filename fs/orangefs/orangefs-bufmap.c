@@ -168,7 +168,10 @@ static DEFINE_SPINLOCK(orangefs_bufmap_lock);
 static void
 orangefs_bufmap_unmap(struct orangefs_bufmap *bufmap)
 {
-	unpin_user_pages(bufmap->page_array, bufmap->page_count);
+	int i;
+
+	for (i = 0; i < bufmap->page_count; i++)
+		put_page(bufmap->page_array[i]);
 }
 
 static void
@@ -176,7 +179,7 @@ orangefs_bufmap_free(struct orangefs_bufmap *bufmap)
 {
 	kfree(bufmap->page_array);
 	kfree(bufmap->desc_array);
-	bitmap_free(bufmap->buffer_index_array);
+	kfree(bufmap->buffer_index_array);
 	kfree(bufmap);
 }
 
@@ -226,7 +229,8 @@ orangefs_bufmap_alloc(struct ORANGEFS_dev_map_desc *user_desc)
 	bufmap->desc_size = user_desc->size;
 	bufmap->desc_shift = ilog2(bufmap->desc_size);
 
-	bufmap->buffer_index_array = bitmap_zalloc(bufmap->desc_count, GFP_KERNEL);
+	bufmap->buffer_index_array =
+		kzalloc(DIV_ROUND_UP(bufmap->desc_count, BITS_PER_LONG), GFP_KERNEL);
 	if (!bufmap->buffer_index_array)
 		goto out_free_bufmap;
 
@@ -249,7 +253,7 @@ orangefs_bufmap_alloc(struct ORANGEFS_dev_map_desc *user_desc)
 out_free_desc_array:
 	kfree(bufmap->desc_array);
 out_free_index_array:
-	bitmap_free(bufmap->buffer_index_array);
+	kfree(bufmap->buffer_index_array);
 out_free_bufmap:
 	kfree(bufmap);
 out:
@@ -264,7 +268,7 @@ orangefs_bufmap_map(struct orangefs_bufmap *bufmap,
 	int offset = 0, ret, i;
 
 	/* map the pages */
-	ret = pin_user_pages_fast((unsigned long)user_desc->ptr,
+	ret = get_user_pages_fast((unsigned long)user_desc->ptr,
 			     bufmap->page_count, FOLL_WRITE, bufmap->page_array);
 
 	if (ret < 0)
@@ -276,7 +280,7 @@ orangefs_bufmap_map(struct orangefs_bufmap *bufmap,
 
 		for (i = 0; i < ret; i++) {
 			SetPageError(bufmap->page_array[i]);
-			unpin_user_page(bufmap->page_array[i]);
+			put_page(bufmap->page_array[i]);
 		}
 		return -ENOMEM;
 	}

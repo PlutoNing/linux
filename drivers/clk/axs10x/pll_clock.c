@@ -1,8 +1,11 @@
-// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Synopsys AXS10X SDP Generic PLL clock driver
  *
  * Copyright (C) 2017 Synopsys
+ *
+ * This file is licensed under the terms of the GNU General Public
+ * License version 2. This program is licensed "as is" without any
+ * warranty of any kind, whether express or implied.
  */
 
 #include <linux/platform_device.h>
@@ -12,9 +15,10 @@
 #include <linux/err.h>
 #include <linux/device.h>
 #include <linux/io.h>
-#include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/slab.h>
+#include <linux/of.h>
 
 /* PLL registers addresses */
 #define PLL_REG_IDIV	0x0
@@ -217,6 +221,7 @@ static int axs10x_pll_clk_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	const char *parent_name;
 	struct axs10x_pll_clk *pll_clk;
+	struct resource *mem;
 	struct clk_init_data init = { };
 	int ret;
 
@@ -224,11 +229,13 @@ static int axs10x_pll_clk_probe(struct platform_device *pdev)
 	if (!pll_clk)
 		return -ENOMEM;
 
-	pll_clk->base = devm_platform_ioremap_resource(pdev, 0);
+	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	pll_clk->base = devm_ioremap_resource(dev, mem);
 	if (IS_ERR(pll_clk->base))
 		return PTR_ERR(pll_clk->base);
 
-	pll_clk->lock = devm_platform_ioremap_resource(pdev, 1);
+	mem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	pll_clk->lock = devm_ioremap_resource(dev, mem);
 	if (IS_ERR(pll_clk->lock))
 		return PTR_ERR(pll_clk->lock);
 
@@ -252,8 +259,14 @@ static int axs10x_pll_clk_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	return devm_of_clk_add_hw_provider(dev, of_clk_hw_simple_get,
-					   &pll_clk->hw);
+	return of_clk_add_hw_provider(dev->of_node, of_clk_hw_simple_get,
+			&pll_clk->hw);
+}
+
+static int axs10x_pll_clk_remove(struct platform_device *pdev)
+{
+	of_clk_del_provider(pdev->dev.of_node);
+	return 0;
 }
 
 static void __init of_axs10x_pll_clk_setup(struct device_node *node)
@@ -325,6 +338,7 @@ static struct platform_driver axs10x_pll_clk_driver = {
 		.of_match_table = axs10x_pll_clk_id,
 	},
 	.probe = axs10x_pll_clk_probe,
+	.remove = axs10x_pll_clk_remove,
 };
 builtin_platform_driver(axs10x_pll_clk_driver);
 

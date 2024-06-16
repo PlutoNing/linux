@@ -5,6 +5,7 @@
 #include <sound/soc.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 
  /*
   * Default CFG switch settings to use this driver:
@@ -31,11 +32,20 @@
 /* SMDK has a 16.934MHZ crystal attached to WM8994 */
 #define SMDK_WM8994_FREQ 16934000
 
+struct smdk_wm8994_data {
+	int mclk1_rate;
+};
+
+/* Default SMDKs */
+static struct smdk_wm8994_data smdk_board_data = {
+	.mclk1_rate = SMDK_WM8994_FREQ,
+};
+
 static int smdk_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
 {
-	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
-	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	unsigned int pll_out;
 	int ret;
 
@@ -63,7 +73,7 @@ static int smdk_hw_params(struct snd_pcm_substream *substream,
 /*
  * SMDK WM8994 DAI operations.
  */
-static const struct snd_soc_ops smdk_ops = {
+static struct snd_soc_ops smdk_ops = {
 	.hw_params = smdk_hw_params,
 };
 
@@ -127,7 +137,7 @@ static struct snd_soc_card smdk = {
 };
 
 static const struct of_device_id samsung_wm8994_of_match[] = {
-	{ .compatible = "samsung,smdk-wm8994" },
+	{ .compatible = "samsung,smdk-wm8994", .data = &smdk_board_data },
 	{},
 };
 MODULE_DEVICE_TABLE(of, samsung_wm8994_of_match);
@@ -137,8 +147,14 @@ static int smdk_audio_probe(struct platform_device *pdev)
 	int ret;
 	struct device_node *np = pdev->dev.of_node;
 	struct snd_soc_card *card = &smdk;
+	struct smdk_wm8994_data *board;
+	const struct of_device_id *id;
 
 	card->dev = &pdev->dev;
+
+	board = devm_kzalloc(&pdev->dev, sizeof(*board), GFP_KERNEL);
+	if (!board)
+		return -ENOMEM;
 
 	if (np) {
 		smdk_dai[0].cpus->dai_name = NULL;
@@ -148,17 +164,22 @@ static int smdk_audio_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev,
 			   "Property 'samsung,i2s-controller' missing or invalid\n");
 			ret = -EINVAL;
-			return ret;
 		}
 
 		smdk_dai[0].platforms->name = NULL;
 		smdk_dai[0].platforms->of_node = smdk_dai[0].cpus->of_node;
 	}
 
+	id = of_match_device(of_match_ptr(samsung_wm8994_of_match), &pdev->dev);
+	if (id)
+		*board = *((struct smdk_wm8994_data *)id->data);
+
+	platform_set_drvdata(pdev, board);
+
 	ret = devm_snd_soc_register_card(&pdev->dev, card);
 
 	if (ret)
-		dev_err_probe(&pdev->dev, ret, "snd_soc_register_card() failed\n");
+		dev_err(&pdev->dev, "snd_soc_register_card() failed:%d\n", ret);
 
 	return ret;
 }
@@ -166,7 +187,7 @@ static int smdk_audio_probe(struct platform_device *pdev)
 static struct platform_driver smdk_audio_driver = {
 	.driver		= {
 		.name	= "smdk-audio-wm8994",
-		.of_match_table = samsung_wm8994_of_match,
+		.of_match_table = of_match_ptr(samsung_wm8994_of_match),
 		.pm	= &snd_soc_pm_ops,
 	},
 	.probe		= smdk_audio_probe,

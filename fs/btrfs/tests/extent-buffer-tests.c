@@ -8,7 +8,6 @@
 #include "../ctree.h"
 #include "../extent_io.h"
 #include "../disk-io.h"
-#include "../accessors.h"
 
 static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 {
@@ -16,6 +15,7 @@ static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 	struct btrfs_path *path = NULL;
 	struct btrfs_root *root = NULL;
 	struct extent_buffer *eb;
+	struct btrfs_item *item;
 	char *value = "mary had a little lamb";
 	char *split1 = "mary had a little";
 	char *split2 = " lamb";
@@ -48,8 +48,7 @@ static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 		goto out;
 	}
 
-	eb = alloc_dummy_extent_buffer(fs_info, nodesize);
-	path->nodes[0] = eb;
+	path->nodes[0] = eb = alloc_dummy_extent_buffer(fs_info, nodesize);
 	if (!eb) {
 		test_std_err(TEST_ALLOC_EXTENT_BUFFER);
 		ret = -ENOMEM;
@@ -61,11 +60,9 @@ static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 	key.type = BTRFS_EXTENT_CSUM_KEY;
 	key.offset = 0;
 
-	/*
-	 * Passing a NULL trans handle is fine here, we have a dummy root eb
-	 * and the tree is a single node (level 0).
-	 */
-	btrfs_setup_item_for_insert(NULL, root, path, &key, value_len);
+	setup_items_for_insert(root, path, &key, &value_len, value_len,
+			       value_len + sizeof(struct btrfs_item), 1);
+	item = btrfs_item_nr(0);
 	write_extent_buffer(eb, value, btrfs_item_ptr_offset(eb, 0),
 			    value_len);
 
@@ -94,7 +91,8 @@ static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 		goto out;
 	}
 
-	if (btrfs_item_size(eb, 0) != strlen(split1)) {
+	item = btrfs_item_nr(0);
+	if (btrfs_item_size(eb, item) != strlen(split1)) {
 		test_err("invalid len in the first split");
 		ret = -EINVAL;
 		goto out;
@@ -118,7 +116,8 @@ static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 		goto out;
 	}
 
-	if (btrfs_item_size(eb, 1) != strlen(split2)) {
+	item = btrfs_item_nr(1);
+	if (btrfs_item_size(eb, item) != strlen(split2)) {
 		test_err("invalid len in the second split");
 		ret = -EINVAL;
 		goto out;
@@ -149,7 +148,8 @@ static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 		goto out;
 	}
 
-	if (btrfs_item_size(eb, 0) != strlen(split3)) {
+	item = btrfs_item_nr(0);
+	if (btrfs_item_size(eb, item) != strlen(split3)) {
 		test_err("invalid len in the first split");
 		ret = -EINVAL;
 		goto out;
@@ -172,7 +172,8 @@ static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 		goto out;
 	}
 
-	if (btrfs_item_size(eb, 1) != strlen(split4)) {
+	item = btrfs_item_nr(1);
+	if (btrfs_item_size(eb, item) != strlen(split4)) {
 		test_err("invalid len in the second split");
 		ret = -EINVAL;
 		goto out;
@@ -195,7 +196,8 @@ static int test_btrfs_split_item(u32 sectorsize, u32 nodesize)
 		goto out;
 	}
 
-	if (btrfs_item_size(eb, 2) != strlen(split2)) {
+	item = btrfs_item_nr(2);
+	if (btrfs_item_size(eb, item) != strlen(split2)) {
 		test_err("invalid len in the second split");
 		ret = -EINVAL;
 		goto out;

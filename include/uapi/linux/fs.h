@@ -64,24 +64,6 @@ struct fstrim_range {
 	__u64 minlen;
 };
 
-/*
- * We include a length field because some filesystems (vfat) have an identifier
- * that we do want to expose as a UUID, but doesn't have the standard length.
- *
- * We use a fixed size buffer beacuse this interface will, by fiat, never
- * support "UUIDs" longer than 16 bytes; we don't want to force all downstream
- * users to have to deal with that.
- */
-struct fsuuid2 {
-	__u8	len;
-	__u8	uuid[16];
-};
-
-struct fs_sysfs_path {
-	__u8			len;
-	__u8			name[128];
-};
-
 /* extent-same (dedupe) ioctls; these MUST match the btrfs ioctl definitions */
 #define FILE_DEDUPE_RANGE_SAME		0
 #define FILE_DEDUPE_RANGE_DIFFERS	1
@@ -108,7 +90,7 @@ struct file_dedupe_range {
 	__u16 dest_count;	/* in - total elements in info array */
 	__u16 reserved1;	/* must be zero */
 	__u32 reserved2;	/* must be zero */
-	struct file_dedupe_range_info info[];
+	struct file_dedupe_range_info info[0];
 };
 
 /* And dynamically-tunable limits and defaults: */
@@ -202,9 +184,8 @@ struct fsxattr {
 #define BLKSECDISCARD _IO(0x12,125)
 #define BLKROTATIONAL _IO(0x12,126)
 #define BLKZEROOUT _IO(0x12,127)
-#define BLKGETDISKSEQ _IOR(0x12,128,__u64)
 /*
- * A jump here: 130-136 are reserved for zoned block devices
+ * A jump here: 130-131 are reserved for zoned block devices
  * (see uapi/linux/blkzoned.h)
  */
 
@@ -233,13 +214,6 @@ struct fsxattr {
 #define FS_IOC_FSSETXATTR		_IOW('X', 32, struct fsxattr)
 #define FS_IOC_GETFSLABEL		_IOR(0x94, 49, char[FSLABEL_MAX])
 #define FS_IOC_SETFSLABEL		_IOW(0x94, 50, char[FSLABEL_MAX])
-/* Returns the external filesystem UUID, the same one blkid returns */
-#define FS_IOC_GETFSUUID		_IOR(0x15, 0, struct fsuuid2)
-/*
- * Returns the path component under /sys/fs/ that refers to this filesystem;
- * also /sys/kernel/debug/ for filesystems with debugfs exports
- */
-#define FS_IOC_GETFSSYSFSPATH		_IOR(0x15, 1, struct fs_sysfs_path)
 
 /*
  * Inode flags (FS_IOC_GETFLAGS / FS_IOC_SETFLAGS)
@@ -288,7 +262,6 @@ struct fsxattr {
 #define FS_EA_INODE_FL			0x00200000 /* Inode used for large EA */
 #define FS_EOFBLOCKS_FL			0x00400000 /* Reserved for ext4 */
 #define FS_NOCOW_FL			0x00800000 /* Do not cow file */
-#define FS_DAX_FL			0x02000000 /* Inode is DAX */
 #define FS_INLINE_DATA_FL		0x10000000 /* Reserved for ext4 */
 #define FS_PROJINHERIT_FL		0x20000000 /* Create with parents projid */
 #define FS_CASEFOLD_FL			0x40000000 /* Folder is case insensitive */
@@ -326,71 +299,8 @@ typedef int __bitwise __kernel_rwf_t;
 /* per-IO O_APPEND */
 #define RWF_APPEND	((__force __kernel_rwf_t)0x00000010)
 
-/* per-IO negation of O_APPEND */
-#define RWF_NOAPPEND	((__force __kernel_rwf_t)0x00000020)
-
 /* mask of flags supported by the kernel */
 #define RWF_SUPPORTED	(RWF_HIPRI | RWF_DSYNC | RWF_SYNC | RWF_NOWAIT |\
-			 RWF_APPEND | RWF_NOAPPEND)
-
-/* Pagemap ioctl */
-#define PAGEMAP_SCAN	_IOWR('f', 16, struct pm_scan_arg)
-
-/* Bitmasks provided in pm_scan_args masks and reported in page_region.categories. */
-#define PAGE_IS_WPALLOWED	(1 << 0)
-#define PAGE_IS_WRITTEN		(1 << 1)
-#define PAGE_IS_FILE		(1 << 2)
-#define PAGE_IS_PRESENT		(1 << 3)
-#define PAGE_IS_SWAPPED		(1 << 4)
-#define PAGE_IS_PFNZERO		(1 << 5)
-#define PAGE_IS_HUGE		(1 << 6)
-#define PAGE_IS_SOFT_DIRTY	(1 << 7)
-
-/*
- * struct page_region - Page region with flags
- * @start:	Start of the region
- * @end:	End of the region (exclusive)
- * @categories:	PAGE_IS_* category bitmask for the region
- */
-struct page_region {
-	__u64 start;
-	__u64 end;
-	__u64 categories;
-};
-
-/* Flags for PAGEMAP_SCAN ioctl */
-#define PM_SCAN_WP_MATCHING	(1 << 0)	/* Write protect the pages matched. */
-#define PM_SCAN_CHECK_WPASYNC	(1 << 1)	/* Abort the scan when a non-WP-enabled page is found. */
-
-/*
- * struct pm_scan_arg - Pagemap ioctl argument
- * @size:		Size of the structure
- * @flags:		Flags for the IOCTL
- * @start:		Starting address of the region
- * @end:		Ending address of the region
- * @walk_end		Address where the scan stopped (written by kernel).
- *			walk_end == end (address tags cleared) informs that the scan completed on entire range.
- * @vec:		Address of page_region struct array for output
- * @vec_len:		Length of the page_region struct array
- * @max_pages:		Optional limit for number of returned pages (0 = disabled)
- * @category_inverted:	PAGE_IS_* categories which values match if 0 instead of 1
- * @category_mask:	Skip pages for which any category doesn't match
- * @category_anyof_mask: Skip pages for which no category matches
- * @return_mask:	PAGE_IS_* categories that are to be reported in `page_region`s returned
- */
-struct pm_scan_arg {
-	__u64 size;
-	__u64 flags;
-	__u64 start;
-	__u64 end;
-	__u64 walk_end;
-	__u64 vec;
-	__u64 vec_len;
-	__u64 max_pages;
-	__u64 category_inverted;
-	__u64 category_mask;
-	__u64 category_anyof_mask;
-	__u64 return_mask;
-};
+			 RWF_APPEND)
 
 #endif /* _UAPI_LINUX_FS_H */

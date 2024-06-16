@@ -21,7 +21,7 @@
 struct cbmem_cons {
 	u32 size_dont_access_after_boot;
 	u32 cursor;
-	u8  body[];
+	u8  body[0];
 } __packed;
 
 #define CURSOR_MASK ((1 << 28) - 1)
@@ -91,16 +91,12 @@ static int memconsole_probe(struct coreboot_device *dev)
 	return memconsole_sysfs_init();
 }
 
-static void memconsole_remove(struct coreboot_device *dev)
+static int memconsole_remove(struct coreboot_device *dev)
 {
 	memconsole_exit();
-}
 
-static const struct coreboot_device_id memconsole_ids[] = {
-	{ .tag = CB_TAG_CBMEM_CONSOLE },
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(coreboot, memconsole_ids);
+	return 0;
+}
 
 static struct coreboot_driver memconsole_driver = {
 	.probe = memconsole_probe,
@@ -108,7 +104,7 @@ static struct coreboot_driver memconsole_driver = {
 	.drv = {
 		.name = "memconsole",
 	},
-	.id_table = memconsole_ids,
+	.tag = CB_TAG_CBMEM_CONSOLE,
 };
 module_coreboot_driver(memconsole_driver);
 

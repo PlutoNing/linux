@@ -139,12 +139,12 @@ static unsigned int rda_uart_tx_empty(struct uart_port *port)
 	unsigned int ret;
 	u32 val;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 
 	val = rda_uart_read(port, RDA_UART_STATUS);
 	ret = (val & RDA_UART_TX_FIFO_MASK) ? TIOCSER_TEMT : 0;
 
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 
 	return ret;
 }
@@ -238,7 +238,7 @@ static void rda_uart_change_baudrate(struct rda_uart_port *rda_port,
 
 static void rda_uart_set_termios(struct uart_port *port,
 				 struct ktermios *termios,
-				 const struct ktermios *old)
+				 struct ktermios *old)
 {
 	struct rda_uart_port *rda_port = to_rda_uart_port(port);
 	unsigned long flags;
@@ -246,7 +246,7 @@ static void rda_uart_set_termios(struct uart_port *port,
 	unsigned int baud;
 	u32 irq_mask;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 
 	baud = uart_get_baud_rate(port, termios, old, 9600, port->uartclk / 4);
 	rda_uart_change_baudrate(rda_port, baud);
@@ -259,11 +259,9 @@ static void rda_uart_set_termios(struct uart_port *port,
 	case CS5:
 	case CS6:
 		dev_warn(port->dev, "bit size not supported, using 7 bits\n");
-		fallthrough;
+		/* Fall through */
 	case CS7:
 		ctrl &= ~RDA_UART_DBITS_8;
-		termios->c_cflag &= ~CSIZE;
-		termios->c_cflag |= CS7;
 		break;
 	default:
 		ctrl |= RDA_UART_DBITS_8;
@@ -325,7 +323,7 @@ static void rda_uart_set_termios(struct uart_port *port,
 	/* update the per-port timeout */
 	uart_update_timeout(port, termios->c_cflag, baud);
 
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void rda_uart_send_chars(struct uart_port *port)
@@ -353,7 +351,8 @@ static void rda_uart_send_chars(struct uart_port *port)
 
 		ch = xmit->buf[xmit->tail];
 		rda_uart_write(port, ch, RDA_UART_RXTX_BUFFER);
-		uart_xmit_advance(port, 1);
+		xmit->tail = (xmit->tail + 1) & (SERIAL_XMIT_SIZE - 1);
+		port->icount.tx++;
 	}
 
 	if (uart_circ_chars_pending(xmit) < WAKEUP_CHARS)
@@ -394,21 +393,23 @@ static void rda_uart_receive_chars(struct uart_port *port)
 		val &= 0xff;
 
 		port->icount.rx++;
-		if (!uart_prepare_sysrq_char(port, val))
-			tty_insert_flip_char(&port->state->port, val, flag);
+		tty_insert_flip_char(&port->state->port, val, flag);
 
 		status = rda_uart_read(port, RDA_UART_STATUS);
 	}
 
+	spin_unlock(&port->lock);
 	tty_flip_buffer_push(&port->state->port);
+	spin_lock(&port->lock);
 }
 
 static irqreturn_t rda_interrupt(int irq, void *dev_id)
 {
 	struct uart_port *port = dev_id;
+	unsigned long flags;
 	u32 val, irq_mask;
 
-	uart_port_lock(port);
+	spin_lock_irqsave(&port->lock, flags);
 
 	/* Clear IRQ cause */
 	val = rda_uart_read(port, RDA_UART_IRQ_CAUSE);
@@ -425,7 +426,7 @@ static irqreturn_t rda_interrupt(int irq, void *dev_id)
 		rda_uart_send_chars(port);
 	}
 
-	uart_unlock_and_check_sysrq(port);
+	spin_unlock_irqrestore(&port->lock, flags);
 
 	return IRQ_HANDLED;
 }
@@ -436,16 +437,16 @@ static int rda_uart_startup(struct uart_port *port)
 	int ret;
 	u32 val;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 	rda_uart_write(port, 0, RDA_UART_IRQ_MASK);
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 
 	ret = request_irq(port->irq, rda_interrupt, IRQF_NO_SUSPEND,
 			  "rda-uart", port);
 	if (ret)
 		return ret;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 
 	val = rda_uart_read(port, RDA_UART_CTRL);
 	val |= RDA_UART_ENABLE;
@@ -456,7 +457,7 @@ static int rda_uart_startup(struct uart_port *port)
 	val |= (RDA_UART_RX_DATA_AVAILABLE | RDA_UART_RX_TIMEOUT);
 	rda_uart_write(port, val, RDA_UART_IRQ_MASK);
 
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 
 	return 0;
 }
@@ -466,7 +467,7 @@ static void rda_uart_shutdown(struct uart_port *port)
 	unsigned long flags;
 	u32 val;
 
-	uart_port_lock_irqsave(port, &flags);
+	spin_lock_irqsave(&port->lock, flags);
 
 	rda_uart_stop_tx(port);
 	rda_uart_stop_rx(port);
@@ -475,7 +476,7 @@ static void rda_uart_shutdown(struct uart_port *port)
 	val &= ~RDA_UART_ENABLE;
 	rda_uart_write(port, val, RDA_UART_CTRL);
 
-	uart_port_unlock_irqrestore(port, flags);
+	spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static const char *rda_uart_type(struct uart_port *port)
@@ -497,7 +498,7 @@ static int rda_uart_request_port(struct uart_port *port)
 		return -EBUSY;
 
 	if (port->flags & UPF_IOREMAP) {
-		port->membase = devm_ioremap(port->dev, port->mapbase,
+		port->membase = devm_ioremap_nocache(port->dev, port->mapbase,
 						     resource_size(res));
 		if (!port->membase)
 			return -EBUSY;
@@ -515,7 +516,7 @@ static void rda_uart_config_port(struct uart_port *port, int flags)
 		rda_uart_request_port(port);
 	}
 
-	uart_port_lock_irqsave(port, &irq_flags);
+	spin_lock_irqsave(&port->lock, irq_flags);
 
 	/* Clear mask, so no surprise interrupts. */
 	rda_uart_write(port, 0, RDA_UART_IRQ_MASK);
@@ -523,7 +524,7 @@ static void rda_uart_config_port(struct uart_port *port, int flags)
 	/* Clear status register */
 	rda_uart_write(port, 0, RDA_UART_STATUS);
 
-	uart_port_unlock_irqrestore(port, irq_flags);
+	spin_unlock_irqrestore(&port->lock, irq_flags);
 }
 
 static void rda_uart_release_port(struct uart_port *port)
@@ -574,7 +575,7 @@ static const struct uart_ops rda_uart_ops = {
 
 #ifdef CONFIG_SERIAL_RDA_CONSOLE
 
-static void rda_console_putchar(struct uart_port *port, unsigned char ch)
+static void rda_console_putchar(struct uart_port *port, int ch)
 {
 	if (!port->membase)
 		return;
@@ -590,12 +591,18 @@ static void rda_uart_port_write(struct uart_port *port, const char *s,
 {
 	u32 old_irq_mask;
 	unsigned long flags;
-	int locked = 1;
+	int locked;
 
-	if (oops_in_progress)
-		locked = uart_port_trylock_irqsave(port, &flags);
-	else
-		uart_port_lock_irqsave(port, &flags);
+	local_irq_save(flags);
+
+	if (port->sysrq) {
+		locked = 0;
+	} else if (oops_in_progress) {
+		locked = spin_trylock(&port->lock);
+	} else {
+		spin_lock(&port->lock);
+		locked = 1;
+	}
 
 	old_irq_mask = rda_uart_read(port, RDA_UART_IRQ_MASK);
 	rda_uart_write(port, 0, RDA_UART_IRQ_MASK);
@@ -609,7 +616,9 @@ static void rda_uart_port_write(struct uart_port *port, const char *s,
 	rda_uart_write(port, old_irq_mask, RDA_UART_IRQ_MASK);
 
 	if (locked)
-		uart_port_unlock_irqrestore(port, flags);
+		spin_unlock(&port->lock);
+
+	local_irq_restore(flags);
 }
 
 static void rda_uart_console_write(struct console *co, const char *s,
@@ -772,17 +781,19 @@ static int rda_uart_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static void rda_uart_remove(struct platform_device *pdev)
+static int rda_uart_remove(struct platform_device *pdev)
 {
 	struct rda_uart_port *rda_port = platform_get_drvdata(pdev);
 
 	uart_remove_one_port(&rda_uart_driver, &rda_port->port);
 	rda_uart_ports[pdev->id] = NULL;
+
+	return 0;
 }
 
 static struct platform_driver rda_uart_platform_driver = {
 	.probe = rda_uart_probe,
-	.remove_new = rda_uart_remove,
+	.remove = rda_uart_remove,
 	.driver = {
 		.name = "rda-uart",
 		.of_match_table = rda_uart_dt_matches,

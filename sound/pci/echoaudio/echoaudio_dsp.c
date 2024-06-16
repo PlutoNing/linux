@@ -349,8 +349,7 @@ static int load_dsp(struct echoaudio *chip, u16 *code)
 
 	/* If this board requires a resident loader, install it. */
 #ifdef DSP_56361
-	i = install_resident_loader(chip);
-	if (i < 0)
+	if ((i = install_resident_loader(chip)) < 0)
 		return i;
 #endif
 
@@ -496,8 +495,7 @@ static int load_firmware(struct echoaudio *chip)
 
 	/* See if the ASIC is present and working - only if the DSP is already loaded */
 	if (chip->dsp_code) {
-		box_type = check_asic_status(chip);
-		if (box_type >= 0)
+		if ((box_type = check_asic_status(chip)) >= 0)
 			return box_type;
 		/* ASIC check failed; force the DSP to reload */
 		chip->dsp_code = NULL;
@@ -511,8 +509,7 @@ static int load_firmware(struct echoaudio *chip)
 	if (err < 0)
 		return err;
 
-	box_type = load_asic(chip);
-	if (box_type < 0)
+	if ((box_type = load_asic(chip)) < 0)
 		return box_type;	/* error */
 
 	return box_type;
@@ -638,30 +635,36 @@ This function assumes there are no more than 16 in/out busses or pipes
 Meters is an array [3][16][2] of long. */
 static void get_audio_meters(struct echoaudio *chip, long *meters)
 {
-	unsigned int i, m, n;
+	int i, m, n;
 
-	for (i = 0 ; i < 96; i++)
-		meters[i] = 0;
-
-	for (m = 0, n = 0, i = 0; i < num_busses_out(chip); i++, m++) {
+	m = 0;
+	n = 0;
+	for (i = 0; i < num_busses_out(chip); i++, m++) {
 		meters[n++] = chip->comm_page->vu_meter[m];
 		meters[n++] = chip->comm_page->peak_meter[m];
 	}
+	for (; n < 32; n++)
+		meters[n] = 0;
 
 #ifdef ECHOCARD_ECHO3G
 	m = E3G_MAX_OUTPUTS;	/* Skip unused meters */
 #endif
 
-	for (n = 32, i = 0; i < num_busses_in(chip); i++, m++) {
+	for (i = 0; i < num_busses_in(chip); i++, m++) {
 		meters[n++] = chip->comm_page->vu_meter[m];
 		meters[n++] = chip->comm_page->peak_meter[m];
 	}
+	for (; n < 64; n++)
+		meters[n] = 0;
+
 #ifdef ECHOCARD_HAS_VMIXER
-	for (n = 64, i = 0; i < num_pipes_out(chip); i++, m++) {
+	for (i = 0; i < num_pipes_out(chip); i++, m++) {
 		meters[n++] = chip->comm_page->vu_meter[m];
 		meters[n++] = chip->comm_page->peak_meter[m];
 	}
 #endif
+	for (; n < 96; n++)
+		meters[n] = 0;
 }
 
 
@@ -670,8 +673,7 @@ static int restore_dsp_rettings(struct echoaudio *chip)
 {
 	int i, o, err;
 
-	err = check_asic_status(chip);
-	if (err < 0)
+	if ((err = check_asic_status(chip)) < 0)
 		return err;
 
 	/* Gina20/Darla20 only. Should be harmless for other cards. */
@@ -902,7 +904,7 @@ static int pause_transport(struct echoaudio *chip, u32 channel_mask)
 		return 0;
 	}
 
-	dev_dbg(chip->card->dev, "pause_transport: No pipes to stop!\n");
+	dev_warn(chip->card->dev, "pause_transport: No pipes to stop!\n");
 	return 0;
 }
 
@@ -928,7 +930,7 @@ static int stop_transport(struct echoaudio *chip, u32 channel_mask)
 		return 0;
 	}
 
-	dev_dbg(chip->card->dev, "stop_transport: No pipes to stop!\n");
+	dev_warn(chip->card->dev, "stop_transport: No pipes to stop!\n");
 	return 0;
 }
 

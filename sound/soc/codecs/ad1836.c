@@ -148,9 +148,9 @@ static int ad1836_set_dai_fmt(struct snd_soc_dai *codec_dai,
 		return -EINVAL;
 	}
 
-	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
-	/* ALCLK,ABCLK are both output, AD1836 can only be provider */
-	case SND_SOC_DAIFMT_CBP_CFP:
+	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
+	/* ALCLK,ABCLK are both output, AD1836 can only be master */
+	case SND_SOC_DAIFMT_CBM_CFM:
 		break;
 	default:
 		return -EINVAL;
@@ -305,6 +305,8 @@ static int ad1836_probe(struct snd_soc_component *component)
 		return ret;
 
 	ret = snd_soc_dapm_add_routes(dapm, ad183x_adc_routes, num_adcs);
+	if (ret)
+		return ret;
 
 	return ret;
 }
@@ -332,6 +334,7 @@ static const struct snd_soc_component_driver soc_component_dev_ad1836 = {
 	.idle_bias_on		= 1,
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
+	.non_legacy_dai_naming	= 1,
 };
 
 static const struct reg_default ad1836_reg_defaults[] = {
@@ -358,7 +361,7 @@ static const struct regmap_config ad1836_regmap_config = {
 	.max_register = AD1836_ADC_CTRL3,
 	.reg_defaults = ad1836_reg_defaults,
 	.num_reg_defaults = ARRAY_SIZE(ad1836_reg_defaults),
-	.cache_type = REGCACHE_MAPLE,
+	.cache_type = REGCACHE_RBTREE,
 };
 
 static int ad1836_spi_probe(struct spi_device *spi)

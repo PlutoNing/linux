@@ -10,11 +10,6 @@
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/types.h>
-#include <linux/module.h>
-
-struct fwnode_handle;
-
-struct meson_pinctrl;
 
 /**
  * struct meson_pmx_group - a pinmux group
@@ -65,13 +60,13 @@ struct meson_reg_desc {
  * enum meson_reg_type - type of registers encoded in @meson_reg_desc
  */
 enum meson_reg_type {
-	MESON_REG_PULLEN,
-	MESON_REG_PULL,
-	MESON_REG_DIR,
-	MESON_REG_OUT,
-	MESON_REG_IN,
-	MESON_REG_DS,
-	MESON_NUM_REG,
+	REG_PULLEN,
+	REG_PULL,
+	REG_DIR,
+	REG_OUT,
+	REG_IN,
+	REG_DS,
+	NUM_REG,
 };
 
 /**
@@ -104,7 +99,7 @@ struct meson_bank {
 	unsigned int last;
 	int irq_first;
 	int irq_last;
-	struct meson_reg_desc regs[MESON_NUM_REG];
+	struct meson_reg_desc regs[NUM_REG];
 };
 
 struct meson_pinctrl_data {
@@ -119,7 +114,6 @@ struct meson_pinctrl_data {
 	unsigned int num_banks;
 	const struct pinmux_ops *pmx_ops;
 	void *pmx_data;
-	int (*parse_dt)(struct meson_pinctrl *pc);
 };
 
 struct meson_pinctrl {
@@ -133,7 +127,7 @@ struct meson_pinctrl {
 	struct regmap *reg_gpio;
 	struct regmap *reg_ds;
 	struct gpio_chip chip;
-	struct fwnode_handle *fwnode;
+	struct device_node *of_node;
 };
 
 #define FUNCTION(fn)							\
@@ -152,12 +146,12 @@ struct meson_pinctrl {
 		.irq_first	= fi,					\
 		.irq_last	= li,					\
 		.regs = {						\
-			[MESON_REG_PULLEN]	= { per, peb },		\
-			[MESON_REG_PULL]	= { pr, pb },		\
-			[MESON_REG_DIR]		= { dr, db },		\
-			[MESON_REG_OUT]		= { or, ob },		\
-			[MESON_REG_IN]		= { ir, ib },		\
-			[MESON_REG_DS]		= { dsr, dsb },		\
+			[REG_PULLEN]	= { per, peb },			\
+			[REG_PULL]	= { pr, pb },			\
+			[REG_DIR]	= { dr, db },			\
+			[REG_OUT]	= { or, ob },			\
+			[REG_IN]	= { ir, ib },			\
+			[REG_DS]	= { dsr, dsb },			\
 		},							\
 	 }
 
@@ -177,7 +171,3 @@ int meson_pmx_get_groups(struct pinctrl_dev *pcdev,
 
 /* Common probe function */
 int meson_pinctrl_probe(struct platform_device *pdev);
-/* Common ao groups extra dt parse function for SoCs before g12a  */
-int meson8_aobus_parse_dt_extra(struct meson_pinctrl *pc);
-/* Common extra dt parse function for SoCs like A1  */
-int meson_a1_parse_dt_extra(struct meson_pinctrl *pc);

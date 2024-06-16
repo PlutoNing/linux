@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-/*
+/* -*- mode: c; c-basic-offset: 8; -*-
+ * vim: noexpandtab sw=8 ts=8 sts=0:
+ *
  * userdlm.c
  *
  * Code which implements the kernel side of a minimal userspace
@@ -19,12 +21,12 @@
 #include <linux/types.h>
 #include <linux/crc32.h>
 
-#include "../ocfs2_lockingver.h"
-#include "../stackglue.h"
+#include "ocfs2_lockingver.h"
+#include "stackglue.h"
 #include "userdlm.h"
 
 #define MLOG_MASK_PREFIX ML_DLMFS
-#include "../cluster/masklog.h"
+#include "cluster/masklog.h"
 
 
 static inline struct user_lock_res *user_lksb_to_lock_res(struct ocfs2_dlm_lksb *lksb)
@@ -433,11 +435,6 @@ again:
 	}
 
 	spin_lock(&lockres->l_lock);
-	if (lockres->l_flags & USER_LOCK_IN_TEARDOWN) {
-		spin_unlock(&lockres->l_lock);
-		status = -EAGAIN;
-		goto bail;
-	}
 
 	/* We only compare against the currently granted level
 	 * here. If the lock is blocked waiting on a downconvert,
@@ -550,20 +547,24 @@ void user_dlm_write_lvb(struct inode *inode,
 	spin_unlock(&lockres->l_lock);
 }
 
-bool user_dlm_read_lvb(struct inode *inode, char *val)
+ssize_t user_dlm_read_lvb(struct inode *inode,
+			  char *val,
+			  unsigned int len)
 {
 	struct user_lock_res *lockres = &DLMFS_I(inode)->ip_lockres;
 	char *lvb;
-	bool ret = true;
+	ssize_t ret = len;
+
+	BUG_ON(len > DLM_LVB_LEN);
 
 	spin_lock(&lockres->l_lock);
 
 	BUG_ON(lockres->l_level < DLM_LOCK_PR);
 	if (ocfs2_dlm_lvb_valid(&lockres->l_lksb)) {
 		lvb = ocfs2_dlm_lvb(&lockres->l_lksb);
-		memcpy(val, lvb, DLM_LVB_LEN);
+		memcpy(val, lvb, len);
 	} else
-		ret = false;
+		ret = 0;
 
 	spin_unlock(&lockres->l_lock);
 	return ret;
@@ -600,7 +601,7 @@ int user_dlm_destroy_lock(struct user_lock_res *lockres)
 	spin_lock(&lockres->l_lock);
 	if (lockres->l_flags & USER_LOCK_IN_TEARDOWN) {
 		spin_unlock(&lockres->l_lock);
-		goto bail;
+		return 0;
 	}
 
 	lockres->l_flags |= USER_LOCK_IN_TEARDOWN;
@@ -614,30 +615,22 @@ int user_dlm_destroy_lock(struct user_lock_res *lockres)
 	}
 
 	if (lockres->l_ro_holders || lockres->l_ex_holders) {
-		lockres->l_flags &= ~USER_LOCK_IN_TEARDOWN;
 		spin_unlock(&lockres->l_lock);
 		goto bail;
 	}
 
 	status = 0;
 	if (!(lockres->l_flags & USER_LOCK_ATTACHED)) {
-		/*
-		 * lock is never requested, leave USER_LOCK_IN_TEARDOWN set
-		 * to avoid new lock request coming in.
-		 */
 		spin_unlock(&lockres->l_lock);
 		goto bail;
 	}
 
+	lockres->l_flags &= ~USER_LOCK_ATTACHED;
 	lockres->l_flags |= USER_LOCK_BUSY;
 	spin_unlock(&lockres->l_lock);
 
 	status = ocfs2_dlm_unlock(conn, &lockres->l_lksb, DLM_LKF_VALBLK);
 	if (status) {
-		spin_lock(&lockres->l_lock);
-		lockres->l_flags &= ~USER_LOCK_IN_TEARDOWN;
-		lockres->l_flags &= ~USER_LOCK_BUSY;
-		spin_unlock(&lockres->l_lock);
 		user_log_dlm_error("ocfs2_dlm_unlock", status, lockres);
 		goto bail;
 	}

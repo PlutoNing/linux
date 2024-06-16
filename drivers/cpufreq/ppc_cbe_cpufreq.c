@@ -9,9 +9,10 @@
 
 #include <linux/cpufreq.h>
 #include <linux/module.h>
-#include <linux/of.h>
+#include <linux/of_platform.h>
 
 #include <asm/machdep.h>
+#include <asm/prom.h>
 #include <asm/cell-regs.h>
 
 #include "ppc_cbe_cpufreq.h"

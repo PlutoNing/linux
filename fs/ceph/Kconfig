@@ -6,8 +6,6 @@ config CEPH_FS
 	select LIBCRC32C
 	select CRYPTO_AES
 	select CRYPTO
-	select NETFS_SUPPORT
-	select FS_ENCRYPTION_ALGS if FS_ENCRYPTION
 	default n
 	help
 	  Choose Y or M here to include support for mounting the
@@ -15,7 +13,7 @@ config CEPH_FS
 	  scalable file system designed to provide high performance,
 	  reliable access to petabytes of storage.
 
-	  More information at https://ceph.io/.
+	  More information at http://ceph.newdream.net/.
 
 	  If unsure, say N.
 

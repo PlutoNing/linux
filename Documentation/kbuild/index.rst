@@ -19,8 +19,6 @@ Kernel Build System
 
     issues
     reproducible-builds
-    gcc-plugins
-    llvm
 
 .. only::  subproject and html
 

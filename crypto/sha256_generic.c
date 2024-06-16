@@ -12,7 +12,7 @@
 #include <linux/module.h>
 #include <linux/mm.h>
 #include <linux/types.h>
-#include <crypto/sha2.h>
+#include <crypto/sha.h>
 #include <crypto/sha256_base.h>
 #include <asm/byteorder.h>
 #include <asm/unaligned.h>
@@ -33,21 +33,29 @@ const u8 sha256_zero_message_hash[SHA256_DIGEST_SIZE] = {
 };
 EXPORT_SYMBOL_GPL(sha256_zero_message_hash);
 
+static int crypto_sha256_init(struct shash_desc *desc)
+{
+	return sha256_init(shash_desc_ctx(desc));
+}
+
+static int crypto_sha224_init(struct shash_desc *desc)
+{
+	return sha224_init(shash_desc_ctx(desc));
+}
+
 int crypto_sha256_update(struct shash_desc *desc, const u8 *data,
 			  unsigned int len)
 {
-	sha256_update(shash_desc_ctx(desc), data, len);
-	return 0;
+	return sha256_update(shash_desc_ctx(desc), data, len);
 }
 EXPORT_SYMBOL(crypto_sha256_update);
 
 static int crypto_sha256_final(struct shash_desc *desc, u8 *out)
 {
 	if (crypto_shash_digestsize(desc->tfm) == SHA224_DIGEST_SIZE)
-		sha224_final(shash_desc_ctx(desc), out);
+		return sha224_final(shash_desc_ctx(desc), out);
 	else
-		sha256_final(shash_desc_ctx(desc), out);
-	return 0;
+		return sha256_final(shash_desc_ctx(desc), out);
 }
 
 int crypto_sha256_finup(struct shash_desc *desc, const u8 *data,
@@ -60,7 +68,7 @@ EXPORT_SYMBOL(crypto_sha256_finup);
 
 static struct shash_alg sha256_algs[2] = { {
 	.digestsize	=	SHA256_DIGEST_SIZE,
-	.init		=	sha256_base_init,
+	.init		=	crypto_sha256_init,
 	.update		=	crypto_sha256_update,
 	.final		=	crypto_sha256_final,
 	.finup		=	crypto_sha256_finup,
@@ -74,7 +82,7 @@ static struct shash_alg sha256_algs[2] = { {
 	}
 }, {
 	.digestsize	=	SHA224_DIGEST_SIZE,
-	.init		=	sha224_base_init,
+	.init		=	crypto_sha224_init,
 	.update		=	crypto_sha256_update,
 	.final		=	crypto_sha256_final,
 	.finup		=	crypto_sha256_finup,

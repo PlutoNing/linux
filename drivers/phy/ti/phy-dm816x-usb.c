@@ -1,4 +1,13 @@
-// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation version 2.
+ *
+ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
+ * kind, whether express or implied; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ */
 
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -13,6 +22,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
 #include <linux/phy/phy.h>
+#include <linux/of_platform.h>
 
 #include <linux/mfd/syscon.h>
 
@@ -72,16 +82,17 @@ static int dm816x_usb_phy_init(struct phy *x)
 {
 	struct dm816x_usb_phy *phy = phy_get_drvdata(x);
 	unsigned int val;
+	int error;
 
 	if (clk_get_rate(phy->refclk) != 24000000)
 		dev_warn(phy->dev, "nonstandard phy refclk\n");
 
 	/* Set PLL ref clock and put phys to sleep */
-	regmap_update_bits(phy->syscon, phy->usb_ctrl,
-			   DM816X_USB_CTRL_PHYCLKSRC |
-			   DM816X_USB_CTRL_PHYSLEEP1 |
-			   DM816X_USB_CTRL_PHYSLEEP0,
-			   0);
+	error = regmap_update_bits(phy->syscon, phy->usb_ctrl,
+				   DM816X_USB_CTRL_PHYCLKSRC |
+				   DM816X_USB_CTRL_PHYSLEEP1 |
+				   DM816X_USB_CTRL_PHYSLEEP0,
+				   0);
 	regmap_read(phy->syscon, phy->usb_ctrl, &val);
 	if ((val & 3) != 0)
 		dev_info(phy->dev,
@@ -160,6 +171,7 @@ static UNIVERSAL_DEV_PM_OPS(dm816x_usb_phy_pm_ops,
 			    dm816x_usb_phy_runtime_resume,
 			    NULL);
 
+#ifdef CONFIG_OF
 static const struct of_device_id dm816x_usb_phy_id_table[] = {
 	{
 		.compatible = "ti,dm8168-usb-phy",
@@ -167,6 +179,7 @@ static const struct of_device_id dm816x_usb_phy_id_table[] = {
 	{},
 };
 MODULE_DEVICE_TABLE(of, dm816x_usb_phy_id_table);
+#endif
 
 static int dm816x_usb_phy_probe(struct platform_device *pdev)
 {
@@ -175,7 +188,14 @@ static int dm816x_usb_phy_probe(struct platform_device *pdev)
 	struct phy *generic_phy;
 	struct phy_provider *phy_provider;
 	struct usb_otg *otg;
+	const struct of_device_id *of_id;
+	const struct usb_phy_data *phy_data;
 	int error;
+
+	of_id = of_match_device(of_match_ptr(dm816x_usb_phy_id_table),
+				&pdev->dev);
+	if (!of_id)
+		return -EINVAL;
 
 	phy = devm_kzalloc(&pdev->dev, sizeof(*phy), GFP_KERNEL);
 	if (!phy)
@@ -199,6 +219,8 @@ static int dm816x_usb_phy_probe(struct platform_device *pdev)
 	phy->usbphy_ctrl = (res->start & 0xff) + 4;
 	if (phy->usbphy_ctrl == 0x2c)
 		phy->instance = 1;
+
+	phy_data = of_id->data;
 
 	otg = devm_kzalloc(&pdev->dev, sizeof(*otg), GFP_KERNEL);
 	if (!otg)
@@ -224,46 +246,39 @@ static int dm816x_usb_phy_probe(struct platform_device *pdev)
 
 	pm_runtime_enable(phy->dev);
 	generic_phy = devm_phy_create(phy->dev, NULL, &ops);
-	if (IS_ERR(generic_phy)) {
-		error = PTR_ERR(generic_phy);
-		goto clk_unprepare;
-	}
+	if (IS_ERR(generic_phy))
+		return PTR_ERR(generic_phy);
 
 	phy_set_drvdata(generic_phy, phy);
 
 	phy_provider = devm_of_phy_provider_register(phy->dev,
 						     of_phy_simple_xlate);
-	if (IS_ERR(phy_provider)) {
-		error = PTR_ERR(phy_provider);
-		goto clk_unprepare;
-	}
+	if (IS_ERR(phy_provider))
+		return PTR_ERR(phy_provider);
 
 	usb_add_phy_dev(&phy->phy);
 
 	return 0;
-
-clk_unprepare:
-	pm_runtime_disable(phy->dev);
-	clk_unprepare(phy->refclk);
-	return error;
 }
 
-static void dm816x_usb_phy_remove(struct platform_device *pdev)
+static int dm816x_usb_phy_remove(struct platform_device *pdev)
 {
 	struct dm816x_usb_phy *phy = platform_get_drvdata(pdev);
 
 	usb_remove_phy(&phy->phy);
 	pm_runtime_disable(phy->dev);
 	clk_unprepare(phy->refclk);
+
+	return 0;
 }
 
 static struct platform_driver dm816x_usb_phy_driver = {
 	.probe		= dm816x_usb_phy_probe,
-	.remove_new	= dm816x_usb_phy_remove,
+	.remove		= dm816x_usb_phy_remove,
 	.driver		= {
 		.name	= "dm816x-usb-phy",
 		.pm	= &dm816x_usb_phy_pm_ops,
-		.of_match_table = dm816x_usb_phy_id_table,
+		.of_match_table = of_match_ptr(dm816x_usb_phy_id_table),
 	},
 };
 

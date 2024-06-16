@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2018 - 2021, 2023 Intel Corporation
+ * Copyright (C) 2018 - 2019 Intel Corporation
  */
+#ifndef __PMSR_H
+#define __PMSR_H
 #include <net/cfg80211.h>
 #include "core.h"
 #include "nl80211.h"
@@ -124,60 +126,6 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 			    "FTM: civic location request not supported");
 	}
 
-	out->ftm.trigger_based =
-		!!tb[NL80211_PMSR_FTM_REQ_ATTR_TRIGGER_BASED];
-	if (out->ftm.trigger_based && !capa->ftm.trigger_based) {
-		NL_SET_ERR_MSG_ATTR(info->extack,
-				    tb[NL80211_PMSR_FTM_REQ_ATTR_TRIGGER_BASED],
-				    "FTM: trigger based ranging is not supported");
-		return -EINVAL;
-	}
-
-	out->ftm.non_trigger_based =
-		!!tb[NL80211_PMSR_FTM_REQ_ATTR_NON_TRIGGER_BASED];
-	if (out->ftm.non_trigger_based && !capa->ftm.non_trigger_based) {
-		NL_SET_ERR_MSG_ATTR(info->extack,
-				    tb[NL80211_PMSR_FTM_REQ_ATTR_NON_TRIGGER_BASED],
-				    "FTM: trigger based ranging is not supported");
-		return -EINVAL;
-	}
-
-	if (out->ftm.trigger_based && out->ftm.non_trigger_based) {
-		NL_SET_ERR_MSG(info->extack,
-			       "FTM: can't set both trigger based and non trigger based");
-		return -EINVAL;
-	}
-
-	if ((out->ftm.trigger_based || out->ftm.non_trigger_based) &&
-	    out->ftm.preamble != NL80211_PREAMBLE_HE) {
-		NL_SET_ERR_MSG_ATTR(info->extack,
-				    tb[NL80211_PMSR_FTM_REQ_ATTR_PREAMBLE],
-				    "FTM: non EDCA based ranging must use HE preamble");
-		return -EINVAL;
-	}
-
-	out->ftm.lmr_feedback =
-		!!tb[NL80211_PMSR_FTM_REQ_ATTR_LMR_FEEDBACK];
-	if (!out->ftm.trigger_based && !out->ftm.non_trigger_based &&
-	    out->ftm.lmr_feedback) {
-		NL_SET_ERR_MSG_ATTR(info->extack,
-				    tb[NL80211_PMSR_FTM_REQ_ATTR_LMR_FEEDBACK],
-				    "FTM: LMR feedback set for EDCA based ranging");
-		return -EINVAL;
-	}
-
-	if (tb[NL80211_PMSR_FTM_REQ_ATTR_BSS_COLOR]) {
-		if (!out->ftm.non_trigger_based && !out->ftm.trigger_based) {
-			NL_SET_ERR_MSG_ATTR(info->extack,
-					    tb[NL80211_PMSR_FTM_REQ_ATTR_BSS_COLOR],
-					    "FTM: BSS color set for EDCA based ranging");
-			return -EINVAL;
-		}
-
-		out->ftm.bss_color =
-			nla_get_u8(tb[NL80211_PMSR_FTM_REQ_ATTR_BSS_COLOR]);
-	}
-
 	return 0;
 }
 
@@ -207,9 +155,10 @@ static int pmsr_parse_peer(struct cfg80211_registered_device *rdev,
 
 	/* reuse info->attrs */
 	memset(info->attrs, 0, sizeof(*info->attrs) * (NL80211_ATTR_MAX + 1));
+	/* need to validate here, we don't want to have validation recursion */
 	err = nla_parse_nested_deprecated(info->attrs, NL80211_ATTR_MAX,
 					  tb[NL80211_PMSR_PEER_ATTR_CHAN],
-					  NULL, info->extack);
+					  nl80211_policy, info->extack);
 	if (err)
 		return err;
 
@@ -291,7 +240,6 @@ int nl80211_pmsr_start(struct sk_buff *skb, struct genl_info *info)
 	req = kzalloc(struct_size(req, peers, count), GFP_KERNEL);
 	if (!req)
 		return -ENOMEM;
-	req->n_peers = count;
 
 	if (info->attrs[NL80211_ATTR_TIMEOUT])
 		req->timeout = nla_get_u32(info->attrs[NL80211_ATTR_TIMEOUT]);
@@ -322,6 +270,8 @@ int nl80211_pmsr_start(struct sk_buff *skb, struct genl_info *info)
 			goto out_err;
 		idx++;
 	}
+
+	req->n_peers = count;
 	req->cookie = cfg80211_assign_cookie(rdev);
 	req->nl_portid = info->snd_portid;
 
@@ -343,7 +293,6 @@ void cfg80211_pmsr_complete(struct wireless_dev *wdev,
 			    gfp_t gfp)
 {
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
-	struct cfg80211_pmsr_request *tmp, *prev, *to_free = NULL;
 	struct sk_buff *msg;
 	void *hdr;
 
@@ -374,20 +323,9 @@ free_msg:
 	nlmsg_free(msg);
 free_request:
 	spin_lock_bh(&wdev->pmsr_lock);
-	/*
-	 * cfg80211_pmsr_process_abort() may have already moved this request
-	 * to the free list, and will free it later. In this case, don't free
-	 * it here.
-	 */
-	list_for_each_entry_safe(tmp, prev, &wdev->pmsr_list, list) {
-		if (tmp == req) {
-			list_del(&req->list);
-			to_free = req;
-			break;
-		}
-	}
+	list_del(&req->list);
 	spin_unlock_bh(&wdev->pmsr_lock);
-	kfree(to_free);
+	kfree(req);
 }
 EXPORT_SYMBOL_GPL(cfg80211_pmsr_complete);
 
@@ -600,7 +538,7 @@ static void cfg80211_pmsr_process_abort(struct wireless_dev *wdev)
 	struct cfg80211_pmsr_request *req, *tmp;
 	LIST_HEAD(free_list);
 
-	lockdep_assert_wiphy(wdev->wiphy);
+	lockdep_assert_held(&wdev->mtx);
 
 	spin_lock_bh(&wdev->pmsr_lock);
 	list_for_each_entry_safe(req, tmp, &wdev->pmsr_list, list) {
@@ -622,9 +560,9 @@ void cfg80211_pmsr_free_wk(struct work_struct *work)
 	struct wireless_dev *wdev = container_of(work, struct wireless_dev,
 						 pmsr_free_wk);
 
-	wiphy_lock(wdev->wiphy);
+	wdev_lock(wdev);
 	cfg80211_pmsr_process_abort(wdev);
-	wiphy_unlock(wdev->wiphy);
+	wdev_unlock(wdev);
 }
 
 void cfg80211_pmsr_wdev_down(struct wireless_dev *wdev)
@@ -658,3 +596,5 @@ void cfg80211_release_pmsr(struct wireless_dev *wdev, u32 portid)
 	}
 	spin_unlock_bh(&wdev->pmsr_lock);
 }
+
+#endif /* __PMSR_H */

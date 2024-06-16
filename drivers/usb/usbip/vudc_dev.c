@@ -489,11 +489,11 @@ static void vudc_device_unusable(struct usbip_device *ud)
 
 struct vudc_device *alloc_vudc_device(int devid)
 {
-	struct vudc_device *udc_dev;
+	struct vudc_device *udc_dev = NULL;
 
 	udc_dev = kzalloc(sizeof(*udc_dev), GFP_KERNEL);
 	if (!udc_dev)
-		return NULL;
+		goto out;
 
 	INIT_LIST_HEAD(&udc_dev->dev_entry);
 
@@ -503,6 +503,7 @@ struct vudc_device *alloc_vudc_device(int devid)
 		udc_dev = NULL;
 	}
 
+out:
 	return udc_dev;
 }
 
@@ -571,7 +572,6 @@ static int init_vudc_hw(struct vudc *udc)
 	init_waitqueue_head(&udc->tx_waitq);
 
 	spin_lock_init(&ud->lock);
-	mutex_init(&ud->sysfs_lock);
 	ud->status = SDEV_ST_AVAILABLE;
 	ud->side = USBIP_VUDC;
 
@@ -628,11 +628,12 @@ out:
 	return ret;
 }
 
-void vudc_remove(struct platform_device *pdev)
+int vudc_remove(struct platform_device *pdev)
 {
 	struct vudc *udc = platform_get_drvdata(pdev);
 
 	usb_del_gadget_udc(&udc->gadget);
 	cleanup_vudc_hw(udc);
 	kfree(udc);
+	return 0;
 }

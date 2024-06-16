@@ -1,8 +1,8 @@
 .. SPDX-License-Identifier: GPL-2.0
 
-=================
-PCI Bus Subsystem
-=================
+=======================
+Linux PCI Bus Subsystem
+=======================
 
 .. toctree::
    :maxdepth: 2
@@ -12,9 +12,7 @@ PCI Bus Subsystem
    pciebus-howto
    pci-iov-howto
    msi-howto
-   sysfs-pci
    acpi-info
    pci-error-recovery
    pcieaer-howto
    endpoint/index
-   boot-interrupts

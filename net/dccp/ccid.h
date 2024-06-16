@@ -95,7 +95,7 @@ void ccid_cleanup_builtins(void);
 
 struct ccid {
 	struct ccid_operations *ccid_ops;
-	char		       ccid_priv[];
+	char		       ccid_priv[0];
 };
 
 static inline void *ccid_priv(const struct ccid *ccid)

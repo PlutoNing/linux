@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2017 Facebook
  */
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <stdint.h>
@@ -10,11 +11,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <bpf/bpf.h>
-#include <bpf/libbpf.h>
-
-#include "bpf_util.h"
-
-static int map_fd[7];
+#include "bpf_load.h"
 
 #define PORT_A		(map_fd[0])
 #define PORT_H		(map_fd[1])
@@ -30,7 +27,7 @@ static const char * const test_names[] = {
 	"Hash of Hash",
 };
 
-#define NR_TESTS ARRAY_SIZE(test_names)
+#define NR_TESTS (sizeof(test_names) / sizeof(*test_names))
 
 static void check_map_id(int inner_map_fd, int map_in_map_fd, uint32_t key)
 {
@@ -38,7 +35,7 @@ static void check_map_id(int inner_map_fd, int map_in_map_fd, uint32_t key)
 	uint32_t info_len = sizeof(info);
 	int ret, id;
 
-	ret = bpf_map_get_info_by_fd(inner_map_fd, &info, &info_len);
+	ret = bpf_obj_get_info_by_fd(inner_map_fd, &info, &info_len);
 	assert(!ret);
 
 	ret = bpf_map_lookup_elem(map_in_map_fd, &key, &id);
@@ -115,54 +112,19 @@ static void test_map_in_map(void)
 
 int main(int argc, char **argv)
 {
-	struct bpf_link *link = NULL;
-	struct bpf_program *prog;
-	struct bpf_object *obj;
+	struct rlimit r = {RLIM_INFINITY, RLIM_INFINITY};
 	char filename[256];
 
-	snprintf(filename, sizeof(filename), "%s.bpf.o", argv[0]);
-	obj = bpf_object__open_file(filename, NULL);
-	if (libbpf_get_error(obj)) {
-		fprintf(stderr, "ERROR: opening BPF object file failed\n");
-		return 0;
-	}
+	assert(!setrlimit(RLIMIT_MEMLOCK, &r));
 
-	prog = bpf_object__find_program_by_name(obj, "trace_sys_connect");
-	if (!prog) {
-		printf("finding a prog in obj file failed\n");
-		goto cleanup;
-	}
+	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
 
-	/* load BPF program */
-	if (bpf_object__load(obj)) {
-		fprintf(stderr, "ERROR: loading BPF object file failed\n");
-		goto cleanup;
-	}
-
-	map_fd[0] = bpf_object__find_map_fd_by_name(obj, "port_a");
-	map_fd[1] = bpf_object__find_map_fd_by_name(obj, "port_h");
-	map_fd[2] = bpf_object__find_map_fd_by_name(obj, "reg_result_h");
-	map_fd[3] = bpf_object__find_map_fd_by_name(obj, "inline_result_h");
-	map_fd[4] = bpf_object__find_map_fd_by_name(obj, "a_of_port_a");
-	map_fd[5] = bpf_object__find_map_fd_by_name(obj, "h_of_port_a");
-	map_fd[6] = bpf_object__find_map_fd_by_name(obj, "h_of_port_h");
-	if (map_fd[0] < 0 || map_fd[1] < 0 || map_fd[2] < 0 ||
-	    map_fd[3] < 0 || map_fd[4] < 0 || map_fd[5] < 0 || map_fd[6] < 0) {
-		fprintf(stderr, "ERROR: finding a map in obj file failed\n");
-		goto cleanup;
-	}
-
-	link = bpf_program__attach(prog);
-	if (libbpf_get_error(link)) {
-		fprintf(stderr, "ERROR: bpf_program__attach failed\n");
-		link = NULL;
-		goto cleanup;
+	if (load_bpf_file(filename)) {
+		printf("%s", bpf_log_buf);
+		return 1;
 	}
 
 	test_map_in_map();
 
-cleanup:
-	bpf_link__destroy(link);
-	bpf_object__close(obj);
 	return 0;
 }

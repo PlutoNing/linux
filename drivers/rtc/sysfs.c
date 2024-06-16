@@ -6,7 +6,6 @@
  * Author: Alessandro Zummo <a.zummo@towertech.it>
  */
 
-#include <linux/kstrtox.h>
 #include <linux/module.h>
 #include <linux/rtc.h>
 
@@ -103,12 +102,9 @@ max_user_freq_store(struct device *dev, struct device_attribute *attr,
 static DEVICE_ATTR_RW(max_user_freq);
 
 /**
- * hctosys_show - indicate if the given RTC set the system time
- * @dev: The device that the attribute belongs to.
- * @attr: The attribute being read.
- * @buf: The result buffer.
+ * rtc_sysfs_show_hctosys - indicate if the given RTC set the system time
  *
- * buf is "1" if the system clock was set by this RTC at the last
+ * Returns 1 if the system clock was set by this RTC at the last
  * boot or resume event.
  */
 static ssize_t
@@ -274,13 +270,13 @@ static bool rtc_does_wakealarm(struct rtc_device *rtc)
 	if (!device_can_wakeup(rtc->dev.parent))
 		return false;
 
-	return !!test_bit(RTC_FEATURE_ALARM, rtc->features);
+	return rtc->ops->set_alarm != NULL;
 }
 
 static umode_t rtc_attr_is_visible(struct kobject *kobj,
 				   struct attribute *attr, int n)
 {
-	struct device *dev = kobj_to_dev(kobj);
+	struct device *dev = container_of(kobj, struct device, kobj);
 	struct rtc_device *rtc = to_rtc_device(dev);
 	umode_t mode = attr->mode;
 
@@ -318,6 +314,8 @@ int rtc_add_groups(struct rtc_device *rtc, const struct attribute_group **grps)
 	size_t old_cnt = 0, add_cnt = 0, new_cnt;
 	const struct attribute_group **groups, **old;
 
+	if (rtc->registered)
+		return -EINVAL;
 	if (!grps)
 		return -EINVAL;
 

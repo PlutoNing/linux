@@ -11,14 +11,12 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/mman.h>
-#include <traceevent/event-parse.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
 
 #include "trace-event.h"
 #include "debug.h"
-#include "util.h"
 
 static int input_fd;
 
@@ -77,7 +75,7 @@ static void skip(int size)
 		r = size > BUFSIZ ? BUFSIZ : size;
 		do_read(buf, r);
 		size -= r;
-	}
+	};
 }
 
 static unsigned int read4(struct tep_handle *pevent)
@@ -363,7 +361,6 @@ static int read_saved_cmdline(struct tep_handle *pevent)
 		pr_debug("error reading saved cmdlines\n");
 		goto out;
 	}
-	buf[ret] = '\0';
 
 	parse_saved_cmdline(pevent, buf, size);
 	ret = 0;
@@ -416,7 +413,7 @@ ssize_t trace_report(int fd, struct trace_event *tevent, bool __repipe)
 		return -1;
 	}
 	file_bigendian = buf[0];
-	host_bigendian = host_is_bigendian() ? 1 : 0;
+	host_bigendian = bigendian();
 
 	if (trace_event__init(tevent)) {
 		pr_debug("trace_event__init failed");

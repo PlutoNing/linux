@@ -54,14 +54,10 @@ EXPORT_SYMBOL_GPL(erst_disable);
 
 static struct acpi_table_erst *erst_tab;
 
-/* ERST Error Log Address Range attributes */
+/* ERST Error Log Address Range atrributes */
 #define ERST_RANGE_RESERVED	0x0001
 #define ERST_RANGE_NVRAM	0x0002
 #define ERST_RANGE_SLOW		0x0004
-
-/* ERST Exec max timings */
-#define ERST_EXEC_TIMING_MAX_MASK      0xFFFFFFFF00000000
-#define ERST_EXEC_TIMING_MAX_SHIFT     32
 
 /*
  * ERST Error Log Address Range, used as buffer for reading/writing
@@ -72,7 +68,6 @@ static struct erst_erange {
 	u64 size;
 	void __iomem *vaddr;
 	u32 attr;
-	u64 timings;
 } erst_erange;
 
 /*
@@ -100,19 +95,6 @@ static inline int erst_errno(int command_status)
 	default:
 		return -EINVAL;
 	}
-}
-
-static inline u64 erst_get_timeout(void)
-{
-	u64 timeout = FIRMWARE_TIMEOUT;
-
-	if (erst_erange.attr & ERST_RANGE_SLOW) {
-		timeout = ((erst_erange.timings & ERST_EXEC_TIMING_MAX_MASK) >>
-			ERST_EXEC_TIMING_MAX_SHIFT) * NSEC_PER_MSEC;
-		if (timeout < FIRMWARE_TIMEOUT)
-			timeout = FIRMWARE_TIMEOUT;
-	}
-	return timeout;
 }
 
 static int erst_timedout(u64 *t, u64 spin_unit)
@@ -209,10 +191,8 @@ static int erst_exec_stall_while_true(struct apei_exec_context *ctx,
 {
 	int rc;
 	u64 val;
-	u64 timeout;
+	u64 timeout = FIRMWARE_TIMEOUT;
 	u64 stall_time;
-
-	timeout = erst_get_timeout();
 
 	if (ctx->var1 > FIRMWARE_MAX_STALL) {
 		if (!in_nmi())
@@ -409,13 +389,6 @@ static int erst_get_erange(struct erst_erange *range)
 	if (rc)
 		return rc;
 	range->attr = apei_exec_ctx_get_output(&ctx);
-	rc = apei_exec_run(&ctx, ACPI_ERST_EXECUTE_TIMINGS);
-	if (rc == 0)
-		range->timings = apei_exec_ctx_get_output(&ctx);
-	else if (rc == -ENOENT)
-		range->timings = 0;
-	else
-		return rc;
 
 	return 0;
 }
@@ -648,11 +621,9 @@ EXPORT_SYMBOL_GPL(erst_get_record_id_end);
 static int __erst_write_to_storage(u64 offset)
 {
 	struct apei_exec_context ctx;
-	u64 timeout;
+	u64 timeout = FIRMWARE_TIMEOUT;
 	u64 val;
 	int rc;
-
-	timeout = erst_get_timeout();
 
 	erst_exec_ctx_init(&ctx);
 	rc = apei_exec_run_optional(&ctx, ACPI_ERST_BEGIN_WRITE);
@@ -689,11 +660,9 @@ static int __erst_write_to_storage(u64 offset)
 static int __erst_read_from_storage(u64 record_id, u64 offset)
 {
 	struct apei_exec_context ctx;
-	u64 timeout;
+	u64 timeout = FIRMWARE_TIMEOUT;
 	u64 val;
 	int rc;
-
-	timeout = erst_get_timeout();
 
 	erst_exec_ctx_init(&ctx);
 	rc = apei_exec_run_optional(&ctx, ACPI_ERST_BEGIN_READ);
@@ -719,7 +688,7 @@ static int __erst_read_from_storage(u64 record_id, u64 offset)
 			break;
 		if (erst_timedout(&timeout, SPIN_UNIT))
 			return -EIO;
-	}
+	};
 	rc = apei_exec_run(&ctx, ACPI_ERST_GET_COMMAND_STATUS);
 	if (rc)
 		return rc;
@@ -734,11 +703,9 @@ static int __erst_read_from_storage(u64 record_id, u64 offset)
 static int __erst_clear_from_storage(u64 record_id)
 {
 	struct apei_exec_context ctx;
-	u64 timeout;
+	u64 timeout = FIRMWARE_TIMEOUT;
 	u64 val;
 	int rc;
-
-	timeout = erst_get_timeout();
 
 	erst_exec_ctx_init(&ctx);
 	rc = apei_exec_run_optional(&ctx, ACPI_ERST_BEGIN_CLEAR);
@@ -889,74 +856,6 @@ ssize_t erst_read(u64 record_id, struct cper_record_header *record,
 }
 EXPORT_SYMBOL_GPL(erst_read);
 
-static void erst_clear_cache(u64 record_id)
-{
-	int i;
-	u64 *entries;
-
-	mutex_lock(&erst_record_id_cache.lock);
-
-	entries = erst_record_id_cache.entries;
-	for (i = 0; i < erst_record_id_cache.len; i++) {
-		if (entries[i] == record_id)
-			entries[i] = APEI_ERST_INVALID_RECORD_ID;
-	}
-	__erst_record_id_cache_compact();
-
-	mutex_unlock(&erst_record_id_cache.lock);
-}
-
-ssize_t erst_read_record(u64 record_id, struct cper_record_header *record,
-		size_t buflen, size_t recordlen, const guid_t *creatorid)
-{
-	ssize_t len;
-
-	/*
-	 * if creatorid is NULL, read any record for erst-dbg module
-	 */
-	if (creatorid == NULL) {
-		len = erst_read(record_id, record, buflen);
-		if (len == -ENOENT)
-			erst_clear_cache(record_id);
-
-		return len;
-	}
-
-	len = erst_read(record_id, record, buflen);
-	/*
-	 * if erst_read return value is -ENOENT skip to next record_id,
-	 * and clear the record_id cache.
-	 */
-	if (len == -ENOENT) {
-		erst_clear_cache(record_id);
-		goto out;
-	}
-
-	if (len < 0)
-		goto out;
-
-	/*
-	 * if erst_read return value is less than record head length,
-	 * consider it as -EIO, and clear the record_id cache.
-	 */
-	if (len < recordlen) {
-		len = -EIO;
-		erst_clear_cache(record_id);
-		goto out;
-	}
-
-	/*
-	 * if creatorid is not wanted, consider it as not found,
-	 * for skipping to next record_id.
-	 */
-	if (!guid_equal(&record->creator_id, creatorid))
-		len = -ENOENT;
-
-out:
-	return len;
-}
-EXPORT_SYMBOL_GPL(erst_read_record);
-
 int erst_clear(u64 record_id)
 {
 	int rc, i;
@@ -992,7 +891,7 @@ EXPORT_SYMBOL_GPL(erst_clear);
 static int __init setup_erst_disable(char *str)
 {
 	erst_disable = 1;
-	return 1;
+	return 0;
 }
 
 __setup("erst_disable", setup_erst_disable);
@@ -1053,10 +952,14 @@ static int reader_pos;
 
 static int erst_open_pstore(struct pstore_info *psi)
 {
+	int rc;
+
 	if (erst_disable)
 		return -ENODEV;
 
-	return erst_get_record_id_begin(&reader_pos);
+	rc = erst_get_record_id_begin(&reader_pos);
+
+	return rc;
 }
 
 static int erst_close_pstore(struct pstore_info *psi)
@@ -1093,13 +996,16 @@ skip:
 		goto out;
 	}
 
-	len = erst_read_record(record_id, &rcd->hdr, rcd_len, sizeof(*rcd),
-			&CPER_CREATOR_PSTORE);
+	len = erst_read(record_id, &rcd->hdr, rcd_len);
 	/* The record may be cleared by others, try read next record */
 	if (len == -ENOENT)
 		goto skip;
-	else if (len < 0)
+	else if (len < 0 || len < sizeof(*rcd)) {
+		rc = -EIO;
 		goto out;
+	}
+	if (!guid_equal(&rcd->hdr.creator_id, &CPER_CREATOR_PSTORE))
+		goto skip;
 
 	record->buf = kmalloc(len, GFP_KERNEL);
 	if (record->buf == NULL) {
@@ -1216,7 +1122,7 @@ static int __init erst_init(void)
 	rc = erst_check_table(erst_tab);
 	if (rc) {
 		pr_err(FW_BUG "ERST table is invalid.\n");
-		goto err_put_erst_tab;
+		goto err;
 	}
 
 	apei_resources_init(&erst_resources);
@@ -1290,8 +1196,6 @@ err_release:
 	apei_resources_release(&erst_resources);
 err_fini:
 	apei_resources_fini(&erst_resources);
-err_put_erst_tab:
-	acpi_put_table((struct acpi_table_header *)erst_tab);
 err:
 	erst_disable = 1;
 	return rc;

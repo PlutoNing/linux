@@ -38,28 +38,25 @@ DEFINE_CORESIGHT_DEVLIST(funnel_devs, "funnel");
  * @atclk:	optional clock for the core parts of the funnel.
  * @csdev:	component vitals needed by the framework.
  * @priority:	port selection order.
- * @spinlock:	serialize enable/disable operations.
  */
 struct funnel_drvdata {
 	void __iomem		*base;
 	struct clk		*atclk;
 	struct coresight_device	*csdev;
 	unsigned long		priority;
-	spinlock_t		spinlock;
 };
 
 static int dynamic_funnel_enable_hw(struct funnel_drvdata *drvdata, int port)
 {
 	u32 functl;
 	int rc = 0;
-	struct coresight_device *csdev = drvdata->csdev;
 
 	CS_UNLOCK(drvdata->base);
 
 	functl = readl_relaxed(drvdata->base + FUNNEL_FUNCTL);
 	/* Claim the device only when we enable the first slave */
 	if (!(functl & FUNNEL_ENSx_MASK)) {
-		rc = coresight_claim_device_unlocked(csdev);
+		rc = coresight_claim_device_unlocked(drvdata->base);
 		if (rc)
 			goto done;
 	}
@@ -74,29 +71,17 @@ done:
 	return rc;
 }
 
-static int funnel_enable(struct coresight_device *csdev,
-			 struct coresight_connection *in,
-			 struct coresight_connection *out)
+static int funnel_enable(struct coresight_device *csdev, int inport,
+			 int outport)
 {
 	int rc = 0;
 	struct funnel_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
-	unsigned long flags;
-	bool first_enable = false;
 
-	spin_lock_irqsave(&drvdata->spinlock, flags);
-	if (atomic_read(&in->dest_refcnt) == 0) {
-		if (drvdata->base)
-			rc = dynamic_funnel_enable_hw(drvdata, in->dest_port);
-		if (!rc)
-			first_enable = true;
-	}
+	if (drvdata->base)
+		rc = dynamic_funnel_enable_hw(drvdata, inport);
+
 	if (!rc)
-		atomic_inc(&in->dest_refcnt);
-	spin_unlock_irqrestore(&drvdata->spinlock, flags);
-
-	if (first_enable)
-		dev_dbg(&csdev->dev, "FUNNEL inport %d enabled\n",
-			in->dest_port);
+		dev_dbg(&csdev->dev, "FUNNEL inport %d enabled\n", inport);
 	return rc;
 }
 
@@ -104,7 +89,6 @@ static void dynamic_funnel_disable_hw(struct funnel_drvdata *drvdata,
 				      int inport)
 {
 	u32 functl;
-	struct coresight_device *csdev = drvdata->csdev;
 
 	CS_UNLOCK(drvdata->base);
 
@@ -114,30 +98,20 @@ static void dynamic_funnel_disable_hw(struct funnel_drvdata *drvdata,
 
 	/* Disclaim the device if none of the slaves are now active */
 	if (!(functl & FUNNEL_ENSx_MASK))
-		coresight_disclaim_device_unlocked(csdev);
+		coresight_disclaim_device_unlocked(drvdata->base);
 
 	CS_LOCK(drvdata->base);
 }
 
-static void funnel_disable(struct coresight_device *csdev,
-			   struct coresight_connection *in,
-			   struct coresight_connection *out)
+static void funnel_disable(struct coresight_device *csdev, int inport,
+			   int outport)
 {
 	struct funnel_drvdata *drvdata = dev_get_drvdata(csdev->dev.parent);
-	unsigned long flags;
-	bool last_disable = false;
 
-	spin_lock_irqsave(&drvdata->spinlock, flags);
-	if (atomic_dec_return(&in->dest_refcnt) == 0) {
-		if (drvdata->base)
-			dynamic_funnel_disable_hw(drvdata, in->dest_port);
-		last_disable = true;
-	}
-	spin_unlock_irqrestore(&drvdata->spinlock, flags);
+	if (drvdata->base)
+		dynamic_funnel_disable_hw(drvdata, inport);
 
-	if (last_disable)
-		dev_dbg(&csdev->dev, "FUNNEL inport %d disabled\n",
-			in->dest_port);
+	dev_dbg(&csdev->dev, "FUNNEL inport %d disabled\n", inport);
 }
 
 static const struct coresight_ops_link funnel_link_ops = {
@@ -248,7 +222,6 @@ static int funnel_probe(struct device *dev, struct resource *res)
 		}
 		drvdata->base = base;
 		desc.groups = coresight_funnel_groups;
-		desc.access = CSDEV_ACCESS_IOMEM(base);
 	}
 
 	dev_set_drvdata(dev, drvdata);
@@ -260,7 +233,6 @@ static int funnel_probe(struct device *dev, struct resource *res)
 	}
 	dev->platform_data = pdata;
 
-	spin_lock_init(&drvdata->spinlock);
 	desc.type = CORESIGHT_DEV_TYPE_LINK;
 	desc.subtype.link_subtype = CORESIGHT_DEV_SUBTYPE_LINK_MERG;
 	desc.ops = &funnel_cs_ops;
@@ -279,15 +251,6 @@ out_disable_clk:
 	if (ret && !IS_ERR_OR_NULL(drvdata->atclk))
 		clk_disable_unprepare(drvdata->atclk);
 	return ret;
-}
-
-static int funnel_remove(struct device *dev)
-{
-	struct funnel_drvdata *drvdata = dev_get_drvdata(dev);
-
-	coresight_unregister(drvdata->csdev);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -335,50 +298,34 @@ static int static_funnel_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static void static_funnel_remove(struct platform_device *pdev)
-{
-	funnel_remove(&pdev->dev);
-	pm_runtime_disable(&pdev->dev);
-}
-
 static const struct of_device_id static_funnel_match[] = {
 	{.compatible = "arm,coresight-static-funnel"},
 	{}
 };
 
-MODULE_DEVICE_TABLE(of, static_funnel_match);
-
 #ifdef CONFIG_ACPI
 static const struct acpi_device_id static_funnel_ids[] = {
-	{"ARMHC9FE", 0, 0, 0},
+	{"ARMHC9FE", 0},
 	{},
 };
-
-MODULE_DEVICE_TABLE(acpi, static_funnel_ids);
 #endif
 
 static struct platform_driver static_funnel_driver = {
 	.probe          = static_funnel_probe,
-	.remove_new      = static_funnel_remove,
 	.driver         = {
 		.name   = "coresight-static-funnel",
-		/* THIS_MODULE is taken care of by platform_driver_register() */
 		.of_match_table = static_funnel_match,
 		.acpi_match_table = ACPI_PTR(static_funnel_ids),
 		.pm	= &funnel_dev_pm_ops,
 		.suppress_bind_attrs = true,
 	},
 };
+builtin_platform_driver(static_funnel_driver);
 
 static int dynamic_funnel_probe(struct amba_device *adev,
 				const struct amba_id *id)
 {
 	return funnel_probe(&adev->dev, &adev->res);
-}
-
-static void dynamic_funnel_remove(struct amba_device *adev)
-{
-	funnel_remove(&adev->dev);
 }
 
 static const struct amba_id dynamic_funnel_ids[] = {
@@ -391,10 +338,8 @@ static const struct amba_id dynamic_funnel_ids[] = {
 		.id     = 0x000bb9eb,
 		.mask   = 0x000fffff,
 	},
-	{ 0, 0, NULL },
+	{ 0, 0},
 };
-
-MODULE_DEVICE_TABLE(amba, dynamic_funnel_ids);
 
 static struct amba_driver dynamic_funnel_driver = {
 	.drv = {
@@ -404,39 +349,6 @@ static struct amba_driver dynamic_funnel_driver = {
 		.suppress_bind_attrs = true,
 	},
 	.probe		= dynamic_funnel_probe,
-	.remove		= dynamic_funnel_remove,
 	.id_table	= dynamic_funnel_ids,
 };
-
-static int __init funnel_init(void)
-{
-	int ret;
-
-	ret = platform_driver_register(&static_funnel_driver);
-	if (ret) {
-		pr_info("Error registering platform driver\n");
-		return ret;
-	}
-
-	ret = amba_driver_register(&dynamic_funnel_driver);
-	if (ret) {
-		pr_info("Error registering amba driver\n");
-		platform_driver_unregister(&static_funnel_driver);
-	}
-
-	return ret;
-}
-
-static void __exit funnel_exit(void)
-{
-	platform_driver_unregister(&static_funnel_driver);
-	amba_driver_unregister(&dynamic_funnel_driver);
-}
-
-module_init(funnel_init);
-module_exit(funnel_exit);
-
-MODULE_AUTHOR("Pratik Patel <pratikp@codeaurora.org>");
-MODULE_AUTHOR("Mathieu Poirier <mathieu.poirier@linaro.org>");
-MODULE_DESCRIPTION("Arm CoreSight Funnel Driver");
-MODULE_LICENSE("GPL v2");
+builtin_amba_driver(dynamic_funnel_driver);

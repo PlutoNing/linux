@@ -14,7 +14,6 @@
 #include <linux/of.h>
 #include <linux/clk.h>
 #include <linux/of_address.h>
-#include <linux/pm_runtime.h>
 
 #include "cc_driver.h"
 #include "cc_request_mgr.h"
@@ -99,58 +98,6 @@ static const struct of_device_id arm_ccree_dev_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, arm_ccree_dev_of_match);
 
-static void init_cc_cache_params(struct cc_drvdata *drvdata)
-{
-	struct device *dev = drvdata_to_dev(drvdata);
-	u32 cache_params, ace_const, val;
-	u64 mask;
-
-	/* compute CC_AXIM_CACHE_PARAMS */
-	cache_params = cc_ioread(drvdata, CC_REG(AXIM_CACHE_PARAMS));
-	dev_dbg(dev, "Cache params previous: 0x%08X\n", cache_params);
-
-	/* non cached or write-back, write allocate */
-	val = drvdata->coherent ? 0xb : 0x2;
-
-	mask = CC_GENMASK(CC_AXIM_CACHE_PARAMS_AWCACHE);
-	cache_params &= ~mask;
-	cache_params |= FIELD_PREP(mask, val);
-
-	mask = CC_GENMASK(CC_AXIM_CACHE_PARAMS_AWCACHE_LAST);
-	cache_params &= ~mask;
-	cache_params |= FIELD_PREP(mask, val);
-
-	mask = CC_GENMASK(CC_AXIM_CACHE_PARAMS_ARCACHE);
-	cache_params &= ~mask;
-	cache_params |= FIELD_PREP(mask, val);
-
-	drvdata->cache_params = cache_params;
-
-	dev_dbg(dev, "Cache params current: 0x%08X\n", cache_params);
-
-	if (drvdata->hw_rev <= CC_HW_REV_710)
-		return;
-
-	/* compute CC_AXIM_ACE_CONST */
-	ace_const = cc_ioread(drvdata, CC_REG(AXIM_ACE_CONST));
-	dev_dbg(dev, "ACE-const previous: 0x%08X\n", ace_const);
-
-	/* system or outer-sharable */
-	val = drvdata->coherent ? 0x2 : 0x3;
-
-	mask = CC_GENMASK(CC_AXIM_ACE_CONST_ARDOMAIN);
-	ace_const &= ~mask;
-	ace_const |= FIELD_PREP(mask, val);
-
-	mask = CC_GENMASK(CC_AXIM_ACE_CONST_AWDOMAIN);
-	ace_const &= ~mask;
-	ace_const |= FIELD_PREP(mask, val);
-
-	dev_dbg(dev, "ACE-const current: 0x%08X\n", ace_const);
-
-	drvdata->ace_const = ace_const;
-}
-
 static u32 cc_read_idr(struct cc_drvdata *drvdata, const u32 *idr_offsets)
 {
 	int i;
@@ -186,8 +133,8 @@ static irqreturn_t cc_isr(int irq, void *dev_id)
 	u32 imr;
 
 	/* STAT_OP_TYPE_GENERIC STAT_PHASE_0: Interrupt */
-	/* if driver suspended return, probably shared interrupt */
-	if (pm_runtime_suspended(dev))
+	/* if driver suspended return, probebly shared interrupt */
+	if (cc_pm_is_dev_suspended(dev))
 		return IRQ_NONE;
 
 	/* read the interrupt status */
@@ -269,9 +216,9 @@ bool cc_wait_for_reset_completion(struct cc_drvdata *drvdata)
 	return false;
 }
 
-int init_cc_regs(struct cc_drvdata *drvdata)
+int init_cc_regs(struct cc_drvdata *drvdata, bool is_probe)
 {
-	unsigned int val;
+	unsigned int val, cache_params;
 	struct device *dev = drvdata_to_dev(drvdata);
 
 	/* Unmask all AXI interrupt sources AXI_CFG1 register   */
@@ -296,9 +243,19 @@ int init_cc_regs(struct cc_drvdata *drvdata)
 
 	cc_iowrite(drvdata, CC_REG(HOST_IMR), ~val);
 
-	cc_iowrite(drvdata, CC_REG(AXIM_CACHE_PARAMS), drvdata->cache_params);
-	if (drvdata->hw_rev >= CC_HW_REV_712)
-		cc_iowrite(drvdata, CC_REG(AXIM_ACE_CONST), drvdata->ace_const);
+	cache_params = (drvdata->coherent ? CC_COHERENT_CACHE_PARAMS : 0x0);
+
+	val = cc_ioread(drvdata, CC_REG(AXIM_CACHE_PARAMS));
+
+	if (is_probe)
+		dev_dbg(dev, "Cache params previous: 0x%08X\n", val);
+
+	cc_iowrite(drvdata, CC_REG(AXIM_CACHE_PARAMS), cache_params);
+	val = cc_ioread(drvdata, CC_REG(AXIM_CACHE_PARAMS));
+
+	if (is_probe)
+		dev_dbg(dev, "Cache params current: 0x%08X (expect: 0x%08X)\n",
+			val, cache_params);
 
 	return 0;
 }
@@ -312,15 +269,19 @@ static int init_cc_resources(struct platform_device *plat_dev)
 	u32 val, hw_rev_pidr, sig_cidr;
 	u64 dma_mask;
 	const struct cc_hw_data *hw_rev;
+	const struct of_device_id *dev_id;
 	struct clk *clk;
-	int irq;
 	int rc = 0;
 
 	new_drvdata = devm_kzalloc(dev, sizeof(*new_drvdata), GFP_KERNEL);
 	if (!new_drvdata)
 		return -ENOMEM;
 
-	hw_rev = of_device_get_match_data(dev);
+	dev_id = of_match_node(arm_ccree_dev_of_match, np);
+	if (!dev_id)
+		return -ENODEV;
+
+	hw_rev = (struct cc_hw_data *)dev_id->data;
 	new_drvdata->hw_rev_name = hw_rev->name;
 	new_drvdata->hw_rev = hw_rev->rev;
 	new_drvdata->std_bodies = hw_rev->std_bodies;
@@ -340,20 +301,35 @@ static int init_cc_resources(struct platform_device *plat_dev)
 	platform_set_drvdata(plat_dev, new_drvdata);
 	new_drvdata->plat_dev = plat_dev;
 
-	clk = devm_clk_get_optional(dev, NULL);
+	clk = devm_clk_get(dev, NULL);
 	if (IS_ERR(clk))
-		return dev_err_probe(dev, PTR_ERR(clk), "Error getting clock\n");
+		switch (PTR_ERR(clk)) {
+		/* Clock is optional so this might be fine */
+		case -ENOENT:
+			break;
+
+		/* Clock not available, let's try again soon */
+		case -EPROBE_DEFER:
+			return -EPROBE_DEFER;
+
+		default:
+			dev_err(dev, "Error getting clock: %ld\n",
+				PTR_ERR(clk));
+			return PTR_ERR(clk);
+		}
 	new_drvdata->clk = clk;
 
 	new_drvdata->coherent = of_dma_is_coherent(np);
 
 	/* Get device resources */
 	/* First CC registers space */
+	req_mem_cc_regs = platform_get_resource(plat_dev, IORESOURCE_MEM, 0);
 	/* Map registers space */
-	new_drvdata->cc_base = devm_platform_get_and_ioremap_resource(plat_dev,
-								      0, &req_mem_cc_regs);
-	if (IS_ERR(new_drvdata->cc_base))
+	new_drvdata->cc_base = devm_ioremap_resource(dev, req_mem_cc_regs);
+	if (IS_ERR(new_drvdata->cc_base)) {
+		dev_err(dev, "Failed to ioremap registers");
 		return PTR_ERR(new_drvdata->cc_base);
+	}
 
 	dev_dbg(dev, "Got MEM resource (%s): %pR\n", req_mem_cc_regs->name,
 		req_mem_cc_regs);
@@ -361,24 +337,31 @@ static int init_cc_resources(struct platform_device *plat_dev)
 		&req_mem_cc_regs->start, new_drvdata->cc_base);
 
 	/* Then IRQ */
-	irq = platform_get_irq(plat_dev, 0);
-	if (irq < 0)
-		return irq;
+	new_drvdata->irq = platform_get_irq(plat_dev, 0);
+	if (new_drvdata->irq < 0)
+		return new_drvdata->irq;
 
 	init_completion(&new_drvdata->hw_queue_avail);
 
-	if (!dev->dma_mask)
-		dev->dma_mask = &dev->coherent_dma_mask;
+	if (!plat_dev->dev.dma_mask)
+		plat_dev->dev.dma_mask = &plat_dev->dev.coherent_dma_mask;
 
 	dma_mask = DMA_BIT_MASK(DMA_BIT_MASK_LEN);
-	rc = dma_set_coherent_mask(dev, dma_mask);
+	while (dma_mask > 0x7fffffffUL) {
+		if (dma_supported(&plat_dev->dev, dma_mask)) {
+			rc = dma_set_coherent_mask(&plat_dev->dev, dma_mask);
+			if (!rc)
+				break;
+		}
+		dma_mask >>= 1;
+	}
+
 	if (rc) {
-		dev_err(dev, "Failed in dma_set_coherent_mask, mask=%llx\n",
-			dma_mask);
+		dev_err(dev, "Failed in dma_set_mask, mask=%llx\n", dma_mask);
 		return rc;
 	}
 
-	rc = clk_prepare_enable(new_drvdata->clk);
+	rc = cc_clk_on(new_drvdata);
 	if (rc) {
 		dev_err(dev, "Failed to enable clock");
 		return rc;
@@ -386,17 +369,7 @@ static int init_cc_resources(struct platform_device *plat_dev)
 
 	new_drvdata->sec_disabled = cc_sec_disable;
 
-	pm_runtime_set_autosuspend_delay(dev, CC_SUSPEND_TIMEOUT);
-	pm_runtime_use_autosuspend(dev);
-	pm_runtime_set_active(dev);
-	pm_runtime_enable(dev);
-	rc = pm_runtime_get_sync(dev);
-	if (rc < 0) {
-		dev_err(dev, "pm_runtime_get_sync() failed: %d\n", rc);
-		goto post_pm_err;
-	}
-
-	/* Wait for Cryptocell reset completion */
+	/* wait for Crytpcell reset completion */
 	if (!cc_wait_for_reset_completion(new_drvdata)) {
 		dev_err(dev, "Cryptocell reset not completed");
 	}
@@ -408,7 +381,7 @@ static int init_cc_resources(struct platform_device *plat_dev)
 			dev_err(dev, "Invalid CC signature: SIGNATURE=0x%08X != expected=0x%08X\n",
 				val, hw_rev->sig);
 			rc = -EINVAL;
-			goto post_pm_err;
+			goto post_clk_err;
 		}
 		sig_cidr = val;
 		hw_rev_pidr = cc_ioread(new_drvdata, new_drvdata->ver_offset);
@@ -419,7 +392,7 @@ static int init_cc_resources(struct platform_device *plat_dev)
 			dev_err(dev, "Invalid CC PIDR: PIDR0124=0x%08X != expected=0x%08X\n",
 				val,  hw_rev->pidr_0124);
 			rc = -EINVAL;
-			goto post_pm_err;
+			goto post_clk_err;
 		}
 		hw_rev_pidr = val;
 
@@ -428,7 +401,7 @@ static int init_cc_resources(struct platform_device *plat_dev)
 			dev_err(dev, "Invalid CC CIDR: CIDR0123=0x%08X != expected=0x%08X\n",
 			val,  hw_rev->cidr_0123);
 			rc = -EINVAL;
-			goto post_pm_err;
+			goto post_clk_err;
 		}
 		sig_cidr = val;
 
@@ -447,7 +420,7 @@ static int init_cc_resources(struct platform_device *plat_dev)
 		default:
 			dev_err(dev, "Unsupported engines configuration.\n");
 			rc = -EINVAL;
-			goto post_pm_err;
+			goto post_clk_err;
 		}
 
 		/* Check security disable state */
@@ -469,20 +442,19 @@ static int init_cc_resources(struct platform_device *plat_dev)
 	dev_info(dev, "ARM CryptoCell %s Driver: HW version 0x%08X/0x%8X, Driver version %s\n",
 		 hw_rev->name, hw_rev_pidr, sig_cidr, DRV_MODULE_VERSION);
 	/* register the driver isr function */
-	rc = devm_request_irq(dev, irq, cc_isr, IRQF_SHARED, "ccree",
-			      new_drvdata);
+	rc = devm_request_irq(dev, new_drvdata->irq, cc_isr,
+			      IRQF_SHARED, "ccree", new_drvdata);
 	if (rc) {
-		dev_err(dev, "Could not register to interrupt %d\n", irq);
-		goto post_pm_err;
+		dev_err(dev, "Could not register to interrupt %d\n",
+			new_drvdata->irq);
+		goto post_clk_err;
 	}
-	dev_dbg(dev, "Registered to IRQ: %d\n", irq);
+	dev_dbg(dev, "Registered to IRQ: %d\n", new_drvdata->irq);
 
-	init_cc_cache_params(new_drvdata);
-
-	rc = init_cc_regs(new_drvdata);
+	rc = init_cc_regs(new_drvdata, true);
 	if (rc) {
 		dev_err(dev, "init_cc_regs failed\n");
-		goto post_pm_err;
+		goto post_clk_err;
 	}
 
 	rc = cc_debugfs_init(new_drvdata);
@@ -493,7 +465,7 @@ static int init_cc_resources(struct platform_device *plat_dev)
 
 	rc = cc_fips_init(new_drvdata);
 	if (rc) {
-		dev_err(dev, "cc_fips_init failed 0x%x\n", rc);
+		dev_err(dev, "CC_FIPS_INIT failed 0x%x\n", rc);
 		goto post_debugfs_err;
 	}
 	rc = cc_sram_mgr_init(new_drvdata);
@@ -505,28 +477,26 @@ static int init_cc_resources(struct platform_device *plat_dev)
 	new_drvdata->mlli_sram_addr =
 		cc_sram_alloc(new_drvdata, MAX_MLLI_BUFF_SIZE);
 	if (new_drvdata->mlli_sram_addr == NULL_SRAM_ADDR) {
+		dev_err(dev, "Failed to alloc MLLI Sram buffer\n");
 		rc = -ENOMEM;
-		goto post_fips_init_err;
+		goto post_sram_mgr_err;
 	}
 
 	rc = cc_req_mgr_init(new_drvdata);
 	if (rc) {
 		dev_err(dev, "cc_req_mgr_init failed\n");
-		goto post_fips_init_err;
+		goto post_sram_mgr_err;
 	}
 
 	rc = cc_buffer_mgr_init(new_drvdata);
 	if (rc) {
-		dev_err(dev, "cc_buffer_mgr_init failed\n");
+		dev_err(dev, "buffer_mgr_init failed\n");
 		goto post_req_mgr_err;
 	}
 
-	/* hash must be allocated first due to use of send_request_init()
-	 * and dependency of AEAD on it
-	 */
-	rc = cc_hash_alloc(new_drvdata);
+	rc = cc_pm_init(new_drvdata);
 	if (rc) {
-		dev_err(dev, "cc_hash_alloc failed\n");
+		dev_err(dev, "ssi_power_mgr_init failed\n");
 		goto post_buf_mgr_err;
 	}
 
@@ -534,14 +504,24 @@ static int init_cc_resources(struct platform_device *plat_dev)
 	rc = cc_cipher_alloc(new_drvdata);
 	if (rc) {
 		dev_err(dev, "cc_cipher_alloc failed\n");
-		goto post_hash_err;
+		goto post_buf_mgr_err;
+	}
+
+	/* hash must be allocated before aead since hash exports APIs */
+	rc = cc_hash_alloc(new_drvdata);
+	if (rc) {
+		dev_err(dev, "cc_hash_alloc failed\n");
+		goto post_cipher_err;
 	}
 
 	rc = cc_aead_alloc(new_drvdata);
 	if (rc) {
 		dev_err(dev, "cc_aead_alloc failed\n");
-		goto post_cipher_err;
+		goto post_hash_err;
 	}
+
+	/* All set, we can allow autosuspend */
+	cc_pm_go(new_drvdata);
 
 	/* If we got here and FIPS mode is enabled
 	 * it means all FIPS test passed, so let TEE
@@ -549,28 +529,26 @@ static int init_cc_resources(struct platform_device *plat_dev)
 	 */
 	cc_set_ree_fips_status(new_drvdata, true);
 
-	pm_runtime_put(dev);
 	return 0;
 
-post_cipher_err:
-	cc_cipher_free(new_drvdata);
 post_hash_err:
 	cc_hash_free(new_drvdata);
+post_cipher_err:
+	cc_cipher_free(new_drvdata);
 post_buf_mgr_err:
 	 cc_buffer_mgr_fini(new_drvdata);
 post_req_mgr_err:
 	cc_req_mgr_fini(new_drvdata);
+post_sram_mgr_err:
+	cc_sram_mgr_fini(new_drvdata);
 post_fips_init_err:
 	cc_fips_fini(new_drvdata);
 post_debugfs_err:
 	cc_debugfs_fini(new_drvdata);
 post_regs_err:
 	fini_cc_regs(new_drvdata);
-post_pm_err:
-	pm_runtime_put_noidle(dev);
-	pm_runtime_disable(dev);
-	pm_runtime_set_suspended(dev);
-	clk_disable_unprepare(new_drvdata->clk);
+post_clk_err:
+	cc_clk_off(new_drvdata);
 	return rc;
 }
 
@@ -582,22 +560,36 @@ void fini_cc_regs(struct cc_drvdata *drvdata)
 
 static void cleanup_cc_resources(struct platform_device *plat_dev)
 {
-	struct device *dev = &plat_dev->dev;
 	struct cc_drvdata *drvdata =
 		(struct cc_drvdata *)platform_get_drvdata(plat_dev);
 
 	cc_aead_free(drvdata);
-	cc_cipher_free(drvdata);
 	cc_hash_free(drvdata);
+	cc_cipher_free(drvdata);
+	cc_pm_fini(drvdata);
 	cc_buffer_mgr_fini(drvdata);
 	cc_req_mgr_fini(drvdata);
+	cc_sram_mgr_fini(drvdata);
 	cc_fips_fini(drvdata);
 	cc_debugfs_fini(drvdata);
 	fini_cc_regs(drvdata);
-	pm_runtime_put_noidle(dev);
-	pm_runtime_disable(dev);
-	pm_runtime_set_suspended(dev);
-	clk_disable_unprepare(drvdata->clk);
+	cc_clk_off(drvdata);
+}
+
+int cc_clk_on(struct cc_drvdata *drvdata)
+{
+	struct clk *clk = drvdata->clk;
+	int rc;
+
+	if (IS_ERR(clk))
+		/* Not all devices have a clock associated with CCREE  */
+		return 0;
+
+	rc = clk_prepare_enable(clk);
+	if (rc)
+		return rc;
+
+	return 0;
 }
 
 unsigned int cc_get_default_hash_len(struct cc_drvdata *drvdata)
@@ -606,6 +598,17 @@ unsigned int cc_get_default_hash_len(struct cc_drvdata *drvdata)
 		return HASH_LEN_SIZE_712;
 	else
 		return HASH_LEN_SIZE_630;
+}
+
+void cc_clk_off(struct cc_drvdata *drvdata)
+{
+	struct clk *clk = drvdata->clk;
+
+	if (IS_ERR(clk))
+		/* Not all devices have a clock associated with CCREE */
+		return;
+
+	clk_disable_unprepare(clk);
 }
 
 static int ccree_probe(struct platform_device *plat_dev)
@@ -623,7 +626,7 @@ static int ccree_probe(struct platform_device *plat_dev)
 	return 0;
 }
 
-static void ccree_remove(struct platform_device *plat_dev)
+static int ccree_remove(struct platform_device *plat_dev)
 {
 	struct device *dev = &plat_dev->dev;
 
@@ -632,6 +635,8 @@ static void ccree_remove(struct platform_device *plat_dev)
 	cleanup_cc_resources(plat_dev);
 
 	dev_info(dev, "ARM ccree device terminated\n");
+
+	return 0;
 }
 
 static struct platform_driver ccree_driver = {
@@ -643,22 +648,15 @@ static struct platform_driver ccree_driver = {
 #endif
 	},
 	.probe = ccree_probe,
-	.remove_new = ccree_remove,
+	.remove = ccree_remove,
 };
 
 static int __init ccree_init(void)
 {
-	int rc;
-
+	cc_hash_global_init();
 	cc_debugfs_global_init();
 
-	rc = platform_driver_register(&ccree_driver);
-	if (rc) {
-		cc_debugfs_global_fini();
-		return rc;
-	}
-
-	return 0;
+	return platform_driver_register(&ccree_driver);
 }
 module_init(ccree_init);
 

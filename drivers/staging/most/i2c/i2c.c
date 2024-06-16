@@ -13,7 +13,8 @@
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/err.h>
-#include <linux/most.h>
+
+#include "most/core.h"
 
 enum { CH_RX, CH_TX, NUM_CHANNELS };
 
@@ -44,18 +45,15 @@ struct hdm_i2c {
 	char name[64];
 };
 
-static inline struct hdm_i2c *to_hdm(struct most_interface *iface)
-{
-	return container_of(iface, struct hdm_i2c, most_iface);
-}
+#define to_hdm(iface) container_of(iface, struct hdm_i2c, most_iface)
 
 static irqreturn_t most_irq_handler(int, void *);
 static void pending_rx_work(struct work_struct *);
 
 /**
  * configure_channel - called from MOST core to configure a channel
- * @most_iface: interface the channel belongs to
- * @ch_idx: channel to be configured
+ * @iface: interface the channel belongs to
+ * @channel: channel to be configured
  * @channel_config: structure that holds the configuration information
  *
  * Return 0 on success, negative on failure.
@@ -110,8 +108,8 @@ static int configure_channel(struct most_interface *most_iface,
 
 /**
  * enqueue - called from MOST core to enqueue a buffer for data transfer
- * @most_iface: intended interface
- * @ch_idx: ID of the channel the buffer is intended for
+ * @iface: intended interface
+ * @channel: ID of the channel the buffer is intended for
  * @mbo: pointer to the buffer object
  *
  * Return 0 on success, negative on failure.
@@ -156,8 +154,8 @@ static int enqueue(struct most_interface *most_iface,
 
 /**
  * poison_channel - called from MOST core to poison buffers of a channel
- * @most_iface: pointer to the interface the channel to be poisoned belongs to
- * @ch_idx: corresponding channel ID
+ * @iface: pointer to the interface the channel to be poisoned belongs to
+ * @channel_id: corresponding channel ID
  *
  * Return 0 on success, negative on failure.
  *
@@ -287,7 +285,7 @@ static irqreturn_t most_irq_handler(int irq, void *_dev)
  *
  * Register the i2c client device as a MOST interface
  */
-static int i2c_probe(struct i2c_client *client)
+static int i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct hdm_i2c *dev;
 	int ret, i;
@@ -343,12 +341,14 @@ static int i2c_probe(struct i2c_client *client)
  *
  * Unregister the i2c client device as a MOST interface
  */
-static void i2c_remove(struct i2c_client *client)
+static int i2c_remove(struct i2c_client *client)
 {
 	struct hdm_i2c *dev = i2c_get_clientdata(client);
 
 	most_deregister_interface(&dev->most_iface);
 	kfree(dev);
+
+	return 0;
 }
 
 static const struct i2c_device_id i2c_id[] = {

@@ -18,13 +18,14 @@
 #include <linux/pwm.h>
 
 struct stm32_pwm_lp {
+	struct pwm_chip chip;
 	struct clk *clk;
 	struct regmap *regmap;
 };
 
 static inline struct stm32_pwm_lp *to_stm32_pwm_lp(struct pwm_chip *chip)
 {
-	return pwmchip_get_drvdata(chip);
+	return container_of(chip, struct stm32_pwm_lp, chip);
 }
 
 /* STM32 Low-Power Timer is preceded by a configurable power-of-2 prescaler */
@@ -60,7 +61,7 @@ static int stm32_pwm_lp_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 	do_div(div, NSEC_PER_SEC);
 	if (!div) {
 		/* Clock is too slow to achieve requested period. */
-		dev_dbg(pwmchip_parent(chip), "Can't reach %llu ns\n", state->period);
+		dev_dbg(priv->chip.dev, "Can't reach %u ns\n",	state->period);
 		return -EINVAL;
 	}
 
@@ -68,7 +69,7 @@ static int stm32_pwm_lp_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 	while (div > STM32_LPTIM_MAX_ARR) {
 		presc++;
 		if ((1 << presc) > STM32_LPTIM_MAX_PRESCALER) {
-			dev_err(pwmchip_parent(chip), "max prescaler exceeded\n");
+			dev_err(priv->chip.dev, "max prescaler exceeded\n");
 			return -EINVAL;
 		}
 		div = prd >> presc;
@@ -126,10 +127,10 @@ static int stm32_pwm_lp_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 	/* ensure CMP & ARR registers are properly written */
 	ret = regmap_read_poll_timeout(priv->regmap, STM32_LPTIM_ISR, val,
-				       (val & STM32_LPTIM_CMPOK_ARROK) == STM32_LPTIM_CMPOK_ARROK,
+				       (val & STM32_LPTIM_CMPOK_ARROK),
 				       100, 1000);
 	if (ret) {
-		dev_err(pwmchip_parent(chip), "ARR/CMP registers write issue\n");
+		dev_err(priv->chip.dev, "ARR/CMP registers write issue\n");
 		goto err;
 	}
 	ret = regmap_write(priv->regmap, STM32_LPTIM_ICR,
@@ -139,8 +140,9 @@ static int stm32_pwm_lp_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 	if (reenable) {
 		/* Start LP timer in continuous mode */
-		ret = regmap_set_bits(priv->regmap, STM32_LPTIM_CR,
-				      STM32_LPTIM_CNTSTRT);
+		ret = regmap_update_bits(priv->regmap, STM32_LPTIM_CR,
+					 STM32_LPTIM_CNTSTRT,
+					 STM32_LPTIM_CNTSTRT);
 		if (ret) {
 			regmap_write(priv->regmap, STM32_LPTIM_CR, 0);
 			goto err;
@@ -155,9 +157,9 @@ err:
 	return ret;
 }
 
-static int stm32_pwm_lp_get_state(struct pwm_chip *chip,
-				  struct pwm_device *pwm,
-				  struct pwm_state *state)
+static void stm32_pwm_lp_get_state(struct pwm_chip *chip,
+				   struct pwm_device *pwm,
+				   struct pwm_state *state)
 {
 	struct stm32_pwm_lp *priv = to_stm32_pwm_lp(chip);
 	unsigned long rate = clk_get_rate(priv->clk);
@@ -183,11 +185,10 @@ static int stm32_pwm_lp_get_state(struct pwm_chip *chip,
 	tmp = prd - val;
 	tmp = (tmp << presc) * NSEC_PER_SEC;
 	state->duty_cycle = DIV_ROUND_CLOSEST_ULL(tmp, rate);
-
-	return 0;
 }
 
 static const struct pwm_ops stm32_pwm_lp_ops = {
+	.owner = THIS_MODULE,
 	.apply = stm32_pwm_lp_apply,
 	.get_state = stm32_pwm_lp_get_state,
 };
@@ -196,49 +197,61 @@ static int stm32_pwm_lp_probe(struct platform_device *pdev)
 {
 	struct stm32_lptimer *ddata = dev_get_drvdata(pdev->dev.parent);
 	struct stm32_pwm_lp *priv;
-	struct pwm_chip *chip;
 	int ret;
 
-	chip = devm_pwmchip_alloc(&pdev->dev, 1, sizeof(*priv));
-	if (IS_ERR(chip))
-		return PTR_ERR(chip);
-	priv = to_stm32_pwm_lp(chip);
+	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
+	if (!priv)
+		return -ENOMEM;
 
 	priv->regmap = ddata->regmap;
 	priv->clk = ddata->clk;
-	chip->ops = &stm32_pwm_lp_ops;
+	priv->chip.base = -1;
+	priv->chip.dev = &pdev->dev;
+	priv->chip.ops = &stm32_pwm_lp_ops;
+	priv->chip.npwm = 1;
+	priv->chip.of_xlate = of_pwm_xlate_with_flags;
+	priv->chip.of_pwm_n_cells = 3;
 
-	ret = devm_pwmchip_add(&pdev->dev, chip);
+	ret = pwmchip_add(&priv->chip);
 	if (ret < 0)
 		return ret;
 
-	platform_set_drvdata(pdev, chip);
+	platform_set_drvdata(pdev, priv);
 
 	return 0;
 }
 
-static int stm32_pwm_lp_suspend(struct device *dev)
+static int stm32_pwm_lp_remove(struct platform_device *pdev)
 {
-	struct pwm_chip *chip = dev_get_drvdata(dev);
+	struct stm32_pwm_lp *priv = platform_get_drvdata(pdev);
+
+	pwm_disable(&priv->chip.pwms[0]);
+
+	return pwmchip_remove(&priv->chip);
+}
+
+static int __maybe_unused stm32_pwm_lp_suspend(struct device *dev)
+{
+	struct stm32_pwm_lp *priv = dev_get_drvdata(dev);
 	struct pwm_state state;
 
-	pwm_get_state(&chip->pwms[0], &state);
+	pwm_get_state(&priv->chip.pwms[0], &state);
 	if (state.enabled) {
 		dev_err(dev, "The consumer didn't stop us (%s)\n",
-			chip->pwms[0].label);
+			priv->chip.pwms[0].label);
 		return -EBUSY;
 	}
 
 	return pinctrl_pm_select_sleep_state(dev);
 }
 
-static int stm32_pwm_lp_resume(struct device *dev)
+static int __maybe_unused stm32_pwm_lp_resume(struct device *dev)
 {
 	return pinctrl_pm_select_default_state(dev);
 }
 
-static DEFINE_SIMPLE_DEV_PM_OPS(stm32_pwm_lp_pm_ops, stm32_pwm_lp_suspend,
-				stm32_pwm_lp_resume);
+static SIMPLE_DEV_PM_OPS(stm32_pwm_lp_pm_ops, stm32_pwm_lp_suspend,
+			 stm32_pwm_lp_resume);
 
 static const struct of_device_id stm32_pwm_lp_of_match[] = {
 	{ .compatible = "st,stm32-pwm-lp", },
@@ -248,10 +261,11 @@ MODULE_DEVICE_TABLE(of, stm32_pwm_lp_of_match);
 
 static struct platform_driver stm32_pwm_lp_driver = {
 	.probe	= stm32_pwm_lp_probe,
+	.remove	= stm32_pwm_lp_remove,
 	.driver	= {
 		.name = "stm32-pwm-lp",
-		.of_match_table = stm32_pwm_lp_of_match,
-		.pm = pm_ptr(&stm32_pwm_lp_pm_ops),
+		.of_match_table = of_match_ptr(stm32_pwm_lp_of_match),
+		.pm = &stm32_pwm_lp_pm_ops,
 	},
 };
 module_platform_driver(stm32_pwm_lp_driver);

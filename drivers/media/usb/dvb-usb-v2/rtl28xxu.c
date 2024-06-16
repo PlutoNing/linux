@@ -37,16 +37,7 @@ static int rtl28xxu_ctrl_msg(struct dvb_usb_device *d, struct rtl28xxu_req *req)
 	} else {
 		/* read */
 		requesttype = (USB_TYPE_VENDOR | USB_DIR_IN);
-
-		/*
-		 * Zero-length transfers must use usb_sndctrlpipe() and
-		 * rtl28xxu_identify_state() uses a zero-length i2c read
-		 * command to determine the chip type.
-		 */
-		if (req->size)
-			pipe = usb_rcvctrlpipe(d->udev, 0);
-		else
-			pipe = usb_sndctrlpipe(d->udev, 0);
+		pipe = usb_rcvctrlpipe(d->udev, 0);
 	}
 
 	ret = usb_control_msg(d->udev, pipe, 0, requesttype, req->value,
@@ -176,10 +167,6 @@ static int rtl28xxu_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msg[],
 			ret = -EOPNOTSUPP;
 			goto err_mutex_unlock;
 		} else if (msg[0].addr == 0x10) {
-			if (msg[0].len < 1 || msg[1].len < 1) {
-				ret = -EOPNOTSUPP;
-				goto err_mutex_unlock;
-			}
 			/* method 1 - integrated demod */
 			if (msg[0].buf[0] == 0x00) {
 				/* return demod page from driver cache */
@@ -193,10 +180,6 @@ static int rtl28xxu_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msg[],
 				ret = rtl28xxu_ctrl_msg(d, &req);
 			}
 		} else if (msg[0].len < 2) {
-			if (msg[0].len < 1) {
-				ret = -EOPNOTSUPP;
-				goto err_mutex_unlock;
-			}
 			/* method 2 - old I2C */
 			req.value = (msg[0].buf[0] << 8) | (msg[0].addr << 1);
 			req.index = CMD_I2C_RD;
@@ -225,16 +208,8 @@ static int rtl28xxu_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msg[],
 			ret = -EOPNOTSUPP;
 			goto err_mutex_unlock;
 		} else if (msg[0].addr == 0x10) {
-			if (msg[0].len < 1) {
-				ret = -EOPNOTSUPP;
-				goto err_mutex_unlock;
-			}
 			/* method 1 - integrated demod */
 			if (msg[0].buf[0] == 0x00) {
-				if (msg[0].len < 2) {
-					ret = -EOPNOTSUPP;
-					goto err_mutex_unlock;
-				}
 				/* save demod page for later demod access */
 				dev->page = msg[0].buf[1];
 				ret = 0;
@@ -247,10 +222,6 @@ static int rtl28xxu_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msg[],
 				ret = rtl28xxu_ctrl_msg(d, &req);
 			}
 		} else if ((msg[0].len < 23) && (!dev->new_i2c_write)) {
-			if (msg[0].len < 1) {
-				ret = -EOPNOTSUPP;
-				goto err_mutex_unlock;
-			}
 			/* method 2 - old I2C */
 			req.value = (msg[0].buf[0] << 8) | (msg[0].addr << 1);
 			req.index = CMD_I2C_WR;
@@ -581,9 +552,6 @@ tuner_found:
 		if (ret)
 			goto err;
 
-		/* slave demod needs some time to wake up */
-		msleep(20);
-
 		/* check slave answers */
 		ret = rtl28xxu_ctrl_msg(d, &req_mn88472);
 		if (ret == 0 && buf[0] == 0x02) {
@@ -729,8 +697,8 @@ static int rtl2831u_frontend_attach(struct dvb_usb_adapter *adap)
 	board_info.addr = 0x10;
 	board_info.platform_data = pdata;
 	request_module("%s", board_info.type);
-	client = i2c_new_client_device(&d->i2c_adap, &board_info);
-	if (!i2c_client_has_driver(client)) {
+	client = i2c_new_device(&d->i2c_adap, &board_info);
+	if (client == NULL || client->dev.driver == NULL) {
 		ret = -ENODEV;
 		goto err;
 	}
@@ -950,8 +918,8 @@ static int rtl2832u_frontend_attach(struct dvb_usb_adapter *adap)
 	board_info.addr = 0x10;
 	board_info.platform_data = pdata;
 	request_module("%s", board_info.type);
-	client = i2c_new_client_device(&d->i2c_adap, &board_info);
-	if (!i2c_client_has_driver(client)) {
+	client = i2c_new_device(&d->i2c_adap, &board_info);
+	if (client == NULL || client->dev.driver == NULL) {
 		ret = -ENODEV;
 		goto err;
 	}
@@ -973,12 +941,18 @@ static int rtl2832u_frontend_attach(struct dvb_usb_adapter *adap)
 	if (dev->slave_demod) {
 		struct i2c_board_info info = {};
 
+		/*
+		 * We continue on reduced mode, without DVB-T2/C, using master
+		 * demod, when slave demod fails.
+		 */
+		ret = 0;
+
 		/* attach slave demodulator */
 		if (dev->slave_demod == SLAVE_DEMOD_MN88472) {
 			struct mn88472_config mn88472_config = {};
 
 			mn88472_config.fe = &adap->fe[1];
-			mn88472_config.i2c_wr_max = 22;
+			mn88472_config.i2c_wr_max = 22,
 			strscpy(info.type, "mn88472", I2C_NAME_SIZE);
 			mn88472_config.xtal = 20500000;
 			mn88472_config.ts_mode = SERIAL_TS_MODE;
@@ -986,12 +960,15 @@ static int rtl2832u_frontend_attach(struct dvb_usb_adapter *adap)
 			info.addr = 0x18;
 			info.platform_data = &mn88472_config;
 			request_module(info.type);
-			client = i2c_new_client_device(&d->i2c_adap, &info);
-			if (!i2c_client_has_driver(client))
+			client = i2c_new_device(&d->i2c_adap, &info);
+			if (client == NULL || client->dev.driver == NULL) {
+				dev->slave_demod = SLAVE_DEMOD_NONE;
 				goto err_slave_demod_failed;
+			}
 
 			if (!try_module_get(client->dev.driver->owner)) {
 				i2c_unregister_device(client);
+				dev->slave_demod = SLAVE_DEMOD_NONE;
 				goto err_slave_demod_failed;
 			}
 
@@ -1000,17 +977,20 @@ static int rtl2832u_frontend_attach(struct dvb_usb_adapter *adap)
 			struct mn88473_config mn88473_config = {};
 
 			mn88473_config.fe = &adap->fe[1];
-			mn88473_config.i2c_wr_max = 22;
+			mn88473_config.i2c_wr_max = 22,
 			strscpy(info.type, "mn88473", I2C_NAME_SIZE);
 			info.addr = 0x18;
 			info.platform_data = &mn88473_config;
 			request_module(info.type);
-			client = i2c_new_client_device(&d->i2c_adap, &info);
-			if (!i2c_client_has_driver(client))
+			client = i2c_new_device(&d->i2c_adap, &info);
+			if (client == NULL || client->dev.driver == NULL) {
+				dev->slave_demod = SLAVE_DEMOD_NONE;
 				goto err_slave_demod_failed;
+			}
 
 			if (!try_module_get(client->dev.driver->owner)) {
 				i2c_unregister_device(client);
+				dev->slave_demod = SLAVE_DEMOD_NONE;
 				goto err_slave_demod_failed;
 			}
 
@@ -1026,8 +1006,10 @@ static int rtl2832u_frontend_attach(struct dvb_usb_adapter *adap)
 			adap->fe[1] = dvb_attach(cxd2841er_attach_t_c,
 						 &cxd2837er_config,
 						 &d->i2c_adap);
-			if (!adap->fe[1])
+			if (!adap->fe[1]) {
+				dev->slave_demod = SLAVE_DEMOD_NONE;
 				goto err_slave_demod_failed;
+			}
 			adap->fe[1]->id = 1;
 			dev->i2c_client_slave_demod = NULL;
 		} else {
@@ -1043,12 +1025,15 @@ static int rtl2832u_frontend_attach(struct dvb_usb_adapter *adap)
 			info.addr = 0x64;
 			info.platform_data = &si2168_config;
 			request_module(info.type);
-			client = i2c_new_client_device(&d->i2c_adap, &info);
-			if (!i2c_client_has_driver(client))
+			client = i2c_new_device(&d->i2c_adap, &info);
+			if (client == NULL || client->dev.driver == NULL) {
+				dev->slave_demod = SLAVE_DEMOD_NONE;
 				goto err_slave_demod_failed;
+			}
 
 			if (!try_module_get(client->dev.driver->owner)) {
 				i2c_unregister_device(client);
+				dev->slave_demod = SLAVE_DEMOD_NONE;
 				goto err_slave_demod_failed;
 			}
 
@@ -1059,18 +1044,10 @@ static int rtl2832u_frontend_attach(struct dvb_usb_adapter *adap)
 		}
 	}
 	return 0;
-
+err_slave_demod_failed:
 err:
 	dev_dbg(&d->intf->dev, "failed=%d\n", ret);
 	return ret;
-
-err_slave_demod_failed:
-	/*
-	 * We continue on reduced mode, without DVB-T2/C, using master
-	 * demod, when slave demod fails.
-	 */
-	dev->slave_demod = SLAVE_DEMOD_NONE;
-	return 0;
 }
 
 static int rtl28xxu_frontend_attach(struct dvb_usb_adapter *adap)
@@ -1240,9 +1217,8 @@ static int rtl2832u_tuner_attach(struct dvb_usb_adapter *adap)
 			info.platform_data = &e4000_config;
 
 			request_module(info.type);
-			client = i2c_new_client_device(dev->demod_i2c_adapter,
-						       &info);
-			if (!i2c_client_has_driver(client))
+			client = i2c_new_device(dev->demod_i2c_adapter, &info);
+			if (client == NULL || client->dev.driver == NULL)
 				break;
 
 			if (!try_module_get(client->dev.driver->owner)) {
@@ -1264,9 +1240,9 @@ static int rtl2832u_tuner_attach(struct dvb_usb_adapter *adap)
 			board_info.addr = 0x56;
 			board_info.platform_data = &fc2580_pdata;
 			request_module("fc2580");
-			client = i2c_new_client_device(dev->demod_i2c_adapter,
-						       &board_info);
-			if (!i2c_client_has_driver(client))
+			client = i2c_new_device(dev->demod_i2c_adapter,
+						&board_info);
+			if (client == NULL || client->dev.driver == NULL)
 				break;
 			if (!try_module_get(client->dev.driver->owner)) {
 				i2c_unregister_device(client);
@@ -1295,9 +1271,8 @@ static int rtl2832u_tuner_attach(struct dvb_usb_adapter *adap)
 		board_info.addr = 0x60;
 		board_info.platform_data = &tua9001_pdata;
 		request_module("tua9001");
-		client = i2c_new_client_device(dev->demod_i2c_adapter,
-					       &board_info);
-		if (!i2c_client_has_driver(client))
+		client = i2c_new_device(dev->demod_i2c_adapter, &board_info);
+		if (client == NULL || client->dev.driver == NULL)
 			break;
 		if (!try_module_get(client->dev.driver->owner)) {
 			i2c_unregister_device(client);
@@ -1341,8 +1316,8 @@ static int rtl2832u_tuner_attach(struct dvb_usb_adapter *adap)
 			info.addr = 0x60;
 			info.platform_data = &si2157_config;
 			request_module(info.type);
-			client = i2c_new_client_device(&d->i2c_adap, &info);
-			if (!i2c_client_has_driver(client))
+			client = i2c_new_device(&d->i2c_adap, &info);
+			if (client == NULL || client->dev.driver == NULL)
 				break;
 
 			if (!try_module_get(client->dev.driver->owner)) {
@@ -1801,11 +1776,12 @@ static int rtl2832u_rc_query(struct dvb_usb_device *d)
 	/* pass data to Kernel IR decoder */
 	for (i = 0; i < len; i++) {
 		ev.pulse = buf[i] >> 7;
-		ev.duration = 51 * (buf[i] & 0x7f);
+		ev.duration = 50800 * (buf[i] & 0x7f);
 		ir_raw_event_store_with_filter(d->rc_dev, &ev);
 	}
 
-	/* 'flush' ir_raw_event_store_with_filter() */
+	/* 'flush' ir_raw_event_store_with_filter() */
+	ir_raw_event_set_idle(d->rc_dev, true);
 	ir_raw_event_handle(d->rc_dev);
 exit:
 	return ret;
@@ -1828,8 +1804,6 @@ static int rtl2832u_get_rc_config(struct dvb_usb_device *d,
 	rc->driver_type = RC_DRIVER_IR_RAW;
 	rc->query = rtl2832u_rc_query;
 	rc->interval = 200;
-	/* we program idle len to 0xc0, set timeout to one less */
-	rc->timeout = 0xbf * 51;
 
 	return 0;
 }
@@ -1980,13 +1954,10 @@ static const struct usb_device_id rtl28xxu_id_table[] = {
 		&rtl28xxu_props, "Sveon STV27", NULL) },
 	{ DVB_USB_DEVICE(USB_VID_KWORLD_2, USB_PID_TURBOX_DTT_2000,
 		&rtl28xxu_props, "TURBO-X Pure TV Tuner DTT-2000", NULL) },
-	{ DVB_USB_DEVICE(USB_VID_GTEK, USB_PID_PROLECTRIX_DV107669,
-		&rtl28xxu_props, "PROlectrix DV107669", NULL) },
 
 	/* RTL2832P devices: */
 	{ DVB_USB_DEVICE(USB_VID_HANFTEK, 0x0131,
-		&rtl28xxu_props, "Astrometa DVB-T2",
-		RC_MAP_ASTROMETA_T2HYBRID) },
+		&rtl28xxu_props, "Astrometa DVB-T2", NULL) },
 	{ DVB_USB_DEVICE(0x5654, 0xca42,
 		&rtl28xxu_props, "GoTView MasterHD 3", NULL) },
 	{ }

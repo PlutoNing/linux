@@ -2,8 +2,6 @@
 #ifndef __LINUX_BQ27X00_BATTERY_H__
 #define __LINUX_BQ27X00_BATTERY_H__
 
-#include <linux/power_supply.h>
-
 enum bq27xxx_chip {
 	BQ27000 = 1, /* bq27000, bq27200 */
 	BQ27010, /* bq27010, bq27210 */
@@ -32,10 +30,6 @@ enum bq27xxx_chip {
 	BQ27426,
 	BQ27441,
 	BQ27621,
-	BQ27Z561,
-	BQ28Z610,
-	BQ34Z100,
-	BQ78Z100,
 };
 
 struct bq27xxx_device_info;
@@ -56,11 +50,13 @@ struct bq27xxx_reg_cache {
 	int capacity;
 	int energy;
 	int flags;
+	int power_avg;
 	int health;
 };
 
 struct bq27xxx_device_info {
 	struct device *dev;
+	int id;
 	enum bq27xxx_chip chip;
 	u32 opts;
 	const char *name;
@@ -69,9 +65,7 @@ struct bq27xxx_device_info {
 	struct bq27xxx_access_methods bus;
 	struct bq27xxx_reg_cache cache;
 	int charge_design_full;
-	bool removed;
 	unsigned long last_update;
-	union power_supply_propval last_status;
 	struct delayed_work work;
 	struct power_supply *bat;
 	struct list_head list;
@@ -82,6 +76,5 @@ struct bq27xxx_device_info {
 void bq27xxx_battery_update(struct bq27xxx_device_info *di);
 int bq27xxx_battery_setup(struct bq27xxx_device_info *di);
 void bq27xxx_battery_teardown(struct bq27xxx_device_info *di);
-extern const struct dev_pm_ops bq27xxx_battery_battery_pm_ops;
 
 #endif

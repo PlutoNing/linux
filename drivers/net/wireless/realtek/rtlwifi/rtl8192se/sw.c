@@ -11,6 +11,7 @@
 #include "dm.h"
 #include "fw.h"
 #include "hw.h"
+#include "sw.h"
 #include "trx.h"
 #include "led.h"
 
@@ -20,6 +21,9 @@ static void rtl92s_init_aspm_vars(struct ieee80211_hw *hw)
 {
 	struct rtl_priv *rtlpriv = rtl_priv(hw);
 	struct rtl_pci *rtlpci = rtl_pcidev(rtl_pcipriv(hw));
+
+	/*close ASPM for AMD defaultly */
+	rtlpci->const_amdpci_aspm = 0;
 
 	/* ASPM PS mode.
 	 * 0 - Disable ASPM,
@@ -62,8 +66,8 @@ static void rtl92se_fw_cb(const struct firmware *firmware, void *context)
 	struct rt_firmware *pfirmware = NULL;
 	char *fw_name = "rtlwifi/rtl8192sefw.bin";
 
-	rtl_dbg(rtlpriv, COMP_ERR, DBG_LOUD,
-		"Firmware callback routine entered!\n");
+	RT_TRACE(rtlpriv, COMP_ERR, DBG_LOUD,
+			 "Firmware callback routine entered!\n");
 	complete(&rtlpriv->firmware_loading_complete);
 	if (!firmware) {
 		pr_err("Firmware %s not available\n", fw_name);
@@ -257,6 +261,7 @@ static struct rtl_hal_ops rtl8192se_hal_ops = {
 	.tx_polling = rtl92se_tx_polling,
 	.enable_hw_sec = rtl92se_enable_hw_security_config,
 	.set_key = rtl92se_set_key,
+	.init_sw_leds = rtl92se_init_sw_leds,
 	.get_bbreg = rtl92s_phy_query_bb_reg,
 	.set_bbreg = rtl92s_phy_set_bb_reg,
 	.get_rfreg = rtl92s_phy_query_rf_reg,

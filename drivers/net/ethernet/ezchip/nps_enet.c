@@ -6,9 +6,10 @@
 #include <linux/module.h>
 #include <linux/etherdevice.h>
 #include <linux/interrupt.h>
-#include <linux/mod_devicetable.h>
+#include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include <linux/of_net.h>
-#include <linux/platform_device.h>
+#include <linux/of_platform.h>
 #include "nps_enet.h"
 
 #define DRV_NAME			"nps_mgt_enet"
@@ -198,7 +199,7 @@ static int nps_enet_poll(struct napi_struct *napi, int budget)
 		 */
 		if (nps_enet_is_tx_pending(priv)) {
 			nps_enet_reg_set(priv, NPS_ENET_REG_BUF_INT_ENABLE, 0);
-			napi_schedule(napi);
+			napi_reschedule(napi);
 		}
 	}
 
@@ -420,7 +421,7 @@ static s32 nps_enet_set_mac_address(struct net_device *ndev, void *p)
 
 	res = eth_mac_addr(ndev, p);
 	if (!res) {
-		eth_hw_addr_set(ndev, addr->sa_data);
+		ether_addr_copy(ndev->dev_addr, addr->sa_data);
 		nps_enet_set_hw_mac_address(ndev);
 	}
 
@@ -574,6 +575,7 @@ static s32 nps_enet_probe(struct platform_device *pdev)
 	struct net_device *ndev;
 	struct nps_enet_priv *priv;
 	s32 err = 0;
+	const char *mac_addr;
 
 	if (!dev->of_node)
 		return -ENODEV;
@@ -600,19 +602,22 @@ static s32 nps_enet_probe(struct platform_device *pdev)
 	dev_dbg(dev, "Registers base address is 0x%p\n", priv->regs_base);
 
 	/* set kernel MAC address to dev */
-	err = of_get_ethdev_address(dev->of_node, ndev);
-	if (err)
+	mac_addr = of_get_mac_address(dev->of_node);
+	if (!IS_ERR(mac_addr))
+		ether_addr_copy(ndev->dev_addr, mac_addr);
+	else
 		eth_hw_addr_random(ndev);
 
 	/* Get IRQ number */
 	priv->irq = platform_get_irq(pdev, 0);
-	if (priv->irq < 0) {
+	if (!priv->irq) {
+		dev_err(dev, "failed to retrieve <irq Rx-Tx> value from device tree\n");
 		err = -ENODEV;
 		goto out_netdev;
 	}
 
-	netif_napi_add_weight(ndev, &priv->napi, nps_enet_poll,
-			      NPS_ENET_NAPI_POLL_WEIGHT);
+	netif_napi_add(ndev, &priv->napi, nps_enet_poll,
+		       NPS_ENET_NAPI_POLL_WEIGHT);
 
 	/* Register the driver. Should be the last thing in probe */
 	err = register_netdev(ndev);
@@ -628,19 +633,22 @@ static s32 nps_enet_probe(struct platform_device *pdev)
 out_netif_api:
 	netif_napi_del(&priv->napi);
 out_netdev:
-	free_netdev(ndev);
+	if (err)
+		free_netdev(ndev);
 
 	return err;
 }
 
-static void nps_enet_remove(struct platform_device *pdev)
+static s32 nps_enet_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct nps_enet_priv *priv = netdev_priv(ndev);
 
 	unregister_netdev(ndev);
-	netif_napi_del(&priv->napi);
 	free_netdev(ndev);
+	netif_napi_del(&priv->napi);
+
+	return 0;
 }
 
 static const struct of_device_id nps_enet_dt_ids[] = {
@@ -651,7 +659,7 @@ MODULE_DEVICE_TABLE(of, nps_enet_dt_ids);
 
 static struct platform_driver nps_enet_driver = {
 	.probe = nps_enet_probe,
-	.remove_new = nps_enet_remove,
+	.remove = nps_enet_remove,
 	.driver = {
 		.name = DRV_NAME,
 		.of_match_table  = nps_enet_dt_ids,
@@ -661,5 +669,4 @@ static struct platform_driver nps_enet_driver = {
 module_platform_driver(nps_enet_driver);
 
 MODULE_AUTHOR("EZchip Semiconductor");
-MODULE_DESCRIPTION("EZchip NPS Ethernet driver");
 MODULE_LICENSE("GPL v2");

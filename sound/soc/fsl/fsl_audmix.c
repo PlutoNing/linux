@@ -116,9 +116,13 @@ static int fsl_audmix_put_mix_clk_src(struct snd_kcontrol *kcontrol,
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
 	unsigned int *item = ucontrol->value.enumerated.item;
 	unsigned int reg_val, val, mix_clk;
+	int ret = 0;
 
 	/* Get current state */
-	reg_val = snd_soc_component_read(comp, FSL_AUDMIX_CTR);
+	ret = snd_soc_component_read(comp, FSL_AUDMIX_CTR, &reg_val);
+	if (ret)
+		return ret;
+
 	mix_clk = ((reg_val & FSL_AUDMIX_CTR_MIXCLK_MASK)
 			>> FSL_AUDMIX_CTR_MIXCLK_SHIFT);
 	val = snd_soc_enum_item_to_val(e, item[0]);
@@ -155,10 +159,12 @@ static int fsl_audmix_put_out_src(struct snd_kcontrol *kcontrol,
 	unsigned int *item = ucontrol->value.enumerated.item;
 	u32 out_src, mix_clk;
 	unsigned int reg_val, val, mask = 0, ctr = 0;
-	int ret;
+	int ret = 0;
 
 	/* Get current state */
-	reg_val = snd_soc_component_read(comp, FSL_AUDMIX_CTR);
+	ret = snd_soc_component_read(comp, FSL_AUDMIX_CTR, &reg_val);
+	if (ret)
+		return ret;
 
 	/* "From" state */
 	out_src = ((reg_val & FSL_AUDMIX_CTR_OUTSRC_MASK)
@@ -249,10 +255,10 @@ static int fsl_audmix_dai_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 		return -EINVAL;
 	}
 
-	/* For playback the AUDMIX is consumer, and for record is provider */
-	switch (fmt & SND_SOC_DAIFMT_CLOCK_PROVIDER_MASK) {
-	case SND_SOC_DAIFMT_BC_FC:
-	case SND_SOC_DAIFMT_BP_FP:
+	/* For playback the AUDMIX is slave, and for record is master */
+	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
+	case SND_SOC_DAIFMT_CBM_CFM:
+	case SND_SOC_DAIFMT_CBS_CFS:
 		break;
 	default:
 		return -EINVAL;
@@ -280,7 +286,6 @@ static int fsl_audmix_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 				  struct snd_soc_dai *dai)
 {
 	struct fsl_audmix *priv = snd_soc_dai_get_drvdata(dai);
-	unsigned long lock_flags;
 
 	/* Capture stream shall not be handled */
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
@@ -290,16 +295,12 @@ static int fsl_audmix_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		spin_lock_irqsave(&priv->lock, lock_flags);
 		priv->tdms |= BIT(dai->driver->id);
-		spin_unlock_irqrestore(&priv->lock, lock_flags);
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		spin_lock_irqsave(&priv->lock, lock_flags);
 		priv->tdms &= ~BIT(dai->driver->id);
-		spin_unlock_irqrestore(&priv->lock, lock_flags);
 		break;
 	default:
 		return -EINVAL;
@@ -309,7 +310,7 @@ static int fsl_audmix_dai_trigger(struct snd_pcm_substream *substream, int cmd,
 }
 
 static const struct snd_soc_dai_ops fsl_audmix_dai_ops = {
-	.set_fmt  = fsl_audmix_dai_set_fmt,
+	.set_fmt      = fsl_audmix_dai_set_fmt,
 	.trigger      = fsl_audmix_dai_trigger,
 };
 
@@ -447,6 +448,7 @@ static const struct regmap_config fsl_audmix_regmap_config = {
 static const struct of_device_id fsl_audmix_ids[] = {
 	{
 		.compatible = "fsl,imx8qm-audmix",
+		.data = "imx-audmix",
 	},
 	{ /* sentinel */ }
 };
@@ -456,8 +458,16 @@ static int fsl_audmix_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct fsl_audmix *priv;
+	const char *mdrv;
+	const struct of_device_id *of_id;
 	void __iomem *regs;
 	int ret;
+
+	of_id = of_match_device(fsl_audmix_ids, dev);
+	if (!of_id || !of_id->data)
+		return -EINVAL;
+
+	mdrv = of_id->data;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -468,7 +478,8 @@ static int fsl_audmix_probe(struct platform_device *pdev)
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
-	priv->regmap = devm_regmap_init_mmio(dev, regs, &fsl_audmix_regmap_config);
+	priv->regmap = devm_regmap_init_mmio_clk(dev, "ipg", regs,
+						 &fsl_audmix_regmap_config);
 	if (IS_ERR(priv->regmap)) {
 		dev_err(dev, "failed to init regmap\n");
 		return PTR_ERR(priv->regmap);
@@ -480,7 +491,6 @@ static int fsl_audmix_probe(struct platform_device *pdev)
 		return PTR_ERR(priv->ipg_clk);
 	}
 
-	spin_lock_init(&priv->lock);
 	platform_set_drvdata(pdev, priv);
 	pm_runtime_enable(dev);
 
@@ -489,31 +499,26 @@ static int fsl_audmix_probe(struct platform_device *pdev)
 					      ARRAY_SIZE(fsl_audmix_dai));
 	if (ret) {
 		dev_err(dev, "failed to register ASoC DAI\n");
-		goto err_disable_pm;
+		return ret;
 	}
 
-	priv->pdev = platform_device_register_data(dev, "imx-audmix", 0, NULL, 0);
+	priv->pdev = platform_device_register_data(dev, mdrv, 0, NULL, 0);
 	if (IS_ERR(priv->pdev)) {
 		ret = PTR_ERR(priv->pdev);
-		dev_err(dev, "failed to register platform: %d\n", ret);
-		goto err_disable_pm;
+		dev_err(dev, "failed to register platform %s: %d\n", mdrv, ret);
 	}
 
-	return 0;
-
-err_disable_pm:
-	pm_runtime_disable(dev);
 	return ret;
 }
 
-static void fsl_audmix_remove(struct platform_device *pdev)
+static int fsl_audmix_remove(struct platform_device *pdev)
 {
 	struct fsl_audmix *priv = dev_get_drvdata(&pdev->dev);
 
-	pm_runtime_disable(&pdev->dev);
-
 	if (priv->pdev)
 		platform_device_unregister(priv->pdev);
+
+	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -556,7 +561,7 @@ static const struct dev_pm_ops fsl_audmix_pm = {
 
 static struct platform_driver fsl_audmix_driver = {
 	.probe = fsl_audmix_probe,
-	.remove_new = fsl_audmix_remove,
+	.remove = fsl_audmix_remove,
 	.driver = {
 		.name = "fsl-audmix",
 		.of_match_table = fsl_audmix_ids,

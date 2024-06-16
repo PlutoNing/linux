@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * NILFS module and super block management.
+ * super.c - NILFS module and super block management.
  *
  * Copyright (C) 2005-2008 Nippon Telegraph and Telephone Corporation.
  *
@@ -35,7 +35,6 @@
 #include <linux/writeback.h>
 #include <linux/seq_file.h>
 #include <linux/mount.h>
-#include <linux/fs_context.h>
 #include "nilfs.h"
 #include "export.h"
 #include "mdt.h"
@@ -63,25 +62,19 @@ struct kmem_cache *nilfs_btree_path_cache;
 static int nilfs_setup_super(struct super_block *sb, int is_mount);
 static int nilfs_remount(struct super_block *sb, int *flags, char *data);
 
-void __nilfs_msg(struct super_block *sb, const char *fmt, ...)
+void __nilfs_msg(struct super_block *sb, const char *level, const char *fmt,
+		 ...)
 {
 	struct va_format vaf;
 	va_list args;
-	int level;
 
 	va_start(args, fmt);
-
-	level = printk_get_level(fmt);
-	vaf.fmt = printk_skip_level(fmt);
+	vaf.fmt = fmt;
 	vaf.va = &args;
-
 	if (sb)
-		printk("%c%cNILFS (%s): %pV\n",
-		       KERN_SOH_ASCII, level, sb->s_id, &vaf);
+		printk("%sNILFS (%s): %pV\n", level, sb->s_id, &vaf);
 	else
-		printk("%c%cNILFS: %pV\n",
-		       KERN_SOH_ASCII, level, &vaf);
-
+		printk("%sNILFS: %pV\n", level, &vaf);
 	va_end(args);
 }
 
@@ -113,7 +106,7 @@ static void nilfs_set_error(struct super_block *sb)
  *
  * This implements the body of nilfs_error() macro.  Normally,
  * nilfs_error() should be used.  As for sustainable errors such as a
- * single-shot I/O error, nilfs_err() should be used instead.
+ * single-shot I/O error, nilfs_msg() should be used instead.
  *
  * Callers should not add a trailing newline since this will do it.
  */
@@ -152,14 +145,13 @@ struct inode *nilfs_alloc_inode(struct super_block *sb)
 {
 	struct nilfs_inode_info *ii;
 
-	ii = alloc_inode_sb(sb, nilfs_inode_cachep, GFP_NOFS);
+	ii = kmem_cache_alloc(nilfs_inode_cachep, GFP_NOFS);
 	if (!ii)
 		return NULL;
 	ii->i_bh = NULL;
 	ii->i_state = 0;
 	ii->i_cno = 0;
-	ii->i_assoc_inode = NULL;
-	ii->i_bmap = &ii->i_bmap_data;
+	nilfs_mapping_init(&ii->i_btnode_cache, &ii->vfs_inode);
 	return &ii->vfs_inode;
 }
 
@@ -186,7 +178,8 @@ static int nilfs_sync_super(struct super_block *sb, int flag)
 	}
 
 	if (unlikely(err)) {
-		nilfs_err(sb, "unable to write superblock: err=%d", err);
+		nilfs_msg(sb, KERN_ERR, "unable to write superblock: err=%d",
+			  err);
 		if (err == -EIO && nilfs->ns_sbh[1]) {
 			/*
 			 * sbp[0] points to newer log than sbp[1],
@@ -256,7 +249,7 @@ struct nilfs_super_block **nilfs_prepare_super(struct super_block *sb,
 		    sbp[1]->s_magic == cpu_to_le16(NILFS_SUPER_MAGIC)) {
 			memcpy(sbp[0], sbp[1], nilfs->ns_sbsize);
 		} else {
-			nilfs_crit(sb, "superblock broke");
+			nilfs_msg(sb, KERN_CRIT, "superblock broke");
 			return NULL;
 		}
 	} else if (sbp[1] &&
@@ -366,38 +359,17 @@ static int nilfs_move_2nd_super(struct super_block *sb, loff_t sb2off)
 	offset = sb2off & (nilfs->ns_blocksize - 1);
 	nsbh = sb_getblk(sb, newblocknr);
 	if (!nsbh) {
-		nilfs_warn(sb,
-			   "unable to move secondary superblock to block %llu",
-			   (unsigned long long)newblocknr);
+		nilfs_msg(sb, KERN_WARNING,
+			  "unable to move secondary superblock to block %llu",
+			  (unsigned long long)newblocknr);
 		ret = -EIO;
 		goto out;
 	}
 	nsbp = (void *)nsbh->b_data + offset;
+	memset(nsbp, 0, nilfs->ns_blocksize);
 
-	lock_buffer(nsbh);
 	if (sb2i >= 0) {
-		/*
-		 * The position of the second superblock only changes by 4KiB,
-		 * which is larger than the maximum superblock data size
-		 * (= 1KiB), so there is no need to use memmove() to allow
-		 * overlap between source and destination.
-		 */
 		memcpy(nsbp, nilfs->ns_sbp[sb2i], nilfs->ns_sbsize);
-
-		/*
-		 * Zero fill after copy to avoid overwriting in case of move
-		 * within the same block.
-		 */
-		memset(nsbh->b_data, 0, offset);
-		memset((void *)nsbp + nilfs->ns_sbsize, 0,
-		       nsbh->b_size - offset - nilfs->ns_sbsize);
-	} else {
-		memset(nsbh->b_data, 0, nsbh->b_size);
-	}
-	set_buffer_uptodate(nsbh);
-	unlock_buffer(nsbh);
-
-	if (sb2i >= 0) {
 		brelse(nilfs->ns_sbh[sb2i]);
 		nilfs->ns_sbh[sb2i] = nsbh;
 		nilfs->ns_sbp[sb2i] = nsbp;
@@ -426,18 +398,9 @@ int nilfs_resize_fs(struct super_block *sb, __u64 newsize)
 	int ret;
 
 	ret = -ERANGE;
-	devsize = bdev_nr_bytes(sb->s_bdev);
+	devsize = i_size_read(sb->s_bdev->bd_inode);
 	if (newsize > devsize)
 		goto out;
-
-	/*
-	 * Prevent underflow in second superblock position calculation.
-	 * The exact minimum size check is done in nilfs_sufile_resize().
-	 */
-	if (newsize < 4096) {
-		ret = -ENOSPC;
-		goto out;
-	}
 
 	/*
 	 * Write lock is required to protect some functions depending
@@ -448,7 +411,7 @@ int nilfs_resize_fs(struct super_block *sb, __u64 newsize)
 
 	sb2off = NILFS_SB2_OFFSET_BYTES(newsize);
 	newnsegs = sb2off >> nilfs->ns_blocksize_bits;
-	newnsegs = div64_ul(newnsegs, nilfs->ns_blocks_per_segment);
+	do_div(newnsegs, nilfs->ns_blocks_per_segment);
 
 	ret = nilfs_sufile_resize(nilfs->ns_sufile, newnsegs);
 	up_write(&nilfs->ns_segctor_sem);
@@ -504,7 +467,6 @@ static void nilfs_put_super(struct super_block *sb)
 		up_write(&nilfs->ns_sem);
 	}
 
-	nilfs_sysfs_delete_device_group(nilfs);
 	iput(nilfs->ns_sufile);
 	iput(nilfs->ns_cpfile);
 	iput(nilfs->ns_dat);
@@ -544,6 +506,8 @@ int nilfs_attach_checkpoint(struct super_block *sb, __u64 cno, int curr_mnt,
 {
 	struct the_nilfs *nilfs = sb->s_fs_info;
 	struct nilfs_root *root;
+	struct nilfs_checkpoint *raw_cp;
+	struct buffer_head *bh_cp;
 	int err = -ENOMEM;
 
 	root = nilfs_find_or_create_root(
@@ -555,19 +519,38 @@ int nilfs_attach_checkpoint(struct super_block *sb, __u64 cno, int curr_mnt,
 		goto reuse; /* already attached checkpoint */
 
 	down_read(&nilfs->ns_segctor_sem);
-	err = nilfs_ifile_read(sb, root, cno, nilfs->ns_inode_size);
+	err = nilfs_cpfile_get_checkpoint(nilfs->ns_cpfile, cno, 0, &raw_cp,
+					  &bh_cp);
 	up_read(&nilfs->ns_segctor_sem);
-	if (unlikely(err))
+	if (unlikely(err)) {
+		if (err == -ENOENT || err == -EINVAL) {
+			nilfs_msg(sb, KERN_ERR,
+				  "Invalid checkpoint (checkpoint number=%llu)",
+				  (unsigned long long)cno);
+			err = -EINVAL;
+		}
 		goto failed;
+	}
+
+	err = nilfs_ifile_read(sb, root, nilfs->ns_inode_size,
+			       &raw_cp->cp_ifile_inode, &root->ifile);
+	if (err)
+		goto failed_bh;
+
+	atomic64_set(&root->inodes_count,
+			le64_to_cpu(raw_cp->cp_inodes_count));
+	atomic64_set(&root->blocks_count,
+			le64_to_cpu(raw_cp->cp_blocks_count));
+
+	nilfs_cpfile_put_checkpoint(nilfs->ns_cpfile, cno, bh_cp);
 
  reuse:
 	*rootp = root;
 	return 0;
 
+ failed_bh:
+	nilfs_cpfile_put_checkpoint(nilfs->ns_cpfile, cno, bh_cp);
  failed:
-	if (err == -EINVAL)
-		nilfs_err(sb, "Invalid checkpoint (checkpoint number=%llu)",
-			  (unsigned long long)cno);
 	nilfs_put_root(root);
 
 	return err;
@@ -639,7 +622,8 @@ static int nilfs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	err = nilfs_ifile_count_free_inodes(root->ifile,
 					    &nmaxinodes, &nfreeinodes);
 	if (unlikely(err)) {
-		nilfs_warn(sb, "failed to count free inodes: err=%d", err);
+		nilfs_msg(sb, KERN_WARNING,
+			  "failed to count free inodes: err=%d", err);
 		if (err == -ERANGE) {
 			/*
 			 * If nilfs_palloc_count_max_entries() returns
@@ -663,7 +647,8 @@ static int nilfs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	buf->f_files = nmaxinodes;
 	buf->f_ffree = nfreeinodes;
 	buf->f_namelen = NILFS_NAME_LEN;
-	buf->f_fsid = u64_to_fsid(id);
+	buf->f_fsid.val[0] = (u32)id;
+	buf->f_fsid.val[1] = (u32)(id >> 32);
 
 	return 0;
 }
@@ -770,7 +755,7 @@ static int parse_options(char *options, struct super_block *sb, int is_remount)
 			break;
 		case Opt_snapshot:
 			if (is_remount) {
-				nilfs_err(sb,
+				nilfs_msg(sb, KERN_ERR,
 					  "\"%s\" option is invalid for remount",
 					  p);
 				return 0;
@@ -786,7 +771,8 @@ static int parse_options(char *options, struct super_block *sb, int is_remount)
 			nilfs_clear_opt(nilfs, DISCARD);
 			break;
 		default:
-			nilfs_err(sb, "unrecognized mount option \"%s\"", p);
+			nilfs_msg(sb, KERN_ERR,
+				  "unrecognized mount option \"%s\"", p);
 			return 0;
 		}
 	}
@@ -822,10 +808,10 @@ static int nilfs_setup_super(struct super_block *sb, int is_mount)
 	mnt_count = le16_to_cpu(sbp[0]->s_mnt_count);
 
 	if (nilfs->ns_mount_state & NILFS_ERROR_FS) {
-		nilfs_warn(sb, "mounting fs with errors");
+		nilfs_msg(sb, KERN_WARNING, "mounting fs with errors");
 #if 0
 	} else if (max_mnt_count >= 0 && mnt_count >= max_mnt_count) {
-		nilfs_warn(sb, "maximal mount count reached");
+		nilfs_msg(sb, KERN_WARNING, "maximal mount count reached");
 #endif
 	}
 	if (!max_mnt_count)
@@ -888,7 +874,7 @@ int nilfs_check_feature_compatibility(struct super_block *sb,
 	features = le64_to_cpu(sbp->s_feature_incompat) &
 		~NILFS_FEATURE_INCOMPAT_SUPP;
 	if (features) {
-		nilfs_err(sb,
+		nilfs_msg(sb, KERN_ERR,
 			  "couldn't mount because of unsupported optional features (%llx)",
 			  (unsigned long long)features);
 		return -EINVAL;
@@ -896,7 +882,7 @@ int nilfs_check_feature_compatibility(struct super_block *sb,
 	features = le64_to_cpu(sbp->s_feature_compat_ro) &
 		~NILFS_FEATURE_COMPAT_RO_SUPP;
 	if (!sb_rdonly(sb) && features) {
-		nilfs_err(sb,
+		nilfs_msg(sb, KERN_ERR,
 			  "couldn't mount RDWR because of unsupported optional features (%llx)",
 			  (unsigned long long)features);
 		return -EINVAL;
@@ -915,12 +901,12 @@ static int nilfs_get_root_dentry(struct super_block *sb,
 	inode = nilfs_iget(sb, root, NILFS_ROOT_INO);
 	if (IS_ERR(inode)) {
 		ret = PTR_ERR(inode);
-		nilfs_err(sb, "error %d getting root inode", ret);
+		nilfs_msg(sb, KERN_ERR, "error %d getting root inode", ret);
 		goto out;
 	}
 	if (!S_ISDIR(inode->i_mode) || !inode->i_blocks || !inode->i_size) {
 		iput(inode);
-		nilfs_err(sb, "corrupt root inode");
+		nilfs_msg(sb, KERN_ERR, "corrupt root inode");
 		ret = -EINVAL;
 		goto out;
 	}
@@ -948,7 +934,7 @@ static int nilfs_get_root_dentry(struct super_block *sb,
 	return ret;
 
  failed_dentry:
-	nilfs_err(sb, "error %d getting root dentry", ret);
+	nilfs_msg(sb, KERN_ERR, "error %d getting root dentry", ret);
 	goto out;
 }
 
@@ -968,7 +954,7 @@ static int nilfs_attach_snapshot(struct super_block *s, __u64 cno,
 		ret = (ret == -ENOENT) ? -EINVAL : ret;
 		goto out;
 	} else if (!ret) {
-		nilfs_err(s,
+		nilfs_msg(s, KERN_ERR,
 			  "The specified checkpoint is not a snapshot (checkpoint number=%llu)",
 			  (unsigned long long)cno);
 		ret = -EINVAL;
@@ -977,7 +963,7 @@ static int nilfs_attach_snapshot(struct super_block *s, __u64 cno,
 
 	ret = nilfs_attach_checkpoint(s, cno, false, &root);
 	if (ret) {
-		nilfs_err(s,
+		nilfs_msg(s, KERN_ERR,
 			  "error %d while loading snapshot (checkpoint number=%llu)",
 			  ret, (unsigned long long)cno);
 		goto out;
@@ -1065,7 +1051,7 @@ nilfs_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_time_gran = 1;
 	sb->s_max_links = NILFS_LINK_MAX;
 
-	sb->s_bdi = bdi_get(sb->s_bdev->bd_disk->bdi);
+	sb->s_bdi = bdi_get(sb->s_bdev->bd_bdi);
 
 	err = load_nilfs(nilfs, sb);
 	if (err)
@@ -1074,7 +1060,7 @@ nilfs_fill_super(struct super_block *sb, void *data, int silent)
 	cno = nilfs_last_cno(nilfs);
 	err = nilfs_attach_checkpoint(sb, cno, true, &fsroot);
 	if (err) {
-		nilfs_err(sb,
+		nilfs_msg(sb, KERN_ERR,
 			  "error %d while loading last checkpoint (checkpoint number=%llu)",
 			  err, (unsigned long long)cno);
 		goto failed_unload;
@@ -1107,7 +1093,6 @@ nilfs_fill_super(struct super_block *sb, void *data, int silent)
 	nilfs_put_root(fsroot);
 
  failed_unload:
-	nilfs_sysfs_delete_device_group(nilfs);
 	iput(nilfs->ns_sufile);
 	iput(nilfs->ns_cpfile);
 	iput(nilfs->ns_dat);
@@ -1137,14 +1122,16 @@ static int nilfs_remount(struct super_block *sb, int *flags, char *data)
 	err = -EINVAL;
 
 	if (!nilfs_valid_fs(nilfs)) {
-		nilfs_warn(sb,
-			   "couldn't remount because the filesystem is in an incomplete recovery state");
+		nilfs_msg(sb, KERN_WARNING,
+			  "couldn't remount because the filesystem is in an incomplete recovery state");
 		goto restore_opts;
 	}
 
 	if ((bool)(*flags & SB_RDONLY) == sb_rdonly(sb))
 		goto out;
 	if (*flags & SB_RDONLY) {
+		/* Shutting down log writer */
+		nilfs_detach_log_writer(sb);
 		sb->s_flags |= SB_RDONLY;
 
 		/*
@@ -1168,9 +1155,9 @@ static int nilfs_remount(struct super_block *sb, int *flags, char *data)
 			~NILFS_FEATURE_COMPAT_RO_SUPP;
 		up_read(&nilfs->ns_sem);
 		if (features) {
-			nilfs_warn(sb,
-				   "couldn't remount RDWR because of unsupported optional features (%llx)",
-				   (unsigned long long)features);
+			nilfs_msg(sb, KERN_WARNING,
+				  "couldn't remount RDWR because of unsupported optional features (%llx)",
+				  (unsigned long long)features);
 			err = -EROFS;
 			goto restore_opts;
 		}
@@ -1196,6 +1183,7 @@ static int nilfs_remount(struct super_block *sb, int *flags, char *data)
 }
 
 struct nilfs_super_data {
+	struct block_device *bdev;
 	__u64 cno;
 	int flags;
 };
@@ -1228,7 +1216,7 @@ static int nilfs_parse_snapshot_option(const char *option,
 	return 0;
 
 parse_error:
-	nilfs_err(NULL, "invalid option \"%s\": %s", option, msg);
+	nilfs_msg(NULL, KERN_ERR, "invalid option \"%s\": %s", option, msg);
 	return 1;
 }
 
@@ -1262,41 +1250,68 @@ static int nilfs_identify(char *data, struct nilfs_super_data *sd)
 
 static int nilfs_set_bdev_super(struct super_block *s, void *data)
 {
-	s->s_dev = *(dev_t *)data;
+	s->s_bdev = data;
+	s->s_dev = s->s_bdev->bd_dev;
 	return 0;
 }
 
 static int nilfs_test_bdev_super(struct super_block *s, void *data)
 {
-	return !(s->s_iflags & SB_I_RETIRED) && s->s_dev == *(dev_t *)data;
+	return (void *)s->s_bdev == data;
 }
 
 static struct dentry *
 nilfs_mount(struct file_system_type *fs_type, int flags,
 	     const char *dev_name, void *data)
 {
-	struct nilfs_super_data sd = { .flags = flags };
+	struct nilfs_super_data sd;
 	struct super_block *s;
-	dev_t dev;
-	int err;
+	fmode_t mode = FMODE_READ | FMODE_EXCL;
+	struct dentry *root_dentry;
+	int err, s_new = false;
 
-	if (nilfs_identify(data, &sd))
-		return ERR_PTR(-EINVAL);
+	if (!(flags & SB_RDONLY))
+		mode |= FMODE_WRITE;
 
-	err = lookup_bdev(dev_name, &dev);
-	if (err)
-		return ERR_PTR(err);
+	sd.bdev = blkdev_get_by_path(dev_name, mode, fs_type);
+	if (IS_ERR(sd.bdev))
+		return ERR_CAST(sd.bdev);
 
+	sd.cno = 0;
+	sd.flags = flags;
+	if (nilfs_identify((char *)data, &sd)) {
+		err = -EINVAL;
+		goto failed;
+	}
+
+	/*
+	 * once the super is inserted into the list by sget, s_umount
+	 * will protect the lockfs code from trying to start a snapshot
+	 * while we are mounting
+	 */
+	mutex_lock(&sd.bdev->bd_fsfreeze_mutex);
+	if (sd.bdev->bd_fsfreeze_count > 0) {
+		mutex_unlock(&sd.bdev->bd_fsfreeze_mutex);
+		err = -EBUSY;
+		goto failed;
+	}
 	s = sget(fs_type, nilfs_test_bdev_super, nilfs_set_bdev_super, flags,
-		 &dev);
-	if (IS_ERR(s))
-		return ERR_CAST(s);
+		 sd.bdev);
+	mutex_unlock(&sd.bdev->bd_fsfreeze_mutex);
+	if (IS_ERR(s)) {
+		err = PTR_ERR(s);
+		goto failed;
+	}
 
 	if (!s->s_root) {
-		err = setup_bdev_super(s, flags, NULL);
-		if (!err)
-			err = nilfs_fill_super(s, data,
-					       flags & SB_SILENT ? 1 : 0);
+		s_new = true;
+
+		/* New superblock instance created */
+		s->s_mode = mode;
+		snprintf(s->s_id, sizeof(s->s_id), "%pg", sd.bdev);
+		sb_set_blocksize(s, block_size(sd.bdev));
+
+		err = nilfs_fill_super(s, data, flags & SB_SILENT ? 1 : 0);
 		if (err)
 			goto failed_super;
 
@@ -1304,7 +1319,7 @@ nilfs_mount(struct file_system_type *fs_type, int flags,
 	} else if (!sd.cno) {
 		if (nilfs_tree_is_busy(s->s_root)) {
 			if ((flags ^ s->s_flags) & SB_RDONLY) {
-				nilfs_err(s,
+				nilfs_msg(s, KERN_ERR,
 					  "the device already has a %s mount.",
 					  sb_rdonly(s) ? "read-only" : "read/write");
 				err = -EBUSY;
@@ -1322,18 +1337,24 @@ nilfs_mount(struct file_system_type *fs_type, int flags,
 	}
 
 	if (sd.cno) {
-		struct dentry *root_dentry;
-
 		err = nilfs_attach_snapshot(s, sd.cno, &root_dentry);
 		if (err)
 			goto failed_super;
-		return root_dentry;
+	} else {
+		root_dentry = dget(s->s_root);
 	}
 
-	return dget(s->s_root);
+	if (!s_new)
+		blkdev_put(sd.bdev, mode);
+
+	return root_dentry;
 
  failed_super:
 	deactivate_locked_super(s);
+
+ failed:
+	if (!s_new)
+		blkdev_put(sd.bdev, mode);
 	return ERR_PTR(err);
 }
 
@@ -1354,6 +1375,8 @@ static void nilfs_inode_init_once(void *obj)
 #ifdef CONFIG_NILFS_XATTR
 	init_rwsem(&ii->xattr_sem);
 #endif
+	address_space_init_once(&ii->i_btnode_cache);
+	ii->i_bmap = &ii->i_bmap_data;
 	inode_init_once(&ii->vfs_inode);
 }
 

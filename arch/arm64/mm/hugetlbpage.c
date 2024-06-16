@@ -17,65 +17,25 @@
 #include <asm/mman.h>
 #include <asm/tlb.h>
 #include <asm/tlbflush.h>
-
-/*
- * HugeTLB Support Matrix
- *
- * ---------------------------------------------------
- * | Page Size | CONT PTE |  PMD  | CONT PMD |  PUD  |
- * ---------------------------------------------------
- * |     4K    |   64K    |   2M  |    32M   |   1G  |
- * |    16K    |    2M    |  32M  |     1G   |       |
- * |    64K    |    2M    | 512M  |    16G   |       |
- * ---------------------------------------------------
- */
-
-/*
- * Reserve CMA areas for the largest supported gigantic
- * huge page when requested. Any other smaller gigantic
- * huge pages could still be served from those areas.
- */
-#ifdef CONFIG_CMA
-void __init arm64_hugetlb_cma_reserve(void)
-{
-	int order;
-
-	if (pud_sect_supported())
-		order = PUD_SHIFT - PAGE_SHIFT;
-	else
-		order = CONT_PMD_SHIFT - PAGE_SHIFT;
-
-	hugetlb_cma_reserve(order);
-}
-#endif /* CONFIG_CMA */
-
-static bool __hugetlb_valid_size(unsigned long size)
-{
-	switch (size) {
-#ifndef __PAGETABLE_PMD_FOLDED
-	case PUD_SIZE:
-		return pud_sect_supported();
-#endif
-	case CONT_PMD_SIZE:
-	case PMD_SIZE:
-	case CONT_PTE_SIZE:
-		return true;
-	}
-
-	return false;
-}
+#include <asm/pgalloc.h>
 
 #ifdef CONFIG_ARCH_ENABLE_HUGEPAGE_MIGRATION
 bool arch_hugetlb_migration_supported(struct hstate *h)
 {
 	size_t pagesize = huge_page_size(h);
 
-	if (!__hugetlb_valid_size(pagesize)) {
-		pr_warn("%s: unrecognized huge page size 0x%lx\n",
-			__func__, pagesize);
-		return false;
+	switch (pagesize) {
+#ifdef CONFIG_ARM64_4K_PAGES
+	case PUD_SIZE:
+#endif
+	case PMD_SIZE:
+	case CONT_PMD_SIZE:
+	case CONT_PTE_SIZE:
+		return true;
 	}
-	return true;
+	pr_warn("%s: unrecognized huge page size 0x%lx\n",
+			__func__, pagesize);
+	return false;
 }
 #endif
 
@@ -93,17 +53,25 @@ int pud_huge(pud_t pud)
 #endif
 }
 
+/*
+ * Select all bits except the pfn
+ */
+static inline pgprot_t pte_pgprot(pte_t pte)
+{
+	unsigned long pfn = pte_pfn(pte);
+
+	return __pgprot(pte_val(pfn_pte(pfn, __pgprot(0))) ^ pte_val(pte));
+}
+
 static int find_num_contig(struct mm_struct *mm, unsigned long addr,
 			   pte_t *ptep, size_t *pgsize)
 {
 	pgd_t *pgdp = pgd_offset(mm, addr);
-	p4d_t *p4dp;
 	pud_t *pudp;
 	pmd_t *pmdp;
 
 	*pgsize = PAGE_SIZE;
-	p4dp = p4d_offset(pgdp, addr);
-	pudp = pud_offset(p4dp, addr);
+	pudp = pud_offset(pgdp, addr);
 	pmdp = pmd_offset(pudp, addr);
 	if ((pte_t *)pmdp == ptep) {
 		*pgsize = PMD_SIZE;
@@ -119,11 +87,8 @@ static inline int num_contig_ptes(unsigned long size, size_t *pgsize)
 	*pgsize = size;
 
 	switch (size) {
-#ifndef __PAGETABLE_PMD_FOLDED
+#ifdef CONFIG_ARM64_4K_PAGES
 	case PUD_SIZE:
-		if (pud_sect_supported())
-			contig_ptes = 1;
-		break;
 #endif
 	case PMD_SIZE:
 		contig_ptes = 1;
@@ -141,28 +106,6 @@ static inline int num_contig_ptes(unsigned long size, size_t *pgsize)
 	return contig_ptes;
 }
 
-pte_t huge_ptep_get(pte_t *ptep)
-{
-	int ncontig, i;
-	size_t pgsize;
-	pte_t orig_pte = __ptep_get(ptep);
-
-	if (!pte_present(orig_pte) || !pte_cont(orig_pte))
-		return orig_pte;
-
-	ncontig = num_contig_ptes(page_size(pte_page(orig_pte)), &pgsize);
-	for (i = 0; i < ncontig; i++, ptep++) {
-		pte_t pte = __ptep_get(ptep);
-
-		if (pte_dirty(pte))
-			orig_pte = pte_mkdirty(orig_pte);
-
-		if (pte_young(pte))
-			orig_pte = pte_mkyoung(orig_pte);
-	}
-	return orig_pte;
-}
-
 /*
  * Changing some bits of contiguous entries requires us to follow a
  * Break-Before-Make approach, breaking the whole contiguous set
@@ -171,17 +114,18 @@ pte_t huge_ptep_get(pte_t *ptep)
  *
  * This helper performs the break step.
  */
-static pte_t get_clear_contig(struct mm_struct *mm,
+static pte_t get_clear_flush(struct mm_struct *mm,
 			     unsigned long addr,
 			     pte_t *ptep,
 			     unsigned long pgsize,
 			     unsigned long ncontig)
 {
-	pte_t orig_pte = __ptep_get(ptep);
-	unsigned long i;
+	pte_t orig_pte = huge_ptep_get(ptep);
+	bool valid = pte_valid(orig_pte);
+	unsigned long i, saddr = addr;
 
 	for (i = 0; i < ncontig; i++, addr += pgsize, ptep++) {
-		pte_t pte = __ptep_get_and_clear(mm, addr, ptep);
+		pte_t pte = ptep_get_and_clear(mm, addr, ptep);
 
 		/*
 		 * If HW_AFDBM is enabled, then the HW could turn on
@@ -194,19 +138,11 @@ static pte_t get_clear_contig(struct mm_struct *mm,
 		if (pte_young(pte))
 			orig_pte = pte_mkyoung(orig_pte);
 	}
-	return orig_pte;
-}
 
-static pte_t get_clear_contig_flush(struct mm_struct *mm,
-				    unsigned long addr,
-				    pte_t *ptep,
-				    unsigned long pgsize,
-				    unsigned long ncontig)
-{
-	pte_t orig_pte = get_clear_contig(mm, addr, ptep, pgsize, ncontig);
-	struct vm_area_struct vma = TLB_FLUSH_VMA(mm, 0);
-
-	flush_tlb_range(&vma, addr, addr + (pgsize * ncontig));
+	if (valid) {
+		struct vm_area_struct vma = TLB_FLUSH_VMA(mm, 0);
+		flush_tlb_range(&vma, saddr, addr);
+	}
 	return orig_pte;
 }
 
@@ -229,13 +165,13 @@ static void clear_flush(struct mm_struct *mm,
 	unsigned long i, saddr = addr;
 
 	for (i = 0; i < ncontig; i++, addr += pgsize, ptep++)
-		__ptep_get_and_clear(mm, addr, ptep);
+		pte_clear(mm, addr, ptep);
 
 	flush_tlb_range(&vma, saddr, addr);
 }
 
 void set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
-			    pte_t *ptep, pte_t pte, unsigned long sz)
+			    pte_t *ptep, pte_t pte)
 {
 	size_t pgsize;
 	int i;
@@ -243,19 +179,18 @@ void set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
 	unsigned long pfn, dpfn;
 	pgprot_t hugeprot;
 
-	ncontig = num_contig_ptes(sz, &pgsize);
-
-	if (!pte_present(pte)) {
-		for (i = 0; i < ncontig; i++, ptep++, addr += pgsize)
-			__set_ptes(mm, addr, ptep, pte, 1);
-		return;
-	}
+	/*
+	 * Code needs to be expanded to handle huge swap and migration
+	 * entries. Needed for HUGETLB and MEMORY_FAILURE.
+	 */
+	WARN_ON(!pte_present(pte));
 
 	if (!pte_cont(pte)) {
-		__set_ptes(mm, addr, ptep, pte, 1);
+		set_pte_at(mm, addr, ptep, pte);
 		return;
 	}
 
+	ncontig = find_num_contig(mm, addr, ptep, &pgsize);
 	pfn = pte_pfn(pte);
 	dpfn = pgsize >> PAGE_SHIFT;
 	hugeprot = pte_pgprot(pte);
@@ -263,21 +198,31 @@ void set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
 	clear_flush(mm, addr, ptep, pgsize, ncontig);
 
 	for (i = 0; i < ncontig; i++, ptep++, addr += pgsize, pfn += dpfn)
-		__set_ptes(mm, addr, ptep, pfn_pte(pfn, hugeprot), 1);
+		set_pte_at(mm, addr, ptep, pfn_pte(pfn, hugeprot));
 }
 
-pte_t *huge_pte_alloc(struct mm_struct *mm, struct vm_area_struct *vma,
+void set_huge_swap_pte_at(struct mm_struct *mm, unsigned long addr,
+			  pte_t *ptep, pte_t pte, unsigned long sz)
+{
+	int i, ncontig;
+	size_t pgsize;
+
+	ncontig = num_contig_ptes(sz, &pgsize);
+
+	for (i = 0; i < ncontig; i++, ptep++)
+		set_pte(ptep, pte);
+}
+
+pte_t *huge_pte_alloc(struct mm_struct *mm,
 		      unsigned long addr, unsigned long sz)
 {
 	pgd_t *pgdp;
-	p4d_t *p4dp;
 	pud_t *pudp;
 	pmd_t *pmdp;
 	pte_t *ptep = NULL;
 
 	pgdp = pgd_offset(mm, addr);
-	p4dp = p4d_offset(pgdp, addr);
-	pudp = pud_alloc(mm, p4dp, addr);
+	pudp = pud_alloc(mm, pgdp, addr);
 	if (!pudp)
 		return NULL;
 
@@ -285,14 +230,20 @@ pte_t *huge_pte_alloc(struct mm_struct *mm, struct vm_area_struct *vma,
 		ptep = (pte_t *)pudp;
 	} else if (sz == (CONT_PTE_SIZE)) {
 		pmdp = pmd_alloc(mm, pudp, addr);
-		if (!pmdp)
-			return NULL;
 
 		WARN_ON(addr & (sz - 1));
-		ptep = pte_alloc_huge(mm, pmdp, addr);
+		/*
+		 * Note that if this code were ever ported to the
+		 * 32-bit arm platform then it will cause trouble in
+		 * the case where CONFIG_HIGHPTE is set, since there
+		 * will be no pte_unmap() to correspond with this
+		 * pte_alloc_map().
+		 */
+		ptep = pte_alloc_map(mm, pmdp, addr);
 	} else if (sz == PMD_SIZE) {
-		if (want_pmd_share(vma, addr) && pud_none(READ_ONCE(*pudp)))
-			ptep = huge_pmd_share(mm, vma, addr, pudp);
+		if (IS_ENABLED(CONFIG_ARCH_WANT_HUGE_PMD_SHARE) &&
+		    pud_none(READ_ONCE(*pudp)))
+			ptep = huge_pmd_share(mm, addr, pudp);
 		else
 			ptep = (pte_t *)pmd_alloc(mm, pudp, addr);
 	} else if (sz == (CONT_PMD_SIZE)) {
@@ -308,7 +259,6 @@ pte_t *huge_pte_offset(struct mm_struct *mm,
 		       unsigned long addr, unsigned long sz)
 {
 	pgd_t *pgdp;
-	p4d_t *p4dp;
 	pud_t *pudp, pud;
 	pmd_t *pmdp, pmd;
 
@@ -316,11 +266,7 @@ pte_t *huge_pte_offset(struct mm_struct *mm,
 	if (!pgd_present(READ_ONCE(*pgdp)))
 		return NULL;
 
-	p4dp = p4d_offset(pgdp, addr);
-	if (!p4d_present(READ_ONCE(*p4dp)))
-		return NULL;
-
-	pudp = pud_offset(p4dp, addr);
+	pudp = pud_offset(pgdp, addr);
 	pud = READ_ONCE(*pudp);
 	if (sz != PUD_SIZE && pud_none(pud))
 		return NULL;
@@ -341,38 +287,16 @@ pte_t *huge_pte_offset(struct mm_struct *mm,
 		return (pte_t *)pmdp;
 
 	if (sz == CONT_PTE_SIZE)
-		return pte_offset_huge(pmdp, (addr & CONT_PTE_MASK));
+		return pte_offset_kernel(pmdp, (addr & CONT_PTE_MASK));
 
 	return NULL;
 }
 
-unsigned long hugetlb_mask_last_page(struct hstate *h)
+pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
+			 struct page *page, int writable)
 {
-	unsigned long hp_size = huge_page_size(h);
+	size_t pagesize = huge_page_size(hstate_vma(vma));
 
-	switch (hp_size) {
-#ifndef __PAGETABLE_PMD_FOLDED
-	case PUD_SIZE:
-		return PGDIR_SIZE - PUD_SIZE;
-#endif
-	case CONT_PMD_SIZE:
-		return PUD_SIZE - CONT_PMD_SIZE;
-	case PMD_SIZE:
-		return PUD_SIZE - PMD_SIZE;
-	case CONT_PTE_SIZE:
-		return PMD_SIZE - CONT_PTE_SIZE;
-	default:
-		break;
-	}
-
-	return 0UL;
-}
-
-pte_t arch_make_huge_pte(pte_t entry, unsigned int shift, vm_flags_t flags)
-{
-	size_t pagesize = 1UL << shift;
-
-	entry = pte_mkhuge(entry);
 	if (pagesize == CONT_PTE_SIZE) {
 		entry = pte_mkcont(entry);
 	} else if (pagesize == CONT_PMD_SIZE) {
@@ -393,7 +317,7 @@ void huge_pte_clear(struct mm_struct *mm, unsigned long addr,
 	ncontig = num_contig_ptes(sz, &pgsize);
 
 	for (i = 0; i < ncontig; i++, addr += pgsize, ptep++)
-		__pte_clear(mm, addr, ptep);
+		pte_clear(mm, addr, ptep);
 }
 
 pte_t huge_ptep_get_and_clear(struct mm_struct *mm,
@@ -401,14 +325,14 @@ pte_t huge_ptep_get_and_clear(struct mm_struct *mm,
 {
 	int ncontig;
 	size_t pgsize;
-	pte_t orig_pte = __ptep_get(ptep);
+	pte_t orig_pte = huge_ptep_get(ptep);
 
 	if (!pte_cont(orig_pte))
-		return __ptep_get_and_clear(mm, addr, ptep);
+		return ptep_get_and_clear(mm, addr, ptep);
 
 	ncontig = find_num_contig(mm, addr, ptep, &pgsize);
 
-	return get_clear_contig(mm, addr, ptep, pgsize, ncontig);
+	return get_clear_flush(mm, addr, ptep, pgsize, ncontig);
 }
 
 /*
@@ -424,11 +348,11 @@ static int __cont_access_flags_changed(pte_t *ptep, pte_t pte, int ncontig)
 {
 	int i;
 
-	if (pte_write(pte) != pte_write(__ptep_get(ptep)))
+	if (pte_write(pte) != pte_write(huge_ptep_get(ptep)))
 		return 1;
 
 	for (i = 0; i < ncontig; i++) {
-		pte_t orig_pte = __ptep_get(ptep + i);
+		pte_t orig_pte = huge_ptep_get(ptep + i);
 
 		if (pte_dirty(pte) != pte_dirty(orig_pte))
 			return 1;
@@ -447,20 +371,19 @@ int huge_ptep_set_access_flags(struct vm_area_struct *vma,
 	int ncontig, i;
 	size_t pgsize = 0;
 	unsigned long pfn = pte_pfn(pte), dpfn;
-	struct mm_struct *mm = vma->vm_mm;
 	pgprot_t hugeprot;
 	pte_t orig_pte;
 
 	if (!pte_cont(pte))
-		return __ptep_set_access_flags(vma, addr, ptep, pte, dirty);
+		return ptep_set_access_flags(vma, addr, ptep, pte, dirty);
 
-	ncontig = find_num_contig(mm, addr, ptep, &pgsize);
+	ncontig = find_num_contig(vma->vm_mm, addr, ptep, &pgsize);
 	dpfn = pgsize >> PAGE_SHIFT;
 
 	if (!__cont_access_flags_changed(ptep, pte, ncontig))
 		return 0;
 
-	orig_pte = get_clear_contig_flush(mm, addr, ptep, pgsize, ncontig);
+	orig_pte = get_clear_flush(vma->vm_mm, addr, ptep, pgsize, ncontig);
 
 	/* Make sure we don't lose the dirty or young state */
 	if (pte_dirty(orig_pte))
@@ -471,7 +394,7 @@ int huge_ptep_set_access_flags(struct vm_area_struct *vma,
 
 	hugeprot = pte_pgprot(pte);
 	for (i = 0; i < ncontig; i++, ptep++, addr += pgsize, pfn += dpfn)
-		__set_ptes(mm, addr, ptep, pfn_pte(pfn, hugeprot), 1);
+		set_pte_at(vma->vm_mm, addr, ptep, pfn_pte(pfn, hugeprot));
 
 	return 1;
 }
@@ -485,74 +408,77 @@ void huge_ptep_set_wrprotect(struct mm_struct *mm,
 	size_t pgsize;
 	pte_t pte;
 
-	if (!pte_cont(__ptep_get(ptep))) {
-		__ptep_set_wrprotect(mm, addr, ptep);
+	if (!pte_cont(READ_ONCE(*ptep))) {
+		ptep_set_wrprotect(mm, addr, ptep);
 		return;
 	}
 
 	ncontig = find_num_contig(mm, addr, ptep, &pgsize);
 	dpfn = pgsize >> PAGE_SHIFT;
 
-	pte = get_clear_contig_flush(mm, addr, ptep, pgsize, ncontig);
+	pte = get_clear_flush(mm, addr, ptep, pgsize, ncontig);
 	pte = pte_wrprotect(pte);
 
 	hugeprot = pte_pgprot(pte);
 	pfn = pte_pfn(pte);
 
 	for (i = 0; i < ncontig; i++, ptep++, addr += pgsize, pfn += dpfn)
-		__set_ptes(mm, addr, ptep, pfn_pte(pfn, hugeprot), 1);
+		set_pte_at(mm, addr, ptep, pfn_pte(pfn, hugeprot));
 }
 
-pte_t huge_ptep_clear_flush(struct vm_area_struct *vma,
-			    unsigned long addr, pte_t *ptep)
+void huge_ptep_clear_flush(struct vm_area_struct *vma,
+			   unsigned long addr, pte_t *ptep)
 {
-	struct mm_struct *mm = vma->vm_mm;
 	size_t pgsize;
 	int ncontig;
 
-	if (!pte_cont(__ptep_get(ptep)))
-		return ptep_clear_flush(vma, addr, ptep);
+	if (!pte_cont(READ_ONCE(*ptep))) {
+		ptep_clear_flush(vma, addr, ptep);
+		return;
+	}
 
-	ncontig = find_num_contig(mm, addr, ptep, &pgsize);
-	return get_clear_contig_flush(mm, addr, ptep, pgsize, ncontig);
+	ncontig = find_num_contig(vma->vm_mm, addr, ptep, &pgsize);
+	clear_flush(vma->vm_mm, addr, ptep, pgsize, ncontig);
+}
+
+static void __init add_huge_page_size(unsigned long size)
+{
+	if (size_to_hstate(size))
+		return;
+
+	hugetlb_add_hstate(ilog2(size) - PAGE_SHIFT);
 }
 
 static int __init hugetlbpage_init(void)
 {
-	if (pud_sect_supported())
-		hugetlb_add_hstate(PUD_SHIFT - PAGE_SHIFT);
-
-	hugetlb_add_hstate(CONT_PMD_SHIFT - PAGE_SHIFT);
-	hugetlb_add_hstate(PMD_SHIFT - PAGE_SHIFT);
-	hugetlb_add_hstate(CONT_PTE_SHIFT - PAGE_SHIFT);
+#ifdef CONFIG_ARM64_4K_PAGES
+	add_huge_page_size(PUD_SIZE);
+#endif
+	add_huge_page_size(CONT_PMD_SIZE);
+	add_huge_page_size(PMD_SIZE);
+	add_huge_page_size(CONT_PTE_SIZE);
 
 	return 0;
 }
 arch_initcall(hugetlbpage_init);
 
-bool __init arch_hugetlb_valid_size(unsigned long size)
+static __init int setup_hugepagesz(char *opt)
 {
-	return __hugetlb_valid_size(size);
-}
+	unsigned long ps = memparse(opt, &opt);
 
-pte_t huge_ptep_modify_prot_start(struct vm_area_struct *vma, unsigned long addr, pte_t *ptep)
-{
-	if (alternative_has_cap_unlikely(ARM64_WORKAROUND_2645198)) {
-		/*
-		 * Break-before-make (BBM) is required for all user space mappings
-		 * when the permission changes from executable to non-executable
-		 * in cases where cpu is affected with errata #2645198.
-		 */
-		if (pte_user_exec(__ptep_get(ptep)))
-			return huge_ptep_clear_flush(vma, addr, ptep);
+	switch (ps) {
+#ifdef CONFIG_ARM64_4K_PAGES
+	case PUD_SIZE:
+#endif
+	case CONT_PMD_SIZE:
+	case PMD_SIZE:
+	case CONT_PTE_SIZE:
+		add_huge_page_size(ps);
+		return 1;
 	}
-	return huge_ptep_get_and_clear(vma->vm_mm, addr, ptep);
-}
 
-void huge_ptep_modify_prot_commit(struct vm_area_struct *vma, unsigned long addr, pte_t *ptep,
-				  pte_t old_pte, pte_t pte)
-{
-	unsigned long psize = huge_page_size(hstate_vma(vma));
-
-	set_huge_pte_at(vma->vm_mm, addr, ptep, pte, psize);
+	hugetlb_bad_size();
+	pr_err("hugepagesz: Unsupported page size %lu K\n", ps >> 10);
+	return 0;
 }
+__setup("hugepagesz=", setup_hugepagesz);

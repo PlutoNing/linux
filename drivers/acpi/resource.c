@@ -16,7 +16,6 @@
 #include <linux/ioport.h>
 #include <linux/slab.h>
 #include <linux/irq.h>
-#include <linux/dmi.h>
 
 #ifdef CONFIG_X86
 #define valid_IRQ(i) (((i) != 0) && ((i) != 2))
@@ -336,9 +335,8 @@ EXPORT_SYMBOL_GPL(acpi_dev_resource_ext_address_space);
  * @triggering: Triggering type as provided by ACPI.
  * @polarity: Interrupt polarity as provided by ACPI.
  * @shareable: Whether or not the interrupt is shareable.
- * @wake_capable: Wake capability as provided by ACPI.
  */
-unsigned long acpi_dev_irq_flags(u8 triggering, u8 polarity, u8 shareable, u8 wake_capable)
+unsigned long acpi_dev_irq_flags(u8 triggering, u8 polarity, u8 shareable)
 {
 	unsigned long flags;
 
@@ -351,9 +349,6 @@ unsigned long acpi_dev_irq_flags(u8 triggering, u8 polarity, u8 shareable, u8 wa
 
 	if (shareable == ACPI_SHARED)
 		flags |= IORESOURCE_IRQ_SHAREABLE;
-
-	if (wake_capable == ACPI_WAKE_CAPABLE)
-		flags |= IORESOURCE_IRQ_WAKECAPABLE;
 
 	return flags | IORESOURCE_IRQ;
 }
@@ -378,324 +373,28 @@ unsigned int acpi_dev_get_irq_type(int triggering, int polarity)
 	case ACPI_ACTIVE_BOTH:
 		if (triggering == ACPI_EDGE_SENSITIVE)
 			return IRQ_TYPE_EDGE_BOTH;
-		fallthrough;
+		/* fall through */
 	default:
 		return IRQ_TYPE_NONE;
 	}
 }
 EXPORT_SYMBOL_GPL(acpi_dev_get_irq_type);
 
-/*
- * DMI matches for boards where the DSDT specifies the kbd IRQ as
- * level active-low and using the override changes this to rising edge,
- * stopping the keyboard from working.
- */
-static const struct dmi_system_id irq1_level_low_skip_override[] = {
-	{
-		/* MEDION P15651 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "MEDION"),
-			DMI_MATCH(DMI_BOARD_NAME, "M15T"),
-		},
-	},
-	{
-		/* MEDION S17405 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "MEDION"),
-			DMI_MATCH(DMI_BOARD_NAME, "M17T"),
-		},
-	},
-	{
-		/* MEDION S17413 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "MEDION"),
-			DMI_MATCH(DMI_BOARD_NAME, "M1xA"),
-		},
-	},
-	{
-		/* Asus Vivobook K3402ZA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "K3402ZA"),
-		},
-	},
-	{
-		/* Asus Vivobook K3502ZA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "K3502ZA"),
-		},
-	},
-	{
-		/* Asus Vivobook S5402ZA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "S5402ZA"),
-		},
-	},
-	{
-		/* Asus Vivobook S5602ZA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "S5602ZA"),
-		},
-	},
-	{
-		/* Asus ExpertBook B1402CBA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "B1402CBA"),
-		},
-	},
-	{
-		/* Asus ExpertBook B1402CVA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "B1402CVA"),
-		},
-	},
-	{
-		/* Asus ExpertBook B1502CBA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "B1502CBA"),
-		},
-	},
-	{
-		/* Asus ExpertBook B1502CGA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "B1502CGA"),
-		},
-	},
-        {
-                /* Asus ExpertBook B1502CVA */
-                .matches = {
-                        DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-                        DMI_MATCH(DMI_BOARD_NAME, "B1502CVA"),
-                },
-        },
-	{
-		/* Asus ExpertBook B2402CBA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "B2402CBA"),
-		},
-	},
-	{
-		/* Asus ExpertBook B2402FBA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "B2402FBA"),
-		},
-	},
-	{
-		/* Asus ExpertBook B2502 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "B2502CBA"),
-		},
-	},
-	{
-		/* Asus ExpertBook B2502FBA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "B2502FBA"),
-		},
-	},
-	{
-		/* Asus Vivobook E1504GA */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "E1504GA"),
-		},
-	},
-	{
-		/* Asus Vivobook E1504GAB */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_MATCH(DMI_BOARD_NAME, "E1504GAB"),
-		},
-	},
-	{
-		/* LG Electronics 17U70P */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "LG Electronics"),
-			DMI_MATCH(DMI_BOARD_NAME, "17U70P"),
-		},
-	},
-	{ }
-};
-
-/*
- * DMI matches for AMD Zen boards where the DSDT specifies the kbd IRQ
- * as falling edge and this must be overridden to rising edge,
- * to have a working keyboard.
- */
-static const struct dmi_system_id irq1_edge_low_force_override[] = {
-	{
-		/* TongFang GMxRGxx/XMG CORE 15 (M22)/TUXEDO Stellaris 15 Gen4 AMD */
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "GMxRGxx"),
-		},
-	},
-	{
-		/* TongFang GMxXGxx/TUXEDO Polaris 15 Gen5 AMD */
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "GMxXGxx"),
-		},
-	},
-	{
-		/* TongFang GMxXGxx sold as Eluktronics Inc. RP-15 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Eluktronics Inc."),
-			DMI_MATCH(DMI_BOARD_NAME, "RP-15"),
-		},
-	},
-	{
-		/* TongFang GM6XGxX/TUXEDO Stellaris 16 Gen5 AMD */
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "GM6XGxX"),
-		},
-	},
-	{
-		/* MAINGEAR Vector Pro 2 15 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Micro Electronics Inc"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "MG-VCP2-15A3070T"),
-		}
-	},
-	{
-		/* MAINGEAR Vector Pro 2 17 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Micro Electronics Inc"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "MG-VCP2-17A3070T"),
-		},
-	},
-	{
-		/* TongFang GM6BGEQ / PCSpecialist Elimina Pro 16 M, RTX 3050 */
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "GM6BGEQ"),
-		},
-	},
-	{
-		/* TongFang GM6BG5Q, RTX 4050 */
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "GM6BG5Q"),
-		},
-	},
-	{
-		/* TongFang GM6BG0Q / PCSpecialist Elimina Pro 16 M, RTX 4060 */
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "GM6BG0Q"),
-		},
-	},
-	{
-		/* Infinity E15-5A165-BM */
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "GM5RG1E0009COM"),
-		},
-	},
-	{
-		/* Infinity E15-5A305-1M */
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "GM5RGEE0016COM"),
-		},
-	},
-	{
-		/* Lunnen Ground 15 / AMD Ryzen 5 5500U */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Lunnen"),
-			DMI_MATCH(DMI_BOARD_NAME, "LLL5DAW"),
-		},
-	},
-	{
-		/* Lunnen Ground 16 / AMD Ryzen 7 5800U */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Lunnen"),
-			DMI_MATCH(DMI_BOARD_NAME, "LL6FA"),
-		},
-	},
-	{
-		/* MAIBENBEN X577 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "MAIBENBEN"),
-			DMI_MATCH(DMI_BOARD_NAME, "X577"),
-		},
-	},
-	{
-		/* Maibenben X565 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "MAIBENBEN"),
-			DMI_MATCH(DMI_BOARD_NAME, "X565"),
-		},
-	},
-	{ }
-};
-
-struct irq_override_cmp {
-	const struct dmi_system_id *system;
-	unsigned char irq;
-	unsigned char triggering;
-	unsigned char polarity;
-	unsigned char shareable;
-	bool override;
-};
-
-static const struct irq_override_cmp override_table[] = {
-	{ irq1_level_low_skip_override, 1, ACPI_LEVEL_SENSITIVE, ACPI_ACTIVE_LOW, 0, false },
-	{ irq1_edge_low_force_override, 1, ACPI_EDGE_SENSITIVE, ACPI_ACTIVE_LOW, 1, true },
-};
-
-static bool acpi_dev_irq_override(u32 gsi, u8 triggering, u8 polarity,
-				  u8 shareable)
+static void acpi_dev_irqresource_disabled(struct resource *res, u32 gsi)
 {
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(override_table); i++) {
-		const struct irq_override_cmp *entry = &override_table[i];
-
-		if (dmi_check_system(entry->system) &&
-		    entry->irq == gsi &&
-		    entry->triggering == triggering &&
-		    entry->polarity == polarity &&
-		    entry->shareable == shareable)
-			return entry->override;
-	}
-
-#ifdef CONFIG_X86
-	/*
-	 * Always use the MADT override info, except for the i8042 PS/2 ctrl
-	 * IRQs (1 and 12). For these the DSDT IRQ settings should sometimes
-	 * be used otherwise PS/2 keyboards / mice will not work.
-	 */
-	if (gsi != 1 && gsi != 12)
-		return true;
-
-	/* If the override comes from an INT_SRC_OVR MADT entry, honor it. */
-	if (acpi_int_src_ovr[gsi])
-		return true;
-
-	/*
-	 * IRQ override isn't needed on modern AMD Zen systems and
-	 * this override breaks active low IRQs on AMD Ryzen 6000 and
-	 * newer systems. Skip it.
-	 */
-	if (boot_cpu_has(X86_FEATURE_ZEN))
-		return false;
-#endif
-
-	return true;
+	res->start = gsi;
+	res->end = gsi;
+	res->flags = IORESOURCE_IRQ | IORESOURCE_DISABLED | IORESOURCE_UNSET;
 }
 
 static void acpi_dev_get_irqresource(struct resource *res, u32 gsi,
 				     u8 triggering, u8 polarity, u8 shareable,
-				     u8 wake_capable, bool check_override)
+				     bool legacy)
 {
 	int irq, p, t;
 
 	if (!valid_IRQ(gsi)) {
-		irqresource_disabled(res, gsi);
+		acpi_dev_irqresource_disabled(res, gsi);
 		return;
 	}
 
@@ -709,30 +408,25 @@ static void acpi_dev_get_irqresource(struct resource *res, u32 gsi,
 	 * using extended IRQ descriptors we take the IRQ configuration
 	 * from _CRS directly.
 	 */
-	if (check_override &&
-	    acpi_dev_irq_override(gsi, triggering, polarity, shareable) &&
-	    !acpi_get_override_irq(gsi, &t, &p)) {
+	if (legacy && !acpi_get_override_irq(gsi, &t, &p)) {
 		u8 trig = t ? ACPI_LEVEL_SENSITIVE : ACPI_EDGE_SENSITIVE;
 		u8 pol = p ? ACPI_ACTIVE_LOW : ACPI_ACTIVE_HIGH;
 
 		if (triggering != trig || polarity != pol) {
-			pr_warn("ACPI: IRQ %d override to %s%s, %s%s\n", gsi,
-				t ? "level" : "edge",
-				trig == triggering ? "" : "(!)",
-				p ? "low" : "high",
-				pol == polarity ? "" : "(!)");
+			pr_warning("ACPI: IRQ %d override to %s, %s\n", gsi,
+				   t ? "level" : "edge", p ? "low" : "high");
 			triggering = trig;
 			polarity = pol;
 		}
 	}
 
-	res->flags = acpi_dev_irq_flags(triggering, polarity, shareable, wake_capable);
+	res->flags = acpi_dev_irq_flags(triggering, polarity, shareable);
 	irq = acpi_register_gsi(NULL, gsi, triggering, polarity);
 	if (irq >= 0) {
 		res->start = irq;
 		res->end = irq;
 	} else {
-		irqresource_disabled(res, gsi);
+		acpi_dev_irqresource_disabled(res, gsi);
 	}
 }
 
@@ -769,27 +463,25 @@ bool acpi_dev_resource_interrupt(struct acpi_resource *ares, int index,
 		 */
 		irq = &ares->data.irq;
 		if (index >= irq->interrupt_count) {
-			irqresource_disabled(res, 0);
+			acpi_dev_irqresource_disabled(res, 0);
 			return false;
 		}
 		acpi_dev_get_irqresource(res, irq->interrupts[index],
 					 irq->triggering, irq->polarity,
-					 irq->shareable, irq->wake_capable,
-					 true);
+					 irq->shareable, true);
 		break;
 	case ACPI_RESOURCE_TYPE_EXTENDED_IRQ:
 		ext_irq = &ares->data.extended_irq;
 		if (index >= ext_irq->interrupt_count) {
-			irqresource_disabled(res, 0);
+			acpi_dev_irqresource_disabled(res, 0);
 			return false;
 		}
 		if (is_gsi(ext_irq))
 			acpi_dev_get_irqresource(res, ext_irq->interrupts[index],
 					 ext_irq->triggering, ext_irq->polarity,
-					 ext_irq->shareable, ext_irq->wake_capable,
-					 false);
+					 ext_irq->shareable, false);
 		else
-			irqresource_disabled(res, 0);
+			acpi_dev_irqresource_disabled(res, 0);
 		break;
 	default:
 		res->flags = 0;
@@ -849,7 +541,7 @@ static acpi_status acpi_dev_process_resource(struct acpi_resource *ares,
 		ret = c->preproc(ares, c->preproc_data);
 		if (ret < 0) {
 			c->error = ret;
-			return AE_ABORT_METHOD;
+			return AE_CTRL_TERMINATE;
 		} else if (ret > 0) {
 			return AE_OK;
 		}
@@ -911,7 +603,7 @@ static int __acpi_dev_get_resources(struct acpi_device *adev,
  * @preproc_data: Pointer passed to the caller's preprocessing routine.
  *
  * Evaluate the _CRS method for the given device node and process its output by
- * (1) executing the @preproc() routine provided by the caller, passing the
+ * (1) executing the @preproc() rountine provided by the caller, passing the
  * resource pointer and @preproc_data to it as arguments, for each ACPI resource
  * returned and (2) converting all of the returned ACPI resources into struct
  * resource objects if possible.  If the return value of @preproc() in step (1)
@@ -943,9 +635,6 @@ static int is_memory(struct acpi_resource *ares, void *not_used)
 
 	memset(&win, 0, sizeof(win));
 
-	if (acpi_dev_filter_resource_type(ares, IORESOURCE_MEM))
-		return 1;
-
 	return !(acpi_dev_resource_memory(ares, res)
 	       || acpi_dev_resource_address_space(ares, &win)
 	       || acpi_dev_resource_ext_address_space(ares, &win));
@@ -973,23 +662,6 @@ int acpi_dev_get_dma_resources(struct acpi_device *adev, struct list_head *list)
 					METHOD_NAME__DMA);
 }
 EXPORT_SYMBOL_GPL(acpi_dev_get_dma_resources);
-
-/**
- * acpi_dev_get_memory_resources - Get current memory resources of a device.
- * @adev: ACPI device node to get the resources for.
- * @list: Head of the resultant list of resources (must be empty).
- *
- * This is a helper function that locates all memory type resources of @adev
- * with acpi_dev_get_resources().
- *
- * The number of resources in the output list is returned on success, an error
- * code reflecting the error condition is returned otherwise.
- */
-int acpi_dev_get_memory_resources(struct acpi_device *adev, struct list_head *list)
-{
-	return acpi_dev_get_resources(adev, list, is_memory, NULL);
-}
-EXPORT_SYMBOL_GPL(acpi_dev_get_memory_resources);
 
 /**
  * acpi_dev_filter_resource_type - Filter ACPI resource according to resource
@@ -1074,9 +746,9 @@ static acpi_status acpi_res_consumer_cb(acpi_handle handle, u32 depth,
 {
 	struct resource *res = context;
 	struct acpi_device **consumer = (struct acpi_device **) ret;
-	struct acpi_device *adev = acpi_fetch_acpi_dev(handle);
+	struct acpi_device *adev;
 
-	if (!adev)
+	if (acpi_bus_get_device(handle, &adev))
 		return AE_OK;
 
 	if (acpi_dev_consumes_res(adev, res)) {

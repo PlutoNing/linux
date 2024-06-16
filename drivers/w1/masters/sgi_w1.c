@@ -77,13 +77,15 @@ static int sgi_w1_probe(struct platform_device *pdev)
 {
 	struct sgi_w1_device *sdev;
 	struct sgi_w1_platform_data *pdata;
+	struct resource *res;
 
 	sdev = devm_kzalloc(&pdev->dev, sizeof(struct sgi_w1_device),
 			    GFP_KERNEL);
 	if (!sdev)
 		return -ENOMEM;
 
-	sdev->mcr = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	sdev->mcr = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(sdev->mcr))
 		return PTR_ERR(sdev->mcr);
 
@@ -93,7 +95,7 @@ static int sgi_w1_probe(struct platform_device *pdev)
 
 	pdata = dev_get_platdata(&pdev->dev);
 	if (pdata) {
-		strscpy(sdev->dev_id, pdata->dev_id, sizeof(sdev->dev_id));
+		strlcpy(sdev->dev_id, pdata->dev_id, sizeof(sdev->dev_id));
 		sdev->bus_master.dev_id = sdev->dev_id;
 	}
 
@@ -105,11 +107,13 @@ static int sgi_w1_probe(struct platform_device *pdev)
 /*
  * disassociate the w1 device from the driver
  */
-static void sgi_w1_remove(struct platform_device *pdev)
+static int sgi_w1_remove(struct platform_device *pdev)
 {
 	struct sgi_w1_device *sdev = platform_get_drvdata(pdev);
 
 	w1_remove_master_device(&sdev->bus_master);
+
+	return 0;
 }
 
 static struct platform_driver sgi_w1_driver = {
@@ -117,7 +121,7 @@ static struct platform_driver sgi_w1_driver = {
 		.name = "sgi_w1",
 	},
 	.probe = sgi_w1_probe,
-	.remove_new = sgi_w1_remove,
+	.remove = sgi_w1_remove,
 };
 module_platform_driver(sgi_w1_driver);
 

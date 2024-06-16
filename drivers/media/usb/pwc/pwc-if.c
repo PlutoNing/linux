@@ -71,45 +71,37 @@
 
 /* hotplug device table support */
 static const struct usb_device_id pwc_device_table [] = {
-	{ USB_DEVICE(0x041E, 0x400C) }, /* Creative Webcam 5 */
-	{ USB_DEVICE(0x041E, 0x4011) }, /* Creative Webcam Pro Ex */
-
-	{ USB_DEVICE(0x046D, 0x08B0) }, /* Logitech QuickCam 3000 Pro */
+	{ USB_DEVICE(0x0471, 0x0302) }, /* Philips models */
+	{ USB_DEVICE(0x0471, 0x0303) },
+	{ USB_DEVICE(0x0471, 0x0304) },
+	{ USB_DEVICE(0x0471, 0x0307) },
+	{ USB_DEVICE(0x0471, 0x0308) },
+	{ USB_DEVICE(0x0471, 0x030C) },
+	{ USB_DEVICE(0x0471, 0x0310) },
+	{ USB_DEVICE(0x0471, 0x0311) }, /* Philips ToUcam PRO II */
+	{ USB_DEVICE(0x0471, 0x0312) },
+	{ USB_DEVICE(0x0471, 0x0313) }, /* the 'new' 720K */
+	{ USB_DEVICE(0x0471, 0x0329) }, /* Philips SPC 900NC PC Camera */
+	{ USB_DEVICE(0x0471, 0x032C) }, /* Philips SPC 880NC PC Camera */
+	{ USB_DEVICE(0x069A, 0x0001) }, /* Askey */
+	{ USB_DEVICE(0x046D, 0x08B0) }, /* Logitech QuickCam Pro 3000 */
 	{ USB_DEVICE(0x046D, 0x08B1) }, /* Logitech QuickCam Notebook Pro */
-	{ USB_DEVICE(0x046D, 0x08B2) }, /* Logitech QuickCam 4000 Pro */
+	{ USB_DEVICE(0x046D, 0x08B2) }, /* Logitech QuickCam Pro 4000 */
 	{ USB_DEVICE(0x046D, 0x08B3) }, /* Logitech QuickCam Zoom (old model) */
 	{ USB_DEVICE(0x046D, 0x08B4) }, /* Logitech QuickCam Zoom (new model) */
 	{ USB_DEVICE(0x046D, 0x08B5) }, /* Logitech QuickCam Orbit/Sphere */
-	{ USB_DEVICE(0x046D, 0x08B6) }, /* Logitech/Cisco VT Camera */
+	{ USB_DEVICE(0x046D, 0x08B6) }, /* Cisco VT Camera */
 	{ USB_DEVICE(0x046D, 0x08B7) }, /* Logitech ViewPort AV 100 */
-	{ USB_DEVICE(0x046D, 0x08B8) }, /* Logitech QuickCam */
-
-	{ USB_DEVICE(0x0471, 0x0302) }, /* Philips PCA645VC */
-	{ USB_DEVICE(0x0471, 0x0303) }, /* Philips PCA646VC */
-	{ USB_DEVICE(0x0471, 0x0304) }, /* Askey VC010 type 2 */
-	{ USB_DEVICE(0x0471, 0x0307) }, /* Philips PCVC675K (Vesta) */
-	{ USB_DEVICE(0x0471, 0x0308) }, /* Philips PCVC680K (Vesta Pro) */
-	{ USB_DEVICE(0x0471, 0x030C) }, /* Philips PCVC690K (Vesta Pro Scan) */
-	{ USB_DEVICE(0x0471, 0x0310) }, /* Philips PCVC730K (ToUCam Fun)/PCVC830 (ToUCam II) */
-	{ USB_DEVICE(0x0471, 0x0311) }, /* Philips PCVC740K (ToUCam Pro)/PCVC840 (ToUCam II) */
-	{ USB_DEVICE(0x0471, 0x0312) }, /* Philips PCVC750K (ToUCam Pro Scan) */
-	{ USB_DEVICE(0x0471, 0x0313) }, /* Philips PCVC720K/40 (ToUCam XS) */
-	{ USB_DEVICE(0x0471, 0x0329) }, /* Philips SPC 900NC webcam */
-	{ USB_DEVICE(0x0471, 0x032C) }, /* Philips SPC 880NC webcam */
-
-	{ USB_DEVICE(0x04CC, 0x8116) }, /* Sotec Afina Eye */
-
+	{ USB_DEVICE(0x046D, 0x08B8) }, /* Logitech (reserved) */
 	{ USB_DEVICE(0x055D, 0x9000) }, /* Samsung MPC-C10 */
 	{ USB_DEVICE(0x055D, 0x9001) }, /* Samsung MPC-C30 */
 	{ USB_DEVICE(0x055D, 0x9002) },	/* Samsung SNC-35E (Ver3.0) */
-
-	{ USB_DEVICE(0x069A, 0x0001) }, /* Askey VC010 type 1 */
-
-	{ USB_DEVICE(0x06BE, 0x8116) }, /* AME Co. Afina Eye */
-
-	{ USB_DEVICE(0x0d81, 0x1900) }, /* Visionite VCS-UC300 */
-	{ USB_DEVICE(0x0d81, 0x1910) }, /* Visionite VCS-UM100 */
-
+	{ USB_DEVICE(0x041E, 0x400C) }, /* Creative Webcam 5 */
+	{ USB_DEVICE(0x041E, 0x4011) }, /* Creative Webcam Pro Ex */
+	{ USB_DEVICE(0x04CC, 0x8116) }, /* Afina Eye */
+	{ USB_DEVICE(0x06BE, 0x8116) }, /* new Afina Eye */
+	{ USB_DEVICE(0x0d81, 0x1910) }, /* Visionite */
+	{ USB_DEVICE(0x0d81, 0x1900) },
 	{ }
 };
 MODULE_DEVICE_TABLE(usb, pwc_device_table);
@@ -155,17 +147,16 @@ static const struct video_device pwc_template = {
 /***************************************************************************/
 /* Private functions */
 
-static void *pwc_alloc_urb_buffer(struct usb_device *dev,
+static void *pwc_alloc_urb_buffer(struct device *dev,
 				  size_t size, dma_addr_t *dma_handle)
 {
-	struct device *dmadev = dev->bus->sysdev;
 	void *buffer = kmalloc(size, GFP_KERNEL);
 
 	if (!buffer)
 		return NULL;
 
-	*dma_handle = dma_map_single(dmadev, buffer, size, DMA_FROM_DEVICE);
-	if (dma_mapping_error(dmadev, *dma_handle)) {
+	*dma_handle = dma_map_single(dev, buffer, size, DMA_FROM_DEVICE);
+	if (dma_mapping_error(dev, *dma_handle)) {
 		kfree(buffer);
 		return NULL;
 	}
@@ -173,14 +164,12 @@ static void *pwc_alloc_urb_buffer(struct usb_device *dev,
 	return buffer;
 }
 
-static void pwc_free_urb_buffer(struct usb_device *dev,
+static void pwc_free_urb_buffer(struct device *dev,
 				size_t size,
 				void *buffer,
 				dma_addr_t dma_handle)
 {
-	struct device *dmadev = dev->bus->sysdev;
-
-	dma_unmap_single(dmadev, dma_handle, size, DMA_FROM_DEVICE);
+	dma_unmap_single(dev, dma_handle, size, DMA_FROM_DEVICE);
 	kfree(buffer);
 }
 
@@ -285,7 +274,6 @@ static void pwc_frame_complete(struct pwc_device *pdev)
 static void pwc_isoc_handler(struct urb *urb)
 {
 	struct pwc_device *pdev = (struct pwc_device *)urb->context;
-	struct device *dmadev = urb->dev->bus->sysdev;
 	int i, fst, flen;
 	unsigned char *iso_buf = NULL;
 
@@ -332,7 +320,7 @@ static void pwc_isoc_handler(struct urb *urb)
 	/* Reset ISOC error counter. We did get here, after all. */
 	pdev->visoc_errors = 0;
 
-	dma_sync_single_for_cpu(dmadev,
+	dma_sync_single_for_cpu(&urb->dev->dev,
 				urb->transfer_dma,
 				urb->transfer_buffer_length,
 				DMA_FROM_DEVICE);
@@ -383,7 +371,7 @@ static void pwc_isoc_handler(struct urb *urb)
 		pdev->vlast_packet_size = flen;
 	}
 
-	dma_sync_single_for_device(dmadev,
+	dma_sync_single_for_device(&urb->dev->dev,
 				   urb->transfer_dma,
 				   urb->transfer_buffer_length,
 				   DMA_FROM_DEVICE);
@@ -465,7 +453,7 @@ retry:
 		urb->pipe = usb_rcvisocpipe(udev, pdev->vendpoint);
 		urb->transfer_flags = URB_ISO_ASAP | URB_NO_TRANSFER_DMA_MAP;
 		urb->transfer_buffer_length = ISO_BUFFER_SIZE;
-		urb->transfer_buffer = pwc_alloc_urb_buffer(udev,
+		urb->transfer_buffer = pwc_alloc_urb_buffer(&udev->dev,
 							    urb->transfer_buffer_length,
 							    &urb->transfer_dma);
 		if (urb->transfer_buffer == NULL) {
@@ -528,7 +516,7 @@ static void pwc_iso_free(struct pwc_device *pdev)
 		if (urb) {
 			PWC_DEBUG_MEMORY("Freeing URB\n");
 			if (urb->transfer_buffer)
-				pwc_free_urb_buffer(urb->dev,
+				pwc_free_urb_buffer(&urb->dev->dev,
 						    urb->transfer_buffer_length,
 						    urb->transfer_buffer,
 						    urb->transfer_dma);
@@ -861,6 +849,7 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 			break;
 		default:
 			return -ENODEV;
+			break;
 		}
 	}
 	else if (vendor_id == 0x069A) {
@@ -872,6 +861,7 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 			break;
 		default:
 			return -ENODEV;
+			break;
 		}
 	}
 	else if (vendor_id == 0x046d) {
@@ -930,6 +920,7 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 			break;
 		default:
 			return -ENODEV;
+			break;
 		}
 	}
 	else if (vendor_id == 0x055d) {
@@ -955,6 +946,7 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 			break;
 		default:
 			return -ENODEV;
+			break;
 		}
 	}
 	else if (vendor_id == 0x041e) {
@@ -973,6 +965,7 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 			break;
 		default:
 			return -ENODEV;
+			break;
 		}
 	}
 	else if (vendor_id == 0x04cc) {
@@ -984,6 +977,7 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 			break;
 		default:
 			return -ENODEV;
+			break;
 		}
 	}
 	else if (vendor_id == 0x06be) {
@@ -996,6 +990,7 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 			break;
 		default:
 			return -ENODEV;
+			break;
 		}
 
 	}
@@ -1013,6 +1008,7 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 			break;
 		default:
 			return -ENODEV;
+			break;
 		}
 	}
 	else
@@ -1120,7 +1116,7 @@ static int usb_pwc_probe(struct usb_interface *intf, const struct usb_device_id 
 	pdev->vdev.device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING |
 				 V4L2_CAP_READWRITE;
 
-	rc = video_register_device(&pdev->vdev, VFL_TYPE_VIDEO, -1);
+	rc = video_register_device(&pdev->vdev, VFL_TYPE_GRABBER, -1);
 	if (rc < 0) {
 		PWC_ERROR("Failed to register as video device (%d).\n", rc);
 		goto err_unregister_v4l2_dev;

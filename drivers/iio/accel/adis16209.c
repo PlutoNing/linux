@@ -7,8 +7,11 @@
 
 #include <linux/device.h>
 #include <linux/kernel.h>
+#include <linux/list.h>
 #include <linux/module.h>
 #include <linux/spi/spi.h>
+#include <linux/slab.h>
+#include <linux/sysfs.h>
 
 #include <linux/iio/iio.h>
 #include <linux/iio/imu/adis.h>
@@ -240,12 +243,6 @@ static const char * const adis16209_status_error_msgs[] = {
 	[ADIS16209_STAT_POWER_LOW_BIT] = "Power supply below 2.975V",
 };
 
-static const struct adis_timeout adis16209_timeouts = {
-	.reset_ms = ADIS16209_STARTUP_DELAY_MS,
-	.self_test_ms = ADIS16209_STARTUP_DELAY_MS,
-	.sw_reset_ms = ADIS16209_STARTUP_DELAY_MS,
-};
-
 static const struct adis_data adis16209_data = {
 	.read_delay = 30,
 	.msc_ctrl_reg = ADIS16209_MSC_CTRL_REG,
@@ -253,9 +250,8 @@ static const struct adis_data adis16209_data = {
 	.diag_stat_reg = ADIS16209_STAT_REG,
 
 	.self_test_mask = ADIS16209_MSC_CTRL_SELF_TEST_EN,
-	.self_test_reg = ADIS16209_MSC_CTRL_REG,
 	.self_test_no_autoclear = true,
-	.timeouts = &adis16209_timeouts,
+	.startup_delay = ADIS16209_STARTUP_DELAY_MS,
 
 	.status_error_msgs = adis16209_status_error_msgs,
 	.status_error_mask = BIT(ADIS16209_STAT_SELFTEST_FAIL_BIT) |
@@ -276,8 +272,10 @@ static int adis16209_probe(struct spi_device *spi)
 		return -ENOMEM;
 
 	st = iio_priv(indio_dev);
+	spi_set_drvdata(spi, indio_dev);
 
 	indio_dev->name = spi->dev.driver->name;
+	indio_dev->dev.parent = &spi->dev;
 	indio_dev->info = &adis16209_info;
 	indio_dev->channels = adis16209_channels;
 	indio_dev->num_channels = ARRAY_SIZE(adis16209_channels);
@@ -287,15 +285,33 @@ static int adis16209_probe(struct spi_device *spi)
 	if (ret)
 		return ret;
 
-	ret = devm_adis_setup_buffer_and_trigger(st, indio_dev, NULL);
+	ret = adis_setup_buffer_and_trigger(st, indio_dev, NULL);
 	if (ret)
 		return ret;
 
-	ret = __adis_initial_startup(st);
+	ret = adis_initial_startup(st);
 	if (ret)
-		return ret;
+		goto error_cleanup_buffer_trigger;
+	ret = iio_device_register(indio_dev);
+	if (ret)
+		goto error_cleanup_buffer_trigger;
 
-	return devm_iio_device_register(&spi->dev, indio_dev);
+	return 0;
+
+error_cleanup_buffer_trigger:
+	adis_cleanup_buffer_and_trigger(st, indio_dev);
+	return ret;
+}
+
+static int adis16209_remove(struct spi_device *spi)
+{
+	struct iio_dev *indio_dev = spi_get_drvdata(spi);
+	struct adis *st = iio_priv(indio_dev);
+
+	iio_device_unregister(indio_dev);
+	adis_cleanup_buffer_and_trigger(st, indio_dev);
+
+	return 0;
 }
 
 static struct spi_driver adis16209_driver = {
@@ -303,6 +319,7 @@ static struct spi_driver adis16209_driver = {
 		.name = "adis16209",
 	},
 	.probe = adis16209_probe,
+	.remove = adis16209_remove,
 };
 module_spi_driver(adis16209_driver);
 
@@ -310,4 +327,3 @@ MODULE_AUTHOR("Barry Song <21cnbao@gmail.com>");
 MODULE_DESCRIPTION("Analog Devices ADIS16209 Dual-Axis Digital Inclinometer and Accelerometer");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("spi:adis16209");
-MODULE_IMPORT_NS(IIO_ADISLIB);

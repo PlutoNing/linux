@@ -257,15 +257,15 @@ static unsigned int get_uint(struct bitstr *bs, int b)
 	case 4:
 		v |= *bs->cur++;
 		v <<= 8;
-		fallthrough;
+		/* fall through */
 	case 3:
 		v |= *bs->cur++;
 		v <<= 8;
-		fallthrough;
+		/* fall through */
 	case 2:
 		v |= *bs->cur++;
 		v <<= 8;
-		fallthrough;
+		/* fall through */
 	case 1:
 		v |= *bs->cur++;
 		break;
@@ -533,8 +533,6 @@ static int decode_seq(struct bitstr *bs, const struct field_t *f,
 	/* Get fields bitmap */
 	if (nf_h323_error_boundary(bs, 0, f->sz))
 		return H323_ERROR_BOUND;
-	if (f->sz > 32)
-		return H323_ERROR_RANGE;
 	bmp = get_bitmap(bs, f->sz);
 	if (base)
 		*(unsigned int *)base = bmp;
@@ -591,8 +589,6 @@ static int decode_seq(struct bitstr *bs, const struct field_t *f,
 	bmp2_len = get_bits(bs, 7) + 1;
 	if (nf_h323_error_boundary(bs, 0, bmp2_len))
 		return H323_ERROR_BOUND;
-	if (bmp2_len > 32)
-		return H323_ERROR_RANGE;
 	bmp2 = get_bitmap(bs, bmp2_len);
 	bmp |= bmp2 >> f->sz;
 	if (base)

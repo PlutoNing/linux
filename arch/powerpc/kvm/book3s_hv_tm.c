@@ -3,8 +3,6 @@
  * Copyright 2017 Paul Mackerras, IBM Corp. <paulus@au1.ibm.com>
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/kvm_host.h>
 
 #include <asm/kvm_ppc.h>
@@ -46,27 +44,7 @@ int kvmhv_p9_tm_emulation(struct kvm_vcpu *vcpu)
 	u64 newmsr, bescr;
 	int ra, rs;
 
-	/*
-	 * The TM softpatch interrupt sets NIP to the instruction following
-	 * the faulting instruction, which is not executed. Rewind nip to the
-	 * faulting instruction so it looks like a normal synchronous
-	 * interrupt, then update nip in the places where the instruction is
-	 * emulated.
-	 */
-	vcpu->arch.regs.nip -= 4;
-
-	/*
-	 * rfid, rfebb, and mtmsrd encode bit 31 = 0 since it's a reserved bit
-	 * in these instructions, so masking bit 31 out doesn't change these
-	 * instructions. For treclaim., tsr., and trechkpt. instructions if bit
-	 * 31 = 0 then they are per ISA invalid forms, however P9 UM, in section
-	 * 4.6.10 Book II Invalid Forms, informs specifically that ignoring bit
-	 * 31 is an acceptable way to handle these invalid forms that have
-	 * bit 31 = 0. Moreover, for emulation purposes both forms (w/ and wo/
-	 * bit 31 set) can generate a softpatch interrupt. Hence both forms
-	 * are handled below for these instructions so they behave the same way.
-	 */
-	switch (instr & PO_XOP_OPCODE_MASK) {
+	switch (instr & 0xfc0007ff) {
 	case PPC_INST_RFID:
 		/* XXX do we need to check for PR=0 here? */
 		newmsr = vcpu->arch.shregs.srr1;
@@ -76,7 +54,7 @@ int kvmhv_p9_tm_emulation(struct kvm_vcpu *vcpu)
 			       (newmsr & MSR_TM)));
 		newmsr = sanitize_msr(newmsr);
 		vcpu->arch.shregs.msr = newmsr;
-		vcpu->arch.cfar = vcpu->arch.regs.nip;
+		vcpu->arch.cfar = vcpu->arch.regs.nip - 4;
 		vcpu->arch.regs.nip = vcpu->arch.shregs.srr0;
 		return RESUME_GUEST;
 
@@ -88,15 +66,14 @@ int kvmhv_p9_tm_emulation(struct kvm_vcpu *vcpu)
 		}
 		/* check EBB facility is available */
 		if (!(vcpu->arch.hfscr & HFSCR_EBB)) {
-			vcpu->arch.hfscr &= ~HFSCR_INTR_CAUSE;
-			vcpu->arch.hfscr |= (u64)FSCR_EBB_LG << 56;
-			vcpu->arch.trap = BOOK3S_INTERRUPT_H_FAC_UNAVAIL;
-			return -1; /* rerun host interrupt handler */
+			/* generate an illegal instruction interrupt */
+			kvmppc_core_queue_program(vcpu, SRR1_PROGILL);
+			return RESUME_GUEST;
 		}
 		if ((msr & MSR_PR) && !(vcpu->arch.fscr & FSCR_EBB)) {
 			/* generate a facility unavailable interrupt */
-			vcpu->arch.fscr &= ~FSCR_INTR_CAUSE;
-			vcpu->arch.fscr |= (u64)FSCR_EBB_LG << 56;
+			vcpu->arch.fscr = (vcpu->arch.fscr & ~(0xffull << 56)) |
+				((u64)FSCR_EBB_LG << 56);
 			kvmppc_book3s_queue_irqprio(vcpu, BOOK3S_INTERRUPT_FAC_UNAVAIL);
 			return RESUME_GUEST;
 		}
@@ -110,7 +87,7 @@ int kvmhv_p9_tm_emulation(struct kvm_vcpu *vcpu)
 		vcpu->arch.bescr = bescr;
 		msr = (msr & ~MSR_TS_MASK) | MSR_TS_T;
 		vcpu->arch.shregs.msr = msr;
-		vcpu->arch.cfar = vcpu->arch.regs.nip;
+		vcpu->arch.cfar = vcpu->arch.regs.nip - 4;
 		vcpu->arch.regs.nip = vcpu->arch.ebbrr;
 		return RESUME_GUEST;
 
@@ -126,11 +103,9 @@ int kvmhv_p9_tm_emulation(struct kvm_vcpu *vcpu)
 		newmsr = (newmsr & ~MSR_LE) | (msr & MSR_LE);
 		newmsr = sanitize_msr(newmsr);
 		vcpu->arch.shregs.msr = newmsr;
-		vcpu->arch.regs.nip += 4;
 		return RESUME_GUEST;
 
-	/* ignore bit 31, see comment above */
-	case (PPC_INST_TSR & PO_XOP_OPCODE_MASK):
+	case PPC_INST_TSR:
 		/* check for PR=1 and arch 2.06 bit set in PCR */
 		if ((msr & MSR_PR) && (vcpu->arch.vcore->pcr & PCR_ARCH_206)) {
 			/* generate an illegal instruction interrupt */
@@ -139,15 +114,14 @@ int kvmhv_p9_tm_emulation(struct kvm_vcpu *vcpu)
 		}
 		/* check for TM disabled in the HFSCR or MSR */
 		if (!(vcpu->arch.hfscr & HFSCR_TM)) {
-			vcpu->arch.hfscr &= ~HFSCR_INTR_CAUSE;
-			vcpu->arch.hfscr |= (u64)FSCR_TM_LG << 56;
-			vcpu->arch.trap = BOOK3S_INTERRUPT_H_FAC_UNAVAIL;
-			return -1; /* rerun host interrupt handler */
+			/* generate an illegal instruction interrupt */
+			kvmppc_core_queue_program(vcpu, SRR1_PROGILL);
+			return RESUME_GUEST;
 		}
 		if (!(msr & MSR_TM)) {
 			/* generate a facility unavailable interrupt */
-			vcpu->arch.fscr &= ~FSCR_INTR_CAUSE;
-			vcpu->arch.fscr |= (u64)FSCR_TM_LG << 56;
+			vcpu->arch.fscr = (vcpu->arch.fscr & ~(0xffull << 56)) |
+				((u64)FSCR_TM_LG << 56);
 			kvmppc_book3s_queue_irqprio(vcpu,
 						BOOK3S_INTERRUPT_FAC_UNAVAIL);
 			return RESUME_GUEST;
@@ -164,22 +138,19 @@ int kvmhv_p9_tm_emulation(struct kvm_vcpu *vcpu)
 				msr = (msr & ~MSR_TS_MASK) | MSR_TS_S;
 		}
 		vcpu->arch.shregs.msr = msr;
-		vcpu->arch.regs.nip += 4;
 		return RESUME_GUEST;
 
-	/* ignore bit 31, see comment above */
-	case (PPC_INST_TRECLAIM & PO_XOP_OPCODE_MASK):
+	case PPC_INST_TRECLAIM:
 		/* check for TM disabled in the HFSCR or MSR */
 		if (!(vcpu->arch.hfscr & HFSCR_TM)) {
-			vcpu->arch.hfscr &= ~HFSCR_INTR_CAUSE;
-			vcpu->arch.hfscr |= (u64)FSCR_TM_LG << 56;
-			vcpu->arch.trap = BOOK3S_INTERRUPT_H_FAC_UNAVAIL;
-			return -1; /* rerun host interrupt handler */
+			/* generate an illegal instruction interrupt */
+			kvmppc_core_queue_program(vcpu, SRR1_PROGILL);
+			return RESUME_GUEST;
 		}
 		if (!(msr & MSR_TM)) {
 			/* generate a facility unavailable interrupt */
-			vcpu->arch.fscr &= ~FSCR_INTR_CAUSE;
-			vcpu->arch.fscr |= (u64)FSCR_TM_LG << 56;
+			vcpu->arch.fscr = (vcpu->arch.fscr & ~(0xffull << 56)) |
+				((u64)FSCR_TM_LG << 56);
 			kvmppc_book3s_queue_irqprio(vcpu,
 						BOOK3S_INTERRUPT_FAC_UNAVAIL);
 			return RESUME_GUEST;
@@ -203,23 +174,20 @@ int kvmhv_p9_tm_emulation(struct kvm_vcpu *vcpu)
 		vcpu->arch.regs.ccr = (vcpu->arch.regs.ccr & 0x0fffffff) |
 			(((msr & MSR_TS_MASK) >> MSR_TS_S_LG) << 29);
 		vcpu->arch.shregs.msr &= ~MSR_TS_MASK;
-		vcpu->arch.regs.nip += 4;
 		return RESUME_GUEST;
 
-	/* ignore bit 31, see comment above */
-	case (PPC_INST_TRECHKPT & PO_XOP_OPCODE_MASK):
+	case PPC_INST_TRECHKPT:
 		/* XXX do we need to check for PR=0 here? */
 		/* check for TM disabled in the HFSCR or MSR */
 		if (!(vcpu->arch.hfscr & HFSCR_TM)) {
-			vcpu->arch.hfscr &= ~HFSCR_INTR_CAUSE;
-			vcpu->arch.hfscr |= (u64)FSCR_TM_LG << 56;
-			vcpu->arch.trap = BOOK3S_INTERRUPT_H_FAC_UNAVAIL;
-			return -1; /* rerun host interrupt handler */
+			/* generate an illegal instruction interrupt */
+			kvmppc_core_queue_program(vcpu, SRR1_PROGILL);
+			return RESUME_GUEST;
 		}
 		if (!(msr & MSR_TM)) {
 			/* generate a facility unavailable interrupt */
-			vcpu->arch.fscr &= ~FSCR_INTR_CAUSE;
-			vcpu->arch.fscr |= (u64)FSCR_TM_LG << 56;
+			vcpu->arch.fscr = (vcpu->arch.fscr & ~(0xffull << 56)) |
+				((u64)FSCR_TM_LG << 56);
 			kvmppc_book3s_queue_irqprio(vcpu,
 						BOOK3S_INTERRUPT_FAC_UNAVAIL);
 			return RESUME_GUEST;
@@ -236,13 +204,10 @@ int kvmhv_p9_tm_emulation(struct kvm_vcpu *vcpu)
 		vcpu->arch.regs.ccr = (vcpu->arch.regs.ccr & 0x0fffffff) |
 			(((msr & MSR_TS_MASK) >> MSR_TS_S_LG) << 29);
 		vcpu->arch.shregs.msr = msr | MSR_TS_S;
-		vcpu->arch.regs.nip += 4;
 		return RESUME_GUEST;
 	}
 
 	/* What should we do here? We didn't recognize the instruction */
-	kvmppc_core_queue_program(vcpu, SRR1_PROGILL);
-	pr_warn_ratelimited("Unrecognized TM-related instruction %#x for emulation", instr);
-
+	WARN_ON_ONCE(1);
 	return RESUME_GUEST;
 }

@@ -62,8 +62,7 @@ enum {
 	X25_STATE_1,		/* Awaiting Call Accepted */
 	X25_STATE_2,		/* Awaiting Clear Confirmation */
 	X25_STATE_3,		/* Data Transfer */
-	X25_STATE_4,		/* Awaiting Reset Confirmation */
-	X25_STATE_5		/* Call Accepted / Call Connected pending */
+	X25_STATE_4		/* Awaiting Reset Confirmation */
 };
 
 enum {
@@ -177,7 +176,10 @@ struct x25_forward {
 	atomic_t		refcnt;
 };
 
-#define x25_sk(ptr) container_of_const(ptr, struct x25_sock, sk)
+static inline struct x25_sock *x25_sk(const struct sock *sk)
+{
+	return (struct x25_sock *)sk;
+}
 
 /* af_x25.c */
 extern int  sysctl_x25_restart_request_timeout;

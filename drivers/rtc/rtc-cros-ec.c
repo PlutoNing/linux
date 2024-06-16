@@ -5,6 +5,7 @@
 // Author: Stephen Barber <smbarber@chromium.org>
 
 #include <linux/kernel.h>
+#include <linux/mfd/cros_ec.h>
 #include <linux/module.h>
 #include <linux/platform_data/cros_ec_commands.h>
 #include <linux/platform_data/cros_ec_proto.h>
@@ -13,8 +14,6 @@
 #include <linux/slab.h>
 
 #define DRV_NAME	"cros-ec-rtc"
-
-#define SECS_PER_DAY	(24 * 60 * 60)
 
 /**
  * struct cros_ec_rtc - Driver data for EC RTC
@@ -45,8 +44,13 @@ static int cros_ec_rtc_get(struct cros_ec_device *cros_ec, u32 command,
 	msg.msg.insize = sizeof(msg.data);
 
 	ret = cros_ec_cmd_xfer_status(cros_ec, &msg.msg);
-	if (ret < 0)
+	if (ret < 0) {
+		dev_err(cros_ec->dev,
+			"error getting %s from EC: %d\n",
+			command == EC_CMD_RTC_GET_VALUE ? "time" : "alarm",
+			ret);
 		return ret;
+	}
 
 	*response = msg.data.time;
 
@@ -56,7 +60,7 @@ static int cros_ec_rtc_get(struct cros_ec_device *cros_ec, u32 command,
 static int cros_ec_rtc_set(struct cros_ec_device *cros_ec, u32 command,
 			   u32 param)
 {
-	int ret;
+	int ret = 0;
 	struct {
 		struct cros_ec_command msg;
 		struct ec_response_rtc data;
@@ -68,8 +72,13 @@ static int cros_ec_rtc_set(struct cros_ec_device *cros_ec, u32 command,
 	msg.data.time = param;
 
 	ret = cros_ec_cmd_xfer_status(cros_ec, &msg.msg);
-	if (ret < 0)
+	if (ret < 0) {
+		dev_err(cros_ec->dev, "error setting %s on EC: %d\n",
+			command == EC_CMD_RTC_SET_VALUE ? "time" : "alarm",
+			ret);
 		return ret;
+	}
+
 	return 0;
 }
 
@@ -98,7 +107,11 @@ static int cros_ec_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	struct cros_ec_rtc *cros_ec_rtc = dev_get_drvdata(dev);
 	struct cros_ec_device *cros_ec = cros_ec_rtc->cros_ec;
 	int ret;
-	time64_t time = rtc_tm_to_time64(tm);
+	time64_t time;
+
+	time = rtc_tm_to_time64(tm);
+	if (time < 0 || time > U32_MAX)
+		return -EINVAL;
 
 	ret = cros_ec_rtc_set(cros_ec, EC_CMD_RTC_SET_VALUE, (u32)time);
 	if (ret < 0) {
@@ -182,14 +195,7 @@ static int cros_ec_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 
 	ret = cros_ec_rtc_set(cros_ec, EC_CMD_RTC_SET_ALARM, alarm_offset);
 	if (ret < 0) {
-		dev_err(dev, "error setting alarm in %u seconds: %d\n",
-			alarm_offset, ret);
-		/*
-		 * The EC code returns -EINVAL if the alarm time is too
-		 * far in the future. Convert it to the expected error code.
-		 */
-		if (ret == -EINVAL)
-			ret = -ERANGE;
+		dev_err(dev, "error setting alarm: %d\n", ret);
 		return ret;
 	}
 
@@ -342,30 +348,14 @@ static int cros_ec_rtc_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	cros_ec_rtc->rtc = devm_rtc_allocate_device(&pdev->dev);
-	if (IS_ERR(cros_ec_rtc->rtc))
-		return PTR_ERR(cros_ec_rtc->rtc);
-
-	cros_ec_rtc->rtc->ops = &cros_ec_rtc_ops;
-	cros_ec_rtc->rtc->range_max = U32_MAX;
-
-	/*
-	 * The RTC on some older Chromebooks can only handle alarms less than
-	 * 24 hours in the future. The only way to find out is to try to set an
-	 * alarm further in the future. If that fails, assume that the RTC
-	 * connected to the EC can only handle less than 24 hours of alarm
-	 * window.
-	 */
-	ret = cros_ec_rtc_set(cros_ec, EC_CMD_RTC_SET_ALARM, SECS_PER_DAY * 2);
-	if (ret == -EINVAL)
-		cros_ec_rtc->rtc->alarm_offset_max = SECS_PER_DAY - 1;
-
-	(void)cros_ec_rtc_set(cros_ec, EC_CMD_RTC_SET_ALARM,
-			      EC_RTC_ALARM_CLEAR);
-
-	ret = devm_rtc_register_device(cros_ec_rtc->rtc);
-	if (ret)
+	cros_ec_rtc->rtc = devm_rtc_device_register(&pdev->dev, DRV_NAME,
+						    &cros_ec_rtc_ops,
+						    THIS_MODULE);
+	if (IS_ERR(cros_ec_rtc->rtc)) {
+		ret = PTR_ERR(cros_ec_rtc->rtc);
+		dev_err(&pdev->dev, "failed to register rtc device\n");
 		return ret;
+	}
 
 	/* Get RTC events from the EC. */
 	cros_ec_rtc->notifier.notifier_call = cros_ec_rtc_event;
@@ -379,7 +369,7 @@ static int cros_ec_rtc_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static void cros_ec_rtc_remove(struct platform_device *pdev)
+static int cros_ec_rtc_remove(struct platform_device *pdev)
 {
 	struct cros_ec_rtc *cros_ec_rtc = platform_get_drvdata(pdev);
 	struct device *dev = &pdev->dev;
@@ -388,13 +378,17 @@ static void cros_ec_rtc_remove(struct platform_device *pdev)
 	ret = blocking_notifier_chain_unregister(
 				&cros_ec_rtc->cros_ec->event_notifier,
 				&cros_ec_rtc->notifier);
-	if (ret)
+	if (ret) {
 		dev_err(dev, "failed to unregister notifier\n");
+		return ret;
+	}
+
+	return 0;
 }
 
 static struct platform_driver cros_ec_rtc_driver = {
 	.probe = cros_ec_rtc_probe,
-	.remove_new = cros_ec_rtc_remove,
+	.remove = cros_ec_rtc_remove,
 	.driver = {
 		.name = DRV_NAME,
 		.pm = &cros_ec_rtc_pm_ops,

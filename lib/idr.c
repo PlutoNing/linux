@@ -100,7 +100,7 @@ EXPORT_SYMBOL_GPL(idr_alloc);
  * @end: The maximum ID (exclusive).
  * @gfp: Memory allocation flags.
  *
- * Allocates an unused ID in the range specified by @start and @end.  If
+ * Allocates an unused ID in the range specified by @nextid and @end.  If
  * @end is <= 0, it is treated as one larger than %INT_MAX.  This allows
  * callers to use @start + N as @end as long as N is within integer range.
  * The search for an unused ID will start at the last ID allocated and will
@@ -372,8 +372,7 @@ EXPORT_SYMBOL(idr_replace);
  * Allocate an ID between @min and @max, inclusive.  The allocated ID will
  * not exceed %INT_MAX, even if @max is larger.
  *
- * Context: Any context. It is safe to call this function without
- * locking in your code.
+ * Context: Any context.
  * Return: The allocated ID, or %-ENOMEM if memory could not be allocated,
  * or %-ENOSPC if there are no free IDs.
  */
@@ -471,7 +470,6 @@ alloc:
 	goto retry;
 nospc:
 	xas_unlock_irqrestore(&xas, flags);
-	kfree(alloc);
 	return -ENOSPC;
 }
 EXPORT_SYMBOL(ida_alloc_range);
@@ -481,8 +479,7 @@ EXPORT_SYMBOL(ida_alloc_range);
  * @ida: IDA handle.
  * @id: Previously allocated ID.
  *
- * Context: Any context. It is safe to call this function without
- * locking in your code.
+ * Context: Any context.
  */
 void ida_free(struct ida *ida, unsigned int id)
 {
@@ -491,8 +488,7 @@ void ida_free(struct ida *ida, unsigned int id)
 	struct ida_bitmap *bitmap;
 	unsigned long flags;
 
-	if ((int)id < 0)
-		return;
+	BUG_ON((int)id < 0);
 
 	xas_lock_irqsave(&xas, flags);
 	bitmap = xas_load(&xas);
@@ -508,7 +504,7 @@ void ida_free(struct ida *ida, unsigned int id)
 			goto delete;
 		xas_store(&xas, xa_mk_value(v));
 	} else {
-		if (!bitmap || !test_bit(bit, bitmap->bitmap))
+		if (!test_bit(bit, bitmap->bitmap))
 			goto err;
 		__clear_bit(bit, bitmap->bitmap);
 		xas_set_mark(&xas, XA_FREE_MARK);
@@ -535,8 +531,7 @@ EXPORT_SYMBOL(ida_free);
  * or freed.  If the IDA is already empty, there is no need to call this
  * function.
  *
- * Context: Any context. It is safe to call this function without
- * locking in your code.
+ * Context: Any context.
  */
 void ida_destroy(struct ida *ida)
 {

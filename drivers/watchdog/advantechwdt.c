@@ -177,7 +177,7 @@ static long advwdt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		if (advwdt_set_heartbeat(new_timeout))
 			return -EINVAL;
 		advwdt_ping();
-		fallthrough;
+		/* fall through */
 	case WDIOC_GETTIMEOUT:
 		return put_user(timeout, p);
 	default:
@@ -220,7 +220,6 @@ static const struct file_operations advwdt_fops = {
 	.llseek		= no_llseek,
 	.write		= advwdt_write,
 	.unlocked_ioctl	= advwdt_ioctl,
-	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= advwdt_open,
 	.release	= advwdt_close,
 };
@@ -279,12 +278,14 @@ unreg_stop:
 	goto out;
 }
 
-static void advwdt_remove(struct platform_device *dev)
+static int advwdt_remove(struct platform_device *dev)
 {
 	misc_deregister(&advwdt_miscdev);
 	release_region(wdt_start, 1);
 	if (wdt_stop != wdt_start)
 		release_region(wdt_stop, 1);
+
+	return 0;
 }
 
 static void advwdt_shutdown(struct platform_device *dev)
@@ -294,7 +295,7 @@ static void advwdt_shutdown(struct platform_device *dev)
 }
 
 static struct platform_driver advwdt_driver = {
-	.remove_new	= advwdt_remove,
+	.remove		= advwdt_remove,
 	.shutdown	= advwdt_shutdown,
 	.driver		= {
 		.name	= DRV_NAME,

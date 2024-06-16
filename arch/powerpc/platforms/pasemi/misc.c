@@ -11,7 +11,6 @@
 #include <linux/kernel.h>
 #include <linux/pci.h>
 #include <linux/of.h>
-#include <linux/of_irq.h>
 #include <linux/i2c.h>
 
 #ifdef CONFIG_I2C_BOARDINFO
@@ -36,7 +35,8 @@ static int __init find_i2c_driver(struct device_node *node,
 	for (i = 0; i < ARRAY_SIZE(i2c_devices); i++) {
 		if (!of_device_is_compatible(node, i2c_devices[i].of_device))
 			continue;
-		if (strscpy(info->type, i2c_devices[i].i2c_type, I2C_NAME_SIZE) < 0)
+		if (strlcpy(info->type, i2c_devices[i].i2c_type,
+			    I2C_NAME_SIZE) >= I2C_NAME_SIZE)
 			return -ENOMEM;
 		return 0;
 	}
@@ -56,7 +56,8 @@ static int __init pasemi_register_i2c_devices(void)
 		if (!adap_node)
 			continue;
 
-		for_each_child_of_node(adap_node, node) {
+		node = NULL;
+		while ((node = of_get_next_child(adap_node, node))) {
 			struct i2c_board_info info = {};
 			const u32 *addr;
 			int len;

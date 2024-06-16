@@ -21,6 +21,8 @@
 
 #include <asm/elf.h>
 #include <asm/ia32.h>
+#include <asm/syscalls.h>
+#include <asm/mpx.h>
 
 /*
  * Align a virtual address to avoid aliasing in the I$ on AMD F15h.
@@ -52,6 +54,13 @@ static unsigned long get_align_bits(void)
 	return va_align.bits & get_align_mask();
 }
 
+unsigned long align_vdso_addr(unsigned long addr)
+{
+	unsigned long align_mask = get_align_mask();
+	addr = (addr + align_mask) & ~align_mask;
+	return addr | get_align_bits();
+}
+
 static int __init control_va_addr_alignment(char *str)
 {
 	/* guard against enabling this on other CPU families */
@@ -60,6 +69,9 @@ static int __init control_va_addr_alignment(char *str)
 
 	if (*str == 0)
 		return 1;
+
+	if (*str == '=')
+		str++;
 
 	if (!strcmp(str, "32"))
 		va_align.flags = ALIGN_VA_32;
@@ -70,20 +82,24 @@ static int __init control_va_addr_alignment(char *str)
 	else if (!strcmp(str, "on"))
 		va_align.flags = ALIGN_VA_32 | ALIGN_VA_64;
 	else
-		pr_warn("invalid option value: 'align_va_addr=%s'\n", str);
+		return 0;
 
 	return 1;
 }
-__setup("align_va_addr=", control_va_addr_alignment);
+__setup("align_va_addr", control_va_addr_alignment);
 
 SYSCALL_DEFINE6(mmap, unsigned long, addr, unsigned long, len,
 		unsigned long, prot, unsigned long, flags,
 		unsigned long, fd, unsigned long, off)
 {
+	long error;
+	error = -EINVAL;
 	if (off & ~PAGE_MASK)
-		return -EINVAL;
+		goto out;
 
-	return ksys_mmap_pgoff(addr, len, prot, flags, fd, off >> PAGE_SHIFT);
+	error = ksys_mmap_pgoff(addr, len, prot, flags, fd, off >> PAGE_SHIFT);
+out:
+	return error;
 }
 
 static void find_start_end(unsigned long addr, unsigned long flags,
@@ -120,6 +136,10 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	struct vm_area_struct *vma;
 	struct vm_unmapped_area_info info;
 	unsigned long begin, end;
+
+	addr = mpx_unmapped_area_check(addr, len, flags);
+	if (IS_ERR_VALUE(addr))
+		return addr;
 
 	if (flags & MAP_FIXED)
 		return addr;
@@ -160,6 +180,10 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 	unsigned long addr = addr0;
 	struct vm_unmapped_area_info info;
 
+	addr = mpx_unmapped_area_check(addr, len, flags);
+	if (IS_ERR_VALUE(addr))
+		return addr;
+
 	/* requested length too big for entire address space */
 	if (len > TASK_SIZE)
 		return -ENOMEM;
@@ -186,11 +210,7 @@ get_unmapped_area:
 
 	info.flags = VM_UNMAPPED_AREA_TOPDOWN;
 	info.length = len;
-	if (!in_32bit_syscall() && (flags & MAP_ABOVE4G))
-		info.low_limit = SZ_4G;
-	else
-		info.low_limit = PAGE_SIZE;
-
+	info.low_limit = PAGE_SIZE;
 	info.high_limit = get_mmap_base(0);
 
 	/*

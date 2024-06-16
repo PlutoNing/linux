@@ -1044,7 +1044,6 @@ static int go7007_usb_probe(struct usb_interface *intf,
 	struct go7007_usb *usb;
 	const struct go7007_usb_board *board;
 	struct usb_device *usbdev = interface_to_usbdev(intf);
-	struct usb_host_endpoint *ep;
 	unsigned num_i2c_devs;
 	char *name;
 	int video_pipe, i, v_urb_len;
@@ -1132,10 +1131,6 @@ static int go7007_usb_probe(struct usb_interface *intf,
 		go->hpi_ops = &go7007_usb_onboard_hpi_ops;
 	go->hpi_context = usb;
 
-	ep = usb->usbdev->ep_in[4];
-	if (!ep)
-		goto allocfail;
-
 	/* Allocate the URB and buffer for receiving incoming interrupts */
 	usb->intr_urb = usb_alloc_urb(0, GFP_KERNEL);
 	if (usb->intr_urb == NULL)
@@ -1145,7 +1140,7 @@ static int go7007_usb_probe(struct usb_interface *intf,
 	if (usb->intr_urb->transfer_buffer == NULL)
 		goto allocfail;
 
-	if (usb_endpoint_type(&ep->desc) == USB_ENDPOINT_XFER_BULK)
+	if (go->board_id == GO7007_BOARDID_SENSORAY_2250)
 		usb_fill_bulk_urb(usb->intr_urb, usb->usbdev,
 			usb_rcvbulkpipe(usb->usbdev, 4),
 			usb->intr_urb->transfer_buffer, 2*sizeof(u16),
@@ -1201,9 +1196,7 @@ static int go7007_usb_probe(struct usb_interface *intf,
 				u16 channel;
 
 				/* read channel number from GPIO[1:0] */
-				if (go7007_read_addr(go, 0x3c81, &channel))
-					goto allocfail;
-
+				go7007_read_addr(go, 0x3c81, &channel);
 				channel &= 0x3;
 				go->board_id = GO7007_BOARDID_ADLINK_MPG24;
 				usb->board = board = &board_adlink_mpg24;
@@ -1268,13 +1261,9 @@ static int go7007_usb_probe(struct usb_interface *intf,
 
 	/* Allocate the URBs and buffers for receiving the video stream */
 	if (board->flags & GO7007_USB_EZUSB) {
-		if (!usb->usbdev->ep_in[6])
-			goto allocfail;
 		v_urb_len = 1024;
 		video_pipe = usb_rcvbulkpipe(usb->usbdev, 6);
 	} else {
-		if (!usb->usbdev->ep_in[1])
-			goto allocfail;
 		v_urb_len = 512;
 		video_pipe = usb_rcvbulkpipe(usb->usbdev, 1);
 	}
@@ -1294,8 +1283,6 @@ static int go7007_usb_probe(struct usb_interface *intf,
 	/* Allocate the URBs and buffers for receiving the audio stream */
 	if ((board->flags & GO7007_USB_EZUSB) &&
 	    (board->main_info.flags & GO7007_BOARD_HAS_AUDIO)) {
-		if (!usb->usbdev->ep_in[8])
-			goto allocfail;
 		for (i = 0; i < 8; ++i) {
 			usb->audio_urbs[i] = usb_alloc_urb(0, GFP_KERNEL);
 			if (usb->audio_urbs[i] == NULL)

@@ -8,16 +8,16 @@
 #include <linux/uaccess.h>
 #include <linux/debugfs.h>
 #include <linux/module.h>
-#include <linux/vmalloc.h>
 
 #include "qedf.h"
 #include "qedf_dbg.h"
 
 static struct dentry *qedf_dbg_root;
 
-/*
+/**
  * qedf_dbg_host_init - setup the debugfs file for the pf
- */
+ * @pf: the pf that is starting up
+ **/
 void
 qedf_dbg_host_init(struct qedf_dbg_ctx *qedf,
 		    const struct qedf_debugfs_ops *dops,
@@ -42,9 +42,10 @@ qedf_dbg_host_init(struct qedf_dbg_ctx *qedf,
 	}
 }
 
-/*
+/**
  * qedf_dbg_host_exit - clear out the pf's debugfs entries
- */
+ * @pf: the pf that is stopping
+ **/
 void
 qedf_dbg_host_exit(struct qedf_dbg_ctx *qedf_dbg)
 {
@@ -55,9 +56,9 @@ qedf_dbg_host_exit(struct qedf_dbg_ctx *qedf_dbg)
 	qedf_dbg->bdf_dentry = NULL;
 }
 
-/*
+/**
  * qedf_dbg_init - start up debugfs for the driver
- */
+ **/
 void
 qedf_dbg_init(char *drv_name)
 {
@@ -67,9 +68,9 @@ qedf_dbg_init(char *drv_name)
 	qedf_dbg_root = debugfs_create_dir(drv_name, NULL);
 }
 
-/*
+/**
  * qedf_dbg_exit - clean out the driver's debugfs entries
- */
+ **/
 void
 qedf_dbg_exit(void)
 {
@@ -99,9 +100,7 @@ static ssize_t
 qedf_dbg_fp_int_cmd_read(struct file *filp, char __user *buffer, size_t count,
 			 loff_t *ppos)
 {
-	ssize_t ret;
 	size_t cnt = 0;
-	char *cbuf;
 	int id;
 	struct qedf_fastpath *fp = NULL;
 	struct qedf_dbg_ctx *qedf_dbg =
@@ -111,25 +110,19 @@ qedf_dbg_fp_int_cmd_read(struct file *filp, char __user *buffer, size_t count,
 
 	QEDF_INFO(qedf_dbg, QEDF_LOG_DEBUGFS, "entered\n");
 
-	cbuf = vmalloc(QEDF_DEBUGFS_LOG_LEN);
-	if (!cbuf)
-		return 0;
-
-	cnt += scnprintf(cbuf + cnt, QEDF_DEBUGFS_LOG_LEN - cnt, "\nFastpath I/O completions\n\n");
+	cnt = sprintf(buffer, "\nFastpath I/O completions\n\n");
 
 	for (id = 0; id < qedf->num_queues; id++) {
 		fp = &(qedf->fp_array[id]);
 		if (fp->sb_id == QEDF_SB_ID_NULL)
 			continue;
-		cnt += scnprintf(cbuf + cnt, QEDF_DEBUGFS_LOG_LEN - cnt,
-				 "#%d: %lu\n", id, fp->completions);
+		cnt += sprintf((buffer + cnt), "#%d: %lu\n", id,
+			       fp->completions);
 	}
 
-	ret = simple_read_from_buffer(buffer, count, ppos, cbuf, cnt);
-
-	vfree(cbuf);
-
-	return ret;
+	cnt = min_t(int, count, cnt - *ppos);
+	*ppos += cnt;
+	return cnt;
 }
 
 static ssize_t
@@ -147,14 +140,15 @@ qedf_dbg_debug_cmd_read(struct file *filp, char __user *buffer, size_t count,
 			loff_t *ppos)
 {
 	int cnt;
-	char cbuf[32];
 	struct qedf_dbg_ctx *qedf_dbg =
 				(struct qedf_dbg_ctx *)filp->private_data;
 
 	QEDF_INFO(qedf_dbg, QEDF_LOG_DEBUGFS, "debug mask=0x%x\n", qedf_debug);
-	cnt = scnprintf(cbuf, sizeof(cbuf), "debug mask = 0x%x\n", qedf_debug);
+	cnt = sprintf(buffer, "debug mask = 0x%x\n", qedf_debug);
 
-	return simple_read_from_buffer(buffer, count, ppos, cbuf, cnt);
+	cnt = min_t(int, count, cnt - *ppos);
+	*ppos += cnt;
+	return cnt;
 }
 
 static ssize_t
@@ -193,17 +187,18 @@ qedf_dbg_stop_io_on_error_cmd_read(struct file *filp, char __user *buffer,
 				   size_t count, loff_t *ppos)
 {
 	int cnt;
-	char cbuf[7];
 	struct qedf_dbg_ctx *qedf_dbg =
 				(struct qedf_dbg_ctx *)filp->private_data;
 	struct qedf_ctx *qedf = container_of(qedf_dbg,
 	    struct qedf_ctx, dbg_ctx);
 
 	QEDF_INFO(qedf_dbg, QEDF_LOG_DEBUGFS, "entered\n");
-	cnt = scnprintf(cbuf, sizeof(cbuf), "%s\n",
+	cnt = sprintf(buffer, "%s\n",
 	    qedf->stop_io_on_error ? "true" : "false");
 
-	return simple_read_from_buffer(buffer, count, ppos, cbuf, cnt);
+	cnt = min_t(int, count, cnt - *ppos);
+	*ppos += cnt;
+	return cnt;
 }
 
 static ssize_t

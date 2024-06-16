@@ -287,12 +287,7 @@ static int rt2800pci_read_eeprom(struct rt2x00_dev *rt2x00dev)
 }
 
 static const struct ieee80211_ops rt2800pci_mac80211_ops = {
-	.add_chanctx = ieee80211_emulate_add_chanctx,
-	.remove_chanctx = ieee80211_emulate_remove_chanctx,
-	.change_chanctx = ieee80211_emulate_change_chanctx,
-	.switch_vif_chanctx = ieee80211_emulate_switch_vif_chanctx,
 	.tx			= rt2x00mac_tx,
-	.wake_tx_queue		= ieee80211_handle_wake_tx_queue,
 	.start			= rt2x00mac_start,
 	.stop			= rt2x00mac_stop,
 	.add_interface		= rt2x00mac_add_interface,
@@ -316,7 +311,6 @@ static const struct ieee80211_ops rt2800pci_mac80211_ops = {
 	.get_survey		= rt2800_get_survey,
 	.get_ringparam		= rt2x00mac_get_ringparam,
 	.tx_frames_pending	= rt2x00mac_tx_frames_pending,
-	.reconfig_complete	= rt2x00mac_reconfig_complete,
 };
 
 static const struct rt2800_ops rt2800pci_rt2800_ops = {
@@ -444,6 +438,7 @@ static const struct pci_device_id rt2800pci_device_table[] = {
 MODULE_AUTHOR(DRV_PROJECT);
 MODULE_VERSION(DRV_VERSION);
 MODULE_DESCRIPTION("Ralink RT2800 PCI & PCMCIA Wireless LAN driver.");
+MODULE_SUPPORTED_DEVICE("Ralink RT2860 PCI & PCMCIA chipset based cards");
 MODULE_FIRMWARE(FIRMWARE_RT2860);
 MODULE_DEVICE_TABLE(pci, rt2800pci_device_table);
 MODULE_LICENSE("GPL");
@@ -459,7 +454,8 @@ static struct pci_driver rt2800pci_driver = {
 	.id_table	= rt2800pci_device_table,
 	.probe		= rt2800pci_probe,
 	.remove		= rt2x00pci_remove,
-	.driver.pm	= &rt2x00pci_pm_ops,
+	.suspend	= rt2x00pci_suspend,
+	.resume		= rt2x00pci_resume,
 };
 
 module_pci_driver(rt2800pci_driver);

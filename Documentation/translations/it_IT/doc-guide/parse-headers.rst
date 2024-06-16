@@ -1,6 +1,7 @@
 .. include:: ../disclaimer-ita.rst
 
-:Original: Documentation/doc-guide/index.rst
+.. note:: Per leggere la documentazione originale in inglese:
+	  :ref:`Documentation/doc-guide/index.rst <doc_guide>`
 
 =========================================
 Includere gli i file di intestazione uAPI
@@ -16,7 +17,7 @@ con le modifiche del kernel.
 Il programma :ref:`parse_headers.pl <it_parse_headers>` genera questi riferimenti.
 Esso dev'essere invocato attraverso un Makefile, mentre si genera la
 documentazione. Per avere un esempio su come utilizzarlo all'interno del kernel
-consultate ``Documentation/userspace-api/media/Makefile``.
+consultate ``Documentation/media/Makefile``.
 
 .. _it_parse_headers:
 
@@ -189,7 +190,7 @@ COPYRIGHT
 
 Copyright (c) 2016 by Mauro Carvalho Chehab <mchehab@s-opensource.com>.
 
-Licenza GPLv2: GNU GPL version 2 <https://gnu.org/licenses/gpl.html>.
+Licenza GPLv2: GNU GPL version 2 <http://gnu.org/licenses/gpl.html>.
 
 Questo è software libero: siete liberi di cambiarlo e ridistribuirlo.
 Non c'è alcuna garanzia, nei limiti permessi dalla legge.

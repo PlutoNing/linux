@@ -155,7 +155,7 @@ static inline int set_av_attr(struct ocrdma_dev *dev, struct ocrdma_ah *ah,
 	return status;
 }
 
-int ocrdma_create_ah(struct ib_ah *ibah, struct rdma_ah_init_attr *init_attr,
+int ocrdma_create_ah(struct ib_ah *ibah, struct rdma_ah_attr *attr, u32 flags,
 		     struct ib_udata *udata)
 {
 	u32 *ahid_addr;
@@ -165,7 +165,6 @@ int ocrdma_create_ah(struct ib_ah *ibah, struct rdma_ah_init_attr *init_attr,
 	u16 vlan_tag = 0xffff;
 	const struct ib_gid_attr *sgid_attr;
 	struct ocrdma_pd *pd = get_ocrdma_pd(ibah->pd);
-	struct rdma_ah_attr *attr = init_attr->ah_attr;
 	struct ocrdma_dev *dev = get_ocrdma_dev(ibah->device);
 
 	if ((attr->type != RDMA_AH_ATTR_TYPE_ROCE) ||
@@ -215,13 +214,12 @@ av_err:
 	return status;
 }
 
-int ocrdma_destroy_ah(struct ib_ah *ibah, u32 flags)
+void ocrdma_destroy_ah(struct ib_ah *ibah, u32 flags)
 {
 	struct ocrdma_ah *ah = get_ocrdma_ah(ibah);
 	struct ocrdma_dev *dev = get_ocrdma_dev(ibah->device);
 
 	ocrdma_free_av(dev, ah);
-	return 0;
 }
 
 int ocrdma_query_ah(struct ib_ah *ibah, struct rdma_ah_attr *attr)
@@ -249,20 +247,35 @@ int ocrdma_query_ah(struct ib_ah *ibah, struct rdma_ah_attr *attr)
 	return 0;
 }
 
-int ocrdma_process_mad(struct ib_device *ibdev, int process_mad_flags,
-		       u32 port_num, const struct ib_wc *in_wc,
-		       const struct ib_grh *in_grh, const struct ib_mad *in,
-		       struct ib_mad *out, size_t *out_mad_size,
+int ocrdma_process_mad(struct ib_device *ibdev,
+		       int process_mad_flags,
+		       u8 port_num,
+		       const struct ib_wc *in_wc,
+		       const struct ib_grh *in_grh,
+		       const struct ib_mad_hdr *in, size_t in_mad_size,
+		       struct ib_mad_hdr *out, size_t *out_mad_size,
 		       u16 *out_mad_pkey_index)
 {
-	int status = IB_MAD_RESULT_SUCCESS;
+	int status;
 	struct ocrdma_dev *dev;
+	const struct ib_mad *in_mad = (const struct ib_mad *)in;
+	struct ib_mad *out_mad = (struct ib_mad *)out;
 
-	if (in->mad_hdr.mgmt_class == IB_MGMT_CLASS_PERF_MGMT) {
+	if (WARN_ON_ONCE(in_mad_size != sizeof(*in_mad) ||
+			 *out_mad_size != sizeof(*out_mad)))
+		return IB_MAD_RESULT_FAILURE;
+
+	switch (in_mad->mad_hdr.mgmt_class) {
+	case IB_MGMT_CLASS_PERF_MGMT:
 		dev = get_ocrdma_dev(ibdev);
-		ocrdma_pma_counters(dev, out);
-		status |= IB_MAD_RESULT_REPLY;
+		if (!ocrdma_pma_counters(dev, out_mad))
+			status = IB_MAD_RESULT_SUCCESS | IB_MAD_RESULT_REPLY;
+		else
+			status = IB_MAD_RESULT_SUCCESS;
+		break;
+	default:
+		status = IB_MAD_RESULT_SUCCESS;
+		break;
 	}
-
 	return status;
 }

@@ -3,13 +3,14 @@
 #include "tests/tests.h"
 #include "arch-tests.h"
 
-
-DEFINE_SUITE("arm64 CPUID matching", cpuid_match);
-
-struct test_suite *arch_tests[] = {
+struct test arch_tests[] = {
 #ifdef HAVE_DWARF_UNWIND_SUPPORT
-	&suite__dwarf_unwind,
+	{
+		.desc = "DWARF unwind",
+		.func = test__dwarf_unwind,
+	},
 #endif
-	&suite__cpuid_match,
-	NULL,
+	{
+		.func = NULL,
+	},
 };

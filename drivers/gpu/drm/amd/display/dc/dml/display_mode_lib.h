@@ -25,24 +25,22 @@
 #ifndef __DISPLAY_MODE_LIB_H__
 #define __DISPLAY_MODE_LIB_H__
 
-#include "dm_services.h"
-#include "dc_features.h"
-#include "display_mode_structs.h"
-#include "display_mode_enums.h"
+
+#include "dml_common_defs.h"
+#ifdef CONFIG_DRM_AMD_DC_DCN2_0
 #include "display_mode_vba.h"
+#endif
 
 enum dml_project {
 	DML_PROJECT_UNDEFINED,
 	DML_PROJECT_RAVEN1,
+#ifdef CONFIG_DRM_AMD_DC_DCN2_0
 	DML_PROJECT_NAVI10,
 	DML_PROJECT_NAVI10v2,
-	DML_PROJECT_DCN201,
+#endif
+#ifdef CONFIG_DRM_AMD_DC_DCN2_1
 	DML_PROJECT_DCN21,
-	DML_PROJECT_DCN30,
-	DML_PROJECT_DCN31,
-	DML_PROJECT_DCN315,
-	DML_PROJECT_DCN314,
-	DML_PROJECT_DCN32,
+#endif
 };
 
 struct display_mode_lib;
@@ -52,7 +50,7 @@ struct dml_funcs {
 			struct display_mode_lib *mode_lib,
 			display_dlg_regs_st *dlg_regs,
 			display_ttu_regs_st *ttu_regs,
-			const display_e2e_pipe_params_st *e2e_pipe_param,
+			display_e2e_pipe_params_st *e2e_pipe_param,
 			const unsigned int num_pipes,
 			const unsigned int pipe_idx,
 			const bool cstate_en,
@@ -63,21 +61,7 @@ struct dml_funcs {
 	void (*rq_dlg_get_rq_reg)(
 		struct display_mode_lib *mode_lib,
 		display_rq_regs_st *rq_regs,
-		const display_pipe_params_st *pipe_param);
-	// DLG interfaces have different function parameters in DCN32.
-	// Create new function pointers to address the changes
-	void (*rq_dlg_get_dlg_reg_v2)(
-			struct display_mode_lib *mode_lib,
-			display_dlg_regs_st *dlg_regs,
-			display_ttu_regs_st *ttu_regs,
-			display_e2e_pipe_params_st *e2e_pipe_param,
-			const unsigned int num_pipes,
-			const unsigned int pipe_idx);
-	void (*rq_dlg_get_rq_reg_v2)(display_rq_regs_st *rq_regs,
-			struct display_mode_lib *mode_lib,
-			const display_e2e_pipe_params_st *e2e_pipe_param,
-			const unsigned int num_pipes,
-			const unsigned int pipe_idx);
+		const display_pipe_params_st pipe_param);
 	void (*recalculate)(struct display_mode_lib *mode_lib);
 	void (*validate)(struct display_mode_lib *mode_lib);
 };
@@ -86,11 +70,11 @@ struct display_mode_lib {
 	struct _vcs_dpi_ip_params_st ip;
 	struct _vcs_dpi_soc_bounding_box_st soc;
 	enum dml_project project;
+#ifdef CONFIG_DRM_AMD_DC_DCN2_0
 	struct vba_vars_st vba;
+#endif
 	struct dal_logger *logger;
 	struct dml_funcs funcs;
-	struct _vcs_dpi_display_e2e_pipe_params_st dml_pipe_state[6];
-	bool validate_max_state;
 };
 
 void dml_init_instance(struct display_mode_lib *lib,
@@ -100,10 +84,4 @@ void dml_init_instance(struct display_mode_lib *lib,
 
 const char *dml_get_status_message(enum dm_validation_status status);
 
-void dml_log_pipe_params(
-		struct display_mode_lib *mode_lib,
-		display_e2e_pipe_params_st *pipes,
-		int pipe_cnt);
-
-void dml_log_mode_support_params(struct display_mode_lib *mode_lib);
 #endif

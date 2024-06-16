@@ -14,6 +14,7 @@
 
 #include <linux/types.h>
 #include <linux/list.h>
+#include <linux/genhd.h>
 #include <linux/fs.h>
 #include <asm/unaligned.h>
 #include <asm/byteorder.h>
@@ -83,13 +84,16 @@ struct parsed_partitions;
 #define TOC_BITMAP1		"config"	/* Names of the two defined */
 #define TOC_BITMAP2		"log"		/* bitmaps in the TOCBLOCK. */
 
+/* Borrowed from msdos.c */
+#define SYS_IND(p)		(get_unaligned(&(p)->sys_ind))
+
 struct frag {				/* VBLK Fragment handling */
 	struct list_head list;
 	u32		group;
 	u8		num;		/* Total number of records */
 	u8		rec;		/* This is record number n */
 	u8		map;		/* Which portions are in use */
-	u8		data[];
+	u8		data[0];
 };
 
 /* In memory LDM database structures. */
@@ -188,6 +192,8 @@ struct ldmdb {				/* Cache of the database */
 	struct list_head v_comp;
 	struct list_head v_part;
 };
+
+int ldm_partition(struct parsed_partitions *state);
 
 #endif /* _FS_PT_LDM_H_ */
 

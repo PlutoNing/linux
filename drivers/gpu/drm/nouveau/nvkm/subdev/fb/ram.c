@@ -25,7 +25,6 @@
 #include "ram.h"
 
 #include <core/memory.h>
-#include <subdev/instmem.h>
 #include <subdev/mmu.h>
 
 struct nvkm_vram {
@@ -34,12 +33,6 @@ struct nvkm_vram {
 	u8 page;
 	struct nvkm_mm_node *mn;
 };
-
-static int
-nvkm_vram_kmap(struct nvkm_memory *memory, struct nvkm_memory **pmemory)
-{
-	return nvkm_instobj_wrap(nvkm_vram(memory)->ram->fb->subdev.device, memory, pmemory);
-}
 
 static int
 nvkm_vram_map(struct nvkm_memory *memory, u64 offset, struct nvkm_vmm *vmm,
@@ -88,20 +81,12 @@ nvkm_vram_dtor(struct nvkm_memory *memory)
 	struct nvkm_vram *vram = nvkm_vram(memory);
 	struct nvkm_mm_node *next = vram->mn;
 	struct nvkm_mm_node *node;
-
-	if (next) {
-		if (likely(next->nl_entry.next)){
-			mutex_lock(&vram->ram->mutex);
-			while ((node = next)) {
-				next = node->next;
-				nvkm_mm_free(&vram->ram->vram, &node);
-			}
-			mutex_unlock(&vram->ram->mutex);
-		} else {
-			kfree(vram->mn);
-		}
+	mutex_lock(&vram->ram->fb->subdev.mutex);
+	while ((node = next)) {
+		next = node->next;
+		nvkm_mm_free(&vram->ram->vram, &node);
 	}
-
+	mutex_unlock(&vram->ram->fb->subdev.mutex);
 	return vram;
 }
 
@@ -113,36 +98,7 @@ nvkm_vram = {
 	.addr = nvkm_vram_addr,
 	.size = nvkm_vram_size,
 	.map = nvkm_vram_map,
-	.kmap = nvkm_vram_kmap,
 };
-
-int
-nvkm_ram_wrap(struct nvkm_device *device, u64 addr, u64 size,
-	      struct nvkm_memory **pmemory)
-{
-	struct nvkm_ram *ram;
-	struct nvkm_vram *vram;
-
-	if (!device->fb || !(ram = device->fb->ram))
-		return -ENODEV;
-	ram = device->fb->ram;
-
-	if (!(vram = kzalloc(sizeof(*vram), GFP_KERNEL)))
-		return -ENOMEM;
-
-	nvkm_memory_ctor(&nvkm_vram, &vram->memory);
-	vram->ram = ram;
-	vram->page = NVKM_RAM_MM_SHIFT;
-	*pmemory = &vram->memory;
-
-	vram->mn = kzalloc(sizeof(*vram->mn), GFP_KERNEL);
-	if (!vram->mn)
-		return -ENOMEM;
-
-	vram->mn->offset = addr >> NVKM_RAM_MM_SHIFT;
-	vram->mn->length = size >> NVKM_RAM_MM_SHIFT;
-	return 0;
-}
 
 int
 nvkm_ram_get(struct nvkm_device *device, u8 heap, u8 type, u8 rpage, u64 size,
@@ -170,7 +126,7 @@ nvkm_ram_get(struct nvkm_device *device, u8 heap, u8 type, u8 rpage, u64 size,
 	vram->page = page;
 	*pmemory = &vram->memory;
 
-	mutex_lock(&ram->mutex);
+	mutex_lock(&ram->fb->subdev.mutex);
 	node = &vram->mn;
 	do {
 		if (back)
@@ -178,7 +134,7 @@ nvkm_ram_get(struct nvkm_device *device, u8 heap, u8 type, u8 rpage, u64 size,
 		else
 			ret = nvkm_mm_head(mm, heap, type, max, min, align, &r);
 		if (ret) {
-			mutex_unlock(&ram->mutex);
+			mutex_unlock(&ram->fb->subdev.mutex);
 			nvkm_memory_unref(pmemory);
 			return ret;
 		}
@@ -187,7 +143,7 @@ nvkm_ram_get(struct nvkm_device *device, u8 heap, u8 type, u8 rpage, u64 size,
 		node = &r->next;
 		max -= r->length;
 	} while (max);
-	mutex_unlock(&ram->mutex);
+	mutex_unlock(&ram->fb->subdev.mutex);
 	return 0;
 }
 
@@ -207,7 +163,6 @@ nvkm_ram_del(struct nvkm_ram **pram)
 		if (ram->func->dtor)
 			*pram = ram->func->dtor(ram);
 		nvkm_mm_fini(&ram->vram);
-		mutex_destroy(&ram->mutex);
 		kfree(*pram);
 		*pram = NULL;
 	}
@@ -241,7 +196,6 @@ nvkm_ram_ctor(const struct nvkm_ram_func *func, struct nvkm_fb *fb,
 	ram->fb = fb;
 	ram->type = type;
 	ram->size = size;
-	mutex_init(&ram->mutex);
 
 	if (!nvkm_mm_initialised(&ram->vram)) {
 		ret = nvkm_mm_init(&ram->vram, NVKM_RAM_MM_NORMAL, 0,

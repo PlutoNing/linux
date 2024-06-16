@@ -15,8 +15,7 @@
 /*
  * Get a newly allocated inode to go with a negative dentry.
  */
-static int orangefs_create(struct mnt_idmap *idmap,
-			struct inode *dir,
+static int orangefs_create(struct inode *dir,
 			struct dentry *dentry,
 			umode_t mode,
 			bool exclusive)
@@ -216,8 +215,7 @@ static int orangefs_unlink(struct inode *dir, struct dentry *dentry)
 	return ret;
 }
 
-static int orangefs_symlink(struct mnt_idmap *idmap,
-		         struct inode *dir,
+static int orangefs_symlink(struct inode *dir,
 			 struct dentry *dentry,
 			 const char *symname)
 {
@@ -305,8 +303,7 @@ out:
 	return ret;
 }
 
-static int orangefs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
-			  struct dentry *dentry, umode_t mode)
+static int orangefs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
 	struct orangefs_inode_s *parent = ORANGEFS_I(dir);
 	struct orangefs_kernel_op_s *new_op;
@@ -375,8 +372,7 @@ out:
 	return ret;
 }
 
-static int orangefs_rename(struct mnt_idmap *idmap,
-			struct inode *old_dir,
+static int orangefs_rename(struct inode *old_dir,
 			struct dentry *old_dentry,
 			struct inode *new_dir,
 			struct dentry *new_dentry,
@@ -421,7 +417,7 @@ static int orangefs_rename(struct mnt_idmap *idmap,
 		     ret);
 
 	if (new_dentry->d_inode)
-		inode_set_ctime_current(d_inode(new_dentry));
+		new_dentry->d_inode->i_ctime = current_time(new_dentry->d_inode);
 
 	op_release(new_op);
 	return ret;
@@ -430,7 +426,7 @@ static int orangefs_rename(struct mnt_idmap *idmap,
 /* ORANGEFS implementation of VFS inode operations for directories */
 const struct inode_operations orangefs_dir_inode_operations = {
 	.lookup = orangefs_lookup,
-	.get_inode_acl = orangefs_get_acl,
+	.get_acl = orangefs_get_acl,
 	.set_acl = orangefs_set_acl,
 	.create = orangefs_create,
 	.unlink = orangefs_unlink,

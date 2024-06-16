@@ -1,8 +1,62 @@
-/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
-/*
- * Copyright (C) 2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2024 Intel Corporation
- */
+/******************************************************************************
+ *
+ * This file is provided under a dual BSD/GPLv2 license.  When using or
+ * redistributing this file, you may do so under either license.
+ *
+ * GPL LICENSE SUMMARY
+ *
+ * Copyright(c) 2017 Intel Deutschland GmbH
+ * Copyright (C) 2018-2019 Intel Corporation
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of version 2 of the GNU General Public License as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * The full GNU General Public License is included in this distribution
+ * in the file called COPYING.
+ *
+ * Contact Information:
+ *  Intel Linux Wireless <linuxwifi@intel.com>
+ * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
+ *
+ * BSD LICENSE
+ *
+ * Copyright(c) 2017 Intel Deutschland GmbH
+ * Copyright (C) 2018-2019 Intel Corporation
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ *  * Neither the name Intel Corporation nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *****************************************************************************/
 #ifndef __iwl_fw_runtime_h__
 #define __iwl_fw_runtime_h__
 
@@ -11,13 +65,10 @@
 #include "img.h"
 #include "fw/api/debug.h"
 #include "fw/api/paging.h"
-#include "fw/api/power.h"
 #include "iwl-eeprom-parse.h"
-#include "fw/acpi.h"
-#include "fw/regulatory.h"
 
 struct iwl_fw_runtime_ops {
-	void (*dump_start)(void *ctx);
+	int (*dump_start)(void *ctx);
 	void (*dump_end)(void *ctx);
 	bool (*fw_running)(void *ctx);
 	int (*send_hcmd)(void *ctx, struct iwl_host_cmd *host_cmd);
@@ -25,8 +76,6 @@ struct iwl_fw_runtime_ops {
 };
 
 #define MAX_NUM_LMAC 2
-#define MAX_NUM_TCM 2
-#define MAX_NUM_RCM 2
 struct iwl_fwrt_shared_mem_cfg {
 	int num_lmacs;
 	int num_txfifo_entries;
@@ -35,41 +84,11 @@ struct iwl_fwrt_shared_mem_cfg {
 		u32 rxfifo1_size;
 	} lmac[MAX_NUM_LMAC];
 	u32 rxfifo2_size;
-	u32 rxfifo2_control_size;
 	u32 internal_txfifo_addr;
 	u32 internal_txfifo_size[TX_FIFO_INTERNAL_MAX_NUM];
 };
 
 #define IWL_FW_RUNTIME_DUMP_WK_NUM 5
-
-/**
- * struct iwl_fwrt_dump_data - dump data
- * @trig: trigger the worker was scheduled upon
- * @fw_pkt: packet received from FW
- */
-struct iwl_fwrt_dump_data {
-	union {
-		struct {
-			struct iwl_fw_ini_trigger_tlv *trig;
-			struct iwl_rx_packet *fw_pkt;
-		};
-		struct {
-			const struct iwl_fw_dump_desc *desc;
-			bool monitor_only;
-		};
-	};
-};
-
-/**
- * struct iwl_fwrt_wk_data - dump worker data struct
- * @idx: index of the worker
- * @wk: worker
- */
-struct iwl_fwrt_wk_data  {
-	u8 idx;
-	struct delayed_work wk;
-	struct iwl_fwrt_dump_data dump_data;
-};
 
 /**
  * struct iwl_txf_iter_data - Tx fifo iterator data struct
@@ -99,13 +118,6 @@ struct iwl_txf_iter_data {
  * @cur_fw_img: current firmware image, must be maintained by
  *	the driver by calling &iwl_fw_set_current_image()
  * @dump: debug dump data
- * @uats_enabled: VLP or AFC AP is enabled
- * @uats_table: AP type table
- * @uefi_tables_lock_status: The status of the WIFI GUID UEFI variables lock:
- *	0: Unlocked, 1 and 2: Locked.
- *	Only read the UEFI variables if locked.
- * @sar_profiles: sar profiles as read from WRDS/EWRD BIOS tables
- * @geo_profiles: geographic profiles as read from WGDS BIOS table
  */
 struct iwl_fw_runtime {
 	struct iwl_trans *trans;
@@ -114,9 +126,6 @@ struct iwl_fw_runtime {
 
 	const struct iwl_fw_runtime_ops *ops;
 	void *ops_ctx;
-
-	const struct iwl_dump_sanitize_ops *sanitize_ops;
-	void *sanitize_ctx;
 
 	/* Paging */
 	struct iwl_fw_paging fw_paging_db[NUM_OF_FW_PAGING_BLOCKS];
@@ -130,20 +139,30 @@ struct iwl_fw_runtime {
 
 	/* debug */
 	struct {
-		struct iwl_fwrt_wk_data wks[IWL_FW_RUNTIME_DUMP_WK_NUM];
+		const struct iwl_fw_dump_desc *desc;
+		bool monitor_only;
+		struct {
+			u8 idx;
+			enum iwl_fw_ini_trigger_id ini_trig_id;
+			struct delayed_work wk;
+		} wks[IWL_FW_RUNTIME_DUMP_WK_NUM];
 		unsigned long active_wks;
 
 		u8 conf;
 
 		/* ts of the beginning of a non-collect fw dbg data period */
-		unsigned long non_collect_ts_start[IWL_FW_INI_TIME_POINT_NUM];
+		unsigned long non_collect_ts_start[IWL_FW_TRIGGER_ID_NUM];
 		u32 *d3_debug_data;
+		struct iwl_fw_ini_region_cfg *active_regs[IWL_FW_INI_MAX_REGION_ID];
+		struct iwl_fw_ini_active_triggers active_trigs[IWL_FW_TRIGGER_ID_NUM];
 		u32 lmac_err_id[MAX_NUM_LMAC];
-		u32 tcm_err_id[MAX_NUM_TCM];
-		u32 rcm_err_id[MAX_NUM_RCM];
 		u32 umac_err_id;
 
 		struct iwl_txf_iter_data txf_iter_data;
+
+		u8 img_name[IWL_FW_INI_MAX_IMG_NAME_LEN];
+		u8 internal_dbg_cfg_name[IWL_FW_INI_MAX_DBG_CFG_NAME_LEN];
+		u8 external_dbg_cfg_name[IWL_FW_INI_MAX_DBG_CFG_NAME_LEN];
 
 		struct {
 			u8 type;
@@ -154,39 +173,18 @@ struct iwl_fw_runtime {
 			u32 umac_minor;
 		} fw_ver;
 	} dump;
-	struct {
 #ifdef CONFIG_IWLWIFI_DEBUGFS
+	struct {
 		struct delayed_work wk;
 		u32 delay;
-#endif
 		u64 seq;
 	} timestamp;
-#ifdef CONFIG_IWLWIFI_DEBUGFS
-	bool tpc_enabled;
 #endif /* CONFIG_IWLWIFI_DEBUGFS */
-	struct iwl_sar_profile sar_profiles[BIOS_SAR_MAX_PROFILE_NUM];
-	u8 sar_chain_a_profile;
-	u8 sar_chain_b_profile;
-	u8 reduced_power_flags;
-	struct iwl_geo_profile geo_profiles[BIOS_GEO_MAX_PROFILE_NUM];
-	u32 geo_rev;
-	u32 geo_num_profiles;
-	bool geo_enabled;
-	struct iwl_ppag_chain ppag_chains[IWL_NUM_CHAIN_LIMITS];
-	u32 ppag_flags;
-	u8 ppag_ver;
-	struct iwl_sar_offset_mapping_cmd sgom_table;
-	bool sgom_enabled;
-	struct iwl_uats_table_cmd uats_table;
-	u8 uefi_tables_lock_status;
-	bool uats_enabled;
 };
 
 void iwl_fw_runtime_init(struct iwl_fw_runtime *fwrt, struct iwl_trans *trans,
 			const struct iwl_fw *fw,
 			const struct iwl_fw_runtime_ops *ops, void *ops_ctx,
-			const struct iwl_dump_sanitize_ops *sanitize_ops,
-			void *sanitize_ctx,
 			struct dentry *dbgfs_dir);
 
 static inline void iwl_fw_runtime_free(struct iwl_fw_runtime *fwrt)
@@ -195,6 +193,16 @@ static inline void iwl_fw_runtime_free(struct iwl_fw_runtime *fwrt)
 
 	kfree(fwrt->dump.d3_debug_data);
 	fwrt->dump.d3_debug_data = NULL;
+
+	for (i = 0; i < IWL_FW_TRIGGER_ID_NUM; i++) {
+		struct iwl_fw_ini_active_triggers *active =
+			&fwrt->dump.active_trigs[i];
+
+		active->active = false;
+		active->size = 0;
+		kfree(active->trig);
+		active->trig = NULL;
+	}
 
 	iwl_dbg_tlv_del_timers(fwrt->trans);
 	for (i = 0; i < IWL_FW_RUNTIME_DUMP_WK_NUM; i++)
@@ -215,7 +223,5 @@ int iwl_init_paging(struct iwl_fw_runtime *fwrt, enum iwl_ucode_type type);
 void iwl_free_fw_paging(struct iwl_fw_runtime *fwrt);
 
 void iwl_get_shared_mem_conf(struct iwl_fw_runtime *fwrt);
-int iwl_set_soc_latency(struct iwl_fw_runtime *fwrt);
-int iwl_configure_rxq(struct iwl_fw_runtime *fwrt);
 
 #endif /* __iwl_fw_runtime_h__ */

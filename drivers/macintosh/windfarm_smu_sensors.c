@@ -14,8 +14,7 @@
 #include <linux/init.h>
 #include <linux/wait.h>
 #include <linux/completion.h>
-#include <linux/of.h>
-
+#include <asm/prom.h>
 #include <asm/machdep.h>
 #include <asm/io.h>
 #include <asm/sections.h>
@@ -274,8 +273,8 @@ struct smu_cpu_power_sensor {
 	struct list_head	link;
 	struct wf_sensor	*volts;
 	struct wf_sensor	*amps;
-	unsigned int		fake_volts : 1;
-	unsigned int		quadratic : 1;
+	int			fake_volts : 1;
+	int			quadratic : 1;
 	struct wf_sensor	sens;
 };
 #define to_smu_cpu_power(c) container_of(c, struct smu_cpu_power_sensor, sens)
@@ -422,7 +421,8 @@ static int __init smu_sensors_init(void)
 		return -ENODEV;
 
 	/* Look for sensors subdir */
-	for_each_child_of_node(smu, sensors)
+	for (sensors = NULL;
+	     (sensors = of_get_next_child(smu, sensors)) != NULL;)
 		if (of_node_name_eq(sensors, "sensors"))
 			break;
 

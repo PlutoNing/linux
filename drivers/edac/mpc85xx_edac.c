@@ -22,9 +22,8 @@
 #include <linux/gfp.h>
 #include <linux/fsl/edac.h>
 
-#include <linux/of.h>
-#include <linux/of_address.h>
-#include <linux/of_irq.h>
+#include <linux/of_platform.h>
+#include <linux/of_device.h>
 #include "edac_module.h"
 #include "mpc85xx_edac.h"
 #include "fsl_ddr_edac.h"
@@ -300,7 +299,7 @@ err:
 	return res;
 }
 
-static void mpc85xx_pci_err_remove(struct platform_device *op)
+static int mpc85xx_pci_err_remove(struct platform_device *op)
 {
 	struct edac_pci_ctl_info *pci = dev_get_drvdata(&op->dev);
 	struct mpc85xx_pci_pdata *pdata = pci->pvt_info;
@@ -312,6 +311,8 @@ static void mpc85xx_pci_err_remove(struct platform_device *op)
 
 	edac_pci_del_device(&op->dev);
 	edac_pci_free_ctl_info(pci);
+
+	return 0;
 }
 
 static const struct platform_device_id mpc85xx_pci_err_match[] = {
@@ -323,7 +324,7 @@ static const struct platform_device_id mpc85xx_pci_err_match[] = {
 
 static struct platform_driver mpc85xx_pci_err_driver = {
 	.probe = mpc85xx_pci_err_probe,
-	.remove_new = mpc85xx_pci_err_remove,
+	.remove = mpc85xx_pci_err_remove,
 	.id_table = mpc85xx_pci_err_match,
 	.driver = {
 		.name = "mpc85xx_pci_err",
@@ -589,7 +590,7 @@ err:
 	return res;
 }
 
-static void mpc85xx_l2_err_remove(struct platform_device *op)
+static int mpc85xx_l2_err_remove(struct platform_device *op)
 {
 	struct edac_device_ctl_info *edac_dev = dev_get_drvdata(&op->dev);
 	struct mpc85xx_l2_pdata *pdata = edac_dev->pvt_info;
@@ -604,9 +605,17 @@ static void mpc85xx_l2_err_remove(struct platform_device *op)
 	out_be32(pdata->l2_vbase + MPC85XX_L2_ERRDIS, orig_l2_err_disable);
 	edac_device_del_device(&op->dev);
 	edac_device_free_ctl_info(edac_dev);
+	return 0;
 }
 
 static const struct of_device_id mpc85xx_l2_err_of_match[] = {
+/* deprecate the fsl,85.. forms in the future, 2.6.30? */
+	{ .compatible = "fsl,8540-l2-cache-controller", },
+	{ .compatible = "fsl,8541-l2-cache-controller", },
+	{ .compatible = "fsl,8544-l2-cache-controller", },
+	{ .compatible = "fsl,8548-l2-cache-controller", },
+	{ .compatible = "fsl,8555-l2-cache-controller", },
+	{ .compatible = "fsl,8568-l2-cache-controller", },
 	{ .compatible = "fsl,mpc8536-l2-cache-controller", },
 	{ .compatible = "fsl,mpc8540-l2-cache-controller", },
 	{ .compatible = "fsl,mpc8541-l2-cache-controller", },
@@ -627,7 +636,7 @@ MODULE_DEVICE_TABLE(of, mpc85xx_l2_err_of_match);
 
 static struct platform_driver mpc85xx_l2_err_driver = {
 	.probe = mpc85xx_l2_err_probe,
-	.remove_new = mpc85xx_l2_err_remove,
+	.remove = mpc85xx_l2_err_remove,
 	.driver = {
 		.name = "mpc85xx_l2_err",
 		.of_match_table = mpc85xx_l2_err_of_match,
@@ -635,6 +644,13 @@ static struct platform_driver mpc85xx_l2_err_driver = {
 };
 
 static const struct of_device_id mpc85xx_mc_err_of_match[] = {
+/* deprecate the fsl,85.. forms in the future, 2.6.30? */
+	{ .compatible = "fsl,8540-memory-controller", },
+	{ .compatible = "fsl,8541-memory-controller", },
+	{ .compatible = "fsl,8544-memory-controller", },
+	{ .compatible = "fsl,8548-memory-controller", },
+	{ .compatible = "fsl,8555-memory-controller", },
+	{ .compatible = "fsl,8568-memory-controller", },
 	{ .compatible = "fsl,mpc8536-memory-controller", },
 	{ .compatible = "fsl,mpc8540-memory-controller", },
 	{ .compatible = "fsl,mpc8541-memory-controller", },
@@ -656,7 +672,7 @@ MODULE_DEVICE_TABLE(of, mpc85xx_mc_err_of_match);
 
 static struct platform_driver mpc85xx_mc_err_driver = {
 	.probe = fsl_mc_err_probe,
-	.remove_new = fsl_mc_err_remove,
+	.remove = fsl_mc_err_remove,
 	.driver = {
 		.name = "mpc85xx_mc_err",
 		.of_match_table = mpc85xx_mc_err_of_match,
@@ -707,4 +723,5 @@ module_exit(mpc85xx_mc_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Montavista Software, Inc.");
 module_param(edac_op_state, int, 0444);
-MODULE_PARM_DESC(edac_op_state, "EDAC Error Reporting state: 0=Poll, 2=Interrupt");
+MODULE_PARM_DESC(edac_op_state,
+		 "EDAC Error Reporting state: 0=Poll, 2=Interrupt");

@@ -28,7 +28,6 @@
 #endif /* CONFIG_P54_SPI_DEFAULT_EEPROM */
 
 MODULE_FIRMWARE("3826.arm");
-MODULE_FIRMWARE("3826.eeprom");
 
 /* gpios should be handled in board files and provided via platform data,
  * but because it's currently impossible for p54spi to have a header file
@@ -165,7 +164,7 @@ static int p54spi_request_firmware(struct ieee80211_hw *dev)
 
 	ret = p54_parse_firmware(dev, priv->firmware);
 	if (ret) {
-		/* the firmware is released by the caller */
+		release_firmware(priv->firmware);
 		return ret;
 	}
 
@@ -660,7 +659,6 @@ static int p54spi_probe(struct spi_device *spi)
 	return 0;
 
 err_free_common:
-	release_firmware(priv->firmware);
 	free_irq(gpio_to_irq(p54spi_gpio_irq), spi);
 err_free_gpio_irq:
 	gpio_free(p54spi_gpio_irq);
@@ -671,7 +669,7 @@ err_free:
 	return ret;
 }
 
-static void p54spi_remove(struct spi_device *spi)
+static int p54spi_remove(struct spi_device *spi)
 {
 	struct p54s_priv *priv = spi_get_drvdata(spi);
 
@@ -686,6 +684,8 @@ static void p54spi_remove(struct spi_device *spi)
 	mutex_destroy(&priv->mutex);
 
 	p54_free_common(priv->hw);
+
+	return 0;
 }
 
 
@@ -700,7 +700,6 @@ static struct spi_driver p54spi_driver = {
 
 module_spi_driver(p54spi_driver);
 
-MODULE_DESCRIPTION("Prism54 SPI wireless driver");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Christian Lamparter <chunkeey@web.de>");
 MODULE_ALIAS("spi:cx3110x");

@@ -8,6 +8,27 @@
 #include "iavf_prototype.h"
 
 /**
+ *  iavf_adminq_init_regs - Initialize AdminQ registers
+ *  @hw: pointer to the hardware structure
+ *
+ *  This assumes the alloc_asq and alloc_arq functions have already been called
+ **/
+static void iavf_adminq_init_regs(struct iavf_hw *hw)
+{
+	/* set head and tail registers in our local struct */
+	hw->aq.asq.tail = IAVF_VF_ATQT1;
+	hw->aq.asq.head = IAVF_VF_ATQH1;
+	hw->aq.asq.len  = IAVF_VF_ATQLEN1;
+	hw->aq.asq.bal  = IAVF_VF_ATQBAL1;
+	hw->aq.asq.bah  = IAVF_VF_ATQBAH1;
+	hw->aq.arq.tail = IAVF_VF_ARQT1;
+	hw->aq.arq.head = IAVF_VF_ARQH1;
+	hw->aq.arq.len  = IAVF_VF_ARQLEN1;
+	hw->aq.arq.bal  = IAVF_VF_ARQBAL1;
+	hw->aq.arq.bah  = IAVF_VF_ARQBAH1;
+}
+
+/**
  *  iavf_alloc_adminq_asq_ring - Allocate Admin Queue send rings
  *  @hw: pointer to the hardware structure
  **/
@@ -238,17 +259,17 @@ static enum iavf_status iavf_config_asq_regs(struct iavf_hw *hw)
 	u32 reg = 0;
 
 	/* Clear Head and Tail */
-	wr32(hw, IAVF_VF_ATQH1, 0);
-	wr32(hw, IAVF_VF_ATQT1, 0);
+	wr32(hw, hw->aq.asq.head, 0);
+	wr32(hw, hw->aq.asq.tail, 0);
 
 	/* set starting point */
-	wr32(hw, IAVF_VF_ATQLEN1, (hw->aq.num_asq_entries |
+	wr32(hw, hw->aq.asq.len, (hw->aq.num_asq_entries |
 				  IAVF_VF_ATQLEN1_ATQENABLE_MASK));
-	wr32(hw, IAVF_VF_ATQBAL1, lower_32_bits(hw->aq.asq.desc_buf.pa));
-	wr32(hw, IAVF_VF_ATQBAH1, upper_32_bits(hw->aq.asq.desc_buf.pa));
+	wr32(hw, hw->aq.asq.bal, lower_32_bits(hw->aq.asq.desc_buf.pa));
+	wr32(hw, hw->aq.asq.bah, upper_32_bits(hw->aq.asq.desc_buf.pa));
 
 	/* Check one register to verify that config was applied */
-	reg = rd32(hw, IAVF_VF_ATQBAL1);
+	reg = rd32(hw, hw->aq.asq.bal);
 	if (reg != lower_32_bits(hw->aq.asq.desc_buf.pa))
 		ret_code = IAVF_ERR_ADMIN_QUEUE_ERROR;
 
@@ -267,20 +288,20 @@ static enum iavf_status iavf_config_arq_regs(struct iavf_hw *hw)
 	u32 reg = 0;
 
 	/* Clear Head and Tail */
-	wr32(hw, IAVF_VF_ARQH1, 0);
-	wr32(hw, IAVF_VF_ARQT1, 0);
+	wr32(hw, hw->aq.arq.head, 0);
+	wr32(hw, hw->aq.arq.tail, 0);
 
 	/* set starting point */
-	wr32(hw, IAVF_VF_ARQLEN1, (hw->aq.num_arq_entries |
+	wr32(hw, hw->aq.arq.len, (hw->aq.num_arq_entries |
 				  IAVF_VF_ARQLEN1_ARQENABLE_MASK));
-	wr32(hw, IAVF_VF_ARQBAL1, lower_32_bits(hw->aq.arq.desc_buf.pa));
-	wr32(hw, IAVF_VF_ARQBAH1, upper_32_bits(hw->aq.arq.desc_buf.pa));
+	wr32(hw, hw->aq.arq.bal, lower_32_bits(hw->aq.arq.desc_buf.pa));
+	wr32(hw, hw->aq.arq.bah, upper_32_bits(hw->aq.arq.desc_buf.pa));
 
 	/* Update tail in the HW to post pre-allocated buffers */
-	wr32(hw, IAVF_VF_ARQT1, hw->aq.num_arq_entries - 1);
+	wr32(hw, hw->aq.arq.tail, hw->aq.num_arq_entries - 1);
 
 	/* Check one register to verify that config was applied */
-	reg = rd32(hw, IAVF_VF_ARQBAL1);
+	reg = rd32(hw, hw->aq.arq.bal);
 	if (reg != lower_32_bits(hw->aq.arq.desc_buf.pa))
 		ret_code = IAVF_ERR_ADMIN_QUEUE_ERROR;
 
@@ -303,7 +324,6 @@ static enum iavf_status iavf_config_arq_regs(struct iavf_hw *hw)
 static enum iavf_status iavf_init_asq(struct iavf_hw *hw)
 {
 	enum iavf_status ret_code = 0;
-	int i;
 
 	if (hw->aq.asq.count > 0) {
 		/* queue already initialized */
@@ -334,16 +354,11 @@ static enum iavf_status iavf_init_asq(struct iavf_hw *hw)
 	/* initialize base registers */
 	ret_code = iavf_config_asq_regs(hw);
 	if (ret_code)
-		goto init_free_asq_bufs;
+		goto init_adminq_free_rings;
 
 	/* success! */
 	hw->aq.asq.count = hw->aq.num_asq_entries;
 	goto init_adminq_exit;
-
-init_free_asq_bufs:
-	for (i = 0; i < hw->aq.num_asq_entries; i++)
-		iavf_free_dma_mem(hw, &hw->aq.asq.r.asq_bi[i]);
-	iavf_free_virt_mem(hw, &hw->aq.asq.dma_head);
 
 init_adminq_free_rings:
 	iavf_free_adminq_asq(hw);
@@ -368,7 +383,6 @@ init_adminq_exit:
 static enum iavf_status iavf_init_arq(struct iavf_hw *hw)
 {
 	enum iavf_status ret_code = 0;
-	int i;
 
 	if (hw->aq.arq.count > 0) {
 		/* queue already initialized */
@@ -399,16 +413,12 @@ static enum iavf_status iavf_init_arq(struct iavf_hw *hw)
 	/* initialize base registers */
 	ret_code = iavf_config_arq_regs(hw);
 	if (ret_code)
-		goto init_free_arq_bufs;
+		goto init_adminq_free_rings;
 
 	/* success! */
 	hw->aq.arq.count = hw->aq.num_arq_entries;
 	goto init_adminq_exit;
 
-init_free_arq_bufs:
-	for (i = 0; i < hw->aq.num_arq_entries; i++)
-		iavf_free_dma_mem(hw, &hw->aq.arq.r.arq_bi[i]);
-	iavf_free_virt_mem(hw, &hw->aq.arq.dma_head);
 init_adminq_free_rings:
 	iavf_free_adminq_arq(hw);
 
@@ -434,11 +444,11 @@ static enum iavf_status iavf_shutdown_asq(struct iavf_hw *hw)
 	}
 
 	/* Stop firmware AdminQ processing */
-	wr32(hw, IAVF_VF_ATQH1, 0);
-	wr32(hw, IAVF_VF_ATQT1, 0);
-	wr32(hw, IAVF_VF_ATQLEN1, 0);
-	wr32(hw, IAVF_VF_ATQBAL1, 0);
-	wr32(hw, IAVF_VF_ATQBAH1, 0);
+	wr32(hw, hw->aq.asq.head, 0);
+	wr32(hw, hw->aq.asq.tail, 0);
+	wr32(hw, hw->aq.asq.len, 0);
+	wr32(hw, hw->aq.asq.bal, 0);
+	wr32(hw, hw->aq.asq.bah, 0);
 
 	hw->aq.asq.count = 0; /* to indicate uninitialized queue */
 
@@ -468,11 +478,11 @@ static enum iavf_status iavf_shutdown_arq(struct iavf_hw *hw)
 	}
 
 	/* Stop firmware AdminQ processing */
-	wr32(hw, IAVF_VF_ARQH1, 0);
-	wr32(hw, IAVF_VF_ARQT1, 0);
-	wr32(hw, IAVF_VF_ARQLEN1, 0);
-	wr32(hw, IAVF_VF_ARQBAL1, 0);
-	wr32(hw, IAVF_VF_ARQBAH1, 0);
+	wr32(hw, hw->aq.arq.head, 0);
+	wr32(hw, hw->aq.arq.tail, 0);
+	wr32(hw, hw->aq.arq.len, 0);
+	wr32(hw, hw->aq.arq.bal, 0);
+	wr32(hw, hw->aq.arq.bah, 0);
 
 	hw->aq.arq.count = 0; /* to indicate uninitialized queue */
 
@@ -508,6 +518,9 @@ enum iavf_status iavf_init_adminq(struct iavf_hw *hw)
 		goto init_adminq_exit;
 	}
 
+	/* Set up register offsets */
+	iavf_adminq_init_regs(hw);
+
 	/* setup ASQ command write back timeout */
 	hw->aq.asq_cmd_timeout = IAVF_ASQ_CMD_TIMEOUT;
 
@@ -538,13 +551,15 @@ init_adminq_exit:
  **/
 enum iavf_status iavf_shutdown_adminq(struct iavf_hw *hw)
 {
+	enum iavf_status ret_code = 0;
+
 	if (iavf_check_asq_alive(hw))
 		iavf_aq_queue_shutdown(hw, true);
 
 	iavf_shutdown_asq(hw);
 	iavf_shutdown_arq(hw);
 
-	return 0;
+	return ret_code;
 }
 
 /**
@@ -563,9 +578,9 @@ static u16 iavf_clean_asq(struct iavf_hw *hw)
 
 	desc = IAVF_ADMINQ_DESC(*asq, ntc);
 	details = IAVF_ADMINQ_DETAILS(*asq, ntc);
-	while (rd32(hw, IAVF_VF_ATQH1) != ntc) {
+	while (rd32(hw, hw->aq.asq.head) != ntc) {
 		iavf_debug(hw, IAVF_DEBUG_AQ_MESSAGE,
-			   "ntc %d head %d.\n", ntc, rd32(hw, IAVF_VF_ATQH1));
+			   "ntc %d head %d.\n", ntc, rd32(hw, hw->aq.asq.head));
 
 		if (details->callback) {
 			IAVF_ADMINQ_CALLBACK cb_func =
@@ -600,7 +615,7 @@ bool iavf_asq_done(struct iavf_hw *hw)
 	/* AQ designers suggest use of head for better
 	 * timing reliability than DD bit
 	 */
-	return rd32(hw, IAVF_VF_ATQH1) == hw->aq.asq.next_to_use;
+	return rd32(hw, hw->aq.asq.head) == hw->aq.asq.next_to_use;
 }
 
 /**
@@ -639,7 +654,7 @@ enum iavf_status iavf_asq_send_command(struct iavf_hw *hw,
 
 	hw->aq.asq_last_status = IAVF_AQ_RC_OK;
 
-	val = rd32(hw, IAVF_VF_ATQH1);
+	val = rd32(hw, hw->aq.asq.head);
 	if (val >= hw->aq.num_asq_entries) {
 		iavf_debug(hw, IAVF_DEBUG_AQ_MESSAGE,
 			   "AQTX: head overrun at %d\n", val);
@@ -731,7 +746,7 @@ enum iavf_status iavf_asq_send_command(struct iavf_hw *hw,
 	if (hw->aq.asq.next_to_use == hw->aq.asq.count)
 		hw->aq.asq.next_to_use = 0;
 	if (!details->postpone)
-		wr32(hw, IAVF_VF_ATQT1, hw->aq.asq.next_to_use);
+		wr32(hw, hw->aq.asq.tail, hw->aq.asq.next_to_use);
 
 	/* if cmd_details are not defined or async flag is not set,
 	 * we need to wait for desc write back
@@ -786,7 +801,7 @@ enum iavf_status iavf_asq_send_command(struct iavf_hw *hw,
 	/* update the error if time out occurred */
 	if ((!cmd_completed) &&
 	    (!details->async && !details->postpone)) {
-		if (rd32(hw, IAVF_VF_ATQLEN1) & IAVF_VF_ATQLEN1_ATQCRIT_MASK) {
+		if (rd32(hw, hw->aq.asq.len) & IAVF_VF_ATQLEN1_ATQCRIT_MASK) {
 			iavf_debug(hw, IAVF_DEBUG_AQ_MESSAGE,
 				   "AQTX: AQ Critical error.\n");
 			status = IAVF_ERR_ADMIN_QUEUE_CRITICAL_ERROR;
@@ -854,7 +869,7 @@ enum iavf_status iavf_clean_arq_element(struct iavf_hw *hw,
 	}
 
 	/* set next_to_use to head */
-	ntu = rd32(hw, IAVF_VF_ARQH1) & IAVF_VF_ARQH1_ARQH_MASK;
+	ntu = rd32(hw, hw->aq.arq.head) & IAVF_VF_ARQH1_ARQH_MASK;
 	if (ntu == ntc) {
 		/* nothing to do - shouldn't need to update ring's values */
 		ret_code = IAVF_ERR_ADMIN_QUEUE_NO_WORK;
@@ -902,7 +917,7 @@ enum iavf_status iavf_clean_arq_element(struct iavf_hw *hw,
 	desc->params.external.addr_low = cpu_to_le32(lower_32_bits(bi->pa));
 
 	/* set tail = the last cleaned desc index. */
-	wr32(hw, IAVF_VF_ARQT1, ntc);
+	wr32(hw, hw->aq.arq.tail, ntc);
 	/* ntc is updated to tail + 1 */
 	ntc++;
 	if (ntc == hw->aq.num_arq_entries)

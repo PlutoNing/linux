@@ -39,7 +39,7 @@ static struct inode *jffs2_alloc_inode(struct super_block *sb)
 {
 	struct jffs2_inode_info *f;
 
-	f = alloc_inode_sb(sb, jffs2_inode_cachep, GFP_KERNEL);
+	f = kmem_cache_alloc(jffs2_inode_cachep, GFP_KERNEL);
 	if (!f)
 		return NULL;
 	return &f->vfs_inode;
@@ -88,7 +88,7 @@ static int jffs2_show_options(struct seq_file *s, struct dentry *root)
 
 	if (opts->override_compr)
 		seq_printf(s, ",compr=%s", jffs2_compr_name(opts->compr));
-	if (opts->set_rp_size)
+	if (opts->rp_size)
 		seq_printf(s, ",rp_size=%u", opts->rp_size / 1024);
 
 	return 0;
@@ -150,7 +150,6 @@ static struct dentry *jffs2_get_parent(struct dentry *child)
 }
 
 static const struct export_operations jffs2_export_ops = {
-	.encode_fh = generic_encode_ino32_fh,
 	.get_parent = jffs2_get_parent,
 	.fh_to_dentry = jffs2_fh_to_dentry,
 	.fh_to_parent = jffs2_fh_to_parent,
@@ -168,21 +167,27 @@ enum {
 	Opt_rp_size,
 };
 
-static const struct constant_table jffs2_param_compr[] = {
-	{"none",	JFFS2_COMPR_MODE_NONE },
+static const struct fs_parameter_spec jffs2_param_specs[] = {
+	fsparam_enum	("compr",	Opt_override_compr),
+	fsparam_u32	("rp_size",	Opt_rp_size),
+	{}
+};
+
+static const struct fs_parameter_enum jffs2_param_enums[] = {
+	{ Opt_override_compr,	"none",	JFFS2_COMPR_MODE_NONE },
 #ifdef CONFIG_JFFS2_LZO
-	{"lzo",		JFFS2_COMPR_MODE_FORCELZO },
+	{ Opt_override_compr,	"lzo",	JFFS2_COMPR_MODE_FORCELZO },
 #endif
 #ifdef CONFIG_JFFS2_ZLIB
-	{"zlib",	JFFS2_COMPR_MODE_FORCEZLIB },
+	{ Opt_override_compr,	"zlib",	JFFS2_COMPR_MODE_FORCEZLIB },
 #endif
 	{}
 };
 
-static const struct fs_parameter_spec jffs2_fs_parameters[] = {
-	fsparam_enum	("compr",	Opt_override_compr, jffs2_param_compr),
-	fsparam_u32	("rp_size",	Opt_rp_size),
-	{}
+const struct fs_parameter_description jffs2_fs_parameters = {
+	.name		= "jffs2",
+	.specs		= jffs2_param_specs,
+	.enums		= jffs2_param_enums,
 };
 
 static int jffs2_parse_param(struct fs_context *fc, struct fs_parameter *param)
@@ -191,7 +196,7 @@ static int jffs2_parse_param(struct fs_context *fc, struct fs_parameter *param)
 	struct jffs2_sb_info *c = fc->s_fs_info;
 	int opt;
 
-	opt = fs_parse(fc, jffs2_fs_parameters, param, &result);
+	opt = fs_parse(fc, &jffs2_fs_parameters, param, &result);
 	if (opt < 0)
 		return opt;
 
@@ -203,8 +208,11 @@ static int jffs2_parse_param(struct fs_context *fc, struct fs_parameter *param)
 	case Opt_rp_size:
 		if (result.uint_32 > UINT_MAX / 1024)
 			return invalf(fc, "jffs2: rp_size unrepresentable");
-		c->mount_opts.rp_size = result.uint_32 * 1024;
-		c->mount_opts.set_rp_size = true;
+		opt = result.uint_32 * 1024;
+		if (opt > c->mtd->size)
+			return invalf(fc, "jffs2: Too large reserve pool specified, max is %llu KB",
+				      c->mtd->size / 1024);
+		c->mount_opts.rp_size = opt;
 		break;
 	default:
 		return -EINVAL;
@@ -213,30 +221,11 @@ static int jffs2_parse_param(struct fs_context *fc, struct fs_parameter *param)
 	return 0;
 }
 
-static inline void jffs2_update_mount_opts(struct fs_context *fc)
-{
-	struct jffs2_sb_info *new_c = fc->s_fs_info;
-	struct jffs2_sb_info *c = JFFS2_SB_INFO(fc->root->d_sb);
-
-	mutex_lock(&c->alloc_sem);
-	if (new_c->mount_opts.override_compr) {
-		c->mount_opts.override_compr = new_c->mount_opts.override_compr;
-		c->mount_opts.compr = new_c->mount_opts.compr;
-	}
-	if (new_c->mount_opts.set_rp_size) {
-		c->mount_opts.set_rp_size = new_c->mount_opts.set_rp_size;
-		c->mount_opts.rp_size = new_c->mount_opts.rp_size;
-	}
-	mutex_unlock(&c->alloc_sem);
-}
-
 static int jffs2_reconfigure(struct fs_context *fc)
 {
 	struct super_block *sb = fc->root->d_sb;
 
 	sync_filesystem(sb);
-	jffs2_update_mount_opts(fc);
-
 	return jffs2_do_remount_fs(sb, fc);
 }
 
@@ -265,10 +254,6 @@ static int jffs2_fill_super(struct super_block *sb, struct fs_context *fc)
 
 	c->mtd = sb->s_mtd;
 	c->os_priv = sb;
-
-	if (c->mount_opts.rp_size > c->mtd->size)
-		return invalf(fc, "jffs2: Too large reserve pool specified, max is %llu KB",
-			      c->mtd->size / 1024);
 
 	/* Initialize JFFS2 superblock locks, the further initialization will
 	 * be done later */
@@ -354,7 +339,7 @@ static struct file_system_type jffs2_fs_type = {
 	.owner =	THIS_MODULE,
 	.name =		"jffs2",
 	.init_fs_context = jffs2_init_fs_context,
-	.parameters =	jffs2_fs_parameters,
+	.parameters =	&jffs2_fs_parameters,
 	.kill_sb =	jffs2_kill_sb,
 };
 MODULE_ALIAS_FS("jffs2");
@@ -387,7 +372,7 @@ static int __init init_jffs2_fs(void)
 	jffs2_inode_cachep = kmem_cache_create("jffs2_i",
 					     sizeof(struct jffs2_inode_info),
 					     0, (SLAB_RECLAIM_ACCOUNT|
-						SLAB_ACCOUNT),
+						SLAB_MEM_SPREAD|SLAB_ACCOUNT),
 					     jffs2_i_init_once);
 	if (!jffs2_inode_cachep) {
 		pr_err("error: Failed to initialise inode cache\n");
