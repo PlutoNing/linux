@@ -23,6 +23,8 @@ struct mm_struct;
 /*
  * Describe a memory policy.
  *
+ 2024年6月17日23:06:26
+
  * A mempolicy can be either associated with a process or with a VMA.
  * For VMA related allocations the VMA policy is preferred, otherwise
  * the process policy is used. Interrupts ignore the memory policy
@@ -41,6 +43,10 @@ struct mm_struct;
  * mpol_dup() allocates a new mempolicy and copies the specified mempolicy
  * to the new storage.  The reference count of the new object is initialized
  * to 1, representing the caller of mpol_dup().
+ =================================
+ 其中最重要的就是mode成员
+ ==============================
+ 在进程和vma级别都有各自的mempolicy指针。当我们在分配内存时，就会根据对应的mempolicy来分配。
  */
 struct mempolicy {
 	atomic_t refcnt;

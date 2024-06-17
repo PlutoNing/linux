@@ -25,6 +25,8 @@ enum oom_constraint {
 /*
  * Details of the page allocation that triggered the oom killer that are used to
  * determine what should be killed.
+ 2024年6月17日22:51:34
+ 
  */
 struct oom_control {
 	/* Used to determine cpuset */

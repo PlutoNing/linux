@@ -127,6 +127,12 @@ static struct mempolicy default_policy = {
 
 static struct mempolicy preferred_node_policy[MAX_NUMNODES];
 
+/*
+2024年6月17日23:27:06
+get_task_policy
+实际使用过程中可以通过get_task_policy 
+来得到task的内存分配策略
+*/
 struct mempolicy *get_task_policy(struct task_struct *p)
 {
 	struct mempolicy *pol = p->mempolicy;
@@ -134,9 +140,11 @@ struct mempolicy *get_task_policy(struct task_struct *p)
 
 	if (pol)
 		return pol;
-
+		//numa_node_id中调用raw_cpu_read(numa_node)来根据cpuid来得到当前的numa id
 	node = numa_node_id();
 	if (node != NUMA_NO_NODE) {
+		//如果task中的mempolicy为null，则返回numa_policy_init 中初始化的
+		//preferred_node_policy中当前task对应的node的mempolicy
 		pol = &preferred_node_policy[node];
 		/* preferred_node_policy is not initialised early in boot */
 		if (pol->mode)
@@ -788,7 +796,10 @@ static int mbind_range(struct mm_struct *mm, unsigned long start,
 	return err;
 }
 
-/* Set the process memory policy */
+/* Set the process memory policy
+2024年6月17日23:35:05
+首先是进程级别的numa策略设置，由函数set_mempolicy来负责。
+ */
 static long do_set_mempolicy(unsigned short mode, unsigned short flags,
 			     nodemask_t *nodes)
 {
@@ -804,7 +815,7 @@ static long do_set_mempolicy(unsigned short mode, unsigned short flags,
 		ret = PTR_ERR(new);
 		goto out;
 	}
-
+	//安装mem policy
 	task_lock(current);
 	ret = mpol_set_nodemask(new, nodes, scratch);
 	if (ret) {
@@ -2160,6 +2171,8 @@ out:
 EXPORT_SYMBOL(alloc_pages_vma);
 
 /**
+2024年6月17日23:04:28
+
  * 	alloc_pages_current - Allocate pages.
  *
  *	@gfp:
@@ -2705,7 +2718,12 @@ static inline void __init check_numabalancing_enable(void)
 }
 #endif /* CONFIG_NUMA_BALANCING */
 
-/* assumes fs == KERNEL_DS */
+/*
+2024年6月17日23:08:22
+在numa_policy_init 这个函数中会将所有numa节点的内存分配策略设置为MPOL_PREFERRED，即有限从指定的numa
+节点上分配内存。
+ assumes fs == KERNEL_DS */
+
 void __init numa_policy_init(void)
 {
 	nodemask_t interleave_nodes;
@@ -2719,7 +2737,7 @@ void __init numa_policy_init(void)
 	sn_cache = kmem_cache_create("shared_policy_node",
 				     sizeof(struct sp_node),
 				     0, SLAB_PANIC, NULL);
-
+//设置每个numa 节点的内存策略为MPOL_PREFERRED
 	for_each_node(nid) {
 		preferred_node_policy[nid] = (struct mempolicy) {
 			.refcnt = ATOMIC_INIT(1),
@@ -2733,6 +2751,7 @@ void __init numa_policy_init(void)
 	 * Set interleaving policy for system init. Interleaving is only
 	 * enabled across suitably sized nodes (default is >= 16MB), or
 	 * fall back to the largest node if they're all smaller.
+	 下面两种情况设置numa分配策略为interleave_nodes
 	 */
 	nodes_clear(interleave_nodes);
 	for_each_node_state(nid, N_MEMORY) {
@@ -2744,18 +2763,23 @@ void __init numa_policy_init(void)
 			prefer = nid;
 		}
 
-		/* Interleave this node? */
+		/* Interleave this node?
+		numa节点size 大于16M
+		 */
 		if ((total_pages << PAGE_SHIFT) >= (16 << 20))
 			node_set(nid, interleave_nodes);
 	}
 
-	/* All too small, use the largest */
+	/* All too small, use the largest 
+	如果所有的节点size 都要与16M，这样设置为interleave_nodes，以便系统用最大numa节点的memor
+	*/
 	if (unlikely(nodes_empty(interleave_nodes)))
 		node_set(prefer, interleave_nodes);
 
+//将前面已经更新好的interleave_nodes设为为MPOL_INTERLEAVE
 	if (do_set_mempolicy(MPOL_INTERLEAVE, 0, &interleave_nodes))
 		pr_err("%s: interleaving failed\n", __func__);
-
+//检查是否开启numabalance
 	check_numabalancing_enable();
 }
 

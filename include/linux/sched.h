@@ -1064,7 +1064,9 @@ struct task_struct {
 	unsigned long			preempt_disable_ip;
 #endif
 #ifdef CONFIG_NUMA
-	/* Protected by alloc_lock: */
+	/* Protected by alloc_lock:
+	内存分配策略？
+	 */
 	struct mempolicy		*mempolicy;
 	short				il_prev;
 	short				pref_node_fork;
