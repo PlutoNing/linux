@@ -686,12 +686,15 @@ void blk_mq_start_request(struct request *rq)
 	trace_block_rq_issue(q, rq);
 
 /*
-
+2024年06月18日19:28:14
+if trace io
 */
 	if (test_bit(QUEUE_FLAG_STATS, &q->queue_flags)) {
 		rq->io_start_time_ns = ktime_get_ns();
+		//data len mem / sector size
 		rq->stats_sectors = blk_rq_sectors(rq);
 		rq->rq_flags |= RQF_STATS;
+		//qos？
 		rq_qos_issue(q, rq);
 	}
 

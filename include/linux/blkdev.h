@@ -201,7 +201,8 @@ struct request {
 #endif
 	/* Time that this request was allocated for this IO. */
 	u64 start_time_ns;
-	/* Time that I/O was submitted to the device. */
+	/* Time that I/O was submitted to the device.
+	trace io的时候会给rq设置此选项 */
 	u64 io_start_time_ns;
 
 #ifdef CONFIG_BLK_WBT
@@ -217,6 +218,7 @@ struct request {
 	/*
 	 * Number of scatter-gather DMA addr+len pairs after
 	 * physical address coalescing is performed.
+	 
 	 */
 	unsigned short nr_phys_segments;
 
@@ -233,6 +235,7 @@ struct request {
 	refcount_t ref;
 //
 	unsigned int timeout;
+	//finish req ddl
 	unsigned long deadline;
 
 	union {
@@ -399,6 +402,7 @@ static inline int blkdev_reset_zones_ioctl(struct block_device *bdev,
 #endif /* CONFIG_BLK_DEV_ZONED */
 
 /*
+2024年06月18日19:31:28
 
 */
 struct request_queue {
@@ -406,6 +410,7 @@ struct request_queue {
 	struct elevator_queue	*elevator;
 
 	struct blk_queue_stats	*stats;
+	//
 	struct rq_qos		*rq_qos;
 
 	make_request_fn		*make_request_fn;

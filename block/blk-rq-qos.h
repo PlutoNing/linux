@@ -22,17 +22,24 @@ struct rq_wait {
 	wait_queue_head_t wait;
 	atomic_t inflight;
 };
-
+/*
+2024年06月18日19:31:58
+blk rq qos
+*/
 struct rq_qos {
 	struct rq_qos_ops *ops;
 	struct request_queue *q;
 	enum rq_qos_id id;
 	struct rq_qos *next;
 #ifdef CONFIG_BLK_DEBUG_FS
+//
 	struct dentry *debugfs_dir;
 #endif
 };
+/*
+2024年06月18日19:37:31
 
+*/
 struct rq_qos_ops {
 	void (*throttle)(struct rq_qos *, struct bio *);
 	void (*track)(struct rq_qos *, struct request *, struct bio *);

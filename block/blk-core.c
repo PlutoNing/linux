@@ -1305,7 +1305,10 @@ unsigned int blk_rq_err_bytes(const struct request *rq)
 	return bytes;
 }
 EXPORT_SYMBOL_GPL(blk_rq_err_bytes);
+/*
+2024年06月18日19:47:18
 
+*/
 void blk_account_io_completion(struct request *req, unsigned int bytes)
 {
 	if (blk_do_io_stat(req)) {

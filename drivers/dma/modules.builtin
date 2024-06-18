@@ -1,3 +1,5 @@
 drivers/dma/virt-dma.ko
+drivers/dma/idma64.ko
 drivers/dma/dw/dw_dmac_core.ko
 drivers/dma/hsu/hsu_dma.ko
+drivers/dma/ioat/ioatdma.ko

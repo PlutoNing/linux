@@ -32,7 +32,9 @@ struct oom_control {
 	/* Used to determine cpuset */
 	struct zonelist *zonelist;
 
-	/* Used to determine mempolicy */
+	/* Used to determine mempolicy 
+	
+	*/
 	nodemask_t *nodemask;
 
 	/* Memory cgroup in which oom is invoked, or NULL for global oom */

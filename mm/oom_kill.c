@@ -81,6 +81,7 @@ static inline bool is_memcg_oom(struct oom_control *oc)
 #ifdef CONFIG_NUMA
 /**
  * oom_cpuset_eligible() - check task eligiblity for kill
+ 
  * @start: task struct of which task to consider
  * @oc: pointer to struct oom_control
  *
@@ -90,6 +91,7 @@ static inline bool is_memcg_oom(struct oom_control *oc)
  *
  * This function is assuming oom-killer context and 'current' has triggered
  * the oom-killer.
+ 检查进程是否适合kill
  */
 static bool oom_cpuset_eligible(struct task_struct *start,
 				struct oom_control *oc)
@@ -109,12 +111,15 @@ static bool oom_cpuset_eligible(struct task_struct *start,
 			 * cpuset is irrelevant.  Only return true if its
 			 * mempolicy intersects current, otherwise it may be
 			 * needlessly killed.
+
 			 */
 			ret = mempolicy_nodemask_intersects(tsk, mask);
+
 		} else {
 			/*
 			 * This is not a mempolicy constrained oom, so only
 			 * check the mems of tsk's cpuset.
+
 			 */
 			ret = cpuset_mems_allowed_intersects(current, tsk);
 		}
@@ -133,6 +138,8 @@ static bool oom_cpuset_eligible(struct task_struct *tsk, struct oom_control *oc)
 #endif /* CONFIG_NUMA */
 
 /*
+父进程还能自己丢掉mm吗
+那就返回一个还指向mm的p或者sub
  * The process p may have detached its own ->mm while exiting or through
  * use_mm(), but one or more of its subthreads may still have a valid
  * pointer.  Return p, or any of its subthreads with a valid ->mm, with
@@ -160,13 +167,16 @@ found:
 /*
  * order == -1 means the oom kill is required by sysrq, otherwise only
  * for display purposes.
+ 240618
  */
 static inline bool is_sysrq_oom(struct oom_control *oc)
 {
 	return oc->order == -1;
 }
 
-/* return true if the task is not adequate as candidate victim task. */
+/* return true if the task is not adequate as candidate victim task.
+内核线程和global init不能kill
+ */
 static bool oom_unkillable_task(struct task_struct *p)
 {
 	if (is_global_init(p))
@@ -179,6 +189,8 @@ static bool oom_unkillable_task(struct task_struct *p)
 /*
  * Print out unreclaimble slabs info when unreclaimable slabs amount is greater
  * than all user memory (LRU pages)
+ 2024年06月18日11:57:49
+
  */
 static bool is_dump_unreclaim_slabs(void)
 {
@@ -196,6 +208,8 @@ static bool is_dump_unreclaim_slabs(void)
 }
 
 /**
+2024年06月18日11:58:26
+
  * oom_badness - heuristic function to determine which candidate task to kill
  * @p: task struct of which task we should calculate
  * @totalpages: total present RAM allowed for page allocation

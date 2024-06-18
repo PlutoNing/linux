@@ -1,1 +1,3 @@
 drivers/input/keyboard/atkbd.ko
+drivers/input/keyboard/sunkbd.ko
+drivers/input/keyboard/xtkbd.ko

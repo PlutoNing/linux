@@ -46,7 +46,9 @@ void __rq_qos_done(struct rq_qos *rqos, struct request *rq)
 		rqos = rqos->next;
 	} while (rqos);
 }
+/*
 
+*/
 void __rq_qos_issue(struct rq_qos *rqos, struct request *rq)
 {
 	do {

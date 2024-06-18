@@ -1424,6 +1424,7 @@ static inline char task_state_to_char(struct task_struct *tsk)
 }
 
 /**
+检查tgid是不是1
  * is_global_init - check if a task structure is init. Since init
  * is free to have sub-threads we need to check tgid.
  * @tsk: Task structure to be checked.

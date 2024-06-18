@@ -1,1 +1,2 @@
+drivers/firmware/dmi-sysfs.ko
 drivers/firmware/efi/efivars.ko

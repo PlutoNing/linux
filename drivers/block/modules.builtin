@@ -1,1 +1,4 @@
 drivers/block/loop.ko
+drivers/block/virtio_blk.ko
+drivers/block/sx8.ko
+drivers/block/mtip32xx/mtip32xx.ko
