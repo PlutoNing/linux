@@ -203,6 +203,9 @@ extern void radix__arch_pick_mmap_layout(struct mm_struct *mm,
 /*
  * This function, called very early during the creation of a new
  * process VM image, sets up which VM layout function to use:
+ 2024年6月18日21:40:03
+ 在进程启动阶段会调用arch_pick_mmap_layout初始化地址空间layout
+
  */
 void arch_pick_mmap_layout(struct mm_struct *mm, struct rlimit *rlim_stack)
 {
@@ -217,6 +220,7 @@ void arch_pick_mmap_layout(struct mm_struct *mm, struct rlimit *rlim_stack)
 	/*
 	 * Fall back to the standard layout if the personality
 	 * bit is set, or if the expected stack growth is unlimited:
+	 初始化base和get unmapped area函数
 	 */
 	if (mmap_is_legacy(rlim_stack)) {
 		mm->mmap_base = TASK_UNMAPPED_BASE;

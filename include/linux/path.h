@@ -4,7 +4,10 @@
 
 struct dentry;
 struct vfsmount;
+/*
+2024年6月18日21:52:53
 
+*/
 struct path {
 	struct vfsmount *mnt;
 	struct dentry *dentry;

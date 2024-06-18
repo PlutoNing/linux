@@ -288,6 +288,7 @@ struct vm_userfaultfd_ctx {};
  * per VM-area/task.  A VM area is any part of the process virtual memory
  * space that has a special rule for the page-fault handlers (ie a shared
  * library, the executable area etc).
+ 2024年6月18日21:31:04
  */
 struct vm_area_struct {
 	/* The first cache line has the info for VMA tree walking. */
@@ -370,6 +371,8 @@ struct kioctx_table;
 struct mm_struct {
 	struct {
 		struct vm_area_struct *mmap;		/* list of VMAs */
+		/*
+		进程中所有地址区间除了会放到链表mmap还会插入这个红黑树中，分别用于不同应用场景的查找*/
 		struct rb_root mm_rb;
 		u64 vmacache_seqnum;                   /* per-thread vmacache */
 #ifdef CONFIG_MMU
@@ -384,8 +387,9 @@ struct mm_struct {
 		unsigned long mmap_compat_base;
 		unsigned long mmap_compat_legacy_base;
 #endif
-		unsigned long task_size;	/* size of task vm space */
-		unsigned long highest_vm_end;	/* highest vma end address */
+		unsigned long task_size;	/* size of task vm space 栈大小*/
+		unsigned long highest_vm_end;	/* 进程地址空间中没有被使用的highest位置highest vma end address */
+		/*指向进程页表起始地址*/
 		pgd_t * pgd;
 
 #ifdef CONFIG_MEMBARRIER

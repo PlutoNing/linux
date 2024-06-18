@@ -413,35 +413,42 @@ extern pgprot_t protection_map[16];
  * alter it if its implementation requires a different allocation context.
  *
  * pgoff should be used in favour of virtual_address, if possible.
+ 2024年6月18日21:26:01
+这个结构里面用于临时保存缺页异常的所有信息
+
  */
 struct vm_fault {
-	struct vm_area_struct *vma;	/* Target VMA */
-	unsigned int flags;		/* FAULT_FLAG_xxx flags */
-	gfp_t gfp_mask;			/* gfp mask to be used for allocations */
-	pgoff_t pgoff;			/* Logical page offset based on vma */
-	unsigned long address;		/* Faulting virtual address */
+	struct vm_area_struct *vma;	/* Target VMA 触发异常的地址addr所属的vma*/
+	unsigned int flags;		/* FAULT_FLAG_xxx flags 包含FAULT_FLAG_xxx flags*/
+	gfp_t gfp_mask;			/* gfp mask to be used for allocations 用于控制异常过程中的内存分配*/
+	pgoff_t pgoff;			/* Logical page offset based on vma Addr在vma中的page offset*/
+	unsigned long address;		/* Faulting virtual address 触发异常的地址*/
 	pmd_t *pmd;			/* Pointer to pmd entry matching
-					 * the 'address' */
+					 * the 'address' 异常地址所在的pmd*/
 	pud_t *pud;			/* Pointer to pud entry matching
-					 * the 'address'
+					 * the 'address'异常地址所在的pud
 					 */
-	pte_t orig_pte;			/* Value of PTE at the time of fault */
+	pte_t orig_pte;			/* Value of PTE at the time of fault异常时候的pte
 
-	struct page *cow_page;		/* Page handler may use for COW fault */
+ */
+
+	struct page *cow_page;		/* Page handler may use for COW fault 写时复制用于映射到pte中的页
+
+*/
 	struct mem_cgroup *memcg;	/* Cgroup cow_page belongs to */
 	struct page *page;		/* ->fault handlers should return a
 					 * page here, unless VM_FAULT_NOPAGE
 					 * is set (which is also implied by
-					 * VM_FAULT_ERROR).
+					 * VM_FAULT_ERROR).vma->vm_ops->fault返回的页
 					 */
 	/* These three entries are valid only while holding ptl lock */
 	pte_t *pte;			/* Pointer to pte entry matching
 					 * the 'address'. NULL if the page
-					 * table hasn't been allocated.
+					 * table hasn't been allocated.异常之后的pte
 					 */
 	spinlock_t *ptl;		/* Page table lock.
 					 * Protects pte page table if 'pte'
-					 * is not NULL, otherwise pmd.
+					 * is not NULL, otherwise pmd.页表锁，操作页表的时候避免竞争
 					 */
 	pgtable_t prealloc_pte;		/* Pre-allocated pte page table.
 					 * vm_ops->map_pages() calls
@@ -463,21 +470,45 @@ enum page_entry_size {
  * These are the virtual MM functions - opening of an area, closing and
  * unmapping it (needed to keep files on disk up-to-date etc), pointer
  * to the functions called when a no-page or a wp-page exception occurs.
+ 2024年6月18日21:27:37
  */
 struct vm_operations_struct {
 	void (*open)(struct vm_area_struct * area);
 	void (*close)(struct vm_area_struct * area);
 	int (*split)(struct vm_area_struct * area, unsigned long addr);
 	int (*mremap)(struct vm_area_struct * area);
+/*
+2024年6月18日21:27:55
+之后对于 " 文件映射 " , 如果没有映射 " 物理内存页 " , 就会回调 fault 函数 ,
+ 将 文件中的数据 读取到 " 物理内存页 " 中 ;
+
+fault 函数指针 , 指向的函数 , 就是在 回调 fault 函数时 时调用 ;*/
 	vm_fault_t (*fault)(struct vm_fault *vmf);
+	/*
+	2024年6月18日21:28:10
+	huge_fault 函数指针 , 与上面的 fault 函数指针类似 , 只是 huge_fault 
+	函数指针针对的是 使用 " 透明巨型页 " 的文件映射 的情况
+	*/
 	vm_fault_t (*huge_fault)(struct vm_fault *vmf,
 			enum page_entry_size pe_size);
+			/*
+			2024年6月18日21:28:40
+			第一次访问 " 文件映射 " 对应的 " 虚拟内存页 " 时 , 如果发现 文件 没有映射到该 " 虚拟内存页中 " , 会报 " 缺页异常 " ,
+" 异常处理程序 " 会读取 正在访问的文件页 , 以及 预读取 后续的文件页 ,
+调用 map_pages 函数指针指向的函数 , 为 文件页 分配 " 物理内存页 " ;*/
 	void (*map_pages)(struct vm_fault *vmf,
 			pgoff_t start_pgoff, pgoff_t end_pgoff);
 	unsigned long (*pagesize)(struct vm_area_struct * area);
 
 	/* notification that a previously read-only page is about to become
-	 * writable, if an error is returned it will cause a SIGBUS */
+	 * writable, if an error is returned it will cause a SIGBUS
+	 2024年6月18日21:29:08
+	 要 修改 " 私有文件映射 " 对应的 " 虚拟文件页 " 时 ,
+如果是 第一次 写该 内存映射 时 , 会生成 " 页错误异常 " ,
+" 异常处理程序 " 会执行 " 写复制 " 机制 ,调用该 page_mkwrite
+ 函数指针指向的函数 , 通知该 " 文件页 " 马上要变成可写状态 ,
+此时 " 文件系统 " 会检查该 写操作 是否合法 , 是否允许修改该 
+文件页 , 是否需要等待以便进入合适的状态再进行写操作 ; */
 	vm_fault_t (*page_mkwrite)(struct vm_fault *vmf);
 
 	/* same as page_mkwrite when using VM_PFNMAP|VM_MIXEDMAP */
@@ -525,7 +556,10 @@ struct vm_operations_struct {
 	struct page *(*find_special_page)(struct vm_area_struct *vma,
 					  unsigned long addr);
 };
-
+/*
+2024年6月18日21:59:47
+mm与vma建立关系
+*/
 static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 {
 	static const struct vm_operations_struct dummy_vm_ops = {};
@@ -2338,7 +2372,11 @@ extern int __do_munmap(struct mm_struct *, unsigned long, size_t,
 		       struct list_head *uf, bool downgrade);
 extern int do_munmap(struct mm_struct *, unsigned long, size_t,
 		     struct list_head *uf);
+/*
+2024年6月18日21:49:59
 
+
+*/
 static inline unsigned long
 do_mmap_pgoff(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long prot, unsigned long flags,
@@ -2367,7 +2405,10 @@ extern int vm_munmap(unsigned long, size_t);
 extern unsigned long __must_check vm_mmap(struct file *, unsigned long,
         unsigned long, unsigned long,
         unsigned long, unsigned long);
+/*
+2024年6月18日21:42:44
 
+*/
 struct vm_unmapped_area_info {
 #define VM_UNMAPPED_AREA_TOPDOWN 1
 	unsigned long flags;
@@ -2389,6 +2430,8 @@ extern unsigned long unmapped_area_topdown(struct vm_unmapped_area_info *info);
  * - is contained within the [low_limit, high_limit) interval;
  * - is at least the desired size.
  * - satisfies (begin_addr & align_mask) == (align_offset & align_mask)
+ 2024年6月18日21:43:05
+ arch_get_unmapped_area---->vm_unmapped_area----> unmapped_area
  */
 static inline unsigned long
 vm_unmapped_area(struct vm_unmapped_area_info *info)

@@ -1278,7 +1278,11 @@ SYSCALL_DEFINE1(old_adjtimex, struct timex32 __user *, txc_p)
 }
 
 /* Get an address range which is currently unmapped.  Similar to the
-   generic version except that we know how to honor ADDR_LIMIT_32BIT.  */
+   generic version except that we know how to honor ADDR_LIMIT_32BIT.  
+   2024年6月18日21:42:19
+   arch_get_unmapped_area---->vm_unmapped_area----> unmapped_area
+   
+   */
 
 static unsigned long
 arch_get_unmapped_area_1(unsigned long addr, unsigned long len,
@@ -1294,7 +1298,10 @@ arch_get_unmapped_area_1(unsigned long addr, unsigned long len,
 	info.align_offset = 0;
 	return vm_unmapped_area(&info);
 }
-
+/*
+2024年6月18日21:41:41
+arch_get_unmapped_area---->vm_unmapped_area----> unmapped_area
+*/
 unsigned long
 arch_get_unmapped_area(struct file *filp, unsigned long addr,
 		       unsigned long len, unsigned long pgoff,

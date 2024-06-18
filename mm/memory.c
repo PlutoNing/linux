@@ -2947,7 +2947,7 @@ out_release:
  * but allow concurrent faults), and pte mapped but not yet locked.
  * We return with mmap_sem still held, but pte unmapped and unlocked.
  2024年6月17日23:39:57
- 
+ 发生缺页异常时，内核会去分配内存并将页表填好。此时就会考虑到从哪里去分配内存，在这个时候就会去参考之前设置的numa策略。
  */
 static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 {
@@ -3895,6 +3895,7 @@ unlock:
 static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 		unsigned long address, unsigned int flags)
 {
+	////暂存异常过程中的信息
 	struct vm_fault vmf = {
 		.vma = vma,
 		.address = address & PAGE_MASK,
@@ -3909,6 +3910,7 @@ static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 	vm_fault_t ret;
 
 	pgd = pgd_offset(mm, address);
+	//只考虑三级页表的情况，这里的p4d就是pgd
 	p4d = p4d_alloc(mm, pgd, address);
 	if (!p4d)
 		return VM_FAULT_OOM;
@@ -3938,7 +3940,7 @@ static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 			}
 		}
 	}
-
+//如果pmd在pud中不存在就分配一个，并且写到pud中
 	vmf.pmd = pmd_alloc(mm, vmf.pud, address);
 	if (!vmf.pmd)
 		return VM_FAULT_OOM;

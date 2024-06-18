@@ -79,7 +79,15 @@ __load_new_mm_context(struct mm_struct *next_mm)
 #define dpf_reg(r)							\
 	(((unsigned long *)regs)[(r) <= 8 ? (r) : (r) <= 15 ? (r)-16 :	\
 				 (r) <= 18 ? (r)+10 : (r)-10])
+/*
+2024年6月18日22:39:28
+程序访问一个地址addr，但是在页表中没有找到，就会触发一个数据异常，这有两种情况：
+1）程序逻辑错误导致访问非法地址，这种情况会导致进程crash（异常发生在用户空间），
+也可能导致kernel panic（异常发生在内核空间）；2）程序已经分配了相应的虚拟地址
+但是没有映射对应的物理页或者页已经交换出去。第一种情况在以后讲内核调试的时候再
+去详细分析其流程，这里只讲第二种情况。
 
+*/
 asmlinkage void
 do_page_fault(unsigned long address, unsigned long mmcsr,
 	      long cause, struct pt_regs *regs)

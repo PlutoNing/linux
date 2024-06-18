@@ -1393,6 +1393,8 @@ static inline bool file_mmap_ok(struct file *file, struct inode *inode,
 
 /*
  * The caller must hold down_write(&current->mm->mmap_sem).
+ 2024年6月18日21:50:13
+
  */
 unsigned long do_mmap(struct file *file, unsigned long addr,
 			unsigned long len, unsigned long prot,
@@ -1440,8 +1442,15 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 
 	/* Obtain the address to map to. we verify (or select) it and ensure
 	 * that it represents a valid section of the address space.
+	 获取可以映射的地址
 	 */
 	addr = get_unmapped_area(file, addr, len, pgoff, flags);
+
+	/*
+
+	(addr) & ~(~(((1) << 12) - 1)))
+	是4096倍数返回0
+	*/
 	if (offset_in_page(addr))
 		return addr;
 
@@ -1717,7 +1726,9 @@ static inline int accountable_mapping(struct file *file, vm_flags_t vm_flags)
 
 	return (vm_flags & (VM_NORESERVE | VM_SHARED | VM_WRITE)) == VM_WRITE;
 }
-
+/*
+2024年6月18日21:57:38
+*/
 unsigned long mmap_region(struct file *file, unsigned long addr,
 		unsigned long len, vm_flags_t vm_flags, unsigned long pgoff,
 		struct list_head *uf)
@@ -1743,7 +1754,9 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 			return -ENOMEM;
 	}
 
-	/* Clear old maps */
+	/* Clear old maps 
+	查找addr到addr + len区间中重合的映射并解除这些映射，
+	并且返回请求区间的prev和rb_parent*/
 	while (find_vma_links(mm, addr, addr + len, &prev, &rb_link,
 			      &rb_parent)) {
 		if (do_munmap(mm, addr, len, uf))
@@ -1752,6 +1765,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 
 	/*
 	 * Private writable mapping: check memory availability
+
 	 */
 	if (accountable_mapping(file, vm_flags)) {
 		charged = len >> PAGE_SHIFT;
@@ -1762,6 +1776,8 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 
 	/*
 	 * Can we just expand an old mapping?
+
+//尝试将addr到addr + len这段区间合并到现有的映射中去
 	 */
 	vma = vma_merge(mm, prev, addr, addr + len, vm_flags,
 			NULL, file, pgoff, NULL, NULL_VM_UFFD_CTX);
@@ -1772,12 +1788,15 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	 * Determine the object being mapped and call the appropriate
 	 * specific mapper. the address has already been validated, but
 	 * not unmapped, but the maps are removed from the list.
+	 //如果没有可以合并的区间就创建一个独立的区间
+
 	 */
 	vma = vm_area_alloc(mm);
 	if (!vma) {
 		error = -ENOMEM;
 		goto unacct_error;
 	}
+//vma的初始化
 
 	vma->vm_start = addr;
 	vma->vm_end = addr + len;
@@ -1803,6 +1822,8 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		 * new file must not have been exposed to user-space, yet.
 		 */
 		vma->vm_file = get_file(file);
+		/*如果是文件映射就调用对应的file->f_op->mmap(file, vma)，mmap特定于文件系统，如果是ext2，
+		主要做的事就是vma->vm_ops = &generic_file_vm_ops;*/
 		error = call_mmap(file, vma);
 		if (error)
 			goto unmap_and_free_vma;
@@ -1826,6 +1847,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		vma_set_anonymous(vma);
 	}
 
+/*将vma添加到相关链表中：mm ->mmap，红黑树mm ->mm_rb，和address space vma->vm_file->f_mapping*/
 	vma_link(mm, vma, prev, rb_link, rb_parent);
 	/* Once vma denies write, undo our temporary denial count */
 	if (file) {
@@ -1883,7 +1905,11 @@ unacct_error:
 		vm_unacct_memory(charged);
 	return error;
 }
+/*
+2024年6月18日21:43:25
+arch_get_unmapped_area---->vm_unmapped_area----> unmapped_area
 
+*/
 unsigned long unmapped_area(struct vm_unmapped_area_info *info)
 {
 	/*
@@ -1898,7 +1924,9 @@ unsigned long unmapped_area(struct vm_unmapped_area_info *info)
 	struct vm_area_struct *vma;
 	unsigned long length, low_limit, high_limit, gap_start, gap_end;
 
-	/* Adjust search length to account for worst case alignment overhead */
+	/* Adjust search length to account for worst case alignment overhead
+	要查询的长度
+	 */
 	length = info->length + info->align_mask;
 	if (length < info->length)
 		return -ENOMEM;
@@ -1915,12 +1943,14 @@ unsigned long unmapped_area(struct vm_unmapped_area_info *info)
 	/* Check if rbtree root looks promising */
 	if (RB_EMPTY_ROOT(&mm->mm_rb))
 		goto check_highest;
+	////如果红黑树中最大的间隙也没有请求的length大，就从highest位置查找
 	vma = rb_entry(mm->mm_rb.rb_node, struct vm_area_struct, vm_rb);
 	if (vma->rb_subtree_gap < length)
 		goto check_highest;
-
+/*这里说明有足够大的间隙可以容纳length大小的请求，查看红黑数中vma左侧是否由可容纳length大小的请求*/
 	while (true) {
-		/* Visit left subtree if it looks promising */
+		/* Visit left subtree if it looks promising 
+		挨个查询红黑树*/
 		gap_end = vm_start_gap(vma);
 		if (gap_end >= low_limit && vma->vm_rb.rb_left) {
 			struct vm_area_struct *left =
@@ -1941,7 +1971,7 @@ check_current:
 		    gap_end > gap_start && gap_end - gap_start >= length)
 			goto found;
 
-		/* Visit right subtree if it looks promising */
+		/* Visit right subtree if it looks promising//查看红黑数中vma右侧是否由可容纳length大小的请求 */
 		if (vma->vm_rb.rb_right) {
 			struct vm_area_struct *right =
 				rb_entry(vma->vm_rb.rb_right,
@@ -1952,7 +1982,7 @@ check_current:
 			}
 		}
 
-		/* Go back up the rbtree to find next candidate node */
+		/* Go back up the rbtree to find next candidate node//从红黑树vma的上级查找可容纳length大小的请求 */
 		while (true) {
 			struct rb_node *prev = &vma->vm_rb;
 			if (!rb_parent(prev))
@@ -2196,7 +2226,11 @@ arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr,
 	return addr;
 }
 #endif
-
+/*
+2024年6月18日21:37:57
+从地址空间中查找一个长度为len的空闲地址区间，
+如果addr不为0，就检查addr处是否已经被占用如果没有就返回addr。
+*/
 unsigned long
 get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 		unsigned long pgoff, unsigned long flags)
@@ -2225,7 +2259,7 @@ get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 		pgoff = 0;
 		get_area = shmem_get_unmapped_area;
 	}
-
+	//获取地址空间返回
 	addr = get_area(file, addr, len, pgoff, flags);
 	if (IS_ERR_VALUE(addr))
 		return addr;

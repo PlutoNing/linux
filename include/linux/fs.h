@@ -979,7 +979,10 @@ struct file_handle {
 	/* file identifier */
 	unsigned char f_handle[0];
 };
+/**
+2024年6月18日22:33:51
 
+类似put file */
 static inline struct file *get_file(struct file *f)
 {
 	atomic_long_inc(&f->f_count);

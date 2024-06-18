@@ -104,7 +104,9 @@ static inline void put_binfmt(struct linux_binfmt * fmt)
 {
 	module_put(fmt->module);
 }
-
+/*
+2024年6月18日21:52:41
+*/
 bool path_noexec(const struct path *path)
 {
 	return (path->mnt->mnt_flags & MNT_NOEXEC) ||
