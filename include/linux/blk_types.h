@@ -140,6 +140,8 @@ static inline void bio_issue_init(struct bio_issue *issue,
 /*
  * main unit of I/O for the block layer and lower layers (ie drivers and
  * stacking drivers)
+ 2024年06月19日10:29:50
+
  */
 struct bio {
 	struct bio		*bi_next;	/* request queue link */
@@ -153,9 +155,9 @@ struct bio {
 	unsigned short		bi_write_hint;
 	blk_status_t		bi_status;
 	u8			bi_partno;
-
+//目的地？
 	struct bvec_iter	bi_iter;
-
+// 关联 bio 的数量
 	atomic_t		__bi_remaining;
 	bio_end_io_t		*bi_end_io;
 
@@ -166,6 +168,7 @@ struct bio {
 	 * If a bio goes direct to device, it will not have a blkg as it will
 	 * not have a request_queue associated with it.  The reference is put
 	 * on release of the bio.
+	 cgroup相关
 	 */
 	struct blkcg_gq		*bi_blkg;
 	struct bio_issue	bi_issue;
@@ -197,6 +200,7 @@ struct bio {
 	 * We can inline a number of vecs at the end of the bio, to avoid
 	 * double allocations for a small number of bio_vecs. This member
 	 * MUST obviously be kept at the very end of the bio.
+	 表示跟在 bio 后面的数据集合
 	 */
 	struct bio_vec		bi_inline_vecs[0];
 };

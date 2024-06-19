@@ -57,6 +57,7 @@
 
 /*
  * Check whether this bio carries any data or not. A NULL bio is allowed.
+ 2024年06月19日11:30:48
  */
 static inline bool bio_has_data(struct bio *bio)
 {
@@ -243,7 +244,10 @@ static inline void bio_clear_flag(struct bio *bio, unsigned int bit)
 {
 	bio->bi_flags &= ~(1U << bit);
 }
+/*
 
+2024年06月19日11:32:59
+*/
 static inline void bio_get_first_bvec(struct bio *bio, struct bio_vec *bv)
 {
 	*bv = bio_iovec(bio);

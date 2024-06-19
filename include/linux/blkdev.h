@@ -129,6 +129,16 @@ enum mq_rq_state {
  *
  * If you modify this structure, make sure to update blk_rq_init() and
  * especially blk_mq_rq_ctx_init() to take care of the added fields.
+ 2024年06月19日14:30:10
+ 一个request包含一个或多个代表连续IO请求的bio，一些跟踪总体状态的信息（比如时间戳，哪个CPU发来的请求），
+ 和一些用来链入更大数据结构的“锚点”，比如用struct list_head queuelist链入一个简单的队列结构，
+ 用struct hlist_node hash链入一个哈希表(用来查找与新bio相邻的请求)，用struct rb_node rb_node
+ 来把请求放在一棵红黑树上。在分配一个request结构体的时候，有时候要分配一些额外的空间来给底层驱动保存
+ 一些额外的信息。有时候这些空间用来保存命令头部，
+ 以便发送给底层设备，比如 SCSI command descriptor block，驱动可以自由地决定如何使用这块空间。
+ ======================
+ 相应的make_request_fn()函数 (单队列是blk_queue_bio，多队列是blk_mq_make_request())为IO请求
+ 创建一个request结构体，然后把交给IO调度器
  */
 struct request {
 	struct request_queue *q;
@@ -144,8 +154,9 @@ struct request {
 	/* the following two fields are internal, NEVER access directly */
 	unsigned int __data_len;	/* total data len */
 	sector_t __sector;		/* sector cursor */
-
+//请求bio结构体的链表。
 	struct bio *bio;
+	// 请求bio结构体的链表尾，新加入的bio链在后面
 	struct bio *biotail;
 
 	struct list_head queuelist;
@@ -194,6 +205,7 @@ struct request {
 	};
 
 	struct gendisk *rq_disk;
+	//req所属的分区
 	struct hd_struct *part;
 #ifdef CONFIG_BLK_RQ_ALLOC_TIME
 	/* Time that the first bio started allocating this request. */
@@ -202,7 +214,9 @@ struct request {
 	/* Time that this request was allocated for this IO. */
 	u64 start_time_ns;
 	/* Time that I/O was submitted to the device.
-	trace io的时候会给rq设置此选项 */
+	trace io的时候会给rq设置此选项
+submit也是	
+	 */
 	u64 io_start_time_ns;
 
 #ifdef CONFIG_BLK_WBT
@@ -218,7 +232,8 @@ struct request {
 	/*
 	 * Number of scatter-gather DMA addr+len pairs after
 	 * physical address coalescing is performed.
-	 
+	 bio段的数目
+	 每次加入一个bio，这里+1
 	 */
 	unsigned short nr_phys_segments;
 
@@ -320,7 +335,10 @@ enum blk_zoned_model {
 	BLK_ZONED_HA,	/* Host-aware zoned block device */
 	BLK_ZONED_HM,	/* Host-managed zoned block device */
 };
+/*
+2024年06月19日14:24:40
 
+*/
 struct queue_limits {
 	unsigned long		bounce_pfn;
 	unsigned long		seg_boundary_mask;
@@ -403,7 +421,11 @@ static inline int blkdev_reset_zones_ioctl(struct block_device *bdev,
 
 /*
 2024年06月18日19:31:28
-
+struct request_queue之于struct request的关系，非常像struct gendisk之于struct bio
+的关系：一个代表具体的设备，一个代表IO请求。需要注意的是，每个gendisk都有一个关联的request_queue
+结构体，但是只有那些使用了"request层"的设备才会分配request结构体。按理说，适用于所有块设备的域，
+比如struct queue_limits，都应该放到gendisk结构体里面，而
+对于一些仅适用于"request层"队列管理的域，其实只应当分配给那些使用了"request层"的设备。
 */
 struct request_queue {
 	struct request		*last_merge;
@@ -930,6 +952,7 @@ static inline struct request_queue *bdev_get_queue(struct block_device *bdev)
  * blk_rq_sectors()		: sectors left in the entire request
  * blk_rq_cur_sectors()		: sectors left in the current segment
  * blk_rq_stats_sectors()	: sectors of the entire request used for stats
+ 2024年06月19日14:39:28
  */
 static inline sector_t blk_rq_pos(const struct request *rq)
 {
@@ -998,7 +1021,10 @@ static inline struct bio_vec req_bvec(struct request *rq)
 		return rq->special_vec;
 	return mp_bvec_iter_bvec(rq->bio->bi_io_vec, rq->bio->bi_iter);
 }
-
+/*
+2024年06月19日14:47:53
+队列的最大扇区数？
+*/
 static inline unsigned int blk_queue_get_max_sectors(struct request_queue *q,
 						     int op)
 {
@@ -1018,6 +1044,8 @@ static inline unsigned int blk_queue_get_max_sectors(struct request_queue *q,
 /*
  * Return maximum size of a request at given offset. Only valid for
  * file system requests.
+ 2024年06月19日14:46:50
+
  */
 static inline unsigned int blk_max_size_offset(struct request_queue *q,
 					       sector_t offset)
@@ -1028,7 +1056,10 @@ static inline unsigned int blk_max_size_offset(struct request_queue *q,
 	return min(q->limits.max_sectors, (unsigned int)(q->limits.chunk_sectors -
 			(offset & (q->limits.chunk_sectors - 1))));
 }
+/*
+2024年06月19日14:46:05
 
+*/
 static inline unsigned int blk_rq_get_max_sectors(struct request *rq,
 						  sector_t offset)
 {
@@ -1141,6 +1172,9 @@ static inline unsigned short blk_rq_nr_phys_segments(struct request *rq)
 /*
  * Number of discard segments (or ranges) the driver needs to fill in.
  * Each discard bio merged into a request is counted as one segment.
+ 2024年06月19日14:22:48
+ discard seg是什么
+
  */
 static inline unsigned short blk_rq_nr_discard_segments(struct request *rq)
 {

@@ -617,7 +617,10 @@ bool bio_attempt_back_merge(struct request *req, struct bio *bio,
 	blk_account_io_start(req, false);
 	return true;
 }
+/*
+2024年06月19日10:28:29
 
+*/
 bool bio_attempt_front_merge(struct request *req, struct bio *bio,
 		unsigned int nr_segs)
 {
@@ -641,7 +644,10 @@ bool bio_attempt_front_merge(struct request *req, struct bio *bio,
 	blk_account_io_start(req, false);
 	return true;
 }
+/*
+2024年06月19日14:22:03
 
+*/
 bool bio_attempt_discard_merge(struct request_queue *q, struct request *req,
 		struct bio *bio)
 {
@@ -649,12 +655,14 @@ bool bio_attempt_discard_merge(struct request_queue *q, struct request *req,
 
 	if (segments >= queue_max_discard_segments(q))
 		goto no_merge;
+
+
 	if (blk_rq_sectors(req) + bio_sectors(bio) >
 	    blk_rq_get_max_sectors(req, blk_rq_pos(req)))
 		goto no_merge;
 
 	rq_qos_merge(q, req, bio);
-
+	//链入req
 	req->biotail->bi_next = bio;
 	req->biotail = bio;
 	req->__data_len += bio->bi_iter.bi_size;
@@ -1307,7 +1315,7 @@ unsigned int blk_rq_err_bytes(const struct request *rq)
 EXPORT_SYMBOL_GPL(blk_rq_err_bytes);
 /*
 2024年06月18日19:47:18
-
+记账吗
 */
 void blk_account_io_completion(struct request *req, unsigned int bytes)
 {
@@ -1321,7 +1329,10 @@ void blk_account_io_completion(struct request *req, unsigned int bytes)
 		part_stat_unlock();
 	}
 }
-
+/*
+2024年06月19日10:08:48
+io完成时候的记账
+*/
 void blk_account_io_done(struct request *req, u64 now)
 {
 	/*
@@ -1346,7 +1357,9 @@ void blk_account_io_done(struct request *req, u64 now)
 		part_stat_unlock();
 	}
 }
-
+/*
+2024年06月19日15:05:15
+*/
 void blk_account_io_start(struct request *rq, bool new_io)
 {
 	struct hd_struct *part;
@@ -1386,6 +1399,8 @@ void blk_account_io_start(struct request *rq, bool new_io)
 /*
  * Steal bios from a request and add them to a bio list.
  * The request must not have been partially completed before.
+ 2024年06月19日15:07:07
+ 
  */
 void blk_steal_bios(struct bio_list *list, struct request *rq)
 {

@@ -1697,7 +1697,10 @@ defer:
 	spin_unlock_irqrestore(&bio_dirty_lock, flags);
 	schedule_work(&bio_dirty_work);
 }
-
+/*
+2024年06月19日10:09:51
+更新part-diskstats
+*/
 void update_io_ticks(struct hd_struct *part, unsigned long now)
 {
 	unsigned long stamp;

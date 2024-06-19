@@ -84,7 +84,12 @@ void __rq_qos_track(struct rq_qos *rqos, struct request *rq, struct bio *bio)
 		rqos = rqos->next;
 	} while (rqos);
 }
+/*
+2024年06月19日14:54:11
+qos相关
+可能有不同的机制
 
+*/
 void __rq_qos_merge(struct rq_qos *rqos, struct request *rq, struct bio *bio)
 {
 	do {

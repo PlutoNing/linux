@@ -70,6 +70,7 @@ static inline void blk_queue_enter_live(struct request_queue *q)
 	 */
 	percpu_ref_get(&q->q_usage_counter);
 }
+//2024年06月19日11:42:10
 
 static inline bool biovec_phys_mergeable(struct request_queue *q,
 		struct bio_vec *vec1, struct bio_vec *vec2)
@@ -243,7 +244,9 @@ int blk_dev_init(void);
  *
  *	a) it's attached to a gendisk, and
  *	b) the queue had IO stats enabled when this request was started, and
- *	c) it's a file system request
+ *	c) it's a file ooosystem request
+ 2024年06月19日09:44:53
+ 是否开启了记账？
  */
 static inline bool blk_do_io_stat(struct request *rq)
 {
@@ -251,7 +254,11 @@ static inline bool blk_do_io_stat(struct request *rq)
 	       (rq->rq_flags & RQF_IO_STAT) &&
 		!blk_rq_is_passthrough(rq);
 }
+/*
+2024年06月19日14:26:19
+merge是什么
 
+*/
 static inline void req_set_nomerge(struct request_queue *q, struct request *req)
 {
 	req->cmd_flags |= REQ_NOMERGE;

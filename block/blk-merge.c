@@ -11,7 +11,9 @@
 #include <trace/events/block.h>
 
 #include "blk.h"
+/*
 
+*/
 static inline bool bio_will_gap(struct request_queue *q,
 		struct request *prev_rq, struct bio *prev, struct bio *next)
 {
@@ -24,6 +26,7 @@ static inline bool bio_will_gap(struct request_queue *q,
 	 * Don't merge if the 1st bio starts with non-zero offset, otherwise it
 	 * is quite difficult to respect the sg gap limit.  We work hard to
 	 * merge a huge number of small single bios in case of mkfs.
+	 
 	 */
 	if (prev_rq)
 		bio_get_first_bvec(prev_rq->bio, &pb);
@@ -584,7 +587,9 @@ int ll_back_merge_fn(struct request *req, struct bio *bio, unsigned int nr_segs)
 
 	return ll_new_hw_segment(req, bio, nr_segs);
 }
-
+/*
+2024年06月19日10:33:23
+*/
 int ll_front_merge_fn(struct request *req, struct bio *bio, unsigned int nr_segs)
 {
 	if (req_gap_front_merge(req, bio))

@@ -104,7 +104,10 @@ struct blkcg_policy_data {
 	int				plid;
 };
 
-/* association between a blk cgroup and a request queue */
+/* association between a blk cgroup and a request queue
+2024年06月19日10:31:23
+
+ */
 struct blkcg_gq {
 	/* Pointer to the associated request_queue */
 	struct request_queue		*q;
@@ -115,6 +118,7 @@ struct blkcg_gq {
 	/*
 	 * Each blkg gets congested separately and the congestion state is
 	 * propagated to the matching bdi_writeback_congested.
+	 
 	 */
 	struct bdi_writeback_congested	*wb_congested;
 

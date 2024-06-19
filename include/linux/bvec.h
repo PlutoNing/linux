@@ -14,13 +14,19 @@
 
 /*
  * was unsigned short, but we might as well be ready for > 64kB I/O pages
+ 2024年06月19日11:16:01
+ bio_vec是组成bio的最小单位，它包含了一块数据所在的页，这块数据所在的页内偏移以及数据的
+ 长度，通过这些信息就可以很清楚地描述数据具体处于什么位置。
  */
 struct bio_vec {
 	struct page	*bv_page;
 	unsigned int	bv_len;
 	unsigned int	bv_offset;
 };
-
+/*
+2024年06月19日11:23:24
+其中bvec_iter结构体携带着下盘的诸多信息，如下盘的扇区起始地址以及bio的大小
+*/
 struct bvec_iter {
 	sector_t		bi_sector;	/* device address in 512 byte
 						   sectors */

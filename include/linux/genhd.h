@@ -82,7 +82,9 @@ struct partition {
 	__le32 start_sect;	/* starting sector counting from 0 */
 	__le32 nr_sects;		/* nr of sectors in partition */
 } __attribute__((packed));
+/*
 
+*/
 struct disk_stats {
 	u64 nsecs[NR_STAT_GROUPS];
 	unsigned long sectors[NR_STAT_GROUPS];
@@ -104,7 +106,9 @@ struct partition_meta_info {
 	char uuid[PARTITION_META_INFO_UUIDLTH];
 	u8 volname[PARTITION_META_INFO_VOLNAMELTH];
 };
-
+/*
+2024年06月19日10:20:20
+*/
 struct hd_struct {
 	sector_t start_sect;
 	/*
@@ -116,6 +120,7 @@ struct hd_struct {
 	seqcount_t nr_sects_seq;
 	sector_t alignment_offset;
 	unsigned int discard_alignment;
+	//对应的dev
 	struct device __dev;
 	struct kobject *holder_dir;
 	int policy, partno;
@@ -123,8 +128,10 @@ struct hd_struct {
 #ifdef CONFIG_FAIL_MAKE_REQUEST
 	int make_it_fail;
 #endif
+//
 	unsigned long stamp;
 #ifdef	CONFIG_SMP
+//percpu变量
 	struct disk_stats __percpu *dkstats;
 #else
 	struct disk_stats dkstats;
@@ -200,6 +207,7 @@ struct gendisk {
 	 * helpers.
 	 */
 	struct disk_part_tbl __rcu *part_tbl;
+	//
 	struct hd_struct part0;
 
 	const struct block_device_operations *fops;
@@ -220,7 +228,7 @@ struct gendisk {
 	struct badblocks *bb;
 	struct lockdep_map lockdep_map;
 };
-
+//
 static inline struct gendisk *part_to_disk(struct hd_struct *part)
 {
 	if (likely(part)) {
