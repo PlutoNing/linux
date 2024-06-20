@@ -2498,7 +2498,9 @@ void mem_cgroup_handle_over_high(void)
 out:
 	css_put(&memcg->css);
 }
-
+/*
+2024-06-20 17:29:03
+*/
 static int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 		      unsigned int nr_pages)
 {
@@ -6455,6 +6457,8 @@ exit:
 }
 
 /**
+2024年06月20日16:43:19
+charge是收费的意思？
  * mem_cgroup_try_charge - try charging a page
  * @page: page to charge
  * @mm: mm context of the victim
@@ -6485,6 +6489,7 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 
 	if (PageSwapCache(page)) {
 		/*
+
 		 * Every swap fault against a single page tries to charge the
 		 * page, bail as early as possible.  shmem_unuse() encounters
 		 * already charged pages, too.  The USED bit is protected by

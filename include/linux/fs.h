@@ -424,6 +424,8 @@ int pagecache_write_end(struct file *, struct address_space *mapping,
 				struct page *page, void *fsdata);
 
 /**
+2024年06月20日16:22:26
+
  * struct address_space - Contents of a cacheable, mappable object.
  * @host: Owner, either the inode or the block_device.
  * @i_pages: Cached pages.
@@ -443,14 +445,19 @@ int pagecache_write_end(struct file *, struct address_space *mapping,
  * @private_data: For use by the owner of the address_space.
  */
 struct address_space {
+	//所属的inode
 	struct inode		*host;
+	//拥有的页缓存里的pages
 	struct xarray		i_pages;
+
 	gfp_t			gfp_mask;
+
 	atomic_t		i_mmap_writable;
 #ifdef CONFIG_READ_ONLY_THP_FOR_FS
 	/* number of thp, only for non-shmem files */
 	atomic_t		nr_thps;
 #endif
+//搜索树的树根
 	struct rb_root_cached	i_mmap;
 	struct rw_semaphore	i_mmap_rwsem;
 	unsigned long		nrpages;

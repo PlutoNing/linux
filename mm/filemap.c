@@ -846,13 +846,30 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(replace_page_cache_page);
+/*
+2024年06月20日16:11:29
 
+
+*/
 static int __add_to_page_cache_locked(struct page *page,
 				      struct address_space *mapping,
 				      pgoff_t offset, gfp_t gfp_mask,
 				      void **shadowp)
 {
+
 	XA_STATE(xas, &mapping->i_pages, offset);
+	/*
+	// Expands to
+struct xa_state xas = { .xa = &mapping->i_pages,
+            .xa_index = offset,
+            .xa_shift = 0,
+            .xa_sibs = 0,
+            .xa_offset = 0,
+            .xa_pad = 0,
+            .xa_node = ((struct xa_node *)3UL),
+            .xa_alloc = ((void *)0),
+            .xa_update = ((void *)0) }
+	*/
 	int huge = PageHuge(page);
 	struct mem_cgroup *memcg;
 	int error;
@@ -924,6 +941,8 @@ ALLOW_ERROR_INJECTION(__add_to_page_cache_locked, ERRNO);
  * This function does not add the page to the LRU.  The caller must do that.
  *
  * Return: %0 on success, negative error code otherwise.
+ 2024年06月20日16:12:41
+
  */
 int add_to_page_cache_locked(struct page *page, struct address_space *mapping,
 		pgoff_t offset, gfp_t gfp_mask)

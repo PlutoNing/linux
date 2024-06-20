@@ -64,7 +64,9 @@ struct mem_cgroup;
 #else
 #define _struct_page_alignment
 #endif
-
+/*
+2024年06月20日16:25:31
+*/
 struct page {
 	unsigned long flags;		/* Atomic flags, some possibly
 					 * updated asynchronously */
@@ -82,7 +84,15 @@ struct page {
 			 * by the page owner.
 			 */
 			struct list_head lru;
-			/* See page-flags.h for PAGE_MAPPING_FLAGS */
+			/* See page-flags.h for PAGE_MAPPING_FLAGS
+			struct address_space *mapping;表示该页所在地址空间描述结构指针，用于内容为文件的页帧
+
+（1）       如果page->mapping等于0，说明该页属于交换告诉缓存swap cache
+
+（2）       如果page->mapping不等于0，但第0位为0，说明该页为匿名也，此时mapping指向一个struct anon_vma结构变量；
+
+（3）       如果page->mapping不等于0，但第0位不为0，则apping指向一个struct address_space地址空间结构变量；
+			 */
 			struct address_space *mapping;
 			pgoff_t index;		/* Our offset within mapping. */
 			/**

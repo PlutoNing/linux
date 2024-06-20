@@ -274,6 +274,8 @@ enum xa_lock_type {
 #define XA_FLAGS_ALLOC1	(XA_FLAGS_TRACK_FREE | XA_FLAGS_ZERO_BUSY)
 
 /**
+2024年06月20日16:16:55
+
  * struct xarray - The anchor of the XArray.
  * @xa_lock: Lock that protects the contents of the XArray.
  *
@@ -1078,6 +1080,8 @@ static inline void xa_release(struct xarray *xa, unsigned long index)
 #define XA_MARK_LONGS		DIV_ROUND_UP(XA_CHUNK_SIZE, BITS_PER_LONG)
 
 /*
+2024年06月20日16:18:05
+
  * @count is the count of every non-NULL element in the ->slots array
  * whether that is a value entry, a retry entry, a user pointer,
  * a sibling entry or a pointer to the next level of the tree.
@@ -1252,6 +1256,9 @@ static inline bool xa_is_advanced(const void *entry)
 typedef void (*xa_update_node_t)(struct xa_node *node);
 
 /*
+2024年06月20日16:15:10
+xa_state？
+类似非常大的指针数组
  * The xa_state is opaque to its users.  It contains various different pieces
  * of state involved in the current operation on the XArray.  It should be
  * declared on the stack and passed between the various internal routines.

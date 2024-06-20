@@ -124,6 +124,9 @@ struct cgroup_file {
 };
 
 /*
+2024年06月20日16:45:48
+存储一组指向 cgroup_subsys_state 的指针，通过这个指针进程可以获
+取到对应的cgroups信息，一个 cgroup_subsys_state 就是进程与一个特定子系统相关的信息
  * Per-subsystem/per-cgroup state maintained by the system.  This is the
  * fundamental structural building block that controllers deal with.
  *
@@ -186,12 +189,18 @@ struct cgroup_subsys_state {
  * object and speeds up fork()/exit(), since a single inc/dec and a
  * list_add()/del() can bump the reference count on the entire cgroup
  * set for a task.
+ 2024年06月20日16:53:36
+ 每个进程对应一个css_set结构，
+ css_set存储了与进程相关的cgropus信息
  */
 struct css_set {
 	/*
 	 * Set of subsystem states, one for each subsystem. This array is
 	 * immutable after creation apart from the init_css_set during
 	 * subsystem registration (at boot time).
+	 存储一组指向 cgroup_subsys_state 的指针，通过这个指针进程可以获取到对应
+	 的cgroups信息，一个 cgroup_subsys_state 就是进程与一个特定子系统相关的信息，
+	 cgroup_subsys_state结构体如下：
 	 */
 	struct cgroup_subsys_state *subsys[CGROUP_SUBSYS_COUNT];
 
@@ -347,7 +356,10 @@ struct cgroup_freezer_state {
 	 */
 	int nr_frozen_tasks;
 };
-
+/*
+2024-06-20 17:02:51
+cgroup 指针指向了一个 cgroup 结构，也就是进程属于的 cgroup，进程受到子系统控制就
+是加入到特定的cgroup来实现的，就是对应这里的cgroup，由此看出进程和cgroup的关系是多对多关系。*/
 struct cgroup {
 	/* self css with NULL ->ss, points back to this cgroup */
 	struct cgroup_subsys_state self;

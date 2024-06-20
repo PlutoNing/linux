@@ -200,8 +200,11 @@ struct memcg_cgwb_frn {
 };
 
 /*
+2024-06-20 16:43:46
+内存控制器数据结构
  * The memory controller data structure. The memory controller controls both
- * page cache and RSS per cgroup. We would eventually like to provide
+ * page cache and RSS per cgroup. 
+We would eventually like to provide
  * statistics based on the statistics developed by Rik Van Riel for clock-pro,
  * to help the administrator determine what knobs to tune.
  */

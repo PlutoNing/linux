@@ -620,7 +620,10 @@ enum perf_event_task_context {
 struct wake_q_node {
 	struct wake_q_node *next;
 };
+/*
+2024年06月20日16:49:37
 
+*/
 struct task_struct {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/*
@@ -1038,9 +1041,15 @@ struct task_struct {
 	int				cpuset_slab_spread_rotor;
 #endif
 #ifdef CONFIG_CGROUPS
-	/* Control Group info protected by css_set_lock: */
+	/* Control Group info protected by css_set_lock: 
+	每个进程对应一个css_set结构，css_set存储了与进程相关的cgropus信息。
+	cg_list是一个嵌入的 list_head 结构，用于将连到同一个 css_set 的进程
+	组织成一个链表。进程和css_set的关系是多对一关系，tasks表示关联的多个进程。
+	*/
 	struct css_set __rcu		*cgroups;
-	/* cg_list protected by css_set_lock and tsk->alloc_lock: */
+	/* cg_list protected by css_set_lock and tsk->alloc_lock: 
+	链接同一个cg的pcb
+	*/
 	struct list_head		cg_list;
 #endif
 #ifdef CONFIG_X86_CPU_RESCTRL

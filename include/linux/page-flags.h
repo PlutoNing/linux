@@ -169,6 +169,8 @@ enum pageflags {
 
 struct page;	/* forward declaration */
 
+//2024年06月20日16:31:26
+
 static inline struct page *compound_head(struct page *page)
 {
 	unsigned long head = READ_ONCE(page->compound_head);
@@ -182,6 +184,7 @@ static __always_inline int PageTail(struct page *page)
 {
 	return READ_ONCE(page->compound_head) & 1;
 }
+//2024年06月20日16:29:54
 
 static __always_inline int PageCompound(struct page *page)
 {

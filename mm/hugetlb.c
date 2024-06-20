@@ -1363,12 +1363,14 @@ static void prep_compound_gigantic_page(struct page *page, unsigned int order)
  * PageHuge() only returns true for hugetlbfs pages, but not for normal or
  * transparent huge pages.  See the PageTransHuge() documentation for more
  * details.
+ 2024年06月20日16:29:33
+
  */
 int PageHuge(struct page *page)
 {
 	if (!PageCompound(page))
 		return 0;
-
+	//复合页
 	page = compound_head(page);
 	return page[1].compound_dtor == HUGETLB_PAGE_DTOR;
 }
