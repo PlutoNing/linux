@@ -1228,8 +1228,11 @@ struct task_struct {
 #endif
 
 #ifdef CONFIG_MEMCG
+/* 判断是否处于memcg oom状态 */
 	struct mem_cgroup		*memcg_in_oom;
+
 	gfp_t				memcg_oom_gfp_mask;
+	
 	int				memcg_oom_order;
 
 	/* Number of pages to reclaim on returning to userland: */

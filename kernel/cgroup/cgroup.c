@@ -96,6 +96,7 @@ bool cgroup_debug __read_mostly;
 static DEFINE_SPINLOCK(cgroup_idr_lock);
 
 /*
+
  * Protects cgroup_file->kn for !self csses.  It synchronizes notifications
  * against file removal/re-creation across css hiding.
  */
@@ -4135,6 +4136,8 @@ int cgroup_add_legacy_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 }
 
 /**
+2024年6月22日00:00:53
+什么事件，是到procfs还是inotify。
  * cgroup_file_notify - generate a file modified event for a cgroup_file
  * @cfile: target cgroup_file
  *
@@ -4152,6 +4155,7 @@ void cgroup_file_notify(struct cgroup_file *cfile)
 		if (time_in_range(jiffies, last, next)) {
 			timer_reduce(&cfile->notify_timer, next);
 		} else {
+			/* 给memcg对应的cgfile的kern inode产生一个事件 */
 			kernfs_notify(cfile->kn);
 			cfile->notified_at = jiffies;
 		}

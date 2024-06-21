@@ -115,9 +115,12 @@ enum {
  * cgroup_file is the handle for a file instance created in a cgroup which
  * is used, for example, to generate file changed notifications.  This can
  * be obtained by setting cftype->file_offset.
+ 2024年6月21日23:59:09
+
  */
 struct cgroup_file {
 	/* do not access any fields from outside cgroup core */
+	/* 对应内核fs里的节点 */
 	struct kernfs_node *kn;
 	unsigned long notified_at;
 	struct timer_list notify_timer;

@@ -2600,7 +2600,9 @@ retry:
 
 	if (!do_memsw_account() ||
 	    page_counter_try_charge(&memcg->memsw, batch, &counter)) {
-			/* 记账memory,也就是cat memory.usage_in_bytes看到的值 */
+			/* 记账memory,也就是cat memory.usage_in_bytes看到的值
+			2024年6月21日23:54:15
+			todo */
 		if (page_counter_try_charge(&memcg->memory, batch, &counter))
 			goto done_restock;
 		if (do_memsw_account())
@@ -2639,6 +2641,7 @@ retry:
 	 * allocate memory. This might exceed the limits temporarily,
 	 * but we prefer facilitating memory reclaim and getting back
 	 * under the limit over triggering OOM kills in these cases.
+
 	 */
 	if (unlikely(current->flags & PF_MEMALLOC))
 		goto force;
@@ -2648,7 +2651,7 @@ retry:
 
 	if (!gfpflags_allow_blocking(gfp_mask))
 		goto nomem;
-
+/* 产生时间 */
 	memcg_memory_event(mem_over_limit, MEMCG_MAX);
 /* 内存usage超过了limit,触发cgroup回收 */
 	nr_reclaimed = try_to_free_mem_cgroup_pages(mem_over_limit, nr_pages,

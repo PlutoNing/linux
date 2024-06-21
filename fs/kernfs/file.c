@@ -30,7 +30,9 @@
  */
 static DEFINE_SPINLOCK(kernfs_open_node_lock);
 static DEFINE_MUTEX(kernfs_open_file_mutex);
+/* 2024年6月22日00:07:22
 
+ */
 struct kernfs_open_node {
 	atomic_t		refcnt;
 	atomic_t		event;
@@ -861,7 +863,9 @@ static __poll_t kernfs_fop_poll(struct file *filp, poll_table *wait)
 	kernfs_put_active(kn);
 	return ret;
 }
+/* 2024年6月22日00:04:08
 
+ */
 static void kernfs_notify_workfn(struct work_struct *work)
 {
 	struct kernfs_node *kn;
@@ -921,7 +925,9 @@ repeat:
 	goto repeat;
 }
 
-/**
+/**、
+2024年6月22日00:02:58
+产生kernfs的事件
  * kernfs_notify - notify a kernfs file
  * @kn: file to notify
  *
@@ -931,6 +937,16 @@ repeat:
 void kernfs_notify(struct kernfs_node *kn)
 {
 	static DECLARE_WORK(kernfs_notify_work, kernfs_notify_workfn);
+	/* 
+	// Expands to
+struct work_struct kernfs_notify_work = { 
+. data = { ( ( unsigned long ) ( WORK_STRUCT_NO_POOL | WORK_STRUCT_STATIC ) ) } , 
+. entry = { & ( kernfs_notify_work ) . entry , & ( kernfs_notify_work ) . entry } , 
+. func = ( kernfs_notify_workfn ) , 
+. lockdep_map = { . name = ( "kernfs_notify_work" ) , 
+. key = ( void * ) ( & ( kernfs_notify_work ) ) , } , 
+} 
+*/
 	unsigned long flags;
 	struct kernfs_open_node *on;
 

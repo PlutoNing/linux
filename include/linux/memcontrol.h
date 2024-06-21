@@ -38,7 +38,8 @@ enum memcg_stat_item {
 	MEMCG_KERNEL_STACK_KB,
 	MEMCG_NR_STAT,
 };
-
+/* 2024年6月21日23:56:30
+memcg的事件类型 */
 enum memcg_memory_event {
 	MEMCG_LOW,
 	MEMCG_HIGH,
@@ -47,6 +48,7 @@ enum memcg_memory_event {
 	MEMCG_OOM_KILL,
 	MEMCG_SWAP_MAX,
 	MEMCG_SWAP_FAIL,
+	/* 标记枚举的大小 */
 	MEMCG_NR_MEMORY_EVENTS,
 };
 
@@ -290,6 +292,9 @@ struct mem_cgroup {
 
 	/* memory.events and memory.events.local */
 	struct cgroup_file events_file;
+	/* 
+	2024年6月21日23:58:51
+	对应procfs里的文件？  */
 	struct cgroup_file events_local_file;
 
 	/* handle for "memory.swap.events" */
@@ -341,6 +346,7 @@ struct mem_cgroup {
 
 	/* memory.events */
 	atomic_long_t		memory_events[MEMCG_NR_MEMORY_EVENTS];
+	/* memcg的每种事件的数量 */
 	atomic_long_t		memory_events_local[MEMCG_NR_MEMORY_EVENTS];
 
 	unsigned long		socket_pressure;
@@ -625,7 +631,10 @@ static inline void mem_cgroup_exit_user_fault(void)
 	WARN_ON(!current->in_user_fault);
 	current->in_user_fault = 0;
 }
-
+/* 2024年6月21日23:55:07
+判断pcb是否处于memcg oom
+看来pcb为了memcg加了不少字段
+ */
 static inline bool task_in_memcg_oom(struct task_struct *p)
 {
 	return p->memcg_in_oom;
@@ -838,10 +847,13 @@ static inline void count_memcg_event_mm(struct mm_struct *mm,
 		count_memcg_events(memcg, idx, 1);
 	rcu_read_unlock();
 }
+/* 2024年6月21日23:57:22
 
+ */
 static inline void memcg_memory_event(struct mem_cgroup *memcg,
 				      enum memcg_memory_event event)
 {
+	
 	atomic_long_inc(&memcg->memory_events_local[event]);
 	cgroup_file_notify(&memcg->events_local_file);
 
