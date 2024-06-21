@@ -137,7 +137,8 @@ struct cgroup_subsys_state {
 	/* PI: the cgroup that this css is attached to */
 	struct cgroup *cgroup;
 
-	/* PI: the cgroup subsystem that this css is attached to */
+	/* PI: the cgroup subsystem that this css is attached to
+	 */
 	struct cgroup_subsys *ss;
 
 	/* reference count - access via css_[try]get() and css_put() */
@@ -637,6 +638,9 @@ struct cftype {
 /*
  * Control Group subsystem type.
  * See Documentation/admin-guide/cgroup-v1/cgroups.rst for details
+ memory_cgrp_subsys实现了memcg操作集
+ 2024年06月21日14:12:48
+ 
  */
 struct cgroup_subsys {
 	struct cgroup_subsys_state *(*css_alloc)(struct cgroup_subsys_state *parent_css);

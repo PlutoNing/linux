@@ -309,6 +309,8 @@ void set_pgdat_percpu_threshold(pg_data_t *pgdat,
 }
 
 /*
+2024年06月21日15:47:00
+
  * For use when we know that interrupts are disabled,
  * or when we know that preemption is disabled and that
  * particular counter cannot be updated from interrupt context.
@@ -322,6 +324,9 @@ void __mod_zone_page_state(struct zone *zone, enum zone_stat_item item,
 	long t;
 
 	x = delta + __this_cpu_read(*p);
+	/* 
+	感觉item像是索引，delta是要加的值？
+	*/
 
 	t = __this_cpu_read(pcp->stat_threshold);
 

@@ -12,13 +12,16 @@
 #include <linux/sched.h>
 #include <linux/bug.h>
 #include <asm/page.h>
-
+/* 
+2024年06月21日17:04:07
+还不清楚pagecounter具体字段的含义
+ */
 static void propagate_protected_usage(struct page_counter *c,
 				      unsigned long usage)
 {
 	unsigned long protected, old_protected;
 	long delta;
-
+/* 根cg返回 */
 	if (!c->parent)
 		return;
 
@@ -32,6 +35,7 @@ static void propagate_protected_usage(struct page_counter *c,
 		delta = protected - old_protected;
 		if (delta)
 			atomic_long_add(delta, &c->parent->children_min_usage);
+		
 	}
 
 	if (c->low || atomic_long_read(&c->low_usage)) {
@@ -88,6 +92,9 @@ void page_counter_charge(struct page_counter *counter, unsigned long nr_pages)
 }
 
 /**
+2024年06月21日11:40:28
+每当我们要为这个mem_cgroup 分配新的内存时，便会调用 page_counter_try_charge
+ 函数来尝试对这些新的内存进行 charge 操作，即将这些页加入到该 page_counter 里。
  * page_counter_try_charge - try to hierarchically charge pages
  * @counter: counter
  * @nr_pages: number of pages to charge

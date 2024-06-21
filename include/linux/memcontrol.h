@@ -84,7 +84,9 @@ enum mem_cgroup_events_target {
 	MEM_CGROUP_TARGET_NUMAINFO,
 	MEM_CGROUP_NTARGETS,
 };
+/* 2024年06月21日15:14:52
 
+ */
 struct memcg_vmstats_percpu {
 	long stat[MEMCG_NR_STAT];
 	unsigned long events[NR_VM_EVENT_ITEMS];
@@ -113,30 +115,48 @@ struct memcg_shrinker_map {
 
 /*
  * per-zone information in memory controller.
+ 2024年06月21日14:46:28
+ 系统用pglist_data来描述一个node的所有内存信息，当系统没有使能cgroup时，
+ 分配出去的内存会链接到全局pglist_data的lruvec对应链表。
+
+ 当使能cgroup后，分配的page都会链接到memcg的per node lruvec链表上。
+ --------
+ 链接node与memcg，lruvec。
  */
+
 struct mem_cgroup_per_node {
+	/* lru链表 */
 	struct lruvec		lruvec;
 
-	/* Legacy local VM stats */
+	/* Legacy local VM stats
+	每种lru内存统计
+	 */
 	struct lruvec_stat __percpu *lruvec_stat_local;
 
 	/* Subtree VM stats (batched updates) */
 	struct lruvec_stat __percpu *lruvec_stat_cpu;
 	atomic_long_t		lruvec_stat[NR_VM_NODE_STAT_ITEMS];
-
+/* 
+lru_zone_size[zid][lru]
+不同zone不同内存类型的计数
+ */
 	unsigned long		lru_zone_size[MAX_NR_ZONES][NR_LRU_LISTS];
 
 	struct mem_cgroup_reclaim_iter	iter[DEF_PRIORITY + 1];
 
 	struct memcg_shrinker_map __rcu	*shrinker_map;
 
-	struct rb_node		tree_node;	/* RB tree node */
+	struct rb_node		tree_node;	/* RB tree node usage超过softlimit时，链接到全局的
+	mem_cgroup_tree_per_node红黑树
+    ，方面进行softlimit reclaim*/
+	    /* 标记usage是否大于softlimit*/
 	unsigned long		usage_in_excess;/* Set to the value by which */
 						/* the soft limit is exceeded*/
 	bool			on_tree;
 	bool			congested;	/* memcg has many dirty pages */
 						/* backed by a congested BDI */
 
+	/* 所属memor cgroup */
 	struct mem_cgroup	*memcg;		/* Back pointer, we cannot */
 						/* use container_of	   */
 };
@@ -202,23 +222,39 @@ struct memcg_cgwb_frn {
 /*
 2024-06-20 16:43:46
 内存控制器数据结构
+内存控制器中都有一个结构体 mem_cgroup 与其对应
  * The memory controller data structure. The memory controller controls both
  * page cache and RSS per cgroup. 
 We would eventually like to provide
  * statistics based on the statistics developed by Rik Van Riel for clock-pro,
  * to help the administrator determine what knobs to tune.
+ 好像主要是page_counter比较核心
+================
+memcg根据内存使用的情况不同将统计的内存分为四类：
+
+交换空间（swap）
+用户内存，包括匿名页（anonymous page）、页缓存（page cache）等与用户关系密切的内存；
+套接字内存，在网络栈的实现中用于存放套接字信息的内存。
+内核内存，内核中使用的用于各种用途的内存，memcg中内核内存不包括网络栈所使用的套接字内存；
+对这四类内存的统计通过 memcg 的三个编译选项来配置，分别是 CONFIG_MEMCG、CONFIG_MEMCG_SWAP和 CONFIG_MEMCG_KMEM。
+CONFIG_MEMCG 是 memcg 的总开关，如果开启，memcg 将被启用，统计用户内存和套接字内存； 
+CONFIG_MEMCG_SWAP 控制交换空间（swap）的统计；
+CONFIG_MEMCG_KMEM 控制内核内存的统计。
  */
 struct mem_cgroup {
+	/* 内存控制器结构 */
 	struct cgroup_subsys_state css;
 
 	/* Private memcg ID. Used to ID objects that outlive the cgroup */
 	struct mem_cgroup_id id;
 
-	/* Accounted resources */
+	/* Accounted resources
+	memcg内存计数 */
 	struct page_counter memory;
 	struct page_counter swap;
 
 	/* Legacy consumer-oriented counters */
+	/* page + swap内存 */
 	struct page_counter memsw;
 	struct page_counter kmem;
 	struct page_counter tcpmem;
@@ -274,6 +310,7 @@ struct mem_cgroup {
 	/*
 	 * Should we move charges of a task when a task is moved into this
 	 * mem_cgroup ? And what type of charges should we move ?
+	 进程迁移是否charge内存到目的cgroup
 	 */
 	unsigned long move_charge_at_immigrate;
 	/* taken only while moving_account > 0 */
@@ -288,10 +325,13 @@ struct mem_cgroup {
 	atomic_t		moving_account;
 	struct task_struct	*move_lock_task;
 
-	/* Legacy local VM stats and events */
+	/* Legacy local VM stats and events
+	 */
 	struct memcg_vmstats_percpu __percpu *vmstats_local;
 
-	/* Subtree VM stats and events (batched updates) */
+	/* Subtree VM stats and events (batched updates)
+	memcg内存和event统计分类
+	 */
 	struct memcg_vmstats_percpu __percpu *vmstats_percpu;
 
 	MEMCG_PADDING(_pad2_);
@@ -336,7 +376,7 @@ struct mem_cgroup {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	struct deferred_split deferred_split_queue;
 #endif
-
+/*  cgroup 分配page 的lru链表  */
 	struct mem_cgroup_per_node *nodeinfo[0];
 	/* WARNING: nodeinfo must be the last member here */
 };
@@ -348,6 +388,13 @@ struct mem_cgroup {
 #define MEMCG_CHARGE_BATCH 32U
 
 extern struct mem_cgroup *root_mem_cgroup;
+
+/*  
+2024年06月21日11:36:02
+判断是否是rootcg
+
+*/
+// 2024年06月21日11:36:22
 
 static inline bool mem_cgroup_is_root(struct mem_cgroup *memcg)
 {
@@ -389,7 +436,10 @@ void mem_cgroup_uncharge(struct page *page);
 void mem_cgroup_uncharge_list(struct list_head *page_list);
 
 void mem_cgroup_migrate(struct page *oldpage, struct page *newpage);
+/* 
+2024年06月21日15:46:01
 
+ */
 static struct mem_cgroup_per_node *
 mem_cgroup_nodeinfo(struct mem_cgroup *memcg, int nid)
 {
@@ -436,7 +486,9 @@ struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p);
 struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm);
 
 struct mem_cgroup *get_mem_cgroup_from_page(struct page *page);
-
+/* 
+ 2024年06月21日17:28:43
+ */
 static inline
 struct mem_cgroup *mem_cgroup_from_css(struct cgroup_subsys_state *css){
 	return css ? container_of(css, struct mem_cgroup, css) : NULL;
@@ -484,6 +536,8 @@ static inline struct mem_cgroup *lruvec_memcg(struct lruvec *lruvec)
 }
 
 /**
+2024年06月21日15:30:12
+返回父cg？
  * parent_mem_cgroup - find the accounting parent of a memcg
  * @memcg: memcg whose parent to find
  *

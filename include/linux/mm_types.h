@@ -496,6 +496,7 @@ struct mm_struct {
 		 * current->mm != mm
 		 * new_owner->mm == mm
 		 * new_owner->alloc_lock is held
+		 
 		 */
 		struct task_struct __rcu *owner;
 #endif

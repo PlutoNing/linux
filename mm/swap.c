@@ -186,7 +186,12 @@ int get_kernel_page(unsigned long start, int write, struct page **pages)
 	return get_kernel_pages(&kiov, 1, write, pages);
 }
 EXPORT_SYMBOL_GPL(get_kernel_page);
-
+/* 
+2024年06月21日14:56:27
+===================
+其中move_fn会调用add_page_to_lru_list把page添加到lru，而update_lru_size会更新对应的node和memcg的lru size
+====================
+ */
 static void pagevec_lru_move_fn(struct pagevec *pvec,
 	void (*move_fn)(struct page *page, struct lruvec *lruvec, void *arg),
 	void *arg)
@@ -206,8 +211,9 @@ static void pagevec_lru_move_fn(struct pagevec *pvec,
 			pgdat = pagepgdat;
 			spin_lock_irqsave(&pgdat->lru_lock, flags);
 		}
-
+/* 获取page对应的lruvec */
 		lruvec = mem_cgroup_page_lruvec(page, pgdat);
+		/* 添加到lru链表 */
 		(*move_fn)(page, lruvec, arg);
 	}
 	if (pgdat)
@@ -443,6 +449,8 @@ void lru_cache_add(struct page *page)
 }
 
 /**
+2024年06月21日14:53:42
+
  * lru_cache_add_active_or_unevictable
  * @page:  the page to be added to LRU
  * @vma:   vma in which page is mapped for determining reclaimability

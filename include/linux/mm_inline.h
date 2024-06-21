@@ -22,7 +22,9 @@ static inline int page_is_file_cache(struct page *page)
 {
 	return !PageSwapBacked(page);
 }
+/*  2024年06月21日15:09:27
 
+*/
 static __always_inline void __update_lru_size(struct lruvec *lruvec,
 				enum lru_list lru, enum zone_type zid,
 				int nr_pages)
@@ -33,7 +35,12 @@ static __always_inline void __update_lru_size(struct lruvec *lruvec,
 	__mod_zone_page_state(&pgdat->node_zones[zid],
 				NR_ZONE_LRU_BASE + lru, nr_pages);
 }
+/* 
+2024年06月21日15:05:50
+update_lru_size最终会调用__update_lru_size更新全局的node lru信息和memcg的lru大小
 
+
+ */
 static __always_inline void update_lru_size(struct lruvec *lruvec,
 				enum lru_list lru, enum zone_type zid,
 				int nr_pages)
@@ -43,7 +50,12 @@ static __always_inline void update_lru_size(struct lruvec *lruvec,
 	mem_cgroup_update_lru_size(lruvec, lru, zid, nr_pages);
 #endif
 }
+/* 
+2024年06月21日14:58:38
 
+pagevec_lru_move_fn其中move_fn会调用add_page_to_lru_list把page添加到lru，
+而update_lru_size会更新对应的node和memcg的lru size
+ */
 static __always_inline void add_page_to_lru_list(struct page *page,
 				struct lruvec *lruvec, enum lru_list lru)
 {

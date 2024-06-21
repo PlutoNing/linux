@@ -159,7 +159,9 @@ static inline unsigned long zone_numa_state_snapshot(struct zone *zone,
 	return x;
 }
 #endif /* CONFIG_NUMA */
-
+/* 2024年06月21日16:07:26
+以枚举内存类型为索引更新
+ */
 static inline void zone_page_state_add(long x, struct zone *zone,
 				 enum zone_stat_item item)
 {

@@ -186,7 +186,8 @@ enum numa_stat_item {
 #else
 #define NR_VM_NUMA_STAT_ITEMS 0
 #endif
-
+/* 
+ */
 enum zone_stat_item {
 	/* First 128 byte cacheline (assuming 64 bit words) */
 	NR_FREE_PAGES,
@@ -207,7 +208,8 @@ enum zone_stat_item {
 #endif
 	NR_FREE_CMA_PAGES,
 	NR_VM_ZONE_STAT_ITEMS };
-
+/* 2024年06月21日16:08:22
+ */
 enum node_stat_item {
 	NR_LRU_BASE,
 	NR_INACTIVE_ANON = NR_LRU_BASE, /* must match order of LRU_[IN]ACTIVE */
@@ -259,7 +261,9 @@ enum node_stat_item {
 #define LRU_BASE 0
 #define LRU_ACTIVE 1
 #define LRU_FILE 2
-
+/* 2024年06月21日16:10:54
+不同类型内存的枚举，可做数组索引
+ */
 enum lru_list {
 	LRU_INACTIVE_ANON = LRU_BASE,
 	LRU_ACTIVE_ANON = LRU_BASE + LRU_ACTIVE,
@@ -295,7 +299,8 @@ struct zone_reclaim_stat {
 	unsigned long		recent_rotated[2];
 	unsigned long		recent_scanned[2];
 };
-
+/* 2024年06月21日15:10:11
+ */
 struct lruvec {
 	struct list_head		lists[NR_LRU_LISTS];
 	struct zone_reclaim_stat	reclaim_stat;
@@ -329,7 +334,10 @@ enum zone_watermarks {
 #define low_wmark_pages(z) (z->_watermark[WMARK_LOW] + z->watermark_boost)
 #define high_wmark_pages(z) (z->_watermark[WMARK_HIGH] + z->watermark_boost)
 #define wmark_pages(z, i) (z->_watermark[i] + z->watermark_boost)
-
+/* 
+2024年06月21日15:47:50
+percpu内存结构
+ */
 struct per_cpu_pages {
 	int count;		/* number of pages in the list */
 	int high;		/* high watermark, emptying needed */
@@ -338,7 +346,10 @@ struct per_cpu_pages {
 	/* Lists of pages, one per migrate type stored on the pcp-lists */
 	struct list_head lists[MIGRATE_PCPTYPES];
 };
-
+/* 
+2024年06月21日15:47:31
+percpu内存结构
+ */
 struct per_cpu_pageset {
 	struct per_cpu_pages pcp;
 #ifdef CONFIG_NUMA
@@ -560,6 +571,7 @@ struct zone {
 
 	ZONE_PADDING(_pad3_)
 	/* Zone statistics */
+	/* 不同类型内存页的计数信息 */
 	atomic_long_t		vm_stat[NR_VM_ZONE_STAT_ITEMS];
 	atomic_long_t		vm_numa_stat[NR_VM_NUMA_STAT_ITEMS];
 } ____cacheline_internodealigned_in_smp;
@@ -696,6 +708,9 @@ struct deferred_split {
  * per-zone basis.
  */
 struct bootmem_data;
+/* 2024年06月21日15:41:07
+
+ */
 typedef struct pglist_data {
 	struct zone node_zones[MAX_NR_ZONES];
 	struct zonelist node_zonelists[MAX_ZONELISTS];
@@ -723,6 +738,7 @@ typedef struct pglist_data {
 	unsigned long node_present_pages; /* total number of physical pages */
 	unsigned long node_spanned_pages; /* total size of physical page
 					     range, including holes */
+						 /* 内存节点id */
 	int node_id;
 	wait_queue_head_t kswapd_wait;
 	wait_queue_head_t pfmemalloc_wait;
@@ -829,7 +845,8 @@ extern void init_currently_empty_zone(struct zone *zone, unsigned long start_pfn
 				     unsigned long size);
 
 extern void lruvec_init(struct lruvec *lruvec);
-
+/* 2024年06月21日15:09:39
+ */
 static inline struct pglist_data *lruvec_pgdat(struct lruvec *lruvec)
 {
 #ifdef CONFIG_MEMCG

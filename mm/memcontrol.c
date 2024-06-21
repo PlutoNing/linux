@@ -592,13 +592,21 @@ static unsigned long soft_limit_excess(struct mem_cgroup *memcg)
 
 	return excess;
 }
+/* 
+2024年06月21日14:35:14
 
+当usage超过softlimit时，最终会调用mem_cgroup_update_tree把memcg插入全局的
+mem_cgroup_tree_per_node红黑树。
+
+ */
 static void mem_cgroup_update_tree(struct mem_cgroup *memcg, struct page *page)
 {
 	unsigned long excess;
 	struct mem_cgroup_per_node *mz;
 	struct mem_cgroup_tree_per_node *mctz;
-
+/* 
+通过page的node id获取对应的per node tree
+todo */
 	mctz = soft_limit_tree_from_page(page);
 	if (!mctz)
 		return;
@@ -607,7 +615,10 @@ static void mem_cgroup_update_tree(struct mem_cgroup *memcg, struct page *page)
 	 * because their event counter is not touched.
 	 */
 	for (; memcg; memcg = parent_mem_cgroup(memcg)) {
+		/* 获取memcg的per node
+		todo */
 		mz = mem_cgroup_page_nodeinfo(memcg, page);
+		/* 检查usage是否超过limit */
 		excess = soft_limit_excess(memcg);
 		/*
 		 * We have to update the tree if mz is on RB-tree or
@@ -623,6 +634,8 @@ static void mem_cgroup_update_tree(struct mem_cgroup *memcg, struct page *page)
 			/*
 			 * Insert again. mz->usage_in_excess will be updated.
 			 * If excess is 0, no tree ops.
+			 插入全局的per node tree
+			 todo
 			 */
 			__mem_cgroup_insert_exceeded(mz, mctz, excess);
 			spin_unlock_irqrestore(&mctz->lock, flags);
@@ -681,6 +694,8 @@ mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
 }
 
 /**
+2024年06月21日15:14:18
+
  * __mod_memcg_state - update cgroup memory statistics
  * @memcg: the memory cgroup
  * @idx: the stat item - can be enum memcg_stat_item or enum node_stat_item
@@ -702,13 +717,15 @@ void __mod_memcg_state(struct mem_cgroup *memcg, int idx, int val)
 		 * the hierarchical ones.
 		 */
 		__this_cpu_add(memcg->vmstats_local->stat[idx], x);
+		/* 一直加到cg层级的的根吗 */
 		for (mi = memcg; mi; mi = parent_mem_cgroup(mi))
 			atomic_long_add(x, &mi->vmstats[idx]);
 		x = 0;
 	}
 	__this_cpu_write(memcg->vmstats_percpu->stat[idx], x);
 }
-
+/* 2024年06月21日15:41:22
+ */
 static struct mem_cgroup_per_node *
 parent_nodeinfo(struct mem_cgroup_per_node *pn, int nid)
 {
@@ -721,6 +738,8 @@ parent_nodeinfo(struct mem_cgroup_per_node *pn, int nid)
 }
 
 /**
+2024年06月21日15:46:40
+
  * __mod_lruvec_state - update lruvec memory statistics
  * @lruvec: the lruvec
  * @idx: the stat item
@@ -747,7 +766,7 @@ void __mod_lruvec_state(struct lruvec *lruvec, enum node_stat_item idx,
 	pn = container_of(lruvec, struct mem_cgroup_per_node, lruvec);
 	memcg = pn->memcg;
 
-	/* Update memcg */
+	/* Update memcg   记账cg */
 	__mod_memcg_state(memcg, idx, val);
 
 	/* Update lruvec */
@@ -916,7 +935,24 @@ static void memcg_check_events(struct mem_cgroup *memcg, struct page *page)
 #endif
 	}
 }
+/* 
+2024年06月21日17:25:57
+在charge之前，要找到正确的memcg进行charge，Linux提供了多个函数定位memcg
+mem_cgroup_from_task
 
+get_mem_cgroup_from_mm
+
+get_mem_cgroup_from_page
+
+get_active_memcg
+
+get_mem_cgroup_from_current
+
+mem_cgroup_from_obj
+
+get_mem_cgroup_from_current 返回会首先返回task_struct->active_memcg;
+
+ */
 struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p)
 {
 	/*
@@ -932,6 +968,11 @@ struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p)
 EXPORT_SYMBOL(mem_cgroup_from_task);
 
 /**
+2024年06月21日17:29:29
+其中用的最广的是get_mem_cgroup_from_mm，但mm_struct中没有memcg的data structure，
+还需要从task_struct中来，调用mem_cgroup_from_task ，在其中调用mem_cgroup_from_css，
+从css_set中定位struct mem_cgroup，
+但是这里面的mem_cgroup和task_struct->active_memcg是不是指向同一个还需要研究。
  * get_mem_cgroup_from_mm: Obtain a reference on given mm_struct's memcg.
  * @mm: mm from which memcg should be extracted. It can be NULL.
  *
@@ -956,6 +997,7 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
 		if (unlikely(!mm))
 			memcg = root_mem_cgroup;
 		else {
+			/* 好像是通过pcb获得memcg */
 			memcg = mem_cgroup_from_task(rcu_dereference(mm->owner));
 			if (unlikely(!memcg))
 				memcg = root_mem_cgroup;
@@ -1264,6 +1306,8 @@ out:
 }
 
 /**
+2024年06月21日16:10:05
+内存cg更新lru size？
  * mem_cgroup_update_lru_size - account for adding or removing an lru page
  * @lruvec: mem_cgroup per zone lru vector
  * @lru: index of lru list the page is sitting on
@@ -2157,6 +2201,8 @@ static DEFINE_PER_CPU(struct memcg_stock_pcp, memcg_stock);
 static DEFINE_MUTEX(percpu_charge_mutex);
 
 /**
+2024年06月21日11:37:45
+
  * consume_stock: Try to consume stocked charge on this cpu.
  * @memcg: memcg to consume from.
  * @nr_pages: how many pages to charge.
@@ -2500,6 +2546,19 @@ out:
 }
 /*
 2024-06-20 17:29:03
+2024年06月21日11:33:11
+如何给memcg记账呢
+一个版本的是真正实现usage_in_bytes累加是在函数：try_charge->res_counter_charge->__res_counter_charge->res_counter_charge_locked中完成
+============
+try_charge主要计算cgroup内存usage,以及触发内存回收和oom killer
+try_charge主要功能
+
+1.计数memory page couter和memsw page couter
+
+2.检查内存usage是否超过limit，调用try_to_free_mem_cgroup_pages进行cgroup内存回收
+
+3.usage超过limit,且无法回收足够的内存时，调用mem_cgroup_oom出发cgroup级别的oom kill
+
 */
 static int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 		      unsigned int nr_pages)
@@ -2512,15 +2571,17 @@ static int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 	bool may_swap = true;
 	bool drained = false;
 	enum oom_status oom_status;
-
+/* 不能限制根进程组 */
 	if (mem_cgroup_is_root(memcg))
 		return 0;
 retry:
+/* percpu加速？ */
 	if (consume_stock(memcg, nr_pages))
 		return 0;
 
 	if (!do_memsw_account() ||
 	    page_counter_try_charge(&memcg->memsw, batch, &counter)) {
+			/* 记账memory,也就是cat memory.usage_in_bytes看到的值 */
 		if (page_counter_try_charge(&memcg->memory, batch, &counter))
 			goto done_restock;
 		if (do_memsw_account())
@@ -2570,10 +2631,10 @@ retry:
 		goto nomem;
 
 	memcg_memory_event(mem_over_limit, MEMCG_MAX);
-
+/* 内存usage超过了limit,触发cgroup回收 */
 	nr_reclaimed = try_to_free_mem_cgroup_pages(mem_over_limit, nr_pages,
 						    gfp_mask, may_swap);
-
+/* 内存回收后，再次判断内存usage */
 	if (mem_cgroup_margin(mem_over_limit) >= nr_pages)
 		goto retry;
 
@@ -2619,6 +2680,7 @@ retry:
 	 * keep retrying as long as the memcg oom killer is able to make
 	 * a forward progress or bypass the charge if the oom killer
 	 * couldn't make any progress.
+	 无法回收足够的内存，触发oom killer
 	 */
 	oom_status = mem_cgroup_oom(mem_over_limit, gfp_mask,
 		       get_order(nr_pages * PAGE_SIZE));
@@ -6537,6 +6599,8 @@ int mem_cgroup_try_charge_delay(struct page *page, struct mm_struct *mm,
 }
 
 /**
+2024年06月21日14:31:03
+
  * mem_cgroup_commit_charge - commit a page charge
  * @page: page to charge
  * @memcg: memcg to charge the page to
@@ -6552,6 +6616,15 @@ int mem_cgroup_try_charge_delay(struct page *page, struct mm_struct *mm,
  * prevent racing with task migration.  If it might be, use @lrucare.
  *
  * Use mem_cgroup_cancel_charge() to cancel the transaction instead.
+ 把memcg 使用的内存按照RSS, CACHE，SHMEM和RSS_HUGE等分类来统计。
+
+mem_cgroup_commit_charge主要做了
+
+1.关联page和memcg
+2.记账memcg内存type使用(rss，cache....)
+3.记账memcg的event，特别是当usage超过softlimit时，会把memcg链接到mem_cgroup_tree_per_node，
+以供后续softlimit 内存回收。
+
  */
 void mem_cgroup_commit_charge(struct page *page, struct mem_cgroup *memcg,
 			      bool lrucare, bool compound)
@@ -6570,11 +6643,13 @@ void mem_cgroup_commit_charge(struct page *page, struct mem_cgroup *memcg,
 	 */
 	if (!memcg)
 		return;
-
+/* 建立page与memcg关联 */
 	commit_charge(page, memcg, lrucare);
 
 	local_irq_disable();
+	/* 统计memcg rss/cache内存使用 */
 	mem_cgroup_charge_statistics(memcg, page, compound, nr_pages);
+	/* 统计memcg事件 */
 	memcg_check_events(memcg, page);
 	local_irq_enable();
 
