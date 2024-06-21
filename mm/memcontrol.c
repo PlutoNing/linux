@@ -1913,7 +1913,9 @@ static void memcg_oom_recover(struct mem_cgroup *memcg)
 	if (memcg && memcg->under_oom)
 		__wake_up(&memcg_oom_waitq, TASK_NORMAL, 0, memcg);
 }
+/* 2024年6月21日23:44:26
 
+ */
 enum oom_status {
 	OOM_SUCCESS,
 	OOM_FAILED,
@@ -2191,20 +2193,32 @@ void unlock_page_memcg(struct page *page)
 	__unlock_page_memcg(page->mem_cgroup);
 }
 EXPORT_SYMBOL(unlock_page_memcg);
+/* 2024年6月21日23:46:21
+ercpu的已经报账但是未使用内存页面
 
+ */
 struct memcg_stock_pcp {
+/* 指向所属的memcg */
 	struct mem_cgroup *cached; /* this never be root cgroup */
+/* 
+stock里面剩余的页面
+ */
 	unsigned int nr_pages;
 	struct work_struct work;
 	unsigned long flags;
 #define FLUSHING_CACHED_CHARGE	0
 };
+/* 2024年6月21日23:45:54
+percpu的已经报账但是未使用内存页面
+ */
+
 static DEFINE_PER_CPU(struct memcg_stock_pcp, memcg_stock);
 static DEFINE_MUTEX(percpu_charge_mutex);
 
 /**
 2024年06月21日11:37:45
-
+2024年6月21日23:45:18
+使用已经报账但是还未使用的内存，percpu。
  * consume_stock: Try to consume stocked charge on this cpu.
  * @memcg: memcg to consume from.
  * @nr_pages: how many pages to charge.
@@ -2225,7 +2239,9 @@ static bool consume_stock(struct mem_cgroup *memcg, unsigned int nr_pages)
 		return ret;
 
 	local_irq_save(flags);
-
+/* 
+memcg stock是percpu
+*/
 	stock = this_cpu_ptr(&memcg_stock);
 	if (memcg == stock->cached && stock->nr_pages >= nr_pages) {
 		stock->nr_pages -= nr_pages;
@@ -2549,6 +2565,7 @@ out:
 /*
 2024-06-20 17:29:03
 2024年06月21日11:33:11
+2024年6月21日23:43:36
 如何给memcg记账呢
 一个版本的是真正实现usage_in_bytes累加是在函数：try_charge->res_counter_charge->__res_counter_charge->res_counter_charge_locked中完成
 ============
@@ -2577,7 +2594,7 @@ static int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 	if (mem_cgroup_is_root(memcg))
 		return 0;
 retry:
-/* percpu加速？ */
+/* 如果可以使用已报账的内存页，就直接返回 */
 	if (consume_stock(memcg, nr_pages))
 		return 0;
 
