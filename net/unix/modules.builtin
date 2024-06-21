@@ -1,1 +1,2 @@
 net/unix/unix.ko
+net/unix/unix_diag.ko

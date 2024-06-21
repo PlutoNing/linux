@@ -1,1 +1,3 @@
+net/core/pktgen.ko
 net/core/drop_monitor.ko
+net/core/failover.ko

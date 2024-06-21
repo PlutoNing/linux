@@ -1,0 +1,2 @@
+kernel/locking/locktorture.ko
+kernel/locking/test-ww_mutex.ko

@@ -1,2 +1,6 @@
 drivers/nvme/host/nvme-core.ko
 drivers/nvme/host/nvme.ko
+drivers/nvme/host/nvme-fabrics.ko
+drivers/nvme/host/nvme-rdma.ko
+drivers/nvme/host/nvme-fc.ko
+drivers/nvme/host/nvme-tcp.ko

@@ -1,1 +1,3 @@
 drivers/dma/dw/dw_dmac_core.ko
+drivers/dma/dw/dw_dmac.ko
+drivers/dma/dw/dw_dmac_pci.ko

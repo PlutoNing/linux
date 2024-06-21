@@ -1,0 +1,4 @@
+drivers/thermal/broadcom/bcm2835_thermal.ko
+drivers/thermal/broadcom/brcmstb_thermal.ko
+drivers/thermal/broadcom/ns-thermal.ko
+drivers/thermal/broadcom/sr-thermal.ko
