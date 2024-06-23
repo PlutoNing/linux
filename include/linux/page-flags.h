@@ -491,7 +491,9 @@ TESTPAGEFLAG_FALSE(Ksm)
 #endif
 
 u64 stable_page_flags(struct page *page);
-
+/* 2024年6月24日00:04:30
+缓存有效性？
+ */
 static inline int PageUptodate(struct page *page)
 {
 	int ret;
@@ -517,7 +519,9 @@ static __always_inline void __SetPageUptodate(struct page *page)
 	smp_wmb();
 	__set_bit(PG_uptodate, &page->flags);
 }
+/* 2024年6月24日00:16:25
 
+ */
 static __always_inline void SetPageUptodate(struct page *page)
 {
 	VM_BUG_ON_PAGE(PageTail(page), page);

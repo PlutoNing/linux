@@ -87,7 +87,10 @@ static inline void *kmap(struct page *page)
 static inline void kunmap(struct page *page)
 {
 }
+/* 2024年6月24日00:10:56
+kmap地址映射
 
+ */
 static inline void *kmap_atomic(struct page *page)
 {
 	preempt_disable();
@@ -95,7 +98,9 @@ static inline void *kmap_atomic(struct page *page)
 	return page_address(page);
 }
 #define kmap_atomic_prot(page, prot)	kmap_atomic(page)
-
+/* 2024年6月24日00:12:29
+unmap
+ */
 static inline void __kunmap_atomic(void *addr)
 {
 	pagefault_enable();
@@ -214,7 +219,9 @@ static inline void clear_highpage(struct page *page)
 	clear_page(kaddr);
 	kunmap_atomic(kaddr);
 }
-
+/* 2024年6月24日00:10:29
+todo
+ */
 static inline void zero_user_segments(struct page *page,
 	unsigned start1, unsigned end1,
 	unsigned start2, unsigned end2)
@@ -232,7 +239,7 @@ static inline void zero_user_segments(struct page *page,
 	kunmap_atomic(kaddr);
 	flush_dcache_page(page);
 }
-
+/* 2024年6月24日00:10:16 */
 static inline void zero_user_segment(struct page *page,
 	unsigned start, unsigned end)
 {

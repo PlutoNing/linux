@@ -3311,7 +3311,12 @@ static sector_t ext4_bmap(struct address_space *mapping, sector_t block)
 
 	return generic_block_bmap(mapping, block, ext4_get_block);
 }
+/* 
+2024年6月23日23:35:17
+当需要读取文件时，某个Page不在内存中，需要把该Page读取至内存中，
+即调用address_space的操作函数ext4_readpage
 
+ */
 static int ext4_readpage(struct file *file, struct page *page)
 {
 	int ret = -EAGAIN;
@@ -4543,6 +4548,8 @@ out_stop:
  * underlying buffer_head on success. If 'in_mem' is true, we have all
  * data in memory that is needed to recreate the on-disk version of this
  * inode.
+ 2024年6月24日00:19:16
+ 
  */
 static int __ext4_get_inode_loc(struct inode *inode,
 				struct ext4_iloc *iloc, int in_mem)
@@ -4684,7 +4691,9 @@ has_buffer:
 	iloc->bh = bh;
 	return 0;
 }
-
+/* 
+2024年6月24日00:18:51
+ */
 int ext4_get_inode_loc(struct inode *inode, struct ext4_iloc *iloc)
 {
 	/* We have all inode data except xattrs in memory here. */

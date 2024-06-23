@@ -460,7 +460,9 @@ out:
 		error = 0;
 	return error;
 }
-
+/* 2024年6月24日00:16:58
+读取inode的inline data
+ */
 static int ext4_read_inline_page(struct inode *inode, struct page *page)
 {
 	void *kaddr;
@@ -494,7 +496,9 @@ static int ext4_read_inline_page(struct inode *inode, struct page *page)
 out:
 	return ret;
 }
+/* 2024年6月24日00:02:47
 
+ */
 int ext4_readpage_inline(struct inode *inode, struct page *page)
 {
 	int ret = 0;
@@ -508,8 +512,11 @@ int ext4_readpage_inline(struct inode *inode, struct page *page)
 	/*
 	 * Current inline data can only exist in the 1st page,
 	 * So for all the other pages, just set them uptodate.
+	 2024年6月24日00:03:20
+
 	 */
 	if (!page->index)
+	/* 没有地址空间的index，可能是inline data？ */
 		ret = ext4_read_inline_page(inode, page);
 	else if (!PageUptodate(page)) {
 		zero_user_segment(page, 0, PAGE_SIZE);

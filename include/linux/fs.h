@@ -631,12 +631,17 @@ struct fsnotify_mark_connector;
  * Keep mostly read-only and often accessed (especially for
  * the RCU path lookup and 'stat' data) fields at the beginning
  * of the 'struct inode'
+ 2024年6月23日23:38:10
+
  */
 struct inode {
+/* 访问权限控制 */
 	umode_t			i_mode;
+
 	unsigned short		i_opflags;
 	kuid_t			i_uid;
 	kgid_t			i_gid;
+
 	unsigned int		i_flags;
 
 #ifdef CONFIG_FS_POSIX_ACL
@@ -645,10 +650,13 @@ struct inode {
 #endif
 
 	const struct inode_operations	*i_op;
+/* 超级块 */
 	struct super_block	*i_sb;
+
 	struct address_space	*i_mapping;
 
 #ifdef CONFIG_SECURITY
+
 	void			*i_security;
 #endif
 
@@ -662,13 +670,19 @@ struct inode {
 	 *    inode_(inc|dec)_link_count
 	 */
 	union {
+		/* 硬链接数 */
 		const unsigned int i_nlink;
+
 		unsigned int __i_nlink;
 	};
+	/* 设备 */
 	dev_t			i_rdev;
 	loff_t			i_size;
+	/* 访问时间 */
 	struct timespec64	i_atime;
+	/* 修改时间 */
 	struct timespec64	i_mtime;
+	/* 创建时间 */
 	struct timespec64	i_ctime;
 	spinlock_t		i_lock;	/* i_blocks, i_bytes, maybe i_size */
 	unsigned short          i_bytes;
@@ -686,7 +700,7 @@ struct inode {
 
 	unsigned long		dirtied_when;	/* jiffies of first dirtying */
 	unsigned long		dirtied_time_when;
-
+/* 哈希表 */
 	struct hlist_node	i_hash;
 	struct list_head	i_io_list;	/* backing dev IO list */
 #ifdef CONFIG_CGROUP_WRITEBACK
@@ -701,10 +715,12 @@ struct inode {
 	struct list_head	i_sb_list;
 	struct list_head	i_wb_list;	/* backing dev writeback list */
 	union {
+		/* 目录项链表 */
 		struct hlist_head	i_dentry;
 		struct rcu_head		i_rcu;
 	};
 	atomic64_t		i_version;
+	/* 引用计数 */
 	atomic_t		i_count;
 	atomic_t		i_dio_count;
 	atomic_t		i_writecount;
@@ -1476,7 +1492,7 @@ struct super_block {
 	 * s_fsnotify_marks together for cache efficiency. They are frequently
 	 * accessed and rarely modified.
 	 */
-	void			*s_fs_info;	/* Filesystem private info */
+	void			*s_fs_info;	/* 文件系统超级块Filesystem private info */
 
 	/* Granularity of c/m/atime in ns (cannot be worse than a second) */
 	u32			s_time_gran;

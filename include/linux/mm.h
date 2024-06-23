@@ -1344,7 +1344,9 @@ static inline struct mem_cgroup *page_memcg_rcu(struct page *page)
  * Some inline functions in vmstat.h depend on page_zone()
  */
 #include <linux/vmstat.h>
-
+/* 2024年6月24日00:11:37
+记不清了，好像就是映射
+ */
 static __always_inline void *lowmem_page_address(const struct page *page)
 {
 	return page_to_virt(page);

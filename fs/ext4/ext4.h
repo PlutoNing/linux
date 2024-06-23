@@ -948,6 +948,14 @@ enum {
 
 /*
  * fourth extended file system inode data in memory
+ 2024年6月23日23:53:31
+ ext4 磁盘inode节点的内存中形式：struct ext4_inode_info
+ 通用的 VFS 层，定义了所有文件系统通用的 inode，叫做 vfs inode，
+ 而后端文件系统也有自身特殊的 inode 格式，该格式是在 vfs inode 之上进行扩展的，
+ 怎么通过 vfs inode 怎么得到具体文件系统的 inode 呢？
+
+
+
  */
 struct ext4_inode_info {
 	__le32	i_data[15];	/* unconverted */
@@ -1057,6 +1065,7 @@ struct ext4_inode_info {
 	__u16 i_extra_isize;
 
 	/* Indicate the inline data space. */
+	/* inline data 偏移地址 */
 	u16 i_inline_off;
 	u16 i_inline_size;
 
@@ -1378,6 +1387,7 @@ struct ext4_super_block {
 
 /*
  * fourth extended-fs super-block data in memory
+ 2024年6月24日00:22:48
  */
 struct ext4_sb_info {
 	unsigned long s_desc_size;	/* Size of a group descriptor in bytes */
@@ -1552,11 +1562,17 @@ struct ext4_sb_info {
 	struct percpu_rw_semaphore s_journal_flag_rwsem;
 	struct dax_device *s_daxdev;
 };
-
+/* 
+2024年6月24日00:22:03
+sb to ext4 sb
+ */
 static inline struct ext4_sb_info *EXT4_SB(struct super_block *sb)
 {
 	return sb->s_fs_info;
 }
+/* 2024年6月23日23:52:05
+inode转ext4 inode？
+ */
 static inline struct ext4_inode_info *EXT4_I(struct inode *inode)
 {
 	return container_of(inode, struct ext4_inode_info, vfs_inode);
@@ -2126,6 +2142,8 @@ struct ext4_filename {
 
 /*
  * Describe an inode's exact location on disk and in memory
+ 2024年6月24日00:17:39
+
  */
 struct ext4_iloc
 {
@@ -3170,7 +3188,9 @@ extern int ext4_inline_data_iomap(struct inode *inode, struct iomap *iomap);
 extern int ext4_inline_data_truncate(struct inode *inode, int *has_inline);
 
 extern int ext4_convert_inline_data(struct inode *inode);
+/* 2024年6月23日23:51:43
 
+ */
 static inline int ext4_has_inline_data(struct inode *inode)
 {
 	return ext4_test_inode_flag(inode, EXT4_INODE_INLINE_DATA) &&
