@@ -169,6 +169,7 @@ struct sock_common {
 	};
 
 	unsigned short		skc_family;
+	/* tcp协议状态 */
 	volatile unsigned char	skc_state;
 	unsigned char		skc_reuse:4;
 	unsigned char		skc_reuseport:1;
@@ -234,6 +235,7 @@ struct sock_common {
 struct bpf_sk_storage;
 
 /**
+2024年06月24日18:25:50
   *	struct sock - network layer representation of sockets
   *	@__sk_common: shared layout with inet_timewait_sock
   *	@sk_shutdown: mask of %SEND_SHUTDOWN and/or %RCV_SHUTDOWN
@@ -492,7 +494,9 @@ struct sock {
 #ifdef CONFIG_SECURITY
 	void			*sk_security;
 #endif
+/* cgroup相关 */
 	struct sock_cgroup_data	sk_cgrp_data;
+	/* 为啥也有memcg */
 	struct mem_cgroup	*sk_memcg;
 	void			(*sk_state_change)(struct sock *sk);
 	void			(*sk_data_ready)(struct sock *sk);

@@ -1280,7 +1280,10 @@ int inet_sk_rebuild_header(struct sock *sk)
 	return err;
 }
 EXPORT_SYMBOL(inet_sk_rebuild_header);
-
+/* 2024年06月24日19:25:00
+inet_sock_set_state？
+设置tcp状态？
+ */
 void inet_sk_set_state(struct sock *sk, int state)
 {
 	trace_inet_sock_set_state(sk, sk->sk_state, state);

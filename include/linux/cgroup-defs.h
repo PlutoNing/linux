@@ -786,6 +786,9 @@ static inline void cgroup_threadgroup_change_end(struct task_struct *tsk) {}
 #ifdef CONFIG_SOCK_CGROUP_DATA
 
 /*
+
+2024年06月24日18:34:30
+
  * sock_cgroup_data is embedded at sock->sk_cgrp_data and contains
  * per-socket cgroup information except for memcg association.
  *

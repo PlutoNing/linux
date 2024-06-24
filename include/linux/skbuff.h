@@ -605,6 +605,8 @@ typedef unsigned char *sk_buff_data_t;
 #endif
 
 /**
+2024年06月24日19:09:08
+
  *	struct sk_buff - socket buffer
  *	@next: Next buffer in list
  *	@prev: Previous buffer in list
@@ -690,6 +692,7 @@ struct sk_buff {
 			struct sk_buff		*prev;
 
 			union {
+				/* 所属的设备？ */
 				struct net_device	*dev;
 				/* Some protocols might use this space to store information,
 				 * while device pointer would be NULL.
@@ -703,6 +706,7 @@ struct sk_buff {
 	};
 
 	union {
+		/* 所属的sock？ */
 		struct sock		*sk;
 		int			ip_defrag_offset;
 	};
@@ -865,6 +869,7 @@ struct sk_buff {
 
 	__be16			protocol;
 	__u16			transport_header;
+	/* ip头偏移地址 */
 	__u16			network_header;
 	__u16			mac_header;
 
@@ -875,6 +880,7 @@ struct sk_buff {
 	/* These elements must be at the end, see alloc_skb() for details.  */
 	sk_buff_data_t		tail;
 	sk_buff_data_t		end;
+	/* skb的header的地址？ */
 	unsigned char		*head,
 				*data;
 	unsigned int		truesize;
