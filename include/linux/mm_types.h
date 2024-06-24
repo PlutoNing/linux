@@ -82,6 +82,7 @@ struct page {
 			 * @lru: Pageout list, eg. active_list protected by
 			 * pgdat->lru_lock.  Sometimes used as a generic list
 			 * by the page owner.
+			 lru的连接件
 			 */
 			struct list_head lru;
 			/* See page-flags.h for PAGE_MAPPING_FLAGS
@@ -94,7 +95,8 @@ struct page {
 （3）       如果page->mapping不等于0，但第0位不为0，则apping指向一个struct address_space地址空间结构变量；
 			 */
 			struct address_space *mapping;
-			pgoff_t index;		/* Our offset within mapping. */
+			/* Our offset within mapping. */
+			pgoff_t index;		
 			/**
 			 * @private: Mapping-private opaque data.
 			 * Usually used for buffer_heads if PagePrivate.

@@ -848,9 +848,10 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 EXPORT_SYMBOL_GPL(replace_page_cache_page);
 /*
 2024年06月20日16:11:29
-
-
+涉及到memcg。
+在页缓存分配页面，涉及到内存cg记账。
 */
+
 static int __add_to_page_cache_locked(struct page *page,
 				      struct address_space *mapping,
 				      pgoff_t offset, gfp_t gfp_mask,
@@ -880,6 +881,7 @@ struct xa_state xas = { .xa = &mapping->i_pages,
 	mapping_set_update(&xas, mapping);
 
 	if (!huge) {
+/* mem_cgroup_try_charge尝试内存记账，mem_cgroup_commit_charge提交内存记账 */
 		error = mem_cgroup_try_charge(page, current->mm,
 					      gfp_mask, &memcg, false);
 		if (error)
@@ -895,6 +897,7 @@ struct xa_state xas = { .xa = &mapping->i_pages,
 		old = xas_load(&xas);
 		if (old && !xa_is_value(old))
 			xas_set_err(&xas, -EEXIST);
+		/* xas是个数组，存储读写api */
 		xas_store(&xas, page);
 		if (xas_error(&xas))
 			goto unlock;
@@ -908,6 +911,7 @@ struct xa_state xas = { .xa = &mapping->i_pages,
 
 		/* hugetlb pages do not participate in page cache accounting */
 		if (!huge)
+		/* 更新内存节点的东西 */
 			__inc_node_page_state(page, NR_FILE_PAGES);
 unlock:
 		xas_unlock_irq(&xas);
@@ -917,7 +921,10 @@ unlock:
 		goto error;
 
 	if (!huge)
+	/* mem_cgroup_try_charge尝试内存记账，mem_cgroup_commit_charge提交内存记账 */
 		mem_cgroup_commit_charge(page, memcg, false, false);
+
+
 	trace_mm_filemap_add_to_page_cache(page);
 	return 0;
 error:
@@ -925,6 +932,7 @@ error:
 	/* Leave page->index set: truncation relies upon it */
 	if (!huge)
 		mem_cgroup_cancel_charge(page, memcg, false);
+	/* 减少引用计数 */
 	put_page(page);
 	return xas_error(&xas);
 }
@@ -951,7 +959,9 @@ int add_to_page_cache_locked(struct page *page, struct address_space *mapping,
 					  gfp_mask, NULL);
 }
 EXPORT_SYMBOL(add_to_page_cache_locked);
+/* 2024年6月24日22:44:06
 
+ */
 int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 				pgoff_t offset, gfp_t gfp_mask)
 {

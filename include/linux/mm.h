@@ -980,7 +980,9 @@ vm_fault_t finish_mkwrite_fault(struct vm_fault *vmf);
 #define LAST_CPUPID_MASK	((1UL << LAST_CPUPID_SHIFT) - 1)
 #define KASAN_TAG_MASK		((1UL << KASAN_TAG_WIDTH) - 1)
 #define ZONEID_MASK		((1UL << ZONEID_SHIFT) - 1)
+/* 2024年6月24日23:38:57
 
+ */
 static inline enum zone_type page_zonenum(const struct page *page)
 {
 	return (page->flags >> ZONES_PGSHIFT) & ZONES_MASK;
@@ -1046,7 +1048,8 @@ static inline bool is_pci_p2pdma_page(const struct page *page)
 /* 127: arbitrary random number, small enough to assemble well */
 #define page_ref_zero_or_close_to_overflow(page) \
 	((unsigned int) page_ref_count(page) + 127u <= 127u)
-
+/* 2024年6月24日23:45:23
+ */
 static inline void get_page(struct page *page)
 {
 	page = compound_head(page);
@@ -1129,6 +1132,9 @@ static inline int page_zone_id(struct page *page)
 #ifdef NODE_NOT_IN_PAGE_FLAGS
 extern int page_to_nid(const struct page *page);
 #else
+/* 2024年6月24日23:07:54
+咋转的？
+ */
 static inline int page_to_nid(const struct page *page)
 {
 	struct page *p = (struct page *)page;
@@ -1272,12 +1278,15 @@ static inline u8 page_kasan_tag(const struct page *page)
 static inline void page_kasan_tag_set(struct page *page, u8 tag) { }
 static inline void page_kasan_tag_reset(struct page *page) { }
 #endif
-
+/* 2024年6月24日23:40:23 */
 static inline struct zone *page_zone(const struct page *page)
 {
 	return &NODE_DATA(page_to_nid(page))->node_zones[page_zonenum(page)];
 }
-
+/* 
+2024年6月24日22:59:23
+从页面获取内存节点
+ */
 static inline pg_data_t *page_pgdat(const struct page *page)
 {
 	return NODE_DATA(page_to_nid(page));

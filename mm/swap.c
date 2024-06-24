@@ -402,7 +402,9 @@ void mark_page_accessed(struct page *page)
 		clear_page_idle(page);
 }
 EXPORT_SYMBOL(mark_page_accessed);
+/* 2024年6月24日23:41:30
 
+ */
 static void __lru_cache_add(struct page *page)
 {
 	struct pagevec *pvec = &get_cpu_var(lru_add_pvec);
@@ -433,6 +435,9 @@ void lru_cache_add_file(struct page *page)
 EXPORT_SYMBOL(lru_cache_add_file);
 
 /**
+2024年6月24日23:41:05
+
+加到page list？什么list？
  * lru_cache_add - add a page to a page list
  * @page: the page to be added to the LRU.
  *
@@ -450,7 +455,7 @@ void lru_cache_add(struct page *page)
 
 /**
 2024年06月21日14:53:42
-
+lru记账的时机还是在缺页处理do_anonymous_page->lru_cache_add_active_or_unevictable
  * lru_cache_add_active_or_unevictable
  * @page:  the page to be added to LRU
  * @vma:   vma in which page is mapped for determining reclaimability
@@ -758,6 +763,9 @@ void lru_add_drain_all(void)
 #endif
 
 /**
+2024年6月24日23:49:06
+以进程退出时的uncharge流程来分析，通过unmap_vmas去unmap一段虚拟地址后，
+会调用release_pages函数释放page，最终调用uncharge_page。
  * release_pages - batched put_page()
  * @pages: array of pages to release
  * @nr: number of pages
@@ -775,6 +783,7 @@ void release_pages(struct page **pages, int nr)
 	unsigned int uninitialized_var(lock_batch);
 
 	for (i = 0; i < nr; i++) {
+		/* 一个一个换吗 */
 		struct page *page = pages[i];
 
 		/*
@@ -834,6 +843,7 @@ void release_pages(struct page **pages, int nr)
 			lruvec = mem_cgroup_page_lruvec(page, locked_pgdat);
 			VM_BUG_ON_PAGE(!PageLRU(page), page);
 			__ClearPageLRU(page);
+			/* 从lruvec移除 */
 			del_page_from_lru_list(page, lruvec, page_off_lru(page));
 		}
 
@@ -845,8 +855,9 @@ void release_pages(struct page **pages, int nr)
 	}
 	if (locked_pgdat)
 		spin_unlock_irqrestore(&locked_pgdat->lru_lock, flags);
-
+		/* 还账准备释放的页面 */
 	mem_cgroup_uncharge_list(&pages_to_free);
+	/* free什么，还有还在记录的机制吗 */
 	free_unref_page_list(&pages_to_free);
 }
 EXPORT_SYMBOL(release_pages);
@@ -966,6 +977,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 }
 
 /*
+2024年6月24日23:47:54
  * Add the passed pages to the LRU, then drop the caller's refcount
  * on them.  Reinitialises the caller's pagevec.
  */

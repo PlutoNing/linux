@@ -92,7 +92,9 @@ int do_swap_account __read_mostly;
 static DECLARE_WAIT_QUEUE_HEAD(memcg_cgwb_frn_waitq);
 #endif
 
-/* Whether legacy memory+swap accounting is active */
+/* Whether legacy memory+swap accounting is active
+2024年6月25日00:25:02
+这算什么 */
 static bool do_memsw_account(void)
 {
 	return !cgroup_subsys_on_dfl(memory_cgrp_subsys) && do_swap_account;
@@ -115,6 +117,7 @@ static const char *const mem_cgroup_lru_names[] = {
 
  * Cgroups above their limits are maintained in a RB-Tree, independent of
  * their hierarchy representation
+ mem_cgroup在每个node下，都有一个lruvec, 这个lruvec保存在mem_cgroup_per_node结构中
  */
 
 struct mem_cgroup_tree_per_node {
@@ -497,7 +500,10 @@ ino_t page_cgroup_ino(struct page *page)
 	rcu_read_unlock();
 	return ino;
 }
-
+/* 
+2024年6月24日23:55:23
+通过memcg和page获得page所在的lruvec（通过mem_cgroup_per_node存储）
+ */
 static struct mem_cgroup_per_node *
 mem_cgroup_page_nodeinfo(struct mem_cgroup *memcg, struct page *page)
 {
@@ -511,7 +517,10 @@ soft_limit_tree_node(int nid)
 {
 	return soft_limit_tree.rb_tree_per_node[nid];
 }
+/* 
+2024年6月24日23:19:16
 
+ */
 static struct mem_cgroup_tree_per_node *
 soft_limit_tree_from_page(struct page *page)
 {
@@ -596,7 +605,8 @@ static unsigned long soft_limit_excess(struct mem_cgroup *memcg)
 }
 /* 
 2024年06月21日14:35:14
-
+2024年6月24日23:18:00
+todo
 当usage超过softlimit时，最终会调用mem_cgroup_update_tree把memcg插入全局的
 mem_cgroup_tree_per_node红黑树。
 
@@ -1267,6 +1277,8 @@ int mem_cgroup_scan_tasks(struct mem_cgroup *memcg,
 }
 
 /**
+2024年6月24日23:54:14
+
  * mem_cgroup_page_lruvec - return lruvec for isolating/putting an LRU page
  * @page: the page
  * @pgdat: pgdat of the page
@@ -1899,7 +1911,9 @@ static int memcg_oom_wake_function(wait_queue_entry_t *wait,
 		return 0;
 	return autoremove_wake_function(wait, mode, sync, arg);
 }
+/* 2024年6月25日00:25:24
 
+ */
 static void memcg_oom_recover(struct mem_cgroup *memcg)
 {
 	/*
@@ -6542,7 +6556,9 @@ exit:
 
 /**
 2024年06月20日16:43:19
+mem_cgroup_try_charge尝试内存记账，mem_cgroup_commit_charge提交内存记账
 charge是收费的意思？
+todo
  * mem_cgroup_try_charge - try charging a page
  * @page: page to charge
  * @mm: mm context of the victim
@@ -6622,7 +6638,7 @@ int mem_cgroup_try_charge_delay(struct page *page, struct mm_struct *mm,
 
 /**
 2024年06月21日14:31:03
-
+2024年6月24日23:14:50
  * mem_cgroup_commit_charge - commit a page charge
  * @page: page to charge
  * @memcg: memcg to charge the page to
@@ -6711,7 +6727,9 @@ void mem_cgroup_cancel_charge(struct page *page, struct mem_cgroup *memcg,
 
 	cancel_charge(memcg, nr_pages);
 }
-
+/* 2024年6月25日00:12:50
+猜测可能是一个批量的聚合信息
+ */
 struct uncharge_gather {
 	struct mem_cgroup *memcg;
 	unsigned long pgpgout;
@@ -6722,18 +6740,23 @@ struct uncharge_gather {
 	unsigned long nr_shmem;
 	struct page *dummy_page;
 };
+/* 2024年6月25日00:07:17
 
+ */
 static inline void uncharge_gather_clear(struct uncharge_gather *ug)
 {
 	memset(ug, 0, sizeof(*ug));
 }
-
+/* 2024年6月25日00:21:49
+批量还ug里面的账
+ */
 static void uncharge_batch(const struct uncharge_gather *ug)
 {
 	unsigned long nr_pages = ug->nr_anon + ug->nr_file + ug->nr_kmem;
 	unsigned long flags;
 
 	if (!mem_cgroup_is_root(ug->memcg)) {
+		/* 如果不是根cg？ */
 		page_counter_uncharge(&ug->memcg->memory, nr_pages);
 		if (do_memsw_account())
 			page_counter_uncharge(&ug->memcg->memsw, nr_pages);
@@ -6743,6 +6766,7 @@ static void uncharge_batch(const struct uncharge_gather *ug)
 	}
 
 	local_irq_save(flags);
+	/* 下面是具体的还账吗 */
 	__mod_memcg_state(ug->memcg, MEMCG_RSS, -ug->nr_anon);
 	__mod_memcg_state(ug->memcg, MEMCG_CACHE, -ug->nr_file);
 	__mod_memcg_state(ug->memcg, MEMCG_RSS_HUGE, -ug->nr_huge);
@@ -6755,7 +6779,9 @@ static void uncharge_batch(const struct uncharge_gather *ug)
 	if (!mem_cgroup_is_root(ug->memcg))
 		css_put_many(&ug->memcg->css, nr_pages);
 }
+/* 2024年6月25日00:06:06
 
+ */
 static void uncharge_page(struct page *page, struct uncharge_gather *ug)
 {
 	VM_BUG_ON_PAGE(PageLRU(page), page);
@@ -6769,6 +6795,7 @@ static void uncharge_page(struct page *page, struct uncharge_gather *ug)
 	 * Nobody should be changing or seriously looking at
 	 * page->mem_cgroup at this point, we have fully
 	 * exclusive access to the page.
+	 意思是说ug不是记得自己的帐，把和这个帐先还了，然后指向自己的账？
 	 */
 
 	if (ug->memcg != page->mem_cgroup) {
@@ -6780,9 +6807,11 @@ static void uncharge_page(struct page *page, struct uncharge_gather *ug)
 	}
 
 	if (!PageKmemcg(page)) {
+		/* 如果可以还，开始还 */
 		unsigned int nr_pages = 1;
 
 		if (PageTransHuge(page)) {
+			/* 如果是复合页面，就记账实际的页面数量 */
 			nr_pages = compound_nr(page);
 			ug->nr_huge += nr_pages;
 		}
@@ -6795,19 +6824,23 @@ static void uncharge_page(struct page *page, struct uncharge_gather *ug)
 		}
 		ug->pgpgout++;
 	} else {
+		/* 如果是kmem */
 		ug->nr_kmem += compound_nr(page);
 		__ClearPageKmemcg(page);
 	}
 
 	ug->dummy_page = page;
+	/* page现在被还了，不属于memcg了 */
 	page->mem_cgroup = NULL;
 }
+/* 2024年6月25日00:03:59
 
+ */
 static void uncharge_list(struct list_head *page_list)
 {
 	struct uncharge_gather ug;
 	struct list_head *next;
-
+/*  */
 	uncharge_gather_clear(&ug);
 
 	/*
@@ -6820,11 +6853,17 @@ static void uncharge_list(struct list_head *page_list)
 
 		page = list_entry(next, struct page, lru);
 		next = page->lru.next;
-
+	/*
+	2024年6月25日00:12:27 
+	执行释放页面？下面那个uncharge_batch是干什么？更新统计信息？
+	把释放的内容存入ug
+	下面batch可能批量改账本
+	 */
 		uncharge_page(page, &ug);
 	} while (next != page_list);
 
 	if (ug.memcg)
+	/* uncharge_page最终调用uncharge_batch函数对usage，stat,lru统计信息进行uncharge */
 		uncharge_batch(&ug);
 }
 
@@ -6852,6 +6891,8 @@ void mem_cgroup_uncharge(struct page *page)
 }
 
 /**
+2024年6月25日00:03:35
+
  * mem_cgroup_uncharge_list - uncharge a list of page
  * @page_list: list of pages to uncharge
  *

@@ -445,7 +445,7 @@ int pagecache_write_end(struct file *, struct address_space *mapping,
  * @private_data: For use by the owner of the address_space.
  */
 struct address_space {
-	//所属的inode
+	//所属的inode，也即是文件
 	struct inode		*host;
 	//拥有的页缓存里的pages
 	struct xarray		i_pages;
@@ -460,6 +460,7 @@ struct address_space {
 //搜索树的树根
 	struct rb_root_cached	i_mmap;
 	struct rw_semaphore	i_mmap_rwsem;
+	/* 地址空间里面的page数量 */
 	unsigned long		nrpages;
 	unsigned long		nrexceptional;
 	pgoff_t			writeback_index;
@@ -685,7 +686,9 @@ struct inode {
 	/* 创建时间 */
 	struct timespec64	i_ctime;
 	spinlock_t		i_lock;	/* i_blocks, i_bytes, maybe i_size */
+	/* 使用的字节数 */
 	unsigned short          i_bytes;
+	/* 以位为单位的块大小 */
 	u8			i_blkbits;
 	u8			i_write_hint;
 	blkcnt_t		i_blocks;
@@ -1446,7 +1449,9 @@ struct sb_writers {
 	wait_queue_head_t		wait_unfrozen;	/* for get_super_thawed() */
 	struct percpu_rw_semaphore	rw_sem[SB_FREEZE_LEVELS];
 };
-
+/* 2024年6月24日22:36:16
+超级块
+ */
 struct super_block {
 	struct list_head	s_list;		/* Keep this first */
 	dev_t			s_dev;		/* search index; _not_ kdev_t */
@@ -1478,6 +1483,7 @@ struct super_block {
 #endif
 	struct hlist_bl_head	s_roots;	/* alternate root dentries for NFS */
 	struct list_head	s_mounts;	/* list of mounts; _not_ for fs use */
+	/*  */
 	struct block_device	*s_bdev;
 	struct backing_dev_info *s_bdi;
 	struct mtd_info		*s_mtd;

@@ -396,7 +396,10 @@ void __inc_zone_state(struct zone *zone, enum zone_stat_item item)
 		__this_cpu_write(*p, -overstep);
 	}
 }
+/* 2024年6月24日23:08:54
+更新内存节点的统计信息
 
+ */
 void __inc_node_state(struct pglist_data *pgdat, enum node_stat_item item)
 {
 	struct per_cpu_nodestat __percpu *pcp = pgdat->per_cpu_nodestats;
@@ -418,7 +421,9 @@ void __inc_zone_page_state(struct page *page, enum zone_stat_item item)
 	__inc_zone_state(page_zone(page), item);
 }
 EXPORT_SYMBOL(__inc_zone_page_state);
-
+/* 2024年6月24日22:58:39
+更新内存节点的一些统计信息？
+ */
 void __inc_node_page_state(struct page *page, enum node_stat_item item)
 {
 	__inc_node_state(page_pgdat(page), item);

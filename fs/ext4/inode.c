@@ -3328,6 +3328,7 @@ static int ext4_readpage(struct file *file, struct page *page)
 		ret = ext4_readpage_inline(inode, page);
 
 	if (ret == -EAGAIN)
+	/* 主要还是调用这个函数，从地址空间读取某页面 */
 		return ext4_mpage_readpages(page->mapping, NULL, page, 1,
 						false);
 

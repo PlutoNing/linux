@@ -361,7 +361,9 @@ struct per_cpu_pageset {
 	s8 vm_stat_diff[NR_VM_ZONE_STAT_ITEMS];
 #endif
 };
+/* 2024年6月24日23:09:18
 
+ */
 struct per_cpu_nodestat {
 	s8 stat_threshold;
 	s8 vm_node_stat_diff[NR_VM_NODE_STAT_ITEMS];
@@ -709,11 +711,14 @@ struct deferred_split {
  */
 struct bootmem_data;
 /* 2024年06月21日15:41:07
-
+内存节点？
  */
 typedef struct pglist_data {
+	/* 这是一个包含当前node所有zone结构体的数组。通过这个，我们知道当前node有哪几个zone。 */
 	struct zone node_zones[MAX_NR_ZONES];
+	/* 这个数组包括所有node的所有zone */
 	struct zonelist node_zonelists[MAX_ZONELISTS];
+	/* 表示当前node中zone的数目 */
 	int nr_zones;
 #ifdef CONFIG_FLAT_NODE_MEM_MAP	/* means !SPARSEMEM */
 	struct page *node_mem_map;
@@ -731,19 +736,48 @@ typedef struct pglist_data {
 	 * or CONFIG_DEFERRED_STRUCT_PAGE_INIT.
 	 *
 	 * Nests above zone->lock and zone->span_seqlock
+
 	 */
 	spinlock_t node_size_lock;
 #endif
+/* 表示当前node起始的物理页号，即页帧号 */
 	unsigned long node_start_pfn;
-	unsigned long node_present_pages; /* total number of physical pages */
+
+	unsigned long node_present_pages; /* total number of physical pages 
+	表示该node中实际物理页数量，剔除掉了内存空洞。*/
 	unsigned long node_spanned_pages; /* total size of physical page
-					     range, including holes */
+					     range, including holes 表示当前node物理地址范围内的所有page，包括内存空洞。 */
 						 /* 内存节点id */
 	int node_id;
+	/*  内核会为每个 NUMA 节点（UMA是只有一个node的特殊NUMA）分配一个kswapd线程用于回收不经常使用的页面或者内存不足时回收内存，还会为每个 NUMA 节点分配一个kcompactd线程用于内存规整避免内存碎片。下面开始会讲一些跟kswapd和kcompactd相关的一些数据结构成员。
+
+        kswapd_wait表示是一个kswapd等待队列，里面存放的是等待kswapd线程执行异步回收的线程，在free_area_init_core 函数中被初始化。
+———————————————— */
 	wait_queue_head_t kswapd_wait;
+	/* 表示等待直接内存回收（direct reclaim）结束的线程等待队列。
+	里面存放的都是等待由kswapd帮忙做完直接内存回收的线程。当kswapd
+	直接内存回收后，整个node的free pages满足要求时，在kswapd睡眠前，
+	kswapd会唤醒pfmemalloc_wait里面的线程，线程直接进行内存分配，
+	这个等待队列的线程跳过了自己direct reclaim的操作。
+	在kswapd中会对node中每一个不平衡的zone进行内存回收，根据struct zone
+	里面的水线图可知，直到所有zone都满足：该zone分配页框后剩余的页框数量 > 
+	该zone的_watermark[WMARK_HIGH]+该zone 预留它用的页框数量，则kswapd
+	就会停止内存回收，进入睡眠，然后唤醒pfmemalloc_wait等待队列的线程。
+
+        那如何判断请求内存分配的线程是进入pfmemalloc_wait等待对列，
+		还是直接自己进行direct reclaim呢？实际上，就是判断一个node是否平衡。平衡，
+		那就由线程自己进行direct reclaim，否则，线程加入等待队列，由kswapd来进行
+		direct reclaim。具体的判断调用链：try_to_free_pages()->throttle_direct_reclaim()
+		->allow_direct_reclaim()。allow_direct_reclaim返回true，说明node是平衡的，
+		不会唤醒kswapd去做direct reclaim，具体的函数流程这里暂时不展开讲。
+
+	wait_queue_head_t pfmemalloc_wait;
+*/
 	wait_queue_head_t pfmemalloc_wait;
 	struct task_struct *kswapd;	/* Protected by
 					   mem_hotplug_begin/end() */
+					   /*   表示kswapd线程内存回收的单位（2^kswapd_order），
+					   要求大于线程内存分配所需求的order，否则会更新为线程内存分配对应的order。 */
 	int kswapd_order;
 	enum zone_type kswapd_classzone_idx;
 
@@ -785,14 +819,30 @@ typedef struct pglist_data {
 	struct deferred_split deferred_split_queue;
 #endif
 
-	/* Fields commonly accessed by the page reclaim scanner */
+	/* Fields commonly accessed by the page reclaim scanner 
+	  保存和维护每个node的LRU链表和相关参数。无法直接访问__lruvec，
+	  一般都是通过mem_cgroup_lruvec查找lruvecs。struct lruvec
+	  结构体里面记录了五个LRU链表的相关信息。*/
 	struct lruvec		lruvec;
-
+/*  每个node节点跟控制回收行为相关的标志。PGDAT_DIRTY表示回收扫描
+已经发现当前node有很多的dirty file page在LRU链表尾部，后续会使用
+page out动作将脏文件页回写，注意点：脏页都是file backed page，
+不是anon page，在linux kernel内存管理之/proc/meminfo下参数介绍
+有讲。PGDAT_WRITEBACK表示回收扫描已经发现当前node很多page正在回
+写(内容写回disk)。PGDAT_RECLAIM_LOCKED表示回收扫描发现，当前node
+拒绝此次的回收。
+ */
 	unsigned long		flags;
 
 	ZONE_PADDING(_pad2_)
 
-	/* Per-node vmstats */
+	/* Per-node vmstats  跟struct zone里面的struct per_cpu_pageset __percpu *pageset
+	功能有些差异，这里没有涉及到PCP技术。从struct per_cpu_nodestat结构体中，
+	也可以看出per_cpu_nodestats保存的是per cpu在该node的的vm stat信息，涉及
+	到per cpu vm stat信息更新的阈值判断参数stat_threshold和保存per CPU在该node
+	的vm stat统计信息vm_node_stat_diff。同样也是在init_per_zone_wmark_min函数里
+	面会调用refresh_zone_stat_thresholds对pglist_data->stat_threshold进行更新。
+*/
 	struct per_cpu_nodestat __percpu *per_cpu_nodestats;
 	atomic_long_t		vm_stat[NR_VM_NODE_STAT_ITEMS];
 } pg_data_t;

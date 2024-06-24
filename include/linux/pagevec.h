@@ -16,10 +16,20 @@
 
 struct page;
 struct address_space;
+/* 2024年6月24日23:42:37
+https://blog.csdn.net/dog250/article/details/6070075
+以往要加入到lru链表的page都要加入到这个pagevec了，并不再直接往lru中加入了。
+可是不加入lru的page就不会被内存管理机制所管理，因此仅仅这样是不行的，除非给
+pagevec结构加上lru的功能，然而这又势必会使这个结构体复杂化，再一个，这个结构体
+使用的最大范围就是“每cpu”，更多的它都是局部使用的，这样就使得锁的粒度细化了很多，
+而lru则是全局的，设计pagevec的目的之一正是因为这个。
 
+ */
 struct pagevec {
+	/* 现在的页面数量 */
 	unsigned char nr;
 	bool percpu_pvec_drained;
+	/* 存储页面的数组 */
 	struct page *pages[PAGEVEC_SIZE];
 };
 
@@ -67,13 +77,17 @@ static inline unsigned pagevec_count(struct pagevec *pvec)
 {
 	return pvec->nr;
 }
-
+/* 2024年6月24日23:47:19
+剩余空间？
+ */
 static inline unsigned pagevec_space(struct pagevec *pvec)
 {
 	return PAGEVEC_SIZE - pvec->nr;
 }
 
 /*
+2024年6月24日23:45:59
+加入pagevec
  * Add a page to a pagevec.  Returns the number of slots still available.
  */
 static inline unsigned pagevec_add(struct pagevec *pvec, struct page *page)

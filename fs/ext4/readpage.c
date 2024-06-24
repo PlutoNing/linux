@@ -208,7 +208,10 @@ static inline loff_t ext4_readpage_limit(struct inode *inode)
 
 	return i_size_read(inode);
 }
+/* 
+2024年6月24日22:30:29
 
+ */
 int ext4_mpage_readpages(struct address_space *mapping,
 			 struct list_head *pages, struct page *page,
 			 unsigned nr_pages, bool is_readahead)
@@ -217,6 +220,7 @@ int ext4_mpage_readpages(struct address_space *mapping,
 	sector_t last_block_in_bio = 0;
 
 	struct inode *inode = mapping->host;
+	/* 以位为单位的block块大小 */
 	const unsigned blkbits = inode->i_blkbits;
 	const unsigned blocks_per_page = PAGE_SIZE >> blkbits;
 	const unsigned blocksize = 1 << blkbits;
@@ -241,8 +245,9 @@ int ext4_mpage_readpages(struct address_space *mapping,
 
 		if (pages) {
 			page = lru_to_page(pages);
-
+/* 预取 */
 			prefetchw(&page->flags);
+			/*  */
 			list_del(&page->lru);
 			if (add_to_page_cache_lru(page, mapping, page->index,
 				  readahead_gfp_mask(mapping)))

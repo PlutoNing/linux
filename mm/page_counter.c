@@ -52,6 +52,8 @@ static void propagate_protected_usage(struct page_counter *c,
 }
 
 /**
+2024年6月25日00:24:15
+page cnter还账
  * page_counter_cancel - take pages out of the local counter
  * @counter: counter
  * @nr_pages: number of pages to cancel
@@ -155,6 +157,8 @@ failed:
 }
 
 /**
+2024年6月25日00:23:56
+page counter具有层级关系。
  * page_counter_uncharge - hierarchically uncharge pages
  * @counter: counter
  * @nr_pages: number of pages to uncharge

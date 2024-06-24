@@ -137,7 +137,10 @@ struct cgroup_file {
  * directly without synchronization.
  */
 struct cgroup_subsys_state {
-	/* PI: the cgroup that this css is attached to */
+	/* PI: the cgroup that this css is attached to cgroup指针指向了一个
+	cgroup结构，也就是进程属于的cgroup。进程受到子系统的控制，实际上是通过
+	加入到特定的cgroup实现的，因为cgroup在特定的层级上，而子系统又是附加到
+	层级上的。*/
 	struct cgroup *cgroup;
 
 	/* PI: the cgroup subsystem that this css is attached to
@@ -202,6 +205,8 @@ struct css_set {
 	 * Set of subsystem states, one for each subsystem. This array is
 	 * immutable after creation apart from the init_css_set during
 	 * subsystem registration (at boot time).
+	 subsys是一个指针数组，存储一组指向cgroup_subsys_state的指针。一个cgroup_subsys_state
+	 就是进程与一个特定的子系统相关的信息。通过这个指针，进程就可以获得相应的cgroups控制信息了。
 	 存储一组指向 cgroup_subsys_state 的指针，通过这个指针进程可以获取到对应
 	 的cgroups信息，一个 cgroup_subsys_state 就是进程与一个特定子系统相关的信息，
 	 cgroup_subsys_state结构体如下：
@@ -232,6 +237,7 @@ struct css_set {
 	 * css_set_rwsem, but, during migration, once tasks are moved to
 	 * mg_tasks, it can be read safely while holding cgroup_mutex.
 	 */
+	 /* tasks是将所有引用此css_set的进程连接成链表 */
 	struct list_head tasks;
 	struct list_head mg_tasks;
 	struct list_head dying_tasks;
@@ -254,7 +260,9 @@ struct css_set {
 
 	/*
 	 * List running through all cgroup groups in the same hash
-	 * slot. Protected by css_set_lock
+	 * slot. Protected by css_set_lockhlist是嵌入的hlist_node，
+	 用于把所有的css_set组成一个hash表，这样内核可以快速查找特定的
+	 css_set
 	 */
 	struct hlist_node hlist;
 
@@ -441,7 +449,7 @@ struct cgroup {
 
 	/* Private pointers for each registered subsystem */
 	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
-
+/* root指向了一个cgroupfs_root的结构，就是cgroup所在的层级对应的结构体 */
 	struct cgroup_root *root;
 
 	/*
@@ -511,6 +519,8 @@ struct cgroup {
  * A cgroup_root represents the root of a cgroup hierarchy, and may be
  * associated with a kernfs_root to form an active hierarchy.  This is
  * internal to cgroup core.  Don't access directly from controllers.
+ 2024年6月24日23:29:35
+ 
  */
 struct cgroup_root {
 	struct kernfs_root *kf_root;

@@ -56,7 +56,9 @@ static inline void __count_vm_event(enum vm_event_item item)
 {
 	raw_cpu_inc(vm_event_states.event[item]);
 }
-
+/* 2024年6月24日23:40:44
+统计信息
+ */
 static inline void count_vm_event(enum vm_event_item item)
 {
 	this_cpu_inc(vm_event_states.event[item]);
@@ -168,7 +170,9 @@ static inline void zone_page_state_add(long x, struct zone *zone,
 	atomic_long_add(x, &zone->vm_stat[item]);
 	atomic_long_add(x, &vm_zone_stat[item]);
 }
-
+/* 2024年6月24日23:10:37
+percpu
+ */
 static inline void node_page_state_add(long x, struct pglist_data *pgdat,
 				 enum node_stat_item item)
 {

@@ -6,6 +6,7 @@
 #include <linux/swap.h>
 
 /**
+2024年6月25日00:01:28
  * page_is_file_cache - should the page be on a file LRU or anon LRU?
  * @page: the page to test
  *
@@ -78,6 +79,8 @@ static __always_inline void del_page_from_lru_list(struct page *page,
 }
 
 /**
+2024年6月25日00:00:54
+
  * page_lru_base_type - which LRU list type should a page be on?
  * @page: the page to test
  *
@@ -93,6 +96,7 @@ static inline enum lru_list page_lru_base_type(struct page *page)
 }
 
 /**
+2024年6月24日23:59:55
  * page_off_lru - which LRU list was page on? clearing its lru flags.
  * @page: the page to test
  *
@@ -107,6 +111,7 @@ static __always_inline enum lru_list page_off_lru(struct page *page)
 		__ClearPageUnevictable(page);
 		lru = LRU_UNEVICTABLE;
 	} else {
+		/* 如果是可以移除的页面 */
 		lru = page_lru_base_type(page);
 		if (PageActive(page)) {
 			__ClearPageActive(page);

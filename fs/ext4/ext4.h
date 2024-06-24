@@ -177,11 +177,17 @@ struct ext4_allocation_request {
 #define EXT4_MAP_BOUNDARY	(1 << BH_Boundary)
 #define EXT4_MAP_FLAGS		(EXT4_MAP_NEW | EXT4_MAP_MAPPED |\
 				 EXT4_MAP_UNWRITTEN | EXT4_MAP_BOUNDARY)
-
+/* 2024年6月24日22:38:38
+ext4_map_blocks用来描述逻辑块号和物理块号的映射关系
+ */
 struct ext4_map_blocks {
+	/* 物理块号，相对于文件系统而言的 */
 	ext4_fsblk_t m_pblk;
+	/* 逻辑块号，相对于文件的 */
 	ext4_lblk_t m_lblk;
+	/* 长度，单位为文件块 */
 	unsigned int m_len;
+	/* 映射关系的各种标记，参考EXT4_MAP_NEW附近的宏定义 */
 	unsigned int m_flags;
 };
 

@@ -124,6 +124,8 @@ struct memcg_shrinker_map {
  当使能cgroup后，分配的page都会链接到memcg的per node lruvec链表上。
  --------
  链接node与memcg，lruvec。
+ ------------------------
+ 用于存储每个node的lruvec
  */
 
 struct mem_cgroup_per_node {
@@ -382,7 +384,7 @@ struct mem_cgroup {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	struct deferred_split deferred_split_queue;
 #endif
-/*  cgroup 分配page 的lru链表  */
+/* 存储 cgroup 分配page的lru链表lruvec ，位于node里面lruvec*/
 	struct mem_cgroup_per_node *nodeinfo[0];
 	/* WARNING: nodeinfo must be the last member here */
 };
