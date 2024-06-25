@@ -337,7 +337,10 @@ void __mod_zone_page_state(struct zone *zone, enum zone_stat_item item,
 	__this_cpu_write(*p, x);
 }
 EXPORT_SYMBOL(__mod_zone_page_state);
-
+/* 
+2024年6月25日21:21:43
+更新node对应的lru类型的数量信息
+ */
 void __mod_node_page_state(struct pglist_data *pgdat, enum node_stat_item item,
 				long delta)
 {

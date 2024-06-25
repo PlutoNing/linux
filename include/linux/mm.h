@@ -217,7 +217,7 @@ extern int overcommit_kbytes_handler(struct ctl_table *, int, void __user *,
 
 /* test whether an address (unsigned long or pointer) is aligned to PAGE_SIZE */
 #define PAGE_ALIGNED(addr)	IS_ALIGNED((unsigned long)(addr), PAGE_SIZE)
-
+/* 取出lru链表尾部的页 */
 #define lru_to_page(head) (list_entry((head)->prev, struct page, lru))
 
 /*
@@ -984,7 +984,7 @@ vm_fault_t finish_mkwrite_fault(struct vm_fault *vmf);
 #define KASAN_TAG_MASK		((1UL << KASAN_TAG_WIDTH) - 1)
 #define ZONEID_MASK		((1UL << ZONEID_SHIFT) - 1)
 /* 2024年6月24日23:38:57
-
+获取页面的zone id索引？
  */
 static inline enum zone_type page_zonenum(const struct page *page)
 {

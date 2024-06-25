@@ -280,12 +280,17 @@ enum lru_list {
 #define for_each_lru(lru) for (lru = 0; lru < NR_LRU_LISTS; lru++)
 
 #define for_each_evictable_lru(lru) for (lru = 0; lru <= LRU_ACTIVE_FILE; lru++)
+/* 
+2024年6月25日20:24:11
 
+ */
 static inline int is_file_lru(enum lru_list lru)
 {
 	return (lru == LRU_INACTIVE_FILE || lru == LRU_ACTIVE_FILE);
 }
+/* 2024年6月25日20:23:49
 
+ */
 static inline int is_active_lru(enum lru_list lru)
 {
 	return (lru == LRU_ACTIVE_ANON || lru == LRU_ACTIVE_FILE);
@@ -316,6 +321,7 @@ struct lruvec {
 	/* Refaults at the time of last reclaim cycle */
 	unsigned long			refaults;
 #ifdef CONFIG_MEMCG
+/* 对应的内存节点 */
 	struct pglist_data *pgdat;
 #endif
 };
@@ -434,7 +440,9 @@ enum zone_type {
 };
 
 #ifndef __GENERATING_BOUNDS_H
+/* 2024年6月26日00:12:58
 
+ */
 struct zone {
 	/* Read-mostly fields */
 
@@ -456,8 +464,10 @@ struct zone {
 	long lowmem_reserve[MAX_NR_ZONES];
 
 #ifdef CONFIG_NUMA
+/* 所属node */
 	int node;
 #endif
+	/* todo */
 	struct pglist_data	*zone_pgdat;
 	struct per_cpu_pageset __percpu *pageset;
 
@@ -810,7 +820,7 @@ typedef struct pglist_data {
 	unsigned long		min_slab_pages;
 #endif /* CONFIG_NUMA */
 
-	/* Write-intensive fields used by page reclaim */
+	/* Write-intensive fields used by page reclaim 内存回收lru时候的锁*/
 	ZONE_PADDING(_pad1_)
 	spinlock_t		lru_lock;
 
@@ -904,6 +914,7 @@ extern void init_currently_empty_zone(struct zone *zone, unsigned long start_pfn
 
 extern void lruvec_init(struct lruvec *lruvec);
 /* 2024年06月21日15:09:39
+
  */
 static inline struct pglist_data *lruvec_pgdat(struct lruvec *lruvec)
 {

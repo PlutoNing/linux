@@ -25,7 +25,8 @@ static inline int page_is_file_cache(struct page *page)
 	return !PageSwapBacked(page);
 }
 /*  2024年06月21日15:09:27
-
+更新lru变化
+需要更新lruvec与node信息
 */
 static __always_inline void __update_lru_size(struct lruvec *lruvec,
 				enum lru_list lru, enum zone_type zid,
@@ -33,7 +34,9 @@ static __always_inline void __update_lru_size(struct lruvec *lruvec,
 {
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
+	/*  */
 	__mod_lruvec_state(lruvec, NR_LRU_BASE + lru, nr_pages);
+	/* 更新node的zid的zone */
 	__mod_zone_page_state(&pgdat->node_zones[zid],
 				NR_ZONE_LRU_BASE + lru, nr_pages);
 }
@@ -127,6 +130,7 @@ static __always_inline enum lru_list page_off_lru(struct page *page)
 
 /**
 2024年06月25日15:03:45
+根据page是页缓存还是anon，活跃不活跃，获得lru类型
  * page_lru - which LRU list should a page be on?
  * @page: the page to test
  *

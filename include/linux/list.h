@@ -397,7 +397,8 @@ static inline void list_cut_before(struct list_head *list,
 	head->next = entry;
 	entry->prev = head;
 }
-
+/* 2024年6月25日22:18:39
+ */
 static inline void __list_splice(const struct list_head *list,
 				 struct list_head *prev,
 				 struct list_head *next)
@@ -413,6 +414,7 @@ static inline void __list_splice(const struct list_head *list,
 }
 
 /**
+2024年6月25日22:18:28
  * list_splice - join two lists, this is designed for stacks
  * @list: the new list to add.
  * @head: the place to add it in the first list.

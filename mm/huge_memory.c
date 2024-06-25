@@ -2574,13 +2574,16 @@ static void __split_huge_page(struct page *page, struct list_head *list,
 		put_page(subpage);
 	}
 }
+/* 2024年6月25日21:45:47
 
+ */
 int total_mapcount(struct page *page)
 {
 	int i, compound, ret;
 
 	VM_BUG_ON_PAGE(PageTail(page), page);
 
+/* 不是复合页就直接return */
 	if (likely(!PageCompound(page)))
 		return atomic_read(&page->_mapcount) + 1;
 

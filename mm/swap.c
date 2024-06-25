@@ -451,7 +451,7 @@ EXPORT_SYMBOL(lru_cache_add_file);
 /**
 2024年6月24日23:41:05
 
-加到page list？什么list？
+加到page list？什么list？加到pagevec。
 
  * lru_cache_add - add a page to a page list
  * @page: the page to be added to the LRU.
@@ -627,6 +627,10 @@ static void lru_lazyfree_fn(struct page *page, struct lruvec *lruvec,
 }
 
 /*
+2024年6月25日20:40:43
+ *将原先加入到各个Per-CPU变量pagevec缓存中的page都转移到它们真正应该处
+	 *lru链表上，同时将当时它们加入pagevec时递增的计数减下去(加入pagevec
+	 *就说明有一条pagevec这个路径在引用这个page)
  * Drain pages out of the cpu's pagevecs.
  * Either "cpu" is the current CPU, and preemption has already been
  * disabled; or "cpu" is being hot-unplugged, and is already dead.
@@ -635,6 +639,7 @@ void lru_add_drain_cpu(int cpu)
 {
 	struct pagevec *pvec = &per_cpu(lru_add_pvec, cpu);
 
+	/* 将pagevec加到lru */
 	if (pagevec_count(pvec))
 		__pagevec_lru_add(pvec);
 
@@ -740,7 +745,7 @@ void mark_page_lazyfree(struct page *page)
 		put_cpu_var(lru_lazyfree_pvecs);
 	}
 }
-
+/* 2024年6月25日20:40:25 */
 void lru_add_drain(void)
 {
 	lru_add_drain_cpu(get_cpu());
@@ -1031,7 +1036,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 
  * Add the passed pages to the LRU, then drop the caller's refcount
  * on them.  Reinitialises the caller's pagevec.
- 将lru缓存中的页面添加到lru链表中，如果页面的count是0，则将页面归还给伙伴系统
+ 将lru缓存pagevec中的页面添加到lru链表中，如果页面的count是0，则将页面归还给伙伴系统
     // 如果一个page的PG_active（不）置位，则加入到（非）活动链表中。如果PG_swapbacked置位，
     // 加入到（非）活动匿名页lru链表中，否则加入到（非）活动文件页lru链表中。
     // 如果PG_unevictable置位，则加入到LRU_UNEVICTABLE的lru链表中。

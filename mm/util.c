@@ -648,7 +648,9 @@ struct anon_vma *page_anon_vma(struct page *page)
 		return NULL;
 	return __page_rmapping(page);
 }
-
+/* 2024年6月25日21:03:59
+获取页面的地址空间
+ */
 struct address_space *page_mapping(struct page *page)
 {
 	struct address_space *mapping;

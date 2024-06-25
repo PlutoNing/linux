@@ -737,6 +737,7 @@ void __mod_memcg_state(struct mem_cgroup *memcg, int idx, int val)
 	__this_cpu_write(memcg->vmstats_percpu->stat[idx], x);
 }
 /* 2024年06月21日15:41:22
+返回父cg对应的nid的node
  */
 static struct mem_cgroup_per_node *
 parent_nodeinfo(struct mem_cgroup_per_node *pn, int nid)
@@ -751,7 +752,7 @@ parent_nodeinfo(struct mem_cgroup_per_node *pn, int nid)
 
 /**
 2024年06月21日15:46:40
-
+对lruvec与memcg进行更新
  * __mod_lruvec_state - update lruvec memory statistics
  * @lruvec: the lruvec
  * @idx: the stat item
@@ -774,7 +775,7 @@ void __mod_lruvec_state(struct lruvec *lruvec, enum node_stat_item idx,
 
 	if (mem_cgroup_disabled())
 		return;
-
+	/* 获取lruvec对应的memcg，俩都位于node对应的mz里面 */
 	pn = container_of(lruvec, struct mem_cgroup_per_node, lruvec);
 	memcg = pn->memcg;
 
@@ -789,6 +790,7 @@ void __mod_lruvec_state(struct lruvec *lruvec, enum node_stat_item idx,
 		struct mem_cgroup_per_node *pi;
 
 		for (pi = pn; pi; pi = parent_nodeinfo(pi, pgdat->node_id))
+		/* 对父cg的此node进行更新 */
 			atomic_long_add(x, &pi->lruvec_stat[idx]);
 		x = 0;
 	}
@@ -1280,7 +1282,7 @@ int mem_cgroup_scan_tasks(struct mem_cgroup *memcg,
 
 /**
 2024年6月24日23:54:14
-
+获得page的memcg对应的lruvec
  * mem_cgroup_page_lruvec - return lruvec for isolating/putting an LRU page
  * @page: the page
  * @pgdat: pgdat of the page
@@ -1323,7 +1325,7 @@ out:
 
 /**
 2024年06月21日16:10:05
-内存cg更新lru size？
+内存cg更新lru size？更新memcg的zid的lru类型链表
  * mem_cgroup_update_lru_size - account for adding or removing an lru page
  * @lruvec: mem_cgroup per zone lru vector
  * @lru: index of lru list the page is sitting on
@@ -1351,6 +1353,7 @@ void mem_cgroup_update_lru_size(struct lruvec *lruvec, enum lru_list lru,
 		*lru_size += nr_pages;
 
 	size = *lru_size;
+
 	if (WARN_ONCE(size < 0,
 		"%s(%p, %d, %d): lru_size %ld\n",
 		__func__, lruvec, lru, nr_pages, size)) {
@@ -3256,7 +3259,9 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 
 	return ret;
 }
+/* 2024年6月26日00:14:10
 
+ */
 unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 					    gfp_t gfp_mask,
 					    unsigned long *total_scanned)
@@ -6896,7 +6901,7 @@ void mem_cgroup_uncharge(struct page *page)
 
 /**
 2024年6月25日00:03:35
-
+todo
  * mem_cgroup_uncharge_list - uncharge a list of page
  * @page_list: list of pages to uncharge
  *

@@ -3665,11 +3665,12 @@ retry:
 			BUILD_BUG_ON(ALLOC_NO_WATERMARKS < NR_WMARK);
 			if (alloc_flags & ALLOC_NO_WATERMARKS)
 				goto try_this_zone;
-
+				/* 如果当前node不允许回收，或者本zone不允许回收，那只能选择其他zone */
 			if (node_reclaim_mode == 0 ||
 			    !zone_allows_reclaim(ac->preferred_zoneref->zone, zone))
 				continue;
-
+			/*  在快处理流程中，这里不会调起kswap进程回收页面，这样性能损耗太大了，
+				不是快处理的初衷这里也只是NUMA架构下，尝试对未映射的文件备份页进行回收 */
 			ret = node_reclaim(zone->zone_pgdat, gfp_mask, order);
 			switch (ret) {
 			case NODE_RECLAIM_NOSCAN:
@@ -4104,7 +4105,12 @@ void fs_reclaim_release(gfp_t gfp_mask)
 EXPORT_SYMBOL_GPL(fs_reclaim_release);
 #endif
 
-/* Perform direct synchronous page reclaim */
+/* 
+2024年6月26日00:04:54
+在直接内存回收中，会先进行直接同步的内存回收操作，
+然后再走“快路径”的方式进行内存分配。其关键处理入口
+在try_to_free_pages。
+Perform direct synchronous page reclaim */
 static int
 __perform_reclaim(gfp_t gfp_mask, unsigned int order,
 					const struct alloc_context *ac)
@@ -4133,7 +4139,11 @@ __perform_reclaim(gfp_t gfp_mask, unsigned int order,
 	return progress;
 }
 
-/* The really slow allocator path where we enter direct reclaim */
+/*
+2024年6月26日00:03:39
+与“快路径”内存回收不同，直接内存回收是在“慢路径”内存分配过程中触发的。
+当系统无法通过kswapd任务和内存碎片整理满足min水位分配内存时，会触发直接内存回收来获得足够空闲页框。 
+The really slow allocator path where we enter direct reclaim */
 static inline struct page *
 __alloc_pages_direct_reclaim(gfp_t gfp_mask, unsigned int order,
 		unsigned int alloc_flags, const struct alloc_context *ac,
@@ -4141,7 +4151,7 @@ __alloc_pages_direct_reclaim(gfp_t gfp_mask, unsigned int order,
 {
 	struct page *page = NULL;
 	bool drained = false;
-
+	/* 进行内存回收 */
 	*did_some_progress = __perform_reclaim(gfp_mask, order, ac);
 	if (unlikely(!(*did_some_progress)))
 		return NULL;
@@ -7915,6 +7925,10 @@ int watermark_scale_factor_sysctl_handler(struct ctl_table *table, int write,
 }
 
 #ifdef CONFIG_NUMA
+/* 2024年6月26日00:03:02
+
+
+ */
 static void setup_min_unmapped_ratio(void)
 {
 	pg_data_t *pgdat;

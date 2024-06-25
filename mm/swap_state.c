@@ -179,6 +179,7 @@ void __delete_from_swap_cache(struct page *page, swp_entry_t entry)
 }
 
 /**
+add_to_swap函数给当前匿名页面分配交换空间
  * add_to_swap - allocate swap space for a page
  * @page: page we want to move to swap
  *

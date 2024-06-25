@@ -1025,7 +1025,9 @@ EXPORT_SYMBOL(__page_cache_alloc);
 #define PAGE_WAIT_TABLE_BITS 8
 #define PAGE_WAIT_TABLE_SIZE (1 << PAGE_WAIT_TABLE_BITS)
 static wait_queue_head_t page_wait_table[PAGE_WAIT_TABLE_SIZE] __cacheline_aligned;
-
+/* 2024年6月25日23:08:57
+page的等待队列
+ */
 static wait_queue_head_t *page_waitqueue(struct page *page)
 {
 	return &page_wait_table[hash_ptr(page, PAGE_WAIT_TABLE_BITS)];
@@ -1156,7 +1158,9 @@ enum behavior {
 			 * like put_and_wait_on_page_locked() on PG_locked.
 			 */
 };
-
+/* 2024年6月25日23:10:08
+加入此page的等待队列q
+ */
 static inline int wait_on_page_bit_common(wait_queue_head_t *q,
 	struct page *page, int bit_nr, int state, enum behavior behavior)
 {
@@ -1246,7 +1250,9 @@ static inline int wait_on_page_bit_common(wait_queue_head_t *q,
 
 	return ret;
 }
-
+/* 2024年6月25日23:08:36
+等待页面的某个bit位
+ */
 void wait_on_page_bit(struct page *page, int bit_nr)
 {
 	wait_queue_head_t *q = page_waitqueue(page);

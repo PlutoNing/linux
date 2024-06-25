@@ -342,7 +342,7 @@ struct mem_cgroup {
 	struct memcg_vmstats_percpu __percpu *vmstats_percpu;
 
 	MEMCG_PADDING(_pad2_);
-
+/*  */
 	atomic_long_t		vmstats[MEMCG_NR_STAT];
 	atomic_long_t		vmevents[NR_VM_EVENT_ITEMS];
 
@@ -534,7 +534,9 @@ static inline struct mem_cgroup *mem_cgroup_from_seq(struct seq_file *m)
 {
 	return mem_cgroup_from_css(seq_css(m));
 }
-
+/* 2024年6月25日21:40:46
+获取lruvec对应的memcg
+ */
 static inline struct mem_cgroup *lruvec_memcg(struct lruvec *lruvec)
 {
 	struct mem_cgroup_per_node *mz;

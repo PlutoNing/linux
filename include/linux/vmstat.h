@@ -19,12 +19,20 @@ DECLARE_STATIC_KEY_TRUE(vm_numa_stat_key);
 extern int sysctl_vm_numa_stat_handler(struct ctl_table *table,
 		int write, void __user *buffer, size_t *length, loff_t *ppos);
 #endif
-
+/* 2024年6月25日23:01:50 */
 struct reclaim_stat {
+	/* 是否为脏页或正在回写的页 */
 	unsigned nr_dirty;
+	/* 脏，但是没有被回写 */
 	unsigned nr_unqueued_dirty;
+	/* 若当前页正在BDI回写页面，可能导
+		 致阻塞，增加nr_congested计数 */
 	unsigned nr_congested;
+	/* 当前页面不是可回收页（无回收标记，通过PageReclaim判断）或者是当前页面分配器的调
+		 用者并未使用__GFP_FS或__GFP_IO分配标志 */
 	unsigned nr_writeback;
+	/*  那么当当前页面回收者是kswapd线程且
+		 此时当前页对应的内存节点中有大量正在回写的页面时，linux os此时会增加nr_immediate计数*/
 	unsigned nr_immediate;
 	unsigned nr_activate[2];
 	unsigned nr_ref_keep;

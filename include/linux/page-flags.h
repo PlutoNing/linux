@@ -497,7 +497,7 @@ TESTPAGEFLAG_FALSE(Ksm)
 
 u64 stable_page_flags(struct page *page);
 /* 2024年6月24日00:04:30
-缓存有效性？
+页面有效性
  */
 static inline int PageUptodate(struct page *page)
 {
