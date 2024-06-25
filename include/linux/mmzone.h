@@ -263,6 +263,10 @@ enum node_stat_item {
 #define LRU_FILE 2
 /* 2024年06月21日16:10:54
 不同类型内存的枚举，可做数组索引
+2024年06月25日14:33:50
+每个node都有5个lru链表，分别是：非活动匿名链表、活动匿名链表、非活动文件链表、活动文件链表、非回收链表。
+匿名页：活动与非活动，
+页缓存：活动与非活动，
  */
 enum lru_list {
 	LRU_INACTIVE_ANON = LRU_BASE,
@@ -300,8 +304,11 @@ struct zone_reclaim_stat {
 	unsigned long		recent_scanned[2];
 };
 /* 2024年06月21日15:10:11
+2024年06月25日14:30:12
+每个node都有5个lru链表，分别是：非活动匿名链表、活动匿名链表、非活动文件链表、活动文件链表、非回收链表
  */
 struct lruvec {
+	/* lru链表 */
 	struct list_head		lists[NR_LRU_LISTS];
 	struct zone_reclaim_stat	reclaim_stat;
 	/* Evictions & activations on the inactive file list */
@@ -858,7 +865,8 @@ page out动作将脏文件页回写，注意点：脏页都是file backed page�
 
 #define node_start_pfn(nid)	(NODE_DATA(nid)->node_start_pfn)
 #define node_end_pfn(nid) pgdat_end_pfn(NODE_DATA(nid))
-
+/* 2024年06月25日17:06:38
+ */
 static inline struct lruvec *node_lruvec(struct pglist_data *pgdat)
 {
 	return &pgdat->lruvec;

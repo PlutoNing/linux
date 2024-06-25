@@ -23,7 +23,10 @@ https://blog.csdn.net/dog250/article/details/6070075
 pagevec结构加上lru的功能，然而这又势必会使这个结构体复杂化，再一个，这个结构体
 使用的最大范围就是“每cpu”，更多的它都是局部使用的，这样就使得锁的粒度细化了很多，
 而lru则是全局的，设计pagevec的目的之一正是因为这个。
-
+2024年06月25日14:39:09
+每次对lru链表操作都可能涉及到加锁操作，这样就可能出现锁冲突严重的情况。为了解决这样的问题，
+Linux增加了一个“中间层”，这就是pagevec，它其实是一个lru缓存。每个pagevec中最多可容纳
+15个page，都是同一种操作的合集。
  */
 struct pagevec {
 	/* 现在的页面数量 */
@@ -72,7 +75,9 @@ static inline void pagevec_reinit(struct pagevec *pvec)
 {
 	pvec->nr = 0;
 }
+/* 2024年06月25日14:49:02
 
+ */
 static inline unsigned pagevec_count(struct pagevec *pvec)
 {
 	return pvec->nr;
@@ -88,6 +93,7 @@ static inline unsigned pagevec_space(struct pagevec *pvec)
 /*
 2024年6月24日23:45:59
 加入pagevec
+
  * Add a page to a pagevec.  Returns the number of slots still available.
  */
 static inline unsigned pagevec_add(struct pagevec *pvec, struct page *page)

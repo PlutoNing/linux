@@ -612,6 +612,8 @@ void *page_rmapping(struct page *page)
 }
 
 /*
+2024年06月25日15:19:06
+是否被进程映射
  * Return true if this page is mapped into pagetables.
  * For compound page it returns true if any subpage of compound page is mapped.
  */
@@ -621,6 +623,8 @@ bool page_mapped(struct page *page)
 
 	if (likely(!PageCompound(page)))
 		return atomic_read(&page->_mapcount) >= 0;
+
+	/* 如果是复合页 */
 	page = compound_head(page);
 	if (atomic_read(compound_mapcount_ptr(page)) >= 0)
 		return true;

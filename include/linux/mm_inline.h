@@ -7,6 +7,7 @@
 
 /**
 2024年6月25日00:01:28
+看page是不是页缓存页
  * page_is_file_cache - should the page be on a file LRU or anon LRU?
  * @page: the page to test
  *
@@ -56,6 +57,9 @@ static __always_inline void update_lru_size(struct lruvec *lruvec,
 
 pagevec_lru_move_fn其中move_fn会调用add_page_to_lru_list把page添加到lru，
 而update_lru_size会更新对应的node和memcg的lru size
+2024年06月25日15:06:12
+将page放入到lru链表中，并更新链表中的页面数
+todo
  */
 static __always_inline void add_page_to_lru_list(struct page *page,
 				struct lruvec *lruvec, enum lru_list lru)
@@ -63,7 +67,7 @@ static __always_inline void add_page_to_lru_list(struct page *page,
 	update_lru_size(lruvec, lru, page_zonenum(page), hpage_nr_pages(page));
 	list_add(&page->lru, &lruvec->lists[lru]);
 }
-
+/* 2024年06月25日15:24:06 */
 static __always_inline void add_page_to_lru_list_tail(struct page *page,
 				struct lruvec *lruvec, enum lru_list lru)
 {
@@ -80,7 +84,7 @@ static __always_inline void del_page_from_lru_list(struct page *page,
 
 /**
 2024年6月25日00:00:54
-
+看page是什么类型的，页缓存还是匿名页
  * page_lru_base_type - which LRU list type should a page be on?
  * @page: the page to test
  *
@@ -122,6 +126,7 @@ static __always_inline enum lru_list page_off_lru(struct page *page)
 }
 
 /**
+2024年06月25日15:03:45
  * page_lru - which LRU list should a page be on?
  * @page: the page to test
  *

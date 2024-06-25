@@ -974,7 +974,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 				goto isolate_fail;
 			}
 		}
-
+/* pgdat->lruvec */
 		lruvec = mem_cgroup_page_lruvec(page, pgdat);
 
 		/* Try isolate the page */

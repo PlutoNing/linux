@@ -15,6 +15,8 @@
 #endif /* !__GENERATING_BOUNDS_H */
 
 /*
+2024年06月25日15:28:59
+
  * Various page->flags bits:
  *
  * PG_reserved is set for special pages. The "struct page" of such a page
@@ -98,31 +100,32 @@
  */
 enum pageflags {
 	PG_locked,		/* Page is locked. Don't touch. */
-	PG_referenced,
-	PG_uptodate,
+	PG_referenced,/* rcu */
+	PG_uptodate,/* 表示页面内容有效，当该页面上读操作完成后，设置该标志位 */
 	PG_dirty,
-	PG_lru,
-	PG_active,
+	PG_lru,/* 位于lru */
+	PG_active,/* 位于活跃lru */
 	PG_workingset,
 	PG_waiters,		/* Page has waiters, check its waitqueue. Must be bit #7 and in the same byte as "PG_locked" */
-	PG_error,
-	PG_slab,
+	PG_error,/* io错误 */
+	PG_slab,/* 属于slab */
 	PG_owner_priv_1,	/* Owner use. If pagecache, fs may use*/
-	PG_arch_1,
-	PG_reserved,
-	PG_private,		/* If pagecache, has fs-private data */
-	PG_private_2,		/* If pagecache, has fs aux data */
-	PG_writeback,		/* Page is under writeback */
+	PG_arch_1,/* 架构相关页面状态位 */
+	PG_reserved,/* 不可被换出，防止被swap */
+	PG_private,		/* If pagecache, has fs-private data ，如果page中的private成员非空，则需要设置该标志，如果是pagecache, 包含fs-private data*/
+	PG_private_2,		/* If pagecache, has fs aux data，如果是pagecache, 包含fs aux data */
+	PG_writeback,		/* Page is under writeback ，正在被回写*/
 	PG_head,		/* A head page */
-	PG_mappedtodisk,	/* Has blocks allocated on-disk */
-	PG_reclaim,		/* To be reclaimed asap */
-	PG_swapbacked,		/* Page is backed by RAM/swap */
-	PG_unevictable,		/* Page is "unevictable"  */
+	PG_mappedtodisk,	/* Has blocks allocated on-disk，有后备存储器 */
+	PG_reclaim,		/* To be reclaimed asap，表示该page要被回收，决定要回收某个page后，需要设置该标志 */
+	PG_swapbacked,		/* Page is backed by RAM/swap ，该page的后备存储器是swap/ram，一般匿名页才可以回写swap分区*/
+	PG_unevictable,		/* Page is "unevictable"，该page被锁住，不能回收，并会出现在LRU_UNEVICTABLE链表中，
+	它包括的几种page：ramdisk或ramfs使用的页、shm_locked、mlock锁定的页  */
 #ifdef CONFIG_MMU
-	PG_mlocked,		/* Page is vma mlocked */
+	PG_mlocked,		/* Page is vma mlocked ，page在vma中被锁定，一般是通过系统调用mlock()锁定了一段内存*/
 #endif
 #ifdef CONFIG_ARCH_USES_PG_UNCACHED
-	PG_uncached,		/* Page has been mapped as uncached */
+	PG_uncached,		/* Page has been mapped as uncached，该page是uncache的，？ */
 #endif
 #ifdef CONFIG_MEMORY_FAILURE
 	PG_hwpoison,		/* hardware poisoned page. Don't touch */
@@ -460,7 +463,9 @@ static __always_inline int PageMappingFlags(struct page *page)
 {
 	return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) != 0;
 }
-
+/* 2024年06月25日15:55:19
+判断是不是匿名页
+ */
 static __always_inline int PageAnon(struct page *page)
 {
 	page = compound_head(page);

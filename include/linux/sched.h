@@ -1005,7 +1005,7 @@ struct task_struct {
 	struct blk_plug			*plug;
 #endif
 
-	/* VM state: */
+	/* VM state: 内存回收状态*/
 	struct reclaim_state		*reclaim_state;
 
 	struct backing_dev_info		*backing_dev_info;

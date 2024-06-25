@@ -455,6 +455,8 @@ mem_cgroup_nodeinfo(struct mem_cgroup *memcg, int nid)
 }
 
 /**
+2024年06月25日17:03:22
+memcg存着不同node的东西
  * mem_cgroup_lruvec - get the lru list vector for a node or a memcg zone
  * @node: node of the wanted lruvec
  * @memcg: memcg of the wanted lruvec
@@ -470,6 +472,7 @@ static inline struct lruvec *mem_cgroup_lruvec(struct pglist_data *pgdat,
 	struct lruvec *lruvec;
 
 	if (mem_cgroup_disabled()) {
+		/* 如果没有memcg，那么node自己有lruvec */
 		lruvec = node_lruvec(pgdat);
 		goto out;
 	}

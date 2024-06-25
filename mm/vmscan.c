@@ -62,30 +62,43 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
-
+/* 2024年06月25日10:07:09
+ */
 struct scan_control {
-	/* How many pages shrink_list() should reclaim */
+	/* How many pages shrink_list() should reclaim
+	需要回收的页框数量 */
 	unsigned long nr_to_reclaim;
 
 	/*
 	 * Nodemask of nodes allowed by the caller. If NULL, all nodes
 	 * are scanned.
+	 要执行回收的node吗？
 	 */
 	nodemask_t	*nodemask;
 
 	/*
 	 * The memory cgroup that hit its limit and as a result is the
 	 * primary target of this reclaim invocation.
+	 首要回收的memcg
 	 */
 	struct mem_cgroup *target_mem_cgroup;
 
-	/* Writepage batching in laptop mode; RECLAIM_WRITE */
+	/* Writepage batching in laptop mode; RECLAIM_WRITE 
+	是否可以回写
+	记录是否可以将页回写到硬盘。如果不能进行回写操作，则只能处理干净页，不能处理脏页或已经被使用的匿名页。
+	*/
 	unsigned int may_writepage:1;
 
-	/* Can mapped pages be reclaimed? */
+	/* Can mapped pages be reclaimed? 
+	是否可以unmap一个页面
+	记录是否可以对页面进行unmap。如果不能进行unmap操作，则只能处理非映射页。
+	*/
 	unsigned int may_unmap:1;
 
-	/* Can pages be swapped as part of reclaim? */
+	/* Can pages be swapped as part of reclaim? 
+	是否可以swap匿名页？
+	记录是否可以将页面写入swap分区。如果不行写入swap分区，则不会对已经使用的匿名页进行操作。
+	*/
 	unsigned int may_swap:1;
 
 	/*
@@ -98,13 +111,20 @@ struct scan_control {
 
 	unsigned int hibernation_mode:1;
 
-	/* One of the zones is ready for compaction */
+	/* One of the zones is ready for compaction 
+	是否准备好内存整理
+	*/
 	unsigned int compaction_ready:1;
 
-	/* Allocation order */
+	/* Allocation order 
+	内存order
+	*/
 	s8 order;
 
-	/* Scan (total_size >> priority) pages at once */
+	/* Scan (total_size >> priority) pages at once 
+	    // 每趟扫描的页框数（total_size >> priority），特权级越高时，扫描的页面越少；特权级越低时，扫描的页面越多。
+
+	*/
 	s8 priority;
 
 	/* The highest zone to isolate pages for reclaim from */
@@ -113,10 +133,13 @@ struct scan_control {
 	/* This context's GFP mask */
 	gfp_t gfp_mask;
 
-	/* Incremented by the number of inactive pages that were scanned */
+	/* Incremented by the number of inactive pages that were scanned
+	已经扫描的页框数
+	 */
 	unsigned long nr_scanned;
 
-	/* Number of pages freed so far during a call to shrink_zones() */
+	/* Number of pages freed so far during a call to shrink_zones()
+	已经回收的页框数 */
 	unsigned long nr_reclaimed;
 
 	struct {
@@ -238,7 +261,8 @@ static void unregister_memcg_shrinker(struct shrinker *shrinker)
 	idr_remove(&shrinker_idr, id);
 	up_write(&shrinker_rwsem);
 }
-
+/* 2024年06月25日17:11:31
+ */
 static bool global_reclaim(struct scan_control *sc)
 {
 	return !sc->target_mem_cgroup;
@@ -2272,7 +2296,11 @@ static bool inactive_list_is_low(struct lruvec *lruvec, bool file,
 
 	return inactive * inactive_ratio < active;
 }
+/* 2024年06月25日17:29:42
 
+
+
+ */
 static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 				 struct lruvec *lruvec, struct scan_control *sc)
 {
@@ -2293,6 +2321,22 @@ enum scan_balance {
 };
 
 /*
+2024年06月25日17:08:22
+todo
+get_scan_count函数会利用proc接口中的swappiness数据和sc->priority数据来计算本节点的
+4个lru链表中分别应该扫描多少个页面来进行内存回收操作，应该扫描的页面数量记录在nr数组中，
+通过对应lru链表类型enum lru_list来索引。
+----------------------------------------------------------------
+get_scan_count函数对节点lru链表扫描规则定义如下：
+
+若linux os目前没有交换分区或交换空间，则只会对文件页进行扫描
+令pgdatfree表示当前节点的空闲页框数，pgdatfile表示当前节点lru链表上文件页框数，而total_high_wmark表示当前节点所有zone区域的
+高位水线内存和对应的页框数。若pgdatfree + pgdatfile <=total_high_wmark，则只扫描匿名页面.
+若节点的lru链表上非活跃文件页框数大于活跃文件页框数，则只对lru上的文件页进行扫描.
+其他情况会对lru上的两种页面都进行扫描.
+————————————————---------------------------------
+
+
  * Determine how aggressively the anon and file LRU lists should be
  * scanned.  The relative value of each set of LRU lists is determined
  * by looking at the fraction of the pages scanned we did rotate back
@@ -2555,12 +2599,20 @@ out:
 }
 
 /*
+2024年06月25日17:01:45
+ *param:
+ * (1) pgdat    --->页面回收的内存节点
+ * (2) memcg    --->若节点的memory controller使能，则在该节点的memcg这一内存子系统上进行页面回收
+ * (3) sc       --->本次页面回收的控制器
+ * (4) lru_pages--->本次内存回收已经扫描的页面数量
+————————————————
  * This is a basic per-node page freer.  Used by both kswapd and direct reclaim.
  */
 static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memcg,
 			      struct scan_control *sc, unsigned long *lru_pages)
 {
 	struct lruvec *lruvec = mem_cgroup_lruvec(pgdat, memcg);
+	/* nr数组记录本节点指定lru链表中有多少页面需要被扫描 */
 	unsigned long nr[NR_LRU_LISTS];
 	unsigned long targets[NR_LRU_LISTS];
 	unsigned long nr_to_scan;
@@ -2569,10 +2621,12 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	unsigned long nr_to_reclaim = sc->nr_to_reclaim;
 	struct blk_plug plug;
 	bool scan_adjusted;
-
+/* 该函数时利用proc接口的swappiness和sc->priotity来计算本节点4个lru链表中分别应该扫描的页面数量，结果保存在nr数组中,用链表类型来进行索
+	 *引（enum lru_list） */
 	get_scan_count(lruvec, memcg, sc, nr, lru_pages);
 
-	/* Record the original scan target for proportional adjustments later */
+	/* Record the original scan target for proportional adjustments later 
+	targets记录nr的原始数据*/
 	memcpy(targets, nr, sizeof(nr));
 
 	/*
@@ -2585,28 +2639,44 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	 * do a batch of work at once. For memcg reclaim one check is made to
 	 * abort proportional reclaim if either the file or anon lru has already
 	 * dropped to zero at the first pass.
+
+	 *对直接内存回收做的一个优化处理(目的让直接内存回收保持回收状态，多回收一些页面):
+     *	因内存紧张触发了直接内存回收，若此时回收状态是全局内存回收（未使能CONFIG_MEMCG）,且内存回收优先级处于DEF_PRIORITY状态。这时我们可
+     *	以让直接内存回收机制保持在页面回收的状态，以此来多回收一些页，目的是防止kswap线程未能将需要回收的页回收完全。
+
 	 */
 	scan_adjusted = (global_reclaim(sc) && !current_is_kswapd() &&
 			 sc->priority == DEF_PRIORITY);
 
 	blk_start_plug(&plug);
+	/* 	*对该节点所有的lru链表进行遍历，并通过shrink_list对完成对节点页面的扫描和回收操作：
+	*	通过while循环结束的条件可以知：对该节点的页面回收主要处理的是节点的不活跃匿名页面,不活跃文件页面和活跃文件页面
+	*循环对本节点进行页面扫描和回收操作，直到回收足够多的页面为止（3个lru链表中待扫描页面数都为0时）。
+	*	（1）每次循环都会用shrink_list函数对节点的每个lru链表进行扫描回收处理（每次扫描的页框数通过nr数组维护）.
+	*    (2)通过while循环结束的条件可以知：对该节点的页面回收主要处理的是节点的不活跃匿名页面,不活跃文件页面和活跃文件页面
+*/
 	while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] ||
 					nr[LRU_INACTIVE_FILE]) {
+						/* 当这些类型的lru还有需要回收的页面 */
 		unsigned long nr_anon, nr_file, percentage;
 		unsigned long nr_scanned;
 
 		for_each_evictable_lru(lru) {
 			if (nr[lru]) {
+				/*  //shrink_list函数回收该链表页面时，扫描的页面数nr_to_scan（不能超过32个页面） */
 				nr_to_scan = min(nr[lru], SWAP_CLUSTER_MAX);
 				nr[lru] -= nr_to_scan;
-
+/* 更新nr数组数据，记录对应链表还需要扫描多少个页 */
 				nr_reclaimed += shrink_list(lru, nr_to_scan,
 							    lruvec, sc);
 			}
 		}
 
 		cond_resched();
-
+/*  
+*若本次页面回收没有达到回收要求或者前期设置了scan_adjusted，都会继续对该节点进行页面回收操作.其中scan_adjusted被设置是一种优化手
+		 *段，是为了回收更多页满足kswap页面回收不足的情况。
+*/
 		if (nr_reclaimed < nr_to_reclaim || scan_adjusted)
 			continue;
 
@@ -2616,6 +2686,13 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 		 * proportionally what was requested by get_scan_count(). We
 		 * stop reclaiming one LRU and reduce the amount scanning
 		 * proportional to the original scan target.
+		 	 *完成本轮节点页面的回收指标，但后续仍然需要继续对节点进行扫描和回收操作，会通过对当前节点每个lru链表中剩余页面的数量和每个链表还需
+		 *要被扫描页面数等数据的分析，来对后续本节点页面的回收策略做一个调整。
+		 *(1)比较当前lru链表中匿名页面的数量和文件页面的数量，后续将扫描权重偏向于页面数量较多的lru链表。
+		 *(2)根据已经完成扫描的页面数量和原本待扫描页面的数量，计算每种类型lru页面扫描覆盖率，最后通过该覆盖率重新计算每种lru链表待扫描的
+		 *   页面数量（更新nr数组）
+        nr_file表示还需要扫描多少文件页，而nr_anon记录还需要扫描多少匿名页
+
 		 */
 		nr_file = nr[LRU_INACTIVE_FILE] + nr[LRU_ACTIVE_FILE];
 		nr_anon = nr[LRU_INACTIVE_ANON] + nr[LRU_ACTIVE_ANON];
@@ -2625,6 +2702,7 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 		 * has gone to zero.  And given the way we stop scanning the
 		 * smaller below, this makes sure that we only make one nudge
 		 * towards proportionality once we've got nr_to_reclaim.
+		 文件页或匿名页的扫描指标完成，退出循环，不一定完成了回收指标
 		 */
 		if (!nr_file || !nr_anon)
 			break;
@@ -2658,7 +2736,7 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 		nr_scanned = targets[lru] - nr[lru];
 		nr[lru] = targets[lru] * (100 - percentage) / 100;
 		nr[lru] -= min(nr[lru], nr_scanned);
-
+/* 策略调整一次后，后续不再进行策略调整 */
 		scan_adjusted = true;
 	}
 	blk_finish_plug(&plug);
@@ -2667,6 +2745,9 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	/*
 	 * Even if we did not try to evict anon pages at all, we want to
 	 * rebalance the anon lru active/inactive ratio.
+
+     *若当前节点中不活跃lru匿名页链表中页面数量过少，通过shrink_active_list函数将活跃lru匿名页链表中的一部分页面
+     *迁移到不活跃的lru匿名页链表中去
 	 */
 	if (inactive_list_is_low(lruvec, false, sc, true))
 		shrink_active_list(SWAP_CLUSTER_MAX, lruvec,
@@ -2749,13 +2830,27 @@ static bool pgdat_memcg_congested(pg_data_t *pgdat, struct mem_cgroup *memcg)
 	return test_bit(PGDAT_CONGESTED, &pgdat->flags) ||
 		(memcg && memcg_congested(pgdat, memcg));
 }
+/* 2024年06月25日16:01:07
+在lru链表内存回收分成三种情况：快速内存回收、直接内存回收和kswapd内存回收。下面简单总结下这三种情况的区别：
 
+快速内存回收：在“快路径”上的内存回收方式，这种方式不会处理脏文件页，只涉及干净页、slab、需回写的匿名页（可配置）。
+直接内存回收：在“慢路径”上的内存回收方式，这种方式可处理干净页、slab、匿名页。
+kswapd内存回收：在“慢路径”上可能被唤醒，会处理所有类型的页面回收。
+上述的三种回收方式，其核心实现都是shrink_node函数，不同的是准备动作和扫描控制器
+ */
 static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 {
 	struct reclaim_state *reclaim_state = current->reclaim_state;
+	/* 已回收的页框数和已扫描的页框数 */
 	unsigned long nr_reclaimed, nr_scanned;
 	bool reclaimable = false;
+/* 
 
+	 *两层循环，外层循环每次是对一个节点进行一次lru页面扫描和回收处理，内部循环则是对
+	 *节点所有的子系统分步进行lru页面扫描和回收处理
+
+
+ */
 	do {
 		struct mem_cgroup *root = sc->target_mem_cgroup;
 		unsigned long node_lru_pages = 0;
@@ -2767,6 +2862,11 @@ static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 		nr_scanned = sc->nr_scanned;
 
 		memcg = mem_cgroup_iter(root, NULL, NULL);
+		/*
+		内层循环 
+		*遍历本节点的memory cgroup，对每个子系统进行可回收页扫描和回收（默认一个memory cgroup系统）:
+		 *	1.调用shrink_node_memcg回收子系统页面
+		 *  2.调用shrink_slab来回收子系统slab对象 */
 		do {
 			unsigned long lru_pages;
 			unsigned long reclaimed;
@@ -2805,13 +2905,18 @@ static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 
 			reclaimed = sc->nr_reclaimed;
 			scanned = sc->nr_scanned;
+			//对对应的memcg内存子系统进行页扫描和可回收页回收操作
+
 			shrink_node_memcg(pgdat, memcg, sc, &lru_pages);
 			node_lru_pages += lru_pages;
 
 			shrink_slab(sc->gfp_mask, pgdat->node_id, memcg,
 					sc->priority);
 
-			/* Record the group's reclaim efficiency */
+			/* Record the group's reclaim efficiency 
+			通过本次对memcg内存子系统扫描的页数（sc->nr_scanned - scanned）和回收的页
+			 *数（sc->nr_reclaimed - reclaimed）的比例值，来判断memcg对应内存子系统的当前
+			 *内存压力*/
 			vmpressure(sc->gfp_mask, memcg, false,
 				   sc->nr_scanned - scanned,
 				   sc->nr_reclaimed - reclaimed);

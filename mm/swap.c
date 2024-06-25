@@ -189,7 +189,8 @@ EXPORT_SYMBOL_GPL(get_kernel_page);
 /* 
 2024年06月21日14:56:27
 ===================
-其中move_fn会调用add_page_to_lru_list把page添加到lru，而update_lru_size会更新对应的node和memcg的lru size
+其中move_fn会调用add_page_to_lru_list把page添加到lru，
+而update_lru_size会更新对应的node和memcg的lru size
 ====================
  */
 static void pagevec_lru_move_fn(struct pagevec *pvec,
@@ -204,14 +205,18 @@ static void pagevec_lru_move_fn(struct pagevec *pvec,
 	for (i = 0; i < pagevec_count(pvec); i++) {
 		struct page *page = pvec->pages[i];
 		struct pglist_data *pagepgdat = page_pgdat(page);
-
+/*       pgdat记录的是上一次使用的node，如果当前处理的node和上一个
+         node相同，则无需上锁；如果不同，则需要先将上一个node解锁，
+         然后再讲当前node上锁。 */
 		if (pagepgdat != pgdat) {
 			if (pgdat)
 				spin_unlock_irqrestore(&pgdat->lru_lock, flags);
 			pgdat = pagepgdat;
 			spin_lock_irqsave(&pgdat->lru_lock, flags);
 		}
-/* 获取page对应的lruvec */
+		/* 获取page对应的lruvec，获取node对应的lru链表，给钩子函数使用
+		pgdat->lruvec
+		 */
 		lruvec = mem_cgroup_page_lruvec(page, pgdat);
 		/* 添加到lru链表 */
 		(*move_fn)(page, lruvec, arg);
@@ -221,7 +226,8 @@ static void pagevec_lru_move_fn(struct pagevec *pvec,
 	release_pages(pvec->pages, pvec->nr);
 	pagevec_reinit(pvec);
 }
-
+/* 2024年06月25日15:59:11
+ */
 static void pagevec_move_tail_fn(struct page *page, struct lruvec *lruvec,
 				 void *arg)
 {
@@ -236,6 +242,8 @@ static void pagevec_move_tail_fn(struct page *page, struct lruvec *lruvec,
 }
 
 /*
+2024年06月25日15:58:56
+
  * pagevec_move_tail() must be called with IRQ disabled.
  * Otherwise this may cause nasty races.
  */
@@ -248,6 +256,8 @@ static void pagevec_move_tail(struct pagevec *pvec)
 }
 
 /*
+2024年06月25日15:56:39
+将即将回写完成的page放入到非活跃链表的尾部，是为了加速其回收的速度。
  * Writeback is about to end against a page which has been marked for immediate
  * reclaim.  If it still appears to be reclaimable, move it to the tail of the
  * inactive list.
@@ -403,13 +413,17 @@ void mark_page_accessed(struct page *page)
 }
 EXPORT_SYMBOL(mark_page_accessed);
 /* 2024年6月24日23:41:30
-
+将一个page添加到lru_add链表的实现。每个lru缓存都是CPU上的一个缓存，当该page加入到
+lru缓存后，缓存已经满了，又或者这个page是一个复合类型的page（原因未知），
+则直接将缓存的数据刷入到对应的lru链表中。
  */
 static void __lru_cache_add(struct page *page)
 {
 	struct pagevec *pvec = &get_cpu_var(lru_add_pvec);
 
 	get_page(page);
+	/*      尝试加入到lru_add缓存中，如果缓存已经满了或者page是复合类型（为什么？？？），则直接加入到lru链表中
+*/
 	if (!pagevec_add(pvec, page) || PageCompound(page))
 		__pagevec_lru_add(pvec);
 	put_cpu_var(lru_add_pvec);
@@ -438,6 +452,7 @@ EXPORT_SYMBOL(lru_cache_add_file);
 2024年6月24日23:41:05
 
 加到page list？什么list？
+
  * lru_cache_add - add a page to a page list
  * @page: the page to be added to the LRU.
  *
@@ -486,6 +501,11 @@ void lru_cache_add_active_or_unevictable(struct page *page,
 }
 
 /*
+2024年06月25日15:18:04
+lru_deactivate_file链表缓存是将一个文件页从活跃lru放入到非活跃lru中，只在当系统发现某
+个文件页是无效时（没有被map？），才会放入到该缓存中，这是为了加速其被回收。如果该文件页被锁
+在内存中，则不允许操作。如果该文件页的refcount是0，也即没有被使用，那无需处理；只有当文件
+页被使用时，才需要放入到缓存链表中。当缓存链表已经满了或者该page是复合类型，则需刷入到lru链表中。
  * If the page can not be invalidated, it is moved to the
  * inactive list to speed up its reclaim.  It is moved to the
  * head of the list, rather than the tail, to give the flusher
@@ -512,18 +532,21 @@ static void lru_deactivate_file_fn(struct page *page, struct lruvec *lruvec,
 	int lru, file;
 	bool active;
 
+    // 如果page不在lru链表中，则直接退出
 	if (!PageLRU(page))
 		return;
 
 	if (PageUnevictable(page))
 		return;
 
-	/* Some processes are using the page */
+	/* Some processes are using the page 
+	如果page被进程映射，则跳过*/
 	if (page_mapped(page))
 		return;
 
 	active = PageActive(page);
 	file = page_is_file_cache(page);
+	/* 是页缓存还是匿名页 */
 	lru = page_lru_base_type(page);
 
 	del_page_from_lru_list(page, lruvec, lru + active);
@@ -535,13 +558,18 @@ static void lru_deactivate_file_fn(struct page *page, struct lruvec *lruvec,
 		 * PG_reclaim could be raced with end_page_writeback
 		 * It can make readahead confusing.  But race window
 		 * is _really_ small and  it's non-critical problem.
+		 如果需要回写
+		将page添加到lru的头部，因为page需要回写，需要一定的时间
+
 		 */
 		add_page_to_lru_list(page, lruvec, lru);
+		/* todo */
 		SetPageReclaim(page);
 	} else {
 		/*
 		 * The page's writeback ends up during pagevec
 		 * We moves tha page into tail of inactive.
+		 将page添加到lru链表的尾部，尽快回收
 		 */
 		add_page_to_lru_list_tail(page, lruvec, lru);
 		__count_vm_event(PGROTATED);
@@ -551,14 +579,16 @@ static void lru_deactivate_file_fn(struct page *page, struct lruvec *lruvec,
 		__count_vm_event(PGDEACTIVATE);
 	update_page_reclaim_stat(lruvec, file, 0);
 }
-
+/* 2024年06月25日15:52:25
+从活动链表中删除，然后放入到非活动链表中。
+ */
 static void lru_deactivate_fn(struct page *page, struct lruvec *lruvec,
 			    void *arg)
 {
 	if (PageLRU(page) && PageActive(page) && !PageUnevictable(page)) {
 		int file = page_is_file_cache(page);
 		int lru = page_lru_base_type(page);
-
+/*  */
 		del_page_from_lru_list(page, lruvec, lru + LRU_ACTIVE);
 		ClearPageActive(page);
 		ClearPageReferenced(page);
@@ -568,7 +598,9 @@ static void lru_deactivate_fn(struct page *page, struct lruvec *lruvec,
 		update_page_reclaim_stat(lruvec, file, 0);
 	}
 }
-
+/* 2024年06月25日15:54:53
+只会处理在lru中正在回写到swap分区的匿名页。使用场景页不多，内存回收场景不会使用到。
+ */
 static void lru_lazyfree_fn(struct page *page, struct lruvec *lruvec,
 			    void *arg)
 {
@@ -632,6 +664,11 @@ void lru_add_drain_cpu(int cpu)
 }
 
 /**
+2024年06月25日15:13:23
+lru_deactivate_file链表缓存是将一个文件页从活跃lru放入到非活跃lru中，只在当系统发现某个文件页是无效时
+（没有被map？），才会放入到该缓存中，这是为了加速其被回收。如果该文件页被锁在内存中，则不允许操作。如果该
+文件页的refcount是0，也即没有被使用，那无需处理；
+只有当文件页被使用时，才需要放入到缓存链表中。当缓存链表已经满了或者该page是复合类型，则需刷入到lru链表中。
  * deactivate_file_page - forcefully deactivate a file page
  * @page: page to deactivate
  *
@@ -647,10 +684,12 @@ void deactivate_file_page(struct page *page)
 	 */
 	if (PageUnevictable(page))
 		return;
-
+/* // 如果page的refcount是0，则不处理，等待回收即可
+    // 如果page的refcount非0，则refcount加上1 */
 	if (likely(get_page_unless_zero(page))) {
 		struct pagevec *pvec = &get_cpu_var(lru_deactivate_file_pvecs);
-
+/*  	将page放入到对应lru缓存中，如果缓存链表已经满了或者page是复合类型，
+        则将缓存刷入到链表中 */
 		if (!pagevec_add(pvec, page) || PageCompound(page))
 			pagevec_lru_move_fn(pvec, lru_deactivate_file_fn, NULL);
 		put_cpu_var(lru_deactivate_file_pvecs);
@@ -658,6 +697,9 @@ void deactivate_file_page(struct page *page)
 }
 
 /*
+2024年06月25日15:50:04
+lru_deactivate链表缓存是将一个活动页移动到非活动页链表中时使用。只有在文件系统场景中，系统发现一
+些没有被映射的页时，才会加入到这个缓存，目的也是为了加速这些页的回收速度。使用场景比较受限，正常的回收流程不会走这个处理。
  * deactivate_page - deactivate a page
  * @page: page to deactivate
  *
@@ -678,6 +720,8 @@ void deactivate_page(struct page *page)
 }
 
 /**
+2024年06月25日15:54:24
+只会处理在lru中正在回写到swap分区的匿名页。使用场景页不多，内存回收场景不会使用到。
  * mark_page_lazyfree - make an anon page lazyfree
  * @page: page to deactivate
  *
@@ -920,7 +964,10 @@ void lru_add_page_tail(struct page *page, struct page *page_tail,
 		update_page_reclaim_stat(lruvec, file, PageActive(page_tail));
 }
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
+/* 2024年06月25日14:54:33
+将lru_add缓存链表中的页加入到lru链表中
 
+ */
 static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 				 void *arg)
 {
@@ -928,6 +975,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 	int was_unevictable = TestClearPageUnevictable(page);
 
 	VM_BUG_ON_PAGE(PageLRU(page), page);
+    // 由于page将要被加入到lru中，要设置PG_lru的标志
 
 	SetPageLRU(page);
 	/*
@@ -959,6 +1007,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 	smp_mb();
 
 	if (page_evictable(page)) {
+		/* 根据page类型，获取到node上面不同的lru链表 */
 		lru = page_lru(page);
 		update_page_reclaim_stat(lruvec, page_is_file_cache(page),
 					 PageActive(page));
@@ -971,6 +1020,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 		if (!was_unevictable)
 			count_vm_event(UNEVICTABLE_PGCULLED);
 	}
+    // 将page放入到lru链表中，并更新链表中的页面数
 
 	add_page_to_lru_list(page, lruvec, lru);
 	trace_mm_lru_insertion(page, lru);
@@ -978,8 +1028,13 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 
 /*
 2024年6月24日23:47:54
+
  * Add the passed pages to the LRU, then drop the caller's refcount
  * on them.  Reinitialises the caller's pagevec.
+ 将lru缓存中的页面添加到lru链表中，如果页面的count是0，则将页面归还给伙伴系统
+    // 如果一个page的PG_active（不）置位，则加入到（非）活动链表中。如果PG_swapbacked置位，
+    // 加入到（非）活动匿名页lru链表中，否则加入到（非）活动文件页lru链表中。
+    // 如果PG_unevictable置位，则加入到LRU_UNEVICTABLE的lru链表中。
  */
 void __pagevec_lru_add(struct pagevec *pvec)
 {

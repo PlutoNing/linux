@@ -1060,6 +1060,8 @@ static __always_inline struct mem_cgroup *get_mem_cgroup_from_current(void)
 }
 
 /**
+2024年06月25日16:04:47
+遍历根cg的层级
  * mem_cgroup_iter - iterate over memory cgroup hierarchy
  * @root: hierarchy root
  * @prev: previously returned memcg, NULL on first invocation
@@ -6414,6 +6416,8 @@ struct cgroup_subsys memory_cgrp_subsys = {
 };
 
 /**
+2024年06月25日16:05:54
+
  * mem_cgroup_protected - check if memory consumption is in the normal range
  * @root: the top ancestor of the sub-tree being checked
  * @memcg: the memory cgroup to check
