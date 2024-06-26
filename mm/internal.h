@@ -98,6 +98,8 @@ extern pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address);
  */
 
 /*
+2024年6月26日22:06:25
+这是分配上下文，记录本次期待的zone，迁移类型，最高zone索引等等信息。
  * Structure for holding the mostly immutable allocation parameters passed
  * between functions involved in allocations, including the alloc_pages*
  * family of functions.
@@ -111,11 +113,17 @@ extern pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address);
  * by a const pointer.
  */
 struct alloc_context {
+	/* 系统中所有zone列表，如果preferred_zoneref中无法满足分配，则从列表中寻找。 */
 	struct zonelist *zonelist;
+	/* 记录本次分配允许在哪些node上进行。 */
 	nodemask_t *nodemask;
+	/* 期待的zone */
 	struct zoneref *preferred_zoneref;
+	/* 本次分配页面的迁移属性 */
 	int migratetype;
+	/* 本次分配允许的最大zone下标，高于此下标的zone，不能用于本次分配。 */
 	enum zone_type high_zoneidx;
+	/* 本次分配是否考虑脏页平衡，如果考虑，在某个zone的脏页超过预设的最大值，则本次分配不在该zone上进行。 */
 	bool spread_dirty_pages;
 };
 
@@ -233,6 +241,8 @@ int find_suitable_fallback(struct free_area *area, unsigned int order,
 #endif
 
 /*
+2024年6月27日00:09:19
+private就是order
  * This function returns the order of a free page in the buddy system. In
  * general, page_zone(page)->lock must be held by the caller to prevent the
  * page from being allocated in parallel and returning garbage as the order.

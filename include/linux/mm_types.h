@@ -68,6 +68,11 @@ struct mem_cgroup;
 2024年06月20日16:25:31
 */
 struct page {
+	/* 该字段非常复杂，记录了物理内存页的section、node、zone、状态等信息，
+	状态信息具体定义是linux/page-flags.h中的pageflags。
+	   63     53     50            29       0
+	| NODE | ZONE | LAST_CPUPID | FLAGS |
+ */
 	unsigned long flags;		/* Atomic flags, some possibly
 					 * updated asynchronously */
 	/*
@@ -95,13 +100,16 @@ struct page {
 （3）       如果page->mapping不等于0，但第0位不为0，则apping指向一个struct address_space地址空间结构变量；
 			 */
 			struct address_space *mapping;
-			/* Our offset within mapping. */
+			/* Our offset within mapping. 
+			在buddy里面时，是迁移类型。
+			*/
 			pgoff_t index;		
 			/**
 			 * @private: Mapping-private opaque data.
 			 * Usually used for buffer_heads if PagePrivate.
 			 * Used for swp_entry_t if PageSwapCache.
 			 * Indicates order in the buddy system if PageBuddy.
+			 如果buddy里面，这里是order
 			 */
 			unsigned long private;
 		};

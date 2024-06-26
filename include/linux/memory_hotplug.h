@@ -86,6 +86,7 @@ static inline void zone_span_writeunlock(struct zone *zone)
 {
 	write_sequnlock(&zone->span_seqlock);
 }
+/* 2024年6月26日21:13:47 */
 static inline void zone_seqlock_init(struct zone *zone)
 {
 	seqlock_init(&zone->span_seqlock);

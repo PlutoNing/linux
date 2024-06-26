@@ -268,6 +268,8 @@ static void wb_min_max_ratio(struct bdi_writeback *wb,
  */
 
 /**
+2024年6月26日22:34:05
+
  * node_dirtyable_memory - number of dirtyable pages in a node
  * @pgdat: the node
  *
@@ -468,6 +470,7 @@ void global_dirty_limits(unsigned long *pbackground, unsigned long *pdirty)
 }
 
 /**
+2024年6月26日22:33:48
  * node_dirty_limit - maximum number of dirty pages allowed in a node
  * @pgdat: the node
  *
@@ -493,6 +496,7 @@ static unsigned long node_dirty_limit(struct pglist_data *pgdat)
 }
 
 /**
+2024年6月26日22:33:40
  * node_dirty_ok - tells whether a node is within its dirty limits
  * @pgdat: the node to check
  *
@@ -503,7 +507,7 @@ bool node_dirty_ok(struct pglist_data *pgdat)
 {
 	unsigned long limit = node_dirty_limit(pgdat);
 	unsigned long nr_pages = 0;
-
+	/* 页缓存？ */
 	nr_pages += node_page_state(pgdat, NR_FILE_DIRTY);
 	nr_pages += node_page_state(pgdat, NR_UNSTABLE_NFS);
 	nr_pages += node_page_state(pgdat, NR_WRITEBACK);

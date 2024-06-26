@@ -85,7 +85,9 @@ bool memmap_valid_within(unsigned long pfn,
 	return true;
 }
 #endif /* CONFIG_ARCH_HAS_HOLES_MEMORYMODEL */
-
+/* 2024年6月26日21:09:22
+初始化lruvec
+ */
 void lruvec_init(struct lruvec *lruvec)
 {
 	enum lru_list lru;

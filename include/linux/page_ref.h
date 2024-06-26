@@ -71,7 +71,7 @@ static inline int page_count(struct page *page)
 {
 	return atomic_read(&compound_head(page)->_refcount);
 }
-
+/* 2024年6月26日21:50:15 */
 static inline void set_page_count(struct page *page, int v)
 {
 	atomic_set(&page->_refcount, v);
@@ -80,6 +80,8 @@ static inline void set_page_count(struct page *page, int v)
 }
 
 /*
+2024年6月26日21:50:06
+
  * Setup the page count before being freed into the page allocator for
  * the first time (boot or memory hotplug)
  */

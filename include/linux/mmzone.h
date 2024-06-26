@@ -98,13 +98,17 @@ extern int page_group_by_mobility_disabled;
 			PB_migrate_end, MIGRATETYPE_MASK)
 /* 2024年06月26日14:55:14
 free_area有MIGRATE_TYPES个双向链表和一个记录当前空闲单元个数的字段。
+
  */
 struct free_area {
 	struct list_head	free_list[MIGRATE_TYPES];
 	unsigned long		nr_free;
 };
 
-/* Used for pages not on another list */
+/* 
+2024年6月26日23:21:13
+挂到这个list。
+Used for pages not on another list */
 static inline void add_to_free_area(struct page *page, struct free_area *area,
 			     int migratetype)
 {
@@ -138,7 +142,9 @@ static inline void move_to_free_area(struct page *page, struct free_area *area,
 {
 	list_move(&page->lru, &area->free_list[migratetype]);
 }
+/* 2024年6月26日23:50:35
 
+ */
 static inline struct page *get_page_from_free_area(struct free_area *area,
 					    int migratetype)
 {
@@ -191,10 +197,11 @@ enum numa_stat_item {
 #define NR_VM_NUMA_STAT_ITEMS 0
 #endif
 /* 
+2024年6月26日22:34:37
  */
 enum zone_stat_item {
 	/* First 128 byte cacheline (assuming 64 bit words) */
-	NR_FREE_PAGES,
+	NR_FREE_PAGES,/* 空闲页？ */
 	NR_ZONE_LRU_BASE, /* Used only for compaction and reclaim retry */
 	NR_ZONE_INACTIVE_ANON = NR_ZONE_LRU_BASE,
 	NR_ZONE_ACTIVE_ANON,
@@ -353,12 +360,12 @@ enum zone_watermarks {
 #define wmark_pages(z, i) (z->_watermark[i] + z->watermark_boost)
 /* 
 2024年06月21日15:47:50
-percpu内存结构
+percpu pages内存结构
  */
 struct per_cpu_pages {
-	int count;		/* number of pages in the list */
-	int high;		/* high watermark, emptying needed */
-	int batch;		/* chunk size for buddy add/remove */
+	int count;		/* number of pages in the list pcplist总共管理的内存页数*/
+	int high;		/* high watermark, emptying needed，当count >= high时，需要将batch个页框释放给zone */
+	int batch;		/* chunk size for buddy add/remove，每次从zone中获取或者释放给zone，操作的内存数 */
 
 	/* Lists of pages, one per migrate type stored on the pcp-lists */
 	struct list_head lists[MIGRATE_PCPTYPES];
@@ -387,7 +394,9 @@ struct per_cpu_nodestat {
 };
 
 #endif /* !__GENERATING_BOUNDS.H */
-
+/* 2024年6月26日21:06:01
+内存区类型
+ */
 enum zone_type {
 #ifdef CONFIG_ZONE_DMA
 	/*
@@ -549,7 +558,7 @@ struct zone {
 	/* see spanned/present_pages for more description */
 	seqlock_t		span_seqlock;
 #endif
-
+	/* 是否被初始化 */
 	int initialized;
 
 	/* Write-intensive fields used from the page allocator */
@@ -793,9 +802,12 @@ typedef struct pglist_data {
 					     range, including holes 表示当前node物理地址范围内的所有page，包括内存空洞。 */
 						 /* 内存节点id */
 	int node_id;
-	/*  内核会为每个 NUMA 节点（UMA是只有一个node的特殊NUMA）分配一个kswapd线程用于回收不经常使用的页面或者内存不足时回收内存，还会为每个 NUMA 节点分配一个kcompactd线程用于内存规整避免内存碎片。下面开始会讲一些跟kswapd和kcompactd相关的一些数据结构成员。
+	/*  内核会为每个 NUMA 节点（UMA是只有一个node的特殊NUMA）分配一个kswapd线程用于回收不经常使用的页面
+	或者内存不足时回收内存，还会为每个 NUMA 节点分配一个kcompactd线程用于内存规整避免内存碎片。
+	下面开始会讲一些跟kswapd和kcompactd相关的一些数据结构成员。
 
-        kswapd_wait表示是一个kswapd等待队列，里面存放的是等待kswapd线程执行异步回收的线程，在free_area_init_core 函数中被初始化。
+        kswapd_wait表示是一个kswapd等待队列，里面存放的是等待kswapd线程执行异步回收的线程，在
+		free_area_init_core 函数中被初始化。
 ———————————————— */
 	wait_queue_head_t kswapd_wait;
 	/* 表示等待直接内存回收（direct reclaim）结束的线程等待队列。
@@ -830,6 +842,7 @@ typedef struct pglist_data {
 #ifdef CONFIG_COMPACTION
 	int kcompactd_max_order;
 	enum zone_type kcompactd_classzone_idx;
+	/* zone的内存压缩进程 */
 	wait_queue_head_t kcompactd_wait;
 	struct task_struct *kcompactd;
 #endif
@@ -903,6 +916,7 @@ page out动作将脏文件页回写，注意点：脏页都是file backed page�
 #define node_start_pfn(nid)	(NODE_DATA(nid)->node_start_pfn)
 #define node_end_pfn(nid) pgdat_end_pfn(NODE_DATA(nid))
 /* 2024年06月25日17:06:38
+获得node的lruvec
  */
 static inline struct lruvec *node_lruvec(struct pglist_data *pgdat)
 {
@@ -988,7 +1002,9 @@ static inline bool managed_zone(struct zone *zone)
 	return zone_managed_pages(zone);
 }
 
-/* Returns true if a zone has memory */
+/* 
+2024年6月26日21:21:51
+Returns true if a zone has memory */
 static inline bool populated_zone(struct zone *zone)
 {
 	return zone->present_pages;
@@ -999,7 +1015,7 @@ static inline int zone_to_nid(struct zone *zone)
 {
 	return zone->node;
 }
-
+/* 2024年6月26日21:13:33 */
 static inline void zone_set_nid(struct zone *zone, int nid)
 {
 	zone->node = nid;

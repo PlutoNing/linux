@@ -740,6 +740,7 @@ static inline int compound_mapcount(struct page *page)
 }
 
 /*
+2024年6月26日21:50:56
  * The atomic page->_mapcount, starts from -1: so that transitions
  * both from it and to it can be tracked, using atomic_inc_and_test
  * and atomic_add_negative(-1).
@@ -1309,19 +1310,25 @@ static inline unsigned long page_to_section(const struct page *page)
 	return (page->flags >> SECTIONS_PGSHIFT) & SECTIONS_MASK;
 }
 #endif
-
+/* 2024年6月26日21:39:22
+page的zone信息在flags里面
+ */
 static inline void set_page_zone(struct page *page, enum zone_type zone)
 {
 	page->flags &= ~(ZONES_MASK << ZONES_PGSHIFT);
 	page->flags |= (zone & ZONES_MASK) << ZONES_PGSHIFT;
 }
-
+/* 2024年6月26日21:44:40
+page的node的信息在flags里面
+ */
 static inline void set_page_node(struct page *page, unsigned long node)
 {
 	page->flags &= ~(NODES_MASK << NODES_PGSHIFT);
 	page->flags |= (node & NODES_MASK) << NODES_PGSHIFT;
 }
-
+/* 2024年6月26日21:39:10
+建立page与zone和node的关联
+ */
 static inline void set_page_links(struct page *page, enum zone_type zone,
 	unsigned long node, unsigned long pfn)
 {

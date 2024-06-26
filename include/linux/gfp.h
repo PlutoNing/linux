@@ -437,7 +437,8 @@ static inline bool gfpflags_normal_context(const gfp_t gfp_flags)
 	| 1 << (___GFP_MOVABLE | ___GFP_DMA32 | ___GFP_HIGHMEM)		      \
 	| 1 << (___GFP_MOVABLE | ___GFP_DMA32 | ___GFP_DMA | ___GFP_HIGHMEM)  \
 )
-
+/* 2024年6月26日22:28:31
+ */
 static inline enum zone_type gfp_zone(gfp_t flags)
 {
 	enum zone_type z;
@@ -490,6 +491,9 @@ struct page *
 __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order, int preferred_nid,
 							nodemask_t *nodemask);
 
+
+/* 2024年6月26日22:23:28
+ */
 static inline struct page *
 __alloc_pages(gfp_t gfp_mask, unsigned int order, int preferred_nid)
 {
@@ -497,6 +501,8 @@ __alloc_pages(gfp_t gfp_mask, unsigned int order, int preferred_nid)
 }
 
 /*
+2024年6月26日22:22:19
+
  * Allocate pages, preferring the node given as nid. The node must be valid and
  * online. For more general interface, see alloc_pages_node().
  */
@@ -510,6 +516,8 @@ __alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order)
 }
 
 /*
+2024年6月26日22:21:44
+
  * Allocate pages, preferring the node given as nid. When nid == NUMA_NO_NODE,
  * prefer the current CPU's closest node. Otherwise node must be valid and
  * online.
@@ -525,7 +533,11 @@ static inline struct page *alloc_pages_node(int nid, gfp_t gfp_mask,
 
 #ifdef CONFIG_NUMA
 extern struct page *alloc_pages_current(gfp_t gfp_mask, unsigned order);
-
+/* 2024年6月26日22:15:59
+alloc_pages是物理内存申请的关键入口，入参一是gfp_mask，记录的是内存申请标志；
+入参二是order，记录的是申请页面大小，默认情况下，order最大是10，如果超过2^10页的申请，
+需要通过CMA的方式。内存申请的时候需要区分是否配置了NUMA，如果配置了NUMA，
+则在当前node上申请；否则，默认在node 0上进行内存申请 */
 static inline struct page *
 alloc_pages(gfp_t gfp_mask, unsigned int order)
 {
