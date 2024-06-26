@@ -3523,6 +3523,9 @@ bool zone_watermark_ok_safe(struct zone *z, unsigned int order,
 }
 
 #ifdef CONFIG_NUMA
+/* 2024年06月26日11:22:43
+
+ */
 static bool zone_allows_reclaim(struct zone *local_zone, struct zone *zone)
 {
 	return node_distance(zone_to_nid(local_zone), zone_to_nid(zone)) <=
@@ -4143,6 +4146,8 @@ __perform_reclaim(gfp_t gfp_mask, unsigned int order,
 2024年6月26日00:03:39
 与“快路径”内存回收不同，直接内存回收是在“慢路径”内存分配过程中触发的。
 当系统无法通过kswapd任务和内存碎片整理满足min水位分配内存时，会触发直接内存回收来获得足够空闲页框。 
+2024年06月26日11:30:30
+
 The really slow allocator path where we enter direct reclaim */
 static inline struct page *
 __alloc_pages_direct_reclaim(gfp_t gfp_mask, unsigned int order,

@@ -2594,7 +2594,9 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 	if (pgdat->kcompactd_classzone_idx >= cc.classzone_idx)
 		pgdat->kcompactd_classzone_idx = pgdat->nr_zones - 1;
 }
-
+/* 2024年06月26日14:03:58
+内存碎片整理
+ */
 void wakeup_kcompactd(pg_data_t *pgdat, int order, int classzone_idx)
 {
 	if (!order)

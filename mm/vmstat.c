@@ -1000,6 +1000,8 @@ unsigned long sum_zone_numa_state(int node,
 }
 
 /*
+2024年06月26日11:29:17
+返回node中vm stat数组某个状态的计数值
  * Determine the per node value of a stat item.
  */
 unsigned long node_page_state(struct pglist_data *pgdat,

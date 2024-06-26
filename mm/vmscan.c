@@ -3697,7 +3697,10 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 	return nr_reclaimed;
 }
 #endif
-
+/* 2024年06月26日11:38:57
+对匿名页进行老化，其实就是看非活跃匿名页lru链表中，页框数量太少时，需要
+从活跃lru匿名链表取出部分page放入到非活跃匿名页lru链表中
+ */
 static void age_active_anon(struct pglist_data *pgdat,
 				struct scan_control *sc)
 {
@@ -3743,6 +3746,9 @@ static bool pgdat_watermark_boosted(pg_data_t *pgdat, int classzone_idx)
 }
 
 /*
+2024年06月26日11:38:14
+判断node是否需要进行内存回收，判断标准是node中有任意一个zone能在满足
+高水位的要求下满足order的内存申请
  * Returns true if there is an eligible zone balanced for the request order
  * and classzone_idx
  */
@@ -3823,6 +3829,7 @@ static bool prepare_kswapd_sleep(pg_data_t *pgdat, int order, int classzone_idx)
 }
 
 /*
+2024年06月26日14:11:34
  * kswapd shrinks a node of pages that are at or below the highest usable
  * zone that is currently unbalanced.
  *
@@ -3836,19 +3843,21 @@ static bool kswapd_shrink_node(pg_data_t *pgdat,
 	struct zone *zone;
 	int z;
 
-	/* Reclaim a number of pages proportional to the number of zones */
+	/* Reclaim a number of pages proportional to the number of zones 
+	计算需要回收的页框数量*/
 	sc->nr_to_reclaim = 0;
 	for (z = 0; z <= sc->reclaim_idx; z++) {
 		zone = pgdat->node_zones + z;
 		if (!managed_zone(zone))
 			continue;
-
+/* 计算需要回收的页框数，这里是为了将每个zone的空闲页都拉高至high水线 */
 		sc->nr_to_reclaim += max(high_wmark_pages(zone), SWAP_CLUSTER_MAX);
 	}
 
 	/*
 	 * Historically care was taken to put equal pressure on all zones but
 	 * now pressure is applied based on node LRU order.
+	 回收node
 	 */
 	shrink_node(pgdat, sc);
 
@@ -3862,10 +3871,12 @@ static bool kswapd_shrink_node(pg_data_t *pgdat,
 	if (sc->order && sc->nr_reclaimed >= compact_gap(sc->order))
 		sc->order = 0;
 
+/* 达到目标返回true */
 	return sc->nr_scanned >= sc->nr_to_reclaim;
 }
 
 /*
+2024年06月26日11:37:01
  * For kswapd, balance_pgdat() will reclaim pages across a node from zones
  * that are eligible for use by the caller until at least one zone is
  * balanced.
@@ -3953,6 +3964,8 @@ restart:
 		 * zone watermarks will be still reset at the end of balancing
 		 * on the grounds that the normal reclaim should be enough to
 		 * re-evaluate if boosting is required when kswapd next wakes.
+		 判断node是否需要进行内存回收，判断标准是node中有任意一个zone能在满足
+         高水位的要求下满足order的内存申请
 		 */
 		balanced = pgdat_balanced(pgdat, sc.order, classzone_idx);
 		if (!balanced && nr_boost_reclaim) {
@@ -3986,12 +3999,16 @@ restart:
 		 * pages a chance to be referenced before reclaiming. All
 		 * pages are rotated regardless of classzone as this is
 		 * about consistent aging.
+		 对匿名页进行老化，其实就是看非活跃匿名页lru链表中，页框数量太少时，需要
+        // 从活跃lru匿名链表取出部分page放入到非活跃匿名页lru链表中
 		 */
 		age_active_anon(pgdat, &sc);
 
 		/*
 		 * If we're getting trouble reclaiming, start doing writepage
 		 * even in laptop mode.
+		 两趟没有完成任务，开启回写
+
 		 */
 		if (sc.priority < DEF_PRIORITY - 2)
 			sc.may_writepage = 1;
@@ -4007,6 +4024,7 @@ restart:
 		 * There should be no need to raise the scanning priority if
 		 * enough pages are already being scanned that that high
 		 * watermark would be met at 100% efficiency.
+		 对node进行回收
 		 */
 		if (kswapd_shrink_node(pgdat, &sc))
 			raise_priority = false;
@@ -4045,12 +4063,13 @@ restart:
 		if (raise_priority || !nr_reclaimed)
 			sc.priority--;
 	} while (sc.priority >= 1);
-
+	/* 没有回收到页框，则kswapd失败计数器+1 */
 	if (!sc.nr_reclaimed)
 		pgdat->kswapd_failures++;
 
 out:
-	/* If reclaim was boosted, account for the reclaim done in this pass */
+	/* If reclaim was boosted, account for the reclaim done in this pass 
+	如果是对boosted进行回收，则需要刷新每个zone的watermark_boost值，并进行内存碎片整理*/
 	if (boosted) {
 		unsigned long flags;
 
@@ -4068,6 +4087,7 @@ out:
 		/*
 		 * As there is now likely space, wakeup kcompact to defragment
 		 * pageblocks.
+		 内存碎片整理
 		 */
 		wakeup_kcompactd(pgdat, pageblock_order, classzone_idx);
 	}
@@ -4182,6 +4202,7 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 }
 
 /*
+2024年06月26日11:33:48
  * The background pageout daemon, started as a kernel thread
  * from the init process.
  *
@@ -4217,6 +4238,9 @@ static int kswapd(void *p)
 	 * us from recursively trying to free more memory as we're
 	 * trying to free the first piece of memory in the first place).
 	 */
+	 /*   // PF_MEMALLOC标记这个任务申请内存优先级很高，需第一时间响应
+    // PF_SWAPWRITE允许写入swap分区
+    // PF_KSWAPD标记这该任务是一个kswapd任务 */
 	tsk->flags |= PF_MEMALLOC | PF_SWAPWRITE | PF_KSWAPD;
 	set_freezable();
 
@@ -4232,7 +4256,9 @@ kswapd_try_sleep:
 		kswapd_try_to_sleep(pgdat, alloc_order, reclaim_order,
 					classzone_idx);
 
-		/* Read the new order and classzone_idx */
+		/* Read the new order and classzone_idx 
+		        // 本次内存申请的order和zoneidx，由唤醒kswapd任务的其他任务填写
+*/
 		alloc_order = reclaim_order = pgdat->kswapd_order;
 		classzone_idx = kswapd_classzone_idx(pgdat, classzone_idx);
 		pgdat->kswapd_order = 0;
@@ -4259,7 +4285,9 @@ kswapd_try_sleep:
 		 */
 		trace_mm_vmscan_kswapd_wake(pgdat->node_id, classzone_idx,
 						alloc_order);
+		/* 尝试回收node */
 		reclaim_order = balance_pgdat(pgdat, alloc_order, classzone_idx);
+		/* 如果没有回收到足够的内存，则继续等待被唤醒 */
 		if (reclaim_order < alloc_order)
 			goto kswapd_try_sleep;
 	}
@@ -4379,6 +4407,9 @@ static int kswapd_cpu_online(unsigned int cpu)
 }
 
 /*
+2024年06月26日11:32:05
+每个在线的node上都有一个kswapd任务，这个任务的平时都是在阻塞状态，只有当内存不足时，
+系统才会通过wake_all_kswapds将其唤起来进行内存回收与碎片整理。
  * This kswapd start function will be called by init and node-hot-add.
  * On node-hot-add, kswapd will moved to proper cpus if cpus are hot-added.
  */
@@ -4386,7 +4417,7 @@ int kswapd_run(int nid)
 {
 	pg_data_t *pgdat = NODE_DATA(nid);
 	int ret = 0;
-
+/* 每个node只能一个 */
 	if (pgdat->kswapd)
 		return 0;
 
@@ -4463,7 +4494,8 @@ int sysctl_min_unmapped_ratio = 1;
  * slab reclaim needs to occur.
  */
 int sysctl_min_slab_ratio = 5;
-
+/* 2024年06月26日11:30:00
+ */
 static inline unsigned long node_unmapped_file_pages(struct pglist_data *pgdat)
 {
 	unsigned long file_mapped = node_page_state(pgdat, NR_FILE_MAPPED);
@@ -4496,9 +4528,9 @@ static unsigned long node_pagecache_reclaimable(struct pglist_data *pgdat)
 	 或者计算没有被unmap的文件页
 	 */
 	if (node_reclaim_mode & RECLAIM_UNMAP)
-		nr_pagecache_reclaimable = node_page_state(pgdat, NR_FILE_PAGES);
+		nr_pagecache_reclaimable = node_page_state(pgdat, NR_FILE_PAGES);/* 计算所有页面 */
 	else
-		nr_pagecache_reclaimable = node_unmapped_file_pages(pgdat);
+		nr_pagecache_reclaimable = node_unmapped_file_pages(pgdat);/*  */
 
 	/* If we can't clean pages, remove dirty pages from consideration
 	如果回收模式不允许回写，则要排除脏页（脏页需要回写到硬盘） */
@@ -4514,7 +4546,7 @@ static unsigned long node_pagecache_reclaimable(struct pglist_data *pgdat)
 
 /*
 2024年6月25日23:56:31
-
+回收node
  * Try to free up some pages from this node through reclaim.
  */
 static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
@@ -4550,7 +4582,8 @@ static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned in
 	/* 允许写入到swap分区 */
 	p->flags |= PF_SWAPWRITE;
 	set_task_reclaim_state(p, &sc.reclaim_state);
-
+/* 判断node快速内存回收条件是否满足
+ */
 	if (node_pagecache_reclaimable(pgdat) > pgdat->min_unmapped_pages) {
 		/*
 		 * Free memory by calling shrink node with increasing

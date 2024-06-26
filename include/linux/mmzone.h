@@ -37,7 +37,9 @@
  * will not.
  */
 #define PAGE_ALLOC_COSTLY_ORDER 3
+/* 2024年06月26日14:55:43
 
+ */
 enum migratetype {
 	MIGRATE_UNMOVABLE,
 	MIGRATE_MOVABLE,
@@ -94,7 +96,9 @@ extern int page_group_by_mobility_disabled;
 #define get_pageblock_migratetype(page)					\
 	get_pfnblock_flags_mask(page, page_to_pfn(page),		\
 			PB_migrate_end, MIGRATETYPE_MASK)
-
+/* 2024年06月26日14:55:14
+free_area有MIGRATE_TYPES个双向链表和一个记录当前空闲单元个数的字段。
+ */
 struct free_area {
 	struct list_head	free_list[MIGRATE_TYPES];
 	unsigned long		nr_free;
@@ -448,6 +452,11 @@ struct zone {
 
 	/* zone watermarks, access with *_wmark_pages(zone) macros */
 	unsigned long _watermark[NR_WMARK];
+	/*  统计node中所有zone的watermark_boost值，用来判定本次kswapd是否进行boost reclaim内存回收。*/
+	/* watermark_boost特性是在Linux 5.0版本引入的，具体可以参考补丁：mm: reclaim small amounts of 
+	memory when an external fragmentation event occurs，其引入的初衷是为了减少外部碎片事件（mm_page_alloc_extfrag）。
+	例如如果一个pageblock无法提供足够的连续内存，就会进入到在fallback场景，当fallback_order小于
+	pageblock_order时，就会被认为会导致外部碎片的事件。在实施“偷”页框之前，会暂时提高（boost）水线。 */
 	unsigned long watermark_boost;
 
 	unsigned long nr_reserved_highatomic;
@@ -479,7 +488,8 @@ struct zone {
 	unsigned long		*pageblock_flags;
 #endif /* CONFIG_SPARSEMEM */
 
-	/* zone_start_pfn == zone_start_paddr >> PAGE_SHIFT */
+	/* zone_start_pfn == zone_start_paddr >> PAGE_SHIFT
+	本zone的起始页帧 */
 	unsigned long		zone_start_pfn;
 
 	/*
@@ -517,8 +527,11 @@ struct zone {
 	 * mem_hotplug_begin/end(). Any reader who can't tolerant drift of
 	 * present_pages should get_online_mems() to get a stable value.
 	 */
+	 /* 被伙伴系统管理的page数量 */
 	atomic_long_t		managed_pages;
+	/* 贯穿的页面数量，end - start */
 	unsigned long		spanned_pages;
+	/* 实际的页数，减去hole */
 	unsigned long		present_pages;
 
 	const char		*name;
@@ -542,13 +555,15 @@ struct zone {
 	/* Write-intensive fields used from the page allocator */
 	ZONE_PADDING(_pad1_)
 
-	/* free areas of different sizes */
+	/* free areas of different sizes 
+	伙伴系统
+	*/
 	struct free_area	free_area[MAX_ORDER];
 
 	/* zone flags, see below */
 	unsigned long		flags;
 
-	/* Primarily protects free_area */
+	/* Primarily protects free_area 锁 */
 	spinlock_t		lock;
 
 	/* Write-intensive fields used by compaction and vmstats. */
@@ -562,11 +577,16 @@ struct zone {
 	unsigned long percpu_drift_mark;
 
 #if defined CONFIG_COMPACTION || defined CONFIG_CMA
-	/* pfn where compaction free scanner should start */
+	/* pfn where compaction free scanner should start
+	记录内存碎片扫描空闲页时的起始页帧号
+	 */
 	unsigned long		compact_cached_free_pfn;
-	/* pfn where async and sync compaction migration scanner should start */
+	/* pfn where async and sync compaction migration scanner should start
+	记录内存碎片扫描待移动页时的起始页帧号，包括异步(0)和同步(1)的场景 */
 	unsigned long		compact_cached_migrate_pfn[2];
+	/* 内存碎片整理扫描迁移页框初始帧号 */
 	unsigned long		compact_init_migrate_pfn;
+	/* 内存碎片整理扫描空闲页框初始帧号 */
 	unsigned long		compact_init_free_pfn;
 #endif
 
@@ -575,9 +595,16 @@ struct zone {
 	 * On compaction failure, 1<<compact_defer_shift compactions
 	 * are skipped before trying again. The number attempted since
 	 * last failure is tracked with compact_considered.
+
+    // 内存碎片整理推迟次数累计，当推迟的次数超过1 << compact_defer_shift时，超过后不允许再推迟了
 	 */
 	unsigned int		compact_considered;
 	unsigned int		compact_defer_shift;
+	/*
+	记录zone内存碎片整理可能失败的最大order
+    如果当前order大于等于compact_order_failed，则允许推迟（这里是为了提高内存碎片整理的成功率），小于则直接启动内存碎片整理
+    如果本次内存碎片整理成功了，则compact_order_failed置为order + 1
+    如果本次内存碎片整理失败了，则compact_order_failed置为order */
 	int			compact_order_failed;
 #endif
 
@@ -733,7 +760,7 @@ struct bootmem_data;
 typedef struct pglist_data {
 	/* 这是一个包含当前node所有zone结构体的数组。通过这个，我们知道当前node有哪几个zone。 */
 	struct zone node_zones[MAX_NR_ZONES];
-	/* 这个数组包括所有node的所有zone */
+	/* 这个数组包括所有node的所有zone，记录在所有node中的每一个zone，用于跨node内存分配。 */
 	struct zonelist node_zonelists[MAX_ZONELISTS];
 	/* 表示当前node中zone的数目 */
 	int nr_zones;

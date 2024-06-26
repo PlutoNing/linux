@@ -171,36 +171,43 @@ extern int user_min_free_kbytes;
  * in mm/compaction.c
  */
 /*
+2024年06月26日14:31:28
+这是内存碎片整理的控制结构体，将扫描到的待迁移页框和空闲页框，从伙伴系统中隔离出来。一次成功
+的内存碎片整理应该是将所有待迁移的页框全部移动到空闲页框处。由于一次内存碎片整理可能还是无法
+获得足够多的连续内存，可能需要触发多次内存碎片整理。
  * compact_control is used to track pages being migrated and the free pages
  * they are being migrated to during memory compaction. The free_pfn starts
  * at the end of a zone and migrate_pfn begins at the start. Movable pages
  * are moved to the end of a zone during a compaction run and the run
  * completes when free_pfn <= migrate_pfn
+ ------------------------------------------------------------
+ 
  */
 struct compact_control {
-	struct list_head freepages;	/* List of free pages to migrate to */
-	struct list_head migratepages;	/* List of pages being migrated */
-	unsigned int nr_freepages;	/* Number of isolated free pages */
-	unsigned int nr_migratepages;	/* Number of pages to migrate */
-	unsigned long free_pfn;		/* isolate_freepages search base */
-	unsigned long migrate_pfn;	/* isolate_migratepages search base */
-	unsigned long fast_start_pfn;	/* a pfn to start linear scan from */
-	struct zone *zone;
-	unsigned long total_migrate_scanned;
-	unsigned long total_free_scanned;
+	struct list_head freepages;	/* List of free pages to migrate to，扫描pageblock时空闲页面链表 */
+	struct list_head migratepages;	/* List of pages being migrated 迁移页面链表*/
+	unsigned int nr_freepages;	/* Number of isolated free pages，freepages链表页面数量 */
+	unsigned int nr_migratepages;	/* Number of pages to migrate，    // migratepages链表中页面数 */
+	unsigned long free_pfn;		/*空闲页扫描起始页框 isolate_freepages search base */
+	unsigned long migrate_pfn;	/* 待移动页扫描起始页框isolate_migratepages search base */
+	unsigned long fast_start_pfn;	/* 快速扫描起始页框，a pfn to start linear scan from */
+	struct zone *zone;/* 本次扫描的zone */
+	unsigned long total_migrate_scanned;/* 做可迁移页面扫描时，已经扫描的页框数 */
+	unsigned long total_free_scanned;/* 空闲页面扫描时，已扫描数量 */
 	unsigned short fast_search_fail;/* failures to use free list searches */
-	short search_order;		/* order to start a fast search at */
+	short search_order;		/* order to start a fast search at，快速搜索的order */
 	const gfp_t gfp_mask;		/* gfp mask of a direct compactor */
-	int order;			/* order a direct compactor needs */
-	int migratetype;		/* migratetype of direct compactor */
-	const unsigned int alloc_flags;	/* alloc flags of a direct compactor */
-	const int classzone_idx;	/* zone index of a direct compactor */
-	enum migrate_mode mode;		/* Async or sync migration mode */
-	bool ignore_skip_hint;		/* Scan blocks even if marked skip */
+	int order;			/* order a direct compactor needs，实际申请内存不足需要整理的order */
+	int migratetype;		/* migratetype of direct compactor，本次迁移类型 */
+	const unsigned int alloc_flags;	/* alloc flags of a direct compactor， */
+	const int classzone_idx;	/* zone index of a direct compactor，最大允许的zone下标 */
+	enum migrate_mode mode;		/* Async or sync migration mode ，碎片整理模式*/
+	bool ignore_skip_hint;		/* Scan blocks even if marked skip ，*/
 	bool no_set_skip_hint;		/* Don't mark blocks for skipping */
 	bool ignore_block_suitable;	/* Scan blocks considered unsuitable */
-	bool direct_compaction;		/* False from kcompactd or /proc/... */
-	bool whole_zone;		/* Whole zone should/has been scanned */
+	bool direct_compaction;		/* False from kcompactd or /proc/...，是否是直接内存碎片整理，如果是kcompactd任务或者通过/proc触发的内存碎片
+    // 整理则为否 */
+	bool whole_zone;		/* Whole zone should/has been scanned，是否是全zone扫描 */
 	bool contended;			/* Signal lock or sched contention */
 	bool rescan;			/* Rescanning the same pageblock */
 };
