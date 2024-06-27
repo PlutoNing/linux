@@ -440,7 +440,8 @@ static inline bool vm_swap_full(void)
 {
 	return atomic_long_read(&nr_swap_pages) * 2 < total_swap_pages;
 }
-
+/* 2024年6月27日22:45:28
+ */
 static inline long get_nr_swap_pages(void)
 {
 	return atomic_long_read(&nr_swap_pages);

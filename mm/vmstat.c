@@ -965,6 +965,8 @@ void __inc_numa_state(struct zone *zone,
 }
 
 /*
+2024年6月27日22:56:02
+统计node里面每个zone里面的item类型的页面数量
  * Determine the per node value of a stat item. This function
  * is called frequently in a NUMA machine, so try to be as
  * frugal as possible.

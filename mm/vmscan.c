@@ -370,6 +370,8 @@ unsigned long zone_reclaimable_pages(struct zone *zone)
 }
 
 /**
+2024年6月27日23:16:20
+统计lruvec里面某个zone的lru类型的数量。
  * lruvec_lru_size -  Returns the number of pages on the given LRU list.
  * @lruvec: lru vector
  * @lru: lru to use
@@ -2503,7 +2505,10 @@ static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 
 	return shrink_inactive_list(nr_to_scan, lruvec, sc, lru);
 }
+/* 2024年6月27日23:09:41
+代表什么意思？
 
+ */
 enum scan_balance {
 	SCAN_EQUAL,
 	SCAN_FRACT,
@@ -2562,7 +2567,7 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 	 * swappiness, but memcg users want to use this knob to
 	 * disable swapping for individual groups completely when
 	 * using the memory controller's swap limit feature would be
-	 * too expensive.
+	 * too expensive
 	 */
 	if (!global_reclaim(sc) && !swappiness) {
 		scan_balance = SCAN_FILE;
@@ -2589,12 +2594,15 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 	 * anon pages.  Try to detect this based on file LRU size.
 	 */
 	if (global_reclaim(sc)) {
+		/* 页缓存页面数量？ */
 		unsigned long pgdatfile;
+		/* node里面free page数量 */
 		unsigned long pgdatfree;
 		int z;
 		unsigned long total_high_wmark = 0;
 
 		pgdatfree = sum_zone_node_page_state(pgdat->node_id, NR_FREE_PAGES);
+		
 		pgdatfile = node_page_state(pgdat, NR_ACTIVE_FILE) +
 			   node_page_state(pgdat, NR_INACTIVE_FILE);
 
@@ -2602,11 +2610,12 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 			struct zone *zone = &pgdat->node_zones[z];
 			if (!managed_zone(zone))
 				continue;
-
+			/* 加上zoen里面high和boost水位线 */
 			total_high_wmark += high_wmark_pages(zone);
 		}
 
 		if (unlikely(pgdatfile + pgdatfree <= total_high_wmark)) {
+			/*  */
 			/*
 			 * Force SCAN_ANON if there are enough inactive
 			 * anonymous pages on the LRU in eligible zones.
@@ -2615,6 +2624,8 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 			if (!inactive_list_is_low(lruvec, false, sc, false) &&
 			    lruvec_lru_size(lruvec, LRU_INACTIVE_ANON, sc->reclaim_idx)
 					>> sc->priority) {
+						/* inactive高，匿名页 */
+
 				scan_balance = SCAN_ANON;
 				goto out;
 			}
@@ -2632,6 +2643,8 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 	 */
 	if (!inactive_list_is_low(lruvec, true, sc, false) &&
 	    lruvec_lru_size(lruvec, LRU_INACTIVE_FILE, sc->reclaim_idx) >> sc->priority) {
+		
+		/*  inactive高，文件也高页  */
 		scan_balance = SCAN_FILE;
 		goto out;
 	}
@@ -2656,9 +2669,10 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 	 *
 	 * anon in [0], file in [1]
 	 */
-
+	/* 匿名页数量 */
 	anon  = lruvec_lru_size(lruvec, LRU_ACTIVE_ANON, MAX_NR_ZONES) +
 		lruvec_lru_size(lruvec, LRU_INACTIVE_ANON, MAX_NR_ZONES);
+	/* 页缓存数量 */
 	file  = lruvec_lru_size(lruvec, LRU_ACTIVE_FILE, MAX_NR_ZONES) +
 		lruvec_lru_size(lruvec, LRU_INACTIVE_FILE, MAX_NR_ZONES);
 
@@ -2812,8 +2826,8 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	unsigned long nr_to_reclaim = sc->nr_to_reclaim;
 	struct blk_plug plug;
 	bool scan_adjusted;
-/* 该函数时利用proc接口的swappiness和sc->priotity来计算本节点4个lru链表中分别应该扫描的页面数量，结果保存在nr数组中,用链表类型来进行索
-	 *引（enum lru_list） */
+/* 	该函数时利用proc接口的swappiness和sc->priotity来计算本节点4个lru链表中分别应该扫描的页面数量，
+	结果保存在nr数组中,用链表类型来进行索引（enum lru_list） */
 	get_scan_count(lruvec, memcg, sc, nr, lru_pages);
 
 	/* Record the original scan target for proportional adjustments later 
@@ -2832,7 +2846,8 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	 * dropped to zero at the first pass.
 
 	 *对直接内存回收做的一个优化处理(目的让直接内存回收保持回收状态，多回收一些页面):
-     *	因内存紧张触发了直接内存回收，若此时回收状态是全局内存回收（未使能CONFIG_MEMCG）,且内存回收优先级处于DEF_PRIORITY状态。这时我们可
+     *	因内存紧张触发了直接内存回收，若此时回收状态是全局内存回收（未使能CONFIG_MEMCG）,
+	 且内存回收优先级处于DEF_PRIORITY状态。这时我们可
      *	以让直接内存回收机制保持在页面回收的状态，以此来多回收一些页，目的是防止kswap线程未能将需要回收的页回收完全。
 
 	 */
@@ -2936,9 +2951,8 @@ static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memc
 	/*
 	 * Even if we did not try to evict anon pages at all, we want to
 	 * rebalance the anon lru active/inactive ratio.
-
-     *若当前节点中不活跃lru匿名页链表中页面数量过少，通过shrink_active_list函数将活跃lru匿名页链表中的一部分页面
-     *迁移到不活跃的lru匿名页链表中去
+     *若当前节点中不活跃lru匿名页链表中页面数量过少，通过shrink_active_list
+	 函数将活跃lru匿名页链表中的一部分页面迁移到不活跃的lru匿名页链表中去
 	 */
 	if (inactive_list_is_low(lruvec, false, sc, true))
 		shrink_active_list(SWAP_CLUSTER_MAX, lruvec,

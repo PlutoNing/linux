@@ -346,7 +346,9 @@ struct lruvec {
 
 /* LRU Isolation modes. */
 typedef unsigned __bitwise isolate_mode_t;
-
+/* 2024年6月27日23:03:48
+水位线
+ */
 enum zone_watermarks {
 	WMARK_MIN,
 	WMARK_LOW,
