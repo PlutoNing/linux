@@ -15,6 +15,8 @@
 /* 
 2024年06月21日17:04:07
 还不清楚pagecounter具体字段的含义
+2024年06月27日18:36:25
+
  */
 static void propagate_protected_usage(struct page_counter *c,
 				      unsigned long usage)
@@ -54,6 +56,8 @@ static void propagate_protected_usage(struct page_counter *c,
 /**
 2024年6月25日00:24:15
 page cnter还账
+2024年06月27日18:33:32
+还账nr pages数量
  * page_counter_cancel - take pages out of the local counter
  * @counter: counter
  * @nr_pages: number of pages to cancel
@@ -159,6 +163,8 @@ failed:
 /**
 2024年6月25日00:23:56
 page counter具有层级关系。
+2024年06月27日18:33:07
+把nr pages数量的页面还回去（uncharge）
  * page_counter_uncharge - hierarchically uncharge pages
  * @counter: counter
  * @nr_pages: number of pages to uncharge
@@ -172,6 +178,7 @@ void page_counter_uncharge(struct page_counter *counter, unsigned long nr_pages)
 }
 
 /**
+2024年06月27日20:04:52
  * page_counter_set_max - set the maximum number of pages allowed
  * @counter: counter
  * @nr_pages: limit to set
@@ -214,6 +221,8 @@ int page_counter_set_max(struct page_counter *counter, unsigned long nr_pages)
 }
 
 /**
+2024年06月27日10:58:21
+
  * page_counter_set_min - set the amount of protected memory
  * @counter: counter
  * @nr_pages: value to set
@@ -248,6 +257,7 @@ void page_counter_set_low(struct page_counter *counter, unsigned long nr_pages)
 }
 
 /**
+2024年06月27日18:08:54
  * page_counter_memparse - memparse() for page counter limits
  * @buf: string to parse
  * @max: string meaning maximum possible value

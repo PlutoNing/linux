@@ -128,8 +128,9 @@ struct cgroup_file {
 
 /*
 2024年06月20日16:45:48
-存储一组指向 cgroup_subsys_state 的指针，通过这个指针进程可以获
-取到对应的cgroups信息，一个 cgroup_subsys_state 就是进程与一个特定子系统相关的信息
+pcb里存储一组指向 cgroup_subsys_state 的指针，通过这个指针进程可以获
+取到对应的cgroups信息，
+一个 cgroup_subsys_state 就是进程与一个特定子系统相关的信息
  * Per-subsystem/per-cgroup state maintained by the system.  This is the
  * fundamental structural building block that controllers deal with.
  *
@@ -373,7 +374,9 @@ struct cgroup_freezer_state {
 cgroup 指针指向了一个 cgroup 结构，也就是进程属于的 cgroup，进程受到子系统控制就
 是加入到特定的cgroup来实现的，就是对应这里的cgroup，由此看出进程和cgroup的关系是多对多关系。*/
 struct cgroup {
-	/* self css with NULL ->ss, points back to this cgroup */
+	/* self css with NULL ->ss, points back to this cgroup
+	自己关联的css
+	 */
 	struct cgroup_subsys_state self;
 
 	unsigned long flags;		/* "unsigned long" so bitops work */
@@ -393,6 +396,7 @@ struct cgroup {
 	 * step down the hierarchy increments the level.  This along with
 	 * ancestor_ids[] can determine whether a given cgroup is a
 	 * descendant of another without traversing the hierarchy.
+	 在层级里的深度，root=0
 	 */
 	int level;
 
@@ -449,7 +453,9 @@ struct cgroup {
 
 	/* Private pointers for each registered subsystem */
 	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
-/* root指向了一个cgroupfs_root的结构，就是cgroup所在的层级对应的结构体 */
+/* root指向了一个cgroupfs_root的结构，就是cgroup所在的层级对应的结构体
+2024年06月27日18:23:13
+根cg吗 */
 	struct cgroup_root *root;
 
 	/*
@@ -511,7 +517,9 @@ struct cgroup {
 	/* Used to store internal freezer state */
 	struct cgroup_freezer_state freezer;
 
-	/* ids of the ancestors at each level including self */
+	/* ids of the ancestors at each level including self
+	记录了自己各个层级的祖先
+	 */
 	int ancestor_ids[];
 };
 

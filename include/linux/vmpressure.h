@@ -9,9 +9,22 @@
 #include <linux/types.h>
 #include <linux/cgroup.h>
 #include <linux/eventfd.h>
+/* 2024年06月27日11:17:14
+是什么
+Vmpressure 的计算在每次系统尝试做do_try_to_free_pages 回收内存时进行。其计算方法非常简单：
 
+(1 - reclaimed/scanned)*100，也就是说回收失败的内存页越多，内存压力越大。
+同时 vmpressure 提供了通知机制，用户态或内核态程序都可以注册事件通知，应对不同等级的压力。
+默认定义了三级压力：low/medium/critical。low 代表正常回收；medium 代表中等压力，可能存在页交换或回写，默认值是 65%；critical 代表内存压力很大，即将 OOM，建议应用即可采取行动，默认值是 90%。
+vmpressure 也有一些缺陷：
+结果仅体现内存回收压力，不能反映系统在申请内存上的资源等待时间；
+计算周期比较粗；
+粗略的几个等级通知，无法精细化管理。
+ */
 struct vmpressure {
+	/* 扫描的数量 */
 	unsigned long scanned;
+	/* 回收成功的数量 */
 	unsigned long reclaimed;
 
 	unsigned long tree_scanned;

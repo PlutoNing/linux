@@ -182,6 +182,7 @@ static inline void list_swap(struct list_head *entry1,
 }
 
 /**
+2024年06月27日10:49:43
  * list_del_init - deletes entry from list and reinitialize it.
  * @entry: the element to delete from the list.
  */

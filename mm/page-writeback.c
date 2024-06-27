@@ -647,7 +647,7 @@ static void writeout_period(struct timer_list *t)
 		dom->period_time = 0;
 	}
 }
-
+/*  */
 int wb_domain_init(struct wb_domain *dom, gfp_t gfp)
 {
 	memset(dom, 0, sizeof(*dom));

@@ -625,7 +625,9 @@ static inline int split_swap_cluster(swp_entry_t entry)
 	return 0;
 }
 #endif
+/* 2024年06月27日10:30:11
 
+ */
 #ifdef CONFIG_MEMCG
 static inline int mem_cgroup_swappiness(struct mem_cgroup *memcg)
 {

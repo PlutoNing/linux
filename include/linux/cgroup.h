@@ -398,6 +398,7 @@ static inline void css_put(struct cgroup_subsys_state *css)
 }
 
 /**
+
  * css_put_many - put css references
  * @css: target css
  * @n: number of references to put
@@ -553,6 +554,8 @@ static inline struct cgroup *cgroup_parent(struct cgroup *cgrp)
 }
 
 /**
+2024年06月27日18:21:23
+看看是不是祖先
  * cgroup_is_descendant - test ancestry
  * @cgrp: the cgroup to be tested
  * @ancestor: possible ancestor of @cgrp

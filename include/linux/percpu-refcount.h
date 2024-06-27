@@ -91,7 +91,9 @@ enum {
 	 */
 	PERCPU_REF_ALLOW_REINIT	= 1 << 2,
 };
+/* 2024年06月27日18:39:12
 
+ */
 struct percpu_ref {
 	atomic_long_t		count;
 	/*
@@ -272,6 +274,8 @@ static inline bool percpu_ref_tryget_live(struct percpu_ref *ref)
 }
 
 /**
+2024年06月27日18:39:02
+
  * percpu_ref_put_many - decrement a percpu refcount
  * @ref: percpu_ref to put
  * @nr: number of references to put

@@ -72,7 +72,9 @@ struct cgroup_subsys memory_cgrp_subsys __read_mostly;
 EXPORT_SYMBOL(memory_cgrp_subsys);
 
 struct mem_cgroup *root_mem_cgroup __read_mostly;
-
+/* 
+2024年06月27日18:40:30
+重试次数？ */
 #define MEM_CGROUP_RECLAIM_RETRIES	5
 
 /* Socket memory accounting disabled? */
@@ -94,7 +96,10 @@ static DECLARE_WAIT_QUEUE_HEAD(memcg_cgwb_frn_waitq);
 
 /* Whether legacy memory+swap accounting is active
 2024年6月25日00:25:02
-这算什么 */
+这算什么 
+2024年06月27日18:37:42
+是什么到底
+*/
 static bool do_memsw_account(void)
 {
 	return !cgroup_subsys_on_dfl(memory_cgrp_subsys) && do_swap_account;
@@ -139,6 +144,7 @@ struct mem_cgroup_eventfd_list {
 };
 
 /*
+2024年06月27日10:52:33
  * cgroup_event represents events which userspace want to receive.
  */
 struct mem_cgroup_event {
@@ -148,16 +154,19 @@ struct mem_cgroup_event {
 	struct mem_cgroup *memcg;
 	/*
 	 * eventfd to signal userspace about the event.
+	 事件fd
 	 */
 	struct eventfd_ctx *eventfd;
 	/*
 	 * Each of these stored in a list by the cgroup.
+	 连接件
 	 */
 	struct list_head list;
 	/*
 	 * register_event() callback will be used to add new userspace
 	 * waiter for changes related to this event.  Use eventfd_signal()
 	 * on eventfd to send notification to userspace.
+	 观察者模式
 	 */
 	int (*register_event)(struct mem_cgroup *memcg,
 			      struct eventfd_ctx *eventfd, const char *args);
@@ -175,6 +184,7 @@ struct mem_cgroup_event {
 	poll_table pt;
 	wait_queue_head_t *wqh;
 	wait_queue_entry_t wait;
+	/* 移除事件的 */
 	struct work_struct remove;
 };
 
@@ -362,7 +372,9 @@ static int memcg_expand_one_shrinker_map(struct mem_cgroup *memcg,
 
 	return 0;
 }
-
+/* 2024年06月27日11:38:47
+释放shrinker map
+ */
 static void memcg_free_shrinker_maps(struct mem_cgroup *memcg)
 {
 	struct mem_cgroup_per_node *pn;
@@ -511,7 +523,8 @@ mem_cgroup_page_nodeinfo(struct mem_cgroup *memcg, struct page *page)
 
 	return memcg->nodeinfo[nid];
 }
-
+/* 2024年06月27日11:35:24
+ */
 static struct mem_cgroup_tree_per_node *
 soft_limit_tree_node(int nid)
 {
@@ -568,7 +581,9 @@ static void __mem_cgroup_insert_exceeded(struct mem_cgroup_per_node *mz,
 	rb_insert_color(&mz->tree_node, &mctz->rb_root);
 	mz->on_tree = true;
 }
-
+/* 2024年06月27日11:37:06
+从全局的soft limit tree移走
+ */
 static void __mem_cgroup_remove_exceeded(struct mem_cgroup_per_node *mz,
 					 struct mem_cgroup_tree_per_node *mctz)
 {
@@ -581,7 +596,9 @@ static void __mem_cgroup_remove_exceeded(struct mem_cgroup_per_node *mz,
 	rb_erase(&mz->tree_node, &mctz->rb_root);
 	mz->on_tree = false;
 }
+/* 2024年06月27日11:35:43
 
+ */
 static void mem_cgroup_remove_exceeded(struct mem_cgroup_per_node *mz,
 				       struct mem_cgroup_tree_per_node *mctz)
 {
@@ -654,7 +671,9 @@ todo */
 		}
 	}
 }
+/* 2024年06月27日11:25:27
 
+ */
 static void mem_cgroup_remove_from_trees(struct mem_cgroup *memcg)
 {
 	struct mem_cgroup_tree_per_node *mctz;
@@ -662,6 +681,7 @@ static void mem_cgroup_remove_from_trees(struct mem_cgroup *memcg)
 	int nid;
 
 	for_each_node(nid) {
+		/* 对于每个node */
 		mz = mem_cgroup_nodeinfo(memcg, nid);
 		mctz = soft_limit_tree_node(nid);
 		if (mctz)
@@ -2223,6 +2243,7 @@ struct memcg_stock_pcp {
 stock里面剩余的页面
  */
 	unsigned int nr_pages;
+/* drain stock的函数 */
 	struct work_struct work;
 	unsigned long flags;
 #define FLUSHING_CACHED_CHARGE	0
@@ -2273,22 +2294,32 @@ memcg stock是percpu
 }
 
 /*
+2024年06月27日18:31:36
+
  * Returns stocks cached in percpu and reset cached information.
+
  */
 static void drain_stock(struct memcg_stock_pcp *stock)
 {
 	struct mem_cgroup *old = stock->cached;
 
 	if (stock->nr_pages) {
+		/* 把这些数量的页面还回去 */
 		page_counter_uncharge(&old->memory, stock->nr_pages);
+
 		if (do_memsw_account())
 			page_counter_uncharge(&old->memsw, stock->nr_pages);
+
 		css_put_many(&old->css, stock->nr_pages);
+		/* 此时stock里预取的pages还回去了 */
 		stock->nr_pages = 0;
 	}
 	stock->cached = NULL;
 }
+/* 2024年06月27日18:30:55
 
+兑现stock
+ */
 static void drain_local_stock(struct work_struct *dummy)
 {
 	struct memcg_stock_pcp *stock;
@@ -2332,6 +2363,7 @@ static void refill_stock(struct mem_cgroup *memcg, unsigned int nr_pages)
 }
 
 /*
+2024年06月27日18:17:05
  * Drains all per-CPU charge caches for given root_memcg resp. subtree
  * of the hierarchy under it.
  */
@@ -2349,13 +2381,16 @@ static void drain_all_stock(struct mem_cgroup *root_memcg)
 	 * per-cpu data. CPU up doesn't touch memcg_stock at all.
 	 */
 	curcpu = get_cpu();
+	/* 遍历每个cpu */
 	for_each_online_cpu(cpu) {
+		/* 读取每个cpu的stock */
 		struct memcg_stock_pcp *stock = &per_cpu(memcg_stock, cpu);
 		struct mem_cgroup *memcg;
 		bool flush = false;
 
 		rcu_read_lock();
 		memcg = stock->cached;
+		/*  */
 		if (memcg && stock->nr_pages &&
 		    mem_cgroup_is_descendant(memcg, root_memcg))
 			flush = true;
@@ -3205,7 +3240,8 @@ static inline int mem_cgroup_move_swap_account(swp_entry_t entry,
 #endif
 
 static DEFINE_MUTEX(memcg_max_mutex);
-
+/* 2024年06月27日19:57:52
+ */
 static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 				 unsigned long max, bool memsw)
 {
@@ -3213,6 +3249,7 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 	bool drained = false;
 	int ret;
 	bool limits_invariant;
+	/*  操作memory还是memsw */
 	struct page_counter *counter = memsw ? &memcg->memsw : &memcg->memory;
 
 	do {
@@ -3510,7 +3547,9 @@ static u64 mem_cgroup_read_u64(struct cgroup_subsys_state *css,
 		BUG();
 	}
 }
-
+/* 2024年06月27日17:10:07
+如何flush
+ */
 static void memcg_flush_percpu_vmstats(struct mem_cgroup *memcg, bool slab_only)
 {
 	unsigned long stat[MEMCG_NR_STAT];
@@ -3529,10 +3568,11 @@ static void memcg_flush_percpu_vmstats(struct mem_cgroup *memcg, bool slab_only)
 	for (i = min_idx; i < max_idx; i++)
 		stat[i] = 0;
 
+/* 主体代码 ，统计percpu*/
 	for_each_online_cpu(cpu)
 		for (i = min_idx; i < max_idx; i++)
 			stat[i] += per_cpu(memcg->vmstats_percpu->stat[i], cpu);
-
+/* 统计此cg往上每层的信息 */
 	for (mi = memcg; mi; mi = parent_mem_cgroup(mi))
 		for (i = min_idx; i < max_idx; i++)
 			atomic_long_add(stat[i], &mi->vmstats[i]);
@@ -3557,7 +3597,9 @@ static void memcg_flush_percpu_vmstats(struct mem_cgroup *memcg, bool slab_only)
 				atomic_long_add(stat[i], &pi->lruvec_stat[i]);
 	}
 }
+/* 2024年06月27日17:16:58
 
+ */
 static void memcg_flush_percpu_vmevents(struct mem_cgroup *memcg)
 {
 	unsigned long events[NR_VM_EVENT_ITEMS];
@@ -3660,7 +3702,9 @@ static void memcg_offline_kmem(struct mem_cgroup *memcg)
 
 	memcg_free_cache_id(kmemcg_id);
 }
+/* 2024年06月27日11:44:35
 
+ */
 static void memcg_free_kmem(struct mem_cgroup *memcg)
 {
 	/* css_alloc() failed, offlining didn't happen */
@@ -4434,7 +4478,7 @@ static int memcg_wb_domain_init(struct mem_cgroup *memcg, gfp_t gfp)
 {
 	return wb_domain_init(&memcg->cgwb_domain, gfp);
 }
-
+/* 2024年06月27日17:08:58 */
 static void memcg_wb_domain_exit(struct mem_cgroup *memcg)
 {
 	wb_domain_exit(&memcg->cgwb_domain);
@@ -5073,7 +5117,9 @@ struct mem_cgroup *mem_cgroup_from_id(unsigned short id)
 	WARN_ON_ONCE(!rcu_read_lock_held());
 	return idr_find(&mem_cgroup_idr, id);
 }
-
+/* 2024年06月27日10:20:54
+初始化memcg的nodeinfo数组
+ */
 static int alloc_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 {
 	struct mem_cgroup_per_node *pn;
@@ -5113,7 +5159,8 @@ static int alloc_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 	memcg->nodeinfo[node] = pn;
 	return 0;
 }
-
+/* 2024年06月27日17:18:24
+ */
 static void free_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 {
 	struct mem_cgroup_per_node *pn = memcg->nodeinfo[node];
@@ -5125,24 +5172,32 @@ static void free_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 	free_percpu(pn->lruvec_stat_local);
 	kfree(pn);
 }
-
+/* 2024年06月27日17:17:29
+真正的memcg free函数
+ */
 static void __mem_cgroup_free(struct mem_cgroup *memcg)
 {
 	int node;
-
+	/* free pn */
 	for_each_node(node)
 		free_mem_cgroup_per_node_info(memcg, node);
+
+
 	free_percpu(memcg->vmstats_percpu);
 	free_percpu(memcg->vmstats_local);
 	kfree(memcg);
 }
+/* 2024年06月27日16:58:39
 
+ */
 static void mem_cgroup_free(struct mem_cgroup *memcg)
 {
+	/* 写回相关，todo */
 	memcg_wb_domain_exit(memcg);
 	/*
 	 * Flush percpu vmstats and vmevents to guarantee the value correctness
 	 * on parent's and all ancestor levels.
+	 刷新状态
 	 */
 	memcg_flush_percpu_vmstats(memcg, false);
 	memcg_flush_percpu_vmevents(memcg);
@@ -5214,14 +5269,16 @@ fail:
 	__mem_cgroup_free(memcg);
 	return NULL;
 }
-
+/* 2024年06月27日10:28:09
+设置css
+ */
 static struct cgroup_subsys_state * __ref
 mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 {
 	struct mem_cgroup *parent = mem_cgroup_from_css(parent_css);
 	struct mem_cgroup *memcg;
 	long error = -ENOMEM;
-
+	/* 初始化memcg */
 	memcg = mem_cgroup_alloc();
 	if (!memcg)
 		return ERR_PTR(error);
@@ -5229,6 +5286,8 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	memcg->high = PAGE_COUNTER_MAX;
 	memcg->soft_limit = PAGE_COUNTER_MAX;
 	if (parent) {
+		/* 是说此css有无parent吗 */
+		/* 这些是继承的 */
 		memcg->swappiness = mem_cgroup_swappiness(parent);
 		memcg->oom_kill_disable = parent->oom_kill_disable;
 	}
@@ -5256,6 +5315,7 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 
 	/* The following stuff does not apply to the root */
 	if (!parent) {
+		/* 当前cg是root？ */
 #ifdef CONFIG_MEMCG_KMEM
 		INIT_LIST_HEAD(&memcg->kmem_caches);
 #endif
@@ -5296,7 +5356,9 @@ static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
 	css_get(css);
 	return 0;
 }
+/* 2024年06月27日10:46:04
 
+ */
 static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
@@ -5309,6 +5371,7 @@ static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 	 */
 	spin_lock(&memcg->event_list_lock);
 	list_for_each_entry_safe(event, tmp, &memcg->event_list, list) {
+		/* 是说离线前把自己的事件移除吗 */
 		list_del_init(&event->list);
 		schedule_work(&event->remove);
 	}
@@ -5331,13 +5394,16 @@ static void mem_cgroup_css_released(struct cgroup_subsys_state *css)
 
 	invalidate_reclaim_iterators(memcg);
 }
+/* 2024年06月27日11:04:44
 
+ */
 static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
 	int __maybe_unused i;
 
 #ifdef CONFIG_CGROUP_WRITEBACK
+/* 回写？ */
 	for (i = 0; i < MEMCG_CGWB_FRN_CNT; i++)
 		wb_wait_for_completion(&memcg->cgwb_frn[i].done);
 #endif
@@ -5356,6 +5422,8 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 }
 
 /**
+2024年06月27日17:20:54
+
  * mem_cgroup_css_reset - reset the states of a mem_cgroup
  * @css: the target css
  *
@@ -6198,7 +6266,11 @@ static int memory_high_show(struct seq_file *m, void *v)
 {
 	return seq_puts_memcg_tunable(m, READ_ONCE(mem_cgroup_from_seq(m)->high));
 }
-
+/* 2024年06月27日17:24:24
+todo？
+看逻辑好像是从cgroupfs里面读取high值，写入memcg，？？
+并且会看情况顺便触发一次回收
+*/
 static ssize_t memory_high_write(struct kernfs_open_file *of,
 				 char *buf, size_t nbytes, loff_t off)
 {
@@ -6208,6 +6280,7 @@ static ssize_t memory_high_write(struct kernfs_open_file *of,
 	int err;
 
 	buf = strstrip(buf);
+	/* 读取fs里面high值 */
 	err = page_counter_memparse(buf, "max", &high);
 	if (err)
 		return err;
@@ -6228,7 +6301,10 @@ static int memory_max_show(struct seq_file *m, void *v)
 	return seq_puts_memcg_tunable(m,
 		READ_ONCE(mem_cgroup_from_seq(m)->memory.max));
 }
+/* 2024年06月27日18:15:13
+什么用呢
 
+ */
 static ssize_t memory_max_write(struct kernfs_open_file *of,
 				char *buf, size_t nbytes, loff_t off)
 {
@@ -6242,21 +6318,24 @@ static ssize_t memory_max_write(struct kernfs_open_file *of,
 	err = page_counter_memparse(buf, "max", &max);
 	if (err)
 		return err;
-
+		/* 设置max值 */
 	xchg(&memcg->memory.max, max);
 
 	for (;;) {
+		/* 读取usage */
 		unsigned long nr_pages = page_counter_read(&memcg->memory);
 
 		if (nr_pages <= max)
 			break;
 
 		if (signal_pending(current)) {
+			/* 优先处理信号吗？ */
 			err = -EINTR;
 			break;
 		}
 
 		if (!drained) {
+			/* 把缓存的记账兑现 */
 			drain_all_stock(memcg);
 			drained = true;
 			continue;
@@ -7082,6 +7161,7 @@ static int __init cgroup_memory(char *s)
 __setup("cgroup.memory=", cgroup_memory);
 
 /*
+2024年06月27日19:03:48
  * subsys_initcall() for memory controller.
  *
  * Some parts like memcg_hotplug_cpu_dead() have to be initialized from this
@@ -7107,10 +7187,11 @@ static int __init mem_cgroup_init(void)
 	cpuhp_setup_state_nocalls(CPUHP_MM_MEMCQ_DEAD, "mm/memctrl:dead", NULL,
 				  memcg_hotplug_cpu_dead);
 
+/* 注册每个cpu的stock work函数 */
 	for_each_possible_cpu(cpu)
 		INIT_WORK(&per_cpu_ptr(&memcg_stock, cpu)->work,
 			  drain_local_stock);
-
+	/*  */
 	for_each_node(node) {
 		struct mem_cgroup_tree_per_node *rtpn;
 

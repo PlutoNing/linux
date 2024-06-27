@@ -107,8 +107,10 @@ struct lruvec_stat {
 };
 
 /*
+2024年06月27日11:39:19
+
  * Bitmap of shrinker::id corresponding to memcg-aware shrinkers,
- * which have elements charged to this memcg.
+ * which have elements charged to this memcg
  */
 struct memcg_shrinker_map {
 	struct rcu_head rcu;
@@ -147,12 +149,11 @@ lru_zone_size[zid][lru]
 	unsigned long		lru_zone_size[MAX_NR_ZONES][NR_LRU_LISTS];
 
 	struct mem_cgroup_reclaim_iter	iter[DEF_PRIORITY + 1];
-
+	/* shrinker map，好像是存储shrinker什么的 */
 	struct memcg_shrinker_map __rcu	*shrinker_map;
 
 	struct rb_node		tree_node;	/* RB tree node usage超过softlimit时，链接到全局的
-	mem_cgroup_tree_per_node红黑树
-    ，方面进行softlimit reclaim*/
+	mem_cgroup_tree_per_node红黑树，方面进行softlimit reclaim*/
 	    /* 标记usage是否大于softlimit*/
 	unsigned long		usage_in_excess;/* Set to the value by which */
 						/* the soft limit is exceeded*/
@@ -207,6 +208,8 @@ struct memcg_padding {
 #endif
 
 /*
+2024年06月27日11:07:37
+
  * Remember four most recent foreign writebacks with dirty pages in this
  * cgroup.  Inode sharing is expected to be uncommon and, even if we miss
  * one in a given round, we're likely to catch it later if it keeps
@@ -276,6 +279,7 @@ struct mem_cgroup {
 
 	/*
 	 * Should the accounting and control be hierarchical, per subtree?
+	 是继承的吗，如果是，那么设置子cg会拷贝父cg的一些属性
 	 */
 	bool use_hierarchy;
 
@@ -446,7 +450,7 @@ void mem_cgroup_uncharge_list(struct list_head *page_list);
 void mem_cgroup_migrate(struct page *oldpage, struct page *newpage);
 /* 
 2024年06月21日15:46:01
-
+获取memcg对node的描述符
  */
 static struct mem_cgroup_per_node *
 mem_cgroup_nodeinfo(struct mem_cgroup *memcg, int nid)
@@ -499,6 +503,7 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm);
 struct mem_cgroup *get_mem_cgroup_from_page(struct page *page);
 /* 
  2024年06月21日17:28:43
+ 2024年06月27日10:28:33
  */
 static inline
 struct mem_cgroup *mem_cgroup_from_css(struct cgroup_subsys_state *css){
@@ -563,7 +568,9 @@ static inline struct mem_cgroup *parent_mem_cgroup(struct mem_cgroup *memcg)
 		return NULL;
 	return mem_cgroup_from_counter(memcg->memory.parent, memory);
 }
+/* 2024年06月27日18:20:22
 
+两个memecg是不是亲属上下级关系 */
 static inline bool mem_cgroup_is_descendant(struct mem_cgroup *memcg,
 			      struct mem_cgroup *root)
 {

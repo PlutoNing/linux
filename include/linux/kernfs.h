@@ -154,7 +154,7 @@ struct kernfs_node {
 		struct kernfs_elem_symlink	symlink;
 		struct kernfs_elem_attr		attr;
 	};
-
+/* 如果是cgroupfs里文件的话，这里是cgroup指针 */
 	void			*priv;
 
 	union kernfs_node_id	id;
@@ -197,7 +197,9 @@ struct kernfs_root {
 
 	wait_queue_head_t	deactivate_waitq;
 };
-
+/* 2024年06月27日17:26:17
+kernfs里面的东西
+ */
 struct kernfs_open_file {
 	/* published fields */
 	struct kernfs_node	*kn;
