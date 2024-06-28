@@ -1887,13 +1887,17 @@ static int cgroup_reconfigure(struct fs_context *fc)
 }
 
 /*
+2024年06月28日19:22:24
+
  * To reduce the fork() overhead for systems that are not actually using
  * their cgroups capability, we don't maintain the lists running through
  * each css_set to its tasks until we see the list actually used - in other
  * words after the first mount.
  */
 static bool use_task_css_set_links __read_mostly;
+/* 2024年06月28日19:34:11
 
+ */
 void cgroup_enable_task_cg_lists(void)
 {
 	struct task_struct *p, *g;
@@ -2457,6 +2461,8 @@ struct task_struct *cgroup_taskset_next(struct cgroup_taskset *tset,
 }
 
 /**
+2024年06月28日19:40:02
+
  * cgroup_taskset_migrate - migrate a taskset
  * @mgctx: migration context
  *
@@ -4166,6 +4172,8 @@ void cgroup_file_notify(struct cgroup_file *cfile)
 }
 
 /**
+2024年06月28日18:52:08
+
  * css_next_child - find the next child of a given css
  * @pos: the current position (%NULL to initiate traversal)
  * @parent: css whose children to walk

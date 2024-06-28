@@ -4110,6 +4110,8 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 }
 
 /*
+2024年06月28日20:07:52
+看是否可以抢占
  * Preempt the current task with a newly woken task if needed:
  */
 static void

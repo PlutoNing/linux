@@ -486,28 +486,50 @@ struct cfs_bandwidth { };
 
 #endif	/* CONFIG_CGROUP_SCHED */
 
-/* CFS-related fields in a runqueue */
+/* 
+2024年06月28日20:17:40
+CFS-related fields in a runqueue */
 struct cfs_rq {
+	/* 在上面的 sched_entity 结构中也存在同样的 load 成员，一个 sched_entity(se) 的 load 成员
+	表示单个 se 的 load，而 cfs_rq 上的 load 表示当前 cfs_rq 上所有实体的 load 总和。
+ */
 	struct load_weight	load;
+	/*  */
 	unsigned long		runnable_weight;
+	/* 这两个都是对当前 cfs_rq 上实体的统计，区别在于：nr_running 只表示当前 cfs_rq 上存在的子实体，
+	如果子实体是调度组，也只算一个。而 h_nr_running 的统计会递归地包含子调度组中的所有实体。因此可以
+	通过比较这两者是否相等来判断当前 cfs_rq 上是否存在调度组。   
+*/
 	unsigned int		nr_running;
 	unsigned int		h_nr_running;      /* SCHED_{NORMAL,BATCH,IDLE} */
 	unsigned int		idle_h_nr_running; /* SCHED_IDLE */
-
+/*    当前 cfs_rq 上执行的时间  */
 	u64			exec_clock;
+	/*  这是一个非常重要的成员，每个 cfs_rq 都会维护一个最小虚拟时间 min_vruntime，这个虚拟时间
+	是一个基准值，每个新添加到当前队列的 se 都会被初始化为当前的 min_vruntime 附近的值，以保证新
+	添加的执行实体和当前队列上已存在的实体拥有差不多的执行机会，至于执行多长时间，则是由对应实体的 
+	load 决定，该 load 会决定 se->vruntime 的增长速度。  
+ */
 	u64			min_vruntime;
 #ifndef CONFIG_64BIT
 	u64			min_vruntime_copy;
 #endif
-
+/*  cfs_rq 维护的红黑树结构，其中包含一个根节点以及最左边实体(vruntime最小的实体，对应一个进程)的指针。  
+ */
 	struct rb_root_cached	tasks_timeline;
 
 	/*
 	 * 'curr' points to currently running entity on this cfs_rq.
 	 * It is set to NULL otherwise (i.e when none are currently running).
 	 */
+	 /* curr：cfs_rq 上当前正在运行的实体，如果运行的进程实体不在当前 cfs_rq 上，设置为 NULL。需要注意的是,在支持组调度的情况下,一个进程 se 运行,被设置为当前 cfs_rq 的 curr,同时其 parent 也会被设置为同级 cfs_rq 的 curr. 
+ */
 	struct sched_entity	*curr;
+	/*     // next：用户特别指定的需要在下一次调度中执行的进程实体，但是这并不是绝对的，只有在 next 指定的进程实体快要运行(但可能不是下次)的时候，因为这时候不会造成太大的不公平，就会运行指定的 next，也是一种临时提高优先级的做法。 
+ */
 	struct sched_entity	*next;
+	/*     // last：上次执行过的实体不应该跨越公平性原则执行，比如将 next 设置为 last，这时候就需要仔细斟酌一下了，也是保证公平性的一种方法。  
+ */
 	struct sched_entity	*last;
 	struct sched_entity	*skip;
 
@@ -518,6 +540,9 @@ struct cfs_rq {
 #ifdef CONFIG_SMP
 	/*
 	 * CFS load tracking
+	在多核 CPU 中，对当前 cfs_rq 的负载统计，该统计会精确到每个 se，自然也就会传递到 cfs_rq，下面的几个
+	成员用于负载统计，目前专注于 cfs 调度的主要实现，负载均衡部分后续再进行分析。  
+
 	 */
 	struct sched_avg	avg;
 #ifndef CONFIG_64BIT
@@ -549,6 +574,8 @@ struct cfs_rq {
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
+/*     // 指向 percpu rq 的指针，在不支持组调度的系统中，runqueue 上只存在一个 cfs_rq，可以直接结构体的地址偏移反向获取到 rq 的指针，而支持组调度的 cfs_rq 可能是 root cfs_rq 的子级 cfs_rq,因此需要通过一个指针获取当前 cfs_rq 所在的 rq。  
+ */
 	struct rq		*rq;	/* CPU runqueue to which this cfs_rq is attached */
 
 	/*
@@ -564,6 +591,11 @@ struct cfs_rq {
 	struct task_group	*tg;	/* group that "owns" this runqueue */
 
 #ifdef CONFIG_CFS_BANDWIDTH
+/* // 这一部分是组调度中的带宽控制，在某些应用场景，比如虚拟化或者用户付费使用服务器中，需要对用户的
+使用带宽或者时长进行限制，就需要用到 cfs 调度的贷款控制，其实现原理就是在一个周期内，通过某些算法设置
+用户组应该运行多长时间、同时计算已经运行了多长时间，如果超时，就将该用户组 throttle，夺取其执行权直
+到下一个周期。同样的，cfs 的带宽控制部分我们暂时不深入讨论。 
+ */
 	int			runtime_enabled;
 	s64			runtime_remaining;
 

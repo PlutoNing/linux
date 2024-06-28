@@ -85,9 +85,12 @@ struct cgrp_cset_link {
 	struct list_head	cgrp_link;
 };
 
-/* used to track tasks and csets during migration */
+/*
+2024年06月28日19:42:28
+ used to track tasks and csets during migration */
 struct cgroup_taskset {
-	/* the src and dst cset list running through cset->mg_node */
+	/* the src and dst cset list running 
+	through cset->mg_node */
 	struct list_head	src_csets;
 	struct list_head	dst_csets;
 
@@ -113,7 +116,10 @@ struct cgroup_taskset {
 	struct task_struct	*cur_task;
 };
 
-/* migration context also tracks preloading */
+/* 
+
+2024年06月28日19:42:0
+migration context also tracks preloading */
 struct cgroup_mgctx {
 	/*
 	 * Preloaded source and destination csets.  Used to guarantee

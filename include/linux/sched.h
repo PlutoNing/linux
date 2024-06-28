@@ -440,30 +440,54 @@ struct sched_statistics {
 	u64				nr_wakeups_idle;
 #endif
 };
-
+/* 2024年06月28日20:08:05
+调度实体
+ */
 struct sched_entity {
-	/* For load-balancing: */
+	/* For load-balancing:当前se的调度权重 */
 	struct load_weight		load;
+
 	unsigned long			runnable_weight;
+
 	struct rb_node			run_node;
+	/* 链表节点，被链接到 percpu 的 rq->cfs_tasks 上，
+	在做 CPU 之间的负载均衡时，就会从该链表上选出 group_node 节点作为迁移进程。  
+ */
 	struct list_head		group_node;
+/* 是否就绪 */
 	unsigned int			on_rq;
-
+/* 上次被调度执行的时间 */
 	u64				exec_start;
+	/* 总的执行时间 */
 	u64				sum_exec_runtime;
+	/* 虚拟时间 */
 	u64				vruntime;
+	/*  截止到上次统计，进程执行的时间，通常，通过 sum_exec_runtime - prev_sum_exec_runtime 
+	来统计进程本次在 CPU 上执行了多长时间，以执行某些时间相关的操作 
+ */
 	u64				prev_sum_exec_runtime;
-
+/*     // 实体执行迁移的次数，在多核系统中，CPU 之间会经常性地执行负载均衡操作，因此调度实体很可能
+因为负载均衡而迁移到其它 CPU 的就绪队列上。  
+ */
 	u64				nr_migrations;
-
+/*     // 进程的属性统计，需要内核配置 CONFIG_SCHEDSTATS，其统计信息包含睡眠统计、等待延迟统计、CPU迁移统计、唤醒统计等。 
+ */
 	struct sched_statistics		statistics;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
+/*     由于调度实体可能是调度组，调度组中存在嵌套的调度实体，这个标志表示当前实体处于调度组中的深度，
+当不属于调度组时， depth 为 0.
+ */
 	int				depth;
+	/* 指向父级调度实体 */
 	struct sched_entity		*parent;
 	/* rq on which this entity is (to be) queued: */
 	struct cfs_rq			*cfs_rq;
-	/* rq "owned" by this entity/group: */
+	/* rq "owned" by this entity/group:
+	如果当前调度实体是一个调度组，那么它将拥有自己的 cfs_rq，属于该组内的所有调度实体在该
+	cfs_rq 上排列，而且当前 se 也是组内所有调度实体的 parent，子 se 存在一个指针指向 
+	parent，而父级与子 se 的联系并不直接，而是通过访问 cfs_rq 来找到对应的子 se。  
+ */
 	struct cfs_rq			*my_q;
 #endif
 
@@ -473,6 +497,9 @@ struct sched_entity {
 	 *
 	 * Put into separate cache line so it does not
 	 * collide with read-mostly values above.
+	在多核系统中，需要记录 CPU 的负载，其统计方式精确到每一个调度实体，
+	而这里的 avg 成员就是用来记录当前实体对于 CPU 的负载贡献。 
+
 	 */
 	struct sched_avg		avg;
 #endif
@@ -632,7 +659,8 @@ struct task_struct {
 	 */
 	struct thread_info		thread_info;
 #endif
-	/* -1 unrunnable, 0 runnable, >0 stopped: */
+	/* -1 unrunnable, 0 runnable, >0 stopped:
+	进程状态 */
 	volatile long			state;
 
 	/*
@@ -650,6 +678,7 @@ struct task_struct {
 
 #ifdef CONFIG_SMP
 	struct llist_node		wake_entry;
+	/* 在此cpu上运行 */
 	int				on_cpu;
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/* Current CPU: */
@@ -670,18 +699,27 @@ struct task_struct {
 	int				wake_cpu;
 #endif
 	int				on_rq;
-
+/* 动态优先级 */
 	int				prio;
+	/*     // 进程的静态优先级，该优先级直接决定了非实时进程的 load_weight，从而决定了该进程对应调度实体的 vruntime 增长速度。 
+ */
 	int				static_prio;
+	/*     // 对于实时进程和非实时进程而言，优先级以及对应的表达式不一样的，实时进程占用 0~99 号优先级，数字越大优先级越高，而非实时进程则是 100~139，数字越大优先级越低，为了对优先级进行统一，需要将实时优先级经过一层转换，而非实时优先级不需要动，normal_prio 代表的就是统一的优先级表示方法。  
+ */
 	int				normal_prio;
+	/*     // 进程的实时优先级，和实时调度相关
+ */
 	unsigned int			rt_priority;
-
+/* 调度类 */
 	const struct sched_class	*sched_class;
+	/* 调度实体 */
 	struct sched_entity		se;
 	struct sched_rt_entity		rt;
 #ifdef CONFIG_CGROUP_SCHED
+/* 调度组 */
 	struct task_group		*sched_task_group;
 #endif
+/* deadline 的调度实体 */
 	struct sched_dl_entity		dl;
 
 #ifdef CONFIG_UCLAMP_TASK
