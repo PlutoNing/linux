@@ -37,7 +37,7 @@ static inline void mmgrab(struct mm_struct *mm)
 }
 
 extern void __mmdrop(struct mm_struct *mm);
-
+/* 2024年06月28日16:21:58 */
 static inline void mmdrop(struct mm_struct *mm)
 {
 	/*
@@ -46,6 +46,7 @@ static inline void mmdrop(struct mm_struct *mm)
 	 * user-space, after storing to rq->curr.
 	 */
 	if (unlikely(atomic_dec_and_test(&mm->mm_count)))
+	/* 很不幸，这次释放引用计数的时候是最后一次了，需要drop 一下 mm本身 */
 		__mmdrop(mm);
 }
 
@@ -142,7 +143,8 @@ arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr,
 static inline void arch_pick_mmap_layout(struct mm_struct *mm,
 					 struct rlimit *rlim_stack) {}
 #endif
-
+/* 2024年06月28日15:02:39
+判断进程是否在vfork */
 static inline bool in_vfork(struct task_struct *tsk)
 {
 	bool ret;

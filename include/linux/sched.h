@@ -642,6 +642,7 @@ struct task_struct {
 	randomized_struct_fields_start
 
 	void				*stack;
+	/* 引用计数 */
 	refcount_t			usage;
 	/* Per task flags (PF_*), defined further below: */
 	unsigned int			flags;
@@ -828,7 +829,7 @@ struct task_struct {
 	struct hlist_node		pid_links[PIDTYPE_MAX];
 	struct list_head		thread_group;
 	struct list_head		thread_node;
-
+/* vfork是否完成 */
 	struct completion		*vfork_done;
 
 	/* CLONE_CHILD_SETTID: */
@@ -1258,6 +1259,7 @@ struct task_struct {
 #endif
 	int				pagefault_disabled;
 #ifdef CONFIG_MMU
+/* oom reaper kill 进程 */
 	struct task_struct		*oom_reaper_list;
 #endif
 #ifdef CONFIG_VMAP_STACK
@@ -1657,6 +1659,9 @@ extern struct thread_info init_thread_info;
 extern unsigned long init_stack[THREAD_SIZE / sizeof(unsigned long)];
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
+/* 2024年06月28日15:41:35
+
+ */
 static inline struct thread_info *task_thread_info(struct task_struct *task)
 {
 	return &task->thread_info;
@@ -1747,7 +1752,7 @@ static inline int test_and_clear_tsk_thread_flag(struct task_struct *tsk, int fl
 {
 	return test_and_clear_ti_thread_flag(task_thread_info(tsk), flag);
 }
-
+/* 2024年06月28日15:41:24 */
 static inline int test_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	return test_ti_thread_flag(task_thread_info(tsk), flag);

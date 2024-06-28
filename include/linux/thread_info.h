@@ -78,7 +78,7 @@ static inline int test_and_clear_ti_thread_flag(struct thread_info *ti, int flag
 {
 	return test_and_clear_bit(flag, (unsigned long *)&ti->flags);
 }
-
+/* 2024年06月28日15:41:52 */
 static inline int test_ti_thread_flag(struct thread_info *ti, int flag)
 {
 	return test_bit(flag, (unsigned long *)&ti->flags);

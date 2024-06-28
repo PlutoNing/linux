@@ -51,7 +51,9 @@ enum ucount_type {
 #endif
 	UCOUNT_COUNTS,
 };
+/* 2024年06月28日16:24:45
 
+ */
 struct user_namespace {
 	struct uid_gid_map	uid_map;
 	struct uid_gid_map	gid_map;

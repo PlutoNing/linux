@@ -636,7 +636,8 @@ static inline int mm_alloc_pgd(struct mm_struct *mm)
 		return -ENOMEM;
 	return 0;
 }
-
+/* 2024年06月28日16:25:17
+ */
 static inline void mm_free_pgd(struct mm_struct *mm)
 {
 	pgd_free(mm, mm->pgd);
@@ -681,6 +682,8 @@ static void check_mm(struct mm_struct *mm)
 #define free_mm(mm)	(kmem_cache_free(mm_cachep, (mm)))
 
 /*
+2024年06月28日16:23:14
+drop mm，不是drop 引用计数
  * Called when the last reference to the mm
  * is dropped: either by a lazy thread or by
  * mmput. Free the page directory and the mm.

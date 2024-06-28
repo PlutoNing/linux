@@ -323,7 +323,7 @@ int __blocking_notifier_call_chain(struct blocking_notifier_head *nh,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(__blocking_notifier_call_chain);
-
+/* 2024年06月28日12:00:06 */
 int blocking_notifier_call_chain(struct blocking_notifier_head *nh,
 		unsigned long val, void *v)
 {

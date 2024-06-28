@@ -145,6 +145,7 @@ struct cgroup_subsys_state {
 	struct cgroup *cgroup;
 
 	/* PI: the cgroup subsystem that this css is attached to
+	cgrp子系统
 	 */
 	struct cgroup_subsys *ss;
 

@@ -260,7 +260,11 @@ enum res_type {
 	for (iter = mem_cgroup_iter(NULL, NULL, NULL);	\
 	     iter != NULL;				\
 	     iter = mem_cgroup_iter(NULL, iter, NULL))
-
+/* 2024年06月28日15:39:41
+好像是判断一个tsk是否要被oom，sigkill，exit。
+但是和这个should force charge什么关系呢？
+快要退出了就可以force charge？
+ */
 static inline bool should_force_charge(void)
 {
 	return tsk_is_oom_victim(current) || fatal_signal_pending(current) ||
@@ -1211,6 +1215,7 @@ out:
 }
 
 /**
+2024年06月28日14:43:45
  * mem_cgroup_iter_break - abort a hierarchy walk prematurely
  * @root: hierarchy root
  * @prev: last visited hierarchy member as returned by mem_cgroup_iter()
@@ -1264,6 +1269,8 @@ static void invalidate_reclaim_iterators(struct mem_cgroup *dead_memcg)
 }
 
 /**
+2024年06月28日14:37:03
+
  * mem_cgroup_scan_tasks - iterate over tasks of a memory cgroup hierarchy
  * @memcg: hierarchy root
  * @fn: function to call for each task
@@ -1571,6 +1578,7 @@ static char *memory_stat_format(struct mem_cgroup *memcg)
 
 #define K(x) ((x) << (PAGE_SHIFT-10))
 /**
+2024年06月28日15:37:57
  * mem_cgroup_print_oom_context: Print OOM information relevant to
  * memory controller.
  * @memcg: The memory cgroup that went over limit
@@ -1596,6 +1604,7 @@ void mem_cgroup_print_oom_context(struct mem_cgroup *memcg, struct task_struct *
 }
 
 /**
+2024年06月28日15:38:03
  * mem_cgroup_print_oom_meminfo: Print OOM memory information relevant to
  * memory controller.
  * @memcg: The memory cgroup that went over limit
@@ -1631,6 +1640,8 @@ void mem_cgroup_print_oom_meminfo(struct mem_cgroup *memcg)
 }
 
 /*
+2024年06月28日12:11:49
+
  * Return the memory (and swap, if configured) limit for a memcg.
  */
 unsigned long mem_cgroup_get_max(struct mem_cgroup *memcg)
@@ -1649,12 +1660,15 @@ unsigned long mem_cgroup_get_max(struct mem_cgroup *memcg)
 	}
 	return max;
 }
-
+/* 2024年06月28日15:38:13 */
 unsigned long mem_cgroup_size(struct mem_cgroup *memcg)
 {
 	return page_counter_read(&memcg->memory);
 }
-
+/* 2024年06月28日15:38:26
+看函数逻辑和作用是，在此memcg里面oom kill一个tsk。
+场景呢？mem_cgroup_oom里面有调用。
+ */
 static bool mem_cgroup_out_of_memory(struct mem_cgroup *memcg, gfp_t gfp_mask,
 				     int order)
 {
@@ -1674,6 +1688,7 @@ static bool mem_cgroup_out_of_memory(struct mem_cgroup *memcg, gfp_t gfp_mask,
 	 * fail to bail out. Therefore, check again after holding oom_lock.
 	 */
 	ret = should_force_charge() || out_of_memory(&oc);
+	/* ret代表 cur进程快要退出了，或者成功在memcg里面kill了一个进程 */
 	mutex_unlock(&oom_lock);
 	return ret;
 }
@@ -1681,6 +1696,7 @@ static bool mem_cgroup_out_of_memory(struct mem_cgroup *memcg, gfp_t gfp_mask,
 #if MAX_NUMNODES > 1
 
 /**
+2024年06月28日15:52:06
  * test_mem_cgroup_node_reclaimable
  * @memcg: the target memcg
  * @nid: the node ID to be checked.
@@ -1694,20 +1710,26 @@ static bool test_mem_cgroup_node_reclaimable(struct mem_cgroup *memcg,
 		int nid, bool noswap)
 {
 	struct lruvec *lruvec = mem_cgroup_lruvec(NODE_DATA(nid), memcg);
-
+	/* 有页缓存页就可以回收，返回true */
 	if (lruvec_page_state(lruvec, NR_INACTIVE_FILE) ||
 	    lruvec_page_state(lruvec, NR_ACTIVE_FILE))
 		return true;
+
+	/* 到这说明没有页缓存页了，那看看有没有匿名页，
+	先看看有没开启swap，没有swap直接返回false */
 	if (noswap || !total_swap_pages)
 		return false;
+	/* 如果开启了swap，并且还有匿名页，返回true */
 	if (lruvec_page_state(lruvec, NR_INACTIVE_ANON) ||
 	    lruvec_page_state(lruvec, NR_ACTIVE_ANON))
 		return true;
+		/*2024年06月28日15:56:01 不清楚还有可能到这吗？ */
 	return false;
 
 }
 
 /*
+2024年06月28日15:57:20
  * Always updating the nodemask is not very good - even if we have an empty
  * list or the wrong list here, we can start from some node and traverse all
  * nodes based on the zonelist. So update the list loosely once per 10 secs.
@@ -2091,6 +2113,8 @@ cleanup:
 }
 
 /**
+2024年06月28日15:13:02
+
  * mem_cgroup_get_oom_group - get a memory cgroup to clean up after OOM
  * @victim: task to be killed by the OOM killer
  * @oom_domain: memcg in case of memcg OOM, NULL in case of system-wide OOM
@@ -2113,7 +2137,7 @@ struct mem_cgroup *mem_cgroup_get_oom_group(struct task_struct *victim,
 		oom_domain = root_mem_cgroup;
 
 	rcu_read_lock();
-
+	/* 得到victim的cg */
 	memcg = mem_cgroup_from_task(victim);
 	if (memcg == root_mem_cgroup)
 		goto out;
@@ -2122,11 +2146,15 @@ struct mem_cgroup *mem_cgroup_get_oom_group(struct task_struct *victim,
 	 * Traverse the memory cgroup hierarchy from the victim task's
 	 * cgroup up to the OOMing cgroup (or root) to find the
 	 * highest-level memory cgroup with oom.group set.
+	 从victim所在的cg向上一直遍历到oom domain
+	 遍历层级里的cg，找到的是最大的需要kill cg的cg。然后返回
+	 
 	 */
 	for (; memcg; memcg = parent_mem_cgroup(memcg)) {
 		if (memcg->oom_group)
 			oom_group = memcg;
 
+		/* 好像是说oom domain是最多会波及到的层级的root */
 		if (memcg == oom_domain)
 			break;
 	}
@@ -2138,7 +2166,9 @@ out:
 
 	return oom_group;
 }
-
+/* 2024年06月28日15:12:23
+log一下
+ */
 void mem_cgroup_print_oom_group(struct mem_cgroup *memcg)
 {
 	pr_info("Tasks in ");

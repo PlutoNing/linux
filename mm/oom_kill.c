@@ -72,7 +72,9 @@ oom_killer（out of memory killer）是Linux内核的一种内存管理机制，
 
  */
 DEFINE_MUTEX(oom_lock);
+/* 2024年06月28日11:58:47
 
+ */
 static inline bool is_memcg_oom(struct oom_control *oc)
 {
 	return oc->memcg != NULL;
@@ -165,6 +167,7 @@ found:
 }
 
 /*
+2024年06月28日15:24:31
  * order == -1 means the oom kill is required by sysrq, otherwise only
  * for display purposes.
  240618
@@ -209,7 +212,8 @@ static bool is_dump_unreclaim_slabs(void)
 
 /**
 2024年06月18日11:58:26
-
+2024年06月28日14:58:03
+计算进程的oom得分
  * oom_badness - heuristic function to determine which candidate task to kill
  * @p: task struct of which task we should calculate
  * @totalpages: total present RAM allowed for page allocation
@@ -270,6 +274,9 @@ static const char * const oom_constraint_text[] = {
 };
 
 /*
+2024年06月28日12:11:20
+做什么的
+
  * Determine the type of allocation constraint.
  */
 static enum oom_constraint constrained_alloc(struct oom_control *oc)
@@ -328,7 +335,9 @@ static enum oom_constraint constrained_alloc(struct oom_control *oc)
 	}
 	return CONSTRAINT_NONE;
 }
+/* 2024年06月28日11:44:50
 
+ */
 static int oom_evaluate_task(struct task_struct *task, void *arg)
 {
 	struct oom_control *oc = arg;
@@ -361,7 +370,7 @@ static int oom_evaluate_task(struct task_struct *task, void *arg)
 		points = ULONG_MAX;
 		goto select;
 	}
-
+	/* 这里算分 */
 	points = oom_badness(task, oc->totalpages);
 	if (!points || points < oc->chosen_points)
 		goto next;
@@ -382,11 +391,14 @@ abort:
 }
 
 /*
+2024年06月28日12:16:17
+
  * Simple selection loop. We choose the process with the highest number of
  * 'points'. In case scan was aborted, oc->chosen is set to -1.
  */
 static void select_bad_process(struct oom_control *oc)
 {
+	/* 如果是memcg相关的oom */
 	if (is_memcg_oom(oc))
 		mem_cgroup_scan_tasks(oc->memcg, oom_evaluate_task, oc);
 	else {
@@ -399,7 +411,9 @@ static void select_bad_process(struct oom_control *oc)
 		rcu_read_unlock();
 	}
 }
+/* 2024年06月28日15:26:14
 
+ */
 static int dump_task(struct task_struct *p, void *arg)
 {
 	struct oom_control *oc = arg;
@@ -448,6 +462,7 @@ static void dump_tasks(struct oom_control *oc)
 	pr_info("Tasks state (memory values in pages):\n");
 	pr_info("[  pid  ]   uid  tgid total_vm      rss pgtables_bytes swapents oom_score_adj name\n");
 
+/* 这个memcg字段到底是什么 */
 	if (is_memcg_oom(oc))
 		mem_cgroup_scan_tasks(oc->memcg, dump_task, oc);
 	else {
@@ -459,7 +474,9 @@ static void dump_tasks(struct oom_control *oc)
 		rcu_read_unlock();
 	}
 }
+/* 2024年06月28日15:37:14
 
+ */
 static void dump_oom_summary(struct oom_control *oc, struct task_struct *victim)
 {
 	/* one line summary of the oom killer context. */
@@ -471,7 +488,7 @@ static void dump_oom_summary(struct oom_control *oc, struct task_struct *victim)
 	pr_cont(",task=%s,pid=%d,uid=%d\n", victim->comm, victim->pid,
 		from_kuid(&init_user_ns, task_uid(victim)));
 }
-
+/* 2024年06月28日15:57:43 */
 static void dump_header(struct oom_control *oc, struct task_struct *p)
 {
 	pr_warn("%s invoked oom-killer: gfp_mask=%#x(%pGg), order=%d, oom_score_adj=%hd\n",
@@ -495,16 +512,21 @@ static void dump_header(struct oom_control *oc, struct task_struct *p)
 }
 
 /*
+2024年06月28日16:16:43
  * Number of OOM victims in flight
  */
 static atomic_t oom_victims = ATOMIC_INIT(0);
 static DECLARE_WAIT_QUEUE_HEAD(oom_victims_wait);
-
+/* 2024年06月28日16:17:00
+oom是否被启用
+ */
 static bool oom_killer_disabled __read_mostly;
 
 #define K(x) ((x) << (PAGE_SHIFT-10))
 
 /*
+2024年06月28日12:03:59
+
  * task->mm can be NULL if the task is the exited group leader.  So to
  * determine whether the task is using a particular mm, we examine all the
  * task's threads: if one of those is using this mm then this task was also
@@ -526,12 +548,17 @@ bool process_shares_mm(struct task_struct *p, struct mm_struct *mm)
 /*
  * OOM Reaper kernel thread which tries to reap the memory used by the OOM
  * victim (if that is possible) to help the OOM killer to move on.
+ oom后台线程
  */
 static struct task_struct *oom_reaper_th;
+/* 2024年06月28日16:15:2
+oom reaper wq */
 static DECLARE_WAIT_QUEUE_HEAD(oom_reaper_wait);
 static struct task_struct *oom_reaper_list;
 static DEFINE_SPINLOCK(oom_reaper_lock);
+/* 2024年06月28日15:58:22
 
+ */
 bool __oom_reap_task_mm(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
@@ -542,6 +569,7 @@ bool __oom_reap_task_mm(struct mm_struct *mm)
 	 * is no longer stable. No barriers really needed because unmapping
 	 * should imply barriers already and the reader would hit a page fault
 	 * if it stumbled over a reaped memory.
+	 
 	 */
 	set_bit(MMF_UNSTABLE, &mm->flags);
 
@@ -560,6 +588,11 @@ bool __oom_reap_task_mm(struct mm_struct *mm)
 		 * count elevated without a good reason.
 		 */
 		if (vma_is_anonymous(vma) || !(vma->vm_flags & VM_SHARED)) {
+			/* 
+			2024年06月28日16:07:52
+			匿名 或者 私有？
+			共享好像确实不需要收回，
+			文件页呢 */
 			struct mmu_notifier_range range;
 			struct mmu_gather tlb;
 
@@ -582,6 +615,8 @@ bool __oom_reap_task_mm(struct mm_struct *mm)
 }
 
 /*
+2024年06月28日16:06:04
+收回mm的页面？
  * Reaps the address space of the give task.
  *
  * Returns true on success and false if none or part of the address space
@@ -601,6 +636,7 @@ static bool oom_reap_task_mm(struct task_struct *tsk, struct mm_struct *mm)
 	 * work on the mm anymore. The check for MMF_OOM_SKIP must run
 	 * under mmap_sem for reading because it serializes against the
 	 * down_write();up_write() cycle in exit_mmap().
+	 mm被标记了需要跳过
 	 */
 	if (test_bit(MMF_OOM_SKIP, &mm->flags)) {
 		trace_skip_task_reaping(tsk->pid);
@@ -609,7 +645,8 @@ static bool oom_reap_task_mm(struct task_struct *tsk, struct mm_struct *mm)
 
 	trace_start_task_reaping(tsk->pid);
 
-	/* failed to reap part of the address space. Try again later */
+	/* failed to reap part of the address space. Try again later
+	具体执行 */
 	ret = __oom_reap_task_mm(mm);
 	if (!ret)
 		goto out_finish;
@@ -626,7 +663,9 @@ out_unlock:
 
 	return ret;
 }
+/* 2024年06月28日16:08:59
 
+ */
 #define MAX_OOM_REAP_RETRIES 10
 static void oom_reap_task(struct task_struct *tsk)
 {
@@ -657,7 +696,9 @@ done:
 	/* Drop a reference taken by wake_oom_reaper */
 	put_task_struct(tsk);
 }
-
+/* 2024年06月28日16:13:03
+oom后台线程执行的函数
+ */
 static int oom_reaper(void *unused)
 {
 	while (true) {
@@ -677,7 +718,9 @@ static int oom_reaper(void *unused)
 
 	return 0;
 }
-
+/* 2024年06月28日12:07:30
+把tsk挂接到oom reaper list上面
+ */
 static void wake_oom_reaper(struct task_struct *tsk)
 {
 	/* mm is already queued? */
@@ -693,7 +736,8 @@ static void wake_oom_reaper(struct task_struct *tsk)
 	trace_wake_reaper(tsk->pid);
 	wake_up(&oom_reaper_wait);
 }
-
+/* 2024年06月28日16:15:45
+初始化oom 线程 */
 static int __init oom_init(void)
 {
 	oom_reaper_th = kthread_run(oom_reaper, NULL, "oom_reaper");
@@ -707,6 +751,7 @@ static inline void wake_oom_reaper(struct task_struct *tsk)
 #endif /* CONFIG_MMU */
 
 /**
+2024年06月28日12:04:57
  * mark_oom_victim - mark the given task as OOM victim
  * @tsk: task to mark
  *
@@ -743,6 +788,8 @@ static void mark_oom_victim(struct task_struct *tsk)
 }
 
 /**
+2024年06月28日16:16:25
+
  * exit_oom_victim - note the exit of an OOM victim
  */
 void exit_oom_victim(void)
@@ -763,6 +810,7 @@ void oom_killer_enable(void)
 }
 
 /**
+2024年06月28日16:17:26
  * oom_killer_disable - disable OOM killer
  * @timeout: maximum timeout to wait for oom victims in jiffies
  *
@@ -800,7 +848,9 @@ bool oom_killer_disable(signed long timeout)
 
 	return true;
 }
+/* 2024年06月28日12:01:38
 
+ */
 static inline bool __task_will_free_mem(struct task_struct *task)
 {
 	struct signal_struct *sig = task->signal;
@@ -815,7 +865,7 @@ static inline bool __task_will_free_mem(struct task_struct *task)
 
 	if (sig->flags & SIGNAL_GROUP_EXIT)
 		return true;
-
+		/* thread group是否为空？ */
 	if (thread_group_empty(task) && (task->flags & PF_EXITING))
 		return true;
 
@@ -823,6 +873,8 @@ static inline bool __task_will_free_mem(struct task_struct *task)
 }
 
 /*
+2024年06月28日12:01:03
+检查进程是否要退出
  * Checks whether the given task is dying or exiting and likely to
  * release its address space. This means that all threads and processes
  * sharing the same mm have to be killed or exiting.
@@ -862,6 +914,7 @@ static bool task_will_free_mem(struct task_struct *task)
 	 * b) the task is also reapable by the oom reaper.
 	 */
 	rcu_read_lock();
+	/* 这里遍历系统全部进程吗 */
 	for_each_process(p) {
 		if (!process_shares_mm(p, mm))
 			continue;
@@ -875,7 +928,9 @@ static bool task_will_free_mem(struct task_struct *task)
 
 	return ret;
 }
+/* 2024年06月28日15:21:56
 
+具体的oom kill进程的方式 */
 static void __oom_kill_process(struct task_struct *victim, const char *message)
 {
 	struct task_struct *p;
@@ -924,6 +979,7 @@ static void __oom_kill_process(struct task_struct *victim, const char *message)
 	 * its contended by another thread trying to allocate memory itself.
 	 * That thread will now get access to memory reserves since it has a
 	 * pending fatal signal.
+
 	 */
 	rcu_read_lock();
 	for_each_process(p) {
@@ -958,6 +1014,11 @@ static void __oom_kill_process(struct task_struct *victim, const char *message)
 #undef K
 
 /*
+2024年06月28日15:23:05
+在oom cg里面调用的oom kill函数方式如下
+mem_cgroup_scan_tasks(oom_group, oom_kill_memcg_member,
+				      (void*)message);
+--------------------------------------------
  * Kill provided task unless it's secured by setting
  * oom_score_adj to OOM_SCORE_ADJ_MIN.
  */
@@ -970,7 +1031,8 @@ static int oom_kill_memcg_member(struct task_struct *task, void *message)
 	}
 	return 0;
 }
-
+/* 2024年06月28日15:11:21
+oom kill进程 */
 static void oom_kill_process(struct oom_control *oc, const char *message)
 {
 	struct task_struct *victim = oc->chosen;
@@ -1002,11 +1064,13 @@ static void oom_kill_process(struct oom_control *oc, const char *message)
 	 * Check this out before killing the victim task.
 	 */
 	oom_group = mem_cgroup_get_oom_group(victim, oc->memcg);
-
+	/* 具体的oom kill函数 */
 	__oom_kill_process(victim, message);
 
 	/*
 	 * If necessary, kill all tasks in the selected memory cgroup.
+	 可以kill掉cg里面的全部进程。
+	 迭代cg里进程的方式来kill进程
 	 */
 	if (oom_group) {
 		mem_cgroup_print_oom_group(oom_group);
@@ -1017,6 +1081,8 @@ static void oom_kill_process(struct oom_control *oc, const char *message)
 }
 
 /*
+2024年06月28日12:13:06
+
  * Determines whether the kernel must panic because of the panic_on_oom sysctl.
  */
 static void check_panic_on_oom(struct oom_control *oc)
@@ -1055,6 +1121,7 @@ int unregister_oom_notifier(struct notifier_block *nb)
 EXPORT_SYMBOL_GPL(unregister_oom_notifier);
 
 /**
+2024年06月28日11:51:46
  * out_of_memory - kill the "best" process when we run out of memory
  * @oc: pointer to struct oom_control
  *
@@ -1071,7 +1138,8 @@ bool out_of_memory(struct oom_control *oc)
 
 	if (oom_killer_disabled)
 		return false;
-
+/*     //如果当前路径不是由memory cgroup控制的，则唤醒其他程序来处理oom
+ */
 	if (!is_memcg_oom(oc)) {
 		blocking_notifier_call_chain(&oom_notify_list, 0, &freed);
 		if (freed > 0)
@@ -1085,6 +1153,7 @@ bool out_of_memory(struct oom_control *oc)
 	 * quickly exit and free its memory.
 	 */
 	if (task_will_free_mem(current)) {
+		/* 准备kill cur */
 		mark_oom_victim(current);
 		wake_oom_reaper(current);
 		return true;
@@ -1107,21 +1176,24 @@ bool out_of_memory(struct oom_control *oc)
 	oc->constraint = constrained_alloc(oc);
 	if (oc->constraint != CONSTRAINT_MEMORY_POLICY)
 		oc->nodemask = NULL;
+	/*  */
 	check_panic_on_oom(oc);
 
 	if (!is_memcg_oom(oc) && sysctl_oom_kill_allocating_task &&
 	    current->mm && !oom_unkillable_task(current) &&
 	    oom_cpuset_eligible(current, oc) &&
 	    current->signal->oom_score_adj != OOM_SCORE_ADJ_MIN) {
+			/* kill 当前进程 */
 		get_task_struct(current);
 		oc->chosen = current;
 		oom_kill_process(oc, "Out of memory (oom_kill_allocating_task)");
 		return true;
 	}
-
+	/* 寻找合适的进程 */
 	select_bad_process(oc);
 	/* Found nothing?!?! */
 	if (!oc->chosen) {
+		/* 没找到合适的oom kill 进程 */
 		dump_header(oc, NULL);
 		pr_warn("Out of memory and no killable processes...\n");
 		/*

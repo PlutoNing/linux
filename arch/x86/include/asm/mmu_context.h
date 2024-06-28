@@ -202,6 +202,7 @@ static inline int init_new_context(struct task_struct *tsk,
 	init_new_context_ldt(mm);
 	return 0;
 }
+/* 2024年06月28日16:25:36 */
 static inline void destroy_context(struct mm_struct *mm)
 {
 	destroy_context_ldt(mm);

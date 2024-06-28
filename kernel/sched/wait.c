@@ -207,6 +207,7 @@ void __wake_up_sync(struct wait_queue_head *wq_head, unsigned int mode, int nr_e
 EXPORT_SYMBOL_GPL(__wake_up_sync);	/* For internal use only */
 
 /*
+2024年06月28日11:06:47
  * Note: we use "set_current_state()" _after_ the wait-queue add,
  * because we need a memory barrier there on SMP, so that any
  * wake-function that tests for the wait-queue being active
@@ -217,6 +218,10 @@ EXPORT_SYMBOL_GPL(__wake_up_sync);	/* For internal use only */
  * one way (it only protects stuff inside the critical region and
  * stops them from bleeding out - it would still allow subsequent
  * loads to move into the critical region).
+ prepare_to_wait()和finish_wait()并不是进程睡眠的地方，进程睡眠的地方是schedule()。
+prepare_to_wait()只是进行一些链表的操作，以确保自己在等待队列中，不会漏掉事件。
+进程在确信自己已经在队列中后，再次检查条件， 这里，如果不检查，可能条件已经满足，
+直接去睡眠的话，可能再也没有人来唤醒它了。
  */
 void
 prepare_to_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)

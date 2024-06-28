@@ -141,6 +141,7 @@ struct mem_cgroup_per_node {
 
 	/* Subtree VM stats (batched updates) */
 	struct lruvec_stat __percpu *lruvec_stat_cpu;
+	/*  */
 	atomic_long_t		lruvec_stat[NR_VM_NODE_STAT_ITEMS];
 /* 
 lru_zone_size[zid][lru]
@@ -285,6 +286,7 @@ struct mem_cgroup {
 
 	/*
 	 * Should the OOM killer kill all belonging tasks, had it kill one?
+	 oom是否会kill全部进程
 	 */
 	bool oom_group;
 
@@ -461,6 +463,8 @@ mem_cgroup_nodeinfo(struct mem_cgroup *memcg, int nid)
 /**
 2024年06月25日17:03:22
 memcg存着不同node的东西
+2024年06月28日15:52:27
+返回memcg在node上面的lruvec
  * mem_cgroup_lruvec - get the lru list vector for a node or a memcg zone
  * @node: node of the wanted lruvec
  * @memcg: memcg of the wanted lruvec
@@ -556,6 +560,7 @@ static inline struct mem_cgroup *lruvec_memcg(struct lruvec *lruvec)
 /**
 2024年06月21日15:30:12
 返回父cg？
+通过page counter的方式获得父cg
  * parent_mem_cgroup - find the accounting parent of a memcg
  * @memcg: memcg whose parent to find
  *
@@ -745,7 +750,9 @@ static inline void mod_memcg_page_state(struct page *page,
 	if (page->mem_cgroup)
 		mod_memcg_state(page->mem_cgroup, idx, val);
 }
+/* 2024年06月28日15:52:58
 
+ */
 static inline unsigned long lruvec_page_state(struct lruvec *lruvec,
 					      enum node_stat_item idx)
 {

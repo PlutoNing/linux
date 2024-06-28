@@ -37,10 +37,18 @@ struct oom_control {
 	*/
 	nodemask_t *nodemask;
 
-	/* Memory cgroup in which oom is invoked, or NULL for global oom */
+	/* Memory cgroup in which oom is invoked, or NULL for global oom
+	是不是和memcg相关的oom
+	2024年06月28日15:16:12
+	含义？
+	2024年06月28日15:45:32
+	代表是不是memcg oom，如果是memcg oom，会从此memcg里面找到一个tsk
+	 */
 	struct mem_cgroup *memcg;
 
-	/* Used to determine cpuset and node locality requirement */
+	/* Used to determine cpuset and node locality requirement
+	用来判断io设备属性等
+	 */
 	const gfp_t gfp_mask;
 
 	/*
@@ -49,12 +57,19 @@ struct oom_control {
 	 */
 	const int order;
 
-	/* Used by oom implementation, do not set */
+	/* Used by oom implementation, do not set 
+	总共的内存页*/
 	unsigned long totalpages;
+	/* 准备kill的进程 */
 	struct task_struct *chosen;
+	/* 准备被kill的进程的得分 */
 	unsigned long chosen_points;
 
-	/* Used to print the constraint info. */
+	/* Used to print the constraint info.
+	constraint：oom分配约束的类型枚举类型。
+2024年06月28日12:12:29
+描述了此次oom kill的一些限制
+	 */
 	enum oom_constraint constraint;
 };
 
@@ -74,7 +89,9 @@ static inline bool oom_task_origin(const struct task_struct *p)
 {
 	return p->signal->oom_flag_origin;
 }
-
+/* 2024年06月28日15:39:50
+tsk是不是已被选为oom victim
+ */
 static inline bool tsk_is_oom_victim(struct task_struct * tsk)
 {
 	return tsk->signal->oom_mm;

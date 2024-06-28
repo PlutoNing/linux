@@ -574,7 +574,7 @@ static inline void vma_set_anonymous(struct vm_area_struct *vma)
 {
 	vma->vm_ops = NULL;
 }
-
+/* 2024年06月28日16:03:20 */
 static inline bool vma_is_anonymous(struct vm_area_struct *vma)
 {
 	return !vma->vm_ops;
@@ -1683,6 +1683,8 @@ extern int mprotect_fixup(struct vm_area_struct *vma,
 int __get_user_pages_fast(unsigned long start, int nr_pages, int write,
 			  struct page **pages);
 /*
+2024年06月28日15:08:52
+
  * per-process(per-mm_struct) statistics.
  */
 static inline unsigned long get_mm_counter(struct mm_struct *mm, int member)
@@ -1729,7 +1731,7 @@ static inline int mm_counter(struct page *page)
 		return MM_ANONPAGES;
 	return mm_counter_file(page);
 }
-
+/* 2024年06月28日15:08:43 */
 static inline unsigned long get_mm_rss(struct mm_struct *mm)
 {
 	return get_mm_counter(mm, MM_FILEPAGES) +
@@ -1872,7 +1874,7 @@ static inline void mm_pgtables_bytes_init(struct mm_struct *mm)
 {
 	atomic_long_set(&mm->pgtables_bytes, 0);
 }
-
+/* 2024年06月28日15:10:05 */
 static inline unsigned long mm_pgtables_bytes(const struct mm_struct *mm)
 {
 	return atomic_long_read(&mm->pgtables_bytes);

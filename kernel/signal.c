@@ -1274,7 +1274,9 @@ __group_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *
 {
 	return send_signal(sig, info, p, PIDTYPE_TGID);
 }
+/* 2024年06月28日16:19:29
 
+ */
 int do_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p,
 			enum pid_type type)
 {

@@ -37,6 +37,7 @@ struct vmacache {
 };
 
 /*
+pcb的mm的rss里面不同类型页面数量
  * When updating this, please also update struct resident_page_types[] in
  * kernel/fork.c
  */

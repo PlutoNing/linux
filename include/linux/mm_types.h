@@ -317,7 +317,9 @@ struct vm_area_struct {
 	unsigned long vm_end;		/* The first byte after our end address
 					   within vm_mm. */
 
-	/* linked list of VM areas per task, sorted by address */
+	/* linked list of VM areas per task, sorted by address
+	所有vma链接为链表
+	 */
 	struct vm_area_struct *vm_next, *vm_prev;
 
 	struct rb_node vm_rb;
@@ -355,7 +357,9 @@ struct vm_area_struct {
 					  * page_table_lock */
 	struct anon_vma *anon_vma;	/* Serialized by page_table_lock */
 
-	/* Function pointers to deal with this struct. */
+	/* Function pointers to deal with this struct.
+	2024年06月28日16:03:05
+	为空说明是匿名vma */
 	const struct vm_operations_struct *vm_ops;
 
 	/* Information about our backing store: */
@@ -439,6 +443,7 @@ struct mm_struct {
 		 *
 		 * Use mmgrab()/mmdrop() to modify. When this drops to 0, the
 		 * &struct mm_struct is freed.
+		 mm的引用计数
 		 */
 		atomic_t mm_count;
 
@@ -510,6 +515,7 @@ struct mm_struct {
 		 */
 		struct task_struct __rcu *owner;
 #endif
+/* 2024年06月28日16:24:32 */
 		struct user_namespace *user_ns;
 
 		/* store ref to file /proc/<pid>/exe symlink points to */

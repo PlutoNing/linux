@@ -46,8 +46,12 @@
 /* internal flags */
 #define CSS_TASK_ITER_SKIPPED		(1U << 16)
 
-/* a css_task_iter should be treated as an opaque object */
+/* 
+2024年06月28日14:38:19
+css里面pcb的迭代器？
+a css_task_iter should be treated as an opaque object */
 struct css_task_iter {
+	/* 指向所属css的cgrp子系统 */
 	struct cgroup_subsys		*ss;
 	unsigned int			flags;
 
@@ -532,7 +536,7 @@ static inline bool task_css_is_root(struct task_struct *task, int subsys_id)
 	return task_css_check(task, subsys_id, true) ==
 		init_css_set.subsys[subsys_id];
 }
-
+/* 2024年06月28日15:37:49 */
 static inline struct cgroup *task_cgroup(struct task_struct *task,
 					 int subsys_id)
 {

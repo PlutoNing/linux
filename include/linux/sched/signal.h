@@ -343,7 +343,9 @@ static inline int restart_syscall(void)
 	set_tsk_thread_flag(current, TIF_SIGPENDING);
 	return -ERESTARTNOINTR;
 }
-
+/* 2024年06月28日15:40:44
+tsk是否有pending的signal
+ */
 static inline int signal_pending(struct task_struct *p)
 {
 	return unlikely(test_tsk_thread_flag(p,TIF_SIGPENDING));
@@ -353,7 +355,9 @@ static inline int __fatal_signal_pending(struct task_struct *p)
 {
 	return unlikely(sigismember(&p->pending.signal, SIGKILL));
 }
+/* 2024年06月28日15:40:35
 
+ */
 static inline int fatal_signal_pending(struct task_struct *p)
 {
 	return signal_pending(p) && __fatal_signal_pending(p);
@@ -653,7 +657,8 @@ static inline struct task_struct *next_thread(const struct task_struct *p)
 	return list_entry_rcu(p->thread_group.next,
 			      struct task_struct, thread_group);
 }
-
+/* 2024年06月28日12:02:06
+ */
 static inline int thread_group_empty(struct task_struct *p)
 {
 	return list_empty(&p->thread_group);
