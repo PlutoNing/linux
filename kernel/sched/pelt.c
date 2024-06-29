@@ -145,6 +145,8 @@ accumulate_sum(u64 delta, struct sched_avg *sa,
 }
 
 /*
+2024年6月29日19:42:14
+函数 ___update_load_sum 用来更新负载的累计总和
  * We can represent the historical contribution to runnable average as the
  * coefficients of a geometric series.  To do this we sub-divide our runnable
  * history into segments of approximately 1ms (1024us); label the segment that
@@ -177,7 +179,7 @@ ___update_load_sum(u64 now, struct sched_avg *sa,
 		  unsigned long load, unsigned long runnable, int running)
 {
 	u64 delta;
-
+/* 距离上一次更新负载的时间差，单位是ns，该时间为墙上时间 */
 	delta = now - sa->last_update_time;
 	/*
 	 * This should only happen when time goes backwards, which it
@@ -191,11 +193,13 @@ ___update_load_sum(u64 now, struct sched_avg *sa,
 	/*
 	 * Use 1024ns as the unit of measurement since it's a reasonable
 	 * approximation of 1us and fast to compute.
+	 delta的精度是ns, 所以右移10位变为us, 这里假设 1us = 1024ns 以简化计算
 	 */
 	delta >>= 10;
 	if (!delta)
 		return 0;
-
+	/* 这里更新时间时，对delta的位移运算相当于抹掉了最近1024ns内的那部分时间，因为这部分时间就是记录在低十位数里面的。
+     * 但末尾的ns尾数太小了可以忽略了，计算负载时精度考虑到 us 级别就行。 */
 	sa->last_update_time += delta << 10;
 
 	/*
@@ -216,20 +220,23 @@ ___update_load_sum(u64 now, struct sched_avg *sa,
 	 *
 	 * Step 1: accumulate *_sum since last_update_time. If we haven't
 	 * crossed period boundaries, finish.
+	 调用函数accumulate_sum更新负载总和
 	 */
 	if (!accumulate_sum(delta, sa, load, runnable, running))
 		return 0;
 
 	return 1;
 }
+/* 2024年6月29日19:43:49
 
+ */
 static __always_inline void
 ___update_load_avg(struct sched_avg *sa, unsigned long load, unsigned long runnable)
 {
 	u32 divider = LOAD_AVG_MAX - 1024 + sa->period_contrib;
 
 	/*
-	 * Step 2: update *_avg.
+	 * Step 2: update *_avg. 计算平均负载
 	 */
 	sa->load_avg = div_u64(load * sa->load_sum, divider);
 	sa->runnable_load_avg =	div_u64(runnable * sa->runnable_load_sum, divider);
@@ -273,12 +280,15 @@ int __update_load_avg_blocked_se(u64 now, struct sched_entity *se)
 
 	return 0;
 }
-
+/* 2024年6月29日19:39:15
+更新 se 负载的逻辑，该部分逻辑通过 __update_load_avg_se 完成
+ */
 int __update_load_avg_se(u64 now, struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
+	/* 先更新se 的负载总和 */
 	if (___update_load_sum(now, &se->avg, !!se->on_rq, !!se->on_rq,
 				cfs_rq->curr == se)) {
-
+					/* 更新 se 的平均负载，平均负载的计算逻辑与负载总和与权重有关 */
 		___update_load_avg(&se->avg, se_weight(se), se_runnable(se));
 		cfs_se_util_change(&se->avg);
 		trace_pelt_se_tp(se);

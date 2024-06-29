@@ -15,6 +15,9 @@
 struct worker_pool;
 
 /*
+2024年6月28日23:13:03
+ worker 
+ 运行work_struct的内核线程被称为worker，即工作线程。
  * The poor guys doing the actual heavy lifting.  All on-duty workers are
  * either serving the manager role, on idle list or on busy hash.  For
  * details on the locking annotation (L, I, X...), refer to workqueue.c.
@@ -28,17 +31,17 @@ struct worker {
 		struct hlist_node	hentry;	/* L: while busy */
 	};
 
-	struct work_struct	*current_work;	/* L: work being processed */
-	work_func_t		current_func;	/* L: current_work's fn */
-	struct pool_workqueue	*current_pwq; /* L: current_work's pwq */
-	struct list_head	scheduled;	/* L: scheduled works */
+	struct work_struct	*current_work;	/* L: work being processed 当前正在处理的work*/
+	work_func_t		current_func;	/* L: current_work's fn 当前正在执行的work回调函数*/
+	struct pool_workqueue	*current_pwq; /* L: current_work's pwq ，当前work所属的pool_workqueue*/
+	struct list_head	scheduled;	/* L: scheduled works 所有被调度并正准备执行的work_struct都挂入该链表中*/
 
 	/* 64 bytes boundary on 64bit, 32 on 32bit */
 
-	struct task_struct	*task;		/* I: worker task */
-	struct worker_pool	*pool;		/* A: the associated pool */
+	struct task_struct	*task;		/* I: worker task 该工作线程的task_struct数据结构*/
+	struct worker_pool	*pool;		/* A: the associated pool该工作线程所属的worker_pool */
 						/* L: for rescuers */
-	struct list_head	node;		/* A: anchored at pool->workers */
+	struct list_head	node;		/* A: anchored at pool->workers 可以把该worker挂入到worker_pool->workers链表中 */
 						/* A: runs through worker->node */
 
 	unsigned long		last_active;	/* L: last active timestamp */

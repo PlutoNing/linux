@@ -139,6 +139,7 @@ struct rq *task_rq_lock(struct task_struct *p, struct rq_flags *rf)
 }
 
 /*
+2024年6月29日16:21:12
  * RQ-clock updating methods:
  */
 
@@ -173,7 +174,7 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 
 	rq->prev_irq_time += irq_delta;
 	delta -= irq_delta;
-#endif
+#endif /* CONFIG_IRQ_TIME_ACCOUNTING */
 #ifdef CONFIG_PARAVIRT_TIME_ACCOUNTING
 	if (static_key_false((&paravirt_steal_rq_enabled))) {
 		steal = paravirt_steal_clock(cpu_of(rq));
@@ -185,7 +186,7 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 		rq->prev_steal_time_rq += steal;
 		delta -= steal;
 	}
-#endif
+#endif /* CONFIG_PARAVIRT_TIME_ACCOUNTING */
 
 	rq->clock_task += delta;
 
@@ -195,7 +196,13 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 #endif
 	update_rq_clock_pelt(rq, delta);
 }
-
+/* 2024年6月29日15:59:35
+就绪队列的时钟由update_rq_clock()函数来更新，如果在编译内核的时候启用了CONFIG_HAVE_UNSTABLE_SCHED_CLOCK选项
+（CentOS的内核是默认开启的），sched_clock_stable变量的值为1，这种情况下会调用sched_clock()函数来获取当前的CPU
+时间。sched_clock()函数中会调用rdstc指令来读取CPU的周期数
+ ----------------
+ 调用update_rq_clock()就绪队列时钟的更新, 实际上更新struct rq当前实例的时钟时间戳
+ */
 void update_rq_clock(struct rq *rq)
 {
 	s64 delta;
@@ -1285,7 +1292,9 @@ static void __setscheduler_uclamp(struct task_struct *p,
 static inline void uclamp_fork(struct task_struct *p) { }
 static inline void init_uclamp(void) { }
 #endif /* CONFIG_UCLAMP_TASK */
+/* 2024年6月29日21:29:38
 
+ */
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	if (!(flags & ENQUEUE_NOCLOCK))
@@ -1299,9 +1308,11 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 	uclamp_rq_inc(rq, p);
 	p->sched_class->enqueue_task(rq, p, flags);
 }
-
+/* 2024年6月29日21:33:15
+ */
 static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
+	/* 更新rq时间 */
 	if (!(flags & DEQUEUE_NOCLOCK))
 		update_rq_clock(rq);
 
@@ -1313,7 +1324,7 @@ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	uclamp_rq_dec(rq, p);
 	p->sched_class->dequeue_task(rq, p, flags);
 }
-
+/* 2024年6月29日21:29:20 */
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	if (task_contributes_to_load(p))
@@ -1323,7 +1334,10 @@ void activate_task(struct rq *rq, struct task_struct *p, int flags)
 
 	p->on_rq = TASK_ON_RQ_QUEUED;
 }
-
+/* 2024年6月29日21:32:46
+如果需要调度的话就有将当前进程从运行队列中清出去，
+这里调用函数deactivate_task，flags为DEQUEUE_SLEEP。
+ */
 void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	p->on_rq = (flags & DEQUEUE_SLEEP) ? 0 : TASK_ON_RQ_MIGRATING;
@@ -1412,7 +1426,9 @@ static inline void check_class_changed(struct rq *rq, struct task_struct *p,
 	} else if (oldprio != p->prio || dl_task(p))
 		p->sched_class->prio_changed(rq, p, oldprio);
 }
+/* 2024年6月29日21:28:53
 
+ */
 void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 {
 	const struct sched_class *class;
@@ -1702,7 +1718,9 @@ int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 	return __set_cpus_allowed_ptr(p, new_mask, false);
 }
 EXPORT_SYMBOL_GPL(set_cpus_allowed_ptr);
-
+/* 2024年6月29日15:52:34
+迁移进程到cpu
+ */
 void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 {
 #ifdef CONFIG_SCHED_DEBUG
@@ -1741,11 +1759,13 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 	 */
 	WARN_ON_ONCE(!cpu_online(new_cpu));
 #endif
-
+	/* tp点 */
 	trace_sched_migrate_task(p, new_cpu);
 
 	if (task_cpu(p) != new_cpu) {
+		/* 要到新cpu */
 		if (p->sched_class->migrate_task_rq)
+		/* 执行调度类的迁移进程函数指针 */
 			p->sched_class->migrate_task_rq(p, new_cpu);
 		p->se.nr_migrations++;
 		rseq_migrate(p);
@@ -2097,13 +2117,15 @@ out:
 }
 
 /*
+2024年6月29日15:22:50
+
  * The caller (fork, wakeup) owns p->pi_lock, ->cpus_ptr is stable.
  */
 static inline
 int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
 	lockdep_assert_held(&p->pi_lock);
-
+	/* 选择cpu */
 	if (p->nr_cpus_allowed > 1)
 		cpu = p->sched_class->select_task_rq(p, cpu, sd_flags, wake_flags);
 	else
@@ -2211,6 +2233,7 @@ ttwu_stat(struct task_struct *p, int cpu, int wake_flags)
 }
 
 /*
+2024年6月29日21:36:46
  * Mark the task runnable and perform wakeup-preemption.
  */
 static void ttwu_do_wakeup(struct rq *rq, struct task_struct *p, int wake_flags,
@@ -2244,7 +2267,9 @@ static void ttwu_do_wakeup(struct rq *rq, struct task_struct *p, int wake_flags,
 	}
 #endif
 }
+/* 2024年6月29日21:36:03
 
+ */
 static void
 ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
 		 struct rq_flags *rf)
@@ -2262,6 +2287,7 @@ ttwu_do_activate(struct rq *rq, struct task_struct *p, int wake_flags,
 #endif
 
 	activate_task(rq, p, en_flags);
+	/* 检查一下进程是否能够抢占当前进程，再将进程的状态设为TASK_RUNNING。 */
 	ttwu_do_wakeup(rq, p, wake_flags, rf);
 }
 
@@ -2390,7 +2416,7 @@ bool cpus_share_cache(int this_cpu, int that_cpu)
 	return per_cpu(sd_llc_id, this_cpu) == per_cpu(sd_llc_id, that_cpu);
 }
 #endif /* CONFIG_SMP */
-
+/* 2024年6月29日15:58:09 */
 static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
 {
 	struct rq *rq = cpu_rq(cpu);
@@ -2494,6 +2520,7 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
  */
 
 /**
+2024年6月29日00:15:08
  * try_to_wake_up - wake up a thread
  * @p: the thread to be awakened
  * @state: the mask of task states that can be woken
@@ -2620,12 +2647,15 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	p->state = TASK_WAKING;
 
 	if (p->in_iowait) {
+		/* 如果p阻塞是在等待io，记录io的开始时间 */
 		delayacct_blkio_end(p);
+		/* rq的nr wait 减一 */
 		atomic_dec(&task_rq(p)->nr_iowait);
 	}
-
+	/* 选择cpu */
 	cpu = select_task_rq(p, p->wake_cpu, SD_BALANCE_WAKE, wake_flags);
 	if (task_cpu(p) != cpu) {
+		/* 选择了一个不同的cpu，需要迁移 */
 		wake_flags |= WF_MIGRATED;
 		psi_ttwu_dequeue(p);
 		set_task_cpu(p, cpu);
@@ -2652,6 +2682,8 @@ out:
 }
 
 /**
+2024年6月29日00:14:50
+
  * wake_up_process - Wake up a specific process
  * @p: The process to be woken up.
  *
@@ -2674,6 +2706,7 @@ int wake_up_state(struct task_struct *p, unsigned int state)
 }
 
 /*
+2024年6月29日15:45:54
  * Perform scheduler related setup for a newly forked process p.
  * p is forked by current.
  *
@@ -2834,6 +2867,8 @@ static inline void init_schedstats(void) {}
 #endif /* CONFIG_SCHEDSTATS */
 
 /*
+2024年6月29日15:43:33
+
  * fork()/clone()-time setup:
  */
 int sched_fork(unsigned long clone_flags, struct task_struct *p)
@@ -2850,6 +2885,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 	/*
 	 * Make sure we do not leak PI boosting priority to the child.
+	 继承父进程prio
 	 */
 	p->prio = current->normal_prio;
 
@@ -2857,6 +2893,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 
 	/*
 	 * Revert to default priority/policy on fork if requested.
+
 	 */
 	if (unlikely(p->sched_reset_on_fork)) {
 		if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
@@ -2934,6 +2971,7 @@ unsigned long to_ratio(u64 period, u64 runtime)
 }
 
 /*
+2024年6月29日21:22:03
  * wake_up_new_task - wake up a newly created task for the first time.
  *
  * This function will do some initial scheduler statistics housekeeping
@@ -2962,9 +3000,11 @@ void wake_up_new_task(struct task_struct *p)
 	rq = __task_rq_lock(p, &rf);
 	update_rq_clock(rq);
 	post_init_entity_util_avg(p);
+	//添加进程到运行队列中
 
 	activate_task(rq, p, ENQUEUE_NOCLOCK);
 	trace_sched_wakeup_new(p);
+	// 判断新的进程是否能抢占当前进程
 	check_preempt_curr(rq, p, WF_FORK);
 #ifdef CONFIG_SMP
 	if (p->sched_class->task_woken) {
@@ -3583,6 +3623,11 @@ unsigned long long task_sched_runtime(struct task_struct *p)
 }
 
 /*
+2024年6月29日16:29:03
+
+每一次进入tick中断后，会进入scheduler_tick函数来进行scheduler相关的处理
+周期性调度器在scheduler_tick()中实现。 如果系统正在活动中， 内核会按照频率HZ自动调用该函数。 
+如果没有进程在等待调度，在计算机电力供应不足的情况下， 内核将关闭该调度器以减少能耗。
  * This function gets called by the timer code, with HZ frequency.
  * We call it with interrupts disabled.
  */
@@ -3592,7 +3637,7 @@ void scheduler_tick(void)
 	struct rq *rq = cpu_rq(cpu);
 	struct task_struct *curr = rq->curr;
 	struct rq_flags rf;
-
+	/* 调用sched_clock_tick()以纳秒为单位将当前时间放入sched_clock_data中 */
 	sched_clock_tick();
 
 	rq_lock(rq, &rf);

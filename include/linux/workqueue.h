@@ -98,10 +98,17 @@ enum {
 	/* maximum string length for set_worker_desc() */
 	WORKER_DESC_LEN		= 24,
 };
+/* 2024年6月28日23:08:27
 
+ */
 struct work_struct {
+	/* 低比特位部分是work的标志位，剩余比特位通常用于存放
+	上一次运行的worker_pool ID或pool_workqueue的指针。
+	存放的内容有WORK_STRUCT_PWQ标志位来决定 */
 	atomic_long_t data;
+	/* 用于把work挂到其他队列上 */
 	struct list_head entry;
+	/* 工作任务的处理函数 */
 	work_func_t func;
 #ifdef CONFIG_LOCKDEP
 	struct lockdep_map lockdep_map;
@@ -302,15 +309,20 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 	work_pending(&(w)->work)
 
 /*
+2024年6月28日23:27:46
+
  * Workqueue flags and constants.  For details, please refer to
  * Documentation/core-api/workqueue.rst.
  */
 enum {
-	WQ_UNBOUND		= 1 << 1, /* not bound to any cpu */
-	WQ_FREEZABLE		= 1 << 2, /* freeze during suspend */
-	WQ_MEM_RECLAIM		= 1 << 3, /* may be used for memory reclaim */
-	WQ_HIGHPRI		= 1 << 4, /* high priority */
-	WQ_CPU_INTENSIVE	= 1 << 5, /* cpu intensive workqueue */
+	WQ_UNBOUND		= 1 << 1, /* not bound to any cpu绑定到某一个CPU执行 */
+	WQ_FREEZABLE		= 1 << 2, /* freeze during suspend在suspend进行进程冻结的时候，
+	需要让工作线程完成当前所有的work才完成进程冻结，并且这个过程不会再新开始一个work的执行，知道进程被解冻。 */
+	WQ_MEM_RECLAIM		= 1 << 3, /* may be used for memory reclaim 在内存紧张导致创建新进程失败，系统通过rescuer内核线程去接管这种情况。*/
+	WQ_HIGHPRI		= 1 << 4, /* high priority 属于高于高优先级的worker_pool*/
+	WQ_CPU_INTENSIVE	= 1 << 5, 
+	/* cpu intensive workqueue 属于特别消耗CPU资源的一类work，
+	这个work执行会得到调度器的监管，排在这类work后的non-CPU-intensive类型work可能会推迟执行*/
 	WQ_SYSFS		= 1 << 6, /* visible in sysfs, see wq_sysfs_register() */
 
 	/*
@@ -335,13 +347,14 @@ enum {
 	 * marked with this flag and enabling the power_efficient mode
 	 * leads to noticeable power saving at the cost of small
 	 * performance disadvantage.
-	 *
+	 *根据wq_power_efficient来决定此类型的工作队列是bound还是unbound类型，
+	 bound型可能导致处于idle的CPU被唤醒，而unbound型则不会必然唤醒idle的CPU。
 	 * http://thread.gmane.org/gmane.linux.kernel/1480396
 	 */
 	WQ_POWER_EFFICIENT	= 1 << 7,
 
 	__WQ_DRAINING		= 1 << 16, /* internal: workqueue is draining */
-	__WQ_ORDERED		= 1 << 17, /* internal: workqueue is ordered */
+	__WQ_ORDERED		= 1 << 17, /* internal: workqueue is ordered 表示同一时间只能执行一个work_item。*/
 	__WQ_LEGACY		= 1 << 18, /* internal: create*_workqueue() */
 	__WQ_ORDERED_EXPLICIT	= 1 << 19, /* internal: alloc_ordered_workqueue() */
 

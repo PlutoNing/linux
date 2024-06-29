@@ -18,6 +18,11 @@
 #define DELAYACCT_PF_BLKIO	0x00000002	/* I am waiting on IO */
 
 #ifdef CONFIG_TASK_DELAY_ACCT
+/* 2024年6月29日14:34:43
+内核如果使能了CONFIG_TASK_DELAY_ACCT=y配置，则会在struct task_struct结构中
+增加一个struct task_delay_info *delays字段。
+这个字段是struct task_delay_info 结构，顾名思义，这个结构主要用于记录任务的延迟信息。
+ */
 struct task_delay_info {
 	raw_spinlock_t	lock;
 	unsigned int	flags;	/* Private per-task flags */
@@ -118,7 +123,15 @@ static inline void delayacct_blkio_start(void)
 	if (current->delays)
 		__delayacct_blkio_start();
 }
+/* 2024年6月29日14:36:29
+IO delay：IO delay中count与delay total来自于内核中的task->delays->blkio_count和task->delays->blkio_delay，
+表示一个任务task等待IO资源而阻塞的次数和任务等待IO阻塞的时间。
 
+在IO资源可用时调用delayacct_blkio_end()计算blkio_start到blkio_end之间的时间。
+什么时候blkio_start？什么时候又blkio_end呢？
+
+在主调度函数__schedule()中，如果任务prev因为IO阻塞，即prev->in_iowait不为0而调度出去，
+这时候就会调用delayacct_blkio_start()将当前时间戳记录下来： */
 static inline void delayacct_blkio_end(struct task_struct *p)
 {
 	if (p->delays)

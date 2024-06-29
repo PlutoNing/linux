@@ -39,6 +39,7 @@ void __delayacct_tsk_init(struct task_struct *tsk)
 }
 
 /*
+2024年6月29日15:19:24
  * Finish delay accounting for a statistic using its timestamps (@start),
  * accumalator (@total) and @count
  */
@@ -62,6 +63,8 @@ void __delayacct_blkio_start(void)
 }
 
 /*
+2024年6月29日14:38:11
+
  * We cannot rely on the `current` macro, as we haven't yet switched back to
  * the process being woken.
  */
@@ -70,7 +73,7 @@ void __delayacct_blkio_end(struct task_struct *p)
 	struct task_delay_info *delays = p->delays;
 	u64 *total;
 	u32 *count;
-
+/* 看看io是swap还是blkio */
 	if (p->delays->flags & DELAYACCT_PF_SWAPIN) {
 		total = &delays->swapin_delay;
 		count = &delays->swapin_count;

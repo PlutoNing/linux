@@ -944,7 +944,9 @@ static struct timer_base *lock_timer_base(struct timer_list *timer,
 
 #define MOD_TIMER_PENDING_ONLY		0x01
 #define MOD_TIMER_REDUCE		0x02
+/* 2024年6月28日23:57:30
 
+ */
 static inline int
 __mod_timer(struct timer_list *timer, unsigned long expires, unsigned int options)
 {
@@ -978,6 +980,8 @@ __mod_timer(struct timer_list *timer, unsigned long expires, unsigned int option
 		 * here. If the timer ends up in the same bucket, then we
 		 * just update the expiry time and avoid the whole
 		 * dequeue/enqueue dance.
+		 2024年6月29日00:05:56
+		 我去还要在哈希表里面移动吗，todo
 		 */
 		base = lock_timer_base(timer, &flags);
 		forward_timer_base(base);
@@ -1076,6 +1080,7 @@ int mod_timer_pending(struct timer_list *timer, unsigned long expires)
 EXPORT_SYMBOL(mod_timer_pending);
 
 /**
+2024年6月28日23:56:57
  * mod_timer - modify a timer's timeout
  * @timer: the timer to be modified
  * @expires: new timeout in jiffies

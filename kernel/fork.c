@@ -1760,6 +1760,7 @@ static __always_inline void delayed_free_task(struct task_struct *tsk)
 }
 
 /*
+2024年6月29日15:41:44
  * This creates a new process as a copy of the old one,
  * but does not actually start it yet.
  *
@@ -1854,6 +1855,7 @@ static __latent_entropy struct task_struct *copy_process(
 		goto fork_out;
 
 	retval = -ENOMEM;
+	/* 复制pcb */
 	p = dup_task_struct(current, node);
 	if (!p)
 		goto fork_out;
@@ -1984,7 +1986,9 @@ static __latent_entropy struct task_struct *copy_process(
 	p->sequential_io_avg	= 0;
 #endif
 
-	/* Perform scheduler related setup. Assign this task to a CPU. */
+	/* Perform scheduler related setup. Assign this task to a CPU. 
+	调度新进程
+	*/
 	retval = sched_fork(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_policy;
@@ -2335,6 +2339,7 @@ struct mm_struct *copy_init_mm(void)
 }
 
 /*
+2024年6月29日15:41:32
  *  Ok, this is the main fork-routine.
  *
  * It copies the process, and if successful kick-starts

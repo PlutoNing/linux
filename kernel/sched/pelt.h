@@ -123,7 +123,8 @@ static inline u64 rq_clock_pelt(struct rq *rq)
 }
 
 #ifdef CONFIG_CFS_BANDWIDTH
-/* rq->task_clock normalized against any time this cfs_rq has spent throttled */
+/* 2024年6月29日19:21:17
+rq->task_clock normalized against any time this cfs_rq has spent throttled */
 static inline u64 cfs_rq_clock_pelt(struct cfs_rq *cfs_rq)
 {
 	if (unlikely(cfs_rq->throttle_count))

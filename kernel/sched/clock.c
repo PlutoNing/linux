@@ -57,6 +57,7 @@
 #include <linux/sched_clock.h>
 
 /*
+2024年6月29日16:13:05
  * Scheduler clock - returns current time in nanosec units.
  * This is default implementation.
  * Architectures and sub-architectures can override this.
@@ -86,7 +87,8 @@ static int __sched_clock_stable_early = 1;
  */
 __read_mostly u64 __sched_clock_offset;
 static __read_mostly u64 __gtod_offset;
-
+/* 2024年6月29日16:33:19
+ */
 struct sched_clock_data {
 	u64			tick_raw;
 	u64			tick_gtod;
@@ -104,7 +106,7 @@ static inline struct sched_clock_data *cpu_sdc(int cpu)
 {
 	return &per_cpu(sched_clock_data, cpu);
 }
-
+/* 2024年6月29日16:15:19 */
 int sched_clock_stable(void)
 {
 	return static_branch_likely(&__sched_clock_stable);
@@ -358,6 +360,7 @@ again:
 }
 
 /*
+2024年6月29日16:12:37
  * Similar to cpu_clock(), but requires local IRQs to be disabled.
  *
  * See cpu_clock().
@@ -385,7 +388,9 @@ u64 sched_clock_cpu(int cpu)
 	return clock;
 }
 EXPORT_SYMBOL_GPL(sched_clock_cpu);
-
+/* 2024年6月29日16:32:12
+调用sched_clock_tick()以纳秒为单位将当前时间放入sched_clock_data中
+ */
 void sched_clock_tick(void)
 {
 	struct sched_clock_data *scd;

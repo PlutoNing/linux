@@ -7,7 +7,9 @@
  */
 #include "sched.h"
 
-/* Time spent by the tasks of the CPU accounting group executing in ... */
+/* 
+2024年6月29日17:53:26
+Time spent by the tasks of the CPU accounting group executing in ... */
 enum cpuacct_stat_index {
 	CPUACCT_STAT_USER,	/* ... user mode */
 	CPUACCT_STAT_SYSTEM,	/* ... kernel mode */
@@ -19,16 +21,21 @@ static const char * const cpuacct_stat_desc[] = {
 	[CPUACCT_STAT_USER] = "user",
 	[CPUACCT_STAT_SYSTEM] = "system",
 };
-
+/* 2024年6月29日17:53:13 */
 struct cpuacct_usage {
 	u64	usages[CPUACCT_STAT_NSTATS];
 };
 
-/* track CPU usage of a group of tasks and its child groups */
+/*
+2024年6月29日17:52:34
+cpuacct的内核实现中，对cpu时间的统计结果都存放到数据结构struct cpuacct中
+ track CPU usage of a group of tasks and its child groups */
 struct cpuacct {
 	struct cgroup_subsys_state	css;
 	/* cpuusage holds pointer to a u64-type object on every CPU */
+	/* 记录每个cpu使用的时间, 单位为纳秒 */
 	struct cpuacct_usage __percpu	*cpuusage;
+	/* 记录每个cpu使用的用户和系统CPU时间，单位为USER_HZ */
 	struct kernel_cpustat __percpu	*cpustat;
 };
 
@@ -331,6 +338,9 @@ static struct cftype files[] = {
 };
 
 /*
+2024年6月29日17:54:48
+用于更新cpuusage 
+该函数更新所有的cpuacct cgroup，包括根root cpuacct cgroup。
  * charge this task's execution time to its accounting group.
  *
  * called with rq->lock held.
@@ -353,6 +363,9 @@ void cpuacct_charge(struct task_struct *tsk, u64 cputime)
 }
 
 /*
+2024年6月29日17:55:11
+用于更新cpustat，该函数更新所有的cpuacct cgroup，
+但不包括root cpuacct cgroup。
  * Add user/system time to cpuacct.
  *
  * Note: it's the caller that updates the account of the root cgroup.

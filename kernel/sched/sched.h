@@ -84,7 +84,10 @@
 struct rq;
 struct cpuidle_state;
 
-/* task_struct::on_rq states: */
+/* 
+2024年6月29日20:09:33
+
+task_struct::on_rq states: */
 #define TASK_ON_RQ_QUEUED	1
 #define TASK_ON_RQ_MIGRATING	2
 
@@ -351,22 +354,37 @@ struct cfs_bandwidth {
 #endif
 };
 
-/* Task group related information */
+/* 
+2024年6月29日19:52:15
+Task group related information */
 struct task_group {
 	struct cgroup_subsys_state css;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	/* schedulable entities of this group on each CPU */
+	/* schedulable entities of this group on each CPU
+	指针数组，数组大小等于CPU数量。现在假设只有一个CPU的系统。我们将
+	一个用户组也用一个调度实体代替，插入对应的红黑树。例如，上面用户组A
+	和用户组B就是两个调度实体se，挂在顶层的就绪队列cfs_rq中。用户组A管
+	理9个可运行的进程，这9个调度实体se作为用户组A调度实体的child。通过、
+	se->parent成员建立关系。用户组A也维护一个就绪队列cfs_rq，暂且称之为
+	group cfs_rq，管理的9个进程的调度实体挂在group cfs_rq上。当我们选择
+	进程运行的时候，首先从根就绪队列cfs_rq上选择用户组A，再从用户组A的
+	group cfs_rq上选择其中一个进程运行。现在考虑多核CPU的情况，用户组中的进程可以在多个CPU上运行。
+	因此，我们需要CPU个数的调度实体se，分别挂在每个CPU的根cfs_rq上。 */
 	struct sched_entity	**se;
-	/* runqueue "owned" by this group on each CPU */
+	/* runqueue "owned" by this group on each CPU
+	上面提到的group cfs_rq，同样是指针数组，大小是CPU的数量。
+	因为每一个CPU上都可以运行进程，因此需要维护CPU个数的group cfs_rq。 */
 	struct cfs_rq		**cfs_rq;
+	/* 调度实体有权重的概念，以权重的比例分配CPU时间。
+	用户组同样有权重的概念，share就是task_group的权重。 */
 	unsigned long		shares;
 
 #ifdef	CONFIG_SMP
 	/*
 	 * load_avg can be heavily contended at clock tick time, so put
 	 * it in its own cacheline separated from the fields above which
-	 * will also be accessed at each tick.
+	 * will also be accessed at each tick.整个用户组的负载贡献总和。
 	 */
 	atomic_long_t		load_avg ____cacheline_aligned;
 #endif
@@ -494,7 +512,7 @@ struct cfs_rq {
 	表示单个 se 的 load，而 cfs_rq 上的 load 表示当前 cfs_rq 上所有实体的 load 总和。
  */
 	struct load_weight	load;
-	/*  */
+	/*  挂入改cfs_rq的调度实体的runnable weight之和 */
 	unsigned long		runnable_weight;
 	/* 这两个都是对当前 cfs_rq 上实体的统计，区别在于：nr_running 只表示当前 cfs_rq 上存在的子实体，
 	如果子实体是调度组，也只算一个。而 h_nr_running 的统计会递归地包含子调度组中的所有实体。因此可以
@@ -542,7 +560,7 @@ struct cfs_rq {
 	 * CFS load tracking
 	在多核 CPU 中，对当前 cfs_rq 的负载统计，该统计会精确到每个 se，自然也就会传递到 cfs_rq，下面的几个
 	成员用于负载统计，目前专注于 cfs 调度的主要实现，负载均衡部分后续再进行分析。  
-
+CFS load tracking PELT算法跟踪的该cfs_rq的平均负载和利用率
 	 */
 	struct sched_avg	avg;
 #ifndef CONFIG_64BIT
@@ -597,13 +615,18 @@ struct cfs_rq {
 到下一个周期。同样的，cfs 的带宽控制部分我们暂时不深入讨论。 
  */
 	int			runtime_enabled;
+	/* cfs_rq从全局时间池申请的时间片剩余时间，当剩余时间小于等于0的时候，就需要重新申请时间片。 */
 	s64			runtime_remaining;
-
+/* 当cfs_rq被throttle的时候，方便统计被throttle的时间，需要记录throttle开始的时间。 */
 	u64			throttled_clock;
 	u64			throttled_clock_task;
 	u64			throttled_clock_task_time;
+	/* throttled：如果cfs_rq被throttle后，throttled变量置1，unthrottle的时候，throttled变量置0 */
 	int			throttled;
+	/* 由于task_group支持嵌套，当parent task_group的cfs_rq被throttle的时候，
+	其chaild task_group对应的cfs_rq的throttle_count成员计数增加。 */
 	int			throttle_count;
+	/* 被throttle的cfs_rq挂入cfs_bandwidth->throttled_cfs_rq链表。 */
 	struct list_head	throttled_list;
 #endif /* CONFIG_CFS_BANDWIDTH */
 #endif /* CONFIG_FAIR_GROUP_SCHED */
@@ -935,12 +958,18 @@ struct rq {
 	struct mm_struct	*prev_mm;
 
 	unsigned int		clock_update_flags;
+	/* rq的时钟？ */
 	u64			clock;
 	/* Ensure that all clocks are in the same cache line */
 	u64			clock_task ____cacheline_aligned;
 	u64			clock_pelt;
 	unsigned long		lost_idle_time;
+/* 在进程切换函数__schedule在切换task的时候，如果被切换出的task的
+in_iowait为真，则会对这个CPU的运行队列rq结构中的nr_iowait加1。
+因为前面对task已经被设置为TASK_UNINTERRUPTIBLE，则task需要被唤醒，
+对nr_iowait的减少操作也是在task唤醒函数来做的。
 
+由此可见nr_iowait可以表明某CPU上是否有task在iowait，以及数量。 */
 	atomic_t		nr_iowait;
 
 #ifdef CONFIG_MEMBARRIER
@@ -1035,7 +1064,9 @@ struct rq {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 
-/* CPU runqueue to which this cfs_rq is attached */
+/*
+2024年6月29日17:12:55
+ CPU runqueue to which this cfs_rq is attached */
 static inline struct rq *rq_of(struct cfs_rq *cfs_rq)
 {
 	return cfs_rq->rq;
@@ -1130,7 +1161,9 @@ static inline u64 rq_clock(struct rq *rq)
 
 	return rq->clock;
 }
+/* 2024年6月29日17:13:49
 
+ */
 static inline u64 rq_clock_task(struct rq *rq)
 {
 	lockdep_assert_held(&rq->lock);
@@ -1524,9 +1557,15 @@ static inline struct task_group *task_group(struct task_struct *p)
 	return p->sched_task_group;
 }
 
-/* Change a task's cfs_rq and parent entity if it moves across CPUs/groups */
+/* 
+2024年6月29日15:54:42
+
+Change a task's cfs_rq and parent entity if it moves across CPUs/groups */
 static inline void set_task_rq(struct task_struct *p, unsigned int cpu)
 {
+/* cfs和rt才会执行这里 */
+
+
 #if defined(CONFIG_FAIR_GROUP_SCHED) || defined(CONFIG_RT_GROUP_SCHED)
 	struct task_group *tg = task_group(p);
 #endif
@@ -1552,7 +1591,9 @@ static inline struct task_group *task_group(struct task_struct *p)
 }
 
 #endif /* CONFIG_CGROUP_SCHED */
+/* 2024年6月29日15:54:27
 
+ */
 static inline void __set_task_cpu(struct task_struct *p, unsigned int cpu)
 {
 	set_task_rq(p, cpu);
@@ -1659,12 +1700,13 @@ static inline int task_running(struct rq *rq, struct task_struct *p)
 	return task_current(rq, p);
 #endif
 }
-
+/* 2024年6月29日20:09:55 */
 static inline int task_on_rq_queued(struct task_struct *p)
 {
 	return p->on_rq == TASK_ON_RQ_QUEUED;
 }
-
+/* 2024年6月29日20:09:19
+ */
 static inline int task_on_rq_migrating(struct task_struct *p)
 {
 	return READ_ONCE(p->on_rq) == TASK_ON_RQ_MIGRATING;
@@ -1802,7 +1844,7 @@ struct sched_class {
 	void (*task_change_group)(struct task_struct *p, int type);
 #endif
 };
-
+/* 2024年6月29日20:00:37 */
 static inline void put_prev_task(struct rq *rq, struct task_struct *prev)
 {
 	WARN_ON_ONCE(rq->curr != prev);

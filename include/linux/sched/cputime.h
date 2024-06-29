@@ -157,6 +157,8 @@ static inline void account_group_system_time(struct task_struct *tsk,
 }
 
 /**
+2024年6月29日19:14:38
+组调度相关？
  * account_group_exec_runtime - Maintain exec runtime for a thread group.
  *
  * @tsk:	Pointer to task structure.

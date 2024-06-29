@@ -351,6 +351,8 @@ struct util_est {
 } __attribute__((__aligned__(sizeof(u64))));
 
 /*
+2024年6月29日19:22:38
+
  * The load_avg/util_avg accumulates an infinite geometric series
  * (see __update_load_avg() in kernel/sched/fair.c).
  *
@@ -394,13 +396,22 @@ struct util_est {
  * issues.
  */
 struct sched_avg {
+	/* 上次负载更新时间，单位ns  */
 	u64				last_update_time;
+	/* 负载贡献,累计runable和block衰减负载 */
 	u64				load_sum;
+	/* runable状态负载贡献 */
 	u64				runnable_load_sum;
+	/* running状态负载贡献,累计running衰减时间总和,是又移过10的 */
 	u32				util_sum;
+	/* 负载计算时，不足一个周期的部分 */
 	u32				period_contrib;
+	/* 平均负载，(load_sum*load->weight)/最大衰减值 */
 	unsigned long			load_avg;
+	/* runable 状态平均负载  */
+
 	unsigned long			runnable_load_avg;
+/* running状态的比值，util_avg 的定义：util_avg = running% * SCHED_CAPACITY_SCALE  */
 	unsigned long			util_avg;
 	struct util_est			util_est;
 } ____cacheline_aligned;
@@ -448,7 +459,7 @@ struct sched_entity {
 	struct load_weight		load;
 
 	unsigned long			runnable_weight;
-
+/* 在红黑树里面的节点 */
 	struct rb_node			run_node;
 	/* 链表节点，被链接到 percpu 的 rq->cfs_tasks 上，
 	在做 CPU 之间的负载均衡时，就会从该链表上选出 group_node 节点作为迁移进程。  
@@ -504,21 +515,30 @@ struct sched_entity {
 	struct sched_avg		avg;
 #endif
 };
+/* 2024年6月29日16:03:35
 
+ */
 struct sched_rt_entity {
+	/* 用于将 " 实时调度实体 " 加入到 优先级队列 中的 */
 	struct list_head		run_list;
+	/* 調度超時時間 */
 	unsigned long			timeout;
+	/* 用于 记录 jiffies 的值 */
 	unsigned long			watchdog_stamp;
+/* 时间片 */
 	unsigned int			time_slice;
 	unsigned short			on_rq;
 	unsigned short			on_list;
-
+/* 组成链表 */
 	struct sched_rt_entity		*back;
 #ifdef CONFIG_RT_GROUP_SCHED
+	/* 指向父类 */
 	struct sched_rt_entity		*parent;
-	/* rq on which this entity is (to be) queued: */
+	/* rq on which this entity is (to be) queued:
+	表示 " 实时调度实体 " 所属的 " 实时运行队列 "  */
 	struct rt_rq			*rt_rq;
-	/* rq "owned" by this entity/group: */
+	/* rq "owned" by this entity/group:
+	表示 " 实时调度实体 " 所拥有的 " 实时运行队列 " , 用于管理 " 子任务 " */
 	struct rt_rq			*my_q;
 #endif
 } __randomize_layout;
@@ -696,8 +716,12 @@ struct task_struct {
 	 * used CPU that may be idle.
 	 */
 	int				recent_used_cpu;
+	/* 2024年6月29日15:22:33
+	当前的waker CPU？ */
 	int				wake_cpu;
 #endif
+/* #define TASK_ON_RQ_QUEUED	1
+#define TASK_ON_RQ_MIGRATING	2 */
 	int				on_rq;
 /* 动态优先级 */
 	int				prio;
@@ -739,7 +763,9 @@ struct task_struct {
 #endif
 
 	unsigned int			policy;
+	/*  */
 	int				nr_cpus_allowed;
+	/*  */
 	const cpumask_t			*cpus_ptr;
 	cpumask_t			cpus_mask;
 
@@ -802,6 +828,9 @@ struct task_struct {
 
 	/* Bit to tell LSMs we're in execve(): */
 	unsigned			in_execve:1;
+	/* 当task发生iowait的时候，内核对他们的处理方法是将task切换出去，
+	让可运行的task先运行，而在切换出去前，
+	会将其in_iowait设置为1，再次被唤醒的时候in_iowait被设置为原值。 */
 	unsigned			in_iowait:1;
 #ifndef TIF_RESTORE_SIGMASK
 	unsigned			restore_sigmask:1;
@@ -1192,6 +1221,9 @@ struct task_struct {
 	struct page_frag		task_frag;
 
 #ifdef CONFIG_TASK_DELAY_ACCT
+/* 内核如果使能了CONFIG_TASK_DELAY_ACCT=y配置，则会在struct task_struct结构中
+增加一个struct task_delay_info *delays字段。
+这个字段是struct task_delay_info 结构，顾名思义，这个结构主要用于记录任务的延迟信息。 */
 	struct task_delay_info		*delays;
 #endif
 
@@ -1867,7 +1899,7 @@ static __always_inline bool need_resched(void)
  * Wrappers for p->thread_info->cpu access. No-op on UP.
  */
 #ifdef CONFIG_SMP
-
+/* 2024年6月29日14:04:22 */
 static inline unsigned int task_cpu(const struct task_struct *p)
 {
 #ifdef CONFIG_THREAD_INFO_IN_TASK

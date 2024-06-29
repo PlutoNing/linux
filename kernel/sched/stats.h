@@ -99,7 +99,9 @@ static inline void psi_dequeue(struct task_struct *p, bool sleep)
 
 	psi_task_change(p, clear, set);
 }
-
+/* 2024年6月29日15:50:33
+todo
+ */
 static inline void psi_ttwu_dequeue(struct task_struct *p)
 {
 	if (static_branch_likely(&psi_disabled))

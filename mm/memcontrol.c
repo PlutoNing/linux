@@ -126,6 +126,7 @@ static const char *const mem_cgroup_lru_names[] = {
  */
 
 struct mem_cgroup_tree_per_node {
+
 	struct rb_root rb_root;
 	struct rb_node *rb_rightmost;
 	spinlock_t lock;
@@ -222,7 +223,10 @@ static struct move_charge_struct {
  */
 #define	MEM_CGROUP_MAX_RECLAIM_LOOPS		100
 #define	MEM_CGROUP_MAX_SOFT_LIMIT_RECLAIM_LOOPS	2
+/* 
+2024年6月28日22:46:36
 
+ */
 enum charge_type {
 	MEM_CGROUP_CHARGE_TYPE_CACHE = 0,
 	MEM_CGROUP_CHARGE_TYPE_ANON,

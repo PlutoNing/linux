@@ -69,14 +69,18 @@
 #ifdef CONFIG_SMP
 
 #ifndef smp_mb
+/* 用于SMP场合的内存屏障，对于UP不存在memory order的问题
+（对汇编指令），因此，在UP上就是一个优化屏障，确保汇编和c代码的memory order是一致的 */
 #define smp_mb()	__smp_mb()
 #endif
 
 #ifndef smp_rmb
+/* 用于SMP场合的读内存屏障 */
 #define smp_rmb()	__smp_rmb()
 #endif
 
 #ifndef smp_wmb
+/* 用于SMP场合的写内存屏障 */
 #define smp_wmb()	__smp_wmb()
 #endif
 

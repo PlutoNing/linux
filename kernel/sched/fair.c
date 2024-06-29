@@ -246,7 +246,7 @@ const struct sched_class fair_sched_class;
 /**************************************************************
  * CFS operations on generic schedulable entities:
  */
-
+/* 2024年6月29日17:47:17 */
 #ifdef CONFIG_FAIR_GROUP_SCHED
 static inline struct task_struct *task_of(struct sched_entity *se)
 {
@@ -263,13 +263,18 @@ static inline struct cfs_rq *task_cfs_rq(struct task_struct *p)
 	return p->se.cfs_rq;
 }
 
-/* runqueue on which this entity is (to be) queued */
+/*
+2024年6月29日17:04:11
+ runqueue on which this entity is (to be) queued */
 static inline struct cfs_rq *cfs_rq_of(struct sched_entity *se)
 {
 	return se->cfs_rq;
 }
 
-/* runqueue "owned" by this group */
+/* 
+group_cfs_rq()返回se->my_q成员。如果是task se，那么group_cfs_rq()返回NULL。
+如果是group se，那么group_cfs_rq()返回group se对应的group cfs_rq
+runqueue "owned" by this group */
 static inline struct cfs_rq *group_cfs_rq(struct sched_entity *grp)
 {
 	return grp->my_q;
@@ -520,16 +525,20 @@ static inline u64 min_vruntime(u64 min_vruntime, u64 vruntime)
 
 	return min_vruntime;
 }
-
+/* 2024年6月29日20:02:16
+a在b前面
+ */
 static inline int entity_before(struct sched_entity *a,
 				struct sched_entity *b)
 {
 	return (s64)(a->vruntime - b->vruntime) < 0;
 }
-
+/* 2024年6月29日17:30:58
+ */
 static void update_min_vruntime(struct cfs_rq *cfs_rq)
 {
 	struct sched_entity *curr = cfs_rq->curr;
+	/* 下一个准备运行的tsk */
 	struct rb_node *leftmost = rb_first_cached(&cfs_rq->tasks_timeline);
 
 	u64 vruntime = cfs_rq->min_vruntime;
@@ -596,7 +605,8 @@ static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	rb_erase_cached(&se->run_node, &cfs_rq->tasks_timeline);
 }
-
+/* 2024年6月29日20:01:50
+ */
 struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 {
 	struct rb_node *left = rb_first_cached(&cfs_rq->tasks_timeline);
@@ -606,7 +616,8 @@ struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 
 	return rb_entry(left, struct sched_entity, run_node);
 }
-
+/* 2024年6月29日20:03:19
+ */
 static struct sched_entity *__pick_next_entity(struct sched_entity *se)
 {
 	struct rb_node *next = rb_next(&se->run_node);
@@ -828,6 +839,8 @@ static void update_tg_load_avg(struct cfs_rq *cfs_rq, int force)
 #endif /* CONFIG_SMP */
 
 /*
+2024年6月29日17:07:00
+主要是更新当前正在运行的调度实体的运行时间信息。
  * Update the current task's runtime statistics.
  */
 static void update_curr(struct cfs_rq *cfs_rq)
@@ -838,11 +851,12 @@ static void update_curr(struct cfs_rq *cfs_rq)
 
 	if (unlikely(!curr))
 		return;
-
+		/* 进程上次被执行的时间与rq现在的时间的差值 */
 	delta_exec = now - curr->exec_start;
 	if (unlikely((s64)delta_exec <= 0))
 		return;
-
+		/* 为啥这个时候更新
+		哦哦，这个时候已经选中它了，可以更新 */
 	curr->exec_start = now;
 
 	schedstat_set(curr->statistics.exec_max,
@@ -858,7 +872,9 @@ static void update_curr(struct cfs_rq *cfs_rq)
 		struct task_struct *curtask = task_of(curr);
 
 		trace_sched_stat_runtime(curtask, delta_exec, curr->vruntime);
+		/* cgroup相关 */
 		cgroup_account_cputime(curtask, delta_exec);
+		/*  */
 		account_group_exec_runtime(curtask, delta_exec);
 	}
 
@@ -887,7 +903,7 @@ update_stats_wait_start(struct cfs_rq *cfs_rq, struct sched_entity *se)
 
 	__schedstat_set(se->statistics.wait_start, wait_start);
 }
-
+/* 2024年6月29日20:08:44 */
 static inline void
 update_stats_wait_end(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
@@ -1035,6 +1051,7 @@ update_stats_dequeue(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 }
 
 /*
+2024年6月29日20:11:12
  * We are picking a new current task - update its stats:
  */
 static inline void
@@ -2919,6 +2936,8 @@ void reweight_task(struct task_struct *p, int prio)
 #ifdef CONFIG_FAIR_GROUP_SCHED
 #ifdef CONFIG_SMP
 /*
+2024年6月29日19:52:06
+
  * All this does is approximate the hierarchical proportion which includes that
  * global sum we all love to hate.
  *
@@ -3073,6 +3092,7 @@ static long calc_group_runnable(struct cfs_rq *cfs_rq, long shares)
 static inline int throttled_hierarchy(struct cfs_rq *cfs_rq);
 
 /*
+2024年6月29日19:51:30
  * Recomputes the group entity based on the current state of its group
  * runqueue.
  */
@@ -3588,7 +3608,8 @@ static void detach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 #define SKIP_AGE_LOAD	0x2
 #define DO_ATTACH	0x4
 
-/* Update task and its cfs_rq load average */
+/* 2024年6月29日19:21:02
+Update task and its cfs_rq load average */
 static inline void update_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
 	u64 now = cfs_rq_clock_pelt(cfs_rq);
@@ -3597,10 +3618,11 @@ static inline void update_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *s
 	/*
 	 * Track task load average for carrying it to new CPU after migrated, and
 	 * track group sched_entity load average for task_h_load calc in migration
+	 更新调度实体负载
 	 */
 	if (se->avg.last_update_time && !(flags & SKIP_AGE_LOAD))
 		__update_load_avg_se(now, cfs_rq, se);
-
+/* 更新CFS队列负载 */
 	decayed  = update_cfs_rq_load_avg(now, cfs_rq);
 	decayed |= propagate_entity_load_avg(se);
 
@@ -3871,7 +3893,9 @@ static void check_spread(struct cfs_rq *cfs_rq, struct sched_entity *se)
 		schedstat_inc(cfs_rq->nr_spread_over);
 #endif
 }
+/* 2024年6月29日21:18:30
 
+ */
 static void
 place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 {
@@ -3882,12 +3906,18 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 	 * however the extra weight of the new task will slow them down a
 	 * little, place the new task so that it fits in the slot that
 	 * stays open at the end.
+	 新进程开始的时候，基准值要比min_vruntime稍微慢一些。
 	 */
 	if (initial && sched_feat(START_DEBIT))
 		vruntime += sched_vslice(cfs_rq, se);
 
 	/* sleeps up to a single latency don't count. */
 	if (!initial) {
+		/* 这里是睡眠进程唤醒时的时间处理。
+			因为进程休眠了，se->vruntime肯定很小，但是如果太小
+			的话，又会抢其他进程运行的机会。所以这里采用了
+			cfs_rq->min_vruntime - thresh。即保证了它调度的优先权，
+			又不至于太小，影响其他进程。 */
 		unsigned long thresh = sysctl_sched_latency;
 
 		/*
@@ -3900,7 +3930,9 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int initial)
 		vruntime -= thresh;
 	}
 
-	/* ensure we never gain time by being placed backwards. */
+	/* ensure we never gain time by being placed backwards.
+	这里保证vruntime只能往大了调整
+	 */
 	se->vruntime = max_vruntime(se->vruntime, vruntime);
 }
 
@@ -4020,9 +4052,10 @@ static void __clear_buddies_last(struct sched_entity *se)
 		cfs_rq->last = NULL;
 	}
 }
-
+/* 2024年6月29日20:04:56 */
 static void __clear_buddies_next(struct sched_entity *se)
-{
+{	
+	/* 从子se遍历到顶层se */
 	for_each_sched_entity(se) {
 		struct cfs_rq *cfs_rq = cfs_rq_of(se);
 		if (cfs_rq->next != se)
@@ -4042,7 +4075,9 @@ static void __clear_buddies_skip(struct sched_entity *se)
 		cfs_rq->skip = NULL;
 	}
 }
+/* 2024年6月29日20:04:31
 
+ */
 static void clear_buddies(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	if (cfs_rq->last == se)
@@ -4056,7 +4091,8 @@ static void clear_buddies(struct cfs_rq *cfs_rq, struct sched_entity *se)
 }
 
 static __always_inline void return_cfs_rq_runtime(struct cfs_rq *cfs_rq);
-
+/* 2024年6月29日21:34:53
+ */
 static void
 dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 {
@@ -4150,7 +4186,9 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	if (delta > ideal_runtime)
 		resched_curr(rq_of(cfs_rq));
 }
+/* 2024年6月29日20:06:53
 
+ */
 static void
 set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
@@ -4160,9 +4198,12 @@ set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 		 * Any task has to be enqueued before it get to execute on
 		 * a CPU. So account for the time it spent waiting on the
 		 * runqueue.
+		 更新等待2024年6月29日20:08:38
 		 */
 		update_stats_wait_end(cfs_rq, se);
+		/* 红黑树是不保存”当前”进程的，因此需要__dequeue_entity() */
 		__dequeue_entity(cfs_rq, se);
+		/*  */
 		update_load_avg(cfs_rq, se, UPDATE_TG);
 	}
 
@@ -4188,6 +4229,7 @@ static int
 wakeup_preempt_entity(struct sched_entity *curr, struct sched_entity *se);
 
 /*
+2024年6月29日20:01:43
  * Pick the next process, keeping these things in mind, in this order:
  * 1) keep things fair between processes/task groups
  * 2) pick the "next" process, since someone really wants that to run
@@ -4246,7 +4288,9 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 }
 
 static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq);
-
+/* 2024年6月29日21:00:17
+他在更新了虚拟运行时间等信息后, 最终通过__enqueue_entity函数将prev进程(即current进程)放回就绪队列rq上
+ */
 static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
 {
 	/*
@@ -4270,12 +4314,15 @@ static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
 	}
 	cfs_rq->curr = NULL;
 }
-
+/* 2024年6月29日17:04:29
+ 这个函数的作用是更新进程的时间数据，在判断是否被其他进程抢占。
+*/
 static void
 entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 {
 	/*
 	 * Update run-time statistics of the 'current'.
+	 主要是更新当前正在运行的调度实体的运行时间信息。
 	 */
 	update_curr(cfs_rq);
 
@@ -4283,6 +4330,7 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
 	 * Ensure that runnable average is periodically updated.
 	 */
 	update_load_avg(cfs_rq, curr, UPDATE_TG);
+	/*  */
 	update_cfs_group(curr);
 
 #ifdef CONFIG_SCHED_HRTICK
@@ -4400,7 +4448,9 @@ static int assign_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 
 	return cfs_rq->runtime_remaining > 0;
 }
-
+/* 2024年6月29日19:15:20
+组调度和cpu带宽控制
+ */
 static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 {
 	/* dock delta_exec before expiring quota (as it could span periods) */
@@ -4418,7 +4468,7 @@ static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 	if (!assign_cfs_rq_runtime(cfs_rq) && likely(cfs_rq->curr))
 		resched_curr(rq_of(cfs_rq));
 }
-
+/* 2024年6月29日19:15:11 */
 static __always_inline
 void account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 {
@@ -5182,6 +5232,8 @@ static inline void update_overutilized_status(struct rq *rq) { }
 #endif
 
 /*
+2024年6月29日21:30:36
+
  * The enqueue_task method is called before nr_running is
  * increased. Here we update the fair scheduling stats and
  * then put the task into the rbtree:
@@ -5285,6 +5337,8 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 static void set_next_buddy(struct sched_entity *se);
 
 /*
+2024年6月29日21:33:51
+
  * The dequeue_task method is called before nr_running is
  * decreased. We remove the task from the rbtree and
  * update the fair scheduling stats:
@@ -6604,6 +6658,7 @@ static unsigned long wakeup_gran(struct sched_entity *se)
 }
 
 /*
+2024年6月29日20:04:11
  * Should 'se' preempt 'curr'.
  *
  *             |s1
@@ -6747,7 +6802,9 @@ preempt:
 	if (sched_feat(LAST_BUDDY) && scale && entity_is_task(se))
 		set_last_buddy(se);
 }
+/* 2024年6月29日19:56:37
 
+ */
 static struct task_struct *
 pick_next_task_fair(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 {
@@ -6762,6 +6819,7 @@ again:
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	if (!prev || prev->sched_class != &fair_sched_class)
+	/* 没有开启这些机制 */
 		goto simple;
 
 	/*
@@ -6804,8 +6862,10 @@ again:
 		}
 
 		se = pick_next_entity(cfs_rq, curr);
+
 		cfs_rq = group_cfs_rq(se);
 	} while (cfs_rq);
+    /*  获取到调度实体指代的进程信息  */
 
 	p = task_of(se);
 
@@ -6838,11 +6898,19 @@ again:
 	goto done;
 simple:
 #endif
+/* simple无组调度最简单的pick_next_task_fair
+在不支持组调度情况下(选项CONFIG_FAIR_GROUP_SCHED), CFS的pick_next_task_fair
+函数会直接执行simple标签, 优选下一个函数, 这个流程清晰而且简单, 但是已经足够我们
+理解cfs的pick_next了 */
 	if (prev)
+	/* 将当前进程放入运行队列的合适位置  */
 		put_prev_task(rq, prev);
 
 	do {
+		/* 选出下一个可执行调度实体(进程 */
 		se = pick_next_entity(cfs_rq, NULL);
+		/* 把选中的进程从红黑树移除，更新红黑树  
+         *  set_next_entity会调用__dequeue_entity完成此工作 */
 		set_next_entity(cfs_rq, se);
 		cfs_rq = group_cfs_rq(se);
 	} while (cfs_rq);
@@ -6867,9 +6935,14 @@ done: __maybe_unused;
 	return p;
 
 idle:
+/* 如果系统中当前运行队列上没有可调度的进程, 那么会调到idle标签去调度idle进程. */
 	if (!rf)
 		return NULL;
+/* 
+其关键就是调用idle_balance进行任务的迁移
+每个cpu都有自己的运行队列, 如果当前cpu上运行的任务都已经dequeue出运行队列，而且idle_balance也没有移动到当前运行队列的任务，那么schedule函数中，按照stop > idle > rt > cfs > idle这三种调度方式顺序，寻找各自的运行任务，那么如果rt和cfs都未找到运行任务，那么最后会调用idle schedule的idle进程，作为schedule函数调度的下一个任务
 
+如果某个cpu空闲, 而其他CPU不空闲, 即当前CPU运行队列为NULL, 而其他CPU运行队列有进程等待调度的时候, 则内核会对CPU尝试负载平衡, CPU负载均衡有两种方式: pull和push, 即空闲CPU从其他忙的CPU队列中pull拉一个进程复制到当前空闲CPU上, 或者忙的CPU队列将一个进程push推送到空闲的CPU队列中. */
 	new_tasks = newidle_balance(rq, rf);
 
 	/*
@@ -6893,6 +6966,7 @@ idle:
 }
 
 /*
+2024年6月29日20:58:22
  * Account for a descheduled task:
  */
 static void put_prev_task_fair(struct rq *rq, struct task_struct *prev)
@@ -9933,6 +10007,8 @@ static void rq_offline_fair(struct rq *rq)
 #endif /* CONFIG_SMP */
 
 /*
+2024年6月29日17:03:36
+周期性调度会调用task_tick_fair()函数。
  * scheduler tick hitting a task of our scheduling class.
  *
  * NOTE: This function can be called remotely by the tick offload that
@@ -9958,6 +10034,8 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 }
 
 /*
+2024年6月29日21:16:39
+
  * called on fork with the child task as argument from the parent's context
  *  - child not yet on the tasklist
  *  - preemption disabled
@@ -9978,8 +10056,13 @@ static void task_fork_fair(struct task_struct *p)
 		update_curr(cfs_rq);
 		se->vruntime = curr->vruntime;
 	}
+	/* 调整子进程虚拟时间 */
 	place_entity(cfs_rq, se, 1);
 
+
+/* 参数sysctl_sched_child_runs_first强制子进程在父进程之前运行。
+		entity_before(curr, se)判断是否需要进行虚拟运行时间的对调，
+		只有父进程的虚拟运行时间小于子进程的虚拟运行时间时才需要此操作。 */
 	if (sysctl_sched_child_runs_first && curr && entity_before(curr, se)) {
 		/*
 		 * Upon rescheduling, sched_class::put_prev_task() will place

@@ -109,6 +109,13 @@ enum {
 };
 
 /*
+2024年6月28日23:19:47
+struct worker_pool数据结构用于描述工作线程池。
+
+worker_pool是per-cpu变量，每个CPU都有worker_pool，而且有两个worker_pool。
+
+一个用于普通优先级工作线程，另一个用于高优先级工作线程。
+
  * Structure fields follow one of the following exclusion rules.
  *
  * I: Modifiable by initialization/destruction paths and read-only for
@@ -145,20 +152,20 @@ enum {
 /* struct worker is defined in workqueue_internal.h */
 
 struct worker_pool {
-	spinlock_t		lock;		/* the pool lock */
-	int			cpu;		/* I: the associated cpu */
+	spinlock_t		lock;		/* the pool lock 用于保护worker_pool的自旋锁*/
+	int			cpu;		/* I: the associated cpu 对于unbound类型为-1；对于bound类型workqueue表示绑定的CPU ID。*/
 	int			node;		/* I: the associated node ID */
-	int			id;		/* I: pool ID */
+	int			id;		/* I: pool ID 该worker_pool的ID号*/
 	unsigned int		flags;		/* X: flags */
 
 	unsigned long		watchdog_ts;	/* L: watchdog timestamp */
 
-	struct list_head	worklist;	/* L: list of pending works */
+	struct list_head	worklist;	/* L: list of pending works 挂入pending状态的work_struct*/
 
-	int			nr_workers;	/* L: total number of workers */
-	int			nr_idle;	/* L: currently idle workers */
+	int			nr_workers;	/* L: total number of workers工作线程的数量 */
+	int			nr_idle;	/* L: currently idle workers 处于idle状态的工作线程的数量*/
 
-	struct list_head	idle_list;	/* X: list of idle workers */
+	struct list_head	idle_list;	/* X: list of idle workers 处于idle状态的工作线程链表*/
 	struct timer_list	idle_timer;	/* L: worker idle timeout */
 	struct timer_list	mayday_timer;	/* L: SOS timer for workers */
 
@@ -167,46 +174,50 @@ struct worker_pool {
 						/* L: hash of busy workers */
 
 	struct worker		*manager;	/* L: purely informational */
-	struct list_head	workers;	/* A: attached workers */
+	struct list_head	workers;	/* A: attached workers 该worker_pool管理的工作线程链表*/
 	struct completion	*detach_completion; /* all workers detached */
 
 	struct ida		worker_ida;	/* worker IDs for task name */
 
-	struct workqueue_attrs	*attrs;		/* I: worker attributes */
+	struct workqueue_attrs	*attrs;		/* I: worker attributes 工作线程属性*/
 	struct hlist_node	hash_node;	/* PL: unbound_pool_hash node */
 	int			refcnt;		/* PL: refcnt for unbound pools */
 
 	/*
 	 * The current concurrency level.  As it's likely to be accessed
 	 * from other CPUs during try_to_wake_up(), put it in a separate
-	 * cacheline.
+	 * cacheline.用于管理worker的创建和销毁的统计计数，表示运行中的worker数量。
+	 该变量可能被多CPU同时访问，因此独占一个缓存行，避免多核读写造成“颠簸”现象。
 	 */
 	atomic_t		nr_running ____cacheline_aligned_in_smp;
 
 	/*
 	 * Destruction of pool is RCU protected to allow dereferences
-	 * from get_work_pool().
+	 * from get_work_pool().RCU锁
 	 */
 	struct rcu_head		rcu;
 } ____cacheline_aligned_in_smp;
 
 /*
+2024年6月28日23:22:12
+struct pool_workqueue用于链接workqueue和worker_pool。
+-------------------------------------------------------------
  * The per-pool workqueue.  While queued, the lower WORK_STRUCT_FLAG_BITS
  * of work_struct->data are used for flags and the remaining high bits
  * point to the pwq; thus, pwqs need to be aligned at two's power of the
  * number of flag bits.
  */
 struct pool_workqueue {
-	struct worker_pool	*pool;		/* I: the associated pool */
-	struct workqueue_struct *wq;		/* I: the owning workqueue */
+	struct worker_pool	*pool;		/* I: the associated pool 指向worker_pool结构*/
+	struct workqueue_struct *wq;		/* I: the owning workqueue指向workqueue_struct结构 */
 	int			work_color;	/* L: current color */
 	int			flush_color;	/* L: flushing color */
 	int			refcnt;		/* L: reference count */
 	int			nr_in_flight[WORK_NR_COLORS];
 						/* L: nr of in_flight works */
-	int			nr_active;	/* L: nr of active works */
-	int			max_active;	/* L: max active works */
-	struct list_head	delayed_works;	/* L: delayed works */
+	int			nr_active;	/* L: nr of active works 活跃的work_strcut数量*/
+	int			max_active;	/* L: max active works 最大活跃work_struct数量*/
+	struct list_head	delayed_works;	/* L: delayed works延迟执行work_struct链表 */
 	struct list_head	pwqs_node;	/* WR: node on wq->pwqs */
 	struct list_head	mayday_node;	/* MD: node on wq->maydays */
 
@@ -232,12 +243,14 @@ struct wq_flusher {
 struct wq_device;
 
 /*
+2024年6月28日23:00:39
+
  * The externally visible workqueue.  It relays the issued work items to
  * the appropriate worker_pool through its pool_workqueues.
  */
 struct workqueue_struct {
-	struct list_head	pwqs;		/* WR: all pwqs of this wq */
-	struct list_head	list;		/* PR: list of all workqueues */
+	struct list_head	pwqs;		/* WR: all pwqs of this wq，该workqueue所在的所有pool_workqueue链表 */
+	struct list_head	list;		/* PR: list of all workqueues 系统所有workqueue_struct的全局链表*/
 
 	struct mutex		mutex;		/* protects this wq */
 	int			work_color;	/* WQ: current work color */
@@ -247,14 +260,15 @@ struct workqueue_struct {
 	struct list_head	flusher_queue;	/* WQ: flush waiters */
 	struct list_head	flusher_overflow; /* WQ: flush overflow list */
 
-	struct list_head	maydays;	/* MD: pwqs requesting rescue */
-	struct worker		*rescuer;	/* I: rescue worker */
+	struct list_head	maydays;	/* MD: pwqs requesting rescue 所有rescue状态下的pool_workqueue数据结构链表*/
+	struct worker		*rescuer;	/* I: rescue worker rescue内核线程，内存紧张时创建新的工作线程可能会失败，
+	如果创建workqueue是设置了WQ_MEM_RECLAIM，那么rescuer线程会接管这种情况。*/
 
 	int			nr_drainers;	/* WQ: drain in progress */
 	int			saved_max_active; /* WQ: saved pwq max_active */
 
-	struct workqueue_attrs	*unbound_attrs;	/* PW: only for unbound wqs */
-	struct pool_workqueue	*dfl_pwq;	/* PW: only for unbound wqs */
+	struct workqueue_attrs	*unbound_attrs;	/* PW: only for unbound wqs，UNBOUND类型属性 */
+	struct pool_workqueue	*dfl_pwq;	/* PW: only for unbound wqs unbound类型的pool_workqueue*/
 
 #ifdef CONFIG_SYSFS
 	struct wq_device	*wq_dev;	/* I: for sysfs interface */
@@ -264,7 +278,7 @@ struct workqueue_struct {
 	struct lock_class_key	key;
 	struct lockdep_map	lockdep_map;
 #endif
-	char			name[WQ_NAME_LEN]; /* I: workqueue name */
+	char			name[WQ_NAME_LEN]; /* I: workqueue name该workqueue的名字 */
 
 	/*
 	 * Destruction of workqueue_struct is RCU protected to allow walking
@@ -801,7 +815,9 @@ static bool need_to_create_worker(struct worker_pool *pool)
 	return need_more_worker(pool) && !may_start_working(pool);
 }
 
-/* Do we have too many workers and should some go away? */
+/* 
+2024年6月28日23:43:15
+Do we have too many workers and should some go away? */
 static bool too_many_workers(struct worker_pool *pool)
 {
 	bool managing = pool->flags & POOL_MANAGER_ACTIVE;
@@ -1954,6 +1970,8 @@ fail:
 }
 
 /**
+2024年6月29日00:06:51
+
  * destroy_worker - destroy a workqueue worker
  * @worker: worker to be destroyed
  *
@@ -1980,9 +1998,12 @@ static void destroy_worker(struct worker *worker)
 
 	list_del_init(&worker->entry);
 	worker->flags |= WORKER_DIE;
+	/* 为什么还要唤醒， */
 	wake_up_process(worker->task);
 }
-
+/* 2024年6月28日23:34:27
+work pool里面的timer链表的执行函数
+ */
 static void idle_worker_timeout(struct timer_list *t)
 {
 	struct worker_pool *pool = from_timer(pool, t, idle_timer);
@@ -1996,12 +2017,13 @@ static void idle_worker_timeout(struct timer_list *t)
 		/* idle_list is kept in LIFO order, check the last one */
 		worker = list_entry(pool->idle_list.prev, struct worker, entry);
 		expires = worker->last_active + IDLE_WORKER_TIMEOUT;
-
+		
 		if (time_before(jiffies, expires)) {
+			/* expires在jiffies后面，到这里，说明还没超时 */
 			mod_timer(&pool->idle_timer, expires);
 			break;
 		}
-
+		/* 到这就是超时了 */
 		destroy_worker(worker);
 	}
 
@@ -3399,6 +3421,8 @@ static bool wqattrs_equal(const struct workqueue_attrs *a,
 }
 
 /**
+2024年6月28日23:31:12
+初始化一个worker_pool。
  * init_worker_pool - initialize a newly zalloc'd worker_pool
  * @pool: worker_pool to initialize
  *
@@ -3416,6 +3440,7 @@ static int init_worker_pool(struct worker_pool *pool)
 	pool->node = NUMA_NO_NODE;
 	pool->flags |= POOL_DISASSOCIATED;
 	pool->watchdog_ts = jiffies;
+	/* 初始化pending和idle状态的链表 */
 	INIT_LIST_HEAD(&pool->worklist);
 	INIT_LIST_HEAD(&pool->idle_list);
 	hash_init(pool->busy_hash);
@@ -4216,7 +4241,9 @@ static int init_rescuer(struct workqueue_struct *wq)
 
 	return 0;
 }
+/* 2024年6月28日23:00:22
 
+ */
 __printf(1, 4)
 struct workqueue_struct *alloc_workqueue(const char *fmt,
 					 unsigned int flags,
