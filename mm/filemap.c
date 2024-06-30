@@ -893,6 +893,7 @@ struct xa_state xas = { .xa = &mapping->i_pages,
 	page->index = offset;
 
 	do {
+		/* 进行mapping里面xas相关的存储 */
 		xas_lock_irq(&xas);
 		old = xas_load(&xas);
 		if (old && !xa_is_value(old))
@@ -907,11 +908,12 @@ struct xa_state xas = { .xa = &mapping->i_pages,
 			if (shadowp)
 				*shadowp = old;
 		}
+		/* 添加成功 */
 		mapping->nrpages++;
 
 		/* hugetlb pages do not participate in page cache accounting */
 		if (!huge)
-		/* 更新内存节点的东西 */
+		/* 更新内存节点的东西 ，也就是页缓存页面数量*/
 			__inc_node_page_state(page, NR_FILE_PAGES);
 unlock:
 		xas_unlock_irq(&xas);
@@ -969,11 +971,16 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 	int ret;
 
 	__SetPageLocked(page);
+	/* 这里加到file的地址空间里面的xas */
 	ret = __add_to_page_cache_locked(page, mapping, offset,
 					 gfp_mask, &shadow);
 	if (unlikely(ret))
 		__ClearPageLocked(page);
 	else {
+		/* 
+		2024年6月30日11:47:19
+		加入mapping里面成功之后到这里，
+		加入lru？ */
 		/*
 		 * The page might have been evicted from cache only
 		 * recently, in which case it should be activated like
@@ -992,6 +999,9 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 EXPORT_SYMBOL_GPL(add_to_page_cache_lru);
 
 #ifdef CONFIG_NUMA
+/* 2024年6月29日21:49:54
+pagecache没有页面的时候申请
+ */
 struct page *__page_cache_alloc(gfp_t gfp)
 {
 	int n;
@@ -1545,6 +1555,7 @@ pgoff_t page_cache_prev_miss(struct address_space *mapping,
 EXPORT_SYMBOL(page_cache_prev_miss);
 
 /**
+2024年6月29日22:40:07
  * find_get_entry - find and get a page cache entry
  * @mapping: the address_space to search
  * @offset: the page cache index
@@ -1574,7 +1585,7 @@ repeat:
 	 */
 	if (!page || xa_is_value(page))
 		goto out;
-
+	/* 如果无法get引用计数 */
 	if (!page_cache_get_speculative(page))
 		goto repeat;
 
@@ -1632,6 +1643,8 @@ repeat:
 EXPORT_SYMBOL(find_lock_entry);
 
 /**
+2024年6月29日22:39:51
+
  * pagecache_get_page - find and get a page reference
  * @mapping: the address_space to search
  * @offset: the page index
@@ -1702,7 +1715,7 @@ no_page:
 			gfp_mask |= __GFP_WRITE;
 		if (fgp_flags & FGP_NOFS)
 			gfp_mask &= ~__GFP_FS;
-
+		/* 分配页面 */
 		page = __page_cache_alloc(gfp_mask);
 		if (!page)
 			return NULL;
@@ -1713,9 +1726,13 @@ no_page:
 		/* Init accessed so avoid atomic mark_page_accessed later */
 		if (fgp_flags & FGP_ACCESSED)
 			__SetPageReferenced(page);
-
+		/* 2024年6月29日23:13:45
+		把页面加入mapping
+		并且加入lru
+		 */
 		err = add_to_page_cache_lru(page, mapping, offset, gfp_mask);
 		if (unlikely(err)) {
+			/* 加入mapping和lru出错了 */
 			put_page(page);
 			page = NULL;
 			if (err == -EEXIST)
@@ -2026,6 +2043,7 @@ static void shrink_readahead_size_eio(struct file *filp,
 }
 
 /**
+2024年6月29日22:23:02
  * generic_file_buffered_read - generic file read routine
  * @iocb:	the iocb to read
  * @iter:	data destination
@@ -2047,6 +2065,7 @@ static ssize_t generic_file_buffered_read(struct kiocb *iocb,
 	struct file *filp = iocb->ki_filp;
 	struct address_space *mapping = filp->f_mapping;
 	struct inode *inode = mapping->host;
+	/* 预读控制块 */
 	struct file_ra_state *ra = &filp->f_ra;
 	loff_t *ppos = &iocb->ki_pos;
 	pgoff_t index;
@@ -2078,23 +2097,29 @@ find_page:
 			error = -EINTR;
 			goto out;
 		}
-
+		/* 所读取内容不在页缓存，这里分配页面并加入 */
 		page = find_get_page(mapping, index);
 		if (!page) {
+			/* 给页缓存申请页面不成功 */
 			if (iocb->ki_flags & IOCB_NOWAIT)
 				goto would_block;
+			/* 预读，中间也会给mapping申请缺少的页面 */
 			page_cache_sync_readahead(mapping,
 					ra, filp,
 					index, last_index - index);
+					/* 刚才预读的时候可能新申请页面了 */
 			page = find_get_page(mapping, index);
 			if (unlikely(page == NULL))
 				goto no_cached_page;
 		}
+		/* 直接就已经在缓存了 */
 		if (PageReadahead(page)) {
+			/* 如果page有预读属性，那么异步预读 */
 			page_cache_async_readahead(mapping,
 					ra, filp, page,
 					index, last_index - index);
 		}
+		/* 是说这是脏缓存吗？ */
 		if (!PageUptodate(page)) {
 			if (iocb->ki_flags & IOCB_NOWAIT) {
 				put_page(page);
@@ -2263,6 +2288,7 @@ no_cached_page:
 		/*
 		 * Ok, it wasn't cached, so we need to create a new
 		 * page..
+		 没有缓存页的情况
 		 */
 		page = page_cache_alloc(mapping);
 		if (!page) {
@@ -2272,6 +2298,7 @@ no_cached_page:
 		error = add_to_page_cache_lru(page, mapping, index,
 				mapping_gfp_constraint(mapping, GFP_KERNEL));
 		if (error) {
+			/* 失败情况 */
 			put_page(page);
 			if (error == -EEXIST) {
 				error = 0;

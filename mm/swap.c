@@ -117,6 +117,7 @@ void __put_page(struct page *page)
 EXPORT_SYMBOL(__put_page);
 
 /**
+2024年6月30日15:01:12
  * put_pages_list() - release a list of pages
  * @pages: list of pages threaded on page->lru
  *
@@ -192,6 +193,7 @@ EXPORT_SYMBOL_GPL(get_kernel_page);
 其中move_fn会调用add_page_to_lru_list把page添加到lru，
 而update_lru_size会更新对应的node和memcg的lru size
 ====================
+找到pagevec所属的node，lruvec，lru之后，加入进去。
  */
 static void pagevec_lru_move_fn(struct pagevec *pvec,
 	void (*move_fn)(struct page *page, struct lruvec *lruvec, void *arg),
@@ -377,6 +379,7 @@ static void __lru_cache_activate_page(struct page *page)
 }
 
 /*
+2024年6月30日15:11:22
  * Mark a page as having seen activity.
  *
  * inactive,unreferenced	->	inactive,referenced
@@ -1014,6 +1017,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 	if (page_evictable(page)) {
 		/* 根据page类型，获取到node上面不同的lru链表 */
 		lru = page_lru(page);
+		/* 更新一下reclaim stat？ */
 		update_page_reclaim_stat(lruvec, page_is_file_cache(page),
 					 PageActive(page));
 		if (was_unevictable)

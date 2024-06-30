@@ -340,6 +340,7 @@ static __always_inline enum kmalloc_cache_type kmalloc_type(gfp_t flags)
 }
 
 /*
+2024年6月30日23:20:15
  * Figure out which kmalloc slab an allocation of a certain size
  * belongs to.
  * 0 = zero alloc
@@ -580,7 +581,9 @@ static __always_inline unsigned int kmalloc_size(unsigned int n)
 #endif
 	return 0;
 }
-
+/* 2024年6月30日23:19:39
+指定的numa节点上分配连续的物理内存空间，并设置为0
+ */
 static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
 {
 #ifndef CONFIG_SLOB
@@ -691,6 +694,8 @@ static inline void *kzalloc(size_t size, gfp_t flags)
 }
 
 /**
+2024年6月30日23:19:32
+指定的numa节点上分配连续的物理内存空间，并设置为0
  * kzalloc_node - allocate zeroed memory from a particular memory node.
  * @size: how many bytes of memory are required.
  * @flags: the type of memory to allocate (see kmalloc).

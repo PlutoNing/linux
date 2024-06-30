@@ -3176,6 +3176,7 @@ int __memcg_kmem_charge(struct page *page, gfp_t gfp, int order)
 }
 
 /**
+2024年6月30日21:58:42
  * __memcg_kmem_uncharge_memcg: uncharge a kmem page
  * @memcg: memcg to uncharge
  * @nr_pages: number of pages to uncharge
@@ -3191,6 +3192,8 @@ void __memcg_kmem_uncharge_memcg(struct mem_cgroup *memcg,
 		page_counter_uncharge(&memcg->memsw, nr_pages);
 }
 /**
+2024年6月30日21:57:56
+buddy释放页面，如果是开了gfp acount页面会调用到此。
  * __memcg_kmem_uncharge: uncharge a kmem page
  * @page: page to uncharge
  * @order: allocation order
@@ -3205,6 +3208,7 @@ void __memcg_kmem_uncharge(struct page *page, int order)
 
 	VM_BUG_ON_PAGE(mem_cgroup_is_root(memcg), page);
 	__memcg_kmem_uncharge_memcg(memcg, nr_pages);
+	/* 页面不再被memcg了 */
 	page->mem_cgroup = NULL;
 
 	/* slab pages do not have PageKmemcg flag set */

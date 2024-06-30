@@ -45,6 +45,7 @@
 
 /* Backporting helper */
 #ifndef __GFP_NOTRACK
+/* 不被kmemcg记录 */
 #define __GFP_NOTRACK	0
 #endif
 

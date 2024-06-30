@@ -237,7 +237,7 @@ static int vmap_page_range_noflush(unsigned long start, unsigned long end,
 
 	return nr;
 }
-
+/* 2024年7月1日00:06:55 */
 static int vmap_page_range(unsigned long start, unsigned long end,
 			   pgprot_t prot, struct page **pages)
 {
@@ -430,6 +430,7 @@ static struct vmap_area *__find_vmap_area(unsigned long addr)
 }
 
 /*
+2024年6月30日23:42:13
  * This function returns back addresses of parent node
  * and its left or right link for further processing.
  */
@@ -647,7 +648,9 @@ augment_tree_propagate_from(struct vmap_area *va)
 	augment_tree_propagate_check(free_vmap_area_root.rb_node);
 #endif
 }
-
+/* 2024年6月30日23:41:31
+插入进程的vma
+ */
 static void
 insert_vmap_area(struct vmap_area *va,
 	struct rb_root *root, struct list_head *head)
@@ -1000,6 +1003,8 @@ adjust_va_to_fit_type(struct vmap_area *va,
 }
 
 /*
+2024年6月30日23:39:15
+分配vma区域
  * Returns a start address of the newly allocated area, if success.
  * Otherwise a vend is returned that indicates failure.
  */
@@ -1043,6 +1048,8 @@ __alloc_vmap_area(unsigned long size, unsigned long align,
 }
 
 /*
+2024年6月30日23:26:10
+里面分配va结构体，从vma里面获取进程hole虚拟地址
  * Allocate a region of KVA of the specified size and alignment, within the
  * vstart and vend.
  */
@@ -1063,7 +1070,7 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
 		return ERR_PTR(-EBUSY);
 
 	might_sleep();
-
+	/* slab分配vmap area */
 	va = kmem_cache_alloc_node(vmap_area_cachep,
 			gfp_mask & GFP_RECLAIM_MASK, node);
 	if (unlikely(!va))
@@ -1106,14 +1113,17 @@ retry:
 	/*
 	 * If an allocation fails, the "vend" address is
 	 * returned. Therefore trigger the overflow path.
+	分配va区域（有进程的虚拟地址）
 	 */
 	addr = __alloc_vmap_area(size, align, vstart, vend);
 	if (unlikely(addr == vend))
 		goto overflow;
-
+		/* va是slab分配的结构体
+		addr是分配的vma区域 */
 	va->va_start = addr;
 	va->va_end = addr + size;
 	va->vm = NULL;
+	/* 插入进程虚拟地址空间 */
 	insert_vmap_area(va, &vmap_area_root, &vmap_area_list);
 
 	spin_unlock(&vmap_area_lock);
@@ -2001,7 +2011,9 @@ void unmap_kernel_range(unsigned long addr, unsigned long size)
 	flush_tlb_kernel_range(addr, end);
 }
 EXPORT_SYMBOL_GPL(unmap_kernel_range);
+/* 2024年7月1日00:06:42
 
+ */
 int map_vm_area(struct vm_struct *area, pgprot_t prot, struct page **pages)
 {
 	unsigned long addr = (unsigned long)area->addr;
@@ -2013,7 +2025,7 @@ int map_vm_area(struct vm_struct *area, pgprot_t prot, struct page **pages)
 	return err > 0 ? 0 : err;
 }
 EXPORT_SYMBOL_GPL(map_vm_area);
-
+/* 2024年6月30日23:57:54 */
 static void setup_vmalloc_vm(struct vm_struct *vm, struct vmap_area *va,
 			      unsigned long flags, const void *caller)
 {
@@ -2036,7 +2048,9 @@ static void clear_vm_uninitialized_flag(struct vm_struct *vm)
 	smp_wmb();
 	vm->flags &= ~VM_UNINITIALIZED;
 }
+/* 2024年6月30日23:18:56
 
+ */
 static struct vm_struct *__get_vm_area_node(unsigned long size,
 		unsigned long align, unsigned long flags, unsigned long start,
 		unsigned long end, int node, gfp_t gfp_mask, const void *caller)
@@ -2052,14 +2066,18 @@ static struct vm_struct *__get_vm_area_node(unsigned long size,
 	if (flags & VM_IOREMAP)
 		align = 1ul << clamp_t(int, get_count_order_long(size),
 				       PAGE_SHIFT, IOREMAP_MAX_ORDER);
-
+	/* 2024年6月30日23:25:41
+	这个是什么内存？获取一段连续的物理内存
+	 */
 	area = kzalloc_node(sizeof(*area), gfp_mask & GFP_RECLAIM_MASK, node);
 	if (unlikely(!area))
 		return NULL;
 
 	if (!(flags & VM_NO_GUARD))
 		size += PAGE_SIZE;
-
+	/* 2024年6月30日23:26:04
+	获取va结构体，设置虚拟地址
+	 */
 	va = alloc_vmap_area(size, align, start, end, node, gfp_mask);
 	if (IS_ERR(va)) {
 		kfree(area);
@@ -2394,6 +2412,9 @@ EXPORT_SYMBOL(vmap);
 static void *__vmalloc_node(unsigned long size, unsigned long align,
 			    gfp_t gfp_mask, pgprot_t prot,
 			    int node, const void *caller);
+/* 2024年6月30日23:58:46
+				
+				 */
 static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 				 pgprot_t prot, int node)
 {
@@ -2410,9 +2431,11 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 
 	/* Please note that the recursion is strictly bounded. */
 	if (array_size > PAGE_SIZE) {
+		/* 大的，分配页面 */
 		pages = __vmalloc_node(array_size, 1, nested_gfp|highmem_mask,
 				PAGE_KERNEL, node, area->caller);
 	} else {
+		/* 小的kmall，分配页面 */
 		pages = kmalloc_node(array_size, nested_gfp, node);
 	}
 
@@ -2424,7 +2447,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 
 	area->pages = pages;
 	area->nr_pages = nr_pages;
-
+	/* 逐个申请页面 */
 	for (i = 0; i < area->nr_pages; i++) {
 		struct page *page;
 
@@ -2458,6 +2481,7 @@ fail:
 }
 
 /**
+2024年6月30日22:50:04
  * __vmalloc_node_range - allocate virtually contiguous memory
  * @size:		  allocation size
  * @align:		  desired alignment
@@ -2487,7 +2511,7 @@ void *__vmalloc_node_range(unsigned long size, unsigned long align,
 	size = PAGE_ALIGN(size);
 	if (!size || (size >> PAGE_SHIFT) > totalram_pages())
 		goto fail;
-
+		/* 获取vm，设置好虚拟地址 */
 	area = __get_vm_area_node(size, align, VM_ALLOC | VM_UNINITIALIZED |
 				vm_flags, start, end, node, gfp_mask, caller);
 	if (!area)
@@ -2524,6 +2548,7 @@ EXPORT_SYMBOL_GPL(__vmalloc_node_range);
 #endif
 
 /**
+2024年6月30日22:49:14
  * __vmalloc_node - allocate virtually contiguous memory
  * @size:	    allocation size
  * @align:	    desired alignment
@@ -2558,7 +2583,9 @@ void *__vmalloc(unsigned long size, gfp_t gfp_mask, pgprot_t prot)
 				__builtin_return_address(0));
 }
 EXPORT_SYMBOL(__vmalloc);
+/* 2024年6月30日22:48:47
 
+ */
 static inline void *__vmalloc_node_flags(unsigned long size,
 					int node, gfp_t flags)
 {
@@ -2574,6 +2601,8 @@ void *__vmalloc_node_flags_caller(unsigned long size, int node, gfp_t flags,
 }
 
 /**
+2024年6月30日22:48:32
+
  * vmalloc - allocate virtually contiguous memory
  * @size:    allocation size
  *

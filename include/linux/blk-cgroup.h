@@ -300,7 +300,8 @@ static inline struct blkcg *bio_blkcg(struct bio *bio)
 		return bio->bi_blkg->blkcg;
 	return NULL;
 }
-
+/* 2024年6月30日11:59:31
+ */
 static inline bool blk_cgroup_congested(void)
 {
 	struct cgroup_subsys_state *css;
@@ -309,6 +310,7 @@ static inline bool blk_cgroup_congested(void)
 	rcu_read_lock();
 	css = kthread_blkcg();
 	if (!css)
+	/* 说明是普通线程 */
 		css = task_css(current, io_cgrp_id);
 	while (css) {
 		if (atomic_read(&css->cgroup->congestion_count)) {

@@ -36,6 +36,10 @@ DECLARE_PER_CPU(int, dirty_throttle_leaks);
 struct backing_dev_info;
 
 /*
+2024年6月30日14:54:26
+WB_SYNC_NONE：绝大部分回写任务的配置，不会等待回写真正落盘，下发写命令后就返回
+
+WB_SYNC_ALL：sync 系统调用时配置，必须等待回调函数执行完成，写的数据真正落盘之后才会返回
  * fs/fs-writeback.c
  */
 enum writeback_sync_modes {
@@ -44,6 +48,8 @@ enum writeback_sync_modes {
 };
 
 /*
+2024年6月30日14:54:09
+
  * A control structure which tells the writeback code what to do.  These are
  * always on the stack, and hence need no locking.  They are always initialised
  * in a manner such that unspecified fields are set to zero.

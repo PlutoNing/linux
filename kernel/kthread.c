@@ -42,7 +42,9 @@ struct kthread_create_info
 
 	struct list_head list;
 };
+/* 2024年6月30日12:05:28
 
+ */
 struct kthread {
 	unsigned long flags;
 	unsigned int cpu;
@@ -50,6 +52,7 @@ struct kthread {
 	struct completion parked;
 	struct completion exited;
 #ifdef CONFIG_BLK_CGROUP
+/* cgroup相关 */
 	struct cgroup_subsys_state *blkcg_css;
 #endif
 };
@@ -1223,6 +1226,7 @@ void kthread_associate_blkcg(struct cgroup_subsys_state *css)
 EXPORT_SYMBOL(kthread_associate_blkcg);
 
 /**
+2024年6月30日12:04:51
  * kthread_blkcg - get associated blkcg css of current kthread
  *
  * Current thread must be a kthread.
@@ -1232,6 +1236,7 @@ struct cgroup_subsys_state *kthread_blkcg(void)
 	struct kthread *kthread;
 
 	if (current->flags & PF_KTHREAD) {
+		/* 是内核线程 */
 		kthread = to_kthread(current);
 		if (kthread)
 			return kthread->blkcg_css;

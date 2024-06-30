@@ -634,6 +634,7 @@ static inline int pgd_devmap(pgd_t pgd)
  */
 
 /*
+2024年6月30日21:39:33
  * Drop a ref, return true if the refcount fell to zero (the page has no users)
  */
 static inline int put_page_testzero(struct page *page)
@@ -731,10 +732,13 @@ static inline void *kvcalloc(size_t n, size_t size, gfp_t flags)
 }
 
 extern void kvfree(const void *addr);
-
+/* 2024年6月30日21:44:34
+ */
 static inline int compound_mapcount(struct page *page)
 {
+	/* 不是复合页就debug一下 */
 	VM_BUG_ON_PAGE(!PageCompound(page), page);
+	/* 获得头页地址 */
 	page = compound_head(page);
 	return atomic_read(compound_mapcount_ptr(page)) + 1;
 }

@@ -314,16 +314,22 @@ enum rw_hint {
 #define IOCB_SYNC		(1 << 5)
 #define IOCB_WRITE		(1 << 6)
 #define IOCB_NOWAIT		(1 << 7)
-
+/* 2024年6月29日22:24:17
+kiocb 中主要保存了一个file结构，以及记录读写偏移，相当于描述了一次IO中文件侧的处理进度。
+ov_iter 和 kiocb 实际上分别描述了一次IO的两端，iov_iter描述内存侧，kiocb描述文件侧，
+文件系统提供两个接口基于这两个数据结构封装读写操作。
+ */
 struct kiocb {
+	/* file对象 */
 	struct file		*ki_filp;
 
 	/* The 'ki_filp' pointer is shared in a union for aio */
 	randomized_struct_fields_start
-
+	/* 数据偏移 */
 	loff_t			ki_pos;
 	void (*ki_complete)(struct kiocb *iocb, long ret, long ret2);
 	void			*private;
+	/* IO属性 */
 	int			ki_flags;
 	u16			ki_hint;
 	u16			ki_ioprio; /* See linux/ioprio.h */
@@ -358,7 +364,7 @@ typedef struct {
 
 typedef int (*read_actor_t)(read_descriptor_t *, struct page *,
 		unsigned long, unsigned long);
-
+/* 2024年6月29日21:47:55 */
 struct address_space_operations {
 	int (*writepage)(struct page *page, struct writeback_control *wbc);
 	int (*readpage)(struct file *, struct page *);
@@ -451,22 +457,27 @@ struct address_space {
 	struct xarray		i_pages;
 
 	gfp_t			gfp_mask;
-
+/* 共享内存映射的Page数量 */
 	atomic_t		i_mmap_writable;
 #ifdef CONFIG_READ_ONLY_THP_FOR_FS
 	/* number of thp, only for non-shmem files */
 	atomic_t		nr_thps;
 #endif
-//搜索树的树根
+//代表该address_space缓存的Page所存放的rb-tree
 	struct rb_root_cached	i_mmap;
+	/* 用来保护i_mmap 和i_mmap_writable的自旋锁 */
 	struct rw_semaphore	i_mmap_rwsem;
 	/* 地址空间里面的page数量 */
 	unsigned long		nrpages;
 	unsigned long		nrexceptional;
+	/* 代表回写时所使用的索引 */
 	pgoff_t			writeback_index;
+	/* 代表address_space的操作方法函数 */
 	const struct address_space_operations *a_ops;
 	unsigned long		flags;
+	/* 代表address_space最近操作方式的错误码 */
 	errseq_t		wb_err;
+	/* 用来保护private_list的自旋锁 */
 	spinlock_t		private_lock;
 	struct list_head	private_list;
 	void			*private_data;
@@ -477,31 +488,34 @@ struct address_space {
 	 * of struct page's "mapping" pointer be used for PAGE_MAPPING_ANON.
 	 */
 struct request_queue;
-
+/* 2024年6月30日14:40:24
+ */
 struct block_device {
-	dev_t			bd_dev;  /* not a kdev_t - it's a search key */
+	dev_t			bd_dev;  /* not a kdev_t - it's a search key 对应底层设备的设备号*/
+	/* 该设备同时被多少进程打开 */
 	int			bd_openers;
-	struct inode *		bd_inode;	/* will die */
-	struct super_block *	bd_super;
+	struct inode *		bd_inode;	/* will die 块设备的inod，可利用bd_dev通过bdget获得 */
+	struct super_block *	bd_super; /* 文件系统的超级块信息  */
 	struct mutex		bd_mutex;	/* open/close mutex */
-	void *			bd_claiming;
-	void *			bd_holder;
-	int			bd_holders;
-	bool			bd_write_holder;
+	void *			bd_claiming;/*  */
+	void *			bd_holder;/*  */
+	int			bd_holders;/*  */
+	bool			bd_write_holder;/*  */
 #ifdef CONFIG_SYSFS
-	struct list_head	bd_holder_disks;
+	struct list_head	bd_holder_disks;/*  */
 #endif
-	struct block_device *	bd_contains;
-	unsigned		bd_block_size;
-	u8			bd_partno;
-	struct hd_struct *	bd_part;
+	struct block_device *	bd_contains;/*  */
+	unsigned		bd_block_size;/* 块的大小 */
+	u8			bd_partno;/*  */
+	struct hd_struct *	bd_part;/* 指向分区指针，对于gendisk，指向内置的分区0  */
 	/* number of times partitions within this device have been opened. */
-	unsigned		bd_part_count;
-	int			bd_invalidated;
-	struct gendisk *	bd_disk;
-	struct request_queue *  bd_queue;
-	struct backing_dev_info *bd_bdi;
-	struct list_head	bd_list;
+	unsigned		bd_part_count;/*该设备的所有分区同时被打开的次数  */
+	int			bd_invalidated;/* 置1表示内存中的分区信息无效，下次打开设备时需要重新扫描分区表 */
+	struct gendisk *	bd_disk;/* 通用磁盘抽象，当该block_device作为分区抽象时，指向该分区所
+	属的gendisk，当作为gendisk的抽象时，指向自身  */
+	struct request_queue *  bd_queue;/*  */
+	struct backing_dev_info *bd_bdi;/*  */
+	struct list_head	bd_list;/*  */
 	/*
 	 * Private data.  You must have bd_claim'ed the block_device
 	 * to use this.  NOTE:  bd_claim allows an owner to claim
@@ -558,6 +572,7 @@ static inline int mapping_mapped(struct address_space *mapping)
 }
 
 /*
+2024年6月30日15:09:05
  * Might pages of this file have been modified in userspace?
  * Note that i_mmap_writable counts all VM_SHARED vmas: do_mmap_pgoff
  * marks vma as VM_SHARED if it is shared, and the file was opened for
@@ -678,6 +693,7 @@ struct inode {
 	};
 	/* 设备 */
 	dev_t			i_rdev;
+	/* 文件长度（字节） */
 	loff_t			i_size;
 	/* 访问时间 */
 	struct timespec64	i_atime;
@@ -936,17 +952,19 @@ struct fown_struct {
 };
 
 /*
+2024年6月29日22:31:10
+
  * Track a single file's readahead state
  */
 struct file_ra_state {
-	pgoff_t start;			/* where readahead started */
-	unsigned int size;		/* # of readahead pages */
+	pgoff_t start;			/* where readahead started 当前窗口的第一个页面索引*/
+	unsigned int size;		/* # of readahead pages当前窗口的页面数量。值为-1表示预读临时关闭，0表示当前窗口为空 */
 	unsigned int async_size;	/* do asynchronous readahead when
-					   there are only # of pages ahead */
+					   there are only # of pages ahead 异步预读页面数量*/
 
-	unsigned int ra_pages;		/* Maximum readahead window */
-	unsigned int mmap_miss;		/* Cache miss stat for mmap accesses */
-	loff_t prev_pos;		/* Cache last read() position */
+	unsigned int ra_pages;		/* Maximum readahead window 预读窗口最大页面数量。0表示预读暂时关闭。*/
+	unsigned int mmap_miss;		/* Cache miss stat for mmap accesses 预读失效计数*/
+	loff_t prev_pos;		/* Cache last read() position Cache中最近一次读位置*/
 };
 
 /*
@@ -957,7 +975,8 @@ static inline int ra_has_index(struct file_ra_state *ra, pgoff_t index)
 	return (index >= ra->start &&
 		index <  ra->start + ra->size);
 }
-
+/* 2024年6月29日22:31:01
+ */
 struct file {
 	union {
 		struct llist_node	fu_llist;
@@ -1485,6 +1504,7 @@ struct super_block {
 	struct list_head	s_mounts;	/* list of mounts; _not_ for fs use */
 	/*  */
 	struct block_device	*s_bdev;
+	/* 后背设备 */
 	struct backing_dev_info *s_bdi;
 	struct mtd_info		*s_mtd;
 	struct hlist_node	s_instances;
@@ -2228,6 +2248,9 @@ enum file_time_flags {
 
 extern bool atime_needs_update(const struct path *, struct inode *);
 extern void touch_atime(const struct path *);
+/* 2024年6月30日19:28:30
+
+ */
 static inline void file_accessed(struct file *file)
 {
 	if (!(file->f_flags & O_NOATIME))
@@ -2610,7 +2633,10 @@ extern int thaw_bdev(struct block_device *bdev, struct super_block *sb);
 extern int fsync_bdev(struct block_device *);
 
 extern struct super_block *blockdev_superblock;
-
+/* 2024年6月30日14:38:31
+bdevfs对应的超级块名为blockdev_superblock
+所有表示块设备的 inode 都保存在伪文件系统 bdevfs 中以方便块设备的管理
+ */
 static inline bool sb_is_blkdev_sb(struct super_block *sb)
 {
 	return sb == blockdev_superblock;

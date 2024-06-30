@@ -121,6 +121,7 @@ static inline void mapping_set_gfp_mask(struct address_space *m, gfp_t mask)
 void release_pages(struct page **pages, int nr);
 
 /*
+2024年6月29日22:41:41
  * speculatively take a reference to a page.
  * If the page is free (_refcount == 0), then _refcount is untouched, and 0
  * is returned. Otherwise, _refcount is incremented by 1 and 1 is returned.
@@ -196,7 +197,11 @@ static inline int __page_cache_add_speculative(struct page *page, int count)
 
 	return 1;
 }
+/* 2024年6月29日22:41:01
+主要用于锁定page，如果page的引用计数是1的话，就返回0，如果引用计数已经是零，
+就增加page的引用计数后，返回1
 
+ */
 static inline int page_cache_get_speculative(struct page *page)
 {
 	return __page_cache_add_speculative(page, 1);
@@ -215,7 +220,7 @@ static inline struct page *__page_cache_alloc(gfp_t gfp)
 	return alloc_pages(gfp, 0);
 }
 #endif
-
+/* 2024年6月29日21:49:46 */
 static inline struct page *page_cache_alloc(struct address_space *x)
 {
 	return __page_cache_alloc(mapping_gfp_mask(x));
@@ -245,6 +250,8 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t offset,
 		int fgp_flags, gfp_t cache_gfp_mask);
 
 /**
+2024年6月29日22:39:41
+给页缓存获取页面（加入mapping和lru）
  * find_get_page - find and get a page reference
  * @mapping: the address_space to search
  * @offset: the page index
@@ -332,7 +339,7 @@ static inline struct page *grab_cache_page_nowait(struct address_space *mapping,
 			FGP_LOCK|FGP_CREAT|FGP_NOFS|FGP_NOWAIT,
 			mapping_gfp_mask(mapping));
 }
-
+/* 2024年6月29日22:42:28 */
 static inline struct page *find_subpage(struct page *page, pgoff_t offset)
 {
 	if (PageHuge(page))

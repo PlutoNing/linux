@@ -356,7 +356,7 @@ static inline int __fatal_signal_pending(struct task_struct *p)
 	return unlikely(sigismember(&p->pending.signal, SIGKILL));
 }
 /* 2024年06月28日15:40:35
-
+是否有kill信号，就是说是不是要被结束了
  */
 static inline int fatal_signal_pending(struct task_struct *p)
 {

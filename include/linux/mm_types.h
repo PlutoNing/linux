@@ -102,6 +102,7 @@ struct page {
 			struct address_space *mapping;
 			/* Our offset within mapping. 
 			在buddy里面时，是迁移类型。
+			页缓存里面时，是在mapping里面索引
 			*/
 			pgoff_t index;		
 			/**
@@ -148,10 +149,15 @@ struct page {
 			};
 		};
 		struct {	/* Tail pages of compound page */
+		/* 之后所有page 都会配置两个属性：mapping 和 compound_head，
+		并且通过 compound_head 确认是尾页还是头页，详细看 compound_head() 函数；
+		通过 page->compound_head 的最后一位是否设为 1 来判断该页是否为头页，
+		如果不是头页，只需要减 1 即可获得头页地址。（正常情况下page 的地址都是页对齐的） */
 			unsigned long compound_head;	/* Bit zero is set */
 
-			/* First tail page only */
+			/* First tail page only，析构函数 */
 			unsigned char compound_dtor;
+			/* 复合页order */
 			unsigned char compound_order;
 			atomic_t compound_mapcount;
 		};
@@ -240,9 +246,11 @@ struct page {
 	int _last_cpupid;
 #endif
 } _struct_page_alignment;
-
+/* 2024年6月30日21:53:59
+ */
 static inline atomic_t *compound_mapcount_ptr(struct page *page)
 {
+	/* 第一个尾页存储了很多复合页重要信息 */
 	return &page[1].compound_mapcount;
 }
 
@@ -392,6 +400,9 @@ struct core_state {
 };
 
 struct kioctx_table;
+/* 2024年7月1日00:08:08
+
+ */
 struct mm_struct {
 	struct {
 		struct vm_area_struct *mmap;		/* list of VMAs */
@@ -404,7 +415,7 @@ struct mm_struct {
 				unsigned long addr, unsigned long len,
 				unsigned long pgoff, unsigned long flags);
 #endif
-		unsigned long mmap_base;	/* base of mmap area */
+		unsigned long mmap_base;	/* base of mmap area ，mmap空间的基地址*/
 		unsigned long mmap_legacy_base;	/* base of mmap area in bottom-up allocations */
 #ifdef CONFIG_HAVE_ARCH_COMPAT_MMAP_BASES
 		/* Base adresses for compatible mmap() */
@@ -434,6 +445,7 @@ struct mm_struct {
 		 * temporary reference holders), we also release a reference on
 		 * @mm_count (which may then free the &struct mm_struct if
 		 * @mm_count also drops to 0).
+		 使用此mm的进程数目
 		 */
 		atomic_t mm_users;
 
@@ -461,6 +473,7 @@ struct mm_struct {
 					  * are globally strung together off
 					  * init_mm.mmlist, and are protected
 					  * by mmlist_lock
+					  所有的mm都连接到这里
 					  */
 
 

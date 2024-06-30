@@ -533,6 +533,7 @@ out_unlock:
 EXPORT_SYMBOL(kmem_cache_create_usercopy);
 
 /**
+2024年6月30日22:21:41
  * kmem_cache_create - Create a cache.
  * @name: A string which is used in /proc/slabinfo to identify this cache.
  * @size: The size of objects to be created in this cache.
@@ -1073,7 +1074,7 @@ struct kmem_cache *__init create_kmalloc_cache(const char *name,
 	s->refcount = 1;
 	return s;
 }
-
+/* 2024年6月30日23:20:31 */
 struct kmem_cache *
 kmalloc_caches[NR_KMALLOC_TYPES][KMALLOC_SHIFT_HIGH + 1] __ro_after_init =
 { /* initialization for https://bugs.llvm.org/show_bug.cgi?id=42570 */ };
@@ -1118,6 +1119,7 @@ static inline unsigned int size_index_elem(unsigned int bytes)
 }
 
 /*
+2024年6月30日23:51:28
  * Find the kmem_cache structure that serves a given size of
  * allocation
  */

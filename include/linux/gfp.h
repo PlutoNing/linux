@@ -53,10 +53,10 @@ struct vm_area_struct;
  * without the underscores and use them consistently. The definitions here may
  * be used in bit comparisons.
  */
-#define __GFP_DMA	((__force gfp_t)___GFP_DMA)
+#define __GFP_DMA	((__force gfp_t)___GFP_DMA)   /*  */
 #define __GFP_HIGHMEM	((__force gfp_t)___GFP_HIGHMEM)
 #define __GFP_DMA32	((__force gfp_t)___GFP_DMA32)
-#define __GFP_MOVABLE	((__force gfp_t)___GFP_MOVABLE)  /* ZONE_MOVABLE allowed */
+#define __GFP_MOVABLE	((__force gfp_t)___GFP_MOVABLE)  /*页面可以被迁移或者回收 ZONE_MOVABLE allowed */
 #define GFP_ZONEMASK	(__GFP_DMA|__GFP_HIGHMEM|__GFP_DMA32|__GFP_MOVABLE)
 
 /**
@@ -86,11 +86,11 @@ struct vm_area_struct;
  *
  * %__GFP_ACCOUNT causes the allocation to be accounted to kmemcg.
  */
-#define __GFP_RECLAIMABLE ((__force gfp_t)___GFP_RECLAIMABLE)
-#define __GFP_WRITE	((__force gfp_t)___GFP_WRITE)
-#define __GFP_HARDWALL   ((__force gfp_t)___GFP_HARDWALL)
-#define __GFP_THISNODE	((__force gfp_t)___GFP_THISNODE)
-#define __GFP_ACCOUNT	((__force gfp_t)___GFP_ACCOUNT)
+#define __GFP_RECLAIMABLE ((__force gfp_t)___GFP_RECLAIMABLE) /* 可以回收 */
+#define __GFP_WRITE	((__force gfp_t)___GFP_WRITE) 
+#define __GFP_HARDWALL   ((__force gfp_t)___GFP_HARDWALL) /* 使能cpuset分配策略 */
+#define __GFP_THISNODE	((__force gfp_t)___GFP_THISNODE) /* 从指定的node分配内存 */
+#define __GFP_ACCOUNT	((__force gfp_t)___GFP_ACCOUNT) /* 分配过程会被kmemcg记录 */
 
 /**
  * DOC: Watermark modifiers
@@ -115,9 +115,9 @@ struct vm_area_struct;
  * This takes precedence over the %__GFP_MEMALLOC flag if both are set.
  */
 #define __GFP_ATOMIC	((__force gfp_t)___GFP_ATOMIC)
-#define __GFP_HIGH	((__force gfp_t)___GFP_HIGH)
-#define __GFP_MEMALLOC	((__force gfp_t)___GFP_MEMALLOC)
-#define __GFP_NOMEMALLOC ((__force gfp_t)___GFP_NOMEMALLOC)
+#define __GFP_HIGH	((__force gfp_t)___GFP_HIGH)  /* 高优先级，可以使用系统预留额的内存 */
+#define __GFP_MEMALLOC	((__force gfp_t)___GFP_MEMALLOC) /* 允许访问所有的内存 */
+#define __GFP_NOMEMALLOC ((__force gfp_t)___GFP_NOMEMALLOC) /* 不允许访问系统预留的内存 */
 
 /**
  * DOC: Reclaim modifiers
@@ -188,14 +188,14 @@ struct vm_area_struct;
  * loop around allocator.
  * Using this flag for costly allocations is _highly_ discouraged.
  */
-#define __GFP_IO	((__force gfp_t)___GFP_IO)
-#define __GFP_FS	((__force gfp_t)___GFP_FS)
-#define __GFP_DIRECT_RECLAIM	((__force gfp_t)___GFP_DIRECT_RECLAIM) /* Caller can reclaim */
-#define __GFP_KSWAPD_RECLAIM	((__force gfp_t)___GFP_KSWAPD_RECLAIM) /* kswapd can wake */
-#define __GFP_RECLAIM ((__force gfp_t)(___GFP_DIRECT_RECLAIM|___GFP_KSWAPD_RECLAIM))
-#define __GFP_RETRY_MAYFAIL	((__force gfp_t)___GFP_RETRY_MAYFAIL)
-#define __GFP_NOFAIL	((__force gfp_t)___GFP_NOFAIL)
-#define __GFP_NORETRY	((__force gfp_t)___GFP_NORETRY)
+#define __GFP_IO	((__force gfp_t)___GFP_IO) /* 允许开启io传输 */
+#define __GFP_FS	((__force gfp_t)___GFP_FS) /* 允许调用底层的文件系统 */
+#define __GFP_DIRECT_RECLAIM	((__force gfp_t)___GFP_DIRECT_RECLAIM) /* 允许使用页面直接回收机制Caller can reclaim */
+#define __GFP_KSWAPD_RECLAIM	((__force gfp_t)___GFP_KSWAPD_RECLAIM) /* 唤醒kswapd， kswapd can wake */
+#define __GFP_RECLAIM ((__force gfp_t)(___GFP_DIRECT_RECLAIM|___GFP_KSWAPD_RECLAIM)) /* 用于允许或者禁止直接页面回收和kswapd */
+#define __GFP_RETRY_MAYFAIL	((__force gfp_t)___GFP_RETRY_MAYFAIL) /*  */
+#define __GFP_NOFAIL	((__force gfp_t)___GFP_NOFAIL) /* 分配失败会一直尝试下去  */
+#define __GFP_NORETRY	((__force gfp_t)___GFP_NORETRY) /* 使用了回收机制还是不能分配的话就直接返回null，不重试 */
 
 /**
  * DOC: Action modifiers
@@ -209,8 +209,12 @@ struct vm_area_struct;
  *
  * %__GFP_ZERO returns a zeroed page on success.
  */
-#define __GFP_NOWARN	((__force gfp_t)___GFP_NOWARN)
+ /* 分配的内存不会马上使用，返回一个空的高速缓存页面 */
+#define __GFP_NOWARN	((__force gfp_t)___GFP_NOWARN) 
+/* 当__alloc_pages分配标志gfp_flags指定了__GFP_COMP，那么内核
+必须将这些页组合成复合页compound page。 */
 #define __GFP_COMP	((__force gfp_t)___GFP_COMP)
+/* 分配一个全零页面 */
 #define __GFP_ZERO	((__force gfp_t)___GFP_ZERO)
 
 /* Disable lockdep for GFP context tracking */
@@ -286,12 +290,18 @@ struct vm_area_struct;
  * version does not attempt reclaim/compaction at all and is by default used
  * in page fault path, while the non-light is used by khugepaged.
  */
+ /* 不能睡眠，保证成功 */
 #define GFP_ATOMIC	(__GFP_HIGH|__GFP_ATOMIC|__GFP_KSWAPD_RECLAIM)
+/* 可能会被阻塞 */
 #define GFP_KERNEL	(__GFP_RECLAIM | __GFP_IO | __GFP_FS)
 #define GFP_KERNEL_ACCOUNT (GFP_KERNEL | __GFP_ACCOUNT)
+/* 不允许等待 */
 #define GFP_NOWAIT	(__GFP_KSWAPD_RECLAIM)
+/* 不需要启动任何的IO操作 */
 #define GFP_NOIO	(__GFP_RECLAIM)
+/* 不会访问任何的文件系统操作 */
 #define GFP_NOFS	(__GFP_RECLAIM | __GFP_IO)
+/* 用用户空间来分配内存 */
 #define GFP_USER	(__GFP_RECLAIM | __GFP_IO | __GFP_FS | __GFP_HARDWALL)
 #define GFP_DMA		__GFP_DMA
 #define GFP_DMA32	__GFP_DMA32
@@ -534,7 +544,8 @@ static inline struct page *alloc_pages_node(int nid, gfp_t gfp_mask,
 #ifdef CONFIG_NUMA
 extern struct page *alloc_pages_current(gfp_t gfp_mask, unsigned order);
 /* 2024年6月26日22:15:59
-alloc_pages是物理内存申请的关键入口，入参一是gfp_mask，记录的是内存申请标志；
+alloc_pages是物理内存申请的关键入口，
+入参一是gfp_mask，记录的是内存申请标志；
 入参二是order，记录的是申请页面大小，默认情况下，order最大是10，如果超过2^10页的申请，
 需要通过CMA的方式。内存申请的时候需要区分是否配置了NUMA，如果配置了NUMA，
 则在当前node上申请；否则，默认在node 0上进行内存申请 */

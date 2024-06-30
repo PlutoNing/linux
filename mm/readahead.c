@@ -112,7 +112,7 @@ int read_cache_pages(struct address_space *mapping, struct list_head *pages,
 }
 
 EXPORT_SYMBOL(read_cache_pages);
-
+/* 2024年6月30日15:00:50 */
 static int read_pages(struct address_space *mapping, struct file *filp,
 		struct list_head *pages, unsigned int nr_pages, gfp_t gfp)
 {
@@ -145,6 +145,8 @@ out:
 }
 
 /*
+2024年6月30日14:56:37
+预读实际函数
  * __do_page_cache_readahead() actually reads a chunk of disk.  It allocates
  * the pages first, then submits them for I/O. This avoids the very bad
  * behaviour which would occur if page allocations are causing VM writeback.
@@ -174,17 +176,19 @@ unsigned int __do_page_cache_readahead(struct address_space *mapping,
 	 * Preallocate as many pages as we will need.
 	 */
 	for (page_idx = 0; page_idx < nr_to_read; page_idx++) {
+		/*  */
 		pgoff_t page_offset = offset + page_idx;
 
 		if (page_offset > end_index)
 			break;
-
+		/* 获取mapping里的页面 */
 		page = xa_load(&mapping->i_pages, page_offset);
 		if (page && !xa_is_value(page)) {
 			/*
 			 * Page already present?  Kick off the current batch of
 			 * contiguous pages before continuing with the next
 			 * batch.
+			 读取页面，刷新到lru啥啥的
 			 */
 			if (nr_pages)
 				read_pages(mapping, filp, &page_pool, nr_pages,
@@ -192,7 +196,7 @@ unsigned int __do_page_cache_readahead(struct address_space *mapping,
 			nr_pages = 0;
 			continue;
 		}
-
+		/* mapping不存在此页面 */
 		page = __page_cache_alloc(gfp_mask);
 		if (!page)
 			break;
@@ -216,6 +220,8 @@ out:
 }
 
 /*
+2024年6月30日14:36:44
+
  * Chunk the readahead into 2 megabyte units, so that we don't pin too much
  * memory at once.
  */
@@ -235,11 +241,13 @@ int force_page_cache_readahead(struct address_space *mapping, struct file *filp,
 	 */
 	max_pages = max_t(unsigned long, bdi->io_pages, ra->ra_pages);
 	nr_to_read = min(nr_to_read, max_pages);
+	/* 获得要预读的数量 */
 	while (nr_to_read) {
 		unsigned long this_chunk = (2 * 1024 * 1024) / PAGE_SIZE;
 
 		if (this_chunk > nr_to_read)
 			this_chunk = nr_to_read;
+		/* 真正预读？ */
 		__do_page_cache_readahead(mapping, filp, offset, this_chunk, 0);
 
 		offset += this_chunk;
@@ -376,6 +384,7 @@ static int try_context_readahead(struct address_space *mapping,
 }
 
 /*
+2024年6月30日15:04:11
  * A minimal readahead algorithm for trivial sequential/random reads.
  */
 static unsigned long
@@ -493,6 +502,8 @@ readit:
 }
 
 /**
+2024年6月30日11:59:04
+
  * page_cache_sync_readahead - generic file readahead
  * @mapping: address_space which holds the pagecache and I/O vectors
  * @ra: file_ra_state which holds the readahead state
@@ -510,15 +521,17 @@ void page_cache_sync_readahead(struct address_space *mapping,
 			       struct file_ra_state *ra, struct file *filp,
 			       pgoff_t offset, unsigned long req_size)
 {
-	/* no read-ahead */
+	/* no read-ahead
+	为零，说明关闭预读了 */
 	if (!ra->ra_pages)
 		return;
-
+		/* 有io的限流？就不预读吗？ */
 	if (blk_cgroup_congested())
 		return;
 
 	/* be dumb */
 	if (filp && (filp->f_mode & FMODE_RANDOM)) {
+		/* 随机读写吗 */
 		force_page_cache_readahead(mapping, filp, offset, req_size);
 		return;
 	}
@@ -529,6 +542,9 @@ void page_cache_sync_readahead(struct address_space *mapping,
 EXPORT_SYMBOL_GPL(page_cache_sync_readahead);
 
 /**
+2024年6月30日15:06:26
+预读
+读取页缓存页面成功后的异步预读
  * page_cache_async_readahead - file readahead for marked pages
  * @mapping: address_space which holds the pagecache and I/O vectors
  * @ra: file_ra_state which holds the readahead state
@@ -563,10 +579,11 @@ page_cache_async_readahead(struct address_space *mapping,
 
 	/*
 	 * Defer asynchronous read-ahead on IO congestion.
+	inod 开启了限流？
 	 */
 	if (inode_read_congested(mapping->host))
 		return;
-
+/*  blkio限流？*/
 	if (blk_cgroup_congested())
 		return;
 

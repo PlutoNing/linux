@@ -110,11 +110,12 @@ struct partition_meta_info {
 2024年06月19日10:20:20
 */
 struct hd_struct {
+	/* 该分区的起始扇区号 */
 	sector_t start_sect;
 	/*
 	 * nr_sects is protected by sequence counter. One might extend a
 	 * partition while IO is happening to it and update of nr_sects
-	 * can be non-atomic on 32bit machines with 64bit sector_t.
+	 * can be non-atomic on 32bit machines with 64bit sector_t.该分区的扇区个数，也就是分区容量
 	 */
 	sector_t nr_sects;
 	seqcount_t nr_sects_seq;
@@ -123,6 +124,7 @@ struct hd_struct {
 	//对应的dev
 	struct device __dev;
 	struct kobject *holder_dir;
+	/* 该分区的分区号 */
 	int policy, partno;
 	struct partition_meta_info *info;
 #ifdef CONFIG_FAIL_MAKE_REQUEST
@@ -185,17 +187,17 @@ struct blk_integrity {
 };
 
 #endif	/* CONFIG_BLK_DEV_INTEGRITY */
-
+/* 2024年6月30日14:44:09 */
 struct gendisk {
 	/* major, first_minor and minors are input parameters only,
 	 * don't use directly.  Use disk_devt() and disk_max_parts().
 	 */
 	int major;			/* major number of driver */
-	int first_minor;
+	int first_minor; /*  */
 	int minors;                     /* maximum number of minors, =1 for
-                                         * disks that can't be partitioned. */
+                                         * disks that can't be partitioned. 表示分区的个数，分区号从1开始，0表示gendisk本身 */
 
-	char disk_name[DISK_NAME_LEN];	/* name of major driver */
+	char disk_name[DISK_NAME_LEN];	/* name of major driver 磁盘的名称，用于在sysfs和/proc/partitions中表示该磁盘 */
 	char *(*devnode)(struct gendisk *gd, umode_t *mode);
 
 	unsigned short events;		/* supported events */
@@ -204,28 +206,38 @@ struct gendisk {
 	/* Array of pointers to partitions indexed by partno.
 	 * Protected with matching bdev lock but stat and other
 	 * non-critical accesses use RCU.  Always access through
-	 * helpers.
+	 * helpers.分区表
 	 */
-	struct disk_part_tbl __rcu *part_tbl;
-	//
+	struct disk_part_tbl __rcu *part_tbl; 
+	//用于表示gendisk本身
 	struct hd_struct part0;
 
-	const struct block_device_operations *fops;
+	const struct block_device_operations *fops; /*  */
+	/* 该disk关联的请求队列 */
 	struct request_queue *queue;
+	/* 私有数据，用于提供给用户驱动程序使用 */
 	void *private_data;
-
+/*  */
 	int flags;
+	/*  */
 	struct rw_semaphore lookup_sem;
+	/*  */
 	struct kobject *slave_dir;
-
+/*  */
 	struct timer_rand_state *random;
+	/*  */
 	atomic_t sync_io;		/* RAID */
+	/*  */
 	struct disk_events *ev;
 #ifdef  CONFIG_BLK_DEV_INTEGRITY
+/*  */
 	struct kobject integrity_kobj;
 #endif	/* CONFIG_BLK_DEV_INTEGRITY */
+	/*  */
 	int node_id;
+	/*  */
 	struct badblocks *bb;
+	/*  */
 	struct lockdep_map lockdep_map;
 };
 //

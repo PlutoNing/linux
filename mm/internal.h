@@ -510,13 +510,14 @@ unsigned long reclaim_clean_pages_from_list(struct zone *zone,
  * !MMU
  */
 #ifdef CONFIG_MMU
+/* 允许内存耗尽 */
 #define ALLOC_OOM		0x08
 #else
 #define ALLOC_OOM		ALLOC_NO_WATERMARKS
 #endif
 
-#define ALLOC_HARDER		 0x10 /* try to alloc harder */
-#define ALLOC_HIGH		 0x20 /* __GFP_HIGH set */
+#define ALLOC_HARDER		 0x10 /* try to alloc harder  ALLOC_HARDER 的设置表示可以使用 high-atomic 紧急预留内存*/
+#define ALLOC_HIGH		 0x20 /* __GFP_HIGH set 当内存分配策略设置为 ALLOC_HIGH 或者 ALLOC_HARDER 时，会使内存分配更加的激进，努力一些。 */
 #define ALLOC_CPUSET		 0x40 /* check for correct cpuset */
 #define ALLOC_CMA		 0x80 /* allow allocations from CMA areas */
 #ifdef CONFIG_ZONE_DMA32

@@ -109,6 +109,8 @@ struct bdi_writeback_congested {
 };
 
 /*
+2024年6月30日14:50:36
+用于管理一个块设备的回写，同时支持 cgroup 进行限制
  * Each wb (bdi_writeback) can perform writeback operations, is measured
  * and throttled, independently.  Without cgroup writeback, each bdi
  * (bdi_writeback) is served by its embedded bdi->wb.
@@ -133,11 +135,11 @@ struct bdi_writeback {
 	unsigned long state;		/* Always use atomic bitops on this */
 	unsigned long last_old_flush;	/* last old data flush */
 
-	struct list_head b_dirty;	/* dirty inodes */
-	struct list_head b_io;		/* parked for writeback */
-	struct list_head b_more_io;	/* parked for more writeback */
-	struct list_head b_dirty_time;	/* time stamps are dirty */
-	spinlock_t list_lock;		/* protects the b_* lists */
+	struct list_head b_dirty;	/* dirty inodes 暂存所有的脏 inode 的链表 */
+	struct list_head b_io;		/* parked for writeback  暂存即将回写的 inode 的链表*/
+	struct list_head b_more_io;	/* parked for more writeback  暂存由于一次回写数量限制原因导致的等待下次回写的 inode 链表*/
+	struct list_head b_dirty_time;	/* time stamps are dirty  暂存仅仅是时间戳更新而被至脏的 inode 的链表*/
+	spinlock_t list_lock;		/* protects the b_* lists  为了保护上述 4 个 b_* 列表的自旋锁*/
 
 	struct percpu_counter stat[NR_WB_STAT_ITEMS];
 
@@ -162,9 +164,9 @@ struct bdi_writeback {
 	int dirty_exceeded;
 	enum wb_reason start_all_reason;
 
-	spinlock_t work_lock;		/* protects work_list & dwork scheduling */
-	struct list_head work_list;
-	struct delayed_work dwork;	/* work item used for writeback */
+	spinlock_t work_lock;		/* protects work_list & dwork scheduling 为了保护 work_list 以及 dwork 调度的自旋锁*/
+	struct list_head work_list; /* 暂存所有需要回写的任务的链表 */
+	struct delayed_work dwork;	/* work item used for writeback 用于 page cache 回写机制的 work 关键结构体 */
 
 	unsigned long dirty_sleep;	/* last wait */
 
@@ -184,10 +186,13 @@ struct bdi_writeback {
 	};
 #endif
 };
+/* 2024年6月30日14:47:09
 
+ */
 struct backing_dev_info {
 	u64 id;
 	struct rb_node rb_node; /* keyed by ->id */
+	/*  用来把所有backing_dev_info 链接到全局链表bdi_list */
 	struct list_head bdi_list;
 	unsigned long ra_pages;	/* max readahead in PAGE_SIZE units */
 	unsigned long io_pages;	/* max allowed IO size */
@@ -207,7 +212,7 @@ struct backing_dev_info {
 	 */
 	atomic_long_t tot_write_bandwidth;
 
-	struct bdi_writeback wb;  /* the root writeback info for this bdi */
+	struct bdi_writeback wb;  /* the root writeback info for this bdi 用于控制回写行为的核心成员 */
 	struct list_head wb_list; /* list of all wbs */
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct radix_tree_root cgwb_tree; /* radix tree of active cgroup wbs */

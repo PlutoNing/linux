@@ -35,19 +35,22 @@
 #include <linux/falloc.h>
 #include <linux/uaccess.h>
 #include "internal.h"
-
+/* 2024年6月30日14:39:52
+Linux 将块设备的 block_device 和 bdev 文件系统的块设备的 inode通过 struct bdev_inode 进行关联
+ */
 struct bdev_inode {
 	struct block_device bdev;
 	struct inode vfs_inode;
 };
 
 static const struct address_space_operations def_blk_aops;
-
+/* 2024年6月30日14:39:46 */
 static inline struct bdev_inode *BDEV_I(struct inode *inode)
 {
 	return container_of(inode, struct bdev_inode, vfs_inode);
 }
-
+/* 2024年6月30日14:39:31
+ */
 struct block_device *I_BDEV(struct inode *inode)
 {
 	return &BDEV_I(inode)->bdev;

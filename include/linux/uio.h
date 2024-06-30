@@ -12,7 +12,8 @@
 
 struct page;
 struct pipe_inode_info;
-
+/* 2024年6月29日22:25:33
+ */
 struct kvec {
 	void *iov_base; /* and that should *never* hold a userland pointer */
 	size_t iov_len;
@@ -26,23 +27,33 @@ enum iter_type {
 	ITER_PIPE = 32,
 	ITER_DISCARD = 64,
 };
+/* 2024年6月29日22:25:40
 
+ */
 struct iov_iter {
 	/*
 	 * Bit 0 is the read/write bit, set if we're writing.
 	 * Bit 1 is the BVEC_FLAG_NO_REF bit, set if type is a bvec and
 	 * the caller isn't expecting to drop a page reference when done.
+	 表示读或者写
 	 */
 	unsigned int type;
+	/* 第一个iovec中，数据起始偏移 */
 	size_t iov_offset;
+	/* 数据大小 */
 	size_t count;
 	union {
+		/* 结构与kvec一致，描述用户态的一段空间 */
 		const struct iovec *iov;
+		/* 描述内核态的一段空间 */
 		const struct kvec *kvec;
+		/* 描述一个内存页中的一段空间 */
 		const struct bio_vec *bvec;
+		/*  */
 		struct pipe_inode_info *pipe;
 	};
 	union {
+		/* iovec数量 */
 		unsigned long nr_segs;
 		struct {
 			int idx;
@@ -236,6 +247,7 @@ static inline size_t iov_iter_count(const struct iov_iter *i)
 }
 
 /*
+2024年6月29日22:34:45
  * Cap the iov_iter by given limit; note that the second argument is
  * *not* the new size - it's upper limit for such.  Passing it a value
  * greater than the amount of data in iov_iter is fine - it'll just do

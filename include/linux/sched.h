@@ -842,9 +842,9 @@ struct task_struct {
 	unsigned			brk_randomized:1;
 #endif
 #ifdef CONFIG_CGROUPS
-	/* disallow userland-initiated cgroup migration */
+	/* disallow userland-initiated cgroup migration 禁止 userland 启动的 cgroup 迁移*/
 	unsigned			no_cgroup_migration:1;
-	/* task is frozen/stopped (used by the cgroup freezer) */
+	/* task is frozen/stopped (used by the cgroup freezer) 任务被冻结/停止（由 cgroup freezer 使用*/
 	unsigned			frozen:1;
 #endif
 #ifdef CONFIG_BLK_CGROUP
@@ -899,7 +899,10 @@ struct task_struct {
 /* vfork是否完成 */
 	struct completion		*vfork_done;
 
-	/* CLONE_CHILD_SETTID: */
+	/* CLONE_CHILD_SETTID:如果copy_process函数的clone_flags参数的值被置为CLONE_CHILD_SETTID或
+	CLONE_CHILD_CLEARTID，则会把child_tidptr参数的值分别复制到set_child_tid和clear_child_tid成员。这些标志说明必须改变子
+进程用户态地址空间的child_tidptr所指向的变量的值。
+ */
 	int __user			*set_child_tid;
 
 	/* CLONE_CHILD_CLEARTID: */

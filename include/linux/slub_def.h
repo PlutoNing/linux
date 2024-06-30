@@ -77,9 +77,11 @@ struct kmem_cache_order_objects {
 };
 
 /*
+2024年6月30日22:22:19
  * Slab cache management.
  */
 struct kmem_cache {
+
 	struct kmem_cache_cpu __percpu *cpu_slab;
 	/* Used for retrieving partial slabs, etc. */
 	slab_flags_t flags;

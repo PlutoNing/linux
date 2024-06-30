@@ -369,14 +369,24 @@ struct per_cpu_pages {
 	int high;		/* high watermark, emptying needed，当count >= high时，需要将batch个页框释放给zone */
 	int batch;		/* chunk size for buddy add/remove，每次从zone中获取或者释放给zone，操作的内存数 */
 
-	/* Lists of pages, one per migrate type stored on the pcp-lists */
+	/* Lists of pages, one per migrate type stored on the pcp-lists
+	按照不同的迁移类型来组织 */
 	struct list_head lists[MIGRATE_PCPTYPES];
 };
 /* 
 2024年06月21日15:47:31
 percpu内存结构
+2024年6月30日22:12:14
+在伙伴系统的研究中，我们看到page是挂在对应的zone下面的，这个数量是固定的。如果我们每次直接从伙伴系统中获取页，那会导致一个问题。
+
+随着cpu个数的增加，对伙伴系统的竞争也会越来越大
+
+linux内核中为了解决这个问题，引入了per_cpu_pageset。
+----------------------
+
  */
 struct per_cpu_pageset {
+	/*  */
 	struct per_cpu_pages pcp;
 #ifdef CONFIG_NUMA
 	s8 expire;
@@ -479,7 +489,8 @@ struct zone {
 	 * memory (otherwise we risk to run OOM on the lower zones despite
 	 * there being tons of freeable ram on the higher zones).  This array is
 	 * recalculated at runtime if the sysctl_lowmem_reserve_ratio sysctl
-	 * changes.
+	 * changes.每个内存管理区（zone）都有一个lowmem_reserve字段，
+	 它代表本管理区预留的物理内存大小
 	 */
 	long lowmem_reserve[MAX_NR_ZONES];
 
@@ -489,6 +500,7 @@ struct zone {
 #endif
 	/* todo */
 	struct pglist_data	*zone_pgdat;
+	/*  */
 	struct per_cpu_pageset __percpu *pageset;
 
 #ifndef CONFIG_SPARSEMEM

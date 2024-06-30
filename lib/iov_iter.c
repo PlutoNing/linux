@@ -859,7 +859,8 @@ bool _copy_from_iter_full_nocache(void *addr, size_t bytes, struct iov_iter *i)
 	return true;
 }
 EXPORT_SYMBOL(_copy_from_iter_full_nocache);
-
+/* 2024年6月30日15:12:44
+ */
 static inline bool page_copy_sane(struct page *page, size_t offset, size_t n)
 {
 	struct page *head;
@@ -871,10 +872,14 @@ static inline bool page_copy_sane(struct page *page, size_t offset, size_t n)
 	 * However, we mostly deal with order-0 pages and thus can
 	 * avoid a possible cache line miss for requests that fit all
 	 * page orders.
+	 offset 大于等于0
+	 或者在一个页面内？
+	 就可以读取吗
 	 */
 	if (n <= v && v <= PAGE_SIZE)
 		return true;
 
+	
 	head = compound_head(page);
 	v += (page - head) << PAGE_SHIFT;
 
@@ -883,7 +888,7 @@ static inline bool page_copy_sane(struct page *page, size_t offset, size_t n)
 	WARN_ON(1);
 	return false;
 }
-
+/* 2024年6月30日15:12:32 */
 size_t copy_page_to_iter(struct page *page, size_t offset, size_t bytes,
 			 struct iov_iter *i)
 {

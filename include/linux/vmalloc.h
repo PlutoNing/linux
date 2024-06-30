@@ -37,24 +37,28 @@ struct notifier_block;		/* in notifier.h */
 #ifndef IOREMAP_MAX_ORDER
 #define IOREMAP_MAX_ORDER	(7 + PAGE_SHIFT)	/* 128 pages */
 #endif
+/* 2024年6月30日22:50:15
 
+*/
 struct vm_struct {
-	struct vm_struct	*next;
-	void			*addr;
-	unsigned long		size;
-	unsigned long		flags;
-	struct page		**pages;
-	unsigned int		nr_pages;
-	phys_addr_t		phys_addr;
-	const void		*caller;
+	struct vm_struct	*next; /* 虚拟地址 */
+	void			*addr; /* 虚拟地址 */
+	unsigned long		size; /* 大小 */
+	unsigned long		flags; /*  */
+	struct page		**pages; /* vm所映射的page */
+	unsigned int		nr_pages; /* vm 所映射的page 的个数 */
+	phys_addr_t		phys_addr; /* 对应起始的物理地址和addr相对应 */
+	const void		*caller; /*  */
 };
+/* 2024年6月30日22:58:49
 
+ */
 struct vmap_area {
-	unsigned long va_start;
-	unsigned long va_end;
+	unsigned long va_start; /* 区间的起始地址 */
+	unsigned long va_end; /* 区间的结束地址 */
 
 	struct rb_node rb_node;         /* address sorted rbtree */
-	struct list_head list;          /* address sorted list */
+	struct list_head list;          /* address sorted list ，链表节点*/
 
 	/*
 	 * The following three variables can be packed, because
@@ -131,7 +135,7 @@ void vmalloc_sync_all(void);
 /*
  *	Lowlevel-APIs (not for driver use!)
  */
-
+/* 2024年6月30日23:59:07 */
 static inline size_t get_vm_area_size(const struct vm_struct *area)
 {
 	if (!(area->flags & VM_NO_GUARD))

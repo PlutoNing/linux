@@ -1382,6 +1382,7 @@ static inline void dec_slabs_node(struct kmem_cache *s, int node,
 #endif /* CONFIG_SLUB_DEBUG */
 
 /*
+2024年6月30日23:25:19
  * Hooks for other subsystems that check memory allocations. In a typical
  * production configuration these hooks all should produce no code at all.
  */
@@ -2662,6 +2663,7 @@ static __always_inline void maybe_wipe_obj_freeptr(struct kmem_cache *s,
 }
 
 /*
+2024年6月30日23:27:04
  * Inlined fastpath so that allocation functions (kmalloc, kmem_cache_alloc)
  * have the fastpath folded into their functions. So no function call
  * overhead for requests that can be satisfied on the fastpath.
@@ -2789,6 +2791,9 @@ EXPORT_SYMBOL(kmem_cache_alloc_trace);
 #endif
 
 #ifdef CONFIG_NUMA
+/* 2024年6月30日23:26:44
+
+*/
 void *kmem_cache_alloc_node(struct kmem_cache *s, gfp_t gfpflags, int node)
 {
 	void *ret = slab_alloc_node(s, gfpflags, node, _RET_IP_);
@@ -3011,7 +3016,9 @@ void ___cache_free(struct kmem_cache *cache, void *x, unsigned long addr)
 	do_slab_free(cache, virt_to_head_page(x), x, NULL, 1, addr);
 }
 #endif
+/* 2024年6月30日23:42:53
 
+ */
 void kmem_cache_free(struct kmem_cache *s, void *x)
 {
 	s = cache_from_obj(s, x);
@@ -3806,6 +3813,9 @@ void *__kmalloc(size_t size, gfp_t flags)
 EXPORT_SYMBOL(__kmalloc);
 
 #ifdef CONFIG_NUMA
+/* 2024年6月30日23:22:26
+
+*/
 static void *kmalloc_large_node(size_t size, gfp_t flags, int node)
 {
 	struct page *page;
@@ -3813,6 +3823,7 @@ static void *kmalloc_large_node(size_t size, gfp_t flags, int node)
 	unsigned int order = get_order(size);
 
 	flags |= __GFP_COMP;
+	/* 从buddy分配 */
 	page = alloc_pages_node(node, flags, order);
 	if (page) {
 		ptr = page_address(page);
@@ -3822,13 +3833,16 @@ static void *kmalloc_large_node(size_t size, gfp_t flags, int node)
 
 	return kmalloc_large_node_hook(ptr, size, flags);
 }
-
+/* 2024年6月30日23:20:49
+指定的numa节点上分配连续的物理内存空间，并设置为0
+*/
 void *__kmalloc_node(size_t size, gfp_t flags, int node)
 {
 	struct kmem_cache *s;
 	void *ret;
 
 	if (unlikely(size > KMALLOC_MAX_CACHE_SIZE)) {
+		/* 大的内存的路径从buddy，小的从下面slab分配 */
 		ret = kmalloc_large_node(size, flags, node);
 
 		trace_kmalloc_node(_RET_IP_, ret,
@@ -3837,12 +3851,12 @@ void *__kmalloc_node(size_t size, gfp_t flags, int node)
 
 		return ret;
 	}
-
+	/* 小块的从slab分配 */
 	s = kmalloc_slab(size, flags);
 
 	if (unlikely(ZERO_OR_NULL_PTR(s)))
 		return s;
-
+	/*  */
 	ret = slab_alloc_node(s, flags, node, _RET_IP_);
 
 	trace_kmalloc_node(_RET_IP_, ret, size, s->size, flags, node);

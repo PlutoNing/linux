@@ -37,17 +37,29 @@
 #define MIN_WRITEBACK_PAGES	(4096UL >> (PAGE_SHIFT - 10))
 
 /*
+2024年6月30日14:52:12
+
  * Passed into wb_writeback(), essentially a subset of writeback_control
+ 后续通过 include/linux/writeback.h 中的 writeback_control 结构体封装，传递给底层的 writepages 函数
+ 
  */
 struct wb_writeback_work {
+	/* 本次回写的页数限制 */
 	long nr_pages;
+	/*  回写的文件系统的超级块 */
 	struct super_block *sb;
 	unsigned long *older_than_this;
+	/* 回写的模式 */
 	enum writeback_sync_modes sync_mode;
+	/* tag-and-write 机制标记 */
 	unsigned int tagged_writepages:1;
+	/* 定期回写标记 */
 	unsigned int for_kupdate:1;
+	/*  继续上次循环回写标记*/
 	unsigned int range_cyclic:1;
+	/* 阈值回写标记 */
 	unsigned int for_background:1;
+	/*  sync 系统调用标记 */
 	unsigned int for_sync:1;	/* sync(2) WB_SYNC_ALL writeback */
 	unsigned int auto_free:1;	/* free on completion */
 	enum wb_reason reason;		/* why was writeback initiated? */

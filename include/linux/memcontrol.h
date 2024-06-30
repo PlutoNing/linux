@@ -264,6 +264,7 @@ struct mem_cgroup {
 	/* Legacy consumer-oriented counters */
 	/* page + swap内存 */
 	struct page_counter memsw;
+	/* kmem的page cnt，__memcg_kmem_uncharge_memcg会来到此 */
 	struct page_counter kmem;
 	struct page_counter tcpmem;
 

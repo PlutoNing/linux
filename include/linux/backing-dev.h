@@ -154,7 +154,7 @@ static inline bool writeback_in_progress(struct bdi_writeback *wb)
 {
 	return test_bit(WB_writeback_running, &wb->state);
 }
-
+/* 2024年6月30日14:37:22 */
 static inline struct backing_dev_info *inode_to_bdi(struct inode *inode)
 {
 	struct super_block *sb;
@@ -466,7 +466,7 @@ static inline int inode_congested(struct inode *inode, int cong_bits)
 }
 
 #endif	/* CONFIG_CGROUP_WRITEBACK */
-
+/* 2024年6月30日15:07:10 */
 static inline int inode_read_congested(struct inode *inode)
 {
 	return inode_congested(inode, 1 << WB_sync_congested);

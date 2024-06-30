@@ -145,26 +145,32 @@ struct cgroup_subsys_state {
 	struct cgroup *cgroup;
 
 	/* PI: the cgroup subsystem that this css is attached to
-	cgrp子系统
+	这个css附加到的cgroup子系统
 	 */
 	struct cgroup_subsys *ss;
 
-	/* reference count - access via css_[try]get() and css_put() */
+	/* reference count - access via css_[try]get() and css_put()
+	引用计数 - 通过 css_[try]get() 和 css_put() 访问 */
 	struct percpu_ref refcnt;
 
 	/* siblings list anchored at the parent's ->children */
+	/* 锚定在 parent->children 的兄弟列表 */
 	struct list_head sibling;
+	/*  */
 	struct list_head children;
 
-	/* flush target list anchored at cgrp->rstat_css_list */
+	/* flush target list anchored at cgrp->rstat_css_list 
+	刷新锚定在 cgrp->rstat_css_list 上的目标列表
+	*/
 	struct list_head rstat_css_node;
 
 	/*
 	 * PI: Subsys-unique ID.  0 is unused and root is always 1.  The
 	 * matching css can be looked up using css_from_id().
+	 子系统唯一 ID。 0 未使用，root 始终为 1。可以使用 css_from_id() 查找匹配的 css。
 	 */
 	int id;
-
+/*  */
 	unsigned int flags;
 
 	/*
@@ -172,22 +178,28 @@ struct cgroup_subsys_state {
 	 * uniform order among all csses.  It's guaranteed that all
 	 * ->children lists are in the ascending order of ->serial_nr and
 	 * used to allow interrupting and resuming iterations.
+	 单调递增的唯一序列号，它定义了所有 css 之间的统一顺序。保证所有 ->children 
+	 列表都按 ->serial_nr 的升序排列，并用于允许打断和resume遍历。
+	 init_and_link_css()中初始化为 css_serial_nr_next++
 	 */
 	u64 serial_nr;
 
 	/*
 	 * Incremented by online self and children.  Used to guarantee that
 	 * parents are not offlined before their children.
+	 由online的自己和孩子增加。用于保证parent不在孩子之前offline。
 	 */
 	atomic_t online_cnt;
 
-	/* percpu_ref killing and RCU release */
+	/* percpu_ref killing and RCU release 
+	 percpu_ref killing 和 RCU 释放。*/
 	struct work_struct destroy_work;
 	struct rcu_work destroy_rwork;
 
 	/*
 	 * PI: the parent css.	Placed here for cache proximity to following
 	 * fields of the containing structure.
+	 父CSS
 	 */
 	struct cgroup_subsys_state *parent;
 };
@@ -201,12 +213,16 @@ struct cgroup_subsys_state {
  2024年06月20日16:53:36
  每个进程对应一个css_set结构，
  css_set存储了与进程相关的cgropus信息
+ css_set 是一个包含指向一组 cgroup_subsys_state 对象的指针的结构。
+ 这节省了 task_struct 中的空间并加快了 fork()/exit()，因为单个 inc/dec 
+ 和 list_add()/del() 可以增加任务的整个 cgroup set 的引用计数。
  */
 struct css_set {
 	/*
 	 * Set of subsystem states, one for each subsystem. This array is
 	 * immutable after creation apart from the init_css_set during
 	 * subsystem registration (at boot time).
+	 一组子系统的状态，每个子系统一个。 除了子系统注册期间（启动时）的 init_css_set 之外，该数组在创建后是不可变的。
 	 subsys是一个指针数组，存储一组指向cgroup_subsys_state的指针。一个cgroup_subsys_state
 	 就是进程与一个特定的子系统相关的信息。通过这个指针，进程就可以获得相应的cgroups控制信息了。
 	 存储一组指向 cgroup_subsys_state 的指针，通过这个指针进程可以获取到对应
@@ -223,13 +239,17 @@ struct css_set {
 	 * to the matching cset of the nearest domain ancestor.  The
 	 * dom_cset provides access to the domain cgroup and its csses to
 	 * which domain level resource consumptions should be charged.
+	 对于 domain cgroup，以下指向自己. 如果线程化，则到最近域祖先的匹配cset。
+	 dom_cset 提供对域 cgroup 及其 csses 的访问，域级资源消耗应计入其中。
 	 */
 	struct css_set *dom_cset;
 
-	/* the default cgroup associated with this css_set */
+	/* the default cgroup associated with this css_set
+	与此 css_set 关联的默认 cgroup */
 	struct cgroup *dfl_cgrp;
 
-	/* internal task count, protected by css_set_lock */
+	/* internal task count, protected by css_set_lock 
+	内部任务计数，受 css_set_lock 保护*/
 	int nr_tasks;
 
 	/*
@@ -241,10 +261,13 @@ struct css_set {
 	 */
 	 /* tasks是将所有引用此css_set的进程连接成链表 */
 	struct list_head tasks;
+	/* 列出了属于此 cset 但正在迁移出或迁移入的任务。被 css_set_rwsem 保护，但是，在迁移过程中，
+	一旦将任务移动到 mg_tasks，就可以在持有 cgroup_mutex 的同时安全地读取它。 */
 	struct list_head mg_tasks;
 	struct list_head dying_tasks;
 
-	/* all css_task_iters currently walking this cset */
+	/* all css_task_iters currently walking this cset
+	当前正在执行此 cset 的所有 css_task_iters */
 	struct list_head task_iters;
 
 	/*
@@ -253,10 +276,13 @@ struct css_set {
 	 * associated with.  The following node is anchored at
 	 * ->subsys[ssid]->cgroup->e_csets[ssid] and provides a way to
 	 * iterate through all css's attached to a given cgroup.
+	 在默认层次结构中，->subsys[ssid] 可能指向附加到祖先的 css，而不是与 css_set 关联的 cgroup。 
+	 以下节点锚定在 ->subsys[ssid]->cgroup->e_csets[ssid] 并提供了一种方法来遍历所有附加到给定 cgroup 的 css。
 	 */
 	struct list_head e_cset_node[CGROUP_SUBSYS_COUNT];
 
-	/* all threaded csets whose ->dom_cset points to this cset */
+	/* all threaded csets whose ->dom_cset points to this cset
+	->dom_cset 指向此 cset 的所有线程 cset */
 	struct list_head threaded_csets;
 	struct list_head threaded_csets_node;
 
@@ -271,12 +297,14 @@ struct css_set {
 	/*
 	 * List of cgrp_cset_links pointing at cgroups referenced from this
 	 * css_set.  Protected by css_set_lock.
+	 指向从此 css_set 引用的 cgroups 的 cgrp_cset_links 列表。
 	 */
 	struct list_head cgrp_links;
 
 	/*
 	 * List of csets participating in the on-going migration either as
 	 * source or destination.  Protected by cgroup_mutex.
+	 列出作为源或目标，参与正在进行的迁移的 cset 列表
 	 */
 	struct list_head mg_preload_node;
 	struct list_head mg_node;
@@ -287,6 +315,9 @@ struct css_set {
 	 * respectively the source and destination cgroups of the on-going
 	 * migration.  mg_dst_cset is the destination cset the target tasks
 	 * on this cset should be migrated to.  Protected by cgroup_mutex.
+	 如果此 cset 充当迁移的源，则设置以下两个字段。mg_src_cgrp 和 mg_dst_cgrp 
+	 分别是正在进行的迁移的源 cgroup 和目标 cgroup。mg_dst_cset 是此 cset 上的
+	 目标任务应迁移到的目标 cset。受 cgroup_mutex 保护。
 	 */
 	struct cgroup *mg_src_cgrp;
 	struct cgroup *mg_dst_cgrp;
@@ -398,10 +429,12 @@ struct cgroup {
 	 * ancestor_ids[] can determine whether a given cgroup is a
 	 * descendant of another without traversing the hierarchy.
 	 在层级里的深度，root=0
+	 层次结构的每一层都会增加深度。这与 ancestor_ids[] 一起可以确定给定
+	  cgroup 是否是另一个 cgroup 的后代，而无需遍历层次结构。
 	 */
 	int level;
 
-	/* Maximum allowed descent tree depth */
+	/* Maximum allowed descent tree depth 最大允许下降树深度*/
 	int max_depth;
 
 	/*
@@ -414,6 +447,8 @@ struct cgroup {
 	 * by cgroup_mutex and css_set_lock. It's fine to read them holding
 	 * any of cgroup_mutex and css_set_lock; for writing both locks
 	 * should be held.
+	 跟踪可见和dying descent cgroup 的总数。dying cgroups 是被用户删除的 cgroups，
+	 但由于其他人持有引用而仍然存在。max_descendants 是允许的最大descent cgroup 数。
 	 */
 	int nr_descendants;
 	int nr_dying_descendants;
@@ -429,12 +464,17 @@ struct cgroup {
 	 * nr_populated_domain_children or nr_populated_threaded_children
 	 * depending on their type.  Each counter is zero iff all cgroups
 	 * of the type in the subtree proper don't have any tasks.
+	  与此 cgroup 关联的每个非空 css_set 都向 nr_populated_csets 贡献一个。
+	  如果此 cgroup 没有任何任务，则计数为零。所有具有非零 nr_populated_csets 
+	  和/或 nr_populated_children 的子节点
+根据其类型向 nr_populated_domain_children 或 nr_populated_threaded_children 
+贡献一个。 如果子树中所有类型的 cgroup 都没有任何任务，则每个计数器为零。
 	 */
 	int nr_populated_csets;
 	int nr_populated_domain_children;
 	int nr_populated_threaded_children;
 
-	int nr_threaded_children;	/* # of live threaded child cgroups */
+	int nr_threaded_children;	/* # of live threaded child cgroups 实时线程子 cgroups */
 
 	struct kernfs_node *kn;		/* cgroup kernfs entry */
 	struct cgroup_file procs_file;	/* handle for "cgroup.procs" */
@@ -452,7 +492,7 @@ struct cgroup {
 	u16 old_subtree_control;
 	u16 old_subtree_ss_mask;
 
-	/* Private pointers for each registered subsystem */
+	/* Private pointers for each registered subsystem  每个注册子系统的私有指针*/
 	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
 /* root指向了一个cgroupfs_root的结构，就是cgroup所在的层级对应的结构体
 2024年06月27日18:23:13
@@ -461,7 +501,7 @@ struct cgroup {
 
 	/*
 	 * List of cgrp_cset_links pointing at css_sets with tasks in this
-	 * cgroup.  Protected by css_set_lock.
+	 * cgroup.  Protected by css_set_lock.指向 css_sets 的 cgrp_cset_links 列表，其中包含此 cgroup 中的任务。
 	 */
 	struct list_head cset_links;
 
@@ -470,7 +510,7 @@ struct cgroup {
 	 * susbsys disabled will point to css's which are associated with
 	 * the closest ancestor which has the subsys enabled.  The
 	 * following lists all css_sets which point to this cgroup's css
-	 * for the given subsystem.
+	 * for the given subsystem.在默认层次结构中，禁用了某些 susbsys 的 cgroup 的 css_set 将指向与启用了 subsys 的最近祖先相关联的 css。下面列出了所有指向给定子系统的 cgroup 的 css 的 css_sets。
 	 */
 	struct list_head e_csets[CGROUP_SUBSYS_COUNT];
 
@@ -481,10 +521,14 @@ struct cgroup {
 	 * Domain level resource consumptions which aren't tied to a
 	 * specific task are charged to the dom_cgrp.
 	 */
+	 /* 如果 !threaded，self。如果线程化，它指向最近的域祖先。 
+	 在线程子树中，cgroup 不受进程粒度和无内部任务约束。
+	 与特定任务无关的域级资源消耗计入 dom_cgrp。 */
 	struct cgroup *dom_cgrp;
 	struct cgroup *old_dom_cgrp;		/* used while enabling threaded */
 
-	/* per-cpu recursive resource statistics */
+	/* per-cpu recursive resource statistics
+	每个 CPU 的递归资源统计。*/
 	struct cgroup_rstat_cpu __percpu *rstat_cpu;
 	struct list_head rstat_css_list;
 
@@ -495,31 +539,31 @@ struct cgroup {
 
 	/*
 	 * list of pidlists, up to two for each namespace (one for procs, one
-	 * for tasks); created on demand.
+	 * for tasks); created on demand.pidlists 列表，每个命名空间最多两个（一个用于 procs，一个用于tasks），按需创建。
 	 */
 	struct list_head pidlists;
 	struct mutex pidlist_mutex;
 
-	/* used to wait for offlining of csses */
+	/* used to wait for offlining of csses用于等待csses下线 */
 	wait_queue_head_t offline_waitq;
 
-	/* used to schedule release agent */
+	/* used to schedule release agent 用于调度 release agent*/
 	struct work_struct release_agent_work;
 
-	/* used to track pressure stalls */
+	/* used to track pressure stalls 用于跟踪pressure stalls */
 	struct psi_group psi;
 
-	/* used to store eBPF programs */
+	/* used to store eBPF programs  用于存放eBPF程序*/
 	struct cgroup_bpf bpf;
 
-	/* If there is block congestion on this cgroup. */
+	/* If there is block congestion on this cgroup.用于判断此 cgroup 上是否存在块拥塞。 */
 	atomic_t congestion_count;
 
-	/* Used to store internal freezer state */
+	/* Used to store internal freezer state用于存储内部freezer状态 */
 	struct cgroup_freezer_state freezer;
 
 	/* ids of the ancestors at each level including self
-	记录了自己各个层级的祖先
+	记录了自己各个层级的祖先，每个级别的祖先的 ID，包括自己。
 	 */
 	int ancestor_ids[];
 };
@@ -529,43 +573,50 @@ struct cgroup {
  * associated with a kernfs_root to form an active hierarchy.  This is
  * internal to cgroup core.  Don't access directly from controllers.
  2024年6月24日23:29:35
- 
+ cgroup_root 结构代表 cgroup 层次结构的根，并且可以与 kernfs_root 相关联以形成
+ 活动层次结构。这是 cgroup core内部的，不要直接从控制器访问。
  */
 struct cgroup_root {
 	struct kernfs_root *kf_root;
 
-	/* The bitmask of subsystems attached to this hierarchy */
+	/* The bitmask of subsystems attached to this hierarchy 
+	附加到此层次结构的子系统的位掩码。cgroup_init()中 cgrp_dfl_root.subsys_mask 
+	在初始化时，已经初始化的子系统在这个mask中。*/
 	unsigned int subsys_mask;
 
-	/* Unique id for this hierarchy. */
+	/* Unique id for this hierarchy. 此层次结构中保持唯一的ID。*/
 	int hierarchy_id;
 
-	/* The root cgroup.  Root is destroyed on its release. */
+	/* The root cgroup.  Root is destroyed on its release.根cgroup */
 	struct cgroup cgrp;
 
 	/* for cgrp->ancestor_ids[0] */
 	int cgrp_ancestor_id_storage;
 
-	/* Number of cgroups in the hierarchy, used only for /proc/cgroups */
+	/* Number of cgroups in the hierarchy, used only for /proc/cgroups 
+	层次结构中的 cgroup 数量，仅用于 /proc/cgroups*/
 	atomic_t nr_cgrps;
 
-	/* A list running through the active hierarchies */
+	/* A list running through the active hierarchies 遍历活动层次结构的列表 */
 	struct list_head root_list;
 
-	/* Hierarchy-specific flags */
+	/* Hierarchy-specific flags  特定于层次结构的标志*/
 	unsigned int flags;
 
 	/* IDs for cgroups in this hierarchy */
 	struct idr cgroup_idr;
 
-	/* The path to use for release notifications. */
+	/* The path to use for release notifications.用于release notifications的路径。初始化为 ctx->release_agent. */
 	char release_agent_path[PATH_MAX];
 
-	/* The name for this hierarchy - may be empty */
+	/* The name for this hierarchy - may be empty此层次结构的名称，可能为空 */
 	char name[MAX_CGROUP_ROOT_NAMELEN];
 };
 
 /*
+2024年6月30日12:41:15
+cgroup各文件节点的定义结构，如 "cgroup.procs"，
+主要在 cgroup_init_cftypes 中初始化。
  * struct cftype: handler definitions for cgroup control files
  *
  * When reading/writing to a file:
@@ -577,6 +628,7 @@ struct cftype {
 	 * By convention, the name should begin with the name of the
 	 * subsystem, followed by a period.  Zero length string indicates
 	 * end of cftype array.
+	 按照惯例，名称应以子系统的名称开头，后跟一个句点。零长度字符串表示 cftype 数组的结尾
 	 */
 	char name[MAX_CFTYPE_NAME];
 	unsigned long private;
@@ -584,10 +636,13 @@ struct cftype {
 	/*
 	 * The maximum length of string, excluding trailing nul, that can
 	 * be passed to write.  If < PAGE_SIZE-1, PAGE_SIZE-1 is assumed.
+	 可以传递给写入的字符串的最大长度，不包括尾随 nul。 如果 <PAGE_SIZE-1，则假定为 PAGE_SIZE-1。
 	 */
 	size_t max_write_len;
 
-	/* CFTYPE_* flags */
+	/* CFTYPE_* flags 
+	cgroup_init()中 ss->dfl_cftypes 中指定的文件节点会或上 __CFTYPE_ONLY_ON_DFL。
+	ss->legacy_cftypes 中指定的文件节点会或上 __CFTYPE_NOT_ON_DFL，若二者相同指向，就不会或上任何标志。*/
 	unsigned int flags;
 
 	/*
@@ -595,6 +650,8 @@ struct cftype {
 	 * a struct cgroup_file field.  cgroup will record the handle of
 	 * the created file into it.  The recorded handle can be used as
 	 * long as the containing css remains accessible.
+	 如果非零，则应包含从 css 开始到 struct cgroup_file 字段的偏移量。
+	 cgroup 会将创建的文件的句柄记录到其中。只要包含的 css 保持可访问性，就可以使用记录的句柄。
 	 */
 	unsigned int file_offset;
 
@@ -602,8 +659,10 @@ struct cftype {
 	 * Fields used for internal bookkeeping.  Initialized automatically
 	 * during registration.
 	 */
-	struct cgroup_subsys *ss;	/* NULL for cgroup core files */
+	struct cgroup_subsys *ss;	/* NULL for cgroup core files 用于内部簿记的字段。 注册时自动初始化。 */
 	struct list_head node;		/* anchored at ss->cfts */
+	/* cgroup_init_cftypes: 若文件节点实现了.seq_start 回调就指向全局
+	cgroup_kf_ops，否则指向全局 cgroup_kf_single_ops。 */
 	struct kernfs_ops *kf_ops;
 
 	int (*open)(struct kernfs_open_file *of);

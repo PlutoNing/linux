@@ -472,6 +472,7 @@ static inline int pfn_to_bitidx(struct page *page, unsigned long pfn)
 }
 
 /**
+2024年6月30日22:16:00
  * get_pfnblock_flags_mask - Return the requested group of flags for the pageblock_nr_pages block of pages
  * @page: The page within the block of interest
  * @pfn: The target page frame number
@@ -505,7 +506,8 @@ unsigned long get_pfnblock_flags_mask(struct page *page, unsigned long pfn,
 {
 	return __get_pfnblock_flags_mask(page, pfn, end_bitidx, mask);
 }
-
+/* 2024年6月30日22:15:49
+ */
 static __always_inline int get_pfnblock_migratetype(struct page *page, unsigned long pfn)
 {
 	return __get_pfnblock_flags_mask(page, pfn, PB_migrate_end, MIGRATETYPE_MASK);
@@ -891,6 +893,8 @@ compaction_capture(struct capture_control *capc, struct page *page,
 #endif /* CONFIG_COMPACTION */
 
 /*
+2024年6月30日22:16:42
+释放页面到buddy，还处理合并
  * Freeing function for a buddy system allocator.
  *
  * The concept of a buddy system is to maintain direct-mapped table
@@ -1044,7 +1048,9 @@ static inline bool page_expected_state(struct page *page,
 
 	return true;
 }
-
+/* 2024年6月30日21:56:34
+释放页面前的检查
+ */
 static void free_pages_check_bad(struct page *page)
 {
 	const char *bad_reason;
@@ -1069,7 +1075,7 @@ static void free_pages_check_bad(struct page *page)
 #endif
 	bad_page(page, bad_reason, bad_flags);
 }
-
+/* 2024年6月30日21:56:20 */
 static inline int free_pages_check(struct page *page)
 {
 	if (likely(page_expected_state(page, PAGE_FLAGS_CHECK_AT_FREE)))
@@ -1079,7 +1085,7 @@ static inline int free_pages_check(struct page *page)
 	free_pages_check_bad(page);
 	return 1;
 }
-
+/* 2024年6月30日21:44:14 */
 static int free_tail_pages_check(struct page *head_page, struct page *page)
 {
 	int ret = 1;
@@ -1137,7 +1143,8 @@ static void kernel_init_free_pages(struct page *page, int numpages)
 	for (i = 0; i < numpages; i++)
 		clear_highpage(page + i);
 }
-
+/* 2024年6月30日21:42:10
+ */
 static __always_inline bool free_pages_prepare(struct page *page,
 					unsigned int order, bool check_free)
 {
@@ -1152,6 +1159,7 @@ static __always_inline bool free_pages_prepare(struct page *page,
 	 * avoid checking PageCompound for order-0 pages.
 	 */
 	if (unlikely(order)) {
+		/* 很小可能性是多个页面 */
 		bool compound = PageCompound(page);
 		int i;
 
@@ -1160,8 +1168,10 @@ static __always_inline bool free_pages_prepare(struct page *page,
 		if (compound)
 			ClearPageDoubleMap(page);
 		for (i = 1; i < (1 << order); i++) {
+			/* 如果是复合页 */
 			if (compound)
 				bad += free_tail_pages_check(page, page + i);
+			/*  */
 			if (unlikely(free_pages_check(page + i))) {
 				bad++;
 				continue;
@@ -1169,9 +1179,11 @@ static __always_inline bool free_pages_prepare(struct page *page,
 			(page + i)->flags &= ~PAGE_FLAGS_CHECK_AT_PREP;
 		}
 	}
+	/* bad是不适合释放的页面的数量？ */
 	if (PageMappingFlags(page))
 		page->mapping = NULL;
 	if (memcg_kmem_enabled() && PageKmemcg(page))
+	/* memcg的uncharge */
 		__memcg_kmem_uncharge(page, order);
 	if (check_free)
 		bad += free_pages_check(page);
@@ -1209,6 +1221,7 @@ static __always_inline bool free_pages_prepare(struct page *page,
 
 #ifdef CONFIG_DEBUG_VM
 /*
+2024年6月30日21:42:00
  * With DEBUG_VM enabled, order-0 pages are checked immediately when being freed
  * to pcp lists. With debug_pagealloc also enabled, they are also rechecked when
  * moved from pcp lists to free lists.
@@ -1256,6 +1269,8 @@ static inline void prefetch_buddy(struct page *page)
 }
 
 /*
+2024年6月30日22:14:12
+todo
  * Frees a number of pages from the PCP lists
  * Assumes all pages on list are in same zone, and of same order.
  * count is the number of pages to free.
@@ -1342,7 +1357,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 	}
 	spin_unlock(&zone->lock);
 }
-
+/* 2024年6月30日22:16:16 */
 static void free_one_page(struct zone *zone,
 				struct page *page, unsigned long pfn,
 				unsigned int order,
@@ -1353,6 +1368,7 @@ static void free_one_page(struct zone *zone,
 		is_migrate_isolate(migratetype))) {
 		migratetype = get_pfnblock_migratetype(page, pfn);
 	}
+	/* 归还 */
 	__free_one_page(page, pfn, zone, order, migratetype);
 	spin_unlock(&zone->lock);
 }
@@ -1433,7 +1449,9 @@ void __meminit reserve_bootmem_region(phys_addr_t start, phys_addr_t end)
 		}
 	}
 }
-
+/* 2024年6月30日22:15:16
+buddy释放多个页面
+ */
 static void __free_pages_ok(struct page *page, unsigned int order)
 {
 	unsigned long flags;
@@ -1442,7 +1460,7 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 
 	if (!free_pages_prepare(page, order, true))
 		return;
-
+		/* 获取迁移类型， */
 	migratetype = get_pfnblock_migratetype(page, pfn);
 	local_irq_save(flags);
 	__count_vm_events(PGFREE, 1 << order);
@@ -3077,7 +3095,9 @@ void mark_free_pages(struct zone *zone)
 	spin_unlock_irqrestore(&zone->lock, flags);
 }
 #endif /* CONFIG_PM */
-
+/* 2024年6月30日21:41:34
+一些释放前的检查
+ */
 static bool free_unref_page_prepare(struct page *page, unsigned long pfn)
 {
 	int migratetype;
@@ -3089,7 +3109,9 @@ static bool free_unref_page_prepare(struct page *page, unsigned long pfn)
 	set_pcppage_migratetype(page, migratetype);
 	return true;
 }
-
+/* 2024年6月30日22:10:34
+buddy释放单个页面到pcp链表
+ */
 static void free_unref_page_commit(struct page *page, unsigned long pfn)
 {
 	struct zone *zone = page_zone(page);
@@ -3108,33 +3130,38 @@ static void free_unref_page_commit(struct page *page, unsigned long pfn)
 	 */
 	if (migratetype >= MIGRATE_PCPTYPES) {
 		if (unlikely(is_migrate_isolate(migratetype))) {
+			/* 直接释放 */
 			free_one_page(zone, page, pfn, 0, migratetype);
 			return;
 		}
 		migratetype = MIGRATE_MOVABLE;
 	}
-
+	/* 获取buddy的percpu pages */
 	pcp = &this_cpu_ptr(zone->pageset)->pcp;
 	list_add(&page->lru, &pcp->lists[migratetype]);
 	pcp->count++;
 	if (pcp->count >= pcp->high) {
+		/* 需要从percpu的buddy“缓存”还给系统node了 */
+		/* 获取一次还的数量 */
 		unsigned long batch = READ_ONCE(pcp->batch);
 		free_pcppages_bulk(zone, batch, pcp);
 	}
 }
 
 /*
+2024年6月30日21:41:06
  * Free a 0-order page
  */
 void free_unref_page(struct page *page)
 {
 	unsigned long flags;
 	unsigned long pfn = page_to_pfn(page);
-
+	/* 检查工作 */
 	if (!free_unref_page_prepare(page, pfn))
 		return;
 
 	local_irq_save(flags);
+	/* 正式释放单个页面 */
 	free_unref_page_commit(page, pfn);
 	local_irq_restore(flags);
 }
@@ -3332,7 +3359,8 @@ static struct page *rmqueue_pcplist(struct zone *preferred_zone,
 
 /*
 2024年6月26日22:44:53
-
+从budyy分配
+如果没有合适order，会从更大order切分
  * Allocate a page from the given zone. Use pcplists for order-0 allocations.
  */
 static inline
@@ -3477,6 +3505,8 @@ static noinline bool should_fail_alloc_page(gfp_t gfp_mask, unsigned int order)
 ALLOW_ERROR_INJECTION(should_fail_alloc_page, TRUE);
 
 /*
+、2024年6月30日21:27:58
+
  * Return true if free base pages are above 'mark'. For high-order checks it
  * will return true of the order-0 watermark is reached and there is at least
  * one free page of a suitable size. Checking now avoids taking the zone lock
@@ -3502,6 +3532,7 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 	 * atomic reserve but it avoids a search.
 	 */
 	if (likely(!alloc_harder)) {
+		/* 分配不紧急，那么对这个分配来说空闲页面就减去预留内存 */
 		free_pages -= z->nr_reserved_highatomic;
 	} else {
 		/*
@@ -3509,6 +3540,7 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 		 * users on the grounds that it's definitely going to be in
 		 * the exit path shortly and free memory. Any allocation it
 		 * makes during the free path will be small and short-lived.
+		 紧急分配
 		 */
 		if (alloc_flags & ALLOC_OOM)
 			min -= min / 2;
@@ -3544,6 +3576,7 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 			continue;
 
 		for (mt = 0; mt < MIGRATE_PCPTYPES; mt++) {
+			/* 这几个迁移类型能满足就行，后续可以挪用 */
 			if (!free_area_empty(area, mt))
 				return true;
 		}
@@ -3567,7 +3600,9 @@ bool zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 	return __zone_watermark_ok(z, order, mark, classzone_idx, alloc_flags,
 					zone_page_state(z, NR_FREE_PAGES));
 }
-
+/* 2024年6月30日19:47:29
+测试当前zone的水位情况
+ */
 static inline bool zone_watermark_fast(struct zone *z, unsigned int order,
 		unsigned long mark, int classzone_idx, unsigned int alloc_flags)
 {
@@ -4932,6 +4967,8 @@ out:
 EXPORT_SYMBOL(__alloc_pages_nodemask);
 
 /*
+2024年6月30日19:32:54
+就是包装alloc pages？返回虚拟地址
  * Common helper functions. Never use with __GFP_HIGHMEM because the returned
  * address cannot represent highmem pages. Use alloc_pages and then kmap if
  * you need to access high mem.
@@ -4952,22 +4989,28 @@ unsigned long get_zeroed_page(gfp_t gfp_mask)
 	return __get_free_pages(gfp_mask | __GFP_ZERO, 0);
 }
 EXPORT_SYMBOL(get_zeroed_page);
-
+/* 2024年6月30日21:39:50 */
 static inline void free_the_page(struct page *page, unsigned int order)
 {
 	if (order == 0)		/* Via pcp? */
+	/* 释放单个页面 */
 		free_unref_page(page);
 	else
+	/* 释放多个页面 */
 		__free_pages_ok(page, order);
 }
+/* 2024年6月30日21:37:52
 
+ */
 void __free_pages(struct page *page, unsigned int order)
 {
 	if (put_page_testzero(page))
 		free_the_page(page, order);
 }
 EXPORT_SYMBOL(__free_pages);
+/* 2024年6月30日21:35:19
 
+*/
 void free_pages(unsigned long addr, unsigned int order)
 {
 	if (addr != 0) {
