@@ -25,6 +25,9 @@
  * After unlinking the last vma on the list, we must garbage collect
  * the anon_vma object itself: we're guaranteed no page can be
  * pointing to this anon_vma once its vma list is empty.
+ 2024年7月1日23:26:28
+ struct anon_vma，简称AV;
+AV结构用于管理匿名类型VMAs，当有匿名页需要unmap处理时，可以先找到AV，然后再通过AV进行查找处理
  */
 struct anon_vma {
 	struct anon_vma *root;		/* Root of this anon_vma tree */
@@ -57,7 +60,9 @@ struct anon_vma {
 	 * mm_take_all_locks() (mm_all_locks_mutex).
 	 */
 
-	/* Interval tree of private "related" vmas */
+	/* Interval tree of private "related" vmas，
+	rb红黑树节点，将anon_vma_chain添加到anon_vma->rb_root的红黑树中
+	 */
 	struct rb_root_cached rb_root;
 };
 
@@ -73,10 +78,16 @@ struct anon_vma {
  * all the anon_vmas associated with this VMA.
  * The "rb" field indexes on an interval tree the anon_vma_chains
  * which link all the VMAs associated with this anon_vma.
+ 2024年7月1日23:26:54
+
+ 简称AVC;
+AVC是连接VMA和AV之间的桥梁
+page找到VMA的路径一般如下：page->AV->AVC->VMA
  */
 struct anon_vma_chain {
 	struct vm_area_struct *vma;
 	struct anon_vma *anon_vma;
+	/* same_vma链表节点，将anon_vma_chain添加到vma->anon_vma_chain链表中 */
 	struct list_head same_vma;   /* locked by mmap_sem & page_table_lock */
 	struct rb_node rb;			/* locked by anon_vma->rwsem */
 	unsigned long rb_subtree_last;
@@ -144,7 +155,12 @@ int  __anon_vma_prepare(struct vm_area_struct *);
 void unlink_anon_vmas(struct vm_area_struct *);
 int anon_vma_clone(struct vm_area_struct *, struct vm_area_struct *);
 int anon_vma_fork(struct vm_area_struct *, struct vm_area_struct *);
-
+/* 2024年7月1日23:24:49
+检查vma是否初始化了rmap
+这个函数完成的工作就是为进程地址空间中的VMA准备struct anon_vma结构。
+anon_vma_prepare中负责创建AVC和AV并建立彼此的关系;真正将创建的page与av关联在__page_set_anon_map中完成。
+这样的话父进程新建的page在自己的反向映射中的关系就算完成了。
+ */
 static inline int anon_vma_prepare(struct vm_area_struct *vma)
 {
 	if (likely(vma->anon_vma))

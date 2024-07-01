@@ -124,7 +124,8 @@ static inline void anon_vma_free(struct anon_vma *anon_vma)
 
 	kmem_cache_free(anon_vma_cachep, anon_vma);
 }
-
+/* 2024年7月2日00:00:31
+分配avc */
 static inline struct anon_vma_chain *anon_vma_chain_alloc(gfp_t gfp)
 {
 	return kmem_cache_alloc(anon_vma_chain_cachep, gfp);
@@ -134,7 +135,9 @@ static void anon_vma_chain_free(struct anon_vma_chain *anon_vma_chain)
 {
 	kmem_cache_free(anon_vma_chain_cachep, anon_vma_chain);
 }
-
+/* 2024年7月2日00:03:32
+把avc加入到vma的avc里面
+ */
 static void anon_vma_chain_link(struct vm_area_struct *vma,
 				struct anon_vma_chain *avc,
 				struct anon_vma *anon_vma)
@@ -172,6 +175,10 @@ static void anon_vma_chain_link(struct vm_area_struct *vma,
  * an anon_vma.
  *
  * This must be called with the mmap_sem held for reading.
+ 2024年7月1日23:25:15
+ 检查vma是否初始化了rmap
+ 这个函数完成的工作就是为进程地址空间中的VMA准备struct anon_vma结构。
+ 为rmap做准备，分配新建va，加入到vma里面
  */
 int __anon_vma_prepare(struct vm_area_struct *vma)
 {
@@ -180,19 +187,21 @@ int __anon_vma_prepare(struct vm_area_struct *vma)
 	struct anon_vma_chain *avc;
 
 	might_sleep();
-
+	/* 分配avc */
 	avc = anon_vma_chain_alloc(GFP_KERNEL);
 	if (!avc)
 		goto out_enomem;
-
+/* 检查是否可以复用当前vma或者prev vma的av */
 	anon_vma = find_mergeable_anon_vma(vma);
 	allocated = NULL;
 	if (!anon_vma) {
+		/* 无法复用，新分配av */
 		anon_vma = anon_vma_alloc();
 		if (unlikely(!anon_vma))
 			goto out_enomem_free_avc;
 		allocated = anon_vma;
 	}
+
 
 	anon_vma_lock_write(anon_vma);
 	/* page_table_lock to protect against threads */

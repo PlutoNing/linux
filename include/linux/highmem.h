@@ -253,7 +253,9 @@ static inline void zero_user(struct page *page,
 }
 
 #ifndef __HAVE_ARCH_COPY_USER_HIGHPAGE
-
+/* 2024年7月1日23:35:24
+把flaut page复制到cow page里面
+ */
 static inline void copy_user_highpage(struct page *to, struct page *from,
 	unsigned long vaddr, struct vm_area_struct *vma)
 {

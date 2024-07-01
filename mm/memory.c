@@ -569,7 +569,9 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
  * (which can be slower and simply not an option for some PFNMAP users). The
  * advantage is that we don't have to follow the strict linearity rule of
  * PFNMAP mappings in order to support COWable mappings.
- *
+ *2024年7月1日23:07:33
+根据pte返回page数据结构
+
  */
 struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 			    pte_t pte)
@@ -3064,6 +3066,8 @@ oom:
 }
 
 /*
+2024年7月1日23:15:40
+真正为异常地址分配页面
  * The mmap_sem must have been held on entry, and may have been
  * released depending on flags and vma->vm_ops->fault() return value.
  * See filemap_fault() and __lock_page_retry().
@@ -3089,12 +3093,13 @@ static vm_fault_t __do_fault(struct vm_fault *vmf)
 	 *				# flush A, B to clear the writeback
 	 */
 	if (pmd_none(*vmf->pmd) && !vmf->prealloc_pte) {
+		/* 预先分配pte */
 		vmf->prealloc_pte = pte_alloc_one(vmf->vma->vm_mm);
 		if (!vmf->prealloc_pte)
 			return VM_FAULT_OOM;
 		smp_wmb(); /* See comment in __pte_alloc() */
 	}
-
+	/* 调用falut函数把文件内容读取到vmf的page里面 */
 	ret = vma->vm_ops->fault(vmf);
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY |
 			    VM_FAULT_DONE_COW)))
@@ -3269,6 +3274,8 @@ static vm_fault_t do_set_pmd(struct vm_fault *vmf, struct page *page)
  * vm_ops->map_pages.
  *
  * Return: %0 on success, %VM_FAULT_ code in case of error.
+ 2024年7月1日23:19:47
+ 为虚拟地址和物理页面建立映射
  */
 vm_fault_t alloc_set_pte(struct vm_fault *vmf, struct mem_cgroup *memcg,
 		struct page *page)
@@ -3335,6 +3342,10 @@ vm_fault_t alloc_set_pte(struct vm_fault *vmf, struct mem_cgroup *memcg,
  * reference of a page being mapped (for the PTE which maps it).
  *
  * Return: %0 on success, %VM_FAULT_ code in case of error.
+ 2024年7月1日23:19:01
+2024年7月1日23:38:19
+ 调用此，给cow page创建pte，添加rmap
+
  */
 vm_fault_t finish_fault(struct vm_fault *vmf)
 {
@@ -3350,11 +3361,13 @@ vm_fault_t finish_fault(struct vm_fault *vmf)
 
 	/*
 	 * check even for read faults because we might have lost our CoWed
-	 * page
+	 * page。
+
 	 */
 	if (!(vmf->vma->vm_flags & VM_SHARED))
 		ret = check_stable_address_space(vmf->vma->vm_mm);
 	if (!ret)
+	/* 为虚拟地址和物理页面建立映射 */
 		ret = alloc_set_pte(vmf, vmf->memcg, page);
 	if (vmf->pte)
 		pte_unmap_unlock(vmf->pte, vmf->ptl);
@@ -3420,6 +3433,9 @@ late_initcall(fault_around_debugfs);
  * fault_around_bytes rounded down to the machine page size
  * (and therefore to page order).  This way it's easier to guarantee
  * that we don't cross page table boundaries.
+ 2024年7月1日23:13:40
+类似预读，预先建立内存映射，加快速度
+
  */
 static vm_fault_t do_fault_around(struct vm_fault *vmf)
 {
@@ -3475,7 +3491,9 @@ out:
 	vmf->pte = NULL;
 	return ret;
 }
+/* 2024年7月1日23:12:07
 
+ */
 static vm_fault_t do_read_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -3485,6 +3503,7 @@ static vm_fault_t do_read_fault(struct vm_fault *vmf)
 	 * Let's call ->map_pages() first and use ->fault() as fallback
 	 * if page by the offset is not ready to be mapped (cold cache or
 	 * something).
+	 如果vma提供了mappages函数，可以在缺页地址尽可能多提供页面
 	 */
 	if (vma->vm_ops->map_pages && fault_around_bytes >> PAGE_SHIFT > 1) {
 		ret = do_fault_around(vmf);
@@ -3502,15 +3521,18 @@ static vm_fault_t do_read_fault(struct vm_fault *vmf)
 		put_page(vmf->page);
 	return ret;
 }
-
+/* 2024年7月1日23:23:45
+处理写内存导致的缺页异常
+处理私有映射的vma发生了写时复制
+ */
 static vm_fault_t do_cow_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
 	vm_fault_t ret;
-
+	/* 检查rmap */
 	if (unlikely(anon_vma_prepare(vma)))
 		return VM_FAULT_OOM;
-
+		/* 分配cow page */
 	vmf->cow_page = alloc_page_vma(GFP_HIGHUSER_MOVABLE, vma, vmf->address);
 	if (!vmf->cow_page)
 		return VM_FAULT_OOM;
@@ -3520,16 +3542,16 @@ static vm_fault_t do_cow_fault(struct vm_fault *vmf)
 		put_page(vmf->cow_page);
 		return VM_FAULT_OOM;
 	}
-
+/* 读取文件内容到vmf-page里面 */
 	ret = __do_fault(vmf);
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY)))
 		goto uncharge_out;
 	if (ret & VM_FAULT_DONE_COW)
 		return ret;
-
+/* 把flaut page复制到cow page里面 */
 	copy_user_highpage(vmf->cow_page, vmf->page, vmf->address, vma);
 	__SetPageUptodate(vmf->cow_page);
-
+	/* 调用此，给cow page创建pte，添加rmap */
 	ret |= finish_fault(vmf);
 	unlock_page(vmf->page);
 	put_page(vmf->page);
@@ -3982,6 +4004,8 @@ static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 }
 
 /*
+2024年7月1日23:03:50
+缺页异常处理函数
  * By the time we get here, we already hold the mm semaphore
  *
  * The mmap_sem may have been released depending on flags and our

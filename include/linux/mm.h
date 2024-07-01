@@ -495,7 +495,9 @@ fault 函数指针 , 指向的函数 , 就是在 回调 fault 函数时 时调�
 			2024年6月18日21:28:40
 			第一次访问 " 文件映射 " 对应的 " 虚拟内存页 " 时 , 如果发现 文件 没有映射到该 " 虚拟内存页中 " , 会报 " 缺页异常 " ,
 " 异常处理程序 " 会读取 正在访问的文件页 , 以及 预读取 后续的文件页 ,
-调用 map_pages 函数指针指向的函数 , 为 文件页 分配 " 物理内存页 " ;*/
+调用 map_pages 函数指针指向的函数 , 为 文件页 分配 " 物理内存页 " ;
+如果vma提供了mappages函数，可以在缺页地址尽可能多提供页面
+*/
 	void (*map_pages)(struct vm_fault *vmf,
 			pgoff_t start_pgoff, pgoff_t end_pgoff);
 	unsigned long (*pagesize)(struct vm_area_struct * area);
@@ -2403,6 +2405,7 @@ extern int do_munmap(struct mm_struct *, unsigned long, size_t,
 		     struct list_head *uf);
 /*
 2024年6月18日21:49:59
+2024年7月1日23:10:20
 
 
 */
@@ -2418,6 +2421,9 @@ do_mmap_pgoff(struct file *file, unsigned long addr,
 #ifdef CONFIG_MMU
 extern int __mm_populate(unsigned long addr, unsigned long len,
 			 int ignore_errors);
+/* 2024年7月1日22:52:41
+
+ */
 static inline void mm_populate(unsigned long addr, unsigned long len)
 {
 	/* Ignore errors */
@@ -2647,8 +2653,7 @@ struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 #define FOLL_GET	0x04	/* do get_page on page */
 #define FOLL_DUMP	0x08	/* give error on hole if it would be zero */
 #define FOLL_FORCE	0x10	/* get_user_pages read/write w/o permission */
-#define FOLL_NOWAIT	0x20	/* if a disk transfer is needed, start the IO
-				 * and return without waiting upon it */
+#define FOLL_NOWAIT	0x20	/* if a disk transfer is needed, start the IO * and return without waiting upon it */
 #define FOLL_POPULATE	0x40	/* fault in page */
 #define FOLL_SPLIT	0x80	/* don't return transhuge pages, split them */
 #define FOLL_HWPOISON	0x100	/* check page is hwpoisoned */

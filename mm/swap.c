@@ -380,6 +380,8 @@ static void __lru_cache_activate_page(struct page *page)
 
 /*
 2024年6月30日15:11:22
+2024年7月1日23:08:30
+设置页面是活跃的
  * Mark a page as having seen activity.
  *
  * inactive,unreferenced	->	inactive,referenced

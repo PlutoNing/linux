@@ -108,7 +108,9 @@ static inline pgprot_t arch_filter_pgprot(pgprot_t prot)
 	return prot;
 }
 #endif
-
+/* 2024年7月1日22:51:16
+获得页面的pte属性
+ */
 pgprot_t vm_get_page_prot(unsigned long vm_flags)
 {
 	pgprot_t ret = __pgprot(pgprot_val(protection_map[vm_flags &
@@ -188,6 +190,7 @@ static struct vm_area_struct *remove_vma(struct vm_area_struct *vma)
 	return next;
 }
 /* 2024年7月1日00:15:38
+addr:旧的边界地址
 
  */
 static int do_brk_flags(unsigned long addr, unsigned long request, unsigned long flags,
@@ -532,7 +535,23 @@ anon_vma_interval_tree_post_update_vma(struct vm_area_struct *vma)
 	list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
 		anon_vma_interval_tree_insert(avc, &avc->anon_vma->rb_root);
 }
+/* 2024年7月1日22:40:54
+查找的函数也有两个
 
+find_vma(mm, addr)
+
+find_vma_link(mm, addr, end, ...)
+
+但是用途上略有差别，前者是只为了查找来的，而后者是为了插入做准备的。
+----------------------------------------
+而find_vma_links这个函数就有意思了。如果vma只是一个链表，
+那么我只要找到其中某一个节点就知道应该插入到哪里。但是vma还是一个红黑树，
+所以在插入节点时需要知道父节点和究竟是父节点的哪个孩子。所以find_vma_links
+看上去会复杂一些。另外该函数还会判断是否有重叠，如果发生重叠就返回错误。
+这一点说明了整个vma树上，所有节点的范围都是分开的。
+2024年7月1日22:43:33
+todo
+ */
 static int find_vma_links(struct mm_struct *mm, unsigned long addr,
 		unsigned long end, struct vm_area_struct **pprev,
 		struct rb_node ***rb_link, struct rb_node **rb_parent)
@@ -637,7 +656,15 @@ static void __vma_link_file(struct vm_area_struct *vma)
 		flush_dcache_mmap_unlock(mapping);
 	}
 }
+/* 2024年7月1日22:44:06
+vma的插入和删除吧：
 
+插入__vma_link
+
+删除__vma_unlink_common
+
+其中所做的事情也无非就是链表和树的增删了。值得注意的一点是增删的时候都会做vma_gap_update。
+ */
 static void
 __vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	struct vm_area_struct *prev, struct rb_node **rb_link,
@@ -1103,6 +1130,13 @@ can_vma_merge_after(struct vm_area_struct *vma, unsigned long vm_flags,
 }
 
 /*
+2024年7月1日22:46:43
+拆分和整合在内核中主要有两个大的函数来处理：
+
+split_vma
+
+vma_merge
+--------------------------
  * Given a mapping request (addr,end,vm_flags,file,pgoff), figure out
  * whether that can be merged with its predecessor or its successor.
  * Or both (it neatly fills a hole).
@@ -1291,6 +1325,8 @@ static struct anon_vma *reusable_anon_vma(struct vm_area_struct *old, struct vm_
 }
 
 /*
+2024年7月2日00:01:20
+ 检查是否可以复用当前vma或者prev vma的av
  * find_mergeable_anon_vma is used by anon_vma_prepare, to check
  * neighbouring vmas for a suitable anon_vma, before it goes off
  * to allocate a new anon_vma.  It checks because a repetitive
@@ -1396,6 +1432,7 @@ static inline bool file_mmap_ok(struct file *file, struct inode *inode,
 /*
  * The caller must hold down_write(&current->mm->mmap_sem).
  2024年6月18日21:50:13
+2024年7月1日23:10:24
 
  */
 unsigned long do_mmap(struct file *file, unsigned long addr,
@@ -1584,7 +1621,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		if (file && is_file_hugepages(file))
 			vm_flags |= VM_NORESERVE;
 	}
-
+	/* 做mmap */
 	addr = mmap_region(file, addr, len, vm_flags, pgoff, uf);
 	if (!IS_ERR_VALUE(addr) &&
 	    ((vm_flags & VM_LOCKED) ||
@@ -1730,6 +1767,9 @@ static inline int accountable_mapping(struct file *file, vm_flags_t vm_flags)
 }
 /*
 2024年6月18日21:57:38
+2024年7月1日23:10:57
+
+
 */
 unsigned long mmap_region(struct file *file, unsigned long addr,
 		unsigned long len, vm_flags_t vm_flags, unsigned long pgoff,
@@ -2277,7 +2317,19 @@ get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 
 EXPORT_SYMBOL(get_unmapped_area);
 
-/* Look up the first VMA which satisfies  addr < vm_end,  NULL if none. */
+/* 
+2024年7月1日22:42:38
+查找的函数也有两个
+
+find_vma(mm, addr)
+
+find_vma_link(mm, addr, end, ...)
+
+但是用途上略有差别，前者是只为了查找来的，而后者是为了插入做准备的。
+而且find_vma函数和我们普通的查找还不一样，我们一般想象的是这个函数会返回一个vma，
+这个vma是覆盖地址addr的。但是你仔细看这个函数，其实返回的vma表示的是第一个满足
+addr < vm_end条件的。也就是这个addr可能并不在任何vma空间内。
+Look up the first VMA which satisfies  addr < vm_end,  NULL if none. */
 struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 {
 	struct rb_node *rb_node;
@@ -2696,6 +2748,13 @@ detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
 }
 
 /*
+2024年7月1日22:46:21
+拆分和整合在内核中主要有两个大的函数来处理：
+
+split_vma
+
+vma_merge
+-----------------------
  * __split_vma() bypasses sysctl_max_map_count checking.  We use this where it
  * has already been checked or doesn't make sense to fail.
  */
@@ -2760,6 +2819,13 @@ int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 }
 
 /*
+2024年7月1日22:46:09
+拆分和整合在内核中主要有两个大的函数来处理：
+
+split_vma
+
+vma_merge
+--------------------------
  * Split a vma into two pieces at address 'addr', a new vma is allocated
  * either for the first part or the tail.
  */
@@ -2885,7 +2951,9 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 
 	return downgrade ? 1 : 0;
 }
+/* 2024年7月1日22:49:46
 
+ */
 int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	      struct list_head *uf)
 {
@@ -3031,6 +3099,7 @@ out:
 }
 
 /*
+2024年7月1日22:34:43
  *  this is really a simplified "do_mmap".  it only handles
  *  anonymous maps.  eventually we may be able to do some
  *  brk-specific accounting here.
@@ -3075,7 +3144,8 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 	if (security_vm_enough_memory_mm(mm, len >> PAGE_SHIFT))
 		return -ENOMEM;
 
-	/* Can we just expand an old private anonymous mapping? */
+	/* Can we just expand an old private anonymous mapping? 
+	检查有没有办法合并*/
 	vma = vma_merge(mm, prev, addr, addr + len, flags,
 			NULL, NULL, pgoff, NULL, NULL_VM_UFFD_CTX);
 	if (vma)
@@ -3083,6 +3153,7 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 
 	/*
 	 * create a vma struct for an anonymous mapping
+	 没办法合并，就新建
 	 */
 	vma = vm_area_alloc(mm);
 	if (!vma) {

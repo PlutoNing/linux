@@ -169,7 +169,9 @@ static inline bool can_follow_write_pte(pte_t pte, unsigned int flags)
 	return pte_write(pte) ||
 		((flags & FOLL_FORCE) && (flags & FOLL_COW) && pte_dirty(pte));
 }
-
+/*2024年7月1日23:05:02
+遍历pte，返回对应的page
+ */
 static struct page *follow_page_pte(struct vm_area_struct *vma,
 		unsigned long address, pmd_t *pmd, unsigned int flags,
 		struct dev_pagemap **pgmap)
@@ -186,11 +188,13 @@ retry:
 	ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
 	pte = *ptep;
 	if (!pte_present(pte)) {
+		/* 不在内存的情况 */
 		swp_entry_t entry;
 		/*
 		 * KSM's break_ksm() relies upon recognizing a ksm page
 		 * even while it is being migrated, so for that case we
 		 * need migration_entry_wait().
+		 这页面没有在页面合并过程中出现。
 		 */
 		if (likely(!(flags & FOLL_MIGRATION)))
 			goto no_page;
@@ -209,7 +213,7 @@ retry:
 		pte_unmap_unlock(ptep, ptl);
 		return NULL;
 	}
-
+	/*  2024年7月1日23:07:28*/
 	page = vm_normal_page(vma, address, pte);
 	if (!page && pte_devmap(pte) && (flags & FOLL_GET)) {
 		/*
@@ -266,6 +270,7 @@ retry:
 		 * pte_mkyoung() would be more correct here, but atomic care
 		 * is needed to avoid losing the dirty bit: it is easier to use
 		 * mark_page_accessed().
+		 设置页面是活跃的
 		 */
 		mark_page_accessed(page);
 	}
@@ -304,7 +309,9 @@ no_page:
 		return NULL;
 	return no_page_table(vma, flags);
 }
+/* 2024年7月1日23:01:18
 
+ */
 static struct page *follow_pmd_mask(struct vm_area_struct *vma,
 				    unsigned long address, pud_t *pudp,
 				    unsigned int flags,
@@ -324,6 +331,7 @@ static struct page *follow_pmd_mask(struct vm_area_struct *vma,
 	if (pmd_none(pmdval))
 		return no_page_table(vma, flags);
 	if (pmd_huge(pmdval) && vma->vm_flags & VM_HUGETLB) {
+		/* 针对巨页的方式 */
 		page = follow_huge_pmd(mm, address, pmd, flags);
 		if (page)
 			return page;
@@ -419,7 +427,9 @@ retry_locked:
 	ctx->page_mask = HPAGE_PMD_NR - 1;
 	return page;
 }
-
+/* 2024年7月1日23:01:08
+查看vma是否分配了物理内存
+ */
 static struct page *follow_pud_mask(struct vm_area_struct *vma,
 				    unsigned long address, p4d_t *p4dp,
 				    unsigned int flags,
@@ -459,7 +469,9 @@ static struct page *follow_pud_mask(struct vm_area_struct *vma,
 
 	return follow_pmd_mask(vma, address, pud, flags, ctx);
 }
-
+/* 2024年7月1日23:00:36
+查看vma是否分配了物理内存
+ */
 static struct page *follow_p4d_mask(struct vm_area_struct *vma,
 				    unsigned long address, pgd_t *pgdp,
 				    unsigned int flags,
@@ -487,6 +499,8 @@ static struct page *follow_p4d_mask(struct vm_area_struct *vma,
 }
 
 /**
+2024年7月1日22:57:53
+查看vma是否分配了物理内存
  * follow_page_mask - look up a page descriptor from a user-virtual address
  * @vma: vm_area_struct mapping @address
  * @address: virtual address to look up
@@ -521,7 +535,7 @@ static struct page *follow_page_mask(struct vm_area_struct *vma,
 		BUG_ON(flags & FOLL_GET);
 		return page;
 	}
-
+	/* 获得pgd */
 	pgd = pgd_offset(mm, address);
 
 	if (pgd_none(*pgd) || unlikely(pgd_bad(*pgd)))
@@ -611,6 +625,8 @@ unmap:
 }
 
 /*
+2024年7月1日23:03:33
+人为触发缺页异常
  * mmap_sem must be held on entry.  If @nonblocking != NULL and
  * *@flags does not include FOLL_NOWAIT, the mmap_sem may be released.
  * If it is, *@nonblocking will be set to 0 and -EBUSY returned.
@@ -721,6 +737,8 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
 }
 
 /**
+2024年7月1日22:55:07
+为地址空间申请物理页面，并且建立映射关系
  * __get_user_pages() - pin user pages in memory
  * @tsk:	task_struct of target task
  * @mm:		mm_struct of target mm
@@ -839,9 +857,10 @@ retry:
 			goto out;
 		}
 		cond_resched();
-
+		/* 查看是否分配了物理页面 */
 		page = follow_page_mask(vma, start, foll_flags, &ctx);
 		if (!page) {
+			/* 如果没有分配，手动触发缺页错误 */
 			ret = faultin_page(tsk, vma, start, &foll_flags,
 					nonblocking);
 			switch (ret) {
@@ -869,6 +888,7 @@ retry:
 			goto out;
 		}
 		if (pages) {
+			/* 分配完成了pages，刷新高速缓存 */
 			pages[i] = page;
 			flush_anon_page(vma, page, start);
 			flush_dcache_page(page);
@@ -1167,6 +1187,9 @@ long get_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm,
 EXPORT_SYMBOL(get_user_pages_remote);
 
 /**
+2024年7月1日22:54:11
+ 然后人为制造缺页。
+ 分配映射物理页面
  * populate_vma_page_range() -  populate a range of pages in the vma.
  * @vma:   target vma
  * @start: start address
@@ -1219,12 +1242,15 @@ long populate_vma_page_range(struct vm_area_struct *vma,
 	/*
 	 * We made sure addr is within a VMA, so the following will
 	 * not result in a stack expansion that recurses back here.
+	 为地址空间申请物理页面，并且建立映射关系
 	 */
 	return __get_user_pages(current, mm, start, nr_pages, gup_flags,
 				NULL, NULL, nonblocking);
 }
 
 /*
+2024年7月1日22:53:08
+为vma分配空间，并建立映射
  * __mm_populate - populate and/or mlock pages within a range of address space.
  *
  * This is used to implement mlock() and the MAP_POPULATE / MAP_LOCKED mmap
@@ -1240,7 +1266,7 @@ int __mm_populate(unsigned long start, unsigned long len, int ignore_errors)
 	long ret = 0;
 
 	end = start + len;
-
+/* 先查找vma， */
 	for (nstart = start; nstart < end; nstart = nend) {
 		/*
 		 * We want to fault in pages for [nstart; end) address range.
@@ -1267,6 +1293,7 @@ int __mm_populate(unsigned long start, unsigned long len, int ignore_errors)
 		 * Now fault in a range of pages. populate_vma_page_range()
 		 * double checks the vma flags, so that it won't mlock pages
 		 * if the vma was already munlocked.
+		 然后人为制造缺页。
 		 */
 		ret = populate_vma_page_range(vma, nstart, nend, &locked);
 		if (ret < 0) {

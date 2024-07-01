@@ -269,7 +269,10 @@ void *memdup_user_nul(const void __user *src, size_t len)
 	return p;
 }
 EXPORT_SYMBOL(memdup_user_nul);
+/* 2024年7月1日22:45:37
+插入vma
 
+ */
 void __vma_link_list(struct mm_struct *mm, struct vm_area_struct *vma,
 		struct vm_area_struct *prev, struct rb_node *rb_parent)
 {

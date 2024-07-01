@@ -1857,7 +1857,9 @@ extern int _cond_resched(void);
 #else
 static inline int _cond_resched(void) { return 0; }
 #endif
-
+/* 2024年7月1日22:57:32
+判断当前是否需要调度，优化延迟
+ */
 #define cond_resched() ({			\
 	___might_sleep(__FILE__, __LINE__, 0);	\
 	_cond_resched();			\

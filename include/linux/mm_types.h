@@ -82,7 +82,7 @@ struct page {
 	 * avoid collision and false-positive PageTail().
 	 */
 	union {
-		struct {	/* Page cache and anonymous pages */
+		struct {	/* Page cache and anonymous pages，管理页缓存，匿名页 */
 			/**
 			 * @lru: Pageout list, eg. active_list protected by
 			 * pgdat->lru_lock.  Sometimes used as a generic list
@@ -96,13 +96,15 @@ struct page {
 （1）       如果page->mapping等于0，说明该页属于交换告诉缓存swap cache
 
 （2）       如果page->mapping不等于0，但第0位为0，说明该页为匿名也，此时mapping指向一个struct anon_vma结构变量；
-
+ramp里面：页框与page结构对应，page结构中的mapping字段指向anon_vma，从而可以通过RMAP机制去找到与之关联的VMA；
 （3）       如果page->mapping不等于0，但第0位不为0，则apping指向一个struct address_space地址空间结构变量；
 			 */
 			struct address_space *mapping;
 			/* Our offset within mapping. 
 			在buddy里面时，是迁移类型。
 			页缓存里面时，是在mapping里面索引
+			index表示页偏移，对于匿名映射，index 表示page在vm_areat_struct指定的虚拟内存区域中的页偏移;对于匿名映射，index表示物理页中的数据在文件中的页偏移。
+			
 			*/
 			pgoff_t index;		
 			/**
@@ -121,7 +123,7 @@ struct page {
 			 */
 			dma_addr_t dma_addr;
 		};
-		struct {	/* slab, slob and slub */
+		struct {	/*管理 slab, slob and slub */
 			union {
 				struct list_head slab_list;
 				struct {	/* Partial pages */
@@ -148,7 +150,7 @@ struct page {
 				};
 			};
 		};
-		struct {	/* Tail pages of compound page */
+		struct {	/* 页表相关，Tail pages of compound page */
 		/* 之后所有page 都会配置两个属性：mapping 和 compound_head，
 		并且通过 compound_head 确认是尾页还是头页，详细看 compound_head() 函数；
 		通过 page->compound_head 的最后一位是否设为 1 来判断该页是否为头页，
@@ -181,7 +183,7 @@ struct page {
 			spinlock_t ptl;
 #endif
 		};
-		struct {	/* ZONE_DEVICE pages */
+		struct {	/* 管理ZONE_DEVICE pages */
 			/** @pgmap: Points to the hosting device page map. */
 			struct dev_pagemap *pgmap;
 			void *zone_device_data;
@@ -455,17 +457,17 @@ struct mm_struct {
 		 *
 		 * Use mmgrab()/mmdrop() to modify. When this drops to 0, the
 		 * &struct mm_struct is freed.
-		 mm的引用计数
+		 mm的引用计数内存描述符的主使用计数器，采用引用计数的原理，当为0时代表无用户再次使用
 		 */
 		atomic_t mm_count;
 
 #ifdef CONFIG_MMU
 		atomic_long_t pgtables_bytes;	/* PTE page table pages */
 #endif
-		int map_count;			/* number of VMAs */
+		int map_count;			/* number of VMAs 线性区的个数*/
 
 		spinlock_t page_table_lock; /* Protects page tables and some
-					     * counters
+					     * counters保护任务页表和引用计数的锁
 					     */
 		struct rw_semaphore mmap_sem;
 
@@ -477,20 +479,22 @@ struct mm_struct {
 					  */
 
 
-		unsigned long hiwater_rss; /* High-watermark of RSS usage */
-		unsigned long hiwater_vm;  /* High-water virtual memory usage */
-
+		unsigned long hiwater_rss; /* High-watermark of RSS usage 进程拥有的最大页表数目*/
+		unsigned long hiwater_vm;  /* High-water virtual memory usage进程线性区的最大页表数目 */
+/* 进程地址空间的大小，锁住无法换页的个数，共享文件内存映射的页数，可执行内存映射中的页数 */
 		unsigned long total_vm;	   /* Total pages mapped */
 		unsigned long locked_vm;   /* Pages that have PG_mlocked set */
 		atomic64_t    pinned_vm;   /* Refcount permanently increased */
 		unsigned long data_vm;	   /* VM_WRITE & ~VM_SHARED & ~VM_STACK */
 		unsigned long exec_vm;	   /* VM_EXEC & ~VM_WRITE & ~VM_STACK */
-		unsigned long stack_vm;	   /* VM_STACK */
+		unsigned long stack_vm;	   /* VM_STACK 用户态堆栈的页数，*/
 		unsigned long def_flags;
 
 		spinlock_t arg_lock; /* protect the below fields */
 		unsigned long start_code, end_code, start_data, end_data;
+		/* 维护堆和栈 */
 		unsigned long start_brk, brk, start_stack;
+		/* 维护命令行参数，命令行参数的起始地址和最后地址，以及环境变量的起始地址和最后地址 */
 		unsigned long arg_start, arg_end, env_start, env_end;
 
 		unsigned long saved_auxv[AT_VECTOR_SIZE]; /* for /proc/PID/auxv */

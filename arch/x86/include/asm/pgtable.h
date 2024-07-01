@@ -726,7 +726,7 @@ static inline int pte_same(pte_t a, pte_t b)
 {
 	return a.pte == b.pte;
 }
-
+/* 判断该pte对应的页面是否在内存 */
 static inline int pte_present(pte_t a)
 {
 	return pte_flags(a) & (_PAGE_PRESENT | _PAGE_PROTNONE);

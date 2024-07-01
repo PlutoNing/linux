@@ -59,6 +59,8 @@ static inline int is_swap_pte(pte_t pte)
 }
 
 /*
+2024年7月1日23:06:50
+
  * Convert the arch-dependent pte representation of a swp_entry_t into an
  * arch-independent swp_entry_t.
  */
@@ -168,7 +170,9 @@ static inline swp_entry_t make_migration_entry(struct page *page, int write)
 	return swp_entry(write ? SWP_MIGRATION_WRITE : SWP_MIGRATION_READ,
 			page_to_pfn(page));
 }
-
+/* 2024年7月1日23:07:10
+是否是正在swap的页面
+ */
 static inline int is_migration_entry(swp_entry_t entry)
 {
 	return unlikely(swp_type(entry) == SWP_MIGRATION_READ ||
