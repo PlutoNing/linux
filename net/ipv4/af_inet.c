@@ -430,7 +430,9 @@ int inet_release(struct socket *sock)
 	return 0;
 }
 EXPORT_SYMBOL(inet_release);
+/* 2024年07月01日10:59:06
 
+ */
 int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 {
 	struct sock *sk = sock->sk;

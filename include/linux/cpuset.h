@@ -103,7 +103,11 @@ extern int proc_cpuset_show(struct seq_file *m, struct pid_namespace *ns,
 
 extern int cpuset_mem_spread_node(void);
 extern int cpuset_slab_spread_node(void);
+/* 2024年07月02日11:20:28
+cpuset_do_page_mem_spread()会检测当前进程是否其cpuset资源设置了page-spread，如果是，其申请page可以spread到其它的node.
+2. 否则alloc_pages()根据current的memory policy在相就node上申请，不会有spread. 
 
+ */
 static inline int cpuset_do_page_mem_spread(void)
 {
 	return task_spread_page(current);

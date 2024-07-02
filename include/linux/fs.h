@@ -367,6 +367,7 @@ typedef int (*read_actor_t)(read_descriptor_t *, struct page *,
 /* 2024年6月29日21:47:55 */
 struct address_space_operations {
 	int (*writepage)(struct page *page, struct writeback_control *wbc);
+	/* aaddress_space_operations 的readpage 函数，将文件内容读到内存中 */
 	int (*readpage)(struct file *, struct page *);
 
 	/* Write back some dirty pages from this mapping. */

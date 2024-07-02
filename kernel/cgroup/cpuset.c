@@ -2153,6 +2153,15 @@ static void cpuset_cancel_attach(struct cgroup_taskset *tset)
 }
 
 /*
+2024年07月02日11:19:07
+代码执行背景: 当进程在不同group之间移动时，更新完进程与新的cgroup之间一些逻辑关系外，
+要调用不同subsystem的attach,来处理进程的资源属性改变后要做的事情。对于cpuset来说，
+这个函数是cpuset_attach(). 举个例子，在包含cpuset subsystem 的cgroup root fs
+文件系统目录内，task A在cgroup-0内.cgroup-0对应的cpuset资源是cpu0~4,现在用户能过
+vfs要把task A移到cgroup-1，其cpuset的cpumask 是cpu5~8. 这个过程可以分为两 部分：1)
+ 进程在cgroup之间移动时的逻辑变化，比如把进程重新加入/申请一个 
+cgroup subsystem state数组集合等。 2） cgroup 的资源变化对进程的发生影响。这篇小文
+说的是cpuset这种属性变化时，进程相应的处理。 
  * Protected by cpuset_mutex.  cpus_attach is used only by cpuset_attach()
  * but we can't allocate it dynamically there.  Define it global and
  * allocate from cpuset_init().

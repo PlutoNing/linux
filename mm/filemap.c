@@ -1673,6 +1673,8 @@ EXPORT_SYMBOL(find_lock_entry);
  * If there is a page cache page, it is returned with an increased refcount.
  *
  * Return: the found page or %NULL otherwise.
+ 2024年07月02日16:10:25
+
  */
 struct page *pagecache_get_page(struct address_space *mapping, pgoff_t offset,
 	int fgp_flags, gfp_t gfp_mask)
@@ -1709,6 +1711,7 @@ repeat:
 		mark_page_accessed(page);
 
 no_page:
+/* 页缓存里没找到page的情况 */
 	if (!page && (fgp_flags & FGP_CREAT)) {
 		int err;
 		if ((fgp_flags & FGP_WRITE) && mapping_cap_account_dirty(mapping))
@@ -2823,7 +2826,9 @@ int generic_file_readonly_mmap(struct file * file, struct vm_area_struct * vma)
 EXPORT_SYMBOL(filemap_page_mkwrite);
 EXPORT_SYMBOL(generic_file_mmap);
 EXPORT_SYMBOL(generic_file_readonly_mmap);
+/* 2024年07月02日16:22:36
 
+ */
 static struct page *wait_on_page_read(struct page *page)
 {
 	if (!IS_ERR(page)) {
@@ -2835,7 +2840,9 @@ static struct page *wait_on_page_read(struct page *page)
 	}
 	return page;
 }
+/* 2024年07月02日15:39:28
 
+ */
 static struct page *do_read_cache_page(struct address_space *mapping,
 				pgoff_t index,
 				int (*filler)(void *, struct page *),
@@ -2845,12 +2852,17 @@ static struct page *do_read_cache_page(struct address_space *mapping,
 	struct page *page;
 	int err;
 repeat:
+/*         // find_get_page查找page cache失败而且页不允许申请新的page
+ */
 	page = find_get_page(mapping, index);
 	if (!page) {
+		/* 2024年07月02日16:12:30
+		按理说find_get_page在缓存找不到的话，不是内部会申请页面吗？ */
 		page = __page_cache_alloc(gfp);
 		if (!page)
 			return ERR_PTR(-ENOMEM);
 		err = add_to_page_cache_lru(page, mapping, index, gfp);
+		/* 2024年07月02日16:16:50 不加入mapping吗？ */
 		if (unlikely(err)) {
 			put_page(page);
 			if (err == -EEXIST)
@@ -2936,6 +2948,8 @@ out:
 }
 
 /**
+2024年07月02日16:24:28
+
  * read_cache_page - read into page cache, fill it if needed
  * @mapping:	the page's address_space
  * @index:	the page index
