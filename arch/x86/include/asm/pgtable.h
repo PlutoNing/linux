@@ -198,7 +198,7 @@ static inline int pte_exec(pte_t pte)
 {
 	return !(pte_flags(pte) & _PAGE_NX);
 }
-
+/* 2024年7月2日22:56:03 */
 static inline int pte_special(pte_t pte)
 {
 	return pte_flags(pte) & _PAGE_SPECIAL;

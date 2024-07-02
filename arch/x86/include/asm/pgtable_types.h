@@ -53,6 +53,9 @@
 #define _PAGE_SOFTW3	(_AT(pteval_t, 1) << _PAGE_BIT_SOFTW3)
 #define _PAGE_PAT	(_AT(pteval_t, 1) << _PAGE_BIT_PAT)
 #define _PAGE_PAT_LARGE (_AT(pteval_t, 1) << _PAGE_BIT_PAT_LARGE)
+/* 
+special page通常指不正常mapping的页面，这些页面不希望参与内存管理的回收或者合并功能
+PTE_SPECIAL为特殊标志，因为都是零页、特殊物理页面（VM_PFNMAP/VM_MIXEDMAP），不需要和struct page打交道，所以直接返回NULL */
 #define _PAGE_SPECIAL	(_AT(pteval_t, 1) << _PAGE_BIT_SPECIAL)
 #define _PAGE_CPA_TEST	(_AT(pteval_t, 1) << _PAGE_BIT_CPA_TEST)
 #ifdef CONFIG_X86_INTEL_MEMORY_PROTECTION_KEYS

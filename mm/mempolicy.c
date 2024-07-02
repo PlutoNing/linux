@@ -1801,6 +1801,7 @@ static int apply_policy_zone(struct mempolicy *policy, enum zone_type zone)
 }
 
 /*
+2024年7月2日23:11:14
  * Return a nodemask representing a mempolicy for filtering nodes for
  * page allocation
  */
@@ -1912,7 +1913,10 @@ static unsigned offset_il_node(struct mempolicy *pol, unsigned long n)
 	return nid;
 }
 
-/* Determine a node number for interleave */
+/* 
+2024年7月2日23:06:57
+
+Determine a node number for interleave */
 static inline unsigned interleave_nid(struct mempolicy *pol,
 		 struct vm_area_struct *vma, unsigned long addr, int shift)
 {
@@ -2063,7 +2067,10 @@ out:
 	return ret;
 }
 
-/* Allocate a page in interleaved policy.
+/*
+2024年7月2日23:09:53
+其实就是在nid什么interleave分配内存。
+ Allocate a page in interleaved policy.
    Own path because it needs to do special accounting. */
 static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
 					unsigned nid)
@@ -2083,6 +2090,8 @@ static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
 }
 
 /**
+2024年7月2日23:04:25
+
  * 	alloc_pages_vma	- Allocate a page for a VMA.
  *
  * 	@gfp:
@@ -2121,6 +2130,7 @@ alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 
 		nid = interleave_nid(pol, vma, addr, PAGE_SHIFT + order);
 		mpol_cond_put(pol);
+		/* 分配页面成功 */
 		page = alloc_page_interleave(gfp, order, nid);
 		goto out;
 	}

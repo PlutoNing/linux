@@ -17,11 +17,11 @@
 
 /* Policies */
 enum {
-	MPOL_DEFAULT,
-	MPOL_PREFERRED,
-	MPOL_BIND,
-	MPOL_INTERLEAVE,
-	MPOL_LOCAL,
+	MPOL_DEFAULT, /* 默认使用进程的policy；如果进程也设置了MPOL_DEFAULT，则使用系统默认policy（在CPU本地节点分配内存） */
+	MPOL_PREFERRED, /* 在内存分配时优先指定的节点，失败时从附近的内存节点上分配内存 */
+	MPOL_BIND, /* 强制在指定的节点上分配内存，即只能在nodemask指定的内存节点上分配内存（若nodemask指定了多个内存节点，优先在node编号小的节点上分配） */
+	MPOL_INTERLEAVE,/* 内存分配依次在所选的节点上交错进行 */
+	MPOL_LOCAL, /* 优先在本地节点 */
 	MPOL_MAX,	/* always last member of enum */
 };
 

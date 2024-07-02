@@ -393,6 +393,8 @@ PAGEFLAG_FALSE(HighMem)
 #endif
 
 #ifdef CONFIG_SWAP
+/* 2024年7月2日22:59:24
+ */
 static __always_inline int PageSwapCache(struct page *page)
 {
 #ifdef CONFIG_THP_SWAP
@@ -490,6 +492,7 @@ static __always_inline int __PageMovable(struct page *page)
 
 #ifdef CONFIG_KSM
 /*
+2024年7月2日22:59:13
  * A KSM page is one of those write-protected "shared pages" or "merged pages"
  * which KSM maps into multiple mms, wherever identical anonymous page content
  * is found in VM_MERGEABLE vmas.  It's a PageAnon page, pointing not to any

@@ -596,7 +596,9 @@ void kvfree(const void *addr)
 		kfree(addr);
 }
 EXPORT_SYMBOL(kvfree);
+/* 2024年7月2日23:44:34
 
+*/
 static inline void *__page_rmapping(struct page *page)
 {
 	unsigned long mapping;
@@ -607,7 +609,10 @@ static inline void *__page_rmapping(struct page *page)
 	return (void *)mapping;
 }
 
-/* Neutral page->mapping pointer to address_space or anon_vma or other */
+/* 
+2024年7月3日00:02:57
+判断page是否有mapping
+Neutral page->mapping pointer to address_space or anon_vma or other */
 void *page_rmapping(struct page *page)
 {
 	page = compound_head(page);
@@ -640,7 +645,9 @@ bool page_mapped(struct page *page)
 	return false;
 }
 EXPORT_SYMBOL(page_mapped);
+/* 2024年7月2日23:44:23
 
+ */
 struct anon_vma *page_anon_vma(struct page *page)
 {
 	unsigned long mapping;

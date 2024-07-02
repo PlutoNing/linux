@@ -75,7 +75,9 @@
 
 static struct kmem_cache *anon_vma_cachep;
 static struct kmem_cache *anon_vma_chain_cachep;
-
+/* 2024年7月2日21:54:12
+分配一个av；
+ */
 static inline struct anon_vma *anon_vma_alloc(void)
 {
 	struct anon_vma *anon_vma;
@@ -208,6 +210,7 @@ int __anon_vma_prepare(struct vm_area_struct *vma)
 	spin_lock(&mm->page_table_lock);
 	if (likely(!vma->anon_vma)) {
 		vma->anon_vma = anon_vma;
+		/* 把avc加入到vma */
 		anon_vma_chain_link(vma, avc, anon_vma);
 		/* vma reference or self-parent link for new root */
 		anon_vma->degree++;
@@ -257,6 +260,8 @@ static inline void unlock_anon_vma_root(struct anon_vma *root)
 }
 
 /*
+2024年7月2日22:22:22
+ 把子进程vma绑定到父进程的av
  * Attach the anon_vmas from src to dst.
  * Returns 0 on success, -ENOMEM on failure.
  *
@@ -284,6 +289,7 @@ int anon_vma_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
 			if (!avc)
 				goto enomem_failure;
 		}
+		/* 获取一个av */
 		anon_vma = pavc->anon_vma;
 		root = lock_anon_vma_root(root, anon_vma);
 		anon_vma_chain_link(dst, avc, anon_vma);
@@ -318,6 +324,8 @@ int anon_vma_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
 }
 
 /*
+2024年7月2日22:21:10
+把vma绑定到子进程的av
  * Attach vma to its own anon_vma, as well as to the anon_vmas that
  * the corresponding VMA in the parent process is attached to.
  * Returns 0 on success, non-zero on failure.
@@ -338,6 +346,7 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 	/*
 	 * First, attach the new VMA to the parent VMA's anon_vmas,
 	 * so rmap can find non-COWed pages in child processes.
+	 把子进程vma绑定到父进程的av
 	 */
 	error = anon_vma_clone(vma, pvma);
 	if (error)
@@ -369,6 +378,8 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 	get_anon_vma(anon_vma->root);
 	/* Mark this anon_vma as the one where our new (COWed) pages go. */
 	vma->anon_vma = anon_vma;
+
+
 	anon_vma_lock_write(anon_vma);
 	anon_vma_chain_link(vma, avc, anon_vma);
 	anon_vma->parent->degree++;
@@ -750,7 +761,7 @@ pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address)
 out:
 	return pmd;
 }
-
+/* 2024年7月2日23:51:33 */
 struct page_referenced_arg {
 	int mapcount;
 	int referenced;
@@ -758,6 +769,9 @@ struct page_referenced_arg {
 	struct mem_cgroup *memcg;
 };
 /*
+2024年7月2日23:53:56
+统计访问pte个数。
+
  * arg: page_referenced_arg will be passed
  */
 static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
@@ -775,14 +789,18 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 		address = pvmw.address;
 
 		if (vma->vm_flags & VM_LOCKED) {
+			/* 2024年7月3日00:04:46
+			为什么locked直接返回 */
 			page_vma_mapped_walk_done(&pvmw);
 			pra->vm_flags |= VM_LOCKED;
 			return false; /* To break the loop */
 		}
 
 		if (pvmw.pte) {
+
 			if (ptep_clear_flush_young_notify(vma, address,
 						pvmw.pte)) {
+							/* pte最近被访问过 */
 				/*
 				 * Don't treat a reference through
 				 * a sequentially read mapping as such.
@@ -804,7 +822,7 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 		}
 
 		pra->mapcount--;
-	}
+	} /* foreach结束 */
 
 	if (referenced)
 		clear_page_idle(page);
@@ -834,6 +852,8 @@ static bool invalid_page_referenced_vma(struct vm_area_struct *vma, void *arg)
 }
 
 /**
+2024年7月3日00:02:25
+判断是否被访问过，返回全部pte数量
 2024年6月25日21:45:13
 每次访问页时，设置PG_referenced位
 page_referenced函数是利用反向映射找出映射该页的所有pte，并查看pte页表项的AF位是否置位，
@@ -859,6 +879,7 @@ int page_referenced(struct page *page,
 		.memcg = memcg,
 	};
 	struct rmap_walk_control rwc = {
+		/* 这个遍历的回调函数 */
 		.rmap_one = page_referenced_one,
 		.arg = (void *)&pra,
 		.anon_lock = page_lock_anon_vma_read,
@@ -1031,6 +1052,8 @@ void page_move_anon_rmap(struct page *page, struct vm_area_struct *vma)
 }
 
 /**
+2024年7月2日22:03:41
+ 设置这个页面为匿名映射
  * __page_set_anon_rmap - set up new anonymous rmap
  * @page:	Page or Hugepage to add to rmap
  * @vma:	VM area to add page to.
@@ -1056,7 +1079,9 @@ static void __page_set_anon_rmap(struct page *page,
 		anon_vma = anon_vma->root;
 
 	anon_vma = (void *) anon_vma + PAGE_MAPPING_ANON;
+	/* 一个匿名页的实然 */
 	page->mapping = (struct address_space *) anon_vma;
+	/* page 结构中的 index 表示该匿名页在虚拟内存区域 vma 中的偏移 */
 	page->index = linear_page_index(vma, address);
 }
 
@@ -1152,6 +1177,8 @@ void do_page_add_anon_rmap(struct page *page,
 }
 
 /**
+2024年7月2日22:00:12
+2024年7月2日23:24:11
  * page_add_new_anon_rmap - add pte mapping to a new anonymous page
  * @page:	the page to add the mapping to
  * @vma:	the vm area in which the mapping is added
@@ -1165,6 +1192,7 @@ void do_page_add_anon_rmap(struct page *page,
 void page_add_new_anon_rmap(struct page *page,
 	struct vm_area_struct *vma, unsigned long address, bool compound)
 {
+	/* 实际页面数量 */
 	int nr = compound ? hpage_nr_pages(page) : 1;
 
 	VM_BUG_ON_VMA(address < vma->vm_start || address >= vma->vm_end, vma);
@@ -1181,6 +1209,7 @@ void page_add_new_anon_rmap(struct page *page,
 		atomic_set(&page->_mapcount, 0);
 	}
 	__mod_node_page_state(page_pgdat(page), NR_ANON_MAPPED, nr);
+	/* 设置这个页面为匿名映射 */
 	__page_set_anon_rmap(page, vma, address, 1);
 }
 
@@ -1710,6 +1739,8 @@ static int page_mapcount_is_zero(struct page *page)
 }
 
 /**
+2024年7月2日23:25:12
+断开页面的所有匿名映射
  * try_to_unmap - try to remove all page table mappings to a page
  * @page: the page to get unmapped
  * @flags: action and flags
@@ -1822,6 +1853,8 @@ static struct anon_vma *rmap_walk_anon_lock(struct page *page,
  * where the page was found will be held for write.  So, we won't recheck
  * vm_flags for that VMA.  That should be OK, because that vma shouldn't be
  * LOCKED.
+ 2024年7月2日23:37:46
+
  */
 static void rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc,
 		bool locked)
@@ -1851,7 +1884,7 @@ static void rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc,
 
 		if (rwc->invalid_vma && rwc->invalid_vma(vma, rwc->arg))
 			continue;
-
+			/* 断开一个 */
 		if (!rwc->rmap_one(page, vma, address, rwc->arg))
 			break;
 		if (rwc->done && rwc->done(page))
@@ -1916,7 +1949,7 @@ done:
 	if (!locked)
 		i_mmap_unlock_read(mapping);
 }
-
+/* 2024年7月2日23:31:28 */
 void rmap_walk(struct page *page, struct rmap_walk_control *rwc)
 {
 	if (unlikely(PageKsm(page)))

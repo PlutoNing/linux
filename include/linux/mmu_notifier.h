@@ -418,7 +418,10 @@ static inline void mmu_notifier_range_init(struct mmu_notifier_range *range,
 	range->end = end;
 	range->flags = flags;
 }
+/* 2024年7月3日00:05:38
+pte最近是否被访问过
 
+ */
 #define ptep_clear_flush_young_notify(__vma, __address, __ptep)		\
 ({									\
 	int __young;							\

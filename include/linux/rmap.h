@@ -30,14 +30,15 @@
 AV结构用于管理匿名类型VMAs，当有匿名页需要unmap处理时，可以先找到AV，然后再通过AV进行查找处理
  */
 struct anon_vma {
-	struct anon_vma *root;		/* Root of this anon_vma tree */
-	struct rw_semaphore rwsem;	/* W: modification, R: walking the list */
+	struct anon_vma *root;		/* Root of this anon_vma tree 指向此anon_vma所属的root */
+	struct rw_semaphore rwsem;	/* W: modification, R: walking the list 读写信号量 */
 	/*
 	 * The refcount is taken on an anon_vma when there is no
 	 * guarantee that the vma of page tables will exist for
 	 * the duration of the operation. A caller that takes
 	 * the reference is responsible for clearing up the
 	 * anon_vma if they are the last user on release
+	 红黑树中结点数量，初始化时为1，也就是只有本结点，当加入root的anon_vma的红黑树时，此值不变 
 	 */
 	atomic_t refcount;
 
@@ -85,11 +86,13 @@ AVC是连接VMA和AV之间的桥梁
 page找到VMA的路径一般如下：page->AV->AVC->VMA
  */
 struct anon_vma_chain {
+	/* anon_vma_chain 此结构所属的vma */
 	struct vm_area_struct *vma;
+	/* 此结构加入的红黑树所属的anon_vma */
 	struct anon_vma *anon_vma;
 	/* same_vma链表节点，将anon_vma_chain添加到vma->anon_vma_chain链表中 */
 	struct list_head same_vma;   /* locked by mmap_sem & page_table_lock */
-	struct rb_node rb;			/* locked by anon_vma->rwsem */
+	struct rb_node rb;			/* locked by anon_vma->rwsem 用于加入到其他进程或者本进程vma的anon_vma的红黑树中 */
 	unsigned long rb_subtree_last;
 #ifdef CONFIG_DEBUG_VM_RB
 	unsigned long cached_vma_start, cached_vma_last;
@@ -217,7 +220,10 @@ bool try_to_unmap(struct page *, enum ttu_flags flags);
 #define PVMW_SYNC		(1 << 0)
 /* Look for migarion entries rather than present PTEs */
 #define PVMW_MIGRATION		(1 << 1)
+/* 
+2024年7月2日23:55:21
 
+ */
 struct page_vma_mapped_walk {
 	struct page *page;
 	struct vm_area_struct *vma;
@@ -227,7 +233,9 @@ struct page_vma_mapped_walk {
 	spinlock_t *ptl;
 	unsigned int flags;
 };
+/* 2024年7月3日00:01:28
 
+ */
 static inline void page_vma_mapped_walk_done(struct page_vma_mapped_walk *pvmw)
 {
 	if (pvmw->pte)
@@ -267,6 +275,8 @@ void page_unlock_anon_vma_read(struct anon_vma *anon_vma);
 int page_mapped_in_vma(struct page *page, struct vm_area_struct *vma);
 
 /*
+2024年7月2日23:25:38
+
  * rmap_walk_control: To control rmap traversing for specific needs
  *
  * arg: passed to rmap_one() and invalid_vma()
@@ -280,11 +290,15 @@ struct rmap_walk_control {
 	/*
 	 * Return false if page table scanning in rmap_walk should be stopped.
 	 * Otherwise, return true.
+	 断开具体vma的pte
 	 */
 	bool (*rmap_one)(struct page *page, struct vm_area_struct *vma,
 					unsigned long addr, void *arg);
+	/* 判断一个页面是否已经断开 */
 	int (*done)(struct page *page);
+	/* 实现一个锁机制？ */
 	struct anon_vma *(*anon_lock)(struct page *page);
+	/* 跳过无效的vma */
 	bool (*invalid_vma)(struct vm_area_struct *vma, void *arg);
 };
 

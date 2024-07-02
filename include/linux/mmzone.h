@@ -1189,6 +1189,7 @@ static __always_inline struct zoneref *next_zones_zonelist(struct zoneref *z,
 }
 
 /**
+2024年7月3日00:22:28
  * first_zones_zonelist - Returns the first zone at or below highest_zoneidx within the allowed nodemask in a zonelist
  * @zonelist - The zonelist to search for a suitable zone
  * @highest_zoneidx - The zone index of the highest zone to return

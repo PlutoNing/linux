@@ -478,6 +478,9 @@ void free_task(struct task_struct *tsk)
 EXPORT_SYMBOL(free_task);
 
 #ifdef CONFIG_MMU
+/* 2024年7月2日22:14:26
+
+ */
 static __latent_entropy int dup_mmap(struct mm_struct *mm,
 					struct mm_struct *oldmm)
 {
@@ -518,10 +521,12 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 		goto out;
 
 	prev = NULL;
+	/* 遍历父进程全部vma */
 	for (mpnt = oldmm->mmap; mpnt; mpnt = mpnt->vm_next) {
 		struct file *file;
 
 		if (mpnt->vm_flags & VM_DONTCOPY) {
+			/* 不能拷贝的vma？ */
 			vm_stat_account(mm, mpnt->vm_flags, -vma_pages(mpnt));
 			continue;
 		}
@@ -541,6 +546,7 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 				goto fail_nomem;
 			charge = len;
 		}
+		/*  */
 		tmp = vm_area_dup(mpnt);
 		if (!tmp)
 			goto fail_nomem;
@@ -554,14 +560,19 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 		if (tmp->vm_flags & VM_WIPEONFORK) {
 			/* VM_WIPEONFORK gets a clean slate in the child. */
 			tmp->anon_vma = NULL;
+			/* 给vma准备av，avc啥啥的 */
 			if (anon_vma_prepare(tmp))
 				goto fail_nomem_anon_vma_fork;
+			/* 为子进程创建av */
 		} else if (anon_vma_fork(tmp, mpnt))
 			goto fail_nomem_anon_vma_fork;
+
 		tmp->vm_flags &= ~(VM_LOCKED | VM_LOCKONFAULT);
 		tmp->vm_next = tmp->vm_prev = NULL;
 		file = tmp->vm_file;
+
 		if (file) {
+			/*  */
 			struct inode *inode = file_inode(file);
 			struct address_space *mapping = file->f_mapping;
 
@@ -594,7 +605,7 @@ static __latent_entropy int dup_mmap(struct mm_struct *mm,
 		pprev = &tmp->vm_next;
 		tmp->vm_prev = prev;
 		prev = tmp;
-
+/*  */
 		__vma_link_rb(mm, tmp, rb_link, rb_parent);
 		rb_link = &tmp->vm_rb.rb_right;
 		rb_parent = &tmp->vm_rb;
@@ -1005,7 +1016,8 @@ static void mm_init_uprobes_state(struct mm_struct *mm)
 	mm->uprobes_state.xol_area = NULL;
 #endif
 }
-
+/* 2024年7月2日22:13:58
+ */
 static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	struct user_namespace *user_ns)
 {
@@ -1340,6 +1352,8 @@ void mm_release(struct task_struct *tsk, struct mm_struct *mm)
 }
 
 /**
+2024年7月2日22:13:34
+
  * dup_mm() - duplicates an existing mm structure
  * @tsk: the task_struct with which the new mm will be associated.
  * @oldmm: the mm to duplicate.
@@ -1363,7 +1377,7 @@ static struct mm_struct *dup_mm(struct task_struct *tsk,
 
 	if (!mm_init(mm, tsk, mm->user_ns))
 		goto fail_nomem;
-
+/*  */
 	err = dup_mmap(mm, oldmm);
 	if (err)
 		goto free_pt;

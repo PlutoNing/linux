@@ -451,7 +451,10 @@ static inline loff_t page_file_offset(struct page *page)
 
 extern pgoff_t linear_hugepage_index(struct vm_area_struct *vma,
 				     unsigned long address);
-
+/* 2024年7月2日22:06:20
+page 结构中的 index 表示该匿名页在虚拟内存区域 vma 中的偏移
+此函数获取此偏移
+ */
 static inline pgoff_t linear_page_index(struct vm_area_struct *vma,
 					unsigned long address)
 {

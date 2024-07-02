@@ -2460,6 +2460,8 @@ static int lock_page_maybe_drop_mmap(struct vm_fault *vmf, struct page *page,
 
 
 /*
+2024年7月3日00:12:12
+mmap预读
  * Synchronous readahead happens when we don't even find a page in the page
  * cache at all.  We don't want to perform IO under the mmap sem, so if we have
  * to drop the mmap sem we return the file that was pinned in order for us to do
@@ -2481,6 +2483,7 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 		return fpin;
 
 	if (vmf->vma->vm_flags & VM_SEQ_READ) {
+		/* 顺序读的预读？ */
 		fpin = maybe_unlock_mmap_for_io(vmf, fpin);
 		page_cache_sync_readahead(mapping, ra, file, offset,
 					  ra->ra_pages);
@@ -2500,11 +2503,14 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 
 	/*
 	 * mmap read-around
+	 普遍意义的预读
 	 */
 	fpin = maybe_unlock_mmap_for_io(vmf, fpin);
+	/* 设置预读参数 */
 	ra->start = max_t(long, 0, offset - ra->ra_pages / 2);
 	ra->size = ra->ra_pages;
 	ra->async_size = ra->ra_pages / 4;
+	/* 开始 */
 	ra_submit(ra, mapping, file);
 	return fpin;
 }

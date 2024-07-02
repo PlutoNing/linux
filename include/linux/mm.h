@@ -439,7 +439,8 @@ struct vm_fault {
 	struct page *page;		/* ->fault handlers should return a
 					 * page here, unless VM_FAULT_NOPAGE
 					 * is set (which is also implied by
-					 * VM_FAULT_ERROR).vma->vm_ops->fault返回的页
+					 * VM_FAULT_ERROR).
+					 vma->vm_ops->fault返回的页
 					 */
 	/* These three entries are valid only while holding ptl lock */
 	pte_t *pte;			/* Pointer to pte entry matching
@@ -2564,7 +2565,7 @@ static inline unsigned long vm_end_gap(struct vm_area_struct *vma)
 	}
 	return vm_end;
 }
-
+/* 2024年7月2日22:15:49 */
 static inline unsigned long vma_pages(struct vm_area_struct *vma)
 {
 	return (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;

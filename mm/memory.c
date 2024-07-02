@@ -571,6 +571,12 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
  * PFNMAP mappings in order to support COWable mappings.
  *2024年7月1日23:07:33
 根据pte返回page数据结构
+2024年7月2日22:54:52
+vm_normal_page根据pte来返回normal paging页面的struct page结构。
+
+一些特殊映射的页面是不会返回struct page结构的，这些页面不希望被参与到内存管理的一些活动中，如页面回收、页迁移和KSM等。
+
+
 
  */
 struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
@@ -579,6 +585,7 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 	unsigned long pfn = pte_pfn(pte);
 
 	if (IS_ENABLED(CONFIG_ARCH_HAS_PTE_SPECIAL)) {
+		/* //正常的页面都没有PTE_SPECIAL */
 		if (likely(!pte_special(pte)))
 			goto check_pfn;
 		if (vma->vm_ops && vma->vm_ops->find_special_page)
@@ -2290,6 +2297,8 @@ static inline void wp_page_reuse(struct vm_fault *vmf)
 }
 
 /*
+2024年7月2日23:02:10
+
  * Handle the case of a page which we actually need to copy to a new page.
  *
  * Called with mmap_sem locked and the old page referenced, but
@@ -2320,15 +2329,18 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 		goto oom;
 
 	if (is_zero_pfn(pte_pfn(vmf->orig_pte))) {
+		/* 给此vma分配页面 */
 		new_page = alloc_zeroed_user_highpage_movable(vma,
 							      vmf->address);
 		if (!new_page)
 			goto oom;
 	} else {
+
 		new_page = alloc_page_vma(GFP_HIGHUSER_MOVABLE, vma,
 				vmf->address);
 		if (!new_page)
 			goto oom;
+
 		cow_user_page(new_page, old_page, vmf->address, vma);
 	}
 
@@ -2366,6 +2378,7 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 		 * thread doing COW.
 		 */
 		ptep_clear_flush_notify(vma, vmf->address, vmf->pte);
+		/* 设置page的mapping */
 		page_add_new_anon_rmap(new_page, vma, vmf->address, false);
 		mem_cgroup_commit_charge(new_page, memcg, false, false);
 		lru_cache_add_active_or_unevictable(new_page, vma);
@@ -2529,6 +2542,8 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf)
 }
 
 /*
+2024年7月2日22:53:51
+处理子进程写时复制
  * This routine handles present pages, when users try to write
  * to a shared page. It is done by copying the page to a new address
  * and decrementing the shared-page counter for the old page.
@@ -2573,10 +2588,14 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 	 * not dirty accountable.
 	 */
 	if (PageAnon(vmf->page)) {
+		/* 如果是匿名页 */
 		int total_map_swapcount;
 		if (PageKsm(vmf->page) && (PageSwapCache(vmf->page) ||
 					   page_count(vmf->page) != 1))
 			goto copy;
+
+		/* 2024年7月2日23:00:54
+		下面应该是匿名页，但是不是ksm，不是交换的情况，那什么情况呢？ */	
 		if (!trylock_page(vmf->page)) {
 			get_page(vmf->page);
 			pte_unmap_unlock(vmf->pte, vmf->ptl);
@@ -2591,6 +2610,7 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 			}
 			put_page(vmf->page);
 		}
+
 		if (PageKsm(vmf->page)) {
 			bool reused = reuse_ksm_page(vmf->page, vmf->vma,
 						     vmf->address);
@@ -2600,6 +2620,7 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 			wp_page_reuse(vmf);
 			return VM_FAULT_WRITE;
 		}
+
 		if (reuse_swap_page(vmf->page, &total_map_swapcount)) {
 			if (total_map_swapcount == 1) {
 				/*
