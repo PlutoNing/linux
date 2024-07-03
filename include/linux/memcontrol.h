@@ -282,6 +282,7 @@ struct mem_cgroup {
 	/*
 	 * Should the accounting and control be hierarchical, per subtree?
 	 是继承的吗，如果是，那么设置子cg会拷贝父cg的一些属性
+	 
 	 */
 	bool use_hierarchy;
 
@@ -318,7 +319,8 @@ struct mem_cgroup {
 	/* thresholds for mem+swap usage. RCU-protected */
 	struct mem_cgroup_thresholds memsw_thresholds;
 
-	/* For oom notifier event fd */
+	/* For oom notifier event fd
+	oom的notify */
 	struct list_head oom_notify;
 
 	/*
@@ -641,13 +643,14 @@ void mem_cgroup_print_oom_context(struct mem_cgroup *memcg,
 				struct task_struct *p);
 
 void mem_cgroup_print_oom_meminfo(struct mem_cgroup *memcg);
-
+/* 2024年07月03日19:05:02
+ */
 static inline void mem_cgroup_enter_user_fault(void)
 {
 	WARN_ON(current->in_user_fault);
 	current->in_user_fault = 1;
 }
-
+/* 2024年07月03日19:06:37 */
 static inline void mem_cgroup_exit_user_fault(void)
 {
 	WARN_ON(!current->in_user_fault);

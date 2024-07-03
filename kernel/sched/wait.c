@@ -218,7 +218,7 @@ EXPORT_SYMBOL_GPL(__wake_up_sync);	/* For internal use only */
  * one way (it only protects stuff inside the critical region and
  * stops them from bleeding out - it would still allow subsequent
  * loads to move into the critical region).
- prepare_to_wait()和finish_wait()并不是进程睡眠的地方，进程睡眠的地方是schedule()。
+prepare_to_wait()和finish_wait()并不是进程睡眠的地方，进程睡眠的地方是schedule()。
 prepare_to_wait()只是进行一些链表的操作，以确保自己在等待队列中，不会漏掉事件。
 进程在确信自己已经在队列中后，再次检查条件， 这里，如果不检查，可能条件已经满足，
 直接去睡眠的话，可能再也没有人来唤醒它了。
@@ -338,6 +338,7 @@ int do_wait_intr_irq(wait_queue_head_t *wq, wait_queue_entry_t *wait)
 EXPORT_SYMBOL(do_wait_intr_irq);
 
 /**
+2024年07月03日18:59:48
  * finish_wait - clean up after waiting in a queue
  * @wq_head: waitqueue waited on
  * @wq_entry: wait descriptor
@@ -371,7 +372,9 @@ void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_en
 	}
 }
 EXPORT_SYMBOL(finish_wait);
+/* 2024年07月03日18:56:38
 
+ */
 int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync, void *key)
 {
 	int ret = default_wake_function(wq_entry, mode, sync, key);

@@ -1914,7 +1914,8 @@ static void mem_cgroup_oom_unlock(struct mem_cgroup *memcg)
 		iter->oom_lock = false;
 	spin_unlock(&memcg_oom_lock);
 }
-
+/* 2024年07月03日18:57:25
+ */
 static void mem_cgroup_mark_under_oom(struct mem_cgroup *memcg)
 {
 	struct mem_cgroup *iter;
@@ -1924,7 +1925,9 @@ static void mem_cgroup_mark_under_oom(struct mem_cgroup *memcg)
 		iter->under_oom++;
 	spin_unlock(&memcg_oom_lock);
 }
-
+/* 2024年07月03日18:59:28
+减少层级内个memcg的oom计数
+ */
 static void mem_cgroup_unmark_under_oom(struct mem_cgroup *memcg)
 {
 	struct mem_cgroup *iter;
@@ -1941,12 +1944,14 @@ static void mem_cgroup_unmark_under_oom(struct mem_cgroup *memcg)
 }
 
 static DECLARE_WAIT_QUEUE_HEAD(memcg_oom_waitq);
-
+/* 2024年07月03日18:55:27 */
 struct oom_wait_info {
 	struct mem_cgroup *memcg;
 	wait_queue_entry_t	wait;
 };
+/* 2024年07月03日18:56:08
 
+ */
 static int memcg_oom_wake_function(wait_queue_entry_t *wait,
 	unsigned mode, int sync, void *arg)
 {
@@ -1963,7 +1968,8 @@ static int memcg_oom_wake_function(wait_queue_entry_t *wait,
 	return autoremove_wake_function(wait, mode, sync, arg);
 }
 /* 2024年6月25日00:25:24
-
+2024年07月03日18:36:51
+唤醒oom的wq上的函数
  */
 static void memcg_oom_recover(struct mem_cgroup *memcg)
 {
@@ -2047,6 +2053,9 @@ static enum oom_status mem_cgroup_oom(struct mem_cgroup *memcg, gfp_t mask, int 
 }
 
 /**
+2024年07月03日18:54:00
+memcg恢复oom后清理？
+
  * mem_cgroup_oom_synchronize - complete memcg OOM handling
  * @handle: actually kill/wait or just clean up the OOM state
  *
@@ -2083,6 +2092,7 @@ bool mem_cgroup_oom_synchronize(bool handle)
 	INIT_LIST_HEAD(&owait.wait.entry);
 
 	prepare_to_wait(&memcg_oom_waitq, &owait.wait, TASK_KILLABLE);
+	/* 标记cg层级内oom数量 */
 	mem_cgroup_mark_under_oom(memcg);
 
 	locked = mem_cgroup_oom_trylock(memcg);
@@ -2093,9 +2103,11 @@ bool mem_cgroup_oom_synchronize(bool handle)
 	if (locked && !memcg->oom_kill_disable) {
 		mem_cgroup_unmark_under_oom(memcg);
 		finish_wait(&memcg_oom_waitq, &owait.wait);
+		/* 触发oom吗？ */
 		mem_cgroup_out_of_memory(memcg, current->memcg_oom_gfp_mask,
 					 current->memcg_oom_order);
 	} else {
+		/* 禁用oom的情况？ */
 		schedule();
 		mem_cgroup_unmark_under_oom(memcg);
 		finish_wait(&memcg_oom_waitq, &owait.wait);
@@ -4237,7 +4249,9 @@ static int compare_thresholds(const void *a, const void *b)
 
 	return 0;
 }
+/* 2024年07月03日18:58:32
 
+ */
 static int mem_cgroup_oom_notify_cb(struct mem_cgroup *memcg)
 {
 	struct mem_cgroup_eventfd_list *ev;
@@ -4250,7 +4264,9 @@ static int mem_cgroup_oom_notify_cb(struct mem_cgroup *memcg)
 	spin_unlock(&memcg_oom_lock);
 	return 0;
 }
+/* 2024年07月03日18:58:10
 
+ */
 static void mem_cgroup_oom_notify(struct mem_cgroup *memcg)
 {
 	struct mem_cgroup *iter;
