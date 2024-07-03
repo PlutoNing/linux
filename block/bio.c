@@ -389,6 +389,8 @@ static void punt_bios_to_rescuer(struct bio_set *bs)
 }
 
 /**
+2024年07月03日15:00:54
+
  * bio_alloc_bioset - allocate a bio for I/O
  * @gfp_mask:   the GFP_* mask given to the slab allocator
  * @nr_iovecs:	number of iovecs to pre-allocate

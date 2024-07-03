@@ -43,7 +43,7 @@ static inline unsigned swp_type(swp_entry_t entry)
 	return (entry.val >> SWP_TYPE_SHIFT);
 }
 
-/*
+/*2024年07月03日12:35:08
  * Extract the `offset' field from a swp_entry_t.  The swp_entry_t is in
  * arch-independent format
  */
@@ -60,7 +60,7 @@ static inline int is_swap_pte(pte_t pte)
 
 /*
 2024年7月1日23:06:50
-
+2024年07月03日12:19:50
  * Convert the arch-dependent pte representation of a swp_entry_t into an
  * arch-independent swp_entry_t.
  */

@@ -25,7 +25,9 @@
 #include <linux/uio.h>
 #include <linux/sched/task.h>
 #include <asm/pgtable.h>
+/* 2024年07月03日15:00:00
 
+ */
 static struct bio *get_swap_bio(gfp_t gfp_flags,
 				struct page *page, bio_end_io_t end_io)
 {
@@ -34,7 +36,7 @@ static struct bio *get_swap_bio(gfp_t gfp_flags,
 	bio = bio_alloc(gfp_flags, 1);
 	if (bio) {
 		struct block_device *bdev;
-
+		/* 设置扇区号 */
 		bio->bi_iter.bi_sector = map_swap_page(page, &bdev);
 		bio_set_dev(bio, bdev);
 		bio->bi_iter.bi_sector <<= PAGE_SHIFT - 9;
@@ -259,7 +261,7 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 out:
 	return ret;
 }
-
+/* 2024年07月03日14:56:20 */
 static sector_t swap_page_sector(struct page *page)
 {
 	return (sector_t)__page_file_index(page) << (PAGE_SHIFT - 9);
@@ -346,7 +348,9 @@ int __swap_writepage(struct page *page, struct writeback_control *wbc,
 out:
 	return ret;
 }
+/* 2024年07月03日14:53:14
 
+ */
 int swap_readpage(struct page *page, bool synchronous)
 {
 	struct bio *bio;
@@ -365,6 +369,7 @@ int swap_readpage(struct page *page, bool synchronous)
 	}
 
 	if (sis->flags & SWP_FS) {
+		/*  */
 		struct file *swap_file = sis->swap_file;
 		struct address_space *mapping = swap_file->f_mapping;
 
@@ -373,9 +378,10 @@ int swap_readpage(struct page *page, bool synchronous)
 			count_vm_event(PSWPIN);
 		return ret;
 	}
-
+	/* 从块设备读取页面 */
 	ret = bdev_read_page(sis->bdev, swap_page_sector(page), page);
 	if (!ret) {
+		/* 读取失败 */
 		if (trylock_page(page)) {
 			swap_slot_free_notify(page);
 			unlock_page(page);

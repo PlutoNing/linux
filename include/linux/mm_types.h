@@ -114,6 +114,7 @@ ramp里面：页框与page结构对应，page结构中的mapping字段指向anon
 			 * Used for swp_entry_t if PageSwapCache.
 			 * Indicates order in the buddy system if PageBuddy.
 			 如果buddy里面，这里是order
+			 swap里面entry相关
 			 */
 			unsigned long private;
 		};
@@ -796,6 +797,7 @@ enum tlb_flush_reason {
 };
 
  /*
+ 2024年07月03日12:20:18
   * A swap entry has to fit into a "unsigned long", as the entry is hidden
   * in the "index" field of the swapper address space.
   */

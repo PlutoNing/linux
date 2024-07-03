@@ -722,6 +722,7 @@ static inline int pte_none(pte_t pte)
 }
 
 #define __HAVE_ARCH_PTE_SAME
+/* 2024年07月03日12:16:37 */
 static inline int pte_same(pte_t a, pte_t b)
 {
 	return a.pte == b.pte;

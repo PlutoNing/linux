@@ -92,7 +92,7 @@ PLIST_HEAD(swap_active_head);
  */
 static struct plist_head *swap_avail_heads;
 static DEFINE_SPINLOCK(swap_avail_lock);
-
+/* 2024年07月03日12:34:16 */
 struct swap_info_struct *swap_info[MAX_SWAPFILES];
 
 static DEFINE_MUTEX(swapon_mutex);
@@ -102,7 +102,7 @@ static DECLARE_WAIT_QUEUE_HEAD(proc_poll_wait);
 static atomic_t proc_poll_event = ATOMIC_INIT(0);
 
 atomic_t nr_rotate_swap = ATOMIC_INIT(0);
-
+/* 2024年07月03日12:33:59 */
 static struct swap_info_struct *swap_type_to_swap_info(int type)
 {
 	if (type >= READ_ONCE(nr_swapfiles))
@@ -1216,6 +1216,8 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 }
 
 /*
+2024年07月03日12:33:13
+
  * Check whether swap entry is valid in the swap device.  If so,
  * return pointer to swap_info_struct, and keep the swap entry valid
  * via preventing the swap device from being swapoff, until
@@ -1257,6 +1259,7 @@ struct swap_info_struct *get_swap_device(swp_entry_t entry)
 
 	if (!entry.val)
 		goto out;
+	/* 获取swap info */
 	si = swp_swap_info(entry);
 	if (!si)
 		goto bad_nofile;
@@ -1448,7 +1451,9 @@ int page_swapcount(struct page *page)
 	}
 	return count;
 }
+/* 2024年07月03日14:37:12
 
+ */
 int __swap_count(swp_entry_t entry)
 {
 	struct swap_info_struct *si;
@@ -2253,6 +2258,7 @@ static void drain_mmlist(void)
 }
 
 /*
+2024年07月03日15:01:51
  * Use this swapdev's extent info to locate the (PAGE_SIZE) block which
  * corresponds to page offset for the specified swap entry.
  * Note that the type of this function is sector_t, but it returns page offset
@@ -2273,6 +2279,7 @@ static sector_t map_swap_entry(swp_entry_t entry, struct block_device **bdev)
 }
 
 /*
+2024年07月03日15:01:41
  * Returns the page offset into bdev for the specified page's swap entry.
  */
 sector_t map_swap_page(struct page *page, struct block_device **bdev)
@@ -3480,12 +3487,12 @@ int swapcache_prepare(swp_entry_t entry)
 {
 	return __swap_duplicate(entry, SWAP_HAS_CACHE);
 }
-
+/* 2024年07月03日12:33:29 */
 struct swap_info_struct *swp_swap_info(swp_entry_t entry)
 {
 	return swap_type_to_swap_info(swp_type(entry));
 }
-
+/* 2024年07月03日14:53:30 */
 struct swap_info_struct *page_swap_info(struct page *page)
 {
 	swp_entry_t entry = { .val = page_private(page) };
@@ -3500,7 +3507,7 @@ struct address_space *__page_file_mapping(struct page *page)
 	return page_swap_info(page)->swap_file->f_mapping;
 }
 EXPORT_SYMBOL_GPL(__page_file_mapping);
-
+/* 2024年07月03日14:56:29 */
 pgoff_t __page_file_index(struct page *page)
 {
 	swp_entry_t swap = { .val = page_private(page) };

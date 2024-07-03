@@ -327,7 +327,10 @@ struct lruvec {
 	/* lru链表 */
 	struct list_head		lists[NR_LRU_LISTS];
 	struct zone_reclaim_stat	reclaim_stat;
-	/* Evictions & activations on the inactive file list */
+	/* Evictions & activations on the inactive file list
+	在lruvec数据结构中新增一个inactive_age原子变
+量成员，用于记录文件缓存不活跃LRU链表中的移出操作
+和激活操作的计数。 */
 	atomic_long_t			inactive_age;
 	/* Refaults at the time of last reclaim cycle */
 	unsigned long			refaults;
@@ -644,17 +647,19 @@ struct zone {
 	atomic_long_t		vm_stat[NR_VM_ZONE_STAT_ITEMS];
 	atomic_long_t		vm_numa_stat[NR_VM_NUMA_STAT_ITEMS];
 } ____cacheline_internodealigned_in_smp;
-
+/* 2024年07月03日10:29:29 */
 enum pgdat_flags {
-	PGDAT_CONGESTED,		/* pgdat has many dirty pages backed by
+	PGDAT_CONGESTED,		/*内存节点中发现有大
+量脏页拥堵在一个BDI设备中。 pgdat has many dirty pages backed by
 					 * a congested BDI
 					 */
-	PGDAT_DIRTY,			/* reclaim scanning has recently found
+	PGDAT_DIRTY,			/*发现有大量的脏文件页面 reclaim scanning has recently found
 					 * many dirty file pages at the tail
 					 * of the LRU.
 					 */
 	PGDAT_WRITEBACK,		/* reclaim scanning has recently found
-					 * many pages under writeback
+					 * many pages under writeback：发现有大量页面正在
+等待回写到磁盘。
 					 */
 	PGDAT_RECLAIM_LOCKED,		/* prevents concurrent reclaim */
 };
@@ -664,7 +669,7 @@ enum zone_flags {
 					 * Cleared when kswapd is woken.
 					 */
 };
-
+/* 2024年07月03日10:04:27 */
 static inline unsigned long zone_managed_pages(struct zone *zone)
 {
 	return (unsigned long)atomic_long_read(&zone->managed_pages);
@@ -846,8 +851,8 @@ typedef struct pglist_data {
 	wait_queue_head_t pfmemalloc_wait;
 	struct task_struct *kswapd;	/* Protected by
 					   mem_hotplug_begin/end() */
-					   /*   表示kswapd线程内存回收的单位（2^kswapd_order），
-					   要求大于线程内存分配所需求的order，否则会更新为线程内存分配对应的order。 */
+	/*   表示kswapd线程内存回收的单位（2^kswapd_order），
+	要求大于线程内存分配所需求的order，否则会更新为线程内存分配对应的order。 */
 	int kswapd_order;
 	enum zone_type kswapd_classzone_idx;
 
@@ -1006,6 +1011,8 @@ static inline int local_memory_node(int node_id) { return node_id; };
 #define zone_idx(zone)		((zone) - (zone)->zone_pgdat->node_zones)
 
 /*
+2024年07月03日10:04:16
+
  * Returns true if a zone has pages managed by the buddy allocator.
  * All the reclaim decisions have to use this function rather than
  * populated_zone(). If the whole zone is reserved then we can easily

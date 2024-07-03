@@ -296,13 +296,15 @@ void free_pages_and_swap_cache(struct page **pages, int nr)
 		free_swap_cache(pagep[i]);
 	release_pages(pagep, nr);
 }
-
+/* 2024年07月03日14:33:00 */
 static inline bool swap_use_vma_readahead(void)
 {
 	return READ_ONCE(enable_vma_readahead) && !atomic_read(&nr_rotate_swap);
 }
 
 /*
+2024年07月03日12:21:11
+
  * Lookup a swap entry in the swap cache. A found page will be returned
  * unlocked and with its refcount incremented - we rely on the kernel
  * lock getting page table operations atomic even if we drop the page
@@ -317,6 +319,7 @@ struct page *lookup_swap_cache(swp_entry_t entry, struct vm_area_struct *vma,
 	si = get_swap_device(entry);
 	if (!si)
 		return NULL;
+	/* 从swapfile的地址空间里读 */
 	page = find_get_page(swap_address_space(entry), swp_offset(entry));
 	put_swap_device(si);
 
@@ -335,6 +338,7 @@ struct page *lookup_swap_cache(swp_entry_t entry, struct vm_area_struct *vma,
 
 		readahead = TestClearPageReadahead(page);
 		if (vma && vma_ra) {
+			/*  */
 			unsigned long ra_val;
 			int win, hits;
 
@@ -348,6 +352,7 @@ struct page *lookup_swap_cache(swp_entry_t entry, struct vm_area_struct *vma,
 		}
 
 		if (readahead) {
+			/*  */
 			count_vm_event(SWAP_RA_HIT);
 			if (!vma || !vma_ra)
 				atomic_inc(&swapin_readahead_hits);

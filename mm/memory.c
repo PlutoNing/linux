@@ -2131,6 +2131,8 @@ int apply_to_page_range(struct mm_struct *mm, unsigned long addr,
 EXPORT_SYMBOL_GPL(apply_to_page_range);
 
 /*
+2024年07月03日12:15:34
+
  * handle_pte_fault chooses page fault handler according to an entry which was
  * read non-atomically.  Before making any commitment, on those architectures
  * or configurations (e.g. i386 with PAE) which might give a mix of unmatched
@@ -2748,6 +2750,12 @@ void unmap_mapping_range(struct address_space *mapping,
 EXPORT_SYMBOL(unmap_mapping_range);
 
 /*
+2024年07月03日12:14:50
+匿名页面被换出到交换分区后，如果应用程序需要读
+写这个页面，则会发生缺页中断，由于PTE中的present位
+显示该页面不在内存中，但PTE不为空，说明该页面在交
+换分区中，因此调用do_swap_page()函数重新读取该页面
+的内容。
  * We enter with non-exclusive mmap_sem (to exclude vma changes,
  * but allow concurrent faults), and pte mapped but not yet locked.
  * We return with pte unmapped and unlocked.
@@ -2771,6 +2779,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	entry = pte_to_swp_entry(vmf->orig_pte);
 	if (unlikely(non_swap_entry(entry))) {
+		/* 为什么会no swap entry */
 		if (is_migration_entry(entry)) {
 			migration_entry_wait(vma->vm_mm, vmf->pmd,
 					     vmf->address);
@@ -2788,10 +2797,13 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 
 	delayacct_set_flag(DELAYACCT_PF_SWAPIN);
+	/* 从swapfile里读取page */
 	page = lookup_swap_cache(entry, vma, vmf->address);
 	swapcache = page;
 
 	if (!page) {
+		/* 2024年07月03日14:35:49
+		为什么会没有page呢 */
 		struct swap_info_struct *si = swp_swap_info(entry);
 
 		if (si->flags & SWP_SYNCHRONOUS_IO &&
@@ -2802,7 +2814,9 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			if (page) {
 				__SetPageLocked(page);
 				__SetPageSwapBacked(page);
+				/* 设置page的swap位置相关字段 */
 				set_page_private(page, entry.val);
+				/*  */
 				lru_cache_add_anon(page);
 				swap_readpage(page, true);
 			}

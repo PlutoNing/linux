@@ -31,7 +31,7 @@ struct pagevec;
 				 SWAP_FLAG_DISCARD | SWAP_FLAG_DISCARD_ONCE | \
 				 SWAP_FLAG_DISCARD_PAGES)
 #define SWAP_BATCH 64
-
+/* 2024年07月03日10:28:27 */
 static inline int current_is_kswapd(void)
 {
 	return current->flags & PF_KSWAPD;
@@ -231,27 +231,36 @@ struct swap_cluster_list {
 };
 
 /*
+2024年07月03日12:21:21
  * The in-memory structure used to track swap areas.
  */
 struct swap_info_struct {
-	unsigned long	flags;		/* SWP_USED etc: see above */
-	signed short	prio;		/* swap priority of this type */
-	struct plist_node list;		/* entry in swap_active_head */
-	signed char	type;		/* strange name for an index */
+	unsigned long	flags;		/* SWP_USED etc: see above ，用于表示该交换区的状态，
+	比如 SWP_USED 表示正在使用状态，SWP_WRITEOK 表示交换区是可写的状态*/
+	signed short	prio;		/* swap priority of this type ，优先级*/
+	struct plist_node list;		/* entry in swap_active_head ，指向该交换区在 swap_avail_heads 链表中的位置*/
+	signed char	type;		/* strange name for an index ，*/
 	unsigned int	max;		/* extent of the swap_map */
-	unsigned char *swap_map;	/* vmalloc'ed array of usage counts */
-	struct swap_cluster_info *cluster_info; /* cluster info. Only for SSD */
+	unsigned char *swap_map;	/* vmalloc'ed array of usage counts ，*/
+	struct swap_cluster_info *cluster_info; /* cluster info. Only for SSD ，*/
 	struct swap_cluster_list free_clusters; /* free clusters list */
 	unsigned int lowest_bit;	/* index of first free in swap_map */
 	unsigned int highest_bit;	/* index of last free in swap_map */
-	unsigned int pages;		/* total of usable pages of swap */
-	unsigned int inuse_pages;	/* number of those currently in use */
+	unsigned int pages;		/* total of usable pages of swap ，该交换区可以容纳 swap 的匿名页总数
+*/
+	unsigned int inuse_pages;	/* number of those currently in use，已经 swap 到该交换区的匿名页总数 */
 	unsigned int cluster_next;	/* likely index for next allocation */
 	unsigned int cluster_nr;	/* countdown to next cluster search */
-	struct percpu_cluster __percpu *percpu_cluster; /* per cpu's swap location */
-	struct rb_root swap_extent_root;/* root of the swap extent rbtree */
-	struct block_device *bdev;	/* swap device or bdev of swap file */
-	struct file *swap_file;		/* seldom referenced */
+	struct percpu_cluster __percpu *percpu_cluster; /* per cpu's swap location，为了进一步利用 cpu cache，
+	以及实现无锁化查找 slot，内核会给每个 cpu 分配一个 cluster —— percpu_cluster，cpu 直接从自己的 cluster 
+	中查找空闲 slot，近一步提高了 swap out 的吞吐。当 cpu 自己的 percpu_cluster 用尽之后，内核则会调用 swap_alloc_cluster
+	 函数从 free_clusters 中获取一个新的 cluster。 */
+	struct rb_root swap_extent_root;/* root of the swap extent rbtree 。是rbtree里面的节点，
+	每个节点可以查到swap extent，里面有page index和磁盘块信息。
+	*/
+	struct block_device *bdev;	/* swap device or bdev of swap file ，如果该交换区是 swap partition 则指向该磁盘分区的块设备结构 block_device
+    // 如果该交换区是 swap file 则指向文件底层依赖的块设备结构 block_device*/
+	struct file *swap_file;		/* seldom referenced ， 指向 swap file 的 file 结构*/
 	unsigned int old_block_size;	/* seldom referenced */
 #ifdef CONFIG_FRONTSWAP
 	unsigned long *frontswap_map;	/* frontswap in-use, one bit per page */
