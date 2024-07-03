@@ -3658,6 +3658,8 @@ static bool zone_allows_reclaim(struct zone *local_zone, struct zone *zone)
 #endif	/* CONFIG_NUMA */
 
 /*
+2024年7月3日23:19:45
+根据区域和gfp掩码请求添加分配标志
  * The restriction on ZONE_DMA32 as being a suitable zone to use to avoid
  * fragmentation is subtle. If the preferred zone was HIGHMEM then
  * premature use of a lower zone may cause lowmem pressure problems that
@@ -3696,7 +3698,7 @@ alloc_flags_nofragment(struct zone *zone, gfp_t gfp_mask)
 
 /*
 2024年6月26日22:32:22
-
+是内存分配的fastpath,
  * get_page_from_freelist goes through the zonelist trying to allocate
  * a page.
  */
@@ -3932,7 +3934,8 @@ __alloc_pages_cpuset_fallback(gfp_t gfp_mask, unsigned int order,
 
 	return page;
 }
-
+/* 2024年7月3日23:39:15
+__alloc_pages_may_oom(), 如果内存回收失败，会尝试进行oom kill 一些进程，进行内存的回收 */
 static inline struct page *
 __alloc_pages_may_oom(gfp_t gfp_mask, unsigned int order,
 	const struct alloc_context *ac, unsigned long *did_some_progress)
@@ -4004,7 +4007,8 @@ __alloc_pages_may_oom(gfp_t gfp_mask, unsigned int order,
 	if (gfp_mask & __GFP_THISNODE)
 		goto out;
 
-	/* Exhausted what can be done so it's blame time */
+	/* Exhausted what can be done so it's blame time
+	进行oom kill */
 	if (out_of_memory(&oc) || WARN_ON_ONCE(gfp_mask & __GFP_NOFAIL)) {
 		*did_some_progress = 1;
 
@@ -4083,7 +4087,8 @@ __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 
 	return NULL;
 }
-
+/* 2024年7月3日23:37:22
+should_compact_retry()会判断是否需要重新压缩，然后跳转到”retry" */
 static inline bool
 should_compact_retry(struct alloc_context *ac, int order, int alloc_flags,
 		     enum compact_result compact_result,
@@ -4252,8 +4257,7 @@ EXPORT_SYMBOL_GPL(fs_reclaim_release);
 
 /* 
 2024年6月26日00:04:54
-在直接内存回收中，会先进行直接同步的内存回收操作，
-然后再走“快路径”的方式进行内存分配。其关键处理入口
+在直接内存回收中，会先进行直接同步的内存回收操作，然后再走“快路径”的方式进行内存分配。其关键处理入口
 在try_to_free_pages。
 Perform direct synchronous page reclaim */
 static int
@@ -4263,13 +4267,14 @@ __perform_reclaim(gfp_t gfp_mask, unsigned int order,
 	int progress;
 	unsigned int noreclaim_flag;
 	unsigned long pflags;
-
+	//主动让出cpu
 	cond_resched();
 
-	/* We now go into synchronous reclaim */
+	/* We now go into synchronous reclaim计算内存压力 */
 	cpuset_memory_pressure_bump();
 	psi_memstall_enter(&pflags);
 	fs_reclaim_acquire(gfp_mask);
+	/* 保存内存标志 */
 	noreclaim_flag = memalloc_noreclaim_save();
 
 	progress = try_to_free_pages(ac->zonelist, order, gfp_mask,
@@ -4320,7 +4325,9 @@ retry:
 
 	return page;
 }
-
+/* 2024年7月3日23:23:39
+如果alloc_flag标志ALLOC_KSWAPD， 那么会通过wake_all_kswapds唤醒kswapd内核线程
+ */
 static void wake_all_kswapds(unsigned int order, gfp_t gfp_mask,
 			     const struct alloc_context *ac)
 {
@@ -4336,7 +4343,9 @@ static void wake_all_kswapds(unsigned int order, gfp_t gfp_mask,
 		last_pgdat = zone->zone_pgdat;
 	}
 }
-
+/* 2024年7月3日23:22:30
+通过gfp_to_alloc_flags(), 根据gfp_mask对内存分配标识进行调整
+ */
 static inline unsigned int
 gfp_to_alloc_flags(gfp_t gfp_mask)
 {
@@ -4421,6 +4430,8 @@ bool gfp_pfmemalloc_allowed(gfp_t gfp_mask)
 }
 
 /*
+2024年7月3日23:36:11
+should_reclaim_retry()会判断是否需要重新回收，
  * Checks whether it makes sense to retry the reclaim to make a forward progress
  * for the given allocation request.
  *
@@ -4590,6 +4601,7 @@ retry_cpuset:
 	 * The fast path uses conservative alloc_flags to succeed only until
 	 * kswapd needs to be woken up, and to avoid the cost of setting up
 	 * alloc_flags precisely. So we do that now.
+	 通过gfp_to_alloc_flags(), 根据gfp_mask对内存分配标识进行调整
 	 */
 	alloc_flags = gfp_to_alloc_flags(gfp_mask);
 
@@ -4598,18 +4610,23 @@ retry_cpuset:
 	 * because we might have used different nodemask in the fast path, or
 	 * there was a cpuset modification and we are retrying - otherwise we
 	 * could end up iterating over non-eligible zones endlessly.
+	 通过first_zones_zonelist()重新计算preferred zone
+	 因为可能在fastpath中使用的nodemask不同，或者cpuset进行了修改，正在retry, 
+	 这样需要重新计算preferred zone，以免无限的遍历不符合要求的zone
 	 */
 	ac->preferred_zoneref = first_zones_zonelist(ac->zonelist,
 					ac->high_zoneidx, ac->nodemask);
 	if (!ac->preferred_zoneref->zone)
 		goto nopage;
 
+	/* 如果alloc_flag标志ALLOC_KSWAPD， 那么会通过wake_all_kswapds唤醒kswapd内核线程 */
 	if (alloc_flags & ALLOC_KSWAPD)
 		wake_all_kswapds(order, gfp_mask, ac);
 
 	/*
 	 * The adjusted alloc_flags might result in immediate success, so try
 	 * that first
+	 使用调整后的标志来尝试第一次慢速路径内存分配，分配的函数也是get_page_from_freelist。
 	 */
 	page = get_page_from_freelist(gfp_mask, order, alloc_flags, ac);
 	if (page)
@@ -4628,6 +4645,8 @@ retry_cpuset:
 			(costly_order ||
 			   (order > 0 && ac->migratetype != MIGRATE_MOVABLE))
 			&& !gfp_pfmemalloc_allowed(gfp_mask)) {
+				/* 如果分配失败，满足“允许直接回收内存（can_direct_reclaim）” 
+				或者 "不适用pfmemalloc的内存分配请求"等条件，将会进行一次内存的压缩并分配页面 */
 		page = __alloc_pages_direct_compact(gfp_mask, order,
 						alloc_flags, ac,
 						INIT_COMPACT_PRIORITY,
@@ -4683,9 +4702,10 @@ retry_cpuset:
 			compact_priority = INIT_COMPACT_PRIORITY;
 		}
 	}
-
+/* 如果上面的分配都失败了，会进行retry操作。 */
 retry:
-	/* Ensure kswapd doesn't accidentally go to sleep as long as we loop */
+	/* Ensure kswapd doesn't accidentally go to sleep as long as we loop
+	retry 的过程中会重新唤醒kswapd线程(防止意外的休眠) */
 	if (alloc_flags & ALLOC_KSWAPD)
 		wake_all_kswapds(order, gfp_mask, ac);
 
@@ -4697,6 +4717,7 @@ retry:
 	 * Reset the nodemask and zonelist iterators if memory policies can be
 	 * ignored. These allocations are high priority and system rather than
 	 * user oriented.
+	 调整preferred zone。
 	 */
 	if (!(alloc_flags & ALLOC_CPUSET) || reserve_flags) {
 		ac->nodemask = NULL;
@@ -4704,12 +4725,14 @@ retry:
 					ac->high_zoneidx, ac->nodemask);
 	}
 
-	/* Attempt with potentially adjusted zonelist and alloc_flags */
+	/* Attempt with potentially adjusted zonelist and alloc_flags
+	调整zone后通过get_page_from_freelist 重新进行内存分配 */
 	page = get_page_from_freelist(gfp_mask, order, alloc_flags, ac);
 	if (page)
 		goto got_pg;
 
-	/* Caller is not willing to reclaim, we can't balance anything */
+	/* Caller is not willing to reclaim, we can't balance anything 
+	如果分配失败了，并且不能够直接内存回收， 就跳转到"no_page"*/
 	if (!can_direct_reclaim)
 		goto nopage;
 
@@ -4717,13 +4740,15 @@ retry:
 	if (current->flags & PF_MEMALLOC)
 		goto nopage;
 
-	/* Try direct reclaim and then allocating */
+	/* Try direct reclaim and then allocating 
+	__alloc_pages_direct_reclaim()尝试直接内存回收后分配页面*/
 	page = __alloc_pages_direct_reclaim(gfp_mask, order, alloc_flags, ac,
 							&did_some_progress);
 	if (page)
 		goto got_pg;
 
-	/* Try direct compaction and then allocating */
+	/* Try direct compaction and then allocating
+	__alloc_pages_direct_compact()进行第二次直接内存压缩后分配页面 */
 	page = __alloc_pages_direct_compact(gfp_mask, order, alloc_flags, ac,
 					compact_priority, &compact_result);
 	if (page)
@@ -4739,7 +4764,10 @@ retry:
 	 */
 	if (costly_order && !(gfp_mask & __GFP_RETRY_MAYFAIL))
 		goto nopage;
-
+		
+	/* should_reclaim_retry()会判断是否需要重新回收，然后调转到“retry”.
+	 如果gfp_mask中有noretry标志或者__GFP_RETRY_MAYFAIL标志，那么不会重新
+	 retry, 直接跳转到"no_page" */
 	if (should_reclaim_retry(gfp_mask, order, ac, alloc_flags,
 				 did_some_progress > 0, &no_progress_loops))
 		goto retry;
@@ -4749,6 +4777,7 @@ retry:
 	 * reclaim is not able to make any progress because the current
 	 * implementation of the compaction depends on the sufficient amount
 	 * of free memory (see __compaction_suitable)
+	 should_compact_retry()会判断是否需要重新压缩，然后跳转到”retry"
 	 */
 	if (did_some_progress > 0 &&
 			should_compact_retry(ac, order, alloc_flags,
@@ -4757,16 +4786,20 @@ retry:
 		goto retry;
 
 
-	/* Deal with possible cpuset update races before we start OOM killing */
+	/* Deal with possible cpuset update races before we start OOM killing 
+	check_retry_cpuset(), 如果检测到由于cpuset发生变化而检测到竞争条件，
+	跳转到最开始的"retry_cpuset"*/
 	if (check_retry_cpuset(cpuset_mems_cookie, ac))
 		goto retry_cpuset;
 
-	/* Reclaim has failed us, start killing things */
+	/* Reclaim has failed us, start killing things 
+	__alloc_pages_may_oom(), 如果内存回收失败，会尝试进行oom kill 一些进程，进行内存的回收*/
 	page = __alloc_pages_may_oom(gfp_mask, order, ac, &did_some_progress);
 	if (page)
 		goto got_pg;
 
-	/* Avoid allocations with no watermarks from looping endlessly */
+	/* Avoid allocations with no watermarks from looping endlessly
+	 如果当前task由于OOM而处于被杀死的状态，则跳转移至“nopage” */
 	if (tsk_is_oom_victim(current) &&
 	    (alloc_flags == ALLOC_OOM ||
 	     (gfp_mask & __GFP_NOMEMALLOC)))
@@ -4777,7 +4810,7 @@ retry:
 		no_progress_loops = 0;
 		goto retry;
 	}
-
+/* “no_page”标签主要是对slowpath最后的补充处理 */
 nopage:
 	/* Deal with possible cpuset update races before we fail */
 	if (check_retry_cpuset(cpuset_mems_cookie, ac))
@@ -4925,12 +4958,13 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order, int preferred_nid,
 	/*
 	 * Forbid the first pass from falling back to types that fragment
 	 * memory until all local zones are considered.
-	 如果gfp_mask设置了__GFP_KSWAPD_RECLAIM标记，则允许在内存不足时唤醒kswapd进行内存回收
+	 根据区域和gfp掩码请求添加分配标志
 	 */
 	alloc_flags |= alloc_flags_nofragment(ac.preferred_zoneref->zone, gfp_mask);
 
 	/* First allocation attempt
 	尝试直接在free_area上分配内存，如果不成功，则尝试“慢路径”
+	是内存分配的fastpath,
 	 */
 	page = get_page_from_freelist(alloc_mask, order, alloc_flags, &ac);
 	if (likely(page))

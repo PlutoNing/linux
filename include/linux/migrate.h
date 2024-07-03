@@ -16,16 +16,17 @@ typedef void free_page_t(struct page *page, unsigned long private);
  * - zero on page migration success;
  */
 #define MIGRATEPAGE_SUCCESS		0
-
+/* 2024年7月3日22:33:32
+ */
 enum migrate_reason {
-	MR_COMPACTION,
-	MR_MEMORY_FAILURE,
-	MR_MEMORY_HOTPLUG,
-	MR_SYSCALL,		/* also applies to cpusets */
-	MR_MEMPOLICY_MBIND,
-	MR_NUMA_MISPLACED,
-	MR_CONTIG_RANGE,
-	MR_TYPES
+	MR_COMPACTION, /* 内存规整导致的迁移 */
+	MR_MEMORY_FAILURE, /* 当内存出现硬件问题(ECC校验失败等)时触发的页面迁移（memory–failure.c） */
+	MR_MEMORY_HOTPLUG,/* 内存热插拔导致的迁移 */
+	MR_SYSCALL,		/* also applies to cpusets 应用层主动调用migrate_pages()或move_pages()触发的迁移。*/
+	MR_MEMPOLICY_MBIND,/* 调用mbind系统调用设置memory policy时触发的迁移 */
+	MR_NUMA_MISPLACED,/* numa balance触发的页面迁移 */
+	MR_CONTIG_RANGE,/* 调用alloc_contig_range()为CMA或HugeTLB分配连续内存时触发的迁移(和compact相关)。 */
+	MR_TYPES/*  */
 };
 
 /* In mm/debug.c; also keep sync with include/trace/events/migrate.h */

@@ -1158,6 +1158,7 @@ out:
 #endif
 
 /*
+2024年7月3日22:32:45
  * Obtain the lock on page, remove all ptes and migrate the page
  * to the newly allocated page in newpage.
  */
@@ -1172,7 +1173,7 @@ static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 
 	if (!thp_migration_supported() && PageTransHuge(page))
 		return -ENOMEM;
-
+		/* 获取新页面 */
 	newpage = get_new_page(page, private);
 	if (!newpage)
 		return -ENOMEM;
@@ -1187,20 +1188,22 @@ static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 				__ClearPageIsolated(page);
 			unlock_page(page);
 		}
+		/* 刚分配的页面需要调用put_new_page()回调函数，如内存规整机制中的
+compaction_free()回调函数，把空闲页面添加到cc->freepages链表中。 */
 		if (put_new_page)
 			put_new_page(newpage, private);
 		else
 			put_page(newpage);
 		goto out;
 	}
-
+	/* 调用__unmap_and_move()尝试迁移页面到新分配的页面中 */
 	rc = __unmap_and_move(page, newpage, force, mode);
 	if (rc == MIGRATEPAGE_SUCCESS)
 		set_page_owner_migrate_reason(newpage, reason);
 
 out:
 	if (rc != -EAGAIN) {
-		/*
+		/*若返回值不等于-EAGAIN，说明可能迁移没成功
 		 * A page that has been migrated has all references
 		 * removed and will be freed. A page that has not been
 		 * migrated will have kepts its references and be
@@ -1222,6 +1225,7 @@ out:
 	 * If migration is successful, releases reference grabbed during
 	 * isolation. Otherwise, restore the page to right list unless
 	 * we want to retry.
+	 若返回值为MIGRATEPAGE_SUCCESS，说明迁移成功，释放页面。
 	 */
 	if (rc == MIGRATEPAGE_SUCCESS) {
 		put_page(page);
@@ -1236,6 +1240,7 @@ out:
 		}
 	} else {
 		if (rc != -EAGAIN) {
+			/* 处理迁移没成功的情况，把页面重新添加到可移动的页面里。释放刚才新分配的页面。 */
 			if (likely(!__PageMovable(page))) {
 				putback_lru_page(page);
 				goto put_new;
@@ -1376,18 +1381,21 @@ out:
 }
 
 /*
+2024年7月3日22:29:04
+
  * migrate_pages - migrate the pages specified in a list, to the free pages
  *		   supplied as the target for the page migration
  *
- * @from:		The list of pages to be migrated.
+ * @from:		The list of pages to be migrated.将要迁移页面的链表。
  * @get_new_page:	The function used to allocate free pages to be used
- *			as the target of the page migration.
+ *			as the target of the page migration.申请新内存的页面的函数指
  * @put_new_page:	The function used to free target pages if migration
- *			fails, or NULL if no special handling is necessary.
- * @private:		Private data to be passed on to get_new_page()
+ *			fails, or NULL if no special handling is necessary.迁移失败时释放目标页面的
+函数指针。
+ * @private:		Private data to be passed on to get_new_page()传递给get_new_page的参数
  * @mode:		The migration mode that specifies the constraints for
- *			page migration, if any.
- * @reason:		The reason for page migration.
+ *			page migration, if any.迁移模式
+ * @reason:		The reason for page migration.：迁移的原因。
  *
  * The function returns after 10 attempts or if no pages are movable any more
  * because the list has become empty or no retryable pages exist any more.
@@ -1424,6 +1432,7 @@ retry:
 						put_new_page, private, page,
 						pass > 2, mode, reason);
 			else
+			/* migrate_pages()函数内部调用unmap_and_move()函数来实现。 */
 				rc = unmap_and_move(get_new_page, put_new_page,
 						private, page, pass > 2, mode,
 						reason);
@@ -1431,6 +1440,7 @@ retry:
 			switch(rc) {
 			case -ENOMEM:
 				/*
+				get new page函数无法获取新页面
 				 * THP migration might be unsupported or the
 				 * allocation could've failed so we should
 				 * retry on the same page with the THP split

@@ -857,8 +857,8 @@ static bool invalid_page_referenced_vma(struct vm_area_struct *vma, void *arg)
 2024年6月25日21:45:13
 每次访问页时，设置PG_referenced位
 page_referenced函数是利用反向映射找出映射该页的所有pte，并查看pte页表项的AF位是否置位，
-		 置位则表明该页被访问过，AF位被访问后会立即被设置为0.而page_referenced函数返回值的是表示映射该
-		 页的所有pte中AF位被置位的pte个数。
+置位则表明该页被访问过，AF位被访问后会立即被设置为0.而page_referenced函数返回值的是表示映射该
+页的所有pte中AF位被置位的pte个数。
  * page_referenced - test if the page was referenced
  * @page: the page to test
  * @is_locked: caller holds lock on the page

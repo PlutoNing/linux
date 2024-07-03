@@ -1068,15 +1068,23 @@ void putback_lru_page(struct page *page)
 	lru_cache_add(page);
 	put_page(page);		/* drop ref from isolate */
 }
-
+/* 2024年7月3日23:04:53
+PAGEREF_RECLAIM和PAGEREF_RECLAIM_CLEAN表示
+可以尝试回收该页面。
+ */
 enum page_references {
-	PAGEREF_RECLAIM,
-	PAGEREF_RECLAIM_CLEAN,
-	PAGEREF_KEEP,
-	PAGEREF_ACTIVATE,
+	PAGEREF_RECLAIM, /* 表示可以尝试回收该页面。 */
+	PAGEREF_RECLAIM_CLEAN, /* 表示可以尝试回收该页面。 */
+	PAGEREF_KEEP,  /*  */
+	PAGEREF_ACTIVATE, /* PAGEREF_ACTIVATE表示该页面会迁移到活跃LRU链表 */
 };
 /* 2024年7月2日23:48:26
-
+在扫描不活跃LRU链表时，page_check_references()会
+被调用，其返回值是一个page_references的枚举类型。
+PAGEREF_ACTIVATE表示该页面会迁移到活跃LRU链表，
+PAGEREF_KEEP表示该页面会继续保留在不活跃LRU链表
+中，PAGEREF_RECLAIM和PAGEREF_RECLAIM_CLEAN表示
+可以尝试回收该页面。
 
  */
 static enum page_references page_check_references(struct page *page,
@@ -1085,8 +1093,11 @@ static enum page_references page_check_references(struct page *page,
 	int referenced_ptes, referenced_page;
 	unsigned long vm_flags;
 
+	/* page_referenced()检查该页面访问、引用了多少个PTE（referenced_ptes） */
 	referenced_ptes = page_referenced(page, 1, sc->target_mem_cgroup,
 					  &vm_flags);
+	/* TestClearPageReferenced()函数返回该页面PG_referenced标志位的值（referenced_page），并
+且清除该标志位。 */
 	referenced_page = TestClearPageReferenced(page);
 
 	/*
@@ -1097,6 +1108,8 @@ static enum page_references page_check_references(struct page *page,
 		return PAGEREF_RECLAIM;
 
 	if (referenced_ptes) {
+		/* 接下来的代码根据访问、引用PTE的数量（referenced_ptes变量）和PG_referenced标志位状态
+（referenced_page变量）来判断该页面是留在活跃LRU链表/不活跃LRU链表中，还是可以被回收。 */
 		if (PageSwapBacked(page))
 			return PAGEREF_ACTIVATE;
 		/*
@@ -1116,6 +1129,11 @@ static enum page_references page_check_references(struct page *page,
 		SetPageReferenced(page);
 
 		if (referenced_page || referenced_ptes > 1)
+		/* “referenced_ptes > 1”表示那些第一次
+在不活跃LRU链表中的共享文件映射页面（共享文件缓
+存）。也就是说，如果多个文件同时映射到该页面，它们
+应该晋升到活跃LRU链表中，因为它们应该在活跃LRU链
+表中多待一段时间，以便其他用户可以再次访问到。 */
 			return PAGEREF_ACTIVATE;
 
 		/*
@@ -3361,7 +3379,7 @@ static inline bool compaction_ready(struct zone *zone, struct scan_control *sc)
 
 /*
 2024年6月26日00:10:05
-
+2024年7月4日00:01:49
  * This is the direct reclaim path, for page-allocating processes.  We only
  * try to reclaim pages from zones which will satisfy the caller's allocation
  * request.
@@ -3396,6 +3414,7 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 		 * to global LRU.
 		 */
 		if (global_reclaim(sc)) {
+			/* 如果当前进行的是全局页回收 */
 			if (!cpuset_zone_allowed(zone,
 						 GFP_KERNEL | __GFP_HARDWALL))
 				continue;
@@ -3408,6 +3427,7 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 			 * reclamation is disruptive enough to become a
 			 * noticeable problem, like transparent huge
 			 * page allocations.
+			 可以压缩规整，并且有足够空间
 			 */
 			if (IS_ENABLED(CONFIG_COMPACTION) &&
 			    sc->order > PAGE_ALLOC_COSTLY_ORDER &&
@@ -3432,7 +3452,10 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 			 * and balancing, not for a memcg's limit.
 			 */
 			nr_soft_scanned = 0;
-			/*  */
+			/* 回收该zone上超过soft_limit最多的mem_cgroup在该zone上mem_cgroup_per_zone对应的lru链表
+			 * 直接回收、间接回收都会调用该函数，是调用shrink_zone()前的必备动作
+			 * 通过全局mem group结构体soft_limit_tree->rb_tree_per_node->rb_tree_per_zone->rb_root
+			 找到mem_cgroup_per_zone */
 			nr_soft_reclaimed = mem_cgroup_soft_limit_reclaim(zone->zone_pgdat,
 						sc->order, sc->gfp_mask,
 						&nr_soft_scanned);
@@ -3472,6 +3495,7 @@ static void snapshot_refaults(struct mem_cgroup *root_memcg, pg_data_t *pgdat)
 
 /*
 2024年6月26日00:08:37
+2024年7月3日23:56:18
  * This is the main entry point to direct page reclaim.
  *
  * If a full scan of the inactive list fails to free enough memory then we
@@ -3501,10 +3525,11 @@ retry:
 		__count_zid_vm_events(ALLOCSTALL, sc->reclaim_idx, 1);
 
 	do {
+		/* 通过reclaimer priority level来计算虚拟内存压力 */
 		vmpressure_prio(sc->gfp_mask, sc->target_mem_cgroup,
 				sc->priority);
 		sc->nr_scanned = 0;
-		/* 对node进行内存回收 */
+		/* 对zones进行内存回收 */
 		shrink_zones(zonelist, sc);
 		// 如果回收到的页面已经达到预期，则停止扫描
 
@@ -3524,6 +3549,7 @@ retry:
 	} while (--sc->priority >= 0);
 
 	last_pgdat = NULL;
+	/* 扫描每一个区域，如果充满了固定的页面，则放弃它 */
 	for_each_zone_zonelist_nodemask(zone, z, zonelist, sc->reclaim_idx,
 					sc->nodemask) {
 		if (zone->zone_pgdat == last_pgdat)
@@ -3538,7 +3564,8 @@ retry:
 	if (sc->nr_reclaimed)
 		return sc->nr_reclaimed;
 
-	/* Aborted reclaim to try compaction? don't OOM, then */
+	/* Aborted reclaim to try compaction? don't OOM, then
+	如果可以压缩规整，则取消回收以尝试压缩 */
 	if (sc->compaction_ready)
 		return 1;
 
@@ -3715,14 +3742,14 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 	/*
 	 * Do not enter reclaim if fatal signal was delivered while throttled.
 	 * 1 is returned so that the page allocator does not OOM kill at this
-	 * point.
+	 * point.如果在节流时发送了致命信号，不要进入回收,返回1
 	 */
 	if (throttle_direct_reclaim(sc.gfp_mask, zonelist, nodemask))
 		return 1;
 
 	set_task_reclaim_state(current, &sc.reclaim_state);
 	trace_mm_vmscan_direct_reclaim_begin(order, sc.gfp_mask);
-
+	/* 主要执行函数 */
 	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
 
 	trace_mm_vmscan_direct_reclaim_end(nr_reclaimed);
@@ -3732,7 +3759,9 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 }
 
 #ifdef CONFIG_MEMCG
+/* 2024年7月4日00:17:10
 
+*/
 /* Only used by soft limit reclaim. Do not reuse for anything else. */
 unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 						gfp_t gfp_mask, bool noswap,
@@ -4430,7 +4459,7 @@ kswapd_try_sleep:
 
 /*
 2024年07月03日10:07:02
-
+2024年7月3日23:31:27
  * A zone is low on free memory or too fragmented for high-order memory.  If
  * kswapd should reclaim (direct reclaim is deferred), wake it up for the zone's
  * pgdat.  It will wake up kcompactd after reclaiming memory.  If kswapd reclaim
@@ -4478,6 +4507,7 @@ void wakeup_kswapd(struct zone *zone, gfp_t gfp_flags, int order,
 
 	trace_mm_vmscan_wakeup_kswapd(pgdat->node_id, classzone_idx, order,
 				      gfp_flags);
+	/* 唤醒kswapd */
 	wake_up_interruptible(&pgdat->kswapd_wait);
 }
 

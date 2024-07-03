@@ -129,7 +129,9 @@ static inline bool compaction_failed(enum compact_result result)
 	return false;
 }
 
-/* Compaction needs reclaim to be performed first, so it can continue. */
+/* 
+2024年7月3日23:38:02
+Compaction needs reclaim to be performed first, so it can continue. */
 static inline bool compaction_needs_reclaim(enum compact_result result)
 {
 	/*

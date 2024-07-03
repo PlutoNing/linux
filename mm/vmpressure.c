@@ -312,6 +312,8 @@ void vmpressure(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
 }
 
 /**
+2024年7月3日23:57:27
+通过reclaimer priority level来计算虚拟内存压力
  * vmpressure_prio() - Account memory pressure through reclaimer priority level
  * @gfp:	reclaimer's gfp mask
  * @memcg:	cgroup memory controller handle
