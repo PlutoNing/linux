@@ -5148,7 +5148,9 @@ static struct cftype mem_cgroup_legacy_files[] = {
  */
 
 static DEFINE_IDR(mem_cgroup_idr);
-
+/* 2024年07月04日20:28:38
+移除idr？这是什么
+ */
 static void mem_cgroup_id_remove(struct mem_cgroup *memcg)
 {
 	if (memcg->id.id > 0) {
@@ -5161,7 +5163,8 @@ static void mem_cgroup_id_get_many(struct mem_cgroup *memcg, unsigned int n)
 {
 	refcount_add(n, &memcg->id.ref);
 }
-
+/* 2024年07月04日20:28:15
+ */
 static void mem_cgroup_id_put_many(struct mem_cgroup *memcg, unsigned int n)
 {
 	if (refcount_sub_and_test(n, &memcg->id.ref)) {
@@ -5178,6 +5181,7 @@ static inline void mem_cgroup_id_put(struct mem_cgroup *memcg)
 }
 
 /**
+2024年07月04日20:27:31
  * mem_cgroup_from_id - look up a memcg from a memcg id
  * @id: the memcg id to look up
  *
@@ -7280,6 +7284,7 @@ static int __init mem_cgroup_init(void)
 subsys_initcall(mem_cgroup_init);
 
 #ifdef CONFIG_MEMCG_SWAP
+/* 2024年07月04日20:29:43 */
 static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 {
 	while (!refcount_inc_not_zero(&memcg->id.ref)) {
@@ -7365,6 +7370,8 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 }
 
 /**
+2024年07月04日20:29:25
+
  * mem_cgroup_try_charge_swap - try charging swap space for a page
  * @page: page being added to swap
  * @entry: swap entry to charge
@@ -7395,7 +7402,7 @@ int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 	}
 
 	memcg = mem_cgroup_id_get_online(memcg);
-
+	/* try chargeswap空间 */
 	if (!mem_cgroup_is_root(memcg) &&
 	    !page_counter_try_charge(&memcg->swap, nr_pages, &counter)) {
 		memcg_memory_event(memcg, MEMCG_SWAP_MAX);
@@ -7415,6 +7422,8 @@ int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 }
 
 /**
+2024年07月04日20:22:13
+还账nr pages个page？
  * mem_cgroup_uncharge_swap - uncharge swap space
  * @entry: swap entry to uncharge
  * @nr_pages: the amount of swap space to uncharge
@@ -7431,6 +7440,7 @@ void mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages)
 	rcu_read_lock();
 	memcg = mem_cgroup_from_id(id);
 	if (memcg) {
+		/* 不是root cg */
 		if (!mem_cgroup_is_root(memcg)) {
 			if (cgroup_subsys_on_dfl(memory_cgrp_subsys))
 				page_counter_uncharge(&memcg->swap, nr_pages);
@@ -7459,7 +7469,9 @@ long mem_cgroup_get_nr_swap_pages(struct mem_cgroup *memcg)
 				      page_counter_read(&memcg->swap));
 	return nr_swap_pages;
 }
-
+/* 2024年07月04日20:20:48
+判断page的memcg有无父层级memcg的swap超过了一半
+ */
 bool mem_cgroup_swap_full(struct page *page)
 {
 	struct mem_cgroup *memcg;

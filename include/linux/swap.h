@@ -444,7 +444,9 @@ extern long total_swap_pages;
 extern atomic_t nr_rotate_swap;
 extern bool has_usable_swap(void);
 
-/* Swap 50% full? Release swapcache more aggressively.. */
+/*
+2024年07月04日20:21:09
+ Swap 50% full? Release swapcache more aggressively.. */
 static inline bool vm_swap_full(void)
 {
 	return atomic_long_read(&nr_swap_pages) * 2 < total_swap_pages;
