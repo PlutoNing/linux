@@ -30,6 +30,7 @@ static inline bool frozen(struct task_struct *p)
 extern bool freezing_slow_path(struct task_struct *p);
 
 /*
+2024年07月04日15:18:01
  * Check if there is a request to freeze a process
  */
 static inline bool freezing(struct task_struct *p)

@@ -2,7 +2,8 @@
 #include <linux/nodemask.h>
 #include <linux/module.h>
 #include <linux/random.h>
-
+/* 2024年07月04日12:40:34
+ */
 int __next_node_in(int node, const nodemask_t *srcp)
 {
 	int ret = __next_node(node, srcp);

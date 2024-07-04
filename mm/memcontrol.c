@@ -616,7 +616,9 @@ static void mem_cgroup_remove_exceeded(struct mem_cgroup_per_node *mz,
 	__mem_cgroup_remove_exceeded(mz, mctz);
 	spin_unlock_irqrestore(&mctz->lock, flags);
 }
-
+/* 2024年07月04日11:28:32
+memcg的softlimit余量
+ */
 static unsigned long soft_limit_excess(struct mem_cgroup *memcg)
 {
 	unsigned long nr_pages = page_counter_read(&memcg->memory);
@@ -721,7 +723,9 @@ retry:
 done:
 	return mz;
 }
-
+/* 2024年07月04日10:52:52
+找到一个soft limit最多的？
+ */
 static struct mem_cgroup_per_node *
 mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
 {
@@ -1734,6 +1738,8 @@ static bool test_mem_cgroup_node_reclaimable(struct mem_cgroup *memcg,
 
 /*
 2024年06月28日15:57:20
+2024年07月04日12:38:11
+todo
  * Always updating the nodemask is not very good - even if we have an empty
  * list or the wrong list here, we can start from some node and traverse all
  * nodes based on the zonelist. So update the list loosely once per 10 secs.
@@ -1765,6 +1771,8 @@ static void mem_cgroup_may_update_nodemask(struct mem_cgroup *memcg)
 }
 
 /*
+2024年07月04日12:19:24
+回收指定memcg时选择node
  * Selecting a node where we start reclaim from. Because what we need is just
  * reducing usage counter, start from anywhere is O,K. Considering
  * memory reclaim from current node, there are pros. and cons.
@@ -1801,7 +1809,9 @@ int mem_cgroup_select_victim_node(struct mem_cgroup *memcg)
 	return 0;
 }
 #endif
-
+/* 2024年07月04日11:06:23
+对此root memcg进行soft reclaim。
+ */
 static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 				   pg_data_t *pgdat,
 				   gfp_t gfp_mask,
@@ -1816,7 +1826,7 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 		.pgdat = pgdat,
 		.priority = 0,
 	};
-
+	/* 计算soft limit余量 */
 	excess = soft_limit_excess(root_memcg);
 
 	while (1) {
@@ -1843,6 +1853,7 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 			}
 			continue;
 		}
+		/* 扫描victim */
 		total += mem_cgroup_shrink_node(victim, gfp_mask, false,
 					pgdat, &nr_scanned);
 		*total_scanned += nr_scanned;
@@ -3384,10 +3395,14 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 			mz = next_mz;
 		else
 			mz = mem_cgroup_largest_soft_limit_node(mctz);
+
 		if (!mz)
 			break;
+		
+		/* 找到下一个mz */
 
 		nr_scanned = 0;
+		/* 开始回收 */
 		reclaimed = mem_cgroup_soft_reclaim(mz->memcg, pgdat,
 						    gfp_mask, &nr_scanned);
 		nr_reclaimed += reclaimed;
@@ -3427,6 +3442,7 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 			loop > MEM_CGROUP_MAX_SOFT_LIMIT_RECLAIM_LOOPS))
 			break;
 	} while (!nr_reclaimed);
+
 	if (next_mz)
 		css_put(&next_mz->memcg->css);
 	return nr_reclaimed;

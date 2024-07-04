@@ -57,7 +57,8 @@ enum mem_cgroup_protection {
 	MEMCG_PROT_LOW,
 	MEMCG_PROT_MIN,
 };
-
+/* 2024年07月04日11:28:21
+ */
 struct mem_cgroup_reclaim_cookie {
 	pg_data_t *pgdat;
 	int priority;
@@ -273,7 +274,8 @@ struct mem_cgroup {
 
 	/* Range enforcement for interrupt charges */
 	struct work_struct high_work;
-
+/* 2024年07月04日11:28:47
+memcg soft limit reclaim会用到此 */
 	unsigned long soft_limit;
 
 	/* vmpressure notifications */
@@ -282,7 +284,7 @@ struct mem_cgroup {
 	/*
 	 * Should the accounting and control be hierarchical, per subtree?
 	 是继承的吗，如果是，那么设置子cg会拷贝父cg的一些属性
-	 
+
 	 */
 	bool use_hierarchy;
 
@@ -372,7 +374,7 @@ struct mem_cgroup {
 	enum memcg_kmem_state kmem_state;
 	struct list_head kmem_caches;
 #endif
-
+/* 上次回收此memcg内存时的node */
 	int last_scanned_node;
 #if MAX_NUMNODES > 1
 	nodemask_t	scan_nodes;

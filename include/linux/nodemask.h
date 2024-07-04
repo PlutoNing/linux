@@ -272,6 +272,7 @@ static inline int __next_node(int n, const nodemask_t *srcp)
 }
 
 /*
+2024年07月04日12:39:54
  * Find the next present node in src, starting after node n, wrapping around to
  * the first node in src if needed.  Returns MAX_NUMNODES if src is empty.
  */
@@ -386,6 +387,7 @@ static inline void __nodes_fold(nodemask_t *dstp, const nodemask_t *origp,
 #endif /* MAX_NUMNODES */
 
 /*
+2024年07月04日12:39:04
  * Bitmasks that are kept for all the nodes.
  */
 enum node_states {
