@@ -1095,7 +1095,7 @@ static __always_inline struct mem_cgroup *get_mem_cgroup_from_current(void)
 
 /**
 2024年06月25日16:04:47
-遍历根cg的层级
+遍历cg的层级
  * mem_cgroup_iter - iterate over memory cgroup hierarchy
  * @root: hierarchy root
  * @prev: previously returned memcg, NULL on first invocation
@@ -1137,7 +1137,7 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 	}
 
 	rcu_read_lock();
-
+	/* 全局遍历不需要考虑reclaim */
 	if (reclaim) {
 		struct mem_cgroup_per_node *mz;
 
@@ -1162,11 +1162,12 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 			(void)cmpxchg(&iter->position, pos, NULL);
 		}
 	}
-
+	/* 从prev的位置开始 */
 	if (pos)
 		css = &pos->css;
 
 	for (;;) {
+		/* 借助css遍历 */
 		css = css_next_descendant_pre(css, &root->css);
 		if (!css) {
 			/*
@@ -6272,7 +6273,7 @@ static void mem_cgroup_bind(struct cgroup_subsys_state *root_css)
 	else
 		root_mem_cgroup->use_hierarchy = false;
 }
-
+/* 2024年07月05日16:52:30 */
 static int seq_puts_memcg_tunable(struct seq_file *m, unsigned long value)
 {
 	if (value == PAGE_COUNTER_MAX)
@@ -6282,7 +6283,8 @@ static int seq_puts_memcg_tunable(struct seq_file *m, unsigned long value)
 
 	return 0;
 }
-
+/* 2024年07月05日16:42:37
+ */
 static u64 memory_current_read(struct cgroup_subsys_state *css,
 			       struct cftype *cft)
 {
@@ -6296,7 +6298,7 @@ static int memory_min_show(struct seq_file *m, void *v)
 	return seq_puts_memcg_tunable(m,
 		READ_ONCE(mem_cgroup_from_seq(m)->memory.min));
 }
-
+/* 2024年07月05日16:42:19 */
 static ssize_t memory_min_write(struct kernfs_open_file *of,
 				char *buf, size_t nbytes, loff_t off)
 {
@@ -6313,13 +6315,16 @@ static ssize_t memory_min_write(struct kernfs_open_file *of,
 
 	return nbytes;
 }
-
+/* 2024年07月05日16:42:14
+ */
 static int memory_low_show(struct seq_file *m, void *v)
 {
 	return seq_puts_memcg_tunable(m,
 		READ_ONCE(mem_cgroup_from_seq(m)->memory.low));
 }
+/* 2024年07月05日16:04:42
 
+ */
 static ssize_t memory_low_write(struct kernfs_open_file *of,
 				char *buf, size_t nbytes, loff_t off)
 {
@@ -6370,7 +6375,7 @@ static ssize_t memory_high_write(struct kernfs_open_file *of,
 	memcg_wb_domain_size_changed(memcg);
 	return nbytes;
 }
-
+/* 2024年07月05日16:04:24 */
 static int memory_max_show(struct seq_file *m, void *v)
 {
 	return seq_puts_memcg_tunable(m,
@@ -6378,7 +6383,8 @@ static int memory_max_show(struct seq_file *m, void *v)
 }
 /* 2024年06月27日18:15:13
 什么用呢
-
+2024年07月05日16:04:12
+与fs的接口
  */
 static ssize_t memory_max_write(struct kernfs_open_file *of,
 				char *buf, size_t nbytes, loff_t off)

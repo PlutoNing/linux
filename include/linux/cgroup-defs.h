@@ -138,10 +138,9 @@ pcb里存储一组指向 cgroup_subsys_state 的指针，通过这个指针进�
  * directly without synchronization.
  */
 struct cgroup_subsys_state {
-	/* PI: the cgroup that this css is attached to cgroup指针指向了一个
-	cgroup结构，也就是进程属于的cgroup。进程受到子系统的控制，实际上是通过
-	加入到特定的cgroup实现的，因为cgroup在特定的层级上，而子系统又是附加到
-	层级上的。*/
+	/* PI: the cgroup that this css is attached to 
+	cgroup指针指向了一个cgroup结构，也就是进程属于的cgroup。进程受到子系统的控制，实际上是通过
+	加入到特定的cgroup实现的，因为cgroup在特定的层级上，而子系统又是附加到层级上的。*/
 	struct cgroup *cgroup;
 
 	/* PI: the cgroup subsystem that this css is attached to
@@ -510,7 +509,8 @@ struct cgroup {
 	 * susbsys disabled will point to css's which are associated with
 	 * the closest ancestor which has the subsys enabled.  The
 	 * following lists all css_sets which point to this cgroup's css
-	 * for the given subsystem.在默认层次结构中，禁用了某些 susbsys 的 cgroup 的 css_set 将指向与启用了 subsys 的最近祖先相关联的 css。下面列出了所有指向给定子系统的 cgroup 的 css 的 css_sets。
+	 * for the given subsystem.
+	 在默认层次结构中，禁用了某些 susbsys 的 cgroup 的 css_set 将指向与启用了 subsys 的最近祖先相关联的 css。下面列出了所有指向给定子系统的 cgroup 的 css 的 css_sets。
 	 */
 	struct list_head e_csets[CGROUP_SUBSYS_COUNT];
 

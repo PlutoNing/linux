@@ -269,7 +269,8 @@ struct mem_cgroup {
 	struct page_counter kmem;
 	struct page_counter tcpmem;
 
-	/* Upper bound of normal memory consumption range */
+	/* Upper bound of normal memory consumption range
+	高水位 */
 	unsigned long high;
 
 	/* Range enforcement for interrupt charges */
