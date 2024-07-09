@@ -485,6 +485,8 @@ static void kernfs_drain(struct kernfs_node *kn)
 }
 
 /**
+2024年07月09日19:10:33
+增加引用计数
  * kernfs_get - get a reference count on a kernfs_node
  * @kn: the target kernfs_node
  */
@@ -596,6 +598,7 @@ const struct dentry_operations kernfs_dops = {
 };
 
 /**
+2024年07月09日19:32:22
  * kernfs_node_from_dentry - determine kernfs_node associated with a dentry
  * @dentry: the dentry in question
  *
@@ -613,7 +616,9 @@ struct kernfs_node *kernfs_node_from_dentry(struct dentry *dentry)
 		return kernfs_dentry_node(dentry);
 	return NULL;
 }
+/* 2024年07月09日19:11:54
 
+ */
 static struct kernfs_node *__kernfs_new_node(struct kernfs_root *root,
 					     struct kernfs_node *parent,
 					     const char *name, umode_t mode,
@@ -628,7 +633,7 @@ static struct kernfs_node *__kernfs_new_node(struct kernfs_root *root,
 	name = kstrdup_const(name, GFP_KERNEL);
 	if (!name)
 		return NULL;
-
+/* slab */
 	kn = kmem_cache_zalloc(kernfs_node_cache, GFP_KERNEL);
 	if (!kn)
 		goto err_out1;
@@ -687,7 +692,7 @@ static struct kernfs_node *__kernfs_new_node(struct kernfs_root *root,
 	kfree_const(name);
 	return NULL;
 }
-
+/* 2024年07月09日19:11:31 */
 struct kernfs_node *kernfs_new_node(struct kernfs_node *parent,
 				    const char *name, umode_t mode,
 				    kuid_t uid, kgid_t gid,
@@ -821,6 +826,7 @@ out_unlock:
 }
 
 /**
+2024年07月09日19:10:21
  * kernfs_find_ns - find kernfs_node with the given name
  * @parent: kernfs_node to search under
  * @name: name to look for
@@ -861,7 +867,8 @@ static struct kernfs_node *kernfs_find_ns(struct kernfs_node *parent,
 	}
 	return NULL;
 }
-
+/* 2024年07月09日19:55:02
+ */
 static struct kernfs_node *kernfs_walk_ns(struct kernfs_node *parent,
 					  const unsigned char *path,
 					  const void *ns)
@@ -895,6 +902,7 @@ static struct kernfs_node *kernfs_walk_ns(struct kernfs_node *parent,
 }
 
 /**
+2024年07月09日19:10:07
  * kernfs_find_and_get_ns - find and get kernfs_node with the given name
  * @parent: kernfs_node to search under
  * @name: name to look for
@@ -919,6 +927,7 @@ struct kernfs_node *kernfs_find_and_get_ns(struct kernfs_node *parent,
 EXPORT_SYMBOL_GPL(kernfs_find_and_get_ns);
 
 /**
+2024年07月09日19:54:53
  * kernfs_walk_and_get_ns - find and get kernfs_node with the given path
  * @parent: kernfs_node to search under
  * @path: path to look for
@@ -1000,6 +1009,7 @@ void kernfs_destroy_root(struct kernfs_root *root)
 }
 
 /**
+2024年07月09日19:11:23
  * kernfs_create_dir_ns - create a directory
  * @parent: parent in which to create a new directory
  * @name: name of the new directory
@@ -1487,6 +1497,7 @@ bool kernfs_remove_self(struct kernfs_node *kn)
 }
 
 /**
+2024年07月09日20:40:54
  * kernfs_remove_by_name_ns - find a kernfs_node by name and remove it
  * @parent: parent of the target
  * @name: name of the kernfs_node to remove

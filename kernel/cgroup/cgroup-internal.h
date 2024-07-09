@@ -66,6 +66,8 @@ static inline struct cgroup_fs_context *cgroup_fc2context(struct fs_context *fc)
 }
 
 /*
+2024年07月09日20:34:59
+个task可以属于多个cgroup，一个cgroup也可以拥有多个task，这种M:N的关系，linux kernel中是通过cgrp_cset_link结构体表示的
  * A cgroup can be associated with multiple css_sets as different tasks may
  * belong to different cgroups on different hierarchies.  In the other
  * direction, a css_set is naturally associated with multiple cgroups.
@@ -78,7 +80,9 @@ struct cgrp_cset_link {
 	struct cgroup		*cgrp;
 	struct css_set		*cset;
 
-	/* list of cgrp_cset_links anchored at cgrp->cset_links */
+	/* list of cgrp_cset_links anchored at cgrp->cset_links 
+	而cset_link是给struct cgroup查找struct cgrp_cset_link用的
+	*/
 	struct list_head	cset_link;
 
 	/* list of cgrp_cset_links anchored at css_set->cgrp_links */
@@ -170,7 +174,7 @@ extern struct file_system_type cgroup_fs_type;
 #define for_each_subsys(ss, ssid)					\
 	for ((ssid) = 0; (ssid) < CGROUP_SUBSYS_COUNT &&		\
 	     (((ss) = cgroup_subsys[ssid]) || true); (ssid)++)
-
+/* 2024年07月09日19:56:49 */
 static inline bool cgroup_is_dead(const struct cgroup *cgrp)
 {
 	return !(cgrp->self.flags & CSS_ONLINE);
@@ -182,7 +186,7 @@ static inline bool notify_on_release(const struct cgroup *cgrp)
 }
 
 void put_css_set_locked(struct css_set *cset);
-
+/* 2024年07月09日20:04:39 */
 static inline void put_css_set(struct css_set *cset)
 {
 	unsigned long flags;

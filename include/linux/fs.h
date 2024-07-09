@@ -776,7 +776,8 @@ struct inode {
 #ifdef CONFIG_FS_VERITY
 	struct fsverity_info	*i_verity_info;
 #endif
-
+/* 特异与用途
+kernfs是knode */
 	void			*i_private; /* fs or device private pointer */
 } __randomize_layout;
 

@@ -190,6 +190,7 @@ static int inet_autobind(struct sock *sk)
 }
 
 /*
+2024年07月09日15:20:21
  *	Move a socket into listening state.
  */
 int inet_listen(struct socket *sock, int backlog)

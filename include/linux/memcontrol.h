@@ -276,7 +276,10 @@ struct mem_cgroup {
 	/* Range enforcement for interrupt charges */
 	struct work_struct high_work;
 /* 2024年07月04日11:28:47
-memcg soft limit reclaim会用到此 */
+memcg soft limit reclaim会用到此 
+2024年07月09日18:40:18
+非强制内存上限。usage超过这个上限后，组内进程使用的内存可能会被加快步伐进行回收
+*/
 	unsigned long soft_limit;
 
 	/* vmpressure notifications */
@@ -514,6 +517,7 @@ struct mem_cgroup *get_mem_cgroup_from_page(struct page *page);
 /* 
  2024年06月21日17:28:43
  2024年06月27日10:28:33
+ memcg包含css。
  */
 static inline
 struct mem_cgroup *mem_cgroup_from_css(struct cgroup_subsys_state *css){

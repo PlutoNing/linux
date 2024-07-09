@@ -1119,7 +1119,7 @@ struct task_struct {
 	*/
 	struct css_set __rcu		*cgroups;
 	/* cg_list protected by css_set_lock and tsk->alloc_lock: 
-	链接同一个cg的pcb
+	链接同一个cg的pcb？
 	*/
 	struct list_head		cg_list;
 #endif

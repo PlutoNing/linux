@@ -51,7 +51,7 @@ enum {
 	CSS_NO_REF	= (1 << 0), /* no reference counting for this css */
 	CSS_ONLINE	= (1 << 1), /* between ->css_online() and ->css_offline() */
 	CSS_RELEASED	= (1 << 2), /* refcnt reached zero, released */
-	CSS_VISIBLE	= (1 << 3), /* css is visible to userland */
+	CSS_VISIBLE	= (1 << 3), /* css is visible to userland，销毁css对应文件夹时置否 */
 	CSS_DYING	= (1 << 4), /* css is dying */
 };
 
@@ -155,7 +155,8 @@ struct cgroup_subsys_state {
 	/* siblings list anchored at the parent's ->children */
 	/* 锚定在 parent->children 的兄弟列表 */
 	struct list_head sibling;
-	/*  */
+	/* 2024年07月09日18:51:13
+	css的孩子链表 */
 	struct list_head children;
 
 	/* flush target list anchored at cgrp->rstat_css_list 
@@ -169,7 +170,7 @@ struct cgroup_subsys_state {
 	 子系统唯一 ID。 0 未使用，root 始终为 1。可以使用 css_from_id() 查找匹配的 css。
 	 */
 	int id;
-/*  */
+/* css的flags */
 	unsigned int flags;
 
 	/*
@@ -193,6 +194,7 @@ struct cgroup_subsys_state {
 	/* percpu_ref killing and RCU release 
 	 percpu_ref killing 和 RCU 释放。*/
 	struct work_struct destroy_work;
+
 	struct rcu_work destroy_rwork;
 
 	/*
@@ -322,7 +324,9 @@ struct css_set {
 	struct cgroup *mg_dst_cgrp;
 	struct css_set *mg_dst_cset;
 
-	/* dead and being drained, ignore for migration */
+	/* 
+	是否下线
+	dead and being drained, ignore for migration */
 	bool dead;
 
 	/* For RCU-protected deletion */
@@ -430,6 +434,8 @@ struct cgroup {
 	 在层级里的深度，root=0
 	 层次结构的每一层都会增加深度。这与 ancestor_ids[] 一起可以确定给定
 	  cgroup 是否是另一个 cgroup 的后代，而无需遍历层次结构。
+	  2024年07月09日20:50:14
+	  表示在层级里的深度
 	 */
 	int level;
 
@@ -449,6 +455,8 @@ struct cgroup {
 	 跟踪可见和dying descent cgroup 的总数。dying cgroups 是被用户删除的 cgroups，
 	 但由于其他人持有引用而仍然存在。max_descendants 是允许的最大descent cgroup 数。
 	 */
+
+	/* 层级一下的cg数量 */
 	int nr_descendants;
 	int nr_dying_descendants;
 	int max_descendants;
@@ -475,7 +483,7 @@ struct cgroup {
 
 	int nr_threaded_children;	/* # of live threaded child cgroups 实时线程子 cgroups */
 
-	struct kernfs_node *kn;		/* cgroup kernfs entry */
+	struct kernfs_node *kn;		/* cgroup kernfs entry，cg对应的knode */
 	struct cgroup_file procs_file;	/* handle for "cgroup.procs" */
 	struct cgroup_file events_file;	/* handle for "cgroup.events" */
 
@@ -500,7 +508,10 @@ struct cgroup {
 
 	/*
 	 * List of cgrp_cset_links pointing at css_sets with tasks in this
-	 * cgroup.  Protected by css_set_lock.指向 css_sets 的 cgrp_cset_links 列表，其中包含此 cgroup 中的任务。
+	 * cgroup.  Protected by css_set_lock.
+	 指向 css_sets 的 cgrp_cset_links 列表，其中包含此 cgroup 中的任务。
+	 2024年07月09日20:32:35
+	 是啥？
 	 */
 	struct list_head cset_links;
 
@@ -564,6 +575,11 @@ struct cgroup {
 
 	/* ids of the ancestors at each level including self
 	记录了自己各个层级的祖先，每个级别的祖先的 ID，包括自己。
+	2024年07月09日20:51:37
+	存储对应层级level的对应祖先的id
+		for (tcgrp = cgrp; tcgrp; tcgrp = cgroup_parent(tcgrp)) {
+		
+		cgrp->ancestor_ids[tcgrp->level] = tcgrp->id;
 	 */
 	int ancestor_ids[];
 };
@@ -587,7 +603,8 @@ struct cgroup_root {
 	/* Unique id for this hierarchy. 此层次结构中保持唯一的ID。*/
 	int hierarchy_id;
 
-	/* The root cgroup.  Root is destroyed on its release.根cgroup */
+	/* The root cgroup.  Root is destroyed on its release.
+	根cgroup */
 	struct cgroup cgrp;
 
 	/* for cgrp->ancestor_ids[0] */
@@ -721,6 +738,7 @@ struct cftype {
  * See Documentation/admin-guide/cgroup-v1/cgroups.rst for details
  memory_cgrp_subsys实现了memcg操作集
  2024年06月21日14:12:48
+ 2024年07月09日19:58:16
  
  */
 struct cgroup_subsys {
@@ -789,6 +807,7 @@ struct cgroup_subsys {
 
 	/* the following two fields are initialized automtically during boot */
 	int id;
+	/* 子系统的名字 */
 	const char *name;
 
 	/* optional, initialized automatically during boot if not set */
@@ -866,7 +885,7 @@ static inline void cgroup_threadgroup_change_end(struct task_struct *tsk) {}
 /*
 
 2024年06月24日18:34:30
-
+sock的cgrp
  * sock_cgroup_data is embedded at sock->sk_cgrp_data and contains
  * per-socket cgroup information except for memcg association.
  *

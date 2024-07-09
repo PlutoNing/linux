@@ -155,6 +155,8 @@ static struct static_key_true *cgroup_subsys_on_dfl_key[] = {
 static DEFINE_PER_CPU(struct cgroup_rstat_cpu, cgrp_dfl_root_rstat_cpu);
 
 /*
+2024年07月09日19:53:51
+默认层级
  * The default hierarchy, reserved for the subsystems that are otherwise
  * unattached - it never has more than a single cgroup, and all tasks are
  * part of that cgroup.
@@ -244,6 +246,7 @@ bool cgroup_ssid_enabled(int ssid)
 }
 
 /**
+2024年07月09日19:53:09
  * cgroup_on_dfl - test whether a cgroup is on the default hierarchy
  * @cgrp: the cgroup of interest
  *
@@ -336,7 +339,8 @@ static bool cgroup_has_tasks(struct cgroup *cgrp)
 {
 	return cgrp->nr_populated_csets;
 }
-
+/* 2024年07月09日20:11:51
+todo ？ */
 bool cgroup_is_threaded(struct cgroup *cgrp)
 {
 	return cgrp->dom_cgrp != cgrp;
@@ -454,6 +458,8 @@ static u16 cgroup_ss_mask(struct cgroup *cgrp)
 }
 
 /**
+2024年07月09日19:48:04
+获取cgroup的对应ss子系统的css
  * cgroup_css - obtain a cgroup's css for the specified subsystem
  * @cgrp: the cgroup of interest
  * @ss: the subsystem of interest (%NULL returns @cgrp->self)
@@ -588,7 +594,7 @@ out_unlock:
 	rcu_read_unlock();
 	return css;
 }
-
+/* 2024年07月09日19:56:34 */
 static void cgroup_get_live(struct cgroup *cgrp)
 {
 	WARN_ON_ONCE(cgroup_is_dead(cgrp));
@@ -651,6 +657,8 @@ struct cgroup_subsys_state *of_css(struct kernfs_open_file *of)
 EXPORT_SYMBOL_GPL(of_css);
 
 /**
+2024年07月09日20:36:58
+遍历cgrp的每个子系统
  * for_each_css - iterate all css's of a cgroup
  * @css: the iteration cursor
  * @ssid: the index of the subsystem, CGROUP_SUBSYS_COUNT after reaching the end
@@ -766,6 +774,8 @@ static bool css_set_threaded(struct css_set *cset)
 }
 
 /**
+2024年07月09日20:08:36
+css set是否包含tsk
  * css_set_populated - does a css_set contain any tasks?
  * @cset: target css_set
  *
@@ -782,6 +792,7 @@ static bool css_set_populated(struct css_set *cset)
 }
 
 /**
+2024年07月09日20:10:01
  * cgroup_update_populated - update the populated count of a cgroup
  * @cgrp: the target cgroup
  * @populated: inc or dec populated count
@@ -831,6 +842,7 @@ static void cgroup_update_populated(struct cgroup *cgrp, bool populated)
 }
 
 /**
+2024年07月09日20:09:04
  * css_set_update_populated - update populated state of a css_set
  * @cset: target css_set
  * @populated: whether @cset is populated or depopulated
@@ -843,7 +855,7 @@ static void css_set_update_populated(struct css_set *cset, bool populated)
 	struct cgrp_cset_link *link;
 
 	lockdep_assert_held(&css_set_lock);
-
+/* 遍历css set的cgrp links里的每一个link */
 	list_for_each_entry(link, &cset->cgrp_links, cgrp_link)
 		cgroup_update_populated(link->cgrp, populated);
 }
@@ -864,6 +876,8 @@ static void css_set_skip_task_iters(struct css_set *cset,
 }
 
 /**
+2024年07月09日20:08:15
+在css set里面移动tsk
  * css_set_move_task - move a task from one css_set to another
  * @task: task being moved
  * @from_cset: css_set @task currently belongs to (may be NULL)
@@ -888,9 +902,11 @@ static void css_set_move_task(struct task_struct *task,
 		css_set_update_populated(to_cset, true);
 
 	if (from_cset) {
+		/* 移走 */
 		WARN_ON_ONCE(list_empty(&task->cg_list));
 
 		css_set_skip_task_iters(from_cset, task);
+		/* cg list连接到css set */
 		list_del_init(&task->cg_list);
 		if (!css_set_populated(from_cset))
 			css_set_update_populated(from_cset, false);
@@ -899,6 +915,7 @@ static void css_set_move_task(struct task_struct *task,
 	}
 
 	if (to_cset) {
+		/* 移到 */
 		/*
 		 * We are synchronized through cgroup_threadgroup_rwsem
 		 * against PF_EXITING setting such that we can't race
@@ -1395,7 +1412,9 @@ current_cgns_cgroup_from_root(struct cgroup_root *root)
 	return res;
 }
 
-/* look up cgroup associated with given css_set on the specified hierarchy */
+/* 
+2024年07月09日20:20:32
+look up cgroup associated with given css_set on the specified hierarchy */
 static struct cgroup *cset_cgroup_from_root(struct css_set *cset,
 					    struct cgroup_root *root)
 {
@@ -1410,7 +1429,7 @@ static struct cgroup *cset_cgroup_from_root(struct css_set *cset,
 		res = cset->dfl_cgrp;
 	} else {
 		struct cgrp_cset_link *link;
-
+		/* 从cset获取cg？遍历cgrp links */
 		list_for_each_entry(link, &cset->cgrp_links, cgrp_link) {
 			struct cgroup *c = link->cgrp;
 
@@ -1426,6 +1445,8 @@ static struct cgroup *cset_cgroup_from_root(struct css_set *cset,
 }
 
 /*
+2024年07月09日20:19:08
+在给定的层级上返回tsk的cg？
  * Return the cgroup for "task" from the given hierarchy. Must be
  * called with cgroup_mutex and css_set_lock held.
  */
@@ -1554,6 +1575,7 @@ static u16 cgroup_calc_subtree_ss_mask(u16 subtree_control, u16 this_ss_mask)
 }
 
 /**
+2024年07月09日20:28:36
  * cgroup_kn_unlock - unlocking helper for cgroup kernfs methods
  * @kn: the kernfs_node being serviced
  *
@@ -1579,6 +1601,7 @@ void cgroup_kn_unlock(struct kernfs_node *kn)
 }
 
 /**
+2024年07月09日20:27:42
  * cgroup_kn_lock_live - locking helper for cgroup kernfs methods
  * @kn: the kernfs_node being serviced
  * @drain_offline: perform offline draining on the cgroup
@@ -1598,7 +1621,7 @@ void cgroup_kn_unlock(struct kernfs_node *kn)
 struct cgroup *cgroup_kn_lock_live(struct kernfs_node *kn, bool drain_offline)
 {
 	struct cgroup *cgrp;
-
+	/*  */
 	if (kernfs_type(kn) == KERNFS_DIR)
 		cgrp = kn->priv;
 	else
@@ -1625,7 +1648,7 @@ struct cgroup *cgroup_kn_lock_live(struct kernfs_node *kn, bool drain_offline)
 	cgroup_kn_unlock(kn);
 	return NULL;
 }
-
+/* 2024年07月09日20:40:42 */
 static void cgroup_rm_file(struct cgroup *cgrp, const struct cftype *cft)
 {
 	char name[CGROUP_FILE_NAME_MAX];
@@ -1647,6 +1670,8 @@ static void cgroup_rm_file(struct cgroup *cgrp, const struct cftype *cft)
 }
 
 /**
+2024年07月09日20:38:10
+销毁css调用
  * css_clear_dir - remove subsys files in a cgroup directory
  * @css: taget css
  */
@@ -1661,6 +1686,7 @@ static void css_clear_dir(struct cgroup_subsys_state *css)
 	css->flags &= ~CSS_VISIBLE;
 
 	if (!css->ss) {
+		/* 没有ss？ */
 		if (cgroup_on_dfl(cgrp))
 			cfts = cgroup_base_files;
 		else
@@ -3873,7 +3899,8 @@ static void cgroup_file_notify_timer(struct timer_list *timer)
 	cgroup_file_notify(container_of(timer, struct cgroup_file,
 					notify_timer));
 }
-
+/* 2024年07月09日20:40:26
+ */
 static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp,
 			   struct cftype *cft)
 {
@@ -3913,6 +3940,7 @@ static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp,
 }
 
 /**
+2024年07月09日20:39:41
  * cgroup_addrm_files - add or remove files to a cgroup directory
  * @css: the target css
  * @cgrp: the target cgroup (usually css->cgroup)
@@ -4379,6 +4407,8 @@ css_next_descendant_post(struct cgroup_subsys_state *pos,
 }
 
 /**
+2024年07月09日20:30:31
+判断css是否有存活的子层级
  * css_has_online_children - does a css have online children
  * @css: the target css
  *
@@ -5134,7 +5164,10 @@ static int online_css(struct cgroup_subsys_state *css)
 	return ret;
 }
 
-/* if the CSS is online, invoke ->css_offline() on it and mark it offline */
+/* 
+2024年07月09日20:45:59
+下线css
+if the CSS is online, invoke ->css_offline() on it and mark it offline */
 static void offline_css(struct cgroup_subsys_state *css)
 {
 	struct cgroup_subsys *ss = css->ss;
@@ -5154,6 +5187,10 @@ static void offline_css(struct cgroup_subsys_state *css)
 }
 
 /**
+2024年07月09日20:55:23
+创建css？怎么创建？
+给cgrp的ss创建css？
+
  * css_create - create a cgroup_subsys_state
  * @cgrp: the cgroup new css will be associated with
  * @ss: the subsys of new css
@@ -5171,13 +5208,13 @@ static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 	int err;
 
 	lockdep_assert_held(&cgroup_mutex);
-
+/* 分配css */
 	css = ss->css_alloc(parent_css);
 	if (!css)
 		css = ERR_PTR(-ENOMEM);
 	if (IS_ERR(css))
 		return css;
-
+/* 把新css进行链接 */
 	init_and_link_css(css, ss, cgrp);
 
 	err = percpu_ref_init(&css->refcnt, css_release, 0, GFP_KERNEL);
@@ -5218,6 +5255,9 @@ err_free_css:
 }
 
 /*
+2024年07月09日20:47:57
+创建子cg。
+
  * The returned cgroup is fully initialized including its control mask, but
  * it isn't associated with its kernfs_node and doesn't have the control
  * mask applied.
@@ -5229,16 +5269,18 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	int level = parent->level + 1;
 	int ret;
 
-	/* allocate the cgroup and its ID, 0 is reserved for the root */
+	/* allocate the cgroup and its ID, 0 is reserved for the root
+	分配内存
+	 */
 	cgrp = kzalloc(struct_size(cgrp, ancestor_ids, (level + 1)),
 		       GFP_KERNEL);
 	if (!cgrp)
 		return ERR_PTR(-ENOMEM);
-
+/* percpu的引用计数？ */
 	ret = percpu_ref_init(&cgrp->self.refcnt, css_release, 0, GFP_KERNEL);
 	if (ret)
 		goto out_free_cgrp;
-
+/* todo */
 	if (cgroup_on_dfl(parent)) {
 		ret = cgroup_rstat_init(cgrp);
 		if (ret)
@@ -5248,6 +5290,7 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	/*
 	 * Temporarily set the pointer to NULL, so idr_find() won't return
 	 * a half-baked cgroup.
+	 idr查找相关，todo。
 	 */
 	cgrp->id = cgroup_idr_alloc(&root->cgroup_idr, NULL, 2, 0, GFP_KERNEL);
 	if (cgrp->id < 0) {
@@ -5256,7 +5299,7 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	}
 
 	init_cgroup_housekeeping(cgrp);
-
+	/* 自己的css的层级构建 */
 	cgrp->self.parent = &parent->self;
 	cgrp->root = root;
 	cgrp->level = level;
@@ -5287,9 +5330,11 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 
 	spin_lock_irq(&css_set_lock);
 	for (tcgrp = cgrp; tcgrp; tcgrp = cgroup_parent(tcgrp)) {
+		
 		cgrp->ancestor_ids[tcgrp->level] = tcgrp->id;
 
 		if (tcgrp != cgrp) {
+			/* 祖先的孩子数量++ */
 			tcgrp->nr_descendants++;
 
 			/*
@@ -5311,7 +5356,8 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 
 	cgrp->self.serial_nr = css_serial_nr_next++;
 
-	/* allocation complete, commit to creation */
+	/* allocation complete, commit to creation
+	加入父亲的孩子链表 */
 	list_add_tail_rcu(&cgrp->self.sibling, &cgroup_parent(cgrp)->self.children);
 	atomic_inc(&root->nr_cgrps);
 	cgroup_get_live(parent);
@@ -5328,7 +5374,7 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	 */
 	if (!cgroup_on_dfl(cgrp))
 		cgrp->subtree_control = cgroup_control(cgrp);
-
+/* todo */
 	cgroup_propagate_control(cgrp);
 
 	return cgrp;
@@ -5346,7 +5392,10 @@ out_free_cgrp:
 	kfree(cgrp);
 	return ERR_PTR(ret);
 }
-
+/* 2024年07月09日20:46:56
+有什么限制吗？
+好像孩子数量和深度有限制
+ */
 static bool cgroup_check_hierarchy_limits(struct cgroup *parent)
 {
 	struct cgroup *cgroup;
@@ -5369,7 +5418,8 @@ static bool cgroup_check_hierarchy_limits(struct cgroup *parent)
 fail:
 	return ret;
 }
-
+/* 2024年07月09日20:46:13
+ */
 int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name, umode_t mode)
 {
 	struct cgroup *parent, *cgrp;
@@ -5379,16 +5429,16 @@ int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name, umode_t mode)
 	/* do not accept '\n' to prevent making /proc/<pid>/cgroup unparsable */
 	if (strchr(name, '\n'))
 		return -EINVAL;
-
+/* 获取父cg */
 	parent = cgroup_kn_lock_live(parent_kn, false);
 	if (!parent)
 		return -ENODEV;
-
+/* 检查parent 的孩子数量和深度是否超过限制 */
 	if (!cgroup_check_hierarchy_limits(parent)) {
 		ret = -EAGAIN;
 		goto out_unlock;
 	}
-
+	/* 创建子cg */
 	cgrp = cgroup_create(parent);
 	if (IS_ERR(cgrp)) {
 		ret = PTR_ERR(cgrp);
@@ -5437,6 +5487,7 @@ out_unlock:
 }
 
 /*
+2024年07月09日20:44:24
  * This is called when the refcnt of a css is confirmed to be killed.
  * css_tryget_online() is now guaranteed to fail.  Tell the subsystem to
  * initate destruction and put the css ref from kill_css().
@@ -5447,7 +5498,7 @@ static void css_killed_work_fn(struct work_struct *work)
 		container_of(work, struct cgroup_subsys_state, destroy_work);
 
 	mutex_lock(&cgroup_mutex);
-
+/* 逐层级offline */
 	do {
 		offline_css(css);
 		css_put(css);
@@ -5458,7 +5509,10 @@ static void css_killed_work_fn(struct work_struct *work)
 	mutex_unlock(&cgroup_mutex);
 }
 
-/* css kill confirmation processing requires process context, bounce */
+/* 
+2024年07月09日20:43:05
+异步任务删除css吗
+css kill confirmation processing requires process context, bounce */
 static void css_killed_ref_fn(struct percpu_ref *ref)
 {
 	struct cgroup_subsys_state *css =
@@ -5471,6 +5525,11 @@ static void css_killed_ref_fn(struct percpu_ref *ref)
 }
 
 /**
+2024年07月09日20:37:30
+销毁css？
+猜主要就是分离？
+2024年07月09日20:41:55
+删除清理kernfs就是清理吗，todo
  * kill_css - destroy a css
  * @css: css to destroy
  *
@@ -5491,12 +5550,14 @@ static void kill_css(struct cgroup_subsys_state *css)
 	/*
 	 * This must happen before css is disassociated with its cgroup.
 	 * See seq_css() for details.
+清理对应的sysfs里面东西
 	 */
 	css_clear_dir(css);
 
 	/*
 	 * Killing would put the base ref, but we need to keep it alive
 	 * until after ->css_offline().
+	 保活？
 	 */
 	css_get(css);
 
@@ -5514,6 +5575,8 @@ static void kill_css(struct cgroup_subsys_state *css)
 }
 
 /**
+2024年07月09日20:29:45
+销毁cgrp？
  * cgroup_destroy_locked - the first stage of cgroup destruction
  * @cgrp: cgroup to be destroyed
  *
@@ -5558,6 +5621,7 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	 * Make sure there's no live children.  We can't test emptiness of
 	 * ->self.children as dead children linger on it while being
 	 * drained; otherwise, "rmdir parent/child parent" may fail.
+	 是否有存活的子层级
 	 */
 	if (css_has_online_children(&cgrp->self))
 		return -EBUSY;
@@ -5567,6 +5631,7 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	 * further task migration and child creation by disabling
 	 * cgroup_lock_live_group().  The latter makes the csets ignored by
 	 * the migration path.
+	 置位flags
 	 */
 	cgrp->self.flags &= ~CSS_ONLINE;
 
@@ -5575,7 +5640,8 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 		link->cset->dead = true;
 	spin_unlock_irq(&css_set_lock);
 
-	/* initiate massacre of all css's */
+	/* initiate massacre of all css's
+	遍历cgrp的每个css子系统 */
 	for_each_css(css, ssid, cgrp)
 		kill_css(css);
 
@@ -5608,12 +5674,14 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 
 	return 0;
 };
+/* 2024年07月09日20:27:25
 
+ */
 int cgroup_rmdir(struct kernfs_node *kn)
 {
 	struct cgroup *cgrp;
 	int ret = 0;
-
+	/* 获取kn的cgrp */
 	cgrp = cgroup_kn_lock_live(kn, false);
 	if (!cgrp)
 		return 0;
@@ -5625,14 +5693,16 @@ int cgroup_rmdir(struct kernfs_node *kn)
 	cgroup_kn_unlock(kn);
 	return ret;
 }
-
+/*  */
 static struct kernfs_syscall_ops cgroup_kf_syscall_ops = {
 	.show_options		= cgroup_show_options,
 	.mkdir			= cgroup_mkdir,
 	.rmdir			= cgroup_rmdir,
 	.show_path		= cgroup_show_path,
 };
+/* 2024年07月09日20:26:01
 
+ */
 static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
 {
 	struct cgroup_subsys_state *css;
@@ -5640,7 +5710,7 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
 	pr_debug("Initializing cgroup subsys %s\n", ss->name);
 
 	mutex_lock(&cgroup_mutex);
-
+	/* 初始查找结构 */
 	idr_init(&ss->css_idr);
 	INIT_LIST_HEAD(&ss->cfts);
 
@@ -5687,6 +5757,9 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
 }
 
 /**
+2024年07月09日20:25:40
+？
+
  * cgroup_init_early - cgroup initialization at system boot
  *
  * Initialize cgroups at system boot, and initialize any
@@ -5726,6 +5799,8 @@ int __init cgroup_init_early(void)
 static u16 cgroup_disable_mask __initdata;
 
 /**
+2024年07月09日20:24:50
+todo，都需要初始化什么，如何布局基础设施。
  * cgroup_init - cgroup initialization
  *
  * Register cgroup filesystem and /proc file, and initialize
@@ -5837,7 +5912,8 @@ int __init cgroup_init(void)
 
 	return 0;
 }
-
+/* 2024年07月09日20:24:31
+ */
 static int __init cgroup_wq_init(void)
 {
 	/*
@@ -5853,7 +5929,9 @@ static int __init cgroup_wq_init(void)
 	return 0;
 }
 core_initcall(cgroup_wq_init);
+/* 2024年07月09日20:22:43
 
+ */
 void cgroup_path_from_kernfs_id(const union kernfs_node_id *id,
 					char *buf, size_t buflen)
 {
@@ -5867,6 +5945,7 @@ void cgroup_path_from_kernfs_id(const union kernfs_node_id *id,
 }
 
 /*
+2024年07月09日20:17:57
  * proc_cgroup_show()
  *  - Print task's cgroup paths into seq_file, one line for each hierarchy
  *  - Used for /proc/<pid>/cgroup.
@@ -5945,6 +6024,7 @@ out:
 }
 
 /**
+2024年07月09日20:17:45
  * cgroup_fork - initialize cgroup related fields during copy_process()
  * @child: pointer to task_struct of forking parent process.
  *
@@ -5959,6 +6039,7 @@ void cgroup_fork(struct task_struct *child)
 }
 
 /**
+2024年07月09日20:17:13
  * cgroup_can_fork - called on a new task before the process is exposed
  * @child: the task in question.
  *
@@ -5991,6 +6072,8 @@ out_revert:
 }
 
 /**
+2024年07月09日20:16:57
+啥叫cancel
  * cgroup_cancel_fork - called if a fork failed after cgroup_can_fork()
  * @child: the task in question
  *
@@ -6008,6 +6091,8 @@ void cgroup_cancel_fork(struct task_struct *child)
 }
 
 /**
+2024年07月09日20:16:49
+todo
  * cgroup_post_fork - called on a new task after adding it to the task list
  * @child: the task in question
  *
@@ -6087,6 +6172,8 @@ void cgroup_post_fork(struct task_struct *child)
 }
 
 /**
+2024年07月09日20:06:19
+如何分离呢？
  * cgroup_exit - detach cgroup from exiting task
  * @tsk: pointer to task_struct of exiting process
  *
@@ -6114,10 +6201,13 @@ void cgroup_exit(struct task_struct *tsk)
 	/*
 	 * Unlink from @tsk from its css_set.  As migration path can't race
 	 * with us, we can check css_set and cg_list without synchronization.
+	
 	 */
+	/* 先获取css set。 */
 	cset = task_css_set(tsk);
 
 	if (!list_empty(&tsk->cg_list)) {
+		/* tsk通过cg list挂载到相同cg的链表 */
 		spin_lock_irq(&css_set_lock);
 		css_set_move_task(tsk, cset, NULL, false);
 		list_add_tail(&tsk->cg_list, &cset->dying_tasks);
@@ -6137,7 +6227,9 @@ void cgroup_exit(struct task_struct *tsk)
 		ss->exit(tsk);
 	} while_each_subsys_mask();
 }
-
+/* 2024年07月09日20:04:46
+todo
+ */
 void cgroup_release(struct task_struct *task)
 {
 	struct cgroup_subsys *ss;
@@ -6154,13 +6246,13 @@ void cgroup_release(struct task_struct *task)
 		spin_unlock_irq(&css_set_lock);
 	}
 }
-
+/* 2024年07月09日20:04:13 */
 void cgroup_free(struct task_struct *task)
 {
 	struct css_set *cset = task_css_set(task);
 	put_css_set(cset);
 }
-
+/* 2024年07月09日20:04:05 */
 static int __init cgroup_disable(char *str)
 {
 	struct cgroup_subsys *ss;
@@ -6193,6 +6285,7 @@ static int __init enable_cgroup_debug(char *str)
 __setup("cgroup_debug", enable_cgroup_debug);
 
 /**
+2024年07月09日19:32:16
  * css_tryget_online_from_dir - get corresponding css from a cgroup dentry
  * @dentry: directory dentry of interest
  * @ss: subsystem of interest
@@ -6223,6 +6316,7 @@ struct cgroup_subsys_state *css_tryget_online_from_dir(struct dentry *dentry,
 	 */
 	cgrp = rcu_dereference(*(void __rcu __force **)&kn->priv);
 	if (cgrp)
+		/* 获取css */
 		css = cgroup_css(cgrp, ss);
 
 	if (!css || !css_tryget_online(css))
@@ -6233,6 +6327,7 @@ struct cgroup_subsys_state *css_tryget_online_from_dir(struct dentry *dentry,
 }
 
 /**
+2024年07月09日19:57:52
  * css_from_id - lookup css by id
  * @id: the cgroup id
  * @ss: cgroup subsys to be looked into
@@ -6247,6 +6342,8 @@ struct cgroup_subsys_state *css_from_id(int id, struct cgroup_subsys *ss)
 }
 
 /**
+2024年07月09日19:53:28
+从path获取对应的cgrp
  * cgroup_get_from_path - lookup and get a cgroup from its default hierarchy path
  * @path: path on the default hierarchy
  *
@@ -6261,9 +6358,10 @@ struct cgroup *cgroup_get_from_path(const char *path)
 	struct cgroup *cgrp;
 
 	mutex_lock(&cgroup_mutex);
-
+	/* 在根层级里获取path对应的knode */
 	kn = kernfs_walk_and_get(cgrp_dfl_root.cgrp.kn, path);
 	if (kn) {
+		/* 找到knode，priv就是cgrp */
 		if (kernfs_type(kn) == KERNFS_DIR) {
 			cgrp = kn->priv;
 			cgroup_get_live(cgrp);
@@ -6281,6 +6379,7 @@ struct cgroup *cgroup_get_from_path(const char *path)
 EXPORT_SYMBOL_GPL(cgroup_get_from_path);
 
 /**
+2024年07月09日19:21:42
  * cgroup_get_from_fd - get a cgroup pointer from a fd
  * @fd: fd obtained by open(cgroup2_dir)
  *
@@ -6295,11 +6394,13 @@ struct cgroup *cgroup_get_from_fd(int fd)
 	struct cgroup *cgrp;
 	struct file *f;
 
+	/* 获取cgroup file？ */
 	f = fget_raw(fd);
 	if (!f)
 		return ERR_PTR(-EBADF);
-
+		/* 获取cgrp file的css */
 	css = css_tryget_online_from_dir(f->f_path.dentry, NULL);
+	/*  */
 	fput(f);
 	if (IS_ERR(css))
 		return ERR_CAST(css);
@@ -6313,7 +6414,7 @@ struct cgroup *cgroup_get_from_fd(int fd)
 	return cgrp;
 }
 EXPORT_SYMBOL_GPL(cgroup_get_from_fd);
-
+/* 2024年07月09日19:21:34 */
 static u64 power_of_ten(int power)
 {
 	u64 v = 1;
@@ -6323,6 +6424,7 @@ static u64 power_of_ten(int power)
 }
 
 /**
+2024年07月09日19:21:25
  * cgroup_parse_float - parse a floating number
  * @input: input string
  * @dec_shift: number of decimal digits to shift
@@ -6380,7 +6482,7 @@ void cgroup_sk_alloc_disable(void)
 #define cgroup_sk_alloc_disabled	false
 
 #endif
-
+/* 2024年07月09日19:20:08 */
 void cgroup_sk_alloc(struct sock_cgroup_data *skcd)
 {
 	if (cgroup_sk_alloc_disabled)
@@ -6414,7 +6516,7 @@ void cgroup_sk_alloc(struct sock_cgroup_data *skcd)
 
 	rcu_read_unlock();
 }
-
+/* 2024年07月09日19:19:14 */
 void cgroup_sk_free(struct sock_cgroup_data *skcd)
 {
 	struct cgroup *cgrp = sock_cgroup_ptr(skcd);
@@ -6436,6 +6538,7 @@ int cgroup_bpf_attach(struct cgroup *cgrp, struct bpf_prog *prog,
 	mutex_unlock(&cgroup_mutex);
 	return ret;
 }
+
 int cgroup_bpf_detach(struct cgroup *cgrp, struct bpf_prog *prog,
 		      enum bpf_attach_type type, u32 flags)
 {
@@ -6446,6 +6549,8 @@ int cgroup_bpf_detach(struct cgroup *cgrp, struct bpf_prog *prog,
 	mutex_unlock(&cgroup_mutex);
 	return ret;
 }
+/* 2024年07月09日19:14:00
+todo */
 int cgroup_bpf_query(struct cgroup *cgrp, const union bpf_attr *attr,
 		     union bpf_attr __user *uattr)
 {
@@ -6499,7 +6604,7 @@ static ssize_t delegate_show(struct kobject *kobj, struct kobj_attribute *attr,
 	return ret;
 }
 static struct kobj_attribute cgroup_delegate_attr = __ATTR_RO(delegate);
-
+/* 2024年07月09日19:13:04 */
 static ssize_t features_show(struct kobject *kobj, struct kobj_attribute *attr,
 			     char *buf)
 {
@@ -6517,7 +6622,9 @@ static const struct attribute_group cgroup_sysfs_attr_group = {
 	.attrs = cgroup_sysfs_attrs,
 	.name = "cgroup",
 };
-
+/* 2024年07月09日19:07:56
+创建sysfs里面的cgroup相关
+ */
 static int __init cgroup_sysfs_init(void)
 {
 	return sysfs_create_group(kernel_kobj, &cgroup_sysfs_attr_group);

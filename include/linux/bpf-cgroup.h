@@ -74,7 +74,9 @@ struct cgroup_bpf {
 	/* temp storage for effective prog array used by prog_attach/detach */
 	struct bpf_prog_array *inactive;
 
-	/* reference counter used to detach bpf programs after cgroup removal */
+	/* 
+	引用计数
+	reference counter used to detach bpf programs after cgroup removal */
 	struct percpu_ref refcnt;
 
 	/* cgroup_bpf is released using a work queue */

@@ -34,6 +34,7 @@ struct kernfs_iattrs {
 /* KERNFS_TYPE_MASK and types are defined in include/linux/kernfs.h */
 
 /**
+2024年07月09日19:11:44
  * kernfs_root - find out the kernfs_root a kernfs_node belongs to
  * @kn: kernfs_node of interest
  *
@@ -71,7 +72,7 @@ struct kernfs_super_info {
 	struct list_head	node;
 };
 #define kernfs_info(SB) ((struct kernfs_super_info *)(SB->s_fs_info))
-
+/* 2024年07月09日19:46:37 */
 static inline struct kernfs_node *kernfs_dentry_node(struct dentry *dentry)
 {
 	if (d_really_is_negative(dentry))

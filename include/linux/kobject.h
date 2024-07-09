@@ -61,13 +61,15 @@ enum kobject_action {
 	KOBJ_UNBIND,
 	KOBJ_MAX
 };
-
+/* 2024年07月09日19:08:35 */
 struct kobject {
 	const char		*name;
 	struct list_head	entry;
+	/* 层级关系 */
 	struct kobject		*parent;
 	struct kset		*kset;
 	struct kobj_type	*ktype;
+	/* 对应的knode */
 	struct kernfs_node	*sd; /* sysfs directory entry */
 	struct kref		kref;
 #ifdef CONFIG_DEBUG_KOBJECT_RELEASE

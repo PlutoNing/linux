@@ -265,6 +265,7 @@ static inline struct cfs_rq *task_cfs_rq(struct task_struct *p)
 
 /*
 2024年6月29日17:04:11
+2024年07月09日12:44:30
  runqueue on which this entity is (to be) queued */
 static inline struct cfs_rq *cfs_rq_of(struct sched_entity *se)
 {
@@ -4468,7 +4469,10 @@ static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 	if (!assign_cfs_rq_runtime(cfs_rq) && likely(cfs_rq->curr))
 		resched_curr(rq_of(cfs_rq));
 }
-/* 2024年6月29日19:15:11 */
+/* 2024年6月29日19:15:11
+2024年07月09日12:38:48
+组调度或者cgrp记账？
+ */
 static __always_inline
 void account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 {
@@ -4477,7 +4481,7 @@ void account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 
 	__account_cfs_rq_runtime(cfs_rq, delta_exec);
 }
-
+/* 2024年07月09日12:38:27 */
 static inline int cfs_rq_throttled(struct cfs_rq *cfs_rq)
 {
 	return cfs_bandwidth_used() && cfs_rq->throttled;
@@ -4538,7 +4542,8 @@ static int tg_throttle_down(struct task_group *tg, void *data)
 
 	return 0;
 }
-
+/* 2024年07月09日12:32:03
+2024年07月09日12:39:28 */
 static void throttle_cfs_rq(struct cfs_rq *cfs_rq)
 {
 	struct rq *rq = rq_of(cfs_rq);
@@ -4556,6 +4561,7 @@ static void throttle_cfs_rq(struct cfs_rq *cfs_rq)
 
 	task_delta = cfs_rq->h_nr_running;
 	idle_task_delta = cfs_rq->idle_h_nr_running;
+	/*  */
 	for_each_sched_entity(se) {
 		struct cfs_rq *qcfs_rq = cfs_rq_of(se);
 		/* throttled entity or throttle-on-deactivate */
@@ -4888,6 +4894,8 @@ static void do_sched_cfs_slack_timer(struct cfs_bandwidth *cfs_b)
 }
 
 /*
+2024年07月09日12:32:29
+cgrp，组调度相关？
  * When a group wakes up we want to make sure that its quota is not already
  * expired/exceeded, otherwise it may be allowed to steal additional ticks of
  * runtime as update_curr() throttling can not not trigger until it's on-rq.
@@ -4905,7 +4913,8 @@ static void check_enqueue_throttle(struct cfs_rq *cfs_rq)
 	if (cfs_rq_throttled(cfs_rq))
 		return;
 
-	/* update runtime allocation */
+	/* update runtime allocation
+	记账 */
 	account_cfs_rq_runtime(cfs_rq, 0);
 	if (cfs_rq->runtime_remaining <= 0)
 		throttle_cfs_rq(cfs_rq);
@@ -4928,7 +4937,9 @@ static void sync_throttle(struct task_group *tg, int cpu)
 	cfs_rq->throttled_clock_task = rq_clock_task(cpu_rq(cpu));
 }
 
-/* conditionally throttle active cfs_rq's from put_prev_entity() */
+/*
+2024年07月09日12:39:40
+ conditionally throttle active cfs_rq's from put_prev_entity() */
 static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
 	if (!cfs_bandwidth_used())

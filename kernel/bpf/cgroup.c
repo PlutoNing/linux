@@ -487,7 +487,9 @@ cleanup:
 	return err;
 }
 
-/* Must be called with cgroup_mutex held to avoid races. */
+/* 
+2024年07月09日19:14:30
+Must be called with cgroup_mutex held to avoid races. */
 int __cgroup_bpf_query(struct cgroup *cgrp, const union bpf_attr *attr,
 		       union bpf_attr __user *uattr)
 {
