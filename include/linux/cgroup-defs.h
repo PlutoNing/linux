@@ -144,7 +144,7 @@ struct cgroup_subsys_state {
 	struct cgroup *cgroup;
 
 	/* PI: the cgroup subsystem that this css is attached to
-	这个css附加到的cgroup子系统
+	这个css的ss子系统
 	 */
 	struct cgroup_subsys *ss;
 
@@ -229,6 +229,8 @@ struct css_set {
 	 存储一组指向 cgroup_subsys_state 的指针，通过这个指针进程可以获取到对应
 	 的cgroups信息，一个 cgroup_subsys_state 就是进程与一个特定子系统相关的信息，
 	 cgroup_subsys_state结构体如下：
+	 2024年07月10日11:12:00
+	 此cset生效的css数组
 	 */
 	struct cgroup_subsys_state *subsys[CGROUP_SUBSYS_COUNT];
 
@@ -265,6 +267,7 @@ struct css_set {
 	/* 列出了属于此 cset 但正在迁移出或迁移入的任务。被 css_set_rwsem 保护，但是，在迁移过程中，
 	一旦将任务移动到 mg_tasks，就可以在持有 cgroup_mutex 的同时安全地读取它。 */
 	struct list_head mg_tasks;
+
 	struct list_head dying_tasks;
 
 	/* all css_task_iters currently walking this cset
@@ -299,6 +302,8 @@ struct css_set {
 	 * List of cgrp_cset_links pointing at cgroups referenced from this
 	 * css_set.  Protected by css_set_lock.
 	 指向从此 css_set 引用的 cgroups 的 cgrp_cset_links 列表。
+	 2024年07月10日10:29:38
+	 借助cgrp_cset_link作为连接件链接每一个cgroup，
 	 */
 	struct list_head cgrp_links;
 
@@ -308,6 +313,7 @@ struct css_set {
 	 列出作为源或目标，参与正在进行的迁移的 cset 列表
 	 */
 	struct list_head mg_preload_node;
+	/*cset的 mg node连接到 mgctx->tset.src_csets */
 	struct list_head mg_node;
 
 	/*
@@ -322,6 +328,7 @@ struct css_set {
 	 */
 	struct cgroup *mg_src_cgrp;
 	struct cgroup *mg_dst_cgrp;
+	/*  */
 	struct css_set *mg_dst_cset;
 
 	/* 
@@ -512,6 +519,8 @@ struct cgroup {
 	 指向 css_sets 的 cgrp_cset_links 列表，其中包含此 cgroup 中的任务。
 	 2024年07月09日20:32:35
 	 是啥？
+	 2024年07月10日11:10:18
+	 作为表头，连接到有关系的cset，连接件是cgrp cset link。
 	 */
 	struct list_head cset_links;
 
@@ -521,7 +530,9 @@ struct cgroup {
 	 * the closest ancestor which has the subsys enabled.  The
 	 * following lists all css_sets which point to this cgroup's css
 	 * for the given subsystem.
-	 在默认层次结构中，禁用了某些 susbsys 的 cgroup 的 css_set 将指向与启用了 subsys 的最近祖先相关联的 css。下面列出了所有指向给定子系统的 cgroup 的 css 的 css_sets。
+	 在默认层次结构中，禁用了某些 susbsys 的 cgroup 的 css_set 将指向与启用了 subsys 的最近
+	 祖先相关联的 css。
+	 下面列出了所有指向给定子系统的 cgroup 的 css 的 css_sets。
 	 */
 	struct list_head e_csets[CGROUP_SUBSYS_COUNT];
 
@@ -597,7 +608,9 @@ struct cgroup_root {
 
 	/* The bitmask of subsystems attached to this hierarchy 
 	附加到此层次结构的子系统的位掩码。cgroup_init()中 cgrp_dfl_root.subsys_mask 
-	在初始化时，已经初始化的子系统在这个mask中。*/
+	在初始化时，已经初始化的子系统在这个mask中。
+	2024年07月10日10:45:40
+	*/
 	unsigned int subsys_mask;
 
 	/* Unique id for this hierarchy. 此层次结构中保持唯一的ID。*/
@@ -805,7 +818,8 @@ struct cgroup_subsys {
 	bool broken_hierarchy:1;
 	bool warned_broken_hierarchy:1;
 
-	/* the following two fields are initialized automtically during boot */
+	/* the following two fields are initialized automtically during boot
+	子系统的id */
 	int id;
 	/* 子系统的名字 */
 	const char *name;
@@ -813,7 +827,9 @@ struct cgroup_subsys {
 	/* optional, initialized automatically during boot if not set */
 	const char *legacy_name;
 
-	/* link to parent, protected by cgroup_lock() */
+	/* link to parent, protected by cgroup_lock()
+	
+	 */
 	struct cgroup_root *root;
 
 	/* idr for css->id */

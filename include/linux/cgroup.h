@@ -655,7 +655,9 @@ static inline struct cftype *seq_cft(struct seq_file *seq)
 {
 	return of_cft(seq->private);
 }
-
+/* 2024年07月10日10:08:03
+获取seq file的css
+ */
 static inline struct cgroup_subsys_state *seq_css(struct seq_file *seq)
 {
 	return of_css(seq->private);

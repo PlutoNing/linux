@@ -94,14 +94,19 @@ struct cgrp_cset_link {
  used to track tasks and csets during migration */
 struct cgroup_taskset {
 	/* the src and dst cset list running 
-	through cset->mg_node */
+	through cset->mg_node 
+	cset的 mg node连接到 mgctx->tset.src_csets
+	*/
 	struct list_head	src_csets;
 	struct list_head	dst_csets;
 
-	/* the number of tasks in the set */
+	/* the number of tasks in the set
+	tsk数量 */
 	int			nr_tasks;
 
-	/* the subsys currently being processed */
+	/* the subsys currently being processed 
+	正在处理的ssid
+	*/
 	int			ssid;
 
 	/*
@@ -116,13 +121,16 @@ struct cgroup_taskset {
 	 * during iteration.
 	 */
 	struct list_head	*csets;
+	/*  */
 	struct css_set		*cur_cset;
+	/*  */
 	struct task_struct	*cur_task;
 };
 
 /* 
 
 2024年06月28日19:42:0
+2024年07月10日10:42:27
 migration context also tracks preloading */
 struct cgroup_mgctx {
 	/*
@@ -135,7 +143,8 @@ struct cgroup_mgctx {
 	/* tasks and csets to migrate */
 	struct cgroup_taskset	tset;
 
-	/* subsystems affected by migration */
+	/* subsystems affected by migration
+	要迁移的ss */
 	u16			ss_mask;
 };
 

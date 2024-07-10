@@ -182,7 +182,9 @@ struct kernfs_syscall_ops {
 	int (*show_path)(struct seq_file *sf, struct kernfs_node *kn,
 			 struct kernfs_root *root);
 };
+/* 2024年07月10日14:57:35
 
+ */
 struct kernfs_root {
 	/* published fields */
 	struct kernfs_node	*kn;

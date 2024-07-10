@@ -192,6 +192,7 @@ int kernfs_name(struct kernfs_node *kn, char *buf, size_t buflen)
 }
 
 /**
+2024年07月10日14:55:05
  * kernfs_path_from_node - build path of node @to relative to @from.
  * @from: parent kernfs_node relative to which we need to build the path
  * @to: kernfs_node of interest

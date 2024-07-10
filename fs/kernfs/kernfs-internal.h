@@ -57,6 +57,7 @@ struct kernfs_super_info {
 	/*
 	 * The root associated with this super_block.  Each super_block is
 	 * identified by the root and ns it's associated with.
+	 kernfs的root
 	 */
 	struct kernfs_root	*root;
 
