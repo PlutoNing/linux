@@ -508,6 +508,7 @@ struct cgroup {
 
 	/* Private pointers for each registered subsystem  每个注册子系统的私有指针*/
 	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
+	
 /* root指向了一个cgroupfs_root的结构，就是cgroup所在的层级对应的结构体
 2024年06月27日18:23:13
 根cg吗 */
