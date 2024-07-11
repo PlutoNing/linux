@@ -1462,7 +1462,7 @@ current_cgns_cgroup_from_root(struct cgroup_root *root)
 /* 
 2024年07月09日20:20:32
 2024年07月10日10:16:42
-获取cset指向root的cgrp指针
+获取cset指向root的cgrp指针()
 look up cgroup associated with given css_set on the specified hierarchy */
 static struct cgroup *cset_cgroup_from_root(struct css_set *cset,
 					    struct cgroup_root *root)
@@ -2058,7 +2058,7 @@ static void init_cgroup_housekeeping(struct cgroup *cgrp)
 	init_waitqueue_head(&cgrp->offline_waitq);
 	INIT_WORK(&cgrp->release_agent_work, cgroup1_release_agent);
 }
-
+/* 2024年07月11日13:28:43 */
 void init_cgroup_root(struct cgroup_fs_context *ctx)
 {
 	struct cgroup_root *root = ctx->root;
@@ -2925,7 +2925,7 @@ int cgroup_attach_task(struct cgroup *dst_cgrp, struct task_struct *leader,
 	DEFINE_CGROUP_MGCTX(mgctx);
 	struct task_struct *task;
 	int ret;
-
+	/* 校验目标cg */
 	ret = cgroup_migrate_vet_dst(dst_cgrp);
 	if (ret)
 		return ret;
@@ -5368,8 +5368,8 @@ static void offline_css(struct cgroup_subsys_state *css)
 
 /**
 2024年07月09日20:55:23
-创建css？怎么创建？
-给cgrp的ss创建css？
+创建css
+给cgrp的ss创建css吗
 
  * css_create - create a cgroup_subsys_state
  * @cgrp: the cgroup new css will be associated with
@@ -5437,6 +5437,7 @@ err_free_css:
 /*
 2024年07月09日20:47:57
 创建子cg。
+2024年07月11日13:08:11
 
  * The returned cgroup is fully initialized including its control mask, but
  * it isn't associated with its kernfs_node and doesn't have the control
@@ -5881,7 +5882,7 @@ static struct kernfs_syscall_ops cgroup_kf_syscall_ops = {
 	.show_path		= cgroup_show_path,
 };
 /* 2024年07月09日20:26:01
-
+cgroup初始化ss
  */
 static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
 {
@@ -5990,7 +5991,7 @@ int __init cgroup_init(void)
 {
 	struct cgroup_subsys *ss;
 	int ssid;
-
+	/* fs相关 */
 	BUILD_BUG_ON(CGROUP_SUBSYS_COUNT > 16);
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup_base_files));
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup1_base_files));
@@ -6017,7 +6018,7 @@ int __init cgroup_init(void)
 	BUG_ON(cgroup_setup_root(&cgrp_dfl_root, 0));
 
 	mutex_unlock(&cgroup_mutex);
-
+/* 遍历cgroup_subsys的每个ss */
 	for_each_subsys(ss, ssid) {
 		if (ss->early_init) {
 			struct cgroup_subsys_state *css =
@@ -6354,6 +6355,7 @@ void cgroup_post_fork(struct task_struct *child)
 /**
 2024年07月09日20:06:19
 如何分离呢？
+移动tsk，然后移动cg list。
  * cgroup_exit - detach cgroup from exiting task
  * @tsk: pointer to task_struct of exiting process
  *
@@ -6389,6 +6391,7 @@ void cgroup_exit(struct task_struct *tsk)
 	if (!list_empty(&tsk->cg_list)) {
 		/* tsk通过cg list挂载到相同cg的链表 */
 		spin_lock_irq(&css_set_lock);
+		/* 就是移动cset，移到null表示移除 */
 		css_set_move_task(tsk, cset, NULL, false);
 		list_add_tail(&tsk->cg_list, &cset->dying_tasks);
 		cset->nr_tasks--;
@@ -6432,7 +6435,9 @@ void cgroup_free(struct task_struct *task)
 	struct css_set *cset = task_css_set(task);
 	put_css_set(cset);
 }
-/* 2024年07月09日20:04:05 */
+/* 2024年07月09日20:04:05
+在全局变量cgroup subsys失能str指定的ss
+ */
 static int __init cgroup_disable(char *str)
 {
 	struct cgroup_subsys *ss;

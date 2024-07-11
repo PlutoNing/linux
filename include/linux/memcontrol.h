@@ -96,7 +96,9 @@ struct memcg_vmstats_percpu {
 	unsigned long nr_page_events;
 	unsigned long targets[MEM_CGROUP_NTARGETS];
 };
+/* 2024年07月11日16:19:43
 
+ */
 struct mem_cgroup_reclaim_iter {
 	struct mem_cgroup *position;
 	/* scan generation, increased every round-trip */
@@ -144,21 +146,22 @@ struct mem_cgroup_per_node {
 	struct lruvec_stat __percpu *lruvec_stat_cpu;
 	/*  */
 	atomic_long_t		lruvec_stat[NR_VM_NODE_STAT_ITEMS];
-/* 
-lru_zone_size[zid][lru]
-不同zone不同内存类型的计数
- */
+/* lru_zone_size[zid][lru]不同zone不同内存类型的计数 */
 	unsigned long		lru_zone_size[MAX_NR_ZONES][NR_LRU_LISTS];
-
+/* 2024年07月11日16:22:08
+和遍历相关，但是什么用呢 */
 	struct mem_cgroup_reclaim_iter	iter[DEF_PRIORITY + 1];
 	/* shrinker map，好像是存储shrinker什么的 */
 	struct memcg_shrinker_map __rcu	*shrinker_map;
 
 	struct rb_node		tree_node;	/* RB tree node usage超过softlimit时，链接到全局的
 	mem_cgroup_tree_per_node红黑树，方面进行softlimit reclaim*/
+
 	    /* 标记usage是否大于softlimit*/
 	unsigned long		usage_in_excess;/* Set to the value by which */
 						/* the soft limit is exceeded*/
+
+						/* 记录这个mz是不是还在全局的soft limit tree */
 	bool			on_tree;
 	bool			congested;	/* memcg has many dirty pages */
 						/* backed by a congested BDI */

@@ -734,6 +734,8 @@ enum {
 };
 
 /*
+2024年07月11日15:16:53
+
  * This struct contains information about a zone in a zonelist. It is stored
  * here to avoid dereferences into large structures and lookups of tables
  */
@@ -743,6 +745,7 @@ struct zoneref {
 };
 
 /*
+2024年07月11日15:16:43
  * One allocation request operates on a zonelist. A zonelist
  * is a list of zones, the first one is the 'goal' of the
  * allocation, the other zones are fallback zones, in decreasing
@@ -1159,7 +1162,8 @@ static inline struct zone *zonelist_zone(struct zoneref *zoneref)
 {
 	return zoneref->zone;
 }
-
+/* 2024年07月11日15:21:22
+ */
 static inline int zonelist_zone_idx(struct zoneref *zoneref)
 {
 	return zoneref->zone_idx;
@@ -1175,6 +1179,7 @@ struct zoneref *__next_zones_zonelist(struct zoneref *z,
 					nodemask_t *nodes);
 
 /**
+2024年07月11日15:21:31
  * next_zones_zonelist - Returns the next zone at or below highest_zoneidx within the allowed nodemask using a cursor within a zonelist as a starting point
  * @z - The cursor used as a starting point for the search
  * @highest_zoneidx - The zone index of the highest zone to return

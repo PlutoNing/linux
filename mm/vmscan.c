@@ -197,6 +197,8 @@ int vm_swappiness = 60;
 unsigned long vm_total_pages;
 /* 2024年6月26日00:08:10
 2024年07月03日10:03:15
+	task->reclaim_state = rs;
+设置进程的reclaim state标志。
  */
 static void set_task_reclaim_state(struct task_struct *task,
 				   struct reclaim_state *rs)
@@ -2905,7 +2907,8 @@ out:
 /*
 2024年06月25日17:01:45
 shrink_node_memcg()函数是基于内存节点的页面回函数，它会被kswapd内核线程和直接页面回收机制调用。
-
+2024年07月11日16:36:19
+感觉重点就是获取lruvec = mem_cgroup_lruvec(pgdat, memcg);。回收mmecg与node相关联的lruvec。
  *param:
  * (1) pgdat    --->页面回收的内存节点
  * (2) memcg    --->若节点的memory controller使能，则在该节点的memcg这一内存子系统上进行页面回收
@@ -3363,7 +3366,7 @@ static inline bool compaction_ready(struct zone *zone, struct scan_control *sc)
 
 /*
 2024年6月26日00:10:05
-
+回收指定的zonelist
  * This is the direct reclaim path, for page-allocating processes.  We only
  * try to reclaim pages from zones which will satisfy the caller's allocation
  * request.
@@ -3399,6 +3402,7 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 		 没有指定target memcg？
 		 */
 		if (global_reclaim(sc)) {
+			/* 如果是全局的非cgroup的回收 */
 			if (!cpuset_zone_allowed(zone,
 						 GFP_KERNEL | __GFP_HARDWALL))
 				continue;
@@ -3738,6 +3742,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 
 /*
 2024年07月04日11:43:21
+2024年07月11日16:33:16
 Only used by soft limit reclaim. Do not reuse for anything else. */
 unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 						gfp_t gfp_mask, bool noswap,
@@ -3779,7 +3784,7 @@ unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 	return sc.nr_reclaimed;
 }
 /* 2024年07月04日12:17:42
-
+回收指定memcg的内存
  */
 unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 					   unsigned long nr_pages,
@@ -3792,7 +3797,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 	int nid;
 	unsigned int noreclaim_flag;
 	struct scan_control sc = {
-		/* 要回收的页面 */
+		/* 要回收的页面数量 */
 		.nr_to_reclaim = max(nr_pages, SWAP_CLUSTER_MAX),
 		.gfp_mask = (current_gfp_context(gfp_mask) & GFP_RECLAIM_MASK) |
 				(GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK),
@@ -3822,7 +3827,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 
 	psi_memstall_enter(&pflags);
 	noreclaim_flag = memalloc_noreclaim_save();
-/* 页数调用这个函数 */
+/* 调用这个函数 */
 	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
 
 	memalloc_noreclaim_restore(noreclaim_flag);

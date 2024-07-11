@@ -698,7 +698,9 @@ static void mem_cgroup_remove_from_trees(struct mem_cgroup *memcg)
 			mem_cgroup_remove_exceeded(mz, mctz);
 	}
 }
-
+/* 2024年07月11日15:33:56
+获取全局tree上的最大soft limit的mz
+ */
 static struct mem_cgroup_per_node *
 __mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
 {
@@ -706,8 +708,10 @@ __mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
 
 retry:
 	mz = NULL;
+	/* 可能空了 */
 	if (!mctz->rb_rightmost)
 		goto done;		/* Nothing to reclaim from */
+	
 
 	mz = rb_entry(mctz->rb_rightmost,
 		      struct mem_cgroup_per_node, tree_node);
@@ -717,6 +721,7 @@ retry:
 	 * position in the tree.
 	 */
 	__mem_cgroup_remove_exceeded(mz, mctz);
+
 	if (!soft_limit_excess(mz->memcg) ||
 	    !css_tryget_online(&mz->memcg->css))
 		goto retry;
@@ -725,6 +730,7 @@ done:
 }
 /* 2024年07月04日10:52:52
 找到一个soft limit最多的？
+2024年07月11日15:33:45
  */
 static struct mem_cgroup_per_node *
 mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
@@ -1096,6 +1102,8 @@ static __always_inline struct mem_cgroup *get_mem_cgroup_from_current(void)
 /**
 2024年06月25日16:04:47
 遍历cg的层级
+2024年07月11日16:17:23
+能否有按照优先级遍历的api呢
  * mem_cgroup_iter - iterate over memory cgroup hierarchy
  * @root: hierarchy root
  * @prev: previously returned memcg, NULL on first invocation
@@ -1123,7 +1131,7 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 
 	if (mem_cgroup_disabled())
 		return NULL;
-
+	/* 没有指定root，就从根cg遍历 */
 	if (!root)
 		root = root_mem_cgroup;
 
@@ -1137,7 +1145,7 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 	}
 
 	rcu_read_lock();
-	/* 全局遍历不需要考虑reclaim */
+	/*  */
 	if (reclaim) {
 		struct mem_cgroup_per_node *mz;
 
@@ -1148,6 +1156,7 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 			goto out_unlock;
 
 		while (1) {
+			/*  */
 			pos = READ_ONCE(iter->position);
 			if (!pos || css_tryget(&pos->css))
 				break;
@@ -1162,6 +1171,7 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 			(void)cmpxchg(&iter->position, pos, NULL);
 		}
 	}
+
 	/* 从prev的位置开始 */
 	if (pos)
 		css = &pos->css;
@@ -1196,12 +1206,13 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 
 		memcg = NULL;
 	}
-
+	/* 此时获取到了下一个memcg */
 	if (reclaim) {
 		/*
 		 * The position could have already been updated by a competing
 		 * thread, so check that the value hasn't changed since we read
 		 * it to avoid reclaiming from the same cgroup twice.
+		 如果position还等于pos，就把memcg写入进去。
 		 */
 		(void)cmpxchg(&iter->position, pos, memcg);
 
@@ -1773,6 +1784,7 @@ static void mem_cgroup_may_update_nodemask(struct mem_cgroup *memcg)
 
 /*
 2024年07月04日12:19:24
+轮询选择的
 回收指定memcg时选择node
  * Selecting a node where we start reclaim from. Because what we need is just
  * reducing usage counter, start from anywhere is O,K. Considering
@@ -1831,6 +1843,8 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 	excess = soft_limit_excess(root_memcg);
 
 	while (1) {
+		/* 2024年07月11日16:14:25
+		逻辑是遍历 */
 		victim = mem_cgroup_iter(root_memcg, victim, &reclaim);
 		if (!victim) {
 			loop++;
@@ -3359,7 +3373,7 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 	return ret;
 }
 /* 2024年6月26日00:14:10
-
+2024年07月11日15:23:37
  */
 unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 					    gfp_t gfp_mask,
@@ -3396,7 +3410,7 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 			mz = next_mz;
 		else
 			mz = mem_cgroup_largest_soft_limit_node(mctz);
-
+		/* 获取到全局tree上的最大soft limit tree */
 		if (!mz)
 			break;
 		

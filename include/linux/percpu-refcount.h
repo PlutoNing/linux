@@ -242,6 +242,8 @@ static inline bool percpu_ref_tryget(struct percpu_ref *ref)
 }
 
 /**
+2024年07月11日15:40:13
+percpu的refcnt的方式
  * percpu_ref_tryget_live - try to increment a live percpu refcount
  * @ref: percpu_ref to try-get
  *

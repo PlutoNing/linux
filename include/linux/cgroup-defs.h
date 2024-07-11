@@ -48,7 +48,7 @@ enum cgroup_subsys_id {
 
 /* bits in struct cgroup_subsys_state flags field */
 enum {
-	CSS_NO_REF	= (1 << 0), /* no reference counting for this css */
+	CSS_NO_REF	= (1 << 0), /* no reference counting for this css，2024年07月11日15:39:57可否理解为已下线？ */
 	CSS_ONLINE	= (1 << 1), /* between ->css_online() and ->css_offline() */
 	CSS_RELEASED	= (1 << 2), /* refcnt reached zero, released */
 	CSS_VISIBLE	= (1 << 3), /* css is visible to userland，销毁css对应文件夹时置否 */
@@ -267,7 +267,7 @@ struct css_set {
 	/* 列出了属于此 cset 但正在迁移出或迁移入的任务。被 css_set_rwsem 保护，但是，在迁移过程中，
 	一旦将任务移动到 mg_tasks，就可以在持有 cgroup_mutex 的同时安全地读取它。 */
 	struct list_head mg_tasks;
-
+/* 从cset分离的tsk放在这里，通过cg list放在这 */
 	struct list_head dying_tasks;
 
 	/* all css_task_iters currently walking this cset
@@ -446,7 +446,8 @@ struct cgroup {
 	 */
 	int level;
 
-	/* Maximum allowed descent tree depth 最大允许下降树深度*/
+	/* Maximum allowed descent tree depth 
+	最大允许树深度*/
 	int max_depth;
 
 	/*
@@ -929,7 +930,8 @@ sock的cgrp
  * cgroups is bound and highly unlikely to be high, this seems to be the
  * better trade-off.
  */
-struct sock_cgroup_data {
+struct 
+sock_cgroup_data {
 	union {
 #ifdef __LITTLE_ENDIAN
 		struct {
