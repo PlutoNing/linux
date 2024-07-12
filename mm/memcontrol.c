@@ -131,7 +131,9 @@ struct mem_cgroup_tree_per_node {
 	struct rb_node *rb_rightmost;
 	spinlock_t lock;
 };
-
+/* 
+2024年07月12日13:11:33
+每个node有一颗 max soft limit tree */
 struct mem_cgroup_tree {
 	struct mem_cgroup_tree_per_node *rb_tree_per_node[MAX_NUMNODES];
 };
@@ -616,7 +618,9 @@ static void mem_cgroup_remove_exceeded(struct mem_cgroup_per_node *mz,
 	__mem_cgroup_remove_exceeded(mz, mctz);
 	spin_unlock_irqrestore(&mctz->lock, flags);
 }
-
+/* 2024年07月04日11:28:32
+memcg的softlimit余量
+ */
 static unsigned long soft_limit_excess(struct mem_cgroup *memcg)
 {
 	unsigned long nr_pages = page_counter_read(&memcg->memory);
@@ -696,7 +700,9 @@ static void mem_cgroup_remove_from_trees(struct mem_cgroup *memcg)
 			mem_cgroup_remove_exceeded(mz, mctz);
 	}
 }
-
+/* 2024年07月11日15:33:56
+获取全局tree上的最大soft limit的mz
+ */
 static struct mem_cgroup_per_node *
 __mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
 {
@@ -704,8 +710,10 @@ __mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
 
 retry:
 	mz = NULL;
+	/* 可能空了 */
 	if (!mctz->rb_rightmost)
 		goto done;		/* Nothing to reclaim from */
+	
 
 	mz = rb_entry(mctz->rb_rightmost,
 		      struct mem_cgroup_per_node, tree_node);
@@ -715,13 +723,17 @@ retry:
 	 * position in the tree.
 	 */
 	__mem_cgroup_remove_exceeded(mz, mctz);
+
 	if (!soft_limit_excess(mz->memcg) ||
 	    !css_tryget_online(&mz->memcg->css))
 		goto retry;
 done:
 	return mz;
 }
-
+/* 2024年07月04日10:52:52
+找到一个soft limit最多的？
+2024年07月11日15:33:45
+ */
 static struct mem_cgroup_per_node *
 mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
 {
@@ -1091,7 +1103,9 @@ static __always_inline struct mem_cgroup *get_mem_cgroup_from_current(void)
 
 /**
 2024年06月25日16:04:47
-遍历根cg的层级
+遍历cg的层级
+2024年07月11日16:17:23
+能否有按照优先级遍历的api呢
  * mem_cgroup_iter - iterate over memory cgroup hierarchy
  * @root: hierarchy root
  * @prev: previously returned memcg, NULL on first invocation
@@ -1119,7 +1133,7 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 
 	if (mem_cgroup_disabled())
 		return NULL;
-
+	/* 没有指定root，就从根cg遍历 */
 	if (!root)
 		root = root_mem_cgroup;
 
@@ -1133,7 +1147,7 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 	}
 
 	rcu_read_lock();
-
+	/*  */
 	if (reclaim) {
 		struct mem_cgroup_per_node *mz;
 
@@ -1144,6 +1158,7 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 			goto out_unlock;
 
 		while (1) {
+			/*  */
 			pos = READ_ONCE(iter->position);
 			if (!pos || css_tryget(&pos->css))
 				break;
@@ -1159,10 +1174,12 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 		}
 	}
 
+	/* 从prev的位置开始 */
 	if (pos)
 		css = &pos->css;
 
 	for (;;) {
+		/* 借助css遍历 */
 		css = css_next_descendant_pre(css, &root->css);
 		if (!css) {
 			/*
@@ -1191,12 +1208,13 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *root,
 
 		memcg = NULL;
 	}
-
+	/* 此时获取到了下一个memcg */
 	if (reclaim) {
 		/*
 		 * The position could have already been updated by a competing
 		 * thread, so check that the value hasn't changed since we read
 		 * it to avoid reclaiming from the same cgroup twice.
+		 如果position还等于pos，就把memcg写入进去。
 		 */
 		(void)cmpxchg(&iter->position, pos, memcg);
 
@@ -1734,6 +1752,8 @@ static bool test_mem_cgroup_node_reclaimable(struct mem_cgroup *memcg,
 
 /*
 2024年06月28日15:57:20
+2024年07月04日12:38:11
+todo
  * Always updating the nodemask is not very good - even if we have an empty
  * list or the wrong list here, we can start from some node and traverse all
  * nodes based on the zonelist. So update the list loosely once per 10 secs.
@@ -1765,6 +1785,9 @@ static void mem_cgroup_may_update_nodemask(struct mem_cgroup *memcg)
 }
 
 /*
+2024年07月04日12:19:24
+轮询选择的
+回收指定memcg时选择node
  * Selecting a node where we start reclaim from. Because what we need is just
  * reducing usage counter, start from anywhere is O,K. Considering
  * memory reclaim from current node, there are pros. and cons.
@@ -1801,8 +1824,12 @@ int mem_cgroup_select_victim_node(struct mem_cgroup *memcg)
 	return 0;
 }
 #endif
+
 /* 2024年7月4日00:16:35
-*/
+ 2024年07月04日11:06:23
+对此root memcg进行soft reclaim。
+ */
+
 static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 				   pg_data_t *pgdat,
 				   gfp_t gfp_mask,
@@ -1817,10 +1844,12 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 		.pgdat = pgdat,
 		.priority = 0,
 	};
-
+	/* 计算soft limit余量 */
 	excess = soft_limit_excess(root_memcg);
 
 	while (1) {
+		/* 2024年07月11日16:14:25
+		逻辑是遍历 */
 		victim = mem_cgroup_iter(root_memcg, victim, &reclaim);
 		if (!victim) {
 			loop++;
@@ -1844,6 +1873,7 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 			}
 			continue;
 		}
+		/* 扫描victim */
 		total += mem_cgroup_shrink_node(victim, gfp_mask, false,
 					pgdat, &nr_scanned);
 		*total_scanned += nr_scanned;
@@ -3349,6 +3379,7 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 }
 /* 2024年6月26日00:14:10
 2024年7月4日00:05:48
+2024年07月11日15:23:37
  */
 unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 					    gfp_t gfp_mask,
@@ -3385,10 +3416,14 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 			mz = next_mz;
 		else
 			mz = mem_cgroup_largest_soft_limit_node(mctz);
+		/* 获取到全局tree上的最大soft limit tree */
 		if (!mz)
 			break;
+		
+		/* 找到下一个mz */
 
 		nr_scanned = 0;
+		/* 找到了memcg，开始回收 */
 		reclaimed = mem_cgroup_soft_reclaim(mz->memcg, pgdat,
 						    gfp_mask, &nr_scanned);
 		nr_reclaimed += reclaimed;
@@ -3428,6 +3463,7 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 			loop > MEM_CGROUP_MAX_SOFT_LIMIT_RECLAIM_LOOPS))
 			break;
 	} while (!nr_reclaimed);
+
 	if (next_mz)
 		css_put(&next_mz->memcg->css);
 	return nr_reclaimed;
@@ -5133,7 +5169,9 @@ static struct cftype mem_cgroup_legacy_files[] = {
  */
 
 static DEFINE_IDR(mem_cgroup_idr);
-
+/* 2024年07月04日20:28:38
+移除idr？这是什么
+ */
 static void mem_cgroup_id_remove(struct mem_cgroup *memcg)
 {
 	if (memcg->id.id > 0) {
@@ -5146,7 +5184,8 @@ static void mem_cgroup_id_get_many(struct mem_cgroup *memcg, unsigned int n)
 {
 	refcount_add(n, &memcg->id.ref);
 }
-
+/* 2024年07月04日20:28:15
+ */
 static void mem_cgroup_id_put_many(struct mem_cgroup *memcg, unsigned int n)
 {
 	if (refcount_sub_and_test(n, &memcg->id.ref)) {
@@ -5163,6 +5202,7 @@ static inline void mem_cgroup_id_put(struct mem_cgroup *memcg)
 }
 
 /**
+2024年07月04日20:27:31
  * mem_cgroup_from_id - look up a memcg from a memcg id
  * @id: the memcg id to look up
  *
@@ -6253,7 +6293,7 @@ static void mem_cgroup_bind(struct cgroup_subsys_state *root_css)
 	else
 		root_mem_cgroup->use_hierarchy = false;
 }
-
+/* 2024年07月05日16:52:30 */
 static int seq_puts_memcg_tunable(struct seq_file *m, unsigned long value)
 {
 	if (value == PAGE_COUNTER_MAX)
@@ -6263,7 +6303,8 @@ static int seq_puts_memcg_tunable(struct seq_file *m, unsigned long value)
 
 	return 0;
 }
-
+/* 2024年07月05日16:42:37
+ */
 static u64 memory_current_read(struct cgroup_subsys_state *css,
 			       struct cftype *cft)
 {
@@ -6277,7 +6318,7 @@ static int memory_min_show(struct seq_file *m, void *v)
 	return seq_puts_memcg_tunable(m,
 		READ_ONCE(mem_cgroup_from_seq(m)->memory.min));
 }
-
+/* 2024年07月05日16:42:19 */
 static ssize_t memory_min_write(struct kernfs_open_file *of,
 				char *buf, size_t nbytes, loff_t off)
 {
@@ -6294,13 +6335,16 @@ static ssize_t memory_min_write(struct kernfs_open_file *of,
 
 	return nbytes;
 }
-
+/* 2024年07月05日16:42:14
+ */
 static int memory_low_show(struct seq_file *m, void *v)
 {
 	return seq_puts_memcg_tunable(m,
 		READ_ONCE(mem_cgroup_from_seq(m)->memory.low));
 }
+/* 2024年07月05日16:04:42
 
+ */
 static ssize_t memory_low_write(struct kernfs_open_file *of,
 				char *buf, size_t nbytes, loff_t off)
 {
@@ -6351,7 +6395,7 @@ static ssize_t memory_high_write(struct kernfs_open_file *of,
 	memcg_wb_domain_size_changed(memcg);
 	return nbytes;
 }
-
+/* 2024年07月05日16:04:24 */
 static int memory_max_show(struct seq_file *m, void *v)
 {
 	return seq_puts_memcg_tunable(m,
@@ -6359,7 +6403,8 @@ static int memory_max_show(struct seq_file *m, void *v)
 }
 /* 2024年06月27日18:15:13
 什么用呢
-
+2024年07月05日16:04:12
+与fs的接口
  */
 static ssize_t memory_max_write(struct kernfs_open_file *of,
 				char *buf, size_t nbytes, loff_t off)
@@ -7265,6 +7310,7 @@ static int __init mem_cgroup_init(void)
 subsys_initcall(mem_cgroup_init);
 
 #ifdef CONFIG_MEMCG_SWAP
+/* 2024年07月04日20:29:43 */
 static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 {
 	while (!refcount_inc_not_zero(&memcg->id.ref)) {
@@ -7350,6 +7396,8 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 }
 
 /**
+2024年07月04日20:29:25
+
  * mem_cgroup_try_charge_swap - try charging swap space for a page
  * @page: page being added to swap
  * @entry: swap entry to charge
@@ -7380,7 +7428,7 @@ int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 	}
 
 	memcg = mem_cgroup_id_get_online(memcg);
-
+	/* try chargeswap空间 */
 	if (!mem_cgroup_is_root(memcg) &&
 	    !page_counter_try_charge(&memcg->swap, nr_pages, &counter)) {
 		memcg_memory_event(memcg, MEMCG_SWAP_MAX);
@@ -7400,6 +7448,8 @@ int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 }
 
 /**
+2024年07月04日20:22:13
+还账nr pages个page？
  * mem_cgroup_uncharge_swap - uncharge swap space
  * @entry: swap entry to uncharge
  * @nr_pages: the amount of swap space to uncharge
@@ -7416,6 +7466,7 @@ void mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages)
 	rcu_read_lock();
 	memcg = mem_cgroup_from_id(id);
 	if (memcg) {
+		/* 不是root cg */
 		if (!mem_cgroup_is_root(memcg)) {
 			if (cgroup_subsys_on_dfl(memory_cgrp_subsys))
 				page_counter_uncharge(&memcg->swap, nr_pages);
@@ -7444,7 +7495,9 @@ long mem_cgroup_get_nr_swap_pages(struct mem_cgroup *memcg)
 				      page_counter_read(&memcg->swap));
 	return nr_swap_pages;
 }
-
+/* 2024年07月04日20:20:48
+判断page的memcg有无父层级memcg的swap超过了一半
+ */
 bool mem_cgroup_swap_full(struct page *page)
 {
 	struct mem_cgroup *memcg;

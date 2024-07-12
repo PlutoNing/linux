@@ -103,7 +103,9 @@ exit:
 	return error;
 }
 
-
+/* 2024年07月09日19:09:25
+在kernfs创建文件夹
+ */
 static int internal_create_group(struct kobject *kobj, int update,
 				 const struct attribute_group *grp)
 {
@@ -159,6 +161,8 @@ static int internal_create_group(struct kobject *kobj, int update,
 }
 
 /**
+2024年07月09日19:08:14
+给kobj创建文件夹？
  * sysfs_create_group - given a directory kobject, create an attribute group
  * @kobj:	The kobject to create the group on
  * @grp:	The attribute group to create

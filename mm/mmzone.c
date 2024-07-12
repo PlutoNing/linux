@@ -42,7 +42,7 @@ struct zone *next_zone(struct zone *zone)
 	}
 	return zone;
 }
-
+/* 2024年07月11日15:22:05 */
 static inline int zref_in_nodemask(struct zoneref *zref, nodemask_t *nodes)
 {
 #ifdef CONFIG_NUMA
@@ -52,7 +52,9 @@ static inline int zref_in_nodemask(struct zoneref *zref, nodemask_t *nodes)
 #endif /* CONFIG_NUMA */
 }
 
-/* Returns the next zone at or below highest_zoneidx in a zonelist */
+/* 
+2024年07月11日15:20:32
+Returns the next zone at or below highest_zoneidx in a zonelist */
 struct zoneref *__next_zones_zonelist(struct zoneref *z,
 					enum zone_type highest_zoneidx,
 					nodemask_t *nodes)

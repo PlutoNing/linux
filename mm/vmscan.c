@@ -197,6 +197,8 @@ int vm_swappiness = 60;
 unsigned long vm_total_pages;
 /* 2024年6月26日00:08:10
 2024年07月03日10:03:15
+	task->reclaim_state = rs;
+设置进程的reclaim state标志。
  */
 static void set_task_reclaim_state(struct task_struct *task,
 				   struct reclaim_state *rs)
@@ -2923,7 +2925,8 @@ out:
 /*
 2024年06月25日17:01:45
 shrink_node_memcg()函数是基于内存节点的页面回函数，它会被kswapd内核线程和直接页面回收机制调用。
-
+2024年07月11日16:36:19
+感觉重点就是获取lruvec = mem_cgroup_lruvec(pgdat, memcg);。回收mmecg与node相关联的lruvec。
  *param:
  * (1) pgdat    --->页面回收的内存节点
  * (2) memcg    --->若节点的memory controller使能，则在该节点的memcg这一内存子系统上进行页面回收
@@ -2931,10 +2934,12 @@ shrink_node_memcg()函数是基于内存节点的页面回函数，它会被kswa
  * (4) lru_pages--->本次内存回收已经扫描的页面数量
 ————————————————
  * This is a basic per-node page freer.  Used by both kswapd and direct reclaim.
+
  */
 static void shrink_node_memcg(struct pglist_data *pgdat, struct mem_cgroup *memcg,
 			      struct scan_control *sc, unsigned long *lru_pages)
 {
+	/* 获取memcg在此节点上的lruvec */
 	struct lruvec *lruvec = mem_cgroup_lruvec(pgdat, memcg);
 	/* nr数组记录本节点指定lru链表中有多少页面需要被扫描 */
 	unsigned long nr[NR_LRU_LISTS];
@@ -3346,6 +3351,10 @@ try_to_free_pages→do_try_to_free_pages→shrink_zones→shrink_node。
 }
 
 /*
+2024年07月12日12:51:49
+判断是否可以进行内存整理
+怎么判断呢？
+
  * Returns true if compaction should go ahead for a costly-order request, or
  * the allocation would already succeed without compaction. Return false if we
  * should reclaim first.
@@ -3380,6 +3389,7 @@ static inline bool compaction_ready(struct zone *zone, struct scan_control *sc)
 /*
 2024年6月26日00:10:05
 2024年7月4日00:01:49
+回收指定的zonelist
  * This is the direct reclaim path, for page-allocating processes.  We only
  * try to reclaim pages from zones which will satisfy the caller's allocation
  * request.
@@ -3409,12 +3419,18 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 
 	for_each_zone_zonelist_nodemask(zone, z, zonelist,
 					sc->reclaim_idx, sc->nodemask) {
+		/* 遍历每一个zone */
 		/*
 		 * Take care memory controller reclaiming has small influence
 		 * to global LRU.
+		 没有指定target memcg？
 		 */
 		if (global_reclaim(sc)) {
 			/* 如果当前进行的是全局页回收 */
+			/* 如果是全局的非cgroup的回收
+			就是说如果没指定memcg，就是从全局的memcg来soft relcaim过程？ */
+
+
 			if (!cpuset_zone_allowed(zone,
 						 GFP_KERNEL | __GFP_HARDWALL))
 				continue;
@@ -3462,12 +3478,15 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 			sc->nr_reclaimed += nr_soft_reclaimed;
 			sc->nr_scanned += nr_soft_scanned;
 			/* need some check for avoid more shrink_zone() */
-		}
+		} /* 如果是全局回收 */
 
 		/* See comment about same check for global reclaim above */
 		if (zone->zone_pgdat == last_pgdat)
 			continue;
+
+
 		last_pgdat = zone->zone_pgdat;
+		/* 这里如果是全局回收的话 ，就是sc的targt为空，那内部的遍历会从根cg开始*/
 		shrink_node(zone->zone_pgdat, sc);
 	}
 
@@ -3496,6 +3515,8 @@ static void snapshot_refaults(struct mem_cgroup *root_memcg, pg_data_t *pgdat)
 /*
 2024年6月26日00:08:37
 2024年7月3日23:56:18
+2024年07月12日11:51:33
+差不多算shrink zones的中间包装函数，调用shrink zones回收prio次
  * This is the main entry point to direct page reclaim.
  *
  * If a full scan of the inactive list fails to free enough memory then we
@@ -3712,7 +3733,7 @@ out:
 	return false;
 }
 /* 2024年6月26日00:07:28
-
+回收内存
  */
 unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 				gfp_t gfp_mask, nodemask_t *nodemask)
@@ -3763,6 +3784,10 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 
 */
 /* Only used by soft limit reclaim. Do not reuse for anything else. */
+/*
+2024年07月04日11:43:21
+2024年07月11日16:33:16
+Only used by soft limit reclaim. Do not reuse for anything else. */
 unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 						gfp_t gfp_mask, bool noswap,
 						pg_data_t *pgdat,
@@ -3792,6 +3817,7 @@ unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 	 * if we don't reclaim here, the shrink_node from balance_pgdat
 	 * will pick up pages from other mem cgroup's as well. We hack
 	 * the priority and make it zero.
+	 回收memcg
 	 */
 	shrink_node_memcg(pgdat, memcg, &sc, &lru_pages);
 
@@ -3801,7 +3827,9 @@ unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 
 	return sc.nr_reclaimed;
 }
-
+/* 2024年07月04日12:17:42
+回收指定memcg的内存
+ */
 unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 					   unsigned long nr_pages,
 					   gfp_t gfp_mask,
@@ -3813,10 +3841,12 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 	int nid;
 	unsigned int noreclaim_flag;
 	struct scan_control sc = {
+		/* 要回收的页面数量 */
 		.nr_to_reclaim = max(nr_pages, SWAP_CLUSTER_MAX),
 		.gfp_mask = (current_gfp_context(gfp_mask) & GFP_RECLAIM_MASK) |
 				(GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK),
 		.reclaim_idx = MAX_NR_ZONES - 1,
+		/* 要回收的memcg范围 */
 		.target_mem_cgroup = memcg,
 		.priority = DEF_PRIORITY,
 		.may_writepage = !laptop_mode,
@@ -3829,6 +3859,9 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 	 * Unlike direct reclaim via alloc_pages(), memcg's reclaim doesn't
 	 * take care of from where we get pages. So the node where we start the
 	 * scan does not need to be the current node.
+	 选择回收哪个node，好像是循环选择的，不能挨个评价哪个用的多吗。
+	 2024年07月04日12:19:08
+	 不能挨个回收吗
 	 */
 	nid = mem_cgroup_select_victim_node(memcg);
 
@@ -3838,7 +3871,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 
 	psi_memstall_enter(&pflags);
 	noreclaim_flag = memalloc_noreclaim_save();
-
+/* 调用这个函数 */
 	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
 
 	memalloc_noreclaim_restore(noreclaim_flag);
@@ -4278,7 +4311,9 @@ static enum zone_type kswapd_classzone_idx(pg_data_t *pgdat,
 		return prev_classzone_idx;
 	return pgdat->kswapd_classzone_idx;
 }
+/* 2024年07月04日15:12:45
 
+ */
 static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_order,
 				unsigned int classzone_idx)
 {
@@ -4550,7 +4585,9 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 }
 #endif /* CONFIG_HIBERNATION */
 
-/* It's optimal to keep kswapds on the same CPUs as their memory, but
+/* 
+2024年07月04日15:11:35
+It's optimal to keep kswapds on the same CPUs as their memory, but
    not required for correctness.  So if the last cpu in a node goes
    away, we get changed to run anywhere: as the first one comes back,
    restore their cpu bindings. */
@@ -4565,7 +4602,9 @@ static int kswapd_cpu_online(unsigned int cpu)
 		mask = cpumask_of_node(pgdat->node_id);
 
 		if (cpumask_any_and(cpu_online_mask, mask) < nr_cpu_ids)
-			/* One of our CPUs online: restore mask */
+			/* One of our CPUs online: restore mask
+		设置可以运行的cpu
+		*/
 			set_cpus_allowed_ptr(pgdat->kswapd, mask);
 	}
 	return 0;
@@ -4598,6 +4637,7 @@ int kswapd_run(int nid)
 }
 
 /*
+2024年07月04日15:11:22
  * Called by memory hotplug when all memory in a node is offlined.  Caller must
  * hold mem_hotplug_begin/end().
  */
@@ -4610,7 +4650,8 @@ void kswapd_stop(int nid)
 		NODE_DATA(nid)->kswapd = NULL;
 	}
 }
-
+/* 2024年07月04日15:10:48
+ */
 static int __init kswapd_init(void)
 {
 	int nid, ret;
@@ -4660,6 +4701,7 @@ int sysctl_min_unmapped_ratio = 1;
  */
 int sysctl_min_slab_ratio = 5;
 /* 2024年06月26日11:30:00
+2024年07月04日13:01:23
  */
 static inline unsigned long node_unmapped_file_pages(struct pglist_data *pgdat)
 {
@@ -4770,7 +4812,9 @@ static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned in
 
 	return sc.nr_reclaimed >= nr_pages;
 }
+/* 2024年07月04日12:58:37
 
+ */
 int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
 {
 	int ret;
@@ -4791,6 +4835,7 @@ int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
 
 	/*
 	 * Do not scan if the allocation should not be delayed.
+
 	 */
 	if (!gfpflags_allow_blocking(gfp_mask) || (current->flags & PF_MEMALLOC))
 		return NODE_RECLAIM_NOSCAN;
@@ -4806,7 +4851,7 @@ int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
 
 	if (test_and_set_bit(PGDAT_RECLAIM_LOCKED, &pgdat->flags))
 		return NODE_RECLAIM_NOSCAN;
-
+		/*  */
 	ret = __node_reclaim(pgdat, gfp_mask, order);
 	clear_bit(PGDAT_RECLAIM_LOCKED, &pgdat->flags);
 
@@ -4818,6 +4863,7 @@ int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
 #endif
 
 /*
+2024年07月04日12:58:23
  * page_evictable - test whether a page is evictable
  * @page: the page to test
  *
@@ -4841,6 +4887,7 @@ int page_evictable(struct page *page)
 }
 
 /**
+2024年07月04日12:55:31
  * check_move_unevictable_pages - check pages for evictability and move to
  * appropriate zone lru list
  * @pvec: pagevec with lru pages to check
@@ -4858,6 +4905,7 @@ void check_move_unevictable_pages(struct pagevec *pvec)
 	int i;
 
 	for (i = 0; i < pvec->nr; i++) {
+		/* 遍历pvec页面 */
 		struct page *page = pvec->pages[i];
 		struct pglist_data *pagepgdat = page_pgdat(page);
 
@@ -4874,10 +4922,12 @@ void check_move_unevictable_pages(struct pagevec *pvec)
 			continue;
 
 		if (page_evictable(page)) {
+			/* 获取页面是页缓存还是匿名页lru类型 */
 			enum lru_list lru = page_lru_base_type(page);
 
 			VM_BUG_ON_PAGE(PageActive(page), page);
 			ClearPageUnevictable(page);
+			/* 移到新的lru */
 			del_page_from_lru_list(page, lruvec, LRU_UNEVICTABLE);
 			add_page_to_lru_list(page, lruvec, lru);
 			pgrescued++;

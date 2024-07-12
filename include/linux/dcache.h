@@ -85,7 +85,8 @@ extern struct dentry_stat_t dentry_stat;
 #endif
 
 #define d_lock	d_lockref.lock
-
+/* 2024年07月09日19:46:04
+ */
 struct dentry {
 	/* RCU lookup touched fields */
 	unsigned int d_flags;		/* protected by d_lock */
@@ -93,6 +94,7 @@ struct dentry {
 	struct hlist_bl_node d_hash;	/* lookup hash list */
 	struct dentry *d_parent;	/* parent directory */
 	struct qstr d_name;
+	/* 对应的inode */
 	struct inode *d_inode;		/* Where the name belongs to - NULL is
 					 * negative */
 	unsigned char d_iname[DNAME_INLINE_LEN];	/* small names */
@@ -504,6 +506,7 @@ static inline unsigned long vfs_pressure_ratio(unsigned long val)
 }
 
 /**
+2024年07月09日19:46:49
  * d_inode - Get the actual inode of this dentry
  * @dentry: The dentry to query
  *

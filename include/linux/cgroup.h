@@ -161,6 +161,8 @@ struct task_struct *css_task_iter_next(struct css_task_iter *it);
 void css_task_iter_end(struct css_task_iter *it);
 
 /**
+2024年07月09日20:31:16
+遍历css层级
  * css_for_each_child - iterate through children of a css
  * @pos: the css * to use as the loop cursor
  * @parent: css whose children to walk
@@ -310,6 +312,8 @@ void css_task_iter_end(struct css_task_iter *it);
  */
 
 /**
+2024年07月09日19:57:16
+增加引用计数
  * css_get - obtain a reference on the specified css
  * @css: target css
  *
@@ -353,6 +357,9 @@ static inline bool css_tryget(struct cgroup_subsys_state *css)
 }
 
 /**
+2024年07月09日19:49:19
+2024年07月11日15:39:32
+online情况下get
  * css_tryget_online - try to obtain a reference on the specified css if online
  * @css: target css
  *
@@ -390,6 +397,7 @@ static inline bool css_is_dying(struct cgroup_subsys_state *css)
 }
 
 /**
+2024年07月09日20:45:10
  * css_put - put a css reference
  * @css: target css
  *
@@ -470,6 +478,8 @@ extern spinlock_t css_set_lock;
 	task_css_set_check((task), (__c))->subsys[(subsys_id)]
 
 /**
+2024年07月09日19:20:36
+2024年07月09日20:04:27
  * task_css_set - obtain a task's css_set
  * @task: the task to obtain css_set for
  *
@@ -482,6 +492,8 @@ static inline struct css_set *task_css_set(struct task_struct *task)
 
 /**
 2024年6月30日12:17:32
+2024年07月12日11:59:53
+差不多是tsk.cgroup.subsys[ssid]
  * task_css - obtain css for (task, subsys)
  * @task: the target task
  * @subsys_id: the target subsystem ID
@@ -549,11 +561,14 @@ static inline struct cgroup *task_dfl_cgroup(struct task_struct *task)
 {
 	return task_css_set(task)->dfl_cgrp;
 }
-
+/* 2024年07月09日20:12:28
+获取cg的父cg
+ */
 static inline struct cgroup *cgroup_parent(struct cgroup *cgrp)
 {
+	/* 借助css的层级关系 */
 	struct cgroup_subsys_state *parent_css = cgrp->self.parent;
-
+	/* container of机制 */
 	if (parent_css)
 		return container_of(parent_css, struct cgroup, self);
 	return NULL;
@@ -616,7 +631,9 @@ static inline bool task_under_cgroup_hierarchy(struct task_struct *task,
 	return cgroup_is_descendant(cset->dfl_cgrp, ancestor);
 }
 
-/* no synchronization, the result can only be used as a hint */
+/* 
+2024年07月09日20:10:23
+no synchronization, the result can only be used as a hint */
 static inline bool cgroup_is_populated(struct cgroup *cgrp)
 {
 	return cgrp->nr_populated_csets + cgrp->nr_populated_domain_children +
@@ -642,7 +659,9 @@ static inline struct cftype *seq_cft(struct seq_file *seq)
 {
 	return of_cft(seq->private);
 }
-
+/* 2024年07月10日10:08:03
+获取seq file的css
+ */
 static inline struct cgroup_subsys_state *seq_css(struct seq_file *seq)
 {
 	return of_css(seq->private);
@@ -833,7 +852,8 @@ extern spinlock_t cgroup_sk_update_lock;
 void cgroup_sk_alloc_disable(void);
 void cgroup_sk_alloc(struct sock_cgroup_data *skcd);
 void cgroup_sk_free(struct sock_cgroup_data *skcd);
-
+/* 2024年07月09日19:19:19
+ */
 static inline struct cgroup *sock_cgroup_ptr(struct sock_cgroup_data *skcd)
 {
 #if defined(CONFIG_CGROUP_NET_PRIO) || defined(CONFIG_CGROUP_NET_CLASSID)
@@ -954,7 +974,7 @@ static inline void cgroup_bpf_get(struct cgroup *cgrp)
 {
 	percpu_ref_get(&cgrp->bpf.refcnt);
 }
-
+/* 2024年07月09日19:19:41 */
 static inline void cgroup_bpf_put(struct cgroup *cgrp)
 {
 	percpu_ref_put(&cgrp->bpf.refcnt);

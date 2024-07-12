@@ -80,6 +80,10 @@ static DEFINE_MUTEX(pcp_batch_high_lock);
 #define MIN_PERCPU_PAGELIST_FRACTION	(8)
 
 #ifdef CONFIG_USE_PERCPU_NUMA_NODE_ID
+/* 2024年07月04日12:41:54
+
+属于此cpu的node？
+ */
 DEFINE_PER_CPU(int, numa_node);
 EXPORT_PER_CPU_SYMBOL(numa_node);
 #endif
@@ -112,6 +116,7 @@ EXPORT_SYMBOL(latent_entropy);
 #endif
 
 /*
+2024年07月04日12:38:43
  * Array of node states.
  */
 nodemask_t node_states[NR_NODE_STATES] __read_mostly = {
@@ -3506,7 +3511,7 @@ ALLOW_ERROR_INJECTION(should_fail_alloc_page, TRUE);
 
 /*
 、2024年6月30日21:27:58
-
+2024年07月12日12:56:07
  * Return true if free base pages are above 'mark'. For high-order checks it
  * will return true of the order-0 watermark is reached and there is at least
  * one free page of a suitable size. Checking now avoids taking the zone lock
@@ -3593,7 +3598,7 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 	}
 	return false;
 }
-
+/* 2024年07月12日12:55:48 */
 bool zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 		      int classzone_idx, unsigned int alloc_flags)
 {

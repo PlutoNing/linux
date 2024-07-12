@@ -705,7 +705,9 @@ void do_close_on_exec(struct files_struct *files)
 	}
 	spin_unlock(&files->file_lock);
 }
-
+/* 2024年07月09日19:22:51
+获取file
+ */
 static struct file *__fget(unsigned int fd, fmode_t mask, unsigned int refs)
 {
 	struct files_struct *files = current->files;
@@ -739,7 +741,9 @@ struct file *fget(unsigned int fd)
 	return __fget(fd, FMODE_PATH, 1);
 }
 EXPORT_SYMBOL(fget);
-
+/* 2024年07月09日19:21:51
+？
+ */
 struct file *fget_raw(unsigned int fd)
 {
 	return __fget(fd, 0, 1);

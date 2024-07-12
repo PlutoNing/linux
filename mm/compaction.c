@@ -1838,6 +1838,7 @@ static isolate_migrate_t isolate_migratepages(struct compact_control *cc)
 }
 
 /*
+2024年07月12日12:55:11
  * order == -1 is expected when compacting via
  * /proc/sys/vm/compact_memory
  */
@@ -1950,6 +1951,7 @@ static enum compact_result compact_finished(struct compact_control *cc)
 
 /*
 2024年07月03日10:23:30
+2024年07月12日12:54:38
  * compaction_suitable: Is this suitable to run compaction on this zone now?
  * Returns
  *   COMPACT_SKIPPED  - If there are too few free pages for compaction
@@ -1998,7 +2000,9 @@ static enum compact_result __compaction_suitable(struct zone *zone, int order,
 
 	return COMPACT_CONTINUE;
 }
-/* 2024年07月03日10:23:17 */
+/* 2024年07月03日10:23:17
+2024年07月12日12:52:18
+ */
 enum compact_result compaction_suitable(struct zone *zone, int order,
 					unsigned int alloc_flags,
 					int classzone_idx)

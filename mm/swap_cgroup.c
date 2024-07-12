@@ -6,6 +6,7 @@
 #include <linux/swapops.h> /* depends on mm.h include */
 
 static DEFINE_MUTEX(swap_cgroup_mutex);
+/* 2024年07月04日20:24:34 */
 struct swap_cgroup_ctrl {
 	struct page **map;
 	unsigned long length;
@@ -17,6 +18,10 @@ static struct swap_cgroup_ctrl swap_cgroup_ctrl[MAX_SWAPFILES];
 struct swap_cgroup {
 	unsigned short		id;
 };
+/* 2024年07月04日20:26:06
+
+ */
+
 #define SC_PER_PAGE	(PAGE_SIZE/sizeof(struct swap_cgroup))
 
 /*
@@ -61,7 +66,9 @@ not_enough_page:
 
 	return -ENOMEM;
 }
+/* 2024年07月04日20:25:35
 
+ */
 static struct swap_cgroup *__lookup_swap_cgroup(struct swap_cgroup_ctrl *ctrl,
 						pgoff_t offset)
 {
@@ -72,13 +79,15 @@ static struct swap_cgroup *__lookup_swap_cgroup(struct swap_cgroup_ctrl *ctrl,
 	sc = page_address(mappage);
 	return sc + offset % SC_PER_PAGE;
 }
+/* 2024年07月04日20:24:46
 
+ */
 static struct swap_cgroup *lookup_swap_cgroup(swp_entry_t ent,
 					struct swap_cgroup_ctrl **ctrlp)
 {
 	pgoff_t offset = swp_offset(ent);
 	struct swap_cgroup_ctrl *ctrl;
-
+	/* 获取swap设备的ctrl？ */
 	ctrl = &swap_cgroup_ctrl[swp_type(ent)];
 	if (ctrlp)
 		*ctrlp = ctrl;
@@ -115,6 +124,7 @@ unsigned short swap_cgroup_cmpxchg(swp_entry_t ent,
 }
 
 /**
+2024年07月04日20:23:27
  * swap_cgroup_record - record mem_cgroup for a set of swap entries
  * @ent: the first swap entry to be recorded into
  * @id: mem_cgroup to be recorded

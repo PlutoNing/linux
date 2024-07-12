@@ -58,7 +58,7 @@ out_unlock:
 	mutex_unlock(&iattr_mutex);
 	return ret;
 }
-
+/* 2024年07月10日12:46:26 */
 static struct kernfs_iattrs *kernfs_iattrs(struct kernfs_node *kn)
 {
 	return __kernfs_iattrs(kn, 1);
@@ -68,7 +68,7 @@ static struct kernfs_iattrs *kernfs_iattrs_noalloc(struct kernfs_node *kn)
 {
 	return __kernfs_iattrs(kn, 0);
 }
-
+/* 2024年07月10日12:46:12 */
 int __kernfs_setattr(struct kernfs_node *kn, const struct iattr *iattr)
 {
 	struct kernfs_iattrs *attrs;
@@ -94,6 +94,7 @@ int __kernfs_setattr(struct kernfs_node *kn, const struct iattr *iattr)
 }
 
 /**
+2024年07月10日12:46:05
  * kernfs_setattr - set iattr on a node
  * @kn: target node
  * @iattr: iattr to set
@@ -229,6 +230,7 @@ static void kernfs_init_inode(struct kernfs_node *kn, struct inode *inode)
 }
 
 /**
+2024年07月10日11:36:30
  *	kernfs_get_inode - get inode for kernfs_node
  *	@sb: super block
  *	@kn: kernfs_node to allocate inode for

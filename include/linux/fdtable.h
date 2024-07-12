@@ -43,6 +43,7 @@ static inline bool fd_is_open(unsigned int fd, const struct fdtable *fdt)
 }
 
 /*
+2024年07月09日19:22:59
  * Open file table structure
  */
 struct files_struct {
@@ -89,7 +90,7 @@ static inline struct file *__fcheck_files(struct files_struct *files, unsigned i
 	}
 	return NULL;
 }
-
+/* 2024年07月09日19:23:15 */
 static inline struct file *fcheck_files(struct files_struct *files, unsigned int fd)
 {
 	RCU_LOCKDEP_WARN(!rcu_read_lock_held() &&

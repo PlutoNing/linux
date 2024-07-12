@@ -80,6 +80,9 @@ do {							\
  * @attrs:	Pointer to NULL terminated list of attributes.
  * @bin_attrs:	Pointer to NULL terminated list of binary attributes.
  *		Either attrs or bin_attrs or both must be provided.
+ 2024年07月09日19:09:09
+ kernfs的属性数据结构
+ kv形式的
  */
 struct attribute_group {
 	const char		*name;

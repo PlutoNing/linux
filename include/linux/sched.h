@@ -1119,7 +1119,7 @@ struct task_struct {
 	*/
 	struct css_set __rcu		*cgroups;
 	/* cg_list protected by css_set_lock and tsk->alloc_lock: 
-	链接同一个cg的pcb
+	链接同一个cg的pcb？
 	*/
 	struct list_head		cg_list;
 #endif
@@ -1371,7 +1371,7 @@ struct task_struct {
 	 * Do not put anything below here!
 	 */
 };
-
+/* 2024年07月10日10:14:36 */
 static inline struct pid *task_pid(struct task_struct *task)
 {
 	return task->thread_pid;

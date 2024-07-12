@@ -121,7 +121,7 @@ union kernfs_node_id {
 
 /*
 2024年6月22日00:00:18
-
+2024年07月09日19:11:04
  * kernfs_node - the building block of kernfs hierarchy.  Each and every
  * kernfs node is represented by single kernfs_node.  Most fields are
  * private to kernfs and shouldn't be accessed directly by kernfs users.
@@ -131,6 +131,7 @@ union kernfs_node_id {
  * active reference.
  */
 struct kernfs_node {
+	/* 引用计数 */
 	atomic_t		count;
 	atomic_t		active;
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
@@ -181,7 +182,9 @@ struct kernfs_syscall_ops {
 	int (*show_path)(struct seq_file *sf, struct kernfs_node *kn,
 			 struct kernfs_root *root);
 };
+/* 2024年07月10日14:57:35
 
+ */
 struct kernfs_root {
 	/* published fields */
 	struct kernfs_node	*kn;
@@ -519,13 +522,13 @@ static inline int kernfs_path(struct kernfs_node *kn, char *buf, size_t buflen)
 {
 	return kernfs_path_from_node(kn, NULL, buf, buflen);
 }
-
+/* 2024年07月09日19:09:59 */
 static inline struct kernfs_node *
 kernfs_find_and_get(struct kernfs_node *kn, const char *name)
 {
 	return kernfs_find_and_get_ns(kn, name, NULL);
 }
-
+/* 2024年07月09日19:54:46 */
 static inline struct kernfs_node *
 kernfs_walk_and_get(struct kernfs_node *kn, const char *path)
 {
@@ -564,7 +567,7 @@ kernfs_create_file(struct kernfs_node *parent, const char *name, umode_t mode,
 				     GLOBAL_ROOT_UID, GLOBAL_ROOT_GID,
 				     size, ops, priv, NULL);
 }
-
+/* 2024年07月09日20:40:48 */
 static inline int kernfs_remove_by_name(struct kernfs_node *parent,
 					const char *name)
 {

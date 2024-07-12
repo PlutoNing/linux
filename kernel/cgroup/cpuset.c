@@ -77,7 +77,8 @@ struct fmeter {
 	time64_t time;		/* clock (secs) when val computed */
 	spinlock_t lock;	/* guards read or write of above */
 };
-
+/* 2024年07月12日12:49:39
+cpuset结构 */
 struct cpuset {
 	struct cgroup_subsys_state css;
 
@@ -188,13 +189,18 @@ struct tmpmasks {
 	cpumask_var_t addmask, delmask;	/* For partition root */
 	cpumask_var_t new_cpus;		/* For update_cpumasks_hier() */
 };
-
+/* 2024年07月12日12:48:47
+返回包含此css的cpuset
+ */
 static inline struct cpuset *css_cs(struct cgroup_subsys_state *css)
 {
 	return css ? container_of(css, struct cpuset, css) : NULL;
 }
 
-/* Retrieve the cpuset for a task */
+/* 
+2024年07月12日11:59:36
+获取tsk的cpuset
+Retrieve the cpuset for a task */
 static inline struct cpuset *task_cs(struct task_struct *task)
 {
 	return css_cs(task_css(task, cpuset_cgrp_id));
@@ -3384,6 +3390,8 @@ static struct cpuset *nearest_hardwall_ancestor(struct cpuset *cs)
 }
 
 /**
+2024年07月12日11:58:04
+
  * cpuset_node_allowed - Can we allocate on a memory node?
  * @node: is this an allowed node?
  * @gfp_mask: memory allocation flags
@@ -3428,7 +3436,7 @@ bool __cpuset_node_allowed(int node, gfp_t gfp_mask)
 	struct cpuset *cs;		/* current cpuset ancestors */
 	int allowed;			/* is allocation in zone z allowed? */
 	unsigned long flags;
-
+/* 中断期间肯定可以分配 */
 	if (in_interrupt())
 		return true;
 	if (node_isset(node, current->mems_allowed))

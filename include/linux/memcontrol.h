@@ -57,7 +57,8 @@ enum mem_cgroup_protection {
 	MEMCG_PROT_LOW,
 	MEMCG_PROT_MIN,
 };
-
+/* 2024年07月04日11:28:21
+ */
 struct mem_cgroup_reclaim_cookie {
 	pg_data_t *pgdat;
 	int priority;
@@ -95,7 +96,9 @@ struct memcg_vmstats_percpu {
 	unsigned long nr_page_events;
 	unsigned long targets[MEM_CGROUP_NTARGETS];
 };
+/* 2024年07月11日16:19:43
 
+ */
 struct mem_cgroup_reclaim_iter {
 	struct mem_cgroup *position;
 	/* scan generation, increased every round-trip */
@@ -143,21 +146,22 @@ struct mem_cgroup_per_node {
 	struct lruvec_stat __percpu *lruvec_stat_cpu;
 	/*  */
 	atomic_long_t		lruvec_stat[NR_VM_NODE_STAT_ITEMS];
-/* 
-lru_zone_size[zid][lru]
-不同zone不同内存类型的计数
- */
+/* lru_zone_size[zid][lru]不同zone不同内存类型的计数 */
 	unsigned long		lru_zone_size[MAX_NR_ZONES][NR_LRU_LISTS];
-
+/* 2024年07月11日16:22:08
+和遍历相关，但是什么用呢 */
 	struct mem_cgroup_reclaim_iter	iter[DEF_PRIORITY + 1];
 	/* shrinker map，好像是存储shrinker什么的 */
 	struct memcg_shrinker_map __rcu	*shrinker_map;
 
 	struct rb_node		tree_node;	/* RB tree node usage超过softlimit时，链接到全局的
 	mem_cgroup_tree_per_node红黑树，方面进行softlimit reclaim*/
+
 	    /* 标记usage是否大于softlimit*/
 	unsigned long		usage_in_excess;/* Set to the value by which */
 						/* the soft limit is exceeded*/
+
+						/* 记录这个mz是不是还在全局的soft limit tree */
 	bool			on_tree;
 	bool			congested;	/* memcg has many dirty pages */
 						/* backed by a congested BDI */
@@ -268,12 +272,17 @@ struct mem_cgroup {
 	struct page_counter kmem;
 	struct page_counter tcpmem;
 
-	/* Upper bound of normal memory consumption range */
+	/* Upper bound of normal memory consumption range
+	高水位 */
 	unsigned long high;
 
 	/* Range enforcement for interrupt charges */
 	struct work_struct high_work;
-
+/* 2024年07月04日11:28:47
+memcg soft limit reclaim会用到此 
+2024年07月09日18:40:18
+非强制内存上限。usage超过这个上限后，组内进程使用的内存可能会被加快步伐进行回收
+*/
 	unsigned long soft_limit;
 
 	/* vmpressure notifications */
@@ -282,7 +291,7 @@ struct mem_cgroup {
 	/*
 	 * Should the accounting and control be hierarchical, per subtree?
 	 是继承的吗，如果是，那么设置子cg会拷贝父cg的一些属性
-	 
+
 	 */
 	bool use_hierarchy;
 
@@ -372,7 +381,7 @@ struct mem_cgroup {
 	enum memcg_kmem_state kmem_state;
 	struct list_head kmem_caches;
 #endif
-
+/* 上次回收此memcg内存时的node */
 	int last_scanned_node;
 #if MAX_NUMNODES > 1
 	nodemask_t	scan_nodes;
@@ -511,6 +520,7 @@ struct mem_cgroup *get_mem_cgroup_from_page(struct page *page);
 /* 
  2024年06月21日17:28:43
  2024年06月27日10:28:33
+ memcg包含css。
  */
 static inline
 struct mem_cgroup *mem_cgroup_from_css(struct cgroup_subsys_state *css){

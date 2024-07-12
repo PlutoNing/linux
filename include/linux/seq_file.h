@@ -12,7 +12,7 @@
 #include <linux/cred.h>
 
 struct seq_operations;
-
+/* 2024年07月10日10:07:22 */
 struct seq_file {
 	char *buf;
 	size_t size;
@@ -26,6 +26,9 @@ struct seq_file {
 	const struct seq_operations *op;
 	int poll_event;
 	const struct file *file;
+	/* 
+	不同使用类型的特异成员
+	cgroup里面可能用作kernfs_open_file */
 	void *private;
 };
 

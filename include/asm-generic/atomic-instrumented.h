@@ -1676,6 +1676,9 @@ atomic64_dec_if_positive(atomic64_t *v)
 })
 #endif
 
+/* 将old和ptr指向的内容比较，如果相等，则将new写入到ptr中，返回old，如果不相等，则返回ptr指向的内容。 */
+
+
 #if !defined(arch_cmpxchg_relaxed) || defined(arch_cmpxchg)
 #define cmpxchg(ptr, ...)						\
 ({									\

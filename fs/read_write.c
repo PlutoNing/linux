@@ -361,7 +361,7 @@ out_putf:
 	return retval;
 }
 #endif
-
+/* 2024年07月09日11:21:14 */
 int rw_verify_area(int read_write, struct file *file, const loff_t *ppos, size_t count)
 {
 	struct inode *inode;
@@ -417,7 +417,9 @@ static ssize_t new_sync_read(struct file *filp, char __user *buf, size_t len, lo
 		*ppos = kiocb.ki_pos;
 	return ret;
 }
+/* 2024年07月09日11:23:29
 
+ */
 ssize_t __vfs_read(struct file *file, char __user *buf, size_t count,
 		   loff_t *pos)
 {
@@ -442,7 +444,9 @@ ssize_t kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 	return result;
 }
 EXPORT_SYMBOL(kernel_read);
+/* 2024年07月09日11:21:00
 
+ */
 ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 {
 	ssize_t ret;
@@ -456,10 +460,12 @@ ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 
 	ret = rw_verify_area(READ, file, pos, count);
 	if (!ret) {
+		/* 进行读取 */
 		if (count > MAX_RW_COUNT)
 			count =  MAX_RW_COUNT;
 		ret = __vfs_read(file, buf, count, pos);
 		if (ret > 0) {
+		/* notify机制 */
 			fsnotify_access(file);
 			add_rchar(current, ret);
 		}

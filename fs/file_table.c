@@ -330,10 +330,12 @@ void flush_delayed_fput(void)
 EXPORT_SYMBOL_GPL(flush_delayed_fput);
 
 static DECLARE_DELAYED_WORK(delayed_fput_work, delayed_fput);
-
+/* 2024年07月09日19:50:10
+释放文件 */
 void fput_many(struct file *file, unsigned int refs)
 {
 	if (atomic_long_sub_and_test(refs, &file->f_count)) {
+		/* 如果自己最后一个释放文件的 */
 		struct task_struct *task = current;
 
 		if (likely(!in_interrupt() && !(task->flags & PF_KTHREAD))) {
@@ -351,7 +353,9 @@ void fput_many(struct file *file, unsigned int refs)
 			schedule_delayed_work(&delayed_fput_work, 1);
 	}
 }
-
+/* 2024年07月09日19:50:03
+释放文件
+ */
 void fput(struct file *file)
 {
 	fput_many(file, 1);

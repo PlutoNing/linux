@@ -66,6 +66,8 @@ static inline struct cgroup_fs_context *cgroup_fc2context(struct fs_context *fc)
 }
 
 /*
+2024年07月09日20:34:59
+个task可以属于多个cgroup，一个cgroup也可以拥有多个task，这种M:N的关系，linux kernel中是通过cgrp_cset_link结构体表示的
  * A cgroup can be associated with multiple css_sets as different tasks may
  * belong to different cgroups on different hierarchies.  In the other
  * direction, a css_set is naturally associated with multiple cgroups.
@@ -78,7 +80,9 @@ struct cgrp_cset_link {
 	struct cgroup		*cgrp;
 	struct css_set		*cset;
 
-	/* list of cgrp_cset_links anchored at cgrp->cset_links */
+	/* list of cgrp_cset_links anchored at cgrp->cset_links 
+	而cset_link是给struct cgroup查找struct cgrp_cset_link用的
+	*/
 	struct list_head	cset_link;
 
 	/* list of cgrp_cset_links anchored at css_set->cgrp_links */
@@ -90,14 +94,19 @@ struct cgrp_cset_link {
  used to track tasks and csets during migration */
 struct cgroup_taskset {
 	/* the src and dst cset list running 
-	through cset->mg_node */
+	through cset->mg_node 
+	cset的 mg node连接到 mgctx->tset.src_csets
+	*/
 	struct list_head	src_csets;
 	struct list_head	dst_csets;
 
-	/* the number of tasks in the set */
+	/* the number of tasks in the set
+	tsk数量 */
 	int			nr_tasks;
 
-	/* the subsys currently being processed */
+	/* the subsys currently being processed 
+	正在处理的ssid
+	*/
 	int			ssid;
 
 	/*
@@ -112,13 +121,16 @@ struct cgroup_taskset {
 	 * during iteration.
 	 */
 	struct list_head	*csets;
+	/*  */
 	struct css_set		*cur_cset;
+	/*  */
 	struct task_struct	*cur_task;
 };
 
 /* 
 
 2024年06月28日19:42:0
+2024年07月10日10:42:27
 migration context also tracks preloading */
 struct cgroup_mgctx {
 	/*
@@ -131,7 +143,8 @@ struct cgroup_mgctx {
 	/* tasks and csets to migrate */
 	struct cgroup_taskset	tset;
 
-	/* subsystems affected by migration */
+	/* subsystems affected by migration
+	要迁移的ss */
 	u16			ss_mask;
 };
 
@@ -170,7 +183,7 @@ extern struct file_system_type cgroup_fs_type;
 #define for_each_subsys(ss, ssid)					\
 	for ((ssid) = 0; (ssid) < CGROUP_SUBSYS_COUNT &&		\
 	     (((ss) = cgroup_subsys[ssid]) || true); (ssid)++)
-
+/* 2024年07月09日19:56:49 */
 static inline bool cgroup_is_dead(const struct cgroup *cgrp)
 {
 	return !(cgrp->self.flags & CSS_ONLINE);
@@ -182,7 +195,7 @@ static inline bool notify_on_release(const struct cgroup *cgrp)
 }
 
 void put_css_set_locked(struct css_set *cset);
-
+/* 2024年07月09日20:04:39 */
 static inline void put_css_set(struct css_set *cset)
 {
 	unsigned long flags;
