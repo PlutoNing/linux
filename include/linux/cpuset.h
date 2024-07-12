@@ -72,12 +72,14 @@ static inline bool cpuset_node_allowed(int node, gfp_t gfp_mask)
 		return __cpuset_node_allowed(node, gfp_mask);
 	return true;
 }
-
+/* 2024年07月12日11:57:26 */
 static inline bool __cpuset_zone_allowed(struct zone *z, gfp_t gfp_mask)
 {
 	return __cpuset_node_allowed(zone_to_nid(z), gfp_mask);
 }
+/* 2024年07月12日11:56:59
 
+ */
 static inline bool cpuset_zone_allowed(struct zone *z, gfp_t gfp_mask)
 {
 	if (cpusets_enabled())

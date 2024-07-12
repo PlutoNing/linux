@@ -131,7 +131,9 @@ struct mem_cgroup_tree_per_node {
 	struct rb_node *rb_rightmost;
 	spinlock_t lock;
 };
-
+/* 
+2024年07月12日13:11:33
+每个node有一颗 max soft limit tree */
 struct mem_cgroup_tree {
 	struct mem_cgroup_tree_per_node *rb_tree_per_node[MAX_NUMNODES];
 };
@@ -3417,7 +3419,7 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 		/* 找到下一个mz */
 
 		nr_scanned = 0;
-		/* 开始回收 */
+		/* 找到了memcg，开始回收 */
 		reclaimed = mem_cgroup_soft_reclaim(mz->memcg, pgdat,
 						    gfp_mask, &nr_scanned);
 		nr_reclaimed += reclaimed;

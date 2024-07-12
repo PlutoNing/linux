@@ -482,7 +482,7 @@ struct zone {
 	例如如果一个pageblock无法提供足够的连续内存，就会进入到在fallback场景，当fallback_order小于
 	pageblock_order时，就会被认为会导致外部碎片的事件。在实施“偷”页框之前，会暂时提高（boost）水线。 */
 	unsigned long watermark_boost;
-
+/* 预留内存？ */
 	unsigned long nr_reserved_highatomic;
 
 	/*
@@ -498,7 +498,7 @@ struct zone {
 	long lowmem_reserve[MAX_NR_ZONES];
 
 #ifdef CONFIG_NUMA
-/* 所属node */
+/* 所属node的id */
 	int node;
 #endif
 	/* todo */

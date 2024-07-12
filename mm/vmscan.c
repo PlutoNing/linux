@@ -3333,6 +3333,10 @@ try_to_free_pages→do_try_to_free_pages→shrink_zones→shrink_node。
 }
 
 /*
+2024年07月12日12:51:49
+判断是否可以进行内存整理
+怎么判断呢？
+
  * Returns true if compaction should go ahead for a costly-order request, or
  * the allocation would already succeed without compaction. Return false if we
  * should reclaim first.
@@ -3396,13 +3400,17 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 
 	for_each_zone_zonelist_nodemask(zone, z, zonelist,
 					sc->reclaim_idx, sc->nodemask) {
+		/* 遍历每一个zone */
 		/*
 		 * Take care memory controller reclaiming has small influence
 		 * to global LRU.
 		 没有指定target memcg？
 		 */
 		if (global_reclaim(sc)) {
-			/* 如果是全局的非cgroup的回收 */
+			/* 如果是全局的非cgroup的回收
+			就是说如果没指定memcg，就是从全局的memcg来soft relcaim过程？ */
+
+
 			if (!cpuset_zone_allowed(zone,
 						 GFP_KERNEL | __GFP_HARDWALL))
 				continue;
@@ -3451,7 +3459,10 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 		/* See comment about same check for global reclaim above */
 		if (zone->zone_pgdat == last_pgdat)
 			continue;
+
+
 		last_pgdat = zone->zone_pgdat;
+		/* 这里如果是全局回收的话 ，就是sc的targt为空，那内部的遍历会从根cg开始*/
 		shrink_node(zone->zone_pgdat, sc);
 	}
 
@@ -3479,6 +3490,8 @@ static void snapshot_refaults(struct mem_cgroup *root_memcg, pg_data_t *pgdat)
 
 /*
 2024年6月26日00:08:37
+2024年07月12日11:51:33
+差不多算shrink zones的中间包装函数，调用shrink zones回收prio次
  * This is the main entry point to direct page reclaim.
  *
  * If a full scan of the inactive list fails to free enough memory then we
