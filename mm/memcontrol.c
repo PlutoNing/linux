@@ -202,7 +202,10 @@ static void mem_cgroup_oom_notify(struct mem_cgroup *memcg);
 #define MOVE_FILE	0x2U
 #define MOVE_MASK	(MOVE_ANON | MOVE_FILE)
 
-/* "mc" and its members are protected by cgroup_mutex */
+/* 
+2024年7月13日01:24:17
+mc是什么
+"mc" and its members are protected by cgroup_mutex */
 static struct move_charge_struct {
 	spinlock_t	  lock; /* for from, to */
 	struct mm_struct  *mm;
@@ -253,6 +256,8 @@ enum res_type {
 #define OOM_CONTROL		(0)
 
 /*
+2024年7月13日00:46:54
+遍历子cg
  * Iteration constructs for visiting all cgroups (under a tree).  If
  * loops are exited prematurely (break), mem_cgroup_iter_break() must
  * be used for reference counting.
@@ -684,7 +689,8 @@ todo */
 	}
 }
 /* 2024年06月27日11:25:27
-
+2024年7月13日00:52:33
+从全局的soft limit tree移走
  */
 static void mem_cgroup_remove_from_trees(struct mem_cgroup *memcg)
 {
@@ -901,7 +907,9 @@ static unsigned long memcg_events_local(struct mem_cgroup *memcg, int event)
 		x += per_cpu(memcg->vmstats_local->events[event], cpu);
 	return x;
 }
-
+/* 2024年7月13日00:29:46
+更新统计数据，非counter。
+ */
 static void mem_cgroup_charge_statistics(struct mem_cgroup *memcg,
 					 struct page *page,
 					 bool compound, int nr_pages)
@@ -1023,10 +1031,8 @@ EXPORT_SYMBOL(mem_cgroup_from_task);
 
 /**
 2024年06月21日17:29:29
-其中用的最广的是get_mem_cgroup_from_mm，但mm_struct中没有memcg的data structure，
-还需要从task_struct中来，调用mem_cgroup_from_task ，在其中调用mem_cgroup_from_css，
-从css_set中定位struct mem_cgroup，
-但是这里面的mem_cgroup和task_struct->active_memcg是不是指向同一个还需要研究。
+2024年7月13日01:18:31
+
  * get_mem_cgroup_from_mm: Obtain a reference on given mm_struct's memcg.
  * @mm: mm from which memcg should be extracted. It can be NULL.
  *
@@ -1057,6 +1063,8 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
 				memcg = root_mem_cgroup;
 		}
 	} while (!css_tryget(&memcg->css));
+
+
 	rcu_read_unlock();
 	return memcg;
 }
@@ -1488,7 +1496,9 @@ static bool mem_cgroup_wait_acct_move(struct mem_cgroup *memcg)
 	}
 	return false;
 }
+/* 2024年7月13日01:22:39
 
+ */
 static char *memory_stat_format(struct mem_cgroup *memcg)
 {
 	struct seq_buf s;
@@ -1893,6 +1903,7 @@ static struct lockdep_map memcg_oom_lock_dep_map = {
 static DEFINE_SPINLOCK(memcg_oom_lock);
 
 /*
+2024年7月13日00:47:22
  * Check OOM-Killer is already running under our hierarchy.
  * If someone is running, return false.
  */
@@ -1916,6 +1927,7 @@ static bool mem_cgroup_oom_trylock(struct mem_cgroup *memcg)
 	}
 
 	if (failed) {
+
 		/*
 		 * OK, we failed to lock the whole subtree so we have
 		 * to clean up what we set up to the failing subtree
@@ -1946,6 +1958,7 @@ static void mem_cgroup_oom_unlock(struct mem_cgroup *memcg)
 	spin_unlock(&memcg_oom_lock);
 }
 /* 2024年07月03日18:57:25
+2024年7月13日00:46:41
  */
 static void mem_cgroup_mark_under_oom(struct mem_cgroup *memcg)
 {
@@ -2161,7 +2174,10 @@ cleanup:
 
 /**
 2024年06月28日15:13:02
-
+2024年7月13日00:44:05
+get a memory cgroup to clean up after OOM？
+--------------------------------------------
+找到vicim的cg的oom cg
  * mem_cgroup_get_oom_group - get a memory cgroup to clean up after OOM
  * @victim: task to be killed by the OOM killer
  * @oom_domain: memcg in case of memcg OOM, NULL in case of system-wide OOM
@@ -2195,6 +2211,8 @@ struct mem_cgroup *mem_cgroup_get_oom_group(struct task_struct *victim,
 	 * highest-level memory cgroup with oom.group set.
 	 从victim所在的cg向上一直遍历到oom domain
 	 遍历层级里的cg，找到的是最大的需要kill cg的cg。然后返回
+	 2024年7月13日00:45:08
+
 	 
 	 */
 	for (; memcg; memcg = parent_mem_cgroup(memcg)) {
@@ -2224,6 +2242,10 @@ void mem_cgroup_print_oom_group(struct mem_cgroup *memcg)
 }
 
 /**
+2024年7月13日00:41:08
+什么是lock呢
+2024年7月13日00:42:04
+todo
  * lock_page_memcg - lock a page->mem_cgroup binding
  * @page: the page
  *
@@ -2281,6 +2303,7 @@ again:
 EXPORT_SYMBOL(lock_page_memcg);
 
 /**
+2024年7月13日00:40:01
  * __unlock_page_memcg - unlock and unpin a memcg
  * @memcg: the memcg
  *
@@ -2301,6 +2324,7 @@ void __unlock_page_memcg(struct mem_cgroup *memcg)
 }
 
 /**
+2024年7月13日00:39:56
  * unlock_page_memcg - unlock a page->mem_cgroup binding
  * @page: the page
  */
@@ -2416,6 +2440,7 @@ static void drain_local_stock(struct work_struct *dummy)
 }
 
 /*
+2024年7月13日00:37:47
  * Cache charges(val) to local per_cpu area.
  * This will be consumed by consume_stock() function, later.
  */
@@ -2425,14 +2450,15 @@ static void refill_stock(struct mem_cgroup *memcg, unsigned int nr_pages)
 	unsigned long flags;
 
 	local_irq_save(flags);
-
+	/* percpu的stock */
 	stock = this_cpu_ptr(&memcg_stock);
 	if (stock->cached != memcg) { /* reset if necessary */
+		/* 2024年7月13日00:38:42 为什么会不指向memcg */
 		drain_stock(stock);
 		stock->cached = memcg;
 	}
 	stock->nr_pages += nr_pages;
-
+	/* 可以drain一波 */
 	if (stock->nr_pages > MEMCG_CHARGE_BATCH)
 		drain_stock(stock);
 
@@ -2891,7 +2917,9 @@ done_restock:
 
 	return 0;
 }
-
+/* 2024年7月13日01:28:25
+就是简单的uncharge counter吗
+ */
 static void cancel_charge(struct mem_cgroup *memcg, unsigned int nr_pages)
 {
 	if (mem_cgroup_is_root(memcg))
@@ -5171,6 +5199,8 @@ static struct cftype mem_cgroup_legacy_files[] = {
 static DEFINE_IDR(mem_cgroup_idr);
 /* 2024年07月04日20:28:38
 移除idr？这是什么
+2024年7月13日01:30:23
+idr是一种查找结构
  */
 static void mem_cgroup_id_remove(struct mem_cgroup *memcg)
 {
@@ -5179,7 +5209,10 @@ static void mem_cgroup_id_remove(struct mem_cgroup *memcg)
 		memcg->id.id = 0;
 	}
 }
+/* 2024年7月13日00:13:29
 
+
+*/
 static void mem_cgroup_id_get_many(struct mem_cgroup *memcg, unsigned int n)
 {
 	refcount_add(n, &memcg->id.ref);
@@ -5189,6 +5222,7 @@ static void mem_cgroup_id_get_many(struct mem_cgroup *memcg, unsigned int n)
 static void mem_cgroup_id_put_many(struct mem_cgroup *memcg, unsigned int n)
 {
 	if (refcount_sub_and_test(n, &memcg->id.ref)) {
+		/* 自己是最后一个put的 */
 		mem_cgroup_id_remove(memcg);
 
 		/* Memcg ID pins CSS */
@@ -5491,7 +5525,7 @@ static void mem_cgroup_css_released(struct cgroup_subsys_state *css)
 	invalidate_reclaim_iterators(memcg);
 }
 /* 2024年06月27日11:04:44
-
+2024年7月13日00:54:11
  */
 static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 {
@@ -5503,15 +5537,19 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 	for (i = 0; i < MEMCG_CGWB_FRN_CNT; i++)
 		wb_wait_for_completion(&memcg->cgwb_frn[i].done);
 #endif
+
+
 	if (cgroup_subsys_on_dfl(memory_cgrp_subsys) && !cgroup_memory_nosocket)
 		static_branch_dec(&memcg_sockets_enabled_key);
 
 	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys) && memcg->tcpmem_active)
 		static_branch_dec(&memcg_sockets_enabled_key);
-
+/* 下面是清理各种东西 */
 	vmpressure_cleanup(&memcg->vmpressure);
 	cancel_work_sync(&memcg->high_work);
+	/* 从soft limit rbtree移走 */
 	mem_cgroup_remove_from_trees(memcg);
+	
 	memcg_free_shrinker_maps(memcg);
 	memcg_free_kmem(memcg);
 	mem_cgroup_free(memcg);
@@ -5519,7 +5557,7 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 
 /**
 2024年06月27日17:20:54
-
+2024年7月13日00:51:24
  * mem_cgroup_css_reset - reset the states of a mem_cgroup
  * @css: the target css
  *
@@ -5967,7 +6005,9 @@ static int mem_cgroup_precharge_mc(struct mm_struct *mm)
 	return mem_cgroup_do_precharge(precharge);
 }
 
-/* cancels all extra charges on mc.from and mc.to, and wakes up all waiters. */
+/* 
+2024年7月13日01:27:53
+cancels all extra charges on mc.from and mc.to, and wakes up all waiters. */
 static void __mem_cgroup_clear_mc(void)
 {
 	struct mem_cgroup *from = mc.from;
@@ -5988,6 +6028,7 @@ static void __mem_cgroup_clear_mc(void)
 	}
 	/* we must fixup refcnts and charges */
 	if (mc.moved_swap) {
+
 		/* uncharge swap account from the old cgroup */
 		if (!mem_cgroup_is_root(mc.from))
 			page_counter_uncharge(&mc.from->memsw, mc.moved_swap);
@@ -6105,7 +6146,10 @@ static void mem_cgroup_cancel_attach(struct cgroup_taskset *tset)
 	if (mc.to)
 		mem_cgroup_clear_mc();
 }
-
+/* 2024年7月13日01:35:43
+遍历mm的page的时候，在pmd层面上执行的函数
+todo
+ */
 static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 				unsigned long addr, unsigned long end,
 				struct mm_walk *walk)
@@ -6217,13 +6261,16 @@ put:			/* get_mctgt_type() gets the page */
 
 	return ret;
 }
-
+/* 2024年7月13日01:35:38 */
 static const struct mm_walk_ops charge_walk_ops = {
 	.pmd_entry	= mem_cgroup_move_charge_pte_range,
 };
-
+/* 2024年7月13日01:25:12
+todo
+ */
 static void mem_cgroup_move_charge(void)
 {
+	/*  */
 	lru_add_drain_all();
 	/*
 	 * Signal lock_page_memcg() to take the memcg's move_lock
@@ -6248,6 +6295,7 @@ retry:
 	/*
 	 * When we have consumed all precharges and failed in doing
 	 * additional charge, the page walk just aborts.
+	 遍历mm的指定vma的page，执行回调
 	 */
 	walk_page_range(mc.mm, 0, mc.mm->highest_vm_end, &charge_walk_ops,
 			NULL);
@@ -6255,7 +6303,7 @@ retry:
 	up_read(&mc.mm->mmap_sem);
 	atomic_dec(&mc.from->moving_account);
 }
-
+/* 2024年7月13日01:24:04 */
 static void mem_cgroup_move_task(void)
 {
 	if (mc.to) {
@@ -6277,6 +6325,8 @@ static void mem_cgroup_move_task(void)
 #endif
 
 /*
+2024年7月13日01:23:35
+todo
  * Cgroup retains root cgroups across [un]mount cycles making it necessary
  * to verify whether we're attached to the default hierarchy on each mount
  * attempt.
@@ -6293,6 +6343,8 @@ static void mem_cgroup_bind(struct cgroup_subsys_state *root_css)
 	else
 		root_mem_cgroup->use_hierarchy = false;
 }
+
+
 /* 2024年07月05日16:52:30 */
 static int seq_puts_memcg_tunable(struct seq_file *m, unsigned long value)
 {
@@ -6483,7 +6535,9 @@ static int memory_events_local_show(struct seq_file *m, void *v)
 	__memory_events_show(m, memcg->memory_events_local);
 	return 0;
 }
-
+/* 2024年7月13日01:22:22
+todo
+ */
 static int memory_stat_show(struct seq_file *m, void *v)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
@@ -6496,7 +6550,7 @@ static int memory_stat_show(struct seq_file *m, void *v)
 	kfree(buf);
 	return 0;
 }
-
+/* 2024年7月13日01:22:17 */
 static int memory_oom_group_show(struct seq_file *m, void *v)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
@@ -6505,7 +6559,7 @@ static int memory_oom_group_show(struct seq_file *m, void *v)
 
 	return 0;
 }
-
+/* 2024年7月13日01:22:13 */
 static ssize_t memory_oom_group_write(struct kernfs_open_file *of,
 				      char *buf, size_t nbytes, loff_t off)
 {
@@ -6527,7 +6581,7 @@ static ssize_t memory_oom_group_write(struct kernfs_open_file *of,
 
 	return nbytes;
 }
-
+/* 2024年7月13日01:21:59 */
 static struct cftype memory_files[] = {
 	{
 		.name = "current",
@@ -6777,6 +6831,8 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 		goto out;
 
 	if (PageSwapCache(page)) {
+		/* 2024年7月13日01:15:11
+		页缓存为什么单独处理 */
 		/*
 
 		 * Every swap fault against a single page tries to charge the
@@ -6786,6 +6842,7 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 		 * in turn serializes uncharging.
 		 */
 		VM_BUG_ON_PAGE(!PageLocked(page), page);
+
 		if (compound_head(page)->mem_cgroup)
 			goto out;
 
@@ -6794,14 +6851,27 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 			unsigned short id = lookup_swap_cgroup_id(ent);
 
 			rcu_read_lock();
+			/* idr查找id对应的memcg */
 			memcg = mem_cgroup_from_id(id);
 			if (memcg && !css_tryget_online(&memcg->css))
 				memcg = NULL;
+
 			rcu_read_unlock();
 		}
 	}
 
+
+
+
+
 	if (!memcg)
+	/* 2024年7月13日01:17:08
+这里还可能为空吗，
+情况1，不是页缓存
+情况2，是页缓存，无memcg，
+情况3，是页缓存，有memcg，但是无法get online。
+获取进程的memcg？
+ */
 		memcg = get_mem_cgroup_from_mm(mm);
 
 	ret = try_charge(memcg, gfp_mask, nr_pages);
@@ -6811,7 +6881,9 @@ out:
 	*memcgp = memcg;
 	return ret;
 }
-
+/* 2024年7月13日01:13:51
+todo
+ */
 int mem_cgroup_try_charge_delay(struct page *page, struct mm_struct *mm,
 			  gfp_t gfp_mask, struct mem_cgroup **memcgp,
 			  bool compound)
@@ -6892,6 +6964,7 @@ void mem_cgroup_commit_charge(struct page *page, struct mem_cgroup *memcg,
 }
 
 /**
+2024年7月13日01:13:18
  * mem_cgroup_cancel_charge - cancel a page charge
  * @page: page to charge
  * @memcg: memcg to charge the page to
@@ -6918,6 +6991,8 @@ void mem_cgroup_cancel_charge(struct page *page, struct mem_cgroup *memcg,
 }
 /* 2024年6月25日00:12:50
 猜测可能是一个批量的聚合信息
+2024年7月13日01:11:42
+每次先还到ug里面
  */
 struct uncharge_gather {
 	struct mem_cgroup *memcg;
@@ -6969,7 +7044,7 @@ static void uncharge_batch(const struct uncharge_gather *ug)
 		css_put_many(&ug->memcg->css, nr_pages);
 }
 /* 2024年6月25日00:06:06
-
+好像是先还到ug里面，就算还了，ug里面的别的函数来还
  */
 static void uncharge_page(struct page *page, struct uncharge_gather *ug)
 {
@@ -7023,7 +7098,8 @@ static void uncharge_page(struct page *page, struct uncharge_gather *ug)
 	page->mem_cgroup = NULL;
 }
 /* 2024年6月25日00:03:59
-
+2024年7月13日01:08:18
+先逐个放到ug里面，再批量还ug的
  */
 static void uncharge_list(struct list_head *page_list)
 {
@@ -7057,6 +7133,7 @@ static void uncharge_list(struct list_head *page_list)
 }
 
 /**
+2024年7月13日01:08:47
  * mem_cgroup_uncharge - uncharge a page
  * @page: page to uncharge
  *
@@ -7073,15 +7150,18 @@ void mem_cgroup_uncharge(struct page *page)
 	/* Don't touch page->lru of any random page, pre-check: */
 	if (!page->mem_cgroup)
 		return;
-
+		/* 先清理ug */
 	uncharge_gather_clear(&ug);
+	/* 先还到ug里面 */
 	uncharge_page(page, &ug);
+	/* 还ug里面的 */
 	uncharge_batch(&ug);
 }
 
 /**
 2024年6月25日00:03:35
 todo
+2024年7月13日01:08:06
  * mem_cgroup_uncharge_list - uncharge a list of page
  * @page_list: list of pages to uncharge
  *
@@ -7098,6 +7178,9 @@ void mem_cgroup_uncharge_list(struct list_head *page_list)
 }
 
 /**
+2024年7月13日01:04:26
+2024年7月13日01:07:44
+replacement是什么意思
  * mem_cgroup_migrate - charge a page's replacement
  * @oldpage: currently circulating page
  * @newpage: replacement page
@@ -7128,6 +7211,7 @@ void mem_cgroup_migrate(struct page *oldpage, struct page *newpage)
 		return;
 
 	/* Swapcache readahead pages can get replaced before being charged */
+	/* 获取旧page的memcg */
 	memcg = oldpage->mem_cgroup;
 	if (!memcg)
 		return;
@@ -7135,6 +7219,13 @@ void mem_cgroup_migrate(struct page *oldpage, struct page *newpage)
 	/* Force-charge the new page. The old one will be freed soon */
 	compound = PageTransHuge(newpage);
 	nr_pages = compound ? hpage_nr_pages(newpage) : 1;
+
+	/* 2024年7月13日01:05:47
+	能否理解为既然拿新page替换了旧page，那么该还旧的，记上新的？
+	2024年7月13日01:07:20
+	好像不是
+	todo
+	 */
 
 	page_counter_charge(&memcg->memory, nr_pages);
 	if (do_memsw_account())
@@ -7151,7 +7242,10 @@ void mem_cgroup_migrate(struct page *oldpage, struct page *newpage)
 
 DEFINE_STATIC_KEY_FALSE(memcg_sockets_enabled_key);
 EXPORT_SYMBOL(memcg_sockets_enabled_key);
+/* 2024年7月13日01:02:46
+给sock分配memcg
 
+ */
 void mem_cgroup_sk_alloc(struct sock *sk)
 {
 	struct mem_cgroup *memcg;
@@ -7169,11 +7263,14 @@ void mem_cgroup_sk_alloc(struct sock *sk)
 	 * decision in this case.
 	 */
 	if (sk->sk_memcg) {
+		/* 2024年7月13日01:03:04
+		为什么有了还要给sk分配呢 */
 		css_get(&sk->sk_memcg->css);
 		return;
 	}
 
 	rcu_read_lock();
+	/* 这里路径就是获取tsk的memcg，然后sk直接指向tsk的有效online的 */
 	memcg = mem_cgroup_from_task(current);
 	if (memcg == root_mem_cgroup)
 		goto out;
@@ -7184,7 +7281,9 @@ void mem_cgroup_sk_alloc(struct sock *sk)
 out:
 	rcu_read_unlock();
 }
-
+/* 2024年7月13日01:02:13
+sk去freeskmemcg，就是降低引用计数。
+ */
 void mem_cgroup_sk_free(struct sock *sk)
 {
 	if (sk->sk_memcg)
@@ -7192,6 +7291,7 @@ void mem_cgroup_sk_free(struct sock *sk)
 }
 
 /**
+2024年7月13日00:54:55
  * mem_cgroup_charge_skmem - charge socket memory
  * @memcg: memcg to charge
  * @nr_pages: number of pages to charge
@@ -7204,12 +7304,15 @@ bool mem_cgroup_charge_skmem(struct mem_cgroup *memcg, unsigned int nr_pages)
 	gfp_t gfp_mask = GFP_KERNEL;
 
 	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys)) {
+		/* 直接charge tcpmem的分支 */
 		struct page_counter *fail;
 
 		if (page_counter_try_charge(&memcg->tcpmem, nr_pages, &fail)) {
+			/* 成功的情况 */
 			memcg->tcpmem_pressure = 0;
 			return true;
 		}
+		/*  */
 		page_counter_charge(&memcg->tcpmem, nr_pages);
 		memcg->tcpmem_pressure = 1;
 		return false;
@@ -7229,6 +7332,8 @@ bool mem_cgroup_charge_skmem(struct mem_cgroup *memcg, unsigned int nr_pages)
 }
 
 /**
+2024年7月13日00:37:34
+tcpmem内存
  * mem_cgroup_uncharge_skmem - uncharge socket memory
  * @memcg: memcg to uncharge
  * @nr_pages: number of pages to uncharge
@@ -7244,7 +7349,9 @@ void mem_cgroup_uncharge_skmem(struct mem_cgroup *memcg, unsigned int nr_pages)
 
 	refill_stock(memcg, nr_pages);
 }
+/* 2024年7月13日00:37:06
 
+ */
 static int __init cgroup_memory(char *s)
 {
 	char *token;
@@ -7263,6 +7370,8 @@ __setup("cgroup.memory=", cgroup_memory);
 
 /*
 2024年06月27日19:03:48
+2024年7月13日00:35:43
+初始化memcg
  * subsys_initcall() for memory controller.
  *
  * Some parts like memcg_hotplug_cpu_dead() have to be initialized from this
@@ -7310,9 +7419,12 @@ static int __init mem_cgroup_init(void)
 subsys_initcall(mem_cgroup_init);
 
 #ifdef CONFIG_MEMCG_SWAP
-/* 2024年07月04日20:29:43 */
+/* 2024年07月04日20:29:43 
+在父层级上一直获取到一个online的
+*/
 static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 {
+	/* 为零的话返回0 */
 	while (!refcount_inc_not_zero(&memcg->id.ref)) {
 		/*
 		 * The root cgroup cannot be destroyed, so it's refcount must
@@ -7326,10 +7438,13 @@ static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 		if (!memcg)
 			memcg = root_mem_cgroup;
 	}
+
+
 	return memcg;
 }
 
 /**
+2024年7月13日00:20:41
  * mem_cgroup_swapout - transfer a memsw charge to swap
  * @page: page whose memsw charge to transfer
  * @entry: swap entry to move the charge to
@@ -7359,11 +7474,13 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 	 * have an ID allocated to it anymore, charge the closest online
 	 * ancestor for the swap instead and transfer the memory+swap charge.
 	 */
+	 /* 获取父层级上有效的online的 */
 	swap_memcg = mem_cgroup_id_get_online(memcg);
 	nr_entries = hpage_nr_pages(page);
 	/* Get references for the tail pages, too */
 	if (nr_entries > 1)
 		mem_cgroup_id_get_many(swap_memcg, nr_entries - 1);
+	
 	oldid = swap_cgroup_record(entry, mem_cgroup_id(swap_memcg),
 				   nr_entries);
 	VM_BUG_ON_PAGE(oldid, page);
@@ -7371,12 +7488,16 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 
 	page->mem_cgroup = NULL;
 
+	/* 要交换出去了 */
 	if (!mem_cgroup_is_root(memcg))
 		page_counter_uncharge(&memcg->memory, nr_entries);
-
+	/*  */
 	if (memcg != swap_memcg) {
+		/* 就是说memcg下线了，找到了一个父层级上online的 */
 		if (!mem_cgroup_is_root(swap_memcg))
+		/* 2024年7月13日00:27:46 memcg->memory是uncharge，memsw是charge */
 			page_counter_charge(&swap_memcg->memsw, nr_entries);
+/* 2024年7月13日00:27:50 为啥又是uncharge */
 		page_counter_uncharge(&memcg->memsw, nr_entries);
 	}
 
@@ -7387,8 +7508,10 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 	 * only synchronisation we have for updating the per-CPU variables.
 	 */
 	VM_BUG_ON(!irqs_disabled());
+
 	mem_cgroup_charge_statistics(memcg, page, PageTransHuge(page),
 				     -nr_entries);
+
 	memcg_check_events(memcg, page);
 
 	if (!mem_cgroup_is_root(memcg))
@@ -7426,20 +7549,31 @@ int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 		memcg_memory_event(memcg, MEMCG_SWAP_FAIL);
 		return 0;
 	}
-
+/* 	2024年7月12日22:24:37啥
+	2024年7月13日00:09:33
+	在父层级上获取一个onlinede */
 	memcg = mem_cgroup_id_get_online(memcg);
+
+
 	/* try chargeswap空间 */
+
+
 	if (!mem_cgroup_is_root(memcg) &&
 	    !page_counter_try_charge(&memcg->swap, nr_pages, &counter)) {
+	/*  */
 		memcg_memory_event(memcg, MEMCG_SWAP_MAX);
 		memcg_memory_event(memcg, MEMCG_SWAP_FAIL);
 		mem_cgroup_id_put(memcg);
 		return -ENOMEM;
 	}
 
-	/* Get references for the tail pages, too */
+	/* Get references for the tail pages, too
+	巨页的情况
+	*/
 	if (nr_pages > 1)
 		mem_cgroup_id_get_many(memcg, nr_pages - 1);
+
+
 	oldid = swap_cgroup_record(entry, mem_cgroup_id(memcg), nr_pages);
 	VM_BUG_ON_PAGE(oldid, page);
 	mod_memcg_state(memcg, MEMCG_SWAP, nr_pages);
@@ -7536,7 +7670,9 @@ static int __init enable_swap_account(char *s)
 	return 1;
 }
 __setup("swapaccount=", enable_swap_account);
+/* 2024年7月12日22:23:42
 
+ */
 static u64 swap_current_read(struct cgroup_subsys_state *css,
 			     struct cftype *cft)
 {
@@ -7544,13 +7680,17 @@ static u64 swap_current_read(struct cgroup_subsys_state *css,
 
 	return (u64)page_counter_read(&memcg->swap) * PAGE_SIZE;
 }
+/* 2024年7月12日22:23:10
 
+ */
 static int swap_max_show(struct seq_file *m, void *v)
 {
 	return seq_puts_memcg_tunable(m,
 		READ_ONCE(mem_cgroup_from_seq(m)->swap.max));
 }
-
+/* 2024年7月12日22:19:46
+与sysfs的读写文件接口
+ */
 static ssize_t swap_max_write(struct kernfs_open_file *of,
 			      char *buf, size_t nbytes, loff_t off)
 {
@@ -7562,7 +7702,7 @@ static ssize_t swap_max_write(struct kernfs_open_file *of,
 	err = page_counter_memparse(buf, "max", &max);
 	if (err)
 		return err;
-
+/* 归根结底还是设置内存里面的数据结构 */
 	xchg(&memcg->swap.max, max);
 
 	return nbytes;

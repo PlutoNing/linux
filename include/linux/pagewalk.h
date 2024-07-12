@@ -7,6 +7,8 @@
 struct mm_walk;
 
 /**
+2024年7月13日01:32:04
+遍历page的时候的回调函数结构
  * mm_walk_ops - callbacks for walk_page_range
  * @pud_entry:		if set, called for each non-empty PUD (2nd-level) entry
  *			this handler should only handle pud_trans_huge() puds.
