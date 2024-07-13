@@ -14,7 +14,7 @@ struct swap_cgroup_ctrl {
 };
 
 static struct swap_cgroup_ctrl swap_cgroup_ctrl[MAX_SWAPFILES];
-
+/* 2024年7月13日00:17:54 */
 struct swap_cgroup {
 	unsigned short		id;
 };
@@ -124,7 +124,8 @@ unsigned short swap_cgroup_cmpxchg(swp_entry_t ent,
 }
 
 /**
-2024年07月04日20:23:27
+2024年07月04日 20:23:27
+2024年7月13日 00:15:29
  * swap_cgroup_record - record mem_cgroup for a set of swap entries
  * @ent: the first swap entry to be recorded into
  * @id: mem_cgroup to be recorded

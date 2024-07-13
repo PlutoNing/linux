@@ -3,7 +3,8 @@
 #include <linux/highmem.h>
 #include <linux/sched.h>
 #include <linux/hugetlb.h>
-
+/* 2024年7月13日01:34:37
+ */
 static int walk_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -25,7 +26,8 @@ static int walk_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 	pte_unmap(pte);
 	return err;
 }
-
+/* 2024年7月13日01:34:28
+ */
 static int walk_pmd_range(pud_t *pud, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -71,7 +73,8 @@ again:
 
 	return err;
 }
-
+/* 2024年7月13日01:34:19
+ */
 static int walk_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -116,7 +119,8 @@ static int walk_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 
 	return err;
 }
-
+/* 2024年7月13日01:34:10
+ */
 static int walk_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -143,7 +147,7 @@ static int walk_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
 
 	return err;
 }
-
+/* 2024年7月13日01:33:52 */
 static int walk_pgd_range(unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -217,6 +221,7 @@ static int walk_hugetlb_range(unsigned long addr, unsigned long end,
 #endif /* CONFIG_HUGETLB_PAGE */
 
 /*
+2024年7月13日01:33:22
  * Decide whether we really walk over the current vma on [@start, @end)
  * or skip it via the returned value. Return 0 if we do walk over the
  * current vma, and return 1 if we skip the vma. Negative values means
@@ -247,7 +252,7 @@ static int walk_page_test(unsigned long start, unsigned long end,
 	}
 	return 0;
 }
-
+/* 2024年7月13日01:33:41 */
 static int __walk_page_range(unsigned long start, unsigned long end,
 			struct mm_walk *walk)
 {
@@ -264,6 +269,7 @@ static int __walk_page_range(unsigned long start, unsigned long end,
 }
 
 /**
+2024年7月13日01:31:39
  * walk_page_range - walk page table with caller specific callbacks
  * @mm:		mm_struct representing the target process of page table walk
  * @start:	start address of the virtual address range
@@ -318,7 +324,7 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 		return -EINVAL;
 
 	lockdep_assert_held(&walk.mm->mmap_sem);
-
+	/* 2024年7月13日01:32:50 find vma */
 	vma = find_vma(walk.mm, start);
 	do {
 		if (!vma) { /* after the last vma */
@@ -331,7 +337,7 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 			walk.vma = vma;
 			next = min(end, vma->vm_end);
 			vma = vma->vm_next;
-
+			/* 是否walk */
 			err = walk_page_test(start, next, &walk);
 			if (err > 0) {
 				/*

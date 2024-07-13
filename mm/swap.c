@@ -768,6 +768,7 @@ static void lru_add_drain_per_cpu(struct work_struct *dummy)
 }
 
 /*
+2024年7月13日01:25:26
  * Doesn't need any cpu hotplug locking because we do rely on per-cpu
  * kworkers being shut down before our page_alloc_cpu_dead callback is
  * executed on the offlined cpu.
@@ -776,6 +777,7 @@ static void lru_add_drain_per_cpu(struct work_struct *dummy)
  */
 void lru_add_drain_all(void)
 {
+	/* 函数的锁 */
 	static DEFINE_MUTEX(lock);
 	static struct cpumask has_work;
 	int cpu;
@@ -799,6 +801,7 @@ void lru_add_drain_all(void)
 		    pagevec_count(&per_cpu(lru_deactivate_pvecs, cpu)) ||
 		    pagevec_count(&per_cpu(lru_lazyfree_pvecs, cpu)) ||
 		    need_activate_page_drain(cpu)) {
+				/* 触发运行 */
 			INIT_WORK(work, lru_add_drain_per_cpu);
 			queue_work_on(cpu, mm_percpu_wq, work);
 			cpumask_set_cpu(cpu, &has_work);

@@ -228,6 +228,7 @@ ramp里面：页框与page结构对应，page结构中的mapping字段指向anon
 	atomic_t _refcount;
 
 #ifdef CONFIG_MEMCG
+/* 表示page有没有被memcg记账 */
 	struct mem_cgroup *mem_cgroup;
 #endif
 

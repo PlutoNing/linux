@@ -494,6 +494,7 @@ static inline struct css_set *task_css_set(struct task_struct *task)
 2024年6月30日12:17:32
 2024年07月12日11:59:53
 差不多是tsk.cgroup.subsys[ssid]
+也就是cset里面的子系统指针数组subsys
  * task_css - obtain css for (task, subsys)
  * @task: the target task
  * @subsys_id: the target subsystem ID
@@ -686,7 +687,9 @@ static inline void pr_cont_cgroup_name(struct cgroup *cgrp)
 {
 	pr_cont_kernfs_name(cgrp->kn);
 }
-
+/* 2024年7月13日00:42:30
+操作的是fs里面
+ */
 static inline void pr_cont_cgroup_path(struct cgroup *cgrp)
 {
 	pr_cont_kernfs_path(cgrp->kn);

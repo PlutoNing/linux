@@ -69,7 +69,9 @@ struct mem_cgroup_reclaim_cookie {
 
 #define MEM_CGROUP_ID_SHIFT	16
 #define MEM_CGROUP_ID_MAX	USHRT_MAX
+/* 2024年7月12日22:25:18
 
+ */
 struct mem_cgroup_id {
 	int id;
 	refcount_t ref;
@@ -521,6 +523,7 @@ struct mem_cgroup *get_mem_cgroup_from_page(struct page *page);
  2024年06月21日17:28:43
  2024年06月27日10:28:33
  memcg包含css。
+
  */
 static inline
 struct mem_cgroup *mem_cgroup_from_css(struct cgroup_subsys_state *css){
@@ -542,7 +545,9 @@ struct mem_cgroup *mem_cgroup_iter(struct mem_cgroup *,
 void mem_cgroup_iter_break(struct mem_cgroup *, struct mem_cgroup *);
 int mem_cgroup_scan_tasks(struct mem_cgroup *,
 			  int (*)(struct task_struct *, void *), void *);
+/* 2024年7月13日00:14:23
 
+ */
 static inline unsigned short mem_cgroup_id(struct mem_cgroup *memcg)
 {
 	if (mem_cgroup_disabled())
@@ -551,7 +556,9 @@ static inline unsigned short mem_cgroup_id(struct mem_cgroup *memcg)
 	return memcg->id.id;
 }
 struct mem_cgroup *mem_cgroup_from_id(unsigned short id);
+/* 2024年7月12日22:23:20
 
+ */
 static inline struct mem_cgroup *mem_cgroup_from_seq(struct seq_file *m)
 {
 	return mem_cgroup_from_css(seq_css(m));

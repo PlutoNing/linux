@@ -16,14 +16,13 @@
 2024年06月21日17:04:07
 还不清楚pagecounter具体字段的含义
 2024年06月27日18:36:25
-
  */
 static void propagate_protected_usage(struct page_counter *c,
 				      unsigned long usage)
 {
 	unsigned long protected, old_protected;
 	long delta;
-/* 根cg返回 */
+	/* 根cg返回 */
 	if (!c->parent)
 		return;
 
@@ -73,6 +72,7 @@ void page_counter_cancel(struct page_counter *counter, unsigned long nr_pages)
 }
 
 /**
+2024年7月13日00:56:52
  * page_counter_charge - hierarchically charge pages
  * @counter: counter
  * @nr_pages: number of pages to charge
