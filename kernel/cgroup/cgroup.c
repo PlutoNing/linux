@@ -2493,6 +2493,8 @@ static void cgroup_migrate_add_task(struct task_struct *task,
 
 /**
 2024年07月10日14:41:17
+2024年7月13日14:10:20
+taskset的遍历机制吗
  * cgroup_taskset_first - reset taskset and return the first task
  * @tset: taskset of interest
  * @dst_cssp: output variable for the destination css
@@ -2511,6 +2513,8 @@ struct task_struct *cgroup_taskset_first(struct cgroup_taskset *tset,
 /**
 2024年07月10日13:28:58
 todo
+2024年7月13日14:10:37
+taskset的遍历机制吗
  * cgroup_taskset_next - iterate to the next task in taskset
  * @tset: taskset of interest
  * @dst_cssp: output variable for the destination css

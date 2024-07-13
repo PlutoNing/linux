@@ -472,7 +472,10 @@ static inline pmd_t __pmd(pmdval_t val)
 
 	return (pmd_t) { ret };
 }
+/* 2024年7月13日13:32:36
+什么val，返回值是pfn
 
+ */
 static inline pmdval_t pmd_val(pmd_t pmd)
 {
 	pmdval_t ret;

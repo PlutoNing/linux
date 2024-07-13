@@ -919,6 +919,8 @@ restart:
 }
 
 /**
+2024年7月13日15:19:19
+mmecg回写初始化
  * cgroup_writeback_by_id - initiate cgroup writeback from bdi and memcg IDs
  * @bdi_id: target bdi id
  * @memcg_id: target memcg css id
@@ -946,9 +948,12 @@ int cgroup_writeback_by_id(u64 bdi_id, int memcg_id, unsigned long nr,
 	rcu_read_lock();
 	memcg_css = css_from_id(memcg_id, &memory_cgrp_subsys);
 	if (memcg_css && !css_tryget(memcg_css))
+	/* 无法get */
 		memcg_css = NULL;
 	rcu_read_unlock();
+
 	if (!memcg_css) {
+		/* 没有get到memcg的css */
 		ret = -ENOENT;
 		goto out_bdi_put;
 	}

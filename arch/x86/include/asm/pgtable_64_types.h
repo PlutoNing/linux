@@ -84,6 +84,7 @@ extern unsigned int ptrs_per_p4d;
 #define PTRS_PER_PUD	512
 
 /*
+2024年7月13日12:34:48
  * PMD_SHIFT determines the size of the area a middle-level
  * page table can map
  */

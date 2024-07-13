@@ -182,6 +182,7 @@ ramp里面：页框与page结构对应，page结构中的mapping字段指向anon
 #if ALLOC_SPLIT_PTLOCKS
 			spinlock_t *ptl;
 #else
+/* page的锁 */
 			spinlock_t ptl;
 #endif
 		};

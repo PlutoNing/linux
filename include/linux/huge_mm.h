@@ -206,13 +206,18 @@ extern spinlock_t *__pmd_trans_huge_lock(pmd_t *pmd,
 		struct vm_area_struct *vma);
 extern spinlock_t *__pud_trans_huge_lock(pud_t *pud,
 		struct vm_area_struct *vma);
+/* 2024年7月13日10:45:14
 
+ */
 static inline int is_swap_pmd(pmd_t pmd)
 {
 	return !pmd_none(pmd) && !pmd_present(pmd);
 }
 
-/* mmap_sem must be held on entry */
+/* 
+2024年7月13日10:44:55
+上锁相关，vma这些的锁是啥？
+mmap_sem must be held on entry */
 static inline spinlock_t *pmd_trans_huge_lock(pmd_t *pmd,
 		struct vm_area_struct *vma)
 {

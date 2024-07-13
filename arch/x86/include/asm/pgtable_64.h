@@ -249,7 +249,9 @@ extern void cleanup_highmap(void);
 #define	kc_offset_to_vaddr(o) ((o) | ~__VIRTUAL_MASK)
 
 #define __HAVE_ARCH_PTE_SAME
+/* 2024年7月13日13:41:18
 
+ */
 #define vmemmap ((struct page *)VMEMMAP_START)
 
 extern void init_extra_mapping_uc(unsigned long phys, unsigned long size);

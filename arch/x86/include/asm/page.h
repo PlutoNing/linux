@@ -39,8 +39,11 @@ static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 #define __HAVE_ARCH_ALLOC_ZEROED_USER_HIGHPAGE
 
 #ifndef __pa
+
 #define __pa(x)		__phys_addr((unsigned long)(x))
+
 #endif
+
 
 #define __pa_nodebug(x)	__phys_addr_nodebug((unsigned long)(x))
 /* __pa_symbol should be used for C visible symbols.
@@ -63,6 +66,7 @@ static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 #define __boot_pa(x)		__pa(x)
 
 /*
+2024年7月13日12:36:17
  * virt_to_page(kaddr) returns a valid pointer if and only if
  * virt_addr_valid(kaddr) returns true.
  */

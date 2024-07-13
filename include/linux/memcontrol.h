@@ -151,7 +151,10 @@ struct mem_cgroup_per_node {
 /* lru_zone_size[zid][lru]不同zone不同内存类型的计数 */
 	unsigned long		lru_zone_size[MAX_NR_ZONES][NR_LRU_LISTS];
 /* 2024年07月11日16:22:08
-和遍历相关，但是什么用呢 */
+和遍历相关，但是什么用呢
+2024年7月13日15:00:43
+参考__invalidate_reclaim_iterators
+ */
 	struct mem_cgroup_reclaim_iter	iter[DEF_PRIORITY + 1];
 	/* shrinker map，好像是存储shrinker什么的 */
 	struct memcg_shrinker_map __rcu	*shrinker_map;
@@ -172,7 +175,7 @@ struct mem_cgroup_per_node {
 	struct mem_cgroup	*memcg;		/* Back pointer, we cannot */
 						/* use container_of	   */
 };
-
+/* 2024年7月13日15:46:08 */
 struct mem_cgroup_threshold {
 	struct eventfd_ctx *eventfd;
 	unsigned long threshold;
@@ -198,7 +201,9 @@ struct mem_cgroup_thresholds {
 	 */
 	struct mem_cgroup_threshold_ary *spare;
 };
+/* 2024年7月13日15:02:23
 
+ */
 enum memcg_kmem_state {
 	KMEM_NONE,
 	KMEM_ALLOCATED,
@@ -225,7 +230,9 @@ struct memcg_padding {
  * See mem_cgroup_track_foreign_dirty_slowpath() for details.
  */
 #define MEMCG_CGWB_FRN_CNT	4
-
+/* 2024年7月13日15:18:32
+memcg的回写相关
+ */
 struct memcg_cgwb_frn {
 	u64 bdi_id;			/* bdi->id of the foreign inode */
 	int memcg_id;			/* memcg->css.id of foreign inode */
@@ -392,6 +399,7 @@ memcg soft limit reclaim会用到此
 #endif
 
 #ifdef CONFIG_CGROUP_WRITEBACK
+/* 回写任务的连接件？ */
 	struct list_head cgwb_list;
 	struct wb_domain cgwb_domain;
 	struct memcg_cgwb_frn cgwb_frn[MEMCG_CGWB_FRN_CNT];
@@ -710,6 +718,7 @@ static inline unsigned long memcg_page_state(struct mem_cgroup *memcg, int idx)
 }
 
 /*
+2024年7月13日15:42:27
  * idx can be of type enum memcg_stat_item or node_stat_item.
  * Keep in sync with memcg_exact_page_state().
  */
@@ -791,7 +800,8 @@ static inline unsigned long lruvec_page_state(struct lruvec *lruvec,
 #endif
 	return x;
 }
-
+/* 2024年7月13日15:41:14
+ */
 static inline unsigned long lruvec_page_state_local(struct lruvec *lruvec,
 						    enum node_stat_item idx)
 {
@@ -801,7 +811,7 @@ static inline unsigned long lruvec_page_state_local(struct lruvec *lruvec,
 
 	if (mem_cgroup_disabled())
 		return node_page_state(lruvec_pgdat(lruvec), idx);
-
+		/* 获得mz */
 	pn = container_of(lruvec, struct mem_cgroup_per_node, lruvec);
 	for_each_possible_cpu(cpu)
 		x += per_cpu(pn->lruvec_stat_local->count[idx], cpu);

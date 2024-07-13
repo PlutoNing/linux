@@ -214,7 +214,9 @@ static inline unsigned long pte_pfn(pte_t pte)
 	pfn ^= protnone_mask(pfn);
 	return (pfn & PTE_PFN_MASK) >> PAGE_SHIFT;
 }
-
+/* 2024年7月13日13:31:05
+获取pmd的页帧号。
+ */
 static inline unsigned long pmd_pfn(pmd_t pmd)
 {
 	phys_addr_t pfn = pmd_val(pmd);
@@ -253,6 +255,9 @@ static inline int pmd_large(pmd_t pte)
 }
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
+/* 2024年7月13日13:14:04
+todo
+*/
 static inline int pmd_trans_huge(pmd_t pmd)
 {
 	return (pmd_val(pmd) & (_PAGE_PSE|_PAGE_DEVMAP)) == _PAGE_PSE;
@@ -272,6 +277,9 @@ static inline int has_transparent_hugepage(void)
 }
 
 #ifdef CONFIG_ARCH_HAS_PTE_DEVMAP
+/* 2024年7月13日13:14:37
+
+ */
 static inline int pmd_devmap(pmd_t pmd)
 {
 	return !!(pmd_val(pmd) & _PAGE_DEVMAP);
@@ -796,6 +804,7 @@ static inline unsigned long pmd_page_vaddr(pmd_t pmd)
 }
 
 /*
+2024年7月13日13:30:55
  * Currently stuck as a macro due to indirect forward reference to
  * linux/mmzone.h's __section_mem_map_addr() definition:
  */

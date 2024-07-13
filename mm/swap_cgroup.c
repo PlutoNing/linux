@@ -67,7 +67,7 @@ not_enough_page:
 	return -ENOMEM;
 }
 /* 2024年07月04日20:25:35
-
+获取swp ent的memcg
  */
 static struct swap_cgroup *__lookup_swap_cgroup(struct swap_cgroup_ctrl *ctrl,
 						pgoff_t offset)
@@ -80,7 +80,7 @@ static struct swap_cgroup *__lookup_swap_cgroup(struct swap_cgroup_ctrl *ctrl,
 	return sc + offset % SC_PER_PAGE;
 }
 /* 2024年07月04日20:24:46
-
+获取swp ent的cgroup？
  */
 static struct swap_cgroup *lookup_swap_cgroup(swp_entry_t ent,
 					struct swap_cgroup_ctrl **ctrlp)
@@ -165,6 +165,7 @@ unsigned short swap_cgroup_record(swp_entry_t ent, unsigned short id,
 }
 
 /**
+2024年7月13日14:49:45
  * lookup_swap_cgroup_id - lookup mem_cgroup id tied to swap entry
  * @ent: swap entry to be looked up.
  *

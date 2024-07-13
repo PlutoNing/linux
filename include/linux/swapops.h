@@ -52,7 +52,9 @@ static inline pgoff_t swp_offset(swp_entry_t entry)
 	return entry.val & SWP_OFFSET_MASK;
 }
 
-/* check whether a pte points to a swap entry */
+/* 
+2024年7月13日14:28:10
+check whether a pte points to a swap entry */
 static inline int is_swap_pte(pte_t pte)
 {
 	return !pte_none(pte) && !pte_present(pte);
@@ -61,6 +63,7 @@ static inline int is_swap_pte(pte_t pte)
 /*
 2024年7月1日23:06:50
 2024年07月03日12:19:50
+2024年7月13日14:31:31
  * Convert the arch-dependent pte representation of a swp_entry_t into an
  * arch-independent swp_entry_t.
  */
@@ -85,7 +88,7 @@ static inline pte_t swp_entry_to_pte(swp_entry_t entry)
 	arch_entry = __swp_entry(swp_type(entry), swp_offset(entry));
 	return __swp_entry_to_pte(arch_entry);
 }
-
+/* 2024年7月13日14:42:29 */
 static inline swp_entry_t radix_to_swp_entry(void *arg)
 {
 	swp_entry_t entry;

@@ -832,11 +832,12 @@ static inline compound_page_dtor *get_compound_page_dtor(struct page *page)
 	VM_BUG_ON_PAGE(page[1].compound_dtor >= NR_COMPOUND_DTORS, page);
 	return compound_page_dtors[page[1].compound_dtor];
 }
-
+/* 2024年7月13日14:41:03 */
 static inline unsigned int compound_order(struct page *page)
 {
 	if (!PageHead(page))
 		return 0;
+	/* 可以参考复合页的格式 */
 	return page[1].compound_order;
 }
 
@@ -845,7 +846,9 @@ static inline void set_compound_order(struct page *page, unsigned int order)
 	page[1].compound_order = order;
 }
 
-/* Returns the number of pages in this potentially compound page. */
+/* 
+2024年7月13日14:40:54
+Returns the number of pages in this potentially compound page. */
 static inline unsigned long compound_nr(struct page *page)
 {
 	return 1UL << compound_order(page);
@@ -1147,6 +1150,8 @@ extern int page_to_nid(const struct page *page);
 咋转的？
 2024年06月25日14:49:39
 怎么从flags获取node id呢
+2024年7月13日14:51:59
+还是不知道
  */
 static inline int page_to_nid(const struct page *page)
 {
@@ -1963,7 +1968,9 @@ static inline bool ptlock_alloc(struct page *page)
 static inline void ptlock_free(struct page *page)
 {
 }
+/* 2024年7月13日12:53:11
 
+ */
 static inline spinlock_t *ptlock_ptr(struct page *page)
 {
 	return &page->ptl;
@@ -2025,7 +2032,9 @@ static inline void pgtable_pte_page_dtor(struct page *page)
 	__ClearPageTable(page);
 	dec_zone_page_state(page, NR_PAGETABLE);
 }
-
+/* 2024年7月13日13:46:29
+todo
+ */
 #define pte_offset_map_lock(mm, pmd, address, ptlp)	\
 ({							\
 	spinlock_t *__ptl = pte_lockptr(mm, pmd);	\
@@ -2054,13 +2063,18 @@ static inline void pgtable_pte_page_dtor(struct page *page)
 		NULL: pte_offset_kernel(pmd, address))
 
 #if USE_SPLIT_PMD_PTLOCKS
+/* 2024年7月13日12:34:11
 
+ */
 static struct page *pmd_to_page(pmd_t *pmd)
 {
 	unsigned long mask = ~(PTRS_PER_PMD * sizeof(pmd_t) - 1);
-	return virt_to_page((void *)((unsigned long) pmd & mask));
+	return virt_to_page( (void *)( (unsigned long)  pmd & mask));
 }
+/* 
+2024年7月13日12:34:00
 
+*/
 static inline spinlock_t *pmd_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
 	return ptlock_ptr(pmd_to_page(pmd));
@@ -2097,7 +2111,8 @@ static inline void pgtable_pmd_page_dtor(struct page *page) {}
 #define pmd_huge_pte(mm, pmd) ((mm)->pmd_huge_pte)
 
 #endif
-
+/* 2024年7月13日12:32:53
+pmd如何加锁。 */
 static inline spinlock_t *pmd_lock(struct mm_struct *mm, pmd_t *pmd)
 {
 	spinlock_t *ptl = pmd_lockptr(mm, pmd);

@@ -834,7 +834,8 @@ struct cgroup_subsys {
 	 */
 	struct cgroup_root *root;
 
-	/* idr for css->id */
+	/* idr for css->id
+	idr查找 */
 	struct idr css_idr;
 
 	/*

@@ -2003,6 +2003,7 @@ unlock:
 }
 
 /*
+2024年7月13日10:45:31
  * Returns page table lock pointer if a given pmd maps a thp, NULL otherwise.
  *
  * Note that if it returns page table lock pointer, this routine returns without
@@ -2011,10 +2012,13 @@ unlock:
 spinlock_t *__pmd_trans_huge_lock(pmd_t *pmd, struct vm_area_struct *vma)
 {
 	spinlock_t *ptl;
+	/* 获取pmd的页面的ptl */
 	ptl = pmd_lock(vma->vm_mm, pmd);
 	if (likely(is_swap_pmd(*pmd) || pmd_trans_huge(*pmd) ||
 			pmd_devmap(*pmd)))
 		return ptl;
+
+	
 	spin_unlock(ptl);
 	return NULL;
 }

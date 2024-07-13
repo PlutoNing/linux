@@ -1556,6 +1556,7 @@ EXPORT_SYMBOL(page_cache_prev_miss);
 
 /**
 2024年6月29日22:40:07
+2024年7月13日14:37:07
  * find_get_entry - find and get a page cache entry
  * @mapping: the address_space to search
  * @offset: the page cache index
@@ -1570,6 +1571,7 @@ EXPORT_SYMBOL(page_cache_prev_miss);
  */
 struct page *find_get_entry(struct address_space *mapping, pgoff_t offset)
 {
+	/* 获取mapping里的xas数组 */
 	XA_STATE(xas, &mapping->i_pages, offset);
 	struct page *page;
 
@@ -1598,6 +1600,7 @@ repeat:
 		put_page(page);
 		goto repeat;
 	}
+	/* 为什么还要subpage呢， */
 	page = find_subpage(page, offset);
 out:
 	rcu_read_unlock();

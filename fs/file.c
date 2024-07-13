@@ -783,6 +783,9 @@ static unsigned long __fget_light(unsigned int fd, fmode_t mask)
 		return FDPUT_FPUT | (unsigned long)file;
 	}
 }
+/* 2024年7月13日15:14:18
+
+ */
 unsigned long __fdget(unsigned int fd)
 {
 	return __fget_light(fd, FMODE_PATH);

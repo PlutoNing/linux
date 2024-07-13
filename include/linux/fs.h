@@ -1007,7 +1007,9 @@ struct file {
 #ifdef CONFIG_SECURITY
 	void			*f_security;
 #endif
-	/* needed for tty driver, and maybe others */
+	/* needed for tty driver, and maybe others
+	在memcg的event里面，可能是eventfd_ctx_fileget(struct file *file)；	struct eventfd_ctx *ctx;
+	 */
 	void			*private_data;
 
 #ifdef CONFIG_EPOLL
