@@ -1,8 +1,0 @@
-drivers/hwtracing/intel_th/intel_th.ko
-drivers/hwtracing/intel_th/intel_th_pci.ko
-drivers/hwtracing/intel_th/intel_th_acpi.ko
-drivers/hwtracing/intel_th/intel_th_gth.ko
-drivers/hwtracing/intel_th/intel_th_sth.ko
-drivers/hwtracing/intel_th/intel_th_msu.ko
-drivers/hwtracing/intel_th/intel_th_pti.ko
-drivers/hwtracing/intel_th/intel_th_msu_sink.ko

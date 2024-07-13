@@ -1,8 +1,0 @@
-drivers/auxdisplay/charlcd.ko
-drivers/auxdisplay/ks0108.ko
-drivers/auxdisplay/cfag12864b.ko
-drivers/auxdisplay/cfag12864bfb.ko
-drivers/auxdisplay/img-ascii-lcd.ko
-drivers/auxdisplay/hd44780.ko
-drivers/auxdisplay/ht16k33.ko
-drivers/auxdisplay/panel.ko

@@ -1,3 +1,0 @@
-arch/x86/kernel/msr.ko
-arch/x86/kernel/cpuid.ko
-arch/x86/kernel/cpu/mce/mce-inject.ko

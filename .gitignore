@@ -55,7 +55,7 @@
 Module.symvers
 dtbs-list
 modules.order
-
+modules.builtin
 #
 # Top-level generic files
 #
@@ -172,3 +172,7 @@ sphinx_*/
 
 # Rust analyzer configuration
 /rust-project.json
+
+
+arch/x86/modules.builtin
+arch/x86/modules.builtin

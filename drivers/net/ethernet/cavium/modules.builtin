@@ -1,7 +1,0 @@
-drivers/net/ethernet/cavium/common/cavium_ptp.ko
-drivers/net/ethernet/cavium/liquidio/liquidio.ko
-drivers/net/ethernet/cavium/liquidio/liquidio_vf.ko
-drivers/net/ethernet/cavium/thunder/thunder_xcv.ko
-drivers/net/ethernet/cavium/thunder/thunder_bgx.ko
-drivers/net/ethernet/cavium/thunder/nicpf.ko
-drivers/net/ethernet/cavium/thunder/nicvf.ko

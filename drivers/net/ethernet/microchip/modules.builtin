@@ -1,4 +1,0 @@
-drivers/net/ethernet/microchip/enc28j60.ko
-drivers/net/ethernet/microchip/encx24j600.ko
-drivers/net/ethernet/microchip/encx24j600-regmap.ko
-drivers/net/ethernet/microchip/lan743x.ko

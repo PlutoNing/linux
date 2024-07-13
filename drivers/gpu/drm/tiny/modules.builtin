@@ -1,8 +1,0 @@
-drivers/gpu/drm/tiny/gm12u320.ko
-drivers/gpu/drm/tiny/hx8357d.ko
-drivers/gpu/drm/tiny/ili9225.ko
-drivers/gpu/drm/tiny/ili9341.ko
-drivers/gpu/drm/tiny/mi0283qt.ko
-drivers/gpu/drm/tiny/repaper.ko
-drivers/gpu/drm/tiny/st7586.ko
-drivers/gpu/drm/tiny/st7735r.ko

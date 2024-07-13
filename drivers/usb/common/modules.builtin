@@ -1,4 +1,0 @@
-drivers/usb/common/usb-common.ko
-drivers/usb/common/usb-conn-gpio.ko
-drivers/usb/common/usb-otg-fsm.ko
-drivers/usb/common/ulpi.ko

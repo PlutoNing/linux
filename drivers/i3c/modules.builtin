@@ -1,3 +1,0 @@
-drivers/i3c/i3c.ko
-drivers/i3c/master/i3c-master-cdns.ko
-drivers/i3c/master/dw-i3c-master.ko

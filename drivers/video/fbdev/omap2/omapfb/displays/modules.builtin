@@ -1,9 +1,0 @@
-drivers/video/fbdev/omap2/omapfb/displays/encoder-opa362.ko
-drivers/video/fbdev/omap2/omapfb/displays/encoder-tfp410.ko
-drivers/video/fbdev/omap2/omapfb/displays/encoder-tpd12s015.ko
-drivers/video/fbdev/omap2/omapfb/displays/connector-dvi.ko
-drivers/video/fbdev/omap2/omapfb/displays/connector-hdmi.ko
-drivers/video/fbdev/omap2/omapfb/displays/connector-analog-tv.ko
-drivers/video/fbdev/omap2/omapfb/displays/panel-dpi.ko
-drivers/video/fbdev/omap2/omapfb/displays/panel-dsi-cm.ko
-drivers/video/fbdev/omap2/omapfb/displays/panel-lgphilips-lb035q02.ko

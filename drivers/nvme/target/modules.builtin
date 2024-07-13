@@ -1,6 +1,0 @@
-drivers/nvme/target/nvmet.ko
-drivers/nvme/target/nvme-loop.ko
-drivers/nvme/target/nvmet-rdma.ko
-drivers/nvme/target/nvmet-fc.ko
-drivers/nvme/target/nvme-fcloop.ko
-drivers/nvme/target/nvmet-tcp.ko

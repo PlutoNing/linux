@@ -1,5 +1,0 @@
-mm/hwpoison-inject.ko
-mm/zpool.ko
-mm/zbud.ko
-mm/zsmalloc.ko
-mm/z3fold.ko

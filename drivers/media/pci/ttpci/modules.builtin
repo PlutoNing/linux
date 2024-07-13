@@ -1,7 +1,0 @@
-drivers/media/pci/ttpci/ttpci-eeprom.ko
-drivers/media/pci/ttpci/budget-core.ko
-drivers/media/pci/ttpci/budget.ko
-drivers/media/pci/ttpci/budget-av.ko
-drivers/media/pci/ttpci/budget-ci.ko
-drivers/media/pci/ttpci/budget-patch.ko
-drivers/media/pci/ttpci/dvb-ttpci.ko

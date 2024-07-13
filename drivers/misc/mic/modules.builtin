@@ -1,9 +1,0 @@
-drivers/misc/mic/bus/mic_bus.ko
-drivers/misc/mic/bus/scif_bus.ko
-drivers/misc/mic/bus/cosm_bus.ko
-drivers/misc/mic/bus/vop_bus.ko
-drivers/misc/mic/card/mic_card.ko
-drivers/misc/mic/cosm/mic_cosm.ko
-drivers/misc/mic/cosm_client/cosm_client.ko
-drivers/misc/mic/host/mic_host.ko
-drivers/misc/mic/scif/scif.ko

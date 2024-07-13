@@ -1,7 +1,0 @@
-crypto/asymmetric_keys/public_key.ko
-crypto/asymmetric_keys/asym_tpm.ko
-crypto/asymmetric_keys/x509_key_parser.ko
-crypto/asymmetric_keys/pkcs8_key_parser.ko
-crypto/asymmetric_keys/pkcs7_message.ko
-crypto/asymmetric_keys/pkcs7_test_key.ko
-crypto/asymmetric_keys/tpm_key_parser.ko

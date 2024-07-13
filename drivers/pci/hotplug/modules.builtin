@@ -1,3 +1,0 @@
-drivers/pci/hotplug/cpcihp_zt5550.ko
-drivers/pci/hotplug/cpcihp_generic.ko
-drivers/pci/hotplug/acpiphp_ibm.ko

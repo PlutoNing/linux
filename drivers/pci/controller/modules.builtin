@@ -1,8 +1,0 @@
-drivers/pci/controller/pci-hyperv.ko
-drivers/pci/controller/pci-hyperv-intf.ko
-drivers/pci/controller/pcie-altera.ko
-drivers/pci/controller/pcie-altera-msi.ko
-drivers/pci/controller/pcie-rockchip-host.ko
-drivers/pci/controller/pcie-mediatek.ko
-drivers/pci/controller/vmd.ko
-drivers/pci/controller/dwc/pcie-tegra194.ko
