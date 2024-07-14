@@ -1,0 +1,9 @@
+基本命令
+find arch/  block/  fs/  init/  kernel/ mm/ net/ -name *.expand | xargs ~/app/cally/cally.py  --caller try_to_free_mem_cgroup_pages   | dot -Grankdir=LR -Tsvg -o mm/try_to_free_mem_cgroup_pages_caller.svg
+find之后的是为了指定感兴趣的代码文件
+目前是
+ find  arch/x86    block/   init/  kernel/     mm/  fs/ext4  fs/xfs  fs/autofs/  fs/cachefiles/  fs/debugfs/ fs/exportfs/ fs/hugetlbfs/ fs/iomap/ fs/kernfs/ fs/nfs fs/nfs_common/ fs/notify/  fs/overlayfs/  fs/proc fs/ramfs/  fs/tracefs/  fs/sysv/ fs/sysfs/   net/bpf net/bpfilter/ net/bridge/ net/core/ net/dns_resolver/ net/ethernet/  net/ipv4  net/netlink/ net/netfilter/  net/packet/ net/sched/ net/unix/    -name *.expand
+ 这些文件
+ 为了方便，保存在了cally_targetfiles.txt
+ 不过其实还是find 最相关的文件夹最方便，比如try_to_free_mem_cgroup_pages就是mm文件夹足够，不然生成的svg太复杂了。
+
