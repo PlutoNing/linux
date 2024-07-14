@@ -48,7 +48,8 @@ enum cgroup_subsys_id {
 
 /* bits in struct cgroup_subsys_state flags field */
 enum {
-	CSS_NO_REF	= (1 << 0), /* no reference counting for this css，2024年07月11日15:39:57可否理解为已下线？ */
+	CSS_NO_REF	= (1 << 0), /* no reference counting for this css，2024年07月11日15:39:57可否理解为已下线？2024年7月14日13:50:12
+	还是不清楚 */
 	CSS_ONLINE	= (1 << 1), /* between ->css_online() and ->css_offline() */
 	CSS_RELEASED	= (1 << 2), /* refcnt reached zero, released */
 	CSS_VISIBLE	= (1 << 3), /* css is visible to userland，销毁css对应文件夹时置否 */

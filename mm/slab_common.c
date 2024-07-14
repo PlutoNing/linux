@@ -129,7 +129,8 @@ int __kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t nr,
 }
 
 #ifdef CONFIG_MEMCG_KMEM
-
+/* 2024年7月14日12:57:16
+ */
 LIST_HEAD(slab_root_caches);
 static DEFINE_SPINLOCK(memcg_kmem_wq_lock);
 
@@ -194,7 +195,10 @@ static void free_memcg_params(struct rcu_head *rcu)
 	old = container_of(rcu, struct memcg_cache_array, rcu);
 	kvfree(old);
 }
-
+/* 2024年7月14日13:00:09
+ todo
+ 
+ */
 static int update_memcg_params(struct kmem_cache *s, int new_array_size)
 {
 	struct memcg_cache_array *old, *new;
@@ -215,7 +219,10 @@ static int update_memcg_params(struct kmem_cache *s, int new_array_size)
 		call_rcu(&old->rcu, free_memcg_params);
 	return 0;
 }
+/* 2024年7月14日12:56:12
+开始步入memcg和其中的cache了，但是好像不清楚是什么，slab的吗。
 
+ */
 int memcg_update_all_caches(int num_memcgs)
 {
 	struct kmem_cache *s;

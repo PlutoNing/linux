@@ -339,6 +339,7 @@ static inline void css_get_many(struct cgroup_subsys_state *css, unsigned int n)
 }
 
 /**
+2024年7月14日13:43:43
  * css_tryget - try to obtain a reference on the specified css
  * @css: target css
  *
@@ -366,17 +367,21 @@ online情况下get
  * Obtain a reference on @css if it's online.  The caller naturally needs
  * to ensure that @css is accessible but doesn't have to be holding a
  * reference on it - IOW, RCU protected access is good enough for this
- * function.  Returns %true if a reference count was successfully obtained;
+ * function. 
+  Returns %true if a reference count was successfully obtained;
  * %false otherwise.
  */
 static inline bool css_tryget_online(struct cgroup_subsys_state *css)
 {
 	if (!(css->flags & CSS_NO_REF))
+	/* 还在线 */
 		return percpu_ref_tryget_live(&css->refcnt);
+
 	return true;
 }
 
 /**
+2024年7月14日13:46:25
  * css_is_dying - test whether the specified css is dying
  * @css: target css
  *
@@ -398,6 +403,7 @@ static inline bool css_is_dying(struct cgroup_subsys_state *css)
 
 /**
 2024年07月09日20:45:10
+2024年7月14日14:08:04
  * css_put - put a css reference
  * @css: target css
  *
@@ -641,7 +647,9 @@ static inline bool cgroup_is_populated(struct cgroup *cgrp)
 		cgrp->nr_populated_threaded_children;
 }
 
-/* returns ino associated with a cgroup */
+/*
+2024年7月14日13:54:56
+ returns ino associated with a cgroup */
 static inline ino_t cgroup_ino(struct cgroup *cgrp)
 {
 	return cgrp->kn->id.ino;

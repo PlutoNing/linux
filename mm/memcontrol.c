@@ -267,7 +267,9 @@ enum res_type {
 	for (iter = mem_cgroup_iter(root, NULL, NULL);	\
 	     iter != NULL;				\
 	     iter = mem_cgroup_iter(root, iter, NULL))
-
+/* 2024年7月14日13:06:42
+遍历全部的memcg
+ */
 #define for_each_mem_cgroup(iter)			\
 	for (iter = mem_cgroup_iter(NULL, NULL, NULL);	\
 	     iter != NULL;				\
@@ -290,7 +292,7 @@ struct vmpressure *memcg_to_vmpressure(struct mem_cgroup *memcg)
 		memcg = root_mem_cgroup;
 	return &memcg->vmpressure;
 }
-
+/* 2024年7月14日13:58:02 */
 struct cgroup_subsys_state *vmpressure_to_css(struct vmpressure *vmpr)
 {
 	return &container_of(vmpr, struct mem_cgroup, vmpressure)->css;
@@ -476,6 +478,7 @@ void memcg_set_shrinker_bit(struct mem_cgroup *memcg, int nid, int shrinker_id)
 }
 
 /**
+2024年7月14日13:55:55
  * mem_cgroup_css_from_page - css of the memcg associated with a page
  * @page: page of interest
  *
@@ -499,6 +502,7 @@ struct cgroup_subsys_state *mem_cgroup_css_from_page(struct page *page)
 }
 
 /**
+2024年7月14日13:55:03
  * page_cgroup_ino - return inode number of the memcg a page is charged to
  * @page: the page
  *
@@ -517,14 +521,18 @@ ino_t page_cgroup_ino(struct page *page)
 	unsigned long ino = 0;
 
 	rcu_read_lock();
+
 	if (PageSlab(page) && !PageTail(page))
 		memcg = memcg_from_slab_page(page);
 	else
 		memcg = READ_ONCE(page->mem_cgroup);
+
 	while (memcg && !(memcg->css.flags & CSS_ONLINE))
 		memcg = parent_mem_cgroup(memcg);
+
 	if (memcg)
 		ino = cgroup_ino(memcg->css.cgroup);
+
 	rcu_read_unlock();
 	return ino;
 }
@@ -557,7 +565,9 @@ soft_limit_tree_from_page(struct page *page)
 
 	return soft_limit_tree.rb_tree_per_node[nid];
 }
-
+/* 2024年7月14日13:52:48
+插入全局的soft limit max rbtree。
+ */
 static void __mem_cgroup_insert_exceeded(struct mem_cgroup_per_node *mz,
 					 struct mem_cgroup_tree_per_node *mctz,
 					 unsigned long new_usage_in_excess)
@@ -865,6 +875,7 @@ void __mod_lruvec_slab_state(void *p, enum node_stat_item idx, int val)
 }
 
 /**
+2024年7月14日13:51:47
  * __count_memcg_events - account VM events in a cgroup
  * @memcg: the memory cgroup
  * @idx: the event item
@@ -1063,6 +1074,7 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
 			if (unlikely(!memcg))
 				memcg = root_mem_cgroup;
 		}
+
 	} while (!css_tryget(&memcg->css));
 
 
@@ -1072,6 +1084,8 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
 EXPORT_SYMBOL(get_mem_cgroup_from_mm);
 
 /**
+2024年7月14日13:44:25
+
  * get_mem_cgroup_from_page: Obtain a reference on given page's memcg.
  * @page: page from which memcg should be extracted.
  *
@@ -1086,8 +1100,10 @@ struct mem_cgroup *get_mem_cgroup_from_page(struct page *page)
 		return NULL;
 
 	rcu_read_lock();
+
 	if (!memcg || !css_tryget_online(&memcg->css))
 		memcg = root_mem_cgroup;
+
 	rcu_read_unlock();
 	return memcg;
 }
@@ -1100,11 +1116,16 @@ static __always_inline struct mem_cgroup *get_mem_cgroup_from_current(void)
 {
 	if (unlikely(current->active_memcg)) {
 		struct mem_cgroup *memcg = root_mem_cgroup;
-
+		/* 2024年7月14日13:37:02 rcu */
 		rcu_read_lock();
+
+		/* todo */
 		if (css_tryget_online(&current->active_memcg->css))
 			memcg = current->active_memcg;
+
 		rcu_read_unlock();
+
+
 		return memcg;
 	}
 	return get_mem_cgroup_from_mm(current->mm);
@@ -1429,6 +1450,7 @@ void mem_cgroup_update_lru_size(struct lruvec *lruvec, enum lru_list lru,
 }
 
 /**
+2024年7月14日13:33:43
  * mem_cgroup_margin - calculate chargeable space of a memory cgroup
  * @memcg: the memory cgroup
  *
@@ -1447,6 +1469,7 @@ static unsigned long mem_cgroup_margin(struct mem_cgroup *memcg)
 		margin = limit - count;
 
 	if (do_memsw_account()) {
+		/* 如果考虑swp的情况 */
 		count = page_counter_read(&memcg->memsw);
 		limit = READ_ONCE(memcg->memsw.max);
 		if (count <= limit)
@@ -1735,6 +1758,8 @@ static bool mem_cgroup_out_of_memory(struct mem_cgroup *memcg, gfp_t gfp_mask,
 
 /**
 2024年06月28日15:52:06
+2024年7月14日13:32:24
+test_mem_cgroup_node_reclaimable
  * test_mem_cgroup_node_reclaimable
  * @memcg: the target memcg
  * @nid: the node ID to be checked.
@@ -1784,6 +1809,7 @@ static void mem_cgroup_may_update_nodemask(struct mem_cgroup *memcg)
 	 */
 	if (!atomic_read(&memcg->numainfo_events))
 		return;
+
 	if (atomic_inc_return(&memcg->numainfo_updating) > 1)
 		return;
 
@@ -1791,7 +1817,7 @@ static void mem_cgroup_may_update_nodemask(struct mem_cgroup *memcg)
 	memcg->scan_nodes = node_states[N_MEMORY];
 
 	for_each_node_mask(nid, node_states[N_MEMORY]) {
-
+		/* 遍历掩码指定的每一个node */
 		if (!test_mem_cgroup_node_reclaimable(memcg, nid, false))
 			node_clear(nid, memcg->scan_nodes);
 	}
@@ -1905,11 +1931,16 @@ static struct lockdep_map memcg_oom_lock_dep_map = {
 	.name = "memcg_oom_lock",
 };
 #endif
-
+/* 
+2024年7月14日13:17:14、
+保护的是谁 
+好像是每一个cg的oom lock的东西*/
 static DEFINE_SPINLOCK(memcg_oom_lock);
 
 /*
 2024年7月13日00:47:22
+2024年7月14日13:13:25
+好像是要lock每一个子cg，如果有一个子cg被锁了，就break。
  * Check OOM-Killer is already running under our hierarchy.
  * If someone is running, return false.
  */
@@ -1933,11 +1964,13 @@ static bool mem_cgroup_oom_trylock(struct mem_cgroup *memcg)
 	}
 
 	if (failed) {
+		/* 获取每一个子cg的锁的时候，碰到了已经被锁的 */
 
 		/*
 		 * OK, we failed to lock the whole subtree so we have
 		 * to clean up what we set up to the failing subtree
 		 */
+		 /* 进行一个回滚的过程，把刚才每一个加锁的子cg回滚 */
 		for_each_mem_cgroup_tree(iter, memcg) {
 			if (iter == failed) {
 				mem_cgroup_iter_break(memcg, iter);
@@ -1953,14 +1986,20 @@ static bool mem_cgroup_oom_trylock(struct mem_cgroup *memcg)
 	return !failed;
 }
 
+/* 2024年7月14日13:19:08
+置否每个子cg的oom lock
+ */
 static void mem_cgroup_oom_unlock(struct mem_cgroup *memcg)
 {
 	struct mem_cgroup *iter;
 
 	spin_lock(&memcg_oom_lock);
+
 	mutex_release(&memcg_oom_lock_dep_map, 1, _RET_IP_);
+
 	for_each_mem_cgroup_tree(iter, memcg)
 		iter->oom_lock = false;
+
 	spin_unlock(&memcg_oom_lock);
 }
 /* 2024年07月03日18:57:25
@@ -1987,9 +2026,11 @@ static void mem_cgroup_unmark_under_oom(struct mem_cgroup *memcg)
 	 * mem_cgroup_oom_lock() may not be called. Watch for underflow.
 	 */
 	spin_lock(&memcg_oom_lock);
+
 	for_each_mem_cgroup_tree(iter, memcg)
 		if (iter->under_oom > 0)
 			iter->under_oom--;
+
 	spin_unlock(&memcg_oom_lock);
 }
 
@@ -2043,7 +2084,9 @@ enum oom_status {
 	OOM_ASYNC,
 	OOM_SKIPPED
 };
+/* 2024年7月14日13:11:18
 
+ */
 static enum oom_status mem_cgroup_oom(struct mem_cgroup *memcg, gfp_t mask, int order)
 {
 	enum oom_status ret;
@@ -2075,6 +2118,7 @@ static enum oom_status mem_cgroup_oom(struct mem_cgroup *memcg, gfp_t mask, int 
 	if (memcg->oom_kill_disable) {
 		if (!current->in_user_fault)
 			return OOM_SKIPPED;
+
 		css_get(&memcg->css);
 		current->memcg_in_oom = memcg;
 		current->memcg_oom_gfp_mask = mask;
@@ -2084,13 +2128,14 @@ static enum oom_status mem_cgroup_oom(struct mem_cgroup *memcg, gfp_t mask, int 
 	}
 
 	mem_cgroup_mark_under_oom(memcg);
-
+	/* 尝试锁住每一个子cg的oom lock */
 	locked = mem_cgroup_oom_trylock(memcg);
 
 	if (locked)
 		mem_cgroup_oom_notify(memcg);
 
 	mem_cgroup_unmark_under_oom(memcg);
+	/* 触发memcg的oom */
 	if (mem_cgroup_out_of_memory(memcg, mask, order))
 		ret = OOM_SUCCESS;
 	else
@@ -2516,7 +2561,9 @@ static void drain_all_stock(struct mem_cgroup *root_memcg)
 	put_cpu();
 	mutex_unlock(&percpu_charge_mutex);
 }
+/* 2024年7月14日13:06:52
 
+ */
 static int memcg_hotplug_cpu_dead(unsigned int cpu)
 {
 	struct memcg_stock_pcp *stock;
@@ -2564,19 +2611,29 @@ static int memcg_hotplug_cpu_dead(unsigned int cpu)
 
 	return 0;
 }
-
+/* 2024年7月14日12:32:29
+memcg的内存上限的回收，
+ */
 static void reclaim_high(struct mem_cgroup *memcg,
 			 unsigned int nr_pages,
 			 gfp_t gfp_mask)
 {
+	 
 	do {
+		/* 对每一级父cg进行回收，
+		直到内存没有超限的父cg
+		 */
+
 		if (page_counter_read(&memcg->memory) <= memcg->high)
 			continue;
 		memcg_memory_event(memcg, MEMCG_HIGH);
 		try_to_free_mem_cgroup_pages(memcg, nr_pages, gfp_mask, true);
+
 	} while ((memcg = parent_mem_cgroup(memcg)));
 }
-
+/* 2024年7月14日12:35:02
+memcg的超限回调工作函数
+ */
 static void high_work_func(struct work_struct *work)
 {
 	struct mem_cgroup *memcg;
@@ -2639,6 +2696,9 @@ static void high_work_func(struct work_struct *work)
  #define MEMCG_DELAY_SCALING_SHIFT 14
 
 /*
+2024年7月14日12:35:42
+调用时机？
+
  * Scheduled by try_charge() to be executed from the userland return path
  * and reclaims memory over the high limit.
  */
@@ -2776,6 +2836,8 @@ retry:
 		may_swap = false;
 	}
 
+
+
 	if (batch > nr_pages) {
 		batch = nr_pages;
 		goto retry;
@@ -2816,7 +2878,11 @@ retry:
 		goto nomem;
 /* 产生时间 */
 	memcg_memory_event(mem_over_limit, MEMCG_MAX);
-/* 内存usage超过了limit,触发cgroup回收 */
+/* 内存usage超过了limit,触发cgroup回收
+2024年7月14日12:38:31
+try charge的时候try free memcg，那调用try chage的时候检测不到吗。
+ */
+
 	nr_reclaimed = try_to_free_mem_cgroup_pages(mem_over_limit, nr_pages,
 						    gfp_mask, may_swap);
 /* 内存回收后，再次判断内存usage */
@@ -2925,6 +2991,9 @@ done_restock:
 }
 /* 2024年7月13日01:28:25
 就是简单的uncharge counter吗
+2024年7月14日12:49:24
+理解是charge就是记账，那么cancel也就是改counter而已，可能不像
+记账那种还要处理一些超过限制的情况等。
  */
 static void cancel_charge(struct mem_cgroup *memcg, unsigned int nr_pages)
 {
@@ -2937,7 +3006,9 @@ static void cancel_charge(struct mem_cgroup *memcg, unsigned int nr_pages)
 
 	css_put_many(&memcg->css, nr_pages);
 }
-
+/* 2024年7月14日12:50:49
+为啥看逻辑好像是直接删了
+ */
 static void lock_page_lru(struct page *page, int *isolated)
 {
 	pg_data_t *pgdat = page_pgdat(page);
@@ -2945,7 +3016,7 @@ static void lock_page_lru(struct page *page, int *isolated)
 	spin_lock_irq(&pgdat->lru_lock);
 	if (PageLRU(page)) {
 		struct lruvec *lruvec;
-
+		/* 获取lru */
 		lruvec = mem_cgroup_page_lruvec(page, pgdat);
 		ClearPageLRU(page);
 		del_page_from_lru_list(page, lruvec, page_lru(page));
@@ -2953,7 +3024,9 @@ static void lock_page_lru(struct page *page, int *isolated)
 	} else
 		*isolated = 0;
 }
-
+/* 2024年7月14日12:52:58
+啊，unlock是add lru。todo
+ */
 static void unlock_page_lru(struct page *page, int isolated)
 {
 	pg_data_t *pgdat = page_pgdat(page);
@@ -2968,7 +3041,11 @@ static void unlock_page_lru(struct page *page, int isolated)
 	}
 	spin_unlock_irq(&pgdat->lru_lock);
 }
-
+/* 2024年7月14日12:53:28
+提交charge，估计就是记账通过后，正儿八经的把page的memcg置位。
+但是为什么lock和unlock是需要从lru移出再移入呢。猜测可能是page需要从
+不同memcg的不同的lru转移。
+ */
 static void commit_charge(struct page *page, struct mem_cgroup *memcg,
 			  bool lrucare)
 {
@@ -3037,6 +3114,8 @@ static int memcg_alloc_cache_id(void)
 		memcg_nr_cache_ids = size;
 
 	up_write(&memcg_cache_ids_sem);
+
+
 
 	if (err) {
 		ida_simple_remove(&memcg_cache_ida, id);
@@ -3319,6 +3398,8 @@ void mem_cgroup_split_huge_fixup(struct page *head)
 
 #ifdef CONFIG_MEMCG_SWAP
 /**
+2024年7月14日13:02:24
+
  * mem_cgroup_move_swap_account - move swap charge and swap_cgroup's record.
  * @entry: swap entry to be moved
  * @from:  mem_cgroup which the entry is moved from
@@ -3341,6 +3422,7 @@ static int mem_cgroup_move_swap_account(swp_entry_t entry,
 	new_id = mem_cgroup_id(to);
 
 	if (swap_cgroup_cmpxchg(entry, old_id, new_id) == old_id) {
+
 		mod_memcg_state(from, MEMCG_SWAP, -1);
 		mod_memcg_state(to, MEMCG_SWAP, 1);
 		return 0;
@@ -3357,6 +3439,7 @@ static inline int mem_cgroup_move_swap_account(swp_entry_t entry,
 
 static DEFINE_MUTEX(memcg_max_mutex);
 /* 2024年06月27日19:57:52
+
  */
 static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 				 unsigned long max, bool memsw)
@@ -3369,6 +3452,7 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 	struct page_counter *counter = memsw ? &memcg->memsw : &memcg->memory;
 
 	do {
+
 		if (signal_pending(current)) {
 			ret = -EINTR;
 			break;
@@ -3381,13 +3465,17 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 		 */
 		limits_invariant = memsw ? max >= memcg->memory.max :
 					   max <= memcg->memsw.max;
+
 		if (!limits_invariant) {
 			mutex_unlock(&memcg_max_mutex);
 			ret = -EINVAL;
 			break;
 		}
+
 		if (max > counter->max)
 			enlarge = true;
+
+
 		ret = page_counter_set_max(counter, max);
 		mutex_unlock(&memcg_max_mutex);
 
@@ -3399,12 +3487,13 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 			drained = true;
 			continue;
 		}
-
+		/* 2024年7月14日12:43:10 */
 		if (!try_to_free_mem_cgroup_pages(memcg, 1,
 					GFP_KERNEL, !memsw)) {
 			ret = -EBUSY;
 			break;
 		}
+
 	} while (true);
 
 	if (!ret && enlarge)
@@ -3523,6 +3612,7 @@ static inline bool memcg_has_children(struct mem_cgroup *memcg)
 
 /*
 2024年7月13日15:31:39
+写入fs里面一个force empty文件，可以触发这个函数
  * Reclaims as many pages from the given memcg as possible.
  *
  * Caller is responsible for holding css reference for memcg.

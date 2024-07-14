@@ -95,6 +95,8 @@ static struct swap_cgroup *lookup_swap_cgroup(swp_entry_t ent,
 }
 
 /**
+2024年7月14日13:02:54
+好像是改变swp ent的memcg id
  * swap_cgroup_cmpxchg - cmpxchg mem_cgroup's id for this swp_entry.
  * @ent: swap entry to be cmpxchged
  * @old: old id

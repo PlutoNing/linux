@@ -27,7 +27,10 @@ struct page;
 struct mm_struct;
 struct kmem_cache;
 
-/* Cgroup-specific page state, on top of universal node page state */
+/* 
+2024年7月14日13:07:12
+memcg里面的stat数量
+Cgroup-specific page state, on top of universal node page state */
 enum memcg_stat_item {
 	MEMCG_CACHE = NR_VM_NODE_STAT_ITEMS,
 	MEMCG_RSS,
@@ -537,13 +540,14 @@ static inline
 struct mem_cgroup *mem_cgroup_from_css(struct cgroup_subsys_state *css){
 	return css ? container_of(css, struct mem_cgroup, css) : NULL;
 }
-
+/* 2024年7月14日14:07:54 */
 static inline void mem_cgroup_put(struct mem_cgroup *memcg)
 {
 	if (memcg)
 		css_put(&memcg->css);
 }
-
+/* 2024年7月14日14:09:07
+ */
 #define mem_cgroup_from_counter(counter, member)	\
 	container_of(counter, struct mem_cgroup, member)
 
@@ -613,7 +617,9 @@ static inline bool mem_cgroup_is_descendant(struct mem_cgroup *memcg,
 		return false;
 	return cgroup_is_descendant(memcg->css.cgroup, root->css.cgroup);
 }
+/* 2024年7月14日14:09:32
 
+ */
 static inline bool mm_match_cgroup(struct mm_struct *mm,
 				   struct mem_cgroup *memcg)
 {
@@ -621,16 +627,22 @@ static inline bool mm_match_cgroup(struct mm_struct *mm,
 	bool match = false;
 
 	rcu_read_lock();
+
 	task_memcg = mem_cgroup_from_task(rcu_dereference(mm->owner));
+
 	if (task_memcg)
 		match = mem_cgroup_is_descendant(task_memcg, memcg);
+
 	rcu_read_unlock();
 	return match;
 }
 
 struct cgroup_subsys_state *mem_cgroup_css_from_page(struct page *page);
 ino_t page_cgroup_ino(struct page *page);
-
+/* 2024年7月14日14:11:56
+什么算是online呢。
+首先是等价于css的情况好像。
+ */
 static inline bool mem_cgroup_online(struct mem_cgroup *memcg)
 {
 	if (mem_cgroup_disabled())
