@@ -1922,7 +1922,7 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 		total += mem_cgroup_shrink_node(victim, gfp_mask, false,
 					pgdat, &nr_scanned);
 		*total_scanned += nr_scanned;
-		
+
 		if (!soft_limit_excess(root_memcg))
 			break;
 	}
@@ -3658,6 +3658,8 @@ static ssize_t mem_cgroup_force_empty_write(struct kernfs_open_file *of,
 					    loff_t off)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(of_css(of));
+
+	pr_debug("%s,async invoke force empty : cg name = %s",__func__,memcg->css.cgroup->kn->name);
 
 	if (mem_cgroup_is_root(memcg))
 		return -EINVAL;
@@ -6965,6 +6967,8 @@ struct cgroup_subsys memory_cgrp_subsys = {
  * it's possible to optimize this part, and save calculated elow
  * for next usage. This part is intentionally racy, but it's ok,
  * as memory.low is a best-effort mechanism.
+ 2024年7月14日21:13:46
+
  */
 enum mem_cgroup_protection mem_cgroup_protected(struct mem_cgroup *root,
 						struct mem_cgroup *memcg)

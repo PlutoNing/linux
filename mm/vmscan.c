@@ -3195,6 +3195,8 @@ static bool pgdat_memcg_congested(pg_data_t *pgdat, struct mem_cgroup *memcg)
 直接内存回收：在“慢路径”上的内存回收方式，这种方式可处理干净页、slab、匿名页。
 kswapd内存回收：在“慢路径”上可能被唤醒，会处理所有类型的页面回收。
 上述的三种回收方式，其核心实现都是shrink_node函数，不同的是准备动作和扫描控制器
+2024年7月14日21:15:42
+遍历target_mem_cgroup的子cg进行回收
  */
 static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 {
@@ -3448,6 +3450,8 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 		 没有指定target memcg？
 		 */
 		if (global_reclaim(sc)) {
+			/* 2024年7月14日21:25:40
+			异步回收try to free memcg不走这条路 */
 			/* 如果当前进行的是全局页回收 */
 			/* 如果是全局的非cgroup的回收
 			就是说如果没指定memcg，就是从全局的memcg来soft relcaim过程？ */
@@ -3508,7 +3512,9 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 
 
 		last_pgdat = zone->zone_pgdat;
-		/* 这里如果是全局回收的话 ，就是sc的targt为空，那内部的遍历会从根cg开始*/
+		/* 这里如果是全局回收的话 ，就是sc的targt为空，那内部的遍历会从根cg开始
+		2024年7月14日21:26:36
+		不为空，比如try to free memcg的调用，就是从sc指定的cg开始*/
 		shrink_node(zone->zone_pgdat, sc);
 	}
 
@@ -3815,7 +3821,8 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 2024年07月04日11:43:21
 2024年07月11日16:33:16
 2024年7月14日14:32:58
-仅用作soft limit reclaim。
+对应shrink node。仅用作soft limit reclaim。
+
 Only used by soft limit reclaim. Do not reuse for anything else. */
 unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 						gfp_t gfp_mask, bool noswap,
