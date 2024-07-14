@@ -66,7 +66,9 @@ static inline int page_ref_count(struct page *page)
 {
 	return atomic_read(&page->_refcount);
 }
-/* 2024年7月3日22:38:29 */
+/* 2024年7月3日22:38:29
+2024年7月14日14:50:04
+ */
 static inline int page_count(struct page *page)
 {
 	return atomic_read(&compound_head(page)->_refcount);
@@ -172,6 +174,7 @@ static inline int page_ref_freeze(struct page *page, int count)
 
 	if (page_ref_tracepoint_active(__tracepoint_page_ref_freeze))
 		__page_ref_freeze(page, count, ret);
+	
 	return ret;
 }
 

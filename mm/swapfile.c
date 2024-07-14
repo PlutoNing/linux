@@ -102,7 +102,10 @@ static DECLARE_WAIT_QUEUE_HEAD(proc_poll_wait);
 static atomic_t proc_poll_event = ATOMIC_INIT(0);
 
 atomic_t nr_rotate_swap = ATOMIC_INIT(0);
-/* 2024年07月03日12:33:59 */
+/* 2024年07月03日12:33:59 
+2024年7月14日17:51:25
+每个type（swap file）对应全局swap info数组里的一个条目
+*/
 static struct swap_info_struct *swap_type_to_swap_info(int type)
 {
 	if (type >= READ_ONCE(nr_swapfiles))
@@ -351,7 +354,7 @@ static inline struct swap_cluster_info *lock_cluster(struct swap_info_struct *si
 	}
 	return ci;
 }
-
+/* 2024年7月14日18:00:20 */
 static inline void unlock_cluster(struct swap_cluster_info *ci)
 {
 	if (ci)
@@ -359,6 +362,7 @@ static inline void unlock_cluster(struct swap_cluster_info *ci)
 }
 
 /*
+2024年7月14日17:55:43
  * Determine the locking method in use for this device.  Return
  * swap_cluster_info if SSD-style cluster-based locking is in place.
  */
@@ -375,7 +379,9 @@ static inline struct swap_cluster_info *lock_cluster_or_swap_info(
 
 	return ci;
 }
+/* 2024年7月14日18:00:11
 
+ */
 static inline void unlock_cluster_or_swap_info(struct swap_info_struct *si,
 					       struct swap_cluster_info *ci)
 {
@@ -1104,7 +1110,9 @@ swp_entry_t get_swap_page_of_type(int type)
 fail:
 	return (swp_entry_t) {0};
 }
-
+/* 2024年7月14日17:50:21
+获取ent的si
+ */
 static struct swap_info_struct *__swap_info_get(swp_entry_t entry)
 {
 	struct swap_info_struct *p;
@@ -1133,7 +1141,8 @@ bad_nofile:
 out:
 	return NULL;
 }
-
+/* 2024年7月14日17:49:46
+ */
 static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
 {
 	struct swap_info_struct *p;
@@ -1327,6 +1336,10 @@ void swap_free(swp_entry_t entry)
 }
 
 /*
+2024年7月14日17:49:29
+如何put？
+2024年7月14日18:00:44
+todo
  * Called after dropping swapcache to decrease refcnt to swap entries.
  */
 void put_swap_page(struct page *page, swp_entry_t entry)
@@ -1346,6 +1359,7 @@ void put_swap_page(struct page *page, swp_entry_t entry)
 
 	ci = lock_cluster_or_swap_info(si, offset);
 	if (size == SWAPFILE_CLUSTER) {
+
 		VM_BUG_ON(!cluster_is_huge(ci));
 		map = si->swap_map + offset;
 		for (i = 0; i < SWAPFILE_CLUSTER; i++) {
@@ -1364,7 +1378,10 @@ void put_swap_page(struct page *page, swp_entry_t entry)
 			return;
 		}
 	}
+
 	for (i = 0; i < size; i++, entry.val++) {
+		/* 2024年7月14日17:59:28
+		包含size个页面的巨页可能在swp对应多个条目 */
 		if (!__swap_entry_free_locked(si, offset + i, SWAP_HAS_CACHE)) {
 			unlock_cluster_or_swap_info(si, ci);
 			free_swap_slot(entry);
@@ -3487,7 +3504,9 @@ int swapcache_prepare(swp_entry_t entry)
 {
 	return __swap_duplicate(entry, SWAP_HAS_CACHE);
 }
-/* 2024年07月03日12:33:29 */
+/* 2024年07月03日12:33:29
+2024年7月14日17:50:39
+每个swp条目都对应一个si。 */
 struct swap_info_struct *swp_swap_info(swp_entry_t entry)
 {
 	return swap_type_to_swap_info(swp_type(entry));

@@ -358,6 +358,7 @@ static inline bool memcg_congested(struct pglist_data *pgdat,
 #endif
 
 /*
+2024年7月14日14:41:56
  * This misses isolated pages which are not accounted for to save counters.
  * As the data only determines if reclaim or compaction continues, it is
  * not expected that isolated pages will be a dominating factor.
@@ -368,6 +369,7 @@ unsigned long zone_reclaimable_pages(struct zone *zone)
 
 	nr = zone_page_state_snapshot(zone, NR_ZONE_INACTIVE_FILE) +
 		zone_page_state_snapshot(zone, NR_ZONE_ACTIVE_FILE);
+
 	if (get_nr_swap_pages() > 0)
 		nr += zone_page_state_snapshot(zone, NR_ZONE_INACTIVE_ANON) +
 			zone_page_state_snapshot(zone, NR_ZONE_ACTIVE_ANON);
@@ -799,19 +801,23 @@ void drop_slab(void)
 	for_each_online_node(nid)
 		drop_slab_node(nid);
 }
-
+/* 2024年7月14日14:44:19 */
 static inline int is_page_cache_freeable(struct page *page)
 {
 	/*
 	 * A freeable page cache page is referenced only by the caller
 	 * that isolated the page, the page cache and optional buffer
 	 * heads at page->private.
+
 	 */
 	int page_cache_pins = PageTransHuge(page) && PageSwapCache(page) ?
 		HPAGE_PMD_NR : 1;
+
 	return page_count(page) - page_has_private(page) == 1 + page_cache_pins;
 }
+/* 2024年7月14日14:51:22
 
+ */
 static int may_write_to_inode(struct inode *inode, struct scan_control *sc)
 {
 	if (current->flags & PF_SWAPWRITE)
@@ -824,6 +830,7 @@ static int may_write_to_inode(struct inode *inode, struct scan_control *sc)
 }
 
 /*
+2024年7月14日14:53:46
  * We detected a synchronous write error writing a page out.  Probably
  * -ENOSPC.  We need to propagate that into the address_space for a subsequent
  * fsync(), msync() or close().
@@ -863,7 +870,7 @@ LRU链表中， */
 } pageout_t;
 
 /*2024年07月03日11:39:16
-
+看样子好像是写回的
  * pageout is called by shrink_page_list() for each dirty page.
  * Calls ->writepage().
  */
@@ -894,6 +901,7 @@ static pageout_t pageout(struct page *page, struct address_space *mapping,
 		 * page->mapping == NULL while being dirty with clean buffers.
 		 */
 		if (page_has_private(page)) {
+			/* 释放page的private buffer */
 			if (try_to_free_buffers(page)) {
 				ClearPageDirty(page);
 				pr_info("%s: orphaned page\n", __func__);
@@ -902,13 +910,16 @@ static pageout_t pageout(struct page *page, struct address_space *mapping,
 		}
 		return PAGE_KEEP;
 	}
+
 	if (mapping->a_ops->writepage == NULL)
 		return PAGE_ACTIVATE;
+
 	if (!may_write_to_inode(mapping->host, sc))
 		return PAGE_KEEP;
 
 	if (clear_page_dirty_for_io(page)) {
-		int res;
+		/*  */
+		int res; 
 		struct writeback_control wbc = {
 			.sync_mode = WB_SYNC_NONE,
 			.nr_to_write = SWAP_CLUSTER_MAX,
@@ -916,12 +927,14 @@ static pageout_t pageout(struct page *page, struct address_space *mapping,
 			.range_end = LLONG_MAX,
 			.for_reclaim = 1,
 		};
-
+		/* 设置此页需要回收 */
 		SetPageReclaim(page);
+		/* 开始回写 */
 		res = mapping->a_ops->writepage(page, &wbc);
 		if (res < 0)
 			handle_write_error(mapping, page, res);
 		if (res == AOP_WRITEPAGE_ACTIVATE) {
+			/* 意思好像是写完了，但是还活跃 */
 			ClearPageReclaim(page);
 			return PAGE_ACTIVATE;
 		}
@@ -940,9 +953,8 @@ static pageout_t pageout(struct page *page, struct address_space *mapping,
 
 /*
 2024年07月03日11:58:09
-，__remove_mapping()尝试分离page-
->mapping。
-
+，__remove_mapping()尝试分离page->mapping。
+2024年7月14日14:44:01
  * Same as remove_mapping, but if the page is removed from the mapping, it
  * gets returned with a refcount of 0.
  */
@@ -986,15 +998,21 @@ static int __remove_mapping(struct address_space *mapping, struct page *page,
 		goto cannot_free;
 	/* note: atomic_cmpxchg in page_ref_freeze provides the smp_rmb */
 	if (unlikely(PageDirty(page))) {
+		/* 还没有回写，不能从地址空间移除？ */
 		page_ref_unfreeze(page, refcount);
 		goto cannot_free;
 	}
 
 	if (PageSwapCache(page)) {
+		/* 如果是swp里面的 */
 		swp_entry_t swap = { .val = page_private(page) };
+		/* 2024年7月14日17:45:45
+		进行一点memcg和charge的操作 */
 		mem_cgroup_swapout(page, swap);
+		/* 然后再删除 */
 		__delete_from_swap_cache(page, swap);
 		xa_unlock_irqrestore(&mapping->i_pages, flags);
+		/*  */
 		put_swap_page(page, swap);
 	} else {
 		void (*freepage)(struct page *);
@@ -1020,6 +1038,7 @@ static int __remove_mapping(struct address_space *mapping, struct page *page,
 		if (reclaimed && page_is_file_cache(page) &&
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
 			shadow = workingset_eviction(page);
+
 		__delete_from_page_cache(page, shadow);
 		xa_unlock_irqrestore(&mapping->i_pages, flags);
 
@@ -1035,6 +1054,8 @@ cannot_free:
 }
 
 /*
+2024年7月14日18:12:25
+
  * Attempt to detach a locked page from its ->mapping.  If it is dirty or if
  * someone else has a ref on the page, abort and return 0.  If it was
  * successfully detached, return 1.  Assumes the caller has a single ref on
@@ -3181,8 +3202,8 @@ static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 	/* 已回收的页框数和已扫描的页框数 */
 	unsigned long nr_reclaimed, nr_scanned;
 	bool reclaimable = false;
-/*  *两层循环，外层循环每次是对一个node进行一次lru页面扫描和回收处理，内部循环则是对
-	 *节点所有的子系统分步进行lru页面扫描和回收处理 */
+/*  *两层循环，外层循环是判断是否满足回收需求，
+内部循环则是对节点所有的memcg子系统分步进行lru页面扫描和回收处理 */
 	do {
 		struct mem_cgroup *root = sc->target_mem_cgroup;
 		unsigned long node_lru_pages = 0;
@@ -3238,7 +3259,8 @@ static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 			reclaimed = sc->nr_reclaimed;
 			scanned = sc->nr_scanned;
 			//对对应的memcg内存子系统进行页扫描和可回收页回收操作
-
+			/* 对sc里面target memcg的每一个子cg进行操作，
+			这个函数里面就是具体操作lru了 */
 			shrink_node_memcg(pgdat, memcg, sc, &lru_pages);
 			node_lru_pages += lru_pages;
 			/* shrink_slab()函数调用内存管理系统中的shrinker接口，很多子系统会注册shrinker接口来回
@@ -3468,7 +3490,7 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 			 * and balancing, not for a memcg's limit.
 			 */
 			nr_soft_scanned = 0;
-			/* 回收该zone上超过soft_limit最多的mem_cgroup在该zone上mem_cgroup_per_zone对应的lru链表
+			/* 回收该zone的node上超过soft_limit最多的mem_cgroup在该zone上mem_cgroup_per_zone对应的lru链表
 			 * 直接回收、间接回收都会调用该函数，是调用shrink_zone()前的必备动作
 			 * 通过全局mem group结构体soft_limit_tree->rb_tree_per_node->rb_tree_per_zone->rb_root
 			 找到mem_cgroup_per_zone */
@@ -3600,7 +3622,9 @@ retry:
 
 	return 0;
 }
+/* 2024年7月14日14:34:57
 
+ */
 static bool allow_direct_reclaim(pg_data_t *pgdat)
 {
 	struct zone *zone;
@@ -3632,8 +3656,10 @@ static bool allow_direct_reclaim(pg_data_t *pgdat)
 
 	/* kswapd must be awake if processes are being throttled */
 	if (!wmark_ok && waitqueue_active(&pgdat->kswapd_wait)) {
+
 		pgdat->kswapd_classzone_idx = min(pgdat->kswapd_classzone_idx,
 						(enum zone_type)ZONE_NORMAL);
+
 		wake_up_interruptible(&pgdat->kswapd_wait);
 	}
 
@@ -3641,6 +3667,7 @@ static bool allow_direct_reclaim(pg_data_t *pgdat)
 }
 
 /*
+2024年7月14日14:34:22
  * Throttle direct reclaimers if backing storage is backed by the network
  * and the PFMEMALLOC reserve for the preferred node is getting dangerously
  * depleted. kswapd will continue to make progress and wake the processes
@@ -3787,6 +3814,8 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 /*
 2024年07月04日11:43:21
 2024年07月11日16:33:16
+2024年7月14日14:32:58
+仅用作soft limit reclaim。
 Only used by soft limit reclaim. Do not reuse for anything else. */
 unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 						gfp_t gfp_mask, bool noswap,
@@ -4548,6 +4577,9 @@ void wakeup_kswapd(struct zone *zone, gfp_t gfp_flags, int order,
 
 #ifdef CONFIG_HIBERNATION
 /*
+2024年7月14日14:26:14
+all memory？
+
  * Try to free `nr_to_reclaim' of memory, system-wide, and return the number of
  * freed pages.
  *
@@ -4574,7 +4606,7 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 	fs_reclaim_acquire(sc.gfp_mask);
 	noreclaim_flag = memalloc_noreclaim_save();
 	set_task_reclaim_state(current, &sc.reclaim_state);
-
+	/* 实际执行函数 */
 	nr_reclaimed = do_try_to_free_pages(zonelist, &sc);
 
 	set_task_reclaim_state(current, NULL);
@@ -4754,6 +4786,7 @@ static unsigned long node_pagecache_reclaimable(struct pglist_data *pgdat)
 /*
 2024年6月25日23:56:31
 回收node
+2024年7月14日14:23:42
  * Try to free up some pages from this node through reclaim.
  */
 static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
@@ -4813,6 +4846,7 @@ static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned in
 	return sc.nr_reclaimed >= nr_pages;
 }
 /* 2024年07月04日12:58:37
+2024年7月14日14:19:27
 
  */
 int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
@@ -4831,6 +4865,7 @@ int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
 	 */
 	if (node_pagecache_reclaimable(pgdat) <= pgdat->min_unmapped_pages &&
 	    node_page_state(pgdat, NR_SLAB_RECLAIMABLE) <= pgdat->min_slab_pages)
+
 		return NODE_RECLAIM_FULL;
 
 	/*
@@ -4850,9 +4885,11 @@ int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
 		return NODE_RECLAIM_NOSCAN;
 
 	if (test_and_set_bit(PGDAT_RECLAIM_LOCKED, &pgdat->flags))
+	/* 已经被锁了 */
 		return NODE_RECLAIM_NOSCAN;
 		/*  */
 	ret = __node_reclaim(pgdat, gfp_mask, order);
+	/* 去除刚才的锁 */
 	clear_bit(PGDAT_RECLAIM_LOCKED, &pgdat->flags);
 
 	if (!ret)

@@ -252,7 +252,7 @@ enum node_stat_item {
 	NR_FILE_PMDMAPPED,
 	NR_ANON_THPS,
 	NR_UNSTABLE_NFS,	/* NFS unstable pages */
-	NR_VMSCAN_WRITE,
+	NR_VMSCAN_WRITE,  /* 2024年7月14日17:42:34扫描过程中回写的页面数量？ */
 	NR_VMSCAN_IMMEDIATE,	/* Prioritise for reclaim when writeback ends */
 	NR_DIRTIED,		/* page dirtyings since bootup */
 	NR_WRITTEN,		/* page writings since bootup */
@@ -857,6 +857,7 @@ typedef struct pglist_data {
 	/*   表示kswapd线程内存回收的单位（2^kswapd_order），
 	要求大于线程内存分配所需求的order，否则会更新为线程内存分配对应的order。 */
 	int kswapd_order;
+
 	enum zone_type kswapd_classzone_idx;
 
 	int kswapd_failures;		/* Number of 'reclaimed == 0' runs */

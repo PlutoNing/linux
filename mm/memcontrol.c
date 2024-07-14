@@ -1891,7 +1891,10 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 
 	while (1) {
 		/* 2024年07月11日16:14:25
-		逻辑是遍历 */
+		逻辑是遍历
+		2024年7月14日19:16:06
+		
+		 */
 		victim = mem_cgroup_iter(root_memcg, victim, &reclaim);
 		if (!victim) {
 			loop++;
@@ -1919,6 +1922,7 @@ static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 		total += mem_cgroup_shrink_node(victim, gfp_mask, false,
 					pgdat, &nr_scanned);
 		*total_scanned += nr_scanned;
+		
 		if (!soft_limit_excess(root_memcg))
 			break;
 	}
@@ -7681,6 +7685,8 @@ static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 
 /**
 2024年7月13日00:20:41
+2024年7月14日17:45:26
+pageout（）swp页面的时候调用此，
  * mem_cgroup_swapout - transfer a memsw charge to swap
  * @page: page whose memsw charge to transfer
  * @entry: swap entry to move the charge to

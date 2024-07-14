@@ -152,11 +152,13 @@ unlock:
 }
 
 /*
+2024年7月14日17:46:28
  * This must be called only on pages that have
  * been verified to be in the swap cache.
  */
 void __delete_from_swap_cache(struct page *page, swp_entry_t entry)
 {
+	/* swap条目也有地址空间 ，存在全局数组里面的*/
 	struct address_space *address_space = swap_address_space(entry);
 	int i, nr = hpage_nr_pages(page);
 	pgoff_t idx = swp_offset(entry);

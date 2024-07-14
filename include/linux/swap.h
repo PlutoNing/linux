@@ -266,7 +266,8 @@ struct swap_info_struct {
 	unsigned long *frontswap_map;	/* frontswap in-use, one bit per page */
 	atomic_t frontswap_pages;	/* frontswap pages in-use counter */
 #endif
-	spinlock_t lock;		/*
+
+	spinlock_t lock;		/*对应的自旋锁
 					 * protect map scan related fields like
 					 * swap_map, lowest_bit, highest_bit,
 					 * inuse_pages, cluster_next,

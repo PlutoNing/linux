@@ -114,6 +114,8 @@
  *
  * ->i_mmap_rwsem
  *   ->tasklist_lock            (memory_failure, collect_procs_ao)
+ 2024年7月14日18:09:49
+
  */
 
 static void page_cache_delete(struct address_space *mapping,
@@ -136,7 +138,7 @@ static void page_cache_delete(struct address_space *mapping,
 
 	xas_store(&xas, shadow);
 	xas_init_marks(&xas);
-
+	/* step1 */
 	page->mapping = NULL;
 	/* Leave page->index set: truncation lookup relies upon it */
 
@@ -150,9 +152,10 @@ static void page_cache_delete(struct address_space *mapping,
 		 */
 		smp_wmb();
 	}
+	/* step2 */
 	mapping->nrpages -= nr;
 }
-
+/* 2024年7月14日18:01:38 */
 static void unaccount_page_cache_page(struct address_space *mapping,
 				      struct page *page)
 {
@@ -164,6 +167,7 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 	 * stale data around in the cleancache once our page is gone
 	 */
 	if (PageUptodate(page) && PageMappedToDisk(page))
+	/* 干净缓存页的路径 */
 		cleancache_put_page(page);
 	else
 		cleancache_invalidate_page(mapping, page);
@@ -171,6 +175,8 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 	VM_BUG_ON_PAGE(PageTail(page), page);
 	VM_BUG_ON_PAGE(page_mapped(page), page);
 	if (!IS_ENABLED(CONFIG_DEBUG_VM) && unlikely(page_mapped(page))) {
+		/* 2024年7月14日18:04:37
+		怎么可能是被mapped */
 		int mapcount;
 
 		pr_alert("BUG: Bad page cache in process %s  pfn:%05lx\n",
@@ -198,7 +204,7 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 		return;
 
 	nr = hpage_nr_pages(page);
-
+	/* 更新node的统计信息 */
 	__mod_node_page_state(page_pgdat(page), NR_FILE_PAGES, -nr);
 	if (PageSwapBacked(page)) {
 		__mod_node_page_state(page_pgdat(page), NR_SHMEM, -nr);
@@ -223,7 +229,8 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 		account_page_cleaned(page, mapping, inode_to_wb(mapping->host));
 }
 
-/*
+/*、
+2024年7月14日18:01:18
  * Delete a page from the page cache and free it. Caller has to make
  * sure the page is locked and that nobody else uses it - or that usage
  * is safe.  The caller must hold the i_pages lock.
@@ -233,8 +240,9 @@ void __delete_from_page_cache(struct page *page, void *shadow)
 	struct address_space *mapping = page->mapping;
 
 	trace_mm_filemap_delete_from_page_cache(page);
-
+	/* 统计相关 */
 	unaccount_page_cache_page(mapping, page);
+	/* 置空page。mapping。 */
 	page_cache_delete(mapping, page, shadow);
 }
 

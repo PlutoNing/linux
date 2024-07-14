@@ -130,8 +130,8 @@ int bdi_set_max_ratio(struct backing_dev_info *bdi, unsigned int max_ratio);
  * BDI_CAP_SYNCHRONOUS_IO: Device is so fast that asynchronous IO would be
  *			   inefficient.
  */
-#define BDI_CAP_NO_ACCT_DIRTY	0x00000001
-#define BDI_CAP_NO_WRITEBACK	0x00000002
+#define BDI_CAP_NO_ACCT_DIRTY	0x00000001 /* Dirty pages shouldn't contribute to accounting2024年7月14日17:39:14 */
+#define BDI_CAP_NO_WRITEBACK	0x00000002 
 #define BDI_CAP_NO_ACCT_WB	0x00000004
 #define BDI_CAP_STABLE_WRITES	0x00000008
 #define BDI_CAP_STRICTLIMIT	0x00000010
@@ -154,7 +154,9 @@ static inline bool writeback_in_progress(struct bdi_writeback *wb)
 {
 	return test_bit(WB_writeback_running, &wb->state);
 }
-/* 2024年6月30日14:37:22 */
+/* 2024年6月30日14:37:22
+获取到inode的bdi设备
+ */
 static inline struct backing_dev_info *inode_to_bdi(struct inode *inode)
 {
 	struct super_block *sb;
@@ -196,7 +198,8 @@ static inline bool bdi_cap_writeback_dirty(struct backing_dev_info *bdi)
 {
 	return !(bdi->capabilities & BDI_CAP_NO_WRITEBACK);
 }
-
+/* 2024年7月14日17:38:48
+ */
 static inline bool bdi_cap_account_dirty(struct backing_dev_info *bdi)
 {
 	return !(bdi->capabilities & BDI_CAP_NO_ACCT_DIRTY);
@@ -213,7 +216,7 @@ static inline bool mapping_cap_writeback_dirty(struct address_space *mapping)
 {
 	return bdi_cap_writeback_dirty(inode_to_bdi(mapping->host));
 }
-
+/* 2024年7月14日17:38:12 */
 static inline bool mapping_cap_account_dirty(struct address_space *mapping)
 {
 	return bdi_cap_account_dirty(inode_to_bdi(mapping->host));
@@ -471,7 +474,7 @@ static inline int inode_read_congested(struct inode *inode)
 {
 	return inode_congested(inode, 1 << WB_sync_congested);
 }
-
+/* 2024年7月14日14:52:46 */
 static inline int inode_write_congested(struct inode *inode)
 {
 	return inode_congested(inode, 1 << WB_async_congested);

@@ -32,6 +32,7 @@ enum mapping_flags {
 };
 
 /**
+2024年7月14日14:54:14
  * mapping_set_error - record a writeback error in the address_space
  * @mapping - the mapping in which an error should be set
  * @error - the error to set in the mapping
@@ -59,7 +60,7 @@ static inline void mapping_set_error(struct address_space *mapping, int error)
 	else
 		set_bit(AS_EIO, &mapping->flags);
 }
-
+/* 2024年7月14日14:55:05 */
 static inline void mapping_set_unevictable(struct address_space *mapping)
 {
 	set_bit(AS_UNEVICTABLE, &mapping->flags);
@@ -81,7 +82,7 @@ static inline void mapping_set_exiting(struct address_space *mapping)
 {
 	set_bit(AS_EXITING, &mapping->flags);
 }
-
+/* 2024年7月14日18:05:24 */
 static inline int mapping_exiting(struct address_space *mapping)
 {
 	return test_bit(AS_EXITING, &mapping->flags);
@@ -110,6 +111,8 @@ static inline gfp_t mapping_gfp_constraint(struct address_space *mapping,
 }
 
 /*
+2024年7月14日14:56:15
+？
  * This is non-atomic.  Only to be used before the mapping is activated.
  * Probably needs a barrier...
  */

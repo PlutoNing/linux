@@ -35,6 +35,7 @@ static inline swp_entry_t swp_entry(unsigned long type, pgoff_t offset)
 }
 
 /*
+2024年7月14日17:50:56
  * Extract the `type' field from a swp_entry_t.  The swp_entry_t is in
  * arch-independent format
  */

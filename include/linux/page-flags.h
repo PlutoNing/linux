@@ -377,6 +377,8 @@ TESTPAGEFLAG(Writeback, writeback, PF_NO_TAIL)
 PAGEFLAG(MappedToDisk, mappedtodisk, PF_NO_TAIL)
 
 /* PG_readahead is only used for reads; PG_reclaim is only for writes */
+
+/* 设置此页需要回收 */
 PAGEFLAG(Reclaim, reclaim, PF_NO_TAIL)
 	TESTCLEARFLAG(Reclaim, reclaim, PF_NO_TAIL)
 PAGEFLAG(Readahead, reclaim, PF_NO_COMPOUND)
@@ -394,6 +396,8 @@ PAGEFLAG_FALSE(HighMem)
 
 #ifdef CONFIG_SWAP
 /* 2024年7月2日22:59:24
+2024年7月14日14:47:57
+此页是已经加入到swapcache
  */
 static __always_inline int PageSwapCache(struct page *page)
 {
@@ -611,6 +615,7 @@ static inline bool page_huge_active(struct page *page)
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /*
+2024年7月14日14:49:00
  * PageHuge() only returns true for hugetlbfs pages, but not for
  * normal or transparent huge pages.
  *
@@ -864,10 +869,11 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
  */
 #define PAGE_FLAGS_CHECK_AT_PREP	\
 	(((1UL << NR_PAGEFLAGS) - 1) & ~__PG_HWPOISON)
-
+/* 是否有priv数据，有的话比如说明释放此页的时候需要注意一下 */
 #define PAGE_FLAGS_PRIVATE				\
 	(1UL << PG_private | 1UL << PG_private_2)
 /**
+2024年7月14日14:50:21
  * page_has_private - Determine if page has private stuff
  * @page: The page to be checked
  *

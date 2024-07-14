@@ -3226,10 +3226,13 @@ static inline int buffer_busy(struct buffer_head *bh)
 	return atomic_read(&bh->b_count) |
 		(bh->b_state & ((1 << BH_Dirty) | (1 << BH_Lock)));
 }
-
+/* 2024年7月14日17:25:11
+todo，不太清楚buffer这一块
+ */
 static int
 drop_buffers(struct page *page, struct buffer_head **buffers_to_free)
 {
+	/* 获取页面的private数据buf */
 	struct buffer_head *head = page_buffers(page);
 	struct buffer_head *bh;
 
@@ -3247,13 +3250,16 @@ drop_buffers(struct page *page, struct buffer_head **buffers_to_free)
 			__remove_assoc_queue(bh);
 		bh = next;
 	} while (bh != head);
+
 	*buffers_to_free = head;
 	__clear_page_buffers(page);
 	return 1;
 failed:
 	return 0;
 }
+/* 2024年7月14日17:24:49
 
+ */
 int try_to_free_buffers(struct page *page)
 {
 	struct address_space * const mapping = page->mapping;
@@ -3261,6 +3267,7 @@ int try_to_free_buffers(struct page *page)
 	int ret = 0;
 
 	BUG_ON(!PageLocked(page));
+
 	if (PageWriteback(page))
 		return 0;
 

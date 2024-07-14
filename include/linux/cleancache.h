@@ -94,7 +94,9 @@ static inline int cleancache_get_page(struct page *page)
 		return __cleancache_get_page(page);
 	return -1;
 }
-
+/* 2024年7月14日18:02:28
+干净缓存页的释放路径
+ */
 static inline void cleancache_put_page(struct page *page)
 {
 	if (cleancache_enabled && cleancache_fs_enabled(page))

@@ -758,7 +758,9 @@ static inline void page_mapcount_reset(struct page *page)
 }
 
 int __page_mapcount(struct page *page);
-
+/* 2024年7月14日18:05:05
+页面ref数量
+ */
 static inline int page_mapcount(struct page *page)
 {
 	VM_BUG_ON_PAGE(PageSlab(page), page);

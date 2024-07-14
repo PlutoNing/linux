@@ -137,7 +137,9 @@ BUFFER_FNS(Defer_Completion, defer_completion)
 
 #define bh_offset(bh)		((unsigned long)(bh)->b_data & ~PAGE_MASK)
 
-/* If we *know* page->private refers to buffer_heads */
+/* 
+2024年7月14日17:30:01
+If we *know* page->private refers to buffer_heads */
 #define page_buffers(page)					\
 	({							\
 		BUG_ON(!PagePrivate(page));			\

@@ -2641,6 +2641,7 @@ void __cancel_dirty_page(struct page *page)
 EXPORT_SYMBOL(__cancel_dirty_page);
 
 /*
+2024年7月14日17:37:50
  * Clear a page's dirty flag, while caring for dirty memory accounting.
  * Returns true if the page was previously dirty.
  *
@@ -2662,6 +2663,7 @@ int clear_page_dirty_for_io(struct page *page)
 	BUG_ON(!PageLocked(page));
 
 	if (mapping && mapping_cap_account_dirty(mapping)) {
+		/* 如果bdi设备account dirty */
 		struct inode *inode = mapping->host;
 		struct bdi_writeback *wb;
 		struct wb_lock_cookie cookie = {};
