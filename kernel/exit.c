@@ -187,7 +187,9 @@ void put_task_struct_rcu_user(struct task_struct *task)
 	if (refcount_dec_and_test(&task->rcu_users))
 		call_rcu(&task->rcu, delayed_put_task_struct);
 }
-
+/* 2024年07月15日14:37:40
+进程exit的时候调用
+*/
 void release_task(struct task_struct *p)
 {
 	struct task_struct *leader;

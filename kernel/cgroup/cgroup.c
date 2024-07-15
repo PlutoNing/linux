@@ -5325,6 +5325,7 @@ static void init_and_link_css(struct cgroup_subsys_state *css,
 
 /* 
 2024年07月10日09:53:40
+2024年07月15日15:08:34
 invoke ->css_online() on a new CSS and mark it online if successful */
 static int online_css(struct cgroup_subsys_state *css)
 {
@@ -5338,8 +5339,9 @@ static int online_css(struct cgroup_subsys_state *css)
 	if (!ret) {
 		/* css online成功 */
 		css->flags |= CSS_ONLINE;
+		/* 赋值子系统 */
 		rcu_assign_pointer(css->cgroup->subsys[ss->id], css);
-
+		/* 引用计数相关 */
 		atomic_inc(&css->online_cnt);
 		if (css->parent)
 			atomic_inc(&css->parent->online_cnt);
@@ -5350,7 +5352,8 @@ static int online_css(struct cgroup_subsys_state *css)
 /* 
 2024年07月09日20:45:59
 下线css
-调用ss回调函数，置位flags，唤醒队列。
+调用ss回调函数，置位flags，唤醒队列。、
+2024年07月15日15:09:00
 if the CSS is online, invoke ->css_offline() on it and mark it offline */
 static void offline_css(struct cgroup_subsys_state *css)
 {
@@ -5365,15 +5368,18 @@ static void offline_css(struct cgroup_subsys_state *css)
 		ss->css_offline(css);
 
 	css->flags &= ~CSS_ONLINE;
+	/* 置空子系统 */
 	RCU_INIT_POINTER(css->cgroup->subsys[ss->id], NULL);
-
+	/* 下线是异步的 */
 	wake_up_all(&css->cgroup->offline_waitq);
 }
 
 /**
 2024年07月09日20:55:23
+
 创建css
 给cgrp的ss创建css吗
+2024年07月15日15:06:44
 
  * css_create - create a cgroup_subsys_state
  * @cgrp: the cgroup new css will be associated with
@@ -5826,7 +5832,7 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	spin_unlock_irq(&css_set_lock);
 
 	/* initiate massacre of all css's
-	遍历cgrp的每个css子系统 */
+	遍历cgrp的每个subsys的css子系统 */
 	for_each_css(css, ssid, cgrp)
 		kill_css(css);
 
@@ -6416,6 +6422,7 @@ void cgroup_exit(struct task_struct *tsk)
 }
 /* 2024年07月09日20:04:46
 todo
+
  */
 void cgroup_release(struct task_struct *task)
 {
@@ -6433,7 +6440,9 @@ void cgroup_release(struct task_struct *task)
 		spin_unlock_irq(&css_set_lock);
 	}
 }
-/* 2024年07月09日20:04:13 */
+/* 2024年07月09日20:04:13
+free的是tsk的cgroup相关
+*/
 void cgroup_free(struct task_struct *task)
 {
 	struct css_set *cset = task_css_set(task);
@@ -6441,6 +6450,7 @@ void cgroup_free(struct task_struct *task)
 }
 /* 2024年07月09日20:04:05
 在全局变量cgroup subsys失能str指定的ss
+操作的对象是子系统
  */
 static int __init cgroup_disable(char *str)
 {
@@ -6475,6 +6485,7 @@ __setup("cgroup_debug", enable_cgroup_debug);
 
 /**
 2024年07月09日19:32:16
+
  * css_tryget_online_from_dir - get corresponding css from a cgroup dentry
  * @dentry: directory dentry of interest
  * @ss: subsystem of interest

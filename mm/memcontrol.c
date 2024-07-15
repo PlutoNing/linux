@@ -135,6 +135,7 @@ struct mem_cgroup_tree_per_node {
 2024年07月12日13:11:33
 每个node有一颗 max soft limit tree */
 struct mem_cgroup_tree {
+	/* 每个node一个 */
 	struct mem_cgroup_tree_per_node *rb_tree_per_node[MAX_NUMNODES];
 };
 
@@ -548,6 +549,8 @@ mem_cgroup_page_nodeinfo(struct mem_cgroup *memcg, struct page *page)
 	return memcg->nodeinfo[nid];
 }
 /* 2024年06月27日11:35:24
+2024年07月15日15:25:21
+获取此node的soft limit rbtree
  */
 static struct mem_cgroup_tree_per_node *
 soft_limit_tree_node(int nid)
@@ -556,7 +559,7 @@ soft_limit_tree_node(int nid)
 }
 /* 
 2024年6月24日23:19:16
-
+获取此page的soft limit rbtree
  */
 static struct mem_cgroup_tree_per_node *
 soft_limit_tree_from_page(struct page *page)
@@ -566,7 +569,7 @@ soft_limit_tree_from_page(struct page *page)
 	return soft_limit_tree.rb_tree_per_node[nid];
 }
 /* 2024年7月14日13:52:48
-插入全局的soft limit max rbtree。
+根据new_usage_in_excess的大小插入全局的soft limit max rbtree。
  */
 static void __mem_cgroup_insert_exceeded(struct mem_cgroup_per_node *mz,
 					 struct mem_cgroup_tree_per_node *mctz,
@@ -584,9 +587,13 @@ static void __mem_cgroup_insert_exceeded(struct mem_cgroup_per_node *mz,
 	if (!mz->usage_in_excess)
 		return;
 	while (*p) {
+		/* 这个while遍历找到要插入的位置 */
 		parent = *p;
+		/* 挂载树上的是memcg的每一个mz */
 		mz_node = rb_entry(parent, struct mem_cgroup_per_node,
 					tree_node);
+
+
 		if (mz->usage_in_excess < mz_node->usage_in_excess) {
 			p = &(*p)->rb_left;
 			rightmost = false;
@@ -663,6 +670,7 @@ static void mem_cgroup_update_tree(struct mem_cgroup *memcg, struct page *page)
 	struct mem_cgroup_tree_per_node *mctz;
 /* 
 通过page的node id获取对应的per node tree
+这个树就是mctz代表的，每个node一个。
 todo */
 	mctz = soft_limit_tree_from_page(page);
 	if (!mctz)
@@ -692,7 +700,7 @@ todo */
 			 * Insert again. mz->usage_in_excess will be updated.
 			 * If excess is 0, no tree ops.
 			 插入全局的per node tree
-			 todo
+			 需要重新插入，因为他的excess变了，在树上的位置也会变
 			 */
 			__mem_cgroup_insert_exceeded(mz, mctz, excess);
 			spin_unlock_irqrestore(&mctz->lock, flags);
@@ -702,6 +710,7 @@ todo */
 /* 2024年06月27日11:25:27
 2024年7月13日00:52:33
 从全局的soft limit tree移走
+mmecg的每个mz都有可能在对应node的树上。
  */
 static void mem_cgroup_remove_from_trees(struct mem_cgroup *memcg)
 {
@@ -719,6 +728,11 @@ static void mem_cgroup_remove_from_trees(struct mem_cgroup *memcg)
 }
 /* 2024年07月11日15:33:56
 获取全局tree上的最大soft limit的mz
+2024年07月15日15:17:55
+这个的概念也是把memcg放到树上面，择机取下来进行回收，那
+取的时候如果此memcg已经被下线或者释放了呢。
+2024年07月15日15:19:41
+好像就是css_tryget_online来测试，不行就直接重新获取。
  */
 static struct mem_cgroup_per_node *
 __mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
@@ -727,7 +741,7 @@ __mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
 
 retry:
 	mz = NULL;
-	/* 可能空了 */
+	/* 可能空了2024年07月15日15:18:48是树空了 */
 	if (!mctz->rb_rightmost)
 		goto done;		/* Nothing to reclaim from */
 	
@@ -740,10 +754,12 @@ retry:
 	 * position in the tree.
 	 */
 	__mem_cgroup_remove_exceeded(mz, mctz);
-
+	/* 如果已经不超限了，或者下线了，就重新获取 */
 	if (!soft_limit_excess(mz->memcg) ||
 	    !css_tryget_online(&mz->memcg->css))
 		goto retry;
+
+
 done:
 	return mz;
 }
@@ -1282,6 +1298,8 @@ void mem_cgroup_iter_break(struct mem_cgroup *root,
 }
 /* 2024年7月13日14:59:10
 from是memcg的直系父层级上面的
+2024年07月15日14:13:53
+操作的是每个memcg的每个mz的iter数组元素
  */
 static void __invalidate_reclaim_iterators(struct mem_cgroup *from,
 					struct mem_cgroup *dead_memcg)
@@ -4059,7 +4077,9 @@ static ssize_t mem_cgroup_write(struct kernfs_open_file *of,
 	}
 	return ret ?: nbytes;
 }
+/* 2024年07月15日14:09:27
 
+ */
 static ssize_t mem_cgroup_reset(struct kernfs_open_file *of, char *buf,
 				size_t nbytes, loff_t off)
 {
@@ -5460,6 +5480,8 @@ static void free_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 /* 2024年06月27日17:17:29
 真正的memcg free函数
 分配memcg本身和mz数组
+2024年07月15日14:12:29
+内存相关
  */
 static void __mem_cgroup_free(struct mem_cgroup *memcg)
 {
@@ -5476,6 +5498,8 @@ static void __mem_cgroup_free(struct mem_cgroup *memcg)
 /* 2024年06月27日16:58:39
 2024年7月13日15:09:42
 如何free，与release和offline的关系，todo。
+2024年07月15日14:12:04
+也只是个包装函数，实际调用__mem_cgroup_free
  */
 static void mem_cgroup_free(struct mem_cgroup *memcg)
 {
@@ -5492,6 +5516,7 @@ static void mem_cgroup_free(struct mem_cgroup *memcg)
 }
 /* 
 2024年7月13日15:07:54
+2024年07月15日14:22:16
 分配memcg */
 static struct mem_cgroup *mem_cgroup_alloc(void)
 {
@@ -5561,6 +5586,9 @@ fail:
 }
 /* 2024年06月27日10:28:09
 设置css
+2024年07月15日14:20:06
+mem子系统的css alloc回调。
+估计是给css配memcg
  */
 static struct cgroup_subsys_state * __ref
 mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
@@ -5653,6 +5681,8 @@ static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
 /* 2024年06月27日10:46:04
 2024年7月13日15:01:19
 如何下线memcg的css呢
+2024年07月15日14:18:23
+应该是下线css之后，处理memcg
  */
 static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 {
@@ -5684,6 +5714,7 @@ static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 }
 /* 2024年7月13日14:56:11
 todo
+是内存子系统的release回调
  */
 static void mem_cgroup_css_released(struct cgroup_subsys_state *css)
 {
@@ -5693,6 +5724,9 @@ static void mem_cgroup_css_released(struct cgroup_subsys_state *css)
 }
 /* 2024年06月27日11:04:44
 2024年7月13日00:54:11
+2024年07月15日14:11:04
+是说通过css释放memcg吗；
+note：free的时候，应该已经处理好css了。因为free好像只是free 内存相关
  */
 static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 {
@@ -5719,12 +5753,15 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 	
 	memcg_free_shrinker_maps(memcg);
 	memcg_free_kmem(memcg);
+	/* free memcg */
 	mem_cgroup_free(memcg);
 }
 
 /**
 2024年06月27日17:20:54
 2024年7月13日00:51:24
+2024年07月15日14:10:34
+重置属性
  * mem_cgroup_css_reset - reset the states of a mem_cgroup
  * @css: the target css
  *
