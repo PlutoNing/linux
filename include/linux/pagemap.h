@@ -97,7 +97,9 @@ static inline int mapping_use_writeback_tags(struct address_space *mapping)
 {
 	return !test_bit(AS_NO_WRITEBACK_TAGS, &mapping->flags);
 }
-
+/* 2024年7月16日00:08:35
+mapping也有gfp吗 
+哦哦申请页面的时候用的*/
 static inline gfp_t mapping_gfp_mask(struct address_space * mapping)
 {
 	return mapping->gfp_mask;
@@ -228,7 +230,7 @@ static inline struct page *page_cache_alloc(struct address_space *x)
 {
 	return __page_cache_alloc(mapping_gfp_mask(x));
 }
-
+/* 2024年7月16日00:08:22 */
 static inline gfp_t readahead_gfp_mask(struct address_space *x)
 {
 	return mapping_gfp_mask(x) | __GFP_NORETRY | __GFP_NOWARN;
@@ -269,7 +271,8 @@ static inline struct page *find_get_page(struct address_space *mapping,
 {
 	return pagecache_get_page(mapping, offset, 0, 0);
 }
-
+/* 2024年7月16日00:07:48
+ */
 static inline struct page *find_get_page_flags(struct address_space *mapping,
 					pgoff_t offset, int fgp_flags)
 {
@@ -531,7 +534,7 @@ extern int wait_on_page_bit_killable(struct page *page, int bit_nr);
 
 /* 
 2024年07月02日16:23:01
-
+2024年7月16日00:11:01
  * Wait for a page to be unlocked.
  *
  * This must be called with the caller "holding" the page,

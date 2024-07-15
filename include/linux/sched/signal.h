@@ -697,7 +697,9 @@ static inline unsigned long task_rlimit_max(const struct task_struct *task,
 {
 	return READ_ONCE(task->signal->rlim[limit].rlim_max);
 }
-
+/* 2024年7月16日00:02:42
+资源限制？
+*/
 static inline unsigned long rlimit(unsigned int limit)
 {
 	return task_rlimit(current, limit);

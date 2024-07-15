@@ -120,10 +120,13 @@ void __wait_on_buffer(struct buffer_head * bh)
 }
 EXPORT_SYMBOL(__wait_on_buffer);
 
+/* 2024年7月15日23:50:08 */
 static void
 __clear_page_buffers(struct page *page)
 {
+	/* priv也有标志位吗 */
 	ClearPagePrivate(page);
+	/* 置空priv指针 */
 	set_page_private(page, 0);
 	put_page(page);
 }
@@ -3228,6 +3231,8 @@ static inline int buffer_busy(struct buffer_head *bh)
 }
 /* 2024年7月14日17:25:11
 todo，不太清楚buffer这一块
+2024年7月15日23:49:14
+好像是清楚priv数据
  */
 static int
 drop_buffers(struct page *page, struct buffer_head **buffers_to_free)
@@ -3252,6 +3257,7 @@ drop_buffers(struct page *page, struct buffer_head **buffers_to_free)
 	} while (bh != head);
 
 	*buffers_to_free = head;
+	/* 具体函数：置空priv */
 	__clear_page_buffers(page);
 	return 1;
 failed:
@@ -3270,12 +3276,14 @@ int try_to_free_buffers(struct page *page)
 
 	if (PageWriteback(page))
 		return 0;
-
+	/* 没有mapping说明什么 */
 	if (mapping == NULL) {		/* can this still happen? */
+	/* 置空priv指针 */
 		ret = drop_buffers(page, &buffers_to_free);
 		goto out;
 	}
 
+	/* 有mapping的路径？ */
 	spin_lock(&mapping->private_lock);
 	ret = drop_buffers(page, &buffers_to_free);
 

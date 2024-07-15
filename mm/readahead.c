@@ -112,7 +112,9 @@ int read_cache_pages(struct address_space *mapping, struct list_head *pages,
 }
 
 EXPORT_SYMBOL(read_cache_pages);
-/* 2024年6月30日15:00:50 */
+/* 2024年6月30日15:00:50
+2024年7月16日00:24:41
+ */
 static int read_pages(struct address_space *mapping, struct file *filp,
 		struct list_head *pages, unsigned int nr_pages, gfp_t gfp)
 {
@@ -189,6 +191,8 @@ unsigned int __do_page_cache_readahead(struct address_space *mapping,
 			 * contiguous pages before continuing with the next
 			 * batch.
 			 读取页面，刷新到lru啥啥的
+			 2024年7月16日00:23:08
+			 算是遍历mapping，找到一个页面（nr pages大于0）就进行一次预读？
 			 */
 			if (nr_pages)
 				read_pages(mapping, filp, &page_pool, nr_pages,
@@ -196,7 +200,8 @@ unsigned int __do_page_cache_readahead(struct address_space *mapping,
 			nr_pages = 0;
 			continue;
 		}
-		/* mapping不存在此页面 */
+		/* mapping不存在此页面 
+		没有页面就申请，设置相关属性，并且加入lru*/
 		page = __page_cache_alloc(gfp_mask);
 		if (!page)
 			break;
@@ -211,9 +216,11 @@ unsigned int __do_page_cache_readahead(struct address_space *mapping,
 	 * Now start the IO.  We ignore I/O errors - if the page is not
 	 * uptodate then the caller will launch readpage again, and
 	 * will then handle the error.
+	 把剩下的页面也读完
 	 */
 	if (nr_pages)
 		read_pages(mapping, filp, &page_pool, nr_pages, gfp_mask);
+
 	BUG_ON(!list_empty(&page_pool));
 out:
 	return nr_pages;
@@ -385,6 +392,8 @@ static int try_context_readahead(struct address_space *mapping,
 
 /*
 2024年6月30日15:04:11
+2024年7月16日00:19:50
+
  * A minimal readahead algorithm for trivial sequential/random reads.
  */
 static unsigned long
@@ -545,6 +554,8 @@ EXPORT_SYMBOL_GPL(page_cache_sync_readahead);
 2024年6月30日15:06:26
 预读
 读取页缓存页面成功后的异步预读
+2024年7月16日00:19:24
+上面对吗？
  * page_cache_async_readahead - file readahead for marked pages
  * @mapping: address_space which holds the pagecache and I/O vectors
  * @ra: file_ra_state which holds the readahead state

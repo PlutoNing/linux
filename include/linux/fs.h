@@ -326,7 +326,7 @@ struct kiocb {
 
 	/* The 'ki_filp' pointer is shared in a union for aio */
 	randomized_struct_fields_start
-	/* 数据偏移 */
+	/* 数据偏移，读写位置 */
 	loff_t			ki_pos;
 	void (*ki_complete)(struct kiocb *iocb, long ret, long ret2);
 	void			*private;
@@ -880,6 +880,10 @@ void lock_two_nondirectories(struct inode *, struct inode*);
 void unlock_two_nondirectories(struct inode *, struct inode*);
 
 /*
+2024年7月15日23:58:39
+是获取读写位置吗？
+2024年7月15日23:59:00
+哦哦文件长度。
  * NOTE: in a 32bit arch with a preemptable kernel and
  * an UP compile the i_size_read/write must be atomic
  * with respect to the local cpu (unlike with preempt disabled),
@@ -1481,7 +1485,7 @@ struct super_block {
 	dev_t			s_dev;		/* search index; _not_ kdev_t */
 	unsigned char		s_blocksize_bits;
 	unsigned long		s_blocksize;
-	loff_t			s_maxbytes;	/* Max file size */
+	loff_t			s_maxbytes;	/* Max file size最大文件长度 */
 	struct file_system_type	*s_type;
 	const struct super_operations	*s_op;
 	const struct dquot_operations	*dq_op;
@@ -2254,7 +2258,7 @@ enum file_time_flags {
 extern bool atime_needs_update(const struct path *, struct inode *);
 extern void touch_atime(const struct path *);
 /* 2024年6月30日19:28:30
-
+2024年7月16日00:13:31
  */
 static inline void file_accessed(struct file *file)
 {

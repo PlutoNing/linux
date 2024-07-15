@@ -240,7 +240,8 @@ ssize_t iov_iter_get_pages_alloc(struct iov_iter *i, struct page ***pages,
 int iov_iter_npages(const struct iov_iter *i, int maxpages);
 
 const void *dup_iter(struct iov_iter *new, struct iov_iter *old, gfp_t flags);
-
+/* 2024年7月15日23:57:17
+ */
 static inline size_t iov_iter_count(const struct iov_iter *i)
 {
 	return i->count;
@@ -248,6 +249,8 @@ static inline size_t iov_iter_count(const struct iov_iter *i)
 
 /*
 2024年6月29日22:34:45
+2024年7月16日00:03:35
+削减iov大小
  * Cap the iov_iter by given limit; note that the second argument is
  * *not* the new size - it's upper limit for such.  Passing it a value
  * greater than the amount of data in iov_iter is fine - it'll just do

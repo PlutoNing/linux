@@ -1009,6 +1009,7 @@ EXPORT_SYMBOL_GPL(add_to_page_cache_lru);
 #ifdef CONFIG_NUMA
 /* 2024年6月29日21:49:54
 pagecache没有页面的时候申请
+2024年7月16日00:09:39
  */
 struct page *__page_cache_alloc(gfp_t gfp)
 {
@@ -1685,7 +1686,8 @@ EXPORT_SYMBOL(find_lock_entry);
  *
  * Return: the found page or %NULL otherwise.
  2024年07月02日16:10:25
-
+2024年7月16日00:05:47
+查找页缓存页面。缺页的话会申请
  */
 struct page *pagecache_get_page(struct address_space *mapping, pgoff_t offset,
 	int fgp_flags, gfp_t gfp_mask)
@@ -1697,6 +1699,7 @@ repeat:
 	if (xa_is_value(page))
 		page = NULL;
 	if (!page)
+	/* 页缓存缺页 */
 		goto no_page;
 
 	if (fgp_flags & FGP_LOCK) {
@@ -2405,6 +2408,7 @@ EXPORT_SYMBOL(generic_file_read_iter);
 
 #ifdef CONFIG_MMU
 #define MMAP_LOTSAMISS  (100)
+/* 2024年7月16日00:17:46 */
 static struct file *maybe_unlock_mmap_for_io(struct vm_fault *vmf,
 					     struct file *fpin)
 {
@@ -2420,6 +2424,7 @@ static struct file *maybe_unlock_mmap_for_io(struct vm_fault *vmf,
 	 */
 	if ((flags & (FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_RETRY_NOWAIT)) ==
 	    FAULT_FLAG_ALLOW_RETRY) {
+			/* get mmap的file */
 		fpin = get_file(vmf->vma->vm_file);
 		up_read(&vmf->vma->vm_mm->mmap_sem);
 	}
@@ -2527,6 +2532,8 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 }
 
 /*
+2024年7月16日00:16:02
+异步预读
  * Asynchronous readahead happens when we find the page and PG_readahead,
  * so we want to possibly extend the readahead further.  We return the file that
  * was pinned if we have to drop the mmap_sem in order to do IO.
@@ -2543,9 +2550,12 @@ static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 	/* If we don't want any read-ahead, don't bother */
 	if (vmf->vma->vm_flags & VM_RAND_READ)
 		return fpin;
+
 	if (ra->mmap_miss > 0)
 		ra->mmap_miss--;
+
 	if (PageReadahead(page)) {
+		/* 预读 */
 		fpin = maybe_unlock_mmap_for_io(vmf, fpin);
 		page_cache_async_readahead(mapping, ra, file,
 					   page, offset, ra->ra_pages);
@@ -2554,6 +2564,7 @@ static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 }
 
 /**
+2024年7月16日00:14:14
  * filemap_fault - read in file data for page fault handling
  * @vmf:	struct vm_fault containing details of the fault
  *
@@ -2582,6 +2593,7 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
 	struct file *file = vmf->vma->vm_file;
 	struct file *fpin = NULL;
 	struct address_space *mapping = file->f_mapping;
+	/* 预读 */
 	struct file_ra_state *ra = &file->f_ra;
 	struct inode *inode = mapping->host;
 	pgoff_t offset = vmf->pgoff;
@@ -2604,7 +2616,9 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
 		 */
 		fpin = do_async_mmap_readahead(vmf, page);
 	} else if (!page) {
-		/* No page in the page cache at all */
+		/* 
+		页缓存没有页面
+		No page in the page cache at all */
 		count_vm_event(PGMAJFAULT);
 		count_memcg_event_mm(vmf->vma->vm_mm, PGMAJFAULT);
 		ret = VM_FAULT_MAJOR;
@@ -2796,14 +2810,16 @@ out:
 	sb_end_pagefault(inode->i_sb);
 	return ret;
 }
-
+/* 2024年7月16日00:13:54 */
 const struct vm_operations_struct generic_file_vm_ops = {
 	.fault		= filemap_fault,
 	.map_pages	= filemap_map_pages,
 	.page_mkwrite	= filemap_page_mkwrite,
 };
 
-/* This is used for a general mmap of a disk file */
+/* 
+2024年7月16日00:12:08
+This is used for a general mmap of a disk file */
 
 int generic_file_mmap(struct file * file, struct vm_area_struct * vma)
 {
@@ -2811,18 +2827,22 @@ int generic_file_mmap(struct file * file, struct vm_area_struct * vma)
 
 	if (!mapping->a_ops->readpage)
 		return -ENOEXEC;
+	/* 访问修改atime */
 	file_accessed(file);
+
 	vma->vm_ops = &generic_file_vm_ops;
 	return 0;
 }
 
 /*
+2024年7月16日00:11:43
  * This is for filesystems which do not implement ->writepage.
  */
 int generic_file_readonly_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	if ((vma->vm_flags & VM_SHARED) && (vma->vm_flags & VM_MAYWRITE))
 		return -EINVAL;
+
 	return generic_file_mmap(file, vma);
 }
 #else
@@ -2844,13 +2864,17 @@ EXPORT_SYMBOL(filemap_page_mkwrite);
 EXPORT_SYMBOL(generic_file_mmap);
 EXPORT_SYMBOL(generic_file_readonly_mmap);
 /* 2024年07月02日16:22:36
+2024年7月16日00:10:27
 
  */
 static struct page *wait_on_page_read(struct page *page)
 {
 	if (!IS_ERR(page)) {
+		/* 等待解锁 */
 		wait_on_page_locked(page);
+
 		if (!PageUptodate(page)) {
+			/* 脏页 */
 			put_page(page);
 			page = ERR_PTR(-EIO);
 		}
@@ -2858,7 +2882,7 @@ static struct page *wait_on_page_read(struct page *page)
 	return page;
 }
 /* 2024年07月02日15:39:28
-
+2024年7月16日00:04:32
  */
 static struct page *do_read_cache_page(struct address_space *mapping,
 				pgoff_t index,
@@ -2869,7 +2893,7 @@ static struct page *do_read_cache_page(struct address_space *mapping,
 	struct page *page;
 	int err;
 repeat:
-/*         // find_get_page查找page cache失败而且页不允许申请新的page
+/*    find_get_page查找page cache失败而且页不允许申请新的page
  */
 	page = find_get_page(mapping, index);
 	if (!page) {
@@ -2991,6 +3015,8 @@ struct page *read_cache_page(struct address_space *mapping,
 EXPORT_SYMBOL(read_cache_page);
 
 /**
+2024年7月16日00:04:20
+读pagecache
  * read_cache_page_gfp - read into page cache, using specified page allocation flags.
  * @mapping:	the page's address_space
  * @index:	the page index
@@ -3012,6 +3038,7 @@ struct page *read_cache_page_gfp(struct address_space *mapping,
 EXPORT_SYMBOL(read_cache_page_gfp);
 
 /*
+2024年7月16日00:00:30
  * Don't operate on ranges the page cache doesn't support, and don't exceed the
  * LFS limits.  If pos is under the limit it becomes a short access.  If it
  * exceeds the limit we return -EFBIG.
@@ -3033,7 +3060,7 @@ static int generic_write_check_limits(struct file *file, loff_t pos,
 
 	if (!(file->f_flags & O_LARGEFILE))
 		max_size = MAX_NON_LFS;
-
+		/* 超过了文件系统最大文件限制 */
 	if (unlikely(pos >= max_size))
 		return -EFBIG;
 
@@ -3043,6 +3070,7 @@ static int generic_write_check_limits(struct file *file, loff_t pos,
 }
 
 /*
+2024年7月15日23:56:49
  * Performs necessary checks before doing a write
  *
  * Can adjust writing position or amount of bytes to write.
@@ -3064,12 +3092,14 @@ inline ssize_t generic_write_checks(struct kiocb *iocb, struct iov_iter *from)
 
 	/* FIXME: this is for backwards compatibility with 2.4 */
 	if (iocb->ki_flags & IOCB_APPEND)
+	/* 附加写，获取写入位置 */
 		iocb->ki_pos = i_size_read(inode);
 
 	if ((iocb->ki_flags & IOCB_NOWAIT) && !(iocb->ki_flags & IOCB_DIRECT))
 		return -EINVAL;
-
+	/* 要写入的数量 */
 	count = iov_iter_count(from);
+
 	ret = generic_write_check_limits(file, iocb->ki_pos, &count);
 	if (ret)
 		return ret;
@@ -3535,6 +3565,7 @@ out:
 EXPORT_SYMBOL(__generic_file_write_iter);
 
 /**
+2024年7月15日23:54:49
  * generic_file_write_iter - write data to a file
  * @iocb:	IO state structure
  * @from:	iov_iter with data to write
@@ -3554,9 +3585,12 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	ssize_t ret;
 
 	inode_lock(inode);
+	
 	ret = generic_write_checks(iocb, from);
+
 	if (ret > 0)
 		ret = __generic_file_write_iter(iocb, from);
+	
 	inode_unlock(inode);
 
 	if (ret > 0)
@@ -3566,6 +3600,8 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 EXPORT_SYMBOL(generic_file_write_iter);
 
 /**
+2024年7月15日23:45:54
+release old fs-specific metadata on a page；
  * try_to_release_page() - release old fs-specific metadata on a page
  *
  * @page: the page which the kernel is trying to free
@@ -3587,11 +3623,13 @@ int try_to_release_page(struct page *page, gfp_t gfp_mask)
 	struct address_space * const mapping = page->mapping;
 
 	BUG_ON(!PageLocked(page));
+
 	if (PageWriteback(page))
 		return 0;
 
 	if (mapping && mapping->a_ops->releasepage)
 		return mapping->a_ops->releasepage(page, gfp_mask);
+	/* 其实就是清楚priv数据 */
 	return try_to_free_buffers(page);
 }
 
