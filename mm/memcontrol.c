@@ -1121,6 +1121,7 @@ struct mem_cgroup *get_mem_cgroup_from_page(struct page *page)
 		memcg = root_mem_cgroup;
 
 	rcu_read_unlock();
+
 	return memcg;
 }
 EXPORT_SYMBOL(get_mem_cgroup_from_page);
@@ -1300,6 +1301,9 @@ void mem_cgroup_iter_break(struct mem_cgroup *root,
 from是memcg的直系父层级上面的
 2024年07月15日14:13:53
 操作的是每个memcg的每个mz的iter数组元素
+2024年7月17日00:52:14
+不太清楚
+好像是和mem_cgroup_iter相关。
  */
 static void __invalidate_reclaim_iterators(struct mem_cgroup *from,
 					struct mem_cgroup *dead_memcg)
@@ -1320,13 +1324,17 @@ static void __invalidate_reclaim_iterators(struct mem_cgroup *from,
 	}
 }
 /* 2024年7月13日14:56:38
+2024年7月16日23:34:43
+todo
 
  */
 static void invalidate_reclaim_iterators(struct mem_cgroup *dead_memcg)
 {
 	struct mem_cgroup *memcg = dead_memcg;
 	struct mem_cgroup *last;
-
+	/* 2024年7月17日00:50:57
+	
+	 */
 	do {
 		__invalidate_reclaim_iterators(memcg, dead_memcg);
 		last = memcg;
@@ -5655,7 +5663,8 @@ fail:
 	return ERR_PTR(-ENOMEM);
 }
 /* 2024年7月13日15:06:02
-
+2024年7月16日23:37:48
+css回调此，设置包含自己的memcg。
  */
 static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
 {
@@ -5682,7 +5691,11 @@ static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
 2024年7月13日15:01:19
 如何下线memcg的css呢
 2024年07月15日14:18:23
-应该是下线css之后，处理memcg
+应该是下线css之后，处理下线memcg
+2024年7月17日00:47:34
+顺序是先offline，release，free。
+offline好像就是取消事件，设置conunter，下线一些子组件。然后put id。后续看其他俩函数注释
+
  */
 static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 {
@@ -5695,11 +5708,13 @@ static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 	 * directory to avoid race between userspace and kernelspace.
 	 */
 	spin_lock(&memcg->event_list_lock);
+
 	list_for_each_entry_safe(event, tmp, &memcg->event_list, list) {
 		/* 是说离线前把自己的事件移除吗 */
 		list_del_init(&event->list);
 		schedule_work(&event->remove);
 	}
+
 	spin_unlock(&memcg->event_list_lock);
 	/* 设置memcg的counter */
 	page_counter_set_min(&memcg->memory, 0);
@@ -5709,12 +5724,15 @@ static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 	wb_memcg_offline(memcg);
 
 	drain_all_stock(memcg);
-
+	/* put到最后也会put一下css */
 	mem_cgroup_id_put(memcg);
 }
 /* 2024年7月13日14:56:11
 todo
 是内存子系统的release回调
+2024年7月17日00:50:05
+offline与free之间的一步：release。
+这一步不太懂涉及到什么。
  */
 static void mem_cgroup_css_released(struct cgroup_subsys_state *css)
 {
@@ -5727,6 +5745,7 @@ static void mem_cgroup_css_released(struct cgroup_subsys_state *css)
 2024年07月15日14:11:04
 是说通过css释放memcg吗；
 note：free的时候，应该已经处理好css了。因为free好像只是free 内存相关
+
  */
 static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 {
@@ -7702,6 +7721,7 @@ subsys_initcall(mem_cgroup_init);
 #ifdef CONFIG_MEMCG_SWAP
 /* 2024年07月04日20:29:43 
 在父层级上一直获取到一个online的
+
 */
 static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 {
@@ -7715,7 +7735,9 @@ static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 			VM_BUG_ON(1);
 			break;
 		}
+
 		memcg = parent_mem_cgroup(memcg);
+		/* 可能会有没有父cg的吗，除了根cg */
 		if (!memcg)
 			memcg = root_mem_cgroup;
 	}

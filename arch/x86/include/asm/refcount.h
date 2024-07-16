@@ -92,7 +92,10 @@ static __always_inline __must_check bool refcount_dec_and_test(refcount_t *r)
 
 	return false;
 }
-
+/* 2024年7月16日23:19:39
+为零的话返回0
+否则+1.
+ */
 static __always_inline __must_check
 bool refcount_add_not_zero(unsigned int i, refcount_t *r)
 {

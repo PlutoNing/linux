@@ -618,6 +618,7 @@ out_put:
 }
 
 /**
+2024年7月17日00:38:10
  * wb_get_lookup - get wb for a given memcg
  * @bdi: target bdi
  * @memcg_css: cgroup_subsys_state of the target memcg (must have positive ref)
@@ -649,6 +650,7 @@ struct bdi_writeback *wb_get_lookup(struct backing_dev_info *bdi,
 		return &bdi->wb;
 
 	rcu_read_lock();
+
 	wb = radix_tree_lookup(&bdi->cgwb_tree, memcg_css->id);
 	if (wb) {
 		struct cgroup_subsys_state *blkcg_css;
@@ -657,8 +659,11 @@ struct bdi_writeback *wb_get_lookup(struct backing_dev_info *bdi,
 		blkcg_css = cgroup_get_e_css(memcg_css->cgroup, &io_cgrp_subsys);
 		if (unlikely(wb->blkcg_css != blkcg_css || !wb_tryget(wb)))
 			wb = NULL;
+
+		/* 获取之后立即put？ */
 		css_put(blkcg_css);
 	}
+
 	rcu_read_unlock();
 
 	return wb;

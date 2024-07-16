@@ -103,6 +103,7 @@ struct percpu_ref {
 	 * mode; if set, then get/put will manipulate the atomic_t.
 	 */
 	unsigned long		percpu_count_ptr;
+	/* 指向自己的释放函数 */
 	percpu_ref_func_t	*release;
 	percpu_ref_func_t	*confirm_switch;
 	bool			force_atomic:1;
@@ -125,6 +126,7 @@ void percpu_ref_reinit(struct percpu_ref *ref);
 
 /**
 2024年07月16日19:16:22
+2024年7月17日00:19:12
  * percpu_ref_kill - drop the initial ref
  * @ref: percpu_ref to kill
  *
@@ -202,6 +204,7 @@ static inline void percpu_ref_get_many(struct percpu_ref *ref, unsigned long nr)
 }
 
 /**
+2024年7月16日22:29:40
  * percpu_ref_get - increment a percpu refcount
  * @ref: percpu_ref to get
  *
@@ -280,6 +283,7 @@ static inline bool percpu_ref_tryget_live(struct percpu_ref *ref)
 
 /**
 2024年06月27日18:39:02
+2024年7月16日22:31:58
 
  * percpu_ref_put_many - decrement a percpu refcount
  * @ref: percpu_ref to put
@@ -295,16 +299,18 @@ static inline void percpu_ref_put_many(struct percpu_ref *ref, unsigned long nr)
 	unsigned long __percpu *percpu_count;
 
 	rcu_read_lock_sched();
-
+	/* put操作 */
 	if (__ref_is_percpu(ref, &percpu_count))
 		this_cpu_sub(*percpu_count, nr);
 	else if (unlikely(atomic_long_sub_and_test(nr, &ref->count)))
+	/* 调用release函数 */
 		ref->release(ref);
 
 	rcu_read_unlock_sched();
 }
 
 /**
+2024年7月16日22:31:05
  * percpu_ref_put - decrement a percpu refcount
  * @ref: percpu_ref to put
  *

@@ -44,6 +44,8 @@ static unsigned long __percpu *percpu_count_ptr(struct percpu_ref *ref)
 }
 
 /**
+2024年7月16日22:34:24
+
  * percpu_ref_init - initialize a percpu refcount
  * @ref: percpu_ref to initialize
  * @release: function which will be called when refcount hits 0
@@ -85,7 +87,7 @@ int percpu_ref_init(struct percpu_ref *ref, percpu_ref_func_t *release,
 		start_count++;
 
 	atomic_long_set(&ref->count, start_count);
-
+	/* 初始化release函数，put为0时调用 */
 	ref->release = release;
 	ref->confirm_switch = NULL;
 	return 0;
@@ -114,7 +116,7 @@ void percpu_ref_exit(struct percpu_ref *ref)
 	}
 }
 EXPORT_SYMBOL_GPL(percpu_ref_exit);
-
+/* 2024年7月16日22:30:18 */
 static void percpu_ref_call_confirm_rcu(struct rcu_head *rcu)
 {
 	struct percpu_ref *ref = container_of(rcu, struct percpu_ref, rcu);
@@ -129,9 +131,10 @@ static void percpu_ref_call_confirm_rcu(struct rcu_head *rcu)
 	/* drop ref from percpu_ref_switch_to_atomic() */
 	percpu_ref_put(ref);
 }
-
+/* 2024年7月16日22:29:50 */
 static void percpu_ref_switch_to_atomic_rcu(struct rcu_head *rcu)
 {
+	/* 获得ref */
 	struct percpu_ref *ref = container_of(rcu, struct percpu_ref, rcu);
 	unsigned long __percpu *percpu_count = percpu_count_ptr(ref);
 	unsigned long count = 0;
@@ -168,7 +171,7 @@ static void percpu_ref_switch_to_atomic_rcu(struct rcu_head *rcu)
 static void percpu_ref_noop_confirm_switch(struct percpu_ref *ref)
 {
 }
-
+/* 2024年7月16日22:28:16 */
 static void __percpu_ref_switch_to_atomic(struct percpu_ref *ref,
 					  percpu_ref_func_t *confirm_switch)
 {
@@ -218,7 +221,8 @@ static void __percpu_ref_switch_to_percpu(struct percpu_ref *ref)
 	smp_store_release(&ref->percpu_count_ptr,
 			  ref->percpu_count_ptr & ~__PERCPU_REF_ATOMIC);
 }
-
+/* 2024年7月16日22:27:55
+ */
 static void __percpu_ref_switch_mode(struct percpu_ref *ref,
 				     percpu_ref_func_t *confirm_switch)
 {
@@ -319,6 +323,8 @@ void percpu_ref_switch_to_percpu(struct percpu_ref *ref)
 EXPORT_SYMBOL_GPL(percpu_ref_switch_to_percpu);
 
 /**
+2024年7月16日22:03:12
+percpu ref机制的操作，好像是清理ref。
  * percpu_ref_kill_and_confirm - drop the initial ref and schedule confirmation
  * @ref: percpu_ref to kill
  * @confirm_kill: optional confirmation callback
@@ -346,7 +352,9 @@ void percpu_ref_kill_and_confirm(struct percpu_ref *ref,
 		  "%s called more than once on %ps!", __func__, ref->release);
 
 	ref->percpu_count_ptr |= __PERCPU_REF_DEAD;
+	/* 先调用confirm switch，然后put */
 	__percpu_ref_switch_mode(ref, confirm_kill);
+	/* 2024年7月16日22:31:48 */
 	percpu_ref_put(ref);
 
 	spin_unlock_irqrestore(&percpu_ref_switch_lock, flags);

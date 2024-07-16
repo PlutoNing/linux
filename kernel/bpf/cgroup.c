@@ -537,7 +537,8 @@ int __cgroup_bpf_query(struct cgroup *cgrp, const union bpf_attr *attr,
 	}
 	return ret;
 }
-
+/* 2024年7月17日00:24:00
+ */
 int cgroup_bpf_prog_attach(const union bpf_attr *attr,
 			   enum bpf_prog_type ptype, struct bpf_prog *prog)
 {
@@ -553,13 +554,14 @@ int cgroup_bpf_prog_attach(const union bpf_attr *attr,
 	cgroup_put(cgrp);
 	return ret;
 }
-
+/* 2024年7月17日00:25:01
+ */
 int cgroup_bpf_prog_detach(const union bpf_attr *attr, enum bpf_prog_type ptype)
 {
 	struct bpf_prog *prog;
 	struct cgroup *cgrp;
 	int ret;
-
+	/* 需要对应put */
 	cgrp = cgroup_get_from_fd(attr->target_fd);
 	if (IS_ERR(cgrp))
 		return PTR_ERR(cgrp);
