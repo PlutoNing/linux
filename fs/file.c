@@ -707,6 +707,8 @@ void do_close_on_exec(struct files_struct *files)
 }
 /* 2024年07月09日19:22:51
 获取file
+2024年07月16日19:31:25
+会增加引用计数
  */
 static struct file *__fget(unsigned int fd, fmode_t mask, unsigned int refs)
 {

@@ -3119,6 +3119,8 @@ out_finish:
 
 /**
 2024年07月10日13:15:45
+2024年07月16日19:04:16
+css有什么好drain的
  * cgroup_lock_and_drain_offline - lock cgroup_mutex and drain offlined csses
  * @cgrp: root of the target subtree
  *
@@ -3139,13 +3141,15 @@ restart:
 
 	cgroup_for_each_live_descendant_post(dsct, d_css, cgrp) {
 		for_each_subsys(ss, ssid) {
+			/* 获取css */
 			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
 			DEFINE_WAIT(wait);
-
+			/* 2024年07月16日19:05:16说明不是要下线的？ */
 			if (!css || !percpu_ref_is_dying(&css->refcnt))
 				continue;
 
 			cgroup_get_live(dsct);
+			/*  */
 			prepare_to_wait(&dsct->offline_waitq, &wait,
 					TASK_UNINTERRUPTIBLE);
 
@@ -3272,6 +3276,7 @@ static int cgroup_apply_control_enable(struct cgroup *cgrp)
 				continue;
 
 			if (!css) {
+				/* 可能不存在吗 */
 				css = css_create(dsct, ss);
 				if (IS_ERR(css))
 					return PTR_ERR(css);
@@ -4557,6 +4562,8 @@ css_next_descendant_post(struct cgroup_subsys_state *pos,
 /**
 2024年07月09日20:30:31
 判断css是否有存活的子层级
+2024年07月16日19:14:27
+怎么判断是存活呢。
  * css_has_online_children - does a css have online children
  * @css: the target css
  *
@@ -5144,21 +5151,21 @@ static struct cftype cgroup_base_files[] = {
 
 /*
 2024年07月10日10:04:31
-
+2024年07月16日19:11:01
  * css destruction is four-stage process.
  *
  * 1. Destruction starts.  Killing of the percpu_ref is initiated.
  *    Implemented in kill_css().
- *
+ *  开始销毁
  * 2. When the percpu_ref is confirmed to be visible as killed on all CPUs
  *    and thus css_tryget_online() is guaranteed to fail, the css can be
  *    offlined by invoking offline_css().  After offlining, the base ref is
  *    put.  Implemented in css_killed_work_fn().
- *
+ *调用offline_css(),
  * 3. When the percpu_ref reaches zero, the only possible remaining
  *    accessors are inside RCU read sections.  css_release() schedules the
  *    RCU callback.
- *
+ *css_release()
  * 4. After the grace period, the css can be freed.  Implemented in
  *    css_free_work_fn().
  *
@@ -5216,7 +5223,7 @@ static void css_free_rwork_fn(struct work_struct *work)
 	}
 }
 /* 2024年07月10日10:00:37
-
+2024年07月16日19:39:27
 */
 static void css_release_work_fn(struct work_struct *work)
 {
@@ -5225,10 +5232,11 @@ static void css_release_work_fn(struct work_struct *work)
 		container_of(work, struct cgroup_subsys_state, destroy_work);
 	struct cgroup_subsys *ss = css->ss;
 	struct cgroup *cgrp = css->cgroup;
-
+	/* 全局的锁吗 */
 	mutex_lock(&cgroup_mutex);
-
+	/* 设置标记为 */
 	css->flags |= CSS_RELEASED;
+	/* 从兄弟链表删除 */
 	list_del_rcu(&css->sibling);
 
 	if (ss) {
@@ -5236,6 +5244,7 @@ static void css_release_work_fn(struct work_struct *work)
 		/* css release path */
 		if (!list_empty(&css->rstat_css_node)) {
 			cgroup_rstat_flush(cgrp);
+			/* 是不是并发访问需要rcu */
 			list_del_rcu(&css->rstat_css_node);
 		}
 
@@ -5243,6 +5252,7 @@ static void css_release_work_fn(struct work_struct *work)
 		if (ss->css_released)
 			ss->css_released(css);
 	} else {
+		/* 没有ss？ */
 		struct cgroup *tcgrp;
 
 		/* cgroup release path */
@@ -5252,9 +5262,11 @@ static void css_release_work_fn(struct work_struct *work)
 			cgroup_rstat_flush(cgrp);
 
 		spin_lock_irq(&css_set_lock);
+
 		for (tcgrp = cgroup_parent(cgrp); tcgrp;
 		     tcgrp = cgroup_parent(tcgrp))
 			tcgrp->nr_dying_descendants--;
+
 		spin_unlock_irq(&css_set_lock);
 
 		cgroup_idr_remove(&cgrp->root->cgroup_idr, cgrp->id);
@@ -5679,6 +5691,8 @@ out_unlock:
 
 /*
 2024年07月09日20:44:24
+2024年07月16日19:18:04
+css的refcnt被kill时调用此
  * This is called when the refcnt of a css is confirmed to be killed.
  * css_tryget_online() is now guaranteed to fail.  Tell the subsystem to
  * initate destruction and put the css ref from kill_css().
@@ -5692,6 +5706,7 @@ static void css_killed_work_fn(struct work_struct *work)
 /* 逐层级offline */
 	do {
 		offline_css(css);
+		/* 这个put对应的哪个get，killcss里面有个没对应的get */
 		css_put(css);
 		/* @css can't go away while we're holding cgroup_mutex */
 		css = css->parent;
@@ -5706,10 +5721,12 @@ static void css_killed_work_fn(struct work_struct *work)
 css kill confirmation processing requires process context, bounce */
 static void css_killed_ref_fn(struct percpu_ref *ref)
 {
+	/* 获得此ref的css */
 	struct cgroup_subsys_state *css =
 		container_of(ref, struct cgroup_subsys_state, refcnt);
 
 	if (atomic_dec_and_test(&css->online_cnt)) {
+		/* online cnt为零了，说明ref被kill了 */
 		INIT_WORK(&css->destroy_work, css_killed_work_fn);
 		queue_work(cgroup_destroy_wq, &css->destroy_work);
 	}
@@ -5768,7 +5785,9 @@ static void kill_css(struct cgroup_subsys_state *css)
 /**
 2024年07月09日20:29:45
 销毁cgrp？
+2024年07月16日19:11:59
  * cgroup_destroy_locked - the first stage of cgroup destruction
+ cgrp销毁的第一阶段
  * @cgrp: cgroup to be destroyed
  *
  * css's make use of percpu refcnts whose killing latency shouldn't be
@@ -5776,15 +5795,18 @@ static void kill_css(struct cgroup_subsys_state *css)
  * guarantee that css_tryget_online() won't succeed by the time
  * ->css_offline() is invoked.  To satisfy all the requirements,
  * destruction is implemented in the following two steps.
- *
+ *一下两步是为了防止css_tryget_online()在css_offline()之后成功
+
  * s1. Verify @cgrp can be destroyed and mark it dying.  Remove all
  *     userland visible parts and start killing the percpu refcnts of
  *     css's.  Set up so that the next stage will be kicked off once all
- *     the percpu refcnts are confirmed to be killed.
+ *     the percpu refcnts are confirmed to be killed.确认cgrp可以被销毁然后
+ 标记为dying。销毁用户空间的东西然后开始kill refcnt。
  *
  * s2. Invoke ->css_offline(), mark the cgroup dead and proceed with the
  *     rest of destruction.  Once all cgroup references are gone, the
- *     cgroup is RCU-freed.
+ *     cgroup is RCU-freed.开始执行offline
+
  *
  * This function implements s1.  After this step, @cgrp is gone as far as
  * the userland is concerned and a new cgroup with the same name may be
@@ -5832,8 +5854,10 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	spin_unlock_irq(&css_set_lock);
 
 	/* initiate massacre of all css's
-	遍历cgrp的每个subsys的css子系统 */
+	遍历cgrp的每个subsys的css子系统
+	 */
 	for_each_css(css, ssid, cgrp)
+	/* 销毁用户空间的东西，页get了一下。 */
 		kill_css(css);
 
 	/* clear and remove @cgrp dir, @cgrp has an extra ref on its kn */
@@ -6485,6 +6509,7 @@ __setup("cgroup_debug", enable_cgroup_debug);
 
 /**
 2024年07月09日19:32:16
+2024年07月16日19:28:52
 
  * css_tryget_online_from_dir - get corresponding css from a cgroup dentry
  * @dentry: directory dentry of interest
@@ -6518,7 +6543,7 @@ struct cgroup_subsys_state *css_tryget_online_from_dir(struct dentry *dentry,
 	if (cgrp)
 		/* 获取css */
 		css = cgroup_css(cgrp, ss);
-
+	/* 2024年07月16日19:33:24 rcu之后获取引用计数 */
 	if (!css || !css_tryget_online(css))
 		css = ERR_PTR(-ENOENT);
 
@@ -6600,7 +6625,7 @@ struct cgroup *cgroup_get_from_fd(int fd)
 		return ERR_PTR(-EBADF);
 		/* 获取cgrp file的css */
 	css = css_tryget_online_from_dir(f->f_path.dentry, NULL);
-	/*  */
+	/* 2024年07月16日19:31:39对应 fget raw的一次get */
 	fput(f);
 	if (IS_ERR(css))
 		return ERR_CAST(css);
