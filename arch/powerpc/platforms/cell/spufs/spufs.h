@@ -105,6 +105,7 @@ struct spu_context {
 	pid_t tid;
 
 	/* scheduler fields */
+	/* 连接件 */
 	struct list_head rq;
 	unsigned int time_slice;
 	unsigned long sched_flags;

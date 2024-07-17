@@ -421,7 +421,11 @@ struct vm_fault {
 	struct vm_area_struct *vma;	/* Target VMA 触发异常的地址addr所属的vma*/
 	unsigned int flags;		/* FAULT_FLAG_xxx flags 包含FAULT_FLAG_xxx flags*/
 	gfp_t gfp_mask;			/* gfp mask to be used for allocations 用于控制异常过程中的内存分配*/
-	pgoff_t pgoff;			/* Logical page offset based on vma Addr在vma中的page offset*/
+	pgoff_t pgoff;			/* Logical page offset based on vma 
+	Addr在vma中的page offset
+	2024年07月17日15:52:20
+	什么Addr
+	*/
 	unsigned long address;		/* Faulting virtual address 触发异常的地址*/
 	pmd_t *pmd;			/* Pointer to pmd entry matching
 					 * the 'address' 异常地址所在的pmd*/

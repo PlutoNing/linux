@@ -1006,6 +1006,7 @@ struct file {
 	loff_t			f_pos;
 	struct fown_struct	f_owner;
 	const struct cred	*f_cred;
+	/* 文件的预读标志 */
 	struct file_ra_state	f_ra;
 
 	u64			f_version;

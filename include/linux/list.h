@@ -474,6 +474,8 @@ static inline void list_splice_tail_init(struct list_head *list,
 }
 
 /**
+2024年07月17日11:46:38
+是container of，不是获取条目。
  * list_entry - get the struct for this entry
  * @ptr:	the &struct list_head pointer.
  * @type:	the type of the struct this is embedded in.
@@ -483,6 +485,8 @@ static inline void list_splice_tail_init(struct list_head *list,
 	container_of(ptr, type, member)
 
 /**
+2024年07月17日11:46:59
+获取head的next
  * list_first_entry - get the first element from a list
  * @ptr:	the list head to take the element from.
  * @type:	the type of the struct this is embedded in.
@@ -494,6 +498,8 @@ static inline void list_splice_tail_init(struct list_head *list,
 	list_entry((ptr)->next, type, member)
 
 /**
+2024年07月17日11:47:04
+获取head的prev
  * list_last_entry - get the last element from a list
  * @ptr:	the list head to take the element from.
  * @type:	the type of the struct this is embedded in.
@@ -505,6 +511,7 @@ static inline void list_splice_tail_init(struct list_head *list,
 	list_entry((ptr)->prev, type, member)
 
 /**
+2024年07月17日11:47:12
  * list_first_entry_or_null - get the first element from a list
  * @ptr:	the list head to take the element from.
  * @type:	the type of the struct this is embedded in.
@@ -519,6 +526,8 @@ static inline void list_splice_tail_init(struct list_head *list,
 })
 
 /**
+2024年07月17日11:47:25
+pos是个list上面的type，member是连接件成员，返回下一个。
  * list_next_entry - get the next element in list
  * @pos:	the type * to cursor
  * @member:	the name of the list_head within the struct.
@@ -527,6 +536,7 @@ static inline void list_splice_tail_init(struct list_head *list,
 	list_entry((pos)->member.next, typeof(*(pos)), member)
 
 /**
+2024年07月17日11:52:07
  * list_prev_entry - get the prev element in list
  * @pos:	the type * to cursor
  * @member:	the name of the list_head within the struct.
@@ -535,6 +545,8 @@ static inline void list_splice_tail_init(struct list_head *list,
 	list_entry((pos)->member.prev, typeof(*(pos)), member)
 
 /**
+2024年07月17日11:53:12
+遍历的是list的每一个list_head
  * list_for_each	-	iterate over a list
  * @pos:	the &struct list_head to use as a loop cursor.
  * @head:	the head for your list.
@@ -543,6 +555,7 @@ static inline void list_splice_tail_init(struct list_head *list,
 	for (pos = (head)->next; pos != (head); pos = pos->next)
 
 /**
+2024年07月17日14:20:03
  * list_for_each_prev	-	iterate over a list backwards
  * @pos:	the &struct list_head to use as a loop cursor.
  * @head:	the head for your list.
@@ -551,6 +564,8 @@ static inline void list_splice_tail_init(struct list_head *list,
 	for (pos = (head)->prev; pos != (head); pos = pos->prev)
 
 /**
+2024年07月17日14:20:38
+拷贝
  * list_for_each_safe - iterate over a list safe against removal of list entry
  * @pos:	the &struct list_head to use as a loop cursor.
  * @n:		another &struct list_head to use as temporary storage
@@ -561,6 +576,7 @@ static inline void list_splice_tail_init(struct list_head *list,
 		pos = n, n = pos->next)
 
 /**
+2024年07月17日14:20:45
  * list_for_each_prev_safe - iterate over a list backwards safe against removal of list entry
  * @pos:	the &struct list_head to use as a loop cursor.
  * @n:		another &struct list_head to use as temporary storage
@@ -572,6 +588,7 @@ static inline void list_splice_tail_init(struct list_head *list,
 	     pos = n, n = pos->prev)
 
 /**
+2024年07月17日14:21:26
  * list_for_each_entry	-	iterate over list of given type
  * @pos:	the type * to use as a loop cursor.
  * @head:	the head for your list.
@@ -658,6 +675,8 @@ static inline void list_splice_tail_init(struct list_head *list,
 	     pos = list_prev_entry(pos, member))
 
 /**
+2024年07月17日11:49:16
+pos，n是下一个
  * list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
  * @pos:	the type * to use as a loop cursor.
  * @n:		another type * to use as temporary storage

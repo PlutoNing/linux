@@ -1274,6 +1274,7 @@ int shmem_unuse(unsigned int type, bool frontswap,
 		cond_resched();
 
 		mutex_lock(&shmem_swaplist_mutex);
+		/* swaplist是连接件成员 */
 		next = list_next_entry(info, swaplist);
 		if (!info->swapped)
 			list_del_init(&info->swaplist);

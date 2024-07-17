@@ -37,7 +37,9 @@
 #include "spufs.h"
 #define CREATE_TRACE_POINTS
 #include "sputrace.h"
+/* 2024年07月17日11:27:17
 
+ */
 struct spu_prio_array {
 	DECLARE_BITMAP(bitmap, MAX_PRIO);
 	struct list_head runq[MAX_PRIO];
@@ -817,6 +819,7 @@ spu_activate_top:
 }
 
 /**
+2024年07月17日11:27:53
  * grab_runnable_context - try to find a runnable context
  *
  * Remove the highest priority context on the runqueue and return it
@@ -842,6 +845,7 @@ static struct spu_context *grab_runnable_context(int prio, int node)
 		best++;
 	}
 	ctx = NULL;
+
  found:
 	spin_unlock(&spu_prio->runq_lock);
 	return ctx;
@@ -1080,7 +1084,8 @@ static int show_spu_loadavg(struct seq_file *s, void *private)
 		idr_get_cursor(&task_active_pid_ns(current)->idr) - 1);
 	return 0;
 };
-
+/* 2024年07月17日11:36:51
+ */
 int __init spu_sched_init(void)
 {
 	struct proc_dir_entry *entry;

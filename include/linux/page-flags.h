@@ -381,6 +381,7 @@ PAGEFLAG(MappedToDisk, mappedtodisk, PF_NO_TAIL)
 /* 设置此页需要回收 */
 PAGEFLAG(Reclaim, reclaim, PF_NO_TAIL)
 	TESTCLEARFLAG(Reclaim, reclaim, PF_NO_TAIL)
+/* 预读标记，预读之后会清除一下 */
 PAGEFLAG(Readahead, reclaim, PF_NO_COMPOUND)
 	TESTCLEARFLAG(Readahead, reclaim, PF_NO_COMPOUND)
 

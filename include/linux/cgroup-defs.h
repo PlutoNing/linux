@@ -49,7 +49,9 @@ enum cgroup_subsys_id {
 /* bits in struct cgroup_subsys_state flags field */
 enum {
 	CSS_NO_REF	= (1 << 0), /* no reference counting for this css，2024年07月11日15:39:57可否理解为已下线？2024年7月14日13:50:12
-	还是不清楚 */
+	还是不清楚
+	2024年07月17日10:59:48
+	和root css相关？ */
 	CSS_ONLINE	= (1 << 1), /* between ->css_online() and ->css_offline() */
 	CSS_RELEASED	= (1 << 2), /* refcnt reached zero, released */
 	CSS_VISIBLE	= (1 << 3), /* css is visible to userland，销毁css对应文件夹时置否 */
@@ -564,12 +566,14 @@ struct cgroup {
 
 	/*
 	 * list of pidlists, up to two for each namespace (one for procs, one
-	 * for tasks); created on demand.pidlists 列表，每个命名空间最多两个（一个用于 procs，一个用于tasks），按需创建。
+	 * for tasks); created on demand.pidlists 列表，
+	 每个命名空间最多两个（一个用于 procs，一个用于tasks），按需创建。
 	 */
 	struct list_head pidlists;
 	struct mutex pidlist_mutex;
 
-	/* used to wait for offlining of csses用于等待csses下线 */
+	/* used to wait for offlining of csses
+	用于等待csses下线 */
 	wait_queue_head_t offline_waitq;
 
 	/* used to schedule release agent 用于调度 release agent*/
@@ -776,6 +780,7 @@ struct cgroup_subsys {
 	int (*can_fork)(struct task_struct *task);
 	void (*cancel_fork)(struct task_struct *task);
 	void (*fork)(struct task_struct *task);
+	/* 子系统处理进程退出时候的回调 */
 	void (*exit)(struct task_struct *task);
 	void (*release)(struct task_struct *task);
 	void (*bind)(struct cgroup_subsys_state *root_css);

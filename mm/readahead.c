@@ -284,6 +284,7 @@ static unsigned long get_init_ra_size(unsigned long size, unsigned long max)
 }
 
 /*
+2024年07月17日16:05:48
  *  Get the previous window size, ramp it up, and
  *  return it as the new window size.
  */
@@ -582,6 +583,7 @@ page_cache_async_readahead(struct address_space *mapping,
 
 	/*
 	 * Same bit is used for PG_readahead and PG_reclaim.
+	 算是正在写回的就不预读？
 	 */
 	if (PageWriteback(page))
 		return;

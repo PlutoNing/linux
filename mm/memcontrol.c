@@ -615,7 +615,7 @@ static void __mem_cgroup_insert_exceeded(struct mem_cgroup_per_node *mz,
 	mz->on_tree = true;
 }
 /* 2024年06月27日11:37:06
-从全局的soft limit tree移走
+mz从全局的soft limit tree移走
  */
 static void __mem_cgroup_remove_exceeded(struct mem_cgroup_per_node *mz,
 					 struct mem_cgroup_tree_per_node *mctz)
@@ -659,7 +659,7 @@ static unsigned long soft_limit_excess(struct mem_cgroup *memcg)
 2024年06月21日14:35:14
 2024年6月24日23:18:00
 todo
-当usage超过softlimit时，最终会调用mem_cgroup_update_tree把memcg插入全局的
+当usage超过softlimit时，最终会调用mem_cgroup_update_tree把memcg？插入全局的
 mem_cgroup_tree_per_node红黑树。
 
  */
@@ -1127,6 +1127,8 @@ struct mem_cgroup *get_mem_cgroup_from_page(struct page *page)
 EXPORT_SYMBOL(get_mem_cgroup_from_page);
 
 /**
+2024年07月17日10:09:16
+active memcg是什么
  * If current->active_memcg is non-NULL, do not fallback to current->mm->memcg.
  */
 static __always_inline struct mem_cgroup *get_mem_cgroup_from_current(void)
@@ -1381,7 +1383,9 @@ int mem_cgroup_scan_tasks(struct mem_cgroup *memcg,
 		css_task_iter_start(&iter->css, CSS_TASK_ITER_PROCS, &it);
 		while (!ret && (task = css_task_iter_next(&it)))
 			ret = fn(task, arg);
+
 		css_task_iter_end(&it);
+
 		if (ret) {
 			mem_cgroup_iter_break(memcg, iter);
 			break;
@@ -1488,10 +1492,12 @@ static unsigned long mem_cgroup_margin(struct mem_cgroup *memcg)
 	unsigned long margin = 0;
 	unsigned long count;
 	unsigned long limit;
-
+	/* 现在的用量 */
 	count = page_counter_read(&memcg->memory);
+	/* 限制最大的用量 */
 	limit = READ_ONCE(memcg->memory.max);
 	if (count < limit)
+	/* ret = 限制-现在 */
 		margin = limit - count;
 
 	if (do_memsw_account()) {
@@ -1535,7 +1541,8 @@ unlock:
 	spin_unlock(&mc.lock);
 	return ret;
 }
-
+/* 2024年07月17日10:12:07
+ */
 static bool mem_cgroup_wait_acct_move(struct mem_cgroup *memcg)
 {
 	if (mc.moving_task && current != mc.moving_task) {
@@ -1747,7 +1754,8 @@ unsigned long mem_cgroup_get_max(struct mem_cgroup *memcg)
 	}
 	return max;
 }
-/* 2024年06月28日15:38:13 */
+/* 2024年06月28日15:38:13
+现在的用量 */
 unsigned long mem_cgroup_size(struct mem_cgroup *memcg)
 {
 	return page_counter_read(&memcg->memory);
@@ -6936,6 +6944,9 @@ static struct cftype memory_files[] = {
 	{ }	/* terminate */
 };
 
+
+
+
 struct cgroup_subsys memory_cgrp_subsys = {
 	.css_alloc = mem_cgroup_css_alloc,
 	.css_online = mem_cgroup_css_online,
@@ -7711,6 +7722,7 @@ static int __init mem_cgroup_init(void)
 		rtpn->rb_root = RB_ROOT;
 		rtpn->rb_rightmost = NULL;
 		spin_lock_init(&rtpn->lock);
+		/* soft limit tree根节点 */
 		soft_limit_tree.rb_tree_per_node[node] = rtpn;
 	}
 

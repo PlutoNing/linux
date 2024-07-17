@@ -5590,6 +5590,7 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	加入父亲的孩子链表 */
 	list_add_tail_rcu(&cgrp->self.sibling, &cgroup_parent(cgrp)->self.children);
 	atomic_inc(&root->nr_cgrps);
+	
 	cgroup_get_live(parent);
 
 	/*
@@ -6198,6 +6199,8 @@ void cgroup_path_from_kernfs_id(const union kernfs_node_id *id,
 
 /*
 2024年07月09日20:17:57
+2024年07月17日10:38:42
+输出进程的cg信息
  * proc_cgroup_show()
  *  - Print task's cgroup paths into seq_file, one line for each hierarchy
  *  - Used for /proc/<pid>/cgroup.
@@ -6213,10 +6216,11 @@ int proc_cgroup_show(struct seq_file *m, struct pid_namespace *ns,
 	buf = kmalloc(PATH_MAX, GFP_KERNEL);
 	if (!buf)
 		goto out;
-
+	/* 一直锁到函数结束？ */
 	mutex_lock(&cgroup_mutex);
 	spin_lock_irq(&css_set_lock);
 
+	/* 遍历系统每一个root，赋值到root */
 	for_each_root(root) {
 		struct cgroup_subsys *ss;
 		struct cgroup *cgrp;
@@ -6345,6 +6349,7 @@ void cgroup_cancel_fork(struct task_struct *child)
 /**
 2024年07月09日20:16:49
 todo
+2024年07月17日10:34:20
  * cgroup_post_fork - called on a new task after adding it to the task list
  * @child: the task in question
  *
@@ -6384,10 +6389,14 @@ void cgroup_post_fork(struct task_struct *child)
 		struct css_set *cset;
 
 		spin_lock_irq(&css_set_lock);
+		/* 获取自己的cset */
 		cset = task_css_set(current);
+
 		if (list_empty(&child->cg_list)) {
+			/* 说明还没有加入cg */
 			get_css_set(cset);
 			cset->nr_tasks++;
+			/* 把child加入自己的cset */
 			css_set_move_task(child, NULL, cset, false);
 		}
 
@@ -6425,7 +6434,7 @@ void cgroup_post_fork(struct task_struct *child)
 
 /**
 2024年07月09日20:06:19
-如何分离呢？
+进程从cg退出
 移动tsk，然后移动cg list。
  * cgroup_exit - detach cgroup from exiting task
  * @tsk: pointer to task_struct of exiting process
@@ -6462,10 +6471,12 @@ void cgroup_exit(struct task_struct *tsk)
 	if (!list_empty(&tsk->cg_list)) {
 		/* tsk通过cg list挂载到相同cg的链表 */
 		spin_lock_irq(&css_set_lock);
+
 		/* 就是移动cset，移到null表示移除 */
 		css_set_move_task(tsk, cset, NULL, false);
 		list_add_tail(&tsk->cg_list, &cset->dying_tasks);
 		cset->nr_tasks--;
+
 
 		WARN_ON_ONCE(cgroup_task_frozen(tsk));
 		if (unlikely(cgroup_task_freeze(tsk)))
@@ -6473,17 +6484,19 @@ void cgroup_exit(struct task_struct *tsk)
 
 		spin_unlock_irq(&css_set_lock);
 	} else {
+		/* 为什么get一下，这种情况就是还有别的进程链接这个cg */
 		get_css_set(cset);
 	}
 
-	/* see cgroup_post_fork() for details */
+	/* see cgroup_post_fork() for details
+	子系统处理进程退出时候的回调 */
 	do_each_subsys_mask(ss, i, have_exit_callback) {
 		ss->exit(tsk);
 	} while_each_subsys_mask();
 }
 /* 2024年07月09日20:04:46
 todo
-
+进程退出时调用
  */
 void cgroup_release(struct task_struct *task)
 {
@@ -6496,6 +6509,8 @@ void cgroup_release(struct task_struct *task)
 
 	if (use_task_css_set_links) {
 		spin_lock_irq(&css_set_lock);
+		/* 2024年07月17日10:23:04
+		也是iter时skip，和memcg的release有点像 */
 		css_set_skip_task_iters(task_css_set(task), task);
 		list_del_init(&task->cg_list);
 		spin_unlock_irq(&css_set_lock);

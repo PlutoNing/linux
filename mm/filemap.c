@@ -1492,6 +1492,8 @@ int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 }
 
 /**
+2024年07月17日16:06:30
+pagecache的gap是什么
  * page_cache_next_miss() - Find the next gap in the page cache.
  * @mapping: Mapping.
  * @index: Index.
@@ -1513,6 +1515,7 @@ int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 pgoff_t page_cache_next_miss(struct address_space *mapping,
 			     pgoff_t index, unsigned long max_scan)
 {
+	/*  */
 	XA_STATE(xas, &mapping->i_pages, index);
 
 	while (max_scan--) {
@@ -2408,7 +2411,9 @@ EXPORT_SYMBOL(generic_file_read_iter);
 
 #ifdef CONFIG_MMU
 #define MMAP_LOTSAMISS  (100)
-/* 2024年7月16日00:17:46 */
+/* 2024年7月16日00:17:46
+2024年07月17日15:58:36
+ */
 static struct file *maybe_unlock_mmap_for_io(struct vm_fault *vmf,
 					     struct file *fpin)
 {
@@ -2424,7 +2429,7 @@ static struct file *maybe_unlock_mmap_for_io(struct vm_fault *vmf,
 	 */
 	if ((flags & (FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_RETRY_NOWAIT)) ==
 	    FAULT_FLAG_ALLOW_RETRY) {
-			/* get mmap的file */
+			/* get 一下mmap的file */
 		fpin = get_file(vmf->vma->vm_file);
 		up_read(&vmf->vma->vm_mm->mmap_sem);
 	}
@@ -2544,18 +2549,20 @@ static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 	struct file *file = vmf->vma->vm_file;
 	struct file_ra_state *ra = &file->f_ra;
 	struct address_space *mapping = file->f_mapping;
+	/* fpin就是get了之后的mmap file */
 	struct file *fpin = NULL;
 	pgoff_t offset = vmf->pgoff;
 
-	/* If we don't want any read-ahead, don't bother */
+	/* If we don't want any read-ahead, don't bother
+	是说随机读取不预读吗 */
 	if (vmf->vma->vm_flags & VM_RAND_READ)
 		return fpin;
 
 	if (ra->mmap_miss > 0)
 		ra->mmap_miss--;
-
+	/* page有预读标记 */
 	if (PageReadahead(page)) {
-		/* 预读 */
+		/* 把mmap file进行get之后赋值给fpin，表示pinned了？ */
 		fpin = maybe_unlock_mmap_for_io(vmf, fpin);
 		page_cache_async_readahead(mapping, ra, file,
 					   page, offset, ra->ra_pages);
@@ -2590,6 +2597,7 @@ static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 vm_fault_t filemap_fault(struct vm_fault *vmf)
 {
 	int error;
+	/* 产生fault的vma的file */
 	struct file *file = vmf->vma->vm_file;
 	struct file *fpin = NULL;
 	struct address_space *mapping = file->f_mapping;
@@ -2608,11 +2616,13 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
 	/*
 	 * Do we have something in the page cache already?
 	 */
+	 /* 缺页的话会分配新页面 */
 	page = find_get_page(mapping, offset);
 	if (likely(page) && !(vmf->flags & FAULT_FLAG_TRIED)) {
 		/*
 		 * We found the page, so try async readahead before
 		 * waiting for the lock.
+		 
 		 */
 		fpin = do_async_mmap_readahead(vmf, page);
 	} else if (!page) {
@@ -2810,7 +2820,9 @@ out:
 	sb_end_pagefault(inode->i_sb);
 	return ret;
 }
-/* 2024年7月16日00:13:54 */
+/* 2024年7月16日00:13:54 
+2024年07月17日14:35:19
+*/
 const struct vm_operations_struct generic_file_vm_ops = {
 	.fault		= filemap_fault,
 	.map_pages	= filemap_map_pages,
