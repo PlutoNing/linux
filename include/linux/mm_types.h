@@ -104,7 +104,8 @@ ramp里面：页框与page结构对应，page结构中的mapping字段指向anon
 			在buddy里面时，是迁移类型。
 			页缓存里面时，是在mapping里面索引
 			------------------------
-			index表示页偏移，对于匿名映射，index 表示page在vm_areat_struct指定的虚拟内存区域中的页偏移;对于匿名映射，index表示物理页中的数据在文件中的页偏移。
+			index表示页偏移，对于匿名映射，index 表示page在vm_areat_struct
+			指定的虚拟内存区域中的页偏移;对于匿名映射，index表示物理页中的数据在文件中的页偏移。
 			
 			*/
 			pgoff_t index;		

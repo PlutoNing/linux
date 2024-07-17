@@ -480,6 +480,7 @@ extern int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 extern void unlock_page(struct page *page);
 
 /*
+2024年7月17日22:38:18
  * Return true if the page was successfully locked
  */
 static inline int trylock_page(struct page *page)
@@ -546,7 +547,10 @@ static inline void wait_on_page_locked(struct page *page)
 	if (PageLocked(page))
 		wait_on_page_bit(compound_head(page), PG_locked);
 }
-
+/* 2024年7月18日00:18:35 
+这个函数是先检查这个page是否有locked flag，如果有则会去等这个flag被clear，
+所以此时这个线程有可能会睡眠被调度出去，
+此时这个线程的状态被设置为TASK_KILLABLE，此后去查看这个线程的状态将是D状态。*/
 static inline int wait_on_page_locked_killable(struct page *page)
 {
 	if (!PageLocked(page))

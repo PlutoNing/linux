@@ -921,6 +921,7 @@ void release_pages(struct page **pages, int nr)
 EXPORT_SYMBOL(release_pages);
 
 /*
+2024年7月17日23:59:25
  * The pages which we're about to release may be in the deferred lru-addition
  * queues.  That would prevent them from really being freed right now.  That's
  * OK from a correctness point of view but is inefficient - those pages may be
@@ -933,9 +934,11 @@ EXPORT_SYMBOL(release_pages);
 void __pagevec_release(struct pagevec *pvec)
 {
 	if (!pvec->percpu_pvec_drained) {
+		/* 排空 */
 		lru_add_drain();
 		pvec->percpu_pvec_drained = true;
 	}
+	/* todo，为什么release */
 	release_pages(pvec->pages, pagevec_count(pvec));
 	pagevec_reinit(pvec);
 }
@@ -1136,11 +1139,12 @@ unsigned pagevec_lookup_range(struct pagevec *pvec,
 	return pagevec_count(pvec);
 }
 EXPORT_SYMBOL(pagevec_lookup_range);
-
+/* 2024年7月17日23:48:45 */
 unsigned pagevec_lookup_range_tag(struct pagevec *pvec,
 		struct address_space *mapping, pgoff_t *index, pgoff_t end,
 		xa_mark_t tag)
 {
+	/* 把页面放到pvec里面 */
 	pvec->nr = find_get_pages_range_tag(mapping, index, end, tag,
 					PAGEVEC_SIZE, pvec->pages);
 	return pagevec_count(pvec);

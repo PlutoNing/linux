@@ -1280,6 +1280,8 @@ void *xas_find_conflict(struct xa_state *xas)
 EXPORT_SYMBOL_GPL(xas_find_conflict);
 
 /**
+2024年7月17日22:18:19
+用xa_load()从XArray里取出一个值
  * xa_load() - Load an entry from an XArray.
  * @xa: XArray.
  * @index: index into array.
@@ -1392,6 +1394,11 @@ void *__xa_store(struct xarray *xa, unsigned long index, void *entry, gfp_t gfp)
 EXPORT_SYMBOL(__xa_store);
 
 /**
+2024年7月17日22:16:56
+这个函数会把参数给出的entry，放到请求的index这个地方。
+如果要XArray需要分配内存，会使用给定的gfp来分配。
+如果成功，返回值是之前存放在index的值。
+删除一个entry可以通过在这里存放NULL来实现，或者调用
  * xa_store() - Store this entry in the XArray.
  * @xa: XArray.
  * @index: Index into array.
@@ -1459,6 +1466,8 @@ void *__xa_cmpxchg(struct xarray *xa, unsigned long index,
 EXPORT_SYMBOL(__xa_cmpxchg);
 
 /**
+2024年7月17日22:17:36
+xa_insert用于存放但不覆盖现有的entry
  * __xa_insert() - Store this entry in the XArray if no entry is present.
  * @xa: XArray.
  * @index: Index into array.

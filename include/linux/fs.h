@@ -459,7 +459,9 @@ struct address_space {
 	struct xarray		i_pages;
 
 	gfp_t			gfp_mask;
-/* 共享内存映射的Page数量 */
+/* 共享内存映射的Page数量
+2024年7月18日00:26:01
+counts all VM_SHARED vmas的数量 */
 	atomic_t		i_mmap_writable;
 #ifdef CONFIG_READ_ONLY_THP_FOR_FS
 	/* number of thp, only for non-shmem files */
@@ -965,7 +967,8 @@ struct fown_struct {
  */
 struct file_ra_state {
 	pgoff_t start;			/* where readahead started 当前窗口的第一个页面索引*/
-	unsigned int size;		/* # of readahead pages当前窗口的页面数量。值为-1表示预读临时关闭，0表示当前窗口为空 */
+	unsigned int size;		/* # of readahead pages
+	当前窗口的页面数量。值为-1表示预读临时关闭，0表示当前窗口为空 */
 	unsigned int async_size;	/* do asynchronous readahead when
 					   there are only # of pages ahead 异步预读页面数量*/
 
@@ -2046,7 +2049,7 @@ struct super_operations {
 #define S_AUTOMOUNT	2048	/* Automount/referral quasi-directory */
 #define S_NOSEC		4096	/* no suid or xattr security attributes */
 #ifdef CONFIG_FS_DAX
-#define S_DAX		8192	/* Direct Access, avoiding the page cache */
+#define S_DAX		8192	/* 直接IO，Direct Access, avoiding the page cache */
 #else
 #define S_DAX		0	/* Make all the DAX code disappear */
 #endif

@@ -2093,6 +2093,7 @@ void __init page_writeback_init(void)
 }
 
 /**
+2024年7月17日23:42:31
  * tag_pages_for_writeback - tag pages to be written by write_cache_pages
  * @mapping: address space structure to write
  * @start: starting page index
@@ -2114,11 +2115,14 @@ void tag_pages_for_writeback(struct address_space *mapping,
 	void *page;
 
 	xas_lock_irq(&xas);
+	/* 遍历xas */
 	xas_for_each_marked(&xas, page, end, PAGECACHE_TAG_DIRTY) {
+
 		xas_set_mark(&xas, PAGECACHE_TAG_TOWRITE);
+
 		if (++tagged % XA_CHECK_SCHED)
 			continue;
-
+		/* 避免时间太长了吗 */
 		xas_pause(&xas);
 		xas_unlock_irq(&xas);
 		cond_resched();
@@ -2129,7 +2133,9 @@ void tag_pages_for_writeback(struct address_space *mapping,
 EXPORT_SYMBOL(tag_pages_for_writeback);
 
 /**
- * write_cache_pages - walk the list of dirty pages of the given address space and write all of them.
+2024年7月17日23:37:59
+ * write_cache_pages - walk the list of dirty pages of the given address space 
+ and write all of them.
  * @mapping: address space structure to write
  * @wbc: subtract the number of written pages from *@wbc->nr_to_write
  * @writepage: function called for each page
@@ -2176,6 +2182,7 @@ int write_cache_pages(struct address_space *mapping,
 	xa_mark_t tag;
 
 	pagevec_init(&pvec);
+
 	if (wbc->range_cyclic) {
 		writeback_index = mapping->writeback_index; /* prev offset */
 		index = writeback_index;
@@ -2186,22 +2193,28 @@ int write_cache_pages(struct address_space *mapping,
 		if (wbc->range_start == 0 && wbc->range_end == LLONG_MAX)
 			range_whole = 1;
 	}
+	/*  */
 	if (wbc->sync_mode == WB_SYNC_ALL || wbc->tagged_writepages)
 		tag = PAGECACHE_TAG_TOWRITE;
 	else
 		tag = PAGECACHE_TAG_DIRTY;
+
 	if (wbc->sync_mode == WB_SYNC_ALL || wbc->tagged_writepages)
+	/* 标记成什么样 */
 		tag_pages_for_writeback(mapping, index, end);
+
 	done_index = index;
+	
 	while (!done && (index <= end)) {
 		int i;
-
+		/* 把页面存到pvec里面，返回存的数量 */
 		nr_pages = pagevec_lookup_range_tag(&pvec, mapping, &index, end,
 				tag);
 		if (nr_pages == 0)
 			break;
 
 		for (i = 0; i < nr_pages; i++) {
+			/* 对刚才存储到pvec的页面逐个写回儿 */
 			struct page *page = pvec.pages[i];
 
 			done_index = page->index;
@@ -2223,12 +2236,17 @@ continue_unlock:
 			}
 
 			if (!PageDirty(page)) {
-				/* someone wrote it for us */
+				/* someone wrote it for us
+				2024年7月17日23:54:21 有race吗 */
 				goto continue_unlock;
 			}
 
 			if (PageWriteback(page)) {
+				/* 正在被写回 */
 				if (wbc->sync_mode != WB_SYNC_NONE)
+				/* 是SYNC_ALL，需要等
+			2024年7月17日23:55:35
+			话说等啥 */
 					wait_on_page_writeback(page);
 				else
 					goto continue_unlock;
@@ -2239,6 +2257,7 @@ continue_unlock:
 				goto continue_unlock;
 
 			trace_wbc_writepage(wbc, inode_to_bdi(mapping->host));
+			/* 准备写 */
 			error = (*writepage)(page, wbc, data);
 			if (unlikely(error)) {
 				/*
@@ -2278,6 +2297,7 @@ continue_unlock:
 				break;
 			}
 		}
+		/*  */
 		pagevec_release(&pvec);
 		cond_resched();
 	}
@@ -2297,6 +2317,7 @@ continue_unlock:
 EXPORT_SYMBOL(write_cache_pages);
 
 /*
+2024年7月17日23:34:31
  * Function used by generic_writepages to call the real writepage
  * function and set the mapping flags on error
  */
@@ -2304,13 +2325,18 @@ static int __writepage(struct page *page, struct writeback_control *wbc,
 		       void *data)
 {
 	struct address_space *mapping = data;
+
 	int ret = mapping->a_ops->writepage(page, wbc);
+
 	mapping_set_error(mapping, ret);
 	return ret;
 }
 
 /**
- * generic_writepages - walk the list of dirty pages of the given address space and writepage() all of them.
+2024年7月17日23:29:43
+遍历mapping。进行write_page。
+ * generic_writepages - walk the list of dirty pages of the given address space and 
+ writepage() all of them.
  * @mapping: address space structure to write
  * @wbc: subtract the number of written pages from *@wbc->nr_to_write
  *
@@ -2325,34 +2351,48 @@ int generic_writepages(struct address_space *mapping,
 	struct blk_plug plug;
 	int ret;
 
-	/* deal with chardevs and other special file */
+	/* deal with chardevs and other special file
+	只使用file的ops吗，系统没有一般的api吗 */
 	if (!mapping->a_ops->writepage)
 		return 0;
-
+		/* todo */
 	blk_start_plug(&plug);
+	/* 写回 */
 	ret = write_cache_pages(mapping, wbc, __writepage, mapping);
+	
 	blk_finish_plug(&plug);
+	
 	return ret;
 }
 
 EXPORT_SYMBOL(generic_writepages);
-
+/* 2024年7月17日23:25:27
+ */
 int do_writepages(struct address_space *mapping, struct writeback_control *wbc)
 {
 	int ret;
-
+	/* 我去咋还可能为负值2024年7月17日23:26:48 */
 	if (wbc->nr_to_write <= 0)
 		return 0;
+
 	while (1) {
+		/* 先尝试回调file的ops */
 		if (mapping->a_ops->writepages)
 			ret = mapping->a_ops->writepages(mapping, wbc);
 		else
 			ret = generic_writepages(mapping, wbc);
+
 		if ((ret != -ENOMEM) || (wbc->sync_mode != WB_SYNC_ALL))
+		/* 如果不是因为NOMEM（可以重试，说不定就又可以了），
+			或者不要求SYNCALL这种事务的机制
+			就不做了，break。 */
 			break;
+		
 		cond_resched();
+
 		congestion_wait(BLK_RW_ASYNC, HZ/50);
 	}
+
 	return ret;
 }
 
@@ -2642,6 +2682,7 @@ EXPORT_SYMBOL(__cancel_dirty_page);
 
 /*
 2024年7月14日17:37:50
+2024年7月17日23:55:57
  * Clear a page's dirty flag, while caring for dirty memory accounting.
  * Returns true if the page was previously dirty.
  *
@@ -2705,6 +2746,7 @@ int clear_page_dirty_for_io(struct page *page)
 		 */
 		wb = unlocked_inode_to_wb_begin(inode, &cookie);
 		if (TestClearPageDirty(page)) {
+			/* 改变统计信息 */
 			dec_lruvec_page_state(page, NR_FILE_DIRTY);
 			dec_zone_page_state(page, NR_ZONE_WRITE_PENDING);
 			dec_wb_stat(wb, WB_RECLAIMABLE);

@@ -149,6 +149,7 @@ out:
 /*
 2024年6月30日14:56:37
 预读实际函数
+对offset后面的一些页面进行readpages（）
  * __do_page_cache_readahead() actually reads a chunk of disk.  It allocates
  * the pages first, then submits them for I/O. This avoids the very bad
  * behaviour which would occur if page allocations are causing VM writeback.
@@ -166,6 +167,7 @@ unsigned int __do_page_cache_readahead(struct address_space *mapping,
 	LIST_HEAD(page_pool);
 	int page_idx;
 	unsigned int nr_pages = 0;
+	/* 文件长度 */
 	loff_t isize = i_size_read(inode);
 	gfp_t gfp_mask = readahead_gfp_mask(mapping);
 
@@ -178,7 +180,8 @@ unsigned int __do_page_cache_readahead(struct address_space *mapping,
 	 * Preallocate as many pages as we will need.
 	 */
 	for (page_idx = 0; page_idx < nr_to_read; page_idx++) {
-		/*  */
+		/*  2024年7月17日22:33:08
+		看来是读取offset后面的页面？为什么算history往前算*/
 		pgoff_t page_offset = offset + page_idx;
 
 		if (page_offset > end_index)
@@ -193,10 +196,13 @@ unsigned int __do_page_cache_readahead(struct address_space *mapping,
 			 读取页面，刷新到lru啥啥的
 			 2024年7月16日00:23:08
 			 算是遍历mapping，找到一个页面（nr pages大于0）就进行一次预读？
+			 2024年7月17日22:34:01
+			 文件page-offset位置对应的页面已经在了，就读。
 			 */
 			if (nr_pages)
 				read_pages(mapping, filp, &page_pool, nr_pages,
 						gfp_mask);
+			/* 读过了，清零。 */
 			nr_pages = 0;
 			continue;
 		}
@@ -205,10 +211,12 @@ unsigned int __do_page_cache_readahead(struct address_space *mapping,
 		page = __page_cache_alloc(gfp_mask);
 		if (!page)
 			break;
+		/* page_offset是文件内索引 */
 		page->index = page_offset;
 		list_add(&page->lru, &page_pool);
 		if (page_idx == nr_to_read - lookahead_size)
 			SetPageReadahead(page);
+		/* 刚刚申请了页面，需要读的+1. */
 		nr_pages++;
 	}
 
@@ -340,6 +348,12 @@ static unsigned long get_next_ra_size(struct file_ra_state *ra,
  */
 
 /*
+2024年7月17日22:04:30
+计算从 @offset-1 到 @offset-@max 连续缓存的页面数，
+保守估计连续读取序列的长度，或者内存紧张的系统中的抖动阈值
+2024年7月17日22:27:46
+好像head是mapping的pages里面最大的索引，offset是要读的位置
+那么这个count就是计算offset-最大索引？历史页面数量。
  * Count contiguously cached pages from @offset-1 to @offset-@max,
  * this count is a conservative estimation of
  * 	- length of the sequential read sequence, or
@@ -358,6 +372,8 @@ static pgoff_t count_history_pages(struct address_space *mapping,
 }
 
 /*
+2024年7月17日22:00:27
+pagecache的ctx是什么
  * page cache context based read-ahead
  */
 static int try_context_readahead(struct address_space *mapping,
@@ -367,7 +383,8 @@ static int try_context_readahead(struct address_space *mapping,
 				 unsigned long max)
 {
 	pgoff_t size;
-
+	/* 2024年7月17日22:28:44
+	size好像是offset与最大page的差值 */
 	size = count_history_pages(mapping, offset, max);
 
 	/*
@@ -385,6 +402,7 @@ static int try_context_readahead(struct address_space *mapping,
 		size *= 2;
 
 	ra->start = offset;
+	/* 好像还真是和读取数量大小有关系 */
 	ra->size = min(size + req_size, max);
 	ra->async_size = 1;
 
@@ -394,7 +412,7 @@ static int try_context_readahead(struct address_space *mapping,
 /*
 2024年6月30日15:04:11
 2024年7月16日00:19:50
-
+实际调用readpages读取一些页面
  * A minimal readahead algorithm for trivial sequential/random reads.
  */
 static unsigned long
@@ -475,6 +493,7 @@ ondemand_readahead(struct address_space *mapping,
 	/*
 	 * Query the page cache and look for the traces(cached history pages)
 	 * that a sequential stream would leave behind.
+	里面算了读取位置与最大page的差值，太小的话就返回0	
 	 */
 	if (try_context_readahead(mapping, ra, offset, req_size, max_pages))
 		goto readit;

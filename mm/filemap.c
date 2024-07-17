@@ -368,7 +368,9 @@ void delete_from_page_cache_batch(struct address_space *mapping,
 	for (i = 0; i < pagevec_count(pvec); i++)
 		page_cache_free_page(mapping, pvec->pages[i]);
 }
-
+/* 2024年7月18日00:10:25
+探测flags的一些标志位
+ */
 int filemap_check_errors(struct address_space *mapping)
 {
 	int ret = 0;
@@ -394,6 +396,9 @@ static int filemap_check_and_keep_errors(struct address_space *mapping)
 }
 
 /**
+2024年7月17日22:53:02
+写回的函数？
+2024年7月18日00:07:29写回一段范围内的数据
  * __filemap_fdatawrite_range - start writeback on mapping dirty pages in range
  * @mapping:	address space structure to write
  * @start:	offset in bytes where the range starts
@@ -420,14 +425,17 @@ int __filemap_fdatawrite_range(struct address_space *mapping, loff_t start,
 		.range_start = start,
 		.range_end = end,
 	};
-
+	/* 如果设备不需要回写，没有响应标志位 */
 	if (!mapping_cap_writeback_dirty(mapping) ||
 	    !mapping_tagged(mapping, PAGECACHE_TAG_DIRTY))
 		return 0;
-
+	/* 给wbc添加wb也就是添加file，也就是这个mapp的host */
 	wbc_attach_fdatawrite_inode(&wbc, mapping->host);
+	/* 2024年7月17日23:25:11当场回写吗 */
 	ret = do_writepages(mapping, &wbc);
+	/* 写回完成，分离wbc的啥 */
 	wbc_detach_inode(&wbc);
+
 	return ret;
 }
 
@@ -466,6 +474,8 @@ int filemap_flush(struct address_space *mapping)
 EXPORT_SYMBOL(filemap_flush);
 
 /**
+2024年7月17日22:48:03
+在范围内至少要有一个页面
  * filemap_range_has_page - check if a page exists in range.
  * @mapping:           address space within which to check
  * @start_byte:        offset in bytes where the range starts
@@ -488,6 +498,7 @@ bool filemap_range_has_page(struct address_space *mapping,
 		return false;
 
 	rcu_read_lock();
+	/* 读取pages都要rcu吗 */
 	for (;;) {
 		page = xas_find(&xas, max);
 		if (xas_retry(&xas, page))
@@ -507,7 +518,10 @@ bool filemap_range_has_page(struct address_space *mapping,
 	return page != NULL;
 }
 EXPORT_SYMBOL(filemap_range_has_page);
-
+/* 2024年7月18日00:09:07
+如何遍历？
+如何等待？
+ */
 static void __filemap_fdatawait_range(struct address_space *mapping,
 				     loff_t start_byte, loff_t end_byte)
 {
@@ -522,29 +536,33 @@ static void __filemap_fdatawait_range(struct address_space *mapping,
 	pagevec_init(&pvec);
 	while (index <= end) {
 		unsigned i;
-
+		/* 先把处于写回状态的page放到pvec，遍历完成 */
 		nr_pages = pagevec_lookup_range_tag(&pvec, mapping, &index,
 				end, PAGECACHE_TAG_WRITEBACK);
 		if (!nr_pages)
 			break;
 
 		for (i = 0; i < nr_pages; i++) {
+			/* 逐个等待 */
 			struct page *page = pvec.pages[i];
 
 			wait_on_page_writeback(page);
 			ClearPageError(page);
 		}
+		/* 释放pvec */
 		pagevec_release(&pvec);
 		cond_resched();
 	}
 }
 
 /**
+2024年7月18日00:08:14
+等待范围内写回完成
  * filemap_fdatawait_range - wait for writeback to complete
  * @mapping:		address space structure to wait for
  * @start_byte:		offset in bytes where the range starts
  * @end_byte:		offset in bytes where the range ends (inclusive)
- *
+ *遍历范围内页面，等待他们全部写回完成。
  * Walk the list of under-writeback pages of the given address space
  * in the given range and wait for all of them.  Check error status of
  * the address space and return it.
@@ -631,12 +649,17 @@ int filemap_fdatawait_keep_errors(struct address_space *mapping)
 }
 EXPORT_SYMBOL(filemap_fdatawait_keep_errors);
 
-/* Returns true if writeback might be needed or already in progress. */
+/* 
+2024年7月17日22:50:52
+是否需要写回或者已经在写回
+Returns true if writeback might be needed or already in progress. */
 static bool mapping_needs_writeback(struct address_space *mapping)
 {
-	if (dax_mapping(mapping))
-		return mapping->nrexceptional;
 
+	if (dax_mapping(mapping))
+	/* 直接io */
+		return mapping->nrexceptional;
+	/* 2024年7月17日22:52:39为什么nr pages可以拿来判断写回 */
 	return mapping->nrpages;
 }
 
@@ -668,6 +691,7 @@ int filemap_write_and_wait(struct address_space *mapping)
 EXPORT_SYMBOL(filemap_write_and_wait);
 
 /**
+2024年7月17日22:50:14
  * filemap_write_and_wait_range - write out & wait on a file range
  * @mapping:	the address_space for the pages
  * @lstart:	offset in bytes where the range starts
@@ -686,10 +710,12 @@ int filemap_write_and_wait_range(struct address_space *mapping,
 	int err = 0;
 
 	if (mapping_needs_writeback(mapping)) {
+		/* 写回一段范围内的数据 */
 		err = __filemap_fdatawrite_range(mapping, lstart, lend,
 						 WB_SYNC_ALL);
 		/* See comment of filemap_write_and_wait() */
 		if (err != -EIO) {
+			/* 等待写回完成 */
 			int err2 = filemap_fdatawait_range(mapping,
 						lstart, lend);
 			if (!err)
@@ -701,8 +727,12 @@ int filemap_write_and_wait_range(struct address_space *mapping,
 	} else {
 		err = filemap_check_errors(mapping);
 	}
+
 	return err;
+
 }
+
+
 EXPORT_SYMBOL(filemap_write_and_wait_range);
 
 void __filemap_set_wb_err(struct address_space *mapping, int err)
@@ -1278,7 +1308,7 @@ void wait_on_page_bit(struct page *page, int bit_nr)
 	wait_on_page_bit_common(q, page, bit_nr, TASK_UNINTERRUPTIBLE, SHARED);
 }
 EXPORT_SYMBOL(wait_on_page_bit);
-
+/* 2024年7月18日00:18:46 */
 int wait_on_page_bit_killable(struct page *page, int bit_nr)
 {
 	wait_queue_head_t *q = page_waitqueue(page);
@@ -1427,6 +1457,7 @@ void page_endio(struct page *page, bool is_write, int err)
 EXPORT_SYMBOL_GPL(page_endio);
 
 /**
+2024年7月17日22:40:13
  * __lock_page - get a lock on the page, assuming we need to sleep to get it
  * @__page: the page to lock
  */
@@ -1531,6 +1562,10 @@ pgoff_t page_cache_next_miss(struct address_space *mapping,
 EXPORT_SYMBOL(page_cache_next_miss);
 
 /**
+2024年7月17日22:06:09
+gap是什么
+2024年7月17日22:26:48
+从xas倒着找，找到最大的？
  * page_cache_prev_miss() - Find the previous gap in the page cache.
  * @mapping: Mapping.
  * @index: Index.
@@ -1969,6 +2004,7 @@ retry:
 EXPORT_SYMBOL(find_get_pages_contig);
 
 /**
+2024年7月17日23:49:34
  * find_get_pages_range_tag - find and return pages in given range matching @tag
  * @mapping:	the address_space to search
  * @index:	the starting page index
@@ -1994,6 +2030,7 @@ unsigned find_get_pages_range_tag(struct address_space *mapping, pgoff_t *index,
 		return 0;
 
 	rcu_read_lock();
+
 	xas_for_each_marked(&xas, page, end, tag) {
 		if (xas_retry(&xas, page))
 			continue;
@@ -2011,7 +2048,7 @@ unsigned find_get_pages_range_tag(struct address_space *mapping, pgoff_t *index,
 		/* Has the page moved or been split? */
 		if (unlikely(page != xas_reload(&xas)))
 			goto put_page;
-
+		/* 赋值到pvec的pages */
 		pages[ret] = find_subpage(page, xas.xa_index);
 		if (++ret == nr_pages) {
 			*index = xas.xa_index + 1;
@@ -2042,6 +2079,7 @@ out:
 EXPORT_SYMBOL(find_get_pages_range_tag);
 
 /*
+2024年7月18日00:42:03
  * CD/DVDs are error prone. When a medium error occurs, the driver may fail
  * a _large_ part of the i/o request. Imagine the worst scenario:
  *
@@ -2064,6 +2102,7 @@ static void shrink_readahead_size_eio(struct file *filp,
 
 /**
 2024年6月29日22:23:02
+2024年7月18日00:13:29
  * generic_file_buffered_read - generic file read routine
  * @iocb:	the iocb to read
  * @iter:	data destination
@@ -2097,6 +2136,7 @@ static ssize_t generic_file_buffered_read(struct kiocb *iocb,
 
 	if (unlikely(*ppos >= inode->i_sb->s_maxbytes))
 		return 0;
+	/* 不能超过限制 */
 	iov_iter_truncate(iter, inode->i_sb->s_maxbytes);
 
 	index = *ppos >> PAGE_SHIFT;
@@ -2127,14 +2167,15 @@ find_page:
 			page_cache_sync_readahead(mapping,
 					ra, filp,
 					index, last_index - index);
-					/* 刚才预读的时候可能新申请页面了 */
+					/* 刚才预读的时候可能新申请页面了，所以这里重新获取一下 */
 			page = find_get_page(mapping, index);
 			if (unlikely(page == NULL))
 				goto no_cached_page;
 		}
 		/* 直接就已经在缓存了 */
 		if (PageReadahead(page)) {
-			/* 如果page有预读属性，那么异步预读 */
+			/* 如果page有预读属性，那么异步预读，
+			其实就是readpages()一些页面 */
 			page_cache_async_readahead(mapping,
 					ra, filp, page,
 					index, last_index - index);
@@ -2151,18 +2192,24 @@ find_page:
 			 * wait_on_page_locked is used to avoid unnecessarily
 			 * serialisations and why it's safe.
 			 */
+			 /* 这个函数是先检查这个page是否有locked flag，如果有则会去等这个flag被clear，
+			 所以此时这个线程有可能会睡眠被调度出去，
+			 此时这个线程的状态被设置为TASK_KILLABLE，此后去查看这个线程的状态将是D状态。 */
 			error = wait_on_page_locked_killable(page);
 			if (unlikely(error))
 				goto readpage_error;
 			if (PageUptodate(page))
+			/* 等待期间变新了？ */
 				goto page_ok;
 
 			if (inode->i_blkbits == PAGE_SHIFT ||
 					!mapping->a_ops->is_partially_uptodate)
+					/* 什么逻辑？2024年7月18日00:21:40 */
 				goto page_not_up_to_date;
 			/* pipes can't handle partially uptodate pages */
 			if (unlikely(iov_iter_is_pipe(iter)))
 				goto page_not_up_to_date;
+			/* 为什么不能获得锁，就是dirty */
 			if (!trylock_page(page))
 				goto page_not_up_to_date;
 			/* Did it get truncated before we got the lock? */
@@ -2172,8 +2219,11 @@ find_page:
 							offset, iter->count))
 				goto page_not_up_to_date_locked;
 			unlock_page(page);
+
+		/* 脏页这一块好麻烦 */
 		}
 page_ok:
+/* 好像页面变新了来到这 */
 		/*
 		 * i_size must be checked after we know the page is Uptodate.
 		 *
@@ -2204,8 +2254,10 @@ page_ok:
 		/* If users can be writing to this page using arbitrary
 		 * virtual addresses, take care about potential aliasing
 		 * before reading the page on the kernel side.
+
 		 */
 		if (mapping_writably_mapped(mapping))
+		/* 在用户空间有共享的vma */
 			flush_dcache_page(page);
 
 		/*
@@ -2219,6 +2271,7 @@ page_ok:
 		/*
 		 * Ok, we have the page, and it's up-to-date, so
 		 * now we can copy it to user space...
+		 拷贝数据
 		 */
 
 		ret = copy_page_to_iter(page, offset, nr, iter);
@@ -2238,13 +2291,16 @@ page_ok:
 		continue;
 
 page_not_up_to_date:
-		/* Get exclusive access to the page ... */
+		/* Get exclusive access to the page ...
+		还要继续等吗 */
 		error = lock_page_killable(page);
 		if (unlikely(error))
 			goto readpage_error;
 
 page_not_up_to_date_locked:
-		/* Did it get truncated before we got the lock? */
+		/* Did it get truncated before we got the lock?
+		2024年7月18日00:29:42
+		todo，删除的情况 */
 		if (!page->mapping) {
 			unlock_page(page);
 			put_page(page);
@@ -2264,23 +2320,28 @@ readpage:
 		 * PG_error will be set again if readpage fails.
 		 */
 		ClearPageError(page);
-		/* Start the actual read. The read will unlock the page. */
+		/* Start the actual read. The read will unlock the page.
+		为什么还能用ops来read？哦哦是从file读到mapping吗， */
 		error = mapping->a_ops->readpage(filp, page);
 
 		if (unlikely(error)) {
+			/* 读取到mapping出错了？ */
 			if (error == AOP_TRUNCATED_PAGE) {
 				put_page(page);
 				error = 0;
+				/* 为啥到find page ？，可能是和ops回调有关*/
 				goto find_page;
 			}
 			goto readpage_error;
 		}
 
 		if (!PageUptodate(page)) {
+			/*  */
 			error = lock_page_killable(page);
 			if (unlikely(error))
 				goto readpage_error;
 			if (!PageUptodate(page)) {
+				/*  */
 				if (page->mapping == NULL) {
 					/*
 					 * invalidate_mapping_pages got it
@@ -2330,6 +2391,7 @@ no_cached_page:
 	}
 
 would_block:
+/* 申请页面不成功，或者脏页 */
 	error = -EAGAIN;
 out:
 	ra->prev_pos = prev_index;
@@ -2342,6 +2404,7 @@ out:
 }
 
 /**
+2024年7月17日22:43:22
  * generic_file_read_iter - generic filesystem read routine
  * @iocb:	kernel I/O control block
  * @iter:	destination for the data read
@@ -2360,8 +2423,9 @@ generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 
 	if (!count)
 		goto out; /* skip atime */
-
+	/* 为什么有这个if的特殊处理 */
 	if (iocb->ki_flags & IOCB_DIRECT) {
+		/* direct IO的路径？ */
 		struct file *file = iocb->ki_filp;
 		struct address_space *mapping = file->f_mapping;
 		struct inode *inode = mapping->host;
@@ -2371,8 +2435,13 @@ generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 		if (iocb->ki_flags & IOCB_NOWAIT) {
 			if (filemap_range_has_page(mapping, iocb->ki_pos,
 						   iocb->ki_pos + count - 1))
+						   /* 在范围内没有page */
 				return -EAGAIN;
 		} else {
+			/* 在范围内有已存在的page
+			2024年7月18日00:06:40
+			里面挺深的
+			好像主要是写回的作用， */
 			retval = filemap_write_and_wait_range(mapping,
 						iocb->ki_pos,
 					        iocb->ki_pos + count - 1);
@@ -2381,9 +2450,10 @@ generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 		}
 
 		file_accessed(file);
-
+		/* 又IO？ */
 		retval = mapping->a_ops->direct_IO(iocb, iter);
 		if (retval >= 0) {
+			/* 返回值是写成功的数量 */
 			iocb->ki_pos += retval;
 			count -= retval;
 		}
@@ -2437,6 +2507,8 @@ static struct file *maybe_unlock_mmap_for_io(struct vm_fault *vmf,
 }
 
 /*
+2024年7月17日22:37:52
+加锁
  * lock_page_maybe_drop_mmap - lock the page, possibly dropping the mmap_sem
  * @vmf - the vm_fault for this fault.
  * @page - the page to lock.
@@ -2460,10 +2532,11 @@ static int lock_page_maybe_drop_mmap(struct vm_fault *vmf, struct page *page,
 	 */
 	if (vmf->flags & FAULT_FLAG_RETRY_NOWAIT)
 		return 0;
-
+		/* 好像其实就是get一下file */
 	*fpin = maybe_unlock_mmap_for_io(vmf, *fpin);
 	if (vmf->flags & FAULT_FLAG_KILLABLE) {
 		if (__lock_page_killable(page)) {
+			/* todo */
 			/*
 			 * We didn't have the right flags to drop the mmap_sem,
 			 * but all fault_handlers only check for fatal signals
@@ -2475,7 +2548,10 @@ static int lock_page_maybe_drop_mmap(struct vm_fault *vmf, struct page *page,
 			return 0;
 		}
 	} else
+	/* 刚才trylock失败了，这里可能会sleep来lock */
 		__lock_page(page);
+
+	
 	return 1;
 }
 

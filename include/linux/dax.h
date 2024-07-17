@@ -233,7 +233,9 @@ static inline int __dax_zero_page_range(struct block_device *bdev,
 	return -ENXIO;
 }
 #endif
-
+/* 2024年7月17日22:51:31
+是直接io的文件
+ */
 static inline bool dax_mapping(struct address_space *mapping)
 {
 	return mapping->host && IS_DAX(mapping->host);

@@ -130,10 +130,11 @@ struct bdi_writeback_congested {
  * that a new wb for the combination can be created.
  */
 struct bdi_writeback {
+	/* 指向的bdi */
 	struct backing_dev_info *bdi;	/* our parent bdi */
 
 	unsigned long state;		/* Always use atomic bitops on this */
-	unsigned long last_old_flush;	/* last old data flush */
+	unsigned long last_old_flush;	/*上次刷新的时间 last old data flush */
 
 	struct list_head b_dirty;	/* dirty inodes 暂存所有的脏 inode 的链表 */
 	struct list_head b_io;		/* parked for writeback  暂存即将回写的 inode 的链表*/
@@ -175,7 +176,7 @@ struct bdi_writeback {
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct percpu_ref refcnt;	/* used only for !root wb's */
 	struct fprop_local_percpu memcg_completions;
-	struct cgroup_subsys_state *memcg_css; /* the associated memcg */
+	struct cgroup_subsys_state *memcg_css; /* 控制自己的memcg，the associated memcg */
 	struct cgroup_subsys_state *blkcg_css; /* and blkcg */
 	struct list_head memcg_node;	/* anchored at memcg->cgwb_list */
 	struct list_head blkcg_node;	/* anchored at blkcg->cgwb_list */
@@ -200,7 +201,7 @@ struct backing_dev_info {
 	void *congested_data;	/* Pointer to aux data for congested func */
 
 	const char *name;
-
+/* 引用计数，表示有多少个wb引用此设备 */
 	struct kref refcnt;	/* Reference counter for the structure */
 	unsigned int capabilities; /* Device capabilities */
 	unsigned int min_ratio;
@@ -215,6 +216,7 @@ struct backing_dev_info {
 	struct bdi_writeback wb;  /* the root writeback info for this bdi 用于控制回写行为的核心成员 */
 	struct list_head wb_list; /* list of all wbs */
 #ifdef CONFIG_CGROUP_WRITEBACK
+/* 好像一个memcg与wb的kv容器 */
 	struct radix_tree_root cgwb_tree; /* radix tree of active cgroup wbs */
 	struct rb_root cgwb_congested_tree; /* their congested states */
 	struct mutex cgwb_release_mutex;  /* protect shutdown of wb structs */

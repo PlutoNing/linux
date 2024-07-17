@@ -259,21 +259,27 @@ void wb_wait_for_completion(struct wb_completion *done)
 
 static atomic_t isw_nr_in_flight = ATOMIC_INIT(0);
 static struct workqueue_struct *isw_wq;
-
+/* 2024年7月17日22:58:31
+page为null就使用current的memcg？
+ */
 void __inode_attach_wb(struct inode *inode, struct page *page)
 {
 	struct backing_dev_info *bdi = inode_to_bdi(inode);
 	struct bdi_writeback *wb = NULL;
 
 	if (inode_cgwb_enabled(inode)) {
+		/* 这个文件需要进行cgroup的控制 */
 		struct cgroup_subsys_state *memcg_css;
-
+		/* 不过为什么是memcg的管控，不是blkcg */
 		if (page) {
 			memcg_css = mem_cgroup_css_from_page(page);
+			/* 创建回写的bdi控制结构 */
 			wb = wb_get_create(bdi, memcg_css, GFP_ATOMIC);
 		} else {
+			/* page为null的情况，说明什么？ */
 			/* must pin memcg_css, see wb_get_create() */
 			memcg_css = task_get_css(current, memory_cgrp_id);
+			/* page为null，使用current的memcg？ */
 			wb = wb_get_create(bdi, memcg_css, GFP_ATOMIC);
 			css_put(memcg_css);
 		}
@@ -559,6 +565,7 @@ out_free:
 }
 
 /**
+2024年7月17日23:19:08
  * wbc_attach_and_unlock_inode - associate wbc with target inode and unlock it
  * @wbc: writeback_control of interest
  * @inode: target inode
@@ -572,10 +579,12 @@ void wbc_attach_and_unlock_inode(struct writeback_control *wbc,
 				 struct inode *inode)
 {
 	if (!inode_cgwb_enabled(inode)) {
+		/* 没有cgwb */
 		spin_unlock(&inode->i_lock);
 		return;
 	}
-
+	/* 一个wbc负责一个wb，
+	好像是wbc管理wb就是关联了inode就是关联了file  */
 	wbc->wb = inode_to_wb(inode);
 	wbc->inode = inode;
 
@@ -585,8 +594,9 @@ void wbc_attach_and_unlock_inode(struct writeback_control *wbc,
 	wbc->wb_bytes = 0;
 	wbc->wb_lcand_bytes = 0;
 	wbc->wb_tcand_bytes = 0;
-
+	/* wb被关联了，get一下 */
 	wb_get(wbc->wb);
+	/* 可以解锁了，加锁是在上一栈函数里面其他函数做的 */
 	spin_unlock(&inode->i_lock);
 
 	/*
@@ -602,6 +612,8 @@ void wbc_attach_and_unlock_inode(struct writeback_control *wbc,
 EXPORT_SYMBOL_GPL(wbc_attach_and_unlock_inode);
 
 /**
+2024年7月18日00:02:13
+分离还挺麻烦的
  * wbc_detach_inode - disassociate wbc from inode and perform foreign detection
  * @wbc: writeback_control of the just finished writeback
  *
@@ -671,6 +683,7 @@ void wbc_detach_inode(struct writeback_control *wbc)
 	 * time is lower than avag / WB_FRN_TIME_CUT_DIV, ignore it for
 	 * deciding whether to switch or not.  This is to prevent one-off
 	 * small dirtiers from skewing the verdict.
+	 好像是写回时间统计数据的一些东西
 	 */
 	max_time = DIV_ROUND_UP((max_bytes >> PAGE_SHIFT) << WB_FRN_TIME_SHIFT,
 				wb->avg_write_bandwidth);

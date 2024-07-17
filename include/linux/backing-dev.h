@@ -17,7 +17,7 @@
 #include <linux/blk-cgroup.h>
 #include <linux/backing-dev-defs.h>
 #include <linux/slab.h>
-
+/* 2024年7月17日23:11:39 */
 static inline struct backing_dev_info *bdi_get(struct backing_dev_info *bdi)
 {
 	kref_get(&bdi->refcnt);
@@ -193,12 +193,14 @@ static inline bool bdi_cap_stable_pages_required(struct backing_dev_info *bdi)
 {
 	return bdi->capabilities & BDI_CAP_STABLE_WRITES;
 }
-
+/* 2024年7月17日22:56:19 */
 static inline bool bdi_cap_writeback_dirty(struct backing_dev_info *bdi)
 {
 	return !(bdi->capabilities & BDI_CAP_NO_WRITEBACK);
 }
 /* 2024年7月14日17:38:48
+2024年7月17日22:59:01
+设备是否account
  */
 static inline bool bdi_cap_account_dirty(struct backing_dev_info *bdi)
 {
@@ -211,7 +213,9 @@ static inline bool bdi_cap_account_writeback(struct backing_dev_info *bdi)
 	return !(bdi->capabilities & (BDI_CAP_NO_ACCT_WB |
 				      BDI_CAP_NO_WRITEBACK));
 }
-
+/* 2024年7月17日22:56:11
+设备是否定义了回写
+ */
 static inline bool mapping_cap_writeback_dirty(struct address_space *mapping)
 {
 	return bdi_cap_writeback_dirty(inode_to_bdi(mapping->host));
@@ -243,6 +247,7 @@ void wb_blkcg_offline(struct blkcg *blkcg);
 int inode_congested(struct inode *inode, int cong_bits);
 
 /**
+2024年7月17日22:58:45
  * inode_cgwb_enabled - test whether cgroup writeback is enabled on an inode
  * @inode: inode of interest
  *
@@ -335,6 +340,8 @@ static inline bool inode_to_wb_is_valid(struct inode *inode)
 }
 
 /**
+2024年7月17日23:20:14
+查找inode的wb
  * inode_to_wb - determine the wb of an inode
  * @inode: inode of interest
  *

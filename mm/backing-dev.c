@@ -279,7 +279,7 @@ void wb_wakeup_delayed(struct bdi_writeback *wb)
  * Initial write bandwidth: 100 MB/s
  */
 #define INIT_BW		(100 << (20 - PAGE_SHIFT))
-
+/* 2024年7月17日23:11:21 */
 static int wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi,
 		   int blkcg_id, gfp_t gfp)
 {
@@ -295,6 +295,8 @@ static int wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi,
 	INIT_LIST_HEAD(&wb->b_io);
 	INIT_LIST_HEAD(&wb->b_more_io);
 	INIT_LIST_HEAD(&wb->b_dirty_time);
+
+	/*  */
 	spin_lock_init(&wb->list_lock);
 
 	wb->bw_time_stamp = jiffies;
@@ -307,7 +309,7 @@ static int wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi,
 	INIT_LIST_HEAD(&wb->work_list);
 	INIT_DELAYED_WORK(&wb->dwork, wb_workfn);
 	wb->dirty_sleep = jiffies;
-
+	/*  */
 	wb->congested = wb_congested_get_create(bdi, blkcg_id, gfp);
 	if (!wb->congested) {
 		err = -ENOMEM;
@@ -392,6 +394,7 @@ static DEFINE_SPINLOCK(cgwb_lock);
 static struct workqueue_struct *cgwb_release_wq;
 
 /**
+2024年7月17日23:13:24
  * wb_congested_get_create - get or create a wb_congested
  * @bdi: associated bdi
  * @blkcg_id: ID of the associated blkcg
@@ -522,7 +525,7 @@ static void cgwb_remove_from_bdi_list(struct bdi_writeback *wb)
 	list_del_rcu(&wb->bdi_node);
 	spin_unlock_irq(&cgwb_lock);
 }
-
+/* 2024年7月17日23:06:50 */
 static int cgwb_create(struct backing_dev_info *bdi,
 		       struct cgroup_subsys_state *memcg_css, gfp_t gfp)
 {
@@ -536,19 +539,27 @@ static int cgwb_create(struct backing_dev_info *bdi,
 
 	memcg = mem_cgroup_from_css(memcg_css);
 	blkcg_css = cgroup_get_e_css(memcg_css->cgroup, &io_cgrp_subsys);
+	/* 怎么保证一定有blkcg呢 */
 	blkcg = css_to_blkcg(blkcg_css);
 	memcg_cgwb_list = &memcg->cgwb_list;
 	blkcg_cgwb_list = &blkcg->cgwb_list;
 
+
 	/* look up again under lock and discard on blkcg mismatch */
 	spin_lock_irqsave(&cgwb_lock, flags);
+	/* 2024年7月17日23:09:59为什么又查一遍，不是wb_get_create刚才没查到来到这的吗 */
 	wb = radix_tree_lookup(&bdi->cgwb_tree, memcg_css->id);
 	if (wb && wb->blkcg_css != blkcg_css) {
+		/* 查到了，但是不匹配，清理？ */
 		cgwb_kill(wb);
 		wb = NULL;
 	}
 	spin_unlock_irqrestore(&cgwb_lock, flags);
+
+
+
 	if (wb)
+	/* 还是查到了匹配得了，可能是race情况下创建的吧 */
 		goto out_put;
 
 	/* need to create a new one */
@@ -557,7 +568,7 @@ static int cgwb_create(struct backing_dev_info *bdi,
 		ret = -ENOMEM;
 		goto out_put;
 	}
-
+	/* 艰难的初始化，todo，2024年7月17日23:14:26 */
 	ret = wb_init(wb, bdi, blkcg_css->id, gfp);
 	if (ret)
 		goto err_free;
@@ -582,10 +593,13 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	 * See wb_memcg_offline() and wb_blkcg_offline().
 	 */
 	ret = -ENODEV;
+
+
 	spin_lock_irqsave(&cgwb_lock, flags);
 	if (test_bit(WB_registered, &bdi->wb.state) &&
 	    blkcg_cgwb_list->next && memcg_cgwb_list->next) {
-		/* we might have raced another instance of this function */
+		/* we might have raced another instance of this function
+		race情况 */
 		ret = radix_tree_insert(&bdi->cgwb_tree, memcg_css->id, wb);
 		if (!ret) {
 			list_add_tail_rcu(&wb->bdi_node, &bdi->wb_list);
@@ -597,6 +611,8 @@ static int cgwb_create(struct backing_dev_info *bdi,
 		}
 	}
 	spin_unlock_irqrestore(&cgwb_lock, flags);
+
+
 	if (ret) {
 		if (ret == -EEXIST)
 			ret = 0;
@@ -619,6 +635,8 @@ out_put:
 
 /**
 2024年7月17日00:38:10
+2024年7月17日23:03:07
+
  * wb_get_lookup - get wb for a given memcg
  * @bdi: target bdi
  * @memcg_css: cgroup_subsys_state of the target memcg (must have positive ref)
@@ -653,14 +671,19 @@ struct bdi_writeback *wb_get_lookup(struct backing_dev_info *bdi,
 
 	wb = radix_tree_lookup(&bdi->cgwb_tree, memcg_css->id);
 	if (wb) {
+		/* 如果查到了这个memcg的wb已经存在 */
 		struct cgroup_subsys_state *blkcg_css;
 
-		/* see whether the blkcg association has changed */
+		/* see whether the blkcg association has changed
+		2024年7月17日23:04:15
+		哦哦还是通过memcg css获取blkcg css */
 		blkcg_css = cgroup_get_e_css(memcg_css->cgroup, &io_cgrp_subsys);
 		if (unlikely(wb->blkcg_css != blkcg_css || !wb_tryget(wb)))
 			wb = NULL;
 
-		/* 获取之后立即put？ */
+		/* 获取之后立即put？
+		2024年7月17日23:04:35
+		为什么立即put呢 */
 		css_put(blkcg_css);
 	}
 
@@ -670,6 +693,8 @@ struct bdi_writeback *wb_get_lookup(struct backing_dev_info *bdi,
 }
 
 /**
+2024年7月17日23:00:53
+查找现成的，或者创建
  * wb_get_create - get wb for a given memcg, create if necessary
  * @bdi: target bdi
  * @memcg_css: cgroup_subsys_state of the target memcg (must have positive ref)
@@ -687,11 +712,16 @@ struct bdi_writeback *wb_get_create(struct backing_dev_info *bdi,
 	might_sleep_if(gfpflags_allow_blocking(gfp));
 
 	if (!memcg_css->parent)
+	/* root？ 就使用全局的，也就是设备自己的wb*/
 		return &bdi->wb;
-
+	/* 不是root的话，好像每个memcg有自己对应的wb？2024年7月17日23:02:13
+	 */
 	do {
 		wb = wb_get_lookup(bdi, memcg_css);
-	} while (!wb && !cgwb_create(bdi, memcg_css, gfp));
+		/* 这个while循环看起来只是为了重试？不涉及层次关系？ */
+	} while (!wb && 
+	/* 没有查到现成的wb，创建 */
+	!cgwb_create(bdi, memcg_css, gfp));
 
 	return wb;
 }

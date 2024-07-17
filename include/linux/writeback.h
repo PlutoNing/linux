@@ -49,7 +49,7 @@ enum writeback_sync_modes {
 
 /*
 2024年6月30日14:54:09
-
+2024年7月17日22:53:13
  * A control structure which tells the writeback code what to do.  These are
  * always on the stack, and hence need no locking.  They are always initialised
  * in a manner such that unspecified fields are set to zero.
@@ -64,9 +64,10 @@ struct writeback_control {
 	 * a hint that the filesystem need only write out the pages inside that
 	 * byterange.  The byte at `end' is included in the writeout request.
 	 */
+	 /* 在mapping里的偏移 */
 	loff_t range_start;
 	loff_t range_end;
-
+/* 回写模式，all或者none */
 	enum writeback_sync_modes sync_mode;
 
 	unsigned for_kupdate:1;		/* A kupdate writeback */
@@ -91,7 +92,7 @@ struct writeback_control {
 	struct inode *inode;		/* inode being written out */
 
 	/* foreign inode detection, see wbc_detach_inode() */
-	int wb_id;			/* current wb id */
+	int wb_id;			/* current wb id，好像就是自己关联的wb关联的memcg的id */
 	int wb_lcand_id;		/* last foreign candidate wb id */
 	int wb_tcand_id;		/* this foreign candidate wb id */
 	size_t wb_bytes;		/* bytes written by current wb */
@@ -230,6 +231,10 @@ int cgroup_writeback_by_id(u64 bdi_id, int memcg_id, unsigned long nr_pages,
 void cgroup_writeback_umount(void);
 
 /**
+2024年7月17日22:58:01
+page可以为null？
+2024年7月17日23:18:18
+给inode创建，添加wb
  * inode_attach_wb - associate an inode with its wb
  * @inode: inode of interest
  * @page: page being dirtied (may be NULL)
@@ -260,6 +265,7 @@ static inline void inode_detach_wb(struct inode *inode)
 }
 
 /**
+2024年7月17日22:57:09
  * wbc_attach_fdatawrite_inode - associate wbc and inode for fdatawrite
  * @wbc: writeback_control of interest
  * @inode: target inode
@@ -271,8 +277,11 @@ static inline void inode_detach_wb(struct inode *inode)
 static inline void wbc_attach_fdatawrite_inode(struct writeback_control *wbc,
 					       struct inode *inode)
 {
+	/* 啥时候解锁 */
 	spin_lock(&inode->i_lock);
+	/* 给inode创建，添加wb结构 */
 	inode_attach_wb(inode, NULL);
+	/* 给wbc添加wb，也就是添加inode的意思 */
 	wbc_attach_and_unlock_inode(wbc, inode);
 }
 

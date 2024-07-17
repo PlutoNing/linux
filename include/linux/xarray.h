@@ -69,6 +69,11 @@ static inline unsigned long xa_to_value(const void *entry)
 }
 
 /**
+2024年7月17日22:24:17
+可以LONG_MAX在XArray中存储0到之间的整数。
+您必须先使用将其转换为条目xa_mk_value()。
+从XArray检索条目时，可以通过调用检查它是否为值条目xa_is_value()，
+然后通过调用将其转换回整数xa_to_value()。
  * xa_is_value() - Determine if an entry is a value.
  * @entry: XArray entry.
  *
@@ -287,15 +292,18 @@ enum xa_lock_type {
  * You may use the xa_lock to protect your own data structures as well.
  */
 /*
+2024年7月17日22:11:54
  * If all of the entries in the array are NULL, @xa_head is a NULL pointer.
  * If the only non-NULL entry in the array is at index 0, @xa_head is that
  * entry.  If any other entry in the array is non-NULL, @xa_head points
  * to an @xa_node.
  */
 struct xarray {
+	/* 用于包含XArray内容的锁 */
 	spinlock_t	xa_lock;
 /* private: The rest of the data structure is not to be used directly. */
 	gfp_t		xa_flags;
+	/* 用于顶级的xa_node节点 */
 	void __rcu *	xa_head;
 };
 
@@ -714,6 +722,8 @@ static inline void *xa_cmpxchg_irq(struct xarray *xa, unsigned long index,
 }
 
 /**
+2024年7月17日22:17:53
+xa_insertxa_insert用于存放但不覆盖现有的entry
  * xa_insert() - Store this entry in the XArray unless another entry is
  *			already present.
  * @xa: XArray.
@@ -1082,7 +1092,7 @@ static inline void xa_release(struct xarray *xa, unsigned long index)
 
 /*
 2024年06月20日16:18:05
-
+2024年7月17日22:13:09
  * @count is the count of every non-NULL element in the ->slots array
  * whether that is a value entry, a retry entry, a user pointer,
  * a sibling entry or a pointer to the next level of the tree.
@@ -1090,16 +1100,28 @@ static inline void xa_release(struct xarray *xa, unsigned long index)
  * either a value entry or a sibling of a value entry.
  */
 struct xa_node {
-	unsigned char	shift;		/* Bits remaining in each slot */
-	unsigned char	offset;		/* Slot offset in parent */
-	unsigned char	count;		/* Total entry count */
-	unsigned char	nr_values;	/* Value entry count */
-	struct xa_node __rcu *parent;	/* NULL at top of tree */
-	struct xarray	*array;		/* The array we belong to */
+	unsigned char	shift;		/* Bits remaining in each slot 
+	shift成员用于指定当前xa_node的slots数组中成员的单位，当shift为0时
+	，说明当前xa_node的slots数组中成员为叶子节点，当shift为6时，
+	说明当前xa_node的slots数组中成员指向的
+	xa_node可以最多包含2^6(即64）个节点*/
+	unsigned char	offset;		/* Slot offset in parent
+	offset成员表示该xa_node在父节点的slots数组中的偏移。
+	（这里要注意，如果xa_node在父节点为NULL，offset是任意的值，因为没有被初始化） */
+	unsigned char	count;		/* Total entry count
+	count成员表示该xa_node有多少个slots已经被使用 */
+	unsigned char	nr_values;	/* Value entry count
+	nr_values成员表示该xa_node有多少个slots存储的Value Entry */
+	struct xa_node __rcu *parent;	/* NULL at top of tree
+	parent成员指向该xa_node的父节点 */
+	struct xarray	*array;		/* The array we belong to
+	array成员指向该xa_node所属的xarray */
 	union {
 		struct list_head private_list;	/* For tree user */
 		struct rcu_head	rcu_head;	/* Used when freeing node */
 	};
+	/* lots是个指针数组，该数组既可以存储下一级的节点, 
+	也可以用于存储即将插入的对象指针 */
 	void __rcu	*slots[XA_CHUNK_SIZE];
 	union {
 		unsigned long	tags[XA_MAX_MARKS][XA_MARK_LONGS];
@@ -1295,7 +1317,8 @@ struct xa_state {
 #define XA_ERROR(errno) ((struct xa_node *)(((unsigned long)errno << 2) | 2UL))
 #define XAS_BOUNDS	((struct xa_node *)1UL)
 #define XAS_RESTART	((struct xa_node *)3UL)
-
+/* 2024年7月17日22:21:55
+ */
 #define __XA_STATE(array, index, shift, sibs)  {	\
 	.xa = array,					\
 	.xa_index = index,				\
@@ -1309,6 +1332,7 @@ struct xa_state {
 }
 
 /**
+2024年7月17日22:21:45
  * XA_STATE() - Declare an XArray operation state.
  * @name: Name of this operation state (usually xas).
  * @array: Array to operate on.
@@ -1679,6 +1703,7 @@ enum {
 	     entry = xas_next_marked(xas, max, mark))
 
 /**
+2024年7月17日23:46:05
  * xas_for_each_conflict() - Iterate over a range of an XArray.
  * @xas: XArray operation state.
  * @entry: Entry retrieved from the array.
@@ -1698,6 +1723,8 @@ void *__xas_next(struct xa_state *);
 void *__xas_prev(struct xa_state *);
 
 /**
+2024年7月17日22:22:32
+
  * xas_prev() - Move iterator to previous index.
  * @xas: XArray operation state.
  *
