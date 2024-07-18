@@ -92,6 +92,7 @@ struct dev_pagemap_ops {
 #define PGMAP_ALTMAP_VALID	(1 << 0)
 
 /**
+2024年7月18日23:36:33
  * struct dev_pagemap - metadata for ZONE_DEVICE mappings
  * @altmap: pre-allocated/reserved memory for vmemmap allocations
  * @res: physical address range covered by @ref

@@ -103,6 +103,8 @@ void mlock_vma_page(struct page *page)
 }
 
 /*
+2024年7月18日23:51:45
+从lru分离。
  * Isolate a page from LRU with optional get_page() pin.
  * Assumes lru_lock already held and page already pinned.
  */
@@ -115,6 +117,7 @@ static bool __munlock_isolate_lru_page(struct page *page, bool getpage)
 		if (getpage)
 			get_page(page);
 		ClearPageLRU(page);
+		/*  */
 		del_page_from_lru_list(page, lruvec, page_lru(page));
 		return true;
 	}
@@ -123,6 +126,7 @@ static bool __munlock_isolate_lru_page(struct page *page, bool getpage)
 }
 
 /*
+2024年7月18日23:54:57
  * Finish munlock after successful page isolation
  *
  * Page must be locked. This is a wrapper for try_to_munlock()
@@ -162,6 +166,7 @@ static void __munlock_isolation_failed(struct page *page)
 }
 
 /**
+2024年7月18日23:40:47
  * munlock_vma_page - munlock a vma page
  * @page: page to be unlocked, either a normal page or THP page head
  *
@@ -194,6 +199,7 @@ unsigned int munlock_vma_page(struct page *page)
 	 * might otherwise copy PageMlocked to part of the tail pages before
 	 * we clear it in the head page. It also stabilizes hpage_nr_pages().
 	 */
+	 /* 要锁node的lru lock吗 */
 	spin_lock_irq(&pgdat->lru_lock);
 
 	if (!TestClearPageMlocked(page)) {
@@ -203,13 +209,16 @@ unsigned int munlock_vma_page(struct page *page)
 	}
 
 	nr_pages = hpage_nr_pages(page);
+	/* 统计信息 */
 	__mod_zone_page_state(page_zone(page), NR_MLOCK, -nr_pages);
 
+	/* 会从lru分离页面 */
 	if (__munlock_isolate_lru_page(page, true)) {
 		spin_unlock_irq(&pgdat->lru_lock);
 		__munlock_isolated_page(page);
 		goto out;
 	}
+
 	__munlock_isolation_failed(page);
 
 unlock_out:
@@ -359,6 +368,7 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 }
 
 /*
+2024年7月19日00:06:19
  * Fill up pagevec for __munlock_pagevec using pte walk
  *
  * The function expects that the struct page corresponding to @start address is
@@ -425,6 +435,9 @@ static unsigned long __munlock_pagevec_fill(struct pagevec *pvec,
 }
 
 /*
+2024年7月18日23:33:30
+unlock这个vma里面的全部pages
+todo，有点复杂
  * munlock_vma_pages_range() - munlock all pages in the vma range.'
  * @vma - vma containing range to be munlock()ed.
  * @start - start address in @vma of the range
@@ -454,27 +467,33 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 		struct pagevec pvec;
 		struct zone *zone;
 
+		/* 还是初始化pvec */
 		pagevec_init(&pvec);
 		/*
+		2024年7月18日23:35:20这段话有意思，不太明白
 		 * Although FOLL_DUMP is intended for get_dump_page(),
 		 * it just so happens that its special treatment of the
 		 * ZERO_PAGE (returning an error instead of doing get_page)
 		 * suits munlock very well (and if somehow an abnormal page
 		 * has sneaked into the range, we won't oops here: great).
 		 */
+		/* 查找物理页面 */
 		page = follow_page(vma, start, FOLL_GET | FOLL_DUMP);
 
 		if (page && !IS_ERR(page)) {
+
 			if (PageTransTail(page)) {
 				VM_BUG_ON_PAGE(PageMlocked(page), page);
 				put_page(page); /* follow_page_mask() */
 			} else if (PageTransHuge(page)) {
+				/* 巨页 */
 				lock_page(page);
 				/*
 				 * Any THP page found by follow_page_mask() may
 				 * have gotten split before reaching
 				 * munlock_vma_page(), so we need to compute
 				 * the page_mask here instead.
+
 				 */
 				page_mask = munlock_vma_page(page);
 				unlock_page(page);
@@ -496,10 +515,12 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 				 */
 				start = __munlock_pagevec_fill(&pvec, vma,
 						zone, start, end);
+
 				__munlock_pagevec(&pvec, zone);
 				goto next;
 			}
 		}
+
 		page_increm = 1 + page_mask;
 		start += page_increm * PAGE_SIZE;
 next:

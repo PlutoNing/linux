@@ -221,10 +221,13 @@ extern bool __tlb_remove_page_size(struct mmu_gather *tlb, struct page *page,
 #endif
 
 /*
+2024年7月18日23:13:29
+好像用于销毁页表
  * struct mmu_gather is an opaque type used by the mm code for passing around
  * any data needed by arch specific code for tlb_remove_page.
  */
 struct mmu_gather {
+	/* 操作的mm */
 	struct mm_struct	*mm;
 
 #ifdef CONFIG_HAVE_RCU_TABLE_FREE
@@ -290,7 +293,8 @@ static inline void __tlb_adjust_range(struct mmu_gather *tlb,
 	tlb->start = min(tlb->start, address);
 	tlb->end = max(tlb->end, address + range_size);
 }
-
+/* 2024年7月18日23:14:35
+ */
 static inline void __tlb_reset_range(struct mmu_gather *tlb)
 {
 	if (tlb->fullmm) {
@@ -346,6 +350,7 @@ static inline void tlb_end_vma(struct mmu_gather *tlb, struct vm_area_struct *vm
 #endif
 
 /*
+2024年7月18日23:29:18
  * When an architecture does not provide its own tlb_flush() implementation
  * but does have a reasonably efficient flush_vma_range() implementation
  * use that.
@@ -391,7 +396,7 @@ tlb_update_vma_flags(struct mmu_gather *tlb, struct vm_area_struct *vma) { }
 #endif
 
 #endif /* CONFIG_MMU_GATHER_NO_RANGE */
-
+/* 2024年7月18日23:29:12 */
 static inline void tlb_flush_mmu_tlbonly(struct mmu_gather *tlb)
 {
 	if (!tlb->end)

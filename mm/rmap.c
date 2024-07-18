@@ -400,7 +400,7 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 	unlink_anon_vmas(vma);
 	return -ENOMEM;
 }
-
+/* 2024年7月19日00:17:03 */
 void unlink_anon_vmas(struct vm_area_struct *vma)
 {
 	struct anon_vma_chain *avc, *next;
@@ -411,9 +411,11 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 	 * from newest to oldest, ensuring the root anon_vma gets freed last.
 	 */
 	list_for_each_entry_safe(avc, next, &vma->anon_vma_chain, same_vma) {
+		/* 遍历全部的av */
 		struct anon_vma *anon_vma = avc->anon_vma;
 
 		root = lock_anon_vma_root(root, anon_vma);
+
 		anon_vma_interval_tree_remove(avc, &anon_vma->rb_root);
 
 		/*
@@ -433,6 +435,7 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 	unlock_anon_vma_root(root);
 
 	/*
+	为什么又遍历一遍
 	 * Iterate the list once more, it now only contains empty and unlinked
 	 * anon_vmas, destroy them. Could not do before due to __put_anon_vma()
 	 * needing to write-acquire the anon_vma->root->rwsem.
@@ -442,7 +445,7 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 
 		VM_WARN_ON(anon_vma->degree);
 		put_anon_vma(anon_vma);
-
+		/* 移除list head */
 		list_del(&avc->same_vma);
 		anon_vma_chain_free(avc);
 	}
@@ -1386,6 +1389,7 @@ void page_remove_rmap(struct page *page, bool compound)
 }
 
 /*
+2024年7月18日23:56:51
  * @arg: enum ttu_flags will be passed to this argument
  */
 static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
@@ -1792,6 +1796,7 @@ static int page_not_mapped(struct page *page)
 };
 
 /**
+2024年7月18日23:56:28
  * try_to_munlock - try to munlock a page
  * @page: the page to be munlocked
  *
@@ -1815,13 +1820,14 @@ void try_to_munlock(struct page *page)
 
 	rmap_walk(page, &rwc);
 }
-
+/* 2024年7月19日00:38:36 */
 void __put_anon_vma(struct anon_vma *anon_vma)
 {
 	struct anon_vma *root = anon_vma->root;
 
 	anon_vma_free(anon_vma);
 	if (root != anon_vma && atomic_dec_and_test(&root->refcount))
+	/* root引用计数也为0了 */
 		anon_vma_free(root);
 }
 

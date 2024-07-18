@@ -757,7 +757,8 @@ void mark_page_lazyfree(struct page *page)
 		put_cpu_var(lru_lazyfree_pvecs);
 	}
 }
-/* 2024年6月25日20:40:25 */
+/* 2024年6月25日20:40:25
+drain cpu的pvec */
 void lru_add_drain(void)
 {
 	lru_add_drain_cpu(get_cpu());

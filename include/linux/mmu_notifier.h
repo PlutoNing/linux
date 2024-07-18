@@ -47,23 +47,31 @@ extern struct lockdep_map __mmu_notifier_invalidate_range_start_map;
 #endif
 
 /*
+2024年7月18日23:20:25
+mm的notifier挂在这里
  * The mmu notifier_mm structure is allocated and installed in
  * mm->mmu_notifier_mm inside the mm_take_all_locks() protected
  * critical section and it's released only when mm_count reaches zero
  * in mmdrop().
  */
 struct mmu_notifier_mm {
-	/* all mmu notifiers registerd in this mm are queued in this list */
+	/* all mmu notifiers registerd in this mm are queued in this list
+	还是哈希表 
+	mm的notifier挂在这里
+	*/
 	struct hlist_head list;
 	/* to serialize the list modifications and hlist_unhashed */
 	spinlock_t lock;
 };
 
 #define MMU_NOTIFIER_RANGE_BLOCKABLE (1 << 0)
-
+/* 2024年7月18日23:17:49 */
 struct mmu_notifier_range {
+	/* 针对的vma */
 	struct vm_area_struct *vma;
+	/* 针对的mm */
 	struct mm_struct *mm;
+	/* 开始地址和结束地址 */
 	unsigned long start;
 	unsigned long end;
 	unsigned flags;
@@ -231,6 +239,9 @@ struct mmu_notifier_ops {
 };
 
 /*
+2024年7月18日23:21:03
+notifier是干嘛的
+
  * The notifier chains are protected by mmap_sem and/or the reverse map
  * semaphores. Notifier chains are only changed when all reverse maps and
  * the mmap_sem locks are taken.
@@ -242,13 +253,14 @@ struct mmu_notifier_ops {
  * 3. No other concurrent thread can access the list (release)
  */
 struct mmu_notifier {
+	/* 通过这个挂到mm的notifier mm里面 */
 	struct hlist_node hlist;
 	const struct mmu_notifier_ops *ops;
 	struct mm_struct *mm;
 	struct rcu_head rcu;
 	unsigned int users;
 };
-
+/* 2024年7月18日23:19:04 */
 static inline int mm_has_notifiers(struct mm_struct *mm)
 {
 	return unlikely(mm->mmu_notifier_mm);
@@ -294,7 +306,7 @@ extern void __mmu_notifier_invalidate_range(struct mm_struct *mm,
 				  unsigned long start, unsigned long end);
 extern bool
 mmu_notifier_range_update_to_read_only(const struct mmu_notifier_range *range);
-
+/* 2024年7月18日23:22:49 */
 static inline bool
 mmu_notifier_range_blockable(const struct mmu_notifier_range *range)
 {
@@ -339,7 +351,8 @@ static inline void mmu_notifier_change_pte(struct mm_struct *mm,
 	if (mm_has_notifiers(mm))
 		__mmu_notifier_change_pte(mm, address, pte);
 }
-
+/* 2024年7月19日00:12:10
+ */
 static inline void
 mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
 {
@@ -352,7 +365,7 @@ mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
 	}
 	lock_map_release(&__mmu_notifier_invalidate_range_start_map);
 }
-
+/* 2024年7月18日23:17:34 */
 static inline int
 mmu_notifier_invalidate_range_start_nonblock(struct mmu_notifier_range *range)
 {
@@ -364,6 +377,8 @@ mmu_notifier_invalidate_range_start_nonblock(struct mmu_notifier_range *range)
 		ret = __mmu_notifier_invalidate_range_start(range);
 	}
 	lock_map_release(&__mmu_notifier_invalidate_range_start_map);
+
+
 	return ret;
 }
 
@@ -402,7 +417,8 @@ static inline void mmu_notifier_mm_destroy(struct mm_struct *mm)
 		__mmu_notifier_mm_destroy(mm);
 }
 
-
+/* 2024年7月18日23:11:47
+ */
 static inline void mmu_notifier_range_init(struct mmu_notifier_range *range,
 					   enum mmu_notifier_event event,
 					   unsigned flags,

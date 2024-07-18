@@ -303,6 +303,7 @@ static inline void free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
 }
 
 /*
+2024年7月19日00:57:49
  * This function frees user-level page tables of a process.
  */
 void free_pgd_range(struct mmu_gather *tlb,
@@ -366,7 +367,7 @@ void free_pgd_range(struct mmu_gather *tlb,
 		free_p4d_range(tlb, pgd, addr, next, floor, ceiling);
 	} while (pgd++, addr = next, addr != end);
 }
-
+/* 2024年7月19日00:16:48 */
 void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		unsigned long floor, unsigned long ceiling)
 {
@@ -378,8 +379,10 @@ void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		 * Hide vma from rmap and truncate_pagecache before freeing
 		 * pgtables
 		 */
+		 /* 移除vma关联的全部av */
 		unlink_anon_vmas(vma);
-		unlink_file_vma(vma);
+		/* 好像是移除关联的mapping */
+		unlink_file_vma(vma);	
 
 		if (is_vm_hugetlb_page(vma)) {
 			hugetlb_free_pgd_range(tlb, addr, vma->vm_end,
@@ -1208,7 +1211,8 @@ next:
 
 	return addr;
 }
-
+/* 2024年7月18日23:27:54
+ */
 static inline unsigned long zap_p4d_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pgd_t *pgd,
 				unsigned long addr, unsigned long end,
@@ -1228,6 +1232,7 @@ static inline unsigned long zap_p4d_range(struct mmu_gather *tlb,
 	return addr;
 }
 
+/* 2024年7月18日23:24:06 */
 void unmap_page_range(struct mmu_gather *tlb,
 			     struct vm_area_struct *vma,
 			     unsigned long addr, unsigned long end,
@@ -1237,18 +1242,23 @@ void unmap_page_range(struct mmu_gather *tlb,
 	unsigned long next;
 
 	BUG_ON(addr >= end);
+	/* 为什么这些都是空操作 */
 	tlb_start_vma(tlb, vma);
+	/*Expands to
+((vma->vm_mm)->pgd + (((((addr))) >> 39) & (512 - 1))) */
 	pgd = pgd_offset(vma->vm_mm, addr);
+
 	do {
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(pgd))
 			continue;
 		next = zap_p4d_range(tlb, vma, pgd, addr, next, details);
 	} while (pgd++, addr = next, addr != end);
+
 	tlb_end_vma(tlb, vma);
 }
 
-
+/* 2024年7月19日00:12:34 */
 static void unmap_single_vma(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, unsigned long start_addr,
 		unsigned long end_addr,
@@ -1272,6 +1282,7 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 	if (start != end) {
 		if (unlikely(is_vm_hugetlb_page(vma))) {
 			/*
+			巨页路径
 			 * It is undesirable to test vma->vm_file as it
 			 * should be non-null for valid hugetlb area.
 			 * However, vm_file will be NULL in the error
@@ -1293,6 +1304,7 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 }
 
 /**
+2024年7月19日00:11:28
  * unmap_vmas - unmap a range of memory covered by a list of vma's
  * @tlb: address of the caller's struct mmu_gather
  * @vma: the starting vma
@@ -1319,6 +1331,7 @@ void unmap_vmas(struct mmu_gather *tlb,
 	mmu_notifier_range_init(&range, MMU_NOTIFY_UNMAP, 0, vma, vma->vm_mm,
 				start_addr, end_addr);
 	mmu_notifier_invalidate_range_start(&range);
+	/* 遍历list，逐个unmap */
 	for ( ; vma && vma->vm_start < end_addr; vma = vma->vm_next)
 		unmap_single_vma(tlb, vma, start_addr, end_addr, NULL);
 	mmu_notifier_invalidate_range_end(&range);

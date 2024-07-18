@@ -184,14 +184,18 @@ static void tlb_flush_mmu_free(struct mmu_gather *tlb)
 	tlb_batch_pages_flush(tlb);
 #endif
 }
-
+/* 2024年7月18日23:29:03
+ */
 void tlb_flush_mmu(struct mmu_gather *tlb)
 {
 	tlb_flush_mmu_tlbonly(tlb);
+	
 	tlb_flush_mmu_free(tlb);
 }
 
 /**
+2024年7月18日23:12:20
+初始化mmugather，用来销毁页表吗
  * tlb_gather_mmu - initialize an mmu_gather structure for page-table tear-down
  * @tlb: the mmu_gather structure to initialize
  * @mm: the mm_struct of the target address space
@@ -226,12 +230,14 @@ void tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm,
 #ifdef CONFIG_HAVE_MMU_GATHER_PAGE_SIZE
 	tlb->page_size = 0;
 #endif
-
+	/* 为什么要这里reset一下 */
 	__tlb_reset_range(tlb);
+
 	inc_tlb_flush_pending(tlb->mm);
 }
 
 /**
+2024年7月18日23:28:32
  * tlb_finish_mmu - finish an mmu_gather structure
  * @tlb: the mmu_gather structure to finish
  * @start: start of the region that will be removed from the page-table

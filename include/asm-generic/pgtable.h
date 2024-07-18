@@ -562,6 +562,7 @@ void p4d_clear_bad(p4d_t *);
 void pud_clear_bad(pud_t *);
 void pmd_clear_bad(pmd_t *);
 
+/* 2024年7月18日23:27:06 */
 static inline int pgd_none_or_clear_bad(pgd_t *pgd)
 {
 	if (pgd_none(*pgd))

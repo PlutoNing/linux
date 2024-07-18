@@ -23,7 +23,7 @@
 #include <asm/tlbflush.h>
 
 #include "internal.h"
-
+/* 2024年7月18日23:36:25 */
 struct follow_page_context {
 	struct dev_pagemap *pgmap;
 	unsigned int page_mask;
@@ -529,13 +529,15 @@ static struct page *follow_page_mask(struct vm_area_struct *vma,
 
 	ctx->page_mask = 0;
 
-	/* make this handle hugepd */
+	/* make this handle hugepd
+	huge page的路径 */
 	page = follow_huge_addr(mm, address, flags & FOLL_WRITE);
 	if (!IS_ERR(page)) {
 		BUG_ON(flags & FOLL_GET);
 		return page;
 	}
-	/* 获得pgd */
+
+	/* 获得这个addr的pgd */
 	pgd = pgd_offset(mm, address);
 
 	if (pgd_none(*pgd) || unlikely(pgd_bad(*pgd)))
@@ -558,7 +560,9 @@ static struct page *follow_page_mask(struct vm_area_struct *vma,
 
 	return follow_p4d_mask(vma, address, pgd, flags, ctx);
 }
-
+/* 2024年7月18日23:36:13
+根据虚拟地址查找物理页面
+ */
 struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 			 unsigned int foll_flags)
 {
@@ -566,8 +570,10 @@ struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 	struct page *page;
 
 	page = follow_page_mask(vma, address, foll_flags, &ctx);
+	
 	if (ctx.pgmap)
 		put_dev_pagemap(ctx.pgmap);
+	
 	return page;
 }
 

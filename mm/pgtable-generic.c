@@ -13,6 +13,7 @@
 #include <asm-generic/pgtable.h>
 
 /*
+2024年7月18日23:27:36
  * If a p?d_bad entry is found while walking page tables, report
  * the error, before resetting entry to p?d_none.  Usually (but
  * very seldom) called out from the p?d_none_or_clear_bad macros.

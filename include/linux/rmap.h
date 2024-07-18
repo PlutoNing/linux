@@ -47,6 +47,7 @@ struct anon_vma {
 	 *
 	 * This counter is used for making decision about reusing anon_vma
 	 * instead of forking new one. See comments in function anon_vma_clone.
+	 表示连接的av数量
 	 */
 	unsigned degree;
 
@@ -122,7 +123,7 @@ static inline void get_anon_vma(struct anon_vma *anon_vma)
 }
 
 void __put_anon_vma(struct anon_vma *anon_vma);
-
+/* 2024年7月19日00:38:10 */
 static inline void put_anon_vma(struct anon_vma *anon_vma)
 {
 	if (atomic_dec_and_test(&anon_vma->refcount))

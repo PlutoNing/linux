@@ -557,7 +557,8 @@ static DECLARE_WAIT_QUEUE_HEAD(oom_reaper_wait);
 static struct task_struct *oom_reaper_list;
 static DEFINE_SPINLOCK(oom_reaper_lock);
 /* 2024年06月28日15:58:22
-
+2024年7月18日23:11:00
+还是todo
  */
 bool __oom_reap_task_mm(struct mm_struct *mm)
 {
@@ -596,15 +597,21 @@ bool __oom_reap_task_mm(struct mm_struct *mm)
 			struct mmu_notifier_range range;
 			struct mmu_gather tlb;
 
+			/* 利用参数初始化range这个结构体 */
 			mmu_notifier_range_init(&range, MMU_NOTIFY_UNMAP, 0,
 						vma, mm, vma->vm_start,
 						vma->vm_end);
+			/* 初始化tbl gather这个结构体 */
 			tlb_gather_mmu(&tlb, mm, range.start, range.end);
+
+
+			/* todo */
 			if (mmu_notifier_invalidate_range_start_nonblock(&range)) {
 				tlb_finish_mmu(&tlb, range.start, range.end);
 				ret = false;
 				continue;
 			}
+			/* 里面好像是清除页表映射的，都是很底层的，todo */
 			unmap_page_range(&tlb, vma, range.start, range.end, NULL);
 			mmu_notifier_invalidate_range_end(&range);
 			tlb_finish_mmu(&tlb, range.start, range.end);

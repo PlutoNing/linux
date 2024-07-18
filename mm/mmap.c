@@ -142,13 +142,16 @@ void vma_set_page_prot(struct vm_area_struct *vma)
 }
 
 /*
+2024年7月19日00:40:19
  * Requires inode->i_mapping->i_mmap_rwsem
  */
 static void __remove_shared_vm_struct(struct vm_area_struct *vma,
 		struct file *file, struct address_space *mapping)
-{
+{	
+	/*  */
 	if (vma->vm_flags & VM_DENYWRITE)
 		atomic_inc(&file_inode(file)->i_writecount);
+	/*  */
 	if (vma->vm_flags & VM_SHARED)
 		mapping_unmap_writable(mapping);
 
@@ -158,6 +161,8 @@ static void __remove_shared_vm_struct(struct vm_area_struct *vma,
 }
 
 /*
+2024年7月19日00:40:04
+todo
  * Unlink a file-based vm structure from its interval tree, to hide
  * vma from rmap and vmtruncate before freeing its page tables.
  */
@@ -168,6 +173,7 @@ void unlink_file_vma(struct vm_area_struct *vma)
 	if (file) {
 		struct address_space *mapping = file->f_mapping;
 		i_mmap_lock_write(mapping);
+		/*  */
 		__remove_shared_vm_struct(vma, file, mapping);
 		i_mmap_unlock_write(mapping);
 	}
@@ -3223,8 +3229,10 @@ void exit_mmap(struct mm_struct *mm)
 	/* mm's last user has gone, and its about to be pulled down */
 	mmu_notifier_release(mm);
 
+	/* mm的flags有字段 */
 	if (unlikely(mm_is_oom_victim(mm))) {
 		/*
+		收货一些页面
 		 * Manually reap the mm to free as much memory as possible.
 		 * Then, as the oom reaper does, set MMF_OOM_SKIP to disregard
 		 * this mm from further consideration.  Taking mm->mmap_sem for
@@ -3241,7 +3249,7 @@ void exit_mmap(struct mm_struct *mm)
 		 * reliably test it.
 		 */
 		(void)__oom_reap_task_mm(mm);
-
+		/* 收回内存了，所以可以不oom了吗？ */
 		set_bit(MMF_OOM_SKIP, &mm->flags);
 		down_write(&mm->mmap_sem);
 		up_write(&mm->mmap_sem);
@@ -3250,7 +3258,9 @@ void exit_mmap(struct mm_struct *mm)
 	if (mm->locked_vm) {
 		vma = mm->mmap;
 		while (vma) {
+		/* 如果locked vm的话就遍历vma，处理locked vma */
 			if (vma->vm_flags & VM_LOCKED)
+			/* 自己退出了，就unlock吗 */
 				munlock_vma_pages_all(vma);
 			vma = vma->vm_next;
 		}
@@ -3263,12 +3273,16 @@ void exit_mmap(struct mm_struct *mm)
 		return;
 
 	lru_add_drain();
+	/*  */
 	flush_cache_mm(mm);
+	
 	tlb_gather_mmu(&tlb, mm, 0, -1);
 	/* update_hiwater_rss(mm) here? but nobody should be looking */
 	/* Use -1 here to ensure all VMAs in the mm are unmapped */
 	unmap_vmas(&tlb, vma, 0, -1);
+
 	free_pgtables(&tlb, vma, FIRST_USER_ADDRESS, USER_PGTABLES_CEILING);
+	
 	tlb_finish_mmu(&tlb, 0, -1);
 
 	/*

@@ -549,6 +549,7 @@ struct mm_struct {
 		/* store ref to file /proc/<pid>/exe symlink points to */
 		struct file __rcu *exe_file;
 #ifdef CONFIG_MMU_NOTIFIER
+/* 好像是一些mmu notifier ， */
 		struct mmu_notifier_mm *mmu_notifier_mm;
 #endif
 #if defined(CONFIG_TRANSPARENT_HUGEPAGE) && !USE_SPLIT_PMD_PTLOCKS
@@ -572,6 +573,7 @@ struct mm_struct {
 		 * An operation with batched TLB flushing is going on. Anything
 		 * that can move process memory needs to flush the TLB when
 		 * moving a PROT_NONE or PROT_NUMA mapped page.
+		 好像刷新操作的统计数量，这些操作好像是异步的
 		 */
 		atomic_t tlb_flush_pending;
 #ifdef CONFIG_ARCH_WANT_BATCHED_UNMAP_TLB_FLUSH
@@ -619,7 +621,9 @@ static inline void init_tlb_flush_pending(struct mm_struct *mm)
 {
 	atomic_set(&mm->tlb_flush_pending, 0);
 }
-
+/* 2024年7月18日23:15:13
+？？？？
+ */
 static inline void inc_tlb_flush_pending(struct mm_struct *mm)
 {
 	atomic_inc(&mm->tlb_flush_pending);

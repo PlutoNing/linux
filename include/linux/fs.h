@@ -599,7 +599,7 @@ static inline int mapping_map_writable(struct address_space *mapping)
 	return atomic_inc_unless_negative(&mapping->i_mmap_writable) ?
 		0 : -EPERM;
 }
-
+/* 2024年7月19日00:49:27 */
 static inline void mapping_unmap_writable(struct address_space *mapping)
 {
 	atomic_dec(&mapping->i_mmap_writable);
@@ -750,6 +750,12 @@ struct inode {
 	/* 引用计数 */
 	atomic_t		i_count;
 	atomic_t		i_dio_count;
+	/* 如果文件正在被写（inode->i_writecount大于0，可能存在多个写者），则映射失败。
+	因为现在要做的是禁止别人写，但是别人先到一步，这就没办法了。
+	否则（inode->i_writecount小于等于0），让inode->i_writecount自减1。
+	inode->i_writecount的值小于0时表示文件已被“deny write”。而inode->i_writecount还
+	可能小于-1，因为有多个进程同时让它“deny write”。
+	只有等它们都解除禁止时，文件才能够被写。 */
 	atomic_t		i_writecount;
 #if defined(CONFIG_IMA) || defined(CONFIG_FILE_LOCKING)
 	atomic_t		i_readcount; /* struct files open RO */

@@ -158,7 +158,9 @@ void __mmu_notifier_change_pte(struct mm_struct *mm, unsigned long address,
 	}
 	srcu_read_unlock(&srcu, id);
 }
+/* 2024年7月18日23:19:22
 
+ */
 int __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
 {
 	struct mmu_notifier *mn;
@@ -166,15 +168,19 @@ int __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
 	int id;
 
 	id = srcu_read_lock(&srcu);
+	/* 获取range指定的mm的全部notifier */
 	hlist_for_each_entry_rcu(mn, &range->mm->mmu_notifier_mm->list, hlist) {
 		if (mn->ops->invalidate_range_start) {
 			int _ret;
 
 			if (!mmu_notifier_range_blockable(range))
 				non_block_start();
+
 			_ret = mn->ops->invalidate_range_start(mn, range);
+
 			if (!mmu_notifier_range_blockable(range))
 				non_block_end();
+
 			if (_ret) {
 				pr_info("%pS callback failed with %d in %sblockable context.\n",
 					mn->ops->invalidate_range_start, _ret,
@@ -183,6 +189,8 @@ int __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
 					_ret != -EAGAIN);
 				ret = _ret;
 			}
+
+			/* 感觉还是不清楚这些notifier是干嘛的 */
 		}
 	}
 	srcu_read_unlock(&srcu, id);
