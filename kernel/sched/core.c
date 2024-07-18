@@ -5811,6 +5811,8 @@ void io_schedule_finish(int token)
 }
 
 /*
+2024年07月18日14:50:43
+给sched表明自己是io wait
  * This task is about to go to sleep on IO. Increment rq->nr_iowait so
  * that process accounting knows that this is a task in IO wait state.
  */

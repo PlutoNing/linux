@@ -234,6 +234,7 @@ int __anon_vma_prepare(struct vm_area_struct *vma)
 }
 
 /*
+2024年07月18日20:25:25
  * This is a useful helper function for locking the anon_vma root as
  * we traverse the vma->anon_vma_chain, looping over anon_vma's that
  * have the same vma.
@@ -244,6 +245,7 @@ int __anon_vma_prepare(struct vm_area_struct *vma)
 static inline struct anon_vma *lock_anon_vma_root(struct anon_vma *root, struct anon_vma *anon_vma)
 {
 	struct anon_vma *new_root = anon_vma->root;
+
 	if (new_root != root) {
 		if (WARN_ON_ONCE(root))
 			up_write(&root->rwsem);
@@ -278,6 +280,7 @@ int anon_vma_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
 	struct anon_vma_chain *avc, *pavc;
 	struct anon_vma *root = NULL;
 
+	/* 遍历src（比如父进程）的每个avc */
 	list_for_each_entry_reverse(pavc, &src->anon_vma_chain, same_vma) {
 		struct anon_vma *anon_vma;
 
@@ -285,13 +288,17 @@ int anon_vma_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
 		if (unlikely(!avc)) {
 			unlock_anon_vma_root(root);
 			root = NULL;
+			/* 换个gfp再试一下 */
 			avc = anon_vma_chain_alloc(GFP_KERNEL);
 			if (!avc)
 				goto enomem_failure;
 		}
-		/* 获取一个av */
+		/* 获取父进程src的一个av */
 		anon_vma = pavc->anon_vma;
+		/* todo */
 		root = lock_anon_vma_root(root, anon_vma);
+
+		/* 把这个父进程的av，用刚才新申请的连接件avc连接到子进程dst上面 */
 		anon_vma_chain_link(dst, avc, anon_vma);
 
 		/*

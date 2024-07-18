@@ -1240,7 +1240,9 @@ struct device {
 					   device */
 	void		*platform_data;	/* Platform specific data, device
 					   core doesn't touch it */
-	void		*driver_data;	/* Driver data, set and get with
+	void		*driver_data;	/* 
+	2024年07月18日17:29:49可能是bdi
+	Driver data, set and get with
 					   dev_set_drvdata/dev_get_drvdata */
 #ifdef CONFIG_PROVE_LOCKING
 	struct mutex		lockdep_mutex;
@@ -1382,7 +1384,7 @@ static inline void dev_set_msi_domain(struct device *dev, struct irq_domain *d)
 	dev->msi_domain = d;
 #endif
 }
-
+/* 2024年07月18日17:29:43 */
 static inline void *dev_get_drvdata(const struct device *dev)
 {
 	return dev->driver_data;

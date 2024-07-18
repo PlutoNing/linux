@@ -3042,7 +3042,8 @@ already_gone:
 	rcu_read_unlock();
 	return false;
 }
-
+/* 2024年07月18日15:34:21
+ */
 static bool __flush_work(struct work_struct *work, bool from_cancel)
 {
 	struct wq_barrier barr;
@@ -3059,6 +3060,7 @@ static bool __flush_work(struct work_struct *work, bool from_cancel)
 	}
 
 	if (start_flush_work(work, &barr, from_cancel)) {
+		
 		wait_for_completion(&barr.done);
 		destroy_work_on_stack(&barr.work);
 		return true;
@@ -3068,6 +3070,7 @@ static bool __flush_work(struct work_struct *work, bool from_cancel)
 }
 
 /**
+2024年07月18日15:34:13
  * flush_work - wait for a work to finish executing the last queueing instance
  * @work: the work to flush
  *
@@ -3188,6 +3191,7 @@ bool cancel_work_sync(struct work_struct *work)
 EXPORT_SYMBOL_GPL(cancel_work_sync);
 
 /**
+2024年07月18日15:32:57
  * flush_delayed_work - wait for a dwork to finish executing the last queueing
  * @dwork: the delayed work to flush
  *
@@ -3205,6 +3209,8 @@ bool flush_delayed_work(struct delayed_work *dwork)
 	if (del_timer_sync(&dwork->timer))
 		__queue_work(dwork->cpu, dwork->wq, &dwork->work);
 	local_irq_enable();
+
+
 	return flush_work(&dwork->work);
 }
 EXPORT_SYMBOL(flush_delayed_work);

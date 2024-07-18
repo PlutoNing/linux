@@ -55,6 +55,8 @@ EXPORT_SYMBOL(remove_wait_queue);
 #define WAITQUEUE_WALK_BREAK_CNT 64
 
 /*
+2024年07月18日11:12:05
+唤醒
  * The core wakeup function. Non-exclusive wakeups (nr_exclusive == 0) just
  * wake everything up. If it's an exclusive wakeup (nr_exclusive == small +ve
  * number) then we wake all the non-exclusive tasks and one exclusive task.
@@ -80,10 +82,13 @@ static int __wake_up_common(struct wait_queue_head *wq_head, unsigned int mode,
 	} else
 		curr = list_first_entry(&wq_head->head, wait_queue_entry_t, entry);
 
+	/* curr是wq上的等待结构体 */
+
 	if (&curr->entry == &wq_head->head)
 		return nr_exclusive;
 
 	list_for_each_entry_safe_from(curr, next, &wq_head->head, entry) {
+		/* 遍历wq上的全部wait */
 		unsigned flags = curr->flags;
 		int ret;
 
@@ -93,12 +98,15 @@ static int __wake_up_common(struct wait_queue_head *wq_head, unsigned int mode,
 		ret = curr->func(curr, mode, wake_flags, key);
 		if (ret < 0)
 			break;
+
 		if (ret && (flags & WQ_FLAG_EXCLUSIVE) && !--nr_exclusive)
 			break;
 
 		if (bookmark && (++cnt > WAITQUEUE_WALK_BREAK_CNT) &&
 				(&next->entry != &wq_head->head)) {
+		
 			bookmark->flags = WQ_FLAG_BOOKMARK;
+			/* 存到bookmark里面？ */
 			list_add_tail(&bookmark->entry, &next->entry);
 			break;
 		}
@@ -157,7 +165,9 @@ void __wake_up_locked_key(struct wait_queue_head *wq_head, unsigned int mode, vo
 	__wake_up_common(wq_head, mode, 1, 0, key, NULL);
 }
 EXPORT_SYMBOL_GPL(__wake_up_locked_key);
+/* 2024年07月18日11:11:32
 
+ */
 void __wake_up_locked_key_bookmark(struct wait_queue_head *wq_head,
 		unsigned int mode, void *key, wait_queue_entry_t *bookmark)
 {

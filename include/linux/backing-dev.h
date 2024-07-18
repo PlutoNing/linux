@@ -156,6 +156,7 @@ static inline bool writeback_in_progress(struct bdi_writeback *wb)
 }
 /* 2024年6月30日14:37:22
 获取到inode的bdi设备
+inode->sb->bdi
  */
 static inline struct backing_dev_info *inode_to_bdi(struct inode *inode)
 {

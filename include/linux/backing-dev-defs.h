@@ -22,19 +22,20 @@ struct dentry;
  * Bits in bdi_writeback.state
  */
 enum wb_state {
-	WB_registered,		/* bdi_register() was done */
+	WB_registered,		/*表示连接上了bdi设备， bdi_register() was done */
 	WB_writeback_running,	/* Writeback is in progress */
 	WB_has_dirty_io,	/* Dirty inodes on ->b_{dirty|io|more_io} */
 	WB_start_all,		/* nr_pages == 0 (all) work pending */
 };
-
+/* 2024年07月18日15:07:55 */
 enum wb_congested_state {
 	WB_async_congested,	/* The async (write) queue is getting full */
 	WB_sync_congested,	/* The sync queue is getting full */
 };
 
 typedef int (congested_fn)(void *, int);
-
+/* 2024年07月18日17:01:00
+*/
 enum wb_stat_item {
 	WB_RECLAIMABLE,
 	WB_WRITEBACK,
@@ -89,6 +90,8 @@ struct wb_completion {
 	struct wb_completion cmpl = WB_COMPLETION_INIT(bdi)
 
 /*
+2024年07月18日15:06:50
+用来表示同一个cg的一组wb的一个共同状态
  * For cgroup writeback, multiple wb's may map to the same blkcg.  Those
  * wb's can operate mostly independently but should share the congested
  * state.  To facilitate such sharing, the congested state is tracked using
@@ -96,6 +99,7 @@ struct wb_completion {
  * its bdi, and refcounted.
  */
 struct bdi_writeback_congested {
+	/* 表示当前sync和async队列的阻塞情况 */
 	unsigned long state;		/* WB_[a]sync_congested flags */
 	refcount_t refcnt;		/* nr of attached wb's and blkg */
 
@@ -104,7 +108,7 @@ struct bdi_writeback_congested {
 					 * on bdi unregistration. For memcg-wb
 					 * internal use only! */
 	int blkcg_id;			/* ID of the associated blkcg */
-	struct rb_node rb_node;		/* on bdi->cgwb_congestion_tree */
+	struct rb_node rb_node;		/*链接到所属的 on bdi->cgwb_congestion_tree */
 #endif
 };
 
@@ -133,7 +137,7 @@ struct bdi_writeback {
 	/* 指向的bdi */
 	struct backing_dev_info *bdi;	/* our parent bdi */
 
-	unsigned long state;		/* Always use atomic bitops on this */
+	unsigned long state;		/* 状态标记集合，Always use atomic bitops on this */
 	unsigned long last_old_flush;	/*上次刷新的时间 last old data flush */
 
 	struct list_head b_dirty;	/* dirty inodes 暂存所有的脏 inode 的链表 */
@@ -141,7 +145,7 @@ struct bdi_writeback {
 	struct list_head b_more_io;	/* parked for more writeback  暂存由于一次回写数量限制原因导致的等待下次回写的 inode 链表*/
 	struct list_head b_dirty_time;	/* time stamps are dirty  暂存仅仅是时间戳更新而被至脏的 inode 的链表*/
 	spinlock_t list_lock;		/* protects the b_* lists  为了保护上述 4 个 b_* 列表的自旋锁*/
-
+	/* 不同类型的统计信息 */
 	struct percpu_counter stat[NR_WB_STAT_ITEMS];
 
 	struct bdi_writeback_congested *congested;
@@ -171,17 +175,19 @@ struct bdi_writeback {
 
 	unsigned long dirty_sleep;	/* last wait */
 
-	struct list_head bdi_node;	/* anchored at bdi->wb_list */
+	struct list_head bdi_node;	/*用于连接bdi设备， anchored at bdi->wb_list */
 
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct percpu_ref refcnt;	/* used only for !root wb's */
 	struct fprop_local_percpu memcg_completions;
 	struct cgroup_subsys_state *memcg_css; /* 控制自己的memcg，the associated memcg */
-	struct cgroup_subsys_state *blkcg_css; /* and blkcg */
-	struct list_head memcg_node;	/* anchored at memcg->cgwb_list */
+	struct cgroup_subsys_state *blkcg_css; /*自己属于的blkcg css and blkcg */
+	struct list_head memcg_node;	/*连接到memcg，不过这个memcg与memcg css获得的memcg一样吗。2024年07月18日16:55:21
+	 anchored at memcg->cgwb_list */
 	struct list_head blkcg_node;	/* anchored at blkcg->cgwb_list */
 
 	union {
+		/* 释放自己这个wb的cb */
 		struct work_struct release_work;
 		struct rcu_head rcu;
 	};
@@ -191,11 +197,13 @@ struct bdi_writeback {
 
  */
 struct backing_dev_info {
+	/*  */
 	u64 id;
+	/* 连接到全局的bdi rbtree */
 	struct rb_node rb_node; /* keyed by ->id */
 	/*  用来把所有backing_dev_info 链接到全局链表bdi_list */
 	struct list_head bdi_list;
-	unsigned long ra_pages;	/* max readahead in PAGE_SIZE units */
+	unsigned long ra_pages;	/*最大预读的长度 max readahead in PAGE_SIZE units */
 	unsigned long io_pages;	/* max allowed IO size */
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;	/* Pointer to aux data for congested func */
@@ -212,13 +220,15 @@ struct backing_dev_info {
 	 * any dirty wbs, which is depended upon by bdi_has_dirty().
 	 */
 	atomic_long_t tot_write_bandwidth;
-
+	/* 只关联一个wb吗，这个比较特殊2024年07月18日16:40:20
+	如果没有指定cg那么就使用全局的，也就是设备自己的wb，其他的都是cgwb */
 	struct bdi_writeback wb;  /* the root writeback info for this bdi 用于控制回写行为的核心成员 */
 	struct list_head wb_list; /* list of all wbs */
 #ifdef CONFIG_CGROUP_WRITEBACK
 /* 好像一个memcg与wb的kv容器 */
 	struct radix_tree_root cgwb_tree; /* radix tree of active cgroup wbs */
-	struct rb_root cgwb_congested_tree; /* their congested states */
+	struct rb_root cgwb_congested_tree; /* 上面都是自己关联的wb的wb congested stat。
+	their congested states */
 	struct mutex cgwb_release_mutex;  /* protect shutdown of wb structs */
 	struct rw_semaphore wb_switch_rwsem; /* no cgwb switch while syncing */
 #else
@@ -227,6 +237,7 @@ struct backing_dev_info {
 	wait_queue_head_t wb_waitq;
 
 	struct device *dev;
+	/*  */
 	struct device *owner;
 
 	struct timer_list laptop_mode_wb_timer;

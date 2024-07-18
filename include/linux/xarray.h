@@ -1465,6 +1465,7 @@ static inline void xas_reset(struct xa_state *xas)
 }
 
 /**
+2024年07月18日09:55:33
  * xas_retry() - Retry the operation if appropriate.
  * @xas: XArray operation state.
  * @entry: Entry from xarray.
@@ -1503,6 +1504,8 @@ void xas_pause(struct xa_state *);
 void xas_create_range(struct xa_state *);
 
 /**
+2024年07月18日09:57:43
+无锁访问加锁之后，看看是否变了
  * xas_reload() - Refetch an entry from the xarray.
  * @xas: XArray operation state.
  *
@@ -1522,6 +1525,7 @@ static inline void *xas_reload(struct xa_state *xas)
 
 	if (node)
 		return xa_entry(xas->xa, node, xas->xa_offset);
+
 	return xa_head(xas->xa);
 }
 

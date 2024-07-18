@@ -24,7 +24,7 @@ struct pagevec;
 enum mapping_flags {
 	AS_EIO		= 0,	/* IO error on async write */
 	AS_ENOSPC	= 1,	/* ENOSPC on async write */
-	AS_MM_ALL_LOCKS	= 2,	/* under mm_take_all_locks() */
+	AS_MM_ALL_LOCKS	= 2,	/* under mm_take_all_locks()是否正在被take all locks */
 	AS_UNEVICTABLE	= 3,	/* e.g., ramdisk, SHM_LOCK */
 	AS_EXITING	= 4, 	/* final truncate in progress */
 	/* writeback related tags are not used */
@@ -33,6 +33,7 @@ enum mapping_flags {
 
 /**
 2024年7月14日14:54:14
+设置mapping的err，wb err或者flags
  * mapping_set_error - record a writeback error in the address_space
  * @mapping - the mapping in which an error should be set
  * @error - the error to set in the mapping
@@ -51,7 +52,8 @@ static inline void mapping_set_error(struct address_space *mapping, int error)
 	if (likely(!error))
 		return;
 
-	/* Record in wb_err for checkers using errseq_t based tracking */
+	/* Record in wb_err for checkers using errseq_t based tracking
+	mapping有专门的字段wb err来表示 */
 	filemap_set_wb_err(mapping, error);
 
 	/* Record it in flags for now, for legacy callers */
@@ -481,6 +483,8 @@ extern void unlock_page(struct page *page);
 
 /*
 2024年7月17日22:38:18
+try to lock
+test去lock
  * Return true if the page was successfully locked
  */
 static inline int trylock_page(struct page *page)
@@ -490,6 +494,8 @@ static inline int trylock_page(struct page *page)
 }
 
 /*
+2024年07月18日10:19:12
+先try to后可能会睡眠来lock
  * lock_page may only be called if we have the page's inode pinned.
  */
 static inline void lock_page(struct page *page)

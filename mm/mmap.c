@@ -3211,7 +3211,9 @@ int vm_brk(unsigned long addr, unsigned long len)
 }
 EXPORT_SYMBOL(vm_brk);
 
-/* Release all mmaps. */
+/* 
+2024年07月18日20:32:55
+Release all mmaps. */
 void exit_mmap(struct mm_struct *mm)
 {
 	struct mmu_gather tlb;
@@ -3281,7 +3283,10 @@ void exit_mmap(struct mm_struct *mm)
 	vm_unacct_memory(nr_accounted);
 }
 
-/* Insert vm structure into process list sorted by address
+/* 
+2024年07月18日19:36:47
+插入vma到mm，挺麻烦的好像，需要找到位置什么的
+Insert vm structure into process list sorted by address
  * and into the inode's i_mmap tree.  If vm_file is non-NULL
  * then i_mmap_rwsem is taken here.
  */
@@ -3319,6 +3324,7 @@ int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 }
 
 /*
+2024年07月18日20:14:12
  * Copy the vma structure to a new location in the same mm,
  * prior to moving page table entries, to effect an mremap move.
  */
@@ -3344,10 +3350,14 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 
 	if (find_vma_links(mm, addr, addr + len, &prev, &rb_link, &rb_parent))
 		return NULL;	/* should never get here */
+
+
 	new_vma = vma_merge(mm, prev, addr, addr + len, vma->vm_flags,
 			    vma->anon_vma, vma->vm_file, pgoff, vma_policy(vma),
 			    vma->vm_userfaultfd_ctx);
+
 	if (new_vma) {
+		/*  */
 		/*
 		 * Source vma may have been merged into new_vma
 		 */
@@ -3370,7 +3380,9 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 		}
 		*need_rmap_locks = (new_vma->vm_pgoff <= vma->vm_pgoff);
 	} else {
+		/* 2024年07月18日20:21:28不能merge的情况？ */
 		new_vma = vm_area_dup(vma);
+
 		if (!new_vma)
 			goto out;
 		new_vma->vm_start = addr;
@@ -3378,13 +3390,18 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 		new_vma->vm_pgoff = pgoff;
 		if (vma_dup_policy(vma, new_vma))
 			goto out_free_vma;
+		/* 克隆vma，感觉就是获得vma的的av到new-vma */
 		if (anon_vma_clone(new_vma, vma))
 			goto out_free_mempol;
+
 		if (new_vma->vm_file)
 			get_file(new_vma->vm_file);
+
 		if (new_vma->vm_ops && new_vma->vm_ops->open)
 			new_vma->vm_ops->open(new_vma);
+
 		vma_link(mm, new_vma, prev, rb_link, rb_parent);
+
 		*need_rmap_locks = false;
 	}
 	return new_vma;
@@ -3398,16 +3415,20 @@ out:
 }
 
 /*
+2024年07月18日20:12:09
+
  * Return true if the calling process may expand its vm space by the passed
  * number of pages
  */
 bool may_expand_vm(struct mm_struct *mm, vm_flags_t flags, unsigned long npages)
 {
+	/* 总数超过限制 */
 	if (mm->total_vm + npages > rlimit(RLIMIT_AS) >> PAGE_SHIFT)
 		return false;
 
 	if (is_data_mapping(flags) &&
 	    mm->data_vm + npages > rlimit(RLIMIT_DATA) >> PAGE_SHIFT) {
+		/* 是数据段，并且不会超过限制？ */
 		/* Workaround for Valgrind */
 		if (rlimit(RLIMIT_DATA) == 0 &&
 		    mm->data_vm + npages <= rlimit_max(RLIMIT_DATA) >> PAGE_SHIFT)
@@ -3425,7 +3446,8 @@ bool may_expand_vm(struct mm_struct *mm, vm_flags_t flags, unsigned long npages)
 
 	return true;
 }
-
+/* 2024年07月18日19:38:37
+更新account状态 */
 void vm_stat_account(struct mm_struct *mm, vm_flags_t flags, long npages)
 {
 	mm->total_vm += npages;
@@ -3446,12 +3468,13 @@ static vm_fault_t special_mapping_fault(struct vm_fault *vmf);
 static void special_mapping_close(struct vm_area_struct *vma)
 {
 }
-
+/* 2024年07月18日19:54:04 */
 static const char *special_mapping_name(struct vm_area_struct *vma)
 {
 	return ((struct vm_special_mapping *)vma->vm_private_data)->name;
 }
-
+/* 2024年07月18日20:11:44
+ */
 static int special_mapping_mremap(struct vm_area_struct *new_vma)
 {
 	struct vm_special_mapping *sm = new_vma->vm_private_data;
@@ -3464,19 +3487,30 @@ static int special_mapping_mremap(struct vm_area_struct *new_vma)
 
 	return 0;
 }
-
+/* 
+2024年07月18日19:46:08
+当vma的priv是smapping情况下的ops */
 static const struct vm_operations_struct special_mapping_vmops = {
 	.close = special_mapping_close,
 	.fault = special_mapping_fault,
 	.mremap = special_mapping_mremap,
 	.name = special_mapping_name,
 };
-
+/* 2024年07月18日19:17:04
+special mapping是什么
+当vma的priv是**pages情况下的ops
+ */
 static const struct vm_operations_struct legacy_special_mapping_vmops = {
 	.close = special_mapping_close,
 	.fault = special_mapping_fault,
 };
-
+/* 2024年07月18日19:17:45
+缺页处理，
+绿捋一捋，好像说是vma缺页的话，但是它的vm priv data指向的是smapping
+可以从里面获取页面（某些情况下）
+---------------------
+好像不管vma->priv是哪种情况，这个回调都是一样的
+ */
 static vm_fault_t special_mapping_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -3494,10 +3528,16 @@ static vm_fault_t special_mapping_fault(struct vm_fault *vmf)
 		pages = sm->pages;
 	}
 
+	/* 上面获得smapping的pages数组 */
+
 	for (pgoff = vmf->pgoff; pgoff && *pages; ++pages)
 		pgoff--;
 
+
 	if (*pages) {
+		/* pages还有值说明是pgoff先为0了？
+		然后这个pages当前指向的页面就是fault函数返回的新页面？
+		不用再申请页面作为新页面吗 */
 		struct page *page = *pages;
 		get_page(page);
 		vmf->page = page;
@@ -3506,7 +3546,11 @@ static vm_fault_t special_mapping_fault(struct vm_fault *vmf)
 
 	return VM_FAULT_SIGBUS;
 }
+/* 2024年07月18日19:28:29
 
+priv是 **pages
+smapping也是vma，插入到mm，感觉和新建vma差不多
+ */
 static struct vm_area_struct *__install_special_mapping(
 	struct mm_struct *mm,
 	unsigned long addr, unsigned long len,
@@ -3515,7 +3559,7 @@ static struct vm_area_struct *__install_special_mapping(
 {
 	int ret;
 	struct vm_area_struct *vma;
-
+	/* 分配vma */
 	vma = vm_area_alloc(mm);
 	if (unlikely(vma == NULL))
 		return ERR_PTR(-ENOMEM);
@@ -3524,15 +3568,17 @@ static struct vm_area_struct *__install_special_mapping(
 	vma->vm_end = addr + len;
 
 	vma->vm_flags = vm_flags | mm->def_flags | VM_DONTEXPAND | VM_SOFTDIRTY;
+	/* prot是什么 */
 	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
 
 	vma->vm_ops = ops;
 	vma->vm_private_data = priv;
 
+	/* 插入vma到mm */
 	ret = insert_vm_struct(mm, vma);
 	if (ret)
 		goto out;
-
+	/* 更新total vm等统计信息 */
 	vm_stat_account(mm, vma->vm_flags, len >> PAGE_SHIFT);
 
 	perf_event_mmap(vma);
@@ -3543,7 +3589,9 @@ out:
 	vm_area_free(vma);
 	return ERR_PTR(ret);
 }
-
+/* 2024年07月18日19:58:34
+从这可以了解smapping是什么
+ */
 bool vma_is_special_mapping(const struct vm_area_struct *vma,
 	const struct vm_special_mapping *sm)
 {
@@ -3553,6 +3601,15 @@ bool vma_is_special_mapping(const struct vm_area_struct *vma,
 }
 
 /*
+2024年07月18日19:27:36
+还是包装函数，
+--------------
+2024年07月18日19:44:59
+参考
+与__install_special_mapping区别，最后复制到vma的priv的参数不是
+**pages，是smapping。
+ops也是special_mapping_vmops；
+
  * Called with mm->mmap_sem held for writing.
  * Insert a new vma covering the given region, with the given flags.
  * Its pages are supplied by the given array of struct page *.
@@ -3569,7 +3626,16 @@ struct vm_area_struct *_install_special_mapping(
 	return __install_special_mapping(mm, addr, len, vm_flags, (void *)spec,
 					&special_mapping_vmops);
 }
+/* 2024年07月18日19:16:27
+新建smapping
 
+但是感觉就像是新建vma，不过这个vma是smapping 
+--------------
+2024年07月18日19:43:56
+与_install_special_mapping区别，最后复制到vma的priv的参数是
+**pages，不是smapping
+
+*/
 int install_special_mapping(struct mm_struct *mm,
 			    unsigned long addr, unsigned long len,
 			    unsigned long vm_flags, struct page **pages)
@@ -3582,7 +3648,8 @@ int install_special_mapping(struct mm_struct *mm,
 }
 
 static DEFINE_MUTEX(mm_all_locks_mutex);
-
+/* 2024年07月18日19:15:06
+ */
 static void vm_lock_anon_vma(struct mm_struct *mm, struct anon_vma *anon_vma)
 {
 	if (!test_bit(0, (unsigned long *) &anon_vma->root->rb_root.rb_root.rb_node)) {
@@ -3605,10 +3672,11 @@ static void vm_lock_anon_vma(struct mm_struct *mm, struct anon_vma *anon_vma)
 			BUG();
 	}
 }
-
+/* 2024年07月18日19:10:21 */
 static void vm_lock_mapping(struct mm_struct *mm, struct address_space *mapping)
 {
 	if (!test_bit(AS_MM_ALL_LOCKS, &mapping->flags)) {
+		/* 如果没有被其他函数take all locks */
 		/*
 		 * AS_MM_ALL_LOCKS can't change from under us because
 		 * we hold the mm_all_locks_mutex.
@@ -3618,6 +3686,7 @@ static void vm_lock_mapping(struct mm_struct *mm, struct address_space *mapping)
 		 * mm_all_locks_mutex, there may be other cpus
 		 * changing other bitflags in parallel to us.
 		 */
+		 /* 设置正在被take all lock的标志位 */
 		if (test_and_set_bit(AS_MM_ALL_LOCKS, &mapping->flags))
 			BUG();
 		down_write_nest_lock(&mapping->i_mmap_rwsem, &mm->mmap_sem);
@@ -3625,6 +3694,7 @@ static void vm_lock_mapping(struct mm_struct *mm, struct address_space *mapping)
 }
 
 /*
+2024年07月18日19:08:33
  * This operation locks against the VM for all pte/vma/mm related
  * operations that could ever happen on a certain mm. This includes
  * vmtruncate, try_to_unmap, and all page faults.
@@ -3670,14 +3740,17 @@ int mm_take_all_locks(struct mm_struct *mm)
 
 	mutex_lock(&mm_all_locks_mutex);
 
+	/* 遍历vma */
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		if (signal_pending(current))
 			goto out_unlock;
+
 		if (vma->vm_file && vma->vm_file->f_mapping &&
 				is_vm_hugetlb_page(vma))
+			/* 锁mmap的信号量 */
 			vm_lock_mapping(mm, vma->vm_file->f_mapping);
 	}
-
+	/* 为什么不是hugepage单独来一遍 */
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		if (signal_pending(current))
 			goto out_unlock;
@@ -3685,7 +3758,7 @@ int mm_take_all_locks(struct mm_struct *mm)
 				!is_vm_hugetlb_page(vma))
 			vm_lock_mapping(mm, vma->vm_file->f_mapping);
 	}
-
+	/* 锁av */
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		if (signal_pending(current))
 			goto out_unlock;
@@ -3700,7 +3773,9 @@ out_unlock:
 	mm_drop_all_locks(mm);
 	return -EINTR;
 }
-
+/* 2024年07月18日18:58:25
+++sem，就算是解锁吗
+ */
 static void vm_unlock_anon_vma(struct anon_vma *anon_vma)
 {
 	if (test_bit(0, (unsigned long *) &anon_vma->root->rb_root.rb_root.rb_node)) {
@@ -3722,7 +3797,8 @@ static void vm_unlock_anon_vma(struct anon_vma *anon_vma)
 		anon_vma_unlock_write(anon_vma);
 	}
 }
-
+/* 2024年07月18日19:00:35
+也是操作mapping的mmap信号量 */
 static void vm_unlock_mapping(struct address_space *mapping)
 {
 	if (test_bit(AS_MM_ALL_LOCKS, &mapping->flags)) {
@@ -3738,6 +3814,9 @@ static void vm_unlock_mapping(struct address_space *mapping)
 }
 
 /*
+2024年07月18日18:46:53
+就是操作每一个vma关联的每一个av的信号量
+还有mapping的信号量
  * The mmap_sem cannot be released by the caller until
  * mm_drop_all_locks() returns.
  */
@@ -3751,8 +3830,11 @@ void mm_drop_all_locks(struct mm_struct *mm)
 
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		if (vma->anon_vma)
+				/* 遍历vma的avc链表上的每一个avc，通过这些个avc可以找到关联的每一个av */
 			list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
+		/* 就是对每一个av执行++sem */
 				vm_unlock_anon_vma(avc->anon_vma);
+		/* 如果vma是mmap映射 */
 		if (vma->vm_file && vma->vm_file->f_mapping)
 			vm_unlock_mapping(vma->vm_file->f_mapping);
 	}
@@ -3761,6 +3843,8 @@ void mm_drop_all_locks(struct mm_struct *mm)
 }
 
 /*
+2024年07月18日18:46:30
+这个函数名字，就只是初始化counter吗。
  * initialise the percpu counter for VM
  */
 void __init mmap_init(void)
@@ -3873,7 +3957,8 @@ static int reserve_mem_notifier(struct notifier_block *nb,
 static struct notifier_block reserve_mem_nb = {
 	.notifier_call = reserve_mem_notifier,
 };
-
+/* 2024年07月18日18:39:12
+todo */
 static int __meminit init_reserve_notifier(void)
 {
 	if (register_hotmemory_notifier(&reserve_mem_nb))

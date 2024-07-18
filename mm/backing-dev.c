@@ -130,7 +130,7 @@ static inline void bdi_debug_unregister(struct backing_dev_info *bdi)
 {
 }
 #endif
-
+/*  */
 static ssize_t read_ahead_kb_store(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf, size_t count)
@@ -161,7 +161,7 @@ static ssize_t name##_show(struct device *dev,				\
 static DEVICE_ATTR_RW(name);
 
 BDI_SHOW(read_ahead_kb, K(bdi->ra_pages))
-
+/* 2024年07月18日17:41:06 */
 static ssize_t min_ratio_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -180,7 +180,9 @@ static ssize_t min_ratio_store(struct device *dev,
 	return ret;
 }
 BDI_SHOW(min_ratio, bdi->min_ratio)
+/* 2024年07月18日17:40:36
 
+ */
 static ssize_t max_ratio_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -199,7 +201,7 @@ static ssize_t max_ratio_store(struct device *dev,
 	return ret;
 }
 BDI_SHOW(max_ratio, bdi->max_ratio)
-
+/* 2024年07月18日17:28:20 */
 static ssize_t stable_pages_required_show(struct device *dev,
 					  struct device_attribute *attr,
 					  char *page)
@@ -219,7 +221,8 @@ static struct attribute *bdi_dev_attrs[] = {
 	NULL,
 };
 ATTRIBUTE_GROUPS(bdi_dev);
-
+/* 2024年07月18日17:27:49
+驱动层面的obj，class那些 */
 static __init int bdi_class_init(void)
 {
 	bdi_class = class_create(THIS_MODULE, "bdi");
@@ -234,7 +237,8 @@ static __init int bdi_class_init(void)
 postcore_initcall(bdi_class_init);
 
 static int bdi_init(struct backing_dev_info *bdi);
-
+/* 2024年07月18日17:27:21
+初始化bdi线程 */
 static int __init default_bdi_init(void)
 {
 	int err;
@@ -251,6 +255,8 @@ static int __init default_bdi_init(void)
 subsys_initcall(default_bdi_init);
 
 /*
+2024年07月18日17:26:39
+这个dwork是什么，todo。
  * This function is used when the first inode for this wb is marked dirty. It
  * wakes-up the corresponding bdi thread which should then take care of the
  * periodic background write-out of dirty inodes. Since the write-out would
@@ -269,6 +275,7 @@ void wb_wakeup_delayed(struct bdi_writeback *wb)
 	unsigned long timeout;
 
 	timeout = msecs_to_jiffies(dirty_writeback_interval * 10);
+
 	spin_lock_bh(&wb->work_lock);
 	if (test_bit(WB_registered, &wb->state))
 		queue_delayed_work(bdi_wq, &wb->dwork, timeout);
@@ -279,7 +286,9 @@ void wb_wakeup_delayed(struct bdi_writeback *wb)
  * Initial write bandwidth: 100 MB/s
  */
 #define INIT_BW		(100 << (20 - PAGE_SHIFT))
-/* 2024年7月17日23:11:21 */
+/* 2024年7月17日23:11:21
+2024年07月18日16:36:22
+初始化wb */
 static int wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi,
 		   int blkcg_id, gfp_t gfp)
 {
@@ -343,6 +352,10 @@ out_put_bdi:
 static void cgwb_remove_from_bdi_list(struct bdi_writeback *wb);
 
 /*
+2024年07月18日15:17:53
+关闭wb的线程
+2024年07月18日16:57:22
+移除bdinode，然后刷新dwork。
  * Remove bdi from the global list and shutdown any threads we have running
  */
 static void wb_shutdown(struct bdi_writeback *wb)
@@ -355,6 +368,7 @@ static void wb_shutdown(struct bdi_writeback *wb)
 	}
 	spin_unlock_bh(&wb->work_lock);
 
+	/* 移除自己连接到bdi的bdi-node */
 	cgwb_remove_from_bdi_list(wb);
 	/*
 	 * Drain work list and shutdown the delayed_work.  !WB_registered
@@ -362,10 +376,13 @@ static void wb_shutdown(struct bdi_writeback *wb)
 	 * be drained no matter what.
 	 */
 	mod_delayed_work(bdi_wq, &wb->dwork, 0);
+	/* 还不清楚机制，可否理解为执行最后一次？ */
 	flush_delayed_work(&wb->dwork);
 	WARN_ON(!list_empty(&wb->work_list));
 }
-
+/* 2024年07月18日17:00:48
+清除counter，put bdi。
+ */
 static void wb_exit(struct bdi_writeback *wb)
 {
 	int i;
@@ -376,8 +393,11 @@ static void wb_exit(struct bdi_writeback *wb)
 		percpu_counter_destroy(&wb->stat[i]);
 
 	fprop_local_destroy_percpu(&wb->completions);
+	
 	wb_congested_put(wb->congested);
+	
 	if (wb != &wb->bdi->wb)
+	/* 如果不是bdi的wb，就说明是关联bdi的wb，自己退出了，页put一下bdi */
 		bdi_put(wb->bdi);
 }
 
@@ -395,6 +415,8 @@ static struct workqueue_struct *cgwb_release_wq;
 
 /**
 2024年7月17日23:13:24
+2024年07月18日17:10:33
+创建一些cgwb共享的congested stat。
  * wb_congested_get_create - get or create a wb_congested
  * @bdi: associated bdi
  * @blkcg_id: ID of the associated blkcg
@@ -415,7 +437,7 @@ retry:
 
 	node = &bdi->cgwb_congested_tree.rb_node;
 	parent = NULL;
-
+	/* 在tree上面查找congested stat */
 	while (*node != NULL) {
 		parent = *node;
 		congested = rb_entry(parent, struct bdi_writeback_congested,
@@ -428,7 +450,9 @@ retry:
 			goto found;
 	}
 
+	/* 在树上没找到就来到这？ */
 	if (new_congested) {
+		/* 如果新建了congested stat */
 		/* !found and storage for new one already allocated, insert */
 		congested = new_congested;
 		rb_link_node(&congested->rb_node, parent, node);
@@ -439,24 +463,30 @@ retry:
 
 	spin_unlock_irqrestore(&cgwb_lock, flags);
 
-	/* allocate storage for new one and retry */
+	/* allocate storage for new one and retry 
+	创建新的congested stat*/
 	new_congested = kzalloc(sizeof(*new_congested), gfp);
 	if (!new_congested)
 		return NULL;
-
+	/* 设置相关属性 */
 	refcount_set(&new_congested->refcnt, 1);
 	new_congested->__bdi = bdi;
 	new_congested->blkcg_id = blkcg_id;
+	/* 去retry，应该就可以找到了，然后去found */
 	goto retry;
 
 found:
+/* 如果在tree找到了现成的stat */
 	refcount_inc(&congested->refcnt);
 	spin_unlock_irqrestore(&cgwb_lock, flags);
+/* 这里为什么释放，需要释放吗 */
 	kfree(new_congested);
 	return congested;
 }
 
 /**
+2024年07月18日17:08:14
+wb来put congested，为0则清理
  * wb_congested_put - put a wb_congested
  * @congested: wb_congested to put
  *
@@ -471,6 +501,7 @@ void wb_congested_put(struct bdi_writeback_congested *congested)
 
 	/* bdi might already have been destroyed leaving @congested unlinked */
 	if (congested->__bdi) {
+		/*  */
 		rb_erase(&congested->rb_node,
 			 &congested->__bdi->cgwb_congested_tree);
 		congested->__bdi = NULL;
@@ -479,36 +510,44 @@ void wb_congested_put(struct bdi_writeback_congested *congested)
 	spin_unlock_irqrestore(&cgwb_lock, flags);
 	kfree(congested);
 }
-
+/* 2024年07月18日16:53:01 */
 static void cgwb_release_workfn(struct work_struct *work)
 {
+	/* 获得要操作的wb */
 	struct bdi_writeback *wb = container_of(work, struct bdi_writeback,
 						release_work);
+	/* 通过自己的blkcg css获得blkcg（就是containerof获取的），但是自己的blkcg node不是也连了一个blkcg吗 */
 	struct blkcg *blkcg = css_to_blkcg(wb->blkcg_css);
 
 	mutex_lock(&wb->bdi->cgwb_release_mutex);
+	/* 断联bdi，刷新dwork */
 	wb_shutdown(wb);
-
 	css_put(wb->memcg_css);
 	css_put(wb->blkcg_css);
 	mutex_unlock(&wb->bdi->cgwb_release_mutex);
 
-	/* triggers blkg destruction if cgwb_refcnt becomes zero */
+	/* triggers blkg destruction if cgwb_refcnt becomes zero
+	put关联的blkcg， */
 	blkcg_cgwb_put(blkcg);
 
 	fprop_local_destroy_percpu(&wb->memcg_completions);
+	
 	percpu_ref_exit(&wb->refcnt);
+	
 	wb_exit(wb);
 	kfree_rcu(wb, rcu);
 }
-
+/* 2024年07月18日16:52:05
+好像这种工作，都是异步的。想想也正常，万一谁还在用呢。 */
 static void cgwb_release(struct percpu_ref *refcnt)
 {
 	struct bdi_writeback *wb = container_of(refcnt, struct bdi_writeback,
 						refcnt);
 	queue_work(cgwb_release_wq, &wb->release_work);
 }
-
+/* 2024年07月18日16:03:09
+处理bdi的cgwb tree里面的cg wb
+清理与memcg，blkcg的连接，还有ref */
 static void cgwb_kill(struct bdi_writeback *wb)
 {
 	lockdep_assert_held(&cgwb_lock);
@@ -518,14 +557,20 @@ static void cgwb_kill(struct bdi_writeback *wb)
 	list_del(&wb->blkcg_node);
 	percpu_ref_kill(&wb->refcnt);
 }
-
+/* 2024年07月18日15:18:38
+2024年07月18日16:51:52
+为啥这个简单的功能也要函数 */
 static void cgwb_remove_from_bdi_list(struct bdi_writeback *wb)
 {
 	spin_lock_irq(&cgwb_lock);
+	/* 移除 */
 	list_del_rcu(&wb->bdi_node);
 	spin_unlock_irq(&cgwb_lock);
 }
-/* 2024年7月17日23:06:50 */
+
+/* 2024年7月17日23:06:50
+2024年07月18日16:47:25
+创建cgwb，并进行相应的初始化和连接 */
 static int cgwb_create(struct backing_dev_info *bdi,
 		       struct cgroup_subsys_state *memcg_css, gfp_t gfp)
 {
@@ -550,7 +595,8 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	/* 2024年7月17日23:09:59为什么又查一遍，不是wb_get_create刚才没查到来到这的吗 */
 	wb = radix_tree_lookup(&bdi->cgwb_tree, memcg_css->id);
 	if (wb && wb->blkcg_css != blkcg_css) {
-		/* 查到了，但是不匹配，清理？ */
+		/* 查到了，但是不匹配，清理？
+		就是断开此wb的cg链接和ref */
 		cgwb_kill(wb);
 		wb = NULL;
 	}
@@ -562,7 +608,8 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	/* 还是查到了匹配得了，可能是race情况下创建的吧 */
 		goto out_put;
 
-	/* need to create a new one */
+	/* need to create a new one
+	开始自己创建 */
 	wb = kmalloc(sizeof(*wb), gfp);
 	if (!wb) {
 		ret = -ENOMEM;
@@ -580,7 +627,7 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	ret = fprop_local_init_percpu(&wb->memcg_completions, gfp);
 	if (ret)
 		goto err_ref_exit;
-
+	/* 关联cg */
 	wb->memcg_css = memcg_css;
 	wb->blkcg_css = blkcg_css;
 	INIT_WORK(&wb->release_work, cgwb_release_workfn);
@@ -595,6 +642,8 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	ret = -ENODEV;
 
 
+	/* 下面这一块是吧新建的wb与全局的设施进行链接吗，
+	bdi的cgwb树，bdi，全局cg链表。 */
 	spin_lock_irqsave(&cgwb_lock, flags);
 	if (test_bit(WB_registered, &bdi->wb.state) &&
 	    blkcg_cgwb_list->next && memcg_cgwb_list->next) {
@@ -636,7 +685,7 @@ out_put:
 /**
 2024年7月17日00:38:10
 2024年7月17日23:03:07
-
+查找bdi上面的属于此css的wb
  * wb_get_lookup - get wb for a given memcg
  * @bdi: target bdi
  * @memcg_css: cgroup_subsys_state of the target memcg (must have positive ref)
@@ -695,6 +744,8 @@ struct bdi_writeback *wb_get_lookup(struct backing_dev_info *bdi,
 /**
 2024年7月17日23:00:53
 查找现成的，或者创建
+2024年07月18日16:46:31
+在bdi上面获取属于此memcg css的wb
  * wb_get_create - get wb for a given memcg, create if necessary
  * @bdi: target bdi
  * @memcg_css: cgroup_subsys_state of the target memcg (must have positive ref)
@@ -717,15 +768,18 @@ struct bdi_writeback *wb_get_create(struct backing_dev_info *bdi,
 	/* 不是root的话，好像每个memcg有自己对应的wb？2024年7月17日23:02:13
 	 */
 	do {
+		/* 看来是每个css和bdi都有特定的wb，存储在bdi的cgwb tree里面2024年07月18日16:41:18 */
 		wb = wb_get_lookup(bdi, memcg_css);
 		/* 这个while循环看起来只是为了重试？不涉及层次关系？ */
 	} while (!wb && 
-	/* 没有查到现成的wb，创建 */
+	/* 没有查到现成的wb，创建这个memcg css对应的wb？ */
 	!cgwb_create(bdi, memcg_css, gfp));
 
 	return wb;
 }
-
+/* 
+2024年07月18日16:35:09
+初始化bdi的cgwb */
 static int cgwb_bdi_init(struct backing_dev_info *bdi)
 {
 	int ret;
@@ -734,15 +788,18 @@ static int cgwb_bdi_init(struct backing_dev_info *bdi)
 	bdi->cgwb_congested_tree = RB_ROOT;
 	mutex_init(&bdi->cgwb_release_mutex);
 	init_rwsem(&bdi->wb_switch_rwsem);
-
+	/* 初始化bdi的wb，话说这个wb到底是什么，特殊在哪，此时wb应该就是一块内存空间2024年07月18日16:36:08 */
 	ret = wb_init(&bdi->wb, bdi, 1, GFP_KERNEL);
+	
 	if (!ret) {
+		/* 初始化wb成功。链接memcg和blkcg */
 		bdi->wb.memcg_css = &root_mem_cgroup->css;
 		bdi->wb.blkcg_css = blkcg_root_css;
 	}
 	return ret;
 }
-
+/* 2024年07月18日15:36:02
+好像就是清除tree和list的wb */
 static void cgwb_bdi_unregister(struct backing_dev_info *bdi)
 {
 	struct radix_tree_iter iter;
@@ -752,8 +809,11 @@ static void cgwb_bdi_unregister(struct backing_dev_info *bdi)
 	WARN_ON(test_bit(WB_registered, &bdi->wb.state));
 
 	spin_lock_irq(&cgwb_lock);
+	/* tree里面是cgroup wb们。 */
 	radix_tree_for_each_slot(slot, &bdi->cgwb_tree, &iter, 0)
+		/* 断开memcg，blkcg连接 */
 		cgwb_kill(*slot);
+
 	spin_unlock_irq(&cgwb_lock);
 
 	mutex_lock(&bdi->cgwb_release_mutex);
@@ -820,7 +880,9 @@ static void cgwb_bdi_exit(struct backing_dev_info *bdi)
 	}
 	spin_unlock_irq(&cgwb_lock);
 }
-
+/* 2024年07月18日16:26:41
+链接上自己的wb
+ */
 static void cgwb_bdi_register(struct backing_dev_info *bdi)
 {
 	spin_lock_irq(&cgwb_lock);
@@ -881,7 +943,8 @@ static void cgwb_remove_from_bdi_list(struct bdi_writeback *wb)
 }
 
 #endif	/* CONFIG_CGROUP_WRITEBACK */
-
+/* 2024年07月18日16:33:59
+初始化bdi */
 static int bdi_init(struct backing_dev_info *bdi)
 {
 	int ret;
@@ -900,7 +963,9 @@ static int bdi_init(struct backing_dev_info *bdi)
 
 	return ret;
 }
-
+/* 2024年07月18日16:33:40
+分配bdi
+ */
 struct backing_dev_info *bdi_alloc_node(gfp_t gfp_mask, int node_id)
 {
 	struct backing_dev_info *bdi;
@@ -917,7 +982,7 @@ struct backing_dev_info *bdi_alloc_node(gfp_t gfp_mask, int node_id)
 	return bdi;
 }
 EXPORT_SYMBOL(bdi_alloc_node);
-
+/* 2024年07月18日16:28:33 */
 static struct rb_node **bdi_lookup_rb_node(u64 id, struct rb_node **parentp)
 {
 	struct rb_node **p = &bdi_tree.rb_node;
@@ -945,6 +1010,7 @@ static struct rb_node **bdi_lookup_rb_node(u64 id, struct rb_node **parentp)
 
 /**
 2024年7月13日15:20:27
+通过id在红黑树查找来get设备
  * bdi_get_by_id - lookup and get bdi from its id
  * @id: bdi id to lookup
  *
@@ -966,7 +1032,9 @@ struct backing_dev_info *bdi_get_by_id(u64 id)
 
 	return bdi;
 }
-
+/* 2024年07月18日16:26:07
+创建设备，注册设备
+ */
 int bdi_register_va(struct backing_dev_info *bdi, const char *fmt, va_list args)
 {
 	struct device *dev;
@@ -1001,7 +1069,8 @@ int bdi_register_va(struct backing_dev_info *bdi, const char *fmt, va_list args)
 	return 0;
 }
 EXPORT_SYMBOL(bdi_register_va);
-
+/* 2024年07月18日16:25:36
+注册设备 */
 int bdi_register(struct backing_dev_info *bdi, const char *fmt, ...)
 {
 	va_list args;
@@ -1013,7 +1082,10 @@ int bdi_register(struct backing_dev_info *bdi, const char *fmt, ...)
 	return ret;
 }
 EXPORT_SYMBOL(bdi_register);
+/* 2024年07月18日16:25:13
+owner是什么
 
+ */
 int bdi_register_owner(struct backing_dev_info *bdi, struct device *owner)
 {
 	int rc;
@@ -1030,6 +1102,8 @@ int bdi_register_owner(struct backing_dev_info *bdi, struct device *owner)
 EXPORT_SYMBOL(bdi_register_owner);
 
 /*
+2024年07月18日15:16:44
+从bdi list移出
  * Remove bdi from bdi_list, and ensure that it is no longer visible
  */
 static void bdi_remove_from_list(struct backing_dev_info *bdi)
@@ -1041,26 +1115,32 @@ static void bdi_remove_from_list(struct backing_dev_info *bdi)
 
 	synchronize_rcu_expedited();
 }
-
+/* 2024年07月18日15:16:32 */
 void bdi_unregister(struct backing_dev_info *bdi)
 {
 	/* make sure nobody finds us on the bdi_list anymore */
 	bdi_remove_from_list(bdi);
+	/* 移除bdi-node，刷新dwork */
 	wb_shutdown(&bdi->wb);
+	/* 清除tree和list的wb */
 	cgwb_bdi_unregister(bdi);
 
 	if (bdi->dev) {
+		/* 有dev的话 */
 		bdi_debug_unregister(bdi);
 		device_unregister(bdi->dev);
 		bdi->dev = NULL;
 	}
 
 	if (bdi->owner) {
+		/*  */
 		put_device(bdi->owner);
 		bdi->owner = NULL;
 	}
 }
-
+/* 2024年07月18日15:15:22 
+释放bdi的回调函数
+*/
 static void release_bdi(struct kref *ref)
 {
 	struct backing_dev_info *bdi =
@@ -1068,24 +1148,36 @@ static void release_bdi(struct kref *ref)
 
 	if (test_bit(WB_registered, &bdi->wb.state))
 		bdi_unregister(bdi);
+
 	WARN_ON_ONCE(bdi->dev);
 	wb_exit(&bdi->wb);
 	cgwb_bdi_exit(bdi);
 	kfree(bdi);
 }
-
+/* 2024年07月18日15:14:11 */
 void bdi_put(struct backing_dev_info *bdi)
 {
+	/* 减一 */
 	kref_put(&bdi->refcnt, release_bdi);
 }
 EXPORT_SYMBOL(bdi_put);
-
+/* 2024年07月18日14:48:01 */
 static wait_queue_head_t congestion_wqh[2] = {
 		__WAIT_QUEUE_HEAD_INITIALIZER(congestion_wqh[0]),
 		__WAIT_QUEUE_HEAD_INITIALIZER(congestion_wqh[1])
 	};
+/* 2024年07月18日14:49:20
+==0说明没有congestion？
+2024年07月18日15:09:10
+bit = sync ? WB_sync_congested : WB_async_congested;
+	if (!test_and_set_bit(bit, &congested->state))
+		atomic_inc(&nr_wb_congested[sync]);
+值表示发生congestion的wb数量
+		 */
 static atomic_t nr_wb_congested[2];
-
+/* 2024年07月18日15:12:51
+有个wb不阻塞了，唤醒相应队列
+ */
 void clear_wb_congested(struct bdi_writeback_congested *congested, int sync)
 {
 	wait_queue_head_t *wqh = &congestion_wqh[sync];
@@ -1094,12 +1186,17 @@ void clear_wb_congested(struct bdi_writeback_congested *congested, int sync)
 	bit = sync ? WB_sync_congested : WB_async_congested;
 	if (test_and_clear_bit(bit, &congested->state))
 		atomic_dec(&nr_wb_congested[sync]);
+
 	smp_mb__after_atomic();
 	if (waitqueue_active(wqh))
 		wake_up(wqh);
 }
-EXPORT_SYMBOL(clear_wb_congested);
 
+
+EXPORT_SYMBOL(clear_wb_congested);
+/* 2024年07月18日15:06:42
+报告wb的阻塞情况，统计到全局数组nr-wb-congestion数组
+ */
 void set_wb_congested(struct bdi_writeback_congested *congested, int sync)
 {
 	enum wb_congested_state bit;
@@ -1111,6 +1208,9 @@ void set_wb_congested(struct bdi_writeback_congested *congested, int sync)
 EXPORT_SYMBOL(set_wb_congested);
 
 /**
+2024年07月18日14:57:22
+wait一直到bdi不congested
+与wait_iff_congested区别？
  * congestion_wait - wait for a backing_dev to become uncongested
  * @sync: SYNC or ASYNC IO
  * @timeout: timeout in jiffies
@@ -1138,7 +1238,10 @@ long congestion_wait(int sync, long timeout)
 EXPORT_SYMBOL(congestion_wait);
 
 /**
- * wait_iff_congested - Conditionally wait for a backing_dev to become uncongested or a pgdat to complete writes
+2024年07月18日14:47:31
+等待一直到拥塞（很多脏页)
+ * wait_iff_congested - Conditionally wait for a backing_dev to become uncongested or a 
+ pgdat to complete writes
  * @sync: SYNC or ASYNC IO
  * @timeout: timeout in jiffies
  *
@@ -1167,6 +1270,7 @@ long wait_iff_congested(int sync, long timeout)
 		/* In case we scheduled, work out time remaining */
 		ret = timeout - (jiffies - start);
 		if (ret < 0)
+		/* 说明超时了 */
 			ret = 0;
 
 		goto out;
@@ -1174,6 +1278,7 @@ long wait_iff_congested(int sync, long timeout)
 
 	/* Sleep until uncongested or a write happens */
 	prepare_to_wait(wqh, &wait, TASK_UNINTERRUPTIBLE);
+	/* 是io wait */
 	ret = io_schedule_timeout(timeout);
 	finish_wait(wqh, &wait);
 

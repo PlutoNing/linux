@@ -281,6 +281,7 @@ static inline bool is_cow_mapping(vm_flags_t flags)
  */
 
 /*
+2024年07月18日19:39:50
  * Executable code area - executable, not writable, not stack
  */
 static inline bool is_exec_mapping(vm_flags_t flags)
@@ -300,6 +301,8 @@ static inline bool is_stack_mapping(vm_flags_t flags)
 }
 
 /*
+2024年07月18日20:12:41
+私有可写的非stack数据
  * Data area - private, writable, not stack
  */
 static inline bool is_data_mapping(vm_flags_t flags)

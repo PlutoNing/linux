@@ -469,7 +469,9 @@ counts all VM_SHARED vmas的数量 */
 #endif
 //代表该address_space缓存的Page所存放的rb-tree
 	struct rb_root_cached	i_mmap;
-	/* 用来保护i_mmap 和i_mmap_writable的自旋锁 */
+	/* 用来保护i_mmap 和i_mmap_writable的自旋锁
+	2024年07月18日19:00:53
+	表示引用自己的vma数量？ */
 	struct rw_semaphore	i_mmap_rwsem;
 	/* 地址空间里面的page数量 */
 	unsigned long		nrpages;
@@ -479,7 +481,9 @@ counts all VM_SHARED vmas的数量 */
 	/* 代表address_space的操作方法函数 */
 	const struct address_space_operations *a_ops;
 	unsigned long		flags;
-	/* 代表address_space最近操作方式的错误码 */
+	/* 代表address_space最近操作方式的错误码
+	2024年07月18日10:47:41
+	关联的wb的err */
 	errseq_t		wb_err;
 	/* 用来保护private_list的自旋锁 */
 	spinlock_t		private_lock;
@@ -551,7 +555,7 @@ static inline void i_mmap_lock_write(struct address_space *mapping)
 {
 	down_write(&mapping->i_mmap_rwsem);
 }
-
+/* 2024年07月18日19:00:43 */
 static inline void i_mmap_unlock_write(struct address_space *mapping)
 {
 	up_write(&mapping->i_mmap_rwsem);
@@ -1027,6 +1031,7 @@ struct file {
 	struct list_head	f_tfile_llink;
 #endif /* #ifdef CONFIG_EPOLL */
 	struct address_space	*f_mapping;
+	/* wb的err */
 	errseq_t		f_wb_err;
 } __randomize_layout
   __attribute__((aligned(4)));	/* lest something weird decides that 2 is OK */
@@ -1373,7 +1378,7 @@ struct files_struct;
 static inline void show_fd_locks(struct seq_file *f,
 			struct file *filp, struct files_struct *files) {}
 #endif /* !CONFIG_FILE_LOCKING */
-
+/* 2024年07月18日18:31:10 */
 static inline struct inode *file_inode(const struct file *f)
 {
 	return f->f_inode;
@@ -2094,6 +2099,7 @@ static inline bool sb_rdonly(const struct super_block *sb) { return sb->s_flags 
 #define IS_IMA(inode)		((inode)->i_flags & S_IMA)
 #define IS_AUTOMOUNT(inode)	((inode)->i_flags & S_AUTOMOUNT)
 #define IS_NOSEC(inode)		((inode)->i_flags & S_NOSEC)
+/* 直接io */
 #define IS_DAX(inode)		((inode)->i_flags & S_DAX)
 #define IS_ENCRYPTED(inode)	((inode)->i_flags & S_ENCRYPTED)
 #define IS_CASEFOLDED(inode)	((inode)->i_flags & S_CASEFOLD)
@@ -2831,6 +2837,8 @@ static inline int file_write_and_wait(struct file *file)
 }
 
 /**
+2024年07月18日10:48:18
+设置mapping的wb err。
  * filemap_set_wb_err - set a writeback error on an address_space
  * @mapping: mapping in which to set writeback error
  * @err: error to be set in mapping

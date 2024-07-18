@@ -21,8 +21,15 @@
 #include <linux/swap.h>
 
 #include <asm/unistd.h>
+/* 
+2024年07月18日18:35:34
+fadvise是干啥的 */
+
+
 
 /*
+2024年07月18日18:30:40
+
  * POSIX_FADV_WILLNEED could set PG_Referenced, and POSIX_FADV_NOREUSE could
  * deactivate the pages and clear PG_Referenced.
  */
@@ -48,6 +55,7 @@ int generic_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 	bdi = inode_to_bdi(mapping->host);
 
 	if (IS_DAX(inode) || (bdi == &noop_backing_dev_info)) {
+		/* 如果是直接IO */
 		switch (advice) {
 		case POSIX_FADV_NORMAL:
 		case POSIX_FADV_RANDOM:
@@ -178,7 +186,9 @@ int generic_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 	return 0;
 }
 EXPORT_SYMBOL(generic_fadvise);
-
+/* 2024年07月18日18:30:17
+vfs调用 
+ */
 int vfs_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 {
 	if (file->f_op->fadvise)
@@ -189,7 +199,7 @@ int vfs_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 EXPORT_SYMBOL(vfs_fadvise);
 
 #ifdef CONFIG_ADVISE_SYSCALLS
-
+/* 2024年07月18日18:30:13 */
 int ksys_fadvise64_64(int fd, loff_t offset, loff_t len, int advice)
 {
 	struct fd f = fdget(fd);

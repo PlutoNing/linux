@@ -2291,6 +2291,7 @@ struct device *get_device(struct device *dev)
 EXPORT_SYMBOL_GPL(get_device);
 
 /**
+2024年07月18日16:24:19
  * put_device - decrement reference count.
  * @dev: device in question.
  */
@@ -2321,6 +2322,7 @@ bool kill_device(struct device *dev)
 EXPORT_SYMBOL_GPL(kill_device);
 
 /**
+2024年07月18日16:24:04
  * device_del - delete device from system.
  * @dev: device.
  *
@@ -2392,6 +2394,8 @@ void device_del(struct device *dev)
 EXPORT_SYMBOL_GPL(device_del);
 
 /**
+2024年07月18日16:23:43
+卸载设备吗
  * device_unregister - unregister device from system.
  * @dev: device going away.
  *

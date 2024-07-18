@@ -5,7 +5,7 @@
 #ifdef CONFIG_HUGETLB_PAGE
 
 #include <linux/mm.h>
-
+/* 2024年07月18日19:10:06 */
 static inline bool is_vm_hugetlb_page(struct vm_area_struct *vma)
 {
 	return !!(vma->vm_flags & VM_HUGETLB);

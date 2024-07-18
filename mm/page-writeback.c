@@ -2057,7 +2057,8 @@ void writeback_set_ratelimit(void)
 	if (ratelimit_pages < 16)
 		ratelimit_pages = 16;
 }
-
+/* 2024年07月18日11:23:01
+ */
 static int page_writeback_cpu_online(unsigned int cpu)
 {
 	writeback_set_ratelimit();
@@ -2065,6 +2066,8 @@ static int page_writeback_cpu_online(unsigned int cpu)
 }
 
 /*
+2024年07月18日11:22:00
+设置wb线程
  * Called early on to tune the page writeback dirty limits.
  *
  * We used to scale dirty pages according to how total memory

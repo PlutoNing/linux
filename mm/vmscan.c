@@ -314,7 +314,7 @@ static void set_memcg_congestion(pg_data_t *pgdat,
 	mn = mem_cgroup_nodeinfo(memcg, pgdat->node_id);
 	WRITE_ONCE(mn->congested, congested);
 }
-
+/* 2024年07月18日14:55:26 */
 static bool memcg_congested(pg_data_t *pgdat,
 			struct mem_cgroup *memcg)
 {
@@ -3182,7 +3182,9 @@ static inline bool should_continue_reclaim(struct pglist_data *pgdat,
 
 	return inactive_lru_pages > pages_for_compaction;
 }
-
+/* 2024年07月18日14:54:20
+node有congested属性
+或者memcg的mz拥塞了 */
 static bool pgdat_memcg_congested(pg_data_t *pgdat, struct mem_cgroup *memcg)
 {
 	return test_bit(PGDAT_CONGESTED, &pgdat->flags) ||
@@ -3356,6 +3358,7 @@ try_to_free_pages→do_try_to_free_pages→shrink_zones→shrink_node。
 		 */
 		if (!sc->hibernation_mode && !current_is_kswapd() &&
 		   current_may_throttle() && pgdat_memcg_congested(pgdat, root))
+		   /* 开始sleep */
 			wait_iff_congested(BLK_RW_ASYNC, HZ/10);
 
 	/* 结束循环条件是判断这一轮回收和扫描页面的数量 */

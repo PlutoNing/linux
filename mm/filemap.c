@@ -10,6 +10,11 @@
  * most "normal" filesystems (but you don't /have/ to use this:
  * the NFS filesystem used to do this differently, for example)
  */
+
+ /* 2024年07月18日12:43:20
+ 好像是主要操作mapping。
+ 
+  */
 #include <linux/export.h>
 #include <linux/compiler.h>
 #include <linux/dax.h>
@@ -54,6 +59,8 @@
 #include <asm/mman.h>
 
 /*
+2024年07月18日12:42:16
+todo
  * Shared mappings implemented 30.11.1994. It's not fully working yet,
  * though.
  *
@@ -245,7 +252,11 @@ void __delete_from_page_cache(struct page *page, void *shadow)
 	/* 置空page。mapping。 */
 	page_cache_delete(mapping, page, shadow);
 }
-
+/* 2024年07月18日12:39:52
+pagecache换页面的free操作
+调用ops
+减少引用，put
+ */
 static void page_cache_free_page(struct address_space *mapping,
 				struct page *page)
 {
@@ -264,6 +275,8 @@ static void page_cache_free_page(struct address_space *mapping,
 }
 
 /**
+2024年07月18日12:41:23
+
  * delete_from_page_cache - delete page from page cache
  * @page: the page which the kernel is trying to remove from page cache
  *
@@ -277,6 +290,7 @@ void delete_from_page_cache(struct page *page)
 	unsigned long flags;
 
 	BUG_ON(!PageLocked(page));
+
 	xa_lock_irqsave(&mapping->i_pages, flags);
 	__delete_from_page_cache(page, NULL);
 	xa_unlock_irqrestore(&mapping->i_pages, flags);
@@ -286,6 +300,7 @@ void delete_from_page_cache(struct page *page)
 EXPORT_SYMBOL(delete_from_page_cache);
 
 /*
+2024年07月18日12:37:41
  * page_cache_delete_batch - delete several pages from page cache
  * @mapping: the mapping to which pages belong
  * @pvec: pagevec with pages to delete
@@ -309,7 +324,10 @@ static void page_cache_delete_batch(struct address_space *mapping,
 
 	mapping_set_update(&xas, mapping);
 	xas_for_each(&xas, page, ULONG_MAX) {
+		/* 遍历xas */
+
 		if (i >= pagevec_count(pvec))
+		/* 删除够了 */
 			break;
 
 		/* A swap/dax/shadow entry got inserted? Skip it. */
@@ -321,6 +339,7 @@ static void page_cache_delete_batch(struct address_space *mapping,
 		 * If we see a page whose index is higher than ours, it
 		 * means our page has been removed, which shouldn't be
 		 * possible because we're holding the PageLock.
+		 2024年07月18日12:39:14 todo
 		 */
 		if (page != pvec->pages[i]) {
 			VM_BUG_ON_PAGE(page->index > pvec->pages[i]->index,
@@ -344,9 +363,12 @@ static void page_cache_delete_batch(struct address_space *mapping,
 		xas_store(&xas, NULL);
 		total_pages++;
 	}
+
 	mapping->nrpages -= total_pages;
 }
+/* 2024年07月18日12:36:26
 
+ */
 void delete_from_page_cache_batch(struct address_space *mapping,
 				  struct pagevec *pvec)
 {
@@ -359,12 +381,14 @@ void delete_from_page_cache_batch(struct address_space *mapping,
 	xa_lock_irqsave(&mapping->i_pages, flags);
 	for (i = 0; i < pagevec_count(pvec); i++) {
 		trace_mm_filemap_delete_from_page_cache(pvec->pages[i]);
-
+		/* 先account相关的操作 */
 		unaccount_page_cache_page(mapping, pvec->pages[i]);
 	}
+	/* 执行删除 */
 	page_cache_delete_batch(mapping, pvec);
 	xa_unlock_irqrestore(&mapping->i_pages, flags);
-
+	/* 这里是free什么
+	好像是调用ops，进行put之类的  */
 	for (i = 0; i < pagevec_count(pvec); i++)
 		page_cache_free_page(mapping, pvec->pages[i]);
 }
@@ -384,7 +408,8 @@ int filemap_check_errors(struct address_space *mapping)
 	return ret;
 }
 EXPORT_SYMBOL(filemap_check_errors);
-
+/* 2024年07月18日12:36:05
+ */
 static int filemap_check_and_keep_errors(struct address_space *mapping)
 {
 	/* Check for outstanding write errors */
@@ -438,19 +463,21 @@ int __filemap_fdatawrite_range(struct address_space *mapping, loff_t start,
 
 	return ret;
 }
-
+/* 2024年07月18日12:33:12 */
 static inline int __filemap_fdatawrite(struct address_space *mapping,
 	int sync_mode)
 {
+	/* 默认是全写 */
 	return __filemap_fdatawrite_range(mapping, 0, LLONG_MAX, sync_mode);
 }
-
+/* 2024年07月18日12:32:56 */
 int filemap_fdatawrite(struct address_space *mapping)
 {
+	/* 默认是SYNCALL */
 	return __filemap_fdatawrite(mapping, WB_SYNC_ALL);
 }
 EXPORT_SYMBOL(filemap_fdatawrite);
-
+/* 2024年07月18日12:35:52 */
 int filemap_fdatawrite_range(struct address_space *mapping, loff_t start,
 				loff_t end)
 {
@@ -459,6 +486,8 @@ int filemap_fdatawrite_range(struct address_space *mapping, loff_t start,
 EXPORT_SYMBOL(filemap_fdatawrite_range);
 
 /**
+2024年07月18日12:35:25
+flush与wb区别？
  * filemap_flush - mostly a non-blocking flush
  * @mapping:	target address_space
  *
@@ -582,6 +611,7 @@ int filemap_fdatawait_range(struct address_space *mapping, loff_t start_byte,
 EXPORT_SYMBOL(filemap_fdatawait_range);
 
 /**
+2024年07月18日12:35:01
  * filemap_fdatawait_range_keep_errors - wait for writeback to complete
  * @mapping:		address space structure to wait for
  * @start_byte:		offset in bytes where the range starts
@@ -604,6 +634,8 @@ int filemap_fdatawait_range_keep_errors(struct address_space *mapping,
 EXPORT_SYMBOL(filemap_fdatawait_range_keep_errors);
 
 /**
+2024年07月18日12:34:22
+wait file。。
  * file_fdatawait_range - wait for writeback to complete
  * @file:		file pointing to address space structure to wait for
  * @start_byte:		offset in bytes where the range starts
@@ -624,11 +656,13 @@ int file_fdatawait_range(struct file *file, loff_t start_byte, loff_t end_byte)
 	struct address_space *mapping = file->f_mapping;
 
 	__filemap_fdatawait_range(mapping, start_byte, end_byte);
+
 	return file_check_and_advance_wb_err(file);
 }
 EXPORT_SYMBOL(file_fdatawait_range);
 
 /**
+2024年07月18日12:34:12
  * filemap_fdatawait_keep_errors - wait for writeback without clearing errors
  * @mapping: address space structure to wait for
  *
@@ -663,10 +697,12 @@ static bool mapping_needs_writeback(struct address_space *mapping)
 	return mapping->nrpages;
 }
 
+/* 2024年07月18日12:19:56
+ */
 int filemap_write_and_wait(struct address_space *mapping)
 {
 	int err = 0;
-
+/* 是说filemap-write就是写mapping吗，然后就是wb吗 */
 	if (mapping_needs_writeback(mapping)) {
 		err = filemap_fdatawrite(mapping);
 		/*
@@ -684,6 +720,7 @@ int filemap_write_and_wait(struct address_space *mapping)
 			filemap_check_errors(mapping);
 		}
 	} else {
+		/* 暂时不需要回写的话？就check一下吗。 */
 		err = filemap_check_errors(mapping);
 	}
 	return err;
@@ -734,7 +771,9 @@ int filemap_write_and_wait_range(struct address_space *mapping,
 
 
 EXPORT_SYMBOL(filemap_write_and_wait_range);
-
+/* 2024年07月18日10:46:37
+设置mapping关联的wb err
+ */
 void __filemap_set_wb_err(struct address_space *mapping, int err)
 {
 	errseq_t eseq = errseq_set(&mapping->wb_err, err);
@@ -744,6 +783,7 @@ void __filemap_set_wb_err(struct address_space *mapping, int err)
 EXPORT_SYMBOL(__filemap_set_wb_err);
 
 /**
+2024年07月18日12:19:01
  * file_check_and_advance_wb_err - report wb error (if any) that was previously
  * 				   and advance wb_err to current one
  * @file: struct file on which the error is being reported
@@ -796,6 +836,7 @@ int file_check_and_advance_wb_err(struct file *file)
 EXPORT_SYMBOL(file_check_and_advance_wb_err);
 
 /**
+2024年07月18日12:17:25
  * file_write_and_wait_range - write out & wait on a file range
  * @file:	file pointing to address_space with pages
  * @lstart:	offset in bytes where the range starts
@@ -823,6 +864,7 @@ int file_write_and_wait_range(struct file *file, loff_t lstart, loff_t lend)
 		if (err != -EIO)
 			__filemap_fdatawait_range(mapping, lstart, lend);
 	}
+
 	err2 = file_check_and_advance_wb_err(file);
 	if (!err)
 		err = err2;
@@ -831,6 +873,8 @@ int file_write_and_wait_range(struct file *file, loff_t lstart, loff_t lend)
 EXPORT_SYMBOL(file_write_and_wait_range);
 
 /**
+2024年07月18日12:14:32
+有必要替换吗
  * replace_page_cache_page - replace a pagecache page with a new one
  * @old:	page to be replaced
  * @new:	page to replace with
@@ -851,6 +895,7 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 	struct address_space *mapping = old->mapping;
 	void (*freepage)(struct page *) = mapping->a_ops->freepage;
 	pgoff_t offset = old->index;
+	/*  */
 	XA_STATE(xas, &mapping->i_pages, offset);
 	unsigned long flags;
 
@@ -859,12 +904,14 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 	VM_BUG_ON_PAGE(new->mapping, new);
 
 	get_page(new);
+	/* 指向old的index和mapping */
 	new->mapping = mapping;
 	new->index = offset;
 
-	xas_lock_irqsave(&xas, flags);
-	xas_store(&xas, new);
 
+	xas_lock_irqsave(&xas, flags);
+	/* 页面存入xas */
+	xas_store(&xas, new);
 	old->mapping = NULL;
 	/* hugetlb pages do not participate in page cache accounting. */
 	if (!PageHuge(old))
@@ -876,9 +923,14 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 	if (PageSwapBacked(new))
 		__inc_node_page_state(new, NR_SHMEM);
 	xas_unlock_irqrestore(&xas, flags);
+
+
+	/* memcg相关 */
 	mem_cgroup_migrate(old, new);
+
 	if (freepage)
 		freepage(old);
+
 	put_page(old);
 
 	return 0;
@@ -925,11 +977,13 @@ struct xa_state xas = { .xa = &mapping->i_pages,
 		if (error)
 			return error;
 	}
-
+	/* 加入mapping时get一次 */
 	get_page(page);
+	/* 设置page的属性 */
 	page->mapping = mapping;
 	page->index = offset;
 
+	/* 再改变mapping（加入） */
 	do {
 		/* 进行mapping里面xas相关的存储 */
 		xas_lock_irq(&xas);
@@ -968,6 +1022,7 @@ unlock:
 	trace_mm_filemap_add_to_page_cache(page);
 	return 0;
 error:
+/* 出错的清理 */
 	page->mapping = NULL;
 	/* Leave page->index set: truncation relies upon it */
 	if (!huge)
@@ -1000,7 +1055,10 @@ int add_to_page_cache_locked(struct page *page, struct address_space *mapping,
 }
 EXPORT_SYMBOL(add_to_page_cache_locked);
 /* 2024年6月24日22:44:06
-
+2024年07月18日11:43:46
+pagecache与lru怎么结合。
+2024年07月18日11:53:16
+就是获得页面之后，先加入mapping，再加入lru。
  */
 int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 				pgoff_t offset, gfp_t gfp_mask)
@@ -1012,9 +1070,11 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 	/* 这里加到file的地址空间里面的xas */
 	ret = __add_to_page_cache_locked(page, mapping, offset,
 					 gfp_mask, &shadow);
+
 	if (unlikely(ret))
 		__ClearPageLocked(page);
 	else {
+		/* 刚才是先加入mapping，没出错的话现在加入lru。 */
 		/* 
 		2024年6月30日11:47:19
 		加入mapping里面成功之后到这里，
@@ -1030,6 +1090,9 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 		WARN_ON_ONCE(PageActive(page));
 		if (!(gfp_mask & __GFP_WRITE) && shadow)
 			workingset_refault(page, shadow);
+
+		/* 然后这里加入lru，但是参数只有page一个东西，那怎么找到哪个lru呢
+		2024年07月18日11:52:47 哦哦忘了，page有lru相关属性 */
 		lru_cache_add(page);
 	}
 	return ret;
@@ -1076,35 +1139,45 @@ EXPORT_SYMBOL(__page_cache_alloc);
 static wait_queue_head_t page_wait_table[PAGE_WAIT_TABLE_SIZE] __cacheline_aligned;
 /* 2024年6月25日23:08:57
 page的等待队列
+2024年07月18日10:43:15
+比如想获得锁的时候来等待
  */
 static wait_queue_head_t *page_waitqueue(struct page *page)
 {
 	return &page_wait_table[hash_ptr(page, PAGE_WAIT_TABLE_BITS)];
 }
-
+/* 2024年07月18日11:21:07 */
 void __init pagecache_init(void)
 {
 	int i;
 
 	for (i = 0; i < PAGE_WAIT_TABLE_SIZE; i++)
 		init_waitqueue_head(&page_wait_table[i]);
-
+	/* 初始化写回线程 */
 	page_writeback_init();
 }
 
-/* This has the same layout as wait_bit_key - see fs/cachefiles/rdwr.c */
+/* 
+2024年07月18日11:08:44
+This has the same layout as wait_bit_key - see fs/cachefiles/rdwr.c */
 struct wait_page_key {
-	struct page *page;
+	/* 要等待的page？ */
+	struct page *page
+	/* 等待的bit位？ */;
 	int bit_nr;
+	/*  */
 	int page_match;
 };
-
+/* 2024年07月18日11:20:02 */
 struct wait_page_queue {
 	struct page *page;
 	int bit_nr;
 	wait_queue_entry_t wait;
 };
-
+/* 2024年07月18日11:18:15
+todo
+什么时候调用？
+ */
 static int wake_page_function(wait_queue_entry_t *wait, unsigned mode, int sync, void *arg)
 {
 	struct wait_page_key *key = arg;
@@ -1113,6 +1186,7 @@ static int wake_page_function(wait_queue_entry_t *wait, unsigned mode, int sync,
 
 	if (wait_page->page != key->page)
 	       return 0;
+
 	key->page_match = 1;
 
 	if (wait_page->bit_nr != key->bit_nr)
@@ -1131,24 +1205,27 @@ static int wake_page_function(wait_queue_entry_t *wait, unsigned mode, int sync,
 
 	return autoremove_wake_function(wait, mode, sync, key);
 }
-
+/* 2024年07月18日11:07:45
+ */
 static void wake_up_page_bit(struct page *page, int bit_nr)
 {
 	wait_queue_head_t *q = page_waitqueue(page);
 	struct wait_page_key key;
 	unsigned long flags;
 	wait_queue_entry_t bookmark;
-
+	/* 设置查找的key？ */
 	key.page = page;
 	key.bit_nr = bit_nr;
 	key.page_match = 0;
 
+	/* 好像只是默认的初始化 */
 	bookmark.flags = 0;
 	bookmark.private = NULL;
 	bookmark.func = NULL;
 	INIT_LIST_HEAD(&bookmark.entry);
 
 	spin_lock_irqsave(&q->lock, flags);
+	/*  */
 	__wake_up_locked_key_bookmark(q, TASK_NORMAL, &key, &bookmark);
 
 	while (bookmark.flags & WQ_FLAG_BOOKMARK) {
@@ -1185,20 +1262,25 @@ static void wake_up_page_bit(struct page *page, int bit_nr)
 	}
 	spin_unlock_irqrestore(&q->lock, flags);
 }
-
+/* 2024年07月18日11:06:23
+唤醒某个bit的
+ */
 static void wake_up_page(struct page *page, int bit)
 {
 	if (!PageWaiters(page))
 		return;
+
 	wake_up_page_bit(page, bit);
 }
 
 /*
+2024年07月18日11:03:36
  * A choice of three behaviors for wait_on_page_bit_common():
  */
 enum behavior {
 	EXCLUSIVE,	/* Hold ref to page and take the bit when woken, like
 			 * __lock_page() waiting on then setting PG_locked.
+
 			 */
 	SHARED,		/* Hold ref to page and check the bit when woken, like
 			 * wait_on_page_writeback() waiting on PG_writeback.
@@ -1209,7 +1291,8 @@ enum behavior {
 };
 /* 2024年6月25日23:10:08
 加入此page的等待队列q
- */
+todo，有点长
+*/
 static inline int wait_on_page_bit_common(wait_queue_head_t *q,
 	struct page *page, int bit_nr, int state, enum behavior behavior)
 {
@@ -1223,14 +1306,17 @@ static inline int wait_on_page_bit_common(wait_queue_head_t *q,
 
 	if (bit_nr == PG_locked &&
 	    !PageUptodate(page) && PageWorkingset(page)) {
+	
+	/* 参数有PG_locked的情况 */
 		if (!PageSwapBacked(page)) {
 			delayacct_thrashing_start();
 			delayacct = true;
 		}
+		
 		psi_memstall_enter(&pflags);
 		thrashing = true;
 	}
-
+	/* 如何wait */
 	init_wait(wait);
 	wait->flags = behavior == EXCLUSIVE ? WQ_FLAG_EXCLUSIVE : 0;
 	wait->func = wake_page_function;
@@ -1257,9 +1343,11 @@ static inline int wait_on_page_bit_common(wait_queue_head_t *q,
 			io_schedule();
 
 		if (behavior == EXCLUSIVE) {
+			/* exclusive是set bit */
 			if (!test_and_set_bit_lock(bit_nr, &page->flags))
 				break;
 		} else if (behavior == SHARED) {
+			/* shared是test bit */
 			if (!test_bit(bit_nr, &page->flags))
 				break;
 		}
@@ -1317,6 +1405,8 @@ int wait_on_page_bit_killable(struct page *page, int bit_nr)
 EXPORT_SYMBOL(wait_on_page_bit_killable);
 
 /**
+2024年07月18日10:54:07
+为什么put 可以和 等待锁一起出现。？和wait_on_page_bit_common有关。
  * put_and_wait_on_page_locked - Drop a reference and wait for it to be unlocked
  * @page: The page to wait for.
  *
@@ -1336,6 +1426,8 @@ void put_and_wait_on_page_locked(struct page *page)
 }
 
 /**
+2024年07月18日10:51:50
+给page的wq添加等待的
  * add_page_wait_queue - Add an arbitrary waiter to a page's wait queue
  * @page: Page defining the wait queue of interest
  * @waiter: Waiter to add to the queue
@@ -1344,11 +1436,14 @@ void put_and_wait_on_page_locked(struct page *page)
  */
 void add_page_wait_queue(struct page *page, wait_queue_entry_t *waiter)
 {
+	/* 获得wq */
 	wait_queue_head_t *q = page_waitqueue(page);
 	unsigned long flags;
 
 	spin_lock_irqsave(&q->lock, flags);
+	/* 添加到wq */
 	__add_wait_queue_entry_tail(q, waiter);
+	/*  */
 	SetPageWaiters(page);
 	spin_unlock_irqrestore(&q->lock, flags);
 }
@@ -1378,6 +1473,8 @@ static inline bool clear_bit_unlock_is_negative_byte(long nr, volatile void *mem
 #endif
 
 /**
+2024年07月18日10:51:09
+unlock，唤醒wq。
  * unlock_page - unlock a locked page
  * @page: the page
  *
@@ -1397,12 +1494,16 @@ void unlock_page(struct page *page)
 	BUILD_BUG_ON(PG_waiters != 7);
 	page = compound_head(page);
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
+
+	/* 唤醒wq，让出锁 */
 	if (clear_bit_unlock_is_negative_byte(PG_locked, &page->flags))
 		wake_up_page_bit(page, PG_locked);
 }
 EXPORT_SYMBOL(unlock_page);
 
 /**
+2024年07月18日10:49:54
+wb有啥好end的？todo
  * end_page_writeback - end writeback against a page
  * @page: the page
  */
@@ -1424,23 +1525,28 @@ void end_page_writeback(struct page *page)
 		BUG();
 
 	smp_mb__after_atomic();
+	/* 2024年07月18日10:50:28  wake up？ */
 	wake_up_page(page, PG_writeback);
 }
 EXPORT_SYMBOL(end_page_writeback);
 
 /*
+2024年07月18日10:44:27
+end io之后回调来更新flags？
  * After completing I/O on a page, call this routine to update the page
  * flags appropriately
  */
 void page_endio(struct page *page, bool is_write, int err)
 {
 	if (!is_write) {
+		/* 读的情况？ */
 		if (!err) {
 			SetPageUptodate(page);
 		} else {
 			ClearPageUptodate(page);
 			SetPageError(page);
 		}
+		/* 这个unlock对应哪个lock */
 		unlock_page(page);
 	} else {
 		if (err) {
@@ -1449,6 +1555,7 @@ void page_endio(struct page *page, bool is_write, int err)
 			SetPageError(page);
 			mapping = page_mapping(page);
 			if (mapping)
+			/* 设置mapping的error */
 				mapping_set_error(mapping, err);
 		}
 		end_page_writeback(page);
@@ -1458,6 +1565,7 @@ EXPORT_SYMBOL_GPL(page_endio);
 
 /**
 2024年7月17日22:40:13
+可能会睡眠
  * __lock_page - get a lock on the page, assuming we need to sleep to get it
  * @__page: the page to lock
  */
@@ -1469,7 +1577,9 @@ void __lock_page(struct page *__page)
 				EXCLUSIVE);
 }
 EXPORT_SYMBOL(__lock_page);
-
+/* 2024年07月18日10:42:50
+在page的等待队列上等待获得
+ */
 int __lock_page_killable(struct page *__page)
 {
 	struct page *page = compound_head(__page);
@@ -1479,7 +1589,8 @@ int __lock_page_killable(struct page *__page)
 }
 EXPORT_SYMBOL_GPL(__lock_page_killable);
 
-/*
+/*2024年07月18日10:33:54
+todo
  * Return values:
  * 1 - page is locked; mmap_sem is still held.
  * 0 - page is not locked.
@@ -1506,8 +1617,10 @@ int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 			wait_on_page_locked_killable(page);
 		else
 			wait_on_page_locked(page);
+
 		return 0;
 	} else {
+		/* 2024年07月18日10:42:17 todo */
 		if (flags & FAULT_FLAG_KILLABLE) {
 			int ret;
 
@@ -1525,6 +1638,8 @@ int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 /**
 2024年07月17日16:06:30
 pagecache的gap是什么
+2024年07月18日10:30:23
+与prev，next的区别？
  * page_cache_next_miss() - Find the next gap in the page cache.
  * @mapping: Mapping.
  * @index: Index.
@@ -1604,6 +1719,7 @@ EXPORT_SYMBOL(page_cache_prev_miss);
 /**
 2024年6月29日22:40:07
 2024年7月13日14:37:07
+获得页面
  * find_get_entry - find and get a page cache entry
  * @mapping: the address_space to search
  * @offset: the page cache index
@@ -1626,6 +1742,7 @@ struct page *find_get_entry(struct address_space *mapping, pgoff_t offset)
 repeat:
 	xas_reset(&xas);
 	page = xas_load(&xas);
+	/* 需要重新读取的话  */
 	if (xas_retry(&xas, page))
 		goto repeat;
 	/*
@@ -1647,6 +1764,8 @@ repeat:
 		put_page(page);
 		goto repeat;
 	}
+	/* 不需要重新读取，存在，不是value，可以独占加锁，期间没有变化，就直接到这了，
+	find subpage */
 	/* 为什么还要subpage呢， */
 	page = find_subpage(page, offset);
 out:
@@ -1657,6 +1776,8 @@ out:
 EXPORT_SYMBOL(find_get_entry);
 
 /**
+2024年07月18日10:13:14
+find和lock
  * find_lock_entry - locate, pin and lock a page cache entry
  * @mapping: the address_space to search
  * @offset: the page cache index
@@ -1678,7 +1799,9 @@ struct page *find_lock_entry(struct address_space *mapping, pgoff_t offset)
 
 repeat:
 	page = find_get_entry(mapping, offset);
+	/* 刚才仅仅是get，没有加锁什么的 */
 	if (page && !xa_is_value(page)) {
+		/* page存在，且不是value */
 		lock_page(page);
 		/* Has the page been truncated? */
 		if (unlikely(page_mapping(page) != mapping)) {
@@ -1807,6 +1930,8 @@ no_page:
 EXPORT_SYMBOL(pagecache_get_page);
 
 /**
+2024年07月18日10:09:12
+todo
  * find_get_entries - gang pagecache lookup
  * @mapping:	The address_space to search
  * @start:	The starting page cache index
@@ -1847,6 +1972,7 @@ unsigned find_get_entries(struct address_space *mapping,
 		 * A shadow entry of a recently evicted page, a swap
 		 * entry from shmem/tmpfs or a DAX entry.  Return it
 		 * without attempting to raise page count.
+		 2024年07月18日10:11:38碰到空洞就“导出”，然后继续？
 		 */
 		if (xa_is_value(page))
 			goto export;
@@ -1860,8 +1986,11 @@ unsigned find_get_entries(struct address_space *mapping,
 		page = find_subpage(page, xas.xa_index);
 
 export:
+		/* 保存获得的page和此page的空洞的位置吗 */
 		indices[ret] = xas.xa_index;
 		entries[ret] = page;
+
+		/* 达到最大数量后返回 */
 		if (++ret == nr_entries)
 			break;
 		continue;
@@ -1875,13 +2004,14 @@ retry:
 }
 
 /**
+2024年07月18日10:01:10
  * find_get_pages_range - gang pagecache lookup
  * @mapping:	The address_space to search
  * @start:	The starting page index
  * @end:	The final page index (inclusive)
  * @nr_pages:	The maximum number of pages
  * @pages:	Where the resulting pages are placed
- *
+ *在start与end之间找到最多nr个页面，会增加引用计数。
  * find_get_pages_range() will search for and return a group of up to @nr_pages
  * pages in the mapping starting at index @start and up to index @end
  * (inclusive).  The pages are placed at @pages.  find_get_pages_range() takes
@@ -1889,8 +2019,9 @@ retry:
  *
  * The search returns a group of mapping-contiguous pages with ascending
  * indexes.  There may be holes in the indices due to not-present pages.
+ 会更新参数里面的start值
  * We also update @start to index the next page for the traversal.
- *
+ *返回找到的页面数量
  * Return: the number of pages which were found. If this number is
  * smaller than @nr_pages, the end of specified range has been
  * reached.
@@ -1907,20 +2038,23 @@ unsigned find_get_pages_range(struct address_space *mapping, pgoff_t *start,
 		return 0;
 
 	rcu_read_lock();
+	/* 遍历xas */
 	xas_for_each(&xas, page, end) {
 		if (xas_retry(&xas, page))
 			continue;
 		/* Skip over shadow, swap and DAX entries */
 		if (xa_is_value(page))
+		/* 与find_get_pages_contig不同的地方，可以继续 */
 			continue;
-
+		/* 获得独占的锁 */
 		if (!page_cache_get_speculative(page))
 			goto retry;
 
 		/* Has the page moved or been split? */
 		if (unlikely(page != xas_reload(&xas)))
+		/* 确保没有变 */
 			goto put_page;
-
+		/* 加入返回的结果里面 */
 		pages[ret] = find_subpage(page, xas.xa_index);
 		if (++ret == nr_pages) {
 			*start = xas.xa_index + 1;
@@ -1950,6 +2084,8 @@ out:
 }
 
 /**
+2024年07月18日10:00:19
+类似find_get_pages()，但是返回的是连续的
  * find_get_pages_contig - gang contiguous pagecache lookup
  * @mapping:	The address_space to search
  * @index:	The starting page index
@@ -1973,6 +2109,8 @@ unsigned find_get_pages_contig(struct address_space *mapping, pgoff_t index,
 
 	rcu_read_lock();
 	for (page = xas_load(&xas); page; page = xas_next(&xas)) {
+		/* 遍历xas */
+
 		if (xas_retry(&xas, page))
 			continue;
 		/*
@@ -1981,7 +2119,7 @@ unsigned find_get_pages_contig(struct address_space *mapping, pgoff_t index,
 		 */
 		if (xa_is_value(page))
 			break;
-
+		/* 获得自己的独占的锁 */
 		if (!page_cache_get_speculative(page))
 			goto retry;
 
@@ -1992,12 +2130,14 @@ unsigned find_get_pages_contig(struct address_space *mapping, pgoff_t index,
 		pages[ret] = find_subpage(page, xas.xa_index);
 		if (++ret == nr_pages)
 			break;
+
 		continue;
 put_page:
 		put_page(page);
 retry:
 		xas_reset(&xas);
 	}
+
 	rcu_read_unlock();
 	return ret;
 }
@@ -2005,6 +2145,7 @@ EXPORT_SYMBOL(find_get_pages_contig);
 
 /**
 2024年7月17日23:49:34
+找到mapping里面符合tag的page放到pages里面
  * find_get_pages_range_tag - find and return pages in given range matching @tag
  * @mapping:	the address_space to search
  * @index:	the starting page index

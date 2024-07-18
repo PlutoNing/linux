@@ -30,7 +30,7 @@
 AV结构用于管理匿名类型VMAs，当有匿名页需要unmap处理时，可以先找到AV，然后再通过AV进行查找处理
  */
 struct anon_vma {
-	struct anon_vma *root;		/* Root of this anon_vma tree 指向此anon_vma所属的root */
+	struct anon_vma *root;		/* Root of this anon_vma tree ，指向此anon_vma所属的root */
 	struct rw_semaphore rwsem;	/* W: modification, R: walking the list 读写信号量 */
 	/*
 	 * The refcount is taken on an anon_vma when there is no
@@ -133,7 +133,7 @@ static inline void anon_vma_lock_write(struct anon_vma *anon_vma)
 {
 	down_write(&anon_vma->root->rwsem);
 }
-
+/* 2024年07月18日18:58:54 */
 static inline void anon_vma_unlock_write(struct anon_vma *anon_vma)
 {
 	up_write(&anon_vma->root->rwsem);

@@ -15,7 +15,7 @@
 
 #include <linux/spinlock.h>
 #include <linux/refcount.h>
-
+/* 2024年07月18日15:14:26 */
 struct kref {
 	refcount_t refcount;
 };
@@ -46,6 +46,8 @@ static inline void kref_get(struct kref *kref)
 }
 
 /**
+2024年07月18日15:14:50
+最后一个put的调用回调
  * kref_put - decrement refcount for object.
  * @kref: object.
  * @release: pointer to the function that will clean up the object when the

@@ -353,7 +353,7 @@ struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 		vma_init(vma, mm);
 	return vma;
 }
-
+/* 2024年07月18日20:21:45 */
 struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 {
 	struct vm_area_struct *new = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);
@@ -364,7 +364,7 @@ struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 	}
 	return new;
 }
-
+/* 2024年07月18日19:40:46 */
 void vm_area_free(struct vm_area_struct *vma)
 {
 	kmem_cache_free(vm_area_cachep, vma);

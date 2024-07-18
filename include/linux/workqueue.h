@@ -118,7 +118,7 @@ struct work_struct {
 #define WORK_DATA_INIT()	ATOMIC_LONG_INIT((unsigned long)WORK_STRUCT_NO_POOL)
 #define WORK_DATA_STATIC_INIT()	\
 	ATOMIC_LONG_INIT((unsigned long)(WORK_STRUCT_NO_POOL | WORK_STRUCT_STATIC))
-
+/* 2024年07月18日15:33:33 */
 struct delayed_work {
 	struct work_struct work;
 	struct timer_list timer;
@@ -523,6 +523,7 @@ static inline bool queue_delayed_work(struct workqueue_struct *wq,
 }
 
 /**
+2024年07月18日15:31:12
  * mod_delayed_work - modify delay of or queue a delayed work
  * @wq: workqueue to use
  * @dwork: work to queue

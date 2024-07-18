@@ -194,6 +194,8 @@ EXPORT_SYMBOL_GPL(get_kernel_page);
 而update_lru_size会更新对应的node和memcg的lru size
 ====================
 找到pagevec所属的node，lruvec，lru之后，加入进去。
+2024年07月18日11:51:00
+就是调用mov fn进行移动，但是会在路径上加入一下memcg等的处理
  */
 static void pagevec_lru_move_fn(struct pagevec *pvec,
 	void (*move_fn)(struct page *page, struct lruvec *lruvec, void *arg),
@@ -225,7 +227,9 @@ static void pagevec_lru_move_fn(struct pagevec *pvec,
 	}
 	if (pgdat)
 		spin_unlock_irqrestore(&pgdat->lru_lock, flags);
+
 	release_pages(pvec->pages, pvec->nr);
+
 	pagevec_reinit(pvec);
 }
 /* 2024年06月25日15:59:11
@@ -430,6 +434,8 @@ static void __lru_cache_add(struct page *page)
 	/*      尝试加入到lru_add缓存中，如果缓存已经满了或者page是复合类型（为什么？？？），则直接加入到lru链表中
 */
 	if (!pagevec_add(pvec, page) || PageCompound(page))
+	/* 这里pagevec_add虽然返回0（满了），但是其实也加入了，因为是加入之后检测的满不满 */
+	/* 不过这里pvec是percpu的，怎么确定page所属的lru呢 */
 		__pagevec_lru_add(pvec);
 	put_cpu_var(lru_add_pvec);
 }
@@ -982,7 +988,7 @@ void lru_add_page_tail(struct page *page, struct page *page_tail,
 }
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 /* 2024年06月25日14:54:33
-将lru_add缓存链表中的页加入到lru链表中
+将lru_add缓存pvec中的页加入到lru链表中的move-fn
 
  */
 static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
@@ -1041,6 +1047,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
     // 将page放入到lru链表中，并更新链表中的页面数
 
 	add_page_to_lru_list(page, lruvec, lru);
+	/* tp点 */
 	trace_mm_lru_insertion(page, lru);
 }
 

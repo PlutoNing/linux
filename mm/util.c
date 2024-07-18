@@ -765,6 +765,7 @@ unsigned long vm_commit_limit(void)
 }
 
 /*
+2024年07月18日18:46:21
  * Make sure vm_committed_as in one cacheline and not cacheline shared with
  * other variables. It can be updated by several CPUs frequently.
  */

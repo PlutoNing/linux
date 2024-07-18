@@ -363,6 +363,7 @@ struct vm_area_struct {
 	} shared;
 
 	/*
+	avc
 	 * A file's MAP_PRIVATE vma can be in both i_mmap tree and anon_vma
 	 * list, after a COW of one of the file pages.	A MAP_SHARED vma
 	 * can only be in the i_mmap tree.  An anonymous MAP_PRIVATE, stack
@@ -378,11 +379,15 @@ struct vm_area_struct {
 	const struct vm_operations_struct *vm_ops;
 
 	/* Information about our backing store: */
+	
 	unsigned long vm_pgoff;		/* Offset (within vm_file) in PAGE_SIZE
 					   units */
 	struct file * vm_file;		/* File we map to (can be NULL). 
 	如果是mmap，这是mmap文件*/
-	void * vm_private_data;		/* was vm_pte (shared mem) */
+
+	void * vm_private_data;		/* was vm_pte (shared mem)
+	2024年07月18日19:18:53可能是special mapping
+	也可能是fault函数获取页面的数据源：**pages */
 
 #ifdef CONFIG_SWAP
 	atomic_long_t swap_readahead_info;
@@ -767,7 +772,8 @@ enum vm_fault_reason {
 	{ VM_FAULT_FALLBACK,            "FALLBACK" },	\
 	{ VM_FAULT_DONE_COW,            "DONE_COW" },	\
 	{ VM_FAULT_NEEDDSYNC,           "NEEDDSYNC" }
-
+/* 2024年07月18日19:19:33
+ */
 struct vm_special_mapping {
 	const char *name;	/* The name, e.g. "[vdso]". */
 
@@ -776,12 +782,14 @@ struct vm_special_mapping {
 	 * NULL-terminated array of pages that back the special mapping.
 	 *
 	 * This must not be NULL unless .fault is provided.
+	 这个是一组页面，可以缺页的时候拿来用。
 	 */
 	struct page **pages;
 
 	/*
 	 * If non-NULL, then this is called to resolve page faults
 	 * on the special mapping.  If used, .pages is not checked.
+	 错误处理函数
 	 */
 	vm_fault_t (*fault)(const struct vm_special_mapping *sm,
 				struct vm_area_struct *vma,

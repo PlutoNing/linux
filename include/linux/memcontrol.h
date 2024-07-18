@@ -171,6 +171,7 @@ struct mem_cgroup_per_node {
 
 						/* 记录这个mz是不是还在全局的soft limit tree */
 	bool			on_tree;
+	/* 是否拥塞堵塞了，很多脏页 */
 	bool			congested;	/* memcg has many dirty pages */
 						/* backed by a congested BDI */
 
