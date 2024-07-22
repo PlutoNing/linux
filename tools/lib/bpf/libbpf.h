@@ -63,6 +63,7 @@ LIBBPF_API libbpf_print_fn_t libbpf_set_print(libbpf_print_fn_t fn);
 struct bpf_object;
 
 struct bpf_object_open_attr {
+	/* 要open和加载的文件 */
 	const char *file;
 	enum bpf_prog_type prog_type;
 };
@@ -70,6 +71,7 @@ struct bpf_object_open_attr {
 LIBBPF_API struct bpf_object *bpf_object__open(const char *path);
 LIBBPF_API struct bpf_object *
 bpf_object__open_xattr(struct bpf_object_open_attr *attr);
+/*  */
 struct bpf_object *__bpf_object__open_xattr(struct bpf_object_open_attr *attr,
 					    int flags);
 LIBBPF_API struct bpf_object *bpf_object__open_buffer(void *obj_buf,

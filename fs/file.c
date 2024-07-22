@@ -475,6 +475,8 @@ static unsigned int find_next_fd(struct fdtable *fdt, unsigned int start)
 }
 
 /*
+2024年07月22日16:56:15
+获取下一个fd
  * allocate a file descriptor, mark it busy.
  */
 int __alloc_fd(struct files_struct *files,
@@ -539,7 +541,7 @@ static int alloc_fd(unsigned start, unsigned flags)
 {
 	return __alloc_fd(current->files, start, rlimit(RLIMIT_NOFILE), flags);
 }
-
+/* 获取下一个fd */
 int get_unused_fd_flags(unsigned flags)
 {
 	return __alloc_fd(current->files, 0, rlimit(RLIMIT_NOFILE), flags);

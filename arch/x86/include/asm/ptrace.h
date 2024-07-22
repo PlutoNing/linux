@@ -52,7 +52,8 @@ struct pt_regs {
 };
 
 #else /* __i386__ */
-
+/* 
+在输入主内核代码之前将用户空间 CPU 寄存器推送到内核堆栈，以及这些 当系统调用完成时，寄存器将相应地恢复。堆栈中保存已保存 寄存器被强制转换为pt_regs结构 */
 struct pt_regs {
 /*
  * C ABI says these regs are callee-preserved. They aren't saved on kernel entry

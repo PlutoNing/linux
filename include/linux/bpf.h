@@ -27,7 +27,9 @@ struct btf_type;
 extern struct idr btf_idr;
 extern spinlock_t btf_idr_lock;
 
-/* map is generic key/value storage optionally accesible by eBPF programs */
+/* map is generic key/value storage optionally accesible by eBPF programs
+对应着map的api
+ */
 struct bpf_map_ops {
 	/* funcs callable from userspace (via syscall) */
 	int (*map_alloc_check)(union bpf_attr *attr);
@@ -74,12 +76,14 @@ struct bpf_map_memory {
 struct bpf_map {
 	/* The first two cachelines with read-mostly members of which some
 	 * are also accessed in fast-path (e.g. ops, max_entries).
+	 代表这个类型map的ops
 	 */
 	const struct bpf_map_ops *ops ____cacheline_aligned;
 	struct bpf_map *inner_map_meta;
 #ifdef CONFIG_SECURITY
 	void *security;
 #endif
+/* map的类型 */
 	enum bpf_map_type map_type;
 	u32 key_size;
 	u32 value_size;
@@ -88,8 +92,10 @@ struct bpf_map {
 	int spin_lock_off; /* >=0 valid offset, <0 error */
 	u32 id;
 	int numa_node;
+	/* 相关的btf的key和id */
 	u32 btf_key_type_id;
 	u32 btf_value_type_id;
+	/* 相关的btp */
 	struct btf *btf;
 	struct bpf_map_memory memory;
 	bool unpriv_array;
@@ -99,9 +105,11 @@ struct bpf_map {
 	/* The 3rd and 4th cacheline with misc members to avoid false sharing
 	 * particularly with refcounting.
 	 */
+	 /* 计数，创建时初始化为1 */
 	atomic_t refcnt ____cacheline_aligned;
 	atomic_t usercnt;
 	struct work_struct work;
+	/* map的名字 */
 	char name[BPF_OBJ_NAME_LEN];
 };
 

@@ -56,13 +56,15 @@ static struct file_system_type anon_inode_fs_type = {
 };
 
 /**
+创建匿名inode file啥啥的
  * anon_inode_getfile - creates a new file instance by hooking it up to an
  *                      anonymous inode, and a dentry that describe the "class"
  *                      of the file
  *
- * @name:    [in]    name of the "class" of the new file
- * @fops:    [in]    file operations for the new file
- * @priv:    [in]    private data for the new file (will be file's private_data)
+ * @name:    [in]    name of the "class" of the new file名字
+ * @fops:    [in]    file operations for the new file客户指定的ops
+ * @priv:    [in]    private data for the new file (will be file's 
+ private_data)客户要用作priv数据的东西
  * @flags:   [in]    flags
  *
  * Creates a new file by hooking it on a single inode. This is useful for files
@@ -90,9 +92,10 @@ struct file *anon_inode_getfile(const char *name,
 	ihold(anon_inode_inode);
 	file = alloc_file_pseudo(anon_inode_inode, anon_inode_mnt, name,
 				 flags & (O_ACCMODE | O_NONBLOCK), fops);
+
 	if (IS_ERR(file))
 		goto err;
-
+	/*  */
 	file->f_mapping = anon_inode_inode->i_mapping;
 
 	file->private_data = priv;
@@ -107,6 +110,8 @@ err:
 EXPORT_SYMBOL_GPL(anon_inode_getfile);
 
 /**
+2024年07月22日16:53:42
+anon_inodefs相关
  * anon_inode_getfd - creates a new file instance by hooking it up to an
  *                    anonymous inode, and a dentry that describe the "class"
  *                    of the file
@@ -138,6 +143,7 @@ int anon_inode_getfd(const char *name, const struct file_operations *fops,
 		error = PTR_ERR(file);
 		goto err_put_unused_fd;
 	}
+	/* 安装 */
 	fd_install(fd, file);
 
 	return fd;

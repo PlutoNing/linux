@@ -209,6 +209,7 @@ struct btf {
 	u32 nr_types;
 	u32 types_size;
 	u32 data_size;
+	/* 此btf的引用计数 */
 	refcount_t refcnt;
 	u32 id;
 	struct rcu_head rcu;
@@ -3389,7 +3390,7 @@ static int btf_release(struct inode *inode, struct file *filp)
 	btf_put(filp->private_data);
 	return 0;
 }
-
+/* btf的file ops */
 const struct file_operations btf_fops = {
 #ifdef CONFIG_PROC_FS
 	.show_fdinfo	= bpf_btf_show_fdinfo,
@@ -3432,7 +3433,9 @@ int btf_new_fd(const union bpf_attr *attr)
 
 	return ret;
 }
-
+/* 
+通过btf fd查找btf 
+存在file对象的priv数据*/
 struct btf *btf_get_by_fd(int fd)
 {
 	struct btf *btf;
@@ -3447,7 +3450,7 @@ struct btf *btf_get_by_fd(int fd)
 		fdput(f);
 		return ERR_PTR(-EINVAL);
 	}
-
+	/* btf储存在file的priv数据 */
 	btf = f.file->private_data;
 	refcount_inc(&btf->refcnt);
 	fdput(f);

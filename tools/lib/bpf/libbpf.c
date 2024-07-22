@@ -211,7 +211,7 @@ static const char * const libbpf_type_to_btf_name[] = {
 	[LIBBPF_MAP_BSS]	= ".bss",
 	[LIBBPF_MAP_RODATA]	= ".rodata",
 };
-
+/*  */
 struct bpf_map {
 	int fd;
 	char *name;
@@ -233,8 +233,10 @@ struct bpf_secdata {
 };
 
 static LIST_HEAD(bpf_objects_list);
-
+/* 
+ */
 struct bpf_object {
+	/* 对应二进制文件的名字 */
 	char name[BPF_OBJ_NAME_LEN];
 	char license[64];
 	__u32 kern_version;
@@ -254,9 +256,13 @@ struct bpf_object {
 	 * is valid.
 	 */
 	struct {
+		/* elf的path对应的fd */
 		int fd;
+		/* elf的内存映像 */
 		void *obj_buf;
+		/* elf内存映像大小 */
 		size_t obj_buf_sz;
+		/* 代表elf对象 */
 		Elf *elf;
 		GElf_Ehdr ehdr;
 		Elf_Data *symbols;
@@ -269,6 +275,8 @@ struct bpf_object {
 			Elf_Data *data;
 		} *reloc;
 		int nr_reloc;
+		/* 遍历ebpf.o中的所有sec找到SEC("maps")和SEC(".maps")这两类section
+找到名字为"maps"或者".maps"的section，并将它们的idx分别存放到obj->efile.maps_shndx和obj->efile.btf_maps_shndx中 */
 		int maps_shndx;
 		int btf_maps_shndx;
 		int text_shndx;
@@ -280,6 +288,7 @@ struct bpf_object {
 	 * All loaded bpf_object is linked in a list, which is
 	 * hidden to caller. bpf_objects__<func> handlers deal with
 	 * all objects.
+	 加入到全局的bpf_objects_list链表
 	 */
 	struct list_head list;
 
@@ -290,7 +299,7 @@ struct bpf_object {
 	bpf_object_clear_priv_t clear_priv;
 
 	struct bpf_capabilities caps;
-
+	/* 对应二进制代码文件的path */
 	char path[];
 };
 #define obj_elf_valid(o)	((o)->efile.elf)
@@ -490,7 +499,9 @@ bpf_object__init_prog_names(struct bpf_object *obj)
 
 	return 0;
 }
-
+/* 2024年07月22日16:15:24
+新建bpf_object对象，只是进行一点点初始化
+ */
 static struct bpf_object *bpf_object__new(const char *path,
 					  void *obj_buf,
 					  size_t obj_buf_sz)
@@ -553,7 +564,8 @@ static void bpf_object__elf_finish(struct bpf_object *obj)
 	obj->efile.obj_buf = NULL;
 	obj->efile.obj_buf_sz = 0;
 }
-
+/* bpf open过程中
+new obj之后初始化elf文件 */
 static int bpf_object__elf_init(struct bpf_object *obj)
 {
 	int err = 0;
@@ -568,6 +580,7 @@ static int bpf_object__elf_init(struct bpf_object *obj)
 		/*
 		 * obj_buf should have been validated by
 		 * bpf_object__open_buffer().
+		 映射elf已经位于内存的image
 		 */
 		obj->efile.elf = elf_memory(obj->efile.obj_buf,
 					    obj->efile.obj_buf_sz);
@@ -587,6 +600,7 @@ static int bpf_object__elf_init(struct bpf_object *obj)
 	}
 
 	if (!obj->efile.elf) {
+		/* 如果elf没有被映射 */
 		pr_warning("failed to open %s as ELF file\n", obj->path);
 		err = -LIBBPF_ERRNO__LIBELF;
 		goto errout;
@@ -612,7 +626,7 @@ errout:
 	bpf_object__elf_finish(obj);
 	return err;
 }
-
+/*  */
 static int bpf_object__check_endianness(struct bpf_object *obj)
 {
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -2080,10 +2094,11 @@ static int bpf_object__probe_btf_datasec(struct bpf_object *obj)
 
 	return 0;
 }
-
+/*  */
 static int
 bpf_object__probe_caps(struct bpf_object *obj)
 {
+	/* 函数指针数组 */
 	int (*probe_fn[])(struct bpf_object *obj) = {
 		bpf_object__probe_name,
 		bpf_object__probe_global_data,
@@ -3595,7 +3610,7 @@ static int bpf_object__validate(struct bpf_object *obj, bool needs_kver)
 	}
 	return 0;
 }
-
+/* open bpf代码二进制 */
 static struct bpf_object *
 __bpf_object__open(const char *path, void *obj_buf, size_t obj_buf_sz,
 		   bool needs_kver, int flags)
@@ -3607,13 +3622,17 @@ __bpf_object__open(const char *path, void *obj_buf, size_t obj_buf_sz,
 		pr_warning("failed to init libelf for %s\n", path);
 		return ERR_PTR(-LIBBPF_ERRNO__LIBELF);
 	}
-
+	/* 从二进制到内核中bpf的专有对象？ */
 	obj = bpf_object__new(path, obj_buf, obj_buf_sz);
+
 	if (IS_ERR(obj))
 		return obj;
 
+	/* 初始化elf文件 */
 	CHECK_ERR(bpf_object__elf_init(obj), err, out);
+
 	CHECK_ERR(bpf_object__check_endianness(obj), err, out);
+
 	CHECK_ERR(bpf_object__probe_caps(obj), err, out);
 	CHECK_ERR(bpf_object__elf_collect(obj, flags), err, out);
 	CHECK_ERR(bpf_object__collect_reloc(obj), err, out);
@@ -3625,7 +3644,9 @@ out:
 	bpf_object__close(obj);
 	return ERR_PTR(err);
 }
+/* 
 
+ */
 struct bpf_object *__bpf_object__open_xattr(struct bpf_object_open_attr *attr,
 					    int flags)
 {
@@ -3639,7 +3660,8 @@ struct bpf_object *__bpf_object__open_xattr(struct bpf_object_open_attr *attr,
 				  bpf_prog_type__needs_kver(attr->prog_type),
 				  flags);
 }
-
+/*
+包装函数 */
 struct bpf_object *bpf_object__open_xattr(struct bpf_object_open_attr *attr)
 {
 	return __bpf_object__open_xattr(attr, 0);

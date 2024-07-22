@@ -36,11 +36,12 @@
 DEFINE_PER_CPU(int, bpf_prog_active);
 static DEFINE_IDR(prog_idr);
 static DEFINE_SPINLOCK(prog_idr_lock);
+/* 全部的map的id的idr */
 static DEFINE_IDR(map_idr);
 static DEFINE_SPINLOCK(map_idr_lock);
 
 int sysctl_unprivileged_bpf_disabled __read_mostly;
-
+/* 不同map类型有不同的ops */
 static const struct bpf_map_ops * const bpf_map_types[] = {
 #define BPF_PROG_TYPE(_id, _ops)
 #define BPF_MAP_TYPE(_id, _ops) \
@@ -96,7 +97,10 @@ const struct bpf_map_ops bpf_map_offload_ops = {
 	.map_free = bpf_map_offload_map_free,
 	.map_check_btf = map_check_no_btf,
 };
-
+/* 2024年07月22日16:27:31
+创建map调用
+分配map的内存，设置ops和type后返回
+ */
 static struct bpf_map *find_and_alloc_map(union bpf_attr *attr)
 {
 	const struct bpf_map_ops *ops;
@@ -107,6 +111,7 @@ static struct bpf_map *find_and_alloc_map(union bpf_attr *attr)
 	if (type >= ARRAY_SIZE(bpf_map_types))
 		return ERR_PTR(-EINVAL);
 	type = array_index_nospec(type, ARRAY_SIZE(bpf_map_types));
+	/* 获取此类型的map的ops */
 	ops = bpf_map_types[type];
 	if (!ops)
 		return ERR_PTR(-EINVAL);
@@ -118,6 +123,7 @@ static struct bpf_map *find_and_alloc_map(union bpf_attr *attr)
 	}
 	if (attr->map_ifindex)
 		ops = &bpf_map_offload_ops;
+	/* 调用此类型map的回调来初始化 */
 	map = ops->map_alloc(attr);
 	if (IS_ERR(map))
 		return map;
@@ -253,17 +259,20 @@ void bpf_map_uncharge_memlock(struct bpf_map *map, u32 pages)
 	bpf_uncharge_memlock(map->memory.user, pages);
 	map->memory.pages -= pages;
 }
-
+/* bpf map的id分配 */
 static int bpf_map_alloc_id(struct bpf_map *map)
 {
 	int id;
 
 	idr_preload(GFP_KERNEL);
+
 	spin_lock_bh(&map_idr_lock);
 	id = idr_alloc_cyclic(&map_idr, map, 1, INT_MAX, GFP_ATOMIC);
 	if (id > 0)
 		map->id = id;
 	spin_unlock_bh(&map_idr_lock);
+
+
 	idr_preload_end();
 
 	if (WARN_ON_ONCE(!id))
@@ -435,15 +444,16 @@ const struct file_operations bpf_map_fops = {
 	.read		= bpf_dummy_read,
 	.write		= bpf_dummy_write,
 };
-
+/* 
+ */
 int bpf_map_new_fd(struct bpf_map *map, int flags)
 {
 	int ret;
-
+	/* hook检查 */
 	ret = security_bpf_map(map, OPEN_FMODE(flags));
 	if (ret < 0)
 		return ret;
-
+	/* 获取一个指定ops和map作为priv的匿名inode */
 	return anon_inode_getfd("bpf-map", &bpf_map_fops, map,
 				flags | O_CLOEXEC);
 }
@@ -469,6 +479,7 @@ int bpf_get_file_flag(int flags)
 
 /* dst and src must have at least BPF_OBJ_NAME_LEN number of bytes.
  * Return 0 on success and < 0 on error.
+ 拷贝
  */
 static int bpf_obj_name_cpy(char *dst, const char *src)
 {
@@ -497,7 +508,7 @@ int map_check_no_btf(const struct bpf_map *map,
 {
 	return -ENOTSUPP;
 }
-
+/* 找到btf之后进行check的流程 */
 static int map_check_btf(struct bpf_map *map, const struct btf *btf,
 			 u32 btf_key_id, u32 btf_value_id)
 {
@@ -546,7 +557,11 @@ static int map_check_btf(struct bpf_map *map, const struct btf *btf,
 }
 
 #define BPF_MAP_CREATE_LAST_FIELD btf_value_type_id
-/* called via syscall */
+/* 
+bpf BPF_MAP_CREATE系统调用
+syscall__NR_bpf, BPF_MAP_CREATE)在内核中进入这个函数的流程：
+SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, size)
+err = map_create(&attr); */
 static int map_create(union bpf_attr *attr)
 {
 	int numa_node = bpf_map_attr_numa_node(attr);
@@ -569,6 +584,7 @@ static int map_create(union bpf_attr *attr)
 		return -EINVAL;
 
 	/* find map type and init map: hashtable vs rbtree vs bloom vs ... */
+	/* 创建bpf map */
 	map = find_and_alloc_map(attr);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
@@ -579,7 +595,7 @@ static int map_create(union bpf_attr *attr)
 
 	atomic_set(&map->refcnt, 1);
 	atomic_set(&map->usercnt, 1);
-
+	/* btf相关 */
 	if (attr->btf_key_type_id || attr->btf_value_type_id) {
 		struct btf *btf;
 
@@ -587,7 +603,7 @@ static int map_create(union bpf_attr *attr)
 			err = -EINVAL;
 			goto free_map;
 		}
-
+		/* 位于file对象的priv */
 		btf = btf_get_by_fd(attr->btf_fd);
 		if (IS_ERR(btf)) {
 			err = PTR_ERR(btf);
@@ -600,7 +616,7 @@ static int map_create(union bpf_attr *attr)
 			btf_put(btf);
 			goto free_map;
 		}
-
+		/* btf没有问题的话，与map进行关联 */
 		map->btf = btf;
 		map->btf_key_type_id = attr->btf_key_type_id;
 		map->btf_value_type_id = attr->btf_value_type_id;
@@ -611,11 +627,11 @@ static int map_create(union bpf_attr *attr)
 	err = security_bpf_map_alloc(map);
 	if (err)
 		goto free_map;
-
+	/* 从全局的idr数组查找id */
 	err = bpf_map_alloc_id(map);
 	if (err)
 		goto free_map_sec;
-
+	/* 创建匿名inode和file，获取并安装fd */
 	err = bpf_map_new_fd(map, f_flags);
 	if (err < 0) {
 		/* failed to allocate fd.

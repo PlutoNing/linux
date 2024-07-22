@@ -196,6 +196,7 @@ static struct file *alloc_file(const struct path *path, int flags,
 
 	file->f_path = *path;
 	file->f_inode = path->dentry->d_inode;
+	/* 为什么要设置为目录inode一样的mapping */
 	file->f_mapping = path->dentry->d_inode->i_mapping;
 	file->f_wb_err = filemap_sample_wb_err(file->f_mapping);
 	if ((file->f_mode & FMODE_READ) &&
@@ -210,7 +211,7 @@ static struct file *alloc_file(const struct path *path, int flags,
 		i_readcount_inc(path->dentry->d_inode);
 	return file;
 }
-
+/*  */
 struct file *alloc_file_pseudo(struct inode *inode, struct vfsmount *mnt,
 				const char *name, int flags,
 				const struct file_operations *fops)
@@ -223,6 +224,7 @@ struct file *alloc_file_pseudo(struct inode *inode, struct vfsmount *mnt,
 	struct file *file;
 
 	path.dentry = d_alloc_pseudo(mnt->mnt_sb, &this);
+
 	if (!path.dentry)
 		return ERR_PTR(-ENOMEM);
 	if (!mnt->mnt_sb->s_d_op)

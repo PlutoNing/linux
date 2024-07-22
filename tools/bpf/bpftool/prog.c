@@ -1088,7 +1088,7 @@ free_data_in:
 
 	return err;
 }
-
+/* 2024年07月22日16:04:54 */
 static int load_with_options(int argc, char **argv, bool first_prog_only)
 {
 	struct bpf_object_load_attr load_attr = { 0 };
@@ -1111,8 +1111,9 @@ static int load_with_options(int argc, char **argv, bool first_prog_only)
 		return -1;
 	open_attr.file = GET_ARG();
 	pinfile = GET_ARG();
-
+	/* 从命令行中解析参数 'type', 'map' or 'dev' 等参数 */
 	while (argc) {
+		/* type的情况 */
 		if (is_prefix(*argv, "type")) {
 			char *type;
 
@@ -1223,7 +1224,7 @@ static int load_with_options(int argc, char **argv, bool first_prog_only)
 	}
 
 	set_max_rlimit();
-
+	/* open的api */
 	obj = __bpf_object__open_xattr(&open_attr, bpf_flags);
 	if (IS_ERR_OR_NULL(obj)) {
 		p_err("failed to open object file");
@@ -1370,7 +1371,7 @@ err_free_reuse_maps:
 	free(map_replace);
 	return -1;
 }
-
+/* 2024年07月22日16:04:10 */
 static int do_load(int argc, char **argv)
 {
 	return load_with_options(argc, argv, true);

@@ -654,6 +654,17 @@ static void __init lsm_early_task(struct task_struct *task)
 			P->hook.FUNC(__VA_ARGS__);		\
 	} while (0)
 
+/* LSM在内核中的关键位置插入了一系列的检测点, 即security_xxxx()的函数
+
+例如在用户执行一个新程序时, sys_execve执行到search_binary_handler时, 会调用LSM的security_bprm_check()函数检测是否允许继续执行
+security_bprm_check中会使用call_int_hook宏调用所有注册到系统中的LSM hook
+
+
+作者：程序员kevin
+来源：简书
+ */
+
+
 #define call_int_hook(FUNC, IRC, ...) ({			\
 	int RC = IRC;						\
 	do {							\
@@ -2381,6 +2392,7 @@ int security_bpf_prog(struct bpf_prog *prog)
 {
 	return call_int_hook(bpf_prog, 0, prog);
 }
+/*  */
 int security_bpf_map_alloc(struct bpf_map *map)
 {
 	return call_int_hook(bpf_map_alloc_security, 0, map);
