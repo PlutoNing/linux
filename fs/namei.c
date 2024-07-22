@@ -2905,7 +2905,7 @@ int vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	return error;
 }
 EXPORT_SYMBOL(vfs_create);
-
+/* 在fs里面创建bpf的obj的用户态表示file */
 int vfs_mkobj(struct dentry *dentry, umode_t mode,
 		int (*f)(struct dentry *, umode_t, void *),
 		void *arg)
@@ -2920,6 +2920,7 @@ int vfs_mkobj(struct dentry *dentry, umode_t mode,
 	error = security_inode_create(dir, dentry, mode);
 	if (error)
 		return error;
+	/* 可能是创建map或者prog */
 	error = f(dentry, mode, arg);
 	if (!error)
 		fsnotify_create(dir, dentry);
@@ -3660,7 +3661,7 @@ out:
 	putname(name);
 	return dentry;
 }
-
+/*  */
 struct dentry *kern_path_create(int dfd, const char *pathname,
 				struct path *path, unsigned int lookup_flags)
 {

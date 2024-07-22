@@ -343,7 +343,7 @@ LIBBPF_API int bpf_map__unpin(struct bpf_map *map, const char *path);
 LIBBPF_API int bpf_map__set_inner_map_fd(struct bpf_map *map, int fd);
 
 LIBBPF_API long libbpf_get_error(const void *ptr);
-
+/*  */
 struct bpf_prog_load_attr {
 	const char *file;
 	enum bpf_prog_type prog_type;

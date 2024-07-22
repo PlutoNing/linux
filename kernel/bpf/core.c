@@ -73,14 +73,15 @@ void *bpf_internal_load_pointer_neg_helper(const struct sk_buff *skb, int k, uns
 
 	return NULL;
 }
-
+/*  */
 struct bpf_prog *bpf_prog_alloc_no_stats(unsigned int size, gfp_t gfp_extra_flags)
 {
 	gfp_t gfp_flags = GFP_KERNEL | __GFP_ZERO | gfp_extra_flags;
 	struct bpf_prog_aux *aux;
 	struct bpf_prog *fp;
-
+	//对齐
 	size = round_up(size, PAGE_SIZE);
+
 	fp = __vmalloc(size, gfp_flags, PAGE_KERNEL);
 	if (fp == NULL)
 		return NULL;
@@ -100,13 +101,13 @@ struct bpf_prog *bpf_prog_alloc_no_stats(unsigned int size, gfp_t gfp_extra_flag
 
 	return fp;
 }
-
+/* 根据BPF指令数分配bpf_prog空间，和bpf_prog->aux空间 */
 struct bpf_prog *bpf_prog_alloc(unsigned int size, gfp_t gfp_extra_flags)
 {
 	gfp_t gfp_flags = GFP_KERNEL | __GFP_ZERO | gfp_extra_flags;
 	struct bpf_prog *prog;
 	int cpu;
-
+	/* vmalloc和kzalloc，分配空间 */
 	prog = bpf_prog_alloc_no_stats(size, gfp_extra_flags);
 	if (!prog)
 		return NULL;
@@ -1811,7 +1812,7 @@ int bpf_prog_array_length(struct bpf_prog_array *array)
 			cnt++;
 	return cnt;
 }
-
+/*  */
 bool bpf_prog_array_is_empty(struct bpf_prog_array *array)
 {
 	struct bpf_prog_array_item *item;

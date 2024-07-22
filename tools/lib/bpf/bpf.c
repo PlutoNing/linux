@@ -75,7 +75,7 @@ static inline int sys_bpf_prog_load(union bpf_attr *attr, unsigned int size)
 
 	return fd;
 }
-
+/* 也是设置attr，然后调用sys call bpf */
 int bpf_create_map_xattr(const struct bpf_create_map_attr *create_attr)
 {
 	union bpf_attr attr;
@@ -119,7 +119,10 @@ int bpf_create_map_node(enum bpf_map_type map_type, const char *name,
 
 	return bpf_create_map_xattr(&map_attr);
 }
-
+/* 用户程序调用 syscall(__NR_bpf, BPF_MAP_CREATE, &attr, sizeof(attr))申请
+创建一个 map，在 attr结构体中指定 map的类型、大小、最大容量等属性。内核会创建一个 
+map数据结构，最终返回 map的文件描述符。
+这个文件是用户态和内核态共享的，因此后续内核态和用户态可以对这块共享内存进行读写 */
 int bpf_create_map(enum bpf_map_type map_type, int key_size,
 		   int value_size, int max_entries, __u32 map_flags)
 {

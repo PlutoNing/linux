@@ -2576,7 +2576,7 @@ static void *__vmalloc_node(unsigned long size, unsigned long align,
 	return __vmalloc_node_range(size, align, VMALLOC_START, VMALLOC_END,
 				gfp_mask, prot, 0, node, caller);
 }
-
+/*  */
 void *__vmalloc(unsigned long size, gfp_t gfp_mask, pgprot_t prot)
 {
 	return __vmalloc_node(size, 1, gfp_mask, prot, NUMA_NO_NODE,
@@ -2593,7 +2593,7 @@ static inline void *__vmalloc_node_flags(unsigned long size,
 					node, __builtin_return_address(0));
 }
 
-
+/*  */
 void *__vmalloc_node_flags_caller(unsigned long size, int node, gfp_t flags,
 				  void *caller)
 {

@@ -67,7 +67,9 @@ int array_map_alloc_check(union bpf_attr *attr)
 
 	return 0;
 }
-
+/* 
+BPF_MAP_TYPE_ARRAY类型的map的分配过程
+ */
 static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 {
 	bool percpu = attr->map_type == BPF_MAP_TYPE_PERCPU_ARRAY;
@@ -77,7 +79,7 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	u64 cost, array_size, mask64;
 	struct bpf_map_memory mem;
 	struct bpf_array *array;
-
+	//计算value的size
 	elem_size = round_up(attr->value_size, 8);
 
 	max_entries = attr->max_entries;
@@ -116,7 +118,8 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	if (ret < 0)
 		return ERR_PTR(ret);
 
-	/* allocate all map elements and zero-initialize them */
+	/* allocate all map elements and zero-initialize them
+	根据总大小，分配bpf_array空间 */
 	array = bpf_map_area_alloc(array_size, numa_node);
 	if (!array) {
 		bpf_map_charge_finish(&mem);

@@ -6562,7 +6562,7 @@ __setup("cgroup_debug", enable_cgroup_debug);
 /**
 2024年07月09日19:32:16
 2024年07月16日19:28:52
-
+cgrp位于kn的priv
  * css_tryget_online_from_dir - get corresponding css from a cgroup dentry
  * @dentry: directory dentry of interest
  * @ss: subsystem of interest
@@ -6809,6 +6809,7 @@ void cgroup_sk_free(struct sock_cgroup_data *skcd)
 #endif	/* CONFIG_SOCK_CGROUP_DATA */
 
 #ifdef CONFIG_CGROUP_BPF
+/*  */
 int cgroup_bpf_attach(struct cgroup *cgrp, struct bpf_prog *prog,
 		      enum bpf_attach_type type, u32 flags)
 {

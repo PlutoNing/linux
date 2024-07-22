@@ -26,7 +26,7 @@ enum bpf_type {
 	BPF_TYPE_PROG,
 	BPF_TYPE_MAP,
 };
-
+/* 根据inode和type，get一下raw指针  */
 static void *bpf_any_get(void *raw, enum bpf_type type)
 {
 	switch (type) {
@@ -58,7 +58,7 @@ static void bpf_any_put(void *raw, enum bpf_type type)
 		break;
 	}
 }
-
+/* 根据fd获取到bpf_map/bpf_prog对象 */
 static void *bpf_fd_probe_obj(u32 ufd, enum bpf_type *type)
 {
 	void *raw;
@@ -106,7 +106,7 @@ static struct inode *bpf_get_inode(struct super_block *sb,
 
 	return inode;
 }
-
+/* 判断inode是prog还是map，根据ops判断 */
 static int bpf_inode_type(const struct inode *inode, enum bpf_type *type)
 {
 	*type = BPF_TYPE_UNSPEC;
@@ -288,6 +288,7 @@ static int bpffs_map_release(struct inode *inode, struct file *file)
  * the userspace tools (e.g. bpftool) through the
  * BPF_OBJ_GET_INFO_BY_FD and the map's lookup/update
  * interface.
+ bpf map在fs里面的file ops
  */
 static const struct file_operations bpffs_map_fops = {
 	.open		= bpffs_map_open,
@@ -299,7 +300,7 @@ static int bpffs_obj_open(struct inode *inode, struct file *file)
 {
 	return -EIO;
 }
-
+/* bpf prog在fs里面的file ops */
 static const struct file_operations bpffs_obj_fops = {
 	.open		= bpffs_obj_open,
 };
@@ -320,7 +321,7 @@ static int bpf_mkobj_ops(struct dentry *dentry, umode_t mode, void *raw,
 	bpf_dentry_finalize(dentry, inode, dir);
 	return 0;
 }
-
+/*  */
 static int bpf_mkprog(struct dentry *dentry, umode_t mode, void *arg)
 {
 	return bpf_mkobj_ops(dentry, mode, arg, &bpf_prog_iops,
@@ -379,7 +380,7 @@ static const struct inode_operations bpf_dir_iops = {
 	.link		= simple_link,
 	.unlink		= simple_unlink,
 };
-
+/* 创建文件节点，和bpf对象联结起来 */
 static int bpf_obj_do_pin(const struct filename *pathname, void *raw,
 			  enum bpf_type type)
 {
@@ -394,7 +395,7 @@ static int bpf_obj_do_pin(const struct filename *pathname, void *raw,
 		return PTR_ERR(dentry);
 
 	mode = S_IFREG | ((S_IRUSR | S_IWUSR) & ~current_umask());
-
+	/* lsm的hook检查 */
 	ret = security_path_mknod(&path, dentry, mode, 0);
 	if (ret)
 		goto out;
@@ -404,7 +405,7 @@ static int bpf_obj_do_pin(const struct filename *pathname, void *raw,
 		ret = -EPERM;
 		goto out;
 	}
-
+	/* 是prog还是map的用户态文件 */
 	switch (type) {
 	case BPF_TYPE_PROG:
 		ret = vfs_mkobj(dentry, mode, bpf_mkprog, raw);
@@ -419,24 +420,26 @@ out:
 	done_path_create(&path, dentry);
 	return ret;
 }
+/* 
 
+ */
 int bpf_obj_pin_user(u32 ufd, const char __user *pathname)
 {
 	struct filename *pname;
 	enum bpf_type type;
 	void *raw;
 	int ret;
-
+	/* 获取路径 */
 	pname = getname(pathname);
 	if (IS_ERR(pname))
 		return PTR_ERR(pname);
-
+		/* 根据fd获取到bpf_map/bpf_prog对象 */
 	raw = bpf_fd_probe_obj(ufd, &type);
 	if (IS_ERR(raw)) {
 		ret = PTR_ERR(raw);
 		goto out;
 	}
-
+	/* 这个时候raw就是map指针，创建文件节点，和bpf对象联结起来 */
 	ret = bpf_obj_do_pin(pname, raw, type);
 	if (ret != 0)
 		bpf_any_put(raw, type);
@@ -444,7 +447,7 @@ out:
 	putname(pname);
 	return ret;
 }
-
+/*  */
 static void *bpf_obj_do_get(const struct filename *pathname,
 			    enum bpf_type *type, int flags)
 {
@@ -452,20 +455,20 @@ static void *bpf_obj_do_get(const struct filename *pathname,
 	struct path path;
 	void *raw;
 	int ret;
-
+	/* 根据路径，获取到dentry  */
 	ret = kern_path(pathname->name, LOOKUP_FOLLOW, &path);
 	if (ret)
 		return ERR_PTR(ret);
-
+	/* 根据dentry，获取到inode */
 	inode = d_backing_inode(path.dentry);
 	ret = inode_permission(inode, ACC_MODE(flags));
 	if (ret)
 		goto out;
-
+	/* 根据inode，获取到type，根据inode的ops判断  */
 	ret = bpf_inode_type(inode, type);
 	if (ret)
 		goto out;
-
+	/* 根据inode和type，获取到raw指针  */
 	raw = bpf_any_get(inode->i_private, *type);
 	if (!IS_ERR(raw))
 		touch_atime(&path);
@@ -476,7 +479,7 @@ out:
 	path_put(&path);
 	return ERR_PTR(ret);
 }
-
+/*  */
 int bpf_obj_get_user(const char __user *pathname, int flags)
 {
 	enum bpf_type type = BPF_TYPE_UNSPEC;
@@ -492,13 +495,13 @@ int bpf_obj_get_user(const char __user *pathname, int flags)
 	pname = getname(pathname);
 	if (IS_ERR(pname))
 		return PTR_ERR(pname);
-
+	/* 根据路径，在对应inode中找到bpf对象的raw指针和type */
 	raw = bpf_obj_do_get(pname, &type, f_flags);
 	if (IS_ERR(raw)) {
 		ret = PTR_ERR(raw);
 		goto out;
 	}
-
+	/* 根据对象type，在本进程中给bpf对象分配一个fd  */
 	if (type == BPF_TYPE_PROG)
 		ret = bpf_prog_new_fd(raw);
 	else if (type == BPF_TYPE_MAP)
@@ -512,7 +515,7 @@ out:
 	putname(pname);
 	return ret;
 }
-
+/*  */
 static struct bpf_prog *__get_prog_inode(struct inode *inode, enum bpf_prog_type type)
 {
 	struct bpf_prog *prog;
@@ -524,7 +527,7 @@ static struct bpf_prog *__get_prog_inode(struct inode *inode, enum bpf_prog_type
 		return ERR_PTR(-EINVAL);
 	if (inode->i_op != &bpf_prog_iops)
 		return ERR_PTR(-EACCES);
-
+	/* prog是priv */
 	prog = inode->i_private;
 
 	ret = security_bpf_prog(prog);

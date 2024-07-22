@@ -720,6 +720,7 @@ struct sk_buff {
 	 * layer. Please put your private variables there. If you
 	 * want to keep them across layers you have to do a skb_clone()
 	 * first. This is owned by whoever has the skb queued ATM.
+	 可能是tc qdisc的cb
 	 */
 	char			cb[48] __aligned(8);
 

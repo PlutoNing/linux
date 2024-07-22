@@ -5,7 +5,7 @@
 #include <linux/export.h>
 #include <linux/mm.h>
 #include <linux/uaccess.h>
-
+/*  */
 static __always_inline long
 probe_read_common(void *dst, const void __user *src, size_t size)
 {
@@ -32,7 +32,7 @@ probe_read_common(void *dst, const void __user *src, size_t size)
  * probe_kernel_read() suitable for use within regions where the caller
  * already holds mmap_sem, or other locks which nest inside mmap_sem.
  */
-
+/*  */
 long __weak probe_kernel_read(void *dst, const void *src, size_t size)
     __attribute__((alias("__probe_kernel_read")));
 

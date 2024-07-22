@@ -516,9 +516,14 @@ struct bpf_binary_header {
 	/* Some arches need word alignment for their instructions */
 	u8 image[] __aligned(4);
 };
+/* 
 
+ */
 struct bpf_prog {
-	u16			pages;		/* Number of allocated pages */
+	u16			pages;		/* 
+	程序的内存页数量
+	Number of allocated pages */
+	/* 如果有jit硬件辅助设备，则会用到这个字段，按位使用 */
 	u16			jited:1,	/* Is our filter JIT'ed? */
 				jit_requested:1,/* archs need to JIT the prog */
 				gpl_compatible:1, /* Is filter GPL compatible? */
@@ -529,25 +534,38 @@ struct bpf_prog {
 				kprobe_override:1, /* Do we override a kprobe? */
 				has_callchain_buf:1, /* callchain buffer allocated? */
 				enforce_expected_attach_type:1; /* Enforce expected_attach_type checking at attach time */
-	enum bpf_prog_type	type;		/* Type of BPF program */
+	enum bpf_prog_type	type;		/*类型，当前bpf程序的类型
+	(kprobe/tracepoint/perf_event/sk_filter/sched_cls/sched_act/xdp/cg_skb)
+	 Type of BPF program */
 	enum bpf_attach_type	expected_attach_type; /* For some prog types */
-	u32			len;		/* Number of filter blocks */
+	u32			len;		/*程序包含bpf指令的数量
+	对应attr的insn_cnt
+	 Number of filter blocks */
 	u32			jited_len;	/* Size of jited insns in bytes */
 	u8			tag[BPF_TAG_SIZE];
-	struct bpf_prog_aux	*aux;		/* Auxiliary fields */
-	struct sock_fprog_kern	*orig_prog;	/* Original BPF program */
+	struct bpf_prog_aux	*aux;		/* 
+	主要用来辅助verifier校验和转换的数据
+	Auxiliary fields */
+	struct sock_fprog_kern	*orig_prog;	/*
+	原始的未转换的bpf程序
+	 Original BPF program */
 	unsigned int		(*bpf_func)(const void *ctx,
 					    const struct bpf_insn *insn);
-	/* Instructions for interpreter */
+	/* 
+	运行时BPF程序的入口。如果JIT转换成功，这里指向的就是BPF程序JIT转换后的映像；
+	否则这里指向内核解析器(interpreter)的通用入口__bpf_prog_run()
+	Instructions for interpreter */
 	union {
 		struct sock_filter	insns[0];
 		struct bpf_insn		insnsi[0];
 	};
+	/* 从用户态拷贝过来的，BPF程序原始指令的存放空间 */
 };
-
+/* sk->sk_filter->prog */
 struct sk_filter {
 	refcount_t	refcnt;
 	struct rcu_head	rcu;
+	/* 对应的prog */
 	struct bpf_prog	*prog;
 };
 
@@ -627,7 +645,7 @@ static inline void bpf_restore_data_end(
 
 	cb->data_end = saved_data_end;
 }
-
+/*  */
 static inline u8 *bpf_skb_cb(struct sk_buff *skb)
 {
 	/* eBPF programs may read/write skb->cb[] area to transfer meta
@@ -646,10 +664,11 @@ static inline u8 *bpf_skb_cb(struct sk_buff *skb)
 
 	return qdisc_skb_cb(skb)->data;
 }
-
+/* pf的时候对skb运行prog */
 static inline u32 __bpf_prog_run_save_cb(const struct bpf_prog *prog,
 					 struct sk_buff *skb)
 {
+	/* return qdisc_skb_cb(skb)->data; */
 	u8 *cb_data = bpf_skb_cb(skb);
 	u8 cb_saved[BPF_SKB_CB_LEN];
 	u32 res;
@@ -666,7 +685,7 @@ static inline u32 __bpf_prog_run_save_cb(const struct bpf_prog *prog,
 
 	return res;
 }
-
+/*  */
 static inline u32 bpf_prog_run_save_cb(const struct bpf_prog *prog,
 				       struct sk_buff *skb)
 {
@@ -715,7 +734,7 @@ static inline u32 bpf_prog_tag_scratch_size(const struct bpf_prog *prog)
 	return round_up(bpf_prog_insn_size(prog) +
 			sizeof(__be64) + 1, SHA_MESSAGE_BYTES);
 }
-
+/*  */
 static inline unsigned int bpf_prog_size(unsigned int proglen)
 {
 	return max(sizeof(struct bpf_prog),
@@ -791,6 +810,7 @@ bpf_jit_binary_hdr(const struct bpf_prog *fp)
 }
 
 int sk_filter_trim_cap(struct sock *sk, struct sk_buff *skb, unsigned int cap);
+/*  */
 static inline int sk_filter(struct sock *sk, struct sk_buff *skb)
 {
 	return sk_filter_trim_cap(sk, skb, 1);

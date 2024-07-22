@@ -110,12 +110,15 @@ int sk_filter_trim_cap(struct sock *sk, struct sk_buff *skb, unsigned int cap)
 		return err;
 
 	rcu_read_lock();
+	/* 获取过滤对象 */
 	filter = rcu_dereference(sk->sk_filter);
 	if (filter) {
+		/* 获取到了filter对象 */
 		struct sock *save_sk = skb->sk;
 		unsigned int pkt_len;
 
 		skb->sk = sk;
+		/* 运行bpf */
 		pkt_len = bpf_prog_run_save_cb(filter->prog, skb);
 		skb->sk = save_sk;
 		err = pkt_len ? pskb_trim(skb, max(cap, pkt_len)) : -EPERM;

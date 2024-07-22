@@ -43,9 +43,15 @@
 #define BPF_CALL	0x80	/* function call */
 #define BPF_EXIT	0x90	/* function return */
 
-/* Register numbers */
+/* Register numbers 
+eBPF 虚拟机定义了 10 个通用寄存器（R0 ~ R9），
+和一个始终指向栈顶的寄存器 R10（只读）。这些寄存器用于在 eBPF 执行时追踪记录运行时状态
+*/
 enum {
+	/* 函数的返回值存储于 R0 */
 	BPF_REG_0 = 0,
+	/* eBPF 程序被执行之前，其上下文信息参数被载入 R1 */
+	/* eBPF 程序调用其他函数之前，会将函数参数存入 R1 ~ R5 */
 	BPF_REG_1,
 	BPF_REG_2,
 	BPF_REG_3,
@@ -61,13 +67,16 @@ enum {
 
 /* BPF has 10 general purpose 64-bit registers and stack frame. */
 #define MAX_BPF_REG	__MAX_BPF_REG
-
+/* bpf_insn是指令的结构体定义
+当一段 eBPF 程序被载入内核时，其字节码就会由一系列的 bpf_insn来表示
+eBPF 验证器就是检查这段信息，以确保安全性的。 */
 struct bpf_insn {
-	__u8	code;		/* opcode */
-	__u8	dst_reg:4;	/* dest register */
-	__u8	src_reg:4;	/* source register */
-	__s16	off;		/* signed offset */
-	__s32	imm;		/* signed immediate constant */
+	__u8	code;		/* opcode
+	每个指令都包含一个操作码，代表当前指令是什么操作。例如，加法操作 ADD、跳转操作 JUMP 等等 */
+	__u8	dst_reg:4;	/* dest register 有些操作可能涉及两个寄存器 */
+	__u8	src_reg:4;	/* source register 有些操作可能涉及两个寄存器 */
+	__s16	off;		/* signed offset  有些操作可能需要 offset（偏移量）*/
+	__s32	imm;		/* signed immediate constant  有些操作可能需要立即数imm*/
 };
 
 /* Key of an a BPF_MAP_TYPE_LPM_TRIE entry */
@@ -81,7 +90,9 @@ struct bpf_cgroup_storage_key {
 	__u32	attach_type;		/* program attach type */
 };
 
-/* BPF syscall commands, see bpf(2) man-page for details. */
+/* 
+bpf系统调用的类型，根据不同类型调用不同的实际函数
+BPF syscall commands, see bpf(2) man-page for details. */
 enum bpf_cmd {
 	BPF_MAP_CREATE,
 	BPF_MAP_LOOKUP_ELEM,
@@ -147,12 +158,25 @@ enum bpf_map_type {
  * therefore break existing tracing BPF programs. Tracing BPF
  * programs correspond to /a/ specific kernel which is to be
  * analyzed, and not /a/ specific kernel /and/ all future ones.
+ bpf类型，当前bpf程序的类型(kprobe/tracepoint/perf_event/sk_filter/sched_cls/sched_act/xdp/cg_skb)
  */
 enum bpf_prog_type {
 	BPF_PROG_TYPE_UNSPEC,
+	/* Socket 相关类型
+————————————————————————
+用于 过滤和重定向 socket 数据，或者监听 socket 事件。类型包括：
+BPF_PROG_TYPE_SOCKET_FILTER
+BPF_PROG_TYPE_SOCK_OPS
+BPF_PROG_TYPE_SK_SKB
+BPF_PROG_TYPE_SK_MSG
+BPF_PROG_TYPE_SK_REUSEPORT
+BPF_PROG_TYPE_SK_LOOKUP
+ */
 	BPF_PROG_TYPE_SOCKET_FILTER,
 	BPF_PROG_TYPE_KPROBE,
+	/* 将 BPF 程序用作 tc 分类器（classifiers）和执行器（actions）。tc classifier，分类器 */
 	BPF_PROG_TYPE_SCHED_CLS,
+	/* tc action，动作 */
 	BPF_PROG_TYPE_SCHED_ACT,
 	BPF_PROG_TYPE_TRACEPOINT,
 	BPF_PROG_TYPE_XDP,
@@ -176,7 +200,8 @@ enum bpf_prog_type {
 	BPF_PROG_TYPE_RAW_TRACEPOINT_WRITABLE,
 	BPF_PROG_TYPE_CGROUP_SOCKOPT,
 };
-
+/* BPF attach 类型：完整列表
+通过 socket() 系统调用将 BPF 程序 attach 到 hook 点时用到， */
 enum bpf_attach_type {
 	BPF_CGROUP_INET_INGRESS,
 	BPF_CGROUP_INET_EGRESS,
@@ -368,15 +393,16 @@ struct bpf_stack_build_id {
 	};
 };
 /* 2024年07月09日19:14:51
+用于创建等操作，是个大杂烩
  */
 union bpf_attr {
 	struct { /* 
 	bpfmap相关的字段
 	anonymous struct used by BPF_MAP_CREATE command */
 		__u32	map_type;	/* one of enum bpf_map_type map的类型*/
-		__u32	key_size;	/* size of key in bytes */
-		__u32	value_size;	/* size of value in bytes */
-		__u32	max_entries;	/* max number of entries in a map */
+		__u32	key_size;	/* size of key in bytes 键key成员的大小 */
+		__u32	value_size;	/* size of value in bytes 值value成员的大小 */
+		__u32	max_entries;	/* max number of entries in a map 需要存储多少个条目("键-值“对) */
 		__u32	map_flags;	/* BPF_MAP_CREATE related
 					 * flags defined above.
 					 */
@@ -405,7 +431,9 @@ union bpf_attr {
 
 	struct { /* anonymous struct used by BPF_PROG_LOAD command */
 		__u32		prog_type;	/* one of enum bpf_prog_type */
+		/* 指令数量 */
 		__u32		insn_cnt;
+		/* 对应的指令，可能是数组，虽然类型是u64 */
 		__aligned_u64	insns;
 		__aligned_u64	license;
 		__u32		log_level;	/* verbosity level of verifier */
@@ -435,7 +463,8 @@ union bpf_attr {
 		__u32		file_flags;
 	};
 
-	struct { /* anonymous struct used by BPF_PROG_ATTACH/DETACH commands */
+	struct { /* anonymous struct used by BPF_PROG_ATTACH/DETACH commands
+	bpf挂载卸载相关 */
 		__u32		target_fd;	/* container object to attach to */
 		__u32		attach_bpf_fd;	/* eBPF program to attach */
 		__u32		attach_type;
@@ -468,6 +497,7 @@ union bpf_attr {
 			__u32		start_id;
 			__u32		prog_id;
 			__u32		map_id;
+			/* btf的id */
 			__u32		btf_id;
 		};
 		__u32		next_id;
@@ -495,8 +525,11 @@ union bpf_attr {
 	} raw_tracepoint;
 
 	struct { /* anonymous struct for BPF_BTF_LOAD */
+		/* btf的data */
 		__aligned_u64	btf;
+		/*  */
 		__aligned_u64	btf_log_buf;
+		/* btf data的size */
 		__u32		btf_size;
 		__u32		btf_log_size;
 		__u32		btf_log_level;
@@ -3224,10 +3257,14 @@ struct sk_reuseport_md {
 #define BPF_TAG_SIZE	8
 
 struct bpf_prog_info {
+	/* 类型，比如有的这是一个 xdp 类型的 eBPF 程序，可以绑定到 xdp 事件的网络接口上。eBPF 还有其他类型 */
 	__u32 type;
+	/* 当前 eBPF 程序 ID */
 	__u32 id;
+	/* 这个字段也是 eBPF 程序的另一个标识 */
 	__u8  tag[BPF_TAG_SIZE];
 	__u32 jited_prog_len;
+	/*就是 bytes_xlated：编译后的 eBPF 字节码共有多少长度  */
 	__u32 xlated_prog_len;
 	__aligned_u64 jited_prog_insns;
 	__aligned_u64 xlated_prog_insns;
@@ -3235,8 +3272,10 @@ struct bpf_prog_info {
 	__u32 created_by_uid;
 	__u32 nr_map_ids;
 	__aligned_u64 map_ids;
+	/* 当前程序名称 */
 	char name[BPF_OBJ_NAME_LEN];
 	__u32 ifindex;
+	/* 基于 GPL 兼容许可证 */
 	__u32 gpl_compatible:1;
 	__u32 :31; /* alignment pad */
 	__u64 netns_dev;
@@ -3273,6 +3312,7 @@ struct bpf_map_info {
 	__u32 :32;
 	__u64 netns_dev;
 	__u64 netns_ino;
+	/* 当前程序包含一个 BTF 程序块 */
 	__u32 btf_id;
 	__u32 btf_key_type_id;
 	__u32 btf_value_type_id;

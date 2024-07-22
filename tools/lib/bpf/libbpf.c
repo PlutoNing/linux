@@ -1955,7 +1955,9 @@ int bpf_map__resize(struct bpf_map *map, __u32 max_entries)
 
 	return 0;
 }
+/* 2024年7月22日20:25:14
 
+ */
 static int
 bpf_object__probe_name(struct bpf_object *obj)
 {
@@ -2108,6 +2110,7 @@ bpf_object__probe_caps(struct bpf_object *obj)
 	int i, ret;
 
 	for (i = 0; i < ARRAY_SIZE(probe_fn); i++) {
+		/* 逐个探测 */
 		ret = probe_fn[i](obj);
 		if (ret < 0)
 			pr_debug("Probe #%d failed with %d.\n", i, ret);
@@ -4809,7 +4812,14 @@ long libbpf_get_error(const void *ptr)
 {
 	return PTR_ERR_OR_ZERO(ptr);
 }
+/* 
+BPF_PROG_LOAD命令负责加载一段BPF程序到内核当中：
 
+拷贝程序到内核；
+校验它的安全性；
+如果可能对它进行JIT编译；
+然后分配一个文件句柄fd给它。
+ */
 int bpf_prog_load(const char *file, enum bpf_prog_type type,
 		  struct bpf_object **pobj, int *prog_fd)
 {
@@ -4822,7 +4832,7 @@ int bpf_prog_load(const char *file, enum bpf_prog_type type,
 
 	return bpf_prog_load_xattr(&attr, pobj, prog_fd);
 }
-
+/*  */
 int bpf_prog_load_xattr(const struct bpf_prog_load_attr *attr,
 			struct bpf_object **pobj, int *prog_fd)
 {

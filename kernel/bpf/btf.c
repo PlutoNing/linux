@@ -194,10 +194,20 @@
 	for (i = from, member = btf_type_var_secinfo(struct_type) + from;	\
 	     i < btf_type_vlen(struct_type);					\
 	     i++, member++)
-
+/* btf的全局idr数组 */
 DEFINE_IDR(btf_idr);
 DEFINE_SPINLOCK(btf_idr_lock);
+/* 
+libbpf 库底层使用的结构
+以下 bpf 系统调用命令涉及 BTF：
 
+BPF_BTF_LOAD：将 BTF 数据的 blob 数据加载到内核中
+BPF_MAP_CREATE：用 btf 键和值类型信息创建 map
+BPF_PROG_LOAD：用 btf 函数和行信息加载程序
+BPF_BTF_GET_FD_BY_ID：获得一个 btf fd
+BPF_OBJ_GET_INFO_BY_FD：返回 btf、func_info、line_info 和其它与 btf 有关的信息
+
+ */
 struct btf {
 	void *data;
 	struct btf_type **types;
@@ -858,7 +868,7 @@ static int btf_add_type(struct btf_verifier_env *env, struct btf_type *t)
 
 	return 0;
 }
-
+/*  */
 static int btf_alloc_id(struct btf *btf)
 {
 	int id;
@@ -3397,12 +3407,12 @@ const struct file_operations btf_fops = {
 #endif
 	.release	= btf_release,
 };
-
+/* btf的fd，设置ops和priv */
 static int __btf_new_fd(struct btf *btf)
 {
 	return anon_inode_getfd("btf", &btf_fops, btf, O_RDONLY | O_CLOEXEC);
 }
-
+/* 给btf创建fd */
 int btf_new_fd(const union bpf_attr *attr)
 {
 	struct btf *btf;
@@ -3414,7 +3424,7 @@ int btf_new_fd(const union bpf_attr *attr)
 			attr->btf_log_size);
 	if (IS_ERR(btf))
 		return PTR_ERR(btf);
-
+	/* btf分配id */
 	ret = btf_alloc_id(btf);
 	if (ret) {
 		btf_free(btf);
@@ -3488,7 +3498,7 @@ int btf_get_info_by_fd(const struct btf *btf,
 
 	return 0;
 }
-
+/*  */
 int btf_get_fd_by_id(u32 id)
 {
 	struct btf *btf;

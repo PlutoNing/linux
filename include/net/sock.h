@@ -392,7 +392,7 @@ struct sock {
 	unsigned int		sk_napi_id;
 #endif
 	int			sk_rcvbuf;
-
+	/* 包过滤相关 */
 	struct sk_filter __rcu	*sk_filter;
 	union {
 		struct socket_wq __rcu	*sk_wq;

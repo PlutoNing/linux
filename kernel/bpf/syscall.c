@@ -131,7 +131,9 @@ static struct bpf_map *find_and_alloc_map(union bpf_attr *attr)
 	map->map_type = type;
 	return map;
 }
-
+/* 
+根据总大小，分配bpf_array空间
+ */
 void *bpf_map_area_alloc(u64 size, int numa_node)
 {
 	/* We really just want to fail instead of triggering OOM killer
@@ -445,6 +447,7 @@ const struct file_operations bpf_map_fops = {
 	.write		= bpf_dummy_write,
 };
 /* 
+给map分配对应的文件句柄fd，赋值ops和把map指针赋值给file->private_data
  */
 int bpf_map_new_fd(struct bpf_map *map, int flags)
 {
@@ -658,6 +661,7 @@ free_map:
 
 /* if error is returned, fd is released.
  * On success caller should complete fd access with matching fdput()
+ 从fd里面获得map（在file的priv里面）
  */
 struct bpf_map *__bpf_map_get(struct fd f)
 {
@@ -673,7 +677,7 @@ struct bpf_map *__bpf_map_get(struct fd f)
 
 /* prog's and map's refcnt limit */
 #define BPF_MAX_REFCNT 32768
-
+/* 增加bpf map的引用计数 */
 struct bpf_map *bpf_map_inc(struct bpf_map *map, bool uref)
 {
 	if (atomic_inc_return(&map->refcnt) > BPF_MAX_REFCNT) {
@@ -685,7 +689,7 @@ struct bpf_map *bpf_map_inc(struct bpf_map *map, bool uref)
 	return map;
 }
 EXPORT_SYMBOL_GPL(bpf_map_inc);
-
+/* 根据fd获得bpf map*/
 struct bpf_map *bpf_map_get_with_uref(u32 ufd)
 {
 	struct fd f = fdget(ufd);
@@ -751,7 +755,7 @@ static void *__bpf_copy_key(void __user *ukey, u64 key_size)
 
 /* last field in 'union bpf_attr' used by this command */
 #define BPF_MAP_LOOKUP_ELEM_LAST_FIELD flags
-
+/* map的查找 */
 static int map_lookup_elem(union bpf_attr *attr)
 {
 	void __user *ukey = u64_to_user_ptr(attr->key);
@@ -831,6 +835,7 @@ static int map_lookup_elem(union bpf_attr *attr)
 		   map->map_type == BPF_MAP_TYPE_STACK) {
 		err = map->ops->map_peek_elem(map, value);
 	} else {
+		/* 其他类型map都会调用map->ops->map_lookup_elem()函数 */
 		rcu_read_lock();
 		if (map->ops->map_lookup_elem_sys_only)
 			ptr = map->ops->map_lookup_elem_sys_only(map, key);
@@ -1214,7 +1219,8 @@ static const struct bpf_prog_ops * const bpf_prog_types[] = {
 #undef BPF_PROG_TYPE
 #undef BPF_MAP_TYPE
 };
-
+/* 根据attr->prog_type指定的type值，找到对应的bpf_prog_types，
+      给bpf_prog->aux->ops赋值，这个ops是一个函数操作集 */
 static int find_prog_type(enum bpf_prog_type type, struct bpf_prog *prog)
 {
 	const struct bpf_prog_ops *ops;
@@ -1230,6 +1236,7 @@ static int find_prog_type(enum bpf_prog_type type, struct bpf_prog *prog)
 		prog->aux->ops = ops;
 	else
 		prog->aux->ops = &bpf_offload_prog_ops;
+
 	prog->type = type;
 	return 0;
 }
@@ -1274,7 +1281,7 @@ void __bpf_prog_uncharge(struct user_struct *user, u32 pages)
 	if (user)
 		atomic_long_sub(pages, &user->locked_vm);
 }
-
+/* 锁定prog的内存，其实就是pages属性。 */
 static int bpf_prog_charge_memlock(struct bpf_prog *prog)
 {
 	struct user_struct *user = get_current_user();
@@ -1297,7 +1304,7 @@ static void bpf_prog_uncharge_memlock(struct bpf_prog *prog)
 	__bpf_prog_uncharge(user, prog->pages);
 	free_uid(user);
 }
-
+/*  */
 static int bpf_prog_alloc_id(struct bpf_prog *prog)
 {
 	int id;
@@ -1447,7 +1454,7 @@ const struct file_operations bpf_prog_fops = {
 	.read		= bpf_dummy_read,
 	.write		= bpf_dummy_write,
 };
-
+/*  */
 int bpf_prog_new_fd(struct bpf_prog *prog)
 {
 	int ret;
@@ -1471,7 +1478,7 @@ static struct bpf_prog *____bpf_prog_get(struct fd f)
 
 	return f.file->private_data;
 }
-
+/*  */
 struct bpf_prog *bpf_prog_add(struct bpf_prog *prog, int i)
 {
 	if (atomic_add_return(i, &prog->aux->refcnt) > BPF_MAX_REFCNT) {
@@ -1492,7 +1499,7 @@ void bpf_prog_sub(struct bpf_prog *prog, int i)
 	WARN_ON(atomic_sub_return(i, &prog->aux->refcnt) == 0);
 }
 EXPORT_SYMBOL_GPL(bpf_prog_sub);
-
+/*  */
 struct bpf_prog *bpf_prog_inc(struct bpf_prog *prog)
 {
 	return bpf_prog_add(prog, 1);
@@ -1642,7 +1649,8 @@ bpf_prog_load_check_attach_type(enum bpf_prog_type prog_type,
 
 /* last field in 'union bpf_attr' used by this command */
 #define	BPF_PROG_LOAD_LAST_FIELD line_info_cnt
-
+/* 
+ */
 static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 {
 	enum bpf_prog_type type = attr->prog_type;
@@ -1665,7 +1673,8 @@ static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 	    !capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	/* copy eBPF program license from user space */
+	/* copy eBPF program license from user space
+	拷贝license字符串 */
 	if (strncpy_from_user(license, u64_to_user_ptr(attr->license),
 			      sizeof(license) - 1) < 0)
 		return -EFAULT;
@@ -1686,7 +1695,9 @@ static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 	if (bpf_prog_load_check_attach_type(type, attr->expected_attach_type))
 		return -EINVAL;
 
-	/* plain bpf_prog allocation */
+	/* plain bpf_prog allocation 
+	根据BPF指令数分配bpf_prog空间，和bpf_prog->aux空间
+	*/
 	prog = bpf_prog_alloc(bpf_prog_size(attr->insn_cnt), GFP_USER);
 	if (!prog)
 		return -ENOMEM;
@@ -1698,7 +1709,7 @@ static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 	err = security_bpf_prog_alloc(prog->aux);
 	if (err)
 		goto free_prog_nouncharge;
-
+	/* 把整个bpf_prog空间在当前进程的memlock_limit中锁定 */
 	err = bpf_prog_charge_memlock(prog);
 	if (err)
 		goto free_prog_sec;
@@ -1706,6 +1717,7 @@ static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 	prog->len = attr->insn_cnt;
 
 	err = -EFAULT;
+	/* 把BPF代码从用户空间地址attr->insns，拷贝到内核空间地址prog->insns */
 	if (copy_from_user(prog->insns, u64_to_user_ptr(attr->insns),
 			   bpf_prog_insn_size(prog)) != 0)
 		goto free_prog;
@@ -1722,7 +1734,10 @@ static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 			goto free_prog;
 	}
 
-	/* find program type: socket_filter vs tracing_filter */
+	/* find program type: socket_filter vs tracing_filter
+	根据attr->prog_type指定的type值，找到对应的bpf_prog_types，
+      给bpf_prog->aux->ops赋值，这个ops是一个函数操作集
+	   */
 	err = find_prog_type(type, prog);
 	if (err < 0)
 		goto free_prog;
@@ -1732,15 +1747,17 @@ static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 	if (err)
 		goto free_prog;
 
-	/* run eBPF verifier */
+	/* run eBPF verifier 
+	使用verifer对BPF程序进行合法性扫描
+	*/
 	err = bpf_check(&prog, attr, uattr);
 	if (err < 0)
 		goto free_used_maps;
-
+		/* 尝试对BPF程序进行JIT转换 */
 	prog = bpf_prog_select_runtime(prog, &err);
 	if (err < 0)
 		goto free_used_maps;
-
+	/* 分配id，在全局的idr数组 */
 	err = bpf_prog_alloc_id(prog);
 	if (err)
 		goto free_used_maps;
@@ -1761,7 +1778,7 @@ static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 	 */
 	bpf_prog_kallsyms_add(prog);
 	perf_event_bpf_event(prog, PERF_BPF_EVENT_PROG_LOAD, 0);
-
+	/* 给BPF程序分配一个文件句柄fd */
 	err = bpf_prog_new_fd(prog);
 	if (err < 0)
 		bpf_prog_put(prog);
@@ -1784,7 +1801,15 @@ free_prog_nouncharge:
 }
 
 #define BPF_OBJ_LAST_FIELD file_flags
+/* 
+系统把bpf_prog和bpf_map都和文件句柄绑定起来。有一系列的好处：比如可以在用户态使用一系列的通用文件操作；也有一系列的坏处：因为fd生存在进程空间的，其他进程不能访问，而且一旦本进程退出，这些对象都会处于失联状态无法访问。
 
+
+
+所以系统也支持把bpf对象进行全局化的声明，具体的做法是把这些对象绑定到一个专用的文件系统当中：
+具体分为pin操作和get操作。
+
+ */
 static int bpf_obj_pin(const union bpf_attr *attr)
 {
 	if (CHECK_ATTR(BPF_OBJ) || attr->file_flags != 0)
@@ -1792,7 +1817,7 @@ static int bpf_obj_pin(const union bpf_attr *attr)
 
 	return bpf_obj_pin_user(attr->bpf_fd, u64_to_user_ptr(attr->pathname));
 }
-
+/*  */
 static int bpf_obj_get(const union bpf_attr *attr)
 {
 	if (CHECK_ATTR(BPF_OBJ) || attr->bpf_fd != 0 ||
@@ -1908,7 +1933,7 @@ static int bpf_prog_attach_check_attach_type(const struct bpf_prog *prog,
 
 #define BPF_F_ATTACH_MASK \
 	(BPF_F_ALLOW_OVERRIDE | BPF_F_ALLOW_MULTI)
-
+/*  */
 static int bpf_prog_attach(const union bpf_attr *attr)
 {
 	enum bpf_prog_type ptype;
@@ -2699,7 +2724,8 @@ static int bpf_obj_get_info_by_fd(const union bpf_attr *attr,
 }
 
 #define BPF_BTF_LOAD_LAST_FIELD btf_log_level
-
+/* 将一个 BTF 的 blob 数据加载到内核中。BTF_Type_String 中描述的 blob 数据，
+可以直接加载到内核中, 返回 btf_fd 至用户空间 */
 static int bpf_btf_load(const union bpf_attr *attr)
 {
 	if (CHECK_ATTR(BPF_BTF_LOAD))
@@ -2712,7 +2738,7 @@ static int bpf_btf_load(const union bpf_attr *attr)
 }
 
 #define BPF_BTF_GET_FD_BY_ID_LAST_FIELD btf_id
-
+/*  */
 static int bpf_btf_get_fd_by_id(const union bpf_attr *attr)
 {
 	if (CHECK_ATTR(BPF_BTF_GET_FD_BY_ID))

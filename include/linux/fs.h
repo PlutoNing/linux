@@ -2587,6 +2587,7 @@ static inline int break_layout(struct inode *inode, bool wait)
 
 /* fs/open.c */
 struct audit_names;
+/* 2024年7月22日21:55:37 */
 struct filename {
 	const char		*name;	/* pointer to actual string */
 	const __user char	*uptr;	/* original userland pointer */

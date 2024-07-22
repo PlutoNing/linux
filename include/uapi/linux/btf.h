@@ -7,14 +7,15 @@
 
 #define BTF_MAGIC	0xeB9F
 #define BTF_VERSION	1
-
+/*  */
 struct btf_header {
 	__u16	magic;
 	__u8	version;
 	__u8	flags;
 	__u32	hdr_len;
 
-	/* All offsets are in bytes relative to the end of this header */
+	/* All offsets are in bytes relative to the end of this header 
+	偏移量都是相对于这个头的末尾的字节*/
 	__u32	type_off;	/* offset of type section	*/
 	__u32	type_len;	/* length of type section	*/
 	__u32	str_off;	/* offset of string section	*/
@@ -29,6 +30,7 @@ struct btf_header {
 #define BTF_MAX_VLEN	0xffff
 
 struct btf_type {
+	/* 在 struct btf_type 中的 name_off 字段指定了字符串表中的偏移。 */
 	__u32 name_off;
 	/* "info" bits arrangement
 	 * bits  0-15: vlen (e.g. # of struct's members)

@@ -482,11 +482,13 @@ int __sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 	return 0;
 }
 EXPORT_SYMBOL(__sock_queue_rcv_skb);
-
+/* 处理 socket 入向流量，TCP/UDP/ICMP/raw-socket 等协议类型都会执行到这里 */
 int sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 {
 	int err;
-
+	/*  // 执行 BPF 代码，这里返回的 err 表示对这个包保留前多少字节（trim）
+    if (err)                  // 如果字节数大于 0
+        return err;           // 跳过接下来的处理逻辑，直接返回到更上层 */
 	err = sk_filter(sk, skb);
 	if (err)
 		return err;

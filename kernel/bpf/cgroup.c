@@ -279,6 +279,7 @@ cleanup:
 #define BPF_CGROUP_MAX_PROGS 64
 
 /**
+附加bpf到cgrp
  * __cgroup_bpf_attach() - Attach the program to a cgroup, and
  *                         propagate the change to descendants
  * @cgrp: The cgroup which descendants to traverse
@@ -291,10 +292,12 @@ cleanup:
 int __cgroup_bpf_attach(struct cgroup *cgrp, struct bpf_prog *prog,
 			enum bpf_attach_type type, u32 flags)
 {
+	/* 此类型的bpf prog在此cgrp的list head链表 */
 	struct list_head *progs = &cgrp->bpf.progs[type];
 	struct bpf_prog *old_prog = NULL;
 	struct bpf_cgroup_storage *storage[MAX_BPF_CGROUP_STORAGE_TYPE],
 		*old_storage[MAX_BPF_CGROUP_STORAGE_TYPE] = {NULL};
+
 	enum bpf_cgroup_storage_type stype;
 	struct bpf_prog_list *pl;
 	bool pl_was_allocated;
@@ -538,13 +541,20 @@ int __cgroup_bpf_query(struct cgroup *cgrp, const union bpf_attr *attr,
 	return ret;
 }
 /* 2024年7月17日00:24:00
+syscall bpf() bpf 系统函数
+ bpf_prog_attach
+  cgroup_bpf_prog_attach
+   cgroup_bpf_prog_attach
+    __cgroup_bpf_attach
+     bpf_prog_put 检查 cgroup 上是否存在相同挂载类型的程序，如果存在，则进行替换。
+      static_branch_inc 如果不存在，则将 cgroup_bpf_enabled_key 计数器中，该挂载类型的计数 +1
  */
 int cgroup_bpf_prog_attach(const union bpf_attr *attr,
 			   enum bpf_prog_type ptype, struct bpf_prog *prog)
 {
 	struct cgroup *cgrp;
 	int ret;
-
+	/* 获取cgrp */
 	cgrp = cgroup_get_from_fd(attr->target_fd);
 	if (IS_ERR(cgrp))
 		return PTR_ERR(cgrp);
@@ -944,6 +954,7 @@ int __cgroup_bpf_run_filter_sysctl(struct ctl_table_header *head,
 EXPORT_SYMBOL(__cgroup_bpf_run_filter_sysctl);
 
 #ifdef CONFIG_NET
+/*  */
 static bool __cgroup_bpf_prog_array_is_empty(struct cgroup *cgrp,
 					     enum bpf_attach_type attach_type)
 {
@@ -957,7 +968,7 @@ static bool __cgroup_bpf_prog_array_is_empty(struct cgroup *cgrp,
 
 	return empty;
 }
-
+/*  */
 static int sockopt_alloc_buf(struct bpf_sockopt_kern *ctx, int max_optlen)
 {
 	if (unlikely(max_optlen > PAGE_SIZE) || max_optlen < 0)
@@ -1047,7 +1058,7 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL(__cgroup_bpf_run_filter_setsockopt);
-
+/*  */
 int __cgroup_bpf_run_filter_getsockopt(struct sock *sk, int level,
 				       int optname, char __user *optval,
 				       int __user *optlen, int max_optlen,
@@ -1197,7 +1208,7 @@ static const struct bpf_func_proto bpf_sysctl_get_name_proto = {
 	.arg3_type	= ARG_CONST_SIZE,
 	.arg4_type	= ARG_ANYTHING,
 };
-
+/*  */
 static int copy_sysctl_value(char *dst, size_t dst_len, char *src,
 			     size_t src_len)
 {
@@ -1402,7 +1413,7 @@ const struct bpf_verifier_ops cg_sysctl_verifier_ops = {
 
 const struct bpf_prog_ops cg_sysctl_prog_ops = {
 };
-
+/* sockopt的校验回调 */
 static const struct bpf_func_proto *
 cg_sockopt_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 {
@@ -1421,7 +1432,7 @@ cg_sockopt_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 		return cgroup_base_func_proto(func_id, prog);
 	}
 }
-
+/* sockopt的校验回调 */
 static bool cg_sockopt_is_valid_access(int off, int size,
 				       enum bpf_access_type type,
 				       const struct bpf_prog *prog,
@@ -1488,7 +1499,7 @@ static bool cg_sockopt_is_valid_access(int off, int size,
 	T(BPF_FIELD_SIZEOF(struct bpf_sockopt_kern, F),			\
 	  si->dst_reg, si->src_reg,					\
 	  offsetof(struct bpf_sockopt_kern, F))
-
+/* sockopt的校验回调 */
 static u32 cg_sockopt_convert_ctx_access(enum bpf_access_type type,
 					 const struct bpf_insn *si,
 					 struct bpf_insn *insn_buf,
@@ -1535,7 +1546,7 @@ static u32 cg_sockopt_convert_ctx_access(enum bpf_access_type type,
 
 	return insn - insn_buf;
 }
-
+/* cg_sockopt_verifier_ops的gen_prologue */
 static int cg_sockopt_get_prologue(struct bpf_insn *insn_buf,
 				   bool direct_write,
 				   const struct bpf_prog *prog)
@@ -1544,7 +1555,7 @@ static int cg_sockopt_get_prologue(struct bpf_insn *insn_buf,
 	 */
 	return 0;
 }
-
+/*  */
 const struct bpf_verifier_ops cg_sockopt_verifier_ops = {
 	.get_func_proto		= cg_sockopt_func_proto,
 	.is_valid_access	= cg_sockopt_is_valid_access,

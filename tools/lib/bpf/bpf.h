@@ -35,7 +35,11 @@ extern "C" {
 #ifndef LIBBPF_API
 #define LIBBPF_API __attribute__((visibility("default")))
 #endif
-
+/* 
+用户程序调用 syscall(__NR_bpf, BPF_MAP_CREATE, &attr, sizeof(attr))申请创建
+一个 map，在 attr结构体中指定 map的类型、大小、最大容量等属性。内核会创建一个 
+map数据结构，最终返回 map的文件描述符。
+这个文件是用户态和内核态共享的，因此后续内核态和用户态可以对这块共享内存进行读写 */
 struct bpf_create_map_attr {
 	const char *name;
 	enum bpf_map_type map_type;
@@ -69,7 +73,7 @@ LIBBPF_API int bpf_create_map_in_map(enum bpf_map_type map_type,
 				     const char *name, int key_size,
 				     int inner_map_fd, int max_entries,
 				     __u32 map_flags);
-
+/*  */
 struct bpf_load_program_attr {
 	enum bpf_prog_type prog_type;
 	enum bpf_attach_type expected_attach_type;

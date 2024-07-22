@@ -365,7 +365,7 @@ struct tcf_proto {
 	struct rcu_head		rcu;
 	struct hlist_node	destroy_ht_node;
 };
-
+/*  */
 struct qdisc_skb_cb {
 	struct {
 		unsigned int		pkt_len;
@@ -480,7 +480,7 @@ static inline int qdisc_qlen_sum(const struct Qdisc *q)
 
 	return qlen;
 }
-
+/*  */
 static inline struct qdisc_skb_cb *qdisc_skb_cb(const struct sk_buff *skb)
 {
 	return (struct qdisc_skb_cb *)skb->cb;

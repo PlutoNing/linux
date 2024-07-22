@@ -232,7 +232,8 @@ enum bpf_return_type {
 	RET_PTR_TO_SOCK_COMMON_OR_NULL,	/* returns a pointer to a sock_common or NULL */
 };
 
-/* eBPF function prototype used by verifier to allow BPF_CALLs from eBPF programs
+/* 
+eBPF function prototype used by verifier to allow BPF_CALLs from eBPF programs
  * to in-kernel helper functions and for adjusting imm32 field in BPF_CALL
  * instructions after verifying
  */
@@ -253,7 +254,7 @@ struct bpf_func_proto {
  * For socket filters: 'struct bpf_context *' == 'struct sk_buff *'
  */
 struct bpf_context;
-
+/*  */
 enum bpf_access_type {
 	BPF_READ = 1,
 	BPF_WRITE = 2
@@ -309,7 +310,7 @@ struct bpf_prog_ops {
 	int (*test_run)(struct bpf_prog *prog, const union bpf_attr *kattr,
 			union bpf_attr __user *uattr);
 };
-
+/*  */
 struct bpf_verifier_ops {
 	/* return eBPF function prototype for verification */
 	const struct bpf_func_proto *
@@ -372,7 +373,7 @@ struct bpf_prog_stats {
 	u64 nsecs;
 	struct u64_stats_sync syncp;
 };
-
+/*  */
 struct bpf_prog_aux {
 	atomic_t refcnt;
 	u32 used_map_cnt;
@@ -391,7 +392,9 @@ struct bpf_prog_aux {
 	struct list_head ksym_lnode;
 	const struct bpf_prog_ops *ops;
 	struct bpf_map **used_maps;
+	/* 对应的程序 */
 	struct bpf_prog *prog;
+	/* 所属的用户 */
 	struct user_struct *user;
 	u64 load_time; /* ns since boottime */
 	struct bpf_map *cgroup_storage[MAX_BPF_CGROUP_STORAGE_TYPE];
@@ -430,7 +433,7 @@ struct bpf_prog_aux {
 		struct rcu_head	rcu;
 	};
 };
-
+/*  */
 struct bpf_array {
 	struct bpf_map map;
 	u32 elem_size;
@@ -520,7 +523,7 @@ struct bpf_prog_array_item {
 	struct bpf_prog *prog;
 	struct bpf_cgroup_storage *cgroup_storage[MAX_BPF_CGROUP_STORAGE_TYPE];
 };
-
+/* 零长数组， */
 struct bpf_prog_array {
 	struct rcu_head rcu;
 	struct bpf_prog_array_item items[0];

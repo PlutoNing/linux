@@ -39,7 +39,7 @@ enum bpf_reg_liveness {
 	REG_LIVE_WRITTEN = 0x4, /* reg was written first, screening off later reads */
 	REG_LIVE_DONE = 0x8, /* liveness won't be updating this register anymore */
 };
-
+/* 维护了BPF寄存器的状态。 */
 struct bpf_reg_state {
 	/* Ordering of fields matters.  See states_equal() */
 	enum bpf_reg_type type;

@@ -60,13 +60,15 @@ struct bpf_prog_list {
 struct bpf_prog_array;
 
 struct cgroup_bpf {
-	/* array of effective progs in this cgroup */
+	/* array of effective progs in this cgroup
+	cg内活跃bpf的数组？ */
 	struct bpf_prog_array __rcu *effective[MAX_BPF_ATTACH_TYPE];
 
 	/* attached progs to this cgroup and attach flags
 	 * when flags == 0 or BPF_F_ALLOW_OVERRIDE the progs list will
 	 * have either zero or one element
 	 * when BPF_F_ALLOW_MULTI the list can have up to BPF_CGROUP_MAX_PROGS
+	 是一个list head的数组，每个数组元素的list head连接件串接的是同类型的bpf程序
 	 */
 	struct list_head progs[MAX_BPF_ATTACH_TYPE];
 	u32 flags[MAX_BPF_ATTACH_TYPE];
