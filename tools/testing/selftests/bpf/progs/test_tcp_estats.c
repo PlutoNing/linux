@@ -70,7 +70,7 @@ struct sock_common {
 	struct in6_addr		skc_v6_daddr;
 	struct in6_addr		skc_v6_rcv_saddr;
 };
-
+/* sock结构体 */
 struct sock {
 	struct sock_common	__sk_common;
 #define sk_family		__sk_common.skc_family

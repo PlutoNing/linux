@@ -85,6 +85,10 @@ struct blkg_rwstat_sample {
  * policy's pd_alloc/free_fn() methods.  A policy can allocate private data
  * area by allocating larger data structure which embeds blkg_policy_data
  * at the beginning.
+ 2024年07月23日15:22:20
+ block group 层定义有一系列的 policy，例如 blk-throttle/iolatency/iocost 等，
+ 这里每个 policy 都会分配 policy specific data，这些 policy specific data 
+ 都会内嵌 struct blkg_policy_data，同时最终都保存在 @pd[] 数组
  */
 struct blkg_policy_data {
 	/* the blkg and policy id this per-policy data belongs to */
@@ -107,7 +111,7 @@ struct blkcg_policy_data {
 
 /* association between a blk cgroup and a request queue
 2024年06月19日10:31:23
-
+每个 blkcg_gq 即 (cgroup, request queue) pair 
  */
 struct blkcg_gq {
 	/* Pointer to the associated request_queue */
@@ -134,7 +138,7 @@ struct blkcg_gq {
 
 	struct blkg_rwstat		stat_bytes;
 	struct blkg_rwstat		stat_ios;
-
+	/* 具有一个对应的 throttle group，保存在 blkcg_gq 的 @pd[] 数组 */
 	struct blkg_policy_data		*pd[BLKCG_MAX_POLS];
 
 	spinlock_t			async_bio_lock;

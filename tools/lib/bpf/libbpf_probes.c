@@ -133,7 +133,7 @@ bool bpf_probe_prog_type(enum bpf_prog_type prog_type, __u32 ifindex)
 
 	return errno != EINVAL && errno != EOPNOTSUPP;
 }
-
+/* 加载btf，需要知道加载位置和目的 */
 int libbpf__load_raw_btf(const char *raw_types, size_t types_len,
 			 const char *str_sec, size_t str_len)
 {
@@ -149,6 +149,7 @@ int libbpf__load_raw_btf(const char *raw_types, size_t types_len,
 	__u8 *raw_btf;
 
 	btf_len = hdr.hdr_len + hdr.type_len + hdr.str_len;
+	/* 分配空间 */
 	raw_btf = malloc(btf_len);
 	if (!raw_btf)
 		return -ENOMEM;

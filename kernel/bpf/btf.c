@@ -3293,7 +3293,7 @@ static int btf_parse_hdr(struct btf_verifier_env *env)
 
 	return 0;
 }
-
+/*  */
 static struct btf *btf_parse(void __user *btf_data, u32 btf_data_size,
 			     u32 log_level, char __user *log_ubuf, u32 log_size)
 {

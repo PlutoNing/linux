@@ -1650,6 +1650,7 @@ bpf_prog_load_check_attach_type(enum bpf_prog_type prog_type,
 /* last field in 'union bpf_attr' used by this command */
 #define	BPF_PROG_LOAD_LAST_FIELD line_info_cnt
 /* 
+bpf系统调用的load cmd执行的函数
  */
 static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 {
@@ -1802,7 +1803,8 @@ free_prog_nouncharge:
 
 #define BPF_OBJ_LAST_FIELD file_flags
 /* 
-系统把bpf_prog和bpf_map都和文件句柄绑定起来。有一系列的好处：比如可以在用户态使用一系列的通用文件操作；也有一系列的坏处：因为fd生存在进程空间的，其他进程不能访问，而且一旦本进程退出，这些对象都会处于失联状态无法访问。
+系统把bpf_prog和bpf_map都和文件句柄绑定起来。有一系列的好处：比如可以在用户态使用一系列的通用文件操作；
+也有一系列的坏处：因为fd生存在进程空间的，其他进程不能访问，而且一旦本进程退出，这些对象都会处于失联状态无法访问。
 
 
 

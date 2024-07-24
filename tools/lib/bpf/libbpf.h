@@ -71,7 +71,7 @@ struct bpf_object_open_attr {
 LIBBPF_API struct bpf_object *bpf_object__open(const char *path);
 LIBBPF_API struct bpf_object *
 bpf_object__open_xattr(struct bpf_object_open_attr *attr);
-/*  */
+/* bpf的open */
 struct bpf_object *__bpf_object__open_xattr(struct bpf_object_open_attr *attr,
 					    int flags);
 LIBBPF_API struct bpf_object *bpf_object__open_buffer(void *obj_buf,
@@ -99,7 +99,9 @@ struct bpf_object_load_attr {
 
 /* Load/unload object into/from kernel */
 LIBBPF_API int bpf_object__load(struct bpf_object *obj);
+
 LIBBPF_API int bpf_object__load_xattr(struct bpf_object_load_attr *attr);
+
 LIBBPF_API int bpf_object__unload(struct bpf_object *obj);
 LIBBPF_API const char *bpf_object__name(const struct bpf_object *obj);
 LIBBPF_API unsigned int bpf_object__kversion(const struct bpf_object *obj);
@@ -164,6 +166,7 @@ LIBBPF_API int bpf_program__pin_instance(struct bpf_program *prog,
 LIBBPF_API int bpf_program__unpin_instance(struct bpf_program *prog,
 					   const char *path,
 					   int instance);
+
 LIBBPF_API int bpf_program__pin(struct bpf_program *prog, const char *path);
 LIBBPF_API int bpf_program__unpin(struct bpf_program *prog, const char *path);
 LIBBPF_API void bpf_program__unload(struct bpf_program *prog);
@@ -171,6 +174,8 @@ LIBBPF_API void bpf_program__unload(struct bpf_program *prog);
 struct bpf_link;
 
 LIBBPF_API int bpf_link__destroy(struct bpf_link *link);
+
+/* attach相关 */
 
 LIBBPF_API struct bpf_link *
 bpf_program__attach_perf_event(struct bpf_program *prog, int pfd);

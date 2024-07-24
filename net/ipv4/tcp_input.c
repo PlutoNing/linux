@@ -5547,7 +5547,8 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 	struct tcp_sock *tp = tcp_sk(sk);
 	unsigned int len = skb->len;
 
-	/* TCP congestion window tracking */
+	/* TCP congestion window tracking
+	tp点 */
 	trace_tcp_probe(sk, skb);
 
 	tcp_mstamp_refresh(tp);

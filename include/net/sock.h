@@ -322,6 +322,7 @@ struct bpf_sk_storage;
   *	@sk_clockid: clockid used by time-based scheduling (SO_TXTIME)
   *	@sk_txtime_deadline_mode: set deadline mode for SO_TXTIME
   *	@sk_txtime_unused: unused txtime flags
+  sock结构体
   */
 struct sock {
 	/*

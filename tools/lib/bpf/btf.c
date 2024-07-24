@@ -25,6 +25,7 @@ static struct btf_type btf_void;
 struct btf {
 	union {
 		struct btf_header *hdr;
+		/* btf的data */
 		void *data;
 	};
 	struct btf_type **types;
@@ -32,6 +33,7 @@ struct btf {
 	void *nohdr_data;
 	__u32 nr_types;
 	__u32 types_size;
+	/* btf的data size */
 	__u32 data_size;
 	int fd;
 };
@@ -68,7 +70,7 @@ static int btf_add_type(struct btf *btf, struct btf_type *t)
 
 	return 0;
 }
-
+/*  */
 static int btf_parse_hdr(struct btf *btf)
 {
 	const struct btf_header *hdr = btf->hdr;
@@ -329,7 +331,7 @@ void btf__free(struct btf *btf)
 	free(btf->types);
 	free(btf);
 }
-
+/* 由data&size创建btf */
 struct btf *btf__new(__u8 *data, __u32 size)
 {
 	struct btf *btf;
@@ -502,7 +504,7 @@ static int compare_vsi_off(const void *_a, const void *_b)
 
 	return a->offset - b->offset;
 }
-
+/*  */
 static int btf_fixup_datasec(struct bpf_object *obj, struct btf *btf,
 			     struct btf_type *t)
 {
@@ -557,7 +559,7 @@ static int btf_fixup_datasec(struct bpf_object *obj, struct btf *btf,
 	qsort(t + 1, vars, sizeof(*vsi), compare_vsi_off);
 	return 0;
 }
-
+/*  */
 int btf__finalize_data(struct bpf_object *obj, struct btf *btf)
 {
 	int err = 0;
@@ -580,7 +582,7 @@ int btf__finalize_data(struct bpf_object *obj, struct btf *btf)
 
 	return err;
 }
-
+/*  */
 int btf__load(struct btf *btf)
 {
 	__u32 log_buf_size = BPF_LOG_BUF_SIZE;
@@ -941,7 +943,7 @@ void btf_ext__free(struct btf_ext *btf_ext)
 	free(btf_ext->data);
 	free(btf_ext);
 }
-
+/*  */
 struct btf_ext *btf_ext__new(__u8 *data, __u32 size)
 {
 	struct btf_ext *btf_ext;

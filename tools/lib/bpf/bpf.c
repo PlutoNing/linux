@@ -64,7 +64,7 @@ static inline int sys_bpf(enum bpf_cmd cmd, union bpf_attr *attr,
 {
 	return syscall(__NR_bpf, cmd, attr, size);
 }
-
+/* 执行bpf的系统调用load cmd */
 static inline int sys_bpf_prog_load(union bpf_attr *attr, unsigned int size)
 {
 	int fd;
@@ -212,7 +212,7 @@ alloc_zero_tailing_info(const void *orecord, __u32 cnt,
 
 	return info;
 }
-
+/* 加载prog最终执行的函数 */
 int bpf_load_program_xattr(const struct bpf_load_program_attr *load_attr,
 			   char *log_buf, size_t log_buf_sz)
 {
@@ -294,7 +294,7 @@ int bpf_load_program_xattr(const struct bpf_load_program_attr *load_attr,
 		} else {
 			break;
 		}
-
+		/* 调用bpf系统调用 */
 		fd = sys_bpf_prog_load(&attr, sizeof(attr));
 
 		if (fd >= 0)
@@ -440,7 +440,7 @@ int bpf_map_freeze(int fd)
 
 	return sys_bpf(BPF_MAP_FREEZE, &attr, sizeof(attr));
 }
-
+/* 调用bpf系统调用来pin */
 int bpf_obj_pin(int fd, const char *pathname)
 {
 	union bpf_attr attr;
@@ -658,7 +658,7 @@ int bpf_raw_tracepoint_open(const char *name, int prog_fd)
 
 	return sys_bpf(BPF_RAW_TRACEPOINT_OPEN, &attr, sizeof(attr));
 }
-
+/* 加载，btf，最终还是bpf系统调用 */
 int bpf_load_btf(void *btf, __u32 btf_size, char *log_buf, __u32 log_buf_size,
 		 bool do_log)
 {

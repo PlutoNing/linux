@@ -75,6 +75,7 @@ LIBBPF_API int bpf_create_map_in_map(enum bpf_map_type map_type,
 				     __u32 map_flags);
 /*  */
 struct bpf_load_program_attr {
+	/* 要加载的prog的type */
 	enum bpf_prog_type prog_type;
 	enum bpf_attach_type expected_attach_type;
 	const char *name;

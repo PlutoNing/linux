@@ -144,6 +144,7 @@ struct bpf_capabilities {
 };
 
 /*
+
  * bpf_prog should be a better name but it has been used in
  * linux/filter.h.
  */
@@ -178,10 +179,11 @@ struct bpf_program {
 
 	struct {
 		int nr;
+		/* 一个fd的数组 */
 		int *fds;
 	} instances;
 	bpf_program_prep_t preprocessor;
-
+	/* 指向所属的obj */
 	struct bpf_object *obj;
 	void *priv;
 	bpf_program_clear_priv_t clear_priv;
@@ -241,10 +243,14 @@ struct bpf_object {
 	char license[64];
 	__u32 kern_version;
 
+	/* obj里面的progs */
 	struct bpf_program *programs;
+	/* obj里面progs数量 */
 	size_t nr_programs;
+	/*  */
 	struct bpf_map *maps;
 	size_t nr_maps;
+
 	size_t maps_cap;
 	struct bpf_secdata sections;
 
@@ -265,23 +271,36 @@ struct bpf_object {
 		/* 代表elf对象 */
 		Elf *elf;
 		GElf_Ehdr ehdr;
+		/* 符号表？ */
 		Elf_Data *symbols;
+		/* data段 */
 		Elf_Data *data;
+		/* rodata段 */
 		Elf_Data *rodata;
+		/* bss段 */
 		Elf_Data *bss;
 		size_t strtabidx;
+		/* reloc相关 */
 		struct {
 			GElf_Shdr shdr;
 			Elf_Data *data;
 		} *reloc;
+		/* reloc段的数量 */
 		int nr_reloc;
 		/* 遍历ebpf.o中的所有sec找到SEC("maps")和SEC(".maps")这两类section
 找到名字为"maps"或者".maps"的section，并将它们的idx分别存放到obj->efile.maps_shndx和obj->efile.btf_maps_shndx中 */
+		
+		/* 对应的elf文件里面maps段的索引 */
 		int maps_shndx;
+		/* 也是索引，待确定 */
 		int btf_maps_shndx;
+		/* text段的索引 */
 		int text_shndx;
+		/* data段的索引 */
 		int data_shndx;
+		/* rodata的索引 */
 		int rodata_shndx;
+		/* bss段的索引 */
 		int bss_shndx;
 	} efile;
 	/*
@@ -291,7 +310,7 @@ struct bpf_object {
 	 加入到全局的bpf_objects_list链表
 	 */
 	struct list_head list;
-
+	/* obj的btf */
 	struct btf *btf;
 	struct btf_ext *btf_ext;
 
@@ -363,7 +382,7 @@ static char *__bpf_program__pin_name(struct bpf_program *prog)
 
 	return name;
 }
-
+/* datat&size 是bpf指令 */
 static int
 bpf_program__init(void *data, size_t size, char *section_name, int idx,
 		  struct bpf_program *prog)
@@ -410,7 +429,8 @@ errout:
 	bpf_program__exit(prog);
 	return -ENOMEM;
 }
-
+/* 给obj加一个progs
+data和size就是bpf指令 */
 static int
 bpf_object__add_program(struct bpf_object *obj, void *data, size_t size,
 			char *section_name, int idx)
@@ -446,7 +466,7 @@ bpf_object__add_program(struct bpf_object *obj, void *data, size_t size,
 	progs[nr_progs] = prog;
 	return 0;
 }
-
+/*  */
 static int
 bpf_object__init_prog_names(struct bpf_object *obj)
 {
@@ -788,7 +808,7 @@ int bpf_object__variable_offset(const struct bpf_object *obj, const char *name,
 
 	return -ENOENT;
 }
-
+/*  */
 static struct bpf_map *bpf_object__add_map(struct bpf_object *obj)
 {
 	struct bpf_map *new_maps;
@@ -822,7 +842,7 @@ static struct bpf_map *bpf_object__add_map(struct bpf_object *obj)
 
 	return &obj->maps[obj->nr_maps++];
 }
-
+/*  */
 static int
 bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
 			      int sec_idx, Elf_Data *data, void **data_buff)
@@ -867,7 +887,7 @@ bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
 	pr_debug("map %td is \"%s\"\n", map - obj->maps, map->name);
 	return 0;
 }
-
+/*  */
 static int bpf_object__init_global_data_maps(struct bpf_object *obj)
 {
 	int err;
@@ -902,7 +922,7 @@ static int bpf_object__init_global_data_maps(struct bpf_object *obj)
 	}
 	return 0;
 }
-
+/*  */
 static int bpf_object__init_user_maps(struct bpf_object *obj, bool strict)
 {
 	Elf_Data *symbols = obj->efile.symbols;
@@ -915,7 +935,7 @@ static int bpf_object__init_user_maps(struct bpf_object *obj, bool strict)
 
 	if (!symbols)
 		return -EINVAL;
-
+	/* 根据索引获取elf里面的段 */
 	scn = elf_getscn(obj->efile.elf, obj->efile.maps_shndx);
 	if (scn)
 		data = elf_getdata(scn, NULL);
@@ -1082,7 +1102,7 @@ static bool get_map_field_int(const char *map_name, const struct btf *btf,
 	*res = arr_info->nelems;
 	return true;
 }
-
+/*  */
 static int bpf_object__init_user_btf_map(struct bpf_object *obj,
 					 const struct btf_type *sec,
 					 int var_idx, int sec_idx,
@@ -1280,7 +1300,7 @@ static int bpf_object__init_user_btf_map(struct bpf_object *obj,
 
 	return 0;
 }
-
+/*  */
 static int bpf_object__init_user_btf_maps(struct bpf_object *obj, bool strict)
 {
 	const struct btf_type *sec = NULL;
@@ -1330,7 +1350,7 @@ static int bpf_object__init_user_btf_maps(struct bpf_object *obj, bool strict)
 
 	return 0;
 }
-
+/*  */
 static int bpf_object__init_maps(struct bpf_object *obj, int flags)
 {
 	bool strict = !(flags & MAPS_RELAX_COMPAT);
@@ -1372,7 +1392,7 @@ static bool section_have_execinstr(struct bpf_object *obj, int idx)
 
 	return false;
 }
-
+/*  */
 static void bpf_object__sanitize_btf(struct bpf_object *obj)
 {
 	bool has_datasec = obj->caps.btf_datasec;
@@ -1448,7 +1468,7 @@ static bool bpf_object__is_btf_mandatory(const struct bpf_object *obj)
 {
 	return obj->efile.btf_maps_shndx >= 0;
 }
-
+/*  */
 static int bpf_object__init_btf(struct bpf_object *obj,
 				Elf_Data *btf_data,
 				Elf_Data *btf_ext_data)
@@ -1501,7 +1521,7 @@ out:
 	}
 	return 0;
 }
-
+/*  */
 static int bpf_object__sanitize_and_load_btf(struct bpf_object *obj)
 {
 	int err = 0;
@@ -1529,13 +1549,16 @@ static int bpf_object__sanitize_and_load_btf(struct bpf_object *obj)
 	}
 	return 0;
 }
-
+/* 处理elf的不同的段
+好像是扫描不同的段，赋值obj一些基本信息
+然后根据获取的段的信息，进行一些btf什么的初始化 */
 static int bpf_object__elf_collect(struct bpf_object *obj, int flags)
 {
 	Elf *elf = obj->efile.elf;
 	GElf_Ehdr *ep = &obj->efile.ehdr;
 	Elf_Data *btf_ext_data = NULL;
 	Elf_Data *btf_data = NULL;
+	/* 代表当时处理的段 */
 	Elf_Scn *scn = NULL;
 	int idx = 0, err = 0;
 
@@ -1590,12 +1613,15 @@ static int bpf_object__elf_collect(struct bpf_object *obj, int flags)
 		} else if (strcmp(name, "maps") == 0) {
 			obj->efile.maps_shndx = idx;
 		} else if (strcmp(name, MAPS_ELF_SEC) == 0) {
+			/* 也是maps？ */
 			obj->efile.btf_maps_shndx = idx;
 		} else if (strcmp(name, BTF_ELF_SEC) == 0) {
+			/* btf的data */
 			btf_data = data;
 		} else if (strcmp(name, BTF_EXT_ELF_SEC) == 0) {
 			btf_ext_data = data;
 		} else if (sh.sh_type == SHT_SYMTAB) {
+			/* 符号表？ */
 			if (obj->efile.symbols) {
 				pr_warning("bpf: multiple SYMTAB in %s\n",
 					   obj->path);
@@ -1605,8 +1631,10 @@ static int bpf_object__elf_collect(struct bpf_object *obj, int flags)
 			obj->efile.strtabidx = sh.sh_link;
 		} else if (sh.sh_type == SHT_PROGBITS && data->d_size > 0) {
 			if (sh.sh_flags & SHF_EXECINSTR) {
+				/* 代码段 */
 				if (strcmp(name, ".text") == 0)
 					obj->efile.text_shndx = idx;
+				/* 找到一个代码段就添加一个prog？ */
 				err = bpf_object__add_program(obj, data->d_buf,
 							      data->d_size, name, idx);
 				if (err) {
@@ -1628,6 +1656,7 @@ static int bpf_object__elf_collect(struct bpf_object *obj, int flags)
 				pr_debug("skip section(%d) %s\n", idx, name);
 			}
 		} else if (sh.sh_type == SHT_REL) {
+			/*  */
 			int nr_reloc = obj->efile.nr_reloc;
 			void *reloc = obj->efile.reloc;
 			int sec = sh.sh_info; /* points to other section */
@@ -1663,13 +1692,18 @@ static int bpf_object__elf_collect(struct bpf_object *obj, int flags)
 		pr_warning("Corrupted ELF file: index of strtab invalid\n");
 		return -LIBBPF_ERRNO__FORMAT;
 	}
+	/* 初始化btf */
 	err = bpf_object__init_btf(obj, btf_data, btf_ext_data);
+
 	if (!err)
 		err = bpf_object__init_maps(obj, flags);
+
 	if (!err)
 		err = bpf_object__sanitize_and_load_btf(obj);
+
 	if (!err)
 		err = bpf_object__init_prog_names(obj);
+
 	return err;
 }
 
@@ -1735,7 +1769,7 @@ bpf_object__section_to_libbpf_map_type(const struct bpf_object *obj, int shndx)
 	else
 		return LIBBPF_MAP_UNSPEC;
 }
-
+/*  */
 static int
 bpf_program__collect_reloc(struct bpf_program *prog, GElf_Shdr *shdr,
 			   Elf_Data *data, struct bpf_object *obj)
@@ -1977,13 +2011,16 @@ bpf_object__probe_name(struct bpf_object *obj)
 	attr.insns_cnt = ARRAY_SIZE(insns);
 	attr.license = "GPL";
 
+
 	ret = bpf_load_program_xattr(&attr, NULL, 0);
+
 	if (ret < 0) {
 		cp = libbpf_strerror_r(errno, errmsg, sizeof(errmsg));
 		pr_warning("Error in %s():%s(%d). Couldn't load basic 'r0 = 0' BPF program.\n",
 			   __func__, cp, errno);
 		return -errno;
 	}
+
 	close(ret);
 
 	/* now try the same program, but with the name */
@@ -1997,7 +2034,7 @@ bpf_object__probe_name(struct bpf_object *obj)
 
 	return 0;
 }
-
+/* map相关 */
 static int
 bpf_object__probe_global_data(struct bpf_object *obj)
 {
@@ -2017,8 +2054,9 @@ bpf_object__probe_global_data(struct bpf_object *obj)
 	map_attr.key_size = sizeof(int);
 	map_attr.value_size = 32;
 	map_attr.max_entries = 1;
-
+	/* 这个是创建的什么map */
 	map = bpf_create_map_xattr(&map_attr);
+
 	if (map < 0) {
 		cp = libbpf_strerror_r(errno, errmsg, sizeof(errmsg));
 		pr_warning("Error in %s():%s(%d). Couldn't create simple array map.\n",
@@ -2043,13 +2081,18 @@ bpf_object__probe_global_data(struct bpf_object *obj)
 	close(map);
 	return 0;
 }
-
+/*  */
 static int bpf_object__probe_btf_func(struct bpf_object *obj)
 {
 	const char strs[] = "\0int\0x\0a";
 	/* void x(int a) {} */
 	__u32 types[] = {
-		/* int */
+		/* int 
+		// Expands to
+(1), (((!!(0) << 31) | ((1) << 24) | ((0) & 0xffff))), (4),
+    (((1 << 0)) << 24 | (0) << 16 | (32))
+	定义指令吗。
+		*/
 		BTF_TYPE_INT_ENC(1, BTF_INT_SIGNED, 0, 32, 4),  /* [1] */
 		/* FUNC_PROTO */                                /* [2] */
 		BTF_TYPE_ENC(0, BTF_INFO_ENC(BTF_KIND_FUNC_PROTO, 0, 1), 0),
@@ -2069,7 +2112,7 @@ static int bpf_object__probe_btf_func(struct bpf_object *obj)
 
 	return 0;
 }
-
+/*  */
 static int bpf_object__probe_btf_datasec(struct bpf_object *obj)
 {
 	const char strs[] = "\0x\0.data";
@@ -2146,7 +2189,10 @@ bpf_object__populate_internal_map(struct bpf_object *obj, struct bpf_map *map)
 	}
 	return err;
 }
+/* 
 
+
+ */
 static int
 bpf_object__create_maps(struct bpf_object *obj)
 {
@@ -2197,12 +2243,13 @@ bpf_object__create_maps(struct bpf_object *obj)
 		    map->inner_map_fd >= 0)
 			create_attr.inner_map_fd = map->inner_map_fd;
 
+		/* 处理btf情况 */
 		if (obj->btf && !bpf_map_find_btf_info(obj, map)) {
 			create_attr.btf_fd = btf__fd(obj->btf);
 			create_attr.btf_key_type_id = map->btf_key_type_id;
 			create_attr.btf_value_type_id = map->btf_value_type_id;
 		}
-
+		/* 开始 create map */
 		*pfd = bpf_create_map_xattr(&create_attr);
 		if (*pfd < 0 && (create_attr.btf_key_type_id ||
 				 create_attr.btf_value_type_id)) {
@@ -3254,7 +3301,7 @@ bpf_program__reloc_text(struct bpf_program *prog, struct bpf_object *obj,
 	insn->imm += prog->main_prog_cnt - relo->insn_idx;
 	return 0;
 }
-
+/*  */
 static int
 bpf_program__relocate(struct bpf_program *prog, struct bpf_object *obj)
 {
@@ -3308,7 +3355,7 @@ bpf_program__relocate(struct bpf_program *prog, struct bpf_object *obj)
 	prog->nr_reloc = 0;
 	return 0;
 }
-
+/*  */
 static int
 bpf_object__relocate(struct bpf_object *obj, const char *targ_btf_path)
 {
@@ -3336,7 +3383,7 @@ bpf_object__relocate(struct bpf_object *obj, const char *targ_btf_path)
 	}
 	return 0;
 }
-
+/*  */
 static int bpf_object__collect_reloc(struct bpf_object *obj)
 {
 	int i, err;
@@ -3369,7 +3416,7 @@ static int bpf_object__collect_reloc(struct bpf_object *obj)
 	}
 	return 0;
 }
-
+/*  */
 static int
 load_program(struct bpf_program *prog, struct bpf_insn *insns, int insns_cnt,
 	     char *license, __u32 kern_version, int *pfd)
@@ -3464,7 +3511,7 @@ out:
 	free(log_buf);
 	return ret;
 }
-
+/* 2024年07月23日13:16:18 */
 int
 bpf_program__load(struct bpf_program *prog,
 		  char *license, __u32 kern_version)
@@ -3520,7 +3567,7 @@ bpf_program__load(struct bpf_program *prog,
 				*result.pfd = -1;
 			continue;
 		}
-
+		/*  */
 		err = load_program(prog, result.new_insn_ptr,
 				   result.new_insn_cnt,
 				   license, kern_version, &fd);
@@ -3549,7 +3596,7 @@ static bool bpf_program__is_function_storage(const struct bpf_program *prog,
 {
 	return prog->idx == obj->efile.text_shndx && obj->has_pseudo_calls;
 }
-
+/* 加载prog */
 static int
 bpf_object__load_progs(struct bpf_object *obj, int log_level)
 {
@@ -3635,10 +3682,15 @@ __bpf_object__open(const char *path, void *obj_buf, size_t obj_buf_sz,
 	CHECK_ERR(bpf_object__elf_init(obj), err, out);
 
 	CHECK_ERR(bpf_object__check_endianness(obj), err, out);
-
+	/* 2024年07月23日10:26:46这里做了什么
+	2024年07月23日12:30:24好像是加载了一些硬编码的prog和map */
 	CHECK_ERR(bpf_object__probe_caps(obj), err, out);
+	/* 处理elf文件，初始化obj的efile的data，text，bss等段，并在obj里面用这些信息
+	初始化和load一些属性 */
 	CHECK_ERR(bpf_object__elf_collect(obj, flags), err, out);
+
 	CHECK_ERR(bpf_object__collect_reloc(obj), err, out);
+
 	CHECK_ERR(bpf_object__validate(obj, needs_kver), err, out);
 
 	bpf_object__elf_finish(obj);
@@ -3716,7 +3768,7 @@ int bpf_object__unload(struct bpf_object *obj)
 
 	return 0;
 }
-
+/* load bpf程序 */
 int bpf_object__load_xattr(struct bpf_object_load_attr *attr)
 {
 	struct bpf_object *obj;
@@ -3735,6 +3787,8 @@ int bpf_object__load_xattr(struct bpf_object_load_attr *attr)
 
 	obj->loaded = true;
 
+
+	/*  */
 	CHECK_ERR(bpf_object__create_maps(obj), err, out);
 	CHECK_ERR(bpf_object__relocate(obj, attr->target_btf_path), err, out);
 	CHECK_ERR(bpf_object__load_progs(obj, attr->log_level), err, out);
@@ -3784,7 +3838,7 @@ static int check_path(const char *path)
 
 	return err;
 }
-
+/*  */
 int bpf_program__pin_instance(struct bpf_program *prog, const char *path,
 			      int instance)
 {
@@ -3805,7 +3859,7 @@ int bpf_program__pin_instance(struct bpf_program *prog, const char *path,
 			   instance, prog->section_name, prog->instances.nr);
 		return -EINVAL;
 	}
-
+	/*  */
 	if (bpf_obj_pin(prog->instances.fds[instance], path)) {
 		cp = libbpf_strerror_r(errno, errmsg, sizeof(errmsg));
 		pr_warning("failed to pin program: %s\n", cp);
@@ -3858,7 +3912,7 @@ static int make_dir(const char *path)
 	}
 	return err;
 }
-
+/* 在文件系统创建表示 */
 int bpf_program__pin(struct bpf_program *prog, const char *path)
 {
 	int i, err;
@@ -3899,7 +3953,7 @@ int bpf_program__pin(struct bpf_program *prog, const char *path)
 			err = -ENAMETOOLONG;
 			goto err_unpin;
 		}
-
+		/* 开始pin */
 		err = bpf_program__pin_instance(prog, buf, i);
 		if (err)
 			goto err_unpin;
@@ -4381,7 +4435,7 @@ const char *bpf_program__title(const struct bpf_program *prog, bool needs_copy)
 
 	return title;
 }
-
+/*  */
 int bpf_program__fd(const struct bpf_program *prog)
 {
 	return bpf_program__nth_fd(prog, 0);
@@ -4414,7 +4468,7 @@ int bpf_program__set_prep(struct bpf_program *prog, int nr_instances,
 	prog->preprocessor = prep;
 	return 0;
 }
-
+/*  */
 int bpf_program__nth_fd(const struct bpf_program *prog, int n)
 {
 	int fd;
@@ -4427,7 +4481,7 @@ int bpf_program__nth_fd(const struct bpf_program *prog, int n)
 			   n, prog->section_name, prog->instances.nr);
 		return -EINVAL;
 	}
-
+	/* 查找fd */
 	fd = prog->instances.fds[n];
 	if (fd < 0) {
 		pr_warning("%dth instance of program '%s' is invalid\n",
@@ -4908,7 +4962,7 @@ int bpf_prog_load_xattr(const struct bpf_prog_load_attr *attr,
 struct bpf_link {
 	int (*destroy)(struct bpf_link *link);
 };
-
+/*  */
 int bpf_link__destroy(struct bpf_link *link)
 {
 	int err;
@@ -4924,6 +4978,7 @@ int bpf_link__destroy(struct bpf_link *link)
 
 struct bpf_link_fd {
 	struct bpf_link link; /* has to be at the top of struct */
+	/* 对应的prog的instancs数组索引 */
 	int fd; /* hook FD */
 };
 
@@ -4939,7 +4994,7 @@ static int bpf_link__destroy_perf_event(struct bpf_link *link)
 	close(l->fd);
 	return err;
 }
-
+/*  */
 struct bpf_link *bpf_program__attach_perf_event(struct bpf_program *prog,
 						int pfd)
 {
@@ -5013,7 +5068,7 @@ static int parse_uint_from_file(const char *file, const char *fmt)
 	fclose(f);
 	return ret;
 }
-
+/*  */
 static int determine_kprobe_perf_type(void)
 {
 	const char *file = "/sys/bus/event_source/devices/kprobe/type";
@@ -5041,7 +5096,7 @@ static int determine_uprobe_retprobe_bit(void)
 
 	return parse_uint_from_file(file, "config:%d\n");
 }
-
+/*  */
 static int perf_event_open_probe(bool uprobe, bool retprobe, const char *name,
 				 uint64_t offset, int pid)
 {
@@ -5089,7 +5144,7 @@ static int perf_event_open_probe(bool uprobe, bool retprobe, const char *name,
 	}
 	return pfd;
 }
-
+/*  */
 struct bpf_link *bpf_program__attach_kprobe(struct bpf_program *prog,
 					    bool retprobe,
 					    const char *func_name)
@@ -5152,7 +5207,7 @@ struct bpf_link *bpf_program__attach_uprobe(struct bpf_program *prog,
 	}
 	return link;
 }
-
+/*  */
 static int determine_tracepoint_id(const char *tp_category,
 				   const char *tp_name)
 {
@@ -5202,7 +5257,7 @@ static int perf_event_open_tracepoint(const char *tp_category,
 	}
 	return pfd;
 }
-
+/*  */
 struct bpf_link *bpf_program__attach_tracepoint(struct bpf_program *prog,
 						const char *tp_category,
 						const char *tp_name)

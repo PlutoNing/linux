@@ -190,7 +190,7 @@ struct avg_latency_bucket {
 	unsigned long latency; /* ns / 1024 */
 	bool valid;
 };
-
+/* 每个 blkdev 对应一个 throttle data，保存该 blkdev 的 blk-throttle policy 相关的信息 */
 struct throtl_data
 {
 	/* service tree for active throtl groups */

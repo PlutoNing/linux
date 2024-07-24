@@ -605,6 +605,7 @@ int cgroup_bpf_prog_query(const union bpf_attr *attr,
 }
 
 /**
+运行bpf prog执行包过滤
  * __cgroup_bpf_run_filter_skb() - Run a program for packet filtering
  * @sk: The socket sending or receiving traffic
  * @skb: The skb that is being sent or received
@@ -655,10 +656,12 @@ int __cgroup_bpf_run_filter_skb(struct sock *sk,
 		ret = BPF_PROG_CGROUP_INET_EGRESS_RUN_ARRAY(
 			cgrp->bpf.effective[type], skb, __bpf_prog_run_save_cb);
 	} else {
+		/* 调用__bpf_prog_run_save_cb（prog，skb） */
 		ret = BPF_PROG_RUN_ARRAY(cgrp->bpf.effective[type], skb,
 					  __bpf_prog_run_save_cb);
 		ret = (ret == 1 ? 0 : -EPERM);
 	}
+
 	bpf_restore_data_end(skb, saved_data_end);
 	__skb_pull(skb, offset);
 	skb->sk = save_sk;

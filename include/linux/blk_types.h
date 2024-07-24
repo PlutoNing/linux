@@ -108,7 +108,7 @@ static inline bool blk_path_error(blk_status_t error)
 
 /* Reserved bit for blk-throtl */
 #define BIO_ISSUE_THROTL_SKIP_LATENCY (1ULL << 63)
-
+/*  */
 struct bio_issue {
 	u64 value;
 };

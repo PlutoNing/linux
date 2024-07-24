@@ -154,7 +154,7 @@ struct request {
 	/* the following two fields are internal, NEVER access directly */
 	unsigned int __data_len;	/* total data len */
 	sector_t __sector;		/* sector cursor */
-//请求bio结构体的链表。
+    //请求bio结构体的链表。
 	struct bio *bio;
 	// 请求bio结构体的链表尾，新加入的bio链在后面
 	struct bio *biotail;
