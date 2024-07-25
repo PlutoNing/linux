@@ -795,7 +795,8 @@ struct task_struct {
 	struct mm_struct		*mm;
 	struct mm_struct		*active_mm;
 
-	/* Per-thread vma caching: */
+	/* Per-thread vma caching:
+	vma的缓存 */
 	struct vmacache			vmacache;
 
 #ifdef SPLIT_RSS_COUNTING

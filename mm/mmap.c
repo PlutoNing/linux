@@ -751,6 +751,8 @@ static inline void __vma_unlink_prev(struct mm_struct *mm,
 }
 
 /*
+2024年7月26日00:12:35
+
  * We cannot adjust vm_start, vm_end, vm_pgoff fields of a vma that
  * is already present in an i_mmap tree without adjusting the tree.
  * The following helper function should be used when such adjustments
@@ -2335,7 +2337,10 @@ find_vma_link(mm, addr, end, ...)
 而且find_vma函数和我们普通的查找还不一样，我们一般想象的是这个函数会返回一个vma，
 这个vma是覆盖地址addr的。但是你仔细看这个函数，其实返回的vma表示的是第一个满足
 addr < vm_end条件的。也就是这个addr可能并不在任何vma空间内。
-Look up the first VMA which satisfies  addr < vm_end,  NULL if none. */
+Look up the first VMA which satisfies  addr < vm_end,  NULL if none.
+-----------------------
+就是查找mm的vma的红黑树。
+ */
 struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 {
 	struct rb_node *rb_node;
@@ -2343,9 +2348,11 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 
 	/* Check the cache first. */
 	vma = vmacache_find(mm, addr);
+	/* 如果幸运的在mm的vma缓存命中了 */
 	if (likely(vma))
 		return vma;
 
+	/* 不然只能遍历mm的vma红黑树了。 */
 	rb_node = mm->mm_rb.rb_node;
 
 	while (rb_node) {
@@ -2763,6 +2770,12 @@ vma_merge
 -----------------------
  * __split_vma() bypasses sysctl_max_map_count checking.  We use this where it
  * has already been checked or doesn't make sense to fail.
+把与线性地址区间交叉的线性区划分成两个较小的区，一个在线性地址区间外部，另一个在区间的内部。
+mm：内存描述符指针mm，
+vma：线性区描述符指针vma（标识要被划分的线性区），
+addr：表示区间与线性区之间交叉点的地址addr，
+new below：以及表示区间与线性区之间交叉点在区间起始处还是结束处的标志new_below。
+
  */
 int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 		unsigned long addr, int new_below)
@@ -2775,32 +2788,39 @@ int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 		if (err)
 			return err;
 	}
-
+	/* 复制一个vma，只是分配空间 */
 	new = vm_area_dup(vma);
 	if (!new)
 		return -ENOMEM;
-
+	
 	if (new_below)
 		new->vm_end = addr;
 	else {
+		/*    addr
+			  start----------end
+		vma-------------------------vma
+		      new
+		 */
 		new->vm_start = addr;
 		new->vm_pgoff += ((addr - vma->vm_start) >> PAGE_SHIFT);
 	}
-
+	/* 复制policy，todo */
 	err = vma_dup_policy(vma, new);
 	if (err)
 		goto out_free_vma;
-
+	/* 复制av */
 	err = anon_vma_clone(new, vma);
 	if (err)
 		goto out_free_mpol;
-
+	/* 增加引用计数 */
 	if (new->vm_file)
 		get_file(new->vm_file);
-
+	/*  */
 	if (new->vm_ops && new->vm_ops->open)
 		new->vm_ops->open(new);
-
+	
+	
+	/* 把new加入 */
 	if (new_below)
 		err = vma_adjust(vma, addr, vma->vm_end, vma->vm_pgoff +
 			((addr - new->vm_start) >> PAGE_SHIFT), new);
@@ -2814,11 +2834,15 @@ int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	/* Clean everything up if vma_adjust failed. */
 	if (new->vm_ops && new->vm_ops->close)
 		new->vm_ops->close(new);
+
 	if (new->vm_file)
 		fput(new->vm_file);
+
 	unlink_anon_vmas(new);
+
  out_free_mpol:
 	mpol_put(vma_policy(new));
+
  out_free_vma:
 	vm_area_free(new);
 	return err;
@@ -2844,7 +2868,9 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	return __split_vma(mm, vma, addr, new_below);
 }
 
-/* Munmap is split into 2 main parts -- this part which finds
+/*
+2024年7月25日23:16:17
+ Munmap is split into 2 main parts -- this part which finds
  * what needs doing, and the areas themselves, which do the
  * work.  This now handles partial unmappings.
  * Jeremy Fitzhardinge <jeremy@goop.org>
@@ -2867,10 +2893,12 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	 * arch_unmap() might do unmaps itself.  It must be called
 	 * and finish any rbtree manipulation before this code
 	 * runs and also starts to manipulate the rbtree.
+	 可能是这个架构相关的unmap来做unmap
 	 */
 	arch_unmap(mm, start, end);
 
-	/* Find the first overlapping VMA */
+	/* Find the first overlapping VMA
+	找到要unmap的vma */
 	vma = find_vma(mm, start);
 	if (!vma)
 		return 0;
@@ -2889,6 +2917,10 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	 * places tmp vma above, and higher split_vma places tmp vma below.
 	 */
 	if (start > vma->vm_start) {
+		/* vma的start位于start左边
+				start-----------end
+			vma---------vma
+		 */
 		int error;
 
 		/*
@@ -2897,8 +2929,12 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		 * its limit temporarily, to help free resources as expected.
 		 */
 		if (end < vma->vm_end && mm->map_count >= sysctl_max_map_count)
+		/* 
+			 start----------end
+		vma-------------------------vma
+	 */
 			return -ENOMEM;
-
+		/* 所以这是要unmap一个已存在的vma的中间一段内存的情况？所以先split */
 		error = __split_vma(mm, vma, start, 0);
 		if (error)
 			return error;
@@ -2907,6 +2943,7 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 
 	/* Does it split the last one? */
 	last = find_vma(mm, end);
+	
 	if (last && end > last->vm_start) {
 		int error = __split_vma(mm, last, end, 1);
 		if (error)

@@ -380,7 +380,9 @@ struct vm_area_struct {
 
 	/* Information about our backing store: */
 	
-	unsigned long vm_pgoff;		/* Offset (within vm_file) in PAGE_SIZE
+	unsigned long vm_pgoff;		/* 
+	如果vma是文件map的话，表示vma其实地址在文件空间里的偏移。
+	Offset (within vm_file) in PAGE_SIZE
 					   units */
 	struct file * vm_file;		/* File we map to (can be NULL). 
 	如果是mmap，这是mmap文件*/

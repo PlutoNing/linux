@@ -353,7 +353,9 @@ struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 		vma_init(vma, mm);
 	return vma;
 }
-/* 2024年07月18日20:21:45 */
+/* 2024年07月18日20:21:45
+复制vma，只是分片空间。具体细节成员还要其他函数挨个复制
+ */
 struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 {
 	struct vm_area_struct *new = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);

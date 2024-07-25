@@ -30,7 +30,7 @@
 #define VMACACHE_BITS 2
 #define VMACACHE_SIZE (1U << VMACACHE_BITS)
 #define VMACACHE_MASK (VMACACHE_SIZE - 1)
-
+/* vma的cache */
 struct vmacache {
 	u64 seqnum;
 	struct vm_area_struct *vmas[VMACACHE_SIZE];

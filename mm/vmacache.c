@@ -20,6 +20,8 @@
 #define VMACACHE_HASH(addr) ((addr >> VMACACHE_SHIFT) & VMACACHE_MASK)
 
 /*
+2024年7月25日23:20:09
+判断mm是不是当前进程的mm？
  * This task may be accessing a foreign mm via (for example)
  * get_user_pages()->find_vma().  The vmacache is task-local and this
  * task's vmacache pertains to a different mm (ie, its own).  There is
@@ -38,7 +40,9 @@ void vmacache_update(unsigned long addr, struct vm_area_struct *newvma)
 	if (vmacache_valid_mm(newvma->vm_mm))
 		current->vmacache.vmas[VMACACHE_HASH(addr)] = newvma;
 }
+/* 2024年7月25日23:19:57
 
+ */
 static bool vmacache_valid(struct mm_struct *mm)
 {
 	struct task_struct *curr;
@@ -58,7 +62,8 @@ static bool vmacache_valid(struct mm_struct *mm)
 	}
 	return true;
 }
-
+/* 在mm的vmacache里面查找是否有个vma，addr位于此vma。
+方法是哈希映射，开放地址。 */
 struct vm_area_struct *vmacache_find(struct mm_struct *mm, unsigned long addr)
 {
 	int idx = VMACACHE_HASH(addr);
@@ -69,7 +74,9 @@ struct vm_area_struct *vmacache_find(struct mm_struct *mm, unsigned long addr)
 	if (!vmacache_valid(mm))
 		return NULL;
 
+	/* 探测 VMACACHE_SIZE次数*/
 	for (i = 0; i < VMACACHE_SIZE; i++) {
+		/* 根据这个addr映射的hash值判断在不在缓存的vmas数组里面 */
 		struct vm_area_struct *vma = current->vmacache.vmas[idx];
 
 		if (vma) {
@@ -78,10 +85,12 @@ struct vm_area_struct *vmacache_find(struct mm_struct *mm, unsigned long addr)
 				break;
 #endif
 			if (vma->vm_start <= addr && vma->vm_end > addr) {
+				/* 如果addr位于缓存slot的这个vma区间里面，命中。 */
 				count_vm_vmacache_event(VMACACHE_FIND_HITS);
 				return vma;
 			}
 		}
+		/* 可能是开放地址法的哈希 */
 		if (++idx == VMACACHE_SIZE)
 			idx = 0;
 	}

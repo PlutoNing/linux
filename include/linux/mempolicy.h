@@ -91,6 +91,7 @@ static inline void mpol_cond_put(struct mempolicy *pol)
 }
 
 extern struct mempolicy *__mpol_dup(struct mempolicy *pol);
+/* policy的复制函数 */
 static inline struct mempolicy *mpol_dup(struct mempolicy *pol)
 {
 	if (pol)
