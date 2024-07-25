@@ -29,6 +29,8 @@ void cgroup_bpf_offline(struct cgroup *cgrp)
 }
 
 /**
+释放cg的bpf的函数
+好像就是list的移除元素
  * cgroup_bpf_release() - put references of all bpf programs and
  *                        release all cgroup bpf data
  * @work: work structure embedded into the cgroup to modify
@@ -46,7 +48,7 @@ static void cgroup_bpf_release(struct work_struct *work)
 	for (type = 0; type < ARRAY_SIZE(cgrp->bpf.progs); type++) {
 		struct list_head *progs = &cgrp->bpf.progs[type];
 		struct bpf_prog_list *pl, *tmp;
-
+		/* 遍历此type的list上面的每个prog */
 		list_for_each_entry_safe(pl, tmp, progs, node) {
 			list_del(&pl->node);
 			bpf_prog_put(pl->prog);

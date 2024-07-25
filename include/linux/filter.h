@@ -685,7 +685,7 @@ static inline u32 __bpf_prog_run_save_cb(const struct bpf_prog *prog,
 
 	return res;
 }
-/*  */
+/* 对skb调用bpf prog */
 static inline u32 bpf_prog_run_save_cb(const struct bpf_prog *prog,
 				       struct sk_buff *skb)
 {

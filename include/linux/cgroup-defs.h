@@ -582,7 +582,9 @@ struct cgroup {
 	/* used to track pressure stalls 用于跟踪pressure stalls */
 	struct psi_group psi;
 
-	/* used to store eBPF programs  用于存放eBPF程序*/
+	/* used to store eBPF programs  
+	
+	用于存放此cg附加的eBPF程序bpf prog*/
 	struct cgroup_bpf bpf;
 
 	/* If there is block congestion on this cgroup.用于判断此 cgroup 上是否存在块拥塞。 */

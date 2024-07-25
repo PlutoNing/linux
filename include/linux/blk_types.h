@@ -144,7 +144,8 @@ static inline void bio_issue_init(struct bio_issue *issue,
 
  */
 struct bio {
-	struct bio		*bi_next;	/* request queue link */
+	struct bio		*bi_next;	/* 若一个req中包含多个bio，这些bio通过bi_next组成单向链表，链表以NULL结尾
+	request queue link */
 	struct gendisk		*bi_disk;
 	unsigned int		bi_opf;		/* bottom bits req flags,
 						 * top bits REQ_OP. Use

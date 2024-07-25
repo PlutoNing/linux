@@ -101,7 +101,9 @@ int sk_filter_trim_cap(struct sock *sk, struct sk_buff *skb, unsigned int cap)
 		NET_INC_STATS(sock_net(sk), LINUX_MIB_PFMEMALLOCDROP);
 		return -ENOMEM;
 	}
+
 	err = BPF_CGROUP_RUN_PROG_INET_INGRESS(sk, skb);
+	
 	if (err)
 		return err;
 
