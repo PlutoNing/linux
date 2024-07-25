@@ -33,19 +33,22 @@ DECLARE_PER_CPU(struct bpf_cgroup_storage*,
 	for (stype = 0; stype < MAX_BPF_CGROUP_STORAGE_TYPE; stype++)
 
 struct bpf_cgroup_storage_map;
-
+/* 零长数组 */
 struct bpf_storage_buffer {
 	struct rcu_head rcu;
 	char data[0];
 };
-
+/*  */
 struct bpf_cgroup_storage {
 	union {
 		struct bpf_storage_buffer *buf;
 		void __percpu *percpu_buf;
 	};
+	/* 加了lock，obj，list-head，rbroot的map */
 	struct bpf_cgroup_storage_map *map;
+	/* cgroup node id与附加类型 */
 	struct bpf_cgroup_storage_key key;
+
 	struct list_head list;
 	struct rb_node node;
 	struct rcu_head rcu;

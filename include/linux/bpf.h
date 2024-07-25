@@ -359,7 +359,7 @@ struct bpf_prog_offload {
 	void			*jited_image;
 	u32			jited_len;
 };
-
+/*  */
 enum bpf_cgroup_storage_type {
 	BPF_CGROUP_STORAGE_SHARED,
 	BPF_CGROUP_STORAGE_PERCPU,
@@ -507,7 +507,9 @@ typedef u32 (*bpf_convert_ctx_access_t)(enum bpf_access_type type,
 u64 bpf_event_output(struct bpf_map *map, u64 flags, void *meta, u64 meta_size,
 		     void *ctx, u64 ctx_size, bpf_ctx_copy_t ctx_copy);
 
-/* an array of programs to be executed under rcu_lock.
+/* 
+代表一个数组里的要执行的prog的封装。
+an array of programs to be executed under rcu_lock.
  *
  * Typical usage:
  * ret = BPF_PROG_RUN_ARRAY(&bpf_prog_array, ctx, BPF_PROG_RUN);

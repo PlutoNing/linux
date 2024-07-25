@@ -1384,7 +1384,7 @@ static inline unsigned long round_hint_to_min(unsigned long hint)
 		return PAGE_ALIGN(mmap_min_addr);
 	return hint;
 }
-
+/* 检查如果加锁成功后是不是超过了rlimit？ */
 static inline int mlock_future_check(struct mm_struct *mm,
 				     unsigned long flags,
 				     unsigned long len)
@@ -3105,7 +3105,8 @@ out:
 }
 
 /*
-2024年7月1日22:34:43
+2024年7月1日22:34:43。
+
  *  this is really a simplified "do_mmap".  it only handles
  *  anonymous maps.  eventually we may be able to do some
  *  brk-specific accounting here.
@@ -3122,7 +3123,8 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 	if ((flags & (~VM_EXEC)) != 0)
 		return -EINVAL;
 	flags |= VM_DATA_DEFAULT_FLAGS | VM_ACCOUNT | mm->def_flags;
-
+	/* 获取进程当前虚拟地址空间未被使用的地址 
+	检查addr处是否已经被占用*/
 	error = get_unmapped_area(NULL, addr, len, 0, MAP_FIXED);
 	if (offset_in_page(error))
 		return error;
@@ -3183,7 +3185,7 @@ out:
 	vma->vm_flags |= VM_SOFTDIRTY;
 	return 0;
 }
-
+/*  */
 int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
 {
 	struct mm_struct *mm = current->mm;
@@ -3197,20 +3199,24 @@ int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
 		return -ENOMEM;
 	if (!len)
 		return 0;
-
+	/* 获取mm的信号量 */
 	if (down_write_killable(&mm->mmap_sem))
 		return -EINTR;
 
 	ret = do_brk_flags(addr, len, flags, &uf);
 	populate = ((mm->def_flags & VM_LOCKED) != 0);
 	up_write(&mm->mmap_sem);
+
 	userfaultfd_unmap_complete(mm, &uf);
+
 	if (populate && !ret)
 		mm_populate(addr, len);
 	return ret;
 }
 EXPORT_SYMBOL(vm_brk_flags);
+/* 2024年07月25日16:53:54
 
+ */
 int vm_brk(unsigned long addr, unsigned long len)
 {
 	return vm_brk_flags(addr, len, 0);

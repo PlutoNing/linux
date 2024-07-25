@@ -5,6 +5,8 @@
  * Copyright (c) 2016 Daniel Mack
  */
 
+ /*  */
+
 #include <linux/kernel.h>
 #include <linux/atomic.h>
 #include <linux/cgroup.h>
@@ -21,7 +23,9 @@
 
 DEFINE_STATIC_KEY_FALSE(cgroup_bpf_enabled_key);
 EXPORT_SYMBOL(cgroup_bpf_enabled_key);
+/* 
 
+ */
 void cgroup_bpf_offline(struct cgroup *cgrp)
 {
 	cgroup_get(cgrp);
@@ -29,6 +33,7 @@ void cgroup_bpf_offline(struct cgroup *cgrp)
 }
 
 /**
+cgrpu的bpf的异步释放函数
  * cgroup_bpf_release() - put references of all bpf programs and
  *                        release all cgroup bpf data
  * @work: work structure embedded into the cgroup to modify
@@ -37,6 +42,7 @@ static void cgroup_bpf_release(struct work_struct *work)
 {
 	struct cgroup *cgrp = container_of(work, struct cgroup,
 					   bpf.release_work);
+					   
 	enum bpf_cgroup_storage_type stype;
 	struct bpf_prog_array *old_array;
 	unsigned int type;

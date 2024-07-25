@@ -1537,6 +1537,7 @@ void __sched down_write(struct rw_semaphore *sem)
 EXPORT_SYMBOL(down_write);
 
 /*
+
  * lock for writing
  */
 int __sched down_write_killable(struct rw_semaphore *sem)

@@ -64,7 +64,9 @@ static inline int sys_bpf(enum bpf_cmd cmd, union bpf_attr *attr,
 {
 	return syscall(__NR_bpf, cmd, attr, size);
 }
-/* 执行bpf的系统调用load cmd */
+/*
+系统调用的包装
+ 执行bpf的系统调用load cmd */
 static inline int sys_bpf_prog_load(union bpf_attr *attr, unsigned int size)
 {
 	int fd;
