@@ -321,6 +321,9 @@ struct bpf_object {
 	/* 对应二进制代码文件的path */
 	char path[];
 };
+
+
+
 #define obj_elf_valid(o)	((o)->efile.elf)
 
 void bpf_program__unload(struct bpf_program *prog)

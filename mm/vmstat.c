@@ -36,7 +36,9 @@
 #ifdef CONFIG_NUMA
 int sysctl_vm_numa_stat = ENABLE_NUMA_STAT;
 
-/* zero numa counters within a zone */
+/* 
+2024年07月25日16:53:11
+zero numa counters within a zone */
 static void zero_zone_numa_counters(struct zone *zone)
 {
 	int item, cpu;
