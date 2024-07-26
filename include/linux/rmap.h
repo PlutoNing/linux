@@ -129,7 +129,7 @@ static inline void put_anon_vma(struct anon_vma *anon_vma)
 	if (atomic_dec_and_test(&anon_vma->refcount))
 		__put_anon_vma(anon_vma);
 }
-
+/*  */
 static inline void anon_vma_lock_write(struct anon_vma *anon_vma)
 {
 	down_write(&anon_vma->root->rwsem);
@@ -139,7 +139,7 @@ static inline void anon_vma_unlock_write(struct anon_vma *anon_vma)
 {
 	up_write(&anon_vma->root->rwsem);
 }
-
+/*  */
 static inline void anon_vma_lock_read(struct anon_vma *anon_vma)
 {
 	down_read(&anon_vma->root->rwsem);

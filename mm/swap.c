@@ -831,6 +831,7 @@ void lru_add_drain_all(void)
 2024年6月24日23:49:06
 以进程退出时的uncharge流程来分析，通过unmap_vmas去unmap一段虚拟地址后，
 会调用release_pages函数释放page，最终调用uncharge_page。
+----------------
  * release_pages - batched put_page()
  * @pages: array of pages to release
  * @nr: number of pages
@@ -945,7 +946,7 @@ void __pagevec_release(struct pagevec *pvec)
 		lru_add_drain();
 		pvec->percpu_pvec_drained = true;
 	}
-	/* todo，为什么release */
+	/* 释放pages到pcp链表 */
 	release_pages(pvec->pages, pagevec_count(pvec));
 	pagevec_reinit(pvec);
 }

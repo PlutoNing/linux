@@ -51,9 +51,10 @@ static bool map_pte(struct page_vma_mapped_walk *pvmw)
 	spin_lock(pvmw->ptl);
 	return true;
 }
-
+/* 2024年07月26日11:03:35 */
 static inline bool pfn_in_hpage(struct page *hpage, unsigned long pfn)
 {
+	/* 获取page的pfn */
 	unsigned long hpage_pfn = page_to_pfn(hpage);
 
 	/* THP can be referenced by any subpage */
@@ -61,6 +62,7 @@ static inline bool pfn_in_hpage(struct page *hpage, unsigned long pfn)
 }
 
 /**
+检查pte映射的是不是page
  * check_pte - check if @pvmw->page is mapped at the @pvmw->pte
  *
  * page_vma_mapped_walk() found a place where @pvmw->page is *potentially*
@@ -82,6 +84,7 @@ static bool check_pte(struct page_vma_mapped_walk *pvmw)
 {
 	unsigned long pfn;
 
+	/* 迁移中 */
 	if (pvmw->flags & PVMW_MIGRATION) {
 		swp_entry_t entry;
 		if (!is_swap_pte(*pvmw->pte))
@@ -93,6 +96,7 @@ static bool check_pte(struct page_vma_mapped_walk *pvmw)
 
 		pfn = migration_entry_to_pfn(entry);
 	} else if (is_swap_pte(*pvmw->pte)) {
+		/* swap条目情况 */
 		swp_entry_t entry;
 
 		/* Handle un-addressable ZONE_DEVICE memory */
@@ -102,6 +106,7 @@ static bool check_pte(struct page_vma_mapped_walk *pvmw)
 
 		pfn = device_private_entry_to_pfn(entry);
 	} else {
+		/* 正常情况，直接获取pfn */
 		if (!pte_present(*pvmw->pte))
 			return false;
 
@@ -112,6 +117,7 @@ static bool check_pte(struct page_vma_mapped_walk *pvmw)
 }
 
 /**
+检查vma的addr地址映射的是不是page
  * page_vma_mapped_walk - check if @pvmw->page is mapped in @pvmw->vma at
  * @pvmw->address
  * @pvmw: pointer to struct page_vma_mapped_walk. page, vma, address and flags
@@ -166,6 +172,7 @@ bool page_vma_mapped_walk(struct page_vma_mapped_walk *pvmw)
 		return true;
 	}
 restart:
+	/* 找到mm在address对应的pdg */
 	pgd = pgd_offset(mm, pvmw->address);
 	if (!pgd_present(*pgd))
 		return false;
@@ -181,6 +188,7 @@ restart:
 	 * compiler and used as a stale value after we've observed a
 	 * subsequent update.
 	 */
+	 /* 获取pmd条目 */
 	pmde = READ_ONCE(*pvmw->pmd);
 	if (pmd_trans_huge(pmde) || is_pmd_migration_entry(pmde)) {
 		pvmw->ptl = pmd_lock(mm, pvmw->pmd);
@@ -211,8 +219,11 @@ restart:
 	} else if (!pmd_present(pmde)) {
 		return false;
 	}
+	/* pmd条目存在 */
 	if (!map_pte(pvmw))
 		goto next_pte;
+
+
 	while (1) {
 		if (check_pte(pvmw))
 			return true;

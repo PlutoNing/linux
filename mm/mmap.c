@@ -180,6 +180,7 @@ void unlink_file_vma(struct vm_area_struct *vma)
 }
 
 /*
+2024年07月26日15:44:35
  * Close a vm structure and free it, returning the next.
  */
 static struct vm_area_struct *remove_vma(struct vm_area_struct *vma)
@@ -511,6 +512,7 @@ static __always_inline void vma_rb_erase(struct vm_area_struct *vma,
 }
 
 /*
+改变vma前，把vma从关联的av的树中移除
  * vma has some anon_vma assigned, and is already inserted on that
  * anon_vma's interval trees.
  *
@@ -529,10 +531,11 @@ anon_vma_interval_tree_pre_update_vma(struct vm_area_struct *vma)
 {
 	struct anon_vma_chain *avc;
 
+	/* 遍历avc */
 	list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
 		anon_vma_interval_tree_remove(avc, &avc->anon_vma->rb_root);
 }
-
+/*  */
 static inline void
 anon_vma_interval_tree_post_update_vma(struct vm_area_struct *vma)
 {
@@ -591,7 +594,7 @@ static int find_vma_links(struct mm_struct *mm, unsigned long addr,
 	*rb_parent = __rb_parent;
 	return 0;
 }
-
+/*  */
 static unsigned long count_vma_pages_range(struct mm_struct *mm,
 		unsigned long addr, unsigned long end)
 {
@@ -619,7 +622,7 @@ static unsigned long count_vma_pages_range(struct mm_struct *mm,
 
 	return nr_pages;
 }
-
+/* 加入vma到rb */
 void __vma_link_rb(struct mm_struct *mm, struct vm_area_struct *vma,
 		struct rb_node **rb_link, struct rb_node *rb_parent)
 {
@@ -644,6 +647,7 @@ void __vma_link_rb(struct mm_struct *mm, struct vm_area_struct *vma,
 	vma_rb_insert(vma, &mm->mm_rb);
 }
 
+/* 把vma添加到vmfile的mapping的immap里面 */
 static void __vma_link_file(struct vm_area_struct *vma)
 {
 	struct file *file;
@@ -654,10 +658,12 @@ static void __vma_link_file(struct vm_area_struct *vma)
 
 		if (vma->vm_flags & VM_DENYWRITE)
 			atomic_dec(&file_inode(file)->i_writecount);
+
 		if (vma->vm_flags & VM_SHARED)
 			atomic_inc(&mapping->i_mmap_writable);
 
 		flush_dcache_mmap_lock(mapping);
+		/* 把vma加入到mapping */
 		vma_interval_tree_insert(vma, &mapping->i_mmap);
 		flush_dcache_mmap_unlock(mapping);
 	}
@@ -679,7 +685,7 @@ __vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	__vma_link_list(mm, vma, prev, rb_parent);
 	__vma_link_rb(mm, vma, rb_link, rb_parent);
 }
-
+/*  */
 static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 			struct vm_area_struct *prev, struct rb_node **rb_link,
 			struct rb_node *rb_parent)
@@ -690,7 +696,7 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 		mapping = vma->vm_file->f_mapping;
 		i_mmap_lock_write(mapping);
 	}
-
+	/* 链表和红黑树 */
 	__vma_link(mm, vma, prev, rb_link, rb_parent);
 	__vma_link_file(vma);
 
@@ -716,7 +722,7 @@ static void __insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 	__vma_link(mm, vma, prev, rb_link, rb_parent);
 	mm->map_count++;
 }
-
+/*  */
 static __always_inline void __vma_unlink_common(struct mm_struct *mm,
 						struct vm_area_struct *vma,
 						struct vm_area_struct *prev,
@@ -752,7 +758,7 @@ static inline void __vma_unlink_prev(struct mm_struct *mm,
 
 /*
 2024年7月26日00:12:35
-
+todo
  * We cannot adjust vm_start, vm_end, vm_pgoff fields of a vma that
  * is already present in an i_mmap tree without adjusting the tree.
  * The following helper function should be used when such adjustments
@@ -1049,6 +1055,7 @@ again:
 }
 
 /*
+
  * If the vma has a ->close operation then the driver probably needs to release
  * per-vma resources, so we don't attempt to merge those.
  */
@@ -1066,15 +1073,19 @@ static inline int is_mergeable_vma(struct vm_area_struct *vma,
 	 */
 	if ((vma->vm_flags ^ vm_flags) & ~VM_SOFTDIRTY)
 		return 0;
+
 	if (vma->vm_file != file)
 		return 0;
+
 	if (vma->vm_ops && vma->vm_ops->close)
 		return 0;
+
 	if (!is_mergeable_vm_userfaultfd_ctx(vma, vm_userfaultfd_ctx))
 		return 0;
+
 	return 1;
 }
-
+/*  */
 static inline int is_mergeable_anon_vma(struct anon_vma *anon_vma1,
 					struct anon_vma *anon_vma2,
 					struct vm_area_struct *vma)
@@ -1086,6 +1097,7 @@ static inline int is_mergeable_anon_vma(struct anon_vma *anon_vma1,
 	if ((!anon_vma1 || !anon_vma2) && (!vma ||
 		list_is_singular(&vma->anon_vma_chain)))
 		return 1;
+
 	return anon_vma1 == anon_vma2;
 }
 
@@ -1129,6 +1141,7 @@ can_vma_merge_after(struct vm_area_struct *vma, unsigned long vm_flags,
 {
 	if (is_mergeable_vma(vma, file, vm_flags, vm_userfaultfd_ctx) &&
 	    is_mergeable_anon_vma(anon_vma, vma->anon_vma, vma)) {
+
 		pgoff_t vm_pglen;
 		vm_pglen = vma_pages(vma);
 		if (vma->vm_pgoff + vm_pglen == vm_pgoff)
@@ -1278,6 +1291,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 }
 
 /*
+检查ab是否可以共用av？
  * Rough compatbility check to quickly see if it's even worth looking
  * at sharing an anon_vma.
  *
@@ -1292,6 +1306,8 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
  */
 static int anon_vma_compatible(struct vm_area_struct *a, struct vm_area_struct *b)
 {
+
+	/* 邻接，policy相同，映射同一个文件，等等 */
 	return a->vm_end == b->vm_start &&
 		mpol_equal(vma_policy(a), vma_policy(b)) &&
 		a->vm_file == b->vm_file &&
@@ -1300,6 +1316,7 @@ static int anon_vma_compatible(struct vm_area_struct *a, struct vm_area_struct *
 }
 
 /*
+检查ab是否可以复用vma
  * Do some basic sanity checking to see if we can re-use the anon_vma
  * from 'old'. The 'a'/'b' vma's are in VM order - one of them will be
  * the same as 'old', the other will be the new one that is trying
@@ -1404,7 +1421,7 @@ static inline int mlock_future_check(struct mm_struct *mm,
 	}
 	return 0;
 }
-
+/*  */
 static inline u64 file_mmap_size_max(struct file *file, struct inode *inode)
 {
 	if (S_ISREG(inode->i_mode))
@@ -1423,7 +1440,7 @@ static inline u64 file_mmap_size_max(struct file *file, struct inode *inode)
 	/* Yes, random drivers might want more. But I'm tired of buggy drivers */
 	return ULONG_MAX;
 }
-
+/*  */
 static inline bool file_mmap_ok(struct file *file, struct inode *inode,
 				unsigned long pgoff, unsigned long len)
 {
@@ -1637,7 +1654,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		*populate = len;
 	return addr;
 }
-
+/*  */
 unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 			      unsigned long prot, unsigned long flags,
 			      unsigned long fd, unsigned long pgoff)
@@ -1647,6 +1664,7 @@ unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 
 	addr = untagged_addr(addr);
 
+	/* 不是匿名，是文件映射 */
 	if (!(flags & MAP_ANONYMOUS)) {
 		audit_mmap_fd(fd, flags);
 		file = fget(fd);
@@ -1658,6 +1676,7 @@ unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 		if (unlikely(flags & MAP_HUGETLB && !is_file_hugepages(file)))
 			goto out_fput;
 	} else if (flags & MAP_HUGETLB) {
+		/* 大页映射 */
 		struct user_struct *user = NULL;
 		struct hstate *hs;
 
@@ -1679,7 +1698,7 @@ unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 		if (IS_ERR(file))
 			return PTR_ERR(file);
 	}
-
+	/* 将flags中的MAP_EXECUTABLE和MAP_DENYWRITE两个属性清除 */
 	flags &= ~(MAP_EXECUTABLE | MAP_DENYWRITE);
 
 	retval = vm_mmap_pgoff(file, addr, len, prot, flags, pgoff);
@@ -1721,6 +1740,7 @@ SYSCALL_DEFINE1(old_mmap, struct mmap_arg_struct __user *, arg)
 #endif /* __ARCH_WANT_SYS_OLD_MMAP */
 
 /*
+通过一些标志位来判断是否需要notify
  * Some shared mappings will want the pages marked read-only
  * to track write events. If so, we'll downgrade vm_page_prot
  * to the private version (using protection_map[] without the
@@ -1759,6 +1779,7 @@ int vma_wants_writenotify(struct vm_area_struct *vma, pgprot_t vm_page_prot)
 }
 
 /*
+2024年07月26日16:48:37
  * We account for memory if it's a private writeable mapping,
  * not hugepages and VM_NORESERVE wasn't set.
  */
@@ -1776,7 +1797,8 @@ static inline int accountable_mapping(struct file *file, vm_flags_t vm_flags)
 /*
 2024年6月18日21:57:38
 2024年7月1日23:10:57
-
+创建一个新的内存映射区域，并将其添加到进程的虚拟地址空间中。
+它会执行一系列的操作，包括验证参数的有效性、分配内存页、建立页表映射关系
 
 */
 unsigned long mmap_region(struct file *file, unsigned long addr,
@@ -2066,7 +2088,11 @@ found:
 	VM_BUG_ON(gap_start + info->length > gap_end);
 	return gap_start;
 }
-
+/* 从进程的最高虚拟地址开始，向低地址方向搜索未映射的区域。
+它会检查虚拟地址空间中的每个区域，以确定是否存在足够大的未映射区域来满足需求。
+如果找到合适的未映射区域，函数将返回该区域的起始地址。
+2024年07月26日16:45:09
+todo */
 unsigned long unmapped_area_topdown(struct vm_unmapped_area_info *info)
 {
 	struct mm_struct *mm = current->mm;
@@ -2099,6 +2125,7 @@ unsigned long unmapped_area_topdown(struct vm_unmapped_area_info *info)
 	/* Check if rbtree root looks promising */
 	if (RB_EMPTY_ROOT(&mm->mm_rb))
 		return -ENOMEM;
+	/* 获取mm的红黑树上的vma */
 	vma = rb_entry(mm->mm_rb.rb_node, struct vm_area_struct, vm_rb);
 	if (vma->rb_subtree_gap < length)
 		return -ENOMEM;
@@ -2110,6 +2137,7 @@ unsigned long unmapped_area_topdown(struct vm_unmapped_area_info *info)
 			struct vm_area_struct *right =
 				rb_entry(vma->vm_rb.rb_right,
 					 struct vm_area_struct, vm_rb);
+
 			if (right->rb_subtree_gap >= length) {
 				vma = right;
 				continue;
@@ -2377,6 +2405,7 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 EXPORT_SYMBOL(find_vma);
 
 /*
+会记录prev的find vma
  * Same as find_vma, but also return a pointer to the previous VMA in *pprev.
  */
 struct vm_area_struct *
@@ -2397,6 +2426,7 @@ find_vma_prev(struct mm_struct *mm, unsigned long addr,
 }
 
 /*
+进行一些检查看看能不能进行增长。
  * Verify that the stack growth is acceptable and
  * update accounting. This is shared with both the
  * grow-up and grow-down cases.
@@ -2536,7 +2566,9 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 #endif /* CONFIG_STACK_GROWSUP || CONFIG_IA64 */
 
 /*
+
  * vma is the first one with address < vma->vm_start.  Have to extend vma.
+ 使vma往前变大？
  */
 int expand_downwards(struct vm_area_struct *vma,
 				   unsigned long address)
@@ -2573,13 +2605,16 @@ int expand_downwards(struct vm_area_struct *vma,
 	if (address < vma->vm_start) {
 		unsigned long size, grow;
 
+		/* 增长后的大小 */
 		size = vma->vm_end - address;
+		/* 本次增长需要新分配的页面数量 */
 		grow = (vma->vm_start - address) >> PAGE_SHIFT;
 
 		error = -ENOMEM;
 		if (grow <= vma->vm_pgoff) {
 			error = acct_stack_growth(vma, size, grow);
 			if (!error) {
+				/* 可以进行grow */
 				/*
 				 * vma_gap_update() doesn't support concurrent
 				 * updates, but we only hold a shared mmap_sem
@@ -2594,7 +2629,10 @@ int expand_downwards(struct vm_area_struct *vma,
 				spin_lock(&mm->page_table_lock);
 				if (vma->vm_flags & VM_LOCKED)
 					mm->locked_vm += grow;
+				/* 页面记账 */
 				vm_stat_account(mm, vma->vm_flags, grow);
+				/* 开始grow */
+				/* 先取消与av的关联 */
 				anon_vma_interval_tree_pre_update_vma(vma);
 				vma->vm_start = address;
 				vma->vm_pgoff -= grow;
@@ -2606,8 +2644,11 @@ int expand_downwards(struct vm_area_struct *vma,
 			}
 		}
 	}
+
+
 	anon_vma_unlock_write(vma->anon_vma);
 	khugepaged_enter_vma_merge(vma, vma->vm_flags);
+
 	validate_mm(mm);
 	return error;
 }
@@ -2651,11 +2692,12 @@ find_extend_vma(struct mm_struct *mm, unsigned long addr)
 	return prev;
 }
 #else
+/* 扩大vma，到包括address */
 int expand_stack(struct vm_area_struct *vma, unsigned long address)
 {
 	return expand_downwards(vma, address);
 }
-
+/*  */
 struct vm_area_struct *
 find_extend_vma(struct mm_struct *mm, unsigned long addr)
 {
@@ -2673,9 +2715,12 @@ find_extend_vma(struct mm_struct *mm, unsigned long addr)
 	/* don't alter vm_start if the coredump is running */
 	if (!mmget_still_valid(mm))
 		return NULL;
+
+
 	start = vma->vm_start;
 	if (expand_stack(vma, addr))
 		return NULL;
+
 	if (vma->vm_flags & VM_LOCKED)
 		populate_vma_page_range(vma, addr, start, NULL);
 	return vma;
@@ -2685,6 +2730,7 @@ find_extend_vma(struct mm_struct *mm, unsigned long addr)
 EXPORT_SYMBOL_GPL(find_extend_vma);
 
 /*
+2024年07月26日15:44:00
  * Ok - we have the memory areas we should free on the vma list,
  * so release them, and do the vma updates.
  *
@@ -2704,11 +2750,14 @@ static void remove_vma_list(struct mm_struct *mm, struct vm_area_struct *vma)
 		vm_stat_account(mm, vma->vm_flags, -nrpages);
 		vma = remove_vma(vma);
 	} while (vma);
+
 	vm_unacct_memory(nr_accounted);
 	validate_mm(mm);
 }
 
 /*
+2024年07月26日15:10:10
+解除vma映射，释放物理页面。
  * Get rid of page table information in the indicated region.
  *
  * Called with the mm semaphore held.
@@ -2721,15 +2770,23 @@ static void unmap_region(struct mm_struct *mm,
 	struct mmu_gather tlb;
 
 	lru_add_drain();
+
 	tlb_gather_mmu(&tlb, mm, start, end);
+
 	update_hiwater_rss(mm);
+	/* 这个函数用于解除相关进程虚拟内存区域的页表映射，还会将相关的物理页面放入积聚结构中，后面统一释放。 */
 	unmap_vmas(&tlb, vma, start, end);
+
+	/* 释放页表 */
 	free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
 				 next ? next->vm_start : USER_PGTABLES_CEILING);
+
 	tlb_finish_mmu(&tlb, start, end);
 }
 
 /*
+2024年07月26日14:48:58
+把这些vma移除
  * Create a list of vma's touched by the unmap, removing them from the mm's
  * vma list as we go..
  */
@@ -2742,17 +2799,23 @@ detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
 
 	insertion_point = (prev ? &prev->vm_next : &mm->mmap);
 	vma->vm_prev = NULL;
+	/* 把从vma到end的全部vma移除 */
 	do {
 		vma_rb_erase(vma, &mm->mm_rb);
 		mm->map_count--;
 		tail_vma = vma;
 		vma = vma->vm_next;
 	} while (vma && vma->vm_start < end);
+
+
+	/* 这个vma要么为空，要么位于end后面（大概率） */
 	*insertion_point = vma;
 	if (vma) {
+		/* 与被删除的vma之前的prev进行链接 */
 		vma->vm_prev = prev;
 		vma_gap_update(vma);
 	} else
+	/* 这个vma为空，说明是最后一个也被移除了，这个时候prev可能就是最后一个vma了 */
 		mm->highest_vm_end = prev ? vm_end_gap(prev) : 0;
 	tail_vma->vm_next = NULL;
 
@@ -2797,7 +2860,7 @@ int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 		new->vm_end = addr;
 	else {
 		/*    addr
-			  start----------end
+			  start--------------------------------end
 		vma-------------------------vma
 		      new
 		 */
@@ -2942,9 +3005,17 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	}
 
 	/* Does it split the last one? */
+	/* 找到是否有包含end的vma？ */
 	last = find_vma(mm, end);
 	
 	if (last && end > last->vm_start) {
+		/* 如果end也位于一个vma里面
+		那好像更准确的情况是这样
+			start-----------------------------end
+		vma-----------vma        vma---------------------vma
+				vma							last
+
+		 */
 		int error = __split_vma(mm, last, end, 1);
 		if (error)
 			return error;
@@ -2973,7 +3044,9 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		struct vm_area_struct *tmp = vma;
 		while (tmp && tmp->vm_start < end) {
 			if (tmp->vm_flags & VM_LOCKED) {
+
 				mm->locked_vm -= vma_pages(tmp);
+				/* 释放全部vma的页面 */
 				munlock_vma_pages_all(tmp);
 			}
 
@@ -2986,7 +3059,8 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 
 	if (downgrade)
 		downgrade_write(&mm->mmap_sem);
-
+	/* 这个时候vma到end这一串vma，已经从mm的红黑树移除了，好像还
+	解锁了，还还回lru了 */
 	unmap_region(mm, vma, prev, start, end);
 
 	/* Fix up all other VM information */

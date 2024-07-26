@@ -617,6 +617,7 @@ static inline bool page_huge_active(struct page *page)
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /*
 2024年7月14日14:49:00
+
  * PageHuge() only returns true for hugetlbfs pages, but not for
  * normal or transparent huge pages.
  *
@@ -678,6 +679,7 @@ static inline int PageTransCompoundMap(struct page *page)
 }
 
 /*
+是不是巨页
  * PageTransTail returns true for both transparent huge pages
  * and hugetlbfs pages, so it should only be called when it's known
  * that hugetlbfs pages aren't involved.

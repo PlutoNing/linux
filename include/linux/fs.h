@@ -461,7 +461,7 @@ struct address_space {
 	gfp_t			gfp_mask;
 /* 共享内存映射的Page数量
 2024年7月18日00:26:01
-counts all VM_SHARED vmas的数量 */
+附加此file的all VM_SHARED vmas的数量 */
 	atomic_t		i_mmap_writable;
 #ifdef CONFIG_READ_ONLY_THP_FOR_FS
 	/* number of thp, only for non-shmem files */

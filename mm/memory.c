@@ -305,6 +305,20 @@ static inline void free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
 /*
 2024年7月19日00:57:49
  * This function frees user-level page tables of a process.
+
+free_pgd_range
+->free_p4d_range 
+    ->free_pud_range 
+        ->free_pmd_range  
+            ->free_pte_range  
+                -> ....
+            -> pud_clear(pud);  ////清除pud页目录中的对应的pud表项
+                pmd_free_tlb(tlb, pmd, start); //pmd页目录的物理页放入 页表的积聚结构中
+                mm_dec_nr_pmds(tlb->mm) //进程使用的页表的物理页统计减1
+        ->p4d_clear(p4d);  //清除p4d页目录中的对应的p4d表项
+           pud_free_tlb(tlb, pud, start)  //pud页目录的物理页放入 页表的积聚结构中
+    -> pgd_clear(pgd);  //清除pgd页目录中的对应的pgd表项
+        p4d_free_tlb(tlb, p4d, start); //p4d页目录的物理页放入 页表的积聚结构中（存在p4d页目录的话）
  */
 void free_pgd_range(struct mmu_gather *tlb,
 			unsigned long addr, unsigned long end,
@@ -367,7 +381,9 @@ void free_pgd_range(struct mmu_gather *tlb,
 		free_p4d_range(tlb, pgd, addr, next, floor, ceiling);
 	} while (pgd++, addr = next, addr != end);
 }
-/* 2024年7月19日00:16:48 */
+/* 2024年7月19日00:16:48
+在解除映射之后，这个函数释放页表
+ */
 void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		unsigned long floor, unsigned long ceiling)
 {
@@ -398,6 +414,7 @@ void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 				unlink_anon_vmas(vma);
 				unlink_file_vma(vma);
 			}
+
 			free_pgd_range(tlb, addr, vma->vm_end,
 				floor, next ? next->vm_start : ceiling);
 		}
@@ -533,6 +550,7 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
 }
 
 /*
+
  * vm_normal_page -- This function gets the "struct page" associated with a pte.
  *
  * "Special" mappings do not wish to be associated with a "struct page" (either
@@ -1012,7 +1030,11 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		mmu_notifier_invalidate_range_end(&range);
 	return ret;
 }
-
+/* 2024年07月26日15:32:35
+该函数的作用是将在pmd中从虚拟地址address开始，长度为size的内存块通过循环调用pte_clear将其页表项清零，
+调用free_pte将所含空间中的物理内存或交换空间中的虚存页释放掉。
+在释放之前，必须检查从address开始长度为size的内存块有无越过PMD_SIZE.(溢出则可使指针逃出0～1023的区间)。
+ */
 static unsigned long zap_pte_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pmd_t *pmd,
 				unsigned long addr, unsigned long end,
@@ -1147,7 +1169,9 @@ again:
 
 	return addr;
 }
-
+/* 2024年07月26日15:34:34
+通过调用zap_pte_range完成对所有落在address到address+size区间中的所有pte的清零工作。
+zap_pmd_range至多清除4M空间的物理内存。 */
 static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pud_t *pud,
 				unsigned long addr, unsigned long end,
@@ -1258,7 +1282,9 @@ void unmap_page_range(struct mmu_gather *tlb,
 	tlb_end_vma(tlb, vma);
 }
 
-/* 2024年7月19日00:12:34 */
+/* 2024年7月19日00:12:34
+解除vma页面的映射
+ */
 static void unmap_single_vma(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, unsigned long start_addr,
 		unsigned long end_addr,
@@ -1276,6 +1302,8 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 	if (vma->vm_file)
 		uprobe_munmap(vma, start, end);
 
+
+	/* todo */
 	if (unlikely(vma->vm_flags & VM_PFNMAP))
 		untrack_pfn(vma, 0, 0);
 
@@ -1305,6 +1333,7 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 
 /**
 2024年7月19日00:11:28
+解除这些vma的映射
  * unmap_vmas - unmap a range of memory covered by a list of vma's
  * @tlb: address of the caller's struct mmu_gather
  * @vma: the starting vma
@@ -1334,10 +1363,17 @@ void unmap_vmas(struct mmu_gather *tlb,
 	/* 遍历list，逐个unmap */
 	for ( ; vma && vma->vm_start < end_addr; vma = vma->vm_next)
 		unmap_single_vma(tlb, vma, start_addr, end_addr, NULL);
+
 	mmu_notifier_invalidate_range_end(&range);
 }
 
 /**
+2024年07月26日15:35:53
+函数结构与前两个函数类似。将任务从address开始到address+size长度内的所有对应的pmd都清零。
+zap_page_range的主要功能是在进行内存收缩、释放内存、退出虚存映射或移动页表的过程中，
+将不在使用的物理内存从进程的三级页表中清除。
+（在讨论clear_page_tables时，就提到过当进程退出时，释放页表之前，先保证将页表对应项清零，
+保证在处于退出状态时，进程不占用0～3G的空间。）
  * zap_page_range - remove user pages in a given range
  * @vma: vm_area_struct holding the applicable pages
  * @start: starting address of pages to zap

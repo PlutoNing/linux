@@ -424,6 +424,7 @@ struct mm_struct {
 		/*
 		进程中所有地址区间除了会放到链表mmap还会插入这个红黑树中，分别用于不同应用场景的查找*/
 		struct rb_root mm_rb;
+		/* invalidate 缓存的时候++这个值 */
 		u64 vmacache_seqnum;                   /* per-thread vmacache */
 #ifdef CONFIG_MMU
 		unsigned long (*get_unmapped_area) (struct file *filp,
@@ -496,7 +497,9 @@ struct mm_struct {
 		unsigned long hiwater_vm;  /* High-water virtual memory usage进程线性区的最大页表数目 */
 /* 进程地址空间的大小，锁住无法换页的个数，共享文件内存映射的页数，可执行内存映射中的页数 */
 		unsigned long total_vm;	   /* Total pages mapped */
-		unsigned long locked_vm;   /* Pages that have PG_mlocked set */
+		unsigned long locked_vm;   /*
+		代表mm里面比锁的page数量
+		 Pages that have PG_mlocked set */
 		atomic64_t    pinned_vm;   /* Refcount permanently increased */
 		unsigned long data_vm;	   /* VM_WRITE & ~VM_SHARED & ~VM_STACK */
 		unsigned long exec_vm;	   /* VM_EXEC & ~VM_WRITE & ~VM_STACK */

@@ -175,7 +175,7 @@ int __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
 
 			if (!mmu_notifier_range_blockable(range))
 				non_block_start();
-
+				/* 调用notify 回调 */
 			_ret = mn->ops->invalidate_range_start(mn, range);
 
 			if (!mmu_notifier_range_blockable(range))
@@ -197,7 +197,7 @@ int __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
 
 	return ret;
 }
-
+/*  */
 void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range,
 					 bool only_end)
 {

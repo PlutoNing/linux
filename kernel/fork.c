@@ -366,7 +366,8 @@ struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 	}
 	return new;
 }
-/* 2024年07月18日19:40:46 */
+/* 2024年07月18日19:40:46 
+释放vma*/
 void vm_area_free(struct vm_area_struct *vma)
 {
 	kmem_cache_free(vm_area_cachep, vma);

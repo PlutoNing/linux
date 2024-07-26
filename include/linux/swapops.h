@@ -187,7 +187,7 @@ static inline int is_write_migration_entry(swp_entry_t entry)
 {
 	return unlikely(swp_type(entry) == SWP_MIGRATION_WRITE);
 }
-
+/*  */
 static inline unsigned long migration_entry_to_pfn(swp_entry_t entry)
 {
 	return swp_offset(entry);

@@ -82,21 +82,27 @@ void clear_page_mlock(struct page *page)
 }
 
 /*
+unlock vma的page
+解锁标志位，移除lru
  * Mark page as mlocked if not already.
  * If page on LRU, isolate and putback to move to unevictable list.
  */
 void mlock_vma_page(struct page *page)
 {
 	/* Serialize with page migration */
+	/* 居然没有被锁 */
 	BUG_ON(!PageLocked(page));
-
+	/* 巨页应该处理头 */
 	VM_BUG_ON_PAGE(PageTail(page), page);
+	/* 复合页没有锁 */
 	VM_BUG_ON_PAGE(PageCompound(page) && PageDoubleMap(page), page);
 
 	if (!TestSetPageMlocked(page)) {
+		/* 改变锁的标志位 */
 		mod_zone_page_state(page_zone(page), NR_MLOCK,
 				    hpage_nr_pages(page));
 		count_vm_event(UNEVICTABLE_PGMLOCKED);
+
 		if (!isolate_lru_page(page))
 			putback_lru_page(page);
 	}
@@ -111,11 +117,14 @@ void mlock_vma_page(struct page *page)
 static bool __munlock_isolate_lru_page(struct page *page, bool getpage)
 {
 	if (PageLRU(page)) {
+		/* 是lru页面的话，才操作 */
 		struct lruvec *lruvec;
-
+		/* 获取page对应的memcg在page所属node上面的lruvec */
 		lruvec = mem_cgroup_page_lruvec(page, page_pgdat(page));
+		/* 2024年07月26日10:15:35从lru分离页面为什么还要get，后续谁来put */
 		if (getpage)
 			get_page(page);
+		/* 清除page的lru标记 */
 		ClearPageLRU(page);
 		/*  */
 		del_page_from_lru_list(page, lruvec, page_lru(page));
@@ -127,6 +136,7 @@ static bool __munlock_isolate_lru_page(struct page *page, bool getpage)
 
 /*
 2024年7月18日23:54:57
+进行分离lru页面成功后处理
  * Finish munlock after successful page isolation
  *
  * Page must be locked. This is a wrapper for try_to_munlock()
@@ -134,6 +144,7 @@ static bool __munlock_isolate_lru_page(struct page *page, bool getpage)
  */
 static void __munlock_isolated_page(struct page *page)
 {
+	/* 这个时候页面应该不在lru了 */
 	/*
 	 * Optimization: if the page was mapped just once, that's our mapping
 	 * and we don't need to check all the other vmas.
@@ -167,6 +178,7 @@ static void __munlock_isolation_failed(struct page *page)
 
 /**
 2024年7月18日23:40:47
+munlock一个vma的page
  * munlock_vma_page - munlock a vma page
  * @page: page to be unlocked, either a normal page or THP page head
  *
@@ -190,8 +202,9 @@ unsigned int munlock_vma_page(struct page *page)
 	pg_data_t *pgdat = page_pgdat(page);
 
 	/* For try_to_munlock() and to serialize with page migration */
+	/* 不应该没被锁 */
 	BUG_ON(!PageLocked(page));
-
+	/* 不应该是巨页的尾部页 */
 	VM_BUG_ON_PAGE(PageTail(page), page);
 
 	/*
@@ -208,17 +221,21 @@ unsigned int munlock_vma_page(struct page *page)
 		goto unlock_out;
 	}
 
+
+	/* 更新node里面的stat统计信息里面的mlock类型页面的数量 */
 	nr_pages = hpage_nr_pages(page);
 	/* 统计信息 */
 	__mod_zone_page_state(page_zone(page), NR_MLOCK, -nr_pages);
 
 	/* 会从lru分离页面 */
 	if (__munlock_isolate_lru_page(page, true)) {
+		/* 分离成功，解锁，goto out来返回 */
 		spin_unlock_irq(&pgdat->lru_lock);
+		/* 分离成功的处理 */
 		__munlock_isolated_page(page);
 		goto out;
 	}
-
+	/* 分离失败的处理 */
 	__munlock_isolation_failed(page);
 
 unlock_out:
@@ -241,6 +258,9 @@ static int __mlock_posix_error_return(long retval)
 }
 
 /*
+munolck的快速路径
+返回符合不符合条件
+符合的话，加入pvec，pgrescued置1
  * Prepare page for fast batched LRU putback via putback_lru_evictable_pagevec()
  *
  * The fast path is available only for evictable pages with single mapping.
@@ -259,6 +279,7 @@ static bool __putback_lru_fast_prepare(struct page *page, struct pagevec *pvec,
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 
 	if (page_mapcount(page) <= 1 && page_evictable(page)) {
+		/* 如果引用<=1，是evictale */
 		pagevec_add(pvec, page);
 		if (TestClearPageUnevictable(page))
 			(*pgrescued)++;
@@ -270,6 +291,8 @@ static bool __putback_lru_fast_prepare(struct page *page, struct pagevec *pvec,
 }
 
 /*
+2024年07月26日14:45:43
+把pvec页面还回lru
  * Putback multiple evictable pages to the LRU
  *
  * Batched putback of evictable pages that bypasses the per-cpu pvec. Some of
@@ -277,6 +300,7 @@ static bool __putback_lru_fast_prepare(struct page *page, struct pagevec *pvec,
  */
 static void __putback_lru_fast(struct pagevec *pvec, int pgrescued)
 {
+	/* 此时已经解锁成功了 */
 	count_vm_events(UNEVICTABLE_PGMUNLOCKED, pagevec_count(pvec));
 	/*
 	 *__pagevec_lru_add() calls release_pages() so we don't call
@@ -336,7 +360,9 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 	__mod_zone_page_state(zone, NR_MLOCK, delta_munlocked);
 	spin_unlock_irq(&zone->zone_pgdat->lru_lock);
 
-	/* Now we can release pins of pages that we are not munlocking */
+	/* Now we can release pins of pages that we are not munlocking
+	release这个pvec的页面
+	 */
 	pagevec_release(&pvec_putback);
 
 	/* Phase 2: page munlock */
@@ -347,6 +373,7 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 			lock_page(page);
 			if (!__putback_lru_fast_prepare(page, &pvec_putback,
 					&pgrescued)) {
+						/* 不能走快速路径 */
 				/*
 				 * Slow path. We don't want to lose the last
 				 * pin before unlock_page()
@@ -362,6 +389,7 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 	/*
 	 * Phase 3: page putback for pages that qualified for the fast path
 	 * This will also call put_page() to return pin from follow_page_mask()
+	 如果pvec里面有内容，是快速路径放里面的。
 	 */
 	if (pagevec_count(&pvec_putback))
 		__putback_lru_fast(&pvec_putback, pgrescued);
@@ -369,6 +397,7 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 
 /*
 2024年7月19日00:06:19
+先填充到pagevec，然后批量unlock
  * Fill up pagevec for __munlock_pagevec using pte walk
  *
  * The function expects that the struct page corresponding to @start address is
@@ -406,6 +435,7 @@ static unsigned long __munlock_pagevec_fill(struct pagevec *pvec,
 		struct page *page = NULL;
 		pte++;
 		if (pte_present(*pte))
+		/* 获取pte的page */
 			page = vm_normal_page(vma, start, *pte);
 		/*
 		 * Break if page could not be obtained or the page's node+zone does not
@@ -481,8 +511,11 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 		page = follow_page(vma, start, FOLL_GET | FOLL_DUMP);
 
 		if (page && !IS_ERR(page)) {
+			/* 存在对应的物理页面，并且没有出错（什么错？） */
 
 			if (PageTransTail(page)) {
+				/* 如果是巨页的尾部页，就不管，因为处理巨页的话
+				应该操作头。 */
 				VM_BUG_ON_PAGE(PageMlocked(page), page);
 				put_page(page); /* follow_page_mask() */
 			} else if (PageTransHuge(page)) {
@@ -497,6 +530,7 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 				 */
 				page_mask = munlock_vma_page(page);
 				unlock_page(page);
+
 				put_page(page); /* follow_page_mask() */
 			} else {
 				/*
@@ -515,7 +549,7 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 				 */
 				start = __munlock_pagevec_fill(&pvec, vma,
 						zone, start, end);
-
+				/* 批量unlock此pvec里面页面 */
 				__munlock_pagevec(&pvec, zone);
 				goto next;
 			}

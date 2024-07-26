@@ -223,6 +223,11 @@ extern bool __tlb_remove_page_size(struct mmu_gather *tlb, struct page *page,
 /*
 2024年7月18日23:13:29
 好像用于销毁页表
+在刷相关虚拟内存区域tlb之前，绝对不能先释放物理页面，否则可能导致不正确的结果，
+而mmu-gather（mmu 积聚）的作用就是保证这种顺序，并将需要释放的相关的物理页
+面聚集起来统一释放。
+
+
  * struct mmu_gather is an opaque type used by the mm code for passing around
  * any data needed by arch specific code for tlb_remove_page.
  */

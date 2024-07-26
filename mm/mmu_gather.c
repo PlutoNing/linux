@@ -195,7 +195,7 @@ void tlb_flush_mmu(struct mmu_gather *tlb)
 
 /**
 2024年7月18日23:12:20
-初始化mmugather，用来销毁页表吗
+初始化mmugather，用来销毁页表
  * tlb_gather_mmu - initialize an mmu_gather structure for page-table tear-down
  * @tlb: the mmu_gather structure to initialize
  * @mm: the mm_struct of the target address space

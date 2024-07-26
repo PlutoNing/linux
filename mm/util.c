@@ -482,7 +482,7 @@ int account_locked_vm(struct mm_struct *mm, unsigned long pages, bool inc)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(account_locked_vm);
-
+/* 2024年07月26日16:55:45 */
 unsigned long vm_mmap_pgoff(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long prot,
 	unsigned long flag, unsigned long pgoff)
@@ -494,12 +494,15 @@ unsigned long vm_mmap_pgoff(struct file *file, unsigned long addr,
 
 	ret = security_mmap_file(file, prot, flag);
 	if (!ret) {
+		/* 可以mmap */
 		if (down_write_killable(&mm->mmap_sem))
 			return -EINTR;
 		ret = do_mmap_pgoff(file, addr, len, prot, flag, pgoff,
 				    &populate, &uf);
 		up_write(&mm->mmap_sem);
+
 		userfaultfd_unmap_complete(mm, &uf);
+		
 		if (populate)
 			mm_populate(ret, populate);
 	}

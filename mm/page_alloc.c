@@ -3172,6 +3172,7 @@ void free_unref_page(struct page *page)
 }
 
 /*
+释放list上的页面，到pcp链表
  * Free a list of 0-order pages
  */
 void free_unref_page_list(struct list_head *list)
@@ -3189,6 +3190,7 @@ void free_unref_page_list(struct list_head *list)
 	}
 
 	local_irq_save(flags);
+	/*  遍历list上的page */
 	list_for_each_entry_safe(page, next, list, lru) {
 		unsigned long pfn = page_private(page);
 

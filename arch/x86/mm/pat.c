@@ -943,6 +943,7 @@ static int reserve_pfn_range(u64 paddr, unsigned long size, pgprot_t *vma_prot,
 }
 
 /*
+释放物理页面？
  * Internal interface to free a range of physical memory.
  * Frees non RAM regions only.
  */
@@ -1068,6 +1069,7 @@ void untrack_pfn(struct vm_area_struct *vma, unsigned long pfn,
 
 		size = vma->vm_end - vma->vm_start;
 	}
+
 	free_pfn_range(paddr, size);
 	if (vma)
 		vma->vm_flags &= ~VM_PAT;

@@ -4792,6 +4792,7 @@ static bool vma_shareable(struct vm_area_struct *vma, unsigned long addr)
 }
 
 /*
+
  * Determine if start,end range within vma could be mapped by shared pmd.
  * If yes, adjust start and end to cover range associated with possible
  * shared pmd mappings.

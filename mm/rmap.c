@@ -1419,7 +1419,7 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		split_huge_pmd_address(vma, address,
 				flags & TTU_SPLIT_FREEZE, page);
 	}
-
+	/* 处理notifers 回调 */
 	/*
 	 * For THP, we have to assume the worse case ie pmd for invalidation.
 	 * For hugetlb, it could be much worse if we need to do pud
@@ -1431,8 +1431,11 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, vma, vma->vm_mm,
 				address,
 				min(vma->vm_end, address + page_size(page)));
+
+	
 	if (PageHuge(page)) {
 		/*
+		sharing是什么
 		 * If sharing is possible, start and end will be adjusted
 		 * accordingly.
 		 */
@@ -1440,8 +1443,10 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 						     &range.end);
 	}
 	mmu_notifier_invalidate_range_start(&range);
+	
 
 	while (page_vma_mapped_walk(&pvmw)) {
+		/* 如果pvmw里面的addr映射的是page */
 #ifdef CONFIG_ARCH_ENABLE_THP_MIGRATION
 		/* PMD-mapped THP migration entry */
 		if (!pvmw.pte && (flags & TTU_MIGRATION)) {
@@ -1467,6 +1472,7 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 					 */
 					mlock_vma_page(page);
 				}
+				/* 如果是巨页的话，直接返回 */
 				ret = false;
 				page_vma_mapped_walk_done(&pvmw);
 				break;
@@ -1797,6 +1803,8 @@ static int page_not_mapped(struct page *page)
 
 /**
 2024年7月18日23:56:28
+munlock页面
+应该需要ramp那些来处理映射此页面的vma
  * try_to_munlock - try to munlock a page
  * @page: the page to be munlocked
  *
@@ -1830,7 +1838,7 @@ void __put_anon_vma(struct anon_vma *anon_vma)
 	/* root引用计数也为0了 */
 		anon_vma_free(root);
 }
-
+/*  */
 static struct anon_vma *rmap_walk_anon_lock(struct page *page,
 					struct rmap_walk_control *rwc)
 {
@@ -1881,6 +1889,7 @@ static void rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc,
 		/* anon_vma disappear under us? */
 		VM_BUG_ON_PAGE(!anon_vma, page);
 	} else {
+		/* 上锁获得av */
 		anon_vma = rmap_walk_anon_lock(page, rwc);
 	}
 	if (!anon_vma)

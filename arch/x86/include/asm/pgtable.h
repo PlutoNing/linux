@@ -951,6 +951,7 @@ static inline unsigned long p4d_index(unsigned long address)
 }
 
 #if CONFIG_PGTABLE_LEVELS > 4
+/*  */
 static inline int pgd_present(pgd_t pgd)
 {
 	if (!pgtable_l5_enabled())
