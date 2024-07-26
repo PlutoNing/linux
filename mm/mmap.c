@@ -6,7 +6,7 @@
  *
  * Address space accounting code	<alan@lxorguk.ukuu.org.uk>
  */
-
+/* 2024年7月26日 */
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/kernel.h>
@@ -156,7 +156,9 @@ static void __remove_shared_vm_struct(struct vm_area_struct *vma,
 		mapping_unmap_writable(mapping);
 
 	flush_dcache_mmap_lock(mapping);
+	/* 把vma从mapping的immap树移出 */
 	vma_interval_tree_remove(vma, &mapping->i_mmap);
+	
 	flush_dcache_mmap_unlock(mapping);
 }
 
@@ -175,6 +177,7 @@ void unlink_file_vma(struct vm_area_struct *vma)
 		i_mmap_lock_write(mapping);
 		/*  */
 		__remove_shared_vm_struct(vma, file, mapping);
+
 		i_mmap_unlock_write(mapping);
 	}
 }
@@ -484,7 +487,7 @@ static void __vma_rb_erase(struct vm_area_struct *vma, struct rb_root *root)
 	 */
 	rb_erase_augmented(&vma->vm_rb, root, &vma_gap_callbacks);
 }
-
+/*  */
 static __always_inline void vma_rb_erase_ignore(struct vm_area_struct *vma,
 						struct rb_root *root,
 						struct vm_area_struct *ignore)
@@ -498,7 +501,7 @@ static __always_inline void vma_rb_erase_ignore(struct vm_area_struct *vma,
 
 	__vma_rb_erase(vma, root);
 }
-
+/*  */
 static __always_inline void vma_rb_erase(struct vm_area_struct *vma,
 					 struct rb_root *root)
 {
@@ -512,7 +515,7 @@ static __always_inline void vma_rb_erase(struct vm_area_struct *vma,
 }
 
 /*
-改变vma前，把vma从关联的av的树中移除
+改变vma前，把vma从关联的av的树中移除，结束改变后再重新加入
  * vma has some anon_vma assigned, and is already inserted on that
  * anon_vma's interval trees.
  *
@@ -535,7 +538,7 @@ anon_vma_interval_tree_pre_update_vma(struct vm_area_struct *vma)
 	list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
 		anon_vma_interval_tree_remove(avc, &avc->anon_vma->rb_root);
 }
-/*  */
+/* 改变vma后，把avc重新进行连接 */
 static inline void
 anon_vma_interval_tree_post_update_vma(struct vm_area_struct *vma)
 {
@@ -561,9 +564,9 @@ find_vma_link(mm, addr, end, ...)
 2024年7月1日22:43:33
 todo
  */
-static int find_vma_links(struct mm_struct *mm, unsigned long addr,
-		unsigned long end, struct vm_area_struct **pprev,
-		struct rb_node ***rb_link, struct rb_node **rb_parent)
+static int find_vma_links(struct mm_struct *mm, 
+			unsigned long addr,unsigned long end, 
+			struct vm_area_struct **pprev, struct rb_node ***rb_link, struct rb_node **rb_parent)
 {
 	struct rb_node **__rb_link, *__rb_parent, *rb_prev;
 
@@ -594,22 +597,38 @@ static int find_vma_links(struct mm_struct *mm, unsigned long addr,
 	*rb_parent = __rb_parent;
 	return 0;
 }
-/*  */
+/* 2024年7月26日20:11:46
+计算【addr-end】范围内与vma交叉的页面数量
+     addr-------------------------------------------end	
+vma----------------vma  vma-------------vma vma------------vma  vma---------vma
+       |++++++++++++|    |+++++++++++++++|   |+++++++| 
+返回值是+号 
+ */
 static unsigned long count_vma_pages_range(struct mm_struct *mm,
 		unsigned long addr, unsigned long end)
 {
 	unsigned long nr_pages = 0;
 	struct vm_area_struct *vma;
 
-	/* Find first overlaping mapping */
+	/* Find first overlaping mapping
+	找到和这个地址范围有交叉的vma */
 	vma = find_vma_intersection(mm, addr, end);
 	if (!vma)
 		return 0;
 
+
+	/* 重叠范围的页面数量 */
 	nr_pages = (min(end, vma->vm_end) -
 		max(addr, vma->vm_start)) >> PAGE_SHIFT;
 
 	/* Iterate over the rest of the overlaps */
+	/* 
+     addr-------------------------------------------end	
+vma----------------vma  vma-------------vma vma------------vma  vma---------vma
+        |+++++++++++|    |+++++++++++++++|   |+++++++|    
+
+
+	 */
 	for (vma = vma->vm_next; vma; vma = vma->vm_next) {
 		unsigned long overlap_len;
 
@@ -2368,6 +2387,8 @@ addr < vm_end条件的。也就是这个addr可能并不在任何vma空间内。
 Look up the first VMA which satisfies  addr < vm_end,  NULL if none.
 -----------------------
 就是查找mm的vma的红黑树。
+--------------------------------
+找一个包含addr的vma
  */
 struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 {

@@ -71,7 +71,7 @@ static inline unsigned long avc_last_pgoff(struct anon_vma_chain *avc)
 INTERVAL_TREE_DEFINE(struct anon_vma_chain, rb, unsigned long, rb_subtree_last,
 		     avc_start_pgoff, avc_last_pgoff,
 		     static inline, __anon_vma_interval_tree)
-
+/*  */
 void anon_vma_interval_tree_insert(struct anon_vma_chain *node,
 				   struct rb_root_cached *root)
 {

@@ -2553,10 +2553,20 @@ extern struct vm_area_struct * find_vma(struct mm_struct * mm, unsigned long add
 extern struct vm_area_struct * find_vma_prev(struct mm_struct * mm, unsigned long addr,
 					     struct vm_area_struct **pprev);
 
-/* Look up the first VMA which intersects the interval start_addr..end_addr-1,
+/* 
+找到与范围内交叉的vma
+      start-addr------------end_addr
+vma-----------------vma
+或者
+vma--------------------------------------vma
+
+
+Look up the first VMA which intersects the interval start_addr..end_addr-1,
    NULL if none.  Assume start_addr < end_addr. */
-static inline struct vm_area_struct * find_vma_intersection(struct mm_struct * mm, unsigned long start_addr, unsigned long end_addr)
+static inline struct vm_area_struct * find_vma_intersection(struct mm_struct * mm, 
+unsigned long start_addr, unsigned long end_addr)
 {
+	/* vma包含start-addr */
 	struct vm_area_struct * vma = find_vma(mm,start_addr);
 
 	if (vma && end_addr <= vma->vm_start)
