@@ -1670,6 +1670,7 @@ int generic_update_time(struct inode *inode, struct timespec64 *time, int flags)
 EXPORT_SYMBOL(generic_update_time);
 
 /*
+2024年7月27日14:41:01
  * This does the actual work of updating an inodes time or version.  Must have
  * had called mnt_want_write() before calling this.
  */
@@ -1855,6 +1856,7 @@ int file_remove_privs(struct file *file)
 EXPORT_SYMBOL(file_remove_privs);
 
 /**
+更新mtime和ctime
  *	file_update_time	-	update mtime and ctime time
  *	@file: file accessed
  *

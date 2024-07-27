@@ -370,7 +370,7 @@ static inline pte_t __pte(pteval_t val)
 
 	return (pte_t) { .pte = ret };
 }
-
+/*  */
 static inline pteval_t pte_val(pte_t pte)
 {
 	pteval_t ret;
@@ -439,7 +439,7 @@ static inline void set_pte(pte_t *ptep, pte_t pte)
 	else
 		PVOP_VCALL2(mmu.set_pte, ptep, pte.pte);
 }
-
+/*  */
 static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 			      pte_t *ptep, pte_t pte)
 {
@@ -449,7 +449,7 @@ static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 	else
 		PVOP_VCALL4(mmu.set_pte_at, mm, addr, ptep, pte.pte);
 }
-
+/*  */
 static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 {
 	pmdval_t val = native_pmd_val(pmd);

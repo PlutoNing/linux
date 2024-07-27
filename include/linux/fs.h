@@ -550,7 +550,7 @@ static inline bool mapping_tagged(struct address_space *mapping, xa_mark_t tag)
 {
 	return xa_marked(&mapping->i_pages, tag);
 }
-
+/*  */
 static inline void i_mmap_lock_write(struct address_space *mapping)
 {
 	down_write(&mapping->i_mmap_rwsem);
@@ -1036,6 +1036,9 @@ struct file {
 	struct list_head	f_ep_links;
 	struct list_head	f_tfile_llink;
 #endif /* #ifdef CONFIG_EPOLL */
+
+	/* 地址空间 */
+
 	struct address_space	*f_mapping;
 	/* wb的err */
 	errseq_t		f_wb_err;

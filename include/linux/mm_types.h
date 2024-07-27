@@ -96,7 +96,7 @@ struct page {
 （1）       如果page->mapping等于0，说明该页属于交换告诉缓存swap cache
 
 （2）       如果page->mapping不等于0，但第0位为0，说明该页为匿名也，此时mapping指向一个struct anon_vma结构变量；
-ramp里面：页框与page结构对应，page结构中的mapping字段指向anon_vma，从而可以通过RMAP机制去找到与之关联的VMA；
+			ramp里面：页框与page结构对应，page结构中的mapping字段指向anon_vma，从而可以通过RMAP机制去找到与之关联的VMA；
 （3）       如果page->mapping不等于0，但第0位不为0，则apping指向一个struct address_space地址空间结构变量；
 			 */
 			struct address_space *mapping;
@@ -350,7 +350,9 @@ struct vm_area_struct {
 	/* Second cache line starts here. */
 
 	struct mm_struct *vm_mm;	/* 对应的mm，The address space we belong to. */
-	pgprot_t vm_page_prot;		/* Access permissions of this VMA. */
+	pgprot_t vm_page_prot;		/* 
+	
+	Access permissions of this VMA. */
 	unsigned long vm_flags;		/* Flags, see mm.h. */
 
 	/*
@@ -476,7 +478,9 @@ struct mm_struct {
 		atomic_t mm_count;
 
 #ifdef CONFIG_MMU
-		atomic_long_t pgtables_bytes;	/* PTE page table pages */
+		atomic_long_t pgtables_bytes;	/* PTE page table pages
+		代表页表占用空间大小？
+		 */
 #endif
 		int map_count;			/* number of VMAs 线性区的个数*/
 
@@ -518,6 +522,7 @@ struct mm_struct {
 		/*
 		 * Special counters, in some configurations protected by the
 		 * page_table_lock, in other configurations by being atomic.
+		 统计信息，计数器
 		 */
 		struct mm_rss_stat rss_stat;
 

@@ -56,6 +56,7 @@
 
 #ifdef CONFIG_DYNAMIC_PHYSICAL_MASK
 extern phys_addr_t physical_mask;
+/* 物理地址的掩码 */
 #define __PHYSICAL_MASK		physical_mask
 #else
 #define __PHYSICAL_MASK		((phys_addr_t)((1ULL << __PHYSICAL_MASK_SHIFT) - 1))

@@ -22,10 +22,11 @@
 #include "pat_internal.h"
 
 /*
+一颗记录了地址段的内存类型的红黑树。
  * The memtype tree keeps track of memory type for specific
  * physical memory areas. Without proper tracking, conflicting memory
  * types in different mappings can cause CPU cache corruption.
- *
+ *每个地址段以开始地址排序。
  * The tree is an interval tree (augmented rbtree) with tree ordered
  * on starting address. Tree can contain multiple entries for
  * different regions which overlap. All the aliases have the same
@@ -59,7 +60,10 @@ static u64 get_subtree_max_end(struct rb_node *node)
 RB_DECLARE_CALLBACKS_MAX(static, memtype_rb_augment_cb,
 			 struct memtype, rb, u64, subtree_max_end, NODE_END)
 
-/* Find the first (lowest start addr) overlapping range from rb tree */
+/* Find the first (lowest start addr) overlapping range from rb tree
+2024年7月27日17:15:33
+
+ */
 static struct memtype *memtype_rb_lowest_match(struct rb_root *root,
 				u64 start, u64 end)
 {
@@ -89,7 +93,7 @@ enum {
 	MEMTYPE_EXACT_MATCH	= 0,
 	MEMTYPE_END_MATCH	= 1
 };
-
+/* 在内存类型的全局红黑树上面查找。 */
 static struct memtype *memtype_rb_match(struct rb_root *root,
 				u64 start, u64 end, int match_type)
 {
@@ -116,7 +120,7 @@ static struct memtype *memtype_rb_match(struct rb_root *root,
 
 	return NULL; /* Returns NULL if there is no match */
 }
-
+/* 在memtype_rbroot检查有无冲突的地址段？ */
 static int memtype_rb_check_conflict(struct rb_root *root,
 				u64 start, u64 end,
 				enum page_cache_mode reqtype,
@@ -127,6 +131,7 @@ static int memtype_rb_check_conflict(struct rb_root *root,
 	enum page_cache_mode found_type = reqtype;
 
 	match = memtype_rb_lowest_match(&memtype_rbroot, start, end);
+
 	if (match == NULL)
 		goto success;
 
@@ -135,6 +140,7 @@ static int memtype_rb_check_conflict(struct rb_root *root,
 
 	dprintk("Overlap at 0x%Lx-0x%Lx\n", match->start, match->end);
 	found_type = match->type;
+
 
 	node = rb_next(&match->rb);
 	while (node) {
@@ -150,6 +156,7 @@ static int memtype_rb_check_conflict(struct rb_root *root,
 
 		node = rb_next(&match->rb);
 	}
+
 success:
 	if (newtype)
 		*newtype = found_type;
@@ -162,7 +169,7 @@ failure:
 		cattr_name(found_type), cattr_name(match->type));
 	return -EBUSY;
 }
-
+/* 插入newdata到root的内存类型红黑树 */
 static void memtype_rb_insert(struct rb_root *root, struct memtype *newdata)
 {
 	struct rb_node **node = &(root->rb_node);
@@ -184,16 +191,17 @@ static void memtype_rb_insert(struct rb_root *root, struct memtype *newdata)
 	rb_link_node(&newdata->rb, parent, node);
 	rb_insert_augmented(&newdata->rb, root, &memtype_rb_augment_cb);
 }
-
+/* 插入一个红黑树？ */
 int rbt_memtype_check_insert(struct memtype *new,
 			     enum page_cache_mode *ret_type)
 {
 	int err = 0;
-
+	/*  */
 	err = memtype_rb_check_conflict(&memtype_rbroot, new->start, new->end,
 						new->type, ret_type);
 
 	if (!err) {
+		/* 没有冲突 */
 		if (ret_type)
 			new->type = *ret_type;
 
@@ -202,7 +210,7 @@ int rbt_memtype_check_insert(struct memtype *new,
 	}
 	return err;
 }
-
+/* 在内存类型的全局红黑树上面移除这个地址段 */
 struct memtype *rbt_memtype_erase(u64 start, u64 end)
 {
 	struct memtype *data;
@@ -217,13 +225,16 @@ struct memtype *rbt_memtype_erase(u64 start, u64 end)
 	data = memtype_rb_match(&memtype_rbroot, start, end,
 				MEMTYPE_EXACT_MATCH);
 	if (!data) {
+		/* 没找到匹配的 ，匹配end地址段再查找一次*/
 		data = memtype_rb_match(&memtype_rbroot, start, end,
 					MEMTYPE_END_MATCH);
 		if (!data)
+		/* 还是不行，那么调用者入参是错的。 */
 			return ERR_PTR(-EINVAL);
 	}
 
 	if (data->start == start) {
+		/* 精确匹配 */
 		/* munmap: erase this node */
 		rb_erase_augmented(&data->rb, &memtype_rbroot,
 					&memtype_rb_augment_cb);
@@ -231,6 +242,7 @@ struct memtype *rbt_memtype_erase(u64 start, u64 end)
 		/* mremap: update the end value of this node */
 		rb_erase_augmented(&data->rb, &memtype_rbroot,
 					&memtype_rb_augment_cb);
+		
 		data->end = start;
 		data->subtree_max_end = data->end;
 		memtype_rb_insert(&memtype_rbroot, data);

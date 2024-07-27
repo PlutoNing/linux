@@ -1212,6 +1212,7 @@ struct file *get_task_exe_file(struct task_struct *task)
 EXPORT_SYMBOL(get_task_exe_file);
 
 /**
+
  * get_task_mm - acquire a reference to the task's mm
  *
  * Returns %NULL if the task has no mm.  Checks PF_KTHREAD (meaning
@@ -1228,6 +1229,7 @@ struct mm_struct *get_task_mm(struct task_struct *task)
 	mm = task->mm;
 	if (mm) {
 		if (task->flags & PF_KTHREAD)
+		/* 内核线程不能获取？ */
 			mm = NULL;
 		else
 			mmget(mm);

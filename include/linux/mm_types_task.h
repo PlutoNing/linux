@@ -42,10 +42,10 @@ pcb的mm的rss里面不同类型页面数量
  * kernel/fork.c
  */
 enum {
-	MM_FILEPAGES,	/* Resident file mapping pages */
-	MM_ANONPAGES,	/* Resident anonymous pages */
-	MM_SWAPENTS,	/* Anonymous swap entries */
-	MM_SHMEMPAGES,	/* Resident shared memory pages */
+	MM_FILEPAGES,	/*文件页 Resident file mapping pages */
+	MM_ANONPAGES,	/*匿名页 Resident anonymous pages */
+	MM_SWAPENTS,	/*交换页 Anonymous swap entries */
+	MM_SHMEMPAGES,	/*共享页 Resident shared memory pages */
 	NR_MM_COUNTERS
 };
 
@@ -57,7 +57,7 @@ struct task_rss_stat {
 	int count[NR_MM_COUNTERS];
 };
 #endif /* USE_SPLIT_PTE_PTLOCKS */
-
+/* mm里面的计数器，包含了enum数量个类型的计数器 */
 struct mm_rss_stat {
 	atomic_long_t count[NR_MM_COUNTERS];
 };

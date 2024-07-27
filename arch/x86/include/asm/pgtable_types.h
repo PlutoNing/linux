@@ -55,7 +55,8 @@
 #define _PAGE_PAT_LARGE (_AT(pteval_t, 1) << _PAGE_BIT_PAT_LARGE)
 /* 
 special page通常指不正常mapping的页面，这些页面不希望参与内存管理的回收或者合并功能
-PTE_SPECIAL为特殊标志，因为都是零页、特殊物理页面（VM_PFNMAP/VM_MIXEDMAP），不需要和struct page打交道，所以直接返回NULL */
+PTE_SPECIAL为特殊标志，因为都是零页、特殊物理页面（VM_PFNMAP/VM_MIXEDMAP），
+不需要和struct page打交道，所以直接返回NULL */
 #define _PAGE_SPECIAL	(_AT(pteval_t, 1) << _PAGE_BIT_SPECIAL)
 #define _PAGE_CPA_TEST	(_AT(pteval_t, 1) << _PAGE_BIT_CPA_TEST)
 #ifdef CONFIG_X86_INTEL_MEMORY_PROTECTION_KEYS
@@ -130,6 +131,7 @@ PTE_SPECIAL为特殊标志，因为都是零页、特殊物理页面（VM_PFNMAP
 #define _HPAGE_CHG_MASK (_PAGE_CHG_MASK | _PAGE_PSE)
 
 /*
+好像是pat属性相关
  * The cache modes defined here are used to translate between pure SW usage
  * and the HW defined cache mode bits and/or PAT entries.
  *
@@ -139,11 +141,11 @@ PTE_SPECIAL为特殊标志，因为都是零页、特殊物理页面（VM_PFNMAP
  */
 #ifndef __ASSEMBLY__
 enum page_cache_mode {
-	_PAGE_CACHE_MODE_WB = 0,
-	_PAGE_CACHE_MODE_WC = 1,
-	_PAGE_CACHE_MODE_UC_MINUS = 2,
+	_PAGE_CACHE_MODE_WB = 0,  /* 写回 */
+	_PAGE_CACHE_MODE_WC = 1,  /* write combined？ */
+	_PAGE_CACHE_MODE_UC_MINUS = 2, /*  */
 	_PAGE_CACHE_MODE_UC = 3,
-	_PAGE_CACHE_MODE_WT = 4,
+	_PAGE_CACHE_MODE_WT = 4, /* 写通？ */
 	_PAGE_CACHE_MODE_WP = 5,
 	_PAGE_CACHE_MODE_NUM = 8
 };
@@ -466,7 +468,7 @@ extern uint8_t __pte2cachemode_tbl[8];
 	((((i) & 4) << (_PAGE_BIT_PAT - 2)) |		\
 	 (((i) & 2) << (_PAGE_BIT_PCD - 1)) |		\
 	 (((i) & 1) << _PAGE_BIT_PWT))
-
+/* cache mode to proto？2024年7月27日17:05:30 */
 static inline unsigned long cachemode2protval(enum page_cache_mode pcm)
 {
 	if (likely(pcm == 0))
@@ -477,6 +479,8 @@ static inline pgprot_t cachemode2pgprot(enum page_cache_mode pcm)
 {
 	return __pgprot(cachemode2protval(pcm));
 }
+
+/*  */
 static inline enum page_cache_mode pgprot2cachemode(pgprot_t pgprot)
 {
 	unsigned long masked;

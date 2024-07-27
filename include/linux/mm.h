@@ -259,23 +259,28 @@ extern unsigned int kobjsize(const void *objp);
 
 #define VM_GROWSDOWN	0x00000100	/* general info on the segment */
 #define VM_UFFD_MISSING	0x00000200	/* missing pages tracking */
+/* 表示页帧号（Page Frame Number, PFN）映射，特殊映射不希望关联页描述符，直接使用页帧号，
+ */
 #define VM_PFNMAP	0x00000400	/* Page-ranges managed without "struct page", just pure PFN */
 #define VM_DENYWRITE	0x00000800	/*不可写 ETXTBSY on write attempts.. */
 #define VM_UFFD_WP	0x00001000	/* wrprotect pages tracking */
 
-#define VM_LOCKED	0x00002000 /* 要求映射屋里页 */
+#define VM_LOCKED	0x00002000 /* 表示页被锁定在内存中，不允许换出到交换区 */
 #define VM_IO           0x00004000	/* Memory mapped I/O or similar */
 
 					/* Used by sys_madvise() */
-#define VM_SEQ_READ	0x00008000	/* App will access data sequentially */
+#define VM_SEQ_READ	0x00008000	/*表示进程从头到尾按顺序读一个文件 App will access data sequentially */
+/* 表示进程随机读一个文件。
+这两个标志用来提示文件系统，如果进程按顺序读一个文件，文件系统可以预读文件，提高性能。 */
 #define VM_RAND_READ	0x00010000	/* App will not benefit from clustered reads */
-
+// 表示调用fork以创建子进程时不把虚拟内存区域复制给子进程
 #define VM_DONTCOPY	0x00020000      /* Do not copy this vma on fork */
-#define VM_DONTEXPAND	0x00040000	/* Cannot expand with mremap() */
+#define VM_DONTEXPAND	0x00040000	/* Cannot expand with mremap() 表示不允许使用mremap()扩大虚拟内存区域*/
 #define VM_LOCKONFAULT	0x00080000	/* Lock the pages covered when they are faulted in */
+/* 表示虚拟内存区域需要记账，判断所有进程申请的虚拟内存的总和是否超过物理内存容量 */
 #define VM_ACCOUNT	0x00100000	/* Is a VM accounted object */
-#define VM_NORESERVE	0x00200000	/* should the VM suppress accounting */
-#define VM_HUGETLB	0x00400000	/* Huge TLB Page VM */
+#define VM_NORESERVE	0x00200000	/* 表示不需要预留物理内存should the VM suppress accounting */
+#define VM_HUGETLB	0x00400000	/* 虚拟内存区域使用标准巨型页Huge TLB Page VM */
 #define VM_SYNC		0x00800000	/* Synchronous page faults */
 #define VM_ARCH_1	0x01000000	/* Architecture-specific flag */
 #define VM_WIPEONFORK	0x02000000	/* Wipe VMA contents in child. */
@@ -287,7 +292,9 @@ extern unsigned int kobjsize(const void *objp);
 # define VM_SOFTDIRTY	0
 #endif
 
-#define VM_MIXEDMAP	0x10000000	/* Can contain "struct page" and pure PFN pages */
+/*包括两种页面映射。 就是说可以是有page结构的那种映射（一般映射，可以内存管理），或者pfn映射（有特殊映射
+不管理） */
+#define VM_MIXEDMAP	0x10000000	/* Can contain "struct page" and pure PFN pages*/
 #define VM_HUGEPAGE	0x20000000	/* MADV_HUGEPAGE marked this vma */
 #define VM_NOHUGEPAGE	0x40000000	/* MADV_NOHUGEPAGE marked this vma */
 #define VM_MERGEABLE	0x80000000	/* KSM may merge identical pages */
@@ -319,7 +326,7 @@ extern unsigned int kobjsize(const void *objp);
 #endif /* CONFIG_ARCH_HAS_PKEYS */
 
 #if defined(CONFIG_X86)
-# define VM_PAT		VM_ARCH_1	/* PAT reserves whole VMA at once (x86) */
+# define VM_PAT		VM_ARCH_1	/*  PAT reserves whole VMA at once (x86) */
 #elif defined(CONFIG_PPC)
 # define VM_SAO		VM_ARCH_1	/* Strong Access Ordering (powerpc) */
 #elif defined(CONFIG_PARISC)
@@ -432,7 +439,7 @@ struct vm_fault {
 	pud_t *pud;			/* Pointer to pud entry matching
 					 * the 'address'异常地址所在的pud
 					 */
-	pte_t orig_pte;			/* Value of PTE at the time of fault异常时候的pte
+	pte_t orig_pte;			/* Value of PTE at the time of fault,异常时候的pte条目
 
  */
 
@@ -453,7 +460,8 @@ struct vm_fault {
 					 */
 	spinlock_t *ptl;		/* Page table lock.
 					 * Protects pte page table if 'pte'
-					 * is not NULL, otherwise pmd.页表锁，操作页表的时候避免竞争
+					 * is not NULL, otherwise pmd.
+					 页表锁，操作页表的时候避免竞争
 					 */
 	pgtable_t prealloc_pte;		/* Pre-allocated pte page table.
 					 * vm_ops->map_pages() calls
@@ -877,6 +885,7 @@ void free_compound_page(struct page *page);
 
 #ifdef CONFIG_MMU
 /*
+
  * Do pte_mkwrite, but only if the vma says VM_WRITE.  We do this when
  * servicing faults for write access.  In the normal case, do always want
  * pte_mkwrite.  But get_user_pages can cause write faults for mappings
@@ -1385,7 +1394,7 @@ static inline struct mem_cgroup *page_memcg_rcu(struct page *page)
  */
 #include <linux/vmstat.h>
 /* 2024年6月24日00:11:37
-记不清了，好像就是映射
+把内存单元对应page转成内核虚拟地址
  */
 static __always_inline void *lowmem_page_address(const struct page *page)
 {
@@ -1415,6 +1424,7 @@ void page_address_init(void);
 #endif
 
 #if !defined(HASHED_PAGE_VIRTUAL) && !defined(WANT_PAGE_VIRTUAL)
+/* 把内存单元对应page转成内核虚拟地址 */
 #define page_address(page) lowmem_page_address(page)
 #define set_page_address(page, address)  do { } while(0)
 #define page_address_init()  do { } while(0)
@@ -1504,6 +1514,7 @@ extern int user_shm_lock(size_t, struct user_struct *);
 extern void user_shm_unlock(size_t, struct user_struct *);
 
 /*
+zap为zero all pages的缩写
  * Parameter block passed down to zap_pte_range in exceptional cases.
  */
 struct zap_details {
@@ -1720,7 +1731,7 @@ static inline unsigned long get_mm_counter(struct mm_struct *mm, int member)
 #endif
 	return (unsigned long)val;
 }
-
+/*  */
 static inline void add_mm_counter(struct mm_struct *mm, int member, long value)
 {
 	atomic_long_add(value, &mm->rss_stat.count[member]);
@@ -1736,7 +1747,9 @@ static inline void dec_mm_counter(struct mm_struct *mm, int member)
 	atomic_long_dec(&mm->rss_stat.count[member]);
 }
 
-/* Optimized variant when page is already known not to be PageAnon */
+/* 
+
+Optimized variant when page is already known not to be PageAnon */
 static inline int mm_counter_file(struct page *page)
 {
 	if (PageSwapBacked(page))
@@ -1844,7 +1857,7 @@ static inline void mm_dec_nr_puds(struct mm_struct *mm) {}
 
 #else
 int __pud_alloc(struct mm_struct *mm, p4d_t *p4d, unsigned long address);
-
+/*  */
 static inline void mm_inc_nr_puds(struct mm_struct *mm)
 {
 	if (mm_pud_folded(mm))
@@ -1872,7 +1885,7 @@ static inline void mm_dec_nr_pmds(struct mm_struct *mm) {}
 
 #else
 int __pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address);
-
+/*  */
 static inline void mm_inc_nr_pmds(struct mm_struct *mm)
 {
 	if (mm_pmd_folded(mm))
@@ -1930,13 +1943,15 @@ int __pte_alloc_kernel(pmd_t *pmd);
 #if defined(CONFIG_MMU) && !defined(__ARCH_HAS_4LEVEL_HACK)
 
 #ifndef __ARCH_HAS_5LEVEL_HACK
+/* 好像这个版本代码实现里面
+这个函数等价于p4d_offset(pgd, address)？ */
 static inline p4d_t *p4d_alloc(struct mm_struct *mm, pgd_t *pgd,
 		unsigned long address)
 {
 	return (unlikely(pgd_none(*pgd)) && __p4d_alloc(mm, pgd, address)) ?
 		NULL : p4d_offset(pgd, address);
 }
-
+/* 查找pud，没有的话就分配再返回 */
 static inline pud_t *pud_alloc(struct mm_struct *mm, p4d_t *p4d,
 		unsigned long address)
 {
@@ -1944,7 +1959,7 @@ static inline pud_t *pud_alloc(struct mm_struct *mm, p4d_t *p4d,
 		NULL : pud_offset(p4d, address);
 }
 #endif /* !__ARCH_HAS_5LEVEL_HACK */
-
+/*  */
 static inline pmd_t *pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address)
 {
 	return (unlikely(pud_none(*pud)) && __pmd_alloc(mm, pud, address))?
@@ -1983,7 +1998,7 @@ static inline spinlock_t *ptlock_ptr(struct page *page)
 	return &page->ptl;
 }
 #endif /* ALLOC_SPLIT_PTLOCKS */
-
+/*  */
 static inline spinlock_t *pte_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
 	return ptlock_ptr(pmd_page(*pmd));

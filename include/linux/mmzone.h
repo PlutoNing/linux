@@ -1289,7 +1289,9 @@ static inline unsigned long early_pfn_to_nid(unsigned long pfn)
  */
 #define PA_SECTION_SHIFT	(SECTION_SIZE_BITS)
 #define PFN_SECTION_SHIFT	(SECTION_SIZE_BITS - PAGE_SHIFT)
-
+/*展开是 (1UL << ((0 ? 52 : 46) - 27))
+还不小，五十几万
+ */
 #define NR_MEM_SECTIONS		(1UL << SECTIONS_SHIFT)
 
 #define PAGES_PER_SECTION       (1UL << PFN_SECTION_SHIFT)
@@ -1301,7 +1303,7 @@ static inline unsigned long early_pfn_to_nid(unsigned long pfn)
 #if (MAX_ORDER - 1 + PAGE_SHIFT) > SECTION_SIZE_BITS
 #error Allocator MAX_ORDER exceeds SECTION_SIZE
 #endif
-
+/* 转换的方式？好像就是取高位（右移15位）的bit */
 static inline unsigned long pfn_to_section_nr(unsigned long pfn)
 {
 	return pfn >> PFN_SECTION_SHIFT;
@@ -1328,8 +1330,9 @@ static inline unsigned long section_nr_to_pfn(unsigned long sec)
 
 #define SUBSECTION_ALIGN_UP(pfn) ALIGN((pfn), PAGES_PER_SUBSECTION)
 #define SUBSECTION_ALIGN_DOWN(pfn) ((pfn) & PAGE_SUBSECTION_MASK)
-
+/*  */
 struct mem_section_usage {
+	/* 一个位图，通过long数组定义的 */
 	DECLARE_BITMAP(subsection_map, SUBSECTIONS_PER_SECTION);
 	/* See declaration of similar field in struct zone */
 	unsigned long pageblock_flags[0];
@@ -1339,6 +1342,7 @@ void subsection_map_init(unsigned long pfn, unsigned long nr_pages);
 
 struct page;
 struct page_ext;
+/* 一组排序的pages， */
 struct mem_section {
 	/*
 	 * This is, logically, a pointer to an array of struct
@@ -1374,7 +1378,10 @@ struct mem_section {
 #else
 #define SECTIONS_PER_ROOT	1
 #endif
+/*
+s=sizeof (struct mem_section)
 
+nr / (4096 /s) */
 #define SECTION_NR_TO_ROOT(sec)	((sec) / SECTIONS_PER_ROOT)
 #define NR_SECTION_ROOTS	DIV_ROUND_UP(NR_MEM_SECTIONS, SECTIONS_PER_ROOT)
 #define SECTION_ROOT_MASK	(SECTIONS_PER_ROOT - 1)
@@ -1389,13 +1396,23 @@ static inline unsigned long *section_to_usemap(struct mem_section *ms)
 {
 	return ms->usage->pageblock_flags;
 }
+/* 
+2024年7月27日20:08:47
+nr参数是pfn右移15位
 
+好像是获得pfn的nr，然后把nr映射到一个全局的二维数组
+取一个mem_section。
+----------------
+就是获得pfn对应的mem——section
+
+ */
 static inline struct mem_section *__nr_to_section(unsigned long nr)
 {
 #ifdef CONFIG_SPARSEMEM_EXTREME
 	if (!mem_section)
 		return NULL;
 #endif
+
 	if (!mem_section[SECTION_NR_TO_ROOT(nr)])
 		return NULL;
 	return &mem_section[SECTION_NR_TO_ROOT(nr)][nr & SECTION_ROOT_MASK];
@@ -1440,12 +1457,18 @@ static inline int present_section_nr(unsigned long nr)
 {
 	return present_section(__nr_to_section(nr));
 }
-
+/* 
+ */
 static inline int valid_section(struct mem_section *section)
 {
 	return (section && (section->section_mem_map & SECTION_HAS_MEM_MAP));
 }
-
+/* 首先mem-section要存在。
+然后对它的section_mem_map的要求就是必须得是第二个每八位数
+8-15
+24-31
+40-47
+等等 */
 static inline int early_section(struct mem_section *section)
 {
 	return (section && (section->section_mem_map & SECTION_IS_EARLY));
@@ -1486,6 +1509,7 @@ static inline int subsection_map_index(unsigned long pfn)
 }
 
 #ifdef CONFIG_SPARSEMEM_VMEMMAP
+/*  */
 static inline int pfn_section_valid(struct mem_section *ms, unsigned long pfn)
 {
 	int idx = subsection_map_index(pfn);
@@ -1500,13 +1524,18 @@ static inline int pfn_section_valid(struct mem_section *ms, unsigned long pfn)
 #endif
 
 #ifndef CONFIG_HAVE_ARCH_PFN_VALID
+/* pfn也有不合法的吗
+
+ */
 static inline int pfn_valid(unsigned long pfn)
 {
 	struct mem_section *ms;
 
 	if (pfn_to_section_nr(pfn) >= NR_MEM_SECTIONS)
 		return 0;
+	/* 获得pfn对应的mem_section */
 	ms = __nr_to_section(pfn_to_section_nr(pfn));
+	
 	if (!valid_section(ms))
 		return 0;
 	/*

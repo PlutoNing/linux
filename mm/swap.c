@@ -482,7 +482,7 @@ void lru_cache_add(struct page *page)
 
 /**
 2024年06月21日14:53:42
-lru记账的时机还是在缺页处理do_anonymous_page->lru_cache_add_active_or_unevictable
+把page加入lru。
  * lru_cache_add_active_or_unevictable
  * @page:  the page to be added to LRU
  * @vma:   vma in which page is mapped for determining reclaimability
@@ -497,18 +497,29 @@ void lru_cache_add_active_or_unevictable(struct page *page,
 {
 	VM_BUG_ON_PAGE(PageLRU(page), page);
 
+	/* 
+	l 0
+	0 s
+	0 0
+	l s
+	只要不是仅仅locked，就是说可以说locked&special，或者都没有，或者仅是special。
+	 */
 	if (likely((vma->vm_flags & (VM_LOCKED | VM_SPECIAL)) != VM_LOCKED))
 		SetPageActive(page);
 	else if (!TestSetPageMlocked(page)) {
+		/* 本来没锁的情况 */
 		/*
 		 * We use the irq-unsafe __mod_zone_page_stat because this
 		 * counter is not modified from interrupt context, and the pte
 		 * lock is held(spinlock), which implies preemption disabled.
 		 */
+		 /* 现在锁上了
+		 更新统计信息 */
 		__mod_zone_page_state(page_zone(page), NR_MLOCK,
 				    hpage_nr_pages(page));
 		count_vm_event(UNEVICTABLE_PGMLOCKED);
 	}
+
 	lru_cache_add(page);
 }
 

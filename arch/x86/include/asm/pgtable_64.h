@@ -250,7 +250,7 @@ extern void cleanup_highmap(void);
 
 #define __HAVE_ARCH_PTE_SAME
 /* 2024年7月13日13:41:18
-
+是一个常数
  */
 #define vmemmap ((struct page *)VMEMMAP_START)
 

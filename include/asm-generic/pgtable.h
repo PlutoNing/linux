@@ -867,6 +867,7 @@ static inline int is_zero_pfn(unsigned long pfn)
 #define my_zero_pfn(addr)	page_to_pfn(ZERO_PAGE(addr))
 
 #else
+/*  */
 static inline int is_zero_pfn(unsigned long pfn)
 {
 	extern unsigned long zero_pfn;

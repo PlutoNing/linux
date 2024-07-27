@@ -5011,7 +5011,7 @@ EXPORT_SYMBOL(__alloc_pages_nodemask);
 
 /*
 2024年6月30日19:32:54
-就是包装alloc pages？返回虚拟地址
+就是包装alloc pages？返回page的内核虚拟地址
  * Common helper functions. Never use with __GFP_HIGHMEM because the returned
  * address cannot represent highmem pages. Use alloc_pages and then kmap if
  * you need to access high mem.
@@ -5026,7 +5026,7 @@ unsigned long __get_free_pages(gfp_t gfp_mask, unsigned int order)
 	return (unsigned long) page_address(page);
 }
 EXPORT_SYMBOL(__get_free_pages);
-
+/*  */
 unsigned long get_zeroed_page(gfp_t gfp_mask)
 {
 	return __get_free_pages(gfp_mask | __GFP_ZERO, 0);

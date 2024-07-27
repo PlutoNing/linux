@@ -92,6 +92,7 @@ extern unsigned int ptrs_per_p4d;
 #define PTRS_PER_PMD	512
 
 /*
+每级页表的条目数量（为啥这么少？）
  * entries per page directory level
  */
 #define PTRS_PER_PTE	512

@@ -107,7 +107,7 @@ struct x86_cpuinit_ops x86_cpuinit = {
 };
 
 static void default_nmi_init(void) { };
-
+/*  */
 struct x86_platform_ops x86_platform __ro_after_init = {
 	.calibrate_cpu			= native_calibrate_cpu_early,
 	.calibrate_tsc			= native_calibrate_tsc,

@@ -1709,7 +1709,7 @@ COMPAT_SYSCALL_DEFINE4(migrate_pages, compat_pid_t, pid,
 }
 
 #endif /* CONFIG_COMPAT */
-
+/* 获取vma的mempol */
 struct mempolicy *__get_vma_policy(struct vm_area_struct *vma,
 						unsigned long addr)
 {
@@ -1736,6 +1736,7 @@ struct mempolicy *__get_vma_policy(struct vm_area_struct *vma,
 }
 
 /*
+获取vma的pol，没有的话就是获取tsk的
  * get_vma_policy(@vma, @addr)
  * @vma: virtual memory area whose policy is sought
  * @addr: address in @vma for shared policy lookup
@@ -2069,7 +2070,7 @@ out:
 
 /*
 2024年7月2日23:09:53
-其实就是在nid什么interleave分配内存。
+其实就是interleave mode在nid上分配内存。
  Allocate a page in interleaved policy.
    Own path because it needs to do special accounting. */
 static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
@@ -2091,7 +2092,7 @@ static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
 
 /**
 2024年7月2日23:04:25
-
+给vma分配物理页面
  * 	alloc_pages_vma	- Allocate a page for a VMA.
  *
  * 	@gfp:
@@ -2130,11 +2131,12 @@ alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 
 		nid = interleave_nid(pol, vma, addr, PAGE_SHIFT + order);
 		mpol_cond_put(pol);
-		/* 分配页面成功 */
+		/* 此pol mode的分配页面 */
 		page = alloc_page_interleave(gfp, order, nid);
 		goto out;
 	}
 
+	/* 大页的路径 */
 	if (unlikely(IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) && hugepage)) {
 		int hpage_node = node;
 
@@ -2173,6 +2175,7 @@ alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 
 	nmask = policy_nodemask(gfp, pol);
 	preferred_nid = policy_node(gfp, pol, node);
+	/* 其他mode的分配 */
 	page = __alloc_pages_nodemask(gfp, order, preferred_nid, nmask);
 	mpol_cond_put(pol);
 out:
@@ -2389,6 +2392,7 @@ static void sp_free(struct sp_node *n)
 }
 
 /**
+检查policy是否合适vma的page
  * mpol_misplaced - check whether current page node is valid in policy
  *
  * @page: page to be checked
@@ -2415,7 +2419,7 @@ int mpol_misplaced(struct page *page, struct vm_area_struct *vma, unsigned long 
 	int thisnid = cpu_to_node(thiscpu);
 	int polnid = NUMA_NO_NODE;
 	int ret = -1;
-
+	/* 获取policy */
 	pol = get_vma_policy(vma, addr);
 	if (!(pol->flags & MPOL_F_MOF))
 		goto out;
@@ -2423,11 +2427,14 @@ int mpol_misplaced(struct page *page, struct vm_area_struct *vma, unsigned long 
 	switch (pol->mode) {
 	case MPOL_INTERLEAVE:
 		pgoff = vma->vm_pgoff;
+		/*  */
 		pgoff += (addr - vma->vm_start) >> PAGE_SHIFT;
+		/* 确定此mode下面合适的nid */
 		polnid = offset_il_node(pol, pgoff);
 		break;
 
 	case MPOL_PREFERRED:
+	/* 如果是指定了倾向的node */
 		if (pol->flags & MPOL_F_LOCAL)
 			polnid = numa_node_id();
 		else

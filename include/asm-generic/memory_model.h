@@ -79,7 +79,7 @@ memmap is virtually contiguous.  */
  */
 #define	__phys_to_pfn(paddr)	PHYS_PFN(paddr)
 #define	__pfn_to_phys(pfn)	PFN_PHYS(pfn)
-
+/* 获取页帧号 */
 #define page_to_pfn __page_to_pfn
 #define pfn_to_page __pfn_to_page
 

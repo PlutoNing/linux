@@ -305,6 +305,8 @@ static const char *gate_vma_name(struct vm_area_struct *vma)
 static const struct vm_operations_struct gate_vma_ops = {
 	.name = gate_vma_name,
 };
+
+/*  */
 static struct vm_area_struct gate_vma __ro_after_init = {
 	.vm_start	= VSYSCALL_ADDR,
 	.vm_end		= VSYSCALL_ADDR + PAGE_SIZE,
@@ -312,7 +314,7 @@ static struct vm_area_struct gate_vma __ro_after_init = {
 	.vm_flags	= VM_READ | VM_EXEC,
 	.vm_ops		= &gate_vma_ops,
 };
-
+/*  */
 struct vm_area_struct *get_gate_vma(struct mm_struct *mm)
 {
 #ifdef CONFIG_COMPAT
@@ -323,7 +325,7 @@ struct vm_area_struct *get_gate_vma(struct mm_struct *mm)
 		return NULL;
 	return &gate_vma;
 }
-
+/*  */
 int in_gate_area(struct mm_struct *mm, unsigned long addr)
 {
 	struct vm_area_struct *vma = get_gate_vma(mm);

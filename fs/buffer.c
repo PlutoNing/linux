@@ -567,6 +567,7 @@ void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
 EXPORT_SYMBOL(mark_buffer_dirty_inode);
 
 /*
+在页缓存里给page置位dirty，处理mapping，处理inode
  * Mark the page dirty, and set it dirty in the page cache, and mark the inode
  * dirty.
  *
@@ -583,7 +584,9 @@ void __set_page_dirty(struct page *page, struct address_space *mapping,
 	xa_lock_irqsave(&mapping->i_pages, flags);
 	if (page->mapping) {	/* Race with truncate? */
 		WARN_ON_ONCE(warn && !PageUptodate(page));
+		/* 回写相关 */
 		account_page_dirtied(page, mapping);
+		/* 给mapping的页面的xas数组里page对应的位置置脏 */
 		__xa_set_mark(&mapping->i_pages, page_index(page),
 				PAGECACHE_TAG_DIRTY);
 	}
@@ -592,6 +595,7 @@ void __set_page_dirty(struct page *page, struct address_space *mapping,
 EXPORT_SYMBOL_GPL(__set_page_dirty);
 
 /*
+dirty一个page
  * Add a page to the dirty page list.
  *
  * It is a sad fact of life that this function is called from several places
@@ -624,12 +628,17 @@ int __set_page_dirty_buffers(struct page *page)
 	if (unlikely(!mapping))
 		return !TestSetPageDirty(page);
 
+
+
 	spin_lock(&mapping->private_lock);
 	if (page_has_buffers(page)) {
+		/* 进入这个函数说明，默认走系统的这个block相关的函数了，
+		那么page的priv数据，就是和blk相关 */
 		struct buffer_head *head = page_buffers(page);
 		struct buffer_head *bh = head;
 
 		do {
+			/* 设置bh的b-state */
 			set_buffer_dirty(bh);
 			bh = bh->b_this_page;
 		} while (bh != head);
@@ -639,15 +648,21 @@ int __set_page_dirty_buffers(struct page *page)
 	 * synchronized with per-memcg dirty page counters.
 	 */
 	lock_page_memcg(page);
+	/* if newly_dirty，说明刚才不是脏的 */
 	newly_dirty = !TestSetPageDirty(page);
 	spin_unlock(&mapping->private_lock);
 
+
+
+
 	if (newly_dirty)
+	/* 说明页面之前不是脏的 ，此函数处理一些文件相关，回写相关*/
 		__set_page_dirty(page, mapping, 1);
 
 	unlock_page_memcg(page);
 
 	if (newly_dirty)
+	/* 刚刚置脏，处理inode相关 */
 		__mark_inode_dirty(mapping->host, I_DIRTY_PAGES);
 
 	return newly_dirty;

@@ -229,6 +229,7 @@ int valid_mmap_phys_addr_range(unsigned long pfn, size_t count)
 }
 
 /*
+2024年7月27日18:03:00
  * Only allow root to set high MMIO mappings to PROT_NONE.
  * This prevents an unpriv. user to set them to PROT_NONE and invert
  * them, then pointing to valid memory for L1TF speculation.
@@ -244,6 +245,7 @@ bool pfn_modify_allowed(unsigned long pfn, pgprot_t prot)
 	/* If it's real memory always allow */
 	if (pfn_valid(pfn))
 		return true;
+	/* 检查权限 */
 	if (pfn >= l1tf_pfn_limit() && !capable(CAP_SYS_ADMIN))
 		return false;
 	return true;

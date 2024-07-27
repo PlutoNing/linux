@@ -745,7 +745,7 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
 /**
 2024年7月1日22:55:07
 为地址空间申请物理页面，并且建立映射关系
- * __get_user_pages() - pin user pages in memory
+ * __get_user_pages() - pin user pages in memory，在内存中pin 用户态的page？
  * @tsk:	task_struct of target task
  * @mm:		mm_struct of target mm
  * @start:	starting user address
@@ -757,7 +757,7 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
  * @vmas:	array of pointers to vmas corresponding to each page.
  *		Or NULL if the caller does not require them.
  * @nonblocking: whether waiting for disk IO or mmap_sem contention
- *
+ *返回值是处理的页面的数量
  * Returns number of pages pinned. This may be fewer than the number
  * requested. If nr_pages is 0 or negative, returns 0. If no pages
  * were pinned, returns -errno. Each page returned must be released
@@ -831,7 +831,9 @@ static long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 
 		/* first iteration or cross vma bound */
 		if (!vma || start >= vma->vm_end) {
+			/* 查找包括start地址的vma，如果没有包括，就extend后返回 */
 			vma = find_extend_vma(mm, start);
+
 			if (!vma && in_gate_area(mm, start)) {
 				ret = get_gate_page(mm, start & PAGE_MASK,
 						gup_flags, &vma,
@@ -857,6 +859,7 @@ retry:
 		/*
 		 * If we have a pending SIGKILL, don't keep faulting pages and
 		 * potentially allocating memory.
+
 		 */
 		if (fatal_signal_pending(current)) {
 			ret = -ERESTARTSYS;
@@ -893,6 +896,9 @@ retry:
 			ret = PTR_ERR(page);
 			goto out;
 		}
+
+		/* 这个时候物理page肯定存在 */
+
 		if (pages) {
 			/* 分配完成了pages，刷新高速缓存 */
 			pages[i] = page;
@@ -902,6 +908,7 @@ retry:
 		}
 next_page:
 		if (vmas) {
+			/* vmas【i】存储pages【i】对应的vma */
 			vmas[i] = vma;
 			ctx.page_mask = 0;
 		}
@@ -1020,7 +1027,11 @@ retry:
 	return 0;
 }
 EXPORT_SYMBOL_GPL(fixup_user_fault);
-
+/* 内存中pin用户态的pages
+pages里面是pin成功的页面指针
+vmas是一一对应的页面所属的vma
+返回pin成功页面的数量
+ */
 static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
 						struct mm_struct *mm,
 						unsigned long start,
@@ -1042,12 +1053,15 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
 
 	if (pages)
 		flags |= FOLL_GET;
-
+	/* pin成功的page数量 */
 	pages_done = 0;
 	lock_dropped = false;
 	for (;;) {
+		/* 把mm的start开始位置的nrpages页面 进行物理映射*/
 		ret = __get_user_pages(tsk, mm, start, nr_pages, flags, pages,
 				       vmas, locked);
+		/* ret是pin的页面数量 */
+		
 		if (!locked)
 			/* VM_FAULT_RETRY couldn't trigger, bypass */
 			return ret;
@@ -1059,11 +1073,13 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
 		}
 
 		if (ret > 0) {
+			/* 已经pin了ret个页面了 */
 			nr_pages -= ret;
 			pages_done += ret;
 			if (!nr_pages)
 				break;
 		}
+
 		if (*locked) {
 			/*
 			 * VM_FAULT_RETRY didn't trigger or it was a
@@ -1076,9 +1092,13 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
 		/*
 		 * VM_FAULT_RETRY triggered, so seek to the faulting offset.
 		 * For the prefault case (!pages) we only update counts.
+
 		 */
 		if (likely(pages))
+		/* pages指针数组指向新的位置，前ret个已经有页面了 */
 			pages += ret;
+
+		/* start更新到刚才出错的位置 */
 		start += ret << PAGE_SHIFT;
 
 		/*
@@ -1089,19 +1109,25 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
 		*locked = 1;
 		lock_dropped = true;
 		down_read(&mm->mmap_sem);
+		/* 在刚才出错的位置重试 */
 		ret = __get_user_pages(tsk, mm, start, 1, flags | FOLL_TRIED,
 				       pages, NULL, NULL);
+		
 		if (ret != 1) {
+			/* 重试还是不成功 */
 			BUG_ON(ret > 1);
 			if (!pages_done)
 				pages_done = ret;
 			break;
 		}
+		/* 重试成功了，这次重试新处理了一个页面，所以进行相应的更新 */
 		nr_pages--;
 		pages_done++;
 		if (!nr_pages)
 			break;
 		if (likely(pages))
+		/* 新处理了一个页面，当前slot也有对应了，所以pages指针++，指向下一个slot
+	等待放置下次pin的页面 */
 			pages++;
 		start += PAGE_SIZE;
 	}
@@ -1117,6 +1143,7 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
 }
 
 /*
+内存中pin用户态的pages
  * get_user_pages_remote() - pin user pages in memory
  * @tsk:	the task_struct to use for page fault accounting, or
  *		NULL if faults are not to be recorded.
@@ -1126,9 +1153,12 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
  * @gup_flags:	flags modifying lookup behaviour
  * @pages:	array that receives pointers to the pages pinned.
  *		Should be at least nr_pages long. Or NULL, if caller
- *		only intends to ensure the pages are faulted in.
+ *		only intends to ensure the pages are faulted in.pin的page
+ 的数组
+
  * @vmas:	array of pointers to vmas corresponding to each page.
- *		Or NULL if the caller does not require them.
+ *		Or NULL if the caller does not require them.对应pages参数里面
+ 页面的vma
  * @locked:	pointer to lock flag indicating whether lock is held and
  *		subsequently whether VM_FAULT_RETRY functionality can be
  *		utilised. Lock must initially be held.
@@ -1185,6 +1215,8 @@ long get_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm,
 	 */
 	if (WARN_ON_ONCE(gup_flags & FOLL_LONGTERM))
 		return -EINVAL;
+	/* 捋一捋，叫get pages，其实就是把pages进行一下pin。
+	不过这里是其他mm，也是locked的 */
 
 	return __get_user_pages_locked(tsk, mm, start, nr_pages, pages, vmas,
 				       locked,

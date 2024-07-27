@@ -767,6 +767,7 @@ atomic_add_negative(int i, atomic_t *v)
 	kasan_check_write(v, sizeof(*v));
 	return arch_atomic_add_negative(i, v);
 }
+/* 返回真是减完之后没有引用了。 */
 #define atomic_add_negative atomic_add_negative
 #endif
 

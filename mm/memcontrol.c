@@ -2375,6 +2375,7 @@ again:
 
 	spin_lock_irqsave(&memcg->move_lock, flags);
 	if (memcg != page->mem_cgroup) {
+		/* 还可能会不相同吗 */
 		spin_unlock_irqrestore(&memcg->move_lock, flags);
 		goto again;
 	}
@@ -2383,6 +2384,7 @@ again:
 	 * When charge migration first begins, we can have locked and
 	 * unlocked page stat updates happening concurrently.  Track
 	 * the task who has the lock for unlock_page_memcg().
+	 这里是什么？
 	 */
 	memcg->move_lock_task = current;
 	memcg->move_lock_flags = flags;
@@ -2401,6 +2403,7 @@ EXPORT_SYMBOL(lock_page_memcg);
 void __unlock_page_memcg(struct mem_cgroup *memcg)
 {
 	if (memcg && memcg->move_lock_task == current) {
+		/* 说明是自己锁的 */
 		unsigned long flags = memcg->move_lock_flags;
 
 		memcg->move_lock_task = NULL;
@@ -3112,6 +3115,7 @@ static void commit_charge(struct page *page, struct mem_cgroup *memcg,
 	 * - a page cache insertion, a swapin fault, or a migration
 	 *   have the page locked
 	 */
+	 /* page被memcg管理 */
 	page->mem_cgroup = memcg;
 
 	if (lrucare)
@@ -7117,7 +7121,7 @@ todo
  * @page: page to charge
  * @mm: mm context of the victim
  * @gfp_mask: reclaim mode
- * @memcgp: charged memcg return
+ * @memcgp: charged memcg return，返回时被赋值为实际使用的memcg。
  * @compound: charge the page as compound or small page
  *
  * Try to charge @page to the memcg that @mm belongs to, reclaiming
@@ -7142,6 +7146,7 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 		goto out;
 
 	if (PageSwapCache(page)) {
+
 		/* 2024年7月13日01:15:11
 		页缓存为什么单独处理 */
 		/*
@@ -7182,11 +7187,13 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 情况2，是页缓存，无memcg，
 情况3，是页缓存，有memcg，但是无法get online。
 获取进程的memcg？
+2024年7月27日12:48:04
+就是可能调用者传来的就是个空指针，那么就使用他的mm的memcg
  */
 		memcg = get_mem_cgroup_from_mm(mm);
 
 	ret = try_charge(memcg, gfp_mask, nr_pages);
-
+	/* 使用完要记得put */
 	css_put(&memcg->css);
 out:
 	*memcgp = memcg;
@@ -7201,8 +7208,9 @@ int mem_cgroup_try_charge_delay(struct page *page, struct mm_struct *mm,
 {
 	struct mem_cgroup *memcg;
 	int ret;
-
+	/* 记账的路径，delay体现在哪呢2024年7月27日12:52:56 */
 	ret = mem_cgroup_try_charge(page, mm, gfp_mask, memcgp, compound);
+	
 	memcg = *memcgp;
 	mem_cgroup_throttle_swaprate(memcg, page_to_nid(page), gfp_mask);
 	return ret;

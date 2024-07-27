@@ -73,10 +73,11 @@ static inline void pmd_populate_kernel_safe(struct mm_struct *mm,
 	paravirt_alloc_pte(mm, __pa(pte) >> PAGE_SHIFT);
 	set_pmd_safe(pmd, __pmd(__pa(pte) | _PAGE_TABLE));
 }
-
+/*  */
 static inline void pmd_populate(struct mm_struct *mm, pmd_t *pmd,
 				struct page *pte)
 {
+	/* 获取pte的pfn */
 	unsigned long pfn = page_to_pfn(pte);
 
 	paravirt_alloc_pte(mm, pfn);
@@ -86,6 +87,7 @@ static inline void pmd_populate(struct mm_struct *mm, pmd_t *pmd,
 #define pmd_pgtable(pmd) pmd_page(pmd)
 
 #if CONFIG_PGTABLE_LEVELS > 2
+/*  */
 static inline pmd_t *pmd_alloc_one(struct mm_struct *mm, unsigned long addr)
 {
 	struct page *page;
@@ -93,9 +95,12 @@ static inline pmd_t *pmd_alloc_one(struct mm_struct *mm, unsigned long addr)
 
 	if (mm == &init_mm)
 		gfp &= ~__GFP_ACCOUNT;
+
 	page = alloc_pages(gfp, 0);
+
 	if (!page)
 		return NULL;
+
 	if (!pgtable_pmd_page_ctor(page)) {
 		__free_pages(page, 0);
 		return NULL;
@@ -121,6 +126,7 @@ static inline void __pmd_free_tlb(struct mmu_gather *tlb, pmd_t *pmd,
 #ifdef CONFIG_X86_PAE
 extern void pud_populate(struct mm_struct *mm, pud_t *pudp, pmd_t *pmd);
 #else	/* !CONFIG_X86_PAE */
+/*  */
 static inline void pud_populate(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
 {
 	paravirt_alloc_pmd(mm, __pa(pmd) >> PAGE_SHIFT);
@@ -135,6 +141,7 @@ static inline void pud_populate_safe(struct mm_struct *mm, pud_t *pud, pmd_t *pm
 #endif	/* CONFIG_X86_PAE */
 
 #if CONFIG_PGTABLE_LEVELS > 3
+/* 给p4d填充复制新分配的pud？ */
 static inline void p4d_populate(struct mm_struct *mm, p4d_t *p4d, pud_t *pud)
 {
 	paravirt_alloc_pud(mm, __pa(pud) >> PAGE_SHIFT);
@@ -146,7 +153,7 @@ static inline void p4d_populate_safe(struct mm_struct *mm, p4d_t *p4d, pud_t *pu
 	paravirt_alloc_pud(mm, __pa(pud) >> PAGE_SHIFT);
 	set_p4d_safe(p4d, __p4d(_PAGE_TABLE | __pa(pud)));
 }
-
+/* 分配pud */
 static inline pud_t *pud_alloc_one(struct mm_struct *mm, unsigned long addr)
 {
 	gfp_t gfp = GFP_KERNEL_ACCOUNT;
@@ -155,7 +162,7 @@ static inline pud_t *pud_alloc_one(struct mm_struct *mm, unsigned long addr)
 		gfp &= ~__GFP_ACCOUNT;
 	return (pud_t *)get_zeroed_page(gfp);
 }
-
+/* 释放pud，好像就是释放页面 */
 static inline void pud_free(struct mm_struct *mm, pud_t *pud)
 {
 	BUG_ON((unsigned long)pud & (PAGE_SIZE-1));

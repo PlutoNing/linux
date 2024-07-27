@@ -36,6 +36,7 @@
 #include "mm_internal.h"
 
 /*
+一个转换表
  * Tables translating between page_cache_type_t and pte encoding.
  *
  * The default values are defined statically as minimal supported mode;
@@ -58,7 +59,7 @@ uint16_t __cachemode2pte_tbl[_PAGE_CACHE_MODE_NUM] = {
 	[_PAGE_CACHE_MODE_WP      ]	= 0         | _PAGE_PCD,
 };
 EXPORT_SYMBOL(__cachemode2pte_tbl);
-
+/*  */
 uint8_t __pte2cachemode_tbl[8] = {
 	[__pte2cm_idx( 0        | 0         | 0        )] = _PAGE_CACHE_MODE_WB,
 	[__pte2cm_idx(_PAGE_PWT | 0         | 0        )] = _PAGE_CACHE_MODE_UC_MINUS,

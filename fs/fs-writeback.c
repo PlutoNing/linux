@@ -2247,6 +2247,8 @@ static noinline void block_dump___mark_inode_dirty(struct inode *inode)
 }
 
 /**
+设置inode为dirty
+todo2024年7月27日14:37:53
  * __mark_inode_dirty -	internal function
  *
  * @inode: inode to mark
@@ -2284,6 +2286,7 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 	 * dirty the inode itself
 	 */
 	if (flags & (I_DIRTY_INODE | I_DIRTY_TIME)) {
+		/* 如果是内容变了，或者时间变了 */
 		trace_writeback_dirty_inode_start(inode, flags);
 
 		if (sb->s_op->dirty_inode)
@@ -2291,6 +2294,7 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 
 		trace_writeback_dirty_inode(inode, flags);
 	}
+
 	if (flags & I_DIRTY_INODE)
 		flags &= ~I_DIRTY_TIME;
 	dirtytime = flags & I_DIRTY_TIME;
@@ -2311,7 +2315,9 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 	spin_lock(&inode->i_lock);
 	if (dirtytime && (inode->i_state & I_DIRTY_INODE))
 		goto out_unlock_inode;
+
 	if ((inode->i_state & flags) != flags) {
+		/*  */
 		const int was_dirty = inode->i_state & I_DIRTY;
 
 		inode_attach_wb(inode, NULL);

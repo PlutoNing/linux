@@ -470,6 +470,7 @@ void pgd_free(struct mm_struct *mm, pgd_t *pgd)
 }
 
 /*
+是test&set，返回是否变化。
  * Used to set accessed or dirty bits in the page table entries
  * on other architectures. On x86, the accessed and dirty bits
  * are tracked by hardware. However, do_wp_page calls this function

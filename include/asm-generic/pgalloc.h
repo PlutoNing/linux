@@ -45,6 +45,7 @@ static inline void pte_free_kernel(struct mm_struct *mm, pte_t *pte)
 }
 
 /**
+分配pte
  * __pte_alloc_one - allocate a page for PTE-level user page table
  * @mm: the mm_struct of the current context
  * @gfp: GFP flags to use for the allocation

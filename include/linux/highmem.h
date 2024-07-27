@@ -78,17 +78,26 @@ static inline struct page *kmap_to_page(void *addr)
 static inline unsigned long totalhigh_pages(void) { return 0UL; }
 
 #ifndef ARCH_HAS_KMAP
+/*  这应该被用来对单个页面进行短时间的映射，对抢占或迁移没有限制。它会带来开销， 
+因为映射空间是受限制的，并且受到全局锁的保护，以实现同步。
+当不再需要映射时，必须用 kunmap()释放该页被映射的地址。*/
 static inline void *kmap(struct page *page)
 {
 	might_sleep();
 	return page_address(page);
 }
-
+/* 为什么是空的 */
 static inline void kunmap(struct page *page)
 {
 }
 /* 2024年6月24日00:10:56
-kmap地址映射
+这允许对单个页面进行非常短的时间映射。由于映射被限制在发布它的CPU上， 
+它表现得很好，但发布的任务因此被要求留在该CPU上直到它完成，以免其他任务取代它的映射。
+
+kmap_atomic()也可以被中断上下文使用，因为它不睡眠，调用者也可能在调用kunmap_atomic() 后才睡眠。
+
+内核中对kmap_atomic()的每次调用都会创建一个不可抢占的段，并禁用缺页异常。这可能是
+未预期延迟的来源之一。因此用户应该选择kmap_local_page()而不是kmap_atomic()。
 
  */
 static inline void *kmap_atomic(struct page *page)
@@ -200,6 +209,7 @@ __alloc_zeroed_user_highpage(gfp_t movableflags,
 
 /**
 2024年7月2日23:04:06
+给此vma的此va分配物理页面
  * alloc_zeroed_user_highpage_movable - Allocate a zeroed HIGHMEM page for a VMA that the caller knows can move
  * @vma: The VMA the page is to be allocated for
  * @vaddr: The virtual address the page will be inserted into
@@ -255,16 +265,18 @@ static inline void zero_user(struct page *page,
 
 #ifndef __HAVE_ARCH_COPY_USER_HIGHPAGE
 /* 2024年7月1日23:35:24
-把flaut page复制到cow page里面
+把fault page复制到cow page里面
  */
 static inline void copy_user_highpage(struct page *to, struct page *from,
 	unsigned long vaddr, struct vm_area_struct *vma)
 {
 	char *vfrom, *vto;
-
+	/* 临时kmap映射 */
 	vfrom = kmap_atomic(from);
 	vto = kmap_atomic(to);
+
 	copy_user_page(vto, vfrom, vaddr, to);
+	
 	kunmap_atomic(vto);
 	kunmap_atomic(vfrom);
 }

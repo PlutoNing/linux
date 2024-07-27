@@ -1660,7 +1660,7 @@ out:
 	cpa->numpages = numpages;
 	return ret;
 }
-
+/*  */
 static int change_page_attr_set_clr(unsigned long *addr, int numpages,
 				    pgprot_t mask_set, pgprot_t mask_clr,
 				    int force_split, int in_flag,
@@ -1759,7 +1759,7 @@ static inline int change_page_attr_set(unsigned long *addr, int numpages,
 	return change_page_attr_set_clr(addr, numpages, mask, __pgprot(0), 0,
 		(array ? CPA_ARRAY : 0), NULL);
 }
-
+/* 改变页面的pcm类型？ */
 static inline int change_page_attr_clear(unsigned long *addr, int numpages,
 					 pgprot_t mask, int array)
 {
@@ -1857,7 +1857,7 @@ int _set_memory_wt(unsigned long addr, int numpages)
 	return change_page_attr_set(&addr, numpages,
 				    cachemode2pgprot(_PAGE_CACHE_MODE_WT), 0);
 }
-
+/* 设置内存段的pcm类型？ */
 int _set_memory_wb(unsigned long addr, int numpages)
 {
 	/* WB cache mode is hard wired to all cache attribute bits being 0 */

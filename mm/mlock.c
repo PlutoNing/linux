@@ -54,13 +54,18 @@ EXPORT_SYMBOL(can_do_mlock);
  */
 
 /*
+解锁
+更新统计信息
+移出lru
+
  *  LRU accounting for clear_page_mlock()
  */
 void clear_page_mlock(struct page *page)
 {
+	/* 本来没锁的话 */
 	if (!TestClearPageMlocked(page))
 		return;
-
+	/* zone里面有lock的页面少了 */
 	mod_zone_page_state(page_zone(page), NR_MLOCK,
 			    -hpage_nr_pages(page));
 	count_vm_event(UNEVICTABLE_PGCLEARED);
@@ -110,7 +115,7 @@ void mlock_vma_page(struct page *page)
 
 /*
 2024年7月18日23:51:45
-从lru分离。
+从lru分离。munlock体现在哪呢。
  * Isolate a page from LRU with optional get_page() pin.
  * Assumes lru_lock already held and page already pinned.
  */
@@ -227,7 +232,7 @@ unsigned int munlock_vma_page(struct page *page)
 	/* 统计信息 */
 	__mod_zone_page_state(page_zone(page), NR_MLOCK, -nr_pages);
 
-	/* 会从lru分离页面 */
+	/* munlock， 会从lru分离页面 */
 	if (__munlock_isolate_lru_page(page, true)) {
 		/* 分离成功，解锁，goto out来返回 */
 		spin_unlock_irq(&pgdat->lru_lock);

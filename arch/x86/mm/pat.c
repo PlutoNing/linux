@@ -377,6 +377,7 @@ void pat_init(void)
 static DEFINE_SPINLOCK(memtype_lock);	/* protects memtype accesses */
 
 /*
+
  * Does intersection of PAT memory type and MTRR memory type and returns
  * the resulting memory type as PAT understands it.
  * (Type in pat and mtrr will not have same value)
@@ -420,7 +421,7 @@ pagerange_is_ram_callback(unsigned long initial_pfn, unsigned long total_nr_page
 
 	return state->ram && state->not_ram;
 }
-
+/*  */
 static int pat_pagerange_is_ram(resource_size_t start, resource_size_t end)
 {
 	int ret = 0;
@@ -512,7 +513,7 @@ static int free_ram_pages_type(u64 start, u64 end)
 	}
 	return 0;
 }
-
+/* 可能是对齐一下什么的 */
 static u64 sanitize_phys(u64 address)
 {
 	/*
@@ -530,6 +531,7 @@ static u64 sanitize_phys(u64 address)
 }
 
 /*
+
  * req_type typically has one of the:
  * - _PAGE_CACHE_MODE_WB
  * - _PAGE_CACHE_MODE_WC
@@ -541,6 +543,9 @@ static u64 sanitize_phys(u64 address)
  * region with req_type. If new_type is non-NULL, function will return
  * available type in new_type in case of no error. In case of any error
  * it will return a negative return value.
+
+ 难道在全局的红黑树上面写入这个地址段的类型，
+ 就算是预留成功了吗。
  */
 int reserve_memtype(u64 start, u64 end, enum page_cache_mode req_type,
 		    enum page_cache_mode *new_type)
@@ -552,6 +557,7 @@ int reserve_memtype(u64 start, u64 end, enum page_cache_mode req_type,
 
 	start = sanitize_phys(start);
 	end = sanitize_phys(end);
+
 	if (start >= end) {
 		WARN(1, "%s failed: [mem %#010Lx-%#010Lx], req %s\n", __func__,
 				start, end - 1, cattr_name(req_type));
@@ -592,7 +598,7 @@ int reserve_memtype(u64 start, u64 end, enum page_cache_mode req_type,
 	} else if (is_range_ram < 0) {
 		return -EINVAL;
 	}
-
+	/*  */
 	new  = kzalloc(sizeof(struct memtype), GFP_KERNEL);
 	if (!new)
 		return -ENOMEM;
@@ -602,9 +608,10 @@ int reserve_memtype(u64 start, u64 end, enum page_cache_mode req_type,
 	new->type	= actual_type;
 
 	spin_lock(&memtype_lock);
-
+	/*  插入到全局的红黑树*/
 	err = rbt_memtype_check_insert(new, new_type);
 	if (err) {
+		/* 出错了 */
 		pr_info("x86/PAT: reserve_memtype failed [mem %#010Lx-%#010Lx], track %s, req %s\n",
 			start, end - 1,
 			cattr_name(new->type), cattr_name(req_type));
@@ -622,7 +629,8 @@ int reserve_memtype(u64 start, u64 end, enum page_cache_mode req_type,
 
 	return err;
 }
-
+/* 
+在全局的红黑树移除这个地址段 */
 int free_memtype(u64 start, u64 end)
 {
 	int err = -EINVAL;
@@ -650,6 +658,8 @@ int free_memtype(u64 start, u64 end)
 	}
 
 	spin_lock(&memtype_lock);
+	/* 在全局的红黑树移除，
+	取消这个地址段的类型的“登记”，这样就算是取消这个预留了吗。 */
 	entry = rbt_memtype_erase(start, end);
 	spin_unlock(&memtype_lock);
 
@@ -668,6 +678,7 @@ int free_memtype(u64 start, u64 end)
 
 
 /**
+查询物理地址的内存类型。
  * lookup_memtype - Looksup the memory type for a physical address
  * @paddr: physical address of which memory type needs to be looked up
  *
@@ -839,6 +850,7 @@ int phys_mem_access_prot_allowed(struct file *file, unsigned long pfn,
 }
 
 /*
+
  * Change the memory type for the physial address range in kernel identity
  * mapping space if that range is a part of identity map.
  */
@@ -857,21 +869,26 @@ int kernel_map_sync_memtype(u64 base, unsigned long size,
 	if (!page_is_ram(base >> PAGE_SHIFT))
 		return 0;
 
+	/* 修正size大小 */
 	id_sz = (__pa(high_memory-1) <= base + size) ?
 				__pa(high_memory) - base :
 				size;
 
 	if (ioremap_change_attr((unsigned long)__va(base), id_sz, pcm) < 0) {
+
 		pr_info("x86/PAT: %s:%d ioremap_change_attr failed %s for [mem %#010Lx-%#010Lx]\n",
 			current->comm, current->pid,
 			cattr_name(pcm),
 			base, (unsigned long long)(base + size-1));
+
 		return -EINVAL;
 	}
 	return 0;
 }
 
 /*
+2024年7月27日16:30:40
+预留内存的接口
  * Internal interface to reserve a range of physical memory with prot.
  * Reserved non RAM regions only and after successful reserve_memtype,
  * this func also keeps identity mapping (if any) in sync with this new prot.
@@ -894,7 +911,7 @@ static int reserve_pfn_range(u64 paddr, unsigned long size, pgprot_t *vma_prot,
 	if (is_ram) {
 		if (!pat_enabled())
 			return 0;
-
+		/* 获得pcm类型？但是什么用处呢todo2024年7月27日17:04:43 */
 		pcm = lookup_memtype(paddr);
 		if (want_pcm != pcm) {
 			pr_warn("x86/PAT: %s:%d map pfn RAM range req %s for [mem %#010Lx-%#010Lx], got %s\n",
@@ -903,15 +920,17 @@ static int reserve_pfn_range(u64 paddr, unsigned long size, pgprot_t *vma_prot,
 				(unsigned long long)paddr,
 				(unsigned long long)(paddr + size - 1),
 				cattr_name(pcm));
-			*vma_prot = __pgprot((pgprot_val(*vma_prot) &
-					     (~_PAGE_CACHE_MASK)) |
-					     cachemode2protval(pcm));
+
+			*vma_prot = __pgprot(
+						(pgprot_val(*vma_prot) &(~_PAGE_CACHE_MASK)) |
+					     cachemode2protval(pcm)
+						);
 		}
 		return 0;
 	}
-
+	/* 预留这个地址段的内存 */
 	ret = reserve_memtype(paddr, paddr + size, want_pcm, &pcm);
-	if (ret)
+	if (ret)/* 出错了 */
 		return ret;
 
 	if (pcm != want_pcm) {
@@ -935,7 +954,9 @@ static int reserve_pfn_range(u64 paddr, unsigned long size, pgprot_t *vma_prot,
 				     cachemode2protval(pcm));
 	}
 
+	/* todo这个函数2024年7月27日17:35:19 */
 	if (kernel_map_sync_memtype(paddr, size, pcm) < 0) {
+		/* 失败的话，在全局红黑树，移除地址段 */		
 		free_memtype(paddr, paddr + size);
 		return -EINVAL;
 	}
@@ -987,6 +1008,7 @@ int track_pfn_copy(struct vm_area_struct *vma)
 }
 
 /*
+
  * prot is passed in as a parameter for the new mapping. If the vma has
  * a linear pfn mapping for the entire range, or no vma is provided,
  * reserve the entire pfn + size range with single reserve_pfn_range
@@ -1001,11 +1023,15 @@ int track_pfn_remap(struct vm_area_struct *vma, pgprot_t *prot,
 	/* reserve the whole chunk starting from paddr */
 	if (!vma || (addr == vma->vm_start
 				&& size == (vma->vm_end - vma->vm_start))) {
+		/* 如果vma不存在，
+		或者要remap整个vma空间？ */
 		int ret;
-
+		/* 预留内存 */
 		ret = reserve_pfn_range(paddr, size, prot, 0);
 		if (ret == 0 && vma)
+		/* 如果vma存在的时候预留成功，设置标记位 */
 			vma->vm_flags |= VM_PAT;
+		
 		return ret;
 	}
 

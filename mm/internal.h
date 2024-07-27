@@ -270,7 +270,9 @@ static inline unsigned int page_order(struct page *page)
  * use of the result.
  */
 #define page_order_unsafe(page)		READ_ONCE(page_private(page))
-
+/* 
+只可写，不共享，就是cow的
+ */
 static inline bool is_cow_mapping(vm_flags_t flags)
 {
 	return (flags & (VM_SHARED | VM_MAYWRITE)) == VM_MAYWRITE;
@@ -406,6 +408,7 @@ static inline struct page *mem_map_offset(struct page *base, int offset)
 }
 
 /*
+
  * Iterator over all subpages within the maximally aligned gigantic
  * page 'base'.  Handle any discontiguity in the mem_map.
  */

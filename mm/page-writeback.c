@@ -2450,6 +2450,7 @@ int __set_page_dirty_no_writeback(struct page *page)
 }
 
 /*
+给页面置脏的一些通用处理和操作
  * Helper function for set_page_dirty family.
  *
  * Caller must hold lock_page_memcg().
@@ -2463,6 +2464,7 @@ void account_page_dirtied(struct page *page, struct address_space *mapping)
 	trace_writeback_dirty_page(page, mapping);
 
 	if (mapping_cap_account_dirty(mapping)) {
+		/* 如果bdi设备acct dirty的话 */
 		struct bdi_writeback *wb;
 
 		inode_attach_wb(inode, page);
@@ -2583,6 +2585,7 @@ int redirty_page_for_writepage(struct writeback_control *wbc, struct page *page)
 EXPORT_SYMBOL(redirty_page_for_writepage);
 
 /*
+dirty一个物理页，可能会调用一些cb来进行一些回写什么的
  * Dirty a page.
  *
  * For pages with a mapping this should be done under the page lock
@@ -2598,7 +2601,10 @@ int set_page_dirty(struct page *page)
 	struct address_space *mapping = page_mapping(page);
 
 	page = compound_head(page);
+
+
 	if (likely(mapping)) {
+		/* 有地址空间的情况，file？vma？ */
 		int (*spd)(struct page *) = mapping->a_ops->set_page_dirty;
 		/*
 		 * readahead/lru_deactivate_page could remain
@@ -2612,12 +2618,18 @@ int set_page_dirty(struct page *page)
 		 */
 		if (PageReclaim(page))
 			ClearPageReclaim(page);
+
 #ifdef CONFIG_BLOCK
 		if (!spd)
+		/* 使用系统默认的 */
 			spd = __set_page_dirty_buffers;
 #endif
+
 		return (*spd)(page);
 	}
+
+
+/* 没有对应的mapping，那就直接置位 */
 	if (!PageDirty(page)) {
 		if (!TestSetPageDirty(page))
 			return 1;

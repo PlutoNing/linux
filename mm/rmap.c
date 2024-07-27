@@ -1063,7 +1063,7 @@ void page_move_anon_rmap(struct page *page, struct vm_area_struct *vma)
 
 /**
 2024年7月2日22:03:41
- 设置这个页面为匿名映射
+设置匿名页的rmap
  * __page_set_anon_rmap - set up new anonymous rmap
  * @page:	Page or Hugepage to add to rmap
  * @vma:	VM area to add page to.
@@ -1091,7 +1091,7 @@ static void __page_set_anon_rmap(struct page *page,
 	anon_vma = (void *) anon_vma + PAGE_MAPPING_ANON;
 	/* 一个匿名页的实然 */
 	page->mapping = (struct address_space *) anon_vma;
-	/* page 结构中的 index 表示该匿名页在虚拟内存区域 vma 中的偏移 */
+	/* page 结构中的 index 表示该匿名页在虚拟内存区域 vma 中的pgoff偏移 */
 	page->index = linear_page_index(vma, address);
 }
 
@@ -1219,11 +1219,13 @@ void page_add_new_anon_rmap(struct page *page,
 		atomic_set(&page->_mapcount, 0);
 	}
 	__mod_node_page_state(page_pgdat(page), NR_ANON_MAPPED, nr);
-	/* 设置这个页面为匿名映射 */
+	/* page的mapping指向vma的av */
 	__page_set_anon_rmap(page, vma, address, 1);
 }
 
 /**
+2024年7月27日01:14:42
+pte mapping和文件页。
  * page_add_file_rmap - add pte mapping to a file page
  * @page: the page to add the mapping to
  * @compound: charge the page as compound or small page
@@ -1235,19 +1237,27 @@ void page_add_file_rmap(struct page *page, bool compound)
 	int i, nr = 1;
 
 	VM_BUG_ON_PAGE(compound && !PageTransHuge(page), page);
+	/* todo */
 	lock_page_memcg(page);
 	if (compound && PageTransHuge(page)) {
+		/* 大页的情况，todo */
 		for (i = 0, nr = 0; i < HPAGE_PMD_NR; i++) {
 			if (atomic_inc_and_test(&page[i]._mapcount))
 				nr++;
 		}
+
+
 		if (!atomic_inc_and_test(compound_mapcount_ptr(page)))
 			goto out;
+
+
 		if (PageSwapBacked(page))
 			__inc_node_page_state(page, NR_SHMEM_PMDMAPPED);
 		else
 			__inc_node_page_state(page, NR_FILE_PMDMAPPED);
+		
 	} else {
+		/*  */
 		if (PageTransCompound(page) && page_mapping(page)) {
 			VM_WARN_ON_ONCE(!PageLocked(page));
 
@@ -1255,23 +1265,27 @@ void page_add_file_rmap(struct page *page, bool compound)
 			if (PageMlocked(page))
 				clear_page_mlock(compound_head(page));
 		}
+
 		if (!atomic_inc_and_test(&page->_mapcount))
 			goto out;
 	}
+
 	__mod_lruvec_page_state(page, NR_FILE_MAPPED, nr);
 out:
 	unlock_page_memcg(page);
 }
-
+/* 移除缓存页的mapping */
 static void page_remove_file_rmap(struct page *page, bool compound)
 {
 	int i, nr = 1;
 
 	VM_BUG_ON_PAGE(compound && !PageHead(page), page);
+	
 	lock_page_memcg(page);
 
 	/* Hugepages are not counted in NR_FILE_MAPPED for now. */
 	if (unlikely(PageHuge(page))) {
+		/* 如果是大页 */
 		/* hugetlb pages are always mapped with pmds */
 		atomic_dec(compound_mapcount_ptr(page));
 		goto out;
@@ -1291,6 +1305,7 @@ static void page_remove_file_rmap(struct page *page, bool compound)
 			__dec_node_page_state(page, NR_FILE_PMDMAPPED);
 	} else {
 		if (!atomic_add_negative(-1, &page->_mapcount))
+		/* 页面还有人引用 */
 			goto out;
 	}
 
@@ -1346,6 +1361,7 @@ static void page_remove_anon_compound_rmap(struct page *page)
 }
 
 /**
+2024年7月27日13:40:30
  * page_remove_rmap - take down pte mapping from a page
  * @page:	page to remove mapping from
  * @compound:	uncharge the page as compound or small page
@@ -1355,9 +1371,11 @@ static void page_remove_anon_compound_rmap(struct page *page)
 void page_remove_rmap(struct page *page, bool compound)
 {
 	if (!PageAnon(page))
+	/* todo，file rmap的路径 */
 		return page_remove_file_rmap(page, compound);
 
 	if (compound)
+	/* 复合页的路径 */
 		return page_remove_anon_compound_rmap(page);
 
 	/* page still mapped by someone else? */
@@ -1370,14 +1388,19 @@ void page_remove_rmap(struct page *page, bool compound)
 	 * pte lock(a spinlock) is held, which implies preemption disabled.
 	 */
 	__dec_node_page_state(page, NR_ANON_MAPPED);
-
+	/*  */
 	if (unlikely(PageMlocked(page)))
+	/*  解锁
+		更新统计信息
+		移出lru */
 		clear_page_mlock(page);
 
 	if (PageTransCompound(page))
 		deferred_split_huge_page(compound_head(page));
 
 	/*
+	这里为什么不移除mapping呢？：
+	如下：
 	 * It would be tidy to reset the PageAnon mapping here,
 	 * but that might overwrite a racing page_add_anon_rmap
 	 * which increments mapcount after us but sets mapping

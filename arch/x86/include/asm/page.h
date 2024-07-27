@@ -27,7 +27,7 @@ static inline void clear_user_page(void *page, unsigned long vaddr,
 {
 	clear_page(page);
 }
-
+/*  */
 static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 				  struct page *topage)
 {

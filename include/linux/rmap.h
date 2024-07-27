@@ -162,7 +162,8 @@ int anon_vma_fork(struct vm_area_struct *, struct vm_area_struct *);
 /* 2024年7月1日23:24:49
 检查vma是否初始化了rmap
 这个函数完成的工作就是为进程地址空间中的VMA准备struct anon_vma结构。
-anon_vma_prepare中负责创建AVC和AV并建立彼此的关系;真正将创建的page与av关联在__page_set_anon_map中完成。
+anon_vma_prepare中负责创建AVC和AV并建立彼此的关系;
+真正将创建的page与av关联在__page_set_anon_map中完成。
 这样的话父进程新建的page在自己的反向映射中的关系就算完成了。
  */
 static inline int anon_vma_prepare(struct vm_area_struct *vma)

@@ -207,7 +207,11 @@ static inline int pte_special(pte_t pte)
 /* Entries that were set to PROT_NONE are inverted */
 
 static inline u64 protnone_mask(u64 val);
-
+/* 
+获取的是pte指向的那个页面的pfn
+------------------------------
+pte_pfn 函数用于从给定的 PTE（页表项条目）中提取物理页框号（PFN）。
+它接受一个 PTE 类型的参数 pte，并通过按位操作提取物理页框号。 */
 static inline unsigned long pte_pfn(pte_t pte)
 {
 	phys_addr_t pfn = pte_val(pte);
@@ -337,12 +341,12 @@ static inline pte_t pte_mkexec(pte_t pte)
 {
 	return pte_clear_flags(pte, _PAGE_NX);
 }
-
+/*  */
 static inline pte_t pte_mkdirty(pte_t pte)
 {
 	return pte_set_flags(pte, _PAGE_DIRTY | _PAGE_SOFT_DIRTY);
 }
-
+/* 标记为刚刚访问，active */
 static inline pte_t pte_mkyoung(pte_t pte)
 {
 	return pte_set_flags(pte, _PAGE_ACCESSED);
@@ -372,7 +376,7 @@ static inline pte_t pte_clrglobal(pte_t pte)
 {
 	return pte_clear_flags(pte, _PAGE_GLOBAL);
 }
-
+/*  */
 static inline pte_t pte_mkspecial(pte_t pte)
 {
 	return pte_set_flags(pte, _PAGE_SPECIAL);
@@ -431,7 +435,7 @@ static inline pmd_t pmd_mkyoung(pmd_t pmd)
 {
 	return pmd_set_flags(pmd, _PAGE_ACCESSED);
 }
-
+/*  */
 static inline pmd_t pmd_mkwrite(pmd_t pmd)
 {
 	return pmd_set_flags(pmd, _PAGE_RW);
@@ -569,7 +573,10 @@ static inline pgprotval_t check_pgprot(pgprot_t pgprot)
 
 	return massaged_val;
 }
+/* pfn_pte 函数根据给定的物理页帧号左移12位将其转化为物理地址后，物理地址和页面属性参数 pgprot 设置一个 PTE（页表项条目）。
 
+该函数的主要目的是方便创建和初始化 PTE 数据结构，通常用于set_pte宏。通过调用 pfn_pte 函数，可以将页面号和页面保护属性转换为对应的 PTE 值，以便在页表中进行映射和管理。
+ */
 static inline pte_t pfn_pte(unsigned long page_nr, pgprot_t pgprot)
 {
 	phys_addr_t pfn = (phys_addr_t)page_nr << PAGE_SHIFT;
@@ -577,7 +584,7 @@ static inline pte_t pfn_pte(unsigned long page_nr, pgprot_t pgprot)
 	pfn &= PTE_PFN_MASK;
 	return __pte(pfn | check_pgprot(pgprot));
 }
-
+/*  */
 static inline pmd_t pfn_pmd(unsigned long page_nr, pgprot_t pgprot)
 {
 	phys_addr_t pfn = (phys_addr_t)page_nr << PAGE_SHIFT;
@@ -789,7 +796,7 @@ static inline int pmd_protnone(pmd_t pmd)
 		== _PAGE_PROTNONE;
 }
 #endif /* CONFIG_NUMA_BALANCING */
-
+/* 是否存在 */
 static inline int pmd_none(pmd_t pmd)
 {
 	/* Only check low word on 32-bit platforms, since it might be
@@ -797,7 +804,7 @@ static inline int pmd_none(pmd_t pmd)
 	unsigned long val = native_pmd_val(pmd);
 	return (val & ~_PAGE_KNL_ERRATUM_MASK) == 0;
 }
-
+/*  */
 static inline unsigned long pmd_page_vaddr(pmd_t pmd)
 {
 	return (unsigned long)__va(pmd_val(pmd) & pmd_pfn_mask(pmd));
@@ -831,6 +838,20 @@ static inline unsigned long pmd_index(unsigned long address)
 #define mk_pte(page, pgprot)   pfn_pte(page_to_pfn(page), (pgprot))
 
 /*
+>>> a=12313141131424
+>>> a=a>>12
+>>> a = a & 511
+>>> print(a)
+115
+>>> bin(a)
+'0b1110011'
+这个是返回的结果
+>>> bin(12313141131424)
+'0b10110011001011100000011001110011100010100000'
+                            +++++++123456789abc
+可以看到+上面是返回的结果，+号后面12位是page页内偏移
+返回的是在pte页表的偏移。
+
  * the pte page can be thought of an array like this: pte_t[PTRS_PER_PTE]
  *
  * this function returns the index of the entry in the pte page which would
@@ -840,8 +861,10 @@ static inline unsigned long pte_index(unsigned long address)
 {
 	return (address >> PAGE_SHIFT) & (PTRS_PER_PTE - 1);
 }
+/* *pmd指向？ 应该是指向pte页表的地址。
 
-static inline pte_t *pte_offset_kernel(pmd_t *pmd, unsigned long address)
+*/
+static inline pte_t * pte_offset_kernel(pmd_t *pmd, unsigned long address)
 {
 	return (pte_t *)pmd_page_vaddr(*pmd) + pte_index(address);
 }
@@ -1092,7 +1115,7 @@ static inline void native_set_pte_at(struct mm_struct *mm, unsigned long addr,
 {
 	native_set_pte(ptep, pte);
 }
-
+/*  */
 static inline void set_pmd_at(struct mm_struct *mm, unsigned long addr,
 			      pmd_t *pmdp, pmd_t pmd)
 {

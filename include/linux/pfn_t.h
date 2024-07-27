@@ -15,6 +15,7 @@
 #define PFN_FLAGS_MASK (((u64) (~PAGE_MASK)) << (BITS_PER_LONG_LONG - PAGE_SHIFT))
 #define PFN_SG_CHAIN (1ULL << (BITS_PER_LONG_LONG - 1))
 #define PFN_SG_LAST (1ULL << (BITS_PER_LONG_LONG - 2))
+/*  */
 #define PFN_DEV (1ULL << (BITS_PER_LONG_LONG - 3))
 #define PFN_MAP (1ULL << (BITS_PER_LONG_LONG - 4))
 #define PFN_SPECIAL (1ULL << (BITS_PER_LONG_LONG - 5))
@@ -48,7 +49,7 @@ static inline bool pfn_t_has_page(pfn_t pfn)
 {
 	return (pfn.val & PFN_MAP) == PFN_MAP || (pfn.val & PFN_DEV) == 0;
 }
-
+/*  */
 static inline unsigned long pfn_t_to_pfn(pfn_t pfn)
 {
 	return pfn.val & ~PFN_FLAGS_MASK;
@@ -70,7 +71,7 @@ static inline pfn_t page_to_pfn_t(struct page *page)
 {
 	return pfn_to_pfn_t(page_to_pfn(page));
 }
-
+/* 先转换为pfn，再判断 */
 static inline int pfn_t_valid(pfn_t pfn)
 {
 	return pfn_valid(pfn_t_to_pfn(pfn));
@@ -98,6 +99,7 @@ static inline pud_t pfn_t_pud(pfn_t pfn, pgprot_t pgprot)
 #endif
 
 #ifdef CONFIG_ARCH_HAS_PTE_DEVMAP
+/* 是否同时有PFN_DEV和PFN_MAP一起。 */
 static inline bool pfn_t_devmap(pfn_t pfn)
 {
 	const u64 flags = PFN_DEV|PFN_MAP;
@@ -118,6 +120,7 @@ pud_t pud_mkdevmap(pud_t pud);
 #endif /* CONFIG_ARCH_HAS_PTE_DEVMAP */
 
 #ifdef CONFIG_ARCH_HAS_PTE_SPECIAL
+/* 是不是special的pfn */
 static inline bool pfn_t_special(pfn_t pfn)
 {
 	return (pfn.val & PFN_SPECIAL) == PFN_SPECIAL;
