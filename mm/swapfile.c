@@ -114,7 +114,7 @@ static struct swap_info_struct *swap_type_to_swap_info(int type)
 	smp_rmb();	/* Pairs with smp_wmb in alloc_swap_info. */
 	return READ_ONCE(swap_info[type]);
 }
-
+/*  */
 static inline unsigned char swap_count(unsigned char ent)
 {
 	return ent & ~SWAP_HAS_CACHE;	/* may include COUNT_CONTINUED flag */
@@ -341,7 +341,7 @@ static inline void cluster_clear_huge(struct swap_cluster_info *info)
 {
 	info->flags &= ~CLUSTER_FLAG_HUGE;
 }
-
+/*  */
 static inline struct swap_cluster_info *lock_cluster(struct swap_info_struct *si,
 						     unsigned long offset)
 {
@@ -1260,6 +1260,7 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
  * the page is read from the swap device, the PTE is verified not
  * changed with the page table locked to check whether the swap device
  * has been swapoff or swapoff+swapon.
+
  */
 struct swap_info_struct *get_swap_device(swp_entry_t entry)
 {
@@ -3393,6 +3394,8 @@ void si_swapinfo(struct sysinfo *val)
 }
 
 /*
+2024年7月27日23:15:57
+确定swapentry有效，然后增加引用计数？不对，todo，逻辑有点复杂。
  * Verify that a swap entry is valid and increment its swap map count.
  *
  * Returns error code in following case.
@@ -3411,12 +3414,13 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 	unsigned char count;
 	unsigned char has_cache;
 	int err = -EINVAL;
-
+	/* 获取对应的si */
 	p = get_swap_device(entry);
 	if (!p)
 		goto out;
-
+	/* 在swap file里的索引位置 */
 	offset = swp_offset(entry);
+	/* 好像就和ssd有关系 */
 	ci = lock_cluster_or_swap_info(p, offset);
 
 	count = p->swap_map[offset];
@@ -3477,6 +3481,7 @@ void swap_shmem_alloc(swp_entry_t entry)
 }
 
 /*
+复制swap，其实就是增加引用计数？todo。
  * Increase reference count of swap entry by 1.
  * Returns 0 for success, or -ENOMEM if a swap_count_continuation is required
  * but could not be atomically allocated.  Returns 0, just as if it succeeded,
@@ -3506,7 +3511,8 @@ int swapcache_prepare(swp_entry_t entry)
 }
 /* 2024年07月03日12:33:29
 2024年7月14日17:50:39
-每个swp条目都对应一个si。 */
+每个swp条目都对应一个si。
+swp条目的值高6位决定了这个si在全局数组的索引 */
 struct swap_info_struct *swp_swap_info(swp_entry_t entry)
 {
 	return swap_type_to_swap_info(swp_type(entry));

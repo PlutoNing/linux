@@ -178,7 +178,7 @@ static inline int pud_young(pud_t pud)
 {
 	return pud_flags(pud) & _PAGE_ACCESSED;
 }
-
+/*  */
 static inline int pte_write(pte_t pte)
 {
 	return pte_flags(pte) & _PAGE_RW;
@@ -321,17 +321,17 @@ static inline pte_t pte_clear_flags(pte_t pte, pteval_t clear)
 
 	return native_make_pte(v & ~clear);
 }
-
+/* 使之不为dirty */
 static inline pte_t pte_mkclean(pte_t pte)
 {
 	return pte_clear_flags(pte, _PAGE_DIRTY);
 }
-
+/* 清除刚刚访问标记 */
 static inline pte_t pte_mkold(pte_t pte)
 {
 	return pte_clear_flags(pte, _PAGE_ACCESSED);
 }
-
+/*  */
 static inline pte_t pte_wrprotect(pte_t pte)
 {
 	return pte_clear_flags(pte, _PAGE_RW);
@@ -351,7 +351,7 @@ static inline pte_t pte_mkyoung(pte_t pte)
 {
 	return pte_set_flags(pte, _PAGE_ACCESSED);
 }
-
+/*  */
 static inline pte_t pte_mkwrite(pte_t pte)
 {
 	return pte_set_flags(pte, _PAGE_RW);
@@ -376,12 +376,12 @@ static inline pte_t pte_clrglobal(pte_t pte)
 {
 	return pte_clear_flags(pte, _PAGE_GLOBAL);
 }
-/*  */
+/* 就是给pte加上specil吗 */
 static inline pte_t pte_mkspecial(pte_t pte)
 {
 	return pte_set_flags(pte, _PAGE_SPECIAL);
 }
-
+/*  */
 static inline pte_t pte_mkdevmap(pte_t pte)
 {
 	return pte_set_flags(pte, _PAGE_SPECIAL|_PAGE_DEVMAP);
@@ -573,9 +573,10 @@ static inline pgprotval_t check_pgprot(pgprot_t pgprot)
 
 	return massaged_val;
 }
-/* pfn_pte 函数根据给定的物理页帧号左移12位将其转化为物理地址后，物理地址和页面属性参数 pgprot 设置一个 PTE（页表项条目）。
-
-该函数的主要目的是方便创建和初始化 PTE 数据结构，通常用于set_pte宏。通过调用 pfn_pte 函数，可以将页面号和页面保护属性转换为对应的 PTE 值，以便在页表中进行映射和管理。
+/* pfn_pte 函数根据给定的物理页帧号左移12位将其转化为物理地址后，
+物理地址和页面属性参数 pgprot 设置一个 PTE（页表项条目）。
+该函数的主要目的是方便创建和初始化 PTE 数据结构，通常用于set_pte宏。
+通过调用 pfn_pte 函数，可以将页面号和页面保护属性转换为对应的 PTE 值，以便在页表中进行映射和管理。
  */
 static inline pte_t pfn_pte(unsigned long page_nr, pgprot_t pgprot)
 {
@@ -1177,6 +1178,7 @@ static inline pte_t ptep_get_and_clear_full(struct mm_struct *mm,
 }
 
 #define __HAVE_ARCH_PTEP_SET_WRPROTECT
+/* 清除可写标记位 */
 static inline void ptep_set_wrprotect(struct mm_struct *mm,
 				      unsigned long addr, pte_t *ptep)
 {

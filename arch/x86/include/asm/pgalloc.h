@@ -59,11 +59,12 @@ static inline void __pte_free_tlb(struct mmu_gather *tlb, struct page *pte,
 {
 	___pte_free_tlb(tlb, pte);
 }
-
+/* 2024年7月27日23:53:32 */
 static inline void pmd_populate_kernel(struct mm_struct *mm,
 				       pmd_t *pmd, pte_t *pte)
 {
 	paravirt_alloc_pte(mm, __pa(pte) >> PAGE_SHIFT);
+	
 	set_pmd(pmd, __pmd(__pa(pte) | _PAGE_TABLE));
 }
 

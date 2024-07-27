@@ -965,6 +965,8 @@ static int reserve_pfn_range(u64 paddr, unsigned long size, pgprot_t *vma_prot,
 
 /*
 释放物理页面？
+2024年7月27日22:42:43
+似乎物理页面等等的管理是通过一个全局的红黑树管理的？
  * Internal interface to free a range of physical memory.
  * Frees non RAM regions only.
  */
@@ -974,6 +976,7 @@ static void free_pfn_range(u64 paddr, unsigned long size)
 
 	is_ram = pat_pagerange_is_ram(paddr, paddr + size);
 	if (is_ram == 0)
+	/* 不是ram的情况 */
 		free_memtype(paddr, paddr + size);
 }
 
@@ -1057,7 +1060,7 @@ int track_pfn_remap(struct vm_area_struct *vma, pgprot_t *prot,
 
 	return 0;
 }
-
+/*  */
 void track_pfn_insert(struct vm_area_struct *vma, pgprot_t *prot, pfn_t pfn)
 {
 	enum page_cache_mode pcm;
@@ -1072,6 +1075,7 @@ void track_pfn_insert(struct vm_area_struct *vma, pgprot_t *prot, pfn_t pfn)
 }
 
 /*
+untrack pfn是什么含义呢。
  * untrack_pfn is called while unmapping a pfnmap for a region.
  * untrack can be called for a specific region indicated by pfn and size or
  * can be for the entire vma (in which case pfn, size are zero).
@@ -1088,6 +1092,9 @@ void untrack_pfn(struct vm_area_struct *vma, unsigned long pfn,
 	/* free the chunk starting from pfn or the whole chunk */
 	paddr = (resource_size_t)pfn << PAGE_SHIFT;
 	if (!paddr && !size) {
+		/* paddr怎么可能还为空呢？
+		
+		2024年7月27日22:44:09好像没指定pfn和size，就处理vma的全部页面？ */
 		if (follow_phys(vma, vma->vm_start, 0, &prot, &paddr)) {
 			WARN_ON_ONCE(1);
 			return;

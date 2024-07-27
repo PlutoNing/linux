@@ -885,7 +885,7 @@ void free_compound_page(struct page *page);
 
 #ifdef CONFIG_MMU
 /*
-
+什么意思呢？
  * Do pte_mkwrite, but only if the vma says VM_WRITE.  We do this when
  * servicing faults for write access.  In the normal case, do always want
  * pte_mkwrite.  But get_user_pages can cause write faults for mappings
@@ -1828,10 +1828,16 @@ int vma_wants_writenotify(struct vm_area_struct *vma, pgprot_t vm_page_prot);
 
 extern pte_t *__get_locked_pte(struct mm_struct *mm, unsigned long addr,
 			       spinlock_t **ptl);
+/*  */
 static inline pte_t *get_locked_pte(struct mm_struct *mm, unsigned long addr,
 				    spinlock_t **ptl)
 {
 	pte_t *ptep;
+	/* 
+	// Expands to
+(ptep = __get_locked_pte(mm, addr, ptl))
+这是什么锁？
+ */
 	__cond_lock(*ptl, ptep = __get_locked_pte(mm, addr, ptl));
 	return ptep;
 }
@@ -2075,7 +2081,7 @@ todo
 
 #define pte_alloc_map(mm, pmd, address)			\
 	(pte_alloc(mm, pmd) ? NULL : pte_offset_map(pmd, address))
-
+/*  */
 #define pte_alloc_map_lock(mm, pmd, address, ptlp)	\
 	(pte_alloc(mm, pmd) ?			\
 		 NULL : pte_offset_map_lock(mm, pmd, address, ptlp))

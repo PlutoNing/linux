@@ -204,7 +204,7 @@ void hugepage_add_anon_rmap(struct page *, struct vm_area_struct *,
 			    unsigned long);
 void hugepage_add_new_anon_rmap(struct page *, struct vm_area_struct *,
 				unsigned long);
-
+/* 增加引用计数就是dup了rmap吗？ */
 static inline void page_dup_rmap(struct page *page, bool compound)
 {
 	atomic_inc(compound ? compound_mapcount_ptr(page) : &page->_mapcount);

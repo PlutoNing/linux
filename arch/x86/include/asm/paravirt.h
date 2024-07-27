@@ -358,7 +358,7 @@ static inline void paravirt_release_p4d(unsigned long pfn)
 {
 	PVOP_VCALL1(mmu.release_p4d, pfn);
 }
-
+/*  */
 static inline pte_t __pte(pteval_t val)
 {
 	pteval_t ret;

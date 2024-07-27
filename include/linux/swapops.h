@@ -36,15 +36,19 @@ static inline swp_entry_t swp_entry(unsigned long type, pgoff_t offset)
 
 /*
 2024年7月14日17:50:56
+entry.val >> （64 -1 -5 ）
+其实就是高6位决定索引位置，
  * Extract the `type' field from a swp_entry_t.  The swp_entry_t is in
  * arch-independent format
  */
 static inline unsigned swp_type(swp_entry_t entry)
 {
+	/* entry.val >> （64 -1 -5 ） */
 	return (entry.val >> SWP_TYPE_SHIFT);
 }
 
 /*2024年07月03日12:35:08
+在swap file里面的索引位置
  * Extract the `offset' field from a swp_entry_t.  The swp_entry_t is in
  * arch-independent format
  */

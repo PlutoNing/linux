@@ -8,6 +8,7 @@
 #define GFP_PGTABLE_USER	(GFP_PGTABLE_KERNEL | __GFP_ACCOUNT)
 
 /**
+2024年7月27日23:51:59
  * __pte_alloc_one_kernel - allocate a page for PTE-level kernel page table
  * @mm: the mm_struct of the current context
  *
@@ -23,7 +24,9 @@ static inline pte_t *__pte_alloc_one_kernel(struct mm_struct *mm)
 
 #ifndef __HAVE_ARCH_PTE_ALLOC_ONE_KERNEL
 /**
- * pte_alloc_one_kernel - allocate a page for PTE-level kernel page table
+2024年7月27日23:47:05
+ * pte_alloc_one_kernel - 
+ allocate a page for PTE-level kernel page table
  * @mm: the mm_struct of the current context
  *
  * Return: pointer to the allocated memory or %NULL on error

@@ -78,6 +78,7 @@ static inline int pfn_t_valid(pfn_t pfn)
 }
 
 #ifdef CONFIG_MMU
+/*  */
 static inline pte_t pfn_t_pte(pfn_t pfn, pgprot_t pgprot)
 {
 	return pfn_pte(pfn_t_to_pfn(pfn), pgprot);

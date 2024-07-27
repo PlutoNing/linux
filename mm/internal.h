@@ -271,7 +271,7 @@ static inline unsigned int page_order(struct page *page)
  */
 #define page_order_unsafe(page)		READ_ONCE(page_private(page))
 /* 
-只可写，不共享，就是cow的
+可写的，但是不共享，就是只能cow了。
  */
 static inline bool is_cow_mapping(vm_flags_t flags)
 {

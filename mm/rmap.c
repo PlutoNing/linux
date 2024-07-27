@@ -1226,6 +1226,9 @@ void page_add_new_anon_rmap(struct page *page,
 /**
 2024年7月27日01:14:42
 pte mapping和文件页。
+todo
+目前理解就是主要就是增加了page->_mapcount的引用计数，代表又有一个页表项指向了这个页。
+
  * page_add_file_rmap - add pte mapping to a file page
  * @page: the page to add the mapping to
  * @compound: charge the page as compound or small page

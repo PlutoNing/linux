@@ -20,7 +20,7 @@ EXPORT_SYMBOL(physical_mask);
 #endif
 
 gfp_t __userpte_alloc_gfp = GFP_PGTABLE_USER | PGTABLE_HIGHMEM;
-
+/* 分配一个pte， */
 pgtable_t pte_alloc_one(struct mm_struct *mm)
 {
 	return __pte_alloc_one(mm, __userpte_alloc_gfp);

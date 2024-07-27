@@ -760,7 +760,7 @@ PAGEFLAG_FALSE(DoubleMap)
 
 #define PageType(page, flag)						\
 	((page->page_type & (PAGE_TYPE_BASE | flag)) == PAGE_TYPE_BASE)
-
+/* 什么type？2024年7月27日21:51:54 */
 static inline int page_has_type(struct page *page)
 {
 	return (int)page->page_type < PAGE_MAPCOUNT_RESERVE;

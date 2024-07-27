@@ -192,6 +192,7 @@ enum {
 #define SWAP_MAP_SHMEM	0xbf	/* Owned by shmem/tmpfs, in first swap_map */
 
 /*
+
  * We use this to track usage of a cluster. A cluster is a block of swap disk
  * space with SWAPFILE_CLUSTER pages long and naturally aligns in disk. All
  * free clusters are organized into a list. We fetch an entry from the list to
@@ -241,7 +242,7 @@ struct swap_info_struct {
 	struct plist_node list;		/* entry in swap_active_head ，指向该交换区在 swap_avail_heads 链表中的位置*/
 	signed char	type;		/* strange name for an index ，*/
 	unsigned int	max;		/* extent of the swap_map */
-	unsigned char *swap_map;	/* vmalloc'ed array of usage counts ，*/
+	unsigned char *swap_map;	/* vmalloc'ed array of usage counts ，表示对应offset的entry引用数量*/
 	struct swap_cluster_info *cluster_info; /* cluster info. Only for SSD ，*/
 	struct swap_cluster_list free_clusters; /* free clusters list */
 	unsigned int lowest_bit;	/* index of first free in swap_map */

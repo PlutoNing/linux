@@ -1502,18 +1502,27 @@ static inline struct mem_section *__pfn_to_section(unsigned long pfn)
 }
 
 extern unsigned long __highest_present_section_nr;
-
+/* 取模（2的15次方好像是），然后除以section容量
+得到idx */
 static inline int subsection_map_index(unsigned long pfn)
 {
+
 	return (pfn & ~(PAGE_SECTION_MASK)) / PAGES_PER_SUBSECTION;
 }
 
 #ifdef CONFIG_SPARSEMEM_VMEMMAP
-/*  */
+/* 这个东西就是把pfn在一个全局的
+   位图里面都对应一个bit位。
+   应该是某个地方初始化了这个全局位图，根据什么要求设置了每个bit位的值
+   来决定相应的pfn是不是合法
+   后续只需要根据pfn，做一些取模，映射什么的，找到这个bit位
+   判断此pfn是否合法 */
 static inline int pfn_section_valid(struct mem_section *ms, unsigned long pfn)
 {
+	/* 就是取模后除以section容量，得到sec idx */
 	int idx = subsection_map_index(pfn);
 
+	/* 测试所属的ms里面的位图，自己对应的bit位 */
 	return test_bit(idx, ms->usage->subsection_map);
 }
 #else
@@ -1525,7 +1534,7 @@ static inline int pfn_section_valid(struct mem_section *ms, unsigned long pfn)
 
 #ifndef CONFIG_HAVE_ARCH_PFN_VALID
 /* pfn也有不合法的吗
-
+2024年7月27日21:44:28
  */
 static inline int pfn_valid(unsigned long pfn)
 {

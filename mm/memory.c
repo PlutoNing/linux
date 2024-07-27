@@ -38,7 +38,7 @@
  *
  * Aug/Sep 2004 Changed to four level page tables (Andi Kleen)
  */
-
+/* 2024年7月28日01:13:59 */
 #include <linux/kernel_stat.h>
 #include <linux/mm.h>
 #include <linux/sched/mm.h>
@@ -131,6 +131,7 @@ EXPORT_SYMBOL(zero_pfn);
 unsigned long highest_memmap_pfn __read_mostly;
 
 /*
+2024年7月28日01:13:36
  * CONFIG_MMU architectures set up ZERO_PAGE in their paging_init()
  */
 static int __init init_zero_pfn(void)
@@ -142,7 +143,7 @@ core_initcall(init_zero_pfn);
 
 
 #if defined(SPLIT_RSS_COUNTING)
-
+/* 2024年7月28日01:13:20 */
 void sync_mm_rss(struct mm_struct *mm)
 {
 	int i;
@@ -189,6 +190,8 @@ static void check_sync_rss_stat(struct task_struct *task)
 #endif /* SPLIT_RSS_COUNTING */
 
 /*
+2024年7月28日01:09:09
+
  * Note: this doesn't free the actual pages themselves. That
  * has been handled earlier when unmapping all the memory regions.
  */
@@ -200,7 +203,7 @@ static void free_pte_range(struct mmu_gather *tlb, pmd_t *pmd,
 	pte_free_tlb(tlb, token, addr);
 	mm_dec_nr_ptes(tlb->mm);
 }
-
+/*  */
 static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -211,10 +214,12 @@ static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 
 	start = addr;
 	pmd = pmd_offset(pud, addr);
+
 	do {
 		next = pmd_addr_end(addr, end);
 		if (pmd_none_or_clear_bad(pmd))
 			continue;
+		/*  */
 		free_pte_range(tlb, pmd, addr);
 	} while (pmd++, addr = next, addr != end);
 
@@ -234,7 +239,7 @@ static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 	pmd_free_tlb(tlb, pmd, start);
 	mm_dec_nr_pmds(tlb->mm);
 }
-
+/*  */
 static inline void free_pud_range(struct mmu_gather *tlb, p4d_t *p4d,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -268,7 +273,7 @@ static inline void free_pud_range(struct mmu_gather *tlb, p4d_t *p4d,
 	pud_free_tlb(tlb, pud, start);
 	mm_dec_nr_puds(tlb->mm);
 }
-
+/*  */
 static inline void free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -382,7 +387,7 @@ void free_pgd_range(struct mmu_gather *tlb,
 	} while (pgd++, addr = next, addr != end);
 }
 /* 2024年7月19日00:16:48
-在解除映射之后，这个函数释放页表
+在解除映射之后，这个函数释放页表。
  */
 void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		unsigned long floor, unsigned long ceiling)
@@ -414,14 +419,14 @@ void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 				unlink_anon_vmas(vma);
 				unlink_file_vma(vma);
 			}
-
+			/* 释放页表？ */
 			free_pgd_range(tlb, addr, vma->vm_end,
 				floor, next ? next->vm_start : ceiling);
 		}
 		vma = next;
 	}
 }
-
+/*  */
 int __pte_alloc(struct mm_struct *mm, pmd_t *pmd)
 {
 	spinlock_t *ptl;
@@ -456,8 +461,10 @@ int __pte_alloc(struct mm_struct *mm, pmd_t *pmd)
 	return 0;
 }
 
+/* 2024年7月28日00:07:52 */
 int __pte_alloc_kernel(pmd_t *pmd)
 {
+	/*  */
 	pte_t *new = pte_alloc_one_kernel(&init_mm);
 	if (!new)
 		return -ENOMEM;
@@ -466,20 +473,23 @@ int __pte_alloc_kernel(pmd_t *pmd)
 
 	spin_lock(&init_mm.page_table_lock);
 	if (likely(pmd_none(*pmd))) {	/* Has another populated it ? */
+		/* 填充这个pte到pmd */
 		pmd_populate_kernel(&init_mm, pmd, new);
 		new = NULL;
 	}
 	spin_unlock(&init_mm.page_table_lock);
+
 	if (new)
 		pte_free_kernel(&init_mm, new);
 	return 0;
 }
 
+/*  */
 static inline void init_rss_vec(int *rss)
 {
 	memset(rss, 0, sizeof(int) * NR_MM_COUNTERS);
 }
-
+/*  */
 static inline void add_mm_rss_vec(struct mm_struct *mm, int *rss)
 {
 	int i;
@@ -595,7 +605,8 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
 2024年7月2日22:54:52
 vm_normal_page根据pte来返回normal paging页面的struct page结构。
 
-一些特殊映射的页面是不会返回struct page结构的，这些页面不希望被参与到内存管理的一些活动中，如页面回收、页迁移和KSM等。
+一些特殊映射的页面是不会返回struct page结构的，这些页面不希望被参与
+到内存管理的一些活动中，如页面回收、页迁移和KSM等。
 
 
 
@@ -699,6 +710,7 @@ out:
 #endif
 
 /*
+在mm之间拷贝pte。
  * copy one vm_area from one task to the other. Assumes the page tables
  * already present in the new task to be cleared in the whole range
  * covered by this vma.
@@ -715,9 +727,12 @@ copy_one_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 
 	/* pte contains position in swap or file, so copy. */
 	if (unlikely(!pte_present(pte))) {
+		/* src的pte是空的情况 */
 		swp_entry_t entry = pte_to_swp_entry(pte);
-
+		/* 先找swap */
 		if (likely(!non_swap_entry(entry))) {
+			/* 存在 */
+
 			if (swap_duplicate(entry) < 0)
 				return entry.val;
 
@@ -778,7 +793,7 @@ copy_one_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 			}
 		}
 		goto out_set_pte;
-	}
+	}/* src pte不存在的情况 */
 
 	/*
 	 * If it's a COW mapping, write protect it both
@@ -794,23 +809,31 @@ copy_one_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	 * the child
 	 */
 	if (vm_flags & VM_SHARED)
+	/* 使其不dirty */
 		pte = pte_mkclean(pte);
+	/* 也清除刚刚访问的标记位 */
 	pte = pte_mkold(pte);
+	/* 楼上这些清除的考虑是什么呢 */
 
+	/* 找到src pte的页面，开始复制 */
 	page = vm_normal_page(vma, addr, pte);
 	if (page) {
+		/* 找到了src page */
 		get_page(page);
 		page_dup_rmap(page, false);
 		rss[mm_counter(page)]++;
 	} else if (pte_devmap(pte)) {
+		/* 没找到page，可能是特殊映射 */
 		page = pte_page(pte);
 	}
 
+
+/* 出口这里设置dst pte的映射。 */
 out_set_pte:
 	set_pte_at(dst_mm, addr, dst_pte, pte);
 	return 0;
 }
-
+/* 拷贝范围内的pte */
 static int copy_pte_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		   pmd_t *dst_pmd, pmd_t *src_pmd, struct vm_area_struct *vma,
 		   unsigned long addr, unsigned long end)
@@ -824,17 +847,18 @@ static int copy_pte_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 
 again:
 	init_rss_vec(rss);
-
+	/* 找到目标pte */
 	dst_pte = pte_alloc_map_lock(dst_mm, dst_pmd, addr, &dst_ptl);
 	if (!dst_pte)
 		return -ENOMEM;
+	/* 这里不加锁吗 */
 	src_pte = pte_offset_map(src_pmd, addr);
 	src_ptl = pte_lockptr(src_mm, src_pmd);
 	spin_lock_nested(src_ptl, SINGLE_DEPTH_NESTING);
 	orig_src_pte = src_pte;
 	orig_dst_pte = dst_pte;
 	arch_enter_lazy_mmu_mode();
-
+	/* 两边pte准备好了 */
 	do {
 		/*
 		 * We are holding two locks at this point - either of them
@@ -846,10 +870,13 @@ again:
 			    spin_needbreak(src_ptl) || spin_needbreak(dst_ptl))
 				break;
 		}
+
 		if (pte_none(*src_pte)) {
+			/* src pte没有page映射。 那就跳过去，处理下一个pte*/
 			progress++;
 			continue;
 		}
+		/* 这里开始拷贝pte */
 		entry.val = copy_one_pte(dst_mm, src_mm, dst_pte, src_pte,
 							vma, addr, rss);
 		if (entry.val)
@@ -873,7 +900,7 @@ again:
 		goto again;
 	return 0;
 }
-
+/* mm之间拷贝页面，逐级的找各级页表进行处理拷贝 */
 static inline int copy_pmd_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		pud_t *dst_pud, pud_t *src_pud, struct vm_area_struct *vma,
 		unsigned long addr, unsigned long end)
@@ -885,6 +912,7 @@ static inline int copy_pmd_range(struct mm_struct *dst_mm, struct mm_struct *src
 	if (!dst_pmd)
 		return -ENOMEM;
 	src_pmd = pmd_offset(src_pud, addr);
+	
 	do {
 		next = pmd_addr_end(addr, end);
 		if (is_swap_pmd(*src_pmd) || pmd_trans_huge(*src_pmd)
@@ -899,15 +927,17 @@ static inline int copy_pmd_range(struct mm_struct *dst_mm, struct mm_struct *src
 				continue;
 			/* fall through */
 		}
+
 		if (pmd_none_or_clear_bad(src_pmd))
 			continue;
+		/* 拷贝pte */
 		if (copy_pte_range(dst_mm, src_mm, dst_pmd, src_pmd,
 						vma, addr, next))
 			return -ENOMEM;
 	} while (dst_pmd++, src_pmd++, addr = next, addr != end);
 	return 0;
 }
-
+/* 看来两个mm之间拷贝页面，也是逐级的找各级页表进行处理 */
 static inline int copy_pud_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		p4d_t *dst_p4d, p4d_t *src_p4d, struct vm_area_struct *vma,
 		unsigned long addr, unsigned long end)
@@ -919,8 +949,10 @@ static inline int copy_pud_range(struct mm_struct *dst_mm, struct mm_struct *src
 	if (!dst_pud)
 		return -ENOMEM;
 	src_pud = pud_offset(src_p4d, addr);
+	/* 找到了双方的pud */
 	do {
 		next = pud_addr_end(addr, end);
+		/* 是pud开始支持大页的吗 */
 		if (pud_trans_huge(*src_pud) || pud_devmap(*src_pud)) {
 			int err;
 
@@ -941,7 +973,8 @@ static inline int copy_pud_range(struct mm_struct *dst_mm, struct mm_struct *src
 	} while (dst_pud++, src_pud++, addr = next, addr != end);
 	return 0;
 }
-
+/* 两个mm之间拷贝页面，也是逐级的找各级页表
+	进行处理 */
 static inline int copy_p4d_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		pgd_t *dst_pgd, pgd_t *src_pgd, struct vm_area_struct *vma,
 		unsigned long addr, unsigned long end)
@@ -963,7 +996,7 @@ static inline int copy_p4d_range(struct mm_struct *dst_mm, struct mm_struct *src
 	} while (dst_p4d++, src_p4d++, addr = next, addr != end);
 	return 0;
 }
-
+/*  */
 int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		struct vm_area_struct *vma)
 {
@@ -980,15 +1013,18 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 	 * Fork becomes much lighter when there are big shared or private
 	 * readonly mappings. The tradeoff is that copy_page_range is more
 	 * efficient than faulting.
+	 如果不是这三个其中之一，并且没有av。
 	 */
 	if (!(vma->vm_flags & (VM_HUGETLB | VM_PFNMAP | VM_MIXEDMAP)) &&
 			!vma->anon_vma)
 		return 0;
 
+	/* 大页路径 */
 	if (is_vm_hugetlb_page(vma))
 		return copy_hugetlb_page_range(dst_mm, src_mm, vma);
 
 	if (unlikely(vma->vm_flags & VM_PFNMAP)) {
+		/* pfn的map的话，就走pfnmap的路径，可能是直接拷贝复制物理页面？ */
 		/*
 		 * We do not free on error cases below as remove_vma
 		 * gets called on error from higher level routine
@@ -1012,15 +1048,20 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		mmu_notifier_invalidate_range_start(&range);
 	}
 
+	/* 找到双方的pgd */
 	ret = 0;
 	dst_pgd = pgd_offset(dst_mm, addr);
 	src_pgd = pgd_offset(src_mm, addr);
+
+	/* 看来两个mm之间拷贝页面，也是逐级的找各级页表
+	进行处理 */
 	do {
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(src_pgd))
 			continue;
 		if (unlikely(copy_p4d_range(dst_mm, src_mm, dst_pgd, src_pgd,
 					    vma, addr, next))) {
+							/* 出错了 */
 			ret = -ENOMEM;
 			break;
 		}
@@ -1030,10 +1071,15 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		mmu_notifier_invalidate_range_end(&range);
 	return ret;
 }
+
+
 /* 2024年07月26日15:32:35
 该函数的作用是将在pmd中从虚拟地址address开始，长度为size的内存块通过循环调用pte_clear将其页表项清零，
 调用free_pte将所含空间中的物理内存或交换空间中的虚存页释放掉。
-在释放之前，必须检查从address开始长度为size的内存块有无越过PMD_SIZE.(溢出则可使指针逃出0～1023的区间)。
+在释放之前，必须检查从address开始长度为size的内存块有无越过PMD_SIZE.
+(溢出则可使指针逃出0～1023的区间)。
+2024年7月27日22:48:20
+太长不看23333，todo。
  */
 static unsigned long zap_pte_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pmd_t *pmd,
@@ -1182,6 +1228,7 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 
 	pmd = pmd_offset(pud, addr);
 	do {
+
 		next = pmd_addr_end(addr, end);
 		if (is_swap_pmd(*pmd) || pmd_trans_huge(*pmd) || pmd_devmap(*pmd)) {
 			if (next - addr != HPAGE_PMD_SIZE)
@@ -1206,7 +1253,8 @@ next:
 
 	return addr;
 }
-
+/* zap=清空
+解除范围内的映射 */
 static inline unsigned long zap_pud_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, p4d_t *p4d,
 				unsigned long addr, unsigned long end,
@@ -1236,6 +1284,7 @@ next:
 	return addr;
 }
 /* 2024年7月18日23:27:54
+zap就是清空的意思
  */
 static inline unsigned long zap_p4d_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pgd_t *pgd,
@@ -1258,7 +1307,7 @@ static inline unsigned long zap_p4d_range(struct mmu_gather *tlb,
 
 /* 2024年7月18日23:24:06
 unmap此vma的范围内映射
-就是逐级处理此进程的页表
+就是逐级处理此进程的页表，一直找到pte，然后处理
 
  */
 void unmap_page_range(struct mmu_gather *tlb,
@@ -1307,7 +1356,8 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 		uprobe_munmap(vma, start, end);
 
 
-	/* todo */
+	/* vma是pfn映射的话，这里多一下特殊处理，归还这些pfn页面（这里
+	归还不是准确的说法，涉及那个memtype红黑树）*/
 	if (unlikely(vma->vm_flags & VM_PFNMAP))
 		untrack_pfn(vma, 0, 0);
 
@@ -1397,6 +1447,7 @@ void zap_page_range(struct vm_area_struct *vma, unsigned long start,
 	tlb_gather_mmu(&tlb, vma->vm_mm, start, range.end);
 	update_hiwater_rss(vma->vm_mm);
 	mmu_notifier_invalidate_range_start(&range);
+	/* 一直解除映射到range的end。 */
 	for ( ; vma && vma->vm_start < range.end; vma = vma->vm_next)
 		unmap_single_vma(&tlb, vma, start, range.end, NULL);
 	mmu_notifier_invalidate_range_end(&range);
@@ -1433,6 +1484,7 @@ static void zap_page_range_single(struct vm_area_struct *vma, unsigned long addr
 }
 
 /**
+移除vma的全部pte
  * zap_vma_ptes - remove ptes mapping the vma
  * @vma: vm_area_struct holding ptes to be zapped
  * @address: starting address of pages to zap
@@ -1453,7 +1505,8 @@ void zap_vma_ptes(struct vm_area_struct *vma, unsigned long address,
 	zap_page_range_single(vma, address, size, NULL);
 }
 EXPORT_SYMBOL_GPL(zap_vma_ptes);
-
+/* 从mm里面获取addr的pte。
+ */
 pte_t *__get_locked_pte(struct mm_struct *mm, unsigned long addr,
 			spinlock_t **ptl)
 {
@@ -1474,10 +1527,14 @@ pte_t *__get_locked_pte(struct mm_struct *mm, unsigned long addr,
 		return NULL;
 
 	VM_BUG_ON(pmd_trans_huge(*pmd));
+	/* 一直找到pte之后 ，获取此pmd页表上面，指向包含addr地址页面的*pte。
+	这句话有点乱。*/
+
 	return pte_alloc_map_lock(mm, pmd, addr, ptl);
 }
 
 /*
+把page映射到vma的addr
  * This is the old fallback for page remapping.
  *
  * For historical reasons, it only allows reserved pages. Only
@@ -1495,19 +1552,27 @@ static int insert_page(struct vm_area_struct *vma, unsigned long addr,
 	retval = -EINVAL;
 	if (PageAnon(page) || PageSlab(page) || page_has_type(page))
 		goto out;
+
 	retval = -ENOMEM;
+
 	flush_dcache_page(page);
+	/* 获得对应的pte */
 	pte = get_locked_pte(mm, addr, &ptl);
+	
 	if (!pte)
 		goto out;
 	retval = -EBUSY;
 	if (!pte_none(*pte))
+	/* 此pte已经有映射了 */
 		goto out_unlock;
 
-	/* Ok, finally just insert the thing.. */
+	/* Ok, finally just insert the thing..
+	可以开始把page映射到这个pte了 */
 	get_page(page);
 	inc_mm_counter_fast(mm, mm_counter_file(page));
+	/* 设置page的mapping，rmap，其实就是指向vma的av */
 	page_add_file_rmap(page, false);
+	/* 设置pte的值了 */
 	set_pte_at(mm, addr, pte, mk_pte(page, prot));
 
 	retval = 0;
@@ -1518,6 +1583,7 @@ out:
 }
 
 /**
+插入page到vma的addr
  * vm_insert_page - insert single page into user vma
  * @vma: user vma to map to
  * @addr: target user address of this page
@@ -1554,15 +1620,19 @@ int vm_insert_page(struct vm_area_struct *vma, unsigned long addr,
 	if (!page_count(page))
 		return -EINVAL;
 	if (!(vma->vm_flags & VM_MIXEDMAP)) {
+		/* 不支持混合映射 */
 		BUG_ON(down_read_trylock(&vma->vm_mm->mmap_sem));
 		BUG_ON(vma->vm_flags & VM_PFNMAP);
+		/* 直接改变vma为支持 */
 		vma->vm_flags |= VM_MIXEDMAP;
 	}
+
 	return insert_page(vma, addr, page, vma->vm_page_prot);
 }
 EXPORT_SYMBOL(vm_insert_page);
 
 /*
+映射多个内核page到vma
  * __vm_map_pages - maps range of kernel pages into user vma
  * @vma: user vma to map to
  * @pages: pointer to array of source kernel pages
@@ -1589,6 +1659,8 @@ static int __vm_map_pages(struct vm_area_struct *vma, struct page **pages,
 		return -ENXIO;
 
 	for (i = 0; i < count; i++) {
+		/* 就是一个一个映射 
+		这里offset含义todo，2024年7月27日22:33:52*/
 		ret = vm_insert_page(vma, uaddr, pages[offset + i]);
 		if (ret < 0)
 			return ret;
@@ -1599,6 +1671,7 @@ static int __vm_map_pages(struct vm_area_struct *vma, struct page **pages,
 }
 
 /**
+2024年7月27日22:30:38
  * vm_map_pages - maps range of kernel pages starts with non zero offset
  * @vma: user vma to map to
  * @pages: pointer to array of source kernel pages
@@ -1624,11 +1697,12 @@ int vm_map_pages(struct vm_area_struct *vma, struct page **pages,
 EXPORT_SYMBOL(vm_map_pages);
 
 /**
+？zero offset是什么？
  * vm_map_pages_zero - map range of kernel pages starts with zero offset
  * @vma: user vma to map to
  * @pages: pointer to array of source kernel pages
  * @num: number of pages in page array
- *
+ *也是map pages。但是offset设为0，可能是驱动不要求考虑在文件的映射偏移pgoff什么的
  * Similar to vm_map_pages(), except that it explicitly sets the offset
  * to 0. This function is intended for the drivers that did not consider
  * vm_pgoff.
@@ -1642,7 +1716,8 @@ int vm_map_pages_zero(struct vm_area_struct *vma, struct page **pages,
 	return __vm_map_pages(vma, pages, num, 0);
 }
 EXPORT_SYMBOL(vm_map_pages_zero);
-
+/* 把pfn映射到vma的addr对应的pte，
+突然想到这个addr要求对齐page size吗 */
 static vm_fault_t insert_pfn(struct vm_area_struct *vma, unsigned long addr,
 			pfn_t pfn, pgprot_t prot, bool mkwrite)
 {
@@ -1655,6 +1730,7 @@ static vm_fault_t insert_pfn(struct vm_area_struct *vma, unsigned long addr,
 		return VM_FAULT_OOM;
 	if (!pte_none(*pte)) {
 		if (mkwrite) {
+			/* mkwrite参数是什么意思 */
 			/*
 			 * For read faults on private mappings the PFN passed
 			 * in may not match the PFN we have mapped if the
@@ -1666,28 +1742,32 @@ static vm_fault_t insert_pfn(struct vm_area_struct *vma, unsigned long addr,
 			 * update.
 			 */
 			if (pte_pfn(*pte) != pfn_t_to_pfn(pfn)) {
+				/* 说明当前已经映射的pfn不等于准备映射的pfn？ */
 				WARN_ON_ONCE(!is_zero_pfn(pte_pfn(*pte)));
 				goto out_unlock;
 			}
+			/* 说明当前已经映射的pfn就是准备映射的pfn */
 			entry = pte_mkyoung(*pte);
+			/* mkwrite到底是什么 */
 			entry = maybe_mkwrite(pte_mkdirty(entry), vma);
 			if (ptep_set_access_flags(vma, addr, pte, entry, 1))
 				update_mmu_cache(vma, addr, pte);
 		}
 		goto out_unlock;
-	}
+	}/* pte已经映射了page的情况 */
 
-	/* Ok, finally just insert the thing.. */
+	/* Ok, finally just insert the thing..
+	pte还没有映射page，直接开始映射到pfn。 */
 	if (pfn_t_devmap(pfn))
 		entry = pte_mkdevmap(pfn_t_pte(pfn, prot));
 	else
 		entry = pte_mkspecial(pfn_t_pte(pfn, prot));
-
+	/* 生成pte entry */
 	if (mkwrite) {
 		entry = pte_mkyoung(entry);
 		entry = maybe_mkwrite(pte_mkdirty(entry), vma);
 	}
-
+	/* 映射到这个pfn对应的entry */
 	set_pte_at(mm, addr, pte, entry);
 	update_mmu_cache(vma, addr, pte); /* XXX: why not for insert_page? */
 
@@ -1814,6 +1894,8 @@ static vm_fault_t __vm_insert_mixed(struct vm_area_struct *vma,
 	 */
 	if (!IS_ENABLED(CONFIG_ARCH_HAS_PTE_SPECIAL) &&
 	    !pfn_t_devmap(pfn) && pfn_t_valid(pfn)) {
+			/* 判断了pfn合法，然后把pfn插入vma，
+			所以对vma和系统设置，以及pfn的位置有一些要求？ */
 		struct page *page;
 
 		/*
@@ -1821,9 +1903,15 @@ static vm_fault_t __vm_insert_mixed(struct vm_area_struct *vma,
 		 * regardless of whether the caller specified flags that
 		 * result in pfn_t_has_page() == false.
 		 */
+		 /* 不属于特殊映射吗，为什么有对应的page？
+		 2024年7月27日21:50:21
+		 不属于 */
 		page = pfn_to_page(pfn_t_to_pfn(pfn));
+		/* 把vma的addr对应的pte映射到page */
 		err = insert_page(vma, addr, page, pgprot);
 	} else {
+		/* 特殊映射的情况，没有page管理，所以不是insert-page，
+		而是insert-pfn。 */
 		return insert_pfn(vma, addr, pfn, pgprot, mkwrite);
 	}
 
@@ -1834,6 +1922,7 @@ static vm_fault_t __vm_insert_mixed(struct vm_area_struct *vma,
 
 	return VM_FAULT_NOPAGE;
 }
+
 /* 给vma的addr地址设置映射pfn */
 vm_fault_t vmf_insert_mixed(struct vm_area_struct *vma, unsigned long addr,
 		pfn_t pfn)
