@@ -689,6 +689,7 @@ struct page *vmalloc_to_page(const void *addr);
 unsigned long vmalloc_to_pfn(const void *addr);
 
 /*
+2024年7月28日23:45:13
  * Determine if an address is within the vmalloc range
  *
  * On nommu, vmalloc/vfree wrap through kmalloc/kfree directly, so there
@@ -800,7 +801,7 @@ static inline int page_trans_huge_mapcount(struct page *page,
 	return mapcount;
 }
 #endif
-
+/* 通过va获得page */
 static inline struct page *virt_to_head_page(const void *x)
 {
 	struct page *page = virt_to_page(x);

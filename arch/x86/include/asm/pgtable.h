@@ -1049,6 +1049,7 @@ static inline int pgd_none(pgd_t pgd)
  */
 #define pgd_offset(mm, address) pgd_offset_pgd((mm)->pgd, (address))
 /*
+这个是获取kernel的pgd？
  * a shortcut which implies the use of the kernel's pgd, instead
  * of a process's
  */
@@ -1152,6 +1153,7 @@ extern int ptep_clear_flush_young(struct vm_area_struct *vma,
 				  unsigned long address, pte_t *ptep);
 
 #define __HAVE_ARCH_PTEP_GET_AND_CLEAR
+/*  */
 static inline pte_t ptep_get_and_clear(struct mm_struct *mm, unsigned long addr,
 				       pte_t *ptep)
 {

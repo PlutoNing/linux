@@ -132,6 +132,7 @@ extern unsigned int ptrs_per_p4d;
 #define __VMEMMAP_BASE_L5	0xffd4000000000000UL
 
 #ifdef CONFIG_DYNAMIC_MEMORY_LAYOUT
+/* vmalloc的起始地址 */
 # define VMALLOC_START		vmalloc_base
 # define VMALLOC_SIZE_TB	(pgtable_l5_enabled() ? VMALLOC_SIZE_TB_L5 : VMALLOC_SIZE_TB_L4)
 # define VMEMMAP_START		vmemmap_base

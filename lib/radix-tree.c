@@ -363,6 +363,11 @@ out:
 }
 
 /*
+2024年7月28日22:27:50。
+函数radix_tree_preload尝试用给定的gfp_mask分配足够的内存，保证下一个插入
+操作不会失败。在调用插入操作函数之前调用此函数，分配的结构将存放在每CPU变量中。
+函数radix_tree_preload操作成功后，将完毕内核抢占。
+因此，在插入操作完成之后，用户应调用函数radix_tree_preload_end打开内核抢占。
  * Load up this CPU's radix_tree_node buffer with sufficient objects to
  * ensure that the addition of a single element in the tree cannot fail.  On
  * success, return zero, with preemption disabled.  On error, return -ENOMEM

@@ -470,7 +470,10 @@ static inline void __native_flush_tlb_one_user(unsigned long addr)
 		invpcid_flush_one(user_pcid(loaded_mm_asid), addr);
 }
 
-/*
+/*、
+2024年7月28日14:30:49
+刷新tlb
+调用硬件的函数
  * flush everything
  */
 static inline void __flush_tlb_all(void)
@@ -492,6 +495,7 @@ static inline void __flush_tlb_all(void)
 }
 
 /*
+一页一页的刷新tlb
  * flush one page in the kernel mapping
  */
 static inline void __flush_tlb_one_kernel(unsigned long addr)

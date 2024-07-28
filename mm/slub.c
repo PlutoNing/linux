@@ -2997,7 +2997,7 @@ redo:
 		__slab_free(s, page, head, tail_obj, cnt, addr);
 
 }
-
+/*  */
 static __always_inline void slab_free(struct kmem_cache *s, struct page *page,
 				      void *head, void *tail, int cnt,
 				      unsigned long addr)
@@ -3945,7 +3945,7 @@ size_t __ksize(const void *object)
 	return slab_ksize(page->slab_cache);
 }
 EXPORT_SYMBOL(__ksize);
-
+/* 获得apge或者slab对象，然后归还到buddy */
 void kfree(const void *x)
 {
 	struct page *page;
@@ -3955,18 +3955,23 @@ void kfree(const void *x)
 
 	if (unlikely(ZERO_OR_NULL_PTR(x)))
 		return;
-
+	/* x是个地址，获得一组page可能 */
 	page = virt_to_head_page(x);
+	
 	if (unlikely(!PageSlab(page))) {
+		/* 不是slab的情况 */
 		unsigned int order = compound_order(page);
 
 		BUG_ON(!PageCompound(page));
 		kfree_hook(object);
+		/* 可回收的slab变多了？ */
 		mod_node_page_state(page_pgdat(page), NR_SLAB_UNRECLAIMABLE,
 				    -(1 << order));
+		/* 归还到buddy */
 		__free_pages(page, order);
 		return;
 	}
+	/* slab情况的路径 */
 	slab_free(page->slab_cache, page, object, NULL, 1, _RET_IP_);
 }
 EXPORT_SYMBOL(kfree);

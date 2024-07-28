@@ -604,6 +604,7 @@ void __init smp_init(void)
 }
 
 /*
+在每个cpu上面调用回调函数
  * Call a function on all processors.  May be used during early boot while
  * early_boot_irqs_disabled is set.  Use local_irq_save/restore() instead
  * of local_irq_disable/enable().

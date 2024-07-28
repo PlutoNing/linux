@@ -728,7 +728,7 @@ static DEFINE_PER_CPU_SHARED_ALIGNED(struct flush_tlb_info, flush_tlb_info);
 #ifdef CONFIG_DEBUG_VM
 static DEFINE_PER_CPU(unsigned int, flush_tlb_info_idx);
 #endif
-
+/* 根据参数获得刷新tlb的info结构 */
 static inline struct flush_tlb_info *get_flush_tlb_info(struct mm_struct *mm,
 			unsigned long start, unsigned long end,
 			unsigned int stride_shift, bool freed_tables,
@@ -801,7 +801,7 @@ void flush_tlb_mm_range(struct mm_struct *mm, unsigned long start,
 	put_cpu();
 }
 
-
+/* 刷新tlb */
 static void do_flush_tlb_all(void *info)
 {
 	count_vm_tlb_event(NR_TLB_REMOTE_FLUSH_RECEIVED);
@@ -813,7 +813,7 @@ void flush_tlb_all(void)
 	count_vm_tlb_event(NR_TLB_REMOTE_FLUSH);
 	on_each_cpu(do_flush_tlb_all, NULL, 1);
 }
-
+/* 刷新tlb */
 static void do_kernel_range_flush(void *info)
 {
 	struct flush_tlb_info *f = info;
@@ -821,21 +821,28 @@ static void do_kernel_range_flush(void *info)
 
 	/* flush range by one by one 'invlpg' */
 	for (addr = f->start; addr < f->end; addr += PAGE_SIZE)
+	/* 一页一页的刷新 */
 		__flush_tlb_one_kernel(addr);
 }
-
+/*  */
 void flush_tlb_kernel_range(unsigned long start, unsigned long end)
 {
 	/* Balance as user space task's flush, a bit conservative */
 	if (end == TLB_FLUSH_ALL ||
-	    (end - start) > tlb_single_page_flush_ceiling << PAGE_SHIFT) {
+	    (end - start) > tlb_single_page_flush_ceiling << PAGE_SHIFT)
+	{/* 如果范围超过了33页，就走这个路径 */
+
+		/* 在每个cpu上刷新tlb，最终调用的硬件相关的函数 */
 		on_each_cpu(do_flush_tlb_all, NULL, 1);
-	} else {
+	
+	} else {/* 所以这条路径是说这次刷新的范围没那么大的情况，不超过33页的情况？ */
+
 		struct flush_tlb_info *info;
 
 		preempt_disable();
+		/* 根据参数获得刷新tlb的info结构 */
 		info = get_flush_tlb_info(NULL, start, end, 0, false, 0);
-
+		/*  */
 		on_each_cpu(do_kernel_range_flush, info, 1);
 
 		put_flush_tlb_info();

@@ -26,6 +26,8 @@ struct mempolicy;
  * parent/subdir are used for the directory structure (every /proc file has a
  * parent, but "subdir" is empty for all non-directory entries).
  * subdir_node is used to build the rb tree "subdir" of the parent.
+ 2024年7月28日12:15:36
+ 代表dent？
  */
 struct proc_dir_entry {
 	/*

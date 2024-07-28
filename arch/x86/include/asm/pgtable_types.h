@@ -438,7 +438,7 @@ static inline pmdval_t pmd_flags(pmd_t pmd)
 {
 	return native_pmd_val(pmd) & pmd_flags_mask(pmd);
 }
-
+/*  */
 static inline pte_t native_make_pte(pteval_t val)
 {
 	return (pte_t) { .pte = val };

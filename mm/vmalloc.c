@@ -8,7 +8,7 @@
  *  Major rework to support vmap/vunmap, Christoph Hellwig, SGI, August 2002
  *  Numa awareness, Christoph Lameter, SGI, June 2005
  */
-
+/* 2024年7月28日23:48:56 */
 #include <linux/vmalloc.h>
 #include <linux/mm.h>
 #include <linux/module.h>
@@ -40,15 +40,19 @@
 #include <asm/shmparam.h>
 
 #include "internal.h"
-
+/* 2024年7月28日21:57:12
+这个是什么机制？和vmap相关 */
 struct vfree_deferred {
 	struct llist_head list;
 	struct work_struct wq;
 };
+
 static DEFINE_PER_CPU(struct vfree_deferred, vfree_deferred);
 
 static void __vunmap(const void *, int);
-
+/* 2024年7月28日23:47:56
+vfree_deferred相关
+ */
 static void free_work(struct work_struct *w)
 {
 	struct vfree_deferred *p = container_of(w, struct vfree_deferred, wq);
@@ -59,18 +63,20 @@ static void free_work(struct work_struct *w)
 }
 
 /*** Page table manipulation functions ***/
-
+/* vmap解除映射的遍历页表，这里操作pte */
 static void vunmap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end)
 {
 	pte_t *pte;
 
 	pte = pte_offset_kernel(pmd, addr);
 	do {
+		/* 这里参数为什么要加上mm */
 		pte_t ptent = ptep_get_and_clear(&init_mm, addr, pte);
 		WARN_ON(!pte_none(ptent) && !pte_present(ptent));
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 }
 
+/* vmap解除映射的遍历页表 */
 static void vunmap_pmd_range(pud_t *pud, unsigned long addr, unsigned long end)
 {
 	pmd_t *pmd;
@@ -83,10 +89,12 @@ static void vunmap_pmd_range(pud_t *pud, unsigned long addr, unsigned long end)
 			continue;
 		if (pmd_none_or_clear_bad(pmd))
 			continue;
+		/* unmap逐个pte */
 		vunmap_pte_range(pmd, addr, next);
 	} while (pmd++, addr = next, addr != end);
 }
 
+/* vmap解除映射的遍历页表 */
 static void vunmap_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end)
 {
 	pud_t *pud;
@@ -102,7 +110,7 @@ static void vunmap_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end)
 		vunmap_pmd_range(pud, addr, next);
 	} while (pud++, addr = next, addr != end);
 }
-
+/* vmap解除映射的遍历页表 */
 static void vunmap_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end)
 {
 	p4d_t *p4d;
@@ -119,13 +127,16 @@ static void vunmap_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end)
 	} while (p4d++, addr = next, addr != end);
 }
 
+/* 把vmap里面的地址范围解除映射 */
 static void vunmap_page_range(unsigned long addr, unsigned long end)
 {
 	pgd_t *pgd;
 	unsigned long next;
 
 	BUG_ON(addr >= end);
+	/* 获取kernel的pgd */
 	pgd = pgd_offset_k(addr);
+	/* 遍历pgd表项 */
 	do {
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(pgd))
@@ -133,7 +144,9 @@ static void vunmap_page_range(unsigned long addr, unsigned long end)
 		vunmap_p4d_range(pgd, addr, next);
 	} while (pgd++, addr = next, addr != end);
 }
-
+/* 2024年7月28日21:51:14
+vmap映射页面，处理pte表项
+ */
 static int vmap_pte_range(pmd_t *pmd, unsigned long addr,
 		unsigned long end, pgprot_t prot, struct page **pages, int *nr)
 {
@@ -148,18 +161,21 @@ static int vmap_pte_range(pmd_t *pmd, unsigned long addr,
 	if (!pte)
 		return -ENOMEM;
 	do {
+		/* 处理第nr个页面 */
 		struct page *page = pages[*nr];
 
 		if (WARN_ON(!pte_none(*pte)))
 			return -EBUSY;
 		if (WARN_ON(!page))
 			return -ENOMEM;
+		/* 映射pte表项 */
 		set_pte_at(&init_mm, addr, pte, mk_pte(page, prot));
 		(*nr)++;
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 	return 0;
 }
 
+/* 把pages映射到addr-end的地址空间 */
 static int vmap_pmd_range(pud_t *pud, unsigned long addr,
 		unsigned long end, pgprot_t prot, struct page **pages, int *nr)
 {
@@ -177,6 +193,7 @@ static int vmap_pmd_range(pud_t *pud, unsigned long addr,
 	return 0;
 }
 
+/* 给vmap映射页面的时候逐级处理页表 */
 static int vmap_pud_range(p4d_t *p4d, unsigned long addr,
 		unsigned long end, pgprot_t prot, struct page **pages, int *nr)
 {
@@ -188,12 +205,14 @@ static int vmap_pud_range(p4d_t *p4d, unsigned long addr,
 		return -ENOMEM;
 	do {
 		next = pud_addr_end(addr, end);
+		/* 处理pmd级别的 */
 		if (vmap_pmd_range(pud, addr, next, prot, pages, nr))
 			return -ENOMEM;
 	} while (pud++, addr = next, addr != end);
 	return 0;
 }
 
+/* 给vmap映射页面的时候逐级处理页表 */
 static int vmap_p4d_range(pgd_t *pgd, unsigned long addr,
 		unsigned long end, pgprot_t prot, struct page **pages, int *nr)
 {
@@ -205,6 +224,7 @@ static int vmap_p4d_range(pgd_t *pgd, unsigned long addr,
 		return -ENOMEM;
 	do {
 		next = p4d_addr_end(addr, end);
+		/* 处理下一级 */
 		if (vmap_pud_range(p4d, addr, next, prot, pages, nr))
 			return -ENOMEM;
 	} while (p4d++, addr = next, addr != end);
@@ -212,6 +232,8 @@ static int vmap_p4d_range(pgd_t *pgd, unsigned long addr,
 }
 
 /*
+2024年7月28日21:44:47
+把pages映射到addr-end的地址空间。
  * Set up page tables in kva (addr, end). The ptes shall have prot "prot", and
  * will have pfns corresponding to the "pages" array.
  *
@@ -227,6 +249,7 @@ static int vmap_page_range_noflush(unsigned long start, unsigned long end,
 	int nr = 0;
 
 	BUG_ON(addr >= end);
+	/* 找到内核的pgd */
 	pgd = pgd_offset_k(addr);
 	do {
 		next = pgd_addr_end(addr, end);
@@ -237,13 +260,15 @@ static int vmap_page_range_noflush(unsigned long start, unsigned long end,
 
 	return nr;
 }
-/* 2024年7月1日00:06:55 */
+/* 2024年7月1日00:06:55
+把pages映射到addr-end的地址空间，参数没有area了， */
 static int vmap_page_range(unsigned long start, unsigned long end,
 			   pgprot_t prot, struct page **pages)
 {
 	int ret;
 
 	ret = vmap_page_range_noflush(start, end, prot, pages);
+	
 	flush_cache_vmap(start, end);
 	return ret;
 }
@@ -264,6 +289,7 @@ int is_vmalloc_or_module_addr(const void *x)
 }
 
 /*
+通过vmap addr获得page
  * Walk a vmap address to the struct page it maps.
  */
 struct page *vmalloc_to_page(const void *vmalloc_addr)
@@ -304,10 +330,11 @@ struct page *vmalloc_to_page(const void *vmalloc_addr)
 	WARN_ON_ONCE(pmd_bad(*pmd));
 	if (pmd_none(*pmd) || pmd_bad(*pmd))
 		return NULL;
-
+	/* 获得pte */
 	ptep = pte_offset_map(pmd, addr);
 	pte = *ptep;
 	if (pte_present(pte))
+	/* 获得page */
 		page = pte_page(pte);
 	pte_unmap(ptep);
 	return page;
@@ -315,6 +342,7 @@ struct page *vmalloc_to_page(const void *vmalloc_addr)
 EXPORT_SYMBOL(vmalloc_to_page);
 
 /*
+获得vmap页面的pfn？
  * Map a vmalloc()-space virtual address to the physical page frame number.
  */
 unsigned long vmalloc_to_pfn(const void *vmalloc_addr)
@@ -332,9 +360,12 @@ EXPORT_SYMBOL(vmalloc_to_pfn);
 
 static DEFINE_SPINLOCK(vmap_area_lock);
 /* Export for kexec only */
+/*  */
 LIST_HEAD(vmap_area_list);
 static LLIST_HEAD(vmap_purge_list);
+/* 挂载排序好的全部vmap的全局红黑树 */
 static struct rb_root vmap_area_root = RB_ROOT;
+/* 表示vmalloc_init（）是否运行了 */
 static bool vmap_initialized __read_mostly;
 
 /*
@@ -346,12 +377,16 @@ static bool vmap_initialized __read_mostly;
 static struct kmem_cache *vmap_area_cachep;
 
 /*
+
+全局的free vmap链表
  * This linked list is used in pair with free_vmap_area_root.
  * It gives O(1) access to prev/next to perform fast coalescing.
  */
 static LIST_HEAD(free_vmap_area_list);
 
 /*
+2024年7月28日15:42:11
+free vmap树。里面全是free的vmap。
  * This augment red-black tree represents the free vmap space.
  * All vmap_area objects in this tree are sorted by va->va_start
  * address. It is used for allocation and merging when a vmap
@@ -369,13 +404,13 @@ static struct rb_root free_vmap_area_root = RB_ROOT;
  * to use more permissive allocation masks.
  */
 static DEFINE_PER_CPU(struct vmap_area *, ne_fit_preload_node);
-
+/* 获取vmap的大小 */
 static __always_inline unsigned long
 va_size(struct vmap_area *va)
 {
 	return (va->va_end - va->va_start);
 }
-
+/* 获取对应vmap的subtree_max_size */
 static __always_inline unsigned long
 get_subtree_max_size(struct rb_node *node)
 {
@@ -386,6 +421,7 @@ get_subtree_max_size(struct rb_node *node)
 }
 
 /*
+获取自己size，左右孩子的最大sub size之中最大的
  * Gets called when remove the node and rotate.
  */
 static __always_inline unsigned long
@@ -404,19 +440,21 @@ static BLOCKING_NOTIFIER_HEAD(vmap_notify_list);
 static unsigned long lazy_max_pages(void);
 
 static atomic_long_t nr_vmalloc_pages;
-
+/* vmalloc机制管理的页面数量？ */
 unsigned long vmalloc_nr_pages(void)
 {
 	return atomic_long_read(&nr_vmalloc_pages);
 }
-
+/* 根据addr查找vmap
+是挂载一颗全局的红黑树上面的、
+ */
 static struct vmap_area *__find_vmap_area(unsigned long addr)
 {
 	struct rb_node *n = vmap_area_root.rb_node;
 
 	while (n) {
 		struct vmap_area *va;
-
+		/* 得到vmap */
 		va = rb_entry(n, struct vmap_area, rb_node);
 		if (addr < va->va_start)
 			n = n->rb_left;
@@ -431,6 +469,7 @@ static struct vmap_area *__find_vmap_area(unsigned long addr)
 
 /*
 2024年6月30日23:42:13
+找到此va会被插入的位置
  * This function returns back addresses of parent node
  * and its left or right link for further processing.
  */
@@ -479,6 +518,7 @@ find_va_links(struct vmap_area *va,
 	return link;
 }
 
+/* 2024年7月28日14:56:48 */
 static __always_inline struct list_head *
 get_va_next_sibling(struct rb_node *parent, struct rb_node **link)
 {
@@ -497,6 +537,7 @@ get_va_next_sibling(struct rb_node *parent, struct rb_node **link)
 	return (&parent->rb_right == link ? list->next : list);
 }
 
+/* 2024年7月28日23:37:26 */
 static __always_inline void
 link_va(struct vmap_area *va, struct rb_root *root,
 	struct rb_node *parent, struct rb_node **link, struct list_head *head)
@@ -513,6 +554,7 @@ link_va(struct vmap_area *va, struct rb_root *root,
 
 	/* Insert to the rb-tree */
 	rb_link_node(&va->rb_node, parent, link);
+	
 	if (root == &free_vmap_area_root) {
 		/*
 		 * Some explanation here. Just perform simple insertion
@@ -536,6 +578,7 @@ link_va(struct vmap_area *va, struct rb_root *root,
 	list_add(&va->list, head);
 }
 
+/* 2024年7月28日23:36:44 */
 static __always_inline void
 unlink_va(struct vmap_area *va, struct rb_root *root)
 {
@@ -543,6 +586,7 @@ unlink_va(struct vmap_area *va, struct rb_root *root)
 		return;
 
 	if (root == &free_vmap_area_root)
+		/*  */
 		rb_erase_augmented(&va->rb_node,
 			root, &free_vmap_area_rb_augment_cb);
 	else
@@ -620,6 +664,8 @@ augment_tree_propagate_check(struct rb_node *n)
  * its subtree_max_size is updated only, and set to 1. If we shrink
  * the node 8 to 6, then its subtree_max_size is set to 6 and parent
  * node becomes 4--6.
+ 2024年7月28日15:11:48
+ 逐级更新subtree max size。
  */
 static __always_inline void
 augment_tree_propagate_from(struct vmap_area *va)
@@ -639,7 +685,7 @@ augment_tree_propagate_from(struct vmap_area *va)
 		 */
 		if (va->subtree_max_size == new_va_sub_max_size)
 			break;
-
+		/* 逐级更新subtree_max_size */
 		va->subtree_max_size = new_va_sub_max_size;
 		node = rb_parent(&va->rb_node);
 	}
@@ -649,7 +695,7 @@ augment_tree_propagate_from(struct vmap_area *va)
 #endif
 }
 /* 2024年6月30日23:41:31
-插入进程的vma
+把新vmap插入vmap的红黑树
  */
 static void
 insert_vmap_area(struct vmap_area *va,
@@ -661,7 +707,7 @@ insert_vmap_area(struct vmap_area *va,
 	link = find_va_links(va, root, NULL, &parent);
 	link_va(va, root, parent, link, head);
 }
-
+/* 2024年7月28日23:32:45 */
 static void
 insert_vmap_area_augment(struct vmap_area *va,
 	struct rb_node *from, struct rb_root *root,
@@ -680,6 +726,7 @@ insert_vmap_area_augment(struct vmap_area *va,
 }
 
 /*
+释放一个vmap前，看看是合并还是移动
  * Merge de-allocated chunk of VA memory with previous
  * and next free blocks. If coalesce is not done a new
  * free area is inserted. If VA has been merged, it is
@@ -698,11 +745,13 @@ merge_or_add_vmap_area(struct vmap_area *va,
 	/*
 	 * Find a place in the tree where VA potentially will be
 	 * inserted, unless it is merged with its sibling/siblings.
+	 找到此va会被插入的位置
 	 */
 	link = find_va_links(va, root, NULL, &parent);
 
 	/*
 	 * Get next node of VA to check if merging can be done.
+	 找到下一个位置，看看能不能合并
 	 */
 	next = get_va_next_sibling(parent, link);
 	if (unlikely(next == NULL))
@@ -716,11 +765,15 @@ merge_or_add_vmap_area(struct vmap_area *va,
 	 *                  start            end
 	 */
 	if (next != head) {
+		/* 获取红黑树兄弟vmap，
+		看看起始地址结束地址是不是挨着的 */
 		sibling = list_entry(next, struct vmap_area, list);
 		if (sibling->va_start == va->va_end) {
+			/* 兄弟刚好起始地址对着自己结束地址 */
 			sibling->va_start = va->va_start;
 
-			/* Check and update the tree if needed. */
+			/* Check and update the tree if needed.
+			更新subtree max size */
 			augment_tree_propagate_from(sibling);
 
 			/* Free vmap_area object. */
@@ -758,17 +811,20 @@ merge_or_add_vmap_area(struct vmap_area *va,
 
 insert:
 	if (!merged) {
+		/* 插入红黑树 */
 		link_va(va, root, parent, link, head);
+		
 		augment_tree_propagate_from(va);
 	}
 }
-
+/* 是否在这个vmap范围里面 */
 static __always_inline bool
 is_within_this_va(struct vmap_area *va, unsigned long size,
 	unsigned long align, unsigned long vstart)
 {
 	unsigned long nva_start_addr;
 
+	/* 是大的start地址对齐 */
 	if (va->va_start > vstart)
 		nva_start_addr = ALIGN(va->va_start, align);
 	else
@@ -779,10 +835,13 @@ is_within_this_va(struct vmap_area *va, unsigned long size,
 			nva_start_addr < vstart)
 		return false;
 
+	/* 对齐后还在va里面吗 */
 	return (nva_start_addr + size <= va->va_end);
 }
 
 /*
+2024年7月28日15:41:59
+在树里面找到第一个free block。
  * Find the first free block(lowest start address) in the tree,
  * that will accomplish the request corresponding to passing
  * parameters.
@@ -801,12 +860,16 @@ find_vmap_lowest_match(unsigned long size,
 	/* Adjust the search size for alignment overhead. */
 	length = size + align - 1;
 
+	/* 遍历free vmap红黑树 */
 	while (node) {
 		va = rb_entry(node, struct vmap_area, rb_node);
 
 		if (get_subtree_max_size(node->rb_left) >= length &&
-				vstart < va->va_start) {
+				vstart < va->va_start) 
+		{/* 左边大小和起始地址都可以满足 */
+
 			node = node->rb_left;
+		
 		} else {
 			if (is_within_this_va(va, size, align, vstart))
 				return va;
@@ -825,6 +888,7 @@ find_vmap_lowest_match(unsigned long size,
 			 * OK. We roll back and find the first right sub-tree,
 			 * that will satisfy the search criteria. It can happen
 			 * only once due to "vstart" restriction.
+			 往上找右叔叔
 			 */
 			while ((node = rb_parent(node))) {
 				va = rb_entry(node, struct vmap_area, rb_node);
@@ -889,6 +953,7 @@ enum fit_type {
 	NE_FIT_TYPE = 4		/* no edge fit */
 };
 
+/*  */
 static __always_inline enum fit_type
 classify_va_fit_type(struct vmap_area *va,
 	unsigned long nva_start_addr, unsigned long size)
@@ -915,6 +980,7 @@ classify_va_fit_type(struct vmap_area *va,
 	return type;
 }
 
+/* todo */
 static __always_inline int
 adjust_va_to_fit_type(struct vmap_area *va,
 	unsigned long nva_start_addr, unsigned long size,
@@ -1004,7 +1070,7 @@ adjust_va_to_fit_type(struct vmap_area *va,
 
 /*
 2024年6月30日23:39:15
-分配vma区域
+分配vmap的虚拟地址空间
  * Returns a start address of the newly allocated area, if success.
  * Otherwise a vend is returned that indicates failure.
  */
@@ -1016,7 +1082,7 @@ __alloc_vmap_area(unsigned long size, unsigned long align,
 	struct vmap_area *va;
 	enum fit_type type;
 	int ret;
-
+	/* 在free vmap红黑树找到最低的合适的地址段  */
 	va = find_vmap_lowest_match(size, align, vstart);
 	if (unlikely(!va))
 		return vend;
@@ -1118,12 +1184,12 @@ retry:
 	addr = __alloc_vmap_area(size, align, vstart, vend);
 	if (unlikely(addr == vend))
 		goto overflow;
-		/* va是slab分配的结构体
-		addr是分配的vma区域 */
+		/* vmap是slab分配的结构体
+		addr是刚才查询的虚拟地址空间 */
 	va->va_start = addr;
 	va->va_end = addr + size;
 	va->vm = NULL;
-	/* 插入进程虚拟地址空间 */
+	/* 插入进程虚拟地址空间 ，是插入进程的，还是全局的？感觉内核的应该都是共用一个*/
 	insert_vmap_area(va, &vmap_area_root, &vmap_area_list);
 
 	spin_unlock(&vmap_area_lock);
@@ -1159,33 +1225,38 @@ overflow:
 	return ERR_PTR(-EBUSY);
 }
 
+/* todo */
 int register_vmap_purge_notifier(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_register(&vmap_notify_list, nb);
 }
 EXPORT_SYMBOL_GPL(register_vmap_purge_notifier);
 
+/*  */
 int unregister_vmap_purge_notifier(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_unregister(&vmap_notify_list, nb);
 }
 EXPORT_SYMBOL_GPL(unregister_vmap_purge_notifier);
-
+/* 释放操作在哪里？ */
 static void __free_vmap_area(struct vmap_area *va)
 {
 	/*
 	 * Remove from the busy tree/list.
+	 从全局vmap红黑树移走
 	 */
 	unlink_va(va, &vmap_area_root);
 
 	/*
 	 * Merge VA with its neighbors, otherwise just add it.
-	 */
+	 
+	*/
 	merge_or_add_vmap_area(va,
 		&free_vmap_area_root, &free_vmap_area_list);
 }
 
 /*
+释放vmap
  * Free a region of KVA allocated by alloc_vmap_area
  */
 static void free_vmap_area(struct vmap_area *va)
@@ -1196,6 +1267,7 @@ static void free_vmap_area(struct vmap_area *va)
 }
 
 /*
+unmap一个vmap
  * Clear the pagetable entries of a given vmap_area
  */
 static void unmap_vmap_area(struct vmap_area *va)
@@ -1250,6 +1322,8 @@ void set_iounmap_nonlazy(void)
 }
 
 /*
+2024年7月28日14:22:01
+lazy方式销毁之前存的要销毁的vmap
  * Purges all lazily-freed vmap areas.
  */
 static bool __purge_vmap_area_lazy(unsigned long start, unsigned long end)
@@ -1269,11 +1343,13 @@ static bool __purge_vmap_area_lazy(unsigned long start, unsigned long end)
 	 * First make sure the mappings are removed from all page-tables
 	 * before they are freed.
 	 */
+	 /* nop函数 */
 	vmalloc_sync_all();
 
 	/*
 	 * TODO: to calculate a flush range without looping.
 	 * The list can be up to lazy_max_pages() elements.
+	 获取这一系列vmap的最大起始地址和结束地址
 	 */
 	llist_for_each_entry(va, valist, purge_list) {
 		if (va->va_start < start)
@@ -1281,11 +1357,13 @@ static bool __purge_vmap_area_lazy(unsigned long start, unsigned long end)
 		if (va->va_end > end)
 			end = va->va_end;
 	}
-
+	/* 刷新相关的tlb */
 	flush_tlb_kernel_range(start, end);
+	/*  */
 	resched_threshold = lazy_max_pages() << 1;
 
 	spin_lock(&vmap_area_lock);
+	/* 遍历全部vmap */
 	llist_for_each_entry_safe(va, n_va, valist, purge_list) {
 		unsigned long nr = (va->va_end - va->va_start) >> PAGE_SHIFT;
 
@@ -1293,6 +1371,7 @@ static bool __purge_vmap_area_lazy(unsigned long start, unsigned long end)
 		 * Finally insert or merge lazily-freed area. It is
 		 * detached and there is no need to "unlink" it from
 		 * anything.
+		 插入前看看能不能合并
 		 */
 		merge_or_add_vmap_area(va,
 			&free_vmap_area_root, &free_vmap_area_list);
@@ -1307,6 +1386,9 @@ static bool __purge_vmap_area_lazy(unsigned long start, unsigned long end)
 }
 
 /*
+2024年7月28日14:21:04
+lazy方式销毁vmap，之前只是挂载到全局的vmap perge链表
+现在是开始销毁
  * Kick off a purge of the outstanding lazy areas. Don't bother if somebody
  * is already purging.
  */
@@ -1319,6 +1401,7 @@ static void try_purge_vmap_area_lazy(void)
 }
 
 /*
+？2024年7月28日13:49:50
  * Kick off a purge of the outstanding lazy areas.
  */
 static void purge_vmap_area_lazy(void)
@@ -1330,6 +1413,7 @@ static void purge_vmap_area_lazy(void)
 }
 
 /*
+释放vmap
  * Free a vmap area, caller ensuring that the area has been unmapped
  * and flush_cache_vunmap had been called for the correct range
  * previously.
@@ -1339,9 +1423,11 @@ static void free_vmap_area_noflush(struct vmap_area *va)
 	unsigned long nr_lazy;
 
 	spin_lock(&vmap_area_lock);
+	/* 先从全局vmap红黑树移除 */
 	unlink_va(va, &vmap_area_root);
 	spin_unlock(&vmap_area_lock);
 
+	/* vmap的页面数量？ */
 	nr_lazy = atomic_long_add_return((va->va_end - va->va_start) >>
 				PAGE_SHIFT, &vmap_lazy_nr);
 
@@ -1349,22 +1435,26 @@ static void free_vmap_area_noflush(struct vmap_area *va)
 	llist_add(&va->purge_list, &vmap_purge_list);
 
 	if (unlikely(nr_lazy > lazy_max_pages()))
+	/* 进行一次懒销毁 */
 		try_purge_vmap_area_lazy();
 }
 
 /*
+释放和解除映射vmap
  * Free and unmap a vmap area
  */
 static void free_unmap_vmap_area(struct vmap_area *va)
 {
 	flush_cache_vunmap(va->va_start, va->va_end);
+	/* 解除映射 */
 	unmap_vmap_area(va);
+	
 	if (debug_pagealloc_enabled())
 		flush_tlb_kernel_range(va->va_start, va->va_end);
-
+	/* 释放vmap结构体内存 */
 	free_vmap_area_noflush(va);
 }
-
+/* 查找vmap */
 static struct vmap_area *find_vmap_area(unsigned long addr)
 {
 	struct vmap_area *va;
@@ -1399,29 +1489,37 @@ static struct vmap_area *find_vmap_area(unsigned long addr)
 #define VMAP_BBMAP_BITS_MIN	(VMAP_MAX_ALLOC*2)
 #define VMAP_MIN(x, y)		((x) < (y) ? (x) : (y)) /* can't use min() */
 #define VMAP_MAX(x, y)		((x) > (y) ? (x) : (y)) /* can't use max() */
+/* 看情况好像是表示一个新vb里面初始的free页面数量？ */
 #define VMAP_BBMAP_BITS		\
 		VMAP_MIN(VMAP_BBMAP_BITS_MAX,	\
 		VMAP_MAX(VMAP_BBMAP_BITS_MIN,	\
 			VMALLOC_PAGES / roundup_pow_of_two(NR_CPUS) / 16))
-
+/*  */
 #define VMAP_BLOCK_SIZE		(VMAP_BBMAP_BITS * PAGE_SIZE)
-
+/* vmap block的链表 */
 struct vmap_block_queue {
 	spinlock_t lock;
+	/* 自己的vb都挂在这 */
 	struct list_head free;
 };
-
+/*  */
 struct vmap_block {
 	spinlock_t lock;
 	struct vmap_area *va;
+	/* free是vb里free页面数量 */
 	unsigned long free, dirty;
+	/* 单位是pgoff，好像之间是dirty页面？ */
 	unsigned long dirty_min, dirty_max; /*< dirty range */
+	/* 挂载到vbq */
 	struct list_head free_list;
 	struct rcu_head rcu_head;
+	/* 挂载到purge链表的连接件 */
 	struct list_head purge;
 };
 
-/* Queue of free and dirty vmap blocks, for allocation and flushing purposes */
+/* 
+每个cpu的的vmap blk q？
+Queue of free and dirty vmap blocks, for allocation and flushing purposes */
 static DEFINE_PER_CPU(struct vmap_block_queue, vmap_block_queue);
 
 /*
@@ -1430,6 +1528,8 @@ static DEFINE_PER_CPU(struct vmap_block_queue, vmap_block_queue);
  * "cookie" from alloc, to be passed to free. But no big deal yet.
  */
 static DEFINE_SPINLOCK(vmap_block_tree_lock);
+/* vb的全局radix树
+插入vb的字典树，通过idx查找vb。 */
 static RADIX_TREE(vmap_block_tree, GFP_ATOMIC);
 
 /*
@@ -1437,25 +1537,42 @@ static RADIX_TREE(vmap_block_tree, GFP_ATOMIC);
  * out of partially filled vmap blocks. However vmap block sizing should be
  * fairly reasonable according to the vmalloc size, so it shouldn't be a
  * big problem.
+ 2024年7月28日14:14:27
+ 这里是vmap的起始地址获得vb的idx。
+ 逻辑像是addr减去全局起始地址，获得offset之类
+ 再除以vb size之类。
+ 获得pgoff之类
+ 返回。
+ 好像是一个vmap的地址空间是构建在一组vb上面的
+ ---------------VMALLOC_START----------------------addr
+                        |     vb    |    vb    |    vb   |vb   
  */
 
 static unsigned long addr_to_vb_idx(unsigned long addr)
 {
+
 	addr -= VMALLOC_START & ~(VMAP_BLOCK_SIZE-1);
+
 	addr /= VMAP_BLOCK_SIZE;
+
 	return addr;
 }
-
+/*  
+@va-satrt：vb所属的va的起始地址、
+@pages_off：vb在va里面的pgoff？
+*/
 static void *vmap_block_vaddr(unsigned long va_start, unsigned long pages_off)
 {
 	unsigned long addr;
 
 	addr = va_start + (pages_off << PAGE_SHIFT);
+	
 	BUG_ON(addr_to_vb_idx(addr) != addr_to_vb_idx(va_start));
 	return (void *)addr;
 }
 
 /**
+分配一个新vb。
  * new_vmap_block - allocates new vmap_block and occupies 2^order pages in this
  *                  block. Of course pages number can't exceed VMAP_BBMAP_BITS
  * @order:    how many 2^order pages should be occupied in newly allocated block
@@ -1473,12 +1590,12 @@ static void *new_vmap_block(unsigned int order, gfp_t gfp_mask)
 	void *vaddr;
 
 	node = numa_node_id();
-
+	/* 分配vb结构体 */
 	vb = kmalloc_node(sizeof(struct vmap_block),
 			gfp_mask & GFP_RECLAIM_MASK, node);
 	if (unlikely(!vb))
 		return ERR_PTR(-ENOMEM);
-
+	/* 奇怪的大小 */
 	va = alloc_vmap_area(VMAP_BLOCK_SIZE, VMAP_BLOCK_SIZE,
 					VMALLOC_START, VMALLOC_END,
 					node, gfp_mask);
@@ -1486,14 +1603,14 @@ static void *new_vmap_block(unsigned int order, gfp_t gfp_mask)
 		kfree(vb);
 		return ERR_CAST(va);
 	}
-
+	/*  */
 	err = radix_tree_preload(gfp_mask);
 	if (unlikely(err)) {
 		kfree(vb);
 		free_vmap_area(va);
 		return ERR_PTR(err);
 	}
-
+	/*这次返回其实就是va的起始地址 */
 	vaddr = vmap_block_vaddr(va->va_start, 0);
 	spin_lock_init(&vb->lock);
 	vb->va = va;
@@ -1504,14 +1621,15 @@ static void *new_vmap_block(unsigned int order, gfp_t gfp_mask)
 	vb->dirty_min = VMAP_BBMAP_BITS;
 	vb->dirty_max = 0;
 	INIT_LIST_HEAD(&vb->free_list);
-
+	/* 获得vb在从vmstart开始的“pgoff” */
 	vb_idx = addr_to_vb_idx(va->va_start);
 	spin_lock(&vmap_block_tree_lock);
+	/* 插入vb的字典树，通过在idx查找vb */
 	err = radix_tree_insert(&vmap_block_tree, vb_idx, vb);
 	spin_unlock(&vmap_block_tree_lock);
 	BUG_ON(err);
 	radix_tree_preload_end();
-
+	/* 加入vbq */
 	vbq = &get_cpu_var(vmap_block_queue);
 	spin_lock(&vbq->lock);
 	list_add_tail_rcu(&vb->free_list, &vbq->free);
@@ -1520,57 +1638,71 @@ static void *new_vmap_block(unsigned int order, gfp_t gfp_mask)
 
 	return vaddr;
 }
-
+/* 释放vb的函数？ */
 static void free_vmap_block(struct vmap_block *vb)
 {
 	struct vmap_block *tmp;
 	unsigned long vb_idx;
-
+	/* 获得所属的va的起始地址对应的vb的idx */
 	vb_idx = addr_to_vb_idx(vb->va->va_start);
+	
 	spin_lock(&vmap_block_tree_lock);
+	/* 从vb radix树移除 */
 	tmp = radix_tree_delete(&vmap_block_tree, vb_idx);
 	spin_unlock(&vmap_block_tree_lock);
+	
 	BUG_ON(tmp != vb);
-
+	/* 释放va */
 	free_vmap_area_noflush(vb->va);
 	kfree_rcu(vb, rcu_head);
 }
-
+/* purge一下vb */
 static void purge_fragmented_blocks(int cpu)
 {
 	LIST_HEAD(purge);
 	struct vmap_block *vb;
 	struct vmap_block *n_vb;
+	/* 获得此cpu的vmap blk q */
 	struct vmap_block_queue *vbq = &per_cpu(vmap_block_queue, cpu);
 
 	rcu_read_lock();
+	/* 遍历链表，每个元素是个vmap block */
 	list_for_each_entry_rcu(vb, &vbq->free, free_list) {
 
-		if (!(vb->free + vb->dirty == VMAP_BBMAP_BITS && vb->dirty != VMAP_BBMAP_BITS))
+		if (!(vb->free + vb->dirty == VMAP_BBMAP_BITS &&
+				 vb->dirty != VMAP_BBMAP_BITS))
 			continue;
-
+		/* 操作vb前，获得vb的保护锁 */
 		spin_lock(&vb->lock);
-		if (vb->free + vb->dirty == VMAP_BBMAP_BITS && vb->dirty != VMAP_BBMAP_BITS) {
+
+		if (vb->free + vb->dirty == VMAP_BBMAP_BITS && 
+				vb->dirty != VMAP_BBMAP_BITS) {
+			/* 说明什么吗 */
+
+			/* 清空vb？ */
 			vb->free = 0; /* prevent further allocs after releasing lock */
 			vb->dirty = VMAP_BBMAP_BITS; /* prevent purging it again */
 			vb->dirty_min = 0;
 			vb->dirty_max = VMAP_BBMAP_BITS;
+			/* 从vbq取走此vb */
 			spin_lock(&vbq->lock);
 			list_del_rcu(&vb->free_list);
 			spin_unlock(&vbq->lock);
+			
 			spin_unlock(&vb->lock);
+			/* 把vb加入到purge */
 			list_add_tail(&vb->purge, &purge);
 		} else
 			spin_unlock(&vb->lock);
 	}
 	rcu_read_unlock();
-
+	/* 遍历vbq链表，取走符合条件的vb，进行free */
 	list_for_each_entry_safe(vb, n_vb, &purge, purge) {
 		list_del(&vb->purge);
 		free_vmap_block(vb);
 	}
 }
-
+/* purge每个cpu的vb  */
 static void purge_fragmented_blocks_allcpus(void)
 {
 	int cpu;
@@ -1578,7 +1710,7 @@ static void purge_fragmented_blocks_allcpus(void)
 	for_each_possible_cpu(cpu)
 		purge_fragmented_blocks(cpu);
 }
-
+/* 分配size大小的vb空间 */
 static void *vb_alloc(unsigned long size, gfp_t gfp_mask)
 {
 	struct vmap_block_queue *vbq;
@@ -1596,23 +1728,31 @@ static void *vb_alloc(unsigned long size, gfp_t gfp_mask)
 		 */
 		return NULL;
 	}
+
 	order = get_order(size);
 
 	rcu_read_lock();
 	vbq = &get_cpu_var(vmap_block_queue);
+	/* 遍历处理vbq上面的vb */
 	list_for_each_entry_rcu(vb, &vbq->free, free_list) {
 		unsigned long pages_off;
 
 		spin_lock(&vb->lock);
-		if (vb->free < (1UL << order)) {
+		if (vb->free < (1UL << order)) 
+		{/* 连接件也有大小？ */
+		/* 说明这个vb不够分配这些数量的页面 */
 			spin_unlock(&vb->lock);
 			continue;
 		}
-
+		/* pages_off是此vb在va里面的pgoff？ */
 		pages_off = VMAP_BBMAP_BITS - vb->free;
+		/* 获得vb在vmap里面的vaddr。
+		vaddr就是vb->va->va_start+pages_off*4096 */
 		vaddr = vmap_block_vaddr(vb->va->va_start, pages_off);
+		/* 从vb拿走了这些个页面 */
 		vb->free -= 1UL << order;
 		if (vb->free == 0) {
+			/* vb空了，移走。 */
 			spin_lock(&vbq->lock);
 			list_del_rcu(&vb->free_list);
 			spin_unlock(&vbq->lock);
@@ -1621,17 +1761,18 @@ static void *vb_alloc(unsigned long size, gfp_t gfp_mask)
 		spin_unlock(&vb->lock);
 		break;
 	}
-
+	/*  */
 	put_cpu_var(vmap_block_queue);
 	rcu_read_unlock();
 
 	/* Allocate new block if nothing was found */
 	if (!vaddr)
+	/* 没有从vbq找到合适的，那么创建新的吧，大小设置为刚好需要的大小 */
 		vaddr = new_vmap_block(order, gfp_mask);
 
 	return vaddr;
 }
-
+/* 释放vb的addr开始的size大小 */
 static void vb_free(const void *addr, unsigned long size)
 {
 	unsigned long offset;
@@ -1645,16 +1786,17 @@ static void vb_free(const void *addr, unsigned long size)
 	flush_cache_vunmap((unsigned long)addr, (unsigned long)addr + size);
 
 	order = get_order(size);
-
+	/* 获得pgoff，理解是在vmstart的pgoff？ */
 	offset = (unsigned long)addr & (VMAP_BLOCK_SIZE - 1);
 	offset >>= PAGE_SHIFT;
-
+	/* 获得vb的idx */
 	vb_idx = addr_to_vb_idx((unsigned long)addr);
 	rcu_read_lock();
+	/* 查找vb的地址 */
 	vb = radix_tree_lookup(&vmap_block_tree, vb_idx);
 	rcu_read_unlock();
 	BUG_ON(!vb);
-
+	/* 开始unmap */
 	vunmap_page_range((unsigned long)addr, (unsigned long)addr + size);
 
 	if (debug_pagealloc_enabled())
@@ -1663,10 +1805,11 @@ static void vb_free(const void *addr, unsigned long size)
 
 	spin_lock(&vb->lock);
 
-	/* Expand dirty range */
+	/* Expand dirty range，
+	现在这些页面被归还了？不dirty了？ */
 	vb->dirty_min = min(vb->dirty_min, offset);
 	vb->dirty_max = max(vb->dirty_max, offset + (1UL << order));
-
+	/* 为什么是增加 */
 	vb->dirty += 1UL << order;
 	if (vb->dirty == VMAP_BBMAP_BITS) {
 		BUG_ON(vb->free);
@@ -1676,6 +1819,8 @@ static void vb_free(const void *addr, unsigned long size)
 		spin_unlock(&vb->lock);
 }
 
+/* 2024年7月28日23:18:26
+todo */
 static void _vm_unmap_aliases(unsigned long start, unsigned long end, int flush)
 {
 	int cpu;
@@ -1693,12 +1838,14 @@ static void _vm_unmap_aliases(unsigned long start, unsigned long end, int flush)
 		list_for_each_entry_rcu(vb, &vbq->free, free_list) {
 			spin_lock(&vb->lock);
 			if (vb->dirty) {
+				/* 如果这个cpu的vbq的这个vb有dirty。 */
 				unsigned long va_start = vb->va->va_start;
 				unsigned long s, e;
-
+				/* 从这个va起始地址开始的dirty地址范围？ */
 				s = va_start + (vb->dirty_min << PAGE_SHIFT);
 				e = va_start + (vb->dirty_max << PAGE_SHIFT);
-
+				
+				/* 更新start和end使之时刻保持为最小的start和最大的end */
 				start = min(s, start);
 				end   = max(e, end);
 
@@ -1710,6 +1857,7 @@ static void _vm_unmap_aliases(unsigned long start, unsigned long end, int flush)
 	}
 
 	mutex_lock(&vmap_purge_lock);
+	/* purge一下全部vb来free */
 	purge_fragmented_blocks_allcpus();
 	if (!__purge_vmap_area_lazy(start, end) && flush)
 		flush_tlb_kernel_range(start, end);
@@ -1717,6 +1865,7 @@ static void _vm_unmap_aliases(unsigned long start, unsigned long end, int flush)
 }
 
 /**
+2024年7月28日23:05:46
  * vm_unmap_aliases - unmap outstanding lazy aliases in the vmap layer
  *
  * The vmap/vmalloc layer lazily flushes kernel virtual mappings primarily
@@ -1739,6 +1888,7 @@ void vm_unmap_aliases(void)
 EXPORT_SYMBOL_GPL(vm_unmap_aliases);
 
 /**
+2024年7月28日22:56:11
  * vm_unmap_ram - unmap linear kernel address space set up by vm_map_ram
  * @mem: the pointer returned by vm_map_ram
  * @count: the count passed to that vm_map_ram call (cannot unmap partial)
@@ -1757,19 +1907,22 @@ void vm_unmap_ram(const void *mem, unsigned int count)
 
 	if (likely(count <= VMAP_MAX_ALLOC)) {
 		debug_check_no_locks_freed(mem, size);
+		/* 释放这些vb地址范围 */
 		vb_free(mem, size);
 		return;
 	}
-
+	/* 获得包含这个地址的vmap */
 	va = find_vmap_area(addr);
 	BUG_ON(!va);
 	debug_check_no_locks_freed((void *)va->va_start,
 				    (va->va_end - va->va_start));
+	/*  */
 	free_unmap_vmap_area(va);
 }
 EXPORT_SYMBOL(vm_unmap_ram);
 
 /**
+把pages映射到内核的kva。
  * vm_map_ram - map pages linearly into kernel virtual address (vmalloc space)
  * @pages: an array of pointers to the pages to be mapped
  * @count: number of pages
@@ -1786,16 +1939,19 @@ EXPORT_SYMBOL(vm_unmap_ram);
  */
 void *vm_map_ram(struct page **pages, unsigned int count, int node, pgprot_t prot)
 {
+	/* 地址范围大小 */
 	unsigned long size = (unsigned long)count << PAGE_SHIFT;
 	unsigned long addr;
 	void *mem;
 
-	if (likely(count <= VMAP_MAX_ALLOC)) {
+	if (likely(count <= VMAP_MAX_ALLOC)) 
+	{/* 此次处理的数量不大的情况？ */
+		/* 分配size大小的vb空间  */
 		mem = vb_alloc(size, GFP_KERNEL);
 		if (IS_ERR(mem))
 			return NULL;
 		addr = (unsigned long)mem;
-	} else {
+	} else {/* 大size的情况 */
 		struct vmap_area *va;
 		va = alloc_vmap_area(size, PAGE_SIZE,
 				VMALLOC_START, VMALLOC_END, node, GFP_KERNEL);
@@ -1805,17 +1961,22 @@ void *vm_map_ram(struct page **pages, unsigned int count, int node, pgprot_t pro
 		addr = va->va_start;
 		mem = (void *)addr;
 	}
+	/* 给addr映射页面 */
 	if (vmap_page_range(addr, addr + size, prot, pages) < 0) {
+		/* 出错处理 */
 		vm_unmap_ram(mem, count);
 		return NULL;
 	}
 	return mem;
 }
 EXPORT_SYMBOL(vm_map_ram);
-
+/* 2024年7月28日21:57:35
+里面是什么？全局的early vm list？
+ */
 static struct vm_struct *vmlist __initdata;
 
 /**
+2024年7月28日22:05:01
  * vm_area_add_early - add vmap area early during boot
  * @vm: vm_struct to add
  *
@@ -1837,6 +1998,8 @@ void __init vm_area_add_early(struct vm_struct *vm)
 		} else
 			BUG_ON(tmp->addr + tmp->size > vm->addr);
 	}
+	/* 现在p指向vmalist中符合特定条件的一个vm。 */
+	/* 现在把vm插入进去 */
 	vm->next = *p;
 	*p = vm;
 }
@@ -1865,7 +2028,9 @@ void __init vm_area_register_early(struct vm_struct *vm, size_t align)
 
 	vm_area_add_early(vm);
 }
-
+/* 初始化vmap机制的时候，此函数初始化“free space”？
+划分kva映射地址范围内的页面使用情况，便于分配时使用。
+ */
 static void vmap_init_free_space(void)
 {
 	unsigned long vmap_start = 1;
@@ -1879,7 +2044,9 @@ static void vmap_init_free_space(void)
 	 *  |<--------------------------------->|
 	 */
 	list_for_each_entry(busy, &vmap_area_list, list) {
-		if (busy->va_start - vmap_start > 0) {
+		if (busy->va_start - vmap_start > 0) 
+		{/* 说明什么？说明这个是free的？ */
+
 			free = kmem_cache_zalloc(vmap_area_cachep, GFP_NOWAIT);
 			if (!WARN_ON_ONCE(!free)) {
 				free->va_start = vmap_start;
@@ -1893,7 +2060,9 @@ static void vmap_init_free_space(void)
 
 		vmap_start = busy->va_end;
 	}
+	/* 刚刚处理了vmap_area_list里面实质为free的vmap空间，赋值到了free树里面 */
 
+	/* 差一情况？ */
 	if (vmap_end - vmap_start > 0) {
 		free = kmem_cache_zalloc(vmap_area_cachep, GFP_NOWAIT);
 		if (!WARN_ON_ONCE(!free)) {
@@ -1906,7 +2075,9 @@ static void vmap_init_free_space(void)
 		}
 	}
 }
+/* 2024年7月28日21:55:26
 
+ */
 void __init vmalloc_init(void)
 {
 	struct vmap_area *va;
@@ -1915,23 +2086,29 @@ void __init vmalloc_init(void)
 
 	/*
 	 * Create the cache for vmap_area objects.
+	 初始化vmap的slab缓存
 	 */
 	vmap_area_cachep = KMEM_CACHE(vmap_area, SLAB_PANIC);
 
+	/* 设置每cpu的vbq？ */
 	for_each_possible_cpu(i) {
 		struct vmap_block_queue *vbq;
 		struct vfree_deferred *p;
 
 		vbq = &per_cpu(vmap_block_queue, i);
 		spin_lock_init(&vbq->lock);
+		/* 初始化vbq挂载vb的链表 */
 		INIT_LIST_HEAD(&vbq->free);
+
 		p = &per_cpu(vfree_deferred, i);
 		init_llist_head(&p->list);
+		
 		INIT_WORK(&p->wq, free_work);
 	}
 
 	/* Import existing vmlist entries. */
 	for (tmp = vmlist; tmp; tmp = tmp->next) {
+		/* 分配一个vmap结构体来承载 */
 		va = kmem_cache_zalloc(vmap_area_cachep, GFP_NOWAIT);
 		if (WARN_ON_ONCE(!va))
 			continue;
@@ -1939,17 +2116,21 @@ void __init vmalloc_init(void)
 		va->va_start = (unsigned long)tmp->addr;
 		va->va_end = va->va_start + tmp->size;
 		va->vm = tmp;
+		/* 把新vmap插入全局 */
 		insert_vmap_area(va, &vmap_area_root, &vmap_area_list);
 	}
 
 	/*
 	 * Now we can initialize a free vmap space.
 	 */
+
+	/* 初始化vmap的free树 */
 	vmap_init_free_space();
 	vmap_initialized = true;
 }
 
 /**
+2024年7月28日21:54:53
  * map_kernel_range_noflush - map kernel VM area with the specified pages
  * @addr: start of the VM area to map
  * @size: size of the VM area to map
@@ -1975,6 +2156,7 @@ int map_kernel_range_noflush(unsigned long addr, unsigned long size,
 }
 
 /**
+2024年7月28日21:54:19
  * unmap_kernel_range_noflush - unmap kernel VM area
  * @addr: start of the VM area to unmap
  * @size: size of the VM area to unmap
@@ -1995,6 +2177,7 @@ void unmap_kernel_range_noflush(unsigned long addr, unsigned long size)
 EXPORT_SYMBOL_GPL(unmap_kernel_range_noflush);
 
 /**
+解除内核的vmap页面映射
  * unmap_kernel_range - unmap kernel VM area and flush cache and TLB
  * @addr: start of the VM area to unmap
  * @size: size of the VM area to unmap
@@ -2007,25 +2190,28 @@ void unmap_kernel_range(unsigned long addr, unsigned long size)
 	unsigned long end = addr + size;
 
 	flush_cache_vunmap(addr, end);
+	/* 开始逐级处理页表，解除映射 */
 	vunmap_page_range(addr, end);
+	
 	flush_tlb_kernel_range(addr, end);
 }
 EXPORT_SYMBOL_GPL(unmap_kernel_range);
 /* 2024年7月1日00:06:42
-
+把物理页面分配给vm。
  */
 int map_vm_area(struct vm_struct *area, pgprot_t prot, struct page **pages)
 {
 	unsigned long addr = (unsigned long)area->addr;
 	unsigned long end = addr + get_vm_area_size(area);
 	int err;
-
+	/* 把pages映射到addr-end的地址空间，参数没有area了！ */
 	err = vmap_page_range(addr, end, prot, pages);
 
 	return err > 0 ? 0 : err;
 }
 EXPORT_SYMBOL_GPL(map_vm_area);
-/* 2024年6月30日23:57:54 */
+/* 2024年6月30日23:57:54
+分配完vmap之后。这里设置属性 */
 static void setup_vmalloc_vm(struct vm_struct *vm, struct vmap_area *va,
 			      unsigned long flags, const void *caller)
 {
@@ -2037,7 +2223,7 @@ static void setup_vmalloc_vm(struct vm_struct *vm, struct vmap_area *va,
 	va->vm = vm;
 	spin_unlock(&vmap_area_lock);
 }
-
+/* 清除掉vm的未初始化标志位 */
 static void clear_vm_uninitialized_flag(struct vm_struct *vm)
 {
 	/*
@@ -2049,7 +2235,7 @@ static void clear_vm_uninitialized_flag(struct vm_struct *vm)
 	vm->flags &= ~VM_UNINITIALIZED;
 }
 /* 2024年6月30日23:18:56
-
+创建vmap？设置vm，不过好像没有申请物理页面和映射。
  */
 static struct vm_struct *__get_vm_area_node(unsigned long size,
 		unsigned long align, unsigned long flags, unsigned long start,
@@ -2067,7 +2253,7 @@ static struct vm_struct *__get_vm_area_node(unsigned long size,
 		align = 1ul << clamp_t(int, get_count_order_long(size),
 				       PAGE_SHIFT, IOREMAP_MAX_ORDER);
 	/* 2024年6月30日23:25:41
-	这个是什么内存？获取一段连续的物理内存
+	分配vm结构体的内存
 	 */
 	area = kzalloc_node(sizeof(*area), gfp_mask & GFP_RECLAIM_MASK, node);
 	if (unlikely(!area))
@@ -2076,14 +2262,14 @@ static struct vm_struct *__get_vm_area_node(unsigned long size,
 	if (!(flags & VM_NO_GUARD))
 		size += PAGE_SIZE;
 	/* 2024年6月30日23:26:04
-	获取va结构体，设置虚拟地址
+	获取vmap结构体，赋予虚拟地址空间
 	 */
 	va = alloc_vmap_area(size, align, start, end, node, gfp_mask);
 	if (IS_ERR(va)) {
 		kfree(area);
 		return NULL;
 	}
-
+	/* 设置vmap属性，这个时候area有页面吗？ */
 	setup_vmalloc_vm(area, va, flags, caller);
 
 	return area;
@@ -2122,11 +2308,12 @@ struct vm_struct *get_vm_area(unsigned long size, unsigned long flags)
 				  NUMA_NO_NODE, GFP_KERNEL,
 				  __builtin_return_address(0));
 }
-
+/* 2024年7月28日15:38:31 */
 struct vm_struct *get_vm_area_caller(unsigned long size, unsigned long flags,
 				const void *caller)
 {
-	return __get_vm_area_node(size, 1, flags, VMALLOC_START, VMALLOC_END,
+	return __get_vm_area_node(size, 1, flags, 
+	VMALLOC_START, VMALLOC_END,
 				  NUMA_NO_NODE, GFP_KERNEL, caller);
 }
 
@@ -2152,6 +2339,7 @@ struct vm_struct *find_vm_area(const void *addr)
 }
 
 /**
+移除area
  * remove_vm_area - find and remove a continuous kernel virtual area
  * @addr:	    base address
  *
@@ -2168,14 +2356,19 @@ struct vm_struct *remove_vm_area(const void *addr)
 	might_sleep();
 
 	spin_lock(&vmap_area_lock);
+	/* 查找addr的vmap */
 	va = __find_vmap_area((unsigned long)addr);
+	
 	if (va && va->vm) {
+		/* va的vm链表就描述了它的页面 */
 		struct vm_struct *vm = va->vm;
 
 		va->vm = NULL;
+		/* 得到了vm了，就不操作vmap树了，可以解锁 */
 		spin_unlock(&vmap_area_lock);
-
+		/* nop */
 		kasan_free_shadow(vm);
+		/* 释放这个vmap */
 		free_unmap_vmap_area(va);
 
 		return vm;
@@ -3102,6 +3295,7 @@ static int f(pte_t *pte, unsigned long addr, void *data)
 }
 
 /**
+分配一些内存空间，这个就是这个代码文件的最主要功能之一。
  * alloc_vm_area - allocate a range of kernel address space
  * @size:	   size of the area
  * @ptes:	   returns the PTEs for the address space
@@ -3137,7 +3331,7 @@ struct vm_struct *alloc_vm_area(size_t size, pte_t **ptes)
 	return area;
 }
 EXPORT_SYMBOL_GPL(alloc_vm_area);
-
+/* 释放area */
 void free_vm_area(struct vm_struct *area)
 {
 	struct vm_struct *ret;
@@ -3154,6 +3348,7 @@ static struct vmap_area *node_to_va(struct rb_node *n)
 }
 
 /**
+找到包含addr的vmap？
  * pvm_find_va_enclose_addr - find the vmap_area @addr belongs to
  * @addr: target address
  *
@@ -3188,6 +3383,7 @@ pvm_find_va_enclose_addr(unsigned long addr)
 }
 
 /**
+找到最大的未使用虚拟地址？
  * pvm_determine_end_from_reverse - find the highest aligned address
  * of free block below VMALLOC_END
  * @va:
@@ -3203,9 +3399,12 @@ pvm_determine_end_from_reverse(struct vmap_area **va, unsigned long align)
 	unsigned long addr;
 
 	if (likely(*va)) {
+		/* 遍历链表，找到最大的free block */
 		list_for_each_entry_from_reverse((*va),
 				&free_vmap_area_list, list) {
+			/* 这个链表好像是排好序的 */
 			addr = min((*va)->va_end & ~(align - 1), vmalloc_end);
+			
 			if ((*va)->va_start < addr)
 				return addr;
 		}
@@ -3215,10 +3414,12 @@ pvm_determine_end_from_reverse(struct vmap_area **va, unsigned long align)
 }
 
 /**
+2024年7月28日12:55:29
+percpu方式分配vmap
  * pcpu_get_vm_areas - allocate vmalloc areas for percpu allocator
- * @offsets: array containing offset of each area
- * @sizes: array containing size of each area
- * @nr_vms: the number of areas to allocate
+ * @offsets: array containing offset of each area，偏移数组
+ * @sizes: array containing size of each area，size数组
+ * @nr_vms: the number of areas to allocate，
  * @align: alignment, all entries in @offsets and @sizes must be aligned to this
  *
  * Returns: kmalloc'd vm_struct pointer array pointing to allocated
@@ -3237,6 +3438,8 @@ pvm_determine_end_from_reverse(struct vmap_area **va, unsigned long align)
  * base address is pulled down to fit the area. Scanning is repeated till
  * all the areas fit and then all necessary data structures are inserted
  * and the result is returned.
+ 2024年7月28日15:36:00
+ 所以是干嘛？
  */
 struct vm_struct **pcpu_get_vm_areas(const unsigned long *offsets,
 				     const size_t *sizes, int nr_vms,
@@ -3253,7 +3456,9 @@ struct vm_struct **pcpu_get_vm_areas(const unsigned long *offsets,
 
 	/* verify parameters and allocate data structures */
 	BUG_ON(offset_in_page(align) || !is_power_of_2(align));
+	
 	for (last_area = 0, area = 0; area < nr_vms; area++) {
+		/* 获得第area个vmap的起始结束地址 */
 		start = offsets[area];
 		end = start + sizes[area];
 
@@ -3261,35 +3466,49 @@ struct vm_struct **pcpu_get_vm_areas(const unsigned long *offsets,
 		BUG_ON(!IS_ALIGNED(offsets[area], align));
 		BUG_ON(!IS_ALIGNED(sizes[area], align));
 
-		/* detect the area with the highest address */
+		/* detect the area with the highest address
+		last area一直是最大的开始地址的vmap的idx */
 		if (start > offsets[last_area])
 			last_area = area;
 
 		for (area2 = area + 1; area2 < nr_vms; area2++) {
+			/*  */
 			unsigned long start2 = offsets[area2];
 			unsigned long end2 = start2 + sizes[area2];
+			
+			/* 
+				start---------------------end
+			              start2-----end2
+						    start2-----------------end2
+			如果后续有哪个vmap有交叉，报个信息
+			 */
 
 			BUG_ON(start2 < end && start < end2);
+
 		}
 	}
+	/* 目前具有最大起始地址的vmap的结束地址 */
 	last_end = offsets[last_area] + sizes[last_area];
 
 	if (vmalloc_end - vmalloc_start < last_end) {
 		WARN_ON(true);
 		return NULL;
 	}
-
+	/* 分配出相应的结构体数组，n*size */
 	vms = kcalloc(nr_vms, sizeof(vms[0]), GFP_KERNEL);
 	vas = kcalloc(nr_vms, sizeof(vas[0]), GFP_KERNEL);
 	if (!vas || !vms)
 		goto err_free2;
 
 	for (area = 0; area < nr_vms; area++) {
+		/* 分配vmap */
 		vas[area] = kmem_cache_zalloc(vmap_area_cachep, GFP_KERNEL);
+		/* 分配vm */
 		vms[area] = kzalloc(sizeof(struct vm_struct), GFP_KERNEL);
 		if (!vas[area] || !vms[area])
 			goto err_free;
 	}
+	 
 retry:
 	spin_lock(&vmap_area_lock);
 
@@ -3297,8 +3516,9 @@ retry:
 	area = term_area = last_area;
 	start = offsets[area];
 	end = start + sizes[area];
-
+	/* vmap包含addr地址 */
 	va = pvm_find_va_enclose_addr(vmalloc_end);
+	/* 刚才va是从红黑树取下来的，这里又被赋值了free链表里的？ */
 	base = pvm_determine_end_from_reverse(&va, align) - end;
 
 	while (true) {
@@ -3364,7 +3584,8 @@ retry:
 		if (WARN_ON_ONCE(type == NOTHING_FIT))
 			/* It is a BUG(), but trigger recovery instead. */
 			goto recovery;
-
+		
+		/* 调整什么 */
 		ret = adjust_va_to_fit_type(va, start, size, type);
 		if (unlikely(ret))
 			goto recovery;
@@ -3397,6 +3618,7 @@ recovery:
 overflow:
 	spin_unlock(&vmap_area_lock);
 	if (!purged) {
+		/* lazy purge要删除的vmap们 */
 		purge_vmap_area_lazy();
 		purged = true;
 
@@ -3428,6 +3650,7 @@ err_free2:
 }
 
 /**
+释放一组vm
  * pcpu_free_vm_areas - free vmalloc areas for percpu allocator
  * @vms: vm_struct pointer array returned by pcpu_get_vm_areas()
  * @nr_vms: the number of allocated areas
@@ -3437,14 +3660,16 @@ err_free2:
 void pcpu_free_vm_areas(struct vm_struct **vms, int nr_vms)
 {
 	int i;
-
+	/* 释放vms数组的每一个area指针 */
 	for (i = 0; i < nr_vms; i++)
 		free_vm_area(vms[i]);
+	/* 释放地址和页面 */
 	kfree(vms);
 }
 #endif	/* CONFIG_SMP */
 
 #ifdef CONFIG_PROC_FS
+/* 好像是遍历的接口？ */
 static void *s_start(struct seq_file *m, loff_t *pos)
 	__acquires(&vmap_area_lock)
 {
@@ -3486,7 +3711,7 @@ static void show_numa_info(struct seq_file *m, struct vm_struct *v)
 				seq_printf(m, " N%u=%u", nr, counters[nr]);
 	}
 }
-
+/*  */
 static void show_purge_info(struct seq_file *m)
 {
 	struct llist_node *head;
@@ -3502,7 +3727,7 @@ static void show_purge_info(struct seq_file *m)
 			va->va_end - va->va_start);
 	}
 }
-
+/* todo */
 static int s_show(struct seq_file *m, void *p)
 {
 	struct vmap_area *va;
@@ -3575,7 +3800,7 @@ static const struct seq_operations vmalloc_op = {
 	.stop = s_stop,
 	.show = s_show,
 };
-
+/* 在proc文件系统创建对应的文件，todo */
 static int __init proc_vmalloc_init(void)
 {
 	if (IS_ENABLED(CONFIG_NUMA))

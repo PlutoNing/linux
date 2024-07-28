@@ -513,7 +513,7 @@ struct proc_dir_entry *proc_create_mount_point(const char *name)
 	return ent;
 }
 EXPORT_SYMBOL(proc_create_mount_point);
-
+/*  */
 struct proc_dir_entry *proc_create_reg(const char *name, umode_t mode,
 		struct proc_dir_entry **parent, void *data)
 {
@@ -582,7 +582,7 @@ static const struct file_operations proc_seq_fops = {
 	.llseek		= seq_lseek,
 	.release	= proc_seq_release,
 };
-
+/* 创建文件 */
 struct proc_dir_entry *proc_create_seq_private(const char *name, umode_t mode,
 		struct proc_dir_entry *parent, const struct seq_operations *ops,
 		unsigned int state_size, void *data)
@@ -595,6 +595,7 @@ struct proc_dir_entry *proc_create_seq_private(const char *name, umode_t mode,
 	p->proc_fops = &proc_seq_fops;
 	p->seq_ops = ops;
 	p->state_size = state_size;
+	
 	return proc_register(parent, p);
 }
 EXPORT_SYMBOL(proc_create_seq_private);

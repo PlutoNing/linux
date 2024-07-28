@@ -605,6 +605,7 @@ static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
 int memcg_update_all_caches(int num_memcgs);
 
 /**
+分配数组
  * kmalloc_array - allocate memory for an array.
  * @n: number of elements.
  * @size: element size.
@@ -622,6 +623,7 @@ static inline void *kmalloc_array(size_t n, size_t size, gfp_t flags)
 }
 
 /**
+分配n*size的数组。
  * kcalloc - allocate memory for an array. The memory is set to zero.
  * @n: number of elements.
  * @size: element size.

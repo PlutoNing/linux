@@ -81,7 +81,7 @@ static inline void native_pmd_clear(pmd_t *pmd)
 {
 	native_set_pmd(pmd, native_make_pmd(0));
 }
-
+/*  */
 static inline pte_t native_ptep_get_and_clear(pte_t *xp)
 {
 #ifdef CONFIG_SMP

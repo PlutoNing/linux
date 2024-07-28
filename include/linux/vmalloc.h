@@ -38,7 +38,8 @@ struct notifier_block;		/* in notifier.h */
 #define IOREMAP_MAX_ORDER	(7 + PAGE_SHIFT)	/* 128 pages */
 #endif
 /* 2024年6月30日22:50:15
-
+struct vmap_area中vm字段是struct vm_struct结构，用于管理虚拟地址和物理页之间的映射关系，
+可以将struct vm_struct构成一个链表，维护多段映射。
 */
 struct vm_struct {
 	struct vm_struct	*next; /* 虚拟地址 */
@@ -51,7 +52,14 @@ struct vm_struct {
 	const void		*caller; /*  */
 };
 /* 2024年6月30日22:58:49
-
+用于描述一段虚拟地址的区域，
+从结构体中va_start/va_end也能看出来。
+同时该结构体会通过rb_node挂在红黑树上，通过list挂在链表上
+---------------------------------
+struct vmap_area(记录在vmap_area_root中的vmalooc分配
+情况和vmap_area_list列表中)。内核在管理虚拟内存中的vmalloc
+区域时，必须跟踪哪些区域被使用，哪些是空闲的，
+为此定义了一个数据结构，将所有的部分保存在一个链表中
  */
 struct vmap_area {
 	unsigned long va_start; /* 区间的起始地址 */
@@ -70,7 +78,8 @@ struct vmap_area {
 	union {
 		unsigned long subtree_max_size; /* in "free" tree */
 		struct vm_struct *vm;           /* in "busy" tree */
-		struct llist_node purge_list;   /* in purge list */
+		struct llist_node purge_list;   /*通过这个挂入全局的vmap_purge_list
+		 in purge list */
 	};
 };
 
