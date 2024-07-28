@@ -2292,7 +2292,7 @@ static struct inode *shmem_get_inode(struct super_block *sb, const struct inode 
 		shmem_free_inode(sb);
 	return inode;
 }
-
+/* 通过ops判断mapping类型 */
 bool shmem_mapping(struct address_space *mapping)
 {
 	return mapping->a_ops == &shmem_aops;

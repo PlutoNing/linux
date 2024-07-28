@@ -7,7 +7,7 @@
  * 10Sep2002	Andrew Morton
  *		Initial version.
  */
-
+/* 2024年7月28日23:55:53 */
 #include <linux/kernel.h>
 #include <linux/backing-dev.h>
 #include <linux/dax.h>
@@ -27,6 +27,8 @@
 #include "internal.h"
 
 /*
+2024年7月29日00:32:25
+todo
  * Regular page slots are stabilized by the page lock even without the tree
  * itself locked.  These unlocked entries need verification under the tree
  * lock.
@@ -37,8 +39,10 @@ static inline void __clear_shadow_entry(struct address_space *mapping,
 	XA_STATE(xas, &mapping->i_pages, index);
 
 	xas_set_update(&xas, workingset_update_node);
+	
 	if (xas_load(&xas) != entry)
 		return;
+
 	xas_store(&xas, NULL);
 	mapping->nrexceptional--;
 }
@@ -52,6 +56,7 @@ static void clear_shadow_entry(struct address_space *mapping, pgoff_t index,
 }
 
 /*
+2024年7月29日00:28:08
  * Unconditionally remove exceptional entries. Usually called from truncate
  * path. Note that the pagevec may be altered by this function by removing
  * exceptional entries similar to what pagevec_remove_exceptionals does.
@@ -73,13 +78,18 @@ static void truncate_exceptional_pvec_entries(struct address_space *mapping,
 
 	if (j == pagevec_count(pvec))
 		return;
-
+	/* j不为count，没有遍历完，就遇到了非xa_is_value的的情况 */
+	
+	/* 是不是直接IO */
 	dax = dax_mapping(mapping);
+
+	/* 不是直接IO，并且还没有到头。就锁住mapping的pages数组。 */
 	lock = !dax && indices[j] < end;
 	if (lock)
 		xa_lock_irq(&mapping->i_pages);
 
 	for (i = j; i < pagevec_count(pvec); i++) {
+		/*  */
 		struct page *page = pvec->pages[i];
 		pgoff_t index = indices[i];
 
@@ -92,10 +102,11 @@ static void truncate_exceptional_pvec_entries(struct address_space *mapping,
 			continue;
 
 		if (unlikely(dax)) {
+			/* 直接IO */
 			dax_delete_mapping_entry(mapping, index);
 			continue;
 		}
-
+		/*  */
 		__clear_shadow_entry(mapping, index, page);
 	}
 
@@ -135,6 +146,7 @@ static int invalidate_exceptional_entry2(struct address_space *mapping,
 }
 
 /**
+ 2024年7月29日00:19:44
  * do_invalidatepage - invalidate part or all of a page
  * @page: the page which is affected
  * @offset: start of the range to invalidate
@@ -164,6 +176,8 @@ void do_invalidatepage(struct page *page, unsigned int offset,
 }
 
 /*
+2024年7月29日00:17:21
+解除映射，处理priv，处理dirty标志位
  * If truncate cannot remove the fs-private metadata from the page, the page
  * becomes orphaned.  It will be left on the LRU and may even be mapped into
  * user pagetables if we're racing with filemap_fault().
@@ -178,9 +192,10 @@ truncate_cleanup_page(struct address_space *mapping, struct page *page)
 {
 	if (page_mapped(page)) {
 		pgoff_t nr = PageTransHuge(page) ? HPAGE_PMD_NR : 1;
+		/*  */
 		unmap_mapping_pages(mapping, page->index, nr, false);
 	}
-
+	/* 处理privdata，比如fs设置的什么的 */
 	if (page_has_private(page))
 		do_invalidatepage(page, 0, PAGE_SIZE);
 
@@ -190,6 +205,7 @@ truncate_cleanup_page(struct address_space *mapping, struct page *page)
 	 * Hence dirty accounting check is placed after invalidation.
 	 */
 	cancel_dirty_page(page);
+	/*  */
 	ClearPageMappedToDisk(page);
 }
 
@@ -216,15 +232,16 @@ invalidate_complete_page(struct address_space *mapping, struct page *page)
 
 	return ret;
 }
-
+/* 2024年7月29日00:47:26 */
 int truncate_inode_page(struct address_space *mapping, struct page *page)
 {
 	VM_BUG_ON_PAGE(PageTail(page), page);
 
 	if (page->mapping != mapping)
 		return -EIO;
-
+	/* 从mapping解除映射等等 */
 	truncate_cleanup_page(mapping, page);
+	/* 从mapping移除页面 */
 	delete_from_page_cache(page);
 	return 0;
 }
@@ -265,7 +282,9 @@ int invalidate_inode_page(struct page *page)
 }
 
 /**
- * truncate_inode_pages_range - truncate range of pages specified by start & end byte offsets
+2024年7月29日00:02:01
+ * truncate_inode_pages_range - 
+ truncate range of pages specified by start & end byte offsets
  * @mapping: mapping to truncate
  * @lstart: offset from which to truncate
  * @lend: offset to which to truncate (inclusive)
@@ -326,9 +345,11 @@ void truncate_inode_pages_range(struct address_space *mapping,
 
 	pagevec_init(&pvec);
 	index = start;
-	while (index < end && pagevec_lookup_entries(&pvec, mapping, index,
-			min(end - index, (pgoff_t)PAGEVEC_SIZE),
-			indices)) {
+	while (index < end && 
+	pagevec_lookup_entries(&pvec, mapping, index,
+	min(end - index, (pgoff_t)PAGEVEC_SIZE),indices)
+			) {
+		/* 找的页面在pvec里面。 */
 		/*
 		 * Pagevec array has exceptional entries and we may also fail
 		 * to lock some pages. So we store pages that can be deleted
@@ -337,7 +358,9 @@ void truncate_inode_pages_range(struct address_space *mapping,
 		struct pagevec locked_pvec;
 
 		pagevec_init(&locked_pvec);
+		/* 遍历pvec */
 		for (i = 0; i < pagevec_count(&pvec); i++) {
+			/*  */
 			struct page *page = pvec.pages[i];
 
 			/* We rely upon deletion not changing page->index */
@@ -358,22 +381,34 @@ void truncate_inode_pages_range(struct address_space *mapping,
 			if (page->mapping != mapping) {
 				unlock_page(page);
 				continue;
+				/*  */
 			}
+			/* 加入locked——pvec */
 			pagevec_add(&locked_pvec, page);
 		}
+		/*  */
 		for (i = 0; i < pagevec_count(&locked_pvec); i++)
 			truncate_cleanup_page(mapping, locked_pvec.pages[i]);
+		/* 从pagecache移除页面 */
 		delete_from_page_cache_batch(mapping, &locked_pvec);
+		
 		for (i = 0; i < pagevec_count(&locked_pvec); i++)
 			unlock_page(locked_pvec.pages[i]);
+		/* todo */
 		truncate_exceptional_pvec_entries(mapping, &pvec, indices, end);
+		
 		pagevec_release(&pvec);
 		cond_resched();
 		index++;
 	}
+	
+
 	if (partial_start) {
+		/*  */
 		struct page *page = find_lock_page(mapping, start - 1);
 		if (page) {
+
+			/* 找到了页面 */
 			unsigned int top = PAGE_SIZE;
 			if (start > end) {
 				/* Truncation within a single page */
@@ -415,6 +450,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 		cond_resched();
 		if (!pagevec_lookup_entries(&pvec, mapping, index,
 			min(end - index, (pgoff_t)PAGEVEC_SIZE), indices)) {
+			/* 没有获取到页面到pvec。 */
 			/* If all gone from start onwards, we're done */
 			if (index == start)
 				break;
@@ -422,6 +458,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 			index = start;
 			continue;
 		}
+
 		if (index == start && indices[0] >= end) {
 			/* All gone out of hole to be punched, we're done */
 			pagevec_remove_exceptionals(&pvec);
@@ -430,6 +467,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 		}
 
 		for (i = 0; i < pagevec_count(&pvec); i++) {
+			/*  */
 			struct page *page = pvec.pages[i];
 
 			/* We rely upon deletion not changing page->index */
@@ -439,16 +477,20 @@ void truncate_inode_pages_range(struct address_space *mapping,
 				index = start - 1;
 				break;
 			}
-
+			/* is value意味着什么，刚才的处理应该是把pvec前面的页面全是
+			非is value的 */
 			if (xa_is_value(page))
 				continue;
 
 			lock_page(page);
 			WARN_ON(page_to_index(page) != index);
+
 			wait_on_page_writeback(page);
+			/* 回写完成了，trunc。 */
 			truncate_inode_page(mapping, page);
 			unlock_page(page);
 		}
+
 		truncate_exceptional_pvec_entries(mapping, &pvec, indices, end);
 		pagevec_release(&pvec);
 		index++;
@@ -785,6 +827,8 @@ int invalidate_inode_pages2(struct address_space *mapping)
 EXPORT_SYMBOL_GPL(invalidate_inode_pages2);
 
 /**
+2024年7月29日00:58:51
+truncate之后，unmap或者移除pagecache。
  * truncate_pagecache - unmap and remove pagecache that has been truncated
  * @inode: inode
  * @newsize: new file size
@@ -820,6 +864,8 @@ void truncate_pagecache(struct inode *inode, loff_t newsize)
 EXPORT_SYMBOL(truncate_pagecache);
 
 /**
+2024年7月29日00:56:13
+
  * truncate_setsize - update inode and pagecache for a new file size
  * @inode: inode
  * @newsize: new file size
@@ -837,17 +883,21 @@ void truncate_setsize(struct inode *inode, loff_t newsize)
 	loff_t oldsize = inode->i_size;
 
 	i_size_write(inode, newsize);
+
 	if (newsize > oldsize)
+	/* 变大了 */
 		pagecache_isize_extended(inode, oldsize, newsize);
+	/*  */
 	truncate_pagecache(inode, newsize);
 }
 EXPORT_SYMBOL(truncate_setsize);
 
 /**
+2024年7月29日00:53:37
  * pagecache_isize_extended - update pagecache after extension of i_size
  * @inode:	inode for which i_size was extended
- * @from:	original inode size
- * @to:		new inode size
+ * @from:	original inode size，原来大小
+ * @to:		new inode size，新大小
  *
  * Handle extension of inode size either caused by extending truncate or by
  * write starting after current i_size. We mark the page straddling current
@@ -877,8 +927,9 @@ void pagecache_isize_extended(struct inode *inode, loff_t from, loff_t to)
 	rounded_from = round_up(from, bsize);
 	if (to <= rounded_from || !(rounded_from & (PAGE_SIZE - 1)))
 		return;
-
+	/* 获取本来的大小最后一个页面的索引？ */
 	index = from >> PAGE_SHIFT;
+	/* 获取这个索引的页面 */
 	page = find_lock_page(inode->i_mapping, index);
 	/* Page not cached? Nothing to do */
 	if (!page)
@@ -889,13 +940,17 @@ void pagecache_isize_extended(struct inode *inode, loff_t from, loff_t to)
 	 */
 	if (page_mkclean(page))
 		set_page_dirty(page);
+	
 	unlock_page(page);
+
 	put_page(page);
 }
 EXPORT_SYMBOL(pagecache_isize_extended);
 
 /**
- * truncate_pagecache_range - unmap and remove pagecache that is hole-punched
+2024年7月28日23:56:06
+ * truncate_pagecache_range - 
+ unmap and remove pagecache that is hole-punched
  * @inode: inode
  * @lstart: offset of beginning of hole
  * @lend: offset of last byte of hole
@@ -928,6 +983,7 @@ void truncate_pagecache_range(struct inode *inode, loff_t lstart, loff_t lend)
 	if ((u64)unmap_end > (u64)unmap_start)
 		unmap_mapping_range(mapping, unmap_start,
 				    1 + unmap_end - unmap_start, 0);
+	/* 从mapping移除这些页面 */
 	truncate_inode_pages_range(mapping, lstart, lend);
 }
 EXPORT_SYMBOL(truncate_pagecache_range);

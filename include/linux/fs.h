@@ -475,6 +475,7 @@ struct address_space {
 	struct rw_semaphore	i_mmap_rwsem;
 	/* 地址空间里面的page数量 */
 	unsigned long		nrpages;
+	/* todo */
 	unsigned long		nrexceptional;
 	/* 代表回写时所使用的索引 */
 	pgoff_t			writeback_index;
@@ -929,6 +930,7 @@ static inline loff_t i_size_read(const struct inode *inode)
 }
 
 /*
+2024年7月29日00:56:58
  * NOTE: unlike i_size_read(), i_size_write() does need locking around it
  * (normally i_mutex), otherwise on 32bit/SMP an update of i_size_seqcount
  * can be lost, resulting in subsequent i_size_read() calls spinning forever.

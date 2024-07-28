@@ -2671,12 +2671,15 @@ EXPORT_SYMBOL(set_page_dirty_lock);
  * this when it notices that somebody has cleaned out all the buffers on a
  * page without actually doing it through the VM. Can you say "ext3 is
  * horribly ugly"? Thought you could.
+ 2024年7月29日00:21:50
+除了直接置位， 可能需要处理一点account什么的。
  */
 void __cancel_dirty_page(struct page *page)
 {
 	struct address_space *mapping = page_mapping(page);
 
 	if (mapping_cap_account_dirty(mapping)) {
+		/* 如果acct dirty的话，就不能只是直接置位。 */
 		struct inode *inode = mapping->host;
 		struct bdi_writeback *wb;
 		struct wb_lock_cookie cookie = {};

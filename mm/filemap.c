@@ -301,6 +301,7 @@ EXPORT_SYMBOL(delete_from_page_cache);
 
 /*
 2024年07月18日12:37:41
+从xas数组移除页面。
  * page_cache_delete_batch - delete several pages from page cache
  * @mapping: the mapping to which pages belong
  * @pvec: pagevec with pages to delete
@@ -367,7 +368,7 @@ static void page_cache_delete_batch(struct address_space *mapping,
 	mapping->nrpages -= total_pages;
 }
 /* 2024年07月18日12:36:26
-
+从pagacache的mapping移除页面。
  */
 void delete_from_page_cache_batch(struct address_space *mapping,
 				  struct pagevec *pvec)
@@ -388,7 +389,8 @@ void delete_from_page_cache_batch(struct address_space *mapping,
 	page_cache_delete_batch(mapping, pvec);
 	xa_unlock_irqrestore(&mapping->i_pages, flags);
 	/* 这里是free什么
-	好像是调用ops，进行put之类的  */
+	好像是调用ops，进行put之类的
+	*/
 	for (i = 0; i < pagevec_count(pvec); i++)
 		page_cache_free_page(mapping, pvec->pages[i]);
 }
@@ -1972,7 +1974,7 @@ unsigned find_get_entries(struct address_space *mapping,
 		 * A shadow entry of a recently evicted page, a swap
 		 * entry from shmem/tmpfs or a DAX entry.  Return it
 		 * without attempting to raise page count.
-		 2024年07月18日10:11:38碰到空洞就“导出”，然后继续？
+		 
 		 */
 		if (xa_is_value(page))
 			goto export;

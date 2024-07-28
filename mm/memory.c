@@ -3019,7 +3019,7 @@ void unmap_mapping_pages(struct address_space *mapping, pgoff_t start,
 2024年7月27日10:15:54
 unmap指定mapping的指定范围的映射？
 解除mapping的页面映射，归根结底是解除mapping关联的vma的映射
-所以是遍历mapping的i-mmap红黑树，挨个处理vma
+所以是遍历mapping的i-mmap红黑树，挨个处理vma。
  * unmap_mapping_range - unmap the portion of all mmaps in the specified
  * address_space corresponding to the specified byte range in the underlying
  * file.
@@ -3040,7 +3040,8 @@ void unmap_mapping_range(struct address_space *mapping,
 		loff_t const holebegin, loff_t const holelen, int even_cows)
 {
 
-	/* 为什么命名hba呢，还有h是什么含义，todo */
+	/* 为什么命名hba呢，还有h是什么含义，todo
+	hollow begin address。 */
 	pgoff_t hba = holebegin >> PAGE_SHIFT;
 	pgoff_t hlen = (holelen + PAGE_SIZE - 1) >> PAGE_SHIFT;
 

@@ -2,6 +2,8 @@
 /*
  * Copyright (C) 2014 Davidlohr Bueso.
  */
+
+ /* vma的缓存 */
 #include <linux/sched/signal.h>
 #include <linux/sched/task.h>
 #include <linux/mm.h>
