@@ -1202,6 +1202,15 @@ extern void blk_set_queue_dying(struct request_queue *);
  * or when attempting a merge, because blk_schedule_flush_list() will only flush
  * the plug list when the task sleeps by itself. For details, please see
  * schedule() where blk_schedule_flush_plug() is called.
+   Linux块设备层使用了Plug/Unplug的机制来提升IO吞吐量，基本原理为：当IO请求
+   （一般时将文件数据以BIO的格式提交，以submit_bio函数）提交时，不是直接提交
+   给块设备驱动(比如UFS Driver或MMC Driver), 而是放在一个放在一个Plug队列中
+   (可以理解为一个蓄BIO的水池)，等待一定的时机或者条件或者周期后再将队列中的
+   请求统一下发给IO Schedule层（下发给IO Schedule层的请求都是以Request的形式）
+   。将请求放入Plug队列(可以理解为一个蓄BIO的水池)中是Plug(蓄流)过程，统一下发
+   请求(以Request的格式下 发)到IO Schedule的过程即为unplug(泄流)过程。每个请
+   求(Request请求)在Plug队列中等待的时间不会太长，通常在ms级别。
+
  */
 struct blk_plug {
 	struct list_head mq_list; /* blk-mq requests */
@@ -1862,7 +1871,7 @@ static inline int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask,
 }
 
 #endif /* CONFIG_BLOCK */
-
+/*  */
 static inline void blk_wake_io_task(struct task_struct *waiter)
 {
 	/*

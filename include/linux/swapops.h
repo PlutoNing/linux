@@ -25,6 +25,8 @@
 
 /*
  * Store a type+offset into a swp_entry_t in an arch-independent format
+ 把type和offset编码位entry。
+ 
  */
 static inline swp_entry_t swp_entry(unsigned long type, pgoff_t offset)
 {
@@ -93,7 +95,8 @@ static inline pte_t swp_entry_to_pte(swp_entry_t entry)
 	arch_entry = __swp_entry(swp_type(entry), swp_offset(entry));
 	return __swp_entry_to_pte(arch_entry);
 }
-/* 2024年7月13日14:42:29 */
+/* 2024年7月13日14:42:29
+把mapping里面的swap条目转换为swap entry。 */
 static inline swp_entry_t radix_to_swp_entry(void *arg)
 {
 	swp_entry_t entry;

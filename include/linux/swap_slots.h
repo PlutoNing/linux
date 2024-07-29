@@ -9,15 +9,18 @@
 #define SWAP_SLOTS_CACHE_SIZE			SWAP_BATCH
 #define THRESHOLD_ACTIVATE_SWAP_SLOTS_CACHE	(5*SWAP_SLOTS_CACHE_SIZE)
 #define THRESHOLD_DEACTIVATE_SWAP_SLOTS_CACHE	(2*SWAP_SLOTS_CACHE_SIZE)
-
+/*  */
 struct swap_slots_cache {
 	bool		lock_initialized;
 	struct mutex	alloc_lock; /* protects slots, nr, cur */
 	swp_entry_t	*slots;
 	int		nr;
 	int		cur;
+	/* 保护缓存数组的锁。 */
 	spinlock_t	free_lock;  /* protects slots_ret, n_ret */
+	/* 里面是缓存的entres */
 	swp_entry_t	*slots_ret;
+	/* 缓存的entries数量 */
 	int		n_ret;
 };
 

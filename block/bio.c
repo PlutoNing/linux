@@ -767,6 +767,9 @@ bool __bio_try_merge_page(struct bio *bio, struct page *page,
 EXPORT_SYMBOL_GPL(__bio_try_merge_page);
 
 /**
+2024年7月29日23:00:18
+把要读取的某个page
+构造为bv，加入bio的bio vec里面。
  * __bio_add_page - add page(s) to a bio in a new segment
  * @bio: destination bio
  * @page: start page to add
@@ -779,16 +782,18 @@ EXPORT_SYMBOL_GPL(__bio_try_merge_page);
 void __bio_add_page(struct bio *bio, struct page *page,
 		unsigned int len, unsigned int off)
 {
+	/* 获得最后一个bv？ */
 	struct bio_vec *bv = &bio->bi_io_vec[bio->bi_vcnt];
 
 	WARN_ON_ONCE(bio_flagged(bio, BIO_CLONED));
 	WARN_ON_ONCE(bio_full(bio, len));
-
+	/* 构造bv */
 	bv->bv_page = page;
 	bv->bv_offset = off;
 	bv->bv_len = len;
-
+	/*  */
 	bio->bi_iter.bi_size += len;
+	/*  */
 	bio->bi_vcnt++;
 
 	if (!bio_flagged(bio, BIO_WORKINGSET) && unlikely(PageWorkingset(page)))
@@ -797,6 +802,7 @@ void __bio_add_page(struct bio *bio, struct page *page,
 EXPORT_SYMBOL_GPL(__bio_add_page);
 
 /**
+2024年7月29日22:59:28
  *	bio_add_page	-	attempt to add page(s) to bio
  *	@bio: destination bio
  *	@page: start page to add
@@ -812,6 +818,7 @@ int bio_add_page(struct bio *bio, struct page *page,
 	bool same_page = false;
 
 	if (!__bio_try_merge_page(bio, page, len, offset, &same_page)) {
+		/* 先尝试合并，失败后再添加 */
 		if (bio_full(bio, len))
 			return 0;
 		__bio_add_page(bio, page, len, offset);

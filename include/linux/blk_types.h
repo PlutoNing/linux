@@ -160,8 +160,9 @@ struct bio {
 	struct bvec_iter	bi_iter;
 // 关联 bio 的数量
 	atomic_t		__bi_remaining;
+	/* end io的回调函数 */
 	bio_end_io_t		*bi_end_io;
-
+	/* pcb？ */
 	void			*bi_private;
 #ifdef CONFIG_BLK_CGROUP
 	/*
@@ -183,7 +184,9 @@ struct bio {
 #endif
 	};
 
-	unsigned short		bi_vcnt;	/* how many bio_vec's */
+	unsigned short		bi_vcnt;	/* 
+	有多少个元素数量
+	how many bio_vec's */
 
 	/*
 	 * Everything starting with bi_max_vecs will be preserved by bio_reset()
@@ -193,7 +196,9 @@ struct bio {
 
 	atomic_t		__bi_cnt;	/* pin count */
 
-	struct bio_vec		*bi_io_vec;	/* the actual vec list */
+	struct bio_vec		*bi_io_vec;	/*
+	bio_vec的数组指针？
+	 the actual vec list */
 
 	struct bio_set		*bi_pool;
 
