@@ -13,7 +13,7 @@
  * Swap aging added 23.2.95, Stephen Tweedie.
  * Buffermem limits added 12.3.98, Rik van Riel.
  */
-
+/* 2024年07月29日13:43:07 */
 #include <linux/mm.h>
 #include <linux/sched.h>
 #include <linux/kernel_stat.h>
@@ -54,6 +54,8 @@ static DEFINE_PER_CPU(struct pagevec, activate_page_pvecs);
 #endif
 
 /*
+2024年07月29日12:21:14
+从lru移走。清除lru标志位。
  * This path almost never happens for VM activity - pages are normally
  * freed via pagevecs.  But it gets used by networking.
  */
@@ -73,14 +75,17 @@ static void __page_cache_release(struct page *page)
 	}
 	__ClearPageWaiters(page);
 }
-
+/* put页面 */
 static void __put_single_page(struct page *page)
 {
+	/* 从lru移走 */
 	__page_cache_release(page);
+	/*  */
 	mem_cgroup_uncharge(page);
+	/* 归还页面到buddy */
 	free_unref_page(page);
 }
-
+/* put复合页 */
 static void __put_compound_page(struct page *page)
 {
 	compound_page_dtor *dtor;
@@ -93,10 +98,12 @@ static void __put_compound_page(struct page *page)
 	 */
 	if (!PageHuge(page))
 		__page_cache_release(page);
+
 	dtor = get_compound_page_dtor(page);
 	(*dtor)(page);
 }
-
+/* 如何才算put一个page呢
+ */
 void __put_page(struct page *page)
 {
 	if (is_zone_device_page(page)) {
@@ -118,6 +125,7 @@ EXPORT_SYMBOL(__put_page);
 
 /**
 2024年6月30日15:01:12
+批量处理page链表
  * put_pages_list() - release a list of pages
  * @pages: list of pages threaded on page->lru
  *
@@ -137,6 +145,8 @@ void put_pages_list(struct list_head *pages)
 EXPORT_SYMBOL(put_pages_list);
 
 /*
+2024年07月29日13:38:06
+todo
  * get_kernel_pages() - pin kernel pages in memory
  * @kiov:	An array of struct kvec structures
  * @nr_segs:	number of segments to pin
@@ -167,6 +177,7 @@ int get_kernel_pages(const struct kvec *kiov, int nr_segs, int write,
 EXPORT_SYMBOL_GPL(get_kernel_pages);
 
 /*
+get内核的page
  * get_kernel_page() - pin a kernel page in memory
  * @start:	starting kernel address
  * @write:	pinning for read/write, currently ignored
@@ -242,6 +253,7 @@ static void pagevec_move_tail_fn(struct page *page, struct lruvec *lruvec,
 	if (PageLRU(page) && !PageUnevictable(page)) {
 		del_page_from_lru_list(page, lruvec, page_lru(page));
 		ClearPageActive(page);
+		/* 移到尾部 */
 		add_page_to_lru_list_tail(page, lruvec, page_lru(page));
 		(*pgmoved)++;
 	}
@@ -249,7 +261,7 @@ static void pagevec_move_tail_fn(struct page *page, struct lruvec *lruvec,
 
 /*
 2024年06月25日15:58:56
-
+把pvec移到lru尾部
  * pagevec_move_tail() must be called with IRQ disabled.
  * Otherwise this may cause nasty races.
  */
@@ -283,7 +295,7 @@ void rotate_reclaimable_page(struct page *page)
 		local_irq_restore(flags);
 	}
 }
-
+/*  */
 static void update_page_reclaim_stat(struct lruvec *lruvec,
 				     int file, int rotated)
 {
@@ -293,11 +305,12 @@ static void update_page_reclaim_stat(struct lruvec *lruvec,
 	if (rotated)
 		reclaim_stat->recent_rotated[file]++;
 }
-
+/* 移到active的lru */
 static void __activate_page(struct page *page, struct lruvec *lruvec,
 			    void *arg)
 {
 	if (PageLRU(page) && !PageActive(page) && !PageUnevictable(page)) {
+		/* 确定页面类型 */
 		int file = page_is_file_cache(page);
 		int lru = page_lru_base_type(page);
 
@@ -313,6 +326,7 @@ static void __activate_page(struct page *page, struct lruvec *lruvec,
 }
 
 #ifdef CONFIG_SMP
+/*  */
 static void activate_page_drain(int cpu)
 {
 	struct pagevec *pvec = &per_cpu(activate_page_pvecs, cpu);
@@ -325,7 +339,7 @@ static bool need_activate_page_drain(int cpu)
 {
 	return pagevec_count(&per_cpu(activate_page_pvecs, cpu)) != 0;
 }
-
+/* 把page放到activate_page_pvecs */
 void activate_page(struct page *page)
 {
 	page = compound_head(page);
@@ -354,7 +368,9 @@ void activate_page(struct page *page)
 	spin_unlock_irq(&pgdat->lru_lock);
 }
 #endif
-
+/* 2024年07月29日13:24:18
+active这个percpu的lruadd pvec里面的指定页面
+ */
 static void __lru_cache_activate_page(struct page *page)
 {
 	struct pagevec *pvec = &get_cpu_var(lru_add_pvec);
@@ -420,6 +436,8 @@ void mark_page_accessed(struct page *page)
 	if (page_is_idle(page))
 		clear_page_idle(page);
 }
+
+
 EXPORT_SYMBOL(mark_page_accessed);
 /* 2024年6月24日23:41:30
 将一个page添加到lru_add链表的实现。每个lru缓存都是CPU上的一个缓存，当该page加入到
@@ -442,6 +460,7 @@ static void __lru_cache_add(struct page *page)
 
 /**
 2024年07月03日14:51:49
+anon代表什么？
  * lru_cache_add_anon - add a page to the page lists
  * @page: the page to add
  */
@@ -451,7 +470,8 @@ void lru_cache_add_anon(struct page *page)
 		ClearPageActive(page);
 	__lru_cache_add(page);
 }
-
+/* 2024年07月29日13:15:45
+函数名的file含义？ */
 void lru_cache_add_file(struct page *page)
 {
 	if (PageActive(page))
@@ -738,6 +758,7 @@ lru_deactivate链表缓存是将一个活动页移动到非活动页链表中时
 void deactivate_page(struct page *page)
 {
 	if (PageLRU(page) && PageActive(page) && !PageUnevictable(page)) {
+		/*  */
 		struct pagevec *pvec = &get_cpu_var(lru_deactivate_pvecs);
 
 		get_page(page);
@@ -779,7 +800,7 @@ void lru_add_drain(void)
 #ifdef CONFIG_SMP
 
 static DEFINE_PER_CPU(struct work_struct, lru_add_drain_work);
-
+/*  */
 static void lru_add_drain_per_cpu(struct work_struct *dummy)
 {
 	lru_add_drain();
@@ -860,7 +881,7 @@ void release_pages(struct page **pages, int nr)
 	unsigned int uninitialized_var(lock_batch);
 
 	for (i = 0; i < nr; i++) {
-		/* 一个一个换吗 */
+		/* 逐个处理归还页面 */
 		struct page *page = pages[i];
 
 		/*
@@ -876,7 +897,7 @@ void release_pages(struct page **pages, int nr)
 		if (is_huge_zero_page(page))
 			continue;
 
-		if (is_zone_device_page(page)) {
+		if (is_zone_device_page(page)) {/* 硬件设备相关。 */
 			if (locked_pgdat) {
 				spin_unlock_irqrestore(&locked_pgdat->lru_lock,
 						       flags);
@@ -895,16 +916,19 @@ void release_pages(struct page **pages, int nr)
 		page = compound_head(page);
 		if (!put_page_testzero(page))
 			continue;
-
+		
+		/* 复合页的路径 */
 		if (PageCompound(page)) {
 			if (locked_pgdat) {
 				spin_unlock_irqrestore(&locked_pgdat->lru_lock, flags);
 				locked_pgdat = NULL;
 			}
+			/* put复合页 */
 			__put_compound_page(page);
 			continue;
 		}
 
+		/* lru页面的路径 */
 		if (PageLRU(page)) {
 			struct pglist_data *pgdat = page_pgdat(page);
 
@@ -966,6 +990,10 @@ EXPORT_SYMBOL(__pagevec_release);
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /* used by __split_huge_page_refcount() */
+/* 2024年07月29日12:07:02
+
+ */
+
 void lru_add_page_tail(struct page *page, struct page *page_tail,
 		       struct lruvec *lruvec, struct list_head *list)
 {
@@ -974,11 +1002,13 @@ void lru_add_page_tail(struct page *page, struct page *page_tail,
 	VM_BUG_ON_PAGE(!PageHead(page), page);
 	VM_BUG_ON_PAGE(PageCompound(page_tail), page);
 	VM_BUG_ON_PAGE(PageLRU(page_tail), page);
+
 	lockdep_assert_held(&lruvec_pgdat(lruvec)->lru_lock);
 
 	if (!list)
 		SetPageLRU(page_tail);
 
+	/* 如果是lru page的话，加入page tail同一个lru */
 	if (likely(PageLRU(page)))
 		list_add_tail(&page_tail->lru, &page->lru);
 	else if (list) {
@@ -992,6 +1022,7 @@ void lru_add_page_tail(struct page *page, struct page *page_tail,
 		 *
 		 * Put page_tail on the list at the correct position
 		 * so they all end up in order.
+		 加入到lruvec里面和pagetail同类型的lru里面
 		 */
 		add_page_to_lru_list_tail(page_tail, lruvec,
 					  page_lru(page_tail));
@@ -1001,6 +1032,8 @@ void lru_add_page_tail(struct page *page, struct page *page_tail,
 		update_page_reclaim_stat(lruvec, file, PageActive(page_tail));
 }
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
+
+
 /* 2024年06月25日14:54:33
 将lru_add缓存pvec中的页加入到lru链表中的move-fn
 
@@ -1138,6 +1171,8 @@ void pagevec_remove_exceptionals(struct pagevec *pvec)
 }
 
 /**
+2024年07月29日12:06:05
+查找页面，放到pvec
  * pagevec_lookup_range - gang pagecache lookup
  * @pvec:	Where the resulting pages are placed
  * @mapping:	The address_space to search
@@ -1164,8 +1199,11 @@ unsigned pagevec_lookup_range(struct pagevec *pvec,
 					pvec->pages);
 	return pagevec_count(pvec);
 }
+
 EXPORT_SYMBOL(pagevec_lookup_range);
-/* 2024年7月17日23:48:45 */
+/* 2024年7月17日23:48:45
+找到符合tag的页面存到pvec里面
+*/
 unsigned pagevec_lookup_range_tag(struct pagevec *pvec,
 		struct address_space *mapping, pgoff_t *index, pgoff_t end,
 		xa_mark_t tag)
@@ -1176,7 +1214,7 @@ unsigned pagevec_lookup_range_tag(struct pagevec *pvec,
 	return pagevec_count(pvec);
 }
 EXPORT_SYMBOL(pagevec_lookup_range_tag);
-
+/* 找到符合tag的页面存到pvec里面 */
 unsigned pagevec_lookup_range_nr_tag(struct pagevec *pvec,
 		struct address_space *mapping, pgoff_t *index, pgoff_t end,
 		xa_mark_t tag, unsigned max_pages)
@@ -1186,6 +1224,7 @@ unsigned pagevec_lookup_range_nr_tag(struct pagevec *pvec,
 	return pagevec_count(pvec);
 }
 EXPORT_SYMBOL(pagevec_lookup_range_nr_tag);
+
 /*
 2024年07月04日15:10:57
  * Perform any setup for the swap system
