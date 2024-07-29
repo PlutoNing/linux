@@ -28,7 +28,7 @@
 
 /*
 2024年7月29日00:32:25
-todo
+清除指定index位置的shadow
  * Regular page slots are stabilized by the page lock even without the tree
  * itself locked.  These unlocked entries need verification under the tree
  * lock.
@@ -42,11 +42,11 @@ static inline void __clear_shadow_entry(struct address_space *mapping,
 	
 	if (xas_load(&xas) != entry)
 		return;
-
+	/* 清除本来的shadow，设置为null */
 	xas_store(&xas, NULL);
 	mapping->nrexceptional--;
 }
-
+/* 清除指定index位置的shadow */
 static void clear_shadow_entry(struct address_space *mapping, pgoff_t index,
 			       void *entry)
 {
@@ -116,6 +116,7 @@ static void truncate_exceptional_pvec_entries(struct address_space *mapping,
 }
 
 /*
+2024年07月29日12:00:56
  * Invalidate exceptional entry if easily possible. This handles exceptional
  * entries for invalidate_inode_pages().
  */
@@ -130,6 +131,8 @@ static int invalidate_exceptional_entry(struct address_space *mapping,
 }
 
 /*
+2024年07月29日11:48:36
+todo，感觉好像只是清楚了shadow
  * Invalidate exceptional entry if clean. This handles exceptional entries for
  * invalidate_inode_pages2() so for DAX it evicts only clean entries.
  */
@@ -141,12 +144,14 @@ static int invalidate_exceptional_entry2(struct address_space *mapping,
 		return 1;
 	if (dax_mapping(mapping))
 		return dax_invalidate_mapping_entry_sync(mapping, index);
+	/* 清除index位置的shadow */
 	clear_shadow_entry(mapping, index, entry);
 	return 1;
 }
 
 /**
  2024年7月29日00:19:44
+ todo
  * do_invalidatepage - invalidate part or all of a page
  * @page: the page which is affected
  * @offset: start of the range to invalidate
@@ -210,6 +215,7 @@ truncate_cleanup_page(struct address_space *mapping, struct page *page)
 }
 
 /*
+2024年07月29日11:03:06
  * This is for invalidate_mapping_pages().  That function can be called at
  * any time, and is not supposed to throw away dirty pages.  But pages can
  * be marked dirty at any time too, so use remove_mapping which safely
@@ -227,7 +233,7 @@ invalidate_complete_page(struct address_space *mapping, struct page *page)
 
 	if (page_has_private(page) && !try_to_release_page(page, 0))
 		return 0;
-
+		/*  */
 	ret = remove_mapping(mapping, page);
 
 	return ret;
@@ -247,6 +253,7 @@ int truncate_inode_page(struct address_space *mapping, struct page *page)
 }
 
 /*
+2024年07月29日11:43:17
  * Used to get rid of pages on hardware memory corruption.
  */
 int generic_error_remove_page(struct address_space *mapping, struct page *page)
@@ -264,6 +271,7 @@ int generic_error_remove_page(struct address_space *mapping, struct page *page)
 EXPORT_SYMBOL(generic_error_remove_page);
 
 /*
+2024年07月29日11:02:58
  * Safely invalidate one page from its pagecache mapping.
  * It only drops clean, unused pages. The page must be locked.
  *
@@ -349,7 +357,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 	pagevec_lookup_entries(&pvec, mapping, index,
 	min(end - index, (pgoff_t)PAGEVEC_SIZE),indices)
 			) {
-		/* 找的页面在pvec里面。 */
+		/* 从要删除的地址开始查找的页面存在pvec里面。 */
 		/*
 		 * Pagevec array has exceptional entries and we may also fail
 		 * to lock some pages. So we store pages that can be deleted
@@ -386,8 +394,11 @@ void truncate_inode_pages_range(struct address_space *mapping,
 			/* 加入locked——pvec */
 			pagevec_add(&locked_pvec, page);
 		}
-		/*  */
+		/* 加锁成功的页面在locked_pvec,下一步释放 */
+
+
 		for (i = 0; i < pagevec_count(&locked_pvec); i++)
+			/* 解除映射，处理priv，dirty标志位等等 */
 			truncate_cleanup_page(mapping, locked_pvec.pages[i]);
 		/* 从pagecache移除页面 */
 		delete_from_page_cache_batch(mapping, &locked_pvec);
@@ -396,7 +407,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 			unlock_page(locked_pvec.pages[i]);
 		/* todo */
 		truncate_exceptional_pvec_entries(mapping, &pvec, indices, end);
-		
+		/* 把页面归还给系统 */
 		pagevec_release(&pvec);
 		cond_resched();
 		index++;
@@ -415,7 +426,9 @@ void truncate_inode_pages_range(struct address_space *mapping,
 				top = partial_end;
 				partial_end = 0;
 			}
+			/*  */
 			wait_on_page_writeback(page);
+			/* 置零范围内数据 */
 			zero_user_segment(page, partial_start, top);
 			cleancache_invalidate_page(mapping, page);
 			if (page_has_private(page))
@@ -490,7 +503,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 			truncate_inode_page(mapping, page);
 			unlock_page(page);
 		}
-
+		/*  */
 		truncate_exceptional_pvec_entries(mapping, &pvec, indices, end);
 		pagevec_release(&pvec);
 		index++;
@@ -502,6 +515,8 @@ out:
 EXPORT_SYMBOL(truncate_inode_pages_range);
 
 /**
+2024年07月29日10:05:42
+移除lstart后面的页面
  * truncate_inode_pages - truncate *all* the pages from an offset
  * @mapping: mapping to truncate
  * @lstart: offset from which to truncate
@@ -520,6 +535,7 @@ void truncate_inode_pages(struct address_space *mapping, loff_t lstart)
 EXPORT_SYMBOL(truncate_inode_pages);
 
 /**
+2024年07月29日11:39:54
  * truncate_inode_pages_final - truncate *all* pages before inode dies
  * @mapping: mapping to truncate
  *
@@ -539,6 +555,7 @@ void truncate_inode_pages_final(struct address_space *mapping)
 	 * inode teardown.  Tell it when the address space is exiting,
 	 * so that it does not install eviction information after the
 	 * final truncate has begun.
+	 以免页面eviction继续操作这个页面
 	 */
 	mapping_set_exiting(mapping);
 
@@ -565,12 +582,14 @@ void truncate_inode_pages_final(struct address_space *mapping)
 	/*
 	 * Cleancache needs notification even if there are no pages or shadow
 	 * entries.
+
 	 */
 	truncate_inode_pages(mapping, 0);
 }
 EXPORT_SYMBOL(truncate_inode_pages_final);
 
 /**
+2024年07月29日10:59:17
  * invalidate_mapping_pages - Invalidate all the unlocked pages of one inode
  * @mapping: the address_space which holds the pages to invalidate
  * @start: the offset 'from' which to invalidate
@@ -645,29 +664,33 @@ unsigned long invalidate_mapping_pages(struct address_space *mapping,
 				pagevec_remove_exceptionals(&pvec);
 				pagevec_release(&pvec);
 			}
-
+			/* 从页缓存移出page */
 			ret = invalidate_inode_page(page);
 			unlock_page(page);
 			/*
 			 * Invalidation is a hint that the page is no longer
 			 * of interest and try to speed up its reclaim.
 			 */
-			if (!ret)
+			if (!ret)/* 刚才invalidate成功了 */
 				deactivate_file_page(page);
 			if (PageTransHuge(page))
 				put_page(page);
 			count += ret;
 		}
+		/*  */
 		pagevec_remove_exceptionals(&pvec);
+		/* 归还这些page */
 		pagevec_release(&pvec);
 		cond_resched();
 		index++;
 	}
 	return count;
 }
+
 EXPORT_SYMBOL(invalidate_mapping_pages);
 
 /*
+2024年07月29日10:28:19
  * This is like invalidate_complete_page(), except it ignores the page's
  * refcount.  We do this because invalidate_inode_pages2() needs stronger
  * invalidation guarantees, and cannot afford to leave pages behind because
@@ -702,7 +725,8 @@ failed:
 	xa_unlock_irqrestore(&mapping->i_pages, flags);
 	return 0;
 }
-
+/* 2024年07月29日10:24:07 
+todo*/
 static int do_launder_page(struct address_space *mapping, struct page *page)
 {
 	if (!PageDirty(page))
@@ -713,6 +737,7 @@ static int do_launder_page(struct address_space *mapping, struct page *page)
 }
 
 /**
+2024年07月29日10:16:52
  * invalidate_inode_pages2_range - remove range of pages from an address_space
  * @mapping: the address_space
  * @start: the page offset 'from' which to invalidate
@@ -742,6 +767,8 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 	while (index <= end && pagevec_lookup_entries(&pvec, mapping, index,
 			min(end - index, (pgoff_t)PAGEVEC_SIZE - 1) + 1,
 			indices)) {
+		/* 每次取一些页面到pvec */
+		
 		for (i = 0; i < pagevec_count(&pvec); i++) {
 			struct page *page = pvec.pages[i];
 
@@ -763,8 +790,10 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 				unlock_page(page);
 				continue;
 			}
+
 			wait_on_page_writeback(page);
 			if (page_mapped(page)) {
+				/* 还有进程在映射 */
 				if (!did_range_unmap) {
 					/*
 					 * Zap the rest of the file in one hit.
@@ -781,6 +810,7 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 				}
 			}
 			BUG_ON(page_mapped(page));
+
 			ret2 = do_launder_page(mapping, page);
 			if (ret2 == 0) {
 				if (!invalidate_complete_page2(mapping, page))
@@ -812,6 +842,7 @@ out:
 EXPORT_SYMBOL_GPL(invalidate_inode_pages2_range);
 
 /**
+2024年07月29日10:16:31
  * invalidate_inode_pages2 - remove all pages from an address_space
  * @mapping: the address_space
  *
@@ -857,15 +888,18 @@ void truncate_pagecache(struct inode *inode, loff_t newsize)
 	 * truncate_inode_pages finishes, hence the second
 	 * unmap_mapping_range call must be made for correctness.
 	 */
+	/* 解除映射 */
 	unmap_mapping_range(mapping, holebegin, 0, 1);
+	/*  */
 	truncate_inode_pages(mapping, newsize);
+	
 	unmap_mapping_range(mapping, holebegin, 0, 1);
 }
 EXPORT_SYMBOL(truncate_pagecache);
 
 /**
 2024年7月29日00:56:13
-
+改变文件大小时，更新inode和pagecache的size
  * truncate_setsize - update inode and pagecache for a new file size
  * @inode: inode
  * @newsize: new file size
@@ -894,6 +928,7 @@ EXPORT_SYMBOL(truncate_setsize);
 
 /**
 2024年7月29日00:53:37
+todo,感觉没有实际操作
  * pagecache_isize_extended - update pagecache after extension of i_size
  * @inode:	inode for which i_size was extended
  * @from:	original inode size，原来大小

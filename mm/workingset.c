@@ -180,16 +180,17 @@
  * evictions into coarser buckets by shaving off lower timestamp bits.
  */
 static unsigned int bucket_order __read_mostly;
-
+/* 2024年07月29日11:16:09 */
 static void *pack_shadow(int memcgid, pg_data_t *pgdat, unsigned long eviction,
 			 bool workingset)
 {
+	/* 把信息编码进long？ */
 	eviction >>= bucket_order;
 	eviction &= EVICTION_MASK;
 	eviction = (eviction << MEM_CGROUP_ID_SHIFT) | memcgid;
 	eviction = (eviction << NODES_SHIFT) | pgdat->node_id;
 	eviction = (eviction << 1) | workingset;
-
+	/* 编码为xas的value */
 	return xa_mk_value(eviction);
 }
 
@@ -214,6 +215,9 @@ static void unpack_shadow(void *shadow, int *memcgidp, pg_data_t **pgdat,
 }
 
 /**
+2024年07月29日11:14:24
+标记页面要被移出
+返回值是一个包括了一些信息的xavalue 放在页面原本在mapping的位置
  * workingset_eviction - note the eviction of a page from memory
  * @page: the page being evicted
  *
@@ -234,6 +238,7 @@ void *workingset_eviction(struct page *page)
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 
 	lruvec = mem_cgroup_lruvec(pgdat, memcg);
+	/* 增加移出操作计数 */
 	eviction = atomic_long_inc_return(&lruvec->inactive_age);
 	return pack_shadow(memcgid, pgdat, eviction, PageWorkingset(page));
 }

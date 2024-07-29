@@ -43,6 +43,7 @@
 #define BITS_PER_XA_VALUE	(BITS_PER_LONG - 1)
 
 /**
+2024年07月29日11:16:37
  * xa_mk_value() - Create an XArray entry from an integer.
  * @v: Value to store in XArray.
  *
@@ -1565,6 +1566,9 @@ static inline void xas_set_order(struct xa_state *xas, unsigned long index,
 }
 
 /**
+2024年07月29日11:51:20
+xas_set_update()函数的作用是将给定的XArray节点标记为需要更新。
+当节点被标记为需要更新时，表示该节点的值已经发生了变化，需要在适当的时机进行更新操作。
  * xas_set_update() - Set up XArray operation state for a callback.
  * @xas: XArray operation state.
  * @update: Function to call when updating a node.

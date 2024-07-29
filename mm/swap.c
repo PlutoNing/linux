@@ -941,6 +941,7 @@ EXPORT_SYMBOL(release_pages);
 
 /*
 2024年7月17日23:59:25
+向系统归还页面
  * The pages which we're about to release may be in the deferred lru-addition
  * queues.  That would prevent them from really being freed right now.  That's
  * OK from a correctness point of view but is inefficient - those pages may be

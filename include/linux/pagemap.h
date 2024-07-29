@@ -79,7 +79,7 @@ static inline int mapping_unevictable(struct address_space *mapping)
 		return test_bit(AS_UNEVICTABLE, &mapping->flags);
 	return !!mapping;
 }
-
+/*  */
 static inline void mapping_set_exiting(struct address_space *mapping)
 {
 	set_bit(AS_EXITING, &mapping->flags);
@@ -415,6 +415,7 @@ static inline struct page *read_mapping_page(struct address_space *mapping,
 }
 
 /*
+2024年07月29日10:19:16
  * Get index of the page with in radix-tree
  * (TODO: remove once hugetlb pages will have ->index in PAGE_SIZE)
  */

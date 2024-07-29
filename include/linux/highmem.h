@@ -237,6 +237,7 @@ static inline void zero_user_segments(struct page *page,
 	unsigned start1, unsigned end1,
 	unsigned start2, unsigned end2)
 {
+	/* 映射到内核的临时地址 */
 	void *kaddr = kmap_atomic(page);
 
 	BUG_ON(end1 > PAGE_SIZE || end2 > PAGE_SIZE);
@@ -248,6 +249,7 @@ static inline void zero_user_segments(struct page *page,
 		memset(kaddr + start2, 0, end2 - start2);
 
 	kunmap_atomic(kaddr);
+	
 	flush_dcache_page(page);
 }
 /* 2024年6月24日00:10:16 */

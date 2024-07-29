@@ -953,7 +953,7 @@ static pageout_t pageout(struct page *page, struct address_space *mapping,
 
 /*
 2024年07月03日11:58:09
-，__remove_mapping()尝试分离page->mapping。
+__remove_mapping()尝试分离page->mapping。
 2024年7月14日14:44:01
  * Same as remove_mapping, but if the page is removed from the mapping, it
  * gets returned with a refcount of 0.
@@ -1037,8 +1037,9 @@ static int __remove_mapping(struct address_space *mapping, struct page *page,
 		 */
 		if (reclaimed && page_is_file_cache(page) &&
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
+			/* 标记页面被移除，返回是一个替代page的xas value */
 			shadow = workingset_eviction(page);
-
+		/* 从pagecache移除页面 */
 		__delete_from_page_cache(page, shadow);
 		xa_unlock_irqrestore(&mapping->i_pages, flags);
 
@@ -1055,7 +1056,7 @@ cannot_free:
 
 /*
 2024年7月14日18:12:25
-
+2024年07月29日11:12:57
  * Attempt to detach a locked page from its ->mapping.  If it is dirty or if
  * someone else has a ref on the page, abort and return 0.  If it was
  * successfully detached, return 1.  Assumes the caller has a single ref on

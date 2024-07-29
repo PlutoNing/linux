@@ -122,7 +122,8 @@ todo
  * ->i_mmap_rwsem
  *   ->tasklist_lock            (memory_failure, collect_procs_ao)
  2024年7月14日18:09:49
-
+2024年07月29日11:19:34
+shaow存储了page的一些信息，现在保存在page在xas原本的位置
  */
 
 static void page_cache_delete(struct address_space *mapping,
@@ -236,7 +237,7 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 		account_page_cleaned(page, mapping, inode_to_wb(mapping->host));
 }
 
-/*、
+/*
 2024年7月14日18:01:18
  * Delete a page from the page cache and free it. Caller has to make
  * sure the page is locked and that nobody else uses it - or that usage
