@@ -192,6 +192,7 @@ extern void plist_requeue(struct plist_node *node, struct plist_head *head);
 	list_for_each_entry_continue(pos, &(head)->node_list, m.node_list)
 
 /**
+plist遍历
  * plist_for_each_entry_safe - iterate safely over list of given type
  * @pos:	the type * to use as a loop counter
  * @n:		another type * to use as temporary storage

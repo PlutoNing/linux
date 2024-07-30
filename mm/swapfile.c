@@ -3542,7 +3542,9 @@ EXPORT_SYMBOL_GPL(__page_file_index);
 
 /*
  * add_swap_count_continuation - called when a swap count is duplicated
- * beyond SWAP_MAP_MAX, it allocates a new page and links that to the entry's
+ * beyond SWAP_MAP_MAX, 
+ 分配新页面，关联到这个page在原本map的entry
+ it allocates a new page and links that to the entry's
  * page of the original vmalloc'ed swap_map, to hold the continuation count
  * (for that entry and for its neighbouring PAGE_SIZE swap entries).  Called
  * again when count is duplicated beyond SWAP_MAP_MAX * SWAP_CONT_MAX, etc.
@@ -3659,6 +3661,8 @@ outer:
 }
 
 /*
+2024年07月29日13:55:57
+todo
  * swap_count_continued - when the original swap_map count is incremented
  * from SWAP_MAP_MAX, check if there is already a continuation page to carry
  * into, carry if so, or else fail until a new continuation page is allocated;
@@ -3675,6 +3679,7 @@ static bool swap_count_continued(struct swap_info_struct *si,
 	unsigned char *map;
 	bool ret;
 
+	/* 获得swap map此处的page */
 	head = vmalloc_to_page(si->swap_map + offset);
 	if (page_private(head) != SWP_CONTINUED) {
 		BUG_ON(count & COUNT_CONTINUED);
@@ -3683,7 +3688,9 @@ static bool swap_count_continued(struct swap_info_struct *si,
 
 	spin_lock(&si->cont_lock);
 	offset &= ~PAGE_MASK;
+	/* 获得此处page的下一个页面 */
 	page = list_entry(head->lru.next, struct page, lru);
+	/* todo？ */
 	map = kmap_atomic(page) + offset;
 
 	if (count == SWAP_MAP_MAX)	/* initial increment from swap_map */
@@ -3699,6 +3706,7 @@ static bool swap_count_continued(struct swap_info_struct *si,
 			BUG_ON(page == head);
 			map = kmap_atomic(page) + offset;
 		}
+
 		if (*map == SWAP_CONT_MAX) {
 			kunmap_atomic(map);
 			page = list_entry(page->lru.next, struct page, lru);
@@ -3709,6 +3717,7 @@ static bool swap_count_continued(struct swap_info_struct *si,
 			map = kmap_atomic(page) + offset;
 init_map:		*map = 0;		/* we didn't zero the page */
 		}
+
 		*map += 1;
 		kunmap_atomic(map);
 		page = list_entry(page->lru.prev, struct page, lru);
@@ -3752,6 +3761,7 @@ out:
 }
 
 /*
+好像是释放了si的swap map？
  * free_swap_count_continuations - swapoff free all the continuation pages
  * appended to the swap_map, after swap_map is quiesced, before vfree'ing it.
  */
@@ -3761,10 +3771,11 @@ static void free_swap_count_continuations(struct swap_info_struct *si)
 
 	for (offset = 0; offset < si->max; offset += PAGE_SIZE) {
 		struct page *head;
+		/* si的map是vmap分配的？ */
 		head = vmalloc_to_page(si->swap_map + offset);
-		if (page_private(head)) {
+		if (page_private(head)) {/* swap map要是private的吗 */
 			struct page *page, *next;
-
+			/* 遍历与head同一个lru的页面，逐个移除 */
 			list_for_each_entry_safe(page, next, &head->lru, lru) {
 				list_del(&page->lru);
 				__free_page(page);
@@ -3774,7 +3785,9 @@ static void free_swap_count_continuations(struct swap_info_struct *si)
 }
 
 #if defined(CONFIG_MEMCG) && defined(CONFIG_BLK_CGROUP)
-/*  */
+/* 如何限流呢？2024年07月29日13:45:03
+todo
+ */
 void mem_cgroup_throttle_swaprate(struct mem_cgroup *memcg, int node,
 				  gfp_t gfp_mask)
 {
@@ -3792,23 +3805,28 @@ void mem_cgroup_throttle_swaprate(struct mem_cgroup *memcg, int node,
 	if (current->throttle_queue)
 		return;
 
+
 	spin_lock(&swap_avail_lock);
+	/* si的 avail_lists[node] 挂在全局的swap_avail_heads[node]*/
 	plist_for_each_entry_safe(si, next, &swap_avail_heads[node],
 				  avail_lists[node]) {
 		if (si->bdev) {
+			/* 如果这个si有设备 */
 			blkcg_schedule_throttle(bdev_get_queue(si->bdev),
 						true);
 			break;
 		}
 	}
 	spin_unlock(&swap_avail_lock);
+
+
 }
 #endif
-
+/*  */
 static int __init swapfile_init(void)
 {
 	int nid;
-
+	/* 分配数组 */
 	swap_avail_heads = kmalloc_array(nr_node_ids, sizeof(struct plist_head),
 					 GFP_KERNEL);
 	if (!swap_avail_heads) {
@@ -3816,6 +3834,7 @@ static int __init swapfile_init(void)
 		return -ENOMEM;
 	}
 
+	/* 初始化每个node对应的 */
 	for_each_node(nid)
 		plist_head_init(&swap_avail_heads[nid]);
 

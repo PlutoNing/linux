@@ -289,7 +289,8 @@ int is_vmalloc_or_module_addr(const void *x)
 }
 
 /*
-通过vmap addr获得page
+通过vmap addr获得page。
+就是查页表获得page
  * Walk a vmap address to the struct page it maps.
  */
 struct page *vmalloc_to_page(const void *vmalloc_addr)

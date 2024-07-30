@@ -241,8 +241,8 @@ struct swap_info_struct {
 	signed short	prio;		/* swap priority of this type ，优先级*/
 	struct plist_node list;		/* entry in swap_active_head ，指向该交换区在 swap_avail_heads 链表中的位置*/
 	signed char	type;		/* strange name for an index ，*/
-	unsigned int	max;		/* extent of the swap_map */
-	unsigned char *swap_map;	/* vmalloc'ed array of usage counts ，表示对应offset的entry引用数量*/
+	unsigned int	max;		/* extent of the swap_map，swap——map的大小 */
+	unsigned char *swap_map;	/* vmalloc'ed array of usage counts ，对每一个页面都有一个字节表示状态，表示对应offset的entry引用数量*/
 	struct swap_cluster_info *cluster_info; /* cluster info. Only for SSD ，*/
 	struct swap_cluster_list free_clusters; /* free clusters list */
 	unsigned int lowest_bit;	/* index of first free in swap_map */
@@ -287,7 +287,10 @@ struct swap_info_struct {
 					 */
 	struct work_struct discard_work; /* discard worker */
 	struct swap_cluster_list discard_clusters; /* discard clusters list */
+
 	struct plist_node avail_lists[0]; /*
+	每个node一个条目
+	si的 avail_lists[node] 挂在全局的swap_avail_heads[node]？
 					   * entries in swap_avail_heads, one
 					   * entry per node.
 					   * Must be last as the number of the
