@@ -151,7 +151,9 @@ out:
 		put_task_struct(waiter);
 	}
 }
-
+/* 2024年7月30日23:22:09
+todo
+ */
 int generic_swapfile_activate(struct swap_info_struct *sis,
 				struct file *swap_file,
 				sector_t *span)
@@ -178,13 +180,14 @@ int generic_swapfile_activate(struct swap_info_struct *sis,
 	probe_block = 0;
 	page_no = 0;
 	last_block = i_size_read(inode) >> blkbits;
+
 	while ((probe_block + blocks_per_page) <= last_block &&
 			page_no < sis->max) {
 		unsigned block_in_page;
 		sector_t first_block;
 
 		cond_resched();
-
+		/*  */
 		first_block = bmap(inode, probe_block);
 		if (first_block == 0)
 			goto bad_bmap;
@@ -196,14 +199,15 @@ int generic_swapfile_activate(struct swap_info_struct *sis,
 			probe_block++;
 			goto reprobe;
 		}
-
+		/* 这是以文件块为单位，进行遍历 */
 		for (block_in_page = 1; block_in_page < blocks_per_page;
 					block_in_page++) {
 			sector_t block;
-
+			/* 文件块的扇区号 */
 			block = bmap(inode, probe_block + block_in_page);
 			if (block == 0)
 				goto bad_bmap;
+
 			if (block != first_block + block_in_page) {
 				/* Discontiguity */
 				probe_block++;

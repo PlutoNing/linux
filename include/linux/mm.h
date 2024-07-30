@@ -720,6 +720,7 @@ static inline int is_vmalloc_or_module_addr(const void *x)
 #endif
 
 extern void *kvmalloc_node(size_t size, gfp_t flags, int node);
+/* 2024年7月30日23:38:02 */
 static inline void *kvmalloc(size_t size, gfp_t flags)
 {
 	return kvmalloc_node(size, flags, NUMA_NO_NODE);
@@ -732,7 +733,7 @@ static inline void *kvzalloc(size_t size, gfp_t flags)
 {
 	return kvmalloc(size, flags | __GFP_ZERO);
 }
-
+/* 2024年7月30日23:37:50 */
 static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 {
 	size_t bytes;
@@ -742,7 +743,8 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 
 	return kvmalloc(bytes, flags);
 }
-
+/* 2024年7月30日23:37:19
+初始化为0. 连续物理内存 */
 static inline void *kvcalloc(size_t n, size_t size, gfp_t flags)
 {
 	return kvmalloc_array(n, size, flags | __GFP_ZERO);

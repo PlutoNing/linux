@@ -1592,6 +1592,7 @@ retry:
 EXPORT_SYMBOL(iput);
 
 /**
+找到文件某个块的的扇区号么
  *	bmap	- find a block number in a file
  *	@inode: inode of file
  *	@block: block to find

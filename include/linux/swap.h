@@ -106,6 +106,8 @@ static inline int current_is_kswapd(void)
  * areas somewhat tricky on machines that support multiple page sizes.
  * For 2.5 we'll probably want to move the magic to just beyond the
  * bootbits...
+ 2024年7月30日21:32:24
+ 代表swap的header？
  */
 union swap_header {
 	struct {
@@ -116,10 +118,13 @@ union swap_header {
 		char		bootbits[1024];	/* Space for disklabel etc. */
 		__u32		version;
 		__u32		last_page;
+		/* bad pages的数量 */
 		__u32		nr_badpages;
 		unsigned char	sws_uuid[16];
 		unsigned char	sws_volume[16];
 		__u32		padding[117];
+		/* 每个条目存储的是一个page_nr（bad page的swap map索引）
+		，条目数量是bad pages */
 		__u32		badpages[1];
 	} info;
 };
@@ -254,7 +259,8 @@ struct swap_info_struct {
 	struct swap_cluster_list free_clusters; /* free clusters list */
 	unsigned int lowest_bit;	/* index of first free in swap_map */
 	unsigned int highest_bit;	/* index of last free in swap_map */
-	unsigned int pages;		/* total of usable pages of swap ，该交换区可以容纳 swap 的匿名页总数
+	unsigned int pages;		/* total of usable pages of swap ，
+	该交换区可以容纳 swap 的匿名页总数
 */
 	unsigned int inuse_pages;	/* number of those currently in use，已经 swap 到该交换区的匿名页总数 */
 	unsigned int cluster_next;	/* likely index for next allocation */
@@ -263,13 +269,17 @@ struct swap_info_struct {
 	以及实现无锁化查找 slot，内核会给每个 cpu 分配一个 cluster —— percpu_cluster，cpu 直接从自己的 cluster 
 	中查找空闲 slot，近一步提高了 swap out 的吞吐。当 cpu 自己的 percpu_cluster 用尽之后，内核则会调用 swap_alloc_cluster
 	 函数从 free_clusters 中获取一个新的 cluster。 */
-	struct rb_root swap_extent_root;/* root of the swap extent rbtree 。是rbtree里面的节点，
+	struct rb_root swap_extent_root;/* root of the swap extent rbtree 。
+	是rbtree里面的节点，
 	每个节点可以查到swap extent，里面有page index和磁盘块信息。
 	*/
-	struct block_device *bdev;	/* swap device or bdev of swap file ，如果该交换区是 swap partition 则指向该磁盘分区的块设备结构 block_device
+	struct block_device *bdev;	/* swap device or bdev of swap file ，
+	如果该交换区是 swap partition 则指向该磁盘分区的块设备结构 block_device
     // 如果该交换区是 swap file 则指向文件底层依赖的块设备结构 block_device*/
 	struct file *swap_file;		/* seldom referenced ， 指向 swap file 的 file 结构*/
-	unsigned int old_block_size;	/* seldom referenced */
+	unsigned int old_block_size;	/* 
+	对应的bdev的块size
+	seldom referenced */
 #ifdef CONFIG_FRONTSWAP
 	unsigned long *frontswap_map;	/* 
 	描述frontswap机制页面存在与否的位图，一个offset一个bit

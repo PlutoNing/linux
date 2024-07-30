@@ -3097,7 +3097,7 @@ EXPORT_SYMBOL(generic_file_mmap);
 EXPORT_SYMBOL(generic_file_readonly_mmap);
 /* 2024年07月02日16:22:36
 2024年7月16日00:10:27
-
+等待页面回写完成
  */
 static struct page *wait_on_page_read(struct page *page)
 {
@@ -3135,7 +3135,7 @@ repeat:
 		if (!page)
 			return ERR_PTR(-ENOMEM);
 		err = add_to_page_cache_lru(page, mapping, index, gfp);
-		/* 2024年07月02日16:16:50 不加入mapping吗？ */
+		/*  */
 		if (unlikely(err)) {
 			put_page(page);
 			if (err == -EEXIST)
@@ -3154,7 +3154,7 @@ filler:
 			put_page(page);
 			return ERR_PTR(err);
 		}
-
+		/* 等待页面回写 */
 		page = wait_on_page_read(page);
 		if (IS_ERR(page))
 			return page;
@@ -3222,7 +3222,7 @@ out:
 
 /**
 2024年07月02日16:24:28
-
+读取页缓存
  * read_cache_page - read into page cache, fill it if needed
  * @mapping:	the page's address_space
  * @index:	the page index

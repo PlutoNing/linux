@@ -6,13 +6,14 @@
 #include <linux/swapops.h> /* depends on mm.h include */
 
 static DEFINE_MUTEX(swap_cgroup_mutex);
-/* 2024年07月04日20:24:34 */
+/* 2024年07月04日20:24:34
+ */
 struct swap_cgroup_ctrl {
 	struct page **map;
 	unsigned long length;
 	spinlock_t	lock;
 };
-
+/* 每个type对应一个swap cg ctrl */
 static struct swap_cgroup_ctrl swap_cgroup_ctrl[MAX_SWAPFILES];
 /* 2024年7月13日00:17:54 */
 struct swap_cgroup {
@@ -39,6 +40,8 @@ struct swap_cgroup {
  */
 
 /*
+ prepare指定type的swp cg ctrl。
+ 其实就是给map每个指针分配了页面
  * allocate buffer for swap_cgroup.
  */
 static int swap_cgroup_prepare(int type)
@@ -49,10 +52,12 @@ static int swap_cgroup_prepare(int type)
 
 	ctrl = &swap_cgroup_ctrl[type];
 
+
 	for (idx = 0; idx < ctrl->length; idx++) {
 		page = alloc_page(GFP_KERNEL | __GFP_ZERO);
 		if (!page)
 			goto not_enough_page;
+		/* 所以是每个entry分配了一个页面，作用是？ */
 		ctrl->map[idx] = page;
 
 		if (!(idx % SWAP_CLUSTER_MAX))
@@ -177,7 +182,8 @@ unsigned short lookup_swap_cgroup_id(swp_entry_t ent)
 {
 	return lookup_swap_cgroup(ent, NULL)->id;
 }
-
+/* 2024年7月30日22:34:23
+初始化指定type的swp cg ctrl。 */
 int swap_cgroup_swapon(int type, unsigned long max_pages)
 {
 	void *array;
@@ -189,18 +195,22 @@ int swap_cgroup_swapon(int type, unsigned long max_pages)
 		return 0;
 
 	length = DIV_ROUND_UP(max_pages, SC_PER_PAGE);
+	/* 一个页面占用一个指针？ */
 	array_size = length * sizeof(void *);
 
 	array = vzalloc(array_size);
 	if (!array)
 		goto nomem;
-
+	/* 获取对应的ctrl */
 	ctrl = &swap_cgroup_ctrl[type];
 	mutex_lock(&swap_cgroup_mutex);
 	ctrl->length = length;
 	ctrl->map = array;
 	spin_lock_init(&ctrl->lock);
-	if (swap_cgroup_prepare(type)) {
+	/* prepare指定type的swp cg ctrl
+	其实就是给map分配页面 */
+	if (swap_cgroup_prepare(type)) {/* 
+	出错了 */
 		/* memory shortage */
 		ctrl->map = NULL;
 		ctrl->length = 0;

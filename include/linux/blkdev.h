@@ -1345,7 +1345,8 @@ static inline unsigned int queue_max_segment_size(const struct request_queue *q)
 {
 	return q->limits.max_segment_size;
 }
-
+/* 获取queue的size？
+储存在q的limits里面 */
 static inline unsigned short queue_logical_block_size(const struct request_queue *q)
 {
 	int retval = 512;
@@ -1533,7 +1534,7 @@ static inline unsigned int blksize_bits(unsigned int size)
 	} while (size > 256);
 	return bits;
 }
-
+/*  */
 static inline unsigned int block_size(struct block_device *bdev)
 {
 	return bdev->bd_block_size;

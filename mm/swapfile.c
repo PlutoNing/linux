@@ -172,6 +172,8 @@ static inline struct swap_extent *next_se(struct swap_extent *se)
 }
 
 /*
+2024年7月30日23:40:46
+通知设备旧的swap内容可以丢弃？
  * swapon tell device that all the old swap contents can be discarded,
  * to allow the swap device to optimize its wear-levelling.
  */
@@ -183,7 +185,9 @@ static int discard_swap(struct swap_info_struct *si)
 	int err = 0;
 
 	/* Do not discard the swap header page! */
+	/* 获得第一个extent */
 	se = first_se(si);
+	
 	start_block = (se->start_block + 1) << (PAGE_SHIFT - 9);
 	nr_blocks = ((sector_t)se->nr_pages - 1) << (PAGE_SHIFT - 9);
 	if (nr_blocks) {
@@ -552,6 +556,7 @@ static void free_cluster(struct swap_info_struct *si, unsigned long idx)
 }
 
 /*
+2024年7月30日22:54:08
  * The cluster corresponding to page_nr will be used. The cluster will be
  * removed from free cluster list and its usage counter will be increased.
  */
@@ -2356,6 +2361,9 @@ static void destroy_swap_extents(struct swap_info_struct *sis)
 }
 
 /*
+2024年7月30日23:12:36
+添加一个新extent。
+分配一个新extent，插入红黑树。
  * Add a block range (and the corresponding page range) into this swapdev's
  * extent tree.
  *
@@ -2372,6 +2380,7 @@ add_swap_extent(struct swap_info_struct *sis, unsigned long start_page,
 	/*
 	 * place the new node at the right most since the
 	 * function is called in ascending page order.
+	 移到最右
 	 */
 	while (*link) {
 		parent = *link;
@@ -2379,15 +2388,17 @@ add_swap_extent(struct swap_info_struct *sis, unsigned long start_page,
 	}
 
 	if (parent) {
+		/* 获得se */
 		se = rb_entry(parent, struct swap_extent, rb_node);
 		BUG_ON(se->start_page + se->nr_pages != start_page);
+		/* 如果刚好当前的se的末尾是新extent的开始，是可以合并的 */
 		if (se->start_block + se->nr_pages == start_block) {
 			/* Merge it */
 			se->nr_pages += nr_pages;
 			return 0;
 		}
 	}
-
+	/* 准备新extent */
 	/* No merge, insert a new extent. */
 	new_se = kmalloc(sizeof(*se), GFP_KERNEL);
 	if (new_se == NULL)
@@ -2395,11 +2406,12 @@ add_swap_extent(struct swap_info_struct *sis, unsigned long start_page,
 	new_se->start_page = start_page;
 	new_se->nr_pages = nr_pages;
 	new_se->start_block = start_block;
-
+	/* 插入红黑树 */
 	rb_link_node(&new_se->rb_node, parent, link);
 	rb_insert_color(&new_se->rb_node, &sis->swap_extent_root);
 	return 1;
 }
+
 EXPORT_SYMBOL_GPL(add_swap_extent);
 
 /*
@@ -2431,6 +2443,8 @@ EXPORT_SYMBOL_GPL(add_swap_extent);
  * search location in `curr_swap_extent', and start new searches from there.
  * This is extremely effective.  The average number of iterations in
  * map_swap_page() has been measured at about 0.3 per page.  - akpm.
+ 、2024年7月30日23:00:34
+
  */
 static int setup_swap_extents(struct swap_info_struct *sis, sector_t *span)
 {
@@ -2439,24 +2453,29 @@ static int setup_swap_extents(struct swap_info_struct *sis, sector_t *span)
 	struct inode *inode = mapping->host;
 	int ret;
 
-	if (S_ISBLK(inode->i_mode)) {
+	if (S_ISBLK(inode->i_mode)) {/* 块设备的swapfile */
+		/* 如果是快涉笔的话，可以直接start=0，pages=全部，来
+		创建新区块 */
 		ret = add_swap_extent(sis, 0, sis->max, 0);
 		*span = sis->pages;
 		return ret;
 	}
 
-	if (mapping->a_ops->swap_activate) {
+	if (mapping->a_ops->swap_activate) {/* 调用回调函数 */
 		ret = mapping->a_ops->swap_activate(sis, swap_file, span);
 		if (ret >= 0)
 			sis->flags |= SWP_ACTIVATED;
+
 		if (!ret) {
 			sis->flags |= SWP_FS;
+			/* 文件swp的方式？ */
 			ret = add_swap_extent(sis, 0, sis->max, 0);
 			*span = sis->pages;
 		}
+
 		return ret;
 	}
-
+	/*  */
 	return generic_swapfile_activate(sis, swap_file, span);
 }
 
@@ -2933,28 +2952,33 @@ static struct swap_info_struct *alloc_swap_info(void)
 
 	return p;
 }
-
+/* 2024年7月30日21:10:08、
+感觉就是根据swapfile类型继续初始化si
+还会锁住这个swpfile的inode
+ */
 static int claim_swapfile(struct swap_info_struct *p, struct inode *inode)
 {
 	int error;
 
-	if (S_ISBLK(inode->i_mode)) {
+	if (S_ISBLK(inode->i_mode)) {/* 如果swap是块设备 */
 		p->bdev = bdgrab(I_BDEV(inode));
 		error = blkdev_get(p->bdev,
 				   FMODE_READ | FMODE_WRITE | FMODE_EXCL, p);
 		if (error < 0) {
+			/* 无法get块设备 */
 			p->bdev = NULL;
 			return error;
 		}
 		p->old_block_size = block_size(p->bdev);
+		/* 改变了dev的块size，但是作用？todo */
 		error = set_blocksize(p->bdev, PAGE_SIZE);
 		if (error < 0)
 			return error;
 		p->flags |= SWP_BLKDEV;
-	} else if (S_ISREG(inode->i_mode)) {
+	} else if (S_ISREG(inode->i_mode)) {/* 如果swap只是常规文件 */
 		p->bdev = inode->i_sb->s_bdev;
 	}
-
+	/* 锁住swapfile */
 	inode_lock(inode);
 	if (IS_SWAPFILE(inode))
 		return -EBUSY;
@@ -2990,7 +3014,9 @@ __weak unsigned long max_swapfile_size(void)
 {
 	return generic_max_swapfile_size();
 }
-
+/* 2024年7月30日21:34:52
+通过swap header初始化p吗
+ */
 static unsigned long read_swap_header(struct swap_info_struct *p,
 					union swap_header *swap_header,
 					struct inode *inode)
@@ -3066,7 +3092,14 @@ static unsigned long read_swap_header(struct swap_info_struct *p,
 	DIV_ROUND_UP(SWAP_ADDRESS_SPACE_PAGES, SWAPFILE_CLUSTER)
 #define SWAP_CLUSTER_COLS						\
 	max_t(unsigned int, SWAP_CLUSTER_INFO_COLS, SWAP_CLUSTER_SPACE_COLS)
-
+/* 
+该函数根据header中记录的坏页面信息，填充swap_map,当然，如果为空就略过。
+之后如果有nr_goog_pages，就设置swap_info_struct结构中的相关信息，如max、
+pages,还要通过setup_swap_extents函数，为一段连续的pages映射到连续的磁盘快中，
+返回的是磁盘快的数量，如果最先建立的是交换分区，则这里就仅仅需要一个块，
+而如果对应的是磁盘文件，就需要对文件涉及的各个磁盘快分别建立结构，并关联起来。
+2024年7月30日23:36:29
+todo  */
 static int setup_swap_map_and_extents(struct swap_info_struct *p,
 					union swap_header *swap_header,
 					unsigned char *swap_map,
@@ -3085,7 +3118,7 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 
 	cluster_list_init(&p->free_clusters);
 	cluster_list_init(&p->discard_clusters);
-
+	/* 先处理坏页，存储在swap_header->info.badpages[i] */
 	for (i = 0; i < swap_header->info.nr_badpages; i++) {
 		unsigned int page_nr = swap_header->info.badpages[i];
 		if (page_nr == 0 || page_nr > swap_header->info.last_page)
@@ -3114,6 +3147,7 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 		inc_cluster_info_page(p, cluster_info, 0);
 		p->max = maxpages;
 		p->pages = nr_good_pages;
+		/*  */
 		nr_extents = setup_swap_extents(p, span);
 		if (nr_extents < 0)
 			return nr_extents;
@@ -3149,6 +3183,7 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 }
 
 /*
+todo
  * Helper to sys_swapon determining if a given swap
  * backing device queue supports DISCARD operations.
  */
@@ -3195,7 +3230,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 
 	if (IS_ERR(p))
 		return PTR_ERR(p);
-	/*  */
+	/* todo2024年7月30日21:08:09 */
 	INIT_WORK(&p->discard_work, swap_discard_work);
 
 	name = getname(specialfile);
@@ -3204,6 +3239,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		name = NULL;
 		goto bad_swap;
 	}
+	/* 打开swap文件 */
 	swap_file = file_open_name(name, O_RDWR|O_LARGEFILE, 0);
 	if (IS_ERR(swap_file)) {
 		error = PTR_ERR(swap_file);
@@ -3227,20 +3263,23 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		error = -EINVAL;
 		goto bad_swap;
 	}
+	/* 读取swapfile的第一个页面 */
 	page = read_mapping_page(mapping, 0, swap_file);
 	if (IS_ERR(page)) {
 		error = PTR_ERR(page);
 		goto bad_swap;
 	}
+	/* swap的header需要kmap映射吗 */
 	swap_header = kmap(page);
-
+	/*  */
 	maxpages = read_swap_header(p, swap_header, inode);
 	if (unlikely(!maxpages)) {
 		error = -EINVAL;
 		goto bad_swap;
 	}
 
-	/* OK, set up the swap map and apply the bad block list */
+	/* OK, set up the swap map and apply the bad block list
+	初始化swap的map，通过vmalloc分配的内存 */
 	swap_map = vzalloc(maxpages);
 	if (!swap_map) {
 		error = -ENOMEM;
@@ -3253,8 +3292,10 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	if (bdi_cap_synchronous_io(inode_to_bdi(inode)))
 		p->flags |= SWP_SYNCHRONOUS_IO;
 
-	if (p->bdev && blk_queue_nonrot(bdev_get_queue(p->bdev))) {
+	if (p->bdev && blk_queue_nonrot(bdev_get_queue(p->bdev))) {/* 
+	如果是固态硬盘 */
 		int cpu;
+		/* ssd会有ci等信息 */
 		unsigned long ci, nr_cluster;
 
 		p->flags |= SWP_SOLIDSTATE;
@@ -3289,11 +3330,11 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		atomic_inc(&nr_rotate_swap);
 		inced_nr_rotate_swap = true;
 	}
-
+	/* 初始化type的swp cg ctrl */
 	error = swap_cgroup_swapon(p->type, maxpages);
 	if (error)
 		goto bad_swap;
-
+	/* todo */
 	nr_extents = setup_swap_map_and_extents(p, swap_header, swap_map,
 		cluster_info, maxpages, &span);
 	if (unlikely(nr_extents < 0)) {
@@ -3302,6 +3343,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	}
 	/* frontswap enabled? set up bit-per-page map for frontswap */
 	if (IS_ENABLED(CONFIG_FRONTSWAP))
+		/*  */
 		frontswap_map = kvcalloc(BITS_TO_LONGS(maxpages),
 					 sizeof(long),
 					 GFP_KERNEL);

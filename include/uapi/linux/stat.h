@@ -17,13 +17,19 @@
 #define S_ISUID  0004000
 #define S_ISGID  0002000
 #define S_ISVTX  0001000
-
+/* 是不是链接文件什么的 */
 #define S_ISLNK(m)	(((m) & S_IFMT) == S_IFLNK)
+/* 是不是一个常规文件 */
 #define S_ISREG(m)	(((m) & S_IFMT) == S_IFREG)
+/* 是不是目录 */
 #define S_ISDIR(m)	(((m) & S_IFMT) == S_IFDIR)
+/* 是不是字符设备 */
 #define S_ISCHR(m)	(((m) & S_IFMT) == S_IFCHR)
+/* 是不是块设备 */
 #define S_ISBLK(m)	(((m) & S_IFMT) == S_IFBLK)
+/* 是不是fifo文件 */
 #define S_ISFIFO(m)	(((m) & S_IFMT) == S_IFIFO)
+/* 是不是sock文件 */
 #define S_ISSOCK(m)	(((m) & S_IFMT) == S_IFSOCK)
 
 #define S_IRWXU 00700

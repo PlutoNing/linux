@@ -120,7 +120,7 @@ static void set_init_blocksize(struct block_device *bdev)
 	bdev->bd_block_size = bsize;
 	bdev->bd_inode->i_blkbits = blksize_bits(bsize);
 }
-
+/* 2024年7月30日21:15:18 */
 int set_blocksize(struct block_device *bdev, int size)
 {
 	/* Size must be a power of two, and between 512 and PAGE_SIZE */
@@ -133,6 +133,7 @@ int set_blocksize(struct block_device *bdev, int size)
 
 	/* Don't change the size if it is same as current */
 	if (bdev->bd_block_size != size) {
+		/* 改变块大小 */
 		sync_blockdev(bdev);
 		bdev->bd_block_size = size;
 		bdev->bd_inode->i_blkbits = blksize_bits(size);
@@ -484,7 +485,7 @@ static __init int blkdev_init(void)
 	return bioset_init(&blkdev_dio_pool, 4, offsetof(struct blkdev_dio, bio), BIOSET_NEED_BVECS);
 }
 module_init(blkdev_init);
-
+/*  */
 int __sync_blockdev(struct block_device *bdev, int wait)
 {
 	if (!bdev)
@@ -495,6 +496,7 @@ int __sync_blockdev(struct block_device *bdev, int wait)
 }
 
 /*
+2024年7月30日21:17:18
  * Write out and wait upon all the dirty data associated with a block
  * device via its mapping.  Does not take the superblock lock.
  */

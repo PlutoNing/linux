@@ -1072,6 +1072,7 @@ adjust_va_to_fit_type(struct vmap_area *va,
 /*
 2024年6月30日23:39:15
 分配vmap的虚拟地址空间
+在红黑树找到合适的地址段
  * Returns a start address of the newly allocated area, if success.
  * Otherwise a vend is returned that indicates failure.
  */
@@ -1116,7 +1117,8 @@ __alloc_vmap_area(unsigned long size, unsigned long align,
 
 /*
 2024年6月30日23:26:10
-里面分配va结构体，从vma里面获取进程hole虚拟地址
+里面分配vmap结构体
+给vmap分配虚拟地址空间，插入全局的vmap红黑树
  * Allocate a region of KVA of the specified size and alignment, within the
  * vstart and vend.
  */
@@ -1137,7 +1139,7 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
 		return ERR_PTR(-EBUSY);
 
 	might_sleep();
-	/* slab分配vmap area */
+	/* slab分配vmap结构体 */
 	va = kmem_cache_alloc_node(vmap_area_cachep,
 			gfp_mask & GFP_RECLAIM_MASK, node);
 	if (unlikely(!va))
@@ -1180,7 +1182,7 @@ retry:
 	/*
 	 * If an allocation fails, the "vend" address is
 	 * returned. Therefore trigger the overflow path.
-	分配va区域（有进程的虚拟地址）
+	分配vmap的虚拟地址空间
 	 */
 	addr = __alloc_vmap_area(size, align, vstart, vend);
 	if (unlikely(addr == vend))
@@ -1190,7 +1192,8 @@ retry:
 	va->va_start = addr;
 	va->va_end = addr + size;
 	va->vm = NULL;
-	/* 插入进程虚拟地址空间 ，是插入进程的，还是全局的？感觉内核的应该都是共用一个*/
+
+	/* 把vmap插入进程虚拟地址空间 ，是插入进程的，还是全局的？感觉内核的应该都是共用一个*/
 	insert_vmap_area(va, &vmap_area_root, &vmap_area_list);
 
 	spin_unlock(&vmap_area_lock);
@@ -2198,7 +2201,7 @@ void unmap_kernel_range(unsigned long addr, unsigned long size)
 }
 EXPORT_SYMBOL_GPL(unmap_kernel_range);
 /* 2024年7月1日00:06:42
-把物理页面分配给vm。
+把物理页面分配给vm之后，映射地址空间。
  */
 int map_vm_area(struct vm_struct *area, pgprot_t prot, struct page **pages)
 {
@@ -2236,7 +2239,8 @@ static void clear_vm_uninitialized_flag(struct vm_struct *vm)
 	vm->flags &= ~VM_UNINITIALIZED;
 }
 /* 2024年6月30日23:18:56
-创建vmap？设置vm，不过好像没有申请物理页面和映射。
+创建vm和vmap（分配好虚拟地址空间）‘
+建立vm和vmap的关联
  */
 static struct vm_struct *__get_vm_area_node(unsigned long size,
 		unsigned long align, unsigned long flags, unsigned long start,
@@ -2270,7 +2274,8 @@ static struct vm_struct *__get_vm_area_node(unsigned long size,
 		kfree(area);
 		return NULL;
 	}
-	/* 设置vmap属性，这个时候area有页面吗？ */
+	/* 设置vmap属性，管理vmap和vm，
+		这个时候area有页面吗？ */
 	setup_vmalloc_vm(area, va, flags, caller);
 
 	return area;
@@ -2607,8 +2612,8 @@ static void *__vmalloc_node(unsigned long size, unsigned long align,
 			    gfp_t gfp_mask, pgprot_t prot,
 			    int node, const void *caller);
 /* 2024年6月30日23:58:46
-				
-				 */
+给vm分配物理页面，然后进行映射		
+ */
 static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 				 pgprot_t prot, int node)
 {
@@ -2622,18 +2627,19 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 
 	nr_pages = get_vm_area_size(area) >> PAGE_SHIFT;
 	array_size = (nr_pages * sizeof(struct page *));
-
+	/* 先分配物理页面 */
 	/* Please note that the recursion is strictly bounded. */
 	if (array_size > PAGE_SIZE) {
-		/* 大的，分配页面 */
+		/* 大的，分配pages指针数组的空间（不是页面） */
 		pages = __vmalloc_node(array_size, 1, nested_gfp|highmem_mask,
 				PAGE_KERNEL, node, area->caller);
 	} else {
-		/* 小的kmall，分配页面 */
+		/* 小的kmalloc，分配pages指针数组的空间（不是页面） */
 		pages = kmalloc_node(array_size, nested_gfp, node);
 	}
 
 	if (!pages) {
+		/* 失败 */
 		remove_vm_area(area->addr);
 		kfree(area);
 		return NULL;
@@ -2641,7 +2647,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 
 	area->pages = pages;
 	area->nr_pages = nr_pages;
-	/* 逐个申请页面 */
+	/* 这里逐个申请页面，赋值到pages指针数组 */
 	for (i = 0; i < area->nr_pages; i++) {
 		struct page *page;
 
@@ -2662,6 +2668,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	}
 	atomic_long_add(area->nr_pages, &nr_vmalloc_pages);
 
+	/* 映射地址空间 */
 	if (map_vm_area(area, prot, pages))
 		goto fail;
 	return area->addr;
@@ -2676,6 +2683,7 @@ fail:
 
 /**
 2024年6月30日22:50:04
+vmalloc分配内存
  * __vmalloc_node_range - allocate virtually contiguous memory
  * @size:		  allocation size
  * @align:		  desired alignment
@@ -2710,7 +2718,7 @@ void *__vmalloc_node_range(unsigned long size, unsigned long align,
 				vm_flags, start, end, node, gfp_mask, caller);
 	if (!area)
 		goto fail;
-
+	/* 分配页面，建立映射 */
 	addr = __vmalloc_area_node(area, gfp_mask, prot, node);
 	if (!addr)
 		return NULL;
@@ -2743,6 +2751,7 @@ EXPORT_SYMBOL_GPL(__vmalloc_node_range);
 
 /**
 2024年6月30日22:49:14
+vmalloc分配内存
  * __vmalloc_node - allocate virtually contiguous memory
  * @size:	    allocation size
  * @align:	    desired alignment
@@ -2770,7 +2779,8 @@ static void *__vmalloc_node(unsigned long size, unsigned long align,
 	return __vmalloc_node_range(size, align, VMALLOC_START, VMALLOC_END,
 				gfp_mask, prot, 0, node, caller);
 }
-/*  */
+/*2024年7月30日22:30:33
+vmalloc分配内存  */
 void *__vmalloc(unsigned long size, gfp_t gfp_mask, pgprot_t prot)
 {
 	return __vmalloc_node(size, 1, gfp_mask, prot, NUMA_NO_NODE,
@@ -2778,7 +2788,7 @@ void *__vmalloc(unsigned long size, gfp_t gfp_mask, pgprot_t prot)
 }
 EXPORT_SYMBOL(__vmalloc);
 /* 2024年6月30日22:48:47
-
+vmalloc分配内存
  */
 static inline void *__vmalloc_node_flags(unsigned long size,
 					int node, gfp_t flags)
@@ -2816,6 +2826,7 @@ void *vmalloc(unsigned long size)
 EXPORT_SYMBOL(vmalloc);
 
 /**
+vmalloc分配全零内存
  * vzalloc - allocate virtually contiguous memory with zero fill
  * @size:    allocation size
  *
