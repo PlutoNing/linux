@@ -207,7 +207,8 @@ static int discard_swap(struct swap_info_struct *si)
 	}
 	return err;		/* That will often be -EOPNOTSUPP */
 }
-
+/* 通过si和offset获取extent
+其实就是通过start_page在红黑树查找 */
 static struct swap_extent *
 offset_to_swap_extent(struct swap_info_struct *sis, unsigned long offset)
 {
@@ -229,16 +230,20 @@ offset_to_swap_extent(struct swap_info_struct *sis, unsigned long offset)
 }
 
 /*
+swap cluster可以discard
  * swap allocation tell device that a cluster of swap can now be discarded,
  * to allow the swap device to optimize its wear-levelling.
  */
 static void discard_swap_cluster(struct swap_info_struct *si,
 				 pgoff_t start_page, pgoff_t nr_pages)
 {
+	/* 获取extent */
 	struct swap_extent *se = offset_to_swap_extent(si, start_page);
 
 	while (nr_pages) {
+		/* 在extent的pgoff */
 		pgoff_t offset = start_page - se->start_page;
+		/* 在disk的block偏移 */
 		sector_t start_block = se->start_block + offset;
 		sector_t nr_blocks = se->nr_pages - offset;
 

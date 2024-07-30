@@ -141,6 +141,8 @@ struct writeback_control;
 struct zone;
 
 /*
+2024年07月30日18:13:12
+
  * A swap extent maps a range of a swapfile's PAGE_SIZE pages onto a range of
  * disk blocks.  A list of swap extents maps the entire swapfile.  (Where the
  * term `swapfile' refers to either a blockdevice or an IS_REG file.  Apart
@@ -149,9 +151,13 @@ struct zone;
  * We always assume that blocks are of size PAGE_SIZE.
  */
 struct swap_extent {
+	/* 通过start_page排序 */
 	struct rb_node rb_node;
+	/* 开始的pgoff */
 	pgoff_t start_page;
+	/* 页面数量 */
 	pgoff_t nr_pages;
+	/* 磁盘上开始位置 */
 	sector_t start_block;
 };
 
