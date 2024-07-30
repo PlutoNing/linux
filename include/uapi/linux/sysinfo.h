@@ -5,6 +5,7 @@
 #include <linux/types.h>
 
 #define SI_LOAD_SHIFT	16
+/*  */
 struct sysinfo {
 	__kernel_long_t uptime;		/* Seconds since boot */
 	__kernel_ulong_t loads[3];	/* 1, 5, and 15 minute load averages */

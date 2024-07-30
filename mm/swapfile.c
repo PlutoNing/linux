@@ -295,7 +295,7 @@ static inline void cluster_set_count_flag(struct swap_cluster_info *info,
 	info->flags = f;
 	info->data = c;
 }
-
+/*  */
 static inline unsigned int cluster_next(struct swap_cluster_info *info)
 {
 	return info->data;
@@ -318,7 +318,7 @@ static inline bool cluster_is_free(struct swap_cluster_info *info)
 {
 	return info->flags & CLUSTER_FLAG_FREE;
 }
-
+/*  */
 static inline bool cluster_is_null(struct swap_cluster_info *info)
 {
 	return info->flags & CLUSTER_FLAG_NEXT_NULL;
@@ -391,7 +391,7 @@ static inline void unlock_cluster_or_swap_info(struct swap_info_struct *si,
 	else
 		spin_unlock(&si->lock);
 }
-
+/*  */
 static inline bool cluster_list_empty(struct swap_cluster_list *list)
 {
 	return cluster_is_null(&list->head);
@@ -430,7 +430,7 @@ static void cluster_list_add_tail(struct swap_cluster_list *list,
 		cluster_set_next_flag(&list->tail, idx, 0);
 	}
 }
-
+/*  */
 static unsigned int cluster_list_del_first(struct swap_cluster_list *list,
 					   struct swap_cluster_info *ci)
 {
@@ -438,6 +438,7 @@ static unsigned int cluster_list_del_first(struct swap_cluster_list *list,
 
 	idx = cluster_next(&list->head);
 	if (cluster_next(&list->tail) == idx) {
+		/* 获取list的头和尾指向的ci的data，判断是否相等，若相等则置空 */
 		cluster_set_null(&list->head);
 		cluster_set_null(&list->tail);
 	} else
@@ -474,6 +475,7 @@ static void __free_cluster(struct swap_info_struct *si, unsigned long idx)
 }
 
 /*
+真正执行swap discard
  * Doing discard actually. After a cluster discard is finished, the cluster
  * will be added to free cluster list. caller should hold si->lock.
 */
@@ -485,6 +487,7 @@ static void swap_do_scheduled_discard(struct swap_info_struct *si)
 	info = si->cluster_info;
 
 	while (!cluster_list_empty(&si->discard_clusters)) {
+
 		idx = cluster_list_del_first(&si->discard_clusters, info);
 		spin_unlock(&si->lock);
 
@@ -499,14 +502,18 @@ static void swap_do_scheduled_discard(struct swap_info_struct *si)
 		unlock_cluster(ci);
 	}
 }
-
+/* 
+2024年07月30日17:21:17
+swap的discard work？
+这个worker的作用 */
 static void swap_discard_work(struct work_struct *work)
 {
 	struct swap_info_struct *si;
-
+	/* 获得si */
 	si = container_of(work, struct swap_info_struct, discard_work);
 
 	spin_lock(&si->lock);
+	/* 调度一下此swp的discard work */
 	swap_do_scheduled_discard(si);
 	spin_unlock(&si->lock);
 }
@@ -2862,28 +2869,33 @@ static int __init max_swapfiles_check(void)
 }
 late_initcall(max_swapfiles_check);
 #endif
-
+/* 分配si */
 static struct swap_info_struct *alloc_swap_info(void)
 {
 	struct swap_info_struct *p;
 	unsigned int type;
 	int i;
 
+	/* 有个零长数组，所以计算size，会考虑nr——node——ids */
 	p = kvzalloc(struct_size(p, avail_lists, nr_node_ids), GFP_KERNEL);
 	if (!p)
 		return ERR_PTR(-ENOMEM);
 
 	spin_lock(&swap_lock);
+	/* 找到一个放置此swap的插槽 */
 	for (type = 0; type < nr_swapfiles; type++) {
+		/* 如果有一个未使用的slot，就break */
 		if (!(swap_info[type]->flags & SWP_USED))
 			break;
 	}
 	if (type >= MAX_SWAPFILES) {
+		/* 刚才找到的超限了，是说超过了最大swapfile的限制？ */
 		spin_unlock(&swap_lock);
 		kvfree(p);
 		return ERR_PTR(-EPERM);
 	}
 	if (type >= nr_swapfiles) {
+		/* 超过了当前的swapfile限制，那么++1. */
 		p->type = type;
 		WRITE_ONCE(swap_info[type], p);
 		/*
@@ -2894,6 +2906,8 @@ static struct swap_info_struct *alloc_swap_info(void)
 		smp_wmb();
 		WRITE_ONCE(nr_swapfiles, nr_swapfiles + 1);
 	} else {
+		/* 如果没有超过限制，就是找到了现成的未使用的slot，slot里面
+		有现成的si，那么释放刚才申请的，使用现成的？ */
 		kvfree(p);
 		p = swap_info[type];
 		/*
@@ -2902,9 +2916,11 @@ static struct swap_info_struct *alloc_swap_info(void)
 		 */
 	}
 	p->swap_extent_root = RB_ROOT;
+
 	plist_node_init(&p->list, 0);
 	for_each_node(i)
 		plist_node_init(&p->avail_lists[i], 0);
+
 	p->flags = SWP_USED;
 	spin_unlock(&swap_lock);
 	spin_lock_init(&p->lock);
@@ -3140,7 +3156,8 @@ static bool swap_discardable(struct swap_info_struct *si)
 
 	return true;
 }
-
+/* 2024年07月30日17:03:54
+swapon的系统调用？ */
 SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 {
 	struct swap_info_struct *p;
@@ -3162,17 +3179,18 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 
 	if (swap_flags & ~SWAP_FLAGS_VALID)
 		return -EINVAL;
-
+	/* 检查root权限 */
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
 	if (!swap_avail_heads)
 		return -ENOMEM;
-
+	/* 分配或者复用一个si */
 	p = alloc_swap_info();
+
 	if (IS_ERR(p))
 		return PTR_ERR(p);
-
+	/*  */
 	INIT_WORK(&p->discard_work, swap_discard_work);
 
 	name = getname(specialfile);
@@ -3388,7 +3406,8 @@ out:
 		enable_swap_slots_cache();
 	return error;
 }
-
+/* 2024年07月30日16:48:17
+设置sysinfo里面swap相关的属性 */
 void si_swapinfo(struct sysinfo *val)
 {
 	unsigned int type;
@@ -3397,7 +3416,7 @@ void si_swapinfo(struct sysinfo *val)
 	spin_lock(&swap_lock);
 	for (type = 0; type < nr_swapfiles; type++) {
 		struct swap_info_struct *si = swap_info[type];
-
+		/* 启用了，但是不能写？ */
 		if ((si->flags & SWP_USED) && !(si->flags & SWP_WRITEOK))
 			nr_to_be_unused += si->inuse_pages;
 	}
