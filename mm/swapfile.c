@@ -341,7 +341,8 @@ static inline void cluster_clear_huge(struct swap_cluster_info *info)
 {
 	info->flags &= ~CLUSTER_FLAG_HUGE;
 }
-/*  */
+/* 
+类似raid吗》 */
 static inline struct swap_cluster_info *lock_cluster(struct swap_info_struct *si,
 						     unsigned long offset)
 {
@@ -558,6 +559,7 @@ static void inc_cluster_info_page(struct swap_info_struct *p,
 }
 
 /*
+2024年7月30日00:24:44
  * The cluster corresponding to page_nr decreases one usage. If the usage
  * counter becomes 0, which means no page in the cluster is in using, we can
  * optionally discard the cluster and add it to free cluster list.
@@ -571,6 +573,7 @@ static void dec_cluster_info_page(struct swap_info_struct *p,
 		return;
 
 	VM_BUG_ON(cluster_count(&cluster_info[idx]) == 0);
+
 	cluster_set_count(&cluster_info[idx],
 		cluster_count(&cluster_info[idx]) - 1);
 
@@ -708,7 +711,7 @@ static void add_to_avail_list(struct swap_info_struct *p)
 	}
 	spin_unlock(&swap_avail_lock);
 }
-
+/*  */
 static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			    unsigned int nr_entries)
 {
@@ -724,14 +727,19 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 		if (was_full && (si->flags & SWP_WRITEOK))
 			add_to_avail_list(si);
 	}
+
 	atomic_long_add(nr_entries, &nr_swap_pages);
 	si->inuse_pages -= nr_entries;
+
+	/* 如果是块设备作为swap */
 	if (si->flags & SWP_BLKDEV)
 		swap_slot_free_notify =
 			si->bdev->bd_disk->fops->swap_slot_free_notify;
 	else
 		swap_slot_free_notify = NULL;
+
 	while (offset <= end) {
+		/*  */
 		frontswap_invalidate_page(si->type, offset);
 		if (swap_slot_free_notify)
 			swap_slot_free_notify(si->bdev, offset);
@@ -1170,7 +1178,7 @@ static struct swap_info_struct *swap_info_get(swp_entry_t entry)
 		spin_lock(&p->lock);
 	return p;
 }
-
+/*  */
 static struct swap_info_struct *swap_info_get_cont(swp_entry_t entry,
 					struct swap_info_struct *q)
 {
@@ -1290,7 +1298,7 @@ unlock_out:
 	rcu_read_unlock();
 	return NULL;
 }
-
+/* 2024年7月29日23:52:04 */
 static unsigned char __swap_entry_free(struct swap_info_struct *p,
 				       swp_entry_t entry, unsigned char usage)
 {
@@ -1305,7 +1313,7 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 
 	return usage;
 }
-
+/* 释放swap entry？ */
 static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 {
 	struct swap_cluster_info *ci;
@@ -1316,6 +1324,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 	count = p->swap_map[offset];
 	VM_BUG_ON(count != SWAP_HAS_CACHE);
 	p->swap_map[offset] = 0;
+	
 	dec_cluster_info_page(p, p->cluster_info, offset);
 	unlock_cluster(ci);
 
@@ -1324,6 +1333,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 }
 
 /*
+2024年7月29日23:50:50
  * Caller has made sure that the swap device corresponding to entry
  * is still around or has not been recycled.
  */
@@ -1417,7 +1427,7 @@ static int swp_entry_cmp(const void *ent1, const void *ent2)
 
 	return (int)swp_type(*e1) - (int)swp_type(*e2);
 }
-
+/* 处理entries数组的全部元素来释放。数量为n */
 void swapcache_free_entries(swp_entry_t *entries, int n)
 {
 	struct swap_info_struct *p, *prev;
@@ -1437,6 +1447,7 @@ void swapcache_free_entries(swp_entry_t *entries, int n)
 	if (nr_swapfiles > 1)
 		sort(entries, n, sizeof(entries[0]), swp_entry_cmp, NULL);
 	for (i = 0; i < n; ++i) {
+		/* 逐个处理 */
 		p = swap_info_get_cont(entries[i], prev);
 		if (p)
 			swap_entry_free(p, entries[i]);
@@ -2277,6 +2288,7 @@ static void drain_mmlist(void)
 
 /*
 2024年07月03日15:01:51
+根据swap entry获得在磁盘上的扇区号
  * Use this swapdev's extent info to locate the (PAGE_SIZE) block which
  * corresponds to page offset for the specified swap entry.
  * Note that the type of this function is sector_t, but it returns page offset
@@ -2298,6 +2310,7 @@ static sector_t map_swap_entry(swp_entry_t entry, struct block_device **bdev)
 
 /*
 2024年07月03日15:01:41
+获得swap page在磁盘的扇区号
  * Returns the page offset into bdev for the specified page's swap entry.
  */
 sector_t map_swap_page(struct page *page, struct block_device **bdev)
@@ -3429,6 +3442,7 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 	 * swapin_readahead() doesn't check if a swap entry is valid, so the
 	 * swap entry could be SWAP_MAP_BAD. Check here with lock held.
 	 */
+	 /* count & ~hascache == map_bad */
 	if (unlikely(swap_count(count) == SWAP_MAP_BAD)) {
 		err = -ENOENT;
 		goto unlock_out;
@@ -3498,6 +3512,7 @@ int swap_duplicate(swp_entry_t entry)
 }
 
 /*
+2024年7月29日22:05:45
  * @entry: swap entry for which we allocate swap cache.
  *
  * Called when allocating swap cache for existing swap entry,
@@ -3517,7 +3532,9 @@ struct swap_info_struct *swp_swap_info(swp_entry_t entry)
 {
 	return swap_type_to_swap_info(swp_type(entry));
 }
-/* 2024年07月03日14:53:30 */
+/* 2024年07月03日14:53:30
+从page获得swapinfo。
+ */
 struct swap_info_struct *page_swap_info(struct page *page)
 {
 	swp_entry_t entry = { .val = page_private(page) };

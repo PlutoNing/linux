@@ -1139,6 +1139,8 @@ blk_qc_t direct_make_request(struct bio *bio)
 EXPORT_SYMBOL_GPL(direct_make_request);
 
 /**
+2024年7月29日23:07:53
+发起bio
  * submit_bio - submit a bio to the block device layer for I/O
  * @bio: The &struct bio which describes the I/O
  *
@@ -1786,6 +1788,7 @@ void blk_flush_plug_list(struct blk_plug *plug, bool from_schedule)
 }
 
 /**
+2024年7月29日23:09:35
  * blk_finish_plug - mark the end of a batch of submitted I/O
  * @plug:	The &struct blk_plug passed to blk_start_plug()
  *

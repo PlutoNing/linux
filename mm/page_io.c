@@ -26,7 +26,7 @@
 #include <linux/sched/task.h>
 #include <asm/pgtable.h>
 /* 2024年07月03日15:00:00
-
+构造一个读取swap设备的page页面的bio
  */
 static struct bio *get_swap_bio(gfp_t gfp_flags,
 				struct page *page, bio_end_io_t end_io)
@@ -38,10 +38,11 @@ static struct bio *get_swap_bio(gfp_t gfp_flags,
 		struct block_device *bdev;
 		/* 设置扇区号 */
 		bio->bi_iter.bi_sector = map_swap_page(page, &bdev);
+		/* 建立bio与disk管理 */
 		bio_set_dev(bio, bdev);
 		bio->bi_iter.bi_sector <<= PAGE_SHIFT - 9;
 		bio->bi_end_io = end_io;
-
+		/* 现在把要读取的page加入到bio */
 		bio_add_page(bio, page, PAGE_SIZE * hpage_nr_pages(page), 0);
 	}
 	return bio;
@@ -70,7 +71,7 @@ void end_swap_bio_write(struct bio *bio)
 	end_page_writeback(page);
 	bio_put(bio);
 }
-
+/*  */
 static void swap_slot_free_notify(struct page *page)
 {
 	struct swap_info_struct *sis;
@@ -108,6 +109,7 @@ static void swap_slot_free_notify(struct page *page)
 	 */
 	disk = sis->bdev->bd_disk;
 	entry.val = page_private(page);
+	/* 如果有通知的机制 */
 	if (disk->fops->swap_slot_free_notify && __swap_count(entry) == 1) {
 		unsigned long offset;
 
@@ -118,9 +120,11 @@ static void swap_slot_free_notify(struct page *page)
 				offset);
 	}
 }
-
+/* bio结束的处理工作
+设置uptodate，回调什么的 */
 static void end_swap_bio_read(struct bio *bio)
-{
+{	
+	/* bio操作的第一个页面 */
 	struct page *page = bio_first_page_all(bio);
 	struct task_struct *waiter = bio->bi_private;
 
@@ -134,12 +138,15 @@ static void end_swap_bio_read(struct bio *bio)
 	}
 
 	SetPageUptodate(page);
+	/* 不知道什么作用的通知机制 */
 	swap_slot_free_notify(page);
 out:
 	unlock_page(page);
+	/* 为什么置空 */
 	WRITE_ONCE(bio->bi_private, NULL);
 	bio_put(bio);
 	if (waiter) {
+		/*  */
 		blk_wake_io_task(waiter);
 		put_task_struct(waiter);
 	}
@@ -362,17 +369,18 @@ int swap_readpage(struct page *page, bool synchronous)
 	VM_BUG_ON_PAGE(!PageSwapCache(page) && !synchronous, page);
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	VM_BUG_ON_PAGE(PageUptodate(page), page);
-	if (frontswap_load(page) == 0) {
+
+	if (frontswap_load(page) == 0) {/* front swap机制读取交换page成功 */
 		SetPageUptodate(page);
 		unlock_page(page);
 		goto out;
 	}
 
-	if (sis->flags & SWP_FS) {
+	if (sis->flags & SWP_FS) {/* FS的路径 */
 		/*  */
 		struct file *swap_file = sis->swap_file;
 		struct address_space *mapping = swap_file->f_mapping;
-
+		/* mapping的ops来读取 */
 		ret = mapping->a_ops->readpage(swap_file, page);
 		if (!ret)
 			count_vm_event(PSWPIN);
@@ -391,7 +399,9 @@ int swap_readpage(struct page *page, bool synchronous)
 		return 0;
 	}
 
+	/* 块设备路径失败后或者front机制失败后可能来到这里？ */
 	ret = 0;
+	/* 这个bio描述从swap设备读取page。 */
 	bio = get_swap_bio(GFP_KERNEL, page, end_swap_bio_read);
 	if (bio == NULL) {
 		unlock_page(page);
@@ -405,14 +415,18 @@ int swap_readpage(struct page *page, bool synchronous)
 	 */
 	bio_set_op_attrs(bio, REQ_OP_READ, 0);
 	if (synchronous) {
+		/* 如果同步读取的话 */
 		bio->bi_opf |= REQ_HIPRI;
 		get_task_struct(current);
+		/* end bio的时候，会触发这个pcb */
 		bio->bi_private = current;
 	}
 	count_vm_event(PSWPIN);
 	bio_get(bio);
+	/* 提交对设备的bio进行读取 */
 	qc = submit_bio(bio);
 	while (synchronous) {
+		/* 如果是同步读取，todo */
 		set_current_state(TASK_UNINTERRUPTIBLE);
 		if (!READ_ONCE(bio->bi_private))
 			break;

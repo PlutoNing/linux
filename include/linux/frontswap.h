@@ -13,7 +13,8 @@
  * Used in in shmem_unuse and try_to_unuse.
  */
 #define FRONTSWAP_PAGES_UNUSED	2
-
+/* 2024年7月29日22:35:27
+front swap是什么 */
 struct frontswap_ops {
 	void (*init)(unsigned); /* this swap type was just swapon'ed */
 	int (*store)(unsigned, pgoff_t, struct page *); /* store a page */
@@ -91,7 +92,8 @@ static inline int frontswap_store(struct page *page)
 
 	return -1;
 }
-/* 2024年07月03日14:54:12 */
+/* 2024年07月03日14:54:12
+尝试front swap机制读取页面 */
 static inline int frontswap_load(struct page *page)
 {
 	if (frontswap_enabled())
@@ -99,7 +101,8 @@ static inline int frontswap_load(struct page *page)
 
 	return -1;
 }
-
+/* front swap机制invaliddatepage，
+swap移除free 自己entry的时候调用 */
 static inline void frontswap_invalidate_page(unsigned type, pgoff_t offset)
 {
 	if (frontswap_enabled())

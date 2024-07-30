@@ -16,12 +16,15 @@ struct shmem_inode_info {
 	unsigned int		seals;		/* shmem seals */
 	unsigned long		flags;
 	unsigned long		alloced;	/* data pages alloced to file */
-	unsigned long		swapped;	/* subtotal assigned to swap */
+	unsigned long		swapped;	/*
+	被swap的页面数量？
+	 subtotal assigned to swap */
 	struct list_head        shrinklist;     /* shrinkable hpage inodes */
 	struct list_head	swaplist;	/* chain of maybes on swap */
 	struct shared_policy	policy;		/* NUMA memory alloc policy */
 	struct simple_xattrs	xattrs;		/* list of xattrs */
 	atomic_t		stop_eviction;	/* hold when working on inode */
+	/* 文件系统里的inode */
 	struct inode		vfs_inode;
 };
 
@@ -40,7 +43,7 @@ struct shmem_sb_info {
 	struct list_head shrinklist;  /* List of shinkable inodes */
 	unsigned long shrinklist_len; /* Length of shrinklist */
 };
-
+/*  */
 static inline struct shmem_inode_info *SHMEM_I(struct inode *inode)
 {
 	return container_of(inode, struct shmem_inode_info, vfs_inode);

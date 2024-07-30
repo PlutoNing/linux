@@ -279,13 +279,13 @@ static inline void bio_get_last_bvec(struct bio *bio, struct bio_vec *bv)
 	if (iter.bi_bvec_done)
 		bv->bv_len = iter.bi_bvec_done;
 }
-
+/* 获取bio的bi vec */
 static inline struct bio_vec *bio_first_bvec_all(struct bio *bio)
 {
 	WARN_ON_ONCE(bio_flagged(bio, BIO_CLONED));
 	return bio->bi_io_vec;
 }
-
+/* 获取bio的bi list的第一个页面 */
 static inline struct page *bio_first_page_all(struct bio *bio)
 {
 	return bio_first_bvec_all(bio)->bv_page;

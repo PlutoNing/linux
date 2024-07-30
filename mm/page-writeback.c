@@ -2585,7 +2585,7 @@ int redirty_page_for_writepage(struct writeback_control *wbc, struct page *page)
 EXPORT_SYMBOL(redirty_page_for_writepage);
 
 /*
-dirty一个物理页，可能会调用一些cb来进行一些回写什么的
+dirty一个物理页，有对应的mapping的话可能会调用一些cb来进行一些回写什么的
  * Dirty a page.
  *
  * For pages with a mapping this should be done under the page lock

@@ -264,8 +264,12 @@ struct swap_info_struct {
 	struct file *swap_file;		/* seldom referenced ， 指向 swap file 的 file 结构*/
 	unsigned int old_block_size;	/* seldom referenced */
 #ifdef CONFIG_FRONTSWAP
-	unsigned long *frontswap_map;	/* frontswap in-use, one bit per page */
-	atomic_t frontswap_pages;	/* frontswap pages in-use counter */
+	unsigned long *frontswap_map;	/* 
+	描述frontswap机制页面存在与否的位图，一个offset一个bit
+	frontswap in-use, one bit per page */
+	atomic_t frontswap_pages;	/* 
+	frintswap的page数量？
+	frontswap pages in-use counter */
 #endif
 
 	spinlock_t lock;		/*对应的自旋锁
@@ -417,7 +421,13 @@ int generic_swapfile_activate(struct swap_info_struct *, struct file *,
 #define SWAP_ADDRESS_SPACE_SHIFT	14
 #define SWAP_ADDRESS_SPACE_PAGES	(1 << SWAP_ADDRESS_SPACE_SHIFT)
 extern struct address_space *swapper_spaces[];
-/* 获取swap ent的地址空间 */
+/* 获取swap ent的地址空间
+(&swapper_spaces[swp_type(entry)][swp_offset(entry) >> 14])
+offset右移14位是swapfile里的offset
+type确定是哪个swapfile的idx
+然后从全局数组根据idx来获取mapping
+
+ */
 #define swap_address_space(entry)			    \
 	(&swapper_spaces[swp_type(entry)][swp_offset(entry) \
 		>> SWAP_ADDRESS_SPACE_SHIFT])

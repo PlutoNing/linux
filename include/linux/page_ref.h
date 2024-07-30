@@ -91,7 +91,8 @@ static inline void init_page_count(struct page *page)
 {
 	set_page_count(page, 1);
 }
-
+/* 如果page是复合页。nr是页面数量？
+ */
 static inline void page_ref_add(struct page *page, int nr)
 {
 	atomic_add(nr, &page->_refcount);

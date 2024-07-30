@@ -33,7 +33,7 @@
 #include <linux/vmalloc.h>
 #include <linux/mutex.h>
 #include <linux/mm.h>
-
+/*  */
 static DEFINE_PER_CPU(struct swap_slots_cache, swp_slots);
 static bool	swap_slot_cache_active;
 bool	swap_slot_cache_enabled;
@@ -274,32 +274,38 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 
 	return cache->nr;
 }
-
+/* 会先尝试能否放到缓存，等待批量处理释放 */
 int free_swap_slot(swp_entry_t entry)
 {
 	struct swap_slots_cache *cache;
 
 	cache = raw_cpu_ptr(&swp_slots);
 	if (likely(use_swap_slot_cache && cache->slots_ret)) {
+		/* 如果开启了这个机制 */
 		spin_lock_irq(&cache->free_lock);
 		/* Swap slots cache may be deactivated before acquiring lock */
-		if (!use_swap_slot_cache || !cache->slots_ret) {
+		if (!use_swap_slot_cache || !cache->slots_ret) {/* 再检查一次机制是否开启 */
 			spin_unlock_irq(&cache->free_lock);
 			goto direct_free;
 		}
 		if (cache->n_ret >= SWAP_SLOTS_CACHE_SIZE) {
+			/* 满了？ */
 			/*
 			 * Return slots to global pool.
 			 * The current swap_map value is SWAP_HAS_CACHE.
 			 * Set it to 0 to indicate it is available for
 			 * allocation in global pool
 			 */
+
+			 /* 处理cache内部缓存的全部，然后重置为空 */
 			swapcache_free_entries(cache->slots_ret, cache->n_ret);
 			cache->n_ret = 0;
 		}
+		/* 把entry放入cache内部 */
 		cache->slots_ret[cache->n_ret++] = entry;
 		spin_unlock_irq(&cache->free_lock);
-	} else {
+	} else {/* 如果没开启这个机制就直接释放 */
+
 direct_free:
 		swapcache_free_entries(&entry, 1);
 	}

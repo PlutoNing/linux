@@ -7499,7 +7499,8 @@ void mem_cgroup_uncharge_list(struct list_head *page_list)
 /**
 2024年7月13日01:04:26
 2024年7月13日01:07:44
-replacement是什么意思
+replacement是什么意思？应该是进行页面替换后，更新charge信息，因为
+页面大小不一样。
  * mem_cgroup_migrate - charge a page's replacement
  * @oldpage: currently circulating page
  * @newpage: replacement page

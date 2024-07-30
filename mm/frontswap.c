@@ -26,6 +26,7 @@ DEFINE_STATIC_KEY_FALSE(frontswap_enabled_key);
  * frontswap "backend" implementation functions.  Multiple implementations
  * may be registered, but implementations can never deregister.  This
  * is a simple singly-linked list of all registered implementations.
+ frontswap_ops的全局链表
  */
 static struct frontswap_ops *frontswap_ops __read_mostly;
 
@@ -43,6 +44,8 @@ static struct frontswap_ops *frontswap_ops __read_mostly;
 static bool frontswap_writethrough_enabled __read_mostly;
 
 /*
+设置了此项后，每次从front swap成功读取页面出来。
+都要把此页面设置为不再放入和dirty？
  * If enabled, the underlying tmem implementation is capable of doing
  * exclusive gets, so frontswap_load, on a successful tmem_get must
  * mark the page as no longer in frontswap AND mark it dirty.
@@ -55,11 +58,13 @@ static bool frontswap_tmem_exclusive_gets_enabled __read_mostly;
  * properly configured).  These are for information only so are not protected
  * against increment races.
  */
+ /* frontswap_loads加载成功的数量 */
 static u64 frontswap_loads;
 static u64 frontswap_succ_stores;
 static u64 frontswap_failed_stores;
+/* invalidate操作的数量 */
 static u64 frontswap_invalidates;
-
+/*  */
 static inline void inc_frontswap_loads(void) {
 	frontswap_loads++;
 }
@@ -69,6 +74,7 @@ static inline void inc_frontswap_succ_stores(void) {
 static inline void inc_frontswap_failed_stores(void) {
 	frontswap_failed_stores++;
 }
+/*  */
 static inline void inc_frontswap_invalidates(void) {
 	frontswap_invalidates++;
 }
@@ -227,7 +233,7 @@ static inline void __frontswap_set(struct swap_info_struct *sis,
 	set_bit(offset, sis->frontswap_map);
 	atomic_inc(&sis->frontswap_pages);
 }
-
+/* 从front swap移除页面 */
 static inline void __frontswap_clear(struct swap_info_struct *sis,
 				     pgoff_t offset)
 {
@@ -287,6 +293,8 @@ int __frontswap_store(struct page *page)
 EXPORT_SYMBOL(__frontswap_store);
 
 /*
+2024年7月29日22:39:56
+尝试front swap读取交换页面
  * "Get" data from frontswap associated with swaptype and offset that were
  * specified when the data was put to frontswap and use it to fill the
  * specified page with data. Page must be locked and in the swap cache.
@@ -307,16 +315,19 @@ int __frontswap_load(struct page *page)
 	if (!__frontswap_test(sis, offset))
 		return -1;
 
-	/* Try loading from each implementation, until one succeeds. */
+	/* Try loading from each implementation, until one succeeds.
+	逐个从front swap里面加载 */
 	for_each_frontswap_ops(ops) {
 		ret = ops->load(type, offset, page);
 		if (!ret) /* successful load */
 			break;
 	}
+
 	if (ret == 0) {
 		inc_frontswap_loads();
 		if (frontswap_tmem_exclusive_gets_enabled) {
 			SetPageDirty(page);
+			/* 把offset位置从sis移走，也就是说不再包含此页面 */
 			__frontswap_clear(sis, offset);
 		}
 	}
@@ -325,6 +336,7 @@ int __frontswap_load(struct page *page)
 EXPORT_SYMBOL(__frontswap_load);
 
 /*
+2024年7月30日00:30:09
  * Invalidate any data from frontswap associated with the specified swaptype
  * and offset so that a subsequent "get" will fail.
  */
@@ -341,6 +353,7 @@ void __frontswap_invalidate_page(unsigned type, pgoff_t offset)
 
 	for_each_frontswap_ops(ops)
 		ops->invalidate_page(type, offset);
+	
 	__frontswap_clear(sis, offset);
 	inc_frontswap_invalidates();
 }

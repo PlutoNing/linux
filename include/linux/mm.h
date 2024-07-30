@@ -573,7 +573,7 @@ fault 函数指针 , 指向的函数 , 就是在 回调 fault 函数时 时调�
 };
 /*
 2024年6月18日21:59:47
-mm与vma建立关系
+初始化一个基础的vma，也mm与vma建立关系。
 */
 static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 {

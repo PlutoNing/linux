@@ -108,13 +108,18 @@ void show_swap_cache_info(void)
 }
 
 /*
+2024年7月29日22:16:09
+页面插入entry对应的swapfile的mapping里面
  * add_to_swap_cache resembles add_to_page_cache_locked on swapper_space,
  * but sets SwapCache flag and private instead of mapping and index.
  */
 int add_to_swap_cache(struct page *page, swp_entry_t entry, gfp_t gfp)
 {
+	/* 找到swapfile */
 	struct address_space *address_space = swap_address_space(entry);
+	/* 在swapfile里的pgoff */
 	pgoff_t idx = swp_offset(entry);
+	/* idx就是entry在address_space的i_pages数组里的索引 */
 	XA_STATE_ORDER(xas, &address_space->i_pages, idx, compound_order(page));
 	unsigned long i, nr = compound_nr(page);
 
@@ -123,6 +128,7 @@ int add_to_swap_cache(struct page *page, swp_entry_t entry, gfp_t gfp)
 	VM_BUG_ON_PAGE(!PageSwapBacked(page), page);
 
 	page_ref_add(page, nr);
+	/* 设置标志位 */
 	SetPageSwapCache(page);
 
 	do {
@@ -131,11 +137,13 @@ int add_to_swap_cache(struct page *page, swp_entry_t entry, gfp_t gfp)
 		if (xas_error(&xas))
 			goto unlock;
 		for (i = 0; i < nr; i++) {
+			/* 插入nr个位置 */
 			VM_BUG_ON_PAGE(xas.xa_index != idx + i, page);
 			set_page_private(page + i, entry.val + i);
 			xas_store(&xas, page);
 			xas_next(&xas);
 		}
+
 		address_space->nrpages += nr;
 		__mod_node_page_state(page_pgdat(page), NR_FILE_PAGES, nr);
 		ADD_CACHE_INFO(add_total, nr);
@@ -239,6 +247,8 @@ fail:
 }
 
 /*
+2024年7月29日23:37:28
+从swap cache删除page，不过必须要保证page此时在swap。
  * This must be called only on pages that have
  * been verified to be in the swap cache and locked.
  * It will never put the page into the free list,
@@ -250,10 +260,13 @@ void delete_from_swap_cache(struct page *page)
 	struct address_space *address_space = swap_address_space(entry);
 
 	xa_lock_irq(&address_space->i_pages);
+	/* 加锁page的swap mapping之后，开始删除，*/
 	__delete_from_swap_cache(page, entry);
 	xa_unlock_irq(&address_space->i_pages);
 
+	/*  */
 	put_swap_page(page, entry);
+	/*  */
 	page_ref_sub(page, hpage_nr_pages(page));
 }
 
@@ -306,7 +319,7 @@ static inline bool swap_use_vma_readahead(void)
 
 /*
 2024年07月03日12:21:11
-
+从swap的内存里面的mapping什么的读取
  * Lookup a swap entry in the swap cache. A found page will be returned
  * unlocked and with its refcount incremented - we rely on the kernel
  * lock getting page table operations atomic even if we drop the page
@@ -327,6 +340,7 @@ struct page *lookup_swap_cache(swp_entry_t entry, struct vm_area_struct *vma,
 
 	INC_CACHE_INFO(find_total);
 	if (page) {
+		/* 找到了page， */
 		bool vma_ra = swap_use_vma_readahead();
 		bool readahead;
 
@@ -363,7 +377,10 @@ struct page *lookup_swap_cache(swp_entry_t entry, struct vm_area_struct *vma,
 
 	return page;
 }
-
+/* swap的预读 
+查找entry的swpfile的mapping
+没有页面的话，新分配，插入mapping
+*/
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
 			bool *new_page_allocated)
@@ -382,6 +399,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		si = get_swap_device(entry);
 		if (!si)
 			break;
+		/* 获取页面 */
 		found_page = find_get_page(swap_address_space(entry),
 					   swp_offset(entry));
 		put_swap_device(si);
@@ -426,10 +444,13 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		/* May fail (-ENOMEM) if XArray node allocation failed. */
 		__SetPageLocked(new_page);
 		__SetPageSwapBacked(new_page);
+
+		/* 页面插入entry对应的swapfile的mapping里面 */
 		err = add_to_swap_cache(new_page, entry, gfp_mask & GFP_KERNEL);
 		if (likely(!err)) {
 			/* Initiate read into locked page */
 			SetPageWorkingset(new_page);
+			/*  */
 			lru_cache_add_anon(new_page);
 			*new_page_allocated = true;
 			return new_page;
@@ -465,7 +486,9 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 	return retpage;
 }
-
+/* 在读入交换分区的页的时候也顺便预读旁边的页，
+函数swapin_nr_pages是计算预读的页数
+机制和算法暂时略过 */
 static unsigned int __swapin_nr_pages(unsigned long prev_offset,
 				      unsigned long offset,
 				      int hits,
@@ -505,7 +528,7 @@ static unsigned int __swapin_nr_pages(unsigned long prev_offset,
 
 	return pages;
 }
-
+/* 获取要读的页数 */
 static unsigned long swapin_nr_pages(unsigned long offset)
 {
 	static unsigned long prev_offset;
@@ -517,6 +540,7 @@ static unsigned long swapin_nr_pages(unsigned long offset)
 		return 1;
 
 	hits = atomic_xchg(&swapin_readahead_hits, 0);
+	
 	pages = __swapin_nr_pages(prev_offset, offset, hits, max_pages,
 				  atomic_read(&last_readahead_pages));
 	if (!hits)
@@ -527,6 +551,7 @@ static unsigned long swapin_nr_pages(unsigned long offset)
 }
 
 /**
+换入需要使用的页面
  * swap_cluster_readahead - swap in pages in hope we need them soon
  * @entry: swap entry of this memory
  * @gfp_mask: memory allocation flags
@@ -548,16 +573,20 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 				struct vm_fault *vmf)
 {
 	struct page *page;
+	/* swap file里面的pgoff */
 	unsigned long entry_offset = swp_offset(entry);
 	unsigned long offset = entry_offset;
 	unsigned long start_offset, end_offset;
 	unsigned long mask;
+	/* 其实就是通过类似取模的机制，把不同的swapentry映射到
+	不同的swapfile什么的 */
 	struct swap_info_struct *si = swp_swap_info(entry);
 	struct blk_plug plug;
 	bool do_poll = true, page_allocated;
 	struct vm_area_struct *vma = vmf->vma;
 	unsigned long addr = vmf->address;
-
+	
+	/*  */
 	mask = swapin_nr_pages(offset) - 1;
 	if (!mask)
 		goto skip;
@@ -571,6 +600,15 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 
 	do_poll = false;
 	/* Read a page_cluster sized and aligned cluster around offset. */
+	/* 
+>>> pgoff=200
+>>> mask=13
+>>> pgoff & ~mask
+192
+>>> pgoff | mask
+205
+根据预读页数，分别从offset的前面后面多读一半来预读。
+>>> */
 	start_offset = offset & ~mask;
 	end_offset = offset | mask;
 	if (!start_offset)	/* First page is swap header. */
@@ -580,22 +618,30 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 
 	blk_start_plug(&plug);
 	for (offset = start_offset; offset <= end_offset ; offset++) {
-		/* Ok, do the async read-ahead now */
+		/* Ok, do the async read-ahead now
+		预读 */
 		page = __read_swap_cache_async(
 			swp_entry(swp_type(entry), offset),
 			gfp_mask, vma, addr, &page_allocated);
+
 		if (!page)
 			continue;
 		if (page_allocated) {
+			/* 刚才的预读在mapping里没找到page，是申请的page。
+			现在再次从swap来读取页面。 */
 			swap_readpage(page, false);
 			if (offset != entry_offset) {
+				/* ？todo */
 				SetPageReadahead(page);
 				count_vm_event(SWAP_RA);
 			}
 		}
 		put_page(page);
 	}
+	/* 结束plug，就是把刚才囤积的bio，释放一波 */
 	blk_finish_plug(&plug);
+
+
 
 	lru_add_drain();	/* Push any new pages onto the LRU now */
 skip:
