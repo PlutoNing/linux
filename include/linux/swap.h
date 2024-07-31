@@ -441,7 +441,7 @@ int generic_swapfile_activate(struct swap_info_struct *, struct file *,
 #define SWAP_ADDRESS_SPACE_SHIFT	14
 #define SWAP_ADDRESS_SPACE_PAGES	(1 << SWAP_ADDRESS_SPACE_SHIFT)
 extern struct address_space *swapper_spaces[];
-/* 获取swap ent的地址空间
+/* 获取swap ent的mapping
 (&swapper_spaces[swp_type(entry)][swp_offset(entry) >> 14])
 offset右移14位是swapfile里的offset
 type确定是哪个swapfile的idx

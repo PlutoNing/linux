@@ -9,9 +9,12 @@
 #include <linux/scatterlist.h>
 
 #include "blk.h"
-
+/* 获得下一个bio？
+bio是串起来的，如果当前bio是最后一个呢
+ */
 struct bio *blk_next_bio(struct bio *bio, unsigned int nr_pages, gfp_t gfp)
 {
+	/*  */
 	struct bio *new = bio_alloc(gfp, nr_pages);
 
 	if (bio) {
@@ -21,7 +24,8 @@ struct bio *blk_next_bio(struct bio *bio, unsigned int nr_pages, gfp_t gfp)
 
 	return new;
 }
-
+/* 发起discard bio
+ */
 int __blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 		sector_t nr_sects, gfp_t gfp_mask, int flags,
 		struct bio **biop)
@@ -46,7 +50,7 @@ int __blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 			return -EOPNOTSUPP;
 		op = REQ_OP_DISCARD;
 	}
-
+	/*  */
 	bs_mask = (bdev_logical_block_size(bdev) >> 9) - 1;
 	if ((sector | nr_sects) & bs_mask)
 		return -EINVAL;
@@ -54,7 +58,7 @@ int __blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 	if (!nr_sects)
 		return -EINVAL;
 
-	while (nr_sects) {
+	while (nr_sects) {/* 只要还有待处理的sector */
 		sector_t req_sects = min_t(sector_t, nr_sects,
 				bio_allowed_max_sectors(q));
 
@@ -84,6 +88,16 @@ int __blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 EXPORT_SYMBOL(__blkdev_issue_discard);
 
 /**
+主要被fs调用， 处理discard sectors， 生成bio， 并设置bio_batch_end_io， 递交并等待处理完成。
+删除文件时，文件系统只是在内部做了标记，记录文件占用的数据块已经无效，可以被再利用了。对于存储设备来说，
+它并不知情，
+依然认为这些数据块有效的，只有当文件系统要求覆盖写这些数据块时，存储设备才知道数据中的数据是无效的。
+如果存储设备上存在大量这样的数据块，会导致写性能下降（flash设备以page为单位写、以block为单位擦除
+，一个block含32~256个page，如果一个block被写过，再次写入数据，需要先擦除以前的数据。大量的含有
+部分有效数据的block会导致free block减少，无法找到空闲的free block的话，就需要合并多个block有
+效数据，进而释放出可用的block）。
+
+文件系统通过discard告诉flash哪些数据块已经无效了，这样flash FW中的gc就可以及时地做垃圾回收，保证有充足的free block可用。
  * blkdev_issue_discard - queue a discard
  * @bdev:	blockdev to issue discard for
  * @sector:	start sector
@@ -102,6 +116,7 @@ int blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 	int ret;
 
 	blk_start_plug(&plug);
+	/*  发起discard */
 	ret = __blkdev_issue_discard(bdev, sector, nr_sects, gfp_mask, flags,
 			&bio);
 	if (!ret && bio) {

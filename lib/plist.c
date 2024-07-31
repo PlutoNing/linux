@@ -104,6 +104,7 @@ ins_node:
 }
 
 /**
+2024年07月31日15:10:38
  * plist_del - Remove a @node from plist.
  *
  * @node:	&struct plist_node pointer - entry to be removed

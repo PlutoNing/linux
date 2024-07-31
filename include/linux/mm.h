@@ -690,6 +690,8 @@ unsigned long vmalloc_to_pfn(const void *addr);
 
 /*
 2024年7月28日23:45:13
+是不是vmalloc分配的
+就是看地址范围
  * Determine if an address is within the vmalloc range
  *
  * On nommu, vmalloc/vfree wrap through kmalloc/kfree directly, so there

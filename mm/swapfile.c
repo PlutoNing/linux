@@ -73,12 +73,14 @@ static const char Bad_offset[] = "Bad swap offset entry ";
 static const char Unused_offset[] = "Unused swap offset entry ";
 
 /*
+系统中活跃的si
  * all active swap_info_structs
  * protected with swap_lock, and ordered by priority.
  */
 PLIST_HEAD(swap_active_head);
 
 /*
+系统中可用的si？
  * all available (active, not full) swap_info_structs
  * protected with swap_avail_lock, ordered by priority.
  * This is used by get_swap_page() instead of swap_active_head
@@ -130,14 +132,16 @@ static inline unsigned char swap_count(unsigned char ent)
 /* Reclaim the swap entry if swap is getting full*/
 #define TTRS_FULL		0x4
 
-/* returns 1 if swap entry is freed */
+/* 
+2024年07月31日13:10:23
+returns 1 if swap entry is freed */
 static int __try_to_reclaim_swap(struct swap_info_struct *si,
 				 unsigned long offset, unsigned long flags)
 {
 	swp_entry_t entry = swp_entry(si->type, offset);
 	struct page *page;
 	int ret = 0;
-
+	/*找到swap的mapping里面的page  */
 	page = find_get_page(swap_address_space(entry), offset);
 	if (!page)
 		return 0;
@@ -148,7 +152,7 @@ static int __try_to_reclaim_swap(struct swap_info_struct *si,
 	 * case and you should use try_to_free_swap() with explicit lock_page()
 	 * in usual operations.
 	 */
-	if (trylock_page(page)) {
+	if (trylock_page(page)) {/* 获取锁成功，开始操作free */
 		if ((flags & TTRS_ANYWAY) ||
 		    ((flags & TTRS_UNMAPPED) && !page_mapped(page)) ||
 		    ((flags & TTRS_FULL) && mem_cgroup_swap_full(page)))
@@ -159,12 +163,14 @@ static int __try_to_reclaim_swap(struct swap_info_struct *si,
 	return ret;
 }
 
+/* 在si的extent红黑树里面查找第一个se */
 static inline struct swap_extent *first_se(struct swap_info_struct *sis)
 {
 	struct rb_node *rb = rb_first(&sis->swap_extent_root);
 	return rb_entry(rb, struct swap_extent, rb_node);
 }
 
+/* 借助红黑树的链接获取下一个邻近的se */
 static inline struct swap_extent *next_se(struct swap_extent *se)
 {
 	struct rb_node *rb = rb_next(&se->rb_node);
@@ -190,6 +196,7 @@ static int discard_swap(struct swap_info_struct *si)
 	
 	start_block = (se->start_block + 1) << (PAGE_SHIFT - 9);
 	nr_blocks = ((sector_t)se->nr_pages - 1) << (PAGE_SHIFT - 9);
+	
 	if (nr_blocks) {
 		err = blkdev_issue_discard(si->bdev, start_block,
 				nr_blocks, GFP_KERNEL, 0);
@@ -198,10 +205,11 @@ static int discard_swap(struct swap_info_struct *si)
 		cond_resched();
 	}
 
+	/* 遍历全部se */
 	for (se = next_se(se); se; se = next_se(se)) {
 		start_block = se->start_block << (PAGE_SHIFT - 9);
 		nr_blocks = (sector_t)se->nr_pages << (PAGE_SHIFT - 9);
-
+		/* 丢弃这些磁盘块 */
 		err = blkdev_issue_discard(si->bdev, start_block,
 				nr_blocks, GFP_KERNEL, 0);
 		if (err)
@@ -684,7 +692,7 @@ new_cluster:
 	*scan_base = tmp;
 	return found_free;
 }
-
+/* 从每个node的活跃链表移除 */
 static void __del_from_avail_list(struct swap_info_struct *p)
 {
 	int nid;
@@ -692,7 +700,8 @@ static void __del_from_avail_list(struct swap_info_struct *p)
 	for_each_node(nid)
 		plist_del(&p->avail_lists[nid], &swap_avail_heads[nid]);
 }
-
+/* 2024年07月31日15:03:36
+从全局的swap_avail_heads移除 */
 static void del_from_avail_list(struct swap_info_struct *p)
 {
 	spin_lock(&swap_avail_lock);
@@ -716,19 +725,23 @@ static void swap_range_alloc(struct swap_info_struct *si, unsigned long offset,
 		del_from_avail_list(si);
 	}
 }
-
+/* 把si加到avail list。 */
 static void add_to_avail_list(struct swap_info_struct *p)
 {
 	int nid;
 
 	spin_lock(&swap_avail_lock);
+	
+	/* 逐node添加 */
 	for_each_node(nid) {
 		WARN_ON(!plist_node_empty(&p->avail_lists[nid]));
 		plist_add(&p->avail_lists[nid], &swap_avail_heads[nid]);
 	}
 	spin_unlock(&swap_avail_lock);
 }
-/*  */
+/* 2024年07月31日15:34:24
+感觉不太清楚实际做了什么工作
+ */
 static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 			    unsigned int nr_entries)
 {
@@ -737,6 +750,7 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 
 	if (offset < si->lowest_bit)
 		si->lowest_bit = offset;
+
 	if (end > si->highest_bit) {
 		bool was_full = !si->highest_bit;
 
@@ -756,7 +770,7 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 		swap_slot_free_notify = NULL;
 
 	while (offset <= end) {
-		/*  */
+		/* 处理frontswap机制 */
 		frontswap_invalidate_page(si->type, offset);
 		if (swap_slot_free_notify)
 			swap_slot_free_notify(si->bdev, offset);
@@ -1136,7 +1150,7 @@ fail:
 	return (swp_entry_t) {0};
 }
 /* 2024年7月14日17:50:21
-获取ent的si
+获取entry的si
  */
 static struct swap_info_struct *__swap_info_get(swp_entry_t entry)
 {
@@ -1145,6 +1159,7 @@ static struct swap_info_struct *__swap_info_get(swp_entry_t entry)
 
 	if (!entry.val)
 		goto out;
+	/* 获取对应的si */
 	p = swp_swap_info(entry);
 	if (!p)
 		goto bad_nofile;
@@ -1167,6 +1182,7 @@ out:
 	return NULL;
 }
 /* 2024年7月14日17:49:46
+获取entry的si 
  */
 static struct swap_info_struct *_swap_info_get(swp_entry_t entry)
 {
@@ -1195,7 +1211,7 @@ static struct swap_info_struct *swap_info_get(swp_entry_t entry)
 		spin_lock(&p->lock);
 	return p;
 }
-/*  */
+/* 获取entry的si */
 static struct swap_info_struct *swap_info_get_cont(swp_entry_t entry,
 					struct swap_info_struct *q)
 {
@@ -1330,7 +1346,7 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 
 	return usage;
 }
-/* 释放swap entry？ */
+/* 释放si的此entry */
 static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 {
 	struct swap_cluster_info *ci;
@@ -1346,6 +1362,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 	unlock_cluster(ci);
 
 	mem_cgroup_uncharge_swap(entry, 1);
+	/*  */
 	swap_range_free(p, offset, 1);
 }
 
@@ -1464,9 +1481,9 @@ void swapcache_free_entries(swp_entry_t *entries, int n)
 	if (nr_swapfiles > 1)
 		sort(entries, n, sizeof(entries[0]), swp_entry_cmp, NULL);
 	for (i = 0; i < n; ++i) {
-		/* 逐个处理 */
+		/* 先获取到当前entries【i】的si */
 		p = swap_info_get_cont(entries[i], prev);
-		if (p)
+		if (p)/* 释放si的此entry */
 			swap_entry_free(p, entries[i]);
 		prev = p;
 	}
@@ -1742,6 +1759,13 @@ bool reuse_swap_page(struct page *page, int *total_map_swapcount)
 }
 
 /*
+2024年07月31日13:12:53
+释放swap的一个entry。
+----------------
+但是swp的条目有什么需要释放的吗，还是说文件大小限制，还是文件的mapping限制呢。
+如果swpfile大小小于内存，话说内存地址和文件pgoff如何映射呢。
+2024年07月31日14:29:33
+是从mapping移除
  * If swap is getting full, or if there are no more mappings of this page,
  * then try_to_free_swap is called to free its swap space.
  */
@@ -1775,6 +1799,7 @@ int try_to_free_swap(struct page *page)
 		return 0;
 
 	page = compound_head(page);
+	/* 移除页面 */
 	delete_from_swap_cache(page);
 	SetPageDirty(page);
 	return 1;
@@ -2584,7 +2609,8 @@ bool has_usable_swap(void)
 	spin_unlock(&swap_lock);
 	return ret;
 }
-
+/* 2024年07月31日14:55:27
+关闭swap */
 SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 {
 	struct swap_info_struct *p = NULL;
@@ -2597,7 +2623,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	struct filename *pathname;
 	int err, found = 0;
 	unsigned int old_block_size;
-
+	/* root权限 */
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
@@ -2614,6 +2640,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 
 	mapping = victim->f_mapping;
 	spin_lock(&swap_lock);
+	/* 在全部si中通过对比mapping来确定si */
 	plist_for_each_entry(p, &swap_active_head, list) {
 		if (p->flags & SWP_WRITEOK) {
 			if (p->swap_file->f_mapping == mapping) {
@@ -2622,24 +2649,27 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 			}
 		}
 	}
-	if (!found) {
+	if (!found) {/* 没有找到要关闭 的si */
 		err = -EINVAL;
 		spin_unlock(&swap_lock);
 		goto out_dput;
 	}
 	if (!security_vm_enough_memory_mm(current->mm, p->pages))
+		/* 统计信息 */
 		vm_unacct_memory(p->pages);
 	else {
 		err = -ENOMEM;
 		spin_unlock(&swap_lock);
 		goto out_dput;
 	}
+	/* 从全局的swap_avail_heads移除 */
 	del_from_avail_list(p);
+
 	spin_lock(&p->lock);
-	if (p->prio < 0) {
+	if (p->prio < 0) {/* 优先级有什么用处？ */
 		struct swap_info_struct *si = p;
 		int nid;
-
+		/* 遍历系统中活跃的全部si */
 		plist_for_each_entry_continue(si, &swap_active_head, list) {
 			si->prio++;
 			si->list.prio--;
@@ -2656,7 +2686,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	p->flags &= ~SWP_WRITEOK;
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
-
+	/* 关闭swap slot cache。 */
 	disable_swap_slots_cache_lock();
 
 	set_current_oom_origin();
@@ -2764,6 +2794,7 @@ out:
 }
 
 #ifdef CONFIG_PROC_FS
+/* swap的procfs里面的回调 */
 static __poll_t swaps_poll(struct file *file, poll_table *wait)
 {
 	struct seq_file *seq = file->private_data;
@@ -2778,7 +2809,10 @@ static __poll_t swaps_poll(struct file *file, poll_table *wait)
 	return EPOLLIN | EPOLLRDNORM;
 }
 
-/* iterator */
+/* iterator
+2024年07月31日14:45:24
+swp的seqfile的op
+ */
 static void *swap_start(struct seq_file *swap, loff_t *pos)
 {
 	struct swap_info_struct *si;
@@ -2790,6 +2824,7 @@ static void *swap_start(struct seq_file *swap, loff_t *pos)
 	if (!l)
 		return SEQ_START_TOKEN;
 
+	/* 遍历每一个type */
 	for (type = 0; (si = swap_type_to_swap_info(type)); type++) {
 		if (!(si->flags & SWP_USED) || !si->swap_map)
 			continue;
@@ -2799,7 +2834,7 @@ static void *swap_start(struct seq_file *swap, loff_t *pos)
 
 	return NULL;
 }
-
+/*  */
 static void *swap_next(struct seq_file *swap, void *v, loff_t *pos)
 {
 	struct swap_info_struct *si = v;
@@ -2819,12 +2854,12 @@ static void *swap_next(struct seq_file *swap, void *v, loff_t *pos)
 
 	return NULL;
 }
-
+/*  */
 static void swap_stop(struct seq_file *swap, void *v)
 {
 	mutex_unlock(&swapon_mutex);
 }
-
+/*  */
 static int swap_show(struct seq_file *swap, void *v)
 {
 	struct swap_info_struct *si = v;
@@ -2847,28 +2882,28 @@ static int swap_show(struct seq_file *swap, void *v)
 			si->prio);
 	return 0;
 }
-
+/* swap在procfs的“swaps”文件的seqfile的ops */
 static const struct seq_operations swaps_op = {
 	.start =	swap_start,
 	.next =		swap_next,
 	.stop =		swap_stop,
 	.show =		swap_show
 };
-
+/* swap在procfs的“swaps”文件的回调 */
 static int swaps_open(struct inode *inode, struct file *file)
 {
 	struct seq_file *seq;
 	int ret;
-
+	/* 给file初始化一个seqfile，并设置swaps_op作为op */
 	ret = seq_open(file, &swaps_op);
 	if (ret)
 		return ret;
-
+	/* 设置file的poll相关 */
 	seq = file->private_data;
 	seq->poll_event = atomic_read(&proc_poll_event);
 	return 0;
 }
-
+/* swap在procfs的“swaps”文件的回调 */
 static const struct file_operations proc_swaps_operations = {
 	.open		= swaps_open,
 	.read		= seq_read,
@@ -2876,7 +2911,7 @@ static const struct file_operations proc_swaps_operations = {
 	.release	= seq_release,
 	.poll		= swaps_poll,
 };
-
+/* 2024年07月31日14:33:25 */
 static int __init procswaps_init(void)
 {
 	proc_create("swaps", 0, NULL, &proc_swaps_operations);

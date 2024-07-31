@@ -1458,7 +1458,7 @@ static void free_unmap_vmap_area(struct vmap_area *va)
 	/* 释放vmap结构体内存 */
 	free_vmap_area_noflush(va);
 }
-/* 查找vmap */
+/* 通过红黑树查找vmap */
 static struct vmap_area *find_vmap_area(unsigned long addr)
 {
 	struct vmap_area *va;
@@ -2324,6 +2324,9 @@ struct vm_struct *get_vm_area_caller(unsigned long size, unsigned long flags,
 }
 
 /**
+2024年07月31日15:39:18
+确定addr属于哪个vm
+借助在红黑树上面搜索addr，得到vmap，返回vmap-》mm
  * find_vm_area - find a continuous kernel virtual area
  * @addr:	  base address
  *
@@ -2383,7 +2386,8 @@ struct vm_struct *remove_vm_area(const void *addr)
 	spin_unlock(&vmap_area_lock);
 	return NULL;
 }
-
+/* 2024年07月31日15:43:55
+作用是？ */
 static inline void set_area_direct_map(const struct vm_struct *area,
 				       int (*set_direct_map)(struct page *page))
 {
@@ -2394,7 +2398,9 @@ static inline void set_area_direct_map(const struct vm_struct *area,
 			set_direct_map(area->pages[i]);
 }
 
-/* Handle removing and resetting vm mappings related to the vm_struct. */
+/* 
+解除mm的映射
+Handle removing and resetting vm mappings related to the vm_struct. */
 static void vm_remove_mappings(struct vm_struct *area, int deallocate_pages)
 {
 	unsigned long start = ULONG_MAX, end = 0;
@@ -2402,6 +2408,7 @@ static void vm_remove_mappings(struct vm_struct *area, int deallocate_pages)
 	int flush_dmap = 0;
 	int i;
 
+	/* 移除mm */
 	remove_vm_area(area->addr);
 
 	/* If this is not VM_FLUSH_RESET_PERMS memory, no need for the below. */
@@ -2440,7 +2447,7 @@ static void vm_remove_mappings(struct vm_struct *area, int deallocate_pages)
 	_vm_unmap_aliases(start, end, flush_dmap);
 	set_area_direct_map(area, set_direct_map_default_noflush);
 }
-
+/* vmalloc解除映射内存 */
 static void __vunmap(const void *addr, int deallocate_pages)
 {
 	struct vm_struct *area;
@@ -2451,8 +2458,9 @@ static void __vunmap(const void *addr, int deallocate_pages)
 	if (WARN(!PAGE_ALIGNED(addr), "Trying to vfree() bad address (%p)\n",
 			addr))
 		return;
-
+	/* 找到包含地址的mm  */
 	area = find_vm_area(addr);
+
 	if (unlikely(!area)) {
 		WARN(1, KERN_ERR "Trying to vfree() nonexistent vm area (%p)\n",
 				addr);
@@ -2462,6 +2470,7 @@ static void __vunmap(const void *addr, int deallocate_pages)
 	debug_check_no_locks_freed(area->addr, get_vm_area_size(area));
 	debug_check_no_obj_freed(area->addr, get_vm_area_size(area));
 
+	/* 解除mm的映射 */
 	vm_remove_mappings(area, deallocate_pages);
 
 	if (deallocate_pages) {
@@ -2471,17 +2480,19 @@ static void __vunmap(const void *addr, int deallocate_pages)
 			struct page *page = area->pages[i];
 
 			BUG_ON(!page);
+			/* 逐个释放归还page */
 			__free_pages(page, 0);
 		}
 		atomic_long_sub(area->nr_pages, &nr_vmalloc_pages);
-
+		/* 指针数组本身的空间也需要释放 */
 		kvfree(area->pages);
 	}
 
 	kfree(area);
 	return;
 }
-
+/* 2024年07月31日15:38:30
+异步释放vmalloc的内存？ */
 static inline void __vfree_deferred(const void *addr)
 {
 	/*
@@ -2513,7 +2524,7 @@ void vfree_atomic(const void *addr)
 		return;
 	__vfree_deferred(addr);
 }
-
+/* vmalloc释放内存 */
 static void __vfree(const void *addr)
 {
 	if (unlikely(in_interrupt()))
@@ -2523,6 +2534,7 @@ static void __vfree(const void *addr)
 }
 
 /**
+vmalloc释放内存
  * vfree - release memory allocated by vmalloc()
  * @addr:  memory base address
  *

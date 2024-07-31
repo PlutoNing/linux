@@ -926,6 +926,7 @@ static inline void ftrace_dump(enum ftrace_dump_mode oops_dump_mode) { }
  */
 
 /**
+2024年07月31日10:46:09
  * min_t - return minimum of two values, using the specified type
  * @type: data type to use
  * @x: first value

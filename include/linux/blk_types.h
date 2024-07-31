@@ -288,9 +288,13 @@ enum req_opf {
 	REQ_OP_WRITE		= 1,
 	/* flush the volatile write cache */
 	REQ_OP_FLUSH		= 2,
-	/* discard sectors */
+	/* discard sectors,
+	若bio->bi_opf 含有REQ_OP_DISCARD或REQ_OP_SECURE_ERASE标记位，
+	这个bio就属于discard bio。*/
 	REQ_OP_DISCARD		= 3,
-	/* securely erase sectors */
+	/* securely erase sectors
+	若bio->bi_opf 含有REQ_OP_DISCARD或
+	REQ_OP_SECURE_ERASE标记位，这个bio就属于discard bio。 */
 	REQ_OP_SECURE_ERASE	= 5,
 	/* reset a zone write pointer */
 	REQ_OP_ZONE_RESET	= 6,

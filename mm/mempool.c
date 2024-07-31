@@ -359,6 +359,7 @@ out:
 EXPORT_SYMBOL(mempool_resize);
 
 /**
+内存池分配元素
  * mempool_alloc - allocate an element from a specific memory pool
  * @pool:      pointer to the memory pool which was allocated via
  *             mempool_create().
@@ -393,7 +394,7 @@ repeat_alloc:
 	element = pool->alloc(gfp_temp, pool->pool_data);
 	if (likely(element != NULL))
 		return element;
-
+	/* 没分配到的情况 */
 	spin_lock_irqsave(&pool->lock, flags);
 	if (likely(pool->curr_nr)) {
 		element = remove_element(pool);

@@ -67,7 +67,8 @@ static inline void vm_acct_memory(long pages)
 {
 	percpu_counter_add_batch(&vm_committed_as, pages, vm_committed_as_batch);
 }
-/*  */
+/* 2024年07月31日15:00:50
+？ */
 static inline void vm_unacct_memory(long pages)
 {
 	vm_acct_memory(-pages);

@@ -161,6 +161,7 @@ unlock:
 
 /*
 2024年7月14日17:46:28
+从page对应的swap mapping移除page。
  * This must be called only on pages that have
  * been verified to be in the swap cache.
  */
@@ -182,6 +183,7 @@ void __delete_from_swap_cache(struct page *page, swp_entry_t entry)
 		set_page_private(page + i, 0);
 		xas_next(&xas);
 	}
+	
 	ClearPageSwapCache(page);
 	address_space->nrpages -= nr;
 	__mod_node_page_state(page_pgdat(page), NR_FILE_PAGES, -nr);
@@ -249,6 +251,7 @@ fail:
 /*
 2024年7月29日23:37:28
 从swap cache删除page，不过必须要保证page此时在swap。
+过程：从mapping移除，页缓存。释放的应该内存空间。
  * This must be called only on pages that have
  * been verified to be in the swap cache and locked.
  * It will never put the page into the free list,

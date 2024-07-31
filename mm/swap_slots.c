@@ -66,7 +66,10 @@ static void reactivate_swap_slots_cache(void)
 	mutex_unlock(&swap_slots_cache_mutex);
 }
 
-/* Must not be called with cpu hot plug lock */
+/* 
+2024年07月31日15:11:06
+失能swp slot cache。
+Must not be called with cpu hot plug lock */
 void disable_swap_slots_cache_lock(void)
 {
 	mutex_lock(&swap_slots_cache_enable_mutex);
@@ -74,6 +77,7 @@ void disable_swap_slots_cache_lock(void)
 	if (swap_slot_cache_initialized) {
 		/* serialize with cpu hotplug operations */
 		get_online_cpus();
+		/* 排空缓存 */
 		__drain_swap_slots_cache(SLOTS_CACHE|SLOTS_CACHE_RET);
 		put_online_cpus();
 	}
@@ -166,16 +170,17 @@ out:
 		kvfree(slots_ret);
 	return 0;
 }
-
+/* percpu方式排空swp slot cache的缓存 */
 static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 				  bool free_slots)
 {
 	struct swap_slots_cache *cache;
 	swp_entry_t *slots = NULL;
-
+	/* 获取此cpu的缓存 */
 	cache = &per_cpu(swp_slots, cpu);
-	if ((type & SLOTS_CACHE) && cache->slots) {
+	if ((type & SLOTS_CACHE) && cache->slots) {/* 处理此cache */
 		mutex_lock(&cache->alloc_lock);
+		/* 释放这些entry */
 		swapcache_free_entries(cache->slots + cache->cur, cache->nr);
 		cache->cur = 0;
 		cache->nr = 0;
@@ -185,8 +190,12 @@ static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 		}
 		mutex_unlock(&cache->alloc_lock);
 	}
-	if ((type & SLOTS_CACHE_RET) && cache->slots_ret) {
+
+	if ((type & SLOTS_CACHE_RET) && cache->slots_ret) {/* 另一条路径，
+	cache和cache_ret区别是什么 */
+
 		spin_lock_irq(&cache->free_lock);
+		/* 释放的是slots_ret里面的entry */
 		swapcache_free_entries(cache->slots_ret, cache->n_ret);
 		cache->n_ret = 0;
 		if (free_slots && cache->slots_ret) {
@@ -198,7 +207,7 @@ static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 			kvfree(slots);
 	}
 }
-
+/* 排空swp slot cache的缓存 */
 static void __drain_swap_slots_cache(unsigned int type)
 {
 	unsigned int cpu;

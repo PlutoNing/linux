@@ -33,6 +33,8 @@ static void *seq_buf_alloc(unsigned long size)
 }
 
 /**
+2024年07月31日14:43:11
+初始化seqfile
  *	seq_open -	initialize sequential file
  *	@file: file we initialize
  *	@op: method table describing the sequence
@@ -53,11 +55,11 @@ int seq_open(struct file *file, const struct seq_operations *op)
 	struct seq_file *p;
 
 	WARN_ON(file->private_data);
-
+	/* 分配seqfile结构体，op字段是参数op */
 	p = kmem_cache_zalloc(seq_file_cache, GFP_KERNEL);
 	if (!p)
 		return -ENOMEM;
-
+	/* 赋值到file的priv */
 	file->private_data = p;
 
 	mutex_init(&p->lock);
@@ -142,6 +144,7 @@ Eoverflow:
 }
 
 /**
+2024年07月31日14:51:07
  *	seq_read -	->read() method for sequential files.
  *	@file: the file to read from
  *	@buf: the buffer to read to
@@ -297,9 +300,11 @@ Efault:
 	err = -EFAULT;
 	goto Done;
 }
+
 EXPORT_SYMBOL(seq_read);
 
 /**
+
  *	seq_lseek -	->llseek() method for sequential files.
  *	@file: the file in question
  *	@offset: new position

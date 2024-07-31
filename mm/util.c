@@ -583,6 +583,7 @@ void *kvmalloc_node(size_t size, gfp_t flags, int node)
 EXPORT_SYMBOL(kvmalloc_node);
 
 /**
+释放内存
  * kvfree() - Free memory.
  * @addr: Pointer to allocated memory.
  *

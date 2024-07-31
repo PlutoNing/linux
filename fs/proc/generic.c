@@ -533,7 +533,7 @@ struct proc_dir_entry *proc_create_reg(const char *name, umode_t mode,
 	}
 	return p;
 }
-
+/* 在proc文件系统创建文件 */
 struct proc_dir_entry *proc_create_data(const char *name, umode_t mode,
 		struct proc_dir_entry *parent,
 		const struct file_operations *proc_fops, void *data)
@@ -549,7 +549,7 @@ struct proc_dir_entry *proc_create_data(const char *name, umode_t mode,
 	return proc_register(parent, p);
 }
 EXPORT_SYMBOL(proc_create_data);
- 
+ /* 在proc文件系统创建文件 */
 struct proc_dir_entry *proc_create(const char *name, umode_t mode,
 				   struct proc_dir_entry *parent,
 				   const struct file_operations *proc_fops)

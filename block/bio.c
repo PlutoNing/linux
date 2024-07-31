@@ -390,7 +390,7 @@ static void punt_bios_to_rescuer(struct bio_set *bs)
 
 /**
 2024年07月03日15:00:54
-
+分配一个bio
  * bio_alloc_bioset - allocate a bio for I/O
  * @gfp_mask:   the GFP_* mask given to the slab allocator
  * @nr_iovecs:	number of iovecs to pre-allocate
@@ -475,7 +475,7 @@ struct bio *bio_alloc_bioset(gfp_t gfp_mask, unsigned int nr_iovecs,
 		     !bio_list_empty(&current->bio_list[1])) &&
 		    bs->rescue_workqueue)
 			gfp_mask &= ~__GFP_DIRECT_RECLAIM;
-
+		/* 从mempool分配 */
 		p = mempool_alloc(&bs->bio_pool, gfp_mask);
 		if (!p && gfp_mask != saved_gfp) {
 			punt_bios_to_rescuer(bs);

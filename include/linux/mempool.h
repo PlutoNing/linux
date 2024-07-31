@@ -20,6 +20,7 @@ typedef struct mempool_s {
 	void **elements;
 
 	void *pool_data;
+	/* 分配的回调函数 */
 	mempool_alloc_t *alloc;
 	mempool_free_t *free;
 	wait_queue_head_t wait;
