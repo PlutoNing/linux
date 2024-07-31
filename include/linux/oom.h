@@ -74,12 +74,12 @@ struct oom_control {
 };
 
 extern struct mutex oom_lock;
-
+/* oom_flag_origin如果进程 有 oom_flag_origin, 直接 select 该进程, 并设置 score 为 LONG_MAX */
 static inline void set_current_oom_origin(void)
 {
 	current->signal->oom_flag_origin = true;
 }
-
+/* 如果进程 有 oom_flag_origin, 直接 select 该进程, 并设置 score 为 LONG_MAX */
 static inline void clear_current_oom_origin(void)
 {
 	current->signal->oom_flag_origin = false;

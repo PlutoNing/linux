@@ -213,7 +213,7 @@ struct signal_struct {
 
 	/*
 	 * Thread is the potential origin of an oom condition; kill first on
-	 * oom
+	 * oom如果进程 有 oom_flag_origin, 直接 select 该进程, 并设置 score 为 LONG_MAX
 	 */
 	bool oom_flag_origin;
 	short oom_score_adj;		/* OOM kill score adjustment */

@@ -45,7 +45,7 @@ static inline bool frontswap_enabled(void)
 {
 	return static_branch_unlikely(&frontswap_enabled_key);
 }
-
+/* 确定offset是否位于此si的frontswap里面？ */
 static inline bool frontswap_test(struct swap_info_struct *sis, pgoff_t offset)
 {
 	return __frontswap_test(sis, offset);

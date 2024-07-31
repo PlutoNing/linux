@@ -217,7 +217,7 @@ void __frontswap_init(unsigned type, unsigned long *map)
 		ops->init(type);
 }
 EXPORT_SYMBOL(__frontswap_init);
-
+/* 确定offset是否位于此si的frontswap里面 */
 bool __frontswap_test(struct swap_info_struct *sis,
 				pgoff_t offset)
 {

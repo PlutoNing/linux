@@ -333,7 +333,7 @@ struct swap_info_struct {
 #define SWAP_RA_ORDER_CEILING	3
 #define SWAP_RA_PTE_CACHE_SIZE	(1 << SWAP_RA_ORDER_CEILING)
 #endif
-
+/*  */
 struct vma_swap_readahead {
 	unsigned short win;
 	unsigned short offset;

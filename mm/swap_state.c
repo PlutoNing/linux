@@ -314,7 +314,8 @@ void free_pages_and_swap_cache(struct page **pages, int nr)
 		free_swap_cache(pagep[i]);
 	release_pages(pagep, nr);
 }
-/* 2024年07月03日14:33:00 */
+/* 2024年07月03日14:33:00
+swp 预读的方式 */
 static inline bool swap_use_vma_readahead(void)
 {
 	return READ_ONCE(enable_vma_readahead) && !atomic_read(&nr_rotate_swap);
@@ -472,6 +473,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 }
 
 /*
+2024年8月1日00:05:11
  * Locate a page of swap in physical memory, reserving swap cache space
  * and reading the disk if it is not already cached.
  * A failure return means that either the page allocation failed or that
@@ -481,6 +483,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		struct vm_area_struct *vma, unsigned long addr, bool do_poll)
 {
 	bool page_was_allocated;
+	/*  */
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
 			vma, addr, &page_was_allocated);
 
@@ -491,7 +494,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 }
 /* 在读入交换分区的页的时候也顺便预读旁边的页，
 函数swapin_nr_pages是计算预读的页数
-机制和算法暂时略过 */
+这里是做一个计算，机制和算法暂时略过 */
 static unsigned int __swapin_nr_pages(unsigned long prev_offset,
 				      unsigned long offset,
 				      int hits,
@@ -693,7 +696,7 @@ static inline void swap_ra_clamp_pfn(struct vm_area_struct *vma,
 	*end = min3(rpfn, PFN_DOWN(vma->vm_end),
 		    PFN_DOWN((faddr & PMD_MASK) + PMD_SIZE));
 }
-
+/* 基于vmf构造swp ra？ */
 static void swap_ra_info(struct vm_fault *vmf,
 			struct vma_swap_readahead *ra_info)
 {
@@ -728,6 +731,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 	pfn = PFN_DOWN(SWAP_RA_ADDR(ra_val));
 	prev_win = SWAP_RA_WIN(ra_val);
 	hits = SWAP_RA_HITS(ra_val);
+	/*  */
 	ra_info->win = win = __swapin_nr_pages(pfn, fpfn, hits,
 					       max_win, prev_win);
 	atomic_long_set(&vma->swap_readahead_info,
@@ -763,6 +767,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 }
 
 /**
+vma的swp 预读
  * swap_vma_readahead - swap in pages in hope we need them soon
  * @entry: swap entry of this memory
  * @gfp_mask: memory allocation flags
@@ -787,8 +792,9 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	unsigned int i;
 	bool page_allocated;
 	struct vma_swap_readahead ra_info = {0,};
-
+	/* 构造swp ra */
 	swap_ra_info(vmf, &ra_info);
+
 	if (ra_info.win == 1)
 		goto skip;
 
@@ -796,13 +802,17 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 	for (i = 0, pte = ra_info.ptes; i < ra_info.nr_pte;
 	     i++, pte++) {
 		pentry = *pte;
+		/* 如果压根没有页面映射？ */
 		if (pte_none(pentry))
 			continue;
+		/* 或者说页面映射的物理页面在内存 */
 		if (pte_present(pentry))
 			continue;
+		/* 把pte转换为swp ent */
 		entry = pte_to_swp_entry(pentry);
 		if (unlikely(non_swap_entry(entry)))
 			continue;
+		/*  */
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
 					       vmf->address, &page_allocated);
 		if (!page)
@@ -824,6 +834,7 @@ skip:
 }
 
 /**
+换入的预读
  * swapin_readahead - swap in pages in hope we need them soon
  * @entry: swap entry of this memory
  * @gfp_mask: memory allocation flags

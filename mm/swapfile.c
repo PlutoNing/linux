@@ -1985,7 +1985,8 @@ out_nolock:
 	}
 	return ret;
 }
-
+/* 处理pte
+让vma unuse swp的page */
 static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 			unsigned long addr, unsigned long end,
 			unsigned int type, bool frontswap,
@@ -2003,25 +2004,28 @@ static int unuse_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 	pte = pte_offset_map(pmd, addr);
 	do {
 		struct vm_fault vmf;
-
+		/* 判断这个pte是不是swp的 */
 		if (!is_swap_pte(*pte))
 			continue;
-
+		/* pte转换为swp ent */
 		entry = pte_to_swp_entry(*pte);
 		if (swp_type(entry) != type)
 			continue;
 
 		offset = swp_offset(entry);
+		/* 这里还可能不在吗？ */
 		if (frontswap && !frontswap_test(si, offset))
 			continue;
 
 		pte_unmap(pte);
 		swap_map = &si->swap_map[offset];
+		/*  */
 		vmf.vma = vma;
 		vmf.address = addr;
 		vmf.pmd = pmd;
+		/* 进行预读 */
 		page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE, &vmf);
-		if (!page) {
+		if (!page) {/* ？ */
 			if (*swap_map == 0 || *swap_map == SWAP_MAP_BAD)
 				goto try_next;
 			return -ENOMEM;
@@ -2053,7 +2057,7 @@ try_next:
 out:
 	return ret;
 }
-
+/* unuse swp 的遍历页表 */
 static inline int unuse_pmd_range(struct vm_area_struct *vma, pud_t *pud,
 				unsigned long addr, unsigned long end,
 				unsigned int type, bool frontswap,
@@ -2069,6 +2073,7 @@ static inline int unuse_pmd_range(struct vm_area_struct *vma, pud_t *pud,
 		next = pmd_addr_end(addr, end);
 		if (pmd_none_or_trans_huge_or_clear_bad(pmd))
 			continue;
+		/* 开始处理pte */
 		ret = unuse_pte_range(vma, pmd, addr, next, type,
 				      frontswap, fs_pages_to_unuse);
 		if (ret)
@@ -2076,7 +2081,7 @@ static inline int unuse_pmd_range(struct vm_area_struct *vma, pud_t *pud,
 	} while (pmd++, addr = next, addr != end);
 	return 0;
 }
-
+/* unuse swp 的遍历页表 */
 static inline int unuse_pud_range(struct vm_area_struct *vma, p4d_t *p4d,
 				unsigned long addr, unsigned long end,
 				unsigned int type, bool frontswap,
@@ -2091,6 +2096,7 @@ static inline int unuse_pud_range(struct vm_area_struct *vma, p4d_t *p4d,
 		next = pud_addr_end(addr, end);
 		if (pud_none_or_clear_bad(pud))
 			continue;
+		/* unuse swp 的遍历页表 */
 		ret = unuse_pmd_range(vma, pud, addr, next, type,
 				      frontswap, fs_pages_to_unuse);
 		if (ret)
@@ -2098,7 +2104,7 @@ static inline int unuse_pud_range(struct vm_area_struct *vma, p4d_t *p4d,
 	} while (pud++, addr = next, addr != end);
 	return 0;
 }
-
+/* unuse swp 的遍历页表 */
 static inline int unuse_p4d_range(struct vm_area_struct *vma, pgd_t *pgd,
 				unsigned long addr, unsigned long end,
 				unsigned int type, bool frontswap,
@@ -2113,6 +2119,7 @@ static inline int unuse_p4d_range(struct vm_area_struct *vma, pgd_t *pgd,
 		next = p4d_addr_end(addr, end);
 		if (p4d_none_or_clear_bad(p4d))
 			continue;
+		/* 遍历页表 */
 		ret = unuse_pud_range(vma, p4d, addr, next, type,
 				      frontswap, fs_pages_to_unuse);
 		if (ret)
@@ -2120,7 +2127,8 @@ static inline int unuse_p4d_range(struct vm_area_struct *vma, pgd_t *pgd,
 	} while (p4d++, addr = next, addr != end);
 	return 0;
 }
-
+/* vma的unuse swp page
+具体过程通过遍历页表来处理 */
 static int unuse_vma(struct vm_area_struct *vma, unsigned int type,
 		     bool frontswap, unsigned long *fs_pages_to_unuse)
 {
@@ -2136,6 +2144,7 @@ static int unuse_vma(struct vm_area_struct *vma, unsigned int type,
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(pgd))
 			continue;
+		/* unuse swp 的遍历页表 */
 		ret = unuse_p4d_range(vma, pgd, addr, next, type,
 				      frontswap, fs_pages_to_unuse);
 		if (ret)
@@ -2143,16 +2152,19 @@ static int unuse_vma(struct vm_area_struct *vma, unsigned int type,
 	} while (pgd++, addr = next, addr != end);
 	return 0;
 }
-
+/* 2024年7月31日23:05:45 */
 static int unuse_mm(struct mm_struct *mm, unsigned int type,
 		    bool frontswap, unsigned long *fs_pages_to_unuse)
 {
 	struct vm_area_struct *vma;
 	int ret = 0;
 
+
 	down_read(&mm->mmap_sem);
+	/* 遍历此mm的全部vma */
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		if (vma->anon_vma) {
+		if (vma->anon_vma) {/* 只需要处理匿名页 */
+			/* 这个vma unuse这个type的页面 */
 			ret = unuse_vma(vma, type, frontswap,
 					fs_pages_to_unuse);
 			if (ret)
@@ -2161,6 +2173,8 @@ static int unuse_mm(struct mm_struct *mm, unsigned int type,
 		cond_resched();
 	}
 	up_read(&mm->mmap_sem);
+
+
 	return ret;
 }
 
@@ -2197,6 +2211,9 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
 }
 
 /*
+2024年7月31日21:56:41
+unuse就是把这个type的全部swp page读取到内存的mapping里面
+然后file就可以unuse了。
  * If the boolean frontswap is true, only unuse pages_to_unuse pages;
  * pages_to_unuse==0 means all pages; ignored if frontswap is false
  */
@@ -2212,6 +2229,7 @@ int try_to_unuse(unsigned int type, bool frontswap,
 	swp_entry_t entry;
 	unsigned int i;
 
+	/* 没有在用的pages，直接返回 */
 	if (!si->inuse_pages)
 		return 0;
 
@@ -2219,15 +2237,17 @@ int try_to_unuse(unsigned int type, bool frontswap,
 		pages_to_unuse = 0;
 
 retry:
+	/* unuse这个type的file */
 	retval = shmem_unuse(type, frontswap, &pages_to_unuse);
-	if (retval)
+	if (retval)/* 出错了 */
 		goto out;
-
+	/* 刚才unuse成功了 */
 	prev_mm = &init_mm;
 	mmget(prev_mm);
 
 	spin_lock(&mmlist_lock);
 	p = &init_mm.mmlist;
+	/* 遍历系统全部的mm，unuse每个vm。 */
 	while (si->inuse_pages &&
 	       !signal_pending(current) &&
 	       (p = p->next) != &init_mm.mmlist) {
@@ -2237,7 +2257,9 @@ retry:
 			continue;
 		spin_unlock(&mmlist_lock);
 		mmput(prev_mm);
+		/* 保存上次使用的mm */
 		prev_mm = mm;
+		/* 猜测应该是让mm unuse这个type的swp page（此时swp page应该都在内存mapping了） */
 		retval = unuse_mm(mm, type, frontswap, &pages_to_unuse);
 
 		if (retval) {
@@ -2257,11 +2279,13 @@ retry:
 	mmput(prev_mm);
 
 	i = 0;
+
 	while (si->inuse_pages &&
 	       !signal_pending(current) &&
 	       (i = find_next_to_unuse(si, i, frontswap)) != 0) {
-
+		/* 获得swp ent */
 		entry = swp_entry(type, i);
+		/* 获得page，一定有page吗？ */
 		page = find_get_page(swap_address_space(entry), i);
 		if (!page)
 			continue;
@@ -2274,7 +2298,9 @@ retry:
 		 */
 		lock_page(page);
 		wait_on_page_writeback(page);
+		/* 释放page？todo */
 		try_to_free_swap(page);
+		
 		unlock_page(page);
 		put_page(page);
 
@@ -2515,7 +2541,7 @@ static int swap_node(struct swap_info_struct *p)
 
 	return bdev ? bdev->bd_disk->node_id : NUMA_NO_NODE;
 }
-
+/* 2024年7月31日21:32:38 */
 static void setup_swap_info(struct swap_info_struct *p, int prio,
 			    unsigned char *swap_map,
 			    struct swap_cluster_info *cluster_info)
@@ -2690,7 +2716,10 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	disable_swap_slots_cache_lock();
 
 	set_current_oom_origin();
-	err = try_to_unuse(p->type, false, 0); /* force unuse all pages */
+
+	err = try_to_unuse(p->type, false, 0); 
+	/* force unuse all pages */
+	
 	clear_current_oom_origin();
 
 	if (err) {

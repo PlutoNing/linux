@@ -20,7 +20,9 @@ struct shmem_inode_info {
 	被swap的页面数量？
 	 subtotal assigned to swap */
 	struct list_head        shrinklist;     /* shrinkable hpage inodes */
-	struct list_head	swaplist;	/* chain of maybes on swap */
+	struct list_head	swaplist;	/* 
+	挂载到shmem_swaplist
+	chain of maybes on swap */
 	struct shared_policy	policy;		/* NUMA memory alloc policy */
 	struct simple_xattrs	xattrs;		/* list of xattrs */
 	atomic_t		stop_eviction;	/* hold when working on inode */

@@ -1131,7 +1131,12 @@ static void shmem_evict_inode(struct inode *inode)
 }
 
 extern struct swap_info_struct *swap_info[];
-
+/* 2024年7月31日22:06:44
+通过遍历的方式来，在shmem file的mapping里面start开始位置找到nr_entries个swap页面
+indices记录索引位置？
+entries记录页面
+返回找到页面的数量
+ */
 static int shmem_find_swap_entries(struct address_space *mapping,
 				   pgoff_t start, unsigned int nr_entries,
 				   struct page **entries, pgoff_t *indices,
@@ -1146,20 +1151,22 @@ static int shmem_find_swap_entries(struct address_space *mapping,
 		return 0;
 
 	rcu_read_lock();
+	/* 遍历xas数组 */
 	xas_for_each(&xas, page, ULONG_MAX) {
 		if (xas_retry(&xas, page))
 			continue;
 
 		if (!xa_is_value(page))
 			continue;
-
+		/* 把这个mapping里面的条目转换为swp entry（
+		本来也就是swap entry） */
 		entry = radix_to_swp_entry(page);
 		if (swp_type(entry) != type)
 			continue;
 		if (frontswap &&
 		    !frontswap_test(swap_info[type], swp_offset(entry)))
 			continue;
-
+		/* 如果位于fontswap里面？ */
 		indices[ret] = xas.xa_index;
 		entries[ret] = page;
 
@@ -1176,6 +1183,14 @@ static int shmem_find_swap_entries(struct address_space *mapping,
 }
 
 /*
+2024年7月31日22:28:41
+把pvec里面的页面，从inode移到页缓存。
+pvec里面是要移动的页面指针
+indexice里面是对应页面的索引
+返回移动的页面数量。
+--------------------------------
+所谓的unuse，可能就是把指定的pages从磁盘移到内存里面。然后
+就可以unuse了。
  * Move the swapped pages for an inode to page cache. Returns the count
  * of pages swapped in, or the error in case of failure.
  */
@@ -1188,15 +1203,17 @@ static int shmem_unuse_swap_entries(struct inode *inode, struct pagevec pvec,
 	struct address_space *mapping = inode->i_mapping;
 
 	for (i = 0; i < pvec.nr; i++) {
+		/* 逐个处理页面 */
 		struct page *page = pvec.pages[i];
 
 		if (!xa_is_value(page))
 			continue;
+		/* 把这些页面换进内存的swp mapping里面 */
 		error = shmem_swapin_page(inode, indices[i],
 					  &page, SGP_CACHE,
 					  mapping_gfp_mask(mapping),
 					  NULL, NULL);
-		if (error == 0) {
+		if (error == 0) {/* 此次成功 */
 			unlock_page(page);
 			put_page(page);
 			ret++;
@@ -1205,15 +1222,20 @@ static int shmem_unuse_swap_entries(struct inode *inode, struct pagevec pvec,
 			break;
 		error = 0;
 	}
+	/* 没有消息就是好消息 */
 	return error ? error : ret;
 }
 
 /*
+如果inode（是shmem file inode吗？）是swp inode，释放，然后从swapcache移到页缓存
+
+@inode：好像就是swap file的inode
  * If swap found in inode, free it and move page from swapcache to filecache.
  */
 static int shmem_unuse_inode(struct inode *inode, unsigned int type,
 			     bool frontswap, unsigned long *fs_pages_to_unuse)
 {
+	/* 找到inode的mapping */
 	struct address_space *mapping = inode->i_mapping;
 	pgoff_t start = 0;
 	struct pagevec pvec;
@@ -1222,12 +1244,13 @@ static int shmem_unuse_inode(struct inode *inode, unsigned int type,
 	int ret = 0;
 
 	pagevec_init(&pvec);
+
 	do {
 		unsigned int nr_entries = PAGEVEC_SIZE;
 
 		if (frontswap_partial && *fs_pages_to_unuse < PAGEVEC_SIZE)
 			nr_entries = *fs_pages_to_unuse;
-
+		/* 在mapping里面找到swap的pages，放在pvec里面 */
 		pvec.nr = shmem_find_swap_entries(mapping, start, nr_entries,
 						  pvec.pages, indices,
 						  type, frontswap);
@@ -1235,7 +1258,7 @@ static int shmem_unuse_inode(struct inode *inode, unsigned int type,
 			ret = 0;
 			break;
 		}
-
+		/* 然后把这些页面从磁盘读取到内存里面，就是所谓的unuse */
 		ret = shmem_unuse_swap_entries(inode, pvec, indices);
 		if (ret < 0)
 			break;
@@ -1255,6 +1278,9 @@ static int shmem_unuse_inode(struct inode *inode, unsigned int type,
 }
 
 /*
+2024年7月31日21:58:35
+把指定type的共享内存全部读到内存，然后swap就可以unuse了。
+具体过程就是把这个type的si的file的swp page从磁盘读到内存的mapping里面。
  * Read all the shared memory data that resides in the swap
  * device 'type' back into memory, so the swap device can be
  * unused.
@@ -1269,8 +1295,11 @@ int shmem_unuse(unsigned int type, bool frontswap,
 		return 0;
 
 	mutex_lock(&shmem_swaplist_mutex);
+	/* 遍历上面的si */
 	list_for_each_entry_safe(info, next, &shmem_swaplist, swaplist) {
 		if (!info->swapped) {
+			/* 如果这个si没有交换页面，就直接从
+			shmem_swaplist这里移除这个si */
 			list_del_init(&info->swaplist);
 			continue;
 		}
@@ -1282,7 +1311,8 @@ int shmem_unuse(unsigned int type, bool frontswap,
 		 */
 		atomic_inc(&info->stop_eviction);
 		mutex_unlock(&shmem_swaplist_mutex);
-
+		/* 把这个si的swp file里面的swp 页面从磁盘
+		移到内存里面的mapping */
 		error = shmem_unuse_inode(&info->vfs_inode, type, frontswap,
 					  fs_pages_to_unuse);
 		cond_resched();
@@ -1292,6 +1322,7 @@ int shmem_unuse(unsigned int type, bool frontswap,
 		next = list_next_entry(info, swaplist);
 		if (!info->swapped)
 			list_del_init(&info->swaplist);
+
 		if (atomic_dec_and_test(&info->stop_eviction))
 			wake_up_var(&info->stop_eviction);
 		if (error)
@@ -1463,7 +1494,8 @@ static void shmem_pseudo_vma_destroy(struct vm_area_struct *vma)
 	/* Drop reference taken by mpol_shared_policy_lookup() */
 	mpol_cond_put(vma->vm_policy);
 }
-/* shmem从swap换入页面 */
+/* shmem从swap换入页面
+swp的换入，就是从磁盘读取到内存的mapping */
 static struct page *shmem_swapin(swp_entry_t swap, gfp_t gfp,
 			struct shmem_inode_info *info, pgoff_t index)
 {
@@ -1654,6 +1686,10 @@ static int shmem_replace_page(struct page **pagep, gfp_t gfp,
 
 /*
 把页面swapin进内存
+inode：swap file
+index：要移动的页面的idx
+pages：对应页面的指针
+
  * Swap in the page pointed to by *pagep.
  * Caller has to make sure that *pagep contains a valid swapped page.
  * Returns 0 and the page in pagep if success. 
@@ -1672,10 +1708,10 @@ static int shmem_swapin_page(struct inode *inode, pgoff_t index,
 	struct page *page;
 	swp_entry_t swap;
 	int error;
-
-	VM_BUG_ON(!*pagep || !xa_is_value(*pagep));
 	/* 此时pagep指向的是刚才从mapping查的结果，但是是vlaue，
 	不是指针，说明缺页，返回时pagep指向的是个swap值 */
+	VM_BUG_ON(!*pagep || !xa_is_value(*pagep));
+	/* 把页面转换为swap entry */
 	swap = radix_to_swp_entry(*pagep);
 	*pagep = NULL;
 
@@ -1683,8 +1719,9 @@ static int shmem_swapin_page(struct inode *inode, pgoff_t index,
 	查询swap */
 	page = lookup_swap_cache(swap, NULL, 0);
 	if (!page) {
-		/* 刚才从swap的mapping读取不成功，所以可能是在文件或者交换设备里了
-		这里进行换入。 */
+		/* 刚才从swap的mapping读取不成功，所以可能是在文件或者交换设备里了。
+		   这里进行换入。
+		   所以swp的换入就是从磁盘读取到内存里面的swp mapping */
 		/* Or update major stats only when swapin succeeds?? */
 		if (fault_type) {
 			*fault_type |= VM_FAULT_MAJOR;
@@ -1694,11 +1731,12 @@ static int shmem_swapin_page(struct inode *inode, pgoff_t index,
 		/* Here we actually start the io
 		这里才开始换入吗？ */
 		page = shmem_swapin(swap, gfp, info, index);
-		if (!page) {
+		if (!page) {/* 再没有page，就报错返回了 */
 			error = -ENOMEM;
 			goto failed;
 		}
 	}
+	/* 在这里一定找到了page */
 
 	/* We have to do this with page locked to prevent races */
 	lock_page(page);
