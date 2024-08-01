@@ -50,13 +50,13 @@ static inline bool frontswap_test(struct swap_info_struct *sis, pgoff_t offset)
 {
 	return __frontswap_test(sis, offset);
 }
-
+/* 2024年08月01日19:55:02 */
 static inline void frontswap_map_set(struct swap_info_struct *p,
 				     unsigned long *map)
 {
 	p->frontswap_map = map;
 }
-
+/* 2024年08月01日19:54:35 */
 static inline unsigned long *frontswap_map_get(struct swap_info_struct *p)
 {
 	return p->frontswap_map;
@@ -108,7 +108,7 @@ static inline void frontswap_invalidate_page(unsigned type, pgoff_t offset)
 	if (frontswap_enabled())
 		__frontswap_invalidate_page(type, offset);
 }
-
+/* 清空此type的si的front */
 static inline void frontswap_invalidate_area(unsigned type)
 {
 	if (frontswap_enabled())

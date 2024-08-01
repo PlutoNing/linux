@@ -360,6 +360,8 @@ void __frontswap_invalidate_page(unsigned type, pgoff_t offset)
 EXPORT_SYMBOL(__frontswap_invalidate_page);
 
 /*
+2024年08月01日20:03:26
+清空此type的si的frontmap
  * Invalidate all data from frontswap associated with all offsets for the
  * specified swaptype.
  */
@@ -376,7 +378,9 @@ void __frontswap_invalidate_area(unsigned type)
 
 	for_each_frontswap_ops(ops)
 		ops->invalidate_area(type);
+
 	atomic_set(&sis->frontswap_pages, 0);
+
 	bitmap_zero(sis->frontswap_map, sis->max);
 }
 EXPORT_SYMBOL(__frontswap_invalidate_area);

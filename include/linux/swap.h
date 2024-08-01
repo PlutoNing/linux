@@ -253,7 +253,8 @@ struct swap_info_struct {
 	struct plist_node list;		/* entry in swap_active_head ，
 		指向该交换区在 swap_avail_heads 链表中的位置*/
 	signed char	type;		/* strange name for an index ，*/
-	unsigned int	max;		/* extent of the swap_map，swap——map的大小 */
+	unsigned int	max;		/* extent of the swap_map，
+	swap——map的大小 */
 	unsigned char *swap_map;	/* vmalloc'ed array of usage counts ，对每一个页面都有一个字节表示状态，表示对应offset的entry引用数量*/
 	struct swap_cluster_info *cluster_info; /* cluster info. Only for SSD ，*/
 	struct swap_cluster_list free_clusters; /* free clusters list */

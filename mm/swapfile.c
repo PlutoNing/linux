@@ -54,7 +54,7 @@ DEFINE_SPINLOCK(swap_lock);
 static unsigned int nr_swapfiles;
 /* 2024年6月27日22:45:44
 交换页面的数量
-
+全部si的pages字段的累加？
  */
 atomic_long_t nr_swap_pages;
 /*
@@ -64,6 +64,7 @@ atomic_long_t nr_swap_pages;
  */
 EXPORT_SYMBOL_GPL(nr_swap_pages);
 /* protected with swap_lock. reading in vm_swap_full() doesn't need lock */
+/* 全部si的pages字段的累加？ */
 long total_swap_pages;
 static int least_priority = -1;
 
@@ -73,7 +74,7 @@ static const char Bad_offset[] = "Bad swap offset entry ";
 static const char Unused_offset[] = "Unused swap offset entry ";
 
 /*
-系统中活跃的si
+系统中活跃的si都连接到此list
  * all active swap_info_structs
  * protected with swap_lock, and ordered by priority.
  */
@@ -2335,6 +2336,7 @@ out:
 }
 
 /*
+2024年08月01日19:18:00
  * After a successful try_to_unuse, if no swap is now in use, we know
  * we can empty the mmlist.  swap_lock must be held on entry and exit.
  * Note that mmlist_lock nests inside swap_lock, and an mm must be
@@ -2348,6 +2350,9 @@ static void drain_mmlist(void)
 	for (type = 0; type < nr_swapfiles; type++)
 		if (swap_info[type]->inuse_pages)
 			return;
+	/* 到这里说明没有swp了 */
+
+	/* 难道mmlist仅仅对swp有用吗 */
 	spin_lock(&mmlist_lock);
 	list_for_each_safe(p, next, &init_mm.mmlist)
 		list_del_init(p);
@@ -2389,19 +2394,22 @@ sector_t map_swap_page(struct page *page, struct block_device **bdev)
 }
 
 /*
+2024年08月01日18:41:01
+extent是按照红黑树组织的。所以就是清空红黑树。
  * Free all of a swapdev's extent information
  */
 static void destroy_swap_extents(struct swap_info_struct *sis)
 {
+	/* 如果区块红黑树还有内容 */
 	while (!RB_EMPTY_ROOT(&sis->swap_extent_root)) {
 		struct rb_node *rb = sis->swap_extent_root.rb_node;
 		struct swap_extent *se = rb_entry(rb, struct swap_extent, rb_node);
-
+		/* 把当前这个要移除的se的rb从树上移走。 */
 		rb_erase(rb, &sis->swap_extent_root);
 		kfree(se);
 	}
 
-	if (sis->flags & SWP_ACTIVATED) {
+	if (sis->flags & SWP_ACTIVATED) {/* 调用swpfile的mapping回调 */
 		struct file *swap_file = sis->swap_file;
 		struct address_space *mapping = swap_file->f_mapping;
 
@@ -2529,7 +2537,7 @@ static int setup_swap_extents(struct swap_info_struct *sis, sector_t *span)
 	/*  */
 	return generic_swapfile_activate(sis, swap_file, span);
 }
-
+/* 获取swp的磁盘的内存node？ */
 static int swap_node(struct swap_info_struct *p)
 {
 	struct block_device *bdev;
@@ -2541,7 +2549,8 @@ static int swap_node(struct swap_info_struct *p)
 
 	return bdev ? bdev->bd_disk->node_id : NUMA_NO_NODE;
 }
-/* 2024年7月31日21:32:38 */
+/* 2024年7月31日21:32:38
+初始化si的信息 */
 static void setup_swap_info(struct swap_info_struct *p, int prio,
 			    unsigned char *swap_map,
 			    struct swap_cluster_info *cluster_info)
@@ -2557,6 +2566,7 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 	 * low-to-high, while swap ordering is high-to-low
 	 */
 	p->list.prio = -p->prio;
+	
 	for_each_node(i) {
 		if (p->prio >= 0)
 			p->avail_lists[i].prio = -p->prio;
@@ -2567,10 +2577,11 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 				p->avail_lists[i].prio = -p->prio;
 		}
 	}
+
 	p->swap_map = swap_map;
 	p->cluster_info = cluster_info;
 }
-
+/*  */
 static void _enable_swap_info(struct swap_info_struct *p)
 {
 	p->flags |= SWP_WRITEOK | SWP_VALID;
@@ -2614,13 +2625,16 @@ static void enable_swap_info(struct swap_info_struct *p, int prio,
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
 }
-
+/* 移除swp file之后reinsert */
 static void reinsert_swap_info(struct swap_info_struct *p)
 {
 	spin_lock(&swap_lock);
 	spin_lock(&p->lock);
+	/*  */
 	setup_swap_info(p, p->prio, p->swap_map, p->cluster_info);
+	/*  */
 	_enable_swap_info(p);
+	
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
 }
@@ -2716,14 +2730,16 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	disable_swap_slots_cache_lock();
 
 	set_current_oom_origin();
-
+	/* 这里来unuse这个swp file，把page从file移到mapping。
+	处理mm，vma的映射等等。 */
 	err = try_to_unuse(p->type, false, 0); 
 	/* force unuse all pages */
 	
 	clear_current_oom_origin();
 
-	if (err) {
+	if (err) {/* 失败情况 */
 		/* re-insert swap space back into swap_list */
+		/* 算是重新insert到系统（初始化，enable） */
 		reinsert_swap_info(p);
 		reenable_swap_slots_cache_unlock();
 		goto out_dput;
@@ -2743,8 +2759,9 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	synchronize_rcu();
 
 	flush_work(&p->discard_work);
-
+	/* 销毁swp的extents */
 	destroy_swap_extents(p);
+	
 	if (p->flags & SWP_CONTINUED)
 		free_swap_count_continuations(p);
 
@@ -2754,6 +2771,8 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	mutex_lock(&swapon_mutex);
 	spin_lock(&swap_lock);
 	spin_lock(&p->lock);
+	
+	/* 基本这里算是清空mmlist，如果没有swp的话 */
 	drain_mmlist();
 
 	/* wait for anyone still in scan_swap_map */
@@ -2761,7 +2780,9 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	while (p->flags >= SWP_SCANNING) {
 		spin_unlock(&p->lock);
 		spin_unlock(&swap_lock);
+
 		schedule_timeout_uninterruptible(1);
+
 		spin_lock(&swap_lock);
 		spin_lock(&p->lock);
 	}
@@ -2774,11 +2795,15 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	p->swap_map = NULL;
 	cluster_info = p->cluster_info;
 	p->cluster_info = NULL;
+	/* 获取frontswp的位图 */
 	frontswap_map = frontswap_map_get(p);
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
+	/* 清空front */
 	frontswap_invalidate_area(p->type);
+	/* 置空si的frontswp指针 */
 	frontswap_map_set(p, NULL);
+
 	mutex_unlock(&swapon_mutex);
 	free_percpu(p->percpu_cluster);
 	p->percpu_cluster = NULL;
@@ -2786,6 +2811,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	kvfree(cluster_info);
 	kvfree(frontswap_map);
 	/* Destroy swap account information */
+	
 	swap_cgroup_swapoff(p->type);
 	exit_swap_address_space(p->type);
 
@@ -3915,14 +3941,15 @@ out:
 static void free_swap_count_continuations(struct swap_info_struct *si)
 {
 	pgoff_t offset;
-
+	/* 遍历swp_map */
 	for (offset = 0; offset < si->max; offset += PAGE_SIZE) {
 		struct page *head;
 		/* si的map是vmap分配的？ */
 		head = vmalloc_to_page(si->swap_map + offset);
 		if (page_private(head)) {/* swap map要是private的吗 */
 			struct page *page, *next;
-			/* 遍历与head同一个lru的页面，逐个移除 */
+			/* 遍历与此head page同一个lru的页面，逐个移除。
+			这种情况lru链接的还是zone里面的lru吗？2024年08月01日18:51:36 */
 			list_for_each_entry_safe(page, next, &head->lru, lru) {
 				list_del(&page->lru);
 				__free_page(page);

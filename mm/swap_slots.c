@@ -82,12 +82,12 @@ void disable_swap_slots_cache_lock(void)
 		put_online_cpus();
 	}
 }
-
+/* 使能swp slot cache */
 static void __reenable_swap_slots_cache(void)
 {
 	swap_slot_cache_enabled = has_usable_swap();
 }
-
+/*  */
 void reenable_swap_slots_cache_unlock(void)
 {
 	__reenable_swap_slots_cache();
