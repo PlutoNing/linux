@@ -35,7 +35,7 @@ static const struct address_space_operations swap_aops = {
 	.migratepage	= migrate_page,
 #endif
 };
-
+/*  */
 struct address_space *swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static unsigned int nr_swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static bool enable_vma_readahead __read_mostly = true;
@@ -676,7 +676,7 @@ int init_swap_address_space(unsigned int type, unsigned long nr_pages)
 
 	return 0;
 }
-
+/* todo？ */
 void exit_swap_address_space(unsigned int type)
 {
 	kvfree(swapper_spaces[type]);

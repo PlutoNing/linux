@@ -2555,7 +2555,7 @@ void __ksm_exit(struct mm_struct *mm)
 		up_write(&mm->mmap_sem);
 	}
 }
-
+/*  */
 struct page *ksm_might_need_to_copy(struct page *page,
 			struct vm_area_struct *vma, unsigned long address)
 {

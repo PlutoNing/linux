@@ -226,7 +226,8 @@ nomem:
 	pr_info("swap_cgroup can be disabled by swapaccount=0 boot option\n");
 	return -ENOMEM;
 }
-
+/* 置空ctrl的一些属性，归还ctrl的map
+和cgroup关系？ */
 void swap_cgroup_swapoff(int type)
 {
 	struct page **map;
@@ -243,7 +244,7 @@ void swap_cgroup_swapoff(int type)
 	ctrl->map = NULL;
 	ctrl->length = 0;
 	mutex_unlock(&swap_cgroup_mutex);
-
+	/* 逐个释放归还页面 */
 	if (map) {
 		for (i = 0; i < length; i++) {
 			struct page *page = map[i];

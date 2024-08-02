@@ -191,6 +191,7 @@ void frontswap_tmem_exclusive_gets(bool enable)
 EXPORT_SYMBOL(frontswap_tmem_exclusive_gets);
 
 /*
+2024年08月02日17:07:31
  * Called when a swap device is swapon'd.
  */
 void __frontswap_init(unsigned type, unsigned long *map)

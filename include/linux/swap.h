@@ -255,11 +255,13 @@ struct swap_info_struct {
 	signed char	type;		/* strange name for an index ，*/
 	unsigned int	max;		/* extent of the swap_map，
 	swap——map的大小 */
-	unsigned char *swap_map;	/* vmalloc'ed array of usage counts ，对每一个页面都有一个字节表示状态，表示对应offset的entry引用数量*/
+	unsigned char *swap_map;	/* vmalloc'ed array of usage counts ，
+	对每一个页面都有一个字节表示状态，表示对应offset的entry引用数量*/
 	struct swap_cluster_info *cluster_info; /* cluster info. Only for SSD ，*/
 	struct swap_cluster_list free_clusters; /* free clusters list */
 	unsigned int lowest_bit;	/* index of first free in swap_map */
-	unsigned int highest_bit;	/* index of last free in swap_map */
+	unsigned int highest_bit;	/* index of last free in swap_map
+	 */
 	unsigned int pages;		/* total of usable pages of swap ，
 	该交换区可以容纳 swap 的匿名页总数
 */
@@ -313,7 +315,7 @@ struct swap_info_struct {
 	discard clusters list */
 
 	struct plist_node avail_lists[0]; /*
-	每个node一个条目
+	每个node一个条目，也就是说每个node一条链表
 	si的 avail_lists[node] 挂在全局的swap_avail_heads[node]？
 
 					   * entries in swap_avail_heads, one

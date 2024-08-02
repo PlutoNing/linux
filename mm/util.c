@@ -651,6 +651,7 @@ bool page_mapped(struct page *page)
 }
 EXPORT_SYMBOL(page_mapped);
 /* 2024年7月2日23:44:23
+先看是不是PAGE_MAPPING_ANON
 
  */
 struct anon_vma *page_anon_vma(struct page *page)

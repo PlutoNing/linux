@@ -114,7 +114,7 @@ static inline void frontswap_invalidate_area(unsigned type)
 	if (frontswap_enabled())
 		__frontswap_invalidate_area(type);
 }
-
+/* 初始化type的si的frontmap */
 static inline void frontswap_init(unsigned type, unsigned long *map)
 {
 #ifdef CONFIG_FRONTSWAP

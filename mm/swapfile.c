@@ -95,7 +95,8 @@ PLIST_HEAD(swap_active_head);
  */
 static struct plist_head *swap_avail_heads;
 static DEFINE_SPINLOCK(swap_avail_lock);
-/* 2024年07月03日12:34:16 */
+/* 2024年07月03日12:34:16
+ */
 struct swap_info_struct *swap_info[MAX_SWAPFILES];
 
 static DEFINE_MUTEX(swapon_mutex);
@@ -448,7 +449,7 @@ static void cluster_list_add_tail(struct swap_cluster_list *list,
 		cluster_set_next_flag(&list->tail, idx, 0);
 	}
 }
-/*  */
+/* 2024年08月02日20:15:49 */
 static unsigned int cluster_list_del_first(struct swap_cluster_list *list,
 					   struct swap_cluster_info *ci)
 {
@@ -535,13 +536,15 @@ static void swap_discard_work(struct work_struct *work)
 	swap_do_scheduled_discard(si);
 	spin_unlock(&si->lock);
 }
-
+/* 2024年08月02日20:15:18 */
 static void alloc_cluster(struct swap_info_struct *si, unsigned long idx)
 {
 	struct swap_cluster_info *ci = si->cluster_info;
 
 	VM_BUG_ON(cluster_list_first(&si->free_clusters) != idx);
+	
 	cluster_list_del_first(&si->free_clusters, ci);
+	
 	cluster_set_count_flag(ci + idx, 0, 0);
 }
 
@@ -702,25 +705,32 @@ static void __del_from_avail_list(struct swap_info_struct *p)
 		plist_del(&p->avail_lists[nid], &swap_avail_heads[nid]);
 }
 /* 2024年07月31日15:03:36
-从全局的swap_avail_heads移除 */
+从全局的swap_avail_heads移除
+比如si满了，就会从这里删除 */
 static void del_from_avail_list(struct swap_info_struct *p)
 {
 	spin_lock(&swap_avail_lock);
 	__del_from_avail_list(p);
 	spin_unlock(&swap_avail_lock);
 }
-
+/* 2024年08月02日20:19:23 
+分配nr_entries空间
+*/
 static void swap_range_alloc(struct swap_info_struct *si, unsigned long offset,
 			     unsigned int nr_entries)
 {
 	unsigned int end = offset + nr_entries - 1;
 
+	/* 如果此次分配开始处位于lowest_bit，那么lowest_bit+=分配数量 */
 	if (offset == si->lowest_bit)
 		si->lowest_bit += nr_entries;
+	/* 与lowest_bit情况差不多 */
 	if (end == si->highest_bit)
 		si->highest_bit -= nr_entries;
+	/* 已使用的数量变多 */
 	si->inuse_pages += nr_entries;
 	if (si->inuse_pages == si->pages) {
+		/* 这两个bit的这俩特殊值，表示si满了 */
 		si->lowest_bit = si->max;
 		si->highest_bit = 0;
 		del_from_avail_list(si);
@@ -778,7 +788,8 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 		offset++;
 	}
 }
-
+/* 2024年08月02日20:00:45
+todo */
 static int scan_swap_map_slots(struct swap_info_struct *si,
 			       unsigned char usage, int nr,
 			       swp_entry_t slots[])
@@ -975,7 +986,7 @@ no_page:
 	si->flags -= SWP_SCANNING;
 	return n_ret;
 }
-
+/* 2024年08月02日20:12:58 */
 static int swap_alloc_cluster(struct swap_info_struct *si, swp_entry_t *slot)
 {
 	unsigned long idx;
@@ -994,7 +1005,7 @@ static int swap_alloc_cluster(struct swap_info_struct *si, swp_entry_t *slot)
 
 	if (cluster_list_empty(&si->free_clusters))
 		return 0;
-
+	/* 获取一个cluster */
 	idx = cluster_list_first(&si->free_clusters);
 	offset = idx * SWAPFILE_CLUSTER;
 	ci = lock_cluster(si, offset);
@@ -1005,6 +1016,7 @@ static int swap_alloc_cluster(struct swap_info_struct *si, swp_entry_t *slot)
 	for (i = 0; i < SWAPFILE_CLUSTER; i++)
 		map[i] = SWAP_HAS_CACHE;
 	unlock_cluster(ci);
+	/* 在swp上面分配SWAPFILE_CLUSTER个ent */
 	swap_range_alloc(si, offset, SWAPFILE_CLUSTER);
 	*slot = swp_entry(si->type, offset);
 
@@ -1023,7 +1035,8 @@ static void swap_free_cluster(struct swap_info_struct *si, unsigned long idx)
 	unlock_cluster(ci);
 	swap_range_free(si, offset, SWAPFILE_CLUSTER);
 }
-
+/* 2024年08月02日20:00:53
+todo */
 static unsigned long scan_swap_map(struct swap_info_struct *si,
 				   unsigned char usage)
 {
@@ -1038,7 +1051,7 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 		return 0;
 
 }
-
+/*  */
 int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 {
 	unsigned long size = swap_entry_size(entry_size);
@@ -1066,12 +1079,16 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 
 start_over:
 	node = numa_node_id();
+	/* 遍历此node的si */
 	plist_for_each_entry_safe(si, next, &swap_avail_heads[node], avail_lists[node]) {
 		/* requeue si to after same-priority siblings */
 		plist_requeue(&si->avail_lists[node], &swap_avail_heads[node]);
 		spin_unlock(&swap_avail_lock);
 		spin_lock(&si->lock);
-		if (!si->highest_bit || !(si->flags & SWP_WRITEOK)) {
+
+		if (!si->highest_bit || !(si->flags & SWP_WRITEOK)) {/* 如果没有free slot
+		或者下线了？ */
+
 			spin_lock(&swap_avail_lock);
 			if (plist_node_empty(&si->avail_lists[node])) {
 				spin_unlock(&si->lock);
@@ -1087,6 +1104,7 @@ start_over:
 			spin_unlock(&si->lock);
 			goto nextsi;
 		}
+
 		if (size == SWAPFILE_CLUSTER) {
 			if (!(si->flags & SWP_FS))
 				n_ret = swap_alloc_cluster(si, swp_entries);
@@ -1126,7 +1144,9 @@ noswap:
 	return n_ret;
 }
 
-/* The only caller of this function is now suspend routine */
+/* 
+2024年08月02日19:33:04
+The only caller of this function is now suspend routine */
 swp_entry_t get_swap_page_of_type(int type)
 {
 	struct swap_info_struct *si = swap_type_to_swap_info(type);
@@ -1136,6 +1156,7 @@ swp_entry_t get_swap_page_of_type(int type)
 		goto fail;
 
 	spin_lock(&si->lock);
+
 	if (si->flags & SWP_WRITEOK) {
 		atomic_long_dec(&nr_swap_pages);
 		/* This is called for allocating swap entry, not cache */
@@ -1150,6 +1171,7 @@ swp_entry_t get_swap_page_of_type(int type)
 fail:
 	return (swp_entry_t) {0};
 }
+
 /* 2024年7月14日17:50:21
 获取entry的si
  */
@@ -1202,7 +1224,8 @@ bad_free:
 out:
 	return NULL;
 }
-
+/* 获取si
+spinlock？ */
 static struct swap_info_struct *swap_info_get(swp_entry_t entry)
 {
 	struct swap_info_struct *p;
@@ -1228,7 +1251,8 @@ static struct swap_info_struct *swap_info_get_cont(swp_entry_t entry,
 	}
 	return p;
 }
-
+/* 2024年08月02日19:26:32
+todo */
 static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 					      unsigned long offset,
 					      unsigned char usage)
@@ -1268,7 +1292,7 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 
 /*
 2024年07月03日12:33:13
-
+好像就是获取si？
  * Check whether swap entry is valid in the swap device.  If so,
  * return pointer to swap_info_struct, and keep the swap entry valid
  * via preventing the swap device from being swapoff, until
@@ -1332,7 +1356,9 @@ unlock_out:
 	rcu_read_unlock();
 	return NULL;
 }
-/* 2024年7月29日23:52:04 */
+
+/* 2024年7月29日23:52:04
+free此si指定的ent */
 static unsigned char __swap_entry_free(struct swap_info_struct *p,
 				       swp_entry_t entry, unsigned char usage)
 {
@@ -1340,6 +1366,7 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 	unsigned long offset = swp_offset(entry);
 
 	ci = lock_cluster_or_swap_info(p, offset);
+	/* todo */
 	usage = __swap_entry_free_locked(p, offset, usage);
 	unlock_cluster_or_swap_info(p, ci);
 	if (!usage)
@@ -1807,6 +1834,7 @@ int try_to_free_swap(struct page *page)
 }
 
 /*
+
  * Free the swap entry like above, but also try to
  * free the page cache entry if it is the last user.
  */
@@ -1817,7 +1845,7 @@ int free_swap_and_cache(swp_entry_t entry)
 
 	if (non_swap_entry(entry))
 		return 1;
-
+	/*  */
 	p = _swap_info_get(entry);
 	if (p) {
 		count = __swap_entry_free(p, entry, 1);
@@ -1920,13 +1948,14 @@ unsigned int count_swap_pages(int type, int free)
 	return n;
 }
 #endif /* CONFIG_HIBERNATION */
-
+/*  */
 static inline int pte_same_as_swp(pte_t pte, pte_t swp_pte)
 {
 	return pte_same(pte_swp_clear_soft_dirty(pte), swp_pte);
 }
 
 /*
+2024年08月02日19:10:40
  * No need to decide whether this PTE shares the swap entry with others,
  * just let do_wp_page work it out if a write is requested later - to
  * force COW, vm_page_prot omits write permission from any private vma.
@@ -1950,7 +1979,7 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
 		ret = -ENOMEM;
 		goto out_nolock;
 	}
-
+	/* 找到pte */
 	pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
 	if (unlikely(!pte_same_as_swp(*pte, swp_entry_to_pte(entry)))) {
 		mem_cgroup_cancel_charge(page, memcg, false);
@@ -1961,9 +1990,11 @@ static int unuse_pte(struct vm_area_struct *vma, pmd_t *pmd,
 	dec_mm_counter(vma->vm_mm, MM_SWAPENTS);
 	inc_mm_counter(vma->vm_mm, MM_ANONPAGES);
 	get_page(page);
+	/* 可否列为ptep的地方不再是个swp entry了，现在是指向对应的页面page了。因为
+	这个page在unuse swp file的时候已经从disk读到mapping了 */
 	set_pte_at(vma->vm_mm, addr, pte,
 		   pte_mkold(mk_pte(page, vma->vm_page_prot)));
-	if (page == swapcache) {
+	if (page == swapcache) {/* todo */
 		page_add_anon_rmap(page, vma, addr, false);
 		mem_cgroup_commit_charge(page, memcg, true, false);
 	} else { /* ksm created a completely new copy */
@@ -2153,7 +2184,8 @@ static int unuse_vma(struct vm_area_struct *vma, unsigned int type,
 	} while (pgd++, addr = next, addr != end);
 	return 0;
 }
-/* 2024年7月31日23:05:45 */
+/* 2024年7月31日23:05:45
+把此mm的vma逐个与type里面的页面解除映射 */
 static int unuse_mm(struct mm_struct *mm, unsigned int type,
 		    bool frontswap, unsigned long *fs_pages_to_unuse)
 {
@@ -2180,6 +2212,7 @@ static int unuse_mm(struct mm_struct *mm, unsigned int type,
 }
 
 /*
+找到prev下一个还在使用的
  * Scan swap_map (or frontswap_map if frontswap parameter is true)
  * from current position to next entry still in use. Return 0
  * if there are no inuse entries after prev till end of the map.
@@ -2201,6 +2234,7 @@ static unsigned int find_next_to_unuse(struct swap_info_struct *si,
 		if (count && swap_count(count) != SWAP_MAP_BAD)
 			if (!frontswap || frontswap_test(si, i))
 				break;
+
 		if ((i % LATENCY_LIMIT) == 0)
 			cond_resched();
 	}
@@ -2581,7 +2615,7 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 	p->swap_map = swap_map;
 	p->cluster_info = cluster_info;
 }
-/*  */
+/* 2024年08月02日17:08:58 */
 static void _enable_swap_info(struct swap_info_struct *p)
 {
 	p->flags |= SWP_WRITEOK | SWP_VALID;
@@ -2602,13 +2636,15 @@ static void _enable_swap_info(struct swap_info_struct *p)
 	plist_add(&p->list, &swap_active_head);
 	add_to_avail_list(p);
 }
-
+/* 使能si？ */
 static void enable_swap_info(struct swap_info_struct *p, int prio,
 				unsigned char *swap_map,
 				struct swap_cluster_info *cluster_info,
 				unsigned long *frontswap_map)
 {
+	
 	frontswap_init(p->type, frontswap_map);
+	
 	spin_lock(&swap_lock);
 	spin_lock(&p->lock);
 	setup_swap_info(p, prio, swap_map, cluster_info);
@@ -2638,7 +2674,7 @@ static void reinsert_swap_info(struct swap_info_struct *p)
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
 }
-
+/*  */
 bool has_usable_swap(void)
 {
 	bool ret = true;
@@ -2813,10 +2849,11 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	/* Destroy swap account information */
 	
 	swap_cgroup_swapoff(p->type);
+	
 	exit_swap_address_space(p->type);
 
 	inode = mapping->host;
-	if (S_ISBLK(inode->i_mode)) {
+	if (S_ISBLK(inode->i_mode)) {/* 块设备swp的路径 */
 		struct block_device *bdev = I_BDEV(inode);
 
 		set_blocksize(bdev, old_block_size);
@@ -2826,6 +2863,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	inode_lock(inode);
 	inode->i_flags &= ~S_SWAPFILE;
 	inode_unlock(inode);
+	/*  */
 	filp_close(swap_file, NULL);
 
 	/*
