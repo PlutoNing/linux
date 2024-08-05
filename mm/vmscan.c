@@ -4765,6 +4765,7 @@ static inline unsigned long node_unmapped_file_pages(struct pglist_data *pgdat)
 /* 
 2024年6月26日00:01:05
 node_pagecache_reclaimable
+计算这个node上面有多少页缓存页可以回收
 判断node快速内存回收条件是否满足
 Work out how many page cache pages we can reclaim in this reclaim_mode */
 static unsigned long node_pagecache_reclaimable(struct pglist_data *pgdat)

@@ -878,6 +878,7 @@ typedef struct pglist_data {
 #ifdef CONFIG_NUMA
 	/*
 	 * zone reclaim becomes active if more unmapped pages exist.
+	 2024年08月05日15:12:46 todo
 	 */
 	unsigned long		min_unmapped_pages;
 	unsigned long		min_slab_pages;
