@@ -776,6 +776,7 @@ struct kobject *kobject_create(void)
 }
 
 /**
+创建kobj，对应文件夹
  * kobject_create_and_add() - Create a struct kobject dynamically and
  *                            register it with sysfs.
  * @name: the name for the kobject

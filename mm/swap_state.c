@@ -23,7 +23,7 @@
 #include <linux/huge_mm.h>
 
 #include <asm/pgtable.h>
-
+/* 2024年8月5日23:58:30 */
 /*
  * swapper_space is a fiction, retained to simplify the path through
  * vmscan's shrink_page_list.
@@ -67,7 +67,7 @@ static struct {
 	unsigned long find_success;
 	unsigned long find_total;
 } swap_cache_info;
-
+/*  */
 unsigned long total_swapcache_pages(void)
 {
 	unsigned int i, j, nr;
@@ -274,6 +274,7 @@ void delete_from_swap_cache(struct page *page)
 }
 
 /* 
+释放page
  * If we are the only user, then try to free up the swap cache. 
  * 
  * Its ok to check for PageSwapCache without the page lock
@@ -290,17 +291,21 @@ static inline void free_swap_cache(struct page *page)
 }
 
 /* 
+2024年8月5日23:57:00
  * Perform a free_page(), also freeing any swap cache associated with
  * this page if it is the last user of the page.
  */
 void free_page_and_swap_cache(struct page *page)
 {
 	free_swap_cache(page);
+
 	if (!is_huge_zero_page(page))
 		put_page(page);
 }
 
 /*
+2024年8月5日23:54:30
+释放这一堆pages。
  * Passed an array of pages, drop them all from swapcache and then release
  * them.  They are removed from the LRU and freed if this is their last use.
  */
@@ -312,8 +317,10 @@ void free_pages_and_swap_cache(struct page **pages, int nr)
 	lru_add_drain();
 	for (i = 0; i < nr; i++)
 		free_swap_cache(pagep[i]);
+		/* 归还页面 */
 	release_pages(pagep, nr);
 }
+
 /* 2024年07月03日14:33:00
 swp 预读的方式 */
 static inline bool swap_use_vma_readahead(void)
@@ -653,24 +660,31 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 skip:
 	return read_swap_cache_async(entry, gfp_mask, vma, addr, do_poll);
 }
-
+/* 2024年8月5日23:50:33
+初始化swp地址空间？好像是一个mapping数组来着
+还是为指定的type的 
+*/
 int init_swap_address_space(unsigned int type, unsigned long nr_pages)
 {
 	struct address_space *spaces, *space;
 	unsigned int i, nr;
 
 	nr = DIV_ROUND_UP(nr_pages, SWAP_ADDRESS_SPACE_PAGES);
+	/* 地址空间数组 */
 	spaces = kvcalloc(nr, sizeof(struct address_space), GFP_KERNEL);
 	if (!spaces)
 		return -ENOMEM;
+
 	for (i = 0; i < nr; i++) {
 		space = spaces + i;
+		/* 这锁干什么的 */
 		xa_init_flags(&space->i_pages, XA_FLAGS_LOCK_IRQ);
 		atomic_set(&space->i_mmap_writable, 0);
 		space->a_ops = &swap_aops;
 		/* swap cache doesn't use writeback related tags */
 		mapping_set_no_writeback_tags(space);
 	}
+
 	nr_swapper_spaces[type] = nr;
 	swapper_spaces[type] = spaces;
 
@@ -855,11 +869,13 @@ struct page *swapin_readahead(swp_entry_t entry, gfp_t gfp_mask,
 }
 
 #ifdef CONFIG_SYSFS
+/* 此属性的show回调函数 */
 static ssize_t vma_ra_enabled_show(struct kobject *kobj,
 				     struct kobj_attribute *attr, char *buf)
 {
 	return sprintf(buf, "%s\n", enable_vma_readahead ? "true" : "false");
 }
+/* 使能vma ra的回调函数 */
 static ssize_t vma_ra_enabled_store(struct kobject *kobj,
 				      struct kobj_attribute *attr,
 				      const char *buf, size_t count)
@@ -873,6 +889,7 @@ static ssize_t vma_ra_enabled_store(struct kobject *kobj,
 
 	return count;
 }
+/* 设置此属性的回调函数 */
 static struct kobj_attribute vma_ra_enabled_attr =
 	__ATTR(vma_ra_enabled, 0644, vma_ra_enabled_show,
 	       vma_ra_enabled_store);
@@ -885,7 +902,7 @@ static struct attribute *swap_attrs[] = {
 static struct attribute_group swap_attr_group = {
 	.attrs = swap_attrs,
 };
-
+/* 2024年8月5日23:46:12 */
 static int __init swap_init_sysfs(void)
 {
 	int err;
@@ -907,5 +924,6 @@ delete_obj:
 	kobject_put(swap_kobj);
 	return err;
 }
+
 subsys_initcall(swap_init_sysfs);
 #endif
