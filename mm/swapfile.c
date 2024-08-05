@@ -5,7 +5,8 @@
  *  Copyright (C) 1991, 1992, 1993, 1994  Linus Torvalds
  *  Swap reorganised 29.12.95, Stephen Tweedie
  */
-
+/* 2024年8月5日23:44:26
+除了cluster */
 #include <linux/mm.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/task.h>
@@ -449,6 +450,7 @@ static void cluster_list_add_tail(struct swap_cluster_list *list,
 		cluster_set_next_flag(&list->tail, idx, 0);
 	}
 }
+
 /* 2024年08月02日20:15:49 */
 static unsigned int cluster_list_del_first(struct swap_cluster_list *list,
 					   struct swap_cluster_info *ci)
@@ -1051,7 +1053,7 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 		return 0;
 
 }
-/*  */
+/* todo */
 int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 {
 	unsigned long size = swap_entry_size(entry_size);
@@ -1374,6 +1376,7 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 
 	return usage;
 }
+
 /* 释放si的此entry */
 static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 {
@@ -1467,6 +1470,8 @@ void put_swap_page(struct page *page, swp_entry_t entry)
 }
 
 #ifdef CONFIG_THP_SWAP
+/* 2024年8月5日23:40:49
+todo */
 int split_swap_cluster(swp_entry_t entry)
 {
 	struct swap_info_struct *si;
@@ -1482,7 +1487,7 @@ int split_swap_cluster(swp_entry_t entry)
 	return 0;
 }
 #endif
-
+/* 2024年8月5日23:40:03 */
 static int swp_entry_cmp(const void *ent1, const void *ent2)
 {
 	const swp_entry_t *e1 = ent1, *e2 = ent2;
@@ -1520,6 +1525,9 @@ void swapcache_free_entries(swp_entry_t *entries, int n)
 }
 
 /*
+2024年8月5日23:38:54
+page指针已经是指向swp的ent了
+找到这个ent有几个cnt
  * How many references to page are currently swapped out?
  * This does not give an exact answer when swap count is continued,
  * but does include the high COUNT_CONTINUED flag to allow for that.
@@ -1531,7 +1539,7 @@ int page_swapcount(struct page *page)
 	struct swap_cluster_info *ci;
 	swp_entry_t entry;
 	unsigned long offset;
-
+	/* 获取ent */
 	entry.val = page_private(page);
 	p = _swap_info_get(entry);
 	if (p) {
@@ -1661,7 +1669,7 @@ unlock_out:
 	unlock_cluster_or_swap_info(si, ci);
 	return ret;
 }
-
+/*  */
 static bool page_swapped(struct page *page)
 {
 	swp_entry_t entry;
@@ -1677,7 +1685,8 @@ static bool page_swapped(struct page *page)
 		return swap_page_trans_huge_swapped(si, entry);
 	return false;
 }
-
+/* 2024年8月5日23:31:21
+todo */
 static int page_trans_huge_map_swapcount(struct page *page, int *total_mapcount,
 					 int *total_swapcount)
 {
@@ -1692,7 +1701,9 @@ static int page_trans_huge_map_swapcount(struct page *page, int *total_mapcount,
 	VM_BUG_ON_PAGE(PageHuge(page), page);
 
 	if (!IS_ENABLED(CONFIG_THP_SWAP) || likely(!PageTransCompound(page))) {
+		
 		mapcount = page_trans_huge_mapcount(page, total_mapcount);
+		
 		if (PageSwapCache(page))
 			swapcount = page_swapcount(page);
 		if (total_swapcount)
@@ -1741,6 +1752,8 @@ static int page_trans_huge_map_swapcount(struct page *page, int *total_mapcount,
 }
 
 /*
+2024年8月5日23:30:22
+reuse？
  * We can write to an anon page without COW if there are no other references
  * to it.  And as a side-effect, free up its swap: because the old content
  * on disk will never be read, and seeking back there to write new content
@@ -1757,8 +1770,10 @@ bool reuse_swap_page(struct page *page, int *total_map_swapcount)
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	if (unlikely(PageKsm(page)))
 		return false;
+
 	count = page_trans_huge_map_swapcount(page, &total_mapcount,
 					      &total_swapcount);
+	
 	if (total_map_swapcount)
 		*total_map_swapcount = total_mapcount + total_swapcount;
 	if (count == 1 && PageSwapCache(page) &&
@@ -1834,7 +1849,9 @@ int try_to_free_swap(struct page *page)
 }
 
 /*
-
+2024年8月5日23:28:51
+释放swp ent
+并且释放页缓存画面
  * Free the swap entry like above, but also try to
  * free the page cache entry if it is the last user.
  */
@@ -1859,6 +1876,8 @@ int free_swap_and_cache(swp_entry_t entry)
 
 #ifdef CONFIG_HIBERNATION
 /*
+2024年8月5日23:25:58
+从dev找到swp type
  * Find the swap type that corresponds to given device (if any).
  *
  * @offset - number of the PAGE_SIZE-sized block of the device, starting
@@ -1870,11 +1889,12 @@ int swap_type_of(dev_t device, sector_t offset, struct block_device **bdev_p)
 {
 	struct block_device *bdev = NULL;
 	int type;
-
+	/* 先找到bdev */
 	if (device)
 		bdev = bdget(device);
 
 	spin_lock(&swap_lock);
+	/* 遍历全部type的si来寻找吗 */
 	for (type = 0; type < nr_swapfiles; type++) {
 		struct swap_info_struct *sis = swap_info[type];
 
@@ -1888,7 +1908,8 @@ int swap_type_of(dev_t device, sector_t offset, struct block_device **bdev_p)
 			spin_unlock(&swap_lock);
 			return type;
 		}
-		if (bdev == sis->bdev) {
+
+		if (bdev == sis->bdev) {/* 找到了对应的dev和si */
 			struct swap_extent *se = first_se(sis);
 
 			if (se->start_block == offset) {
@@ -1902,6 +1923,7 @@ int swap_type_of(dev_t device, sector_t offset, struct block_device **bdev_p)
 		}
 	}
 	spin_unlock(&swap_lock);
+
 	if (bdev)
 		bdput(bdev);
 
@@ -1909,6 +1931,7 @@ int swap_type_of(dev_t device, sector_t offset, struct block_device **bdev_p)
 }
 
 /*
+获取si的某个idx的在磁盘对应的block
  * Get the (PAGE_SIZE) block corresponding to given offset on the swapdev
  * corresponding to given index in swap_info (swap type).
  */
@@ -1916,13 +1939,16 @@ sector_t swapdev_block(int type, pgoff_t offset)
 {
 	struct block_device *bdev;
 	struct swap_info_struct *si = swap_type_to_swap_info(type);
-
+	/* 不存在si或者不可用 */
 	if (!si || !(si->flags & SWP_WRITEOK))
 		return 0;
+	/* 找到swp ent在bdev对应的block */
 	return map_swap_entry(swp_entry(type, offset), &bdev);
 }
 
 /*
+2024年8月5日23:22:17
+获取type的统计信息，total pages或者free pages
  * Return either the total number of swap pages of given type, or the number
  * of free pages of that type (depending on @free)
  *
@@ -1937,7 +1963,7 @@ unsigned int count_swap_pages(int type, int free)
 		struct swap_info_struct *sis = swap_info[type];
 
 		spin_lock(&sis->lock);
-		if (sis->flags & SWP_WRITEOK) {
+		if (sis->flags & SWP_WRITEOK) {/* 可用的话才统计 */
 			n = sis->pages;
 			if (free)
 				n -= sis->inuse_pages;
@@ -1945,6 +1971,7 @@ unsigned int count_swap_pages(int type, int free)
 		spin_unlock(&sis->lock);
 	}
 	spin_unlock(&swap_lock);
+
 	return n;
 }
 #endif /* CONFIG_HIBERNATION */

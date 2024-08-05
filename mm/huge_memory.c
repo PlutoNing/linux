@@ -2497,7 +2497,9 @@ static void __split_huge_page_tail(struct page *head, int tail,
 	 */
 	lru_add_page_tail(head, page_tail, lruvec, list);
 }
+/* 2024年8月5日23:35:07
 
+ */
 static void __split_huge_page(struct page *page, struct list_head *list,
 		pgoff_t end, unsigned long flags)
 {
@@ -2606,6 +2608,8 @@ int total_mapcount(struct page *page)
 }
 
 /*
+2024年8月5日23:31:57
+todo
  * This calculates accurately how many mappings a transparent hugepage
  * has (unlike page_mapcount() which isn't fully accurate). This full
  * accuracy is primarily needed to know if copy-on-write faults can
@@ -2651,15 +2655,20 @@ int page_trans_huge_mapcount(struct page *page, int *total_mapcount)
 		ret = max(ret, mapcount);
 		_total_mapcount += mapcount;
 	}
+
 	if (PageDoubleMap(page)) {
 		ret -= 1;
 		_total_mapcount -= HPAGE_PMD_NR;
 	}
+
 	mapcount = compound_mapcount(page);
+	
 	ret += mapcount;
 	_total_mapcount += mapcount;
+	
 	if (total_mapcount)
 		*total_mapcount = _total_mapcount;
+	
 	return ret;
 }
 
