@@ -85,7 +85,7 @@ struct posix_acl *get_cached_acl_rcu(struct inode *inode, int type);
 void set_cached_acl(struct inode *inode, int type, struct posix_acl *acl);
 void forget_cached_acl(struct inode *inode, int type);
 void forget_all_cached_acls(struct inode *inode);
-
+/* 移除acl属性？ */
 static inline void cache_no_acl(struct inode *inode)
 {
 	inode->i_acl = NULL;

@@ -251,23 +251,28 @@ bad_bmap:
 }
 
 /*
+2024年8月7日00:10:15
+shmem_writepage换出后调用此，看来是进行移除，
+回写，彻底的换出到磁盘吧
  * We may have stale swap cache pages in memory: notice
  * them here and get rid of the unnecessary final write.
  */
 int swap_writepage(struct page *page, struct writeback_control *wbc)
 {
 	int ret = 0;
-
+	/* 从mapping移除 */
 	if (try_to_free_swap(page)) {
 		unlock_page(page);
 		goto out;
 	}
+	/* todo */
 	if (frontswap_store(page) == 0) {
 		set_page_writeback(page);
 		unlock_page(page);
 		end_page_writeback(page);
 		goto out;
 	}
+	/* 换出page */
 	ret = __swap_writepage(page, wbc, end_swap_bio_write);
 out:
 	return ret;
@@ -286,7 +291,8 @@ static inline void count_swpout_vm_event(struct page *page)
 #endif
 	count_vm_events(PSWPOUT, hpage_nr_pages(page));
 }
-
+/* 2024年8月7日00:18:20
+换出swp的page，就是写入到file或者disk */
 int __swap_writepage(struct page *page, struct writeback_control *wbc,
 		bio_end_io_t end_write_func)
 {
@@ -295,10 +301,13 @@ int __swap_writepage(struct page *page, struct writeback_control *wbc,
 	struct swap_info_struct *sis = page_swap_info(page);
 
 	VM_BUG_ON_PAGE(!PageSwapCache(page), page);
-	if (sis->flags & SWP_FS) {
+	if (sis->flags & SWP_FS) {/* swp file */
 		struct kiocb kiocb;
 		struct file *swap_file = sis->swap_file;
+		/* 获取mapping */
 		struct address_space *mapping = swap_file->f_mapping;
+
+		/* 构造bio_vec */
 		struct bio_vec bv = {
 			.bv_page = page,
 			.bv_len  = PAGE_SIZE,
@@ -306,14 +315,19 @@ int __swap_writepage(struct page *page, struct writeback_control *wbc,
 		};
 		struct iov_iter from;
 
+		/* 把bvec加入到iov_iter */
 		iov_iter_bvec(&from, WRITE, &bv, 1, PAGE_SIZE);
+		/*  */
 		init_sync_kiocb(&kiocb, swap_file);
+
 		kiocb.ki_pos = page_file_offset(page);
 
 		set_page_writeback(page);
 		unlock_page(page);
+		/* 开始回写 */
 		ret = mapping->a_ops->direct_IO(&kiocb, &from);
 		if (ret == PAGE_SIZE) {
+			/* 性能信息统计 */
 			count_vm_event(PSWPOUT);
 			ret = 0;
 		} else {
@@ -332,10 +346,11 @@ int __swap_writepage(struct page *page, struct writeback_control *wbc,
 			pr_err_ratelimited("Write error on dio swapfile (%llu)\n",
 					   page_file_offset(page));
 		}
+
 		end_page_writeback(page);
 		return ret;
 	}
-
+	/* swp是磁盘的情况 */
 	ret = bdev_write_page(sis->bdev, swap_page_sector(page), page, wbc);
 	if (!ret) {
 		count_swpout_vm_event(page);
@@ -343,6 +358,7 @@ int __swap_writepage(struct page *page, struct writeback_control *wbc,
 	}
 
 	ret = 0;
+	/* 构造bio */
 	bio = get_swap_bio(GFP_NOIO, page, end_write_func);
 	if (bio == NULL) {
 		set_page_dirty(page);
@@ -350,11 +366,14 @@ int __swap_writepage(struct page *page, struct writeback_control *wbc,
 		ret = -ENOMEM;
 		goto out;
 	}
+
 	bio->bi_opf = REQ_OP_WRITE | REQ_SWAP | wbc_to_write_flags(wbc);
+	/*  */
 	bio_associate_blkg_from_page(bio, page);
 	count_swpout_vm_event(page);
 	set_page_writeback(page);
 	unlock_page(page);
+	/* todo */
 	submit_bio(bio);
 out:
 	return ret;

@@ -322,7 +322,7 @@ direct_free:
 
 	return 0;
 }
-
+/* 给page在swp获取ent，分配swp页面？todo */
 swp_entry_t get_swap_page(struct page *page)
 {
 	swp_entry_t entry, *pentry;
@@ -330,7 +330,7 @@ swp_entry_t get_swap_page(struct page *page)
 
 	entry.val = 0;
 
-	if (PageTransHuge(page)) {
+	if (PageTransHuge(page)) {/* 大页的特殊路径 */
 		if (IS_ENABLED(CONFIG_THP_SWAP))
 			get_swap_pages(1, &entry, HPAGE_PMD_NR);
 		goto out;
@@ -347,22 +347,25 @@ swp_entry_t get_swap_page(struct page *page)
 	 */
 	cache = raw_cpu_ptr(&swp_slots);
 
-	if (likely(check_cache_active() && cache->slots)) {
+	if (likely(check_cache_active() && cache->slots)) {/* 走缓存机制 */
 		mutex_lock(&cache->alloc_lock);
 		if (cache->slots) {
 repeat:
-			if (cache->nr) {
+			if (cache->nr) {/* 缓存还有空间 */
+				/* 获取这个条目的指针 */
 				pentry = &cache->slots[cache->cur++];
+				/* 使entry获取（指向）这个指针指向的东西 */
 				entry = *pentry;
+				/* 这个指针不再指向 */
 				pentry->val = 0;
 				cache->nr--;
-			} else {
+			} else {/* 缓存满了 */
 				if (refill_swap_slots_cache(cache))
 					goto repeat;
 			}
 		}
 		mutex_unlock(&cache->alloc_lock);
-		if (entry.val)
+		if (entry.val)/* 有效 */
 			goto out;
 	}
 

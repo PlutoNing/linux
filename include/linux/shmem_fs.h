@@ -20,6 +20,7 @@ struct shmem_inode_info {
 	被swap的页面数量？
 	 subtotal assigned to swap */
 	struct list_head        shrinklist;     /* shrinkable hpage inodes */
+	
 	struct list_head	swaplist;	/* 
 	挂载到shmem_swaplist
 	chain of maybes on swap */
@@ -33,8 +34,12 @@ struct shmem_inode_info {
 struct shmem_sb_info {
 	unsigned long max_blocks;   /* How many blocks are allowed */
 	struct percpu_counter used_blocks;  /* How many are allocated */
-	unsigned long max_inodes;   /* How many inodes are allowed */
-	unsigned long free_inodes;  /* How many are left for allocation */
+	unsigned long max_inodes;   /* 
+	最大允许的inode数量
+	How many inodes are allowed */
+	unsigned long free_inodes;  /* 
+	目前还可以分配的free inode
+	How many are left for allocation */
 	spinlock_t stat_lock;	    /* Serialize shmem_sb_info changes */
 	umode_t mode;		    /* Mount mode for root directory */
 	unsigned char huge;	    /* Whether to try for hugepages */
@@ -45,7 +50,7 @@ struct shmem_sb_info {
 	struct list_head shrinklist;  /* List of shinkable inodes */
 	unsigned long shrinklist_len; /* Length of shrinklist */
 };
-/*  */
+/* 获取shmem inode的sii */
 static inline struct shmem_inode_info *SHMEM_I(struct inode *inode)
 {
 	return container_of(inode, struct shmem_inode_info, vfs_inode);
@@ -86,7 +91,9 @@ extern unsigned long shmem_swap_usage(struct vm_area_struct *vma);
 extern unsigned long shmem_partial_swap_usage(struct address_space *mapping,
 						pgoff_t start, pgoff_t end);
 
-/* Flag allocation requirements to shmem_getpage */
+/* 
+shmem get page时候的flag
+Flag allocation requirements to shmem_getpage */
 enum sgp_type {
 	SGP_READ,	/* don't exceed i_size, don't allocate page */
 	SGP_CACHE,	/* don't exceed i_size, may allocate page */

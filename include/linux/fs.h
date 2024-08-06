@@ -791,7 +791,8 @@ struct inode {
 	struct fsverity_info	*i_verity_info;
 #endif
 /* 特异与用途
-kernfs是knode */
+kernfs是knode
+也可能是shmfile相关的shmem_falloc */
 	void			*i_private; /* fs or device private pointer */
 } __randomize_layout;
 
@@ -2142,7 +2143,7 @@ static inline u16 ki_hint_validate(enum rw_hint hint)
 		return hint;
 	return 0;
 }
-
+/* 构造kiocb */
 static inline void init_sync_kiocb(struct kiocb *kiocb, struct file *filp)
 {
 	*kiocb = (struct kiocb) {

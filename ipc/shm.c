@@ -591,6 +591,8 @@ static const struct vm_operations_struct shm_vm_ops = {
 };
 
 /**
+2024年8月6日23:10:47
+创建一个新的共享内存段
  * newseg - Create a new shared memory segment
  * @ns: namespace
  * @params: ptr to the structure that contains key, size and shmflg
@@ -618,7 +620,8 @@ static int newseg(struct ipc_namespace *ns, struct ipc_params *params)
 	if (ns->shm_tot + numpages < ns->shm_tot ||
 			ns->shm_tot + numpages > ns->shm_ctlall)
 		return -ENOSPC;
-
+	/* 通过 kvmalloc() 在直接映射区分配一个 struct shmid_kernel 结构体，
+		该结构体用于描述共享内存。 */
 	shp = kvmalloc(sizeof(*shp), GFP_KERNEL);
 	if (unlikely(!shp))
 		return -ENOMEM;
@@ -635,6 +638,12 @@ static int newseg(struct ipc_namespace *ns, struct ipc_params *params)
 	}
 
 	sprintf(name, "SYSV%08x", key);
+	/* 调用hugetlb_file_setup()或shmem_kernel_file_setup()关联文件。
+	虚拟地址空间可以和物理内存关联，但是页表的申请条件中会避开已分配的映射，
+	即物理内存是某个进程独享的。所以如何实现物理内存向多个进程的虚拟内存映射呢？
+	这里就要靠文件来实现了：虚拟地址空间也可以映射到一个文件，文件是可以跨进
+	程共享的。这里我们并不是映射到硬盘上存储的文件，而是映射到内存文件系统上的文件。
+	这里区分 shmem 和 shm ，前者是一个文件系统，后者是进程通信机制。 */
 	if (shmflg & SHM_HUGETLB) {
 		struct hstate *hs;
 		size_t hugesize;
@@ -660,8 +669,15 @@ static int newseg(struct ipc_namespace *ns, struct ipc_params *params)
 		if  ((shmflg & SHM_NORESERVE) &&
 				sysctl_overcommit_memory != OVERCOMMIT_NEVER)
 			acctflag = VM_NORESERVE;
+
+		/* 实际上shmem_kernel_file_setup()会在shmem文件系统里面创建一个文件：
+		__shmem_file_setup() 会创建新的 shmem 文件对应的 dentry 和 inode，
+		并将它们两个关联起来，然后分配一个 struct file 结构来表示新的 
+		shmem 文件，并且指向独特的 shmem_file_operations。 */
 		file = shmem_kernel_file_setup(name, size, acctflag);
 	}
+
+
 	error = PTR_ERR(file);
 	if (IS_ERR(file))
 		goto no_file;
@@ -675,7 +691,10 @@ static int newseg(struct ipc_namespace *ns, struct ipc_params *params)
 	shp->shm_file = file;
 	shp->shm_creator = current;
 
-	/* ipc_addid() locks shp upon success. */
+	/* ipc_addid() locks shp upon success.
+	通过 ipc_addid() 将新创建的 struct shmid_kernel 结构挂到 
+	shm_ids 里面的基数树上，返回相应的 id，
+	并且将 struct shmid_kernel 挂到当前进程的 sysvshm 队列中。 */
 	error = ipc_addid(&shm_ids(ns), &shp->shm_perm, ns->shm_ctlmni);
 	if (error < 0)
 		goto no_id;
@@ -722,7 +741,8 @@ static inline int shm_more_checks(struct kern_ipc_perm *ipcp,
 
 	return 0;
 }
-
+/* 2024年8月6日23:07:12
+ */
 long ksys_shmget(key_t key, size_t size, int shmflg)
 {
 	struct ipc_namespace *ns;
@@ -741,7 +761,9 @@ long ksys_shmget(key_t key, size_t size, int shmflg)
 
 	return ipcget(ns, &shm_ids(ns), &shm_ops, &shm_params);
 }
-
+/* 共享内存的创建通过shmget()实现。该函数创建对应的ipc_namespaace指针并指向
+该进程的ipc_ns，初始化共享内存对应的操作shm_ops，
+并将传参key, size, shmflg封装为传参shm_params，最终调用ipcget()。 */
 SYSCALL_DEFINE3(shmget, key_t, key, size_t, size, int, shmflg)
 {
 	return ksys_shmget(key, size, shmflg);

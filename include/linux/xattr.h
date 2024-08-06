@@ -77,6 +77,7 @@ struct simple_xattr {
 };
 
 /*
+2024年8月6日23:25:19
  * initialize the simple_xattrs structure
  */
 static inline void simple_xattrs_init(struct simple_xattrs *xattrs)

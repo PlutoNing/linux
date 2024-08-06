@@ -40,7 +40,8 @@
 #include <linux/fs_parser.h>
 
 #include <asm/tlbflush.h> /* for arch/microblaze update_mmu_cache() */
-
+/* shmem文件系统的vfsmnt，
+但是系统全局就这个一个嘛？ */
 static struct vfsmount *shm_mnt;
 
 #ifdef CONFIG_SHMEM
@@ -96,6 +97,7 @@ static struct vfsmount *shm_mnt;
 #define SHORT_SYMLINK_LEN 128
 
 /*
+shmem的fallocate相关
  * shmem_fallocate communicates with shmem_fault or shmem_writepage via
  * inode->i_private (with i_mutex making sure that it has only one user at
  * a time): we would prefer not to enlarge the shmem inode just for that.
@@ -147,7 +149,7 @@ static int shmem_getpage_gfp(struct inode *inode, pgoff_t index,
 		struct page **pagep, enum sgp_type sgp,
 		gfp_t gfp, struct vm_area_struct *vma,
 		struct vm_fault *vmf, vm_fault_t *fault_type);
-
+/* shm获取页面 */
 int shmem_getpage(struct inode *inode, pgoff_t index,
 		struct page **pagep, enum sgp_type sgp)
 {
@@ -161,6 +163,8 @@ static inline struct shmem_sb_info *SHMEM_SB(struct super_block *sb)
 }
 
 /*
+2024年8月6日23:18:05
+shmem文件系统创建文件前记账大小来看能不能创建？
  * shmem_file_setup pre-accounts the whole fixed size of a VM object,
  * for shared memory and for shared anonymous (/dev/zero) mappings
  * (unless MAP_NORESERVE and sysctl_overcommit_memory <= 1),
@@ -259,10 +263,10 @@ bool vma_is_shmem(struct vm_area_struct *vma)
 {
 	return vma->vm_ops == &shmem_vm_ops;
 }
-
+/*  */
 static LIST_HEAD(shmem_swaplist);
 static DEFINE_MUTEX(shmem_swaplist_mutex);
-
+/* 是否还有剩余free inode */
 static int shmem_reserve_inode(struct super_block *sb)
 {
 	struct shmem_sb_info *sbinfo = SHMEM_SB(sb);
@@ -289,7 +293,7 @@ static void shmem_free_inode(struct super_block *sb)
 }
 
 /**
-计算inode的block usage？
+计算shm inode的block usage？
  * shmem_recalc_inode - recalculate the block usage of an inode
  * @inode: inode to recalc
  *
@@ -671,6 +675,8 @@ unlock:
 }
 
 /*
+2024年8月7日00:01:52
+
  * Like delete_from_page_cache, but substitutes swap for page.
  */
 static void shmem_delete_from_page_cache(struct page *page, void *radswap)
@@ -681,12 +687,15 @@ static void shmem_delete_from_page_cache(struct page *page, void *radswap)
 	VM_BUG_ON_PAGE(PageCompound(page), page);
 
 	xa_lock_irq(&mapping->i_pages);
+	/* 在mapping中把page替换为page换出后的swp ent */
 	error = shmem_replace_entry(mapping, page->index, page, radswap);
+	
 	page->mapping = NULL;
 	mapping->nrpages--;
 	__dec_node_page_state(page, NR_FILE_PAGES);
 	__dec_node_page_state(page, NR_SHMEM);
 	xa_unlock_irq(&mapping->i_pages);
+
 	put_page(page);
 	BUG_ON(error);
 }
@@ -1334,6 +1343,8 @@ int shmem_unuse(unsigned int type, bool frontswap,
 }
 
 /*
+shmemfile的mapping的ops
+这里的写是说从pagecache写到swp
  * Move the page from the page cache to the swap cache.
  */
 static int shmem_writepage(struct page *page, struct writeback_control *wbc)
@@ -1346,13 +1357,17 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 
 	VM_BUG_ON_PAGE(PageCompound(page), page);
 	BUG_ON(!PageLocked(page));
+
 	mapping = page->mapping;
+	/*  */
 	index = page->index;
 	inode = mapping->host;
+	/* 获取所属shmfile的sii */
 	info = SHMEM_I(inode);
-	if (info->flags & VM_LOCKED)
+	/* 下面这些是不能换出的情况 */
+	if (info->flags & VM_LOCKED)/* 被加锁了 */
 		goto redirty;
-	if (!total_swap_pages)
+	if (!total_swap_pages)/* 没有swp机制 */
 		goto redirty;
 
 	/*
@@ -1378,8 +1393,8 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	 * good idea to continue anyway, once we're pushing into swap.  So
 	 * reactivate the page, and let shmem_fallocate() quit when too many.
 	 */
-	if (!PageUptodate(page)) {
-		if (inode->i_private) {
+	if (!PageUptodate(page)) {/*  */
+		if (inode->i_private) {/* 如果是fallocate文件 */
 			struct shmem_falloc *shmem_falloc;
 			spin_lock(&inode->i_lock);
 			shmem_falloc = inode->i_private;
@@ -1387,20 +1402,24 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 			    !shmem_falloc->waitq &&
 			    index >= shmem_falloc->start &&
 			    index < shmem_falloc->next)
+				/* 如果刚好index落在fallocate范围 */
 				shmem_falloc->nr_unswapped++;
 			else
 				shmem_falloc = NULL;
 			spin_unlock(&inode->i_lock);
-			if (shmem_falloc)
+			if (shmem_falloc)/* 也属于不能换出的情况 */
 				goto redirty;
 		}
+
 		clear_highpage(page);
 		flush_dcache_page(page);
 		SetPageUptodate(page);
 	}
+	/* 准备换出 */
 
+	/* 获取swp页面 */
 	swap = get_swap_page(page);
-	if (!swap.val)
+	if (!swap.val)/* 没找到swp页面 */
 		goto redirty;
 
 	/*
@@ -1415,17 +1434,23 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	if (list_empty(&info->swaplist))
 		list_add(&info->swaplist, &shmem_swaplist);
 
-	if (add_to_swap_cache(page, swap, GFP_ATOMIC) == 0) {
+	if (add_to_swap_cache(page, swap, GFP_ATOMIC) == 0) {/* 换出成功的情况 */
+
 		spin_lock_irq(&info->lock);
+		/* 重新计算block usage */
 		shmem_recalc_inode(inode);
 		info->swapped++;
 		spin_unlock_irq(&info->lock);
 
+		/* todo */
 		swap_shmem_alloc(swap);
+		/* 从mapping删除，然后把原位置换成swp ent */
 		shmem_delete_from_page_cache(page, swp_to_radix_entry(swap));
 
 		mutex_unlock(&shmem_swaplist_mutex);
+
 		BUG_ON(page_mapped(page));
+		/* 把page真正从swp缓存写到swp disk或者file */
 		swap_writepage(page, wbc);
 		return 0;
 	}
@@ -1550,7 +1575,8 @@ static struct page *shmem_alloc_page(gfp_t gfp,
 
 	return page;
 }
-
+/* shmem getpage在页缓存和swp找不到页面时
+调用这个来分配 */
 static struct page *shmem_alloc_and_acct_page(gfp_t gfp,
 		struct inode *inode,
 		pgoff_t index, bool huge)
@@ -1711,12 +1737,13 @@ static int shmem_swapin_page(struct inode *inode, pgoff_t index,
 	/* 此时pagep指向的是刚才从mapping查的结果，但是是vlaue，
 	不是指针，说明缺页，返回时pagep指向的是个swap值 */
 	VM_BUG_ON(!*pagep || !xa_is_value(*pagep));
-	/* 把页面转换为swap entry */
+	/* 然后就把这个page指针把页面转换为swap entry，好确定
+	是哪个swp ent */
 	swap = radix_to_swp_entry(*pagep);
 	*pagep = NULL;
 
 	/* Look it up and read it in..
-	查询swap */
+	这里是从swp的file的mapping（内存中）查询swap */
 	page = lookup_swap_cache(swap, NULL, 0);
 	if (!page) {
 		/* 刚才从swap的mapping读取不成功，所以可能是在文件或者交换设备里了。
@@ -1820,7 +1847,7 @@ unlock:
 
 /*
 2024年7月29日20:31:25
-从mapping，swap获取页面，或者分配。
+从inode的mapping，swap获取页面，或者分配。
  * shmem_getpage_gfp - find page in cache, or get from swap, or allocate
  *
  * If we allocate a new one we do not mark it dirty. That's up to the
@@ -1857,6 +1884,7 @@ repeat:
 	    ((loff_t)index << PAGE_SHIFT) >= i_size_read(inode)) {
 		return -EINVAL;
 	}
+
 	/* 获取shmemfs的sbinfo */
 	sbinfo = SHMEM_SB(inode->i_sb);
 	/* 可能是共享的vma，或者是自己的mm */
@@ -1864,7 +1892,7 @@ repeat:
 	/* 从mapping里面找页面 */
 	page = find_lock_entry(mapping, index);
 	if (xa_is_value(page)) {
-		/* 是个value不是个指针，就是说明没有页面，换入page */
+		/* 是个value不是个指针，就是说明有页面，但是被换出了，换入page */
 		error = shmem_swapin_page(inode, index, &page,
 					  sgp, gfp, vma, fault_type);
 		if (error == -EEXIST)
@@ -1895,9 +1923,12 @@ repeat:
 	/*
 	 * Fast cache lookup did not find it:
 	 * bring it back from swap or allocate.
+	 缓存没找到，这里从swp或者分配
+	 2024年8月6日22:57:28不过刚才不是已经换入了吗
 	 */
 
-	if (vma && userfaultfd_missing(vma)) {/*  */
+	if (vma && userfaultfd_missing(vma)) {/* 暂时跳过 */
+	
 		*fault_type = handle_userfault(vmf, VM_UFFD_MISSING);
 		return 0;
 	}
@@ -1931,6 +1962,7 @@ repeat:
 alloc_huge:
 	page = shmem_alloc_and_acct_page(gfp, inode, index, true);
 	if (IS_ERR(page)) {
+/*  */
 alloc_nohuge:
 		page = shmem_alloc_and_acct_page(gfp, inode,
 						 index, false);
@@ -2327,7 +2359,7 @@ static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 	return 0;
 }
-
+/* shmem文件系统获取inode？ */
 static struct inode *shmem_get_inode(struct super_block *sb, const struct inode *dir,
 				     umode_t mode, dev_t dev, unsigned long flags)
 {
@@ -2337,14 +2369,17 @@ static struct inode *shmem_get_inode(struct super_block *sb, const struct inode 
 
 	if (shmem_reserve_inode(sb))
 		return NULL;
-
+	/* 创建新inode */
 	inode = new_inode(sb);
 	if (inode) {
+		/* 给inode设置一些属性 */
 		inode->i_ino = get_next_ino();
+		/* todo */
 		inode_init_owner(inode, dir, mode);
 		inode->i_blocks = 0;
 		inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
 		inode->i_generation = prandom_u32();
+		
 		info = SHMEM_I(inode);
 		memset(info, 0, (char *)inode - (char *)info);
 		spin_lock_init(&info->lock);
@@ -2354,14 +2389,16 @@ static struct inode *shmem_get_inode(struct super_block *sb, const struct inode 
 		INIT_LIST_HEAD(&info->shrinklist);
 		INIT_LIST_HEAD(&info->swaplist);
 		simple_xattrs_init(&info->xattrs);
+		
 		cache_no_acl(inode);
 
 		switch (mode & S_IFMT) {
 		default:
+		/* 设置inode的shmem特殊ops，使之成为shmemfs的inode */
 			inode->i_op = &shmem_special_inode_operations;
 			init_special_inode(inode, mode, dev);
 			break;
-		case S_IFREG:
+		case S_IFREG:/* 常规文件 */
 			inode->i_mapping->a_ops = &shmem_aops;
 			inode->i_op = &shmem_inode_operations;
 			inode->i_fop = &shmem_file_operations;
@@ -2558,17 +2595,25 @@ static int shmem_initxattrs(struct inode *, const struct xattr *, void *);
 #else
 #define shmem_initxattrs NULL
 #endif
-
+/* 2024年8月7日00:34:22
+准备写入
+这里是准备
+看逻辑可能是准备好页面什么的。
+ */
 static int
 shmem_write_begin(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned flags,
 			struct page **pagep, void **fsdata)
 {
+	/* 获取file */
 	struct inode *inode = mapping->host;
+	/* 获取sii */
 	struct shmem_inode_info *info = SHMEM_I(inode);
+	/* 获取pgoff */
 	pgoff_t index = pos >> PAGE_SHIFT;
 
-	/* i_mutex is held by caller */
+	/* i_mutex is held by caller
+	这些是什么？todo */
 	if (unlikely(info->seals & (F_SEAL_GROW |
 				   F_SEAL_WRITE | F_SEAL_FUTURE_WRITE))) {
 		if (info->seals & (F_SEAL_WRITE | F_SEAL_FUTURE_WRITE))
@@ -2576,10 +2621,11 @@ shmem_write_begin(struct file *file, struct address_space *mapping,
 		if ((info->seals & F_SEAL_GROW) && pos + len > inode->i_size)
 			return -EPERM;
 	}
-
+	/* 刚才进行了一些检查，获取了pgoff，可能是准备好页面什么的，
+	这里就是获取index位置的页面 */
 	return shmem_getpage(inode, index, pagep, SGP_WRITE);
 }
-
+/* 2024年8月7日00:38:12 */
 static int
 shmem_write_end(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned copied,
@@ -3864,11 +3910,14 @@ static void shmem_destroy_inodecache(void)
 {
 	kmem_cache_destroy(shmem_inode_cachep);
 }
-
+/* shmemfile的mapping ops */
 static const struct address_space_operations shmem_aops = {
+	/* 写回到swp */
 	.writepage	= shmem_writepage,
+	/* 置脏page */
 	.set_page_dirty	= __set_page_dirty_no_writeback,
 #ifdef CONFIG_TMPFS
+/* 准备好要写的页面 */
 	.write_begin	= shmem_write_begin,
 	.write_end	= shmem_write_end,
 #endif
@@ -3923,6 +3972,7 @@ static const struct inode_operations shmem_dir_inode_operations = {
 #endif
 };
 
+/*  */
 static const struct inode_operations shmem_special_inode_operations = {
 #ifdef CONFIG_TMPFS_XATTR
 	.listxattr	= shmem_listxattr,
@@ -4181,7 +4231,7 @@ EXPORT_SYMBOL_GPL(shmem_truncate_range);
 #endif /* CONFIG_SHMEM */
 
 /* common code */
-
+/* 创建内存共享文件 */
 static struct file *__shmem_file_setup(struct vfsmount *mnt, const char *name, loff_t size,
 				       unsigned long flags, unsigned int i_flags)
 {
@@ -4193,12 +4243,13 @@ static struct file *__shmem_file_setup(struct vfsmount *mnt, const char *name, l
 
 	if (size < 0 || size > MAX_LFS_FILESIZE)
 		return ERR_PTR(-EINVAL);
-
+	/* 有足够内存才继续 */
 	if (shmem_acct_size(flags, size))
 		return ERR_PTR(-ENOMEM);
 
 	inode = shmem_get_inode(mnt->mnt_sb, NULL, S_IFREG | S_IRWXUGO, 0,
 				flags);
+
 	if (unlikely(!inode)) {
 		shmem_unacct_size(flags, size);
 		return ERR_PTR(-ENOSPC);
@@ -4216,6 +4267,11 @@ static struct file *__shmem_file_setup(struct vfsmount *mnt, const char *name, l
 }
 
 /**
+2024年8月6日23:14:46
+实际上shmem_kernel_file_setup()会在shmem文件系统里面创建一个文件：
+__shmem_file_setup() 会创建新的 shmem 文件对应的 dentry 和 inode，
+并将它们两个关联起来，然后分配一个 struct file 结构来表示新的 
+shmem 文件，并且指向独特的 shmem_file_operations。
  * shmem_kernel_file_setup - get an unlinked file living in tmpfs which must be
  * 	kernel internal.  There will be NO LSM permission checks against the
  * 	underlying inode.  So users of this interface must do LSM checks at a
@@ -4296,7 +4352,7 @@ int shmem_zero_setup(struct vm_area_struct *vma)
  * @mapping:	the page's address_space
  * @index:	the page index
  * @gfp:	the page allocator flags to use if allocating
- *就想tmpfs的read_cache_page_gfp(mapping, index, gfp)，新的分配使用的是指定的gfp。
+ *就像tmpfs的read_cache_page_gfp(mapping, index, gfp)，新的分配使用的是指定的gfp。
  不过还是和实际的这个函数不一样，因为实际上会找swap。
  * This behaves as a tmpfs "read_cache_page_gfp(mapping, index, gfp)",
  * with any new page allocations done using the specified allocation flags.

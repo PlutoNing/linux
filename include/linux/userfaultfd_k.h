@@ -15,7 +15,8 @@
 
 #include <linux/fcntl.h>
 
-/*
+/*userfaultfd，这是 kernel 中提供的一种特殊的处理 page fault 的机制，
+能够让用户态程序自行处理自己的 page fault.
  * CAREFUL: Check include/uapi/asm-generic/fcntl.h when defining
  * new flags, since they might collide with O_* ones. We want
  * to re-use O_* flags that couldn't possibly have a meaning

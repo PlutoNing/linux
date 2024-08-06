@@ -220,7 +220,7 @@ static void i_callback(struct rcu_head *head)
 	else
 		free_inode_nonrcu(inode);
 }
-
+/*  */
 static struct inode *alloc_inode(struct super_block *sb)
 {
 	const struct super_operations *ops = sb->s_op;
@@ -451,6 +451,7 @@ static void inode_lru_list_del(struct inode *inode)
 }
 
 /**
+把新inode挂载到相应sb的一些list上面
  * inode_sb_list_add - add inode to the superblock list of inodes
  * @inode: inode to add
  */
@@ -905,6 +906,8 @@ unsigned int get_next_ino(void)
 EXPORT_SYMBOL(get_next_ino);
 
 /**
+2024年8月6日23:21:33
+获取inode？
  *	new_inode_pseudo 	- obtain an inode
  *	@sb: superblock
  *
@@ -928,6 +931,7 @@ struct inode *new_inode_pseudo(struct super_block *sb)
 }
 
 /**
+在sb新建inode
  *	new_inode 	- obtain an inode
  *	@sb: superblock
  *
@@ -2017,17 +2021,17 @@ void __init inode_init(void)
 					0,
 					0);
 }
-
+/* 2024年8月6日23:27:16 */
 void init_special_inode(struct inode *inode, umode_t mode, dev_t rdev)
 {
 	inode->i_mode = mode;
-	if (S_ISCHR(mode)) {
+	if (S_ISCHR(mode)) {/* 字符设备 */
 		inode->i_fop = &def_chr_fops;
 		inode->i_rdev = rdev;
-	} else if (S_ISBLK(mode)) {
+	} else if (S_ISBLK(mode)) {/* 块设备 */
 		inode->i_fop = &def_blk_fops;
 		inode->i_rdev = rdev;
-	} else if (S_ISFIFO(mode))
+	} else if (S_ISFIFO(mode))/* fifo设备 */
 		inode->i_fop = &pipefifo_fops;
 	else if (S_ISSOCK(mode))
 		;	/* leave it no_open_fops */

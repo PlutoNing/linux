@@ -105,7 +105,7 @@ static inline swp_entry_t radix_to_swp_entry(void *arg)
 	entry.val = xa_to_value(arg);
 	return entry;
 }
-
+/*  */
 static inline void *swp_to_radix_entry(swp_entry_t entry)
 {
 	return xa_mk_value(entry.val);

@@ -84,7 +84,15 @@ static inline unsigned long *frontswap_map_get(struct swap_info_struct *p)
 	return NULL;
 }
 #endif
-
+/* 2024年8月7日00:14:13
+每当交换子系统准备将一个页面写入交换设备时（参见swap_writepage()），就会调用
+frontswap_store。Frontswap与frontswap backend协商，如果backend说它没有空
+间，frontswap_store返回-1，内核就会照常把页换到交换设备上。注意，来自frontswap
+backend的响应对内核来说是不可预测的；它可能选择从不接受一个页面，可能接受每九个
+页面，也可能接受每一个页面。但是如果backend确实接受了一个页面，那么这个页面的数
+据已经被复制并与类型和偏移量相关联了，而且backend保证了数据的持久性。在这种情况
+下，frontswap在交换设备的“frontswap_map” 中设置了一个位，对应于交换设备上的
+页面偏移量，否则它就会将数据写入该设备。 */
 static inline int frontswap_store(struct page *page)
 {
 	if (frontswap_enabled())

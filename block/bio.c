@@ -2046,6 +2046,8 @@ static void __bio_associate_blkg(struct bio *bio, struct blkcg_gq *blkg)
 }
 
 /**
+2024年8月7日00:28:07
+todo
  * bio_associate_blkg_from_css - associate a bio with a specified css
  * @bio: target bio
  * @css: target css
@@ -2075,6 +2077,7 @@ EXPORT_SYMBOL_GPL(bio_associate_blkg_from_css);
 
 #ifdef CONFIG_MEMCG
 /**
+2024年8月7日00:26:38
  * bio_associate_blkg_from_page - associate a bio with the page's blkg
  * @bio: target bio
  * @page: the page to lookup the blkcg from
@@ -2091,8 +2094,9 @@ void bio_associate_blkg_from_page(struct bio *bio, struct page *page)
 		return;
 
 	rcu_read_lock();
-
+	/* 获取的是cgroup的subsys里面的blk cg相关的css */
 	css = cgroup_e_css(page->mem_cgroup->css.cgroup, &io_cgrp_subsys);
+	/* 关联blkcg与bio */
 	bio_associate_blkg_from_css(bio, css);
 
 	rcu_read_unlock();

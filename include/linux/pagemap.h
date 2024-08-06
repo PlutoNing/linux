@@ -454,7 +454,7 @@ static inline loff_t page_offset(struct page *page)
 {
 	return ((loff_t)page->index) << PAGE_SHIFT;
 }
-
+/*  */
 static inline loff_t page_file_offset(struct page *page)
 {
 	return ((loff_t)page_index(page)) << PAGE_SHIFT;

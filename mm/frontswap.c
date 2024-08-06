@@ -243,6 +243,7 @@ static inline void __frontswap_clear(struct swap_info_struct *sis,
 }
 
 /*
+2024年8月7日00:11:44
  * "Store" data from a page to frontswap and associate it with the page's
  * swaptype and offset.  Page must be locked and in the swap cache.
  * If frontswap already contains a page with matching swaptype and
@@ -256,6 +257,7 @@ int __frontswap_store(struct page *page)
 	int type = swp_type(entry);
 	struct swap_info_struct *sis = swap_info[type];
 	pgoff_t offset = swp_offset(entry);
+	/* 上面是获取page对应的swp的一些属性 */
 	struct frontswap_ops *ops;
 
 	VM_BUG_ON(!frontswap_ops);
@@ -268,7 +270,8 @@ int __frontswap_store(struct page *page)
 	 * and we can't rely on the new page replacing the old page as we may
 	 * not store to the same implementation that contains the old page.
 	 */
-	if (__frontswap_test(sis, offset)) {
+	if (__frontswap_test(sis, offset)) {/* 如果位于frontswp？ */
+		/* 移除？ */
 		__frontswap_clear(sis, offset);
 		for_each_frontswap_ops(ops)
 			ops->invalidate_page(type, offset);

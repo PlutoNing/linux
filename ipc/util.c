@@ -326,6 +326,9 @@ int ipc_addid(struct ipc_ids *ids, struct kern_ipc_perm *new, int limit)
 }
 
 /**
+2024年8月6日23:10:03
+ipcget_new()会根据定义的ops->getnew()创建新的ipc对象，即newseg()。
+所以新的创建最后都会走到注册的newseg()函数
  * ipcget_new -	create a new ipc object
  * @ns: ipc namespace
  * @ids: ipc identifier set
@@ -627,6 +630,13 @@ out:
 }
 
 /**
+2024年8月6日23:09:13
+共享内存的创建通过shmget()实现。该函数创建对应的ipc_namespaace指针
+并指向该进程的ipc_ns，初始化共享内存对应的操作shm_ops，
+并将传参key, size, shmflg封装为传参shm_params，最终调用ipcget()。
+---------------------------------------
+ipcget()会根据传参key的类型是否是IPC_PRIVATE选择调用ipcget_new()创
+建或者调用ipcget_public()打开对应的共享内存。
  * ipcget - Common sys_*get() code
  * @ns: namespace
  * @ids: ipc identifier set

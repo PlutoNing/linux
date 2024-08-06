@@ -1145,7 +1145,7 @@ void iov_iter_kvec(struct iov_iter *i, unsigned int direction,
 	i->count = count;
 }
 EXPORT_SYMBOL(iov_iter_kvec);
-
+/* 关联iov与bvec，把bvec加入iov */
 void iov_iter_bvec(struct iov_iter *i, unsigned int direction,
 			const struct bio_vec *bvec, unsigned long nr_segs,
 			size_t count)
