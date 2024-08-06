@@ -216,7 +216,7 @@ static int make_args(char *line, char *n_argv[], int maxargs, int cmd_nb)
 }
 
 static int do_batch(int argc, char **argv);
-
+/* 2024年08月06日20:05:04 */
 static const struct cmd cmds[] = {
 	{ "help",	do_help },
 	{ "batch",	do_batch },
