@@ -72,7 +72,7 @@ struct bpf_map_memory {
 	u32 pages;
 	struct user_struct *user;
 };
-
+/* 代表bpf map，很多其他类型map都包含此map */
 struct bpf_map {
 	/* The first two cachelines with read-mostly members of which some
 	 * are also accessed in fast-path (e.g. ops, max_entries).
@@ -112,7 +112,7 @@ struct bpf_map {
 	/* map的名字 */
 	char name[BPF_OBJ_NAME_LEN];
 };
-
+/* 是否被锁了 */
 static inline bool map_value_has_spin_lock(const struct bpf_map *map)
 {
 	return map->spin_lock_off >= 0;
@@ -126,7 +126,8 @@ static inline void check_and_init_map_lock(struct bpf_map *map, void *dst)
 		(struct bpf_spin_lock){};
 }
 
-/* copy everything but bpf_spin_lock */
+/* copy everything but bpf_spin_lock
+bpf_map拷贝元素的函数 */
 static inline void copy_map_value(struct bpf_map *map, void *dst, void *src)
 {
 	if (unlikely(map_value_has_spin_lock(map))) {
@@ -433,9 +434,11 @@ struct bpf_prog_aux {
 		struct rcu_head	rcu;
 	};
 };
-/*  */
+/* bpf array数组的数据结构 */
 struct bpf_array {
+	/* 存储数据的map */
 	struct bpf_map map;
+	/* array元素的大小 */
 	u32 elem_size;
 	u32 index_mask;
 	/* 'ownership' of prog_array is claimed by the first program that
@@ -448,6 +451,7 @@ struct bpf_array {
 	union {
 		char value[0] __aligned(8);
 		void *ptrs[0] __aligned(8);
+		/* percpu的指针 */
 		void __percpu *pptrs[0] __aligned(8);
 	};
 };

@@ -261,7 +261,7 @@ static int queue_stack_map_get_next_key(struct bpf_map *map, void *key,
 {
 	return -EINVAL;
 }
-
+/* queue map的ops */
 const struct bpf_map_ops queue_map_ops = {
 	.map_alloc_check = queue_stack_map_alloc_check,
 	.map_alloc = queue_stack_map_alloc,
@@ -274,7 +274,7 @@ const struct bpf_map_ops queue_map_ops = {
 	.map_peek_elem = queue_map_peek_elem,
 	.map_get_next_key = queue_stack_map_get_next_key,
 };
-
+/* stack map的ops */
 const struct bpf_map_ops stack_map_ops = {
 	.map_alloc_check = queue_stack_map_alloc_check,
 	.map_alloc = queue_stack_map_alloc,

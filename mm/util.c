@@ -157,6 +157,7 @@ char *kmemdup_nul(const char *s, size_t len, gfp_t gfp)
 EXPORT_SYMBOL(kmemdup_nul);
 
 /**
+从用户空间拷贝数据
  * memdup_user - duplicate memory region from user space
  *
  * @src: source address in user space

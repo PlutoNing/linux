@@ -420,9 +420,12 @@ union bpf_attr {
 	};
 
 	struct { /* anonymous struct used by BPF_MAP_*_ELEM commands */
+	/* 指向要查找的map的fd */
 		__u32		map_fd;
+		/* 这里是要查找的key */
 		__aligned_u64	key;
 		union {
+			/* 查到的key存储在这里 */
 			__aligned_u64 value;
 			__aligned_u64 next_key;
 		};

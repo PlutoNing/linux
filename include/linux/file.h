@@ -30,7 +30,8 @@ static inline void fput_light(struct file *file, int fput_needed)
 	if (fput_needed)
 		fput(file);
 }
-/* 代表一个fd */
+/* 代表一个fd
+file descriptor */
 struct fd {
 	struct file *file;
 	unsigned int flags;
@@ -51,7 +52,8 @@ extern unsigned long __fdget(unsigned int fd);
 extern unsigned long __fdget_raw(unsigned int fd);
 extern unsigned long __fdget_pos(unsigned int fd);
 extern void __f_unlock_pos(struct file *);
-
+/* 2024年8月7日23:26:10
+？ */
 static inline struct fd __to_fd(unsigned long v)
 {
 	return (struct fd){(struct file *)(v & ~3),v & 3};

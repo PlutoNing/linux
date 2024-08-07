@@ -68,6 +68,7 @@ int array_map_alloc_check(union bpf_attr *attr)
 	return 0;
 }
 /* 
+是array map的ops的分配函数
 BPF_MAP_TYPE_ARRAY类型的map的分配过程
  */
 static struct bpf_map *array_map_alloc(union bpf_attr *attr)
@@ -121,7 +122,7 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	/* allocate all map elements and zero-initialize them
 	根据总大小，分配bpf_array空间 */
 	array = bpf_map_area_alloc(array_size, numa_node);
-	if (!array) {
+	if (!array) {/* 分配内存失败 */
 		bpf_map_charge_finish(&mem);
 		return ERR_PTR(-ENOMEM);
 	}
@@ -129,7 +130,9 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	array->map.unpriv_array = unpriv;
 
 	/* copy mandatory map attributes */
+	/* 设置里面的bpf_map的属性 */
 	bpf_map_init_from_attr(&array->map, attr);
+
 	bpf_map_charge_move(&array->map.memory, &mem);
 	array->elem_size = elem_size;
 
@@ -142,15 +145,18 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	return &array->map;
 }
 
-/* Called from syscall or from eBPF program */
+/* Called from syscall or from eBPF program
+2024年8月7日23:16:31
+array map进行lookup的回调 */
 static void *array_map_lookup_elem(struct bpf_map *map, void *key)
 {
+	/* 获得实际的array map */
 	struct bpf_array *array = container_of(map, struct bpf_array, map);
 	u32 index = *(u32 *)key;
 
 	if (unlikely(index >= array->map.max_entries))
 		return NULL;
-
+		/* 直接首地址+idx*element_size？ */
 	return array->value + array->elem_size * (index & array->index_mask);
 }
 
@@ -271,10 +277,12 @@ static int array_map_get_next_key(struct bpf_map *map, void *key, void *next_key
 	return 0;
 }
 
-/* Called from syscall or from eBPF program */
+/* Called from syscall or from eBPF program
+array进行update的回调 */
 static int array_map_update_elem(struct bpf_map *map, void *key, void *value,
 				 u64 map_flags)
 {
+	/* 获得实际的array */
 	struct bpf_array *array = container_of(map, struct bpf_array, map);
 	u32 index = *(u32 *)key;
 	char *val;
@@ -295,10 +303,11 @@ static int array_map_update_elem(struct bpf_map *map, void *key, void *value,
 		     !map_value_has_spin_lock(map)))
 		return -EINVAL;
 
+	/* 开始通过拷贝修改元素 */
 	if (array->map.map_type == BPF_MAP_TYPE_PERCPU_ARRAY) {
 		memcpy(this_cpu_ptr(array->pptrs[index & array->index_mask]),
 		       value, map->value_size);
-	} else {
+	} else {/*  */
 		val = array->value +
 			array->elem_size * (index & array->index_mask);
 		if (map_flags & BPF_F_LOCK)
@@ -347,7 +356,10 @@ int bpf_percpu_array_update(struct bpf_map *map, void *key, void *value,
 	return 0;
 }
 
-/* Called from syscall or from eBPF program */
+/* 
+bpf array删除元素的回调
+为啥是空的？
+Called from syscall or from eBPF program */
 static int array_map_delete_elem(struct bpf_map *map, void *key)
 {
 	return -EINVAL;
@@ -446,14 +458,20 @@ static int array_map_check_btf(const struct bpf_map *map,
 
 	return 0;
 }
-
+/* 
+2024年8月7日23:08:49
+array map的ops */
 const struct bpf_map_ops array_map_ops = {
 	.map_alloc_check = array_map_alloc_check,
+	/* 分配map */
 	.map_alloc = array_map_alloc,
 	.map_free = array_map_free,
 	.map_get_next_key = array_map_get_next_key,
+	/* lookup的回调 */
 	.map_lookup_elem = array_map_lookup_elem,
+	/* 修改元素的回调 */
 	.map_update_elem = array_map_update_elem,
+	/* 空的？ */
 	.map_delete_elem = array_map_delete_elem,
 	.map_gen_lookup = array_map_gen_lookup,
 	.map_direct_value_addr = array_map_direct_value_addr,
