@@ -1941,7 +1941,7 @@ todo
  * @nr_entries:	The maximum number of entries
  * @entries:	Where the resulting entries are placed
  * @indices:	The cache indices corresponding to the entries in @entries
- *
+ *搜索返回mapping里的一些entries。
  * find_get_entries() will search for and return a group of up to
  * @nr_entries entries in the mapping.  The entries are placed at
  * @entries.  find_get_entries() takes a reference against any actual
@@ -1968,6 +1968,7 @@ unsigned find_get_entries(struct address_space *mapping,
 		return 0;
 
 	rcu_read_lock();
+	/* 遍历mapping里面的pages，存储到page */
 	xas_for_each(&xas, page, ULONG_MAX) {
 		if (xas_retry(&xas, page))
 			continue;
@@ -1989,7 +1990,7 @@ unsigned find_get_entries(struct address_space *mapping,
 		page = find_subpage(page, xas.xa_index);
 
 export:
-		/* 保存获得的page和此page的空洞的位置吗 */
+		/* 保存获得的page和此page的位置吗 */
 		indices[ret] = xas.xa_index;
 		entries[ret] = page;
 
@@ -2945,18 +2946,21 @@ out_retry:
 	return ret | VM_FAULT_RETRY;
 }
 EXPORT_SYMBOL(filemap_fault);
-
+/* vma的vma ops的map_pages回调可能是这个函数 */
 void filemap_map_pages(struct vm_fault *vmf,
 		pgoff_t start_pgoff, pgoff_t end_pgoff)
 {
+	/* 获得vma所map的file */
 	struct file *file = vmf->vma->vm_file;
 	struct address_space *mapping = file->f_mapping;
 	pgoff_t last_pgoff = start_pgoff;
 	unsigned long max_idx;
+	/* 获取map file的mapping */
 	XA_STATE(xas, &mapping->i_pages, start_pgoff);
 	struct page *page;
 
 	rcu_read_lock();
+	/* 遍历xas，每次存储到page */
 	xas_for_each(&xas, page, end_pgoff) {
 		if (xas_retry(&xas, page))
 			continue;
@@ -2975,6 +2979,7 @@ void filemap_map_pages(struct vm_fault *vmf,
 		/* Has the page moved or been split? */
 		if (unlikely(page != xas_reload(&xas)))
 			goto skip;
+
 		page = find_subpage(page, xas.xa_index);
 
 		if (!PageUptodate(page) ||
@@ -2998,6 +3003,7 @@ void filemap_map_pages(struct vm_fault *vmf,
 		if (vmf->pte)
 			vmf->pte += xas.xa_index - last_pgoff;
 		last_pgoff = xas.xa_index;
+		/* 在mapping找到了page，这里map（映射到）缺页地址处 */
 		if (alloc_set_pte(vmf, NULL, page))
 			goto unlock;
 		unlock_page(page);
@@ -3303,6 +3309,7 @@ static int generic_write_check_limits(struct file *file, loff_t pos,
 
 /*
 2024年7月15日23:56:49
+fops的write函数前的check
  * Performs necessary checks before doing a write
  *
  * Can adjust writing position or amount of bytes to write.
@@ -3335,8 +3342,9 @@ inline ssize_t generic_write_checks(struct kiocb *iocb, struct iov_iter *from)
 	ret = generic_write_check_limits(file, iocb->ki_pos, &count);
 	if (ret)
 		return ret;
-
+	/* 现在count是可以写入的大小，如果比from里面count小，就truncate */
 	iov_iter_truncate(from, count);
+
 	return iov_iter_count(from);
 }
 EXPORT_SYMBOL(generic_write_checks);
@@ -3515,27 +3523,31 @@ int pagecache_write_end(struct file *file, struct address_space *mapping,
 	return aops->write_end(file, mapping, pos, len, copied, page, fsdata);
 }
 EXPORT_SYMBOL(pagecache_write_end);
-
+/* fops的generic direct IO函数 */
 ssize_t
 generic_file_direct_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct file	*file = iocb->ki_filp;
 	struct address_space *mapping = file->f_mapping;
 	struct inode	*inode = mapping->host;
+	/* 要写的位置 */
 	loff_t		pos = iocb->ki_pos;
 	ssize_t		written;
 	size_t		write_len;
 	pgoff_t		end;
 
+	/* 要写的数据大小 */
 	write_len = iov_iter_count(from);
+	/* 要写的end pgoff */
 	end = (pos + write_len - 1) >> PAGE_SHIFT;
 
-	if (iocb->ki_flags & IOCB_NOWAIT) {
+	if (iocb->ki_flags & IOCB_NOWAIT) {/* NO_WAIT的路径 */
 		/* If there are pages to writeback, return */
 		if (filemap_range_has_page(inode->i_mapping, pos,
 					   pos + write_len - 1))
 			return -EAGAIN;
 	} else {
+		/* 进行回写 */
 		written = filemap_write_and_wait_range(mapping, pos,
 							pos + write_len - 1);
 		if (written)
@@ -3547,6 +3559,7 @@ generic_file_direct_write(struct kiocb *iocb, struct iov_iter *from)
 	 * the new data.  We invalidate clean cached page from the region we're
 	 * about to write.  We do this *before* the write so that we can return
 	 * without clobbering -EIOCBQUEUED from ->direct_IO().
+	 	todo
 	 */
 	written = invalidate_inode_pages2_range(mapping,
 					pos >> PAGE_SHIFT, end);
@@ -3615,7 +3628,7 @@ struct page *grab_cache_page_write_begin(struct address_space *mapping,
 	return page;
 }
 EXPORT_SYMBOL(grab_cache_page_write_begin);
-
+/* 执行写入 */
 ssize_t generic_perform_write(struct file *file,
 				struct iov_iter *i, loff_t pos)
 {
@@ -3701,6 +3714,7 @@ again:
 EXPORT_SYMBOL(generic_perform_write);
 
 /**
+fops的generic write实现
  * __generic_file_write_iter - write data to a file
  * @iocb:	IO state structure (file, offset, etc.)
  * @from:	iov_iter with data to write
@@ -3723,6 +3737,7 @@ EXPORT_SYMBOL(generic_perform_write);
  */
 ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
+	/* 要写的文件？ */
 	struct file *file = iocb->ki_filp;
 	struct address_space * mapping = file->f_mapping;
 	struct inode 	*inode = mapping->host;
@@ -3730,19 +3745,23 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	ssize_t		err;
 	ssize_t		status;
 
-	/* We can write back this queue in page reclaim */
+	/* We can write back this queue in page reclaim
+	获取要写的磁盘 */
 	current->backing_dev_info = inode_to_bdi(inode);
+	/* 如有必要，移除privs */
 	err = file_remove_privs(file);
 	if (err)
 		goto out;
-
+	/* 更新时间 */
 	err = file_update_time(file);
 	if (err)
 		goto out;
 
-	if (iocb->ki_flags & IOCB_DIRECT) {
+	if (iocb->ki_flags & IOCB_DIRECT) {/* 
+	发现设置了IOCB_DIRECT，则调用generic_file_direct_write，里面同样会调用
+	address_space的direct_IO的函数，将数据直接写入硬盘。 */
 		loff_t pos, endbyte;
-
+		/* 进行direct IO */
 		written = generic_file_direct_write(iocb, from);
 		/*
 		 * If the write stopped short of completing, fall back to
@@ -3798,6 +3817,7 @@ EXPORT_SYMBOL(__generic_file_write_iter);
 
 /**
 2024年7月15日23:54:49
+fops的写入回调
  * generic_file_write_iter - write data to a file
  * @iocb:	IO state structure
  * @from:	iov_iter with data to write
@@ -3820,7 +3840,7 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	
 	ret = generic_write_checks(iocb, from);
 
-	if (ret > 0)
+	if (ret > 0)/* 调用generic write */
 		ret = __generic_file_write_iter(iocb, from);
 	
 	inode_unlock(inode);

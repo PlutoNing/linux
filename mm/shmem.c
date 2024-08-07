@@ -149,7 +149,7 @@ static int shmem_getpage_gfp(struct inode *inode, pgoff_t index,
 		struct page **pagep, enum sgp_type sgp,
 		gfp_t gfp, struct vm_area_struct *vma,
 		struct vm_fault *vmf, vm_fault_t *fault_type);
-/* shm获取页面 */
+/* shm获取位于index的页面 */
 int shmem_getpage(struct inode *inode, pgoff_t index,
 		struct page **pagep, enum sgp_type sgp)
 {
@@ -1847,7 +1847,11 @@ unlock:
 
 /*
 2024年7月29日20:31:25
+
 从inode的mapping，swap获取页面，或者分配。
+------------------
+这个shm的inode的vma在pgoff的page发生了缺页时
+错误处理函数会调用这个函数，
  * shmem_getpage_gfp - find page in cache, or get from swap, or allocate
  *
  * If we allocate a new one we do not mark it dirty. That's up to the
@@ -2116,7 +2120,8 @@ static int synchronous_wake_function(wait_queue_entry_t *wait, unsigned mode, in
 	list_del_init(&wait->entry);
 	return ret;
 }
-
+/* 2024年08月07日10:25:54
+ */
 static vm_fault_t shmem_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -2143,7 +2148,7 @@ static vm_fault_t shmem_fault(struct vm_fault *vmf)
 	 * standard mutex or completion: but we cannot take i_mutex in fault,
 	 * and bloating every shmem inode for this unlikely case would be sad.
 	 */
-	if (unlikely(inode->i_private)) {
+	if (unlikely(inode->i_private)) {/* 与fallocate相关 */
 		struct shmem_falloc *shmem_falloc;
 
 		spin_lock(&inode->i_lock);
@@ -2191,14 +2196,15 @@ static vm_fault_t shmem_fault(struct vm_fault *vmf)
 		sgp = SGP_NOHUGE;
 	else if (vma->vm_flags & VM_HUGEPAGE)
 		sgp = SGP_HUGE;
-
+	/* 这个shm的inode的vma在pgoff的page发生了缺页 */
 	err = shmem_getpage_gfp(inode, vmf->pgoff, &vmf->page, sgp,
 				  gfp, vma, vmf, &ret);
 	if (err)
 		return vmf_error(err);
 	return ret;
 }
-
+/* shm file ops的get_unmapped_area回调
+todo */
 unsigned long shmem_get_unmapped_area(struct file *file,
 				      unsigned long uaddr, unsigned long len,
 				      unsigned long pgoff, unsigned long flags)
@@ -2214,6 +2220,7 @@ unsigned long shmem_get_unmapped_area(struct file *file,
 	if (len > TASK_SIZE)
 		return -ENOMEM;
 
+	/* 用mm的cb来get_area？ */
 	get_area = current->mm->get_unmapped_area;
 	addr = get_area(file, uaddr, len, pgoff, flags);
 
@@ -2243,6 +2250,7 @@ unsigned long shmem_get_unmapped_area(struct file *file,
 	if (shmem_huge != SHMEM_HUGE_FORCE) {
 		struct super_block *sb;
 
+		/* 获得超级块 */
 		if (file) {
 			VM_BUG_ON(file->f_op != &shmem_file_operations);
 			sb = file_inode(file)->i_sb;
@@ -2255,6 +2263,7 @@ unsigned long shmem_get_unmapped_area(struct file *file,
 				return addr;
 			sb = shm_mnt->mnt_sb;
 		}
+
 		if (SHMEM_SB(sb)->huge == SHMEM_HUGE_NEVER)
 			return addr;
 	}
@@ -2329,7 +2338,8 @@ out_nomem:
 	spin_unlock_irq(&info->lock);
 	return retval;
 }
-
+/* shmfs进行file的mmap，mmap到vma
+todo，vma和file在哪里关联的呢 */
 static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct shmem_inode_info *info = SHMEM_I(file_inode(file));
@@ -2351,7 +2361,9 @@ static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 
 	file_accessed(file);
+	/* 设置vma的与shm特定的vma ops */
 	vma->vm_ops = &shmem_vm_ops;
+
 	if (IS_ENABLED(CONFIG_TRANSPARENT_HUGE_PAGECACHE) &&
 			((vma->vm_start + ~HPAGE_PMD_MASK) & HPAGE_PMD_MASK) <
 			(vma->vm_end & HPAGE_PMD_MASK)) {
@@ -2359,6 +2371,7 @@ static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 	return 0;
 }
+
 /* shmem文件系统获取inode？ */
 static struct inode *shmem_get_inode(struct super_block *sb, const struct inode *dir,
 				     umode_t mode, dev_t dev, unsigned long flags)
@@ -2625,7 +2638,10 @@ shmem_write_begin(struct file *file, struct address_space *mapping,
 	这里就是获取index位置的页面 */
 	return shmem_getpage(inode, index, pagep, SGP_WRITE);
 }
-/* 2024年8月7日00:38:12 */
+/* 2024年8月7日00:38:12
+2024年08月07日10:08:58
+
+ */
 static int
 shmem_write_end(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned copied,
@@ -2636,7 +2652,7 @@ shmem_write_end(struct file *file, struct address_space *mapping,
 	if (pos + copied > inode->i_size)
 		i_size_write(inode, pos + copied);
 
-	if (!PageUptodate(page)) {
+	if (!PageUptodate(page)) {/* 如果页面不是新的 */
 		struct page *head = compound_head(page);
 		if (PageTransCompound(page)) {
 			int i;
@@ -2644,24 +2660,28 @@ shmem_write_end(struct file *file, struct address_space *mapping,
 			for (i = 0; i < HPAGE_PMD_NR; i++) {
 				if (head + i == page)
 					continue;
+				/* 逐个处理 */
 				clear_highpage(head + i);
 				flush_dcache_page(head + i);
 			}
 		}
 		if (copied < PAGE_SIZE) {
+			/* from是pos在页内的offset */
 			unsigned from = pos & (PAGE_SIZE - 1);
 			zero_user_segments(page, 0, from,
 					from + copied, PAGE_SIZE);
 		}
 		SetPageUptodate(head);
 	}
+
+
 	set_page_dirty(page);
 	unlock_page(page);
 	put_page(page);
 
 	return copied;
 }
-
+/* shm file pos的read iter函数 */
 static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct file *file = iocb->ki_filp;
@@ -2672,6 +2692,7 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	enum sgp_type sgp = SGP_READ;
 	int error = 0;
 	ssize_t retval = 0;
+	/* 获取读写位置 */
 	loff_t *ppos = &iocb->ki_pos;
 
 	/*
@@ -2681,8 +2702,10 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	 */
 	if (!iter_is_iovec(to))
 		sgp = SGP_CACHE;
-
+	
+	/* 获取pgoff */
 	index = *ppos >> PAGE_SHIFT;
+	/* 获取页内offset */
 	offset = *ppos & ~PAGE_MASK;
 
 	for (;;) {
@@ -2692,21 +2715,28 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 		loff_t i_size = i_size_read(inode);
 
 		end_index = i_size >> PAGE_SHIFT;
-		if (index > end_index)
+		if (index > end_index)/* 有可能吗？ */
 			break;
 		if (index == end_index) {
+
+			/*  */
+
+
+			/* nr是最后一个页的数据大小，不一定是满页 */
 			nr = i_size & ~PAGE_MASK;
+			/* 读取最后一个页时，如果要读写的页内offset比页内数据还要大，
+				不在数据范围内，就break， */
 			if (nr <= offset)
 				break;
 		}
-
+		/* 获取shm位于index的页面 */
 		error = shmem_getpage(inode, index, &page, sgp);
 		if (error) {
 			if (error == -EINVAL)
 				error = 0;
 			break;
 		}
-		if (page) {
+		if (page) {/* 成功获取到了要读取的page */
 			if (sgp == SGP_CACHE)
 				set_page_dirty(page);
 			unlock_page(page);
@@ -2727,13 +2757,15 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 				break;
 			}
 		}
-		nr -= offset;
 
+		nr -= offset;
+		/* 现在nr是要读取的页内后部的数据大小 */
 		if (page) {
 			/*
 			 * If users can be writing to this page using arbitrary
 			 * virtual addresses, take care about potential aliasing
 			 * before reading the page on the kernel side.
+			 如果mapping可写
 			 */
 			if (mapping_writably_mapped(mapping))
 				flush_dcache_page(page);
@@ -2743,6 +2775,7 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 			if (!offset)
 				mark_page_accessed(page);
 		} else {
+			/* page可能为空吗 */
 			page = ZERO_PAGE(0);
 			get_page(page);
 		}
@@ -2750,6 +2783,7 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 		/*
 		 * Ok, we have the page, and it's up-to-date, so
 		 * now we can copy it to user space...
+		 这里开始拷贝读取的数据
 		 */
 		ret = copy_page_to_iter(page, offset, nr, to);
 		retval += ret;
@@ -2773,6 +2807,7 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 }
 
 /*
+shm seek对于seek hole与seek data实现的函数
  * llseek SEEK_DATA or SEEK_HOLE through the page cache.
  */
 static pgoff_t shmem_seek_hole_data(struct address_space *mapping,
@@ -2787,13 +2822,17 @@ static pgoff_t shmem_seek_hole_data(struct address_space *mapping,
 	pagevec_init(&pvec);
 	pvec.nr = 1;		/* start small: we may be there already */
 	while (!done) {
+		/* 找到什么样的entry？ */
 		pvec.nr = find_get_entries(mapping, index,
 					pvec.nr, pvec.pages, indices);
-		if (!pvec.nr) {
+		
+		if (!pvec.nr) {/* 刚才没找到entry，就break返回 */
 			if (whence == SEEK_DATA)
 				index = end;
 			break;
 		}
+
+		/* 逐个遍历处理刚才找到的 */
 		for (i = 0; i < pvec.nr; i++, index++) {
 			if (index < indices[i]) {
 				if (whence == SEEK_HOLE) {
@@ -2819,9 +2858,11 @@ static pgoff_t shmem_seek_hole_data(struct address_space *mapping,
 		pvec.nr = PAGEVEC_SIZE;
 		cond_resched();
 	}
+
+
 	return index;
 }
-
+/* shm file ops的seek函数 */
 static loff_t shmem_file_llseek(struct file *file, loff_t offset, int whence)
 {
 	struct address_space *mapping = file->f_mapping;
@@ -2829,9 +2870,14 @@ static loff_t shmem_file_llseek(struct file *file, loff_t offset, int whence)
 	pgoff_t start, end;
 	loff_t new_offset;
 
-	if (whence != SEEK_DATA && whence != SEEK_HOLE)
+
+	if (whence != SEEK_DATA && whence != SEEK_HOLE)/* 那么还可能是seek end，cur，set什么的 */
+	/* seek cur，end，set什么的，这些比较通用的操作，走这个路径 */
 		return generic_file_llseek_size(file, offset, whence,
 					MAX_LFS_FILESIZE, i_size_read(inode));
+
+
+	/* seek data和hole走这里的特殊实现 */
 	inode_lock(inode);
 	/* We're holding i_mutex so we can access i_size directly */
 
@@ -2840,6 +2886,7 @@ static loff_t shmem_file_llseek(struct file *file, loff_t offset, int whence)
 	else {
 		start = offset >> PAGE_SHIFT;
 		end = (inode->i_size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+		/* 找到新的offset */
 		new_offset = shmem_seek_hole_data(mapping, start, end, whence);
 		new_offset <<= PAGE_SHIFT;
 		if (new_offset > offset) {
@@ -2852,9 +2899,11 @@ static loff_t shmem_file_llseek(struct file *file, loff_t offset, int whence)
 		}
 	}
 
+	/* 这里设置pos为新的offset */
 	if (offset >= 0)
 		offset = vfs_setpos(file, offset, MAX_LFS_FILESIZE);
 	inode_unlock(inode);
+
 	return offset;
 }
 
@@ -3910,29 +3959,40 @@ static void shmem_destroy_inodecache(void)
 {
 	kmem_cache_destroy(shmem_inode_cachep);
 }
-/* shmemfile的mapping ops */
+/* shmemfile给给inode创建mapping时
+设置的mapping ops */
 static const struct address_space_operations shmem_aops = {
 	/* 写回到swp */
 	.writepage	= shmem_writepage,
 	/* 置脏page */
 	.set_page_dirty	= __set_page_dirty_no_writeback,
 #ifdef CONFIG_TMPFS
-/* 准备好要写的页面 */
+/* 准备好要写的页面,就是如果不在的话就换入或者申请。 */
 	.write_begin	= shmem_write_begin,
+	/* end工作 */
 	.write_end	= shmem_write_end,
 #endif
 #ifdef CONFIG_MIGRATION
+/* todo */
 	.migratepage	= migrate_page,
 #endif
+
 	.error_remove_page = generic_error_remove_page,
 };
-
+/* shmfile的file ops
+2024年08月07日10:20:57 */
 static const struct file_operations shmem_file_operations = {
+	/* mmap的函数 */
 	.mmap		= shmem_mmap,
+	/* todo，好像使用的是mm的get_area */
 	.get_unmapped_area = shmem_get_unmapped_area,
 #ifdef CONFIG_TMPFS
+/* 如果支持tmpfs的话，这里是回调 */
+/* seek函数 */
 	.llseek		= shmem_file_llseek,
+	/* 读取函数 */
 	.read_iter	= shmem_file_read_iter,
+	/* 为啥写入是generic函数 */
 	.write_iter	= generic_file_write_iter,
 	.fsync		= noop_fsync,
 	.splice_read	= generic_file_splice_read,
@@ -3940,7 +4000,7 @@ static const struct file_operations shmem_file_operations = {
 	.fallocate	= shmem_fallocate,
 #endif
 };
-
+/* 2024年08月07日10:20:33 */
 static const struct inode_operations shmem_inode_operations = {
 	.getattr	= shmem_getattr,
 	.setattr	= shmem_setattr,
@@ -3999,9 +4059,11 @@ static const struct super_operations shmem_ops = {
 	.free_cached_objects	= shmem_unused_huge_scan,
 #endif
 };
-
+/* 与shmfile进行mmap的vma的vma ops */
 static const struct vm_operations_struct shmem_vm_ops = {
+	/* 缺页处理函数 */
 	.fault		= shmem_fault,
+	/* 缺页时进行映射的函数，从vma的file里面找到page，映射到缺页的addr */
 	.map_pages	= filemap_map_pages,
 #ifdef CONFIG_NUMA
 	.set_policy     = shmem_set_policy,

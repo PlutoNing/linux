@@ -139,7 +139,7 @@ size_t _copy_from_iter(void *addr, size_t bytes, struct iov_iter *i);
 bool _copy_from_iter_full(void *addr, size_t bytes, struct iov_iter *i);
 size_t _copy_from_iter_nocache(void *addr, size_t bytes, struct iov_iter *i);
 bool _copy_from_iter_full_nocache(void *addr, size_t bytes, struct iov_iter *i);
-
+/* 2024年08月07日11:37:15 */
 static __always_inline __must_check
 size_t copy_to_iter(const void *addr, size_t bytes, struct iov_iter *i)
 {
@@ -241,6 +241,7 @@ int iov_iter_npages(const struct iov_iter *i, int maxpages);
 
 const void *dup_iter(struct iov_iter *new, struct iov_iter *old, gfp_t flags);
 /* 2024年7月15日23:57:17
+获取数据大小
  */
 static inline size_t iov_iter_count(const struct iov_iter *i)
 {

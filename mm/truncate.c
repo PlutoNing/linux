@@ -738,6 +738,7 @@ static int do_launder_page(struct address_space *mapping, struct page *page)
 
 /**
 2024年07月29日10:16:52
+移除mapping范围内的页面？
  * invalidate_inode_pages2_range - remove range of pages from an address_space
  * @mapping: the address_space
  * @start: the page offset 'from' which to invalidate

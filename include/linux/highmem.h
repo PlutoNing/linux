@@ -223,7 +223,8 @@ alloc_zeroed_user_highpage_movable(struct vm_area_struct *vma,
 {
 	return __alloc_zeroed_user_highpage(__GFP_MOVABLE, vma, vaddr);
 }
-
+/* 2024年08月07日10:12:32
+kmap之后进行操作，但是操作是？ */
 static inline void clear_highpage(struct page *page)
 {
 	void *kaddr = kmap_atomic(page);
@@ -232,6 +233,9 @@ static inline void clear_highpage(struct page *page)
 }
 /* 2024年6月24日00:10:29
 todo
+---------------------------------------------------------------------
+kaddr     start1++++++++end1   start2++++++++++++++end2
+
  */
 static inline void zero_user_segments(struct page *page,
 	unsigned start1, unsigned end1,

@@ -932,6 +932,7 @@ static inline loff_t i_size_read(const struct inode *inode)
 
 /*
 2024年7月29日00:56:58
+更新inode的i_size大小
  * NOTE: unlike i_size_read(), i_size_write() does need locking around it
  * (normally i_mutex), otherwise on 32bit/SMP an update of i_size_seqcount
  * can be lost, resulting in subsequent i_size_read() calls spinning forever.
@@ -1395,7 +1396,7 @@ static inline struct inode *file_inode(const struct file *f)
 {
 	return f->f_inode;
 }
-
+/* 获取file的dentry */
 static inline struct dentry *file_dentry(const struct file *file)
 {
 	return d_real(file->f_path.dentry, file_inode(file));
@@ -2281,6 +2282,7 @@ extern bool atime_needs_update(const struct path *, struct inode *);
 extern void touch_atime(const struct path *);
 /* 2024年6月30日19:28:30
 2024年7月16日00:13:31
+标记atime
  */
 static inline void file_accessed(struct file *file)
 {

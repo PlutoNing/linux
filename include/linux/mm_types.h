@@ -429,6 +429,7 @@ struct mm_struct {
 		/* invalidate 缓存的时候++这个值 */
 		u64 vmacache_seqnum;                   /* per-thread vmacache */
 #ifdef CONFIG_MMU
+/* mm的get_unmapped_area函数 */
 		unsigned long (*get_unmapped_area) (struct file *filp,
 				unsigned long addr, unsigned long len,
 				unsigned long pgoff, unsigned long flags);

@@ -895,9 +895,12 @@ size_t copy_page_to_iter(struct page *page, size_t offset, size_t bytes,
 	if (unlikely(!page_copy_sane(page, offset, bytes)))
 		return 0;
 	if (i->type & (ITER_BVEC|ITER_KVEC)) {
+		/* 先kmap映射 */
 		void *kaddr = kmap_atomic(page);
+		/* 拷贝 */
 		size_t wanted = copy_to_iter(kaddr + offset, bytes, i);
 		kunmap_atomic(kaddr);
+
 		return wanted;
 	} else if (unlikely(iov_iter_is_discard(i)))
 		return bytes;

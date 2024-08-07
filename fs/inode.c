@@ -1829,6 +1829,8 @@ static int __remove_privs(struct dentry *dentry, int kill)
 }
 
 /*
+2024年08月07日11:44:56
+为什么被写的时候要remove priv。
  * Remove special file priviledges (suid, capabilities) when file is written
  * to or truncated.
  */

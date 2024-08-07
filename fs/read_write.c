@@ -40,6 +40,8 @@ static inline bool unsigned_offsets(struct file *file)
 }
 
 /**
+2024年08月07日11:04:19
+设置file对象的pos
  * vfs_setpos - update the file offset for lseek
  * @file:	file structure in question
  * @offset:	file offset to seek to
@@ -67,6 +69,7 @@ loff_t vfs_setpos(struct file *file, loff_t offset, loff_t maxsize)
 EXPORT_SYMBOL(vfs_setpos);
 
 /**
+generic的seek实现，一般seek cur，end，set会调用这个
  * generic_file_llseek_size - generic llseek implementation for regular files
  * @file:	file structure to seek on
  * @offset:	file offset to seek to
@@ -126,7 +129,7 @@ generic_file_llseek_size(struct file *file, loff_t offset, int whence,
 		offset = eof;
 		break;
 	}
-
+	/* 刚才得到了新的offset，这里设置到file-》pos */
 	return vfs_setpos(file, offset, maxsize);
 }
 EXPORT_SYMBOL(generic_file_llseek_size);
