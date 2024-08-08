@@ -110,6 +110,7 @@ static struct bpf_map *find_and_alloc_map(union bpf_attr *attr)
 
 	if (type >= ARRAY_SIZE(bpf_map_types))
 		return ERR_PTR(-EINVAL);
+
 	type = array_index_nospec(type, ARRAY_SIZE(bpf_map_types));
 	/* 获取此类型的map的ops */
 	ops = bpf_map_types[type];
@@ -180,7 +181,7 @@ static u32 bpf_map_flags_retain_permanent(u32 flags)
 	 */
 	return flags & ~(BPF_F_RDONLY | BPF_F_WRONLY);
 }
-
+/* 设置bpf_map的attr */
 void bpf_map_init_from_attr(struct bpf_map *map, union bpf_attr *attr)
 {
 	map->map_type = attr->map_type;
@@ -561,6 +562,7 @@ static int map_check_btf(struct bpf_map *map, const struct btf *btf,
 
 #define BPF_MAP_CREATE_LAST_FIELD btf_value_type_id
 /* 
+2024年8月7日23:02:04
 bpf BPF_MAP_CREATE系统调用
 syscall__NR_bpf, BPF_MAP_CREATE)在内核中进入这个函数的流程：
 SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, size)
@@ -741,11 +743,11 @@ int __weak bpf_stackmap_copy(struct bpf_map *map, void *key, void *value)
 {
 	return -ENOTSUPP;
 }
-
+/* 拷贝key_size大小的数据， */
 static void *__bpf_copy_key(void __user *ukey, u64 key_size)
 {
-	if (key_size)
-		return memdup_user(ukey, key_size);
+	if (key_size)/* 拷贝数据 */
+		return memdup_user(ukey , key_size);
 
 	if (ukey)
 		return ERR_PTR(-EINVAL);
@@ -772,11 +774,14 @@ static int map_lookup_elem(union bpf_attr *attr)
 
 	if (attr->flags & ~BPF_F_LOCK)
 		return -EINVAL;
-
+	/* 获得f descriptor */
 	f = fdget(ufd);
+	/* 获取map指针，位于filep的priv里面 */
 	map = __bpf_map_get(f);
+	
 	if (IS_ERR(map))
 		return PTR_ERR(map);
+	/* 权限 */
 	if (!(map_get_sys_perms(map, f) & FMODE_CAN_READ)) {
 		err = -EPERM;
 		goto err_put;
@@ -787,7 +792,7 @@ static int map_lookup_elem(union bpf_attr *attr)
 		err = -EINVAL;
 		goto err_put;
 	}
-
+	/* 把key从用户空间拷贝到内核里面 */
 	key = __bpf_copy_key(ukey, map->key_size);
 	if (IS_ERR(key)) {
 		err = PTR_ERR(key);
@@ -805,6 +810,7 @@ static int map_lookup_elem(union bpf_attr *attr)
 		value_size = map->value_size;
 
 	err = -ENOMEM;
+	/* 这里存储在内核查到的v */
 	value = kmalloc(value_size, GFP_USER | __GFP_NOWARN);
 	if (!value)
 		goto free_key;
@@ -865,6 +871,7 @@ done:
 		goto free_value;
 
 	err = -EFAULT;
+	/* 把在内核态查到的值拷贝到用户空间 */
 	if (copy_to_user(uvalue, value, value_size) != 0)
 		goto free_value;
 
@@ -2900,9 +2907,13 @@ SYSCALL_DEFINE3(bpf, int, cmd, union bpf_attr __user *, uattr, unsigned int, siz
 		return err;
 
 	switch (cmd) {
+		/* 
+		2024年8月7日23:01:56
+		创建map的cmd */
 	case BPF_MAP_CREATE:
 		err = map_create(&attr);
 		break;
+		/* 查找元素的cmd */
 	case BPF_MAP_LOOKUP_ELEM:
 		err = map_lookup_elem(&attr);
 		break;

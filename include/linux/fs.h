@@ -1032,6 +1032,8 @@ struct file {
 #endif
 	/* needed for tty driver, and maybe others
 	在memcg的event里面，可能是eventfd_ctx_fileget(struct file *file)；	struct eventfd_ctx *ctx;
+	 bpf机制里面，如果是map的file，这里存储map
+	 
 	 */
 	void			*private_data;
 
