@@ -967,20 +967,28 @@ size_t iov_iter_zero(size_t bytes, struct iov_iter *i)
 	return bytes;
 }
 EXPORT_SYMBOL(iov_iter_zero);
-
+/* 2024年8月8日23:58:43
+往page的offset写入len长度的i里面的数据
+执行实际数据。
+ */
 size_t iov_iter_copy_from_user_atomic(struct page *page,
 		struct iov_iter *i, unsigned long offset, size_t bytes)
 {
-	char *kaddr = kmap_atomic(page), *p = kaddr + offset;
+	char *kaddr = kmap_atomic(page), 
+	/* p是要写入起始地址 */
+	*p = kaddr + offset;
+
 	if (unlikely(!page_copy_sane(page, offset, bytes))) {
 		kunmap_atomic(kaddr);
 		return 0;
 	}
+
 	if (unlikely(iov_iter_is_pipe(i) || iov_iter_is_discard(i))) {
 		kunmap_atomic(kaddr);
 		WARN_ON(1);
 		return 0;
 	}
+
 	iterate_all_kinds(i, bytes, v,
 		copyin((p += v.iov_len) - v.iov_len, v.iov_base, v.iov_len),
 		memcpy_from_page((p += v.bv_len) - v.bv_len, v.bv_page,
@@ -989,6 +997,7 @@ size_t iov_iter_copy_from_user_atomic(struct page *page,
 	)
 	kunmap_atomic(kaddr);
 	return bytes;
+
 }
 EXPORT_SYMBOL(iov_iter_copy_from_user_atomic);
 
@@ -1037,7 +1046,7 @@ static void pipe_advance(struct iov_iter *i, size_t size)
 	/* ... and discard everything past that point */
 	pipe_truncate(i);
 }
-
+/* 向前seek size的位置 */
 void iov_iter_advance(struct iov_iter *i, size_t size)
 {
 	if (unlikely(iov_iter_is_pipe(i))) {
@@ -1048,6 +1057,7 @@ void iov_iter_advance(struct iov_iter *i, size_t size)
 		i->count -= size;
 		return;
 	}
+	/* 实际的seek */
 	iterate_and_advance(i, size, v, 0, 0, 0)
 }
 EXPORT_SYMBOL(iov_iter_advance);

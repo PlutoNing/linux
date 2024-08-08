@@ -34,12 +34,20 @@
  * unsigned short
  */
 #define BV(x, n) { .nr_vecs = x, .name = "biovec-"#n }
+/* 分配bvec的slab */
 static struct biovec_slab bvec_slabs[BVEC_POOL_NR] __read_mostly = {
-	BV(1, 1), BV(4, 4), BV(16, 16), BV(64, 64), BV(128, 128), BV(BIO_MAX_PAGES, max),
+	BV(1, 1),
+	 BV(4, 4), 
+	 BV(16, 16), 
+	 BV(64, 64), 
+	 BV(128, 128),
+	  BV(BIO_MAX_PAGES, max),
 };
 #undef BV
 
 /*
+2024年8月8日23:10:08
+这是默认的bio_set？
  * fs_bio_set is the bio_set containing bio and iovec memory pools used by
  * IO code that does not need private memory pools.
  */
@@ -165,7 +173,8 @@ void bvec_free(mempool_t *pool, struct bio_vec *bv, unsigned int idx)
 		kmem_cache_free(bvs->slab, bv);
 	}
 }
-
+/* 从pool里面分配nr个bvec，
+根据视情况从pool或者bvec_slabs+idx对应的slab分配 */
 struct bio_vec *bvec_alloc(gfp_t gfp_mask, int nr, unsigned long *idx,
 			   mempool_t *pool)
 {
@@ -205,8 +214,9 @@ struct bio_vec *bvec_alloc(gfp_t gfp_mask, int nr, unsigned long *idx,
 fallback:
 		bvl = mempool_alloc(pool, gfp_mask);
 	} else {
-		struct biovec_slab *bvs = bvec_slabs + *idx;
+		/* 根据大小，在bvec_slabs数组找到对应的slab */
 		gfp_t __gfp_mask = gfp_mask & ~(__GFP_DIRECT_RECLAIM | __GFP_IO);
+		struct biovec_slab *bvs = bvec_slabs + *idx;
 
 		/*
 		 * Make this allocation restricted and don't dump info on
@@ -260,6 +270,8 @@ static void bio_free(struct bio *bio)
 }
 
 /*
+2024年8月8日23:14:40
+初始化一个刚刚分配的空bio？有哪些需要初始化的呢。
  * Users of this function have their own bio allocation. Subsequently,
  * they must remember to pair any call to bio_init() with bio_uninit()
  * when IO has completed, or when the bio is released.
@@ -391,6 +403,7 @@ static void punt_bios_to_rescuer(struct bio_set *bs)
 /**
 2024年07月03日15:00:54
 分配一个bio
+如何分配，哪些数据成员比较关键。
  * bio_alloc_bioset - allocate a bio for I/O
  * @gfp_mask:   the GFP_* mask given to the slab allocator
  * @nr_iovecs:	number of iovecs to pre-allocate
@@ -438,13 +451,13 @@ struct bio *bio_alloc_bioset(gfp_t gfp_mask, unsigned int nr_iovecs,
 	if (!bs) {
 		if (nr_iovecs > UIO_MAXIOV)
 			return NULL;
-
+		/* 这是直接分配了一个超大的bio */
 		p = kmalloc(sizeof(struct bio) +
 			    nr_iovecs * sizeof(struct bio_vec),
 			    gfp_mask);
 		front_pad = 0;
 		inline_vecs = nr_iovecs;
-	} else {
+	} else {/* 大多数情况下，还是有bio_set的 */
 		/* should not use nobvec bioset for nr_iovecs > 0 */
 		if (WARN_ON_ONCE(!mempool_initialized(&bs->bvec_pool) &&
 				 nr_iovecs > 0))
@@ -474,10 +487,13 @@ struct bio *bio_alloc_bioset(gfp_t gfp_mask, unsigned int nr_iovecs,
 		    (!bio_list_empty(&current->bio_list[0]) ||
 		     !bio_list_empty(&current->bio_list[1])) &&
 		    bs->rescue_workqueue)
+
+			/* 为什么这里禁止使用直接回收 */
 			gfp_mask &= ~__GFP_DIRECT_RECLAIM;
-		/* 从mempool分配 */
+
+		/* 从关联的bs的mempool分配 */
 		p = mempool_alloc(&bs->bio_pool, gfp_mask);
-		if (!p && gfp_mask != saved_gfp) {
+		if (!p && gfp_mask != saved_gfp) {/* 分配不成功，就使用本来的gfp再试一下 */
 			punt_bios_to_rescuer(bs);
 			gfp_mask = saved_gfp;
 			p = mempool_alloc(&bs->bio_pool, gfp_mask);
@@ -489,13 +505,15 @@ struct bio *bio_alloc_bioset(gfp_t gfp_mask, unsigned int nr_iovecs,
 
 	if (unlikely(!p))
 		return NULL;
-
+	/* 强转为bio */
 	bio = p + front_pad;
+	/* 初始化一个刚刚分配的空bio */
 	bio_init(bio, NULL, 0);
 
-	if (nr_iovecs > inline_vecs) {
+	/* 这里分配bio的bvec数组 */
+	if (nr_iovecs > inline_vecs) {/* 如果新分配的bio的bvec数量大于这个数 */
 		unsigned long idx = 0;
-
+		/* 意思是如果关联的bvec太多，根据视情况从pool或者bvec_slabs+idx对应的slab分配 */
 		bvl = bvec_alloc(gfp_mask, nr_iovecs, &idx, &bs->bvec_pool);
 		if (!bvl && gfp_mask != saved_gfp) {
 			punt_bios_to_rescuer(bs);
@@ -507,7 +525,7 @@ struct bio *bio_alloc_bioset(gfp_t gfp_mask, unsigned int nr_iovecs,
 			goto err_free;
 
 		bio->bi_flags |= idx << BVEC_POOL_OFFSET;
-	} else if (nr_iovecs) {
+	} else if (nr_iovecs) {/* 如果bio包含的bvec数量不多 */
 		bvl = bio->bi_inline_vecs;
 	}
 
@@ -628,17 +646,20 @@ struct bio *bio_clone_fast(struct bio *bio, gfp_t gfp_mask, struct bio_set *bs)
 	return b;
 }
 EXPORT_SYMBOL(bio_clone_fast);
-
+/* 判断bv能否合并【off，off+len】 */
 static inline bool page_is_mergeable(const struct bio_vec *bv,
 		struct page *page, unsigned int len, unsigned int off,
 		bool *same_page)
 {
+	/* 获取bv的end物理地址 */
 	phys_addr_t vec_end_addr = page_to_phys(bv->bv_page) +
 		bv->bv_offset + bv->bv_len - 1;
+	/* 获取判断的page的物理地址 */
 	phys_addr_t page_addr = page_to_phys(page);
 
-	if (vec_end_addr + 1 != page_addr + off)
+	if (vec_end_addr + 1 != page_addr + off)/* 对不上返回false */
 		return false;
+
 	if (xen_domain() && !xen_biovec_phys_mergeable(bv, page))
 		return false;
 
@@ -732,6 +753,7 @@ int bio_add_pc_page(struct request_queue *q, struct bio *bio,
 EXPORT_SYMBOL(bio_add_pc_page);
 
 /**
+尝试看能不能把要添加到bio的bh的data附加到已存在的bvec后面
  * __bio_try_merge_page - try appending data to an existing bvec.
  * @bio: destination bio
  * @page: start page to add
@@ -754,6 +776,7 @@ bool __bio_try_merge_page(struct bio *bio, struct page *page,
 		return false;
 
 	if (bio->bi_vcnt > 0 && !bio_full(bio, len)) {
+		/* 获取当前最后一个bv */
 		struct bio_vec *bv = &bio->bi_io_vec[bio->bi_vcnt - 1];
 
 		if (page_is_mergeable(bv, page, len, off, same_page)) {
@@ -803,6 +826,7 @@ EXPORT_SYMBOL_GPL(__bio_add_page);
 
 /**
 2024年7月29日22:59:28
+把bh添加到bio
  *	bio_add_page	-	attempt to add page(s) to bio
  *	@bio: destination bio
  *	@page: start page to add
@@ -821,6 +845,7 @@ int bio_add_page(struct bio *bio, struct page *page,
 		/* 先尝试合并，失败后再添加 */
 		if (bio_full(bio, len))
 			return 0;
+		
 		__bio_add_page(bio, page, len, offset);
 	}
 	return len;

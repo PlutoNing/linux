@@ -613,7 +613,7 @@ static int blkdev_writepage(struct page *page, struct writeback_control *wbc)
 {
 	return block_write_full_page(page, blkdev_get_block, wbc);
 }
-
+/* blk mapping ops的read_page函数 */
 static int blkdev_readpage(struct file * file, struct page * page)
 {
 	return block_read_full_page(page, blkdev_get_block);
@@ -2038,14 +2038,16 @@ static int blkdev_writepages(struct address_space *mapping,
 	return generic_writepages(mapping, wbc);
 }
 /* 2024年08月08日17:12:07
-aaaaa2 来看看mapping的ops一般怎么设置
+qwert2 来看看mapping的ops一般怎么设置
 blk默认的mapping ops？
  */
 static const struct address_space_operations def_blk_aops = {
+	/* readpage回调 */
 	.readpage	= blkdev_readpage,
+	/* 读取多个页面 */
 	.readpages	= blkdev_readpages,
 	.writepage	= blkdev_writepage,
-	/*  */
+	/* toodo */
 	.write_begin	= blkdev_write_begin,
 	.write_end	= blkdev_write_end,
 	.writepages	= blkdev_writepages,

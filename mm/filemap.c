@@ -3636,7 +3636,8 @@ EXPORT_SYMBOL(grab_cache_page_write_begin);
 
 执行写入
 2024年08月08日17:01:38
-fops的write回调的一般路径的函数，不是直接IO那个 */
+fops的write回调的一般路径的函数，不是直接IO那个
+就是从iov拷贝数据 */
 ssize_t generic_perform_write(struct file *file,
 				struct iov_iter *i, loff_t pos)
 {
@@ -3680,7 +3681,8 @@ again:
 			status = -EINTR;
 			break;
 		}
-		/* 调用mapping的write_begin回调 aaaaa1 */
+		/* 调用mapping的write_begin回调 qwert1
+		page好像会被赋值为要写的页面 */
 		status = a_ops->write_begin(file, mapping, pos, bytes, flags,
 						&page, &fsdata);
 
@@ -3689,7 +3691,7 @@ again:
 
 		if (mapping_writably_mapped(mapping))
 			flush_dcache_page(page);
-
+		/* 往page的offset写入len长度的i里面的数据 */
 		copied = iov_iter_copy_from_user_atomic(page, i, offset, bytes);
 		flush_dcache_page(page);
 
@@ -3702,7 +3704,7 @@ again:
 		copied = status;
 
 		cond_resched();
-
+		/* 向前seek刚才成功拷贝的数据量 */
 		iov_iter_advance(i, copied);
 		if (unlikely(copied == 0)) {
 			/*
@@ -3717,6 +3719,7 @@ again:
 						iov_iter_single_seg_count(i));
 			goto again;
 		}
+		/* 继续seek此src */
 		pos += copied;
 		written += copied;
 
@@ -3728,7 +3731,9 @@ again:
 EXPORT_SYMBOL(generic_perform_write);
 
 /**
+2024年8月8日23:55:17
 fops的generic write实现
+rodo，直接io那一块。
  * __generic_file_write_iter - write data to a file
  * @iocb:	IO state structure (file, offset, etc.)
  * @from:	iov_iter with data to write
@@ -3785,6 +3790,7 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		 * page-cache pages correctly).
 		 */
 		if (written < 0 || !iov_iter_count(from) || IS_DAX(inode))
+		/* 如果写完了，或者是直接IO的inode，或者written小于0， */
 			goto out;
 
 		status = generic_perform_write(file, from, pos = iocb->ki_pos);
@@ -3823,6 +3829,7 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		if (likely(written > 0))
 			iocb->ki_pos += written;
 	}
+
 out:
 	current->backing_dev_info = NULL;
 	return written ? written : err;

@@ -250,6 +250,8 @@ out:
 }
 
 /*
+2024年8月8日22:58:35
+需要先理解bh与bio的关系再继续
  * I/O completion handler for block_read_full_page() - pages
  * which come unlocked at the end of I/O.
  */
@@ -360,6 +362,7 @@ still_busy:
 EXPORT_SYMBOL(end_buffer_async_write);
 
 /*
+2024年8月8日22:57:59
  * If a page's buffers are under async readin (end_buffer_async_read
  * completion) then there is a possibility that another thread of
  * control could lock one of the buffers after it has completed
@@ -821,6 +824,7 @@ int remove_inode_buffers(struct inode *inode)
 }
 
 /*
+给page分配bh们，对应多个bh
  * Create the appropriate buffers when given a page for data area and
  * the size of each buffer.. Use the bh->b_this_page linked list to
  * follow the buffers created.  Return NULL if unable to create more
@@ -841,10 +845,12 @@ struct buffer_head *alloc_page_buffers(struct page *page, unsigned long size,
 		gfp |= __GFP_NOFAIL;
 
 	memcg = get_mem_cgroup_from_page(page);
+	/* 以后的分配都走这个memcg */
 	memalloc_use_memcg(memcg);
 
 	head = NULL;
 	offset = PAGE_SIZE;
+	/* 每次分配size大小吗？ */
 	while ((offset -= size) >= 0) {
 		bh = alloc_buffer_head(gfp);
 		if (!bh)
@@ -1414,7 +1420,7 @@ void invalidate_bh_lrus(void)
 	on_each_cpu_cond(has_bh_in_lru, invalidate_bh_lru, NULL, 1, GFP_KERNEL);
 }
 EXPORT_SYMBOL_GPL(invalidate_bh_lrus);
-
+/* 把bh与page的offset关联 */
 void set_bh_page(struct buffer_head *bh,
 		struct page *page, unsigned long offset)
 {
@@ -1524,7 +1530,8 @@ EXPORT_SYMBOL(block_invalidatepage);
 
 
 /*
-
+2024年8月8日22:18:50
+给page创建一堆bh，然后关联到priv
  * We attach and possibly dirty the buffers atomically wrt
  * __set_page_dirty_buffers() via private_lock.  try_to_free_buffers
  * is already excluded via the page lock.
@@ -1533,17 +1540,20 @@ void create_empty_buffers(struct page *page,
 			unsigned long blocksize, unsigned long b_state)
 {
 	struct buffer_head *bh, *head, *tail;
-
+	/* 给page创建所需要的buffers */
 	head = alloc_page_buffers(page, blocksize, true);
 	bh = head;
 	do {
 		bh->b_state |= b_state;
 		tail = bh;
+		/* bh指向同属一个page的下一个bh，循环下去 */
 		bh = bh->b_this_page;
 	} while (bh);
+	/* 这是要围成一个环？ */
 	tail->b_this_page = head;
 
 	spin_lock(&page->mapping->private_lock);
+	/* 根据page的脏or干净状态，设置page的bh们的状态。 */
 	if (PageUptodate(page) || PageDirty(page)) {
 		bh = head;
 		do {
@@ -1554,6 +1564,7 @@ void create_empty_buffers(struct page *page,
 			bh = bh->b_this_page;
 		} while (bh != head);
 	}
+	/* 这里正式关联page与给他创建的buffers */
 	attach_page_buffers(page, head);
 	spin_unlock(&page->mapping->private_lock);
 }
@@ -1634,6 +1645,8 @@ unlock_page:
 EXPORT_SYMBOL(clean_bdev_aliases);
 
 /*
+2024年8月8日22:37:17
+？
  * Size is a power-of-two in the range 512..PAGE_SIZE,
  * and the case we care about most is PAGE_SIZE.
  *
@@ -1646,7 +1659,9 @@ static inline int block_size_bits(unsigned int blocksize)
 	return ilog2(blocksize);
 }
 /* 要写入这个mapping了，buffer IO
-@page是@inode的mapping里面页面 */
+@page是@inode的mapping里面页面
+@inode是为了获取大小相关的信息
+ */
 static struct buffer_head *create_page_buffers(struct page *page, struct inode *inode, unsigned int b_state)
 {
 	BUG_ON(!PageLocked(page));
@@ -1946,7 +1961,8 @@ iomap_to_bh(struct inode *inode, sector_t block, struct buffer_head *bh,
 		break;
 	}
 }
-/*block_write_begin的 实际调用函数 */
+/*block_write_begin的 实际调用函数
+todo有点麻烦 */
 int __block_write_begin_int(struct page *page, loff_t pos, unsigned len,
 		get_block_t *get_block, struct iomap *iomap)
 {
@@ -1967,17 +1983,31 @@ int __block_write_begin_int(struct page *page, loff_t pos, unsigned len,
 	BUG_ON(from > PAGE_SIZE);
 	BUG_ON(to > PAGE_SIZE);
 	BUG_ON(from > to);
-
+	/* 创建buffer IO，就是给page创建bh们 */
 	head = create_page_buffers(page, inode, 0);
+	
+
+	/* 
+	from                                                                   to
+-----------------------------------------------------------------------------------------
+	|+++++bh1+++++|++++++++bh2+++++++++|++++++++++++++++++++bh3+++++++++++++|
+        b_size1         b_size2                          b_size3
+														2^bbits=b_size3
+
+								   block_start                           block_end
+	 */
 	blocksize = head->b_size;
 	bbits = block_size_bits(blocksize);
-
+	/*  */
 	block = (sector_t)page->index << (PAGE_SHIFT - bbits);
 
-	for(bh = head, block_start = 0; bh != head || !block_start;
+	for(bh = head, block_start = 0;
+	 	bh != head || !block_start;
 	    block++, block_start=block_end, bh = bh->b_this_page) {
+
 		block_end = block_start + blocksize;
 		if (block_end <= from || block_start >= to) {
+			/* 这bh包含的区块范围位于范围外？ */
 			if (PageUptodate(page)) {
 				if (!buffer_uptodate(bh))
 					set_buffer_uptodate(bh);
@@ -1986,7 +2016,8 @@ int __block_write_begin_int(struct page *page, loff_t pos, unsigned len,
 		}
 		if (buffer_new(bh))
 			clear_buffer_new(bh);
-		if (!buffer_mapped(bh)) {
+
+		if (!buffer_mapped(bh)) {/* 还没有mapped？ */
 			WARN_ON(bh->b_size != blocksize);
 			if (get_block) {
 				err = get_block(inode, block, bh, 1);
@@ -2238,6 +2269,9 @@ int block_is_partially_uptodate(struct page *page, unsigned long from,
 EXPORT_SYMBOL(block_is_partially_uptodate);
 
 /*
+2024年8月8日22:50:20
+blk mapping ops的read_page函数实际调用的函数。
+构造bh，构造bio，然后开始io
  * Generic "read page" function for block devices that have the normal
  * get_block functionality. This is most of the block device filesystems.
  * Reads the page asynchronously --- the unlock_buffer() and
@@ -2252,11 +2286,11 @@ int block_read_full_page(struct page *page, get_block_t *get_block)
 	unsigned int blocksize, bbits;
 	int nr, i;
 	int fully_mapped = 1;
-
+	/* 先创建用于io的bh们 */
 	head = create_page_buffers(page, inode, 0);
 	blocksize = head->b_size;
 	bbits = block_size_bits(blocksize);
-
+	/* 这里是获取磁盘的扇区吗？ */
 	iblock = (sector_t)page->index << (PAGE_SHIFT - bbits);
 	lblock = (i_size_read(inode)+blocksize-1) >> bbits;
 	bh = head;
@@ -2291,13 +2325,14 @@ int block_read_full_page(struct page *page, get_block_t *get_block)
 				continue;
 		}
 		arr[nr++] = bh;
+	/* 遍历bh与block */
 	} while (i++, iblock++, (bh = bh->b_this_page) != head);
 
 	if (fully_mapped)
 		SetPageMappedToDisk(page);
 
 	if (!nr) {
-		/*
+		/*所有的bh都是新的，那就没必要再从磁盘读了
 		 * All buffers are uptodate - we can set the page uptodate
 		 * as well. But not if get_block() returned an error.
 		 */
@@ -2307,7 +2342,8 @@ int block_read_full_page(struct page *page, get_block_t *get_block)
 		return 0;
 	}
 
-	/* Stage two: lock the buffers */
+	/* Stage two: lock the buffers
+	arr记录了每一个对应的bh */
 	for (i = 0; i < nr; i++) {
 		bh = arr[i];
 		lock_buffer(bh);
@@ -2321,7 +2357,7 @@ int block_read_full_page(struct page *page, get_block_t *get_block)
 	 */
 	for (i = 0; i < nr; i++) {
 		bh = arr[i];
-		if (buffer_uptodate(bh))
+		if (buffer_uptodate(bh))/* 这里是什么，todo，开始调用endio的回调函数了 */
 			end_buffer_async_read(bh, 1);
 		else
 			submit_bh(REQ_OP_READ, 0, bh);
@@ -2998,7 +3034,8 @@ sector_t generic_block_bmap(struct address_space *mapping, sector_t block,
 	return tmp.b_blocknr;
 }
 EXPORT_SYMBOL(generic_block_bmap);
-
+/* 作为把bh加到bio之后的end io函数
+todo2024年8月8日23:48:25 */
 static void end_bio_bh_io_sync(struct bio *bio)
 {
 	struct buffer_head *bh = bio->bi_private;
@@ -3075,7 +3112,7 @@ void guard_bio_eod(int op, struct bio *bio)
 				truncated_bytes);
 	}
 }
-
+/* 提交bh的bio */
 static int submit_bh_wbc(int op, int op_flags, struct buffer_head *bh,
 			 enum rw_hint write_hint, struct writeback_control *wbc)
 {
@@ -3089,6 +3126,7 @@ static int submit_bh_wbc(int op, int op_flags, struct buffer_head *bh,
 
 	/*
 	 * Only clear out a write error when rewriting
+	 如果是写的话
 	 */
 	if (test_set_buffer_req(bh) && (op == REQ_OP_WRITE))
 		clear_buffer_write_io_error(bh);
@@ -3097,15 +3135,19 @@ static int submit_bh_wbc(int op, int op_flags, struct buffer_head *bh,
 	 * from here on down, it's all bio -- do the initial mapping,
 	 * submit_bio -> generic_make_request may further map this bio around
 	 */
+	 /* 分配bio，分配一个bvec的bio */
 	bio = bio_alloc(GFP_NOIO, 1);
 
+	/*  */
 	bio->bi_iter.bi_sector = bh->b_blocknr * (bh->b_size >> 9);
+	/* 关联磁盘 */
 	bio_set_dev(bio, bh->b_bdev);
 	bio->bi_write_hint = write_hint;
-
+	/* 把bh添加到bio */
 	bio_add_page(bio, bh->b_page, bh->b_size, bh_offset(bh));
+	
 	BUG_ON(bio->bi_iter.bi_size != bh->b_size);
-
+	/* todo */
 	bio->bi_end_io = end_bio_bh_io_sync;
 	bio->bi_private = bh;
 
@@ -3116,17 +3158,19 @@ static int submit_bh_wbc(int op, int op_flags, struct buffer_head *bh,
 		op_flags |= REQ_META;
 	if (buffer_prio(bh))
 		op_flags |= REQ_PRIO;
+
 	bio_set_op_attrs(bio, op, op_flags);
 
-	if (wbc) {
+
+	if (wbc) {/* todo */
 		wbc_init_bio(wbc, bio);
 		wbc_account_cgroup_owner(wbc, bh->b_page, bh->b_size);
 	}
-
+	/* 发起io */
 	submit_bio(bio);
 	return 0;
 }
-
+/* 提交bh IO */
 int submit_bh(int op, int op_flags, struct buffer_head *bh)
 {
 	return submit_bh_wbc(op, op_flags, bh, 0, NULL);
@@ -3383,16 +3427,23 @@ static struct kmem_cache *bh_cachep __read_mostly;
  * stripping them in writeback.
  */
 static unsigned long max_buffer_heads;
-
+/* 统计bh是否超过了限制？
+统计bh超限了cpu们的bh的数量，如果超过了max_buffer_heads
+则置位buffer_heads_over_limit */
 int buffer_heads_over_limit;
-
+/* 2024年8月8日22:24:19
+代表分配的bh的计数 */
 struct bh_accounting {
-	int nr;			/* Number of live bh's */
+	int nr;			/* 
+	计数
+	Number of live bh's */
 	int ratelimit;		/* Limit cacheline bouncing */
 };
-
+/*  */
 static DEFINE_PER_CPU(struct bh_accounting, bh_accounting) = {0, 0};
-
+/* 统计bh是否超过了限制？
+统计bh超限了cpu们的bh的数量，如果超过了max_buffer_heads
+则置位buffer_heads_over_limit */
 static void recalc_bh_state(void)
 {
 	int i;
@@ -3405,13 +3456,15 @@ static void recalc_bh_state(void)
 		tot += per_cpu(bh_accounting, i).nr;
 	buffer_heads_over_limit = (tot > max_buffer_heads);
 }
-
+/* 分配一个bh */
 struct buffer_head *alloc_buffer_head(gfp_t gfp_flags)
 {
+	/* slab分配bh */
 	struct buffer_head *ret = kmem_cache_zalloc(bh_cachep, gfp_flags);
-	if (ret) {
+	if (ret) {/* 如果分配成功 */
 		INIT_LIST_HEAD(&ret->b_assoc_buffers);
 		preempt_disable();
+		/* 统计此bh */
 		__this_cpu_inc(bh_accounting.nr);
 		recalc_bh_state();
 		preempt_enable();

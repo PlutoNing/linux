@@ -52,13 +52,15 @@ int always_delete_dentry(const struct dentry *dentry)
 	return 1;
 }
 EXPORT_SYMBOL(always_delete_dentry);
-
+/*  */
 const struct dentry_operations simple_dentry_operations = {
 	.d_delete = always_delete_dentry,
 };
 EXPORT_SYMBOL(simple_dentry_operations);
 
 /*
+2024年8月9日00:38:31
+todo
  * Lookup the data. This is trivial - if the dentry didn't already
  * exist, we know it is negative.  Set d_op to delete negative dentries.
  */
@@ -1075,6 +1077,7 @@ int generic_check_addressable(unsigned blocksize_bits, u64 num_blocks)
 EXPORT_SYMBOL(generic_check_addressable);
 
 /*
+2024年8月9日00:22:26
  * No-op implementation of ->fsync for in-memory filesystems.
  */
 int noop_fsync(struct file *file, loff_t start, loff_t end, int datasync)

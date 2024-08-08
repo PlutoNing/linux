@@ -20,16 +20,22 @@
  */
 struct bio_vec {
 	struct page	*bv_page;
+	/* 数据长度 */
 	unsigned int	bv_len;
+	/* 此bv的页内偏移起始地址 */
 	unsigned int	bv_offset;
 };
 /*
 2024年06月19日11:23:24
-其中bvec_iter结构体携带着下盘的诸多信息，如下盘的扇区起始地址以及bio的大小
+其中bvec_iter结构体携带着下盘的诸多信息，
+如下盘的扇区起始地址以及bio的大小
 */
 struct bvec_iter {
+
 	sector_t		bi_sector;	/* device address in 512 byte
-						   sectors */
+						   sectors
+						   扇区地址 */
+
 	unsigned int		bi_size;	/* 
 	要读取的数据大小
 	residual I/O count */

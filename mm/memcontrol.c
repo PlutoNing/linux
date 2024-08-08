@@ -1101,7 +1101,7 @@ EXPORT_SYMBOL(get_mem_cgroup_from_mm);
 
 /**
 2024年7月14日13:44:25
-
+获取page的memcg
  * get_mem_cgroup_from_page: Obtain a reference on given page's memcg.
  * @page: page from which memcg should be extracted.
  *

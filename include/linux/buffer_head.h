@@ -63,12 +63,23 @@ typedef void (bh_end_io_t)(struct buffer_head *bh, int uptodate);
  */
 struct buffer_head {
 	unsigned long b_state;		/* buffer state bitmap (see above) */
-	struct buffer_head *b_this_page;/* circular list of page's buffers */
-	struct page *b_page;		/* the page this bh is mapped to */
+	struct buffer_head *b_this_page;/*
+	连接到同一个page的前一个bh
+	 circular list of page's buffers */
+	struct page *b_page;		/* 
+	指向bh所属的page
+	the page this bh is mapped to */
 
-	sector_t b_blocknr;		/* start block number */
-	size_t b_size;			/* size of mapping */
-	char *b_data;			/* pointer to data within the page */
+	sector_t b_blocknr;		/* 
+	在磁盘对应的扇区号
+	start block number */
+	size_t b_size;			/* 
+	buffer的大小？
+	size of mapping */
+	char *b_data;			/* 
+	bh负责的page内的区域位置
+	一个page有多个bh，每个bh负责不同的区域
+	pointer to data within the page */
 
 	struct block_device *b_bdev;
 	bh_end_io_t *b_end_io;		/* I/O completion */
@@ -135,7 +146,7 @@ BUFFER_FNS(Unwritten, unwritten)
 BUFFER_FNS(Meta, meta)
 BUFFER_FNS(Prio, prio)
 BUFFER_FNS(Defer_Completion, defer_completion)
-
+/* 获取bh在page内负责的data区域的页内offset */
 #define bh_offset(bh)		((unsigned long)(bh)->b_data & ~PAGE_MASK)
 
 /* 
@@ -271,6 +282,8 @@ int nobh_writepage(struct page *page, get_block_t *get_block,
 void buffer_init(void);
 
 /*
+关联pages与bh们
+其实就是存储在priv里面
  * inline definitions
  */
 

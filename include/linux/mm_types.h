@@ -116,6 +116,7 @@ struct page {
 			 * Indicates order in the buddy system if PageBuddy.
 			 如果buddy里面，这里是order
 			 swap里面entry相关
+			 如果是正在io，那么是关联的bh们的head
 			 */
 			unsigned long private;
 		};

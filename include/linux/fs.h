@@ -743,7 +743,11 @@ struct inode {
 	struct list_head	i_sb_list;
 	struct list_head	i_wb_list;	/* backing dev writeback list */
 	union {
-		/* 目录项链表 */
+		/* 目录项链表 
+		inode结构中有一个队列i_dentry,凡是代表同一个文件的所有目录项都通过d_alias域
+		挂入相应的inode结构中的i_dentry队列。或者说，由于硬链接的存在，同一个文件可
+		能有多种表示形式，可以成为别名，但它们都对应同一个文件，
+		也就对应同一个inode，所以inode中有一个字段来将这些别名串起来，采用的是链表的形式。*/
 		struct hlist_head	i_dentry;
 		struct rcu_head		i_rcu;
 	};

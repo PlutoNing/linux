@@ -308,7 +308,7 @@ void release_dentry_name_snapshot(struct name_snapshot *name)
 	}
 }
 EXPORT_SYMBOL(release_dentry_name_snapshot);
-
+/* 设置inode对应的dent的一些属性 */
 static inline void __d_set_inode_and_type(struct dentry *dentry,
 					  struct inode *inode,
 					  unsigned type_flags)
@@ -1910,7 +1910,7 @@ type_determined:
 		add_flags |= DCACHE_NEED_AUTOMOUNT;
 	return add_flags;
 }
-
+/* 初始化dent的inode信息 */
 static void __d_instantiate(struct dentry *dentry, struct inode *inode)
 {
 	unsigned add_flags = d_flags_for_inode(inode);
@@ -1922,15 +1922,21 @@ static void __d_instantiate(struct dentry *dentry, struct inode *inode)
 	 */
 	if (dentry->d_flags & DCACHE_LRU_LIST)
 		this_cpu_dec(nr_dentry_negative);
+	/* 把这个dentry挂入到这个inode里面。这个inode可能对应了多个dent */
 	hlist_add_head(&dentry->d_u.d_alias, &inode->i_dentry);
+
 	raw_write_seqcount_begin(&dentry->d_seq);
+	/* 设置属性 */
 	__d_set_inode_and_type(dentry, inode, add_flags);
 	raw_write_seqcount_end(&dentry->d_seq);
+	
 	fsnotify_update_flags(dentry);
 	spin_unlock(&dentry->d_lock);
 }
 
 /**
+2024年8月9日00:28:40
+继续初始化dentry的inode信息
  * d_instantiate - fill in inode information for a dentry
  * @entry: dentry to complete
  * @inode: inode to attach to this dentry
@@ -1948,9 +1954,11 @@ static void __d_instantiate(struct dentry *dentry, struct inode *inode)
 void d_instantiate(struct dentry *entry, struct inode * inode)
 {
 	BUG_ON(!hlist_unhashed(&entry->d_u.d_alias));
+	
 	if (inode) {
 		security_d_instantiate(entry, inode);
 		spin_lock(&inode->i_lock);
+		/* 实际初始化 */
 		__d_instantiate(entry, inode);
 		spin_unlock(&inode->i_lock);
 	}

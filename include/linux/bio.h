@@ -104,6 +104,7 @@ static inline void *bio_data(struct bio *bio)
 }
 
 /**
+检查bvec数量和size是否超限
  * bio_full - check if the bio is full
  * @bio:	bio to check
  * @len:	length of one segment to be added
@@ -398,7 +399,8 @@ extern void __bio_clone_fast(struct bio *, struct bio *);
 extern struct bio *bio_clone_fast(struct bio *, gfp_t, struct bio_set *);
 
 extern struct bio_set fs_bio_set;
-/* 2024年07月03日15:00:42 */
+/* 2024年07月03日15:00:42
+分配bio */
 static inline struct bio *bio_alloc(gfp_t gfp_mask, unsigned int nr_iovecs)
 {
 	return bio_alloc_bioset(gfp_mask, nr_iovecs, &fs_bio_set);
@@ -702,7 +704,8 @@ static inline void bio_inc_remaining(struct bio *bio)
  * and the bvec_slabs[].
  */
 #define BIO_POOL_SIZE 2
-
+/* 2024年8月8日23:08:33
+什么概念？ */
 struct bio_set {
 	struct kmem_cache *bio_slab;
 	unsigned int front_pad;
@@ -723,7 +726,7 @@ struct bio_set {
 	struct work_struct	rescue_work;
 	struct workqueue_struct	*rescue_workqueue;
 };
-
+/* 分配bvec的slab */
 struct biovec_slab {
 	int nr_vecs;
 	char *name;

@@ -311,6 +311,7 @@ static inline void memalloc_nocma_restore(unsigned int flags)
 
 #ifdef CONFIG_MEMCG
 /**
+设置current的memcg，设置之后的内存分配都charge这个memcg。
  * memalloc_use_memcg - Starts the remote memcg charging scope.
  * @memcg: memcg to charge.
  *

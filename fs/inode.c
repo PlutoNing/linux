@@ -345,6 +345,8 @@ void set_nlink(struct inode *inode, unsigned int nlink)
 EXPORT_SYMBOL(set_nlink);
 
 /**
+2024年8月9日00:24:16
+增加引用计数
  * inc_nlink - directly increment an inode's link count
  * @inode: inode
  *

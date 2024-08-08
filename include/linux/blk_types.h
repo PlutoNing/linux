@@ -146,15 +146,16 @@ static inline void bio_issue_init(struct bio_issue *issue,
 struct bio {
 	struct bio		*bi_next;	/* 若一个req中包含多个bio，这些bio通过bi_next组成单向链表，链表以NULL结尾
 	request queue link */
-	struct gendisk		*bi_disk;
+	struct gendisk		*bi_disk; /* 对应的磁盘 */
 	unsigned int		bi_opf;		/* bottom bits req flags,
 						 * top bits REQ_OP. Use
 						 * accessors.
 						 */
 	unsigned short		bi_flags;	/* status, etc and bvec pool number */
 	unsigned short		bi_ioprio;
-	unsigned short		bi_write_hint;
+	unsigned short		bi_write_hint;/* 展示是读还是写 */
 	blk_status_t		bi_status;
+	/* 对应的分区号 */
 	u8			bi_partno;
 //目的地？
 	struct bvec_iter	bi_iter;
@@ -162,7 +163,8 @@ struct bio {
 	atomic_t		__bi_remaining;
 	/* end io的回调函数 */
 	bio_end_io_t		*bi_end_io;
-	/* pcb？ */
+	/* pcb？
+	把bh加到bio之后。可能指向bh */
 	void			*bi_private;
 #ifdef CONFIG_BLK_CGROUP
 	/*
@@ -192,7 +194,9 @@ struct bio {
 	 * Everything starting with bi_max_vecs will be preserved by bio_reset()
 	 */
 
-	unsigned short		bi_max_vecs;	/* max bvl_vecs we can hold */
+	unsigned short		bi_max_vecs;	/* 
+	分配bio时指定的nr——bvecs
+	max bvl_vecs we can hold */
 
 	atomic_t		__bi_cnt;	/* pin count */
 
@@ -200,6 +204,7 @@ struct bio {
 	bio_vec的数组指针？
 	 the actual vec list */
 
+	/* 分配bio时对应的bio_set */
 	struct bio_set		*bi_pool;
 
 	/*
@@ -280,9 +285,12 @@ typedef __u32 __bitwise blk_mq_req_flags_t;
 #define REQ_OP_BITS	8
 #define REQ_OP_MASK	((1 << REQ_OP_BITS) - 1)
 #define REQ_FLAG_BITS	24
-
+/* 2024年8月8日23:00:29
+ */
 enum req_opf {
-	/* read sectors from the device */
+	/* 
+	
+	read sectors from the device */
 	REQ_OP_READ		= 0,
 	/* write sectors to the device */
 	REQ_OP_WRITE		= 1,

@@ -281,7 +281,8 @@ static int shmem_reserve_inode(struct super_block *sb)
 	}
 	return 0;
 }
-
+/* 2024年8月9日00:50:03
+释放一个inode，++free_cnt */
 static void shmem_free_inode(struct super_block *sb)
 {
 	struct shmem_sb_info *sbinfo = SHMEM_SB(sb);
@@ -2372,7 +2373,8 @@ static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 	return 0;
 }
 
-/* shmem文件系统获取inode？ */
+/* shmem文件系统获取inode？
+创建一个inode */
 static struct inode *shmem_get_inode(struct super_block *sb, const struct inode *dir,
 				     umode_t mode, dev_t dev, unsigned long flags)
 {
@@ -2414,6 +2416,7 @@ static struct inode *shmem_get_inode(struct super_block *sb, const struct inode 
 		case S_IFREG:/* 常规文件 */
 			inode->i_mapping->a_ops = &shmem_aops;
 			inode->i_op = &shmem_inode_operations;
+			/* 设置fops */
 			inode->i_fop = &shmem_file_operations;
 			mpol_shared_policy_init(&info->policy,
 						 shmem_get_sbmpol(sbinfo));
@@ -2906,7 +2909,7 @@ static loff_t shmem_file_llseek(struct file *file, loff_t offset, int whence)
 
 	return offset;
 }
-
+/* shmfile fops的fallocate实现 */
 static long shmem_fallocate(struct file *file, int mode, loff_t offset,
 							 loff_t len)
 {
@@ -3061,6 +3064,8 @@ static int shmem_statfs(struct dentry *dentry, struct kstatfs *buf)
 }
 
 /*
+2024年8月9日00:26:25
+创建文件夹？
  * File creation. Allocate an inode, and we're done..
  */
 static int
@@ -3068,9 +3073,9 @@ shmem_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 {
 	struct inode *inode;
 	int error = -ENOSPC;
-
+	/* shm分配一个inode */
 	inode = shmem_get_inode(dir->i_sb, dir, mode, dev, VM_NORESERVE);
-	if (inode) {
+	if (inode) {/* 分配成功 */
 		error = simple_acl_create(dir, inode);
 		if (error)
 			goto out_iput;
@@ -3081,8 +3086,10 @@ shmem_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 			goto out_iput;
 
 		error = 0;
+		/* 设置dir inode的属性 */
 		dir->i_size += BOGO_DIRENT_SIZE;
 		dir->i_ctime = dir->i_mtime = current_time(dir);
+		/* 初始化 */
 		d_instantiate(dentry, inode);
 		dget(dentry); /* Extra count - pin the dentry in core */
 	}
@@ -3115,7 +3122,8 @@ out_iput:
 	iput(inode);
 	return error;
 }
-
+/* 2024年8月9日00:51:20
+ */
 static int shmem_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
 	int error;
@@ -3125,7 +3133,7 @@ static int shmem_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	inc_nlink(dir);
 	return 0;
 }
-
+/* 2024年8月9日00:26:10 */
 static int shmem_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		bool excl)
 {
@@ -3133,10 +3141,13 @@ static int shmem_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 }
 
 /*
+2024年8月9日00:41:48
  * Link a file..
+  这个函数创建一个从 dentry 到 old_dentry 的硬链接。
  */
 static int shmem_link(struct dentry *old_dentry, struct inode *dir, struct dentry *dentry)
 {
+	/* 获得old_ent的inode */
 	struct inode *inode = d_inode(old_dentry);
 	int ret = 0;
 
@@ -3158,13 +3169,17 @@ static int shmem_link(struct dentry *old_dentry, struct inode *dir, struct dentr
 	inc_nlink(inode);
 	ihold(inode);	/* New dentry reference */
 	dget(dentry);		/* Extra pinning count for the created dentry */
+	/* 把dent连接到这个inode */
 	d_instantiate(dentry, inode);
 out:
 	return ret;
 }
+/* 2024年8月9日00:48:22
 
+ */
 static int shmem_unlink(struct inode *dir, struct dentry *dentry)
 {
+	/* 获取inode */
 	struct inode *inode = d_inode(dentry);
 
 	if (inode->i_nlink > 1 && !S_ISDIR(inode->i_mode))
@@ -3176,7 +3191,9 @@ static int shmem_unlink(struct inode *dir, struct dentry *dentry)
 	dput(dentry);	/* Undo the count from "create" - this does all the work */
 	return 0;
 }
-
+/* 2024年8月9日00:54:12
+dir是父目录
+ */
 static int shmem_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	if (!simple_empty(dentry))
@@ -3184,6 +3201,7 @@ static int shmem_rmdir(struct inode *dir, struct dentry *dentry)
 
 	drop_nlink(d_inode(dentry));
 	drop_nlink(dir);
+
 	return shmem_unlink(dir, dentry);
 }
 
@@ -3281,7 +3299,8 @@ static int shmem_rename2(struct inode *old_dir, struct dentry *old_dentry, struc
 	inode->i_ctime = current_time(old_dir);
 	return 0;
 }
-
+/* 2024年8月9日00:50:55
+todo */
 static int shmem_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 {
 	int error;
@@ -3994,9 +4013,11 @@ static const struct file_operations shmem_file_operations = {
 	.read_iter	= shmem_file_read_iter,
 	/* 为啥写入是generic函数 */
 	.write_iter	= generic_file_write_iter,
+	/* qwert3  */
 	.fsync		= noop_fsync,
 	.splice_read	= generic_file_splice_read,
 	.splice_write	= iter_file_splice_write,
+	/*  */
 	.fallocate	= shmem_fallocate,
 #endif
 };
@@ -4010,16 +4031,25 @@ static const struct inode_operations shmem_inode_operations = {
 	.set_acl	= simple_set_acl,
 #endif
 };
-
+/* shm dir的inode ops
+2024年8月9日00:25:36 */
 static const struct inode_operations shmem_dir_inode_operations = {
 #ifdef CONFIG_TMPFS
+/* 创建？todo？2024年8月9日00:51:12 */
 	.create		= shmem_create,
+/* todo2024年8月9日00:41:13 */
 	.lookup		= simple_lookup,
+	/* 链接文件 */
 	.link		= shmem_link,
+	/* 解除链接 */
 	.unlink		= shmem_unlink,
+	/*  */
 	.symlink	= shmem_symlink,
+	/* 创建文件夹 */
 	.mkdir		= shmem_mkdir,
+	/* todo2024年8月9日00:56:02 */
 	.rmdir		= shmem_rmdir,
+	
 	.mknod		= shmem_mknod,
 	.rename		= shmem_rename2,
 	.tmpfile	= shmem_tmpfile,

@@ -1141,7 +1141,9 @@ EXPORT_SYMBOL_GPL(direct_make_request);
 /**
 2024年7月29日23:07:53
 发起bio
+2024年8月8日23:52:48
  * submit_bio - submit a bio to the block device layer for I/O
+todo，
  * @bio: The &struct bio which describes the I/O
  *
  * submit_bio() is very similar in purpose to generic_make_request(), and
