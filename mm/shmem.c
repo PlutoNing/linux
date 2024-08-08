@@ -4000,7 +4000,8 @@ static const struct file_operations shmem_file_operations = {
 	.fallocate	= shmem_fallocate,
 #endif
 };
-/* 2024年08月07日10:20:33 */
+/* 2024年08月07日10:20:33
+shmfile的inode的ops */
 static const struct inode_operations shmem_inode_operations = {
 	.getattr	= shmem_getattr,
 	.setattr	= shmem_setattr,

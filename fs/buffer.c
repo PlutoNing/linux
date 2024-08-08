@@ -1524,6 +1524,7 @@ EXPORT_SYMBOL(block_invalidatepage);
 
 
 /*
+
  * We attach and possibly dirty the buffers atomically wrt
  * __set_page_dirty_buffers() via private_lock.  try_to_free_buffers
  * is already excluded via the page lock.
@@ -1644,7 +1645,8 @@ static inline int block_size_bits(unsigned int blocksize)
 {
 	return ilog2(blocksize);
 }
-
+/* 要写入这个mapping了，buffer IO
+@page是@inode的mapping里面页面 */
 static struct buffer_head *create_page_buffers(struct page *page, struct inode *inode, unsigned int b_state)
 {
 	BUG_ON(!PageLocked(page));
@@ -1944,12 +1946,15 @@ iomap_to_bh(struct inode *inode, sector_t block, struct buffer_head *bh,
 		break;
 	}
 }
-
+/*block_write_begin的 实际调用函数 */
 int __block_write_begin_int(struct page *page, loff_t pos, unsigned len,
 		get_block_t *get_block, struct iomap *iomap)
 {
+	/* 要写入的页内偏移，起始地址 */
 	unsigned from = pos & (PAGE_SIZE - 1);
+	/* 自然是结束地址 */
 	unsigned to = from + len;
+	/* 要写入的相关的inode */
 	struct inode *inode = page->mapping->host;
 	unsigned block_start, block_end;
 	sector_t block;
@@ -1957,6 +1962,7 @@ int __block_write_begin_int(struct page *page, loff_t pos, unsigned len,
 	unsigned blocksize, bbits;
 	struct buffer_head *bh, *head, *wait[2], **wait_bh=wait;
 
+	/* 做一些显然的检查工作 */
 	BUG_ON(!PageLocked(page));
 	BUG_ON(from > PAGE_SIZE);
 	BUG_ON(to > PAGE_SIZE);
@@ -2029,7 +2035,7 @@ int __block_write_begin_int(struct page *page, loff_t pos, unsigned len,
 		page_zero_new_buffers(page, from, to);
 	return err;
 }
-
+/* 实际函数 */
 int __block_write_begin(struct page *page, loff_t pos, unsigned len,
 		get_block_t *get_block)
 {
@@ -2076,6 +2082,11 @@ static int __block_commit_write(struct inode *inode, struct page *page,
 }
 
 /*
+2024年08月08日17:13:52
+blk mapping ops的write_begin回调。
+@pos：len，写入位置和长度。
+@pagep是存储这次实际写入的页面吗？
+@get_block：作用？
  * block_write_begin takes care of the basic task of block allocation and
  * bringing partial write blocks uptodate first.
  *
@@ -2084,14 +2095,16 @@ static int __block_commit_write(struct inode *inode, struct page *page,
 int block_write_begin(struct address_space *mapping, loff_t pos, unsigned len,
 		unsigned flags, struct page **pagep, get_block_t *get_block)
 {
+	/* 获取要写入的pgoff */
 	pgoff_t index = pos >> PAGE_SHIFT;
 	struct page *page;
 	int status;
-
+	/* 返回要写入的页面，算是保证这个页面肯定存在，作为begin的工作和含义 */
 	page = grab_cache_page_write_begin(mapping, index, flags);
 	if (!page)
 		return -ENOMEM;
-
+	
+	/*  */
 	status = __block_write_begin(page, pos, len, get_block);
 	if (unlikely(status)) {
 		unlock_page(page);

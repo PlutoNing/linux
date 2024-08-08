@@ -3608,6 +3608,9 @@ out:
 EXPORT_SYMBOL(generic_file_direct_write);
 
 /*
+2024年08月08日17:21:26
+mapping ops的write_begin函数调用
+这个函数来get返回这个页面，确保要写入的页面存在，
  * Find or create a page at the given pagecache position. Return the locked
  * page. This function is specifically for buffered writes.
  */
@@ -3620,6 +3623,7 @@ struct page *grab_cache_page_write_begin(struct address_space *mapping,
 	if (flags & AOP_FLAG_NOFS)
 		fgp_flags |= FGP_NOFS;
 
+	/* 获取页面 */
 	page = pagecache_get_page(mapping, index, fgp_flags,
 			mapping_gfp_mask(mapping));
 	if (page)
@@ -3628,11 +3632,16 @@ struct page *grab_cache_page_write_begin(struct address_space *mapping,
 	return page;
 }
 EXPORT_SYMBOL(grab_cache_page_write_begin);
-/* 执行写入 */
+/* 
+
+执行写入
+2024年08月08日17:01:38
+fops的write回调的一般路径的函数，不是直接IO那个 */
 ssize_t generic_perform_write(struct file *file,
 				struct iov_iter *i, loff_t pos)
 {
 	struct address_space *mapping = file->f_mapping;
+	/* 获取页缓存的ops */
 	const struct address_space_operations *a_ops = mapping->a_ops;
 	long status = 0;
 	ssize_t written = 0;
@@ -3644,8 +3653,10 @@ ssize_t generic_perform_write(struct file *file,
 		unsigned long bytes;	/* Bytes to write to page */
 		size_t copied;		/* Bytes copied from user */
 		void *fsdata;
-
+		/* offset是页内偏移 */
 		offset = (pos & (PAGE_SIZE - 1));
+
+		/* 要写入的字节数，就是剩余要写的，和这个页面还能写入的容量（PAGE_SIZE-offset）取小 */
 		bytes = min_t(unsigned long, PAGE_SIZE - offset,
 						iov_iter_count(i));
 
@@ -3669,9 +3680,10 @@ again:
 			status = -EINTR;
 			break;
 		}
-
+		/* 调用mapping的write_begin回调 aaaaa1 */
 		status = a_ops->write_begin(file, mapping, pos, bytes, flags,
 						&page, &fsdata);
+
 		if (unlikely(status < 0))
 			break;
 
@@ -3681,8 +3693,10 @@ again:
 		copied = iov_iter_copy_from_user_atomic(page, i, offset, bytes);
 		flush_dcache_page(page);
 
+		/* mapping的write_end回调 */
 		status = a_ops->write_end(file, mapping, pos, bytes, copied,
 						page, fsdata);
+		
 		if (unlikely(status < 0))
 			break;
 		copied = status;
@@ -3757,7 +3771,7 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	if (err)
 		goto out;
 
-	if (iocb->ki_flags & IOCB_DIRECT) {/* 
+	if (iocb->ki_flags & IOCB_DIRECT) {/* 直接IO的路径
 	发现设置了IOCB_DIRECT，则调用generic_file_direct_write，里面同样会调用
 	address_space的direct_IO的函数，将数据直接写入硬盘。 */
 		loff_t pos, endbyte;
@@ -3804,7 +3818,7 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 			 * the number of bytes which were direct-written
 			 */
 		}
-	} else {
+	} else {/* 一般IO的路径 */
 		written = generic_perform_write(file, from, iocb->ki_pos);
 		if (likely(written > 0))
 			iocb->ki_pos += written;
@@ -3838,6 +3852,7 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 
 	inode_lock(inode);
 	
+	/* check，todo */
 	ret = generic_write_checks(iocb, from);
 
 	if (ret > 0)/* 调用generic write */

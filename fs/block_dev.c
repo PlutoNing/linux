@@ -624,7 +624,7 @@ static int blkdev_readpages(struct file *file, struct address_space *mapping,
 {
 	return mpage_readpages(mapping, pages, nr_pages, blkdev_get_block);
 }
-
+/* blk mapping ops的write_begin回调 */
 static int blkdev_write_begin(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned flags,
 			struct page **pagep, void **fsdata)
@@ -2037,11 +2037,15 @@ static int blkdev_writepages(struct address_space *mapping,
 {
 	return generic_writepages(mapping, wbc);
 }
-
+/* 2024年08月08日17:12:07
+aaaaa2 来看看mapping的ops一般怎么设置
+blk默认的mapping ops？
+ */
 static const struct address_space_operations def_blk_aops = {
 	.readpage	= blkdev_readpage,
 	.readpages	= blkdev_readpages,
 	.writepage	= blkdev_writepage,
+	/*  */
 	.write_begin	= blkdev_write_begin,
 	.write_end	= blkdev_write_end,
 	.writepages	= blkdev_writepages,
