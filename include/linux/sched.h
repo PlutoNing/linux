@@ -1211,7 +1211,7 @@ struct task_struct {
 	 */
 	unsigned long rseq_event_mask;
 #endif
-
+	/* 记录需要刷新tlb的pages对应的cpu */
 	struct tlbflush_unmap_batch	tlb_ubc;
 
 	union {

@@ -113,12 +113,12 @@ static bool check_pte(struct page_vma_mapped_walk *pvmw)
 
 		pfn = pte_pfn(*pvmw->pte);
 	}
-
+	/* 刚才好像都是为了获取pte的pfn，现在开始比较 */
 	return pfn_in_hpage(pvmw->page, pfn);
 }
 
 /**
-检查vma的addr地址映射的是不是page
+在pvmw的vma，相关的页表范围里面一直找到一个可以指向page的pte。
  * page_vma_mapped_walk - check if @pvmw->page is mapped in @pvmw->vma at
  * @pvmw->address
  * @pvmw: pointer to struct page_vma_mapped_walk. page, vma, address and flags
@@ -142,7 +142,8 @@ static bool check_pte(struct page_vma_mapped_walk *pvmw)
  * If you need to stop the walk before page_vma_mapped_walk() returned false,
  * use page_vma_mapped_walk_done(). It will do the housekeeping.
    2024年7月2日23:55:07
-	
+rmap_walk_anon给出了vma、address和folio，但没有得到PTE，这个任务只能由rwc的回调函数自行完成，
+不过内核提供了page_vma_mapped_walk函数辅助完成该任务。	
  */
 bool page_vma_mapped_walk(struct page_vma_mapped_walk *pvmw)
 {
@@ -222,6 +223,11 @@ restart:
 	} else if (!pmd_present(pmde)) {
 		return false;
 	}
+
+	/* 刚才的工作好像就是找到pte，下面就是对比pte是不是指向的page，当前这个
+	没指向的话，就next_pte，不过这个next的选择逻辑是什么？ */
+
+
 	/*  */
 	if (!map_pte(pvmw))
 		goto next_pte;
@@ -235,6 +241,11 @@ next_pte:
 		if (!PageTransHuge(pvmw->page) || PageHuge(pvmw->page))
 			return not_found(pvmw);
 
+
+		/* 选择next_pte的逻辑好像就是va不断+=page_size，
+		pte也伴随++
+		一直到pte不为空，就是找到了下一个pte。
+		其实就是pte++到不为空，va的+=page_size只是哦判断有没有越界或者下一个页表 */
 		do {
 			pvmw->address += PAGE_SIZE;
 			if (pvmw->address >= pvmw->vma->vm_end ||

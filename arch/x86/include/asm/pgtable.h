@@ -321,7 +321,10 @@ static inline pte_t pte_clear_flags(pte_t pte, pteval_t clear)
 
 	return native_make_pte(v & ~clear);
 }
-/* 使之不为dirty */
+/* 
+通过 pte_mkclean 清除页表项上的脏页标记。
+使之不为dirty
+*/
 static inline pte_t pte_mkclean(pte_t pte)
 {
 	return pte_clear_flags(pte, _PAGE_DIRTY);

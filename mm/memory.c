@@ -2324,9 +2324,10 @@ todo
  * handle_pte_fault chooses page fault handler according to an entry which was
  * read non-atomically.  Before making any commitment, on those architectures
  * or configurations (e.g. i386 with PAE) which might give a mix of unmatched
- * parts, do_swap_page must check under lock before unmapping the pte and
- * proceeding (but do_wp_page is only called after already making such a check;
- * and do_anonymous_page can safely check later on).
+ * parts, 
+ do_swap_page must check under lock before unmapping the pte and proceeding 
+ (but do_wp_page is only called after already making such a check;
+  and do_anonymous_page can safely check later on).
  */
 static inline int pte_unmap_same(struct mm_struct *mm, pmd_t *pmd,
 				pte_t *page_table, pte_t orig_pte)
@@ -2338,7 +2339,9 @@ static inline int pte_unmap_same(struct mm_struct *mm, pmd_t *pmd,
 		spinlock_t *ptl = pte_lockptr(mm, pmd);
 		
 		spin_lock(ptl);
+		/* 检查现在的pte指针内容是不是还和之前的orig_pte条目一样 */
 		same = pte_same(*page_table, orig_pte);
+		
 		spin_unlock(ptl);
 	}
 #endif
@@ -3081,13 +3084,15 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	int locked;
 	int exclusive = 0;
 	vm_fault_t ret = 0;
-
+	/* 看看现在的*pte有没有变，还和之前的pte条目一样不。 */
 	if (!pte_unmap_same(vma->vm_mm, vmf->pmd, vmf->pte, vmf->orig_pte))
 		goto out;
 
+	/* 这是个swp缺页，那么发生缺页时候的orig_pte保存的就是swp相关 */
 	entry = pte_to_swp_entry(vmf->orig_pte);
 	if (unlikely(non_swap_entry(entry))) {
-		/* 为什么会no swap entry */
+		/* 为什么会no swap entry
+		反正就是特殊情况吧 */
 		if (is_migration_entry(entry)) {
 			migration_entry_wait(vma->vm_mm, vmf->pmd,
 					     vmf->address);
@@ -3105,17 +3110,21 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 
 	delayacct_set_flag(DELAYACCT_PF_SWAPIN);
-	/* 从swapfile里读取page */
+	/* 从swapfile的mapping读取page */
 	page = lookup_swap_cache(entry, vma, vmf->address);
 	swapcache = page;
 
 	if (!page) {
 		/* 2024年07月03日14:35:49
-		为什么会没有page呢 */
+		为什么会没有page呢 
+		2024年8月9日22:51:40
+		好像是说明swp mapping没有这个页面
+		新申请一个页面
+		*/
 		struct swap_info_struct *si = swp_swap_info(entry);
 
 		if (si->flags & SWP_SYNCHRONOUS_IO &&
-				__swap_count(entry) == 1) {
+				__swap_count(entry) == 1) {/* 如果可以容忍同步读取 */
 			/* skip swapcache */
 			page = alloc_page_vma(GFP_HIGHUSER_MOVABLE, vma,
 							vmf->address);
@@ -3126,9 +3135,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				set_page_private(page, entry.val);
 				/*  */
 				lru_cache_add_anon(page);
+				/* 这里吧swp file里的page内容读取到刚刚申请的page内存区域里面 */
 				swap_readpage(page, true);
 			}
 		} else {
+			/* 这里是异步读取page内容 */
 			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 						vmf);
 			swapcache = page;
@@ -3136,6 +3147,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 		if (!page) {
 			/*
+			这里为什么还能空？
 			 * Back out if somebody else faulted in this pte
 			 * while we released the pte lock.
 			 */
@@ -4191,6 +4203,7 @@ static vm_fault_t wp_huge_pud(struct vm_fault *vmf, pud_t orig_pud)
 }
 
 /*
+2024年8月9日22:30:49
  * These routines also need to handle stuff like marking pages dirty
  * and/or accessed for architectures that don't do it in hardware (most
  * RISC architectures).  The early dirtying is also good on the i386.
@@ -4209,7 +4222,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 {
 	pte_t entry;
 
-	if (unlikely(pmd_none(*vmf->pmd))) {
+	if (unlikely(pmd_none(*vmf->pmd))) {/* pmd都是空的 */
 		/*
 		 * Leave __pte_alloc() until later: because vm_ops->fault may
 		 * want to allocate huge page, and if we expose page table
@@ -4251,6 +4264,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 
 	/* 刚刚找到了pte条目位置 */
 
+	/* pte是空的，但是不能是其他情况吗 */
 	if (!vmf->pte) {
 		if (vma_is_anonymous(vmf->vma))
 			/* 匿名页？ */
@@ -4260,12 +4274,16 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 			return do_fault(vmf);
 	}
 
+	/* 下面是有pte的情况，看代码逻辑好像这种情况就是
+	1交换
+	2numa
+	 */
 	if (!pte_present(vmf->orig_pte))
 		return do_swap_page(vmf);
 
 	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
-
+	/* 下面是哪些子进程写时复制什么的情况 */
 	vmf->ptl = pte_lockptr(vmf->vma->vm_mm, vmf->pmd);
 	spin_lock(vmf->ptl);
 	entry = vmf->orig_pte;

@@ -379,12 +379,14 @@ out:
 	return ret;
 }
 /* 2024年07月03日14:53:14
-
+把page从swp file里读出来拷贝到page。
+申请page的时候已经把swp ent信息赋值到page的priv里面了。
  */
 int swap_readpage(struct page *page, bool synchronous)
 {
 	struct bio *bio;
 	int ret = 0;
+	/* 通过page的priv找到swp ent和sis等信息 */
 	struct swap_info_struct *sis = page_swap_info(page);
 	blk_qc_t qc;
 	struct gendisk *disk;
@@ -403,7 +405,7 @@ int swap_readpage(struct page *page, bool synchronous)
 		/*  */
 		struct file *swap_file = sis->swap_file;
 		struct address_space *mapping = swap_file->f_mapping;
-		/* mapping的ops来读取 */
+		/* mapping的ops来读取file里的page内容到page指针内存区域 */
 		ret = mapping->a_ops->readpage(swap_file, page);
 		if (!ret)
 			count_vm_event(PSWPIN);

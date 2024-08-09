@@ -145,7 +145,9 @@ static inline void anon_vma_lock_read(struct anon_vma *anon_vma)
 {
 	down_read(&anon_vma->root->rwsem);
 }
-
+/* 2024年8月10日00:07:04
+读av之后解锁信号量
+ */
 static inline void anon_vma_unlock_read(struct anon_vma *anon_vma)
 {
 	up_read(&anon_vma->root->rwsem);

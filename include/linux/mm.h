@@ -439,7 +439,8 @@ struct vm_fault {
 	pud_t *pud;			/* Pointer to pud entry matching
 					 * the 'address'异常地址所在的pud
 					 */
-	pte_t orig_pte;			/* Value of PTE at the time of fault,异常时候的pte条目
+	pte_t orig_pte;			/* Value of PTE at the time of fault,
+	异常时候的pte条目
 
  */
 
@@ -456,7 +457,8 @@ struct vm_fault {
 	/* These three entries are valid only while holding ptl lock */
 	pte_t *pte;			/* Pointer to pte entry matching
 					 * the 'address'. NULL if the page
-					 * table hasn't been allocated.异常之后的pte
+					 * table hasn't been allocated.
+					 异常之后的pte
 					 */
 	spinlock_t *ptl;		/* Page table lock.
 					 * Protects pte page table if 'pte'

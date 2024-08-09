@@ -330,7 +330,7 @@ static inline bool swap_use_vma_readahead(void)
 
 /*
 2024年07月03日12:21:11
-从swap的内存里面的mapping什么的读取
+从swap file的mapping读取
  * Lookup a swap entry in the swap cache. A found page will be returned
  * unlocked and with its refcount incremented - we rely on the kernel
  * lock getting page table operations atomic even if we drop the page
@@ -351,7 +351,9 @@ struct page *lookup_swap_cache(swp_entry_t entry, struct vm_area_struct *vma,
 
 	INC_CACHE_INFO(find_total);
 	if (page) {
-		/* 找到了page， */
+
+		/* 找到了page，
+		不过这里面的处理似乎只是更新统计信息？2024年8月9日22:56:20 */
 		bool vma_ra = swap_use_vma_readahead();
 		bool readahead;
 
@@ -385,7 +387,7 @@ struct page *lookup_swap_cache(swp_entry_t entry, struct vm_area_struct *vma,
 				atomic_inc(&swapin_readahead_hits);
 		}
 	}
-
+	/* page可能为空 */
 	return page;
 }
 /* swap的预读 
@@ -848,7 +850,7 @@ skip:
 }
 
 /**
-换入的预读
+换入的异步预读
  * swapin_readahead - swap in pages in hope we need them soon
  * @entry: swap entry of this memory
  * @gfp_mask: memory allocation flags

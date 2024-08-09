@@ -45,6 +45,10 @@
  *     pte map lock
  */
 
+/* 2024年8月10日00:29:08 */
+
+
+
 #include <linux/mm.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/task.h>
@@ -126,13 +130,14 @@ static inline void anon_vma_free(struct anon_vma *anon_vma)
 	/* slab归还 */
 	kmem_cache_free(anon_vma_cachep, anon_vma);
 }
+
 /* 2024年7月2日00:00:31
 分配avc */
 static inline struct anon_vma_chain *anon_vma_chain_alloc(gfp_t gfp)
 {
 	return kmem_cache_alloc(anon_vma_chain_cachep, gfp);
 }
-
+/* 归还到slab */
 static void anon_vma_chain_free(struct anon_vma_chain *anon_vma_chain)
 {
 	kmem_cache_free(anon_vma_chain_cachep, anon_vma_chain);
@@ -254,7 +259,7 @@ static inline struct anon_vma *lock_anon_vma_root(struct anon_vma *root, struct 
 	}
 	return root;
 }
-
+/* ？ */
 static inline void unlock_anon_vma_root(struct anon_vma *root)
 {
 	if (root)
@@ -400,7 +405,10 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 	unlink_anon_vmas(vma);
 	return -ENOMEM;
 }
-/* 2024年7月19日00:17:03 */
+/* 2024年7月19日00:17:03
+2024年8月10日00:15:00
+
+ */
 void unlink_anon_vmas(struct vm_area_struct *vma)
 {
 	struct anon_vma_chain *avc, *next;
@@ -410,10 +418,11 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 	 * Unlink each anon_vma chained to the VMA.  This list is ordered
 	 * from newest to oldest, ensuring the root anon_vma gets freed last.
 	 */
+	 /* 遍历这个vma挂接的链表上面全部的avc */
 	list_for_each_entry_safe(avc, next, &vma->anon_vma_chain, same_vma) {
 		/* 遍历全部的av */
 		struct anon_vma *anon_vma = avc->anon_vma;
-
+		/* 如果av有root的话，root指向av的root */
 		root = lock_anon_vma_root(root, anon_vma);
 
 		anon_vma_interval_tree_remove(avc, &anon_vma->rb_root);
@@ -427,9 +436,12 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 			continue;
 		}
 
+		/* 把目前这个avc移除 */
 		list_del(&avc->same_vma);
+		/* 释放avc */
 		anon_vma_chain_free(avc);
 	}
+
 	if (vma->anon_vma)
 		vma->anon_vma->degree--;
 	unlock_anon_vma_root(root);
@@ -450,7 +462,7 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 		anon_vma_chain_free(avc);
 	}
 }
-
+/* 构造av */
 static void anon_vma_ctor(void *data)
 {
 	struct anon_vma *anon_vma = data;
@@ -459,7 +471,7 @@ static void anon_vma_ctor(void *data)
 	atomic_set(&anon_vma->refcount, 0);
 	anon_vma->rb_root = RB_ROOT_CACHED;
 }
-
+/* 初始化av和avc的slab */
 void __init anon_vma_init(void)
 {
 	anon_vma_cachep = kmem_cache_create("anon_vma", sizeof(struct anon_vma),
@@ -470,6 +482,8 @@ void __init anon_vma_init(void)
 }
 
 /*
+2024年8月10日00:11:00
+获取page的av
  * Getting a lock on a stable anon_vma from a page off the LRU is tricky!
  *
  * Since there is no serialization what so ever against page_remove_rmap()
@@ -499,8 +513,10 @@ struct anon_vma *page_get_anon_vma(struct page *page)
 
 	rcu_read_lock();
 	anon_mapping = (unsigned long)READ_ONCE(page->mapping);
+	/* 要求是anon mapping */
 	if ((anon_mapping & PAGE_MAPPING_FLAGS) != PAGE_MAPPING_ANON)
 		goto out;
+
 	if (!page_mapped(page))
 		goto out;
 
@@ -529,6 +545,8 @@ out:
 }
 
 /*
+2024年8月10日00:08:06
+
  * Similar to page_get_anon_vma() except it locks the anon_vma.
  *
  * Its a little more complex as it tries to keep the fast path to a single
@@ -583,7 +601,7 @@ struct anon_vma *page_lock_anon_vma_read(struct page *page)
 
 	/* we pinned the anon_vma, its safe to sleep */
 	rcu_read_unlock();
-
+	/* 找到page的av了，就是一样的lock read av。 */
 	anon_vma_lock_read(anon_vma);
 
 	if (atomic_dec_and_test(&anon_vma->refcount)) {
@@ -604,6 +622,7 @@ out:
 	return anon_vma;
 }
 
+/* 解锁信号量 */
 void page_unlock_anon_vma_read(struct anon_vma *anon_vma)
 {
 	anon_vma_unlock_read(anon_vma);
@@ -615,6 +634,8 @@ void page_unlock_anon_vma_read(struct anon_vma *anon_vma)
  * important if a PTE was dirty when it was unmapped that it's flushed
  * before any IO is initiated on the page to prevent lost writes. Similarly,
  * it must be flushed before freeing to prevent data leakage.
+ 2024年8月10日00:04:35
+ 刷新mm的tlb
  */
 void try_to_unmap_flush(void)
 {
@@ -628,7 +649,9 @@ void try_to_unmap_flush(void)
 	tlb_ubc->writable = false;
 }
 
-/* Flush iff there are potentially writable TLB entries that can race with IO */
+/* 
+2024年8月10日00:03:49
+Flush iff there are potentially writable TLB entries that can race with IO */
 void try_to_unmap_flush_dirty(void)
 {
 	struct tlbflush_unmap_batch *tlb_ubc = &current->tlb_ubc;
@@ -682,6 +705,8 @@ static bool should_defer_flush(struct mm_struct *mm, enum ttu_flags flags)
 }
 
 /*
+2024年8月10日00:02:01
+todo
  * Reclaim unmaps pages under the PTL but do not flush the TLB prior to
  * releasing the PTL if TLB flushes are batched. It's possible for a parallel
  * operation such as mprotect or munmap to race between reclaim unmapping
@@ -721,12 +746,14 @@ static bool should_defer_flush(struct mm_struct *mm, enum ttu_flags flags)
 #endif /* CONFIG_ARCH_WANT_BATCHED_UNMAP_TLB_FLUSH */
 
 /*
+找到page在
  * At what user virtual address is page expected in vma?
  * Caller should check the page is actually part of the vma.
  */
 unsigned long page_address_in_vma(struct page *page, struct vm_area_struct *vma)
 {
 	unsigned long address;
+
 	if (PageAnon(page)) {
 		struct anon_vma *page__anon_vma = page_anon_vma(page);
 		/*
@@ -741,12 +768,18 @@ unsigned long page_address_in_vma(struct page *page, struct vm_area_struct *vma)
 			return -EFAULT;
 	} else
 		return -EFAULT;
+	/* 刚才的检查应该是确保page和vma是有关系的 */
+	
+
 	address = __vma_address(page, vma);
 	if (unlikely(address < vma->vm_start || address >= vma->vm_end))
 		return -EFAULT;
 	return address;
 }
 
+/* 2024年8月9日23:54:03
+找到addr对应的pmd，保证不为空
+ */
 pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address)
 {
 	pgd_t *pgd;
@@ -780,6 +813,7 @@ pmd_t *mm_find_pmd(struct mm_struct *mm, unsigned long address)
 out:
 	return pmd;
 }
+
 /* 2024年7月2日23:51:33 */
 struct page_referenced_arg {
 	int mapcount;
@@ -858,7 +892,7 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 
 	return true;
 }
-
+/* ramp walk的时候判断当前vma是否需要跳过 */
 static bool invalid_page_referenced_vma(struct vm_area_struct *vma, void *arg)
 {
 	struct page_referenced_arg *pra = arg;
@@ -935,6 +969,8 @@ int page_referenced(struct page *page,
 	return pra.referenced;
 }
 
+/* 什么是page的mkclean
+就是找到vma里面每个映射到page的pte，对pte进行mkclean */
 static bool page_mkclean_one(struct page *page, struct vm_area_struct *vma,
 			    unsigned long address, void *arg)
 {
@@ -956,24 +992,33 @@ static bool page_mkclean_one(struct page *page, struct vm_area_struct *vma,
 				min(vma->vm_end, address + page_size(page)));
 	mmu_notifier_invalidate_range_start(&range);
 
-	while (page_vma_mapped_walk(&pvmw)) {
+	while (page_vma_mapped_walk(&pvmw)) {/* 只要pvmw的vma和相关的mm里面还有pte可以指向page，就一直循环。
+	每次返回true，就说明在范围里面找到了一个指向page的pte。
+	这也印证了遍历处理每一个映射到page的pte的想法。 */
 		int ret = 0;
 
 		address = pvmw.address;
-		if (pvmw.pte) {
+		if (pvmw.pte) {/* 这个pte是指向page的 */
 			pte_t entry;
 			pte_t *pte = pvmw.pte;
 
-			if (!pte_dirty(*pte) && !pte_write(*pte))
+			if (!pte_dirty(*pte) && !pte_write(*pte))/*  */
 				continue;
 
 			flush_cache_page(vma, address, pte_pfn(*pte));
+			
 			entry = ptep_clear_flush(vma, address, pte);
+			/* 一直到page_mkclean_one(page),里面会做pte_wrprotect(entry)，
+			也就是把pte置为“写保护”，这样做是故意的，当应用写这个page时，
+			就会因为碰了“写保护”页面而触发do_page_fault，即使这个page已经是在内存中了。 */
 			entry = pte_wrprotect(entry);
+			/* 就是是ent不dirty标志位 */
 			entry = pte_mkclean(entry);
+
 			set_pte_at(vma->vm_mm, address, pte, entry);
 			ret = 1;
-		} else {
+		} else {/* 这个时候pte可能为空吗，按理说进入了循环，pvmw的pte应该是指向page的 。
+		todo*/
 #ifdef CONFIG_TRANSPARENT_HUGE_PAGECACHE
 			pmd_t *pmd = pvmw.pmd;
 			pmd_t entry;
@@ -1009,6 +1054,7 @@ static bool page_mkclean_one(struct page *page, struct vm_area_struct *vma,
 	return true;
 }
 
+/*  */
 static bool invalid_mkclean_vma(struct vm_area_struct *vma, void *arg)
 {
 	if (vma->vm_flags & VM_SHARED)
@@ -1016,14 +1062,17 @@ static bool invalid_mkclean_vma(struct vm_area_struct *vma, void *arg)
 
 	return true;
 }
-
+/* 2024年8月9日23:15:01
+就是找到每个映射到page的pte，对pte进行mkclean */
 int page_mkclean(struct page *page)
 {
 	int cleaned = 0;
 	struct address_space *mapping;
 	struct rmap_walk_control rwc = {
 		.arg = (void *)&cleaned,
+		/* 什么是page的mkclean */
 		.rmap_one = page_mkclean_one,
+		/* 这个函数做什么的，是判断那些vma需要跳过吗 */
 		.invalid_vma = invalid_mkclean_vma,
 	};
 
@@ -1043,6 +1092,7 @@ int page_mkclean(struct page *page)
 EXPORT_SYMBOL_GPL(page_mkclean);
 
 /**
+移动page到当前的av？
  * page_move_anon_rmap - move a page to our anon_vma
  * @page:	the page to move to our anon_vma
  * @vma:	the vma the page belongs to
@@ -1107,6 +1157,10 @@ static void __page_set_anon_rmap(struct page *page,
 }
 
 /**
+如何check
+好吧
+page_anon_vma(page)->root != vma->anon_vma->root看vma与page是否绑定了
+page_to_pgoff(page) != linear_page_index(vma, address)看绑定的地址
  * __page_check_anon_rmap - sanity check anonymous rmap addition
  * @page:	the page to add the mapping to
  * @vma:	the vm area in which the mapping is added
@@ -1134,6 +1188,8 @@ static void __page_check_anon_rmap(struct page *page,
 }
 
 /**
+匿名页添加rmap
+todo
  * page_add_anon_rmap - add pte mapping to an anonymous page
  * @page:	the page to add the mapping to
  * @vma:	the vm area in which the mapping is added
@@ -1152,7 +1208,8 @@ void page_add_anon_rmap(struct page *page,
 }
 
 /*
-
+2024年8月9日22:07:20
+todo
  * Special version of the above for do_swap_page, which often runs
  * into pages that are exclusively owned by the current process.
  * Everybody else should continue to use page_add_anon_rmap above.
@@ -1163,7 +1220,7 @@ void do_page_add_anon_rmap(struct page *page,
 	bool compound = flags & RMAP_COMPOUND;
 	bool first;
 
-	if (compound) {
+	if (compound) {/* 复合页路径 */
 		atomic_t *mapcount;
 		VM_BUG_ON_PAGE(!PageLocked(page), page);
 		VM_BUG_ON_PAGE(!PageTransHuge(page), page);
@@ -1172,6 +1229,7 @@ void do_page_add_anon_rmap(struct page *page,
 	} else {
 		first = atomic_inc_and_test(&page->_mapcount);
 	}
+	/* 2024年8月9日22:21:23这里可能为0吗， */
 
 	if (first) {
 		int nr = compound ? hpage_nr_pages(page) : 1;
