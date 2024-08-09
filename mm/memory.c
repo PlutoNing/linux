@@ -3029,7 +3029,7 @@ unmap指定mapping的指定范围的映射？
  * the underlying file.  This will be rounded down to a PAGE_SIZE
  * boundary.  Note that this is different from truncate_pagecache(), which
  * must keep the partial page.  In contrast, we must get rid of
- * partial pages.
+ * partial pages.是个page_size整数大小的地址，从这里开始整页整页的解除。
  * @holelen: size of prospective hole in bytes.  This will be rounded
  * up to a PAGE_SIZE boundary.  A holelen of zero truncates to the
  * end of the file.

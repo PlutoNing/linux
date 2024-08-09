@@ -4939,6 +4939,7 @@ int page_evictable(struct page *page)
 
 /**
 2024年07月04日12:55:31
+把unevict的页面放回lru
  * check_move_unevictable_pages - check pages for evictability and move to
  * appropriate zone lru list
  * @pvec: pagevec with lru pages to check
@@ -4969,10 +4970,11 @@ void check_move_unevictable_pages(struct pagevec *pvec)
 		}
 		lruvec = mem_cgroup_page_lruvec(page, pgdat);
 
+		/* 只处理lru的unevict */
 		if (!PageLRU(page) || !PageUnevictable(page))
 			continue;
 
-		if (page_evictable(page)) {
+		if (page_evictable(page)) {/* ？不是刚才continue了吗，怎么还有evict的 */
 			/* 获取页面是页缓存还是匿名页lru类型 */
 			enum lru_list lru = page_lru_base_type(page);
 
@@ -4985,7 +4987,7 @@ void check_move_unevictable_pages(struct pagevec *pvec)
 		}
 	}
 
-	if (pgdat) {
+	if (pgdat) {/* 统计信息 */
 		__count_vm_events(UNEVICTABLE_PGRESCUED, pgrescued);
 		__count_vm_events(UNEVICTABLE_PGSCANNED, pgscanned);
 		spin_unlock_irq(&pgdat->lru_lock);

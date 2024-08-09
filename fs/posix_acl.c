@@ -934,7 +934,7 @@ int simple_set_acl(struct inode *inode, struct posix_acl *acl, int type)
 	set_cached_acl(inode, type, acl);
 	return 0;
 }
-
+/* todo */
 int simple_acl_create(struct inode *dir, struct inode *inode)
 {
 	struct posix_acl *default_acl, *acl;

@@ -460,7 +460,7 @@ static void __lru_cache_add(struct page *page)
 
 /**
 2024年07月03日14:51:49
-anon代表什么？
+
  * lru_cache_add_anon - add a page to the page lists
  * @page: the page to add
  */
@@ -1149,7 +1149,8 @@ unsigned pagevec_lookup_entries(struct pagevec *pvec,
 /**
 2024年7月29日00:40:55
 把pvec里面非xa_is_value的page移到前面，
-
+然后更新nr为移动的数量
+意思其实就是这个时候pvec里面只有is_val的元素了。
  * pagevec_remove_exceptionals - pagevec exceptionals pruning
  * @pvec:	The pagevec to prune
  *
@@ -1167,6 +1168,7 @@ void pagevec_remove_exceptionals(struct pagevec *pvec)
 		if (!xa_is_value(page))
 			pvec->pages[j++] = page;
 	}
+
 	pvec->nr = j;
 }
 

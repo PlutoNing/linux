@@ -938,6 +938,7 @@ static int xattr_list_one(char **buffer, ssize_t *remaining_size,
 }
 
 /*
+查看inode的xattrs
  * xattr LIST operation for in-memory/pseudo filesystems
  */
 ssize_t simple_xattr_list(struct inode *inode, struct simple_xattrs *xattrs,

@@ -1259,8 +1259,7 @@ void page_add_file_rmap(struct page *page, bool compound)
 		else
 			__inc_node_page_state(page, NR_FILE_PMDMAPPED);
 		
-	} else {
-		/*  */
+	} else {/* 单页的路径 */
 		if (PageTransCompound(page) && page_mapping(page)) {
 			VM_WARN_ON_ONCE(!PageLocked(page));
 

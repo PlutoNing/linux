@@ -467,9 +467,10 @@ struct address_space {
 	/* number of thp, only for non-shmem files */
 	atomic_t		nr_thps;
 #endif
-//代表该address_space缓存的Page所存放的rb-tree
+	//代表该address_space缓存的Page所存放的rb-tree，与xas的区别是什么？
 	struct rb_root_cached	i_mmap;
-	/* 用来保护i_mmap 和i_mmap_writable的自旋锁
+	/* 
+	用来保护i_mmap 和i_mmap_writable的自旋锁
 	2024年07月18日19:00:53
 	表示引用自己的vma数量？ */
 	struct rw_semaphore	i_mmap_rwsem;
@@ -716,6 +717,8 @@ struct inode {
 	/* 以位为单位的块大小 */
 	u8			i_blkbits;
 	u8			i_write_hint;
+
+	/* 代表包含的block数量 */
 	blkcnt_t		i_blocks;
 
 #ifdef __NEED_I_SIZE_ORDERED
@@ -770,6 +773,7 @@ struct inode {
 		void (*free_inode)(struct inode *);
 	};
 	struct file_lock_context	*i_flctx;
+	/* 为什么inode也有mapping？todo */
 	struct address_space	i_data;
 	struct list_head	i_devices;
 	union {
@@ -806,7 +810,8 @@ static inline unsigned int i_blocksize(const struct inode *node)
 {
 	return (1 << node->i_blkbits);
 }
-
+/* 判断这个inode的hlist有没有加入hash表
+来判断indoe的hash有没有被初始化 */
 static inline int inode_unhashed(struct inode *inode)
 {
 	return hlist_unhashed(&inode->i_hash);

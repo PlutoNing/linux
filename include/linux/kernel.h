@@ -67,6 +67,12 @@
  *
  * Rounds @x up to next multiple of @y (which must be a power of 2).
  * To perform arbitrary rounding up, use roundup() below.
+ >>> def ru(x,y):
+...  return(((x-1)|(y-1))+1)
+... 
+>>> 
+>>> ru(20000,4096)
+20480
  */
 #define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
 /**

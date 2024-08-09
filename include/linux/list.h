@@ -766,7 +766,7 @@ static inline void INIT_HLIST_NODE(struct hlist_node *h)
 	h->next = NULL;
 	h->pprev = NULL;
 }
-
+/* 判断这个hlist有没有加入hash */
 static inline int hlist_unhashed(const struct hlist_node *h)
 {
 	return !h->pprev;

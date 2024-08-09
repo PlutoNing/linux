@@ -3422,7 +3422,7 @@ out:
 		mnt_drop_write(nd->path.mnt);
 	return error;
 }
-
+/* vfs层创建tmpfile的接口？ */
 struct dentry *vfs_tmpfile(struct dentry *dentry, umode_t mode, int open_flag)
 {
 	struct dentry *child = NULL;
@@ -3435,12 +3435,15 @@ struct dentry *vfs_tmpfile(struct dentry *dentry, umode_t mode, int open_flag)
 	if (error)
 		goto out_err;
 	error = -EOPNOTSUPP;
+	/* 这个文件夹的inode没有创建tmpfile的回调 */
 	if (!dir->i_op->tmpfile)
 		goto out_err;
 	error = -ENOMEM;
+	/* 分配一个dir下的孩子 */
 	child = d_alloc(dentry, &slash_name);
 	if (unlikely(!child))
 		goto out_err;
+	/* 创建tmpfile */
 	error = dir->i_op->tmpfile(dir, child, mode);
 	if (error)
 		goto out_err;

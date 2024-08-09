@@ -30,7 +30,7 @@
  *	returned 0 we must skip the element, otherwise we got the reference.
  *	Once the reference is obtained we can drop the spinlock.
  */
-
+/* fs的全局链表 */
 static struct file_system_type *file_systems;
 static DEFINE_RWLOCK(file_systems_lock);
 
@@ -45,7 +45,7 @@ void put_filesystem(struct file_system_type *fs)
 {
 	module_put(fs->owner);
 }
-
+/* 在fs的全局链表查找 */
 static struct file_system_type **find_filesystem(const char *name, unsigned len)
 {
 	struct file_system_type **p;
@@ -57,6 +57,8 @@ static struct file_system_type **find_filesystem(const char *name, unsigned len)
 }
 
 /**
+2024年08月09日10:44:41
+注册新fs
  *	register_filesystem - register a new filesystem
  *	@fs: the file system structure
  *
@@ -80,6 +82,8 @@ int register_filesystem(struct file_system_type * fs)
 	BUG_ON(strchr(fs->name, '.'));
 	if (fs->next)
 		return -EBUSY;
+
+	/* 在fs的全局链表查找，先加锁。 */
 	write_lock(&file_systems_lock);
 	p = find_filesystem(fs->name, strlen(fs->name));
 	if (*p)
@@ -87,6 +91,8 @@ int register_filesystem(struct file_system_type * fs)
 	else
 		*p = fs;
 	write_unlock(&file_systems_lock);
+
+
 	return res;
 }
 

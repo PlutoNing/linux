@@ -938,19 +938,23 @@ repeat:
 	return ret;
 }
 EXPORT_SYMBOL(dget_parent);
-
+/* 获取inode的一个dent */
 static struct dentry * __d_find_any_alias(struct inode *inode)
 {
 	struct dentry *alias;
 
 	if (hlist_empty(&inode->i_dentry))
 		return NULL;
+
 	alias = hlist_entry(inode->i_dentry.first, struct dentry, d_u.d_alias);
+
 	__dget(alias);
+
 	return alias;
 }
 
 /**
+获取一个dent
  * d_find_any_alias - find any alias for a given inode
  * @inode: inode to find an alias for
  *
@@ -969,6 +973,7 @@ struct dentry *d_find_any_alias(struct inode *inode)
 EXPORT_SYMBOL(d_find_any_alias);
 
 /**
+找到一个inode的hash了的dent
  * d_find_alias - grab a hashed alias of inode
  * @inode: inode in question
  *
@@ -986,12 +991,15 @@ static struct dentry *__d_find_alias(struct inode *inode)
 {
 	struct dentry *alias;
 
-	if (S_ISDIR(inode->i_mode))
+	if (S_ISDIR(inode->i_mode))/* dir inode的特殊路径，不过为啥特殊 */
 		return __d_find_any_alias(inode);
 
+	/* 遍历每一个dent，存储到alias */
 	hlist_for_each_entry(alias, &inode->i_dentry, d_u.d_alias) {
+
 		spin_lock(&alias->d_lock);
- 		if (!d_unhashed(alias)) {
+ 		if (!d_unhashed(alias)) {/* 看来是随便
+		找到一个hash了的就返回了 */
 			__dget_dlock(alias);
 			spin_unlock(&alias->d_lock);
 			return alias;
@@ -1000,13 +1008,14 @@ static struct dentry *__d_find_alias(struct inode *inode)
 	}
 	return NULL;
 }
-
+/* 返回inode关联的其中一个dent */
 struct dentry *d_find_alias(struct inode *inode)
 {
 	struct dentry *de = NULL;
 
 	if (!hlist_empty(&inode->i_dentry)) {
 		spin_lock(&inode->i_lock);
+		/* 一个inode可能对应多个dent，这里找一个hash了的 */
 		de = __d_find_alias(inode);
 		spin_unlock(&inode->i_lock);
 	}
@@ -1670,6 +1679,7 @@ void d_invalidate(struct dentry *dentry)
 EXPORT_SYMBOL(d_invalidate);
 
 /**
+分配一个dent
  * __d_alloc	-	allocate a dcache entry
  * @sb: filesystem it will belong to
  * @name: qstr of the name
@@ -1684,7 +1694,7 @@ struct dentry *__d_alloc(struct super_block *sb, const struct qstr *name)
 	struct dentry *dentry;
 	char *dname;
 	int err;
-
+	/* slab分配dent */
 	dentry = kmem_cache_alloc(dentry_cache, GFP_KERNEL);
 	if (!dentry)
 		return NULL;
@@ -1713,7 +1723,7 @@ struct dentry *__d_alloc(struct super_block *sb, const struct qstr *name)
 	} else  {
 		dname = dentry->d_iname;
 	}	
-
+	/* 设置文件名 */
 	dentry->d_name.len = name->len;
 	dentry->d_name.hash = name->hash;
 	memcpy(dname, name->name, name->len);
@@ -1727,6 +1737,7 @@ struct dentry *__d_alloc(struct super_block *sb, const struct qstr *name)
 	spin_lock_init(&dentry->d_lock);
 	seqcount_init(&dentry->d_seq);
 	dentry->d_inode = NULL;
+	/* 设置parent */
 	dentry->d_parent = dentry;
 	dentry->d_sb = sb;
 	dentry->d_op = NULL;
@@ -1754,6 +1765,7 @@ struct dentry *__d_alloc(struct super_block *sb, const struct qstr *name)
 }
 
 /**
+给parent分配一个ent
  * d_alloc	-	allocate a dcache entry
  * @parent: parent of entry to allocate
  * @name: qstr of the name
@@ -1764,6 +1776,7 @@ struct dentry *__d_alloc(struct super_block *sb, const struct qstr *name)
  */
 struct dentry *d_alloc(struct dentry * parent, const struct qstr *name)
 {
+	/* 实际函数 */
 	struct dentry *dentry = __d_alloc(parent->d_sb, name);
 	if (!dentry)
 		return NULL;
@@ -1780,15 +1793,16 @@ struct dentry *d_alloc(struct dentry * parent, const struct qstr *name)
 	return dentry;
 }
 EXPORT_SYMBOL(d_alloc);
-
+/* 分配匿名dent？ */
 struct dentry *d_alloc_anon(struct super_block *sb)
 {
 	return __d_alloc(sb, NULL);
 }
 EXPORT_SYMBOL(d_alloc_anon);
-
+/* 其实就是分配一个匿名的dent */
 struct dentry *d_alloc_cursor(struct dentry * parent)
 {
+	/* 分配一个匿名的inode */
 	struct dentry *dentry = d_alloc_anon(parent->d_sb);
 	if (dentry) {
 		dentry->d_flags |= DCACHE_DENTRY_CURSOR;
@@ -3118,13 +3132,14 @@ void d_genocide(struct dentry *parent)
 }
 
 EXPORT_SYMBOL(d_genocide);
-
+/* 2024年08月09日10:07:35 */
 void d_tmpfile(struct dentry *dentry, struct inode *inode)
 {
 	inode_dec_link_count(inode);
 	BUG_ON(dentry->d_name.name != dentry->d_iname ||
 		!hlist_unhashed(&dentry->d_u.d_alias) ||
 		!d_unlinked(dentry));
+
 	spin_lock(&dentry->d_parent->d_lock);
 	spin_lock_nested(&dentry->d_lock, DENTRY_D_LOCK_NESTED);
 	dentry->d_name.len = sprintf(dentry->d_iname, "#%llu",

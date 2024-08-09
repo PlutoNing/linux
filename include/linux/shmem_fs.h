@@ -15,7 +15,9 @@ struct shmem_inode_info {
 	spinlock_t		lock;
 	unsigned int		seals;		/* shmem seals */
 	unsigned long		flags;
-	unsigned long		alloced;	/* data pages alloced to file */
+	unsigned long		alloced;	/* 
+	代表包含的页面数量
+	data pages alloced to file */
 	unsigned long		swapped;	/*
 	被swap的页面数量？
 	 subtotal assigned to swap */
@@ -25,7 +27,9 @@ struct shmem_inode_info {
 	挂载到shmem_swaplist
 	chain of maybes on swap */
 	struct shared_policy	policy;		/* NUMA memory alloc policy */
-	struct simple_xattrs	xattrs;		/* list of xattrs */
+	struct simple_xattrs	xattrs;		/* 
+	xattrs表
+	list of xattrs */
 	atomic_t		stop_eviction;	/* hold when working on inode */
 	/* 文件系统里的inode */
 	struct inode		vfs_inode;

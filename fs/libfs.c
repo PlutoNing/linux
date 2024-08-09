@@ -74,15 +74,16 @@ struct dentry *simple_lookup(struct inode *dir, struct dentry *dentry, unsigned 
 	return NULL;
 }
 EXPORT_SYMBOL(simple_lookup);
-
+/* shmfs dir的fops的open回调 */
 int dcache_dir_open(struct inode *inode, struct file *file)
 {
+	/* 就是把file的priv指向自己path的dent的子匿名dent */
 	file->private_data = d_alloc_cursor(file->f_path.dentry);
 
 	return file->private_data ? 0 : -ENOMEM;
 }
 EXPORT_SYMBOL(dcache_dir_open);
-
+/* put一下dent */
 int dcache_dir_close(struct inode *inode, struct file *file)
 {
 	dput(file->private_data);
@@ -131,7 +132,7 @@ static struct dentry *scan_positives(struct dentry *cursor,
 	dput(last);
 	return found;
 }
-
+/* 好像是在dent的child里面seek？todo */
 loff_t dcache_dir_lseek(struct file *file, loff_t offset, int whence)
 {
 	struct dentry *dentry = file->f_path.dentry;
@@ -147,6 +148,7 @@ loff_t dcache_dir_lseek(struct file *file, loff_t offset, int whence)
 			return -EINVAL;
 	}
 	if (offset != file->f_pos) {
+		/* 这个cursor是在 */
 		struct dentry *cursor = file->private_data;
 		struct dentry *to = NULL;
 
@@ -225,11 +227,15 @@ ssize_t generic_read_dir(struct file *filp, char __user *buf, size_t siz, loff_t
 	return -EISDIR;
 }
 EXPORT_SYMBOL(generic_read_dir);
-
+/* shmfs dir的fops */
 const struct file_operations simple_dir_operations = {
+	/* open什么？ */
 	.open		= dcache_dir_open,
+	/*  */
 	.release	= dcache_dir_close,
+	/*  */
 	.llseek		= dcache_dir_lseek,
+	
 	.read		= generic_read_dir,
 	.iterate_shared	= dcache_readdir,
 	.fsync		= noop_fsync,

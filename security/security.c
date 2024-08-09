@@ -759,7 +759,7 @@ int security_settime64(const struct timespec64 *ts, const struct timezone *tz)
 {
 	return call_int_hook(settime, 0, ts, tz);
 }
-
+/* 2024年08月09日15:01:42 */
 int security_vm_enough_memory_mm(struct mm_struct *mm, long pages)
 {
 	struct security_hook_list *hp;

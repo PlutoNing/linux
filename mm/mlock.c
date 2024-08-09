@@ -901,7 +901,7 @@ SYSCALL_DEFINE0(munlockall)
  * shm segments) get accounted against the user_struct instead.
  */
 static DEFINE_SPINLOCK(shmlock_user_lock);
-
+/* 检查limit */
 int user_shm_lock(size_t size, struct user_struct *user)
 {
 	unsigned long lock_limit, locked;
@@ -923,7 +923,7 @@ out:
 	spin_unlock(&shmlock_user_lock);
 	return allowed;
 }
-
+/* 减少user的shm_lock数量 */
 void user_shm_unlock(size_t size, struct user_struct *user)
 {
 	spin_lock(&shmlock_user_lock);

@@ -17,7 +17,7 @@
 #include <linux/security.h>
 #include <linux/evm.h>
 #include <linux/ima.h>
-
+/* 是否可以chown */
 static bool chown_ok(const struct inode *inode, kuid_t uid)
 {
 	if (uid_eq(current_fsuid(), inode->i_uid) &&
@@ -45,6 +45,7 @@ static bool chgrp_ok(const struct inode *inode, kgid_t gid)
 }
 
 /**
+改变dent的attr之前的检查
  * setattr_prepare - check if attribute changes to a dentry are allowed
  * @dentry:	dentry to check
  * @attr:	attributes to change
@@ -68,6 +69,7 @@ int setattr_prepare(struct dentry *dentry, struct iattr *attr)
 	 * ATTR_FORCE.
 	 */
 	if (ia_valid & ATTR_SIZE) {
+		/* 查看变大或者变小是否合法 */
 		int error = inode_newsize_ok(inode, attr->ia_size);
 		if (error)
 			return error;
@@ -117,6 +119,8 @@ kill_priv:
 EXPORT_SYMBOL(setattr_prepare);
 
 /**
+检查这个inode是否可以设置为offset这个新大小
+分别检查变大和变小的情况
  * inode_newsize_ok - may this inode be truncated to a given size
  * @inode:	the inode to be truncated
  * @offset:	the new size to assign to the inode
@@ -134,21 +138,24 @@ EXPORT_SYMBOL(setattr_prepare);
  */
 int inode_newsize_ok(const struct inode *inode, loff_t offset)
 {
-	if (inode->i_size < offset) {
+	if (inode->i_size < offset) {/* 如果是变大 */
 		unsigned long limit;
 
 		limit = rlimit(RLIMIT_FSIZE);
 		if (limit != RLIM_INFINITY && offset > limit)
+		/* 超过了rlimit，不行 */
 			goto out_sig;
 		if (offset > inode->i_sb->s_maxbytes)
+		/* 新大小超过了fs的最大 */
 			goto out_big;
-	} else {
+	} else {/* 这是变小 */
 		/*
 		 * truncation of in-use swapfiles is disallowed - it would
 		 * cause subsequent swapout to scribble on the now-freed
 		 * blocks.
 		 */
 		if (IS_SWAPFILE(inode))
+		/* swpfile是不能变小的 */
 			return -ETXTBSY;
 	}
 

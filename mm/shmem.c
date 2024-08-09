@@ -149,7 +149,8 @@ static int shmem_getpage_gfp(struct inode *inode, pgoff_t index,
 		struct page **pagep, enum sgp_type sgp,
 		gfp_t gfp, struct vm_area_struct *vma,
 		struct vm_fault *vmf, vm_fault_t *fault_type);
-/* shm获取位于index的页面 */
+/* shm获取位于index的页面
+把获取的页面存储到pagep */
 int shmem_getpage(struct inode *inode, pgoff_t index,
 		struct page **pagep, enum sgp_type sgp)
 {
@@ -175,18 +176,18 @@ static inline int shmem_acct_size(unsigned long flags, loff_t size)
 	return (flags & VM_NORESERVE) ?
 		0 : security_vm_enough_memory_mm(current->mm, VM_ACCT(size));
 }
-
+/* shm释放文件时归还内存 */
 static inline void shmem_unacct_size(unsigned long flags, loff_t size)
 {
 	if (!(flags & VM_NORESERVE))
 		vm_unacct_memory(VM_ACCT(size));
 }
-
+/*  */
 static inline int shmem_reacct_size(unsigned long flags,
 		loff_t oldsize, loff_t newsize)
 {
 	if (!(flags & VM_NORESERVE)) {
-		if (VM_ACCT(newsize) > VM_ACCT(oldsize))
+		if (VM_ACCT(newsize) > VM_ACCT(oldsize))/* 变大 */
 			return security_vm_enough_memory_mm(current->mm,
 					VM_ACCT(newsize) - VM_ACCT(oldsize));
 		else if (VM_ACCT(newsize) < VM_ACCT(oldsize))
@@ -616,7 +617,7 @@ static inline bool is_huge_enabled(struct shmem_sb_info *sbinfo)
 
 /*
 2024年7月29日23:30:25
-加入到shmem file的mapping里面
+把page加入到shmem file的mapping里面
  * Like add_to_page_cache_locked, but error if expected item has gone.
  */
 static int shmem_add_to_page_cache(struct page *page,
@@ -702,21 +703,27 @@ static void shmem_delete_from_page_cache(struct page *page, void *radswap)
 }
 
 /*
+从pagecache释放swp ent。
+这个时候radswap是一个从mapping里面查询的指向swp的指针。
+会置空mapping里面这个指针
+然后释放这个swp ent和缓存什么的
  * Remove swap entry from page cache, free the swap and its page cache.
  */
 static int shmem_free_swap(struct address_space *mapping,
 			   pgoff_t index, void *radswap)
 {
 	void *old;
-
+	/* 先把mapping里面这个位置置空 */
 	old = xa_cmpxchg_irq(&mapping->i_pages, index, radswap, NULL, 0);
 	if (old != radswap)
 		return -ENOENT;
+
 	free_swap_and_cache(radix_to_swp_entry(radswap));
 	return 0;
 }
 
 /*
+统计mapping在范围内的页面有多少被swp了
  * Determine (in bytes) how many of the shmem object's pages mapped by the
  * given offsets are swapped out.
  *
@@ -749,6 +756,8 @@ unsigned long shmem_partial_swap_usage(struct address_space *mapping,
 }
 
 /*
+2024年08月09日15:33:00
+统计这个vma有多少页面被swp了
  * Determine (in bytes) how many of the shmem object's pages mapped by the
  * given vma is swapped out.
  *
@@ -784,6 +793,9 @@ unsigned long shmem_swap_usage(struct vm_area_struct *vma)
 
 /*
  * SysV IPC SHM_UNLOCK restore Unevictable pages to their evictable lists.
+ 2024年08月09日15:17:00
+ 为什么叫unlock，但是做释放页面的工作？
+ 好像估计是释放前的unlock，看了下shm_ctl有调用
  */
 void shmem_unlock_mapping(struct address_space *mapping)
 {
@@ -804,27 +816,64 @@ void shmem_unlock_mapping(struct address_space *mapping)
 					   PAGEVEC_SIZE, pvec.pages, indices);
 		if (!pvec.nr)
 			break;
+		/* 保存刚才获取的最后一个页面的idx+1
+		马上下一个loop继续从这里开始获取 */
 		index = indices[pvec.nr - 1] + 1;
+		/* 只在pvec里面保留is_val的页面 */
 		pagevec_remove_exceptionals(&pvec);
+		/* 移动了，马上下一行代码还有处理吗？ */
 		check_move_unevictable_pages(&pvec);
+		/* 归还释放页面 */
 		pagevec_release(&pvec);
 		cond_resched();
 	}
 }
 
 /*
+shmfs截断文件调用这个函数
+看名字好像就是归还内存，释放归还范围内的swp和pagecache什么的
  * Remove range of pages and swap entries from page cache, and free them.
  * If !unfalloc, truncate or punch hole; if unfalloc, undo failed fallocate.
  */
 static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 								 bool unfalloc)
 {
+	/* 获取mapping */
 	struct address_space *mapping = inode->i_mapping;
+	/* 获取sii */
 	struct shmem_inode_info *info = SHMEM_I(inode);
+	/* 这俩是中间的pgoff */
 	pgoff_t start = (lstart + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	pgoff_t end = (lend + 1) >> PAGE_SHIFT;
+	/* start的页内偏移 */
 	unsigned int partial_start = lstart & (PAGE_SIZE - 1);
+	/* end的页内偏移 */
 	unsigned int partial_end = (lend + 1) & (PAGE_SIZE - 1);
+	/* 
+	>>> ls=1000
+>>> ls=10000
+>>> le=30000
+>>> s=(ls+4095)>>12
+>>> s
+3
+>>> end=(le+1)>>12
+>>> end
+7
+>>> ps=ls&4095
+>>> ps
+1808
+>>> pe=(le+1)&4095
+>>> pe
+1329
+>>>                     1808
+                      partial_start              start
+----------------------|---------|--------|----------------------------------
+        4096        8192      10000  12288
+	
+	 */
+
+
+
 	struct pagevec pvec;
 	pgoff_t indices[PAGEVEC_SIZE];
 	long nr_swaps_freed = 0;
@@ -833,25 +882,31 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 
 	if (lend == -1)
 		end = -1;	/* unsigned, so actually very big */
-
+	/* 初始化暂存的pvec */
 	pagevec_init(&pvec);
 	index = start;
-	while (index < end) {
+	while (index < end) {/* 遍历处理每个页面 */
+
+		/* 从mapping批量获取页面，获取数量最多是剩余页面或者pvec的最大size */
 		pvec.nr = find_get_entries(mapping, index,
 			min(end - index, (pgoff_t)PAGEVEC_SIZE),
 			pvec.pages, indices);
-		if (!pvec.nr)
+
+		if (!pvec.nr)/* 好吧，没有获取到任何页面 */
 			break;
+
+		/* 遍历处理刚才获取的nr个页面 */
 		for (i = 0; i < pagevec_count(&pvec); i++) {
 			struct page *page = pvec.pages[i];
-
+			/* indices里面存储的是对应页面的pgoff */
 			index = indices[i];
 			if (index >= end)
 				break;
 
-			if (xa_is_value(page)) {
+			if (xa_is_value(page)) {/* 这说明是个页面吗？ */
 				if (unfalloc)
 					continue;
+				/* 释放这个条目 */
 				nr_swaps_freed += !shmem_free_swap(mapping,
 								index, page);
 				continue;
@@ -890,14 +945,17 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 			}
 			unlock_page(page);
 		}
+		/* 只保留pvec里面is_val的页面 */
 		pagevec_remove_exceptionals(&pvec);
+		/* 释放归还这些页面 */
 		pagevec_release(&pvec);
 		cond_resched();
 		index++;
 	}
 
-	if (partial_start) {
+	if (partial_start) {/* 说明起始地址不是整页，处理起始的半页 */
 		struct page *page = NULL;
+		/* 起始这个半页自然就是start的前一页，这个页面被存储到page */
 		shmem_getpage(inode, start - 1, &page, SGP_READ);
 		if (page) {
 			unsigned int top = PAGE_SIZE;
@@ -905,13 +963,14 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 				top = partial_end;
 				partial_end = 0;
 			}
+			/* 置空这一块半页内容 */
 			zero_user_segment(page, partial_start, top);
 			set_page_dirty(page);
 			unlock_page(page);
 			put_page(page);
 		}
 	}
-	if (partial_end) {
+	if (partial_end) {/* 同理 */
 		struct page *page = NULL;
 		shmem_getpage(inode, end, &page, SGP_READ);
 		if (page) {
@@ -1010,14 +1069,16 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 	shmem_recalc_inode(inode);
 	spin_unlock_irq(&info->lock);
 }
-
+/* shmfs截断文件 */
 void shmem_truncate_range(struct inode *inode, loff_t lstart, loff_t lend)
 {
+	/* 释放归还范围内的页面 */
 	shmem_undo_range(inode, lstart, lend, false);
+	/* 更新time属性 */
 	inode->i_ctime = inode->i_mtime = current_time(inode);
 }
 EXPORT_SYMBOL_GPL(shmem_truncate_range);
-
+/* 获取attr */
 static int shmem_getattr(const struct path *path, struct kstat *stat,
 			 u32 request_mask, unsigned int query_flags)
 {
@@ -1037,14 +1098,15 @@ static int shmem_getattr(const struct path *path, struct kstat *stat,
 
 	return 0;
 }
-
+/* 设置file的新属性
+变动大小的话可能需要检查或者截断，unmap什么的 */
 static int shmem_setattr(struct dentry *dentry, struct iattr *attr)
 {
 	struct inode *inode = d_inode(dentry);
 	struct shmem_inode_info *info = SHMEM_I(inode);
 	struct shmem_sb_info *sbinfo = SHMEM_SB(inode->i_sb);
 	int error;
-
+	/* 进行一些合法or权限的检查 */
 	error = setattr_prepare(dentry, attr);
 	if (error)
 		return error;
@@ -1056,9 +1118,10 @@ static int shmem_setattr(struct dentry *dentry, struct iattr *attr)
 		/* protected by i_mutex */
 		if ((newsize < oldsize && (info->seals & F_SEAL_SHRINK)) ||
 		    (newsize > oldsize && (info->seals & F_SEAL_GROW)))
+			/* 这些情况是要变大但是不能变大，or逆向情形 */
 			return -EPERM;
 
-		if (newsize != oldsize) {
+		if (newsize != oldsize) {/* 如果要改变大小，进行一些统计&记账的更新 */
 			error = shmem_reacct_size(SHMEM_I(inode)->flags,
 					oldsize, newsize);
 			if (error)
@@ -1066,16 +1129,22 @@ static int shmem_setattr(struct dentry *dentry, struct iattr *attr)
 			i_size_write(inode, newsize);
 			inode->i_ctime = inode->i_mtime = current_time(inode);
 		}
-		if (newsize <= oldsize) {
+		if (newsize <= oldsize) {/* 变小的话 */
 			loff_t holebegin = round_up(newsize, PAGE_SIZE);
 			if (oldsize > holebegin)
+			/* 解除新siez末尾所在页面之后全部页面的映射 */
 				unmap_mapping_range(inode->i_mapping,
 							holebegin, 0, 1);
-			if (info->alloced)
+			if (info->alloced)/* 截断new_size之后的部分 */
 				shmem_truncate_range(inode,
 							newsize, (loff_t)-1);
 			/* unmap again to remove racily COWed private pages */
-			if (oldsize > holebegin)
+			/* 
+---------------------------------------------------------------------------
+                           20000      20480        25000
+							new	    hole_begin	    old
+			 */
+			if (oldsize > holebegin)/* 为什么又来一次？todo */
 				unmap_mapping_range(inode->i_mapping,
 							holebegin, 0, 1);
 
@@ -1084,6 +1153,7 @@ static int shmem_setattr(struct dentry *dentry, struct iattr *attr)
 			 * to shrink under memory pressure.
 			 */
 			if (IS_ENABLED(CONFIG_TRANSPARENT_HUGE_PAGECACHE)) {
+				/* 巨页，todo */
 				spin_lock(&sbinfo->shrinklist_lock);
 				/*
 				 * _careful to defend against unlocked access to
@@ -1104,16 +1174,22 @@ static int shmem_setattr(struct dentry *dentry, struct iattr *attr)
 		error = posix_acl_chmod(inode, inode->i_mode);
 	return error;
 }
-
+/* 好像是删除文件
+截断文件  */
 static void shmem_evict_inode(struct inode *inode)
 {
+	/* 获取sii */
 	struct shmem_inode_info *info = SHMEM_I(inode);
+	/* 获取shm sb */
 	struct shmem_sb_info *sbinfo = SHMEM_SB(inode->i_sb);
 
-	if (inode->i_mapping->a_ops == &shmem_aops) {
+	if (inode->i_mapping->a_ops == &shmem_aops) {/* 如果是shmfile */
+		/* 这是说要释放文件了，归还内存吗 */
 		shmem_unacct_size(info->flags, inode->i_size);
 		inode->i_size = 0;
+		/* -1表示截断全部么 */
 		shmem_truncate_range(inode, 0, (loff_t)-1);
+
 		if (!list_empty(&info->shrinklist)) {
 			spin_lock(&sbinfo->shrinklist_lock);
 			if (!list_empty(&info->shrinklist)) {
@@ -1122,6 +1198,7 @@ static void shmem_evict_inode(struct inode *inode)
 			}
 			spin_unlock(&sbinfo->shrinklist_lock);
 		}
+
 		while (!list_empty(&info->swaplist)) {
 			/* Wait while shmem_unuse() is scanning this inode... */
 			wait_var_event(&info->stop_eviction,
@@ -1467,6 +1544,7 @@ redirty:
 }
 
 #if defined(CONFIG_NUMA) && defined(CONFIG_TMPFS)
+/*  */
 static void shmem_show_mpol(struct seq_file *seq, struct mempolicy *mpol)
 {
 	char buffer[64];
@@ -1479,6 +1557,7 @@ static void shmem_show_mpol(struct seq_file *seq, struct mempolicy *mpol)
 	seq_printf(seq, ",mpol=%s", buffer);
 }
 
+/* 获取并get此sbinfo的mpol */
 static struct mempolicy *shmem_get_sbmpol(struct shmem_sb_info *sbinfo)
 {
 	struct mempolicy *mpol = NULL;
@@ -1490,6 +1569,8 @@ static struct mempolicy *shmem_get_sbmpol(struct shmem_sb_info *sbinfo)
 	}
 	return mpol;
 }
+
+
 #else /* !CONFIG_NUMA || !CONFIG_TMPFS */
 static inline void shmem_show_mpol(struct seq_file *seq, struct mempolicy *mpol)
 {
@@ -1511,7 +1592,7 @@ static void shmem_pseudo_vma_init(struct vm_area_struct *vma,
 	vma_init(vma, NULL);
 	/* Bias interleave by inode number to distribute better across nodes
 	为什么加上ino？ */
-	vma->vm_pgoff = index + info->vfs_inode.i_ino;
+	vma->vm_pgoff = index +   info->vfs_inode.i_ino;
 	vma->vm_policy = mpol_shared_policy_lookup(&info->policy, index);
 }
 /* 销毁vma，也就里面的policy需要put一下 */
@@ -1538,7 +1619,7 @@ static struct page *shmem_swapin(swp_entry_t swap, gfp_t gfp,
 
 	return page;
 }
-
+/* 巨页todo */
 static struct page *shmem_alloc_hugepage(gfp_t gfp,
 		struct shmem_inode_info *info, pgoff_t index)
 {
@@ -1563,7 +1644,9 @@ static struct page *shmem_alloc_hugepage(gfp_t gfp,
 		prep_transhuge_page(page);
 	return page;
 }
-/* shmem分配新页面？ */
+/* shmem分配新页面？
+获取此sii代表的文件在index处的页面
+ */
 static struct page *shmem_alloc_page(gfp_t gfp,
 			struct shmem_inode_info *info, pgoff_t index)
 {
@@ -2298,23 +2381,25 @@ unsigned long shmem_get_unmapped_area(struct file *file,
 }
 
 #ifdef CONFIG_NUMA
+/* 设置vma的mpol？ */
 static int shmem_set_policy(struct vm_area_struct *vma, struct mempolicy *mpol)
 {
 	struct inode *inode = file_inode(vma->vm_file);
 	return mpol_set_shared_policy(&SHMEM_I(inode)->policy, vma, mpol);
 }
-
+/* 获取addr处的mpol */
 static struct mempolicy *shmem_get_policy(struct vm_area_struct *vma,
 					  unsigned long addr)
 {
 	struct inode *inode = file_inode(vma->vm_file);
 	pgoff_t index;
-
+	/* 这里是addr在mmap file的pgoff */
 	index = ((addr - vma->vm_start) >> PAGE_SHIFT) + vma->vm_pgoff;
 	return mpol_shared_policy_lookup(&SHMEM_I(inode)->policy, index);
 }
 #endif
-
+/* user加锁file
+lock为真是lock，lock为0表示unlock */
 int shmem_lock(struct file *file, int lock, struct user_struct *user)
 {
 	struct inode *inode = file_inode(file);
@@ -2322,13 +2407,15 @@ int shmem_lock(struct file *file, int lock, struct user_struct *user)
 	int retval = -ENOMEM;
 
 	spin_lock_irq(&info->lock);
-	if (lock && !(info->flags & VM_LOCKED)) {
+	if (lock && !(info->flags & VM_LOCKED)) {/* 如果lock，并且sii没有lock？ */
+	/* 这里进行加锁吗 */
 		if (!user_shm_lock(inode->i_size, user))
 			goto out_nomem;
 		info->flags |= VM_LOCKED;
 		mapping_set_unevictable(file->f_mapping);
 	}
-	if (!lock && (info->flags & VM_LOCKED) && user) {
+	if (!lock && (info->flags & VM_LOCKED) && user) {/* 没有lock，但是sii已经lock了 */
+	/* 这里开始进行解锁 */
 		user_shm_unlock(inode->i_size, user);
 		info->flags &= ~VM_LOCKED;
 		mapping_clear_unevictable(file->f_mapping);
@@ -2421,11 +2508,13 @@ static struct inode *shmem_get_inode(struct super_block *sb, const struct inode 
 			mpol_shared_policy_init(&info->policy,
 						 shmem_get_sbmpol(sbinfo));
 			break;
-		case S_IFDIR:
+		case S_IFDIR:/* 如果是shmfs的dir */
 			inc_nlink(inode);
 			/* Some things misbehave if size == 0 on a directory */
 			inode->i_size = 2 * BOGO_DIRENT_SIZE;
+			/* dir inode的ops */
 			inode->i_op = &shmem_dir_inode_operations;
+			/* 设置dir ops */
 			inode->i_fop = &simple_dir_operations;
 			break;
 		case S_IFLNK:
@@ -2447,7 +2536,10 @@ bool shmem_mapping(struct address_space *mapping)
 {
 	return mapping->a_ops == &shmem_aops;
 }
-
+/* 2024年08月09日14:14:32
+好像就是把src的数据拷贝到dstaddr
+期间会申请页面，设置pte映射什么的。
+ */
 static int shmem_mfill_atomic_pte(struct mm_struct *dst_mm,
 				  pmd_t *dst_pmd,
 				  struct vm_area_struct *dst_vma,
@@ -2456,10 +2548,14 @@ static int shmem_mfill_atomic_pte(struct mm_struct *dst_mm,
 				  bool zeropage,
 				  struct page **pagep)
 {
+	/* 目标vma的file */
 	struct inode *inode = file_inode(dst_vma->vm_file);
+	/* 目标vma的sii */
 	struct shmem_inode_info *info = SHMEM_I(inode);
+	/* 目标mapping */
 	struct address_space *mapping = inode->i_mapping;
 	gfp_t gfp = mapping_gfp_mask(mapping);
+	/* 目标地址在目标file的pgoff */
 	pgoff_t pgoff = linear_page_index(dst_vma, dst_addr);
 	struct mem_cgroup *memcg;
 	spinlock_t *ptl;
@@ -2474,11 +2570,14 @@ static int shmem_mfill_atomic_pte(struct mm_struct *dst_mm,
 		goto out;
 
 	if (!*pagep) {
+		/* 分配获取dst file在pgoff处的页面 */
 		page = shmem_alloc_page(gfp, info, pgoff);
 		if (!page)
 			goto out_unacct_blocks;
 
-		if (!zeropage) {	/* mcopy_atomic */
+		if (!zeropage) {	/* 不要求zero的是mcopy_atomic */
+
+		/* 拷贝那就把page进行kmap。然后从用户空间copy */
 			page_kaddr = kmap_atomic(page);
 			ret = copy_from_user(page_kaddr,
 					     (const void __user *)src_addr,
@@ -2492,36 +2591,40 @@ static int shmem_mfill_atomic_pte(struct mm_struct *dst_mm,
 				/* don't free the page */
 				return -ENOENT;
 			}
-		} else {		/* mfill_zeropage_atomic */
+		} else {		/*要求zero的就是 mfill_zeropage_atomic */
 			clear_highpage(page);
 		}
 	} else {
 		page = *pagep;
 		*pagep = NULL;
 	}
-
+	/* 现在目标addr的页面被page指向，并且也按照要求进行了
+	zero or copy */
 	VM_BUG_ON(PageLocked(page) || PageSwapBacked(page));
 	__SetPageLocked(page);
 	__SetPageSwapBacked(page);
 	__SetPageUptodate(page);
 
 	ret = -EFAULT;
+	/* 为什么又获取一次，这里offset不等于pgoff吗 */
 	offset = linear_page_index(dst_vma, dst_addr);
 	max_off = DIV_ROUND_UP(i_size_read(inode), PAGE_SIZE);
 	if (unlikely(offset >= max_off))
 		goto out_release;
-
+	/* 内存记账 */
 	ret = mem_cgroup_try_charge_delay(page, dst_mm, gfp, &memcg, false);
 	if (ret)
 		goto out_release;
-
+		/* 把page加入目标mapping */
 	ret = shmem_add_to_page_cache(page, mapping, pgoff, NULL,
 						gfp & GFP_RECLAIM_MASK);
 	if (ret)
 		goto out_release_uncharge;
-
+	/* 记账 */
 	mem_cgroup_commit_charge(page, memcg, false, false);
 
+	/* 准备加入页表
+	先创建这个page的pte条目 */
 	_dst_pte = mk_pte(page, dst_vma->vm_page_prot);
 	if (dst_vma->vm_flags & VM_WRITE)
 		_dst_pte = pte_mkwrite(pte_mkdirty(_dst_pte));
@@ -2535,7 +2638,7 @@ static int shmem_mfill_atomic_pte(struct mm_struct *dst_mm,
 		 */
 		set_page_dirty(page);
 	}
-
+	/* 获取目标地址的pte指针 */
 	dst_pte = pte_offset_map_lock(dst_mm, dst_pmd, dst_addr, &ptl);
 
 	ret = -EFAULT;
@@ -2546,17 +2649,21 @@ static int shmem_mfill_atomic_pte(struct mm_struct *dst_mm,
 	ret = -EEXIST;
 	if (!pte_none(*dst_pte))
 		goto out_release_uncharge_unlock;
-
+	/* 把这个页面加入lru */
 	lru_cache_add_anon(page);
 
+	/* 更新shm的sii的信息 */
 	spin_lock(&info->lock);
 	info->alloced++;
 	inode->i_blocks += BLOCKS_PER_PAGE;
 	shmem_recalc_inode(inode);
 	spin_unlock(&info->lock);
 
+	/* 更新统计信息 */
 	inc_mm_counter(dst_mm, mm_counter_file(page));
+	/* 设置rmap信息 */
 	page_add_file_rmap(page, false);
+	/* 真正设置pte映射 */
 	set_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);
 
 	/* No need to invalidate - it was non-present before */
@@ -2579,7 +2686,7 @@ out_unacct_blocks:
 	shmem_inode_unacct_blocks(inode, 1);
 	goto out;
 }
-
+/* 不要求zero_page */
 int shmem_mcopy_atomic_pte(struct mm_struct *dst_mm,
 			   pmd_t *dst_pmd,
 			   struct vm_area_struct *dst_vma,
@@ -2590,7 +2697,7 @@ int shmem_mcopy_atomic_pte(struct mm_struct *dst_mm,
 	return shmem_mfill_atomic_pte(dst_mm, dst_pmd, dst_vma,
 				      dst_addr, src_addr, false, pagep);
 }
-
+/* 没有src，要求zeropage */
 int shmem_mfill_zeropage_pte(struct mm_struct *dst_mm,
 			     pmd_t *dst_pmd,
 			     struct vm_area_struct *dst_vma,
@@ -2641,6 +2748,8 @@ shmem_write_begin(struct file *file, struct address_space *mapping,
 	这里就是获取index位置的页面 */
 	return shmem_getpage(inode, index, pagep, SGP_WRITE);
 }
+
+
 /* 2024年8月7日00:38:12
 2024年08月07日10:08:58
 
@@ -2684,6 +2793,9 @@ shmem_write_end(struct file *file, struct address_space *mapping,
 
 	return copied;
 }
+
+
+
 /* shm file pos的read iter函数 */
 static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
@@ -2865,6 +2977,7 @@ static pgoff_t shmem_seek_hole_data(struct address_space *mapping,
 
 	return index;
 }
+
 /* shm file ops的seek函数 */
 static loff_t shmem_file_llseek(struct file *file, loff_t offset, int whence)
 {
@@ -2909,6 +3022,7 @@ static loff_t shmem_file_llseek(struct file *file, loff_t offset, int whence)
 
 	return offset;
 }
+
 /* shmfile fops的fallocate实现 */
 static long shmem_fallocate(struct file *file, int mode, loff_t offset,
 							 loff_t len)
@@ -3041,7 +3155,7 @@ out:
 	inode_unlock(inode);
 	return error;
 }
-
+/* 获取fs的状态 */
 static int shmem_statfs(struct dentry *dentry, struct kstatfs *buf)
 {
 	struct shmem_sb_info *sbinfo = SHMEM_SB(dentry->d_sb);
@@ -3066,6 +3180,8 @@ static int shmem_statfs(struct dentry *dentry, struct kstatfs *buf)
 /*
 2024年8月9日00:26:25
 创建文件夹？
+2024年08月09日09:43:12
+好像是创建inode，可以是文件，文件夹什么的
  * File creation. Allocate an inode, and we're done..
  */
 static int
@@ -3099,12 +3215,13 @@ out_iput:
 	return error;
 }
 
+/* 创建tempfile */
 static int
 shmem_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
 	struct inode *inode;
 	int error = -ENOSPC;
-
+	/* 创建获取一个新inode */
 	inode = shmem_get_inode(dir->i_sb, dir, mode, 0, VM_NORESERVE);
 	if (inode) {
 		error = security_inode_init_security(inode, dir,
@@ -3112,6 +3229,7 @@ shmem_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
 						     shmem_initxattrs, NULL);
 		if (error && error != -EOPNOTSUPP)
 			goto out_iput;
+		/* acl权限相关 */
 		error = simple_acl_create(dir, inode);
 		if (error)
 			goto out_iput;
@@ -3122,7 +3240,9 @@ out_iput:
 	iput(inode);
 	return error;
 }
+
 /* 2024年8月9日00:51:20
+mknod，mode设为dir
  */
 static int shmem_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
@@ -3133,6 +3253,7 @@ static int shmem_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	inc_nlink(dir);
 	return 0;
 }
+
 /* 2024年8月9日00:26:10 */
 static int shmem_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		bool excl)
@@ -3163,9 +3284,10 @@ static int shmem_link(struct dentry *old_dentry, struct inode *dir, struct dentr
 		if (ret)
 			goto out;
 	}
-
+	/* 好像dir的作用就是更新一点自己的属性 */
 	dir->i_size += BOGO_DIRENT_SIZE;
 	inode->i_ctime = dir->i_ctime = dir->i_mtime = current_time(inode);
+
 	inc_nlink(inode);
 	ihold(inode);	/* New dentry reference */
 	dget(dentry);		/* Extra pinning count for the created dentry */
@@ -3175,7 +3297,7 @@ out:
 	return ret;
 }
 /* 2024年8月9日00:48:22
-
+把dent从dir移除
  */
 static int shmem_unlink(struct inode *dir, struct dentry *dentry)
 {
@@ -3193,6 +3315,7 @@ static int shmem_unlink(struct inode *dir, struct dentry *dentry)
 }
 /* 2024年8月9日00:54:12
 dir是父目录
+todo
  */
 static int shmem_rmdir(struct inode *dir, struct dentry *dentry)
 {
@@ -3204,13 +3327,15 @@ static int shmem_rmdir(struct inode *dir, struct dentry *dentry)
 
 	return shmem_unlink(dir, dentry);
 }
-
-static int shmem_exchange(struct inode *old_dir, struct dentry *old_dentry, struct inode *new_dir, struct dentry *new_dentry)
+/* 2024年08月09日14:02:13
+todo */
+static int shmem_exchange(struct inode *old_dir, struct dentry *old_dentry, 
+struct inode *new_dir, struct dentry *new_dentry)
 {
 	bool old_is_dir = d_is_dir(old_dentry);
 	bool new_is_dir = d_is_dir(new_dentry);
 
-	if (old_dir != new_dir && old_is_dir != new_is_dir) {
+	if (old_dir != new_dir && old_is_dir != new_is_dir) {/* 只有一个是dir */
 		if (old_is_dir) {
 			drop_nlink(old_dir);
 			inc_nlink(new_dir);
@@ -3219,6 +3344,7 @@ static int shmem_exchange(struct inode *old_dir, struct dentry *old_dentry, stru
 			inc_nlink(old_dir);
 		}
 	}
+
 	old_dir->i_ctime = old_dir->i_mtime =
 	new_dir->i_ctime = new_dir->i_mtime =
 	d_inode(old_dentry)->i_ctime =
@@ -3226,7 +3352,7 @@ static int shmem_exchange(struct inode *old_dir, struct dentry *old_dentry, stru
 
 	return 0;
 }
-
+/* todo */
 static int shmem_whiteout(struct inode *old_dir, struct dentry *old_dentry)
 {
 	struct dentry *whiteout;
@@ -3239,6 +3365,7 @@ static int shmem_whiteout(struct inode *old_dir, struct dentry *old_dentry)
 	error = shmem_mknod(old_dir, whiteout,
 			    S_IFCHR | WHITEOUT_MODE, WHITEOUT_DEV);
 	dput(whiteout);
+
 	if (error)
 		return error;
 
@@ -3254,12 +3381,14 @@ static int shmem_whiteout(struct inode *old_dir, struct dentry *old_dentry)
 }
 
 /*
+todo
  * The VFS layer already does all the dentry stuff for rename,
  * we just have to decrement the usage count for the target if
  * it exists so that the VFS layer correctly free's it when it
  * gets overwritten.
  */
-static int shmem_rename2(struct inode *old_dir, struct dentry *old_dentry, struct inode *new_dir, struct dentry *new_dentry, unsigned int flags)
+static int shmem_rename2(struct inode *old_dir, struct dentry *old_dentry, struct inode *new_dir,
+ struct dentry *new_dentry, unsigned int flags)
 {
 	struct inode *inode = d_inode(old_dentry);
 	int they_are_dirs = S_ISDIR(inode->i_mode);
@@ -3356,20 +3485,22 @@ static int shmem_symlink(struct inode *dir, struct dentry *dentry, const char *s
 	dget(dentry);
 	return 0;
 }
-
+/* 参数是一个page */
 static void shmem_put_link(void *arg)
 {
 	mark_page_accessed(arg);
 	put_page(arg);
 }
-
+/* 作用是什么 */
 static const char *shmem_get_link(struct dentry *dentry,
 				  struct inode *inode,
 				  struct delayed_call *done)
 {
 	struct page *page = NULL;
 	int error;
+	/* 这两条路径区别在于哪？ */
 	if (!dentry) {
+		/* 找到inode文件的第一个页面？ */
 		page = find_get_page(inode->i_mapping, 0);
 		if (!page)
 			return ERR_PTR(-ECHILD);
@@ -3378,16 +3509,20 @@ static const char *shmem_get_link(struct dentry *dentry,
 			return ERR_PTR(-ECHILD);
 		}
 	} else {
+
 		error = shmem_getpage(inode, 0, &page, SGP_READ);
 		if (error)
 			return ERR_PTR(error);
 		unlock_page(page);
 	}
+
 	set_delayed_call(done, shmem_put_link, page);
 	return page_address(page);
 }
 
 #ifdef CONFIG_TMPFS_XATTR
+/* xattrs以后再看2024年08月09日13:47:26 */
+
 /*
  * Superblocks without xattr inode operations may get some security.* xattr
  * support from the LSM "for free". As soon as we have any other xattrs
@@ -3473,33 +3608,36 @@ static const struct xattr_handler *shmem_xattr_handlers[] = {
 	&shmem_trusted_xattr_handler,
 	NULL
 };
-
+/* 查看xattrs */
 static ssize_t shmem_listxattr(struct dentry *dentry, char *buffer, size_t size)
 {
+	/* 获取dent的inode的sii */
 	struct shmem_inode_info *info = SHMEM_I(d_inode(dentry));
 	return simple_xattr_list(d_inode(dentry), &info->xattrs, buffer, size);
 }
 #endif /* CONFIG_TMPFS_XATTR */
-
+/* todo */
 static const struct inode_operations shmem_short_symlink_operations = {
 	.get_link	= simple_get_link,
 #ifdef CONFIG_TMPFS_XATTR
 	.listxattr	= shmem_listxattr,
 #endif
 };
-
+/* shmfs的符号链接 inode ops
+todo */
 static const struct inode_operations shmem_symlink_inode_operations = {
 	.get_link	= shmem_get_link,
 #ifdef CONFIG_TMPFS_XATTR
 	.listxattr	= shmem_listxattr,
 #endif
 };
-
+/* ？
+2024年08月09日13:44:47 */
 static struct dentry *shmem_get_parent(struct dentry *child)
 {
 	return ERR_PTR(-ESTALE);
 }
-
+/* 这个好像是hash查找inode的时候判断是不是要找的inode */
 static int shmem_match(struct inode *ino, void *vfh)
 {
 	__u32 *fh = vfh;
@@ -3508,15 +3646,18 @@ static int shmem_match(struct inode *ino, void *vfh)
 	return ino->i_ino == inum && fh[0] == ino->i_generation;
 }
 
-/* Find any alias of inode, but prefer a hashed alias */
+/* 
+返回一个dent
+Find any alias of inode, but prefer a hashed alias */
 static struct dentry *shmem_find_alias(struct inode *inode)
 {
+	/* 返回inode的其中一个dent */
 	struct dentry *alias = d_find_alias(inode);
 
 	return alias ?: d_find_any_alias(inode);
 }
 
-
+/* 好像是根据hash查找inode，继而查找一个dent */
 static struct dentry *shmem_fh_to_dentry(struct super_block *sb,
 		struct fid *fid, int fh_len, int fh_type)
 {
@@ -3529,10 +3670,11 @@ static struct dentry *shmem_fh_to_dentry(struct super_block *sb,
 
 	inum = fid->raw[2];
 	inum = (inum << 32) | fid->raw[1];
-
+	/* 根据hash查找inode */
 	inode = ilookup5(sb, (unsigned long)(inum + fid->raw[0]),
 			shmem_match, fid->raw);
-	if (inode) {
+	
+	if (inode) {/* 找到了inode，就继续再找一个inode的dent */
 		dentry = shmem_find_alias(inode);
 		iput(inode);
 	}
@@ -3540,6 +3682,11 @@ static struct dentry *shmem_fh_to_dentry(struct super_block *sb,
 	return dentry;
 }
 
+
+/* 2024年08月09日11:53:30
+计算inode的hash
+加入hash表
+这个fh是什么？ */
 static int shmem_encode_fh(struct inode *inode, __u32 *fh, int *len,
 				struct inode *parent)
 {
@@ -3556,7 +3703,7 @@ static int shmem_encode_fh(struct inode *inode, __u32 *fh, int *len,
 		 */
 		static DEFINE_SPINLOCK(lock);
 		spin_lock(&lock);
-		if (inode_unhashed(inode))
+		if (inode_unhashed(inode))/* 如果加锁间隙还是没有被初始化 */
 			__insert_inode_hash(inode,
 					    inode->i_ino + inode->i_generation);
 		spin_unlock(&lock);
@@ -3569,13 +3716,13 @@ static int shmem_encode_fh(struct inode *inode, __u32 *fh, int *len,
 	*len = 3;
 	return 1;
 }
-
+/* 好像和nfs有关，todo */
 static const struct export_operations shmem_export_ops = {
 	.get_parent     = shmem_get_parent,
 	.encode_fh      = shmem_encode_fh,
 	.fh_to_dentry	= shmem_fh_to_dentry,
 };
-
+/* shmfs的配置参数 */
 enum shmem_param {
 	Opt_gid,
 	Opt_huge,
@@ -3612,7 +3759,9 @@ const struct fs_parameter_description shmem_fs_parameters = {
 	.specs		= shmem_param_specs,
 	.enums		= shmem_param_enums,
 };
-
+/* 
+2024年08月09日11:50:19
+ */
 static int shmem_parse_one(struct fs_context *fc, struct fs_parameter *param)
 {
 	struct shmem_options *ctx = fc->fs_private;
@@ -3690,6 +3839,7 @@ bad_value:
 	return invalf(fc, "tmpfs: Bad value for '%s'", param->key);
 }
 
+/* fs解析参数 */
 static int shmem_parse_options(struct fs_context *fc, void *data)
 {
 	char *options = data;
@@ -3795,7 +3945,7 @@ out:
 	spin_unlock(&sbinfo->stat_lock);
 	return invalf(fc, "tmpfs: %s", err);
 }
-
+/* 获取fs的选项 */
 static int shmem_show_options(struct seq_file *seq, struct dentry *root)
 {
 	struct shmem_sb_info *sbinfo = SHMEM_SB(root->d_sb);
@@ -3823,7 +3973,7 @@ static int shmem_show_options(struct seq_file *seq, struct dentry *root)
 }
 
 #endif /* CONFIG_TMPFS */
-
+/* put此sb */
 static void shmem_put_super(struct super_block *sb)
 {
 	struct shmem_sb_info *sbinfo = SHMEM_SB(sb);
@@ -3926,7 +4076,7 @@ static void shmem_free_fc(struct fs_context *fc)
 		kfree(ctx);
 	}
 }
-
+/* todo */
 static const struct fs_context_operations shmem_fs_context_ops = {
 	.free			= shmem_free_fc,
 	.get_tree		= shmem_get_tree,
@@ -3938,7 +4088,7 @@ static const struct fs_context_operations shmem_fs_context_ops = {
 };
 
 static struct kmem_cache *shmem_inode_cachep;
-
+/* 分配sii inode */
 static struct inode *shmem_alloc_inode(struct super_block *sb)
 {
 	struct shmem_inode_info *info;
@@ -3947,33 +4097,34 @@ static struct inode *shmem_alloc_inode(struct super_block *sb)
 		return NULL;
 	return &info->vfs_inode;
 }
-
+/* 归还到slab */
 static void shmem_free_in_core_inode(struct inode *inode)
 {
 	if (S_ISLNK(inode->i_mode))
 		kfree(inode->i_link);
 	kmem_cache_free(shmem_inode_cachep, SHMEM_I(inode));
 }
-
+/* todo2024年08月09日10:55:36 */
 static void shmem_destroy_inode(struct inode *inode)
 {
 	if (S_ISREG(inode->i_mode))
 		mpol_free_shared_policy(&SHMEM_I(inode)->policy);
 }
-
+/* 初始化这个sii的vfs inode（其实就是inode） */
 static void shmem_init_inode(void *foo)
 {
 	struct shmem_inode_info *info = foo;
 	inode_init_once(&info->vfs_inode);
 }
-
+/* shmfs初始化的时候初始化inode的slab */
 static void shmem_init_inodecache(void)
 {
 	shmem_inode_cachep = kmem_cache_create("shmem_inode_cache",
 				sizeof(struct shmem_inode_info),
 				0, SLAB_PANIC|SLAB_ACCOUNT, shmem_init_inode);
 }
-
+/* 2024年08月09日11:44:26
+shmfs销毁inode slab cache */
 static void shmem_destroy_inodecache(void)
 {
 	kmem_cache_destroy(shmem_inode_cachep);
@@ -4015,6 +4166,7 @@ static const struct file_operations shmem_file_operations = {
 	.write_iter	= generic_file_write_iter,
 	/* qwert3  */
 	.fsync		= noop_fsync,
+	/* splice todo */
 	.splice_read	= generic_file_splice_read,
 	.splice_write	= iter_file_splice_write,
 	/*  */
@@ -4049,9 +4201,11 @@ static const struct inode_operations shmem_dir_inode_operations = {
 	.mkdir		= shmem_mkdir,
 	/* todo2024年8月9日00:56:02 */
 	.rmdir		= shmem_rmdir,
-	
+	/* 2024年08月09日09:42:56 */
 	.mknod		= shmem_mknod,
+	/*  */
 	.rename		= shmem_rename2,
+	/* vfs层面创建tmpfie调用这个接口 */
 	.tmpfile	= shmem_tmpfile,
 #endif
 #ifdef CONFIG_TMPFS_XATTR
@@ -4073,16 +4227,22 @@ static const struct inode_operations shmem_special_inode_operations = {
 	.set_acl	= simple_set_acl,
 #endif
 };
-
+/* shmfs的sb ops */
 static const struct super_operations shmem_ops = {
+	/*  */
 	.alloc_inode	= shmem_alloc_inode,
+
 	.free_inode	= shmem_free_in_core_inode,
 	.destroy_inode	= shmem_destroy_inode,
 #ifdef CONFIG_TMPFS
+/*  */
 	.statfs		= shmem_statfs,
+	/*  */
 	.show_options	= shmem_show_options,
 #endif
+	/* 看样子像是删除文件 */
 	.evict_inode	= shmem_evict_inode,
+	/*  */
 	.drop_inode	= generic_delete_inode,
 	.put_super	= shmem_put_super,
 #ifdef CONFIG_TRANSPARENT_HUGE_PAGECACHE
@@ -4101,7 +4261,7 @@ static const struct vm_operations_struct shmem_vm_ops = {
 	.get_policy     = shmem_get_policy,
 #endif
 };
-
+/* 好像和权限相关 */
 int shmem_init_fs_context(struct fs_context *fc)
 {
 	struct shmem_options *ctx;
@@ -4118,7 +4278,7 @@ int shmem_init_fs_context(struct fs_context *fc)
 	fc->ops = &shmem_fs_context_ops;
 	return 0;
 }
-
+/* shmfs的fstype */
 static struct file_system_type shmem_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "tmpfs",
@@ -4129,19 +4289,20 @@ static struct file_system_type shmem_fs_type = {
 	.kill_sb	= kill_litter_super,
 	.fs_flags	= FS_USERNS_MOUNT,
 };
-
+/* 2024年08月09日10:37:22
+初始化shmem机制 */
 int __init shmem_init(void)
 {
 	int error;
-
+	/* 初始化inode的slab缓存 */
 	shmem_init_inodecache();
-
+	/* 注册fstype */
 	error = register_filesystem(&shmem_fs_type);
 	if (error) {
 		pr_err("Could not register tmpfs\n");
 		goto out2;
 	}
-
+	/* 进行挂载 ，todo*/
 	shm_mnt = kern_mount(&shmem_fs_type);
 	if (IS_ERR(shm_mnt)) {
 		error = PTR_ERR(shm_mnt);

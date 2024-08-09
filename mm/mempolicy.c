@@ -2366,7 +2366,9 @@ static void sp_insert(struct shared_policy *sp, struct sp_node *new)
 		 new->policy ? new->policy->mode : 0);
 }
 
-/* Find shared policy intersecting idx */
+/* 
+查找idx处的mpol
+Find shared policy intersecting idx */
 struct mempolicy *
 mpol_shared_policy_lookup(struct shared_policy *sp, unsigned long idx)
 {
@@ -2645,7 +2647,7 @@ put_mpol:
 		mpol_put(mpol);	/* drop our incoming ref on sb mpol */
 	}
 }
-
+/* 2024年08月09日14:41:50 */
 int mpol_set_shared_policy(struct shared_policy *info,
 			struct vm_area_struct *vma, struct mempolicy *npol)
 {

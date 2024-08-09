@@ -56,6 +56,7 @@
 
 static unsigned int i_hash_mask __read_mostly;
 static unsigned int i_hash_shift __read_mostly;
+/* inode的全局hash表数组？ */
 static struct hlist_head *inode_hashtable __read_mostly;
 static __cacheline_aligned_in_smp DEFINE_SPINLOCK(inode_hash_lock);
 
@@ -364,7 +365,8 @@ void inc_nlink(struct inode *inode)
 	inode->__i_nlink++;
 }
 EXPORT_SYMBOL(inc_nlink);
-
+/* 初始化mapping
+初始化一些基本的属性 */
 static void __address_space_init_once(struct address_space *mapping)
 {
 	xa_init_flags(&mapping->i_pages, XA_FLAGS_LOCK_IRQ | XA_FLAGS_ACCOUNT);
@@ -382,6 +384,8 @@ void address_space_init_once(struct address_space *mapping)
 EXPORT_SYMBOL(address_space_init_once);
 
 /*
+2024年08月09日11:46:02
+vfs初始化inode
  * These are initializations that only need to be done
  * once, because the fields are idempotent across use
  * of the inode, so let the slab aware of that.
@@ -485,6 +489,8 @@ static unsigned long hash(struct super_block *sb, unsigned long hashval)
 }
 
 /**
+计算inode的hash
+并加入全局hash表
  *	__insert_inode_hash - hash an inode
  *	@inode: unhashed inode
  *	@hashval: unsigned long value used to locate this object in the
@@ -498,6 +504,7 @@ void __insert_inode_hash(struct inode *inode, unsigned long hashval)
 
 	spin_lock(&inode_hash_lock);
 	spin_lock(&inode->i_lock);
+	/* 把inode加入全局hash表 */
 	hlist_add_head(&inode->i_hash, b);
 	spin_unlock(&inode->i_lock);
 	spin_unlock(&inode_hash_lock);
@@ -803,6 +810,8 @@ long prune_icache_sb(struct super_block *sb, struct shrink_control *sc)
 
 static void __wait_on_freeing_inode(struct inode *inode);
 /*
+查找inode
+head是一个全局哈希表的slot？
  * Called with the inode lock held.
  */
 static struct inode *find_inode(struct super_block *sb,
@@ -1310,6 +1319,7 @@ struct inode *igrab(struct inode *inode)
 EXPORT_SYMBOL(igrab);
 
 /**
+查找inode
  * ilookup5_nowait - search for an inode in the inode cache
  * @sb:		super block of file system to search
  * @hashval:	hash value (usually inode number) to search for
@@ -1328,10 +1338,12 @@ EXPORT_SYMBOL(igrab);
 struct inode *ilookup5_nowait(struct super_block *sb, unsigned long hashval,
 		int (*test)(struct inode *, void *), void *data)
 {
+	/* 通过hash找到所在的slot */
 	struct hlist_head *head = inode_hashtable + hash(sb, hashval);
 	struct inode *inode;
 
 	spin_lock(&inode_hash_lock);
+	/* 这里好像是遍历slot来查找inode */
 	inode = find_inode(sb, head, test, data);
 	spin_unlock(&inode_hash_lock);
 
@@ -1340,6 +1352,7 @@ struct inode *ilookup5_nowait(struct super_block *sb, unsigned long hashval,
 EXPORT_SYMBOL(ilookup5_nowait);
 
 /**
+根据hash查找inode
  * ilookup5 - search for an inode in the inode cache
  * @sb:		super block of file system to search
  * @hashval:	hash value (usually inode number) to search for
@@ -1361,6 +1374,7 @@ struct inode *ilookup5(struct super_block *sb, unsigned long hashval,
 {
 	struct inode *inode;
 again:
+	/* 查找inode */
 	inode = ilookup5_nowait(sb, hashval, test, data);
 	if (inode) {
 		wait_on_inode(inode);
@@ -1516,7 +1530,7 @@ int insert_inode_locked4(struct inode *inode, unsigned long hashval,
 }
 EXPORT_SYMBOL(insert_inode_locked4);
 
-
+/*  */
 int generic_delete_inode(struct inode *inode)
 {
 	return 1;
@@ -2073,6 +2087,8 @@ void inode_init_owner(struct inode *inode, const struct inode *dir,
 EXPORT_SYMBOL(inode_init_owner);
 
 /**
+对这个inode是否有权限
+比如说owner or root
  * inode_owner_or_capable - check current task permissions to inode
  * @inode: inode being checked
  *

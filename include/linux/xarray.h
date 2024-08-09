@@ -80,6 +80,7 @@ static inline unsigned long xa_to_value(const void *entry)
  *
  * Context: Any context.
  * Return: True if the entry is a value, false if it is a pointer.
+ mapping里面is_val的话，表示被swp了？
  */
 static inline bool xa_is_value(const void *entry)
 {

@@ -38,6 +38,7 @@ struct vfsmount;
 #endif
 
 /*
+2024年08月09日10:01:48
  * "quick string" -- eases parameter passing, but more importantly
  * saves "metadata" about the string (ie length and the hash).
  *
@@ -86,17 +87,30 @@ extern struct dentry_stat_t dentry_stat;
 
 #define d_lock	d_lockref.lock
 /* 2024年07月09日19:46:04
+Linux提供了page cache页高速缓存，很多文件的内容已经缓存在内存里，如果没有dentry，
+文件名无法快速地关联到inode，即使文件的内容已经缓存在页高速缓存，但是每一次不得不
+重复地从磁盘上找出来文件名到VFS inode的关联。
  */
 struct dentry {
 	/* RCU lookup touched fields */
 	unsigned int d_flags;		/* protected by d_lock */
 	seqcount_t d_seq;		/* per dentry seqlock */
-	struct hlist_bl_node d_hash;	/* lookup hash list */
-	struct dentry *d_parent;	/* parent directory */
+	struct hlist_bl_node d_hash;	/* 
+	根据上面的结构体，已经可以查找某个目录是否在内存的dentry中，但是用链表查找太慢了，
+	所以内核提供了hash表,d_hash会放置到hash表某个头节点所在的链表。
+	lookup hash list */
+	struct dentry *d_parent;	/* 
+	每个dentry的父目录是唯一的，所以dentry 有成员变量d_parent
+	parent directory */
 	struct qstr d_name;
-	/* 对应的inode */
-	struct inode *d_inode;		/* Where the name belongs to - NULL is
-					 * negative */
+	/* 对应的文件名 */
+	struct inode *d_inode;		/* 
+	对应的inode
+	Where the name belongs to - NULL is
+					 * negative
+	d_inode 这个成员变量出现，，
+	因为dentry之所以需要存在，就是要建立文件名到inode的mapping关系，但是找了一圈没找到文件名，其实藏在 struct qstr d_name中。				 
+					  */
 	unsigned char d_iname[DNAME_INLINE_LEN];	/* small names */
 
 	/* Ref lookup also touches following */
@@ -110,8 +124,12 @@ struct dentry {
 		struct list_head d_lru;		/* LRU list */
 		wait_queue_head_t *d_wait;	/* in-lookup ones only */
 	};
-	struct list_head d_child;	/* child of parent list */
-	struct list_head d_subdirs;	/* our children */
+	struct list_head d_child;	/* 
+	dentry靠什么挂在其父dentry的以d_subdirs为头部的链表上？靠的是d_child成员比变量。
+	child of parent list */
+	struct list_head d_subdirs;	/* 
+	dentry也会有子目录对应的dentry，所以提供了d_subdirs，所有子目录对应的dentry都会挂在该链表上。
+	our children */
 	/*
 	 * d_alias and d_rcu can share memory
 	 */
@@ -400,17 +418,17 @@ static inline bool d_is_whiteout(const struct dentry *dentry)
 {
 	return __d_entry_type(dentry) == DCACHE_WHITEOUT_TYPE;
 }
-
+/* 判断是不是dir */
 static inline bool d_can_lookup(const struct dentry *dentry)
 {
 	return __d_entry_type(dentry) == DCACHE_DIRECTORY_TYPE;
 }
-
+/* 判断是不是auto_dir */
 static inline bool d_is_autodir(const struct dentry *dentry)
 {
 	return __d_entry_type(dentry) == DCACHE_AUTODIR_TYPE;
 }
-
+/* 如何判断dent是不是dir */
 static inline bool d_is_dir(const struct dentry *dentry)
 {
 	return d_can_lookup(dentry) || d_is_autodir(dentry);
@@ -468,6 +486,7 @@ static inline bool d_really_is_negative(const struct dentry *dentry)
 }
 
 /**
+d_inode不为空说明什么呢？
  * d_really_is_positive - Determine if a dentry is really positive (ignoring fallthroughs)
  * @dentry: The dentry in question
  *
