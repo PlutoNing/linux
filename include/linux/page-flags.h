@@ -353,6 +353,8 @@ PAGEFLAG(XenRemapped, xen_remapped, PF_NO_COMPOUND)
 PAGEFLAG(Reserved, reserved, PF_NO_COMPOUND)
 	__CLEARPAGEFLAG(Reserved, reserved, PF_NO_COMPOUND)
 	__SETPAGEFLAG(Reserved, reserved, PF_NO_COMPOUND)
+/* 当一个page使用swap作为后备存储时需要为该page设置PG_swapbacked标志位。这种情况通常是匿名页或者shmem页，
+但是需要注意的是即使是匿名页也有可能不设置PG_swapbacked(例如MADV_FREE)。 */
 PAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
 	__CLEARPAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
 	__SETPAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
@@ -398,6 +400,7 @@ PAGEFLAG_FALSE(HighMem)
 #ifdef CONFIG_SWAP
 /* 2024年7月2日22:59:24
 2024年7月14日14:47:57
+则是在page为匿名页的情况向判断该页是否分配了swap 空间。往往在内存回收时若匿名页没有分配。
 此页是已经加入到swapcache
  */
 static __always_inline int PageSwapCache(struct page *page)
@@ -474,6 +477,7 @@ PAGEFLAG(Idle, idle, PF_ANY)
 #define PAGE_MAPPING_ANON	0x1
 #define PAGE_MAPPING_MOVABLE	0x2
 #define PAGE_MAPPING_KSM	(PAGE_MAPPING_ANON | PAGE_MAPPING_MOVABLE)
+/*  */
 #define PAGE_MAPPING_FLAGS	(PAGE_MAPPING_ANON | PAGE_MAPPING_MOVABLE)
 
 static __always_inline int PageMappingFlags(struct page *page)

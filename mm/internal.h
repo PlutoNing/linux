@@ -365,15 +365,18 @@ static inline void mlock_migrate_page(struct page *newpage, struct page *page)
 extern pmd_t maybe_pmd_mkwrite(pmd_t pmd, struct vm_area_struct *vma);
 
 /*
+获取page在vma的虚拟地址
+就是vma_start+ vma内pgoff*page_size
  * At what user virtual address is page expected in @vma?
  */
 static inline unsigned long
 __vma_address(struct page *page, struct vm_area_struct *vma)
 {
+	/* page在mapping的pgoff */
 	pgoff_t pgoff = page_to_pgoff(page);
 	return vma->vm_start + ((pgoff - vma->vm_pgoff) << PAGE_SHIFT);
 }
-
+/* 获取page在vma的虚拟地址 */
 static inline unsigned long
 vma_address(struct page *page, struct vm_area_struct *vma)
 {

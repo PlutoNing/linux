@@ -73,7 +73,9 @@ struct page_frag {
 #endif
 };
 
-/* Track pages that require TLB flushes */
+/* 
+记录需要刷新tlb的pages
+Track pages that require TLB flushes */
 struct tlbflush_unmap_batch {
 #ifdef CONFIG_ARCH_WANT_BATCHED_UNMAP_TLB_FLUSH
 	/*

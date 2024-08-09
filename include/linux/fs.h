@@ -468,6 +468,7 @@ struct address_space {
 	atomic_t		nr_thps;
 #endif
 	//代表该address_space缓存的Page所存放的rb-tree，与xas的区别是什么？
+	/* 好像是映射这个mapping的vma挂在这个红黑树上面 */
 	struct rb_root_cached	i_mmap;
 	/* 
 	用来保护i_mmap 和i_mmap_writable的自旋锁

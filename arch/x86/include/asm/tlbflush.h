@@ -583,7 +583,7 @@ extern void flush_tlb_mm_range(struct mm_struct *mm, unsigned long start,
 				unsigned long end, unsigned int stride_shift,
 				bool freed_tables);
 extern void flush_tlb_kernel_range(unsigned long start, unsigned long end);
-
+/* a是地址 */
 static inline void flush_tlb_page(struct vm_area_struct *vma, unsigned long a)
 {
 	flush_tlb_mm_range(vma->vm_mm, a, a + PAGE_SIZE, PAGE_SHIFT, false);
@@ -591,7 +591,7 @@ static inline void flush_tlb_page(struct vm_area_struct *vma, unsigned long a)
 
 void native_flush_tlb_others(const struct cpumask *cpumask,
 			     const struct flush_tlb_info *info);
-
+/* 2024年08月09日18:23:37 */
 static inline u64 inc_mm_tlb_gen(struct mm_struct *mm)
 {
 	/*
@@ -602,7 +602,7 @@ static inline u64 inc_mm_tlb_gen(struct mm_struct *mm)
 	 */
 	return atomic64_inc_return(&mm->context.tlb_gen);
 }
-
+/* 把mm加入batch */
 static inline void arch_tlbbatch_add_mm(struct arch_tlbflush_unmap_batch *batch,
 					struct mm_struct *mm)
 {

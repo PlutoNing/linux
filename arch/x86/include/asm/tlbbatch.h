@@ -3,7 +3,7 @@
 #define _ARCH_X86_TLBBATCH_H
 
 #include <linux/cpumask.h>
-
+/* 记录需要刷新tlb的cpu的掩码 */
 struct arch_tlbflush_unmap_batch {
 	/*
 	 * Each bit set is a CPU that potentially has a TLB entry for one of

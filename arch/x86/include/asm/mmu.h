@@ -8,6 +8,8 @@
 #include <linux/atomic.h>
 
 /*
+2024年08月09日18:24:39
+硬件相关的mm ctx
  * x86 has arch-specific MMU state beyond what lives in mm_struct.
  */
 typedef struct {

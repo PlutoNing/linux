@@ -30,7 +30,8 @@
 AV结构用于管理匿名类型VMAs，当有匿名页需要unmap处理时，可以先找到AV，然后再通过AV进行查找处理
  */
 struct anon_vma {
-	struct anon_vma *root;		/* Root of this anon_vma tree ，指向此anon_vma所属的root */
+	struct anon_vma *root;		/* Root of this anon_vma tree ，
+	指向此anon_vma所属的root */
 	struct rw_semaphore rwsem;	/* W: modification, R: walking the list 读写信号量 */
 	/*
 	 * The refcount is taken on an anon_vma when there is no
@@ -63,7 +64,7 @@ struct anon_vma {
 	 */
 
 	/* Interval tree of private "related" vmas，
-	rb红黑树节点，将anon_vma_chain添加到anon_vma->rb_root的红黑树中
+	rb红黑树节点，将avc添加到anon_vma->rb_root的红黑树中
 	 */
 	struct rb_root_cached rb_root;
 };
@@ -139,7 +140,7 @@ static inline void anon_vma_unlock_write(struct anon_vma *anon_vma)
 {
 	up_write(&anon_vma->root->rwsem);
 }
-/*  */
+/* 获取av的锁 */
 static inline void anon_vma_lock_read(struct anon_vma *anon_vma)
 {
 	down_read(&anon_vma->root->rwsem);
@@ -292,11 +293,11 @@ struct rmap_walk_control {
 	/*
 	 * Return false if page table scanning in rmap_walk should be stopped.
 	 * Otherwise, return true.
-	 断开具体vma的pte
+	这个是walk到每一个元素，对这个元素执行的回调函数
 	 */
 	bool (*rmap_one)(struct page *page, struct vm_area_struct *vma,
 					unsigned long addr, void *arg);
-	/* 判断一个页面是否已经断开 */
+	/* 判断是否完成工作，可否结束回调 */
 	int (*done)(struct page *page);
 	/* 实现一个锁机制？ */
 	struct anon_vma *(*anon_lock)(struct page *page);

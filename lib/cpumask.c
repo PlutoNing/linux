@@ -43,6 +43,7 @@ int cpumask_next_and(int n, const struct cpumask *src1p,
 EXPORT_SYMBOL(cpumask_next_and);
 
 /**
+2024年08月09日18:08:15
  * cpumask_any_but - return a "random" in a cpumask, but not this one.
  * @mask: the cpumask to search
  * @cpu: the cpu to ignore.

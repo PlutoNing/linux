@@ -416,6 +416,7 @@ static inline struct page *read_mapping_page(struct address_space *mapping,
 
 /*
 2024年07月29日10:19:16
+获取page在mapping里面的pgoff
  * Get index of the page with in radix-tree
  * (TODO: remove once hugetlb pages will have ->index in PAGE_SIZE)
  */
@@ -436,6 +437,8 @@ static inline pgoff_t page_to_index(struct page *page)
 }
 
 /*
+2024年08月09日15:59:39
+获取page在mapping里面的pgoff
  * Get the offset in PAGE_SIZE.
  * (TODO: hugepage should have ->index in PAGE_SIZE)
  */

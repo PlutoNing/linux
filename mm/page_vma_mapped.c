@@ -12,9 +12,10 @@ static inline bool not_found(struct page_vma_mapped_walk *pvmw)
 	page_vma_mapped_walk_done(pvmw);
 	return false;
 }
-
+/*  */
 static bool map_pte(struct page_vma_mapped_walk *pvmw)
 {
+	/* 找到pte */
 	pvmw->pte = pte_offset_map(pvmw->pmd, pvmw->address);
 	if (!(pvmw->flags & PVMW_SYNC)) {
 		if (pvmw->flags & PVMW_MIGRATION) {
@@ -172,7 +173,7 @@ bool page_vma_mapped_walk(struct page_vma_mapped_walk *pvmw)
 		return true;
 	}
 restart:
-	/* 找到mm在address对应的pdg */
+	/* 找到mm在address对应的pgd */
 	pgd = pgd_offset(mm, pvmw->address);
 	if (!pgd_present(*pgd))
 		return false;
@@ -182,6 +183,7 @@ restart:
 	pud = pud_offset(p4d, pvmw->address);
 	if (!pud_present(*pud))
 		return false;
+	/* 找到addr的pmd */
 	pvmw->pmd = pmd_offset(pud, pvmw->address);
 	/*
 	 * Make sure the pmd value isn't cached in a register by the
@@ -191,6 +193,7 @@ restart:
 	 /* 获取pmd条目 */
 	pmde = READ_ONCE(*pvmw->pmd);
 	if (pmd_trans_huge(pmde) || is_pmd_migration_entry(pmde)) {
+		/* 巨页好迁移的特殊情况 */
 		pvmw->ptl = pmd_lock(mm, pvmw->pmd);
 		if (likely(pmd_trans_huge(*pvmw->pmd))) {
 			if (pvmw->flags & PVMW_MIGRATION)
@@ -219,7 +222,7 @@ restart:
 	} else if (!pmd_present(pmde)) {
 		return false;
 	}
-	/* pmd条目存在 */
+	/*  */
 	if (!map_pte(pvmw))
 		goto next_pte;
 
@@ -231,6 +234,7 @@ next_pte:
 		/* Seek to next pte only makes sense for THP */
 		if (!PageTransHuge(pvmw->page) || PageHuge(pvmw->page))
 			return not_found(pvmw);
+
 		do {
 			pvmw->address += PAGE_SIZE;
 			if (pvmw->address >= pvmw->vma->vm_end ||

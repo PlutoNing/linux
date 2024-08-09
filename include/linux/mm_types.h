@@ -530,7 +530,8 @@ struct mm_struct {
 
 		struct linux_binfmt *binfmt;
 
-		/* Architecture-specific MM context */
+		/* Architecture-specific MM context 
+		记录硬件相关的信息？*/
 		mm_context_t context;
 
 		unsigned long flags; /* Must use atomic bitops to access */
@@ -600,6 +601,7 @@ struct mm_struct {
 	} __randomize_layout;
 
 	/*
+	cpu掩码
 	 * The mm_cpumask needs to be at the end of mm_struct, because it
 	 * is dynamically sized based on nr_cpu_ids.
 	 */

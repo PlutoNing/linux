@@ -1054,6 +1054,7 @@ atomic_inc_and_test(atomic_t *v)
 
 #ifndef atomic_add_negative
 /**
+2024年08月09日19:25:33
  * atomic_add_negative - add and test if negative
  * @i: integer value to add
  * @v: pointer of type atomic_t
@@ -1115,6 +1116,8 @@ atomic_add_unless(atomic_t *v, int a, int u)
 
 #ifndef atomic_inc_not_zero
 /**
+++，除非是0
+如果是0的话返回false，不然就是++并且返回true
  * atomic_inc_not_zero - increment unless the number is zero
  * @v: pointer of type atomic_t
  *
@@ -1126,6 +1129,8 @@ atomic_inc_not_zero(atomic_t *v)
 {
 	return atomic_add_unless(v, 1, 0);
 }
+/* ++，除非是0
+如果是0的话返回false，不然就是++并且返回true */
 #define atomic_inc_not_zero atomic_inc_not_zero
 #endif
 
