@@ -829,12 +829,16 @@ static long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 		unsigned int foll_flags = gup_flags;
 		unsigned int page_increm;
 
-		/* first iteration or cross vma bound */
+		/* first iteration or cross vma bound
+		如果vma是空的（第一次进入循环）
+		或者随着循环start++越过了vma的end
+		那么这里需要操作一下vma进行赋值或者扩展 */
 		if (!vma || start >= vma->vm_end) {
 			/* 查找包括start地址的vma，如果没有包括，就extend后返回 */
 			vma = find_extend_vma(mm, start);
 
-			if (!vma && in_gate_area(mm, start)) {
+			if (!vma && in_gate_area(mm, start)) {/* todo */
+
 				ret = get_gate_page(mm, start & PAGE_MASK,
 						gup_flags, &vma,
 						pages ? &pages[i] : NULL);
@@ -855,6 +859,7 @@ static long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 				continue;
 			}
 		}
+		/* 这里获取vma成功了，包含了start以及往后的地址 */
 retry:
 		/*
 		 * If we have a pending SIGKILL, don't keep faulting pages and
@@ -900,7 +905,8 @@ retry:
 		/* 这个时候物理page肯定存在 */
 
 		if (pages) {
-			/* 分配完成了pages，刷新高速缓存 */
+			/* 分配完成了pages，刷新高速缓存
+			保存到返回结果里的pages数组 */
 			pages[i] = page;
 			flush_anon_page(vma, page, start);
 			flush_dcache_page(page);
@@ -916,6 +922,7 @@ next_page:
 		if (page_increm > nr_pages)
 			page_increm = nr_pages;
 		i += page_increm;
+		/* ++start，获取下一个页面 */
 		start += page_increm * PAGE_SIZE;
 		nr_pages -= page_increm;
 	} while (nr_pages);
@@ -1057,7 +1064,7 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
 	pages_done = 0;
 	lock_dropped = false;
 	for (;;) {
-		/* 把mm的start开始位置的nrpages页面 进行物理映射*/
+		/* 把mm的start开始位置的nrpages个页面 进行物理映射后存储到pages指针数组*/
 		ret = __get_user_pages(tsk, mm, start, nr_pages, flags, pages,
 				       vmas, locked);
 		/* ret是pin的页面数量 */
@@ -1131,6 +1138,7 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
 			pages++;
 		start += PAGE_SIZE;
 	}
+
 	if (lock_dropped && *locked) {
 		/*
 		 * We must let the caller know we temporarily dropped the lock
@@ -1148,13 +1156,13 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
  * @tsk:	the task_struct to use for page fault accounting, or
  *		NULL if faults are not to be recorded.
  * @mm:		mm_struct of target mm
- * @start:	starting user address
- * @nr_pages:	number of pages from start to pin
+ * @start:	starting user address 起始地址
+ * @nr_pages:	number of pages from start to pin要操作的页面数量
  * @gup_flags:	flags modifying lookup behaviour
  * @pages:	array that receives pointers to the pages pinned.
  *		Should be at least nr_pages long. Or NULL, if caller
- *		only intends to ensure the pages are faulted in.pin的page
- 的数组
+ *		only intends to ensure the pages are faulted in.
+ pin的page的指针数组
 
  * @vmas:	array of pointers to vmas corresponding to each page.
  *		Or NULL if the caller does not require them.对应pages参数里面
@@ -1218,6 +1226,7 @@ long get_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm,
 	/* 捋一捋，叫get pages，其实就是把pages进行一下pin。
 	不过这里是其他mm，也是locked的 */
 
+	/* 获取此mm的start地址开始的nr_pages页面，放在pages指针数组里面，vmas记录数组对应索引的页面的vma */
 	return __get_user_pages_locked(tsk, mm, start, nr_pages, pages, vmas,
 				       locked,
 				       gup_flags | FOLL_TOUCH | FOLL_REMOTE);
@@ -1246,7 +1255,7 @@ EXPORT_SYMBOL(get_user_pages_remote);
  * If @nonblocking is non-NULL, it must held for read only and may be
  * released.  If it's released, *@nonblocking will be set to 0.
  */
-long populate_vma_page_range(struct vm_area_struct *vma,
+long  populate_vma_page_range(struct vm_area_struct *vma,
 		unsigned long start, unsigned long end, int *nonblocking)
 {
 	struct mm_struct *mm = vma->vm_mm;

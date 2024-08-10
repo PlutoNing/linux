@@ -456,6 +456,7 @@ RB_DECLARE_CALLBACKS_MAX(static, vma_gap_callbacks,
 			 unsigned long, rb_subtree_gap, vma_compute_gap)
 
 /*
+
  * Update augmented rbtree rb_subtree_gap values after vma->vm_start or
  * vma->vm_prev->vm_end values changed, without modifying the vma's position
  * in the rbtree.
@@ -2400,7 +2401,7 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 	/* 如果幸运的在mm的vma缓存命中了 */
 	if (likely(vma))
 		return vma;
-
+	
 	/* 不然只能遍历mm的vma红黑树了。 */
 	rb_node = mm->mm_rb.rb_node;
 
@@ -2409,16 +2410,27 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 
 		tmp = rb_entry(rb_node, struct vm_area_struct, vm_rb);
 
-		if (tmp->vm_end > addr) {
+		if (tmp->vm_end > addr) {/* addr在end左边 */
 			vma = tmp;
-			if (tmp->vm_start <= addr)
+			if (tmp->vm_start <= addr)/* addr又在start右边，这就属于漂漂亮亮的找到了 */
 				break;
 			rb_node = rb_node->rb_left;
 		} else
 			rb_node = rb_node->rb_right;
 	}
 
-	if (vma)
+	/* 这里可能有一种没找的情况，就是
+
+
+虚拟地址空间		
+--------------------------------------------------------------------------------------------	
+addr	   v1s++++++v1e   v2s+++++++v2e      v3s++++++++v3e   v4s+++++++v4e
+
+这个时候vma指向最左边的v1这个vma。	 
+	 */
+
+
+	if (vma)/* 不过这个时候不为空，但是其实vma不包含addr，也要加入缓存吗 */
 		vmacache_update(addr, vma);
 	return vma;
 }
@@ -2589,7 +2601,7 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 /*
 
  * vma is the first one with address < vma->vm_start.  Have to extend vma.
- 使vma往前变大？
+ 使vma往前，往左，往低地址变大？
  */
 int expand_downwards(struct vm_area_struct *vma,
 				   unsigned long address)
@@ -2607,7 +2619,9 @@ int expand_downwards(struct vm_area_struct *vma,
 	/* Check that both stack segments have the same anon_vma? */
 	if (prev && !(prev->vm_flags & VM_GROWSDOWN) &&
 			(prev->vm_flags & (VM_WRITE|VM_READ|VM_EXEC))) {
-		if (address - prev->vm_end < stack_guard_gap)
+
+		if (address - prev->vm_end < stack_guard_gap)/* 这是说明，
+		扩得太左了，都快贴着前面的prev这个vma了，没有边界感，越过了系统规定的界限 */
 			return -ENOMEM;
 	}
 
@@ -2621,19 +2635,22 @@ int expand_downwards(struct vm_area_struct *vma,
 	 * anon_vma lock to serialize against concurrent expand_stacks.
 	 */
 	anon_vma_lock_write(vma->anon_vma);
-
 	/* Somebody else might have raced and expanded it already */
+	/* 对vma 的av加写锁喉操作，全部的操作都是在这里锁的范围进行的 */
 	if (address < vma->vm_start) {
 		unsigned long size, grow;
 
-		/* 增长后的大小 */
+		/* 增长后的vma大小 */
 		size = vma->vm_end - address;
 		/* 本次增长需要新分配的页面数量 */
 		grow = (vma->vm_start - address) >> PAGE_SHIFT;
 
 		error = -ENOMEM;
-		if (grow <= vma->vm_pgoff) {
-			error = acct_stack_growth(vma, size, grow);
+		if (grow <= vma->vm_pgoff) {/* 这里grow不能超过pgoff，
+		因为grow是往左要多映射的页面数量，vm_pgoff是这个vma在映射文件的pgoff起始地址，
+		如果grow大于pgoff，显然不现实，多的范围都超过了映射文件的界限 */
+			
+			error = acct_stack_growth(vma, size, grow);/* 检查能否增长grow个页面 */
 			if (!error) {
 				/* 可以进行grow */
 				/*
@@ -2647,30 +2664,44 @@ int expand_downwards(struct vm_area_struct *vma,
 				 * So, we reuse mm->page_table_lock to guard
 				 * against concurrent vma expansions.
 				 */
+				/*对mm进行加锁， 锁范围里这里就是实际进行grow了。 */ 
 				spin_lock(&mm->page_table_lock);
 				if (vma->vm_flags & VM_LOCKED)
 					mm->locked_vm += grow;
-				/* 页面记账 */
+				/* mm页面统计信息 */
 				vm_stat_account(mm, vma->vm_flags, grow);
 				/* 开始grow */
-				/* 先取消与av的关联 */
+				/* 先取消与av的关联，马上在重新插入，因为vma变化大小的话，在rmap机制
+				的红黑树里面位置也会变化。 */
 				anon_vma_interval_tree_pre_update_vma(vma);
+				/* 更新vma的起始地址 */
 				vma->vm_start = address;
+				/* 这里也说明了grow为什么不能大于vma的pgoff */
 				vma->vm_pgoff -= grow;
 				anon_vma_interval_tree_post_update_vma(vma);
+				/* 这里好像是重新插入mm的红黑树？todo */
 				vma_gap_update(vma);
 				spin_unlock(&mm->page_table_lock);
+
 
 				perf_event_mmap(vma);
 			}
 		}
 	}
-
-
 	anon_vma_unlock_write(vma->anon_vma);
+
+
+
 	khugepaged_enter_vma_merge(vma, vma->vm_flags);
 
 	validate_mm(mm);
+
+	/* 其实这里expand，更多是子自娱自乐，vma宣布自己的start&pgoff扩展了相应的位置，就高高兴兴返回了，
+	但是实际的页表没有扩展和映射，物理页面也没有分配。
+	但是当真正访问mm这个地址的时候，只要vma包含了这个地址，就是说明可以访问的。就会顺着pgd往下走，缺几级页表就创建之，
+	缺页表项也创建之，物理页面也可以触发页错误缺页时在申请。 */
+
+
 	return error;
 }
 
@@ -2716,16 +2747,19 @@ find_extend_vma(struct mm_struct *mm, unsigned long addr)
 /* 扩大vma，到包括address */
 int expand_stack(struct vm_area_struct *vma, unsigned long address)
 {
+	/* downward就是向左，向低地址 */
 	return expand_downwards(vma, address);
 }
-/*  */
+/* 2024年8月10日11:52:25
+在mm里面找到包含addr的vma */
 struct vm_area_struct *
 find_extend_vma(struct mm_struct *mm, unsigned long addr)
 {
 	struct vm_area_struct *vma;
 	unsigned long start;
-
+	/* 把addr整页对齐 */
 	addr &= PAGE_MASK;
+	/* 查找vma，会查缓存或者红黑树 */
 	vma = find_vma(mm, addr);
 	if (!vma)
 		return NULL;
@@ -2736,15 +2770,18 @@ find_extend_vma(struct mm_struct *mm, unsigned long addr)
 	/* don't alter vm_start if the coredump is running */
 	if (!mmget_still_valid(mm))
 		return NULL;
-
+	
+	/* 到这里就说明查到的vma的start大于addr？
+	此时vma指向第一个vma，但是addr还在第一个vma的左边？ */
 
 	start = vma->vm_start;
-	/* 扩大这个vma */
+	/* 扩大这个左边第一个vma，扩大到包含他左边的addr地址 */
 	if (expand_stack(vma, addr))
 		return NULL;
 
 	if (vma->vm_flags & VM_LOCKED)
-	/* 这个标志位要求要立即分配物理页面 */
+	/*刚刚只是扩展了vma，并没有立即分配页面， 这个标志位要求要立即分配物理页面
+[addr，start]就是刚刚新扩大的范围，这里进行分配物理页面 */
 		populate_vma_page_range(vma, addr, start, NULL);
 	return vma;
 }

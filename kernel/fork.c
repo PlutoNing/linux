@@ -1238,17 +1238,19 @@ struct mm_struct *get_task_mm(struct task_struct *task)
 	return mm;
 }
 EXPORT_SYMBOL_GPL(get_task_mm);
-
+/* 如可以mode模式访问的话，就获取tsk的mm */
 struct mm_struct *mm_access(struct task_struct *task, unsigned int mode)
 {
 	struct mm_struct *mm;
 	int err;
+
 
 	err =  mutex_lock_killable(&task->signal->cred_guard_mutex);
 	if (err)
 		return ERR_PTR(err);
 
 	mm = get_task_mm(task);
+	/* 如果成功获取到了别人的mm，并且这个mm不能被ptrace，报错 */
 	if (mm && mm != current->mm &&
 			!ptrace_may_access(task, mode)) {
 		mmput(mm);

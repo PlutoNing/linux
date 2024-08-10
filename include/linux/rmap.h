@@ -173,7 +173,7 @@ static inline int anon_vma_prepare(struct vm_area_struct *vma)
 {
 	if (likely(vma->anon_vma))
 		return 0;
-
+	/* 没有的话，就初始化 */
 	return __anon_vma_prepare(vma);
 }
 

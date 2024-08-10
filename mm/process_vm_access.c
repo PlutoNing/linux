@@ -19,12 +19,18 @@
 #endif
 
 /**
+读取某个进程的内存页面
  * process_vm_rw_pages - read/write pages from task specified
  * @pages: array of pointers to pages we want to copy
+ 可能是从其他进程得到的页面的指针数组
  * @offset: offset in page to start copying from/to
+ 起始地址
  * @len: number of bytes to copy
+ 要拷贝的数量
  * @iter: where to copy to/from locally
+ 这个是调用者提过的装的拷贝的数据的容器iter
  * @vm_write: 0 means copy from, 1 means copy to
+ 是读还是写
  * Returns 0 on success, error code otherwise
  */
 static int process_vm_rw_pages(struct page **pages,
@@ -43,6 +49,7 @@ static int process_vm_rw_pages(struct page **pages,
 			copy = len;
 
 		if (vm_write) {
+			/* 把数据从iter拷贝写到 */
 			copied = copy_page_from_iter(page, offset, copy, iter);
 			set_page_dirty_lock(page);
 		} else {
@@ -60,12 +67,15 @@ static int process_vm_rw_pages(struct page **pages,
 #define PVM_MAX_KMALLOC_PAGES (PAGE_SIZE * 2)
 
 /**
+把其他mm的addr开始的len数据拷贝出or到iter里面
+
  * process_vm_rw_single_vec - read/write pages from task specified
- * @addr: start memory address of target process
- * @len: size of area to copy to/from
- * @iter: where to copy to/from locally
+ * @addr: start memory address of target process目标进程的起始地址
+ * @len: size of area to copy to/from要拷贝的数据长度
+ * @iter: where to copy to/from locally存储要拷贝的数据
  * @process_pages: struct pages area that can store at least
- *  nr_pages_to_copy struct page pointers
+ *  nr_pages_to_copy struct page pointers，从其他进程获取的页面的指针
+ 放在这个数组里面
  * @mm: mm for task
  * @task: task to read/write from
  * @vm_write: 0 means copy from, 1 means copy to
@@ -80,6 +90,7 @@ static int process_vm_rw_single_vec(unsigned long addr,
 				    int vm_write)
 {
 	unsigned long pa = addr & PAGE_MASK;
+	/* 起始的页内偏移 */
 	unsigned long start_offset = addr - pa;
 	unsigned long nr_pages;
 	ssize_t rc = 0;
@@ -90,12 +101,14 @@ static int process_vm_rw_single_vec(unsigned long addr,
 	/* Work out address and page range required */
 	if (len == 0)
 		return 0;
+	/* 拷贝的页面数量 */
 	nr_pages = (addr + len - 1) / PAGE_SIZE - addr / PAGE_SIZE + 1;
 
 	if (vm_write)
 		flags |= FOLL_WRITE;
 
 	while (!rc && nr_pages && iov_iter_count(iter)) {
+		/* 本次循环操作的页面数量 */
 		int pages = min(nr_pages, max_pages_per_loop);
 		int locked = 1;
 		size_t bytes;
@@ -106,17 +119,18 @@ static int process_vm_rw_single_vec(unsigned long addr,
 		 * current/current->mm
 		 */
 		down_read(&mm->mmap_sem);
+		/* 获取其他mm的页面 */
 		pages = get_user_pages_remote(task, mm, pa, pages, flags,
 					      process_pages, NULL, &locked);
 		if (locked)
 			up_read(&mm->mmap_sem);
 		if (pages <= 0)
 			return -EFAULT;
-
+		/* 这个是实际获取的字节数量 */
 		bytes = pages * PAGE_SIZE - start_offset;
 		if (bytes > len)
 			bytes = len;
-
+		/* 把这些获取到的process_pages页面拷贝出或者拷贝进iter */
 		rc = process_vm_rw_pages(process_pages,
 					 start_offset, bytes, iter,
 					 vm_write);
@@ -124,6 +138,8 @@ static int process_vm_rw_single_vec(unsigned long addr,
 		start_offset = 0;
 		nr_pages -= pages;
 		pa += pages * PAGE_SIZE;
+
+		/* 拷贝完成后，需要一个一个的put */
 		while (pages)
 			put_page(process_pages[--pages]);
 	}
@@ -136,8 +152,9 @@ static int process_vm_rw_single_vec(unsigned long addr,
 #define PVM_MAX_PP_ARRAY_COUNT 16
 
 /**
+2024年8月10日13:04:49
  * process_vm_rw_core - core of reading/writing pages from task specified
- * @pid: PID of process to read/write from/to
+ * @pid: PID of process to read/write from/to获取指定pid的数据
  * @iter: where to copy to/from locally
  * @rvec: iovec array specifying where to copy to/from in the other process
  * @riovcnt: size of rvec array
@@ -159,6 +176,7 @@ static ssize_t process_vm_rw_core(pid_t pid, struct iov_iter *iter,
 	struct mm_struct *mm;
 	unsigned long i;
 	ssize_t rc = 0;
+	/* 记录全部iov里面包含最大页面数量的iov的页面数量 */
 	unsigned long nr_pages = 0;
 	unsigned long nr_pages_iov;
 	ssize_t iov_len;
@@ -167,14 +185,19 @@ static ssize_t process_vm_rw_core(pid_t pid, struct iov_iter *iter,
 	/*
 	 * Work out how many pages of struct pages we're going to need
 	 * when eventually calling get_user_pages
+
 	 */
+	 /* 逐个处理rvec数组里面的io_vec */
 	for (i = 0; i < riovcnt; i++) {
 		iov_len = rvec[i].iov_len;
+
 		if (iov_len > 0) {
+			/* 获取这个iov的页面数量 */
 			nr_pages_iov = ((unsigned long)rvec[i].iov_base
 					+ iov_len)
 				/ PAGE_SIZE - (unsigned long)rvec[i].iov_base
 				/ PAGE_SIZE + 1;
+			/* 记录全部iov里面包含最大页面数量的iov的页面数量 */
 			nr_pages = max(nr_pages, nr_pages_iov);
 		}
 	}
@@ -199,9 +222,9 @@ static ssize_t process_vm_rw_core(pid_t pid, struct iov_iter *iter,
 		rc = -ESRCH;
 		goto free_proc_pages;
 	}
-
+	/* 获取这个tsk的mm */
 	mm = mm_access(task, PTRACE_MODE_ATTACH_REALCREDS);
-	if (!mm || IS_ERR(mm)) {
+	if (!mm || IS_ERR(mm)) {/* 获取这个pid的mm失败了 */
 		rc = IS_ERR(mm) ? PTR_ERR(mm) : -ESRCH;
 		/*
 		 * Explicitly map EACCES to EPERM as EPERM is a more a
@@ -213,6 +236,7 @@ static ssize_t process_vm_rw_core(pid_t pid, struct iov_iter *iter,
 	}
 
 	for (i = 0; i < riovcnt && iov_iter_count(iter) && !rc; i++)
+	/* 逐个获取iov的数据，存在iter里面 */
 		rc = process_vm_rw_single_vec(
 			(unsigned long)rvec[i].iov_base, rvec[i].iov_len,
 			iter, process_pages, mm, task, vm_write);
@@ -238,6 +262,7 @@ free_proc_pages:
 }
 
 /**
+进行实际读取前的check？
  * process_vm_rw - check iovecs before calling core routine
  * @pid: PID of process to read/write from/to
  * @lvec: iovec array specifying where to copy to/from locally
@@ -307,7 +332,7 @@ SYSCALL_DEFINE6(process_vm_writev, pid_t, pid,
 }
 
 #ifdef CONFIG_COMPAT
-
+/* 这个compat是什么 */
 static ssize_t
 compat_process_vm_rw(compat_pid_t pid,
 		     const struct compat_iovec __user *lvec,
@@ -337,7 +362,7 @@ compat_process_vm_rw(compat_pid_t pid,
 					  &iov_r);
 	if (rc <= 0)
 		goto free_iovecs;
-
+	/* 应该也是和读取remote tsk相关的吧。 */
 	rc = process_vm_rw_core(pid, &iter, iov_r, riovcnt, flags, vm_write);
 
 free_iovecs:

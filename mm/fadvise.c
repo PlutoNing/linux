@@ -29,7 +29,8 @@ fadvise是干啥的 */
 
 /*
 2024年07月18日18:30:40
-
+2024年8月10日00:35:13
+看来好像是根据不同的类型，设置不同的预读参数什么的
  * POSIX_FADV_WILLNEED could set PG_Referenced, and POSIX_FADV_NOREUSE could
  * deactivate the pages and clear PG_Referenced.
  */

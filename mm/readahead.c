@@ -623,7 +623,7 @@ page_cache_async_readahead(struct address_space *mapping,
 	ondemand_readahead(mapping, ra, filp, true, offset, req_size);
 }
 EXPORT_SYMBOL_GPL(page_cache_async_readahead);
-
+/* 预读fd */
 ssize_t ksys_readahead(int fd, loff_t offset, size_t count)
 {
 	ssize_t ret;
@@ -640,16 +640,18 @@ ssize_t ksys_readahead(int fd, loff_t offset, size_t count)
 	 * on this file, then we must return -EINVAL.
 	 */
 	ret = -EINVAL;
+
+	/* 没有mapping，或者mapping没有回调，或者不是常规文件，不能预读 */
 	if (!f.file->f_mapping || !f.file->f_mapping->a_ops ||
 	    !S_ISREG(file_inode(f.file)->i_mode))
 		goto out;
-
+	/* advise设置参数 */
 	ret = vfs_fadvise(f.file, offset, count, POSIX_FADV_WILLNEED);
 out:
 	fdput(f);
 	return ret;
 }
-
+/* 2024年8月10日00:31:32 */
 SYSCALL_DEFINE3(readahead, int, fd, loff_t, offset, size_t, count)
 {
 	return ksys_readahead(fd, offset, count);

@@ -152,7 +152,7 @@ static int copyin(void *to, const void __user *from, size_t n)
 	}
 	return n;
 }
-
+/* 2024年8月10日01:07:07 */
 static size_t copy_page_to_iter_iovec(struct page *page, size_t offset, size_t bytes,
 			 struct iov_iter *i)
 {
@@ -236,7 +236,7 @@ done:
 	i->iov_offset = skip;
 	return wanted - bytes;
 }
-
+/* 从i里面拷贝bytes数量的内容到page的offset位置 */
 static size_t copy_page_from_iter_iovec(struct page *page, size_t offset, size_t bytes,
 			 struct iov_iter *i)
 {
@@ -244,7 +244,7 @@ static size_t copy_page_from_iter_iovec(struct page *page, size_t offset, size_t
 	const struct iovec *iov;
 	char __user *buf;
 	void *kaddr, *to;
-
+	/* 不可能写入比i容量还多的东西 */
 	if (unlikely(bytes > i->count))
 		bytes = i->count;
 
@@ -257,12 +257,19 @@ static size_t copy_page_from_iter_iovec(struct page *page, size_t offset, size_t
 	skip = i->iov_offset;
 	buf = iov->iov_base + skip;
 	copy = min(bytes, iov->iov_len - skip);
+/*                     
+--------|----------------|----------------------------------------------------------
+    iov_base+++++skip+++buf            |
+        |++++++++++++++iov_len+++++++++|
+ */
 
-	if (IS_ENABLED(CONFIG_HIGHMEM) && !fault_in_pages_readable(buf, copy)) {
+	if (IS_ENABLED(CONFIG_HIGHMEM) && !fault_in_pages_readable(buf, copy)) {/*  */
 		kaddr = kmap_atomic(page);
 		to = kaddr + offset;
+		/* 写入到to，to=kaddr+offset */
 
-		/* first chunk, usually the only one */
+		/* first chunk, usually the only one
+		执行拷贝 */
 		left = copyin(to, buf, copy);
 		copy -= left;
 		skip += copy;
@@ -733,7 +740,7 @@ size_t _copy_to_iter_mcsafe(const void *addr, size_t bytes, struct iov_iter *i)
 }
 EXPORT_SYMBOL_GPL(_copy_to_iter_mcsafe);
 #endif /* CONFIG_ARCH_HAS_UACCESS_MCSAFE */
-
+/* 拷贝bytes数量的东西到addr */
 size_t _copy_from_iter(void *addr, size_t bytes, struct iov_iter *i)
 {
 	char *to = addr;
@@ -741,8 +748,10 @@ size_t _copy_from_iter(void *addr, size_t bytes, struct iov_iter *i)
 		WARN_ON(1);
 		return 0;
 	}
+
 	if (iter_is_iovec(i))
 		might_fault();
+
 	iterate_and_advance(i, bytes, v,
 		copyin((to += v.iov_len) - v.iov_len, v.iov_base, v.iov_len),
 		memcpy_from_page((to += v.bv_len) - v.bv_len, v.bv_page,
@@ -910,22 +919,24 @@ size_t copy_page_to_iter(struct page *page, size_t offset, size_t bytes,
 		return copy_page_to_iter_pipe(page, offset, bytes, i);
 }
 EXPORT_SYMBOL(copy_page_to_iter);
-
+/* 拷贝到page的offset位置 */
 size_t copy_page_from_iter(struct page *page, size_t offset, size_t bytes,
 			 struct iov_iter *i)
 {
 	if (unlikely(!page_copy_sane(page, offset, bytes)))
 		return 0;
+
 	if (unlikely(iov_iter_is_pipe(i) || iov_iter_is_discard(i))) {
 		WARN_ON(1);
 		return 0;
 	}
-	if (i->type & (ITER_BVEC|ITER_KVEC)) {
+
+	if (i->type & (ITER_BVEC|ITER_KVEC)) {/* 开始拷贝 */
 		void *kaddr = kmap_atomic(page);
 		size_t wanted = _copy_from_iter(kaddr + offset, bytes, i);
 		kunmap_atomic(kaddr);
 		return wanted;
-	} else
+	} else/* 这算什么拷贝 */
 		return copy_page_from_iter_iovec(page, offset, bytes, i);
 }
 EXPORT_SYMBOL(copy_page_from_iter);
