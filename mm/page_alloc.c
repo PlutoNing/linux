@@ -458,7 +458,9 @@ static inline bool defer_init(int nid, unsigned long pfn, unsigned long end_pfn)
 }
 #endif
 
-/* Return a pointer to the bitmap storing bits affecting a block of pages */
+/* 
+获取pfn对应的位图部分
+Return a pointer to the bitmap storing bits affecting a block of pages */
 static inline unsigned long *get_pageblock_bitmap(struct page *page,
 							unsigned long pfn)
 {
@@ -468,11 +470,15 @@ static inline unsigned long *get_pageblock_bitmap(struct page *page,
 	return page_zone(page)->pageblock_flags;
 #endif /* CONFIG_SPARSEMEM */
 }
-
+/* 获取
+2024年8月11日22:12:53
+todo */
 static inline int pfn_to_bitidx(struct page *page, unsigned long pfn)
 {
 #ifdef CONFIG_SPARSEMEM
+	/* 把pfn先对齐到mem_section大小，32KB */
 	pfn &= (PAGES_PER_SECTION-1);
+	/* 右移9，再乘以4 */
 	return (pfn >> pageblock_order) * NR_PAGEBLOCK_BITS;
 #else
 	pfn = pfn - round_down(page_zone(page)->zone_start_pfn, pageblock_nr_pages);
@@ -482,7 +488,9 @@ static inline int pfn_to_bitidx(struct page *page, unsigned long pfn)
 
 /**
 2024年6月30日22:16:00
- * get_pfnblock_flags_mask - Return the requested group of flags for the pageblock_nr_pages block of pages
+获取pfn对应的long内bitidx后面连续几位，和mask一样不一样
+ * get_pfnblock_flags_mask - Return the requested group of flags for the 
+ pageblock_nr_pages block of pages
  * @page: The page within the block of interest
  * @pfn: The target page frame number
  * @end_bitidx: The last bit of interest to retrieve
@@ -500,15 +508,27 @@ static __always_inline unsigned long __get_pfnblock_flags_mask(struct page *page
 	unsigned long word;
 
 	bitmap = get_pageblock_bitmap(page, pfn);
+	/* pfn在全局的idx */
 	bitidx = pfn_to_bitidx(page, pfn);
+	/* 位图long的idx */
 	word_bitidx = bitidx / BITS_PER_LONG;
+	/* 位图long内偏移 */
 	bitidx &= (BITS_PER_LONG-1);
-
+	/* 对应的位图里面的long */
 	word = bitmap[word_bitidx];
 	bitidx += end_bitidx;
+
+	/* 
+	一种现实情况是end_bitidx=2，mask=7.
+	假设bitidx=10.
+	todo
+
+	
+	
+	 */
 	return (word >> (BITS_PER_LONG - bitidx - 1)) & mask;
 }
-
+/* 获取pfn对应的long内bitidx后面连续几位，和mask一样不一样 */
 unsigned long get_pfnblock_flags_mask(struct page *page, unsigned long pfn,
 					unsigned long end_bitidx,
 					unsigned long mask)
@@ -524,14 +544,17 @@ static __always_inline int get_pfnblock_migratetype(struct page *page, unsigned 
 
 /**
 2024年6月26日21:52:31
+以pageblock为单位设置迁移类型
 set_pageblock_migratetype()用于设置指定pageblock的MIGRATE_TYPES类型，
 最后调用set_pfnblock_flags_mask()来设置pagelock的迁移类型。
- * set_pfnblock_flags_mask - Set the requested group of flags for a pageblock_nr_pages block of pages
+ * set_pfnblock_flags_mask - Set the requested group of flags for a pageblock_nr_pages
+  block of pages
  * @page: The page within the block of interest
  * @flags: The flags to set
  * @pfn: The target page frame number
- * @end_bitidx: The last bit of interest
- * @mask: mask of bits that the caller is interested in
+ * @end_bitidx: The last bit of interest，
+ * @mask: mask of bits that the caller is interested in，是在【start——bitidx，end_bitidx】
+ 内的mask
  */
 void set_pfnblock_flags_mask(struct page *page, unsigned long flags,
 					unsigned long pfn,
@@ -546,16 +569,20 @@ void set_pfnblock_flags_mask(struct page *page, unsigned long flags,
 	BUILD_BUG_ON(MIGRATE_TYPES > (1 << PB_migratetype_bits));
 
 	bitmap = get_pageblock_bitmap(page, pfn);
+	/* 获取pfn的bitidx */
 	bitidx = pfn_to_bitidx(page, pfn);
+	/* 获取这个bitidx在long型位图数组的idx */
 	word_bitidx = bitidx / BITS_PER_LONG;
+	/* 把bitidx变成在这个long_idx的long内的偏移 */
 	bitidx &= (BITS_PER_LONG-1);
 
 	VM_BUG_ON_PAGE(!zone_spans_pfn(page_zone(page), pfn), page);
 
 	bitidx += end_bitidx;
+	/*  */
 	mask <<= (BITS_PER_LONG - bitidx - 1);
 	flags <<= (BITS_PER_LONG - bitidx - 1);
-
+	/* 读取出位图对应的long */
 	word = READ_ONCE(bitmap[word_bitidx]);
 	for (;;) {
 		old_word = cmpxchg(&bitmap[word_bitidx], word, (word & ~mask) | flags);
@@ -565,13 +592,15 @@ void set_pfnblock_flags_mask(struct page *page, unsigned long flags,
 	}
 }
 /* 2024年6月26日21:52:01
+以pageblock为单位，设置migrant type
  */
 void set_pageblock_migratetype(struct page *page, int migratetype)
 {
 	if (unlikely(page_group_by_mobility_disabled &&
 		     migratetype < MIGRATE_PCPTYPES))
 		migratetype = MIGRATE_UNMOVABLE;
-
+	/* 【start——bitidx，end_bitidx】= 【PB_migrate，PB_migrate_end】=
+	【0,2】 */
 	set_pageblock_flags_group(page, (unsigned long)migratetype,
 					PB_migrate, PB_migrate_end);
 }
@@ -2313,6 +2342,9 @@ static inline struct page *__rmqueue_cma_fallback(struct zone *zone,
 #endif
 
 /*
+2024年8月11日21:53:28
+【start_page，end_page】是pageblock_nr_pages区块内的起始和结束页面？
+把页面移动到zone->free_area[order]
  * Move the free pages in a range to the free lists of the requested type.
  * Note that start_page and end_pages are not aligned on a pageblock
  * boundary. If alignment is required, use move_freepages_block()
@@ -2325,7 +2357,7 @@ static int move_freepages(struct zone *zone,
 	unsigned int order;
 	int pages_moved = 0;
 
-	for (page = start_page; page <= end_page;) {
+	for (page = start_page; page <= end_page;) {/*  */
 		if (!pfn_valid_within(page_to_pfn(page))) {
 			page++;
 			continue;
@@ -2342,7 +2374,7 @@ static int move_freepages(struct zone *zone,
 				(*num_movable)++;
 
 			page++;
-			continue;
+			continue;/* 跳过 */
 		}
 
 		/* Make sure we are not inadvertently changing nodes */
@@ -2350,14 +2382,17 @@ static int move_freepages(struct zone *zone,
 		VM_BUG_ON_PAGE(page_zone(page) != zone, page);
 
 		order = page_order(page);
+		/* 移动页面 */
 		move_to_free_area(page, &zone->free_area[order], migratetype);
+		/* 跳到下一个order组里的页面 */
 		page += 1 << order;
+		/*  */
 		pages_moved += 1 << order;
 	}
 
 	return pages_moved;
 }
-
+/* 移动page所在的pageblock_nr_pages组页面到free_area */
 int move_freepages_block(struct zone *zone, struct page *page,
 				int migratetype, int *num_movable)
 {
@@ -2368,16 +2403,21 @@ int move_freepages_block(struct zone *zone, struct page *page,
 		*num_movable = 0;
 
 	start_pfn = page_to_pfn(page);
+	/* 对齐到pageblock_nr_pages大小 */
 	start_pfn = start_pfn & ~(pageblock_nr_pages-1);
+	/* 获取此pageblock_nr_pages区块内的起始页面 */
 	start_page = pfn_to_page(start_pfn);
+
 	end_page = start_page + pageblock_nr_pages - 1;
 	end_pfn = start_pfn + pageblock_nr_pages - 1;
 
-	/* Do not cross zone boundaries */
+	/* Do not cross zone boundaries 。 */
 	if (!zone_spans_pfn(zone, start_pfn))
 		start_page = page;
+
 	if (!zone_spans_pfn(zone, end_pfn))
 		return 0;
+
 
 	return move_freepages(zone, start_page, end_page, migratetype,
 								num_movable);
@@ -8474,6 +8514,8 @@ void *__init alloc_large_system_hash(const char *tablename,
 }
 
 /*
+检查page所在pageblock有没有unmovable页面
+如果count不为0那么至少有count个unmovable页面
  * This function checks whether pageblock includes unmovable pages or not.
  * If @count is not zero, it is okay to include less @count unmovable pages
  *
@@ -8519,7 +8561,7 @@ bool has_unmovable_pages(struct zone *zone, struct page *page, int count,
 
 		page = pfn_to_page(check);
 
-		if (PageReserved(page))
+		if (PageReserved(page))/* reserved就是不可移动？ */
 			goto unmovable;
 
 		/*

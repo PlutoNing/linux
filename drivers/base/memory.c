@@ -177,7 +177,8 @@ int memory_notify(unsigned long val, void *v)
 {
 	return blocking_notifier_call_chain(&memory_chain, val, v);
 }
-
+/* 2024年8月11日23:20:00
+todo，好像和cma有关 */
 int memory_isolate_notify(unsigned long val, void *v)
 {
 	return atomic_notifier_call_chain(&memory_isolate_chain, val, v);

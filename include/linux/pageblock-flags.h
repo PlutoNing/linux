@@ -18,7 +18,9 @@
 enum pageblock_bits {
 	PB_migrate,
 	PB_migrate_end = PB_migrate + PB_migratetype_bits - 1,
-			/* 3 bits required for migrate types */
+			/* 
+			等于2
+			3 bits required for migrate types */
 	PB_migrate_skip,/* If set the block is skipped by compaction */
 
 	/*
@@ -37,7 +39,9 @@ extern unsigned int pageblock_order;
 
 #else /* CONFIG_HUGETLB_PAGE_SIZE_VARIABLE */
 
-/* Huge pages are a constant size */
+/* Huge pages are a constant size
+9
+估计和pageblock大小相关 */
 #define pageblock_order		HUGETLB_PAGE_ORDER
 
 #endif /* CONFIG_HUGETLB_PAGE_SIZE_VARIABLE */

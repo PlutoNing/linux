@@ -14,7 +14,7 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/page_isolation.h>
-
+/* todo， */
 static int set_migratetype_isolate(struct page *page, int migratetype, int isol_flags)
 {
 	struct zone *zone;
@@ -36,6 +36,7 @@ static int set_migratetype_isolate(struct page *page, int migratetype, int isol_
 		goto out;
 
 	pfn = page_to_pfn(page);
+	/* 构造arg */
 	arg.start_pfn = pfn;
 	arg.nr_pages = pageblock_nr_pages;
 	arg.pages_found = 0;
@@ -60,7 +61,7 @@ static int set_migratetype_isolate(struct page *page, int migratetype, int isol_
 	 * We just check MOVABLE pages.
 	 */
 	if (!has_unmovable_pages(zone, page, arg.pages_found, migratetype,
-				 isol_flags))
+				 isol_flags))/* 如果没有至少arg.pages_found个unmovable个页面 */
 		ret = 0;
 
 	/*
@@ -69,12 +70,14 @@ static int set_migratetype_isolate(struct page *page, int migratetype, int isol_
 	 */
 
 out:
-	if (!ret) {
+	if (!ret) {/* ret = 0 */
 		unsigned long nr_pages;
+		/*  */
 		int mt = get_pageblock_migratetype(page);
 
 		set_pageblock_migratetype(page, MIGRATE_ISOLATE);
 		zone->nr_isolate_pageblock++;
+		/*  */
 		nr_pages = move_freepages_block(zone, page, MIGRATE_ISOLATE,
 									NULL);
 
@@ -86,7 +89,7 @@ out:
 		drain_all_pages(zone);
 	return ret;
 }
-
+/* 撤销page的isolation状态 */
 static void unset_migratetype_isolate(struct page *page, unsigned migratetype)
 {
 	struct zone *zone;
@@ -97,8 +100,9 @@ static void unset_migratetype_isolate(struct page *page, unsigned migratetype)
 	struct page *buddy;
 
 	zone = page_zone(page);
+
 	spin_lock_irqsave(&zone->lock, flags);
-	if (!is_migrate_isolate_page(page))
+	if (!is_migrate_isolate_page(page))/* 不用undo了 */
 		goto out;
 
 	/*
@@ -111,7 +115,7 @@ static void unset_migratetype_isolate(struct page *page, unsigned migratetype)
 	 */
 	if (PageBuddy(page)) {
 		order = page_order(page);
-		if (order >= pageblock_order) {
+		if (order >= pageblock_order) {/* 含义？和巨页有关么？ */
 			pfn = page_to_pfn(page);
 			buddy_pfn = __find_buddy_pfn(pfn, order);
 			buddy = page + (buddy_pfn - pfn);
@@ -129,10 +133,11 @@ static void unset_migratetype_isolate(struct page *page, unsigned migratetype)
 	 * should be no freepage in the range, so we could avoid costly
 	 * pageblock scanning for freepage moving.
 	 */
-	if (!isolated_page) {
+	if (!isolated_page) {/* 移动页面 */
 		nr_pages = move_freepages_block(zone, page, migratetype, NULL);
 		__mod_zone_freepage_state(zone, nr_pages, migratetype);
 	}
+	/* 设置page所在page_block的迁移类型 */
 	set_pageblock_migratetype(page, migratetype);
 	zone->nr_isolate_pageblock--;
 out:
@@ -142,7 +147,7 @@ out:
 		__free_pages(page, order);
 	}
 }
-
+/* 找到pfn开始的nr个页面中第一个对应的mem_section是online的 */
 static inline struct page *
 __first_valid_page(unsigned long pfn, unsigned long nr_pages)
 {
@@ -150,7 +155,7 @@ __first_valid_page(unsigned long pfn, unsigned long nr_pages)
 
 	for (i = 0; i < nr_pages; i++) {
 		struct page *page;
-
+		/*  */
 		page = pfn_to_online_page(pfn + i);
 		if (!page)
 			continue;
@@ -160,6 +165,7 @@ __first_valid_page(unsigned long pfn, unsigned long nr_pages)
 }
 
 /**
+2024年8月11日22:24:08
  * start_isolate_page_range() - make page-allocation-type of range of pages to
  * be MIGRATE_ISOLATE.
  * @start_pfn:		The lower PFN of the range to be isolated.
@@ -206,6 +212,7 @@ int start_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 	     pfn += pageblock_nr_pages) {
 		page = __first_valid_page(pfn, pageblock_nr_pages);
 		if (page) {
+			/*  */
 			if (set_migratetype_isolate(page, migratetype, flags)) {
 				undo_pfn = pfn;
 				goto undo;
@@ -228,6 +235,7 @@ undo:
 }
 
 /*
+2024年8月11日22:23:56
  * Make isolated pages available again.
  */
 void undo_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
@@ -245,10 +253,14 @@ void undo_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 		page = __first_valid_page(pfn, pageblock_nr_pages);
 		if (!page || !is_migrate_isolate_page(page))
 			continue;
+		/* 这里进行undo */
 		unset_migratetype_isolate(page, migratetype);
 	}
 }
+
+
 /*
+2024年8月11日21:32:26
  * Test all pages in the range is free(means isolated) or not.
  * all pages in [start_pfn...end_pfn) must be in the same zone.
  * zone->lock must be held before call this.
@@ -262,7 +274,8 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 	struct page *page;
 
 	while (pfn < end_pfn) {
-		if (!pfn_valid_within(pfn)) {
+
+		if (!pfn_valid_within(pfn)) {/* 不可能进入此 */
 			pfn++;
 			continue;
 		}
@@ -273,7 +286,7 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 			 * the correct MIGRATE_ISOLATE freelist. There is no
 			 * simple way to verify that as VM_BUG_ON(), though.
 			 */
-			pfn += 1 << page_order(page);
+			pfn += 1 << page_order(page);/* 步进跳过此组页面 */
 		else if (skip_hwpoisoned_pages && PageHWPoison(page))
 			/* A HWPoisoned page cannot be also PageBuddy */
 			pfn++;
@@ -284,7 +297,10 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 	return pfn;
 }
 
-/* Caller should ensure that requested range is in a single zone */
+/* 
+2024年8月11日21:20:20
+函数检查需要分配的内存范围地址是否isolated,如果检查成功,则返回0.否则返回-EBUSY
+Caller should ensure that requested range is in a single zone */
 int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 			bool skip_hwpoisoned_pages)
 {
@@ -296,24 +312,31 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 	 * Note: pageblock_nr_pages != MAX_ORDER. Then, chunks of free pages
 	 * are not aligned to pageblock_nr_pages.
 	 * Then we just check migratetype first.
+	 为什么以pageblock_nr_pages为单位步进
 	 */
 	for (pfn = start_pfn; pfn < end_pfn; pfn += pageblock_nr_pages) {
 		page = __first_valid_page(pfn, pageblock_nr_pages);
 		if (page && !is_migrate_isolate_page(page))
 			break;
 	}
+	/* 刚才找到区间内第一个不是is_migrate_isolate_page的 */
+	/* 又重复一遍？ */
 	page = __first_valid_page(start_pfn, end_pfn - start_pfn);
 	if ((pfn < end_pfn) || !page)
 		return -EBUSY;
+
 	/* Check all pages are free or marked as ISOLATED */
 	zone = page_zone(page);
+
+
 	spin_lock_irqsave(&zone->lock, flags);
 	pfn = __test_page_isolated_in_pageblock(start_pfn, end_pfn,
 						skip_hwpoisoned_pages);
 	spin_unlock_irqrestore(&zone->lock, flags);
 
-	trace_test_pages_isolated(start_pfn, end_pfn, pfn);
 
+	trace_test_pages_isolated(start_pfn, end_pfn, pfn);
+	/* 正常情况下pfn应该==end_pfn？ */
 	return pfn < end_pfn ? -EBUSY : 0;
 }
 

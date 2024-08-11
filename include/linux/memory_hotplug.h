@@ -17,6 +17,8 @@ struct vmem_altmap;
 
 #ifdef CONFIG_MEMORY_HOTPLUG
 /*
+2024年8月11日21:24:01
+如果pfn对应的mem_section是online的话。就返回对应的页面
  * Return page for the valid pfn only if the page is online. All pfn
  * walkers which rely on the fully initialized page->flags and others
  * should use this rather than pfn_valid && pfn_to_page

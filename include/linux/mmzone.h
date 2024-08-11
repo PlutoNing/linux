@@ -89,10 +89,12 @@ static inline bool is_migrate_movable(int mt)
 		for (type = 0; type < MIGRATE_TYPES; type++)
 
 extern int page_group_by_mobility_disabled;
-
+/* 2 - 0 +1 =3 */
 #define NR_MIGRATETYPE_BITS (PB_migrate_end - PB_migrate + 1)
+/* 1<<3  -  1 = 8-1=7 */
 #define MIGRATETYPE_MASK ((1UL << NR_MIGRATETYPE_BITS) - 1)
-
+/* get_pfnblock_flags_mask(page, pfn,2, 7) 
+获取pfn对应的long内bitidx后面连续2,3位，和mask=7一样不一样？*/
 #define get_pageblock_migratetype(page)					\
 	get_pfnblock_flags_mask(page, page_to_pfn(page),		\
 			PB_migrate_end, MIGRATETYPE_MASK)
@@ -679,7 +681,7 @@ static inline unsigned long zone_end_pfn(const struct zone *zone)
 {
 	return zone->zone_start_pfn + zone->spanned_pages;
 }
-
+/* pfn是否在zone范围内。 */
 static inline bool zone_spans_pfn(const struct zone *zone, unsigned long pfn)
 {
 	return zone->zone_start_pfn <= pfn && pfn < zone_end_pfn(zone);
@@ -1291,12 +1293,13 @@ static inline unsigned long early_pfn_to_nid(unsigned long pfn)
  * PFN_SECTION_SHIFT		pfn to/from section number
  */
 #define PA_SECTION_SHIFT	(SECTION_SIZE_BITS)
+/* 27-12=15 */
 #define PFN_SECTION_SHIFT	(SECTION_SIZE_BITS - PAGE_SHIFT)
 /*展开是 (1UL << ((0 ? 52 : 46) - 27))
 还不小，五十几万
  */
 #define NR_MEM_SECTIONS		(1UL << SECTIONS_SHIFT)
-
+/* 一个mem_section的页面数量？1<<15？32KB */
 #define PAGES_PER_SECTION       (1UL << PFN_SECTION_SHIFT)
 #define PAGE_SECTION_MASK	(~(PAGES_PER_SECTION-1))
 
@@ -1306,7 +1309,8 @@ static inline unsigned long early_pfn_to_nid(unsigned long pfn)
 #if (MAX_ORDER - 1 + PAGE_SHIFT) > SECTION_SIZE_BITS
 #error Allocator MAX_ORDER exceeds SECTION_SIZE
 #endif
-/* 转换的方式？好像就是取高位（右移15位）的bit */
+/* 转换的方式？好像就是取高位（右移15位）的bit
+转换为mem section的idx？ */
 static inline unsigned long pfn_to_section_nr(unsigned long pfn)
 {
 	return pfn >> PFN_SECTION_SHIFT;
@@ -1395,7 +1399,7 @@ extern struct mem_section **mem_section;
 #else
 extern struct mem_section mem_section[NR_SECTION_ROOTS][SECTIONS_PER_ROOT];
 #endif
-
+/* 获取mem_section的usemap？ */
 static inline unsigned long *section_to_usemap(struct mem_section *ms)
 {
 	return ms->usage->pageblock_flags;
@@ -1407,7 +1411,7 @@ nr参数是pfn右移15位
 好像是获得pfn的nr，然后把nr映射到一个全局的二维数组
 取一个mem_section。
 ----------------
-就是获得pfn对应的mem——section
+就是获得pfn对应的mem_section
 
  */
 static inline struct mem_section *__nr_to_section(unsigned long nr)
@@ -1439,6 +1443,7 @@ extern size_t mem_section_usage_size(void);
  */
 #define	SECTION_MARKED_PRESENT	(1UL<<0)
 #define SECTION_HAS_MEM_MAP	(1UL<<1)
+/*  */
 #define SECTION_IS_ONLINE	(1UL<<2)
 #define SECTION_IS_EARLY	(1UL<<3)
 #define SECTION_MAP_LAST_BIT	(1UL<<4)
@@ -1482,12 +1487,12 @@ static inline int valid_section_nr(unsigned long nr)
 {
 	return valid_section(__nr_to_section(nr));
 }
-
+/* 判断mem_section是否online  */
 static inline int online_section(struct mem_section *section)
 {
 	return (section && (section->section_mem_map & SECTION_IS_ONLINE));
 }
-
+/* 判断nr对应的mem_section是否online */
 static inline int online_section_nr(unsigned long nr)
 {
 	return online_section(__nr_to_section(nr));
@@ -1499,7 +1504,7 @@ void online_mem_sections(unsigned long start_pfn, unsigned long end_pfn);
 void offline_mem_sections(unsigned long start_pfn, unsigned long end_pfn);
 #endif
 #endif
-/*  */
+/* 获取pfn对应的mem_section */
 static inline struct mem_section *__pfn_to_section(unsigned long pfn)
 {
 	return __nr_to_section(pfn_to_section_nr(pfn));

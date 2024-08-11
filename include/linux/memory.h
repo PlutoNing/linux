@@ -61,7 +61,7 @@ struct memory_notify {
  * in the notifier chain.
  */
 #define MEM_ISOLATE_COUNT	(1<<0)
-
+/* 2024年8月11日22:27:29 */
 struct memory_isolate_notify {
 	unsigned long start_pfn;	/* Start of range to check */
 	unsigned int nr_pages;		/* # pages in range to check */
