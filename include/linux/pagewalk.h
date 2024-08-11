@@ -44,6 +44,7 @@ struct mm_walk_ops {
 };
 
 /**
+2024年8月11日16:27:20
  * mm_walk - walk_page_range data
  * @ops:	operation to call during the walk
  * @mm:		mm_struct representing the target process of page table walk
@@ -54,7 +55,9 @@ struct mm_walk_ops {
  */
 struct mm_walk {
 	const struct mm_walk_ops *ops;
+	/* 遍历的mm */
 	struct mm_struct *mm;
+	/* 遍历的vma */
 	struct vm_area_struct *vma;
 	void *private;
 };
