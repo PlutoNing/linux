@@ -12,11 +12,13 @@ static inline bool not_found(struct page_vma_mapped_walk *pvmw)
 	page_vma_mapped_walk_done(pvmw);
 	return false;
 }
-/*  */
+/* 2024年8月11日16:35:12
+todo */
 static bool map_pte(struct page_vma_mapped_walk *pvmw)
 {
-	/* 找到pte */
+	/* 找到pvmw的addr的pte */
 	pvmw->pte = pte_offset_map(pvmw->pmd, pvmw->address);
+
 	if (!(pvmw->flags & PVMW_SYNC)) {
 		if (pvmw->flags & PVMW_MIGRATION) {
 			if (!is_swap_pte(*pvmw->pte))
@@ -274,6 +276,8 @@ next_pte:
 }
 
 /**
+2024年8月11日16:29:28
+检查page是不是映射到了vma
  * page_mapped_in_vma - check whether a page is really mapped in a VMA
  * @page: the page to test
  * @vma: the VMA to test
@@ -290,15 +294,21 @@ int page_mapped_in_vma(struct page *page, struct vm_area_struct *vma)
 		.flags = PVMW_SYNC,
 	};
 	unsigned long start, end;
-
+	/* 找到page在这vma的va */
 	start = __vma_address(page, vma);
 	end = start + PAGE_SIZE * (hpage_nr_pages(page) - 1);
 
-	if (unlikely(end < vma->vm_start || start >= vma->vm_end))
+	if (unlikely(end < vma->vm_start || start >= vma->vm_end))/* 如果page对应的地址
+	范围恰好在vma的地址范围左边or右边，那肯定没有映射 */
 		return 0;
+	/* 现在page和vma的地址范围，肯定是有交叉的 */	
 	pvmw.address = max(start, vma->vm_start);
-	if (!page_vma_mapped_walk(&pvmw))
+
+	if (!page_vma_mapped_walk(&pvmw))/* 如果vma里面找不到任何pte指向
+	这个page地址 */
 		return 0;
+	/* 到这里，说明vma内部有一个pte指向page，这应该就是函数的功能，是不是真的mapped to this
+	vma */
 	page_vma_mapped_walk_done(&pvmw);
 	return 1;
 }
