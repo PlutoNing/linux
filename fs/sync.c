@@ -176,6 +176,7 @@ SYSCALL_DEFINE1(syncfs, int, fd)
 }
 
 /**
+同步内存到磁盘
  * vfs_fsync_range - helper to sync a range of data & metadata to disk
  * @file:		file to sync
  * @start:		offset in bytes of the beginning of data range to sync
@@ -192,10 +193,12 @@ int vfs_fsync_range(struct file *file, loff_t start, loff_t end, int datasync)
 
 	if (!file->f_op->fsync)
 		return -EINVAL;
+	
 	if (!datasync && (inode->i_state & I_DIRTY_TIME))
 		mark_inode_dirty_sync(inode);
 	return file->f_op->fsync(file, start, end, datasync);
 }
+
 EXPORT_SYMBOL(vfs_fsync_range);
 
 /**

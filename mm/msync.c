@@ -58,6 +58,7 @@ SYSCALL_DEFINE3(msync, unsigned long, start, size_t, len, int, flags)
 	 * just ignore them, but return -ENOMEM at the end.
 	 */
 	down_read(&mm->mmap_sem);
+	/* 获取vma */
 	vma = find_vma(mm, start);
 	for (;;) {
 		struct file *file;
@@ -68,7 +69,7 @@ SYSCALL_DEFINE3(msync, unsigned long, start, size_t, len, int, flags)
 		if (!vma)
 			goto out_unlock;
 		/* Here start < vma->vm_end. */
-		if (start < vma->vm_start) {
+		if (start < vma->vm_start) {/* 只能从vma的start开始 */
 			start = vma->vm_start;
 			if (start >= end)
 				goto out_unlock;
@@ -81,19 +82,24 @@ SYSCALL_DEFINE3(msync, unsigned long, start, size_t, len, int, flags)
 			goto out_unlock;
 		}
 		file = vma->vm_file;
+		/* 在文件内的字节偏移 */
 		fstart = (start - vma->vm_start) +
 			 ((loff_t)vma->vm_pgoff << PAGE_SHIFT);
+
 		fend = fstart + (min(end, vma->vm_end) - start) - 1;
 		start = vma->vm_end;
+		
 		if ((flags & MS_SYNC) && file &&
 				(vma->vm_flags & VM_SHARED)) {
 			get_file(file);
 			up_read(&mm->mmap_sem);
+			/*  */
 			error = vfs_fsync_range(file, fstart, fend, 1);
 			fput(file);
 			if (error || start >= end)
 				goto out;
 			down_read(&mm->mmap_sem);
+			/* 查找start查找的是下一个vma吗 */
 			vma = find_vma(mm, start);
 		} else {
 			if (start >= end) {
