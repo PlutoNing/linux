@@ -36,9 +36,10 @@ bool page_poisoning_enabled(void)
 		debug_pagealloc_enabled()));
 }
 EXPORT_SYMBOL_GPL(page_poisoning_enabled);
-
+/* 2024年8月11日16:45:31 */
 static void poison_page(struct page *page)
 {
+	/* 先kmap */
 	void *addr = kmap_atomic(page);
 
 	/* KASAN still think the page is in-use, so skip it. */
@@ -47,7 +48,7 @@ static void poison_page(struct page *page)
 	kasan_enable_current();
 	kunmap_atomic(addr);
 }
-
+/*  */
 static void poison_pages(struct page *page, int n)
 {
 	int i;
@@ -62,7 +63,7 @@ static bool single_bit_flip(unsigned char a, unsigned char b)
 
 	return error && !(error & (error - 1));
 }
-
+/* 可能还会unpoison */
 static void check_poison_mem(unsigned char *mem, size_t bytes)
 {
 	static DEFINE_RATELIMIT_STATE(ratelimit, 5 * HZ, 10);
@@ -92,7 +93,7 @@ static void check_poison_mem(unsigned char *mem, size_t bytes)
 			end - start + 1, 1);
 	dump_stack();
 }
-
+/* 2024年8月11日16:46:17 */
 static void unpoison_page(struct page *page)
 {
 	void *addr;
@@ -106,7 +107,7 @@ static void unpoison_page(struct page *page)
 	check_poison_mem(addr, PAGE_SIZE);
 	kunmap_atomic(addr);
 }
-
+/*  */
 static void unpoison_pages(struct page *page, int n)
 {
 	int i;
@@ -114,7 +115,7 @@ static void unpoison_pages(struct page *page, int n)
 	for (i = 0; i < n; i++)
 		unpoison_page(page + i);
 }
-
+/* 2024年8月11日16:45:11 */
 void kernel_poison_pages(struct page *page, int numpages, int enable)
 {
 	if (!page_poisoning_enabled())
