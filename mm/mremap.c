@@ -494,9 +494,10 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 
 	return vma;
 }
-
+/* 2024年8月11日23:44:19 */
 static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
-		unsigned long new_addr, unsigned long new_len, bool *locked,
+		unsigned long new_addr, unsigned long new_len,
+		bool *locked,
 		struct vm_userfaultfd_ctx *uf,
 		struct list_head *uf_unmap_early,
 		struct list_head *uf_unmap)
@@ -514,6 +515,7 @@ static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
 		goto out;
 
 	/* Ensure the old/new locations do not overlap */
+	/*  */
 	if (addr + old_len > new_addr && new_addr + new_len > addr)
 		goto out;
 
@@ -533,7 +535,7 @@ static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
 	 */
 	if ((mm->map_count + 2) >= sysctl_max_map_count - 3)
 		return -ENOMEM;
-
+	/*  */
 	ret = do_munmap(mm, new_addr, new_len, uf_unmap_early);
 	if (ret)
 		goto out;
@@ -586,6 +588,8 @@ static int vma_expandable(struct vm_area_struct *vma, unsigned long delta)
 }
 
 /*
+2024年8月11日23:36:51
+扩大/缩小现有内存映射，flags参数还可以控制是否需要页对齐
  * Expand (or shrink) an existing mapping, potentially moving it at the
  * same time (controlled by the MREMAP_MAYMOVE flag and available VM space)
  *
@@ -632,7 +636,7 @@ SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
 	if (down_write_killable(&current->mm->mmap_sem))
 		return -EINTR;
 
-	if (flags & MREMAP_FIXED) {
+	if (flags & MREMAP_FIXED) {/* 为什么这里是nommu的函数 */
 		ret = mremap_to(addr, old_len, new_addr, new_len,
 				&locked, &uf, &uf_unmap_early, &uf_unmap);
 		goto out;

@@ -57,6 +57,7 @@ atomic_long_t mmap_pages_allocated;
 EXPORT_SYMBOL(mem_map);
 
 /* list of mapped, potentially shareable regions */
+/* 分配vm_region 的slab */
 static struct kmem_cache *vm_region_jar;
 struct rb_root nommu_region_tree = RB_ROOT;
 DECLARE_RWSEM(nommu_region_sem);
@@ -1373,6 +1374,8 @@ SYSCALL_DEFINE1(old_mmap, struct mmap_arg_struct __user *, arg)
 #endif /* __ARCH_WANT_SYS_OLD_MMAP */
 
 /*
+2024年8月12日00:00:32
+从addr分裂vma，和nommu相关。
  * split a vma into two pieces at address 'addr', a new vma is allocated either
  * for the first part or the tail.
  */
@@ -1394,7 +1397,8 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	region = kmem_cache_alloc(vm_region_jar, GFP_KERNEL);
 	if (!region)
 		return -ENOMEM;
-
+	
+	/* 赋值vma */
 	new = vm_area_dup(vma);
 	if (!new) {
 		kmem_cache_free(vm_region_jar, region);
@@ -1402,6 +1406,7 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	}
 
 	/* most fields are the same, copy all, and then fixup */
+	/* 这里拷贝vma的region到新vma：new */
 	*region = *vma->vm_region;
 	new->vm_region = region;
 
@@ -1474,7 +1479,8 @@ static int shrink_vma(struct mm_struct *mm,
 }
 
 /*
- * release a mapping
+2024年8月11日23:49:48
+ * release a mapping。
  * - under NOMMU conditions the chunk to be unmapped must be backed by a single
  *   VMA, though it need not cover the whole VMA
  */
@@ -1512,18 +1518,20 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len, struct list
 				goto erase_whole_vma;
 			vma = vma->vm_next;
 		} while (vma);
+		/* 不能操作映射文件的vma */
 		return -EINVAL;
-	} else {
+	} else {/* 匿名vma */
 		/* the chunk must be a subset of the VMA found */
-		if (start == vma->vm_start && end == vma->vm_end)
+		if (start == vma->vm_start && end == vma->vm_end)/* 要unmap的区域恰好是个vma */
 			goto erase_whole_vma;
 		if (start < vma->vm_start || end > vma->vm_end)
 			return -EINVAL;
-		if (offset_in_page(start))
+		if (offset_in_page(start))/* 这个是什么要求？ */
 			return -EINVAL;
 		if (end != vma->vm_end && offset_in_page(end))
 			return -EINVAL;
-		if (start != vma->vm_start && end != vma->vm_end) {
+		if (start != vma->vm_start && end != vma->vm_end) {/*  */
+			/* 从start分裂vma */
 			ret = split_vma(mm, vma, start, 1);
 			if (ret < 0)
 				return ret;

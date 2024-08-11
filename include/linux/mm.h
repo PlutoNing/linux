@@ -1501,7 +1501,7 @@ static inline void clear_page_pfmemalloc(struct page *page)
  * Can be called by the pagefault handler when it gets a VM_FAULT_OOM.
  */
 extern void pagefault_out_of_memory(void);
-
+/* 是不是不以页面对齐的 */
 #define offset_in_page(p)	((unsigned long)(p) & ~PAGE_MASK)
 
 /*

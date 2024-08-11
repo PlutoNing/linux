@@ -292,6 +292,7 @@ struct page_frag_cache {
 typedef unsigned long vm_flags_t;
 
 /*
+2024年8月12日00:01:52
  * A region containing a mapping of a non-memory backed file under NOMMU
  * conditions.  These are held in a global tree and are pinned by the VMAs that
  * map parts of them.
@@ -303,6 +304,7 @@ struct vm_region {
 	unsigned long	vm_end;		/* region initialised to here */
 	unsigned long	vm_top;		/* region allocated to here */
 	unsigned long	vm_pgoff;	/* the offset in vm_file corresponding to vm_start */
+	
 	struct file	*vm_file;	/* the backing file or NULL */
 
 	int		vm_usage;	/* region usage count (access under nommu_region_sem) */
