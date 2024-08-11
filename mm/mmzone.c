@@ -9,7 +9,7 @@
 #include <linux/stddef.h>
 #include <linux/mm.h>
 #include <linux/mmzone.h>
-
+/*  */
 struct pglist_data *first_online_pgdat(void)
 {
 	return NODE_DATA(first_online_node);

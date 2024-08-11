@@ -12,7 +12,20 @@
 #include <linux/seq_file.h>
 
 #include "internal.h"
-
+/* 
+page_owner的目的是存储页面分配时的调用栈信息, 这样我们就能知道每个一个页面是由谁分配的.
+----------------------------------------------------
+linux内核的page owner特性，参考文档，主要是用来Tracking about who allocated each page，
+方便定位内存泄漏、内存占用问题。本文从源码角度简单分析page owner的实现原理。
+page owner特性的总体设计思路非常简单，就是通过扩展page结构体，增加成员变量用于存储该page
+被分配的调用栈及标志位，然后hack内存页的分配和释放接口，在内存页被分配时，保存调用栈信息，
+设置标志位；在内存页被释放的时候，清除调用栈信息，清除标志位。然后，通过一个debugfs的接口，
+将所有读取该接口时刻已经被分配出去的内存页的调用栈信息传递给用户态，并在用户态制作了一个工具，
+用于统计这些调用栈的信息。
+内存页被分配出去前，会走进post_alloc_hook函数，进行一些处理，post_alloc_hook函数会调用
+set_page_owner函数，完成内存页分配调用栈的保存。                       
+原文链接：https://blog.csdn.net/kaka__55/article/details/125577521
+ */
 /*
  * TODO: teach PAGE_OWNER_STACK_DEPTH (__dump_page_owner and save_stack)
  * to use off stack temporal storage
@@ -20,9 +33,12 @@
 #define PAGE_OWNER_STACK_DEPTH (16)
 
 struct page_owner {
+	/* 所属页面的order */
 	unsigned short order;
 	short last_migrate_reason;
+	/* 分配页面时的gfp */
 	gfp_t gfp_mask;
+	/* 保存的stack的handle */
 	depot_stack_handle_t handle;
 	depot_stack_handle_t free_handle;
 };
@@ -32,6 +48,7 @@ DEFINE_STATIC_KEY_FALSE(page_owner_inited);
 
 static depot_stack_handle_t dummy_handle;
 static depot_stack_handle_t failure_handle;
+/* 初始的默认handle */
 static depot_stack_handle_t early_handle;
 
 static void init_early_allocated_pages(void);
@@ -52,7 +69,7 @@ static bool need_page_owner(void)
 {
 	return page_owner_enabled;
 }
-
+/* 创建dummy stack，用处？ */
 static __always_inline depot_stack_handle_t create_dummy_stack(void)
 {
 	unsigned long entries[4];
@@ -71,11 +88,11 @@ static noinline void register_failure_stack(void)
 {
 	failure_handle = create_dummy_stack();
 }
-
+/* 都是dummy stack */
 static noinline void register_early_stack(void)
 {
 	early_handle = create_dummy_stack();
-}
+}/*  */
 
 static void init_page_owner(void)
 {
@@ -94,7 +111,7 @@ struct page_ext_operations page_owner_ops = {
 	.need = need_page_owner,
 	.init = init_page_owner,
 };
-
+/* offset一直为0？ */
 static inline struct page_owner *get_page_owner(struct page_ext *page_ext)
 {
 	return (void *)page_ext + page_owner_ops.offset;
@@ -112,7 +129,9 @@ static inline bool check_recursive_alloc(unsigned long *entries,
 	}
 	return false;
 }
-
+/* 内存页被分配出去前，会走进post_alloc_hook函数，进行一些处理，
+post_alloc_hook函数会调用set_page_owner函数，save_stack函数完成
+内存页分配调用栈的保存 */
 static noinline depot_stack_handle_t save_stack(gfp_t flags)
 {
 	unsigned long entries[PAGE_OWNER_STACK_DEPTH];
@@ -139,6 +158,7 @@ static noinline depot_stack_handle_t save_stack(gfp_t flags)
 	return handle;
 }
 
+/* reset哪个部分？ */
 void __reset_page_owner(struct page *page, unsigned int order)
 {
 	int i;
@@ -153,12 +173,17 @@ void __reset_page_owner(struct page *page, unsigned int order)
 		return;
 	for (i = 0; i < (1 << order); i++) {
 		__clear_bit(PAGE_EXT_OWNER_ALLOCATED, &page_ext->flags);
+		
 		page_owner = get_page_owner(page_ext);
 		page_owner->free_handle = handle;
 		page_ext = page_ext_next(page_ext);
 	}
 }
-
+/* 
+内存页被分配出去前，会走进post_alloc_hook函数，进行一些处理，post_alloc_hook
+函数会调用set_page_owner函数，完成内存页分配调用栈的保存
+--------------------------------------------------
+分配页面后保存stack到page的page_ext */
 static inline void __set_page_owner_handle(struct page *page,
 	struct page_ext *page_ext, depot_stack_handle_t handle,
 	unsigned int order, gfp_t gfp_mask)
@@ -178,7 +203,8 @@ static inline void __set_page_owner_handle(struct page *page,
 		page_ext = page_ext_next(page_ext);
 	}
 }
-
+/* 内存页被分配出去前，会走进post_alloc_hook函数，进行一些处理，post_alloc_hook函数
+会调用set_page_owner函数 */
 noinline void __set_page_owner(struct page *page, unsigned int order,
 					gfp_t gfp_mask)
 {
@@ -189,9 +215,10 @@ noinline void __set_page_owner(struct page *page, unsigned int order,
 		return;
 
 	handle = save_stack(gfp_mask);
+	/* 分配页面后保存stack到page的page_ext */
 	__set_page_owner_handle(page, page_ext, handle, order, gfp_mask);
 }
-
+/*  */
 void __set_page_owner_migrate_reason(struct page *page, int reason)
 {
 	struct page_ext *page_ext = lookup_page_ext(page);
@@ -204,6 +231,7 @@ void __set_page_owner_migrate_reason(struct page *page, int reason)
 	page_owner->last_migrate_reason = reason;
 }
 
+/* 把同一个order的页面分离开 */
 void __split_page_owner(struct page *page, unsigned int order)
 {
 	int i;
@@ -219,7 +247,7 @@ void __split_page_owner(struct page *page, unsigned int order)
 		page_ext = page_ext_next(page_ext);
 	}
 }
-
+/*  */
 void __copy_page_owner(struct page *oldpage, struct page *newpage)
 {
 	struct page_ext *old_ext = lookup_page_ext(oldpage);
@@ -334,6 +362,8 @@ void pagetypeinfo_showmixedcount_print(struct seq_file *m,
 	seq_putc(m, '\n');
 }
 
+/* debugfs里面page_owner相关文件的fops的read回调read_page_owner
+里面遍历pfn，打印其中的page_owner信息  */
 static ssize_t
 print_page_owner(char __user *buf, size_t count, unsigned long pfn,
 		struct page *page, struct page_owner *page_owner,
@@ -345,6 +375,7 @@ print_page_owner(char __user *buf, size_t count, unsigned long pfn,
 	char *kbuf;
 
 	count = min_t(size_t, count, PAGE_SIZE);
+	/* 分配编码打印信息的内核缓冲 */
 	kbuf = kmalloc(count, GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
@@ -387,7 +418,7 @@ print_page_owner(char __user *buf, size_t count, unsigned long pfn,
 	ret += snprintf(kbuf + ret, count - ret, "\n");
 	if (ret >= count)
 		goto err;
-
+	/* 吧内核缓冲kbuf拷贝到用户空间 */
 	if (copy_to_user(buf, kbuf, ret))
 		ret = -EFAULT;
 
@@ -399,6 +430,7 @@ err:
 	return -ENOMEM;
 }
 
+/* dump page_owner */
 void __dump_page_owner(struct page *page)
 {
 	struct page_ext *page_ext = lookup_page_ext(page);
@@ -452,7 +484,7 @@ void __dump_page_owner(struct page *page)
 		pr_alert("page has been migrated, last migrate reason: %s\n",
 			migrate_reason_names[page_owner->last_migrate_reason]);
 }
-
+/* debugfs里面page_owner相关文件的fops的read回调read_page_owner */
 static ssize_t
 read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
@@ -471,7 +503,7 @@ read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	/* Find a valid PFN or the start of a MAX_ORDER_NR_PAGES area */
 	while (!pfn_valid(pfn) && (pfn & (MAX_ORDER_NR_PAGES - 1)) != 0)
 		pfn++;
-
+	/* 排空全部的pcp链表 */
 	drain_all_pages(NULL);
 
 	/* Find an allocated page */
@@ -488,16 +520,16 @@ read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 		/* Check for holes within a MAX_ORDER area */
 		if (!pfn_valid_within(pfn))
 			continue;
-
+		/* 获取pfn的page结构体 */
 		page = pfn_to_page(pfn);
-		if (PageBuddy(page)) {
+		if (PageBuddy(page)) {/* 如果是buddy管理的页面 */
 			unsigned long freepage_order = page_order_unsafe(page);
 
 			if (freepage_order < MAX_ORDER)
 				pfn += (1UL << freepage_order) - 1;
-			continue;
+			continue;/* 直接跳到此组页面的末尾 */
 		}
-
+		/* 查找page_ext */
 		page_ext = lookup_page_ext(page);
 		if (unlikely(!page_ext))
 			continue;
@@ -515,7 +547,7 @@ read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 		 */
 		if (!test_bit(PAGE_EXT_OWNER_ALLOCATED, &page_ext->flags))
 			continue;
-
+		/* 继而获取page_owner */
 		page_owner = get_page_owner(page_ext);
 
 		/*
@@ -542,7 +574,7 @@ read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 
 	return 0;
 }
-
+/*  */
 static void init_pages_in_zone(pg_data_t *pgdat, struct zone *zone)
 {
 	unsigned long pfn = zone->zone_start_pfn;
@@ -553,6 +585,7 @@ static void init_pages_in_zone(pg_data_t *pgdat, struct zone *zone)
 	 * Walk the zone in pageblock_nr_pages steps. If a page block spans
 	 * a zone boundary, it will be double counted between zones. This does
 	 * not matter as the mixed block count will still be correct
+	 逐个处理管理的页面
 	 */
 	for (; pfn < end_pfn; ) {
 		unsigned long block_end_pfn;
@@ -594,7 +627,7 @@ static void init_pages_in_zone(pg_data_t *pgdat, struct zone *zone)
 
 			if (PageReserved(page))
 				continue;
-
+			/* 查找page的ext */
 			page_ext = lookup_page_ext(page);
 			if (unlikely(!page_ext))
 				continue;
@@ -614,7 +647,7 @@ static void init_pages_in_zone(pg_data_t *pgdat, struct zone *zone)
 	pr_info("Node %d, zone %8s: page owner found early allocated %lu pages\n",
 		pgdat->node_id, zone->name, count);
 }
-
+/*  */
 static void init_zones_in_node(pg_data_t *pgdat)
 {
 	struct zone *zone;
@@ -627,7 +660,7 @@ static void init_zones_in_node(pg_data_t *pgdat)
 		init_pages_in_zone(pgdat, zone);
 	}
 }
-
+/* 2024年8月11日18:30:38 */
 static void init_early_allocated_pages(void)
 {
 	pg_data_t *pgdat;
@@ -639,7 +672,7 @@ static void init_early_allocated_pages(void)
 static const struct file_operations proc_page_owner_operations = {
 	.read		= read_page_owner,
 };
-
+/* 2024年8月11日16:54:00 */
 static int __init pageowner_init(void)
 {
 	if (!static_branch_unlikely(&page_owner_inited)) {

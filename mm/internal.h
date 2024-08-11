@@ -66,6 +66,7 @@ static inline unsigned long ra_submit(struct file_ra_state *ra,
 }
 
 /*
+把页面标记为被引用。
  * Turn a non-refcounted page (->_refcount == 0) into refcounted with
  * a count of one.
  */
@@ -259,6 +260,8 @@ static inline unsigned int page_order(struct page *page)
 }
 
 /*
+2024年8月11日17:30:42
+读取该页的order值
  * Like page_order(), but for callers who cannot afford to hold the zone lock.
  * PageBuddy() should be checked first by the caller to minimize race window,
  * and invalid values must be handled gracefully.

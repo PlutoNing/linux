@@ -102,7 +102,9 @@ EXPORT_PER_CPU_SYMBOL(_numa_mem_);
 int _node_numa_mem_[MAX_NUMNODES];
 #endif
 
-/* work_structs for global per-cpu drains */
+/* 
+pcp链表的drain函数
+work_structs for global per-cpu drains */
 struct pcpu_drain {
 	struct zone *zone;
 	struct work_struct work;
@@ -194,6 +196,8 @@ static int __init early_init_on_free(char *buf)
 early_param("init_on_free", early_init_on_free);
 
 /*
+2024年8月11日17:26:33
+获取页面的迁移类型
  * A cached value of the page's pageblock's migratetype, used when the page is
  * put on a pcplist. Used to avoid the pageblock migratetype lookup when
  * freeing from pcplists in most cases, at the cost of possibly becoming stale.
@@ -1080,7 +1084,8 @@ static void free_pages_check_bad(struct page *page)
 #endif
 	bad_page(page, bad_reason, bad_flags);
 }
-/* 2024年6月30日21:56:20 */
+/* 2024年6月30日21:56:20
+释放页面前的检查工作 */
 static inline int free_pages_check(struct page *page)
 {
 	if (likely(page_expected_state(page, PAGE_FLAGS_CHECK_AT_FREE)))
@@ -1257,7 +1262,7 @@ static bool free_pcp_prepare(struct page *page)
 	else
 		return free_pages_prepare(page, 0, false);
 }
-
+/* 释放pcp里面 的页面之前的检查工作 */
 static bool bulkfree_pcp_prepare(struct page *page)
 {
 	return free_pages_check(page);
@@ -1275,7 +1280,7 @@ static inline void prefetch_buddy(struct page *page)
 
 /*
 2024年6月30日22:14:12
-todo
+排空，归还pcp里面count数量的页面， 
  * Frees a number of pages from the PCP lists
  * Assumes all pages on list are in same zone, and of same order.
  * count is the number of pages to free.
@@ -1306,6 +1311,8 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		 * off fuller lists instead of spinning excessively around empty
 		 * lists
 		 */
+		 /* pcp内部按照不同类型来分配到pcp->lists里面的不同链表
+		 这里取出来一条不为空的来操作 */
 		do {
 			batch_free++;
 			if (++migratetype == MIGRATE_PCPTYPES)
@@ -1318,6 +1325,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 			batch_free = count;
 
 		do {
+			/* do_while循环里面依次从这个list上面取一个页面 */
 			page = list_last_entry(list, struct page, lru);
 			/* must delete to avoid corrupting pcp list */
 			list_del(&page->lru);
@@ -1325,7 +1333,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 
 			if (bulkfree_pcp_prepare(page))
 				continue;
-
+				/* 其实就是先临时存储到head链表，马上批量操作 */
 			list_add_tail(&page->lru, &head);
 
 			/*
@@ -1344,7 +1352,8 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 
 	spin_lock(&zone->lock);
 	isolated_pageblocks = has_isolate_pageblock(zone);
-
+	/* 刚才把list里面的pages存储到了临时链表head
+	下面开始批量释放 */
 	/*
 	 * Use safe version since after __free_one_page(),
 	 * page->lru.next will not point to original list.
@@ -1356,7 +1365,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		/* Pageblock could have been isolated meanwhile */
 		if (unlikely(isolated_pageblocks))
 			mt = get_pageblock_migratetype(page);
-
+		/* 释放页面 */
 		__free_one_page(page, page_to_pfn(page), zone, 0, mt);
 		trace_mm_page_pcpu_drain(page, 0, mt);
 	}
@@ -2198,7 +2207,8 @@ static bool check_new_pages(struct page *page, unsigned int order)
 
 	return false;
 }
-
+/* 内存页被分配出去前，会走进post_alloc_hook函数，进行一些处理，post_alloc_hook
+函数会调用set_page_owner函数，完成内存页分配调用栈的保存。 */
 inline void post_alloc_hook(struct page *page, unsigned int order,
 				gfp_t gfp_flags)
 {
@@ -2210,6 +2220,7 @@ inline void post_alloc_hook(struct page *page, unsigned int order,
 		kernel_map_pages(page, 1 << order, 1);
 	kasan_alloc_pages(page, order);
 	kernel_poison_pages(page, 1 << order, 1);
+	/* 保存分配页面的stack */
 	set_page_owner(page, order, gfp_flags);
 }
 
@@ -2896,6 +2907,8 @@ void drain_zone_pages(struct zone *zone, struct per_cpu_pages *pcp)
 #endif
 
 /*
+2024年8月11日17:19:41
+排空zone的pcp链表
  * Drain pcplists of the indicated processor and zone.
  *
  * The processor must either be the current processor and the
@@ -2908,16 +2921,23 @@ static void drain_pages_zone(unsigned int cpu, struct zone *zone)
 	struct per_cpu_pageset *pset;
 	struct per_cpu_pages *pcp;
 
+
 	local_irq_save(flags);
+	/* 获取cpu的pset */
 	pset = per_cpu_ptr(zone->pageset, cpu);
 
 	pcp = &pset->pcp;
-	if (pcp->count)
+	if (pcp->count)/* 如果pcp里面有东西 */
+	/* 批量释放pcp页面 */
 		free_pcppages_bulk(zone, pcp->count, pcp);
 	local_irq_restore(flags);
+
 }
 
 /*
+2024年8月11日17:19:17 
+排空全部zone的pcp链表
+其实就是遍历zone，逐个drain
  * Drain pcplists of all zones on the indicated processor.
  *
  * The processor must either be the current processor and the
@@ -2934,6 +2954,7 @@ static void drain_pages(unsigned int cpu)
 }
 
 /*
+排空当前cpu的pcp链表
  * Spill all of this CPU's per-cpu pages back into the buddy allocator.
  *
  * The CPU has to be pinned. When zone parameter is non-NULL, spill just
@@ -2943,12 +2964,12 @@ void drain_local_pages(struct zone *zone)
 {
 	int cpu = smp_processor_id();
 
-	if (zone)
+	if (zone)/* 指定了zone就是特定zone */
 		drain_pages_zone(cpu, zone);
 	else
 		drain_pages(cpu);
 }
-
+/* drain每个cpu的pcp链表的异步工作函数 */
 static void drain_local_pages_wq(struct work_struct *work)
 {
 	struct pcpu_drain *drain;
@@ -2963,11 +2984,13 @@ static void drain_local_pages_wq(struct work_struct *work)
 	 * a different one.
 	 */
 	preempt_disable();
+	/* 好吧，这么粗暴，那drian结构体的作用就是记录zid？ */
 	drain_local_pages(drain->zone);
 	preempt_enable();
 }
 
 /*
+把全部的pcp链表刷新到buddy
  * Spill all the per-cpu pages from all CPUs back into the buddy allocator.
  *
  * When zone parameter is non-NULL, spill just the single zone's pages.
@@ -3007,6 +3030,7 @@ void drain_all_pages(struct zone *zone)
 	 * as offline notification will cause the notified
 	 * cpu to drain that CPU pcps and on_each_cpu_mask
 	 * disables preemption as part of its processing
+	 遍历cpu，把需要drain的编号放进mask。
 	 */
 	for_each_online_cpu(cpu) {
 		struct per_cpu_pageset *pcp;
@@ -3033,9 +3057,10 @@ void drain_all_pages(struct zone *zone)
 			cpumask_clear_cpu(cpu, &cpus_with_pcps);
 	}
 
+	/* 遍历掩码指定的每一个cpu */
 	for_each_cpu(cpu, &cpus_with_pcps) {
 		struct pcpu_drain *drain = per_cpu_ptr(&pcpu_drain, cpu);
-
+		/* 准备异步调度每个cpu的drain函数， */
 		drain->zone = zone;
 		INIT_WORK(&drain->work, drain_local_pages_wq);
 		queue_work_on(cpu, mm_percpu_wq, &drain->work);

@@ -98,7 +98,7 @@ static void __init invoke_init_callbacks(void)
 			page_ext_ops[i]->init();
 	}
 }
-
+/* 查找idx对应的page_ext */
 static inline struct page_ext *get_entry(void *base, unsigned long index)
 {
 	return base + page_ext_size * index;
@@ -186,7 +186,7 @@ fail:
 }
 
 #else /* CONFIG_FLAT_NODE_MEM_MAP */
-
+/* 查找page的ext结构 */
 struct page_ext *lookup_page_ext(const struct page *page)
 {
 	unsigned long pfn = page_to_pfn(page);
@@ -201,7 +201,7 @@ struct page_ext *lookup_page_ext(const struct page *page)
 		return NULL;
 	return get_entry(section->page_ext, pfn);
 }
-
+/*  */
 static void *__meminit alloc_page_ext(size_t size, int nid)
 {
 	gfp_t flags = GFP_KERNEL | __GFP_ZERO | __GFP_NOWARN;
@@ -217,7 +217,7 @@ static void *__meminit alloc_page_ext(size_t size, int nid)
 
 	return addr;
 }
-
+/*  */
 static int __meminit init_section_page_ext(unsigned long pfn, int nid)
 {
 	struct mem_section *section;
@@ -254,6 +254,7 @@ static int __meminit init_section_page_ext(unsigned long pfn, int nid)
 	return 0;
 }
 #ifdef CONFIG_MEMORY_HOTPLUG
+/* 释放page_ext */
 static void free_page_ext(void *addr)
 {
 	if (is_vmalloc_addr(addr)) {
@@ -269,7 +270,7 @@ static void free_page_ext(void *addr)
 		free_pages_exact(addr, table_size);
 	}
 }
-
+/*  */
 static void __free_page_ext(unsigned long pfn)
 {
 	struct mem_section *ms;
@@ -282,7 +283,7 @@ static void __free_page_ext(unsigned long pfn)
 	free_page_ext(base);
 	ms->page_ext = NULL;
 }
-
+/* online这里应该是初始化的意思 */
 static int __meminit online_page_ext(unsigned long start_pfn,
 				unsigned long nr_pages,
 				int nid)
@@ -302,22 +303,24 @@ static int __meminit online_page_ext(unsigned long start_pfn,
 		nid = pfn_to_nid(start_pfn);
 		VM_BUG_ON(!node_state(nid, N_ONLINE));
 	}
-
+	/* 每次的步进都是ms为单位 */
 	for (pfn = start; !fail && pfn < end; pfn += PAGES_PER_SECTION) {
 		if (!pfn_present(pfn))
 			continue;
+
 		fail = init_section_page_ext(pfn, nid);
 	}
 	if (!fail)
 		return 0;
 
-	/* rollback */
+	/* rollback
+	失败的情况，回滚 */
 	for (pfn = start; pfn < end; pfn += PAGES_PER_SECTION)
 		__free_page_ext(pfn);
 
 	return -ENOMEM;
 }
-
+/* 销毁区间内的page_ext */
 static int __meminit offline_page_ext(unsigned long start_pfn,
 				unsigned long nr_pages, int nid)
 {
@@ -362,7 +365,7 @@ static int __meminit page_ext_callback(struct notifier_block *self,
 }
 
 #endif
-
+/* 初始化page_ext */
 void __init page_ext_init(void)
 {
 	unsigned long pfn;
@@ -370,7 +373,7 @@ void __init page_ext_init(void)
 
 	if (!invoke_need_callbacks())
 		return;
-
+	
 	for_each_node_state(nid, N_MEMORY) {
 		unsigned long start_pfn, end_pfn;
 

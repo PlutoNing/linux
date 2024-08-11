@@ -52,7 +52,8 @@ static inline void page_ext_init(void)
 #endif
 
 struct page_ext *lookup_page_ext(const struct page *page);
-
+/* 找到下一个page_ext
+看着接口像链表，其实是数组 */
 static inline struct page_ext *page_ext_next(struct page_ext *curr)
 {
 	void *next = curr;
@@ -66,7 +67,7 @@ struct page_ext;
 static inline void pgdat_page_ext_init(struct pglist_data *pgdat)
 {
 }
-
+/*  */
 static inline struct page_ext *lookup_page_ext(const struct page *page)
 {
 	return NULL;

@@ -1979,7 +1979,7 @@ static int vmstat_cpu_dead(unsigned int cpu)
 }
 
 #endif
-
+/* drain pcp链表的异步队列 */
 struct workqueue_struct *mm_percpu_wq;
 
 void __init init_mm_internals(void)

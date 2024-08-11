@@ -389,7 +389,7 @@ linux内核中为了解决这个问题，引入了per_cpu_pageset。
 
  */
 struct per_cpu_pageset {
-	/*  */
+	/* 真正存储ppc链表页面的东西 */
 	struct per_cpu_pages pcp;
 #ifdef CONFIG_NUMA
 	s8 expire;
@@ -503,7 +503,7 @@ struct zone {
 #endif
 	/* todo */
 	struct pglist_data	*zone_pgdat;
-	/*  */
+	/* 所属的pset */
 	struct per_cpu_pageset __percpu *pageset;
 
 #ifndef CONFIG_SPARSEMEM
@@ -674,7 +674,7 @@ static inline unsigned long zone_managed_pages(struct zone *zone)
 {
 	return (unsigned long)atomic_long_read(&zone->managed_pages);
 }
-
+/* 获取zone管理的最大pfn */
 static inline unsigned long zone_end_pfn(const struct zone *zone)
 {
 	return zone->zone_start_pfn + zone->spanned_pages;
@@ -791,7 +791,8 @@ struct bootmem_data;
 typedef struct pglist_data {
 	/* 这是一个包含当前node所有zone结构体的数组。通过这个，我们知道当前node有哪几个zone。 */
 	struct zone node_zones[MAX_NR_ZONES];
-	/* 这个数组包括所有node的所有zone，记录在所有node中的每一个zone，用于跨node内存分配。 */
+	/* 这个数组包括所有node的所有zone，记录在所有node中的每一个zone，
+	用于跨node内存分配。 */
 	struct zonelist node_zonelists[MAX_ZONELISTS];
 	/* 表示当前node中zone的数目 */
 	int nr_zones;
@@ -1133,6 +1134,7 @@ extern struct pglist_data *next_online_pgdat(struct pglist_data *pgdat);
 extern struct zone *next_zone(struct zone *zone);
 
 /**
+2024年8月11日18:30:51
  * for_each_online_pgdat - helper macro to iterate over all online nodes
  * @pgdat - pointer to a pg_data_t variable
  */
@@ -1364,6 +1366,7 @@ struct mem_section {
 	/*
 	 * If SPARSEMEM, pgdat doesn't have page_ext pointer. We use
 	 * section. (see page_ext.h about this.)
+	 指向page的ext结构体
 	 */
 	struct page_ext *page_ext;
 	unsigned long pad;
@@ -1496,7 +1499,7 @@ void online_mem_sections(unsigned long start_pfn, unsigned long end_pfn);
 void offline_mem_sections(unsigned long start_pfn, unsigned long end_pfn);
 #endif
 #endif
-
+/*  */
 static inline struct mem_section *__pfn_to_section(unsigned long pfn)
 {
 	return __nr_to_section(pfn_to_section_nr(pfn));
