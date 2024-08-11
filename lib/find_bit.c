@@ -21,6 +21,8 @@
 		!defined(find_next_and_bit)
 
 /*
+@addr1：位图
+
  * This is a common helper function for find_next_bit, find_next_zero_bit, and
  * find_next_and_bit. The differences are:
  *  - The "invert" argument, which is XORed with each fetched word before
@@ -62,6 +64,7 @@ static inline unsigned long _find_next_bit(const unsigned long *addr1,
 
 #ifndef find_next_bit
 /*
+2024年8月11日09:47:09
  * Find the next set bit in a memory region.
  */
 unsigned long find_next_bit(const unsigned long *addr, unsigned long size,
@@ -73,6 +76,11 @@ EXPORT_SYMBOL(find_next_bit);
 #endif
 
 #ifndef find_next_zero_bit
+/* 
+@addr：位图
+size：位图大小？
+offset：起始地址？
+ */
 unsigned long find_next_zero_bit(const unsigned long *addr, unsigned long size,
 				 unsigned long offset)
 {
@@ -111,6 +119,7 @@ EXPORT_SYMBOL(find_first_bit);
 
 #ifndef find_first_zero_bit
 /*
+addr为内存区的起始地址，size为要查找的最大长度，返回第一个位为0的位号
  * Find the first cleared bit in a memory region.
  */
 unsigned long find_first_zero_bit(const unsigned long *addr, unsigned long size)
@@ -128,6 +137,7 @@ EXPORT_SYMBOL(find_first_zero_bit);
 #endif
 
 #ifndef find_last_bit
+/* 2024年8月11日10:03:46 */
 unsigned long find_last_bit(const unsigned long *addr, unsigned long size)
 {
 	if (size) {

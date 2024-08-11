@@ -9,6 +9,7 @@
  * This is the default chunk allocator.
  */
 
+/* 获取chunk内属于这个cpu的idx page的指针地址 */
 static struct page *pcpu_chunk_page(struct pcpu_chunk *chunk,
 				    unsigned int cpu, int page_idx)
 {
@@ -19,6 +20,8 @@ static struct page *pcpu_chunk_page(struct pcpu_chunk *chunk,
 }
 
 /**
+2024年8月11日15:16:31
+分配页面
  * pcpu_get_pages - get temp pages array
  *
  * Returns pointer to array of pointers to struct page which can be indexed
@@ -41,6 +44,7 @@ static struct page **pcpu_get_pages(void)
 }
 
 /**
+释放页面
  * pcpu_free_pages - free pages which were allocated for @chunk
  * @chunk: chunk pages were allocated for
  * @pages: array of pages to be freed, indexed by pcpu_page_idx()
@@ -112,6 +116,7 @@ err:
 }
 
 /**
+解除映射前的flush
  * pcpu_pre_unmap_flush - flush cache prior to unmapping
  * @chunk: chunk the regions to be flushed belongs to
  * @page_start: page index of the first page to be flushed
@@ -126,22 +131,26 @@ err:
 static void pcpu_pre_unmap_flush(struct pcpu_chunk *chunk,
 				 int page_start, int page_end)
 {
+	/* 两个参数分别是这个cpu的页面的地址范围起始和结束 */
+
+	/* 空函数？ */
 	flush_cache_vunmap(
 		pcpu_chunk_addr(chunk, pcpu_low_unit_cpu, page_start),
 		pcpu_chunk_addr(chunk, pcpu_high_unit_cpu, page_end));
 }
-
+/* 解除映射 */
 static void __pcpu_unmap_pages(unsigned long addr, int nr_pages)
 {
 	unmap_kernel_range_noflush(addr, nr_pages << PAGE_SHIFT);
 }
 
 /**
+chunk解除页面映射
  * pcpu_unmap_pages - unmap pages out of a pcpu_chunk
- * @chunk: chunk of interest
+ * @chunk: chunk of interest。
  * @pages: pages array which can be used to pass information to free
- * @page_start: page index of the first page to unmap
- * @page_end: page index of the last page to unmap + 1
+ * @page_start: page index of the first page to unmap。
+ * @page_end: page index of the last page to unmap + 1。
  *
  * For each cpu, unmap pages [@page_start,@page_end) out of @chunk.
  * Corresponding elements in @pages were cleared by the caller and can
@@ -154,15 +163,18 @@ static void pcpu_unmap_pages(struct pcpu_chunk *chunk,
 {
 	unsigned int cpu;
 	int i;
+	/* 这个【page_start，page_end】范围对于每个cpu来说都有一份 */
 
+	/* 处理每个cpu的per pages */
 	for_each_possible_cpu(cpu) {
 		for (i = page_start; i < page_end; i++) {
 			struct page *page;
-
+			/* 获得属于这个cpu的idx 的页面 */
 			page = pcpu_chunk_page(chunk, cpu, i);
 			WARN_ON(!page);
 			pages[pcpu_page_idx(cpu, i)] = page;
 		}
+		/* 解除映射 */
 		__pcpu_unmap_pages(pcpu_chunk_addr(chunk, cpu, page_start),
 				   page_end - page_start);
 	}
@@ -294,6 +306,8 @@ static int pcpu_populate_chunk(struct pcpu_chunk *chunk,
 }
 
 /**
+释放chunk的页面。
+解除映射，释放页面。
  * pcpu_depopulate_chunk - depopulate and unmap an area of a pcpu_chunk
  * @chunk: chunk to depopulate
  * @page_start: the start page
@@ -315,19 +329,21 @@ static void pcpu_depopulate_chunk(struct pcpu_chunk *chunk,
 	 * successful population attempt so the temp pages array must
 	 * be available now.
 	 */
+	 /* 为什么这里分配页面？ */
 	pages = pcpu_get_pages();
 	BUG_ON(!pages);
 
 	/* unmap and free */
 	pcpu_pre_unmap_flush(chunk, page_start, page_end);
 
+	/* 解除 */
 	pcpu_unmap_pages(chunk, pages, page_start, page_end);
 
 	/* no need to flush tlb, vmalloc will handle it lazily */
-
+	/* 释放页面 */
 	pcpu_free_pages(chunk, pages, page_start, page_end);
 }
-
+/*  */
 static struct pcpu_chunk *pcpu_create_chunk(gfp_t gfp)
 {
 	struct pcpu_chunk *chunk;
@@ -352,20 +368,21 @@ static struct pcpu_chunk *pcpu_create_chunk(gfp_t gfp)
 
 	return chunk;
 }
-
+/* 销毁chunk */
 static void pcpu_destroy_chunk(struct pcpu_chunk *chunk)
 {
 	if (!chunk)
 		return;
-
+		/* 空函数 */
 	pcpu_stats_chunk_dealloc();
 	trace_percpu_destroy_chunk(chunk->base_addr);
 
-	if (chunk->data)
+	if (chunk->data)/* 释放这个些页面 */
 		pcpu_free_vm_areas(chunk->data, pcpu_nr_groups);
+	
 	pcpu_free_chunk(chunk);
 }
-
+/*  */
 static struct page *pcpu_addr_to_page(void *addr)
 {
 	return vmalloc_to_page(addr);

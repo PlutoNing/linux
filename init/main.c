@@ -597,6 +597,7 @@ asmlinkage __visible void __init start_kernel(void)
 	setup_arch(&command_line);
 	setup_command_line(command_line);
 	setup_nr_cpu_ids();
+	/*  per-cpu 区域初始化流程。从调用 setup_per_cpu_areas 函数开始 */
 	setup_per_cpu_areas();
 	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
 	boot_cpu_hotplug_init();

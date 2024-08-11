@@ -45,6 +45,11 @@
  * NOTE!  The sections for the DECLARE and for the DEFINE must match, lest
  * linkage errors occur due the compiler generating the wrong code to access
  * that section.
+ 其中section就是PER_CPU_BASE_SECTION ".data..percpu"
+ 展开宏就是一个全局的 per-cpu 变量：
+ __attribute__((section(".data..percpu"))) int per_cpu_n
+ 在vmlinux的相应代码段就有一个pcp变量了
+ 内核会为每个cpu加载一次这个代码段，从而各自创建
  */
 #define __PCPU_ATTRS(sec)						\
 	__percpu __attribute__((section(PER_CPU_BASE_SECTION sec)))	\
@@ -99,7 +104,7 @@
  */
 #define DECLARE_PER_CPU_SECTION(type, name, sec)			\
 	extern __PCPU_ATTRS(sec) __typeof__(type) name
-
+/*  */
 #define DEFINE_PER_CPU_SECTION(type, name, sec)				\
 	__PCPU_ATTRS(sec) __typeof__(type) name
 #endif
@@ -110,7 +115,9 @@
  */
 #define DECLARE_PER_CPU(type, name)					\
 	DECLARE_PER_CPU_SECTION(type, name, "")
-
+/* 内核提供了一个创建 per-cpu 变量的 API - DEFINE_PER_CPU 宏
+我们传入要创建变量的类型和名字，DEFINE_PER_CPU 调用 DEFINE_PER_CPU_SECTION，
+将两个参数和空字符串传递给后者 */
 #define DEFINE_PER_CPU(type, name)					\
 	DEFINE_PER_CPU_SECTION(type, name, "")
 

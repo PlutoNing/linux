@@ -106,7 +106,7 @@ struct page {
 			------------------------
 			index表示页偏移，对于匿名映射，index 表示page在vm_areat_struct
 			指定的虚拟内存区域中的页偏移;对于匿名映射，index表示物理页中的数据在文件中的页偏移。
-			
+			如果是pcp的chunk的页面，那么指向chunk
 			*/
 			pgoff_t index;		
 			/**

@@ -164,7 +164,7 @@ static void __init pcpu_fc_free(void *ptr, size_t size)
 {
 	memblock_free_early(__pa(ptr), size);
 }
-
+/* per-cpu 区域初始化流程 */
 void __init setup_per_cpu_areas(void)
 {
 	unsigned long delta;
@@ -174,6 +174,7 @@ void __init setup_per_cpu_areas(void)
 	/*
 	 * Always reserve area for module percpu variables.  That's
 	 * what the legacy allocator did.
+	 使用 embed 分配器并使用 pcpu_embed_first_chunk 函数分配第一块空间
 	 */
 	rc = pcpu_embed_first_chunk(PERCPU_MODULE_RESERVE,
 				    PERCPU_DYNAMIC_RESERVE, PAGE_SIZE,

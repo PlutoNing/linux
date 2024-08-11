@@ -221,7 +221,7 @@ static inline void bitmap_zero(unsigned long *dst, unsigned int nbits)
 	unsigned int len = BITS_TO_LONGS(nbits) * sizeof(unsigned long);
 	memset(dst, 0, len);
 }
-
+/* dst是管理nbits的long数组，初始化为0 */
 static inline void bitmap_fill(unsigned long *dst, unsigned int nbits)
 {
 	unsigned int len = BITS_TO_LONGS(nbits) * sizeof(unsigned long);
@@ -385,7 +385,7 @@ static __always_inline int bitmap_weight(const unsigned long *src, unsigned int 
 		return hweight_long(*src & BITMAP_LAST_WORD_MASK(nbits));
 	return __bitmap_weight(src, nbits);
 }
-
+/* 2024年8月11日10:32:09 */
 static __always_inline void bitmap_set(unsigned long *map, unsigned int start,
 		unsigned int nbits)
 {

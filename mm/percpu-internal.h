@@ -20,45 +20,77 @@ struct pcpu_block_md {
 	int			scan_hint;	/* scan hint for block */
 	int			scan_hint_start; /* block relative starting
 						    position of the scan hint */
-	int                     contig_hint;    /* contig hint for block */
-	int                     contig_hint_start; /* block relative starting
-						      position of the contig hint */
-	int                     left_free;      /* size of free space along
-						   the left side of the block */
-	int                     right_free;     /* size of free space along
-						   the right side of the block */
-	int                     first_free;     /* block position of first free */
-	int			nr_bits;	/* total bits responsible for */
-};
+	int                     contig_hint;    /* 
+	当前chunk中记录的最大连续内存contig_hint
+	contig hint for block */
+	int                     contig_hint_start; /* 
+	当前的最大连续空闲区域的起始地址
+	block relative starting position of the contig hint */
+	int                     left_free;      /* 
+	左边的free数量
+	size of free space along the left side of the block */
+	int                     right_free;     /* 
+	右侧free的数量
+	size of free space along the right side of the block */
 
+	int                     first_free;     /* 
+	第一个可用的free分配单元所在的bit索引
+	block position of first free */
+	int			nr_bits;	/* 
+	管理的bit数量
+	total bits responsible for */
+};
+/* 2024年8月10日15:17:46 
+per-cpu 内存被使用struct pcpu_chunk来描述， 不同大小的chunk被放在不同的链表中，
+在动态分配per-cpu data时， 从合适的chunk中分配所需的空间*/
 struct pcpu_chunk {
 #ifdef CONFIG_PERCPU_STATS
 	int			nr_alloc;	/* # of allocations */
 	size_t			max_alloc_size; /* largest allocation size */
 #endif
 
-	struct list_head	list;		/* linked to pcpu_slot lists */
-	int			free_bytes;	/* free bytes in the chunk */
+	struct list_head	list;		/* 
+	用来把chunk链接起来形成链表pcpu_slot[slot]， 
+	chunk中空闲空间的大小链表又被放到pcpu_slot数组中
+	linked to pcpu_slot lists */
+	int			free_bytes;	/* 
+	chunk中的空闲大小
+	free bytes in the chunk */
 	struct pcpu_block_md	chunk_md;
-	void			*base_addr;	/* base address of this chunk */
+	void			*base_addr;	/* 
+	percpu chunk内存开始基地值
+	base address of this chunk */
 
-	unsigned long		*alloc_map;	/* allocation map */
-	unsigned long		*bound_map;	/* boundary map */
-	struct pcpu_block_md	*md_blocks;	/* metadata blocks */
+	unsigned long		*alloc_map;	/* 
+	管理哦region的位图
+	allocation map */
+	unsigned long		*bound_map;	/* 
+	保存每个“已使用区域”【bit_off，bit_off+alloc_bits】的边界。
+	boundary map */
+	struct pcpu_block_md	*md_blocks;	/* 
+	一个chunk的block占用这里数组的一个元素
+	metadata blocks */
 
 	void			*data;		/* chunk data */
 	bool			immutable;	/* no [de]population allowed */
-	int			start_offset;	/* the overlap with the previous
-						   region to have a page aligned
+	int			start_offset;	/*
+	这个是在base_addr所在页的页内偏移，这个偏移地址后的内存才属于chunk 
+	---------------------
+	就是说base_addr虽然指向一个页面，但是这个页面不一定全是chunk的
+	the overlap with the previous region to have a page aligned
 						   base_addr */
-	int			end_offset;	/* additional area required to
+	int			end_offset;	/* 
+	chunk的pages中最右侧page的右边这一部分不属于chunk？
+	additional area required to
 						   have the region end page
 						   aligned */
 
 	int			nr_pages;	/* # of pages served by this chunk */
 	int			nr_populated;	/* # of populated pages */
 	int                     nr_empty_pop_pages; /* # of empty populated pages */
-	unsigned long		populated[];	/* populated bitmap */
+	unsigned long		populated[];	/* 
+	标记pages有没有初始化的bitmap
+	populated bitmap */
 };
 
 extern spinlock_t pcpu_lock;
@@ -71,11 +103,14 @@ extern struct pcpu_chunk *pcpu_first_chunk;
 extern struct pcpu_chunk *pcpu_reserved_chunk;
 
 /**
+？
+也是计算管理chunk里面的这么多页面需要多少个block？
  * pcpu_chunk_nr_blocks - converts nr_pages to # of md_blocks
  * @chunk: chunk of interest
  *
- * This conversion is from the number of physical pages that the chunk
- * serves to the number of bitmap blocks used.
+ * This conversion is 
+ from the number of physical pages that the chunkserves 
+ to the number of bitmap blocks used.
  */
 static inline int pcpu_chunk_nr_blocks(struct pcpu_chunk *chunk)
 {
@@ -83,6 +118,10 @@ static inline int pcpu_chunk_nr_blocks(struct pcpu_chunk *chunk)
 }
 
 /**
+计算在pcp方式下用位图管理pages个页面分配需要多少空间。
+这个需要考虑最小的分配细度，这里是PCPU_MIN_ALLOC_SIZE=4字节.
+pages个页面一共有pages*page_size字节
+那么一共需要pages*page_size/4个bit才能表示每个细度的大小有没有被分配
  * pcpu_nr_pages_to_map_bits - converts the pages to size of bitmap
  * @pages: number of physical pages
  *
@@ -95,6 +134,8 @@ static inline int pcpu_nr_pages_to_map_bits(int pages)
 }
 
 /**
+2024年8月10日15:43:57
+计算在pcp方式下用位图管理pages个页面分配需要多少空间
  * pcpu_chunk_map_bits - helper to convert nr_pages to size of bitmap
  * @chunk: chunk of interest
  *

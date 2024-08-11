@@ -52,6 +52,7 @@ extern void setup_per_cpu_areas(void);
 
 #ifndef PER_CPU_BASE_SECTION
 #ifdef CONFIG_SMP
+/* 内核初始化时，调用 setup_per_cpu_areas 函数多次加载 .data..percpu 段，每个 CPU 一次。 */
 #define PER_CPU_BASE_SECTION ".data..percpu"
 #else
 #define PER_CPU_BASE_SECTION ".data"

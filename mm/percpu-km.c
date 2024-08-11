@@ -43,7 +43,9 @@ static void pcpu_depopulate_chunk(struct pcpu_chunk *chunk,
 {
 	/* nada */
 }
-
+/* 2024年8月11日14:04:30
+分配，初始化chunk
+分配页面 */
 static struct pcpu_chunk *pcpu_create_chunk(gfp_t gfp)
 {
 	const int nr_pages = pcpu_group_sizes[0] >> PAGE_SHIFT;
@@ -51,7 +53,7 @@ static struct pcpu_chunk *pcpu_create_chunk(gfp_t gfp)
 	struct page *pages;
 	unsigned long flags;
 	int i;
-
+	/* 分配chunk，并进行初始化 */
 	chunk = pcpu_alloc_chunk(gfp);
 	if (!chunk)
 		return NULL;
@@ -77,7 +79,7 @@ static struct pcpu_chunk *pcpu_create_chunk(gfp_t gfp)
 
 	return chunk;
 }
-
+/* 释放页面，free chunk结构体 */
 static void pcpu_destroy_chunk(struct pcpu_chunk *chunk)
 {
 	const int nr_pages = pcpu_group_sizes[0] >> PAGE_SHIFT;

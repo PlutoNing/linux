@@ -32,6 +32,9 @@
  * the chunk and globally.
  */
 #define PCPU_BITMAP_BLOCK_SIZE		PAGE_SIZE
+/* 
+这里说pcp一个页面需要多少bit来管理
+现在是1024 */
 #define PCPU_BITMAP_BLOCK_BITS		(PCPU_BITMAP_BLOCK_SIZE >>	\
 					 PCPU_MIN_ALLOC_SHIFT)
 
@@ -64,24 +67,31 @@
 
 extern void *pcpu_base_addr;
 extern const unsigned long *pcpu_unit_offsets;
-
+/* 2024年8月10日14:41:39 */
 struct pcpu_group_info {
 	int			nr_units;	/* aligned # of units */
 	unsigned long		base_offset;	/* base address offset */
 	unsigned int		*cpu_map;	/* unit->cpu map, empty
 						 * entries contain NR_CPUS */
 };
-
+/* 2024年8月10日13:35:07 */
 struct pcpu_alloc_info {
-	size_t			static_size;
-	size_t			reserved_size;
-	size_t			dyn_size;
-	size_t			unit_size;
-	size_t			atom_size;
-	size_t			alloc_size;
-	size_t			__ai_size;	/* internal, don't use */
-	int			nr_groups;	/* 0 if grouping unnecessary */
-	struct pcpu_group_info	groups[];
+
+	size_t			static_size;/* 静态定义的percpu变量占用内存区域长度 */
+	size_t			reserved_size;/* 预留区域，在percpu内存分配指定为预留区域分配时，
+	将使用该区域 */
+	size_t			dyn_size;/* 动态分配的percpu变量占用内存区域长度 */
+	size_t			unit_size;/* 
+	每个cpu的percpu空间所占得内存空间为一个unit, 每个unit的大小记为unit_size 
+	每颗处理器的percpu虚拟内存递进基本单位
+	*/
+	size_t			atom_size;/* PAGE_SIZE */
+	size_t			alloc_size;/* 要分配的percpu内存空间 */
+	size_t			__ai_size;	/*整个pcpu_alloc_info结构体的大小
+	 internal, don't use */
+	int			nr_groups;	/*该架构下的处理器分组数目
+	 0 if grouping unnecessary */
+	struct pcpu_group_info	groups[];/* 该架构下的处理器分组信息 */
 };
 
 enum pcpu_fc {
