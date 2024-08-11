@@ -154,6 +154,7 @@ struct bio {
 	unsigned short		bi_flags;	/* status, etc and bvec pool number */
 	unsigned short		bi_ioprio;
 	unsigned short		bi_write_hint;/* 展示是读还是写 */
+	/* 有status就说明出错了？ */
 	blk_status_t		bi_status;
 	/* 对应的分区号 */
 	u8			bi_partno;

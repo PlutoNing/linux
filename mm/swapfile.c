@@ -3771,7 +3771,9 @@ struct address_space *__page_file_mapping(struct page *page)
 	return page_swap_info(page)->swap_file->f_mapping;
 }
 EXPORT_SYMBOL_GPL(__page_file_mapping);
-/* 2024年07月03日14:56:29 */
+/* 2024年07月03日14:56:29
+获取在swp file的idx
+ */
 pgoff_t __page_file_index(struct page *page)
 {
 	swp_entry_t swap = { .val = page_private(page) };

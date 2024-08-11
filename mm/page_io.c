@@ -47,12 +47,12 @@ static struct bio *get_swap_bio(gfp_t gfp_flags,
 	}
 	return bio;
 }
-
+/* 2024年8月11日21:03:54 */
 void end_swap_bio_write(struct bio *bio)
 {
 	struct page *page = bio_first_page_all(bio);
 
-	if (bio->bi_status) {
+	if (bio->bi_status) {/*  */
 		SetPageError(page);
 		/*
 		 * We failed to write the page out to swap-space.
@@ -68,6 +68,7 @@ void end_swap_bio_write(struct bio *bio)
 			 (unsigned long long)bio->bi_iter.bi_sector);
 		ClearPageReclaim(page);
 	}
+	
 	end_page_writeback(page);
 	bio_put(bio);
 }
@@ -171,6 +172,7 @@ int generic_swapfile_activate(struct swap_info_struct *sis,
 	int ret;
 
 	blkbits = inode->i_blkbits;
+	/* 获取文件的块大小 */
 	blocks_per_page = PAGE_SIZE >> blkbits;
 
 	/*
@@ -182,7 +184,7 @@ int generic_swapfile_activate(struct swap_info_struct *sis,
 	last_block = i_size_read(inode) >> blkbits;
 
 	while ((probe_block + blocks_per_page) <= last_block &&
-			page_no < sis->max) {
+			page_no < sis->max) {/*  */
 		unsigned block_in_page;
 		sector_t first_block;
 
@@ -277,6 +279,7 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 out:
 	return ret;
 }
+
 /* 2024年07月03日14:56:20 */
 static sector_t swap_page_sector(struct page *page)
 {
@@ -465,15 +468,16 @@ int swap_readpage(struct page *page, bool synchronous)
 out:
 	return ret;
 }
-
+/* 2024年8月11日20:53:42 */
 int swap_set_page_dirty(struct page *page)
 {
 	struct swap_info_struct *sis = page_swap_info(page);
 
-	if (sis->flags & SWP_FS) {
+	if (sis->flags & SWP_FS) {/* 如果swp是文件 */
 		struct address_space *mapping = sis->swap_file->f_mapping;
 
 		VM_BUG_ON_PAGE(!PageSwapCache(page), page);
+		/* 用file的mapping的回调置脏页面 */
 		return mapping->a_ops->set_page_dirty(page);
 	} else {
 		return __set_page_dirty_no_writeback(page);
