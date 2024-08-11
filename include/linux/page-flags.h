@@ -131,7 +131,7 @@ enum pageflags {
 	PG_hwpoison,		/* hardware poisoned page. Don't touch */
 #endif
 #if defined(CONFIG_IDLE_PAGE_TRACKING) && defined(CONFIG_64BIT)
-	PG_young,
+	PG_young,   /* page young标记位 */
 	PG_idle,
 #endif
 	__NR_PAGEFLAGS,

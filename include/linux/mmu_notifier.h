@@ -465,7 +465,8 @@ pte最近是否被访问过
 							PMD_SIZE);	\
 	__young;							\
 })
-
+/* 2024年8月11日20:42:27
+清除pte的accessed标志位？ */
 #define ptep_clear_young_notify(__vma, __address, __ptep)		\
 ({									\
 	int __young;							\

@@ -663,8 +663,8 @@ static inline int put_page_testzero(struct page *page)
 
 /*
 2024年06月25日15:14:17
-如果page的refcount是0，则不处理，等待回收即可
-如果page的refcount非0，则refcount加上1
+如果page的refcount是0，则不处理，等待回收即可，返回0
+如果page的refcount非0，则refcount加上1，返回1
  * Try to grab a ref unless the page has a refcount of zero, return false if
  * that is the case.
  * This can be called when MMU is off so it must not access

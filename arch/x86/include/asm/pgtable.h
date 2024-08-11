@@ -153,7 +153,7 @@ static inline void write_pkru(u32 pkru)
 	__write_pkru(pkru);
 	fpregs_unlock();
 }
-
+/*  */
 static inline int pte_young(pte_t pte)
 {
 	return pte_flags(pte) & _PAGE_ACCESSED;

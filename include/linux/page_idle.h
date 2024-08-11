@@ -13,7 +13,7 @@ static inline bool page_is_young(struct page *page)
 {
 	return PageYoung(page);
 }
-
+/* 设置的PG_young标记位 */
 static inline void set_page_young(struct page *page)
 {
 	SetPageYoung(page);
@@ -28,12 +28,12 @@ static inline bool page_is_idle(struct page *page)
 {
 	return PageIdle(page);
 }
-
+/* 设置PG_idle位 */
 static inline void set_page_idle(struct page *page)
 {
 	SetPageIdle(page);
 }
-
+/* 清除page的idle */
 static inline void clear_page_idle(struct page *page)
 {
 	ClearPageIdle(page);
