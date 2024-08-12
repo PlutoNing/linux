@@ -221,6 +221,7 @@ struct page {
 		 * the value stored here may help determine what this page
 		 * is used for.  See page-flags.h for a list of page types
 		 * which are currently stored here.
+		 确定特殊页面（不是slab，也没有mmap）的类型，比如可能用作页表page了。
 		 */
 		unsigned int page_type;
 

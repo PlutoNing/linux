@@ -573,7 +573,7 @@ out1:
 out:
 	return ret;
 }
-
+/*  */
 static int vma_expandable(struct vm_area_struct *vma, unsigned long delta)
 {
 	unsigned long end = vma->vm_end + delta;

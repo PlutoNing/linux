@@ -143,6 +143,7 @@ void vma_set_page_prot(struct vm_area_struct *vma)
 
 /*
 2024年7月19日00:40:19
+unlink_file_vma调用函数，解除vma与mapping的关系
  * Requires inode->i_mapping->i_mmap_rwsem
  */
 static void __remove_shared_vm_struct(struct vm_area_struct *vma,
@@ -153,7 +154,7 @@ static void __remove_shared_vm_struct(struct vm_area_struct *vma,
 		atomic_inc(&file_inode(file)->i_writecount);
 	/*  */
 	if (vma->vm_flags & VM_SHARED)
-		mapping_unmap_writable(mapping);
+		mapping_unmap_writable(mapping);/* atomic_dec(&mapping->i_mmap_writable); */
 
 	flush_dcache_mmap_lock(mapping);
 	/* 把vma从mapping的immap树移出 */
@@ -164,6 +165,7 @@ static void __remove_shared_vm_struct(struct vm_area_struct *vma,
 
 /*
 2024年7月19日00:40:04
+解除vma与自己mmap文件的关系
 todo
  * Unlink a file-based vm structure from its interval tree, to hide
  * vma from rmap and vmtruncate before freeing its page tables.
@@ -184,6 +186,7 @@ void unlink_file_vma(struct vm_area_struct *vma)
 
 /*
 2024年07月26日15:44:35
+销毁vma，从vma链表移除。
  * Close a vm structure and free it, returning the next.
  */
 static struct vm_area_struct *remove_vma(struct vm_area_struct *vma)
@@ -2791,6 +2794,8 @@ EXPORT_SYMBOL_GPL(find_extend_vma);
 
 /*
 2024年07月26日15:44:00
+内存记账相关，从链表移除，销毁vma
+ __do_munmap ---- remove_vma_list --- update_hiwater_vm
  * Ok - we have the memory areas we should free on the vma list,
  * so release them, and do the vma updates.
  *
@@ -2802,12 +2807,15 @@ static void remove_vma_list(struct mm_struct *mm, struct vm_area_struct *vma)
 
 	/* Update high watermark before we lower total_vm */
 	update_hiwater_vm(mm);
+	
 	do {
 		long nrpages = vma_pages(vma);
 
 		if (vma->vm_flags & VM_ACCOUNT)
 			nr_accounted += nrpages;
+
 		vm_stat_account(mm, vma->vm_flags, -nrpages);
+		/* 从链表移除，销毁vma */
 		vma = remove_vma(vma);
 	} while (vma);
 
@@ -2817,7 +2825,7 @@ static void remove_vma_list(struct mm_struct *mm, struct vm_area_struct *vma)
 
 /*
 2024年07月26日15:10:10
-解除vma映射，释放物理页面。
+解除vma映射，清零pte，释放页表物理页面。
  * Get rid of page table information in the indicated region.
  *
  * Called with the mm semaphore held.
@@ -2834,10 +2842,11 @@ static void unmap_region(struct mm_struct *mm,
 	tlb_gather_mmu(&tlb, mm, start, end);
 
 	update_hiwater_rss(mm);
-	/* 这个函数用于解除相关进程虚拟内存区域的页表映射，还会将相关的物理页面放入积聚结构中，后面统一释放。 */
+	/* 这个函数用于解除相关进程虚拟内存区域的页表映射，是清零pte的值 */
 	unmap_vmas(&tlb, vma, start, end);
 
-	/* 释放页表 */
+	/* 释放vma的页表pte的page什么的。
+	遍历逐级页表，一直操作到最底层pte的page。 */
 	free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
 				 next ? next->vm_start : USER_PGTABLES_CEILING);
 
@@ -3131,10 +3140,12 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	if (downgrade)
 		downgrade_write(&mm->mmap_sem);
 	/* 这个时候vma到end这一串vma，已经从mm的红黑树移除了，好像还
-	解锁了，还还回lru了 */
+	解锁了，还还回lru了。
+	todo。 */
 	unmap_region(mm, vma, prev, start, end);
 
-	/* Fix up all other VM information */
+	/* Fix up all other VM information
+	现在是进行内存记账，链表移除vma，销毁vma */
 	remove_vma_list(mm, vma);
 
 	return downgrade ? 1 : 0;

@@ -32,12 +32,13 @@ static inline void pgd_clear(pgd_t *pgd)	{ }
  * but the define is needed for a generic inline function.)
  */
 #define set_pgd(pgdptr, pgdval)	set_p4d((p4d_t *)(pgdptr), (p4d_t) { pgdval })
-
+/* 2024年8月12日23:14:21
+获取addr在pgd对应的p4d？但是好像这个架构里p4d就是pgd，直接返回pgd */
 static inline p4d_t *p4d_offset(pgd_t *pgd, unsigned long address)
 {
 	return (p4d_t *)pgd;
 }
-
+/* 获得p4d条目的页表地址值 */
 #define p4d_val(x)				(pgd_val((x).pgd))
 #define __p4d(x)				((p4d_t) { __pgd(x) })
 

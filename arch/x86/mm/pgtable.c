@@ -42,11 +42,16 @@ static int __init setup_userpte(char *arg)
 	return 0;
 }
 early_param("userpte", setup_userpte);
-
+/* 
+2024年8月12日23:40:19
+ */
 void ___pte_free_tlb(struct mmu_gather *tlb, struct page *pte)
 {
+	/*  */
 	pgtable_pte_page_dtor(pte);
+	/*  */
 	paravirt_release_pte(page_to_pfn(pte));
+	/*  */
 	paravirt_tlb_remove_table(tlb, pte);
 }
 

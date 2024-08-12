@@ -465,6 +465,7 @@ int walk_mem_res(u64 start, u64 end, void *arg,
 }
 
 /*
+遍历地址范围，对某些页面进行回调。
  * This function calls the @func callback against all memory ranges of type
  * System RAM which are marked as IORESOURCE_SYSTEM_RAM and IORESOUCE_BUSY.
  * It is to be used only for System RAM.

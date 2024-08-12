@@ -386,7 +386,7 @@ static inline pmdval_t native_pmd_val(pmd_t pmd)
 	return native_pgd_val(pmd.pud.p4d.pgd);
 }
 #endif
-
+/*  */
 static inline p4dval_t p4d_pfn_mask(p4d_t p4d)
 {
 	/* No 512 GiB huge pages yet */
@@ -510,7 +510,7 @@ static inline pgprot_t pgprot_large_2_4k(pgprot_t pgprot)
 	return new;
 }
 
-
+/* pmd项对应的页表page */
 typedef struct page *pgtable_t;
 
 extern pteval_t __supported_pte_mask;

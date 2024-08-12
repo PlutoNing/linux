@@ -255,6 +255,7 @@ struct mmu_gather {
 
 	/*
 	 * we have removed page directories
+	 pte_free_tlb(tlb, ptep, address)会置位此
 	 */
 	unsigned int		freed_tables : 1;
 
@@ -262,6 +263,7 @@ struct mmu_gather {
 	 * at which levels have we cleared entries?
 	 */
 	unsigned int		cleared_ptes : 1;
+	/* pte_free_tlb(tlb, ptep, address) */
 	unsigned int		cleared_pmds : 1;
 	unsigned int		cleared_puds : 1;
 	unsigned int		cleared_p4ds : 1;
@@ -290,7 +292,10 @@ void arch_tlb_gather_mmu(struct mmu_gather *tlb,
 void tlb_flush_mmu(struct mmu_gather *tlb);
 void arch_tlb_finish_mmu(struct mmu_gather *tlb,
 			 unsigned long start, unsigned long end, bool force);
-
+/* 
+pte_free_tlb(tlb, ptep, address)，清除页表page：ptep里面的address时
+调用这个函数。
+ */
 static inline void __tlb_adjust_range(struct mmu_gather *tlb,
 				      unsigned long address,
 				      unsigned int range_size)
@@ -575,6 +580,12 @@ static inline void tlb_end_vma(struct mmu_gather *tlb, struct vm_area_struct *vm
  */
 
 #ifndef pte_free_tlb
+/* 
+@tlb
+@ptep：是一个pmd指向的页表page。
+@address：释放页表page里面这个地址？
+
+ */
 #define pte_free_tlb(tlb, ptep, address)			\
 	do {							\
 		__tlb_adjust_range(tlb, address, PAGE_SIZE);	\

@@ -525,7 +525,29 @@ static inline pgprot_t pgprot_modify(pgprot_t oldprot, pgprot_t newprot)
  * or the end address of the range if that comes earlier.  Although no
  * vma end wraps to 0, rounded up __boundary may wrap to 0 throughout.
  */
-
+/* 
+2024年8月12日22:53:02
+pgd_addr_end(addr, end)	
+Expands to
+({
+    unsigned long __boundary = (addr + 1 << 39) & ~(1 << 39 - 1);
+    (__boundary < end) ? __boundary : end;
+})
+就是把地址加了一个pgd大小，然后对齐到pgd。
+>>> addr
+12313114313113
+>>> b = (addr + (1 << 39)) & (~( (1 << 39) - 1))
+>>> b
+12644383719424
+>>> bin(b)
+'0b10111000000000000000000000000000000000000000'
+>>> bin(addr)
+'0b10110011001011011110110011100000000110011001'
+>>> len("000000000000000000000000000000000000000")
+39 这是bin（b）的后面的零的数量。
+感觉就是获得所在pgd的末尾地址？还是下一个pgd的起始地址？看用法应该是下一个pgd
+的起始地址。
+ */
 #define pgd_addr_end(addr, end)						\
 ({	unsigned long __boundary = ((addr) + PGDIR_SIZE) & PGDIR_MASK;	\
 	(__boundary - 1 < (end) - 1)? __boundary: (end);		\
@@ -546,6 +568,7 @@ static inline pgprot_t pgprot_modify(pgprot_t oldprot, pgprot_t newprot)
 #endif
 
 #ifndef pmd_addr_end
+/* 获取下一个pmd的起始地址 */
 #define pmd_addr_end(addr, end)						\
 ({	unsigned long __boundary = ((addr) + PMD_SIZE) & PMD_MASK;	\
 	(__boundary - 1 < (end) - 1)? __boundary: (end);		\

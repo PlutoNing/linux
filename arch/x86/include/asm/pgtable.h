@@ -219,12 +219,14 @@ static inline unsigned long pte_pfn(pte_t pte)
 	return (pfn & PTE_PFN_MASK) >> PAGE_SHIFT;
 }
 /* 2024年7月13日13:31:05
-获取pmd的页帧号。
+获取pmd的地址。
  */
 static inline unsigned long pmd_pfn(pmd_t pmd)
 {
+	/* 获得pmd的项 */
 	phys_addr_t pfn = pmd_val(pmd);
 	pfn ^= protnone_mask(pfn);
+	/* 把项与mask与，获得项里面的页表物理页地址，再右移，获得地址。？ */
 	return (pfn & pmd_pfn_mask(pmd)) >> PAGE_SHIFT;
 }
 
@@ -816,6 +818,7 @@ static inline unsigned long pmd_page_vaddr(pmd_t pmd)
 
 /*
 2024年7月13日13:30:55
+获得pmd指向的页表，页表里512个pte？
  * Currently stuck as a macro due to indirect forward reference to
  * linux/mmzone.h's __section_mem_map_addr() definition:
  */
@@ -905,7 +908,9 @@ static inline unsigned long pud_page_vaddr(pud_t pud)
  */
 #define pud_page(pud)	pfn_to_page(pud_pfn(pud))
 
-/* Find an entry in the second-level page table.. */
+/* 
+获取pmd页表项的地址
+Find an entry in the second-level page table.. */
 static inline pmd_t *pmd_offset(pud_t *pud, unsigned long address)
 {
 	return (pmd_t *)pud_page_vaddr(*pud) + pmd_index(address);
@@ -927,7 +932,8 @@ static inline int pud_large(pud_t pud)
 	return 0;
 }
 #endif	/* CONFIG_PGTABLE_LEVELS > 2 */
-
+/* 获取pud的idx，
+右移30位，非掩码，获得后九位的值就是idx */
 static inline unsigned long pud_index(unsigned long address)
 {
 	return (address >> PUD_SHIFT) & (PTRS_PER_PUD - 1);
@@ -943,9 +949,10 @@ static inline int p4d_present(p4d_t p4d)
 {
 	return p4d_flags(p4d) & _PAGE_PRESENT;
 }
-
+/* 由p4d指针指向的p4d条目的值（也就是参数）获得实际的p4d表地址 */
 static inline unsigned long p4d_page_vaddr(p4d_t p4d)
 {
+	/* 先获得p4d指向的页表地址值， */
 	return (unsigned long)__va(p4d_val(p4d) & p4d_pfn_mask(p4d));
 }
 
@@ -955,7 +962,10 @@ static inline unsigned long p4d_page_vaddr(p4d_t p4d)
  */
 #define p4d_page(p4d)	pfn_to_page(p4d_pfn(p4d))
 
-/* Find an entry in the third-level page table.. */
+/*
+2024年8月12日23:15:20
+获取addr在p4d对应的pud 
+Find an entry in the third-level page table.. */
 static inline pud_t *pud_offset(p4d_t *p4d, unsigned long address)
 {
 	return (pud_t *)p4d_page_vaddr(*p4d) + pud_index(address);
@@ -1035,6 +1045,10 @@ static inline int pgd_none(pgd_t pgd)
 #endif	/* __ASSEMBLY__ */
 
 /*
+获取address对应的pgd条目的idx。
+一个pgd条目管理2的39次方地址范围
+那么这个idx应该是address的【倒数第39+9，倒数第39】bit位对应的值
+就是右移39位然后&511，获得后九位的值。
  * the pgd page can be thought of an array like this: pgd_t[PTRS_PER_PGD]
  *
  * this macro returns the index of the entry in the pgd page which would
@@ -1043,12 +1057,14 @@ static inline int pgd_none(pgd_t pgd)
 #define pgd_index(address) (((address) >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1))
 
 /*
+获得addr地址所属pgd条目的起始地址。
  * pgd_offset() returns a (pgd_t *)
  * pgd_index() is used get the offset into the pgd page's array of pgd_t's;
  */
 #define pgd_offset_pgd(pgd, address) (pgd + pgd_index((address)))
 /*
  * a shortcut to get a pgd_t in a given mm
+ 获得mm里面addr地址所属pgd的起始地址。
  */
 #define pgd_offset(mm, address) pgd_offset_pgd((mm)->pgd, (address))
 /*

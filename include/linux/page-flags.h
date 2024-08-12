@@ -83,6 +83,8 @@
  */
 
 /*
+其实算是代表每一个flag标记的idx。
+这样的话 1<<enum_of_flag 就可以通过enum里面的名字方便记忆在flag里面的idx
  * Don't use the *_dontuse flags.  Use the macros.  Otherwise you'll break
  * locked- and dirty-page accounting.
  *
@@ -110,7 +112,7 @@ enum pageflags {
 	PG_error,/* io错误 */
 	PG_slab,/* 属于slab */
 	PG_owner_priv_1,	/* Owner use. If pagecache, fs may use*/
-	PG_arch_1,/* 架构相关页面状态位 */
+	PG_arch_1,/* 架构相关页面状态位，比如可以表示_PGMT_WC */
 	PG_reserved,/* 不可被换出，防止被swap */
 	PG_private,		/* If pagecache, has fs-private data ，如果page中的private成员非空，则需要设置该标志，如果是pagecache, 包含fs-private data*/
 	PG_private_2,		/* If pagecache, has fs aux data，如果是pagecache, 包含fs aux data */
@@ -746,6 +748,8 @@ PAGEFLAG_FALSE(DoubleMap)
 #endif
 
 /*
+2024年8月12日23:48:13
+特殊类型的page type。
  * For pages that are never mapped to userspace (and aren't PageSlab),
  * page_type may be used.  Because it is initialised to -1, we invert the
  * sense of the bit, so __SetPageFoo *clears* the bit used for PageFoo, and
@@ -753,24 +757,35 @@ PAGEFLAG_FALSE(DoubleMap)
  * low bits so that an underflow or overflow of page_mapcount() won't be
  * mistaken for a page type value.
  */
-
+/*  */
 #define PAGE_TYPE_BASE	0xf0000000
 /* Reserve		0x0000007f to catch underflows of page_mapcount */
 #define PAGE_MAPCOUNT_RESERVE	-128
+/*  */
 #define PG_buddy	0x00000080
+/*  */
 #define PG_offline	0x00000100
+/*  */
 #define PG_kmemcg	0x00000200
+/* 用作页表page的page_type */
 #define PG_table	0x00000400
+/*  */
 #define PG_guard	0x00000800
-
+/* page是page地址
+flag可能是PG_table（特殊用途的，特殊page_type的名字）什么的。
+看看page是不是flag这个type的。
+ */
 #define PageType(page, flag)						\
 	((page->page_type & (PAGE_TYPE_BASE | flag)) == PAGE_TYPE_BASE)
+
+
 /* 什么type？2024年7月27日21:51:54 */
 static inline int page_has_type(struct page *page)
 {
 	return (int)page->page_type < PAGE_MAPCOUNT_RESERVE;
 }
-
+/* 批量定义对flag名对应的那个bit的操作，
+比如set，clear什么的 */
 #define PAGE_TYPE_OPS(uname, lname)					\
 static __always_inline int Page##uname(struct page *page)		\
 {									\
@@ -809,6 +824,7 @@ PAGE_TYPE_OPS(Offline, offline)
 PAGE_TYPE_OPS(Kmemcg, kmemcg)
 
 /*
+这里是把page作为页表使用的一些ops，比如set，clear什么的
  * Marks pages in use as page tables.
  */
 PAGE_TYPE_OPS(Table, table)

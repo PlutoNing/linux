@@ -407,7 +407,8 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 }
 /* 2024年7月19日00:17:03
 2024年8月10日00:15:00
-
+vma的anon_vma_chain的list_head链表上挂接的avc就是与av的连接件。
+rmap todo。
  */
 void unlink_anon_vmas(struct vm_area_struct *vma)
 {
@@ -447,7 +448,7 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 	unlock_anon_vma_root(root);
 
 	/*
-	为什么又遍历一遍
+	为什么又遍历一遍？好像是把avc从链表移除。
 	 * Iterate the list once more, it now only contains empty and unlinked
 	 * anon_vmas, destroy them. Could not do before due to __put_anon_vma()
 	 * needing to write-acquire the anon_vma->root->rwsem.

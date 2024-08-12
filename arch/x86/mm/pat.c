@@ -81,6 +81,7 @@ __setup("debugpat", pat_debug_setup);
 
 #ifdef CONFIG_X86_PAT
 /*
+2024年8月12日21:14:38
  * X86 PAT uses page flags arch_1 and uncached together to keep track of
  * memory type of pages that have backing page struct.
  *
@@ -92,12 +93,15 @@ __setup("debugpat", pat_debug_setup);
  *
  * _PAGE_CACHE_MODE_WB is the default type.
  */
-
+/* 可以视为page的flag，把真正的pageflag与这些“pageflage”异或就行 */
 #define _PGMT_WB		0
+/* 1<<11 */
 #define _PGMT_WC		(1UL << PG_arch_1)
+/* 1<<22 */
 #define _PGMT_UC_MINUS		(1UL << PG_uncached)
 #define _PGMT_WT		(1UL << PG_uncached | 1UL << PG_arch_1)
 #define _PGMT_MASK		(1UL << PG_uncached | 1UL << PG_arch_1)
+/* 与之异或可以清除上面几种type。 */
 #define _PGMT_CLEAR_MASK	(~_PGMT_MASK)
 
 static inline enum page_cache_mode get_page_memtype(struct page *pg)
@@ -113,7 +117,11 @@ static inline enum page_cache_mode get_page_memtype(struct page *pg)
 	else
 		return _PAGE_CACHE_MODE_WT;
 }
-
+/* 
+2024年8月12日21:13:48
+设置page的memtype？
+可以free_ram_pages_type遍历地址范围的pfn，获取对应的page，进行set_page_memtype
+ */
 static inline void set_page_memtype(struct page *pg,
 				    enum page_cache_mode memtype)
 {
@@ -123,6 +131,7 @@ static inline void set_page_memtype(struct page *pg,
 
 	switch (memtype) {
 	case _PAGE_CACHE_MODE_WC:
+	/*  */
 		memtype_flags = _PGMT_WC;
 		break;
 	case _PAGE_CACHE_MODE_UC_MINUS:
@@ -136,6 +145,8 @@ static inline void set_page_memtype(struct page *pg,
 		memtype_flags = _PGMT_WB;
 		break;
 	}
+
+	/* 下面把刚才的memtype的“pageflag”直接与真正flag异或就行 */
 
 	do {
 		old_flags = pg->flags;
@@ -403,13 +414,13 @@ static unsigned long pat_x_mtrr_type(u64 start, u64 end,
 
 	return req_type;
 }
-
+/* 遍历页面统计ram pages的回调函数用来保存当前状态 */
 struct pagerange_state {
 	unsigned long		cur_pfn;
 	int			ram;
 	int			not_ram;
 };
-
+/* 遍历页面统计ram pages的回调函数 */
 static int
 pagerange_is_ram_callback(unsigned long initial_pfn, unsigned long total_nr_pages, void *arg)
 {
@@ -425,8 +436,10 @@ pagerange_is_ram_callback(unsigned long initial_pfn, unsigned long total_nr_page
 static int pat_pagerange_is_ram(resource_size_t start, resource_size_t end)
 {
 	int ret = 0;
+	/* 转换为pgoff */
 	unsigned long start_pfn = start >> PAGE_SHIFT;
 	unsigned long end_pfn = (end + PAGE_SIZE - 1) >> PAGE_SHIFT;
+
 	struct pagerange_state state = {start_pfn, 0, 0};
 
 	/*
@@ -501,7 +514,12 @@ static int reserve_ram_pages_type(u64 start, u64 end,
 	}
 	return 0;
 }
-
+/* 释放ram类型的页面？
+如何释放？ram类型是什么？
+----------------
+遍历地址范围的pfn，获取对应的page，进行set_page_memtype。
+看逻辑好像是把每个页面设置为_PAGE_CACHE_MODE_WB标记就算
+释放了。 */
 static int free_ram_pages_type(u64 start, u64 end)
 {
 	struct page *page;
@@ -630,8 +648,9 @@ int reserve_memtype(u64 start, u64 end, enum page_cache_mode req_type,
 	return err;
 }
 /* 
-管理pfn方式管理的内存
-在全局的红黑树移除这个[start，end]地址段 */
+释放pfn方式管理的内存
+step1：把范围内页面标志为_PAGE_CACHE_MODE_WB
+step2：在全局的红黑树移除这个[start，end]地址段 */
 int free_memtype(u64 start, u64 end)
 {
 	int err = -EINVAL;
@@ -640,17 +659,17 @@ int free_memtype(u64 start, u64 end)
 
 	if (!pat_enabled())
 		return 0;
-
+	/* 对齐？ */
 	start = sanitize_phys(start);
 	end = sanitize_phys(end);
 
 	/* Low ISA region is always mapped WB. No need to track */
 	if (x86_platform.is_untracked_pat_range(start, end))
 		return 0;
-
+	/*  */
 	is_range_ram = pat_pagerange_is_ram(start, end);
 	if (is_range_ram == 1) {
-
+		/* 把范围内页面标志为_PAGE_CACHE_MODE_WB */
 		err = free_ram_pages_type(start, end);
 
 		return err;
@@ -965,7 +984,8 @@ static int reserve_pfn_range(u64 paddr, unsigned long size, pgprot_t *vma_prot,
 }
 
 /*
-释放物理页面？管理好像是通过全局的红黑树进行的。
+
+释放pfn方式管理的物理页面？管理好像是通过全局的红黑树进行的。
 
 2024年7月27日22:42:43
 2024年08月12日10:50:51
@@ -1082,7 +1102,8 @@ void track_pfn_insert(struct vm_area_struct *vma, pgprot_t *prot, pfn_t pfn)
 
 /*
 说明vma不是通过page管理的，而是直接通过pfn管理的。
-解除pfn类型的vma映射的时候，调用此函数，
+解除pfn类型的vma映射的时候，调用此函数。
+功能：解除pfn映射管理的范围【pfn，pfn+addr_size】
  * untrack_pfn is called while unmapping a pfnmap for a region.
  * untrack can be called for a specific region indicated by pfn and size or
  * can be for the entire vma (in which case pfn, size are zero).
@@ -1100,7 +1121,8 @@ void untrack_pfn(struct vm_area_struct *vma, unsigned long pfn,
 	pfn的pgoff转换为 物理地址*/
 	paddr = (resource_size_t)pfn << PAGE_SHIFT;
 	if (!paddr && !size) {/* 就是参数pfn=0，size=0 */
-		/* 就处理vma的全部页面？这里follow_phys进行什么准备，把vma的起始地址的物理地址存储到paddr */
+		/* 就处理vma的全部页面？这里follow_phys进行什么准备，
+		把vma的起始地址的物理地址存储到paddr */
 		if (follow_phys(vma, vma->vm_start, 0, &prot, &paddr)) {
 			WARN_ON_ONCE(1);
 			return;
@@ -1108,7 +1130,7 @@ void untrack_pfn(struct vm_area_struct *vma, unsigned long pfn,
 		/* size=0，默认全部，更新size大小 */
 		size = vma->vm_end - vma->vm_start;
 	}
-	/*  */
+	/* 释放vma对应的这些物理地址地址范围，paddr是vma起始地址物理地址 */
 	free_pfn_range(paddr, size);
 	if (vma)
 		vma->vm_flags &= ~VM_PAT;

@@ -191,6 +191,11 @@ static void check_sync_rss_stat(struct task_struct *task)
 
 /*
 2024年7月28日01:09:09
+释放vma的页表，逐级迭代 
+
+@tlb：一个什么gather
+@pmd：pmd条目地址。
+@addr：addr在这个pmd条目范围里面
 
  * Note: this doesn't free the actual pages themselves. That
  * has been handled earlier when unmapping all the memory regions.
@@ -198,12 +203,24 @@ static void check_sync_rss_stat(struct task_struct *task)
 static void free_pte_range(struct mmu_gather *tlb, pmd_t *pmd,
 			   unsigned long addr)
 {
+	/* 获得pmd对应的页表page */
 	pgtable_t token = pmd_pgtable(*pmd);
+	/* 这里就清空这个pmd项吗，只为了释放这一个地址会不会代价太大了，为了解除一个
+	pte，其他511个被牵连了吗？ */
 	pmd_clear(pmd);
+	/*  */
 	pte_free_tlb(tlb, token, addr);
+	
 	mm_dec_nr_ptes(tlb->mm);
 }
-/*  */
+/* 释放vma的页表，逐级迭代 
+
+@tlb：一个什么gather
+@pud：p4d条目
+@addr：addr在这个pud条目范围里面
+@end：是下一个pud的起始地址，也是这个pud的结束吧应该。差一。
+@【fllor，ceiling】这次释放页表最大“波及”的范围。
+*/
 static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -213,9 +230,11 @@ static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 	unsigned long start;
 
 	start = addr;
+	/* 获取pmd地址 */
 	pmd = pmd_offset(pud, addr);
 
 	do {
+		/*  */
 		next = pmd_addr_end(addr, end);
 		if (pmd_none_or_clear_bad(pmd))
 			continue;
@@ -239,7 +258,12 @@ static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 	pmd_free_tlb(tlb, pmd, start);
 	mm_dec_nr_pmds(tlb->mm);
 }
-/*  */
+/* 释放vma的页表，逐级迭代
+@tlb：一个什么gather
+@p4d：p4d条目
+@addr：addr在这个p4d条目范围里面
+@end：是下一个p4d的起始地址，也是这个p4d的结束吧应该。差一。
+@【fllor，ceiling】这次释放页表最大“波及”的范围。 */
 static inline void free_pud_range(struct mmu_gather *tlb, p4d_t *p4d,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -249,6 +273,7 @@ static inline void free_pud_range(struct mmu_gather *tlb, p4d_t *p4d,
 	unsigned long start;
 
 	start = addr;
+	/* 获取addr在p4d对应的pud */
 	pud = pud_offset(p4d, addr);
 	do {
 		next = pud_addr_end(addr, end);
@@ -273,7 +298,13 @@ static inline void free_pud_range(struct mmu_gather *tlb, p4d_t *p4d,
 	pud_free_tlb(tlb, pud, start);
 	mm_dec_nr_puds(tlb->mm);
 }
-/*  */
+/* 释放vma的页表，逐级迭代
+@tlb：一个什么gather
+@pgd：pgd条目
+@addr：addr在这个pgd条目范围里面
+@end：是下一个pgd的起始地址，也是这个pgd的结束吧应该。差一。
+@【fllor，ceiling】这次释放页表最大“波及”的范围。
+  */
 static inline void free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -283,6 +314,7 @@ static inline void free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
 	unsigned long start;
 
 	start = addr;
+	/* 获取addr在pgd对应的p4d？但是好像这个架构里p4d就是pgd，直接返回pgd */
 	p4d = p4d_offset(pgd, addr);
 	do {
 		next = p4d_addr_end(addr, end);
@@ -309,6 +341,11 @@ static inline void free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
 
 /*
 2024年7月19日00:57:49
+释放vma的页表
+【addr，end】vma的地址范围
+@floor：可能同一批被释放的第一个vma的起始地址。（释放vma可能是批量释放
+一链表的vma，逐个调用这个函数，floor是第一个vma的起始地址）
+@ceiling：可能是下一个vma的起始地址
  * This function frees user-level page tables of a process.
 
 free_pgd_range
@@ -357,30 +394,38 @@ void free_pgd_range(struct mmu_gather *tlb,
 	 * now has no other vmas using it, so can be freed, we don't
 	 * bother to round floor or end up - the tests don't need that.
 	 */
-
+	/* 对齐vma的起始地址 */
 	addr &= PMD_MASK;
-	if (addr < floor) {
-		addr += PMD_SIZE;
+	if (addr < floor) {/* 说明floor和addr可能在同一个pmd？ */
+		addr += PMD_SIZE;/* 这里addr步进一个pmdsize是干什么？ */
 		if (!addr)
 			return;
 	}
-	if (ceiling) {
+	if (ceiling) {/* ceiling也对齐，现在是旧值所在pmd的起始地址值 */
 		ceiling &= PMD_MASK;
 		if (!ceiling)
 			return;
 	}
-	if (end - 1 > ceiling - 1)
+
+	if (end - 1 > ceiling - 1)/* end可能超过ceiling吗。ceiling是下一个vma的起始地址 */
 		end -= PMD_SIZE;
+
 	if (addr > end - 1)
 		return;
+
+
+	/* 现在addr是pmd对齐的 */
 	/*
 	 * We add page table cache pages with PAGE_SIZE,
 	 * (see pte_free_tlb()), flush the tlb if we need
 	 */
 	tlb_change_page_size(tlb, PAGE_SIZE);
+	/* 获取对应pgd条目的地址 */
 	pgd = pgd_offset(tlb->mm, addr);
 	do {
+		/* 保存下一个pgd的起始地址 */
 		next = pgd_addr_end(addr, end);
+
 		if (pgd_none_or_clear_bad(pgd))
 			continue;
 		free_p4d_range(tlb, pgd, addr, next, floor, ceiling);
@@ -388,11 +433,15 @@ void free_pgd_range(struct mmu_gather *tlb,
 }
 /* 2024年7月19日00:16:48
 在解除映射之后，这个函数释放页表。
+@vma：起始vma
+【floor，ceiling】地址范围。
+---------------、
+遍历vma解除av与mapping，然后释放页表
  */
 void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		unsigned long floor, unsigned long ceiling)
 {
-	while (vma) {
+	while (vma) {/* 迭代每个vma */
 		struct vm_area_struct *next = vma->vm_next;
 		unsigned long addr = vma->vm_start;
 
@@ -405,7 +454,7 @@ void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		/* 好像是移除关联的mapping */
 		unlink_file_vma(vma);	
 
-		if (is_vm_hugetlb_page(vma)) {
+		if (is_vm_hugetlb_page(vma)) {/* 巨页的路径 */
 			hugetlb_free_pgd_range(tlb, addr, vma->vm_end,
 				floor, next ? next->vm_start : ceiling);
 		} else {
@@ -423,6 +472,8 @@ void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 			free_pgd_range(tlb, addr, vma->vm_end,
 				floor, next ? next->vm_start : ceiling);
 		}
+
+
 		vma = next;
 	}
 }
@@ -1071,7 +1122,8 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 
 
 /* 2024年07月26日15:32:35
-该函数的作用是将在pmd中从虚拟地址address开始，长度为size的内存块通过循环调用pte_clear将其页表项清零，
+该函数的作用是将在pmd中从虚拟地址address开始，长度为size的内存块通过循环调用
+pte_clear将其页表项清零，
 调用free_pte将所含空间中的物理内存或交换空间中的虚存页释放掉。
 在释放之前，必须检查从address开始长度为size的内存块有无越过PMD_SIZE.
 (溢出则可使指针逃出0～1023的区间)。
@@ -1212,6 +1264,7 @@ again:
 
 	return addr;
 }
+
 /* 2024年07月26日15:34:34
 通过调用zap_pte_range完成对所有落在address到address+size区间中的所有pte的清零工作。
 zap_pmd_range至多清除4M空间的物理内存。 */
@@ -1305,6 +1358,7 @@ static inline unsigned long zap_p4d_range(struct mmu_gather *tlb,
 /* 2024年7月18日23:24:06
 unmap此vma的范围内映射
 就是逐级处理此进程的页表，一直找到pte，然后处理
+这里是清零pte
 
  */
 void unmap_page_range(struct mmu_gather *tlb,
@@ -1333,7 +1387,9 @@ void unmap_page_range(struct mmu_gather *tlb,
 }
 
 /* 2024年7月19日00:12:34
-解除vma页面的映射
+解除vma页面的映射。
+如果是pfn类型的vma，就是释放memtype。
+如果是page管理的vma，就是迭代页表，解除映射（清零pte的值）。
  */
 static void unmap_single_vma(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, unsigned long start_addr,
@@ -1357,6 +1413,7 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 	归还不是准确的说法，涉及那个memtype红黑树）*/
 	if (unlikely(vma->vm_flags & VM_PFNMAP))
 		untrack_pfn(vma, 0, 0);
+	/* 上面是pfn类型的vma的unmap方法，通过memtype这些来管理。 */
 
 	if (start != end) {
 		if (unlikely(is_vm_hugetlb_page(vma))) {
@@ -1385,6 +1442,7 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 /**
 2024年7月19日00:11:28
 解除这些vma的映射，地址范围【start_addr，end_addr】
+对每个vma调用unmap_single_vma，清零pte的值
  * unmap_vmas - unmap a range of memory covered by a list of vma's
  * @tlb: address of the caller's struct mmu_gather
  * @vma: the starting vma

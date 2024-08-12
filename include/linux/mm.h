@@ -1796,7 +1796,9 @@ static inline void update_hiwater_rss(struct mm_struct *mm)
 	if ((mm)->hiwater_rss < _rss)
 		(mm)->hiwater_rss = _rss;
 }
-
+/* 
+__do_munmap ---- remove_vma_list --- update_hiwater_vm
+ */
 static inline void update_hiwater_vm(struct mm_struct *mm)
 {
 	if (mm->hiwater_vm < mm->total_vm)
@@ -1930,7 +1932,7 @@ static inline void mm_inc_nr_ptes(struct mm_struct *mm)
 {
 	atomic_long_add(PTRS_PER_PTE * sizeof(pte_t), &mm->pgtables_bytes);
 }
-
+/* 2024年8月12日23:55:33 */
 static inline void mm_dec_nr_ptes(struct mm_struct *mm)
 {
 	atomic_long_sub(PTRS_PER_PTE * sizeof(pte_t), &mm->pgtables_bytes);
@@ -2000,7 +2002,7 @@ static inline bool ptlock_alloc(struct page *page)
 {
 	return true;
 }
-
+/*  */
 static inline void ptlock_free(struct page *page)
 {
 }
@@ -2061,11 +2063,18 @@ static inline bool pgtable_pte_page_ctor(struct page *page)
 	inc_zone_page_state(page, NR_PAGETABLE);
 	return true;
 }
+/* 
+2024年8月12日23:52:56
+这个page是个pte页表page
 
+ */
 static inline void pgtable_pte_page_dtor(struct page *page)
 {
+	/* 空函数？ */
 	ptlock_free(page);
+	/* 清除page的PG_table标志位，说明不再是这个类型得了。 */
 	__ClearPageTable(page);
+	/* 统计信息 */
 	dec_zone_page_state(page, NR_PAGETABLE);
 }
 /* 2024年7月13日13:46:29

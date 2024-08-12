@@ -67,7 +67,7 @@ static inline void flush_tlb_others(const struct cpumask *cpumask,
 {
 	PVOP_VCALL2(mmu.flush_tlb_others, cpumask, info);
 }
-
+/* 2024年8月12日23:54:27 */
 static inline void paravirt_tlb_remove_table(struct mmu_gather *tlb, void *table)
 {
 	PVOP_VCALL2(mmu.tlb_remove_table, tlb, table);
@@ -325,6 +325,8 @@ static inline void paravirt_alloc_pte(struct mm_struct *mm, unsigned long pfn)
 {
 	PVOP_VCALL2(mmu.alloc_pte, mm, pfn);
 }
+/* 2024年8月12日23:53:25
+todo */
 static inline void paravirt_release_pte(unsigned long pfn)
 {
 	PVOP_VCALL1(mmu.release_pte, pfn);
@@ -395,7 +397,7 @@ static inline pgd_t __pgd(pgdval_t val)
 
 	return (pgd_t) { ret };
 }
-
+/* 获得pgd条目里的存储的页表地址 */
 static inline pgdval_t pgd_val(pgd_t pgd)
 {
 	pgdval_t ret;
@@ -449,7 +451,7 @@ static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
 	else
 		PVOP_VCALL4(mmu.set_pte_at, mm, addr, ptep, pte.pte);
 }
-/*  */
+/* 设置pmd的值？ */
 static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 {
 	pmdval_t val = native_pmd_val(pmd);
@@ -461,6 +463,7 @@ static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 }
 
 #if CONFIG_PGTABLE_LEVELS >= 3
+/* 写入pmd的值？ */
 static inline pmd_t __pmd(pmdval_t val)
 {
 	pmdval_t ret;
@@ -473,8 +476,7 @@ static inline pmd_t __pmd(pmdval_t val)
 	return (pmd_t) { ret };
 }
 /* 2024年7月13日13:32:36
-什么val，返回值是pfn
-
+获得pmd的项
  */
 static inline pmdval_t pmd_val(pmd_t pmd)
 {
@@ -596,7 +598,7 @@ static inline void pte_clear(struct mm_struct *mm, unsigned long addr,
 {
 	set_pte_at(mm, addr, ptep, __pte(0));
 }
-
+/* 把pmdp指向的地址设为0？ */
 static inline void pmd_clear(pmd_t *pmdp)
 {
 	set_pmd(pmdp, __pmd(0));

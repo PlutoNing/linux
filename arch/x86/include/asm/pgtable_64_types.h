@@ -87,7 +87,9 @@ extern unsigned int ptrs_per_p4d;
 2024年7月13日12:34:48
  * PMD_SHIFT determines the size of the area a middle-level
  * page table can map
- */
+一个pmd的页面范围
+pmd里面应该2^9个pte，21-12=9；
+*/
 #define PMD_SHIFT	21
 #define PTRS_PER_PMD	512
 
@@ -96,11 +98,16 @@ extern unsigned int ptrs_per_p4d;
  * entries per page directory level
  */
 #define PTRS_PER_PTE	512
-
+/* 一个pmd表里的页面数量，2^(9+12)。 */
 #define PMD_SIZE	(_AC(1, UL) << PMD_SHIFT)
-#define PMD_MASK	(~(PMD_SIZE - 1))
+/* 21个0 */
+#define PMD_MASK	(~( PMD_SIZE - 1))
+/* pud是pmd的上一级页表，地址范围是2^30.
+就是512个pmd，每个pmd是512的页面。 */
 #define PUD_SIZE	(_AC(1, UL) << PUD_SHIFT)
+/* 30个0 */
 #define PUD_MASK	(~(PUD_SIZE - 1))
+/* pgd自然是2的39次方，包含2的9次方个pud。 */
 #define PGDIR_SIZE	(_AC(1, UL) << PGDIR_SHIFT)
 #define PGDIR_MASK	(~(PGDIR_SIZE - 1))
 

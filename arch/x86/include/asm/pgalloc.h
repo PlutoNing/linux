@@ -53,7 +53,7 @@ extern void pgd_free(struct mm_struct *mm, pgd_t *pgd);
 extern pgtable_t pte_alloc_one(struct mm_struct *);
 
 extern void ___pte_free_tlb(struct mmu_gather *tlb, struct page *pte);
-
+/* 释放pte页表page的address */
 static inline void __pte_free_tlb(struct mmu_gather *tlb, struct page *pte,
 				  unsigned long address)
 {
@@ -84,7 +84,7 @@ static inline void pmd_populate(struct mm_struct *mm, pmd_t *pmd,
 	paravirt_alloc_pte(mm, pfn);
 	set_pmd(pmd, __pmd(((pteval_t)pfn << PAGE_SHIFT) | _PAGE_TABLE));
 }
-
+/* 获得pmd的页表page，里面512个pte */
 #define pmd_pgtable(pmd) pmd_page(pmd)
 
 #if CONFIG_PGTABLE_LEVELS > 2

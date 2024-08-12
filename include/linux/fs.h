@@ -602,7 +602,8 @@ static inline int mapping_map_writable(struct address_space *mapping)
 	return atomic_inc_unless_negative(&mapping->i_mmap_writable) ?
 		0 : -EPERM;
 }
-/* 2024年7月19日00:49:27 */
+/* 2024年7月19日00:49:27
+ */
 static inline void mapping_unmap_writable(struct address_space *mapping)
 {
 	atomic_dec(&mapping->i_mmap_writable);
