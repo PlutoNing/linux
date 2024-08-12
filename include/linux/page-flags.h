@@ -282,7 +282,8 @@ static __always_inline void __ClearPage##uname(struct page *page)	\
 #define TESTSETFLAG(uname, lname, policy)				\
 static __always_inline int TestSetPage##uname(struct page *page)	\
 	{ return test_and_set_bit(PG_##lname, &policy(page, 1)->flags); }
-
+/* test_and_clear_bit
+解锁，返回本来有没有加锁 */
 #define TESTCLEARFLAG(uname, lname, policy)				\
 static __always_inline int TestClearPage##uname(struct page *page)	\
 	{ return test_and_clear_bit(PG_##lname, &policy(page, 1)->flags); }

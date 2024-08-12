@@ -607,9 +607,6 @@ vm_normal_page根据pte来返回normal paging页面的struct page结构。
 
 一些特殊映射的页面是不会返回struct page结构的，这些页面不希望被参与
 到内存管理的一些活动中，如页面回收、页迁移和KSM等。
-
-
-
  */
 struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 			    pte_t pte)
@@ -1387,7 +1384,7 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 
 /**
 2024年7月19日00:11:28
-解除这些vma的映射
+解除这些vma的映射，地址范围【start_addr，end_addr】
  * unmap_vmas - unmap a range of memory covered by a list of vma's
  * @tlb: address of the caller's struct mmu_gather
  * @vma: the starting vma
@@ -1527,8 +1524,7 @@ pte_t *__get_locked_pte(struct mm_struct *mm, unsigned long addr,
 		return NULL;
 
 	VM_BUG_ON(pmd_trans_huge(*pmd));
-	/* 一直找到pte之后 ，获取此pmd页表上面，指向包含addr地址页面的*pte。
-	这句话有点乱。*/
+	/* 一直查询到pmd来获取pte */
 
 	return pte_alloc_map_lock(mm, pmd, addr, ptl);
 }
@@ -4559,7 +4555,10 @@ int __pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address)
 	return 0;
 }
 #endif /* __PAGETABLE_PMD_FOLDED */
+/* 处理mm的address。
+@pmdpp：可能为空 ，巨页才需要这个参数。
 
+找到address对应的pte，赋值到ptepp。*/
 static int __follow_pte_pmd(struct mm_struct *mm, unsigned long address,
 			    struct mmu_notifier_range *range,
 			    pte_t **ptepp, pmd_t **pmdpp, spinlock_t **ptlp)
@@ -4585,7 +4584,7 @@ static int __follow_pte_pmd(struct mm_struct *mm, unsigned long address,
 	pmd = pmd_offset(pud, address);
 	VM_BUG_ON(pmd_trans_huge(*pmd));
 
-	if (pmd_huge(*pmd)) {
+	if (pmd_huge(*pmd)) {/* 巨页的路径，todo */
 		if (!pmdpp)
 			goto out;
 
@@ -4614,6 +4613,7 @@ static int __follow_pte_pmd(struct mm_struct *mm, unsigned long address,
 					(address & PAGE_MASK) + PAGE_SIZE);
 		mmu_notifier_invalidate_range_start(range);
 	}
+	/* 找到对应的pte */
 	ptep = pte_offset_map_lock(mm, pmd, address, ptlp);
 	if (!pte_present(*ptep))
 		goto unlock;
@@ -4626,7 +4626,9 @@ unlock:
 out:
 	return -EINVAL;
 }
-
+/* 参数只是mm和它的某个address。
+使ptepp指向addres的页表项。
+ */
 static inline int follow_pte(struct mm_struct *mm, unsigned long address,
 			     pte_t **ptepp, spinlock_t **ptlp)
 {
@@ -4684,6 +4686,12 @@ int follow_pfn(struct vm_area_struct *vma, unsigned long address,
 EXPORT_SYMBOL(follow_pfn);
 
 #ifdef CONFIG_HAVE_IOREMAP_PROT
+/* 
+@vma：是pfn映射类型的。
+@address：可能是vma的起始地址。
+
+找到address的pte，然后找到物理地址，存储到phys
+*/
 int follow_phys(struct vm_area_struct *vma,
 		unsigned long address, unsigned int flags,
 		unsigned long *prot, resource_size_t *phys)
@@ -4692,17 +4700,20 @@ int follow_phys(struct vm_area_struct *vma,
 	pte_t *ptep, pte;
 	spinlock_t *ptl;
 
-	if (!(vma->vm_flags & (VM_IO | VM_PFNMAP)))
+	if (!(vma->vm_flags & (VM_IO | VM_PFNMAP)))/* 至少要是pfnmap类型的或者这什么VM_IO */
 		goto out;
-
+	/* 找到address的页表项，存储到ptep */
 	if (follow_pte(vma->vm_mm, address, &ptep, &ptl))
 		goto out;
+	/* 获取pte表项 */
 	pte = *ptep;
+
 
 	if ((flags & FOLL_WRITE) && !pte_write(pte))
 		goto unlock;
-
+	/* 获取pte的proto */
 	*prot = pgprot_val(pte_pgprot(pte));
+	/* 获取pte的pfn然后phys */
 	*phys = (resource_size_t)pte_pfn(pte) << PAGE_SHIFT;
 
 	ret = 0;

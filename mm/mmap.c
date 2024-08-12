@@ -2828,7 +2828,7 @@ static void unmap_region(struct mm_struct *mm,
 {
 	struct vm_area_struct *next = prev ? prev->vm_next : mm->mmap;
 	struct mmu_gather tlb;
-
+	/* 排空lru链表 */
 	lru_add_drain();
 
 	tlb_gather_mmu(&tlb, mm, start, end);
@@ -2846,7 +2846,7 @@ static void unmap_region(struct mm_struct *mm,
 
 /*
 2024年07月26日14:48:58
-把这些vma移除
+把这些vma从mm移除
  * Create a list of vma's touched by the unmap, removing them from the mm's
  * vma list as we go..
  */
@@ -3041,8 +3041,8 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	 * places tmp vma above, and higher split_vma places tmp vma below.
 	 */
 	if (start > vma->vm_start) {
-		/* vma的start位于start左边
-				start-----------end
+		/* 
+				 start-----------end
 			vma---------vma
 		 */
 		int error;
@@ -3051,6 +3051,8 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		 * Make sure that map_count on return from munmap() will
 		 * not exceed its limit; but let map_count go just above
 		 * its limit temporarily, to help free resources as expected.
+		 这里判断mm->map_count >= sysctl_max_map_count，因为马上分裂vma会增加
+		 vma个数，所有这里判断还能不能增加vma。
 		 */
 		if (end < vma->vm_end && mm->map_count >= sysctl_max_map_count)
 		/* 
@@ -3058,7 +3060,13 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		vma-------------------------vma
 	 */
 			return -ENOMEM;
-		/* 所以这是要unmap一个已存在的vma的中间一段内存的情况？所以先split */
+		/* 所以这是要unmap一个已存在的vma的中间一段内存的情况？所以先split?
+		
+		         start----------end
+		vma--------------------------------vma
+		
+		
+		 */
 		error = __split_vma(mm, vma, start, 0);
 		if (error)
 			return error;
@@ -3071,7 +3079,7 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	
 	if (last && end > last->vm_start) {
 		/* 如果end也位于一个vma里面
-		那好像更准确的情况是这样
+		那好像更准确的情况是这样?
 			start-----------------------------end
 		vma-----------vma        vma---------------------vma
 				vma							last
@@ -3081,6 +3089,7 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		if (error)
 			return error;
 	}
+	/* vma更可能会指向自己分裂后的后一半，除非是第一个vma */
 	vma = prev ? prev->vm_next : mm->mmap;
 
 	if (unlikely(uf)) {
@@ -3101,13 +3110,13 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	/*
 	 * unlock any mlock()ed ranges before detaching vmas
 	 */
-	if (mm->locked_vm) {
+	if (mm->locked_vm) {/* 处理【vma.start，end的页面范围】 */
 		struct vm_area_struct *tmp = vma;
 		while (tmp && tmp->vm_start < end) {
 			if (tmp->vm_flags & VM_LOCKED) {
 
 				mm->locked_vm -= vma_pages(tmp);
-				/* 释放全部vma的页面 */
+				/* 对范围内全部vma的页面进行unlock然后加入lru */
 				munlock_vma_pages_all(tmp);
 			}
 
@@ -3115,7 +3124,8 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 		}
 	}
 
-	/* Detach vmas from rbtree */
+	/* Detach vmas from rbtree。
+	从mm移除vma */
 	detach_vmas_to_be_unmapped(mm, vma, prev, end);
 
 	if (downgrade)

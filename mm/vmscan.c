@@ -1078,7 +1078,8 @@ int remove_mapping(struct address_space *mapping, struct page *page)
 
 /**
 2024年6月25日21:43:03
-//若取出的页为不可回收页，则将该页加入到节点的不可回收LRU链表表头
+预先get page之后，
+这里把page加入lru，然后put。
  * putback_lru_page - put previously isolated page onto appropriate LRU list
  * @page: page to be put back to appropriate lru list
  *

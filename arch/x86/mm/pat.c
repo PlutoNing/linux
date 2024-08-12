@@ -63,7 +63,7 @@ static int __init nopat(char *str)
 	return 0;
 }
 early_param("nopat", nopat);
-
+/* 是否启用了pat */
 bool pat_enabled(void)
 {
 	return pat_initialized;
@@ -421,7 +421,7 @@ pagerange_is_ram_callback(unsigned long initial_pfn, unsigned long total_nr_page
 
 	return state->ram && state->not_ram;
 }
-/*  */
+/* 判断范围内是不是ram？ */
 static int pat_pagerange_is_ram(resource_size_t start, resource_size_t end)
 {
 	int ret = 0;
@@ -630,7 +630,8 @@ int reserve_memtype(u64 start, u64 end, enum page_cache_mode req_type,
 	return err;
 }
 /* 
-在全局的红黑树移除这个地址段 */
+管理pfn方式管理的内存
+在全局的红黑树移除这个[start，end]地址段 */
 int free_memtype(u64 start, u64 end)
 {
 	int err = -EINVAL;
@@ -964,9 +965,14 @@ static int reserve_pfn_range(u64 paddr, unsigned long size, pgprot_t *vma_prot,
 }
 
 /*
-释放物理页面？
+释放物理页面？管理好像是通过全局的红黑树进行的。
+
 2024年7月27日22:42:43
-似乎物理页面等等的管理是通过一个全局的红黑树管理的？
+2024年08月12日10:50:51
+解除pfn类型的vma映射会调用此函数。
+
+@paddr：是物理地址
+@size：要处理的地址范围。
  * Internal interface to free a range of physical memory.
  * Frees non RAM regions only.
  */
@@ -1075,7 +1081,8 @@ void track_pfn_insert(struct vm_area_struct *vma, pgprot_t *prot, pfn_t pfn)
 }
 
 /*
-untrack pfn是什么含义呢。
+说明vma不是通过page管理的，而是直接通过pfn管理的。
+解除pfn类型的vma映射的时候，调用此函数，
  * untrack_pfn is called while unmapping a pfnmap for a region.
  * untrack can be called for a specific region indicated by pfn and size or
  * can be for the entire vma (in which case pfn, size are zero).
@@ -1086,23 +1093,22 @@ void untrack_pfn(struct vm_area_struct *vma, unsigned long pfn,
 	resource_size_t paddr;
 	unsigned long prot;
 
-	if (vma && !(vma->vm_flags & VM_PAT))
+	if (vma && !(vma->vm_flags & VM_PAT))/* PAT相关 */
 		return;
 
-	/* free the chunk starting from pfn or the whole chunk */
+	/* free the chunk starting from pfn or the whole chunk 
+	pfn的pgoff转换为 物理地址*/
 	paddr = (resource_size_t)pfn << PAGE_SHIFT;
-	if (!paddr && !size) {
-		/* paddr怎么可能还为空呢？
-		
-		2024年7月27日22:44:09好像没指定pfn和size，就处理vma的全部页面？ */
+	if (!paddr && !size) {/* 就是参数pfn=0，size=0 */
+		/* 就处理vma的全部页面？这里follow_phys进行什么准备，把vma的起始地址的物理地址存储到paddr */
 		if (follow_phys(vma, vma->vm_start, 0, &prot, &paddr)) {
 			WARN_ON_ONCE(1);
 			return;
 		}
-
+		/* size=0，默认全部，更新size大小 */
 		size = vma->vm_end - vma->vm_start;
 	}
-
+	/*  */
 	free_pfn_range(paddr, size);
 	if (vma)
 		vma->vm_flags &= ~VM_PAT;

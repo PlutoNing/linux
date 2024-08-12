@@ -1842,9 +1842,9 @@ static inline pte_t *get_locked_pte(struct mm_struct *mm, unsigned long addr,
 {
 	pte_t *ptep;
 	/* 
-	// Expands to
-(ptep = __get_locked_pte(mm, addr, ptl))
-这是什么锁？
+// Expands to
+	(ptep = __get_locked_pte(mm, addr, ptl))
+	这是什么锁？
  */
 	__cond_lock(*ptl, ptep = __get_locked_pte(mm, addr, ptl));
 	return ptep;
@@ -2382,6 +2382,7 @@ extern int __vm_enough_memory(struct mm_struct *mm, long pages, int cap_sys_admi
 extern int __vma_adjust(struct vm_area_struct *vma, unsigned long start,
 	unsigned long end, pgoff_t pgoff, struct vm_area_struct *insert,
 	struct vm_area_struct *expand);
+/* 分裂vma */
 static inline int vma_adjust(struct vm_area_struct *vma, unsigned long start,
 	unsigned long end, pgoff_t pgoff, struct vm_area_struct *insert)
 {

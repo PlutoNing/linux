@@ -175,6 +175,9 @@ static inline bool test_and_set_bit_lock(long nr, volatile unsigned long *addr)
 }
 
 /**
+2024年08月12日09:40:19
+test&clear
+清除某一位，返回旧值
  * test_and_clear_bit - Clear a bit and return its old value
  * @nr: Bit to clear
  * @addr: Address to count from

@@ -1934,7 +1934,8 @@ static int page_not_mapped(struct page *page)
 /**
 2024年7月18日23:56:28
 munlock页面
-需要ramp walk来处理映射此页面的全部vma，逐个解除映射
+需要ramp walk来处理映射此页面的全部vma，逐个解除映射。
+一直处理到page没有映射了返回。
  * try_to_munlock - try to munlock a page
  * @page: the page to be munlocked
  *

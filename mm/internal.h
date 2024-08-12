@@ -325,7 +325,7 @@ extern long populate_vma_page_range(struct vm_area_struct *vma,
 extern void munlock_vma_pages_range(struct vm_area_struct *vma,
 			unsigned long start, unsigned long end);
 /* 2024年7月18日23:33:19
-把vma页面解锁，还回lru */
+把vma的全部页面解锁unlock ，还回lru 。 */
 static inline void munlock_vma_pages_all(struct vm_area_struct *vma)
 {
 	munlock_vma_pages_range(vma, vma->vm_start, vma->vm_end);
