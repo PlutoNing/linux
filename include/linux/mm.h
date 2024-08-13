@@ -115,6 +115,7 @@ extern int mmap_rnd_compat_bits __read_mostly;
 #endif
 
 #ifndef page_to_virt
+/* pfn+0xffff888000000000 */
 #define page_to_virt(x)	__va(PFN_PHYS(page_to_pfn(x)))
 #endif
 
@@ -1026,6 +1027,8 @@ static inline enum zone_type page_zonenum(const struct page *page)
 }
 
 #ifdef CONFIG_ZONE_DEVICE
+/* 2024年8月13日21:57:11
+zone_device_page是什么 */
 static inline bool is_zone_device_page(const struct page *page)
 {
 	return page_zonenum(page) == ZONE_DEVICE;
@@ -1065,7 +1068,7 @@ static inline bool put_devmap_managed_page(struct page *page)
 	return false;
 }
 #endif /* CONFIG_DEV_PAGEMAP_OPS */
-
+/*  */
 static inline bool is_device_private_page(const struct page *page)
 {
 	return IS_ENABLED(CONFIG_DEV_PAGEMAP_OPS) &&
@@ -1455,12 +1458,14 @@ struct address_space *page_file_mapping(struct page *page)
 extern pgoff_t __page_file_index(struct page *page);
 
 /*
+2024年8月13日21:52:52
+返回page在mapping的idx
  * Return the pagecache index of the passed page.  Regular pagecache pages
  * use ->index whereas swapcache pages use swp_offset(->private)
  */
 static inline pgoff_t page_index(struct page *page)
 {
-	if (unlikely(PageSwapCache(page)))
+	if (unlikely(PageSwapCache(page)))/* 是交换页，并且分配了交换空间 */
 		return __page_file_index(page);
 	return page->index;
 }

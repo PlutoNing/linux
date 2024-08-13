@@ -2142,7 +2142,8 @@ bool compaction_zonelist_suitable(struct alloc_context *ac, int order,
 	return false;
 }
 /* kcompact 的work函数的主要函数
-规整指定的zone */
+规整指定的zone
+把cc指定的范围的页面进行isolate_migratepages，然后migrate_pages */
 static enum compact_result
 compact_zone(struct compact_control *cc, struct capture_control *capc)
 {
@@ -2362,7 +2363,9 @@ out:
 
 	return ret;
 }
-
+/* 2024年8月13日23:57:39
+设定好cc的order进行compact。
+ */
 static enum compact_result compact_zone_order(struct zone *zone, int order,
 		gfp_t gfp_mask, enum compact_priority prio,
 		unsigned int alloc_flags, int classzone_idx,
@@ -2383,6 +2386,7 @@ static enum compact_result compact_zone_order(struct zone *zone, int order,
 		.ignore_skip_hint = (prio == MIN_COMPACT_PRIORITY),
 		.ignore_block_suitable = (prio == MIN_COMPACT_PRIORITY)
 	};
+
 	struct capture_control capc = {
 		.cc = &cc,
 		.page = NULL,
@@ -2405,6 +2409,7 @@ static enum compact_result compact_zone_order(struct zone *zone, int order,
 int sysctl_extfrag_threshold = 500;
 
 /**
+直接内存规整。
  * try_to_compact_pages - Direct compact to satisfy a high-order allocation
  * @gfp_mask: The GFP mask of the current allocation
  * @order: The order of the current allocation
@@ -2432,8 +2437,10 @@ enum compact_result try_to_compact_pages(gfp_t gfp_mask, unsigned int order,
 
 	trace_mm_compaction_try_to_compact_pages(order, gfp_mask, prio);
 
-	/* Compact each zone in the list */
-	for_each_zone_zonelist_nodemask(zone, z, ac->zonelist, ac->high_zoneidx,
+	/* Compact each zone in the list
+	 */
+	for_each_zone_zonelist_nodemask(zone, z, ac->zonelist, 
+	ac->high_zoneidx,
 								ac->nodemask) {
 		enum compact_result status;
 

@@ -68,7 +68,7 @@ static struct alloc_pgt_data pgt_data;
 
 /* The top level page table entry pointer. */
 static unsigned long top_level_pgt;
-
+/* 52个1 */
 phys_addr_t physical_mask = (1ULL << __PHYSICAL_MASK_SHIFT) - 1;
 
 /*

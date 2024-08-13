@@ -35,7 +35,7 @@ extern void __page_ref_freeze(struct page *page, int v, int ret);
 extern void __page_ref_unfreeze(struct page *page, int v);
 
 #else
-
+/* 2024年8月13日22:01:25 */
 #define page_ref_tracepoint_active(t) false
 
 static inline void __page_ref_set(struct page *page, int v)
@@ -91,12 +91,13 @@ static inline void init_page_count(struct page *page)
 {
 	set_page_count(page, 1);
 }
-/* 如果page是复合页。nr是页面数量？
+/*
+
  */
 static inline void page_ref_add(struct page *page, int nr)
 {
 	atomic_add(nr, &page->_refcount);
-	if (page_ref_tracepoint_active(__tracepoint_page_ref_mod))
+	if (page_ref_tracepoint_active(__tracepoint_page_ref_mod))/* 不可能的if */
 		__page_ref_mod(page, nr);
 }
 
@@ -178,7 +179,9 @@ static inline int page_ref_freeze(struct page *page, int count)
 	
 	return ret;
 }
-
+/* 2024年8月13日22:04:29
+todo
+ */
 static inline void page_ref_unfreeze(struct page *page, int count)
 {
 	VM_BUG_ON_PAGE(page_count(page) != 0, page);

@@ -578,7 +578,9 @@ static inline pgprotval_t check_pgprot(pgprot_t pgprot)
 
 	return massaged_val;
 }
-/* pfn_pte 函数根据给定的物理页帧号左移12位将其转化为物理地址后，
+/* 
+返回pte条目。
+pfn_pte 函数根据给定的物理页帧号左移12位将其转化为物理地址后，
 物理地址和页面属性参数 pgprot 设置一个 PTE（页表项条目）。
 该函数的主要目的是方便创建和初始化 PTE 数据结构，通常用于set_pte宏。
 通过调用 pfn_pte 函数，可以将页面号和页面保护属性转换为对应的 PTE 值，以便在页表中进行映射和管理。
@@ -836,6 +838,7 @@ static inline unsigned long pmd_index(unsigned long address)
 }
 
 /*
+2024年8月13日23:28:44
  * Conversion functions: convert a page and protection to a page entry,
  * and a page entry and page directory to the page they refer to.
  *
@@ -1399,7 +1402,7 @@ static inline pte_t pte_swp_mksoft_dirty(pte_t pte)
 {
 	return pte_set_flags(pte, _PAGE_SWP_SOFT_DIRTY);
 }
-
+/*  */
 static inline int pte_swp_soft_dirty(pte_t pte)
 {
 	return pte_flags(pte) & _PAGE_SWP_SOFT_DIRTY;

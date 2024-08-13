@@ -466,7 +466,7 @@ enum zone_type {
 #endif
 	ZONE_MOVABLE,
 #ifdef CONFIG_ZONE_DEVICE
-	ZONE_DEVICE,
+	ZONE_DEVICE, /* zone_device是什么type？ */
 #endif
 	__MAX_NR_ZONES
 
@@ -1168,7 +1168,8 @@ extern struct zone *next_zone(struct zone *zone);
 		if (!populated_zone(zone))		\
 			; /* do nothing */		\
 		else
-
+/* 2024年8月14日00:21:54
+从zoneref获取zone */
 static inline struct zone *zonelist_zone(struct zoneref *zoneref)
 {
 	return zoneref->zone;
@@ -1206,7 +1207,7 @@ static __always_inline struct zoneref *next_zones_zonelist(struct zoneref *z,
 					enum zone_type highest_zoneidx,
 					nodemask_t *nodes)
 {
-	if (likely(!nodes && zonelist_zone_idx(z) <= highest_zoneidx))
+	if (likely(!nodes && zonelist_zone_idx(z) <= highest_zoneidx))/* 没指定nodemask的情况 */
 		return z;
 	return __next_zones_zonelist(z, highest_zoneidx, nodes);
 }
@@ -1237,6 +1238,7 @@ static inline struct zoneref *first_zones_zonelist(struct zonelist *zonelist,
 }
 
 /**
+2024年8月14日00:21:27
  * for_each_zone_zonelist_nodemask - helper macro to iterate over valid zones in a zonelist at or below a given zone index and within a nodemask
  * @zone - The current zone in the iterator
  * @z - The current pointer within zonelist->zones being iterated

@@ -38,9 +38,11 @@
  * but it's what Xen requires.
  */
 #define __PAGE_OFFSET_BASE_L5	_AC(0xff11000000000000, UL)
+/* 0xffff888000000000 */
 #define __PAGE_OFFSET_BASE_L4	_AC(0xffff888000000000, UL)
 
 #ifdef CONFIG_DYNAMIC_MEMORY_LAYOUT
+/* 0xffff888000000000 */
 #define __PAGE_OFFSET           page_offset_base
 #else
 #define __PAGE_OFFSET           __PAGE_OFFSET_BASE_L4
@@ -49,7 +51,7 @@
 #define __START_KERNEL_map	_AC(0xffffffff80000000, UL)
 
 /* See Documentation/x86/x86_64/mm.rst for a description of the memory map. */
-
+/* 物理地址shift 52 */
 #define __PHYSICAL_MASK_SHIFT	52
 
 #ifdef CONFIG_X86_5LEVEL

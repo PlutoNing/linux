@@ -1552,7 +1552,8 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	mmu_notifier_invalidate_range_start(&range);
 	
 
-	while (page_vma_mapped_walk(&pvmw)) {/* 如果pvmw里面的addr映射的是page ，就继续循环*/
+	while (page_vma_mapped_walk(&pvmw)) {/* 如果pvmw里面的addr映射的是page ，只要还有pte映射到page，
+	就继续循环*/
 
 #ifdef CONFIG_ARCH_ENABLE_THP_MIGRATION
 		/* PMD-mapped THP migration entry */
@@ -1569,10 +1570,11 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		 * If it's recently referenced (perhaps page_referenced
 		 * skipped over this mm) then we should reactivate it.
 		 */
-		if (!(flags & TTU_IGNORE_MLOCK)) {/* 页面可能被锁了 */
-			if (vma->vm_flags & VM_LOCKED) {/* vma被锁了 */
+		 
+		if (!(flags & TTU_IGNORE_MLOCK)) {/* 页面可能被锁的时候，不忽略锁的话 */
+			if (vma->vm_flags & VM_LOCKED) {/* vma被锁的话，就直接退出 */
 				/* PTE-mapped THP are never mlocked */
-				if (!PageTransCompound(page)) {
+				if (!PageTransCompound(page)) {/* 不是复合页的话 */
 					/*
 					 * Holding pte lock, we do *not* need
 					 * mmap_sem here

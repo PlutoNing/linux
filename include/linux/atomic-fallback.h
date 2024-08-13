@@ -85,6 +85,7 @@ atomic_read_acquire(const atomic_t *v)
 #endif
 
 #ifndef atomic_set_release
+/* release语义 */
 static inline void
 atomic_set_release(atomic_t *v, int i)
 {

@@ -8,7 +8,9 @@
 
 /* PAGE_SHIFT determines the page size */
 #define PAGE_SHIFT		12
+/* 1<<12, 4K，4096 */
 #define PAGE_SIZE		(_AC(1,UL) << PAGE_SHIFT)
+/*  */
 #define PAGE_MASK		(~(PAGE_SIZE-1))
 
 #define PMD_PAGE_SIZE		(_AC(1, UL) << PMD_SHIFT)
@@ -22,6 +24,8 @@
 /* Cast *PAGE_MASK to a signed type so that it is sign-extended if
    virtual addresses are 32-bits but physical addresses are larger
    (ie, 32-bit PAE). */
+
+/*  */
 #define PHYSICAL_PAGE_MASK	(((signed long)PAGE_MASK) & __PHYSICAL_MASK)
 #define PHYSICAL_PMD_PAGE_MASK	(((signed long)PMD_PAGE_MASK) & __PHYSICAL_MASK)
 #define PHYSICAL_PUD_PAGE_MASK	(((signed long)PUD_PAGE_MASK) & __PHYSICAL_MASK)
@@ -33,7 +37,7 @@
 #define HUGETLB_PAGE_ORDER	(HPAGE_SHIFT - PAGE_SHIFT)
 
 #define HUGE_MAX_HSTATE 2
-
+/* 0xffff888000000000 */
 #define PAGE_OFFSET		((unsigned long)__PAGE_OFFSET)
 
 #define VM_DATA_DEFAULT_FLAGS \
@@ -57,7 +61,7 @@
 
 #ifdef CONFIG_DYNAMIC_PHYSICAL_MASK
 extern phys_addr_t physical_mask;
-/* 物理地址的掩码 */
+/* 物理地址的掩码，52个1 */
 #define __PHYSICAL_MASK		physical_mask
 #else
 #define __PHYSICAL_MASK		((phys_addr_t)((1ULL << __PHYSICAL_MASK_SHIFT) - 1))

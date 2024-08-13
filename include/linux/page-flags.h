@@ -141,7 +141,7 @@ enum pageflags {
 	/* Filesystems */
 	PG_checked = PG_owner_priv_1,
 
-	/* SwapBacked */
+	/* SwapBacked，是不是分配了交换空间 */
 	PG_swapcache = PG_owner_priv_1,	/* Swap page: swp_entry_t in private */
 
 	/* Two page bits are conscripted by FS-Cache to maintain local caching
@@ -404,7 +404,7 @@ PAGEFLAG_FALSE(HighMem)
 /* 2024年7月2日22:59:24
 2024年7月14日14:47:57
 则是在page为匿名页的情况向判断该页是否分配了swap 空间。往往在内存回收时若匿名页没有分配。
-此页是已经加入到swapcache
+此页是已经加入到swapcache。
  */
 static __always_inline int PageSwapCache(struct page *page)
 {
@@ -482,7 +482,7 @@ PAGEFLAG(Idle, idle, PF_ANY)
 #define PAGE_MAPPING_KSM	(PAGE_MAPPING_ANON | PAGE_MAPPING_MOVABLE)
 /* mapping的类型？ */
 #define PAGE_MAPPING_FLAGS	(PAGE_MAPPING_ANON | PAGE_MAPPING_MOVABLE)
-
+/* ？todo */
 static __always_inline int PageMappingFlags(struct page *page)
 {
 	return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) != 0;
@@ -496,7 +496,9 @@ static __always_inline int PageAnon(struct page *page)
 	return ((unsigned long)page->mapping & PAGE_MAPPING_ANON) != 0;
 }
 /* 
-  需要page的mapping是movable并且不能是anon才能__PageMovable
+  1：需要page的mapping是movable并且不能是anon才能__PageMovable，返回true
+  否则返回false
+2：没有mapping返回false？
  */
 static __always_inline int __PageMovable(struct page *page)
 {
@@ -900,6 +902,8 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
 	(1UL << PG_private | 1UL << PG_private_2)
 /**
 2024年7月14日14:50:21
+是否有priv，有的话就是可能别的什么机制设置的，释放页的时候需要
+考虑到。
  * page_has_private - Determine if page has private stuff
  * @page: The page to be checked
  *

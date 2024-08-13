@@ -290,7 +290,7 @@ static inline void copy_user_highpage(struct page *to, struct page *from,
 #endif
 
 #ifndef __HAVE_ARCH_COPY_HIGHPAGE
-
+/* 拷贝页面 */
 static inline void copy_highpage(struct page *to, struct page *from)
 {
 	char *vfrom, *vto;
