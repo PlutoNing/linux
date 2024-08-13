@@ -40,8 +40,9 @@ extern unsigned int pageblock_order;
 #else /* CONFIG_HUGETLB_PAGE_SIZE_VARIABLE */
 
 /* Huge pages are a constant size
-9
-估计和pageblock大小相关 */
+pageblock的order 是 9
+估计和pageblock大小相关，
+ */
 #define pageblock_order		HUGETLB_PAGE_ORDER
 
 #endif /* CONFIG_HUGETLB_PAGE_SIZE_VARIABLE */
@@ -70,22 +71,32 @@ void set_pfnblock_flags_mask(struct page *page,
 				unsigned long mask);
 
 /* Declarations for getting and setting flags. See mm/page_alloc.c */
+/* 
+(1 << (end_bitidx - start_bitidx + 1)) - 1 ： end-start+1个1.
+在pageblock位图的感兴趣的flagdeend_bitidx
+ */
 #define get_pageblock_flags_group(page, start_bitidx, end_bitidx) \
 	get_pfnblock_flags_mask(page, page_to_pfn(page),		\
 			end_bitidx,					\
 			(1 << (end_bitidx - start_bitidx + 1)) - 1)
+/*pageblock位图中设置page的属性，比如可以设置为migrat_skip */
 #define set_pageblock_flags_group(page, flags, start_bitidx, end_bitidx) \
 	set_pfnblock_flags_mask(page, flags, page_to_pfn(page),		\
 			end_bitidx,					\
 			(1 << (end_bitidx - start_bitidx + 1)) - 1)
 
 #ifdef CONFIG_COMPACTION
+/* 2024年08月13日15:39:33
+获取page在全局pageblock位图的PB_migrate_skip（第一个）
+测试是不是等于PB_migrate_skip（第二个）
+ */
 #define get_pageblock_skip(page) \
 			get_pageblock_flags_group(page, PB_migrate_skip,     \
 							PB_migrate_skip)
 #define clear_pageblock_skip(page) \
 			set_pageblock_flags_group(page, 0, PB_migrate_skip,  \
 							PB_migrate_skip)
+/* 把page设置为PB_migrate_skip */
 #define set_pageblock_skip(page) \
 			set_pageblock_flags_group(page, 1, PB_migrate_skip,  \
 							PB_migrate_skip)

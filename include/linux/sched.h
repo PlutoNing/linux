@@ -1529,6 +1529,7 @@ static inline int is_global_init(struct task_struct *tsk)
 extern struct pid *cad_pid;
 
 /*
+2024年08月13日19:18:21
  * Per process flags
  */
 #define PF_IDLE			0x00000002	/* I am an IDLE thread */

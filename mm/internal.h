@@ -157,7 +157,11 @@ __find_buddy_pfn(unsigned long page_pfn, unsigned int order)
 
 extern struct page *__pageblock_pfn_to_page(unsigned long start_pfn,
 				unsigned long end_pfn, struct zone *zone);
-
+/* 2024年08月13日16:15:56
+@start_pfn，@end_pfn：好像分别是pabeblock的起始和结束地址
+检查范围内是不是位于zone
+返回起始pfn对应的page
+ */
 static inline struct page *pageblock_pfn_to_page(unsigned long start_pfn,
 				unsigned long end_pfn, struct zone *zone)
 {
@@ -196,7 +200,8 @@ extern int user_min_free_kbytes;
  */
 struct compact_control {
 	struct list_head freepages;	/* List of free pages to migrate to，扫描pageblock时空闲页面链表 */
-	struct list_head migratepages;	/* List of pages being migrated 迁移页面链表*/
+	struct list_head migratepages;	/* List of pages being migrated 迁移页面链表
+	装载从lru上面isolate的page们*/
 	unsigned int nr_freepages;	/* Number of isolated free pages，freepages链表页面数量 */
 	unsigned int nr_migratepages;	/* Number of pages to migrate，    // migratepages链表中页面数 */
 	unsigned long free_pfn;		/*空闲页扫描起始页框 isolate_freepages search base */
@@ -219,7 +224,7 @@ struct compact_control {
 	bool direct_compaction;		/* False from kcompactd or /proc/...，是否是直接内存碎片整理，如果是kcompactd任务或者通过/proc触发的内存碎片
     // 整理则为否 */
 	bool whole_zone;		/* Whole zone should/has been scanned，是否是全zone扫描 */
-	bool contended;			/* Signal lock or sched contention */
+	bool contended;			/* Signal lock or sched contention，如果这里不为空就要终止规整？ */
 	bool rescan;			/* Rescanning the same pageblock */
 };
 

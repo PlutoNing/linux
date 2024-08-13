@@ -19,6 +19,7 @@ struct vm_area_struct;
 #define ___GFP_DMA		0x01u
 #define ___GFP_HIGHMEM		0x02u
 #define ___GFP_DMA32		0x04u
+/*  */
 #define ___GFP_MOVABLE		0x08u
 #define ___GFP_RECLAIMABLE	0x10u
 #define ___GFP_HIGH		0x20u
@@ -311,10 +312,12 @@ struct vm_area_struct;
 			 __GFP_NOMEMALLOC | __GFP_NOWARN) & ~__GFP_RECLAIM)
 #define GFP_TRANSHUGE	(GFP_TRANSHUGE_LIGHT | __GFP_DIRECT_RECLAIM)
 
-/* Convert GFP flags to their corresponding migrate type */
+/* Convert GFP flags to their corresponding migrate type
+
+ */
 #define GFP_MOVABLE_MASK (__GFP_RECLAIMABLE|__GFP_MOVABLE)
 #define GFP_MOVABLE_SHIFT 3
-
+/* 2024年08月13日14:16:39 */
 static inline int gfpflags_to_migratetype(const gfp_t gfp_flags)
 {
 	VM_WARN_ON((gfp_flags & GFP_MOVABLE_MASK) == GFP_MOVABLE_MASK);

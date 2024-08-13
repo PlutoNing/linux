@@ -34,21 +34,25 @@ enum compact_result {
 
 	/* For more detailed tracepoint output - internal to compaction */
 	COMPACT_NO_SUITABLE_PAGE,
-	/* compaction should continue to another pageblock */
+	/* compaction should continue to another pageblock
+	继续规整 */
 	COMPACT_CONTINUE,
 
 	/*
 	 * The full zone was compacted scanned but wasn't successfull to compact
 	 * suitable pages.
+	 全zone扫描完成，但是没有进行实质规整？
 	 */
 	COMPACT_COMPLETE,
 	/*
 	 * direct compaction has scanned part of the zone but wasn't successfull
 	 * to compact suitable pages.
+	 部分完成了扫描，也是没有规整。
 	 */
 	COMPACT_PARTIAL_SKIPPED,
 
-	/* compaction terminated prematurely due to lock contentions */
+	/* compaction terminated prematurely due to lock contentions
+	规整被终止了 */
 	COMPACT_CONTENDED,
 
 	/*

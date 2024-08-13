@@ -852,6 +852,7 @@ int __ref online_pages(unsigned long pfn, unsigned long nr_pages, int online_typ
 	init_per_zone_wmark_min();
 
 	kswapd_run(nid);
+	/* 初始化node的规整线程 */
 	kcompactd_run(nid);
 
 	vm_total_pages = nr_free_pagecache_pages();

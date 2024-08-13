@@ -512,10 +512,11 @@ static __always_inline unsigned long __get_pfnblock_flags_mask(struct page *page
 	bitidx = pfn_to_bitidx(page, pfn);
 	/* 位图long的idx */
 	word_bitidx = bitidx / BITS_PER_LONG;
-	/* 位图long内偏移 */
+	/* pfn页面在位图中所属long内偏移 */
 	bitidx &= (BITS_PER_LONG-1);
 	/* 对应的位图里面的long */
 	word = bitmap[word_bitidx];
+	/* end_bitidx的值可能是PB_migrate_skip（=3） */
 	bitidx += end_bitidx;
 
 	/* 
@@ -528,7 +529,7 @@ static __always_inline unsigned long __get_pfnblock_flags_mask(struct page *page
 	 */
 	return (word >> (BITS_PER_LONG - bitidx - 1)) & mask;
 }
-/* 获取pfn对应的long内bitidx后面连续几位，和mask一样不一样 */
+/* 在全局的pfn pageblock位图获取pfn对应的long内bitidx后面连续几位，和mask一样不一样 */
 unsigned long get_pfnblock_flags_mask(struct page *page, unsigned long pfn,
 					unsigned long end_bitidx,
 					unsigned long mask)
@@ -1580,6 +1581,8 @@ void __init memblock_free_pages(struct page *page, unsigned long pfn,
 }
 
 /*
+检查[start_pfn, end_pfn)是不是合法的，是不是在zone里面。
+返回起始pfn的page。
  * Check that the whole (or subset of) a pageblock given by the interval of
  * [start_pfn, end_pfn) is valid and within the same zone, before scanning it
  * with the migration of free compaction scanner. The scanners then need to
@@ -2435,6 +2438,8 @@ static void change_pageblock_range(struct page *pageblock_page,
 }
 
 /*
+2024年08月13日14:47:10
+分配过程中准备fallback到其他mt。尝试从相同的pageblock里面分配页面。避免污染多个pageblock。
  * When we are falling back to another migratetype during allocation, try to
  * steal extra free pages from the same pageblocks to satisfy further
  * allocations, instead of polluting multiple pageblocks.
@@ -2454,6 +2459,7 @@ static bool can_steal_fallback(unsigned int order, int start_mt)
 	 * we can actually steal whole pageblock if this condition met,
 	 * but, below check doesn't guarantee it and that is just heuristic
 	 * so could be changed anytime.
+	 大于9的order直接可以steal？可以直接steal pageblock。
 	 */
 	if (order >= pageblock_order)
 		return true;
@@ -2587,7 +2593,7 @@ single_page:
 
 /*
 2024年6月26日23:44:41
-看下该zone的是否有其他合适的迁移类型，如果有的话，返回给fallback_mt。
+看下该zone的是否有其他合适的迁移类型，如果有的话，返回fallback_mt。
  * Check whether there is a suitable fallback freepage with requested order.
  * If only_stealable is true, this function returns fallback_mt only if
  * we can steal other freepages all together. This would help to reduce
@@ -2603,14 +2609,16 @@ int find_suitable_fallback(struct free_area *area, unsigned int order,
 		return -1;
 
 	*can_steal = false;
-	for (i = 0;; i++) {
+	for (i = 0;; i++) {/* 遍历每一个迁移类型 */
+		/* 取得一个migratetype可以fallback的迁移类型fallback_mt */
 		fallback_mt = fallbacks[migratetype][i];
 		if (fallback_mt == MIGRATE_TYPES)
 			break;
-
+		
+		/* 很不幸，这个fallback mt也是空的 */
 		if (free_area_empty(area, fallback_mt))
 			continue;
-
+		/* 检查这个order是不是可以steal */
 		if (can_steal_fallback(order, migratetype))
 			*can_steal = true;
 
@@ -7005,7 +7013,7 @@ static void pgdat_init_split_queue(struct pglist_data *pgdat) {}
 
 #ifdef CONFIG_COMPACTION
 /* 2024年6月26日21:07:31
-
+初始化node的kcompactd的wq
  */
 static void pgdat_init_kcompactd(struct pglist_data *pgdat)
 {
@@ -7015,13 +7023,14 @@ static void pgdat_init_kcompactd(struct pglist_data *pgdat)
 static void pgdat_init_kcompactd(struct pglist_data *pgdat) {}
 #endif
 /* 2024年6月26日21:06:42
-
+初始化node节点数据结构
  */
 static void __meminit pgdat_init_internals(struct pglist_data *pgdat)
 {
 	pgdat_resize_init(pgdat);
 
 	pgdat_init_split_queue(pgdat);
+	/* kcompactd的wq相关 */
 	pgdat_init_kcompactd(pgdat);
 
 	init_waitqueue_head(&pgdat->kswapd_wait);

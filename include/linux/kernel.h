@@ -55,6 +55,7 @@
 )
 
 /*
+返回y-1
  * This looks more complex than it should be. But we need to
  * get the type for the ~ right in round_down (it needs to be
  * as wide as the result!), and we want to evaluate the macro
@@ -77,6 +78,8 @@
  */
 #define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
 /**
+2024年08月13日15:18:08
+把x对齐到 ~（y-1）
  * round_down - round down to next specified power of 2
  * @x: the value to round
  * @y: multiple to round down to (must be a power of 2)

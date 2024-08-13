@@ -268,7 +268,7 @@ static __always_inline int Page##uname(struct page *page)		\
 #define SETPAGEFLAG(uname, lname, policy)				\
 static __always_inline void SetPage##uname(struct page *page)		\
 	{ set_bit(PG_##lname, &policy(page, 1)->flags); }
-
+/*  */
 #define CLEARPAGEFLAG(uname, lname, policy)				\
 static __always_inline void ClearPage##uname(struct page *page)		\
 	{ clear_bit(PG_##lname, &policy(page, 1)->flags); }
@@ -294,7 +294,7 @@ static __always_inline int TestClearPage##uname(struct page *page)	\
 	TESTPAGEFLAG(uname, lname, policy)				\
 	SETPAGEFLAG(uname, lname, policy)				\
 	CLEARPAGEFLAG(uname, lname, policy)
-
+/* pageflag相关的test，set，clear的ops */
 #define __PAGEFLAG(uname, lname, policy)				\
 	TESTPAGEFLAG(uname, lname, policy)				\
 	__SETPAGEFLAG(uname, lname, policy)				\
@@ -480,7 +480,7 @@ PAGEFLAG(Idle, idle, PF_ANY)
 #define PAGE_MAPPING_ANON	0x1
 #define PAGE_MAPPING_MOVABLE	0x2
 #define PAGE_MAPPING_KSM	(PAGE_MAPPING_ANON | PAGE_MAPPING_MOVABLE)
-/*  */
+/* mapping的类型？ */
 #define PAGE_MAPPING_FLAGS	(PAGE_MAPPING_ANON | PAGE_MAPPING_MOVABLE)
 
 static __always_inline int PageMappingFlags(struct page *page)
@@ -495,7 +495,9 @@ static __always_inline int PageAnon(struct page *page)
 	page = compound_head(page);
 	return ((unsigned long)page->mapping & PAGE_MAPPING_ANON) != 0;
 }
-
+/* 
+  需要page的mapping是movable并且不能是anon才能__PageMovable
+ */
 static __always_inline int __PageMovable(struct page *page)
 {
 	return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) ==

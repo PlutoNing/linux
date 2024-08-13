@@ -56,7 +56,7 @@ struct kthread {
 	struct cgroup_subsys_state *blkcg_css;
 #endif
 };
-
+/* 2024年08月13日11:55:33 */
 enum KTHREAD_BITS {
 	KTHREAD_IS_PER_CPU = 0,
 	KTHREAD_SHOULD_STOP,
@@ -95,6 +95,8 @@ void free_kthread_struct(struct task_struct *k)
 }
 
 /**
+2024年08月13日11:55:14
+
  * kthread_should_stop - should this kthread return now?
  *
  * When someone calls kthread_stop() on your kthread, it will be woken

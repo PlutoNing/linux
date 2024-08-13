@@ -78,7 +78,7 @@ extern const char * const migratetype_names[MIGRATE_TYPES];
 #  define is_migrate_cma(migratetype) false
 #  define is_migrate_cma_page(_page) false
 #endif
-
+/*  */
 static inline bool is_migrate_movable(int mt)
 {
 	return is_migrate_cma(mt) || mt == MIGRATE_MOVABLE;
@@ -93,8 +93,9 @@ extern int page_group_by_mobility_disabled;
 #define NR_MIGRATETYPE_BITS (PB_migrate_end - PB_migrate + 1)
 /* 1<<3  -  1 = 8-1=7 */
 #define MIGRATETYPE_MASK ((1UL << NR_MIGRATETYPE_BITS) - 1)
-/* get_pfnblock_flags_mask(page, pfn,2, 7) 
-获取pfn对应的long内bitidx后面连续2,3位，和mask=7一样不一样？*/
+/* get_pfnblock_flags_mask(page, pfn,2, 0x111)
+获取迁移类型 
+*/
 #define get_pageblock_migratetype(page)					\
 	get_pfnblock_flags_mask(page, page_to_pfn(page),		\
 			PB_migrate_end, MIGRATETYPE_MASK)
@@ -162,7 +163,7 @@ static inline void del_page_from_free_area(struct page *page,
 	set_page_private(page, 0);
 	area->nr_free--;
 }
-
+/*  */
 static inline bool free_area_empty(struct free_area *area, int migratetype)
 {
 	return list_empty(&area->free_list[migratetype]);
@@ -344,7 +345,9 @@ struct lruvec {
 
 /* Isolate unmapped file */
 #define ISOLATE_UNMAPPED	((__force isolate_mode_t)0x2)
-/* Isolate for asynchronous migration */
+/* 
+2024年08月13日18:45:48
+Isolate for asynchronous migration */
 #define ISOLATE_ASYNC_MIGRATE	((__force isolate_mode_t)0x4)
 /* Isolate unevictable pages */
 #define ISOLATE_UNEVICTABLE	((__force isolate_mode_t)0x8)
@@ -866,10 +869,12 @@ typedef struct pglist_data {
 	int kswapd_failures;		/* Number of 'reclaimed == 0' runs */
 
 #ifdef CONFIG_COMPACTION
+	/*  */
 	int kcompactd_max_order;
 	enum zone_type kcompactd_classzone_idx;
-	/* zone的内存压缩进程 */
+	/* zone的内存规整进程等待在这里 */
 	wait_queue_head_t kcompactd_wait;
+	/* 指向kcompactd内核线程  */
 	struct task_struct *kcompactd;
 #endif
 	/*

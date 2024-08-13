@@ -326,6 +326,7 @@ do {										\
 			    freezable_schedule())
 
 /**
+在wq上等待事件condition发生
  * wait_event_freezable - sleep (or freeze) until a condition gets true
  * @wq_head: the waitqueue to wait on
  * @condition: a C expression for the event to wait for

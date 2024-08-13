@@ -44,9 +44,13 @@ static inline void count_compact_events(enum vm_event_item item, long delta)
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/compaction.h>
-
+/* 把pfn round_down 512 */
 #define block_start_pfn(pfn, order)	round_down(pfn, 1UL << (order))
 #define block_end_pfn(pfn, order)	ALIGN((pfn) + 1, 1UL << (order))
+/* 2024年08月13日15:17:45
+获取pfn在所属pageblock的起始地址
+
+ */
 #define pageblock_start_pfn(pfn)	block_start_pfn(pfn, pageblock_order)
 #define pageblock_end_pfn(pfn)		block_end_pfn(pfn, pageblock_order)
 
@@ -92,7 +96,8 @@ static void split_map_pages(struct list_head *list)
 }
 
 #ifdef CONFIG_COMPACTION
-
+/* compact判断是否movable， 不仅flag要是movale，
+mapping也要有isolate的回调。 */
 int PageMovable(struct page *page)
 {
 	struct address_space *mapping;
@@ -153,7 +158,9 @@ void defer_compaction(struct zone *zone, int order)
 	trace_mm_compaction_defer_compaction(zone, order);
 }
 
-/* Returns true if compaction should be skipped this time */
+/* 
+判断此次内存规整是否可以跳过
+Returns true if compaction should be skipped this time */
 bool compaction_deferred(struct zone *zone, int order)
 {
 	unsigned long defer_limit = 1UL << zone->compact_defer_shift;
@@ -191,7 +198,9 @@ void compaction_defer_reset(struct zone *zone, int order,
 	trace_mm_compaction_defer_reset(zone, order);
 }
 
-/* Returns true if restarting compaction after many failures */
+/* 
+看看这个zone&order是不是失败很多次了？
+Returns true if restarting compaction after many failures */
 bool compaction_restarting(struct zone *zone, int order)
 {
 	if (order < zone->compact_order_failed)
@@ -201,7 +210,10 @@ bool compaction_restarting(struct zone *zone, int order)
 		zone->compact_considered >= 1UL << zone->compact_defer_shift;
 }
 
-/* Returns true if the pageblock should be scanned for pages to isolate. */
+/* 
+2024年08月13日16:24:30
+看看页面是不是migrate_skip之外的类型。
+Returns true if the pageblock should be scanned for pages to isolate. */
 static inline bool isolation_suitable(struct compact_control *cc,
 					struct page *page)
 {
@@ -210,7 +222,7 @@ static inline bool isolation_suitable(struct compact_control *cc,
 
 	return !get_pageblock_skip(page);
 }
-
+/* todo */
 static void reset_cached_positions(struct zone *zone)
 {
 	zone->compact_cached_migrate_pfn[0] = zone->zone_start_pfn;
@@ -220,6 +232,10 @@ static void reset_cached_positions(struct zone *zone)
 }
 
 /*
+这个页面是不是由于是过大的复合页要被跳过。
+-------
+超过pageblock_order阶数大小的复合页面应该一直skip。
+一直不合适
  * Compound pages of >= pageblock_order should consistenly be skipped until
  * released. It is always pointless to compact pages of such order (if they are
  * migratable), and the pageblocks they occupy cannot contain any free pages.
@@ -310,6 +326,8 @@ __reset_isolation_pfn(struct zone *zone, unsigned long pfn, bool check_source,
 }
 
 /*
+2024年08月13日14:21:11
+todo
  * This function is called to clear all cached information on pageblocks that
  * should be skipped for page isolation when the migrate and free page scanner
  * meet.
@@ -403,7 +421,7 @@ static bool test_and_set_skip(struct compact_control *cc, struct page *page,
 
 	return skip;
 }
-
+/* todo */
 static void update_cached_migrate(struct compact_control *cc, unsigned long pfn)
 {
 	struct zone *zone = cc->zone;
@@ -495,6 +513,8 @@ static bool compact_lock_irqsave(spinlock_t *lock, unsigned long *flags,
 }
 
 /*
+2024年08月13日16:50:39
+是否应该停止规整
  * Compaction requires the taking of some coarse locks that are potentially
  * very heavily contended. The lock should be periodically unlocked to avoid
  * having disabled IRQs for a long time, even when there is nobody waiting on
@@ -745,7 +765,10 @@ isolate_freepages_range(struct compact_control *cc,
 	return pfn;
 }
 
-/* Similar to reclaim, but different enough that they don't share logic */
+/* 
+2024年08月13日16:39:59
+
+Similar to reclaim, but different enough that they don't share logic */
 static bool too_many_isolated(pg_data_t *pgdat)
 {
 	unsigned long active, inactive, isolated;
@@ -761,11 +784,14 @@ static bool too_many_isolated(pg_data_t *pgdat)
 }
 
 /**
+2024年08月13日16:38:04
+isolate此pageblock范围内的页面
  * isolate_migratepages_block() - isolate all migrate-able pages within
  *				  a single pageblock
  * @cc:		Compaction control structure.
- * @low_pfn:	The first PFN to isolate
- * @end_pfn:	The one-past-the-last PFN to isolate, within same pageblock
+ * @low_pfn:	The first PFN to isolate。pageblock内的起始地址。
+ * @end_pfn:	The one-past-the-last PFN to isolate, within same pageblock。
+ 左闭右开的右边界。位于同一个pageblock内。
  * @isolate_mode: Isolation mode to be used.
  *
  * Isolate all pages that can be migrated from the range specified by
@@ -798,7 +824,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 	 * list by either parallel reclaimers or compaction. If there are,
 	 * delay for some time until fewer pages are isolated
 	 */
-	while (unlikely(too_many_isolated(pgdat))) {
+	while (unlikely(too_many_isolated(pgdat))) {/* node内太多isolate了 */
 		/* async migration should just abort */
 		if (cc->mode == MIGRATE_ASYNC)
 			return 0;
@@ -811,7 +837,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 
 	cond_resched();
 
-	if (cc->direct_compaction && (cc->mode == MIGRATE_ASYNC)) {
+	if (cc->direct_compaction && (cc->mode == MIGRATE_ASYNC)) {/* 如果是异步的直接规整 */
 		skip_on_failure = true;
 		next_skip_pfn = block_end_pfn(low_pfn, cc->order);
 	}
@@ -819,7 +845,8 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 	/* Time to isolate some pages for migration */
 	for (; low_pfn < end_pfn; low_pfn++) {
 
-		if (skip_on_failure && low_pfn >= next_skip_pfn) {
+		if (skip_on_failure && low_pfn >= next_skip_pfn) {/* 如果处理完了这个cc->order
+		阶数大小的block。 */
 			/*
 			 * We have isolated all migration candidates in the
 			 * previous order-aligned block, and did not skip it due
@@ -838,6 +865,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 			 * a compound or a high-order buddy page in the
 			 * previous loop iteration.
 			 */
+			/* 继续让next_skip_pfn指向下一个order阶数区块的end pfn */
 			next_skip_pfn = block_end_pfn(low_pfn, cc->order);
 		}
 
@@ -855,6 +883,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 
 		if (!pfn_valid_within(low_pfn))
 			goto isolate_fail;
+
 		nr_scanned++;
 
 		page = pfn_to_page(low_pfn);
@@ -865,11 +894,15 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * COMPACT_CLUSTER_MAX at a time so the second call must
 		 * not falsely conclude that the block should be skipped.
 		 */
-		if (!valid_page && IS_ALIGNED(low_pfn, pageblock_nr_pages)) {
-			if (!cc->ignore_skip_hint && get_pageblock_skip(page)) {
+		if (!valid_page && IS_ALIGNED(low_pfn, pageblock_nr_pages)) {/* 如果valid_page为空，并且
+		low_pfn是pageblock对齐的 */
+			if (!cc->ignore_skip_hint && get_pageblock_skip(page)) {/* 如果page是migrate_skip，
+			 */
+			 	/* 直接结束 */
 				low_pfn = end_pfn;
 				goto isolate_abort;
 			}
+			/* page是合适的，valid的 */
 			valid_page = page;
 		}
 
@@ -879,7 +912,8 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * the worst thing that can happen is that we skip some
 		 * potential isolation targets.
 		 */
-		if (PageBuddy(page)) {
+		if (PageBuddy(page)) {/* 如果是buddy的page */
+		/* 就直接步进到此同一个order组页面的最后一个页面。 */
 			unsigned long freepage_order = page_order_unsafe(page);
 
 			/*
@@ -899,7 +933,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * racy, but we can consider only valid values and the only
 		 * danger is skipping too much.
 		 */
-		if (PageCompound(page)) {
+		if (PageCompound(page)) {/* 复合页直接进入下一循环 */
 			const unsigned int order = compound_order(page);
 
 			if (likely(order < MAX_ORDER))
@@ -912,19 +946,19 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * It's possible to migrate LRU and non-lru movable pages.
 		 * Skip any other type of page
 		 */
-		if (!PageLRU(page)) {
+		if (!PageLRU(page)) {/* 如果不是lru页面。 */
 			/*
 			 * __PageMovable can return false positive so we need
 			 * to verify it under page_lock.
 			 */
 			if (unlikely(__PageMovable(page)) &&
-					!PageIsolated(page)) {
+					!PageIsolated(page)) {/* 可移动但是没有被isolate */
 				if (locked) {
 					spin_unlock_irqrestore(&pgdat->lru_lock,
 									flags);
 					locked = false;
 				}
-
+				/* 进行isolate */
 				if (!isolate_movable_page(page, isolate_mode))
 					goto isolate_success;
 			}
@@ -977,18 +1011,20 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 /* pgdat->lruvec */
 		lruvec = mem_cgroup_page_lruvec(page, pgdat);
 
-		/* Try isolate the page */
+		/* Try isolate the page 
+		清除lru标记*/
 		if (__isolate_lru_page(page, isolate_mode) != 0)
 			goto isolate_fail;
 
 		VM_BUG_ON_PAGE(PageCompound(page), page);
 
-		/* Successfully isolated */
+		/* Successfully isolated，刚才成功清除了lru标记，现在移出 */
 		del_page_from_lru_list(page, lruvec, page_lru(page));
 		inc_node_page_state(page,
 				NR_ISOLATED_ANON + page_is_file_cache(page));
 
 isolate_success:
+/* 成功isolate了page的情况，把page装入cc的migrate_pages list */
 		list_add(&page->lru, &cc->migratepages);
 		cc->nr_migratepages++;
 		nr_isolated++;
@@ -999,8 +1035,7 @@ isolate_success:
 		 * or a lock is contended. For contention, isolate quickly to
 		 * potentially remove one source of contention.
 		 */
-		if (cc->nr_migratepages == COMPACT_CLUSTER_MAX &&
-		    !cc->rescan && !cc->contended) {
+		if (cc->nr_migratepages == COMPACT_CLUSTER_MAX && !cc->rescan && !cc->contended) {
 			++low_pfn;
 			break;
 		}
@@ -1015,17 +1050,18 @@ isolate_fail:
 		 * instead of migrating, as we cannot form the cc->order buddy
 		 * page anyway.
 		 */
-		if (nr_isolated) {
+		if (nr_isolated) {/* 迁移失败了，但是已经isolate了一部分页面，这里需要安置他们 */
 			if (locked) {
 				spin_unlock_irqrestore(&pgdat->lru_lock, flags);
 				locked = false;
 			}
+			/* 把这些isolate的页面放回lru或者通过mapping的put_back回调。 */
 			putback_movable_pages(&cc->migratepages);
 			cc->nr_migratepages = 0;
 			nr_isolated = 0;
 		}
 
-		if (low_pfn < next_skip_pfn) {
+		if (low_pfn < next_skip_pfn) {/* 继续步进，继续循环。 */
 			low_pfn = next_skip_pfn - 1;
 			/*
 			 * The check near the loop beginning would have updated
@@ -1119,18 +1155,18 @@ isolate_migratepages_range(struct compact_control *cc, unsigned long start_pfn,
 
 #endif /* CONFIG_COMPACTION || CONFIG_CMA */
 #ifdef CONFIG_COMPACTION
-
+/* 是否适合把此page迁移到其他地方？ */
 static bool suitable_migration_source(struct compact_control *cc,
 							struct page *page)
 {
 	int block_mt;
-
+	/* 过大的复合页不合适 */
 	if (pageblock_skip_persistent(page))
 		return false;
 
 	if ((cc->mode != MIGRATE_ASYNC) || !cc->direct_compaction)
 		return true;
-
+	/* 获取page所属block迁移类型 */
 	block_mt = get_pageblock_migratetype(page);
 
 	if (cc->migratetype == MIGRATE_MOVABLE)
@@ -1164,16 +1200,20 @@ static bool suitable_migration_target(struct compact_control *cc,
 	/* Otherwise skip the block */
 	return false;
 }
-
+/* 获取一个限制
+fast_search_fail失败次数越多限制越低 */
 static inline unsigned int
 freelist_scan_limit(struct compact_control *cc)
 {
+	/* 64 - 1 = 3  */
 	unsigned short shift = BITS_PER_LONG - 1;
 
 	return (COMPACT_CLUSTER_MAX >> min(shift, cc->fast_search_fail)) + 1;
 }
 
 /*
+2024年08月13日14:33:34
+todo，
  * Test whether the free scanner has reached the same or lower pageblock than
  * the migration scanner, and compaction should thus terminate.
  */
@@ -1201,6 +1241,7 @@ move_freelist_head(struct list_head *freelist, struct page *freepage)
 }
 
 /*
+
  * Similar to move_freelist_head except used by the migration scanner
  * when scanning forward. It's possible for these list operations to
  * move against each other if they search the free list exactly in
@@ -1579,7 +1620,9 @@ static void compaction_free(struct page *page, unsigned long data)
 	cc->nr_freepages++;
 }
 
-/* possible outcome of isolate_migratepages */
+/* 
+2024年08月13日19:06:24
+possible outcome of isolate_migratepages */
 typedef enum {
 	ISOLATE_ABORT,		/* Abort compaction now */
 	ISOLATE_NONE,		/* No pages isolated, continue scanning */
@@ -1591,7 +1634,7 @@ typedef enum {
  * compactable pages.
  */
 int sysctl_compact_unevictable_allowed __read_mostly = 1;
-
+/* todo */
 static inline void
 update_fast_start_pfn(struct compact_control *cc, unsigned long pfn)
 {
@@ -1603,7 +1646,7 @@ update_fast_start_pfn(struct compact_control *cc, unsigned long pfn)
 
 	cc->fast_start_pfn = min(cc->fast_start_pfn, pfn);
 }
-
+/* 把fast_start_pfn设置为新的migrate_pfn，返回migrate_pfn。 */
 static inline unsigned long
 reinit_migrate_pfn(struct compact_control *cc)
 {
@@ -1617,12 +1660,15 @@ reinit_migrate_pfn(struct compact_control *cc)
 }
 
 /*
+2024年08月13日15:10:26
+todo
  * Briefly search the free lists for a migration source that already has
  * some free pages to reduce the number of pages that need migration
  * before a pageblock is free.
  */
 static unsigned long fast_find_migrateblock(struct compact_control *cc)
 {
+	/*  */
 	unsigned int limit = freelist_scan_limit(cc);
 	unsigned int nr_scanned = 0;
 	unsigned long distance;
@@ -1666,8 +1712,10 @@ static unsigned long fast_find_migrateblock(struct compact_control *cc)
 	 * target later becomes a source.
 	 */
 	distance = (cc->free_pfn - cc->migrate_pfn) >> 1;
+
 	if (cc->migrate_pfn != cc->zone->zone_start_pfn)
 		distance >>= 2;
+
 	high_pfn = pageblock_start_pfn(cc->migrate_pfn + distance);
 
 	for (order = cc->order - 1;
@@ -1682,7 +1730,9 @@ static unsigned long fast_find_migrateblock(struct compact_control *cc)
 			continue;
 
 		spin_lock_irqsave(&cc->zone->lock, flags);
+		/* 找到moveable迁移类型的链表 */
 		freelist = &area->free_list[MIGRATE_MOVABLE];
+		/* 遍历page */
 		list_for_each_entry(freepage, freelist, lru) {
 			unsigned long free_pfn;
 
@@ -1695,7 +1745,7 @@ static unsigned long fast_find_migrateblock(struct compact_control *cc)
 				 * the list assumes an entry is deleted, not
 				 * reordered.
 				 */
-				if (get_pageblock_skip(freepage)) {
+				if (get_pageblock_skip(freepage)) {/* 意思是说如果是PB_migrate_skip类型 */
 					if (list_is_last(freelist, &freepage->lru))
 						break;
 
@@ -1708,10 +1758,11 @@ static unsigned long fast_find_migrateblock(struct compact_control *cc)
 				update_fast_start_pfn(cc, free_pfn);
 				pfn = pageblock_start_pfn(free_pfn);
 				cc->fast_search_fail = 0;
+				/* 设置为skip */
 				set_pageblock_skip(freepage);
 				break;
 			}
-
+			/* 当前页面的pfn超限了，如果超过了限制就break */
 			if (nr_scanned >= limit) {
 				cc->fast_search_fail++;
 				move_freelist_tail(freelist, freepage);
@@ -1720,7 +1771,7 @@ static unsigned long fast_find_migrateblock(struct compact_control *cc)
 		}
 		spin_unlock_irqrestore(&cc->zone->lock, flags);
 	}
-
+	/*  */
 	cc->total_migrate_scanned += nr_scanned;
 
 	/*
@@ -1734,6 +1785,8 @@ static unsigned long fast_find_migrateblock(struct compact_control *cc)
 }
 
 /*
+把cc里面指定的pfn范围内的，合适的pageblock的，可以迁移的page。进行isolate然后
+放入自己的cc->migrate_pages。
  * Isolate all pages that can be migrated from the first suitable block,
  * starting at the block pointed to by the migrate scanner pfn within
  * compact_control.
@@ -1754,7 +1807,10 @@ static isolate_migrate_t isolate_migratepages(struct compact_control *cc)
 	 * initialized by compact_zone(). The first failure will use
 	 * the lowest PFN as the starting point for linear scanning.
 	 */
+	 /* 扫描不同order的freelist，找到不skip的，返回值为最后一个不skip
+	 的页面所在pageblock的起始pfn？ */
 	low_pfn = fast_find_migrateblock(cc);
+	/*  */
 	block_start_pfn = pageblock_start_pfn(low_pfn);
 	if (block_start_pfn < cc->zone->zone_start_pfn)
 		block_start_pfn = cc->zone->zone_start_pfn;
@@ -1768,10 +1824,11 @@ static isolate_migrate_t isolate_migratepages(struct compact_control *cc)
 
 	/* Only scan within a pageblock boundary */
 	block_end_pfn = pageblock_end_pfn(low_pfn);
-
+	/* block_end_pfn是pageblock对齐的，看名字也像 */
 	/*
 	 * Iterate over whole pageblocks until we find the first suitable.
 	 * Do not cross the free scanner.
+	 遍历范围内全部pageblock。isolate页面到cc的migrate_pages。
 	 */
 	for (; block_end_pfn <= cc->free_pfn;
 			fast_find_block = false,
@@ -1786,7 +1843,10 @@ static isolate_migrate_t isolate_migratepages(struct compact_control *cc)
 		 */
 		if (!(low_pfn % (SWAP_CLUSTER_MAX * pageblock_nr_pages)))
 			cond_resched();
-
+		/* block_start_pfn是上一轮循环的block_end_pfn，起始也应该是本次
+		循环的pageblock的开始pfn。话说到底是左闭右开，还是左开右闭，感觉
+		应该是前者。 */
+		/* page是当前pageblock的起始page */
 		page = pageblock_pfn_to_page(block_start_pfn,
 						block_end_pfn, cc->zone);
 		if (!page)
@@ -1799,8 +1859,8 @@ static isolate_migrate_t isolate_migratepages(struct compact_control *cc)
 		 * before making it "skip" so other compaction instances do
 		 * not scan the same block.
 		 */
-		if (IS_ALIGNED(low_pfn, pageblock_nr_pages) &&
-		    !fast_find_block && !isolation_suitable(cc, page))
+		if (IS_ALIGNED(low_pfn, pageblock_nr_pages) && !fast_find_block && 
+			!isolation_suitable(cc, page))
 			continue;
 
 		/*
@@ -1811,15 +1871,15 @@ static isolate_migrate_t isolate_migratepages(struct compact_control *cc)
 		 * remaining blocks between source and target are unsuitable
 		 * and the compaction scanners fail to meet.
 		 */
-		if (!suitable_migration_source(cc, page)) {
+		if (!suitable_migration_source(cc, page)) {/* 如果此pageblock的起始page不合适迁移 */
 			update_cached_migrate(cc, block_end_pfn);
 			continue;
 		}
-
+		/* low_pfn一直是本循环page_block的起始pfn吗。 */
 		/* Perform the isolation */
 		low_pfn = isolate_migratepages_block(cc, low_pfn,
 						block_end_pfn, isolate_mode);
-
+		/* 刚才的函数把一些pages进行isolate，放在自己的cc->migrate_pages */
 		if (!low_pfn)
 			return ISOLATE_ABORT;
 
@@ -1828,6 +1888,7 @@ static isolate_migrate_t isolate_migratepages(struct compact_control *cc)
 		 * we failed and compact_zone should decide if we should
 		 * continue or not.
 		 */
+		 /* 为什么直接break，一次最多只处理一个pageblock吗。 */
 		break;
 	}
 
@@ -1839,6 +1900,7 @@ static isolate_migrate_t isolate_migratepages(struct compact_control *cc)
 
 /*
 2024年07月12日12:55:11
+-1的话可能是fs接口手动触发的内存规整
  * order == -1 is expected when compacting via
  * /proc/sys/vm/compact_memory
  */
@@ -1846,7 +1908,7 @@ static inline bool is_via_compact_memory(int order)
 {
 	return order == -1;
 }
-
+/* 当前的规整是否完成了，完成可以结束工作。 */
 static enum compact_result __compact_finished(struct compact_control *cc)
 {
 	unsigned int order;
@@ -1854,7 +1916,7 @@ static enum compact_result __compact_finished(struct compact_control *cc)
 	int ret;
 
 	/* Compaction run completes if the migrate and free scanner meet */
-	if (compact_scanners_met(cc)) {
+	if (compact_scanners_met(cc)) {/* 如果和释放页面的扫描交汇了 */
 		/* Let the next compaction start anew. */
 		reset_cached_positions(cc->zone);
 
@@ -1885,13 +1947,16 @@ static enum compact_result __compact_finished(struct compact_control *cc)
 	if (!IS_ALIGNED(cc->migrate_pfn, pageblock_nr_pages))
 		return COMPACT_CONTINUE;
 
-	/* Direct compactor: Is a suitable page free? */
+	/* Direct compactor: Is a suitable page free? 
+	判断是不是有更大order的order类型规整成功了*/
 	ret = COMPACT_NO_SUITABLE_PAGE;
 	for (order = cc->order; order < MAX_ORDER; order++) {
 		struct free_area *area = &cc->zone->free_area[order];
 		bool can_steal;
 
-		/* Job done if page is free of the right migratetype */
+		/* Job done if page is free of the right migratetype
+		不空了
+		 */
 		if (!free_area_empty(area, migratetype))
 			return COMPACT_SUCCESS;
 
@@ -1906,7 +1971,8 @@ static enum compact_result __compact_finished(struct compact_control *cc)
 		 * other migratetype buddy lists.
 		 */
 		if (find_suitable_fallback(area, order, migratetype,
-						true, &can_steal) != -1) {
+						true, &can_steal) != -1) {/* 
+						返回值不是-1说明可以fallback */
 
 			/* movable pages are OK in any pageblock */
 			if (migratetype == MIGRATE_MOVABLE)
@@ -1925,18 +1991,19 @@ static enum compact_result __compact_finished(struct compact_control *cc)
 							pageblock_nr_pages)) {
 				return COMPACT_SUCCESS;
 			}
-
+			/* 这里应该才检查了一个可以fallback但是不ok的order，就直接break吗，更大的order
+			一定是不可以fallback然后ok的吗*/
 			ret = COMPACT_CONTINUE;
 			break;
 		}
 	}
-
+	/* 这里ret可能是continue，或者是原值 */
 	if (cc->contended || fatal_signal_pending(current))
 		ret = COMPACT_CONTENDED;
 
 	return ret;
 }
-
+/* 在compact_zone函数的工作循环中判断是否完成了 */
 static enum compact_result compact_finished(struct compact_control *cc)
 {
 	int ret;
@@ -1952,6 +2019,7 @@ static enum compact_result compact_finished(struct compact_control *cc)
 /*
 2024年07月03日10:23:30
 2024年07月12日12:54:38
+内存规整是否继续
  * compaction_suitable: Is this suitable to run compaction on this zone now?
  * Returns
  *   COMPACT_SKIPPED  - If there are too few free pages for compaction
@@ -1964,7 +2032,7 @@ static enum compact_result __compaction_suitable(struct zone *zone, int order,
 					unsigned long wmark_target)
 {
 	unsigned long watermark;
-
+	/*  */
 	if (is_via_compact_memory(order))
 		return COMPACT_CONTINUE;
 
@@ -2002,6 +2070,7 @@ static enum compact_result __compaction_suitable(struct zone *zone, int order,
 }
 /* 2024年07月03日10:23:17
 2024年07月12日12:52:18
+内存规整是否继续
  */
 enum compact_result compaction_suitable(struct zone *zone, int order,
 					unsigned int alloc_flags,
@@ -2072,7 +2141,8 @@ bool compaction_zonelist_suitable(struct alloc_context *ac, int order,
 
 	return false;
 }
-
+/* kcompact 的work函数的主要函数
+规整指定的zone */
 static enum compact_result
 compact_zone(struct compact_control *cc, struct capture_control *capc)
 {
@@ -2095,6 +2165,7 @@ compact_zone(struct compact_control *cc, struct capture_control *capc)
 	INIT_LIST_HEAD(&cc->migratepages);
 
 	cc->migratetype = gfpflags_to_migratetype(cc->gfp_mask);
+	/* 判断一下是否继续，因为可能zone内存不紧张了 */
 	ret = compaction_suitable(cc->zone, cc->order, cc->alloc_flags,
 							cc->classzone_idx);
 	/* Compaction is likely to fail */
@@ -2156,7 +2227,7 @@ compact_zone(struct compact_control *cc, struct capture_control *capc)
 
 	migrate_prep_local();
 
-	while ((ret = compact_finished(cc)) == COMPACT_CONTINUE) {
+	while ((ret = compact_finished(cc)) == COMPACT_CONTINUE) {/* 只要是结构还是contiue就继续 */
 		int err;
 		unsigned long start_pfn = cc->migrate_pfn;
 
@@ -2173,10 +2244,12 @@ compact_zone(struct compact_control *cc, struct capture_control *capc)
 		    pageblock_start_pfn(start_pfn)) {
 			cc->rescan = true;
 		}
-
+		/* 把cc里面指定的pfn范围内的，合适的pageblock的，可以迁移的page。进行isolate然后
+放入自己的cc->migrate_pages。 */
 		switch (isolate_migratepages(cc)) {
 		case ISOLATE_ABORT:
 			ret = COMPACT_CONTENDED;
+			/* isolate失败了，把隔离的page进行put_back */
 			putback_movable_pages(&cc->migratepages);
 			cc->nr_migratepages = 0;
 			last_migrated_pfn = 0;
@@ -2198,7 +2271,7 @@ compact_zone(struct compact_control *cc, struct capture_control *capc)
 			last_migrated_pfn = start_pfn;
 			;
 		}
-
+		/* 这里把isolate的页面进行migrate */
 		err = migrate_pages(&cc->migratepages, compaction_alloc,
 				compaction_free, (unsigned long)cc, cc->mode,
 				MR_COMPACTION);
@@ -2208,7 +2281,7 @@ compact_zone(struct compact_control *cc, struct capture_control *capc)
 
 		/* All pages were either migrated or will be released */
 		cc->nr_migratepages = 0;
-		if (err) {
+		if (err) {/*  */
 			putback_movable_pages(&cc->migratepages);
 			/*
 			 * migrate_pages() may return -ENOMEM when scanners meet
@@ -2496,7 +2569,7 @@ void compaction_unregister_node(struct node *node)
 	return device_remove_file(&node->dev, &dev_attr_compact);
 }
 #endif /* CONFIG_SYSFS && CONFIG_NUMA */
-
+/* 条件满足的话，compactd开始工作 */
 static inline bool kcompactd_work_requested(pg_data_t *pgdat)
 {
 	return pgdat->kcompactd_max_order > 0 || kthread_should_stop();
@@ -2521,7 +2594,7 @@ static bool kcompactd_node_suitable(pg_data_t *pgdat)
 
 	return false;
 }
-
+/* kcompactd的work函数 */
 static void kcompactd_do_work(pg_data_t *pgdat)
 {
 	/*
@@ -2560,6 +2633,7 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 			return;
 
 		cc.zone = zone;
+		/*  */
 		status = compact_zone(&cc, NULL);
 
 		if (status == COMPACT_SUCCESS) {
@@ -2629,6 +2703,7 @@ void wakeup_kcompactd(pg_data_t *pgdat, int order, int classzone_idx)
 }
 
 /*
+compact的内核后台线程
  * The background compaction daemon, started as a kernel thread
  * from the init process.
  */
@@ -2649,12 +2724,13 @@ static int kcompactd(void *p)
 
 	while (!kthread_should_stop()) {
 		unsigned long pflags;
-
+		/*  */
 		trace_mm_compaction_kcompactd_sleep(pgdat->node_id);
 		wait_event_freezable(pgdat->kcompactd_wait,
 				kcompactd_work_requested(pgdat));
 
 		psi_memstall_enter(&pflags);
+		/* work函数 */
 		kcompactd_do_work(pgdat);
 		psi_memstall_leave(&pflags);
 	}
@@ -2663,6 +2739,8 @@ static int kcompactd(void *p)
 }
 
 /*
+2024年08月13日12:08:19
+运行kcompactd函数，初始化node的规整线程。
  * This kcompactd start function will be called by init and node-hot-add.
  * On node-hot-add, kcompactd will moved to proper cpus if cpus are hot-added.
  */
@@ -2684,8 +2762,10 @@ int kcompactd_run(int nid)
 }
 
 /*
- * Called by memory hotplug when all memory in a node is offlined. Caller must
- * hold mem_hotplug_begin/end().
+2024年08月13日12:13:08
+node上线下线时，停止node的规整线程？
+ * Called by memory hotplug when all memory in a node is offlined.
+  Caller must hold mem_hotplug_begin/end().
  */
 void kcompactd_stop(int nid)
 {
@@ -2719,7 +2799,8 @@ static int kcompactd_cpu_online(unsigned int cpu)
 	}
 	return 0;
 }
-
+/* 初始化kcompactd
+初始化每个node的规整线程 */
 static int __init kcompactd_init(void)
 {
 	int nid;

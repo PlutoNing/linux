@@ -1803,7 +1803,7 @@ unsigned long reclaim_clean_pages_from_list(struct zone *zone,
 
 /*
  *2024年6月25日20:58:37
- 把符合类型mode的page移出lru。 
+ 把符合类型mode的page移出lru。就是清除lru flag 
  Attempt to remove the specified page from its LRU.  
  Only take this page if it is of the appropriate PageActive status.  
  Pages which are being freed elsewhere are also ignored.
@@ -1836,11 +1836,12 @@ int __isolate_lru_page(struct page *page, isolate_mode_t mode)
 	 * that it is possible to migrate without blocking
 	 */
 	if (mode & ISOLATE_ASYNC_MIGRATE) {
+		/* 如果是这个mode类型的话，不能操作一些类型的页面，需要返回 */
 		/* All the caller can do on PageWriteback is block */
 		if (PageWriteback(page))
 			return ret;
 
-		if (PageDirty(page)) {
+		if (PageDirty(page)) {/* mapping没有迁移回调的脏页也不行 */
 			struct address_space *mapping;
 			bool migrate_dirty;
 
@@ -1860,7 +1861,8 @@ int __isolate_lru_page(struct page *page, isolate_mode_t mode)
 			mapping = page_mapping(page);
 			migrate_dirty = !mapping || mapping->a_ops->migratepage;
 			unlock_page(page);
-			if (!migrate_dirty)
+			if (!migrate_dirty)/* 就是说 mapping && ！mapping->a_ops->migratepage；
+			有mapping却没有迁移回调，那不行 */
 				return ret;
 		}
 	}
@@ -1868,6 +1870,7 @@ int __isolate_lru_page(struct page *page, isolate_mode_t mode)
 	if ((mode & ISOLATE_UNMAPPED) && page_mapped(page))
 		return ret;
 
+	/* 开始进行isolate */
 	if (likely(get_page_unless_zero(page))) {
 		/*
 		 * Be careful not to clear PageLRU until after we're

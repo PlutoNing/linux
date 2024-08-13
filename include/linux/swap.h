@@ -191,8 +191,9 @@ enum {
 					/* add others here before... */
 	SWP_SCANNING	= (1 << 14),	/* refcount in scan_swap_map */
 };
-
+/* 32 */
 #define SWAP_CLUSTER_MAX 32UL
+/* =32 */
 #define COMPACT_CLUSTER_MAX SWAP_CLUSTER_MAX
 
 #define SWAP_MAP_MAX	0x3e	/* Max duplication count, in first swap_map */
