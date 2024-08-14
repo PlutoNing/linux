@@ -21,7 +21,10 @@
 #include <linux/ctype.h>
 
 #include "disasm.h"
+/* 2024年8月14日22:42:06
+bpf_verifier_ops的数组
 
+ */
 static const struct bpf_verifier_ops * const bpf_verifier_ops[] = {
 #define BPF_PROG_TYPE(_id, _name) \
 	[_id] = & _name ## _verifier_ops,

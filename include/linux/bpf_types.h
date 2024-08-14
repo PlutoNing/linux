@@ -2,6 +2,7 @@
 /* internal file - do not include directly */
 
 #ifdef CONFIG_NET
+/*  */
 BPF_PROG_TYPE(BPF_PROG_TYPE_SOCKET_FILTER, sk_filter)
 BPF_PROG_TYPE(BPF_PROG_TYPE_SCHED_CLS, tc_cls_act)
 BPF_PROG_TYPE(BPF_PROG_TYPE_SCHED_ACT, tc_cls_act)
