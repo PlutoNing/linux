@@ -269,6 +269,7 @@ static inline void unlock_anon_vma_root(struct anon_vma *root)
 /*
 2024年7月2日22:22:22
  把子进程vma绑定到父进程的av
+ 也可能是复制vma后的clone
  * Attach the anon_vmas from src to dst.
  * Returns 0 on success, -ENOMEM on failure.
  *

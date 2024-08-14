@@ -108,6 +108,7 @@ static inline void mpol_get(struct mempolicy *pol)
 }
 
 extern bool __mpol_equal(struct mempolicy *a, struct mempolicy *b);
+/* mem policy相同吗 */
 static inline bool mpol_equal(struct mempolicy *a, struct mempolicy *b)
 {
 	if (a == b)

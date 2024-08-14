@@ -236,7 +236,8 @@ static bool move_normal_pmd(struct vm_area_struct *vma, unsigned long old_addr,
 	return true;
 }
 #endif
-
+/* 把vma的old_addr的old_len的长度remap到了new_vma的new_addr
+2024年08月14日19:59:11 */
 unsigned long move_page_tables(struct vm_area_struct *vma,
 		unsigned long old_addr, struct vm_area_struct *new_vma,
 		unsigned long new_addr, unsigned long len,
@@ -314,7 +315,9 @@ unsigned long move_page_tables(struct vm_area_struct *vma,
 
 	return len + old_addr - old_end;	/* how much done */
 }
-
+/* 2024年08月14日18:33:04
+把vma的old进行remap到new。
+ */
 static unsigned long move_vma(struct vm_area_struct *vma,
 		unsigned long old_addr, unsigned long old_len,
 		unsigned long new_len, unsigned long new_addr,
@@ -350,15 +353,18 @@ static unsigned long move_vma(struct vm_area_struct *vma,
 						MADV_UNMERGEABLE, &vm_flags);
 	if (err)
 		return err;
-
+	/* 看计算方式是旧vma的pgoff。
+	但是是remap，所以新vma也是这个pgoff。 */
 	new_pgoff = vma->vm_pgoff + ((old_addr - vma->vm_start) >> PAGE_SHIFT);
+	/* 返回newvma，可能是拷贝的newvma，也可能是merge的新区域的prev or next */
 	new_vma = copy_vma(&vma, new_addr, new_len, new_pgoff,
 			   &need_rmap_locks);
 	if (!new_vma)
 		return -ENOMEM;
-
+	/* 把vma的old_addr的old_len的长度remap到了new_vma的new_addr */
 	moved_len = move_page_tables(vma, old_addr, new_vma, new_addr, old_len,
 				     need_rmap_locks);
+
 	if (moved_len < old_len) {
 		err = -ENOMEM;
 	} else if (vma->vm_ops && vma->vm_ops->mremap) {
@@ -429,11 +435,12 @@ static unsigned long move_vma(struct vm_area_struct *vma,
 
 	return new_addr;
 }
-
+/* 如何可以resize的话，返回addr所在vma */
 static struct vm_area_struct *vma_to_resize(unsigned long addr,
 	unsigned long old_len, unsigned long new_len, unsigned long *p)
 {
 	struct mm_struct *mm = current->mm;
+	/* 获取包含addr的vma */
 	struct vm_area_struct *vma = find_vma(mm, addr);
 	unsigned long pgoff;
 
@@ -448,7 +455,7 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 	 * based on the original.  There are no known use cases for this
 	 * behavior.  As a result, fail such attempts.
 	 */
-	if (!old_len && !(vma->vm_flags & (VM_SHARED | VM_MAYSHARE))) {
+	if (!old_len && !(vma->vm_flags & (VM_SHARED | VM_MAYSHARE))) {/* 没有oldlen是复制全部吗 */
 		pr_warn_once("%s (%d): attempted to duplicate a private mapping with mremap.  This is not supported.\n", current->comm, current->pid);
 		return ERR_PTR(-EINVAL);
 	}
@@ -456,15 +463,18 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 	if (is_vm_hugetlb_page(vma))
 		return ERR_PTR(-EINVAL);
 
-	/* We can't remap across vm area boundaries */
+	/* We can't remap across vm area boundaries
+	超过vma边界了。 */
 	if (old_len > vma->vm_end - addr)
 		return ERR_PTR(-EFAULT);
 
-	if (new_len == old_len)
+	if (new_len == old_len)/* 无需操作 */
 		return vma;
 
 	/* Need to be careful about a growing mapping */
+	/*  */
 	pgoff = (addr - vma->vm_start) >> PAGE_SHIFT;
+	/* addr在mmapfile的pgoff */
 	pgoff += vma->vm_pgoff;
 	if (pgoff + (new_len >> PAGE_SHIFT) < pgoff)
 		return ERR_PTR(-EINVAL);
@@ -472,7 +482,7 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 	if (vma->vm_flags & (VM_DONTEXPAND | VM_PFNMAP))
 		return ERR_PTR(-EFAULT);
 
-	if (vma->vm_flags & VM_LOCKED) {
+	if (vma->vm_flags & VM_LOCKED) {/* 检查lock mm的limit */
 		unsigned long locked, lock_limit;
 		locked = mm->locked_vm << PAGE_SHIFT;
 		lock_limit = rlimit(RLIMIT_MEMLOCK);
@@ -494,7 +504,9 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 
 	return vma;
 }
-/* 2024年8月11日23:44:19 */
+/* 2024年8月11日23:44:19
+把addr&old_len进行remap到new_addr&new_len。
+ */
 static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
 		unsigned long new_addr, unsigned long new_len,
 		bool *locked,
@@ -535,20 +547,21 @@ static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
 	 */
 	if ((mm->map_count + 2) >= sysctl_max_map_count - 3)
 		return -ENOMEM;
-	/*  */
+	/* unmap范围 ，这是先把新范围准备好吗，好准备remap到这里？*/
 	ret = do_munmap(mm, new_addr, new_len, uf_unmap_early);
 	if (ret)
 		goto out;
 
-	if (old_len >= new_len) {
+	if (old_len >= new_len) {/* 如果旧范围比新范围大，把多出的部分2也进行unmap，
+	没有包含刚好合适的部分1可能是可以直接修改pte就行？ */
 		ret = do_munmap(mm, addr+new_len, old_len - new_len, uf_unmap);
 		if (ret && old_len != new_len)
 			goto out;
 		old_len = new_len;
 	}
-
+	/* 获得vma */
 	vma = vma_to_resize(addr, old_len, new_len, &charged);
-	if (IS_ERR(vma)) {
+	if (IS_ERR(vma)) {/* 成功获得的话，就是可以resize */
 		ret = PTR_ERR(vma);
 		goto out;
 	}
@@ -562,9 +575,10 @@ static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
 				map_flags);
 	if (offset_in_page(ret))
 		goto out1;
-
+	/*  */
 	ret = move_vma(vma, addr, old_len, new_len, new_addr, locked, uf,
 		       uf_unmap);
+
 	if (!(offset_in_page(ret)))
 		goto out;
 out1:
@@ -636,7 +650,7 @@ SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
 	if (down_write_killable(&current->mm->mmap_sem))
 		return -EINTR;
 
-	if (flags & MREMAP_FIXED) {/* 为什么这里是nommu的函数 */
+	if (flags & MREMAP_FIXED) {/* */
 		ret = mremap_to(addr, old_len, new_addr, new_len,
 				&locked, &uf, &uf_unmap_early, &uf_unmap);
 		goto out;

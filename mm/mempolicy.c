@@ -2271,7 +2271,10 @@ struct mempolicy *__mpol_dup(struct mempolicy *old)
 	return new;
 }
 
-/* Slow path of a mempolicy comparison */
+/* 
+2024年08月14日18:53:22
+比对mempol是否相同
+Slow path of a mempolicy comparison */
 bool __mpol_equal(struct mempolicy *a, struct mempolicy *b)
 {
 	if (!a || !b)

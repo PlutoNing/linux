@@ -1078,7 +1078,7 @@ again:
 }
 
 /*
-
+vma可以merge吗
  * If the vma has a ->close operation then the driver probably needs to release
  * per-vma resources, so we don't attempt to merge those.
  */
@@ -1125,6 +1125,14 @@ static inline int is_mergeable_anon_vma(struct anon_vma *anon_vma1,
 }
 
 /*
+vma之前可以merge新区域吗。
+-------------
+@vma：
+@vm_flags
+@anon_vma：remap的原vma的av
+@file：remap的原vma的file
+@vm_pgoff：remap的原vma和新区域对应的vma的pgoff+vma的大小by pg。
+@vm_userfaultfd_ctx：
  * Return true if we can merge this (vm_flags,anon_vma,file,vm_pgoff)
  * in front of (at a lower virtual address and file offset than) the vma.
  *
@@ -1143,13 +1151,25 @@ can_vma_merge_before(struct vm_area_struct *vma, unsigned long vm_flags,
 {
 	if (is_mergeable_vma(vma, file, vm_flags, vm_userfaultfd_ctx) &&
 	    is_mergeable_anon_vma(anon_vma, vma->anon_vma, vma)) {
-		if (vma->vm_pgoff == vm_pgoff)
+		if (vma->vm_pgoff == vm_pgoff)/* vma的pgoff和自己前方要merge的新区域的pgoff要对的上 */
 			return 1;
 	}
 	return 0;
 }
 
 /*
+2024年08月14日19:11:01
+vma后面可以merge新区域吗，新区域是remap vma的新区域。这里其实算是
+step1：首先判断vma的基本属性
+step2：av的属性
+step3：pgoff能否对在一起。
+----------------------------------
+@vma：
+@vm_flags
+@anon_vma：remap的原vma的av
+@file：remap的原vma的file
+@vm_pgoff：remap的原vma和新区域对应的vma的pgoff
+@vm_userfaultfd_ctx：
  * Return true if we can merge this (vm_flags,anon_vma,file,vm_pgoff)
  * beyond (at a higher virtual address and file offset than) the vma.
  *
@@ -1163,6 +1183,7 @@ can_vma_merge_after(struct vm_area_struct *vma, unsigned long vm_flags,
 		    struct vm_userfaultfd_ctx vm_userfaultfd_ctx)
 {
 	if (is_mergeable_vma(vma, file, vm_flags, vm_userfaultfd_ctx) &&
+	/* 原vma的av和新区域的prev（参数中的vma）的av可以合并吗 */
 	    is_mergeable_anon_vma(anon_vma, vma->anon_vma, vma)) {
 
 		pgoff_t vm_pglen;
@@ -1170,6 +1191,7 @@ can_vma_merge_after(struct vm_area_struct *vma, unsigned long vm_flags,
 		if (vma->vm_pgoff + vm_pglen == vm_pgoff)
 			return 1;
 	}
+
 	return 0;
 }
 
@@ -1219,6 +1241,14 @@ vma_merge
  * or other rmap walkers (if working on addresses beyond the "end"
  * parameter) may establish ptes with the wrong permissions of NNNN
  * instead of the right permissions of XXXX.
+ @mm：mm
+ @prev：新区域在mm的prev vma
+ @addr：新区域起始地址
+ @end：新区域长度
+ @vm_flags：
+ @anon_vma：所remap的vma的av
+ @file: 所remap的vma的vm_file。
+@pgoff:原vma与新区域对应的pgoff
  */
 struct vm_area_struct *vma_merge(struct mm_struct *mm,
 			struct vm_area_struct *prev, unsigned long addr,
@@ -1227,6 +1257,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 			pgoff_t pgoff, struct mempolicy *policy,
 			struct vm_userfaultfd_ctx vm_userfaultfd_ctx)
 {
+	/*  */
 	pgoff_t pglen = (end - addr) >> PAGE_SHIFT;
 	struct vm_area_struct *area, *next;
 	int err;
@@ -1243,6 +1274,8 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	else
 		next = mm->mmap;
 	area = next;
+
+
 	if (area && area->vm_end == end)		/* cases 6, 7, 8 */
 		next = next->vm_next;
 
@@ -1253,14 +1286,16 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 
 	/*
 	 * Can it merge with the predecessor?
+	 看看能否与prev合并
 	 */
 	if (prev && prev->vm_end == addr &&
 			mpol_equal(vma_policy(prev), policy) &&
 			can_vma_merge_after(prev, vm_flags,
 					    anon_vma, file, pgoff,
-					    vm_userfaultfd_ctx)) {
+					    vm_userfaultfd_ctx)) {/* 如果prev的end恰好==addr。 */
 		/*
 		 * OK, it can.  Can we now merge in the successor as well?
+		 是否可以与next合并
 		 */
 		if (next && end == next->vm_start &&
 				mpol_equal(policy, vma_policy(next)) &&
@@ -1269,14 +1304,16 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 						     pgoff+pglen,
 						     vm_userfaultfd_ctx) &&
 				is_mergeable_anon_vma(prev->anon_vma,
-						      next->anon_vma, NULL)) {
+						      next->anon_vma, NULL)) {/* 如果也可以与next合并 */
 							/* cases 1, 6 */
 			err = __vma_adjust(prev, prev->vm_start,
 					 next->vm_end, prev->vm_pgoff, NULL,
 					 prev);
-		} else					/* cases 2, 5, 7 */
+		} else					/*不可以与next合并， cases 2, 5, 7 */
 			err = __vma_adjust(prev, prev->vm_start,
 					 end, prev->vm_pgoff, NULL, prev);
+	
+	/* 可以与prev合并的代码末尾 */	
 		if (err)
 			return NULL;
 		khugepaged_enter_vma_merge(prev, vm_flags);
@@ -1285,12 +1322,14 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 
 	/*
 	 * Can this new request be merged in front of next?
+	 刚才已经不可以和prev合并，这里可以与next合并吗
 	 */
 	if (next && end == next->vm_start &&
 			mpol_equal(policy, vma_policy(next)) &&
 			can_vma_merge_before(next, vm_flags,
 					     anon_vma, file, pgoff+pglen,
-					     vm_userfaultfd_ctx)) {
+					     vm_userfaultfd_ctx)) {/* 可以与next合并 */
+
 		if (prev && addr < prev->vm_end)	/* case 4 */
 			err = __vma_adjust(prev, prev->vm_start,
 					 addr, prev->vm_pgoff, NULL, next);
@@ -1304,6 +1343,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 			 */
 			area = next;
 		}
+
 		if (err)
 			return NULL;
 		khugepaged_enter_vma_merge(area, vm_flags);
@@ -2331,6 +2371,7 @@ arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr,
 2024年6月18日21:37:57
 从地址空间中查找一个长度为len的空闲地址区间，
 如果addr不为0，就检查addr处是否已经被占用如果没有就返回addr。
+@pgoff：拓展的话，这里是原地址的mmapfile pgoff。
 */
 unsigned long
 get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
@@ -3538,6 +3579,10 @@ int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 
 /*
 2024年07月18日20:14:12
+把vmap进行remap到【addr，addr+len】，就是先尝试能不能merge新区域，不能的话再copy。
+@vmap：旧vma？
+@addr，@len，新的地址和长度？
+@pgoff：好像是这俩vma的pgoff。
  * Copy the vma structure to a new location in the same mm,
  * prior to moving page table entries, to effect an mremap move.
  */
@@ -3556,21 +3601,21 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 	 * If anonymous vma has not yet been faulted, update new pgoff
 	 * to match new location, to increase its chance of merging.
 	 */
-	if (unlikely(vma_is_anonymous(vma) && !vma->anon_vma)) {
+	if (unlikely(vma_is_anonymous(vma) && !vma->anon_vma)) {/*  */
 		pgoff = addr >> PAGE_SHIFT;
 		faulted_in_anon_vma = false;
 	}
-
-	if (find_vma_links(mm, addr, addr + len, &prev, &rb_link, &rb_parent))
+	/* 找到新vma在vma链表上和红黑树上应该插入的位置 */
+	if (find_vma_links(mm, addr, addr + len, &prev, 
+	&rb_link, &rb_parent))
 		return NULL;	/* should never get here */
 
-
+	/* 看看新区域可不可以与之前的prev或者之后的next合并，可以的话返回扩展之后的prev or next。 */
 	new_vma = vma_merge(mm, prev, addr, addr + len, vma->vm_flags,
 			    vma->anon_vma, vma->vm_file, pgoff, vma_policy(vma),
 			    vma->vm_userfaultfd_ctx);
 
-	if (new_vma) {
-		/*  */
+	if (new_vma) {/* 成功合并了 */
 		/*
 		 * Source vma may have been merged into new_vma
 		 */
@@ -3592,18 +3637,19 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 			*vmap = vma = new_vma;
 		}
 		*need_rmap_locks = (new_vma->vm_pgoff <= vma->vm_pgoff);
-	} else {
-		/* 2024年07月18日20:21:28不能merge的情况？ */
+	} else {/* 2024年07月18日20:21:28不能merge的情况？ */
+		/* 复制一个新vma，这里只是原样复制 */
 		new_vma = vm_area_dup(vma);
 
 		if (!new_vma)
 			goto out;
 		new_vma->vm_start = addr;
 		new_vma->vm_end = addr + len;
+		/* 新vma和旧vma是同一个pgoff */
 		new_vma->vm_pgoff = pgoff;
 		if (vma_dup_policy(vma, new_vma))
 			goto out_free_vma;
-		/* 克隆vma，感觉就是获得vma的的av到new-vma */
+		/* 克隆vma，感觉就是获得vma的的av到新vma */
 		if (anon_vma_clone(new_vma, vma))
 			goto out_free_mempol;
 
@@ -3612,7 +3658,7 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 
 		if (new_vma->vm_ops && new_vma->vm_ops->open)
 			new_vma->vm_ops->open(new_vma);
-
+		/* 把新vma插入到mm */
 		vma_link(mm, new_vma, prev, rb_link, rb_parent);
 
 		*need_rmap_locks = false;
@@ -3629,7 +3675,7 @@ out:
 
 /*
 2024年07月18日20:12:09
-
+检查vma能否扩展
  * Return true if the calling process may expand its vm space by the passed
  * number of pages
  */

@@ -354,7 +354,7 @@ struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 	return vma;
 }
 /* 2024年07月18日20:21:45
-复制vma，只是分片空间。具体细节成员还要其他函数挨个复制
+复制vma，只是分配了newvma结构体的内存空间，原样拷贝。具体细节成员还要其他函数挨个复制
  */
 struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 {
