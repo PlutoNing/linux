@@ -154,7 +154,7 @@ static inline struct page *get_page_from_free_area(struct free_area *area,
 	return list_first_entry_or_null(&area->free_list[migratetype],
 					struct page, lru);
 }
-
+/* 把页面从buddy移除，不再为buddy页面。 */
 static inline void del_page_from_free_area(struct page *page,
 		struct free_area *area)
 {
@@ -632,7 +632,7 @@ struct zone {
 	unsigned int		compact_considered;
 	unsigned int		compact_defer_shift;
 	/*
-	记录zone内存碎片整理可能失败的最大order
+	记录zone内存碎片整理可能失败的最大order。也就是此值-1，就是成功规整过的order。
     如果当前order大于等于compact_order_failed，则允许推迟（这里是为了提高内存碎片整理的成功率），小于则直接启动内存碎片整理
     如果本次内存碎片整理成功了，则compact_order_failed置为order + 1
     如果本次内存碎片整理失败了，则compact_order_failed置为order */
@@ -1208,7 +1208,7 @@ static __always_inline struct zoneref *next_zones_zonelist(struct zoneref *z,
 					nodemask_t *nodes)
 {
 	if (likely(!nodes && zonelist_zone_idx(z) <= highest_zoneidx))/* 没指定nodemask的情况 */
-		return z;
+		return z;   /* 返回z本身？ */
 	return __next_zones_zonelist(z, highest_zoneidx, nodes);
 }
 

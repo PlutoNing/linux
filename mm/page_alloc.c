@@ -3286,6 +3286,8 @@ void free_unref_page_list(struct list_head *list)
 }
 
 /*
+2024年08月14日14:25:09
+把高阶order的page分裂为order==0？
  * split_page takes a non-compound higher-order page, and splits it into
  * n (1<<order) sub-pages: page[0..n]
  * Each sub-page must be freed individually.
@@ -3300,12 +3302,14 @@ void split_page(struct page *page, unsigned int order)
 	VM_BUG_ON_PAGE(PageCompound(page), page);
 	VM_BUG_ON_PAGE(!page_count(page), page);
 
-	for (i = 1; i < (1 << order); i++)
+	for (i = 1; i < (1 << order); i++)/* 遍历此同order组内的每一个page */
 		set_page_refcounted(page + i);
 	split_page_owner(page, order);
 }
 EXPORT_SYMBOL_GPL(split_page);
-
+/* 2024年08月14日11:26:02
+page是位于阶数为order的页面
+ */
 int __isolate_free_page(struct page *page, unsigned int order)
 {
 	struct free_area *area = &page_zone(page)->free_area[order];
@@ -3318,7 +3322,7 @@ int __isolate_free_page(struct page *page, unsigned int order)
 	zone = page_zone(page);
 	mt = get_pageblock_migratetype(page);
 
-	if (!is_migrate_isolate(mt)) {
+	if (!is_migrate_isolate(mt)) {/* 如果不是迁移类型的？ */
 		/*
 		 * Obey watermarks as if the page was being allocated. We can
 		 * emulate a high-order watermark check with a raised order-0
@@ -3340,12 +3344,14 @@ int __isolate_free_page(struct page *page, unsigned int order)
 	 * Set the pageblock if the isolated page is at least half of a
 	 * pageblock
 	 */
-	if (order >= pageblock_order - 1) {
+	if (order >= pageblock_order - 1) {/*  */
 		struct page *endpage = page + (1 << order) - 1;
-		for (; page < endpage; page += pageblock_nr_pages) {
+		for (; page < endpage; page += pageblock_nr_pages) {/* 以pageblock为单位
+		进行处理和步进。 */
 			int mt = get_pageblock_migratetype(page);
 			if (!is_migrate_isolate(mt) && !is_migrate_cma(mt)
-			    && !is_migrate_highatomic(mt))
+			    && !is_migrate_highatomic(mt))/* 符合条件的话，把这个isolated的大order
+			page组内的每个pageblock设置为movable */
 				set_pageblock_migratetype(page,
 							  MIGRATE_MOVABLE);
 		}

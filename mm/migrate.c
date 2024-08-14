@@ -2197,6 +2197,7 @@ out_unlock:
 	put_page(page);
 	return 0;
 }
+
 #endif /* CONFIG_NUMA_BALANCING */
 
 #endif /* CONFIG_NUMA */
