@@ -2064,17 +2064,17 @@ int isolate_lru_page(struct page *page)
 	VM_BUG_ON_PAGE(!page_count(page), page);
 	WARN_RATELIMIT(PageTail(page), "trying to isolate tail page");
 
-	if (PageLRU(page)) {
+	if (PageLRU(page)) {/* 是lru页面的话才操作 */
 		pg_data_t *pgdat = page_pgdat(page);
 		struct lruvec *lruvec;
 
 		spin_lock_irq(&pgdat->lru_lock);
 		lruvec = mem_cgroup_page_lruvec(page, pgdat);
-		if (PageLRU(page)) {
+		if (PageLRU(page)) {/* 保证现在还是 */
 			int lru = page_lru(page);
 			get_page(page);
-			ClearPageLRU(page);
-			del_page_from_lru_list(page, lruvec, lru);
+			ClearPageLRU(page);/* step1：清除lru标记 */
+			del_page_from_lru_list(page, lruvec, lru);/* step2：从lru移除 */
 			ret = 0;
 		}
 		spin_unlock_irq(&pgdat->lru_lock);

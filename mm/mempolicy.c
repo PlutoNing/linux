@@ -1007,10 +1007,13 @@ static int migrate_page_add(struct page *page, struct list_head *pagelist,
 	return 0;
 }
 
-/* page allocation callback for NUMA node migration */
+/* 
+do_move_pages_to_node进行numa 迁移时用来申请新页面。
+就是在指定node上面alloc pages。
+page allocation callback for NUMA node migration */
 struct page *alloc_new_node_page(struct page *page, unsigned long node)
 {
-	if (PageHuge(page))
+	if (PageHuge(page))/* 巨页 */
 		return alloc_huge_page_node(page_hstate(compound_head(page)),
 					node);
 	else if (PageTransHuge(page)) {

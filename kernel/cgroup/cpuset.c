@@ -403,6 +403,7 @@ static void guarantee_online_cpus(struct cpuset *cs, struct cpumask *pmask)
 }
 
 /*
+2024年08月14日16:00:01
  * Return in *pmask the portion of a cpusets's mems_allowed that
  * are online, with memory.  If none are online with memory, walk
  * up the cpuset hierarchy until we find one that does have some
@@ -3342,6 +3343,8 @@ void __init cpuset_init_current_mems_allowed(void)
 }
 
 /**
+2024年08月14日15:59:04
+返回tsk允许的nodemask？
  * cpuset_mems_allowed - return mems_allowed mask from a tasks cpuset.
  * @tsk: pointer to task_struct from which to obtain cpuset->mems_allowed.
  *

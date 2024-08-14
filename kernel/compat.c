@@ -359,6 +359,7 @@ get_compat_sigset(sigset_t *set, const compat_sigset_t __user *compat)
 EXPORT_SYMBOL_GPL(get_compat_sigset);
 
 /*
+在一个syscall期间分配userspace内存？
  * Allocate user-space memory for the duration of a single system call,
  * in order to marshall parameters inside a compat thunk.
  */

@@ -1401,7 +1401,9 @@ static void invalidate_bh_lru(void *arg)
 	}
 	put_cpu_var(bh_lrus);
 }
+/* 2024年08月14日17:01:34
 
+ */
 static bool has_bh_in_lru(int cpu, void *dummy)
 {
 	struct bh_lru *b = per_cpu_ptr(&bh_lrus, cpu);
@@ -1414,10 +1416,11 @@ static bool has_bh_in_lru(int cpu, void *dummy)
 
 	return 0;
 }
-
+/*  */
 void invalidate_bh_lrus(void)
 {
-	on_each_cpu_cond(has_bh_in_lru, invalidate_bh_lru, NULL, 1, GFP_KERNEL);
+	on_each_cpu_cond(has_bh_in_lru, invalidate_bh_lru, 
+	NULL, 1, GFP_KERNEL);
 }
 EXPORT_SYMBOL_GPL(invalidate_bh_lrus);
 /* 把bh与page的offset关联 */

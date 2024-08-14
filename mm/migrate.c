@@ -12,7 +12,7 @@
  * Dave Hansen <haveblue@us.ibm.com>
  * Christoph Lameter
  */
-
+/* 2024年08月14日17:11:35 */
 #include <linux/migrate.h>
 #include <linux/export.h>
 #include <linux/swap.h>
@@ -57,6 +57,7 @@
 #include "internal.h"
 
 /*
+2024年08月14日16:05:16
  * migrate_prep() needs to be called before we start compiling a list of pages
  * to be migrated using isolate_lru_page(). If scheduling work on other CPUs is
  * undesirable, use migrate_prep_local()
@@ -737,14 +738,17 @@ int migrate_page(struct address_space *mapping,
 EXPORT_SYMBOL(migrate_page);
 
 #ifdef CONFIG_BLOCK
-/* Returns true if all buffers are successfully locked */
+/* 
+迁移buffer页面时，加锁操作
+Returns true if all buffers are successfully locked */
 static bool buffer_migrate_lock_buffers(struct buffer_head *head,
 							enum migrate_mode mode)
 {
 	struct buffer_head *bh = head;
 
 	/* Simple case, sync compaction */
-	if (mode != MIGRATE_ASYNC) {
+	if (mode != MIGRATE_ASYNC) {/* 同步的情况 */
+
 		do {
 			lock_buffer(bh);
 			bh = bh->b_this_page;
@@ -772,9 +776,13 @@ static bool buffer_migrate_lock_buffers(struct buffer_head *head,
 
 		bh = bh->b_this_page;
 	} while (bh != head);
+
 	return true;
 }
 
+/* 2024年08月14日16:44:33
+把page迁移到newpage，俩都是mapping的页面。
+ */
 static int __buffer_migrate_page(struct address_space *mapping,
 		struct page *newpage, struct page *page, enum migrate_mode mode,
 		bool check_refs)
@@ -790,6 +798,8 @@ static int __buffer_migrate_page(struct address_space *mapping,
 	expected_count = expected_page_refs(mapping, page);
 	if (page_count(page) != expected_count)
 		return -EAGAIN;
+	/* 开始处理 */
+
 
 	head = page_buffers(page);
 	if (!buffer_migrate_lock_buffers(head, mode))
@@ -801,6 +811,7 @@ static int __buffer_migrate_page(struct address_space *mapping,
 
 recheck_buffers:
 		busy = false;
+
 		spin_lock(&mapping->private_lock);
 		bh = head;
 		do {
@@ -810,28 +821,34 @@ recheck_buffers:
 			}
 			bh = bh->b_this_page;
 		} while (bh != head);
+		/* 检查busy */
 		if (busy) {
-			if (invalidated) {
+			if (invalidated) {/* 如果已经invalidate了，就out了 */
 				rc = -EAGAIN;
 				goto unlock_buffers;
 			}
 			spin_unlock(&mapping->private_lock);
+
+
 			invalidate_bh_lrus();
 			invalidated = true;
 			goto recheck_buffers;
 		}
 	}
+	/* 开始迁移 */
 
+	/*  */
 	rc = migrate_page_move_mapping(mapping, newpage, page, 0);
 	if (rc != MIGRATEPAGE_SUCCESS)
 		goto unlock_buffers;
 
-	ClearPagePrivate(page);
-	set_page_private(newpage, page_private(page));
-	set_page_private(page, 0);
+	ClearPagePrivate(page);/* 旧page不再是buffer page */
+	set_page_private(newpage, page_private(page));/* 新page继承旧page在buffer的属性 */
+	set_page_private(page, 0);/* 清空旧page的priv（buffer相关） */
 	put_page(page);
 	get_page(newpage);
 
+	/* 建立buffer的每一个bh与new page的关联 */
 	bh = head;
 	do {
 		set_bh_page(bh, newpage, bh_offset(bh));
@@ -839,12 +856,12 @@ recheck_buffers:
 
 	} while (bh != head);
 
-	SetPagePrivate(newpage);
+	SetPagePrivate(newpage);/* 表明newpage的priv也开始起作用了 */
 
 	if (mode != MIGRATE_SYNC_NO_COPY)
-		migrate_page_copy(newpage, page);
+		migrate_page_copy(newpage, page);/* 开始拷贝 */
 	else
-		migrate_page_states(newpage, page);
+		migrate_page_states(newpage, page);/* 如果只是nocopy的迁移，就只拷贝属性 */
 
 	rc = MIGRATEPAGE_SUCCESS;
 unlock_buffers:
@@ -861,6 +878,7 @@ unlock_buffers:
 }
 
 /*
+迁移buffer里面pages的函数。
  * Migration function for pages with buffers. This function can only be used
  * if the underlying filesystem guarantees that no other references to "page"
  * exist. For example attached buffer heads are accessed only under page lock.
@@ -873,6 +891,7 @@ int buffer_migrate_page(struct address_space *mapping,
 EXPORT_SYMBOL(buffer_migrate_page);
 
 /*
+2024年08月14日16:43:47
  * Same as above except that this variant is more careful and checks that there
  * are also no buffer head references. This function is the right one for
  * mappings where buffer heads are directly looked up and referenced (such as
@@ -1567,7 +1586,9 @@ out:
 }
 
 #ifdef CONFIG_NUMA
+/* 2024年08月14日16:29:45
 
+todo */
 static int store_status(int __user *status, int start, int value, int nr)
 {
 	while (nr-- > 0) {
@@ -1578,7 +1599,7 @@ static int store_status(int __user *status, int start, int value, int nr)
 
 	return 0;
 }
-
+/* 把pagelist迁移到node */
 static int do_move_pages_to_node(struct mm_struct *mm,
 		struct list_head *pagelist, int node)
 {
@@ -1586,7 +1607,7 @@ static int do_move_pages_to_node(struct mm_struct *mm,
 
 	if (list_empty(pagelist))
 		return 0;
-
+	/* 把pagelist迁移到node */
 	err = migrate_pages(pagelist, alloc_new_node_page, NULL, node,
 			MIGRATE_SYNC, MR_SYSCALL);
 	if (err)
@@ -1595,6 +1616,7 @@ static int do_move_pages_to_node(struct mm_struct *mm,
 }
 
 /*
+找到mm里面addr对应的page，isolate，加入pagelist，准备迁移到node。
  * Resolves the given address to a struct page, isolates it from the LRU and
  * puts it to the given pagelist.
  * Returns -errno if the page cannot be found/isolated or 0 when it has been
@@ -1617,9 +1639,11 @@ static int add_page_for_migration(struct mm_struct *mm, unsigned long addr,
 
 	/* FOLL_DUMP to ignore special (like zero) pages */
 	follflags = FOLL_GET | FOLL_DUMP;
+	/* 解析出物理页面page */
 	page = follow_page(vma, addr, follflags);
 
 	err = PTR_ERR(page);
+
 	if (IS_ERR(page))
 		goto out;
 
@@ -1628,19 +1652,22 @@ static int add_page_for_migration(struct mm_struct *mm, unsigned long addr,
 		goto out;
 
 	err = 0;
+	/* 不用迁移 */
 	if (page_to_nid(page) == node)
 		goto out_putpage;
 
 	err = -EACCES;
+
+	/* ？ */
 	if (page_mapcount(page) > 1 && !migrate_all)
 		goto out_putpage;
 
-	if (PageHuge(page)) {
+	if (PageHuge(page)) {/* 巨页的路径 */
 		if (PageHead(page)) {
 			isolate_huge_page(page, pagelist);
 			err = 0;
 		}
-	} else {
+	} else {/* 普通页面的处理 */
 		struct page *head;
 
 		head = compound_head(page);
@@ -1649,6 +1676,7 @@ static int add_page_for_migration(struct mm_struct *mm, unsigned long addr,
 			goto out_putpage;
 
 		err = 0;
+		/* 加入到pagelist */
 		list_add_tail(&head->lru, pagelist);
 		mod_node_page_state(page_pgdat(head),
 			NR_ISOLATED_ANON + page_is_file_cache(head),
@@ -1667,6 +1695,8 @@ out:
 }
 
 /*
+迁移地址数组（pages，nr_pages）里面元素指向的页面到node，记录状态。
+@task_nodes：应该是task允许的nodes。
  * Migrate an array of page address onto an array of nodes and fill
  * the corresponding array of status.
  */
@@ -1689,10 +1719,13 @@ static int do_pages_move(struct mm_struct *mm, nodemask_t task_nodes,
 		int node;
 
 		err = -EFAULT;
+		/* 获取待迁移页面的地址，在用户空间 */
 		if (get_user(p, pages + i))
 			goto out_flush;
+		/* node也是？ */
 		if (get_user(node, nodes + i))
 			goto out_flush;
+		/* 待迁移的地址 */
 		addr = (unsigned long)untagged_addr(p);
 
 		err = -ENODEV;
@@ -1702,26 +1735,32 @@ static int do_pages_move(struct mm_struct *mm, nodemask_t task_nodes,
 			goto out_flush;
 
 		err = -EACCES;
+		/* tsk不允许此node */
 		if (!node_isset(node, task_nodes))
 			goto out_flush;
 
-		if (current_node == NUMA_NO_NODE) {
-			current_node = node;
+		if (current_node == NUMA_NO_NODE) {/*  */
+			current_node = node;/* 要迁移到的node */
 			start = i;
-		} else if (node != current_node) {
+		} else if (node != current_node) {/* current_node是上一个循环迁移的目标node，
+		这次循环不一样了，就直接在这里迁移。 */
+			/* 把pagelist迁移到current-node */
 			err = do_move_pages_to_node(mm, &pagelist, current_node);
 			if (err)
 				goto out;
+
 			err = store_status(status, start, current_node, i - start);
 			if (err)
 				goto out;
 			start = i;
 			current_node = node;
 		}
+		/* 这次循环的目标node和上次一样。 */
 
 		/*
 		 * Errors in the page lookup or isolation are not fatal and we simply
 		 * report them via status
+		 准备工作
 		 */
 		err = add_page_for_migration(mm, addr, current_node,
 				&pagelist, flags & MPOL_MF_MOVE_ALL);
@@ -1731,7 +1770,7 @@ static int do_pages_move(struct mm_struct *mm, nodemask_t task_nodes,
 		err = store_status(status, i, err, 1);
 		if (err)
 			goto out_flush;
-
+		/* 开始迁移 */
 		err = do_move_pages_to_node(mm, &pagelist, current_node);
 		if (err)
 			goto out;
@@ -1757,6 +1796,7 @@ out:
 }
 
 /*
+确定mm的一组页面指针（pages，nr_pages）的node的nid，存储到status。
  * Determine the nodes of an array of pages and store it in an array of status.
  */
 static void do_pages_stat_array(struct mm_struct *mm, unsigned long nr_pages,
@@ -1785,6 +1825,7 @@ static void do_pages_stat_array(struct mm_struct *mm, unsigned long nr_pages,
 
 		err = page ? page_to_nid(page) : -ENOENT;
 set_status:
+		/*把nid 存入status */
 		*status = err;
 
 		pages++;
@@ -1795,6 +1836,8 @@ set_status:
 }
 
 /*
+2024年08月14日16:31:30
+确定user指定的一组页面指针pages所属node的状态，存储user提供的status数组
  * Determine the nodes of a user array of pages and store it in
  * a user array of status.
  */
@@ -1803,6 +1846,7 @@ static int do_pages_stat(struct mm_struct *mm, unsigned long nr_pages,
 			 int __user *status)
 {
 #define DO_PAGES_STAT_CHUNK_NR 16
+
 	const void __user *chunk_pages[DO_PAGES_STAT_CHUNK_NR];
 	int chunk_status[DO_PAGES_STAT_CHUNK_NR];
 
@@ -1812,10 +1856,10 @@ static int do_pages_stat(struct mm_struct *mm, unsigned long nr_pages,
 		chunk_nr = nr_pages;
 		if (chunk_nr > DO_PAGES_STAT_CHUNK_NR)
 			chunk_nr = DO_PAGES_STAT_CHUNK_NR;
-
+		/* 先把用户指定的那组页面指针的数组拷贝到内核空间 */
 		if (copy_from_user(chunk_pages, pages, chunk_nr * sizeof(*chunk_pages)))
 			break;
-
+		/*  */
 		do_pages_stat_array(mm, chunk_nr, chunk_pages, chunk_status);
 
 		if (copy_to_user(status, chunk_status, chunk_nr * sizeof(*status)))
@@ -1825,10 +1869,12 @@ static int do_pages_stat(struct mm_struct *mm, unsigned long nr_pages,
 		status += chunk_nr;
 		nr_pages -= chunk_nr;
 	}
+
 	return nr_pages ? -EFAULT : 0;
 }
 
 /*
+移动当前进程地址空间的一系列页面
  * Move a list of pages in the address space of the currently executing
  * process.
  */
@@ -1849,7 +1895,7 @@ static int kernel_move_pages(pid_t pid, unsigned long nr_pages,
 	if ((flags & MPOL_MF_MOVE_ALL) && !capable(CAP_SYS_NICE))
 		return -EPERM;
 
-	/* Find the mm_struct */
+	/* rcu加锁，Find the mm_struct */
 	rcu_read_lock();
 	task = pid ? find_task_by_vpid(pid) : current;
 	if (!task) {
@@ -1869,6 +1915,8 @@ static int kernel_move_pages(pid_t pid, unsigned long nr_pages,
 	}
 	rcu_read_unlock();
 
+
+
  	err = security_task_movememory(task);
  	if (err)
 		goto out;
@@ -1880,10 +1928,10 @@ static int kernel_move_pages(pid_t pid, unsigned long nr_pages,
 	if (!mm)
 		return -EINVAL;
 
-	if (nodes)
+	if (nodes)/* 指定nodes的情况 */
 		err = do_pages_move(mm, task_nodes, nr_pages, pages,
 				    nodes, status, flags);
-	else
+	else/* 没指定nodes */
 		err = do_pages_stat(mm, nr_pages, pages, status);
 
 	mmput(mm);
@@ -1893,7 +1941,7 @@ out:
 	put_task_struct(task);
 	return err;
 }
-
+/* 2024年08月14日16:30:48 */
 SYSCALL_DEFINE6(move_pages, pid_t, pid, unsigned long, nr_pages,
 		const void __user * __user *, pages,
 		const int __user *, nodes,
@@ -1903,6 +1951,7 @@ SYSCALL_DEFINE6(move_pages, pid_t, pid, unsigned long, nr_pages,
 }
 
 #ifdef CONFIG_COMPAT
+/* 2024年08月14日15:55:35 */
 COMPAT_SYSCALL_DEFINE6(move_pages, pid_t, pid, compat_ulong_t, nr_pages,
 		       compat_uptr_t __user *, pages32,
 		       const int __user *, nodes,
@@ -1922,10 +1971,13 @@ COMPAT_SYSCALL_DEFINE6(move_pages, pid_t, pid, compat_ulong_t, nr_pages,
 	}
 	return kernel_move_pages(pid, nr_pages, pages, nodes, status, flags);
 }
+
 #endif /* CONFIG_COMPAT */
 
 #ifdef CONFIG_NUMA_BALANCING
 /*
+还能迁移nr个page到此node吗。
+有一个zone还能迁移就行。
  * Returns true if this is a safe migration target node for misplaced NUMA
  * pages. Currently it only checks the watermarks which crude
  */
@@ -1934,7 +1986,7 @@ static bool migrate_balanced_pgdat(struct pglist_data *pgdat,
 {
 	int z;
 
-	for (z = pgdat->nr_zones - 1; z >= 0; z--) {
+	for (z = pgdat->nr_zones - 1; z >= 0; z--) {/* 遍历zone */
 		struct zone *zone = pgdat->node_zones + z;
 
 		if (!populated_zone(zone))
@@ -1946,11 +1998,15 @@ static bool migrate_balanced_pgdat(struct pglist_data *pgdat,
 				       nr_migrate_pages,
 				       0, 0))
 			continue;
+
 		return true;
 	}
+
 	return false;
 }
-
+/* 在node之间调用migrate_pages函数时，分配新页面的回调。
+就是在指定node分配页面
+参数data是nid */
 static struct page *alloc_misplaced_dst_page(struct page *page,
 					   unsigned long data)
 {
@@ -1966,6 +2022,7 @@ static struct page *alloc_misplaced_dst_page(struct page *page,
 	return newpage;
 }
 
+/* 迁移page到node的准备工作？ */
 static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 {
 	int page_lru;
@@ -1976,7 +2033,7 @@ static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 	if (!migrate_balanced_pgdat(pgdat, compound_nr(page)))
 		return 0;
 
-	if (isolate_lru_page(page))
+	if (isolate_lru_page(page))/* 先把page进行isolate */
 		return 0;
 
 	/*
@@ -1986,7 +2043,7 @@ static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 	 * The expected page count is 3: 1 for page's mapcount and 1 for the
 	 * caller's pin and 1 for the reference taken by isolate_lru_page().
 	 */
-	if (PageTransHuge(page) && page_count(page) != 3) {
+	if (PageTransHuge(page) && page_count(page) != 3) {/* 巨页的路径 */
 		putback_lru_page(page);
 		return 0;
 	}
@@ -2004,6 +2061,7 @@ static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 	return 1;
 }
 
+/*  */
 bool pmd_trans_migrating(pmd_t pmd)
 {
 	struct page *page = pmd_page(pmd);
@@ -2011,6 +2069,7 @@ bool pmd_trans_migrating(pmd_t pmd)
 }
 
 /*
+把misplaced page移到另一个node
  * Attempt to migrate a misplaced page to the specified destination
  * node. Caller is expected to have an elevated reference count on
  * the page that will be dropped by this function before returning.
@@ -2026,6 +2085,7 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	/*
 	 * Don't migrate file pages that are mapped in multiple processes
 	 * with execute permissions as they are probably shared libraries.
+	 映射的lib
 	 */
 	if (page_mapcount(page) != 1 && page_is_file_cache(page) &&
 	    (vma->vm_flags & VM_EXEC))
@@ -2034,19 +2094,22 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	/*
 	 * Also do not migrate dirty pages as not all filesystems can move
 	 * dirty pages in MIGRATE_ASYNC mode which is a waste of cycles.
+	 脏文件页
 	 */
 	if (page_is_file_cache(page) && PageDirty(page))
 		goto out;
-
+	/* 准备工作，比如进行isolate */
 	isolated = numamigrate_isolate_page(pgdat, page);
 	if (!isolated)
 		goto out;
-
+	/* 加入到迁移链表， */
 	list_add(&page->lru, &migratepages);
+	/* 调用通用方法进行migrate_pages。 */
 	nr_remaining = migrate_pages(&migratepages, alloc_misplaced_dst_page,
 				     NULL, node, MIGRATE_ASYNC,
 				     MR_NUMA_MISPLACED);
-	if (nr_remaining) {
+	if (nr_remaining) {/* 表明失败了？因为这次使用migrate_pages函数，参数migratepages就一个页面。
+	所以还有remaining就是出错了。也只需要考虑着一个页面，put_back？ */
 		if (!list_empty(&migratepages)) {
 			list_del(&page->lru);
 			dec_node_page_state(page, NR_ISOLATED_ANON +

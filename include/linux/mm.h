@@ -260,14 +260,14 @@ extern unsigned int kobjsize(const void *objp);
 
 #define VM_GROWSDOWN	0x00000100	/* general info on the segment */
 #define VM_UFFD_MISSING	0x00000200	/* missing pages tracking */
-/* 表示页帧号（Page Frame Number, PFN）映射，特殊映射不希望关联页描述符，直接使用页帧号，
- */
+/* 表示页帧号（Page Frame Number, PFN）映射，特殊映射不希望关联页描述符，直接使用页帧号，*/
 #define VM_PFNMAP	0x00000400	/* Page-ranges managed without "struct page", just pure PFN */
+
 #define VM_DENYWRITE	0x00000800	/*不可写 ETXTBSY on write attempts.. */
 #define VM_UFFD_WP	0x00001000	/* wrprotect pages tracking */
 
 #define VM_LOCKED	0x00002000 /* 表示页被锁定在内存中，不允许换出到交换区 */
-#define VM_IO           0x00004000	/* Memory mapped I/O or similar */
+#define VM_IO           0x00004000	/* Memory mapped I/O or similar，此vma也不能迁移 */
 
 					/* Used by sys_madvise() */
 #define VM_SEQ_READ	0x00008000	/*表示进程从头到尾按顺序读一个文件 App will access data sequentially */

@@ -179,7 +179,10 @@ extern int mpol_parse_str(char *str, struct mempolicy **mpol);
 
 extern void mpol_to_str(char *buffer, int maxlen, struct mempolicy *pol);
 
-/* Check if a vma is migratable */
+/* 
+2024年08月14日16:22:00
+Check if a vma is migratable
+有些特殊情况不能迁移，别的可以 */
 static inline bool vma_migratable(struct vm_area_struct *vma)
 {
 	if (vma->vm_flags & (VM_IO | VM_PFNMAP))
@@ -206,6 +209,8 @@ static inline bool vma_migratable(struct vm_area_struct *vma)
 		gfp_zone(mapping_gfp_mask(vma->vm_file->f_mapping))
 								< policy_zone)
 			return false;
+
+
 	return true;
 }
 

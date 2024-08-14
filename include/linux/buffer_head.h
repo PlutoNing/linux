@@ -158,6 +158,7 @@ If we *know* page->private refers to buffer_heads */
 		BUG_ON(!PagePrivate(page));			\
 		((struct buffer_head *)page_private(page));	\
 	})
+/*  */
 #define page_has_buffers(page)	PagePrivate(page)
 
 void buffer_check_dirty_writeback(struct page *page,

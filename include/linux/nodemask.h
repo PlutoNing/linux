@@ -388,6 +388,7 @@ static inline void __nodes_fold(nodemask_t *dstp, const nodemask_t *origp,
 
 /*
 2024年07月04日12:39:04
+
  * Bitmasks that are kept for all the nodes.
  */
 enum node_states {
@@ -399,7 +400,7 @@ enum node_states {
 #else
 	N_HIGH_MEMORY = N_NORMAL_MEMORY,
 #endif
-	N_MEMORY,		/* The node has memory(regular, high, movable) */
+	N_MEMORY,		/*有memory？ The node has memory(regular, high, movable) */
 	N_CPU,		/* The node has one or more cpus */
 	NR_NODE_STATES
 };
