@@ -1137,6 +1137,7 @@ void untrack_pfn(struct vm_area_struct *vma, unsigned long pfn,
 }
 
 /*
+vma进行了remap
  * untrack_pfn_moved is called, while mremapping a pfnmap for a new region,
  * with the old vma after its pfnmap page table has been removed.  The new
  * vma has a new pfnmap to the same pfn & cache type with VM_PAT set.

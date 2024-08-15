@@ -1932,7 +1932,7 @@ static inline unsigned long mm_pgtables_bytes(const struct mm_struct *mm)
 {
 	return atomic_long_read(&mm->pgtables_bytes);
 }
-
+/* 统计mm的页表占用空间 */
 static inline void mm_inc_nr_ptes(struct mm_struct *mm)
 {
 	atomic_long_add(PTRS_PER_PTE * sizeof(pte_t), &mm->pgtables_bytes);
@@ -1980,7 +1980,7 @@ static inline pud_t *pud_alloc(struct mm_struct *mm, p4d_t *p4d,
 		NULL : pud_offset(p4d, address);
 }
 #endif /* !__ARCH_HAS_5LEVEL_HACK */
-/*  */
+/* 获取pmd的过程会进行alloc */
 static inline pmd_t *pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address)
 {
 	return (unlikely(pud_none(*pud)) && __pmd_alloc(mm, pud, address))?
@@ -2083,7 +2083,7 @@ static inline void pgtable_pte_page_dtor(struct page *page)
 	dec_zone_page_state(page, NR_PAGETABLE);
 }
 /* 2024年7月13日13:46:29
-todo
+找到addr的pte
  */
 #define pte_offset_map_lock(mm, pmd, address, ptlp)	\
 ({							\
@@ -2098,7 +2098,8 @@ todo
 	spin_unlock(ptl);				\
 	pte_unmap(pte);					\
 } while (0)
-
+/* 2024年08月15日09:54:07
+pmd为none的话，才__pte_alloc */
 #define pte_alloc(mm, pmd) (unlikely(pmd_none(*(pmd))) && __pte_alloc(mm, pmd))
 
 #define pte_alloc_map(mm, pmd, address)			\

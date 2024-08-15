@@ -74,7 +74,7 @@ static inline void pmd_populate_kernel_safe(struct mm_struct *mm,
 	paravirt_alloc_pte(mm, __pa(pte) >> PAGE_SHIFT);
 	set_pmd_safe(pmd, __pmd(__pa(pte) | _PAGE_TABLE));
 }
-/*  */
+/* 把申请的pte页表new赋值给pmd项 */
 static inline void pmd_populate(struct mm_struct *mm, pmd_t *pmd,
 				struct page *pte)
 {
@@ -82,6 +82,7 @@ static inline void pmd_populate(struct mm_struct *mm, pmd_t *pmd,
 	unsigned long pfn = page_to_pfn(pte);
 
 	paravirt_alloc_pte(mm, pfn);
+	/* 构造pmd项赋值给pmd项指针 */
 	set_pmd(pmd, __pmd(((pteval_t)pfn << PAGE_SHIFT) | _PAGE_TABLE));
 }
 /* 获得pmd的页表page，里面512个pte */

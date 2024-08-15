@@ -65,7 +65,7 @@ extern pmdval_t early_pmd_flags;
 
 #define set_pte_atomic(ptep, pte)					\
 	native_set_pte_atomic(ptep, pte)
-
+/* 构造的pmd项赋值给pmdp项指针 */
 #define set_pmd(pmdp, pmd)		native_set_pmd(pmdp, pmd)
 
 #ifndef __PAGETABLE_P4D_FOLDED
@@ -107,6 +107,7 @@ extern pmdval_t early_pmd_flags;
 
 #ifndef __PAGETABLE_PMD_FOLDED
 #define pmd_val(x)	native_pmd_val(x)
+/* 构造pmd项 */
 #define __pmd(x)	native_make_pmd(x)
 #endif
 
@@ -812,7 +813,7 @@ static inline int pmd_none(pmd_t pmd)
 	unsigned long val = native_pmd_val(pmd);
 	return (val & ~_PAGE_KNL_ERRATUM_MASK) == 0;
 }
-/*  */
+/* 找到pmd指向的pte表的页面的addr */
 static inline unsigned long pmd_page_vaddr(pmd_t pmd)
 {
 	return (unsigned long)__va(pmd_val(pmd) & pmd_pfn_mask(pmd));
@@ -860,7 +861,7 @@ static inline unsigned long pmd_index(unsigned long address)
 '0b10110011001011100000011001110011100010100000'
                             +++++++123456789abc
 可以看到+上面是返回的结果，+号后面12位是page页内偏移
-返回的是在pte页表的偏移。
+返回的是在pte页表的idx
 
  * the pte page can be thought of an array like this: pte_t[PTRS_PER_PTE]
  *
@@ -876,6 +877,8 @@ static inline unsigned long pte_index(unsigned long address)
 */
 static inline pte_t * pte_offset_kernel(pmd_t *pmd, unsigned long address)
 {
+	/* 这里得到pmd上address的pte条目
+	就是先找到pmd指向的pte表，然后加上address在pte表上的idx */
 	return (pte_t *)pmd_page_vaddr(*pmd) + pte_index(address);
 }
 

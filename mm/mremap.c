@@ -29,7 +29,8 @@
 #include <asm/tlbflush.h>
 
 #include "internal.h"
-
+/* 获取addr所在的pmd
+这种获取接口不会在缺失的时候自动分配缺失的项 */
 static pmd_t *get_old_pmd(struct mm_struct *mm, unsigned long addr)
 {
 	pgd_t *pgd;
@@ -55,7 +56,8 @@ static pmd_t *get_old_pmd(struct mm_struct *mm, unsigned long addr)
 
 	return pmd;
 }
-
+/* 起始就是获取pmd，不过pmd的页表获取接口在获取过程中会自动分配确实的pmd
+pud，p4d也是。 */
 static pmd_t *alloc_new_pmd(struct mm_struct *mm, struct vm_area_struct *vma,
 			    unsigned long addr)
 {
@@ -81,6 +83,7 @@ static pmd_t *alloc_new_pmd(struct mm_struct *mm, struct vm_area_struct *vma,
 	return pmd;
 }
 
+/* todo */
 static void take_rmap_locks(struct vm_area_struct *vma)
 {
 	if (vma->vm_file)
@@ -89,6 +92,8 @@ static void take_rmap_locks(struct vm_area_struct *vma)
 		anon_vma_lock_write(vma->anon_vma);
 }
 
+/* 2024年08月15日10:36:28 
+todo*/
 static void drop_rmap_locks(struct vm_area_struct *vma)
 {
 	if (vma->anon_vma)
@@ -111,7 +116,9 @@ static pte_t move_soft_dirty_pte(pte_t pte)
 #endif
 	return pte;
 }
-
+/* 把vma的【old_addr，old_end】remap到了new_vma的new_addr之后迁移复制页表
+@old_pmd和@new_pmd分别是新旧项的pmd。
+这两段地址范围是经过处理的，都不会跨过这两个pmd。 */
 static void move_ptes(struct vm_area_struct *vma, pmd_t *old_pmd,
 		unsigned long old_addr, unsigned long old_end,
 		struct vm_area_struct *new_vma, pmd_t *new_pmd,
@@ -121,6 +128,7 @@ static void move_ptes(struct vm_area_struct *vma, pmd_t *old_pmd,
 	pte_t *old_pte, *new_pte, pte;
 	spinlock_t *old_ptl, *new_ptl;
 	bool force_flush = false;
+	/* 处理的地址范围长度 */
 	unsigned long len = old_end - old_addr;
 
 	/*
@@ -150,17 +158,19 @@ static void move_ptes(struct vm_area_struct *vma, pmd_t *old_pmd,
 	 */
 	old_pte = pte_offset_map_lock(mm, old_pmd, old_addr, &old_ptl);
 	new_pte = pte_offset_map(new_pmd, new_addr);
+
 	new_ptl = pte_lockptr(mm, new_pmd);
 	if (new_ptl != old_ptl)
 		spin_lock_nested(new_ptl, SINGLE_DEPTH_NESTING);
+
 	flush_tlb_batched_pending(vma->vm_mm);
 	arch_enter_lazy_mmu_mode();
 
 	for (; old_addr < old_end; old_pte++, old_addr += PAGE_SIZE,
-				   new_pte++, new_addr += PAGE_SIZE) {
+				   new_pte++, new_addr += PAGE_SIZE) {/* 处理每一个pte */
 		if (pte_none(*old_pte))
 			continue;
-
+		/* 清除old_pte */
 		pte = ptep_get_and_clear(mm, old_addr, old_pte);
 		/*
 		 * If we are remapping a valid PTE, make sure
@@ -175,8 +185,10 @@ static void move_ptes(struct vm_area_struct *vma, pmd_t *old_pmd,
 		 */
 		if (pte_present(pte))
 			force_flush = true;
+
 		pte = move_pte(pte, new_vma->vm_page_prot, old_addr, new_addr);
 		pte = move_soft_dirty_pte(pte);
+		/* set此 pte */
 		set_pte_at(mm, new_addr, new_pte, pte);
 	}
 
@@ -192,6 +204,9 @@ static void move_ptes(struct vm_area_struct *vma, pmd_t *old_pmd,
 }
 
 #ifdef CONFIG_HAVE_MOVE_PMD
+/* remap之后复制迁移页表
+是vma的oldaddr，old_len区域remap到了new_addr，
+@old_pmd，@new_pmd分别是旧新区域的pmd */
 static bool move_normal_pmd(struct vm_area_struct *vma, unsigned long old_addr,
 		  unsigned long new_addr, unsigned long old_end,
 		  pmd_t *old_pmd, pmd_t *new_pmd)
@@ -236,7 +251,9 @@ static bool move_normal_pmd(struct vm_area_struct *vma, unsigned long old_addr,
 	return true;
 }
 #endif
-/* 把vma的old_addr的old_len的长度remap到了new_vma的new_addr
+/* 把vma的old_addr的old_len的长度remap到了new_vma（可能并不是新的
+，而是merge扩展的新区域的prev or next）的new_addr后
+对页表的处理
 2024年08月14日19:59:11 */
 unsigned long move_page_tables(struct vm_area_struct *vma,
 		unsigned long old_addr, struct vm_area_struct *new_vma,
@@ -254,20 +271,29 @@ unsigned long move_page_tables(struct vm_area_struct *vma,
 				old_addr, old_end);
 	mmu_notifier_invalidate_range_start(&range);
 
-	for (; old_addr < old_end; old_addr += extent, new_addr += extent) {
+	for (; old_addr < old_end; 
+		old_addr += extent, new_addr += extent) {
 		cond_resched();
+		/* next指向old_addr所在pmd的下一个pmd的起始地址 */
 		next = (old_addr + PMD_SIZE) & PMD_MASK;
 		/* even if next overflowed, extent below will be ok */
 		extent = next - old_addr;
-		if (extent > old_end - old_addr)
+		if (extent > old_end - old_addr) /* extent不能超过old_end */
 			extent = old_end - old_addr;
+		/* old的pmd */
 		old_pmd = get_old_pmd(vma->vm_mm, old_addr);
 		if (!old_pmd)
 			continue;
+		/* 分配new区域的的pmd */
 		new_pmd = alloc_new_pmd(vma->vm_mm, vma, new_addr);
 		if (!new_pmd)
 			break;
-		if (is_swap_pmd(*old_pmd) || pmd_trans_huge(*old_pmd)) {
+		/* 现在找到了old区域的pmd，新区域的pmd也建好了，下面就是复制or迁移页表pte。
+		首先是考虑swp和巨页的特殊路径
+		然后是如果pmd支持页迁移的话，
+		都不行的话，就是执行基本的迁移复制pte的函数了 */
+		if (is_swap_pmd(*old_pmd) || pmd_trans_huge(*old_pmd)) {/* 如果是swp或者
+		巨页的特殊路径 */
 			if (extent == HPAGE_PMD_SIZE) {
 				bool moved;
 				/* See comment in move_ptes() */
@@ -283,7 +309,7 @@ unsigned long move_page_tables(struct vm_area_struct *vma,
 			split_huge_pmd(vma, old_pmd, old_addr);
 			if (pmd_trans_unstable(old_pmd))
 				continue;
-		} else if (extent == PMD_SIZE) {
+		} else if (extent == PMD_SIZE) { /* 如果支持pmd迁移机制的话 */
 #ifdef CONFIG_HAVE_MOVE_PMD
 			/*
 			 * If the extent is PMD-sized, try to speed the move by
@@ -293,20 +319,26 @@ unsigned long move_page_tables(struct vm_area_struct *vma,
 
 			if (need_rmap_locks)
 				take_rmap_locks(vma);
+
 			moved = move_normal_pmd(vma, old_addr, new_addr,
 					old_end, old_pmd, new_pmd);
+
 			if (need_rmap_locks)
 				drop_rmap_locks(vma);
+
 			if (moved)
 				continue;
 #endif
 		}
+		/* 一般的remap迁移页表路径 */
 
+		/* 给new_pmd申请分配pte表 */
 		if (pte_alloc(new_vma->vm_mm, new_pmd))
 			break;
+		/* 新区域的下一个pmd的起始地址 */
 		next = (new_addr + PMD_SIZE) & PMD_MASK;
 		if (extent > next - new_addr)
-			extent = next - new_addr;
+			extent = next - new_addr;/* 最多只处理新区域所在pmd的范围，不能跨pmd */
 		move_ptes(vma, old_pmd, old_addr, old_addr + extent, new_vma,
 			  new_pmd, new_addr, need_rmap_locks);
 	}
@@ -371,7 +403,7 @@ static unsigned long move_vma(struct vm_area_struct *vma,
 		err = vma->vm_ops->mremap(new_vma);
 	}
 
-	if (unlikely(err)) {
+	if (unlikely(err)) {/* 出错了，还要移回来？ */
 		/*
 		 * On error, move entries back from new area to old,
 		 * which will succeed since page tables still there,
@@ -504,6 +536,7 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 
 	return vma;
 }
+
 /* 2024年8月11日23:44:19
 把addr&old_len进行remap到new_addr&new_len。
  */
@@ -587,7 +620,8 @@ out1:
 out:
 	return ret;
 }
-/*  */
+
+/* vma能否扩大delta */
 static int vma_expandable(struct vm_area_struct *vma, unsigned long delta)
 {
 	unsigned long end = vma->vm_end + delta;
@@ -598,6 +632,7 @@ static int vma_expandable(struct vm_area_struct *vma, unsigned long delta)
 	if (get_unmapped_area(NULL, vma->vm_start, end - vma->vm_start,
 			      0, MAP_FIXED) & ~PAGE_MASK)
 		return 0;
+
 	return 1;
 }
 

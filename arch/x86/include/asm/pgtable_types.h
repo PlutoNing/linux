@@ -363,7 +363,7 @@ static inline pudval_t native_pud_val(pud_t pud)
 
 #if CONFIG_PGTABLE_LEVELS > 2
 typedef struct { pmdval_t pmd; } pmd_t;
-
+/*  */
 static inline pmd_t native_make_pmd(pmdval_t val)
 {
 	return (pmd_t) { val };

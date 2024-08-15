@@ -477,11 +477,14 @@ void free_pgtables(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		vma = next;
 	}
 }
-/*  */
+/* 2024年08月15日09:55:31
+给mm的这个pmd项分配pte页表page */
 int __pte_alloc(struct mm_struct *mm, pmd_t *pmd)
 {
 	spinlock_t *ptl;
+	/* 分配pte页表，对应与一个pmd项。 */
 	pgtable_t new = pte_alloc_one(mm);
+	
 	if (!new)
 		return -ENOMEM;
 
@@ -500,14 +503,18 @@ int __pte_alloc(struct mm_struct *mm, pmd_t *pmd)
 	 */
 	smp_wmb(); /* Could be smp_wmb__xxx(before|after)_spin_lock */
 
+
 	ptl = pmd_lock(mm, pmd);
-	if (likely(pmd_none(*pmd))) {	/* Has another populated it ? */
+	if (likely(pmd_none(*pmd))) {	/*检查检查有没有被其他populate。 Has another populated it ? */
 		mm_inc_nr_ptes(mm);
+		/* 把申请的pte页表new赋值给pmd项 */
 		pmd_populate(mm, pmd, new);
 		new = NULL;
 	}
 	spin_unlock(ptl);
-	if (new)
+
+
+	if (new)/* 说明刚才执行失败了，这里释放申请的页表页面 */
 		pte_free(mm, new);
 	return 0;
 }

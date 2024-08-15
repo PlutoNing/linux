@@ -48,7 +48,7 @@ static inline void pte_free_kernel(struct mm_struct *mm, pte_t *pte)
 }
 
 /**
-分配pte
+给pmd项分配pte表（实质上是一个page，里面512个pte项）
  * __pte_alloc_one - allocate a page for PTE-level user page table
  * @mm: the mm_struct of the current context
  * @gfp: GFP flags to use for the allocation
