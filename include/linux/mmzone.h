@@ -485,7 +485,8 @@ struct zone {
 	/* watermark_boost特性是在Linux 5.0版本引入的，具体可以参考补丁：mm: reclaim small amounts of 
 	memory when an external fragmentation event occurs，其引入的初衷是为了减少外部碎片事件（mm_page_alloc_extfrag）。
 	例如如果一个pageblock无法提供足够的连续内存，就会进入到在fallback场景，当fallback_order小于
-	pageblock_order时，就会被认为会导致外部碎片的事件。在实施“偷”页框之前，会暂时提高（boost）水线。 */
+	pageblock_order时，就会被认为会导致外部碎片的事件。在实施“偷”页框之前，会暂时提高（boost）水线。
+	和规整有关 */
 	unsigned long watermark_boost;
 /* 预留内存？ */
 	unsigned long nr_reserved_highatomic;
@@ -635,7 +636,9 @@ struct zone {
 	记录zone内存碎片整理可能失败的最大order。也就是此值-1，就是成功规整过的order。
     如果当前order大于等于compact_order_failed，则允许推迟（这里是为了提高内存碎片整理的成功率），小于则直接启动内存碎片整理
     如果本次内存碎片整理成功了，则compact_order_failed置为order + 1
-    如果本次内存碎片整理失败了，则compact_order_failed置为order */
+    如果本次内存碎片整理失败了，则compact_order_failed置为order
+	---------------
+	表示小于这个order的规整可能是失败 */
 	int			compact_order_failed;
 #endif
 
@@ -869,8 +872,9 @@ typedef struct pglist_data {
 	int kswapd_failures;		/* Number of 'reclaimed == 0' runs */
 
 #ifdef CONFIG_COMPACTION
-	/*  */
+	/* node需要规整的order */
 	int kcompactd_max_order;
+	/* 需要规整的zoneidx */
 	enum zone_type kcompactd_classzone_idx;
 	/* zone的内存规整进程等待在这里 */
 	wait_queue_head_t kcompactd_wait;

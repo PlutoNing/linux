@@ -1085,6 +1085,7 @@ struct task_struct {
 	struct io_context		*io_context;
 
 #ifdef CONFIG_COMPACTION
+/* 规整过程中直接获取页面，存储到此 */
 	struct capture_control		*capture_control;
 #endif
 	/* Ptrace state: */

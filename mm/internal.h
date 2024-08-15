@@ -199,10 +199,12 @@ extern int user_min_free_kbytes;
  
  */
 struct compact_control {
-	struct list_head freepages;	/* List of free pages to migrate to，扫描pageblock时空闲页面链表 */
+	struct list_head freepages;	/* List of free pages to migrate to，
+	扫描pageblock时空闲页面链表 */
 	struct list_head migratepages;	/* List of pages being migrated 迁移页面链表
 	装载从lru上面isolate的page们*/
-	unsigned int nr_freepages;	/* Number of isolated free pages，freepages链表页面数量 */
+	unsigned int nr_freepages;	/* Number of isolated free pages，
+	freepages链表页面数量 */
 	unsigned int nr_migratepages;	/* Number of pages to migrate，    // migratepages链表中页面数 */
 	unsigned long free_pfn;		/*空闲页扫描起始页框 isolate_freepages search base */
 	unsigned long migrate_pfn;	/* 待移动页扫描起始页框isolate_migratepages search base */
@@ -229,6 +231,8 @@ struct compact_control {
 };
 
 /*
+2024年08月15日14:56:30
+直接内存规整过程中直接获取freelist上的页面
  * Used in direct compaction when a page should be taken from the freelists
  * immediately when one is created during the free path.
  */

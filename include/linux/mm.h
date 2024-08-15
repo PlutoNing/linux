@@ -107,6 +107,7 @@ extern int mmap_rnd_compat_bits __read_mostly;
  * It's defined as noop for arcitectures that don't support memory tagging.
  */
 #ifndef untagged_addr
+/*  */
 #define untagged_addr(addr) (addr)
 #endif
 
@@ -2618,19 +2619,24 @@ unsigned long start_addr, unsigned long end_addr)
 		vma = NULL;
 	return vma;
 }
-
+/* 返回vma的起始地址
+如果是growsdown的话，返回减去guard的地址
+ */
 static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
 {
+	/* vma起始地址 */
 	unsigned long vm_start = vma->vm_start;
 
 	if (vma->vm_flags & VM_GROWSDOWN) {
 		vm_start -= stack_guard_gap;
+
 		if (vm_start > vma->vm_start)
 			vm_start = 0;
 	}
+
 	return vm_start;
 }
-
+/* 返回vma的end，如果是growsup类型的vma，+=guard_gap */
 static inline unsigned long vm_end_gap(struct vm_area_struct *vma)
 {
 	unsigned long vm_end = vma->vm_end;

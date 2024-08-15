@@ -60,7 +60,7 @@ void __init mminit_verify_zonelist(void)
 		}
 	}
 }
-
+/* 2024年08月15日20:33:45 */
 void __init mminit_verify_pageflags_layout(void)
 {
 	int shift, width;
@@ -139,7 +139,7 @@ EXPORT_SYMBOL_GPL(mm_kobj);
 
 #ifdef CONFIG_SMP
 s32 vm_committed_as_batch = 32;
-
+/* todo */
 static void __meminit mm_compute_batch(void)
 {
 	u64 memsized_batch;
@@ -169,7 +169,7 @@ static struct notifier_block compute_batch_nb __meminitdata = {
 	.notifier_call = mm_compute_batch_notifier,
 	.priority = IPC_CALLBACK_PRI, /* use lowest priority */
 };
-
+/* todo */
 static int __init mm_compute_batch_init(void)
 {
 	mm_compute_batch();
@@ -181,7 +181,7 @@ static int __init mm_compute_batch_init(void)
 __initcall(mm_compute_batch_init);
 
 #endif
-
+/* 初始化fs的mm文件 */
 static int __init mm_sysfs_init(void)
 {
 	mm_kobj = kobject_create_and_add("mm", kernel_kobj);

@@ -144,6 +144,15 @@ void vma_set_page_prot(struct vm_area_struct *vma)
 /*
 2024年7月19日00:40:19
 unlink_file_vma调用函数，解除vma与mapping的关系
+
+vma mmap到file，mapping是file的mapping。
+
+@vma
+@file
+@mapping
+
+
+
  * Requires inode->i_mapping->i_mmap_rwsem
  */
 static void __remove_shared_vm_struct(struct vm_area_struct *vma,
@@ -202,7 +211,10 @@ static struct vm_area_struct *remove_vma(struct vm_area_struct *vma)
 	vm_area_free(vma);
 	return next;
 }
+
 /* 2024年7月1日00:15:38
+brk系统调用；
+
 addr:旧的边界地址
 
  */
@@ -251,10 +263,11 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 	if (check_data_rlimit(rlimit(RLIMIT_DATA), brk, mm->start_brk,
 			      mm->end_data, mm->start_data))
 		goto out;
-
+	/* 页对齐新brk */
 	newbrk = PAGE_ALIGN(brk);
+	/* 也对齐old brk */
 	oldbrk = PAGE_ALIGN(mm->brk);
-	if (oldbrk == newbrk) {
+	if (oldbrk == newbrk) {/* 说明新brk和old brk一个page上面。无需扩展 */
 		mm->brk = brk;
 		goto success;
 	}
@@ -263,7 +276,7 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 	 * Always allow shrinking brk.
 	 * __do_munmap() may downgrade mmap_sem to read.
 	 */
-	if (brk <= mm->brk) {
+	if (brk <= mm->brk) { /* 缩小brk，unmap掉缩小的范围 */
 		int ret;
 
 		/*
@@ -279,17 +292,24 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 		} else if (ret == 1) {
 			downgraded = true;
 		}
+
 		goto success;
 	}
 
-	/* Check against existing mmap mappings. */
+	/* 扩大brk的情况 */
+
+
+	/* Check against existing mmap mappings. 
+	先找到oldbrk所在的vma*/
 	next = find_vma(mm, oldbrk);
-	if (next && newbrk + PAGE_SIZE > vm_start_gap(next))
+
+	if (next && newbrk + PAGE_SIZE > vm_start_gap(next))/* ？2024年08月15日20:03:11 */
 		goto out;
 
 	/* Ok, looks good - let it rip. */
 	if (do_brk_flags(oldbrk, newbrk-oldbrk, 0, &uf) < 0)
 		goto out;
+
 	mm->brk = brk;
 
 success:
@@ -309,6 +329,7 @@ out:
 	return retval;
 }
 
+/* 返回考虑到gap的情况下的与prev_end的gap */
 static inline unsigned long vma_compute_gap(struct vm_area_struct *vma)
 {
 	unsigned long gap, prev_end;
@@ -319,10 +340,11 @@ static inline unsigned long vma_compute_gap(struct vm_area_struct *vma)
 	 * an unmapped area; whereas when expanding we only require one.
 	 * That's a little inconsistent, but keeps the code here simpler.
 	 */
+	 /* 考虑到gap的vma起始地址 */
 	gap = vm_start_gap(vma);
 	if (vma->vm_prev) {
 		prev_end = vm_end_gap(vma->vm_prev);
-		if (gap > prev_end)
+		if (gap > prev_end)/* 如果gap和prev的end没有交叉的值 */
 			gap -= prev_end;
 		else
 			gap = 0;
@@ -670,7 +692,9 @@ void __vma_link_rb(struct mm_struct *mm, struct vm_area_struct *vma,
 	vma_rb_insert(vma, &mm->mm_rb);
 }
 
-/* 把vma添加到vmfile的mapping的immap里面 */
+/* 
+把vma插入mm时调用。
+把vma添加到vmfile的mapping的immap里面，todo */
 static void __vma_link_file(struct vm_area_struct *vma)
 {
 	struct file *file;
@@ -708,7 +732,7 @@ __vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	__vma_link_list(mm, vma, prev, rb_parent);
 	__vma_link_rb(mm, vma, rb_link, rb_parent);
 }
-/*  */
+/* 找到vma的prev和红黑树位置后，此函数把vma插入mm */
 static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 			struct vm_area_struct *prev, struct rb_node **rb_link,
 			struct rb_node *rb_parent)
@@ -721,6 +745,7 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	}
 	/* 链表和红黑树 */
 	__vma_link(mm, vma, prev, rb_link, rb_parent);
+	/* vm_file */
 	__vma_link_file(vma);
 
 	if (mapping)
@@ -731,6 +756,8 @@ static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 }
 
 /*
+2024年08月15日19:27:51
+把vma插入mm
  * Helper for vma_adjust() in the split_vma insert case: insert a vma into the
  * mm's list and rbtree.  It has already been inserted into the interval tree.
  */
@@ -3346,7 +3373,7 @@ out:
 
 /*
 2024年7月1日22:34:43。
-从addr扩展len空间？
+从addr扩展len空间
  *  this is really a simplified "do_mmap".  it only handles
  *  anonymous maps.  eventually we may be able to do some
  *  brk-specific accounting here.

@@ -3952,7 +3952,7 @@ static void age_active_anon(struct pglist_data *pgdat,
 		memcg = mem_cgroup_iter(NULL, memcg, NULL);
 	} while (memcg);
 }
-
+/* 返回是否有zone是watermark_boost */
 static bool pgdat_watermark_boosted(pg_data_t *pgdat, int classzone_idx)
 {
 	int i;
@@ -3965,7 +3965,7 @@ static bool pgdat_watermark_boosted(pg_data_t *pgdat, int classzone_idx)
 	 * start prematurely when there is no boosting and a lower
 	 * zone is balanced.
 	 */
-	for (i = classzone_idx; i >= 0; i--) {
+	for (i = classzone_idx; i >= 0; i--) {/* 遍历node的zone */
 		zone = pgdat->node_zones + i;
 		if (!managed_zone(zone))
 			continue;
@@ -3980,7 +3980,7 @@ static bool pgdat_watermark_boosted(pg_data_t *pgdat, int classzone_idx)
 /*
 2024年06月26日11:38:14
 判断node是否需要进行内存回收，判断标准是node中有任意一个zone能在满足
-高水位的要求下满足order的内存申请
+高水位的要求下满足order的内存申请。
  * Returns true if there is an eligible zone balanced for the request order
  * and classzone_idx
  */
@@ -4571,9 +4571,9 @@ void wakeup_kswapd(struct zone *zone, gfp_t gfp_flags, int order,
 		return;
 
 	/* Hopeless node, leave it to direct reclaim if possible */
-	if (pgdat->kswapd_failures >= MAX_RECLAIM_RETRIES ||
+	if (pgdat->kswapd_failures >= MAX_RECLAIM_RETRIES || 
 	    (pgdat_balanced(pgdat, order, classzone_idx) &&
-	     !pgdat_watermark_boosted(pgdat, classzone_idx))) {
+	     !pgdat_watermark_boosted(pgdat, classzone_idx))) {/* kswapd失败次数太多，或者 */
 		/*
 		 * There may be plenty of free memory available, but it's too
 		 * fragmented for high-order allocations.  Wake up kcompactd

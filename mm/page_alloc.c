@@ -881,17 +881,19 @@ static inline int page_is_buddy(struct page *page, struct page *buddy,
 }
 
 #ifdef CONFIG_COMPACTION
+/* 获取当前进程的capture结构 */
 static inline struct capture_control *task_capc(struct zone *zone)
 {
 	struct capture_control *capc = current->capture_control;
 
+	/* 必须要有此结构体，还没有捕获到page，不是内核线程，满足zone…………的情况才可以 */
 	return capc &&
 		!(current->flags & PF_KTHREAD) &&
 		!capc->page &&
 		capc->cc->zone == zone &&
 		capc->cc->direct_compaction ? capc : NULL;
 }
-
+/* 规整过程中捕获页面 */
 static inline bool
 compaction_capture(struct capture_control *capc, struct page *page,
 		   int order, int migratetype)
@@ -3309,6 +3311,7 @@ void split_page(struct page *page, unsigned int order)
 EXPORT_SYMBOL_GPL(split_page);
 /* 2024年08月14日11:26:02
 page是位于阶数为order的页面
+从zone的order的freelist移除，再处理pageblock。
  */
 int __isolate_free_page(struct page *page, unsigned int order)
 {
@@ -4119,7 +4122,10 @@ out:
 #define MAX_COMPACT_RETRIES 16
 
 #ifdef CONFIG_COMPACTION
-/* Try memory compaction for high-order allocations before reclaim */
+/* Try memory compaction for high-order allocations before reclaim
+2024年08月15日14:49:09
+调用直接内存规整。
+ */
 static struct page *
 __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 		unsigned int alloc_flags, const struct alloc_context *ac,
@@ -8665,7 +8671,9 @@ static unsigned long pfn_max_align_up(unsigned long pfn)
 				pageblock_nr_pages));
 }
 
-/* [start, end) must belong to a single zone. */
+/* [start, end) must belong to a single zone.
+cc->
+ */
 static int __alloc_contig_migrate_range(struct compact_control *cc,
 					unsigned long start, unsigned long end)
 {
@@ -8677,7 +8685,7 @@ static int __alloc_contig_migrate_range(struct compact_control *cc,
 
 	migrate_prep();
 
-	while (pfn < end || !list_empty(&cc->migratepages)) {
+	while (pfn < end || !list_empty(&cc->migratepages)) {/*  */
 		if (fatal_signal_pending(current)) {
 			ret = -EINTR;
 			break;
@@ -8685,6 +8693,7 @@ static int __alloc_contig_migrate_range(struct compact_control *cc,
 
 		if (list_empty(&cc->migratepages)) {
 			cc->nr_migratepages = 0;
+			/* migratepages为空，在范围内isolate一点。 */
 			pfn = isolate_migratepages_range(cc, pfn, end);
 			if (!pfn) {
 				ret = -EINTR;
