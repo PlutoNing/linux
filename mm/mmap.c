@@ -745,7 +745,7 @@ static void __insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 	__vma_link(mm, vma, prev, rb_link, rb_parent);
 	mm->map_count++;
 }
-/*  */
+/* 2024年08月15日12:42:55 */
 static __always_inline void __vma_unlink_common(struct mm_struct *mm,
 						struct vm_area_struct *vma,
 						struct vm_area_struct *prev,
@@ -1249,6 +1249,7 @@ vma_merge
  @anon_vma：所remap的vma的av
  @file: 所remap的vma的vm_file。
 @pgoff:原vma与新区域对应的pgoff
+-----------
  */
 struct vm_area_struct *vma_merge(struct mm_struct *mm,
 			struct vm_area_struct *prev, unsigned long addr,
@@ -1275,7 +1276,6 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 		next = mm->mmap;
 	area = next;
 
-
 	if (area && area->vm_end == end)		/* cases 6, 7, 8 */
 		next = next->vm_next;
 
@@ -1292,7 +1292,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 			mpol_equal(vma_policy(prev), policy) &&
 			can_vma_merge_after(prev, vm_flags,
 					    anon_vma, file, pgoff,
-					    vm_userfaultfd_ctx)) {/* 如果prev的end恰好==addr。 */
+					    vm_userfaultfd_ctx)) {/* 如果prev的end恰好==addr。可以与prev merge */
 		/*
 		 * OK, it can.  Can we now merge in the successor as well?
 		 是否可以与next合并
@@ -1313,7 +1313,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 			err = __vma_adjust(prev, prev->vm_start,
 					 end, prev->vm_pgoff, NULL, prev);
 	
-	/* 可以与prev合并的代码末尾 */	
+	/* 可以与prev合并的代码末尾。 */	
 		if (err)
 			return NULL;
 		khugepaged_enter_vma_merge(prev, vm_flags);
@@ -1466,6 +1466,7 @@ static inline unsigned long round_hint_to_min(unsigned long hint)
 		return PAGE_ALIGN(mmap_min_addr);
 	return hint;
 }
+
 /* 检查如果加锁成功后是不是超过了rlimit？ */
 static inline int mlock_future_check(struct mm_struct *mm,
 				     unsigned long flags,
@@ -1503,6 +1504,7 @@ static inline u64 file_mmap_size_max(struct file *file, struct inode *inode)
 	/* Yes, random drivers might want more. But I'm tired of buggy drivers */
 	return ULONG_MAX;
 }
+
 /*  */
 static inline bool file_mmap_ok(struct file *file, struct inode *inode,
 				unsigned long pgoff, unsigned long len)
@@ -1716,8 +1718,9 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	     (flags & (MAP_POPULATE | MAP_NONBLOCK)) == MAP_POPULATE))
 		*populate = len;
 	return addr;
+
 }
-/*  */
+/* 2024年08月15日11:26:49 */
 unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 			      unsigned long prot, unsigned long flags,
 			      unsigned long fd, unsigned long pgoff)
@@ -1770,7 +1773,7 @@ out_fput:
 		fput(file);
 	return retval;
 }
-
+/*  */
 SYSCALL_DEFINE6(mmap_pgoff, unsigned long, addr, unsigned long, len,
 		unsigned long, prot, unsigned long, flags,
 		unsigned long, fd, unsigned long, pgoff)
@@ -2894,6 +2897,8 @@ static void unmap_region(struct mm_struct *mm,
 	tlb_finish_mmu(&tlb, start, end);
 }
 
+
+
 /*
 2024年07月26日14:48:58
 把这些vma从mm移除
@@ -3192,14 +3197,14 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	return downgrade ? 1 : 0;
 }
 /* 2024年7月1日22:49:46
-
+unmap【start，start+len】
  */
 int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	      struct list_head *uf)
 {
 	return __do_munmap(mm, start, len, uf, false);
 }
-
+/* 系统调用unmap的函数 */
 static int __vm_munmap(unsigned long start, size_t len, bool downgrade)
 {
 	int ret;
@@ -3230,7 +3235,7 @@ int vm_munmap(unsigned long start, size_t len)
 	return __vm_munmap(start, len, false);
 }
 EXPORT_SYMBOL(vm_munmap);
-
+/* 2024年08月15日11:23:54 */
 SYSCALL_DEFINE2(munmap, unsigned long, addr, size_t, len)
 {
 	addr = untagged_addr(addr);
@@ -3240,6 +3245,7 @@ SYSCALL_DEFINE2(munmap, unsigned long, addr, size_t, len)
 
 
 /*
+2024年08月15日11:22:14
  * Emulation of deprecated remap_file_pages() syscall.
  */
 SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
@@ -3340,7 +3346,7 @@ out:
 
 /*
 2024年7月1日22:34:43。
-
+从addr扩展len空间？
  *  this is really a simplified "do_mmap".  it only handles
  *  anonymous maps.  eventually we may be able to do some
  *  brk-specific accounting here.
@@ -3356,8 +3362,9 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 	/* Until we need other flags, refuse anything except VM_EXEC. */
 	if ((flags & (~VM_EXEC)) != 0)
 		return -EINVAL;
+
 	flags |= VM_DATA_DEFAULT_FLAGS | VM_ACCOUNT | mm->def_flags;
-	/* 获取进程当前虚拟地址空间未被使用的地址 
+	/* 获取进程当前虚拟地址空间未被使用的地址
 	检查addr处是否已经被占用*/
 	error = get_unmapped_area(NULL, addr, len, 0, MAP_FIXED);
 	if (offset_in_page(error))
@@ -3369,9 +3376,11 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 
 	/*
 	 * Clear old maps.  this also does some error checking for us
+	 找到拓展范围的prev和红黑树插入位置
 	 */
 	while (find_vma_links(mm, addr, addr + len, &prev, &rb_link,
 			      &rb_parent)) {
+		/* unmap这一段范围 */
 		if (do_munmap(mm, addr, len, uf))
 			return -ENOMEM;
 	}
@@ -3387,10 +3396,12 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 		return -ENOMEM;
 
 	/* Can we just expand an old private anonymous mapping? 
-	检查有没有办法合并*/
+	检查要扩展的区域【addr，addr+len】有没有办法merge到prev后面
+	
+	*/
 	vma = vma_merge(mm, prev, addr, addr + len, flags,
 			NULL, NULL, pgoff, NULL, NULL_VM_UFFD_CTX);
-	if (vma)
+	if (vma)/* 返回值不为空，说明返回的已经是merge扩展后的prev了 */
 		goto out;
 
 	/*
@@ -3404,11 +3415,13 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 	}
 
 	vma_set_anonymous(vma);
+	/* 新vma的基本属性 */
 	vma->vm_start = addr;
 	vma->vm_end = addr + len;
 	vma->vm_pgoff = pgoff;
 	vma->vm_flags = flags;
 	vma->vm_page_prot = vm_get_page_prot(flags);
+	/* 把新vma链入mm */
 	vma_link(mm, vma, prev, rb_link, rb_parent);
 out:
 	perf_event_mmap(vma);
