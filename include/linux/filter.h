@@ -544,7 +544,7 @@ struct bpf_prog {
 	u32			jited_len;	/* Size of jited insns in bytes */
 	u8			tag[BPF_TAG_SIZE];
 	struct bpf_prog_aux	*aux;		/* 
-	主要用来辅助verifier校验和转换的数据
+	主要用来辅助verifier校验和转换的数据，存储一些辅助的信息，比如user
 	Auxiliary fields */
 	struct sock_fprog_kern	*orig_prog;	/*
 	原始的未转换的bpf程序
@@ -734,7 +734,7 @@ static inline u32 bpf_prog_tag_scratch_size(const struct bpf_prog *prog)
 	return round_up(bpf_prog_insn_size(prog) +
 			sizeof(__be64) + 1, SHA_MESSAGE_BYTES);
 }
-/*  */
+/* 获取prog_size */
 static inline unsigned int bpf_prog_size(unsigned int proglen)
 {
 	return max(sizeof(struct bpf_prog),

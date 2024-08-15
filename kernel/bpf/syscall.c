@@ -34,6 +34,7 @@
 #define BPF_OBJ_FLAG_MASK   (BPF_F_RDONLY | BPF_F_WRONLY)
 
 DEFINE_PER_CPU(int, bpf_prog_active);
+/* prog的全局idr数组 */
 static DEFINE_IDR(prog_idr);
 static DEFINE_SPINLOCK(prog_idr_lock);
 /* 全部的map的id的idr */
@@ -41,7 +42,9 @@ static DEFINE_IDR(map_idr);
 static DEFINE_SPINLOCK(map_idr_lock);
 
 int sysctl_unprivileged_bpf_disabled __read_mostly;
-/* 不同map类型有不同的ops */
+/* 
+bpf_map_ops的数组
+不同map类型有不同的ops */
 static const struct bpf_map_ops * const bpf_map_types[] = {
 #define BPF_PROG_TYPE(_id, _ops)
 #define BPF_MAP_TYPE(_id, _ops) \
@@ -367,7 +370,7 @@ static int bpf_map_release(struct inode *inode, struct file *filp)
 	bpf_map_put_with_uref(map);
 	return 0;
 }
-
+/*  */
 static fmode_t map_get_sys_perms(struct bpf_map *map, struct fd f)
 {
 	fmode_t mode = f.file->f_mode;
@@ -1059,7 +1062,9 @@ err_put:
 	return err;
 }
 
-/* last field in 'union bpf_attr' used by this command */
+/* 
+2024年8月14日21:55:17
+last field in 'union bpf_attr' used by this command */
 #define BPF_MAP_GET_NEXT_KEY_LAST_FIELD next_key
 
 static int map_get_next_key(union bpf_attr *attr)
@@ -1076,6 +1081,7 @@ static int map_get_next_key(union bpf_attr *attr)
 		return -EINVAL;
 
 	f = fdget(ufd);
+
 	map = __bpf_map_get(f);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
@@ -1099,12 +1105,13 @@ static int map_get_next_key(union bpf_attr *attr)
 	if (!next_key)
 		goto free_key;
 
-	if (bpf_map_is_dev_bound(map)) {
+	if (bpf_map_is_dev_bound(map)) {/* todo */
 		err = bpf_map_offload_get_next_key(map, key, next_key);
 		goto out;
 	}
 
 	rcu_read_lock();
+	/* 调用map ops回调 */
 	err = map->ops->map_get_next_key(map, key, next_key);
 	rcu_read_unlock();
 out:
@@ -1189,7 +1196,7 @@ err_put:
 }
 
 #define BPF_MAP_FREEZE_LAST_FIELD map_fd
-
+/* case BPF_MAP_FREEZE: */
 static int map_freeze(const union bpf_attr *attr)
 {
 	int err = 0, ufd = attr->map_fd;
@@ -1203,7 +1210,7 @@ static int map_freeze(const union bpf_attr *attr)
 	map = __bpf_map_get(f);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
-	if (READ_ONCE(map->frozen)) {
+	if (READ_ONCE(map->frozen)) {/* 已经freeze了 */
 		err = -EBUSY;
 		goto err_put;
 	}
@@ -1217,7 +1224,7 @@ err_put:
 	fdput(f);
 	return err;
 }
-
+/* bpf_prog_ops的数组 */
 static const struct bpf_prog_ops * const bpf_prog_types[] = {
 #define BPF_PROG_TYPE(_id, _name) \
 	[_id] = & _name ## _prog_ops,
@@ -1227,13 +1234,14 @@ static const struct bpf_prog_ops * const bpf_prog_types[] = {
 #undef BPF_MAP_TYPE
 };
 /* 根据attr->prog_type指定的type值，找到对应的bpf_prog_types，
-      给bpf_prog->aux->ops赋值，这个ops是一个函数操作集 */
+给bpf_prog->aux->ops赋值，这个ops是一个函数操作集 */
 static int find_prog_type(enum bpf_prog_type type, struct bpf_prog *prog)
 {
 	const struct bpf_prog_ops *ops;
 
 	if (type >= ARRAY_SIZE(bpf_prog_types))
 		return -EINVAL;
+
 	type = array_index_nospec(type, ARRAY_SIZE(bpf_prog_types));
 	ops = bpf_prog_types[type];
 	if (!ops)
@@ -1266,7 +1274,8 @@ static void free_used_maps(struct bpf_prog_aux *aux)
 
 	kfree(aux->used_maps);
 }
-
+/* memlock prog的内存：
+超过了limit就不行 */
 int __bpf_prog_charge(struct user_struct *user, u32 pages)
 {
 	unsigned long memlock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
@@ -1311,17 +1320,19 @@ static void bpf_prog_uncharge_memlock(struct bpf_prog *prog)
 	__bpf_prog_uncharge(user, prog->pages);
 	free_uid(user);
 }
-/*  */
+/* 给刚刚load的prog分配idr id */
 static int bpf_prog_alloc_id(struct bpf_prog *prog)
 {
 	int id;
 
 	idr_preload(GFP_KERNEL);
+
 	spin_lock_bh(&prog_idr_lock);
 	id = idr_alloc_cyclic(&prog_idr, prog, 1, INT_MAX, GFP_ATOMIC);
 	if (id > 0)
 		prog->aux->id = id;
 	spin_unlock_bh(&prog_idr_lock);
+
 	idr_preload_end();
 
 	/* id is in [1, INT_MAX) */
@@ -1579,7 +1590,9 @@ struct bpf_prog *bpf_prog_get_type_dev(u32 ufd, enum bpf_prog_type type,
 }
 EXPORT_SYMBOL_GPL(bpf_prog_get_type_dev);
 
-/* Initially all BPF programs could be loaded w/o specifying
+/* 
+补充完善bpf_attr的钩子
+Initially all BPF programs could be loaded w/o specifying
  * expected_attach_type. Later for some of them specifying expected_attach_type
  * at load time became required so that program could be validated properly.
  * Programs of types that are allowed to be loaded both w/ and w/o (for
@@ -1604,7 +1617,8 @@ static void bpf_prog_load_fixup_attach_type(union bpf_attr *attr)
 		break;
 	}
 }
-
+/* load prog时检查prog_type与expected_attach_type；
+ */
 static int
 bpf_prog_load_check_attach_type(enum bpf_prog_type prog_type,
 				enum bpf_attach_type expected_attach_type)
@@ -1698,8 +1712,9 @@ static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 	    type != BPF_PROG_TYPE_CGROUP_SKB &&
 	    !capable(CAP_SYS_ADMIN))
 		return -EPERM;
-
+	/* fixup */
 	bpf_prog_load_fixup_attach_type(attr);
+
 	if (bpf_prog_load_check_attach_type(type, attr->expected_attach_type))
 		return -EINVAL;
 
@@ -1736,7 +1751,7 @@ static int bpf_prog_load(union bpf_attr *attr, union bpf_attr __user *uattr)
 	atomic_set(&prog->aux->refcnt, 1);
 	prog->gpl_compatible = is_gpl ? 1 : 0;
 
-	if (bpf_prog_is_dev_bound(prog->aux)) {
+	if (bpf_prog_is_dev_bound(prog->aux)) {/* todo */
 		err = bpf_prog_offload_init(prog, attr);
 		if (err)
 			goto free_prog;

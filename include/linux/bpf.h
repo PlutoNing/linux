@@ -374,7 +374,7 @@ struct bpf_prog_stats {
 	u64 nsecs;
 	struct u64_stats_sync syncp;
 };
-/*  */
+/* 主要用来辅助verifier校验和转换的数据，存储一些辅助的信息，比如user */
 struct bpf_prog_aux {
 	atomic_t refcnt;
 	u32 used_map_cnt;
@@ -636,7 +636,7 @@ DECLARE_PER_CPU(int, bpf_prog_active);
 
 extern const struct file_operations bpf_map_fops;
 extern const struct file_operations bpf_prog_fops;
-
+/* 2024年8月14日22:42:57 */
 #define BPF_PROG_TYPE(_id, _name) \
 	extern const struct bpf_prog_ops _name ## _prog_ops; \
 	extern const struct bpf_verifier_ops _name ## _verifier_ops;
