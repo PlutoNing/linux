@@ -197,13 +197,15 @@ int blkdev_reread_part(struct block_device *bdev)
 	return res;
 }
 EXPORT_SYMBOL(blkdev_reread_part);
-
+/*  */
 static int blk_ioctl_discard(struct block_device *bdev, fmode_t mode,
 		unsigned long arg, unsigned long flags)
 {
+	/* 存储用户空间参数 */
 	uint64_t range[2];
 	uint64_t start, len;
 	struct request_queue *q = bdev_get_queue(bdev);
+	/* 块设备的缓存？ */
 	struct address_space *mapping = bdev->bd_inode->i_mapping;
 
 
@@ -213,9 +215,10 @@ static int blk_ioctl_discard(struct block_device *bdev, fmode_t mode,
 	if (!blk_queue_discard(q))
 		return -EOPNOTSUPP;
 
+	/* 把用户空间参数拷贝到内核空间 */
 	if (copy_from_user(range, (void __user *)arg, sizeof(range)))
 		return -EFAULT;
-
+	/* 获取截断的位置和长度 */
 	start = range[0];
 	len = range[1];
 
@@ -226,11 +229,13 @@ static int blk_ioctl_discard(struct block_device *bdev, fmode_t mode,
 
 	if (start + len > i_size_read(bdev->bd_inode))
 		return -EINVAL;
+
 	truncate_inode_pages_range(mapping, start, start + len - 1);
+
 	return blkdev_issue_discard(bdev, start >> 9, len >> 9,
 				    GFP_KERNEL, flags);
 }
-
+/*  */
 static int blk_ioctl_zeroout(struct block_device *bdev, fmode_t mode,
 		unsigned long arg)
 {
@@ -508,6 +513,7 @@ static int blkdev_bszset(struct block_device *bdev, fmode_t mode,
 }
 
 /*
+2024年08月16日14:34:48
  * always keep this in sync with compat_blkdev_ioctl()
  */
 int blkdev_ioctl(struct block_device *bdev, fmode_t mode, unsigned cmd,
@@ -524,10 +530,10 @@ int blkdev_ioctl(struct block_device *bdev, fmode_t mode, unsigned cmd,
 		return blkdev_roset(bdev, mode, cmd, arg);
 	case BLKDISCARD:
 		return blk_ioctl_discard(bdev, mode, arg, 0);
-	case BLKSECDISCARD:
+	case BLKSECDISCARD:/* 操作页缓存 */
 		return blk_ioctl_discard(bdev, mode, arg,
 				BLKDEV_DISCARD_SECURE);
-	case BLKZEROOUT:
+	case BLKZEROOUT:/* 涉及pagecache */
 		return blk_ioctl_zeroout(bdev, mode, arg);
 	case BLKREPORTZONE:
 		return blkdev_report_zones_ioctl(bdev, mode, cmd, arg);

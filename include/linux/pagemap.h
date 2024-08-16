@@ -244,7 +244,9 @@ pgoff_t page_cache_next_miss(struct address_space *mapping,
 			     pgoff_t index, unsigned long max_scan);
 pgoff_t page_cache_prev_miss(struct address_space *mapping,
 			     pgoff_t index, unsigned long max_scan);
-
+/* 2024年08月16日11:54:43
+页缓存todo
+ */
 #define FGP_ACCESSED		0x00000001
 #define FGP_LOCK		0x00000002
 #define FGP_CREAT		0x00000004
@@ -258,7 +260,7 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t offset,
 
 /**
 2024年6月29日22:39:41
-从页缓存获取页面（加入mapping和lru）
+从页缓存获取（申请）页面（加入mapping和lru）
  * find_get_page - find and get a page reference
  * @mapping: the address_space to search
  * @offset: the page index

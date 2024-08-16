@@ -1722,7 +1722,7 @@ EXPORT_SYMBOL(page_cache_prev_miss);
 /**
 2024年6月29日22:40:07
 2024年7月13日14:37:07
-获得页面
+在mapping的xas数组获得offset这个pgoff的页面
  * find_get_entry - find and get a page cache entry
  * @mapping: the address_space to search
  * @offset: the page cache index
@@ -1908,8 +1908,8 @@ no_page:
 		if (fgp_flags & FGP_ACCESSED)
 			__SetPageReferenced(page);
 		/* 2024年6月29日23:13:45
-		把页面加入mapping
-		并且加入lru
+		把页面加入mapping。
+		并且加入lru。
 		 */
 		err = add_to_page_cache_lru(page, mapping, offset, gfp_mask);
 		if (unlikely(err)) {
@@ -2703,7 +2703,7 @@ static int lock_page_maybe_drop_mmap(struct vm_fault *vmf, struct page *page,
 
 /*
 2024年7月3日00:12:12
-mmap预读
+mmap文件映射缺页时的预读？
  * Synchronous readahead happens when we don't even find a page in the page
  * cache at all.  We don't want to perform IO under the mmap sem, so if we have
  * to drop the mmap sem we return the file that was pinned in order for us to do
@@ -2712,15 +2712,19 @@ mmap预读
  */
 static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 {
+	/* 发生缺页的vma的mmap file */
 	struct file *file = vmf->vma->vm_file;
 	struct file_ra_state *ra = &file->f_ra;
 	struct address_space *mapping = file->f_mapping;
 	struct file *fpin = NULL;
+	/* 缺页地址的pgoff */
 	pgoff_t offset = vmf->pgoff;
 
-	/* If we don't want any read-ahead, don't bother */
+	/* If we don't want any read-ahead, don't bother
+	随机读，不预读 */
 	if (vmf->vma->vm_flags & VM_RAND_READ)
 		return fpin;
+	/* 被映射的文件关闭了预读 */
 	if (!ra->ra_pages)
 		return fpin;
 
@@ -3121,6 +3125,7 @@ static struct page *wait_on_page_read(struct page *page)
 }
 /* 2024年07月02日15:39:28
 2024年7月16日00:04:32
+read_cache_page的函数
  */
 static struct page *do_read_cache_page(struct address_space *mapping,
 				pgoff_t index,
@@ -3131,7 +3136,7 @@ static struct page *do_read_cache_page(struct address_space *mapping,
 	struct page *page;
 	int err;
 repeat:
-/*    find_get_page查找page cache失败而且页不允许申请新的page
+/*    find_get_page查找page cache失败，而且页不允许申请新的page
  */
 	page = find_get_page(mapping, index);
 	if (!page) {
@@ -3228,7 +3233,7 @@ out:
 
 /**
 2024年07月02日16:24:28
-读取页缓存
+读取页缓存,缺页申请页面。可能是文件系统的实现会使用
  * read_cache_page - read into page cache, fill it if needed
  * @mapping:	the page's address_space
  * @index:	the page index

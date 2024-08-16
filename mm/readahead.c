@@ -293,6 +293,7 @@ static unsigned long get_init_ra_size(unsigned long size, unsigned long max)
 
 /*
 2024年07月17日16:05:48
+算法机制，根据上次预读成功数量，计算本次预读数量
  *  Get the previous window size, ramp it up, and
  *  return it as the new window size.
  */
@@ -412,7 +413,14 @@ static int try_context_readahead(struct address_space *mapping,
 /*
 2024年6月30日15:04:11
 2024年7月16日00:19:50
-实际调用readpages读取一些页面
+提供预读接口，参数为file，mapping，offset，size什么的
+
+@mapping:
+@ra:
+@file:
+@offset:从file的pgoff开始预读
+@req_size:
+
  * A minimal readahead algorithm for trivial sequential/random reads.
  */
 static unsigned long
@@ -429,6 +437,7 @@ ondemand_readahead(struct address_space *mapping,
 	/*
 	 * If the request exceeds the readahead window, allow the read to
 	 * be up to the optimal hardware IO size
+	 max_pages太保守了
 	 */
 	if (req_size > max_pages && bdi->io_pages > max_pages)
 		max_pages = min(req_size, bdi->io_pages);
@@ -444,7 +453,7 @@ ondemand_readahead(struct address_space *mapping,
 	 * Ramp up sizes, and push forward the readahead window.
 	 */
 	if ((offset == (ra->start + ra->size - ra->async_size) ||
-	     offset == (ra->start + ra->size))) {
+	     offset == (ra->start + ra->size))) {/* 新的预读位置刚好和ra的状态接上了 */
 		ra->start += ra->size;
 		ra->size = get_next_ra_size(ra, max_pages);
 		ra->async_size = ra->size;
@@ -457,7 +466,7 @@ ondemand_readahead(struct address_space *mapping,
 	 * Query the pagecache for async_size, which normally equals to
 	 * readahead size. Ramp it up and use it as the new readahead size.
 	 */
-	if (hit_readahead_marker) {
+	if (hit_readahead_marker) {/*  */
 		pgoff_t start;
 
 		rcu_read_lock();
@@ -510,14 +519,17 @@ initial_readahead:
 	ra->async_size = ra->size > req_size ? ra->size - req_size : ra->size;
 
 readit:
-	/*
+/* 执行预读 */
+/*
 	 * Will this read hit the readahead marker made by itself?
 	 * If so, trigger the readahead marker hit now, and merge
 	 * the resulted next readahead window into the current one.
 	 * Take care of maximum IO pages as above.
-	 */
+*/
 	if (offset == ra->start && ra->size == ra->async_size) {
+
 		add_pages = get_next_ra_size(ra, max_pages);
+
 		if (ra->size + add_pages <= max_pages) {
 			ra->async_size = add_pages;
 			ra->size += add_pages;
@@ -584,7 +596,7 @@ EXPORT_SYMBOL_GPL(page_cache_sync_readahead);
  * @offset: start offset into @mapping, in pagecache page-sized units
  * @req_size: hint: total size of the read which the caller is performing in
  *            pagecache pages
- *
+ *用来读取有PG_readahead的页面，这个标记暗示适合预读。
  * page_cache_async_readahead() should be called when a page is used which
  * has the PG_readahead flag; this is a marker to suggest that the application
  * has used up enough of the readahead window that we should start pulling in

@@ -450,6 +450,10 @@ static int update_ref_ctr(struct uprobe *uprobe, struct mm_struct *mm,
 }
 
 /*
+uprobe在跳转地址插入自定义代码
+vaddr：用户程序的代码段地址
+
+
  * NOTE:
  * Expect the breakpoint instruction to be the smallest size instruction for
  * the architecture. If an arch has variable length instruction and the
@@ -482,7 +486,10 @@ int uprobe_write_opcode(struct arch_uprobe *auprobe, struct mm_struct *mm,
 retry:
 	if (is_register)
 		gup_flags |= FOLL_SPLIT_PMD;
-	/* Read the page with vaddr into memory */
+	/* Read the page with vaddr into memory
+	把涉及的页面指针存入old_page数组，
+	对应的vma存入vma数组的对应idx。
+	 */
 	ret = get_user_pages_remote(NULL, mm, vaddr, 1, gup_flags,
 				    &old_page, &vma, NULL);
 	if (ret <= 0)

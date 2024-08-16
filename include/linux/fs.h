@@ -991,13 +991,17 @@ struct fown_struct {
  * Track a single file's readahead state
  */
 struct file_ra_state {
-	pgoff_t start;			/* where readahead started 当前窗口的第一个页面索引*/
+	pgoff_t start;			/* where readahead started 
+	当前窗口的第一个页面索引*/
 	unsigned int size;		/* # of readahead pages
+	预读窗口页面数量
 	当前窗口的页面数量。值为-1表示预读临时关闭，0表示当前窗口为空 */
 	unsigned int async_size;	/* do asynchronous readahead when
-					   there are only # of pages ahead 异步预读页面数量*/
+					   there are only # of pages ahead 真正预读页面数量
+	 */
 
-	unsigned int ra_pages;		/* Maximum readahead window 预读窗口最大页面数量。0表示预读暂时关闭。*/
+	unsigned int ra_pages;		/* Maximum readahead window 
+	预读窗口最大页面数量。0表示预读暂时关闭。*/
 	unsigned int mmap_miss;		/* Cache miss stat for mmap accesses 预读失效计数*/
 	loff_t prev_pos;		/* Cache last read() position Cache中最近一次读位置*/
 };

@@ -1151,7 +1151,7 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
 }
 
 /*
-内存中pin用户态的pages
+内存中pin用户态的pages。
  * get_user_pages_remote() - pin user pages in memory
  * @tsk:	the task_struct to use for page fault accounting, or
  *		NULL if faults are not to be recorded.

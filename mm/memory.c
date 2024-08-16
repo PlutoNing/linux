@@ -3009,7 +3009,7 @@ static void unmap_mapping_range_vma(struct vm_area_struct *vma,
 {
 	zap_page_range_single(vma, start_addr, end_addr - start_addr, details);
 }
-/* 处理root这个红黑树上的全部vma */
+/* 处理root这个红黑树上的全部vma，解除pte映射 */
 static inline void unmap_mapping_range_tree(struct rb_root_cached *root,
 					    struct zap_details *details)
 {
@@ -3046,8 +3046,8 @@ static inline void unmap_mapping_range_tree(struct rb_root_cached *root,
 }
 
 /**
-unmap此mapping的页面
-找到vma进行unmap
+unmap此mapping的全部vma
+找到vma进行unmap，解除pte的映射
  * unmap_mapping_pages() - Unmap pages from processes.
  * @mapping: The address space containing pages to be unmapped.
  * @start: Index of first page to be unmapped.开始页
@@ -3083,7 +3083,7 @@ void unmap_mapping_pages(struct address_space *mapping, pgoff_t start,
 2024年7月27日10:15:54
 unmap指定mapping的指定范围的映射？
 解除mapping的页面映射，归根结底是解除mapping关联的vma的映射
-所以是遍历mapping的i-mmap红黑树，挨个处理vma。
+所以是遍历mapping的i-mmap红黑树，挨个处理vma，解除vma的pte映射。
  * unmap_mapping_range - unmap the portion of all mmaps in the specified
  * address_space corresponding to the specified byte range in the underlying
  * file.

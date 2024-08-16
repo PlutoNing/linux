@@ -291,6 +291,7 @@ int invalidate_inode_page(struct page *page)
 
 /**
 2024年7月29日00:02:01
+截断页缓存的【lstart，lstart+llen】，是释放页面到buddy
  * truncate_inode_pages_range - 
  truncate range of pages specified by start & end byte offsets
  * @mapping: mapping to truncate
@@ -536,6 +537,7 @@ EXPORT_SYMBOL(truncate_inode_pages);
 
 /**
 2024年07月29日11:39:54
+删除inode的全部页面
  * truncate_inode_pages_final - truncate *all* pages before inode dies
  * @mapping: mapping to truncate
  *
@@ -584,6 +586,7 @@ void truncate_inode_pages_final(struct address_space *mapping)
 	 * entries.
 
 	 */
+	 
 	truncate_inode_pages(mapping, 0);
 }
 EXPORT_SYMBOL(truncate_inode_pages_final);
@@ -889,11 +892,11 @@ void truncate_pagecache(struct inode *inode, loff_t newsize)
 	 * truncate_inode_pages finishes, hence the second
 	 * unmap_mapping_range call must be made for correctness.
 	 */
-	/* 解除映射 */
+	/* 解除关联的vma的pte映射 */
 	unmap_mapping_range(mapping, holebegin, 0, 1);
-	/*  */
+	/* 释放页面到buddy */
 	truncate_inode_pages(mapping, newsize);
-	
+	/* 又一遍？ */
 	unmap_mapping_range(mapping, holebegin, 0, 1);
 }
 EXPORT_SYMBOL(truncate_pagecache);
