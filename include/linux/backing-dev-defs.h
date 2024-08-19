@@ -19,6 +19,8 @@ struct device;
 struct dentry;
 
 /*
+2024年8月19日23:55:09
+wb的状态
  * Bits in bdi_writeback.state
  */
 enum wb_state {
@@ -141,8 +143,10 @@ struct bdi_writeback {
 	unsigned long last_old_flush;	/*上次刷新的时间 last old data flush */
 
 	struct list_head b_dirty;	/* dirty inodes 暂存所有的脏 inode 的链表 */
-	struct list_head b_io;		/* parked for writeback  暂存即将回写的 inode 的链表*/
-	struct list_head b_more_io;	/* parked for more writeback  暂存由于一次回写数量限制原因导致的等待下次回写的 inode 链表*/
+	struct list_head b_io;		/* parked for writeback  
+	暂存即将回写的 inode 的链表*/
+	struct list_head b_more_io;	/* parked for more writeback  
+	暂存由于一次回写数量限制原因导致的等待下次回写的 inode 链表*/
 	struct list_head b_dirty_time;	/* time stamps are dirty  暂存仅仅是时间戳更新而被至脏的 inode 的链表*/
 	spinlock_t list_lock;		/* protects the b_* lists  为了保护上述 4 个 b_* 列表的自旋锁*/
 	/* 不同类型的统计信息 */
@@ -194,7 +198,7 @@ struct bdi_writeback {
 #endif
 };
 /* 2024年6月30日14:47:09
-
+该数据结构描述了backing_dev的所有信息，通常块设备的request queue中会包含backing_dev对象。
  */
 struct backing_dev_info {
 	/*  */
@@ -203,7 +207,9 @@ struct backing_dev_info {
 	struct rb_node rb_node; /* keyed by ->id */
 	/*  用来把所有backing_dev_info 链接到全局链表bdi_list */
 	struct list_head bdi_list;
-	unsigned long ra_pages;	/*最大预读的长度 max readahead in PAGE_SIZE units */
+	unsigned long ra_pages;	/*
+	最大预读的长度 
+	max readahead in PAGE_SIZE units */
 	unsigned long io_pages;	/* max allowed IO size */
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;	/* Pointer to aux data for congested func */
@@ -222,11 +228,18 @@ struct backing_dev_info {
 	atomic_long_t tot_write_bandwidth;
 	/* 只关联一个wb吗，这个比较特殊2024年07月18日16:40:20
 	如果没有指定cg那么就使用全局的，也就是设备自己的wb，其他的都是cgwb */
-	struct bdi_writeback wb;  /* the root writeback info for this bdi 用于控制回写行为的核心成员 */
-	struct list_head wb_list; /* list of all wbs */
+	struct bdi_writeback wb;  /* the root writeback info for this bdi 
+	 writeback对象封装了内核线程task以及需要处理的inode队列。当page cache/buffer cache
+	 需要刷新radix tree上的inode时，可以将该inode挂载到writeback对象的b_dirty队列上，
+	 然后唤醒writeback线程。在处理过程中，inode会
+	 被移到b_io队列上进行处理。多条链表的方式可以降低多线程之间的资源共享。
+	用于控制回写行为的核心成员 */
+	struct list_head wb_list; /* list of all wbs
+	表示bdi上和writeback相关的数据，bdi上的wb_list收集所有bdi_writeback。 */
 #ifdef CONFIG_CGROUP_WRITEBACK
 /* 好像一个memcg与wb的kv容器 */
-	struct radix_tree_root cgwb_tree; /* radix tree of active cgroup wbs */
+	struct radix_tree_root cgwb_tree; /* radix tree of active cgroup wbs
+	cgroup的wb存在这棵树上面，可以lookup by css id */
 	struct rb_root cgwb_congested_tree; /* 上面都是自己关联的wb的wb congested stat。
 	their congested states */
 	struct mutex cgwb_release_mutex;  /* protect shutdown of wb structs */

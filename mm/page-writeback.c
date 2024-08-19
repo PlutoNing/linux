@@ -356,6 +356,7 @@ static unsigned long highmem_dirtyable_memory(unsigned long total)
 }
 
 /**
+2024年8月19日23:38:00
  * global_dirtyable_memory - number of globally dirtyable pages
  *
  * Return: the global number of pages potentially available for dirty
@@ -1556,6 +1557,7 @@ static inline void wb_dirty_limits(struct dirty_throttle_control *dtc)
 }
 
 /*
+wb刷新这么多的脏页
  * balance_dirty_pages() must be called by processes which are generating dirty
  * data.  It looks at the number of dirty pages in the machine and will force
  * the caller to wait once crossing the (background_thresh + dirty_thresh) / 2.
@@ -1853,6 +1855,7 @@ static DEFINE_PER_CPU(int, bdp_ratelimits);
 DEFINE_PER_CPU(int, dirty_throttle_leaks) = 0;
 
 /**
+2024年8月19日23:23:54
  * balance_dirty_pages_ratelimited - balance dirty memory state
  * @mapping: address_space which was dirtied
  *
@@ -1877,7 +1880,8 @@ void balance_dirty_pages_ratelimited(struct address_space *mapping)
 		return;
 
 	if (inode_cgwb_enabled(inode))
-		wb = wb_get_create_current(bdi, GFP_KERNEL);
+		wb = wb_get_create_current(bdi, GFP_KERNEL);/* 获取wb */
+
 	if (!wb)
 		wb = &bdi->wb;
 

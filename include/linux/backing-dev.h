@@ -111,6 +111,7 @@ int bdi_set_min_ratio(struct backing_dev_info *bdi, unsigned int min_ratio);
 int bdi_set_max_ratio(struct backing_dev_info *bdi, unsigned int max_ratio);
 
 /*
+2024年8月19日22:56:11
  * Flags in backing_dev_info::capability
  *
  * The first three flags control whether dirty pages will contribute to the
@@ -144,6 +145,7 @@ int bdi_set_max_ratio(struct backing_dev_info *bdi, unsigned int max_ratio);
 extern struct backing_dev_info noop_backing_dev_info;
 
 /**
+2024年8月19日23:56:00
  * writeback_in_progress - determine whether there is writeback in progress
  * @wb: bdi_writeback of interest
  *
@@ -249,6 +251,7 @@ int inode_congested(struct inode *inode, int cong_bits);
 
 /**
 2024年7月17日22:58:45
+inode有无启用cgwb。
  * inode_cgwb_enabled - test whether cgroup writeback is enabled on an inode
  * @inode: inode of interest
  *
@@ -271,6 +274,8 @@ static inline bool inode_cgwb_enabled(struct inode *inode)
 }
 
 /**
+2024年8月19日23:27:04
+获取current的相关css的wb
  * wb_find_current - find wb for %current on a bdi
  * @bdi: bdi of interest
  *
@@ -299,6 +304,7 @@ static inline struct bdi_writeback *wb_find_current(struct backing_dev_info *bdi
 }
 
 /**
+获取current的wb
  * wb_get_create_current - get or create wb for %current on a bdi
  * @bdi: bdi of interest
  * @gfp: allocation mask
@@ -313,18 +319,20 @@ wb_get_create_current(struct backing_dev_info *bdi, gfp_t gfp)
 	struct bdi_writeback *wb;
 
 	rcu_read_lock();
+	/* 在bdi的wb红黑树查找自己css的wb */
 	wb = wb_find_current(bdi);
 	if (wb && unlikely(!wb_tryget(wb)))
 		wb = NULL;
 	rcu_read_unlock();
 
-	if (unlikely(!wb)) {
+	if (unlikely(!wb)) {/* 没有wb？ */
 		struct cgroup_subsys_state *memcg_css;
 
 		memcg_css = task_get_css(current, memory_cgrp_id);
 		wb = wb_get_create(bdi, memcg_css, gfp);
 		css_put(memcg_css);
 	}
+
 	return wb;
 }
 

@@ -96,18 +96,21 @@ enum tg_state_flags {
 };
 
 #define rb_entry_tg(node)	rb_entry((node), struct throtl_grp, rb_node)
-
+/*struct throtl_grp里的限速值 */
 enum {
 	LIMIT_LOW,
 	LIMIT_MAX,
 	LIMIT_CNT,
 };
-
+/* 
+每个限速的group都有一个struct throtl_grp结构，
+所有的throtl_grp根据其group的“层级”，组织成一个树状结构(红黑树) */
 struct throtl_grp {
 	/* must be the first member */
 	struct blkg_policy_data pd;
 
-	/* active throtl group service_queue member */
+	/* active throtl group service_queue member
+	所有的group组织成一颗红黑树，用rb_node串起来 */
 	struct rb_node rb_node;
 
 	/* throtl_data this group belongs to */
@@ -131,6 +134,7 @@ struct throtl_grp {
 	 * Dispatch time in jiffies. This is the estimated time when group
 	 * will unthrottle and is ready to dispatch more bio. It is used as
 	 * key to sort active groups in service tree.
+	 何时处理因限速而没有分发的bio
 	 */
 	unsigned long disptime;
 
@@ -139,16 +143,22 @@ struct throtl_grp {
 	/* are there any throtl rules between this group and td? */
 	bool has_rules[2];
 
-	/* internally used bytes per second rate limits */
+	/* internally used bytes per second rate limits
+	 读、写带宽限制，单位是字节/秒，-1表示没有限制
+	  */
 	uint64_t bps[2][LIMIT_CNT];
 	/* user configured bps limits */
 	uint64_t bps_conf[2][LIMIT_CNT];
 
-	/* internally used IOPS limits */
+	/* internally used IOPS limits
+	读、写IOPS限制，-1表示没有限制 */
 	unsigned int iops[2][LIMIT_CNT];
 	/* user configured IOPS limits */
 	unsigned int iops_conf[2][LIMIT_CNT];
-
+	/* 限速是以时间片为单位的，每个时间片的长度是100ms（即HZ/100，存放在全局变量
+	throtl_slice中。时间片的起始时间是slice_start，结束时间是slice_end，
+	bytes_disp是当前时间片内已经分发的字节数，
+	io_disp存放当前时间片内已经分外的IO个数  */
 	/* Number of bytes disptached in current slice */
 	uint64_t bytes_disp[2];
 	/* Number of bio's dispatched in current slice */
@@ -163,7 +173,8 @@ struct throtl_grp {
 
 	unsigned long latency_target; /* us */
 	unsigned long latency_target_conf; /* us */
-	/* When did we start a new slice */
+	/* When did we start a new slice
+	限速时间片起始和结束值 */
 	unsigned long slice_start[2];
 	unsigned long slice_end[2];
 
@@ -190,7 +201,8 @@ struct avg_latency_bucket {
 	unsigned long latency; /* ns / 1024 */
 	bool valid;
 };
-/* 每个 blkdev 对应一个 throttle data，保存该 blkdev 的 blk-throttle policy 相关的信息 */
+/* 每个 blkdev 对应一个 throttle data，
+保存该 blkdev 的 blk-throttle policy 相关的信息 */
 struct throtl_data
 {
 	/* service tree for active throtl groups */
@@ -2113,7 +2125,16 @@ static inline void throtl_update_latency_buckets(struct throtl_data *td)
 {
 }
 #endif
+/* IO限速的核心函数是blk_throtl_bio()，它在__generic_make_request()中被调用。
+__generic_make_request()根据blk_throtl_bio()的返回值来决定如何处理一个bio，
 
+如果blk_throtl_bio()返回0，表明无需限速或者当前读写速度未达到设定的上限，
+__generic_make_request()继续处理
+如果blk_throtl_bio()返回非0，则说明该bio因为限速而不能立即分发，throttle模块
+会来处理这个bio，__generic_make_request()直接跳到end_bio 
+
+
+*/
 bool blk_throtl_bio(struct request_queue *q, struct blkcg_gq *blkg,
 		    struct bio *bio)
 {

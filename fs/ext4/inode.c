@@ -1392,6 +1392,10 @@ static int write_end_fn(handle_t *handle, struct buffer_head *bh)
 }
 
 /*
+标记脏页的逻辑在ext4_write_end里，其中会标记inode、对应页面为脏页、相关脏页相关
+的统计数据等等。
+ext4_write_end之后有balance_dirty_pages_ratelimited，这个函数里会检测脏页的比例
+是否超过一定比例，如果超过一定的比例，启动触发会写，并同步等待。
  * We need to pick up the new inode size which generic_commit_write gave us
  * `file' can be NULL - eg, when called from page_symlink().
  *
@@ -3904,7 +3908,7 @@ static int ext4_set_page_dirty(struct page *page)
 	WARN_ON_ONCE(!page_has_buffers(page));
 	return __set_page_dirty_buffers(page);
 }
-
+/* ext4的mapping的ops */
 static const struct address_space_operations ext4_aops = {
 	.readpage		= ext4_readpage,
 	.readpages		= ext4_readpages,
@@ -6034,6 +6038,7 @@ out_stop:
 }
 
 /*
+ext4标记脏页脏inode
  * What we do here is to mark the in-core inode as clean with respect to inode
  * dirtiness (it may still be data-dirty).
  * This means that the in-core inode may be reaped by prune_icache

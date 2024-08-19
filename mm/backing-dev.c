@@ -317,6 +317,7 @@ static int wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi,
 
 	spin_lock_init(&wb->work_lock);
 	INIT_LIST_HEAD(&wb->work_list);
+	/* wb的wq的执行函数 */
 	INIT_DELAYED_WORK(&wb->dwork, wb_workfn);
 	wb->dirty_sleep = jiffies;
 	/*  */

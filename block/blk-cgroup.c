@@ -1187,6 +1187,7 @@ unlock:
 }
 
 /**
+初始化rq的blkcg
  * blkcg_init_queue - initialize blkcg part of request queue
  * @q: request_queue to initialize
  *

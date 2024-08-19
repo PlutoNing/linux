@@ -38,9 +38,13 @@
 
 /*
 2024年6月30日14:52:12
-
+表示一个回写任务，挂在bdi_writeback的work_list。
+wb_writeback_work数据结构是对writeback任务的封装，不同的任务可以采用不同的刷新策略。
+writeback线程的处理对象就是writeback_work。
+如果writeback_work队列为空，那么内核线程就可以睡眠了。
  * Passed into wb_writeback(), essentially a subset of writeback_control
- 后续通过 include/linux/writeback.h 中的 writeback_control 结构体封装，传递给底层的 writepages 函数
+ 后续通过 include/linux/writeback.h 中的 writeback_control 结构体封装，
+ 传递给底层的 writepages 函数
  
  */
 struct wb_writeback_work {
@@ -64,7 +68,9 @@ struct wb_writeback_work {
 	unsigned int auto_free:1;	/* free on completion */
 	enum wb_reason reason;		/* why was writeback initiated? */
 
-	struct list_head list;		/* pending work list */
+	struct list_head list;		/* pending work list
+	pending work list，链入bdi-> work_list队列 */
+
 	struct wb_completion *done;	/* set if the caller waits */
 };
 
@@ -825,6 +831,7 @@ int inode_congested(struct inode *inode, int cong_bits)
 EXPORT_SYMBOL_GPL(inode_congested);
 
 /**
+根据wb和bdi的bandwidth确定此wb的比例
  * wb_split_bdi_pages - split nr_pages to write according to bandwidth
  * @wb: target bdi_writeback to split @nr_pages to
  * @nr_pages: number of pages to write for the whole bdi
@@ -853,6 +860,8 @@ static long wb_split_bdi_pages(struct bdi_writeback *wb, long nr_pages)
 }
 
 /**
+2024年8月19日23:53:14
+把base_work的页面分配到bdi的不同wb
  * bdi_split_work_to_wbs - split a wb_writeback_work to all wb's of a bdi
  * @bdi: target backing_dev_info
  * @base_work: wb_writeback_work to issue
@@ -874,6 +883,7 @@ static void bdi_split_work_to_wbs(struct backing_dev_info *bdi,
 	might_sleep();
 restart:
 	rcu_read_lock();
+	/* 遍历wb */
 	list_for_each_entry_continue_rcu(wb, &bdi->wb_list, bdi_node) {
 		DEFINE_WB_COMPLETION(fallback_work_done, bdi);
 		struct wb_writeback_work fallback_work;
@@ -892,11 +902,11 @@ restart:
 			continue;
 		if (skip_if_busy && writeback_in_progress(wb))
 			continue;
-
+		/* 获取此wb的nr_pages */
 		nr_pages = wb_split_bdi_pages(wb, base_work->nr_pages);
 
 		work = kmalloc(sizeof(*work), GFP_ATOMIC);
-		if (work) {
+		if (work) {/* 定义一个新的wb，负责一部分页面（nr_pages） */
 			*work = *base_work;
 			work->nr_pages = nr_pages;
 			work->auto_free = 1;
@@ -1252,6 +1262,7 @@ static bool inode_dirtied_after(struct inode *inode, unsigned long t)
 #define EXPIRE_DIRTY_ATIME 0x0001
 
 /*
+把一些脏inode移到要写回的list上面。
  * Move expired (dirtied before work->older_than_this) dirty inodes from
  * @delaying_queue to @dispatch_queue.
  */
@@ -1311,6 +1322,7 @@ out:
 }
 
 /*
+用例：写回bdi的时候，可以处理wb的b_io
  * Queue all expired dirty inodes for io, eldest first.
  * Before
  *         newly dirtied     b_dirty    b_io    b_more_io
@@ -1330,8 +1342,10 @@ static void queue_io(struct bdi_writeback *wb, struct wb_writeback_work *work)
 	moved = move_expired_inodes(&wb->b_dirty, &wb->b_io, 0, work);
 	moved += move_expired_inodes(&wb->b_dirty_time, &wb->b_io,
 				     EXPIRE_DIRTY_ATIME, work);
+	
 	if (moved)
 		wb_io_lists_populated(wb);
+
 	trace_writeback_queue_io(wb, work, moved);
 }
 
@@ -1852,6 +1866,8 @@ static long writeback_inodes_wb(struct bdi_writeback *wb, long nr_pages,
 }
 
 /*
+2024年8月20日00:11:16
+执行从wb上面取下来的一个wb_work
  * Explicit flushing or periodic writeback of "old" data.
  *
  * Define "old": the first time one of an inode's pages is dirtied, we mark the
@@ -1884,6 +1900,7 @@ static long wb_writeback(struct bdi_writeback *wb,
 	for (;;) {
 		/*
 		 * Stop writeback when nr_pages has been consumed
+		 wb_work的页面处理完了
 		 */
 		if (work->nr_pages <= 0)
 			break;
@@ -1916,14 +1933,17 @@ static long wb_writeback(struct bdi_writeback *wb,
 				msecs_to_jiffies(dirty_expire_interval * 10);
 		} else if (work->for_background)
 			oldest_jif = jiffies;
-
+		/* 开始wb？ */
 		trace_writeback_start(wb, work);
+		/* todo，为什么先wb的b_io，再work的sb */
 		if (list_empty(&wb->b_io))
 			queue_io(wb, work);
+
 		if (work->sb)
 			progress = writeback_sb_inodes(work->sb, wb, work);
 		else
 			progress = __writeback_inodes_wb(wb, work);
+
 		trace_writeback_written(wb, work);
 
 		wb_update_bandwidth(wb, wb_start);
@@ -1963,19 +1983,24 @@ static long wb_writeback(struct bdi_writeback *wb,
 }
 
 /*
+获取wb的wb_work
  * Return the next wb_writeback_work struct that hasn't been processed yet.
  */
 static struct wb_writeback_work *get_next_work_item(struct bdi_writeback *wb)
 {
 	struct wb_writeback_work *work = NULL;
 
+
+
 	spin_lock_bh(&wb->work_lock);
-	if (!list_empty(&wb->work_list)) {
+	if (!list_empty(&wb->work_list)) {/* 取下一个wb_work */
 		work = list_entry(wb->work_list.next,
 				  struct wb_writeback_work, list);
 		list_del_init(&work->list);
 	}
 	spin_unlock_bh(&wb->work_lock);
+
+
 	return work;
 }
 
@@ -2056,7 +2081,16 @@ static long wb_check_start_all(struct bdi_writeback *wb)
 
 
 /*
+wb_workfn
+  +->wb_do_writeback
+    +-> wb_writeback
+      +-> writeback_sb_inodes。
+        +-> __writeback_single_inode
+          +-> do_writepages
+            +-> mapping->a_ops->writepages(ext4_writepages)
+
  * Retrieve work items and do the writeback they describe
+ 执行wb上的wb_work。
  */
 static long wb_do_writeback(struct bdi_writeback *wb)
 {
@@ -2086,6 +2120,15 @@ static long wb_do_writeback(struct bdi_writeback *wb)
 }
 
 /*
+wb的wq的执行函数
+wb_workfn
+  +->wb_do_writeback
+    +-> wb_writeback
+      +-> writeback_sb_inodes。
+        +-> __writeback_single_inode
+          +-> do_writepages
+            +-> mapping->a_ops->writepages(ext4_writepages)
+
  * Handle writeback of dirty data for the device backed by this bdi. Also
  * reschedules periodically and does kupdated style flushing.
  */
@@ -2484,7 +2527,7 @@ static void wait_sb_inodes(struct super_block *sb)
 	rcu_read_unlock();
 	mutex_unlock(&sb->s_sync_lock);
 }
-
+/* 写回fs的inode，sync操作。 */
 static void __writeback_inodes_sb_nr(struct super_block *sb, unsigned long nr,
 				     enum wb_reason reason, bool skip_if_busy)
 {
@@ -2504,10 +2547,12 @@ static void __writeback_inodes_sb_nr(struct super_block *sb, unsigned long nr,
 	WARN_ON(!rwsem_is_locked(&sb->s_umount));
 
 	bdi_split_work_to_wbs(sb->s_bdi, &work, skip_if_busy);
+
 	wb_wait_for_completion(&done);
 }
 
 /**
+写回fs的inode
  * writeback_inodes_sb_nr -	writeback dirty inodes from given super_block
  * @sb: the superblock
  * @nr: the number of pages to write
@@ -2526,6 +2571,7 @@ void writeback_inodes_sb_nr(struct super_block *sb,
 EXPORT_SYMBOL(writeback_inodes_sb_nr);
 
 /**
+写回sb的inode。
  * writeback_inodes_sb	-	writeback dirty inodes from given super_block
  * @sb: the superblock
  * @reason: reason why some writeback work was initiated

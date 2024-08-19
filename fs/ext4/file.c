@@ -213,7 +213,7 @@ out:
 	return ret;
 }
 #endif
-
+/* ext4的write fops */
 static ssize_t
 ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
@@ -508,7 +508,7 @@ loff_t ext4_llseek(struct file *file, loff_t offset, int whence)
 		return offset;
 	return vfs_setpos(file, offset, maxbytes);
 }
-
+/* ext4的fops */
 const struct file_operations ext4_file_operations = {
 	.llseek		= ext4_llseek,
 	.read_iter	= ext4_file_read_iter,

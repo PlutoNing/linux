@@ -477,9 +477,12 @@ ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 
 	return ret;
 }
-
-static ssize_t new_sync_write(struct file *filp, const char __user *buf, size_t len, loff_t *ppos)
+/* 2024年8月19日23:13:38
+vfs_write函数 */
+static ssize_t new_sync_write(struct file *filp, 
+const char __user *buf, size_t len, loff_t *ppos)
 {
+
 	struct iovec iov = { .iov_base = (void __user *)buf, .iov_len = len };
 	struct kiocb kiocb;
 	struct iov_iter iter;
@@ -495,7 +498,7 @@ static ssize_t new_sync_write(struct file *filp, const char __user *buf, size_t 
 		*ppos = kiocb.ki_pos;
 	return ret;
 }
-
+/*  */
 static ssize_t __vfs_write(struct file *file, const char __user *p,
 			   size_t count, loff_t *pos)
 {
@@ -547,7 +550,10 @@ ssize_t kernel_write(struct file *file, const void *buf, size_t count,
 	return res;
 }
 EXPORT_SYMBOL(kernel_write);
+/* 一种可能的路径如下：
+ksys_write->vfs_write->new_sync_write->call_write_iter->ext4_file_write_iter
 
+ */
 ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_t *pos)
 {
 	ssize_t ret;

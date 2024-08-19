@@ -22,6 +22,7 @@
 			SYNC_FILE_RANGE_WAIT_AFTER)
 
 /*
+刷新fs到磁盘
  * Do the filesystem syncing work. For simple filesystems
  * writeback_inodes_sb(sb) just dirties buffers with inodes so we have to
  * submit IO for these buffers via __sync_blockdev(). This also speeds up the
@@ -41,6 +42,14 @@ static int __sync_filesystem(struct super_block *sb, int wait)
 }
 
 /*
+2024年8月19日23:43:08
+ kernel/sync.c 
+syncfs
+  +-> sync_filesystem
+    +-> sync_inodes_sb
+      +-> bdi_split_work_to_wbs
+        +-> wb_queue_work(wb, work)
+
  * Write out and wait upon all dirty data associated with this
  * superblock.  Filesystem data as well as the underlying block
  * device.  Takes the superblock lock.

@@ -11,7 +11,7 @@
 #include "blk-stat.h"
 #include "blk-mq.h"
 #include "blk.h"
-
+/*  */
 struct blk_queue_stats {
 	struct list_head callbacks;
 	spinlock_t lock;
@@ -188,7 +188,7 @@ void blk_stat_enable_accounting(struct request_queue *q)
 	spin_unlock(&q->stats->lock);
 }
 EXPORT_SYMBOL_GPL(blk_stat_enable_accounting);
-
+/*  */
 struct blk_queue_stats *blk_alloc_queue_stats(void)
 {
 	struct blk_queue_stats *stats;

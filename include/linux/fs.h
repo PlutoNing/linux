@@ -1988,7 +1988,7 @@ static inline ssize_t call_read_iter(struct file *file, struct kiocb *kio,
 {
 	return file->f_op->read_iter(kio, iter);
 }
-
+/* 调用fs的write函数 */
 static inline ssize_t call_write_iter(struct file *file, struct kiocb *kio,
 				      struct iov_iter *iter)
 {

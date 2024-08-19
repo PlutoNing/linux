@@ -441,6 +441,7 @@ static inline void list_splice_tail(struct list_head *list,
 }
 
 /**
+2024年8月20日00:15:05
  * list_splice_init - join two lists and reinitialise the emptied list.
  * @list: the new list to add.
  * @head: the place to add it in the first list.

@@ -57,7 +57,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_complete);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_split);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_unplug);
-
+/* blk队列的ida数组 */
 DEFINE_IDA(blk_queue_ida);
 
 /*
@@ -385,7 +385,7 @@ void blk_cleanup_queue(struct request_queue *q)
 	blk_put_queue(q);
 }
 EXPORT_SYMBOL(blk_cleanup_queue);
-
+/* 注册blk dev */
 struct request_queue *blk_alloc_queue(gfp_t gfp_mask)
 {
 	return blk_alloc_queue_node(gfp_mask, NUMA_NO_NODE);
@@ -470,6 +470,7 @@ static void blk_timeout_work(struct work_struct *work)
 }
 
 /**
+分配创建rq
  * blk_alloc_queue_node - allocate a request queue
  * @gfp_mask: memory allocation flags
  * @node_id: NUMA node to allocate memory from
@@ -478,7 +479,7 @@ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id)
 {
 	struct request_queue *q;
 	int ret;
-
+	/* slab分配rq结构体内存 */
 	q = kmem_cache_alloc_node(blk_requestq_cachep,
 				gfp_mask | __GFP_ZERO, node_id);
 	if (!q)
@@ -489,11 +490,11 @@ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id)
 	q->id = ida_simple_get(&blk_queue_ida, 0, 0, gfp_mask);
 	if (q->id < 0)
 		goto fail_q;
-
+	/* todo，bs相关 */
 	ret = bioset_init(&q->bio_split, BIO_POOL_SIZE, 0, BIOSET_NEED_BVECS);
 	if (ret)
 		goto fail_id;
-
+	/*  */
 	q->backing_dev_info = bdi_alloc_node(gfp_mask, node_id);
 	if (!q->backing_dev_info)
 		goto fail_split;
@@ -521,6 +522,7 @@ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id)
 #ifdef CONFIG_BLK_DEV_IO_TRACE
 	mutex_init(&q->blk_trace_mutex);
 #endif
+
 	mutex_init(&q->sysfs_lock);
 	mutex_init(&q->sysfs_dir_lock);
 	spin_lock_init(&q->queue_lock);

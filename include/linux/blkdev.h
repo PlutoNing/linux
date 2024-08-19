@@ -449,7 +449,7 @@ struct request_queue {
 	/* hw dispatch queues */
 	struct blk_mq_hw_ctx	**queue_hw_ctx;
 	unsigned int		nr_hw_queues;
-
+/* rq的bdi */
 	struct backing_dev_info	*backing_dev_info;
 
 	/*
@@ -591,7 +591,11 @@ struct request_queue {
 #endif
 
 #ifdef CONFIG_BLK_DEV_THROTTLING
-	/* Throttle data */
+	/* Throttle data 
+	
+	struct throtl_grp
+	为了在处理每个IO请求时能定位到其所在的group，
+	在每个请求队列（struct request_queue）添加了一个throtl_data结构指针*/
 	struct throtl_data *td;
 #endif
 	struct rcu_head		rcu_head;
@@ -601,6 +605,7 @@ struct request_queue {
 	 * percpu_ref_kill() and percpu_ref_reinit().
 	 */
 	struct mutex		mq_freeze_lock;
+	/* 引用计数器 */
 	struct percpu_ref	q_usage_counter;
 
 	struct blk_mq_tag_set	*tag_set;
