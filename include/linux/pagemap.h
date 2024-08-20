@@ -531,6 +531,7 @@ static inline int lock_page_killable(struct page *page)
 }
 
 /*
+2024年8月21日00:24:52
  * lock_page_or_retry - Lock the page, unless this would block and the
  * caller indicated that it can handle a retry.
  *
@@ -541,6 +542,7 @@ static inline int lock_page_or_retry(struct page *page, struct mm_struct *mm,
 				     unsigned int flags)
 {
 	might_sleep();
+	/* 从左到右执行，trylock成功的话就是返回ok，不ok再去试__lock_page_or_retry */
 	return trylock_page(page) || __lock_page_or_retry(page, mm, flags);
 }
 

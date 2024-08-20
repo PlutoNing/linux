@@ -32,8 +32,8 @@ struct kmem_cache;
 memcg里面的stat数量
 Cgroup-specific page state, on top of universal node page state */
 enum memcg_stat_item {
-	MEMCG_CACHE = NR_VM_NODE_STAT_ITEMS,
-	MEMCG_RSS,
+	MEMCG_CACHE = NR_VM_NODE_STAT_ITEMS,/* =32 */
+	MEMCG_RSS,/* 是PageAnon(page)， */
 	MEMCG_RSS_HUGE,
 	MEMCG_SWAP,
 	MEMCG_SOCK,
@@ -848,7 +848,7 @@ static inline void mod_lruvec_state(struct lruvec *lruvec,
 	__mod_lruvec_state(lruvec, idx, val);
 	local_irq_restore(flags);
 }
-
+/*  */
 static inline void __mod_lruvec_page_state(struct page *page,
 					   enum node_stat_item idx, int val)
 {

@@ -38,13 +38,17 @@ struct vmacache {
 
 /*
 pcb的mm的rss里面不同类型页面数量
+rss！
  * When updating this, please also update struct resident_page_types[] in
  * kernel/fork.c
  */
 enum {
 	MM_FILEPAGES,	/*文件页 Resident file mapping pages */
-	MM_ANONPAGES,	/*匿名页 Resident anonymous pages */
-	MM_SWAPENTS,	/*交换页 Anonymous swap entries */
+	MM_ANONPAGES,	/*匿名页 Resident anonymous pages，
+	1，swapin会++ */
+	MM_SWAPENTS,	/*交换页 Anonymous swap entries 
+	swapin会--。
+	*/
 	MM_SHMEMPAGES,	/*共享页 Resident shared memory pages */
 	NR_MM_COUNTERS
 };

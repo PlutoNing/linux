@@ -946,11 +946,11 @@ static void mem_cgroup_charge_statistics(struct mem_cgroup *memcg,
 	 * Here, RSS means 'mapped anon' and anon's SwapCache. Shmem/tmpfs is
 	 * counted as CACHE even if it's on ANON LRU.
 	 */
-	if (PageAnon(page))
+	if (PageAnon(page))/* 匿名页 */
 		__mod_memcg_state(memcg, MEMCG_RSS, nr_pages);
-	else {
+	else {/* 可以理解为不是匿名页就是文件页吗？ */
 		__mod_memcg_state(memcg, MEMCG_CACHE, nr_pages);
-		if (PageSwapBacked(page))
+		if (PageSwapBacked(page))/* 交换页，为什么是shmem */
 			__mod_memcg_state(memcg, NR_SHMEM, nr_pages);
 	}
 
@@ -6039,7 +6039,7 @@ static int mem_cgroup_move_account(struct page *page,
 	 * mod_memcg_page_state will serialize updates to PageDirty.
 	 * So mapping should be stable for dirty pages.
 	 */
-	if (!anon && PageDirty(page)) {
+	if (!anon && PageDirty(page)) {/* 脏文件页 */
 		struct address_space *mapping = page_mapping(page);
 
 		if (mapping_cap_account_dirty(mapping)) {
@@ -6083,7 +6083,8 @@ static int mem_cgroup_move_account(struct page *page,
 
 
 /* 2024年7月13日14:54:01
-看到这了，怎么感觉没有正儿八经的移动呢。只是改了一下lruvec的一些统计信息 */
+看到这了，怎么感觉没有正儿八经的移动呢。只是改了一下lruvec的一些统计信息
+ */
 
 	spin_unlock_irqrestore(&from->move_lock, flags);
 
@@ -7145,7 +7146,7 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 	if (mem_cgroup_disabled())
 		goto out;
 
-	if (PageSwapCache(page)) {
+	if (PageSwapCache(page)) {/* 是不是swp缓存page */
 
 		/* 2024年7月13日01:15:11
 		页缓存为什么单独处理 */
@@ -7175,11 +7176,7 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 			rcu_read_unlock();
 		}
 	}
-
-
-
-
-
+	
 	if (!memcg)
 	/* 2024年7月13日01:17:08
 这里还可能为空吗，

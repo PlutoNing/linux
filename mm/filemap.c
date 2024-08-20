@@ -1594,6 +1594,8 @@ EXPORT_SYMBOL_GPL(__lock_page_killable);
 
 /*2024年07月18日10:33:54
 todo
+返回1，成功lock，持有mmap_sem；
+返回0，没有lock。
  * Return values:
  * 1 - page is locked; mmap_sem is still held.
  * 0 - page is not locked.

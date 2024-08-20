@@ -1132,10 +1132,11 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 该函数的作用是将在pmd中从虚拟地址address开始，长度为size的内存块通过循环调用
 pte_clear将其页表项清零，
 调用free_pte将所含空间中的物理内存或交换空间中的虚存页释放掉。
-在释放之前，必须检查从address开始长度为size的内存块有无越过PMD_SIZE.
-(溢出则可使指针逃出0～1023的区间)。
+
 2024年7月27日22:48:20
 太长不看23333，todo。
+2024年8月21日00:51:44
+
  */
 static unsigned long zap_pte_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pmd_t *pmd,
@@ -1144,6 +1145,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 {
 	struct mm_struct *mm = tlb->mm;
 	int force_flush = 0;
+	/* 各种类型的计数器 */
 	int rss[NR_MM_COUNTERS];
 	spinlock_t *ptl;
 	pte_t *start_pte;
@@ -1153,23 +1155,25 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 	tlb_change_page_size(tlb, PAGE_SIZE);
 again:
 	init_rss_vec(rss);
+	/* 开始的pte */
 	start_pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
 	pte = start_pte;
 	flush_tlb_batched_pending(mm);
 	arch_enter_lazy_mmu_mode();
-	do {
+	
+	do {/* 遍历范围内的pte */
 		pte_t ptent = *pte;
-		if (pte_none(ptent))
+		if (pte_none(ptent))/* 空pte */
 			continue;
 
 		if (need_resched())
 			break;
 
-		if (pte_present(ptent)) {
+		if (pte_present(ptent)) {/* pte有映射 */
 			struct page *page;
-
+			/* 获取正常的映射的page，就是说不是特殊映射就返回。 */
 			page = vm_normal_page(vma, addr, ptent);
-			if (unlikely(details) && page) {
+			if (unlikely(details) && page) {/* todo2024年8月21日00:54:24 */
 				/*
 				 * unmap_shared_mapping_pages() wants to
 				 * invalidate cache without truncating:
@@ -1179,33 +1183,43 @@ again:
 				    details->check_mapping != page_rmapping(page))
 					continue;
 			}
+			/* 获取pte，然后清空 */
 			ptent = ptep_get_and_clear_full(mm, addr, pte,
 							tlb->fullmm);
+							/* tlb相关 */
 			tlb_remove_tlb_entry(tlb, pte, addr);
-			if (unlikely(!page))
+			
+			if (unlikely(!page))/* 特殊映射，跳过 */
 				continue;
 
-			if (!PageAnon(page)) {
-				if (pte_dirty(ptent)) {
+			if (!PageAnon(page)) {/* 不是匿名页，有什么关系吗？可以说明是文件页吗 */
+				if (pte_dirty(ptent)) {/* pte说是脏文件页的情况 */
 					force_flush = 1;
 					set_page_dirty(page);
 				}
+
 				if (pte_young(ptent) &&
-				    likely(!(vma->vm_flags & VM_SEQ_READ)))
+				    likely(!(vma->vm_flags & VM_SEQ_READ)))/* 被经常访问 */
 					mark_page_accessed(page);
 			}
+			/* 更新page相关类型的统计 */
 			rss[mm_counter(page)]--;
+			/* 移除page的rmap，page是被pte映射的 */
 			page_remove_rmap(page, false);
+
 			if (unlikely(page_mapcount(page) < 0))
 				print_bad_pte(vma, addr, ptent, page);
+
 			if (unlikely(__tlb_remove_page(tlb, page))) {
 				force_flush = 1;
 				addr += PAGE_SIZE;
 				break;
 			}
-			continue;
-		}
 
+			continue;
+		}/* pte有映射的情况完毕 */
+
+		/* 接下来是swap的情况？ */
 		entry = pte_to_swp_entry(ptent);
 		if (non_swap_entry(entry) && is_device_private_entry(entry)) {
 			struct page *page = device_private_entry_to_page(entry);
@@ -1234,12 +1248,14 @@ again:
 
 		if (!non_swap_entry(entry))
 			rss[MM_SWAPENTS]--;
+
 		else if (is_migration_entry(entry)) {
 			struct page *page;
 
 			page = migration_entry_to_page(entry);
 			rss[mm_counter(page)]--;
 		}
+		
 		if (unlikely(!free_swap_and_cache(entry)))
 			print_bad_pte(vma, addr, ptent, NULL);
 		pte_clear_not_present_full(mm, addr, pte, tlb->fullmm);
@@ -1597,6 +1613,8 @@ pte_t *__get_locked_pte(struct mm_struct *mm, unsigned long addr,
 
 /*
 把page映射到vma的addr
+page类型是？文件页。
+什么场合会让vma映射file page？调用者__vm_insert_mixed，vm_insert_page(。
  * This is the old fallback for page remapping.
  *
  * For historical reasons, it only allows reserved pages. Only
@@ -1612,7 +1630,9 @@ static int insert_page(struct vm_area_struct *vma, unsigned long addr,
 	spinlock_t *ptl;
 
 	retval = -EINVAL;
+
 	if (PageAnon(page) || PageSlab(page) || page_has_type(page))
+	/* 为什么匿名页不行？ */
 		goto out;
 
 	retval = -ENOMEM;
@@ -1631,8 +1651,10 @@ static int insert_page(struct vm_area_struct *vma, unsigned long addr,
 	/* Ok, finally just insert the thing..
 	可以开始把page映射到这个pte了 */
 	get_page(page);
+	/* 统计类型 */
 	inc_mm_counter_fast(mm, mm_counter_file(page));
-	/* 设置page的mapping，rmap，其实就是指向vma的av */
+	/* 设置file page的mapping，rmap，其实就是指向vma的av。
+	注意，这里是file page的rmap，不是匿名页。 */
 	page_add_file_rmap(page, false);
 	/* 设置pte的值了 */
 	set_pte_at(mm, addr, pte, mk_pte(page, prot));
@@ -1645,7 +1667,7 @@ out:
 }
 
 /**
-插入page到vma的addr
+让vma的addr映射page。这里好像默认page是文件页。
  * vm_insert_page - insert single page into user vma
  * @vma: user vma to map to
  * @addr: target user address of this page
@@ -1694,7 +1716,7 @@ int vm_insert_page(struct vm_area_struct *vma, unsigned long addr,
 EXPORT_SYMBOL(vm_insert_page);
 
 /*
-映射多个内核page到vma
+映射多个内核page到用户空间vma。
  * __vm_map_pages - maps range of kernel pages into user vma
  * @vma: user vma to map to
  * @pages: pointer to array of source kernel pages
@@ -3124,9 +3146,9 @@ EXPORT_SYMBOL(unmap_mapping_range);
 
 /*
 2024年07月03日12:14:50
-匿名页面被换出到交换分区后，如果应用程序需要读写这个页面，则会发生缺页中断，由于PTE中的present位
-显示该页面不在内存中，但PTE不为空，说明该页面在交换分区中，因此调用do_swap_page()函数重新读取该页面
-的内容。
+匿名页面被换出到交换分区后，如果应用程序需要读写这个页面，则会发生缺页中断，
+由于PTE中的present位显示该页面不在内存中，但PTE不为空，说明该页面在交换分
+区中，因此调用do_swap_page()函数重新读取该页面的内容。
  * We enter with non-exclusive mmap_sem (to exclude vma changes,
  * but allow concurrent faults), and pte mapped but not yet locked.
  * We return with pte unmapped and unlocked.
@@ -3229,7 +3251,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		delayacct_clear_flag(DELAYACCT_PF_SWAPIN);
 		goto out_release;
 	}
-
+	/* 2024年8月21日00:24:36如何lock？todo */
 	locked = lock_page_or_retry(page, vma->vm_mm, vmf->flags);
 
 	delayacct_clear_flag(DELAYACCT_PF_SWAPIN);
@@ -3245,7 +3267,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 * swapcache, we need to check that the page's swap has not changed.
 	 */
 	if (unlikely((!PageSwapCache(page) ||
-			page_private(page) != entry.val)) && swapcache)
+			page_private(page) != entry.val)) && swapcache)/* 再检查一遍 */
 		goto out_page;
 
 	page = ksm_might_need_to_copy(page, vma, vmf->address);
@@ -3254,7 +3276,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		page = swapcache;
 		goto out_page;
 	}
-
+	/* mmecg charge相关 */
 	if (mem_cgroup_try_charge_delay(page, vma->vm_mm, GFP_KERNEL,
 					&memcg, false)) {
 		ret = VM_FAULT_OOM;
@@ -3263,13 +3285,15 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	/*
 	 * Back out if somebody else already faulted in this pte.
+	 获取缺页的pte
 	 */
 	vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd, vmf->address,
 			&vmf->ptl);
-	if (unlikely(!pte_same(*vmf->pte, vmf->orig_pte)))
+	if (unlikely(!pte_same(*vmf->pte, vmf->orig_pte)))/* 防止在这函数期间被其他
+	线程缺页处理添加映射了？ */
 		goto out_nomap;
 
-	if (unlikely(!PageUptodate(page))) {
+	if (unlikely(!PageUptodate(page))) {/* 刚读取的还能脏吗 */
 		ret = VM_FAULT_SIGBUS;
 		goto out_nomap;
 	}
@@ -3286,6 +3310,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	inc_mm_counter_fast(vma->vm_mm, MM_ANONPAGES);
 	dec_mm_counter_fast(vma->vm_mm, MM_SWAPENTS);
+	/* 创建pte条目 */
 	pte = mk_pte(page, vma->vm_page_prot);
 	if ((vmf->flags & FAULT_FLAG_WRITE) && reuse_swap_page(page, NULL)) {
 		pte = maybe_mkwrite(pte_mkdirty(pte), vma);
@@ -3296,6 +3321,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	flush_icache_page(vma, page);
 	if (pte_swp_soft_dirty(vmf->orig_pte))
 		pte = pte_mksoft_dirty(pte);
+	/* 设置pte */
 	set_pte_at(vma->vm_mm, vmf->address, vmf->pte, pte);
 	arch_do_swap_page(vma->vm_mm, vma, vmf->address, pte, vmf->orig_pte);
 	vmf->orig_pte = pte;

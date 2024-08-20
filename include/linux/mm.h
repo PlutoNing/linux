@@ -1762,7 +1762,9 @@ static inline void dec_mm_counter(struct mm_struct *mm, int member)
 }
 
 /* 
-
+获取file page的更细致类型。
+这个函数默认page是file page。然后通过是否交换判断是
+shmempage还是普通的file page。
 Optimized variant when page is already known not to be PageAnon */
 static inline int mm_counter_file(struct page *page)
 {
@@ -1770,7 +1772,7 @@ static inline int mm_counter_file(struct page *page)
 		return MM_SHMEMPAGES;
 	return MM_FILEPAGES;
 }
-
+/* 根据page类型，获取其mm计数器类型 */
 static inline int mm_counter(struct page *page)
 {
 	if (PageAnon(page))
@@ -2708,7 +2710,8 @@ vm_fault_t vmf_insert_mixed(struct vm_area_struct *vma, unsigned long addr,
 vm_fault_t vmf_insert_mixed_mkwrite(struct vm_area_struct *vma,
 		unsigned long addr, pfn_t pfn);
 int vm_iomap_memory(struct vm_area_struct *vma, phys_addr_t start, unsigned long len);
-
+/* 2024年8月21日00:44:37
+todo */
 static inline vm_fault_t vmf_insert_page(struct vm_area_struct *vma,
 				unsigned long addr, struct page *page)
 {

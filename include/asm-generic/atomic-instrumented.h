@@ -751,6 +751,7 @@ atomic_dec_and_test(atomic_t *v)
 #endif
 
 #if defined(arch_atomic_inc_and_test)
+/*  */
 static inline bool
 atomic_inc_and_test(atomic_t *v)
 {

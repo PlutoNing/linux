@@ -1111,7 +1111,9 @@ void __meminit init_trampoline(void);
 static inline void init_trampoline(void) { }
 #endif
 
-/* local pte updates need not use xchg for locking */
+/* 
+获取旧值，清空pte
+local pte updates need not use xchg for locking */
 static inline pte_t native_local_ptep_get_and_clear(pte_t *ptep)
 {
 	pte_t res = *ptep;
@@ -1187,6 +1189,8 @@ static inline pte_t ptep_get_and_clear(struct mm_struct *mm, unsigned long addr,
 }
 
 #define __HAVE_ARCH_PTEP_GET_AND_CLEAR_FULL
+/* 2024年8月21日00:54:56
+获取旧值，清空pte。 */
 static inline pte_t ptep_get_and_clear_full(struct mm_struct *mm,
 					    unsigned long addr, pte_t *ptep,
 					    int full)
@@ -1201,6 +1205,7 @@ static inline pte_t ptep_get_and_clear_full(struct mm_struct *mm,
 	} else {
 		pte = ptep_get_and_clear(mm, addr, ptep);
 	}
+
 	return pte;
 }
 

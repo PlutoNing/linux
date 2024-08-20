@@ -244,10 +244,11 @@ enum node_stat_item {
 	NR_ANON_MAPPED,	/* Mapped anonymous pages */
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
 			   only modified from process context。
-			   mapped的文件页的数量。 */
+			   mapped的文件页的数量，这算什么？
+			   !anon && page_mapped(page) */
 	NR_FILE_PAGES,
 	NR_FILE_DIRTY,/* 脏文件页数量 */
-	NR_WRITEBACK,
+	NR_WRITEBACK,/* PageWriteback(page) */
 	NR_WRITEBACK_TEMP,	/* Writeback using temporary buffers */
 	NR_SHMEM,		/* shmem pages (included tmpfs/GEM pages) */
 	NR_SHMEM_THPS,

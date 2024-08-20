@@ -1221,17 +1221,19 @@ void do_page_add_anon_rmap(struct page *page,
 	struct vm_area_struct *vma, unsigned long address, int flags)
 {
 	bool compound = flags & RMAP_COMPOUND;
+	/* 是不是第一个设置的？ */
 	bool first;
 
-	if (compound) {/* 复合页路径 */
+	if (compound) { /* 复合页路径 */
 		atomic_t *mapcount;
 		VM_BUG_ON_PAGE(!PageLocked(page), page);
 		VM_BUG_ON_PAGE(!PageTransHuge(page), page);
 		mapcount = compound_mapcount_ptr(page);
 		first = atomic_inc_and_test(mapcount);
-	} else {
+	} else {/* 单页 */
 		first = atomic_inc_and_test(&page->_mapcount);
 	}
+
 	/* 2024年8月9日22:21:23这里可能为0吗， */
 
 	if (first) {
@@ -1244,18 +1246,20 @@ void do_page_add_anon_rmap(struct page *page,
 		 */
 		if (compound)
 			__inc_node_page_state(page, NR_ANON_THPS);
+		
+		/* 如果是第一个设置的，更新NR_ANON_MAPPED计数 */
 		__mod_node_page_state(page_pgdat(page), NR_ANON_MAPPED, nr);
 	}
+
 	if (unlikely(PageKsm(page)))
 		return;
 
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 
 	/* address might be in next vma when migration races vma_adjust */
-	if (first)
-		__page_set_anon_rmap(page, vma, address,
-				flags & RMAP_EXCLUSIVE);
-	else
+	if (first)/* 第一个设置的就是set rmap */
+		__page_set_anon_rmap(page, vma, address,flags & RMAP_EXCLUSIVE);
+	else/* 不是的话是check */
 		__page_check_anon_rmap(page, vma, address);
 }
 
@@ -1263,7 +1267,7 @@ void do_page_add_anon_rmap(struct page *page,
 2024年7月2日22:00:12
 2024年7月2日23:24:11
 2024年08月09日19:37:15
-
+新申请的page用这个？
  * page_add_new_anon_rmap - add pte mapping to a new anonymous page
  * @page:	the page to add the mapping to
  * @vma:	the vm area in which the mapping is added
@@ -1302,10 +1306,13 @@ void page_add_new_anon_rmap(struct page *page,
 
 /**
 2024年7月27日01:14:42
-pte mapping和文件页。
+page_add_file_rmap。感觉重点在file和rmap。和page_add_new_anon_rmap ， page_add_anon_rmap
+区别是什么。
 todo
 目前理解就是主要就是增加了page->_mapcount的引用计数，代表又有一个页表项指向了这个页。
-
+---------------------------------
+谁会给file page添加rmap。shmem_mfill_atomic_pte，remove_migration_pte，insert_page，
+do_set_pmd，alloc_set_pte。
  * page_add_file_rmap - add pte mapping to a file page
  * @page: the page to add the mapping to
  * @compound: charge the page as compound or small page
@@ -1336,7 +1343,7 @@ void page_add_file_rmap(struct page *page, bool compound)
 		else
 			__inc_node_page_state(page, NR_FILE_PMDMAPPED);
 		
-	} else {/* 单页的路径 */
+	} else {/* 单页的路径？ */
 		if (PageTransCompound(page) && page_mapping(page)) {
 			VM_WARN_ON_ONCE(!PageLocked(page));
 
@@ -1355,7 +1362,9 @@ out:
 }
 
 
-/* 移除缓存页的mapping
+/* 
+
+移除缓存页的mapping
 移除是体现在哪一步呢？ */
 static void page_remove_file_rmap(struct page *page, bool compound)
 {
