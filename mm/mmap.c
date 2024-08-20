@@ -1550,7 +1550,7 @@ static inline bool file_mmap_ok(struct file *file, struct inode *inode,
  * The caller must hold down_write(&current->mm->mmap_sem).
  2024年6月18日21:50:13
 2024年7月1日23:10:24
-
+映射@file的[addr，addr+len]
  */
 unsigned long do_mmap(struct file *file, unsigned long addr,
 			unsigned long len, unsigned long prot,
@@ -1612,7 +1612,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 
 	if (flags & MAP_FIXED_NOREPLACE) {
 		struct vm_area_struct *vma = find_vma(mm, addr);
-
+		/* vma包含addr的话，那么vm_start不是肯定小于addr+len吗 */
 		if (vma && vma->vm_start < addr + len)
 			return -EEXIST;
 	}
@@ -1703,7 +1703,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		default:
 			return -EINVAL;
 		}
-	} else {
+	} else {/* 有file的情况 */
 		switch (flags & MAP_TYPE) {
 		case MAP_SHARED:
 			if (vm_flags & (VM_GROWSDOWN|VM_GROWSUP))
@@ -3273,6 +3273,7 @@ SYSCALL_DEFINE2(munmap, unsigned long, addr, size_t, len)
 
 /*
 2024年08月15日11:22:14
+remap的syscall？
  * Emulation of deprecated remap_file_pages() syscall.
  */
 SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
@@ -3290,6 +3291,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 
 	if (prot)
 		return ret;
+	/* 对齐start和size */
 	start = start & PAGE_MASK;
 	size = size & PAGE_MASK;
 
@@ -3311,7 +3313,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 	if (start < vma->vm_start)
 		goto out;
 
-	if (start + size > vma->vm_end) {
+	if (start + size > vma->vm_end) {/* 扩大vma */
 		struct vm_area_struct *next;
 
 		for (next = vma->vm_next; next; next = next->vm_next) {
@@ -3339,26 +3341,27 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 
 	flags &= MAP_NONBLOCK;
 	flags |= MAP_SHARED | MAP_FIXED | MAP_POPULATE;
+
 	if (vma->vm_flags & VM_LOCKED) {
 		struct vm_area_struct *tmp;
 		flags |= MAP_LOCKED;
 
 		/* drop PG_Mlocked flag for over-mapped range */
-		for (tmp = vma; tmp->vm_start >= start + size;
-				tmp = tmp->vm_next) {
+		for (tmp = vma; tmp->vm_start >= start + size; tmp = tmp->vm_next) {
 			/*
 			 * Split pmd and munlock page on the border
 			 * of the range.
 			 */
 			vma_adjust_trans_huge(tmp, start, start + size, 0);
-
+			/* 清除范围内PG_lock，加入lru。 */
 			munlock_vma_pages_range(tmp,
 					max(tmp->vm_start, start),
 					min(tmp->vm_end, start + size));
 		}
-	}
+	}/* 如果vma是locked的情况 */
 
 	file = get_file(vma->vm_file);
+
 	ret = do_mmap_pgoff(vma->vm_file, start, size,
 			prot, flags, pgoff, &populate, NULL);
 	fput(file);

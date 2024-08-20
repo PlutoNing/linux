@@ -1968,7 +1968,7 @@ unsigned find_get_entries(struct address_space *mapping,
 		return 0;
 
 	rcu_read_lock();
-	/* 遍历mapping里面的pages，存储到page */
+	/* 遍历mapping里面的page */
 	xas_for_each(&xas, page, ULONG_MAX) {
 		if (xas_retry(&xas, page))
 			continue;
@@ -1976,7 +1976,6 @@ unsigned find_get_entries(struct address_space *mapping,
 		 * A shadow entry of a recently evicted page, a swap
 		 * entry from shmem/tmpfs or a DAX entry.  Return it
 		 * without attempting to raise page count.
-		 
 		 */
 		if (xa_is_value(page))
 			goto export;
@@ -3908,7 +3907,7 @@ int try_to_release_page(struct page *page, gfp_t gfp_mask)
 
 	if (mapping && mapping->a_ops->releasepage)
 		return mapping->a_ops->releasepage(page, gfp_mask);
-	/* 其实就是清楚priv数据 */
+	/* 其实就是清除priv数据 */
 	return try_to_free_buffers(page);
 }
 

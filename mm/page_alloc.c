@@ -3208,7 +3208,7 @@ static void free_unref_page_commit(struct page *page, unsigned long pfn)
 	 * areas back if necessary. Otherwise, we may have to free
 	 * excessively into the page allocator
 	 */
-	if (migratetype >= MIGRATE_PCPTYPES) {
+	if (migratetype >= MIGRATE_PCPTYPES) {         
 		if (unlikely(is_migrate_isolate(migratetype))) {
 			/* 直接释放 */
 			free_one_page(zone, page, pfn, 0, migratetype);
@@ -3272,6 +3272,7 @@ void free_unref_page_list(struct list_head *list)
 
 		set_page_private(page, 0);
 		trace_mm_page_free_batched(page);
+		/* 释放页面 */
 		free_unref_page_commit(page, pfn);
 
 		/*

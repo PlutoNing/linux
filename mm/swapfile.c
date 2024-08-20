@@ -1776,12 +1776,14 @@ bool reuse_swap_page(struct page *page, int *total_map_swapcount)
 	
 	if (total_map_swapcount)
 		*total_map_swapcount = total_mapcount + total_swapcount;
+
 	if (count == 1 && PageSwapCache(page) &&
 	    (likely(!PageTransCompound(page)) ||
 	     /* The remaining swap count will be freed soon */
 	     total_swapcount == page_swapcount(page))) {
 		if (!PageWriteback(page)) {
 			page = compound_head(page);
+			/* 释放内存中空间 */
 			delete_from_swap_cache(page);
 			SetPageDirty(page);
 		} else {
@@ -1803,12 +1805,7 @@ bool reuse_swap_page(struct page *page, int *total_map_swapcount)
 
 /*
 2024年07月31日13:12:53
-释放swap的一个entry。
-----------------
-但是swp的条目有什么需要释放的吗，还是说文件大小限制，还是文件的mapping限制呢。
-如果swpfile大小小于内存，话说内存地址和文件pgoff如何映射呢。
-2024年07月31日14:29:33
-是从mapping移除
+释放swap的一个entry。是从mapping移除
  * If swap is getting full, or if there are no more mappings of this page,
  * then try_to_free_swap is called to free its swap space.
  */
@@ -1842,7 +1839,7 @@ int try_to_free_swap(struct page *page)
 		return 0;
 
 	page = compound_head(page);
-	/* 移除页面 */
+	/* 从内存中移除页面 */
 	delete_from_swap_cache(page);
 	SetPageDirty(page);
 	return 1;

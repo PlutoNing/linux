@@ -873,7 +873,7 @@ static inline unsigned long pte_index(unsigned long address)
 	return (address >> PAGE_SHIFT) & (PTRS_PER_PTE - 1);
 }
 /* *pmd指向？ 应该是指向pte页表的地址。
-
+获取pte
 */
 static inline pte_t * pte_offset_kernel(pmd_t *pmd, unsigned long address)
 {

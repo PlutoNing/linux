@@ -2095,7 +2095,7 @@ static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
 
 /**
 2024年7月2日23:04:25
-给vma分配物理页面
+给vma的addr分配物理页面
  * 	alloc_pages_vma	- Allocate a page for a VMA.
  *
  * 	@gfp:
@@ -2184,6 +2184,7 @@ alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 out:
 	return page;
 }
+
 EXPORT_SYMBOL(alloc_pages_vma);
 
 /**

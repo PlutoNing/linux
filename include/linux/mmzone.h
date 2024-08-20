@@ -243,9 +243,10 @@ enum node_stat_item {
 	WORKINGSET_NODERECLAIM,
 	NR_ANON_MAPPED,	/* Mapped anonymous pages */
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
-			   only modified from process context */
+			   only modified from process context。
+			   mapped的文件页的数量。 */
 	NR_FILE_PAGES,
-	NR_FILE_DIRTY,
+	NR_FILE_DIRTY,/* 脏文件页数量 */
 	NR_WRITEBACK,
 	NR_WRITEBACK_TEMP,	/* Writeback using temporary buffers */
 	NR_SHMEM,		/* shmem pages (included tmpfs/GEM pages) */
@@ -657,8 +658,8 @@ struct zone {
 } ____cacheline_internodealigned_in_smp;
 /* 2024年07月03日10:29:29 */
 enum pgdat_flags {
-	PGDAT_CONGESTED,		/*内存节点中发现有大
-量脏页拥堵在一个BDI设备中。 pgdat has many dirty pages backed by
+	PGDAT_CONGESTED,		/*
+	内存节点中发现有大量脏页拥堵在一个BDI设备中。 pgdat has many dirty pages backed by
 					 * a congested BDI
 					 */
 	PGDAT_DIRTY,			/*发现有大量的脏文件页面 reclaim scanning has recently found
@@ -667,9 +668,10 @@ enum pgdat_flags {
 					 */
 	PGDAT_WRITEBACK,		/* reclaim scanning has recently found
 					 * many pages under writeback：发现有大量页面正在
-等待回写到磁盘。
-					 */
-	PGDAT_RECLAIM_LOCKED,		/* prevents concurrent reclaim */
+等待回写到磁盘。*/
+	PGDAT_RECLAIM_LOCKED,		/* 
+	reclaim时的lock
+	prevents concurrent reclaim */
 };
 
 enum zone_flags {
@@ -842,24 +844,15 @@ typedef struct pglist_data {
 ———————————————— */
 	wait_queue_head_t kswapd_wait;
 	/* 表示等待直接内存回收（direct reclaim）结束的线程等待队列。
-	里面存放的都是等待由kswapd帮忙做完直接内存回收的线程。当kswapd
-	直接内存回收后，整个node的free pages满足要求时，在kswapd睡眠前，
-	kswapd会唤醒pfmemalloc_wait里面的线程，线程直接进行内存分配，
-	这个等待队列的线程跳过了自己direct reclaim的操作。
-	在kswapd中会对node中每一个不平衡的zone进行内存回收，根据struct zone
-	里面的水线图可知，直到所有zone都满足：该zone分配页框后剩余的页框数量 > 
-	该zone的_watermark[WMARK_HIGH]+该zone 预留它用的页框数量，则kswapd
-	就会停止内存回收，进入睡眠，然后唤醒pfmemalloc_wait等待队列的线程。
+	里面存放的都是等待由kswapd帮忙做完直接内存回收的线程。当kswapd直接内存回收后，整个node的free pages满足要求时，在kswapd睡眠前，
+	kswapd会唤醒pfmemalloc_wait里面的线程，线程直接进行内存分配，这个等待队列的线程跳过了自己direct reclaim的操作。
+	在kswapd中会对node中每一个不平衡的zone进行内存回收，根据struct zone里面的水线图可知，直到所有zone都满足：该zone分配页框后剩余的页框数量 > 
+	该zone的_watermark[WMARK_HIGH]+该zone 预留它用的页框数量，则kswapd就会停止内存回收，进入睡眠，然后唤醒pfmemalloc_wait等待队列的线程。
+	那如何判断请求内存分配的线程是进入pfmemalloc_wait等待对列，还是直接自己进行direct reclaim呢？实际上，就是判断一个node是否平衡。平衡，
+	那就由线程自己进行direct reclaim，否则，线程加入等待队列，由kswapd来进行direct reclaim。具体的判断调用链：try_to_free_pages()->throttle_direct_reclaim()
+	->allow_direct_reclaim()。allow_direct_reclaim返回true，说明node是平衡的，不会唤醒kswapd去做direct reclaim，具体的函数流程这里暂时不展开讲。
+	wait_queue_head_t pfmemalloc_wait;*/
 
-        那如何判断请求内存分配的线程是进入pfmemalloc_wait等待对列，
-		还是直接自己进行direct reclaim呢？实际上，就是判断一个node是否平衡。平衡，
-		那就由线程自己进行direct reclaim，否则，线程加入等待队列，由kswapd来进行
-		direct reclaim。具体的判断调用链：try_to_free_pages()->throttle_direct_reclaim()
-		->allow_direct_reclaim()。allow_direct_reclaim返回true，说明node是平衡的，
-		不会唤醒kswapd去做direct reclaim，具体的函数流程这里暂时不展开讲。
-
-	wait_queue_head_t pfmemalloc_wait;
-*/
 	wait_queue_head_t pfmemalloc_wait;
 	struct task_struct *kswapd;	/* Protected by
 					   mem_hotplug_begin/end() */

@@ -403,8 +403,8 @@ PAGEFLAG_FALSE(HighMem)
 #ifdef CONFIG_SWAP
 /* 2024年7月2日22:59:24
 2024年7月14日14:47:57
-则是在page为匿名页的情况向判断该页是否分配了swap 空间。往往在内存回收时若匿名页没有分配。
-此页是已经加入到swapcache。
+则是在page为匿名页的情况向判断该页是否分配了swap缓存 空间。
+往往在内存回收时若匿名页没有分配。此页是已经加入到swapcache。
  */
 static __always_inline int PageSwapCache(struct page *page)
 {

@@ -19,6 +19,7 @@
 struct pagevec;
 
 /*
+2024年08月20日19:24:21
  * Bits in mapping->flags.
  */
 enum mapping_flags {
@@ -72,11 +73,12 @@ static inline void mapping_clear_unevictable(struct address_space *mapping)
 {
 	clear_bit(AS_UNEVICTABLE, &mapping->flags);
 }
-
+/*  */
 static inline int mapping_unevictable(struct address_space *mapping)
 {
 	if (mapping)
 		return test_bit(AS_UNEVICTABLE, &mapping->flags);
+
 	return !!mapping;
 }
 /*  */
@@ -260,7 +262,7 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t offset,
 
 /**
 2024年6月29日22:39:41
-从页缓存获取（申请）页面（加入mapping和lru）
+从页缓存获取（缺页的话会申请）页面（加入mapping和lru）
  * find_get_page - find and get a page reference
  * @mapping: the address_space to search
  * @offset: the page index

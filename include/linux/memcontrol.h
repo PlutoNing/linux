@@ -54,7 +54,7 @@ enum memcg_memory_event {
 	/* 标记枚举的大小 */
 	MEMCG_NR_MEMORY_EVENTS,
 };
-
+/*  */
 enum mem_cgroup_protection {
 	MEMCG_PROT_NONE,
 	MEMCG_PROT_LOW,
@@ -619,7 +619,7 @@ static inline bool mem_cgroup_is_descendant(struct mem_cgroup *memcg,
 	return cgroup_is_descendant(memcg->css.cgroup, root->css.cgroup);
 }
 /* 2024年7月14日14:09:32
-
+看看mm的tsk_memcg是不是memcg的孩子
  */
 static inline bool mm_match_cgroup(struct mm_struct *mm,
 				   struct mem_cgroup *memcg)

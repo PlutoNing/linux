@@ -1568,6 +1568,7 @@ void zap_vma_ptes(struct vm_area_struct *vma, unsigned long address,
 }
 EXPORT_SYMBOL_GPL(zap_vma_ptes);
 /* 从mm里面获取addr的pte。
+自旋等待，把锁赋到ptl。
  */
 pte_t *__get_locked_pte(struct mm_struct *mm, unsigned long addr,
 			spinlock_t **ptl)
@@ -2864,11 +2865,9 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf)
 2024年7月2日22:53:51
 处理子进程写时复制
 有两种情况会执行写时复制：
-
 1 进程分叉生成子进程的时候，为了避免复制物理页，子进程和父进程以只读方式共享所有
 私有的匿名页和文件页。当其中一个进程试图写只读页时，触发页错误异常，页错误异常处理
 程序分配新的物理页，把旧的物理页的数据复制到新的物理页，然后把虚拟页映射到新的物理页。
-
 2 进程创建私有的文件映射，然后读访问，触发页错误异常，异常处理程序把文件读到页缓存，
 然后以只读模式把虚拟页映射到文件的页缓存中的物理页。接着执行写访问，触发页错误异常，
 异常处理程序执行写时复制，为文件的页缓存中的物理页创建一个副本，把虚拟页映射到副本。
@@ -3002,6 +3001,8 @@ copy:
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
 	return wp_page_copy(vmf);
 }
+
+
 /* 解除vma的范围内的映射 */
 static void unmap_mapping_range_vma(struct vm_area_struct *vma,
 		unsigned long start_addr, unsigned long end_addr,
@@ -3123,10 +3124,8 @@ EXPORT_SYMBOL(unmap_mapping_range);
 
 /*
 2024年07月03日12:14:50
-匿名页面被换出到交换分区后，如果应用程序需要读
-写这个页面，则会发生缺页中断，由于PTE中的present位
-显示该页面不在内存中，但PTE不为空，说明该页面在交
-换分区中，因此调用do_swap_page()函数重新读取该页面
+匿名页面被换出到交换分区后，如果应用程序需要读写这个页面，则会发生缺页中断，由于PTE中的present位
+显示该页面不在内存中，但PTE不为空，说明该页面在交换分区中，因此调用do_swap_page()函数重新读取该页面
 的内容。
  * We enter with non-exclusive mmap_sem (to exclude vma changes,
  * but allow concurrent faults), and pte mapped but not yet locked.
@@ -3169,38 +3168,35 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		goto out;
 	}
 
-
 	delayacct_set_flag(DELAYACCT_PF_SWAPIN);
 	/* 从swapfile的mapping读取page */
 	page = lookup_swap_cache(entry, vma, vmf->address);
 	swapcache = page;
 
 	if (!page) {
-		/* 2024年07月03日14:35:49
-		为什么会没有page呢 
-		2024年8月9日22:51:40
+		/*
 		好像是说明swp mapping没有这个页面
 		新申请一个页面
 		*/
 		struct swap_info_struct *si = swp_swap_info(entry);
 
-		if (si->flags & SWP_SYNCHRONOUS_IO &&
-				__swap_count(entry) == 1) {/* 如果可以容忍同步读取 */
+		if (si->flags & SWP_SYNCHRONOUS_IO && __swap_count(entry) == 1) {/* 如果可以容忍同步读取 */
 			/* skip swapcache */
 			page = alloc_page_vma(GFP_HIGHUSER_MOVABLE, vma,
 							vmf->address);
 			if (page) {
 				__SetPageLocked(page);
+				/* 设置新页为交换页 */
 				__SetPageSwapBacked(page);
 				/* 设置page的swap位置相关字段 */
 				set_page_private(page, entry.val);
-				/*  */
+				/* 添加到匿名lru */
 				lru_cache_add_anon(page);
 				/* 这里吧swp file里的page内容读取到刚刚申请的page内存区域里面 */
 				swap_readpage(page, true);
 			}
 		} else {
-			/* 这里是异步读取page内容 */
+			/* 这里是异步读取page内容，缺页的话会申请 */
 			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 						vmf);
 			swapcache = page;
@@ -3422,6 +3418,7 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	/* Allocate our own private page. */
 	if (unlikely(anon_vma_prepare(vma)))
 		goto oom;
+	/* 分配页面 */
 	page = alloc_zeroed_user_highpage_movable(vma, vmf->address);
 	if (!page)
 		goto oom;
@@ -3436,11 +3433,11 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	 * the set_pte_at() write.
 	 */
 	__SetPageUptodate(page);
-
+	/* 创建pte条目 */
 	entry = mk_pte(page, vma->vm_page_prot);
 	if (vma->vm_flags & VM_WRITE)
 		entry = pte_mkwrite(pte_mkdirty(entry));
-
+	/* 获取pte指针 */
 	vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd, vmf->address,
 			&vmf->ptl);
 	if (!pte_none(*vmf->pte))

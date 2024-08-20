@@ -6,7 +6,7 @@
  Author: Michael S. Tsirkin <mst@mellanox.co.il>, Mellanox Technologies Ltd.
  Based on: asm-xxx/mman.h
 */
-
+/* page权限管理？ */
 #define PROT_READ	0x1		/* page can be read */
 #define PROT_WRITE	0x2		/* page can be written */
 #define PROT_EXEC	0x4		/* page can be executed */
@@ -26,10 +26,9 @@
 #define MAP_STACK		0x020000	/* give out an address that is best suited for process/thread stacks */
 #define MAP_HUGETLB		0x040000	/* create a huge page mapping */
 #define MAP_SYNC		0x080000 /* perform synchronous page faults for the mapping */
-#define MAP_FIXED_NOREPLACE	0x100000	/* MAP_FIXED which doesn't unmap underlying mapping */
+#define MAP_FIXED_NOREPLACE	0x100000	/* MAP_FIXED which doesn't unmap underlying mapping，todo？ */
 
-#define MAP_UNINITIALIZED 0x4000000	/* For anonymous mmap, memory could be
-					 * uninitialized */
+#define MAP_UNINITIALIZED 0x4000000	/* For anonymous mmap, memory could be * uninitialized */
 
 /*
  * Flags for mlock

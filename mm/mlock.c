@@ -25,7 +25,7 @@
 #include <linux/mm_inline.h>
 
 #include "internal.h"
-
+/* 有没有mlock的权限 */
 bool can_do_mlock(void)
 {
 	if (rlimit(RLIMIT_MEMLOCK) != 0)
@@ -115,7 +115,9 @@ void mlock_vma_page(struct page *page)
 
 /*
 2024年7月18日23:51:45
-如果页面是lru页面的话，清除lru标志，从lru链表分离。
+isolate有锁的page的函数
+--------------
+如果页面是lru页面的话，清除lru标志，从lruvec的lru链表分离。
 返回结果代表有没有进行这个操作。
  * Isolate a page from LRU with optional get_page() pin.
  * Assumes lru_lock already held and page already pinned.
@@ -295,6 +297,7 @@ static bool __putback_lru_fast_prepare(struct page *page, struct pagevec *pvec,
 		pagevec_add(pvec, page);
 		if (TestClearPageUnevictable(page))
 			(*pgrescued)++;
+
 		unlock_page(page);
 		return true;
 	}
@@ -324,7 +327,9 @@ static void __putback_lru_fast(struct pagevec *pvec, int pgrescued)
 
 /*
 2024年08月12日09:36:24
-把页面进行解锁，然后加入lru。
+把页面进行解锁（去除lock标记），然后加入lru。
+---------
+unlock具体指什么。
  * Munlock a batch of pages from the same zone
  *
  * The work is split to two main phases. First phase clears the Mlocked flag
@@ -359,7 +364,7 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 				continue;
 			else/* 统计一下 */
 				__munlock_isolation_failed(page);
-		} else {
+		} else {/* 页面本来没锁的情况 */
 			delta_munlocked++;
 		}
 
@@ -368,27 +373,33 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 		 * but we still need to release the follow_page_mask()
 		 * pin. We cannot do it under lru_lock however. If it's
 		 * the last pin, __page_cache_release() would deadlock.
+		 到这说明页面本来没锁，或者有锁但是unlock&isolate成功了
 		 解锁页面后把页面加入pvec_putback。
 		 */
 		pagevec_add(&pvec_putback, pvec->pages[i]);
 		pvec->pages[i] = NULL;
 	}
+
+
 	__mod_zone_page_state(zone, NR_MLOCK, delta_munlocked);
 	spin_unlock_irq(&zone->zone_pgdat->lru_lock);
 
 	/* Now we can release pins of pages that we are not munlocking
-	release这个pvec的页面
+	release这个pvec的页面到buddy
 	 */
 	pagevec_release(&pvec_putback);
+
+	/* 此时已经把刚才没锁或者isolate成功的页面释放了，余下的是本来有lock而且isolate
+	失败的页面 */
+
 
 	/* Phase 2: page munlock */
 	for (i = 0; i < nr; i++) {/* 这个for循环先把pvec里面不能fast的处理 */
 		struct page *page = pvec->pages[i];
 
-		if (page) {
-			lock_page(page);
-			if (!__putback_lru_fast_prepare(page, &pvec_putback,
-					&pgrescued)) {
+		if (page) {/* 是个本来有锁而且isolate失败的页面 */
+			lock_page(page);/* 可能会睡眠的lock */
+			if (!__putback_lru_fast_prepare(page, &pvec_putback,&pgrescued)) {
 						/* 不能走快速路径的页面，这里处理 */
 				/*
 				 * Slow path. We don't want to lose the last
@@ -414,7 +425,7 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 
 /*
 2024年7月19日00:06:19
-遍历【start，end】逐个获取合适的页面先填充到pagevec，然后由其他函数批量unlock
+遍历【start，end】逐个获取和start同一个pmd的页面先填充到pagevec，然后由其他函数批量unlock
  * Fill up pagevec for __munlock_pagevec using pte walk
  *
  * The function expects that the struct page corresponding to @start address is
@@ -438,6 +449,7 @@ static unsigned long __munlock_pagevec_fill(struct pagevec *pvec,
 	 * Initialize pte walk starting at the already pinned page where we
 	 * are sure that there is a pte, as it was pinned under the same
 	 * mmap_sem write op.
+	 获取start地址的pte。把页表的锁赋到ptl
 	 */
 	pte = get_locked_pte(vma->vm_mm, start,	&ptl);
 	/* Make sure we do not cross the page table boundary */
@@ -448,7 +460,8 @@ static unsigned long __munlock_pagevec_fill(struct pagevec *pvec,
 
 	/* The page next to the pinned page is the first we will try to get */
 	start += PAGE_SIZE;
-	while (start < end) {
+	/* end是所在pmd的结束地址，是把所在pmd的start后面的页面加入pvec？ */
+	while (start < end) {/*  */
 		struct page *page = NULL;
 		pte++;
 		if (pte_present(*pte))
@@ -477,6 +490,7 @@ static unsigned long __munlock_pagevec_fill(struct pagevec *pvec,
 		if (pagevec_add(pvec, page) == 0)
 			break;
 	}
+
 	pte_unmap_unlock(pte, ptl);
 	return start;
 }
@@ -565,10 +579,10 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 				 这里算是在for循环里面步进start，把合适的类似页面批量加入pvec，
 				 返回start的新值，好下一轮新的循环。
 				 */
-				/* 先把页面放到pvec */
+				/* 先把页面批量放到pvec， 放几个算几个 */
 				start = __munlock_pagevec_fill(&pvec, vma,
 						zone, start, end);
-				/* 批量unlock此pvec里面页面，然后加入lru */
+				/* 批量unlock此pvec里面页面，然后放回lru */
 				__munlock_pagevec(&pvec, zone);
 				/* 这里不用走下面的start+=了，start已经是新值了，直接看看需不需要resched
 				就去下一轮循环。 */

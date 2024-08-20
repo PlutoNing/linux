@@ -821,7 +821,7 @@ void shmem_unlock_mapping(struct address_space *mapping)
 		index = indices[pvec.nr - 1] + 1;
 		/* 只在pvec里面保留is_val的页面 */
 		pagevec_remove_exceptionals(&pvec);
-		/* 移动了，马上下一行代码还有处理吗？ */
+		/* 把pvec里面真正unevict的放回 */
 		check_move_unevictable_pages(&pvec);
 		/* 归还释放页面 */
 		pagevec_release(&pvec);
@@ -1681,6 +1681,7 @@ static struct page *shmem_alloc_and_acct_page(gfp_t gfp,
 		page = shmem_alloc_hugepage(gfp, info, index);
 	else
 		page = shmem_alloc_page(gfp, info, index);
+	
 	if (page) {
 		__SetPageLocked(page);
 		__SetPageSwapBacked(page);

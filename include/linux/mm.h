@@ -1844,7 +1844,7 @@ int vma_wants_writenotify(struct vm_area_struct *vma, pgprot_t vm_page_prot);
 
 extern pte_t *__get_locked_pte(struct mm_struct *mm, unsigned long addr,
 			       spinlock_t **ptl);
-/*  */
+/* 自旋等待获取pte。把锁赋到ptl */
 static inline pte_t *get_locked_pte(struct mm_struct *mm, unsigned long addr,
 				    spinlock_t **ptl)
 {
@@ -1852,7 +1852,7 @@ static inline pte_t *get_locked_pte(struct mm_struct *mm, unsigned long addr,
 	/* 
 // Expands to
 	(ptep = __get_locked_pte(mm, addr, ptl))
-	这是什么锁？
+
  */
 	__cond_lock(*ptl, ptep = __get_locked_pte(mm, addr, ptl));
 	return ptep;
@@ -2013,7 +2013,7 @@ static inline void ptlock_free(struct page *page)
 {
 }
 /* 2024年7月13日12:53:11
-
+获取page的lock
  */
 static inline spinlock_t *ptlock_ptr(struct page *page)
 {
@@ -2084,7 +2084,7 @@ static inline void pgtable_pte_page_dtor(struct page *page)
 	dec_zone_page_state(page, NR_PAGETABLE);
 }
 /* 2024年7月13日13:46:29
-找到addr的pte
+自旋锁找到addr的pte，把页表的锁赋到ptlp。
  */
 #define pte_offset_map_lock(mm, pmd, address, ptlp)	\
 ({							\
@@ -2094,7 +2094,7 @@ static inline void pgtable_pte_page_dtor(struct page *page)
 	spin_lock(__ptl);				\
 	__pte;						\
 })
-
+/* 解锁ptl，unmap此pte */
 #define pte_unmap_unlock(pte, ptl)	do {		\
 	spin_unlock(ptl);				\
 	pte_unmap(pte);					\
@@ -2105,7 +2105,7 @@ pmd为none的话，才__pte_alloc */
 
 #define pte_alloc_map(mm, pmd, address)			\
 	(pte_alloc(mm, pmd) ? NULL : pte_offset_map(pmd, address))
-/*  */
+/* 获取pte ，把锁赋到ptlp*/
 #define pte_alloc_map_lock(mm, pmd, address, ptlp)	\
 	(pte_alloc(mm, pmd) ?			\
 		 NULL : pte_offset_map_lock(mm, pmd, address, ptlp))

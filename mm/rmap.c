@@ -826,7 +826,6 @@ struct page_referenced_arg {
 /*
 2024年7月2日23:53:56
 统计访问pte个数。
-
  * arg: page_referenced_arg will be passed
  */
 static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
@@ -840,7 +839,7 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 	};
 	int referenced = 0;
 
-	while (page_vma_mapped_walk(&pvmw)) {
+	while (page_vma_mapped_walk(&pvmw)) {/* 只要还有pte映射page */
 		address = pvmw.address;
 
 		if (vma->vm_flags & VM_LOCKED) {
@@ -877,7 +876,7 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 		}
 
 		pra->mapcount--;
-	} /* foreach结束 */
+	} /* for_each结束 */
 
 	if (referenced)
 		clear_page_idle(page);
@@ -894,13 +893,14 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 
 	return true;
 }
-/* ramp walk的时候判断当前vma是否需要跳过 */
+/* ramp walk的时候判断当前vma是否需要跳过
+只遍历pra里面memcg的孩子memcg task的vma */
 static bool invalid_page_referenced_vma(struct vm_area_struct *vma, void *arg)
 {
 	struct page_referenced_arg *pra = arg;
 	struct mem_cgroup *memcg = pra->memcg;
 
-	if (!mm_match_cgroup(vma->vm_mm, memcg))
+	if (!mm_match_cgroup(vma->vm_mm, memcg))/* 需要跳过此vma */
 		return true;
 
 	return false;
@@ -910,10 +910,9 @@ static bool invalid_page_referenced_vma(struct vm_area_struct *vma, void *arg)
 2024年7月3日00:02:25
 判断是否被访问过，返回全部pte数量
 2024年6月25日21:45:13
-每次访问页时，设置PG_referenced位
-page_referenced函数是利用反向映射找出映射该页的所有pte，并查看pte页表项的AF位是否置位，
-置位则表明该页被访问过，AF位被访问后会立即被设置为0.而page_referenced函数返回值的是表示映射该
-页的所有pte中AF位被置位的pte个数。
+每次访问页时，设置PG_referenced位page_referenced函数是利用反向映射找出映射该页的所有pte，
+并查看pte页表项的AF位是否置位，置位则表明该页被访问过，AF位被访问后会立即被设置为0.而page_referenced
+函数返回值的是表示映射该页的所有pte中AF位被置位的pte个数。
  * page_referenced - test if the page was referenced
  * @page: the page to test
  * @is_locked: caller holds lock on the page
@@ -941,10 +940,10 @@ int page_referenced(struct page *page,
 	};
 
 	*vm_flags = 0;
-	if (!pra.mapcount)
+	if (!pra.mapcount)/* 没有引用页面，返回0 */
 		return 0;
 
-	if (!page_rmapping(page))
+	if (!page_rmapping(page))/* 没有rmap，下面的rmap walk无法进行 */
 		return 0;
 
 	if (!is_locked && (!PageAnon(page) || PageKsm(page))) {
@@ -957,6 +956,8 @@ int page_referenced(struct page *page,
 	 * If we are reclaiming on behalf of a cgroup, skip
 	 * counting on behalf of references from different
 	 * cgroups
+	 如果是基于memcg的话，rmap walk过程中可能需要跳过一些vma，
+	 设置如何判断是否跳过当前vma的函数。
 	 */
 	if (memcg) {
 		rwc.invalid_vma = invalid_page_referenced_vma;

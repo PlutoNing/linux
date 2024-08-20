@@ -306,9 +306,12 @@ EXPORT_SYMBOL(__frontswap_store);
 int __frontswap_load(struct page *page)
 {
 	int ret = -1;
+	/* 获取swp ent */
 	swp_entry_t entry = { .val = page_private(page), };
 	int type = swp_type(entry);
+	/* 获取属于哪个sis */
 	struct swap_info_struct *sis = swap_info[type];
+	/* 获取在swpfile里的offset */
 	pgoff_t offset = swp_offset(entry);
 	struct frontswap_ops *ops;
 

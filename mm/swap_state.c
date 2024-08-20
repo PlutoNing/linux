@@ -153,7 +153,7 @@ unlock:
 
 	if (!xas_error(&xas))
 		return 0;
-
+	/* 出错了 */
 	ClearPageSwapCache(page);
 	page_ref_sub(page, nr);
 	return xas_error(&xas);
@@ -412,7 +412,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		si = get_swap_device(entry);
 		if (!si)
 			break;
-		/* 获取页面 */
+		/* 获取页面，缺页会申请 */
 		found_page = find_get_page(swap_address_space(entry),
 					   swp_offset(entry));
 		put_swap_device(si);

@@ -472,8 +472,7 @@ int migrate_page_move_mapping(struct address_space *mapping,
 	newpage->index = page->index;
 	newpage->mapping = page->mapping;
 	page_ref_add(newpage, hpage_nr_pages(page)); /* add cache reference */
-	if (PageSwapBacked(page)) {/* 如果旧页是交换页
-		新页也设置为交换页 */
+	if (PageSwapBacked(page)) {/* 如果旧页是交换页，新页也设置为交换页 */
 		__SetPageSwapBacked(newpage);
 		if (PageSwapCache(page)) {/* 如果已经给旧页分配了交换空间 */
 			SetPageSwapCache(newpage);/* 那么也设置新页有交换空间的标记 */

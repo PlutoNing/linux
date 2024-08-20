@@ -7,7 +7,7 @@
 
 /**
 2024年6月25日00:01:28
-看page是不是页缓存页
+看page是不是页缓存页，不是交换页就是文件页么
  * page_is_file_cache - should the page be on a file LRU or anon LRU?
  * @page: the page to test
  *
