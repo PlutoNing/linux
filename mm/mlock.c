@@ -157,6 +157,7 @@ static void __munlock_isolated_page(struct page *page)
 	/*
 	 * Optimization: if the page was mapped just once, that's our mapping
 	 * and we don't need to check all the other vmas.
+	 还在被页表映射
 	 */
 	if (page_mapcount(page) > 1)
 		/* 通过rmap walk，解除page的全部vma的映射 */
@@ -228,23 +229,24 @@ unsigned int munlock_vma_page(struct page *page)
 	 /* 要锁node的lru lock吗 */
 	spin_lock_irq(&pgdat->lru_lock);
 
-	if (!TestClearPageMlocked(page)) {
+	/* 解锁，返回本来有没有锁 */
+	if (!TestClearPageMlocked(page)) {/* 本来没锁 */
 		/* Potentially, PTE-mapped THP: do not skip the rest PTEs */
 		nr_pages = 1;
 		goto unlock_out;
 	}
 
-
+	/* 下面是解锁前有锁的情况 */
 	/* 更新node里面的stat统计信息里面的mlock类型页面的数量 */
 	nr_pages = hpage_nr_pages(page);
-	/* 统计信息 */
+	/* 统计信息，解锁前有锁PG_mlocked，现在没锁了减少相应类型的统计信息 */
 	__mod_zone_page_state(page_zone(page), NR_MLOCK, -nr_pages);
 
-	/* munlock， 会从lru分离页面 */
+	/* munlock之后从lru分离页面 */
 	if (__munlock_isolate_lru_page(page, true)) {
 		/* 分离成功，解锁，goto out来返回 */
 		spin_unlock_irq(&pgdat->lru_lock);
-		/* 分离成功的处理 */
+		/* 分离成功的处理，解除映射，重新加入lru */
 		__munlock_isolated_page(page);
 		goto out;
 	}

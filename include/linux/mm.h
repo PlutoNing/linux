@@ -2022,7 +2022,7 @@ static inline spinlock_t *ptlock_ptr(struct page *page)
 	return &page->ptl;
 }
 #endif /* ALLOC_SPLIT_PTLOCKS */
-/*  */
+/* 就是锁pmd指向的pte页表page */
 static inline spinlock_t *pte_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
 	return ptlock_ptr(pmd_page(*pmd));

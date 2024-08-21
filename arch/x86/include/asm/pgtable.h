@@ -382,7 +382,9 @@ static inline pte_t pte_clrglobal(pte_t pte)
 {
 	return pte_clear_flags(pte, _PAGE_GLOBAL);
 }
-/* 就是给pte加上specil吗 */
+/* pte_mkspecial()宏
+用来设置PTE中的PTE_SPECIAL位，表示这是特殊映射页
+面。 */
 static inline pte_t pte_mkspecial(pte_t pte)
 {
 	return pte_set_flags(pte, _PAGE_SPECIAL);
@@ -893,6 +895,7 @@ static inline unsigned long pages_to_mb(unsigned long npg)
 }
 
 #if CONFIG_PGTABLE_LEVELS > 2
+/*  */
 static inline int pud_none(pud_t pud)
 {
 	return (native_pud_val(pud) & ~(_PAGE_KNL_ERRATUM_MASK)) == 0;

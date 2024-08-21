@@ -2842,6 +2842,9 @@ try_charge主要功能
 2.检查内存usage是否超过limit，调用try_to_free_mem_cgroup_pages进行cgroup内存回收
 3.usage超过limit,且无法回收足够的内存时，调用mem_cgroup_oom出发cgroup级别的oom kill
 返回0为成功。
+-----------------------
+返回值：0为成功
+
 */
 static int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 		      unsigned int nr_pages)
@@ -7172,7 +7175,8 @@ exit:
  * @page: page to charge
  * @mm: mm context of the victim
  * @gfp_mask: reclaim mode
- * @memcgp: charged memcg return，返回时被赋值为实际使用的memcg。
+ * @memcgp: charged memcg return，
+ 返回时被赋值为实际使用的memcg。
  * @compound: charge the page as compound or small page
  *
  * Try to charge @page to the memcg that @mm belongs to, reclaiming
@@ -7225,11 +7229,11 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 
 			rcu_read_unlock();
 		}
-	}/* swp page的memcg不太好获取，刚才是获取memcg */
+	}/* swp page的memcg，刚才是获取memcg */
 	
 	if (!memcg)
 	/* 2024年7月13日01:17:08
-
+刚才无法获取swp cache情况page的memcg
  */
 		memcg = get_mem_cgroup_from_mm(mm);
 	
@@ -7242,7 +7246,7 @@ out:
 }
 /* 
 2024年7月13日01:13:51
-todo
+这里delay是什么？
  */
 int mem_cgroup_try_charge_delay(struct page *page, struct mm_struct *mm,
 			  gfp_t gfp_mask, struct mem_cgroup **memcgp,

@@ -1473,12 +1473,12 @@ void page_remove_rmap(struct page *page, bool compound)
 	if (compound)
 	/* 复合页的路径 */
 		return page_remove_anon_compound_rmap(page);
-
+/* 下面是普通匿名页 */
 	/* page still mapped by someone else? */
 	if (!atomic_add_negative(-1, &page->_mapcount))
 		return;
 
-	/* 下面是普通匿名页 */
+	
 
 	/*
 	 * We use the irq-unsafe __{inc|mod}_zone_page_stat because
