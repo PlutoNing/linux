@@ -198,6 +198,7 @@ static void mem_cgroup_oom_notify(struct mem_cgroup *memcg);
 
 /* Stuffs for move charges at task migration. */
 /*
+move charge的页面类型。就匿名和文件页两种么。
  * Types of charges to be moved.
  */
 #define MOVE_ANON	0x1U
@@ -206,7 +207,7 @@ static void mem_cgroup_oom_notify(struct mem_cgroup *memcg);
 
 /* 
 2024年7月13日01:24:17
-mc是什么
+mc是什么。好像和move charge相关。这个mc好像是个全局定义的变量。
 "mc" and its members are protected by cgroup_mutex */
 static struct move_charge_struct {
 	spinlock_t	  lock; /* for from, to */
@@ -1793,7 +1794,7 @@ static bool mem_cgroup_out_of_memory(struct mem_cgroup *memcg, gfp_t gfp_mask,
 /**
 2024年06月28日15:52:06
 2024年7月14日13:32:24
-test_mem_cgroup_node_reclaimable
+test_mem_cgroup_node_reclaimable，测试memcg在node上值不值得回收。
  * test_mem_cgroup_node_reclaimable
  * @memcg: the target memcg
  * @nid: the node ID to be checked.
@@ -1813,13 +1814,15 @@ static bool test_mem_cgroup_node_reclaimable(struct mem_cgroup *memcg,
 		return true;
 
 	/* 到这说明没有页缓存页了，那看看有没有匿名页，
-	先看看有没开启swap，没有swap直接返回false */
+	先看看有没开启swap，没有swap直接返回false；
+	没有swap能证明没有匿名页吗？ */
 	if (noswap || !total_swap_pages)
 		return false;
 	/* 如果开启了swap，并且还有匿名页，返回true */
 	if (lruvec_page_state(lruvec, NR_INACTIVE_ANON) ||
 	    lruvec_page_state(lruvec, NR_ACTIVE_ANON))
 		return true;
+	
 		/*2024年06月28日15:56:01 不清楚还有可能到这吗？ */
 	return false;
 
@@ -2488,7 +2491,7 @@ memcg stock是percpu
 
 /*
 2024年06月27日18:31:36
-
+把stock里预取的page归还
  * Returns stocks cached in percpu and reset cached information.
 
  */
@@ -2509,9 +2512,10 @@ static void drain_stock(struct memcg_stock_pcp *stock)
 	}
 	stock->cached = NULL;
 }
+
 /* 2024年06月27日18:30:55
 
-兑现stock
+归还stock
  */
 static void drain_local_stock(struct work_struct *dummy)
 {
@@ -2672,6 +2676,7 @@ static void reclaim_high(struct mem_cgroup *memcg,
 
 	} while ((memcg = parent_mem_cgroup(memcg)));
 }
+
 /* 2024年7月14日12:35:02
 memcg的超限回调工作函数
  */
@@ -2830,24 +2835,20 @@ out:
 2024-06-20 17:29:03
 2024年06月21日11:33:11
 2024年6月21日23:43:36
-如何给memcg记账呢
-一个版本的是真正实现usage_in_bytes累加是在函数：try_charge->res_counter_charge->__res_counter_charge->res_counter_charge_locked中完成
-============
+
 try_charge主要计算cgroup内存usage,以及触发内存回收和oom killer
 try_charge主要功能
-
 1.计数memory page couter和memsw page couter
-
 2.检查内存usage是否超过limit，调用try_to_free_mem_cgroup_pages进行cgroup内存回收
-
 3.usage超过limit,且无法回收足够的内存时，调用mem_cgroup_oom出发cgroup级别的oom kill
-
+返回0为成功。
 */
 static int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 		      unsigned int nr_pages)
 {
 	unsigned int batch = max(MEMCG_CHARGE_BATCH, nr_pages);
 	int nr_retries = MEM_CGROUP_RECLAIM_RETRIES;
+	/* 指向父层级中的某一个charge失败的memcg */
 	struct mem_cgroup *mem_over_limit;
 	struct page_counter *counter;
 	unsigned long nr_reclaimed;
@@ -2863,23 +2864,28 @@ retry:
 		return 0;
 
 	if (!do_memsw_account() ||
-	    page_counter_try_charge(&memcg->memsw, batch, &counter)) {
-			/* 记账memory,也就是cat memory.usage_in_bytes看到的值
-			2024年6月21日23:54:15
-			todo */
-		if (page_counter_try_charge(&memcg->memory, batch, &counter))
+	    page_counter_try_charge(&memcg->memsw, batch, &counter)) {/* 
+		情况1：进行memsw，而且try_charge成功了
+		情况2：不进行memsw，直接进来了。 */
+
+		if (page_counter_try_charge(&memcg->memory, batch, &counter))/* try_charge
+		memory 成功了 ，直接成功，不管memsw什么情况。*/
 			goto done_restock;
-		if (do_memsw_account())
+
+		if (do_memsw_account())/* 说明刚刚try_charge memory没有成功，这里又进行memsw，所有刚才try charge memsw也成功了，
+		这里得撤销 */
 			page_counter_uncharge(&memcg->memsw, batch);
+		/* 失败了我们charge memory */
 		mem_over_limit = mem_cgroup_from_counter(counter, memory);
-	} else {
+
+	} else {/* 进行memsw，但是try_charge失败了 */
 		mem_over_limit = mem_cgroup_from_counter(counter, memsw);
 		may_swap = false;
 	}
 
 
 
-	if (batch > nr_pages) {
+	if (batch > nr_pages) {/* 刚才按照batch申请，失败了，这里按照实际数量申请一下。 */
 		batch = nr_pages;
 		goto retry;
 	}
@@ -2911,6 +2917,8 @@ retry:
 	 */
 	if (unlikely(current->flags & PF_MEMALLOC))
 		goto force;
+
+	/* 上面是两次失败后的，force charge逻辑 */
 
 	if (unlikely(task_in_memcg_oom(current)))
 		goto nomem;
@@ -2988,7 +2996,7 @@ try charge的时候try free memcg，那调用try chage的时候检测不到吗�
 nomem:
 	if (!(gfp_mask & __GFP_NOFAIL))
 		return -ENOMEM;
-force:
+force:/* 两次失败后的，force charge逻辑 */
 	/*
 	 * The allocation either can't fail or will lead to more memory
 	 * being freed very soon.  Allow memory usage go over the limit
@@ -3001,9 +3009,9 @@ force:
 
 	return 0;
 
-done_restock:
+done_restock:/* charge成功的情况 */
 	css_get_many(&memcg->css, batch);
-	if (batch > nr_pages)
+	if (batch > nr_pages)/* 把多申请的放到stock */
 		refill_stock(memcg, batch - nr_pages);
 
 	/*
@@ -3015,6 +3023,7 @@ done_restock:
 	 * change in the meantime.  As high limit is checked again before
 	 * reclaim, the cost of mismatch is negligible.
 	 */
+	/* 找到一个超过high水位线的，触发回收 */
 	do {
 		if (page_counter_read(&memcg->memory) > memcg->high) {
 			/* Don't bother a random interrupted task */
@@ -3047,8 +3056,9 @@ static void cancel_charge(struct mem_cgroup *memcg, unsigned int nr_pages)
 
 	css_put_many(&memcg->css, nr_pages);
 }
+
 /* 2024年7月14日12:50:49
-为啥看逻辑好像是直接删了
+
  */
 static void lock_page_lru(struct page *page, int *isolated)
 {
@@ -3083,9 +3093,7 @@ static void unlock_page_lru(struct page *page, int isolated)
 	spin_unlock_irq(&pgdat->lru_lock);
 }
 /* 2024年7月14日12:53:28
-提交charge，估计就是记账通过后，正儿八经的把page的memcg置位。
-但是为什么lock和unlock是需要从lru移出再移入呢。猜测可能是page需要从
-不同memcg的不同的lru转移。
+设置page的memcg
  */
 static void commit_charge(struct page *page, struct mem_cgroup *memcg,
 			  bool lrucare)
@@ -3309,6 +3317,7 @@ void memcg_kmem_put_cache(struct kmem_cache *cachep)
 }
 
 /**
+2024年08月21日17:07:17
  * __memcg_kmem_charge_memcg: charge a kmem page
  * @page: page to charge
  * @gfp: reclaim mode
@@ -3324,12 +3333,14 @@ int __memcg_kmem_charge_memcg(struct page *page, gfp_t gfp, int order,
 	struct page_counter *counter;
 	int ret;
 
+	/* 先try_charge memory，或者可能也包括memsw */
 	ret = try_charge(memcg, gfp, nr_pages);
-	if (ret)
+	if (ret)/* 失败 */
 		return ret;
 
 	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys) &&
-	    !page_counter_try_charge(&memcg->kmem, nr_pages, &counter)) {
+	    !page_counter_try_charge(&memcg->kmem, nr_pages, &counter)) {/* charge kmem，
+		失败了 */
 
 		/*
 		 * Enforce __GFP_NOFAIL allocation because callers are not
@@ -3343,10 +3354,12 @@ int __memcg_kmem_charge_memcg(struct page *page, gfp_t gfp, int order,
 		cancel_charge(memcg, nr_pages);
 		return -ENOMEM;
 	}
+
 	return 0;
 }
 
 /**
+charge当前进程的memcg
  * __memcg_kmem_charge: charge a kmem page to the current memory cgroup
  * @page: page to charge
  * @gfp: reclaim mode
@@ -3390,6 +3403,7 @@ void __memcg_kmem_uncharge_memcg(struct mem_cgroup *memcg,
 	if (do_memsw_account())
 		page_counter_uncharge(&memcg->memsw, nr_pages);
 }
+
 /**
 2024年6月30日21:57:56
 buddy释放页面，如果是开了gfp acount页面会调用到此。
@@ -3441,7 +3455,7 @@ void mem_cgroup_split_huge_fixup(struct page *head)
 #ifdef CONFIG_MEMCG_SWAP
 /**
 2024年7月14日13:02:24
-
+在memcg之间mc，move的是swp ent
  * mem_cgroup_move_swap_account - move swap charge and swap_cgroup's record.
  * @entry: swap entry to be moved
  * @from:  mem_cgroup which the entry is moved from
@@ -5400,7 +5414,7 @@ static void mem_cgroup_id_remove(struct mem_cgroup *memcg)
 	}
 }
 /* 2024年7月13日00:13:29
-
+增加引用计数
 
 */
 static void mem_cgroup_id_get_many(struct mem_cgroup *memcg, unsigned int n)
@@ -5848,7 +5862,8 @@ static int mem_cgroup_do_precharge(unsigned long count)
 }
 
 
-/* 2024年7月13日14:44:30 */
+/* 2024年7月13日14:44:30
+可能move的是page或者swp ent */
 union mc_target {
 	struct page	*page;
 	swp_entry_t	ent;
@@ -5862,28 +5877,35 @@ enum mc_target_type {
 	MC_TARGET_SWAP,
 	MC_TARGET_DEVICE,
 };
+
 /* 2024年7月13日14:28:18
 move charge相关
 2024年7月13日14:30:20
-页面需要有MOVE_ANON或者MOVE_FILE
- */
+move charge的时候通过pte获取页面，只有页面是可以move的时候
+才会返回page，否则null。
+*/
+
 static struct page *mc_handle_present_pte(struct vm_area_struct *vma,
 						unsigned long addr, pte_t ptent)
 {
 	struct page *page = vm_normal_page(vma, addr, ptent);
 
 	if (!page || !page_mapped(page))
-	/* 还可能为空或者没有映射吗 */
+	/* 还可能为空或者没有映射吗
+	为空可能是特殊映射，
+	没有进程页表映射？不是刚刚从pte获取的这个页面吗？ */
 		return NULL;
+
 	if (PageAnon(page)) {
 		/*  */
 		if (!(mc.flags & MOVE_ANON))
 			/* 如果匿名页不是MOVE_ANON */
 			return NULL;
-	} else {
-		if (!(mc.flags & MOVE_FILE))
+	} else {/* 不是匿名页，就是文件页 */
+		if (!(mc.flags & MOVE_FILE)) /* 但是也不能迁移文件页 */
 			return NULL;
 	}
+
 	if (!get_page_unless_zero(page))
 		return NULL;
 
@@ -5892,15 +5914,18 @@ static struct page *mc_handle_present_pte(struct vm_area_struct *vma,
 
 #if defined(CONFIG_SWAP) || defined(CONFIG_DEVICE_PRIVATE)
 /* 2024年7月13日14:30:53
-
+mc获取页面的时候，对swp pte的处理方式。并且取得swp ent赋值到entry。
+符合条件的话，返回swp page进行mc。
  */
 static struct page *mc_handle_swap_pte(struct vm_area_struct *vma,
 			pte_t ptent, swp_entry_t *entry)
 {
 	struct page *page = NULL;
+	/* 根据pte获取的swp ent */
 	swp_entry_t ent = pte_to_swp_entry(ptent);
 
-	if (!(mc.flags & MOVE_ANON) || non_swap_entry(ent))
+	if (!(mc.flags & MOVE_ANON) || non_swap_entry(ent))/* 既然是swp page，
+	那么肯定是匿名页，所以mc要支持匿名页的mc才继续。否则null */
 		return NULL;
 
 	/*
@@ -5925,12 +5950,15 @@ static struct page *mc_handle_swap_pte(struct vm_area_struct *vma,
 	 * we call find_get_page() with swapper_space directly.
 
 	 */
+	/* 从swp file获取page到swp cache */
 	page = find_get_page(swap_address_space(ent), swp_offset(ent));
+	
 	if (do_memsw_account())
 		entry->val = ent.val;
 
 	return page;
 }
+
 #else
 static struct page *mc_handle_swap_pte(struct vm_area_struct *vma,
 			pte_t ptent, swp_entry_t *entry)
@@ -5938,7 +5966,11 @@ static struct page *mc_handle_swap_pte(struct vm_area_struct *vma,
 	return NULL;
 }
 #endif
-/* 2024年7月13日14:36:03 */
+/* 2024年7月13日14:36:03
+mc获取pte页面的时候，pte为空的处理方式
+默认是文件页，然后通过addr的pgoff获取page。
+@ptent：空pte。
+ */
 static struct page *mc_handle_file_pte(struct vm_area_struct *vma,
 			unsigned long addr, pte_t ptent, swp_entry_t *entry)
 {
@@ -5947,9 +5979,10 @@ static struct page *mc_handle_file_pte(struct vm_area_struct *vma,
 	pgoff_t pgoff;
 
 	if (!vma->vm_file) /* anonymous vma */
-		return NULL;
+		return NULL; /* 为什么默认不支持匿名 */
+
 	if (!(mc.flags & MOVE_FILE))
-		return NULL;
+		return NULL;/* 为什么默认是file page */
 
 	mapping = vma->vm_file->f_mapping;
 
@@ -5971,6 +6004,7 @@ static struct page *mc_handle_file_pte(struct vm_area_struct *vma,
 		}
 	} else
 		page = find_get_page(mapping, pgoff);
+
 #else
 	page = find_get_page(mapping, pgoff);
 #endif
@@ -6104,10 +6138,13 @@ out:
 
 /**
 2024年7月13日14:26:14
+获取move charge的目标类型。
  * get_mctgt_type - get target type of moving charge
  * @vma: the vma the pte to be checked belongs
+ addr位于vma
  * @addr: the address corresponding to the pte to be checked
  * @ptent: the pte to be checked
+ 是addr的pte
  * @target: the pointer the target page or swap ent will be stored(can be NULL)
  *
  * Returns
@@ -6140,7 +6177,7 @@ static enum mc_target_type get_mctgt_type(struct vm_area_struct *vma,
 		page = mc_handle_present_pte(vma, addr, ptent);
 	else if (is_swap_pte(ptent))
 		page = mc_handle_swap_pte(vma, ptent, &ent);
-	else if (pte_none(ptent))
+	else if (pte_none(ptent))/* pte为空的mc是什么情况 */
 		page = mc_handle_file_pte(vma, addr, ptent, &ent);
 
 
@@ -6148,6 +6185,7 @@ static enum mc_target_type get_mctgt_type(struct vm_area_struct *vma,
 	if (!page && !ent.val)
 	/* 返回 MC_TARGET_NONE*/
 		return ret;
+
 	if (page) {
 		/* 好像主要就是if (page->mem_cgroup == mc.from){arget->page = page;}
 		 */
@@ -6156,7 +6194,8 @@ static enum mc_target_type get_mctgt_type(struct vm_area_struct *vma,
 		 * mem_cgroup_move_account() checks the page is valid or
 		 * not under LRU exclusion.
 		 */
-		if (page->mem_cgroup == mc.from) {
+		if (page->mem_cgroup == mc.from) {/* 找到了page，然后page是from的page，就说明
+		mc类型是target_page？ */
 			ret = MC_TARGET_PAGE;
 			if (is_device_private_page(page))
 				ret = MC_TARGET_DEVICE;
@@ -6174,12 +6213,16 @@ static enum mc_target_type get_mctgt_type(struct vm_area_struct *vma,
 	    mem_cgroup_id(mc.from) == lookup_swap_cgroup_id(ent)) {
 /* 2024年7月13日14:46:45什么情况
 这是说交换空间里面的情况吗
+2024年08月21日10:45:29
+page不存在，在交换空间？
  */
 
 		ret = MC_TARGET_SWAP;
 		if (target)
 			target->ent = ent;
 	}
+
+
 	return ret;
 }
 
@@ -6376,7 +6419,7 @@ static void mem_cgroup_clear_mc(void)
 /* 2024年7月13日10:36:15
 附加到哪？
 2024年7月13日14:13:44
-找打tset里面的leader，并且独立有mm的话，并且precharge成功的话
+找到tset里面的leader，并且独立有mm的话，并且precharge成功的话
  */
 static int mem_cgroup_can_attach(struct cgroup_taskset *tset)
 {
@@ -6460,6 +6503,9 @@ static void mem_cgroup_cancel_attach(struct cgroup_taskset *tset)
 /* 2024年7月13日01:35:43
 遍历mm的page的时候，在pmd层面上执行的函数
 todo
+2024年08月21日10:15:45
+对范围内的page进行mc？
+
  */
 static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 				unsigned long addr, unsigned long end,
@@ -6472,17 +6518,20 @@ static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 	enum mc_target_type target_type;
 	union mc_target target;
 	struct page *page;
-
+	/*  */
 	ptl = pmd_trans_huge_lock(pmd, vma);
-	if (ptl) {
+	if (ptl) {/* pmd是swap or 巨页，才可以成功获取 */
 		if (mc.precharge < HPAGE_PMD_NR) {
 			spin_unlock(ptl);
 			return 0;
 		}
+
+		/* 获取addr的page的mc类型 */
 		target_type = get_mctgt_type_thp(vma, addr, *pmd, &target);
-		if (target_type == MC_TARGET_PAGE) {
+		if (target_type == MC_TARGET_PAGE) {/* 如果是page mc */
 			page = target.page;
-			if (!isolate_lru_page(page)) {
+			/* isolate这个page */
+			if (!isolate_lru_page(page)) {/* isolate失败 */
 				if (!mem_cgroup_move_account(page, true,
 							     mc.from, mc.to)) {
 					mc.precharge -= HPAGE_PMD_NR;
@@ -6491,7 +6540,7 @@ static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 				putback_lru_page(page);
 			}
 			put_page(page);
-		} else if (target_type == MC_TARGET_DEVICE) {
+		} else if (target_type == MC_TARGET_DEVICE) {/* device的mc，todo */
 			page = target.page;
 			if (!mem_cgroup_move_account(page, true,
 						     mc.from, mc.to)) {
@@ -6501,6 +6550,7 @@ static int mem_cgroup_move_charge_pte_range(pmd_t *pmd,
 			put_page(page);
 		}
 		spin_unlock(ptl);
+
 		return 0;
 	}
 
@@ -6515,7 +6565,7 @@ retry:
 
 		if (!mc.precharge)
 			break;
-
+		/* 获取page的mc类型 */
 		switch (get_mctgt_type(vma, addr, ptent, &target)) {
 		case MC_TARGET_DEVICE:
 			device = true;
@@ -6530,14 +6580,15 @@ retry:
 			 */
 			if (PageTransCompound(page))
 				goto put;
-			if (!device && isolate_lru_page(page))
+			if (!device && isolate_lru_page(page))/* isolate失败 */
 				goto put;
 			if (!mem_cgroup_move_account(page, false,
-						mc.from, mc.to)) {
+						mc.from, mc.to)) {/* page的mc的move动作 */
 				mc.precharge--;
 				/* we uncharge from mc.from later. */
 				mc.moved_charge++;
 			}
+
 			if (!device)
 				putback_lru_page(page);
 put:			/* get_mctgt_type() gets the page */
@@ -6555,6 +6606,7 @@ put:			/* get_mctgt_type() gets the page */
 			break;
 		}
 	}
+
 	pte_unmap_unlock(pte - 1, ptl);
 	cond_resched();
 
@@ -6951,7 +7003,7 @@ static struct cftype memory_files[] = {
 
 
 
-
+/*  */
 struct cgroup_subsys memory_cgrp_subsys = {
 	.css_alloc = mem_cgroup_css_alloc,
 	.css_online = mem_cgroup_css_online,
@@ -7115,9 +7167,7 @@ exit:
 
 /**
 2024年06月20日16:43:19
-mem_cgroup_try_charge尝试内存记账，mem_cgroup_commit_charge提交内存记账
-charge是收费的意思？
-todo
+
  * mem_cgroup_try_charge - try charging a page
  * @page: page to charge
  * @mm: mm context of the victim
@@ -7163,7 +7213,7 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 		if (compound_head(page)->mem_cgroup)
 			goto out;
 
-		if (do_swap_account) {
+		if (do_swap_account) {/*  */
 			swp_entry_t ent = { .val = page_private(page), };
 			unsigned short id = lookup_swap_cgroup_id(ent);
 
@@ -7175,20 +7225,14 @@ int mem_cgroup_try_charge(struct page *page, struct mm_struct *mm,
 
 			rcu_read_unlock();
 		}
-	}
+	}/* swp page的memcg不太好获取，刚才是获取memcg */
 	
 	if (!memcg)
 	/* 2024年7月13日01:17:08
-这里还可能为空吗，
-情况1，不是页缓存
-情况2，是页缓存，无memcg，
-情况3，是页缓存，有memcg，但是无法get online。
-获取进程的memcg？
-2024年7月27日12:48:04
-就是可能调用者传来的就是个空指针，那么就使用他的mm的memcg
+
  */
 		memcg = get_mem_cgroup_from_mm(mm);
-
+	
 	ret = try_charge(memcg, gfp_mask, nr_pages);
 	/* 使用完要记得put */
 	css_put(&memcg->css);
@@ -7196,7 +7240,8 @@ out:
 	*memcgp = memcg;
 	return ret;
 }
-/* 2024年7月13日01:13:51
+/* 
+2024年7月13日01:13:51
 todo
  */
 int mem_cgroup_try_charge_delay(struct page *page, struct mm_struct *mm,
@@ -7233,7 +7278,7 @@ int mem_cgroup_try_charge_delay(struct page *page, struct mm_struct *mm,
  * Use mem_cgroup_cancel_charge() to cancel the transaction instead.
  把memcg 使用的内存按照RSS, CACHE，SHMEM和RSS_HUGE等分类来统计。
 
-mem_cgroup_commit_charge主要做了
+mem_cgroup_commit-charge主要做了
 
 1.关联page和memcg
 2.记账memcg内存type使用(rss，cache....)
@@ -7268,7 +7313,7 @@ void mem_cgroup_commit_charge(struct page *page, struct mem_cgroup *memcg,
 	memcg_check_events(memcg, page);
 	local_irq_enable();
 
-	if (do_memsw_account() && PageSwapCache(page)) {
+	if (do_memsw_account() && PageSwapCache(page)) {/* ？ */
 		swp_entry_t entry = { .val = page_private(page) };
 		/*
 		 * The swap entry might not get freed for a long time,
@@ -7312,12 +7357,12 @@ void mem_cgroup_cancel_charge(struct page *page, struct mem_cgroup *memcg,
  */
 struct uncharge_gather {
 	struct mem_cgroup *memcg;
-	unsigned long pgpgout;
-	unsigned long nr_anon;
-	unsigned long nr_file;
-	unsigned long nr_kmem;
-	unsigned long nr_huge;
-	unsigned long nr_shmem;
+	unsigned long pgpgout;/* 表示什么？ */
+	unsigned long nr_anon;/* 匿名页的数量 */
+	unsigned long nr_file;/* 文件页的数量 */
+	unsigned long nr_kmem;/*  */
+	unsigned long nr_huge;/* 要uncharge的是巨页 */
+	unsigned long nr_shmem;/* 被交换的文件页数量 */
 	struct page *dummy_page;
 };
 /* 2024年6月25日00:07:17
@@ -7332,16 +7377,20 @@ static inline void uncharge_gather_clear(struct uncharge_gather *ug)
  */
 static void uncharge_batch(const struct uncharge_gather *ug)
 {
+	/*  */
 	unsigned long nr_pages = ug->nr_anon + ug->nr_file + ug->nr_kmem;
 	unsigned long flags;
 
 	if (!mem_cgroup_is_root(ug->memcg)) {
 		/* 如果不是根cg？ */
 		page_counter_uncharge(&ug->memcg->memory, nr_pages);
+
 		if (do_memsw_account())
 			page_counter_uncharge(&ug->memcg->memsw, nr_pages);
+
 		if (!cgroup_subsys_on_dfl(memory_cgrp_subsys) && ug->nr_kmem)
 			page_counter_uncharge(&ug->memcg->kmem, ug->nr_kmem);
+
 		memcg_oom_recover(ug->memcg);
 	}
 
@@ -7352,6 +7401,7 @@ static void uncharge_batch(const struct uncharge_gather *ug)
 	__mod_memcg_state(ug->memcg, MEMCG_RSS_HUGE, -ug->nr_huge);
 	__mod_memcg_state(ug->memcg, NR_SHMEM, -ug->nr_shmem);
 	__count_memcg_events(ug->memcg, PGPGOUT, ug->pgpgout);
+	
 	__this_cpu_add(ug->memcg->vmstats_percpu->nr_page_events, nr_pages);
 	memcg_check_events(ug->memcg, ug->dummy_page);
 	local_irq_restore(flags);
@@ -7368,14 +7418,14 @@ static void uncharge_page(struct page *page, struct uncharge_gather *ug)
 	VM_BUG_ON_PAGE(page_count(page) && !is_zone_device_page(page) &&
 			!PageHWPoison(page) , page);
 
-	if (!page->mem_cgroup)
+	if (!page->mem_cgroup)/* page不属于memcg */
 		return;
 
 	/*
 	 * Nobody should be changing or seriously looking at
 	 * page->mem_cgroup at this point, we have fully
 	 * exclusive access to the page.
-	 意思是说ug不是记得自己的帐，把和这个帐先还了，然后指向自己的账？
+	 意思是说ug不是记的page的memcg的帐，把和这个就帐先drain了，然后继续。
 	 */
 
 	if (ug->memcg != page->mem_cgroup) {
@@ -7383,11 +7433,12 @@ static void uncharge_page(struct page *page, struct uncharge_gather *ug)
 			uncharge_batch(ug);
 			uncharge_gather_clear(ug);
 		}
+		/* 指向page的memcg */
 		ug->memcg = page->mem_cgroup;
 	}
 
 	if (!PageKmemcg(page)) {
-		/* 如果可以还，开始还 */
+		/*  */
 		unsigned int nr_pages = 1;
 
 		if (PageTransHuge(page)) {
@@ -7395,6 +7446,7 @@ static void uncharge_page(struct page *page, struct uncharge_gather *ug)
 			nr_pages = compound_nr(page);
 			ug->nr_huge += nr_pages;
 		}
+
 		if (PageAnon(page))
 			ug->nr_anon += nr_pages;
 		else {
@@ -7402,9 +7454,10 @@ static void uncharge_page(struct page *page, struct uncharge_gather *ug)
 			if (PageSwapBacked(page))
 				ug->nr_shmem += nr_pages;
 		}
+
 		ug->pgpgout++;
-	} else {
-		/* 如果是kmem */
+
+	} else {/* 如果page是kmem ，kmem是什么？ */
 		ug->nr_kmem += compound_nr(page);
 		__ClearPageKmemcg(page);
 	}
@@ -7612,7 +7665,7 @@ void mem_cgroup_sk_free(struct sock *sk)
  * mem_cgroup_charge_skmem - charge socket memory
  * @memcg: memcg to charge
  * @nr_pages: number of pages to charge
- *
+ *返回真说明try成功，false说明是force charge的。
  * Charges @nr_pages to @memcg. Returns %true if the charge fit within
  * @memcg's configured limit, %false if the charge had to be forced.
  */
@@ -7645,6 +7698,7 @@ bool mem_cgroup_charge_skmem(struct mem_cgroup *memcg, unsigned int nr_pages)
 		return true;
 
 	try_charge(memcg, gfp_mask|__GFP_NOFAIL, nr_pages);
+
 	return false;
 }
 
@@ -7797,7 +7851,7 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 	 * have an ID allocated to it anymore, charge the closest online
 	 * ancestor for the swap instead and transfer the memory+swap charge.
 	 */
-	 /* 获取父层级上有效的online的 */
+	/* 获取父层级上有效的online的 */
 	swap_memcg = mem_cgroup_id_get_online(memcg);
 	nr_entries = hpage_nr_pages(page);
 	/* Get references for the tail pages, too */
@@ -7806,21 +7860,26 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 	
 	oldid = swap_cgroup_record(entry, mem_cgroup_id(swap_memcg),
 				   nr_entries);
+
 	VM_BUG_ON_PAGE(oldid, page);
+	/* swap_mmecg的swap计数++了 */
 	mod_memcg_state(swap_memcg, MEMCG_SWAP, nr_entries);
 
 	page->mem_cgroup = NULL;
 
-	/* 要交换出去了 */
-	if (!mem_cgroup_is_root(memcg))
+	/*  */
+	if (!mem_cgroup_is_root(memcg))/* swapout了，匿名页--， */
 		page_counter_uncharge(&memcg->memory, nr_entries);
+
 	/*  */
 	if (memcg != swap_memcg) {
-		/* 就是说memcg下线了，找到了一个父层级上online的 */
+		/* 就是说memcg下线了，找到了一个父层级上online的？ */
 		if (!mem_cgroup_is_root(swap_memcg))
 		/* 2024年7月13日00:27:46 memcg->memory是uncharge，memsw是charge */
 			page_counter_charge(&swap_memcg->memsw, nr_entries);
-/* 2024年7月13日00:27:50 为啥又是uncharge */
+
+/* 2024年7月13日00:27:50 为啥又是uncharge
+2024年08月21日11:13:49 不同的memcg */
 		page_counter_uncharge(&memcg->memsw, nr_entries);
 	}
 
@@ -7831,7 +7890,7 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 	 * only synchronisation we have for updating the per-CPU variables.
 	 */
 	VM_BUG_ON(!irqs_disabled());
-
+	/* page是什么，匿名？ */
 	mem_cgroup_charge_statistics(memcg, page, PageTransHuge(page),
 				     -nr_entries);
 
@@ -7843,7 +7902,7 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 
 /**
 2024年07月04日20:29:25
-
+给要换出的page在swp file找到了个地方：ent，这里charge memcg。
  * mem_cgroup_try_charge_swap - try charging swap space for a page
  * @page: page being added to swap
  * @entry: swap entry to charge
@@ -7868,22 +7927,22 @@ int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 	if (!memcg)
 		return 0;
 
-	if (!entry.val) {
+	if (!entry.val) {/* 空的swp ent，算失败 */
 		memcg_memory_event(memcg, MEMCG_SWAP_FAIL);
 		return 0;
 	}
 /* 	2024年7月12日22:24:37啥
 	2024年7月13日00:09:33
-	在父层级上获取一个onlinede */
+	在父层级上获取一个online的 */
 	memcg = mem_cgroup_id_get_online(memcg);
 
 
 	/* try chargeswap空间 */
 
-
+	/* 如果不是root，就进行记账 */
 	if (!mem_cgroup_is_root(memcg) &&
-	    !page_counter_try_charge(&memcg->swap, nr_pages, &counter)) {
-	/*  */
+	    !page_counter_try_charge(&memcg->swap, nr_pages, &counter)) {/* 记账失败了 */
+
 		memcg_memory_event(memcg, MEMCG_SWAP_MAX);
 		memcg_memory_event(memcg, MEMCG_SWAP_FAIL);
 		mem_cgroup_id_put(memcg);
@@ -7898,7 +7957,9 @@ int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 
 
 	oldid = swap_cgroup_record(entry, mem_cgroup_id(memcg), nr_pages);
+	
 	VM_BUG_ON_PAGE(oldid, page);
+
 	mod_memcg_state(memcg, MEMCG_SWAP, nr_pages);
 
 	return 0;
@@ -7906,7 +7967,7 @@ int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
 
 /**
 2024年07月04日20:22:13
-还账nr pages个page？
+uncharge swap space。释放swp file空间后调用
  * mem_cgroup_uncharge_swap - uncharge swap space
  * @entry: swap entry to uncharge
  * @nr_pages: the amount of swap space to uncharge
@@ -7920,6 +7981,7 @@ void mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages)
 		return;
 
 	id = swap_cgroup_record(entry, 0, nr_pages);
+	
 	rcu_read_lock();
 	memcg = mem_cgroup_from_id(id);
 	if (memcg) {
@@ -7930,11 +7992,13 @@ void mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages)
 			else
 				page_counter_uncharge(&memcg->memsw, nr_pages);
 		}
+
 		mod_memcg_state(memcg, MEMCG_SWAP, -nr_pages);
 		mem_cgroup_id_put_many(memcg, nr_pages);
 	}
 	rcu_read_unlock();
 }
+
 /* 2024年6月27日22:45:15
 为什么是获取层级上每个memcg的最小swap页面数量
  */

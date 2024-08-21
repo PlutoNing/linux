@@ -498,6 +498,7 @@ static unsigned long node_dirty_limit(struct pglist_data *pgdat)
 
 /**
 2024年6月26日22:33:40
+node的dirty page是不是太多了
  * node_dirty_ok - tells whether a node is within its dirty limits
  * @pgdat: the node to check
  *

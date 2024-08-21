@@ -56,7 +56,7 @@ EXPORT_SYMBOL(can_do_mlock);
 /*
 解锁
 更新统计信息
-移出lru
+移出lru：作用是？
 
  *  LRU accounting for clear_page_mlock()
  */
@@ -65,9 +65,9 @@ void clear_page_mlock(struct page *page)
 	/* 本来没锁的话 */
 	if (!TestClearPageMlocked(page))
 		return;
+
 	/* zone里面有lock的页面少了 */
-	mod_zone_page_state(page_zone(page), NR_MLOCK,
-			    -hpage_nr_pages(page));
+	mod_zone_page_state(page_zone(page), NR_MLOCK, -hpage_nr_pages(page));
 	count_vm_event(UNEVICTABLE_PGCLEARED);
 	/*
 	 * The previous TestClearPageMlocked() corresponds to the smp_mb()

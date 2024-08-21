@@ -213,6 +213,7 @@ struct page {
 		/*
 		 * If the page can be mapped to userspace, encodes the number
 		 * of times this page is referenced by a page table.
+		 被页表映射的次数？
 		 */
 		atomic_t _mapcount;
 

@@ -33,7 +33,7 @@
 #include <linux/vmalloc.h>
 #include <linux/mutex.h>
 #include <linux/mm.h>
-/*  */
+/* swp的cache？ */
 static DEFINE_PER_CPU(struct swap_slots_cache, swp_slots);
 static bool	swap_slot_cache_active;
 bool	swap_slot_cache_enabled;
@@ -322,7 +322,9 @@ direct_free:
 
 	return 0;
 }
-/* 给page在swp获取ent，分配swp页面？todo */
+/* 
+准备换出的时候，给要加入swap的page在swp获取ent，分配swp file里的空间？todo
+ */
 swp_entry_t get_swap_page(struct page *page)
 {
 	swp_entry_t entry, *pentry;
@@ -348,6 +350,7 @@ swp_entry_t get_swap_page(struct page *page)
 	cache = raw_cpu_ptr(&swp_slots);
 
 	if (likely(check_cache_active() && cache->slots)) {/* 走缓存机制 */
+		/* 准备查缓存 */
 		mutex_lock(&cache->alloc_lock);
 		if (cache->slots) {
 repeat:
@@ -365,15 +368,20 @@ repeat:
 			}
 		}
 		mutex_unlock(&cache->alloc_lock);
-		if (entry.val)/* 有效 */
+
+		if (entry.val)/* 有效，直接out */
 			goto out;
 	}
 
+	/* 缓存没找到，这里找，找到赋值给entry，然后out */
 	get_swap_pages(1, &entry, 1);
+
 out:
-	if (mem_cgroup_try_charge_swap(page, entry)) {
+
+	if (mem_cgroup_try_charge_swap(page, entry)) {/* charge swap失败 */
 		put_swap_page(page, entry);
 		entry.val = 0;
 	}
+
 	return entry;
 }

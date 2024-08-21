@@ -29,7 +29,7 @@ static void show_val_kb(struct seq_file *m, const char *s, unsigned long num)
 	seq_put_decimal_ull_width(m, s, num << (PAGE_SHIFT - 10), 8);
 	seq_write(m, " kB\n", 4);
 }
-
+/* 2024年08月21日15:04:44 */
 static int meminfo_proc_show(struct seq_file *m, void *v)
 {
 	struct sysinfo i;
@@ -43,9 +43,10 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	si_meminfo(&i);
 	si_swapinfo(&i);
 	committed = percpu_counter_read_positive(&vm_committed_as);
-
+	/* 文件页减去swp和dev的mapping页面之和 */
 	cached = global_node_page_state(NR_FILE_PAGES) -
 			total_swapcache_pages() - i.bufferram;
+			
 	if (cached < 0)
 		cached = 0;
 

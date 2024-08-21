@@ -35,7 +35,7 @@ enum memcg_stat_item {
 	MEMCG_CACHE = NR_VM_NODE_STAT_ITEMS,/* =32 */
 	MEMCG_RSS,/* 是PageAnon(page)， */
 	MEMCG_RSS_HUGE,
-	MEMCG_SWAP,
+	MEMCG_SWAP,/* 表示的好像是swp file里的数量 */
 	MEMCG_SOCK,
 	/* XXX: why are these zone and not node counters? */
 	MEMCG_KERNEL_STACK_KB,
@@ -274,8 +274,10 @@ struct mem_cgroup {
 	struct mem_cgroup_id id;
 
 	/* Accounted resources
-	memcg内存计数 */
+	memcg内存计数 
+	包括file，anon，kmem*/
 	struct page_counter memory;
+	/* 是交换到外面的swap页面的数量？ */
 	struct page_counter swap;
 
 	/* Legacy consumer-oriented counters */

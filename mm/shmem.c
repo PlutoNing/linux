@@ -358,7 +358,7 @@ void shmem_uncharge(struct inode *inode, long pages)
 }
 
 /*
-在shmem把index处的页面（如果符合expected的话）替换为replacement？
+在shmem把index处的东西（如果符合expected的话）替换为replacement？
  * Replace item expected in xarray by a new item, while holding xa_lock.
  */
 static int shmem_replace_entry(struct address_space *mapping,
@@ -654,12 +654,14 @@ next:
 			xas_next(&xas);
 			goto next;
 		}
+		/* 加入mapping成功 */
 		if (PageTransHuge(page)) {
 			count_vm_event(THP_FILE_ALLOC);
 			__inc_node_page_state(page, NR_SHMEM_THPS);
 		}
 
 		mapping->nrpages += nr;
+
 		__mod_node_page_state(page_pgdat(page), NR_FILE_PAGES, nr);
 		__mod_node_page_state(page_pgdat(page), NR_SHMEM, nr);
 unlock:
@@ -678,7 +680,7 @@ unlock:
 
 /*
 2024年8月7日00:01:52
-
+shmem的mapping删除页面？
  * Like delete_from_page_cache, but substitutes swap for page.
  */
 static void shmem_delete_from_page_cache(struct page *page, void *radswap)
@@ -1644,7 +1646,8 @@ static struct page *shmem_alloc_hugepage(gfp_t gfp,
 		prep_transhuge_page(page);
 	return page;
 }
-/* shmem分配新页面？
+/* 
+shmem分配新页面？
 获取此sii代表的文件在index处的页面
  */
 static struct page *shmem_alloc_page(gfp_t gfp,
@@ -1715,7 +1718,7 @@ static bool shmem_should_replace_page(struct page *page, gfp_t gfp)
 }
 /* 2024年7月29日23:16:14
 需要替换页面的话，新申请页面，把旧页面拷贝过去，并且更新mapping
-		里面的swp entry
+里面的swp entry？
  */
 static int shmem_replace_page(struct page **pagep, gfp_t gfp,
 				struct shmem_inode_info *info, pgoff_t index)
@@ -1744,15 +1747,18 @@ static int shmem_replace_page(struct page **pagep, gfp_t gfp,
 		return -ENOMEM;
 
 	get_page(newpage);
+	/* 拷贝页面 */
 	copy_highpage(newpage, oldpage);
+	
 	flush_dcache_page(newpage);
 
 	__SetPageLocked(newpage);
+	/* shmem设置为交换页 */
 	__SetPageSwapBacked(newpage);
 	SetPageUptodate(newpage);
 	/* 新页面代替旧页面 */
 	set_page_private(newpage, entry.val);
-	
+	/* 表示是swp缓存中的页面了 */
 	SetPageSwapCache(newpage);
 
 	/*

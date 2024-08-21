@@ -133,9 +133,11 @@ unsigned short swap_cgroup_cmpxchg(swp_entry_t ent,
 /**
 2024年07月04日 20:23:27
 2024年7月13日 00:15:29
+感觉像是给这些ent各自对应的sc设置新的id（memcg的id）
  * swap_cgroup_record - record mem_cgroup for a set of swap entries
  * @ent: the first swap entry to be recorded into
  * @id: mem_cgroup to be recorded
+ memcg的id
  * @nr_ents: number of swap entries to be recorded
  *
  * Returns old value at success, 0 at failure.
@@ -150,23 +152,29 @@ unsigned short swap_cgroup_record(swp_entry_t ent, unsigned short id,
 	unsigned long flags;
 	pgoff_t offset = swp_offset(ent);
 	pgoff_t end = offset + nr_ents;
-
+	/* 获取ent的file的cg？ */
 	sc = lookup_swap_cgroup(ent, &ctrl);
+
 
 	spin_lock_irqsave(&ctrl->lock, flags);
 	old = sc->id;
 	for (;;) {
+
 		VM_BUG_ON(sc->id != old);
 		sc->id = id;
 		offset++;
+
 		if (offset == end)
 			break;
+
 		if (offset % SC_PER_PAGE)
 			sc++;
-		else
+		else/* 找新的sc */
 			sc = __lookup_swap_cgroup(ctrl, offset);
 	}
+
 	spin_unlock_irqrestore(&ctrl->lock, flags);
+
 
 	return old;
 }

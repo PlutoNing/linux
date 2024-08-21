@@ -73,6 +73,7 @@ void page_counter_cancel(struct page_counter *counter, unsigned long nr_pages)
 
 /**
 2024年7月13日00:56:52
+force charge，就是紧急情况下，try charge失败的话，就是force charge。
  * page_counter_charge - hierarchically charge pages
  * @counter: counter
  * @nr_pages: number of pages to charge
@@ -105,7 +106,7 @@ void page_counter_charge(struct page_counter *counter, unsigned long nr_pages)
  * @counter: counter
  * @nr_pages: number of pages to charge
  * @fail: points first counter to hit its limit, if any
- *
+ *返回false是失败
  * Returns %true on success, or %false and @fail if the counter or one
  * of its ancestors has hit its configured limit.
  */
@@ -132,7 +133,7 @@ bool page_counter_try_charge(struct page_counter *counter,
 		 * counter has changed and retries.
 		 */
 		new = atomic_long_add_return(nr_pages, &c->usage);
-		if (new > c->max) {
+		if (new > c->max) {/* 超过了限制 */
 			atomic_long_sub(nr_pages, &c->usage);
 			propagate_protected_usage(counter, new);
 			/*

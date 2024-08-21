@@ -2004,6 +2004,7 @@ unlock:
 
 /*
 2024年7月13日10:45:31
+pmd指向页面是swap，or巨页才成功。
  * Returns page table lock pointer if a given pmd maps a thp, NULL otherwise.
  *
  * Note that if it returns page table lock pointer, this routine returns without

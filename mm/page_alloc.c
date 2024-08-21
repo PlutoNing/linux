@@ -5458,7 +5458,7 @@ long si_mem_available(void)
 	return available;
 }
 EXPORT_SYMBOL_GPL(si_mem_available);
-
+/* 2024年08月21日15:05:20 */
 void si_meminfo(struct sysinfo *val)
 {
 	val->totalram = totalram_pages();
@@ -5473,6 +5473,7 @@ void si_meminfo(struct sysinfo *val)
 EXPORT_SYMBOL(si_meminfo);
 
 #ifdef CONFIG_NUMA
+/*  */
 void si_meminfo_node(struct sysinfo *val, int nid)
 {
 	int zone_type;		/* needs to be signed */
@@ -5483,6 +5484,7 @@ void si_meminfo_node(struct sysinfo *val, int nid)
 
 	for (zone_type = 0; zone_type < MAX_NR_ZONES; zone_type++)
 		managed_pages += zone_managed_pages(&pgdat->node_zones[zone_type]);
+
 	val->totalram = managed_pages;
 	val->sharedram = node_page_state(pgdat, NR_SHMEM);
 	val->freeram = sum_zone_node_page_state(nid, NR_FREE_PAGES);
@@ -5555,6 +5557,7 @@ static void show_migration_types(unsigned char type)
 }
 
 /*
+2024年08月21日14:06:45
  * Show free area list (used inside shift_scroll-lock stuff)
  * We also calculate the percentage fragmentation. We do this by counting the
  * memory on each free list with the exception of the first item on the list.

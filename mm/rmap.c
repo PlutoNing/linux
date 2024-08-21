@@ -1234,9 +1234,9 @@ void do_page_add_anon_rmap(struct page *page,
 		first = atomic_inc_and_test(&page->_mapcount);
 	}
 
-	/* 2024年8月9日22:21:23这里可能为0吗， */
+	/* 2024年8月9日22:21:23这里可能为0吗，可能。初始化时是-1 */
 
-	if (first) {
+	if (first) {/* 如果是新页面，需要更新node统计信息 */
 		int nr = compound ? hpage_nr_pages(page) : 1;
 		/*
 		 * We use the irq-unsafe __{inc|mod}_zone_page_stat because
@@ -1285,7 +1285,7 @@ void page_add_new_anon_rmap(struct page *page,
 	int nr = compound ? hpage_nr_pages(page) : 1;
 
 	VM_BUG_ON_VMA(address < vma->vm_start || address >= vma->vm_end, vma);
-	/* 是交换页 */
+	/* 是交换页，为什么默认是交换页 */
 	__SetPageSwapBacked(page);
 	/* 这里设置引用计数 */
 	if (compound) {
@@ -1326,18 +1326,15 @@ void page_add_file_rmap(struct page *page, bool compound)
 	VM_BUG_ON_PAGE(compound && !PageTransHuge(page), page);
 	/* todo */
 	lock_page_memcg(page);
+
 	if (compound && PageTransHuge(page)) {
 		/* 大页的情况，todo */
 		for (i = 0, nr = 0; i < HPAGE_PMD_NR; i++) {
 			if (atomic_inc_and_test(&page[i]._mapcount))
 				nr++;
 		}
-
-
 		if (!atomic_inc_and_test(compound_mapcount_ptr(page)))
 			goto out;
-
-
 		if (PageSwapBacked(page))
 			__inc_node_page_state(page, NR_SHMEM_PMDMAPPED);
 		else
@@ -1365,7 +1362,8 @@ out:
 /* 
 
 移除缓存页的mapping
-移除是体现在哪一步呢？ */
+移除是体现在哪一步呢？应该就是dec引用，file页不该被映射的，没有映射，就算是remove
+rmap了 */
 static void page_remove_file_rmap(struct page *page, bool compound)
 {
 	int i, nr = 1;
@@ -1390,6 +1388,7 @@ static void page_remove_file_rmap(struct page *page, bool compound)
 		}
 		if (!atomic_add_negative(-1, compound_mapcount_ptr(page)))
 			goto out;
+		
 		if (PageSwapBacked(page))
 			__dec_node_page_state(page, NR_SHMEM_PMDMAPPED);
 		else
@@ -1401,6 +1400,8 @@ static void page_remove_file_rmap(struct page *page, bool compound)
 			goto out;
 	}
 
+
+	/* 没有人引用了，没有映射了，不是mapped了 */
 	/*
 	 * We use the irq-unsafe __{inc|mod}_lruvec_page_state because
 	 * these counters are not modified in interrupt context, and
@@ -1413,7 +1414,9 @@ static void page_remove_file_rmap(struct page *page, bool compound)
 out:
 	unlock_page_memcg(page);
 }
-/* todo */
+/* todo
+2024年08月21日14:50:20
+ */
 static void page_remove_anon_compound_rmap(struct page *page)
 {
 	int i, nr;
@@ -1474,6 +1477,8 @@ void page_remove_rmap(struct page *page, bool compound)
 	/* page still mapped by someone else? */
 	if (!atomic_add_negative(-1, &page->_mapcount))
 		return;
+
+	/* 下面是普通匿名页 */
 
 	/*
 	 * We use the irq-unsafe __{inc|mod}_zone_page_stat because

@@ -886,7 +886,7 @@ static int bdev_set(struct inode *inode, void *data)
 	BDEV_I(inode)->bdev.bd_dev = *(dev_t *)data;
 	return 0;
 }
-
+/* 系统的全部bdev挂载在这 */
 static LIST_HEAD(all_bdevs);
 
 /*
@@ -949,16 +949,18 @@ struct block_device *bdgrab(struct block_device *bdev)
 	return bdev;
 }
 EXPORT_SYMBOL(bdgrab);
-
+/* 全部dev的inode的mapping的page数量之和 */
 long nr_blockdev_pages(void)
 {
 	struct block_device *bdev;
 	long ret = 0;
+
 	spin_lock(&bdev_lock);
 	list_for_each_entry(bdev, &all_bdevs, bd_list) {
 		ret += bdev->bd_inode->i_mapping->nrpages;
 	}
 	spin_unlock(&bdev_lock);
+
 	return ret;
 }
 

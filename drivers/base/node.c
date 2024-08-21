@@ -358,6 +358,7 @@ static void node_remove_caches(struct node *node) { }
 #endif
 
 #define K(x) ((x) << (PAGE_SHIFT - 10))
+/* 获取node的内存使用信息 */
 static ssize_t node_read_meminfo(struct device *dev,
 			struct device_attribute *attr, char *buf)
 {
@@ -514,6 +515,8 @@ static ssize_t node_read_vmstat(struct device *dev,
 
 	return n;
 }
+
+
 static DEVICE_ATTR(vmstat, S_IRUGO, node_read_vmstat, NULL);
 
 static ssize_t node_read_distance(struct device *dev,

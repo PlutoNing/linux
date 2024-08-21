@@ -182,9 +182,12 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 
 	VM_BUG_ON_PAGE(PageTail(page), page);
 	VM_BUG_ON_PAGE(page_mapped(page), page);
-	if (!IS_ENABLED(CONFIG_DEBUG_VM) && unlikely(page_mapped(page))) {
+
+	if (!IS_ENABLED(CONFIG_DEBUG_VM) && unlikely(page_mapped(page))) {/* 文件页不像匿名页被映射，但也有 */
 		/* 2024年7月14日18:04:37
-		怎么可能是被mapped */
+		怎么可能是被mapped
+		2024年08月21日15:15:22
+		可能………… */
 		int mapcount;
 
 		pr_alert("BUG: Bad page cache in process %s  pfn:%05lx\n",
@@ -207,6 +210,7 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 		}
 	}
 
+/* 下面是更新统计信息 */
 	/* hugetlb pages do not participate in page cache accounting. */
 	if (PageHuge(page))
 		return;
@@ -214,6 +218,7 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 	nr = hpage_nr_pages(page);
 	/* 更新node的统计信息 */
 	__mod_node_page_state(page_pgdat(page), NR_FILE_PAGES, -nr);
+
 	if (PageSwapBacked(page)) {
 		__mod_node_page_state(page_pgdat(page), NR_SHMEM, -nr);
 		if (PageTransHuge(page))
@@ -895,6 +900,7 @@ EXPORT_SYMBOL(file_write_and_wait_range);
  */
 int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 {
+	/* 获取old的mapping和offset */
 	struct address_space *mapping = old->mapping;
 	void (*freepage)(struct page *) = mapping->a_ops->freepage;
 	pgoff_t offset = old->index;
@@ -907,7 +913,7 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 	VM_BUG_ON_PAGE(new->mapping, new);
 
 	get_page(new);
-	/* 指向old的index和mapping */
+	/* 赋值指向old的index和mapping */
 	new->mapping = mapping;
 	new->index = offset;
 
@@ -921,10 +927,12 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 		__dec_node_page_state(new, NR_FILE_PAGES);
 	if (!PageHuge(new))
 		__inc_node_page_state(new, NR_FILE_PAGES);
+
 	if (PageSwapBacked(old))
 		__dec_node_page_state(new, NR_SHMEM);
 	if (PageSwapBacked(new))
 		__inc_node_page_state(new, NR_SHMEM);
+
 	xas_unlock_irqrestore(&xas, flags);
 
 
@@ -940,6 +948,7 @@ int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask)
 }
 EXPORT_SYMBOL_GPL(replace_page_cache_page);
 /*
+获取页面加入到mapping，相当于使用了新的文件页。
 2024年06月20日16:11:29
 涉及到memcg。
 在页缓存分配页面，涉及到内存cg记账。
@@ -973,13 +982,14 @@ struct xa_state xas = { .xa = &mapping->i_pages,
 	VM_BUG_ON_PAGE(PageSwapBacked(page), page);
 	mapping_set_update(&xas, mapping);
 
-	if (!huge) {
-/* mem_cgroup_try_charge尝试内存记账，mem_cgroup_commit_charge提交内存记账 */
+	if (!huge) {/* mem_cgroup_try_charge尝试内存记账，
+	mem_cgroup_commit-charge提交内存记账 */
 		error = mem_cgroup_try_charge(page, current->mm,
 					      gfp_mask, &memcg, false);
 		if (error)
 			return error;
 	}
+
 	/* 加入mapping时get一次 */
 	get_page(page);
 	/* 设置page的属性 */
@@ -1003,6 +1013,7 @@ struct xa_state xas = { .xa = &mapping->i_pages,
 			if (shadowp)
 				*shadowp = old;
 		}
+
 		/* 添加成功 */
 		mapping->nrpages++;
 
@@ -1018,7 +1029,7 @@ unlock:
 		goto error;
 
 	if (!huge)
-	/* mem_cgroup_try_charge尝试内存记账，mem_cgroup_commit_charge提交内存记账 */
+	/*  */
 		mem_cgroup_commit_charge(page, memcg, false, false);
 
 

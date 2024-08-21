@@ -1006,10 +1006,10 @@ static int __remove_mapping(struct address_space *mapping, struct page *page,
 	}
 
 	if (PageSwapCache(page)) {
-		/* 如果是swp里面的 */
+		/* 如果是swp缓存里面的 */
 		swp_entry_t swap = { .val = page_private(page) };
 		/* 2024年7月14日17:45:45
-		进行一点memcg和charge的操作 */
+		页面换出了，进行一点memcg和charge的操作 */
 		mem_cgroup_swapout(page, swap);
 		/* 然后再删除 */
 		__delete_from_swap_cache(page, swap);
@@ -2007,6 +2007,8 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 
 /**
 2024年07月26日11:09:22
+
+返回真为错误。
  * isolate_lru_page - tries to isolate a page from its LRU list
  * @page: page to isolate from its LRU list
  *
@@ -2061,10 +2063,8 @@ int isolate_lru_page(struct page *page)
 2024年07月03日11:14:05
 too_many_isolated()会做如下
 判断。
-当前页面回收者是kswapd还是直接页面回收
-者（direct reclaimer）？
-已经分离的页面数量是否大于不活跃的页面
-数量？
+当前页面回收者是kswapd还是直接页面回收者（direct reclaimer）？
+已经分离的页面数量是否大于不活跃的页面数量？
 若当前页面回收者是直接页面回收者并且有大量已经分离的页面，那说明可能有很多进程正在做页面回收，而
 且有不少的进程已经触发了直接页面回收机制，这会导致不必要的内存抖动并触发OOM Killer机制，因此我们可以
 让直接页面回收者先睡眠100ms。

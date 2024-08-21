@@ -78,7 +78,7 @@ static void __page_cache_release(struct page *page)
 /* put页面 */
 static void __put_single_page(struct page *page)
 {
-	/* 从lru移走 */
+	/* 从lru移走？ */
 	__page_cache_release(page);
 	/*  */
 	mem_cgroup_uncharge(page);
@@ -961,6 +961,7 @@ void release_pages(struct page **pages, int nr)
 	/* free什么，还有还在记录的机制吗 */
 	free_unref_page_list(&pages_to_free);
 }
+
 EXPORT_SYMBOL(release_pages);
 
 /*

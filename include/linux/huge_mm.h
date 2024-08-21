@@ -209,7 +209,7 @@ extern spinlock_t *__pmd_trans_huge_lock(pmd_t *pmd,
 extern spinlock_t *__pud_trans_huge_lock(pud_t *pud,
 		struct vm_area_struct *vma);
 /* 2024年7月13日10:45:14
-
+pmd不空，但是也不在，可以说明pmd指向的pte页表被交换出去了吗？
  */
 static inline int is_swap_pmd(pmd_t pmd)
 {
@@ -218,7 +218,7 @@ static inline int is_swap_pmd(pmd_t pmd)
 
 /* 
 2024年7月13日10:44:55
-上锁相关，vma这些的锁是啥？
+pmd被交换，or是巨页的话。获取锁。
 mmap_sem must be held on entry */
 static inline spinlock_t *pmd_trans_huge_lock(pmd_t *pmd,
 		struct vm_area_struct *vma)

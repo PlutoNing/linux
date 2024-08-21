@@ -278,6 +278,7 @@ static void discard_swap_cluster(struct swap_info_struct *si,
 }
 
 #ifdef CONFIG_THP_SWAP
+/* 512 */
 #define SWAPFILE_CLUSTER	HPAGE_PMD_NR
 
 #define swap_entry_size(size)	(size)
@@ -1053,7 +1054,9 @@ static unsigned long scan_swap_map(struct swap_info_struct *si,
 		return 0;
 
 }
-/* todo */
+/* todo
+2024年08月21日11:26:00
+在swp获取若干entry？ */
 int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 {
 	unsigned long size = swap_entry_size(entry_size);
@@ -1066,6 +1069,7 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 	WARN_ON_ONCE(n_goal > 1 && size == SWAPFILE_CLUSTER);
 
 	avail_pgs = atomic_long_read(&nr_swap_pages) / size;
+	
 	if (avail_pgs <= 0)
 		goto noswap;
 
@@ -1081,10 +1085,13 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 
 start_over:
 	node = numa_node_id();
-	/* 遍历此node的si */
+	/* 遍历此node的si
+	也就是swap_avail_heads[node]链表上的全部si，连接件是si的avail_lists[node]成员 */
 	plist_for_each_entry_safe(si, next, &swap_avail_heads[node], avail_lists[node]) {
 		/* requeue si to after same-priority siblings */
+		/* 重新插入的作用？ */
 		plist_requeue(&si->avail_lists[node], &swap_avail_heads[node]);
+		/* 找到了si，解锁全局swap_avail_heads，加锁具体成员 */
 		spin_unlock(&swap_avail_lock);
 		spin_lock(&si->lock);
 
@@ -1104,21 +1111,25 @@ start_over:
 			     si->type);
 			__del_from_avail_list(si);
 			spin_unlock(&si->lock);
+			/* 这个si不合适，找下一个si */
 			goto nextsi;
 		}
-
+		/* 找到了合适的si */
 		if (size == SWAPFILE_CLUSTER) {
 			if (!(si->flags & SWP_FS))
 				n_ret = swap_alloc_cluster(si, swp_entries);
-		} else
+		} else/* 在si的map找若干个ent */
 			n_ret = scan_swap_map_slots(si, SWAP_HAS_CACHE,
 						    n_goal, swp_entries);
 		spin_unlock(&si->lock);
+
 		if (n_ret || size == SWAPFILE_CLUSTER)
 			goto check_out;
+
 		pr_debug("scan_swap_map of si %d failed to find offset\n",
 			si->type);
 
+		/* 找下一个si之前。继续加锁全局swap_avail_heads */
 		spin_lock(&swap_avail_lock);
 nextsi:
 		/*
@@ -1377,7 +1388,8 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 	return usage;
 }
 
-/* 释放si的此entry */
+/* 释放si的此entry
+在map标记为未使用。 */
 static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 {
 	struct swap_cluster_info *ci;
@@ -1434,7 +1446,7 @@ void put_swap_page(struct page *page, swp_entry_t entry)
 		return;
 
 	ci = lock_cluster_or_swap_info(si, offset);
-	if (size == SWAPFILE_CLUSTER) {
+	if (size == SWAPFILE_CLUSTER) {/*  */
 
 		VM_BUG_ON(!cluster_is_huge(ci));
 		map = si->swap_map + offset;
@@ -1447,10 +1459,12 @@ void put_swap_page(struct page *page, swp_entry_t entry)
 		cluster_clear_huge(ci);
 		if (free_entries == SWAPFILE_CLUSTER) {
 			unlock_cluster_or_swap_info(si, ci);
+			
 			spin_lock(&si->lock);
 			mem_cgroup_uncharge_swap(entry, SWAPFILE_CLUSTER);
 			swap_free_cluster(si, idx);
 			spin_unlock(&si->lock);
+			
 			return;
 		}
 	}

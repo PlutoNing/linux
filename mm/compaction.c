@@ -797,6 +797,7 @@ static bool too_many_isolated(pg_data_t *pgdat)
 			node_page_state(pgdat, NR_INACTIVE_ANON);
 	active = node_page_state(pgdat, NR_ACTIVE_FILE) +
 			node_page_state(pgdat, NR_ACTIVE_ANON);
+			
 	isolated = node_page_state(pgdat, NR_ISOLATED_FILE) +
 			node_page_state(pgdat, NR_ISOLATED_ANON);
 

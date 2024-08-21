@@ -37,6 +37,7 @@ static const struct address_space_operations swap_aops = {
 };
 /*  */
 struct address_space *swapper_spaces[MAX_SWAPFILES] __read_mostly;
+/*  */
 static unsigned int nr_swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static bool enable_vma_readahead __read_mostly = true;
 
@@ -67,7 +68,7 @@ static struct {
 	unsigned long find_success;
 	unsigned long find_total;
 } swap_cache_info;
-/*  */
+/* 统计全部swpfile的mapping的页面之和 */
 unsigned long total_swapcache_pages(void)
 {
 	unsigned int i, j, nr;
@@ -85,12 +86,15 @@ unsigned long total_swapcache_pages(void)
 		si = get_swap_device(entry);
 		if (!si)
 			continue;
+
 		nr = nr_swapper_spaces[i];
 		spaces = swapper_spaces[i];
 		for (j = 0; j < nr; j++)
 			ret += spaces[j].nrpages;
+
 		put_swap_device(si);
 	}
+
 	return ret;
 }
 
@@ -143,7 +147,7 @@ int add_to_swap_cache(struct page *page, swp_entry_t entry, gfp_t gfp)
 			xas_store(&xas, page);
 			xas_next(&xas);
 		}
-
+		/* 插入mapping成功 */
 		address_space->nrpages += nr;
 		__mod_node_page_state(page_pgdat(page), NR_FILE_PAGES, nr);
 		ADD_CACHE_INFO(add_total, nr);
