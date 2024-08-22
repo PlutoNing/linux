@@ -2875,17 +2875,17 @@ retry:
 		if (do_memsw_account())/* 说明刚刚try_charge memory没有成功，这里又进行memsw，所有刚才try charge memsw也成功了，
 		这里得撤销 */
 			page_counter_uncharge(&memcg->memsw, batch);
-		/* 失败了我们charge memory */
+		/* 我们charge memory失败了 */
 		mem_over_limit = mem_cgroup_from_counter(counter, memory);
 
-	} else {/* 进行memsw，但是try_charge失败了 */
+	} else {/* 进行memsw，但是try_charge memsw失败了 */
 		mem_over_limit = mem_cgroup_from_counter(counter, memsw);
 		may_swap = false;
 	}
 
 
 
-	if (batch > nr_pages) {/* 刚才按照batch申请，失败了，这里按照实际数量申请一下。 */
+	if (batch > nr_pages) {/* 刚才按照batch申请（可能会偏大），失败了，这里按照实际数量申请一下。 */
 		batch = nr_pages;
 		goto retry;
 	}
@@ -2925,11 +2925,14 @@ retry:
 
 	if (!gfpflags_allow_blocking(gfp_mask))
 		goto nomem;
+
 /* 产生时间 */
 	memcg_memory_event(mem_over_limit, MEMCG_MAX);
 /* 内存usage超过了limit,触发cgroup回收
 2024年7月14日12:38:31
 try charge的时候try free memcg，那调用try chage的时候检测不到吗。
+2024年08月22日19:03:39
+沙比问题
  */
 
 	nr_reclaimed = try_to_free_mem_cgroup_pages(mem_over_limit, nr_pages,

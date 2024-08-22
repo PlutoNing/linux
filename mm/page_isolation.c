@@ -14,7 +14,8 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/page_isolation.h>
-/* todo， */
+/* todo，
+2024年08月22日17:02:52 */
 static int set_migratetype_isolate(struct page *page, int migratetype, int isol_flags)
 {
 	struct zone *zone;
@@ -31,6 +32,7 @@ static int set_migratetype_isolate(struct page *page, int migratetype, int isol_
 	 * We assume the caller intended to SET migrate type to isolate.
 	 * If it is already set, then someone else must have raced and
 	 * set it before us.  Return -EBUSY
+	 被别人抢先了
 	 */
 	if (is_migrate_isolate_page(page))
 		goto out;
@@ -69,8 +71,8 @@ static int set_migratetype_isolate(struct page *page, int migratetype, int isol_
 	 * removable-by-driver pages reported by notifier, we'll fail.
 	 */
 
-out:
-	if (!ret) {/* ret = 0 */
+out:/*  */
+	if (!ret) {/* ret = 0 ，进行了实际操作，不是被别人抢先了来到这的*/
 		unsigned long nr_pages;
 		/*  */
 		int mt = get_pageblock_migratetype(page);
@@ -213,7 +215,7 @@ int start_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 		page = __first_valid_page(pfn, pageblock_nr_pages);
 		if (page) {
 			/*  */
-			if (set_migratetype_isolate(page, migratetype, flags)) {
+			if (set_migratetype_isolate(page, migratetype, flags)) {/* 出错了 */
 				undo_pfn = pfn;
 				goto undo;
 			}
@@ -236,6 +238,7 @@ undo:
 
 /*
 2024年8月11日22:23:56
+让范围内page不再isolate
  * Make isolated pages available again.
  */
 void undo_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,

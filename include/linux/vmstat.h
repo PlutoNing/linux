@@ -136,6 +136,7 @@ static inline void vm_events_fold_cpu(int cpu)
 	__count_vm_events(item##_NORMAL - ZONE_NORMAL + zid, delta)
 
 /*
+2024年08月22日15:30:41
  * Zone and node-based page accounting with per cpu differentials.
  */
 extern atomic_long_t vm_zone_stat[NR_VM_ZONE_STAT_ITEMS];
@@ -170,7 +171,7 @@ static inline unsigned long zone_numa_state_snapshot(struct zone *zone,
 }
 #endif /* CONFIG_NUMA */
 /* 2024年06月21日16:07:26
-以枚举内存类型为索引更新
+以枚举内存类型为索引更新对应统计信息
  */
 static inline void zone_page_state_add(long x, struct zone *zone,
 				 enum zone_stat_item item)
@@ -187,7 +188,7 @@ static inline void node_page_state_add(long x, struct pglist_data *pgdat,
 	atomic_long_add(x, &pgdat->vm_stat[item]);
 	atomic_long_add(x, &vm_node_stat[item]);
 }
-
+/* 全部zone的信息 */
 static inline unsigned long global_zone_page_state(enum zone_stat_item item)
 {
 	long x = atomic_long_read(&vm_zone_stat[item]);

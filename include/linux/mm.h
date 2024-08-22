@@ -2835,7 +2835,7 @@ DECLARE_STATIC_KEY_TRUE(_debug_pagealloc_enabled);
 #else
 DECLARE_STATIC_KEY_FALSE(_debug_pagealloc_enabled);
 #endif
-
+/*  */
 static inline bool debug_pagealloc_enabled(void)
 {
 	if (!IS_ENABLED(CONFIG_DEBUG_PAGEALLOC))

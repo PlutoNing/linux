@@ -2220,6 +2220,9 @@ static inline bool check_pcp_refill(struct page *page)
 {
 	return check_new_page(page);
 }
+/* 2024年08月22日16:04:29
+
+ */
 static inline bool check_new_pcp(struct page *page)
 {
 	if (debug_pagealloc_enabled())
@@ -2861,7 +2864,7 @@ __rmqueue(struct zone *zone, unsigned int order, int migratetype,
 
 retry:
 	page = __rmqueue_smallest(zone, order, migratetype);
-	if (unlikely(!page)) {
+	if (unlikely(!page)) {/* 刚才没有成功 */
 		if (migratetype == MIGRATE_MOVABLE)
 			page = __rmqueue_cma_fallback(zone, order);
 		
@@ -2878,7 +2881,7 @@ retry:
 
 /*
 2024年6月26日22:53:19
-从zone给pcp pages获取页面
+从zone给pcp pages获取count个order页面？，存储到list，
  * Obtain a specified number of elements from the buddy allocator, all under
  * a single hold of the lock, for efficiency.  Add them to the supplied list.
  * Returns the number of new pages which were placed at *list.
@@ -2914,6 +2917,7 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 		 /* 添加到pcplist链表 */
 		list_add_tail(&page->lru, list);
 		alloced++;
+
 		/* 如果本次申请的是CMA类型内存，则对应的CMA空间内存数减少 */
 		if (is_migrate_cma(get_pcppage_migratetype(page)))
 			__mod_zone_page_state(zone, NR_FREE_CMA_PAGES,
@@ -3326,7 +3330,7 @@ int __isolate_free_page(struct page *page, unsigned int order)
 	zone = page_zone(page);
 	mt = get_pageblock_migratetype(page);
 
-	if (!is_migrate_isolate(mt)) {/* 如果不是迁移类型的？ */
+	if (!is_migrate_isolate(mt)) {/* 如果不是MIGRATE_ISOLATE迁移类型的？ */
 		/*
 		 * Obey watermarks as if the page was being allocated. We can
 		 * emulate a high-order watermark check with a raised order-0
@@ -3393,6 +3397,7 @@ static inline void zone_statistics(struct zone *preferred_zone, struct zone *z)
 }
 
 /* 2024年6月26日22:51:41
+从pcplist分配页面？
 Remove page from the per-cpu list, caller must protect the list */
 static struct page *__rmqueue_pcplist(struct zone *zone, int migratetype,
 			unsigned int alloc_flags,
@@ -3410,11 +3415,12 @@ static struct page *__rmqueue_pcplist(struct zone *zone, int migratetype,
 			if (unlikely(list_empty(list)))
 				return NULL;
 		}
+
 		/* 分配一个page */
 		page = list_first_entry(list, struct page, lru);
 		list_del(&page->lru);
 		pcp->count--;
-	} while (check_new_pcp(page));
+	} while (check_new_pcp(page));/* 好像就循环一次 */
 
 	return page;
 }
@@ -3450,7 +3456,7 @@ static struct page *rmqueue_pcplist(struct zone *preferred_zone,
 
 /*
 2024年6月26日22:44:53
-从budyy分配
+从buddy分配
 如果没有合适order，会从更大order切分
  * Allocate a page from the given zone. Use pcplists for order-0 allocations.
  */
@@ -3480,7 +3486,7 @@ struct page *rmqueue(struct zone *preferred_zone,
 	WARN_ON_ONCE((gfp_flags & __GFP_NOFAIL) && (order > 1));
 	spin_lock_irqsave(&zone->lock, flags);
 
-	do {
+	do {/* order != 0 */
 		page = NULL;
 		/* 如果不是分配一页，并且设置了ALLOC_HARDER标志，则直接从MIGRATE_HIGHATOMIC类型上分配 */
 		if (alloc_flags & ALLOC_HARDER) {
@@ -3811,6 +3817,7 @@ retry:
 	 */
 	no_fallback = alloc_flags & ALLOC_NOFRAGMENT;
 	z = ac->preferred_zoneref;
+	/* 遍历zone */
 	for_next_zone_zonelist_nodemask(zone, z, ac->zonelist, ac->high_zoneidx,
 								ac->nodemask) {
 		struct page *page;
@@ -8874,6 +8881,8 @@ done:
 				pfn_max_align_up(end), migratetype);
 	return ret;
 }
+
+
 #endif /* CONFIG_CONTIG_ALLOC */
 
 void free_contig_range(unsigned long pfn, unsigned int nr_pages)

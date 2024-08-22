@@ -71,7 +71,7 @@ static unsigned long release_freepages(struct list_head *freelist)
 	return high_pfn;
 }
 /* 2024年08月14日14:23:02
-list是__isolate_free_page进行isolate收集的list
+list是__isolate-free_page进行isolate收集的list
  */
 static void split_map_pages(struct list_head *list)
 {
@@ -797,7 +797,7 @@ static bool too_many_isolated(pg_data_t *pgdat)
 			node_page_state(pgdat, NR_INACTIVE_ANON);
 	active = node_page_state(pgdat, NR_ACTIVE_FILE) +
 			node_page_state(pgdat, NR_ACTIVE_ANON);
-			
+
 	isolated = node_page_state(pgdat, NR_ISOLATED_FILE) +
 			node_page_state(pgdat, NR_ISOLATED_ANON);
 

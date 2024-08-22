@@ -158,6 +158,7 @@ void vm_events_fold_cpu(int cpu)
 #endif /* CONFIG_VM_EVENT_COUNTERS */
 
 /*
+2024年08月22日15:31:47
  * Manage combined zone based / global counters
  *
  * vm_stat contains the global counters
@@ -327,7 +328,7 @@ void __mod_zone_page_state(struct zone *zone, enum zone_stat_item item,
 
 	x = delta + __this_cpu_read(*p);
 	/* 
-	感觉item像是索引，delta是要加的值？
+	item是索引，delta是要加的值
 	*/
 
 	t = __this_cpu_read(pcp->stat_threshold);

@@ -242,11 +242,11 @@ enum node_stat_item {
 	WORKINGSET_ACTIVATE,
 	WORKINGSET_RESTORE,
 	WORKINGSET_NODERECLAIM,
-	
+
 	NR_ANON_MAPPED,	/* Mapped anonymous pages */
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
 			   only modified from process context。
-			   mapped的文件页的数量，这算什么？
+			   mapped的文件页的数量
 			   !anon && page_mapped(page) */
 	NR_FILE_PAGES,
 	NR_FILE_DIRTY,/* 脏文件页数量 */
@@ -347,13 +347,15 @@ struct lruvec {
 #endif
 };
 
-/* Isolate unmapped file */
+/* Isolate unmapped file
+只isolate没有mapped的页面 */
 #define ISOLATE_UNMAPPED	((__force isolate_mode_t)0x2)
 /* 
 2024年08月13日18:45:48
 Isolate for asynchronous migration */
 #define ISOLATE_ASYNC_MIGRATE	((__force isolate_mode_t)0x4)
-/* Isolate unevictable pages */
+/* Isolate unevictable pages
+可以isolate那些unevict的页面 */
 #define ISOLATE_UNEVICTABLE	((__force isolate_mode_t)0x8)
 
 /* LRU Isolation modes. */
