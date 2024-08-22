@@ -655,6 +655,7 @@ static inline int pgd_devmap(pgd_t pgd)
 
 /*
 2024年6月30日21:39:33
+减少引用，如果减了之后变成0，返回真。
  * Drop a ref, return true if the refcount fell to zero (the page has no users)
  */
 static inline int put_page_testzero(struct page *page)

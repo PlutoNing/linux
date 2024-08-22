@@ -82,6 +82,7 @@ static const char Unused_offset[] = "Unused swap offset entry ";
 PLIST_HEAD(swap_active_head);
 
 /*
+用于找到合适的磁盘空间
 系统中可用的si？
  * all available (active, not full) swap_info_structs
  * protected with swap_avail_lock, ordered by priority.
@@ -119,7 +120,7 @@ static struct swap_info_struct *swap_type_to_swap_info(int type)
 	smp_rmb();	/* Pairs with smp_wmb in alloc_swap_info. */
 	return READ_ONCE(swap_info[type]);
 }
-/*  */
+/* 来查看页槽计数值是不是SWAP_MAP_BAD */
 static inline unsigned char swap_count(unsigned char ent)
 {
 	return ent & ~SWAP_HAS_CACHE;	/* may include COUNT_CONTINUED flag */
@@ -592,6 +593,7 @@ static void inc_cluster_info_page(struct swap_info_struct *p,
 
 /*
 2024年7月30日00:24:44
+
  * The cluster corresponding to page_nr decreases one usage. If the usage
  * counter becomes 0, which means no page in the cluster is in using, we can
  * optionally discard the cluster and add it to free cluster list.
@@ -792,7 +794,8 @@ static void swap_range_free(struct swap_info_struct *si, unsigned long offset,
 	}
 }
 /* 2024年08月02日20:00:45
-todo */
+当有请求时就从cluster_next下标去找swap_map中第一个空闲的块。
+然后把这个块分配出去。*/
 static int scan_swap_map_slots(struct swap_info_struct *si,
 			       unsigned char usage, int nr,
 			       swp_entry_t slots[])
@@ -822,7 +825,7 @@ static int scan_swap_map_slots(struct swap_info_struct *si,
 	scan_base = offset = si->cluster_next;
 
 	/* SSD algorithm */
-	if (si->cluster_info) {
+	if (si->cluster_info) {/* todo */
 		if (scan_swap_map_try_ssd_cluster(si, &offset, &scan_base))
 			goto checks;
 		else
@@ -1039,7 +1042,8 @@ static void swap_free_cluster(struct swap_info_struct *si, unsigned long idx)
 	swap_range_free(si, offset, SWAPFILE_CLUSTER);
 }
 /* 2024年08月02日20:00:53
-todo */
+todo首次分配页槽时（也就是get_swap_page调用scan_swap_map），
+会将SWAP_HAS_CACHE传递给页槽计数 */
 static unsigned long scan_swap_map(struct swap_info_struct *si,
 				   unsigned char usage)
 {
@@ -1265,14 +1269,15 @@ static struct swap_info_struct *swap_info_get_cont(swp_entry_t entry,
 	return p;
 }
 /* 2024年08月02日19:26:32
-todo */
+todo
+好像是这里实际free此 ent的使用 */
 static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 					      unsigned long offset,
 					      unsigned char usage)
 {
 	unsigned char count;
 	unsigned char has_cache;
-
+	/* count是个位图好像 */
 	count = p->swap_map[offset];
 
 	has_cache = count & SWAP_HAS_CACHE;
@@ -1281,7 +1286,7 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 	if (usage == SWAP_HAS_CACHE) {
 		VM_BUG_ON(!has_cache);
 		has_cache = 0;
-	} else if (count == SWAP_MAP_SHMEM) {
+	} else if (count == SWAP_MAP_SHMEM) {/* shmemfs的槽位？ */
 		/*
 		 * Or we could insist on shmem.c using a special
 		 * swap_shmem_free() and free_shmem_swap_and_cache()...
@@ -1399,6 +1404,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 	ci = lock_cluster(p, offset);
 	count = p->swap_map[offset];
 	VM_BUG_ON(count != SWAP_HAS_CACHE);
+
 	p->swap_map[offset] = 0;
 	
 	dec_cluster_info_page(p, p->cluster_info, offset);
@@ -1440,6 +1446,7 @@ void put_swap_page(struct page *page, swp_entry_t entry)
 	unsigned char *map;
 	unsigned int i, free_entries = 0;
 	unsigned char val;
+	/* 好像就是页面的数量 */
 	int size = swap_entry_size(hpage_nr_pages(page));
 
 	si = _swap_info_get(entry);
@@ -1470,11 +1477,13 @@ void put_swap_page(struct page *page, swp_entry_t entry)
 		}
 	}
 
-	for (i = 0; i < size; i++, entry.val++) {
+	for (i = 0; i < size; i++, entry.val++) {/* 处理页面实际page数量次数 */
 		/* 2024年7月14日17:59:28
 		包含size个页面的巨页可能在swp对应多个条目 */
-		if (!__swap_entry_free_locked(si, offset + i, SWAP_HAS_CACHE)) {
+		if (!__swap_entry_free_locked(si, offset + i, SWAP_HAS_CACHE)) {/* 这个函数实际
+		free此entry的使用，这是处理的情况 */
 			unlock_cluster_or_swap_info(si, ci);
+			/*  */
 			free_swap_slot(entry);
 			if (i == size - 1)
 				return;
@@ -1509,7 +1518,8 @@ static int swp_entry_cmp(const void *ent1, const void *ent2)
 
 	return (int)swp_type(*e1) - (int)swp_type(*e2);
 }
-/* 处理entries数组的全部元素来释放。数量为n */
+/* 处理entries数组的全部元素来释放。数量为n
+在map标记为未使用 */
 void swapcache_free_entries(swp_entry_t *entries, int n)
 {
 	struct swap_info_struct *p, *prev;
@@ -1528,6 +1538,7 @@ void swapcache_free_entries(swp_entry_t *entries, int n)
 	 */
 	if (nr_swapfiles > 1)
 		sort(entries, n, sizeof(entries[0]), swp_entry_cmp, NULL);
+	
 	for (i = 0; i < n; ++i) {
 		/* 先获取到当前entries【i】的si */
 		p = swap_info_get_cont(entries[i], prev);
@@ -1535,6 +1546,7 @@ void swapcache_free_entries(swp_entry_t *entries, int n)
 			swap_entry_free(p, entries[i]);
 		prev = p;
 	}
+
 	if (p)
 		spin_unlock(&p->lock);
 }
@@ -1542,7 +1554,7 @@ void swapcache_free_entries(swp_entry_t *entries, int n)
 /*
 2024年8月5日23:38:54
 page指针已经是swp的ent了
-找到这个ent有几个cnt
+找到这个ent有几个cnt。
  * How many references to page are currently swapped out?
  * This does not give an exact answer when swap count is continued,
  * but does include the high COUNT_CONTINUED flag to allow for that.
@@ -1686,7 +1698,8 @@ unlock_out:
 	unlock_cluster_or_swap_info(si, ci);
 	return ret;
 }
-/* 2024年8月22日00:07:53 */
+/* 2024年8月22日00:07:53
+被换出到了swp file？ */
 static bool page_swapped(struct page *page)
 {
 	swp_entry_t entry;
@@ -1823,7 +1836,7 @@ bool reuse_swap_page(struct page *page, int *total_map_swapcount)
 
 /*
 2024年07月31日13:12:53
-释放swap的一个entry。是从mapping移除
+释放swap的一个entry。是从mapping移除，free 
  * If swap is getting full, or if there are no more mappings of this page,
  * then try_to_free_swap is called to free its swap space.
  */
@@ -1835,7 +1848,7 @@ int try_to_free_swap(struct page *page)
 		return 0;
 	if (PageWriteback(page))
 		return 0;
-	if (page_swapped(page))
+	if (page_swapped(page))/* 没有被换出到swp file？ */
 		return 0;
 
 	/*
@@ -3733,6 +3746,10 @@ void swap_shmem_alloc(swp_entry_t entry)
 
 /*
 复制swap，其实就是增加引用计数？todo。
+2024年8月23日00:46:35
+由于一个页可以属于几个进程的地址空间，所以它可能从一个进程的地址空间被换出，
+但仍然保留在ram中。因此可能把同一个页换出多次。一个页在物理上仅被换出并存储
+一次，但是后来每次换出该页都会增加swap_map计数（同时_mapcount会减小吗？）。
  * Increase reference count of swap entry by 1.
  * Returns 0 for success, or -ENOMEM if a swap_count_continuation is required
  * but could not be atomically allocated.  Returns 0, just as if it succeeded,

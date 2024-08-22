@@ -248,7 +248,7 @@ enum node_stat_item {
 			   only modified from process context。
 			   mapped的文件页的数量
 			   !anon && page_mapped(page) */
-	NR_FILE_PAGES,
+	NR_FILE_PAGES,/* 删除swp cache mapping的页面，也会减减这里 */
 	NR_FILE_DIRTY,/* 脏文件页数量 */
 	NR_WRITEBACK,/* PageWriteback(page) */
 	NR_WRITEBACK_TEMP,	/* Writeback using temporary buffers */

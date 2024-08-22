@@ -154,7 +154,8 @@ static inline void write_pkru(u32 pkru)
 	__write_pkru(pkru);
 	fpregs_unlock();
 }
-/*  */
+/* 2024年8月22日23:03:20
+是不是刚刚被访问过 */
 static inline int pte_young(pte_t pte)
 {
 	return pte_flags(pte) & _PAGE_ACCESSED;

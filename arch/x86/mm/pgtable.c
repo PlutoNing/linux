@@ -574,7 +574,8 @@ int pudp_test_and_clear_young(struct vm_area_struct *vma,
 	return ret;
 }
 #endif
-
+/* 2024年8月22日23:01:48
+看看pte是不是刚刚被访问过？然后清除标志位 */
 int ptep_clear_flush_young(struct vm_area_struct *vma,
 			   unsigned long address, pte_t *ptep)
 {

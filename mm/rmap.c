@@ -820,6 +820,7 @@ out:
 struct page_referenced_arg {
 	int mapcount;
 	int referenced;
+	/* 存储遍历过程中的vma flags，比如遇到vm_locked的vma的话就是置位VM_LOCKED */
 	unsigned long vm_flags;
 	struct mem_cgroup *memcg;
 };
@@ -875,11 +876,16 @@ static bool page_referenced_one(struct page *page, struct vm_area_struct *vma,
 			WARN_ON_ONCE(1);
 		}
 
+		/* 处理了一个page，--mapcount，表示要处理的page少了一个 */
 		pra->mapcount--;
-	} /* for_each结束 */
+
+	} /* for_each结束 
+	现在没有要处理的映射此page的pte了
+	*/
 
 	if (referenced)
 		clear_page_idle(page);
+	
 	if (test_and_clear_page_young(page))
 		referenced++;
 
@@ -932,6 +938,7 @@ int page_referenced(struct page *page,
 		.mapcount = total_mapcount(page),
 		.memcg = memcg,
 	};
+
 	struct rmap_walk_control rwc = {
 		/* 这个遍历的回调函数 */
 		.rmap_one = page_referenced_one,
@@ -946,7 +953,8 @@ int page_referenced(struct page *page,
 	if (!page_rmapping(page))/* 没有rmap，下面的rmap walk无法进行 */
 		return 0;
 
-	if (!is_locked && (!PageAnon(page) || PageKsm(page))) {
+	if (!is_locked && (!PageAnon(page) || PageKsm(page))) {/* 不是匿名页，或者是ksm，好像必须
+	要枷锁 */
 		we_locked = trylock_page(page);
 		if (!we_locked)
 			return 1;

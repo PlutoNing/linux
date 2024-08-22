@@ -3280,7 +3280,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 * test below, are not enough to exclude that.  Even if it is still
 	 * swapcache, we need to check that the page's swap has not changed.
 	 */
-	if (unlikely((!PageSwapCache(page) || /* 如果是新申请的页面，什么时候设置的PageSwapCache？ */
+	if (unlikely((!PageSwapCache(page) || /* 如果是新申请的页面，
+	什么时候设置的PageSwapCache？ */
 			page_private(page) != entry.val)) && swapcache)/* 再检查一遍 */
 		goto out_page;
 
