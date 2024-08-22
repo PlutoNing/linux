@@ -124,7 +124,8 @@ enum pageflags {
 	PG_unevictable,		/* Page is "unevictable"，该page被锁住，不能回收，并会出现在LRU_UNEVICTABLE链表中，
 	它包括的几种page：ramdisk或ramfs使用的页、shm_locked、mlock锁定的页  */
 #ifdef CONFIG_MMU
-	PG_mlocked,		/* Page is vma mlocked ，page在vma中被锁定，一般是通过系统调用mlock()锁定了一段内存*/
+	PG_mlocked,		/* Page is vma mlocked ，
+	page在vma中被锁定，一般是通过系统调用mlock()锁定了一段内存*/
 #endif
 #ifdef CONFIG_ARCH_USES_PG_UNCACHED
 	PG_uncached,		/* Page has been mapped as uncached，该page是uncache的，？ */

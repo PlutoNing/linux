@@ -896,7 +896,7 @@ static inline int is_zero_pfn(unsigned long pfn)
 	extern unsigned long zero_pfn;
 	return pfn == zero_pfn;
 }
-
+/* my_zero_pfn()获取系统零页的帧号。 */
 static inline unsigned long my_zero_pfn(unsigned long addr)
 {
 	extern unsigned long zero_pfn;

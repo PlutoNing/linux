@@ -837,7 +837,8 @@ struct task_struct {
 	unsigned			restore_sigmask:1;
 #endif
 #ifdef CONFIG_MEMCG
-	unsigned			in_user_fault:1;
+	unsigned			in_user_fault:1;/* 
+	表示在处理来自用户空间的缺页错误什么的 */
 #endif
 #ifdef CONFIG_COMPAT_BRK
 	unsigned			brk_randomized:1;

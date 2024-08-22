@@ -1411,6 +1411,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 
 /*
 2024年7月29日23:50:50
+
  * Caller has made sure that the swap device corresponding to entry
  * is still around or has not been recycled.
  */
@@ -1540,7 +1541,7 @@ void swapcache_free_entries(swp_entry_t *entries, int n)
 
 /*
 2024年8月5日23:38:54
-page指针已经是指向swp的ent了
+page指针已经是swp的ent了
 找到这个ent有几个cnt
  * How many references to page are currently swapped out?
  * This does not give an exact answer when swap count is continued,
@@ -1559,11 +1560,13 @@ int page_swapcount(struct page *page)
 	if (p) {
 		offset = swp_offset(entry);
 		ci = lock_cluster_or_swap_info(p, offset);
+		/* 重点 */
 		count = swap_count(p->swap_map[offset]);
 		unlock_cluster_or_swap_info(p, ci);
 	}
 	return count;
 }
+
 /* 2024年07月03日14:37:12
 
  */
@@ -1683,20 +1686,21 @@ unlock_out:
 	unlock_cluster_or_swap_info(si, ci);
 	return ret;
 }
-/*  */
+/* 2024年8月22日00:07:53 */
 static bool page_swapped(struct page *page)
 {
 	swp_entry_t entry;
 	struct swap_info_struct *si;
 
-	if (!IS_ENABLED(CONFIG_THP_SWAP) || likely(!PageTransCompound(page)))
-		return page_swapcount(page) != 0;
+	if (!IS_ENABLED(CONFIG_THP_SWAP) || likely(!PageTransCompound(page)))/* 更普遍的情况 */
+		return page_swapcount(page) != 0; 
 
 	page = compound_head(page);
 	entry.val = page_private(page);
 	si = _swap_info_get(entry);
 	if (si)
 		return swap_page_trans_huge_swapped(si, entry);
+
 	return false;
 }
 /* 2024年8月5日23:31:21

@@ -529,6 +529,7 @@ pte最近是否被访问过
 })
 
 /*
+set_pte的一种
  * set_pte_at_notify() sets the pte _after_ running the notifier.
  * This is safe to start by updating the secondary MMUs, because the primary MMU
  * pte invalidate must have already happened with a ptep_clear_flush() before

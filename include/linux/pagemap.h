@@ -507,6 +507,7 @@ static inline int trylock_page(struct page *page)
 
 /*
 2024年07月18日10:19:12
+获取锁，置位PG_locked
 先try to后可能会睡眠来lock
  * lock_page may only be called if we have the page's inode pinned.
  */
