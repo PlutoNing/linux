@@ -25,6 +25,8 @@
 #include <asm/pgtable.h>
 /* 2024年8月5日23:58:30 */
 /*
+2024年8月23日00:34:32
+swp 的 ops
  * swapper_space is a fiction, retained to simplify the path through
  * vmscan's shrink_page_list.
  */
@@ -187,7 +189,7 @@ void __delete_from_swap_cache(struct page *page, swp_entry_t entry)
 		set_page_private(page + i, 0);
 		xas_next(&xas);
 	}
-	
+	/* page不再在swp cache了 */
 	ClearPageSwapCache(page);
 	address_space->nrpages -= nr;
 	__mod_node_page_state(page_pgdat(page), NR_FILE_PAGES, -nr);
@@ -254,7 +256,7 @@ fail:
 
 /*
 2024年7月29日23:37:28
-从swap cache删除page，不过必须要保证page此时在swap。
+从swap cache删除page。这个时候page是PageSwapCache，page_swapped不为0
 过程：从mapping移除，页缓存。释放的应该内存空间。
  * This must be called only on pages that have
  * been verified to be in the swap cache and locked.

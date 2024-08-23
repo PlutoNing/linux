@@ -319,7 +319,7 @@ memcg soft limit reclaim会用到此
 	/* protected by memcg_oom_lock */
 	bool		oom_lock;
 	int		under_oom;
-
+	/* todoo */
 	int	swappiness;
 	/* OOM-Killer disable */
 	int		oom_kill_disable;

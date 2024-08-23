@@ -8,13 +8,13 @@
 #include <asm/page_types.h>
 
 #define FIRST_USER_ADDRESS	0UL
-
-#define _PAGE_BIT_PRESENT	0	/* is present */
-#define _PAGE_BIT_RW		1	/* writeable */
+/* 这里好像是pte条目的标志位 */
+#define _PAGE_BIT_PRESENT	0	/*是否present， is present */
+#define _PAGE_BIT_RW		1	/*是否可写， writeable */
 #define _PAGE_BIT_USER		2	/* userspace addressable */
 #define _PAGE_BIT_PWT		3	/* page write through */
 #define _PAGE_BIT_PCD		4	/* page cache disabled */
-#define _PAGE_BIT_ACCESSED	5	/* was accessed (raised by CPU) */
+#define _PAGE_BIT_ACCESSED	5	/* 是不是刚刚被访问过？，was accessed (raised by CPU) */
 #define _PAGE_BIT_DIRTY		6	/* was written to (raised by CPU) */
 #define _PAGE_BIT_PSE		7	/* 4 MB (or 2MB) page */
 #define _PAGE_BIT_PAT		7	/* on 4KB pages */
@@ -44,6 +44,7 @@
 #define _PAGE_USER	(_AT(pteval_t, 1) << _PAGE_BIT_USER)
 #define _PAGE_PWT	(_AT(pteval_t, 1) << _PAGE_BIT_PWT)
 #define _PAGE_PCD	(_AT(pteval_t, 1) << _PAGE_BIT_PCD)
+/*  */
 #define _PAGE_ACCESSED	(_AT(pteval_t, 1) << _PAGE_BIT_ACCESSED)
 #define _PAGE_DIRTY	(_AT(pteval_t, 1) << _PAGE_BIT_DIRTY)
 #define _PAGE_PSE	(_AT(pteval_t, 1) << _PAGE_BIT_PSE)

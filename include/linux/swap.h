@@ -195,13 +195,15 @@ enum {
 #define SWAP_CLUSTER_MAX 32UL
 /* =32 */
 #define COMPACT_CLUSTER_MAX SWAP_CLUSTER_MAX
-
+/* todoo */
 #define SWAP_MAP_MAX	0x3e	/* Max duplication count, in first swap_map */
+/* 那么存放这个页槽的页就是永久的，不能从相应的页槽中删除； */
 #define SWAP_MAP_BAD	0x3f	/* Note pageblock is bad, in first swap_map */
+/* 如果计数器值为SWAP_MAP_BAD，那么这个页槽就是有缺陷的，不可以使用 */
 #define SWAP_HAS_CACHE	0x40	/* Flag page is cached, in first swap_map */
 #define SWAP_CONT_MAX	0x7f	/* Max count, in each swap_map continuation */
 #define COUNT_CONTINUED	0x80	/* See swap_map continuation for full count */
-#define SWAP_MAP_SHMEM	0xbf	/* Owned by shmem/tmpfs, in first swap_map */
+#define SWAP_MAP_SHMEM	0xbf	/* 说明这是shmemfs的槽位？Owned by shmem/tmpfs, in first swap_map */
 
 /*
 
@@ -257,17 +259,26 @@ struct swap_info_struct {
 	unsigned int	max;		/* extent of the swap_map，
 	swap——map的大小 */
 	unsigned char *swap_map;	/* vmalloc'ed array of usage counts ，
-	对每一个页面都有一个字节表示状态，表示对应offset的entry引用数量*/
+	对每一个页面都有一个字节表示状态，表示对应offset的entry引用数量
+	swap_map指向一个计数器数组，交换区的每个页槽对应一个元素。
+	如果计数器值等于0，那么页槽就是空闲的，
+	如果是正数，表示共享该换出页的进程数；
+	如果计数器值为SWAP_MAP_MAX，那么存放这个页槽的页就是永久的，不能从相应的页槽中删除；
+	如果计数器值为SWAP_MAP_BAD，那么这个页槽就是有缺陷的，不可以使用。*/
 	struct swap_cluster_info *cluster_info; /* cluster info. Only for SSD ，*/
 	struct swap_cluster_list free_clusters; /* free clusters list */
-	unsigned int lowest_bit;	/* index of first free in swap_map */
-	unsigned int highest_bit;	/* index of last free in swap_map
+
+	unsigned int lowest_bit;	/* 当前可用范围的最大最小下标
+	index of first free in swap_map */
+	unsigned int highest_bit;	/* 当前可用范围的最大最小下标
+	index of last free in swap_map
 	 */
 	unsigned int pages;		/* total of usable pages of swap ，
 	该交换区可以容纳 swap 的匿名页总数
 */
 	unsigned int inuse_pages;	/* number of those currently in use，已经 swap 到该交换区的匿名页总数 */
-	unsigned int cluster_next;	/* likely index for next allocation */
+	unsigned int cluster_next;	/* 
+	建议的下次可使用的下标likely index for next allocation */
 	unsigned int cluster_nr;	/* countdown to next cluster search */
 	struct percpu_cluster __percpu *percpu_cluster; /* per cpu's swap location，为了进一步利用 cpu cache，
 	以及实现无锁化查找 slot，内核会给每个 cpu 分配一个 cluster —— percpu_cluster，cpu 直接从自己的 cluster 
@@ -404,6 +415,7 @@ extern unsigned long mem_cgroup_shrink_node(struct mem_cgroup *mem,
 						pg_data_t *pgdat,
 						unsigned long *nr_scanned);
 extern unsigned long shrink_all_memory(unsigned long nr_pages);
+/* todoo */
 extern int vm_swappiness;
 extern int remove_mapping(struct address_space *mapping, struct page *page);
 extern unsigned long vm_total_pages;
@@ -681,7 +693,8 @@ static inline int split_swap_cluster(swp_entry_t entry)
 
  */
 #ifdef CONFIG_MEMCG
-/* 2024年7月13日15:44:01 */
+/* 2024年7月13日15:44:01
+todoo */
 static inline int mem_cgroup_swappiness(struct mem_cgroup *memcg)
 {
 	/* Cgroup2 doesn't have per-cgroup swappiness */

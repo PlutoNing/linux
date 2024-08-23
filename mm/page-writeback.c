@@ -2707,6 +2707,7 @@ EXPORT_SYMBOL(__cancel_dirty_page);
 /*
 2024年7月14日17:37:50
 2024年7月17日23:55:57
+返回页面是否脏页，然后清除dirty。
  * Clear a page's dirty flag, while caring for dirty memory accounting.
  * Returns true if the page was previously dirty.
  *
@@ -2771,7 +2772,7 @@ int clear_page_dirty_for_io(struct page *page)
 
 		 
 		wb = unlocked_inode_to_wb_begin(inode, &cookie);
-		if (TestClearPageDirty(page)) {
+		if (TestClearPageDirty(page)) {/* 本来是脏页的情况 */
 			/* 改变统计信息 */
 			dec_lruvec_page_state(page, NR_FILE_DIRTY);
 			dec_zone_page_state(page, NR_ZONE_WRITE_PENDING);

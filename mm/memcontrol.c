@@ -1736,7 +1736,7 @@ void mem_cgroup_print_oom_meminfo(struct mem_cgroup *memcg)
 
 /*
 2024年06月28日12:11:49
-
+获得memcg的内存max
  * Return the memory (and swap, if configured) limit for a memcg.
  */
 unsigned long mem_cgroup_get_max(struct mem_cgroup *memcg)
@@ -8034,6 +8034,7 @@ bool mem_cgroup_swap_full(struct page *page)
 
 	if (vm_swap_full())
 		return true;
+
 	if (!do_swap_account || !cgroup_subsys_on_dfl(memory_cgrp_subsys))
 		return false;
 

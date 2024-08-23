@@ -283,8 +283,11 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 
 	return cache->nr;
 }
-/* 会先尝试能否放到缓存，
-等待批量处理释放 */
+/*  
+在swp map标记为未使用
+-----------------
+会先尝试能否放到缓存，
+	等待批量处理释放 */
 int free_swap_slot(swp_entry_t entry)
 {
 	struct swap_slots_cache *cache;
