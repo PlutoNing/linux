@@ -1500,6 +1500,7 @@ static struct ctl_table vm_table[] = {
 
 #endif /* CONFIG_COMPACTION */
 	{
+		/* 系统应该保存的最低freepages */
 		.procname	= "min_free_kbytes",
 		.data		= &min_free_kbytes,
 		.maxlen		= sizeof(min_free_kbytes),

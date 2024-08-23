@@ -375,7 +375,7 @@ memcg soft limit reclaim会用到此
 	struct memcg_vmstats_percpu __percpu *vmstats_percpu;
 
 	MEMCG_PADDING(_pad2_);
-/*  */
+/* 保存memcg的内存各种类型页面使用信息 */
 	atomic_long_t		vmstats[MEMCG_NR_STAT];
 	atomic_long_t		vmevents[NR_VM_EVENT_ITEMS];
 

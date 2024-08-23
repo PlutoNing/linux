@@ -119,7 +119,8 @@ static inline void *proc_sys_poll_event(struct ctl_table_poll *poll)
 #define DEFINE_CTL_TABLE_POLL(name)					\
 	struct ctl_table_poll name = __CTL_TABLE_POLL_INITIALIZER(name)
 
-/* A sysctl table is an array of struct ctl_table: */
+/* A sysctl table is an array of struct ctl_table:
+2024年08月23日14:34:50 */
 struct ctl_table 
 {
 	const char *procname;		/* Text ID for /proc/sys, or zero */
@@ -129,7 +130,9 @@ struct ctl_table
 	struct ctl_table *child;	/* Deprecated */
 	proc_handler *proc_handler;	/* Callback for text formatting */
 	struct ctl_table_poll *poll;
+	/* 最小值 */
 	void *extra1;
+	/* 最大值 */
 	void *extra2;
 } __randomize_layout;
 

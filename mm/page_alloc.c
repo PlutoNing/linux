@@ -327,6 +327,7 @@ compound_page_dtor * const compound_page_dtors[] = {
 };
 
 int min_free_kbytes = 1024;
+/* procfs设置的最低freepages数量 */
 int user_min_free_kbytes = -1;
 #ifdef CONFIG_DISCONTIGMEM
 /*
@@ -8102,7 +8103,7 @@ static void setup_per_zone_lowmem_reserve(void)
 	/* update totalreserve_pages */
 	calculate_totalreserve_pages();
 }
-
+/* 改变min_free_kbytes时重新设置各zone水位 */
 static void __setup_per_zone_wmarks(void)
 {
 	unsigned long pages_min = min_free_kbytes >> (PAGE_SHIFT - 10);
@@ -8166,6 +8167,7 @@ static void __setup_per_zone_wmarks(void)
 }
 
 /**
+改变min_free_kbytes时候的相关设置
  * setup_per_zone_wmarks - called when min_free_kbytes changes
  * or when memory is hot-{added|removed}
  *
