@@ -10,6 +10,7 @@
 #endif
 
 #ifndef SMP_CACHE_BYTES
+/* cpu L1cache大小 64 */
 #define SMP_CACHE_BYTES L1_CACHE_BYTES
 #endif
 

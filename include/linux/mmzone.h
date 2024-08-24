@@ -24,10 +24,12 @@
 
 /* Free memory management - zoned buddy allocator.  */
 #ifndef CONFIG_FORCE_MAX_ZONEORDER
+/* 最大的order */
 #define MAX_ORDER 11
 #else
 #define MAX_ORDER CONFIG_FORCE_MAX_ZONEORDER
 #endif
+/* 最大order是1024个页面吗？ */
 #define MAX_ORDER_NR_PAGES (1 << (MAX_ORDER - 1))
 
 /*
@@ -38,7 +40,7 @@
  */
 #define PAGE_ALLOC_COSTLY_ORDER 3
 /* 2024年06月26日14:55:43
-
+页面的迁移类型
  */
 enum migratetype {
 	MIGRATE_UNMOVABLE,
@@ -408,7 +410,8 @@ struct per_cpu_pageset {
 #endif
 #ifdef CONFIG_SMP
 	s8 stat_threshold;
-	s8 vm_stat_diff[NR_VM_ZONE_STAT_ITEMS];
+	
+	s8 vm_stat_diff[NR_VM_ZONE_STAT_ITEMS];/* 用处？ */
 #endif
 };
 /* 2024年6月24日23:09:18
@@ -505,7 +508,7 @@ struct zone {
 	 * there being tons of freeable ram on the higher zones).  This array is
 	 * recalculated at runtime if the sysctl_lowmem_reserve_ratio sysctl
 	 * changes.每个内存管理区（zone）都有一个lowmem_reserve字段，
-	 它代表本管理区预留的物理内存大小
+	 它代表本管理区预留的物理内存大小？
 	 */
 	long lowmem_reserve[MAX_NR_ZONES];
 
@@ -704,7 +707,7 @@ static inline bool zone_is_initialized(struct zone *zone)
 {
 	return zone->initialized;
 }
-
+/* zone是空的 */
 static inline bool zone_is_empty(struct zone *zone)
 {
 	return zone->spanned_pages == 0;
@@ -735,7 +738,7 @@ static inline bool zone_intersects(struct zone *zone,
 
 /* Maximum number of zones on a zonelist */
 #define MAX_ZONES_PER_ZONELIST (MAX_NUMNODES * MAX_NR_ZONES)
-
+/* 2024年8月25日00:31:26 */
 enum {
 	ZONELIST_FALLBACK,	/* zonelist with fallback */
 #ifdef CONFIG_NUMA
@@ -784,6 +787,8 @@ extern struct page *mem_map;
 #endif
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
+/* 2024年8月24日21:58:26
+todo */
 struct deferred_split {
 	spinlock_t split_queue_lock;
 	struct list_head split_queue;
@@ -804,10 +809,12 @@ struct bootmem_data;
 内存节点？
  */
 typedef struct pglist_data {
-	/* 这是一个包含当前node所有zone结构体的数组。通过这个，我们知道当前node有哪几个zone。 */
+	/* 这是一个包含当前node所有zone结构体的数组。通过这个，我们知道
+	当前node有哪几个zone。 */
 	struct zone node_zones[MAX_NR_ZONES];
 	/* 这个数组包括所有node的所有zone，记录在所有node中的每一个zone，
-	用于跨node内存分配。 */
+	用于跨node内存分配。
+	这个好像是二维的。好像是根据是否fallback返回不同的zone list？ */
 	struct zonelist node_zonelists[MAX_ZONELISTS];
 	/* 表示当前node中zone的数目 */
 	int nr_zones;
@@ -882,6 +889,7 @@ typedef struct pglist_data {
 	/*
 	 * This is a per-node reserve of pages that are not available
 	 * to userspace allocations.
+	 node的reserve页面数量
 	 */
 	unsigned long		totalreserve_pages;
 
@@ -980,6 +988,7 @@ bool zone_watermark_ok(struct zone *z, unsigned int order,
 		unsigned int alloc_flags);
 bool zone_watermark_ok_safe(struct zone *z, unsigned int order,
 		unsigned long mark, int classzone_idx);
+/* zone的memmap的类型？ */
 enum memmap_context {
 	MEMMAP_EARLY,
 	MEMMAP_HOTPLUG,
@@ -1305,11 +1314,16 @@ static inline unsigned long early_pfn_to_nid(unsigned long pfn)
 /* 27-12=15 */
 #define PFN_SECTION_SHIFT	(SECTION_SIZE_BITS - PAGE_SHIFT)
 /*展开是 (1UL << ((0 ? 52 : 46) - 27))
-还不小，五十几万
+(1UL << 46 - 27) 
+1<< 19 = 524288
+还不小，五十几万,算是 0.5M
+是系统需要的memsection的数量
  */
 #define NR_MEM_SECTIONS		(1UL << SECTIONS_SHIFT)
-/* 一个mem_section的页面数量？1<<15？32KB */
+/* 一个mem_section的页面数量？1<<15？32K  B
+每个memsection 32K个页面，算是管理32K * 4K = 128MB内存。 */
 #define PAGES_PER_SECTION       (1UL << PFN_SECTION_SHIFT)
+/* 对齐到32K， 15个0 */
 #define PAGE_SECTION_MASK	(~(PAGES_PER_SECTION-1))
 
 #define SECTION_BLOCKFLAGS_BITS \
@@ -1319,7 +1333,7 @@ static inline unsigned long early_pfn_to_nid(unsigned long pfn)
 #error Allocator MAX_ORDER exceeds SECTION_SIZE
 #endif
 /* 转换的方式？好像就是取高位（右移15位）的bit
-转换为mem section的idx？ */
+对齐到32K，找到mem section的idx？ */
 static inline unsigned long pfn_to_section_nr(unsigned long pfn)
 {
 	return pfn >> PFN_SECTION_SHIFT;
@@ -1331,16 +1345,19 @@ static inline unsigned long section_nr_to_pfn(unsigned long sec)
 
 #define SECTION_ALIGN_UP(pfn)	(((pfn) + PAGES_PER_SECTION - 1) & PAGE_SECTION_MASK)
 #define SECTION_ALIGN_DOWN(pfn)	((pfn) & PAGE_SECTION_MASK)
-
+/* 21 */
 #define SUBSECTION_SHIFT 21
-
+/* 21-12=9 */
 #define PFN_SUBSECTION_SHIFT (SUBSECTION_SHIFT - PAGE_SHIFT)
+/* 1<<9 = 512 ， */
 #define PAGES_PER_SUBSECTION (1UL << PFN_SUBSECTION_SHIFT)
+/* ~511 。 */
 #define PAGE_SUBSECTION_MASK (~(PAGES_PER_SUBSECTION-1))
 
 #if SUBSECTION_SHIFT > SECTION_SIZE_BITS
 #error Subsection size exceeds section size
 #else
+/* 27 - 21 = 6 ，每个section有64个subsection？ */
 #define SUBSECTIONS_PER_SECTION (1UL << (SECTION_SIZE_BITS - SUBSECTION_SHIFT))
 #endif
 
@@ -1348,7 +1365,7 @@ static inline unsigned long section_nr_to_pfn(unsigned long sec)
 #define SUBSECTION_ALIGN_DOWN(pfn) ((pfn) & PAGE_SUBSECTION_MASK)
 /*  */
 struct mem_section_usage {
-	/* 一个位图，通过long数组定义的 */
+	/* 一个位图，通过long数组定义的，如果SUBSECTIONS_PER_SECTION = 64的话，这不就是一个long吗 */
 	DECLARE_BITMAP(subsection_map, SUBSECTIONS_PER_SECTION);
 	/* See declaration of similar field in struct zone */
 	unsigned long pageblock_flags[0];
@@ -1373,8 +1390,8 @@ struct mem_section {
 	 * before using it wrong.
 	 */
 	unsigned long section_mem_map;
-
-	struct mem_section_usage *usage;
+	
+	struct mem_section_usage *usage;/* 好像是个bitmap */
 #ifdef CONFIG_PAGE_EXTENSION
 	/*
 	 * If SPARSEMEM, pgdat doesn't have page_ext pointer. We use
@@ -1391,16 +1408,32 @@ struct mem_section {
 };
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
+/* 一个page里面几个memsection结构体, 一个sizeof 应该是16
+这个值是256 */
 #define SECTIONS_PER_ROOT       (PAGE_SIZE / sizeof (struct mem_section))
+/* 哈哈哈哈哈哈哈哈哈 */
+//int a[sizeof (struct mem_section)] = 0;
+
 #else
 #define SECTIONS_PER_ROOT	1
 #endif
 /*
-s=sizeof (struct mem_section)
 
-nr / (4096 /s) */
+
+nr / (4096 /16)
+section-nr/page里面memsection结构体的数量
+找到section所属的page idx？
+ */
 #define SECTION_NR_TO_ROOT(sec)	((sec) / SECTIONS_PER_ROOT)
+/* (((NR_MEM_SECTIONS) + (SECTIONS_PER_ROOT) - 1) / (SECTIONS_PER_ROOT)) 
+(((1 << 19) + (256 ) - 1) / (256))
+2048
+一个page里面装256个memsection。一共需要NR_MEM_SECTIONS个
+这里应该是计算系统的memsection一共需要多少页面？
+*/
 #define NR_SECTION_ROOTS	DIV_ROUND_UP(NR_MEM_SECTIONS, SECTIONS_PER_ROOT)
+/* 这个是在memsection机制的第二位数组对齐，就是第二维数组大小是256.
+这里对齐到256的页内偏移，获得所属的memsection。 */
 #define SECTION_ROOT_MASK	(SECTIONS_PER_ROOT - 1)
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
@@ -1430,8 +1463,10 @@ static inline struct mem_section *__nr_to_section(unsigned long nr)
 		return NULL;
 #endif
 
-	if (!mem_section[SECTION_NR_TO_ROOT(nr)])
+	if (!mem_section[SECTION_NR_TO_ROOT(nr)])/* 这个nr对应的memsection所属的一维数组还没
+	在memsection这个二维数组里面初始化 */
 		return NULL;
+
 	return &mem_section[SECTION_NR_TO_ROOT(nr)][nr & SECTION_ROOT_MASK];
 }
 extern unsigned long __section_nr(struct mem_section *ms);
@@ -1452,11 +1487,13 @@ extern size_t mem_section_usage_size(void);
  */
 #define	SECTION_MARKED_PRESENT	(1UL<<0)
 #define SECTION_HAS_MEM_MAP	(1UL<<1)
-/*  */
+/* ms->section_mem_map &= ~SECTION_IS_ONLINE 可以下线memsection */
 #define SECTION_IS_ONLINE	(1UL<<2)
+/*  */
 #define SECTION_IS_EARLY	(1UL<<3)
 #define SECTION_MAP_LAST_BIT	(1UL<<4)
 #define SECTION_MAP_MASK	(~(SECTION_MAP_LAST_BIT-1))
+/* 2024年8月24日23:11:28 */
 #define SECTION_NID_SHIFT	3
 
 static inline struct page *__section_mem_map_addr(struct mem_section *section)
@@ -1476,6 +1513,7 @@ static inline int present_section_nr(unsigned long nr)
 	return present_section(__nr_to_section(nr));
 }
 /* 
+如何判断memsection合法
  */
 static inline int valid_section(struct mem_section *section)
 {
@@ -1491,7 +1529,7 @@ static inline int early_section(struct mem_section *section)
 {
 	return (section && (section->section_mem_map & SECTION_IS_EARLY));
 }
-
+/* 判断section nr的memsection是否合法 */
 static inline int valid_section_nr(unsigned long nr)
 {
 	return valid_section(__nr_to_section(nr));
@@ -1520,11 +1558,17 @@ static inline struct mem_section *__pfn_to_section(unsigned long pfn)
 }
 
 extern unsigned long __highest_present_section_nr;
-/* 取模（2的15次方好像是），然后除以section容量
+/* 先得到pfn在memsection内的偏移。，然后除以subsection容量？
+获得在32K里面的偏移，然后除以512，，，好像就是64内的某个值。
+和mem_section_usage里面的那个小位图倒也对应上了。
+看来这里获得的是subsection的idx
 得到idx */
 static inline int subsection_map_index(unsigned long pfn)
 {
-
+/* 
+----------------------------------
+              
+ */
 	return (pfn & ~(PAGE_SECTION_MASK)) / PAGES_PER_SUBSECTION;
 }
 
@@ -1537,7 +1581,7 @@ static inline int subsection_map_index(unsigned long pfn)
    判断此pfn是否合法 */
 static inline int pfn_section_valid(struct mem_section *ms, unsigned long pfn)
 {
-	/* 就是取模后除以section容量，得到sec idx */
+	/* 就是取模后除以section容量，得到sec内的偏移 idx */
 	int idx = subsection_map_index(pfn);
 
 	/* 测试所属的ms里面的位图，自己对应的bit位 */
@@ -1552,7 +1596,10 @@ static inline int pfn_section_valid(struct mem_section *ms, unsigned long pfn)
 
 #ifndef CONFIG_HAVE_ARCH_PFN_VALID
 /* pfn也有不合法的吗
+
 2024年7月27日21:44:28
+-------------------
+通过mem section判断
  */
 static inline int pfn_valid(unsigned long pfn)
 {
@@ -1560,6 +1607,7 @@ static inline int pfn_valid(unsigned long pfn)
 
 	if (pfn_to_section_nr(pfn) >= NR_MEM_SECTIONS)
 		return 0;
+
 	/* 获得pfn对应的mem_section */
 	ms = __nr_to_section(pfn_to_section_nr(pfn));
 	
@@ -1571,6 +1619,7 @@ static inline int pfn_valid(unsigned long pfn)
 	 */
 	return early_section(ms) || pfn_section_valid(ms, pfn);
 }
+
 #endif
 
 static inline int pfn_present(unsigned long pfn)
@@ -1605,6 +1654,7 @@ void sparse_init(void);
 #endif /* CONFIG_SPARSEMEM */
 
 /*
+2024年8月24日15:36:15
  * During memory init memblocks map pfns to nids. The search is expensive and
  * this caches recent lookups. The implementation of __early_pfn_to_nid
  * may treat start/end as pfns or sections.

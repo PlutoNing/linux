@@ -385,7 +385,7 @@ static inline void quiet_vmstat(void) { }
 static inline void drain_zonestat(struct zone *zone,
 			struct per_cpu_pageset *pset) { }
 #endif		/* CONFIG_SMP */
-
+/* 统计freepages数量的改变 */
 static inline void __mod_zone_freepage_state(struct zone *zone, int nr_pages,
 					     int migratetype)
 {

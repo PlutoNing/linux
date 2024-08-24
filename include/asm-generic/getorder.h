@@ -8,6 +8,7 @@
 #include <linux/log2.h>
 
 /**
+获取size的order
  * get_order - Determine the allocation order of a memory size
  * @size: The size for which to get the order
  *

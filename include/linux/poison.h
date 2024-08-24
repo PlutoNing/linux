@@ -38,7 +38,7 @@
 #endif
 
 /********** mm/page_alloc.c ************/
-
+/* 复合页尾页的mapping指向这个东西 */
 #define TAIL_MAPPING	((void *) 0x400 + POISON_POINTER_DELTA)
 
 /********** mm/slab.c **********/

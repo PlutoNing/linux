@@ -86,7 +86,7 @@ static void split_map_pages(struct list_head *list)
 		nr_pages = 1 << order;
 
 		post_alloc_hook(page, order, __GFP_MOVABLE);
-		if (order)/* 感觉split_page函数并没有进行什么工作 */
+		if (order)/*  */
 			split_page(page, order);
 
 		for (i = 0; i < nr_pages; i++) {/* 把分裂后的单个页面逐个 */
@@ -562,7 +562,7 @@ static bool compact_unlock_should_abort(spinlock_t *lock,
 }
 
 /*
-isolate此cc里面zone的【start_pfn，end_pfn】页面到cc->freepages（freelist参数）。
+isolate此cc里面zone的【start_pfn，end_pfn】页面从buddy的lru到cc->freepages（freelist参数）。
 @start_pfn会被修改为扫描的起始地址。
 @
  * Isolate free pages onto a private freelist. If @strict is true, will abort
@@ -704,7 +704,8 @@ isolate_fail:
 }
 
 /**
-
+2024年8月24日03:11:32
+todo，感觉就像是从buddy里面移出，打散成order=0页面，就不管了
  * isolate_freepages_range() - isolate free pages.
  * @cc:        Compaction control structure.
  * @start_pfn: The first PFN to start isolating.
@@ -726,6 +727,7 @@ isolate_freepages_range(struct compact_control *cc,
 	LIST_HEAD(freelist);
 
 	pfn = start_pfn;
+	/* 获取第一个pfn的pageblock的起始和结束pfn。 */
 	block_start_pfn = pageblock_start_pfn(pfn);
 	if (block_start_pfn < cc->zone->zone_start_pfn)
 		block_start_pfn = cc->zone->zone_start_pfn;
@@ -753,7 +755,7 @@ isolate_freepages_range(struct compact_control *cc,
 		if (!pageblock_pfn_to_page(block_start_pfn,
 					block_end_pfn, cc->zone))
 			break;
-
+		/* 从buddy lru到freelist */
 		isolated = isolate_freepages_block(cc, &isolate_start_pfn,
 					block_end_pfn, &freelist, 0, true);
 
@@ -775,13 +777,12 @@ isolate_freepages_range(struct compact_control *cc,
 	/* __isolate_free_page() does not map the pages */
 	split_map_pages(&freelist);
 
-	if (pfn < end_pfn) {/*  */
-		/* Loop terminated early, cleanup. */
+	if (pfn < end_pfn) {/* Loop terminated early, cleanup. */
 		release_freepages(&freelist);
 		return 0;
 	}
 
-	/* We don't use freelists for anything. */
+	/* We don't use freelists for anything.为什么？ */
 	return pfn;
 }
 
@@ -806,7 +807,8 @@ static bool too_many_isolated(pg_data_t *pgdat)
 
 /**
 2024年08月13日16:38:04
-isolate此pageblock范围内的页面
+isolate此pageblock范围内的页面，就是进行isolate，也可能会移出lru，
+然后加入cc的migrate pages链表。
  * isolate_migratepages_block() - isolate all migrate-able pages within
  *				  a single pageblock
  * @cc:		Compaction control structure.
@@ -967,7 +969,8 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * It's possible to migrate LRU and non-lru movable pages.
 		 * Skip any other type of page
 		 */
-		if (!PageLRU(page)) {/* 如果不是lru页面。 */
+		if (!PageLRU(page)) {/* 如果不是lru页面。但是符合要求，进行isolate
+		然后跳到isolate成功的goto，开始链入migratepages */
 			/*
 			 * __PageMovable can return false positive so we need
 			 * to verify it under page_lock.
@@ -1004,7 +1007,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 			goto isolate_fail;
 
 		/* If we already hold the lock, we can skip some rechecking */
-		if (!locked) {
+		if (!locked) {/* 没有locked的情况？ */
 			locked = compact_lock_irqsave(&pgdat->lru_lock,
 								&flags, cc);
 
@@ -1029,7 +1032,9 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 				goto isolate_fail;
 			}
 		}
-/* pgdat->lruvec */
+
+		/* pgdat->lruvec */
+		/* 这里开始isolate此lru类型的页面 */
 		lruvec = mem_cgroup_page_lruvec(page, pgdat);
 
 		/* Try isolate the page 
@@ -1039,7 +1044,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 
 		VM_BUG_ON_PAGE(PageCompound(page), page);
 
-		/* Successfully isolated，刚才成功清除了lru标记，现在移出 */
+		/* Successfully isolated，刚才成功清除了lru标记，现在移出lru */
 		del_page_from_lru_list(page, lruvec, page_lru(page));
 		inc_node_page_state(page,
 				NR_ISOLATED_ANON + page_is_file_cache(page));
@@ -1131,7 +1136,7 @@ fatal_pending:
 
 /**
 2024年08月14日14:54:03
-isolate范围内页面，cc的migratepages是空的。
+isolate范围内页面，加入到cc的migrate链表。cc的migratepages是空的。
  * isolate_migratepages_range() - isolate migrate-able pages in a PFN range
  * @cc:        Compaction control structure.cc结构体
  * @start_pfn: The first PFN to start isolating.
@@ -1149,6 +1154,8 @@ isolate_migratepages_range(struct compact_control *cc, unsigned long start_pfn,
 
 	/* Scan block by block. First and last block may be incomplete */
 	pfn = start_pfn;
+
+	/* 获取pageblock内的起始和末尾pfn */
 	block_start_pfn = pageblock_start_pfn(pfn);
 	if (block_start_pfn < cc->zone->zone_start_pfn)
 		block_start_pfn = cc->zone->zone_start_pfn;
@@ -1156,7 +1163,7 @@ isolate_migratepages_range(struct compact_control *cc, unsigned long start_pfn,
 
 	for (; pfn < end_pfn; pfn = block_end_pfn, /* pfn保存上次循环的end。 */
 				block_start_pfn = block_end_pfn,
-				block_end_pfn += pageblock_nr_pages) {/* 遍历每一个pageblock。
+				block_end_pfn += pageblock_nr_pages) {/* 遍历范围内每一个pageblock。
 		第一个pageblock是【start_pfn，pageblock_end_pfn(pfn)】 */
 
 		block_end_pfn = min(block_end_pfn, end_pfn);
@@ -1164,7 +1171,7 @@ isolate_migratepages_range(struct compact_control *cc, unsigned long start_pfn,
 		if (!pageblock_pfn_to_page(block_start_pfn,
 					block_end_pfn, cc->zone))
 			continue;
-
+		/* isolate。加入migrate pages链表 */
 		pfn = isolate_migratepages_block(cc, pfn, block_end_pfn,
 							ISOLATE_UNEVICTABLE);
 

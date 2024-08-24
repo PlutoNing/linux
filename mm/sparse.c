@@ -25,6 +25,7 @@
  * 1) mem_section	- memory sections, mem_map's for valid memory
  */
 #ifdef CONFIG_SPARSEMEM_EXTREME
+/* memsection的二维数组 */
 struct mem_section **mem_section;
 #else
 struct mem_section mem_section[NR_SECTION_ROOTS][SECTIONS_PER_ROOT]
@@ -61,9 +62,11 @@ static inline void set_section_nid(unsigned long section_nr, int nid)
 #endif
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
+/* 分配nid的memsection的内存？ */
 static noinline struct mem_section __ref *sparse_index_alloc(int nid)
 {
 	struct mem_section *section = NULL;
+	/* 感觉这个array_size好像就是page_size */
 	unsigned long array_size = SECTIONS_PER_ROOT *
 				   sizeof(struct mem_section);
 
@@ -72,16 +75,21 @@ static noinline struct mem_section __ref *sparse_index_alloc(int nid)
 	} else {
 		section = memblock_alloc_node(array_size, SMP_CACHE_BYTES,
 					      nid);
-		if (!section)
+		if (!section)/* 分配内存失败 */
 			panic("%s: Failed to allocate %lu bytes nid=%d\n",
 			      __func__, array_size, nid);
 	}
 
 	return section;
 }
-
+/* 
+初始化这个section所在page的memsection数组
+memsection的组织方式是二维数组
+一维的长度是memsection的页面数量
+二维的长度是每个页面里面的memsection数量，256个。 */
 static int __meminit sparse_index_init(unsigned long section_nr, int nid)
 {
+	/* 获得section所属的page */
 	unsigned long root = SECTION_NR_TO_ROOT(section_nr);
 	struct mem_section *section;
 
@@ -92,13 +100,13 @@ static int __meminit sparse_index_init(unsigned long section_nr, int nid)
 	 *
 	 * The mem_hotplug_lock resolves the apparent race below.
 	 */
-	if (mem_section[root])
+	if (mem_section[root])/* 这个页面的memsection数组已经初始化了？ */
 		return 0;
-
+	/* 分配这个page的memsection数组，里面应该是256个memsection */
 	section = sparse_index_alloc(nid);
 	if (!section)
 		return -ENOMEM;
-
+	/* root是个page的idx，把刚刚申请的赋值上去 */
 	mem_section[root] = section;
 
 	return 0;
@@ -111,6 +119,10 @@ static inline int sparse_index_init(unsigned long section_nr, int nid)
 #endif
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
+/* 找到memsection的nr，
+memsection是在一组pages里面某个page的256个memsection的其中一个。哦哦不对，
+这些pages不一定是连续的好像。
+还得遍历才能找到 */
 unsigned long __section_nr(struct mem_section *ms)
 {
 	unsigned long root_nr;
@@ -126,7 +138,7 @@ unsigned long __section_nr(struct mem_section *ms)
 	}
 
 	VM_BUG_ON(!root);
-
+	/* 范围ms的nr */
 	return (root_nr * SECTIONS_PER_ROOT) + (ms - root);
 }
 #else
@@ -137,6 +149,7 @@ unsigned long __section_nr(struct mem_section *ms)
 #endif
 
 /*
+编码nid
  * During early boot, before section_mem_map is used for an actual
  * mem_map, we use section_mem_map to store the section's NUMA
  * node.  This keeps us from having to use another data structure.  The
@@ -152,10 +165,13 @@ static inline int sparse_early_nid(struct mem_section *section)
 	return (section->section_mem_map >> SECTION_NID_SHIFT);
 }
 
-/* Validate the physical addressing limitations of the model */
+/* 
+todo
+Validate the physical addressing limitations of the model */
 void __meminit mminit_validate_memmodel_limits(unsigned long *start_pfn,
 						unsigned long *end_pfn)
 {
+	/* 1<<(34)? */
 	unsigned long max_sparsemem_pfn = 1UL << (MAX_PHYSMEM_BITS-PAGE_SHIFT);
 
 	/*
@@ -179,6 +195,8 @@ void __meminit mminit_validate_memmodel_limits(unsigned long *start_pfn,
 }
 
 /*
+2024年8月24日23:12:32
+标记这个memsection为present。
  * There are a number of times that we loop over NR_MEM_SECTIONS,
  * looking for section_present() on each.  But, when we have very
  * large physical address spaces, NR_MEM_SECTIONS can also be
@@ -187,7 +205,10 @@ void __meminit mminit_validate_memmodel_limits(unsigned long *start_pfn,
  * Keeping track of this gives us an easy way to break out of
  * those loops early.
  */
+ /* 记录当前的最高的memsection nr */
 unsigned long __highest_present_section_nr;
+/* 标记memsection为present
+就是置位标记位 */
 static void section_mark_present(struct mem_section *ms)
 {
 	unsigned long section_nr = __section_nr(ms);
@@ -218,31 +239,46 @@ static inline unsigned long first_present_section_nr(void)
 {
 	return next_present_section_nr(-1);
 }
-
+/* 2024年8月24日20:44:29
+标记一下以pfn起始的pfns个页面的subsection？
+ */
 static void subsection_mask_set(unsigned long *map, unsigned long pfn,
 		unsigned long nr_pages)
 {
+	/* 看用法好像是这里获得是bit范围，就是这nr_pages在bitmap的bit范围？
+	不是，好像是什么subsection的off，反正在64以内 */
 	int idx = subsection_map_index(pfn);
 	int end = subsection_map_index(pfn + nr_pages - 1);
 
 	bitmap_set(map, idx, end - idx + 1);
 }
 
+/* 参数是memblock里面每个node的每个region的起始pfn和大小nr_pages 
+标记的好像是这些pfn所在的subsection什么的，todo。*/
 void __init subsection_map_init(unsigned long pfn, unsigned long nr_pages)
 {
+	/* 获取mem section的idx
+	为什么是以region的最后一个pfn为参数来获取？ */
 	int end_sec = pfn_to_section_nr(pfn + nr_pages - 1);
+	/* 哦哦看来是可能位于不同的memsection */
 	unsigned long nr, start_sec = pfn_to_section_nr(pfn);
 
 	if (!nr_pages)
 		return;
-
+ 
+	/* nr       nr
+------------------------------------------------------------------------------------------
+    |  pfn+++|       |       |        |        |        |        |        |
+	 */
 	for (nr = start_sec; nr <= end_sec; nr++) {
 		struct mem_section *ms;
 		unsigned long pfns;
-
-		pfns = min(nr_pages, PAGES_PER_SECTION
-				- (pfn & ~PAGE_SECTION_MASK));
+		/* 在nr_pages与pfn在所在memsection内的偏移后半部分（第一个memsection可能是一部分（加号的
+		地方，后面几个memsection的情况中pfn就对齐起始地址了，所以应该是整个memsection了））取小 */
+		pfns = min(nr_pages, PAGES_PER_SECTION - (pfn & ~PAGE_SECTION_MASK));
+		/* 获取当前memsection */
 		ms = __nr_to_section(nr);
+		/* 标记一下以pfn起始的pfns个页面 */
 		subsection_mask_set(ms->usage->subsection_map, pfn, pfns);
 
 		pr_debug("%s: sec: %lu pfns: %lu set(%d, %d)\n", __func__, nr,
@@ -254,37 +290,42 @@ void __init subsection_map_init(unsigned long pfn, unsigned long nr_pages)
 	}
 }
 
-/* Record a memory area against a node. */
+/* 
+start和end是nid的一个memblock region的范围
+Record a memory area against a node. */
 void __init memory_present(int nid, unsigned long start, unsigned long end)
 {
 	unsigned long pfn;
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
-	if (unlikely(!mem_section)) {
+	if (unlikely(!mem_section)) {/* 还没有memsection的情况下？ */
 		unsigned long size, align;
 
 		size = sizeof(struct mem_section*) * NR_SECTION_ROOTS;
 		align = 1 << (INTERNODE_CACHE_SHIFT);
+		/* 分配memsection的内存 */
 		mem_section = memblock_alloc(size, align);
 		if (!mem_section)
 			panic("%s: Failed to allocate %lu bytes align=0x%lx\n",
 			      __func__, size, align);
 	}
 #endif
-
+	/* 对齐到memsection大小（32K） */
 	start &= PAGE_SECTION_MASK;
 	mminit_validate_memmodel_limits(&start, &end);
 	for (pfn = start; pfn < end; pfn += PAGES_PER_SECTION) {
 		unsigned long section = pfn_to_section_nr(pfn);
 		struct mem_section *ms;
-
+		/* 初始化这个section所在page的memsection数组 */
 		sparse_index_init(section, nid);
+		/*  */
 		set_section_nid(section, nid);
-
+		/* 获得这个nr对应的memsection */
 		ms = __nr_to_section(section);
-		if (!ms->section_mem_map) {
+		if (!ms->section_mem_map) {/* 如果这个memsection还没初始化 ，就让其present*/
 			ms->section_mem_map = sparse_encode_early_nid(nid) |
 							SECTION_IS_ONLINE;
+			/* 置位present标记位 */
 			section_mark_present(ms);
 		}
 	}
@@ -624,12 +665,16 @@ void online_mem_sections(unsigned long start_pfn, unsigned long end_pfn)
 }
 
 #ifdef CONFIG_MEMORY_HOTREMOVE
-/* Mark all memory sections within the pfn range as offline */
+/* Mark all memory sections within the pfn range as offline
+2024年8月24日00:55:10
+找到范围内pfn的memsection，下线这些memsection，通过异或flag标记下线，
+ */
 void offline_mem_sections(unsigned long start_pfn, unsigned long end_pfn)
 {
 	unsigned long pfn;
 
 	for (pfn = start_pfn; pfn < end_pfn; pfn += PAGES_PER_SECTION) {
+		
 		unsigned long section_nr = pfn_to_section_nr(pfn);
 		struct mem_section *ms;
 
@@ -641,9 +686,11 @@ void offline_mem_sections(unsigned long start_pfn, unsigned long end_pfn)
 			continue;
 
 		ms = __nr_to_section(section_nr);
+
 		ms->section_mem_map &= ~SECTION_IS_ONLINE;
 	}
 }
+
 #endif
 
 #ifdef CONFIG_SPARSEMEM_VMEMMAP

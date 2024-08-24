@@ -113,7 +113,7 @@ enum pageflags {
 	PG_slab,/* 属于slab */
 	PG_owner_priv_1,	/* Owner use. If pagecache, fs may use*/
 	PG_arch_1,/* 架构相关页面状态位，比如可以表示_PGMT_WC */
-	PG_reserved,/* 不可被换出，防止被swap */
+	PG_reserved,/* 不可被换出，防止被swap？算是offline吗 */
 	PG_private,		/* If pagecache, has fs-private data ，如果page中的private成员非空，则需要设置该标志，如果是pagecache, 包含fs-private data*/
 	PG_private_2,		/* If pagecache, has fs aux data，如果是pagecache, 包含fs aux data */
 	PG_writeback,		/* Page is under writeback ，正在被回写*/
@@ -216,6 +216,8 @@ static inline int PagePoisoned(const struct page *page)
 #ifdef CONFIG_DEBUG_VM
 void page_init_poison(struct page *page, size_t size);
 #else
+/* 2024年8月24日13:21:32
+ */
 static inline void page_init_poison(struct page *page, size_t size)
 {
 }
@@ -588,9 +590,9 @@ static inline void set_page_writeback_keepwrite(struct page *page)
 {
 	test_set_page_writeback_keepwrite(page);
 }
-
+/* 是不是巨页复合页的head页 */
 __PAGEFLAG(Head, head, PF_ANY) CLEARPAGEFLAG(Head, head, PF_ANY)
-
+/* 设置复合页尾页的head为复合页的head page */
 static __always_inline void set_compound_head(struct page *page, struct page *head)
 {
 	WRITE_ONCE(page->compound_head, (unsigned long)head + 1);

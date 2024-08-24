@@ -133,6 +133,8 @@ static inline phys_addr_t virt_to_phys(volatile void *address)
 #define virt_to_phys virt_to_phys
 
 /**
+2024年8月24日13:18:56
+物理地址转为内核虚拟地址，就是加上内核那个偏移。
  *	phys_to_virt	-	map physical address to virtual
  *	@address: address to remap
  *
@@ -149,6 +151,7 @@ static inline void *phys_to_virt(phys_addr_t address)
 {
 	return __va(address);
 }
+/* 物理地址转为内核虚拟地址 */
 #define phys_to_virt phys_to_virt
 
 /*

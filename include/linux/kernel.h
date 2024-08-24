@@ -32,7 +32,9 @@
 /* @a is a power of 2 value */
 /* 把x对齐到a的倍数，并且比x大 */
 #define ALIGN(x, a)		__ALIGN_KERNEL((x), (a))
+/* 对齐到比x小的最近的，a的倍数 */
 #define ALIGN_DOWN(x, a)	__ALIGN_KERNEL((x) - ((a) - 1), (a))
+/* (((x) + (mask)) & ~(mask)) */
 #define __ALIGN_MASK(x, mask)	__ALIGN_KERNEL_MASK((x), (mask))
 #define PTR_ALIGN(p, a)		((typeof(p))ALIGN((unsigned long)(p), (a)))
 #define IS_ALIGNED(x, a)		(((x) & ((typeof(x))(a) - 1)) == 0)
@@ -99,7 +101,7 @@
 #define FIELD_SIZEOF(t, f) (sizeof(((t*)0)->f))
 
 #define typeof_member(T, m)	typeof(((T*)0)->m)
-
+/* (((n) + (d) - 1) / (d)) */
 #define DIV_ROUND_UP __KERNEL_DIV_ROUND_UP
 
 #define DIV_ROUND_DOWN_ULL(ll, d) \
@@ -918,11 +920,13 @@ static inline void ftrace_dump(enum ftrace_dump_mode oops_dump_mode) { }
 	__x == 0 ? __y : ((__y == 0) ? __x : min(__x, __y)); })
 
 /**
+感觉就是取中间值？
  * clamp - return a value clamped to a given range with strict typechecking
  * @val: current value
  * @lo: lowest allowable value
  * @hi: highest allowable value
- *
+ * lo val hi  -> val
+ val lo hi   ->  lo
  * This macro does strict typechecking of @lo/@hi to make sure they are of the
  * same type as @val.  See the unnecessary pointer comparisons.
  */

@@ -4,8 +4,10 @@
 
 #include <linux/linkage.h>
 
-/* L1 cache line size */
+/* L1 cache line size
+l1cache对齐大小   6 */
 #define L1_CACHE_SHIFT	(CONFIG_X86_L1_CACHE_SHIFT)
+/* L1的cache大小，64 */
 #define L1_CACHE_BYTES	(1 << L1_CACHE_SHIFT)
 
 #define __read_mostly __attribute__((__section__(".data..read_mostly")))

@@ -931,7 +931,8 @@ void __init memblock_find_dma_reserve(void)
 	set_dma_reserve(nr_pages - nr_free_pages);
 #endif
 }
-
+/* 2024年8月24日16:24:04
+初始化几种zone */
 void __init zone_sizes_init(void)
 {
 	unsigned long max_zone_pfns[MAX_NR_ZONES];

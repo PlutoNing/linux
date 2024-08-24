@@ -66,7 +66,9 @@ static inline unsigned long ra_submit(struct file_ra_state *ra,
 }
 
 /*
-把页面标记为被引用。
+
+把页面标记为被一次引用。
+split高order的页面会用到。
  * Turn a non-refcounted page (->_refcount == 0) into refcounted with
  * a count of one.
  */
@@ -133,6 +135,8 @@ struct alloc_context {
 #define ac_classzone_idx(ac) zonelist_zone_idx(ac->preferred_zoneref)
 
 /*
+、2024年8月24日02:18:26
+todo
  * Locate the struct page for both the matching buddy in our
  * pair (buddy1) and the combined O(n+1) page they form (page).
  *
@@ -159,7 +163,7 @@ extern struct page *__pageblock_pfn_to_page(unsigned long start_pfn,
 				unsigned long end_pfn, struct zone *zone);
 /* 2024年08月13日16:15:56
 @start_pfn，@end_pfn：好像分别是pabeblock的起始和结束地址
-检查范围内是不是位于zone
+检查范围内是不是位于同一个zone
 返回起始pfn对应的page
  */
 static inline struct page *pageblock_pfn_to_page(unsigned long start_pfn,
@@ -209,7 +213,7 @@ struct compact_control {
 	unsigned long free_pfn;		/*空闲页扫描起始页框 isolate_freepages search base */
 	unsigned long migrate_pfn;	/* 待移动页扫描起始页框isolate_migratepages search base */
 	unsigned long fast_start_pfn;	/* 快速扫描起始页框，a pfn to start linear scan from */
-	struct zone *zone;/* 本次扫描的zone */
+	struct zone *zone;/* 本次内存规整，扫描的zone */
 	unsigned long total_migrate_scanned;/* 做可迁移页面扫描时，已经扫描的页框数 */
 	unsigned long total_free_scanned;/* 空闲页面扫描时，已扫描数量 */
 	unsigned short fast_search_fail;/* failures to use free list searches */

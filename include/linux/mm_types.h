@@ -269,18 +269,24 @@ static inline atomic_t *compound_mapcount_ptr(struct page *page)
  * Used for sizing the vmemmap region on some architectures
  */
 #define STRUCT_PAGE_MAX_SHIFT	(order_base_2(sizeof(struct page)))
-
+/* (((32768) + (~((~(4096-1))))) & ~(~((~(4096-1)))))
+等于32768 */
 #define PAGE_FRAG_CACHE_MAX_SIZE	__ALIGN_MASK(32768, ~PAGE_MASK)
+/* get_order（32768） 32kb，应该是8吧
+值应该是3 */
 #define PAGE_FRAG_CACHE_MAX_ORDER	get_order(PAGE_FRAG_CACHE_MAX_SIZE)
 /* 2024年7月14日17:31:23 */
 #define page_private(page)		((page)->private)
 #define set_page_private(page, v)	((page)->private = (v))
-
+/* page_frag_alloc函数是 Linux 内核中的一个内存分配函数，主要用于分配小块内存，
+以减少内存碎片，提高内存使用效率。它在网络子系统中被广泛使用，比如在发送和接收数据包时，
+需要频繁地分配和释放小块内存。
+nc：指向 page_frag_cache 结构的指针，这个结构用来缓存最近分配的页面，以便重用。 */
 struct page_frag_cache {
-	void * va;
+	void * va;/* 记录缓存的页面地址 */
 #if (PAGE_SIZE < PAGE_FRAG_CACHE_MAX_SIZE)
-	__u16 offset;
-	__u16 size;
+	__u16 offset;/* 初始化时赋值为size */
+	__u16 size;/* 记录缓存的页面大小 */
 #else
 	__u32 offset;
 #endif
@@ -288,7 +294,7 @@ struct page_frag_cache {
 	 * containing page->_refcount every time we allocate a fragment.
 	 */
 	unsigned int		pagecnt_bias;
-	bool pfmemalloc;
+	bool pfmemalloc; /* 缓存的页面是page_is_pfmemalloc */
 };
 
 typedef unsigned long vm_flags_t;

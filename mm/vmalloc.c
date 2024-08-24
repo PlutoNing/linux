@@ -2897,6 +2897,7 @@ void *vmalloc_node(unsigned long size, int node)
 EXPORT_SYMBOL(vmalloc_node);
 
 /**
+vmalloc在node上面分配0填充的内存。
  * vzalloc_node - allocate memory on a specific node with zero fill
  * @size:	allocation size
  * @node:	numa node

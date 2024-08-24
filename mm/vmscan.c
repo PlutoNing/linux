@@ -1745,7 +1745,8 @@ keep:
 	return nr_reclaimed;
 }
 
-/* 2024年08月20日09:49:38 */
+/* 2024年08月20日09:49:38
+回收page_list页面，可以解除映射，那感觉就是全部可以回收？ */
 unsigned long reclaim_clean_pages_from_list(struct zone *zone,
 					    struct list_head *page_list)
 {

@@ -68,7 +68,7 @@ static struct page_ext_operations *page_ext_ops[] = {
 };
 
 unsigned long page_ext_size = sizeof(struct page_ext);
-
+/* 2024年8月24日00:45:43 */
 static unsigned long total_usage;
 
 static bool __init invoke_need_callbacks(void)
@@ -201,35 +201,41 @@ struct page_ext *lookup_page_ext(const struct page *page)
 		return NULL;
 	return get_entry(section->page_ext, pfn);
 }
-/*  */
+
+/* 2024年8月24日00:08:09
+分配page_ext使用的内存 */
 static void *__meminit alloc_page_ext(size_t size, int nid)
 {
 	gfp_t flags = GFP_KERNEL | __GFP_ZERO | __GFP_NOWARN;
 	void *addr = NULL;
-
+	/* 在node上面分配准确大小的连续物理页面 */
 	addr = alloc_pages_exact_nid(nid, size, flags);
-	if (addr) {
+	
+	if (addr) {/* 分配成功，直接返回 */
 		kmemleak_alloc(addr, size, 1, flags);
 		return addr;
 	}
-
+	/* 没成功就用vmalloc分配吗 */
 	addr = vzalloc_node(size, nid);
 
 	return addr;
 }
-/*  */
+
+/* 2024年8月24日00:04:17
+初始化page ext时遍历pfn，逐个调用 */
 static int __meminit init_section_page_ext(unsigned long pfn, int nid)
 {
 	struct mem_section *section;
 	struct page_ext *base;
 	unsigned long table_size;
-
+	/* 获得pfn的mem section */
 	section = __pfn_to_section(pfn);
 
 	if (section->page_ext)
 		return 0;
 
 	table_size = page_ext_size * PAGES_PER_SECTION;
+	/* 分配page_ext使用的内存 */
 	base = alloc_page_ext(table_size, nid);
 
 	/*
@@ -248,8 +254,11 @@ static int __meminit init_section_page_ext(unsigned long pfn, int nid)
 	 * The passed "pfn" may not be aligned to SECTION.  For the calculation
 	 * we need to apply a mask.
 	 */
+	/* 对齐到32K */
 	pfn &= PAGE_SECTION_MASK;
+
 	section->page_ext = (void *)base - page_ext_size * pfn;
+	
 	total_usage += table_size;
 	return 0;
 }
@@ -397,11 +406,14 @@ void __init page_ext_init(void)
 			 */
 			if (pfn_to_nid(pfn) != nid)
 				continue;
+
 			if (init_section_page_ext(pfn, nid))
 				goto oom;
+
 			cond_resched();
 		}
 	}
+
 	hotplug_memory_notifier(page_ext_callback, 0);
 	pr_info("allocated %ld bytes of page_ext\n", total_usage);
 	invoke_init_callbacks();

@@ -127,7 +127,7 @@ __setup("norandmaps", disable_randmaps);
 
 unsigned long zero_pfn __read_mostly;
 EXPORT_SYMBOL(zero_pfn);
-
+/* 好像是系统全部的zone的memmap的最高地址 */
 unsigned long highest_memmap_pfn __read_mostly;
 
 /*

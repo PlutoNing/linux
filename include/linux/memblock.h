@@ -26,6 +26,7 @@ extern unsigned long max_pfn;
 extern unsigned long long max_possible_pfn;
 
 /**
+2024年8月24日10:33:20
  * enum memblock_flags - definition of memory region attributes
  * @MEMBLOCK_NONE: no special request
  * @MEMBLOCK_HOTPLUG: hotpluggable region
@@ -34,12 +35,13 @@ extern unsigned long long max_possible_pfn;
  */
 enum memblock_flags {
 	MEMBLOCK_NONE		= 0x0,	/* No special request */
-	MEMBLOCK_HOTPLUG	= 0x1,	/* hotpluggable region */
+	MEMBLOCK_HOTPLUG	= 0x1,	/* 是不是hotpluggable的 region */
 	MEMBLOCK_MIRROR		= 0x2,	/* mirrored region */
 	MEMBLOCK_NOMAP		= 0x4,	/* don't add to kernel direct mapping */
 };
 
 /**
+代表memblock里面一种内存类型里面的内存region
  * struct memblock_region - represents a memory region
  * @base: physical address of the region
  * @size: size of the region
@@ -47,8 +49,8 @@ enum memblock_flags {
  * @nid: NUMA node id
  */
 struct memblock_region {
-	phys_addr_t base;
-	phys_addr_t size;
+	phys_addr_t base;/* region的起始地址 */
+	phys_addr_t size;/* region的大小 */
 	enum memblock_flags flags;
 #ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
 	int nid;
@@ -56,6 +58,8 @@ struct memblock_region {
 };
 
 /**
+memblock里面的内存类型的结构体表示。
+现在memblock里面有memory和reserved两种类型。
  * struct memblock_type - collection of memory regions of certain type
  * @cnt: number of regions
  * @max: size of the allocated array
@@ -64,14 +68,15 @@ struct memblock_region {
  * @name: the memory type symbolic name
  */
 struct memblock_type {
-	unsigned long cnt;
-	unsigned long max;
+	unsigned long cnt;/* region的数量 */
+	unsigned long max;/* 分配的region数组大小 */
 	phys_addr_t total_size;
 	struct memblock_region *regions;
 	char *name;
 };
 
 /**
+memblock分配机制的元数据
  * struct memblock - memblock allocator metadata
  * @bottom_up: is bottom up direction?
  * @current_limit: physical address of the current allocation limit
@@ -81,7 +86,8 @@ struct memblock_type {
  */
 struct memblock {
 	bool bottom_up;  /* is bottom up direction? */
-	phys_addr_t current_limit;
+	phys_addr_t current_limit;/* 应该是当前的最大限制？看用途好像
+	调用者使用最大限制的话，就调整成这个 */
 	struct memblock_type memory;
 	struct memblock_type reserved;
 #ifdef CONFIG_HAVE_MEMBLOCK_PHYS_MAP
@@ -147,10 +153,13 @@ void __next_reserved_mem_region(u64 *idx, phys_addr_t *out_start,
 void __memblock_free_late(phys_addr_t base, phys_addr_t size);
 
 /**
+遍历memblock的memory类型（@type_a），排除掉reserved内存类型（@type_b）
+寻找可分配区域，赋值到相关参数
  * for_each_mem_range - iterate through memblock areas from type_a and not
  * included in type_b. Or just type_a if type_b is NULL.
  * @i: u64 used as loop variable
  * @type_a: ptr to memblock_type to iterate
+
  * @type_b: ptr to memblock_type which excludes from the iteration
  * @nid: node selector, %NUMA_NO_NODE for all nodes
  * @flags: pick from blocks based on memory attributes
@@ -167,6 +176,7 @@ void __memblock_free_late(phys_addr_t base, phys_addr_t size);
 			      p_start, p_end, p_nid))
 
 /**
+反向遍历
  * for_each_mem_range_rev - reverse iterate through memblock areas from
  * type_a and not included in type_b. Or just type_a if type_b is NULL.
  * @i: u64 used as loop variable
@@ -200,12 +210,12 @@ void __memblock_free_late(phys_addr_t base, phys_addr_t size);
 	for (i = 0UL, __next_reserved_mem_region(&i, p_start, p_end);	\
 	     i != (u64)ULLONG_MAX;					\
 	     __next_reserved_mem_region(&i, p_start, p_end))
-
+/*  */
 static inline bool memblock_is_hotpluggable(struct memblock_region *m)
 {
 	return m->flags & MEMBLOCK_HOTPLUG;
 }
-
+/* region是不是mirror的 */
 static inline bool memblock_is_mirror(struct memblock_region *m)
 {
 	return m->flags & MEMBLOCK_MIRROR;
@@ -223,12 +233,17 @@ void __next_mem_pfn_range(int *idx, int nid, unsigned long *out_start_pfn,
 			  unsigned long *out_end_pfn, int *out_nid);
 
 /**
+2024年8月24日14:27:32
+以i为基础，作为memblock的memory里面的每个region。
+找到地址和大小符合范围的，同一个node的region后返回。
+一直到i不符合范围
  * for_each_mem_pfn_range - early memory pfn range iterator
  * @i: an integer used as loop variable
  * @nid: node selector, %MAX_NUMNODES for all nodes
  * @p_start: ptr to ulong for start pfn of the range, can be %NULL
  * @p_end: ptr to ulong for end pfn of the range, can be %NULL
  * @p_nid: ptr to int for nid of the range, can be %NULL
+ 是找到的r的nid
  *
  * Walks over configured memory ranges.
  */
@@ -279,6 +294,7 @@ void __next_mem_pfn_range_in_zone(u64 *idx, struct zone *zone,
 #endif /* CONFIG_DEFERRED_STRUCT_PAGE_INIT */
 
 /**
+遍历memblock的free区域
  * for_each_free_mem_range - iterate through free memblock areas
  * @i: u64 used as loop variable
  * @nid: node selector, %NUMA_NO_NODE for all nodes
@@ -295,6 +311,7 @@ void __next_mem_pfn_range_in_zone(u64 *idx, struct zone *zone,
 			   nid, flags, p_start, p_end, p_nid)
 
 /**
+反向遍历memblock的region
  * for_each_free_mem_range_reverse - rev-iterate through free memblock areas
  * @i: u64 used as loop variable
  * @nid: node selector, %NUMA_NO_NODE for all nodes
@@ -319,7 +336,7 @@ static inline void memblock_set_region_node(struct memblock_region *r, int nid)
 {
 	r->nid = nid;
 }
-
+/* 获取region的nodeid */
 static inline int memblock_get_region_node(const struct memblock_region *r)
 {
 	return r->nid;
@@ -364,13 +381,14 @@ void *memblock_alloc_try_nid_raw(phys_addr_t size, phys_addr_t align,
 void *memblock_alloc_try_nid(phys_addr_t size, phys_addr_t align,
 			     phys_addr_t min_addr, phys_addr_t max_addr,
 			     int nid);
-
+/* 早期内存分配，分配@size按@align大小对齐。
+应该是bootmem的啥啥memblock吧 */
 static inline void * __init memblock_alloc(phys_addr_t size,  phys_addr_t align)
 {
 	return memblock_alloc_try_nid(size, align, MEMBLOCK_LOW_LIMIT,
 				      MEMBLOCK_ALLOC_ACCESSIBLE, NUMA_NO_NODE);
 }
-
+/* 分配size大小align对齐的内存 */
 static inline void * __init memblock_alloc_raw(phys_addr_t size,
 					       phys_addr_t align)
 {
@@ -406,7 +424,7 @@ static inline void __init memblock_free_early(phys_addr_t base,
 {
 	memblock_free(base, size);
 }
-
+/* 释放memblock里面属于nid的region（起始base，大小size页面）， */
 static inline void __init memblock_free_early_nid(phys_addr_t base,
 						  phys_addr_t size, int nid)
 {
@@ -478,6 +496,7 @@ phys_addr_t memblock_get_current_limit(void);
  */
 
 /**
+获取region的起始pfn
  * memblock_region_memory_base_pfn - get the lowest pfn of the memory region
  * @reg: memblock_region structure
  *
@@ -489,6 +508,7 @@ static inline unsigned long memblock_region_memory_base_pfn(const struct membloc
 }
 
 /**
+获取region的end pfn
  * memblock_region_memory_end_pfn - get the end pfn of the memory region
  * @reg: memblock_region structure
  *
@@ -520,12 +540,12 @@ static inline unsigned long memblock_region_reserved_end_pfn(const struct memblo
 {
 	return PFN_UP(reg->base + reg->size);
 }
-
+/* 遍历memblock的memory的region */
 #define for_each_memblock(memblock_type, region)					\
 	for (region = memblock.memblock_type.regions;					\
 	     region < (memblock.memblock_type.regions + memblock.memblock_type.cnt);	\
 	     region++)
-
+/* 遍历type的region */
 #define for_each_memblock_type(i, memblock_type, rgn)			\
 	for (i = 0, rgn = &memblock_type->regions[0];			\
 	     i < memblock_type->cnt;					\
@@ -542,14 +562,14 @@ extern void *alloc_large_system_hash(const char *tablename,
 				     unsigned long high_limit);
 
 #define HASH_EARLY	0x00000001	/* Allocating during early boot? */
-#define HASH_SMALL	0x00000002	/* sub-page allocation allowed, min
-					 * shift passed via *_hash_shift */
+#define HASH_SMALL	0x00000002	/* sub-page allocation allowed, min * shift passed via *_hash_shift */
 #define HASH_ZERO	0x00000004	/* Zero allocated hash table */
 
 /* Only NUMA needs hash distribution. 64bit NUMA architectures have
  * sufficient vmalloc space.
  */
 #ifdef CONFIG_NUMA
+/*  */
 #define HASHDIST_DEFAULT IS_ENABLED(CONFIG_64BIT)
 extern int hashdist;		/* Distribute hashes across NUMA nodes? */
 #else

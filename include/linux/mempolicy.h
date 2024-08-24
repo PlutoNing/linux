@@ -163,7 +163,7 @@ extern bool mempolicy_nodemask_intersects(struct task_struct *tsk,
 extern unsigned int mempolicy_slab_node(void);
 
 extern enum zone_type policy_zone;
-
+/*  */
 static inline void check_highest_zone(enum zone_type k)
 {
 	if (k > policy_zone && k != ZONE_MOVABLE)

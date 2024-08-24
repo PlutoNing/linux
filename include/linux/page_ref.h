@@ -61,7 +61,7 @@ static inline void __page_ref_unfreeze(struct page *page, int v)
 }
 
 #endif
-
+/* 获取page引用计数 */
 static inline int page_ref_count(struct page *page)
 {
 	return atomic_read(&page->_refcount);

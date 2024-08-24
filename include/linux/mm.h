@@ -147,8 +147,13 @@ extern int mmap_rnd_compat_bits __read_mostly;
  * statement, and only leaves move/store instructions. Also the compiler can
  * combine write statments if they are both assignments and can be reordered,
  * this can result in several of the writes here being dropped.
+ 2024年8月24日14:11:14
+清零页面
  */
 #define	mm_zero_struct_page(pp) __mm_zero_struct_page(pp)
+/* 
+好像是清零页面的内容
+ */
 static inline void __mm_zero_struct_page(struct page *page)
 {
 	unsigned long *_pp = (void *)page;
@@ -214,7 +219,9 @@ extern int overcommit_kbytes_handler(struct ctl_table *, int, void __user *,
 
 #define nth_page(page,n) pfn_to_page(page_to_pfn((page)) + (n))
 
-/* to align the pointer to the (next) page boundary */
+/* 
+对齐到页面大小
+to align the pointer to the (next) page boundary */
 #define PAGE_ALIGN(addr) ALIGN(addr, PAGE_SIZE)
 
 /* test whether an address (unsigned long or pointer) is aligned to PAGE_SIZE */
@@ -771,6 +778,7 @@ static inline int compound_mapcount(struct page *page)
 
 /*
 2024年6月26日21:50:56
+这个mapcnt初始值居然是-1
  * The atomic page->_mapcount, starts from -1: so that transitions
  * both from it and to it can be tracked, using atomic_inc_and_test
  * and atomic_add_negative(-1).
@@ -844,7 +852,7 @@ enum compound_dtor_id {
 	NR_COMPOUND_DTORS,
 };
 extern compound_page_dtor * const compound_page_dtors[];
-
+/* 设置复合页面的dtor */
 static inline void set_compound_page_dtor(struct page *page,
 		enum compound_dtor_id compound_dtor)
 {
@@ -857,7 +865,9 @@ static inline compound_page_dtor *get_compound_page_dtor(struct page *page)
 	VM_BUG_ON_PAGE(page[1].compound_dtor >= NR_COMPOUND_DTORS, page);
 	return compound_page_dtors[page[1].compound_dtor];
 }
-/* 2024年7月13日14:41:03 */
+/* 2024年7月13日14:41:03
+获得复合页的order
+ */
 static inline unsigned int compound_order(struct page *page)
 {
 	if (!PageHead(page))
@@ -865,7 +875,7 @@ static inline unsigned int compound_order(struct page *page)
 	/* 可以参考复合页的格式 */
 	return page[1].compound_order;
 }
-
+/* 设置复合页面的order */
 static inline void set_compound_order(struct page *page, unsigned int order)
 {
 	page[1].compound_order = order;
@@ -879,7 +889,9 @@ static inline unsigned long compound_nr(struct page *page)
 	return 1UL << compound_order(page);
 }
 
-/* Returns the number of bytes in this potentially compound page. */
+/* 
+获得巨页的大小
+Returns the number of bytes in this potentially compound page. */
 static inline unsigned long page_size(struct page *page)
 {
 	return PAGE_SIZE << compound_order(page);
@@ -1491,6 +1503,8 @@ static inline bool page_is_pfmemalloc(struct page *page)
 }
 
 /*
+2024年8月25日01:30:43
+todo
  * Only to be called by the page allocator on a freshly allocated
  * page.
  */
@@ -2222,14 +2236,18 @@ extern void mem_init_print_info(const char *str);
 
 extern void reserve_bootmem_region(phys_addr_t start, phys_addr_t end);
 
-/* Free the reserved page into the buddy system, so it gets managed. */
+/*
+2024年8月24日16:15:29
+释放reserve的页面
+清除页面的reserve标记，释放到buddy就ok
+ Free the reserved page into the buddy system, so it gets managed. */
 static inline void __free_reserved_page(struct page *page)
 {
 	ClearPageReserved(page);
 	init_page_count(page);
 	__free_page(page);
 }
-
+/* 释放reserve的页面 */
 static inline void free_reserved_page(struct page *page)
 {
 	__free_reserved_page(page);
@@ -2812,6 +2830,7 @@ DECLARE_STATIC_KEY_TRUE(init_on_alloc);
 #else
 DECLARE_STATIC_KEY_FALSE(init_on_alloc);
 #endif
+/*  */
 static inline bool want_init_on_alloc(gfp_t flags)
 {
 	if (static_branch_unlikely(&init_on_alloc) &&

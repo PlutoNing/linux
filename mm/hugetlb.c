@@ -1196,7 +1196,7 @@ static void update_and_free_page(struct hstate *h, struct page *page)
 		__free_pages(page, huge_page_order(h));
 	}
 }
-
+/* 通过复合页的size获得什么hstate？ */
 struct hstate *size_to_hstate(unsigned long size)
 {
 	struct hstate *h;

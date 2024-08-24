@@ -7,7 +7,7 @@ static inline bool has_isolate_pageblock(struct zone *zone)
 {
 	return zone->nr_isolate_pageblock;
 }
-/*  */
+/* page所在pageblock的mt是不是isolate */
 static inline bool is_migrate_isolate_page(struct page *page)
 {
 	return get_pageblock_migratetype(page) == MIGRATE_ISOLATE;

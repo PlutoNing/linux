@@ -40,6 +40,7 @@ extern unsigned int pageblock_order;
 #else /* CONFIG_HUGETLB_PAGE_SIZE_VARIABLE */
 
 /* Huge pages are a constant size
+9
 pageblock的order 是 9
 估计和pageblock大小相关，
  */
@@ -53,7 +54,7 @@ pageblock的order 是 9
 #define pageblock_order		(MAX_ORDER-1)
 
 #endif /* CONFIG_HUGETLB_PAGE */
-
+/* 1<<9 = 512 */
 #define pageblock_nr_pages	(1UL << pageblock_order)
 
 /* Forward declaration */

@@ -94,7 +94,7 @@
 #include <linux/threads.h>
 #include <linux/bitmap.h>
 #include <linux/numa.h>
-
+/*  */
 typedef struct { DECLARE_BITMAP(bits, MAX_NUMNODES); } nodemask_t;
 extern nodemask_t _unused_nodemask_arg_;
 
@@ -125,6 +125,7 @@ static inline const unsigned long *__nodemask_pr_bits(const nodemask_t *m)
  * this situation they will also need to be annotated as __always_inline
  */
 #define node_set(node, dst) __node_set((node), &(dst))
+/*  */
 static __always_inline void __node_set(int node, volatile nodemask_t *dstp)
 {
 	set_bit(node, dstp->bits);
@@ -141,8 +142,9 @@ static inline void __nodes_setall(nodemask_t *dstp, unsigned int nbits)
 {
 	bitmap_fill(dstp->bits, nbits);
 }
-
+/*  */
 #define nodes_clear(dst) __nodes_clear(&(dst), MAX_NUMNODES)
+/* clear这个mask */
 static inline void __nodes_clear(nodemask_t *dstp, unsigned int nbits)
 {
 	bitmap_zero(dstp->bits, nbits);
@@ -233,7 +235,7 @@ static inline int __nodes_full(const nodemask_t *srcp, unsigned int nbits)
 {
 	return bitmap_full(srcp->bits, nbits);
 }
-
+/*  */
 #define nodes_weight(nodemask) __nodes_weight(&(nodemask), MAX_NUMNODES)
 static inline int __nodes_weight(const nodemask_t *srcp, unsigned int nbits)
 {
@@ -258,13 +260,14 @@ static inline void __nodes_shift_left(nodemask_t *dstp,
 
 /* FIXME: better would be to fix all architectures to never return
           > MAX_NUMNODES, then the silly min_ts could be dropped. */
-
+/* 掩码的第一个node */
 #define first_node(src) __first_node(&(src))
+/* 返回掩码里面的第一个node */
 static inline int __first_node(const nodemask_t *srcp)
 {
 	return min_t(int, MAX_NUMNODES, find_first_bit(srcp->bits, MAX_NUMNODES));
 }
-
+/* 获取掩码mask里的n后面的node */
 #define next_node(n, src) __next_node((n), &(src))
 static inline int __next_node(int n, const nodemask_t *srcp)
 {
@@ -313,7 +316,7 @@ static inline int __first_unset_node(const nodemask_t *maskp)
 } })
 
 #else
-
+/*  */
 #define NODE_MASK_ALL							\
 ((nodemask_t) { {							\
 	[0 ... BITS_TO_LONGS(MAX_NUMNODES)-2] = ~0UL,			\
@@ -376,6 +379,7 @@ static inline void __nodes_fold(nodemask_t *dstp, const nodemask_t *origp,
 }
 
 #if MAX_NUMNODES > 1
+/* 遍历掩码指定的node */
 #define for_each_node_mask(node, mask)			\
 	for ((node) = first_node(mask);			\
 		(node) < MAX_NUMNODES;			\
@@ -417,7 +421,7 @@ static inline int node_state(int node, enum node_states state)
 {
 	return node_isset(node, node_states[state]);
 }
-
+/* 把node这个nr置位到相应的flag */
 static inline void node_set_state(int node, enum node_states state)
 {
 	__node_set(node, &node_states[state]);
@@ -432,7 +436,7 @@ static inline int num_node_state(enum node_states state)
 {
 	return nodes_weight(node_states[state]);
 }
-
+/* 遍历node_states数组的__state元素掩码指定的node */
 #define for_each_node_state(__node, __state) \
 	for_each_node_mask((__node), node_states[__state])
 
@@ -506,6 +510,7 @@ static inline int node_random(const nodemask_t *mask)
 #endif
 
 #define node_online_map 	node_states[N_ONLINE]
+/*  */
 #define node_possible_map 	node_states[N_POSSIBLE]
 
 #define num_online_nodes()	num_node_state(N_ONLINE)

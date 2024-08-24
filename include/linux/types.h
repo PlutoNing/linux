@@ -6,7 +6,8 @@
 #include <uapi/linux/types.h>
 
 #ifndef __ASSEMBLY__
-
+/* 就是定义一个long数组，假设数组大小为sz，long大小为32bit
+那么sz * 32 刚好大于bits */
 #define DECLARE_BITMAP(name,bits) \
 	unsigned long name[BITS_TO_LONGS(bits)]
 

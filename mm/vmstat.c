@@ -923,6 +923,7 @@ void cpu_vm_stats_fold(int cpu)
 }
 
 /*
+排空zone的pset。
  * this is only called if !populated_zone(zone), which implies no other users of
  * pset->vm_stat_diff[] exsist.
  */
@@ -934,6 +935,7 @@ void drain_zonestat(struct zone *zone, struct per_cpu_pageset *pset)
 		if (pset->vm_stat_diff[i]) {
 			int v = pset->vm_stat_diff[i];
 			pset->vm_stat_diff[i] = 0;
+			/* 把diff里面的drain到全局 */
 			atomic_long_add(v, &zone->vm_stat[i]);
 			atomic_long_add(v, &vm_zone_stat[i]);
 		}
@@ -942,7 +944,7 @@ void drain_zonestat(struct zone *zone, struct per_cpu_pageset *pset)
 	for (i = 0; i < NR_VM_NUMA_STAT_ITEMS; i++)
 		if (pset->vm_numa_stat_diff[i]) {
 			int v = pset->vm_numa_stat_diff[i];
-
+			/* 把numa里的也排空 */
 			pset->vm_numa_stat_diff[i] = 0;
 			atomic_long_add(v, &zone->vm_numa_stat[i]);
 			atomic_long_add(v, &vm_numa_stat[i]);

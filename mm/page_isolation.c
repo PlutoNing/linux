@@ -15,7 +15,8 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/page_isolation.h>
 /* todo，
-2024年08月22日17:02:52 */
+2024年08月22日17:02:52
+把page所在pageblock设置为isolate */
 static int set_migratetype_isolate(struct page *page, int migratetype, int isol_flags)
 {
 	struct zone *zone;
@@ -74,15 +75,16 @@ static int set_migratetype_isolate(struct page *page, int migratetype, int isol_
 out:/*  */
 	if (!ret) {/* ret = 0 ，进行了实际操作，不是被别人抢先了来到这的*/
 		unsigned long nr_pages;
-		/*  */
+		/* 保存旧的mt，马上好减少响应统计信息 */
 		int mt = get_pageblock_migratetype(page);
 
+		/* 这里把所在pageblock设置为isolate mt */
 		set_pageblock_migratetype(page, MIGRATE_ISOLATE);
 		zone->nr_isolate_pageblock++;
-		/*  */
+		/* 改变了迁移类型，这里在freearea里面移动到新的mt链表 */
 		nr_pages = move_freepages_block(zone, page, MIGRATE_ISOLATE,
 									NULL);
-
+		/* 减少旧迁移类型的统计信息 */
 		__mod_zone_freepage_state(zone, -nr_pages, mt);
 	}
 
@@ -91,7 +93,7 @@ out:/*  */
 		drain_all_pages(zone);
 	return ret;
 }
-/* 撤销page的isolation状态 */
+/* 撤销page的isolation状态，恢复到@mt */
 static void unset_migratetype_isolate(struct page *page, unsigned migratetype)
 {
 	struct zone *zone;
@@ -115,16 +117,17 @@ static void unset_migratetype_isolate(struct page *page, unsigned migratetype)
 	 * approach in order to merge them. Isolation and free will make
 	 * these pages to be merged.
 	 */
-	if (PageBuddy(page)) {
+	if (PageBuddy(page)) {/* 默认是buddy里面的页面，才有这个概念和操作？ */
 		order = page_order(page);
 		if (order >= pageblock_order) {/* 含义？和巨页有关么？ */
 			pfn = page_to_pfn(page);
+			/* todo */
 			buddy_pfn = __find_buddy_pfn(pfn, order);
 			buddy = page + (buddy_pfn - pfn);
 
 			if (pfn_valid_within(buddy_pfn) &&
-			    !is_migrate_isolate_page(buddy)) {
-				__isolate_free_page(page, order);
+			    !is_migrate_isolate_page(buddy)) {/* 如果page的mt不是isolate */
+				__isolate_free_page(page, order);/* 从buddy的lru移除 */
 				isolated_page = true;
 			}
 		}
@@ -135,18 +138,19 @@ static void unset_migratetype_isolate(struct page *page, unsigned migratetype)
 	 * should be no freepage in the range, so we could avoid costly
 	 * pageblock scanning for freepage moving.
 	 */
-	if (!isolated_page) {/* 移动页面 */
+	if (!isolated_page) {/* 没有从buddy移除页面的话，就移动页面到相应的mt */
 		nr_pages = move_freepages_block(zone, page, migratetype, NULL);
 		__mod_zone_freepage_state(zone, nr_pages, migratetype);
 	}
-	/* 设置page所在page_block的迁移类型 */
+	/*这里开始unset迁移类型， 设置page所在page_block的迁移类型为参数指定的@mt */
 	set_pageblock_migratetype(page, migratetype);
+	/* 从isolate进行unset成功了，isolate的减少了 */
 	zone->nr_isolate_pageblock--;
-out:
+out:/* 成功的出口 */
 	spin_unlock_irqrestore(&zone->lock, flags);
-	if (isolated_page) {
+	if (isolated_page) {/* 如果刚刚从buddy移除了页面 */
 		post_alloc_hook(page, order, __GFP_MOVABLE);
-		__free_pages(page, order);
+		__free_pages(page, order);/* 这里又归还给buddy？ */
 	}
 }
 /* 找到pfn开始的nr个页面中第一个对应的mem_section是online的 */
@@ -168,6 +172,7 @@ __first_valid_page(unsigned long pfn, unsigned long nr_pages)
 
 /**
 2024年8月11日22:24:08
+isolate指定pfn范围内的页面
  * start_isolate_page_range() - make page-allocation-type of range of pages to
  * be MIGRATE_ISOLATE.
  * @start_pfn:		The lower PFN of the range to be isolated.
@@ -211,10 +216,11 @@ int start_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 
 	for (pfn = start_pfn;
 	     pfn < end_pfn;
-	     pfn += pageblock_nr_pages) {
+	     pfn += pageblock_nr_pages) {/*遍历范围， isolate是按照pageblock步进的 */
+		 /* 找到pageblock范围内的第一个合法页面 */
 		page = __first_valid_page(pfn, pageblock_nr_pages);
 		if (page) {
-			/*  */
+			/* 把page所在pageblock设置为新的迁移类型 */
 			if (set_migratetype_isolate(page, migratetype, flags)) {/* 出错了 */
 				undo_pfn = pfn;
 				goto undo;
@@ -223,13 +229,14 @@ int start_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 		}
 	}
 	return nr_isolate_pageblock;
-undo:
+undo:/* 出错了来这里回滚 */
 	for (pfn = start_pfn;
 	     pfn < undo_pfn;
 	     pfn += pageblock_nr_pages) {
 		struct page *page = pfn_to_online_page(pfn);
 		if (!page)
 			continue;
+		/* 出错了就设置回参数指定的旧mt */
 		unset_migratetype_isolate(page, migratetype);
 	}
 
@@ -264,6 +271,9 @@ void undo_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 
 /*
 2024年8月11日21:32:26
+看看范围内是不是都是buddy页面，或者poisoned（如果可以的话）
+都是的话，返回值pfn=end_pfn。
+如果有其他页面，直接返回不是的pfn。
  * Test all pages in the range is free(means isolated) or not.
  * all pages in [start_pfn...end_pfn) must be in the same zone.
  * zone->lock must be held before call this.
@@ -276,14 +286,15 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 {
 	struct page *page;
 
-	while (pfn < end_pfn) {
+	while (pfn < end_pfn) {/* 遍历pfn */
 
 		if (!pfn_valid_within(pfn)) {/* 不可能进入此 */
 			pfn++;
 			continue;
 		}
+		/* 遍历获取每个page */
 		page = pfn_to_page(pfn);
-		if (PageBuddy(page))
+		if (PageBuddy(page))/* 如果是buddy页面，就按照order步进 */
 			/*
 			 * If the page is on a free list, it has to be on
 			 * the correct MIGRATE_ISOLATE freelist. There is no
@@ -303,6 +314,8 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 /* 
 2024年8月11日21:20:20
 函数检查需要分配的内存范围地址是否isolated,如果检查成功,则返回0.否则返回-EBUSY
+2024年8月24日03:10:42
+todo
 Caller should ensure that requested range is in a single zone */
 int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 			bool skip_hwpoisoned_pages)
@@ -321,7 +334,9 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 		page = __first_valid_page(pfn, pageblock_nr_pages);
 		if (page && !is_migrate_isolate_page(page))
 			break;
+
 	}
+
 	/* 刚才找到区间内第一个不是is_migrate_isolate_page的 */
 	/* 又重复一遍？ */
 	page = __first_valid_page(start_pfn, end_pfn - start_pfn);
@@ -333,6 +348,7 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 
 
 	spin_lock_irqsave(&zone->lock, flags);
+	/* 测试范围内是不是都是buddy？ */
 	pfn = __test_page_isolated_in_pageblock(start_pfn, end_pfn,
 						skip_hwpoisoned_pages);
 	spin_unlock_irqrestore(&zone->lock, flags);
@@ -342,7 +358,8 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 	/* 正常情况下pfn应该==end_pfn？ */
 	return pfn < end_pfn ? -EBUSY : 0;
 }
-
+/* 这是为了分配连续物理页面进行规整时候
+migrate_pages函数的分配新页面回调 */
 struct page *alloc_migrate_target(struct page *page, unsigned long private)
 {
 	return new_page_nodemask(page, numa_node_id(), &node_states[N_MEMORY]);

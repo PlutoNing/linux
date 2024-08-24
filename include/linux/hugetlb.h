@@ -321,7 +321,9 @@ unsigned long hugetlb_get_unmapped_area(struct file *file, unsigned long addr,
 #ifdef CONFIG_HUGETLB_PAGE
 
 #define HSTATE_NAME_LEN 32
-/* Defines one hugetlb page size */
+/* Defines one hugetlb page size
+2024年8月24日10:02:15
+todo */
 struct hstate {
 	int next_nid_to_alloc;
 	int next_nid_to_free;
@@ -401,7 +403,7 @@ static inline struct hstate *hstate_vma(struct vm_area_struct *vma)
 {
 	return hstate_file(vma->vm_file);
 }
-
+/* 获得hstate大小 */
 static inline unsigned long huge_page_size(struct hstate *h)
 {
 	return (unsigned long)PAGE_SIZE << h->order;
@@ -420,7 +422,7 @@ static inline unsigned int huge_page_order(struct hstate *h)
 {
 	return h->order;
 }
-
+/*  */
 static inline unsigned huge_page_shift(struct hstate *h)
 {
 	return h->order + PAGE_SHIFT;
@@ -450,7 +452,7 @@ static inline pte_t arch_make_huge_pte(pte_t entry, struct vm_area_struct *vma,
 	return entry;
 }
 #endif
-
+/* 看名字和用途好像是什么巨页的hstate？ */
 static inline struct hstate *page_hstate(struct page *page)
 {
 	VM_BUG_ON_PAGE(!PageHuge(page), page);
@@ -484,6 +486,7 @@ extern int dissolve_free_huge_pages(unsigned long start_pfn,
 
 #ifdef CONFIG_ARCH_ENABLE_HUGEPAGE_MIGRATION
 #ifndef arch_hugetlb_migration_supported
+/*  */
 static inline bool arch_hugetlb_migration_supported(struct hstate *h)
 {
 	if ((huge_page_shift(h) == PMD_SHIFT) ||
@@ -500,7 +503,7 @@ static inline bool arch_hugetlb_migration_supported(struct hstate *h)
 	return false;
 }
 #endif
-
+/*  */
 static inline bool hugepage_migration_supported(struct hstate *h)
 {
 	return arch_hugetlb_migration_supported(h);
