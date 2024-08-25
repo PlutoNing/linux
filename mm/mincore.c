@@ -20,7 +20,7 @@
 
 #include <linux/uaccess.h>
 #include <asm/pgtable.h>
-
+/* mincore walk的ops 回调，处理 巨页啥的？ */
 static int mincore_hugetlb(pte_t *pte, unsigned long hmask, unsigned long addr,
 			unsigned long end, struct mm_walk *walk)
 {
@@ -43,6 +43,7 @@ static int mincore_hugetlb(pte_t *pte, unsigned long hmask, unsigned long addr,
 }
 
 /*
+2024年8月25日15:57:37
  * Later we can get more picky about what "in core" means precisely.
  * For now, simply check to see if the page is in the page cache,
  * and is up to date; i.e. that no page-in operation would be required
@@ -91,7 +92,7 @@ static unsigned char mincore_page(struct address_space *mapping, pgoff_t pgoff)
 
 	return present;
 }
-
+/* 2024年8月25日15:56:48 */
 static int __mincore_unmapped_range(unsigned long addr, unsigned long end,
 				struct vm_area_struct *vma, unsigned char *vec)
 {
@@ -110,7 +111,7 @@ static int __mincore_unmapped_range(unsigned long addr, unsigned long end,
 	}
 	return nr;
 }
-
+/* mincore walk的ops 回调。处理 pte hole。 */
 static int mincore_unmapped_range(unsigned long addr, unsigned long end,
 				   struct mm_walk *walk)
 {
@@ -118,7 +119,7 @@ static int mincore_unmapped_range(unsigned long addr, unsigned long end,
 						  walk->vma, walk->private);
 	return 0;
 }
-
+/* mincore walk的ops 回调。处理pte页表 */
 static int mincore_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 			struct mm_walk *walk)
 {
@@ -176,7 +177,7 @@ out:
 	cond_resched();
 	return 0;
 }
-
+/* 检查能不能执行操作？但是这需要有什么限制吗？ */
 static inline bool can_do_mincore(struct vm_area_struct *vma)
 {
 	if (vma_is_anonymous(vma))
@@ -192,7 +193,7 @@ static inline bool can_do_mincore(struct vm_area_struct *vma)
 	return inode_owner_or_capable(file_inode(vma->vm_file)) ||
 		inode_permission(file_inode(vma->vm_file), MAY_WRITE) == 0;
 }
-
+/* mincore walk的ops */
 static const struct mm_walk_ops mincore_walk_ops = {
 	.pmd_entry		= mincore_pte_range,
 	.pte_hole		= mincore_unmapped_range,
@@ -200,6 +201,7 @@ static const struct mm_walk_ops mincore_walk_ops = {
 };
 
 /*
+
  * Do a chunk of "sys_mincore()". We've already checked
  * all the arguments, we hold the mmap semaphore: we should
  * just return the amount of info we're asked for.
@@ -213,12 +215,15 @@ static long do_mincore(unsigned long addr, unsigned long pages, unsigned char *v
 	vma = find_vma(current->mm, addr);
 	if (!vma || addr < vma->vm_start)
 		return -ENOMEM;
+	/* vma && addr >= vma->vm_start */
+	/* 一次限制一个vma内部吗 */
 	end = min(vma->vm_end, addr + (pages << PAGE_SHIFT));
 	if (!can_do_mincore(vma)) {
 		unsigned long pages = DIV_ROUND_UP(end - addr, PAGE_SIZE);
 		memset(vec, 1, pages);
 		return pages;
 	}
+	/*  */
 	err = walk_page_range(vma->vm_mm, addr, end, &mincore_walk_ops, vec);
 	if (err < 0)
 		return err;
@@ -226,6 +231,10 @@ static long do_mincore(unsigned long addr, unsigned long pages, unsigned char *v
 }
 
 /*
+2024年8月25日15:47:07
+__do_sys_mincore
+mincore()系统调用是内存加锁系统调用的补充，它报告在一个虚拟地址范围中哪些
+分页当前驻留在RAM中，因此在访问这些分页时也不会导致分页故障
  * The mincore(2) system call.
  *
  * mincore() returns the memory residency status of the pages in the
@@ -284,6 +293,7 @@ SYSCALL_DEFINE3(mincore, unsigned long, start, size_t, len,
 		 * the temporary buffer size.
 		 */
 		down_read(&current->mm->mmap_sem);
+		/* 执行操作 */
 		retval = do_mincore(start, min(pages, PAGE_SIZE), tmp);
 		up_read(&current->mm->mmap_sem);
 

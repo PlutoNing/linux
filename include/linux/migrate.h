@@ -180,7 +180,7 @@ static inline unsigned long migrate_pfn(unsigned long pfn)
 {
 	return (pfn << MIGRATE_PFN_SHIFT) | MIGRATE_PFN_VALID;
 }
-
+/*  */
 struct migrate_vma {
 	struct vm_area_struct	*vma;
 	/*
@@ -191,10 +191,14 @@ struct migrate_vma {
 	 * migrate_vma_setup(), and must not change the dst array after
 	 * migrate_vma_pages() returns.
 	 */
+	 /* 迁移的src和dst数组，大小为npages */
 	unsigned long		*dst;
 	unsigned long		*src;
+	/* 表示还没处理的页面？ */
 	unsigned long		cpages;
+	/* 迁移的页面数量 */
 	unsigned long		npages;
+	/* 迁移的起始地址 */
 	unsigned long		start;
 	unsigned long		end;
 };

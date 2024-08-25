@@ -244,7 +244,7 @@ static int walk_page_test(unsigned long start, unsigned long end,
 	 * define their ->pte_hole() callbacks, so let's delegate them to handle
 	 * vma(VM_PFNMAP).
 	 */
-	if (vma->vm_flags & VM_PFNMAP) {
+	if (vma->vm_flags & VM_PFNMAP) {/* pfn映射的处理情况 */
 		int err = 1;
 		if (ops->pte_hole)
 			err = ops->pte_hole(start, end, walk);
@@ -270,6 +270,8 @@ static int __walk_page_range(unsigned long start, unsigned long end,
 
 /**
 2024年7月13日01:31:39
+2024年8月25日15:52:25
+
  * walk_page_range - walk page table with caller specific callbacks
  * @mm:		mm_struct representing the target process of page table walk
  * @start:	start address of the virtual address range
@@ -335,11 +337,12 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 			next = min(end, vma->vm_start);
 		} else { /* inside vma */
 			walk.vma = vma;
+			/* 下一轮循环的参数 */
 			next = min(end, vma->vm_end);
 			vma = vma->vm_next;
 			/* 是否walk */
 			err = walk_page_test(start, next, &walk);
-			if (err > 0) {
+			if (err > 0) {/* 不walk的情况，continue */
 				/*
 				 * positive return values are purely for
 				 * controlling the pagewalk, so should never
@@ -351,11 +354,14 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 			if (err < 0)
 				break;
 		}
+
 		if (walk.vma || walk.ops->pte_hole)
 			err = __walk_page_range(start, next, &walk);
+
 		if (err)
 			break;
 	} while (start = next, start < end);
+
 	return err;
 }
 /* 2024年8月11日16:24:34

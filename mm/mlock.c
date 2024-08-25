@@ -34,6 +34,7 @@ bool can_do_mlock(void)
 		return true;
 	return false;
 }
+
 EXPORT_SYMBOL(can_do_mlock);
 
 /*

@@ -407,6 +407,7 @@ struct dev_pagemap *get_dev_pagemap(unsigned long pfn,
 
 	return pgmap;
 }
+
 EXPORT_SYMBOL_GPL(get_dev_pagemap);
 
 #ifdef CONFIG_DEV_PAGEMAP_OPS
@@ -455,5 +456,6 @@ void __put_devmap_managed_page(struct page *page)
 	} else if (!count)
 		__put_page(page);
 }
+
 EXPORT_SYMBOL(__put_devmap_managed_page);
 #endif /* CONFIG_DEV_PAGEMAP_OPS */

@@ -310,7 +310,8 @@ static bool remove_migration_pte(struct page *page, struct vm_area_struct *vma,
 
 /*
 2024年8月13日23:08:40
-remove_migration_ptes利用RMAP反向映射系统找到映射旧页面的每个pte，然后和新页面建立新的映射关系。
+remove_migration_ptes利用RMAP反向映射系统找到映射旧页面的每个pte，
+然后和新页面建立新的映射关系。
  * Get rid of all migration entries and replace them by
  * references to the indicated page.
  */
@@ -2709,6 +2710,8 @@ restore:
 }
 
 /**
+2024年8月25日16:13:48
+todo
  * migrate_vma_setup() - prepare to migrate a range of memory
  * @args: contains the vma, start, and and pfns arrays for the migration
  *
@@ -2811,7 +2814,9 @@ int migrate_vma_setup(struct migrate_vma *args)
 
 }
 EXPORT_SYMBOL(migrate_vma_setup);
+/* src page可能为空，这里的一种场景好像也是src 为空的情况的处理方式？
 
+ */
 static void migrate_vma_insert_page(struct migrate_vma *migrate,
 				    unsigned long addr,
 				    struct page *page,
@@ -2867,6 +2872,7 @@ static void migrate_vma_insert_page(struct migrate_vma *migrate,
 
 	if (unlikely(anon_vma_prepare(vma)))
 		goto abort;
+
 	if (mem_cgroup_try_charge(page, vma->vm_mm, GFP_KERNEL, &memcg, false))
 		goto abort;
 
@@ -2877,7 +2883,7 @@ static void migrate_vma_insert_page(struct migrate_vma *migrate,
 	 */
 	__SetPageUptodate(page);
 
-	if (is_zone_device_page(page)) {
+	if (is_zone_device_page(page)) {/* 特殊情况 */
 		if (is_device_private_page(page)) {
 			swp_entry_t swp_entry;
 
@@ -2889,10 +2895,12 @@ static void migrate_vma_insert_page(struct migrate_vma *migrate,
 		if (vma->vm_flags & VM_WRITE)
 			entry = pte_mkwrite(pte_mkdirty(entry));
 	}
+	/* pte ent 制作完成 */
+
 
 	ptep = pte_offset_map_lock(mm, pmdp, addr, &ptl);
 
-	if (pte_present(*ptep)) {
+	if (pte_present(*ptep)) {/* 本来有映射了的情况。 */
 		unsigned long pfn = pte_pfn(*ptep);
 
 		if (!is_zero_pfn(pfn)) {
@@ -2901,7 +2909,8 @@ static void migrate_vma_insert_page(struct migrate_vma *migrate,
 			goto abort;
 		}
 		flush = true;
-	} else if (!pte_none(*ptep)) {
+	} else if (!pte_none(*ptep)) {/* pte不为空，但是page不再内存，什么情况？
+	交换页？ */
 		pte_unmap_unlock(ptep, ptl);
 		mem_cgroup_cancel_charge(page, memcg, false);
 		goto abort;
@@ -2917,6 +2926,8 @@ static void migrate_vma_insert_page(struct migrate_vma *migrate,
 		goto abort;
 	}
 
+
+	/* 这里开始真正insert */
 	inc_mm_counter(mm, MM_ANONPAGES);
 	page_add_new_anon_rmap(page, vma, addr, false);
 	mem_cgroup_commit_charge(page, memcg, false, false);
@@ -2927,10 +2938,12 @@ static void migrate_vma_insert_page(struct migrate_vma *migrate,
 	if (flush) {
 		flush_cache_page(vma, addr, pte_pfn(*ptep));
 		ptep_clear_flush_notify(vma, addr, ptep);
+		/* 设置pte条目 */
 		set_pte_at_notify(mm, addr, ptep, entry);
 		update_mmu_cache(vma, addr, ptep);
 	} else {
 		/* No need to invalidate - it was non-present before */
+		/* 设置pte条目 */
 		set_pte_at(mm, addr, ptep, entry);
 		update_mmu_cache(vma, addr, ptep);
 	}
@@ -2944,6 +2957,7 @@ abort:
 }
 
 /**
+逐个迁移migrate里面的页面
  * migrate_vma_pages() - migrate meta-data from src page to dst page
  * @migrate: migrate struct containing all migration information
  *
@@ -2970,10 +2984,12 @@ void migrate_vma_pages(struct migrate_vma *migrate)
 			continue;
 		}
 
-		if (!page) {
+		if (!page) {/* 没有srcpage的情况？ */
+
 			if (!(migrate->src[i] & MIGRATE_PFN_MIGRATE)) {
 				continue;
 			}
+			/* 到这里是因为 MIGRATE_PFN_MIGRATE ？*/
 			if (!notified) {
 				notified = true;
 
@@ -2984,6 +3000,7 @@ void migrate_vma_pages(struct migrate_vma *migrate)
 							addr, migrate->end);
 				mmu_notifier_invalidate_range_start(&range);
 			}
+			/* src为空的处理情况 */
 			migrate_vma_insert_page(migrate, addr, newpage,
 						&migrate->src[i],
 						&migrate->dst[i]);
@@ -2991,8 +3008,8 @@ void migrate_vma_pages(struct migrate_vma *migrate)
 		}
 
 		mapping = page_mapping(page);
-
-		if (is_zone_device_page(newpage)) {
+		/* src和dst都有的情况 */
+		if (is_zone_device_page(newpage)) {/* device相关的特殊路径 */
 			if (is_device_private_page(newpage)) {
 				/*
 				 * For now only support private anonymous when
@@ -3011,7 +3028,7 @@ void migrate_vma_pages(struct migrate_vma *migrate)
 				continue;
 			}
 		}
-
+		/* 迁移页面 */
 		r = migrate_page(mapping, newpage, page, MIGRATE_SYNC_NO_COPY);
 		if (r != MIGRATEPAGE_SUCCESS)
 			migrate->src[i] &= ~MIGRATE_PFN_MIGRATE;
@@ -3028,6 +3045,8 @@ void migrate_vma_pages(struct migrate_vma *migrate)
 EXPORT_SYMBOL(migrate_vma_pages);
 
 /**
+2024年8月25日16:06:14
+todo
  * migrate_vma_finalize() - restore CPU page table entry
  * @migrate: migrate struct containing all migration information
  *
@@ -3043,7 +3062,7 @@ void migrate_vma_finalize(struct migrate_vma *migrate)
 	const unsigned long npages = migrate->npages;
 	unsigned long i;
 
-	for (i = 0; i < npages; i++) {
+	for (i = 0; i < npages; i++) {/* 遍历每一个迁移页面 */
 		struct page *newpage = migrate_pfn_to_page(migrate->dst[i]);
 		struct page *page = migrate_pfn_to_page(migrate->src[i]);
 
@@ -3052,6 +3071,8 @@ void migrate_vma_finalize(struct migrate_vma *migrate)
 				unlock_page(newpage);
 				put_page(newpage);
 			}
+			/* 没有src，有dst的情况，continue 
+			具体是什么情况？*/
 			continue;
 		}
 
@@ -3062,8 +3083,10 @@ void migrate_vma_finalize(struct migrate_vma *migrate)
 			}
 			newpage = page;
 		}
-
+		/* 到这里 肯定 有newpage    */
+		/* 处理新旧pte */
 		remove_migration_ptes(page, newpage, false);
+		
 		unlock_page(page);
 		migrate->cpages--;
 
@@ -3081,5 +3104,6 @@ void migrate_vma_finalize(struct migrate_vma *migrate)
 		}
 	}
 }
+
 EXPORT_SYMBOL(migrate_vma_finalize);
 #endif /* CONFIG_DEVICE_PRIVATE */
