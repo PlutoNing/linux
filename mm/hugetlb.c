@@ -1170,7 +1170,7 @@ static inline void free_gigantic_page(struct page *page, unsigned int order) { }
 static inline void destroy_compound_gigantic_page(struct page *page,
 						unsigned int order) { }
 #endif
-
+/* 拆分巨页？拆分成buddy pages */
 static void update_and_free_page(struct hstate *h, struct page *page)
 {
 	int i;
@@ -1180,19 +1180,23 @@ static void update_and_free_page(struct hstate *h, struct page *page)
 
 	h->nr_huge_pages--;
 	h->nr_huge_pages_node[page_to_nid(page)]--;
-	for (i = 0; i < pages_per_huge_page(h); i++) {
+
+	for (i = 0; i < pages_per_huge_page(h); i++) {/* 遍历巨页的每一个组成page。 */
 		page[i].flags &= ~(1 << PG_locked | 1 << PG_error |
 				1 << PG_referenced | 1 << PG_dirty |
 				1 << PG_active | 1 << PG_private |
 				1 << PG_writeback);
 	}
 	VM_BUG_ON_PAGE(hugetlb_cgroup_from_page(page), page);
+	
 	set_compound_page_dtor(page, NULL_COMPOUND_DTOR);
 	set_page_refcounted(page);
-	if (hstate_is_gigantic(h)) {
+
+	if (hstate_is_gigantic(h)) {/* todo。 */
 		destroy_compound_gigantic_page(page, huge_page_order(h));
 		free_gigantic_page(page, huge_page_order(h));
 	} else {
+		/* 释放？哦哦，已经拆分了，确实归还给buddy。 */
 		__free_pages(page, huge_page_order(h));
 	}
 }
@@ -1542,6 +1546,8 @@ static int free_pool_huge_page(struct hstate *h, nodemask_t *nodes_allowed,
 }
 
 /*
+拆分free的巨页位free的buddy pages。
+返回0表示page不再是巨页了。
  * Dissolve a given free hugepage into free buddy pages. This function does
  * nothing for in-use hugepages and non-hugepages.
  * This function returns values like below:
@@ -1560,32 +1566,37 @@ int dissolve_free_huge_page(struct page *page)
 		return 0;
 
 	spin_lock(&hugetlb_lock);
-	if (!PageHuge(page)) {
+	if (!PageHuge(page)) {/* 不再是巨页了。虽然是因为race。 */
 		rc = 0;
 		goto out;
 	}
 
-	if (!page_count(page)) {
+	if (!page_count(page)) {/* 只操作free 页面 */
 		struct page *head = compound_head(page);
 		struct hstate *h = page_hstate(head);
 		int nid = page_to_nid(head);
+
 		if (h->free_huge_pages - h->resv_huge_pages == 0)
 			goto out;
 		/*
 		 * Move PageHWPoison flag from head page to the raw error page,
 		 * which makes any subpages rather than the error page reusable.
 		 */
-		if (PageHWPoison(head) && page != head) {
+		if (PageHWPoison(head) && page != head) {/* 如果是poisoned的页面 */
 			SetPageHWPoison(page);
 			ClearPageHWPoison(head);
 		}
+
 		list_del(&head->lru);
 		h->free_huge_pages--;
 		h->free_huge_pages_node[nid]--;
 		h->max_huge_pages--;
+		/* 这里进行实际拆分吗 */
 		update_and_free_page(h, head);
+		
 		rc = 0;
 	}
+
 out:
 	spin_unlock(&hugetlb_lock);
 	return rc;

@@ -741,12 +741,14 @@ atomic_sub_and_test(int i, atomic_t *v)
 #endif
 
 #if defined(arch_atomic_dec_and_test)
+/* 减减，然后test是不是0. */
 static inline bool
 atomic_dec_and_test(atomic_t *v)
 {
 	kasan_check_write(v, sizeof(*v));
 	return arch_atomic_dec_and_test(v);
 }
+/* 减减，然后test是不是0. */
 #define atomic_dec_and_test atomic_dec_and_test
 #endif
 

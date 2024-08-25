@@ -861,7 +861,7 @@ static inline void set_compound_page_dtor(struct page *page,
 	VM_BUG_ON_PAGE(compound_dtor >= NR_COMPOUND_DTORS, page);
 	page[1].compound_dtor = compound_dtor;
 }
-
+/* 获取复合页的dtor函数。 */
 static inline compound_page_dtor *get_compound_page_dtor(struct page *page)
 {
 	VM_BUG_ON_PAGE(page[1].compound_dtor >= NR_COMPOUND_DTORS, page);
@@ -1125,7 +1125,7 @@ static inline __must_check bool try_get_page(struct page *page)
 	page_ref_inc(page);
 	return true;
 }
-
+/* put引用 */
 static inline void put_page(struct page *page)
 {
 	page = compound_head(page);
@@ -1139,7 +1139,7 @@ static inline void put_page(struct page *page)
 	if (put_devmap_managed_page(page))
 		return;
 
-	if (put_page_testzero(page))
+	if (put_page_testzero(page))/* put page，然后test zero，是0的话，返回真 */
 		__put_page(page);
 }
 
@@ -2412,7 +2412,7 @@ struct anon_vma_chain *anon_vma_interval_tree_iter_next(
 #ifdef CONFIG_DEBUG_VM_RB
 void anon_vma_interval_tree_verify(struct anon_vma_chain *node);
 #endif
-
+/*  */
 #define anon_vma_interval_tree_foreach(avc, root, start, last)		 \
 	for (avc = anon_vma_interval_tree_iter_first(root, start, last); \
 	     avc; avc = anon_vma_interval_tree_iter_next(avc, start, last))
@@ -2952,7 +2952,7 @@ void vmemmap_free(unsigned long start, unsigned long end,
 #endif
 void register_page_bootmem_memmap(unsigned long section_nr, struct page *map,
 				  unsigned long nr_pages);
-
+/* mf的类型 */
 enum mf_flags {
 	MF_COUNT_INCREASED = 1 << 0,
 	MF_ACTION_REQUIRED = 1 << 1,
@@ -2963,6 +2963,7 @@ extern int memory_failure(unsigned long pfn, int flags);
 extern void memory_failure_queue(unsigned long pfn, int flags);
 extern int unpoison_memory(unsigned long pfn);
 extern int get_hwpoison_page(struct page *page);
+/* 就是put_page */
 #define put_hwpoison_page(page)	put_page(page)
 extern int sysctl_memory_failure_early_kill;
 extern int sysctl_memory_failure_recovery;

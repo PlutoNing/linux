@@ -3073,7 +3073,7 @@ static inline void unmap_mapping_range_tree(struct rb_root_cached *root,
 		/* 一样的原因，调用者指定越界了，就只能到vea这个末尾 */
 			zea = vea;
 		/* 解除mapping的页面映射，归根结底是解除mapping关联的vma的映射 */
-		/* 注意这里单位变了，刚才是pgoff，现在是addr */
+		/* 这里单位变了，刚才是pgoff，现在是addr */
 		unmap_mapping_range_vma(vma,
 			((zba - vba) << PAGE_SHIFT) + vma->vm_start,
 			((zea - vba + 1) << PAGE_SHIFT) + vma->vm_start,

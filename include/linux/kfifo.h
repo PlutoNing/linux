@@ -48,7 +48,7 @@ struct __kfifo {
 	unsigned int	esize;
 	void		*data;
 };
-
+/*  */
 #define __STRUCT_KFIFO_COMMON(datatype, recsize, ptrtype) \
 	union { \
 		struct __kfifo	kfifo; \
@@ -58,13 +58,15 @@ struct __kfifo {
 		ptrtype		*ptr; \
 		ptrtype const	*ptr_const; \
 	}
+/* 声明fifo；
 
+这里会检查size，不合格的话会为-1，然后报错。 */
 #define __STRUCT_KFIFO(type, size, recsize, ptrtype) \
 { \
 	__STRUCT_KFIFO_COMMON(type, recsize, ptrtype); \
 	type		buf[((size < 2) || (size & (size - 1))) ? -1 : size]; \
 }
-
+/* 声明kfifo */
 #define STRUCT_KFIFO(type, size) \
 	struct __STRUCT_KFIFO(type, size, 0, type)
 
@@ -110,10 +112,14 @@ struct kfifo_rec_ptr_2 __STRUCT_KFIFO_PTR(unsigned char, 2, void);
 #define DECLARE_KFIFO_PTR(fifo, type)	STRUCT_KFIFO_PTR(type) fifo
 
 /**
+声明一个kfifo
  * DECLARE_KFIFO - macro to declare a fifo object
  * @fifo: name of the declared fifo
+ fifo的名字
  * @type: type of the fifo elements
+ 元素类型
  * @size: the number of elements in the fifo, this must be a power of 2
+ fifo的size
  */
 #define DECLARE_KFIFO(fifo, type, size)	STRUCT_KFIFO(type, size) fifo
 

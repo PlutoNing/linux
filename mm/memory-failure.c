@@ -58,7 +58,8 @@
 #include <linux/page-isolation.h>
 #include "internal.h"
 #include "ras/ras_event.h"
-
+/* 2024年8月26日00:27:33
+ */
 int sysctl_memory_failure_early_kill __read_mostly = 0;
 
 int sysctl_memory_failure_recovery __read_mostly = 1;
@@ -77,7 +78,7 @@ EXPORT_SYMBOL_GPL(hwpoison_filter_dev_major);
 EXPORT_SYMBOL_GPL(hwpoison_filter_dev_minor);
 EXPORT_SYMBOL_GPL(hwpoison_filter_flags_mask);
 EXPORT_SYMBOL_GPL(hwpoison_filter_flags_value);
-
+/* todo */
 static int hwpoison_filter_dev(struct page *p)
 {
 	struct address_space *mapping;
@@ -107,7 +108,7 @@ static int hwpoison_filter_dev(struct page *p)
 
 	return 0;
 }
-
+/*  */
 static int hwpoison_filter_flags(struct page *p)
 {
 	if (!hwpoison_filter_flags_mask)
@@ -131,8 +132,10 @@ static int hwpoison_filter_flags(struct page *p)
  * a freed page.
  */
 #ifdef CONFIG_MEMCG
+/*  */
 u64 hwpoison_filter_memcg;
 EXPORT_SYMBOL_GPL(hwpoison_filter_memcg);
+/*  */
 static int hwpoison_filter_task(struct page *p)
 {
 	if (!hwpoison_filter_memcg)
@@ -146,7 +149,7 @@ static int hwpoison_filter_task(struct page *p)
 #else
 static int hwpoison_filter_task(struct page *p) { return 0; }
 #endif
-
+/* 是不是poison filter掉的？ */
 int hwpoison_filter(struct page *p)
 {
 	if (!hwpoison_filter_enable)
@@ -173,6 +176,7 @@ int hwpoison_filter(struct page *p)
 EXPORT_SYMBOL_GPL(hwpoison_filter);
 
 /*
+2024年8月25日23:20:58
  * Kill all processes that have a poisoned page mapped and then isolate
  * the page.
  *
@@ -195,13 +199,15 @@ EXPORT_SYMBOL_GPL(hwpoison_filter);
  */
 
 struct to_kill {
-	struct list_head nd;
+	struct list_head nd;/* 加入到收集to_kill的链表 */
 	struct task_struct *tsk;
 	unsigned long addr;
 	short size_shift;
 };
 
-/*
+/*、
+2024年8月26日00:06:40
+kill proc。
  * Send all the processes who have the page mapped a signal.
  * ``action optional'' if they are not immediately affected by the error
  * ``action required'' if error happened in current execution context
@@ -235,6 +241,7 @@ static int kill_proc(struct to_kill *tk, unsigned long pfn, int flags)
 }
 
 /*
+尝试通过各种drain把这个page转为lrupage或者空闲page什么的
  * When a unknown page type is encountered drain as many buffers as possible
  * in the hope to turn the page into a LRU or free page, which we can handle.
  */
@@ -245,9 +252,12 @@ void shake_page(struct page *p, int access)
 
 	if (!PageSlab(p)) {
 		lru_add_drain_all();
+
 		if (PageLRU(p))
 			return;
+
 		drain_all_pages(page_zone(p));
+
 		if (PageLRU(p) || is_free_buddy_page(p))
 			return;
 	}
@@ -259,8 +269,9 @@ void shake_page(struct page *p, int access)
 	if (access)
 		drop_slab_node(page_to_nid(p));
 }
-EXPORT_SYMBOL_GPL(shake_page);
 
+EXPORT_SYMBOL_GPL(shake_page);
+/* todo */
 static unsigned long dev_pagemap_mapping_shift(struct page *page,
 		struct vm_area_struct *vma)
 {
@@ -301,6 +312,7 @@ static unsigned long dev_pagemap_mapping_shift(struct page *page,
  */
 
 /*
+tsk加入to_kill的链表
  * Schedule a process for later kill.
  * Uses GFP_ATOMIC allocations to avoid potential recursions in the VM.
  * TBD would GFP_NOIO be enough?
@@ -351,6 +363,7 @@ static void add_to_kill(struct task_struct *tsk, struct page *p,
 }
 
 /*
+kill列表@to_kill里面的进程
  * Kill the processes that have been collected earlier.
  *
  * Only do anything when DOIT is set, otherwise just free the list
@@ -363,8 +376,8 @@ static void kill_procs(struct list_head *to_kill, int forcekill, bool fail,
 {
 	struct to_kill *tk, *next;
 
-	list_for_each_entry_safe (tk, next, to_kill, nd) {
-		if (forcekill) {
+	list_for_each_entry_safe (tk, next, to_kill, nd) {/* 遍历里面的tk，里面是进程 */
+		if (forcekill) {/* 如果forcekill为真 */
 			/*
 			 * In case something went wrong with munmapping
 			 * make sure the process doesn't catch the
@@ -393,6 +406,7 @@ static void kill_procs(struct list_head *to_kill, int forcekill, bool fail,
 }
 
 /*
+找到一个处理信号的thread tsk。
  * Find a dedicated thread which is supposed to handle SIGBUS(BUS_MCEERR_AO)
  * on behalf of the thread group. Return task_struct of the (first found)
  * dedicated thread if found, and return NULL otherwise.
@@ -411,6 +425,7 @@ static struct task_struct *find_early_kill_thread(struct task_struct *tsk)
 }
 
 /*
+判断这个进程是不是由于自己的页面被poisoned了需要kill
  * Determine whether a given process is "early kill" process which expects
  * to be signaled when some page under the process is hwpoisoned.
  * Return task_struct of the dedicated thread (main thread unless explicitly
@@ -421,18 +436,22 @@ static struct task_struct *task_early_kill(struct task_struct *tsk,
 {
 	struct task_struct *t;
 	if (!tsk->mm)
-		return NULL;
+		return NULL;/* 不需要kill */
 	if (force_early)
-		return tsk;
+		return tsk;/* 需要kill */
+
 	t = find_early_kill_thread(tsk);
 	if (t)
 		return t;
+
 	if (sysctl_memory_failure_early_kill)
 		return tsk;
-	return NULL;
+
+	return NULL;/* 不需要kill */
 }
 
 /*
+找到引用这个匿名页page的进程。
  * Collect processes when the error hit an anonymous page.
  */
 static void collect_procs_anon(struct page *page, struct list_head *to_kill,
@@ -443,32 +462,40 @@ static void collect_procs_anon(struct page *page, struct list_head *to_kill,
 	struct anon_vma *av;
 	pgoff_t pgoff;
 
+	/* 获取page的avr的锁 */
 	av = page_lock_anon_vma_read(page);
 	if (av == NULL)	/* Not actually mapped anymore */
 		return;
 
 	pgoff = page_to_pgoff(page);
 	read_lock(&tasklist_lock);
-	for_each_process (tsk) {
+	for_each_process (tsk) {/* 遍历系统全部进程 */
 		struct anon_vma_chain *vmac;
 		struct task_struct *t = task_early_kill(tsk, force_early);
 
 		if (!t)
 			continue;
+		/* 需要kill */
+
+		/*  */
 		anon_vma_interval_tree_foreach(vmac, &av->rb_root,
 					       pgoff, pgoff) {
+
 			vma = vmac->vma;
 			if (!page_mapped_in_vma(page, vma))
 				continue;
-			if (vma->vm_mm == t->mm)
+
+			if (vma->vm_mm == t->mm)/* 把这个tsk加入到to_kill。 */
 				add_to_kill(t, page, vma, to_kill, tkc);
 		}
 	}
 	read_unlock(&tasklist_lock);
+
 	page_unlock_anon_vma_read(av);
 }
 
 /*
+找到映射此文件页的进程
  * Collect processes when the error hit a file mapped page.
  */
 static void collect_procs_file(struct page *page, struct list_head *to_kill,
@@ -486,6 +513,7 @@ static void collect_procs_file(struct page *page, struct list_head *to_kill,
 
 		if (!t)
 			continue;
+
 		vma_interval_tree_foreach(vma, &mapping->i_mmap, pgoff,
 				      pgoff) {
 			/*
@@ -504,6 +532,7 @@ static void collect_procs_file(struct page *page, struct list_head *to_kill,
 }
 
 /*
+找到引用这个page的进程，加入tokill。
  * Collect the processes who have the corrupted page mapped to kill.
  * This is done in two steps for locking reasons.
  * First preallocate one tokill structure outside the spin locks,
@@ -520,10 +549,12 @@ static void collect_procs(struct page *page, struct list_head *tokill,
 	tk = kmalloc(sizeof(struct to_kill), GFP_NOIO);
 	if (!tk)
 		return;
+
 	if (PageAnon(page))
 		collect_procs_anon(page, tokill, &tk, force_early);
 	else
 		collect_procs_file(page, tokill, &tk, force_early);
+	
 	kfree(tk);
 }
 
@@ -560,6 +591,8 @@ static const char * const action_page_types[] = {
 };
 
 /*
+2024年8月26日00:24:40
+isolate，清除一些标记位，uncharge，put。
  * XXX: It is possible that a page is isolated from LRU cache,
  * and then kept in swap cache or failed to remove from page cache.
  * The page count will stop it from being freed by unpoison.
@@ -567,7 +600,7 @@ static const char * const action_page_types[] = {
  */
 static int delete_from_lru_cache(struct page *p)
 {
-	if (!isolate_lru_page(p)) {
+	if (!isolate_lru_page(p)) {/* isolate成功 */
 		/*
 		 * Clear sensible page flags, so that the buddy system won't
 		 * complain when the page is unpoison-and-freed.
@@ -591,6 +624,7 @@ static int delete_from_lru_cache(struct page *p)
 	return -EIO;
 }
 
+/*  */
 static int truncate_error_page(struct page *p, unsigned long pfn,
 				struct address_space *mapping)
 {
@@ -776,6 +810,7 @@ static int me_swapcache_clean(struct page *p, unsigned long pfn)
 }
 
 /*
+
  * Huge pages. Needs work.
  * Issues:
  * - Error on hugepage is contained in hugepage unit (not in raw page unit.)
@@ -894,7 +929,7 @@ static void action_result(unsigned long pfn, enum mf_action_page_type type,
 	pr_err("Memory failure: %#lx: recovery action for %s: %s\n",
 		pfn, action_page_types[type], action_name[result]);
 }
-
+/* todo */
 static int page_action(struct page_state *ps, struct page *p,
 			unsigned long pfn)
 {
@@ -922,6 +957,8 @@ static int page_action(struct page_state *ps, struct page *p,
 }
 
 /**
+get一下page。
+返回0表示没get成功，可能是free页面，也可能巨页什么的。
  * get_hwpoison_page() - Get refcount for memory error handling:
  * @page:	raw error page (hit by memory error)
  *
@@ -946,7 +983,7 @@ int get_hwpoison_page(struct page *page)
 		}
 	}
 
-	if (get_page_unless_zero(head)) {
+	if (get_page_unless_zero(head)) {/* 引用非0，get成功 */
 		if (head == compound_head(page))
 			return 1;
 
@@ -955,11 +992,12 @@ int get_hwpoison_page(struct page *page)
 		put_page(head);
 	}
 
-	return 0;
+	return 0;/* 不成功，可能是因为是free page，也可能是巨页的tail页。 */
 }
 EXPORT_SYMBOL_GPL(get_hwpoison_page);
 
 /*
+移除mapping。
  * Do all that is necessary to remove user space mappings. Unmap
  * the pages and send SIGBUS to the processes if the data was dirty.
  */
@@ -980,8 +1018,10 @@ static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	 */
 	if (PageReserved(p) || PageSlab(p))
 		return true;
+
 	if (!(PageLRU(hpage) || PageHuge(p)))
 		return true;
+
 
 	/*
 	 * This check implies we don't kill processes if their pages
@@ -989,6 +1029,7 @@ static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	 */
 	if (!page_mapped(hpage))
 		return true;
+
 
 	if (PageKsm(p)) {
 		pr_err("Memory failure: %#lx: can't handle KSM pages.\n", pfn);
@@ -1028,9 +1069,11 @@ static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	 * Error handling: We ignore errors here because
 	 * there's nothing that can be done.
 	 */
+	/* 收集引用此页面的进程 */
 	if (kill)
 		collect_procs(hpage, &tokill, flags & MF_ACTION_REQUIRED);
-
+	
+	/* 解除映射 */
 	unmap_success = try_to_unmap(hpage, ttu);
 	if (!unmap_success)
 		pr_err("Memory failure: %#lx: failed to unmap page (mapcount=%d)\n",
@@ -1054,11 +1097,12 @@ static bool hwpoison_user_mappings(struct page *p, unsigned long pfn,
 	 * any accesses to the poisoned memory.
 	 */
 	forcekill = PageDirty(hpage) || (flags & MF_MUST_KILL);
+	/*  */
 	kill_procs(&tokill, forcekill, !unmap_success, pfn, flags);
 
 	return unmap_success;
 }
-
+/* todo */
 static int identify_page_state(unsigned long pfn, struct page *p,
 				unsigned long page_flags)
 {
@@ -1082,6 +1126,7 @@ static int identify_page_state(unsigned long pfn, struct page *p,
 	return page_action(ps, p, pfn);
 }
 
+/* 巨页相关的mf page处理 */
 static int memory_failure_hugetlb(unsigned long pfn, int flags)
 {
 	struct page *p = pfn_to_page(pfn);
@@ -1153,7 +1198,7 @@ out:
 	unlock_page(head);
 	return res;
 }
-
+/* todo */
 static int memory_failure_dev_pagemap(unsigned long pfn, int flags,
 		struct dev_pagemap *pgmap)
 {
@@ -1230,6 +1275,9 @@ out:
 }
 
 /**
+处理不是soft offline类型的mf page。
+2024年8月25日22:32:31
+我去，这函数为啥这么绕啊，图啥啊。 
  * memory_failure - Handle memory failure of a page.
  * @pfn: Page Number of the corrupted page
  * @flags: fine tune action taken
@@ -1259,21 +1307,28 @@ int memory_failure(unsigned long pfn, int flags)
 		panic("Memory failure on page %lx", pfn);
 
 	p = pfn_to_online_page(pfn);
-	if (!p) {
-		if (pfn_valid(pfn)) {
+
+	if (!p) {/* pfn不是online的 */
+		if (pfn_valid(pfn)) {/* todo */
 			pgmap = get_dev_pagemap(pfn, NULL);
 			if (pgmap)
 				return memory_failure_dev_pagemap(pfn, flags,
 								  pgmap);
 		}
+
 		pr_err("Memory failure: %#lx: memory outside kernel control\n",
 			pfn);
+
 		return -ENXIO;
 	}
 
+	/* pfn是online的 */
+
 	if (PageHuge(p))
 		return memory_failure_hugetlb(pfn, flags);
-	if (TestSetPageHWPoison(p)) {
+
+	/* 设置为poisoned */
+	if (TestSetPageHWPoison(p)) {/* 页面本来就是poisoned了 */
 		pr_err("Memory failure: %#lx: already hardware poisoned\n",
 			pfn);
 		return 0;
@@ -1293,7 +1348,8 @@ int memory_failure(unsigned long pfn, int flags)
 	 * In fact it's dangerous to directly bump up page count from 0,
 	 * that may make page_ref_freeze()/page_ref_unfreeze() mismatch.
 	 */
-	if (!(flags & MF_COUNT_INCREASED) && !get_hwpoison_page(p)) {
+	if (!(flags & MF_COUNT_INCREASED) && !get_hwpoison_page(p)) {/* 如果不是MF_COUNT_INCREASED，
+	并且get没成功 */
 		if (is_free_buddy_page(p)) {
 			action_result(pfn, MF_MSG_BUDDY, MF_DELAYED);
 			return 0;
@@ -1303,7 +1359,9 @@ int memory_failure(unsigned long pfn, int flags)
 		}
 	}
 
-	if (PageTransHuge(hpage)) {
+	/* 到这里，要是MF_COUNT_INCREASED的 */
+
+	if (PageTransHuge(hpage)) {/* 巨页的路径，todo */
 		lock_page(p);
 		if (!PageAnon(p) || unlikely(split_huge_page(p))) {
 			unlock_page(p);
@@ -1338,6 +1396,7 @@ int memory_failure(unsigned long pfn, int flags)
 			action_result(pfn, MF_MSG_BUDDY, MF_DELAYED);
 		else
 			action_result(pfn, MF_MSG_BUDDY_2ND, MF_DELAYED);
+
 		return 0;
 	}
 
@@ -1368,16 +1427,20 @@ int memory_failure(unsigned long pfn, int flags)
 	/*
 	 * unpoison always clear PG_hwpoison inside page lock
 	 */
-	if (!PageHWPoison(p)) {
+	if (!PageHWPoison(p)) {/* 居然变成poisoned的了？ */
 		pr_err("Memory failure: %#lx: just unpoisoned\n", pfn);
 		num_poisoned_pages_dec();
 		unlock_page(p);
 		put_hwpoison_page(p);
+
 		return 0;
 	}
+	/* 这里是poisoned的 */
 	if (hwpoison_filter(p)) {
+		/* 清除掉poisoned标记 */
 		if (TestClearPageHWPoison(p))
 			num_poisoned_pages_dec();
+
 		unlock_page(p);
 		put_hwpoison_page(p);
 		return 0;
@@ -1424,19 +1487,22 @@ EXPORT_SYMBOL_GPL(memory_failure);
 
 #define MEMORY_FAILURE_FIFO_ORDER	4
 #define MEMORY_FAILURE_FIFO_SIZE	(1 << MEMORY_FAILURE_FIFO_ORDER)
-
+/* 代表一个出错的page？ */
 struct memory_failure_entry {
-	unsigned long pfn;
-	int flags;
+	unsigned long pfn;/* 描述出错的pfn */
+	int flags;/* 描述出错的类型 */
 };
-
+/*  */
 struct memory_failure_cpu {
+
 	DECLARE_KFIFO(fifo, struct memory_failure_entry,
-		      MEMORY_FAILURE_FIFO_SIZE);
+		      MEMORY_FAILURE_FIFO_SIZE);/*  */
+
 	spinlock_t lock;
 	struct work_struct work;
 };
-
+/* pcp的memory_failure_cpu结构
+应该装的是出错的pfn们。 */
 static DEFINE_PER_CPU(struct memory_failure_cpu, memory_failure_cpu);
 
 /**
@@ -1475,28 +1541,39 @@ void memory_failure_queue(unsigned long pfn, int flags)
 	put_cpu_var(memory_failure_cpu);
 }
 EXPORT_SYMBOL_GPL(memory_failure_queue);
-
+/* 2024年8月25日20:18:59
+应该是获取并处理pcp的mf里面的一个failure page的线程函数。
+ */
 static void memory_failure_work_func(struct work_struct *work)
 {
+	/* mf应该是mem fail的意思 */
 	struct memory_failure_cpu *mf_cpu;
 	struct memory_failure_entry entry = { 0, };
 	unsigned long proc_flags;
 	int gotten;
 
 	mf_cpu = this_cpu_ptr(&memory_failure_cpu);
+
 	for (;;) {
+
+		/* 获取mf_cpu的锁 */
 		spin_lock_irqsave(&mf_cpu->lock, proc_flags);
+		/* 从mf_cpu里面获取一个出错的page */
 		gotten = kfifo_get(&mf_cpu->fifo, &entry);
 		spin_unlock_irqrestore(&mf_cpu->lock, proc_flags);
+
+
 		if (!gotten)
 			break;
-		if (entry.flags & MF_SOFT_OFFLINE)
+
+		if (entry.flags & MF_SOFT_OFFLINE)/* 如果是soft offline */
 			soft_offline_page(pfn_to_page(entry.pfn), entry.flags);
 		else
 			memory_failure(entry.pfn, entry.flags);
 	}
-}
 
+}
+/* 初始化机制 */
 static int __init memory_failure_init(void)
 {
 	struct memory_failure_cpu *mf_cpu;
@@ -1520,6 +1597,7 @@ core_initcall(memory_failure_init);
 })
 
 /**
+poisoned的逆向过程。
  * unpoison_memory - Unpoison a previously poisoned page
  * @pfn: Page number of the to be unpoisoned page
  *
@@ -1580,9 +1658,10 @@ int unpoison_memory(unsigned long pfn)
 		return 0;
 	}
 
-	if (!get_hwpoison_page(p)) {
+	if (!get_hwpoison_page(p)) {/*  */
 		if (TestClearPageHWPoison(p))
 			num_poisoned_pages_dec();
+
 		unpoison_pr_info("Unpoison: Software-unpoisoned free page %#lx\n",
 				 pfn, &unpoison_rs);
 		return 0;
@@ -1595,7 +1674,7 @@ int unpoison_memory(unsigned long pfn)
 	 * the PG_hwpoison page will be caught and isolated on the entrance to
 	 * the free buddy page pool.
 	 */
-	if (TestClearPageHWPoison(page)) {
+	if (TestClearPageHWPoison(page)) {/*  */
 		unpoison_pr_info("Unpoison: Software-unpoisoned page %#lx\n",
 				 pfn, &unpoison_rs);
 		num_poisoned_pages_dec();
@@ -1610,7 +1689,7 @@ int unpoison_memory(unsigned long pfn)
 	return 0;
 }
 EXPORT_SYMBOL(unpoison_memory);
-
+/* 申请page */
 static struct page *new_page(struct page *p, unsigned long private)
 {
 	int nid = page_to_nid(p);
@@ -1619,6 +1698,8 @@ static struct page *new_page(struct page *p, unsigned long private)
 }
 
 /*
+返回0说明是free page，不需要get。
+返回1说明get了个引用成功了。
  * Safely get reference count of an arbitrary page.
  * Returns 0 for a free page, -EIO for a zero refcount page
  * that is not free, and 1 for any other page type.
@@ -1635,13 +1716,13 @@ static int __get_any_page(struct page *p, unsigned long pfn, int flags)
 	 * When the target page is a free hugepage, just remove it
 	 * from free hugepage list.
 	 */
-	if (!get_hwpoison_page(p)) {
-		if (PageHuge(p)) {
+	if (!get_hwpoison_page(p)) {/* get引用不成功，可能是free page */
+		if (PageHuge(p)) {/* 因为是free page不成功 */
 			pr_info("%s: %#lx free huge page\n", __func__, pfn);
-			ret = 0;
-		} else if (is_free_buddy_page(p)) {
+			ret = 0;/*  */
+		} else if (is_free_buddy_page(p)) {/* 也是因为free 不成功 */
 			pr_info("%s: %#lx free buddy page\n", __func__, pfn);
-			ret = 0;
+			ret = 0;/*  */
 		} else {
 			pr_info("%s: %#lx: unknown zero refcount page type %lx\n",
 				__func__, pfn, p->flags);
@@ -1649,38 +1730,50 @@ static int __get_any_page(struct page *p, unsigned long pfn, int flags)
 		}
 	} else {
 		/* Not a free page */
-		ret = 1;
+		ret = 1;/* get引用成功了，页面不是free的。 */
 	}
+
 	return ret;
 }
-
+/* pfn是page的pfn。
+@flags描述mf信息。
+尝试get一下引用。希望他是free page。 */
 static int get_any_page(struct page *page, unsigned long pfn, int flags)
 {
 	int ret = __get_any_page(page, pfn, flags);
+	/* 返回值复杂，分类讨论 */
+
 
 	if (ret == 1 && !PageHuge(page) &&
-	    !PageLRU(page) && !__PageMovable(page)) {
+	    !PageLRU(page) && !__PageMovable(page)) {/* get成功的情况 */
 		/*
 		 * Try to free it.
+		 到这里的话说明不是free page，这里可以直接free吗？
 		 */
+		/* 实际上就是put page的操作。 */
 		put_hwpoison_page(page);
+		/* 通过drain，转变page类型 */
 		shake_page(page, 1);
 
 		/*
 		 * Did it turn free?
 		 */
 		ret = __get_any_page(page, pfn, 0);
+
 		if (ret == 1 && !PageLRU(page)) {
 			/* Drop page reference which is from __get_any_page() */
 			put_hwpoison_page(page);
 			pr_info("soft_offline: %#lx: unknown non LRU page type %lx (%pGp)\n",
 				pfn, page->flags, &page->flags);
+
 			return -EIO;
 		}
 	}
+
 	return ret;
 }
-
+/* soft offline的巨页情况。
+todo。 */
 static int soft_offline_huge_page(struct page *page, int flags)
 {
 	int ret;
@@ -1739,7 +1832,10 @@ static int soft_offline_huge_page(struct page *page, int flags)
 	}
 	return ret;
 }
-
+/* soft offline in_use的page的实际函数
+先尝试干净文件页的offline方式
+然后从mapping里面isolate，之后通过迁移来offline。
+ */
 static int __soft_offline_page(struct page *page, int flags)
 {
 	int ret;
@@ -1752,8 +1848,8 @@ static int __soft_offline_page(struct page *page, int flags)
 	 * so there's no race between soft_offline_page() and memory_failure().
 	 */
 	lock_page(page);
-	wait_on_page_writeback(page);
-	if (PageHWPoison(page)) {
+	wait_on_page_writeback(page);/* 还要等待page回写完成吗 */
+	if (PageHWPoison(page)) {/* 已经poisoned */
 		unlock_page(page);
 		put_hwpoison_page(page);
 		pr_info("soft offline: %#lx page already poisoned\n", pfn);
@@ -1762,14 +1858,16 @@ static int __soft_offline_page(struct page *page, int flags)
 	/*
 	 * Try to invalidate first. This should work for
 	 * non dirty unmapped page cache pages.
+	 对于没有映射的干净文件页。
 	 */
 	ret = invalidate_inode_page(page);
 	unlock_page(page);
+
 	/*
 	 * RED-PEN would be better to keep it isolated here, but we
 	 * would need to fix isolation locking first.
 	 */
-	if (ret == 1) {
+	if (ret == 1) {/* invalidate_inode_page成功了。 */
 		put_hwpoison_page(page);
 		pr_info("soft_offline: %#lx: invalidated\n", pfn);
 		SetPageHWPoison(page);
@@ -1782,16 +1880,18 @@ static int __soft_offline_page(struct page *page, int flags)
 	 * Try to migrate to a new page instead. migrate.c
 	 * handles a large number of cases for us.
 	 */
-	if (PageLRU(page))
+	 /* 刚才没成功，这里继续 */
+	if (PageLRU(page))/*  */
 		ret = isolate_lru_page(page);
-	else
+	else/* 不是lru的话，还能怎么isolate呢，isolate不是lru的概念吗。
+	通过mapping来isolate */
 		ret = isolate_movable_page(page, ISOLATE_UNEVICTABLE);
 	/*
 	 * Drop page reference which is came from get_any_page()
 	 * successful isolate_lru_page() already took another one.
 	 */
 	put_hwpoison_page(page);
-	if (!ret) {
+	if (!ret) {/* 刚刚isolate成功了。准备迁移。 */
 		LIST_HEAD(pagelist);
 		/*
 		 * After isolated lru page, the PageLRU will be cleared,
@@ -1801,25 +1901,29 @@ static int __soft_offline_page(struct page *page, int flags)
 		if (!__PageMovable(page))
 			inc_node_page_state(page, NR_ISOLATED_ANON +
 						page_is_file_cache(page));
+
 		list_add(&page->lru, &pagelist);
+		/* 这里开始迁移 */
 		ret = migrate_pages(&pagelist, new_page, NULL, MPOL_MF_MOVE_ALL,
 					MIGRATE_SYNC, MR_MEMORY_FAILURE);
-		if (ret) {
+		if (ret) {/* 有页面没迁移成功 */
 			if (!list_empty(&pagelist))
-				putback_movable_pages(&pagelist);
+				putback_movable_pages(&pagelist);/* put回mapping */
 
 			pr_info("soft offline: %#lx: migration failed %d, type %lx (%pGp)\n",
 				pfn, ret, page->flags, &page->flags);
 			if (ret > 0)
 				ret = -EIO;
 		}
-	} else {
+
+	} else {/* isolate页面失败了，这里直接结束soft offline。 */
 		pr_info("soft offline: %#lx: isolation failed: %d, page count %d, type %lx (%pGp)\n",
 			pfn, ret, page_count(page), page->flags, &page->flags);
 	}
+
 	return ret;
 }
-
+/* 顾名思义。 */
 static int soft_offline_in_use_page(struct page *page, int flags)
 {
 	int ret;
@@ -1827,16 +1931,21 @@ static int soft_offline_in_use_page(struct page *page, int flags)
 	struct page *hpage = compound_head(page);
 
 	if (!PageHuge(page) && PageTransHuge(hpage)) {
+		/* 加锁后操作 */
 		lock_page(page);
-		if (!PageAnon(page) || unlikely(split_huge_page(page))) {
+		if (!PageAnon(page) || unlikely(split_huge_page(page))) {/* 不是匿名页直接
+		进来，是的话如果split成功也进来。 */
 			unlock_page(page);
-			if (!PageAnon(page))
+
+			if (!PageAnon(page))/*  */
 				pr_info("soft offline: %#lx: non anonymous thp\n", page_to_pfn(page));
 			else
 				pr_info("soft offline: %#lx: thp split failed\n", page_to_pfn(page));
 			put_hwpoison_page(page);
+			
 			return -EBUSY;
 		}
+		/* 说明是匿名页，并且split失败？ */
 		unlock_page(page);
 	}
 
@@ -1847,30 +1956,36 @@ static int soft_offline_in_use_page(struct page *page, int flags)
 	 * page is really free after put_page() returns, so
 	 * set_hwpoison_free_buddy_page() highly likely fails.
 	 */
+	 /* 获取page的迁移类型，马上好回滚 */
 	mt = get_pageblock_migratetype(page);
 	set_pageblock_migratetype(page, MIGRATE_ISOLATE);
 	if (PageHuge(page))
 		ret = soft_offline_huge_page(page, flags);
 	else
 		ret = __soft_offline_page(page, flags);
+	/* 恢复原来的迁移类型 */
 	set_pageblock_migratetype(page, mt);
 	return ret;
 }
-
+/* soft offline此free的mf page的函数。
+返回0表示成功。返回EBUSY表示本来就是poisoned。 */
 static int soft_offline_free_page(struct page *page)
 {
+	/* 如果是巨页的话，拆分为buddy pages。 */
 	int rc = dissolve_free_huge_page(page);
 
-	if (!rc) {
-		if (set_hwpoison_free_buddy_page(page))
-			num_poisoned_pages_inc();
+	if (!rc) {/* 拆分成功，或者本来也不是巨页 */
+		if (set_hwpoison_free_buddy_page(page))/* 页面本来没有poisoned */
+			num_poisoned_pages_inc();/*  */
 		else
-			rc = -EBUSY;
+			rc = -EBUSY;/* 页面本来就是poisoned的了 */
 	}
 	return rc;
 }
 
 /**
+处理一个soft offline出错类型的fail page？
+通过迁移或者invalidate来soft offline这个page。
  * soft_offline_page - Soft offline a page.
  * @page: page to offline
  * @flags: flags. Same as memory_failure().
@@ -1897,28 +2012,31 @@ int soft_offline_page(struct page *page, int flags)
 	int ret;
 	unsigned long pfn = page_to_pfn(page);
 
-	if (is_zone_device_page(page)) {
+	if (is_zone_device_page(page)) {/* device page的情况，todo */
 		pr_debug_ratelimited("soft_offline: %#lx page is device page\n",
 				pfn);
 		if (flags & MF_COUNT_INCREASED)
 			put_page(page);
+
 		return -EIO;
 	}
 
-	if (PageHWPoison(page)) {
+	if (PageHWPoison(page)) {/* 已经poisoned */
 		pr_info("soft offline: %#lx page already poisoned\n", pfn);
 		if (flags & MF_COUNT_INCREASED)
 			put_hwpoison_page(page);
+
 		return -EBUSY;
 	}
-
+	/* 获取锁 */
 	get_online_mems();
+	/* 尝试get一下 */
 	ret = get_any_page(page, pfn, flags);
 	put_online_mems();
 
-	if (ret > 0)
+	if (ret > 0)/* 不是free page */
 		ret = soft_offline_in_use_page(page, flags);
-	else if (ret == 0)
+	else if (ret == 0)/* 是free page */
 		ret = soft_offline_free_page(page);
 
 	return ret;

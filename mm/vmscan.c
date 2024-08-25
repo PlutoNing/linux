@@ -962,6 +962,8 @@ static pageout_t pageout(struct page *page, struct address_space *mapping,
 2024年07月03日11:58:09
 __remove_mapping()尝试分离page->mapping。
 2024年7月14日14:44:01
+2024年8月25日21:28:07
+todo
  * Same as remove_mapping, but if the page is removed from the mapping, it
  * gets returned with a refcount of 0.
  */
@@ -2016,8 +2018,8 @@ static unsigned long isolate_lru_pages(unsigned long nr_to_scan,
 
 /**
 2024年07月26日11:09:22
-
-返回真为错误。
+清除lru标记，从lru移除。
+返回0为成功，返回真为错误。
  * isolate_lru_page - tries to isolate a page from its LRU list
  * @page: page to isolate from its LRU list
  *

@@ -85,7 +85,10 @@ int migrate_prep_local(void)
 	return 0;
 }
 /* 2024年08月13日17:06:27
-isolate此movable的page
+isolate此mapping的page，返回0表示成功。
+2024年8月25日21:38:30
+不是lru的话，还能怎么isolate呢，isolate不是lru的概念吗
+哦哦这种isolate，是通过mapping定义的回调来isolate的。
  */
 int isolate_movable_page(struct page *page, isolate_mode_t mode)
 {
@@ -100,7 +103,7 @@ int isolate_movable_page(struct page *page, isolate_mode_t mode)
 	 * the put_page() at the end of this block will take care of
 	 * release this page, thus avoiding a nasty leakage.
 	 */
-	if (unlikely(!get_page_unless_zero(page)))
+	if (unlikely(!get_page_unless_zero(page)))/* page已经是free的了 */
 		goto out;
 
 	/*
@@ -122,10 +125,10 @@ int isolate_movable_page(struct page *page, isolate_mode_t mode)
 	 * before proceeding with the movable page isolation steps.
 	 */
 	if (unlikely(!trylock_page(page)))
-		goto out_putpage;
+		goto out_putpage;/* 加锁不成功 */
 
 	if (!PageMovable(page) || PageIsolated(page))
-		goto out_no_isolated;
+		goto out_no_isolated;/* 需要page是movable，并且mapping支持才可以。 */
 
 	mapping = page_mapping(page);
 	VM_BUG_ON_PAGE(!mapping, page);
@@ -135,6 +138,7 @@ int isolate_movable_page(struct page *page, isolate_mode_t mode)
 
 	/* Driver shouldn't use PG_isolated bit of page->flags */
 	WARN_ON_ONCE(PageIsolated(page));
+	/* 表示isolate成功了 */
 	__SetPageIsolated(page);
 	unlock_page(page);
 
@@ -167,7 +171,9 @@ void putback_movable_page(struct page *page)
 }
 
 /*
-把cc里面isolate的page进行put_back
+把从mapping里面isolate的page进行put_back。
+2024年8月25日21:50:02
+重点是movable，todo。
  * Put previously isolated pages back onto the appropriate lists
  * from where they were once taken off for compaction/migration.
  *
@@ -192,13 +198,13 @@ void putback_movable_pages(struct list_head *l)
 		 * __PageMovable because LRU page's mapping cannot have
 		 * PAGE_MAPPING_MOVABLE.
 		 */
-		if (unlikely(__PageMovable(page))) {
+		if (unlikely(__PageMovable(page))) {/* 如果是movable的 */
 
 			VM_BUG_ON_PAGE(!PageIsolated(page), page);
 
 			lock_page(page);
 			if (PageMovable(page))/* page的mapping有isolate回调 */
-				putback_movable_page(page);
+				putback_movable_page(page);/* 调用mapping的回调，还给他自己。 */
 			else
 				__ClearPageIsolated(page);/* mapping没有回调的话，就直接clear么。
 			什么机制的mapping会进入__PageMovable这个if，但是进不来PageMovable这个if。todo。 */
@@ -1481,7 +1487,7 @@ out:
  *			fails, or NULL if no special handling is necessary.迁移失败时释放目标页面的
 函数指针。
  * @private:		Private data to be passed on to get_new_page()传递给get_new_page的参数
- 这里是migrate_pages的cc结构体
+ 比如是migrate_pages的cc结构体
  * @mode:		The migration mode that specifies the constraints for
  *			page migration, if any.迁移模式
  * @reason:		The reason for page migration.：迁移的原因。
@@ -1490,7 +1496,7 @@ out:
  * because the list has become empty or no retryable pages exist any more.
  * The caller should call putback_movable_pages() to return pages to the LRU
  * or free list only if ret != 0.
- *
+ *返回迁移不成功的数量，或者错误码。
  * Returns the number of pages that were not migrated, or an error code.
  */
 int migrate_pages(struct list_head *from, new_page_t get_new_page,

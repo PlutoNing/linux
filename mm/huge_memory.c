@@ -2689,6 +2689,7 @@ bool can_split_huge_page(struct page *page, int *pextra_pins)
 }
 
 /*
+把大页分裂成正常页。
  * This function splits huge page into normal pages. @page can point to any
  * subpage of huge page to split. Split doesn't change the position of @page.
  *

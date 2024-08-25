@@ -548,7 +548,8 @@ out:
 
 /*
 2024年8月10日00:08:06
-
+2024年8月25日23:32:10
+获取page的avr的锁。
  * Similar to page_get_anon_vma() except it locks the anon_vma.
  *
  * Its a little more complex as it tries to keep the fast path to a single
@@ -563,9 +564,10 @@ struct anon_vma *page_lock_anon_vma_read(struct page *page)
 
 	rcu_read_lock();
 	anon_mapping = (unsigned long)READ_ONCE(page->mapping);
-	/* 只处理anon */
-	if ((anon_mapping & PAGE_MAPPING_FLAGS) != PAGE_MAPPING_ANON)
+
+	if ((anon_mapping & PAGE_MAPPING_FLAGS) != PAGE_MAPPING_ANON)/* 不是匿名页mapping */
 		goto out;
+
 	/* 没有映射的也没 */
 	if (!page_mapped(page))
 		goto out;
@@ -574,8 +576,8 @@ struct anon_vma *page_lock_anon_vma_read(struct page *page)
 	/* avroot */
 	root_anon_vma = READ_ONCE(anon_vma->root);
 
-	/* 获取avr的信号量 */
-	if (down_read_trylock(&root_anon_vma->rwsem)) {
+	/* 直接获取，获取avr的信号量 */
+	if (down_read_trylock(&root_anon_vma->rwsem)) {/* 获取成功了 */
 		/*
 		 * If the page is still mapped, then this anon_vma is still
 		 * its anon_vma, and holding the mutex ensures that it will
@@ -585,15 +587,19 @@ struct anon_vma *page_lock_anon_vma_read(struct page *page)
 			up_read(&root_anon_vma->rwsem);
 			anon_vma = NULL;
 		}
+
 		goto out;
 	}
 
-	/* trylock failed, we got to sleep */
+	/* 
+	刚刚尝试直接try lock没成功。
+	trylock failed, we got to sleep */
 	if (!atomic_inc_not_zero(&anon_vma->refcount)) {
 		/* 说明这个av没有引用了？ */
 		anon_vma = NULL;
 		goto out;
 	}
+
 	/* 再检查一遍，防止刚才被解除映射了 */
 	if (!page_mapped(page)) {
 		rcu_read_unlock();
@@ -603,7 +609,11 @@ struct anon_vma *page_lock_anon_vma_read(struct page *page)
 
 	/* we pinned the anon_vma, its safe to sleep */
 	rcu_read_unlock();
-	/* 找到page的av了，就是一样的lock read av。 */
+
+	/* 现在get了引用，获取了信号量 */
+
+
+	/* 这里lock的是av的root，也就是avr */
 	anon_vma_lock_read(anon_vma);
 
 	if (atomic_dec_and_test(&anon_vma->refcount)) {
@@ -612,6 +622,7 @@ struct anon_vma *page_lock_anon_vma_read(struct page *page)
 		 * and bail -- can't simply use put_anon_vma() because
 		 * we'll deadlock on the anon_vma_lock_write() recursion.
 		 */
+		 /* put引用之后，引用为0了。 */
 		anon_vma_unlock_read(anon_vma);
 		__put_anon_vma(anon_vma);
 		anon_vma = NULL;

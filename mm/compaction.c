@@ -99,8 +99,8 @@ static void split_map_pages(struct list_head *list)
 }
 
 #ifdef CONFIG_COMPACTION
-/* compact判断是否movable， 不仅flag要是movale，
-mapping也要有isolate的回调。 */
+/* compact判断是否movable， 
+不仅flag要是movale，mapping也要有isolate的回调。 */
 int PageMovable(struct page *page)
 {
 	struct address_space *mapping;

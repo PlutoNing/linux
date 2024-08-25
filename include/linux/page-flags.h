@@ -283,7 +283,7 @@ static __always_inline void __SetPage##uname(struct page *page)		\
 #define __CLEARPAGEFLAG(uname, lname, policy)				\
 static __always_inline void __ClearPage##uname(struct page *page)	\
 	{ __clear_bit(PG_##lname, &policy(page, 1)->flags); }
-
+/* 返回旧值，设置新值 */
 #define TESTSETFLAG(uname, lname, policy)				\
 static __always_inline int TestSetPage##uname(struct page *page)	\
 	{ return test_and_set_bit(PG_##lname, &policy(page, 1)->flags); }
@@ -631,7 +631,7 @@ static inline bool page_huge_active(struct page *page)
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /*
 2024年7月14日14:49:00
-
+是不是大页
  * PageHuge() only returns true for hugetlbfs pages, but not for
  * normal or transparent huge pages.
  *

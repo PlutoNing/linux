@@ -9269,6 +9269,9 @@ bool is_free_buddy_page(struct page *page)
 
 #ifdef CONFIG_MEMORY_FAILURE
 /*
+如果是page是free的话，设置为poisoned。
+作用是什么？
+返回真表示本来没有poisoned
  * Set PG_hwpoison flag if a given page is confirmed to be a free page.  This
  * test is performed under the zone lock to prevent a race against page
  * allocation.
@@ -9286,8 +9289,9 @@ bool set_hwpoison_free_buddy_page(struct page *page)
 		struct page *page_head = page - (pfn & ((1 << order) - 1));
 
 		if (PageBuddy(page_head) && page_order(page_head) >= order) {
-			if (!TestSetPageHWPoison(page))
+			if (!TestSetPageHWPoison(page))/* 如果本来没有poisoned */
 				hwpoisoned = true;
+			
 			break;
 		}
 	}

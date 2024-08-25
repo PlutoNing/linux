@@ -505,6 +505,7 @@ struct cgroup_subsys_state *mem_cgroup_css_from_page(struct page *page)
 
 /**
 2024年7月14日13:55:03
+获取page的memcg的id？
  * page_cgroup_ino - return inode number of the memcg a page is charged to
  * @page: the page
  *

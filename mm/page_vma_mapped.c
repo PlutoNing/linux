@@ -281,7 +281,6 @@ next_pte:
  * page_mapped_in_vma - check whether a page is really mapped in a VMA
  * @page: the page to test
  * @vma: the VMA to test
- *
  * Returns 1 if the page is mapped into the page tables of the VMA, 0
  * if the page is not mapped into the page tables of this VMA.  Only
  * valid for normal file or anonymous VMAs.

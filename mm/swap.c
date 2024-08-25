@@ -73,19 +73,20 @@ static void __page_cache_release(struct page *page)
 		del_page_from_lru_list(page, lruvec, page_off_lru(page));
 		spin_unlock_irqrestore(&pgdat->lru_lock, flags);
 	}
+
 	__ClearPageWaiters(page);
 }
-/* put页面 */
+/* put引用为0的页面 */
 static void __put_single_page(struct page *page)
 {
-	/* 从lru移走？ */
+	/* 从lru移走，清除lru标记位 */
 	__page_cache_release(page);
 	/*  */
 	mem_cgroup_uncharge(page);
 	/* 归还页面到buddy */
 	free_unref_page(page);
 }
-/* put复合页 */
+/* put引用为0的复合页 */
 static void __put_compound_page(struct page *page)
 {
 	compound_page_dtor *dtor;
@@ -100,9 +101,12 @@ static void __put_compound_page(struct page *page)
 		__page_cache_release(page);
 
 	dtor = get_compound_page_dtor(page);
+	/* 执行dtor函数 */
 	(*dtor)(page);
 }
-/* 如何才算put一个page呢
+/* 
+此时page的引用是0了的put函数。
+大体来说是从lru移除，然后还给buddy。
  */
 void __put_page(struct page *page)
 {
@@ -800,7 +804,7 @@ void lru_add_drain(void)
 #ifdef CONFIG_SMP
 
 static DEFINE_PER_CPU(struct work_struct, lru_add_drain_work);
-/*  */
+/* 排空pcp lru */
 static void lru_add_drain_per_cpu(struct work_struct *dummy)
 {
 	lru_add_drain();

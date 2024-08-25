@@ -113,6 +113,8 @@ static __always_inline void arch_atomic_dec(atomic_t *v)
 #define arch_atomic_dec arch_atomic_dec
 
 /**
+2024年8月25日23:28:38
+减减，然后test是不是0.
  * arch_atomic_dec_and_test - decrement and test
  * @v: pointer of type atomic_t
  *

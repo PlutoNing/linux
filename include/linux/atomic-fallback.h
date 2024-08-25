@@ -1131,7 +1131,8 @@ atomic_inc_not_zero(atomic_t *v)
 	return atomic_add_unless(v, 1, 0);
 }
 /* ++，除非是0
-如果是0的话返回false，不然就是++并且返回true */
+如果是0的话返回false，不然就是++并且返回true。
+不是0才加，返回有没有加。 */
 #define atomic_inc_not_zero atomic_inc_not_zero
 #endif
 

@@ -323,21 +323,21 @@ unsigned long hugetlb_get_unmapped_area(struct file *file, unsigned long addr,
 #define HSTATE_NAME_LEN 32
 /* Defines one hugetlb page size
 2024年8月24日10:02:15
-todo */
+代表所管理的巨页的属性 */
 struct hstate {
 	int next_nid_to_alloc;
 	int next_nid_to_free;
-	unsigned int order;
+	unsigned int order;/* 巨页的order */
 	unsigned long mask;
 	unsigned long max_huge_pages;
-	unsigned long nr_huge_pages;
+	unsigned long nr_huge_pages;/* 管理？的巨页的数量？ */
 	unsigned long free_huge_pages;
 	unsigned long resv_huge_pages;
 	unsigned long surplus_huge_pages;
 	unsigned long nr_overcommit_huge_pages;
 	struct list_head hugepage_activelist;
 	struct list_head hugepage_freelists[MAX_NUMNODES];
-	unsigned int nr_huge_pages_node[MAX_NUMNODES];
+	unsigned int nr_huge_pages_node[MAX_NUMNODES];/* 不同node上面的巨页的计数 */
 	unsigned int free_huge_pages_node[MAX_NUMNODES];
 	unsigned int surplus_huge_pages_node[MAX_NUMNODES];
 #ifdef CONFIG_CGROUP_HUGETLB
@@ -417,7 +417,7 @@ static inline unsigned long huge_page_mask(struct hstate *h)
 {
 	return h->mask;
 }
-
+/* 获取hstate的order */
 static inline unsigned int huge_page_order(struct hstate *h)
 {
 	return h->order;
@@ -427,12 +427,12 @@ static inline unsigned huge_page_shift(struct hstate *h)
 {
 	return h->order + PAGE_SHIFT;
 }
-
+/* 是不是超大的巨页 */
 static inline bool hstate_is_gigantic(struct hstate *h)
 {
 	return huge_page_order(h) >= MAX_ORDER;
 }
-
+/* 获取巨页的页面数量 */
 static inline unsigned int pages_per_huge_page(struct hstate *h)
 {
 	return 1 << h->order;

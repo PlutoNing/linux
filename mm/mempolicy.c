@@ -104,7 +104,8 @@
 #include <linux/uaccess.h>
 
 #include "internal.h"
-
+/* 2024年8月25日20:12:35
+感觉目前为止见到的不多，todo */
 /* Internal flags */
 #define MPOL_MF_DISCONTIG_OK (MPOL_MF_INTERNAL << 0)	/* Skip checks for continuous vmas */
 #define MPOL_MF_INVERT (MPOL_MF_INTERNAL << 1)		/* Invert check for nodemask */

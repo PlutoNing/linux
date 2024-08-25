@@ -336,7 +336,7 @@ static inline int is_hwpoison_entry(swp_entry_t entry)
 {
 	return swp_type(entry) == SWP_HWPOISON;
 }
-
+/* 统计信息 */
 static inline void num_poisoned_pages_inc(void)
 {
 	atomic_long_inc(&num_poisoned_pages);

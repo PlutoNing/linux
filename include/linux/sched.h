@@ -785,8 +785,8 @@ struct task_struct {
 #endif /* #ifdef CONFIG_TASKS_RCU */
 
 	struct sched_info		sched_info;
-
-	struct list_head		tasks;
+	
+	struct list_head		tasks;/* 连接到系统全部进程的链表？ */
 #ifdef CONFIG_SMP
 	struct plist_node		pushable_tasks;
 	struct rb_node			pushable_dl_tasks;
@@ -897,6 +897,7 @@ struct task_struct {
 	struct pid			*thread_pid;
 	struct hlist_node		pid_links[PIDTYPE_MAX];
 	struct list_head		thread_group;
+	/*  */
 	struct list_head		thread_node;
 /* vfork是否完成 */
 	struct completion		*vfork_done;

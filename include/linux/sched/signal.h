@@ -81,6 +81,7 @@ struct signal_struct {
 	refcount_t		sigcnt;
 	atomic_t		live;
 	int			nr_threads;
+	/*  */
 	struct list_head	thread_head;
 
 	wait_queue_head_t	wait_chldexit;	/* for wait4() */
@@ -562,10 +563,10 @@ extern void flush_itimer_signals(void);
 
 #define tasklist_empty() \
 	list_empty(&init_task.tasks)
-
+/* 找到tsk的下一个tsk */
 #define next_task(p) \
 	list_entry_rcu((p)->tasks.next, struct task_struct, tasks)
-
+/* 遍历系统进程？ */
 #define for_each_process(p) \
 	for (p = &init_task ; (p = next_task(p)) != &init_task ; )
 
@@ -580,10 +581,10 @@ extern bool current_is_single_threaded(void);
 
 #define while_each_thread(g, t) \
 	while ((t = next_thread(t)) != g)
-
+/* 遍历signal */
 #define __for_each_thread(signal, t)	\
 	list_for_each_entry_rcu(t, &(signal)->thread_head, thread_node)
-
+/* 遍历全部线程 */
 #define for_each_thread(p, t)		\
 	__for_each_thread((p)->signal, t)
 

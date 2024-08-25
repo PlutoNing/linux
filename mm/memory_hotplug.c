@@ -55,7 +55,7 @@ static online_page_callback_t online_page_callback = generic_online_page;
 static DEFINE_MUTEX(online_page_callback_lock);
 
 DEFINE_STATIC_PERCPU_RWSEM(mem_hotplug_lock);
-
+/* 获取锁 */
 void get_online_mems(void)
 {
 	percpu_down_read(&mem_hotplug_lock);

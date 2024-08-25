@@ -904,7 +904,8 @@ typedef struct pglist_data {
 
 	/* Write-intensive fields used by page reclaim 内存回收lru时候的锁*/
 	ZONE_PADDING(_pad1_)
-	spinlock_t		lru_lock;
+
+	spinlock_t		lru_lock;/* 保护lruvec */
 
 #ifdef CONFIG_DEFERRED_STRUCT_PAGE_INIT
 	/*

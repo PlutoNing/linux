@@ -243,7 +243,7 @@ do {									\
 	__verify_pcpu_ptr(ptr);						\
 	SHIFT_PERCPU_PTR((ptr), per_cpu_offset((cpu)));			\
 })
-
+/*  */
 #define raw_cpu_ptr(ptr)						\
 ({									\
 	__verify_pcpu_ptr(ptr);						\

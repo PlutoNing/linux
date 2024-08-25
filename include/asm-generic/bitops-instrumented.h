@@ -133,6 +133,7 @@ static inline void __change_bit(long nr, volatile unsigned long *addr)
 
 /**
 2024年7月14日14:23:00
+返回旧值，设置新值。
  * test_and_set_bit - Set a bit and return its old value
  * @nr: Bit to set
  * @addr: Address to count from
@@ -160,6 +161,7 @@ static inline bool __test_and_set_bit(long nr, volatile unsigned long *addr)
 }
 
 /**
+返回0表示set成功。
  * test_and_set_bit_lock - Set a bit and return its old value, for lock
  * @nr: Bit to set
  * @addr: Address to count from

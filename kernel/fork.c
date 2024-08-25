@@ -135,7 +135,8 @@ static const char * const resident_page_types[] = {
 };
 
 DEFINE_PER_CPU(unsigned long, process_counts) = 0;
-
+/* tasklist是什么
+2024年8月25日23:40:42 */
 __cacheline_aligned DEFINE_RWLOCK(tasklist_lock);  /* outer */
 
 #ifdef CONFIG_PROVE_RCU

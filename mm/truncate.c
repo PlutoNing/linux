@@ -216,6 +216,7 @@ truncate_cleanup_page(struct address_space *mapping, struct page *page)
 
 /*
 2024年07月29日11:03:06
+page是没有映射的干净文件页。
  * This is for invalidate_mapping_pages().  That function can be called at
  * any time, and is not supposed to throw away dirty pages.  But pages can
  * be marked dirty at any time too, so use remove_mapping which safely
@@ -272,6 +273,8 @@ EXPORT_SYMBOL(generic_error_remove_page);
 
 /*
 2024年07月29日11:02:58
+page是没有映射的干净文件页。
+返回1表示成功。
  * Safely invalidate one page from its pagecache mapping.
  * It only drops clean, unused pages. The page must be locked.
  *
@@ -286,6 +289,7 @@ int invalidate_inode_page(struct page *page)
 		return 0;
 	if (page_mapped(page))
 		return 0;
+
 	return invalidate_complete_page(mapping, page);
 }
 
@@ -1004,6 +1008,7 @@ EXPORT_SYMBOL(pagecache_isize_extended);
 void truncate_pagecache_range(struct inode *inode, loff_t lstart, loff_t lend)
 {
 	struct address_space *mapping = inode->i_mapping;
+	/* 都是以页面为单位truncate */
 	loff_t unmap_start = round_up(lstart, PAGE_SIZE);
 	loff_t unmap_end = round_down(1 + lend, PAGE_SIZE) - 1;
 	/*
@@ -1022,6 +1027,7 @@ void truncate_pagecache_range(struct inode *inode, loff_t lstart, loff_t lend)
 	if ((u64)unmap_end > (u64)unmap_start)
 		unmap_mapping_range(mapping, unmap_start,
 				    1 + unmap_end - unmap_start, 0);
+
 	/* 从mapping移除这些页面 */
 	truncate_inode_pages_range(mapping, lstart, lend);
 }
