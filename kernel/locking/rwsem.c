@@ -191,6 +191,8 @@ static inline bool rwsem_test_oflags(struct rw_semaphore *sem, long flags)
 }
 
 /*
+2024年8月25日13:06:26
+设置sem的持有者
  * The task_struct pointer of the last owning reader will be left in
  * the owner field.
  *
@@ -208,7 +210,7 @@ static inline void __rwsem_set_reader_owned(struct rw_semaphore *sem,
 
 	atomic_long_set(&sem->owner, val);
 }
-
+/*  */
 static inline void rwsem_set_reader_owned(struct rw_semaphore *sem)
 {
 	__rwsem_set_reader_owned(sem, current);
@@ -1359,7 +1361,7 @@ static inline int __down_read_killable(struct rw_semaphore *sem)
 	}
 	return 0;
 }
-
+/* 返回1是down read成功，0是失败。 */
 static inline int __down_read_trylock(struct rw_semaphore *sem)
 {
 	long tmp;
@@ -1372,11 +1374,14 @@ static inline int __down_read_trylock(struct rw_semaphore *sem)
 	tmp = RWSEM_UNLOCKED_VALUE;
 	do {
 		if (atomic_long_try_cmpxchg_acquire(&sem->count, &tmp,
-					tmp + RWSEM_READER_BIAS)) {
+					tmp + RWSEM_READER_BIAS)) {/*  */
+			
 			rwsem_set_reader_owned(sem);
 			return 1;
 		}
+
 	} while (!(tmp & RWSEM_READ_FAILED_MASK));
+
 	return 0;
 }
 
@@ -1513,6 +1518,9 @@ int __sched down_read_killable(struct rw_semaphore *sem)
 EXPORT_SYMBOL(down_read_killable);
 
 /*
+2024年8月25日13:01:17
+返回1成功
+0失败
  * trylock for reading -- returns 1 if successful, 0 if contention
  */
 int down_read_trylock(struct rw_semaphore *sem)

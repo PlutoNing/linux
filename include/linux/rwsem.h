@@ -38,6 +38,8 @@ struct rw_semaphore {
 	 * Write owner or one of the read owners as well flags regarding
 	 * the current state of the rwsem. Can be used as a speculative
 	 * check to see if the write owner is running on the cpu.
+	 这个锁的持有者，
+	 可能是个tsk的指针，置位一些标记位什么的。
 	 */
 	atomic_long_t owner;
 #ifdef CONFIG_RWSEM_SPIN_ON_OWNER

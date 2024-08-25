@@ -397,7 +397,7 @@ static inline void __nodes_fold(nodemask_t *dstp, const nodemask_t *origp,
  */
 enum node_states {
 	N_POSSIBLE,		/* The node could become online at some point */
-	N_ONLINE,		/* The node is online */
+	N_ONLINE,		/* The node is online,代表online的nodes */
 	N_NORMAL_MEMORY,	/* The node has regular memory */
 #ifdef CONFIG_HIGHMEM
 	N_HIGH_MEMORY,		/* The node has regular or high memory */
@@ -439,9 +439,13 @@ static inline int num_node_state(enum node_states state)
 /* 遍历node_states数组的__state元素掩码指定的node */
 #define for_each_node_state(__node, __state) \
 	for_each_node_mask((__node), node_states[__state])
-
+/* 返回第一个online的node
+具体是，全部online的node被置位在node_states[N_ONLINE]这个mask上面
+用first_node，取下第一个置位的比特位，就是第一个online的node
+不知道这个第一个仅仅表示在空间上最靠左，还是说时间上也是第一个online的 */
 #define first_online_node	first_node(node_states[N_ONLINE])
 #define first_memory_node	first_node(node_states[N_MEMORY])
+/* 在node_states[N_ONLINE]这个mask上面获取nid后面那个置位的bit位 */
 static inline int next_online_node(int nid)
 {
 	return next_node(nid, node_states[N_ONLINE]);

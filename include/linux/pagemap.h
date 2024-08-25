@@ -25,7 +25,7 @@ struct pagevec;
 enum mapping_flags {
 	AS_EIO		= 0,	/* IO error on async write */
 	AS_ENOSPC	= 1,	/* ENOSPC on async write */
-	AS_MM_ALL_LOCKS	= 2,	/* under mm_take_all_locks()是否正在被take all locks */
+	AS_MM_ALL_LOCKS	= 2,	/* under mm_take_all_locks()。是否正在被take all locks */
 	AS_UNEVICTABLE	= 3,	/* e.g., ramdisk, SHM_LOCK */
 	AS_EXITING	= 4, 	/* final truncate in progress */
 	/* writeback related tags are not used */

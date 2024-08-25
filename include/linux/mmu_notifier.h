@@ -77,7 +77,7 @@ struct mmu_notifier_range {
 	unsigned flags;
 	enum mmu_notifier_event event;
 };
-
+/*  */
 struct mmu_notifier_ops {
 	/*
 	 * Called either by mmu_notifier_unregister or when the mm is
@@ -255,9 +255,13 @@ notifier是干嘛的
 struct mmu_notifier {
 	/* 通过这个挂到mm的notifier mm里面 */
 	struct hlist_node hlist;
+	/*  */
 	const struct mmu_notifier_ops *ops;
+	/* 指向自己所属的mm */
 	struct mm_struct *mm;
+	/*  */
 	struct rcu_head rcu;
+	/* 引用数？ */
 	unsigned int users;
 };
 /* 2024年7月18日23:19:04 */
@@ -268,6 +272,7 @@ static inline int mm_has_notifiers(struct mm_struct *mm)
 
 struct mmu_notifier *mmu_notifier_get_locked(const struct mmu_notifier_ops *ops,
 					     struct mm_struct *mm);
+
 static inline struct mmu_notifier *
 mmu_notifier_get(const struct mmu_notifier_ops *ops, struct mm_struct *mm)
 {

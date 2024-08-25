@@ -192,7 +192,8 @@ static void __munlock_isolation_failed(struct page *page)
 
 /**
 2024年7月18日23:40:47
-munlock一个vma的page
+munlock一个vma的page。具体操作是什么？
+具体操作是清除mlock标记，从lru移除，解除映射，重新加入lru。
  * munlock_vma_page - munlock a vma page
  * @page: page to be unlocked, either a normal page or THP page head
  *
@@ -329,9 +330,10 @@ static void __putback_lru_fast(struct pagevec *pvec, int pgrescued)
 
 /*
 2024年08月12日09:36:24
-把页面进行解锁（去除lock标记），然后加入lru。
+把页面批量进行解锁（去除lock标记，移出lru），然后加入lru。其中不能操作的
+释放到buddy。
 ---------
-unlock具体指什么。
+unlock具体指什么。解锁mlock，移出lru。
  * Munlock a batch of pages from the same zone
  *
  * The work is split to two main phases. First phase clears the Mlocked flag
@@ -357,7 +359,7 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 	for (i = 0; i < nr; i++) {
 		struct page *page = pvec->pages[i];
 
-		if (TestClearPageMlocked(page)) {/* 进行解锁，如果本来有锁的话进入if */
+		if (TestClearPageMlocked(page)) {/* 进行解锁，如果本来有锁的话 */
 			/*
 			 * We already have pin from follow_page_mask()
 			 * so we can spare the get_page() here.
@@ -375,8 +377,8 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 		 * but we still need to release the follow_page_mask()
 		 * pin. We cannot do it under lru_lock however. If it's
 		 * the last pin, __page_cache_release() would deadlock.
-		 到这说明页面本来没锁，或者有锁但是unlock&isolate成功了
-		 解锁页面后把页面加入pvec_putback。
+		 到这说明页面本来没锁，或者有锁但是isolate失败了了
+
 		 */
 		pagevec_add(&pvec_putback, pvec->pages[i]);
 		pvec->pages[i] = NULL;
@@ -387,22 +389,24 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 	spin_unlock_irq(&zone->zone_pgdat->lru_lock);
 
 	/* Now we can release pins of pages that we are not munlocking
-	release这个pvec的页面到buddy
+	把本来没锁，或者解锁成功但是isolate失败的页面归还到buddy。
 	 */
 	pagevec_release(&pvec_putback);
 
-	/* 此时已经把刚才没锁或者isolate成功的页面释放了，余下的是本来有lock而且isolate
-	失败的页面 */
+	/* 此时已经把刚才没锁或者isolate失败的页面释放了 */
 
+
+	/* 这时候pvec剩余的页面都是本来有锁并且isolate成功的页面了 */
 
 	/* Phase 2: page munlock */
 	for (i = 0; i < nr; i++) {/* 这个for循环先把pvec里面不能fast的处理 */
 		struct page *page = pvec->pages[i];
 
-		if (page) {/* 是个本来有锁而且isolate失败的页面 */
+		if (page) {/* 是个本来有锁而且isolate成功的页面 */
 			lock_page(page);/* 可能会睡眠的lock */
-			if (!__putback_lru_fast_prepare(page, &pvec_putback,&pgrescued)) {
-						/* 不能走快速路径的页面，这里处理 */
+			if (!__putback_lru_fast_prepare(page, &pvec_putback,
+			&pgrescued)) {
+						/* 不能走快速路径的页面，这里处理。能走的加入pvec_putback */
 				/*
 				 * Slow path. We don't want to lose the last
 				 * pin before unlock_page()
@@ -427,7 +431,10 @@ static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 
 /*
 2024年7月19日00:06:19
-遍历【start，end】逐个获取和start同一个pmd的页面先填充到pagevec，然后由其他函数批量unlock
+这个从函数名来理解主要操作是fill pvec，然后用途是munlock。是为了munlock的时候
+批量操作更方便。
+具体是遍历【start，end】逐个获取和start同一个pmd的页面先填充到pagevec。
+然后返回后，由其他函数批量unlock。
  * Fill up pagevec for __munlock_pagevec using pte walk
  *
  * The function expects that the struct page corresponding to @start address is
@@ -541,8 +548,7 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 		 */
 		/* 查找物理页面 */
 		page = follow_page(vma, start, FOLL_GET | FOLL_DUMP);
-		if (page && !IS_ERR(page)) {
-			/* 存在对应的物理页面，并且没有出错（什么错？） */
+		if (page && !IS_ERR(page)) {/* 存在对应的物理页面，并且没有出错（什么错？） */
 			if (PageTransTail(page)) {
 				/* 如果是巨页的尾部页，就不管，因为处理巨页的话
 				应该操作头。 */
@@ -556,7 +562,7 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 				 * have gotten split before reaching
 				 * munlock_vma_page(), so we need to compute
 				 * the page_mask here instead.
-
+				清除mlock，移出lru
 				 */
 				page_mask = munlock_vma_page(page);
 				unlock_page(page);
@@ -584,7 +590,7 @@ void munlock_vma_pages_range(struct vm_area_struct *vma,
 				/* 先把页面批量放到pvec， 放几个算几个 */
 				start = __munlock_pagevec_fill(&pvec, vma,
 						zone, start, end);
-				/* 批量unlock此pvec里面页面，然后放回lru */
+				/* 批量unlock此pvec里面页面 */
 				__munlock_pagevec(&pvec, zone);
 				/* 这里不用走下面的start+=了，start已经是新值了，直接看看需不需要resched
 				就去下一轮循环。 */
@@ -600,6 +606,10 @@ next:
 }
 
 /*
+start和end可能是vma的起始结束范围，
+没看懂在做什么。
+2024年8月25日15:39:56
+好像是把区域进行加锁什么的，反正是改变vm flag。
  * mlock_fixup  - handle mlock[all]/munlock[all] requests.
  *
  * Filters out "special" vmas -- VM_LOCKED never gets set for these, and
@@ -621,18 +631,29 @@ static int mlock_fixup(struct vm_area_struct *vma, struct vm_area_struct **prev,
 	if (newflags == vma->vm_flags || (vma->vm_flags & VM_SPECIAL) ||
 	    is_vm_hugetlb_page(vma) || vma == get_gate_vma(current->mm) ||
 	    vma_is_dax(vma))
-		/* don't set VM_LOCKED or VM_LOCKONFAULT and don't count */
+		/* 
+		这些特殊情况不处理？
+		don't set VM_LOCKED or VM_LOCKONFAULT and don't count */
 		goto out;
-
+	/* 
+----------------------------------------------------------------------
+     vma_start     satrt+++++++++end            vma_end	
+	
+	 */
 	pgoff = vma->vm_pgoff + ((start - vma->vm_start) >> PAGE_SHIFT);
-	*prev = vma_merge(mm, *prev, start, end, newflags, vma->anon_vma,
+
+	/* 看看能不能与prev或者prev的next合并 */
+	*prev = vma_merge(mm, *prev, start, end, newflags, 
+	vma->anon_vma,
 			  vma->vm_file, pgoff, vma_policy(vma),
 			  vma->vm_userfaultfd_ctx);
-	if (*prev) {
+
+	if (*prev) {/* 可以合并 */
 		vma = *prev;
 		goto success;
 	}
 
+	/* 不能合并 */
 	if (start != vma->vm_start) {
 		ret = split_vma(mm, vma, start, 1);
 		if (ret)
@@ -665,13 +686,15 @@ success:
 	if (lock)
 		vma->vm_flags = newflags;
 	else
+	/* start和end就是vma的范围 */
 		munlock_vma_pages_range(vma, start, end);
 
 out:
 	*prev = vma;
 	return ret;
 }
-
+/* 给区域内进行加锁什么的
+反正是应用新的@flag */
 static int apply_vma_lock_flags(unsigned long start, size_t len,
 				vm_flags_t flags)
 {
@@ -695,17 +718,20 @@ static int apply_vma_lock_flags(unsigned long start, size_t len,
 		prev = vma;
 
 	for (nstart = start ; ; ) {
+		/* newflags清除了旧flag的锁相关标志位 */
 		vm_flags_t newflags = vma->vm_flags & VM_LOCKED_CLEAR_MASK;
-
+		/* 再把参数要加的flag加上去 */
 		newflags |= flags;
 
 		/* Here we know that  vma->vm_start <= nstart < vma->vm_end. */
 		tmp = vma->vm_end;
 		if (tmp > end)
 			tmp = end;
+
 		error = mlock_fixup(vma, &prev, nstart, tmp, newflags);
 		if (error)
 			break;
+		/* nstart重新指向当前vma的结尾 */
 		nstart = tmp;
 		if (nstart < prev->vm_end)
 			nstart = prev->vm_end;
@@ -722,6 +748,8 @@ static int apply_vma_lock_flags(unsigned long start, size_t len,
 }
 
 /*
+2024年8月25日15:26:46
+统计vmlocked的范围大小
  * Go through vma areas and sum size of mlocked
  * vma pages, as return value.
  * Note deferred memory locking case(mlock2(,,MLOCK_ONFAULT)
@@ -747,19 +775,21 @@ static unsigned long count_mm_mlocked_page_nr(struct mm_struct *mm,
 		if (start + len <=  vma->vm_start)
 			break;
 		if (vma->vm_flags & VM_LOCKED) {
+			/* 先处理有交叉的情况 */
 			if (start > vma->vm_start)
 				count -= (start - vma->vm_start);
 			if (start + len < vma->vm_end) {
 				count += start + len - vma->vm_start;
 				break;
 			}
+			/* 统计这个加锁的vma的大小 */
 			count += vma->vm_end - vma->vm_start;
 		}
 	}
 
 	return count >> PAGE_SHIFT;
 }
-
+/* 给区域内加锁 */
 static __must_check int do_mlock(unsigned long start, size_t len, vm_flags_t flags)
 {
 	unsigned long locked;
@@ -770,8 +800,9 @@ static __must_check int do_mlock(unsigned long start, size_t len, vm_flags_t fla
 
 	if (!can_do_mlock())
 		return -EPERM;
-
+	/* 把地址范围对齐到偏大的页面对齐大小，就是包含首尾两个部分页面的大小 */
 	len = PAGE_ALIGN(len + (offset_in_page(start)));
+	/* start向下对齐到页面大小 */
 	start &= PAGE_MASK;
 
 	lock_limit = rlimit(RLIMIT_MEMLOCK);
@@ -782,23 +813,29 @@ static __must_check int do_mlock(unsigned long start, size_t len, vm_flags_t fla
 		return -EINTR;
 
 	locked += current->mm->locked_vm;
-	if ((locked > lock_limit) && (!capable(CAP_IPC_LOCK))) {
+	/* 现在locked已经是加锁成功后的新大小了 */
+	if ((locked > lock_limit) && (!capable(CAP_IPC_LOCK))) {/* 如果此mm已经
+	加锁的内存新大小超过了limit限制 */
 		/*
 		 * It is possible that the regions requested intersect with
 		 * previously mlocked areas, that part area in "mm->locked_vm"
 		 * should not be counted to new mlock increment count. So check
 		 * and adjust locked count if necessary.
 		 */
+		 /* 减去这次加锁涉及的地址范围 */
 		locked -= count_mm_mlocked_page_nr(current->mm,
 				start, len);
+		/* 这个时候locked是真实大小了，因为刚才可能有的被重复加锁了，是偏大的 */
 	}
 
 	/* check against resource limits */
-	if ((locked <= lock_limit) || capable(CAP_IPC_LOCK))
+	if ((locked <= lock_limit) || capable(CAP_IPC_LOCK))/* 如果真实大小合法 */
 		error = apply_vma_lock_flags(start, len, flags);
 
 	up_write(&current->mm->mmap_sem);
-	if (error)
+
+
+	if (error)/* 可能是真实大小也不合法，或者apply_vma_lock_flags失败 */
 		return error;
 
 	error = __mm_populate(start, len, 0);
@@ -806,12 +843,12 @@ static __must_check int do_mlock(unsigned long start, size_t len, vm_flags_t fla
 		return __mlock_posix_error_return(error);
 	return 0;
 }
-
+/* __do_sys_mlock */
 SYSCALL_DEFINE2(mlock, unsigned long, start, size_t, len)
 {
 	return do_mlock(start, len, VM_LOCKED);
 }
-
+/* __do_sys_mlock2 */
 SYSCALL_DEFINE3(mlock2, unsigned long, start, size_t, len, int, flags)
 {
 	vm_flags_t vm_flags = VM_LOCKED;
@@ -824,7 +861,7 @@ SYSCALL_DEFINE3(mlock2, unsigned long, start, size_t, len, int, flags)
 
 	return do_mlock(start, len, vm_flags);
 }
-
+/* __do_sys_munlock */
 SYSCALL_DEFINE2(munlock, unsigned long, start, size_t, len)
 {
 	int ret;
@@ -843,6 +880,7 @@ SYSCALL_DEFINE2(munlock, unsigned long, start, size_t, len)
 }
 
 /*
+2024年8月25日14:32:25
  * Take the MCL_* flags passed into mlockall (or 0 if called from munlockall)
  * and translate into the appropriate modifications to mm->def_flags and/or the
  * flags for all current VMAs.
@@ -874,7 +912,7 @@ static int apply_mlockall_flags(int flags)
 			to_add |= VM_LOCKONFAULT;
 	}
 
-	for (vma = current->mm->mmap; vma ; vma = prev->vm_next) {
+	for (vma = current->mm->mmap; vma ; vma = prev->vm_next) {/* 遍历全部vma */
 		vm_flags_t newflags;
 
 		newflags = vma->vm_flags & VM_LOCKED_CLEAR_MASK;
@@ -955,6 +993,7 @@ out:
 	spin_unlock(&shmlock_user_lock);
 	return allowed;
 }
+
 /* 减少user的shm_lock数量 */
 void user_shm_unlock(size_t size, struct user_struct *user)
 {

@@ -88,6 +88,7 @@ void __mmu_notifier_release(struct mm_struct *mm)
 }
 
 /*
+2024年8月25日13:52:04
  * If no young bitflag is supported by the hardware, ->clear_flush_young can
  * unmap the address and return 1 or 0 depending if the mapping previously
  * existed or not.
@@ -108,7 +109,7 @@ int __mmu_notifier_clear_flush_young(struct mm_struct *mm,
 
 	return young;
 }
-
+/*  */
 int __mmu_notifier_clear_young(struct mm_struct *mm,
 			       unsigned long start,
 			       unsigned long end)
@@ -125,7 +126,7 @@ int __mmu_notifier_clear_young(struct mm_struct *mm,
 
 	return young;
 }
-
+/*  */
 int __mmu_notifier_test_young(struct mm_struct *mm,
 			      unsigned long address)
 {
@@ -145,6 +146,7 @@ int __mmu_notifier_test_young(struct mm_struct *mm,
 	return young;
 }
 
+/* 也是调用回调 */
 void __mmu_notifier_change_pte(struct mm_struct *mm, unsigned long address,
 			       pte_t pte)
 {
@@ -158,8 +160,9 @@ void __mmu_notifier_change_pte(struct mm_struct *mm, unsigned long address,
 	}
 	srcu_read_unlock(&srcu, id);
 }
-/* 2024年7月18日23:19:22
 
+/* 2024年7月18日23:19:22
+也是调用回调，感觉像个框架。
  */
 int __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
 {
@@ -197,15 +200,18 @@ int __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
 
 	return ret;
 }
-/*  */
+
+/* 也是调用mn的end回调 */
 void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range,
 					 bool only_end)
 {
 	struct mmu_notifier *mn;
 	int id;
 
+
 	lock_map_acquire(&__mmu_notifier_invalidate_range_start_map);
 	id = srcu_read_lock(&srcu);
+	/* 遍历range对象mm的mn */
 	hlist_for_each_entry_rcu(mn, &range->mm->mmu_notifier_mm->list, hlist) {
 		/*
 		 * Call invalidate_range here too to avoid the need for the
@@ -224,6 +230,7 @@ void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range,
 			mn->ops->invalidate_range(mn, range->mm,
 						  range->start,
 						  range->end);
+
 		if (mn->ops->invalidate_range_end) {
 			if (!mmu_notifier_range_blockable(range))
 				non_block_start();
@@ -234,8 +241,11 @@ void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range,
 	}
 	srcu_read_unlock(&srcu, id);
 	lock_map_release(&__mmu_notifier_invalidate_range_start_map);
-}
 
+
+}
+/* invalidate是什么。
+通过mn的invalidate_range回调来执行 */
 void __mmu_notifier_invalidate_range(struct mm_struct *mm,
 				  unsigned long start, unsigned long end)
 {
@@ -251,6 +261,7 @@ void __mmu_notifier_invalidate_range(struct mm_struct *mm,
 }
 
 /*
+把mn注册到mm。
  * Same as mmu_notifier_register but here the caller must hold the
  * mmap_sem in write mode.
  */
@@ -272,7 +283,7 @@ int __mmu_notifier_register(struct mmu_notifier *mn, struct mm_struct *mm)
 	mn->mm = mm;
 	mn->users = 1;
 
-	if (!mm->mmu_notifier_mm) {
+	if (!mm->mmu_notifier_mm) {/* 如果mm还没有mnm，这里分配。 */
 		/*
 		 * kmalloc cannot be called under mm_take_all_locks(), but we
 		 * know that mm->mmu_notifier_mm can't change while we hold
@@ -286,6 +297,7 @@ int __mmu_notifier_register(struct mmu_notifier *mn, struct mm_struct *mm)
 		INIT_HLIST_HEAD(&mmu_notifier_mm->list);
 		spin_lock_init(&mmu_notifier_mm->lock);
 	}
+
 
 	ret = mm_take_all_locks(mm);
 	if (unlikely(ret))
@@ -302,13 +314,15 @@ int __mmu_notifier_register(struct mmu_notifier *mn, struct mm_struct *mm)
 	 * We can't race against any other mmu notifier method either
 	 * thanks to mm_take_all_locks().
 	 */
-	if (mmu_notifier_mm)
+	if (mmu_notifier_mm)/* 这个不为空，说明刚才分配了，说明mm没有这个mnm */
 		mm->mmu_notifier_mm = mmu_notifier_mm;
 
 	spin_lock(&mm->mmu_notifier_mm->lock);
+	/* 把mn链入到mm */
 	hlist_add_head_rcu(&mn->hlist, &mm->mmu_notifier_mm->list);
 	spin_unlock(&mm->mmu_notifier_mm->lock);
 
+	/* drop all locks */
 	mm_drop_all_locks(mm);
 	BUG_ON(atomic_read(&mm->mm_users) <= 0);
 	return 0;
@@ -317,9 +331,11 @@ out_clean:
 	kfree(mmu_notifier_mm);
 	return ret;
 }
+
 EXPORT_SYMBOL_GPL(__mmu_notifier_register);
 
 /**
+把mn注册到mm
  * mmu_notifier_register - Register a notifier on a mm
  * @mn: The notifier to attach
  * @mm: The mm to attach the notifier to
@@ -348,13 +364,14 @@ int mmu_notifier_register(struct mmu_notifier *mn, struct mm_struct *mm)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(mmu_notifier_register);
-
+/* 遍历mm的mn，找到ops = @ops的mn */
 static struct mmu_notifier *
 find_get_mmu_notifier(struct mm_struct *mm, const struct mmu_notifier_ops *ops)
 {
 	struct mmu_notifier *mn;
 
 	spin_lock(&mm->mmu_notifier_mm->lock);
+	/* 遍历mm->mmu_notifier_mm的mmu_notifier */
 	hlist_for_each_entry_rcu (mn, &mm->mmu_notifier_mm->list, hlist) {
 		if (mn->ops != ops)
 			continue;
@@ -367,10 +384,12 @@ find_get_mmu_notifier(struct mm_struct *mm, const struct mmu_notifier_ops *ops)
 		return mn;
 	}
 	spin_unlock(&mm->mmu_notifier_mm->lock);
+
 	return NULL;
 }
 
 /**
+加锁后，get 此mmu_notifier。
  * mmu_notifier_get_locked - Return the single struct mmu_notifier for
  *                           the mm & ops
  * @ops: The operations struct being subscribe with
@@ -395,27 +414,36 @@ struct mmu_notifier *mmu_notifier_get_locked(const struct mmu_notifier_ops *ops,
 
 	lockdep_assert_held_write(&mm->mmap_sem);
 
-	if (mm->mmu_notifier_mm) {
+	if (mm->mmu_notifier_mm) {/* 找到mm->mmu_notifier_mm里面的符合ops的mn */
 		mn = find_get_mmu_notifier(mm, ops);
 		if (mn)
 			return mn;
 	}
+	/* 没找到有这个ops的mn */
 
+	/* 这里分配一个新的 */
 	mn = ops->alloc_notifier(mm);
 	if (IS_ERR(mn))
 		return mn;
+	/* 把ops赋值上去 */
 	mn->ops = ops;
+	/* 注册这个mn到mm */
 	ret = __mmu_notifier_register(mn, mm);
 	if (ret)
 		goto out_free;
+	/* 现在可以返回了 */
 	return mn;
 out_free:
 	mn->ops->free_notifier(mn);
 	return ERR_PTR(ret);
 }
+
+
 EXPORT_SYMBOL_GPL(mmu_notifier_get_locked);
 
-/* this is called after the last mmu_notifier_unregister() returned */
+/* 
+销毁mm的mnm
+this is called after the last mmu_notifier_unregister() returned */
 void __mmu_notifier_mm_destroy(struct mm_struct *mm)
 {
 	BUG_ON(!hlist_empty(&mm->mmu_notifier_mm->list));
@@ -424,6 +452,8 @@ void __mmu_notifier_mm_destroy(struct mm_struct *mm)
 }
 
 /*
+从mm里面移除mn。
+调用release函数，然后从mm移除mn的链接。
  * This releases the mm_count pin automatically and frees the mm
  * structure if it was the last user of it. It serializes against
  * running mmu notifiers with SRCU and against mmu_notifier_unregister
@@ -437,7 +467,7 @@ void mmu_notifier_unregister(struct mmu_notifier *mn, struct mm_struct *mm)
 {
 	BUG_ON(atomic_read(&mm->mm_count) <= 0);
 
-	if (!hlist_unhashed(&mn->hlist)) {
+	if (!hlist_unhashed(&mn->hlist)) {/* 这个mn确实链接了mm才操作 */
 		/*
 		 * SRCU here will force exit_mmap to wait for ->release to
 		 * finish before freeing the pages.
@@ -452,6 +482,7 @@ void mmu_notifier_unregister(struct mmu_notifier *mn, struct mm_struct *mm)
 		if (mn->ops->release)
 			mn->ops->release(mn, mm);
 		srcu_read_unlock(&srcu, id);
+
 
 		spin_lock(&mm->mmu_notifier_mm->lock);
 		/*
@@ -472,8 +503,9 @@ void mmu_notifier_unregister(struct mmu_notifier *mn, struct mm_struct *mm)
 
 	mmdrop(mm);
 }
-EXPORT_SYMBOL_GPL(mmu_notifier_unregister);
 
+EXPORT_SYMBOL_GPL(mmu_notifier_unregister);
+/* free mn的函数，好像是通过什么机制出发的，todo。 */
 static void mmu_notifier_free_rcu(struct rcu_head *rcu)
 {
 	struct mmu_notifier *mn = container_of(rcu, struct mmu_notifier, rcu);
@@ -485,6 +517,8 @@ static void mmu_notifier_free_rcu(struct rcu_head *rcu)
 }
 
 /**
+put此mn
+减少users成员，为0的话就free
  * mmu_notifier_put - Release the reference on the notifier
  * @mn: The notifier to act on
  *
@@ -510,12 +544,15 @@ void mmu_notifier_put(struct mmu_notifier *mn)
 {
 	struct mm_struct *mm = mn->mm;
 
+	/* 先获取mm的mnm的lock */
 	spin_lock(&mm->mmu_notifier_mm->lock);
-	if (WARN_ON(!mn->users) || --mn->users)
-		goto out_unlock;
+	if (WARN_ON(!mn->users) || --mn->users)/* 这里put */
+		goto out_unlock;/* put（减减）之后，还大于0，就能进if，出去了。
+		也有可能是本来就是users==0，直接进if了，然后goto out出去了。 */
+	/* 没进if，说明减减put之后等于0了，这里直接移除mn。 */
 	hlist_del_init_rcu(&mn->hlist);
 	spin_unlock(&mm->mmu_notifier_mm->lock);
-
+	/* 这里是free吗？ */
 	call_srcu(&srcu, &mn->rcu, mmu_notifier_free_rcu);
 	return;
 
@@ -525,6 +562,7 @@ out_unlock:
 EXPORT_SYMBOL_GPL(mmu_notifier_put);
 
 /**
+
  * mmu_notifier_synchronize - Ensure all mmu_notifiers are freed
  *
  * This function ensures that all outstanding async SRU work from
@@ -542,7 +580,7 @@ void mmu_notifier_synchronize(void)
 	synchronize_srcu(&srcu);
 }
 EXPORT_SYMBOL_GPL(mmu_notifier_synchronize);
-
+/*  */
 bool
 mmu_notifier_range_update_to_read_only(const struct mmu_notifier_range *range)
 {

@@ -1225,9 +1225,7 @@ can_vma_merge_after(struct vm_area_struct *vma, unsigned long vm_flags,
 /*
 2024年7月1日22:46:43
 拆分和整合在内核中主要有两个大的函数来处理：
-
 split_vma
-
 vma_merge
 --------------------------
  * Given a mapping request (addr,end,vm_flags,file,pgoff), figure out
@@ -3948,7 +3946,7 @@ int install_special_mapping(struct mm_struct *mm,
 
 	return PTR_ERR_OR_ZERO(vma);
 }
-
+/* 保护mm_take_all_locks的锁 */
 static DEFINE_MUTEX(mm_all_locks_mutex);
 /* 2024年07月18日19:15:06
  */
@@ -3991,20 +3989,24 @@ static void vm_lock_mapping(struct mm_struct *mm, struct address_space *mapping)
 		 /* 设置正在被take all lock的标志位 */
 		if (test_and_set_bit(AS_MM_ALL_LOCKS, &mapping->flags))
 			BUG();
+
 		down_write_nest_lock(&mapping->i_mmap_rwsem, &mm->mmap_sem);
 	}
 }
 
 /*
 2024年07月18日19:08:33
+这个锁可以阻止这个mm的很多pte/vma/mm相关的操作。
+在mm_take_all_locks()和mm_drop_all_locks()期间必须全程持有写mmap_sem。
+代码逻辑感觉是锁住mm的mapping和av什么的
  * This operation locks against the VM for all pte/vma/mm related
  * operations that could ever happen on a certain mm. This includes
  * vmtruncate, try_to_unmap, and all page faults.
- *
+ * 
  * The caller must take the mmap_sem in write mode before calling
  * mm_take_all_locks(). The caller isn't allowed to release the
  * mmap_sem until mm_drop_all_locks() returns.
- *
+ * 
  * mmap_sem in write mode is required in order to block all operations
  * that could modify pagetables and free pages without need of
  * altering the vma layout. It's also needed in write mode to avoid new
@@ -4023,7 +4025,7 @@ static void vm_lock_mapping(struct mm_struct *mm, struct address_space *mapping)
  *     hugetlb mapping);
  *   - all i_mmap_rwsem locks;
  *   - all anon_vma->rwseml
- *
+ * 
  * We can take all locks within these types randomly because the VM code
  * doesn't nest them and we protected from parallel mm_take_all_locks() by
  * mm_all_locks_mutex.
@@ -4042,24 +4044,27 @@ int mm_take_all_locks(struct mm_struct *mm)
 
 	mutex_lock(&mm_all_locks_mutex);
 
-	/* 遍历vma */
+	/* 遍历mm的全部vma */
+	for (vma = mm->mmap; vma; vma = vma->vm_next) {
+		if (signal_pending(current))
+			goto out_unlock;/* 这个函数会被信号打断 */
+
+		if (vma->vm_file && vma->vm_file->f_mapping &&
+				is_vm_hugetlb_page(vma))
+			/* 还要锁mapping吗？ */
+			vm_lock_mapping(mm, vma->vm_file->f_mapping);
+	}
+
+	/* 为什么不是hugepage单独来一遍 */
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		if (signal_pending(current))
 			goto out_unlock;
 
 		if (vma->vm_file && vma->vm_file->f_mapping &&
-				is_vm_hugetlb_page(vma))
-			/* 锁mmap的信号量 */
-			vm_lock_mapping(mm, vma->vm_file->f_mapping);
-	}
-	/* 为什么不是hugepage单独来一遍 */
-	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-		if (signal_pending(current))
-			goto out_unlock;
-		if (vma->vm_file && vma->vm_file->f_mapping &&
 				!is_vm_hugetlb_page(vma))
 			vm_lock_mapping(mm, vma->vm_file->f_mapping);
 	}
+	/* 感觉上面的都是为了锁mapping */
 	/* 锁av */
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
 		if (signal_pending(current))

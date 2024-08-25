@@ -59,6 +59,7 @@ struct srcu_node {
 };
 
 /*
+
  * Per-SRCU-domain structure, similar in function to rcu_state.
  */
 struct srcu_struct {

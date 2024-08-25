@@ -220,7 +220,8 @@ extern int overcommit_kbytes_handler(struct ctl_table *, int, void __user *,
 #define nth_page(page,n) pfn_to_page(page_to_pfn((page)) + (n))
 
 /* 
-对齐到页面大小
+对齐到偏大的页面大小
+比如4100是8192，而不是4096.
 to align the pointer to the (next) page boundary */
 #define PAGE_ALIGN(addr) ALIGN(addr, PAGE_SIZE)
 
@@ -384,7 +385,8 @@ extern unsigned int kobjsize(const void *objp);
 /* This mask defines which mm->def_flags a process can inherit its parent */
 #define VM_INIT_DEF_MASK	VM_NOHUGEPAGE
 
-/* This mask is used to clear all the VMA flags used by mlock */
+/* This mask is used to clear all the VMA flags used by mlock
+全是1，只有VM_LOCKED  VM_LOCKONFAULT的nr是0*/
 #define VM_LOCKED_CLEAR_MASK	(~(VM_LOCKED | VM_LOCKONFAULT))
 
 /* Arch-specific flags to clear when updating VM flags on protection change */
@@ -1253,6 +1255,7 @@ static inline void page_cpupid_reset_last(struct page *page)
 	page->_last_cpupid = -1 & LAST_CPUPID_MASK;
 }
 #else
+/* cpuid是什么 */
 static inline int page_cpupid_last(struct page *page)
 {
 	return (page->flags >> LAST_CPUPID_PGSHIFT) & LAST_CPUPID_MASK;
@@ -1522,7 +1525,7 @@ static inline void clear_page_pfmemalloc(struct page *page)
  * Can be called by the pagefault handler when it gets a VM_FAULT_OOM.
  */
 extern void pagefault_out_of_memory(void);
-/* 是不是不以页面对齐的 */
+/* 获得地址的页内偏移 */
 #define offset_in_page(p)	((unsigned long)(p) & ~PAGE_MASK)
 
 /*

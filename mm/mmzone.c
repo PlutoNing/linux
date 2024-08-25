@@ -9,12 +9,12 @@
 #include <linux/stddef.h>
 #include <linux/mm.h>
 #include <linux/mmzone.h>
-/*  */
+/* 获得“第一个”online的node */
 struct pglist_data *first_online_pgdat(void)
 {
 	return NODE_DATA(first_online_node);
 }
-
+/* 获取pgdat后面的置位的online node */
 struct pglist_data *next_online_pgdat(struct pglist_data *pgdat)
 {
 	int nid = next_online_node(pgdat->node_id);
@@ -25,6 +25,7 @@ struct pglist_data *next_online_pgdat(struct pglist_data *pgdat)
 }
 
 /*
+获取zone的下一个zone，可能会跨node。
  * next_zone - helper magic for for_each_zone()
  */
 struct zone *next_zone(struct zone *zone)
@@ -32,16 +33,18 @@ struct zone *next_zone(struct zone *zone)
 	pg_data_t *pgdat = zone->zone_pgdat;
 
 	if (zone < pgdat->node_zones + MAX_NR_ZONES - 1)
-		zone++;
-	else {
-		pgdat = next_online_pgdat(pgdat);
-		if (pgdat)
+		zone++;/* 如果zone还在node范围里面，就是简单++，就是下一个 */
+	else {/* 如果zone是所在node的最后一个zone了，要获取下一个呢。就只能
+	先找到下一个node，获取下一个node的第一个zone */
+		pgdat = next_online_pgdat(pgdat);/* 找到下一个node */
+		if (pgdat)/* 成功找到的话，指向第一个zone */
 			zone = pgdat->node_zones;
 		else
 			zone = NULL;
 	}
 	return zone;
 }
+
 /* 2024年07月11日15:22:05 */
 static inline int zref_in_nodemask(struct zoneref *zref, nodemask_t *nodes)
 {
@@ -101,6 +104,7 @@ void lruvec_init(struct lruvec *lruvec)
 }
 
 #if defined(CONFIG_NUMA_BALANCING) && !defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS)
+/*  */
 int page_cpupid_xchg_last(struct page *page, int cpupid)
 {
 	unsigned long old_flags, flags;
@@ -116,4 +120,5 @@ int page_cpupid_xchg_last(struct page *page, int cpupid)
 
 	return last_cpupid;
 }
+
 #endif
