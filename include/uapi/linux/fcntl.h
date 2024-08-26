@@ -36,6 +36,7 @@
 #define F_GET_SEALS	(F_LINUX_SPECIFIC_BASE + 10)
 
 /*
+seal的类型
  * Types of seals
  */
 #define F_SEAL_SEAL	0x0001	/* prevent further seals from being set */

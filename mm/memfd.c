@@ -122,7 +122,7 @@ static int memfd_wait_for_pins(struct address_space *mapping)
 /* 2024年08月26日20:19:23 */
 	return error;
 }
-/* 获取sii的seals？ */
+/* 获取共享内存sii的seals？ */
 static unsigned int *memfd_file_seals_ptr(struct file *file)
 {
 	if (shmem_file(file))
@@ -142,6 +142,7 @@ static unsigned int *memfd_file_seals_ptr(struct file *file)
 		     F_SEAL_WRITE | \
 		     F_SEAL_FUTURE_WRITE)
 
+/*  */
 static int memfd_add_seals(struct file *file, unsigned int seals)
 {
 	struct inode *inode = file_inode(file);
@@ -197,13 +198,16 @@ static int memfd_add_seals(struct file *file, unsigned int seals)
 		goto unlock;
 	}
 
-	if ((seals & F_SEAL_WRITE) && !(*file_seals & F_SEAL_WRITE)) {
+	if ((seals & F_SEAL_WRITE) && !(*file_seals & F_SEAL_WRITE)) {/* 这是说如果
+	file_seals还没有F_SEAL_WRITE就操作？ */
+
 		error = mapping_deny_writable(file->f_mapping);
-		if (error)
+		if (error)/* 返回非0表示i_mmap_writable大于0，没有减少 */
 			goto unlock;
 
+		/* 刚才返回0，那现在没人写这个mapping了？ */
 		error = memfd_wait_for_pins(file->f_mapping);
-		if (error) {
+		if (error) {/* 没成功，让mapping可写 */
 			mapping_allow_writable(file->f_mapping);
 			goto unlock;
 		}

@@ -1153,6 +1153,8 @@ atomic_inc_unless_negative(atomic_t *v)
 #endif
 
 #ifndef atomic_dec_unless_positive
+/* 减少v，除非v大于0；
+返回有没有减少。 */
 static inline bool
 atomic_dec_unless_positive(atomic_t *v)
 {
@@ -1165,6 +1167,8 @@ atomic_dec_unless_positive(atomic_t *v)
 
 	return true;
 }
+/* 减少v，除非v大于0；
+返回有没有减少。 */
 #define atomic_dec_unless_positive atomic_dec_unless_positive
 #endif
 

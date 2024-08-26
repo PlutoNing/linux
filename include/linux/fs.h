@@ -608,13 +608,14 @@ static inline void mapping_unmap_writable(struct address_space *mapping)
 {
 	atomic_dec(&mapping->i_mmap_writable);
 }
-
+/* 返回0，表示mapping->i_mmap_writable本来小于等于0，减少成功了。
+返回非0表示i_mmap_writable大于0，没有减少 */
 static inline int mapping_deny_writable(struct address_space *mapping)
 {
 	return atomic_dec_unless_positive(&mapping->i_mmap_writable) ?
 		0 : -EBUSY;
 }
-
+/* 让mapping可写（maybe） */
 static inline void mapping_allow_writable(struct address_space *mapping)
 {
 	atomic_inc(&mapping->i_mmap_writable);
