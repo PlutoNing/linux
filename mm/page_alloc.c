@@ -140,7 +140,7 @@ nodemask_t node_states[NR_NODE_STATES] __read_mostly = {
 #endif	/* NUMA */
 };
 EXPORT_SYMBOL(node_states);
-
+/* 可用内存的数量 */
 atomic_long_t _totalram_pages __read_mostly;
 EXPORT_SYMBOL(_totalram_pages);
 /* 系统全部的reserve内存 */
@@ -1482,6 +1482,8 @@ static inline void init_reserved_page(unsigned long pfn)
 #endif /* CONFIG_DEFERRED_STRUCT_PAGE_INIT */
 
 /*
+参数是一段reserve region。
+把里面每个页面设置reserve标记位。
  * Initialised pages do not have PageReserved set. This function is
  * called for each range allocated by the bootmem allocator and
  * marks the pages PageReserved. The remaining valid pages are later
@@ -1492,10 +1494,10 @@ void __meminit reserve_bootmem_region(phys_addr_t start, phys_addr_t end)
 	unsigned long start_pfn = PFN_DOWN(start);
 	unsigned long end_pfn = PFN_UP(end);
 
-	for (; start_pfn < end_pfn; start_pfn++) {
+	for (; start_pfn < end_pfn; start_pfn++) {/* 遍历范围内pfn */
 		if (pfn_valid(start_pfn)) {
 			struct page *page = pfn_to_page(start_pfn);
-
+			/* 空函数 */
 			init_reserved_page(start_pfn);
 
 			/* Avoid false-positive PageTail() */

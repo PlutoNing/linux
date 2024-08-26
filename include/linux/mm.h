@@ -64,7 +64,7 @@ static inline void totalram_pages_dec(void)
 {
 	atomic_long_dec(&_totalram_pages);
 }
-
+/* 这些内存可用了， */
 static inline void totalram_pages_add(long count)
 {
 	atomic_long_add(count, &_totalram_pages);

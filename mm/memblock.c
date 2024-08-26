@@ -157,6 +157,7 @@ static inline phys_addr_t memblock_cap_size(phys_addr_t base, phys_addr_t *size)
 }
 
 /*
+看地址范围是不是交叉的。
  * Address comparison utilities
  */
 static unsigned long __init_memblock memblock_addrs_overlap(phys_addr_t base1, phys_addr_t size1,
@@ -164,7 +165,7 @@ static unsigned long __init_memblock memblock_addrs_overlap(phys_addr_t base1, p
 {
 	return ((base1 < (base2 + size2)) && (base2 < (base1 + size1)));
 }
-
+/* 看范围是不是和type里面的region交叉了 */
 bool __init_memblock memblock_overlaps_region(struct memblock_type *type,
 					phys_addr_t base, phys_addr_t size)
 {
@@ -521,6 +522,7 @@ static int __init_memblock memblock_double_array(struct memblock_type *type,
 }
 
 /**
+类似碎片规整吧应该，合并可以合并的内存
  * memblock_merge_regions - merge neighboring compatible regions
  * @type: memblock type to scan
  *
@@ -538,12 +540,15 @@ static void __init_memblock memblock_merge_regions(struct memblock_type *type)
 		if (this->base + this->size != next->base ||
 		    memblock_get_region_node(this) !=
 		    memblock_get_region_node(next) ||
-		    this->flags != next->flags) {
+		    this->flags != next->flags) {/* 这些是不能合并的情况。
+			比如1：前者结尾和后者开头不相邻。
+			2：不是同一个node，
+			3：flags不同 */
 			BUG_ON(this->base + this->size > next->base);
 			i++;
 			continue;
 		}
-
+		/* 头尾相邻，相同node，flags一样 */
 		this->size += next->size;
 		/* move forward from next + 1, index of which is i + 2 */
 		memmove(next, next + 1, (type->cnt - (i + 2)) * sizeof(*next));
@@ -878,6 +883,7 @@ int __init_memblock memblock_reserve(phys_addr_t base, phys_addr_t size)
 }
 
 /**
+清除MEMBLOCK_HOTPLUG标志位
  * memblock_setclr_flag - set or clear flag for a memory region
  * @base: base address of the region
  * @size: size of the region
@@ -893,11 +899,11 @@ static int __init_memblock memblock_setclr_flag(phys_addr_t base,
 {
 	struct memblock_type *type = &memblock.memory;
 	int i, ret, start_rgn, end_rgn;
-
+	/* 从memory type里面移除范围 */
 	ret = memblock_isolate_range(type, base, size, &start_rgn, &end_rgn);
 	if (ret)
 		return ret;
-
+	/* 清除每个region的flag。 */
 	for (i = start_rgn; i < end_rgn; i++) {
 		struct memblock_region *r = &type->regions[i];
 
@@ -924,6 +930,7 @@ int __init_memblock memblock_mark_hotplug(phys_addr_t base, phys_addr_t size)
 }
 
 /**
+清除MEMBLOCK_HOTPLUG标志位
  * memblock_clear_hotplug - Clear flag MEMBLOCK_HOTPLUG for a specified region.
  * @base: the base phys addr of the region
  * @size: the size of the region
@@ -974,6 +981,7 @@ int __init_memblock memblock_clear_nomap(phys_addr_t base, phys_addr_t size)
 }
 
 /**
+在reserve type获得下一个reserve region。
  * __next_reserved_mem_region - next function for for_each_reserved_region()
  * @idx: pointer to u64 loop variable
  * @out_start: ptr to phys_addr_t for start address of the region, can be %NULL
@@ -1029,7 +1037,8 @@ static bool should_skip_region(struct memblock_region *m, int nid, int flags)
 }
 
 /**
-遍历memblock的内存可用区域的迭代器
+遍历memblock的内存可用区域的迭代器。
+todo。
  * __next_mem_range - next function for for_each_free_mem_range() etc.
  * @idx: pointer to u64 loop variable
  * @nid: node selector, %NUMA_NO_NODE for all nodes
@@ -1062,6 +1071,7 @@ void __init_memblock __next_mem_range(u64 *idx, int nid,
 				      phys_addr_t *out_start,
 				      phys_addr_t *out_end, int *out_nid)
 {
+	/* 分别获得在两个类型的idx */
 	int idx_a = *idx & 0xffffffff;
 	int idx_b = *idx >> 32;
 
@@ -1091,7 +1101,7 @@ void __init_memblock __next_mem_range(u64 *idx, int nid,
 			*idx = (u32)idx_a | (u64)idx_b << 32;
 			return;
 		}
-
+		/* 这里是有type_b的情况，就是说要排除typeb的范围？ */
 		/* scan areas before each reservation */
 		for (; idx_b < type_b->cnt + 1; idx_b++) {
 			struct memblock_region *r;
@@ -1110,6 +1120,12 @@ void __init_memblock __next_mem_range(u64 *idx, int nid,
 			if (r_start >= m_end)
 				break;
 			/* if the two regions intersect, we're done */
+			/* 
+			m      m
+		r	----r
+		      r--r
+		
+			 */
 			if (m_start < r_end) {
 				if (out_start)
 					*out_start =
@@ -1126,6 +1142,7 @@ void __init_memblock __next_mem_range(u64 *idx, int nid,
 					idx_a++;
 				else
 					idx_b++;
+				/* 编码idx */
 				*idx = (u32)idx_a | (u64)idx_b << 32;
 				return;
 			}
@@ -1831,6 +1848,7 @@ int __init_memblock memblock_search_pfn_nid(unsigned long pfn,
 #endif
 
 /**
+2024年8月27日00:30:13
  * memblock_is_region_memory - check if a region is a subset of memory
  * @base: base of region to check
  * @size: size of region to check
@@ -1852,6 +1870,7 @@ bool __init_memblock memblock_is_region_memory(phys_addr_t base, phys_addr_t siz
 }
 
 /**
+看地址范围是不是和reserve交叉的。
  * memblock_is_region_reserved - check if a region intersects reserved memory
  * @base: base of region to check
  * @size: size of region to check
@@ -1867,15 +1886,18 @@ bool __init_memblock memblock_is_region_reserved(phys_addr_t base, phys_addr_t s
 	memblock_cap_size(base, &size);
 	return memblock_overlaps_region(&memblock.reserved, base, size);
 }
-
+/* 2024年8月27日00:15:38
+todo
+好细节 */
 void __init_memblock memblock_trim_memory(phys_addr_t align)
 {
 	phys_addr_t start, end, orig_start, orig_end;
 	struct memblock_region *r;
-
+	/* 遍历memory的region */
 	for_each_memblock(memory, r) {
 		orig_start = r->base;
 		orig_end = r->base + r->size;
+
 		start = round_up(orig_start, align);
 		end = round_down(orig_end, align);
 
@@ -1885,7 +1907,7 @@ void __init_memblock memblock_trim_memory(phys_addr_t align)
 		if (start < end) {
 			r->base = start;
 			r->size = end - start;
-		} else {
+		} else {/* 移除这个region？ */
 			memblock_remove_region(&memblock.memory,
 					       r - memblock.memory.regions);
 			r--;
@@ -1893,6 +1915,7 @@ void __init_memblock memblock_trim_memory(phys_addr_t align)
 	}
 }
 
+/* current limit是什么 */
 void __init_memblock memblock_set_current_limit(phys_addr_t limit)
 {
 	memblock.current_limit = limit;
@@ -1903,6 +1926,7 @@ phys_addr_t __init_memblock memblock_get_current_limit(void)
 	return memblock.current_limit;
 }
 
+/* 打印memblock的信息 */
 static void __init_memblock memblock_dump(struct memblock_type *type)
 {
 	phys_addr_t base, end, size;
@@ -1955,7 +1979,7 @@ static int __init early_memblock(char *p)
 	return 0;
 }
 early_param("memblock", early_memblock);
-
+/* 释放内存到buddy？ */
 static void __init __free_pages_memory(unsigned long start, unsigned long end)
 {
 	int order;
@@ -1971,7 +1995,8 @@ static void __init __free_pages_memory(unsigned long start, unsigned long end)
 		start += (1UL << order);
 	}
 }
-
+/* 2024年8月27日00:08:41
+释放页面到buddy，返回释放的页面。 */
 static unsigned long __init __free_memory_core(phys_addr_t start,
 				 phys_addr_t end)
 {
@@ -1981,22 +2006,22 @@ static unsigned long __init __free_memory_core(phys_addr_t start,
 
 	if (start_pfn >= end_pfn)
 		return 0;
-
+	/* 释放到buddy */
 	__free_pages_memory(start_pfn, end_pfn);
 
 	return end_pfn - start_pfn;
 }
-
+/* 先把内存设为保留，然后把free区域释放到buddy？返回释放的数量。 */
 static unsigned long __init free_low_memory_core_early(void)
 {
 	unsigned long count = 0;
 	phys_addr_t start, end;
 	u64 i;
-
+	/* 作用是什么？ */
 	memblock_clear_hotplug(0, -1);
-
+	/* 遍历全部的reserve region */
 	for_each_reserved_mem_region(i, &start, &end)
-		reserve_bootmem_region(start, end);
+		reserve_bootmem_region(start, end);/* 把此region的全部页面设置为pg_reserved */
 
 	/*
 	 * We need to use NUMA_NO_NODE instead of NODE_DATA(0)->node_id
@@ -2011,7 +2036,9 @@ static unsigned long __init free_low_memory_core_early(void)
 }
 
 static int reset_managed_pages_done __initdata;
-
+/* 释放node的页面。
+就是简单的把managed_pages置0。
+ */
 void reset_node_managed_pages(pg_data_t *pgdat)
 {
 	struct zone *z;
@@ -2019,7 +2046,7 @@ void reset_node_managed_pages(pg_data_t *pgdat)
 	for (z = pgdat->node_zones; z < pgdat->node_zones + MAX_NR_ZONES; z++)
 		atomic_long_set(&z->managed_pages, 0);
 }
-
+/* 释放全部zone的页面，  */
 void __init reset_all_zones_managed_pages(void)
 {
 	struct pglist_data *pgdat;
@@ -2027,6 +2054,7 @@ void __init reset_all_zones_managed_pages(void)
 	if (reset_managed_pages_done)
 		return;
 
+	/* 释放每个node的页面 */
 	for_each_online_pgdat(pgdat)
 		reset_node_managed_pages(pgdat);
 
@@ -2034,6 +2062,8 @@ void __init reset_all_zones_managed_pages(void)
 }
 
 /**
+把页面还给buddy？
+不过memblock是不是比buddy更底层？todo。
  * memblock_free_all - release free pages to the buddy allocator
  *
  * Return: the number of pages actually released.
@@ -2041,10 +2071,11 @@ void __init reset_all_zones_managed_pages(void)
 unsigned long __init memblock_free_all(void)
 {
 	unsigned long pages;
-
+	/* 这里清空zone侧的信息 */
 	reset_all_zones_managed_pages();
-
+	/* 把页面释放到buddy */
 	pages = free_low_memory_core_early();
+
 	totalram_pages_add(pages);
 
 	return pages;

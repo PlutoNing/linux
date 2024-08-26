@@ -154,9 +154,9 @@ void __memblock_free_late(phys_addr_t base, phys_addr_t size);
 
 /**
 遍历memblock的memory类型（@type_a），排除掉reserved内存类型（@type_b）
-寻找可分配区域，赋值到相关参数
+寻找可分配区域，赋值到相关参数。
  * for_each_mem_range - iterate through memblock areas from type_a and not
- * included in type_b. Or just type_a if type_b is NULL.
+ * included in type_b. Or just type_a if type_b is NULL。
  * @i: u64 used as loop variable
  * @type_a: ptr to memblock_type to iterate
 
@@ -198,6 +198,7 @@ void __memblock_free_late(phys_addr_t base, phys_addr_t size);
 				  p_start, p_end, p_nid))
 
 /**
+遍历全部的reserve region。
  * for_each_reserved_mem_region - iterate over all reserved memblock areas
  * @i: u64 used as loop variable
  * @p_start: ptr to phys_addr_t for start address of the range, can be %NULL
@@ -294,7 +295,8 @@ void __next_mem_pfn_range_in_zone(u64 *idx, struct zone *zone,
 #endif /* CONFIG_DEFERRED_STRUCT_PAGE_INIT */
 
 /**
-遍历memblock的free区域
+遍历memblock的free区域。
+todo，有点复杂
  * for_each_free_mem_range - iterate through free memblock areas
  * @i: u64 used as loop variable
  * @nid: node selector, %NUMA_NO_NODE for all nodes
