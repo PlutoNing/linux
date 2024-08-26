@@ -567,6 +567,7 @@ void put_unused_fd(unsigned int fd)
 EXPORT_SYMBOL(put_unused_fd);
 
 /*
+把fd和file给进程
  * Install a file pointer in the fd array.
  *
  * The VFS is full of places where we drop the files lock between
@@ -609,7 +610,7 @@ void __fd_install(struct files_struct *files, unsigned int fd,
 	rcu_assign_pointer(fdt->fd[fd], file);
 	rcu_read_unlock_sched();
 }
-
+/* 把file和fd赋予到进程 */
 void fd_install(unsigned int fd, struct file *file)
 {
 	__fd_install(current->files, fd, file);

@@ -4548,6 +4548,7 @@ struct file *shmem_kernel_file_setup(const char *name, loff_t size, unsigned lon
 }
 
 /**
+创建共享内存文件
  * shmem_file_setup - get an unlinked file living in tmpfs
  * @name: name for dentry (to be seen in /proc/<pid>/maps
  * @size: size to be set for the file

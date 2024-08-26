@@ -116,7 +116,7 @@ static inline struct page *shmem_read_mapping_page(
 	return shmem_read_mapping_page_gfp(mapping, index,
 					mapping_gfp_mask(mapping));
 }
-
+/* 看看是不是shmemfile */
 static inline bool shmem_file(struct file *file)
 {
 	if (!IS_ENABLED(CONFIG_SHMEM))

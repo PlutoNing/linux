@@ -26,8 +26,10 @@
  * or hugetlbfs because they are memory only filesystems.
  */
 #define MEMFD_TAG_PINNED        PAGECACHE_TAG_TOWRITE
+/* 4 */
 #define LAST_SCAN               4       /* about 150ms max */
-
+/* mapping的xas数组
+给有多余引用的page打上MEMFD_TAG_PINNED标签 */
 static void memfd_tag_pins(struct xa_state *xas)
 {
 	struct page *page;
@@ -55,11 +57,14 @@ static void memfd_tag_pins(struct xa_state *xas)
 }
 
 /*
+设置SEAL_WRITE需要保证没有当前没有正在等待的写者。
+检查全部的page，看看是不是有引用。有的话，标记他们，等待引用减少？
  * Setting SEAL_WRITE requires us to verify there's no pending writer. However,
  * via get_user_pages(), drivers might have some pending I/O without any active
  * user-space mappings (eg., direct-IO, AIO). Therefore, we look at all pages
  * and see whether it has an elevated ref-count. If so, we tag them and wait for
  * them to be dropped.
+ 还要保证不能有写race。
  * The caller must guarantee that no new user will acquire writable references
  * to those pages to avoid races.
  */
@@ -68,7 +73,7 @@ static int memfd_wait_for_pins(struct address_space *mapping)
 	XA_STATE(xas, &mapping->i_pages, 0);
 	struct page *page;
 	int error, scan;
-
+	/* 给有多余引用的page打上标签 */
 	memfd_tag_pins(&xas);
 
 	error = 0;
@@ -85,6 +90,7 @@ static int memfd_wait_for_pins(struct address_space *mapping)
 
 		xas_set(&xas, 0);
 		xas_lock_irq(&xas);
+		/* 遍历范围内打了标签的page，赋值到page */
 		xas_for_each_marked(&xas, page, ULONG_MAX, MEMFD_TAG_PINNED) {
 			bool clear = true;
 			if (xa_is_value(page))
@@ -113,10 +119,10 @@ static int memfd_wait_for_pins(struct address_space *mapping)
 		}
 		xas_unlock_irq(&xas);
 	}
-
+/* 2024年08月26日20:19:23 */
 	return error;
 }
-
+/* 获取sii的seals？ */
 static unsigned int *memfd_file_seals_ptr(struct file *file)
 {
 	if (shmem_file(file))
@@ -210,14 +216,14 @@ unlock:
 	inode_unlock(inode);
 	return error;
 }
-
+/*  */
 static int memfd_get_seals(struct file *file)
 {
 	unsigned int *seals = memfd_file_seals_ptr(file);
 
 	return seals ? *seals : -EINVAL;
 }
-
+/* seals是什么 */
 long memfd_fcntl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	long error;
@@ -240,13 +246,16 @@ long memfd_fcntl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	return error;
 }
-
+/*  */
 #define MFD_NAME_PREFIX "memfd:"
+/* memfd:字符串的长度 */
 #define MFD_NAME_PREFIX_LEN (sizeof(MFD_NAME_PREFIX) - 1)
 #define MFD_NAME_MAX_LEN (NAME_MAX - MFD_NAME_PREFIX_LEN)
 
 #define MFD_ALL_FLAGS (MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_HUGETLB)
-
+/* __do_sys_memfd_create
+共享内存发送方进程的开发基本过程是调用 memfd_create 创建一个内存文件。然后通过 mmap
+系统调用为这个内存文件申请一块共享内存。 */
 SYSCALL_DEFINE2(memfd_create,
 		const char __user *, uname,
 		unsigned int, flags)
@@ -260,7 +269,7 @@ SYSCALL_DEFINE2(memfd_create,
 	if (!(flags & MFD_HUGETLB)) {
 		if (flags & ~(unsigned int)MFD_ALL_FLAGS)
 			return -EINVAL;
-	} else {
+	} else {/* 如果是MFD_HUGETLB */
 		/* Allow huge page size encoding in flags. */
 		if (flags & ~(unsigned int)(MFD_ALL_FLAGS |
 				(MFD_HUGE_MASK << MFD_HUGE_SHIFT)))
@@ -277,8 +286,9 @@ SYSCALL_DEFINE2(memfd_create,
 	name = kmalloc(len + MFD_NAME_PREFIX_LEN, GFP_KERNEL);
 	if (!name)
 		return -ENOMEM;
-
+	/* 先把memfd:拷贝过来 */
 	strcpy(name, MFD_NAME_PREFIX);
+	/* 再把用户空间的name拷贝过来 */
 	if (copy_from_user(&name[MFD_NAME_PREFIX_LEN], uname, len)) {
 		error = -EFAULT;
 		goto err_name;
@@ -289,21 +299,21 @@ SYSCALL_DEFINE2(memfd_create,
 		error = -EFAULT;
 		goto err_name;
 	}
-
+	/* 获取一个fd */
 	fd = get_unused_fd_flags((flags & MFD_CLOEXEC) ? O_CLOEXEC : 0);
 	if (fd < 0) {
 		error = fd;
 		goto err_name;
 	}
 
-	if (flags & MFD_HUGETLB) {
+	if (flags & MFD_HUGETLB) {/* 如果是MFD_HUGETLB。 */
 		struct user_struct *user = NULL;
-
+		/* 巨页的shmem */
 		file = hugetlb_file_setup(name, 0, VM_NORESERVE, &user,
 					HUGETLB_ANONHUGE_INODE,
 					(flags >> MFD_HUGE_SHIFT) &
 					MFD_HUGE_MASK);
-	} else
+	} else/* 普通页面的shmem */
 		file = shmem_file_setup(name, 0, VM_NORESERVE);
 	if (IS_ERR(file)) {
 		error = PTR_ERR(file);

@@ -29,6 +29,7 @@
 #define F_GETPIPE_SZ	(F_LINUX_SPECIFIC_BASE + 8)
 
 /*
+好像是memfd fnctl的cmd
  * Set/Get seals
  */
 #define F_ADD_SEALS	(F_LINUX_SPECIFIC_BASE + 9)

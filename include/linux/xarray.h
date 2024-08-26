@@ -1677,6 +1677,7 @@ enum {
 };
 
 /**
+遍历迭代
  * xas_for_each() - Iterate over a range of an XArray.
  * @xas: XArray operation state.
  * @entry: Entry retrieved from the array.
@@ -1694,6 +1695,7 @@ enum {
 	     entry = xas_next_entry(xas, max))
 
 /**
+遍历当前位置到末尾范围内有标签的？赋值到entry。
  * xas_for_each_marked() - Iterate over a range of an XArray.
  * @xas: XArray operation state.
  * @entry: Entry retrieved from the array.

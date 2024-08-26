@@ -307,6 +307,7 @@ void drop_nlink(struct inode *inode)
 EXPORT_SYMBOL(drop_nlink);
 
 /**
+去除inode的link
  * clear_nlink - directly zero an inode's link count
  * @inode: inode
  *
