@@ -20,7 +20,7 @@
 #include <linux/kernel.h>
 #include <linux/stddef.h>
 #include <linux/rcupdate.h>
-
+/* 红黑树节点 */
 struct rb_node {
 	unsigned long  __rb_parent_color;
 	struct rb_node *rb_right;
@@ -35,6 +35,7 @@ struct rb_root {
 #define rb_parent(r)   ((struct rb_node *)((r)->__rb_parent_color & ~3))
 
 #define RB_ROOT	(struct rb_root) { NULL, }
+/*  */
 #define	rb_entry(ptr, type, member) container_of(ptr, type, member)
 
 #define RB_EMPTY_ROOT(root)  (READ_ONCE((root)->rb_node) == NULL)
@@ -42,6 +43,7 @@ struct rb_root {
 /* 'empty' nodes are nodes that are known not to be inserted in an rbtree */
 #define RB_EMPTY_NODE(node)  \
 	((node)->__rb_parent_color == (unsigned long)(node))
+/*  */
 #define RB_CLEAR_NODE(node)  \
 	((node)->__rb_parent_color = (unsigned long)(node))
 
@@ -130,7 +132,8 @@ struct rb_root_cached {
 
 #define RB_ROOT_CACHED (struct rb_root_cached) { {NULL, }, NULL }
 
-/* Same as rb_first(), but O(1) */
+/* Same as rb_first(), but O(1)
+直接获取红黑树的值，而不是通过logN的查找 */
 #define rb_first_cached(root) (root)->rb_leftmost
 
 static inline void rb_insert_color_cached(struct rb_node *node,
@@ -141,7 +144,7 @@ static inline void rb_insert_color_cached(struct rb_node *node,
 		root->rb_leftmost = node;
 	rb_insert_color(node, &root->rb_root);
 }
-
+/* 从rbc移除node */
 static inline void rb_erase_cached(struct rb_node *node,
 				   struct rb_root_cached *root)
 {

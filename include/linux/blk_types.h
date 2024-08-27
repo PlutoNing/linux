@@ -397,9 +397,10 @@ enum stat_group {
 
 	NR_STAT_GROUPS
 };
-
+/*  */
 #define bio_op(bio) \
 	((bio)->bi_opf & REQ_OP_MASK)
+
 #define req_op(req) \
 	((req)->cmd_flags & REQ_OP_MASK)
 

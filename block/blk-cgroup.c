@@ -190,7 +190,7 @@ err_free:
 	blkg_free(blkg);
 	return NULL;
 }
-
+/* 在blkcg有关系的blkgq中，找到与q有关系的。返回。 */
 struct blkcg_gq *blkg_lookup_slowpath(struct blkcg *blkcg,
 				      struct request_queue *q, bool update_hint)
 {
@@ -201,8 +201,10 @@ struct blkcg_gq *blkg_lookup_slowpath(struct blkcg *blkcg,
 	 * hint can only be updated under queue_lock as otherwise @blkg
 	 * could have already been removed from blkg_tree.  The caller is
 	 * responsible for grabbing queue_lock if @update_hint.
+	 进行查找。找到与q有关系的blkgq。
 	 */
 	blkg = radix_tree_lookup(&blkcg->blkg_tree, q->id);
+
 	if (blkg && blkg->q == q) {
 		if (update_hint) {
 			lockdep_assert_held(&q->queue_lock);

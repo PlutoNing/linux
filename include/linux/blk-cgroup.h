@@ -49,8 +49,12 @@ struct blkcg {
 	struct cgroup_subsys_state	css;
 	spinlock_t			lock;
 
-	struct radix_tree_root		blkg_tree;
-	struct blkcg_gq	__rcu		*blkg_hint;
+	struct radix_tree_root		blkg_tree;/* 好像是存储
+	关联的blkgq？ */
+
+	struct blkcg_gq	__rcu		*blkg_hint;/* 上次使用的关联的blkgq之一，
+	这里应该算是起到缓存的作用。这里没查到的话，会走slowpath，然后可以
+	把slowpath查到的东西放在这。 */
 	struct hlist_head		blkg_list;
 
 	struct blkcg_policy_data	*cpd[BLKCG_MAX_POLS];
@@ -89,6 +93,9 @@ struct blkg_rwstat_sample {
  block group 层定义有一系列的 policy，例如 blk-throttle/iolatency/iocost 等，
  这里每个 policy 都会分配 policy specific data，这些 policy specific data 
  都会内嵌 struct blkg_policy_data，同时最终都保存在 @pd[] 数组
+ -----------------------
+ 2024年8月27日22:35:11
+ 也像是tg与blkgq的连接件
  */
 struct blkg_policy_data {
 	/* the blkg and policy id this per-policy data belongs to */
@@ -167,8 +174,12 @@ typedef void (blkcg_pol_free_pd_fn)(struct blkg_policy_data *pd);
 typedef void (blkcg_pol_reset_pd_stats_fn)(struct blkg_policy_data *pd);
 typedef size_t (blkcg_pol_stat_pd_fn)(struct blkg_policy_data *pd, char *buf,
 				      size_t size);
-
+/* 描述一个blkcg pol。
+是blkgq的pd数组的key。一个blkgq的不同pol对应不同的pd，
+进而关联不同的tg。
+ */
 struct blkcg_policy {
+	/* pol的id */
 	int				plid;
 	/* cgroup files for the policy */
 	struct cftype			*dfl_cftypes;
@@ -264,7 +275,8 @@ static inline struct cgroup_subsys_state *blkcg_css(void)
 		return css;
 	return task_css(current, io_cgrp_id);
 }
-/* 2024年7月17日23:07:33 */
+/* 2024年7月17日23:07:33
+获得css代表的blkcg。 */
 static inline struct blkcg *css_to_blkcg(struct cgroup_subsys_state *css)
 {
 	return css ? container_of(css, struct blkcg, css) : NULL;
@@ -356,6 +368,11 @@ static inline struct blkcg *blkcg_parent(struct blkcg *blkcg)
 }
 
 /**
+blkcg是通过css获得的。
+q是父方向上blkcg对应的blkgq_A&rq_A。
+这里是查询blkcg对应的blkgq_B&rq_B。
+捋一下，css是最基础的，blkcg借助css实现层级关系，blkgq&q是blkcg的一个
+算是特性吧。这里就是通过blkgq_A&rq_A查到一个blkgq_B&rq_B
  * __blkg_lookup - internal version of blkg_lookup()
  * @blkcg: blkcg of interest
  * @q: request_queue of interest
@@ -374,11 +391,12 @@ static inline struct blkcg_gq *__blkg_lookup(struct blkcg *blkcg,
 
 	if (blkcg == &blkcg_root)
 		return q->root_blkg;
-
+	/* 先查hint是不是命中， */
 	blkg = rcu_dereference(blkcg->blkg_hint);
-	if (blkg && blkg->q == q)
+	if (blkg && blkg->q == q)/* 命中直接返回 */
 		return blkg;
 
+	/* 没有命中的话，走slowpath，查完可以更新hint。 */
 	return blkg_lookup_slowpath(blkcg, q, update_hint);
 }
 
@@ -409,6 +427,7 @@ static inline struct blkcg_gq *blk_queue_root_blkg(struct request_queue *q)
 }
 
 /**
+获取blkgq的pd数组里面的某一个pd，@blkcg_policy是key。
  * blkg_to_pdata - get policy private data
  * @blkg: blkg of interest
  * @pol: policy of interest
@@ -560,6 +579,8 @@ static inline void blkg_put(struct blkcg_gq *blkg)
 }
 
 /**
+遍历blkgq关联的全部blkgq？先通过css遍历blkcg。
+然后就是返回每一个blkcg里面的与自己相同rq的blkgq。
  * blkg_for_each_descendant_pre - pre-order walk of a blkg's descendants
  * @d_blkg: loop cursor pointing to the current descendant
  * @pos_css: used for iteration
@@ -577,6 +598,9 @@ static inline void blkg_put(struct blkcg_gq *blkg)
 					      (p_blkg)->q, false)))
 
 /**
+遍历一个blkgq的孩子。
+借助blkgq对应的blkcg的css层级来遍历。
+遍历css，
  * blkg_for_each_descendant_post - post-order walk of a blkg's descendants
  * @d_blkg: loop cursor pointing to the current descendant
  * @pos_css: used for iteration

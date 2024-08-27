@@ -817,6 +817,7 @@ void __rcu **radix_tree_lookup_slot(const struct radix_tree_root *root,
 EXPORT_SYMBOL(radix_tree_lookup_slot);
 
 /**
+radix树的查找。
  *	radix_tree_lookup    -    perform lookup operation on a radix tree
  *	@root:		radix tree root
  *	@index:		index key

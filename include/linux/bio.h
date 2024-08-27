@@ -50,6 +50,7 @@
 #define bio_end_sector(bio)	bvec_iter_end_sector((bio)->bi_iter)
 
 /*
+获取bio是出入还是输出。
  * Return the data direction, READ or WRITE.
  */
 #define bio_data_dir(bio) \
@@ -656,7 +657,7 @@ static inline void bio_list_merge_head(struct bio_list *bl,
 
 	bl->head = bl2->head;
 }
-
+/*  */
 static inline struct bio *bio_list_peek(struct bio_list *bl)
 {
 	return bl->head;

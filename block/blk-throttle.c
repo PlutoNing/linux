@@ -42,6 +42,7 @@ static struct blkcg_policy blkcg_policy_throtl;
 static struct workqueue_struct *kthrotld_workqueue;
 
 /*
+是tg的queued的节点，包含了一些bio
  * To implement hierarchical throttling, throtl_grps form a tree and bios
  * are dispatched upwards level by level until they reach the top and get
  * issued.  When dispatching bios from the children and local group at each
@@ -65,9 +66,12 @@ static struct workqueue_struct *kthrotld_workqueue;
  * tree pinned while bios are in flight.
  */
 struct throtl_qnode {
-	struct list_head	node;		/* service_queue->queued[] */
-	struct bio_list		bios;		/* queued bios */
-	struct throtl_grp	*tg;		/* tg this qnode belongs to */
+	struct list_head	node;		/* service_queue->queued[] 
+	挂载到sq*/
+	struct bio_list		bios;		/* queued bios
+	包含的bio */
+	struct throtl_grp	*tg;		/* 
+	指向包含自己的tg   tg this qnode belongs to */
 };
 /* cgroup io限速的io服务队列？ */
 struct throtl_service_queue {
@@ -85,8 +89,10 @@ struct throtl_service_queue {
 	/*
 	 * RB tree of active children throtl_grp's, which are sorted by
 	 * their ->disptime.
+	
 	 */
-	struct rb_root_cached	pending_tree;	/* RB tree of active tgs */
+	struct rb_root_cached	pending_tree;	/* RB tree of active tgs
+	有个left元素，可以快取。 */
 	unsigned int		nr_pending;	/* # queued in the tree */
 	unsigned long		first_pending_disptime;	/* disptime of the first tg */
 	struct timer_list	pending_timer;	/* fires on first_pending_disptime
@@ -97,7 +103,7 @@ enum tg_state_flags {
 	THROTL_TG_PENDING	= 1 << 0,	/* on parent's pending tree */
 	THROTL_TG_WAS_EMPTY	= 1 << 1,	/* bio_lists[] became non-empty */
 };
-
+/* 通过rbn获取所属的tg。 */
 #define rb_entry_tg(node)	rb_entry((node), struct throtl_grp, rb_node)
 /*struct throtl_grp里的读写的限速种类 */
 enum {
@@ -113,7 +119,7 @@ struct throtl_grp {
 	struct blkg_policy_data pd;
 
 	/* active throtl group service_queue member
-	所有的group组织成一颗红黑树，用rb_node串起来 */
+	挂载父sq的pending tree上 */
 	struct rb_node rb_node;
 
 	/* throtl_data this group belongs to
@@ -130,6 +136,7 @@ struct throtl_grp {
 	 * dispatched from this throtl_grp into its parent and will compete
 	 * with the sibling qnode_on_parents and the parent's
 	 * qnode_on_self.
+	 todo
 	 */
 	struct throtl_qnode qnode_on_self[2];
 	struct throtl_qnode qnode_on_parent[2];
@@ -213,7 +220,7 @@ struct throtl_data
 	/* service tree for active throtl groups
 	此dev的sq */
 	struct throtl_service_queue service_queue;
-	/* 这个是指向rq吗？ */
+	/* 这个是指向rq */
 	struct request_queue *queue;
 
 	/* Total Number of queued bios on READ and WRITE lists */
@@ -247,7 +254,8 @@ static inline struct throtl_grp *pd_to_tg(struct blkg_policy_data *pd)
 {
 	return pd ? container_of(pd, struct throtl_grp, pd) : NULL;
 }
-
+/* 获取blkgq关联的tg。
+blkgq有个pd数组，不同的pol对应不同的pd，进而查到不同的tg。 */
 static inline struct throtl_grp *blkg_to_tg(struct blkcg_gq *blkg)
 {
 	return pd_to_tg(blkg_to_pd(blkg, &blkcg_policy_throtl));
@@ -309,7 +317,7 @@ static uint64_t throtl_adjusted_limit(uint64_t low, struct throtl_data *td)
 
 	return low + (low >> 1) * td->scale;
 }
-
+/* todo */
 static uint64_t tg_bps_limit(struct throtl_grp *tg, int rw)
 {
 	struct blkcg_gq *blkg = tg_to_blkg(tg);
@@ -406,7 +414,7 @@ static inline unsigned int throtl_bio_data_size(struct bio *bio)
 		return 512;
 	return bio->bi_iter.bi_size;
 }
-
+/*  */
 static void throtl_qnode_init(struct throtl_qnode *qn, struct throtl_grp *tg)
 {
 	INIT_LIST_HEAD(&qn->node);
@@ -435,6 +443,7 @@ static void throtl_qnode_add_bio(struct bio *bio, struct throtl_qnode *qn,
 }
 
 /**
+从tg里面queued的bio，取下一个。
  * throtl_peek_queued - peek the first bio on a qnode list
  * @queued: the qnode list to peek
  */
@@ -445,7 +454,7 @@ static struct bio *throtl_peek_queued(struct list_head *queued)
 
 	if (list_empty(queued))
 		return NULL;
-
+	/* 从tg的queue  */
 	bio = bio_list_peek(&qn->bios);
 	WARN_ON_ONCE(!bio);
 	return bio;
@@ -501,7 +510,7 @@ static void throtl_service_queue_init(struct throtl_service_queue *sq)
 	/* 初始化计时器 */
 	timer_setup(&sq->pending_timer, throtl_pending_timer_fn, 0);
 }
-/*  */
+/* 感觉就是创建了一个tg，返回了tg的pd */
 static struct blkg_policy_data *throtl_pd_alloc(gfp_t gfp,
 						struct request_queue *q,
 						struct blkcg *blkcg)
@@ -515,7 +524,7 @@ static struct blkg_policy_data *throtl_pd_alloc(gfp_t gfp,
 
 	throtl_service_queue_init(&tg->service_queue);
 
-	for (rw = READ; rw <= WRITE; rw++) {
+	for (rw = READ; rw <= WRITE; rw++) {/* 分别初始化读写 */
 		throtl_qnode_init(&tg->qnode_on_self[rw], tg);
 		throtl_qnode_init(&tg->qnode_on_parent[rw], tg);
 	}
@@ -538,10 +547,15 @@ static struct blkg_policy_data *throtl_pd_alloc(gfp_t gfp,
 
 	return &tg->pd;
 }
-/* 2024年08月27日19:45:33 */
+/* 2024年08月27日19:45:33
+pd一边是blkgq，rq，td，一边是tg和sq。
+sq与td的sq建立联系
+tg与rq的td建立关系
+ */
 static void throtl_pd_init(struct blkg_policy_data *pd)
 {
 	struct throtl_grp *tg = pd_to_tg(pd);
+
 	struct blkcg_gq *blkg = tg_to_blkg(tg);
 	struct throtl_data *td = blkg->q->td;
 	struct throtl_service_queue *sq = &tg->service_queue;
@@ -562,10 +576,13 @@ static void throtl_pd_init(struct blkg_policy_data *pd)
 	sq->parent_sq = &td->service_queue;
 	if (cgroup_subsys_on_dfl(io_cgrp_subsys) && blkg->parent)
 		sq->parent_sq = &blkg_to_tg(blkg->parent)->service_queue;
+	
 	tg->td = td;
 }
 
 /*
+如果tg或者tg的父级被设置了，就设置has_rules[]。
+tg和父tg是通过，所包含的sq父子关系建立联系的。
  * Set has_rules[] if @tg or any of its parents have limits configured.
  * This doesn't require walking up to the top of the hierarchy as the
  * parent's has_rules[] is guaranteed to be correct.
@@ -578,11 +595,12 @@ static void tg_update_has_rules(struct throtl_grp *tg)
 
 	for (rw = READ; rw <= WRITE; rw++)
 		tg->has_rules[rw] = (parent_tg && parent_tg->has_rules[rw]) ||
-			(td->limit_valid[td->limit_index] &&
-			 (tg_bps_limit(tg, rw) != U64_MAX ||
-			  tg_iops_limit(tg, rw) != UINT_MAX));
+			(    td->limit_valid[td->limit_index] &&
+			    (tg_bps_limit(tg, rw) != U64_MAX || tg_iops_limit(tg, rw) != UINT_MAX)
+			);
 }
-
+/* pd怎么online？
+主要操作的是pd的tg。是以pd为句柄的 */
 static void throtl_pd_online(struct blkg_policy_data *pd)
 {
 	struct throtl_grp *tg = pd_to_tg(pd);
@@ -592,7 +610,7 @@ static void throtl_pd_online(struct blkg_policy_data *pd)
 	 */
 	tg_update_has_rules(tg);
 }
-
+/* 虽然缕了一下过程，但是意义不明，todo2024年8月27日23:25:50 */
 static void blk_throtl_update_limit_valid(struct throtl_data *td)
 {
 	struct cgroup_subsys_state *pos_css;
@@ -600,11 +618,15 @@ static void blk_throtl_update_limit_valid(struct throtl_data *td)
 	bool low_valid = false;
 
 	rcu_read_lock();
+	/* 遍历这个td的rq&blkgq的关联的blkgq&rq。 */
 	blkg_for_each_descendant_post(blkg, pos_css, td->queue->root_blkg) {
+		/* 获取tg */
 		struct throtl_grp *tg = blkg_to_tg(blkg);
 
 		if (tg->bps[READ][LIMIT_LOW] || tg->bps[WRITE][LIMIT_LOW] ||
-		    tg->iops[READ][LIMIT_LOW] || tg->iops[WRITE][LIMIT_LOW]) {
+		    tg->iops[READ][LIMIT_LOW] || tg->iops[WRITE][LIMIT_LOW]) {/* 只要层级上
+			还有tg是有效的 */
+
 			low_valid = true;
 			break;
 		}
@@ -615,6 +637,7 @@ static void blk_throtl_update_limit_valid(struct throtl_data *td)
 }
 
 static void throtl_upgrade_state(struct throtl_data *td);
+/* 2024年8月27日22:52:27 */
 static void throtl_pd_offline(struct blkg_policy_data *pd)
 {
 	struct throtl_grp *tg = pd_to_tg(pd);
@@ -624,6 +647,7 @@ static void throtl_pd_offline(struct blkg_policy_data *pd)
 	tg->iops[READ][LIMIT_LOW] = 0;
 	tg->iops[WRITE][LIMIT_LOW] = 0;
 
+	/* 似乎是更新tg的td的有效值，是通过查询层级上还有没有有效值决定的 */
 	blk_throtl_update_limit_valid(tg->td);
 
 	if (!tg->td->limit_valid[tg->td->limit_index])
@@ -637,7 +661,9 @@ static void throtl_pd_free(struct blkg_policy_data *pd)
 	del_timer_sync(&tg->service_queue.pending_timer);
 	kfree(tg);
 }
-
+/* rb_first?
+找到sq的rb上面第一个node的tg。
+ */
 static struct throtl_grp *
 throtl_rb_first(struct throtl_service_queue *parent_sq)
 {
@@ -648,17 +674,21 @@ throtl_rb_first(struct throtl_service_queue *parent_sq)
 
 	n = rb_first_cached(&parent_sq->pending_tree);
 	WARN_ON_ONCE(!n);
+
 	if (!n)
 		return NULL;
+	/* 查到rbn，找所属的tg */
 	return rb_entry_tg(n);
 }
-
+/* 从sq的pending tree移除这个node。*/
 static void throtl_rb_erase(struct rb_node *n,
 			    struct throtl_service_queue *parent_sq)
 {
 	rb_erase_cached(n, &parent_sq->pending_tree);
+
 	RB_CLEAR_NODE(n);
 	--parent_sq->nr_pending;
+
 }
 
 static void update_min_dispatch_time(struct throtl_service_queue *parent_sq)
@@ -710,13 +740,15 @@ static void throtl_enqueue_tg(struct throtl_grp *tg)
 	if (!(tg->flags & THROTL_TG_PENDING))
 		__throtl_enqueue_tg(tg);
 }
-
+/* 
+deque tg。
+把tg从父sq的pending tree移除。 */
 static void __throtl_dequeue_tg(struct throtl_grp *tg)
 {
 	throtl_rb_erase(&tg->rb_node, tg->service_queue.parent_sq);
 	tg->flags &= ~THROTL_TG_PENDING;
 }
-
+/* 把tg从父sq的pending移除。 */
 static void throtl_dequeue_tg(struct throtl_grp *tg)
 {
 	if (tg->flags & THROTL_TG_PENDING)
@@ -985,6 +1017,8 @@ static bool tg_with_in_bps_limit(struct throtl_grp *tg, struct bio *bio,
 }
 
 /*
+2024年8月28日00:41:42
+判断tg能不能派发这个刚刚从queued里面取下的bio
  * Returns whether one can dispatch a bio or not. Also returns approx number
  * of jiffies to wait before this bio is with-in IO rate and can be dispatched
  */
@@ -992,6 +1026,7 @@ static bool tg_may_dispatch(struct throtl_grp *tg, struct bio *bio,
 			    unsigned long *wait)
 {
 	bool rw = bio_data_dir(bio);
+
 	unsigned long bps_wait = 0, iops_wait = 0, max_wait = 0;
 
 	/*
@@ -1176,9 +1211,10 @@ static void tg_dispatch_one_bio(struct throtl_grp *tg, bool rw)
 	if (tg_to_put)
 		blkg_put(tg_to_blkg(tg_to_put));
 }
-
+/*  */
 static int throtl_dispatch_tg(struct throtl_grp *tg)
 {
+	/* 获取sq */
 	struct throtl_service_queue *sq = &tg->service_queue;
 	unsigned int nr_reads = 0, nr_writes = 0;
 	unsigned int max_nr_reads = throtl_grp_quantum*3/4;
@@ -1187,6 +1223,7 @@ static int throtl_dispatch_tg(struct throtl_grp *tg)
 
 	/* Try to dispatch 75% READS and 25% WRITES */
 
+	/* 先处理读的，逐个取下bio */
 	while ((bio = throtl_peek_queued(&sq->queued[READ])) &&
 	       tg_may_dispatch(tg, bio, NULL)) {
 
@@ -1197,6 +1234,7 @@ static int throtl_dispatch_tg(struct throtl_grp *tg)
 			break;
 	}
 
+	/* 在处理写的 */
 	while ((bio = throtl_peek_queued(&sq->queued[WRITE])) &&
 	       tg_may_dispatch(tg, bio, NULL)) {
 
@@ -1209,7 +1247,7 @@ static int throtl_dispatch_tg(struct throtl_grp *tg)
 
 	return nr_reads + nr_writes;
 }
-
+/* 派发这个sq，通过红黑树 */
 static int throtl_select_dispatch(struct throtl_service_queue *parent_sq)
 {
 	unsigned int nr_disp = 0;
@@ -1221,11 +1259,11 @@ static int throtl_select_dispatch(struct throtl_service_queue *parent_sq)
 		if (!tg)
 			break;
 
-		if (time_before(jiffies, tg->disptime))
+		if (time_before(jiffies, tg->disptime))/* 还没到时间 */
 			break;
-
+		/* 这个tg到时间了。把tg从父sq的pending 移除 */
 		throtl_dequeue_tg(tg);
-
+		/* 这里开始dispatch */
 		nr_disp += throtl_dispatch_tg(tg);
 
 		sq = &tg->service_queue;
@@ -1755,11 +1793,15 @@ static void throtl_shutdown_wq(struct request_queue *q)
 static struct blkcg_policy blkcg_policy_throtl = {
 	.dfl_cftypes		= throtl_files,/*  */
 	.legacy_cftypes		= throtl_legacy_files,/* blkio的读写限速的fs定义接口 */
-
+	/* 分配pd */
 	.pd_alloc_fn		= throtl_pd_alloc,
+	/* 初始化一个pd */
 	.pd_init_fn		= throtl_pd_init,
+	/* 怎么online？ */
 	.pd_online_fn		= throtl_pd_online,
+	/* offline */
 	.pd_offline_fn		= throtl_pd_offline,
+
 	.pd_free_fn		= throtl_pd_free,
 };
 
@@ -1915,17 +1957,21 @@ static void throtl_upgrade_check(struct throtl_grp *tg)
 	if (throtl_can_upgrade(tg->td, NULL))
 		throtl_upgrade_state(tg->td);
 }
-
+/* 更新什么state */
 static void throtl_upgrade_state(struct throtl_data *td)
 {
 	struct cgroup_subsys_state *pos_css;
 	struct blkcg_gq *blkg;
 
 	throtl_log(&td->service_queue, "upgrade to max");
+	
 	td->limit_index = LIMIT_MAX;
 	td->low_upgrade_time = jiffies;
 	td->scale = 0;
+
+
 	rcu_read_lock();
+	/* 遍历td->queue->root_blkg有关系的blkgq */
 	blkg_for_each_descendant_post(blkg, pos_css, td->queue->root_blkg) {
 		struct throtl_grp *tg = blkg_to_tg(blkg);
 		struct throtl_service_queue *sq = &tg->service_queue;
@@ -1935,6 +1981,8 @@ static void throtl_upgrade_state(struct throtl_data *td)
 		throtl_schedule_next_dispatch(sq, true);
 	}
 	rcu_read_unlock();
+
+
 	throtl_select_dispatch(&td->service_queue);
 	throtl_schedule_next_dispatch(&td->service_queue, true);
 	queue_work(kthrotld_workqueue, &td->dispatch_work);

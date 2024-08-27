@@ -90,6 +90,7 @@ static inline u64 get_jiffies_64(void)
 #endif
 
 /*
+a比b晚吗
  *	These inlines deal with timer wrapping correctly. You are 
  *	strongly encouraged to use them
  *	1. Because people otherwise forget
@@ -106,6 +107,7 @@ static inline u64 get_jiffies_64(void)
 	(typecheck(unsigned long, a) && \
 	 typecheck(unsigned long, b) && \
 	 ((long)((b) - (a)) < 0))
+/* a比b早吗 */
 #define time_before(a,b)	time_after(b,a)
 
 #define time_after_eq(a,b)	\
