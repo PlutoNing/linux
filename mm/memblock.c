@@ -388,7 +388,9 @@ static void __init_memblock memblock_remove_region(struct memblock_type *type, u
 
 #ifndef CONFIG_ARCH_KEEP_MEMBLOCK
 /**
- * memblock_discard - discard memory and reserved arrays if they were allocated
+看着像是释放memblock的两个type的regions数组内存空间
+ * memblock_d
+ iscard - discard memory and reserved arrays if they were allocated
  */
 void __init memblock_discard(void)
 {
@@ -697,6 +699,7 @@ repeat:
 }
 
 /**
+把nid的这段内存交给memblock的memory管理。
  * memblock_add_node - add new memblock region within a NUMA node
  * @base: base address of the new region
  * @size: size of the new region
@@ -715,6 +718,7 @@ int __init_memblock memblock_add_node(phys_addr_t base, phys_addr_t size,
 }
 
 /**
+添加新的region
  * memblock_add - add new memblock region
  * @base: base address of the new region
  * @size: size of the new region
@@ -918,6 +922,8 @@ static int __init_memblock memblock_setclr_flag(phys_addr_t base,
 }
 
 /**
+2024年08月27日16:52:20
+todo
  * memblock_mark_hotplug - Mark hotpluggable memory with flag MEMBLOCK_HOTPLUG.
  * @base: the base phys addr of the region
  * @size: the size of the region
@@ -1292,6 +1298,7 @@ void __init_memblock __next_mem_pfn_range(int *idx, int nid,
 }
 
 /**
+设置范围内的region的nid。然后尝试合并。
  * memblock_set_node - set node ID on memblock regions
  * @base: base of area to set node ID for
  * @size: size of area to set node ID for
@@ -1470,6 +1477,7 @@ done:/* 找到成功之后来到这里 */
 }
 
 /**
+从指定的范围内分配内存
  * memblock_phys_alloc_range - allocate a memory block inside specified range
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
@@ -1637,6 +1645,7 @@ void * __init memblock_alloc_try_nid(
 }
 
 /**
+memblock释放页面到buddy。
  * __memblock_free_late - free pages directly to buddy allocator
  * @base: phys starting address of the  boot memory block
  * @size: size of the boot memory block in bytes
@@ -1656,7 +1665,7 @@ void __init __memblock_free_late(phys_addr_t base, phys_addr_t size)
 	cursor = PFN_UP(base);
 	end = PFN_DOWN(base + size);
 
-	for (; cursor < end; cursor++) {
+	for (; cursor < end; cursor++) {/* 逐个释放 */
 		memblock_free_pages(pfn_to_page(cursor), cursor, 0);
 		totalram_pages_inc();
 	}
@@ -1675,16 +1684,17 @@ phys_addr_t __init_memblock memblock_reserved_size(void)
 {
 	return memblock.reserved.total_size;
 }
-
+/* 统计memory内存大小 */
 phys_addr_t __init memblock_mem_size(unsigned long limit_pfn)
 {
 	unsigned long pages = 0;
 	struct memblock_region *r;
 	unsigned long start_pfn, end_pfn;
 
-	for_each_memblock(memory, r) {
+	for_each_memblock(memory, r) {/* 遍历每个region */
 		start_pfn = memblock_region_memory_base_pfn(r);
 		end_pfn = memblock_region_memory_end_pfn(r);
+
 		start_pfn = min_t(unsigned long, start_pfn, limit_pfn);
 		end_pfn = min_t(unsigned long, end_pfn, limit_pfn);
 		pages += end_pfn - start_pfn;
@@ -1705,7 +1715,8 @@ phys_addr_t __init_memblock memblock_end_of_DRAM(void)
 
 	return (memblock.memory.regions[idx].base + memblock.memory.regions[idx].size);
 }
-
+/* 找到满足这个大小的最大region。返回region的结束地址。region的前面的region们的大小加起来，
+等于limit？ */
 static phys_addr_t __init_memblock __find_max_addr(phys_addr_t limit)
 {
 	phys_addr_t max_addr = PHYS_ADDR_MAX;
@@ -1726,14 +1737,14 @@ static phys_addr_t __init_memblock __find_max_addr(phys_addr_t limit)
 
 	return max_addr;
 }
-
+/* 把memblock限制到指定的大小 */
 void __init memblock_enforce_memory_limit(phys_addr_t limit)
 {
 	phys_addr_t max_addr = PHYS_ADDR_MAX;
 
 	if (!limit)
 		return;
-
+	/* 先找到limit大小的位置 */
 	max_addr = __find_max_addr(limit);
 
 	/* @limit exceeds the total size of the memory, do nothing */
@@ -1741,12 +1752,13 @@ void __init memblock_enforce_memory_limit(phys_addr_t limit)
 		return;
 
 	/* truncate both memory and reserved regions */
+	/* 此位置之后的region需要移除 */
 	memblock_remove_range(&memblock.memory, max_addr,
 			      PHYS_ADDR_MAX);
 	memblock_remove_range(&memblock.reserved, max_addr,
 			      PHYS_ADDR_MAX);
 }
-
+/* todo */
 void __init memblock_cap_memory_range(phys_addr_t base, phys_addr_t size)
 {
 	int start_rgn, end_rgn;
@@ -1808,17 +1820,17 @@ static int __init_memblock memblock_search(struct memblock_type *type, phys_addr
 	} while (left < right);
 	return -1;
 }
-
+/* 检查地址是不是memblock的reserve地址 */
 bool __init_memblock memblock_is_reserved(phys_addr_t addr)
 {
 	return memblock_search(&memblock.reserved, addr) != -1;
 }
-
+/* 检查地址是不是memblock的memory地址 */
 bool __init_memblock memblock_is_memory(phys_addr_t addr)
 {
 	return memblock_search(&memblock.memory, addr) != -1;
 }
-
+/*  todo */
 bool __init_memblock memblock_is_map_memory(phys_addr_t addr)
 {
 	int i = memblock_search(&memblock.memory, addr);

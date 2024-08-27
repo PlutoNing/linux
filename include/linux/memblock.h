@@ -221,7 +221,7 @@ static inline bool memblock_is_mirror(struct memblock_region *m)
 {
 	return m->flags & MEMBLOCK_MIRROR;
 }
-
+/*  */
 static inline bool memblock_is_nomap(struct memblock_region *m)
 {
 	return m->flags & MEMBLOCK_NOMAP;
