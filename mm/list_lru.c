@@ -24,7 +24,7 @@ static void list_lru_register(struct list_lru *lru)
 	list_add(&lru->list, &list_lrus);
 	mutex_unlock(&list_lrus_mutex);
 }
-
+/* 2024年08月27日17:15:04 */
 static void list_lru_unregister(struct list_lru *lru)
 {
 	mutex_lock(&list_lrus_mutex);
@@ -596,7 +596,7 @@ static void memcg_destroy_list_lru(struct list_lru *lru)
 {
 }
 #endif /* CONFIG_MEMCG_KMEM */
-
+/* 2024年08月27日17:15:22 */
 int __list_lru_init(struct list_lru *lru, bool memcg_aware,
 		    struct lock_class_key *key, struct shrinker *shrinker)
 {
@@ -636,7 +636,7 @@ out:
 	return err;
 }
 EXPORT_SYMBOL_GPL(__list_lru_init);
-
+/* todo */
 void list_lru_destroy(struct list_lru *lru)
 {
 	/* Already destroyed or not yet initialized? */

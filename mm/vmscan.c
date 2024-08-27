@@ -234,7 +234,8 @@ static DECLARE_RWSEM(shrinker_rwsem);
 
 static DEFINE_IDR(shrinker_idr);
 static int shrinker_nr_max;
-
+/* 分配shrinker的memcg相关成员
+啊就是分配一个idr的id吗 */
 static int prealloc_memcg_shrinker(struct shrinker *shrinker)
 {
 	int id, ret = -ENOMEM;
@@ -422,20 +423,22 @@ unsigned long lruvec_lru_size(struct lruvec *lruvec, enum lru_list lru, int zone
 }
 
 /*
+分配一个shrinker
  * Add a shrinker callback to be called from the vm.
  */
 int prealloc_shrinker(struct shrinker *shrinker)
 {
 	unsigned int size = sizeof(*shrinker->nr_deferred);
 
-	if (shrinker->flags & SHRINKER_NUMA_AWARE)
+	if (shrinker->flags & SHRINKER_NUMA_AWARE)/* 如果需要numa，那么
+	每个node都需要 */
 		size *= nr_node_ids;
-
+	/* 分配成员的内存 */
 	shrinker->nr_deferred = kzalloc(size, GFP_KERNEL);
 	if (!shrinker->nr_deferred)
 		return -ENOMEM;
 
-	if (shrinker->flags & SHRINKER_MEMCG_AWARE) {
+	if (shrinker->flags & SHRINKER_MEMCG_AWARE) {/* 如果也需要memcg的aware */
 		if (prealloc_memcg_shrinker(shrinker))
 			goto free_deferred;
 	}

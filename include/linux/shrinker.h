@@ -73,7 +73,8 @@ struct shrinker {
 	/* ID in shrinker_idr */
 	int id;
 #endif
-	/* objs pending delete, per node */
+	/* objs pending delete, per node
+	是一个不定长的数组 */
 	atomic_long_t *nr_deferred;
 };
 #define DEFAULT_SEEKS 2 /* A good number if you don't know better. */

@@ -69,7 +69,7 @@ struct throtl_qnode {
 	struct bio_list		bios;		/* queued bios */
 	struct throtl_grp	*tg;		/* tg this qnode belongs to */
 };
-
+/* cgroup io限速的io服务队列？ */
 struct throtl_service_queue {
 	struct throtl_service_queue *parent_sq;	/* the parent service_queue */
 
@@ -77,8 +77,10 @@ struct throtl_service_queue {
 	 * Bios queued directly to this service_queue or dispatched from
 	 * children throtl_grp's.
 	 */
-	struct list_head	queued[2];	/* throtl_qnode [READ/WRITE] */
-	unsigned int		nr_queued[2];	/* number of queued bios */
+	struct list_head	queued[2];	/* throtl_qnode [READ/WRITE]，
+	读和写的bio分别挂上去？ */
+	unsigned int		nr_queued[2];	/* number of queued bios，
+	描述读和写队列的bio的数量 */
 
 	/*
 	 * RB tree of active children throtl_grp's, which are sorted by
@@ -87,7 +89,8 @@ struct throtl_service_queue {
 	struct rb_root_cached	pending_tree;	/* RB tree of active tgs */
 	unsigned int		nr_pending;	/* # queued in the tree */
 	unsigned long		first_pending_disptime;	/* disptime of the first tg */
-	struct timer_list	pending_timer;	/* fires on first_pending_disptime */
+	struct timer_list	pending_timer;	/* fires on first_pending_disptime
+	计时器 */
 };
 
 enum tg_state_flags {
@@ -96,7 +99,7 @@ enum tg_state_flags {
 };
 
 #define rb_entry_tg(node)	rb_entry((node), struct throtl_grp, rb_node)
-/*struct throtl_grp里的限速值 */
+/*struct throtl_grp里的读写的限速种类 */
 enum {
 	LIMIT_LOW,
 	LIMIT_MAX,
@@ -113,7 +116,8 @@ struct throtl_grp {
 	所有的group组织成一颗红黑树，用rb_node串起来 */
 	struct rb_node rb_node;
 
-	/* throtl_data this group belongs to */
+	/* throtl_data this group belongs to
+	此tg的td */
 	struct throtl_data *td;
 
 	/* this group's service queue */
@@ -144,7 +148,8 @@ struct throtl_grp {
 	bool has_rules[2];
 
 	/* internally used bytes per second rate limits
-	 读、写带宽限制，单位是字节/秒，-1表示没有限制
+	 一维读、写带宽限制，单位是字节/秒，-1表示没有限制
+	  二维表示对读or写的什么东西的限制，比如
 	  */
 	uint64_t bps[2][LIMIT_CNT];
 	/* user configured bps limits */
@@ -205,9 +210,10 @@ struct avg_latency_bucket {
 保存该 blkdev 的 blk-throttle policy 相关的信息 */
 struct throtl_data
 {
-	/* service tree for active throtl groups */
+	/* service tree for active throtl groups
+	此dev的sq */
 	struct throtl_service_queue service_queue;
-
+	/* 这个是指向rq吗？ */
 	struct request_queue *queue;
 
 	/* Total Number of queued bios on READ and WRITE lists */
@@ -217,7 +223,8 @@ struct throtl_data
 
 	/* Work for dispatching throttled bios */
 	struct work_struct dispatch_work;
-	unsigned int limit_index;
+	
+	unsigned int limit_index;/* 可能是low max什么的 */
 	bool limit_valid[LIMIT_CNT];
 
 	unsigned long low_upgrade_time;
@@ -235,7 +242,7 @@ struct throtl_data
 };
 
 static void throtl_pending_timer_fn(struct timer_list *t);
-
+/* 获取pd的tg */
 static inline struct throtl_grp *pd_to_tg(struct blkg_policy_data *pd)
 {
 	return pd ? container_of(pd, struct throtl_grp, pd) : NULL;
@@ -245,13 +252,14 @@ static inline struct throtl_grp *blkg_to_tg(struct blkcg_gq *blkg)
 {
 	return pd_to_tg(blkg_to_pd(blkg, &blkcg_policy_throtl));
 }
-
+/* 获取tg的blkg */
 static inline struct blkcg_gq *tg_to_blkg(struct throtl_grp *tg)
 {
 	return pd_to_blkg(&tg->pd);
 }
 
 /**
+获取sq的tg
  * sq_to_tg - return the throl_grp the specified service queue belongs to
  * @sq: the throtl_service_queue of interest
  *
@@ -267,6 +275,7 @@ static struct throtl_grp *sq_to_tg(struct throtl_service_queue *sq)
 }
 
 /**
+获取sq的td
  * sq_to_td - return throtl_data the specified service queue belongs to
  * @sq: the throtl_service_queue of interest
  *
@@ -481,22 +490,25 @@ static struct bio *throtl_pop_queued(struct list_head *queued,
 	return bio;
 }
 
-/* init a service_queue, assumes the caller zeroed it */
+/* 
+初始化tg的服务队列？
+init a service_queue, assumes the caller zeroed it */
 static void throtl_service_queue_init(struct throtl_service_queue *sq)
 {
 	INIT_LIST_HEAD(&sq->queued[0]);
 	INIT_LIST_HEAD(&sq->queued[1]);
 	sq->pending_tree = RB_ROOT_CACHED;
+	/* 初始化计时器 */
 	timer_setup(&sq->pending_timer, throtl_pending_timer_fn, 0);
 }
-
+/*  */
 static struct blkg_policy_data *throtl_pd_alloc(gfp_t gfp,
 						struct request_queue *q,
 						struct blkcg *blkcg)
 {
 	struct throtl_grp *tg;
 	int rw;
-
+	/* 分配一个tg */
 	tg = kzalloc_node(sizeof(*tg), gfp, q->node);
 	if (!tg)
 		return NULL;
@@ -526,7 +538,7 @@ static struct blkg_policy_data *throtl_pd_alloc(gfp_t gfp,
 
 	return &tg->pd;
 }
-
+/* 2024年08月27日19:45:33 */
 static void throtl_pd_init(struct blkg_policy_data *pd)
 {
 	struct throtl_grp *tg = pd_to_tg(pd);
@@ -1230,6 +1242,7 @@ static int throtl_select_dispatch(struct throtl_service_queue *parent_sq)
 static bool throtl_can_upgrade(struct throtl_data *td,
 	struct throtl_grp *this_tg);
 /**
+blkio限速计时器超时的回调函数。
  * throtl_pending_timer_fn - timer function for service_queue->pending_timer
  * @t: the pending_timer member of the throtl_service_queue being serviced
  *
@@ -1246,7 +1259,9 @@ static bool throtl_can_upgrade(struct throtl_data *td,
  */
 static void throtl_pending_timer_fn(struct timer_list *t)
 {
+	/* 获取timer所属的sq */
 	struct throtl_service_queue *sq = from_timer(sq, t, pending_timer);
+	/* 获取sq的tg */
 	struct throtl_grp *tg = sq_to_tg(sq);
 	struct throtl_data *td = sq_to_td(sq);
 	struct request_queue *q = td->queue;
@@ -1463,7 +1478,7 @@ out_finish:
 	blkg_conf_finish(&ctx);
 	return ret ?: nbytes;
 }
-
+/* 设置blkio的读写限速最大值 */
 static ssize_t tg_set_conf_u64(struct kernfs_open_file *of,
 			       char *buf, size_t nbytes, loff_t off)
 {
@@ -1475,7 +1490,7 @@ static ssize_t tg_set_conf_uint(struct kernfs_open_file *of,
 {
 	return tg_set_conf(of, buf, nbytes, off, false);
 }
-
+/* cgroup v1的blkio限制的fs接口 */
 static struct cftype throtl_legacy_files[] = {
 	{
 		.name = "throttle.read_bps_device",
@@ -1736,10 +1751,10 @@ static void throtl_shutdown_wq(struct request_queue *q)
 
 	cancel_work_sync(&td->dispatch_work);
 }
-
+/* 描述定义一种速度的限制 */
 static struct blkcg_policy blkcg_policy_throtl = {
-	.dfl_cftypes		= throtl_files,
-	.legacy_cftypes		= throtl_legacy_files,
+	.dfl_cftypes		= throtl_files,/*  */
+	.legacy_cftypes		= throtl_legacy_files,/* blkio的读写限速的fs定义接口 */
 
 	.pd_alloc_fn		= throtl_pd_alloc,
 	.pd_init_fn		= throtl_pd_init,

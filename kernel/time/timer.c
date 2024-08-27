@@ -756,7 +756,7 @@ static inline void debug_timer_activate(struct timer_list *timer) { }
 static inline void debug_timer_deactivate(struct timer_list *timer) { }
 static inline void debug_timer_assert_init(struct timer_list *timer) { }
 #endif
-
+/*  */
 static inline void debug_init(struct timer_list *timer)
 {
 	debug_timer_init(timer);
@@ -773,7 +773,7 @@ static inline void debug_assert_init(struct timer_list *timer)
 {
 	debug_timer_assert_init(timer);
 }
-
+/* 初始化计时器的成员 */
 static void do_init_timer(struct timer_list *timer,
 			  void (*func)(struct timer_list *),
 			  unsigned int flags,
@@ -786,9 +786,10 @@ static void do_init_timer(struct timer_list *timer,
 }
 
 /**
+初始化计时器
  * init_timer_key - initialize a timer
  * @timer: the timer to be initialized
- * @func: timer callback function
+ * @func: timer callback function，到时间的回调。
  * @flags: timer flags
  * @name: name of the timer
  * @key: lockdep class key of the fake lock used for tracking timer
@@ -801,7 +802,9 @@ void init_timer_key(struct timer_list *timer,
 		    void (*func)(struct timer_list *), unsigned int flags,
 		    const char *name, struct lock_class_key *key)
 {
+	/* 空函数 */
 	debug_init(timer);
+
 	do_init_timer(timer, func, flags, name, key);
 }
 EXPORT_SYMBOL(init_timer_key);

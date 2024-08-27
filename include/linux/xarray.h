@@ -39,7 +39,7 @@
  * space (-4094 to -2).  They're never stored in the slots array; only
  * returned by the normal API.
  */
-
+/* 64-1=63 */
 #define BITS_PER_XA_VALUE	(BITS_PER_LONG - 1)
 
 /**

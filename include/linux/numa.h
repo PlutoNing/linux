@@ -4,6 +4,7 @@
 
 
 #ifdef CONFIG_NODES_SHIFT
+/* 10 */
 #define NODES_SHIFT     CONFIG_NODES_SHIFT
 #else
 #define NODES_SHIFT     0

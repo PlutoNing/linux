@@ -1208,7 +1208,9 @@ struct blkcg_policy blkcg_policy_bfq = {
 	.pd_free_fn		= bfq_pd_free,
 	.pd_reset_stats_fn	= bfq_pd_reset_stats,
 };
-
+/* 
+2024年08月27日19:02:43
+bfq cg的fs接口 */
 struct cftype bfq_blkcg_legacy_files[] = {
 	{
 		.name = "bfq.weight",

@@ -168,7 +168,7 @@ static inline __s64 sign_extend64(__u64 value, int index)
 	__u8 shift = 63 - index;
 	return (__s64)(value << shift) >> shift;
 }
-
+/*  */
 static inline unsigned fls_long(unsigned long l)
 {
 	if (sizeof(l) == 4)

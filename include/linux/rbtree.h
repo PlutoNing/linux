@@ -113,6 +113,7 @@ static inline void rb_link_node_rcu(struct rb_node *node, struct rb_node *parent
 	     pos = n)
 
 /*
+这是什么类型的红黑树？
  * Leftmost-cached rbtrees.
  *
  * We do not cache the rightmost node based on footprint

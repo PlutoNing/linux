@@ -92,7 +92,7 @@ struct blkg_rwstat_sample {
  */
 struct blkg_policy_data {
 	/* the blkg and policy id this per-policy data belongs to */
-	struct blkcg_gq			*blkg;
+	struct blkcg_gq			*blkg;/* 指向关联的blkg */
 	int				plid;
 };
 
@@ -428,6 +428,7 @@ static inline struct blkcg_policy_data *blkcg_to_cpd(struct blkcg *blkcg,
 }
 
 /**
+获取pd的blkg。
  * pdata_to_blkg - get blkg associated with policy private data
  * @pd: policy private data of interest
  *

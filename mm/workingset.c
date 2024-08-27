@@ -166,9 +166,10 @@
  * On cache misses for which there are shadow entries, an eligible
  * refault distance will immediately activate the refaulting page.
  */
-
+/* 1 + 1 + 10 + 16 = 28 */
 #define EVICTION_SHIFT	((BITS_PER_LONG - BITS_PER_XA_VALUE) +	\
 			 1 + NODES_SHIFT + MEM_CGROUP_ID_SHIFT)
+/*  */
 #define EVICTION_MASK	(~0UL >> EVICTION_SHIFT)
 
 /*
@@ -357,6 +358,7 @@ out:
 }
 
 /*
+
  * Shadow entries reflect the share of the working set that does not
  * fit into memory, so their number depends on the access pattern of
  * the workload.  In most cases, they will refault or get reclaimed
@@ -524,7 +526,7 @@ static unsigned long scan_shadow_nodes(struct shrinker *shrinker,
 	return list_lru_shrink_walk_irq(&shadow_nodes, sc, shadow_lru_isolate,
 					NULL);
 }
-
+/*  */
 static struct shrinker workingset_shadow_shrinker = {
 	.count_objects = count_shadow_nodes,
 	.scan_objects = scan_shadow_nodes,
@@ -537,7 +539,7 @@ static struct shrinker workingset_shadow_shrinker = {
  * i_pages lock.
  */
 static struct lock_class_key shadow_nodes_key;
-
+/* 2024年08月27日17:17:34 */
 static int __init workingset_init(void)
 {
 	unsigned int timestamp_bits;
@@ -562,15 +564,20 @@ static int __init workingset_init(void)
 	ret = prealloc_shrinker(&workingset_shadow_shrinker);
 	if (ret)
 		goto err;
+
 	ret = __list_lru_init(&shadow_nodes, true, &shadow_nodes_key,
 			      &workingset_shadow_shrinker);
 	if (ret)
 		goto err_list_lru;
+
 	register_shrinker_prepared(&workingset_shadow_shrinker);
 	return 0;
+
 err_list_lru:
 	free_prealloced_shrinker(&workingset_shadow_shrinker);
+	
 err:
 	return ret;
 }
+
 module_init(workingset_init);

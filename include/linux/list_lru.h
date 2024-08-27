@@ -48,12 +48,12 @@ struct list_lru_node {
 #endif
 	long nr_items;
 } ____cacheline_aligned_in_smp;
-
+/* 2024年08月27日17:15:56 */
 struct list_lru {
 	struct list_lru_node	*node;
 #ifdef CONFIG_MEMCG_KMEM
 	struct list_head	list;
-	int			shrinker_id;
+	int			shrinker_id;/* 是此lru的shrinker的id */
 	bool			memcg_aware;
 #endif
 };
