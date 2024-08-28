@@ -109,7 +109,7 @@ a比b晚吗
 	 ((long)((b) - (a)) < 0))
 /* a比b早吗 */
 #define time_before(a,b)	time_after(b,a)
-
+/* a在b之后或者等于 */
 #define time_after_eq(a,b)	\
 	(typecheck(unsigned long, a) && \
 	 typecheck(unsigned long, b) && \
@@ -117,6 +117,7 @@ a比b晚吗
 #define time_before_eq(a,b)	time_after_eq(b,a)
 
 /*
+判断a是不是在[b,c]时间段内
  * Calculate whether a is in the range of [b, c].
  */
 #define time_in_range(a,b,c) \

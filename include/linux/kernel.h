@@ -117,6 +117,7 @@
 #endif
 
 /**
+ROUND_UP(12, 5) 会返回 15, 因为 15 是第一个以 5 为间隔且大于 12 的数值。
  * roundup - round up to the next specified multiple
  * @x: the value to up
  * @y: multiple to round up to

@@ -135,7 +135,7 @@ struct rb_root_cached {
 /* Same as rb_first(), but O(1)
 直接获取红黑树的值，而不是通过logN的查找 */
 #define rb_first_cached(root) (root)->rb_leftmost
-
+/*  */
 static inline void rb_insert_color_cached(struct rb_node *node,
 					  struct rb_root_cached *root,
 					  bool leftmost)

@@ -231,12 +231,12 @@ static inline void bio_cnt_set(struct bio *bio, unsigned int count)
 	}
 	atomic_set(&bio->__bi_cnt, count);
 }
-
+/* 看看bio的flag有没有置位此bit */
 static inline bool bio_flagged(struct bio *bio, unsigned int bit)
 {
 	return (bio->bi_flags & (1U << bit)) != 0;
 }
-
+/* 设置bio的此flag */
 static inline void bio_set_flag(struct bio *bio, unsigned int bit)
 {
 	bio->bi_flags |= (1U << bit);
@@ -608,7 +608,7 @@ static inline unsigned bio_list_size(const struct bio_list *bl)
 
 	return sz;
 }
-
+/* 把bio加入到bl */
 static inline void bio_list_add(struct bio_list *bl, struct bio *bio)
 {
 	bio->bi_next = NULL;
@@ -662,7 +662,7 @@ static inline struct bio *bio_list_peek(struct bio_list *bl)
 {
 	return bl->head;
 }
-
+/* 取下一个bio */
 static inline struct bio *bio_list_pop(struct bio_list *bl)
 {
 	struct bio *bio = bl->head;

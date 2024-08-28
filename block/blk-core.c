@@ -991,6 +991,7 @@ end_io:
 }
 
 /**
+发起一个bio请求?
  * generic_make_request - hand a buffer to its device driver for I/O
  * @bio:  The bio describing the location in memory and on the device.
  *

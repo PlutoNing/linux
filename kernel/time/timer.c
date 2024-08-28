@@ -1084,6 +1084,7 @@ EXPORT_SYMBOL(mod_timer_pending);
 
 /**
 2024年6月28日23:56:57
+更新计时器的超时时间
  * mod_timer - modify a timer's timeout
  * @timer: the timer to be modified
  * @expires: new timeout in jiffies
