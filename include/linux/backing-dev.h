@@ -251,7 +251,7 @@ int inode_congested(struct inode *inode, int cong_bits);
 
 /**
 2024年7月17日22:58:45
-inode有无启用cgwb。
+inode有无启用cgwb。主要还是通过inode的flag判断
  * inode_cgwb_enabled - test whether cgroup writeback is enabled on an inode
  * @inode: inode of interest
  *

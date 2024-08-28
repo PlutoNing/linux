@@ -74,6 +74,7 @@ static long ratelimit_pages = 32;
 int dirty_background_ratio = 10;
 
 /*
+这个应该是后台限制的那个dirty_ratio的量
  * dirty_background_bytes starts at 0 (disabled) so that it is a function of
  * dirty_background_ratio * the amount of dirtyable memory
  */
@@ -87,12 +88,15 @@ int vm_highmem_is_dirtyable;
 
 /*
  * The generator of dirty data starts writeback at this percentage
+ 系统脏页比例
+ 超过就刷盘
  */
 int vm_dirty_ratio = 20;
 
 /*
  * vm_dirty_bytes starts at 0 (disabled) so that it is a function of
  * vm_dirty_ratio * the amount of dirtyable memory
+ 根据dirty_ratio设置的要刷盘的脏数据的量
  */
 unsigned long vm_dirty_bytes;
 
@@ -125,16 +129,20 @@ EXPORT_SYMBOL(laptop_mode);
 
 struct wb_domain global_wb_domain;
 
-/* consolidated parameters for balance_dirty_pages() and its subroutines */
+/* 
+2024年08月28日12:36:41
+consolidated parameters for balance_dirty_pages() and its subroutines */
 struct dirty_throttle_control {
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct wb_domain	*dom;
-	struct dirty_throttle_control *gdtc;	/* only set in memcg dtc's */
+	struct dirty_throttle_control *gdtc;	/* 
+	指向gdtc
+	only set in memcg dtc's */
 #endif
 	struct bdi_writeback	*wb;
 	struct fprop_local_percpu *wb_completions;
 
-	unsigned long		avail;		/* dirtyable */
+	unsigned long		avail;		/* dirtyable ，全局的dirty able的内存*/
 	unsigned long		dirty;		/* file_dirty + write + nfs */
 	unsigned long		thresh;		/* dirty threshold */
 	unsigned long		bg_thresh;	/* dirty background threshold */
@@ -175,7 +183,7 @@ static struct wb_domain *dtc_dom(struct dirty_throttle_control *dtc)
 {
 	return dtc->dom;
 }
-
+/* 获得dtc的gdtc */
 static struct dirty_throttle_control *mdtc_gdtc(struct dirty_throttle_control *mdtc)
 {
 	return mdtc->gdtc;
@@ -357,6 +365,7 @@ static unsigned long highmem_dirtyable_memory(unsigned long total)
 
 /**
 2024年8月19日23:38:00
+dirtyable pages是什么。
  * global_dirtyable_memory - number of globally dirtyable pages
  *
  * Return: the global number of pages potentially available for dirty
@@ -384,6 +393,7 @@ static unsigned long global_dirtyable_memory(void)
 }
 
 /**
+设置domain的一些值
  * domain_dirty_limits - calculate thresh and bg_thresh for a wb_domain
  * @dtc: dirty_throttle_control of interest
  *
@@ -407,7 +417,7 @@ static void domain_dirty_limits(struct dirty_throttle_control *dtc)
 	struct task_struct *tsk;
 
 	/* gdtc is !NULL iff @dtc is for memcg domain */
-	if (gdtc) {
+	if (gdtc) {/* 对应memcg的dtc，是有gdtc的 */
 		unsigned long global_avail = gdtc->avail;
 
 		/*
@@ -443,6 +453,8 @@ static void domain_dirty_limits(struct dirty_throttle_control *dtc)
 		bg_thresh += bg_thresh / 4 + global_wb_domain.dirty_limit / 32;
 		thresh += thresh / 4 + global_wb_domain.dirty_limit / 32;
 	}
+
+	/* 这里设置dtc的参数 */
 	dtc->thresh = thresh;
 	dtc->bg_thresh = bg_thresh;
 
@@ -452,6 +464,7 @@ static void domain_dirty_limits(struct dirty_throttle_control *dtc)
 }
 
 /**
+更新全局的dirty limit相关限制。
  * global_dirty_limits - background-writeback and dirty-throttling thresholds
  * @pbackground: out parameter for bg_thresh
  * @pdirty: out parameter for thresh
@@ -464,8 +477,9 @@ void global_dirty_limits(unsigned long *pbackground, unsigned long *pdirty)
 	struct dirty_throttle_control gdtc = { GDTC_INIT_NO_WB };
 
 	gdtc.avail = global_dirtyable_memory();
+	/* 计算此gdtc的相关限制 */
 	domain_dirty_limits(&gdtc);
-
+	/* 把新限制进行应用 */
 	*pbackground = gdtc.bg_thresh;
 	*pdirty = gdtc.thresh;
 }
@@ -540,7 +554,7 @@ int dirty_background_bytes_handler(struct ctl_table *table, int write,
 		dirty_background_ratio = 0;
 	return ret;
 }
-
+/* 脏页达到比例的刷盘参数的sysctl handler */
 int dirty_ratio_handler(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp,
 		loff_t *ppos)
@@ -549,7 +563,7 @@ int dirty_ratio_handler(struct ctl_table *table, int write,
 	int ret;
 
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
-	if (ret == 0 && write && vm_dirty_ratio != old_ratio) {
+	if (ret == 0 && write && vm_dirty_ratio != old_ratio) {/* 如果写成功了，并且是新值 */
 		writeback_set_ratelimit();
 		vm_dirty_bytes = 0;
 	}
@@ -1558,7 +1572,7 @@ static inline void wb_dirty_limits(struct dirty_throttle_control *dtc)
 }
 
 /*
-wb刷新这么多的脏页
+让wb刷新pages_dirtied数量的脏页
  * balance_dirty_pages() must be called by processes which are generating dirty
  * data.  It looks at the number of dirty pages in the machine and will force
  * the caller to wait once crossing the (background_thresh + dirty_thresh) / 2.
@@ -1836,7 +1850,7 @@ pause:
 	if (nr_reclaimable > gdtc->bg_thresh)
 		wb_start_background_writeback(wb);
 }
-
+/*  */
 static DEFINE_PER_CPU(int, bdp_ratelimits);
 
 /*
@@ -1857,6 +1871,7 @@ DEFINE_PER_CPU(int, dirty_throttle_leaks) = 0;
 
 /**
 2024年8月19日23:23:54
+是平衡mapping的脏页？
  * balance_dirty_pages_ratelimited - balance dirty memory state
  * @mapping: address_space which was dirtied
  *
@@ -1880,12 +1895,13 @@ void balance_dirty_pages_ratelimited(struct address_space *mapping)
 	if (!bdi_cap_account_dirty(bdi))
 		return;
 
+	/* 获取wb线程 */
 	if (inode_cgwb_enabled(inode))
 		wb = wb_get_create_current(bdi, GFP_KERNEL);/* 获取wb */
 
 	if (!wb)
 		wb = &bdi->wb;
-
+	/* 获取ratelimit */
 	ratelimit = current->nr_dirtied_pause;
 	if (wb->dirty_exceeded)
 		ratelimit = min(ratelimit, 32 >> (PAGE_SHIFT - 10));
@@ -1918,7 +1934,7 @@ void balance_dirty_pages_ratelimited(struct address_space *mapping)
 	}
 	preempt_enable();
 
-	if (unlikely(current->nr_dirtied >= ratelimit))
+	if (unlikely(current->nr_dirtied >= ratelimit))/* 说明需要回收了？ */
 		balance_dirty_pages(wb, current->nr_dirtied);
 
 	wb_put(wb);
@@ -2040,6 +2056,7 @@ void laptop_sync_completion(void)
 #endif
 
 /*
+dirty_ratio更新后的相关设置函数
  * If ratelimit_pages is too high then we can get into dirty-data overload
  * if a large number of processes all perform writes at the same time.
  * If it is too low then SMP machines will call the (expensive)
@@ -2055,7 +2072,7 @@ void writeback_set_ratelimit(void)
 	struct wb_domain *dom = &global_wb_domain;
 	unsigned long background_thresh;
 	unsigned long dirty_thresh;
-
+	/* 获取新的限制，赋值到两个参数 */
 	global_dirty_limits(&background_thresh, &dirty_thresh);
 	dom->dirty_limit = dirty_thresh;
 	ratelimit_pages = dirty_thresh / (num_online_cpus() * 32);
@@ -2072,7 +2089,7 @@ static int page_writeback_cpu_online(unsigned int cpu)
 
 /*
 2024年07月18日11:22:00
-设置wb线程
+设置wb线程，调整系统脏页比例
  * Called early on to tune the page writeback dirty limits.
  *
  * We used to scale dirty pages according to how total memory
