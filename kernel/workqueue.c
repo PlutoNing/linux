@@ -3100,7 +3100,8 @@ static int cwt_wakefn(wait_queue_entry_t *wait, unsigned mode, int sync, void *k
 		return 0;
 	return autoremove_wake_function(wait, mode, sync, key);
 }
-
+/* 等待完成,取消work. 
+todo*/
 static bool __cancel_work_timer(struct work_struct *work, bool is_dwork)
 {
 	static DECLARE_WAIT_QUEUE_HEAD(cancel_waitq);
@@ -3159,6 +3160,7 @@ static bool __cancel_work_timer(struct work_struct *work, bool is_dwork)
 	 * visible there.
 	 */
 	smp_mb();
+
 	if (waitqueue_active(&cancel_waitq))
 		__wake_up(&cancel_waitq, TASK_NORMAL, 1, work);
 
@@ -3167,6 +3169,7 @@ static bool __cancel_work_timer(struct work_struct *work, bool is_dwork)
 
 /**
 2024年06月27日11:24:37
+等待work完成,取消这个work.
  * cancel_work_sync - cancel a work and wait for it to finish
  * @work: the work to cancel
  *

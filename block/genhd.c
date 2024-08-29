@@ -1543,6 +1543,7 @@ void put_disk(struct gendisk *disk)
 EXPORT_SYMBOL(put_disk);
 
 /*
+2024年08月29日18:26:08
  * This is a counterpart of get_disk_and_module() and thus also of
  * get_gendisk().
  */
@@ -1555,6 +1556,7 @@ void put_disk_and_module(struct gendisk *disk)
 		module_put(owner);
 	}
 }
+
 EXPORT_SYMBOL(put_disk_and_module);
 
 static void set_disk_ro_uevent(struct gendisk *gd, int ro)

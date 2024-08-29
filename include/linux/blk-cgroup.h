@@ -123,6 +123,7 @@ struct blkcg_policy_data {
 struct blkcg_gq {
 	/* Pointer to the associated request_queue */
 	struct request_queue		*q;
+	/* 通过这个东西挂到rq上面? */
 	struct list_head		q_node;
 	struct hlist_node		blkcg_node;
 	struct blkcg			*blkcg;
@@ -369,7 +370,7 @@ static inline struct blkcg *blkcg_parent(struct blkcg *blkcg)
 
 /**
 blkcg是通过css获得的。
-q是父方向上blkcg对应的blkgq_A&rq_A。
+rq是父方向上blkcg对应的blkgq_A&rq_A。
 这里是查询blkcg对应的blkgq_B&rq_B。
 捋一下，css是最基础的，blkcg借助css实现层级关系，blkgq&q是blkcg的一个
 算是特性吧。这里就是通过blkgq_A&rq_A查到一个blkgq_B&rq_B

@@ -213,7 +213,7 @@ struct throtl_grp {
 
 /* We measure latency for request size from <= 4k to >= 1M */
 #define LATENCY_BUCKET_SIZE 9
-
+/* td的latency_buckets[2] */
 struct latency_bucket {
 	unsigned long total_latency; /* ns / 1024 */
 	int samples;
@@ -253,6 +253,7 @@ struct throtl_data
 
 	struct latency_bucket tmp_buckets[2][LATENCY_BUCKET_SIZE];
 	struct avg_latency_bucket avg_buckets[2][LATENCY_BUCKET_SIZE];
+
 	struct latency_bucket __percpu *latency_buckets[2];
 	unsigned long last_calculate_time;
 	unsigned long filtered_latency;
@@ -525,7 +526,7 @@ static struct bio *throtl_pop_queued(struct list_head *queued,
 }
 
 /* 
-初始化tg的服务队列？
+初始化tg的sq
 init a service_queue, assumes the caller zeroed it */
 static void throtl_service_queue_init(struct throtl_service_queue *sq)
 {
@@ -535,7 +536,10 @@ static void throtl_service_queue_init(struct throtl_service_queue *sq)
 	/* 初始化计时器 */
 	timer_setup(&sq->pending_timer, throtl_pending_timer_fn, 0);
 }
-/* 感觉就是创建了一个tg，返回了tg的pd */
+/* 
+rq激活某个policy时,给关联的blkgq的pd数组对应槽位分配pd,
+pd其实就是tg的一种表示和连接?
+这个是分配pd的函数,pd可以理解为tg */
 static struct blkg_policy_data *throtl_pd_alloc(gfp_t gfp,
 						struct request_queue *q,
 						struct blkcg *blkcg)
@@ -572,6 +576,7 @@ static struct blkg_policy_data *throtl_pd_alloc(gfp_t gfp,
 
 	return &tg->pd;
 }
+
 /* 2024年08月27日19:45:33
 pd一边是blkgq，rq，td，一边是tg和sq。
 sq与td的sq建立联系
@@ -678,7 +683,9 @@ static void throtl_pd_offline(struct blkg_policy_data *pd)
 	if (!tg->td->limit_valid[tg->td->limit_index])
 		throtl_upgrade_state(tg->td);
 }
-
+/* free此pd
+pd链接blkgq和tg,作为tg的代表.
+free前的release就是把sq的timer移除? */
 static void throtl_pd_free(struct blkg_policy_data *pd)
 {
 	struct throtl_grp *tg = pd_to_tg(pd);
@@ -1450,6 +1457,7 @@ out_unlock:
 
 /**
 td的dispatch线程的函数.
+取下td的sq的bio.进行派发.
  * blk_throtl_dispatch_work_fn - work function for throtl_data->dispatch_work
  * @work: work item being executed
  *
@@ -1579,10 +1587,11 @@ static void tg_conf_updated(struct throtl_grp *tg, bool global)
 		throtl_schedule_next_dispatch(sq->parent_sq, true);
 	}
 }
-
+/* fs设置最大bps的回调函数. */
 static ssize_t tg_set_conf(struct kernfs_open_file *of,
 			   char *buf, size_t nbytes, loff_t off, bool is_u64)
 {
+	/* 先获得对应的blkcg */
 	struct blkcg *blkcg = css_to_blkcg(of_css(of));
 	struct blkg_conf_ctx ctx;
 	struct throtl_grp *tg;
@@ -1878,14 +1887,14 @@ static struct cftype throtl_files[] = {
 	},
 	{ }	/* terminate */
 };
-
+/* rq关闭throttle前,取消dispatch线程. */
 static void throtl_shutdown_wq(struct request_queue *q)
 {
 	struct throtl_data *td = q->td;
 
 	cancel_work_sync(&td->dispatch_work);
 }
-/* 描述定义一种速度的限制 */
+/* 描述定义一种速度的限制,一组policy */
 static struct blkcg_policy blkcg_policy_throtl = {
 	.dfl_cftypes		= throtl_files,/*  */
 	.legacy_cftypes		= throtl_legacy_files,/* blkio的读写限速的fs定义接口 */
@@ -1897,7 +1906,7 @@ static struct blkcg_policy blkcg_policy_throtl = {
 	.pd_online_fn		= throtl_pd_online,
 	/* offline */
 	.pd_offline_fn		= throtl_pd_offline,
-
+	/* free此pd */
 	.pd_free_fn		= throtl_pd_free,
 };
 
@@ -2547,7 +2556,8 @@ void blk_throtl_drain(struct request_queue *q)
 
 	spin_lock_irq(&q->queue_lock);
 }
-/* 初始化一个td. */
+/* 初始化一个td?
+td是关联到rq的*/
 int blk_throtl_init(struct request_queue *q)
 {
 	struct throtl_data *td;
@@ -2556,6 +2566,7 @@ int blk_throtl_init(struct request_queue *q)
 	td = kzalloc_node(sizeof(*td), GFP_KERNEL, q->node);
 	if (!td)
 		return -ENOMEM;
+	/* 初始化pcp的latency_buckets */
 	td->latency_buckets[READ] = __alloc_percpu(sizeof(struct latency_bucket) *
 		LATENCY_BUCKET_SIZE, __alignof__(u64));
 	if (!td->latency_buckets[READ]) {
@@ -2569,8 +2580,10 @@ int blk_throtl_init(struct request_queue *q)
 		kfree(td);
 		return -ENOMEM;
 	}
+
 	/* 赋值td的后台dispatch work的执行函数 */
 	INIT_WORK(&td->dispatch_work, blk_throtl_dispatch_work_fn);
+	/* 初始化td的sq */
 	throtl_service_queue_init(&td->service_queue);
 
 	q->td = td;
@@ -2583,21 +2596,27 @@ int blk_throtl_init(struct request_queue *q)
 
 	/* activate policy */
 	ret = blkcg_activate_policy(q, &blkcg_policy_throtl);
-	if (ret) {
+	if (ret) {/* activate失败了 */
 		free_percpu(td->latency_buckets[READ]);
 		free_percpu(td->latency_buckets[WRITE]);
 		kfree(td);
 	}
 	return ret;
 }
-
+/* 
+2024年08月29日16:10:05
+这是rq关闭throttle? */
 void blk_throtl_exit(struct request_queue *q)
 {
 	BUG_ON(!q->td);
+	/* 停止td的dispatch线程 */
 	throtl_shutdown_wq(q);
+	/* 关闭这个policy */
 	blkcg_deactivate_policy(q, &blkcg_policy_throtl);
+
 	free_percpu(q->td->latency_buckets[READ]);
 	free_percpu(q->td->latency_buckets[WRITE]);
+
 	kfree(q->td);
 }
 

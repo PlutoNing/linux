@@ -523,8 +523,11 @@ struct request_queue {
 
 	struct list_head	icq_list;
 #ifdef CONFIG_BLK_CGROUP
+/* 表示nr对应的pol id的policy有没有启用. */
 	DECLARE_BITMAP		(blkcg_pols, BLKCG_MAX_POLS);
+
 	struct blkcg_gq		*root_blkg;
+	/* 关联的blkgq挂载在这里? */
 	struct list_head	blkg_list;
 #endif
 
@@ -591,11 +594,8 @@ struct request_queue {
 #endif
 
 #ifdef CONFIG_BLK_DEV_THROTTLING
-	/* Throttle data 
-	
-	struct throtl_grp
-	为了在处理每个IO请求时能定位到其所在的group，
-	在每个请求队列（struct request_queue）添加了一个throtl_data结构指针*/
+	/* 为了在处理每个IO请求时能定位到其所在的group，在每个请求队列
+	（struct request_queue）添加了一个throtl_data结构指针*/
 	struct throtl_data *td;
 #endif
 	struct rcu_head		rcu_head;

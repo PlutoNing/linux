@@ -56,7 +56,7 @@ static LIST_HEAD(all_blkcgs);		/* protected by blkcg_pol_mutex */
 
 bool blkcg_debug_stats = false;
 static struct workqueue_struct *blkcg_punt_bio_wq;
-
+/* 判断rq的pol是否启用了 */
 static bool blkcg_policy_enabled(struct request_queue *q,
 				 const struct blkcg_policy *pol)
 {
@@ -190,7 +190,7 @@ err_free:
 	blkg_free(blkg);
 	return NULL;
 }
-/* 在blkcg有关系的blkgq中，找到与q有关系的。返回。 */
+/* 在blkcg有关系的blkgq中，找到与q对应的blkgq的。返回。 */
 struct blkcg_gq *blkg_lookup_slowpath(struct blkcg *blkcg,
 				      struct request_queue *q, bool update_hint)
 {
@@ -215,6 +215,7 @@ struct blkcg_gq *blkg_lookup_slowpath(struct blkcg *blkcg,
 
 	return NULL;
 }
+
 EXPORT_SYMBOL_GPL(blkg_lookup_slowpath);
 
 /*
@@ -742,7 +743,9 @@ void blkg_rwstat_recursive_sum(struct blkcg_gq *blkg, struct blkcg_policy *pol,
 }
 EXPORT_SYMBOL_GPL(blkg_rwstat_recursive_sum);
 
-/* Performs queue bypass and policy enabled checks then looks up blkg. */
+/* 
+
+Performs queue bypass and policy enabled checks then looks up blkg. */
 static struct blkcg_gq *blkg_lookup_check(struct blkcg *blkcg,
 					  const struct blkcg_policy *pol,
 					  struct request_queue *q)
@@ -752,10 +755,12 @@ static struct blkcg_gq *blkg_lookup_check(struct blkcg *blkcg,
 
 	if (!blkcg_policy_enabled(q, pol))
 		return ERR_PTR(-EOPNOTSUPP);
+
 	return __blkg_lookup(blkcg, q, true /* update_hint */);
 }
 
 /**
+解析和准备一个blkgq的配置更新?
  * blkg_conf_prep - parse and prepare for per-blkg config update
  * @inputp: input string pointer
  *
@@ -780,7 +785,7 @@ struct gendisk *blkcg_conf_get_disk(char **inputp)
 	if (!isspace(*input))
 		return ERR_PTR(-EINVAL);
 	input = skip_spaces(input);
-
+	/* gendisk */
 	disk = get_gendisk(MKDEV(major, minor), &part);
 	if (!disk)
 		return ERR_PTR(-ENODEV);
@@ -794,12 +799,14 @@ struct gendisk *blkcg_conf_get_disk(char **inputp)
 }
 
 /**
+解析和准备一个blkgq的更新,
  * blkg_conf_prep - parse and prepare for per-blkg config update
  * @blkcg: target block cgroup
  * @pol: target policy
- * @input: input string
+ * @input: input string,好像代表一个磁盘.
  * @ctx: blkg_conf_ctx to be filled
- *
+ *从input里面解析一个blkgq的更新信息,保存到ctx.
+ ctx的blkg指向这个blkgq,body是input.
  * Parse per-blkg config update from @input and initialize @ctx with the
  * result.  @ctx->blkg points to the blkg to be updated and @ctx->body the
  * part of @input following MAJ:MIN.  This function returns with RCU read
@@ -1351,6 +1358,7 @@ struct cgroup_subsys io_cgrp_subsys = {
 EXPORT_SYMBOL_GPL(io_cgrp_subsys);
 
 /**
+激活rq的policy.
  * blkcg_activate_policy - activate a blkcg policy on a request_queue
  * @q: request_queue of interest
  * @pol: blkcg policy to activate
@@ -1381,11 +1389,14 @@ int blkcg_activate_policy(struct request_queue *q,
 retry:
 	spin_lock_irq(&q->queue_lock);
 
-	/* blkg_list is pushed at the head, reverse walk to allocate parents first */
+	/* blkg_list is pushed at the head, reverse walk to allocate parents first
+	遍历rq关联的blkgq.
+	把blkgq的pd[pol_id]指向policy新分配的pd */
 	list_for_each_entry_reverse(blkg, &q->blkg_list, q_node) {
 		struct blkg_policy_data *pd;
 
-		if (blkg->pd[pol->plid])
+		if (blkg->pd[pol->plid])/* 说明这个关联的blkgq的此
+		policy已经激活了 */
 			continue;
 
 		/* If prealloc matches, use it; otherwise try GFP_NOWAIT */
@@ -1397,7 +1408,7 @@ retry:
 					      blkg->blkcg);
 		}
 
-		if (!pd) {
+		if (!pd) {/* 创建pd失败了 */
 			/*
 			 * GFP_NOWAIT failed.  Free the existing one and
 			 * prealloc for @blkg w/ GFP_KERNEL.
@@ -1422,6 +1433,7 @@ retry:
 		blkg->pd[pol->plid] = pd;
 		pd->blkg = blkg;
 		pd->plid = pol->plid;
+		/* 这个pd的tg是哪个呢 */
 	}
 
 	/* all allocated, init in the same order */
@@ -1455,9 +1467,13 @@ enomem:
 	ret = -ENOMEM;
 	goto out;
 }
+
 EXPORT_SYMBOL_GPL(blkcg_activate_policy);
 
 /**
+rq关闭throttle的时候调用
+1.清除这个pol的位图标记
+2.遍历关联的blkgq,把相应id的pd进行处理
  * blkcg_deactivate_policy - deactivate a blkcg policy on a request_queue
  * @q: request_queue of interest
  * @pol: blkcg policy to deactivate
@@ -1473,17 +1489,19 @@ void blkcg_deactivate_policy(struct request_queue *q,
 	if (!blkcg_policy_enabled(q, pol))
 		return;
 
-	if (queue_is_mq(q))
+	if (queue_is_mq(q))/* todo */
 		blk_mq_freeze_queue(q);
 
 	spin_lock_irq(&q->queue_lock);
-
+	/* 清除位图标记 */
 	__clear_bit(pol->plid, q->blkcg_pols);
 
+	/* 遍历每一个关联的blkgq */
 	list_for_each_entry(blkg, &q->blkg_list, q_node) {
-		if (blkg->pd[pol->plid]) {
+		if (blkg->pd[pol->plid]) {/* 如果这个blkgq的pol启用了 */
 			if (pol->pd_offline_fn)
 				pol->pd_offline_fn(blkg->pd[pol->plid]);
+
 			pol->pd_free_fn(blkg->pd[pol->plid]);
 			blkg->pd[pol->plid] = NULL;
 		}
@@ -1491,7 +1509,7 @@ void blkcg_deactivate_policy(struct request_queue *q,
 
 	spin_unlock_irq(&q->queue_lock);
 
-	if (queue_is_mq(q))
+	if (queue_is_mq(q))/*  */
 		blk_mq_unfreeze_queue(q);
 }
 EXPORT_SYMBOL_GPL(blkcg_deactivate_policy);

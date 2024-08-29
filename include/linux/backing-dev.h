@@ -304,7 +304,7 @@ static inline struct bdi_writeback *wb_find_current(struct backing_dev_info *bdi
 }
 
 /**
-获取current的wb
+获取current的wb.
  * wb_get_create_current - get or create wb for %current on a bdi
  * @bdi: bdi of interest
  * @gfp: allocation mask
