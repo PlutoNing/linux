@@ -578,14 +578,16 @@ static struct blkg_policy_data *throtl_pd_alloc(gfp_t gfp,
 }
 
 /* 2024年08月27日19:45:33
-pd一边是blkgq，rq，td，一边是tg和sq。
+ blkcg_policy_throtl这个policy初始化自己pd的方法
+pd是对应blkgq里面对应某种policy的东西，
+pd自己是tg,算是tg的代表,
 sq与td的sq建立联系
 tg与rq的td建立关系
  */
 static void throtl_pd_init(struct blkg_policy_data *pd)
 {
 	struct throtl_grp *tg = pd_to_tg(pd);
-
+	/* tg还指向blkgq&q? */
 	struct blkcg_gq *blkg = tg_to_blkg(tg);
 	struct throtl_data *td = blkg->q->td;
 	struct throtl_service_queue *sq = &tg->service_queue;
@@ -606,7 +608,7 @@ static void throtl_pd_init(struct blkg_policy_data *pd)
 	sq->parent_sq = &td->service_queue;
 	if (cgroup_subsys_on_dfl(io_cgrp_subsys) && blkg->parent)
 		sq->parent_sq = &blkg_to_tg(blkg->parent)->service_queue;
-	
+	/* 把tg的td指向tg关联的blkgq的q的td */
 	tg->td = td;
 }
 
@@ -1900,7 +1902,7 @@ static struct blkcg_policy blkcg_policy_throtl = {
 	.legacy_cftypes		= throtl_legacy_files,/* blkio的读写限速的fs定义接口 */
 	/* 分配pd */
 	.pd_alloc_fn		= throtl_pd_alloc,
-	/* 初始化一个pd */
+	/* blkcg_policy_throtl这个policy初始化自己pd的方法 */
 	.pd_init_fn		= throtl_pd_init,
 	/* 怎么online？ */
 	.pd_online_fn		= throtl_pd_online,

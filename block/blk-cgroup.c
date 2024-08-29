@@ -49,9 +49,9 @@ EXPORT_SYMBOL_GPL(blkcg_root);
 
 struct cgroup_subsys_state * const blkcg_root_css = &blkcg_root.css;
 EXPORT_SYMBOL_GPL(blkcg_root_css);
-
+/* 存储全局的policy? policy不是自定义的吗? */
 static struct blkcg_policy *blkcg_policy[BLKCG_MAX_POLS];
-
+/* 系统全部的blkcg挂接到这里 */
 static LIST_HEAD(all_blkcgs);		/* protected by blkcg_pol_mutex */
 
 bool blkcg_debug_stats = false;
@@ -85,14 +85,18 @@ static void blkg_free(struct blkcg_gq *blkg)
 	percpu_ref_exit(&blkg->refcnt);
 	kfree(blkg);
 }
-
+/* blkgq的释放函数
+当pcp的ref为0时,pcp的释放函数,会以rcu方式
+调用这个函数,这里好像就只是put和free. */
 static void __blkg_release(struct rcu_head *rcu)
 {
+	/* 先获得blkgq */
 	struct blkcg_gq *blkg = container_of(rcu, struct blkcg_gq, rcu_head);
 
 	WARN_ON(!bio_list_empty(&blkg->async_bios));
 
-	/* release the blkcg and parent blkg refs this blkg has been holding */
+	/* release the blkcg and parent blkg refs this blkg has been holding 
+	这里put相关的blkcg，和父blkgq的引用*/
 	css_put(&blkg->blkcg->css);
 	if (blkg->parent)
 		blkg_put(blkg->parent);
@@ -103,6 +107,7 @@ static void __blkg_release(struct rcu_head *rcu)
 }
 
 /*
+这是blkgq的pcp ref的释放函数. 当ref为0时释放的时候会调用.
  * A group is RCU protected, but having an rcu lock does not mean that one
  * can access all the fields of blkg and assume these are valid.  For
  * example, don't try to follow throtl_data and request queue links.
@@ -116,7 +121,9 @@ static void blkg_release(struct percpu_ref *ref)
 
 	call_rcu(&blkg->rcu_head, __blkg_release);
 }
-
+/* 是blkg->async_bio_work的函数.
+这里submit来操作blkg->async_bios里面的bio.
+ */
 static void blkg_async_bio_workfn(struct work_struct *work)
 {
 	struct blkcg_gq *blkg = container_of(work, struct blkcg_gq,
@@ -125,16 +132,22 @@ static void blkg_async_bio_workfn(struct work_struct *work)
 	struct bio *bio;
 
 	/* as long as there are pending bios, @blkg can't go away */
+
 	spin_lock_bh(&blkg->async_bio_lock);
+	/* 把async的bio链表合并到临时的bios后面. */
 	bio_list_merge(&bios, &blkg->async_bios);
+	/* 这里初始化,其实就相当于清空了这个, 放弃引用,
+	把bio彻底的交给bios了 */
 	bio_list_init(&blkg->async_bios);
 	spin_unlock_bh(&blkg->async_bio_lock);
 
 	while ((bio = bio_list_pop(&bios)))
-		submit_bio(bio);
+		submit_bio(bio);/* 逐个submit */
 }
 
 /**
+给blkcg分配对应q的blkgq.
+创建结构体,初始化,关联, 分配pd
  * blkg_alloc - allocate a blkg
  * @blkcg: block cgroup the new blkg is associated with
  * @q: request_queue the new blkg is associated with
@@ -148,26 +161,29 @@ static struct blkcg_gq *blkg_alloc(struct blkcg *blkcg, struct request_queue *q,
 	struct blkcg_gq *blkg;
 	int i;
 
-	/* alloc and init base part */
+	/* alloc and init base part
+	分配内存空间 */
 	blkg = kzalloc_node(sizeof(*blkg), gfp_mask, q->node);
 	if (!blkg)
 		return NULL;
-
+	/* 初始化新blkgq的pcp 引用计数. 以及pcp ref的释放函数 */
 	if (percpu_ref_init(&blkg->refcnt, blkg_release, 0, gfp_mask))
 		goto err_free;
-
+	/* todo */
 	if (blkg_rwstat_init(&blkg->stat_bytes, gfp_mask) ||
 	    blkg_rwstat_init(&blkg->stat_ios, gfp_mask))
 		goto err_free;
-
+	/* 建立关联 */
 	blkg->q = q;
 	INIT_LIST_HEAD(&blkg->q_node);
 	spin_lock_init(&blkg->async_bio_lock);
 	bio_list_init(&blkg->async_bios);
+	/*  */
 	INIT_WORK(&blkg->async_bio_work, blkg_async_bio_workfn);
 	blkg->blkcg = blkcg;
 
-	for (i = 0; i < BLKCG_MAX_POLS; i++) {
+	for (i = 0; i < BLKCG_MAX_POLS; i++) {/* blkgq对每一种policy
+	都有一个pd ? */
 		struct blkcg_policy *pol = blkcg_policy[i];
 		struct blkg_policy_data *pd;
 
@@ -178,7 +194,8 @@ static struct blkcg_gq *blkg_alloc(struct blkcg *blkcg, struct request_queue *q,
 		pd = pol->pd_alloc_fn(gfp_mask, q, blkcg);
 		if (!pd)
 			goto err_free;
-
+		
+		/*  */
 		blkg->pd[i] = pd;
 		pd->blkg = blkg;
 		pd->plid = i;
@@ -190,6 +207,7 @@ err_free:
 	blkg_free(blkg);
 	return NULL;
 }
+
 /* 在blkcg有关系的blkgq中，找到与q对应的blkgq的。返回。 */
 struct blkcg_gq *blkg_lookup_slowpath(struct blkcg *blkcg,
 				      struct request_queue *q, bool update_hint)
@@ -219,6 +237,8 @@ struct blkcg_gq *blkg_lookup_slowpath(struct blkcg *blkcg,
 EXPORT_SYMBOL_GPL(blkg_lookup_slowpath);
 
 /*
+刚刚给blkcg分配完@new_blkg, 调用此函数.
+
  * If @new_blkg is %NULL, this function tries to allocate a new one as
  * necessary using %GFP_NOWAIT.  @new_blkg is always consumed on return.
  */
@@ -254,18 +274,20 @@ static struct blkcg_gq *blkg_create(struct blkcg *blkcg,
 	}
 
 	/* allocate */
-	if (!new_blkg) {
+	if (!new_blkg) {/* 如果不是刚刚分配后调用此函数, 这里需要分配 */
 		new_blkg = blkg_alloc(blkcg, q, GFP_NOWAIT | __GFP_NOWARN);
 		if (unlikely(!new_blkg)) {
 			ret = -ENOMEM;
 			goto err_put_congested;
 		}
 	}
+
 	blkg = new_blkg;
 	blkg->wb_congested = wb_congested;
 
 	/* link parent */
-	if (blkcg_parent(blkcg)) {
+	/*  */
+	if (blkcg_parent(blkcg)) {/* 找到父blkcg对应此q 的blkgq */
 		blkg->parent = __blkg_lookup(blkcg_parent(blkcg), q, false);
 		if (WARN_ON_ONCE(!blkg->parent)) {
 			ret = -ENODEV;
@@ -275,14 +297,16 @@ static struct blkcg_gq *blkg_create(struct blkcg *blkcg,
 	}
 
 	/* invoke per-policy init */
-	for (i = 0; i < BLKCG_MAX_POLS; i++) {
+	for (i = 0; i < BLKCG_MAX_POLS; i++) {/* 初始化此blkgq
+	的各个pd. */
 		struct blkcg_policy *pol = blkcg_policy[i];
 
 		if (blkg->pd[i] && pol->pd_init_fn)
 			pol->pd_init_fn(blkg->pd[i]);
 	}
 
-	/* insert */
+	/* insert
+	把新blkgq插入blkcg的tree */
 	spin_lock(&blkcg->lock);
 	ret = radix_tree_insert(&blkcg->blkg_tree, q->id, blkg);
 	if (likely(!ret)) {
@@ -290,6 +314,7 @@ static struct blkcg_gq *blkg_create(struct blkcg *blkcg,
 		list_add(&blkg->q_node, &q->blkg_list);
 
 		for (i = 0; i < BLKCG_MAX_POLS; i++) {
+			/* 2024年8月30日00:35:13 */
 			struct blkcg_policy *pol = blkcg_policy[i];
 
 			if (blkg->pd[i] && pol->pd_online_fn)
@@ -744,7 +769,7 @@ void blkg_rwstat_recursive_sum(struct blkcg_gq *blkg, struct blkcg_policy *pol,
 EXPORT_SYMBOL_GPL(blkg_rwstat_recursive_sum);
 
 /* 
-
+如果policy启用的话,查找与q相关的blkgq.
 Performs queue bypass and policy enabled checks then looks up blkg. */
 static struct blkcg_gq *blkg_lookup_check(struct blkcg *blkcg,
 					  const struct blkcg_policy *pol,
@@ -800,6 +825,7 @@ struct gendisk *blkcg_conf_get_disk(char **inputp)
 
 /**
 解析和准备一个blkgq的更新,
+2024年8月30日00:35:25
  * blkg_conf_prep - parse and prepare for per-blkg config update
  * @blkcg: target block cgroup
  * @pol: target policy
@@ -820,23 +846,23 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 	struct request_queue *q;
 	struct blkcg_gq *blkg;
 	int ret;
-
+	/* input代表一个disk */
 	disk = blkcg_conf_get_disk(&input);
 	if (IS_ERR(disk))
 		return PTR_ERR(disk);
-
+	/* 获取disk的rq */
 	q = disk->queue;
 
 	rcu_read_lock();
 	spin_lock_irq(&q->queue_lock);
-
+	/* 查找blkcg与q相关的blkgq */
 	blkg = blkg_lookup_check(blkcg, pol, q);
 	if (IS_ERR(blkg)) {
 		ret = PTR_ERR(blkg);
 		goto fail_unlock;
 	}
 
-	if (blkg)
+	if (blkg)/* 如果查到了blkgq,就成功 */
 		goto success;
 
 	/*
@@ -849,7 +875,8 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 		struct blkcg_gq *new_blkg;
 
 		parent = blkcg_parent(blkcg);
-		while (parent && !__blkg_lookup(parent, q, false)) {
+		while (parent && !__blkg_lookup(parent, q, false)) {/* 一直
+		循环,知道找到一个父层级上的有对应q的blkgq的blkcg */
 			pos = parent;
 			parent = blkcg_parent(parent);
 		}
@@ -857,6 +884,9 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 		/* Drop locks to do new blkg allocation with GFP_KERNEL. */
 		spin_unlock_irq(&q->queue_lock);
 		rcu_read_unlock();
+
+		/* 此时pos没有对应q的blkcg,但是pos的父cg: parent是有的。
+		这里给pos分配对应q的blkgq */
 
 		new_blkg = blkg_alloc(pos, q, GFP_KERNEL);
 		if (unlikely(!new_blkg)) {
@@ -866,16 +896,17 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 
 		rcu_read_lock();
 		spin_lock_irq(&q->queue_lock);
-
+		/* 这里为什么又查?因为race, todo, 先假设没查到吧, 
+		分析没查到的路径. */
 		blkg = blkg_lookup_check(pos, pol, q);
 		if (IS_ERR(blkg)) {
 			ret = PTR_ERR(blkg);
 			goto fail_unlock;
 		}
 
-		if (blkg) {
+		if (blkg) {/* todo */
 			blkg_free(new_blkg);
-		} else {
+		} else {/* 先分析这个路径 */
 			blkg = blkg_create(pos, q, new_blkg);
 			if (IS_ERR(blkg)) {
 				ret = PTR_ERR(blkg);
@@ -886,6 +917,7 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 		if (pos == blkcg)
 			goto success;
 	}
+
 success:
 	ctx->disk = disk;
 	ctx->blkg = blkg;
@@ -1515,6 +1547,8 @@ void blkcg_deactivate_policy(struct request_queue *q,
 EXPORT_SYMBOL_GPL(blkcg_deactivate_policy);
 
 /**
+注册blkcg policy?policy是什么.
+把polcy登记到全局数组,创建cpd,插入到每一个blkcg里面.
  * blkcg_policy_register - register a blkcg policy
  * @pol: blkcg policy to register
  *
@@ -1544,7 +1578,8 @@ int blkcg_policy_register(struct blkcg_policy *pol)
 		(!pol->pd_alloc_fn ^ !pol->pd_free_fn))
 		goto err_unlock;
 
-	/* register @pol */
+	/* register @pol
+	把policy注册到全局的blkcg_policy */
 	pol->plid = i;
 	blkcg_policy[pol->plid] = pol;
 
@@ -1557,9 +1592,11 @@ int blkcg_policy_register(struct blkcg_policy *pol)
 			if (!cpd)
 				goto err_free_cpds;
 
-			blkcg->cpd[pol->plid] = cpd;
+			blkcg->cpd[pol->plid] = cpd ;
+
 			cpd->blkcg = blkcg;
 			cpd->plid = pol->plid;
+
 			if (pol->cpd_init_fn)
 				pol->cpd_init_fn(cpd);
 		}

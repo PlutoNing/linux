@@ -587,12 +587,12 @@ static inline int bio_list_empty(const struct bio_list *bl)
 {
 	return bl->head == NULL;
 }
-
+/* 初始化bio list */
 static inline void bio_list_init(struct bio_list *bl)
 {
 	bl->head = bl->tail = NULL;
 }
-
+/* 一个空的bio list */
 #define BIO_EMPTY_LIST	{ NULL, NULL }
 
 #define bio_list_for_each(bio, bl) \
@@ -630,7 +630,7 @@ static inline void bio_list_add_head(struct bio_list *bl, struct bio *bio)
 	if (!bl->tail)
 		bl->tail = bio;
 }
-
+/* 把bl2合并到bl后面 */
 static inline void bio_list_merge(struct bio_list *bl, struct bio_list *bl2)
 {
 	if (!bl2->head)

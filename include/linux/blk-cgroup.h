@@ -55,11 +55,11 @@ struct blkcg {
 	struct blkcg_gq	__rcu		*blkg_hint;/* 上次使用的关联的blkgq之一，
 	这里应该算是起到缓存的作用。这里没查到的话，会走slowpath，然后可以
 	把slowpath查到的东西放在这。 */
-	struct hlist_head		blkg_list;
+	struct hlist_head		blkg_list;/* 存储自己关联的blkgq */
 
 	struct blkcg_policy_data	*cpd[BLKCG_MAX_POLS];
 
-	struct list_head		all_blkcgs_node;
+	struct list_head		all_blkcgs_node;/* 挂接到全局blkcg链表all_blkcgs */
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct list_head		cgwb_list;
 	refcount_t			cgwb_refcnt;
@@ -67,6 +67,7 @@ struct blkcg {
 };
 
 /*
+
  * blkg_[rw]stat->aux_cnt is excluded for local stats but included for
  * recursive.  Used to carry stats of dead children.
  */
@@ -104,6 +105,9 @@ struct blkg_policy_data {
 };
 
 /*
+是由pol创建的.
+好像是policy种类是固定的, 每个对应一个cpd.
+然后存储在每一个blkcg的cpd数组里面, idx是pol的id.
  * Policies that need to keep per-blkcg data which is independent from any
  * request_queue associated to it should implement cpd_alloc/free_fn()
  * methods.  A policy can allocate private data area by allocating larger
@@ -125,7 +129,9 @@ struct blkcg_gq {
 	struct request_queue		*q;
 	/* 通过这个东西挂到rq上面? */
 	struct list_head		q_node;
+	/* 插入到自己的blkcg的blkcg->blkg_list */
 	struct hlist_node		blkcg_node;
+	/* 指向关联自己的blkcg. */
 	struct blkcg			*blkcg;
 
 	/*
@@ -135,7 +141,8 @@ struct blkcg_gq {
 	 */
 	struct bdi_writeback_congested	*wb_congested;
 
-	/* all non-root blkcg_gq's are guaranteed to have access to parent */
+	/* all non-root blkcg_gq's are guaranteed to have access to parent
+	指向自己的blkcg的父cg的对应blkgq, 好像是对应同一个q的blkgq */
 	struct blkcg_gq			*parent;
 
 	/* reference count */
@@ -146,7 +153,9 @@ struct blkcg_gq {
 
 	struct blkg_rwstat		stat_bytes;
 	struct blkg_rwstat		stat_ios;
-	/* 具有一个对应的 throttle group，保存在 blkcg_gq 的 @pd[] 数组 */
+	/* 
+	指向对应id的policy的pd,
+	具有一个对应的 throttle group，保存在 blkcg_gq 的 @pd[] 数组 */
 	struct blkg_policy_data		*pd[BLKCG_MAX_POLS];
 
 	spinlock_t			async_bio_lock;
@@ -175,9 +184,11 @@ typedef void (blkcg_pol_free_pd_fn)(struct blkg_policy_data *pd);
 typedef void (blkcg_pol_reset_pd_stats_fn)(struct blkg_policy_data *pd);
 typedef size_t (blkcg_pol_stat_pd_fn)(struct blkg_policy_data *pd, char *buf,
 				      size_t size);
-/* 描述一个blkcg pol。
-是blkgq的pd数组的key。一个blkgq的不同pol对应不同的pd，
-进而关联不同的tg。
+/* 描述一个blkcg pol,更像是一种策略, 一种类, 所以总共也没
+几种. 有bfq, latency, iocost, throttle.
+存储到全局的policy数组.
+是blkgq的pd数组的key。一个blkgq的不同pol对应不同的pd.
+是blkcg的cpd数组的元素,代表一个pol, 进而关联不同的tg。
  */
 struct blkcg_policy {
 	/* pol的id */
@@ -191,7 +202,7 @@ struct blkcg_policy {
 	blkcg_pol_init_cpd_fn		*cpd_init_fn;
 	blkcg_pol_free_cpd_fn		*cpd_free_fn;
 	blkcg_pol_bind_cpd_fn		*cpd_bind_fn;
-
+	/* policy的分配pd的函数 */
 	blkcg_pol_alloc_pd_fn		*pd_alloc_fn;
 	blkcg_pol_init_pd_fn		*pd_init_fn;
 	blkcg_pol_online_pd_fn		*pd_online_fn;
@@ -358,6 +369,7 @@ static inline bool bio_issue_as_root_blkg(struct bio *bio)
 }
 
 /**
+获取blkcg的parent.
  * blkcg_parent - get the parent of a blkcg
  * @blkcg: blkcg of interest
  *
@@ -370,10 +382,7 @@ static inline struct blkcg *blkcg_parent(struct blkcg *blkcg)
 
 /**
 blkcg是通过css获得的。
-rq是父方向上blkcg对应的blkgq_A&rq_A。
-这里是查询blkcg对应的blkgq_B&rq_B。
-捋一下，css是最基础的，blkcg借助css实现层级关系，blkgq&q是blkcg的一个
-算是特性吧。这里就是通过blkgq_A&rq_A查到一个blkgq_B&rq_B
+查询blkcg关联的blkgq中与q对应的.
  * __blkg_lookup - internal version of blkg_lookup()
  * @blkcg: blkcg of interest
  * @q: request_queue of interest
@@ -402,6 +411,7 @@ static inline struct blkcg_gq *__blkg_lookup(struct blkcg *blkcg,
 }
 
 /**
+查询blkcg中与q相关的blkgq.
  * blkg_lookup - lookup blkg for the specified blkcg - q pair
  * @blkcg: blkcg of interest
  * @q: request_queue of interest
@@ -615,7 +625,7 @@ static inline void blkg_put(struct blkcg_gq *blkg)
 	css_for_each_descendant_post((pos_css), &(p_blkg)->blkcg->css)	\
 		if (((d_blkg) = __blkg_lookup(css_to_blkcg(pos_css),	\
 					      (p_blkg)->q, false)))
-
+/* todo、好像是一种pcp的计数机制. */
 static inline int blkg_rwstat_init(struct blkg_rwstat *rwstat, gfp_t gfp)
 {
 	int i, ret;
