@@ -611,7 +611,7 @@ static inline void blkg_put(struct blkcg_gq *blkg)
 /**
 遍历一个blkgq的孩子。
 借助blkgq对应的blkcg的css层级来遍历。
-遍历css，
+遍历css
  * blkg_for_each_descendant_post - post-order walk of a blkg's descendants
  * @d_blkg: loop cursor pointing to the current descendant
  * @pos_css: used for iteration

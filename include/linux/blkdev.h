@@ -528,6 +528,7 @@ struct request_queue {
 
 	struct blkcg_gq		*root_blkg;
 	/* 关联的blkgq挂载在这里?自己与blkgq是一对多 */
+	
 	struct list_head	blkg_list;
 #endif
 

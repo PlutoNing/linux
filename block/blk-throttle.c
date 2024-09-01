@@ -192,7 +192,7 @@ struct throtl_grp {
 	unsigned int last_io_disp[2];
 
 	unsigned long last_check_time;
-
+/* 代表上次检查发现!time_after(tg->last_check_time + throtl_slice, now)的时间? */
 	unsigned long latency_target; /* us */
 	unsigned long latency_target_conf; /* us */
 	/* When did we start a new slice
@@ -201,9 +201,13 @@ struct throtl_grp {
 	unsigned long slice_end[2];
 
 	unsigned long last_finish_time; /* ns / 1024 */
-	unsigned long checked_last_finish_time; /* ns / 1024 */
-	unsigned long avg_idletime; /* ns / 1024 */
-	unsigned long idletime_threshold; /* us */
+	unsigned long checked_last_finish_time; /* 
+	保存上次的idle时刻.ns / 1024 */
+	unsigned long avg_idletime; /*记录此tg的平均idle time.
+	 ns / 1024 */
+	unsigned long idletime_threshold; /*
+	idle time的最低值.
+	 us */
 	unsigned long idletime_threshold_conf; /* us */
 
 	unsigned int bio_cnt; /* total bios */
@@ -243,7 +247,8 @@ struct throtl_data
 	好像是dispatch的后台线程. */
 	struct work_struct dispatch_work;
 	
-	unsigned int limit_index;/* 可能是low max什么的 */
+	unsigned int limit_index;/* 可能是low max什么的 
+	好像是表示是限制低速还是最大速度*/
 	bool limit_valid[LIMIT_CNT];
 
 	unsigned long low_upgrade_time;
@@ -268,7 +273,9 @@ static inline struct throtl_grp *pd_to_tg(struct blkg_policy_data *pd)
 	return pd ? container_of(pd, struct throtl_grp, pd) : NULL;
 }
 /* 获取blkgq关联的tg。
-blkgq有个pd数组，不同的pol对应不同的pd，进而查到不同的tg。 */
+blkgq有个pd数组，不同的pol对应不同的pd，进而查到不同的tg。
+----------------------
+决定一个bio的限速情况时,就是通过blkgq的pd数组,找到相应的policy的tg. */
 static inline struct throtl_grp *blkg_to_tg(struct blkcg_gq *blkg)
 {
 	return pd_to_tg(blkg_to_pd(blkg, &blkcg_policy_throtl));
@@ -614,7 +621,7 @@ static void throtl_pd_init(struct blkg_policy_data *pd)
 
 /*
 如果tg或者tg的父级被设置了，就设置has_rules[]。
-tg和父tg是通过，所包含的sq父子关系建立联系的。
+ps:tg和父tg的层级关系是借助所包含的sq父子关系建立联系的。
  * Set has_rules[] if @tg or any of its parents have limits configured.
  * This doesn't require walking up to the top of the hierarchy as the
  * parent's has_rules[] is guaranteed to be correct.
@@ -637,6 +644,8 @@ static void throtl_pd_online(struct blkg_policy_data *pd)
 {
 	struct throtl_grp *tg = pd_to_tg(pd);
 	/*
+	一个online时更新has_rules
+	里面存的估计是从父层级上面,迭代下来的规则,因为也是受父层级控制的.
 	 * We don't want new groups to escape the limits of its ancestors.
 	 * Update has_rules[] after a new group is brought online.
 	 */
@@ -1076,7 +1085,9 @@ static bool tg_with_in_bps_limit(struct throtl_grp *tg, struct bio *bio,
 
 /*
 2024年8月28日00:41:42
-判断tg能不能派发这个刚刚从queued里面取下的bio
+判断tg能不能派发这个刚刚从queued里面取下的bio.
+2024年9月1日22:09:54
+todo.
  * Returns whether one can dispatch a bio or not. Also returns approx number
  * of jiffies to wait before this bio is with-in IO rate and can be dispatched
  */
@@ -1138,6 +1149,7 @@ static bool tg_may_dispatch(struct throtl_grp *tg, struct bio *bio,
 
 	return false;
 }
+
 /* blkio的charge相关? 
 只是统计而已,不涉及cgroup.*/
 static void throtl_charge_bio(struct throtl_grp *tg, struct bio *bio)
@@ -1163,7 +1175,7 @@ static void throtl_charge_bio(struct throtl_grp *tg, struct bio *bio)
 
 /**
 可以用于子tg向父tg传递bio.
-把bio加到qn,有可能也把qn加到tg的sq
+把bio加到qn,有可能也把qn加到tg的sq.
  * throtl_add_bio_tg - add a bio to the specified throtl_grp
  * @bio: bio to add,
  * @qn: qnode to use,有可能是子tg的qnode_on_parent
@@ -1911,15 +1923,17 @@ static struct blkcg_policy blkcg_policy_throtl = {
 	/* free此pd */
 	.pd_free_fn		= throtl_pd_free,
 };
-
+/* 返回有效的min(last_low_overflow_time) */
 static unsigned long __tg_last_low_overflow_time(struct throtl_grp *tg)
 {
 	unsigned long rtime = jiffies, wtime = jiffies;
 
 	if (tg->bps[READ][LIMIT_LOW] || tg->iops[READ][LIMIT_LOW])
 		rtime = tg->last_low_overflow_time[READ];
+
 	if (tg->bps[WRITE][LIMIT_LOW] || tg->iops[WRITE][LIMIT_LOW])
 		wtime = tg->last_low_overflow_time[WRITE];
+
 	return min(rtime, wtime);
 }
 
@@ -1950,7 +1964,7 @@ static unsigned long tg_last_low_overflow_time(struct throtl_grp *tg)
 	}
 	return ret;
 }
-
+/* 检查tg是不是处于idle状态 */
 static bool throtl_tg_is_idle(struct throtl_grp *tg)
 {
 	/*
@@ -1964,19 +1978,23 @@ static bool throtl_tg_is_idle(struct throtl_grp *tg)
 	bool ret;
 
 	time = min_t(unsigned long, MAX_IDLE_TIME, 4 * tg->idletime_threshold);
+
 	ret = tg->latency_target == DFL_LATENCY_TARGET ||
 	      tg->idletime_threshold == DFL_IDLE_THRESHOLD ||
 	      (ktime_get_ns() >> 10) - tg->last_finish_time > time ||
 	      tg->avg_idletime > tg->idletime_threshold ||
 	      (tg->latency_target && tg->bio_cnt &&
 		tg->bad_bio_cnt * 5 < tg->bio_cnt);
+
 	throtl_log(&tg->service_queue,
 		"avg_idle=%ld, idle_threshold=%ld, bad_bio=%d, total_bio=%d, is_idle=%d, scale=%d",
 		tg->avg_idletime, tg->idletime_threshold, tg->bad_bio_cnt,
 		tg->bio_cnt, ret, tg->td->scale);
+
 	return ret;
 }
-
+/* tg的upgrade.
+ */
 static bool throtl_tg_can_upgrade(struct throtl_grp *tg)
 {
 	struct throtl_service_queue *sq = &tg->service_queue;
@@ -2003,7 +2021,8 @@ static bool throtl_tg_can_upgrade(struct throtl_grp *tg)
 		return true;
 	return false;
 }
-
+/* tg层级的upgrade? 
+父层级上的tg全都可以upgrade.*/
 static bool throtl_hierarchy_can_upgrade(struct throtl_grp *tg)
 {
 	while (true) {
@@ -2015,7 +2034,12 @@ static bool throtl_hierarchy_can_upgrade(struct throtl_grp *tg)
 	}
 	return false;
 }
+/* 找到td的rq的blkgq的blkcg的每一个孩子blkcg中对应
+rq的blkgq.
+如果这个孩子blkcg是最底层blkcg,测试这个blkgq的tg. 
 
+判断每一个tg是
+可以upgrade的. */
 static bool throtl_can_upgrade(struct throtl_data *td,
 	struct throtl_grp *this_tg)
 {
@@ -2029,13 +2053,22 @@ static bool throtl_can_upgrade(struct throtl_data *td,
 		return false;
 
 	rcu_read_lock();
+	/* 遍历这个rq关联的blkgq,就是rq的root_blkg孩子blkgq */
 	blkg_for_each_descendant_post(blkg, pos_css, td->queue->root_blkg) {
+		/* blkgq有自己的层级, blkcg也有自己的层级(借助css实现), blkgq的层级
+		也是借助blkcg的层级实现的,
+		blkgqA&rq的孩子,就找到自己对应的blkcgA, 遍历blkcgA的孩子blkcg_child,在每个孩子存储的blkgq
+		中找到与rq相关的blkgq,就是blkgqA的孩子 */
+
+		/* 这里找到每一个孩子blkgq对应的tg */
 		struct throtl_grp *tg = blkg_to_tg(blkg);
 
 		if (tg == this_tg)
 			continue;
+		/* 如果这个blkcg_child不是最底层的blkcg? */
 		if (!list_empty(&tg_to_blkg(tg)->blkcg->css.children))
 			continue;
+
 		if (!throtl_hierarchy_can_upgrade(tg)) {
 			rcu_read_unlock();
 			return false;
@@ -2044,21 +2077,22 @@ static bool throtl_can_upgrade(struct throtl_data *td,
 	rcu_read_unlock();
 	return true;
 }
-
+/* tg的upgrade check.
+操作对应的td.
+ */
 static void throtl_upgrade_check(struct throtl_grp *tg)
 {
 	unsigned long now = jiffies;
-
+	/* 要求这个tg限制的是最低速度? */
 	if (tg->td->limit_index != LIMIT_LOW)
 		return;
-
+	/* 意思是说过时了,就无需这什么upgrade-check了吗 */
 	if (time_after(tg->last_check_time + tg->td->throtl_slice, now))
 		return;
 
 	tg->last_check_time = now;
 
-	if (!time_after_eq(now,
-	     __tg_last_low_overflow_time(tg) + tg->td->throtl_slice))
+	if (!time_after_eq(now, __tg_last_low_overflow_time(tg) + tg->td->throtl_slice))
 		return;
 
 	if (throtl_can_upgrade(tg->td, NULL))
@@ -2094,12 +2128,13 @@ static void throtl_upgrade_state(struct throtl_data *td)
 	throtl_schedule_next_dispatch(&td->service_queue, true);
 	queue_work(kthrotld_workqueue, &td->dispatch_work);
 }
-
+/*  */
 static void throtl_downgrade_state(struct throtl_data *td, int new)
 {
 	td->scale /= 2;
 
 	throtl_log(&td->service_queue, "downgrade, scale %d", td->scale);
+	
 	if (td->scale) {
 		td->low_upgrade_time = jiffies - td->scale * td->throtl_slice;
 		return;
@@ -2108,7 +2143,7 @@ static void throtl_downgrade_state(struct throtl_data *td, int new)
 	td->limit_index = new;
 	td->low_downgrade_time = jiffies;
 }
-
+/*  */
 static bool throtl_tg_can_downgrade(struct throtl_grp *tg)
 {
 	struct throtl_data *td = tg->td;
@@ -2119,26 +2154,32 @@ static bool throtl_tg_can_downgrade(struct throtl_grp *tg)
 	 * cgroups
 	 */
 	if (time_after_eq(now, td->low_upgrade_time + td->throtl_slice) &&
-	    time_after_eq(now, tg_last_low_overflow_time(tg) +
-					td->throtl_slice) &&
+	    time_after_eq(now, tg_last_low_overflow_time(tg) + td->throtl_slice) &&
 	    (!throtl_tg_is_idle(tg) ||
 	     !list_empty(&tg_to_blkg(tg)->blkcg->css.children)))
+
 		return true;
+
 	return false;
 }
-
+/* 返回true表示父层级上tg全是可以throtl_tg_can_downgrade */
 static bool throtl_hierarchy_can_downgrade(struct throtl_grp *tg)
 {
 	while (true) {
 		if (!throtl_tg_can_downgrade(tg))
 			return false;
+
 		tg = sq_to_tg(tg->service_queue.parent_sq);
 		if (!tg || !tg_to_blkg(tg)->parent)
 			break;
 	}
+
 	return true;
 }
+/* 要求对应的是最底层的blkcg,并且有有效的最低限速.
+更新各个情况(iops/bps, r/w)下的last_low_overflow_time.
 
+  */
 static void throtl_downgrade_check(struct throtl_grp *tg)
 {
 	uint64_t bps;
@@ -2149,8 +2190,12 @@ static void throtl_downgrade_check(struct throtl_grp *tg)
 	if (tg->td->limit_index != LIMIT_MAX ||
 	    !tg->td->limit_valid[LIMIT_LOW])
 		return;
+	/* 只能说low限速,并且限速存在. */
+
 	if (!list_empty(&tg_to_blkg(tg)->blkcg->css.children))
 		return;
+	/* 要求对应的blkcg没有孩子?为什么 */
+
 	if (time_after(tg->last_check_time + tg->td->throtl_slice, now))
 		return;
 
@@ -2161,7 +2206,7 @@ static void throtl_downgrade_check(struct throtl_grp *tg)
 			tg->td->throtl_slice))
 		return;
 
-	if (tg->bps[READ][LIMIT_LOW]) {
+	if (tg->bps[READ][LIMIT_LOW]) {/* 如果存在读最低限速 */
 		bps = tg->last_bytes_disp[READ] * HZ;
 		do_div(bps, elapsed_time);
 		if (bps >= tg->bps[READ][LIMIT_LOW])
@@ -2199,14 +2244,14 @@ static void throtl_downgrade_check(struct throtl_grp *tg)
 	tg->last_io_disp[READ] = 0;
 	tg->last_io_disp[WRITE] = 0;
 }
-
+/* 更新idle time相关. */
 static void blk_throtl_update_idletime(struct throtl_grp *tg)
 {
 	unsigned long now = ktime_get_ns() >> 10;
 	unsigned long last_finish_time = tg->last_finish_time;
 
 	if (now <= last_finish_time || last_finish_time == 0 ||
-	    last_finish_time == tg->checked_last_finish_time)
+	    last_finish_time == tg->checked_last_finish_time)/* 异常情况 */
 		return;
 
 	tg->avg_idletime = (tg->avg_idletime * 7 + now - last_finish_time) >> 3;
@@ -2297,22 +2342,22 @@ static inline void throtl_update_latency_buckets(struct throtl_data *td)
 #endif
 /* IO限速的核心函数是blk_throtl_bio()，它在__generic_make_request()中被调用。
 __generic_make_request()根据blk_throtl_bio()的返回值来决定如何处理一个bio，
-
 如果blk_throtl_bio()返回0，表明无需限速或者当前读写速度未达到设定的上限，
 __generic_make_request()继续处理
 如果blk_throtl_bio()返回非0，则说明该bio因为限速而不能立即分发，throttle模块
 会来处理这个bio，__generic_make_request()直接跳到end_bio 
-
 
 */
 bool blk_throtl_bio(struct request_queue *q, struct blkcg_gq *blkg,
 		    struct bio *bio)
 {
 	struct throtl_qnode *qn = NULL;
+	/* 1 从blkg获得tg */
 	struct throtl_grp *tg = blkg_to_tg(blkg ?: q->root_blkg);
 	struct throtl_service_queue *sq;
 	bool rw = bio_data_dir(bio);
 	bool throttled = false;
+	/*  */
 	struct throtl_data *td = tg->td;
 
 	WARN_ON_ONCE(!rcu_read_lock_held());
@@ -2326,21 +2371,24 @@ bool blk_throtl_bio(struct request_queue *q, struct blkcg_gq *blkg,
 	throtl_update_latency_buckets(td);
 
 	blk_throtl_update_idletime(tg);
-
+	/* 获得tg的sq */
 	sq = &tg->service_queue;
 
 again:
 	while (true) {
 		if (tg->last_low_overflow_time[rw] == 0)
 			tg->last_low_overflow_time[rw] = jiffies;
+		/* 好像是检查最低限速的情况 */
 		throtl_downgrade_check(tg);
-		throtl_upgrade_check(tg);
+		/* upgrade的检查,todo. */
+		throtl_upgrade_check(tg); 
+		
 		/* throtl is FIFO - if bios are already queued, should queue */
 		if (sq->nr_queued[rw])
 			break;
 
 		/* if above limits, break to queue */
-		if (!tg_may_dispatch(tg, bio, NULL)) {
+		if (!tg_may_dispatch(tg, bio, NULL)) {/* 超速了,不能派发这个bio */
 			tg->last_low_overflow_time[rw] = jiffies;
 			if (throtl_can_upgrade(td, tg)) {
 				throtl_upgrade_state(td);
@@ -2349,7 +2397,10 @@ again:
 			break;
 		}
 
-		/* within limits, let's charge and dispatch directly */
+		/* 
+		可以派发这个bio的情况,
+		这里进行charge,但是实质上就是统计.
+		within limits, let's charge and dispatch directly */
 		throtl_charge_bio(tg, bio);
 
 		/*
