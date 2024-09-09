@@ -13,6 +13,7 @@
 #include "blk.h"
 
 /*
+tsk的io_ctx的slab
  * For io context allocations
  */
 static struct kmem_cache *iocontext_cachep;
@@ -88,6 +89,7 @@ static void ioc_destroy_icq(struct io_cq *icq)
 }
 
 /*
+进程的ioc的异步释放函数.
  * Slow path for ioc release in put_io_context().  Performs double-lock
  * dancing to unlink all icq's and then frees ioc.
  */
@@ -239,7 +241,7 @@ void ioc_clear_queue(struct request_queue *q)
 
 	__ioc_clear_queue(&icq_list);
 }
-
+/* 给tsk从node上分配内存来创建io_ctx */
 int create_task_io_context(struct task_struct *task, gfp_t gfp_flags, int node)
 {
 	struct io_context *ioc;
@@ -257,6 +259,7 @@ int create_task_io_context(struct task_struct *task, gfp_t gfp_flags, int node)
 	spin_lock_init(&ioc->lock);
 	INIT_RADIX_TREE(&ioc->icq_tree, GFP_ATOMIC);
 	INIT_HLIST_HEAD(&ioc->icq_list);
+	/*  */
 	INIT_WORK(&ioc->release_work, ioc_release_fn);
 
 	/*
@@ -267,10 +270,11 @@ int create_task_io_context(struct task_struct *task, gfp_t gfp_flags, int node)
 	 * responsible for not issuing IO after exit_io_context().
 	 */
 	task_lock(task);
+	/* 如果进程没有ioc, 就安装 */
 	if (!task->io_context &&
 	    (task == current || !(task->flags & PF_EXITING)))
 		task->io_context = ioc;
-	else
+	else/* 有了就释放掉刚刚创建的 */
 		kmem_cache_free(iocontext_cachep, ioc);
 
 	ret = task->io_context ? 0 : -EBUSY;

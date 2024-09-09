@@ -18,7 +18,7 @@ struct kvec {
 	void *iov_base; /* and that should *never* hold a userland pointer */
 	size_t iov_len;
 };
-
+/* io vec iter的类型 */
 enum iter_type {
 	/* iter types */
 	ITER_IOVEC = 4,
@@ -28,15 +28,15 @@ enum iter_type {
 	ITER_DISCARD = 64,
 };
 /* 2024年6月29日22:25:40
-
+io vec的迭代器.
+实际上指向可能是iov,kvec, bvec什么的.
  */
 struct iov_iter {
 	/*
 	 * Bit 0 is the read/write bit, set if we're writing.
 	 * Bit 1 is the BVEC_FLAG_NO_REF bit, set if type is a bvec and
 	 * the caller isn't expecting to drop a page reference when done.
-	 表示读或者写
-	 */
+	 表示读或者写,还可以表示iter的类型	 */
 	unsigned int type;
 	/* 第一个iovec中，数据起始偏移 */
 	size_t iov_offset;
@@ -61,7 +61,7 @@ struct iov_iter {
 		};
 	};
 };
-
+/* 获取iovec iter的类型 */
 static inline enum iter_type iov_iter_type(const struct iov_iter *i)
 {
 	return i->type & ~(READ | WRITE);
@@ -76,7 +76,7 @@ static inline bool iov_iter_is_kvec(const struct iov_iter *i)
 {
 	return iov_iter_type(i) == ITER_KVEC;
 }
-
+/*  */
 static inline bool iov_iter_is_bvec(const struct iov_iter *i)
 {
 	return iov_iter_type(i) == ITER_BVEC;

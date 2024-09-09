@@ -272,6 +272,7 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 void blkg_conf_finish(struct blkg_conf_ctx *ctx);
 
 /**
+找到当前进程的blkcg的css
  * blkcg_css - find the current css
  *
  * Find the css associated with either the kthread or the current task.
@@ -283,8 +284,9 @@ static inline struct cgroup_subsys_state *blkcg_css(void)
 	struct cgroup_subsys_state *css;
 
 	css = kthread_blkcg();
-	if (css)
+	if (css) /* 说明当前是内核线程.ps内核线程的blkcg的存储方式不一样 */
 		return css;
+	/* 是普通进程,找到其css */
 	return task_css(current, io_cgrp_id);
 }
 /* 2024年7月17日23:07:33
@@ -316,6 +318,8 @@ static inline struct blkcg *__bio_blkcg(struct bio *bio)
 }
 
 /**
+获取bio的blkcg.
+ps: bio和blkcg是通过blkgq关联的.
  * bio_blkcg - grab the blkcg associated with a bio
  * @bio: target bio
  *
@@ -327,6 +331,7 @@ static inline struct blkcg *bio_blkcg(struct bio *bio)
 {
 	if (bio && bio->bi_blkg)
 		return bio->bi_blkg->blkcg;
+
 	return NULL;
 }
 /* 2024年6月30日11:59:31
@@ -555,6 +560,7 @@ static inline bool blkg_tryget(struct blkcg_gq *blkg)
 }
 
 /**
+try get此blkgq, 父层级上closet的
  * blkg_tryget_closest - try and get a blkg ref on the closet blkg
  * @blkg: blkg to get
  *
@@ -770,7 +776,8 @@ static inline void blkcg_bio_issue_init(struct bio *bio)
 {
 	bio_issue_init(&bio->bi_issue, bio_sectors(bio));
 }
-/* 2024年8月19日22:38:08 */
+/* 2024年8月19日22:38:08
+发起bio前的, blkcg相关的检查 */
 static inline bool blkcg_bio_issue_check(struct request_queue *q,
 					 struct bio *bio)
 {
@@ -779,12 +786,13 @@ static inline bool blkcg_bio_issue_check(struct request_queue *q,
 
 	rcu_read_lock();
 
-	if (!bio->bi_blkg) {
+	if (!bio->bi_blkg) {/* bio没有blkgq? */
 		char b[BDEVNAME_SIZE];
 
 		WARN_ONCE(1,
 			  "no blkg associated for bio on block-device: %s\n",
 			  bio_devname(bio, b));
+		/* 没有的话就强行关联一个吗?谁呢 */
 		bio_associate_blkg(bio);
 	}
 

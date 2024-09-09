@@ -942,7 +942,7 @@ static int __bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 
 /**
 2024年9月1日22:25:53
-
+把页面添加到bio？
  * bio_iov_iter_get_pages - add user or kernel pages to a bio
  * @bio: bio to add pages to
  * @iter: iov iterator describing the region to be added
@@ -2037,6 +2037,8 @@ EXPORT_SYMBOL(bioset_init_from_src);
 #ifdef CONFIG_BLK_CGROUP
 
 /**
+解除bio关联的blkgq.
+put后置null.
  * bio_disassociate_blkg - puts back the blkg reference if associated
  * @bio: target bio
  *
@@ -2052,6 +2054,7 @@ void bio_disassociate_blkg(struct bio *bio)
 EXPORT_SYMBOL_GPL(bio_disassociate_blkg);
 
 /**
+把blkgq关联到bio
  * __bio_associate_blkg - associate a bio with the a blkg
  * @bio: target bio
  * @blkg: the blkg to associate
@@ -2067,14 +2070,16 @@ EXPORT_SYMBOL_GPL(bio_disassociate_blkg);
  */
 static void __bio_associate_blkg(struct bio *bio, struct blkcg_gq *blkg)
 {
+	/* 先解除原有的 */
 	bio_disassociate_blkg(bio);
-
+	/* 其实就是直接赋值 */
 	bio->bi_blkg = blkg_tryget_closest(blkg);
 }
 
 /**
 2024年8月7日00:28:07
-todo
+此时bio有了blkcg(css), 这里找到blkgq进行关联.
+
  * bio_associate_blkg_from_css - associate a bio with a specified css
  * @bio: target bio
  * @css: target css
@@ -2090,15 +2095,18 @@ void bio_associate_blkg_from_css(struct bio *bio,
 	struct blkcg_gq *blkg;
 
 	rcu_read_lock();
-
+	/* 这里先找blkgq. 如果是没有css或者是根css的话,就直接使用q的
+	不然的话,也就是说指定了blkcg的话
+	就要在此blkcg里面找到与rq有关的blkgq */
 	if (!css || !css->parent)
 		blkg = q->root_blkg;
 	else
 		blkg = blkg_lookup_create(css_to_blkcg(css), q);
-
+	/* 找到之后这里关联 */
 	__bio_associate_blkg(bio, blkg);
 
 	rcu_read_unlock();
+
 }
 EXPORT_SYMBOL_GPL(bio_associate_blkg_from_css);
 
@@ -2131,6 +2139,9 @@ void bio_associate_blkg_from_page(struct bio *bio, struct page *page)
 #endif /* CONFIG_MEMCG */
 
 /**
+给bio关联blkcg.
+就是找到blkcg的css,关联到bio
+bio可能只有blkgq,还没有关联到blkcg
  * bio_associate_blkg - associate a bio with a blkg
  * @bio: target bio
  *
@@ -2145,11 +2156,12 @@ void bio_associate_blkg(struct bio *bio)
 
 	rcu_read_lock();
 
+	/* 如果有blkgq了,找到其css,没有的话,就获取当前进程的 */
 	if (bio->bi_blkg)
 		css = &bio_blkcg(bio)->css;
 	else
 		css = blkcg_css();
-
+	/* 把css关联到bio */
 	bio_associate_blkg_from_css(bio, css);
 
 	rcu_read_unlock();

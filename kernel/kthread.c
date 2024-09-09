@@ -52,7 +52,7 @@ struct kthread {
 	struct completion parked;
 	struct completion exited;
 #ifdef CONFIG_BLK_CGROUP
-/* cgroup相关 */
+/* cgroup相关,此kthread的blkcg css */
 	struct cgroup_subsys_state *blkcg_css;
 #endif
 };
@@ -72,7 +72,7 @@ static inline void set_kthread_struct(void *kthread)
 	 */
 	current->set_child_tid = (__force void __user *)kthread;
 }
-
+/* ?什么原理 */
 static inline struct kthread *to_kthread(struct task_struct *k)
 {
 	WARN_ON(!(k->flags & PF_KTHREAD));
@@ -1229,6 +1229,7 @@ EXPORT_SYMBOL(kthread_associate_blkcg);
 
 /**
 2024年6月30日12:04:51
+是内核线程的话, 找到当前kthread的blkcg css.
  * kthread_blkcg - get associated blkcg css of current kthread
  *
  * Current thread must be a kthread.
@@ -1245,5 +1246,6 @@ struct cgroup_subsys_state *kthread_blkcg(void)
 	}
 	return NULL;
 }
+
 EXPORT_SYMBOL(kthread_blkcg);
 #endif

@@ -92,6 +92,8 @@ struct io_cq {
 };
 
 /*
+tsk的io_ctx
+估计是此进程的io的控制结构吧
  * I/O subsystem state of the associated processes.  It is refcounted
  * and kmalloc'ed. These could be shared between processes.
  */

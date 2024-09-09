@@ -107,9 +107,10 @@ void part_in_flight_rw(struct request_queue *q, struct hd_struct *part,
 	if ((int)inflight[1] < 0)
 		inflight[1] = 0;
 }
-
+/* 获取disk的partno分区 */
 struct hd_struct *__disk_get_part(struct gendisk *disk, int partno)
 {
+	/* rcu方式获取disk分区表 */
 	struct disk_part_tbl *ptbl = rcu_dereference(disk->part_tbl);
 
 	if (unlikely(partno < 0 || partno >= ptbl->len))

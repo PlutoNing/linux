@@ -165,12 +165,13 @@ enum {
 	/* Forward events to udev */
 	DISK_EVENT_FLAG_UEVENT			= 1 << 1,
 };
-
+/* 描述一个磁盘分区表的结构体 */
 struct disk_part_tbl {
 	struct rcu_head rcu_head;
-	int len;
+	/*  */
+	int len;/* 好像是分区的数量 */
 	struct hd_struct __rcu *last_lookup;
-	struct hd_struct __rcu *part[];
+	struct hd_struct __rcu *part[];/* 包含的分区的数组 */
 };
 
 struct disk_events;
@@ -479,6 +480,7 @@ static inline sector_t get_start_sect(struct block_device *bdev)
 {
 	return bdev->bd_part->start_sect;
 }
+/* 获取disk的扇区数 */
 static inline sector_t get_capacity(struct gendisk *disk)
 {
 	return disk->part0.nr_sects;
@@ -732,6 +734,7 @@ static inline void hd_free_part(struct hd_struct *part)
 }
 
 /*
+好像是获取分区的扇区的数量
  * Any access of part->nr_sects which is not protected by partition
  * bd_mutex or gendisk bdev bd_mutex, should be done using this
  * accessor function.

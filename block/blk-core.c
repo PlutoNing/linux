@@ -748,7 +748,8 @@ bool blk_attempt_plug_merge(struct request_queue *q, struct bio *bio,
 
 	return false;
 }
-
+/* bio超过了分区最大扇区的处理函数
+就是打印日志 */
 static void handle_bad_sector(struct bio *bio, sector_t maxsector)
 {
 	char b[BDEVNAME_SIZE];
@@ -786,7 +787,7 @@ static int __init fail_make_request_debugfs(void)
 late_initcall(fail_make_request_debugfs);
 
 #else /* CONFIG_FAIL_MAKE_REQUEST */
-
+/* 空函数 */
 static inline bool should_fail_request(struct hd_struct *part,
 					unsigned int bytes)
 {
@@ -794,7 +795,7 @@ static inline bool should_fail_request(struct hd_struct *part,
 }
 
 #endif /* CONFIG_FAIL_MAKE_REQUEST */
-
+/* 为啥一直返回false */
 static inline bool bio_check_ro(struct bio *bio, struct hd_struct *part)
 {
 	const int op = bio_op(bio);
@@ -815,7 +816,7 @@ static inline bool bio_check_ro(struct bio *bio, struct hd_struct *part)
 
 	return false;
 }
-
+/* 空函数 */
 static noinline int should_fail_bio(struct bio *bio)
 {
 	if (should_fail_request(&bio->bi_disk->part0, bio->bi_iter.bi_size))
@@ -825,6 +826,7 @@ static noinline int should_fail_bio(struct bio *bio)
 ALLOW_ERROR_INJECTION(should_fail_bio, ERRNO);
 
 /*
+检查bio是不是超过了分区
  * Check whether this bio extends beyond the end of the device or partition.
  * This may well happen - the kernel calls bread() without checking the size of
  * the device, e.g., when mounting a file system.
@@ -833,8 +835,9 @@ static inline int bio_check_eod(struct bio *bio, sector_t maxsector)
 {
 	unsigned int nr_sectors = bio_sectors(bio);
 
-	if (nr_sectors && maxsector &&
-	    (nr_sectors > maxsector ||
+	if (nr_sectors && maxsector && /* 如果确实写入了扇区,确实有最大扇区数量 */
+	    (nr_sectors > maxsector || /* 就检查是不是超过了,或者起始扇区+扇区数量超过了
+		最大扇区 */
 	     bio->bi_iter.bi_sector > maxsector - nr_sectors)) {
 		handle_bad_sector(bio, maxsector);
 		return -EIO;
@@ -843,6 +846,8 @@ static inline int bio_check_eod(struct bio *bio, sector_t maxsector)
 }
 
 /*
+映射分区p的block n到实际位置?
+就是改写分区号和起始扇区地址
  * Remap block n of partition p to block n+start(p) of the disk.
  */
 static inline int blk_partition_remap(struct bio *bio)
@@ -851,6 +856,7 @@ static inline int blk_partition_remap(struct bio *bio)
 	int ret = -EIO;
 
 	rcu_read_lock();
+	/* 获取bio指向的分区 */
 	p = __disk_get_part(bio->bi_disk, bio->bi_partno);
 	if (unlikely(!p))
 		goto out;
@@ -864,8 +870,10 @@ static inline int blk_partition_remap(struct bio *bio)
 	 * Include a test for the reset op code and perform the remap if needed.
 	 */
 	if (bio_sectors(bio) || bio_op(bio) == REQ_OP_ZONE_RESET) {
+		/* 是否越界 */
 		if (bio_check_eod(bio, part_nr_sects_read(p)))
 			goto out;
+
 		bio->bi_iter.bi_sector += p->start_sect;
 		trace_block_bio_remap(bio->bi_disk->queue, bio, part_devt(p),
 				      bio->bi_iter.bi_sector - p->start_sect);
@@ -876,17 +884,18 @@ out:
 	rcu_read_unlock();
 	return ret;
 }
-
+/*  */
 static noinline_for_stack bool
 generic_make_request_checks(struct bio *bio)
 {
 	struct request_queue *q;
+	/* bio的扇区数 */
 	int nr_sectors = bio_sectors(bio);
 	blk_status_t status = BLK_STS_IOERR;
 	char b[BDEVNAME_SIZE];
 
 	might_sleep();
-
+	/* 获取bio的rq */
 	q = bio->bi_disk->queue;
 	if (unlikely(!q)) {
 		printk(KERN_ERR
@@ -902,14 +911,14 @@ generic_make_request_checks(struct bio *bio)
 	 */
 	if ((bio->bi_opf & REQ_NOWAIT) && !queue_is_mq(q))
 		goto not_supported;
-
+	/* 空函数 */
 	if (should_fail_bio(bio))
 		goto end_io;
 
-	if (bio->bi_partno) {
+	if (bio->bi_partno) {/* 应该改写为写分区0的全局扇区编号位置 */
 		if (unlikely(blk_partition_remap(bio)))
 			goto end_io;
-	} else {
+	} else {/* 检查是否写入了只读,或者超限 */
 		if (unlikely(bio_check_ro(bio, &bio->bi_disk->part0)))
 			goto end_io;
 		if (unlikely(bio_check_eod(bio, get_capacity(bio->bi_disk))))
@@ -924,6 +933,7 @@ generic_make_request_checks(struct bio *bio)
 	if (op_is_flush(bio->bi_opf) &&
 	    !test_bit(QUEUE_FLAG_WC, &q->queue_flags)) {
 		bio->bi_opf &= ~(REQ_PREFLUSH | REQ_FUA);
+
 		if (!nr_sectors) {
 			status = BLK_STS_OK;
 			goto end_io;
@@ -932,7 +942,7 @@ generic_make_request_checks(struct bio *bio)
 
 	if (!test_bit(QUEUE_FLAG_POLL, &q->queue_flags))
 		bio->bi_opf &= ~REQ_HIPRI;
-
+	/* 不同op, 不同的检查方式 */
 	switch (bio_op(bio)) {
 	case REQ_OP_DISCARD:
 		if (!blk_queue_discard(q))
@@ -967,6 +977,7 @@ generic_make_request_checks(struct bio *bio)
 	 * allocation ends up trading a lot of pain for a small amount of
 	 * memory.  Just allocate it upfront.  This may fail and block
 	 * layer knows how to live with it.
+	 
 	 */
 	create_io_context(GFP_ATOMIC, q->node);
 
@@ -984,6 +995,7 @@ generic_make_request_checks(struct bio *bio)
 
 not_supported:
 	status = BLK_STS_NOTSUPP;
+/* 出错的情况 */
 end_io:
 	bio->bi_status = status;
 	bio_endio(bio);
@@ -992,13 +1004,14 @@ end_io:
 
 /**
 发起一个bio请求?
+
  * generic_make_request - hand a buffer to its device driver for I/O
  * @bio:  The bio describing the location in memory and on the device.
- *
+ *发起对块设备的bio请求.完成指定的bio.
  * generic_make_request() is used to make I/O requests of block
  * devices. It is passed a &struct bio, which describes the I/O that needs
  * to be done.
- *
+ *bio->bi_end_io负责完成与否等一些通知.
  * generic_make_request() does not return any status.  The
  * success/failure status of the request, along with notification of
  * completion, is delivered asynchronously through the bio->bi_end_io
@@ -1017,9 +1030,10 @@ end_io:
  */
 blk_qc_t generic_make_request(struct bio *bio)
 {
-	/*
+	/*bio_list_on_stack[0]包含被提交的.
 	 * bio_list_on_stack[0] contains bios submitted by the current
 	 * make_request_fn.
+	 bio_list_on_stack[1]是之前被提交的,没有被处理的.
 	 * bio_list_on_stack[1] contains bios that were submitted before
 	 * the current make_request_fn, but that haven't been processed
 	 * yet.
