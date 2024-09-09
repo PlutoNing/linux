@@ -1,0 +1,2 @@
+drivers/xen/xen-acpi-processor.ko
+drivers/xen/xenbus/xenbus_probe_frontend.ko

@@ -1,0 +1,2 @@
+drivers/gpio/gpio-lynxpoint.ko
+drivers/gpio/gpio-xilinx.ko
