@@ -170,6 +170,7 @@ struct scan_control {
 };
 
 #ifdef ARCH_HAS_PREFETCHW
+/* _folio是从_base(lru)获得的 */
 #define prefetchw_prev_lru_folio(_folio, _base, _field)			\
 	do {								\
 		if ((_folio)->lru.prev != _base) {			\
@@ -589,7 +590,7 @@ static long add_nr_deferred(long nr, struct shrinker *shrinker,
 
 	return atomic_long_add_return(nr, &shrinker->nr_deferred[nid]);
 }
-
+/*  */
 static bool can_demote(int nid, struct scan_control *sc)
 {
 	if (!numa_demotion_enabled)
@@ -2281,6 +2282,7 @@ static bool skip_cma(struct folio *folio, struct scan_control *sc)
 #endif
 
 /*
+
  * Isolating page from the lruvec to fill in @dst list by nr_to_scan times.
  *
  * lruvec->lru_lock is heavily contended.  Some of the functions that
@@ -2316,11 +2318,13 @@ static unsigned long isolate_lru_folios(unsigned long nr_to_scan,
 
 	total_scan = 0;
 	scan = 0;
-	while (scan < nr_to_scan && !list_empty(src)) {
+
+	while (scan < nr_to_scan && !list_empty(src)) {/* 遍历nr_to_scan次数, */
 		struct list_head *move_to = src;
 		struct folio *folio;
 
 		folio = lru_to_folio(src);
+
 		prefetchw_prev_lru_folio(folio, src, flags);
 
 		nr_pages = folio_nr_pages(folio);
@@ -2669,6 +2673,7 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 }
 
 /*
+2024年09月09日17:08:15
  * shrink_active_list() moves folios from the active LRU to the inactive LRU.
  *
  * We move them the other way if the folio is referenced by one or more
@@ -3237,6 +3242,7 @@ static bool can_age_anon_pages(struct pglist_data *pgdat,
 #ifdef CONFIG_LRU_GEN
 
 #ifdef CONFIG_LRU_GEN_ENABLED
+/*  */
 DEFINE_STATIC_KEY_ARRAY_TRUE(lru_gen_caps, NR_LRU_GEN_CAPS);
 #define get_cap(cap)	static_branch_likely(&lru_gen_caps[cap])
 #else
@@ -3262,7 +3268,10 @@ static bool should_clear_pmd_young(void)
 
 #define DEFINE_MAX_SEQ(lruvec)						\
 	unsigned long max_seq = READ_ONCE((lruvec)->lrugen.max_seq)
+/* 
 
+获取file和anon的最新gen,存储在min_seq[2]
+ */
 #define DEFINE_MIN_SEQ(lruvec)						\
 	unsigned long min_seq[ANON_AND_FILE] = {			\
 		READ_ONCE((lruvec)->lrugen.min_seq[LRU_GEN_ANON]),	\
@@ -3296,13 +3305,13 @@ static struct lruvec *get_lruvec(struct mem_cgroup *memcg, int nid)
 
 	return &pgdat->__lruvec;
 }
-
+/*  */
 static int get_swappiness(struct lruvec *lruvec, struct scan_control *sc)
 {
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
-	if (!sc->may_swap)
+	if (!sc->may_swap)/* sc不允许swap */
 		return 0;
 
 	if (!can_demote(pgdat->node_id, sc) &&
@@ -4545,14 +4554,17 @@ done:
 /******************************************************************************
  *                          working set protection
  ******************************************************************************/
-
+/*  */
 static bool lruvec_is_sizable(struct lruvec *lruvec, struct scan_control *sc)
 {
 	int gen, type, zone;
 	unsigned long total = 0;
+
 	bool can_swap = get_swappiness(lruvec, sc);
+
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
+
 	DEFINE_MAX_SEQ(lruvec);
 	DEFINE_MIN_SEQ(lruvec);
 
@@ -4570,21 +4582,26 @@ static bool lruvec_is_sizable(struct lruvec *lruvec, struct scan_control *sc)
 	/* whether the size is big enough to be helpful */
 	return mem_cgroup_online(memcg) ? (total >> sc->priority) : total;
 }
+/* 2024年09月09日15:58:26
 
+ */
 static bool lruvec_is_reclaimable(struct lruvec *lruvec, struct scan_control *sc,
 				  unsigned long min_ttl)
 {
 	int gen;
 	unsigned long birth;
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
+	/* 获取file和anon的最新gen,存储在min_seq[2] */
 	DEFINE_MIN_SEQ(lruvec);
 
-	/* see the comment on lru_gen_folio */
+	/* see the comment on lru_gen_folio
+	获取file的最新gen */
 	gen = lru_gen_from_seq(min_seq[LRU_GEN_FILE]);
+	/* 获取file的最新gen的birth */
 	birth = READ_ONCE(lruvec->lrugen.timestamps[gen]);
 
 	if (time_is_after_jiffies(birth + min_ttl))
-		return false;
+		return false;/* 还没超时 */
 
 	if (!lruvec_is_sizable(lruvec, sc))
 		return false;
@@ -4596,7 +4613,7 @@ static bool lruvec_is_reclaimable(struct lruvec *lruvec, struct scan_control *sc
 
 /* to protect the working set of the last N jiffies */
 static unsigned long lru_gen_min_ttl __read_mostly;
-
+/*  */
 static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 {
 	struct mem_cgroup *memcg;
@@ -4608,7 +4625,7 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 	if (!min_ttl || sc->order || sc->priority == DEF_PRIORITY)
 		return;
 
-	memcg = mem_cgroup_iter(NULL, NULL, NULL);
+	memcg = mem_cgroup_iter(NULL, NULL, NULL);/* 遍历全部的memcg */
 	do {
 		struct lruvec *lruvec = mem_cgroup_lruvec(memcg, pgdat);
 
@@ -4619,6 +4636,8 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 
 		cond_resched();
 	} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
+
+	/* 到这里是找到一个最底层的memcg? */
 
 	/*
 	 * The main goal is to OOM kill if every generation from all memcgs is
@@ -7162,13 +7181,17 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 	return nr_reclaimed;
 }
 #endif
+/* 2024年09月09日15:44:23
+Aging主要用来产生年轻一代。
 
+MGLRU在kswapd_age_node进行了拦截调用lru_gen_age_node：
+ */
 static void kswapd_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 {
 	struct mem_cgroup *memcg;
 	struct lruvec *lruvec;
 
-	if (lru_gen_enabled()) {
+	if (lru_gen_enabled()) {/* 如果启用了 */
 		lru_gen_age_node(pgdat, sc);
 		return;
 	}

@@ -257,6 +257,7 @@ typedef struct {
 } swp_entry_t;
 
 /**
+代表连续的字节?
  * struct folio - Represents a contiguous set of bytes.
  * @flags: Identical to the page flags.
  * @lru: Least Recently Used list; tracks how recently this folio was used.
@@ -322,6 +323,8 @@ struct folio {
 		};
 		struct page page;
 	};
+
+	
 	union {
 		struct {
 			unsigned long _flags_1;

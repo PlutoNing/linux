@@ -7570,17 +7570,19 @@ void __mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages)
 	}
 	rcu_read_unlock();
 }
-
+/* 找到此memcg还能使用的swap页面数量? */
 long mem_cgroup_get_nr_swap_pages(struct mem_cgroup *memcg)
 {
 	long nr_swap_pages = get_nr_swap_pages();
 
 	if (mem_cgroup_disabled() || do_memsw_account())
 		return nr_swap_pages;
+
 	for (; !mem_cgroup_is_root(memcg); memcg = parent_mem_cgroup(memcg))
 		nr_swap_pages = min_t(long, nr_swap_pages,
 				      READ_ONCE(memcg->swap.max) -
 				      page_counter_read(&memcg->swap));
+
 	return nr_swap_pages;
 }
 

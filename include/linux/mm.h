@@ -227,6 +227,8 @@ int overcommit_policy_handler(struct ctl_table *, int, void *, size_t *,
 #define PAGE_ALIGNED(addr)	IS_ALIGNED((unsigned long)(addr), PAGE_SIZE)
 
 #define lru_to_page(head) (list_entry((head)->prev, struct page, lru))
+/* 普通的lru怎么转为gen lru相关呢?
+好像是现在的lru挂的已经是folio了 */
 static inline struct folio *lru_to_folio(struct list_head *head)
 {
 	return list_entry((head)->prev, struct folio, lru);
@@ -2029,6 +2031,7 @@ static inline void set_page_links(struct page *page, enum zone_type zone,
 }
 
 /**
+获取folio的页面数量?
  * folio_nr_pages - The number of pages in the folio.
  * @folio: The folio.
  *

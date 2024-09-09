@@ -266,6 +266,7 @@ static inline u64 get_jiffies_64(void)
 #define time_is_before_jiffies64(a) time_after64(get_jiffies_64(), a)
 
 /**
+a是否大于jiffies
  * time_is_after_jiffies - return true if a is after jiffies
  * @a: time (unsigned long) to compare to jiffies
  *

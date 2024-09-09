@@ -102,6 +102,7 @@ static __always_inline enum lru_list folio_lru_list(struct folio *folio)
 #ifdef CONFIG_LRU_GEN
 
 #ifdef CONFIG_LRU_GEN_ENABLED
+/*  */
 static inline bool lru_gen_enabled(void)
 {
 	DECLARE_STATIC_KEY_TRUE(lru_gen_caps[NR_LRU_GEN_CAPS]);
@@ -121,7 +122,8 @@ static inline bool lru_gen_in_fault(void)
 {
 	return current->in_lru_fault;
 }
-
+/* 从seq获取gen.
+seq是不断递增的,取模获取gen */
 static inline int lru_gen_from_seq(unsigned long seq)
 {
 	return seq % MAX_NR_GENS;

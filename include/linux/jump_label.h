@@ -384,7 +384,7 @@ struct static_key_false {
 
 #define DECLARE_STATIC_KEY_FALSE(name)	\
 	extern struct static_key_false name
-
+/*  */
 #define DEFINE_STATIC_KEY_ARRAY_TRUE(name, count)		\
 	struct static_key_true name[count] = {			\
 		[0 ... (count) - 1] = STATIC_KEY_TRUE_INIT,	\

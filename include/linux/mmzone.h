@@ -322,7 +322,7 @@ enum lruvec_flags {
  * offset within MAX_NR_GENS, i.e., gen, indexes the LRU list of the
  * corresponding generation. The gen counter in folio->flags stores gen+1 while
  * a page is on one of lrugen->folios[]. Otherwise it stores 0.
- *
+ * 可回收页面被分为多个gen, 每个gen的
  * A page is added to the youngest generation on faulting. The aging needs to
  * check the accessed bit at least twice before handing this page over to the
  * eviction. The first check takes care of the accessed bit set on the initial
@@ -332,12 +332,12 @@ enum lruvec_flags {
  * LRU, e.g., /proc/vmstat, these two generations are considered active; the
  * rest of generations, if they exist, are considered inactive. See
  * lru_gen_is_active().
- *
+ * 新分配的页面被放到最年轻的gen, 至少要两次检查才会决定一个页面回收与否.
  * PG_active is always cleared while a page is on one of lrugen->folios[] so
  * that the aging needs not to worry about it. And it's set again when a page
  * considered active is isolated for non-reclaiming purposes, e.g., migration.
  * See lru_gen_add_folio() and lru_gen_del_folio().
- *
+ * 
  * MAX_NR_GENS is set to 4 so that the multi-gen LRU can support twice the
  * number of categories of the active/inactive LRU when keeping track of
  * accesses through page tables. This requires order_base_2(MAX_NR_GENS+1) bits
@@ -377,12 +377,12 @@ struct page_vma_mapped_walk;
 #define LRU_REFS_MASK		((BIT(LRU_REFS_WIDTH) - 1) << LRU_REFS_PGOFF)
 
 #ifdef CONFIG_LRU_GEN
-
+/*  */
 enum {
 	LRU_GEN_ANON,
 	LRU_GEN_FILE,
 };
-
+/* 好像是lru gen的不同特性 */
 enum {
 	LRU_GEN_CORE,
 	LRU_GEN_MM_WALK,
@@ -401,28 +401,38 @@ enum {
 #endif
 
 /*
+2024年09月09日16:01:11
+lru gen相关.
  * The youngest generation number is stored in max_seq for both anon and file
  * types as they are aged on an equal footing. The oldest generation numbers are
  * stored in min_seq[] separately for anon and file types as clean file pages
  * can be evicted regardless of swap constraints.
- *
+ *不管是对于file还是anon, 最年轻的gen数都存储在max_seq, 对于最老的是分开存储在min_seq.
  * Normally anon and file min_seq are in sync. But if swapping is constrained,
  * e.g., out of swap space, file min_seq is allowed to advance and leave anon
  * min_seq behind.
- *
+ * 
  * The number of pages in each generation is eventually consistent and therefore
  * can be transiently negative when reset_batch_size() is pending.
+
  */
 struct lru_gen_folio {
-	/* the aging increments the youngest generation number */
+	/* the aging increments the youngest generation number
+	存储最年轻的gen
+	 */
 	unsigned long max_seq;
-	/* the eviction increments the oldest generation numbers */
+	/* the eviction increments the oldest generation numbers
+	存储最老的gen, file与anon分开存储 */
 	unsigned long min_seq[ANON_AND_FILE];
-	/* the birth time of each generation in jiffies */
+	/* the birth time of each generation in jiffies
+	每gen的birth */
 	unsigned long timestamps[MAX_NR_GENS];
-	/* the multi-gen LRU lists, lazily sorted on eviction */
+	/* the multi-gen LRU lists, lazily sorted on eviction
+	这里是lru */
 	struct list_head folios[MAX_NR_GENS][ANON_AND_FILE][MAX_NR_ZONES];
-	/* the multi-gen LRU sizes, eventually consistent */
+	/* the multi-gen LRU sizes, eventually consistent
+	这里是lru的大小信息
+	不同gen的file或者anon在不同zone都是分开存储的 */
 	long nr_pages[MAX_NR_GENS][ANON_AND_FILE][MAX_NR_ZONES];
 	/* the exponential moving average of refaulted */
 	unsigned long avg_refaulted[ANON_AND_FILE][MAX_NR_TIERS];
@@ -433,8 +443,10 @@ struct lru_gen_folio {
 	/* can be modified without holding the LRU lock */
 	atomic_long_t evicted[NR_HIST_GENS][ANON_AND_FILE][MAX_NR_TIERS];
 	atomic_long_t refaulted[NR_HIST_GENS][ANON_AND_FILE][MAX_NR_TIERS];
-	/* whether the multi-gen LRU is enabled */
+	/* whether the multi-gen LRU is enabled
+	gen lru的开关 */
 	bool enabled;
+
 #ifdef CONFIG_MEMCG
 	/* the memcg generation this lru_gen_folio belongs to */
 	u8 gen;
@@ -629,7 +641,8 @@ struct lruvec {
 	/* Various lruvec state flags (enum lruvec_flags) */
 	unsigned long			flags;
 #ifdef CONFIG_LRU_GEN
-	/* evictable pages divided into generations */
+	/* evictable pages divided into generations
+	这里存储表示gen lru相关 */
 	struct lru_gen_folio		lrugen;
 	/* to concurrently iterate lru_gen_mm_list */
 	struct lru_gen_mm_state		mm_state;
