@@ -163,11 +163,10 @@ x509.genkey
 *.kdev4
 
 # Clang's compilation database file
-/compile_commands.json
+
 
 # Documentation toolchain
 sphinx_*/
 
 # Rust analyzer configuration
 /rust-project.json
-**/modules.builtin

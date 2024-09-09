@@ -1,0 +1,8 @@
+drivers/input/input-core.ko
+drivers/input/ff-memless.ko
+drivers/input/mousedev.ko
+drivers/input/evdev.ko
+drivers/input/keyboard/atkbd.ko
+drivers/input/keyboard/sunkbd.ko
+drivers/input/keyboard/xtkbd.ko
+drivers/input/mouse/psmouse.ko

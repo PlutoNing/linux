@@ -1,0 +1,4 @@
+drivers/nvdimm/libnvdimm.ko
+drivers/nvdimm/nd_pmem.ko
+drivers/nvdimm/nd_btt.ko
+drivers/nvdimm/nd_blk.ko
