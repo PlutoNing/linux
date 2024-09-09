@@ -305,13 +305,15 @@ static inline void page_init_poison(struct page *page, size_t size)
 {
 }
 #endif
-
+/* 获取folio的flag的位置, 可能是某个页面的flags.
+ */
 static unsigned long *folio_flags(struct folio *folio, unsigned n)
 {
 	struct page *page = &folio->page;
 
 	VM_BUG_ON_PGFLAGS(PageTail(page), page);
 	VM_BUG_ON_PGFLAGS(n > 0 && !test_bit(PG_head, &page->flags), page);
+	
 	return &page[n].flags;
 }
 
@@ -765,7 +767,7 @@ static inline bool test_set_page_writeback(struct page *page)
 {
 	return set_page_writeback(page);
 }
-
+/* 测试folio的flags的某个bit位 */
 static __always_inline bool folio_test_head(struct folio *folio)
 {
 	return test_bit(PG_head, folio_flags(folio, FOLIO_PF_ANY));
@@ -782,6 +784,7 @@ __CLEARPAGEFLAG(Head, head, PF_ANY)
 CLEARPAGEFLAG(Head, head, PF_ANY)
 
 /**
+看看这个folio是不是包含多个页面.
  * folio_test_large() - Does this folio contain more than one page?
  * @folio: The folio to test.
  *

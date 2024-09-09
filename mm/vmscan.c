@@ -2282,7 +2282,7 @@ static bool skip_cma(struct folio *folio, struct scan_control *sc)
 #endif
 
 /*
-
+从lruvec进行isolate页面到dst
  * Isolating page from the lruvec to fill in @dst list by nr_to_scan times.
  *
  * lruvec->lru_lock is heavily contended.  Some of the functions that
@@ -2311,6 +2311,7 @@ static unsigned long isolate_lru_folios(unsigned long nr_to_scan,
 	struct list_head *src = &lruvec->lists[lru];
 	unsigned long nr_taken = 0;
 	unsigned long nr_zone_taken[MAX_NR_ZONES] = { 0 };
+	/* 记录zone的跳过页面的数量 */
 	unsigned long nr_skipped[MAX_NR_ZONES] = { 0, };
 	unsigned long skipped = 0;
 	unsigned long scan, total_scan, nr_pages;
@@ -2326,14 +2327,15 @@ static unsigned long isolate_lru_folios(unsigned long nr_to_scan,
 		folio = lru_to_folio(src);
 
 		prefetchw_prev_lru_folio(folio, src, flags);
-
+		/* 获取folio的页面数量 */
 		nr_pages = folio_nr_pages(folio);
 		total_scan += nr_pages;
 
 		if (folio_zonenum(folio) > sc->reclaim_idx ||
-				skip_cma(folio, sc)) {
+				skip_cma(folio, sc)) {/* 这里是跳过的逻辑 */
+
 			nr_skipped[folio_zonenum(folio)] += nr_pages;
-			move_to = &folios_skipped;
+			move_to = &folios_skipped;/* 这个路径的move是到folios_skipped */
 			goto move;
 		}
 
@@ -2348,6 +2350,7 @@ static unsigned long isolate_lru_folios(unsigned long nr_to_scan,
 
 		if (!folio_test_lru(folio))
 			goto move;
+
 		if (!sc->may_unmap && folio_mapped(folio))
 			goto move;
 
@@ -2367,8 +2370,9 @@ static unsigned long isolate_lru_folios(unsigned long nr_to_scan,
 
 		nr_taken += nr_pages;
 		nr_zone_taken[folio_zonenum(folio)] += nr_pages;
-		move_to = dst;
-move:
+		move_to = dst;/* 这里是move到dst */
+
+move:/* 默认的move是move到src */
 		list_move(&folio->lru, move_to);
 	}
 
@@ -2379,7 +2383,9 @@ move:
 	 * scanning would soon rescan the same folios to skip and waste lots
 	 * of cpu cycles.
 	 */
-	if (!list_empty(&folios_skipped)) {
+	if (!list_empty(&folios_skipped)) {/* 如果skipped链表,也被move了页面,
+	这里处理.
+	是说明这里面有跳过的页面. */
 		int zid;
 
 		list_splice(&folios_skipped, src);
@@ -2391,6 +2397,8 @@ move:
 			skipped += nr_skipped[zid];
 		}
 	}
+
+
 	*nr_scanned = total_scan;
 	trace_mm_vmscan_lru_isolate(sc->reclaim_idx, sc->order, nr_to_scan,
 				    total_scan, skipped, nr_taken,
@@ -2710,6 +2718,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 
 	spin_lock_irq(&lruvec->lru_lock);
 
+	/* isolate页面到l_hold */
 	nr_taken = isolate_lru_folios(nr_to_scan, lruvec, &l_hold,
 				     &nr_scanned, sc, lru);
 

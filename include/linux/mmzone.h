@@ -1098,7 +1098,7 @@ static inline enum zone_type page_zonenum(const struct page *page)
 	ASSERT_EXCLUSIVE_BITS(page->flags, ZONES_MASK << ZONES_PGSHIFT);
 	return (page->flags >> ZONES_PGSHIFT) & ZONES_MASK;
 }
-
+/* 获取folio的zone */
 static inline enum zone_type folio_zonenum(const struct folio *folio)
 {
 	return page_zonenum(&folio->page);

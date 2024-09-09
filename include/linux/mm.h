@@ -2041,6 +2041,7 @@ static inline long folio_nr_pages(struct folio *folio)
 {
 	if (!folio_test_large(folio))
 		return 1;
+	
 #ifdef CONFIG_64BIT
 	return folio->_folio_nr_pages;
 #else
