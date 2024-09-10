@@ -528,6 +528,7 @@ out:
 }
 
 /*
+rmap过程中, 对匿名vma, 加读锁?
  * Similar to folio_get_anon_vma() except it locks the anon_vma.
  *
  * Its a little more complex as it tries to keep the fast path to a single
@@ -544,12 +545,16 @@ struct anon_vma *folio_lock_anon_vma_read(struct folio *folio,
 
 	rcu_read_lock();
 	anon_mapping = (unsigned long)READ_ONCE(folio->mapping);
-	if ((anon_mapping & PAGE_MAPPING_FLAGS) != PAGE_MAPPING_ANON)
-		goto out;
-	if (!folio_mapped(folio))
-		goto out;
 
+	if ((anon_mapping & PAGE_MAPPING_FLAGS) != PAGE_MAPPING_ANON)
+		goto out; /* 如果不是匿名页的mapping, 不操作 */
+
+	if (!folio_mapped(folio))
+		goto out; /* 如果folio没有mapped */
+
+	/* 这里获取实际的av(mapping)地址, 因为存储的时候被加上了0或者1的flag判断file还是匿名 */
 	anon_vma = (struct anon_vma *) (anon_mapping - PAGE_MAPPING_ANON);
+	/* 获取avr */
 	root_anon_vma = READ_ONCE(anon_vma->root);
 	if (down_read_trylock(&root_anon_vma->rwsem)) {
 		/*
@@ -584,6 +589,7 @@ struct anon_vma *folio_lock_anon_vma_read(struct folio *folio,
 
 	/* we pinned the anon_vma, its safe to sleep */
 	rcu_read_unlock();
+
 	anon_vma_lock_read(anon_vma);
 
 	if (atomic_dec_and_test(&anon_vma->refcount)) {
@@ -799,6 +805,7 @@ struct folio_referenced_arg {
 	struct mem_cgroup *memcg;
 };
 /*
+rwalk folio页面的时候判断当前指向的是否映射
  * arg: folio_referenced_arg will be passed
  */
 static bool folio_referenced_one(struct folio *folio,
@@ -812,38 +819,48 @@ static bool folio_referenced_one(struct folio *folio,
 		address = pvmw.address;
 
 		if ((vma->vm_flags & VM_LOCKED) &&
-		    (!folio_test_large(folio) || !pvmw.pte)) {
+		    (!folio_test_large(folio) || !pvmw.pte)) {/* 如果vma locked,
+			并且是单页或者没有pte */
 			/* Restore the mlock which got missed */
 			mlock_vma_folio(folio, vma, !pvmw.pte);
 			page_vma_mapped_walk_done(&pvmw);
 			pra->vm_flags |= VM_LOCKED;
 			return false; /* To break the loop */
 		}
+		/* 到这里
+		1. 正常vma, pte都可以
+		2. vma locked, 但是是大页并且有pte */
 
-		if (pvmw.pte) {
+		if (pvmw.pte) { /* 有pte */
 			if (lru_gen_enabled() &&
 			    pte_young(ptep_get(pvmw.pte))) {
 				lru_gen_look_around(&pvmw);
-				referenced++;
+
+				referenced++;/* 有映射, referenced++ */
 			}
 
 			if (ptep_clear_flush_young_notify(vma, address,
 						pvmw.pte))
 				referenced++;
-		} else if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE)) {
+
+		} else if (IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE)) {/* 正常vma */
 			if (pmdp_clear_flush_young_notify(vma, address,
 						pvmw.pmd))
 				referenced++;
-		} else {
+
+		} else {/* 正常vma */
 			/* unexpected pmd-mapped folio? */
 			WARN_ON_ONCE(1);
 		}
 
-		pra->mapcount--;
+		pra->mapcount--; /* 处理完了一个map.  */
 	}
+
+	/* 到这里检查完了所有rmap的pte */
 
 	if (referenced)
 		folio_clear_idle(folio);
+
 	if (folio_test_clear_young(folio))
 		referenced++;
 
@@ -857,7 +874,8 @@ static bool folio_referenced_one(struct folio *folio,
 
 	return true;
 }
-
+/* 判断folio的reference情况rmap walk时
+判断vma的逻辑 */
 static bool invalid_folio_referenced_vma(struct vm_area_struct *vma, void *arg)
 {
 	struct folio_referenced_arg *pra = arg;
@@ -883,6 +901,7 @@ static bool invalid_folio_referenced_vma(struct vm_area_struct *vma, void *arg)
 }
 
 /**
+查看folio是否被页表引用?
  * folio_referenced() - Test if the folio was referenced.
  * @folio: The folio to test.
  * @is_locked: Caller holds lock on the folio.
@@ -898,6 +917,7 @@ int folio_referenced(struct folio *folio, int is_locked,
 		     struct mem_cgroup *memcg, unsigned long *vm_flags)
 {
 	int we_locked = 0;
+	/* rwalk的函数的参数 */
 	struct folio_referenced_arg pra = {
 		.mapcount = folio_mapcount(folio),
 		.memcg = memcg,
@@ -1069,21 +1089,24 @@ int pfn_mkclean_range(unsigned long pfn, unsigned long nr_pages, pgoff_t pgoff,
 
 	return page_vma_mkclean_one(&pvmw);
 }
-
+/* 计算多页面folio的mapcount */
 int folio_total_mapcount(struct folio *folio)
 {
+	/* 这是作为整体被mapped的数量? */
 	int mapcount = folio_entire_mapcount(folio);
 	int nr_pages;
 	int i;
 
 	/* In the common case, avoid the loop when no pages mapped by PTE */
-	if (folio_nr_pages_mapped(folio) == 0)
+	if (folio_nr_pages_mapped(folio) == 0)/* 没有内部页面被mapped, 那么mapcount就是
+	作为整体被mapped的mapcount? */
 		return mapcount;
 	/*
 	 * Add all the PTE mappings of those pages mapped by PTE.
 	 * Limit the loop to folio_nr_pages_mapped()?
 	 * Perhaps: given all the raciness, that may be a good or a bad idea.
 	 */
+	/* 如果有内部页面被引用, 还得统计每个页面单独的计数 */
 	nr_pages = folio_nr_pages(folio);
 	for (i = 0; i < nr_pages; i++)
 		mapcount += atomic_read(&folio_page(folio, i)->_mapcount);
@@ -1467,6 +1490,7 @@ void page_remove_rmap(struct page *page, struct vm_area_struct *vma,
 }
 
 /*
+
  * @arg: enum ttu_flags will be passed to this argument
  */
 static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
@@ -1491,7 +1515,7 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
 	if (flags & TTU_SYNC)
 		pvmw.flags = PVMW_SYNC;
 
-	if (flags & TTU_SPLIT_HUGE_PMD)
+	if (flags & TTU_SPLIT_HUGE_PMD)/* folio太大了, 一个pmd装不下.  */
 		split_huge_pmd_address(vma, address, false, folio);
 
 	/*
@@ -1776,7 +1800,7 @@ static bool invalid_migration_vma(struct vm_area_struct *vma, void *arg)
 {
 	return vma_is_temporary_stack(vma);
 }
-
+/*  */
 static int folio_not_mapped(struct folio *folio)
 {
 	return !folio_mapped(folio);

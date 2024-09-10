@@ -27,12 +27,12 @@
 #include <linux/secretmem.h>
 
 #include "internal.h"
-
+/* 表示一个fbatch和对应的lock */
 struct mlock_fbatch {
 	local_lock_t lock;
 	struct folio_batch fbatch;
 };
-
+/* 声明一个pcp的mlock_fbatch */
 static DEFINE_PER_CPU(struct mlock_fbatch, mlock_fbatch) = {
 	.lock = INIT_LOCAL_LOCK(lock),
 };
@@ -48,6 +48,7 @@ bool can_do_mlock(void)
 EXPORT_SYMBOL(can_do_mlock);
 
 /*
+mlock lru 上面的folio的逻辑. 
  * Mlocked folios are marked with the PG_mlocked flag for efficient testing
  * in vmscan and, possibly, the fault path; and to support semi-accurate
  * statistics.
@@ -61,45 +62,53 @@ EXPORT_SYMBOL(can_do_mlock);
 static struct lruvec *__mlock_folio(struct folio *folio, struct lruvec *lruvec)
 {
 	/* There is nothing more we can do while it's off LRU */
-	if (!folio_test_clear_lru(folio))
+	if (!folio_test_clear_lru(folio)) /*这里清除lru, 如果本来不在lru上面. */
 		return lruvec;
-
+	/* 获取folio的上锁后的lruvec */
 	lruvec = folio_lruvec_relock_irq(folio, lruvec);
 
-	if (unlikely(folio_evictable(folio))) {
+	if (unlikely(folio_evictable(folio))) {/* 如果folio是evictable的,就直接out */
 		/*
 		 * This is a little surprising, but quite possible: PG_mlocked
 		 * must have got cleared already by another CPU.  Could this
 		 * folio be unevictable?  I'm not sure, but move it now if so.
 		 */
-		if (folio_test_unevictable(folio)) {
+		if (folio_test_unevictable(folio)) {/* 二次检查，防止race */
+			/* 从lru移除folio */
 			lruvec_del_folio(lruvec, folio);
+			/*  */
 			folio_clear_unevictable(folio);
+			/* 又添加,到新的去处 */
 			lruvec_add_folio(lruvec, folio);
 
 			__count_vm_events(UNEVICTABLE_PGRESCUED,
 					  folio_nr_pages(folio));
 		}
+
 		goto out;
 	}
 
-	if (folio_test_unevictable(folio)) {
+	if (folio_test_unevictable(folio)) {/* 如果是unevictable的,  */
 		if (folio_test_mlocked(folio))
 			folio->mlock_count++;
+
 		goto out;
 	}
 
+	/* 这里是什么情况呢 */
 	lruvec_del_folio(lruvec, folio);
 	folio_clear_active(folio);
 	folio_set_unevictable(folio);
 	folio->mlock_count = !!folio_test_mlocked(folio);
 	lruvec_add_folio(lruvec, folio);
+
 	__count_vm_events(UNEVICTABLE_PGCULLED, folio_nr_pages(folio));
-out:
+
+out:/* 设置folio的lru标记 */
 	folio_set_lru(folio);
 	return lruvec;
 }
-
+/* 这里是mlock新folio的逻辑 */
 static struct lruvec *__mlock_new_folio(struct folio *folio, struct lruvec *lruvec)
 {
 	VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
@@ -113,20 +122,26 @@ static struct lruvec *__mlock_new_folio(struct folio *folio, struct lruvec *lruv
 	folio_set_unevictable(folio);
 	folio->mlock_count = !!folio_test_mlocked(folio);
 	__count_vm_events(UNEVICTABLE_PGCULLED, folio_nr_pages(folio));
+
 out:
 	lruvec_add_folio(lruvec, folio);
 	folio_set_lru(folio);
 	return lruvec;
 }
-
+/* unlock此folio.
+先临时清除lru表示
+去除mlock flag
+还可能去除unevictable flag */
 static struct lruvec *__munlock_folio(struct folio *folio, struct lruvec *lruvec)
 {
 	int nr_pages = folio_nr_pages(folio);
 	bool isolated = false;
 
+	/* 清除lru flag */
 	if (!folio_test_clear_lru(folio))
-		goto munlock;
+		goto munlock; /* 如果本来不在lru上面 */
 
+	/* 如果本来在lru上面. */
 	isolated = true;
 	lruvec = folio_lruvec_relock_irq(folio, lruvec);
 
@@ -140,6 +155,7 @@ static struct lruvec *__munlock_folio(struct folio *folio, struct lruvec *lruvec
 	/* else assume that was the last mlock: reclaim will fix it if not */
 
 munlock:
+	/* 清除mlock */
 	if (folio_test_clear_mlocked(folio)) {
 		__zone_stat_mod_folio(folio, NR_MLOCK, -nr_pages);
 		if (isolated || !folio_test_unevictable(folio))
@@ -149,7 +165,9 @@ munlock:
 	}
 
 	/* folio_evictable() has to be checked *after* clearing Mlocked */
-	if (isolated && folio_test_unevictable(folio) && folio_evictable(folio)) {
+	if (isolated && folio_test_unevictable(folio) && folio_evictable(folio)) {/* 如果本来在
+	lru上面, 并且现在是evictable的了. 但是还是在被置位unevictable flag.  */
+
 		lruvec_del_folio(lruvec, folio);
 		folio_clear_unevictable(folio);
 		lruvec_add_folio(lruvec, folio);
@@ -162,10 +180,12 @@ out:
 }
 
 /*
+
  * Flags held in the low bits of a struct folio pointer on the mlock_fbatch.
  */
 #define LRU_FOLIO 0x1
 #define NEW_FOLIO 0x2
+/* 实际是给folio地址加了个1或者2的偏移 */
 static inline struct folio *mlock_lru(struct folio *folio)
 {
 	return (struct folio *)((unsigned long)folio + LRU_FOLIO);
@@ -177,6 +197,8 @@ static inline struct folio *mlock_new(struct folio *folio)
 }
 
 /*
+2024年09月10日11:36:57
+批量mlock fbatch里面的folio?
  * mlock_folio_batch() is derived from folio_batch_move_lru(): perhaps that can
  * make use of such folio pointer flags in future, but for now just keep it for
  * mlock.  We could use three separate folio batches instead, but one feels
@@ -192,20 +214,24 @@ static void mlock_folio_batch(struct folio_batch *fbatch)
 
 	for (i = 0; i < folio_batch_count(fbatch); i++) {
 		folio = fbatch->folios[i];
+		/* mlock表示是lru folio还是new folio */
 		mlock = (unsigned long)folio & (LRU_FOLIO | NEW_FOLIO);
+		/* 获取folio的实际地址. 因为刚才folio的地址被打上了new还是lru的标记 */
 		folio = (struct folio *)((unsigned long)folio - mlock);
-		fbatch->folios[i] = folio;
 
+		fbatch->folios[i] = folio;
+		/* 根据是lru还是new的folio, 下面走不同的路径. */
 		if (mlock & LRU_FOLIO)
 			lruvec = __mlock_folio(folio, lruvec);
 		else if (mlock & NEW_FOLIO)
 			lruvec = __mlock_new_folio(folio, lruvec);
-		else
+		else  /* 为啥这里unlock */
 			lruvec = __munlock_folio(folio, lruvec);
 	}
 
 	if (lruvec)
 		unlock_page_lruvec_irq(lruvec);
+
 	folios_put(fbatch->folios, folio_batch_count(fbatch));
 	folio_batch_reinit(fbatch);
 }
@@ -237,17 +263,20 @@ bool need_mlock_drain(int cpu)
 }
 
 /**
+mlock lru的folio页面.
+set mlock之后加入pcp的batch, 满了的话就批量处理
  * mlock_folio - mlock a folio already on (or temporarily off) LRU
  * @folio: folio to be mlocked.
  */
 void mlock_folio(struct folio *folio)
 {
 	struct folio_batch *fbatch;
-
+	/* lock并获取pcp的fbatch */
 	local_lock(&mlock_fbatch.lock);
 	fbatch = this_cpu_ptr(&mlock_fbatch.fbatch);
 
-	if (!folio_test_set_mlocked(folio)) {
+	if (!folio_test_set_mlocked(folio)) {/* 设置mlock flag,返回本来有无mlock, */
+	/* 如果本来没有mlock的话,这里进行统计 */
 		int nr_pages = folio_nr_pages(folio);
 
 		zone_stat_mod_folio(folio, NR_MLOCK, nr_pages);
@@ -255,9 +284,13 @@ void mlock_folio(struct folio *folio)
 	}
 
 	folio_get(folio);
+
 	if (!folio_batch_add(fbatch, mlock_lru(folio)) ||
-	    folio_test_large(folio) || lru_cache_disabled())
+	    folio_test_large(folio) || lru_cache_disabled()) /* 如果fbatch直接满了就是直接进来if.
+		2. 如果没满, 但是是多页面folio的话,也直接进if
+		3. 没满,也不算大folio, 没使能lru cache的话, 也进来if. */
 		mlock_folio_batch(fbatch);
+
 	local_unlock(&mlock_fbatch.lock);
 }
 

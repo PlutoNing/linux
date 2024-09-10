@@ -2297,7 +2297,7 @@ out:
 	spin_unlock(ptl);
 	mmu_notifier_invalidate_range_end(&range);
 }
-
+/*  */
 void split_huge_pmd_address(struct vm_area_struct *vma, unsigned long address,
 		bool freeze, struct folio *folio)
 {
@@ -2586,7 +2586,9 @@ static void __split_huge_page(struct page *page, struct list_head *list,
 	}
 }
 
-/* Racy check whether the huge page can be split */
+/* 
+尝试split多页面的folio.
+Racy check whether the huge page can be split */
 bool can_split_folio(struct folio *folio, int *pextra_pins)
 {
 	int extra_pins;
@@ -2597,6 +2599,7 @@ bool can_split_folio(struct folio *folio, int *pextra_pins)
 				folio_nr_pages(folio) : 0;
 	else
 		extra_pins = folio_nr_pages(folio);
+
 	if (pextra_pins)
 		*pextra_pins = extra_pins;
 	return folio_mapcount(folio) == folio_ref_count(folio) - extra_pins - 1;

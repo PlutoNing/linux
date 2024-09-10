@@ -303,12 +303,12 @@ struct folio {
 				struct {
 					void *__filler;
 	/* public: */
-					unsigned int mlock_count;
+					unsigned int mlock_count; /* 表示folio被mlock的次数? */
 	/* private: */
 				};
 	/* public: */
 			};
-			struct address_space *mapping;
+			struct address_space *mapping;/* 所属的mapping */
 			pgoff_t index;
 			union {
 				void *private;
@@ -324,7 +324,7 @@ struct folio {
 		struct page page;
 	};
 
-	
+
 	union {
 		struct {
 			unsigned long _flags_1;
@@ -332,10 +332,12 @@ struct folio {
 			unsigned long _folio_avail;
 	/* public: */
 			atomic_t _entire_mapcount;
-			atomic_t _nr_pages_mapped;
+
+			atomic_t _nr_pages_mapped;/* 大于0说明多页面folio被映射 */
+
 			atomic_t _pincount;
 #ifdef CONFIG_64BIT
-			unsigned int _folio_nr_pages;
+			unsigned int _folio_nr_pages; /* folio内部的页面数量 */
 #endif
 	/* private: the union with struct page is transitional */
 		};

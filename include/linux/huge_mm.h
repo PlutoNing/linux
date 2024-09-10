@@ -209,7 +209,10 @@ static inline spinlock_t *pud_trans_huge_lock(pud_t *pud,
 		return NULL;
 }
 
+
 /**
+map with pmd?什么意思.
+是说一个pmd可以map这个folio的全部页面吗,
  * folio_test_pmd_mappable - Can we map this folio with a PMD?
  * @folio: The folio to test
  */
@@ -388,7 +391,7 @@ static inline bool thp_migration_supported(void)
 	return false;
 }
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
-
+/* 把多页面folio进行split */
 static inline int split_folio_to_list(struct folio *folio,
 		struct list_head *list)
 {

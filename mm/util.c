@@ -747,6 +747,8 @@ struct anon_vma *folio_anon_vma(struct folio *folio)
 }
 
 /**
+获取folio所属的mapping. 直接返回mapping
+slab与swp是特殊情况
  * folio_mapping - Find the mapping where this folio is stored.
  * @folio: The folio.
  *
@@ -770,11 +772,13 @@ struct address_space *folio_mapping(struct folio *folio)
 		return swap_address_space(folio->swap);
 
 	mapping = folio->mapping;
+
 	if ((unsigned long)mapping & PAGE_MAPPING_FLAGS)
 		return NULL;
 
 	return mapping;
 }
+
 EXPORT_SYMBOL(folio_mapping);
 
 /**

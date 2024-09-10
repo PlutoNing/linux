@@ -248,7 +248,7 @@ static inline void mapping_clear_unevictable(struct address_space *mapping)
 {
 	clear_bit(AS_UNEVICTABLE, &mapping->flags);
 }
-
+/*  */
 static inline bool mapping_unevictable(struct address_space *mapping)
 {
 	return mapping && test_bit(AS_UNEVICTABLE, &mapping->flags);
@@ -273,7 +273,7 @@ static inline int mapping_use_writeback_tags(struct address_space *mapping)
 {
 	return !test_bit(AS_NO_WRITEBACK_TAGS, &mapping->flags);
 }
-
+/*  */
 static inline bool mapping_release_always(const struct address_space *mapping)
 {
 	return test_bit(AS_RELEASE_ALWAYS, &mapping->flags);

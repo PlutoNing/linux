@@ -57,12 +57,13 @@ static DEFINE_PER_CPU(struct lru_rotate, lru_rotate) = {
 };
 
 /*
+2024年09月10日16:06:19
  * The following folio batches are grouped together because they are protected
  * by disabling preemption (and interrupts remain enabled).
  */
 struct cpu_fbatches {
 	local_lock_t lock;
-	struct folio_batch lru_add;
+	struct folio_batch lru_add; /* 添加folio到lru的'缓存' */
 	struct folio_batch lru_deactivate_file;
 	struct folio_batch lru_deactivate;
 	struct folio_batch lru_lazyfree;
@@ -70,6 +71,7 @@ struct cpu_fbatches {
 	struct folio_batch activate;
 #endif
 };
+/*  */
 static DEFINE_PER_CPU(struct cpu_fbatches, cpu_fbatches) = {
 	.lock = INIT_LOCAL_LOCK(lock),
 };
@@ -159,7 +161,8 @@ void put_pages_list(struct list_head *pages)
 EXPORT_SYMBOL(put_pages_list);
 
 typedef void (*move_fn_t)(struct lruvec *lruvec, struct folio *folio);
-
+/* 把folio加入lruvec. 
+调用add lru, 之前判断和设置evictable相关.  */
 static void lru_add_fn(struct lruvec *lruvec, struct folio *folio)
 {
 	int was_unevictable = folio_test_clear_unevictable(folio);
@@ -178,10 +181,10 @@ static void lru_add_fn(struct lruvec *lruvec, struct folio *folio)
 	 * true of release_pages(): but those only clear the mlocked flag after
 	 * folio_put_testzero() has excluded any other users of the folio.)
 	 */
-	if (folio_evictable(folio)) {
-		if (was_unevictable)
+	if (folio_evictable(folio)) {/* 如果现在是evictable的 */
+		if (was_unevictable)/* 但是之前是不是evictable */
 			__count_vm_events(UNEVICTABLE_PGRESCUED, nr_pages);
-	} else {
+	} else {/* 现在还是unevictable */
 		folio_clear_active(folio);
 		folio_set_unevictable(folio);
 		/*
@@ -200,6 +203,7 @@ static void lru_add_fn(struct lruvec *lruvec, struct folio *folio)
 	trace_mm_lru_insertion(folio);
 }
 
+/* 调用move_fn操作fbatch里面的folio */
 static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
 {
 	int i;
@@ -210,6 +214,9 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
 		struct folio *folio = fbatch->folios[i];
 
 		/* block memcg migration while the folio moves between lru */
+		/* 如果是lru_add_fn函数
+		或者本来是lru
+		就continue. */
 		if (move_fn != lru_add_fn && !folio_test_clear_lru(folio))
 			continue;
 
@@ -221,16 +228,18 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
 
 	if (lruvec)
 		unlock_page_lruvec_irqrestore(lruvec, flags);
+
 	folios_put(fbatch->folios, folio_batch_count(fbatch));
 	folio_batch_reinit(fbatch);
 }
-
+/* 把folio加入fbatch.  */
 static void folio_batch_add_and_move(struct folio_batch *fbatch,
 		struct folio *folio, move_fn_t move_fn)
 {
 	if (folio_batch_add(fbatch, folio) && !folio_test_large(folio) &&
-	    !lru_cache_disabled())
+	    !lru_cache_disabled()) /* 加入缓存成功还有剩余空间 */
 		return;
+	/* 可能是缓冲fbatch满了 */	
 	folio_batch_move_lru(fbatch, move_fn);
 }
 
@@ -490,6 +499,7 @@ void folio_mark_accessed(struct folio *folio)
 EXPORT_SYMBOL(folio_mark_accessed);
 
 /**
+把folio放回lru
  * folio_add_lru - Add a folio to an LRU list.
  * @folio: The folio to be added to the LRU.
  *

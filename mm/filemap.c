@@ -4097,6 +4097,8 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 EXPORT_SYMBOL(generic_file_write_iter);
 
 /**
+释放folio的fs priv数据,buffer等相关.
+返回是否还需要释放(是否成功)
  * filemap_release_folio() - Release fs-specific metadata on a folio.
  * @folio: The folio which the kernel is trying to free.
  * @gfp: Memory allocation flags (and I/O mode).
@@ -4120,11 +4122,13 @@ bool filemap_release_folio(struct folio *folio, gfp_t gfp)
 	BUG_ON(!folio_test_locked(folio));
 	if (!folio_needs_release(folio))
 		return true;
+
 	if (folio_test_writeback(folio))
 		return false;
 
 	if (mapping && mapping->a_ops->release_folio)
 		return mapping->a_ops->release_folio(folio, gfp);
+
 	return try_to_free_buffers(folio);
 }
 EXPORT_SYMBOL(filemap_release_folio);

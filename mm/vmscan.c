@@ -430,7 +430,9 @@ void reparent_shrinker_deferred(struct mem_cgroup *memcg)
 	up_read(&shrinker_rwsem);
 }
 
-/* Returns true for reclaim through cgroup limits or cgroup interfaces. */
+/* 
+是否是cgroup范围的scan
+Returns true for reclaim through cgroup limits or cgroup interfaces. */
 static bool cgroup_reclaim(struct scan_control *sc)
 {
 	return sc->target_mem_cgroup;
@@ -1108,7 +1110,7 @@ void drop_slab(void)
 		}
 	} while ((freed >> shift++) > 1);
 }
-
+/* 判断reclaimer的类型 */
 static int reclaimer_offset(void)
 {
 	BUILD_BUG_ON(PGSTEAL_DIRECT - PGSTEAL_KSWAPD !=
@@ -1501,6 +1503,7 @@ long remove_mapping(struct address_space *mapping, struct folio *folio)
 }
 
 /**
+把isolate的folio返回合适的lru
  * folio_putback_lru - Put previously isolated folio onto appropriate LRU list.
  * @folio: Folio to be returned to an LRU list.
  *
@@ -1514,14 +1517,14 @@ void folio_putback_lru(struct folio *folio)
 	folio_add_lru(folio);
 	folio_put(folio);		/* drop ref from isolate */
 }
-
+/*  */
 enum folio_references {
 	FOLIOREF_RECLAIM,
 	FOLIOREF_RECLAIM_CLEAN,
 	FOLIOREF_KEEP,
 	FOLIOREF_ACTIVATE,
 };
-
+/* 获取folio的映射情况? */
 static enum folio_references folio_check_references(struct folio *folio,
 						  struct scan_control *sc)
 {
@@ -1530,6 +1533,7 @@ static enum folio_references folio_check_references(struct folio *folio,
 
 	referenced_ptes = folio_referenced(folio, 1, sc->target_mem_cgroup,
 					   &vm_flags);
+	/* 刚才是不是被referenced */				   
 	referenced_folio = folio_test_clear_referenced(folio);
 
 	/*
@@ -1579,7 +1583,9 @@ static enum folio_references folio_check_references(struct folio *folio,
 	return FOLIOREF_RECLAIM;
 }
 
-/* Check if a folio is dirty or under writeback */
+/* 
+检查一个folio是否dirty或者在写回
+Check if a folio is dirty or under writeback */
 static void folio_check_dirty_writeback(struct folio *folio,
 				       bool *dirty, bool *writeback)
 {
@@ -1593,7 +1599,9 @@ static void folio_check_dirty_writeback(struct folio *folio,
 	 * test is needed.
 	 */
 	if (!folio_is_file_lru(folio) ||
-	    (folio_test_anon(folio) && !folio_test_swapbacked(folio))) {
+	    (folio_test_anon(folio) && !folio_test_swapbacked(folio))) {/* 如果
+		不是文件lru
+		或者是file lru, 并且是匿名,但是不是交换? */
 		*dirty = false;
 		*writeback = false;
 		return;
@@ -1608,6 +1616,7 @@ static void folio_check_dirty_writeback(struct folio *folio,
 		return;
 
 	mapping = folio_mapping(folio);
+
 	if (mapping && mapping->a_ops->is_dirty_writeback)
 		mapping->a_ops->is_dirty_writeback(folio, dirty, writeback);
 }
@@ -1701,6 +1710,7 @@ static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
 }
 
 /*
+回收folio_list的页面
  * shrink_folio_list() returns the number of reclaimed pages
  */
 static unsigned int shrink_folio_list(struct list_head *folio_list,
@@ -1728,7 +1738,7 @@ retry:
 		unsigned int nr_pages;
 
 		cond_resched();
-
+		/* 取出一个folio */
 		folio = lru_to_folio(folio_list);
 		list_del(&folio->lru);
 
@@ -1749,6 +1759,7 @@ retry:
 			goto keep_locked;
 
 		/* folio_update_gen() tried to promote this page? */
+		/* todo */
 		if (lru_gen_enabled() && !ignore_references &&
 		    folio_mapped(folio) && folio_test_referenced(folio))
 			goto keep_locked;
@@ -1759,6 +1770,7 @@ retry:
 		 * folios if the tail of the LRU is all dirty unqueued folios.
 		 */
 		folio_check_dirty_writeback(folio, &dirty, &writeback);
+
 		if (dirty || writeback)
 			stat->nr_dirty += nr_pages;
 
@@ -1818,7 +1830,7 @@ retry:
 		 * memory pressure on the cache working set any longer than it
 		 * takes to write them to disk.
 		 */
-		if (folio_test_writeback(folio)) {
+		if (folio_test_writeback(folio)) {/* 正在写回的情况? */
 			/* Case 1 above */
 			if (current_is_kswapd() &&
 			    folio_test_reclaim(folio) &&
@@ -1849,7 +1861,7 @@ retry:
 				goto activate_locked;
 
 			/* Case 3 above */
-			} else {
+			} else {/* 过会儿再试 */
 				folio_unlock(folio);
 				folio_wait_writeback(folio);
 				/* then go back and try same folio again */
@@ -1867,6 +1879,7 @@ retry:
 		case FOLIOREF_KEEP:
 			stat->nr_ref_keep += nr_pages;
 			goto keep_locked;
+
 		case FOLIOREF_RECLAIM:
 		case FOLIOREF_RECLAIM_CLEAN:
 			; /* try to reclaim the folio below */
@@ -1888,8 +1901,8 @@ retry:
 		 * Try to allocate it some swap space here.
 		 * Lazyfree folio could be freed directly
 		 */
-		if (folio_test_anon(folio) && folio_test_swapbacked(folio)) {
-			if (!folio_test_swapcache(folio)) {
+		if (folio_test_anon(folio) && folio_test_swapbacked(folio)) {/* 如果是交换匿名页 */
+			if (!folio_test_swapcache(folio)) {/* 如果还没分配swp file空间? */
 				if (!(sc->gfp_mask & __GFP_IO))
 					goto keep_locked;
 				if (folio_maybe_dma_pinned(folio))
@@ -1908,7 +1921,8 @@ retry:
 								folio_list))
 						goto activate_locked;
 				}
-				if (!add_to_swap(folio)) {
+				/* 给folio分配swp 空间 */
+				if (!add_to_swap(folio)) {/*  */
 					if (!folio_test_large(folio))
 						goto activate_locked_split;
 					/* Fallback to swap normal pages */
@@ -1922,8 +1936,10 @@ retry:
 						goto activate_locked_split;
 				}
 			}
-		} else if (folio_test_swapbacked(folio) &&
-			   folio_test_large(folio)) {
+		} else 
+		/* 不是匿名页或者不是交换页 */
+		if (folio_test_swapbacked(folio) &&
+			   folio_test_large(folio)) {/* 如果是多页面的交换页 */
 			/* Split shmem folio */
 			if (split_folio_to_list(folio, folio_list))
 				goto keep_locked;
@@ -1943,7 +1959,7 @@ retry:
 		 * The folio is mapped into the page tables of one or more
 		 * processes. Try to unmap it here.
 		 */
-		if (folio_mapped(folio)) {
+		if (folio_mapped(folio)) {/* 如果是被mapped */
 			enum ttu_flags flags = TTU_BATCH_FLUSH;
 			bool was_swapbacked = folio_test_swapbacked(folio);
 
@@ -1951,7 +1967,8 @@ retry:
 				flags |= TTU_SPLIT_HUGE_PMD;
 
 			try_to_unmap(folio, flags);
-			if (folio_mapped(folio)) {
+
+			if (folio_mapped(folio)) {/* 还是mapped? 失败情况.  */
 				stat->nr_unmap_fail += nr_pages;
 				if (!was_swapbacked &&
 				    folio_test_swapbacked(folio))
@@ -1971,7 +1988,7 @@ retry:
 			goto activate_locked;
 
 		mapping = folio_mapping(folio);
-		if (folio_test_dirty(folio)) {
+		if (folio_test_dirty(folio)) {/* 如果是dirty页面.  */
 			/*
 			 * Only kswapd can writeback filesystem folios
 			 * to avoid risk of stack overflow. But avoid
@@ -1986,7 +2003,9 @@ retry:
 			if (folio_is_file_lru(folio) &&
 			    (!current_is_kswapd() ||
 			     !folio_test_reclaim(folio) ||
-			     !test_bit(PGDAT_DIRTY, &pgdat->flags))) {
+			     !test_bit(PGDAT_DIRTY, &pgdat->flags))) {/*  */
+				
+				/* 不写回. */
 				/*
 				 * Immediately reclaim when written back.
 				 * Similar in principle to folio_deactivate()
@@ -1999,6 +2018,8 @@ retry:
 
 				goto activate_locked;
 			}
+			/* 下面是准备写回.  */
+
 
 			if (references == FOLIOREF_RECLAIM_CLEAN)
 				goto keep_locked;
@@ -2132,6 +2153,10 @@ activate_locked_split:
 			nr_pages = 1;
 		}
 activate_locked:
+/* 需要保留的情况? 这里是lock之后遇到了,比如
+不打算写会的脏页, 保留
+无法unmap
+unevictable的页面 */
 		/* Not a candidate for swapping, so reclaim swap space. */
 		if (folio_test_swapcache(folio) &&
 		    (mem_cgroup_swap_full(folio) || folio_test_mlocked(folio)))
@@ -2144,8 +2169,13 @@ activate_locked:
 			count_memcg_folio_events(folio, PGACTIVATE, nr_pages);
 		}
 keep_locked:
+/* 加锁之后需要keep的情况,
+比如不能unmap页面 */
 		folio_unlock(folio);
+
 keep:
+/* 这里是保留不回收, 可能因为
+1, 无法lock */
 		list_add(&folio->lru, &ret_folios);
 		VM_BUG_ON_FOLIO(folio_test_lru(folio) ||
 				folio_test_unevictable(folio), folio);
@@ -2282,7 +2312,8 @@ static bool skip_cma(struct folio *folio, struct scan_control *sc)
 #endif
 
 /*
-从lruvec进行isolate页面到dst
+从lruvec进行isolate页面到dst.
+try_get, 清除lru之后, 加入dst
  * Isolating page from the lruvec to fill in @dst list by nr_to_scan times.
  *
  * lruvec->lru_lock is heavily contended.  Some of the functions that
@@ -2359,6 +2390,9 @@ static unsigned long isolate_lru_folios(unsigned long nr_to_scan,
 		 * sure the folio is not being freed elsewhere -- the
 		 * folio release code relies on it.
 		 */
+
+		 /* 先tryget : 
+		 然后clear lru : 需要防止race */
 		if (unlikely(!folio_try_get(folio)))
 			goto move;
 
@@ -2389,6 +2423,7 @@ move:/* 默认的move是move到src */
 		int zid;
 
 		list_splice(&folios_skipped, src);
+		/* 处理每一个有跳过页面的zone */
 		for (zid = 0; zid < MAX_NR_ZONES; zid++) {
 			if (!nr_skipped[zid])
 				continue;
@@ -2494,6 +2529,10 @@ static int too_many_isolated(struct pglist_data *pgdat, int file,
 }
 
 /*
+把list里面的folio重新加入lruvec.
+如果是unevictable, 就putback
+如果put之后无人引用了, free
+然后执行add folio
  * move_folios_to_lru() moves folios from private @list to appropriate LRU list.
  * On return, @list is reused as a list of folios to be freed by the caller.
  *
@@ -2503,15 +2542,19 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 		struct list_head *list)
 {
 	int nr_pages, nr_moved = 0;
-	LIST_HEAD(folios_to_free);
+	LIST_HEAD(folios_to_free);/* 这里存储加入lru之前发现没人引用了的folio */
 
 	while (!list_empty(list)) {
+		/* 取一个folio */
 		struct folio *folio = lru_to_folio(list);
 
 		VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
+		/* 移出此folio */
 		list_del(&folio->lru);
-		if (unlikely(!folio_evictable(folio))) {
+
+		if (unlikely(!folio_evictable(folio))) {/* 如果folio是unevictable */
 			spin_unlock_irq(&lruvec->lru_lock);
+			/* 放回lru */
 			folio_putback_lru(folio);
 			spin_lock_irq(&lruvec->lru_lock);
 			continue;
@@ -2530,7 +2573,8 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 		 */
 		folio_set_lru(folio);
 
-		if (unlikely(folio_put_testzero(folio))) {
+		if (unlikely(folio_put_testzero(folio))) {/* 如果put之后
+		就没人引用了 */
 			__folio_clear_lru_flags(folio);
 
 			if (unlikely(folio_test_large(folio))) {
@@ -2548,6 +2592,7 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 		 * inhibits memcg migration).
 		 */
 		VM_BUG_ON_FOLIO(!folio_matches_lruvec(folio, lruvec), folio);
+
 		lruvec_add_folio(lruvec, folio);
 		nr_pages = folio_nr_pages(folio);
 		nr_moved += nr_pages;
@@ -2574,6 +2619,7 @@ static int current_may_throttle(void)
 }
 
 /*
+回收页面
  * shrink_inactive_list() is a helper for shrink_node().  It returns the number
  * of reclaimed pages
  */
@@ -2607,14 +2653,17 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 	lru_add_drain();
 
 	spin_lock_irq(&lruvec->lru_lock);
-
+	
+	/* isolate页面到folio_list */
 	nr_taken = isolate_lru_folios(nr_to_scan, lruvec, &folio_list,
 				     &nr_scanned, sc, lru);
 
 	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, nr_taken);
+	
 	item = PGSCAN_KSWAPD + reclaimer_offset();
 	if (!cgroup_reclaim(sc))
 		__count_vm_events(item, nr_scanned);
+
 	__count_memcg_events(lruvec_memcg(lruvec), item, nr_scanned);
 	__count_vm_events(PGSCAN_ANON + file, nr_scanned);
 
@@ -2623,6 +2672,7 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 	if (nr_taken == 0)
 		return 0;
 
+	/* 这里开始回收isolate的folio */
 	nr_reclaimed = shrink_folio_list(&folio_list, pgdat, sc, &stat, false);
 
 	spin_lock_irq(&lruvec->lru_lock);
@@ -2677,6 +2727,7 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 
 	trace_mm_vmscan_lru_shrink_inactive(pgdat->node_id,
 			nr_scanned, nr_reclaimed, &stat, sc->priority, file);
+
 	return nr_reclaimed;
 }
 
@@ -2707,7 +2758,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 	unsigned long nr_scanned;
 	unsigned long vm_flags;
 	LIST_HEAD(l_hold);	/* The folios which were snipped off */
-	LIST_HEAD(l_active);
+	LIST_HEAD(l_active); /* 存储从l_hold里面"拯救"的folio? */
 	LIST_HEAD(l_inactive);
 	unsigned nr_deactivate, nr_activate;
 	unsigned nr_rotated = 0;
@@ -2718,7 +2769,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 
 	spin_lock_irq(&lruvec->lru_lock);
 
-	/* isolate页面到l_hold */
+	/* isolate页面(清除lru标记)到l_hold */
 	nr_taken = isolate_lru_folios(nr_to_scan, lruvec, &l_hold,
 				     &nr_scanned, sc, lru);
 
@@ -2726,11 +2777,12 @@ static void shrink_active_list(unsigned long nr_to_scan,
 
 	if (!cgroup_reclaim(sc))
 		__count_vm_events(PGREFILL, nr_scanned);
+
 	__count_memcg_events(lruvec_memcg(lruvec), PGREFILL, nr_scanned);
 
 	spin_unlock_irq(&lruvec->lru_lock);
 
-	while (!list_empty(&l_hold)) {
+	while (!list_empty(&l_hold)) {/* 逐个处理isolate取下的页面 */
 		struct folio *folio;
 
 		cond_resched();
@@ -2744,7 +2796,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 
 		if (unlikely(buffer_heads_over_limit)) {
 			if (folio_needs_release(folio) &&
-			    folio_trylock(folio)) {
+			    folio_trylock(folio)) { /* 如果有priv ,并且需要释放 */
 				filemap_release_folio(folio, 0);
 				folio_unlock(folio);
 			}
@@ -2752,7 +2804,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 
 		/* Referenced or rmap lock contention: rotate */
 		if (folio_referenced(folio, 0, sc->target_mem_cgroup,
-				     &vm_flags) != 0) {
+				     &vm_flags) != 0) {/* 如果有pte映射folio */
 			/*
 			 * Identify referenced, file-backed active folios and
 			 * give them one more trip around the active list. So
@@ -2763,7 +2815,9 @@ static void shrink_active_list(unsigned long nr_to_scan,
 			 * so we ignore them here.
 			 */
 			if ((vm_flags & VM_EXEC) && folio_is_file_lru(folio)) {
+
 				nr_rotated += folio_nr_pages(folio);
+				/* 不移到inactive, 反而移到active.  */
 				list_add(&folio->lru, &l_active);
 				continue;
 			}
@@ -2771,6 +2825,8 @@ static void shrink_active_list(unsigned long nr_to_scan,
 
 		folio_clear_active(folio);	/* we are de-activating */
 		folio_set_workingset(folio);
+
+		/* 加入到inactive */
 		list_add(&folio->lru, &l_inactive);
 	}
 
@@ -2778,10 +2834,12 @@ static void shrink_active_list(unsigned long nr_to_scan,
 	 * Move folios back to the lru list.
 	 */
 	spin_lock_irq(&lruvec->lru_lock);
-
+	/* 把这些要active或者inactive的folio, 放回去 */
 	nr_activate = move_folios_to_lru(lruvec, &l_active);
 	nr_deactivate = move_folios_to_lru(lruvec, &l_inactive);
+	/* list里面余下的都是放回过程中发现是free的 */
 	/* Keep all free folios in l_active list */
+	/* 把free的集中到一起 */
 	list_splice(&l_inactive, &l_active);
 
 	__count_vm_events(PGDEACTIVATE, nr_deactivate);
@@ -2790,9 +2848,13 @@ static void shrink_active_list(unsigned long nr_to_scan,
 	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, -nr_taken);
 	spin_unlock_irq(&lruvec->lru_lock);
 
+
 	if (nr_rotated)
 		lru_note_cost(lruvec, file, 0, nr_rotated);
+	
+	/* 现在l_active里面都是free的, 无人引用的, 准备free */
 	mem_cgroup_uncharge_list(&l_active);
+
 	free_unref_page_list(&l_active);
 	trace_mm_vmscan_lru_shrink_active(pgdat->node_id, nr_taken, nr_activate,
 			nr_deactivate, nr_rotated, sc->priority, file);
@@ -2854,7 +2916,7 @@ unsigned long reclaim_pages(struct list_head *folio_list)
 
 	return nr_reclaimed;
 }
-
+/*  */
 static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 				 struct lruvec *lruvec, struct scan_control *sc)
 {

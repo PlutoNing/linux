@@ -1883,7 +1883,7 @@ struct hstate *size_to_hstate(unsigned long size)
 	}
 	return NULL;
 }
-
+/*  */
 void free_huge_folio(struct folio *folio)
 {
 	/*

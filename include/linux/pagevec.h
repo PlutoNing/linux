@@ -17,6 +17,7 @@
 struct folio;
 
 /**
+folio的集合.
  * struct folio_batch - A collection of folios.
  *
  * The folio_batch is used to amortise the cost of retrieving and
@@ -42,23 +43,25 @@ static inline void folio_batch_init(struct folio_batch *fbatch)
 	fbatch->nr = 0;
 	fbatch->percpu_pvec_drained = false;
 }
-
+/*  */
 static inline void folio_batch_reinit(struct folio_batch *fbatch)
 {
 	fbatch->nr = 0;
 }
-
+/*  */
 static inline unsigned int folio_batch_count(struct folio_batch *fbatch)
 {
 	return fbatch->nr;
 }
-
+/* 是否还有剩余空间 */
 static inline unsigned int folio_batch_space(struct folio_batch *fbatch)
 {
 	return PAGEVEC_SIZE - fbatch->nr;
 }
 
 /**
+把folio加入fbatch.
+返回剩余空间的数量, 0表示已满
  * folio_batch_add() - Add a folio to a batch.
  * @fbatch: The folio batch.
  * @folio: The folio to add.

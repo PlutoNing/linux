@@ -271,6 +271,7 @@ static inline unsigned long _compound_head(const struct page *page)
 	struct page *:		(struct folio *)_compound_head(p)))
 
 /**
+获取folio的第n个页面?
  * folio_page - Return a page from a folio.
  * @folio: The folio.
  * @n: The page number to return.
@@ -534,6 +535,7 @@ PAGEFLAG_FALSE(HighMem, highmem)
 #endif
 
 #ifdef CONFIG_SWAP
+/* 是交换页,并且已经进入swp cache */
 static __always_inline bool folio_test_swapcache(struct folio *folio)
 {
 	return folio_test_swapbacked(folio) &&
@@ -606,6 +608,8 @@ PAGEFLAG_FALSE(VmemmapSelfHosted, vmemmap_self_hosted)
 #endif
 
 /*
+匿名页的mapping指向av, PAGE_MAPPING_ANON
+
  * On an anonymous page mapped into a user virtual memory area,
  * page->mapping points to its anon_vma, not to a struct address_space;
  * with the PAGE_MAPPING_ANON bit set to distinguish it.  See rmap.h.
@@ -631,6 +635,7 @@ PAGEFLAG_FALSE(VmemmapSelfHosted, vmemmap_self_hosted)
 #define PAGE_MAPPING_ANON	0x1
 #define PAGE_MAPPING_MOVABLE	0x2
 #define PAGE_MAPPING_KSM	(PAGE_MAPPING_ANON | PAGE_MAPPING_MOVABLE)
+/* 就是0x11? */
 #define PAGE_MAPPING_FLAGS	(PAGE_MAPPING_ANON | PAGE_MAPPING_MOVABLE)
 
 /*
@@ -648,7 +653,7 @@ static __always_inline int PageMappingFlags(struct page *page)
 {
 	return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) != 0;
 }
-
+/* 如果是匿名mapping */
 static __always_inline bool folio_test_anon(struct folio *folio)
 {
 	return ((unsigned long)folio->mapping & PAGE_MAPPING_ANON) != 0;
@@ -1096,7 +1101,7 @@ static inline int page_has_private(struct page *page)
 {
 	return !!(page->flags & PAGE_FLAGS_PRIVATE);
 }
-
+/*  */
 static inline bool folio_has_private(struct folio *folio)
 {
 	return page_has_private(&folio->page);
