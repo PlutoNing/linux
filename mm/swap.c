@@ -755,12 +755,13 @@ void folio_mark_lazyfree(struct folio *folio)
 		local_unlock(&cpu_fbatches.lock);
 	}
 }
-
+/*  */
 void lru_add_drain(void)
 {
 	local_lock(&cpu_fbatches.lock);
 	lru_add_drain_cpu(smp_processor_id());
 	local_unlock(&cpu_fbatches.lock);
+	
 	mlock_drain_local();
 }
 

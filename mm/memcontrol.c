@@ -6935,6 +6935,7 @@ static unsigned long effective_protection(unsigned long usage,
 }
 
 /**
+检查的意义是?
  * mem_cgroup_calculate_protection - check if memory consumption is in the normal range
  * @root: the top ancestor of the sub-tree being checked
  * @memcg: the memory cgroup to check

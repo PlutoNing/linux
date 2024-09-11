@@ -97,6 +97,8 @@ struct scan_control {
 #define DEACTIVATE_ANON 1
 #define DEACTIVATE_FILE 2
 	unsigned int may_deactivate:2;
+	/* 这两个bit位记录是否可以强制inactive对应bit代表的文件页或者匿名页 */
+
 	unsigned int force_deactivate:1;
 	unsigned int skipped_deactivate:1;
 
@@ -131,7 +133,8 @@ struct scan_control {
 	/* There is easily reclaimable cold cache in the current node */
 	unsigned int cache_trim_mode:1;
 
-	/* The file folios on the current node are dangerously low */
+	/* The file folios on the current node are dangerously low
+	当前node的文件页是不是太少了 ? */
 	unsigned int file_is_tiny:1;
 
 	/* Always discard instead of demoting to lower tier memory */
@@ -439,6 +442,8 @@ static bool cgroup_reclaim(struct scan_control *sc)
 }
 
 /*
+看看是不是全局回收或者根memcg回收
+但是这两者有区别吗?
  * Returns true for reclaim on the root cgroup. This is true for direct
  * allocator reclaim and reclaim through cgroup interfaces on the root cgroup.
  */
@@ -604,7 +609,8 @@ static bool can_demote(int nid, struct scan_control *sc)
 
 	return true;
 }
-
+/* 根据sc回收此memcg在此node上面的lruvec.
+计算还能否回收匿名页  */
 static inline bool can_reclaim_anon_pages(struct mem_cgroup *memcg,
 					  int nid,
 					  struct scan_control *sc)
@@ -2916,7 +2922,7 @@ unsigned long reclaim_pages(struct list_head *folio_list)
 
 	return nr_reclaimed;
 }
-/*  */
+/* 回收lru页面 */
 static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 				 struct lruvec *lruvec, struct scan_control *sc)
 {
@@ -2932,6 +2938,7 @@ static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 }
 
 /*
+看看lruvec这个lru类型的inactive的数量是不是过少了.
  * The inactive anon list should be small enough that the VM never has
  * to do too much work.
  *
@@ -2984,7 +2991,10 @@ enum scan_balance {
 	SCAN_ANON,
 	SCAN_FILE,
 };
-
+/* 2024年09月11日11:28:06
+与sc的may_deactivate有关.
+根据node的情况设置了一些sc的属性.
+ */
 static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 {
 	unsigned long file;
@@ -3003,6 +3013,7 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 
 	/*
 	 * Determine the scan balance between anon and file LRUs.
+	 取得对匿名页和文件页的偏好?
 	 */
 	spin_lock_irq(&target_lruvec->lru_lock);
 	sc->anon_cost = target_lruvec->anon_cost;
@@ -3014,6 +3025,8 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 	 * and file LRU lists.
 	 */
 	if (!sc->force_deactivate) {
+		/* 如果不是强制都可以deactivate, 下面分别计算然后决定要不要deactivate匿名页
+		或者文件页 */
 		unsigned long refaults;
 
 		/*
@@ -3021,13 +3034,16 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 		 * workingset is being established. Deactivate to get
 		 * rid of any stale active pages quickly.
 		 */
+
+		/* 先计算是否强制deactivate匿名页 */
 		refaults = lruvec_page_state(target_lruvec,
 				WORKINGSET_ACTIVATE_ANON);
 		if (refaults != target_lruvec->refaults[WORKINGSET_ANON] ||
 			inactive_is_low(target_lruvec, LRU_INACTIVE_ANON))
-			sc->may_deactivate |= DEACTIVATE_ANON;
+			sc->may_deactivate |= DEACTIVATE_ANON; /*  */
 		else
 			sc->may_deactivate &= ~DEACTIVATE_ANON;
+
 
 		refaults = lruvec_page_state(target_lruvec,
 				WORKINGSET_ACTIVATE_FILE);
@@ -3036,7 +3052,8 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 			sc->may_deactivate |= DEACTIVATE_FILE;
 		else
 			sc->may_deactivate &= ~DEACTIVATE_FILE;
-	} else
+
+	} else /* 如果是强制deactivate, 就置位两者,表示都可以强制inactive.   */
 		sc->may_deactivate = DEACTIVATE_ANON | DEACTIVATE_FILE;
 
 	/*
@@ -3059,7 +3076,7 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 	 * thrashing file LRU becomes infinitely more attractive than
 	 * anon pages.  Try to detect this based on file LRU size.
 	 */
-	if (!cgroup_reclaim(sc)) {
+	if (!cgroup_reclaim(sc)) {/* 如果是全局回收的话 */
 		unsigned long total_high_wmark = 0;
 		unsigned long free, anon;
 		int z;
@@ -3068,6 +3085,7 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 		file = node_page_state(pgdat, NR_ACTIVE_FILE) +
 			   node_page_state(pgdat, NR_INACTIVE_FILE);
 
+		/* 统计每个区的高水位之和? */
 		for (z = 0; z < MAX_NR_ZONES; z++) {
 			struct zone *zone = &pgdat->node_zones[z];
 
@@ -3092,6 +3110,7 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 }
 
 /*
+根据sc回收此lruvec时获取扫描和回收的数量.
  * Determine how aggressively the anon and file LRU lists should be
  * scanned.
  *
@@ -3112,7 +3131,8 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 	enum lru_list lru;
 
 	/* If we have no swap space, do not bother scanning anon folios. */
-	if (!sc->may_swap || !can_reclaim_anon_pages(memcg, pgdat->node_id, sc)) {
+	if (!sc->may_swap || !can_reclaim_anon_pages(memcg, pgdat->node_id, sc)) {/* 如果不能交换,
+	或者没有交换空间了.  */
 		scan_balance = SCAN_FILE;
 		goto out;
 	}
@@ -3186,6 +3206,7 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 	fraction[0] = ap;
 	fraction[1] = fp;
 	denominator = ap + fp;
+
 out:
 	for_each_evictable_lru(lru) {
 		int file = is_file_lru(lru);
@@ -5583,7 +5604,7 @@ restart:
 	if (bin != first_bin)
 		goto restart;
 }
-
+/* mglru的回收lruvec路径 */
 static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 {
 	struct blk_plug plug;
@@ -6359,7 +6380,7 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 }
 
 #endif /* CONFIG_LRU_GEN */
-
+/* 回收lruvec的内存, 回收谋node内存, 这个是某个子memcg的lruvec */
 static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 {
 	unsigned long nr[NR_LRU_LISTS];
@@ -6396,13 +6417,14 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 				sc->priority == DEF_PRIORITY);
 
 	blk_start_plug(&plug);
+	/* 只要还有文件页和不活跃匿名页 */
 	while (nr[LRU_INACTIVE_ANON] || nr[LRU_ACTIVE_FILE] ||
 					nr[LRU_INACTIVE_FILE]) {
 		unsigned long nr_anon, nr_file, percentage;
 		unsigned long nr_scanned;
 
 		for_each_evictable_lru(lru) {
-			if (nr[lru]) {
+			if (nr[lru]) {/* 这个lru还有可回收的 */
 				nr_to_scan = min(nr[lru], SWAP_CLUSTER_MAX);
 				nr[lru] -= nr_to_scan;
 
@@ -6472,8 +6494,7 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	 * Even if we did not try to evict anon pages at all, we want to
 	 * rebalance the anon lru active/inactive ratio.
 	 */
-	if (can_age_anon_pages(lruvec_pgdat(lruvec), sc) &&
-	    inactive_is_low(lruvec, LRU_INACTIVE_ANON))
+	if (can_age_anon_pages(lruvec_pgdat(lruvec), sc) && inactive_is_low(lruvec, LRU_INACTIVE_ANON))
 		shrink_active_list(SWAP_CLUSTER_MAX, lruvec,
 				   sc, LRU_ACTIVE_ANON);
 }
@@ -6547,7 +6568,8 @@ static inline bool should_continue_reclaim(struct pglist_data *pgdat,
 
 	return inactive_lru_pages > pages_for_compaction;
 }
-
+/* 回收此node的内存
+遍历memcg,逐个回收 */
 static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 {
 	struct mem_cgroup *target_memcg = sc->target_mem_cgroup;
@@ -6582,13 +6604,13 @@ static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 			 * there is an unprotected supply
 			 * of reclaimable memory from other cgroups.
 			 */
-			if (!sc->memcg_low_reclaim) {
+			if (!sc->memcg_low_reclaim) {/* 如果不回收low的话,就跳过 */
 				sc->memcg_low_skipped = 1;
 				continue;
 			}
 			memcg_memory_event(memcg, MEMCG_LOW);
 		}
-
+		/* 决定回收 */
 		reclaimed = sc->nr_reclaimed;
 		scanned = sc->nr_scanned;
 
@@ -6605,7 +6627,7 @@ static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 
 	} while ((memcg = mem_cgroup_iter(target_memcg, memcg, NULL)));
 }
-
+/* 回收node的内存 */
 static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 {
 	unsigned long nr_reclaimed, nr_scanned, nr_node_reclaimed;
@@ -6616,7 +6638,7 @@ static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 		lru_gen_shrink_node(pgdat, sc);
 		return;
 	}
-
+	/* 如果是memcg回收, 就走下面路径.  */
 	target_lruvec = mem_cgroup_lruvec(sc->target_mem_cgroup, pgdat);
 
 again:
@@ -6624,9 +6646,9 @@ again:
 
 	nr_reclaimed = sc->nr_reclaimed;
 	nr_scanned = sc->nr_scanned;
-
+	/* 设置sc的属性 */
 	prepare_scan_count(pgdat, sc);
-
+	/* 这里进行实质的回收 */
 	shrink_node_memcgs(pgdat, sc);
 
 	flush_reclaim_state(sc);
