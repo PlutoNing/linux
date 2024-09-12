@@ -28,6 +28,7 @@ typedef u32 __bitwise blk_status_t;
 #else
 typedef u8 __bitwise blk_status_t;
 #endif
+/* blk状态码 */
 #define	BLK_STS_OK 0
 #define BLK_STS_NOTSUPP		((__force blk_status_t)1)
 #define BLK_STS_TIMEOUT		((__force blk_status_t)2)
@@ -175,7 +176,7 @@ struct bio {
 	 * on release of the bio.
 	 cgroup相关
 	 */
-	struct blkcg_gq		*bi_blkg;
+	struct blkcg_gq		*bi_blkg;/* 指向关联的blkgq */
 	struct bio_issue	bi_issue;
 #ifdef CONFIG_BLK_CGROUP_IOCOST
 	u64			bi_iocost_cost;
@@ -187,8 +188,7 @@ struct bio {
 #endif
 	};
 
-	unsigned short		bi_vcnt;	/* 
-	有多少个元素数量
+	unsigned short		bi_vcnt;	/* 有多少个元素数量
 	how many bio_vec's */
 
 	/*
@@ -283,7 +283,9 @@ typedef __u32 __bitwise blk_mq_req_flags_t;
  * If a operation does not transfer data the least significant bit has no
  * meaning.
  */
+ /* 8 */
 #define REQ_OP_BITS	8
+/* 8个1 */
 #define REQ_OP_MASK	((1 << REQ_OP_BITS) - 1)
 #define REQ_FLAG_BITS	24
 /* 2024年8月8日23:00:29
@@ -410,13 +412,15 @@ static inline void bio_set_op_attrs(struct bio *bio, unsigned op,
 {
 	bio->bi_opf = op | op_flags;
 }
-
+/* 判断bio是不是写的?
+参数是bio的bi_opf的右边8比特 */
 static inline bool op_is_write(unsigned int op)
 {
 	return (op & 1);
 }
 
 /*
+判断是不是"flush state machine"的需要特殊处理的
  * Check if the bio or request is one that needs special treatment in the
  * flush state machine.
  */

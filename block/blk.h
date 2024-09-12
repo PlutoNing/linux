@@ -289,6 +289,7 @@ void ioc_clear_queue(struct request_queue *q);
 int create_task_io_context(struct task_struct *task, gfp_t gfp_mask, int node);
 
 /**
+不存在的情况下,创建pcb的io_ctx
  * create_io_context - try to create task->io_context
  * @gfp_mask: allocation mask
  * @node: allocation node
@@ -305,6 +306,7 @@ static inline struct io_context *create_io_context(gfp_t gfp_mask, int node)
 	WARN_ON_ONCE(irqs_disabled());
 	if (unlikely(!current->io_context))
 		create_task_io_context(current, gfp_mask, node);
+
 	return current->io_context;
 }
 

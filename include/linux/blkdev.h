@@ -460,6 +460,7 @@ struct request_queue {
 
 	/*
 	 * various queue flags, see QUEUE_* below
+
 	 */
 	unsigned long		queue_flags;
 	/*
@@ -564,7 +565,7 @@ struct request_queue {
 	 */
 	unsigned int		sg_timeout;
 	unsigned int		sg_reserved_size;
-	int			node;
+	int			node;/* 内存节点, 不知道rq要内存节点做什么用 */
 #ifdef CONFIG_BLK_DEV_IO_TRACE
 	struct blk_trace	*blk_trace;
 	struct mutex		blk_trace_mutex;
@@ -674,6 +675,7 @@ bool blk_queue_flag_test_and_set(unsigned int flag, struct request_queue *q);
 #define blk_queue_nonrot(q)	test_bit(QUEUE_FLAG_NONROT, &(q)->queue_flags)
 #define blk_queue_io_stat(q)	test_bit(QUEUE_FLAG_IO_STAT, &(q)->queue_flags)
 #define blk_queue_add_random(q)	test_bit(QUEUE_FLAG_ADD_RANDOM, &(q)->queue_flags)
+/*  */
 #define blk_queue_discard(q)	test_bit(QUEUE_FLAG_DISCARD, &(q)->queue_flags)
 #define blk_queue_zone_resetall(q)	\
 	test_bit(QUEUE_FLAG_ZONE_RESETALL, &(q)->queue_flags)

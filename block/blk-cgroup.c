@@ -395,6 +395,7 @@ struct blkcg_gq *__blkg_lookup_create(struct blkcg *blkcg,
 }
 
 /**
+找到blkcg里面与rq有关的blkgq. 没有就创建.
  * blkg_lookup_create - find or create a blkg
  * @blkcg: target block cgroup
  * @q: target request_queue
