@@ -89,7 +89,7 @@ struct anon_vma_chain {
 	unsigned long cached_vma_start, cached_vma_last;
 #endif
 };
-
+/* try to unmap的flags */
 enum ttu_flags {
 	TTU_SPLIT_HUGE_PMD	= 0x4,	/* split huge PMD if any */
 	TTU_IGNORE_MLOCK	= 0x8,	/* ignore mlock */

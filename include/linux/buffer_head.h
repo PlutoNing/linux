@@ -463,6 +463,7 @@ int sync_mapping_buffers(struct address_space *mapping);
 void invalidate_bh_lrus(void);
 void invalidate_bh_lrus_cpu(void);
 bool has_bh_in_lru(int cpu, void *dummy);
+/*  */
 extern int buffer_heads_over_limit;
 
 #else /* CONFIG_BUFFER_HEAD */

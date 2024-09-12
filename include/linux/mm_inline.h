@@ -10,6 +10,8 @@
 #include <linux/swapops.h>
 
 /**
+看folio是不是file lru.
+只要不是交换页,就是file.
  * folio_is_file_lru - Should the folio be on a file LRU or anon LRU?
  * @folio: The folio to test.
  *
@@ -77,6 +79,8 @@ static __always_inline void __folio_clear_lru_flags(struct folio *folio)
 }
 
 /**
+获取folio应该归属的lru.
+unevictable, 活跃与否的文件或者匿名页
  * folio_lru_list - Which LRU list should a folio be on?
  * @folio: The folio to test.
  *
@@ -155,14 +159,16 @@ static inline int folio_lru_refs(struct folio *folio)
 	 */
 	return ((flags & LRU_REFS_MASK) >> LRU_REFS_PGOFF) + workingset;
 }
-
+/* 获取folio的gen.
+存储在flags里面. */
 static inline int folio_lru_gen(struct folio *folio)
 {
 	unsigned long flags = READ_ONCE(folio->flags);
 
 	return ((flags & LRU_GEN_MASK) >> LRU_GEN_PGOFF) - 1;
 }
-
+/* 判断lruvec的这个gen是不是活跃
+max_seq以及max_seq-1是活跃的. */
 static inline bool lru_gen_is_active(struct lruvec *lruvec, int gen)
 {
 	unsigned long max_seq = lruvec->lrugen.max_seq;
@@ -172,13 +178,15 @@ static inline bool lru_gen_is_active(struct lruvec *lruvec, int gen)
 	/* see the comment on MIN_NR_GENS */
 	return gen == lru_gen_from_seq(max_seq) || gen == lru_gen_from_seq(max_seq - 1);
 }
-
+/* 把folio从old_gen移到new_gen, 这里更新统计信息 */
 static inline void lru_gen_update_size(struct lruvec *lruvec, struct folio *folio,
 				       int old_gen, int new_gen)
 {
 	int type = folio_is_file_lru(folio);
 	int zone = folio_zonenum(folio);
 	int delta = folio_nr_pages(folio);
+	/* 如果是file type lru, 这里就是inactive的file, 否则就是
+	inactive的anon. */
 	enum lru_list lru = type * LRU_INACTIVE_FILE;
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
 
@@ -186,17 +194,18 @@ static inline void lru_gen_update_size(struct lruvec *lruvec, struct folio *foli
 	VM_WARN_ON_ONCE(new_gen != -1 && new_gen >= MAX_NR_GENS);
 	VM_WARN_ON_ONCE(old_gen == -1 && new_gen == -1);
 
-	if (old_gen >= 0)
+	if (old_gen >= 0)/* 说明确实是移动的,而不是添加的. */
 		WRITE_ONCE(lrugen->nr_pages[old_gen][type][zone],
 			   lrugen->nr_pages[old_gen][type][zone] - delta);
-	if (new_gen >= 0)
+
+	if (new_gen >= 0)/* 说明是移动到新地方了, 而不是删除. */
 		WRITE_ONCE(lrugen->nr_pages[new_gen][type][zone],
 			   lrugen->nr_pages[new_gen][type][zone] + delta);
 
 	/* addition */
-	if (old_gen < 0) {
+	if (old_gen < 0) { /* 添加folio */
 		if (lru_gen_is_active(lruvec, new_gen))
-			lru += LRU_ACTIVE;
+			lru += LRU_ACTIVE; /* 如果添加到了活跃的gen */
 		__update_lru_size(lruvec, lru, zone, delta);
 		return;
 	}
@@ -218,7 +227,10 @@ static inline void lru_gen_update_size(struct lruvec *lruvec, struct folio *foli
 	/* demotion requires isolation, e.g., lru_deactivate_fn() */
 	VM_WARN_ON_ONCE(lru_gen_is_active(lruvec, old_gen) && !lru_gen_is_active(lruvec, new_gen));
 }
-
+/* 把folio加到lruvec.
+获取代数
+存储flags
+加入[gen][type][zone] */
 static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio, bool reclaiming)
 {
 	unsigned long seq;
@@ -230,7 +242,8 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 
 	VM_WARN_ON_ONCE_FOLIO(gen != -1, folio);
 
-	if (folio_test_unevictable(folio) || !lrugen->enabled)
+	if (folio_test_unevictable(folio) || !lrugen->enabled)/* 为什么
+	这里不添加unevictable的? */
 		return false;
 	/*
 	 * There are three common cases for this page:
@@ -242,15 +255,20 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 	 * 3. Everything else (clean, cold) is added to the oldest generation.
 	 */
 	if (folio_test_active(folio))
-		seq = lrugen->max_seq;
+		seq = lrugen->max_seq; /* 活跃的话, 就是最新的gen */
 	else if ((type == LRU_GEN_ANON && !folio_test_swapcache(folio)) ||
 		 (folio_test_reclaim(folio) &&
-		  (folio_test_dirty(folio) || folio_test_writeback(folio))))
-		seq = lrugen->min_seq[type] + 1;
+		  (folio_test_dirty(folio) || folio_test_writeback(folio)))) /* 如果,
+		  是交换页但是,没分配swp cache.
+		  或者folio回收, 并且是脏页或者写回. */
+		seq = lrugen->min_seq[type] + 1; /* 这里放到次老一代. */
 	else
-		seq = lrugen->min_seq[type];
+		seq = lrugen->min_seq[type]; /* 否则就是最老一代 */
 
+	/* 获取刚刚设置的gen数 */
 	gen = lru_gen_from_seq(seq);
+
+	/* 把gen存储flags */
 	flags = (gen + 1UL) << LRU_GEN_PGOFF;
 	/* see the comment on MIN_NR_GENS about PG_active */
 	set_mask_bits(&folio->flags, LRU_GEN_MASK | BIT(PG_active), flags);
@@ -264,7 +282,11 @@ static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio,
 
 	return true;
 }
+/* 
 
+从lru移除folio.
+也更新到old gen到new gen的size信息
+ */
 static inline bool lru_gen_del_folio(struct lruvec *lruvec, struct folio *folio, bool reclaiming)
 {
 	unsigned long flags;
@@ -279,6 +301,7 @@ static inline bool lru_gen_del_folio(struct lruvec *lruvec, struct folio *folio,
 	/* for folio_migrate_flags() */
 	flags = !reclaiming && lru_gen_is_active(lruvec, gen) ? BIT(PG_active) : 0;
 	flags = set_mask_bits(&folio->flags, LRU_GEN_MASK, flags);
+
 	gen = ((flags & LRU_GEN_MASK) >> LRU_GEN_PGOFF) - 1;
 
 	lru_gen_update_size(lruvec, folio, gen, -1);
@@ -310,7 +333,7 @@ static inline bool lru_gen_del_folio(struct lruvec *lruvec, struct folio *folio,
 }
 
 #endif /* CONFIG_LRU_GEN */
-
+/* 把folio加到lru */
 static __always_inline
 void lruvec_add_folio(struct lruvec *lruvec, struct folio *folio)
 {
@@ -338,7 +361,7 @@ void lruvec_add_folio_tail(struct lruvec *lruvec, struct folio *folio)
 	/* This is not expected to be used on LRU_UNEVICTABLE */
 	list_add_tail(&folio->lru, &lruvec->lists[lru]);
 }
-
+/* 从lruvec移除folio? */
 static __always_inline
 void lruvec_del_folio(struct lruvec *lruvec, struct folio *folio)
 {

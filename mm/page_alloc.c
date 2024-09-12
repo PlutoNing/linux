@@ -587,7 +587,7 @@ void prep_compound_page(struct page *page, unsigned int order)
 
 	prep_compound_head(page, order);
 }
-
+/* 销毁多页面的folio */
 void destroy_large_folio(struct folio *folio)
 {
 	if (folio_test_hugetlb(folio)) {

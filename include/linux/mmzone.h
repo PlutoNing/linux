@@ -280,7 +280,7 @@ enum vmscan_throttle_state {
 #define for_each_lru(lru) for (lru = 0; lru < NR_LRU_LISTS; lru++)
 
 #define for_each_evictable_lru(lru) for (lru = 0; lru <= LRU_ACTIVE_FILE; lru++)
-
+/* 返回是否是file lru */
 static inline bool is_file_lru(enum lru_list lru)
 {
 	return (lru == LRU_INACTIVE_FILE || lru == LRU_ACTIVE_FILE);
@@ -372,7 +372,7 @@ enum lruvec_flags {
 
 struct lruvec;
 struct page_vma_mapped_walk;
-
+/*  */
 #define LRU_GEN_MASK		((BIT(LRU_GEN_WIDTH) - 1) << LRU_GEN_PGOFF)
 #define LRU_REFS_MASK		((BIT(LRU_REFS_WIDTH) - 1) << LRU_REFS_PGOFF)
 
@@ -631,6 +631,7 @@ struct lruvec {
 	 * These track the cost of reclaiming one LRU - file or anon -
 	 * over the other. As the observed cost of reclaiming one LRU
 	 * increases, the reclaim scan balance tips toward the other.
+	 这里记录回收的开销,如果变高,会偏向于回收另外一种lru
 	 */
 	unsigned long			anon_cost;
 	unsigned long			file_cost;
@@ -1058,7 +1059,9 @@ static inline bool zone_is_empty(struct zone *zone)
 #define NODES_PGOFF		(SECTIONS_PGOFF - NODES_WIDTH)
 #define ZONES_PGOFF		(NODES_PGOFF - ZONES_WIDTH)
 #define LAST_CPUPID_PGOFF	(ZONES_PGOFF - LAST_CPUPID_WIDTH)
+
 #define KASAN_TAG_PGOFF		(LAST_CPUPID_PGOFF - KASAN_TAG_WIDTH)
+/*  */
 #define LRU_GEN_PGOFF		(KASAN_TAG_PGOFF - LRU_GEN_WIDTH)
 #define LRU_REFS_PGOFF		(LRU_GEN_PGOFF - LRU_REFS_WIDTH)
 

@@ -152,14 +152,15 @@ static inline int folio_ref_sub_return(struct folio *folio, int nr)
 {
 	return page_ref_sub_return(&folio->page, nr);
 }
-
+/*  */
 static inline void page_ref_inc(struct page *page)
 {
 	atomic_inc(&page->_refcount);
+	
 	if (page_ref_tracepoint_active(page_ref_mod))
 		__page_ref_mod(page, 1);
 }
-
+/* 增加引用计数 */
 static inline void folio_ref_inc(struct folio *folio)
 {
 	page_ref_inc(&folio->page);

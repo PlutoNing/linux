@@ -68,6 +68,7 @@ void page_writeback_init(void);
 #define SHOW_MEM_FILTER_NODES		(0x0001u)	/* disallowed nodes */
 
 /*
+folio内部被mapped的页面数量?
  * How many individual pages have an elevated _mapcount.  Excludes
  * the folio's entire_mapcount.
  */
@@ -143,6 +144,8 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 		pgoff_t start, pgoff_t end, unsigned long *nr_failed);
 
 /**
+folio是不是evictable
+需要mapping是evictable, 并且不能mlocked
  * folio_evictable - Test whether a folio is evictable.
  * @folio: The folio to test.
  *
@@ -162,6 +165,7 @@ static inline bool folio_evictable(struct folio *folio)
 	ret = !mapping_unevictable(folio_mapping(folio)) &&
 			!folio_test_mlocked(folio);
 	rcu_read_unlock();
+
 	return ret;
 }
 
@@ -177,6 +181,7 @@ static inline void set_page_refcounted(struct page *page)
 }
 
 /*
+folio是否有priv, 并且需要释放.
  * Return true if a folio needs ->release_folio() calling upon it.
  */
 static inline bool folio_needs_release(struct folio *folio)
@@ -587,6 +592,7 @@ extern long faultin_vma_page_range(struct vm_area_struct *vma,
 extern bool mlock_future_ok(struct mm_struct *mm, unsigned long flags,
 			       unsigned long bytes);
 /*
+
  * mlock_vma_folio() and munlock_vma_folio():
  * should be called with vma's mmap_lock held for read or write,
  * under page table lock for the pte/pmd being added or removed.
@@ -600,6 +606,7 @@ extern bool mlock_future_ok(struct mm_struct *mm, unsigned long flags,
  * mapping of the THP head cannot be distinguished by the page alone.
  */
 void mlock_folio(struct folio *folio);
+/* folio的mlock */
 static inline void mlock_vma_folio(struct folio *folio,
 			struct vm_area_struct *vma, bool compound)
 {
@@ -612,7 +619,8 @@ static inline void mlock_vma_folio(struct folio *folio,
 	 *    still be set while VM_SPECIAL bits are added: so ignore it then.
 	 */
 	if (unlikely((vma->vm_flags & (VM_LOCKED|VM_SPECIAL)) == VM_LOCKED) &&
-	    (compound || !folio_test_large(folio)))
+	    (compound || !folio_test_large(folio))) /* 仅对locked的普通页面, 单个folio页面
+		或者复合页面操作? */
 		mlock_folio(folio);
 }
 
@@ -670,6 +678,7 @@ vma_address(struct page *page, struct vm_area_struct *vma)
 }
 
 /*
+
  * Then at what user virtual address will none of the range be found in vma?
  * Assumes that vma_address() already returned a good starting address.
  */

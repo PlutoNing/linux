@@ -1285,6 +1285,7 @@ void mem_cgroup_scan_tasks(struct mem_cgroup *memcg,
 }
 
 #ifdef CONFIG_DEBUG_VM
+/*  */
 void lruvec_memcg_debug(struct lruvec *lruvec, struct folio *folio)
 {
 	struct mem_cgroup *memcg;
@@ -1324,6 +1325,7 @@ struct lruvec *folio_lruvec_lock(struct folio *folio)
 }
 
 /**
+上锁并返回folio的lruvec.
  * folio_lruvec_lock_irq - Lock the lruvec for a folio.
  * @folio: Pointer to the folio.
  *
@@ -6933,6 +6935,7 @@ static unsigned long effective_protection(unsigned long usage,
 }
 
 /**
+检查的意义是?
  * mem_cgroup_calculate_protection - check if memory consumption is in the normal range
  * @root: the top ancestor of the sub-tree being checked
  * @memcg: the memory cgroup to check

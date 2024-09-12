@@ -1157,6 +1157,7 @@ static inline int is_vmalloc_or_module_addr(const void *x)
 #endif
 
 /*
+todo?
  * How many times the entire folio is mapped as a single unit (eg by a
  * PMD or PUD entry).  This is probably not what you want, except for
  * debugging purposes - it does not include PTE-mapped sub-pages; look
@@ -1203,6 +1204,7 @@ static inline int page_mapcount(struct page *page)
 int folio_total_mapcount(struct folio *folio);
 
 /**
+获取folio的引用计数
  * folio_mapcount() - Calculate the number of mappings of this folio.
  * @folio: The folio.
  *
@@ -1217,6 +1219,7 @@ static inline int folio_mapcount(struct folio *folio)
 {
 	if (likely(!folio_test_large(folio)))
 		return atomic_read(&folio->_mapcount) + 1;
+
 	return folio_total_mapcount(folio);
 }
 
@@ -1226,7 +1229,7 @@ static inline int total_mapcount(struct page *page)
 		return atomic_read(&page->_mapcount) + 1;
 	return folio_total_mapcount(page_folio(page));
 }
-
+/* 看看多页面folio是否被映射 */
 static inline bool folio_large_is_mapped(struct folio *folio)
 {
 	/*
@@ -1238,6 +1241,7 @@ static inline bool folio_large_is_mapped(struct folio *folio)
 }
 
 /**
+folio是否被映射
  * folio_mapped - Is this folio mapped into userspace?
  * @folio: The folio.
  *
@@ -1247,6 +1251,7 @@ static inline bool folio_mapped(struct folio *folio)
 {
 	if (likely(!folio_test_large(folio)))
 		return atomic_read(&folio->_mapcount) >= 0;
+
 	return folio_large_is_mapped(folio);
 }
 
@@ -1431,6 +1436,7 @@ static inline bool put_devmap_managed_page(struct page *page)
 	((unsigned int) folio_ref_count(folio) + 127u <= 127u)
 
 /**
+get folio的逻辑
  * folio_get - Increment the reference count on a folio.
  * @folio: The folio.
  *
@@ -1517,6 +1523,7 @@ typedef union {
 void release_pages(release_pages_arg, int nr);
 
 /**
+释放这个page数组？
  * folios_put - Decrement the reference count on an array of folios.
  * @folios: The folios.
  * @nr: How many folios there are.
@@ -1855,7 +1862,7 @@ static inline struct zone *folio_zone(const struct folio *folio)
 {
 	return page_zone(&folio->page);
 }
-
+/* 获取folio的node */
 static inline pg_data_t *folio_pgdat(const struct folio *folio)
 {
 	return page_pgdat(&folio->page);

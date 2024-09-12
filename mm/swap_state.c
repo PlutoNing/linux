@@ -164,6 +164,7 @@ void __delete_from_swap_cache(struct folio *folio,
 }
 
 /**
+给folio分配swp空间. 
  * add_to_swap - allocate swap space for a folio
  * @folio: folio we want to move to swap
  *

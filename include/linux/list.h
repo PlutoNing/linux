@@ -535,6 +535,7 @@ static inline void __list_splice(const struct list_head *list,
 }
 
 /**
+2024年09月10日10:10:09
  * list_splice - join two lists, this is designed for stacks
  * @list: the new list to add.
  * @head: the place to add it in the first list.

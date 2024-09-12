@@ -629,7 +629,7 @@ static inline void mem_cgroup_protection(struct mem_cgroup *root,
 
 void mem_cgroup_calculate_protection(struct mem_cgroup *root,
 				     struct mem_cgroup *memcg);
-
+/*  */
 static inline bool mem_cgroup_unprotected(struct mem_cgroup *target,
 					  struct mem_cgroup *memcg)
 {
@@ -651,7 +651,7 @@ static inline bool mem_cgroup_below_low(struct mem_cgroup *target,
 	return READ_ONCE(memcg->memory.elow) >=
 		page_counter_read(&memcg->memory);
 }
-
+/* 看看是不是这个memcg已经很少使用内存了 */
 static inline bool mem_cgroup_below_min(struct mem_cgroup *target,
 					struct mem_cgroup *memcg)
 {
@@ -752,6 +752,9 @@ out:
 }
 
 /**
+
+获取folio的lruvec.
+就是获取所属memcg的所在node的lruvec.
  * folio_lruvec - return lruvec for isolating/putting an LRU folio
  * @folio: Pointer to the folio.
  *
@@ -762,6 +765,7 @@ static inline struct lruvec *folio_lruvec(struct folio *folio)
 	struct mem_cgroup *memcg = folio_memcg(folio);
 
 	VM_WARN_ON_ONCE_FOLIO(!memcg && !mem_cgroup_disabled(), folio);
+
 	return mem_cgroup_lruvec(memcg, folio_pgdat(folio));
 }
 
@@ -1620,7 +1624,7 @@ static inline void unlock_page_lruvec(struct lruvec *lruvec)
 {
 	spin_unlock(&lruvec->lru_lock);
 }
-
+/* unlock lruvec的lru lock */
 static inline void unlock_page_lruvec_irq(struct lruvec *lruvec)
 {
 	spin_unlock_irq(&lruvec->lru_lock);
@@ -1632,7 +1636,10 @@ static inline void unlock_page_lruvec_irqrestore(struct lruvec *lruvec,
 	spin_unlock_irqrestore(&lruvec->lru_lock, flags);
 }
 
-/* Test requires a stable page->memcg binding, see page_memcg() */
+/* 
+判断folio是否属于这个lruvec的这个node?
+只要属于同一个node同一个memcg
+Test requires a stable page->memcg binding, see page_memcg() */
 static inline bool folio_matches_lruvec(struct folio *folio,
 		struct lruvec *lruvec)
 {
@@ -1640,13 +1647,17 @@ static inline bool folio_matches_lruvec(struct folio *folio,
 	       lruvec_memcg(lruvec) == folio_memcg(folio);
 }
 
-/* Don't lock again iff page's lruvec locked */
+/* 
+看看这个老的上锁的lruvec是否还生效合适
+不行的话,就把当前的lruvec获取后上锁,返回.
+Don't lock again iff page's lruvec locked */
 static inline struct lruvec *folio_lruvec_relock_irq(struct folio *folio,
 		struct lruvec *locked_lruvec)
 {
-	if (locked_lruvec) {
+	if (locked_lruvec) {/*  */
 		if (folio_matches_lruvec(folio, locked_lruvec))
-			return locked_lruvec;
+			return locked_lruvec; /* 如果本来有所属的,上锁的lruvec, 并且还是匹配的.
+		就直接返回. */
 
 		unlock_page_lruvec_irq(locked_lruvec);
 	}
