@@ -6485,7 +6485,7 @@ static inline bool should_continue_reclaim(struct pglist_data *pgdat,
 
 	return inactive_lru_pages > pages_for_compaction;
 }
-
+/* 回收此memcg层级在此node上的全部lruvec */
 static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 {
 	struct mem_cgroup *target_memcg = sc->target_mem_cgroup;
