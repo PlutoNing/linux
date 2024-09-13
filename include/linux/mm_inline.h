@@ -35,7 +35,9 @@ static inline int page_is_file_lru(struct page *page)
 {
 	return folio_is_file_lru(page_folio(page));
 }
-
+/* 传统方式和mglru都这个函数更新统计信息
+表示lruvec的zid和lru有变动
+体现不出传统还是mglru的各自信息? */
 static __always_inline void __update_lru_size(struct lruvec *lruvec,
 				enum lru_list lru, enum zone_type zid,
 				long nr_pages)
@@ -49,12 +51,13 @@ static __always_inline void __update_lru_size(struct lruvec *lruvec,
 	__mod_zone_page_state(&pgdat->node_zones[zid],
 				NR_ZONE_LRU_BASE + lru, nr_pages);
 }
-
+/* 传统方式更新lru size? */
 static __always_inline void update_lru_size(struct lruvec *lruvec,
 				enum lru_list lru, enum zone_type zid,
 				long nr_pages)
 {
 	__update_lru_size(lruvec, lru, zid, nr_pages);
+
 #ifdef CONFIG_MEMCG
 	mem_cgroup_update_lru_size(lruvec, lru, zid, nr_pages);
 #endif
@@ -178,7 +181,9 @@ static inline bool lru_gen_is_active(struct lruvec *lruvec, int gen)
 	/* see the comment on MIN_NR_GENS */
 	return gen == lru_gen_from_seq(max_seq) || gen == lru_gen_from_seq(max_seq - 1);
 }
-/* 把folio从old_gen移到new_gen, 这里更新统计信息 */
+/* 把folio从old_gen移到new_gen, 这里更新统计信息 
+也可能是添加mglru之后更新统计信息.
+反正就是有变动的统计信息吧*/
 static inline void lru_gen_update_size(struct lruvec *lruvec, struct folio *folio,
 				       int old_gen, int new_gen)
 {
@@ -206,6 +211,7 @@ static inline void lru_gen_update_size(struct lruvec *lruvec, struct folio *foli
 	if (old_gen < 0) { /* 添加folio */
 		if (lru_gen_is_active(lruvec, new_gen))
 			lru += LRU_ACTIVE; /* 如果添加到了活跃的gen */
+
 		__update_lru_size(lruvec, lru, zone, delta);
 		return;
 	}
@@ -230,7 +236,9 @@ static inline void lru_gen_update_size(struct lruvec *lruvec, struct folio *foli
 /* 把folio加到lruvec.
 获取代数
 存储flags
-加入[gen][type][zone] */
+加入[gen][type][zone] 
+---------------
+返回false表示不支持mglru或者是uneviction页面*/
 static inline bool lru_gen_add_folio(struct lruvec *lruvec, struct folio *folio, bool reclaiming)
 {
 	unsigned long seq;
@@ -333,7 +341,7 @@ static inline bool lru_gen_del_folio(struct lruvec *lruvec, struct folio *folio,
 }
 
 #endif /* CONFIG_LRU_GEN */
-/* 把folio加到lru */
+/* 把folio或者page加到lru */
 static __always_inline
 void lruvec_add_folio(struct lruvec *lruvec, struct folio *folio)
 {
@@ -342,6 +350,8 @@ void lruvec_add_folio(struct lruvec *lruvec, struct folio *folio)
 	if (lru_gen_add_folio(lruvec, folio, false))
 		return;
 
+
+	/* 下面是传统路径? */
 	update_lru_size(lruvec, lru, folio_zonenum(folio),
 			folio_nr_pages(folio));
 	if (lru != LRU_UNEVICTABLE)

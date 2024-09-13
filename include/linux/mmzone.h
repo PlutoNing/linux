@@ -431,7 +431,7 @@ struct lru_gen_folio {
 	这里是lru */
 	struct list_head folios[MAX_NR_GENS][ANON_AND_FILE][MAX_NR_ZONES];
 	/* the multi-gen LRU sizes, eventually consistent
-	这里是lru的大小信息
+	这里是lru的大小信息.
 	不同gen的file或者anon在不同zone都是分开存储的 */
 	long nr_pages[MAX_NR_GENS][ANON_AND_FILE][MAX_NR_ZONES];
 	/* the exponential moving average of refaulted */
@@ -622,7 +622,7 @@ static inline void lru_gen_soft_reclaim(struct mem_cgroup *memcg, int nid)
 #endif /* CONFIG_MEMCG */
 
 #endif /* CONFIG_LRU_GEN */
-
+/* 2024年9月13日00:30:52 */
 struct lruvec {
 	struct list_head		lists[NR_LRU_LISTS];
 	/* per lruvec lru_lock for memcg */

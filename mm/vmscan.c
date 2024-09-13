@@ -3954,6 +3954,7 @@ static void reset_batch_size(struct lruvec *lruvec, struct lru_gen_mm_walk *walk
 			continue;
 
 		walk->nr_pages[gen][type][zone] = 0;
+
 		WRITE_ONCE(lrugen->nr_pages[gen][type][zone],
 			   lrugen->nr_pages[gen][type][zone] + delta);
 
@@ -5272,7 +5273,7 @@ static int isolate_folios(struct lruvec *lruvec, struct scan_control *sc, int sw
 
 	return scanned;
 }
-
+/* 回收mglru */
 static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swappiness)
 {
 	int type;
@@ -5460,7 +5461,7 @@ static unsigned long get_nr_to_reclaim(struct scan_control *sc)
 
 	return max(sc->nr_to_reclaim, compact_gap(sc->order));
 }
-
+/* mglru的shrink方式 */
 static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 {
 	long nr_to_scan;
@@ -5478,7 +5479,7 @@ static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 		nr_to_scan = get_nr_to_scan(lruvec, sc, swappiness);
 		if (nr_to_scan <= 0)
 			break;
-
+		/* 这里进行实质isolate, reclaim. */
 		delta = evict_folios(lruvec, sc, swappiness);
 		if (!delta)
 			break;
@@ -6032,7 +6033,9 @@ static void lru_gen_seq_show_full(struct seq_file *m, struct lruvec *lruvec,
 	seq_putc(m, '\n');
 }
 
-/* see Documentation/admin-guide/mm/multigen_lru.rst for details */
+/* see Documentation/admin-guide/mm/multigen_lru.rst for details 
+显示统计信息?
+*/
 static int lru_gen_seq_show(struct seq_file *m, void *v)
 {
 	unsigned long seq;
@@ -6088,7 +6091,7 @@ static int lru_gen_seq_show(struct seq_file *m, void *v)
 
 	return 0;
 }
-
+/* mglru的fs的相关回调. */
 static const struct seq_operations lru_gen_seq_ops = {
 	.start = lru_gen_seq_start,
 	.stop = lru_gen_seq_stop,
@@ -6263,7 +6266,7 @@ done:
 
 	return err ? : len;
 }
-
+/*  */
 static int lru_gen_seq_open(struct inode *inode, struct file *file)
 {
 	return seq_open(file, &lru_gen_seq_ops);
@@ -6276,7 +6279,7 @@ static const struct file_operations lru_gen_rw_fops = {
 	.llseek = seq_lseek,
 	.release = seq_release,
 };
-
+/* mglru的fs回调 */
 static const struct file_operations lru_gen_ro_fops = {
 	.open = lru_gen_seq_open,
 	.read = seq_read,
