@@ -448,11 +448,13 @@ struct lru_gen_folio {
 	bool enabled;
 
 #ifdef CONFIG_MEMCG
-	/* the memcg generation this lru_gen_folio belongs to */
+	/* the memcg generation this lru_gen_folio belongs to
+	memcg的gen */
 	u8 gen;
 	/* the list segment this lru_gen_folio belongs to */
 	u8 seg;
-	/* per-node lru_gen_folio list for global reclaim */
+	/* per-node lru_gen_folio list for global reclaim
+	链入每个node的memcg代数统计结构体 */
 	struct hlist_nulls_node list;
 #endif
 };
@@ -547,11 +549,14 @@ void lru_gen_look_around(struct page_vma_mapped_walk *pvmw);
 #define MEMCG_NR_BINS	8
 
 struct lru_gen_memcg {
-	/* the per-node memcg generation counter */
+	/* the per-node memcg generation counter
+	反应代数的计数器 */
 	unsigned long seq;
-	/* each memcg has one lru_gen_folio per node */
+	/* each memcg has one lru_gen_folio per node
+	每代的计数 */
 	unsigned long nr_memcgs[MEMCG_NR_GENS];
-	/* per-node lru_gen_folio list for global reclaim */
+	/* per-node lru_gen_folio list for global reclaim
+	 */
 	struct hlist_nulls_head	fifo[MEMCG_NR_GENS][MEMCG_NR_BINS];
 	/* protects the above */
 	spinlock_t lock;

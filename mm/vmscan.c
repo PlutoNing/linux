@@ -4874,12 +4874,13 @@ static int lru_gen_memcg_seg(struct lruvec *lruvec)
 {
 	return READ_ONCE(lruvec->lrugen.seg);
 }
-
+/* 根据op改变位置 */
 static void lru_gen_rotate_memcg(struct lruvec *lruvec, int op)
 {
 	int seg;
 	int old, new;
 	unsigned long flags;
+	/* 要放入的bin */
 	int bin = get_random_u32_below(MEMCG_NR_BINS);
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
@@ -4895,15 +4896,15 @@ static void lru_gen_rotate_memcg(struct lruvec *lruvec, int op)
 		seg = MEMCG_LRU_HEAD;
 	else if (op == MEMCG_LRU_TAIL)
 		seg = MEMCG_LRU_TAIL;
-	else if (op == MEMCG_LRU_OLD)
+	else if (op == MEMCG_LRU_OLD) /* 获得新的代数 */
 		new = get_memcg_gen(pgdat->memcg_lru.seq);
-	else if (op == MEMCG_LRU_YOUNG)
+	else if (op == MEMCG_LRU_YOUNG) /* 获得新代数 */
 		new = get_memcg_gen(pgdat->memcg_lru.seq + 1);
 	else
 		VM_WARN_ON_ONCE(true);
-
+	/* 先移除 */
 	hlist_nulls_del_rcu(&lruvec->lrugen.list);
-
+	/* 重新插入新位置 */
 	if (op == MEMCG_LRU_HEAD || op == MEMCG_LRU_OLD)
 		hlist_nulls_add_head_rcu(&lruvec->lrugen.list, &pgdat->memcg_lru.fifo[new][bin]);
 	else
@@ -5538,7 +5539,7 @@ static int shrink_one(struct lruvec *lruvec, struct scan_control *sc)
 }
 
 #ifdef CONFIG_MEMCG
-
+/* 开启lrugen的memcg回收 */
 static void shrink_many(struct pglist_data *pgdat, struct scan_control *sc)
 {
 	int op;

@@ -39,6 +39,7 @@ static inline void hlist_nulls_del_init_rcu(struct hlist_nulls_node *n)
 }
 
 /**
+
  * hlist_nulls_first_rcu - returns the first element of the hash list.
  * @head: the head of the list.
  */
@@ -153,6 +154,7 @@ static inline void hlist_nulls_add_fake(struct hlist_nulls_node *n)
 }
 
 /**
+
  * hlist_nulls_for_each_entry_rcu - iterate over rcu list of given type
  * @tpos:	the type * to use as a loop cursor.
  * @pos:	the &struct hlist_nulls_node to use as a loop cursor.
