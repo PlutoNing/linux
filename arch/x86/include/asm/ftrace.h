@@ -35,10 +35,11 @@ static inline unsigned long ftrace_call_adjust(unsigned long addr)
 }
 
 #ifdef CONFIG_HAVE_DYNAMIC_FTRACE_WITH_ARGS
+/*  */
 struct ftrace_regs {
 	struct pt_regs		regs;
 };
-
+/*  */
 static __always_inline struct pt_regs *
 arch_ftrace_get_regs(struct ftrace_regs *fregs)
 {

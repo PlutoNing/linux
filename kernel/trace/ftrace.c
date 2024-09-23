@@ -5620,6 +5620,7 @@ EXPORT_SYMBOL_GPL(modify_ftrace_direct);
 #endif /* CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS */
 
 /**
+
  * ftrace_set_filter_ip - set a function to filter on in ftrace by address
  * @ops - the ops to set the filter with
  * @ip - the address to add to or remove from the filter.
@@ -8066,6 +8067,7 @@ out_unlock:
 EXPORT_SYMBOL_GPL(register_ftrace_function);
 
 /**
+取消注册一个被ftrace profiling添加和call的函数?
  * unregister_ftrace_function - unregister a function for profiling.
  * @ops:	ops structure that holds the function to unregister
  *

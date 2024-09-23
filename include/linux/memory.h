@@ -174,6 +174,7 @@ void memory_block_add_nid(struct memory_block *mem, int nid,
 #endif	/* CONFIG_MEMORY_HOTPLUG */
 
 /*
+代码段的锁
  * Kernel text modification mutex, used for code patching. Users of this lock
  * can sleep.
  */

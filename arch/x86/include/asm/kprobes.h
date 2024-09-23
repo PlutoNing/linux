@@ -22,7 +22,7 @@
 
 struct pt_regs;
 struct kprobe;
-
+/* 操作码 */
 typedef u8 kprobe_opcode_t;
 
 #define MAX_STACK_SIZE 64
@@ -40,6 +40,7 @@ extern __visible kprobe_opcode_t optprobe_template_clac[];
 extern __visible kprobe_opcode_t optprobe_template_val[];
 extern __visible kprobe_opcode_t optprobe_template_call[];
 extern __visible kprobe_opcode_t optprobe_template_end[];
+/* insn(opcode)的长度, 单位都是u8了.  */
 #define MAX_OPTIMIZED_LENGTH (MAX_INSN_SIZE + DISP32_SIZE)
 #define MAX_OPTINSN_SIZE 				\
 	(((unsigned long)optprobe_template_end -	\
@@ -81,7 +82,7 @@ struct arch_specific_insn {
 	/* Number of bytes of text poked */
 	int tp_len;
 };
-
+/* kprob的指令相关: 旧指令和新指令 */
 struct arch_optimized_insn {
 	/* copy of the original instructions */
 	kprobe_opcode_t copied_insn[DISP32_SIZE];
@@ -104,7 +105,8 @@ struct prev_kprobe {
 	unsigned long saved_flags;
 };
 
-/* per-cpu kprobe control block */
+/* per-cpu kprobe control block
+pcp的kprobe控制块? */
 struct kprobe_ctlblk {
 	unsigned long kprobe_status;
 	unsigned long kprobe_old_flags;

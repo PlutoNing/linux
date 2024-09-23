@@ -60,7 +60,8 @@ typedef int (*kretprobe_handler_t) (struct kretprobe_instance *,
 struct kprobe {
 	struct hlist_node hlist;
 
-	/* list of kprobes for multi-handler support */
+	/* list of kprobes for multi-handler support
+	链接属于同一个复合kprobes的kp */
 	struct list_head list;
 
 	/*count the number of times this probe was temporarily disarmed */
@@ -75,7 +76,8 @@ struct kprobe {
 	/* Offset into the symbol */
 	unsigned int offset;
 
-	/* Called before addr is executed. */
+	/* Called before addr is executed.
+	kp的pre handler */
 	kprobe_pre_handler_t pre_handler;
 
 	/* Called after addr is executed, unless... */
@@ -97,11 +99,11 @@ struct kprobe {
 /* Kprobe status flags */
 #define KPROBE_FLAG_GONE	1 /* breakpoint has already gone */
 #define KPROBE_FLAG_DISABLED	2 /* probe is temporarily disabled */
-#define KPROBE_FLAG_OPTIMIZED	4 /*
+#define KPROBE_FLAG_OPTIMIZED	4 
+/*
 				   * probe is really optimized.
 				   * NOTE:
-				   * this flag is only for optimized_kprobe.
-				   */
+				   * this flag is only for optimized_kprobe.*/
 #define KPROBE_FLAG_FTRACE	8 /* probe is using ftrace */
 #define KPROBE_FLAG_ON_FUNC_ENTRY	16 /* probe is on the function entry */
 
@@ -111,7 +113,9 @@ static inline bool kprobe_gone(struct kprobe *p)
 	return p->flags & KPROBE_FLAG_GONE;
 }
 
-/* Is this kprobe disabled ? */
+/* Is this kprobe disabled ?
+
+ */
 static inline bool kprobe_disabled(struct kprobe *p)
 {
 	return p->flags & (KPROBE_FLAG_DISABLED | KPROBE_FLAG_GONE);
@@ -189,7 +193,9 @@ struct kprobe_blacklist_entry {
 };
 
 #ifdef CONFIG_KPROBES
+/* 表示当前cpu当前运行的kp? */
 DECLARE_PER_CPU(struct kprobe *, current_kprobe);
+/*  */
 DECLARE_PER_CPU(struct kprobe_ctlblk, kprobe_ctlblk);
 
 extern void kprobe_busy_begin(void);
@@ -352,6 +358,7 @@ DEFINE_INSN_CACHE_OPS(insn);
 
 #ifdef CONFIG_OPTPROBES
 /*
+probe的
  * Internal structure for direct jump optimized probe
  */
 struct optimized_kprobe {
@@ -398,7 +405,8 @@ static inline int arch_prepare_kprobe_ftrace(struct kprobe *p)
 /* Get the kprobe at this addr (if any) - called with preemption disabled */
 struct kprobe *get_kprobe(void *addr);
 
-/* kprobe_running() will just return the current_kprobe on this CPU */
+/* kprobe_running() will just return the current_kprobe on this CPU 
+返回当前cpu上面运行的kp?*/
 static inline struct kprobe *kprobe_running(void)
 {
 	return __this_cpu_read(current_kprobe);
@@ -408,7 +416,7 @@ static inline void reset_current_kprobe(void)
 {
 	__this_cpu_write(current_kprobe, NULL);
 }
-
+/* 获取pcp的kp控制块 */
 static inline struct kprobe_ctlblk *get_kprobe_ctlblk(void)
 {
 	return this_cpu_ptr(&kprobe_ctlblk);

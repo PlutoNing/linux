@@ -101,7 +101,7 @@ struct insn {
 	const insn_byte_t *end_kaddr;	/* kernel address of last insn in buffer */
 	const insn_byte_t *next_byte;
 };
-
+/*  */
 #define MAX_INSN_SIZE	15
 
 #define X86_MODRM_MOD(modrm) (((modrm) & 0xc0) >> 6)

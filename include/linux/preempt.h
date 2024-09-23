@@ -79,6 +79,7 @@
 #include <asm/preempt.h>
 
 /**
+返回中断级别?
  * interrupt_context_level - return interrupt context level
  *
  * Returns the current interrupt context level.

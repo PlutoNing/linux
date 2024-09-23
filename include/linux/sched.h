@@ -1402,7 +1402,8 @@ struct task_struct {
 #endif
 
 #ifdef CONFIG_TRACING
-	/* Bitmask and counter of trace recursion: */
+	/* Bitmask and counter of trace recursion:
+	recursion是什么 */
 	unsigned long			trace_recursion;
 #endif /* CONFIG_TRACING */
 

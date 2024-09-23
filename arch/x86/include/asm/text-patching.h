@@ -52,7 +52,7 @@ extern void text_poke_bp(void *addr, const void *opcode, size_t len, const void 
 
 extern void text_poke_queue(void *addr, const void *opcode, size_t len, const void *emulate);
 extern void text_poke_finish(void);
-
+/*  */
 #define INT3_INSN_SIZE		1
 #define INT3_INSN_OPCODE	0xCC
 
@@ -67,7 +67,7 @@ extern void text_poke_finish(void);
 
 #define JMP8_INSN_SIZE		2
 #define JMP8_INSN_OPCODE	0xEB
-
+/*  */
 #define DISP32_SIZE		4
 
 static __always_inline int text_opcode_size(u8 opcode)

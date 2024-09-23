@@ -195,6 +195,7 @@ static inline bool is_kernel_inittext(unsigned long addr)
 }
 
 /**
+是不是内核代码段
  * __is_kernel_text - checks if the pointer address is located in the
  *                    .text section
  *

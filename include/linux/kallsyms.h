@@ -23,7 +23,7 @@
 
 struct cred;
 struct module;
-
+/*  */
 static inline int is_kernel_text(unsigned long addr)
 {
 	if (__is_kernel_text(addr))

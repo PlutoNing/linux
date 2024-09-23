@@ -7,8 +7,9 @@
 #include <linux/memory-tiers.h>
 
 #include "internal.h"
-
+/* 内存分层相关 */
 struct memory_tier {
+
 	/* hierarchy of memory tiers */
 	struct list_head list;
 	/* list of all memory types part of this tier */
@@ -23,7 +24,7 @@ struct memory_tier {
 	/* All the nodes that are part of all the lower memory tiers. */
 	nodemask_t lower_tier_mask;
 };
-
+/*  */
 struct demotion_nodes {
 	nodemask_t preferred;
 };
@@ -34,6 +35,7 @@ struct node_memory_type_map {
 };
 
 static DEFINE_MUTEX(memory_tier_lock);
+/* 全局的内存分层list? */
 static LIST_HEAD(memory_tiers);
 static struct node_memory_type_map node_memory_types[MAX_NUMNODES];
 static struct memory_dev_type *default_dram_type;
@@ -46,6 +48,7 @@ static struct bus_type memory_tier_subsys = {
 #ifdef CONFIG_MIGRATION
 static int top_tier_adistance;
 /*
+好像是根据distance判断两个node是否可以迁移?
  * node_demotion[] examples:
  *
  * Example 1:
@@ -102,6 +105,10 @@ static int top_tier_adistance;
  * node_demotion[2].preferred = <empty>
  *
  */
+ /* 
+ 一个node_demotion的数组.
+
+*/
 static struct demotion_nodes *node_demotion __read_mostly;
 #endif /* CONFIG_MIGRATION */
 
@@ -109,7 +116,7 @@ static inline struct memory_tier *to_memory_tier(struct device *device)
 {
 	return container_of(device, struct memory_tier, dev);
 }
-
+/* 获取memtier指定的node们 */
 static __always_inline nodemask_t get_memtier_nodemask(struct memory_tier *memtier)
 {
 	nodemask_t nodes = NODE_MASK_NONE;
@@ -221,7 +228,7 @@ link_memtype:
 	list_add(&memtype->tier_sibiling, &memtier->memory_types);
 	return memtier;
 }
-
+/* 获取node的memtier */
 static struct memory_tier *__node_get_memory_tier(int node)
 {
 	pg_data_t *pgdat;
@@ -283,6 +290,8 @@ void node_get_allowed_targets(pg_data_t *pgdat, nodemask_t *targets)
 }
 
 /**
+获取demotion设置里面的此node可以demote的node
+从demote数组里面此node指定的掩码里面随机获取一个.
  * next_demotion_node() - Get the next node in the demotion path
  * @node: The starting node to lookup the next node
  *
@@ -326,14 +335,14 @@ int next_demotion_node(int node)
 
 	return target;
 }
-
+/* 这里把每个node的demote设置为none */
 static void disable_all_demotion_targets(void)
 {
 	struct memory_tier *memtier;
 	int node;
 
-	for_each_node_state(node, N_MEMORY) {
-		node_demotion[node].preferred = NODE_MASK_NONE;
+	for_each_node_state(node, N_MEMORY) {/* 遍历有内存的node */
+		node_demotion[node].preferred = NODE_MASK_NONE;/* 把每一个设置为none */
 		/*
 		 * We are holding memory_tier_lock, it is safe
 		 * to access pgda->memtier.
@@ -352,6 +361,8 @@ static void disable_all_demotion_targets(void)
 }
 
 /*
+这里初始化描述demote方向的demote数组.
+todo
  * Find an automatic demotion target for all memory
  * nodes. Failing here is OK.  It might just indicate
  * being at the end of a chain.
@@ -366,12 +377,12 @@ static void establish_demotion_targets(void)
 
 	lockdep_assert_held_once(&memory_tier_lock);
 
-	if (!node_demotion)
+	if (!node_demotion)/* 没有分配内存空间 */
 		return;
-
+	/* 先清空demote数组 */
 	disable_all_demotion_targets();
 
-	for_each_node_state(node, N_MEMORY) {
+	for_each_node_state(node, N_MEMORY) {/* 遍历每一个有内存的node */
 		best_distance = -1;
 		nd = &node_demotion[node];
 
@@ -623,7 +634,7 @@ static int __meminit memtier_hotplug_callback(struct notifier_block *self,
 
 	return notifier_from_errno(0);
 }
-
+/* 这里好像是初始化node demote位置的 */
 static int __init memory_tier_init(void)
 {
 	int ret, node;
@@ -634,10 +645,12 @@ static int __init memory_tier_init(void)
 		panic("%s() failed to register memory tier subsystem\n", __func__);
 
 #ifdef CONFIG_MIGRATION
+/* 分配node demote方向数组的内存空间 */
 	node_demotion = kcalloc(nr_node_ids, sizeof(struct demotion_nodes),
 				GFP_KERNEL);
 	WARN_ON(!node_demotion);
 #endif
+
 	mutex_lock(&memory_tier_lock);
 	/*
 	 * For now we can have 4 faster memory tiers with smaller adistance

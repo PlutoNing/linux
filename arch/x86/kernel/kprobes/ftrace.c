@@ -12,7 +12,9 @@
 
 #include "common.h"
 
-/* Ftrace callback handler for kprobes -- called under preempt disabled */
+/* 
+2024年9月24日00:05:32
+Ftrace callback handler for kprobes -- called under preempt disabled */
 void kprobe_ftrace_handler(unsigned long ip, unsigned long parent_ip,
 			   struct ftrace_ops *ops, struct ftrace_regs *fregs)
 {
@@ -30,7 +32,7 @@ void kprobe_ftrace_handler(unsigned long ip, unsigned long parent_ip,
 		goto out;
 
 	kcb = get_kprobe_ctlblk();
-	if (kprobe_running()) {
+	if (kprobe_running()) {/* 如果当前cpu有kp运行了 */
 		kprobes_inc_nmissed_count(p);
 	} else {
 		unsigned long orig_ip = regs->ip;
@@ -60,6 +62,7 @@ void kprobe_ftrace_handler(unsigned long ip, unsigned long parent_ip,
 out:
 	ftrace_test_recursion_unlock(bit);
 }
+
 NOKPROBE_SYMBOL(kprobe_ftrace_handler);
 
 int arch_prepare_kprobe_ftrace(struct kprobe *p)

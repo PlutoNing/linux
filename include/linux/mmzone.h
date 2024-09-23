@@ -374,6 +374,7 @@ struct lruvec;
 struct page_vma_mapped_walk;
 /*  */
 #define LRU_GEN_MASK		((BIT(LRU_GEN_WIDTH) - 1) << LRU_GEN_PGOFF)
+/*  */
 #define LRU_REFS_MASK		((BIT(LRU_REFS_WIDTH) - 1) << LRU_REFS_PGOFF)
 
 #ifdef CONFIG_LRU_GEN
@@ -389,7 +390,7 @@ enum {
 	LRU_GEN_NONLEAF_YOUNG,
 	NR_LRU_GEN_CAPS
 };
-
+/* 64 */
 #define MIN_LRU_BATCH		BITS_PER_LONG
 #define MAX_LRU_BATCH		(MIN_LRU_BATCH * 64)
 
@@ -1414,6 +1415,7 @@ typedef struct pglist_data {
 	struct per_cpu_nodestat __percpu *per_cpu_nodestats;
 	atomic_long_t		vm_stat[NR_VM_NODE_STAT_ITEMS];
 #ifdef CONFIG_NUMA
+/* 内存分层相关 */
 	struct memory_tier __rcu *memtier;
 #endif
 #ifdef CONFIG_MEMORY_FAILURE

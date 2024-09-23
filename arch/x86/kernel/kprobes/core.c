@@ -763,7 +763,7 @@ int arch_prepare_kprobe(struct kprobe *p)
 
 	return ret;
 }
-
+/* hook一个probe */
 void arch_arm_kprobe(struct kprobe *p)
 {
 	u8 int3 = INT3_INSN_OPCODE;

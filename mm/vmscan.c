@@ -111,7 +111,8 @@ struct scan_control {
 	/* Can folios be swapped as part of reclaim? */
 	unsigned int may_swap:1;
 
-	/* Proactive reclaim invoked by userspace through memory.reclaim */
+	/* Proactive reclaim invoked by userspace through memory.reclaim
+	 */
 	unsigned int proactive:1;
 
 	/*
@@ -597,7 +598,8 @@ static long add_nr_deferred(long nr, struct shrinker *shrinker,
 
 	return atomic_long_add_return(nr, &shrinker->nr_deferred[nid]);
 }
-/*  */
+/* sc下node是否可以demote,要看系统设置和sc设置.
+然后是看demote数组里面有没有可以demote的 */
 static bool can_demote(int nid, struct scan_control *sc)
 {
 	if (!numa_demotion_enabled)
@@ -3376,6 +3378,7 @@ static bool should_clear_pmd_young(void)
 			for ((zone) = 0; (zone) < MAX_NR_ZONES; (zone)++)
 
 #define get_memcg_gen(seq)	((seq) % MEMCG_NR_GENS)
+/*  */
 #define get_memcg_bin(bin)	((bin) % MEMCG_NR_BINS)
 
 static struct lruvec *get_lruvec(struct mem_cgroup *memcg, int nid)
@@ -3397,7 +3400,11 @@ static struct lruvec *get_lruvec(struct mem_cgroup *memcg, int nid)
 
 	return &pgdat->__lruvec;
 }
-/*  */
+/* 如何获取sc下的lruvec的swappiness?
+sc不允许swap, 为0.
+不允许demote并且没有足够swap页面
+最后就是去看memcg的swappiness
+ */
 static int get_swappiness(struct lruvec *lruvec, struct scan_control *sc)
 {
 	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
@@ -3412,7 +3419,9 @@ static int get_swappiness(struct lruvec *lruvec, struct scan_control *sc)
 
 	return mem_cgroup_swappiness(memcg);
 }
-
+/* 
+获取这个type最老的gen有多老?
+ */
 static int get_nr_gens(struct lruvec *lruvec, int type)
 {
 	return lruvec->lrugen.max_seq - lruvec->lrugen.min_seq[type] + 1;
@@ -3893,7 +3902,9 @@ static int folio_update_gen(struct folio *folio, int gen)
 	return ((old_flags & LRU_GEN_MASK) >> LRU_GEN_PGOFF) - 1;
 }
 
-/* protect pages accessed multiple times through file descriptors */
+/* protect pages accessed multiple times through file descriptors
+
+ */
 static int folio_inc_gen(struct lruvec *lruvec, struct folio *folio, bool reclaiming)
 {
 	int type = folio_is_file_lru(folio);
@@ -3904,13 +3915,15 @@ static int folio_inc_gen(struct lruvec *lruvec, struct folio *folio, bool reclai
 	VM_WARN_ON_ONCE_FOLIO(!(old_flags & LRU_GEN_MASK), folio);
 
 	do {
+		/* 实际的gen是编码在flags里面.  */
 		new_gen = ((old_flags & LRU_GEN_MASK) >> LRU_GEN_PGOFF) - 1;
 		/* folio_update_gen() has promoted this page? */
 		if (new_gen >= 0 && new_gen != old_gen)
-			return new_gen;
-
+			return new_gen; /* 如果gen已经变了, 这里就是直接返回新的gen?  */
+		
+		/* 提升一代 */
 		new_gen = (old_gen + 1) % MAX_NR_GENS;
-
+		/* 把新gen编码到新flags里面 */
 		new_flags = old_flags & ~(LRU_GEN_MASK | LRU_REFS_MASK | LRU_REFS_FLAGS);
 		new_flags |= (new_gen + 1UL) << LRU_GEN_PGOFF;
 		/* for folio_end_writeback() */
@@ -4647,12 +4660,14 @@ done:
 /******************************************************************************
  *                          working set protection
  ******************************************************************************/
-/*  */
+/* 2024年9月15日10:25:06
+获取sc可以回收的页面数量
+ */
 static bool lruvec_is_sizable(struct lruvec *lruvec, struct scan_control *sc)
 {
 	int gen, type, zone;
 	unsigned long total = 0;
-
+	/* 获取sc下lruvec的swappiness */
 	bool can_swap = get_swappiness(lruvec, sc);
 
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
@@ -4661,9 +4676,10 @@ static bool lruvec_is_sizable(struct lruvec *lruvec, struct scan_control *sc)
 	DEFINE_MAX_SEQ(lruvec);
 	DEFINE_MIN_SEQ(lruvec);
 
+	/*  */
 	for (type = !can_swap; type < ANON_AND_FILE; type++) {
 		unsigned long seq;
-
+		/* 从此type的最新gen遍历到最大gen */
 		for (seq = min_seq[type]; seq <= max_seq; seq++) {
 			gen = lru_gen_from_seq(seq);
 
@@ -4675,6 +4691,7 @@ static bool lruvec_is_sizable(struct lruvec *lruvec, struct scan_control *sc)
 	/* whether the size is big enough to be helpful */
 	return mem_cgroup_online(memcg) ? (total >> sc->priority) : total;
 }
+
 /* 2024年09月09日15:58:26
 
  */
@@ -4859,7 +4876,9 @@ void lru_gen_look_around(struct page_vma_mapped_walk *pvmw)
  *                          memcg LRU
  ******************************************************************************/
 
-/* see the comment on MEMCG_NR_GENS */
+/* see the comment on MEMCG_NR_GENS
+2024年9月16日10:19:10
+todo */
 enum {
 	MEMCG_LRU_NOP,
 	MEMCG_LRU_HEAD,
@@ -4869,12 +4888,12 @@ enum {
 };
 
 #ifdef CONFIG_MEMCG
-
+/*  */
 static int lru_gen_memcg_seg(struct lruvec *lruvec)
 {
 	return READ_ONCE(lruvec->lrugen.seg);
 }
-/* 根据op改变位置 */
+/* 根据op改变此lruvec在node的位置 */
 static void lru_gen_rotate_memcg(struct lruvec *lruvec, int op)
 {
 	int seg;
@@ -4957,7 +4976,7 @@ void lru_gen_offline_memcg(struct mem_cgroup *memcg)
 		lru_gen_rotate_memcg(lruvec, MEMCG_LRU_OLD);
 	}
 }
-
+/* mglru下的释放memcg, 可能是还需要处理node的fifo */
 void lru_gen_release_memcg(struct mem_cgroup *memcg)
 {
 	int gen;
@@ -5005,7 +5024,7 @@ static int lru_gen_memcg_seg(struct lruvec *lruvec)
 /******************************************************************************
  *                          the eviction
  ******************************************************************************/
-
+/* 真正isolate页面之前, 先尝试调整位置.  */
 static bool sort_folio(struct lruvec *lruvec, struct folio *folio, struct scan_control *sc,
 		       int tier_idx)
 {
@@ -5014,13 +5033,15 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, struct scan_c
 	int type = folio_is_file_lru(folio);
 	int zone = folio_zonenum(folio);
 	int delta = folio_nr_pages(folio);
+	/*  */
 	int refs = folio_lru_refs(folio);
 	int tier = lru_tier_from_refs(refs);
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
 
 	VM_WARN_ON_ONCE_FOLIO(gen >= MAX_NR_GENS, folio);
 
-	/* unevictable */
+	/* unevictable
+	如果性质是unevictable, 这里设置unevictable标记, 然后重新加入lru(会自动跑到unevictable lru上面) */
 	if (!folio_evictable(folio)) {
 		success = lru_gen_del_folio(lruvec, folio, true);
 		VM_WARN_ON_ONCE_FOLIO(!success, folio);
@@ -5030,7 +5051,8 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, struct scan_c
 		return true;
 	}
 
-	/* dirty lazyfree */
+	/* dirty lazyfree
+	脏匿名页? */
 	if (type == LRU_GEN_FILE && folio_test_anon(folio) && folio_test_dirty(folio)) {
 		success = lru_gen_del_folio(lruvec, folio, true);
 		VM_WARN_ON_ONCE_FOLIO(!success, folio);
@@ -5108,7 +5130,7 @@ static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct sca
 
 	return true;
 }
-
+/* isolate页面时,这里扫描指定的type的lru */
 static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 		       int type, int tier, struct list_head *list)
 {
@@ -5116,6 +5138,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 	int gen;
 	enum vm_event_item item;
 	int sorted = 0;
+	/* 表示在这个type的最老的gen的各个zone上面扫描了多少页面 */
 	int scanned = 0;
 	int isolated = 0;
 	int remaining = MAX_LRU_BATCH;
@@ -5125,14 +5148,15 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 	VM_WARN_ON_ONCE(!list_empty(list));
 
 	if (get_nr_gens(lruvec, type) == MIN_NR_GENS)
-		return 0;
-
+		return 0;/* 说明这个type不老,全都是活跃的? */
+	/* 获取gen */
 	gen = lru_gen_from_seq(lrugen->min_seq[type]);
 
-	for (i = MAX_NR_ZONES; i > 0; i--) {
+	for (i = MAX_NR_ZONES; i > 0; i--) {/* 遍历每个zone类型 */
 		LIST_HEAD(moved);
 		int skipped = 0;
 		int zone = (sc->reclaim_idx + i) % MAX_NR_ZONES;
+		/* 遍历此lruvec的在这个区类型上面的这个type的gen代的链表 */
 		struct list_head *head = &lrugen->folios[gen][type][zone];
 
 		while (!list_empty(head)) {
@@ -5160,6 +5184,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 				break;
 		}
 
+		/* 这个zone扫描完了, */
 		if (skipped) {
 			list_splice(&moved, head);
 			__count_zid_vm_events(PGSCAN_SKIP, zone, skipped);
@@ -5232,7 +5257,7 @@ static int get_type_to_scan(struct lruvec *lruvec, int swappiness, int *tier_idx
 
 	return type;
 }
-
+/* 回收前这个函数isolate页面 */
 static int isolate_folios(struct lruvec *lruvec, struct scan_control *sc, int swappiness,
 			  int *type_scanned, struct list_head *list)
 {
@@ -5257,6 +5282,7 @@ static int isolate_folios(struct lruvec *lruvec, struct scan_control *sc, int sw
 		type = LRU_GEN_ANON;
 	else
 		type = get_type_to_scan(lruvec, swappiness, &tier);
+
 
 	for (i = !swappiness; i < ANON_AND_FILE; i++) {
 		if (tier < 0)
@@ -5498,7 +5524,9 @@ static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	/* whether try_to_inc_max_seq() was successful */
 	return nr_to_scan < 0;
 }
-
+/* 不管是shrink_many,还是one, 最终都是调用这个函数.
+处理mglru和memcg开启下的shrink_node.
+回收lruvec的内存. */
 static int shrink_one(struct lruvec *lruvec, struct scan_control *sc)
 {
 	bool success;
@@ -5524,9 +5552,9 @@ static int shrink_one(struct lruvec *lruvec, struct scan_control *sc)
 
 		memcg_memory_event(memcg, MEMCG_LOW);
 	}
-
+	/* 收缩lruvec */
 	success = try_to_shrink_lruvec(lruvec, sc);
-
+	/* 收缩slab */
 	shrink_slab(sc->gfp_mask, pgdat->node_id, memcg, sc->priority);
 
 	if (!sc->proactive)
@@ -5559,7 +5587,7 @@ restart:
 	gen = get_memcg_gen(READ_ONCE(pgdat->memcg_lru.seq));
 
 	rcu_read_lock();
-
+	/* 这里操作其实本质上是需要找到与node关联的全部lruvec */
 	hlist_nulls_for_each_entry_rcu(lrugen, pos, &pgdat->memcg_lru.fifo[gen][bin], list) {
 		if (op) {
 			lru_gen_rotate_memcg(lruvec, op);
@@ -5567,7 +5595,7 @@ restart:
 		}
 
 		mem_cgroup_put(memcg);
-
+		/* 根据node的fifo排序，获得lruvec */
 		lruvec = container_of(lrugen, struct lruvec, lrugen);
 		memcg = lruvec_memcg(lruvec);
 
@@ -5578,10 +5606,11 @@ restart:
 		}
 
 		rcu_read_unlock();
-
+		/* 获取到了一个memcg, 这里进行操作. */
 		op = shrink_one(lruvec, sc);
 
-		rcu_read_lock();
+
+		rcu_read_lock();/* 这个是为了下一个循环lock的 */
 
 		if (sc->nr_reclaimed >= nr_to_reclaim)
 			break;
@@ -5589,7 +5618,7 @@ restart:
 
 	rcu_read_unlock();
 
-	if (op)
+	if (op)/* 继续调整位置 */
 		lru_gen_rotate_memcg(lruvec, op);
 
 	mem_cgroup_put(memcg);
@@ -5601,7 +5630,8 @@ restart:
 	if (gen != get_nulls_value(pos))
 		goto restart;
 
-	/* try the rest of the bins of the current generation */
+	/* try the rest of the bins of the current generation
+	处理同代的下一个bin */
 	bin = get_memcg_bin(bin + 1);
 	if (bin != first_bin)
 		goto restart;
@@ -5666,7 +5696,7 @@ static void set_initial_priority(struct pglist_data *pgdat, struct scan_control 
 
 	sc->priority = clamp(priority, 0, DEF_PRIORITY);
 }
-
+/*  */
 static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *sc)
 {
 	struct blk_plug plug;
@@ -5693,9 +5723,9 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 	if (current_is_kswapd())
 		sc->nr_reclaimed = 0;
 
-	if (mem_cgroup_disabled())
+	if (mem_cgroup_disabled())/* 没有memcg, 那么只需要处理node的lruvec */
 		shrink_one(&pgdat->__lruvec, sc);
-	else
+	else /* 有的话, 就需要处理target_mmecg的每一个子memcg在此node上面的lruvec */
 		shrink_many(pgdat, sc);
 
 	if (current_is_kswapd())
@@ -6639,6 +6669,7 @@ static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 	bool reclaimable = false;
 
 	if (lru_gen_enabled() && root_reclaim(sc)) {
+		pr_debug("%s mglru shrink node\n",__func__);
 		lru_gen_shrink_node(pgdat, sc);
 		return;
 	}

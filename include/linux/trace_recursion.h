@@ -100,6 +100,7 @@ enum {
 #define TRACE_CONTEXT_MASK	((1 << (TRACE_LIST_START + TRACE_CONTEXT_BITS)) - 1)
 
 /*
+对应几种中断级别.
  * Used for setting context
  *  NMI     = 0
  *  IRQ     = 1
@@ -113,7 +114,7 @@ enum {
 	TRACE_CTX_NORMAL,
 	TRACE_CTX_TRANSITION,
 };
-
+/* 返回值和中断级别相关. */
 static __always_inline int trace_get_context_bit(void)
 {
 	unsigned char bit = interrupt_context_level();
@@ -136,6 +137,7 @@ extern void ftrace_record_recursion(unsigned long ip, unsigned long parent_ip);
 #endif
 
 #ifdef CONFIG_ARCH_WANTS_NO_INSTR
+/*  */
 # define trace_warn_on_no_rcu(ip)					\
 	({								\
 		bool __ret = !rcu_is_watching();			\
@@ -151,6 +153,7 @@ extern void ftrace_record_recursion(unsigned long ip, unsigned long parent_ip);
 #endif
 
 /*
+
  * Preemption is promised to be disabled when return bit >= 0.
  */
 static __always_inline int trace_test_and_set_recursion(unsigned long ip, unsigned long pip,
@@ -199,6 +202,7 @@ static __always_inline void trace_clear_recursion(int bit)
 }
 
 /**
+和中断级别相关. 
  * ftrace_test_recursion_trylock - tests for recursion in same context
  *
  * Use this for ftrace callbacks. This will detect if the function

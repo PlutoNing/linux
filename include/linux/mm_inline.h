@@ -135,12 +135,12 @@ static inline int lru_gen_from_seq(unsigned long seq)
 {
 	return seq % MAX_NR_GENS;
 }
-
+/* history gen是什么 */
 static inline int lru_hist_from_seq(unsigned long seq)
 {
 	return seq % NR_HIST_GENS;
 }
-
+/* 从ref到tier? */
 static inline int lru_tier_from_refs(int refs)
 {
 	VM_WARN_ON_ONCE(refs > BIT(LRU_REFS_WIDTH));
@@ -148,7 +148,7 @@ static inline int lru_tier_from_refs(int refs)
 	/* see the comment in folio_lru_refs() */
 	return order_base_2(refs + 1);
 }
-
+/* 这个信息编码在flags里面? */
 static inline int folio_lru_refs(struct folio *folio)
 {
 	unsigned long flags = READ_ONCE(folio->flags);

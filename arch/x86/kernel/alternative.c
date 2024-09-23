@@ -1775,9 +1775,10 @@ static void text_poke_memset(void *dst, const void *src, size_t len)
 }
 
 typedef void text_poke_f(void *dst, const void *src, size_t len);
-
+/* hook代码段 */
 static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t len)
 {
+	/* 要拷贝的指令是不是跨页面了. */
 	bool cross_page_boundary = offset_in_page(addr) + len > PAGE_SIZE;
 	struct page *pages[2] = {NULL};
 	temp_mm_state_t prev;
@@ -1792,11 +1793,11 @@ static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t l
 	 */
 	BUG_ON(!after_bootmem);
 
-	if (!core_kernel_text((unsigned long)addr)) {
+	if (!core_kernel_text((unsigned long)addr)) {/* 如果不是内核代码段 */
 		pages[0] = vmalloc_to_page(addr);
 		if (cross_page_boundary)
 			pages[1] = vmalloc_to_page(addr + PAGE_SIZE);
-	} else {
+	} else {/* 是内核代码段. */
 		pages[0] = virt_to_page(addr);
 		WARN_ON(!PageReserved(pages[0]));
 		if (cross_page_boundary)
@@ -1869,7 +1870,7 @@ static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t l
 			   (cross_page_boundary ? 2 : 1) * PAGE_SIZE,
 			   PAGE_SHIFT, false);
 
-	if (func == text_poke_memcpy) {
+	if (func == text_poke_memcpy) {/* 覆写指令 */
 		/*
 		 * If the text does not match what we just wrote then something is
 		 * fundamentally screwy; there's nothing we can really do about that.
@@ -1883,6 +1884,8 @@ static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t l
 }
 
 /**
+动态hook一个代码
+插入len长度的op.
  * text_poke - Update instructions on a live kernel
  * @addr: address to modify
  * @opcode: source of the copy
@@ -1906,6 +1909,7 @@ void *text_poke(void *addr, const void *opcode, size_t len)
 }
 
 /**
+kgdb的hook代码段
  * text_poke_kgdb - Update instructions on a live kernel by kgdb
  * @addr: address to modify
  * @opcode: source of the copy
@@ -1924,6 +1928,9 @@ void *text_poke_kgdb(void *addr, const void *opcode, size_t len)
 	return __text_poke(text_poke_memcpy, addr, opcode, len);
 }
 
+/* 把@opcode开始的@len这么多代码拷贝hook到addr位置.
+locked是什么意思?
+ */
 void *text_poke_copy_locked(void *addr, const void *opcode, size_t len,
 			    bool core_ok)
 {
@@ -1946,13 +1953,16 @@ void *text_poke_copy_locked(void *addr, const void *opcode, size_t len,
 }
 
 /**
+同样是hook代码.
+
  * text_poke_copy - Copy instructions into (an unused part of) RX memory
  * @addr: address to modify
  * @opcode: source of the copy
  * @len: length to copy, could be more than 2x PAGE_SIZE
  *
  * Not safe against concurrent execution; useful for JITs to dump
- * new code blocks into unused regions of RX memory. Can be used in
+ * 并发不安全, 用于jit导出代码到Rx mem.  
+ new code blocks into unused regions of RX memory. Can be used in
  * conjunction with synchronize_rcu_tasks() to wait for existing
  * execution to quiesce after having made sure no existing functions
  * pointers are live.

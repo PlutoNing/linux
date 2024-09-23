@@ -605,6 +605,7 @@ static inline int split_swap_cluster(swp_entry_t entry)
 #endif
 
 #ifdef CONFIG_MEMCG
+/* 读取memcg的swappiness字段 */
 static inline int mem_cgroup_swappiness(struct mem_cgroup *memcg)
 {
 	/* Cgroup2 doesn't have per-cgroup swappiness */

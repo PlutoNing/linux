@@ -44,8 +44,9 @@
 #include <asm/cacheflush.h>
 #include <asm/errno.h>
 #include <linux/uaccess.h>
-
+/* 6 */
 #define KPROBE_HASH_BITS 6
+/*  64  */
 #define KPROBE_TABLE_SIZE (1 << KPROBE_HASH_BITS)
 
 #if !defined(CONFIG_OPTPROBES) || !defined(CONFIG_SYSCTL)
@@ -368,6 +369,8 @@ static inline void reset_kprobe_instance(void)
 }
 
 /*
+参数是个指令地址.
+hash这个地址,找到对应的kp
  * This routine is called either:
  *	- under the 'kprobe_mutex' - during kprobe_[un]register().
  *				OR
@@ -378,9 +381,10 @@ struct kprobe *get_kprobe(void *addr)
 	struct hlist_head *head;
 	struct kprobe *p;
 
+	/* 找到slot */
 	head = &kprobe_table[hash_ptr(addr, KPROBE_HASH_BITS)];
-	hlist_for_each_entry_rcu(p, head, hlist,
-				 lockdep_is_held(&kprobe_mutex)) {
+	/* 遍历head这个slot上的list的全部元素(kprobe) */
+	hlist_for_each_entry_rcu(p, head, hlist, lockdep_is_held(&kprobe_mutex)) {
 		if (p->addr == addr)
 			return p;
 	}
@@ -391,7 +395,9 @@ NOKPROBE_SYMBOL(get_kprobe);
 
 static int aggr_pre_handler(struct kprobe *p, struct pt_regs *regs);
 
-/* Return true if 'p' is an aggregator */
+/* Return true if 'p' is an aggregator
+是不是复合的kps
+ */
 static inline bool kprobe_aggrprobe(struct kprobe *p)
 {
 	return p->pre_handler == aggr_pre_handler;
@@ -444,12 +450,13 @@ static void free_aggr_kprobe(struct kprobe *p)
 	kfree(op);
 }
 
-/* Return true if the kprobe is ready for optimization. */
+/* Return true if the kprobe is ready for optimization.
+看看kp是不是ready */
 static inline int kprobe_optready(struct kprobe *p)
 {
 	struct optimized_kprobe *op;
 
-	if (kprobe_aggrprobe(p)) {
+	if (kprobe_aggrprobe(p)) {/* 复合的才有ready的概念? */
 		op = container_of(p, struct optimized_kprobe, kp);
 		return arch_prepared_optinsn(&op->optinsn);
 	}
@@ -485,6 +492,7 @@ static bool kprobe_queued(struct kprobe *p)
 }
 
 /*
+ 返回一个已经被hook的addr的kprobe? 
  * Return an optimized kprobe whose optimizing code replaces
  * instructions including 'addr' (exclude breakpoint).
  */
@@ -496,9 +504,10 @@ static struct kprobe *get_optimized_kprobe(kprobe_opcode_t *addr)
 
 	/* Don't check i == 0, since that is a breakpoint case. */
 	for (i = 1; !p && i < MAX_OPTIMIZED_LENGTH / sizeof(kprobe_opcode_t); i++)
+		/* 尝试获取这里的kprobe */
 		p = get_kprobe(addr - i);
 
-	if (p && kprobe_optready(p)) {
+	if (p && kprobe_optready(p)) {/* 找到了kprobe, 并且ready? */
 		op = container_of(p, struct optimized_kprobe, kp);
 		if (arch_within_optimized_kprobe(op, addr))
 			return p;
@@ -977,7 +986,8 @@ static void __init kprobe_sysctls_init(void)
 }
 #endif /* CONFIG_SYSCTL */
 
-/* Put a breakpoint for a probe. */
+/* Put a breakpoint for a probe.
+给kprobe设置断点 */
 static void __arm_kprobe(struct kprobe *p)
 {
 	struct kprobe *_p;
@@ -986,7 +996,7 @@ static void __arm_kprobe(struct kprobe *p)
 
 	/* Find the overlapping optimized kprobes. */
 	_p = get_optimized_kprobe(p->addr);
-	if (unlikely(_p))
+	if (unlikely(_p))/* 已经有了的情况, 少见? */
 		/* Fallback to unoptimized kprobe */
 		unoptimize_kprobe(_p, true);
 
@@ -1056,11 +1066,12 @@ static struct kprobe *alloc_aggr_kprobe(struct kprobe *p)
 #endif /* CONFIG_OPTPROBES */
 
 #ifdef CONFIG_KPROBES_ON_FTRACE
+/*  */
 static struct ftrace_ops kprobe_ftrace_ops __read_mostly = {
 	.func = kprobe_ftrace_handler,
 	.flags = FTRACE_OPS_FL_SAVE_REGS,
 };
-
+/*  */
 static struct ftrace_ops kprobe_ipmodify_ops __read_mostly = {
 	.func = kprobe_ftrace_handler,
 	.flags = FTRACE_OPS_FL_SAVE_REGS | FTRACE_OPS_FL_IPMODIFY,
@@ -1098,6 +1109,7 @@ err_ftrace:
 	return ret;
 }
 
+/* ftrace相关 */
 static int arm_kprobe_ftrace(struct kprobe *p)
 {
 	bool ipmodify = (p->post_handler != NULL);
@@ -1107,6 +1119,9 @@ static int arm_kprobe_ftrace(struct kprobe *p)
 		ipmodify ? &kprobe_ipmodify_enabled : &kprobe_ftrace_enabled);
 }
 
+/* 2024年9月23日23:55:31
+
+ */
 static int __disarm_kprobe_ftrace(struct kprobe *p, struct ftrace_ops *ops,
 				  int *cnt)
 {
@@ -1128,6 +1143,7 @@ static int __disarm_kprobe_ftrace(struct kprobe *p, struct ftrace_ops *ops,
 	return ret;
 }
 
+/*  */
 static int disarm_kprobe_ftrace(struct kprobe *p)
 {
 	bool ipmodify = (p->post_handler != NULL);
@@ -1156,9 +1172,10 @@ static int prepare_kprobe(struct kprobe *p)
 
 	return arch_prepare_kprobe(p);
 }
-
+/*  */
 static int arm_kprobe(struct kprobe *kp)
 {
+	/* ftrace的path */
 	if (unlikely(kprobe_ftrace(kp)))
 		return arm_kprobe_ftrace(kp);
 
@@ -1186,6 +1203,7 @@ static int disarm_kprobe(struct kprobe *kp, bool reopt)
 }
 
 /*
+复合的kprobe. 
  * Aggregate handlers for multiple kprobes support - these handlers
  * take care of invoking the individual kprobe handlers on p->list
  */
@@ -1220,7 +1238,9 @@ static void aggr_post_handler(struct kprobe *p, struct pt_regs *regs,
 }
 NOKPROBE_SYMBOL(aggr_post_handler);
 
-/* Walks the list and increments 'nmissed' if 'p' has child probes. */
+/* 
+
+Walks the list and increments 'nmissed' if 'p' has child probes. */
 void kprobes_inc_nmissed_count(struct kprobe *p)
 {
 	struct kprobe *kp;
@@ -2886,10 +2906,11 @@ static const struct seq_operations kprobe_blacklist_sops = {
 	.show  = kprobe_blacklist_seq_show,
 };
 DEFINE_SEQ_ATTRIBUTE(kprobe_blacklist);
-
+/* 开启kprobes机制? */
 static int arm_all_kprobes(void)
 {
 	struct hlist_head *head;
+	/*  */
 	struct kprobe *p;
 	unsigned int i, total = 0, errors = 0;
 	int err, ret = 0;
@@ -2908,8 +2929,10 @@ static int arm_all_kprobes(void)
 	kprobes_all_disarmed = false;
 	/* Arming kprobes doesn't optimize kprobe itself */
 	for (i = 0; i < KPROBE_TABLE_SIZE; i++) {
+		/* 获取这个slot的list */
 		head = &kprobe_table[i];
 		/* Arm all kprobes on a best-effort basis */
+		/* 遍历这个list的每一个kprobe */
 		hlist_for_each_entry(p, head, hlist) {
 			if (!kprobe_disabled(p)) {
 				err = arm_kprobe(p);
@@ -2929,6 +2952,7 @@ static int arm_all_kprobes(void)
 		pr_info("Kprobes globally enabled\n");
 
 already_enabled:
+/* 兼具out的作用 */
 	mutex_unlock(&kprobe_mutex);
 	return ret;
 }
@@ -2997,7 +3021,7 @@ static ssize_t read_enabled_file_bool(struct file *file,
 	buf[2] = 0x00;
 	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
 }
-
+/* debugfs的kprobe的enabled file的写回调. */
 static ssize_t write_enabled_file_bool(struct file *file,
 	       const char __user *user_buf, size_t count, loff_t *ppos)
 {
@@ -3014,13 +3038,13 @@ static ssize_t write_enabled_file_bool(struct file *file,
 
 	return count;
 }
-
+/*  */
 static const struct file_operations fops_kp = {
 	.read =         read_enabled_file_bool,
 	.write =        write_enabled_file_bool,
 	.llseek =	default_llseek,
 };
-
+/* debugfs的kprobe */
 static int __init debugfs_kprobe_init(void)
 {
 	struct dentry *dir;

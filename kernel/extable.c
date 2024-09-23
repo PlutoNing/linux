@@ -62,7 +62,7 @@ const struct exception_table_entry *search_exception_tables(unsigned long addr)
 		e = search_bpf_extables(addr);
 	return e;
 }
-
+/* 是不是内核代码段 */
 int notrace core_kernel_text(unsigned long addr)
 {
 	if (is_kernel_text(addr))

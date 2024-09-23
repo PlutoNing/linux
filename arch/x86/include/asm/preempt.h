@@ -19,8 +19,10 @@
 #define PREEMPT_ENABLED	(0 + PREEMPT_NEED_RESCHED)
 
 /*
+
  * We mask the PREEMPT_NEED_RESCHED bit so as not to confuse all current users
  * that think a non-zero value indicates we cannot preempt.
+ 
  */
 static __always_inline int preempt_count(void)
 {

@@ -641,7 +641,7 @@ static inline bool mem_cgroup_unprotected(struct mem_cgroup *target,
 	return mem_cgroup_disabled() || mem_cgroup_is_root(memcg) ||
 		memcg == target;
 }
-
+/* 低于low? 低于min? */
 static inline bool mem_cgroup_below_low(struct mem_cgroup *target,
 					struct mem_cgroup *memcg)
 {
@@ -812,12 +812,12 @@ static inline void obj_cgroup_put(struct obj_cgroup *objcg)
 {
 	percpu_ref_put(&objcg->refcnt);
 }
-
+/* 获取一个memcg进行操作前的一般步骤, try_get... */
 static inline bool mem_cgroup_tryget(struct mem_cgroup *memcg)
 {
 	return !memcg || css_tryget(&memcg->css);
 }
-
+/*  */
 static inline void mem_cgroup_put(struct mem_cgroup *memcg)
 {
 	if (memcg)
@@ -856,7 +856,7 @@ static inline struct mem_cgroup *mem_cgroup_from_seq(struct seq_file *m)
 {
 	return mem_cgroup_from_css(seq_css(m));
 }
-
+/* lruvec->mz->memcg */
 static inline struct mem_cgroup *lruvec_memcg(struct lruvec *lruvec)
 {
 	struct mem_cgroup_per_node *mz;

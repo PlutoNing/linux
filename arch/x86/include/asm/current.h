@@ -10,7 +10,7 @@
 #include <asm/percpu.h>
 
 struct task_struct;
-
+/*  */
 struct pcpu_hot {
 	union {
 		struct {
@@ -29,11 +29,13 @@ struct pcpu_hot {
 			void			*softirq_stack_ptr;
 #endif
 		};
+		/* 对齐 */
 		u8	pad[64];
 	};
 };
-static_assert(sizeof(struct pcpu_hot) == 64);
 
+static_assert(sizeof(struct pcpu_hot) == 64);
+/*  */
 DECLARE_PER_CPU_ALIGNED(struct pcpu_hot, pcpu_hot);
 
 static __always_inline struct task_struct *get_current(void)
