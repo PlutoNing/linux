@@ -83,10 +83,11 @@ enum {
 	FTRACE_MODIFY_ENABLE_FL		= (1 << 0),
 	FTRACE_MODIFY_MAY_SLEEP_FL	= (1 << 1),
 };
-
+/* 表示ftrace_stub的ftrace_ops */
 struct ftrace_ops ftrace_list_end __read_mostly = {
 	.func		= ftrace_stub,
 	.flags		= FTRACE_OPS_FL_STUB,
+	
 	INIT_OPS_HASH(ftrace_list_end)
 };
 
@@ -2910,7 +2911,7 @@ void ftrace_modify_all_code(int command)
 		err = ftrace_disable_ftrace_graph_caller();
 	FTRACE_WARN_ON(err);
 }
-
+/* @data是command */
 static int __ftrace_modify_code(void *data)
 {
 	int *command = data;
@@ -7338,7 +7339,7 @@ void ftrace_reset_array_ops(struct trace_array *tr)
 {
 	tr->ops->func = ftrace_stub;
 }
-
+/*  */
 static nokprobe_inline void
 __ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 		       struct ftrace_ops *ignored, struct ftrace_regs *fregs)
@@ -7356,7 +7357,8 @@ __ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 	if (bit < 0)
 		return;
 
-	do_for_each_ftrace_op(op, ftrace_ops_list) {
+	do_for_each_ftrace_op(op, ftrace_ops_list) {/*  op = *ftrace_ops_list
+	ftrace_ops_list是什么  */
 		/* Stub functions don't need to be called nor tested */
 		if (op->flags & FTRACE_OPS_FL_STUB)
 			continue;
@@ -7376,6 +7378,7 @@ __ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 			op->func(ip, parent_ip, op, fregs);
 		}
 	} while_for_each_ftrace_op(op);
+
 out:
 	trace_clear_recursion(bit);
 }

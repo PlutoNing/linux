@@ -174,8 +174,10 @@ typedef void (*ftrace_func_t)(unsigned long ip, unsigned long parent_ip,
 ftrace_func_t ftrace_ops_get_func(struct ftrace_ops *ops);
 
 /*
+ 
  * FTRACE_OPS_FL_* bits denote the state of ftrace_ops struct and are
  * set in the flags member.
+ 代表ftrace ops的结构体.
  * CONTROL, SAVE_REGS, SAVE_REGS_IF_SUPPORTED, RECURSION, STUB and
  * IPMODIFY are a kind of attribute flags which can be set only before
  * registering the ftrace_ops, and can not be modified while registered.
@@ -183,14 +185,17 @@ ftrace_func_t ftrace_ops_get_func(struct ftrace_ops *ops);
  * cause unexpected results.
  *
  * ENABLED - set/unset when ftrace_ops is registered/unregistered
+ 是否被注册
  * DYNAMIC - set when ftrace_ops is registered to denote dynamically
  *           allocated ftrace_ops which need special care
+ 表明是动态分配的
  * SAVE_REGS - The ftrace_ops wants regs saved at each function called
  *            and passed to the callback. If this flag is set, but the
  *            architecture does not support passing regs
  *            (CONFIG_DYNAMIC_FTRACE_WITH_REGS is not defined), then the
  *            ftrace_ops will fail to register, unless the next flag
  *            is set.
+ call的时候保存寄存器.
  * SAVE_REGS_IF_SUPPORTED - This is the same as SAVE_REGS, but if the
  *            handler can handle an arch that does not save regs
  *            (the handler tests if regs == NULL), then it can set
@@ -199,15 +204,21 @@ ftrace_func_t ftrace_ops_get_func(struct ftrace_ops *ops);
  *            passing regs to the handler.
  *            Note, if this flag is set, the SAVE_REGS flag will automatically
  *            get set upon registering the ftrace_ops, if the arch supports it.
+
  * RECURSION - The ftrace_ops can set this to tell the ftrace infrastructure
  *            that the call back needs recursion protection. If it does
  *            not set this, then the ftrace infrastructure will assume
  *            that the callback can handle recursion on its own.
+ 需要recursion的protect.
  * STUB   - The ftrace_ops is just a place holder.
+ "nop"的ftrace
  * INITIALIZED - The ftrace_ops has already been initialized (first use time
  *            register_ftrace_function() is called, it will initialized the ops)
+ 是否被初始化
  * DELETED - The ops are being deleted, do not let them be registered again.
+ ops被删除了,无法被注册.
  * ADDING  - The ops is in the process of being added.
+ 正在被add的状态
  * REMOVING - The ops is in the process of being removed.
  * MODIFYING - The ops is in the process of changing its filter functions.
  * ALLOC_TRAMP - A dynamic trampoline was allocated by the core code.
