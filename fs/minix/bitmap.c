@@ -20,6 +20,7 @@
 static DEFINE_SPINLOCK(bitmap_lock);
 
 /*
+bitmap由word组成
  * bitmap consists of blocks filled with 16bit words
  * bit set == busy, bit clear == free
  * endianness is a mess, but for counting zero bits it really doesn't matter...
@@ -27,13 +28,14 @@ static DEFINE_SPINLOCK(bitmap_lock);
 static __u32 count_free(struct buffer_head *map[], unsigned blocksize, __u32 numbits)
 {
 	__u32 sum = 0;
+	/* 计算位图的占用的block数量? */
 	unsigned blocks = DIV_ROUND_UP(numbits, blocksize * 8);
 
-	while (blocks--) {
-		unsigned words = blocksize / 2;
-		__u16 *p = (__u16 *)(*map++)->b_data;
-		while (words--)
-			sum += 16 - hweight16(*p++);
+	while (blocks--) {/* 处理每一个block */
+		unsigned words = blocksize / 2; /* 获取每一个block内word的数量 */
+		__u16 *p = (__u16 *)(*map++)->b_data; /* 获取此block对应的page内的data,视为u16数组处理 */
+		while (words--)/* 处理data内的每一个u16 */
+			sum += 16 - hweight16(*p++); /* 计算每一个u16的bit */
 	}
 
 	return sum;
@@ -102,7 +104,7 @@ unsigned long minix_count_free_blocks(struct super_block *sb)
 	return (count_free(sbi->s_zmap, sb->s_blocksize, bits)
 		<< sbi->s_log_zone_size);
 }
-
+/* 在sb通过ino找到inode */
 struct minix_inode *
 minix_V1_raw_inode(struct super_block *sb, ino_t ino, struct buffer_head **bh)
 {
@@ -153,7 +155,9 @@ minix_V2_raw_inode(struct super_block *sb, ino_t ino, struct buffer_head **bh)
 	return p + ino % minix2_inodes_per_block;
 }
 
-/* Clear the link count and mode of a deleted inode on disk. */
+/* Clear the link count and mode of a deleted inode on disk. 
+
+*/
 
 static void minix_clear_inode(struct inode *inode)
 {
@@ -179,7 +183,9 @@ static void minix_clear_inode(struct inode *inode)
 		brelse (bh);
 	}
 }
-
+/* minix的删除inode.
+就只是刷新bitmap.
+磁盘内的以后会被覆写 */
 void minix_free_inode(struct inode * inode)
 {
 	struct super_block *sb = inode->i_sb;
@@ -187,7 +193,7 @@ void minix_free_inode(struct inode * inode)
 	struct buffer_head *bh;
 	int k = sb->s_blocksize_bits + 3;
 	unsigned long ino, bit;
-
+	/* 在bitmap的idx */
 	ino = inode->i_ino;
 	if (ino < 1 || ino > sbi->s_ninodes) {
 		printk("minix_free_inode: inode 0 or nonexistent inode\n");
@@ -209,13 +215,15 @@ void minix_free_inode(struct inode * inode)
 	spin_unlock(&bitmap_lock);
 	mark_buffer_dirty(bh);
 }
-
+/* minix给此dir创建一个inode */
 struct inode *minix_new_inode(const struct inode *dir, umode_t mode)
 {
 	struct super_block *sb = dir->i_sb;
 	struct minix_sb_info *sbi = minix_sb(sb);
+	/* 分配新inode */
 	struct inode *inode = new_inode(sb);
 	struct buffer_head * bh;
+	/* 每个block内的bit数量 */
 	int bits_per_zone = 8 * sb->s_blocksize;
 	unsigned long j;
 	int i;
@@ -227,15 +235,18 @@ struct inode *minix_new_inode(const struct inode *dir, umode_t mode)
 	spin_lock(&bitmap_lock);
 	for (i = 0; i < sbi->s_imap_blocks; i++) {
 		bh = sbi->s_imap[i];
+		/* 找到bitmap中此bh对应的data的第一个free bit */
 		j = minix_find_first_zero_bit(bh->b_data, bits_per_zone);
-		if (j < bits_per_zone)
+		if (j < bits_per_zone) /* 如果此bit位于合适范围, 视为找到 */
 			break;
 	}
 	if (!bh || j >= bits_per_zone) {
 		spin_unlock(&bitmap_lock);
 		iput(inode);
+		/* 没有空间了 */
 		return ERR_PTR(-ENOSPC);
 	}
+	/* 设置内存中bitmap里面此bit已经使用 */
 	if (minix_test_and_set_bit(j, bh->b_data)) {	/* shouldn't happen */
 		spin_unlock(&bitmap_lock);
 		printk("minix_new_inode: bit already set\n");
@@ -243,16 +254,20 @@ struct inode *minix_new_inode(const struct inode *dir, umode_t mode)
 		return ERR_PTR(-ENOSPC);
 	}
 	spin_unlock(&bitmap_lock);
+	/* 这个bh被改变了,需要刷盘 */
 	mark_buffer_dirty(bh);
+	/* 获取这个bit在全局的idx */
 	j += i * bits_per_zone;
 	if (!j || j > sbi->s_ninodes) {
 		iput(inode);
 		return ERR_PTR(-ENOSPC);
 	}
+	/* 开始初始化这个inode */
 	inode_init_owner(&nop_mnt_idmap, inode, dir, mode);
 	inode->i_ino = j;
 	inode->i_mtime = inode->i_atime = inode_set_ctime_current(inode);
 	inode->i_blocks = 0;
+	/* 初始化minix inode的priv */
 	memset(&minix_i(inode)->u, 0, sizeof(minix_i(inode)->u));
 	insert_inode_hash(inode);
 	mark_inode_dirty(inode);
@@ -260,6 +275,8 @@ struct inode *minix_new_inode(const struct inode *dir, umode_t mode)
 	return inode;
 }
 
+
+/* 统计free inode数量 */
 unsigned long minix_count_free_inodes(struct super_block *sb)
 {
 	struct minix_sb_info *sbi = minix_sb(sb);

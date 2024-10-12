@@ -48,10 +48,13 @@ struct address_space;
 typedef void (bh_end_io_t)(struct buffer_head *bh, int uptodate);
 
 /*
+对应page内的block. 之前用于块io,现在被bio取代
  * Historically, a buffer_head was used to map a single block
  * within a page, and of course as the unit of I/O through the
  * filesystem and block layers.  Nowadays the basic I/O unit
  * is the bio, and buffer_heads are used for extracting block
+ buffer_head 还用于跟踪页面内的状态，通常通过 page_mapping 来实现。
+ 这意味着 buffer_head 可以帮助管理和跟踪页面中数据的状态。
  * mappings (via a get_block_t call), for tracking state within
  * a page (via a page_mapping) and for wrapping bio submission
  * for backward compatibility reasons (e.g. submit_bh).
@@ -59,6 +62,7 @@ typedef void (bh_end_io_t)(struct buffer_head *bh, int uptodate);
 struct buffer_head {
 	unsigned long b_state;		/* buffer state bitmap (see above) */
 	struct buffer_head *b_this_page;/* circular list of page's buffers */
+	
 	union {
 		struct page *b_page;	/* the page this bh is mapped to */
 		struct folio *b_folio;	/* the folio this bh is mapped to */
@@ -66,7 +70,9 @@ struct buffer_head {
 
 	sector_t b_blocknr;		/* start block number */
 	size_t b_size;			/* size of mapping */
-	char *b_data;			/* pointer to data within the page */
+	char *b_data;			/* 
+	指向管理的page内的data.
+	pointer to data within the page */
 
 	struct block_device *b_bdev;
 	bh_end_io_t *b_end_io;		/* I/O completion */
@@ -176,7 +182,9 @@ static inline unsigned long bh_offset(const struct buffer_head *bh)
 	return (unsigned long)(bh)->b_data & (page_size(bh->b_page) - 1);
 }
 
-/* If we *know* page->private refers to buffer_heads */
+/* If we *know* page->private refers to buffer_heads
+获取page的bh
+ */
 #define page_buffers(page)					\
 	({							\
 		BUG_ON(!PagePrivate(page));			\
@@ -320,6 +328,7 @@ static inline void bforget(struct buffer_head *bh)
 		__bforget(bh);
 }
 
+/*  */
 static inline struct buffer_head *
 sb_bread(struct super_block *sb, sector_t block)
 {

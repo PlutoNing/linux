@@ -249,7 +249,7 @@ static void i_callback(struct rcu_head *head)
 	else
 		free_inode_nonrcu(inode);
 }
-
+/* sb分配inode */
 static struct inode *alloc_inode(struct super_block *sb)
 {
 	const struct super_operations *ops = sb->s_op;
@@ -258,6 +258,7 @@ static struct inode *alloc_inode(struct super_block *sb)
 	if (ops->alloc_inode)
 		inode = ops->alloc_inode(sb);
 	else
+	/* 如果sb没有自定义方法,就从inode slab分配 */
 		inode = alloc_inode_sb(sb, inode_cachep, GFP_KERNEL);
 
 	if (!inode)
@@ -516,6 +517,7 @@ static unsigned long hash(struct super_block *sb, unsigned long hashval)
 }
 
 /**
+把inode插入全局的hash
  *	__insert_inode_hash - hash an inode
  *	@inode: unhashed inode
  *	@hashval: unsigned long value used to locate this object in the
@@ -990,6 +992,7 @@ unsigned int get_next_ino(void)
 EXPORT_SYMBOL(get_next_ino);
 
 /**
+sb分配inode
  *	new_inode_pseudo 	- obtain an inode
  *	@sb: superblock
  *
@@ -1004,6 +1007,7 @@ struct inode *new_inode_pseudo(struct super_block *sb)
 	struct inode *inode = alloc_inode(sb);
 
 	if (inode) {
+		/* 分配成功inode, 初始化关键字段 */
 		spin_lock(&inode->i_lock);
 		inode->i_state = 0;
 		spin_unlock(&inode->i_lock);
@@ -1028,6 +1032,7 @@ struct inode *new_inode(struct super_block *sb)
 	struct inode *inode;
 
 	inode = new_inode_pseudo(sb);
+	/* 分配成功, 加入sb */
 	if (inode)
 		inode_sb_list_add(inode);
 	return inode;

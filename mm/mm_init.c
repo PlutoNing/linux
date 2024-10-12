@@ -2397,7 +2397,7 @@ void __init page_alloc_init_late(void)
 	/* Reinit limits that are based on free pages after the kernel is up */
 	files_maxfiles_init();
 #endif
-
+	/* 初始化buffer机制 */
 	buffer_init();
 
 	/* Discard memblock private memory */

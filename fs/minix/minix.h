@@ -23,17 +23,20 @@ struct minix_inode_info {
 };
 
 /*
+minix的sb
  * minix super-block data in memory
  */
 struct minix_sb_info {
 	unsigned long s_ninodes;
 	unsigned long s_nzones;
+	/* inode的bitmap的block数量 */
 	unsigned long s_imap_blocks;
 	unsigned long s_zmap_blocks;
 	unsigned long s_firstdatazone;
 	unsigned long s_log_zone_size;
 	int s_dirsize;
 	int s_namelen;
+	/* 是bitmap,每个元素是bh指针,对应一个内存的块block. */
 	struct buffer_head ** s_imap;
 	struct buffer_head ** s_zmap;
 	struct buffer_head * s_sbh;

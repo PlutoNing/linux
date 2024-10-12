@@ -428,6 +428,7 @@ struct mpage_data {
 };
 
 /*
+ 清除page关联的bh?
  * We have our BIO, so we can now mark the buffers clean.  Make
  * sure to only clean buffers which we know we'll be writing.
  */
@@ -451,12 +452,14 @@ static void clean_buffers(struct page *page, unsigned first_unmapped)
 	 * we cannot drop the bh if the page is not uptodate or a concurrent
 	 * read_folio would fail to serialize with the bh and it would read from
 	 * disk before we reach the platter.
+	 如果page是刷过盘的,并且bh超量了,尝试释放
 	 */
 	if (buffer_heads_over_limit && PageUptodate(page))
 		try_to_free_buffers(page_folio(page));
 }
 
 /*
+2024年10月12日16:19:50
  * For situations where we want to clean all buffers attached to a page.
  * We don't need to calculate how many buffers are attached to the page,
  * we just need to specify a number larger than the maximum number of buffers.

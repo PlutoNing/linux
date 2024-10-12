@@ -177,6 +177,7 @@ void end_buffer_write_sync(struct buffer_head *bh, int uptodate)
 EXPORT_SYMBOL(end_buffer_write_sync);
 
 /*
+找到block的bh
  * Various filesystems appear to want __find_get_block to be non-blocking.
  * But it's the page lock which protects the buffers.  To get around this,
  * we get exclusion from try_to_free_buffers with the blockdev mapping's
@@ -1172,6 +1173,7 @@ __getblk_slow(struct block_device *bdev, sector_t block,
  */
 
 /**
+这个bh被改变了,需要刷盘
  * mark_buffer_dirty - mark a buffer_head as needing writeout
  * @bh: the buffer_head to mark dirty
  *
@@ -1300,11 +1302,11 @@ static struct buffer_head *__bread_slow(struct buffer_head *bh)
  */
 
 #define BH_LRU_SIZE	16
-
+/* bh的lru */
 struct bh_lru {
 	struct buffer_head *bhs[BH_LRU_SIZE];
 };
-
+/*  */
 static DEFINE_PER_CPU(struct bh_lru, bh_lrus) = {{ NULL }};
 
 #ifdef CONFIG_SMP
@@ -1362,6 +1364,7 @@ static void bh_lru_install(struct buffer_head *bh)
 }
 
 /*
+在全局bh lru找到对应的bh
  * Look up the bh in this cpu's LRU.  If it's there, move it to the head.
  */
 static struct buffer_head *
@@ -1399,6 +1402,7 @@ lookup_bh_lru(struct block_device *bdev, sector_t block, unsigned size)
 }
 
 /*
+找到对应的bh
  * Perform a pagecache lookup for the matching buffer.  If it's there, refresh
  * it in the LRU and mark it as accessed.  If it is not present then return
  * NULL
@@ -1409,6 +1413,7 @@ __find_get_block(struct block_device *bdev, sector_t block, unsigned size)
 	struct buffer_head *bh = lookup_bh_lru(bdev, block, size);
 
 	if (bh == NULL) {
+		/* 没找到,尝试慢速路径 */
 		/* __find_get_block_slow will mark the page accessed */
 		bh = __find_get_block_slow(bdev, block);
 		if (bh)
@@ -1421,6 +1426,7 @@ __find_get_block(struct block_device *bdev, sector_t block, unsigned size)
 EXPORT_SYMBOL(__find_get_block);
 
 /*
+ 找到dev的这个block的bh
  * __getblk_gfp() will locate (and, if necessary, create) the buffer_head
  * which corresponds to the passed block_device, block and size. The
  * returned buffer has its reference count incremented.
@@ -1455,6 +1461,7 @@ void __breadahead(struct block_device *bdev, sector_t block, unsigned size)
 EXPORT_SYMBOL(__breadahead);
 
 /**
+读取磁盘的block,和相关的bh
  *  __bread_gfp() - reads a specified block and returns the bh
  *  @bdev: the block_device to read from
  *  @block: number of block
@@ -2936,6 +2943,7 @@ failed:
 	return false;
 }
 
+/*  */
 bool try_to_free_buffers(struct folio *folio)
 {
 	struct address_space * const mapping = folio->mapping;
@@ -2991,6 +2999,7 @@ EXPORT_SYMBOL(try_to_free_buffers);
 static struct kmem_cache *bh_cachep __read_mostly;
 
 /*
+ 最大的bh数量
  * Once the number of bh's in the machine exceeds this level, we start
  * stripping them in writeback.
  */
@@ -2998,13 +3007,14 @@ static unsigned long max_buffer_heads;
 
 int buffer_heads_over_limit;
 
+/* 记录bh的数量等信息 */
 struct bh_accounting {
 	int nr;			/* Number of live bh's */
 	int ratelimit;		/* Limit cacheline bouncing */
 };
 
 static DEFINE_PER_CPU(struct bh_accounting, bh_accounting) = {0, 0};
-
+/* 设置buffer_heads_over_limit状态 */
 static void recalc_bh_state(void)
 {
 	int i;
@@ -3141,7 +3151,7 @@ void __bh_read_batch(int nr, struct buffer_head *bhs[],
 	}
 }
 EXPORT_SYMBOL(__bh_read_batch);
-
+/* 初始化buffer机制? 系统范围or磁盘范围? */
 void __init buffer_init(void)
 {
 	unsigned long nrpages;
