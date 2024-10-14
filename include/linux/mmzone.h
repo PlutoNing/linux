@@ -1187,6 +1187,8 @@ static inline bool zone_intersects(struct zone *zone,
  * The "priority" of VM scanning is how much of the queues we will scan in one
  * go. A value of 12 for DEF_PRIORITY implies that we will scan 1/4096th of the
  * queues ("queue_length >> 12") during an aging round.
+ 和vm pressure有关
+ 
  */
 #define DEF_PRIORITY 12
 

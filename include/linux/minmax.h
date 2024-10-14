@@ -101,6 +101,10 @@
 	__x == 0 ? __y : ((__y == 0) ? __x : min(__x, __y)); })
 
 /**
+将一个值限制在指定的范围内，确保该值不会低于最小值（lo）或高于最大值（hi）。
+如果 val 小于 lo，则返回 lo；
+如果 val 大于 hi，则返回 hi；
+否则返回 val 本身。
  * clamp - return a value clamped to a given range with strict typechecking
  * @val: current value
  * @lo: lowest allowable value
