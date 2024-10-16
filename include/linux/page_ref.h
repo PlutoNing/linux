@@ -115,12 +115,14 @@ static inline void init_page_count(struct page *page)
 	set_page_count(page, 1);
 }
 
+
 static inline void page_ref_add(struct page *page, int nr)
 {
 	atomic_add(nr, &page->_refcount);
 	if (page_ref_tracepoint_active(page_ref_mod))
 		__page_ref_mod(page, nr);
 }
+
 
 static inline void folio_ref_add(struct folio *folio, int nr)
 {

@@ -80,6 +80,8 @@ EXPORT_SYMBOL(memory_cgrp_subsys);
 struct mem_cgroup *root_mem_cgroup __read_mostly;
 
 /* Active memory cgroup to use from an interrupt context */
+
+/* 内核线程等等的active_memcg? */
 DEFINE_PER_CPU(struct mem_cgroup *, int_active_memcg);
 EXPORT_PER_CPU_SYMBOL_GPL(int_active_memcg);
 
@@ -1010,6 +1012,7 @@ struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p)
 }
 EXPORT_SYMBOL(mem_cgroup_from_task);
 
+/* 定义是什么? */
 static __always_inline struct mem_cgroup *active_memcg(void)
 {
 	if (!in_task())
@@ -1019,6 +1022,9 @@ static __always_inline struct mem_cgroup *active_memcg(void)
 }
 
 /**
+获取mm的cg
+mm可能为null, 则获取active_memcg.
+获取mm->task->css->memcg
  * get_mem_cgroup_from_mm: Obtain a reference on given mm_struct's memcg.
  * @mm: mm from which memcg should be extracted. It can be NULL.
  *
@@ -1045,7 +1051,8 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
 	 * counting is disabled on the root level in the
 	 * cgroup core. See CSS_NO_REF.
 	 */
-	if (unlikely(!mm)) {
+	if (unlikely(!mm)) { /* 没指定mm(比如说可能加入mapping)
+	如何获取cg? */
 		memcg = active_memcg();
 		if (unlikely(memcg)) {
 			/* remote memcg must hold a ref */
@@ -2636,6 +2643,7 @@ out:
 	css_put(&memcg->css);
 }
 
+/*  */
 static int try_charge_memcg(struct mem_cgroup *memcg, gfp_t gfp_mask,
 			unsigned int nr_pages)
 {
@@ -2825,6 +2833,7 @@ done_restock:
 	}
 	return 0;
 }
+
 
 static inline int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 			     unsigned int nr_pages)
@@ -6990,6 +6999,7 @@ void mem_cgroup_calculate_protection(struct mem_cgroup *root,
 			atomic_long_read(&parent->memory.children_low_usage)));
 }
 
+/*  */
 static int charge_memcg(struct folio *folio, struct mem_cgroup *memcg,
 			gfp_t gfp)
 {
@@ -6999,7 +7009,8 @@ static int charge_memcg(struct folio *folio, struct mem_cgroup *memcg,
 	ret = try_charge(memcg, gfp, nr_pages);
 	if (ret)
 		goto out;
-
+	
+	/* 被添加了页面就get? */
 	css_get(&memcg->css);
 	commit_charge(folio, memcg);
 
@@ -7011,12 +7022,17 @@ out:
 	return ret;
 }
 
+/* 
+内部会get然后put
+charge memcg此folio */
 int __mem_cgroup_charge(struct folio *folio, struct mm_struct *mm, gfp_t gfp)
 {
 	struct mem_cgroup *memcg;
 	int ret;
 
+	/* 内部会get */
 	memcg = get_mem_cgroup_from_mm(mm);
+	/* memcg机制肯定开启了, memcg不可能为null, 只要有值, 就肯定get了 */
 	ret = charge_memcg(folio, memcg, gfp);
 	css_put(&memcg->css);
 

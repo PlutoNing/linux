@@ -120,6 +120,7 @@ static __always_inline unsigned char interrupt_context_level(void)
 #define in_nmi()		(nmi_count())
 #define in_hardirq()		(hardirq_count())
 #define in_serving_softirq()	(softirq_count() & SOFTIRQ_OFFSET)
+/* 是不是用户进程? */
 #define in_task()		(!(in_nmi() | in_hardirq() | in_serving_softirq()))
 
 /*

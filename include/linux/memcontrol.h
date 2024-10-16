@@ -666,6 +666,7 @@ static inline bool mem_cgroup_below_min(struct mem_cgroup *target,
 int __mem_cgroup_charge(struct folio *folio, struct mm_struct *mm, gfp_t gfp);
 
 /**
+charge新分配的folio.
  * mem_cgroup_charge - Charge a newly allocated folio to a cgroup.
  * @folio: Folio to charge.
  * @mm: mm context of the allocating task.
