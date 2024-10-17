@@ -860,6 +860,7 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 		VM_BUG_ON_FOLIO(index & (folio_nr_pages(folio) - 1), folio);
 		if (error)
 			return error;
+		/* charg成功了, memcg ref += nr_pages(folio) */
 		charged = true;
 		xas_set_order(&xas, index, folio_order(folio));
 		nr = folio_nr_pages(folio);
@@ -922,6 +923,7 @@ unlock:
 
 	trace_mm_filemap_add_to_page_cache(folio);
 	return 0;
+
 error:
 	if (charged)
 		mem_cgroup_uncharge(folio);
@@ -930,6 +932,7 @@ error:
 	folio_put_refs(folio, nr);
 	return xas_error(&xas);
 }
+
 ALLOW_ERROR_INJECTION(__filemap_add_folio, ERRNO);
 
 int filemap_add_folio(struct address_space *mapping, struct folio *folio,

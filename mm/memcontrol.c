@@ -937,6 +937,7 @@ static unsigned long memcg_events_local(struct mem_cgroup *memcg, int event)
 	return READ_ONCE(memcg->vmstats->events_local[index]);
 }
 
+/*  */
 static void mem_cgroup_charge_statistics(struct mem_cgroup *memcg,
 					 int nr_pages)
 {
@@ -2335,6 +2336,7 @@ static void refill_stock(struct mem_cgroup *memcg, unsigned int nr_pages)
 }
 
 /*
+ 排空stock.
  * Drains all per-CPU charge caches for given root_memcg resp. subtree
  * of the hierarchy under it.
  */
@@ -2663,18 +2665,23 @@ retry:
 		return 0;
 
 	if (!do_memsw_account() ||
-	    page_counter_try_charge(&memcg->memsw, batch, &counter)) {
+	    page_counter_try_charge(&memcg->memsw, batch, &counter)) {/* 如果让charge sw, */
+		/* 不让charge memsw,就走到这里charge memory. */
 		if (page_counter_try_charge(&memcg->memory, batch, &counter))
 			goto done_restock;
+
+		/* charge mem失败, 但是charge memsw成功,回滚 */
 		if (do_memsw_account())
 			page_counter_uncharge(&memcg->memsw, batch);
 		mem_over_limit = mem_cgroup_from_counter(counter, memory);
-	} else {
+	} else {/* charge memsw失败的路径 */
 		mem_over_limit = mem_cgroup_from_counter(counter, memsw);
 		reclaim_options &= ~MEMCG_RECLAIM_MAY_SWAP;
 	}
 
-	if (batch > nr_pages) {
+	/* charge mem 失败 */
+
+	if (batch > nr_pages) {/* 把batch搞小一点,重试 */
 		batch = nr_pages;
 		goto retry;
 	}
@@ -2684,13 +2691,15 @@ retry:
 	 * allocate memory. This might exceed the limits temporarily,
 	 * but we prefer facilitating memory reclaim and getting back
 	 * under the limit over triggering OOM kills in these cases.
+	 表示可以暂时超过限制?
 	 */
 	if (unlikely(current->flags & PF_MEMALLOC))
 		goto force;
-
+	
+	/* task已经会oom */
 	if (unlikely(task_in_memcg_oom(current)))
 		goto nomem;
-
+	/* gfp无法容忍阻塞 */
 	if (!gfpflags_allow_blocking(gfp_mask))
 		goto nomem;
 
@@ -2758,10 +2767,12 @@ nomem:
 	 * allocations. But like the global atomic pool, we need to
 	 * put the burden of reclaim on regular allocation requests
 	 * and let these go through as privileged allocations.
+
 	 */
 	if (!(gfp_mask & (__GFP_NOFAIL | __GFP_HIGH)))
 		return -ENOMEM;
 force:
+/* 表示可以适当超量charge */
 	/*
 	 * If the allocation has to be enforced, don't forget to raise
 	 * a MEMCG_MAX event.
@@ -2781,6 +2792,8 @@ force:
 	return 0;
 
 done_restock:
+/* 表示是批量charge的, 其实只需要使用nr_pages那么多， 把多的
+放入stock ... */
 	if (batch > nr_pages)
 		refill_stock(memcg, batch - nr_pages);
 
@@ -2835,6 +2848,7 @@ done_restock:
 }
 
 
+/*  */
 static inline int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 			     unsigned int nr_pages)
 {
@@ -3476,12 +3490,14 @@ static inline int mem_cgroup_move_swap_account(swp_entry_t entry,
 	return -EINVAL;
 }
 #endif
-
+/* 设置memcg的limit的锁 */
 static DEFINE_MUTEX(memcg_max_mutex);
 
+/* 把@memcg的最大页面数量限制为@max */
 static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 				 unsigned long max, bool memsw)
 {
+	/* 表示是不是扩大了memcg的limit */
 	bool enlarge = false;
 	bool drained = false;
 	int ret;
@@ -3499,32 +3515,39 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 		 * Make sure that the new limit (memsw or memory limit) doesn't
 		 * break our basic invariant rule memory.max <= memsw.max.
 		 */
+		 /* 如果是设置memsw, 表示新的memsw max是否大于memory.max
+		 如果是设置memory, 表示memory的新max是否小于memsw.max  */
 		limits_invariant = memsw ? max >= READ_ONCE(memcg->memory.max) :
 					   max <= memcg->memsw.max;
-		if (!limits_invariant) {
+		if (!limits_invariant) {/* 如果不符合上面的限制 */
 			mutex_unlock(&memcg_max_mutex);
 			ret = -EINVAL;
 			break;
 		}
+
 		if (max > counter->max)
-			enlarge = true;
+			enlarge = true; /* 似乎这里也暗示了,新max可能小于counter的旧max? */
+
 		ret = page_counter_set_max(counter, max);
 		mutex_unlock(&memcg_max_mutex);
 
-		if (!ret)
+		if (!ret)/* 直接缩小成功了 */
 			break;
 
+		/* 说明此时用量大于新max, 需要shrink */
 		if (!drained) {
 			drain_all_stock(memcg);
 			drained = true;
 			continue;
 		}
 
+		/* 一次只回收一个页面? 会被扩大到swap max */
 		if (!try_to_free_mem_cgroup_pages(memcg, 1, GFP_KERNEL,
 					memsw ? 0 : MEMCG_RECLAIM_MAY_SWAP)) {
 			ret = -EBUSY;
 			break;
 		}
+
 	} while (true);
 
 	if (!ret && enlarge)
@@ -3533,6 +3556,9 @@ static int mem_cgroup_resize_max(struct mem_cgroup *memcg,
 	return ret;
 }
 
+/* soft reclaim
+
+mglru情况下不尝试soft reclaim */
 unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 					    gfp_t gfp_mask,
 					    unsigned long *total_scanned)
@@ -3672,6 +3698,7 @@ static int mem_cgroup_hierarchy_write(struct cgroup_subsys_state *css,
 	return -EINVAL;
 }
 
+/* 获取的是页面数量 */
 static unsigned long mem_cgroup_usage(struct mem_cgroup *memcg, bool swap)
 {
 	unsigned long val;
@@ -3702,6 +3729,7 @@ enum {
 	RES_SOFT_LIMIT,
 };
 
+/*  */
 static u64 mem_cgroup_read_u64(struct cgroup_subsys_state *css,
 			       struct cftype *cft)
 {
@@ -3733,8 +3761,10 @@ static u64 mem_cgroup_read_u64(struct cgroup_subsys_state *css,
 			return (u64)mem_cgroup_usage(memcg, true) * PAGE_SIZE;
 		return (u64)page_counter_read(counter) * PAGE_SIZE;
 	case RES_LIMIT:
+		/* 限制的页面数用量 */
 		return (u64)counter->max * PAGE_SIZE;
 	case RES_MAX_USAGE:
+		/* 最大用量 */
 		return (u64)counter->watermark * PAGE_SIZE;
 	case RES_FAILCNT:
 		return counter->failcnt;
@@ -3867,12 +3897,14 @@ static ssize_t mem_cgroup_write(struct kernfs_open_file *of,
 
 	switch (MEMFILE_ATTR(of_cft(of)->private)) {
 	case RES_LIMIT:
+		/* 写入memcg最大用量限制的函数 */
 		if (mem_cgroup_is_root(memcg)) { /* Can't set limit on root */
 			ret = -EINVAL;
 			break;
 		}
 		switch (MEMFILE_TYPE(of_cft(of)->private)) {
 		case _MEM:
+			/* 限制mem的最大用量 */
 			ret = mem_cgroup_resize_max(memcg, nr_pages, false);
 			break;
 		case _MEMSWAP:
@@ -3902,6 +3934,7 @@ static ssize_t mem_cgroup_write(struct kernfs_open_file *of,
 	return ret ?: nbytes;
 }
 
+/* proc设置memcg参数的回调函数 */
 static ssize_t mem_cgroup_reset(struct kernfs_open_file *of, char *buf,
 				size_t nbytes, loff_t off)
 {
@@ -3927,6 +3960,7 @@ static ssize_t mem_cgroup_reset(struct kernfs_open_file *of, char *buf,
 
 	switch (MEMFILE_ATTR(of_cft(of)->private)) {
 	case RES_MAX_USAGE:
+		/* 设置memcg的最大内存页面数量 */
 		page_counter_reset_watermark(counter);
 		break;
 	case RES_FAILCNT:
@@ -5021,6 +5055,9 @@ static int mem_cgroup_slab_show(struct seq_file *m, void *p)
 #endif
 
 static int memory_stat_show(struct seq_file *m, void *v);
+
+/* cgroup v1
+的proc file */
 
 static struct cftype mem_cgroup_legacy_files[] = {
 	{
@@ -6999,7 +7036,7 @@ void mem_cgroup_calculate_protection(struct mem_cgroup *root,
 			atomic_long_read(&parent->memory.children_low_usage)));
 }
 
-/*  */
+/*在get memcg之后调用的.  */
 static int charge_memcg(struct folio *folio, struct mem_cgroup *memcg,
 			gfp_t gfp)
 {
@@ -7012,6 +7049,7 @@ static int charge_memcg(struct folio *folio, struct mem_cgroup *memcg,
 	
 	/* 被添加了页面就get? */
 	css_get(&memcg->css);
+
 	commit_charge(folio, memcg);
 
 	local_irq_disable();

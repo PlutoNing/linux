@@ -325,7 +325,7 @@ void vmpressure(gfp_t gfp, struct mem_cgroup *memcg, bool tree,
  * vmpressure_prio() - Account memory pressure through reclaimer priority level
  * @gfp:	reclaimer's gfp mask
  * @memcg:	cgroup memory controller handle
- * @prio:	reclaimer's priority
+ * @prio:	reclaimer's priority . 越小代表重试的次数越多, 回收越紧迫, 优先级越高.
  *
  * This function should be called from the reclaim path every time when
  * the vmscan's reclaiming priority (scanning depth) changes.

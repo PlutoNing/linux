@@ -3040,12 +3040,13 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 		 * rid of any stale active pages quickly.
 		 */
 
-		/* 先计算是否强制deactivate匿名页 */
+		/* 先计算是否强制deactivate匿名页 
+		2024年10月17日17:27:27*/
 		refaults = lruvec_page_state(target_lruvec,
 				WORKINGSET_ACTIVATE_ANON);
 		if (refaults != target_lruvec->refaults[WORKINGSET_ANON] ||
 			inactive_is_low(target_lruvec, LRU_INACTIVE_ANON))
-			sc->may_deactivate |= DEACTIVATE_ANON; /*  */
+			sc->may_deactivate |= DEACTIVATE_ANON; /* 可以deactivate匿名页 */
 		else
 			sc->may_deactivate &= ~DEACTIVATE_ANON;
 
@@ -6740,7 +6741,6 @@ static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 	bool reclaimable = false;
 
 	if (lru_gen_enabled() && root_reclaim(sc)) {
-		pr_debug("%s mglru shrink node\n",__func__);
 		lru_gen_shrink_node(pgdat, sc);
 		return;
 	}
@@ -6753,7 +6753,7 @@ again:
 
 	nr_reclaimed = sc->nr_reclaimed;
 	nr_scanned = sc->nr_scanned;
-	/* 对于非mglru, 设置sc的属性, 计算需要扫描等等数量 */
+	/* 对于非mglru,  根据sc计算此node上面需要or可以扫描等等数量,写入sc */
 	prepare_scan_count(pgdat, sc);
 	/* 这里进行实质的回收 */
 	shrink_node_memcgs(pgdat, sc);
@@ -6812,6 +6812,7 @@ again:
 	 *
 	 * Legacy memcg will stall in page writeback so avoid forcibly
 	 * stalling in reclaim_throttle().
+	 根据操作lru时, 设置的各种信息来设置.
 	 */
 	if (sc->nr.dirty && sc->nr.dirty == sc->nr.congested) {
 		if (cgroup_reclaim(sc) && writeback_throttling_sane(sc))
@@ -6847,6 +6848,7 @@ again:
 }
 
 /*
+似乎就是检查zone等是否满足, 不检查sc的设置.
  * Returns true if compaction should go ahead for a costly-order request, or
  * the allocation would already succeed without compaction. Return false if we
  * should reclaim first.
@@ -6909,8 +6911,9 @@ static void consider_reclaim_throttle(pg_data_t *pgdat, struct scan_control *sc)
 }
 
 /*
- * This is the direct reclaim path, for page-allocating processes.  We only
- * try to reclaim pages from zones which will satisfy the caller's allocation
+
+ * This is the direct reclaim path, for page-allocating processes.  
+ We only try to reclaim pages from zones which will satisfy the caller's allocation
  * request.
  *
  * If a zone is deemed to be full of pinned pages then just give it a light
@@ -6932,16 +6935,19 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 	 * highmem pages could be pinning lowmem pages storing buffer_heads
 	 */
 	orig_mask = sc->gfp_mask;
-	if (buffer_heads_over_limit) {
+	if (buffer_heads_over_limit) {/* 如果当前disk的buffer过多.  */
 		sc->gfp_mask |= __GFP_HIGHMEM;
 		sc->reclaim_idx = gfp_zone(sc->gfp_mask);
 	}
 
+	/* 遍历zone指定的node进行回滚 */
 	for_each_zone_zonelist_nodemask(zone, z, zonelist,
 					sc->reclaim_idx, sc->nodemask) {
 		/*
 		 * Take care memory controller reclaiming has small influence
 		 * to global LRU.
+
+		 尝试全局回收下的soft reclaim回收
 		 */
 		if (!cgroup_reclaim(sc)) {
 			if (!cpuset_zone_allowed(zone,
@@ -6959,7 +6965,8 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 			 */
 			if (IS_ENABLED(CONFIG_COMPACTION) &&
 			    sc->order > PAGE_ALLOC_COSTLY_ORDER &&
-			    compaction_ready(zone, sc)) {
+			    compaction_ready(zone, sc)) { /* sc设置了order会检查 */
+
 				sc->compaction_ready = true;
 				continue;
 			}
@@ -6969,6 +6976,8 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 			 * zonelist is ordered by zone (not the default) then a
 			 * node may be shrunk multiple times but in that case
 			 * the user prefers lower zones being preserved.
+			 zones列表有可能是按序排列的. 因此可能会连续遍历到同一个node,
+			 对每个node仅尝试一次.
 			 */
 			if (zone->zone_pgdat == last_pgdat)
 				continue;
@@ -6983,11 +6992,13 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 			nr_soft_reclaimed = mem_cgroup_soft_limit_reclaim(zone->zone_pgdat,
 						sc->order, sc->gfp_mask,
 						&nr_soft_scanned);
+
 			sc->nr_reclaimed += nr_soft_reclaimed;
 			sc->nr_scanned += nr_soft_scanned;
 			/* need some check for avoid more shrink_zone() */
 		}
 
+		/* 全局回收的soft reclaim完毕, 开始回收node */
 		if (!first_pgdat)
 			first_pgdat = zone->zone_pgdat;
 
@@ -6995,19 +7006,22 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 		if (zone->zone_pgdat == last_pgdat)
 			continue;
 		last_pgdat = zone->zone_pgdat;
+
 		shrink_node(zone->zone_pgdat, sc);
 	}
 
-	if (first_pgdat)
+	if (first_pgdat) /* 说明回收了node */
 		consider_reclaim_throttle(first_pgdat, sc);
 
 	/*
 	 * Restore to original mask to avoid the impact on the caller if we
 	 * promoted it to __GFP_HIGHMEM.
+	 刚才可能提升了gfp, 这里回滚
 	 */
 	sc->gfp_mask = orig_mask;
 }
 
+/* oh, mglru可以不考虑 */
 static void snapshot_refaults(struct mem_cgroup *target_memcg, pg_data_t *pgdat)
 {
 	struct lruvec *target_lruvec;
@@ -7017,13 +7031,17 @@ static void snapshot_refaults(struct mem_cgroup *target_memcg, pg_data_t *pgdat)
 		return;
 
 	target_lruvec = mem_cgroup_lruvec(target_memcg, pgdat);
+
 	refaults = lruvec_page_state(target_lruvec, WORKINGSET_ACTIVATE_ANON);
 	target_lruvec->refaults[WORKINGSET_ANON] = refaults;
+
 	refaults = lruvec_page_state(target_lruvec, WORKINGSET_ACTIVATE_FILE);
 	target_lruvec->refaults[WORKINGSET_FILE] = refaults;
 }
 
 /*
+返回回收的数量.
+回收prio次数.
  * This is the main entry point to direct page reclaim.
  *
  * If a full scan of the inactive list fails to free enough memory then we
@@ -7043,6 +7061,7 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 					  struct scan_control *sc)
 {
 	int initial_priority = sc->priority;
+
 	pg_data_t *last_pgdat;
 	struct zoneref *z;
 	struct zone *zone;
@@ -7056,19 +7075,22 @@ retry:
 		if (!sc->proactive)
 			vmpressure_prio(sc->gfp_mask, sc->target_mem_cgroup,
 					sc->priority);
+
 		sc->nr_scanned = 0;
 		shrink_zones(zonelist, sc);
 
 		if (sc->nr_reclaimed >= sc->nr_to_reclaim)
 			break;
 
-		if (sc->compaction_ready)
+		if (sc->compaction_ready) /* 什么需求触发的回收, 会打开这个flag呢.
+		sc设置order的话(快速回收,慢速回收，kswap回收), 可能会走这条路径.
+		free_memcg, 自己实现的逻辑, 没设置order, 就不会 */
 			break;
 
 		/*
 		 * If we're getting trouble reclaiming, start doing
 		 * writepage even in laptop mode.
-		 回收有点压力, 开启写回
+		 回收有点压力, 开启写回.
 		 */
 		if (sc->priority < DEF_PRIORITY - 2)
 			sc->may_writepage = 1;
@@ -7083,9 +7105,13 @@ retry:
 		if (zone->zone_pgdat == last_pgdat)
 			continue;
 		last_pgdat = zone->zone_pgdat;
+		/* 遍历zones的node, 每个node只处理一次 */
 
+		/* 1,计算refaults */
 		snapshot_refaults(sc->target_mem_cgroup, zone->zone_pgdat);
 
+		/* 2. 清除相关标记 */
+		/* cgroup回收情况下, 清除目标cgroup的LRUVEC_CGROUP_CONGESTED */
 		if (cgroup_reclaim(sc)) {
 			struct lruvec *lruvec;
 
@@ -7100,11 +7126,13 @@ retry:
 	if (sc->nr_reclaimed)  /* 回收到内存了, 返回回收数量 */
 		return sc->nr_reclaimed;
 
+	/* 一丝也没回收到 */
+
 	/* Aborted reclaim to try compaction? don't OOM, then */
 	if (sc->compaction_ready) /* 没回收到, 但是可以规整了 */
 		return 1;
 
-	/* 走到这里说明, 每回收到, 也无法规整. 调整sc设置去重试 */
+	/* 走到这里说明, 没回收到, 也无法规整. 调整sc设置去重试 */
 
 
 	/*
@@ -7268,7 +7296,10 @@ out:
 	return false;
 }
 
-/* 回收SWAP_CLUSTER_MAX,指定了order ...  */
+/* 
+
+直接回收, 慢速回收等等
+回收SWAP_CLUSTER_MAX,指定了order ...  */
 unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 				gfp_t gfp_mask, nodemask_t *nodemask)
 {
@@ -7354,7 +7385,7 @@ unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 	return sc.nr_reclaimed;
 }
 
-/* 回收nr_pages页面 */
+/* 回收此memcg的nr_pages页面 */
 unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 					   unsigned long nr_pages,
 					   gfp_t gfp_mask,
@@ -7612,6 +7643,7 @@ clear_reclaim_active(pg_data_t *pgdat, int highest_zoneidx)
 }
 
 /*
+ kswap的回收
  * For kswapd, balance_pgdat() will reclaim pages across a node from zones
  * that are eligible for use by the caller until at least one zone is
  * balanced.
@@ -8179,6 +8211,7 @@ int node_reclaim_mode __read_mostly;
  * Priority for NODE_RECLAIM. This determines the fraction of pages
  * of a node considered for each zone_reclaim. 4 scans 1/16th of
  * a zone.
+ 快速回收
  */
 #define NODE_RECLAIM_PRIORITY 4
 
@@ -8237,6 +8270,7 @@ static unsigned long node_pagecache_reclaimable(struct pglist_data *pgdat)
 }
 
 /*
+快速回收
  * Try to free up some pages from this node through reclaim.
  */
 static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)

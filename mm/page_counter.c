@@ -61,6 +61,7 @@ void page_counter_cancel(struct page_counter *counter, unsigned long nr_pages)
 }
 
 /**
+charge内存. 不是try charge.
  * page_counter_charge - hierarchically charge pages
  * @counter: counter
  * @nr_pages: number of pages to charge
@@ -159,12 +160,14 @@ void page_counter_uncharge(struct page_counter *counter, unsigned long nr_pages)
 }
 
 /**
+设置counter的max
  * page_counter_set_max - set the maximum number of pages allowed
  * @counter: counter
  * @nr_pages: limit to set
  *
  * Returns 0 on success, -EBUSY if the current number of pages on the
  * counter already exceeds the specified limit.
+ 只能扩大限制?
  *
  * The caller must serialize invocations on the same counter.
  */
@@ -184,17 +187,21 @@ int page_counter_set_max(struct page_counter *counter, unsigned long nr_pages)
 		 * that function modifies the count before checking
 		 * the limit, so if it sees the old limit, we see the
 		 * modified counter and retry.
+
 		 */
+		/* 原子读 */
 		usage = page_counter_read(counter);
 
 		if (usage > nr_pages)
-			return -EBUSY;
+			return -EBUSY;/* 此时usage<新max */
 
 		old = xchg(&counter->max, nr_pages);
 
 		if (page_counter_read(counter) <= usage || nr_pages >= old)
 			return 0;
 
+		/* 如果是缩小max的情况下, counter.usage > 初始usage  */
+		/* 回滚 */
 		counter->max = old;
 		cond_resched();
 	}

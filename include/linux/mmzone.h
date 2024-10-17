@@ -39,6 +39,7 @@
  * costly to service.  That is between allocation orders which should
  * coalesce naturally under reasonable reclaim pressure and those which
  * will not.
+ 比较难分配的order
  */
 #define PAGE_ALLOC_COSTLY_ORDER 3
 

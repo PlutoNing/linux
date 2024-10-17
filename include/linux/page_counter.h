@@ -24,7 +24,7 @@ struct page_counter {
 	unsigned long elow;
 	atomic_long_t low_usage;
 	atomic_long_t children_low_usage;
-
+	/* 表示最多可以用这些页面 */
 	unsigned long watermark;
 	unsigned long failcnt;
 
@@ -34,7 +34,7 @@ struct page_counter {
 	unsigned long min;
 	unsigned long low;
 	unsigned long high;
-	unsigned long max;
+	unsigned long max; /* 限制可用的页面数 */
 	struct page_counter *parent;
 } ____cacheline_internodealigned_in_smp;
 
@@ -52,6 +52,7 @@ static inline void page_counter_init(struct page_counter *counter,
 	counter->parent = parent;
 }
 
+/*  */
 static inline unsigned long page_counter_read(struct page_counter *counter)
 {
 	return atomic_long_read(&counter->usage);
@@ -76,6 +77,7 @@ int page_counter_set_max(struct page_counter *counter, unsigned long nr_pages);
 int page_counter_memparse(const char *buf, const char *max,
 			  unsigned long *nr_pages);
 
+/* 设置memcg的最大内存页面数量 */
 static inline void page_counter_reset_watermark(struct page_counter *counter)
 {
 	counter->watermark = page_counter_read(counter);
