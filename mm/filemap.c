@@ -264,6 +264,7 @@ void filemap_remove_folio(struct folio *folio)
 }
 
 /*
+
  * page_cache_delete_batch - delete several folios from page cache
  * @mapping: the mapping to which folios belong
  * @fbatch: batch of folios to delete

@@ -4853,6 +4853,9 @@ static int remove_capsnaps(struct ceph_mds_client *mdsc, struct inode *inode)
 	return capsnap_release;
 }
 
+/* @inode: vfs的inode
+@cap是此对应的ci_node取下的
+删除inode时调用 */
 int ceph_purge_inode_cap(struct inode *inode, struct ceph_cap *cap, bool *invalidate)
 {
 	struct ceph_fs_client *fsc = ceph_inode_to_client(inode);

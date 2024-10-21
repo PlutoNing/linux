@@ -51,7 +51,9 @@
 #define O_LARGEFILE	00100000
 #endif
 #ifndef O_DIRECTORY
-#define O_DIRECTORY	00200000	/* must be a directory */
+#define O_DIRECTORY	00200000	
+/*odir是什么?
+ must be a directory */
 #endif
 #ifndef O_NOFOLLOW
 #define O_NOFOLLOW	00400000	/* don't follow links */

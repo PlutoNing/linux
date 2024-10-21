@@ -6011,6 +6011,7 @@ static const struct attribute_group lru_gen_attr_group = {
  *                          debugfs interface
  ******************************************************************************/
 
+/* debugfs的接口 */
 static void *lru_gen_seq_start(struct seq_file *m, loff_t *pos)
 {
 	struct mem_cgroup *memcg;

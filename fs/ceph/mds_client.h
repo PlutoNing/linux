@@ -254,6 +254,7 @@ typedef int (*ceph_mds_request_wait_callback_t) (struct ceph_mds_client *mdsc,
 						 struct ceph_mds_request *req);
 
 /*
+代表一个mds的client
  * an in-flight mds request
  */
 struct ceph_mds_request {
@@ -407,6 +408,7 @@ enum {
 };
 
 /*
+代表mds client, 由fs client引用.
  * mds client state
  */
 struct ceph_mds_client {

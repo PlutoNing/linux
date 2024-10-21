@@ -344,6 +344,7 @@ out:
 }
 
 /*
+ceph打开file的ops
  * If we already have the requisite capabilities, we can satisfy
  * the open request locally (no need to request new caps from the
  * MDS).  We do, however, need to inform the MDS (asynchronously)
@@ -352,7 +353,9 @@ out:
 int ceph_open(struct inode *inode, struct file *file)
 {
 	struct ceph_inode_info *ci = ceph_inode(inode);
+	/* fs的client */
 	struct ceph_fs_client *fsc = ceph_sb_to_client(inode->i_sb);
+	/* mds的client */
 	struct ceph_mds_client *mdsc = fsc->mdsc;
 	struct ceph_mds_request *req;
 	struct ceph_file_info *fi = file->private_data;
@@ -376,6 +379,7 @@ int ceph_open(struct inode *inode, struct file *file)
 
 	dout("open inode %p ino %llx.%llx file %p flags %d (%d)\n", inode,
 	     ceph_vinop(inode), file, flags, file->f_flags);
+
 	fmode = ceph_flags_to_mode(flags);
 	wanted = ceph_caps_for_mode(fmode);
 
@@ -3050,6 +3054,7 @@ static ssize_t ceph_copy_file_range(struct file *src_file, loff_t src_off,
 	return ret;
 }
 
+/* ceph的fops */
 const struct file_operations ceph_file_fops = {
 	.open = ceph_open,
 	.release = ceph_release,

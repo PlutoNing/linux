@@ -405,6 +405,7 @@ static struct dentry *end_creating(struct dentry *dentry)
 	return dentry;
 }
 
+/*  */
 static struct dentry *__debugfs_create_file(const char *name, umode_t mode,
 				struct dentry *parent, void *data,
 				const struct file_operations *proxy_fops,
@@ -447,6 +448,7 @@ static struct dentry *__debugfs_create_file(const char *name, umode_t mode,
 }
 
 /**
+创建debugfs的file
  * debugfs_create_file - create a file in the debugfs filesystem
  * @name: a pointer to a string containing the name of the file to create.
  * @mode: the permission that the file should have.

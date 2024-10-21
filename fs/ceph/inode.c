@@ -3046,6 +3046,7 @@ int ceph_getattr(struct mnt_idmap *idmap, const struct path *path,
 	return err;
 }
 
+/*  */
 void ceph_inode_shutdown(struct inode *inode)
 {
 	struct ceph_inode_info *ci = ceph_inode(inode);

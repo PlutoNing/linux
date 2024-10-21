@@ -52,6 +52,8 @@ void ceph_file_layout_to_legacy(struct ceph_file_layout *fl,
 		legacy->fl_pg_pool = 0;
 }
 
+/* ceph file从flag转为mode
+todo: mode是什么 */
 int ceph_flags_to_mode(int flags)
 {
 	int mode;
@@ -81,6 +83,7 @@ int ceph_flags_to_mode(int flags)
 	return mode;
 }
 
+/* ceph从mode获取 */
 int ceph_caps_for_mode(int mode)
 {
 	int caps = CEPH_CAP_PIN;

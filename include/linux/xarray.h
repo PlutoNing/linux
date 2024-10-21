@@ -45,6 +45,8 @@
 #define BITS_PER_XA_VALUE	(BITS_PER_LONG - 1)
 
 /**
+把整数转为xas的entry.
+就是左移一位,最后一bit置1表示是value?
  * xa_mk_value() - Create an XArray entry from an integer.
  * @v: Value to store in XArray.
  *
@@ -70,6 +72,7 @@ static inline unsigned long xa_to_value(const void *entry)
 }
 
 /**
+判断从xas取出的ent是不是value.
  * xa_is_value() - Determine if an entry is a value.
  * @entry: XArray entry.
  *

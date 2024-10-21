@@ -186,6 +186,7 @@
 #define EVICTION_MASK	(~0UL >> EVICTION_SHIFT)
 
 /*
+把信息编码到long, 然后make xa entry.
  * Eviction timestamps need to be able to cover the full range of
  * actionable refaults. However, bits are tight in the xarray
  * entry, and after storing the identifier for the lruvec there might

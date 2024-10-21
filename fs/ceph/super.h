@@ -116,6 +116,7 @@ enum {
 
 #define CEPH_ASYNC_CREATE_CONFLICT_BITS 8
 
+/* 代表ceph fs的client, 存储在sb的fs_info. */
 struct ceph_fs_client {
 	struct super_block *sb;
 
@@ -174,7 +175,8 @@ struct ceph_fs_client {
  */
 struct ceph_cap {
 	struct ceph_inode_info *ci;
-	struct rb_node ci_node;          /* per-ci cap tree */
+	struct rb_node ci_node;          /* per-ci cap tree. 通过这个东西
+	挂接到inode的cap tree */
 	struct ceph_mds_session *session;
 	struct list_head session_caps;   /* per-session caplist */
 	u64 cap_id;       /* unique cap id (mds provided) */
@@ -380,7 +382,7 @@ struct ceph_inode_info {
 
 	/* capabilities.  protected _both_ by i_ceph_lock and cap->session's
 	 * s_mutex. */
-	struct rb_root i_caps;           /* cap list */
+	struct rb_root i_caps;           /* cap list, cap是什么?  */
 	struct ceph_cap *i_auth_cap;     /* authoritative cap, if any */
 	unsigned i_dirty_caps, i_flushing_caps;     /* mask of dirtied fields */
 
@@ -481,6 +483,7 @@ struct ceph_netfs_request_data {
 	bool file_ra_disabled;
 };
 
+/* 从vfs node到ceph node */
 static inline struct ceph_inode_info *
 ceph_inode(const struct inode *inode)
 {
@@ -493,6 +496,7 @@ ceph_inode_to_client(const struct inode *inode)
 	return (struct ceph_fs_client *)inode->i_sb->s_fs_info;
 }
 
+/* 获取ceph sb的client? */
 static inline struct ceph_fs_client *
 ceph_sb_to_client(const struct super_block *sb)
 {
@@ -633,8 +637,9 @@ static inline struct inode *ceph_find_inode(struct super_block *sb,
 #define CEPH_I_ODIRECT		(1 << 11) /* inode in direct I/O mode */
 #define CEPH_ASYNC_CREATE_BIT	(12)	  /* async create in flight for this */
 #define CEPH_I_ASYNC_CREATE	(1 << CEPH_ASYNC_CREATE_BIT)
-#define CEPH_I_SHUTDOWN		(1 << 13) /* inode is no longer usable */
-#define CEPH_I_ASYNC_CHECK_CAPS	(1 << 14) /* check caps immediately after async
+#define CEPH_I_SHUTDOWN		(1 << 13) /* 关闭node时会置位. inode is no longer usable */
+#define CEPH_I_ASYNC_CHECK_CAPS	(1 << 14) 
+/* check caps immediately after async
 					     creating finishes */
 
 /*
@@ -823,6 +828,7 @@ extern void change_auth_cap_ses(struct ceph_inode_info *ci,
 #define CEPH_F_SYNC     1
 #define CEPH_F_ATEND    2
 
+/* 代表ceph file的信息, 存储在file的priv */
 struct ceph_file_info {
 	short fmode;     /* initialized on open */
 	short flags;     /* CEPH_F_* */
