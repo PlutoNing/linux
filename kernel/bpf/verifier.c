@@ -19645,6 +19645,7 @@ static int check_attach_btf_id(struct bpf_verifier_env *env)
 	return 0;
 }
 
+/* 初始化btf_vmlinux */
 struct btf *bpf_get_btf_vmlinux(void)
 {
 	if (!btf_vmlinux && IS_ENABLED(CONFIG_DEBUG_INFO_BTF)) {

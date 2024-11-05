@@ -5717,6 +5717,7 @@ int get_kern_ctx_btf_id(struct bpf_verifier_log *log, enum bpf_prog_type prog_ty
 BTF_ID_LIST(bpf_ctx_convert_btf_id)
 BTF_ID(struct, bpf_ctx_convert)
 
+/*  */
 struct btf *btf_parse_vmlinux(void)
 {
 	struct btf_verifier_env *env = NULL;
@@ -7202,6 +7203,7 @@ int btf_new_fd(const union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 	return ret;
 }
 
+/* 获取fd上面有没有绑定的btf,并尝试获取 */
 struct btf *btf_get_by_fd(int fd)
 {
 	struct btf *btf;

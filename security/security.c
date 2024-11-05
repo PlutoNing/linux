@@ -5121,6 +5121,7 @@ int security_audit_rule_match(u32 secid, u32 field, u32 op, void *lsmrule)
 
 #ifdef CONFIG_BPF_SYSCALL
 /**
+检查这次bpf系统调用是否合法
  * security_bpf() - Check if the bpf syscall operation is allowed
  * @cmd: command
  * @attr: bpf attribute
