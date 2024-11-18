@@ -1719,6 +1719,7 @@ static bool can_steal_fallback(unsigned int order, int start_mt)
 	return false;
 }
 
+/* boost此zone的水位 */
 static inline bool boost_watermark(struct zone *zone)
 {
 	unsigned long max_boost;
@@ -1790,6 +1791,8 @@ static void steal_suitable_fallback(struct zone *zone, struct page *page,
 	 * Boost watermarks to increase reclaim pressure to reduce the
 	 * likelihood of future fallbacks. Wake kswapd now as the node
 	 * may be balanced overall and kswapd will not wake naturally.
+	 boost水位来增大内存回收压力
+	 并且主动唤醒kswap
 	 */
 	if (boost_watermark(zone) && (alloc_flags & ALLOC_KSWAPD))
 		set_bit(ZONE_BOOSTED_WATERMARK, &zone->flags);
@@ -2787,6 +2790,7 @@ out:
 	/* Separate test+clear to avoid unnecessary atomics */
 	if ((alloc_flags & ALLOC_KSWAPD) &&
 	    unlikely(test_bit(ZONE_BOOSTED_WATERMARK, &zone->flags))) {
+			/* 检查一下是不是zone设置了boost */
 		clear_bit(ZONE_BOOSTED_WATERMARK, &zone->flags);
 		wakeup_kswapd(zone, 0, 0, zone_idx(zone));
 	}
@@ -2827,6 +2831,7 @@ static inline long __zone_watermark_unusable_free(struct zone *z,
 }
 
 /*
+检查@mark这个水位是否ok
  * Return true if free base pages are above 'mark'. For high-order checks it
  * will return true of the order-0 watermark is reached and there is at least
  * one free page of a suitable size. Checking now avoids taking the zone lock
@@ -2842,7 +2847,8 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 	/* free_pages may go negative - that's OK */
 	free_pages -= __zone_watermark_unusable_free(z, order, alloc_flags);
 
-	if (unlikely(alloc_flags & ALLOC_RESERVES)) {
+	if (unlikely(alloc_flags & ALLOC_RESERVES)) {/* 如果可以分配reserve.
+	就把min(ok检查的底线)降低一些 */
 		/*
 		 * __GFP_HIGH allows access to 50% of the min reserve as well
 		 * as OOM.
@@ -2866,6 +2872,7 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 		 * users on the grounds that it's definitely going to be in
 		 * the exit path shortly and free memory. Any allocation it
 		 * makes during the free path will be small and short-lived.
+
 		 */
 		if (alloc_flags & ALLOC_OOM)
 			min -= min / 2;
@@ -2875,6 +2882,7 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 	 * Check watermarks for an order-0 allocation request. If these
 	 * are not met, then a high-order request also cannot go ahead
 	 * even if a suitable page happened to be free.
+	 freepages太少了, 不满足这个mark水位.
 	 */
 	if (free_pages <= min + z->lowmem_reserve[highest_zoneidx])
 		return false;
@@ -2907,6 +2915,8 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 			return true;
 		}
 	}
+
+
 	return false;
 }
 
@@ -2917,6 +2927,7 @@ bool zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 					zone_page_state(z, NR_FREE_PAGES));
 }
 
+/* 检查@mark 水位是否满足 */
 static inline bool zone_watermark_fast(struct zone *z, unsigned int order,
 				unsigned long mark, int highest_zoneidx,
 				unsigned int alloc_flags, gfp_t gfp_mask)
@@ -2929,7 +2940,7 @@ static inline bool zone_watermark_fast(struct zone *z, unsigned int order,
 	 * Fast check for order-0 only. If this fails then the reserves
 	 * need to be calculated.
 	 */
-	if (!order) {
+	if (!order) {/* 如果是单页面 */
 		long usable_free;
 		long reserved;
 
@@ -2938,6 +2949,7 @@ static inline bool zone_watermark_fast(struct zone *z, unsigned int order,
 
 		/* reserved may over estimate high-atomic reserves. */
 		usable_free -= min(usable_free, reserved);
+		/*  */
 		if (usable_free > mark + z->lowmem_reserve[highest_zoneidx])
 			return true;
 	}
@@ -2946,14 +2958,18 @@ static inline bool zone_watermark_fast(struct zone *z, unsigned int order,
 					free_pages))
 		return true;
 
+	/* 如果不ok的话, 到这里 */
 	/*
 	 * Ignore watermark boosting for __GFP_HIGH order-0 allocations
 	 * when checking the min watermark. The min watermark is the
 	 * point where boosting is ignored so that kswapd is woken up
 	 * when below the low watermark.
+
 	 */
 	if (unlikely(!order && (alloc_flags & ALLOC_MIN_RESERVE) && z->watermark_boost
-		&& ((alloc_flags & ALLOC_WMARK_MASK) == WMARK_MIN))) {
+		&& ((alloc_flags & ALLOC_WMARK_MASK) == WMARK_MIN))) {/* 
+		如果分配单页面, 并且检查min时. */
+		/* 就拿min mark来做ok检查 */
 		mark = z->_watermark[WMARK_MIN];
 		return __zone_watermark_ok(z, order, mark, highest_zoneidx,
 					alloc_flags, free_pages);
@@ -3115,10 +3131,11 @@ retry:
 			}
 		}
 
+		/* 获取这次分配要检查的水位 */
 		mark = wmark_pages(zone, alloc_flags & ALLOC_WMARK_MASK);
 		if (!zone_watermark_fast(zone, order, mark,
 				       ac->highest_zoneidx, alloc_flags,
-				       gfp_mask)) {
+				       gfp_mask)) {/* 如果水位不ok的话 */
 			int ret;
 
 			if (has_unaccepted_memory()) {

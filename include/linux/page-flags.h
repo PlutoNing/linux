@@ -202,6 +202,7 @@ enum pageflags {
 DECLARE_STATIC_KEY_FALSE(hugetlb_optimize_vmemmap_key);
 
 /*
+
  * Return the real head page struct iff the @page is a fake head page, otherwise
  * return the @page itself. See Documentation/mm/vmemmap_dedup.rst.
  */
@@ -217,7 +218,7 @@ static __always_inline const struct page *page_fixed_fake_head(const struct page
 	 * cold cacheline in some cases.
 	 */
 	if (IS_ALIGNED((unsigned long)page, PAGE_SIZE) &&
-	    test_bit(PG_head, &page->flags)) {
+	    test_bit(PG_head, &page->flags)) {/* 说明这个页面是pg_head */
 		/*
 		 * We can safely access the field of the @page[1] with PG_head
 		 * because the @page is a compound page composed with at least
@@ -228,7 +229,9 @@ static __always_inline const struct page *page_fixed_fake_head(const struct page
 		if (likely(head & 1))
 			return (const struct page *)(head - 1);
 	}
+
 	return page;
+
 }
 #else
 static inline const struct page *page_fixed_fake_head(const struct page *page)
@@ -242,6 +245,7 @@ static __always_inline int page_is_fake_head(struct page *page)
 	return page_fixed_fake_head(page) != page;
 }
 
+/*  */
 static inline unsigned long _compound_head(const struct page *page)
 {
 	unsigned long head = READ_ONCE(page->compound_head);
@@ -254,6 +258,7 @@ static inline unsigned long _compound_head(const struct page *page)
 #define compound_head(page)	((typeof(page))_compound_head(page))
 
 /**
+从page获得folio
  * page_folio - Converts from page to folio.
  * @p: The page.
  *

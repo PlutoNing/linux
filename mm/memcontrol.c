@@ -5833,7 +5833,7 @@ static int mem_cgroup_move_account(struct page *page,
 
 	folio_memcg_lock(folio);
 
-	if (folio_test_anon(folio)) {
+	if (folio_test_anon(folio)) {/* 如果是匿名页的话 */
 		if (folio_mapped(folio)) {
 			__mod_lruvec_state(from_vec, NR_ANON_MAPPED, -nr_pages);
 			__mod_lruvec_state(to_vec, NR_ANON_MAPPED, nr_pages);
@@ -5844,7 +5844,7 @@ static int mem_cgroup_move_account(struct page *page,
 						   nr_pages);
 			}
 		}
-	} else {
+	} else {/* 不是匿名页就是文件页 */
 		__mod_lruvec_state(from_vec, NR_FILE_PAGES, -nr_pages);
 		__mod_lruvec_state(to_vec, NR_FILE_PAGES, nr_pages);
 
@@ -5853,7 +5853,7 @@ static int mem_cgroup_move_account(struct page *page,
 			__mod_lruvec_state(to_vec, NR_SHMEM, nr_pages);
 		}
 
-		if (folio_mapped(folio)) {
+		if (folio_mapped(folio)) {/* 文件页也可能被mapped */
 			__mod_lruvec_state(from_vec, NR_FILE_MAPPED, -nr_pages);
 			__mod_lruvec_state(to_vec, NR_FILE_MAPPED, nr_pages);
 		}

@@ -135,7 +135,7 @@ static inline int lru_gen_from_seq(unsigned long seq)
 {
 	return seq % MAX_NR_GENS;
 }
-/* history gen是什么 */
+/* 从seq获得hist */
 static inline int lru_hist_from_seq(unsigned long seq)
 {
 	return seq % NR_HIST_GENS;

@@ -836,12 +836,13 @@ unsigned int reclaim_clean_pages_from_list(struct zone *zone,
 #define ALLOC_OOM		ALLOC_NO_WATERMARKS
 #endif
 
-#define ALLOC_NON_BLOCK		 0x10 /* Caller cannot block. Allow access
+#define ALLOC_NON_BLOCK		 0x10 
+/* Caller cannot block. Allow access
 				       * to 25% of the min watermark or
 				       * 62.5% if __GFP_HIGH is set.
 				       */
-#define ALLOC_MIN_RESERVE	 0x20 /* __GFP_HIGH set. Allow access to 50%
-				       * of the min watermark.
+#define ALLOC_MIN_RESERVE	 0x20 
+/* __GFP_HIGH set. Allow access to 50% of the min watermark.
 				       */
 #define ALLOC_CPUSET		 0x40 /* check for correct cpuset */
 #define ALLOC_CMA		 0x80 /* allow allocations from CMA areas */

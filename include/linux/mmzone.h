@@ -270,6 +270,7 @@ enum lru_list {
 	NR_LRU_LISTS
 };
 
+/* vmscan的throttle的类型 */
 enum vmscan_throttle_state {
 	VMSCAN_THROTTLE_WRITEBACK,
 	VMSCAN_THROTTLE_ISOLATED,
@@ -474,10 +475,12 @@ enum {
 /* double-buffering Bloom filters */
 #define NR_BLOOM_FILTERS	2
 
+/*  */
 struct lru_gen_mm_state {
 	/* set to max_seq after each iteration */
 	unsigned long seq;
-	/* where the current iteration continues after */
+	/* where the current iteration continues after
+	指向要遍历的下一个元素 */
 	struct list_head *head;
 	/* where the last iteration ended before */
 	struct list_head *tail;
@@ -1014,9 +1017,11 @@ enum pgdat_flags {
 	PGDAT_RECLAIM_LOCKED,		/* prevents concurrent reclaim */
 };
 
+/*  */
 enum zone_flags {
 	ZONE_BOOSTED_WATERMARK,		/* zone recently boosted watermarks.
 					 * Cleared when kswapd is woken.
+					 表示刚刚boost了这个zone
 					 */
 	ZONE_RECLAIM_ACTIVE,		/* kswapd may be scanning the zone. */
 };

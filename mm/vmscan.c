@@ -105,7 +105,8 @@ struct scan_control {
 	/* Writepage batching in laptop mode; RECLAIM_WRITE */
 	unsigned int may_writepage:1;
 
-	/* Can mapped folios be reclaimed? */
+	/* Can mapped folios be reclaimed?
+	 */
 	unsigned int may_unmap:1;
 
 	/* Can folios be swapped as part of reclaim? */
@@ -640,6 +641,7 @@ static inline bool can_reclaim_anon_pages(struct mem_cgroup *memcg,
 }
 
 /*
+
  * This misses isolated folios which are not accounted for to save counters.
  * As the data only determines if reclaim or compaction continues, it is
  * not expected that isolated folios will be a dominating factor.
@@ -1170,6 +1172,7 @@ static void handle_write_error(struct address_space *mapping,
 	folio_unlock(folio);
 }
 
+/* todddo */
 static bool skip_throttle_noprogress(pg_data_t *pgdat)
 {
 	int reclaimable = 0, write_pending = 0;
@@ -1178,6 +1181,7 @@ static bool skip_throttle_noprogress(pg_data_t *pgdat)
 	/*
 	 * If kswapd is disabled, reschedule if necessary but do not
 	 * throttle as the system is likely near OOM.
+	 kswapd无法发挥作用了,返回true
 	 */
 	if (pgdat->kswapd_failures >= MAX_RECLAIM_RETRIES)
 		return true;
@@ -1186,6 +1190,8 @@ static bool skip_throttle_noprogress(pg_data_t *pgdat)
 	 * If there are a lot of dirty/writeback folios then do not
 	 * throttle as throttling will occur when the folios cycle
 	 * towards the end of the LRU if still under writeback.
+	 如果有很多脏或者回写的页面,就不throttle.
+	 因为这些页面如何到lru的end的时候还在回写中,就会自动throttle.
 	 */
 	for (i = 0; i < MAX_NR_ZONES; i++) {
 		struct zone *zone = pgdat->node_zones + i;
@@ -1203,6 +1209,7 @@ static bool skip_throttle_noprogress(pg_data_t *pgdat)
 	return false;
 }
 
+/* todddo */
 void reclaim_throttle(pg_data_t *pgdat, enum vmscan_throttle_state reason)
 {
 	wait_queue_head_t *wqh = &pgdat->reclaim_wait[reason];
@@ -1213,6 +1220,7 @@ void reclaim_throttle(pg_data_t *pgdat, enum vmscan_throttle_state reason)
 	 * Do not throttle user workers, kthreads other than kswapd or
 	 * workqueues. They may be required for reclaim to make
 	 * forward progress (e.g. journalling workqueues or kthreads).
+	 不throttle这些进程
 	 */
 	if (!current_is_kswapd() &&
 	    current->flags & (PF_USER_WORKER|PF_KTHREAD)) {
@@ -1222,6 +1230,7 @@ void reclaim_throttle(pg_data_t *pgdat, enum vmscan_throttle_state reason)
 
 	/*
 	 * These figures are pulled out of thin air.
+
 	 * VMSCAN_THROTTLE_ISOLATED is a transient condition based on too many
 	 * parallel reclaimers which is a short-lived event so the timeout is
 	 * short. Failing to make progress or waiting on writeback are
@@ -1229,6 +1238,7 @@ void reclaim_throttle(pg_data_t *pgdat, enum vmscan_throttle_state reason)
 	 * logic as a failure to make progress could be due to anything from
 	 * writeback to a slow device to excessive referenced folios at the tail
 	 * of the inactive LRU.
+
 	 */
 	switch(reason) {
 	case VMSCAN_THROTTLE_WRITEBACK:
@@ -1243,11 +1253,15 @@ void reclaim_throttle(pg_data_t *pgdat, enum vmscan_throttle_state reason)
 	case VMSCAN_THROTTLE_CONGESTED:
 		fallthrough;
 	case VMSCAN_THROTTLE_NOPROGRESS:
+		/*  */
 		if (skip_throttle_noprogress(pgdat)) {
+			/* kswap失败很多次了
+			或者write pending相对不是很多 */
 			cond_resched();
 			return;
 		}
-
+		/* kswap还ok
+		write pending比较多 */
 		timeout = 1;
 
 		break;
@@ -1259,7 +1273,7 @@ void reclaim_throttle(pg_data_t *pgdat, enum vmscan_throttle_state reason)
 		timeout = HZ;
 		break;
 	}
-
+	/* 浅浅调度一下,等一会儿 */
 	prepare_to_wait(wqh, &wait, TASK_UNINTERRUPTIBLE);
 	ret = schedule_timeout(timeout);
 	finish_wait(wqh, &wait);
@@ -1719,7 +1733,7 @@ static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
 }
 
 /*
-回收folio_list的页面
+回收@folio_list的页面
  * shrink_folio_list() returns the number of reclaimed pages
  */
 static unsigned int shrink_folio_list(struct list_head *folio_list,
@@ -1763,12 +1777,13 @@ retry:
 
 		if (unlikely(!folio_evictable(folio)))
 			goto activate_locked;
-
+		
+		/* 如果不回收mapped的页面 */
 		if (!sc->may_unmap && folio_mapped(folio))
 			goto keep_locked;
 
 		/* folio_update_gen() tried to promote this page? */
-		/* todo */
+		/* todddo */
 		if (lru_gen_enabled() && !ignore_references &&
 		    folio_mapped(folio) && folio_test_referenced(folio))
 			goto keep_locked;
@@ -1777,6 +1792,7 @@ retry:
 		 * The number of dirty pages determines if a node is marked
 		 * reclaim_congested. kswapd will stall and start writing
 		 * folios if the tail of the LRU is all dirty unqueued folios.
+
 		 */
 		folio_check_dirty_writeback(folio, &dirty, &writeback);
 
@@ -1874,6 +1890,7 @@ retry:
 				folio_unlock(folio);
 				folio_wait_writeback(folio);
 				/* then go back and try same folio again */
+				/* 2024年11月18日17:30:14  放回的都是啥 */
 				list_add_tail(&folio->lru, folio_list);
 				continue;
 			}
@@ -2163,7 +2180,7 @@ activate_locked_split:
 		}
 activate_locked:
 /* 需要保留的情况? 这里是lock之后遇到了,比如
-不打算写会的脏页, 保留
+不打算写回的脏页, 保留
 无法unmap
 unevictable的页面 */
 		/* Not a candidate for swapping, so reclaim swap space. */
@@ -2231,6 +2248,7 @@ keep:
 
 	if (plug)
 		swap_write_unplug(plug);
+
 	return nr_reclaimed;
 }
 
@@ -2499,6 +2517,8 @@ bool folio_isolate_lru(struct folio *folio)
  * allocation, such sleeping direct reclaimers may keep piling up on each CPU,
  * the LRU list will go small and be scanned faster than necessary, leading to
  * unnecessary swapping, thrashing and OOM.
+ 直接回收可能会隔离出一些页面,但是之后被调度睡眠
+ 如果有很多这种直接回收过程,可能会堆积大量页面
  */
 static int too_many_isolated(struct pglist_data *pgdat, int file,
 		struct scan_control *sc)
@@ -2542,6 +2562,8 @@ static int too_many_isolated(struct pglist_data *pgdat, int file,
 如果是unevictable, 就putback
 如果put之后无人引用了, free
 然后执行add folio
+============
+返回的时候, list里面是需要free的page
  * move_folios_to_lru() moves folios from private @list to appropriate LRU list.
  * On return, @list is reused as a list of folios to be freed by the caller.
  *
@@ -3129,8 +3151,10 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
  * Determine how aggressively the anon and file LRU lists should be
  * scanned.
  *2024年10月14日17:27:04
- * nr[0] = anon inactive folios to scan; nr[1] = anon active folios to scan
- * nr[2] = file inactive folios to scan; nr[3] = file active folios to scan
+ * nr[0] = anon inactive folios to scan;
+   nr[1] = anon active folios to scan
+ * nr[2] = file inactive folios to scan;
+   nr[3] = file active folios to scan
  */
 static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 			   unsigned long *nr)
@@ -3297,15 +3321,18 @@ out:
 			 * sc->priority further than desirable.
 			 */
 			scan = max(scan, SWAP_CLUSTER_MAX);
-		} else {
+		} else {/* 这是说明没有min或者low的限制的话,
+		就医总的数量为基准,
+		来计算真正scan的数量 */
 			scan = lruvec_size;
 		}
-
+		/* prior越大,说明回收刚开始,scan的数量越少. */
 		scan >>= sc->priority;
 
 		/*
 		 * If the cgroup's already been deleted, make sure to
 		 * scrape out the remaining cache.
+
 		 */
 		if (!scan && !mem_cgroup_online(memcg))
 			scan = min(lruvec_size, SWAP_CLUSTER_MAX);
@@ -3332,7 +3359,9 @@ out:
 			/* Scan one type exclusively */
 			if ((scan_balance == SCAN_FILE) != file)
 				scan = 0;
+			/*  */
 			break;
+
 		default:
 			/* Look ma, no brain */
 			BUG();
@@ -3368,6 +3397,7 @@ DEFINE_STATIC_KEY_ARRAY_FALSE(lru_gen_caps, NR_LRU_GEN_CAPS);
 #define get_cap(cap)	static_branch_unlikely(&lru_gen_caps[cap])
 #endif
 
+/*  */
 static bool should_walk_mmu(void)
 {
 	return arch_has_hw_pte_young() && get_cap(LRU_GEN_MM_WALK);
@@ -3489,6 +3519,7 @@ static bool __maybe_unused seq_is_valid(struct lruvec *lruvec)
  */
 #define BLOOM_FILTER_SHIFT	15
 
+/* 两个布隆过滤器? */
 static inline int filter_gen_from_seq(unsigned long seq)
 {
 	return seq % NR_BLOOM_FILTERS;
@@ -3537,11 +3568,13 @@ static void update_bloom_filter(struct lruvec *lruvec, unsigned long seq, void *
 		set_bit(key[1], filter);
 }
 
+/*  */
 static void reset_bloom_filter(struct lruvec *lruvec, unsigned long seq)
 {
 	unsigned long *filter;
 	int gen = filter_gen_from_seq(seq);
 
+	/* 找到对应的过滤器 */
 	filter = lruvec->mm_state.filters[gen];
 	if (filter) {
 		bitmap_clear(filter, 0, BIT(BLOOM_FILTER_SHIFT));
@@ -3557,6 +3590,7 @@ static void reset_bloom_filter(struct lruvec *lruvec, unsigned long seq)
  *                          mm_struct list
  ******************************************************************************/
 
+/*  */
 static struct lru_gen_mm_list *get_mm_list(struct mem_cgroup *memcg)
 {
 	static struct lru_gen_mm_list mm_list = {
@@ -3667,6 +3701,9 @@ void lru_gen_migrate_mm(struct mm_struct *mm)
 }
 #endif
 
+/* 
+no mmu walk的老化调用的函数
+reset哪些? 清空lruvec->mm_state.stats,这是什么 */
 static void reset_mm_stats(struct lruvec *lruvec, struct lru_gen_mm_walk *walk, bool last)
 {
 	int i;
@@ -3674,7 +3711,7 @@ static void reset_mm_stats(struct lruvec *lruvec, struct lru_gen_mm_walk *walk, 
 
 	lockdep_assert_held(&get_mm_list(lruvec_memcg(lruvec))->lock);
 
-	if (walk) {
+	if (walk) {/*  */
 		hist = lru_hist_from_seq(walk->max_seq);
 
 		for (i = 0; i < NR_MM_STATS; i++) {
@@ -3684,7 +3721,7 @@ static void reset_mm_stats(struct lruvec *lruvec, struct lru_gen_mm_walk *walk, 
 		}
 	}
 
-	if (NR_HIST_GENS > 1 && last) {
+	if (NR_HIST_GENS > 1 && last) {/* iterate_mm_list_nowalk走这个路径 */
 		hist = lru_hist_from_seq(lruvec->mm_state.seq + 1);
 
 		for (i = 0; i < NR_MM_STATS; i++)
@@ -3692,6 +3729,7 @@ static void reset_mm_stats(struct lruvec *lruvec, struct lru_gen_mm_walk *walk, 
 	}
 }
 
+/*  */
 static bool should_skip_mm(struct mm_struct *mm, struct lru_gen_mm_walk *walk)
 {
 	int type;
@@ -3716,6 +3754,7 @@ static bool should_skip_mm(struct mm_struct *mm, struct lru_gen_mm_walk *walk)
 	return !mmget_not_zero(mm);
 }
 
+/*  */
 static bool iterate_mm_list(struct lruvec *lruvec, struct lru_gen_mm_walk *walk,
 			    struct mm_struct **iter)
 {
@@ -3745,35 +3784,36 @@ static bool iterate_mm_list(struct lruvec *lruvec, struct lru_gen_mm_walk *walk,
 
 	if (!mm_state->head)
 		mm_state->head = &mm_list->fifo;
-
+	/* 表示第一次遍历? */
 	if (mm_state->head == &mm_list->fifo)
 		first = true;
 
-	do {
+	do {/* 进行一次迭代 */
 		mm_state->head = mm_state->head->next;
-		if (mm_state->head == &mm_list->fifo) {
+		if (mm_state->head == &mm_list->fifo) {/* 遍历到最后一个了 */
 			WRITE_ONCE(mm_state->seq, mm_state->seq + 1);
 			last = true;
 			break;
 		}
-
+		/* 进行迭代,处理当前元素 */
 		/* force scan for those added after the last iteration */
 		if (!mm_state->tail || mm_state->tail == mm_state->head) {
 			mm_state->tail = mm_state->head->next;
 			walk->force_scan = true;
 		}
-
+		/* 找到mm */
 		mm = list_entry(mm_state->head, struct mm_struct, lru_gen.list);
 		if (should_skip_mm(mm, walk))
 			mm = NULL;
 	} while (!mm);
+
 done:
 	if (*iter || last)
 		reset_mm_stats(lruvec, walk, last);
 
 	spin_unlock(&mm_list->lock);
 
-	if (mm && first)
+	if (mm && first) /* mm, last && first */
 		reset_bloom_filter(lruvec, walk->max_seq + 1);
 
 	if (*iter)
@@ -3784,6 +3824,7 @@ done:
 	return last;
 }
 
+/* 老化时会调用 */
 static bool iterate_mm_list_nowalk(struct lruvec *lruvec, unsigned long max_seq)
 {
 	bool success = false;
@@ -3795,7 +3836,7 @@ static bool iterate_mm_list_nowalk(struct lruvec *lruvec, unsigned long max_seq)
 
 	VM_WARN_ON_ONCE(mm_state->seq + 1 < max_seq);
 
-	if (max_seq > mm_state->seq) {
+	if (max_seq > mm_state->seq) {/* mm_state跟不上现在的max_seq了? */
 		mm_state->head = NULL;
 		mm_state->tail = NULL;
 		WRITE_ONCE(mm_state->seq, mm_state->seq + 1);
@@ -3905,7 +3946,9 @@ static bool positive_ctrl_err(struct ctrl_pos *sp, struct ctrl_pos *pv)
  *                          the aging
  ******************************************************************************/
 
-/* promote pages accessed through page tables */
+/* promote pages accessed through page tables
+增加folio的flag里面存储的gen
+ */
 static int folio_update_gen(struct folio *folio, int gen)
 {
 	unsigned long new_flags, old_flags = READ_ONCE(folio->flags);
@@ -3929,7 +3972,7 @@ static int folio_update_gen(struct folio *folio, int gen)
 }
 
 /* protect pages accessed multiple times through file descriptors
-
+提升gen
  */
 static int folio_inc_gen(struct lruvec *lruvec, struct folio *folio, bool reclaiming)
 {
@@ -4003,6 +4046,7 @@ static void reset_batch_size(struct lruvec *lruvec, struct lru_gen_mm_walk *walk
 	}
 }
 
+/*  */
 static int should_skip_vma(unsigned long start, unsigned long end, struct mm_walk *args)
 {
 	struct address_space *mapping;
@@ -4091,8 +4135,10 @@ static unsigned long get_pte_pfn(pte_t pte, struct vm_area_struct *vma, unsigned
 }
 
 #if defined(CONFIG_TRANSPARENT_HUGEPAGE) || defined(CONFIG_ARCH_HAS_NONLEAF_PMD_YOUNG)
+/* 获取pmd项的pfn */
 static unsigned long get_pmd_pfn(pmd_t pmd, struct vm_area_struct *vma, unsigned long addr)
 {
+	/* 获取pmd项指向的pfn */
 	unsigned long pfn = pmd_pfn(pmd);
 
 	VM_WARN_ON_ONCE(addr < vma->vm_start || addr >= vma->vm_end);
@@ -4110,6 +4156,7 @@ static unsigned long get_pmd_pfn(pmd_t pmd, struct vm_area_struct *vma, unsigned
 }
 #endif
 
+/* 通过pfn获取folio? */
 static struct folio *get_pfn_folio(unsigned long pfn, struct mem_cgroup *memcg,
 				   struct pglist_data *pgdat, bool can_swap)
 {
@@ -4118,7 +4165,7 @@ static struct folio *get_pfn_folio(unsigned long pfn, struct mem_cgroup *memcg,
 	/* try to avoid unnecessary memory loads */
 	if (pfn < pgdat->node_start_pfn || pfn >= pgdat_end_pfn(pgdat))
 		return NULL;
-
+	/* 从pfn转为folio */
 	folio = pfn_folio(pfn);
 	if (folio_nid(folio) != pgdat->node_id)
 		return NULL;
@@ -4141,6 +4188,7 @@ static bool suitable_to_scan(int total, int young)
 	return young * n >= total;
 }
 
+/* 6.x的walk pte */
 static bool walk_pte_range(pmd_t *pmd, unsigned long start, unsigned long end,
 			   struct mm_walk *args)
 {
@@ -4212,6 +4260,7 @@ restart:
 }
 
 #if defined(CONFIG_TRANSPARENT_HUGEPAGE) || defined(CONFIG_ARCH_HAS_NONLEAF_PMD_YOUNG)
+/*  */
 static void walk_pmd_range_locked(pud_t *pud, unsigned long addr, struct vm_area_struct *vma,
 				  struct mm_walk *args, unsigned long *bitmap, unsigned long *first)
 {
@@ -4231,7 +4280,7 @@ static void walk_pmd_range_locked(pud_t *pud, unsigned long addr, struct vm_area
 		bitmap_zero(bitmap, MIN_LRU_BATCH);
 		return;
 	}
-
+	/* 如果 addr 等于 -1，则 i 的值为 0；否则，执行 : 后面的表达式。 */
 	i = addr == -1 ? 0 : pmd_index(addr) - pmd_index(*first);
 	if (i && i <= MIN_LRU_BATCH) {
 		__set_bit(i - 1, bitmap);
@@ -4258,25 +4307,26 @@ static void walk_pmd_range_locked(pud_t *pud, unsigned long addr, struct vm_area
 			goto next;
 
 		if (!pmd_trans_huge(pmd[i])) {
+			/* 非巨页的情况? */
 			if (should_clear_pmd_young())
 				pmdp_test_and_clear_young(vma, addr, pmd + i);
 			goto next;
 		}
-
+		/* 后面都是巨页的处理情况? */
 		folio = get_pfn_folio(pfn, memcg, pgdat, walk->can_swap);
 		if (!folio)
 			goto next;
 
 		if (!pmdp_test_and_clear_young(vma, addr, pmd + i))
 			goto next;
-
+		/* 如果本来是young, 就走下面 */
 		walk->mm_stats[MM_LEAF_YOUNG]++;
 
 		if (pmd_dirty(pmd[i]) && !folio_test_dirty(folio) &&
 		    !(folio_test_anon(folio) && folio_test_swapbacked(folio) &&
 		      !folio_test_swapcache(folio)))
 			folio_mark_dirty(folio);
-
+		/* 增加folio的gen */
 		old_gen = folio_update_gen(folio, new_gen);
 		if (old_gen >= 0 && old_gen != new_gen)
 			update_batch_size(walk, folio, old_gen, new_gen);
@@ -4314,14 +4364,18 @@ static void walk_pmd_range(pud_t *pud, unsigned long start, unsigned long end,
 	 * Finish an entire PMD in two passes: the first only reaches to PTE
 	 * tables to avoid taking the PMD lock; the second, if necessary, takes
 	 * the PMD lock to clear the accessed bit in PMD entries.
+	 找到start对应的pmd
 	 */
 	pmd = pmd_offset(pud, start & PUD_MASK);
 restart:
 	/* walk_pte_range() may call get_next_vma() */
 	vma = args->vma;
+	/* i是pmd上面的一个个ent */
 	for (i = pmd_index(start), addr = start; addr != end; i++, addr = next) {
+		/* 获取i这个位置上的指针值 */
 		pmd_t val = pmdp_get_lockless(pmd + i);
 
+		/* 获取addr同pmd的最大地址 */
 		next = pmd_addr_end(addr, end);
 
 		if (!pmd_present(val) || is_huge_zero_pmd(val)) {
@@ -4329,7 +4383,7 @@ restart:
 			continue;
 		}
 
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE/* 巨页的路径 */
 		if (pmd_trans_huge(val)) {
 			unsigned long pfn = pmd_pfn(val);
 			struct pglist_data *pgdat = lruvec_pgdat(walk->lruvec);
@@ -4378,6 +4432,7 @@ restart:
 		goto restart;
 }
 
+/* mm walk的时候处理p4d,pud的逻辑? */
 static int walk_pud_range(p4d_t *p4d, unsigned long start, unsigned long end,
 			  struct mm_walk *args)
 {
@@ -4390,6 +4445,7 @@ static int walk_pud_range(p4d_t *p4d, unsigned long start, unsigned long end,
 	VM_WARN_ON_ONCE(p4d_leaf(*p4d));
 
 	pud = pud_offset(p4d, start & P4D_MASK);
+
 restart:
 	for (i = pud_index(start), addr = start; addr != end; i++, addr = next) {
 		pud_t val = READ_ONCE(pud[i]);
@@ -4420,6 +4476,7 @@ done:
 	return -EAGAIN;
 }
 
+/*  */
 static void walk_mm(struct lruvec *lruvec, struct mm_struct *mm, struct lru_gen_mm_walk *walk)
 {
 	static const struct mm_walk_ops mm_walk_ops = {
@@ -4465,6 +4522,8 @@ static void walk_mm(struct lruvec *lruvec, struct mm_struct *mm, struct lru_gen_
 	} while (err == -EAGAIN);
 }
 
+/* mm的walk是什么
+可能会分配并创建新的mm_walk, 赋值到reclaim_state */
 static struct lru_gen_mm_walk *set_mm_walk(struct pglist_data *pgdat, bool force_alloc)
 {
 	struct lru_gen_mm_walk *walk = current->reclaim_state->mm_walk;
@@ -4497,28 +4556,31 @@ static void clear_mm_walk(void)
 		kfree(walk);
 }
 
+/* 老化这个type的页面 */
 static bool inc_min_seq(struct lruvec *lruvec, int type, bool can_swap)
 {
 	int zone;
 	int remaining = MAX_LRU_BATCH;
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
-	int new_gen, old_gen = lru_gen_from_seq(lrugen->min_seq[type]);
+	int new_gen, 
+	old_gen = lru_gen_from_seq(lrugen->min_seq[type]);
 
 	if (type == LRU_GEN_ANON && !can_swap)
 		goto done;
 
-	/* prevent cold/hot inversion if force_scan is true */
+	/* prevent cold/hot inversion if force_scan is true 
+	逐个zone处理*/
 	for (zone = 0; zone < MAX_NR_ZONES; zone++) {
 		struct list_head *head = &lrugen->folios[old_gen][type][zone];
 
-		while (!list_empty(head)) {
+		while (!list_empty(head)) {/* 处理逐个页面 */
 			struct folio *folio = lru_to_folio(head);
 
 			VM_WARN_ON_ONCE_FOLIO(folio_test_unevictable(folio), folio);
 			VM_WARN_ON_ONCE_FOLIO(folio_test_active(folio), folio);
 			VM_WARN_ON_ONCE_FOLIO(folio_is_file_lru(folio) != type, folio);
 			VM_WARN_ON_ONCE_FOLIO(folio_zonenum(folio) != zone, folio);
-
+			/* 移动到new gen里面 */
 			new_gen = folio_inc_gen(lruvec, folio, false);
 			list_move_tail(&folio->lru, &lrugen->folios[new_gen][type][zone]);
 
@@ -4533,6 +4595,7 @@ done:
 	return true;
 }
 
+/* 提升min seq的值 */
 static bool try_to_inc_min_seq(struct lruvec *lruvec, bool can_swap)
 {
 	int gen, type, zone;
@@ -4549,7 +4612,7 @@ static bool try_to_inc_min_seq(struct lruvec *lruvec, bool can_swap)
 
 			for (zone = 0; zone < MAX_NR_ZONES; zone++) {
 				if (!list_empty(&lrugen->folios[gen][type][zone]))
-					goto next;
+					goto next;/* 这个min_seq值还有东西, 寻找下一个seq值 */
 			}
 
 			min_seq[type]++;
@@ -4557,7 +4620,7 @@ static bool try_to_inc_min_seq(struct lruvec *lruvec, bool can_swap)
 next:
 		;
 	}
-
+	/* 现在min seq是最大的没有page的值了 */
 	/* see the comment on lru_gen_folio */
 	if (can_swap) {
 		min_seq[LRU_GEN_ANON] = min(min_seq[LRU_GEN_ANON], min_seq[LRU_GEN_FILE]);
@@ -4576,6 +4639,7 @@ next:
 	return success;
 }
 
+/* 老化函数 */
 static void inc_max_seq(struct lruvec *lruvec, bool can_swap, bool force_scan)
 {
 	int prev, next;
@@ -4591,7 +4655,7 @@ restart:
 			continue;
 
 		VM_WARN_ON_ONCE(!force_scan && (type == LRU_GEN_FILE || can_swap));
-
+		/* 老化&移动 */
 		if (inc_min_seq(lruvec, type, can_swap))
 			continue;
 
@@ -4600,6 +4664,7 @@ restart:
 		goto restart;
 	}
 
+	/* 后面更新lru size */
 	/*
 	 * Update the active/inactive LRU sizes for compatibility. Both sides of
 	 * the current max_seq need to be covered, since max_seq+1 can overlap
@@ -4633,6 +4698,9 @@ restart:
 	spin_unlock_irq(&lruvec->lru_lock);
 }
 
+/* 这个是老化的核心函数?
+返回true表示老化成功.
+返回false表示失败的情况? */
 static bool try_to_inc_max_seq(struct lruvec *lruvec, unsigned long max_seq,
 			       struct scan_control *sc, bool can_swap, bool force_scan)
 {
@@ -4654,14 +4722,17 @@ static bool try_to_inc_max_seq(struct lruvec *lruvec, unsigned long max_seq,
 	 * to lru_gen_look_around(), which only clears the accessed bit in a
 	 * handful of PTEs. Spreading the work out over a period of time usually
 	 * is less efficient, but it avoids bursty page faults.
+
 	 */
-	if (!should_walk_mmu()) {
+	if (!should_walk_mmu()) {/* 不支持自动设置young位 */
 		success = iterate_mm_list_nowalk(lruvec, max_seq);
 		goto done;
 	}
 
+	/* 说明支持硬件支持自动设置young位. 可以walk mmu */
+	/*  */
 	walk = set_mm_walk(NULL, true);
-	if (!walk) {
+	if (!walk) {/* 创建walk没有成功. 还是得老办法 */
 		success = iterate_mm_list_nowalk(lruvec, max_seq);
 		goto done;
 	}
@@ -4671,11 +4742,12 @@ static bool try_to_inc_max_seq(struct lruvec *lruvec, unsigned long max_seq,
 	walk->can_swap = can_swap;
 	walk->force_scan = force_scan;
 
-	do {
+	do {/* 这里找mm */
 		success = iterate_mm_list(lruvec, walk, &mm);
-		if (mm)
+		if (mm)/* 这里开始处理mm? */
 			walk_mm(lruvec, mm, walk);
 	} while (mm);
+
 done:
 	if (success)
 		inc_max_seq(lruvec, can_swap, force_scan);
@@ -4749,7 +4821,7 @@ static bool lruvec_is_reclaimable(struct lruvec *lruvec, struct scan_control *sc
 
 /* to protect the working set of the last N jiffies */
 static unsigned long lru_gen_min_ttl __read_mostly;
-/*  */
+/* todddo */
 static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 {
 	struct mem_cgroup *memcg;
@@ -4953,9 +5025,9 @@ static void lru_gen_rotate_memcg(struct lruvec *lruvec, int op)
 	/* 先移除 */
 	hlist_nulls_del_rcu(&lruvec->lrugen.list);
 	/* 重新插入新位置 */
-	if (op == MEMCG_LRU_HEAD || op == MEMCG_LRU_OLD)
+	if (op == MEMCG_LRU_HEAD || op == MEMCG_LRU_OLD) /* 加入头部 */
 		hlist_nulls_add_head_rcu(&lruvec->lrugen.list, &pgdat->memcg_lru.fifo[new][bin]);
-	else
+	else /* 如果是young, tail, 就是加入尾部 */
 		hlist_nulls_add_tail_rcu(&lruvec->lrugen.list, &pgdat->memcg_lru.fifo[new][bin]);
 
 	pgdat->memcg_lru.nr_memcgs[old]--;
@@ -5053,7 +5125,8 @@ static int lru_gen_memcg_seg(struct lruvec *lruvec)
 /******************************************************************************
  *                          the eviction
  ******************************************************************************/
-/* 真正isolate页面之前, 先尝试调整位置.  */
+/* 真正isolate页面之前, 先尝试调整位置.
+就是说根据页面的不同性质, 直接重新放到不同的lru上面  */
 static bool sort_folio(struct lruvec *lruvec, struct folio *folio, struct scan_control *sc,
 		       int tier_idx)
 {
@@ -5126,6 +5199,7 @@ static bool sort_folio(struct lruvec *lruvec, struct folio *folio, struct scan_c
 	return false;
 }
 
+/* mglru回收页面前isolate此folio */
 static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct scan_control *sc)
 {
 	bool success;
@@ -5141,8 +5215,8 @@ static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct sca
 		return false;
 
 	/* raced with another isolation */
-	if (!folio_test_clear_lru(folio)) {
-		folio_put(folio);
+	if (!folio_test_clear_lru(folio)) {/*  */
+		folio_put(folio); /* clear lru但是之前已经没有lru标记了, 可能是race */
 		return false;
 	}
 
@@ -5188,7 +5262,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 		/* 遍历此lruvec的在这个区类型上面的这个type的gen代的链表 */
 		struct list_head *head = &lrugen->folios[gen][type][zone];
 
-		while (!list_empty(head)) {
+		while (!list_empty(head)) {/* 处理这个lru, 最多处理MAX_LRU_BATCH次 */
 			struct folio *folio = lru_to_folio(head);
 			int delta = folio_nr_pages(folio);
 
@@ -5202,6 +5276,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 			if (sort_folio(lruvec, folio, sc, tier))
 				sorted += delta;
 			else if (isolate_folio(lruvec, folio, sc)) {
+				/* 已经从lrugen的list移出了,下面加到要回收的list里面 */
 				list_add(&folio->lru, list);
 				isolated += delta;
 			} else {
@@ -5209,17 +5284,20 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 				skipped += delta;
 			}
 
-			if (!--remaining || max(isolated, skipped) >= MIN_LRU_BATCH)
+			if (!--remaining || max(isolated, skipped) >= MIN_LRU_BATCH)/* 如果处理的batch数量够了 */
 				break;
 		}
 
-		/* 这个zone扫描完了, */
+		/* 这个zone扫描完了batch数量的page */
+
 		if (skipped) {
 			list_splice(&moved, head);
 			__count_zid_vm_events(PGSCAN_SKIP, zone, skipped);
 		}
 
 		if (!remaining || isolated >= MIN_LRU_BATCH)
+		/* 是因为扫描批次用完了, 或者isolate到了足够页面退出的上个zone的扫描,
+			那么也不用扫描其他的zone了,退出for循环 */
 			break;
 	}
 
@@ -5228,6 +5306,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 		__count_vm_events(item, isolated);
 		__count_vm_events(PGREFILL, sorted);
 	}
+
 	__count_memcg_events(memcg, item, isolated);
 	__count_memcg_events(memcg, PGREFILL, sorted);
 	__count_vm_events(PGSCAN_ANON + type, isolated);
@@ -5235,6 +5314,8 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 	/*
 	 * There might not be eligible folios due to reclaim_idx. Check the
 	 * remaining to prevent livelock if it's not making progress.
+	 返回isolate的数量
+	 如果没有isolate到任何页面, 就看是否remaining返回扫描的数量或者0
 	 */
 	return isolated || !remaining ? scanned : 0;
 }
@@ -5316,7 +5397,8 @@ static int isolate_folios(struct lruvec *lruvec, struct scan_control *sc, int sw
 	for (i = !swappiness; i < ANON_AND_FILE; i++) {
 		if (tier < 0)
 			tier = get_tier_idx(lruvec, type);
-
+		
+		/* 返回isolate或者scan的数量, isolate的页面在list */
 		scanned = scan_folios(lruvec, sc, type, tier, list);
 		if (scanned)
 			break;
@@ -5329,7 +5411,10 @@ static int isolate_folios(struct lruvec *lruvec, struct scan_control *sc, int sw
 
 	return scanned;
 }
-/* 回收mglru */
+/* mglru回收lru的函数
+返回扫描的数量.
+返回0也可能是因为min和max都太新了.
+ */
 static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swappiness)
 {
 	int type;
@@ -5347,12 +5432,12 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
 	spin_lock_irq(&lruvec->lru_lock);
-
+	/* isolate页面到list好进行回收 */
 	scanned = isolate_folios(lruvec, sc, swappiness, &type, &list);
-
+	/* 更新min_seq的值 */
 	scanned += try_to_inc_min_seq(lruvec, swappiness);
 
-	if (get_nr_gens(lruvec, !swappiness) == MIN_NR_GENS)
+	if (get_nr_gens(lruvec, !swappiness) == MIN_NR_GENS)/* 这是说明都很新? */
 		scanned = 0;
 
 	spin_unlock_irq(&lruvec->lru_lock);
@@ -5360,11 +5445,13 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 	if (list_empty(&list))
 		return scanned;
 retry:
+/* 开始回收isolate的页面 */
 	reclaimed = shrink_folio_list(&list, pgdat, sc, &stat, false);
 	sc->nr_reclaimed += reclaimed;
 
+	/* 处理list里面剩余的page */
 	list_for_each_entry_safe_reverse(folio, next, &list, lru) {
-		if (!folio_evictable(folio)) {
+		if (!folio_evictable(folio)) {/* unevictable的page */
 			list_del(&folio->lru);
 			folio_putback_lru(folio);
 			continue;
@@ -5388,13 +5475,16 @@ retry:
 		}
 
 		/* retry folios that may have missed folio_rotate_reclaimable() */
+		/* clean链表里面的page似乎后续会继续重试回收? */
 		list_move(&folio->lru, &clean);
 		sc->nr_scanned -= folio_nr_pages(folio);
 	}
 
 	spin_lock_irq(&lruvec->lru_lock);
 
+	/* 把list放回 */
 	move_folios_to_lru(lruvec, &list);
+	/* 上面这个函数返回之后, list里面是需要free的page */
 
 	walk = current->reclaim_state->mm_walk;
 	if (walk && walk->batched)
@@ -5408,10 +5498,13 @@ retry:
 
 	spin_unlock_irq(&lruvec->lru_lock);
 
+	/* 处理这些需要free的page */
 	mem_cgroup_uncharge_list(&list);
 	free_unref_page_list(&list);
 
+	/* 现在继续重新利用这个list链表 */
 	INIT_LIST_HEAD(&list);
+	/* 把clean的装入list, 继续进行回收 */
 	list_splice_init(&clean, &list);
 
 	if (!list_empty(&list)) {
@@ -5423,7 +5516,8 @@ retry:
 }
 /* 
 2024年10月28日10:33:19
-
+主要还是获取可以scan的数量
+也会根据获取的中间状态顺便判断是否可以age了.
  */
 static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 			     struct scan_control *sc, bool can_swap, unsigned long *nr_to_scan)
@@ -5455,9 +5549,12 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 			gen = lru_gen_from_seq(seq);
 
 			for (zone = 0; zone < MAX_NR_ZONES; zone++)
+			/* 获取指定gen指定type指定zone的数量 */
 				size += max(READ_ONCE(lrugen->nr_pages[gen][type][zone]), 0L);
 
 			total += size;
+
+			/* 分别统计young和old的size */
 			if (seq == max_seq)
 				young += size;
 			else if (seq + MIN_NR_GENS == max_seq)
@@ -5465,13 +5562,18 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 		}
 	}
 
-	/* try to scrape all its memory if this memcg was deleted */
+	/* try to scrape all its memory if this memcg was deleted
+	如果cgroup已经下线了, 就直接回收全部的total
+	如果还没下线，可能是避免颠簸,这里进行处理,prio越大(说明刚开始回收),total
+	就越小(开始的时候回收少一点).
+	 */
 	*nr_to_scan = mem_cgroup_online(memcg) ? (total >> sc->priority) : total;
 
 	/*
 	 * The aging tries to be lazy to reduce the overhead, while the eviction
 	 * stalls when the number of generations reaches MIN_NR_GENS. Hence, the
 	 * ideal number of generations is MIN_NR_GENS+1.
+
 	 */
 	if (min_seq[!can_swap] + MIN_NR_GENS < max_seq)
 		return false;
@@ -5482,19 +5584,24 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	 * for this average portion is [1/MIN_NR_GENS, 1/(MIN_NR_GENS+2)]. The
 	 * aging cares about the upper bound of hot pages, while the eviction
 	 * cares about the lower bound of cold pages.
+
 	 */
-	if (young * MIN_NR_GENS > total)
+	if (young * MIN_NR_GENS > total) /* 说明年轻的够多 */
 		return true;
-	if (old * (MIN_NR_GENS + 2) < total)
+
+	if (old * (MIN_NR_GENS + 2) < total) /* 说明old的比较少了 */
 		return true;
 
 	return false;
 }
 
 /*
+
  * For future optimizations:
  * 1. Defer try_to_inc_max_seq() to workqueues to reduce latency for memcg
  *    reclaim.
+ 返回0表示没有可以scan的了
+ 返回-1似乎表示内部老化失败了
  */
 static long get_nr_to_scan(struct lruvec *lruvec, struct scan_control *sc, bool can_swap)
 {
@@ -5507,6 +5614,9 @@ static long get_nr_to_scan(struct lruvec *lruvec, struct scan_control *sc, bool 
 
 	if (!should_run_aging(lruvec, max_seq, sc, can_swap, &nr_to_scan))
 		return nr_to_scan;
+
+	/* 到这里说明需要age */
+
 
 	/* skip the aging path at the default priority
 	刚开始回收, 没必要aging? */
@@ -5545,6 +5655,7 @@ static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	while (true) {
 		int delta;
 
+		/* 获取需要scan的数量, 可能会进行老化 */
 		nr_to_scan = get_nr_to_scan(lruvec, sc, swappiness);
 		if (nr_to_scan <= 0)
 			break;
@@ -5557,7 +5668,7 @@ static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 		if (scanned >= nr_to_scan)
 			break;
 		
-		/* 对于全局回收, 才可能会break */
+		/* 对于全局回收, 才可能会break, 对于cgroup回收,nr_to_reclaim一直是-1 */
 		if (sc->nr_reclaimed >= nr_to_reclaim)
 			break;
 
@@ -5690,6 +5801,7 @@ static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc
 	VM_WARN_ON_ONCE(root_reclaim(sc));
 	VM_WARN_ON_ONCE(!sc->may_writepage || !sc->may_unmap);
 
+	/* may_writepage && may_unmap */
 	lru_add_drain();
 
 	blk_start_plug(&plug);
@@ -5765,10 +5877,11 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 	 * Unmapped clean folios are already prioritized. Scanning for more of
 	 * them is likely futile and can cause high reclaim latency when there
 	 * is a large number of memcgs.
-	 认为到这一步的话, 系统的干净页已经被回收. 所以不能回写的话,就不执行.
 	 */
 	if (!sc->may_writepage || !sc->may_unmap)
 		goto done;
+	
+	/* may_writepage && may_unmap */
 
 	lru_add_drain();
 
@@ -6192,6 +6305,7 @@ static const struct seq_operations lru_gen_seq_ops = {
 	.show = lru_gen_seq_show,
 };
 
+/* fs接口的回调函数 */
 static int run_aging(struct lruvec *lruvec, unsigned long seq, struct scan_control *sc,
 		     bool can_swap, bool force_scan)
 {
@@ -6802,16 +6916,22 @@ again:
 		 * context which is not ideal as there is no guarantee
 		 * the dirtying process is throttled in the same way
 		 * balance_dirty_pages() manages.
-		 *
+		 * 如果回收过程中隔离了正在回写的脏页，这意味着长期的页面分配速率超过了页面清洗速率。
+		 可能是由于页面在各个区域的分布导致全局限制未能有效地限制进程，或者是因为大量使用了速度较慢的后备设备。
+		 唯一的选择是在回收上下文中进行限制，这并不理想，因为无法保证对脏页进程的限制方式与 
+		 `balance_dirty_pages()` 管理的方式相同。
 		 * Once a node is flagged PGDAT_WRITEBACK, kswapd will
 		 * count the number of pages under pages flagged for
 		 * immediate reclaim and stall if any are encountered
-		 * in the nr_immediate check below.
+		 * in the nr_immediate check below
+		 * 一旦节点被标记为 PGDAT_WRITEBACK，kswapd 将统计标记为需要立即回收的页面数量，并在下面的
+ `nr_immediate` 检查中遇到任何此类页面时暂停。
 		 */
 		if (sc->nr.writeback && sc->nr.writeback == sc->nr.taken)
 			set_bit(PGDAT_WRITEBACK, &pgdat->flags);
 
-		/* Allow kswapd to start writing pages during reclaim.*/
+		/* Allow kswapd to start writing pages during reclaim.
+		允许kswap在回收过程中回写*/
 		if (sc->nr.unqueued_dirty == sc->nr.file_taken)
 			set_bit(PGDAT_DIRTY, &pgdat->flags);
 
@@ -6821,6 +6941,9 @@ again:
 		 * implies that pages are cycling through the LRU
 		 * faster than they are written so forcibly stall
 		 * until some pages complete writeback.
+		 如果kswap扫描了被标记为直接回收并且正在回写的页面
+		 说明页面回写的比较慢
+		 所以stall一会儿直到一些页面回写完成
 		 */
 		if (sc->nr.immediate)
 			reclaim_throttle(pgdat, VMSCAN_THROTTLE_WRITEBACK);
@@ -6829,9 +6952,10 @@ again:
 	/*
 	 * Tag a node/memcg as congested if all the dirty pages were marked
 	 * for writeback and immediate reclaim (counted in nr.congested).
-	 *
+	 *把memcg和node标记为congested, 如果全部的脏页正在回写
 	 * Legacy memcg will stall in page writeback so avoid forcibly
 	 * stalling in reclaim_throttle().
+
 	 根据操作lru时, 设置的各种信息来设置.
 	 */
 	if (sc->nr.dirty && sc->nr.dirty == sc->nr.congested) {
@@ -6847,6 +6971,7 @@ again:
 	 * node is congested. Allow kswapd to continue until it
 	 * starts encountering unqueued dirty pages or cycling through
 	 * the LRU too quickly.
+	 尝试阻塞一下自己
 	 */
 	if (!current_is_kswapd() && current_may_throttle() &&
 	    !sc->hibernation_mode &&
@@ -7485,6 +7610,7 @@ static void kswapd_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 	} while (memcg);
 }
 
+/* 查看node上面是不是有zone进行了boost了 */
 static bool pgdat_watermark_boosted(pg_data_t *pgdat, int highest_zoneidx)
 {
 	int i;
@@ -7659,6 +7785,7 @@ update_reclaim_active(pg_data_t *pgdat, int highest_zoneidx, bool active)
 	}
 }
 
+/*  */
 static inline void
 set_reclaim_active(pg_data_t *pgdat, int highest_zoneidx)
 {
@@ -7673,6 +7800,7 @@ clear_reclaim_active(pg_data_t *pgdat, int highest_zoneidx)
 
 /*
  kswap的回收
+ 返回回收完成后可以满足的order
  * For kswapd, balance_pgdat() will reclaim pages across a node from zones
  * that are eligible for use by the caller until at least one zone is
  * balanced.
@@ -7711,6 +7839,7 @@ static int balance_pgdat(pg_data_t *pgdat, int order, int highest_zoneidx)
 	 * Account for the reclaim boost. Note that the zone boost is left in
 	 * place so that parallel allocations that are near the watermark will
 	 * stall or direct reclaim until kswapd is finished.
+
 	 */
 	nr_boost_reclaim = 0;
 	for (i = 0; i <= highest_zoneidx; i++) {
@@ -7726,8 +7855,11 @@ static int balance_pgdat(pg_data_t *pgdat, int order, int highest_zoneidx)
 restart:
 	set_reclaim_active(pgdat, highest_zoneidx);
 	sc.priority = DEF_PRIORITY;
+	/* 开始进行回收 */
 	do {
+		/* 保存之前回收的数量 */
 		unsigned long nr_reclaimed = sc.nr_reclaimed;
+		/* 是否加急 */
 		bool raise_priority = true;
 		bool balanced;
 		bool ret;
@@ -7761,22 +7893,33 @@ restart:
 		 * zone watermarks will be still reset at the end of balancing
 		 * on the grounds that the normal reclaim should be enough to
 		 * re-evaluate if boosting is required when kswapd next wakes.
+		 如果还没平衡, 那就没必要boost.
+		 如果平衡了,还需要回收的话,再boost来增大回收压力
 		 */
 		balanced = pgdat_balanced(pgdat, sc.order, highest_zoneidx);
+
 		if (!balanced && nr_boost_reclaim) {
 			nr_boost_reclaim = 0;
 			goto restart;
 		}
 
+		/* case1: 不平衡, 不boost
+		case2: 平衡, boost或者不boost */
 		/*
 		 * If boosting is not active then only reclaim if there are no
 		 * eligible zones. Note that sc.reclaim_idx is not used as
 		 * buffer_heads_over_limit may have adjusted it.
 		 */
-		if (!nr_boost_reclaim && balanced)
+		if (!nr_boost_reclaim && balanced)/* 已经平衡了,也不打算boost,
+		算是完成工作了, */
 			goto out;
 
-		/* Limit the priority of boosting to avoid reclaim writeback */
+		/*  case1: 不平衡, 不boost
+			case2: 平衡, boost */
+
+
+		/* Limit the priority of boosting to avoid reclaim writeback.
+		 */
 		if (nr_boost_reclaim && sc.priority == DEF_PRIORITY - 2)
 			raise_priority = false;
 
@@ -7785,6 +7928,7 @@ restart:
 		 * intent is to relieve pressure not issue sub-optimal IO
 		 * from reclaim context. If no pages are reclaimed, the
 		 * reclaim will be aborted.
+		 如果是boost的话, 不回写不交换.
 		 */
 		sc.may_writepage = !laptop_mode && !nr_boost_reclaim;
 		sc.may_swap = !nr_boost_reclaim;
@@ -7793,12 +7937,14 @@ restart:
 		 * Do some background aging, to give pages a chance to be
 		 * referenced before reclaiming. All pages are rotated
 		 * regardless of classzone as this is about consistent aging.
+		 做一些age
 		 */
 		kswapd_age_node(pgdat, &sc);
 
 		/*
 		 * If we're getting trouble reclaiming, start doing writepage
 		 * even in laptop mode.
+		 压力大了, 开启回写
 		 */
 		if (sc.priority < DEF_PRIORITY - 2)
 			sc.may_writepage = 1;
@@ -7806,6 +7952,7 @@ restart:
 		/* Call soft limit reclaim before calling shrink_node. */
 		sc.nr_scanned = 0;
 		nr_soft_scanned = 0;
+		/* mglru开启下这里直接返回 */
 		nr_soft_reclaimed = mem_cgroup_soft_limit_reclaim(pgdat, sc.order,
 						sc.gfp_mask, &nr_soft_scanned);
 		sc.nr_reclaimed += nr_soft_reclaimed;
@@ -7816,7 +7963,7 @@ restart:
 		 * watermark would be met at 100% efficiency.
 		 */
 		if (kswapd_shrink_node(pgdat, &sc))
-			raise_priority = false;
+			raise_priority = false;/* 能回收到页面, 就不刻意加急了 */
 
 		/*
 		 * If the low watermark is met there is no need for processes
@@ -7838,17 +7985,22 @@ restart:
 		 * Raise priority if scanning rate is too low or there was no
 		 * progress in reclaiming pages
 		 */
+		 /* 统计这次回收的数量 */
 		nr_reclaimed = sc.nr_reclaimed - nr_reclaimed;
+		/* 回收的boost的数量 */
 		nr_boost_reclaim -= min(nr_boost_reclaim, nr_reclaimed);
 
 		/*
 		 * If reclaim made no progress for a boost, stop reclaim as
 		 * IO cannot be queued and it could be an infinite loop in
 		 * extreme circumstances.
+		 在boost回收下,没有回收到页面,放弃.
 		 */
 		if (nr_boost_reclaim && !nr_reclaimed)
 			break;
-
+		
+		/* 没回收到, 减少一次回收次数.
+		如果可以加急,即使回收到了,也减少一次 */
 		if (raise_priority || !nr_reclaimed)
 			sc.priority--;
 	} while (sc.priority >= 1);
@@ -7859,7 +8011,8 @@ restart:
 out:
 	clear_reclaim_active(pgdat, highest_zoneidx);
 
-	/* If reclaim was boosted, account for the reclaim done in this pass */
+	/* If reclaim was boosted, account for the reclaim done in this pass
+	清理一下boost */
 	if (boosted) {
 		unsigned long flags;
 
@@ -8036,6 +8189,8 @@ static int kswapd(void *p)
 	WRITE_ONCE(pgdat->kswapd_order, 0);
 	WRITE_ONCE(pgdat->kswapd_highest_zoneidx, MAX_NR_ZONES);
 	atomic_set(&pgdat->nr_writeback_throttled, 0);
+
+
 	for ( ; ; ) {
 		bool ret;
 
@@ -8075,6 +8230,7 @@ kswapd_try_sleep:
 		 */
 		trace_mm_vmscan_kswapd_wake(pgdat->node_id, highest_zoneidx,
 						alloc_order);
+		/* 这里开始回收 */
 		reclaim_order = balance_pgdat(pgdat, alloc_order,
 						highest_zoneidx);
 		if (reclaim_order < alloc_order)
@@ -8092,6 +8248,10 @@ kswapd_try_sleep:
  * pgdat.  It will wake up kcompactd after reclaiming memory.  If kswapd reclaim
  * has failed or is not needed, still wake up kcompactd if only compaction is
  * needed.
+ 一个区域的空闲内存不足或对于高阶内存来说过于碎片化。如果 kswapd 应该进行回收（直接回收被延迟），
+ 则唤醒该区域的 pgdat 的 kswapd。
+ 它将在回收内存后唤醒 kcompactd。如果 kswapd 的回收失败或
+ 不需要回收，但仅需要内存压缩，仍然会唤醒 kcompactd。
  */
 void wakeup_kswapd(struct zone *zone, gfp_t gfp_flags, int order,
 		   enum zone_type highest_zoneidx)
@@ -8117,7 +8277,8 @@ void wakeup_kswapd(struct zone *zone, gfp_t gfp_flags, int order,
 	if (!waitqueue_active(&pgdat->kswapd_wait))
 		return;
 
-	/* Hopeless node, leave it to direct reclaim if possible */
+	/* Hopeless node, leave it to direct reclaim if possible
+	如果这个node上面, kswap效果不明显了 */
 	if (pgdat->kswapd_failures >= MAX_RECLAIM_RETRIES ||
 	    (pgdat_balanced(pgdat, order, highest_zoneidx) &&
 	     !pgdat_watermark_boosted(pgdat, highest_zoneidx))) {
@@ -8178,6 +8339,7 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 #endif /* CONFIG_HIBERNATION */
 
 /*
+运行node上面的kswap
  * This kswapd start function will be called by init and node-hot-add.
  */
 void __meminit kswapd_run(int nid)

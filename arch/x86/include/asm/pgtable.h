@@ -267,7 +267,8 @@ static inline int pmd_large(pmd_t pte)
 }
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-/* NOTE: when predicate huge page, consider also pmd_devmap, or use pmd_large */
+/* NOTE: when predicate huge page, consider also pmd_devmap, or use pmd_large
+如果val的flag部分置位了pse但是没有置位devmap */
 static inline int pmd_trans_huge(pmd_t pmd)
 {
 	return (pmd_val(pmd) & (_PAGE_PSE|_PAGE_DEVMAP)) == _PAGE_PSE;
@@ -1692,6 +1693,7 @@ void arch_check_zapped_pte(struct vm_area_struct *vma, pte_t pte);
 void arch_check_zapped_pmd(struct vm_area_struct *vma, pmd_t pmd);
 
 #ifdef CONFIG_XEN_PV
+/*  */
 #define arch_has_hw_nonleaf_pmd_young arch_has_hw_nonleaf_pmd_young
 static inline bool arch_has_hw_nonleaf_pmd_young(void)
 {

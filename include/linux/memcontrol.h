@@ -964,7 +964,8 @@ void folio_memcg_unlock(struct folio *folio);
 
 void __mod_memcg_state(struct mem_cgroup *memcg, int idx, int val);
 
-/* try to stablize folio_memcg() for all the pages in a memcg */
+/* try to stablize folio_memcg() for all the pages in a memcg
+锁住memcg的全部page? */
 static inline bool mem_cgroup_trylock_pages(struct mem_cgroup *memcg)
 {
 	rcu_read_lock();

@@ -1381,6 +1381,7 @@ static void mmput_async_fn(struct work_struct *work)
 	__mmput(mm);
 }
 
+/*  */
 void mmput_async(struct mm_struct *mm)
 {
 	if (atomic_dec_and_test(&mm->mm_users)) {

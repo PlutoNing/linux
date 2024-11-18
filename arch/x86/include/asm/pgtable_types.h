@@ -134,7 +134,7 @@
  * (Write=0,SavedDirty=1,Dirty=0) set.
  */
 #define _PAGE_SAVED_DIRTY	(_AT(pteval_t, 1) << _PAGE_BIT_SAVED_DIRTY)
-
+/* pmd项的flag */
 #define _PAGE_DIRTY_BITS (_PAGE_DIRTY | _PAGE_SAVED_DIRTY)
 
 #define _PAGE_PROTNONE	(_AT(pteval_t, 1) << _PAGE_BIT_PROTNONE)
@@ -454,12 +454,12 @@ static inline pmdval_t pmd_pfn_mask(pmd_t pmd)
 	else
 		return PTE_PFN_MASK;
 }
-
+/*  */
 static inline pmdval_t pmd_flags_mask(pmd_t pmd)
 {
 	return ~pmd_pfn_mask(pmd);
 }
-
+/* 获取pmd项的flag部分 */
 static inline pmdval_t pmd_flags(pmd_t pmd)
 {
 	return native_pmd_val(pmd) & pmd_flags_mask(pmd);

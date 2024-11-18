@@ -19,6 +19,7 @@ typedef unsigned long	pgdval_t;
 typedef unsigned long	pgprotval_t;
 
 typedef struct { pteval_t pte; } pte_t;
+/* 好像是表示pmd上的一项 */
 typedef struct { pmdval_t pmd; } pmd_t;
 
 #ifdef CONFIG_X86_5LEVEL
@@ -89,18 +90,30 @@ extern unsigned int ptrs_per_p4d;
  * page table can map
  */
 #define PMD_SHIFT	21
+/* 512个pte */
 #define PTRS_PER_PMD	512
 
 /*
  * entries per page directory level
+512个page
  */
 #define PTRS_PER_PTE	512
-
+/* 一个pmd包含的页面总大小
+512个pte,512个4KB, 2MB */
 #define PMD_SIZE	(_AC(1, UL) << PMD_SHIFT)
+/* 0b111111111111 111111111000000000000000000 */
+
 #define PMD_MASK	(~(PMD_SIZE - 1))
+/* 
+PUD包含512个PMD
+PUD_SIZE = 2^30 = 1073741824 字节（即 1 GB） */
 #define PUD_SIZE	(_AC(1, UL) << PUD_SHIFT)
+/* 0b111111111111 111111111 111111111 0000000000
+		page        pmd        pud     */
 #define PUD_MASK	(~(PUD_SIZE - 1))
+/* PGDIR_SIZE = 2^39 = 549755813888 字节（即 512 GB） */
 #define PGDIR_SIZE	(_AC(1, UL) << PGDIR_SHIFT)
+/* 0b111111111111 111111111 111111111 111111111 0000000000000000000 */
 #define PGDIR_MASK	(~(PGDIR_SIZE - 1))
 
 /*

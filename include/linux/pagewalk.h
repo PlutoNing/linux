@@ -8,9 +8,11 @@ struct mm_walk;
 
 /* Locking requirement during a page walk. */
 enum page_walk_lock {
-	/* mmap_lock should be locked for read to stabilize the vma tree */
+	/* mmap_lock should be locked for read to stabilize the vma tree
+	读锁? */
 	PGWALK_RDLOCK = 0,
-	/* vma will be write-locked during the walk */
+	/* vma will be write-locked during the walk
+	写锁? */
 	PGWALK_WRLOCK = 1,
 	/* vma is expected to be already write-locked during the walk */
 	PGWALK_WRLOCK_VERIFY = 2,

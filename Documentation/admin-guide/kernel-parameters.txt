@@ -819,7 +819,7 @@
 
 	coredump_filter=
 			[KNL] Change the default value for
-			/proc/<pid>/coredump_filter.
+			/proc/<pid>/coredump_filter. pid文件夹里面的
 			See also Documentation/filesystems/proc.rst.
 
 	coresight_cpu_debug.enable

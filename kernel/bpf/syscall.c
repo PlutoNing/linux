@@ -2656,7 +2656,7 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 			btf_put(attach_btf);
 		return -ENOMEM;
 	}
-/* 初始化prog */
+	/* 初始化prog */
 	prog->expected_attach_type = attr->expected_attach_type;
 	prog->aux->attach_btf = attach_btf;
 	prog->aux->attach_btf_id = attr->attach_btf_id;

@@ -448,6 +448,7 @@ static inline pmd_t __pmd(pmdval_t val)
 					  ALT_NOT(X86_FEATURE_XENPV)) };
 }
 
+/* 获取pmd项的val */
 static inline pmdval_t pmd_val(pmd_t pmd)
 {
 	return PVOP_ALT_CALLEE1(pmdval_t, mmu.pmd_val, pmd.pmd,

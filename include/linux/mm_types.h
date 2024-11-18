@@ -908,7 +908,8 @@ struct mm_struct {
 #endif /* CONFIG_KSM */
 #ifdef CONFIG_LRU_GEN
 		struct {
-			/* this mm_struct is on lru_gen_mm_list */
+			/* this mm_struct is on lru_gen_mm_list
+			通过这个挂接到memcg的mm_list */
 			struct list_head list;
 			/*
 			 * Set when switching to this mm_struct, as a hint of
@@ -952,8 +953,10 @@ static inline cpumask_t *mm_cpumask(struct mm_struct *mm)
 
 #ifdef CONFIG_LRU_GEN
 
+/*  */
 struct lru_gen_mm_list {
-	/* mm_struct list for page table walkers */
+	/* mm_struct list for page table walkers
+	一个连接件 */
 	struct list_head fifo;
 	/* protects the list above */
 	spinlock_t lock;

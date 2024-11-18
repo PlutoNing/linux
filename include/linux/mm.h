@@ -1242,6 +1242,7 @@ static inline bool folio_large_is_mapped(struct folio *folio)
 
 /**
 folio是否被映射
+mapped的可能是文件页或者匿名页
  * folio_mapped - Is this folio mapped into userspace?
  * @folio: The folio.
  *
@@ -1895,6 +1896,7 @@ static inline unsigned long folio_pfn(struct folio *folio)
 	return page_to_pfn(&folio->page);
 }
 
+/*  */
 static inline struct folio *pfn_folio(unsigned long pfn)
 {
 	return page_folio(pfn_to_page(pfn));
