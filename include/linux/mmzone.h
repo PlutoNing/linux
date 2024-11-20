@@ -1364,6 +1364,7 @@ typedef struct pglist_data {
 #ifdef CONFIG_NUMA
 	/*
 	 * node reclaim becomes active if more unmapped pages exist.
+	 node reclaim会注意的必须保留的数量 的页面
 	 */
 	unsigned long		min_unmapped_pages;
 	unsigned long		min_slab_pages;

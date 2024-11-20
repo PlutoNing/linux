@@ -72,7 +72,8 @@
 #include <trace/events/vmscan.h>
 
 struct scan_control {
-	/* How many pages shrink_list() should reclaim */
+	/* How many pages shrink_list() should reclaim
+	需要回收的页面的数量 */
 	unsigned long nr_to_reclaim;
 
 	/*
@@ -155,7 +156,8 @@ struct scan_control {
 	/* This context's GFP mask */
 	gfp_t gfp_mask;
 
-	/* Incremented by the number of inactive pages that were scanned */
+	/* Incremented by the number of inactive pages that were scanned
+	已经scan的页面数量 */
 	unsigned long nr_scanned;
 
 	/* Number of pages freed so far during a call to shrink_zones() */
@@ -1716,12 +1718,15 @@ static unsigned int demote_folio_list(struct list_head *demote_folios,
 	return nr_succeeded;
 }
 
+/* 判断设置了此@gfp的(回收, 分配?)操作来操作folio是否需要与fs交互? */
 static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
 {
 	if (gfp_mask & __GFP_FS)
 		return true;
+
 	if (!folio_test_swapcache(folio) || !(gfp_mask & __GFP_IO))
 		return false;
+	/* folio_test_swapcache && __GFP_IO , return true */
 	/*
 	 * We can "enter_fs" for swap-cache with only __GFP_IO
 	 * providing this isn't SWP_FS_OPS.
@@ -1792,6 +1797,7 @@ retry:
 		 * The number of dirty pages determines if a node is marked
 		 * reclaim_congested. kswapd will stall and start writing
 		 * folios if the tail of the LRU is all dirty unqueued folios.
+		脏页的数量决定node是否被标记为reclaim_congested,
 
 		 */
 		folio_check_dirty_writeback(folio, &dirty, &writeback);
@@ -1807,6 +1813,7 @@ retry:
 		 * through the LRU so quickly that the folios marked
 		 * for immediate reclaim are making it to the end of
 		 * the LRU a second time.
+
 		 */
 		if (writeback && folio_test_reclaim(folio))
 			stat->nr_congested += nr_pages;
@@ -1814,7 +1821,7 @@ retry:
 		/*
 		 * If a folio at the tail of the LRU is under writeback, there
 		 * are three cases to consider.
-		 *
+		 * 如果lru尾部的page正在回写, 有三种情况需要考虑
 		 * 1) If reclaim is encountering an excessive number
 		 *    of folios under writeback and this folio has both
 		 *    the writeback and reclaim flags set, then it
@@ -1832,7 +1839,9 @@ retry:
 		 *    have __GFP_FS (or __GFP_IO if it's simply going to swap,
 		 *    not to fs). In this case mark the folio for immediate
 		 *    reclaim and continue scanning.
-		 *
+		 *	  遇到了page(没有直接回收标记, 调用者没有设置gfp_fs,gfp_io),这种情况
+		 		把page标记为直接回收,然后继续扫描.
+				因为可能需要fs,所以需要may_enter_fs() 	
 		 *    Require may_enter_fs() because we would wait on fs, which
 		 *    may not have submitted I/O yet. And the loop driver might
 		 *    enter reclaim, and deadlock if it waits on a folio for
@@ -1860,6 +1869,9 @@ retry:
 			if (current_is_kswapd() &&
 			    folio_test_reclaim(folio) &&
 			    test_bit(PGDAT_WRITEBACK, &pgdat->flags)) {
+					/* 第一种情况, 很多页面正在回写, 并且当前页面也是reclaim和writeback标记.
+					为了防止阻塞风险.
+					这里不进行等待, 保留页面, 处理下一个页面. */
 				stat->nr_immediate += nr_pages;
 				goto activate_locked;
 
@@ -1867,6 +1879,9 @@ retry:
 			} else if (writeback_throttling_sane(sc) ||
 			    !folio_test_reclaim(folio) ||
 			    !may_enter_fs(folio, sc->gfp_mask)) {
+					/* 遇到了page(没有回收标记, 或者调用者没有设置gfp_fs,gfp_io),
+					这种情况把page标记为直接回收,然后继续扫描.因为可能需要fs,所以
+					需要may_enter_fs() */
 				/*
 				 * This is slightly racy -
 				 * folio_end_writeback() might have
@@ -1886,7 +1901,7 @@ retry:
 				goto activate_locked;
 
 			/* Case 3 above */
-			} else {/* 过会儿再试 */
+			} else {/* 等待回写完成, 过会儿再试 */
 				folio_unlock(folio);
 				folio_wait_writeback(folio);
 				/* then go back and try same folio again */
@@ -4617,9 +4632,13 @@ static bool try_to_inc_min_seq(struct lruvec *lruvec, bool can_swap)
 
 			min_seq[type]++;
 		}
+
+
 next:
+/* 当前type找到了最大的不空的min_seq值 */
 		;
 	}
+
 	/* 现在min seq是最大的没有page的值了 */
 	/* see the comment on lru_gen_folio */
 	if (can_swap) {
@@ -5252,6 +5271,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 
 	if (get_nr_gens(lruvec, type) == MIN_NR_GENS)
 		return 0;/* 说明这个type不老,全都是活跃的? */
+
 	/* 获取gen */
 	gen = lru_gen_from_seq(lrugen->min_seq[type]);
 
@@ -5314,7 +5334,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 	/*
 	 * There might not be eligible folios due to reclaim_idx. Check the
 	 * remaining to prevent livelock if it's not making progress.
-	 返回isolate的数量
+	 返回isolate的数量,
 	 如果没有isolate到任何页面, 就看是否remaining返回扫描的数量或者0
 	 */
 	return isolated || !remaining ? scanned : 0;
@@ -5432,7 +5452,7 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
 	spin_lock_irq(&lruvec->lru_lock);
-	/* isolate页面到list好进行回收 */
+	/* isolate页面到list链表好进行回收 */
 	scanned = isolate_folios(lruvec, sc, swappiness, &type, &list);
 	/* 更新min_seq的值 */
 	scanned += try_to_inc_min_seq(lruvec, swappiness);
@@ -5449,7 +5469,7 @@ retry:
 	reclaimed = shrink_folio_list(&list, pgdat, sc, &stat, false);
 	sc->nr_reclaimed += reclaimed;
 
-	/* 处理list里面剩余的page */
+	/* 处理list里面剩余的page(shrink_folio_list函数因为各种原因放回的page) */
 	list_for_each_entry_safe_reverse(folio, next, &list, lru) {
 		if (!folio_evictable(folio)) {/* unevictable的page */
 			list_del(&folio->lru);
@@ -5507,7 +5527,7 @@ retry:
 	/* 把clean的装入list, 继续进行回收 */
 	list_splice_init(&clean, &list);
 
-	if (!list_empty(&list)) {
+	if (!list_empty(&list)) {/* 说明有clean链表的元素被接过来了 */
 		skip_retry = true;
 		goto retry;
 	}
@@ -6524,6 +6544,7 @@ void lru_gen_init_lruvec(struct lruvec *lruvec)
 
 #ifdef CONFIG_MEMCG
 
+/* 对node上面的memcg的快速查找 */
 void lru_gen_init_pgdat(struct pglist_data *pgdat)
 {
 	int i, j;
@@ -6542,6 +6563,7 @@ void lru_gen_init_memcg(struct mem_cgroup *memcg)
 	spin_lock_init(&memcg->mm_list.lock);
 }
 
+/* 从node上面移除对memcg的记录 */
 void lru_gen_exit_memcg(struct mem_cgroup *memcg)
 {
 	int i;
@@ -7030,25 +7052,27 @@ static void consider_reclaim_throttle(pg_data_t *pgdat, struct scan_control *sc)
 	/*
 	 * If reclaim is making progress greater than 12% efficiency then
 	 * wake all the NOPROGRESS throttled tasks.
-
+	
 	 */
-	if (sc->nr_reclaimed > (sc->nr_scanned >> 3)) {
+	if (sc->nr_reclaimed > (sc->nr_scanned >> 3)) {/* 如果回收的成功率在1/8之上 */
 		wait_queue_head_t *wqh;
 
+		/* 取得因为VMSCAN_THROTTLE_NOPROGRESS而阻塞的reclaimer进行唤醒? */
 		wqh = &pgdat->reclaim_wait[VMSCAN_THROTTLE_NOPROGRESS];
 		if (waitqueue_active(wqh))
 			wake_up(wqh);
 
 		return;
 	}
-
+	/* 虽然回收成功率低 */
 	/*
 	 * Do not throttle kswapd or cgroup reclaim on NOPROGRESS as it will
 	 * throttle on VMSCAN_THROTTLE_WRITEBACK if there are too many pages
 	 * under writeback and marked for immediate reclaim at the tail of the
 	 * LRU.
+
 	 */
-	if (current_is_kswapd() || cgroup_reclaim(sc))
+	if (current_is_kswapd() || cgroup_reclaim(sc)) /* 但是kswap和cgroup回收也不阻塞 */
 		return;
 
 	/* Throttle if making no progress at high prioities. */
@@ -7342,6 +7366,7 @@ static bool allow_direct_reclaim(pg_data_t *pgdat)
 	/* If there are no reserves (unexpected config) then do not throttle */
 	if (!pfmemalloc_reserve)
 		return true;
+
 	/* 水位是否还ok */
 	wmark_ok = free_pages > pfmemalloc_reserve / 2;
 
@@ -7451,7 +7476,7 @@ out:
 }
 
 /* 
-直接回收, 慢速回收等等
+慢速回收等等
 回收SWAP_CLUSTER_MAX,指定了order ...  */
 unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 				gfp_t gfp_mask, nodemask_t *nodemask)
@@ -7674,7 +7699,8 @@ static bool pgdat_balanced(pg_data_t *pgdat, int order, int highest_zoneidx)
 	return false;
 }
 
-/* Clear pgdat state for congested, dirty or under writeback. */
+/* Clear pgdat state for congested, dirty or under writeback.
+待分析,什么时候置位这些bit? */
 static void clear_pgdat_congested(pg_data_t *pgdat)
 {
 	struct lruvec *lruvec = mem_cgroup_lruvec(NULL, pgdat);
@@ -7969,6 +7995,7 @@ restart:
 		 * If the low watermark is met there is no need for processes
 		 * to be throttled on pfmemalloc_wait as they should not be
 		 * able to safely make forward progress. Wake them
+		 如果满足了low水位, 可以唤醒因为水位太低阻塞的进程了.
 		 */
 		if (waitqueue_active(&pgdat->pfmemalloc_wait) &&
 				allow_direct_reclaim(pgdat))
@@ -8395,6 +8422,7 @@ module_init(kswapd_init)
  *
  * If non-zero call node_reclaim when the number of free pages falls below
  * the watermarks.
+
  */
 int node_reclaim_mode __read_mostly;
 
@@ -8418,6 +8446,7 @@ int sysctl_min_unmapped_ratio = 1;
  */
 int sysctl_min_slab_ratio = 5;
 
+/* 获取node上面unmap的文件页数量 */
 static inline unsigned long node_unmapped_file_pages(struct pglist_data *pgdat)
 {
 	unsigned long file_mapped = node_page_state(pgdat, NR_FILE_MAPPED);
@@ -8432,7 +8461,8 @@ static inline unsigned long node_unmapped_file_pages(struct pglist_data *pgdat)
 	return (file_lru > file_mapped) ? (file_lru - file_mapped) : 0;
 }
 
-/* Work out how many page cache pages we can reclaim in this reclaim_mode */
+/* Work out how many page cache pages we can reclaim in this reclaim_mode 
+计算节点上面可回收的文件页数量*/
 static unsigned long node_pagecache_reclaimable(struct pglist_data *pgdat)
 {
 	unsigned long nr_pagecache_reclaimable;
@@ -8449,7 +8479,8 @@ static unsigned long node_pagecache_reclaimable(struct pglist_data *pgdat)
 	else
 		nr_pagecache_reclaimable = node_unmapped_file_pages(pgdat);
 
-	/* If we can't clean pages, remove dirty pages from consideration */
+	/* If we can't clean pages, remove dirty pages from consideration
+	如果回收此节点的时候不能回写? */
 	if (!(node_reclaim_mode & RECLAIM_WRITE))
 		delta += node_page_state(pgdat, NR_FILE_DIRTY);
 
@@ -8515,6 +8546,7 @@ static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned in
 	return sc.nr_reclaimed >= nr_pages;
 }
 
+/* 直接回收此node */
 int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
 {
 	int ret;
@@ -8522,12 +8554,15 @@ int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
 	/*
 	 * Node reclaim reclaims unmapped file backed pages and
 	 * slab pages if we are over the defined limits.
-	 *
+	 * node_reclaim会回收未映射的文件页和 slab 页
 	 * A small portion of unmapped file backed pages is needed for
 	 * file I/O otherwise pages read by file I/O will be immediately
 	 * thrown out if the node is overallocated. So we do not reclaim
 	 * if less than a specified percentage of the node is used by
 	 * unmapped file backed pages.
+	 一小部分未映射的文件支持页是文件 I/O必须的. 反而其他的文件 
+	 I/O 读取的pagecache页是可以立即被丢弃的。
+	 如果当前的pagecache页少于这个必须的百分比,就不回收
 	 */
 	if (node_pagecache_reclaimable(pgdat) <= pgdat->min_unmapped_pages &&
 	    node_page_state_pages(pgdat, NR_SLAB_RECLAIMABLE_B) <=
@@ -8549,6 +8584,7 @@ int node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned int order)
 	if (node_state(pgdat->node_id, N_CPU) && pgdat->node_id != numa_node_id())
 		return NODE_RECLAIM_NOSCAN;
 
+	/* 这种回收方式还有race吗 */
 	if (test_and_set_bit(PGDAT_RECLAIM_LOCKED, &pgdat->flags))
 		return NODE_RECLAIM_NOSCAN;
 

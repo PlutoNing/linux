@@ -777,7 +777,7 @@ static inline void mminit_verify_zonelist(void)
 #endif /* CONFIG_DEBUG_MEMORY_INIT */
 
 #define NODE_RECLAIM_NOSCAN	-2
-#define NODE_RECLAIM_FULL	-1
+#define NODE_RECLAIM_FULL	-1 /* 表示节点已经被充分回收了 */
 #define NODE_RECLAIM_SOME	0
 #define NODE_RECLAIM_SUCCESS	1
 
