@@ -500,7 +500,9 @@ struct mm_struct {
 		spinlock_t page_table_lock; /* Protects page tables and some
 					     * counters保护任务页表和引用计数的锁
 					     */
-		struct rw_semaphore mmap_sem;
+		struct rw_semaphore mmap_sem;/* 谁会要求这个sem?
+		access_remote_vm会
+		 */
 
 		struct list_head mmlist; /* List of maybe swapped mm's.	These
 					  * are globally strung together off

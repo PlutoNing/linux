@@ -214,7 +214,7 @@ static void set_task_reclaim_state(struct task_struct *task,
 
 	task->reclaim_state = rs;
 }
-
+/* 全部的shrinker挂接在这 */
 static LIST_HEAD(shrinker_list);
 static DECLARE_RWSEM(shrinker_rwsem);
 
@@ -233,6 +233,7 @@ static DECLARE_RWSEM(shrinker_rwsem);
 #define SHRINKER_REGISTERING ((struct shrinker *)~0UL)
 
 static DEFINE_IDR(shrinker_idr);
+/* 好像是shrink_map的位图的nr_max */
 static int shrinker_nr_max;
 /* 分配shrinker的memcg相关成员
 啊就是分配一个idr的id吗 */
@@ -463,6 +464,7 @@ void free_prealloced_shrinker(struct shrinker *shrinker)
 	shrinker->nr_deferred = NULL;
 }
 
+/*  */
 void register_shrinker_prepared(struct shrinker *shrinker)
 {
 	down_write(&shrinker_rwsem);
@@ -504,6 +506,7 @@ EXPORT_SYMBOL(unregister_shrinker);
 
 #define SHRINK_BATCH 128
 
+/* 通过@shrinker进行shrink */
 static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 				    struct shrinker *shrinker, int priority)
 {
@@ -519,11 +522,13 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 	long scanned = 0, next_deferred;
 
 	if (!(shrinker->flags & SHRINKER_NUMA_AWARE))
-		nid = 0;
+		nid = 0;/* 说明不是numa粒度的shrinker? */
 
 	freeable = shrinker->count_objects(shrinker, shrinkctl);
-	if (freeable == 0 || freeable == SHRINK_EMPTY)
+	if (freeable == 0 || freeable == SHRINK_EMPTY)/* 说明没有啥好回收的? */
 		return freeable;
+
+	/* 到这说明 freeable!=0 && != SHRINK_EMPTY */
 
 	/*
 	 * copy the current shrinker scan count into a local variable
@@ -547,6 +552,9 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 	}
 
 	total_scan += delta;
+
+/* 看来现在total_scan是defer和现在freeable的数量之和?(经过调整的) */
+
 	if (total_scan < 0) {
 		pr_err("shrink_slab: %pS negative objects to delete nr=%ld\n",
 		       shrinker->scan_objects, total_scan);
@@ -597,12 +605,14 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 	 * possible.
 	 */
 	while (total_scan >= batch_size ||
-	       total_scan >= freeable) {
+	       total_scan >= freeable) {/* 把total_scan回收到
+		   batch或者freeable以下 */
 		unsigned long ret;
 		unsigned long nr_to_scan = min(batch_size, total_scan);
 
 		shrinkctl->nr_to_scan = nr_to_scan;
 		shrinkctl->nr_scanned = nr_to_scan;
+		/* 这里进行回收 */
 		ret = shrinker->scan_objects(shrinker, shrinkctl);
 		if (ret == SHRINK_STOP)
 			break;
@@ -614,7 +624,7 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 
 		cond_resched();
 	}
-
+/*  */
 	if (next_deferred >= scanned)
 		next_deferred -= scanned;
 	else
@@ -635,6 +645,7 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 }
 
 #ifdef CONFIG_MEMCG
+/* 回收memcg在此node的slab */
 static unsigned long shrink_slab_memcg(gfp_t gfp_mask, int nid,
 			struct mem_cgroup *memcg, int priority)
 {
@@ -647,13 +658,15 @@ static unsigned long shrink_slab_memcg(gfp_t gfp_mask, int nid,
 
 	if (!down_read_trylock(&shrinker_rwsem))
 		return 0;
-
+	
+	/* 找到memcg在此node的shrinker_map */
 	map = rcu_dereference_protected(memcg->nodeinfo[nid]->shrinker_map,
 					true);
 	if (unlikely(!map))
 		goto unlock;
 
-	for_each_set_bit(i, map->map, shrinker_nr_max) {
+	for_each_set_bit(i, map->map, shrinker_nr_max) {/* 
+	i是第几个shrinker? */
 		struct shrink_control sc = {
 			.gfp_mask = gfp_mask,
 			.nid = nid,
@@ -665,14 +678,16 @@ static unsigned long shrink_slab_memcg(gfp_t gfp_mask, int nid,
 		if (unlikely(!shrinker || shrinker == SHRINKER_REGISTERING)) {
 			if (!shrinker)
 				clear_bit(i, map->map);
-			continue;
+
+			continue;/* 没找到这个shrinker就找下一个?要把每个
+			shrinker调用一遍吗. */
 		}
 
 		/* Call non-slab shrinkers even though kmem is disabled */
 		if (!memcg_kmem_enabled() &&
 		    !(shrinker->flags & SHRINKER_NONSLAB))
 			continue;
-
+		/* 开始回收slab */
 		ret = do_shrink_slab(&sc, shrinker, priority);
 		if (ret == SHRINK_EMPTY) {
 			clear_bit(i, map->map);
@@ -705,7 +720,9 @@ static unsigned long shrink_slab_memcg(gfp_t gfp_mask, int nid,
 			break;
 		}
 	}
+
 unlock:
+/* case1: 没找到shrinker map */
 	up_read(&shrinker_rwsem);
 	return freed;
 }
@@ -721,6 +738,8 @@ static unsigned long shrink_slab_memcg(gfp_t gfp_mask, int nid,
 2024年07月03日10:27:13
 shrink_slab()函数调用内存管理系统中的shrinker接口，很多子系统会注册shrinker接口来回
 收slab对象。
+=========
+参数指定了node和memcg
  * shrink_slab - shrink slab caches
  * @gfp_mask: allocation context
  * @nid: node whose slab caches to target
@@ -754,10 +773,14 @@ static unsigned long shrink_slab(gfp_t gfp_mask, int nid,
 	 * shrink, but skip global shrink.  This may result in premature
 	 * oom.
 	 */
-	if (!mem_cgroup_disabled() && !mem_cgroup_is_root(memcg))
+	if (!mem_cgroup_disabled() && !mem_cgroup_is_root(memcg))/* 如果启用了memcg并且不是root memcg
+	就实质上回收memcg slab */
 		return shrink_slab_memcg(gfp_mask, nid, memcg, priority);
 
-	if (!down_read_trylock(&shrinker_rwsem))
+	/* 找到这里说明系统没有开memcg? 所以不是从memcg的shrinker_map寻找
+	shrinker调用了, 而是从全局的shrinker_list逐个调用shrinker? */
+
+	if (!down_read_trylock(&shrinker_rwsem))/* 操作全局链表,防止race */
 		goto out;
 
 	list_for_each_entry(shrinker, &shrinker_list, list) {
@@ -770,6 +793,7 @@ static unsigned long shrink_slab(gfp_t gfp_mask, int nid,
 		ret = do_shrink_slab(&sc, shrinker, priority);
 		if (ret == SHRINK_EMPTY)
 			ret = 0;
+
 		freed += ret;
 		/*
 		 * Bail out if someone want to register a new shrinker to

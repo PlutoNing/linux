@@ -250,6 +250,7 @@ static ssize_t get_mm_proctitle(struct mm_struct *mm, char __user *buf,
 	return ret;
 }
 
+/* 读取mm内的cmd字符串到@buf */
 static ssize_t get_mm_cmdline(struct mm_struct *mm, char __user *buf,
 			      size_t count, loff_t *ppos)
 {
@@ -270,7 +271,7 @@ static ssize_t get_mm_cmdline(struct mm_struct *mm, char __user *buf,
 
 	if (arg_start >= arg_end)
 		return 0;
-
+/* arg_start+++++arg_end   env_start++++env_end */
 	/*
 	 * We allow setproctitle() to overwrite the argument
 	 * strings, and overflow past the original end. But
@@ -278,6 +279,10 @@ static ssize_t get_mm_cmdline(struct mm_struct *mm, char __user *buf,
 	 */
 	if (env_start != arg_end || env_end < env_start)
 		env_start = env_end = arg_end;
+/* arg_start+++++arg_end
+				env_start++++env_end */
+
+
 	len = env_end - arg_start;
 
 	/* We're not going to care if "*ppos" has high bits set */
@@ -337,6 +342,8 @@ static ssize_t get_mm_cmdline(struct mm_struct *mm, char __user *buf,
 	return len;
 }
 
+/* 读取指定进程的proc fs的cmd字符串
+这个字符串初始化进程的时候存储在进程地址空间内 */
 static ssize_t get_task_cmdline(struct task_struct *tsk, char __user *buf,
 				size_t count, loff_t *pos)
 {
@@ -346,12 +353,12 @@ static ssize_t get_task_cmdline(struct task_struct *tsk, char __user *buf,
 	mm = get_task_mm(tsk);
 	if (!mm)
 		return 0;
-
+	/* 从mm读取 */
 	ret = get_mm_cmdline(mm, buf, count, pos);
 	mmput(mm);
 	return ret;
 }
-
+/* 读取 /proc/<pid>/下的cmd字符串 */
 static ssize_t proc_pid_cmdline_read(struct file *file, char __user *buf,
 				     size_t count, loff_t *pos)
 {
@@ -363,6 +370,7 @@ static ssize_t proc_pid_cmdline_read(struct file *file, char __user *buf,
 	tsk = get_proc_task(file_inode(file));
 	if (!tsk)
 		return -ESRCH;
+	/* 这里读取,读取到buf */
 	ret = get_task_cmdline(tsk, buf, count, pos);
 	put_task_struct(tsk);
 	if (ret > 0)

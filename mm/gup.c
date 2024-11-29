@@ -1155,7 +1155,7 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
  * get_user_pages_remote() - pin user pages in memory
  * @tsk:	the task_struct to use for page fault accounting, or
  *		NULL if faults are not to be recorded.
- * @mm:		mm_struct of target mm
+ * @mm:		mm_struct of target mm,要操作的mm
  * @start:	starting user address 起始地址
  * @nr_pages:	number of pages from start to pin要操作的页面数量
  * @gup_flags:	flags modifying lookup behaviour
@@ -1176,14 +1176,15 @@ static __always_inline long __get_user_pages_locked(struct task_struct *tsk,
  * were pinned, returns -errno. Each page returned must be released
  * with a put_page() call when it is finished with. vmas will only
  * remain valid while mmap_sem is held.
- *
+ * 返回pin成功的页面数量,可能会比预期少, 返回errno说明一个都没pin成功. 
+ 要持有mmap的sem. 
  * Must be called with mmap_sem held for read or write.
- *
+ * 
  * get_user_pages walks a process's page tables and takes a reference to
  * each struct page that each user address corresponds to at a given
  * instant. That is, it takes the page that would be accessed if a user
  * thread accesses the given user virtual address at that instant.
- *
+ * 
  * This does not guarantee that the page exists in the user mappings when
  * get_user_pages returns, and there may even be a completely different
  * page there in some cases (eg. if mmapped pagecache has been invalidated
@@ -1223,8 +1224,7 @@ long get_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm,
 	 */
 	if (WARN_ON_ONCE(gup_flags & FOLL_LONGTERM))
 		return -EINVAL;
-	/* 捋一捋，叫get pages，其实就是把pages进行一下pin。
-	不过这里是其他mm，也是locked的 */
+	/*  */
 
 	/* 获取此mm的start地址开始的nr_pages页面，放在pages指针数组里面，vmas记录数组对应索引的页面的vma */
 	return __get_user_pages_locked(tsk, mm, start, nr_pages, pages, vmas,

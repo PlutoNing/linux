@@ -16,15 +16,14 @@ struct xfs_eofblocks {
 	prid_t		eof_prid;
 	__u64		eof_min_file_size;
 };
-
+/*  */
 #define SYNC_WAIT		0x0001	/* wait for i/o to complete */
 #define SYNC_TRYLOCK		0x0002  /* only try to lock inodes */
 
 /*
  * tags for inode radix tree
  */
-#define XFS_ICI_NO_TAG		(-1)	/* special flag for an untagged lookup
-					   in xfs_inode_ag_iterator */
+#define XFS_ICI_NO_TAG		(-1)	/* special flag for an untagged lookup in xfs_inode_ag_iterator */
 #define XFS_ICI_RECLAIM_TAG	0	/* inode is to be reclaimed */
 #define XFS_ICI_EOFBLOCKS_TAG	1	/* inode has blocks beyond EOF */
 #define XFS_ICI_COWBLOCKS_TAG	2	/* inode can have cow blocks to gc */

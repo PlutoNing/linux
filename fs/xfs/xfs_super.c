@@ -1806,6 +1806,7 @@ xfs_fs_mount(
 	return mount_bdev(fs_type, flags, dev_name, data, xfs_fs_fill_super);
 }
 
+/* xfs统计sb的slab的cache数量 */
 static long
 xfs_fs_nr_cached_objects(
 	struct super_block	*sb,
@@ -1817,6 +1818,7 @@ xfs_fs_nr_cached_objects(
 	return xfs_reclaim_inodes_count(XFS_M(sb));
 }
 
+/* 回收xfs的可回收对象 */
 static long
 xfs_fs_free_cached_objects(
 	struct super_block	*sb,

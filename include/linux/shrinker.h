@@ -3,6 +3,7 @@
 #define _LINUX_SHRINKER_H
 
 /*
+shrink slab的sc
  * This struct is used to pass information from page reclaim to the shrinkers.
  * We consolidate the values for easier extention later.
  *
@@ -46,7 +47,7 @@ struct shrink_control {
  * count callback - the shrinker relies on aggregating scan counts that couldn't
  * be executed due to potential deadlocks to be run at a later call when the
  * deadlock condition is no longer pending.
- *
+ *count函数返回slab里面可回收的数量
  * @scan_objects will only be called if @count_objects returned a non-zero
  * value for the number of freeable objects. The callout should scan the cache
  * and attempt to free items from the cache. It should then return the number
@@ -54,7 +55,7 @@ struct shrink_control {
  * due to potential deadlocks. If SHRINK_STOP is returned, then no further
  * attempts to call the @scan_objects will be made from the current reclaim
  * context.
- *
+ * scan函数尝试扫描和回收
  * @flags determine the shrinker abilities, like numa awareness
  */
 struct shrinker {
@@ -74,12 +75,14 @@ struct shrinker {
 	int id;
 #endif
 	/* objs pending delete, per node
-	是一个不定长的数组 */
+	是一个不定长的数组
+	记录了每个nid对应的defer数量? */
 	atomic_long_t *nr_deferred;
 };
 #define DEFAULT_SEEKS 2 /* A good number if you don't know better. */
 
-/* Flags */
+/* Flags
+可以理解为shrinker的回收扫描啥啥的粒度 */
 #define SHRINKER_NUMA_AWARE	(1 << 0)
 #define SHRINKER_MEMCG_AWARE	(1 << 1)
 /*

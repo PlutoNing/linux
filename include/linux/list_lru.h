@@ -48,8 +48,10 @@ struct list_lru_node {
 #endif
 	long nr_items;
 } ____cacheline_aligned_in_smp;
-/* 2024年08月27日17:15:56 */
+/* 2024年08月27日17:15:56
+lru实现 */
 struct list_lru {
+	/* 包含多个对应每个node的lru */
 	struct list_lru_node	*node;
 #ifdef CONFIG_MEMCG_KMEM
 	struct list_head	list;
@@ -117,6 +119,7 @@ unsigned long list_lru_count_one(struct list_lru *lru,
 				 int nid, struct mem_cgroup *memcg);
 unsigned long list_lru_count_node(struct list_lru *lru, int nid);
 
+/* shrinker回收的时候统计对应指定node和memcg的lru数量 */
 static inline unsigned long list_lru_shrink_count(struct list_lru *lru,
 						  struct shrink_control *sc)
 {

@@ -41,7 +41,7 @@
 #include "internal.h"
 
 static int thaw_super_locked(struct super_block *sb);
-
+/* 系统全部的sb放在这 */
 static LIST_HEAD(super_blocks);
 static DEFINE_SPINLOCK(sb_lock);
 
@@ -52,6 +52,7 @@ static char *sb_writers_name[SB_FREEZE_LEVELS] = {
 };
 
 /*
+回收sb的slab的函数
  * One thing we have to be careful of with a per-sb shrinker is that we don't
  * drop the last active reference to the superblock from within the shrinker.
  * If that happens we could trigger unregistering the shrinker from within the
@@ -68,6 +69,7 @@ static unsigned long super_cache_scan(struct shrinker *shrink,
 	long	dentries;
 	long	inodes;
 
+	/* 先获取所属的sb */
 	sb = container_of(shrink, struct super_block, s_shrink);
 
 	/*
@@ -85,6 +87,7 @@ static unsigned long super_cache_scan(struct shrinker *shrink,
 
 	inodes = list_lru_shrink_count(&sb->s_inode_lru, sc);
 	dentries = list_lru_shrink_count(&sb->s_dentry_lru, sc);
+	/* 计算可回收的总数 */
 	total_objects = dentries + inodes + fs_objects + 1;
 	if (!total_objects)
 		total_objects = 1;
@@ -101,6 +104,7 @@ static unsigned long super_cache_scan(struct shrinker *shrink,
 	 * Ensure that we always scan at least one object - memcg kmem
 	 * accounting uses this to fully empty the caches.
 	 */
+	 /* 下面就是开始回收了 */
 	sc->nr_to_scan = dentries + 1;
 	freed = prune_dcache_sb(sb, sc);
 	sc->nr_to_scan = inodes + 1;
@@ -115,6 +119,7 @@ static unsigned long super_cache_scan(struct shrinker *shrink,
 	return freed;
 }
 
+/* 统计fs的可回收obj的数量 */
 static unsigned long super_cache_count(struct shrinker *shrink,
 				       struct shrink_control *sc)
 {
@@ -141,6 +146,7 @@ static unsigned long super_cache_count(struct shrinker *shrink,
 		return 0;
 	smp_rmb();
 
+	/* 统计可回收的obj数量 */
 	if (sb->s_op && sb->s_op->nr_cached_objects)
 		total_objects = sb->s_op->nr_cached_objects(sb, sc);
 
@@ -189,6 +195,7 @@ static void destroy_unused_super(struct super_block *s)
 }
 
 /**
+创建sb?
  *	alloc_super	-	create new superblock
  *	@type:	filesystem type superblock should belong to
  *	@flags: the mount flags
@@ -263,7 +270,9 @@ static struct super_block *alloc_super(struct file_system_type *type, int flags,
 	s->cleancache_poolid = CLEANCACHE_NO_POOL;
 
 	s->s_shrink.seeks = DEFAULT_SEEKS;
+	/* 负责进行slab回收的函数 */
 	s->s_shrink.scan_objects = super_cache_scan;
+	/* 负责统计slab可回收数量的函数 */
 	s->s_shrink.count_objects = super_cache_count;
 	s->s_shrink.batch = 1024;
 	s->s_shrink.flags = SHRINKER_NUMA_AWARE | SHRINKER_MEMCG_AWARE;
@@ -370,6 +379,7 @@ void deactivate_super(struct super_block *s)
 EXPORT_SYMBOL(deactivate_super);
 
 /**
+获取一个ref
  *	grab_super - acquire an active reference
  *	@s: reference we are trying to make active
  *
@@ -489,6 +499,7 @@ bool mount_capable(struct fs_context *fc)
 }
 
 /**
+根据fc查询sb,test用来测试是不是要找的fs类型.
  * sget_fc - Find or create a superblock
  * @fc:	Filesystem context.
  * @test: Comparison callback
@@ -496,10 +507,10 @@ bool mount_capable(struct fs_context *fc)
  *
  * Find or create a superblock using the parameters stored in the filesystem
  * context and the two callback functions.
- *
+ * 
  * If an extant superblock is matched, then that will be returned with an
  * elevated reference count that the caller must transfer or discard.
- *
+ * 
  * If no match is made, a new superblock will be allocated and basic
  * initialisation will be performed (s_type, s_fs_info and s_id will be set and
  * the set() callback will be invoked), the superblock will be published and it
@@ -517,20 +528,23 @@ struct super_block *sget_fc(struct fs_context *fc,
 
 retry:
 	spin_lock(&sb_lock);
-	if (test) {
+	if (test) {/* 遍历实例,寻找要找的sb */
 		hlist_for_each_entry(old, &fc->fs_type->fs_supers, s_instances) {
 			if (test(old, fc))
 				goto share_extant_sb;
 		}
 	}
-	if (!s) {
+
+	if (!s) {/* 这里不是一直是null吗? */
 		spin_unlock(&sb_lock);
+		/* 刚才遍历没找到目标,这里需要创建? */
 		s = alloc_super(fc->fs_type, fc->sb_flags, user_ns);
 		if (!s)
 			return ERR_PTR(-ENOMEM);
 		goto retry;
 	}
 
+	/* 初始化新创建的sb */
 	s->s_fs_info = fc->s_fs_info;
 	err = set(s, fc);
 	if (err) {
@@ -551,6 +565,7 @@ retry:
 	return s;
 
 share_extant_sb:
+/* 通过遍历fs type的实例找到了目标 */
 	if (user_ns != old->s_user_ns) {
 		spin_unlock(&sb_lock);
 		destroy_unused_super(s);
@@ -1116,23 +1131,25 @@ void kill_litter_super(struct super_block *sb)
 }
 EXPORT_SYMBOL(kill_litter_super);
 
+/*  */
 int set_anon_super_fc(struct super_block *sb, struct fs_context *fc)
 {
 	return set_anon_super(sb, NULL);
 }
 EXPORT_SYMBOL(set_anon_super_fc);
-
+/* 这个好像是针对系统中可能有多个实例的fs? */
 static int test_keyed_super(struct super_block *sb, struct fs_context *fc)
 {
 	return sb->s_fs_info == fc->s_fs_info;
 }
-
+/* 这个好像是针对系统fs的 */
 static int test_single_super(struct super_block *s, struct fs_context *fc)
 {
 	return 1;
 }
 
 /**
+从s_fs_info里面获取sb
  * vfs_get_super - Get a superblock with a search key set in s_fs_info.
  * @fc: The filesystem context holding the parameters
  * @keying: How to distinguish superblocks
@@ -1180,11 +1197,12 @@ int vfs_get_super(struct fs_context *fc,
 	default:
 		BUG();
 	}
-
+	/* 根据fs获取sb */
 	sb = sget_fc(fc, test, set_anon_super_fc);
 	if (IS_ERR(sb))
 		return PTR_ERR(sb);
-
+	
+	/* 下面好像是获取ref */
 	if (!sb->s_root) {
 		err = fill_super(sb, fc);
 		if (err)

@@ -1556,7 +1556,7 @@ struct super_block {
 	/* 后背设备 */
 	struct backing_dev_info *s_bdi;
 	struct mtd_info		*s_mtd;
-	struct hlist_node	s_instances;
+	struct hlist_node	s_instances;/* 通过这个挂接到fs_type的fs链表 */
 	unsigned int		s_quota_types;	/* Bitmask of supported quota types */
 	struct quota_info	s_dquot;	/* Diskquota specific options */
 
@@ -1604,7 +1604,9 @@ struct super_block {
 	 */
 	int cleancache_poolid;
 
-	struct shrinker s_shrink;	/* per-sb shrinker handle */
+	struct shrinker s_shrink;	/*
+	这个sb的shrinker
+	 per-sb shrinker handle */
 
 	/* Number of inodes with nlink == 0 but still referenced */
 	atomic_long_t s_remove_count;
@@ -1915,6 +1917,7 @@ struct iov_iter;
 struct file_operations {
 	struct module *owner;
 	loff_t (*llseek) (struct file *, loff_t, int);
+	/* 从param3拷贝到____user */
 	ssize_t (*read) (struct file *, char __user *, size_t, loff_t *);
 	ssize_t (*write) (struct file *, const char __user *, size_t, loff_t *);
 	ssize_t (*read_iter) (struct kiocb *, struct iov_iter *);
@@ -2062,6 +2065,7 @@ struct super_operations {
 	struct dquot **(*get_dquots)(struct inode *);
 #endif
 	int (*bdev_try_to_free_page)(struct super_block*, struct page*, gfp_t);
+	/* 好像是slab缓存相关? 统计cache数量*/
 	long (*nr_cached_objects)(struct super_block *,
 				  struct shrink_control *);
 	long (*free_cached_objects)(struct super_block *,
@@ -2329,7 +2333,7 @@ struct file_system_type {
 	void (*kill_sb) (struct super_block *);
 	struct module *owner;
 	struct file_system_type * next;
-	struct hlist_head fs_supers;
+	struct hlist_head fs_supers; /* 相同类型的fs实例的sb都挂在这里? */
 
 	struct lock_class_key s_lock_key;
 	struct lock_class_key s_umount_key;

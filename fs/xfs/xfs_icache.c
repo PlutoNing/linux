@@ -1257,7 +1257,7 @@ restart:
 
 		ag = pag->pag_agno + 1;
 
-		if (trylock) {
+		if (trylock) {/* xfs_reclaim_inodes_nr进行shrink回收的时候走这个路径 */
 			if (!mutex_trylock(&pag->pag_ici_reclaim_lock)) {
 				skipped++;
 				xfs_perag_put(pag);
@@ -1365,6 +1365,7 @@ xfs_reclaim_inodes(
 }
 
 /*
+xfs回收指定数量的inode
  * Scan a certain number of inodes for reclaim.
  *
  * When called we make sure that there is a background (fast) inode reclaim in
@@ -1386,6 +1387,7 @@ xfs_reclaim_inodes_nr(
 }
 
 /*
+统计xfs可回收的slab cache数量
  * Return the number of reclaimable inodes in the filesystem for
  * the shrinker to determine how much to reclaim.
  */

@@ -1585,6 +1585,7 @@ long do_shmat(int shmid, char __user *shmaddr, int shmflg,
 	err = 0;
 	if (IS_ERR_VALUE(addr))
 		err = (long)addr;
+
 invalid:
 	up_write(&current->mm->mmap_sem);
 	if (populate)

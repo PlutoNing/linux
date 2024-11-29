@@ -86,7 +86,7 @@ struct fs_parameter {
 struct fs_context {
 	const struct fs_context_operations *ops;
 	struct mutex		uapi_mutex;	/* Userspace access mutex */
-	struct file_system_type	*fs_type;
+	struct file_system_type	*fs_type; /* 此fc对应的fs类型 */
 	void			*fs_private;	/* The filesystem's context */
 	void			*sget_key;
 	struct dentry		*root;		/* The root and superblock */
