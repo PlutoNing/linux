@@ -157,7 +157,9 @@ struct scan_control {
 	gfp_t gfp_mask;
 
 	/* Incremented by the number of inactive pages that were scanned
-	已经scan的页面数量 */
+	已经scan的页面数量
+	========
+	shrink_node和shrink_zones之前都可以归零 */
 	unsigned long nr_scanned;
 
 	/* Number of pages freed so far during a call to shrink_zones() */
@@ -2475,7 +2477,7 @@ move:/* 默认的move是move到src */
 		}
 	}
 
-
+	/* 返回本次扫描了多少页面 */
 	*nr_scanned = total_scan;
 	trace_mm_vmscan_lru_isolate(sc->reclaim_idx, sc->order, nr_to_scan,
 				    total_scan, skipped, nr_taken,
@@ -4577,7 +4579,7 @@ static bool inc_min_seq(struct lruvec *lruvec, int type, bool can_swap)
 	int zone;
 	int remaining = MAX_LRU_BATCH;
 	struct lru_gen_folio *lrugen = &lruvec->lrugen;
-	int new_gen, 
+	int new_gen,
 	old_gen = lru_gen_from_seq(lrugen->min_seq[type]);
 
 	if (type == LRU_GEN_ANON && !can_swap)
@@ -5252,7 +5254,9 @@ static bool isolate_folio(struct lruvec *lruvec, struct folio *folio, struct sca
 
 	return true;
 }
-/* isolate页面时,这里扫描指定的type的lru */
+/* isolate页面时,这里扫描指定的type的最老的lru
+==============
+最多isolate出min_lru_batch(64)个页面 */
 static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 		       int type, int tier, struct list_head *list)
 {
@@ -5279,10 +5283,12 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 		LIST_HEAD(moved);
 		int skipped = 0;
 		int zone = (sc->reclaim_idx + i) % MAX_NR_ZONES;
-		/* 遍历此lruvec的在这个区类型上面的这个type的gen代的链表 */
+		/* 遍历此lruvec的在这个区类型上面的这个type的gen代的链表
+		(回收指定type的最老gen的, 所以遍历的是zone) */
 		struct list_head *head = &lrugen->folios[gen][type][zone];
 
-		while (!list_empty(head)) {/* 处理这个lru, 最多处理MAX_LRU_BATCH次 */
+		while (!list_empty(head)) {/* 处理这个lru, 最多处理MAX_LRU_BATCH次.
+		看来也是尽量一直取完此zone的这个最老的lru上面的页面 */
 			struct folio *folio = lru_to_folio(head);
 			int delta = folio_nr_pages(folio);
 
@@ -5295,6 +5301,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 
 			if (sort_folio(lruvec, folio, sc, tier))
 				sorted += delta;
+
 			else if (isolate_folio(lruvec, folio, sc)) {
 				/* 已经从lrugen的list移出了,下面加到要回收的list里面 */
 				list_add(&folio->lru, list);
@@ -5306,7 +5313,7 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 
 			if (!--remaining || max(isolated, skipped) >= MIN_LRU_BATCH)/* 如果处理的batch数量够了 */
 				break;
-		}
+		}/*  */
 
 		/* 这个zone扫描完了batch数量的page */
 
@@ -5387,7 +5394,10 @@ static int get_type_to_scan(struct lruvec *lruvec, int swappiness, int *tier_idx
 
 	return type;
 }
-/* 回收前这个函数isolate页面 */
+/* 回收前这个函数isolate页面
+===========================
+最多isolate 64个页面
+ */
 static int isolate_folios(struct lruvec *lruvec, struct scan_control *sc, int swappiness,
 			  int *type_scanned, struct list_head *list)
 {
@@ -5418,7 +5428,7 @@ static int isolate_folios(struct lruvec *lruvec, struct scan_control *sc, int sw
 		if (tier < 0)
 			tier = get_tier_idx(lruvec, type);
 		
-		/* 返回isolate或者scan的数量, isolate的页面在list */
+		/* 返回isolate或者scan的数量, isolate的页面在list. 最多isolate 64个页面 */
 		scanned = scan_folios(lruvec, sc, type, tier, list);
 		if (scanned)
 			break;
@@ -5433,7 +5443,7 @@ static int isolate_folios(struct lruvec *lruvec, struct scan_control *sc, int sw
 }
 /* mglru回收lru的函数
 返回扫描的数量.
-返回0也可能是因为min和max都太新了.
+返回0也可能是因为lru都太新了.
  */
 static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swappiness)
 {
@@ -5452,7 +5462,7 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
 	spin_lock_irq(&lruvec->lru_lock);
-	/* isolate页面到list链表好进行回收 */
+	/* isolate页面到list链表好进行回收. 最多取64个爷们到list进行回收. */
 	scanned = isolate_folios(lruvec, sc, swappiness, &type, &list);
 	/* 更新min_seq的值 */
 	scanned += try_to_inc_min_seq(lruvec, swappiness);
@@ -5497,6 +5507,7 @@ retry:
 		/* retry folios that may have missed folio_rotate_reclaimable() */
 		/* clean链表里面的page似乎后续会继续重试回收? */
 		list_move(&folio->lru, &clean);
+		/* 这个folio算是回收失败了,好像可能会重试,这里避免重复记录scan数量 */
 		sc->nr_scanned -= folio_nr_pages(folio);
 	}
 
@@ -5560,15 +5571,15 @@ static bool should_run_aging(struct lruvec *lruvec, unsigned long max_seq,
 	}
 
 	/* 可能从anon或者file开始遍历 */
-	for (type = !can_swap; type < ANON_AND_FILE; type++) {
+	for (type = !can_swap; type < ANON_AND_FILE; type++) {/* 遍历type */
 		unsigned long seq;
 
-		for (seq = min_seq[type]; seq <= max_seq; seq++) {
+		for (seq = min_seq[type]; seq <= max_seq; seq++) {/* 遍历每一个gen */
 			unsigned long size = 0;
 
 			gen = lru_gen_from_seq(seq);
 
-			for (zone = 0; zone < MAX_NR_ZONES; zone++)
+			for (zone = 0; zone < MAX_NR_ZONES; zone++)/* 遍历每一个zone */
 			/* 获取指定gen指定type指定zone的数量 */
 				size += max(READ_ONCE(lrugen->nr_pages[gen][type][zone]), 0L);
 
@@ -5657,8 +5668,8 @@ static unsigned long get_nr_to_reclaim(struct scan_control *sc)
 	return max(sc->nr_to_reclaim, compact_gap(sc->order));
 }
 /* mglru的shrink方式
-1. mglru的全局回收.
-2. mglru的memcg回收
+扫描和回收的数量?
+对于cgroup回收: 一次操作最多回收64个页面
  */
 static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 {
@@ -5672,23 +5683,25 @@ static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	if (swappiness && !(sc->gfp_mask & __GFP_IO))
 		swappiness = 1;
 
-	while (true) {
+	while (true) {/* 终止条件? */
 		int delta;
 
-		/* 获取需要scan的数量, 可能会进行老化 */
+		/* 获取lruvec上面可以scan的数量, 可能会进行老化 */
 		nr_to_scan = get_nr_to_scan(lruvec, sc, swappiness);
 		if (nr_to_scan <= 0)
 			break;
-		/* 这里进行实质isolate, reclaim. */
+		/* 这里进行实质回收
+		返回scan的数量 */
 		delta = evict_folios(lruvec, sc, swappiness);
-		if (!delta)
+		if (!delta)/* 这里退出的条件可能是什么, */
 			break;
 
 		scanned += delta;
 		if (scanned >= nr_to_scan)
 			break;
 		
-		/* 对于全局回收, 才可能会break, 对于cgroup回收,nr_to_reclaim一直是-1 */
+		/* 对于全局回收, 可能会break, 
+		对于cgroup回收,nr_to_reclaim一直是-1,一直break.  */
 		if (sc->nr_reclaimed >= nr_to_reclaim)
 			break;
 
@@ -5813,6 +5826,8 @@ restart:
 		goto restart;
 }
 /* mglru的memcg回收lruvec路径
+回收和扫描的数量?
+cgroup回收最多64个页面
  */
 static void lru_gen_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 {
@@ -6619,7 +6634,9 @@ static void lru_gen_shrink_node(struct pglist_data *pgdat, struct scan_control *
 
 #endif /* CONFIG_LRU_GEN */
 /* mmecg回收下回收lruvec的内存
+-------------
 
+mglru的cgroup回收最多扫描和回收64个页面
  */
 static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 {
@@ -6873,7 +6890,7 @@ static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 		/* 决定回收此memcg */
 		reclaimed = sc->nr_reclaimed;
 		scanned = sc->nr_scanned;
-
+		/* mglru的cgroup回收最多回收64个页面 */
 		shrink_lruvec(lruvec, sc);
 
 		shrink_slab(sc->gfp_mask, pgdat->node_id, memcg,
@@ -6889,7 +6906,10 @@ static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 }
 
 
-/* 回收node的内存 */
+/* 回收node的内存
+一次回收的数量?
+=======================
+使用之前可以归零nr_scanned,也可以临时设置nr_to_reclaim(kswap). */
 static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 {
 	unsigned long nr_reclaimed, nr_scanned, nr_node_reclaimed;
@@ -7081,7 +7101,9 @@ static void consider_reclaim_throttle(pg_data_t *pgdat, struct scan_control *sc)
 }
 
 /*
-
+包装遍历回收node的过程.
+===========================
+这个函数级别可以指定回收数量吗?
  * This is the direct reclaim path, for page-allocating processes.  
  We only try to reclaim pages from zones which will satisfy the caller's allocation
  * request.
@@ -7164,6 +7186,7 @@ static void shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 						&nr_soft_scanned);
 
 			sc->nr_reclaimed += nr_soft_reclaimed;
+			/* 记录shrink_zones函数扫描了多少页面 */
 			sc->nr_scanned += nr_soft_scanned;
 			/* need some check for avoid more shrink_zone() */
 		}
@@ -7210,6 +7233,8 @@ static void snapshot_refaults(struct mem_cgroup *target_memcg, pg_data_t *pgdat)
 }
 
 /*
+回收页面的接口函数.
+=============================
 返回回收的数量.
 回收prio次数.
  * This is the main entry point to direct page reclaim.
@@ -7246,7 +7271,8 @@ retry:
 			vmpressure_prio(sc->gfp_mask, sc->target_mem_cgroup,
 					sc->priority);
 
-		sc->nr_scanned = 0;
+		sc->nr_scanned = 0; /* 这里为什么归零?这里可以拿来限制每次回收过程扫描的
+		数量吗? */
 		shrink_zones(zonelist, sc);
 
 		if (sc->nr_reclaimed >= sc->nr_to_reclaim)
@@ -7267,7 +7293,10 @@ retry:
 
 	} while (--sc->priority >= 0);
 
-	/* 可能是回收目标完成了, 或者是可以规整了 */
+
+
+	/* 具体的回收过程结束 */
+	/* 可能是回收目标完成了, 或者是可以规整了. */
 
 	last_pgdat = NULL;
 	for_each_zone_zonelist_nodemask(zone, z, zonelist, sc->reclaim_idx,
@@ -7292,6 +7321,7 @@ retry:
 	}
 
 	delayacct_freepages_end();
+	/* 回收结束, 准备返回 */
 
 	if (sc->nr_reclaimed)  /* 回收到内存了, 返回回收数量 */
 		return sc->nr_reclaimed;
@@ -7523,7 +7553,9 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 
 #ifdef CONFIG_MEMCG
 
-/* Only used by soft limit reclaim. Do not reuse for anything else. */
+/* 
+soft回收机制的函数.
+Only used by soft limit reclaim. Do not reuse for anything else. */
 unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 						gfp_t gfp_mask, bool noswap,
 						pg_data_t *pgdat,
@@ -7558,6 +7590,7 @@ unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 
 	trace_mm_vmscan_memcg_softlimit_reclaim_end(sc.nr_reclaimed);
 
+	/* shrink_lruvec也会增加新sc的nr_scanned */
 	*nr_scanned = sc.nr_scanned;
 
 	return sc.nr_reclaimed;
@@ -7763,6 +7796,7 @@ static bool kswapd_shrink_node(pg_data_t *pgdat,
 	int z;
 
 	/* Reclaim a number of pages proportional to the number of zones */
+	/* kswap调用shrink_node前可以设置nr_to_reclaim */
 	sc->nr_to_reclaim = 0;
 	for (z = 0; z <= sc->reclaim_idx; z++) {
 		zone = pgdat->node_zones + z;
@@ -7787,7 +7821,9 @@ static bool kswapd_shrink_node(pg_data_t *pgdat,
 	 */
 	if (sc->order && sc->nr_reclaimed >= compact_gap(sc->order))
 		sc->order = 0;
-
+	
+	/* 进入此函数之前归零了nr_scanned.
+	是不是可以说就是拿来看shrink_node扫描了多少页面呢??? */
 	return sc->nr_scanned >= sc->nr_to_reclaim;
 }
 
@@ -7976,7 +8012,7 @@ restart:
 			sc.may_writepage = 1;
 
 		/* Call soft limit reclaim before calling shrink_node. */
-		sc.nr_scanned = 0;
+		sc.nr_scanned = 0; /* shrink_node之前归零.... */
 		nr_soft_scanned = 0;
 		/* mglru开启下这里直接返回 */
 		nr_soft_reclaimed = mem_cgroup_soft_limit_reclaim(pgdat, sc.order,
@@ -8030,6 +8066,7 @@ restart:
 		如果可以加急,即使回收到了,也减少一次 */
 		if (raise_priority || !nr_reclaimed)
 			sc.priority--;
+
 	} while (sc.priority >= 1);
 
 	if (!sc.nr_reclaimed)
