@@ -26,6 +26,15 @@
 #include <linux/syscalls.h>
 #include <linux/compat.h>
 #include <linux/rcupdate.h>
+/* 
+2024年12月1日19:29:01
+timerfd是一个定时器文件描述符，它允许用户态程序创建一个定时器，当定时器超时时，
+内核会向用户态程序发送一个信号，用户态程序可以通过信号处理函数来处理这个信号。
+
+
+ */
+
+
 
 struct timerfd_ctx {
 	union {
@@ -504,6 +513,7 @@ static int do_timerfd_settime(int ufd, int flags,
 	return ret;
 }
 
+// 参数解释:
 static int do_timerfd_gettime(int ufd, struct itimerspec64 *t)
 {
 	struct fd f;
@@ -554,6 +564,7 @@ SYSCALL_DEFINE4(timerfd_settime, int, ufd, int, flags,
 	return ret;
 }
 
+//系统调用: timerfd_gettime,用于获取定时器的当前值?
 SYSCALL_DEFINE2(timerfd_gettime, int, ufd, struct __kernel_itimerspec __user *, otmr)
 {
 	struct itimerspec64 kotmr;

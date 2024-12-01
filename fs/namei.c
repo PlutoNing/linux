@@ -124,6 +124,7 @@
 
 #define EMBEDDED_NAME_MAX	(PATH_MAX - offsetof(struct filename, iname))
 
+//通过filename获取filename结构体
 struct filename *
 getname_flags(const char __user *filename, int flags, int *empty)
 {
@@ -135,13 +136,14 @@ getname_flags(const char __user *filename, int flags, int *empty)
 	if (result)
 		return result;
 
-	result = __getname();
+	result = __getname(); //从names_cache中获取一个filename结构体
 	if (unlikely(!result))
 		return ERR_PTR(-ENOMEM);
 
 	/*
 	 * First, try to embed the struct filename inside the names_cache
 	 * allocation
+	 首先，尝试将struct filename嵌入到names_cache分配内部
 	 */
 	kname = (char *)result->iname;
 	result->name = kname;
@@ -485,6 +487,7 @@ void path_put(const struct path *path)
 EXPORT_SYMBOL(path_put);
 
 #define EMBEDDED_LEVELS 2
+
 struct nameidata {
 	struct path	path;
 	struct qstr	last;
@@ -501,13 +504,14 @@ struct nameidata {
 		const char *name;
 		unsigned seq;
 	} *stack, internal[EMBEDDED_LEVELS];
-	struct filename	*name;
-	struct nameidata *saved;
+	struct filename	*name; //要查找的文件名
+	struct nameidata *saved; //指向上一次的nameidata
 	struct inode	*link_inode;
 	unsigned	root_seq;
 	int		dfd;
 } __randomize_layout;
 
+//设置nameidata
 static void set_nameidata(struct nameidata *p, int dfd, struct filename *name)
 {
 	struct nameidata *old = current->nameidata;
@@ -519,6 +523,7 @@ static void set_nameidata(struct nameidata *p, int dfd, struct filename *name)
 	current->nameidata = p;
 }
 
+//查找完毕后恢复nameidata
 static void restore_nameidata(void)
 {
 	struct nameidata *now = current->nameidata, *old = now->saved;
@@ -2292,7 +2297,9 @@ static int handle_lookup_down(struct nameidata *nd)
 	return 0;
 }
 
-/* Returns 0 and nd will be valid on success; Retuns error, otherwise. */
+/* Returns 0 and nd will be valid on success; Retuns error, otherwise.
+
+ */
 static int path_lookupat(struct nameidata *nd, unsigned flags, struct path *path)
 {
 	const char *s = path_init(nd, flags);
@@ -2323,6 +2330,7 @@ static int path_lookupat(struct nameidata *nd, unsigned flags, struct path *path
 	return err;
 }
 
+//通过filename结构体获取文件路径path
 int filename_lookup(int dfd, struct filename *name, unsigned flags,
 		    struct path *path, struct path *root)
 {
@@ -2334,14 +2342,16 @@ int filename_lookup(int dfd, struct filename *name, unsigned flags,
 		nd.root = *root;
 		flags |= LOOKUP_ROOT;
 	}
+	//设置nameidata结构体
 	set_nameidata(&nd, dfd, name);
+	//开始查找文件路径
 	retval = path_lookupat(&nd, flags | LOOKUP_RCU, path);
 	if (unlikely(retval == -ECHILD))
 		retval = path_lookupat(&nd, flags, path);
 	if (unlikely(retval == -ESTALE))
 		retval = path_lookupat(&nd, flags | LOOKUP_REVAL, path);
 
-	if (likely(!retval))
+	if (likely(!retval))//成功
 		audit_inode(name, path->dentry, 0);
 	restore_nameidata();
 	putname(name);
@@ -2592,6 +2602,9 @@ int path_pts(struct path *path)
 }
 #endif
 
+//通过路径名获取文件的path
+//@dfd:
+//@flags:查找的flag
 int user_path_at_empty(int dfd, const char __user *name, unsigned flags,
 		 struct path *path, int *empty)
 {

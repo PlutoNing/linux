@@ -43,6 +43,7 @@ extern int path_pts(struct path *path);
 
 extern int user_path_at_empty(int, const char __user *, unsigned, struct path *, int *empty);
 
+// 通过路径名name获取path,赋值到path
 static inline int user_path_at(int dfd, const char __user *name, unsigned flags,
 		 struct path *path)
 {

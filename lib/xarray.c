@@ -147,6 +147,7 @@ static unsigned int get_offset(unsigned long index, struct xa_node *node)
 	return (index >> node->shift) & XA_CHUNK_MASK;
 }
 
+//设置完当前node后, 设置xas的当前节点offset
 static void xas_set_offset(struct xa_state *xas)
 {
 	xas->xa_offset = get_offset(xas->xa_index, xas->xa_node);
@@ -1141,24 +1142,28 @@ EXPORT_SYMBOL_GPL(xas_find);
 
 /**
  * xas_find_marked() - Find the next marked entry in the XArray.
+ 找到下一个标记的条目
  * @xas: XArray operation state.
- * @max: Highest index to return.
- * @mark: Mark number to search for.
+ * @max: Highest index to return. 最大索引
+ * @mark: Mark number to search for. 标记号
  *
  * If the @xas has not yet been walked to an entry, return the marked entry
  * which has an index >= xas.xa_index.  If it has been walked, the entry
  * currently being pointed at has been processed, and so we return the
  * first marked entry with an index > xas.xa_index.
- *
+ * 如果@xas尚未遍历到一个条目，则返回索引大于xas.xa_index的标记条目。
+ 如果已经遍历，则当前指向的条目已被处理，因此我们返回索引大于xas.xa_index的第一个标记条目。
+
  * If no marked entry is found and the array is smaller than @max, @xas is
  * set to the bounds state and xas->xa_index is set to the smallest index
  * not yet in the array.  This allows @xas to be immediately passed to
  * xas_store().
- *
+ * 如果未找到标记的条目并且数组小于@max，则将@xas设置为边界状态，并将xas->xa_index设置为尚未在数组中的最小索引。
  * If no entry is found before @max is reached, @xas is set to the restart
  * state.
- *
+ * 如果在达到@max之前找不到条目，则将@xas设置为重新启动状态。
  * Return: The entry, if found, otherwise %NULL.
+ 返回条目，如果找到，则返回%NULL。
  */
 void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark)
 {
@@ -1169,10 +1174,10 @@ void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark)
 	if (xas_error(xas))
 		return NULL;
 
-	if (!xas->xa_node) {
+	if (!xas->xa_node) { //xas还没有初始化当前节点
 		xas->xa_index = 1;
 		goto out;
-	} else if (xas_top(xas->xa_node)) {
+	} else if (xas_top(xas->xa_node)) { //说明
 		advance = false;
 		entry = xa_head(xas->xa);
 		xas->xa_node = NULL;
@@ -1189,16 +1194,17 @@ void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark)
 	}
 
 	while (xas->xa_index <= max) {
-		if (unlikely(xas->xa_offset == XA_CHUNK_SIZE)) {
+		if (unlikely(xas->xa_offset == XA_CHUNK_SIZE)) { //说明当前节点已经遍历完了 
 			xas->xa_offset = xas->xa_node->offset + 1;
 			xas->xa_node = xa_parent(xas->xa, xas->xa_node);
 			if (!xas->xa_node)
 				break;
 			advance = false;
-			continue;
+			continue;  //继续循环
 		}
 
 		if (!advance) {
+			//找到当前的entry
 			entry = xa_entry(xas->xa, xas->xa_node, xas->xa_offset);
 			if (xa_is_sibling(entry)) {
 				xas->xa_offset = xa_to_sibling(entry);
@@ -1206,7 +1212,7 @@ void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark)
 			}
 		}
 
-		offset = xas_find_chunk(xas, advance, mark);
+		offset = xas_find_chunk(xas, advance, mark); //找到下一个标记的offset
 		if (offset > xas->xa_offset) {
 			advance = false;
 			xas_move_index(xas, offset);
@@ -1219,8 +1225,10 @@ void *xas_find_marked(struct xa_state *xas, unsigned long max, xa_mark_t mark)
 		}
 
 		entry = xa_entry(xas->xa, xas->xa_node, xas->xa_offset);
-		if (!xa_is_node(entry))
+		if (!xa_is_node(entry)) //说明是叶子节点?是一个值?
 			return entry;
+
+		//说明entry是一个node
 		xas->xa_node = xa_to_node(entry);
 		xas_set_offset(xas);
 	}

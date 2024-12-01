@@ -748,6 +748,8 @@ struct bdi_writeback *wb_get_lookup(struct backing_dev_info *bdi,
 查找现成的，或者创建
 2024年07月18日16:46:31
 在bdi上面获取属于此memcg css的wb
+===========
+回写file其实就是在bdi和memcg创建对应的wb
  * wb_get_create - get wb for a given memcg, create if necessary
  * @bdi: target bdi
  * @memcg_css: cgroup_subsys_state of the target memcg (must have positive ref)

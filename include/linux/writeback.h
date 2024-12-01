@@ -88,11 +88,15 @@ struct writeback_control {
 	unsigned punt_to_cgroup:1;	/* cgrp punting, see __REQ_CGROUP_PUNT */
 
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct bdi_writeback *wb;	/* wb this writeback is issued under */
-	struct inode *inode;		/* inode being written out */
+	struct bdi_writeback *wb;	/* wb this writeback is issued under
+	指向对应的wb, 等价于inode, file
+	 */
+	struct inode *inode;		/* 
+	指向正在回写的inode
+	inode being written out */
 
 	/* foreign inode detection, see wbc_detach_inode() */
-	int wb_id;			/* current wb id，好像就是自己关联的wb关联的memcg的id */
+	int wb_id;			/* current wb id，好像就是自己关联的wb所属的memcg id */
 	int wb_lcand_id;		/* last foreign candidate wb id */
 	int wb_tcand_id;		/* this foreign candidate wb id */
 	size_t wb_bytes;		/* bytes written by current wb */
@@ -237,7 +241,7 @@ void cgroup_writeback_umount(void);
 2024年7月17日22:58:01
 page可以为null？
 2024年7月17日23:18:18
-给inode创建，添加wb
+给inode创建，添加wb . 其实是相当于注册到bdi和memcg什么的
  * inode_attach_wb - associate an inode with its wb
  * @inode: inode of interest
  * @page: page being dirtied (may be NULL)
@@ -282,9 +286,12 @@ static inline void wbc_attach_fdatawrite_inode(struct writeback_control *wbc,
 {
 	/* 啥时候解锁 */
 	spin_lock(&inode->i_lock);
-	/* 给inode创建，添加wb结构 */
+	/* 给inode创建，添加wb结构. 相当于注册到bdi和memcg什么的
+	 */
 	inode_attach_wb(inode, NULL);
-	/* 给wbc添加wb，也就是添加inode的意思 */
+	/* 给wbc添加wb，也就是添加inode的意思
+	相当于把inode的wb关联到wbc上 
+	 */
 	wbc_attach_and_unlock_inode(wbc, inode);
 }
 

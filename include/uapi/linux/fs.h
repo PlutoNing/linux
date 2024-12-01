@@ -271,12 +271,12 @@ struct fsxattr {
 #define FS_FL_USER_MODIFIABLE		0x000380FF /* User modifiable flags */
 
 
-#define SYNC_FILE_RANGE_WAIT_BEFORE	1
-#define SYNC_FILE_RANGE_WRITE		2
+#define SYNC_FILE_RANGE_WAIT_BEFORE	1 //写入之前等待
+#define SYNC_FILE_RANGE_WRITE		2 //主动写出所有的脏页
 #define SYNC_FILE_RANGE_WAIT_AFTER	4
 #define SYNC_FILE_RANGE_WRITE_AND_WAIT	(SYNC_FILE_RANGE_WRITE | \
 					 SYNC_FILE_RANGE_WAIT_BEFORE | \
-					 SYNC_FILE_RANGE_WAIT_AFTER)
+					 SYNC_FILE_RANGE_WAIT_AFTER)  //写入并等待,就是通常意义上的sync
 
 /*
  * Flags for preadv2/pwritev2:

@@ -27,6 +27,17 @@
 #include <linux/ioctl.h>
 #include <linux/security.h>
 #include <linux/hugetlb.h>
+/* 
+2024年12月1日19:27:30
+userfaultfd是一个用户态的内存错误处理机制，它允许用户态程序处理内存错误，而不是内核处理内存错误。
+内存错误是指当程序访问一个未映射的内存区域时，会产生一个内存错误，这个内存错误会被内核处理，内核会向用户态程序发送一个SIGSEGV信号，用户态程序可以通过信号处理函数来处理这个信号。
+userfaultfd允许用户态程序处理这个内存错误，而不是内核处理这个内存错误，用户态程序可以通过userfaultfd来处理这个内存错误，而不是通过信号处理函数来处理这个内存错误。
+userfaultfd是一个系统调用，它允许用户态程序注册一个回调函数，当内存错误发生时，内核会调用这个回调函数，用户态程序可以在这个回调函数中处理内存错误。
+
+
+ */
+
+
 
 int sysctl_unprivileged_userfaultfd __read_mostly = 1;
 
@@ -1978,6 +1989,7 @@ SYSCALL_DEFINE1(userfaultfd, int, flags)
 	return fd;
 }
 
+//初始化函数
 static int __init userfaultfd_init(void)
 {
 	userfaultfd_ctx_cachep = kmem_cache_create("userfaultfd_ctx_cache",

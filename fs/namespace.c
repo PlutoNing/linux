@@ -249,6 +249,7 @@ bool __mnt_is_readonly(struct vfsmount *mnt)
 }
 EXPORT_SYMBOL_GPL(__mnt_is_readonly);
 
+//增加写者
 static inline void mnt_inc_writers(struct mount *mnt)
 {
 #ifdef CONFIG_SMP
@@ -297,9 +298,12 @@ static int mnt_is_readonly(struct vfsmount *mnt)
  * amounts of time, like a write() or unlink().  We must keep track of when
  * those operations start (for permission checks) and when they end, so that we
  * can determine when writes are able to occur to a filesystem.
+ 大多数对文件系统的只读和冻结检查是针对需要离散时间的操作的，比如write()或unlink()。
+ 我们必须跟踪这些操作何时开始（用于权限检查）和何时结束，以便确定何时可以对文件系统进行写操作。
  */
 /**
  * __mnt_want_write - get write access to a mount without freeze protection
+ 在没有冻结保护的情况下获取对挂载点的写访问权限
  * @m: the mount on which to take a write
  *
  * This tells the low-level filesystem that a write is about to be performed to
@@ -307,26 +311,32 @@ static int mnt_is_readonly(struct vfsmount *mnt)
  * returning success. This operation does not protect against filesystem being
  * frozen. When the write operation is finished, __mnt_drop_write() must be
  * called. This is effectively a refcount.
+ 这说明将对其执行写操作，并确保在返回成功之前允许写入（mnt为读写）。此操作不保护文件系统被冻结。
+ 写操作完成后，必须调用__mnt_drop_write()。这实际上是一个引用计数。
  */
 int __mnt_want_write(struct vfsmount *m)
 {
-	struct mount *mnt = real_mount(m);
+	struct mount *mnt = real_mount(m); //获取对应的mount结构体
 	int ret = 0;
 
 	preempt_disable();
-	mnt_inc_writers(mnt);
+	mnt_inc_writers(mnt); //增加写者
 	/*
 	 * The store to mnt_inc_writers must be visible before we pass
 	 * MNT_WRITE_HOLD loop below, so that the slowpath can see our
 	 * incremented count after it has set MNT_WRITE_HOLD.
+	 这个写入必须在我们通过下面的MNT_WRITE_HOLD循环之前可见，
+	 以便慢路径在设置MNT_WRITE_HOLD后可以看到我们增加的计数。
 	 */
-	smp_mb();
+	smp_mb(); //通过一个内存屏障确保上面的写操作对下面的读操作可见
 	while (READ_ONCE(mnt->mnt.mnt_flags) & MNT_WRITE_HOLD)
 		cpu_relax();
 	/*
 	 * After the slowpath clears MNT_WRITE_HOLD, mnt_is_readonly will
 	 * be set to match its requirements. So we must not load that until
 	 * MNT_WRITE_HOLD is cleared.
+	 在慢路径清除MNT_WRITE_HOLD后，mnt_is_readonly将设置为匹配其要求。
+	 因此，在清除MNT_WRITE_HOLD之前，我们不能加载它。
 	 */
 	smp_rmb();
 	if (mnt_is_readonly(m)) {
@@ -340,6 +350,7 @@ int __mnt_want_write(struct vfsmount *m)
 
 /**
  * mnt_want_write - get write access to a mount
+ 获取对挂载点的写访问权限
  * @m: the mount on which to take a write
  *
  * This tells the low-level filesystem that a write is about to be performed to
@@ -361,13 +372,14 @@ EXPORT_SYMBOL_GPL(mnt_want_write);
 
 /**
  * mnt_clone_write - get write access to a mount
+ 获取对挂载点的写访问权限
  * @mnt: the mount on which to take a write
  *
  * This is effectively like mnt_want_write, except
  * it must only be used to take an extra write reference
  * on a mountpoint that we already know has a write reference
  * on it. This allows some optimisation.
- *
+ * 这实际上类似于mnt_want_write，只是它必须用于获取对已知具有写引用的挂载点的额外写引用。
  * After finished, mnt_drop_write must be called as usual to
  * drop the reference.
  */
@@ -385,14 +397,15 @@ EXPORT_SYMBOL_GPL(mnt_clone_write);
 
 /**
  * __mnt_want_write_file - get write access to a file's mount
+ 获取一个文件的挂载点的写访问权限
  * @file: the file who's mount on which to take a write
- *
+ * 
  * This is like __mnt_want_write, but it takes a file and can
  * do some optimisations if the file is open for write already
  */
 int __mnt_want_write_file(struct file *file)
 {
-	if (!(file->f_mode & FMODE_WRITER))
+	if (!(file->f_mode & FMODE_WRITER)) //如果不能有对底层文件系统的写访问
 		return __mnt_want_write(file->f_path.mnt);
 	else
 		return mnt_clone_write(file->f_path.mnt);
@@ -400,18 +413,21 @@ int __mnt_want_write_file(struct file *file)
 
 /**
  * mnt_want_write_file - get write access to a file's mount
+  获取文件的挂载点的写访问权限
  * @file: the file who's mount on which to take a write
- *
+ * 
  * This is like mnt_want_write, but it takes a file and can
  * do some optimisations if the file is open for write already
+  这是像mnt_want_write，但它接受一个文件，并且如果文件已经打开写入，
+  可以进行一些优化
  */
 int mnt_want_write_file(struct file *file)
 {
 	int ret;
 
-	sb_start_write(file_inode(file)->i_sb);
+	sb_start_write(file_inode(file)->i_sb); //写之前先获取写锁
 	ret = __mnt_want_write_file(file);
-	if (ret)
+	if (ret) //如果失败,则释放写锁
 		sb_end_write(file_inode(file)->i_sb);
 	return ret;
 }

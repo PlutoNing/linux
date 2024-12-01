@@ -1516,6 +1516,7 @@ static int compare_single(struct super_block *s, void *p)
 	return 1;
 }
 
+//
 struct dentry *mount_single(struct file_system_type *fs_type,
 	int flags, void *data,
 	int (*fill_super)(struct super_block *, void *, int))
@@ -1543,11 +1544,14 @@ EXPORT_SYMBOL(mount_single);
 
 /**
  * vfs_get_tree - Get the mountable root
+   获取根节点?
  * @fc: The superblock configuration context.
  *
  * The filesystem is invoked to get or create a superblock which can then later
  * be used for mounting.  The filesystem places a pointer to the root to be
  * used for mounting in @fc->root.
+   这个fs被调用来获取或者创建一个superblock,然后可以用来挂载.
+   这个fs将一个指针放在fc->root中,用来挂载
  */
 int vfs_get_tree(struct fs_context *fc)
 {
@@ -1559,6 +1563,7 @@ int vfs_get_tree(struct fs_context *fc)
 
 	/* Get the mountable root in fc->root, with a ref on the root and a ref
 	 * on the superblock.
+	   获取可挂载的根节点,在fc->root中,根节点和superblock都有引用
 	 */
 	error = fc->ops->get_tree(fc);
 	if (error < 0)
@@ -1637,6 +1642,7 @@ EXPORT_SYMBOL(super_setup_bdi_name);
 /*
  * Setup private BDI for given superblock. I gets automatically cleaned up
  * in generic_shutdown_super().
+   
  */
 int super_setup_bdi(struct super_block *sb)
 {
@@ -1650,6 +1656,7 @@ EXPORT_SYMBOL(super_setup_bdi);
 /*
  * This is an internal function, please use sb_end_{write,pagefault,intwrite}
  * instead.
+ 释放level级别的写锁 ...
  */
 void __sb_end_write(struct super_block *sb, int level)
 {
@@ -1660,6 +1667,11 @@ EXPORT_SYMBOL(__sb_end_write);
 /*
  * This is an internal function, please use sb_start_{write,pagefault,intwrite}
  * instead.
+ 参数解释: sb: superblock, 
+ level: 写锁的级别,可以是SB_FREEZE_WRITE,SB_FREEZE_PAGEFAULT,SB_FREEZE_FS,SB_FREEZE_COMPLETE
+ , wait: 是否等待
+ 
+ 其实就是根据不同的level,获取不同的写锁
  */
 int __sb_start_write(struct super_block *sb, int level, bool wait)
 {
@@ -1698,11 +1710,13 @@ EXPORT_SYMBOL(__sb_start_write);
 
 /**
  * sb_wait_write - wait until all writers to given file system finish
+  等待直到给定文件系统的所有写操作完成
  * @sb: the super for which we wait
  * @level: type of writers we wait for (normal vs page fault)
  *
  * This function waits until there are no writers of given type to given file
  * system.
+ 该函数等待直到给定文件系统没有给定类型的写操作
  */
 static void sb_wait_write(struct super_block *sb, int level)
 {
@@ -1732,6 +1746,7 @@ static void lockdep_sb_freeze_acquire(struct super_block *sb)
 		percpu_rwsem_acquire(sb->s_writers.rw_sem + level, 0, _THIS_IP_);
 }
 
+//unlock就是从紧到松释放各个sem
 static void sb_freeze_unlock(struct super_block *sb)
 {
 	int level;
@@ -1742,27 +1757,30 @@ static void sb_freeze_unlock(struct super_block *sb)
 
 /**
  * freeze_super - lock the filesystem and force it into a consistent state
+  锁定文件系统,并强制使其处于一致状态
  * @sb: the super to lock
  *
  * Syncs the super to make sure the filesystem is consistent and calls the fs's
  * freeze_fs.  Subsequent calls to this without first thawing the fs will return
  * -EBUSY.
- *
+ * 同步superblock,确保文件系统一致,并调用fs的freeze_fs回调函数
  * During this function, sb->s_writers.frozen goes through these values:
- *
+ * 在这个函数中,sb->s_writers.frozen的值会经历以下变化:
  * SB_UNFROZEN: File system is normal, all writes progress as usual.
- *
+ * 文件系统正常,所有写操作都会按照正常的方式进行
  * SB_FREEZE_WRITE: The file system is in the process of being frozen.  New
  * writes should be blocked, though page faults are still allowed. We wait for
  * all writes to complete and then proceed to the next stage.
- *
+ * 文件系统正在被冻结,新的写操作应该被阻塞,尽管页面错误仍然被允许.
+ 我们等待所有写操作完成,然后继续下一阶段
  * SB_FREEZE_PAGEFAULT: Freezing continues. Now also page faults are blocked
  * but internal fs threads can still modify the filesystem (although they
  * should not dirty new pages or inodes), writeback can run etc. After waiting
  * for all running page faults we sync the filesystem which will clean all
  * dirty pages and inodes (no new dirty pages or inodes can be created when
  * sync is running).
- *
+ * 冻结继续,现在页面错误也被阻塞,但内部fs线程仍然可以修改文件系统
+ (尽管它们不应该使新的页面或inode变脏),
  * SB_FREEZE_FS: The file system is frozen. Now all internal sources of fs
  * modification are blocked (e.g. XFS preallocation truncation on inode
  * reclaim). This is usually implemented by blocking new transactions for
@@ -1770,7 +1788,7 @@ static void sb_freeze_unlock(struct super_block *sb)
  * internal writers are finished we call ->freeze_fs() to finish filesystem
  * freezing. Then we transition to SB_FREEZE_COMPLETE state. This state is
  * mostly auxiliary for filesystems to verify they do not modify frozen fs.
- *
+ * 文件系统被冻结,现在所有内部的文件系统修改源都被阻塞(例如,XFS在inode回收时的预分配截断).
  * sb->s_writers.frozen is protected by sb->s_umount.
  */
 int freeze_super(struct super_block *sb)
@@ -1806,10 +1824,13 @@ int freeze_super(struct super_block *sb)
 	sb->s_writers.frozen = SB_FREEZE_PAGEFAULT;
 	sb_wait_write(sb, SB_FREEZE_PAGEFAULT);
 
+	/* 获取不同类型的sem, 越来越严, 慢慢阻塞掉其他东西 */
+
 	/* All writers are done so after syncing there won't be dirty data */
 	sync_filesystem(sb);
 
 	/* Now wait for internal filesystem counter */
+	//现在开始freeze fs
 	sb->s_writers.frozen = SB_FREEZE_FS;
 	sb_wait_write(sb, SB_FREEZE_FS);
 
@@ -1828,19 +1849,23 @@ int freeze_super(struct super_block *sb)
 	/*
 	 * For debugging purposes so that fs can warn if it sees write activity
 	 * when frozen is set to SB_FREEZE_COMPLETE, and for thaw_super().
+	   
 	 */
 	sb->s_writers.frozen = SB_FREEZE_COMPLETE;
 	lockdep_sb_freeze_release(sb);
 	up_write(&sb->s_umount);
 	return 0;
 }
+
 EXPORT_SYMBOL(freeze_super);
 
 /**
  * thaw_super -- unlock filesystem
+  解锁文件系统
  * @sb: the super to thaw
- *
+ * 调用fs的unfreeze_fs回调函数
  * Unlocks the filesystem and marks it writeable again after freeze_super().
+  解锁文件系统,并标记为可写
  */
 static int thaw_super_locked(struct super_block *sb)
 {

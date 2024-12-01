@@ -2120,6 +2120,7 @@ void __init page_writeback_init(void)
 /**
 2024年7月17日23:42:31
  * tag_pages_for_writeback - tag pages to be written by write_cache_pages
+ * 为write_cache_pages标记要写入的页面
  * @mapping: address space structure to write
  * @start: starting page index
  * @end: ending page index (inclusive)
@@ -2131,7 +2132,12 @@ void __init page_writeback_init(void)
  * used to avoid livelocking of writeback by a process steadily creating new
  * dirty pages in the file (thus it is important for this function to be quick
  * so that it can tag pages faster than a dirtying process can create them).
+ 此函数扫描从@start到@end（包括）的页面范围，并将具有DIRTY标记的所有页面标记为特殊的TOWRITE标记。
+  这个想法是write_cache_pages（或调用此函数的任何人）将使用TOWRITE标记来标识适合写回的页面。
+  此机制用于避免由进程稳定创建文件中的新脏页而导致的写回活锁（因此对于此函数来说很重要，它
+  可以比脏化进程创建它们更快地标记页面）。
  */
+
 void tag_pages_for_writeback(struct address_space *mapping,
 			     pgoff_t start, pgoff_t end)
 {
@@ -2140,9 +2146,11 @@ void tag_pages_for_writeback(struct address_space *mapping,
 	void *page;
 
 	xas_lock_irq(&xas);
-	/* 遍历xas */
+	/* 遍历xas的全部PAGECACHE_TAG_DIRTY标记的页面
+	 */
 	xas_for_each_marked(&xas, page, end, PAGECACHE_TAG_DIRTY) {
 
+		//标记为TOWRITE
 		xas_set_mark(&xas, PAGECACHE_TAG_TOWRITE);
 
 		if (++tagged % XA_CHECK_SCHED)
@@ -2161,9 +2169,10 @@ EXPORT_SYMBOL(tag_pages_for_writeback);
 2024年7月17日23:37:59
  * write_cache_pages - walk the list of dirty pages of the given address space 
  and write all of them.
+  遍历给定地址空间的脏页列表并写入所有这些页。
  * @mapping: address space structure to write
  * @wbc: subtract the number of written pages from *@wbc->nr_to_write
- * @writepage: function called for each page
+ * @writepage: function called for each page. 对每个页面调用的函数
  * @data: data passed to writepage function
  *
  * If a page is already under I/O, write_cache_pages() skips it, even
@@ -2173,21 +2182,26 @@ EXPORT_SYMBOL(tag_pages_for_writeback);
  * the call was made get new I/O started against them.  If wbc->sync_mode is
  * WB_SYNC_ALL then we were called for data integrity and we must wait for
  * existing IO to complete.
- *
+ * 如果页面已经在I/O下，则write_cache_pages()将跳过它，即使它是脏的。
+ * 这对于内存清理回写是期望的行为，但对于诸如fsync()之类的数据完整性系统调用是不正确的。
+  fsync()和msync()需要保证在调用时脏的所有数据都会启动新的I/O。
+  如果wbc->sync_mode是WB_SYNC_ALL，则我们是为数据完整性而调用的，必须等待现有IO完成。
  * To avoid livelocks (when other process dirties new pages), we first tag
  * pages which should be written back with TOWRITE tag and only then start
  * writing them. For data-integrity sync we have to be careful so that we do
  * not miss some pages (e.g., because some other process has cleared TOWRITE
  * tag we set). The rule we follow is that TOWRITE tag can be cleared only
  * by the process clearing the DIRTY tag (and submitting the page for IO).
- *
+ * 为了避免活锁（当其他进程使新页面变脏时），我们首先使用TOWRITE标记应该写回的页面，然后才开始写入它们。
+  对于数据完整性同步，我们必须小心，以便不会错过某些页面（例如，因为某些其他进程已清除我们设置的TOWRITE标记）。
+  我们遵循的规则是，TOWRITE标记只能由清除DIRTY标记的进程（并将页面提交给IO）清除。
  * To avoid deadlocks between range_cyclic writeback and callers that hold
  * pages in PageWriteback to aggregate IO until write_cache_pages() returns,
  * we do not loop back to the start of the file. Doing so causes a page
  * lock/page writeback access order inversion - we should only ever lock
  * multiple pages in ascending page->index order, and looping back to the start
  * of the file violates that rule and causes deadlocks.
- *
+ * 
  * Return: %0 on success, negative error code otherwise
  */
 int write_cache_pages(struct address_space *mapping,
@@ -2212,17 +2226,20 @@ int write_cache_pages(struct address_space *mapping,
 		writeback_index = mapping->writeback_index; /* prev offset */
 		index = writeback_index;
 		end = -1;
-	} else {
-		index = wbc->range_start >> PAGE_SHIFT;
-		end = wbc->range_end >> PAGE_SHIFT;
+	} else { //一般情况下的新开始回写走这里
+
+		index = wbc->range_start >> PAGE_SHIFT; //获取开始的页号
+		end = wbc->range_end >> PAGE_SHIFT; //获取结束的页号
 		if (wbc->range_start == 0 && wbc->range_end == LLONG_MAX)
-			range_whole = 1;
+			range_whole = 1; //整个文件都要回写
 	}
-	/*  */
+
+	/* 这里根据回写要求判断马上在mapping里面筛选什么tag的页面
+	 */
 	if (wbc->sync_mode == WB_SYNC_ALL || wbc->tagged_writepages)
-		tag = PAGECACHE_TAG_TOWRITE;
+		tag = PAGECACHE_TAG_TOWRITE; //如果是sync all, 那么已经在writeback的页面也要写
 	else
-		tag = PAGECACHE_TAG_DIRTY;
+		tag = PAGECACHE_TAG_DIRTY; //只回写脏页
 
 	if (wbc->sync_mode == WB_SYNC_ALL || wbc->tagged_writepages)
 	/* 标记成什么样 */
@@ -2239,10 +2256,10 @@ int write_cache_pages(struct address_space *mapping,
 			break;
 
 		for (i = 0; i < nr_pages; i++) {
-			/* 对刚才存储到pvec的页面逐个写回儿 */
+			/* 对刚才存储到pvec的页面逐个写回 */
 			struct page *page = pvec.pages[i];
 
-			done_index = page->index;
+			done_index = page->index; //记录当前写回的页号, 表示写回到哪里了?
 
 			lock_page(page);
 
@@ -2253,14 +2270,17 @@ int write_cache_pages(struct address_space *mapping,
 			 * real expectation of this data interity operation
 			 * even if there is now a new, dirty page at the same
 			 * pagecache address.
+			  意思是说，如果这个页面已经被截断或者无效了，那么我们可以直接跳过它，
+			  即使是数据完整性操作也可以。
+			  因为这个页面已经消失了，所以即使现在在相同的pagecache地址上有一个新的脏页，
 			 */
 			if (unlikely(page->mapping != mapping)) {
 continue_unlock:
 				unlock_page(page);
-				continue;
+				continue; //跳过
 			}
 
-			if (!PageDirty(page)) {
+			if (!PageDirty(page)) { //不是脏页了, 解锁&跳过
 				/* someone wrote it for us
 				2024年7月17日23:54:21 有race吗 */
 				goto continue_unlock;
@@ -2274,7 +2294,7 @@ continue_unlock:
 			话说等啥 */
 					wait_on_page_writeback(page);
 				else
-					goto continue_unlock;
+					goto continue_unlock; //如果是SYNC_NONE，那么直接跳过, 因为已经在回写了
 			}
 
 			BUG_ON(PageWriteback(page));
@@ -2392,6 +2412,9 @@ int generic_writepages(struct address_space *mapping,
 
 EXPORT_SYMBOL(generic_writepages);
 /* 2024年7月17日23:25:27
+开始回写
+wbc是writeback_control，里面有nr_to_write，sync_mode等信息
+mapping是address_space，里面有a_ops，i_pages等信息,是要回写的对象
  */
 int do_writepages(struct address_space *mapping, struct writeback_control *wbc)
 {

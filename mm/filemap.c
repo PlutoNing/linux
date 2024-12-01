@@ -436,17 +436,19 @@ static int filemap_check_and_keep_errors(struct address_space *mapping)
  * @mapping:	address space structure to write
  * @start:	offset in bytes where the range starts
  * @end:	offset in bytes where the range ends (inclusive)
- * @sync_mode:	enable synchronous operation
+ * @sync_mode:	enable synchronous operation,表示是否同步操作
  *
  * Start writeback against all of a mapping's dirty pages that lie
  * within the byte offsets <start, end> inclusive.
- *
+ * 开启写回，写回的是mapping的脏页，范围是start到end
  * If sync_mode is WB_SYNC_ALL then this is a "data integrity" operation, as
  * opposed to a regular memory cleansing writeback.  The difference between
  * these two operations is that if a dirty page/buffer is encountered, it must
  * be waited upon, and not just skipped over.
- *
+ * 如果sync_mode是WB_SYNC_ALL，那么这是一个数据完整性操作，而不是一个常规的内存清洗写回。
+ * 这两种操作之间的区别在于，如果遇到脏页/缓冲区，必须等待它，而不是跳过它。
  * Return: %0 on success, negative error code otherwise.
+	返回0表示成功，否则返回负数错误代码。
  */
 int __filemap_fdatawrite_range(struct address_space *mapping, loff_t start,
 				loff_t end, int sync_mode)
@@ -555,14 +557,17 @@ bool filemap_range_has_page(struct address_space *mapping,
 	return page != NULL;
 }
 EXPORT_SYMBOL(filemap_range_has_page);
+
+
 /* 2024年7月18日00:09:07
-如何遍历？
-如何等待？
+函数作用: 等待page写回完成
+参数解释: mapping: address space structure to wait for
+
  */
 static void __filemap_fdatawait_range(struct address_space *mapping,
 				     loff_t start_byte, loff_t end_byte)
 {
-	pgoff_t index = start_byte >> PAGE_SHIFT;
+	pgoff_t index = start_byte >> PAGE_SHIFT; //获取起始页
 	pgoff_t end = end_byte >> PAGE_SHIFT;
 	struct pagevec pvec;
 	int nr_pages;
@@ -573,9 +578,10 @@ static void __filemap_fdatawait_range(struct address_space *mapping,
 	pagevec_init(&pvec);
 	while (index <= end) {
 		unsigned i;
-		/* 先把处于写回状态的page放到pvec，遍历完成 */
+		/* 先把处于写回状态的page放到pvec */
 		nr_pages = pagevec_lookup_range_tag(&pvec, mapping, &index,
 				end, PAGECACHE_TAG_WRITEBACK);
+
 		if (!nr_pages)
 			break;
 
@@ -645,6 +651,7 @@ EXPORT_SYMBOL(filemap_fdatawait_range_keep_errors);
 2024年07月18日12:34:22
 wait file。。
  * file_fdatawait_range - wait for writeback to complete
+ 等待file的写回完成
  * @file:		file pointing to address space structure to wait for
  * @start_byte:		offset in bytes where the range starts
  * @end_byte:		offset in bytes where the range ends (inclusive)
@@ -652,36 +659,42 @@ wait file。。
  * Walk the list of under-writeback pages of the address space that file
  * refers to, in the given range and wait for all of them.  Check error
  * status of the address space vs. the file->f_wb_err cursor and return it.
- *
+ * 遍历file关联的address space的写回页面，等待他们全部写回完成。
+ 检查address space的错误状态和file->f_wb_err游标并返回。
  * Since the error status of the file is advanced by this function,
  * callers are responsible for checking the return value and handling and/or
  * reporting the error.
- *
+ * 因为这个函数会推进file的错误状态，调用者负责检查返回值并处理和/或报告错误。
  * Return: error status of the address space vs. the file->f_wb_err cursor.
+ 返回：address space的错误状态与file->f_wb_err游标。
  */
 int file_fdatawait_range(struct file *file, loff_t start_byte, loff_t end_byte)
 {
 	struct address_space *mapping = file->f_mapping;
 
+	//这里是等待写回完成
 	__filemap_fdatawait_range(mapping, start_byte, end_byte);
 
-	return file_check_and_advance_wb_err(file);
+	return file_check_and_advance_wb_err(file); //检查并推进wb err,然后清除mapping的EIO和ENOSPC标志位
 }
 EXPORT_SYMBOL(file_fdatawait_range);
 
 /**
 2024年07月18日12:34:12
  * filemap_fdatawait_keep_errors - wait for writeback without clearing errors
+  等待写回而不清除错误
  * @mapping: address space structure to wait for
  *
  * Walk the list of under-writeback pages of the given address space
  * and wait for all of them.  Unlike filemap_fdatawait(), this function
  * does not clear error status of the address space.
- *
+ * 遍历给定地址空间的写回页面列表并等待所有页面。与filemap_fdatawait()不同，
+ 此函数不清除地址空间的错误状态。
  * Use this function if callers don't handle errors themselves.  Expected
  * call sites are system-wide / filesystem-wide data flushers: e.g. sync(2),
  * fsfreeze(8)
- *
+ * 如果调用者不处理错误，则使用此函数。预期的调用站点是系统范围/文件系统范围的数据刷新器：
+ 例如sync（2），fsfreeze（8）
  * Return: error status of the address space.
  */
 int filemap_fdatawait_keep_errors(struct address_space *mapping)
@@ -794,21 +807,23 @@ EXPORT_SYMBOL(__filemap_set_wb_err);
 2024年07月18日12:19:01
  * file_check_and_advance_wb_err - report wb error (if any) that was previously
  * 				   and advance wb_err to current one
+  报告先前的wb错误（如果有的话）并将wb_err提升到当前的错误
  * @file: struct file on which the error is being reported
- *
+ * file是报告错误的文件
  * When userland calls fsync (or something like nfsd does the equivalent), we
  * want to report any writeback errors that occurred since the last fsync (or
  * since the file was opened if there haven't been any).
- *
+ * 当用户调用fsync（或类似nfsd执行等效操作）时，我们希望报告自上次fsync
+ （或自文件打开以来，如果没有发生任何错误）以来发生的任何写回错误。
  * Grab the wb_err from the mapping. If it matches what we have in the file,
  * then just quickly return 0. The file is all caught up.
- *
+ * 从映射中获取wb_err。如果与文件中的匹配，则快速返回0。文件已经赶上了。
  * If it doesn't match, then take the mapping value, set the "seen" flag in
  * it and try to swap it into place. If it works, or another task beat us
  * to it with the new value, then update the f_wb_err and return the error
  * portion. The error at this point must be reported via proper channels
  * (a'la fsync, or NFS COMMIT operation, etc.).
- *
+ * 
  * While we handle mapping->wb_err with atomic operations, the f_wb_err
  * value is protected by the f_lock since we must ensure that it reflects
  * the latest value swapped in for this file descriptor.
@@ -822,12 +837,13 @@ int file_check_and_advance_wb_err(struct file *file)
 	struct address_space *mapping = file->f_mapping;
 
 	/* Locklessly handle the common case where nothing has changed */
-	if (errseq_check(&mapping->wb_err, old)) {
+	if (errseq_check(&mapping->wb_err, old)) { //如果发生了变化
 		/* Something changed, must use slow path */
+		//发生了变化，必须使用慢路径,这里进行处理
 		spin_lock(&file->f_lock);
 		old = file->f_wb_err;
 		err = errseq_check_and_advance(&mapping->wb_err,
-						&file->f_wb_err);
+						&file->f_wb_err); //检查和处理
 		trace_file_check_and_advance_wb_err(file, old);
 		spin_unlock(&file->f_lock);
 	}
@@ -836,9 +852,12 @@ int file_check_and_advance_wb_err(struct file *file)
 	 * We're mostly using this function as a drop in replacement for
 	 * filemap_check_errors. Clear AS_EIO/AS_ENOSPC to emulate the effect
 	 * that the legacy code would have had on these flags.
+	  我们主要使用此函数作为filemap_check_errors的替代品。清除AS_EIO/AS_ENOSPC以模拟
+	  旧代码对这些标志的影响。
 	 */
 	clear_bit(AS_EIO, &mapping->flags);
 	clear_bit(AS_ENOSPC, &mapping->flags);
+	//这两行是清除mapping的flags的AS_EIO和AS_ENOSPC
 	return err;
 }
 EXPORT_SYMBOL(file_check_and_advance_wb_err);
@@ -2184,8 +2203,9 @@ EXPORT_SYMBOL(find_get_pages_contig);
  *
  * Like find_get_pages, except we only return pages which are tagged with
  * @tag.   We update @index to index the next page for the traversal.
- *
+ * 类似find_get_pages，但是只返回tag为@tag的页面。更新index到下一个页面。
  * Return: the number of pages which were found.
+  此函数作用: 在mapping的i_pages中找到tag为tag的page，放到pages中。
  */
 unsigned find_get_pages_range_tag(struct address_space *mapping, pgoff_t *index,
 			pgoff_t end, xa_mark_t tag, unsigned int nr_pages,
@@ -2201,12 +2221,16 @@ unsigned find_get_pages_range_tag(struct address_space *mapping, pgoff_t *index,
 	rcu_read_lock();
 
 	xas_for_each_marked(&xas, page, end, tag) {
+		//遍历每一个tag的entry, 赋值到page
+
 		if (xas_retry(&xas, page))
 			continue;
 		/*
 		 * Shadow entries should never be tagged, but this iteration
 		 * is lockless so there is a window for page reclaim to evict
 		 * a page we saw tagged.  Skip over it.
+		  影子条目不应该被标记，但是这个迭代是无锁的，
+		  所以有一个窗口可以让页面回收逐出我们看到的标记的页面。跳过它。
 		 */
 		if (xa_is_value(page))
 			continue;

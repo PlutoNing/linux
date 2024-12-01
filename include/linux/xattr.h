@@ -21,9 +21,21 @@ struct inode;
 struct dentry;
 
 /*
- * struct xattr_handler: When @name is set, match attributes with exactly that
+ * struct xattr_handler: 
+ When @name is set, match attributes with exactly that
  * name.  When @prefix is set instead, match attributes with that prefix and
  * with a non-empty suffix.
+ 当name被设置时,匹配具有完全相同名称的属性
+当prefix被设置时,匹配具有该前缀和非空后缀的属性
+
+结构体表示一个xattr的处理器,具有以下字段:
+name: xattr的名称
+prefix: xattr的前缀
+flags: fs私有标志
+list: 列出xattr
+get: 获取xattr
+set: 设置xattr
+
  */
 struct xattr_handler {
 	const char *name;
@@ -33,6 +45,14 @@ struct xattr_handler {
 	int (*get)(const struct xattr_handler *, struct dentry *dentry,
 		   struct inode *inode, const char *name, void *buffer,
 		   size_t size);
+
+	//参数含义: handler: xattr_handler结构体
+	//dentry: 目录项
+	//inode: inode
+	//name: xattr的名称
+	//buffer: xattr的值
+	//size: xattr的大小
+	//flags: xattr的标志
 	int (*set)(const struct xattr_handler *, struct dentry *dentry,
 		   struct inode *inode, const char *name, const void *buffer,
 		   size_t size, int flags);
@@ -65,12 +85,12 @@ static inline const char *xattr_prefix(const struct xattr_handler *handler)
 }
 
 struct simple_xattrs {
-	struct list_head head;
+	struct list_head head; //包含了全部的xattr链表
 	spinlock_t lock;
 };
 
 struct simple_xattr {
-	struct list_head list;
+	struct list_head list; //通过这个list可以把所有的xattr串起来,挂接到simple_xattrs的head上
 	char *name;
 	size_t size;
 	char value[0];

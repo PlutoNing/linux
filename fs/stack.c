@@ -2,7 +2,12 @@
 #include <linux/export.h>
 #include <linux/fs.h>
 #include <linux/fs_stack.h>
+/* 
+2024年12月2日00:18:16
+ fsstack是: 
 
+
+ */
 /* does _NOT_ require i_mutex to be held.
  *
  * This function cannot be inlined since i_size_{read,write} is rather
@@ -59,7 +64,9 @@ void fsstack_copy_inode_size(struct inode *dst, struct inode *src)
 }
 EXPORT_SYMBOL_GPL(fsstack_copy_inode_size);
 
-/* copy all attributes */
+/* copy all attributes
+   拷贝所有属性
+ */
 void fsstack_copy_attr_all(struct inode *dest, const struct inode *src)
 {
 	dest->i_mode = src->i_mode;

@@ -132,14 +132,17 @@ EXPORT_SYMBOL(errseq_sample);
 
 /**
  * errseq_check() - Has an error occurred since a particular sample point?
+   自从特定的样本点以来是否发生了错误？
  * @eseq: Pointer to errseq_t value to be checked.
  * @since: Previously-sampled errseq_t from which to check.
  *
  * Grab the value that eseq points to, and see if it has changed @since
  * the given value was sampled. The @since value is not advanced, so there
  * is no need to mark the value as seen.
- *
+ * 获得eseq指向的值，并查看它是否已经改变，since给定值被采样。since值不会被提前，
+ 因此不需要将值标记为已看到。
  * Return: The latest error set in the errseq_t or 0 if it hasn't changed.
+ 返回：errseq_t中设置的最新错误，如果没有更改则返回0。
  */
 int errseq_check(errseq_t *eseq, errseq_t since)
 {
@@ -153,23 +156,26 @@ EXPORT_SYMBOL(errseq_check);
 
 /**
  * errseq_check_and_advance() - Check an errseq_t and advance to current value.
- * @eseq: Pointer to value being checked and reported.
+  检查errseq_t并提前到当前值。
+ * @eseq: Pointer to value being checked and reported. 是现在的值
  * @since: Pointer to previously-sampled errseq_t to check against and advance.
- *
+ * 是上次的值
  * Grab the eseq value, and see whether it matches the value that @since
  * points to. If it does, then just return 0.
- *
+ * 获得eseq值，并查看它是否与since指向的值匹配。如果是，则返回0。
  * If it doesn't, then the value has changed. Set the "seen" flag, and try to
  * swap it into place as the new eseq value. Then, set that value as the new
  * "since" value, and return whatever the error portion is set to.
- *
+ * 如果不是，则该值已更改。设置“seen”标志，并尝试将其作为新的eseq值交换到位。
+ 然后，将该值设置为新的“since”值，并返回设置的错误部分。
  * Note that no locking is provided here for concurrent updates to the "since"
  * value. The caller must provide that if necessary. Because of this, callers
  * may want to do a lockless errseq_check before taking the lock and calling
  * this.
- *
+ * 注意，这里没有为“since”值的并发更新提供锁定。如果需要，调用者必须提供。
  * Return: Negative errno if one has been stored, or 0 if no new error has
  * occurred.
+ 返回：如果已存储一个负errno，则为负errno，如果没有发生新错误，则为0。
  */
 int errseq_check_and_advance(errseq_t *eseq, errseq_t *since)
 {
@@ -180,13 +186,15 @@ int errseq_check_and_advance(errseq_t *eseq, errseq_t *since)
 	 * Most callers will want to use the inline wrapper to check this,
 	 * so that the common case of no error is handled without needing
 	 * to take the lock that protects the "since" value.
+	  大多数调用者将希望使用内联包装器来检查这一点，以便在不需要获取保护“since”值
+	  的锁的情况下处理没有错误的常见情况。
 	 */
 	old = READ_ONCE(*eseq);
-	if (old != *since) {
+	if (old != *since) { // 发生了变化
 		/*
 		 * Set the flag and try to swap it into place if it has
 		 * changed.
-		 *
+		 * 如果发生了变化，设置标志并尝试将其交换到位。
 		 * We don't care about the outcome of the swap here. If the
 		 * swap doesn't occur, then it has either been updated by a
 		 * writer who is altering the value in some way (updating
@@ -194,6 +202,9 @@ int errseq_check_and_advance(errseq_t *eseq, errseq_t *since)
 		 * just setting the "seen" flag. Either outcome is OK, and we
 		 * can advance "since" and return an error based on what we
 		 * have.
+		 我们不关心这里交换的结果。如果交换没有发生，那么它要么是被更新了，
+		 要么是另一个读者只是设置了“seen”标志。任何结果都可以，我们可以根据
+		 我们拥有的内容提前“since”并返回错误。
 		 */
 		new = old | ERRSEQ_SEEN;
 		if (new != old)

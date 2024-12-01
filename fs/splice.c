@@ -1753,6 +1753,7 @@ static long do_tee(struct file *in, struct file *out, size_t len,
 	return ret;
 }
 
+//
 SYSCALL_DEFINE4(tee, int, fdin, int, fdout, size_t, len, unsigned int, flags)
 {
 	struct fd in;

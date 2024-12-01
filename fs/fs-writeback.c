@@ -66,7 +66,9 @@ struct wb_writeback_work {
 	/*  sync 系统调用标记 */
 	unsigned int for_sync:1;	/* sync(2) WB_SYNC_ALL writeback */
 	unsigned int auto_free:1;	/* free on completion */
-	enum wb_reason reason;		/* why was writeback initiated? */
+	enum wb_reason reason;		/* why was writeback initiated? 
+	回写的原因
+	*/
 
 	struct list_head list;		/* pending work list
 	pending work list，链入bdi-> work_list队列 */
@@ -191,6 +193,7 @@ static void finish_writeback_work(struct bdi_writeback *wb,
 	}
 }
 
+//提交work到wb?
 static void wb_queue_work(struct bdi_writeback *wb,
 			  struct wb_writeback_work *work)
 {
@@ -201,7 +204,7 @@ static void wb_queue_work(struct bdi_writeback *wb,
 
 	spin_lock_bh(&wb->work_lock);
 
-	if (test_bit(WB_registered, &wb->state)) {
+	if (test_bit(WB_registered, &wb->state)) {//把work加入到work_list
 		list_add_tail(&work->list, &wb->work_list);
 		mod_delayed_work(bdi_wq, &wb->dwork, 0);
 	} else
@@ -573,6 +576,7 @@ out_free:
 /**
 2024年7月17日23:19:08
  * wbc_attach_and_unlock_inode - associate wbc with target inode and unlock it
+  关联wbc和inode，然后解锁inode.
  * @wbc: writeback_control of interest
  * @inode: target inode
  *
@@ -580,6 +584,8 @@ out_free:
  * Record @inode's writeback context into @wbc and unlock the i_lock.  On
  * writeback completion, wbc_detach_inode() should be called.  This is used
  * to track the cgroup writeback context.
+  inode是被锁住的，即将在wbc的控制下写回。记录inode的写回上下文到wbc中，并解锁i_lock。
+  在写回完成后，应该调用wbc_detach_inode()。这用于跟踪cgroup写回上下文。
  */
 void wbc_attach_and_unlock_inode(struct writeback_control *wbc,
 				 struct inode *inode)
@@ -590,7 +596,7 @@ void wbc_attach_and_unlock_inode(struct writeback_control *wbc,
 		return;
 	}
 	/* 一个wbc负责一个wb，
-	好像是wbc管理wb就是关联了inode就是关联了file  */
+	好像是wbc关联wb,就是相当于关联了inode,相当于关联了file  */
 	wbc->wb = inode_to_wb(inode);
 	wbc->inode = inode;
 
@@ -621,11 +627,12 @@ EXPORT_SYMBOL_GPL(wbc_attach_and_unlock_inode);
 2024年7月18日00:02:13
 分离还挺麻烦的
  * wbc_detach_inode - disassociate wbc from inode and perform foreign detection
+ 分离wbc和inode，并执行外部检测?
  * @wbc: writeback_control of the just finished writeback
  *
  * To be called after a writeback attempt of an inode finishes and undoes
  * wbc_attach_and_unlock_inode().  Can be called under any context.
- *
+ * 在inode完成写回尝试并撤销wbc_attach_and_unlock_inode()后调用。可以在任何上下文中调用。
  * As concurrent write sharing of an inode is expected to be very rare and
  * memcg only tracks page ownership on first-use basis severely confining
  * the usefulness of such sharing, cgroup writeback tracks ownership
@@ -635,13 +642,19 @@ EXPORT_SYMBOL_GPL(wbc_attach_and_unlock_inode);
  * charging only by first-use can too readily lead to grossly incorrect
  * behaviors (single foreign page can lead to gigabytes of writeback to be
  * incorrectly attributed).
- *
+ * 因为预期很少有inode的并发写共享，memcg只在第一次使用时跟踪页面所有权，
+ 严重限制了这种共享的有用性，
+ cgoup writeback跟踪每个inode的所有权。虽然认为不需要支持inode的并发写共享，
+ 但是在不同时间点由不同cgroup写入的inode更为常见，更重要的是，
+ 仅通过第一次使用收费可能会导致严重错误行为（单个外部页面可能导致错误地归因于几GB的回写）。
  * To resolve this issue, cgroup writeback detects the majority dirtier of
  * an inode and transfers the ownership to it.  To avoid unnnecessary
  * oscillation, the detection mechanism keeps track of history and gives
  * out the switch verdict only if the foreign usage pattern is stable over
  * a certain amount of time and/or writeback attempts.
- *
+ * 为了解决这个问题，cgroup writeback检测inode的主要脏数据，并将所有权转移给它。
+ 为了避免不必要的振荡，检测机制跟踪历史记录，并仅在外部使用模式在一定时间
+ 和/或回写尝试中稳定时才给出切换判决。
  * On each writeback attempt, @wbc tries to detect the majority writer
  * using Boyer-Moore majority vote algorithm.  In addition to the byte
  * count from the majority voting, it also counts the bytes written for the
@@ -861,16 +874,19 @@ static long wb_split_bdi_pages(struct bdi_writeback *wb, long nr_pages)
 
 /**
 2024年8月19日23:53:14
-把base_work的页面分配到bdi的不同wb
+把base_work的页面分配到bdi的不同wb. 是不是因为同步fs的页面太多了
+所以利用bdi现在现成的wb来分散这些页面,共同承担回写?
  * bdi_split_work_to_wbs - split a wb_writeback_work to all wb's of a bdi
  * @bdi: target backing_dev_info
- * @base_work: wb_writeback_work to issue
+ * @base_work: wb_writeback_work to issue . 要提交的work, 里面包含着
+  sb什么的
  * @skip_if_busy: skip wb's which already have writeback in progress
  *
  * Split and issue @base_work to all wb's (bdi_writeback's) of @bdi which
  * have dirty inodes.  If @base_work->nr_page isn't %LONG_MAX, it's
  * distributed to the busy wbs according to each wb's proportion in the
  * total active write bandwidth of @bdi.
+  分散并发出@base_work到@bdi的所有wb（bdi_writeback）的所有wb，这些wb具有脏inode。
  */
 static void bdi_split_work_to_wbs(struct backing_dev_info *bdi,
 				  struct wb_writeback_work *base_work,
@@ -884,8 +900,9 @@ static void bdi_split_work_to_wbs(struct backing_dev_info *bdi,
 restart:
 	rcu_read_lock();
 	/* 遍历wb */
+	//感觉像是遍历全部的wb
 	list_for_each_entry_continue_rcu(wb, &bdi->wb_list, bdi_node) {
-		DEFINE_WB_COMPLETION(fallback_work_done, bdi);
+		DEFINE_WB_COMPLETION(fallback_work_done, bdi); //等待fallback_work完成的
 		struct wb_writeback_work fallback_work;
 		struct wb_writeback_work *work;
 		long nr_pages;
@@ -899,14 +916,18 @@ restart:
 		if (!wb_has_dirty_io(wb) &&
 		    (base_work->sync_mode == WB_SYNC_NONE ||
 		     list_empty(&wb->b_dirty_time)))
-			continue;
+			continue; 
+
 		if (skip_if_busy && writeback_in_progress(wb))
 			continue;
-		/* 获取此wb的nr_pages */
+
+		/* 获取可以分配给这个wb多少页面 */
 		nr_pages = wb_split_bdi_pages(wb, base_work->nr_pages);
 
+		//创建一个work来承担这些分出来的nr_pages
 		work = kmalloc(sizeof(*work), GFP_ATOMIC);
 		if (work) {/* 定义一个新的wb，负责一部分页面（nr_pages） */
+		//感觉像是fork一个新work
 			*work = *base_work;
 			work->nr_pages = nr_pages;
 			work->auto_free = 1;
@@ -914,25 +935,27 @@ restart:
 			continue;
 		}
 
+		//说明fork失败了, 没有分配成功
 		/* alloc failed, execute synchronously using on-stack fallback */
-		work = &fallback_work;
-		*work = *base_work;
+		work = &fallback_work;  //使用栈里面的work
+		*work = *base_work; //继续fork
 		work->nr_pages = nr_pages;
 		work->auto_free = 0;
 		work->done = &fallback_work_done;
 
-		wb_queue_work(wb, work);
+		wb_queue_work(wb, work); //继续提交
 
 		/*
 		 * Pin @wb so that it stays on @bdi->wb_list.  This allows
 		 * continuing iteration from @wb after dropping and
 		 * regrabbing rcu read lock.
+		  pin住wb，这样就可以在释放rcu锁后继续迭代
 		 */
 		wb_get(wb);
 		last_wb = wb;
 
 		rcu_read_unlock();
-		wb_wait_for_completion(&fallback_work_done);
+		wb_wait_for_completion(&fallback_work_done); //等待fallback_work完成
 		goto restart;
 	}
 	rcu_read_unlock();
@@ -2299,17 +2322,18 @@ todo2024年7月27日14:37:53
  *
  * Mark an inode as dirty. Callers should use mark_inode_dirty or
  * mark_inode_dirty_sync.
- *
+ * 标记为脏inode, 调用者应该使用mark_inode_dirty或mark_inode_dirty_sync
  * Put the inode on the super block's dirty list.
- *
+ * 会把inode放到super block的dirty list上
  * CAREFUL! We mark it dirty unconditionally, but move it onto the
  * dirty list only if it is hashed or if it refers to a blockdev.
  * If it was not hashed, it will never be added to the dirty list
  * even if it is later hashed, as it will have been marked dirty already.
- *
+ * 注意！我们无条件地将其标记为脏，但只有在它被散列或引用块设备时才将其移动到脏列表上。
+ * 如果它没有被散列，即使它稍后被散列，它也永远不会被添加到脏列表中，因为它已经被标记为脏了。
  * In short, make sure you hash any inodes _before_ you start marking
  * them dirty.
- *
+ * 简而言之，在开始标记它们为脏之前，请确保对任何inode进行散列。
  * Note that for blockdevs, inode->dirtied_when represents the dirtying time of
  * the block-special inode (/dev/hda1) itself.  And the ->dirtied_when field of
  * the kernel-internal blockdev inode represents the dirtying time of the
@@ -2442,6 +2466,11 @@ EXPORT_SYMBOL(__mark_inode_dirty);
  * has been issued up to the time this function is enter is guaranteed to be
  * completed by the time we have gained the lock and waited for all IO that is
  * in progress regardless of the order callers are granted the lock.
+  这个锁用于串行化并发的sync操作，以避免与并发的wait_sb_inodes()调用的锁争用问题。
+  并发调用者将在s_sync_lock上阻塞，而不是进行争用的遍历。队列维护了sync(2)所需的行为，
+  因为在进入此函数的时间之前发出的所有IO都保证在我们获得锁并等待所有正在进行的IO之前完成，
+  无论调用者被授予锁的顺序如何。
+	
  */
 static void wait_sb_inodes(struct super_block *sb)
 {
@@ -2458,15 +2487,20 @@ static void wait_sb_inodes(struct super_block *sb)
 	/*
 	 * Splice the writeback list onto a temporary list to avoid waiting on
 	 * inodes that have started writeback after this point.
-	 *
+	 * 分开写回列表到一个临时列表，以避免等待在这一点之后开始写回的inode。
+
 	 * Use rcu_read_lock() to keep the inodes around until we have a
 	 * reference. s_inode_wblist_lock protects sb->s_inodes_wb as well as
 	 * the local list because inodes can be dropped from either by writeback
 	 * completion.
+	  使用rcu_read_lock()来保持inode直到我们有一个引用。s_inode_wblist_lock保护
+	  sb->s_inodes_wb以及本地列表，
+	  因为inode可以通过写回完成从任一方面删除。
 	 */
 	rcu_read_lock();
 	spin_lock_irq(&sb->s_inode_wblist_lock);
-	list_splice_init(&sb->s_inodes_wb, &sync_list);
+	list_splice_init(&sb->s_inodes_wb, &sync_list); //转移到临时列表
+
 
 	/*
 	 * Data integrity sync. Must wait for all pages under writeback, because
@@ -2474,10 +2508,13 @@ static void wait_sb_inodes(struct super_block *sb)
 	 * writeout started before we write it out.  In which case, the inode
 	 * may not be on the dirty list, but we still have to wait for that
 	 * writeout.
+	  数据完整性同步。必须等待所有正在写回的页面，因为在我们的同步调用之前可能已经脏了页面，
+	  但在我们写出之前已经开始写出。在这种情况下，inode可能不在脏列表上，
+	  但我们仍然必须等待该写出。
 	 */
-	while (!list_empty(&sync_list)) {
+	while (!list_empty(&sync_list)) { //遍历sync_list
 		struct inode *inode = list_first_entry(&sync_list, struct inode,
-						       i_wb_list);
+						       i_wb_list); //取出一个inode
 		struct address_space *mapping = inode->i_mapping;
 
 		/*
@@ -2485,6 +2522,8 @@ static void wait_sb_inodes(struct super_block *sb)
 		 * to preserve consistency between i_wb_list and the mapping
 		 * writeback tag. Writeback completion is responsible to remove
 		 * the inode from either list once the writeback tag is cleared.
+		 * 在我们放弃锁之前，将每个inode移回wb列表，以保持i_wb_list和映射写回标记之间的一致性。‘
+		 '写回完成负责在写回标记清除后从任一列表中删除inode。
 		 */
 		list_move_tail(&inode->i_wb_list, &sb->s_inodes_wb);
 
@@ -2492,6 +2531,7 @@ static void wait_sb_inodes(struct super_block *sb)
 		 * The mapping can appear untagged while still on-list since we
 		 * do not have the mapping lock. Skip it here, wb completion
 		 * will remove it.
+		  这个mapping可以在wb list上出现未标记为回写的inode，因为我们没有锁。在这里跳过它，wb完成将删除它。
 		 */
 		if (!mapping_tagged(mapping, PAGECACHE_TAG_WRITEBACK))
 			continue;
@@ -2503,16 +2543,19 @@ static void wait_sb_inodes(struct super_block *sb)
 			spin_unlock(&inode->i_lock);
 
 			spin_lock_irq(&sb->s_inode_wblist_lock);
-			continue;
+			continue; //如果inode正在释放，那么跳过
 		}
-		__iget(inode);
+
+		__iget(inode); //增加inode的引用计数
 		spin_unlock(&inode->i_lock);
+
 		rcu_read_unlock();
 
 		/*
 		 * We keep the error status of individual mapping so that
 		 * applications can catch the writeback error using fsync(2).
 		 * See filemap_fdatawait_keep_errors() for details.
+		  我们保留单个mapping的错误状态，以便应用程序可以使用fsync(2)捕获写回错误。
 		 */
 		filemap_fdatawait_keep_errors(mapping);
 
@@ -2523,11 +2566,14 @@ static void wait_sb_inodes(struct super_block *sb)
 		rcu_read_lock();
 		spin_lock_irq(&sb->s_inode_wblist_lock);
 	}
+
+
 	spin_unlock_irq(&sb->s_inode_wblist_lock);
 	rcu_read_unlock();
 	mutex_unlock(&sb->s_sync_lock);
 }
-/* 写回fs的inode，sync操作。 */
+/* 写回fs的inode，sync操作。
+不同步,不保证数量 */
 static void __writeback_inodes_sb_nr(struct super_block *sb, unsigned long nr,
 				     enum wb_reason reason, bool skip_if_busy)
 {
@@ -2544,6 +2590,7 @@ static void __writeback_inodes_sb_nr(struct super_block *sb, unsigned long nr,
 
 	if (!bdi_has_dirty_io(bdi) || bdi == &noop_backing_dev_info)
 		return;
+
 	WARN_ON(!rwsem_is_locked(&sb->s_umount));
 
 	bdi_split_work_to_wbs(sb->s_bdi, &work, skip_if_busy);
@@ -2571,7 +2618,7 @@ void writeback_inodes_sb_nr(struct super_block *sb,
 EXPORT_SYMBOL(writeback_inodes_sb_nr);
 
 /**
-写回sb的inode。
+异步写回sb的全部inode?
  * writeback_inodes_sb	-	writeback dirty inodes from given super_block
  * @sb: the superblock
  * @reason: reason why some writeback work was initiated
@@ -2579,6 +2626,8 @@ EXPORT_SYMBOL(writeback_inodes_sb_nr);
  * Start writeback on some inodes on this super_block. No guarantees are made
  * on how many (if any) will be written, and this function does not wait
  * for IO completion of submitted IO.
+  开启这个super_block上的一些inode的写回。不能保证有多少（如果有的话）会被写入，
+  这个函数不等待提交的IO的IO完成。
  */
 void writeback_inodes_sb(struct super_block *sb, enum wb_reason reason)
 {
@@ -2609,6 +2658,7 @@ EXPORT_SYMBOL(try_to_writeback_inodes_sb);
  *
  * This function writes and waits on any dirty inode belonging to this
  * super_block.
+  这个函数写入并等待属于这个super_block的任何脏inode。
  */
 void sync_inodes_sb(struct super_block *sb)
 {
@@ -2628,18 +2678,23 @@ void sync_inodes_sb(struct super_block *sb)
 	 * Can't skip on !bdi_has_dirty() because we should wait for !dirty
 	 * inodes under writeback and I_DIRTY_TIME inodes ignored by
 	 * bdi_has_dirty() need to be written out too.
+	  不能跳过!bdi_has_dirty()，因为我们应该等待正在写回的!dirty inode和被
+	  bdi_has_dirty()忽略的I_DIRTY_TIME inode也需要写出。
 	 */
 	if (bdi == &noop_backing_dev_info)
 		return;
+
 	WARN_ON(!rwsem_is_locked(&sb->s_umount));
 
 	/* protect against inode wb switch, see inode_switch_wbs_work_fn() */
 	bdi_down_write_wb_switch_rwsem(bdi);
+	//把这些页面, 分散给bdi的全部wb来共同承担一起完成
 	bdi_split_work_to_wbs(bdi, &work, false);
+	//等待回写完成?
 	wb_wait_for_completion(&done);
 	bdi_up_write_wb_switch_rwsem(bdi);
 
-	wait_sb_inodes(sb);
+	wait_sb_inodes(sb); //这里等待什么
 }
 EXPORT_SYMBOL(sync_inodes_sb);
 

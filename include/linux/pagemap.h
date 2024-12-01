@@ -21,13 +21,22 @@ struct pagevec;
 /*
 2024年08月20日19:24:21
  * Bits in mapping->flags.
+ 这些是mapping的flags
  */
 enum mapping_flags {
-	AS_EIO		= 0,	/* IO error on async write */
-	AS_ENOSPC	= 1,	/* ENOSPC on async write */
+	AS_EIO		= 0,	/* IO error on async write
+	说明在async write的时候发生了IO error 
+	 */
+	AS_ENOSPC	= 1,	/* ENOSPC on async write
+	说明在async write的时候发生了ENOSPC, ENOSPC是out of space的意思 
+	 */
 	AS_MM_ALL_LOCKS	= 2,	/* under mm_take_all_locks()。是否正在被take all locks */
-	AS_UNEVICTABLE	= 3,	/* e.g., ramdisk, SHM_LOCK */
-	AS_EXITING	= 4, 	/* final truncate in progress */
+	AS_UNEVICTABLE	= 3,	/* e.g., ramdisk, SHM_LOCK
+	这个是不可被evict的，比如ramdisk, SHM_LOCK
+	 */
+	AS_EXITING	= 4, 	/* final truncate in progress 
+	说明正在进行final truncate
+	*/
 	/* writeback related tags are not used */
 	AS_NO_WRITEBACK_TAGS = 5,
 };

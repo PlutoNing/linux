@@ -1131,9 +1131,11 @@ struct xa_node {
 	/* lots是个指针数组，该数组既可以存储下一级的节点, 
 	也可以用于存储即将插入的对象指针 */
 	void __rcu	*slots[XA_CHUNK_SIZE];
+
 	union {
 		unsigned long	tags[XA_MAX_MARKS][XA_MARK_LONGS];
 		unsigned long	marks[XA_MAX_MARKS][XA_MARK_LONGS];
+		//对应不同mark的不同位图
 	};
 };
 
@@ -1357,11 +1359,13 @@ struct xa_state {
 /**
 2024年7月17日22:21:45
  * XA_STATE() - Declare an XArray operation state.
+ 用于声明一个xa_state
  * @name: Name of this operation state (usually xas).
  * @array: Array to operate on.
  * @index: Initial index of interest.
  *
  * Declare and initialise an xa_state on the stack.
+ 声明一个名字为name的xa_state，并初始化它
  */
 #define XA_STATE(name, array, index)				\
 	struct xa_state name = __XA_STATE(array, index, 0, 0)
@@ -1467,7 +1471,9 @@ static inline bool xas_frozen(struct xa_node *node)
 	return (unsigned long)node & 2;
 }
 
-/* True if the node represents head-of-tree, RESTART or BOUNDS */
+/* True if the node represents head-of-tree, RESTART or BOUNDS
+返回true表示node是head-of-tree, RESTART或者BOUNDS
+ */
 static inline bool xas_top(struct xa_node *node)
 {
 	return node <= XAS_RESTART;
@@ -1653,10 +1659,12 @@ static inline void *xas_next_entry(struct xa_state *xas, unsigned long max)
 }
 
 /* Private */
+// 从当前位置开始查找有标记的entry
 static inline unsigned int xas_find_chunk(struct xa_state *xas, bool advance,
 		xa_mark_t mark)
 {
 	unsigned long *addr = xas->xa_node->marks[(__force unsigned)mark];
+	//addr是位图吗
 	unsigned int offset = xas->xa_offset;
 
 	if (advance)
@@ -1675,6 +1683,7 @@ static inline unsigned int xas_find_chunk(struct xa_state *xas, bool advance,
 
 /**
  * xas_next_marked() - Advance iterator to next marked entry.
+  找到下一个有tag的entry
  * @xas: XArray operation state.
  * @max: Highest index to return.
  * @mark: Mark to search for.
@@ -1682,7 +1691,7 @@ static inline unsigned int xas_find_chunk(struct xa_state *xas, bool advance,
  * xas_next_marked() is an inline function to optimise xarray traversal for
  * speed.  It is equivalent to calling xas_find_marked(), and will call
  * xas_find_marked() for all the hard cases.
- *
+ * 是一个内联函数，用于优化xarray遍历以提高速度。它等效于调用xas_find_marked()，
  * Return: The next marked entry after the one currently referred to by @xas.
  */
 static inline void *xas_next_marked(struct xa_state *xas, unsigned long max,
@@ -1693,9 +1702,12 @@ static inline void *xas_next_marked(struct xa_state *xas, unsigned long max,
 
 	if (unlikely(xas_not_node(node) || node->shift))
 		return xas_find_marked(xas, max, mark);
+	
+	//offset是当前节点上面有标记的entry的偏移?
 	offset = xas_find_chunk(xas, true, mark);
 	xas->xa_offset = offset;
-	xas->xa_index = (xas->xa_index & ~XA_CHUNK_MASK) + offset;
+	xas->xa_index = (xas->xa_index & ~XA_CHUNK_MASK) + offset;//直接更新全局偏移
+	//这里相当于优化了一下, 避免无效的遍历
 	if (xas->xa_index > max)
 		return NULL;
 	if (offset == XA_CHUNK_SIZE)
@@ -1732,10 +1744,11 @@ enum {
 /**
 遍历当前位置到末尾范围内有标签的？赋值到entry。
  * xas_for_each_marked() - Iterate over a range of an XArray.
- * @xas: XArray operation state.
- * @entry: Entry retrieved from the array.
- * @max: Maximum index to retrieve from array.
- * @mark: Mark to search for.
+ * @xas: XArray operation state. 是
+  
+ * @entry: Entry retrieved from the array. 表示当前的entry
+ * @max: Maximum index to retrieve from array. 表示最大的index
+ * @mark: Mark to search for. 表示要搜索的标记
  *
  * The loop body will be executed for each marked entry in the xarray
  * between the current xas position and @max.  @entry will be set to
@@ -1743,6 +1756,9 @@ enum {
  * from the array in the loop body.  You should hold either the RCU lock
  * or the xa_lock while iterating.  If you need to drop the lock, call
  * xas_pause() first.
+  这个循环体将在xarray中当前xas位置和@max之间的每个标记条目上执行。
+@entry将设置为从xarray检索的条目。在循环体中可以安全地从数组中删除条目。
+在迭代时，您应该保持RCU锁或xa_lock。如果需要放弃锁，请先调用xas_pause()。
  */
 #define xas_for_each_marked(xas, entry, max, mark) \
 	for (entry = xas_find_marked(xas, max, mark); entry; \

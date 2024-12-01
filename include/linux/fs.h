@@ -150,7 +150,9 @@ typedef int (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
 
 /* File needs atomic accesses to f_pos */
 #define FMODE_ATOMIC_POS	((__force fmode_t)0x8000)
-/* Write access to underlying fs */
+/* Write access to underlying fs
+表示对底层文件系统的写访问
+ */
 #define FMODE_WRITER		((__force fmode_t)0x10000)
 /* Has read method(s) */
 #define FMODE_CAN_READ          ((__force fmode_t)0x20000)
@@ -375,7 +377,9 @@ struct address_space_operations {
 	/* aaddress_space_operations 的readpage 函数，将文件内容读到内存中 */
 	int (*readpage)(struct file *, struct page *);
 
-	/* Write back some dirty pages from this mapping. */
+	/* Write back some dirty pages from this mapping.
+	回写mapping的函数
+	 */
 	int (*writepages)(struct address_space *, struct writeback_control *);
 
 	/* Set a page dirty.  Return true if this dirtied it */
@@ -546,9 +550,11 @@ struct block_device {
 	struct mutex		bd_fsfreeze_mutex;
 } __randomize_layout;
 
-/* XArray tags, for tagging dirty and writeback pages in the pagecache. */
-#define PAGECACHE_TAG_DIRTY	XA_MARK_0
-#define PAGECACHE_TAG_WRITEBACK	XA_MARK_1
+/* XArray tags, for tagging dirty and writeback pages in the pagecache.
+这些是用于标记pagecache中的脏页和写回页的XArray标记。
+ */
+#define PAGECACHE_TAG_DIRTY	XA_MARK_0 
+#define PAGECACHE_TAG_WRITEBACK	XA_MARK_1 //表示写回
 #define PAGECACHE_TAG_TOWRITE	XA_MARK_2
 
 /*
@@ -653,10 +659,11 @@ is_uncached_acl(struct posix_acl *acl)
 	return (long)acl & 1;
 }
 
+//这些表示可以对inode进行的操作
 #define IOP_FASTPERM	0x0001
 #define IOP_LOOKUP	0x0002
 #define IOP_NOFOLLOW	0x0004
-#define IOP_XATTR	0x0008
+#define IOP_XATTR	0x0008 //表示支持扩展属性
 #define IOP_DEFAULT_READLINK	0x0010
 
 struct fsnotify_mark_connector;
@@ -735,7 +742,7 @@ struct inode {
 
 	/* Misc */
 	unsigned long		i_state;
-	struct rw_semaphore	i_rwsem;
+	struct rw_semaphore	i_rwsem; //用来保护对inode的更改
 
 	unsigned long		dirtied_when;	/* jiffies of first dirtying */
 	unsigned long		dirtied_time_when;
@@ -862,6 +869,7 @@ enum inode_i_mutex_lock_class
 	I_MUTEX_PARENT2,
 };
 
+//
 static inline void inode_lock(struct inode *inode)
 {
 	down_write(&inode->i_rwsem);
@@ -1068,7 +1076,8 @@ struct file {
 
 	struct address_space	*f_mapping;
 	/* wb的err */
-	errseq_t		f_wb_err;
+	errseq_t		f_wb_err; //好像是记录了上次出错或者检查的时间, 会拿来与
+	//mapping的wb err进行比较
 } __randomize_layout
   __attribute__((aligned(4)));	/* lest something weird decides that 2 is OK */
 
@@ -1505,10 +1514,14 @@ extern int send_sigurg(struct fown_struct *fown);
 #define SB_I_IMA_UNVERIFIABLE_SIGNATURE	0x00000020
 #define SB_I_UNTRUSTED_MOUNTER		0x00000040
 
-/* Possible states of 'frozen' field */
+/* Possible states of 'frozen' field
+表示超级块的冻结状态
+ */
 enum {
 	SB_UNFROZEN = 0,		/* FS is unfrozen */
-	SB_FREEZE_WRITE	= 1,		/* Writes, dir ops, ioctls frozen */
+	SB_FREEZE_WRITE	= 1,		/* Writes, dir ops, ioctls frozen
+	表示只有写操作被冻结
+	 */
 	SB_FREEZE_PAGEFAULT = 2,	/* Page faults stopped as well */
 	SB_FREEZE_FS = 3,		/* For internal FS use (e.g. to stop
 					 * internal threads if needed) */
@@ -1517,10 +1530,11 @@ enum {
 
 #define SB_FREEZE_LEVELS (SB_FREEZE_COMPLETE - 1)
 
+//表示超级块的冻结状态
 struct sb_writers {
 	int				frozen;		/* Is sb frozen? */
 	wait_queue_head_t		wait_unfrozen;	/* for get_super_thawed() */
-	struct percpu_rw_semaphore	rw_sem[SB_FREEZE_LEVELS];
+	struct percpu_rw_semaphore	rw_sem[SB_FREEZE_LEVELS]; //对应不同加锁级别的读写信号量
 };
 /* 2024年6月24日22:36:16
 超级块
@@ -1700,6 +1714,7 @@ int __sb_start_write(struct super_block *sb, int level, bool wait);
 
 /**
  * sb_end_write - drop write access to a superblock
+ 类似一个解锁操作
  * @sb: the super we wrote to
  *
  * Decrement number of writers to the filesystem. Wake up possible waiters
@@ -1736,19 +1751,22 @@ static inline void sb_end_intwrite(struct super_block *sb)
 
 /**
  * sb_start_write - get write access to a superblock
- * @sb: the super we write to
- *
+  * 获取写权限 
+ @sb: the super we write to
+ * 
  * When a process wants to write data or metadata to a file system (i.e. dirty
  * a page or an inode), it should embed the operation in a sb_start_write() -
  * sb_end_write() pair to get exclusion against file system freezing. This
  * function increments number of writers preventing freezing. If the file
  * system is already frozen, the function waits until the file system is
  * thawed.
- *
+ * 当一个进程想要写数据或元数据到文件系统（即脏一个页面或一个inode），
+ 它应该将操作嵌入到sb_start_write() - sb_end_write()对中以获得对文件系统冻结的排除。
+ 此函数增加了防止冻结的写入者数量。如果文件系统已经冻结，该函数将等待直到文件系统解冻。
  * Since freeze protection behaves as a lock, users have to preserve
  * ordering of freeze protection and other filesystem locks. Generally,
  * freeze protection should be the outermost lock. In particular, we have:
- *
+ * 因为冻结保护行为类似于锁，用户必须保持冻结保护和其他文件系统锁的顺序。
  * sb_start_write
  *   -> i_mutex			(write path, truncate, directory ops, ...)
  *   -> s_umount		(freeze_super, thaw_super)
@@ -2279,6 +2297,7 @@ static inline void mark_inode_dirty(struct inode *inode)
 	__mark_inode_dirty(inode, I_DIRTY);
 }
 
+//标记inode为dirty
 static inline void mark_inode_dirty_sync(struct inode *inode)
 {
 	__mark_inode_dirty(inode, I_DIRTY_SYNC);
@@ -2674,6 +2693,7 @@ extern void __init vfs_caches_init(void);
 
 extern struct kmem_cache *names_cachep;
 
+//分配一个filename结构体
 #define __getname()		kmem_cache_alloc(names_cachep, GFP_KERNEL)
 #define __putname(name)		kmem_cache_free(names_cachep, (void *)(name))
 
@@ -3366,6 +3386,7 @@ static inline int vfs_stat(const char __user *filename, struct kstat *stat)
 	return vfs_statx(AT_FDCWD, filename, AT_NO_AUTOMOUNT,
 			 stat, STATX_BASIC_STATS);
 }
+//
 static inline int vfs_lstat(const char __user *name, struct kstat *stat)
 {
 	return vfs_statx(AT_FDCWD, name, AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT,
@@ -3377,6 +3398,8 @@ static inline int vfs_fstatat(int dfd, const char __user *filename,
 	return vfs_statx(dfd, filename, flags | AT_NO_AUTOMOUNT,
 			 stat, STATX_BASIC_STATS);
 }
+
+//stat系统调用
 static inline int vfs_fstat(int fd, struct kstat *stat)
 {
 	return vfs_statx_fd(fd, stat, STATX_BASIC_STATS, 0);

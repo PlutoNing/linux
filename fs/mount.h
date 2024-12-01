@@ -19,9 +19,10 @@ struct mnt_namespace {
 	unsigned int		pending_mounts;
 } __randomize_layout;
 
+//表示一个mount的pcp数据
 struct mnt_pcp {
 	int mnt_count;
-	int mnt_writers;
+	int mnt_writers; //pcp的写者数量
 };
 
 struct mountpoint {
@@ -41,7 +42,7 @@ struct mount {
 		struct llist_node mnt_llist;
 	};
 #ifdef CONFIG_SMP
-	struct mnt_pcp __percpu *mnt_pcp;
+	struct mnt_pcp __percpu *mnt_pcp; //是一些pcp的数据
 #else
 	int mnt_count;
 	int mnt_writers;
@@ -76,6 +77,7 @@ struct mount {
 
 #define MNT_NS_INTERNAL ERR_PTR(-EINVAL) /* distinct from any mnt_namespace */
 
+//从vfsmount中获取mount
 static inline struct mount *real_mount(struct vfsmount *mnt)
 {
 	return container_of(mnt, struct mount, mnt);

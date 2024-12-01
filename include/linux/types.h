@@ -133,6 +133,7 @@ typedef u64 blkcnt_t;
 
 /*
  * The type of an index into the pagecache.
+ 表示页缓存的索引类型
  */
 #define pgoff_t unsigned long
 

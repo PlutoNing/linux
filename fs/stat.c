@@ -23,12 +23,14 @@
 
 /**
  * generic_fillattr - Fill in the basic attributes from the inode struct
+   填充基本属性, 从inode结构中
  * @inode: Inode to use as the source
  * @stat: Where to fill in the attributes
  *
  * Fill in the basic attributes in the kstat structure from data that's to be
  * found on the VFS inode structure.  This is the default if no getattr inode
  * operation is supplied.
+   填充kstat结构中的基本属性, 这些属性可以在VFS inode结构中找到.
  */
 void generic_fillattr(struct inode *inode, struct kstat *stat)
 {
@@ -50,16 +52,19 @@ EXPORT_SYMBOL(generic_fillattr);
 
 /**
  * vfs_getattr_nosec - getattr without security checks
+   获取文件属性, 不进行安全检查
  * @path: file to get attributes from
- * @stat: structure to return attributes in
+ * @stat: structure to return attributes in, 用于返回属性的结构
  * @request_mask: STATX_xxx flags indicating what the caller wants
  * @query_flags: Query mode (KSTAT_QUERY_FLAGS)
  *
  * Get attributes without calling security_inode_getattr.
- *
+ * 获取属性, 不调用security_inode_getattr
  * Currently the only caller other than vfs_getattr is internal to the
  * filehandle lookup code, which uses only the inode number and returns no
  * attributes to any user.  Any other code probably wants vfs_getattr.
+ * 目前除了vfs_getattr之外, 唯一的调用者是文件句柄查找代码中的内部调用, 
+ 它只使用inode号, 并且不返回任何属性给任何用户. 任何其他代码可能都想要vfs_getattr
  */
 int vfs_getattr_nosec(const struct path *path, struct kstat *stat,
 		      u32 request_mask, unsigned int query_flags)
@@ -88,8 +93,9 @@ EXPORT_SYMBOL(vfs_getattr_nosec);
 
 /*
  * vfs_getattr - Get the enhanced basic attributes of a file
+   获取文件的增强基本属性
  * @path: The file of interest
- * @stat: Where to return the statistics
+ * @stat: Where to return the statistics, 用于返回统计数据
  * @request_mask: STATX_xxx flags indicating what the caller wants
  * @query_flags: Query mode (KSTAT_QUERY_FLAGS)
  *
@@ -121,6 +127,7 @@ EXPORT_SYMBOL(vfs_getattr);
 
 /**
  * vfs_statx_fd - Get the enhanced basic attributes by file descriptor
+   获取文件描述符的增强基本属性
  * @fd: The file descriptor referring to the file of interest
  * @stat: The result structure to fill in.
  * @request_mask: STATX_xxx flags indicating what the caller wants
@@ -128,7 +135,8 @@ EXPORT_SYMBOL(vfs_getattr);
  *
  * This function is a wrapper around vfs_getattr().  The main difference is
  * that it uses a file descriptor to determine the file location.
- *
+   这个函数是vfs_getattr的一个包装, 主要的区别是使用文件描述符来确定文件位置.
+ * 
  * 0 will be returned on success, and a -ve error code if unsuccessful.
  */
 int vfs_statx_fd(unsigned int fd, struct kstat *stat,
@@ -152,6 +160,7 @@ EXPORT_SYMBOL(vfs_statx_fd);
 
 /**
  * vfs_statx - Get basic and extra attributes by filename
+   获取基本和额外的属性, 通过文件名
  * @dfd: A file descriptor representing the base dir for a relative filename
  * @filename: The name of the file of interest
  * @flags: Flags to control the query
@@ -162,7 +171,9 @@ EXPORT_SYMBOL(vfs_statx_fd);
  * that it uses a filename and base directory to determine the file location.
  * Additionally, the use of AT_SYMLINK_NOFOLLOW in flags will prevent a symlink
  * at the given name from being referenced.
- *
+ * 这个函数是vfs_getattr的一个包装, 主要的区别是使用文件名和基本目录来确定文件位置.
+ * 此外, 在flags中使用AT_SYMLINK_NOFOLLOW将阻止在给定名称处引用符号链接.
+   
  * 0 will be returned on success, and a -ve error code if unsuccessful.
  */
 int vfs_statx(int dfd, const char __user *filename, int flags,
@@ -184,10 +195,13 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
 		lookup_flags |= LOOKUP_EMPTY;
 
 retry:
+
+// 获取path
 	error = user_path_at(dfd, filename, lookup_flags, &path);
 	if (error)
 		goto out;
 
+// 获取属性
 	error = vfs_getattr(&path, stat, request_mask, flags);
 	path_put(&path);
 	if (retry_estale(error, lookup_flags)) {
@@ -243,6 +257,7 @@ static int cp_old_stat(struct kstat *stat, struct __old_kernel_stat __user * sta
 	return copy_to_user(statbuf,&tmp,sizeof(tmp)) ? -EFAULT : 0;
 }
 
+// 作用: 获取文件的属性
 SYSCALL_DEFINE2(stat, const char __user *, filename,
 		struct __old_kernel_stat __user *, statbuf)
 {
@@ -269,6 +284,7 @@ SYSCALL_DEFINE2(lstat, const char __user *, filename,
 	return cp_old_stat(&stat, statbuf);
 }
 
+// 作用: 获取文件的属性
 SYSCALL_DEFINE2(fstat, unsigned int, fd, struct __old_kernel_stat __user *, statbuf)
 {
 	struct kstat stat;
@@ -523,6 +539,7 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
 }
 #endif /* __ARCH_WANT_STAT64 || __ARCH_WANT_COMPAT_STAT64 */
 
+// 用于将内核中的kstat结构转换为用户空间的statx结构?
 static noinline_for_stack int
 cp_statx(const struct kstat *stat, struct statx __user *buffer)
 {
@@ -559,6 +576,7 @@ cp_statx(const struct kstat *stat, struct statx __user *buffer)
 
 /**
  * sys_statx - System call to get enhanced stats
+   获取增强的统计信息的系统调用
  * @dfd: Base directory to pathwalk from *or* fd to stat.
  * @filename: File to stat or "" with AT_EMPTY_PATH
  * @flags: AT_* flags to control pathwalk.
@@ -634,6 +652,7 @@ COMPAT_SYSCALL_DEFINE2(newstat, const char __user *, filename,
 	return cp_compat_stat(&stat, statbuf);
 }
 
+//获取文件属性
 COMPAT_SYSCALL_DEFINE2(newlstat, const char __user *, filename,
 		       struct compat_stat __user *, statbuf)
 {
@@ -646,7 +665,9 @@ COMPAT_SYSCALL_DEFINE2(newlstat, const char __user *, filename,
 	return cp_compat_stat(&stat, statbuf);
 }
 
+
 #ifndef __ARCH_WANT_STAT64
+//获取文件属性
 COMPAT_SYSCALL_DEFINE4(newfstatat, unsigned int, dfd,
 		       const char __user *, filename,
 		       struct compat_stat __user *, statbuf, int, flag)
@@ -654,6 +675,7 @@ COMPAT_SYSCALL_DEFINE4(newfstatat, unsigned int, dfd,
 	struct kstat stat;
 	int error;
 
+	//获取文件属性
 	error = vfs_fstatat(dfd, filename, &stat, flag);
 	if (error)
 		return error;
@@ -708,6 +730,7 @@ void __inode_sub_bytes(struct inode *inode, loff_t bytes)
 
 EXPORT_SYMBOL(__inode_sub_bytes);
 
+//
 void inode_sub_bytes(struct inode *inode, loff_t bytes)
 {
 	spin_lock(&inode->i_lock);
@@ -717,6 +740,7 @@ void inode_sub_bytes(struct inode *inode, loff_t bytes)
 
 EXPORT_SYMBOL(inode_sub_bytes);
 
+//
 loff_t inode_get_bytes(struct inode *inode)
 {
 	loff_t ret;
@@ -729,6 +753,7 @@ loff_t inode_get_bytes(struct inode *inode)
 
 EXPORT_SYMBOL(inode_get_bytes);
 
+//
 void inode_set_bytes(struct inode *inode, loff_t bytes)
 {
 	/* Caller is here responsible for sufficient locking

@@ -50,6 +50,7 @@ static int calculate_f_flags(struct vfsmount *mnt)
 		flags_by_sb(mnt->mnt_sb->s_flags);
 }
 
+//
 static int statfs_by_dentry(struct dentry *dentry, struct kstatfs *buf)
 {
 	int retval;
@@ -81,6 +82,7 @@ int vfs_get_fsid(struct dentry *dentry, __kernel_fsid_t *fsid)
 }
 EXPORT_SYMBOL(vfs_get_fsid);
 
+//
 int vfs_statfs(const struct path *path, struct kstatfs *buf)
 {
 	int error;
@@ -92,12 +94,14 @@ int vfs_statfs(const struct path *path, struct kstatfs *buf)
 }
 EXPORT_SYMBOL(vfs_statfs);
 
+//
 int user_statfs(const char __user *pathname, struct kstatfs *st)
 {
 	struct path path;
 	int error;
 	unsigned int lookup_flags = LOOKUP_FOLLOW|LOOKUP_AUTOMOUNT;
 retry:
+	// 获取path
 	error = user_path_at(AT_FDCWD, pathname, lookup_flags, &path);
 	if (!error) {
 		error = vfs_statfs(&path, st);
@@ -110,6 +114,7 @@ retry:
 	return error;
 }
 
+//
 int fd_statfs(int fd, struct kstatfs *st)
 {
 	struct fd f = fdget_raw(fd);
@@ -340,6 +345,7 @@ static int put_compat_statfs64(struct compat_statfs64 __user *ubuf, struct kstat
 	return 0;
 }
 
+//
 int kcompat_sys_statfs64(const char __user * pathname, compat_size_t sz, struct compat_statfs64 __user * buf)
 {
 	struct kstatfs tmp;
@@ -354,6 +360,7 @@ int kcompat_sys_statfs64(const char __user * pathname, compat_size_t sz, struct 
 	return error;
 }
 
+//
 COMPAT_SYSCALL_DEFINE3(statfs64, const char __user *, pathname, compat_size_t, sz, struct compat_statfs64 __user *, buf)
 {
 	return kcompat_sys_statfs64(pathname, sz, buf);
@@ -382,6 +389,8 @@ COMPAT_SYSCALL_DEFINE3(fstatfs64, unsigned int, fd, compat_size_t, sz, struct co
  * This is a copy of sys_ustat, just dealing with a structure layout.
  * Given how simple this syscall is that apporach is more maintainable
  * than the various conversion hacks.
+   这是sys_ustat的一个副本,只是处理了一个结构布局
+   鉴于这个系统调用是多么简单,这种方法比各种转换技巧更易于维护
  */
 COMPAT_SYSCALL_DEFINE2(ustat, unsigned, dev, struct compat_ustat __user *, u)
 {
