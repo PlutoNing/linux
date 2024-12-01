@@ -4,7 +4,7 @@
 #include <linux/module.h>
 #include <linux/seq_file.h>
 #include <asm/pgtable.h>
-
+/* dump页表 */
 static int ptdump_show(struct seq_file *m, void *v)
 {
 	ptdump_walk_pgd_level_debugfs(m, NULL, false);
@@ -12,7 +12,19 @@ static int ptdump_show(struct seq_file *m, void *v)
 }
 
 DEFINE_SHOW_ATTRIBUTE(ptdump);
+/* // Expands to
 
+static int ptdump_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, ptdump_show, inode->i_private);
+}
+static const struct file_operations ptdump_fops = {
+    .owner = ((struct module *)0),
+    .open = ptdump_open,
+    .read = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+} */
 static int ptdump_curknl_show(struct seq_file *m, void *v)
 {
 	if (current->mm->pgd) {

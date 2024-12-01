@@ -44,6 +44,7 @@ static inline void load_mm_cr4_irqsoff(struct mm_struct *mm) {}
 /*
  * ldt_structs can be allocated, used, and freed, but they are never
  * modified while live.
+ 表示LDT表
  */
 struct ldt_struct {
 	/*
@@ -51,9 +52,13 @@ struct ldt_struct {
 	 * needed to prevent us from installing evil descriptors such as
 	 * call gates.  On native, we could merge the ldt_struct and LDT
 	 * allocations, but it's not worth trying to optimize.
+	 意思是说Xen需要特殊权限的页对齐的LDT表，这是为了防止我们安装恶意描述符，
+	 例如调用门。在本地，我们可以合并ldt_struct和LDT分配，但是不值得尝试优化。
+
 	 */
-	struct desc_struct	*entries;
-	unsigned int		nr_entries;
+	struct desc_struct	*entries; //表示描述符的数组,可以通过cs的索引值来访问,获得
+	//对应的描述符
+	unsigned int		nr_entries; //表示描述符的数量
 
 	/*
 	 * If PTI is in use, then the entries array is not mapped while we're
@@ -61,6 +66,10 @@ struct ldt_struct {
 	 * given by ldt_slot_va(slot).  We use two slots so that we can allocate
 	 * and map, and enable a new LDT without invalidating the mapping
 	 * of an older, still-in-use LDT.
+	  意思是说如果PTI在使用中，那么在用户模式下，entries数组不会被映射。
+	  整个数组将在ldt_slot_va(slot)给定的地址处别名。我们使用两个插槽，
+	  以便我们可以分配和映射，并启用一个新的LDT，而不会使旧的仍在使用的LDT的映射无效。？
+
 	 *
 	 * slot will be -1 if this LDT doesn't have an alias mapping.
 	 */

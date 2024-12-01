@@ -16,7 +16,12 @@ typedef struct {
 #endif
 
 #define PFN_ALIGN(x)	(((unsigned long)(x) + (PAGE_SIZE - 1)) & PAGE_MASK)
+
+
 #define PFN_UP(x)	(((x) + PAGE_SIZE-1) >> PAGE_SHIFT)
+//
+
+
 #define PFN_DOWN(x)	((x) >> PAGE_SHIFT)
 /* 物理页帧号（PFN）和物理地址之间存在一种简单的对应关系。物理页帧号可以被视为物理地址的索引或偏移量，通过一些计算可以将物理页帧号转换为对应的物理地址。
 

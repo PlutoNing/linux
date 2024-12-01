@@ -322,6 +322,7 @@ atomic_long_fetch_andnot_relaxed(long i, atomic_long_t *v)
 	return atomic64_fetch_andnot_relaxed(i, v);
 }
 
+//原子的或操作,针对long类型
 static inline void
 atomic_long_or(long i, atomic_long_t *v)
 {

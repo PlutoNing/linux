@@ -118,7 +118,8 @@ static inline int desc_empty(const void *ptr)
 #define load_ldt(ldt)				asm volatile("lldt %0"::"m" (ldt))
 
 #define store_gdt(dtr)				native_store_gdt(dtr)
-#define store_tr(tr)				(tr = native_store_tr())
+
+#define store_tr(tr)				(tr = native_store_tr()) //store_tr(tr)将tr的值存入store_tr
 
 #define load_TLS(t, cpu)			native_load_tls(t, cpu)
 #define set_ldt					native_set_ldt
@@ -136,7 +137,9 @@ static inline void paravirt_free_ldt(struct desc_struct *ldt, unsigned entries)
 }
 #endif	/* CONFIG_PARAVIRT_XXL */
 
-#define store_ldt(ldt) asm("sldt %0" : "=m"(ldt))
+
+
+#define store_ldt(ldt) asm("sldt %0" : "=m"(ldt)) //sldt指令将ldt的值存入ldt
 
 static inline void native_write_idt_entry(gate_desc *idt, int entry, const gate_desc *gate)
 {
@@ -219,14 +222,24 @@ static inline void native_load_idt(const struct desc_ptr *dtr)
 	asm volatile("lidt %0"::"m" (*dtr));
 }
 
+//作用:将GDT表的地址存入dtr
+//GDT表示全局描述符表
 static inline void native_store_gdt(struct desc_ptr *dtr)
 {
 	asm volatile("sgdt %0":"=m" (*dtr));
 }
 
+//作用:将IDT表的地址存入dtr
 static inline void store_idt(struct desc_ptr *dtr)
 {
-	asm volatile("sidt %0":"=m" (*dtr));
+	asm volatile("sidt %0":"=m" (*dtr)); //sidt指令将IDT表的地址存入dtr
+	//汇编的分析:将dtr的地址传给sidt指令
+	//sidt指令的作用
+	/* 指令LIDT 和 SIDT 分别用于加载和保存IDTR寄存器的内容。
+	LIDT指令把在内存中的限长值和基地址操作数加载到IDTR寄存器中。
+	该指令仅能由当前特权级CPL是0的代码执行，通常被用于创建IDT时的操作系统初始化代码中。
+	SIDT指令用于把IDTR中的基地址和限长内容复制到内存中。该指令可在任何特权级上执行。 */
+	//idtr寄存器存放中断描述符表的基地址和限长.
 }
 
 /*
@@ -264,6 +277,10 @@ static inline void native_load_tr_desc(void)
 }
 #endif
 
+//作用:将TR寄存器的值存入tr
+//TR寄存器存放TSS的选择子
+//TSS是任务状态段
+//表示当前任务的状态
 static inline unsigned long native_store_tr(void)
 {
 	unsigned long tr;
@@ -363,6 +380,7 @@ static inline void clear_LDT(void)
 	set_ldt(NULL, 0);
 }
 
+//获取描述符的基地址
 static inline unsigned long get_desc_base(const struct desc_struct *desc)
 {
 	return (unsigned)(desc->base0 | ((desc->base1) << 16) | ((desc->base2) << 24));

@@ -51,6 +51,7 @@ static inline void native_write_cr3(unsigned long val)
 	asm volatile("mov %0,%%cr3": : "r" (val), "m" (__force_order));
 }
 
+//读取cr4,cr4是控制寄存器，用于控制处理器的各种特性
 static inline unsigned long native_read_cr4(void)
 {
 	unsigned long val;
@@ -131,6 +132,7 @@ static inline void native_wbinvd(void)
 
 extern asmlinkage void native_load_gs_index(unsigned);
 
+//读取
 static inline unsigned long __read_cr4(void)
 {
 	return native_read_cr4();

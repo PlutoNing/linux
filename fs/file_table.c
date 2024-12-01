@@ -179,6 +179,7 @@ struct file *alloc_empty_file_noaccount(int flags, const struct cred *cred)
 }
 
 /**
+用于创建伪文件系统的文件
  * alloc_file - allocate and initialize a 'struct file'
  *
  * @path: the (dentry, vfsmount) pair for the new file
@@ -211,7 +212,8 @@ static struct file *alloc_file(const struct path *path, int flags,
 		i_readcount_inc(path->dentry->d_inode);
 	return file;
 }
-/*  */
+/* 创建file,  inode是伪文件系统的inode ,是mnt的inode
+ */
 struct file *alloc_file_pseudo(struct inode *inode, struct vfsmount *mnt,
 				const char *name, int flags,
 				const struct file_operations *fops)
@@ -223,15 +225,20 @@ struct file *alloc_file_pseudo(struct inode *inode, struct vfsmount *mnt,
 	struct path path;
 	struct file *file;
 
+	//
 	path.dentry = d_alloc_pseudo(mnt->mnt_sb, &this);
 
 	if (!path.dentry)
 		return ERR_PTR(-ENOMEM);
 	if (!mnt->mnt_sb->s_d_op)
 		d_set_d_op(path.dentry, &anon_ops);
+	//赋值path的mnt
 	path.mnt = mntget(mnt);
+
 	d_instantiate(path.dentry, inode);
+	//
 	file = alloc_file(&path, flags, fops);
+
 	if (IS_ERR(file)) {
 		ihold(inode);
 		path_put(&path);

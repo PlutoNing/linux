@@ -33,25 +33,28 @@
 
 typedef __kernel_ulong_t aio_context_t;
 
+//这些是iocb的命令
 enum {
-	IOCB_CMD_PREAD = 0,
-	IOCB_CMD_PWRITE = 1,
-	IOCB_CMD_FSYNC = 2,
-	IOCB_CMD_FDSYNC = 3,
+	IOCB_CMD_PREAD = 0, //读
+	IOCB_CMD_PWRITE = 1, //写
+	IOCB_CMD_FSYNC = 2, //fsync
+	IOCB_CMD_FDSYNC = 3, //fdsync
 	/* 4 was the experimental IOCB_CMD_PREADX */
-	IOCB_CMD_POLL = 5,
-	IOCB_CMD_NOOP = 6,
-	IOCB_CMD_PREADV = 7,
-	IOCB_CMD_PWRITEV = 8,
+	IOCB_CMD_POLL = 5, //poll
+	IOCB_CMD_NOOP = 6, //空操作
+	IOCB_CMD_PREADV = 7, //读
+	IOCB_CMD_PWRITEV = 8, //写
 };
 
 /*
  * Valid flags for the "aio_flags" member of the "struct iocb".
- *
+ * 这是iocb的标志位，用于标识iocb的一些属性。
  * IOCB_FLAG_RESFD - Set if the "aio_resfd" member of the "struct iocb"
  *                   is valid.
+ 这个是用来标识aio_resfd是否有效。
  * IOCB_FLAG_IOPRIO - Set if the "aio_reqprio" member of the "struct iocb"
  *                    is valid.
+ 这个是用来标识aio_reqprio是否有效。
  */
 #define IOCB_FLAG_RESFD		(1 << 0)
 #define IOCB_FLAG_IOPRIO	(1 << 1)
@@ -59,7 +62,10 @@ enum {
 /* read() from /dev/aio returns these structures. */
 struct io_event {
 	__u64		data;		/* the data field from the iocb */
-	__u64		obj;		/* what iocb this event came from */
+	//可能是指向对应用户态iocb的内核态iocb的data字段
+	__u64		obj;		/* what iocb this event came from
+	可能是指向用户态的iocb指针 
+	 */
 	__s64		res;		/* result code for this event */
 	__s64		res2;		/* secondary result */
 };
@@ -75,7 +81,9 @@ struct iocb {
 	__u64	aio_data;	/* data to be returned in event's data */
 
 #if defined(__BYTE_ORDER) ? __BYTE_ORDER == __LITTLE_ENDIAN : defined(__LITTLE_ENDIAN)
-	__u32	aio_key;	/* the kernel sets aio_key to the req # */
+	__u32	aio_key;	/* the kernel sets aio_key to the req #
+	内核态submits请求后会往这里写入东西
+	 */
 	__kernel_rwf_t aio_rw_flags;	/* RWF_* flags */
 #elif defined(__BYTE_ORDER) ? __BYTE_ORDER == __BIG_ENDIAN : defined(__BIG_ENDIAN)
 	__kernel_rwf_t aio_rw_flags;	/* RWF_* flags */
@@ -86,8 +94,8 @@ struct iocb {
 
 	/* common fields */
 	__u16	aio_lio_opcode;	/* see IOCB_CMD_ above */
-	__s16	aio_reqprio;
-	__u32	aio_fildes;
+	__s16	aio_reqprio; //请求优先级
+	__u32	aio_fildes; //文件描述符
 
 	__u64	aio_buf;
 	__u64	aio_nbytes;

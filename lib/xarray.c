@@ -137,9 +137,13 @@ static void xas_squash_marks(const struct xa_state *xas)
 	} while (mark++ != (__force unsigned)XA_MARK_MAX);
 }
 
-/* extracts the offset within this node from the index */
+/* extracts the offset within this node from the index
+ * 从目标的全局索引中提取出目标在这个节点的局部偏移量
+ */
 static unsigned int get_offset(unsigned long index, struct xa_node *node)
 {
+	//   1111 1111 1111 1111 1111  1111 11  11 1111
+	//                         |这里是node偏移?|          
 	return (index >> node->shift) & XA_CHUNK_MASK;
 }
 
@@ -162,6 +166,7 @@ static void xas_advance(struct xa_state *xas)
 	xas_move_index(xas, xas->xa_offset);
 }
 
+//
 static void *set_bounds(struct xa_state *xas)
 {
 	xas->xa_node = XAS_BOUNDS;
@@ -174,18 +179,21 @@ static void *set_bounds(struct xa_state *xas)
  * error state, return NULL.  If the index is outside the current scope
  * of the xarray, return NULL without changing @xas->xa_node.  Otherwise
  * set @xas->xa_node to NULL and return the current head of the array.
+	开启一个遍历。如果xas已经有效，我们假设它在正确的路径上并返回到达的位置。
+	如果我们处于错误状态，则返回NULL。如果索引超出了xarray的当前范围，则返回NULL而不更改xas->xa_node。
+	否则，将xas->xa_node设置为NULL并返回数组的当前头。
  */
 static void *xas_start(struct xa_state *xas)
 {
 	void *entry;
 
 	if (xas_valid(xas))
-		return xas_reload(xas);
+		return xas_reload(xas); 
 	if (xas_error(xas))
 		return NULL;
-
+	//xas不在错误状态，也不是有效的，所以需要从头开始查找
 	entry = xa_head(xas->xa);
-	if (!xa_is_node(entry)) {
+	if (!xa_is_node(entry)) {//如果entry不是节点
 		if (xas->xa_index)
 			return set_bounds(xas);
 	} else {
@@ -197,48 +205,57 @@ static void *xas_start(struct xa_state *xas)
 	return entry;
 }
 
+//从这个node继续往下找
 static void *xas_descend(struct xa_state *xas, struct xa_node *node)
 {
-	unsigned int offset = get_offset(xas->xa_index, node);
-	void *entry = xa_entry(xas->xa, node, offset);
+	unsigned int offset = get_offset(xas->xa_index, node);//获取目标在这个节点的局部偏移量
 
-	xas->xa_node = node;
+	void *entry = xa_entry(xas->xa, node, offset); //获取这个节点的偏移量offset对应的entry
+
+	xas->xa_node = node; //更新xas的当前操作的节点
 	if (xa_is_sibling(entry)) {
 		offset = xa_to_sibling(entry);
 		entry = xa_entry(xas->xa, node, offset);
 	}
 
-	xas->xa_offset = offset;
+	xas->xa_offset = offset; //更新xas的在当前操作节点的偏移量
 	return entry;
 }
 
 /**
 2024年6月29日22:40:26
  * xas_load() - Load an entry from the XArray (advanced).
+  从XArray加载一个条目（高级）。
  * @xas: XArray operation state.
  *
  * Usually walks the @xas to the appropriate state to load the entry
  * stored at xa_index.  However, it will do nothing and return %NULL if
  * @xas is in an error state.  xas_load() will never expand the tree.
- *
+ *	一般情况下，将xas走到适当的状态以加载存储在xa_index处的条目。
+	但是，如果xas处于错误状态，则不会执行任何操作并返回%NULL。
+	xas_load()永远不会扩展树。
  * If the xa_state is set up to operate on a multi-index entry, xas_load()
  * may return %NULL or an internal entry, even if there are entries
  * present within the range specified by @xas.
- *
+ * 如果xa_state设置为操作多索引条目，则xas_load()可能返回%NULL或内部条目，
+	即使在xas指定的范围内存在条目。
  * Context: Any context.  The caller should hold the xa_lock or the RCU lock.
+ 任何上下文。调用者应持有xa_lock或RCU锁。
  * Return: Usually an entry in the XArray, but see description for exceptions.
+ 通常是XArray中的一个条目，但请参阅异常说明。
  */
 void *xas_load(struct xa_state *xas)
 {
-	void *entry = xas_start(xas);
+	void *entry = xas_start(xas); //返回当前的node
 
-	while (xa_is_node(entry)) {
-		struct xa_node *node = xa_to_node(entry);
+	while (xa_is_node(entry)) { //如果entry是内部节点 
+		struct xa_node *node = xa_to_node(entry); //获取node的地址
 
 		if (xas->xa_shift > node->shift)
 			break;
+
 		entry = xas_descend(xas, node);
-		if (node->shift == 0)
+		if (node->shift == 0) //如果node的shift为0，说明这个node是叶子节点
 			break;
 	}
 	return entry;

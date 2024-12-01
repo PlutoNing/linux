@@ -307,7 +307,7 @@ enum rw_hint {
 	WRITE_LIFE_EXTREME	= RWH_WRITE_LIFE_EXTREME,
 };
 
-#define IOCB_EVENTFD		(1 << 0)
+#define IOCB_EVENTFD		(1 << 0) //表示使用eventfd?
 #define IOCB_APPEND		(1 << 1)
 #define IOCB_DIRECT		(1 << 2)
 #define IOCB_HIPRI		(1 << 3)
@@ -328,12 +328,16 @@ struct kiocb {
 	randomized_struct_fields_start
 	/* 数据偏移，读写位置 */
 	loff_t			ki_pos;
-	void (*ki_complete)(struct kiocb *iocb, long ret, long ret2);
+
+	void (*ki_complete)(struct kiocb *iocb, long ret, long ret2); //完成时的回调函数?
+
 	void			*private;
 	/* IO属性 */
 	int			ki_flags;
 	u16			ki_hint;
-	u16			ki_ioprio; /* See linux/ioprio.h */
+	u16			ki_ioprio; /* See linux/ioprio.h
+	对应iocb的aio_reqprio
+	 */
 	unsigned int		ki_cookie; /* for ->iopoll */
 
 	randomized_struct_fields_end
@@ -491,7 +495,8 @@ struct address_space {
 	/* 用来保护private_list的自旋锁 */
 	spinlock_t		private_lock;
 	struct list_head	private_list;
-	void			*private_data;
+	void			*private_data; //mapping的priv
+	//可以是kioctx
 } __attribute__((aligned(sizeof(long)))) __randomize_layout;
 	/*
 	 * On most architectures that alignment is already the case; but
@@ -1987,6 +1992,9 @@ struct inode_operations {
 	int (*set_acl)(struct inode *, struct posix_acl *, int);
 } ____cacheline_aligned;
 
+
+//调用fs的read函数
+//根据kiocb的iter参数，调用fs的read_iter函数,读取file的内容到iter中
 static inline ssize_t call_read_iter(struct file *file, struct kiocb *kio,
 				     struct iov_iter *iter)
 {
@@ -3509,6 +3517,7 @@ static inline int iocb_flags(struct file *file)
 	return res;
 }
 
+//根据iocb的flags设置kiocb(req)的flags
 static inline int kiocb_set_rw_flags(struct kiocb *ki, rwf_t flags)
 {
 	if (unlikely(flags & ~RWF_SUPPORTED))

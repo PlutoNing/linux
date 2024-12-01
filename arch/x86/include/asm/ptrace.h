@@ -82,7 +82,7 @@ struct pt_regs {
 	unsigned long orig_ax;
 /* Return frame for iretq */
 	unsigned long ip;
-	unsigned long cs;
+	unsigned long cs; /*  */
 	unsigned long flags;
 	unsigned long sp;
 	unsigned long ss;
@@ -116,11 +116,14 @@ static inline void regs_set_return_value(struct pt_regs *regs, unsigned long rc)
 }
 
 /*
+2024年11月29日23:13:44
+用于确定寄存器集是否来自用户模式。该函数根据不同的架构（x86_32 和 x86_64）进行不同的处理。
  * user_mode(regs) determines whether a register set came from user
  * mode.  On x86_32, this is true if V8086 mode was enabled OR if the
  * register set was from protected mode with RPL-3 CS value.  This
  * tricky test checks that with one comparison.
- *
+ *在 x86_32 架构中，用户模式可以通过两种方式确定：启用了 V8086 模式，
+ 或者寄存器集来自具有 RPL-3 CS 值的保护模式。
  * On x86_64, vm86 mode is mercifully nonexistent, and we don't need
  * the extra check.
  */

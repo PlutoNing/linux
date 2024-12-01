@@ -54,6 +54,9 @@ void profile_hits(int type, void *ip, unsigned int nr_hits);
 
 /*
  * Single profiler hit:
+ 在性能分析和调试过程中，“Single profiler hit” 通常指的是性能分析器（profiler）
+ 记录到的单次事件或样本。这种事件或样本可以是函数调用、指令执行、内存访问等，
+ 具体取决于性能分析器的配置和目标。
  */
 static inline void profile_hit(int type, void *ip)
 {

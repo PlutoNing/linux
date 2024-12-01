@@ -306,23 +306,26 @@ static inline struct page *find_lock_page(struct address_space *mapping,
 }
 
 /**
+在mapping里面找到或者创建一个页面
  * find_or_create_page - locate or add a pagecache page
  * @mapping: the page's address_space
- * @index: the page's index into the mapping
+ * @index: the page's index into the mapping,代表页的索引
  * @gfp_mask: page allocation mode
  *
  * Looks up the page cache slot at @mapping & @offset.  If there is a
  * page cache page, it is returned locked and with an increased
  * refcount.
- *
+ * 查找@mapping和@offset的页缓存槽。如果有页缓存页，则返回锁定的页并增加引用计数。
  * If the page is not present, a new page is allocated using @gfp_mask
  * and added to the page cache and the VM's LRU list.  The page is
  * returned locked and with an increased refcount.
- *
+ * 如果页面不存在，则使用@gfp_mask分配新页面，并将其添加到页面缓存和VM的LRU列表中。
+ 返回锁定的页面并增加引用计数。
  * On memory exhaustion, %NULL is returned.
- *
+ * 在内存耗尽时，返回%NULL。
  * find_or_create_page() may sleep, even if @gfp_flags specifies an
  * atomic allocation!
+	可能会睡眠，即使@gfp_flags指定了原子分配！
  */
 static inline struct page *find_or_create_page(struct address_space *mapping,
 					pgoff_t offset, gfp_t gfp_mask)

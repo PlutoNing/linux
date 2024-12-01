@@ -560,8 +560,10 @@ static inline pgprot_t static_protections(pgprot_t prot, unsigned long start,
 }
 
 /*
+
  * Lookup the page table entry for a virtual address in a specific pgd.
  * Return a pointer to the entry and the level of the mapping.
+ 作用是在指定的pgd中查找虚拟地址的页表项。返回一个指向该条目的指针和映射的级别。
  */
 pte_t *lookup_address_in_pgd(pgd_t *pgd, unsigned long address,
 			     unsigned int *level)

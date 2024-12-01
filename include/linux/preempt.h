@@ -97,7 +97,7 @@
  */
 #define in_irq()		(hardirq_count())
 #define in_softirq()		(softirq_count())
-#define in_interrupt()		(irq_count())
+#define in_interrupt()		(irq_count()) //作用是判断是否在中断上下文
 #define in_serving_softirq()	(softirq_count() & SOFTIRQ_OFFSET)
 #define in_nmi()		(preempt_count() & NMI_MASK)
 #define in_task()		(!(preempt_count() & \

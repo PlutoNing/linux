@@ -11,6 +11,18 @@
 2024年08月09日18:24:39
 硬件相关的mm ctx
  * x86 has arch-specific MMU state beyond what lives in mm_struct.
+ 包含成员比如:
+ 	- ctx_id: 唯一标识这个mm_struct的ctx_id
+ 	- tlb_gen: 用于TLB刷新
+ 	- ldt_usr_sem: 用于ldt表的用户态信号量
+ 	- ldt: LDT表
+ 	- ia32_compat: 32位兼容模式
+ 	- vdso: vdso基地址
+ 	- vdso_image: vdso镜像
+ 	- perf_rdpmc_allowed: 允许rdpmc
+ 	- pkey_allocation_map: 保护密钥分配映射
+ 	- execute_only_pkey: 只执行保护密钥
+ 	- bd_addr: 边界目录地址
  */
 typedef struct {
 	/*
@@ -31,7 +43,7 @@ typedef struct {
 
 #ifdef CONFIG_MODIFY_LDT_SYSCALL
 	struct rw_semaphore	ldt_usr_sem;
-	struct ldt_struct	*ldt;
+	struct ldt_struct	*ldt; //LDT表
 #endif
 
 #ifdef CONFIG_X86_64

@@ -1812,6 +1812,7 @@ struct dentry *d_alloc_cursor(struct dentry * parent)
 }
 
 /**
+ 分配一个dent.
  * d_alloc_pseudo - allocate a dentry (for lookup-less filesystems)
  * @sb: the superblock
  * @name: qstr of the name
@@ -1822,7 +1823,8 @@ struct dentry *d_alloc_cursor(struct dentry * parent)
  * never be anyone's children or parents.  Unlike all other
  * dentries, these will not have RCU delay between dropping the
  * last reference and freeing them.
- *
+ * 意思是说，这个dent是不会被任何人的子节点或者父节点的，也就是说这个dent是一个孤立的dent
+     
  * The only user is alloc_file_pseudo() and that's what should
  * be considered a public interface.  Don't use directly.
  */

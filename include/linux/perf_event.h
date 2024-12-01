@@ -1158,6 +1158,7 @@ static inline void perf_event_task_sched_in(struct task_struct *prev,
 	}
 }
 
+//记录任务切换perf
 static inline void perf_event_task_sched_out(struct task_struct *prev,
 					     struct task_struct *next)
 {

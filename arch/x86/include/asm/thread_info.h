@@ -71,12 +71,17 @@ struct thread_info {
 
 /*
  * thread information flags
+ 表示进程的状态,这些状态是进程的状态标志,各个汇编文件可能需要访问这些状态标志
  * - these are process state flags that various assembly files
  *   may need to access
  */
+ // 这个标志表示进程在执行系统调用时需要跟踪
 #define TIF_SYSCALL_TRACE	0	/* syscall trace active */
+// 这个标志表示进程在返回用户态之前需要通知内核
 #define TIF_NOTIFY_RESUME	1	/* callback before returning to user */
+// 这个标志表示有信号待处理
 #define TIF_SIGPENDING		2	/* signal pending */
+// 这个标志表示需要重新调度
 #define TIF_NEED_RESCHED	3	/* rescheduling necessary */
 #define TIF_SINGLESTEP		4	/* reenable singlestep on user return*/
 #define TIF_SSBD		5	/* Speculative store bypass disable */

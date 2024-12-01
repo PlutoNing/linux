@@ -212,38 +212,48 @@
 #ifndef __ASSEMBLY__
 
 /*
+
  * __verify_pcpu_ptr() verifies @ptr is a percpu pointer without evaluating
  * @ptr and is invoked once before a percpu area is accessed by all
  * accessors and operations.  This is performed in the generic part of
  * percpu and arch overrides don't need to worry about it; however, if an
  * arch wants to implement an arch-specific percpu accessor or operation,
  * it may use __verify_pcpu_ptr() to verify the parameters.
- *
+ * 意思是说，__verify_pcpu_ptr() 用于验证 @ptr 是一个 percpu 指针，而不是对 @ptr 进行评估，
+ 并且在所有访问器和操作访问 percpu 区域之前调用一次。这是在 percpu 的通用部分中执行的，
+ arch 覆盖不需要担心它；但是，如果一个 arch 想要实现一个特定于 arch 的 percpu 访问器或操作，
+ 它可以使用 __verify_pcpu_ptr() 来验证参数。
  * + 0 is required in order to convert the pointer type from a
  * potential array type to a pointer to a single item of the array.
+  + 0 是必需的，以便将指针类型从潜在的数组类型转换为数组的单个项目的指针。
  */
 #define __verify_pcpu_ptr(ptr)						\
 do {									\
 	const void __percpu *__vpp_verify = (typeof((ptr) + 0))NULL;	\
 	(void)__vpp_verify;						\
 } while (0)
-
+/* (void)__vpp_verify;：这行代码通过将 __vpp_verify 转换为 void 来避免编译器未使用变量的警告。 */
 #ifdef CONFIG_SMP
 
 /*
+作用是读取pcp变量(__p)的值, offset表示所属cpu的offset
+
+
  * Add an offset to a pointer but keep the pointer as-is.  Use RELOC_HIDE()
  * to prevent the compiler from making incorrect assumptions about the
  * pointer value.  The weird cast keeps both GCC and sparse happy.
+ 翻译: 
  */
 #define SHIFT_PERCPU_PTR(__p, __offset)					\
 	RELOC_HIDE((typeof(*(__p)) __kernel __force *)(__p), (__offset))
 
+//ptr是一个per-cpu变量，cpu是一个cpu编号，返回cpu的per-cpu变量的指针
 #define per_cpu_ptr(ptr, cpu)						\
 ({									\
 	__verify_pcpu_ptr(ptr);						\
 	SHIFT_PERCPU_PTR((ptr), per_cpu_offset((cpu)));			\
 })
-/*  */
+//读取cpu的per-cpu变量的值
 #define raw_cpu_ptr(ptr)						\
 ({									\
 	__verify_pcpu_ptr(ptr);						\
@@ -274,6 +284,7 @@ do {									\
 
 #endif	/* CONFIG_SMP */
 
+//获取当前cpu的名字为var的per-cpu变量
 #define per_cpu(var, cpu)	(*per_cpu_ptr(&(var), cpu))
 
 /*

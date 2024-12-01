@@ -345,14 +345,16 @@ extern long strncpy_from_unsafe_user(char *dst, const void __user *unsafe_addr,
 extern long strnlen_unsafe_user(const void __user *unsafe_addr, long count);
 
 /**
+
  * probe_kernel_address(): safely attempt to read from a location
  * @addr: address to read from
  * @retval: read into this variable
- *
+ * 作用是从addr处读取一个值到retval中
  * Returns 0 on success, or -EFAULT.
  */
 #define probe_kernel_address(addr, retval)		\
 	probe_kernel_read(&retval, addr, sizeof(retval))
+
 
 #ifndef user_access_begin
 #define user_access_begin(ptr,len) access_ok(ptr, len)

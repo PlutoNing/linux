@@ -1148,9 +1148,11 @@ static int anon_set_page_dirty(struct page *page)
 };
 
 /*
+在这个sb上面创建一个inode
  * A single inode exists for all anon_inode files. Contrary to pipes,
  * anon_inode inodes have no associated per-instance data, so we need
  * only allocate one of them.
+ 意思是说 
  */
 struct inode *alloc_anon_inode(struct super_block *s)
 {

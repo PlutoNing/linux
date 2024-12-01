@@ -9,36 +9,53 @@
 
 /*
  * Usage guidelines:
- * _text, _data: architecture specific, don't use them in arch-independent code
+ * _text, _data: architecture specific, don't use them in arch-independent code,	
+  架构特定，不要在与架构无关的代码中使用它们
+	
  * [_stext, _etext]: contains .text.* sections, may also contain .rodata.*
  *                   and/or .init.* sections
+  包含.text.*节，也可能包含.rodata.*和/或.init.*节.这些节的作用是存放代码段
  * [_sdata, _edata]: contains .data.* sections, may also contain .rodata.*
  *                   and/or .init.* sections.
+  包含.data.*节，也可能包含.rodata.*和/或.init.*节.这些节的作用是存放数据段
  * [__start_rodata, __end_rodata]: contains .rodata.* sections
+  包含.rodata.*节.这些节的作用是存放只读数据段
  * [__start_ro_after_init, __end_ro_after_init]:
  *		     contains .data..ro_after_init section
+  这些是只读数据段
  * [__init_begin, __init_end]: contains .init.* sections, but .init.text.*
  *                   may be out of this range on some architectures.
+	  包含.init.*节，但是.init.text.*可能在某些架构上超出此范围
+  这些节的作用是存放初始化代码段,初始化代码段是在内核启动时执行的代码段
  * [_sinittext, _einittext]: contains .init.text.* sections
+  包含.init.text.*节.这些节的作用是存放初始化代码段
  * [__bss_start, __bss_stop]: contains BSS sections
+  包含BSS节.这些节的作用是存放未初始化的全局变量.
  *
  * Following global variables are optional and may be unavailable on some
  * architectures and/or kernel configurations.
+  接下来的全局变量是可选的，可能在某些架构和/或内核配置中不可用
  *	_text, _data
- *	__kprobes_text_start, __kprobes_text_end
+
+ *	__kprobes_text_start, __kprobes_text_end是指kprobes的地址
+  *	__entry_text_start, __entry_text_end是指entry的地址
+  *	__ctors_start, __ctors_end是指构造函数的地址
+  *	__irqentry_text_start, __irqentry_text_end是指irqentry的地址
+  *	__softirqentry_text_start, __softirqentry_text_end是指softirqentry的地址
+  *	__start_opd, __end_opd是指函数描述符的地址
  *	__entry_text_start, __entry_text_end
  *	__ctors_start, __ctors_end
  *	__irqentry_text_start, __irqentry_text_end
  *	__softirqentry_text_start, __softirqentry_text_end
  *	__start_opd, __end_opd
  */
-extern char _text[], _stext[], _etext[];
-extern char _data[], _sdata[], _edata[];
-extern char __bss_start[], __bss_stop[];
-extern char __init_begin[], __init_end[];
-extern char _sinittext[], _einittext[];
-extern char __start_ro_after_init[], __end_ro_after_init[];
-extern char _end[];
+extern char _text[], _stext[], _etext[]; //代码段
+extern char _data[], _sdata[], _edata[]; //数据段
+extern char __bss_start[], __bss_stop[]; //未初始化的全局变量
+extern char __init_begin[], __init_end[];//初始化代码段
+extern char _sinittext[], _einittext[];//初始化代码段
+extern char __start_ro_after_init[], __end_ro_after_init[]; //只读数据段
+extern char _end[]; //内核结束地址?
 /* pcp相关的地址信息 */
 extern char __per_cpu_load[], __per_cpu_start[], __per_cpu_end[];
 extern char __kprobes_text_start[], __kprobes_text_end[];

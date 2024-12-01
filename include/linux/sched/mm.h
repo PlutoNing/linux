@@ -15,6 +15,7 @@
 extern struct mm_struct *mm_alloc(void);
 
 /**
+用来增加mm_struct的引用计数
  * mmgrab() - Pin a &struct mm_struct.
  * @mm: The &struct mm_struct to pin.
  *
@@ -22,14 +23,15 @@ extern struct mm_struct *mm_alloc(void);
  * exits. This doesn't guarantee that the associated address space
  * will still exist later on and mmget_not_zero() has to be used before
  * accessing it.
- *
+ *	确保 @mm 在拥有的任务退出后不会被释放。这并不保证关联的地址空间
  * This is a preferred way to to pin @mm for a longer/unbounded amount
  * of time.
- *
+ *	这是一个更好的方法，用于固定 @mm 较长/无限的时间。
  * Use mmdrop() to release the reference acquired by mmgrab().
- *
+ *	使用 mmdrop() 释放 mmgrab() 获取的引用。
  * See also <Documentation/vm/active_mm.rst> for an in-depth explanation
  * of &mm_struct.mm_count vs &mm_struct.mm_users.
+ 参考 <Documentation/vm/active_mm.rst> 了解 &mm_struct.mm_count 与 &mm_struct.mm_users 的深入解释。
  */
 static inline void mmgrab(struct mm_struct *mm)
 {

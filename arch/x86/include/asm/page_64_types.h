@@ -11,8 +11,10 @@
 #else
 #define KASAN_STACK_ORDER 0
 #endif
-
+//表示线程栈大小 16KB
 #define THREAD_SIZE_ORDER	(2 + KASAN_STACK_ORDER)
+//表示线程栈大小 16KB
+// 页大小 4KB,
 #define THREAD_SIZE  (PAGE_SIZE << THREAD_SIZE_ORDER)
 
 #define EXCEPTION_STACK_ORDER (0 + KASAN_STACK_ORDER)

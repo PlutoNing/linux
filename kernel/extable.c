@@ -24,9 +24,11 @@
  * NOT exported to modules - patching kernel text is a really delicate matter.
  */
 DEFINE_MUTEX(text_mutex);
-
+// 互斥锁，保护文本段修改（动态代码修补）。
 extern struct exception_table_entry __start___ex_table[];
+// 异常表的起始地址
 extern struct exception_table_entry __stop___ex_table[];
+// 异常表的结束地址
 
 /* Cleared by build time tools if the table is already sorted. */
 u32 __initdata __visible main_extable_sort_needed = 1;
@@ -40,7 +42,10 @@ void __init sort_main_extable(void)
 	}
 }
 
-/* Given an address, look for it in the kernel exception table */
+/* Given an address, look for it in the kernel exception table
+@addr是当前的执行地址
+作用是根据当前的执行地址，查找异常表，返回异常表的地址。
+*/
 const
 struct exception_table_entry *search_kernel_exception_table(unsigned long addr)
 {
@@ -48,13 +53,15 @@ struct exception_table_entry *search_kernel_exception_table(unsigned long addr)
 			      __stop___ex_table - __start___ex_table, addr);
 }
 
-/* Given an address, look for it in the exception tables. */
+/* Given an address, look for it in the exception tables.
+作用是根据当前的执行地址，查找异常表，返回异常表的地址。?
+*/
 const struct exception_table_entry *search_exception_tables(unsigned long addr)
 {
 	const struct exception_table_entry *e;
 
-	e = search_kernel_exception_table(addr);
-	if (!e)
+	e = search_kernel_exception_table(addr); // 查找内核异常表
+	if (!e) // 如果没有找到,则查找模块异常表
 		e = search_module_extables(addr);
 	return e;
 }

@@ -17,6 +17,7 @@ ex_fixup_addr(const struct exception_table_entry *x)
 {
 	return (unsigned long)&x->fixup + x->fixup;
 }
+/* 作用是根据异常表条目，返回异常处理函数的地址。 */
 static inline ex_handler_t
 ex_fixup_handler(const struct exception_table_entry *x)
 {
@@ -199,6 +200,9 @@ __visible bool ex_has_fault_handler(unsigned long ip)
 	return handler == ex_handler_fault;
 }
 
+/* 处理错误, @trapnr好像是错误异常类型.
+过程为:查找异常表,然后调用异常处理函数.
+返回值为0表示没有处理,非0表示处理了. */
 int fixup_exception(struct pt_regs *regs, int trapnr, unsigned long error_code,
 		    unsigned long fault_addr)
 {
@@ -223,7 +227,7 @@ int fixup_exception(struct pt_regs *regs, int trapnr, unsigned long error_code,
 	if (!e)
 		return 0;
 
-	handler = ex_fixup_handler(e);
+	handler = ex_fixup_handler(e); // 获取异常处理函数,然后调用
 	return handler(e, regs, trapnr, error_code, fault_addr);
 }
 

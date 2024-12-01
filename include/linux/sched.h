@@ -64,42 +64,47 @@ struct task_group;
 /*
  * Task state bitmask. NOTE! These bits are also
  * encoded in fs/proc/array.c: get_task_state().
- *
+ *	进程的状态掩码。注意！这些位也编码在 fs/proc/array.c: get_task_state() 中。
+ 
  * We have two separate sets of flags: task->state
  * is about runnability, while task->exit_state are
  * about the task exiting. Confusing, but this way
  * modifying one set can't modify the other one by
  * mistake.
+ 一共有两组标志：task->state 用于表示进程是否可运行，
+ 而 task->exit_state 用于表示进程退出。这样做虽然有点混乱，但这样修改一组标志不会误修改另一组标志。
  */
 
 /* Used in tsk->state: */
-#define TASK_RUNNING			0x0000
-#define TASK_INTERRUPTIBLE		0x0001
-#define TASK_UNINTERRUPTIBLE		0x0002
-#define __TASK_STOPPED			0x0004
-#define __TASK_TRACED			0x0008
+#define TASK_RUNNING			0x0000 // 进程正在运行
+#define TASK_INTERRUPTIBLE		0x0001 // 进程可中断
+#define TASK_UNINTERRUPTIBLE		0x0002 // 进程不可中断
+#define __TASK_STOPPED			0x0004 // 进程已停止
+#define __TASK_TRACED			0x0008 // 进程被跟踪
 /* Used in tsk->exit_state: */
-#define EXIT_DEAD			0x0010
-#define EXIT_ZOMBIE			0x0020
-#define EXIT_TRACE			(EXIT_ZOMBIE | EXIT_DEAD)
+#define EXIT_DEAD			0x0010 // 进程已死亡
+#define EXIT_ZOMBIE			0x0020 // 进程僵尸
+#define EXIT_TRACE			(EXIT_ZOMBIE | EXIT_DEAD) // 进程已跟踪
 /* Used in tsk->state again: */
-#define TASK_PARKED			0x0040
-#define TASK_DEAD			0x0080
-#define TASK_WAKEKILL			0x0100
-#define TASK_WAKING			0x0200
-#define TASK_NOLOAD			0x0400
-#define TASK_NEW			0x0800
-#define TASK_STATE_MAX			0x1000
+#define TASK_PARKED			0x0040 // 进程已停放?parked表示进程被挂起，不会被调度?
+#define TASK_DEAD			0x0080 // 进程已死亡
+#define TASK_WAKEKILL			0x0100 // 进程被唤醒,wakekill表示进程被唤醒?
+#define TASK_WAKING			0x0200 // 进程正在被唤醒
+#define TASK_NOLOAD			0x0400 //
+#define TASK_NEW			0x0800 // 进程是新的?
+#define TASK_STATE_MAX			0x1000 // 进程状态最大值
 
-/* Convenience macros for the sake of set_current_state: */
-#define TASK_KILLABLE			(TASK_WAKEKILL | TASK_UNINTERRUPTIBLE)
-#define TASK_STOPPED			(TASK_WAKEKILL | __TASK_STOPPED)
-#define TASK_TRACED			(TASK_WAKEKILL | __TASK_TRACED)
+/* Convenience macros for the sake of set_current_state:
+这些是为了 set_current_state 的方便而定义的宏：
+ */
+#define TASK_KILLABLE			(TASK_WAKEKILL | TASK_UNINTERRUPTIBLE) // 进程可被杀死
+#define TASK_STOPPED			(TASK_WAKEKILL | __TASK_STOPPED) // 进程已停止
+#define TASK_TRACED			(TASK_WAKEKILL | __TASK_TRACED) // 进程被跟踪
 
-#define TASK_IDLE			(TASK_UNINTERRUPTIBLE | TASK_NOLOAD)
+#define TASK_IDLE			(TASK_UNINTERRUPTIBLE | TASK_NOLOAD) // 进程空闲?
 
 /* Convenience macros for the sake of wake_up(): */
-#define TASK_NORMAL			(TASK_INTERRUPTIBLE | TASK_UNINTERRUPTIBLE)
+#define TASK_NORMAL			(TASK_INTERRUPTIBLE | TASK_UNINTERRUPTIBLE) // 进程正常
 
 /* get_task_state(): */
 #define TASK_REPORT			(TASK_RUNNING | TASK_INTERRUPTIBLE | \
@@ -286,18 +291,24 @@ struct sched_info {
 #ifdef CONFIG_SCHED_INFO
 	/* Cumulative counters: */
 
-	/* # of times we have run on this CPU: */
+	/* # of times we have run on this CPU: 
+	记录在这个CPU上运行的次数
+	*/
 	unsigned long			pcount;
 
-	/* Time spent waiting on a runqueue: */
+	/* Time spent waiting on a runqueue:
+	记录两次被调度之间的等待时间 
+	 */
 	unsigned long long		run_delay;
 
 	/* Timestamps: */
 
-	/* When did we last run on a CPU? */
+	/* When did we last run on a CPU?
+	记录上次运行时间 */
 	unsigned long long		last_arrival;
 
-	/* When were we last queued to run? */
+	/* When were we last queued to run?
+	上次排队时间 */
 	unsigned long long		last_queued;
 
 #endif /* CONFIG_SCHED_INFO */
@@ -793,7 +804,7 @@ struct task_struct {
 #endif
 
 	struct mm_struct		*mm;
-	struct mm_struct		*active_mm;
+	struct mm_struct		*active_mm; //如果是从用户态切换到内核态，active_mm指向的是用户态的active mm
 
 	/* Per-thread vma caching:
 	vma的缓存 */
@@ -927,8 +938,8 @@ struct task_struct {
 	atomic_t			tick_dep_mask;
 #endif
 	/* Context switch counts: */
-	unsigned long			nvcsw;
-	unsigned long			nivcsw;
+	unsigned long			nvcsw; // 自愿上下文切换次数?
+	unsigned long			nivcsw; // 非自愿上下文切换次数?
 
 	/* Monotonic time in nsecs: */
 	u64				start_time;
@@ -1084,7 +1095,7 @@ struct task_struct {
 
 	struct backing_dev_info		*backing_dev_info;
 
-	struct io_context		*io_context;
+	struct io_context		*io_context; // io上下文
 
 #ifdef CONFIG_COMPACTION
 /* 规整过程中直接获取页面，存储到此 */
@@ -1211,6 +1222,7 @@ struct task_struct {
 	/*
 	 * RmW on rseq_event_mask must be performed atomically
 	 * with respect to preemption.
+
 	 */
 	unsigned long rseq_event_mask;
 #endif
@@ -1365,7 +1377,9 @@ struct task_struct {
 	 */
 	randomized_struct_fields_end
 
-	/* CPU-specific state of this task: */
+	/* CPU-specific state of this task:
+	表示
+	 */
 	struct thread_struct		thread;
 
 	/*
@@ -1841,6 +1855,7 @@ static inline void set_tsk_need_resched(struct task_struct *tsk)
 	set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
 }
 
+//清除需要调度标志
 static inline void clear_tsk_need_resched(struct task_struct *tsk)
 {
 	clear_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
@@ -1909,7 +1924,9 @@ static __always_inline bool need_resched(void)
  * Wrappers for p->thread_info->cpu access. No-op on UP.
  */
 #ifdef CONFIG_SMP
-/* 2024年6月29日14:04:22 */
+/* 2024年6月29日14:04:22
+获取当前cpu
+ */
 static inline unsigned int task_cpu(const struct task_struct *p)
 {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
@@ -1998,7 +2015,9 @@ static inline void rseq_signal_deliver(struct ksignal *ksig,
 	rseq_handle_notify_resume(ksig, regs);
 }
 
-/* rseq_preempt() requires preemption to be disabled. */
+/* rseq_preempt() requires preemption to be disabled.
+ 
+ */
 static inline void rseq_preempt(struct task_struct *t)
 {
 	__set_bit(RSEQ_EVENT_PREEMPT_BIT, &t->rseq_event_mask);

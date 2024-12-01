@@ -11,12 +11,14 @@
 /*
  * per_cpu_offset() is the offset that has to be added to a
  * percpu variable to get to the instance for a certain processor.
- *
+ * 翻译: per_cpu_offset() 是要添加到 percpu 变量的偏移量，以到达某个处理器的实例。
  * Most arches use the __per_cpu_offset array for those offsets but
  * some arches have their own ways of determining the offset (x86_64, s390).
+ 意思是说大多数架构使用 __per_cpu_offset 数组来确定这些偏移量，
+ 但是有些架构有自己的方法来确定偏移量（x86_64，s390）。
  */
 #ifndef __per_cpu_offset
-extern unsigned long __per_cpu_offset[NR_CPUS];
+extern unsigned long __per_cpu_offset[NR_CPUS]; //存储每个cpu的偏移量
 
 #define per_cpu_offset(x) (__per_cpu_offset[x])
 #endif

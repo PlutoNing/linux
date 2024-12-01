@@ -71,16 +71,12 @@ static inline unsigned long xa_to_value(const void *entry)
 
 /**
 2024年7月17日22:24:17
-可以LONG_MAX在XArray中存储0到之间的整数。
-您必须先使用将其转换为条目xa_mk_value()。
-从XArray检索条目时，可以通过调用检查它是否为值条目xa_is_value()，
-然后通过调用将其转换回整数xa_to_value()。
+
  * xa_is_value() - Determine if an entry is a value.
  * @entry: XArray entry.
  *
  * Context: Any context.
  * Return: True if the entry is a value, false if it is a pointer.
- mapping里面is_val的话，表示被swp了？
  */
 static inline bool xa_is_value(const void *entry)
 {
@@ -137,19 +133,24 @@ static inline unsigned int xa_pointer_tag(void *entry)
 
 /*
  * xa_mk_internal() - Create an internal entry.
+ 创建一个内部条目
  * @v: Value to turn into an internal entry.
- *
+ * @v: 要转换为内部条目的值。
  * Internal entries are used for a number of purposes.  Entries 0-255 are
  * used for sibling entries (only 0-62 are used by the current code).  256
  * is used for the retry entry.  257 is used for the reserved / zero entry.
  * Negative internal entries are used to represent errnos.  Node pointers
  * are also tagged as internal entries in some situations.
- *
+ * 内部条目用于许多目的。 条目0-255用于兄弟条目（当前代码仅使用0-62）。 
+ 256用于重试条目。 
+ 257用于保留/零条目。 负内部条目用于表示errnos。 
+ 在某些情况下，节点指针也标记为内部条目。
  * Context: Any context.
  * Return: An XArray internal entry corresponding to this value.
  */
 static inline void *xa_mk_internal(unsigned long v)
 {
+	/* 其实是把最右边两个bit置位10就ok */
 	return (void *)((v << 2) | 2);
 }
 
@@ -167,6 +168,7 @@ static inline unsigned long xa_to_internal(const void *entry)
 
 /*
  * xa_is_internal() - Is the entry an internal entry?
+ 判断是否是内部条目
  * @entry: XArray entry.
  *
  * Context: Any context.
@@ -174,7 +176,7 @@ static inline unsigned long xa_to_internal(const void *entry)
  */
 static inline bool xa_is_internal(const void *entry)
 {
-	return ((unsigned long)entry & 3) == 2;
+	return ((unsigned long)entry & 3) == 2; //表示是不是第二个bit是1
 }
 
 #define XA_ZERO_ENTRY		xa_mk_internal(257)
@@ -1085,9 +1087,12 @@ static inline void xa_release(struct xarray *xa, unsigned long index)
  * doubled the number of slots per node, we'd get only 3 nodes per 4kB page.
  */
 #ifndef XA_CHUNK_SHIFT
+// 6
 #define XA_CHUNK_SHIFT		(CONFIG_BASE_SMALL ? 4 : 6)
 #endif
+// 64
 #define XA_CHUNK_SIZE		(1UL << XA_CHUNK_SHIFT)
+// 63, 七个一
 #define XA_CHUNK_MASK		(XA_CHUNK_SIZE - 1)
 #define XA_MAX_MARKS		3
 #define XA_MARK_LONGS		DIV_ROUND_UP(XA_CHUNK_SIZE, BITS_PER_LONG)
@@ -1103,10 +1108,11 @@ static inline void xa_release(struct xarray *xa, unsigned long index)
  */
 struct xa_node {
 	unsigned char	shift;		/* Bits remaining in each slot 
-	shift成员用于指定当前xa_node的slots数组中成员的单位，当shift为0时
-	，说明当前xa_node的slots数组中成员为叶子节点，当shift为6时，
-	说明当前xa_node的slots数组中成员指向的
-	xa_node可以最多包含2^6(即64）个节点*/
+	shift成员用于指定当前xa_node的slots数组中成员的单位，
+	当shift为0时，说明当前xa_node的slots数组中成员为叶子节点，
+	当shift为6时，说明当前xa_node的slots数组中成员指向的
+	xa_node可以最多包含2^6(即64）个节点
+*/
 	unsigned char	offset;		/* Slot offset in parent
 	offset成员表示该xa_node在父节点的slots数组中的偏移。
 	（这里要注意，如果xa_node在父节点为NULL，offset是任意的值，因为没有被初始化） */
@@ -1153,6 +1159,7 @@ void xa_dump_node(const struct xa_node *);
 #endif
 
 /* Private */
+//
 static inline void *xa_head(const struct xarray *xa)
 {
 	return rcu_dereference_check(xa->xa_head,
@@ -1167,6 +1174,7 @@ static inline void *xa_head_locked(const struct xarray *xa)
 }
 
 /* Private */
+// 通过node和offset获取entry, 获取node->slots[offset]
 static inline void *xa_entry(const struct xarray *xa,
 				const struct xa_node *node, unsigned int offset)
 {
@@ -1207,12 +1215,15 @@ static inline void *xa_mk_node(const struct xa_node *node)
 }
 
 /* Private */
+//内部节点的地址的后面第二个bit被用来标记
+//所以减去2就是node的地址
 static inline struct xa_node *xa_to_node(const void *entry)
 {
 	return (struct xa_node *)((unsigned long)entry - 2);
 }
 
 /* Private */
+// 判断entry是否是node?
 static inline bool xa_is_node(const void *entry)
 {
 	return xa_is_internal(entry) && (unsigned long)entry > 4096;
@@ -1232,6 +1243,7 @@ static inline unsigned long xa_to_sibling(const void *entry)
 
 /**
  * xa_is_sibling() - Is the entry a sibling entry?
+ 判断entry是否是sibling entry
  * @entry: Entry retrieved from the XArray
  *
  * Return: %true if the entry is a sibling entry.
@@ -1241,11 +1253,12 @@ static inline bool xa_is_sibling(const void *entry)
 	return IS_ENABLED(CONFIG_XARRAY_MULTI) && xa_is_internal(entry) &&
 		(entry < xa_mk_sibling(XA_CHUNK_SIZE - 1));
 }
-
+//
 #define XA_RETRY_ENTRY		xa_mk_internal(256)
 
 /**
  * xa_is_retry() - Is the entry a retry entry?
+ 判断是不是retry entry
  * @entry: Entry retrieved from the XArray
  *
  * Return: %true if the entry is a retry entry.
@@ -1290,7 +1303,10 @@ xa_state？
  * The various elements in it should not be accessed directly, but only
  * through the provided accessor functions.  The below documentation is for
  * the benefit of those working on the code, not for users of the XArray.
- *
+ * xa_state是一个不透明的结构，它包含了当前操作XArray的各种不同状态。
+ * 它应该在堆栈上声明，并在内部例程之间传递。不应直接访问它的各个元素，
+	 * 而只能通过提供的访问器函数访问。下面的文档是为那些在代码上工作的人提供的，
+	 * 而不是XArray的用户。
  * @xa_node usually points to the xa_node containing the slot we're operating
  * on (and @xa_offset is the offset in the slots array).  If there is a
  * single entry in the array at index 0, there are no allocated xa_nodes to
@@ -1299,15 +1315,20 @@ xa_state？
  * position in the tree of nodes for this operation.  If an error occurs
  * during an operation, it is set to an %XAS_ERROR value.  If we run off the
  * end of the allocated nodes, it is set to %XAS_BOUNDS.
+ 其中xa_node通常指向包含我们正在操作的槽的xa_node（xa_offset是slots数组中的偏移量）。
+ 如果在索引0处的数组中有单个条目，则没有分配的xa_node指向，因此我们在xa_node中存储NULL。
+ 如果xa_state没有在树的正确位置上行走到xa_node，则将xa_node设置为XAS_RESTART。
+ 如果操作期间发生错误，则将其设置为XAS_ERROR值。如果我们超出了分配的节点的末尾，则将其设置为XAS_BOUNDS。
+	
  */
 struct xa_state {
-	struct xarray *xa;
-	unsigned long xa_index;
-	unsigned char xa_shift;
+	struct xarray *xa; //
+	unsigned long xa_index; //
+	unsigned char xa_shift; //表示当前操作的节点的shift
 	unsigned char xa_sibs;
-	unsigned char xa_offset;
+	unsigned char xa_offset; //表示当前操作的节点的偏移
 	unsigned char xa_pad;		/* Helps gcc generate better code */
-	struct xa_node *xa_node;
+	struct xa_node *xa_node; //表示当前操作的节点
 	struct xa_node *xa_alloc;
 	xa_update_node_t xa_update;
 };
@@ -1413,6 +1434,7 @@ static inline bool xas_invalid(const struct xa_state *xas)
 
 /**
  * xas_valid() - Is the xas a valid cursor into the array?
+ 判断xas是否可以用于操作
  * @xas: XArray operation state.
  *
  * Return: %true if the xas can be used for operations.
@@ -1452,13 +1474,16 @@ static inline bool xas_top(struct xa_node *node)
 }
 
 /**
+
  * xas_reset() - Reset an XArray operation state.
+ 用于重置xas的状态，使得下一次访问从根节点开始. 就是把当前的node设置为XAS_RESTART
  * @xas: XArray operation state.
  *
  * Resets the error or walk state of the @xas so future walks of the
  * array will start from the root.  Use this if you have dropped the
  * xarray lock and want to reuse the xa_state.
- *
+ * 重置error或者walk状态，使得下一次访问从根节点开始
+如果你已经释放了xarray锁，并且想要重用xa_state，那么使用这个函数
  * Context: Any context.
  */
 static inline void xas_reset(struct xa_state *xas)
@@ -1468,6 +1493,7 @@ static inline void xas_reset(struct xa_state *xas)
 
 /**
 2024年07月18日09:55:33
+判断刚刚找到的叶子节点@entry是否合适?
  * xas_retry() - Retry the operation if appropriate.
  * @xas: XArray operation state.
  * @entry: Entry from xarray.
@@ -1475,9 +1501,11 @@ static inline void xas_reset(struct xa_state *xas)
  * The advanced functions may sometimes return an internal entry, such as
  * a retry entry or a zero entry.  This function sets up the @xas to restart
  * the walk from the head of the array if needed.
- *
+ * 有时候高级函数有时可能会返回一个内部条目，例如重试条目或零条目。
+如果需要，此函数将设置xas从数组的头部重新开始遍历。
  * Context: Any context.
  * Return: true if the operation needs to be retried.
+ 返回true表示需要重试
  */
 static inline bool xas_retry(struct xa_state *xas, const void *entry)
 {
@@ -1485,6 +1513,7 @@ static inline bool xas_retry(struct xa_state *xas, const void *entry)
 		return true;
 	if (!xa_is_retry(entry))
 		return false;
+	//需要重试的情况
 	xas_reset(xas);
 	return true;
 }
@@ -1507,27 +1536,33 @@ void xas_create_range(struct xa_state *);
 
 /**
 2024年07月18日09:57:43
-无锁访问加锁之后，看看是否变了
+
  * xas_reload() - Refetch an entry from the xarray.
+	从xarray中重新获取一个entry
  * @xas: XArray operation state.
  *
  * Use this function to check that a previously loaded entry still has
  * the same value.  This is useful for the lockless pagecache lookup where
  * we walk the array with only the RCU lock to protect us, lock the page,
  * then check that the page hasn't moved since we looked it up.
- *
+ *使用这个函数来检查之前加载的entry是否仍然具有相同的值。
+这对于无锁页面缓存查找非常有用，其中我们只使用RCU锁来保护我们，锁定页面，
+然后检查自从我们查找它以来页面是否已经移动。
  * The caller guarantees that @xas is still valid.  If it may be in an
  * error or restart state, call xas_load() instead.
- *
+ * 调用者保证xas仍然有效。如果可能处于错误或重新启动状态，请改用xas_load()。
  * Return: The entry at this location in the xarray.
+	返回xarray中此位置的entry。
  */
 static inline void *xas_reload(struct xa_state *xas)
 {
 	struct xa_node *node = xas->xa_node;
 
-	if (node)
-		return xa_entry(xas->xa, node, xas->xa_offset);
+	if (node)  //如果node不为空
+		return xa_entry(xas->xa, node, xas->xa_offset); 
+		//返回node->slots[xas->xa_offset]
 
+	//如果node为空，说明xas->xa_node为NULL，此时需要从头开始查找
 	return xa_head(xas->xa);
 }
 

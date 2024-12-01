@@ -216,6 +216,7 @@ static inline int get_boot_cpu_id(void)
   extern unsigned int debug_smp_processor_id(void);
 # define smp_processor_id() debug_smp_processor_id()
 #else
+// 获取当前CPU的ID
 # define smp_processor_id() __smp_processor_id()
 #endif
 

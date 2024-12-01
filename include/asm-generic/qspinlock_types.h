@@ -19,6 +19,10 @@
 #include <linux/atomic.h>
 #endif
 
+/* 在 Linux 内核中，arch_spinlock_t 是一个架构相关（arch）的自旋锁类型。
+自旋锁是一种用于多核处理器系统中保护共享资源的同步机制。它的特点是，
+当一个线程试图获取自旋锁时，如果锁已经被其他线程持有，线程不会进入休眠状态，
+而是会不断地"自旋"（即反复检查锁的状态），直到锁被释放。 */
 typedef struct qspinlock {
 	union {
 		atomic_t val;

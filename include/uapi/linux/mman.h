@@ -12,7 +12,11 @@
 #define OVERCOMMIT_ALWAYS		1
 #define OVERCOMMIT_NEVER		2
 
+//mmap的flag参数
+
+//MAP_SHARED表示映射的内存区域会与其他映射共享，对该区域的修改会影响其他映射，其他映射对该区域的修改也会影响该映射。
 #define MAP_SHARED	0x01		/* Share changes */
+//MAP_PRIVATE表示映射的内存区域不会与其他映射共享，对该区域的修改不会影响其他映射，也不会被其他映射所影响。
 #define MAP_PRIVATE	0x02		/* Changes are private */
 #define MAP_SHARED_VALIDATE 0x03	/* share + validate extension flags */
 

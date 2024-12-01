@@ -792,6 +792,7 @@ static void __init rcu_bootup_announce(void)
  * how many quiescent states passed, just if there was at least one since
  * the start of the grace period, this just sets a flag.  The caller must
  * have disabled preemption.
+ 含义:
  */
 static void rcu_qs(void)
 {
@@ -838,7 +839,9 @@ void rcu_all_qs(void)
 EXPORT_SYMBOL_GPL(rcu_all_qs);
 
 /*
+
  * Note a PREEMPT=n context switch.  The caller must have disabled interrupts.
+含义: 
  */
 void rcu_note_context_switch(bool preempt)
 {

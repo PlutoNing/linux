@@ -76,8 +76,8 @@ extern u16 __read_mostly tlb_lld_1g[NR_INFO];
  */
 
 struct cpuinfo_x86 {
-	__u8			x86;		/* CPU family */
-	__u8			x86_vendor;	/* CPU vendor */
+	__u8			x86;		/* CPU family ,cpu family有哪些,比如X86_64,还有X86_32 */
+	__u8			x86_vendor;	/* CPU vendor,取值可能是X86_VENDOR_INTEL等 */
 	__u8			x86_model;
 	__u8			x86_stepping;
 #ifdef CONFIG_X86_64
@@ -227,6 +227,10 @@ native_cpuid_reg(edx)
 
 /*
  * Friendlier CR3 helpers.
+ 作用是什么？CR3 是控制寄存器，用于存储页目录表的物理地址。
+ 页目录表是 x86 架构下的一种页表，用于将虚拟地址映射到物理地址。
+ CR3 寄存器的值是一个物理地址，指向当前进程的页目录表。
+ 当进程切换时，操作系统会更新 CR3 寄存器的值，以切换到新的页目录表。
  */
 static inline unsigned long read_cr3_pa(void)
 {
@@ -437,13 +441,14 @@ typedef struct {
 	unsigned long		seg;
 } mm_segment_t;
 
+//线程结构体
 struct thread_struct {
 	/* Cached TLS descriptors: */
 	struct desc_struct	tls_array[GDT_ENTRY_TLS_ENTRIES];
 #ifdef CONFIG_X86_32
 	unsigned long		sp0;
 #endif
-	unsigned long		sp;
+	unsigned long		sp; //栈指针
 #ifdef CONFIG_X86_32
 	unsigned long		sysenter_cs;
 #else
@@ -650,6 +655,7 @@ static __always_inline void rep_nop(void)
 	asm volatile("rep; nop" ::: "memory");
 }
 
+//空操作
 static __always_inline void cpu_relax(void)
 {
 	rep_nop();
@@ -798,6 +804,10 @@ static inline void prefetch(const void *x)
 }
 
 /*
+用于在 x86 架构上执行 3DNow! 指令 prefetchw。该指令用于将指定内存地址
+的数据加载到处理器的缓存中，并获取一个独占的缓存行。这在处理自旋锁
+（spinlocks）时特别有用，因为它可以避免缓存一致性协议中的一次状态转换，
+从而提高性能。
  * 3dnow prefetch to get an exclusive cache line.
  * Useful for spinlocks to avoid one state transition in the
  * cache coherency protocol:
@@ -849,8 +859,10 @@ static inline void spin_lock_prefetch(const void *x)
 
 #else
 /*
+定义了一个宏 TASK_SIZE_MAX，用于表示用户空间进程的最大大小。
  * User space process size.  This is the first address outside the user range.
  * There are a few constraints that determine this:
+这个值是用户地址范围之外的第一个地址。定义这个值时需要考虑几个约束条件。
  *
  * On Intel CPUs, if a SYSCALL instruction is at the highest canonical
  * address, then that syscall will enter the kernel with a
@@ -865,6 +877,11 @@ static inline void spin_lock_prefetch(const void *x)
  * Intel problem.
  *
  * With page table isolation enabled, we map the LDT in ... [stay tuned]
+ 定义方式为：TASK_SIZE_MAX = (1UL << __VIRTUAL_MASK_SHIFT) - PAGE_SIZE
+ 其中，__VIRTUAL_MASK_SHIFT 定义在 include/linux/const.h 文件中，表示了
+ 虚拟地址空间的最大位数。在 x86_64 架构上，__VIRTUAL_MASK_SHIFT 的值为 47，
+ 因此 TASK_SIZE_MAX 的值为 0xffff800000000000。?
+ 二进制表示为 0b111111111111111110?
  */
 #define TASK_SIZE_MAX	((1UL << __VIRTUAL_MASK_SHIFT) - PAGE_SIZE)
 

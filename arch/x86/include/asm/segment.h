@@ -4,8 +4,11 @@
 
 #include <linux/const.h>
 #include <asm/alternative.h>
+/* 2024年11月30日17:49:19 */
+
 
 /*
+通过一系列位操作和掩码，将段描述符的标志位、基地址和限制组合成一个 64 位的值。
  * Constructor for a conventional segment GDT (or LDT) entry.
  * This is a macro so it can be used in initializers.
  */
@@ -18,7 +21,7 @@
 
 /* Simple and small GDT entries for booting only: */
 
-#define GDT_ENTRY_BOOT_CS	2
+#define GDT_ENTRY_BOOT_CS	2 
 #define GDT_ENTRY_BOOT_DS	3
 #define GDT_ENTRY_BOOT_TSS	4
 #define __BOOT_CS		(GDT_ENTRY_BOOT_CS*8)
@@ -28,20 +31,29 @@
 /*
  * Bottom two bits of selector give the ring
  * privilege level
+ 表示特权级别
  */
 #define SEGMENT_RPL_MASK	0x3
 
-/* User mode is privilege level 3: */
+/* User mode is privilege level 3:
+表示用户模式的特权级别为3
+ */
 #define USER_RPL		0x3
 
-/* Bit 2 is Table Indicator (TI): selects between LDT or GDT */
+/* Bit 2 is Table Indicator (TI): selects between LDT or GDT
+作用是选择LDT或GDT
+ */
 #define SEGMENT_TI_MASK		0x4
-/* LDT segment has TI set ... */
+/* LDT segment has TI set ...
+用于判断是否是LDT段
+ */
 #define SEGMENT_LDT		0x4
-/* ... GDT has it cleared */
+/* ... GDT has it cleared
+用于判断是否是GDT段
+ */
 #define SEGMENT_GDT		0x0
 
-#define GDT_ENTRY_INVALID_SEG	0
+#define GDT_ENTRY_INVALID_SEG	0 //
 
 #ifdef CONFIG_X86_32
 /*
@@ -153,17 +165,17 @@
 #endif
 
 #else /* 64-bit: */
-
+// 64位系统
 #include <asm/cache.h>
 
-#define GDT_ENTRY_KERNEL32_CS		1
-#define GDT_ENTRY_KERNEL_CS		2
-#define GDT_ENTRY_KERNEL_DS		3
+#define GDT_ENTRY_KERNEL32_CS		1 //内核代码段
+#define GDT_ENTRY_KERNEL_CS		2 //内核代码段
+#define GDT_ENTRY_KERNEL_DS		3 //内核数据段
 
 /*
  * We cannot use the same code segment descriptor for user and kernel mode,
  * not even in long flat mode, because of different DPL.
- *
+ * 
  * GDT layout to get 64-bit SYSCALL/SYSRET support right. SYSRET hardcodes
  * selectors:
  *
@@ -178,9 +190,15 @@
 #define GDT_ENTRY_DEFAULT_USER_DS	5
 #define GDT_ENTRY_DEFAULT_USER_CS	6
 
-/* Needs two entries */
+/* Needs two entries
+是一个与全局描述符表（GDT）相关的符号或宏，通常用于定义任务状态段（TSS）条目。
+任务状态段是 x86 架构中的一个重要数据结构，用于保存任务切换时的处理器状态。 */
 #define GDT_ENTRY_TSS			8
-/* Needs two entries */
+/* Needs two entries 
+通常是一个宏或符号，用于在 GDT 中定义一个 LDT 条目。
+这个条目包含 LDT 的基地址、限制和访问权限等信息。
+通过在 GDT 中定义 LDT 条目，操作系统可以在任务切换时
+使用 LDT 来管理特定任务或进程的内存段?*/
 #define GDT_ENTRY_LDT			10
 
 #define GDT_ENTRY_TLS_MIN		12

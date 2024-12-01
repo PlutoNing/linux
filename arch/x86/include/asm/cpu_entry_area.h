@@ -9,7 +9,26 @@
 
 #ifdef CONFIG_X86_64
 
-/* Macro to enforce the same ordering and stack sizes */
+/* Macro to enforce the same ordering and stack sizes
+成员解释:
+	- guardsize: 保护页大小
+	- db2_holesize: DB2堆大小
+	- EXCEPTION_STKSZ: 异常堆栈大小
+定义的数组解释:
+	- DF_stack_guard: DF堆栈保护
+	- DF_stack: DF堆栈: 
+	- NMI_stack_guard: NMI堆栈保护
+	- NMI_stack: NMI堆栈
+	- DB2_stack_guard: DB2堆栈保护
+	- DB2_stack: DB2堆栈
+	- DB1_stack_guard: DB1堆栈保护
+	- DB1_stack: DB1堆栈
+	- DB_stack_guard: DB堆栈保护
+	- DB_stack: DB堆栈
+	- MCE_stack_guard: MCE堆栈保护
+	- MCE_stack: MCE堆栈
+	- IST_top_guard: IST堆栈保护
+*/
 #define ESTACKS_MEMBERS(guardsize, db2_holesize)\
 	char	DF_stack_guard[guardsize];	\
 	char	DF_stack[EXCEPTION_STKSZ];	\
@@ -26,6 +45,7 @@
 	char	IST_top_guard[guardsize];	\
 
 /* The exception stacks' physical storage. No guard pages required */
+//结构体成员展开为:	
 struct exception_stacks {
 	ESTACKS_MEMBERS(0, 0)
 };
@@ -48,12 +68,13 @@ enum exception_stack_ordering {
 	N_EXCEPTION_STACKS
 };
 
+//获取st成员的大小
 #define CEA_ESTACK_SIZE(st)					\
 	sizeof(((struct cea_exception_stacks *)0)->st## _stack)
-
+//获取st成员的地址
 #define CEA_ESTACK_BOT(ceastp, st)				\
 	((unsigned long)&(ceastp)->st## _stack)
-
+//获取
 #define CEA_ESTACK_TOP(ceastp, st)				\
 	(CEA_ESTACK_BOT(ceastp, st) + CEA_ESTACK_SIZE(st))
 
@@ -132,6 +153,7 @@ static inline struct entry_stack *cpu_entry_stack(int cpu)
 	return &get_cpu_entry_area(cpu)->entry_stack_page.stack;
 }
 
+//获取pcp的cea结构体的name成员
 #define __this_cpu_ist_top_va(name)					\
 	CEA_ESTACK_TOP(__this_cpu_read(cea_exception_stacks), name)
 

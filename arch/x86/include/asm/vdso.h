@@ -9,7 +9,10 @@
 #ifndef __ASSEMBLER__
 
 #include <linux/mm_types.h>
-
+/*  VDSO (Virtual Dynamic Shared Object)
+VDSO 是一个由内核提供的共享库，存在于每个进程的地址空间中，
+通常包含一些常用的内核功能的实现。VDSO 的目的是避免用户程序
+在执行常见操作（如获取当前时间）时需要进行系统调用，从而提升性能。 */
 struct vdso_image {
 	void *data;
 	unsigned long size;   /* Always a multiple of PAGE_SIZE */

@@ -197,8 +197,10 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 	update_rq_clock_pelt(rq, delta);
 }
 /* 2024年6月29日15:59:35
-就绪队列的时钟由update_rq_clock()函数来更新，如果在编译内核的时候启用了CONFIG_HAVE_UNSTABLE_SCHED_CLOCK选项
-（CentOS的内核是默认开启的），sched_clock_stable变量的值为1，这种情况下会调用sched_clock()函数来获取当前的CPU
+就绪队列的时钟由update_rq_clock()函数来更新，如果在编译内核的时候启用了
+CONFIG_HAVE_UNSTABLE_SCHED_CLOCK选项
+（CentOS的内核是默认开启的），sched_clock_stable变量的值为1，这种情况下会
+调用sched_clock()函数来获取当前的CPU
 时间。sched_clock()函数中会调用rdstc指令来读取CPU的周期数
  ----------------
  调用update_rq_clock()就绪队列时钟的更新, 实际上更新struct rq当前实例的时钟时间戳
@@ -229,6 +231,7 @@ void update_rq_clock(struct rq *rq)
 #ifdef CONFIG_SCHED_HRTICK
 /*
  * Use HR-timers to deliver accurate preemption points.
+	 * 使用HR-timers提供准确的抢占点。
  */
 
 static void hrtick_clear(struct rq *rq)
@@ -3107,6 +3110,7 @@ fire_sched_out_preempt_notifiers(struct task_struct *curr,
 
 #endif /* CONFIG_PREEMPT_NOTIFIERS */
 
+//
 static inline void prepare_task(struct task_struct *next)
 {
 #ifdef CONFIG_SMP
@@ -3135,6 +3139,7 @@ static inline void finish_task(struct task_struct *prev)
 #endif
 }
 
+//准备切换到下一个进程的上下文
 static inline void
 prepare_lock_switch(struct rq *rq, struct task_struct *next, struct rq_flags *rf)
 {
@@ -3143,9 +3148,12 @@ prepare_lock_switch(struct rq *rq, struct task_struct *next, struct rq_flags *rf
 	 * task (which is an invalid locking op but in the case
 	 * of the scheduler it's an obvious special-case), so we
 	 * do an early lockdep release here:
+
 	 */
 	rq_unpin_lock(rq, rf);
 	spin_release(&rq->lock.dep_map, 1, _THIS_IP_);
+
+	
 #ifdef CONFIG_DEBUG_SPINLOCK
 	/* this is a valid case when another task releases the spinlock */
 	rq->lock.owner = next;
@@ -3176,6 +3184,8 @@ static inline void finish_lock_switch(struct rq *rq)
 #endif
 
 /**
+作用：准备切换到下一个进程的上下文
+
  * prepare_task_switch - prepare to switch tasks
  * @rq: the runqueue preparing to switch
  * @prev: the current task that is being switched out
@@ -3193,7 +3203,7 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
 		    struct task_struct *next)
 {
 	kcov_prepare_switch(prev);
-	sched_info_switch(rq, prev, next);
+	sched_info_switch(rq, prev, next); //更新调度信息
 	perf_event_task_sched_out(prev, next);
 	rseq_preempt(prev);
 	fire_sched_out_preempt_notifiers(prev, next);
@@ -3367,18 +3377,20 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 }
 
 /*
+切换到新的进程,具体是切换到新的进程的内核栈和寄存器什么的
  * context_switch - switch to the new MM and the new thread's register state.
  */
 static __always_inline struct rq *
 context_switch(struct rq *rq, struct task_struct *prev,
 	       struct task_struct *next, struct rq_flags *rf)
 {
-	prepare_task_switch(rq, prev, next);
+	prepare_task_switch(rq, prev, next); //
 
 	/*
 	 * For paravirt, this is coupled with an exit in switch_to to
 	 * combine the page table reload and the switch backend into
 	 * one hypercall.
+	  含义:
 	 */
 	arch_start_context_switch(prev);
 
@@ -3389,7 +3401,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	 * kernel ->   user   switch + mmdrop() active
 	 *   user ->   user   switch
 	 */
-	if (!next->mm) {                                // to kernel
+	if (!next->mm) { // to kernel,没有mm,说明是内核线程
 		enter_lazy_tlb(prev->active_mm, next);
 
 		next->active_mm = prev->active_mm;
@@ -3397,19 +3409,22 @@ context_switch(struct rq *rq, struct task_struct *prev,
 			mmgrab(prev->active_mm);
 		else
 			prev->active_mm = NULL;
-	} else {                                        // to user
+
+	} else {  // to user,有mm,说明是用户线程
 		membarrier_switch_mm(rq, prev->active_mm, next->mm);
 		/*
 		 * sys_membarrier() requires an smp_mb() between setting
 		 * rq->curr / membarrier_switch_mm() and returning to userspace.
-		 *
+		 * 要求在设置rq->curr / membarrier_switch_mm()并返回用户空间之间进行smp_mb()。
+		
 		 * The below provides this either through switch_mm(), or in
 		 * case 'prev->active_mm == next->mm' through
 		 * finish_task_switch()'s mmdrop().
+
 		 */
 		switch_mm_irqs_off(prev->active_mm, next->mm, next);
 
-		if (!prev->mm) {                        // from kernel
+		if (!prev->mm) {                        // from kernel,说明从内核线程切换到用户线程
 			/* will mmdrop() in finish_task_switch(). */
 			rq->prev_mm = prev->active_mm;
 			prev->active_mm = NULL;
@@ -3420,7 +3435,9 @@ context_switch(struct rq *rq, struct task_struct *prev,
 
 	prepare_lock_switch(rq, next, rf);
 
-	/* Here we just switch the register state and the stack. */
+	/* Here we just switch the register state and the stack.
+	这里进行寄存器和栈的切换
+	 */
 	switch_to(prev, next, prev);
 	barrier();
 
@@ -3873,6 +3890,7 @@ static inline void preempt_latency_start(int val) { }
 static inline void preempt_latency_stop(int val) { }
 #endif
 
+//
 static inline unsigned long get_preempt_disable_ip(struct task_struct *p)
 {
 #ifdef CONFIG_DEBUG_PREEMPT
@@ -3884,10 +3902,13 @@ static inline unsigned long get_preempt_disable_ip(struct task_struct *p)
 
 /*
  * Print scheduling while atomic bug:
+作用
  */
 static noinline void __schedule_bug(struct task_struct *prev)
 {
-	/* Save this before calling printk(), since that will clobber it */
+	/* Save this before calling printk(), since that will clobber it 
+	 * 保存这个值，因为调用printk()会覆盖它
+	*/
 	unsigned long preempt_disable_ip = get_preempt_disable_ip(current);
 
 	if (oops_in_progress)
@@ -3914,6 +3935,7 @@ static noinline void __schedule_bug(struct task_struct *prev)
 }
 
 /*
+用于
  * Various schedule()-time debugging checks and statistics:
  */
 static inline void schedule_debug(struct task_struct *prev, bool preempt)
@@ -3938,6 +3960,7 @@ static inline void schedule_debug(struct task_struct *prev, bool preempt)
 	}
 	rcu_sleep_check();
 
+	//记录调度次数?
 	profile_hit(SCHED_PROFILING, __builtin_return_address(0));
 
 	schedstat_inc(this_rq()->sched_count);
@@ -4002,25 +4025,27 @@ restart:
 }
 
 /*
+作用：调度器的主函数
+用来调度进程，是进程调度的核心函数
  * __schedule() is the main scheduler function.
  *
  * The main means of driving the scheduler and thus entering this function are:
- *
+ *  含义: 驱动调度器的主要手段，从而进入此函数的主要方法是：
  *   1. Explicit blocking: mutex, semaphore, waitqueue, etc.
- *
+ *   情况1: 显式阻塞：互斥锁、信号量、等待队列等。
  *   2. TIF_NEED_RESCHED flag is checked on interrupt and userspace return
  *      paths. For example, see arch/x86/entry_64.S.
  *
  *      To drive preemption between tasks, the scheduler sets the flag in timer
  *      interrupt handler scheduler_tick().
- *
+ *	情况2: 在中断和用户空间返回路径上检查TIF_NEED_RESCHED标志。例如，参见arch/x86/entry_64.S。
  *   3. Wakeups don't really cause entry into schedule(). They add a
  *      task to the run-queue and that's it.
- *
+ *	情况3: 唤醒实际上并不会导致进入schedule()。它们只是将一个任务添加到运行队列中。
  *      Now, if the new task added to the run-queue preempts the current
  *      task, then the wakeup sets TIF_NEED_RESCHED and schedule() gets
  *      called on the nearest possible occasion:
- *
+ *    如果添加到运行队列中的新任务抢占了当前任务，则唤醒会设置TIF_NEED_RESCHED，并在最近的可能时机调用schedule()：
  *       - If the kernel is preemptible (CONFIG_PREEMPTION=y):
  *
  *         - in syscall or exception context, at the next outmost
@@ -4051,14 +4076,14 @@ static void __sched notrace __schedule(bool preempt)
 	cpu = smp_processor_id();
 	rq = cpu_rq(cpu);
 	prev = rq->curr;
-
+	//调度调试
 	schedule_debug(prev, preempt);
 
 	if (sched_feat(HRTICK))
 		hrtick_clear(rq);
 
-	local_irq_disable();
-	rcu_note_context_switch(preempt);
+	local_irq_disable(); //关闭中断
+	rcu_note_context_switch(preempt); //todo
 
 	/*
 	 * Make sure that signal_pending_state()->signal_pending() below
@@ -4067,19 +4092,26 @@ static void __sched notrace __schedule(bool preempt)
 	 *
 	 * The membarrier system call requires a full memory barrier
 	 * after coming from user-space, before storing to rq->curr.
+	 	含义: 确保signal_pending_state()->signal_pending()下面的代码不能
+		与调用者执行的__set_current_state(TASK_INTERRUPTIBLE)重排序，
+		以避免与signal_wake_up()的竞争。
+		membarrier系统调用要求在从用户空间返回后，在存储到rq->curr之前进行完整的内存屏障。
+
 	 */
 	rq_lock(rq, &rf);
 	smp_mb__after_spinlock();
 
 	/* Promote REQ to ACT */
 	rq->clock_update_flags <<= 1;
-	update_rq_clock(rq);
+	update_rq_clock(rq); //更新rq的时钟
 
 	switch_count = &prev->nivcsw;
-	if (!preempt && prev->state) {
+	if (!preempt && prev->state) {//如果不是抢占且prev的状态不是runnable
 		if (signal_pending_state(prev->state, prev)) {
+			//说明是TASK_INTERRUPTIBLE或者TASK_WAKEKILL
 			prev->state = TASK_RUNNING;
 		} else {
+			//说明状态不是TASK_INTERRUPTIBLE或者TASK_WAKEKILL
 			deactivate_task(rq, prev, DEQUEUE_SLEEP | DEQUEUE_NOCLOCK);
 
 			if (prev->in_iowait) {
@@ -4087,20 +4119,21 @@ static void __sched notrace __schedule(bool preempt)
 				delayacct_blkio_start();
 			}
 		}
-		switch_count = &prev->nvcsw;
+		switch_count = &prev->nvcsw; //
 	}
 
-	next = pick_next_task(rq, prev, &rf);
-	clear_tsk_need_resched(prev);
-	clear_preempt_need_resched();
+	next = pick_next_task(rq, prev, &rf); //选择下一个任务
+	clear_tsk_need_resched(prev); //清除需要重新调度的标志
+	clear_preempt_need_resched(); //清除
 
 	if (likely(prev != next)) {
-		rq->nr_switches++;
+		rq->nr_switches++; //切换次数+1
 		/*
 		 * RCU users of rcu_dereference(rq->curr) may not see
 		 * changes to task_struct made by pick_next_task().
+
 		 */
-		RCU_INIT_POINTER(rq->curr, next);
+		RCU_INIT_POINTER(rq->curr, next);//设置rq->curr为next
 		/*
 		 * The membarrier system call requires each architecture
 		 * to have a full memory barrier after updating
@@ -4120,8 +4153,8 @@ static void __sched notrace __schedule(bool preempt)
 		trace_sched_switch(preempt, prev, next);
 
 		/* Also unlocks the rq: */
-		rq = context_switch(rq, prev, next, &rf);
-	} else {
+		rq = context_switch(rq, prev, next, &rf); //切换上下文
+	} else {//如果prev和next相同,表示没有找到下一个任务?
 		rq->clock_update_flags &= ~(RQCF_ACT_SKIP|RQCF_REQ_SKIP);
 		rq_unlock_irq(rq, &rf);
 	}
@@ -4250,6 +4283,7 @@ void __sched schedule_preempt_disabled(void)
 	preempt_disable();
 }
 
+//
 static void __sched notrace preempt_schedule_common(void)
 {
 	do {
@@ -4259,16 +4293,18 @@ static void __sched notrace preempt_schedule_common(void)
 		 * NEED_RESCHED is set, the preempt_enable_notrace() called
 		 * by the function tracer will call this function again and
 		 * cause infinite recursion.
-		 *
+		 * 意思是说，因为函数跟踪器可以跟踪preempt_count_sub()，
+		 并且它还使用preempt_enable/disable_notrace()，
 		 * Preemption must be disabled here before the function
 		 * tracer can trace. Break up preempt_disable() into two
 		 * calls. One to disable preemption without fear of being
 		 * traced. The other to still record the preemption latency,
 		 * which can also be traced by the function tracer.
+		 
 		 */
 		preempt_disable_notrace();
 		preempt_latency_start(1);
-		__schedule(true);
+		__schedule(true); //
 		preempt_latency_stop(1);
 		preempt_enable_no_resched_notrace();
 
@@ -5652,15 +5688,17 @@ SYSCALL_DEFINE0(sched_yield)
 }
 
 #ifndef CONFIG_PREEMPTION
+//尝试调度
 int __sched _cond_resched(void)
 {
 	if (should_resched(0)) {
-		preempt_schedule_common();
+		preempt_schedule_common(); //调度
 		return 1;
 	}
 	rcu_all_qs();
 	return 0;
 }
+
 EXPORT_SYMBOL(_cond_resched);
 #endif
 

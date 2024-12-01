@@ -122,6 +122,7 @@
 
 
 /*
+
  * Instead of the generic __SYSCALL_DEFINEx() definition, this macro takes
  * struct pt_regs *regs as the only argument of the syscall stub named
  * __x64_sys_*(). It decodes just the registers it needs and passes them on to
@@ -129,7 +130,9 @@
  * __do_sys_*() function doing the actual job. These wrappers and functions
  * are inlined (at least in very most cases), meaning that the assembly looks
  * as follows (slightly re-ordered for better readability):
- *
+ * 意思是说，这个宏定义了一个系统调用的函数，这个函数的参数是一个结构体pt_regs，
+ 这个结构体包含了系统调用的参数，这个函数的名字是__x64_sys_*，这个函数会调用__se_sys_*函数，
+ 这个函数会调用__do_sys_*函数，这个函数会返回系统调用的结果。
  * <__x64_sys_recv>:		<-- syscall with 4 parameters
  *	callq	<__fentry__>
  *

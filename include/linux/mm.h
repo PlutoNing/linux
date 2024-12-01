@@ -494,16 +494,20 @@ enum page_entry_size {
 };
 
 /*
+vma的ops
  * These are the virtual MM functions - opening of an area, closing and
  * unmapping it (needed to keep files on disk up-to-date etc), pointer
  * to the functions called when a no-page or a wp-page exception occurs.
+ 这些是虚拟内存管理函数 - 打开一个区域，关闭和取消映射它（需要保持磁盘上的文件最新等），指针
+ * 当发生无页或wp页异常时调用的函数。
+	
  2024年6月18日21:27:37
  */
 struct vm_operations_struct {
-	void (*open)(struct vm_area_struct * area);
+	void (*open)(struct vm_area_struct * area);//打开
 	void (*close)(struct vm_area_struct * area);
 	int (*split)(struct vm_area_struct * area, unsigned long addr);
-	int (*mremap)(struct vm_area_struct * area);
+	int (*mremap)(struct vm_area_struct * area); //重新映射?
 /*
 2024年6月18日21:27:55
 之后对于 " 文件映射 " , 如果没有映射 " 物理内存页 " , 就会回调 fault 函数 ,
@@ -2500,7 +2504,15 @@ extern int do_munmap(struct mm_struct *, unsigned long, size_t,
 /*
 2024年6月18日21:49:59
 2024年7月1日23:10:20
-
+进行mmap
+参数含义:	file:文件
+			addr:映射的地址
+			len:映射的长度
+			prot:保护标志,比如PROT_READ
+			flags:映射标志,比如MAP_PRIVATE
+			pgoff:文件偏移
+			populate:是否预分配
+			uf:用户fault
 
 */
 static inline unsigned long

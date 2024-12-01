@@ -130,6 +130,9 @@ void __noreturn handle_stack_overflow(const char *message,
 #endif
 
 /* Interrupts/Exceptions */
+//这些是中断号,对应的是中断处理函数,在这里定义了这些函数的声明,在其他地方定义了这些函数的实现
+
+
 enum {
 	X86_TRAP_DE = 0,	/*  0, Divide-by-zero */
 	X86_TRAP_DB,		/*  1, Debug */
@@ -145,7 +148,7 @@ enum {
 	X86_TRAP_NP,		/* 11, Segment Not Present */
 	X86_TRAP_SS,		/* 12, Stack Segment Fault */
 	X86_TRAP_GP,		/* 13, General Protection Fault */
-	X86_TRAP_PF,		/* 14, Page Fault */
+	X86_TRAP_PF,		/* 14, Page Fault,是否是页错误*/
 	X86_TRAP_SPURIOUS,	/* 15, Spurious Interrupt */
 	X86_TRAP_MF,		/* 16, x87 Floating-Point Exception */
 	X86_TRAP_AC,		/* 17, Alignment Check */
@@ -155,6 +158,9 @@ enum {
 };
 
 /*
+这段代码定义了一个枚举类型 x86_pf_error_code，用于表示 x86 架构下
+发生页面错误（Page Fault）时的错误码中的各个标志位。这些标志位用
+来描述页面错误发生的具体原因，并且每一位对应不同的页面错误类型或条件。
  * Page fault error code bits:
  *
  *   bit 0 ==	 0: no page found	1: protection fault
@@ -169,7 +175,9 @@ enum x86_pf_error_code {
 	X86_PF_WRITE	=		1 << 1,
 	X86_PF_USER	=		1 << 2,
 	X86_PF_RSVD	=		1 << 3,
-	X86_PF_INSTR	=		1 << 4,
-	X86_PF_PK	=		1 << 5,
+	X86_PF_INSTR	=		1 << 4, //
+	X86_PF_PK	=		1 << 5, /* 处理了由于保护键（Protection Keys）导致的读写操作被阻止的情况。保护键是一种内存保护机制，允许对内存页设置访问权限，从而防止未经授权的访问。
+
+注释部分解释了当读写操作被保护键阻止时，这总是一个无条件的错误，不能通过后续操作（例如写时复制，COW）来解决故障。换句话说，当发生这种类型的故障时，系统无法采取任何补救措施来恢复正常操作。 */
 };
 #endif /* _ASM_X86_TRAPS_H */

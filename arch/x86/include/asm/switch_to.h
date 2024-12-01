@@ -23,11 +23,15 @@ static inline void prepare_switch_to(struct task_struct *next)
 	 * the new stack now so that vmalloc_fault can fix up the page
 	 * tables if needed.  This can only happen if we use a stack
 	 * in vmap space.
-	 *
+	 *	如果我们切换到一个堆栈，该堆栈具有当前 mm 中不存在的顶级分页条目，
+	 *	则将导致结果 #PF 提升为双故障，并且我们将崩溃。
+	 *	现在探测新堆栈，以便 vmalloc_fault 可以在需要时修复页表。
+	 *	只有在使用 vmap 空间中的堆栈时才会发生这种情况。
 	 * We assume that the stack is aligned so that it never spans
 	 * more than one top-level paging entry.
-	 *
+	 * 我们假设堆栈对齐，因此它永远不会跨越一个顶级分页条目。
 	 * To minimize cache pollution, just follow the stack pointer.
+			为了最小化缓存污染，只需跟随堆栈指针。
 	 */
 	READ_ONCE(*(unsigned char *)next->thread.sp);
 #endif
@@ -65,6 +69,7 @@ struct fork_frame {
 	struct pt_regs regs;
 };
 
+//切换到下一个进程
 #define switch_to(prev, next, last)					\
 do {									\
 	prepare_switch_to(next);					\

@@ -55,6 +55,7 @@
 #define AIO_RING_MAGIC			0xa10a10a1
 #define AIO_RING_COMPAT_FEATURES	1
 #define AIO_RING_INCOMPAT_FEATURES	0
+//表示aio的ring?
 struct aio_ring {
 	unsigned	id;	/* kernel internal index number */
 	unsigned	nr;	/* number of io_events */
@@ -74,6 +75,7 @@ struct aio_ring {
 /*
  * Plugging is meant to work with larger batches of IOs. If we don't
  * have more than the below, then don't bother setting up a plug.
+ 意思是说如果没有超过这个值，就不要设置plug
  */
 #define AIO_PLUG_THRESHOLD	2
 
@@ -85,6 +87,7 @@ struct kioctx_table {
 	struct kioctx __rcu	*table[];
 };
 
+//表示一个cpu上的异步IO上下文?
 struct kioctx_cpu {
 	unsigned		reqs_available;
 };
@@ -94,13 +97,15 @@ struct ctx_rq_wait {
 	atomic_t count;
 };
 
+//表示一个异步IO上下文
 struct kioctx {
-	struct percpu_ref	users;
+	struct percpu_ref	users; //用户引用计数 
 	atomic_t		dead;
 
-	struct percpu_ref	reqs;
+	struct percpu_ref	reqs; //对这个上下文的req的引用计数
 
-	unsigned long		user_id;
+	unsigned long		user_id; //可能是ctx的mmap base地址,也表示ctx的id,用户空间可以通过
+	//这个id找到对应的ctx,提交请求的时候也需要这个id
 
 	struct __percpu kioctx_cpu *cpu;
 
@@ -118,13 +123,15 @@ struct kioctx {
 	 */
 	unsigned		max_reqs;
 
-	/* Size of ringbuffer, in units of struct io_event */
+	/* Size of ringbuffer, in units of struct io_event
+	好像是申请的内存空间可以存放的io_event的个数
+	 */
 	unsigned		nr_events;
 
-	unsigned long		mmap_base;
-	unsigned long		mmap_size;
+	unsigned long		mmap_base; //mmap的基地址
+	unsigned long		mmap_size; //要映射的大小
 
-	struct page		**ring_pages;
+	struct page		**ring_pages; //指向aio file的mapping的page的指针数组,第一个page好像是ring结构体所在
 	long			nr_pages;
 
 	struct rcu_work		free_rwork;	/* see free_ioctx() */
@@ -140,8 +147,10 @@ struct kioctx {
 		 * so we avoid overflowing it: it's decremented (if positive)
 		 * when allocating a kiocb and incremented when the resulting
 		 * io_event is pulled off the ringbuffer.
-		 *
+		 *	这个计数器表示ringbuffer中可用的槽位数，所以我们避免溢出它：
+		 当分配一个kiocb时，它会递减（如果是正数），当结果的io_event从ringbuffer中取出时，它会递增。
 		 * We batch accesses to it with a percpu version.
+
 		 */
 		atomic_t	reqs_available;
 	} ____cacheline_aligned_in_smp;
@@ -159,11 +168,11 @@ struct kioctx {
 	struct {
 		unsigned	tail;
 		unsigned	completed_events;
-		spinlock_t	completion_lock;
+		spinlock_t	completion_lock; //填充ctx的iocb时需要加锁
 	} ____cacheline_aligned_in_smp;
 
 	struct page		*internal_pages[AIO_RING_PAGES];
-	struct file		*aio_ring_file;
+	struct file		*aio_ring_file; //aio ring file
 
 	unsigned		id;
 };
@@ -189,6 +198,7 @@ struct poll_iocb {
 };
 
 /*
+表示一个异步IO的req
  * NOTE! Each of the iocb union members has the file pointer
  * as the first entry in their struct definition. So you can
  * access the file pointer through any of the sub-structs,
@@ -196,26 +206,28 @@ struct poll_iocb {
  */
 struct aio_kiocb {
 	union {
-		struct file		*ki_filp;
-		struct kiocb		rw;
-		struct fsync_iocb	fsync;
+		struct file		*ki_filp; //对应iocb的filedes
+		struct kiocb		rw; //
+		struct fsync_iocb	fsync; 
 		struct poll_iocb	poll;
 	};
 
-	struct kioctx		*ki_ctx;
+	struct kioctx		*ki_ctx; //指向对应的kioctx
 	kiocb_cancel_fn		*ki_cancel;
 
 	struct io_event		ki_res;
 
 	struct list_head	ki_list;	/* the aio core uses this
 						 * for cancellation */
-	refcount_t		ki_refcnt;
+	refcount_t		ki_refcnt; //初始值设为2
 
 	/*
 	 * If the aio_resfd field of the userspace iocb is not zero,
 	 * this is the underlying eventfd context to deliver events to.
+	 如果iocb的aio_resfd字段不为零，则这是要传递事件的底层eventfd上下文。
+
 	 */
-	struct eventfd_ctx	*ki_eventfd;
+	struct eventfd_ctx	*ki_eventfd; //指向关联的kiocb的eventfd
 };
 
 /*------ sysctl variables----*/
@@ -227,14 +239,17 @@ unsigned long aio_max_nr = 0x10000; /* system wide maximum number of aio request
 static struct kmem_cache	*kiocb_cachep;
 static struct kmem_cache	*kioctx_cachep;
 
+//aio机制的文件系统挂载点
 static struct vfsmount *aio_mnt;
 
 static const struct file_operations aio_ring_fops;
 static const struct address_space_operations aio_ctx_aops;
 
+// 
 static struct file *aio_private_file(struct kioctx *ctx, loff_t nr_pages)
 {
 	struct file *file;
+	//分配inode
 	struct inode *inode = alloc_anon_inode(aio_mnt->mnt_sb);
 	if (IS_ERR(inode))
 		return ERR_CAST(inode);
@@ -242,7 +257,7 @@ static struct file *aio_private_file(struct kioctx *ctx, loff_t nr_pages)
 	inode->i_mapping->a_ops = &aio_ctx_aops;
 	inode->i_mapping->private_data = ctx;
 	inode->i_size = PAGE_SIZE * nr_pages;
-
+// 创建一个文件
 	file = alloc_file_pseudo(inode, aio_mnt, "[aio]",
 				O_RDWR, &aio_ring_fops);
 	if (IS_ERR(file))
@@ -324,6 +339,7 @@ static void aio_free_ring(struct kioctx *ctx)
 	}
 }
 
+//aio ring的file的mmap的vma的操作,用于remap
 static int aio_ring_mremap(struct vm_area_struct *vma)
 {
 	struct file *file = vma->vm_file;
@@ -334,11 +350,11 @@ static int aio_ring_mremap(struct vm_area_struct *vma)
 	spin_lock(&mm->ioctx_lock);
 	rcu_read_lock();
 	table = rcu_dereference(mm->ioctx_table);
-	for (i = 0; i < table->nr; i++) {
+	for (i = 0; i < table->nr; i++) {//遍历所有的kioctx
 		struct kioctx *ctx;
 
 		ctx = rcu_dereference(table->table[i]);
-		if (ctx && ctx->aio_ring_file == file) {
+		if (ctx && ctx->aio_ring_file == file) {//找到对应的kioctx
 			if (!atomic_read(&ctx->dead)) {
 				ctx->user_id = ctx->mmap_base = vma->vm_start;
 				res = 0;
@@ -352,6 +368,7 @@ static int aio_ring_mremap(struct vm_area_struct *vma)
 	return res;
 }
 
+//aio ring的file的mmap的vma的操作
 static const struct vm_operations_struct aio_ring_vm_ops = {
 	.mremap		= aio_ring_mremap,
 #if IS_ENABLED(CONFIG_MMU)
@@ -361,13 +378,14 @@ static const struct vm_operations_struct aio_ring_vm_ops = {
 #endif
 };
 
+//aio ring的file的fops的mmap操作
 static int aio_ring_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	vma->vm_flags |= VM_DONTEXPAND;
 	vma->vm_ops = &aio_ring_vm_ops;
 	return 0;
 }
-
+//aio ring的文件操作fops
 static const struct file_operations aio_ring_fops = {
 	.mmap = aio_ring_mmap,
 };
@@ -469,6 +487,7 @@ static int aio_setup_ring(struct kioctx *ctx, unsigned int nr_events)
 	/* Compensate for the ring buffer's head/tail overlap entry */
 	nr_events += 2;	/* 1 is required, 2 for good luck */
 
+	//开始计算ring的大小
 	size = sizeof(struct aio_ring);
 	size += sizeof(struct io_event) * nr_events;
 
@@ -488,6 +507,7 @@ static int aio_setup_ring(struct kioctx *ctx, unsigned int nr_events)
 
 	ctx->ring_pages = ctx->internal_pages;
 	if (nr_pages > AIO_RING_PAGES) {
+		//分配指针数组
 		ctx->ring_pages = kcalloc(nr_pages, sizeof(struct page *),
 					  GFP_KERNEL);
 		if (!ctx->ring_pages) {
@@ -496,8 +516,9 @@ static int aio_setup_ring(struct kioctx *ctx, unsigned int nr_events)
 		}
 	}
 
-	for (i = 0; i < nr_pages; i++) {
+	for (i = 0; i < nr_pages; i++) {//遍历所有的page,分配
 		struct page *page;
+		//找到第i个page?
 		page = find_or_create_page(file->f_mapping,
 					   i, GFP_HIGHUSER | __GFP_ZERO);
 		if (!page)
@@ -509,6 +530,7 @@ static int aio_setup_ring(struct kioctx *ctx, unsigned int nr_events)
 
 		ctx->ring_pages[i] = page;
 	}
+	//ctx一共有i个page
 	ctx->nr_pages = i;
 
 	if (unlikely(i != nr_pages)) {
@@ -516,20 +538,25 @@ static int aio_setup_ring(struct kioctx *ctx, unsigned int nr_events)
 		return -ENOMEM;
 	}
 
+	//要映射的大小
 	ctx->mmap_size = nr_pages * PAGE_SIZE;
 	pr_debug("attempting mmap of %lu bytes\n", ctx->mmap_size);
 
-	if (down_write_killable(&mm->mmap_sem)) {
+
+	if (down_write_killable(&mm->mmap_sem)) { //获取写锁
 		ctx->mmap_size = 0;
 		aio_free_ring(ctx);
 		return -EINTR;
 	}
-
+	//获取sem成功
 	ctx->mmap_base = do_mmap_pgoff(ctx->aio_ring_file, 0, ctx->mmap_size,
 				       PROT_READ | PROT_WRITE,
 				       MAP_SHARED, 0, &unused, NULL);
+
 	up_write(&mm->mmap_sem);
-	if (IS_ERR((void *)ctx->mmap_base)) {
+
+
+	if (IS_ERR((void *)ctx->mmap_base)) { //mmap失败
 		ctx->mmap_size = 0;
 		aio_free_ring(ctx);
 		return -ENOMEM;
@@ -537,7 +564,7 @@ static int aio_setup_ring(struct kioctx *ctx, unsigned int nr_events)
 
 	pr_debug("mmap address: 0x%08lx\n", ctx->mmap_base);
 
-	ctx->user_id = ctx->mmap_base;
+	ctx->user_id = ctx->mmap_base; 
 	ctx->nr_events = nr_events; /* trusted copy */
 
 	ring = kmap_atomic(ctx->ring_pages[0]);
@@ -899,6 +926,7 @@ void exit_aio(struct mm_struct *mm)
 	kfree(table);
 }
 
+//给kcpu的reqs_available增加nr个iocb
 static void put_reqs_available(struct kioctx *ctx, unsigned nr)
 {
 	struct kioctx_cpu *kcpu;
@@ -916,6 +944,9 @@ static void put_reqs_available(struct kioctx *ctx, unsigned nr)
 	local_irq_restore(flags);
 }
 
+//判断是否还能从pcp的当前cpu分配iocb
+//没有的话,会尝试从ctx的ring中拿
+//要是总的ctx上的iocb也不够,会返回false
 static bool __get_reqs_available(struct kioctx *ctx)
 {
 	struct kioctx_cpu *kcpu;
@@ -924,19 +955,22 @@ static bool __get_reqs_available(struct kioctx *ctx)
 
 	local_irq_save(flags);
 	kcpu = this_cpu_ptr(ctx->cpu);
-	if (!kcpu->reqs_available) {
+	if (!kcpu->reqs_available) {//说明当前cpu上没有空闲的iocb
 		int old, avail = atomic_read(&ctx->reqs_available);
 
 		do {
 			if (avail < ctx->req_batch)
-				goto out;
+				goto out; //说明可用的不够batch,返回false
+			
+			//说明总的ctx上面可以分配ctx->req_batch个iocb
+			//下面开始拿
 
 			old = avail;
 			avail = atomic_cmpxchg(&ctx->reqs_available,
-					       avail, avail - ctx->req_batch);
+					       avail, avail - ctx->req_batch);//通过原子操作减少reqs_available
 		} while (avail != old);
 
-		kcpu->reqs_available += ctx->req_batch;
+		kcpu->reqs_available += ctx->req_batch;//刚刚从总的ctx上减少了ctx->req_batch个iocb,所以当前cpu上增加ctx->req_batch个iocb
 	}
 
 	ret = true;
@@ -947,11 +981,16 @@ out:
 }
 
 /* refill_reqs_available
+更新用于跟踪完成环中空闲插槽数量的reqs_available引用计数。这可以从aio_complete()调用
+（用于乐观地更新reqs_available）或从aio_get_req()调用（我们没有事件的情况）调用。
+必须在持有ctx->completion_lock时调用。
  *	Updates the reqs_available reference counts used for tracking the
  *	number of free slots in the completion ring.  This can be called
  *	from aio_complete() (to optimistically update reqs_available) or
  *	from aio_get_req() (the we're out of events case).  It must be
  *	called holding ctx->completion_lock.
+ 参数解释: ctx是kioctx,head是ring的head,tail是ring的tail.
+ 这里的ring就是ctx的ring_pages的第一页,也就是aio_ring
  */
 static void refill_reqs_available(struct kioctx *ctx, unsigned head,
                                   unsigned tail)
@@ -981,6 +1020,7 @@ static void refill_reqs_available(struct kioctx *ctx, unsigned head,
 /* user_refill_reqs_available
  *	Called to refill reqs_available when aio_get_req() encounters an
  *	out of space in the completion ring.
+ 用来在aio_get_req()遇到完成环中没有空间时调用来重新填充reqs_available。
  */
 static void user_refill_reqs_available(struct kioctx *ctx)
 {
@@ -997,8 +1037,12 @@ static void user_refill_reqs_available(struct kioctx *ctx)
 		 * ctx->completion_lock.  Even if head is invalid, the check
 		 * against ctx->completed_events below will make sure we do the
 		 * safe/right thing.
+		 访问ring->head可能会与aio_read_events_ring()竞争，但这没关系，
+		 因为我们读取旧版本还是新版本，任何一个都是有效的。重要的部分是head不能超过tail，
+		 因为我们通过持有ctx->completion_lock来阻止aio_complete()更新tail。
+		 即使head无效，对ctx->completed_events的检查也将确保我们做安全/正确的事情。
 		 */
-		ring = kmap_atomic(ctx->ring_pages[0]);
+		ring = kmap_atomic(ctx->ring_pages[0]); //ctx的ring的第一页就是aio_ring
 		head = ring->head;
 		kunmap_atomic(ring);
 
@@ -1008,26 +1052,31 @@ static void user_refill_reqs_available(struct kioctx *ctx)
 	spin_unlock_irq(&ctx->completion_lock);
 }
 
+//判断还能否从ctx分配一个iocb
 static bool get_reqs_available(struct kioctx *ctx)
 {
-	if (__get_reqs_available(ctx))
+	if (__get_reqs_available(ctx)) //如果当前cpu上或者总的ctx上有iocb,直接返回true
 		return true;
+	//到这里说明当前cpu上没有iocb,然后总的ctx上也没有iocb
+
 	user_refill_reqs_available(ctx);
 	return __get_reqs_available(ctx);
 }
 
 /* aio_get_req
  *	Allocate a slot for an aio request.
+ 用于 给aio 请求分配一个req。建立req与ctx的关联，初始化req的引用计数。
  * Returns NULL if no requests are free.
- *
+ *返回 NULL 如果没有请求是空闲的。
  * The refcount is initialized to 2 - one for the async op completion,
  * one for the synchronous code that does this.
+ 引用计数初始化为 2 - 一个用于异步操作完成，一个用于同步代码执行。
  */
 static inline struct aio_kiocb *aio_get_req(struct kioctx *ctx)
 {
 	struct aio_kiocb *req;
 
-	req = kmem_cache_alloc(kiocb_cachep, GFP_KERNEL);
+	req = kmem_cache_alloc(kiocb_cachep, GFP_KERNEL); //从slab中分配一个iocb
 	if (unlikely(!req))
 		return NULL;
 
@@ -1035,6 +1084,7 @@ static inline struct aio_kiocb *aio_get_req(struct kioctx *ctx)
 		kmem_cache_free(kiocb_cachep, req);
 		return NULL;
 	}
+	//到这里说明成功分配了一个iocb
 
 	percpu_ref_get(&ctx->reqs);
 	req->ki_ctx = ctx;
@@ -1044,15 +1094,17 @@ static inline struct aio_kiocb *aio_get_req(struct kioctx *ctx)
 	return req;
 }
 
+//根据ctx_id找到对应的kioctx
 static struct kioctx *lookup_ioctx(unsigned long ctx_id)
 {
-	struct aio_ring __user *ring  = (void __user *)ctx_id;
+	struct aio_ring __user *ring  = (void __user *)ctx_id; //ctx_id是一个指针,指向aio_ring
+	//这里的__user是一个标记,表示这个指针是用户空间的指针
 	struct mm_struct *mm = current->mm;
 	struct kioctx *ctx, *ret = NULL;
 	struct kioctx_table *table;
 	unsigned id;
 
-	if (get_user(id, &ring->id))
+	if (get_user(id, &ring->id)) //从用户空间拷贝id到id
 		return NULL;
 
 	rcu_read_lock();
@@ -1062,9 +1114,9 @@ static struct kioctx *lookup_ioctx(unsigned long ctx_id)
 		goto out;
 
 	id = array_index_nospec(id, table->nr);
-	ctx = rcu_dereference(table->table[id]);
+	ctx = rcu_dereference(table->table[id]); //找到对应的kioctx
 	if (ctx && ctx->user_id == ctx_id) {
-		if (percpu_ref_tryget_live(&ctx->users))
+		if (percpu_ref_tryget_live(&ctx->users))//增加users的引用计数
 			ret = ctx;
 	}
 out:
@@ -1442,6 +1494,10 @@ static void aio_complete_rw(struct kiocb *kiocb, long res, long res2)
 	iocb_put(iocb);
 }
 
+/* 
+其中参数解释: iocb是内核的kiocb,和用户空间的iocb是一样的
+req是内核的kiocb,要提交的请求.
+ */
 static int aio_prep_rw(struct kiocb *req, const struct iocb *iocb)
 {
 	int ret;
@@ -1453,11 +1509,12 @@ static int aio_prep_rw(struct kiocb *req, const struct iocb *iocb)
 	if (iocb->aio_flags & IOCB_FLAG_RESFD)
 		req->ki_flags |= IOCB_EVENTFD;
 	req->ki_hint = ki_hint_validate(file_write_hint(req->ki_filp));
-	if (iocb->aio_flags & IOCB_FLAG_IOPRIO) {
+	if (iocb->aio_flags & IOCB_FLAG_IOPRIO) { //如果ioprio有效
 		/*
 		 * If the IOCB_FLAG_IOPRIO flag of aio_flags is set, then
 		 * aio_reqprio is interpreted as an I/O scheduling
 		 * class and priority.
+		 如果aio_flags的IOCB_FLAG_IOPRIO标志设置，则aio_reqprio将被解释为I/O调度类和优先级。
 		 */
 		ret = ioprio_check_cap(iocb->aio_reqprio);
 		if (ret) {
@@ -1471,12 +1528,15 @@ static int aio_prep_rw(struct kiocb *req, const struct iocb *iocb)
 
 	ret = kiocb_set_rw_flags(req, iocb->aio_rw_flags);
 	if (unlikely(ret))
-		return ret;
+		return ret; //出错了
 
 	req->ki_flags &= ~IOCB_HIPRI; /* no one is going to poll for this I/O */
 	return 0;
 }
 
+//参数解释: rw是读还是写, iocb是内核的iocb,
+//iovec是iovec,iter是iov_iter,这两个都位于caller的栈里
+//函数作用是使内核态的iovec和iov_iter和用户态的iocb的buf,offset,nbytes对应起来
 static ssize_t aio_setup_rw(int rw, const struct iocb *iocb,
 		struct iovec **iovec, bool vectored, bool compat,
 		struct iov_iter *iter)
@@ -1484,7 +1544,7 @@ static ssize_t aio_setup_rw(int rw, const struct iocb *iocb,
 	void __user *buf = (void __user *)(uintptr_t)iocb->aio_buf;
 	size_t len = iocb->aio_nbytes;
 
-	if (!vectored) {
+	if (!vectored) { //单个读的情况,不是vector的情况
 		ssize_t ret = import_single_range(rw, buf, len, *iovec, iter);
 		*iovec = NULL;
 		return ret;
@@ -1497,6 +1557,7 @@ static ssize_t aio_setup_rw(int rw, const struct iocb *iocb,
 	return import_iovec(rw, buf, len, UIO_FASTIOV, iovec, iter);
 }
 
+//ret是调用fops的回调函数的返回值
 static inline void aio_rw_done(struct kiocb *req, ssize_t ret)
 {
 	switch (ret) {
@@ -1513,10 +1574,15 @@ static inline void aio_rw_done(struct kiocb *req, ssize_t ret)
 		ret = -EINTR;
 		/*FALLTHRU*/
 	default:
+	//完成io后调用ki_complete,这个函数可以是调用aio_complete_rw
 		req->ki_complete(req, ret, 0);
 	}
 }
 
+//aio的read cmd的回调函数
+/* 其中iocb是内核的iocb,和用户空间的iocb是一样的
+req是内核的kiocb
+*/
 static int aio_read(struct kiocb *req, const struct iocb *iocb,
 			bool vectored, bool compat)
 {
@@ -1525,21 +1591,24 @@ static int aio_read(struct kiocb *req, const struct iocb *iocb,
 	struct file *file;
 	int ret;
 
-	ret = aio_prep_rw(req, iocb);
-	if (ret)
+	ret = aio_prep_rw(req, iocb); //这里主要是设置一些kiocb的属性
+	if (ret) //出错了
 		return ret;
 	file = req->ki_filp;
 	if (unlikely(!(file->f_mode & FMODE_READ)))
-		return -EBADF;
+		return -EBADF; //禁止读
 	ret = -EINVAL;
 	if (unlikely(!file->f_op->read_iter))
 		return -EINVAL;
 
 	ret = aio_setup_rw(READ, iocb, &iovec, vectored, compat, &iter);
+	//使iovec指向用户态的buf,iter指向用户态的buf
 	if (ret < 0)
 		return ret;
+	//验证一下读的范围是否合法?
+	//这里是要读取file的req->ki_pos位置开始的iov_iter_count(&iter)个字节?
 	ret = rw_verify_area(READ, file, &req->ki_pos, iov_iter_count(&iter));
-	if (!ret)
+	if (!ret) //验证通过
 		aio_rw_done(req, call_read_iter(file, req, &iter));
 	kfree(iovec);
 	return ret;
@@ -1775,6 +1844,11 @@ static int aio_poll(struct aio_kiocb *aiocb, const struct iocb *iocb)
 	return apt.error;
 }
 
+//参数解释: ctx是一个kioctx结构体指针，表示一个异步IO上下文。iocb是一个iocb指针，表示一个iocb操作,是用户空间
+//通过系统调用传递过来的。user_iocb是一个iocb指针，表示一个iocb操作,是用户空间通过系统调用传递过来的。
+//iocb和user_iocb是一样的，只是一个是内核空间的，一个是用户空间的。
+//req是一个aio_kiocb指针，表示一个iocb操作的内核异步IO结构体。req与ctx关联.
+//compat是一个bool类型的参数，表示是否是32位系统调用?
 static int __io_submit_one(struct kioctx *ctx, const struct iocb *iocb,
 			   struct iocb __user *user_iocb, struct aio_kiocb *req,
 			   bool compat)
@@ -1783,13 +1857,16 @@ static int __io_submit_one(struct kioctx *ctx, const struct iocb *iocb,
 	if (unlikely(!req->ki_filp))
 		return -EBADF;
 
-	if (iocb->aio_flags & IOCB_FLAG_RESFD) {
+	if (iocb->aio_flags & IOCB_FLAG_RESFD) { //根据用户传来的aio_flags判断
 		struct eventfd_ctx *eventfd;
 		/*
 		 * If the IOCB_FLAG_RESFD flag of aio_flags is set, get an
 		 * instance of the file* now. The file descriptor must be
 		 * an eventfd() fd, and will be signaled for each completed
 		 * event using the eventfd_signal() function.
+		 如果aio_flags的IOCB_FLAG_RESFD标志被设置，则现在获取文件*的实例。
+		 文件描述符必须是eventfd() fd，并且将使用eventfd_signal()函数为
+		 每个完成的事件发出信号。
 		 */
 		eventfd = eventfd_ctx_fdget(iocb->aio_resfd);
 		if (IS_ERR(eventfd))
@@ -1798,7 +1875,7 @@ static int __io_submit_one(struct kioctx *ctx, const struct iocb *iocb,
 		req->ki_eventfd = eventfd;
 	}
 
-	if (unlikely(put_user(KIOCB_KEY, &user_iocb->aio_key))) {
+	if (unlikely(put_user(KIOCB_KEY, &user_iocb->aio_key))) { //将KIOCB_KEY写入用户空间
 		pr_debug("EFAULT: aio_key\n");
 		return -EFAULT;
 	}
@@ -1808,8 +1885,9 @@ static int __io_submit_one(struct kioctx *ctx, const struct iocb *iocb,
 	req->ki_res.res = 0;
 	req->ki_res.res2 = 0;
 
-	switch (iocb->aio_lio_opcode) {
+	switch (iocb->aio_lio_opcode) { //根据用户传来的aio_lio_opcode判断
 	case IOCB_CMD_PREAD:
+	//2024年12月1日16:14:37
 		return aio_read(&req->rw, iocb, false, compat);
 	case IOCB_CMD_PWRITE:
 		return aio_write(&req->rw, iocb, false, compat);
@@ -1829,6 +1907,9 @@ static int __io_submit_one(struct kioctx *ctx, const struct iocb *iocb,
 	}
 }
 
+//参数解释: ctx是一个kioctx结构体指针，表示一个异步IO上下文。user_iocb是一个iocb指针，表示一个iocb操作,是用户空间
+//通过系统调用传递过来的。compat是一个bool类型的参数，表示是否是32位系统调用?
+//函数作用: 将iocb操作提交到内核异步IO队列中
 static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 			 bool compat)
 {
@@ -1855,7 +1936,7 @@ static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 		return -EINVAL;
 	}
 
-	req = aio_get_req(ctx);
+	req = aio_get_req(ctx); //获取req
 	if (unlikely(!req))
 		return -EAGAIN;
 
@@ -1877,6 +1958,7 @@ static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 }
 
 /* sys_io_submit:
+这是一个异步IO的系统调用，用于将一组IO操作提交到内核异步IO队列中。这个系统调用的原型如下：
  *	Queue the nr iocbs pointed to by iocbpp for processing.  Returns
  *	the number of iocbs queued.  May return -EINVAL if the aio_context
  *	specified by ctx_id is invalid, if nr is < 0, if the iocb at
@@ -1887,6 +1969,17 @@ static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
  *	iocb is invalid.  May fail with -EAGAIN if insufficient resources
  *	are available to queue any iocbs.  Will return 0 if nr is 0.  Will
  *	fail with -ENOSYS if not implemented.
+ 翻译: 将iocbpp指向的nr个iocb操作提交到内核异步IO队列中。返回已经提交的iocb的数量。
+ 如果ctx_id指定的aio_context无效，如果nr < 0，如果*iocbpp[0]处的iocb未正确初始化，
+ 如果指定的操作对iocb中的文件描述符无效，则可能返回-EINVAL。如果任何数据结构指向无效数据，
+ 则可能返回-EFAULT。如果第一个iocb中指定的文件描述符无效，则可能返回-EBADF。
+ 如果没有足够的资源可用于排队任何iocb，则可能返回-EAGAIN。如果nr为0，则返回0。
+ 如果未实现，则返回-ENOSYS。
+ ==============
+ 参数解释: ctx_id是一个aio_context_t类型的参数，表示一个异步IO上下文。nr是一个long类型的参数，
+	 表示iocb的数量。iocbpp是一个指向iocb指针数组的指针，表示要提交的iocb操作。
+	 这个系统调用的返回值是已经提交的iocb的数量。
+
  */
 SYSCALL_DEFINE3(io_submit, aio_context_t, ctx_id, long, nr,
 		struct iocb __user * __user *, iocbpp)
@@ -1899,7 +1992,7 @@ SYSCALL_DEFINE3(io_submit, aio_context_t, ctx_id, long, nr,
 	if (unlikely(nr < 0))
 		return -EINVAL;
 
-	ctx = lookup_ioctx(ctx_id);
+	ctx = lookup_ioctx(ctx_id);//根据ctx_id查找对应的kioctx结构体
 	if (unlikely(!ctx)) {
 		pr_debug("EINVAL: invalid context id\n");
 		return -EINVAL;
@@ -1913,15 +2006,16 @@ SYSCALL_DEFINE3(io_submit, aio_context_t, ctx_id, long, nr,
 	for (i = 0; i < nr; i++) {
 		struct iocb __user *user_iocb;
 
-		if (unlikely(get_user(user_iocb, iocbpp + i))) {
+		if (unlikely(get_user(user_iocb, iocbpp + i))) { //这里逐个获取iocbpp数组中的iocb指针
 			ret = -EFAULT;
 			break;
 		}
 
-		ret = io_submit_one(ctx, user_iocb, false);
+		ret = io_submit_one(ctx, user_iocb, false);//调用io_submit_one函数，将iocb操作提交到内核异步IO队列中
 		if (ret)
 			break;
 	}
+
 	if (nr > AIO_PLUG_THRESHOLD)
 		blk_finish_plug(&plug);
 

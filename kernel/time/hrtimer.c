@@ -1430,6 +1430,7 @@ EXPORT_SYMBOL_GPL(hrtimer_init);
  * A timer is active, when it is enqueued into the rbtree or the
  * callback function is running or it's in the state of being migrated
  * to another cpu.
+ 判断定时器是否处于激活状态
  *
  * It is important for this function to not return a false negative.
  */

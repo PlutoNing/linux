@@ -12,11 +12,16 @@
 
 #include <linux/types.h>
 
-/* 8 byte segment descriptor */
+/* 8 byte segment descriptor
+表示段描述符,作用是描述段的属性,比如基地址,限制,特权级别等.
+一般可能是那些段比如代码段,数据段,系统段等.
+ */
 struct desc_struct {
-	u16	limit0;
-	u16	base0;
-	u16	base1: 8, type: 4, s: 1, dpl: 2, p: 1;
+	u16	limit0;  //段限制?
+	u16	base0; //基地址
+
+	u16	base1: 8, type: 4, s: 1, dpl: 2, p: 1; //这个定义方式说明了这个结构体的位域
+	//这个结构体的位域是这样的:	|base1|type|s|dpl|p|分别是8,4,1,2,1位.作用是描述段的属性,比如基地址,限制,特权级别等.
 	u16	limit1: 4, avl: 1, l: 1, d: 1, g: 1, base2: 8;
 } __attribute__((packed));
 
@@ -50,7 +55,10 @@ enum {
 	DESCTYPE_S = 0x10,	/* !system */
 };
 
-/* LDT or TSS descriptor in the GDT. */
+/* LDT or TSS descriptor in the GDT
+这个结构体描述了GDT中的LDT或者TSS描述符 16字节LDT或TSS描述符结构
+描述符作用是
+ */
 struct ldttss_desc {
 	u16	limit0;
 	u16	base0;
@@ -102,6 +110,7 @@ static inline unsigned long gate_segment(const gate_desc *g)
 	return g->segment;
 }
 
+// 这个结构记录了系统的GDT或者IDT的大小以及在系统中的线性基地
 struct desc_ptr {
 	unsigned short size;
 	unsigned long address;

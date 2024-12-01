@@ -440,6 +440,8 @@ int iov_iter_fault_in_readable(struct iov_iter *i, size_t bytes)
 }
 EXPORT_SYMBOL(iov_iter_fault_in_readable);
 
+//i是iov_iter, direction表示读写方向，
+//iov是iovec数组,可能是用户空间的buf
 void iov_iter_init(struct iov_iter *i, unsigned int direction,
 			const struct iovec *iov, unsigned long nr_segs,
 			size_t count)
@@ -1709,6 +1711,11 @@ ssize_t compat_import_iovec(int type,
 }
 #endif
 
+//参数解释,其中rw是读写标志
+//buf和len是用户提交的iocb的buf
+//iov是内核态caller栈里的iov
+//函数用来把用户态的buf"拷贝"到内核态的iov里,其实是直接指针赋值
+//用于aio的读写操作
 int import_single_range(int rw, void __user *buf, size_t len,
 		 struct iovec *iov, struct iov_iter *i)
 {

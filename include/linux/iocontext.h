@@ -105,7 +105,7 @@ struct io_context {
 	/* all the fields below are protected by this lock */
 	spinlock_t lock;
 
-	unsigned short ioprio;
+	unsigned short ioprio; //io优先级
 
 	/*
 	 * For request batching

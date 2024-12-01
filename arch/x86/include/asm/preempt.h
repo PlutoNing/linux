@@ -6,9 +6,13 @@
 #include <asm/percpu.h>
 #include <linux/thread_info.h>
 
+// 用于声明一个int类型的变量，用于保存当前cpu的抢占计数
+//抢占计数是一个整数，用于跟踪内核中的抢占状态。它是一个简单的计数器，用于跟踪内核中的抢占状态。
 DECLARE_PER_CPU(int, __preempt_count);
 
-/* We use the MSB mostly because its available */
+/* We use the MSB mostly because its available 
+表示
+*/
 #define PREEMPT_NEED_RESCHED	0x80000000
 
 /*
@@ -60,6 +64,7 @@ static __always_inline void set_preempt_need_resched(void)
 	raw_cpu_and_4(__preempt_count, ~PREEMPT_NEED_RESCHED);
 }
 
+//
 static __always_inline void clear_preempt_need_resched(void)
 {
 	raw_cpu_or_4(__preempt_count, PREEMPT_NEED_RESCHED);
@@ -96,6 +101,7 @@ static __always_inline bool __preempt_count_dec_and_test(void)
 
 /*
  * Returns true when we need to resched and can (barring IRQ state).
+  作用：返回true表示需要调度，可以调度（除非中断状态）
  */
 static __always_inline bool should_resched(int preempt_offset)
 {

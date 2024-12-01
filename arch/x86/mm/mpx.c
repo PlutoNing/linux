@@ -42,6 +42,9 @@ static inline unsigned long mpx_bt_size_bytes(struct mm_struct *mm)
 /*
  * This is really a simplified "vm_mmap". it only handles MPX
  * bounds tables (the bounds directory is user-allocated).
+ MPX表示Memory Protection Extensions，是Intel在Haswell微架构中引入
+ 的一种内存保护技术。MPX技术通过引入边界目录（Bounds Directory）和
+ 边界表（Bounds Table）来实现内存访问的边界检查，从而提高系统的安全性。
  */
 static unsigned long mpx_mmap(unsigned long len)
 {

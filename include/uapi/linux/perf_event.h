@@ -95,6 +95,8 @@ enum perf_hw_cache_op_result_id {
 };
 
 /*
+用于表示内核提供的特殊“软件”事件，即使硬件不支持性能事件，这些事件也可以被测量。
+这些事件用于测量内核的各种物理和软件事件，并允许对它们进行分析和性能剖析。
  * Special "software" events provided by the kernel, even if the hardware
  * does not support performance events. These events measure various
  * physical and sw events of the kernel (and allow the profiling of them as
@@ -103,7 +105,7 @@ enum perf_hw_cache_op_result_id {
 enum perf_sw_ids {
 	PERF_COUNT_SW_CPU_CLOCK			= 0,
 	PERF_COUNT_SW_TASK_CLOCK		= 1,
-	PERF_COUNT_SW_PAGE_FAULTS		= 2,
+	PERF_COUNT_SW_PAGE_FAULTS		= 2, /* 表示页面错误事件。 */
 	PERF_COUNT_SW_CONTEXT_SWITCHES		= 3,
 	PERF_COUNT_SW_CPU_MIGRATIONS		= 4,
 	PERF_COUNT_SW_PAGE_FAULTS_MIN		= 5,

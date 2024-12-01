@@ -96,10 +96,16 @@
  * optimistic spinning will alleviate the negative side effect of this
  * feature.
  */
+
+ // 0x1
 #define RWSEM_READER_OWNED	(1UL << 0)
+// 0x2
 #define RWSEM_RD_NONSPINNABLE	(1UL << 1)
+// 0x4
 #define RWSEM_WR_NONSPINNABLE	(1UL << 2)
+// 0x6
 #define RWSEM_NONSPINNABLE	(RWSEM_RD_NONSPINNABLE | RWSEM_WR_NONSPINNABLE)
+// 0x7 ,三个1
 #define RWSEM_OWNER_FLAGS_MASK	(RWSEM_READER_OWNED | RWSEM_NONSPINNABLE)
 
 #ifdef CONFIG_DEBUG_RWSEMS
@@ -117,10 +123,11 @@
 #endif
 
 /*
+表示sem的count字段的bit位定义
  * On 64-bit architectures, the bit definitions of the count are:
- *
+ * 在64位架构上，count的位定义如下：
  * Bit  0    - writer locked bit
- * Bit  1    - waiters present bit
+ * Bit  1    - waiters present bit, 1表示有等待者
  * Bit  2    - lock handoff bit
  * Bits 3-7  - reserved
  * Bits 8-62 - 55-bit reader count
@@ -153,7 +160,7 @@
  * bit. So concurrent setting/clearing of handoff bit is not possible.
  */
 #define RWSEM_WRITER_LOCKED	(1UL << 0)
-#define RWSEM_FLAG_WAITERS	(1UL << 1)
+#define RWSEM_FLAG_WAITERS	(1UL << 1) // 表示有等待者
 #define RWSEM_FLAG_HANDOFF	(1UL << 2)
 #define RWSEM_FLAG_READFAIL	(1UL << (BITS_PER_LONG - 1))
 
@@ -171,6 +178,9 @@
  * the owner value concurrently without lock. Read from owner, however,
  * may not need READ_ONCE() as long as the pointer value is only used
  * for comparison and isn't being dereferenced.
+ 意思是说，owner的写操作是通过WRITE_ONCE()来保护的，以确保store tearing不能发生，
+ 因为乐观的自旋者可能会并发地读取和使用owner值，而不需要锁。然而，owner的读取
+ 可能不需要READ_ONCE()，只要指针值仅用于比较，而不被解引用。
  */
 static inline void rwsem_set_owner(struct rw_semaphore *sem)
 {
@@ -291,6 +301,7 @@ static inline struct task_struct *rwsem_owner(struct rw_semaphore *sem)
 }
 
 /*
+获取sem的持有者和持有者的标记
  * Return the real task structure pointer of the owner and the embedded
  * flags in the owner. pflags must be non-NULL.
  */
@@ -346,16 +357,18 @@ void __init_rwsem(struct rw_semaphore *sem, const char *name,
 }
 EXPORT_SYMBOL(__init_rwsem);
 
+//sem的waiter的类型,是等待写还是等待读
 enum rwsem_waiter_type {
 	RWSEM_WAITING_FOR_WRITE,
 	RWSEM_WAITING_FOR_READ
 };
 
+//表示sem的等待者
 struct rwsem_waiter {
-	struct list_head list;
-	struct task_struct *task;
-	enum rwsem_waiter_type type;
-	unsigned long timeout;
+	struct list_head list; //连接件,用于连接到rwsem的等待者链表
+	struct task_struct *task; //等待者的task_struct
+	enum rwsem_waiter_type type;//等待者的类型,可以是等待写或者等待读
+	unsigned long timeout; //等待者的超时时间
 	unsigned long last_rowner;
 };
 #define rwsem_first_waiter(sem) \
@@ -630,6 +643,7 @@ static inline bool rwsem_try_read_lock_unqueued(struct rw_semaphore *sem)
 
 /*
  * Try to acquire write lock before the writer has been put on wait queue.
+ 意思是说,在写者被放到等待队列之前,尝试获取写锁????
  */
 static inline bool rwsem_try_write_lock_unqueued(struct rw_semaphore *sem)
 {
@@ -637,7 +651,8 @@ static inline bool rwsem_try_write_lock_unqueued(struct rw_semaphore *sem)
 
 	while (!(count & (RWSEM_LOCK_MASK|RWSEM_FLAG_HANDOFF))) {
 		if (atomic_long_try_cmpxchg_acquire(&sem->count, &count,
-					count | RWSEM_WRITER_LOCKED)) {
+					count | RWSEM_WRITER_LOCKED)) {//尝试获取写锁
+			
 			rwsem_set_owner(sem);
 			lockevent_inc(rwsem_opt_wlock);
 			return true;
@@ -646,6 +661,7 @@ static inline bool rwsem_try_write_lock_unqueued(struct rw_semaphore *sem)
 	return false;
 }
 
+//
 static inline bool owner_on_cpu(struct task_struct *owner)
 {
 	/*
@@ -655,6 +671,7 @@ static inline bool owner_on_cpu(struct task_struct *owner)
 	return owner->on_cpu && !vcpu_is_preempted(task_cpu(owner));
 }
 
+//
 static inline bool rwsem_can_spin_on_owner(struct rw_semaphore *sem,
 					   unsigned long nonspinnable)
 {
@@ -664,20 +681,21 @@ static inline bool rwsem_can_spin_on_owner(struct rw_semaphore *sem,
 
 	BUILD_BUG_ON(!(RWSEM_OWNER_UNKNOWN & RWSEM_NONSPINNABLE));
 
-	if (need_resched()) {
+	if (need_resched()) {//如果需要调度,则不自旋
 		lockevent_inc(rwsem_opt_fail);
 		return false;
 	}
 
 	preempt_disable();
 	rcu_read_lock();
-	owner = rwsem_owner_flags(sem, &flags);
+	owner = rwsem_owner_flags(sem, &flags); //获取持有者和标记
 	/*
 	 * Don't check the read-owner as the entry may be stale.
 	 */
 	if ((flags & nonspinnable) ||
 	    (owner && !(flags & RWSEM_READER_OWNED) && !owner_on_cpu(owner)))
 		ret = false;
+
 	rcu_read_unlock();
 	preempt_enable();
 
@@ -688,13 +706,14 @@ static inline bool rwsem_can_spin_on_owner(struct rw_semaphore *sem,
 /*
  * The rwsem_spin_on_owner() function returns the folowing 4 values
  * depending on the lock owner state.
- *   OWNER_NULL  : owner is currently NULL
- *   OWNER_WRITER: when owner changes and is a writer
- *   OWNER_READER: when owner changes and the new owner may be a reader.
- *   OWNER_NONSPINNABLE:
+ 表示一个sem的持有者和标记
+ *   OWNER_NULL  : owner is currently NULL,表示当前没有持有者
+ *   OWNER_WRITER: when owner changes and is a writer,表示持有者是一个写者
+ *   OWNER_READER: when owner changes and the new owner may be a reader.,表示持有者是一个读者
+ *   OWNER_NONSPINNABLE: 
  *		   when optimistic spinning has to stop because either the
  *		   owner stops running, is unknown, or its timeslice has
- *		   been used up.
+ *		   been used up.表示不可自旋
  */
 enum owner_state {
 	OWNER_NULL		= 1 << 0,
@@ -702,8 +721,12 @@ enum owner_state {
 	OWNER_READER		= 1 << 2,
 	OWNER_NONSPINNABLE	= 1 << 3,
 };
+//表示可以自旋,也就是说owner是一个读者或者写者或者没有持有者
 #define OWNER_SPINNABLE		(OWNER_NULL | OWNER_WRITER | OWNER_READER)
 
+//owner和flags是rwsem_owner_flags()的返回值,表示一个sem的持有者和标记
+//nonspinnable可能取值RWSEM_WR_NONSPINNABLE或者RWSEM_RD_NONSPINNABLE
+//作用是准备在竞争sem之前判断owner的状态
 static inline enum owner_state
 rwsem_owner_state(struct task_struct *owner, unsigned long flags, unsigned long nonspinnable)
 {
@@ -711,11 +734,13 @@ rwsem_owner_state(struct task_struct *owner, unsigned long flags, unsigned long 
 		return OWNER_NONSPINNABLE;
 
 	if (flags & RWSEM_READER_OWNED)
-		return OWNER_READER;
+		return OWNER_READER; //表示持有者是一个读者
 
-	return owner ? OWNER_WRITER : OWNER_NULL;
+	return owner ? OWNER_WRITER : OWNER_NULL; //表示持有者是一个写者
 }
 
+//@nonspinnable可能取值RWSEM_WR_NONSPINNABLE或者RWSEM_RD_NONSPINNABLE
+//作用是自旋,不断获取持有者和标记,直到持有者和标记发生变化
 static noinline enum owner_state
 rwsem_spin_on_owner(struct rw_semaphore *sem, unsigned long nonspinnable)
 {
@@ -723,11 +748,14 @@ rwsem_spin_on_owner(struct rw_semaphore *sem, unsigned long nonspinnable)
 	unsigned long flags, new_flags;
 	enum owner_state state;
 
+	//获取持有者和标记
 	owner = rwsem_owner_flags(sem, &flags);
+	//获取持有者的状态
 	state = rwsem_owner_state(owner, flags, nonspinnable);
 	if (state != OWNER_WRITER)
-		return state;
-
+		return state; //如果持有者不是写者,则直接返回
+	
+	//如果持有者是写者
 	rcu_read_lock();
 	for (;;) {
 		/*
@@ -735,18 +763,22 @@ rwsem_spin_on_owner(struct rw_semaphore *sem, unsigned long nonspinnable)
 		 * on the owner as well. Once that writer acquires the lock,
 		 * we can spin on it. So we don't need to quit even when the
 		 * handoff bit is set.
+		 意思是说
 		 */
+		 //在这里自旋,不断获取持有者和标记
 		new = rwsem_owner_flags(sem, &new_flags);
-		if ((new != owner) || (new_flags != flags)) {
+		if ((new != owner) || (new_flags != flags)) {//一直自旋,直到持有者和标记发生变化
 			state = rwsem_owner_state(new, new_flags, nonspinnable);
 			break;
 		}
-
+		//这里判断是否继续自旋
 		/*
 		 * Ensure we emit the owner->on_cpu, dereference _after_
 		 * checking sem->owner still matches owner, if that fails,
 		 * owner might point to free()d memory, if it still matches,
 		 * the rcu_read_lock() ensures the memory stays valid.
+		 意思是说,确保我们在检查sem->owner仍然匹配owner之后才发出owner->on_cpu,解引用,?
+		 如果失败,owner可能指向free()d内存,如果仍然匹配,rcu_read_lock()确保内存保持有效。?
 		 */
 		barrier();
 
@@ -787,18 +819,24 @@ static inline u64 rwsem_rspin_threshold(struct rw_semaphore *sem)
 	return sched_clock() + delta;
 }
 
+// @wlock表示是否是写锁
+// 作用是自旋,不断获取持有者和标记,直到持有者和标记发生变化
 static bool rwsem_optimistic_spin(struct rw_semaphore *sem, bool wlock)
 {
 	bool taken = false;
 	int prev_owner_state = OWNER_NULL;
 	int loop = 0;
 	u64 rspin_threshold = 0;
+
+	// @nonspinnable表示是否是写锁
 	unsigned long nonspinnable = wlock ? RWSEM_WR_NONSPINNABLE
 					   : RWSEM_RD_NONSPINNABLE;
 
 	preempt_disable();
 
-	/* sem->wait_lock should not be held when doing optimistic spinning */
+	/* sem->wait_lock should not be held when doing optimistic spinning
+	 
+	 */
 	if (!osq_lock(&sem->osq))
 		goto done;
 
@@ -807,25 +845,32 @@ static bool rwsem_optimistic_spin(struct rw_semaphore *sem, bool wlock)
 	 * lock whenever the owner changes. Spinning will be stopped when:
 	 *  1) the owning writer isn't running; or
 	 *  2) readers own the lock and spinning time has exceeded limit.
+	 意思是说，乐观地自旋owner字段，并在owner更改时尝试获取锁。当以下情况发生时，
+	 	1)拥有的写者没有运行;或
+		2)读者拥有锁，并且自旋时间已超过限制。
 	 */
 	for (;;) {
 		enum owner_state owner_state;
 
 		owner_state = rwsem_spin_on_owner(sem, nonspinnable);
-		if (!(owner_state & OWNER_SPINNABLE))
+		//rwsem_spin_on_owner()返回,可能是因为不能自旋,也可能是因为自旋到持有者和标记发生了变化
+		if (!(owner_state & OWNER_SPINNABLE))//这个说明是因为不能自旋才返回的
 			break;
 
-		/*
+		//到这里说明,rwsem_spin_on_owner()成功自旋到了持有者和标记发生了变化
+		/*	
 		 * Try to acquire the lock
+		 这里尝试获取锁
 		 */
 		taken = wlock ? rwsem_try_write_lock_unqueued(sem)
 			      : rwsem_try_read_lock_unqueued(sem);
 
-		if (taken)
+		if (taken) //如果获取锁成功,则退出循环
 			break;
 
 		/*
 		 * Time-based reader-owned rwsem optimistic spinning
+		
 		 */
 		if (wlock && (owner_state == OWNER_READER)) {
 			/*
@@ -1135,6 +1180,8 @@ static inline void rwsem_disable_reader_optspin(struct rw_semaphore *sem,
 }
 
 /*
+	获取写锁,可能会阻塞
+ 
  * Wait until we successfully acquire the write lock
  */
 static struct rw_semaphore *
@@ -1147,17 +1194,21 @@ rwsem_down_write_slowpath(struct rw_semaphore *sem, int state)
 	struct rw_semaphore *ret = sem;
 	DEFINE_WAKE_Q(wake_q);
 
-	/* do optimistic spinning and steal lock if possible */
+	/* do optimistic spinning and steal lock if possible
+	尝试乐观自旋,如果成功,则直接获取锁
+	 */
 	if (rwsem_can_spin_on_owner(sem, RWSEM_WR_NONSPINNABLE) &&
 	    rwsem_optimistic_spin(sem, true)) {
 		/* rwsem_optimistic_spin() implies ACQUIRE on success */
 		return sem;
 	}
 
+	//到这里说明,乐观自旋失败,需要阻塞等待
 	/*
 	 * Disable reader optimistic spinning for this rwsem after
 	 * acquiring the write lock when the setting of the nonspinnable
 	 * bits are observed.
+
 	 */
 	disable_rspin = atomic_long_read(&sem->owner) & RWSEM_NONSPINNABLE;
 
@@ -1171,25 +1222,31 @@ rwsem_down_write_slowpath(struct rw_semaphore *sem, int state)
 
 	raw_spin_lock_irq(&sem->wait_lock);
 
-	/* account for this before adding a new element to the list */
+	/* account for this before adding a new element to the list 
+	判断是否是第一个写者
+	*/
 	wstate = list_empty(&sem->wait_list) ? WRITER_FIRST : WRITER_NOT_FIRST;
-
+	//将waiter添加到等待队列
 	list_add_tail(&waiter.list, &sem->wait_list);
 
 	/* we're now waiting on the lock */
-	if (wstate == WRITER_NOT_FIRST) {
-		count = atomic_long_read(&sem->count);
+	if (wstate == WRITER_NOT_FIRST) {//如果不是第一个写者,也就是说wait_list不为空
+		count = atomic_long_read(&sem->count);//
 
 		/*
 		 * If there were already threads queued before us and:
+		 如果在我们之前已经有线程排队了,并且:
 		 *  1) there are no no active locks, wake the front
 		 *     queued process(es) as the handoff bit might be set.
+		 不存在活跃的lock,唤醒排在前面的进程,因为可能设置了handoff位。?
 		 *  2) there are no active writers and some readers, the lock
 		 *     must be read owned; so we try to wake any read lock
 		 *     waiters that were queued ahead of us.
+		 不存在活跃的写者,但是有一些读者,锁必须是读取的,所以我们尝试唤醒
+		 排在我们前面的任何读取锁等待者。
 		 */
 		if (count & RWSEM_WRITER_MASK)
-			goto wait;
+			goto wait; //直接去等待
 
 		rwsem_mark_wake(sem, (count & RWSEM_READER_MASK)
 					? RWSEM_WAKE_READERS
@@ -1205,12 +1262,18 @@ rwsem_down_write_slowpath(struct rw_semaphore *sem, int state)
 			wake_q_init(&wake_q);	/* Used again, reinit */
 			raw_spin_lock_irq(&sem->wait_lock);
 		}
-	} else {
+	} else {//如果是第一个写者
+
+		//这里把sem标记为有等待者
 		atomic_long_or(RWSEM_FLAG_WAITERS, &sem->count);
+		//然后去等待
 	}
 
 wait:
-	/* wait until we successfully acquire the lock */
+//到这里,waiter已经添加到等待队列了,然后去等待
+	/* wait until we successfully acquire the lock
+	这里设置等待时的状态,比如可以说killable.
+	 */
 	set_current_state(state);
 	for (;;) {
 		if (rwsem_try_write_lock(sem, wstate)) {
@@ -1269,6 +1332,7 @@ wait:
 trylock_again:
 		raw_spin_lock_irq(&sem->wait_lock);
 	}
+	
 	__set_current_state(TASK_RUNNING);
 	list_del(&waiter.list);
 	rwsem_disable_reader_optspin(sem, disable_rspin);
@@ -1399,12 +1463,16 @@ static inline void __down_write(struct rw_semaphore *sem)
 		rwsem_set_owner(sem);
 }
 
+//尝试获取写锁，成功返回1，失败返回0
 static inline int __down_write_killable(struct rw_semaphore *sem)
 {
 	long tmp = RWSEM_UNLOCKED_VALUE;
 
 	if (unlikely(!atomic_long_try_cmpxchg_acquire(&sem->count, &tmp,
 						      RWSEM_WRITER_LOCKED))) {
+								
+		//说明上面尝试获取写锁失败
+		//下面尝试通过slowpath重试获取写锁
 		if (IS_ERR(rwsem_down_write_slowpath(sem, TASK_KILLABLE)))
 			return -EINTR;
 	} else {
@@ -1545,22 +1613,25 @@ void __sched down_write(struct rw_semaphore *sem)
 EXPORT_SYMBOL(down_write);
 
 /*
-
+	作用：尝试获取写锁，成功返回1，失败返回0
  * lock for writing
+  
  */
 int __sched down_write_killable(struct rw_semaphore *sem)
 {
-	might_sleep();
+	might_sleep(); //这里可能会睡眠
 	rwsem_acquire(&sem->dep_map, 0, 0, _RET_IP_);
 
 	if (LOCK_CONTENDED_RETURN(sem, __down_write_trylock,
-				  __down_write_killable)) {
+				  __down_write_killable)) { //等价于__down_write_killable(sem)
+		
 		rwsem_release(&sem->dep_map, 1, _RET_IP_);
 		return -EINTR;
 	}
 
 	return 0;
 }
+
 EXPORT_SYMBOL(down_write_killable);
 
 /*

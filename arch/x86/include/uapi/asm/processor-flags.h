@@ -87,28 +87,41 @@
 
 /*
  * Intel CPU features in CR4
+	这些是CR4寄存器的一些特性
+	CR4寄存器是一个32位的控制寄存器，用于控制处理器的一些特性。
  */
 #define X86_CR4_VME_BIT		0 /* enable vm86 extensions */
+// 这个是CR4寄存器的第0位，表示启用虚拟86模式扩展
 #define X86_CR4_VME		_BITUL(X86_CR4_VME_BIT)
+// 这个是CR4寄存器的第0位，表示启用虚拟86模式扩展
 #define X86_CR4_PVI_BIT		1 /* virtual interrupts flag enable */
+// 这个是CR4寄存器的第1位，表示启用虚拟中断标志
 #define X86_CR4_PVI		_BITUL(X86_CR4_PVI_BIT)
 #define X86_CR4_TSD_BIT		2 /* disable time stamp at ipl 3 */
+// 这个是CR4寄存器的第2位，表示禁用时间戳?
 #define X86_CR4_TSD		_BITUL(X86_CR4_TSD_BIT)
 #define X86_CR4_DE_BIT		3 /* enable debugging extensions */
+// 这个是CR4寄存器的第3位，表示启用调试扩展
 #define X86_CR4_DE		_BITUL(X86_CR4_DE_BIT)
 #define X86_CR4_PSE_BIT		4 /* enable page size extensions */
+// 这个是CR4寄存器的第4位，表示启用页面大小扩展
 #define X86_CR4_PSE		_BITUL(X86_CR4_PSE_BIT)
 #define X86_CR4_PAE_BIT		5 /* enable physical address extensions */
 #define X86_CR4_PAE		_BITUL(X86_CR4_PAE_BIT)
+// 这个是CR4寄存器的第5位，表示启用物理地址扩展
 #define X86_CR4_MCE_BIT		6 /* Machine check enable */
 #define X86_CR4_MCE		_BITUL(X86_CR4_MCE_BIT)
 #define X86_CR4_PGE_BIT		7 /* enable global pages */
+// 这个是CR4寄存器的第7位，表示启用全局页面. 全局页面指的是在TLB中的页面表项不会被刷新?
 #define X86_CR4_PGE		_BITUL(X86_CR4_PGE_BIT)
 #define X86_CR4_PCE_BIT		8 /* enable performance counters at ipl 3 */
+// 这个是CR4寄存器的第8位，表示在ipl 3启用性能计数器,ipl3表示中断优先级为3?
 #define X86_CR4_PCE		_BITUL(X86_CR4_PCE_BIT)
 #define X86_CR4_OSFXSR_BIT	9 /* enable fast FPU save and restore */
+// 这个是CR4寄存器的第9位，表示启用快速FPU保存和恢复?
 #define X86_CR4_OSFXSR		_BITUL(X86_CR4_OSFXSR_BIT)
 #define X86_CR4_OSXMMEXCPT_BIT	10 /* enable unmasked SSE exceptions */
+// 这个是CR4寄存器的第10位，表示启用未屏蔽的SSE异常,sse表示流处理单元?
 #define X86_CR4_OSXMMEXCPT	_BITUL(X86_CR4_OSXMMEXCPT_BIT)
 #define X86_CR4_UMIP_BIT	11 /* enable UMIP support */
 #define X86_CR4_UMIP		_BITUL(X86_CR4_UMIP_BIT)
@@ -126,10 +139,17 @@
 #define X86_CR4_OSXSAVE		_BITUL(X86_CR4_OSXSAVE_BIT)
 #define X86_CR4_SMEP_BIT	20 /* enable SMEP support */
 #define X86_CR4_SMEP		_BITUL(X86_CR4_SMEP_BIT)
+// 这个是CR4寄存器的第20位，表示启用SMEP支持,smep表示内核模式下的代码不能执行用户模式下的代码
+/* SMAP(Supervisor Mode Access Prevention，管理模式访问保护)和SMEP(Supervisor Mode Execution 
+Prevention，管理模式执行保护)的作用分别是禁止内核CPU访问用户空间的数据和执行用户空间的代码，
+并不会因为你权限高就能访问/执行低权限的资源，你的就是你的，我的就是我的，而之前零环权限就很牛逼了，
+你的就是我的，我的还是我的 */
 #define X86_CR4_SMAP_BIT	21 /* enable SMAP support */
 #define X86_CR4_SMAP		_BITUL(X86_CR4_SMAP_BIT)
+// 这个是CR4寄存器的第21位，表示启用SMAP支持,smap表示内核模式下的代码不能访问用户模式下的数据
 #define X86_CR4_PKE_BIT		22 /* enable Protection Keys support */
 #define X86_CR4_PKE		_BITUL(X86_CR4_PKE_BIT)
+// 这个是CR4寄存器的第22位，表示启用保护键支持,保护键是一种内存保护机制，允许对内存页设置访问权限，从而防止未经授权的访问
 
 /*
  * x86-64 Task Priority Register, CR8

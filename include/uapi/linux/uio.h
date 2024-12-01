@@ -14,9 +14,13 @@
 #include <linux/types.h>
 
 
+//这个结构体用来描述一个iovec，iovec是一个指向数据的指针和数据的长度
+//用于readv和writev系统调用等
 struct iovec
 {
-	void __user *iov_base;	/* BSD uses caddr_t (1003.1g requires void *) */
+	void __user *iov_base;	/* BSD uses caddr_t (1003.1g requires void *)
+	比如可能指向用户态的一个缓冲区,iocb的缓冲区
+	 */
 	__kernel_size_t iov_len; /* Must be size_t (1003.1g) */
 };
 

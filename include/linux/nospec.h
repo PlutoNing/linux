@@ -33,8 +33,9 @@ static inline unsigned long array_index_mask_nospec(unsigned long index,
 #endif
 
 /*
+2024年12月1日14:06:14
  * array_index_nospec - sanitize an array index after a bounds check
- *
+ * 用于对数组索引进行边界检查后进行消毒
  * For a code sequence like:
  *
  *     if (index < size) {

@@ -254,7 +254,10 @@
 #define X86_FEATURE_AVX512DQ		( 9*32+17) /* AVX-512 DQ (Double/Quad granular) Instructions */
 #define X86_FEATURE_RDSEED		( 9*32+18) /* RDSEED instruction */
 #define X86_FEATURE_ADX			( 9*32+19) /* ADCX and ADOX instructions */
-#define X86_FEATURE_SMAP		( 9*32+20) /* Supervisor Mode Access Prevention */
+#define X86_FEATURE_SMAP		( 9*32+20) 
+/*SMAP 是一种硬件特性，它用于防止内核模式代码（即操作系统内核）访问用户空间的内存。在启用 SMAP 的情况下，内核只能访问内核空间的地址，而不能直接访问用户空间的地址，从而增强了安全性。
+如果 SMAP 被启用且内核尝试访问用户空间，会触发硬件错误，通常这种错误会表现为一个页面错误（Page Fault）。 Supervisor Mode Access Prevention
+ */
 #define X86_FEATURE_AVX512IFMA		( 9*32+21) /* AVX-512 Integer Fused Multiply-Add instructions */
 #define X86_FEATURE_CLFLUSHOPT		( 9*32+23) /* CLFLUSHOPT instruction */
 #define X86_FEATURE_CLWB		( 9*32+24) /* CLWB instruction */

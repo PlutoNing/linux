@@ -4,6 +4,10 @@
 
 
 /*
+personality表示进程的行为特征，是一个32位的值，
+其中低8位表示personality类型，
+高24位表示personality标志。
+
  * Flags for bug emulation.
  *
  * These occupy the top three bytes.
@@ -16,7 +20,7 @@ enum {
 						 */
 	MMAP_PAGE_ZERO =	0x0100000,
 	ADDR_COMPAT_LAYOUT =	0x0200000,
-	READ_IMPLIES_EXEC =	0x0400000,
+	READ_IMPLIES_EXEC =	0x0400000, // 读取等于执行
 	ADDR_LIMIT_32BIT =	0x0800000,
 	SHORT_INODE =		0x1000000,
 	WHOLE_SECONDS =		0x2000000,

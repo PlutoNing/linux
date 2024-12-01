@@ -1742,31 +1742,38 @@ EXPORT_SYMBOL(page_cache_prev_miss);
  *
  * Looks up the page cache slot at @mapping & @offset.  If there is a
  * page cache page, it is returned with an increased refcount.
- *
+ *查找页缓存页面。缺页的话会申请
  * If the slot holds a shadow entry of a previously evicted page, or a
  * swap entry from shmem/tmpfs, it is returned.
- *
+ *如果slot保存了先前逐出的页面的阴影条目，或者来自shmem/tmpfs的交换条目，则返回。
  * Return: the found page or shadow entry, %NULL if nothing is found.
+ 返回找到的页面或阴影条目，如果没有找到，则返回%NULL。
  */
 struct page *find_get_entry(struct address_space *mapping, pgoff_t offset)
 {
 	/* 获取mapping里的xas数组 */
-	XA_STATE(xas, &mapping->i_pages, offset);
+	XA_STATE(xas, &mapping->i_pages, offset);//初始化xas
 	struct page *page;
 
 	rcu_read_lock();
 repeat:
-	xas_reset(&xas);
-	page = xas_load(&xas);
+	xas_reset(&xas); //重置xas,为了下次使用时，从头开始
+	page = xas_load(&xas);//从当前节点一直往下找,一直到叶子节点
+
 	/* 需要重新读取的话  */
 	if (xas_retry(&xas, page))
 		goto repeat;
+	//不需要重试
 	/*
 	 * A shadow entry of a recently evicted page, or a swap entry from
 	 * shmem/tmpfs.  Return it without attempting to raise page count.
+	 一个影子条目，最近逐出的页面，或来自shmem/tmpfs的交换条目。返回它，而不尝试提高页面计数。
 	 */
 	if (!page || xa_is_value(page))
 		goto out;
+	
+	/* page存在并且不是value */
+	
 	/* 如果无法get引用计数 */
 	if (!page_cache_get_speculative(page))
 		goto repeat;
@@ -1775,16 +1782,20 @@ repeat:
 	 * Has the page moved or been split?
 	 * This is part of the lockless pagecache protocol. See
 	 * include/linux/pagemap.h for details.
+	  页面是否移动或拆分？这是无锁页缓存协议的一部分。有关详细信息，请参见include/linux/pagemap.h。
 	 */
 	if (unlikely(page != xas_reload(&xas))) {
+		//发生了race?
 		put_page(page);
 		goto repeat;
 	}
+
 	/* 不需要重新读取，存在，不是value，可以独占加锁，期间没有变化，就直接到这了，
 	find subpage */
 	/* 为什么还要subpage呢， */
 	page = find_subpage(page, offset);
 out:
+//代表找到了?
 	rcu_read_unlock();
 
 	return page;
@@ -1875,6 +1886,7 @@ repeat:
 	page = find_get_entry(mapping, offset);
 	if (xa_is_value(page))
 		page = NULL;
+
 	if (!page)
 	/* 页缓存缺页 */
 		goto no_page;
@@ -2810,11 +2822,12 @@ static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 /**
 2024年7月16日00:14:14
  * filemap_fault - read in file data for page fault handling
+ 
  * @vmf:	struct vm_fault containing details of the fault
  *
  * filemap_fault() is invoked via the vma operations vector for a
  * mapped memory region to read in file data during a page fault.
- *
+ * filemap_fault() 被vma的操作向量调用，用于在页面错误期间读取文件数据。
  * The goto's are kind of ugly, but this streamlines the normal case of having
  * it in the page cache, and handles the special cases reasonably without
  * having a lot of duplicated code.
@@ -2962,6 +2975,7 @@ out_retry:
 	return ret | VM_FAULT_RETRY;
 }
 EXPORT_SYMBOL(filemap_fault);
+
 /* vma的vma ops的map_pages回调可能是这个函数 */
 void filemap_map_pages(struct vm_fault *vmf,
 		pgoff_t start_pgoff, pgoff_t end_pgoff)
@@ -3037,13 +3051,14 @@ next:
 }
 EXPORT_SYMBOL(filemap_map_pages);
 
+//
 vm_fault_t filemap_page_mkwrite(struct vm_fault *vmf)
 {
 	struct page *page = vmf->page;
 	struct inode *inode = file_inode(vmf->vma->vm_file);
 	vm_fault_t ret = VM_FAULT_LOCKED;
 
-	sb_start_pagefault(inode->i_sb);
+	sb_start_pagefault(inode->i_sb); 
 	file_update_time(vmf->vma->vm_file);
 	lock_page(page);
 	if (page->mapping != inode->i_mapping) {

@@ -364,14 +364,20 @@ static inline int fatal_signal_pending(struct task_struct *p)
 	return signal_pending(p) && __fatal_signal_pending(p);
 }
 
+/*state表示进程的状态，如果是TASK_INTERRUPTIBLE或者TASK_WAKEKILL那么就返回1，否则返回0
+ */
 static inline int signal_pending_state(long state, struct task_struct *p)
 {
 	if (!(state & (TASK_INTERRUPTIBLE | TASK_WAKEKILL)))
 		return 0;
+	//到这里说明state是TASK_INTERRUPTIBLE或者TASK_WAKEKILL
+
 	if (!signal_pending(p))
 		return 0;
+	//到这里说明有pending的signal,并且state是TASK_INTERRUPTIBLE或者TASK_WAKEKILL
 
-	return (state & TASK_INTERRUPTIBLE) || __fatal_signal_pending(p);
+	return (state & TASK_INTERRUPTIBLE) || __fatal_signal_pending(p); 
+	//返回1说明是TASK_INTERRUPTIBLE或者TASK_WAKEKIL
 }
 
 /*

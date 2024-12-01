@@ -50,8 +50,10 @@
 #define __my_cpu_offset		this_cpu_read(this_cpu_off)
 
 /*
+用于获取当前 CPU 的特定 percpu（每个 CPU 独立）指针。
  * Compared to the generic __my_cpu_offset version, the following
  * saves one instruction and avoids clobbering a temp register.
+ 翻译:与通用的__my_cpu_offset版本相比，以下版本节省了一条指令并避免了临时寄存器的破坏。
  */
 #define arch_raw_cpu_ptr(ptr)				\
 ({							\
@@ -61,6 +63,10 @@
 		     : "m" (this_cpu_off), "0" (ptr));	\
 	(typeof(*(ptr)) __kernel __force *)tcp_ptr__;	\
 })
+/* "add " __percpu_arg(1) ", %0"：汇编指令，将 __percpu_arg(1) 的值加到寄存器 %0 中。?
+: "=r" (tcp_ptr__)：输出操作数，表示将结果存储在寄存器 tcp_ptr__ 中?
+: "m" (this_cpu_off), "0" (ptr)：输入操作数，表示使用内存地址 this_cpu_off 和寄存器 ptr 的值。?
+ */
 #else
 #define __percpu_prefix		""
 #endif
@@ -87,6 +93,7 @@
  * don't give an lvalue though). */
 extern void __bad_percpu_size(void);
 
+//
 #define percpu_to_op(qual, op, var, val)		\
 do {							\
 	typedef typeof(var) pto_T__;			\

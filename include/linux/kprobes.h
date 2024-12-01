@@ -176,6 +176,7 @@ struct kprobe_blacklist_entry {
 };
 
 #ifdef CONFIG_KPROBES
+/*  */
 DECLARE_PER_CPU(struct kprobe *, current_kprobe);
 DECLARE_PER_CPU(struct kprobe_ctlblk, kprobe_ctlblk);
 

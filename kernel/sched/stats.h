@@ -3,6 +3,7 @@
 #ifdef CONFIG_SCHEDSTATS
 
 /*
+delta是一个时间差，用于统计进程在调度队列上的等待时间
  * Expects runqueue lock to be held for atomicity of update
  */
 static inline void
@@ -144,9 +145,10 @@ static inline void psi_task_tick(struct rq *rq) {}
 #endif /* CONFIG_PSI */
 
 #ifdef CONFIG_SCHED_INFO
+//t要被调度进来
 static inline void sched_info_reset_dequeued(struct task_struct *t)
 {
-	t->sched_info.last_queued = 0;
+	t->sched_info.last_queued = 0; //更新最后一次入队时间
 }
 
 /*
@@ -170,6 +172,7 @@ static inline void sched_info_dequeued(struct rq *rq, struct task_struct *t)
 }
 
 /*
+t要被调度进来
  * Called when a task finally hits the CPU.  We can now calculate how
  * long it was waiting to run.  We also note when it began so that we
  * can keep stats on how long its timeslice is.
@@ -181,7 +184,7 @@ static void sched_info_arrive(struct rq *rq, struct task_struct *t)
 	if (t->sched_info.last_queued)
 		delta = now - t->sched_info.last_queued;
 	sched_info_reset_dequeued(t);
-	t->sched_info.run_delay += delta;
+	t->sched_info.run_delay += delta; //更新等待时间
 	t->sched_info.last_arrival = now;
 	t->sched_info.pcount++;
 
@@ -202,12 +205,14 @@ static inline void sched_info_queued(struct rq *rq, struct task_struct *t)
 }
 
 /*
+t要被调度出去，next要被调度进来
  * Called when a process ceases being the active-running process involuntarily
  * due, typically, to expiring its time slice (this may also be called when
  * switching to the idle task).  Now we can calculate how long we ran.
  * Also, if the process is still in the TASK_RUNNING state, call
  * sched_info_queued() to mark that it has now again started waiting on
  * the runqueue.
+ // 说明进程不再是活动运行进程，因为时间片到期，现在我们可以计算我们运行了多长时间。
  */
 static inline void sched_info_depart(struct rq *rq, struct task_struct *t)
 {
@@ -220,6 +225,7 @@ static inline void sched_info_depart(struct rq *rq, struct task_struct *t)
 }
 
 /*
+准备从prev切换到next
  * Called when tasks are switched involuntarily due, typically, to expiring
  * their time slice.  (This may also be called when switching to or from
  * the idle task.)  We are only called when prev != next.
@@ -231,6 +237,7 @@ __sched_info_switch(struct rq *rq, struct task_struct *prev, struct task_struct 
 	 * prev now departs the CPU.  It's not interesting to record
 	 * stats about how efficient we were at scheduling the idle
 	 * process, however.
+	 //
 	 */
 	if (prev != rq->idle)
 		sched_info_depart(rq, prev);
@@ -239,6 +246,7 @@ __sched_info_switch(struct rq *rq, struct task_struct *prev, struct task_struct 
 		sched_info_arrive(rq, next);
 }
 
+//准备从prev切换到next
 static inline void
 sched_info_switch(struct rq *rq, struct task_struct *prev, struct task_struct *next)
 {

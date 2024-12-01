@@ -893,6 +893,7 @@ struct uclamp_rq {
 #endif /* CONFIG_UCLAMP_TASK */
 
 /*
+表示一个CPU的运行队列，包含了CFS、RT、DL调度器的相关信息。
  * This is the main, per-CPU runqueue data structure.
  *
  * Locking rule: those places that want to lock multiple runqueues
@@ -951,11 +952,11 @@ struct rq {
 	 */
 	unsigned long		nr_uninterruptible;
 
-	struct task_struct	*curr;
+	struct task_struct	*curr; //当前正在运行的进程
 	struct task_struct	*idle;
 	struct task_struct	*stop;
 	unsigned long		next_balance;
-	struct mm_struct	*prev_mm;
+	struct mm_struct	*prev_mm; //上一个进程的mm_struct
 
 	unsigned int		clock_update_flags;
 	/* rq的时钟？ */
@@ -970,7 +971,7 @@ in_iowait为真，则会对这个CPU的运行队列rq结构中的nr_iowait加1�
 对nr_iowait的减少操作也是在task唤醒函数来做的。
 
 由此可见nr_iowait可以表明某CPU上是否有task在iowait，以及数量。 */
-	atomic_t		nr_iowait;
+	atomic_t		nr_iowait; //在iowait的进程数量
 
 #ifdef CONFIG_MEMBARRIER
 	int membarrier_state;
@@ -1031,7 +1032,7 @@ in_iowait为真，则会对这个CPU的运行队列rq结构中的nr_iowait加1�
 	int			hrtick_csd_pending;
 	call_single_data_t	hrtick_csd;
 #endif
-	struct hrtimer		hrtick_timer;
+	struct hrtimer		hrtick_timer; //高精度定时器
 #endif
 
 #ifdef CONFIG_SCHEDSTATS
@@ -1104,8 +1105,9 @@ static inline void update_idle_core(struct rq *rq) { }
 #endif
 
 DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
-
+//获取当前CPU的rq
 #define cpu_rq(cpu)		(&per_cpu(runqueues, (cpu)))
+//获取当前CPU的rq的指针
 #define this_rq()		this_cpu_ptr(&runqueues)
 #define task_rq(p)		cpu_rq(task_cpu(p))
 #define cpu_curr(cpu)		(cpu_rq(cpu)->curr)
@@ -1201,6 +1203,7 @@ struct rq_flags {
 #endif
 };
 
+/*  */
 static inline void rq_pin_lock(struct rq *rq, struct rq_flags *rf)
 {
 	rf->cookie = lockdep_pin_lock(&rq->lock);
@@ -1273,6 +1276,7 @@ rq_lock_irq(struct rq *rq, struct rq_flags *rf)
 	rq_pin_lock(rq, rf);
 }
 
+/*  */
 static inline void
 rq_lock(struct rq *rq, struct rq_flags *rf)
 	__acquires(rq->lock)
@@ -1659,6 +1663,8 @@ extern struct static_key sched_feat_keys[__SCHED_FEAT_NR];
  * Each translation unit has its own copy of sysctl_sched_features to allow
  * constants propagation at compile time and compiler optimization based on
  * features default.
+	翻译:每个翻译单元都有自己的sysctl_sched_features副本，
+	以允许在编译时传播常量，并基于特性默认值进行编译器优化。
  */
 #define SCHED_FEAT(name, enabled)	\
 	(1UL << __SCHED_FEAT_##name) * enabled |
@@ -1667,6 +1673,7 @@ static const_debug __maybe_unused unsigned int sysctl_sched_features =
 	0;
 #undef SCHED_FEAT
 
+//判断是否开启了某个特性
 #define sched_feat(x) !!(sysctl_sched_features & (1UL << __SCHED_FEAT_##x))
 
 #endif /* SCHED_DEBUG && CONFIG_JUMP_LABEL */
@@ -1735,15 +1742,17 @@ extern const int		sched_prio_to_weight[40];
 extern const u32		sched_prio_to_wmult[40];
 
 /*
+表示出队入队的标志
  * {de,en}queue flags:
  *
- * DEQUEUE_SLEEP  - task is no longer runnable
- * ENQUEUE_WAKEUP - task just became runnable
+ * DEQUEUE_SLEEP  - task is no longer runnable,表示任务不再是可运行的
+  
+ * ENQUEUE_WAKEUP - task just became runnable,表示任务刚刚变得可运行
  *
  * SAVE/RESTORE - an otherwise spurious dequeue/enqueue, done to ensure tasks
  *                are in a known state which allows modification. Such pairs
  *                should preserve as much state as possible.
- *
+ *表示一个否则无关的出队/入队，用于确保任务处于已知状态，从而允许修改。这样的对应关系应该尽可能保留状态。
  * MOVE - paired with SAVE/RESTORE, explicitly does not preserve the location
  *        in the runqueue.
  *
@@ -2543,10 +2552,16 @@ static inline bool sched_energy_enabled(void) { return false; }
 
 #ifdef CONFIG_MEMBARRIER
 /*
+把新mm的membarrier_state赋值给rq->membarrier_state
  * The scheduler provides memory barriers required by membarrier between:
  * - prior user-space memory accesses and store to rq->membarrier_state,
  * - store to rq->membarrier_state and following user-space memory accesses.
  * In the same way it provides those guarantees around store to rq->curr.
+ 这个调度程序提供了membarrier所需的内存屏障，这些内存屏障位于：
+ - 用户空间内存访问之前和存储到rq->membarrier_state之间，
+ - 存储到rq->membarrier_state和后续用户空间内存访问之间。
+ 以相同的方式，它提供了围绕存储到rq->curr的内存屏障。
+
  */
 static inline void membarrier_switch_mm(struct rq *rq,
 					struct mm_struct *prev_mm,

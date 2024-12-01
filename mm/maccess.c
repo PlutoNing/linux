@@ -19,14 +19,16 @@ probe_read_common(void *dst, const void __user *src, size_t size)
 }
 
 /**
+
  * probe_kernel_read(): safely attempt to read from a kernel-space location
  * @dst: pointer to the buffer that shall take the data
  * @src: address to read from
  * @size: size of the data chunk
- *
+ * 用来从内核空间读取数据
  * Safely read from address @src to the buffer at @dst.  If a kernel fault
  * happens, handle that and return -EFAULT.
- *
+ *   从地址@src安全地读取数据到@dst处的缓冲区。如果发生内核故障，则处理该故障并返回-EFAULT。
+ 
  * We ensure that the copy_from_user is executed in atomic context so that
  * do_page_fault() doesn't attempt to take mmap_sem.  This makes
  * probe_kernel_read() suitable for use within regions where the caller

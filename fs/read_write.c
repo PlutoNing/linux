@@ -364,13 +364,19 @@ out_putf:
 	return retval;
 }
 #endif
-/* 2024年07月09日11:21:14 */
+/* 2024年07月09日11:21:14
+@read_write: 读写标志
+@file: 文件指针
+@ppos: 文件位置指针
+@count: 读写字节数
+函数作用是验证读写区域是否合法
+ */
 int rw_verify_area(int read_write, struct file *file, const loff_t *ppos, size_t count)
 {
 	struct inode *inode;
 	int retval = -EINVAL;
 
-	inode = file_inode(file);
+	inode = file_inode(file); //获取文件的inode
 	if (unlikely((ssize_t) count < 0))
 		return retval;
 

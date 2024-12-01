@@ -111,6 +111,7 @@ static int cmp_ex_search(const void *key, const void *elt)
  * or NULL if none is found.
  * We use a binary search, and thus we assume that the table is
  * already sorted.
+ 作用是根据当前的执行地址，查找异常表，返回异常表的地址。
  */
 const struct exception_table_entry *
 search_extable(const struct exception_table_entry *base,

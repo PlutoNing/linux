@@ -220,6 +220,7 @@ static inline int is_syscall_trace_event(struct trace_event_call *tp_event)
 
 #define SYSCALL_DEFINE_MAXARGS	6
 
+//作用是定义一个系统调用，系统调用的名字是sname，参数个数是x，参数是__VA_ARGS__
 #define SYSCALL_DEFINEx(x, sname, ...)				\
 	SYSCALL_METADATA(sname, x, __VA_ARGS__)			\
 	__SYSCALL_DEFINEx(x, sname, __VA_ARGS__)

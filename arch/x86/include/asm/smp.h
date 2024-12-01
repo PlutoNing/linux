@@ -27,6 +27,7 @@ DECLARE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_die_map);
 /* cpus sharing the last level cache: */
 DECLARE_PER_CPU_READ_MOSTLY(cpumask_var_t, cpu_llc_shared_map);
 DECLARE_PER_CPU_READ_MOSTLY(u16, cpu_llc_id);
+//声明一个int类型的变量，用于保存当前cpu的ID
 DECLARE_PER_CPU_READ_MOSTLY(int, cpu_number);
 
 static inline struct cpumask *cpu_llc_shared_mask(int cpu)
@@ -165,6 +166,7 @@ __visible void smp_call_function_single_interrupt(struct pt_regs *r);
  * so this is correct in the x86 case.
  */
 #define raw_smp_processor_id()  this_cpu_read(cpu_number)
+//返回当前CPU的ID
 #define __smp_processor_id() __this_cpu_read(cpu_number)
 
 #ifdef CONFIG_X86_32

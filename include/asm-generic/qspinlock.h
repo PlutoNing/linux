@@ -51,6 +51,7 @@ static __always_inline int queued_spin_is_contended(struct qspinlock *lock)
 	return atomic_read(&lock->val) & ~_Q_LOCKED_MASK;
 }
 /**
+尝试lock,先查看,可以获取的话就获取,不可获取就直接返回0.
  * queued_spin_trylock - try to acquire the queued spinlock
  * @lock : Pointer to queued spinlock structure
  * Return: 1 if lock acquired, 0 if failed

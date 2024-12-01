@@ -553,7 +553,7 @@ struct mm_struct {
 
 #ifdef CONFIG_AIO
 		spinlock_t			ioctx_lock;
-		struct kioctx_table __rcu	*ioctx_table;
+		struct kioctx_table __rcu	*ioctx_table; //是ioctx的数组,可以根据ctx id找到对应的ctx
 #endif
 #ifdef CONFIG_MEMCG
 		/*
@@ -785,6 +785,8 @@ enum vm_fault_reason {
 #define VM_FAULT_SET_HINDEX(x) ((__force vm_fault_t)((x) << 16))
 #define VM_FAULT_GET_HINDEX(x) (((__force unsigned int)(x) >> 16) & 0xf)
 
+//说明表示错误的位包括OOM、SIGBUS、SIGSEGV、HWPOISON、HWPOISON_LARGE、FALLBACK.
+//其中sigbus表示访问错误，sigsegv表示段错误，hwpoison表示硬件错误，fallback表示大页错误，oom表示内存不足。
 #define VM_FAULT_ERROR (VM_FAULT_OOM | VM_FAULT_SIGBUS |	\
 			VM_FAULT_SIGSEGV | VM_FAULT_HWPOISON |	\
 			VM_FAULT_HWPOISON_LARGE | VM_FAULT_FALLBACK)

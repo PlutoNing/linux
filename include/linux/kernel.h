@@ -216,7 +216,9 @@ struct user;
 
 #ifdef CONFIG_PREEMPT_VOLUNTARY
 extern int _cond_resched(void);
+//
 # define might_resched() _cond_resched()
+//
 #else
 # define might_resched() do { } while (0)
 #endif
@@ -270,7 +272,11 @@ extern void __cant_sleep(const char *file, int line, int preempt_offset);
 				   int preempt_offset) { }
   static inline void __might_sleep(const char *file, int line,
 				   int preempt_offset) { }
+
+//用来标记可能会睡眠的函数
 # define might_sleep() do { might_resched(); } while (0)
+
+
 # define cant_sleep() do { } while (0)
 # define sched_annotate_sleep() do { } while (0)
 # define non_block_start() do { } while (0)

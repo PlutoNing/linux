@@ -731,6 +731,11 @@ static inline void ptep_modify_prot_commit(struct vm_area_struct *vma,
  * kernel code.  In this case, the exit (end of the context switch) is
  * in architecture-specific code, and so doesn't need a generic
  * definition.
+ 意思是说，这个宏是用来提供批量更新页表和其他进程状态的功能的，这些更新是在
+ 实际的上下文切换代码中进行的，这个宏是为了维护和推理内核代码的健全性。
+ 在这种情况下，批量更新（懒惰）模式（CPU，MMU）中只能有一个是活动的，进入不应该嵌套，
+ 进入和退出应该总是成对的。在这种情况下，退出（上下文切换的结束）在体系结构特定的代码中，
+ 因此不需要通用定义。
  */
 #ifndef __HAVE_ARCH_START_CONTEXT_SWITCH
 #define arch_start_context_switch(prev)	do {} while (0)

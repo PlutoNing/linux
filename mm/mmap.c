@@ -1549,6 +1549,8 @@ static inline bool file_mmap_ok(struct file *file, struct inode *inode,
  2024年6月18日21:50:13
 2024年7月1日23:10:24
 映射@file的[addr，addr+len]
+参数含义:	
+
  */
 unsigned long do_mmap(struct file *file, unsigned long addr,
 			unsigned long len, unsigned long prot,
@@ -1561,18 +1563,19 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 
 	*populate = 0;
 
-	if (!len)
+	if (!len) // 映射长度为0
 		return -EINVAL;
 
 	/*
 	 * Does the application expect PROT_READ to imply PROT_EXEC?
-	 *
+	 * 是要让PROT_READ意味着PROT_EXEC吗？
 	 * (the exception is when the underlying filesystem is noexec
 	 *  mounted, in which case we dont add PROT_EXEC.)
+	  需要检查文件系统是否是noexec挂载的，如果是的话，就不添加PROT_EXEC
 	 */
 	if ((prot & PROT_READ) && (current->personality & READ_IMPLIES_EXEC))
 		if (!(file && path_noexec(&file->f_path)))
-			prot |= PROT_EXEC;
+			prot |= PROT_EXEC; //尊重READ_IMPLIES_EXEC,把PROT_EXEC加上
 
 	/* force arch specific MAP_FIXED handling in get_unmapped_area */
 	if (flags & MAP_FIXED_NOREPLACE)

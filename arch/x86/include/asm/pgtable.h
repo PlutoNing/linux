@@ -196,6 +196,7 @@ static inline int pte_global(pte_t pte)
 	return pte_flags(pte) & _PAGE_GLOBAL;
 }
 
+/* 判断pte是否是X的 */
 static inline int pte_exec(pte_t pte)
 {
 	return !(pte_flags(pte) & _PAGE_NX);
@@ -754,7 +755,11 @@ static inline int pte_same(pte_t a, pte_t b)
 {
 	return a.pte == b.pte;
 }
-/* 判断该pte对应的页面是否在内存 */
+/* 判断该pte对应的页面是否在内存
+原理是判断pte的标志位是否有_PAGE_PRESENT
+参数a是pte页表项的值,其中包含了页面的物理地址和一些标志位.
+这里检查的是_PAGE_PRESENT标志位,如果该标志位被设置,则表示该页面在内存中.
+ */
 static inline int pte_present(pte_t a)
 {
 	return pte_flags(a) & (_PAGE_PRESENT | _PAGE_PROTNONE);
@@ -1078,7 +1083,7 @@ static inline int pgd_none(pgd_t pgd)
  */
 #define pgd_offset(mm, address) pgd_offset_pgd((mm)->pgd, (address))
 /*
-这个是获取kernel的pgd？
+这个是获取kernel的pgd?
  * a shortcut which implies the use of the kernel's pgd, instead
  * of a process's
  */

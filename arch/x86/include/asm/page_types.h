@@ -10,7 +10,7 @@
 #define PAGE_SHIFT		12
 /* 1<<12, 4K，4096 */
 #define PAGE_SIZE		(_AC(1,UL) << PAGE_SHIFT)
-/*  */
+/* 二进制表示为? 0xFFFFF000*/
 #define PAGE_MASK		(~(PAGE_SIZE-1))
 
 #define PMD_PAGE_SIZE		(_AC(1, UL) << PMD_SHIFT)

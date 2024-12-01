@@ -298,10 +298,12 @@ void show_stack_regs(struct pt_regs *regs)
 	show_trace_log_lvl(current, regs, NULL, KERN_DEFAULT);
 }
 
+/*  */
 static arch_spinlock_t die_lock = __ARCH_SPIN_LOCK_UNLOCKED;
 static int die_owner = -1;
 static unsigned int die_nest_count;
 
+/* oops前的相关处理，包括关闭相关trace，获取die相关的锁等(防止死锁) */
 unsigned long oops_begin(void)
 {
 	int cpu;
@@ -312,12 +314,14 @@ unsigned long oops_begin(void)
 	/* racy, but better than risking deadlock. */
 	raw_local_irq_save(flags);
 	cpu = smp_processor_id();
-	if (!arch_spin_trylock(&die_lock)) {
+	if (!arch_spin_trylock(&die_lock)) {/* 尝试lock失败. */
 		if (cpu == die_owner)
 			/* nested oops. should stop eventually */;
 		else
-			arch_spin_lock(&die_lock);
+			arch_spin_lock(&die_lock);/* 这里直接lock,,可能会阻塞等待 */
 	}
+
+	/* 现在获取了die_lock */
 	die_nest_count++;
 	die_owner = cpu;
 	console_verbose();
@@ -364,6 +368,7 @@ void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 	rewind_stack_do_exit(signr);
 }
 NOKPROBE_SYMBOL(oops_end);
+
 
 int __die(const char *str, struct pt_regs *regs, long err)
 {

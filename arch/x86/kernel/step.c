@@ -9,13 +9,17 @@
 #include <asm/desc.h>
 #include <asm/mmu_context.h>
 
+//作用是将IP寄存器的值转换为线性地址,过程为：段基址 + 偏移地址.
+//计算过程为
 unsigned long convert_ip_to_linear(struct task_struct *child, struct pt_regs *regs)
 {
 	unsigned long addr, seg;
 
 	addr = regs->ip;
 	seg = regs->cs;
-	if (v8086_mode(regs)) {
+	if (v8086_mode(regs)) {//V8086模式下
+	//寻址计算方式为：段基址 + 偏移地址
+
 		addr = (addr & 0xffff) + (seg << 4);
 		return addr;
 	}
@@ -26,25 +30,31 @@ unsigned long convert_ip_to_linear(struct task_struct *child, struct pt_regs *re
 	 * are all zero-based. That is largely true: the
 	 * TLS segments are used for data, and the PNPBIOS
 	 * and APM bios ones we just ignore here.
+
 	 */
-	if ((seg & SEGMENT_TI_MASK) == SEGMENT_LDT) {
+	if ((seg & SEGMENT_TI_MASK) == SEGMENT_LDT) { //如果是LDT段
 		struct desc_struct *desc;
 		unsigned long base;
 
-		seg >>= 3;
+		seg >>= 3; //cs段寄存器值的各个bit表示的意义?
+		/* 在 x86 架构中，cs（代码段寄存器）用于存储当前代码段的段选择子。段选择子包含三个部分：
+
+索引（Index）：指向段描述符表中的一个条目。
+TI（Table Indicator）：指示使用全局描述符表（GDT）还是局部描述符表（LDT）。
+RPL（Requested Privilege Level）：请求特权级别。 */
 
 		mutex_lock(&child->mm->context.lock);
 		if (unlikely(!child->mm->context.ldt ||
 			     seg >= child->mm->context.ldt->nr_entries))
 			addr = -1L; /* bogus selector, access would fault */
 		else {
-			desc = &child->mm->context.ldt->entries[seg];
+			desc = &child->mm->context.ldt->entries[seg]; //获取LDT表中的描述符
 			base = get_desc_base(desc);
 
 			/* 16-bit code segment? */
 			if (!desc->d)
 				addr &= 0xffff;
-			addr += base;
+			addr += base; //计算线性地址
 		}
 		mutex_unlock(&child->mm->context.lock);
 	}

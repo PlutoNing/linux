@@ -75,18 +75,20 @@ static inline bool pagefault_disabled(void);
 
 /**
  * access_ok - Checks if a user space pointer is valid
+ 判断一个用户空间指针是否有效
  * @addr: User space pointer to start of block to check
  * @size: Size of block to check
  *
  * Context: User context only. This function may sleep if pagefaults are
  *          enabled.
- *
+ *	仅限用户上下文。如果启用了页面错误，则此函数可能会休眠。
  * Checks if a pointer to a block of memory in user space is valid.
- *
+ * 检查用户空间中内存块的指针是否有效。
  * Note that, depending on architecture, this function probably just
  * checks that the pointer is in the user space range - after calling
  * this function, memory access functions may still return -EFAULT.
- *
+ * 注意:根据体系结构，此函数可能只是检查指针是否在用户空间范围内-调用此函数后，
+ 内存访问函数仍可能返回-EFAULT。
  * Return: true (nonzero) if the memory block may be valid, false (zero)
  * if it is definitely invalid.
  */
@@ -135,26 +137,29 @@ __typeof__(__builtin_choose_expr(sizeof(x) > sizeof(0UL), 0ULL, 0UL))
 /**
 2024年08月14日15:52:32
  * get_user - Get a simple variable from user space.
+ 用于从用户空间获取一个简单的变量
  * @x:   Variable to store result.
  * @ptr: Source address, in user space.
  *
  * Context: User context only. This function may sleep if pagefaults are
  *          enabled.
- *
+ *	仅限用户上下文。如果启用了页面错误，则此函数可能会休眠。
  * This macro copies a single simple variable from user space to kernel
  * space.  It supports simple types like char and int, but not larger
  * data types like structures or arrays.
- *
+ *这个宏将一个简单的变量从用户空间复制到内核空间。它支持像char和int这样的简单类型，但不支持结构或数组等较大的数据类型。
  * @ptr must have pointer-to-simple-variable type, and the result of
  * dereferencing @ptr must be assignable to @x without a cast.
- *
+ *ptr必须具有指向简单变量类型的指针，并且解引用ptr的结果必须可以分配给x而无需转换。
  * Return: zero on success, or -EFAULT on error.
  * On error, the variable @x is set to zero.
+ 返回：成功时为零，错误时为-EFAULT。出错时，变量x设置为零。
  */
 /*
  * Careful: we have to cast the result to the type of the pointer
  * for sign reasons.
- *
+ *注意：我们必须将结果转换为指针的类型，以便进行符号处理。
+
  * The use of _ASM_DX as the register specifier is a bit of a
  * simplification, as gcc only cares about it as the starting point
  * and not size: for a 64-bit value it will use %ecx:%edx on 32 bits

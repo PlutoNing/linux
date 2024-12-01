@@ -73,6 +73,7 @@ static inline int task_nice_ioclass(struct task_struct *task)
 /*
  * If the calling process has set an I/O priority, use that. Otherwise, return
  * the default I/O priority.
+ 如果调用进程设置了I/O优先级，则使用该优先级。否则，返回默认I/O优先级。
  */
 static inline int get_current_ioprio(void)
 {
