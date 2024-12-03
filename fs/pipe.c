@@ -89,6 +89,7 @@ static inline void __pipe_unlock(struct pipe_inode_info *pipe)
 	mutex_unlock(&pipe->mutex);
 }
 
+//通过固定加锁顺序避免deadlock
 void pipe_double_lock(struct pipe_inode_info *pipe1,
 		      struct pipe_inode_info *pipe2)
 {
@@ -648,14 +649,16 @@ static bool is_unprivileged_user(void)
 	return !capable(CAP_SYS_RESOURCE) && !capable(CAP_SYS_ADMIN);
 }
 
+//分配一个新pipe
 struct pipe_inode_info *alloc_pipe_info(void)
 {
 	struct pipe_inode_info *pipe;
-	unsigned long pipe_bufs = PIPE_DEF_BUFFERS;
+	unsigned long pipe_bufs = PIPE_DEF_BUFFERS; //pipe缓冲空间的页面数量?
 	struct user_struct *user = get_current_user();
 	unsigned long user_bufs;
 	unsigned int max_size = READ_ONCE(pipe_max_size);
 
+	//分配pipe结构体本身内存
 	pipe = kzalloc(sizeof(struct pipe_inode_info), GFP_KERNEL_ACCOUNT);
 	if (pipe == NULL)
 		goto out_free_uid;
@@ -673,10 +676,11 @@ struct pipe_inode_info *alloc_pipe_info(void)
 	if (too_many_pipe_buffers_hard(user_bufs) && is_unprivileged_user())
 		goto out_revert_acct;
 
+	//slab分配缓存的空间
 	pipe->bufs = kcalloc(pipe_bufs, sizeof(struct pipe_buffer),
 			     GFP_KERNEL_ACCOUNT);
 
-	if (pipe->bufs) {
+	if (pipe->bufs) { //分配成功
 		init_waitqueue_head(&pipe->wait);
 		pipe->r_counter = pipe->w_counter = 1;
 		pipe->buffers = pipe_bufs;
@@ -693,6 +697,7 @@ out_free_uid:
 	return NULL;
 }
 
+//释放不需要的pipe
 void free_pipe_info(struct pipe_inode_info *pipe)
 {
 	int i;
@@ -895,6 +900,7 @@ static void wake_up_partner(struct pipe_inode_info *pipe)
 	wake_up_interruptible(&pipe->wait);
 }
 
+//打开pipe file的open回调
 static int fifo_open(struct inode *inode, struct file *filp)
 {
 	struct pipe_inode_info *pipe;
@@ -904,18 +910,18 @@ static int fifo_open(struct inode *inode, struct file *filp)
 	filp->f_version = 0;
 
 	spin_lock(&inode->i_lock);
-	if (inode->i_pipe) {
+	if (inode->i_pipe) { // inode已经有i_pipe的话
 		pipe = inode->i_pipe;
 		pipe->files++;
 		spin_unlock(&inode->i_lock);
-	} else {
+	} else { //inode__还没有i_pipe
 		spin_unlock(&inode->i_lock);
-		pipe = alloc_pipe_info();
+		pipe = alloc_pipe_info(); //分配pipe
 		if (!pipe)
 			return -ENOMEM;
 		pipe->files = 1;
 		spin_lock(&inode->i_lock);
-		if (unlikely(inode->i_pipe)) {
+		if (unlikely(inode->i_pipe)) {//race?
 			inode->i_pipe->files++;
 			spin_unlock(&inode->i_lock);
 			free_pipe_info(pipe);
@@ -925,7 +931,9 @@ static int fifo_open(struct inode *inode, struct file *filp)
 			spin_unlock(&inode->i_lock);
 		}
 	}
-	filp->private_data = pipe;
+
+
+	filp->private_data = pipe; //file也指向pipe
 	/* OK, we have a pipe and it's pinned down */
 
 	__pipe_lock(pipe);
@@ -1020,6 +1028,7 @@ err:
 	return ret;
 }
 
+/* pipe file的fops? */
 const struct file_operations pipefifo_fops = {
 	.open		= fifo_open,
 	.llseek		= no_llseek,
@@ -1139,6 +1148,7 @@ out_revert_acct:
  * After the inode slimming patch, i_pipe/i_bdev/i_cdev share the same
  * location, so checking ->i_pipe is not enough to verify that this is a
  * pipe.
+
  */
 struct pipe_inode_info *get_pipe_info(struct file *file)
 {

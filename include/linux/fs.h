@@ -791,8 +791,8 @@ struct inode {
 	/* 为什么inode也有mapping？todo */
 	struct address_space	i_data;
 	struct list_head	i_devices;
-	union {
-		struct pipe_inode_info	*i_pipe;
+	union { //不同类型的filep这里是不同的东西
+		struct pipe_inode_info	*i_pipe; //管道文件指向i_pipe
 		struct block_device	*i_bdev;
 		struct cdev		*i_cdev;
 		char			*i_link;
@@ -1062,7 +1062,7 @@ struct file {
 	/* needed for tty driver, and maybe others
 	在memcg的event里面，可能是eventfd_ctx_fileget(struct file *file)；	struct eventfd_ctx *ctx;
 	 bpf机制里面，如果是map的file，这里存储map
-	 
+	 pipe file这里指向pipe结构体
 	 */
 	void			*private_data;
 
@@ -3019,6 +3019,7 @@ static inline bool execute_ok(struct inode *inode)
 	return (inode->i_mode & S_IXUGO) || S_ISDIR(inode->i_mode);
 }
 
+//开始写入这个文件的检查,加锁等操作
 static inline void file_start_write(struct file *file)
 {
 	if (!S_ISREG(file_inode(file)->i_mode))

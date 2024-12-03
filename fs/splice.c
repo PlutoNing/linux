@@ -18,6 +18,11 @@
  * Copyright (C) 2006 Ingo Molnar <mingo@elte.hu>
  *
  */
+
+ /* 2024年12月02日10:22:37
+ splice机制的实现
+ 
+  */
 #include <linux/bvec.h>
 #include <linux/fs.h>
 #include <linux/file.h>
@@ -526,6 +531,7 @@ static int splice_from_pipe_feed(struct pipe_inode_info *pipe, struct splice_des
 
 /**
  * splice_from_pipe_next - wait for some data to splice from
+ 从管道splice
  * @pipe:	pipe to splice from
  * @sd:		information about the splice operation
  *
@@ -569,6 +575,7 @@ static int splice_from_pipe_next(struct pipe_inode_info *pipe, struct splice_des
 
 /**
  * splice_from_pipe_begin - start splicing from pipe
+ 开始执行之前, 设置这些标记位
  * @sd:		information about the splice operation
  *
  * Description:
@@ -656,6 +663,7 @@ ssize_t splice_from_pipe(struct pipe_inode_info *pipe, struct file *out,
 	};
 
 	pipe_lock(pipe);
+	//从pipe进行splice
 	ret = __splice_from_pipe(pipe, &sd, actor);
 	pipe_unlock(pipe);
 
@@ -797,6 +805,7 @@ static int write_pipe_buf(struct pipe_inode_info *pipe, struct pipe_buffer *buf,
 	return ret;
 }
 
+//默认的管道到文件的splice实现
 static ssize_t default_file_splice_write(struct pipe_inode_info *pipe,
 					 struct file *out, loff_t *ppos,
 					 size_t len, unsigned int flags)
@@ -833,6 +842,7 @@ EXPORT_SYMBOL(generic_splice_sendpage);
 
 /*
  * Attempt to initiate a splice from pipe to file.
+ 从管道到文件
  */
 static long do_splice_from(struct pipe_inode_info *pipe, struct file *out,
 			   loff_t *ppos, size_t len, unsigned int flags)
@@ -1093,6 +1103,7 @@ static int splice_pipe_to_pipe(struct pipe_inode_info *ipipe,
 
 /*
  * Determine where to splice to/from.
+ 执行splice
  */
 static long do_splice(struct file *in, loff_t __user *off_in,
 		      struct file *out, loff_t __user *off_out,
@@ -1103,10 +1114,13 @@ static long do_splice(struct file *in, loff_t __user *off_in,
 	loff_t offset;
 	long ret;
 
+	//获取输入输出文件的pipe
 	ipipe = get_pipe_info(in);
 	opipe = get_pipe_info(out);
 
-	if (ipipe && opipe) {
+	if (ipipe && opipe) { //如果都存在
+
+		//检查权限什么的
 		if (off_in || off_out)
 			return -ESPIPE;
 
@@ -1122,19 +1136,22 @@ static long do_splice(struct file *in, loff_t __user *off_in,
 
 		if ((in->f_flags | out->f_flags) & O_NONBLOCK)
 			flags |= SPLICE_F_NONBLOCK;
-
+		//开始splice
 		return splice_pipe_to_pipe(ipipe, opipe, len, flags);
 	}
 
-	if (ipipe) {
+	if (ipipe) {//输入pipe在, 输出pipe不在
 		if (off_in)
 			return -ESPIPE;
-		if (off_out) {
+
+		if (off_out) { //如果指定了输出文件的写入位置
 			if (!(out->f_mode & FMODE_PWRITE))
 				return -EINVAL;
+
+			//获取输出的offset
 			if (copy_from_user(&offset, off_out, sizeof(loff_t)))
 				return -EFAULT;
-		} else {
+		} else { //没指定的话， 就从fpos开始写入.
 			offset = out->f_pos;
 		}
 
@@ -1151,8 +1168,8 @@ static long do_splice(struct file *in, loff_t __user *off_in,
 		if (in->f_flags & O_NONBLOCK)
 			flags |= SPLICE_F_NONBLOCK;
 
-		file_start_write(out);
-		ret = do_splice_from(ipipe, out, &offset, len, flags);
+		file_start_write(out); //为什么这里对sb加锁
+		ret = do_splice_from(ipipe, out, &offset, len, flags); //开始splice
 		file_end_write(out);
 
 		if (!off_out)
@@ -1163,7 +1180,7 @@ static long do_splice(struct file *in, loff_t __user *off_in,
 		return ret;
 	}
 
-	if (opipe) {
+	if (opipe) { //不存在输入pipe
 		if (off_out)
 			return -ESPIPE;
 		if (off_in) {
@@ -1181,7 +1198,7 @@ static long do_splice(struct file *in, loff_t __user *off_in,
 		pipe_lock(opipe);
 		ret = wait_for_space(opipe, flags);
 		if (!ret)
-			ret = do_splice_to(in, &offset, opipe, len, flags);
+			ret = do_splice_to(in, &offset, opipe, len, flags); //开始splice
 		pipe_unlock(opipe);
 		if (ret > 0)
 			wakeup_pipe_readers(opipe);
@@ -1402,6 +1419,9 @@ COMPAT_SYSCALL_DEFINE4(vmsplice, int, fd, const struct compat_iovec __user *, io
 }
 #endif
 
+/* 
+从fdin到fdout, 各自从offset开始,长度为len
+ */
 SYSCALL_DEFINE6(splice, int, fd_in, loff_t __user *, off_in,
 		int, fd_out, loff_t __user *, off_out,
 		size_t, len, unsigned int, flags)
@@ -1418,10 +1438,10 @@ SYSCALL_DEFINE6(splice, int, fd_in, loff_t __user *, off_in,
 	error = -EBADF;
 	in = fdget(fd_in);
 	if (in.file) {
-		if (in.file->f_mode & FMODE_READ) {
+		if (in.file->f_mode & FMODE_READ) {  //确保fdin存在且可读
 			out = fdget(fd_out);
 			if (out.file) {
-				if (out.file->f_mode & FMODE_WRITE)
+				if (out.file->f_mode & FMODE_WRITE) //fdout存在且可写
 					error = do_splice(in.file, off_in,
 							  out.file, off_out,
 							  len, flags);
@@ -1474,6 +1494,8 @@ static int ipipe_prep(struct pipe_inode_info *pipe, unsigned int flags)
 /*
  * Make sure there's writeable room. Wait for room if we can, otherwise
  * return an appropriate error.
+ 确保还有可写的空间
+ 可能会阻塞等待空间
  */
 static int opipe_prep(struct pipe_inode_info *pipe, unsigned int flags)
 {
@@ -1514,6 +1536,7 @@ static int opipe_prep(struct pipe_inode_info *pipe, unsigned int flags)
 
 /*
  * Splice contents of ipipe to opipe.
+ 这里是对管道文件之间的splice
  */
 static int splice_pipe_to_pipe(struct pipe_inode_info *ipipe,
 			       struct pipe_inode_info *opipe,
@@ -1537,6 +1560,7 @@ retry:
 	 * Potential ABBA deadlock, work around it by ordering lock
 	 * grabbing by pipe info address. Otherwise two different processes
 	 * could deadlock (one doing tee from A -> B, the other from B -> A).
+	   避免deadlock
 	 */
 	pipe_double_lock(ipipe, opipe);
 
