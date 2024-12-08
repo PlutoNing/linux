@@ -1637,6 +1637,7 @@ static long wb_min_pause(struct bdi_writeback *wb,
 	return pages >= DIRTY_POLL_THRESH ? 1 + t / 2 : t;
 }
 
+//
 static inline void wb_dirty_limits(struct dirty_throttle_control *dtc)
 {
 	struct bdi_writeback *wb = dtc->wb;
@@ -2078,6 +2079,7 @@ EXPORT_SYMBOL_GPL(balance_dirty_pages_ratelimited_flags);
 /**
    限制脏页
    do mm fault时会调用
+   filemap写入的时候也会调用
  * balance_dirty_pages_ratelimited - balance dirty memory state.
    
  * @mapping: address_space which was dirtied.
@@ -2102,11 +2104,12 @@ EXPORT_SYMBOL(balance_dirty_pages_ratelimited);
 
 /**
  * wb_over_bg_thresh - does @wb need to be written back?
+   判断wb需要后台写回吗?
  * @wb: bdi_writeback of interest
  *
  * Determines whether background writeback should keep writing @wb or it's
  * clean enough.
- *
+ * 决定后台写回是否应继续写入@wb，还是已经足够干净。
  * Return: %true if writeback should continue.
  */
 bool wb_over_bg_thresh(struct bdi_writeback *wb)
@@ -2165,6 +2168,13 @@ bool wb_over_bg_thresh(struct bdi_writeback *wb)
 
 #ifdef CONFIG_SYSCTL
 /*
+dirty_writeback_centisecs 是内核参数之一，定义了 脏页回写 的时间间隔。具体来说，
+它定义了 回写脏页的周期（单位为 百分之一秒（centisecond），即 1/100 秒）。这是一
+个调节内存中脏页定期写回磁盘的频率的参数。
+
+dirty_writeback_centisecs 参数影响的是内核中脏页被写回磁盘的频率。默认情况下，它
+设定了脏页多久回写一次。它是内核调度的一个周期性任务，每次周期性检查后，如果脏页达
+到阈值，它们会被写回磁盘。
  * sysctl handler for /proc/sys/vm/dirty_writeback_centisecs
  */
 static int dirty_writeback_centisecs_handler(struct ctl_table *table, int write,
@@ -2190,6 +2200,7 @@ static int dirty_writeback_centisecs_handler(struct ctl_table *table, int write,
 }
 #endif
 
+//
 void laptop_mode_timer_fn(struct timer_list *t)
 {
 	struct backing_dev_info *backing_dev_info =
@@ -2228,10 +2239,13 @@ void laptop_sync_completion(void)
 /*
  * If ratelimit_pages is too high then we can get into dirty-data overload
  * if a large number of processes all perform writes at the same time.
- *
+ * 如果ratelimit_pages太高，那么如果大量进程同时执行写操作，我们可能会陷入脏数据过载。
+   
  * Here we set ratelimit_pages to a level which ensures that when all CPUs are
  * dirtying in parallel, we cannot go more than 3% (1/32) over the dirty memory
  * thresholds.
+   这里我们将ratelimit_pages设置为一个水平，以确保当所有CPU并行脏化时，
+   我们不能超过脏内存阈值的3%（1/32）。
  */
 
 void writeback_set_ratelimit(void)
@@ -2242,6 +2256,7 @@ void writeback_set_ratelimit(void)
 
 	global_dirty_limits(&background_thresh, &dirty_thresh);
 	dom->dirty_limit = dirty_thresh;
+
 	ratelimit_pages = dirty_thresh / (num_online_cpus() * 32);
 	if (ratelimit_pages < 16)
 		ratelimit_pages = 16;
@@ -2368,8 +2383,10 @@ void __init page_writeback_init(void)
 }
 
 /**
+   
  * tag_pages_for_writeback - tag pages to be written by write_cache_pages
- * @mapping: address space structure to write
+ * 标记要被write_cache_pages写入的页面
+ @mapping: address space structure to write
  * @start: starting page index
  * @end: ending page index (inclusive)
  *
@@ -2380,6 +2397,11 @@ void __init page_writeback_init(void)
  * used to avoid livelocking of writeback by a process steadily creating new
  * dirty pages in the file (thus it is important for this function to be quick
  * so that it can tag pages faster than a dirtying process can create them).
+   函数扫描从@start到@end（包括）的页面范围，并标记所有具有DIRTY标记设置的页面
+   为特殊的TOWRITE标记。思想是write_cache_pages（或调用此函数的任何人）将使用TOWRITE
+   标记来标识适合写回的页面。此机制用于避免由进程稳定地在文件中创建新脏页而导致的写回活锁
+   （因此，对于此函数来说，快速标记页面比脏化进程创建页面更快是很重要的）。
+    
  */
 void tag_pages_for_writeback(struct address_space *mapping,
 			     pgoff_t start, pgoff_t end)
@@ -2389,6 +2411,7 @@ void tag_pages_for_writeback(struct address_space *mapping,
 	void *page;
 
 	xas_lock_irq(&xas);
+	//把DIRTY变为TOWRITE
 	xas_for_each_marked(&xas, page, end, PAGECACHE_TAG_DIRTY) {
 		xas_set_mark(&xas, PAGECACHE_TAG_TOWRITE);
 		if (++tagged % XA_CHECK_SCHED)
@@ -2718,7 +2741,7 @@ static void folio_account_dirtied(struct folio *folio,
 
 /*
  * Helper function for deaccounting dirty page without writeback.
- *
+ * 标记系统少了的这个脏页, 统计
  * Caller must hold folio_memcg_lock().
  */
 void folio_account_cleaned(struct folio *folio, struct bdi_writeback *wb)
@@ -2927,7 +2950,8 @@ EXPORT_SYMBOL(set_page_dirty_lock);
  * leaves the page tagged dirty, so any sync activity will still find it on
  * the dirty lists, and in particular, clear_page_dirty_for_io() will still
  * look at the dirty bits in the VM.
- *
+ * 把一个页的脏位取消,但是不会真正地删除任何可能存在的mmap上的脏位.
+   
  * Doing this should *normally* only ever be done when a page is truncated,
  * and is not actually mapped anywhere at all. However, fs/buffer.c does
  * this when it notices that somebody has cleaned out all the buffers on a
@@ -2951,7 +2975,7 @@ void __folio_cancel_dirty(struct folio *folio)
 
 		unlocked_inode_to_wb_end(inode, &cookie);
 		folio_memcg_unlock(folio);
-	} else {
+	} else {//清除dirty
 		folio_clear_dirty(folio);
 	}
 }
@@ -3049,8 +3073,8 @@ bool folio_clear_dirty_for_io(struct folio *folio)
 	return folio_test_clear_dirty(folio);
 }
 EXPORT_SYMBOL(folio_clear_dirty_for_io);
-
-//其实就是增加需要回写的inode数量
+//2024年12月9日00:57:00 这里
+//其实就是增加需要回写的inode数量, 
 static void wb_inode_writeback_start(struct bdi_writeback *wb)
 {
 	atomic_inc(&wb->writeback_inodes);

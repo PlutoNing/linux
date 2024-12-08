@@ -2219,6 +2219,8 @@ static inline void kiocb_clone(struct kiocb *kiocb, struct kiocb *kiocb_src,
  *			data writeback, and cleared with a wakeup on the bit
  *			address once it is done. The bit is also used to pin
  *			the inode in memory for flusher thread.
+   说明inode的写回正在运行。该位在数据写回期间设置，并在完成后通过在位地址上唤醒该位来清除。
+   该位还用于将inode固定在内存中以供刷新线程使用。
  *
  * I_REFERENCED		Marks the inode as recently references on the LRU list.
  *

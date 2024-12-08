@@ -18,7 +18,7 @@ def filter_dot_file(dot_file_path, words):
 
 
 if __name__ == "__main__":
-    dot_file_path = "/mnt/n7000/paulning/study/linux/mm/readahead.dot"
+    dot_file_path = "/mnt/n7000/paulning/study/linux/mm/page-writeback.dot"
     trivial_func = """
     __bpf_trace_mm_filemap_op_page_cache
 folio_wait_bit_killable
@@ -138,8 +138,31 @@ __mmap_lock_do_trace_released
 filemap_invalidate_lock_two
 __folio_lock_killable
 errseq_check
+__SCT__tp_func_wbc_writepage
+mod_timer
+__ubsan_handle_divrem_overflow
+__percpu_counter_sum
+wb_get_create_current.constprop.0
 __sanitizer_cov_trace_cmp4
 page_cache_next_miss
+css_put
+css_tryget
+unlock_page
+folio_mapping
+__mod_node_page_state
+__SCT__tp_func_writeback_dirty_folio
+kcsan_set_access_mask
+percpu_counter_add_batch
+kcsan_set_access_mask
+__this_cpu_preempt_check
+__mod_zone_page_state
+__inode_attach_wb
+folio_memcg_unlock
+folio_memcg_lock
+timer_delete
+"tag_pages_for_writeback" -> "xas_set_mark";
+
+__SCT__tp_func_folio_wait_writeback
 inode_to_bdi
 __page_ref_mod
 __SCT__cond_resched

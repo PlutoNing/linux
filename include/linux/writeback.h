@@ -40,7 +40,9 @@ enum writeback_sync_modes {
  * in a manner such that unspecified fields are set to zero.
  */
 struct writeback_control {
-	long nr_to_write;		/* Write this many pages, and decrement
+	long nr_to_write;		/* 
+	这个wbc要回写的量
+	Write this many pages, and decrement
 					   this for each page written */
 	long pages_skipped;		/* 
 	表示因为各种原因决定暂时不回写的page数量

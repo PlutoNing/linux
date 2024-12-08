@@ -1,0 +1,164 @@
+strict digraph callgraph {
+"__folio_cancel_dirty" -> "folio_account_cleaned";
+"__folio_end_writeback" -> "__fprop_add_percpu_max";
+"__fprop_add_percpu_max" [style=dashed]
+"__folio_end_writeback" -> "__page_file_index";
+"__page_file_index" [style=dashed]
+"__folio_end_writeback" -> "__xa_clear_mark";
+"__xa_clear_mark" [style=dashed]
+"__folio_end_writeback" -> "mem_cgroup_wb_domain";
+"mem_cgroup_wb_domain" [style=dashed]
+"__folio_end_writeback" -> "mod_lruvec_page_state";
+"__folio_end_writeback" -> "mod_node_page_state";
+"mod_node_page_state" [style=dashed]
+"__folio_end_writeback" -> "mod_zone_page_state";
+"mod_zone_page_state" [style=dashed]
+"__folio_end_writeback" -> "queue_delayed_work_on";
+"queue_delayed_work_on" [style=dashed]
+"__folio_end_writeback" -> "sb_clear_inode_writeback";
+"sb_clear_inode_writeback" [style=dashed]
+"__folio_mark_dirty" -> "__page_file_index";
+"__page_file_index" [style=dashed]
+"__folio_mark_dirty" -> "__xa_set_mark";
+"__xa_set_mark" [style=dashed]
+"__folio_mark_dirty" -> "folio_account_dirtied";
+"__folio_start_writeback" -> "__page_file_index";
+"__page_file_index" [style=dashed]
+"__folio_start_writeback" -> "mod_lruvec_page_state";
+"__folio_start_writeback" -> "mod_zone_page_state";
+"mod_zone_page_state" [style=dashed]
+"__folio_start_writeback" -> "sb_mark_inode_writeback";
+"sb_mark_inode_writeback" [style=dashed]
+"__folio_start_writeback" -> "xas_clear_mark";
+"xas_clear_mark" [style=dashed]
+
+
+"__wb_calc_thresh" -> "fprop_fraction_percpu";
+"fprop_fraction_percpu" [style=dashed]
+"__wb_update_bandwidth" -> "domain_update_dirty_limit";
+"__wb_update_bandwidth" -> "wb_update_dirty_ratelimit";
+"__wb_update_bandwidth" -> "wb_update_write_bandwidth";
+
+
+"balance_dirty_pages" -> "__wb_calc_thresh";
+"balance_dirty_pages" -> "__wb_update_bandwidth";
+"balance_dirty_pages" -> "domain_dirty_limits";
+"balance_dirty_pages" -> "global_dirtyable_memory";
+"balance_dirty_pages" -> "mem_cgroup_flush_foreign";
+"mem_cgroup_flush_foreign" [style=dashed]
+"balance_dirty_pages" -> "mem_cgroup_wb_domain";
+"mem_cgroup_wb_domain" [style=dashed]
+"balance_dirty_pages" -> "mem_cgroup_wb_stats";
+"mem_cgroup_wb_stats" [style=dashed]
+"balance_dirty_pages" -> "trace_balance_dirty_pages";
+"balance_dirty_pages" -> "wb_position_ratio";
+"balance_dirty_pages" -> "wb_start_background_writeback";
+"wb_start_background_writeback" [style=dashed]
+"balance_dirty_pages_ratelimited" -> "balance_dirty_pages_ratelimited_flags";
+"balance_dirty_pages_ratelimited_flags" -> "balance_dirty_pages";
+"balance_dirty_pages_ratelimited_flags" -> "debug_smp_processor_id";
+"debug_smp_processor_id" [style=dashed]
+"bdi_get_max_bytes" -> "global_dirty_limits";
+"bdi_get_min_bytes" -> "global_dirty_limits";
+"bdi_set_max_bytes" -> "global_dirty_limits";
+"bdi_set_max_bytes" -> "global_dirtyable_memory";
+"bdi_set_min_bytes" -> "__bdi_set_min_ratio";
+"bdi_set_min_bytes" -> "global_dirty_limits";
+"bdi_set_min_bytes" -> "global_dirtyable_memory";
+"dirty_background_bytes_handler" -> "proc_doulongvec_minmax";
+"proc_doulongvec_minmax" [style=dashed]
+"dirty_background_ratio_handler" -> "proc_dointvec_minmax";
+"proc_dointvec_minmax" [style=dashed]
+"dirty_bytes_handler" -> "proc_doulongvec_minmax";
+"proc_doulongvec_minmax" [style=dashed]
+"dirty_bytes_handler" -> "writeback_set_ratelimit";
+"dirty_ratio_handler" -> "proc_dointvec_minmax";
+"proc_dointvec_minmax" [style=dashed]
+"dirty_ratio_handler" -> "writeback_set_ratelimit";
+"dirty_writeback_centisecs_handler" -> "proc_dointvec";
+"proc_dointvec" [style=dashed]
+"dirty_writeback_centisecs_handler" -> "wakeup_flusher_threads";
+"wakeup_flusher_threads" [style=dashed]
+"do_writepages" -> "blk_finish_plug";
+"blk_finish_plug" [style=dashed]
+"do_writepages" -> "blk_start_plug";
+"blk_start_plug" [style=dashed]
+"do_writepages" -> "reclaim_throttle";
+"reclaim_throttle" [style=dashed]
+"do_writepages" -> "wb_update_bandwidth";
+"do_writepages" -> "write_cache_pages";
+"domain_dirty_limits" -> "__SCT__tp_func_global_dirty_state";
+"__SCT__tp_func_global_dirty_state" [style=dashed]
+"filemap_dirty_folio" -> "__folio_mark_dirty";
+"filemap_dirty_folio" -> "__mark_inode_dirty";
+"__mark_inode_dirty" [style=dashed]
+"folio_account_cleaned" -> "mod_lruvec_page_state";
+"folio_account_cleaned" -> "mod_zone_page_state";
+"mod_zone_page_state" [style=dashed]
+"folio_account_dirtied" -> "mem_cgroup_track_foreign_dirty";
+"folio_clear_dirty_for_io" -> "folio_mark_dirty";
+"folio_clear_dirty_for_io" -> "folio_mkclean";
+"folio_mkclean" [style=dashed]
+"folio_clear_dirty_for_io" -> "mod_lruvec_page_state";
+"folio_clear_dirty_for_io" -> "mod_zone_page_state";
+"mod_zone_page_state" [style=dashed]
+"folio_mark_dirty" -> "noop_dirty_folio";
+"folio_redirty_for_writepage" -> "filemap_dirty_folio";
+"folio_redirty_for_writepage" -> "mod_node_page_state";
+"mod_node_page_state" [style=dashed]
+"folio_wait_stable" -> "folio_wait_writeback";
+"global_dirty_limits" -> "domain_dirty_limits";
+"global_dirty_limits" -> "global_dirtyable_memory";
+"laptop_mode_timer_fn" -> "wakeup_flusher_threads_bdi";
+"wakeup_flusher_threads_bdi" [style=dashed]
+"mem_cgroup_track_foreign_dirty" -> "mem_cgroup_track_foreign_dirty_slowpath";
+"mem_cgroup_track_foreign_dirty_slowpath" [style=dashed]
+"node_dirty_ok" -> "global_dirtyable_memory";
+"node_dirty_ok" -> "node_page_state";
+"node_page_state" [style=dashed]
+"page_writeback_cpu_online" -> "writeback_set_ratelimit";
+"page_writeback_init" -> "__cpuhp_setup_state";
+"__cpuhp_setup_state" [style=dashed]
+"page_writeback_init" -> "__register_sysctl_init";
+"__register_sysctl_init" [style=dashed]
+"page_writeback_init" -> "wb_domain_init";
+"set_page_dirty_lock" -> "set_page_dirty";
+"set_page_dirty" [style=dashed]
+
+
+
+
+
+
+"wb_calc_thresh" -> "__wb_calc_thresh";
+"wb_domain_exit" -> "fprop_global_destroy";
+"fprop_global_destroy" [style=dashed]
+"wb_domain_init" -> "fprop_global_init";
+"fprop_global_init" [style=dashed]
+"wb_domain_init" -> "init_timer_key";
+"init_timer_key" [style=dashed]
+"radix_tree_lookup" [style=dashed]
+"rcu_read_lock_sched_held" [style=dashed]
+"wb_get_create" [style=dashed]
+"wb_over_bg_thresh" -> "domain_dirty_limits";
+"wb_over_bg_thresh" -> "global_dirtyable_memory";
+"wb_over_bg_thresh" -> "mem_cgroup_wb_domain";
+"mem_cgroup_wb_domain" [style=dashed]
+"wb_over_bg_thresh" -> "mem_cgroup_wb_stats";
+"mem_cgroup_wb_stats" [style=dashed]
+"wb_over_bg_thresh" -> "wb_calc_thresh";
+"wb_update_bandwidth" -> "__wb_update_bandwidth";
+
+
+"wb_writeout_inc" -> "__fprop_add_percpu_max";
+"__fprop_add_percpu_max" [style=dashed]
+"wb_writeout_inc" -> "mem_cgroup_wb_domain";
+"mem_cgroup_wb_domain" [style=dashed]
+"write_cache_pages" -> "__folio_batch_release";
+"__folio_batch_release" [style=dashed]
+"write_cache_pages" -> "folio_clear_dirty_for_io";
+"write_cache_pages" -> "folio_wait_writeback";
+"writeback_set_ratelimit" -> "global_dirty_limits";
+"writeout_period" -> "fprop_new_period";
+"fprop_new_period" [style=dashed]
+}

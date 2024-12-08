@@ -117,10 +117,14 @@ struct bdi_writeback {
 	unsigned long state;		/* 
 	此wb现在的状态
 	Always use atomic bitops on this */
-	unsigned long last_old_flush;	/* last old data flush */
+	unsigned long last_old_flush;	/* 
+	上次刷新old的时间
+	last old data flush */
 
 	struct list_head b_dirty;	/* dirty inodes */
-	struct list_head b_io;		/* parked for writeback */
+	struct list_head b_io;		/* 
+	上面是准备回写的inode
+	parked for writeback */
 	struct list_head b_more_io;	/* parked for more writeback */
 	struct list_head b_dirty_time;	/* time stamps are dirty */
 	spinlock_t list_lock;		/* protects the b_* lists */
@@ -150,7 +154,7 @@ struct bdi_writeback {
 	enum wb_reason start_all_reason;
 
 	spinlock_t work_lock;		/* protects work_list & dwork scheduling */
-	struct list_head work_list;
+	struct list_head work_list; //写回此wb的时候从这里取下work执行
 	struct delayed_work dwork;	/* work item used for writeback */
 	struct delayed_work bw_dwork;	/* 
 	更新带宽的work
