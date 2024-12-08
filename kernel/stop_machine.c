@@ -637,13 +637,11 @@ int stop_machine_cpuslocked(cpu_stop_fn_t fn, void *data,
 	set_state(&msdata, MULTI_STOP_PREPARE);
 	return stop_cpus(cpu_online_mask, multi_cpu_stop, &msdata);
 }
-<<<<<<< HEAD
-/*  */
-=======
+
 /* 待分析
 @data是command.
  */
->>>>>>> v66bkp
+
 int stop_machine(cpu_stop_fn_t fn, void *data, const struct cpumask *cpus)
 {
 	int ret;

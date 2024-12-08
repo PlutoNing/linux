@@ -655,13 +655,12 @@ struct inode {
 	struct posix_acl	*i_default_acl; /*  */
 #endif
 
-<<<<<<< HEAD
-	const struct inode_operations	*i_op;
-	struct super_block	*i_sb;
-=======
+
+
+
 	const struct inode_operations	*i_op; /* 指向文件操作结构 inode_operations，包含与 inode 相关的操作函数，如创建、删除、读写操作等。 */
 	struct super_block	*i_sb; /* 指向 inode 所在的超级块（super_block），超级块表示文件系统的一个实例，管理所有文件系统对象。 */
->>>>>>> v66bkp
+
 	struct address_space	*i_mapping;/* 
 	dev inode的mapping是存储的bh相关 */
 
@@ -670,11 +669,9 @@ struct inode {
 #endif
 
 	/* Stat data, not accessed from path walking */
-<<<<<<< HEAD
-	unsigned long		i_ino;/* 可以理解为在bitmap的全局idx */
-=======
-	unsigned long		i_ino;/* 文件的 inode 编号，在文件系统中唯一标识一个文件。可以理解为文件在文件系统中的一个索引号。可以理解为在bitmap的全局idx */
->>>>>>> v66bkp
+	unsigned long i_ino; /* 可以理解为在bitmap的全局idx 
+	 文件的 inode 编号，在文件系统中唯一标识一个文件。可以理解为文件在文件系统中的一个索引号。可以理解为在bitmap的全局idx
+	 */
 	/*
 	 * Filesystems may only read i_nlink directly.  They shall use the
 	 * following functions for modification:

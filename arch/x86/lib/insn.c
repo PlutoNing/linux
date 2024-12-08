@@ -791,10 +791,8 @@ int insn_get_length(struct insn *insn)
 			return ret;
 	}
 
-	insn->length = (unsigned char)
-	((unsigned long)insn->next_byte - 
-	 (unsigned long)insn->kaddr
-	);
+	insn->length = (unsigned char)((unsigned long)insn->next_byte
+				     - (unsigned long)insn->kaddr);
 
 	return 0;
 }

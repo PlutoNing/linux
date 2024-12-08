@@ -24,11 +24,11 @@ struct minix_inode_info {
 };
 
 /*
-<<<<<<< HEAD
-minix的sb
-=======
+
+
+
 minix的sb定义
->>>>>>> v66bkp
+
  * minix super-block data in memory
  */
 struct minix_sb_info {

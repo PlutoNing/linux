@@ -2944,11 +2944,9 @@ void ftrace_modify_all_code(int command)
 		err = ftrace_disable_ftrace_graph_caller();
 	FTRACE_WARN_ON(err);
 }
-<<<<<<< HEAD
-/* @data是command */
-=======
+
 /* ftrace修改hook代码 *//* @data是command */
->>>>>>> v66bkp
+
 static int __ftrace_modify_code(void *data)
 {
 	int *command = data;
@@ -7378,11 +7376,9 @@ void ftrace_reset_array_ops(struct trace_array *tr)
 {
 	tr->ops->func = ftrace_stub;
 }
-<<<<<<< HEAD
-/*  */
-=======
+
 /* 找到涉及此ip的ops, call 此ops */
->>>>>>> v66bkp
+
 static nokprobe_inline void
 __ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 		       struct ftrace_ops *ignored, struct ftrace_regs *fregs)
@@ -7400,11 +7396,9 @@ __ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 	bit = trace_test_and_set_recursion(ip, parent_ip, TRACE_LIST_START);
 	if (bit < 0)
 		return;
-<<<<<<< HEAD
 
-=======
 	/* 遍历这个ftrace_ops_list链表 */
->>>>>>> v66bkp
+
 	do_for_each_ftrace_op(op, ftrace_ops_list) {/*  op = *ftrace_ops_list
 	ftrace_ops_list是什么  */
 		/* Stub functions don't need to be called nor tested */

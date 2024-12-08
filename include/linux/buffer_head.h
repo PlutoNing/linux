@@ -61,13 +61,13 @@ typedef void (bh_end_io_t)(struct buffer_head *bh, int uptodate);
  */
 struct buffer_head {
 	unsigned long b_state;		/* buffer state bitmap (see above) */
-<<<<<<< HEAD
+
 	struct buffer_head *b_this_page;/* circular list of page's buffers */
-=======
-	struct buffer_head *b_this_page;/*
+
+	/*
 	指向此buffer里面的前一个bh
 	 circular list of page's buffers */
->>>>>>> v66bkp
+
 	
 	union {
 		struct page *b_page;	/* the page this bh is mapped to */
