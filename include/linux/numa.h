@@ -4,11 +4,12 @@
 #include <linux/types.h>
 
 #ifdef CONFIG_NODES_SHIFT
+/*  */
 #define NODES_SHIFT     CONFIG_NODES_SHIFT
 #else
 #define NODES_SHIFT     0
 #endif
-
+/* 最大的node数量 */
 #define MAX_NUMNODES    (1 << NODES_SHIFT)
 
 #define	NUMA_NO_NODE	(-1)

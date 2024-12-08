@@ -1,0 +1,48 @@
+digraph g {
+fontname="Helvetica,Arial,sans-serif"
+node [fontname="Helvetica,Arial,sans-serif"]
+edge [fontname="Helvetica,Arial,sans-serif"]
+
+graph [
+rankdir = "LR"
+];
+
+node [
+fontsize = "16"
+shape = "ellipse"
+];
+
+
+
+
+lruvec [
+label = "<f0> lruvec| <f1> lrugen | <f2> lists | enabled | ..."
+shape = "record"
+];
+
+"mglru" [
+label = "<f0>  lrugen | <f1> folios[GEN][ANON_AND_FILE][ZONE]  | 
+   <f1> nr_pages[GEN][ANON_AND_FILE][ZONE] |
+     ... "
+shape = "record"
+];
+
+"lru" [
+label = "<f0> lru | <f1> active_file | <f2> inactive_file | active_anon | inactive_anon"
+shape = "record"
+];
+
+
+lruvec -> mglru [
+id = 2
+];
+
+lruvec -> lru:f0 [
+id = 3
+];
+
+
+
+
+
+}

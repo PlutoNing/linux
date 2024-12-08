@@ -143,6 +143,7 @@ struct ksm_scan {
 };
 
 /**
+
  * struct ksm_stable_node - node of the stable rbtree
  * @node: rb node of this ksm page in the stable tree
  * @head: (overlaying parent) &migrate_nodes indicates temporarily on that list
@@ -2068,6 +2069,8 @@ struct ksm_rmap_item *unstable_tree_search_insert(struct ksm_rmap_item *rmap_ite
  * stable_tree_append - add another rmap_item to the linked list of
  * rmap_items hanging off a given node of the stable tree, all sharing
  * the same ksm page.
+ stable_tree_append - 将新的 rmap_item 添加到稳定树的给定节点上，
+ * 使所有 rmap_item 共享同一个 KSM 页面。
  */
 static void stable_tree_append(struct ksm_rmap_item *rmap_item,
 			       struct ksm_stable_node *stable_node,
@@ -2082,6 +2085,13 @@ static void stable_tree_append(struct ksm_rmap_item *rmap_item,
 	 * for other negative values as an underflow if detected here
 	 * for the first time (and not when decreasing rmap_hlist_len)
 	 * would be sign of memory corruption in the stable_node.
+	 如果我们不在正确的 stable_node 中插入 rmap_item，
+     * 那么 rmap（反向映射）将无法找到该映射关系。
+     * 如果 rmap 出现问题，则 page_migration（页面迁移）可能会失败，
+     * 因此这里可以让程序崩溃（BUG_ON）。实际上需要检查
+     * rmap_hlist_len 是否等于 STABLE_NODE_CHAIN，
+     * 但如果出现负值（意味着 underflow），则可能是
+     * stable_node 中发生了内存损坏。
 	 */
 	BUG_ON(stable_node->rmap_hlist_len < 0);
 
@@ -3105,6 +3115,7 @@ static void wait_while_offlining(void)
 #endif /* CONFIG_MEMORY_HOTREMOVE */
 
 #ifdef CONFIG_PROC_FS
+/* 计算/proc/226619/ksm_stat里的profit */
 long ksm_process_profit(struct mm_struct *mm)
 {
 	return (long)(mm->ksm_merging_pages + mm->ksm_zero_pages) * PAGE_SIZE -

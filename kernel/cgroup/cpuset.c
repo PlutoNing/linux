@@ -4263,6 +4263,7 @@ void __cpuset_memory_pressure_bump(void)
 
 #ifdef CONFIG_PROC_PID_CPUSET
 /*
+查看进程的cpuset
  * proc_cpuset_show()
  *  - Print tasks cpuset path into seq_file.
  *  - Used for /proc/<pid>/cpuset.
@@ -4282,8 +4283,10 @@ int proc_cpuset_show(struct seq_file *m, struct pid_namespace *ns,
 	buf = kmalloc(PATH_MAX, GFP_KERNEL);
 	if (!buf)
 		goto out;
-
+	
+	/* 获取task的cpuset的css */
 	css = task_get_css(tsk, cpuset_cgrp_id);
+	/* 获取这个css对应的cgroup的名字 */
 	retval = cgroup_path_ns(css->cgroup, buf, PATH_MAX,
 				current->nsproxy->cgroup_ns);
 	css_put(css);

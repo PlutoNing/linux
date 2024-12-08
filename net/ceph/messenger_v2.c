@@ -63,8 +63,8 @@
 #define IN_S_HANDLE_EPILOGUE			9
 #define IN_S_FINISH_SKIP			10
 
-#define OUT_S_QUEUE_DATA		1
-#define OUT_S_QUEUE_DATA_CONT		2
+#define OUT_S_QUEUE_DATA		1 /* 表示msg里面有数据? */
+#define OUT_S_QUEUE_DATA_CONT		2 /* 表示msg进队列了? */
 #define OUT_S_QUEUE_ENC_PAGE		3
 #define OUT_S_QUEUE_ZEROS		4
 #define OUT_S_FINISH_MESSAGE		5
@@ -356,6 +356,7 @@ static bool con_secure(struct ceph_connection *con)
 	return con->v2.con_mode == CEPH_CON_MODE_SECURE;
 }
 
+/*  */
 static int front_len(const struct ceph_msg *msg)
 {
 	return le32_to_cpu(msg->hdr.front_len);
@@ -3503,6 +3504,7 @@ static void prepare_zero_data(struct ceph_connection *con)
 	out_zero_add(con, data_len(con->out_msg));
 }
 
+/* 回滚有data的msg? */
 static void revoke_at_queue_data(struct ceph_connection *con)
 {
 	int boundary;
@@ -3511,7 +3513,7 @@ static void revoke_at_queue_data(struct ceph_connection *con)
 	WARN_ON(!data_len(con->out_msg));
 	WARN_ON(!iov_iter_is_kvec(&con->v2.out_iter));
 	resid = iov_iter_count(&con->v2.out_iter);
-
+	/* msg包里面,hdr,pyload啥啥的这些界限是什么 */
 	boundary = front_len(con->out_msg) + middle_len(con->out_msg);
 	if (resid > boundary) {
 		resid -= boundary;
@@ -3546,6 +3548,7 @@ static void revoke_at_queue_data(struct ceph_connection *con)
 	queue_zeros(con);
 }
 
+/*  */
 static void revoke_at_queue_data_cont(struct ceph_connection *con)
 {
 	int sent, resid;  /* current piece of data */
@@ -3630,6 +3633,7 @@ static void revoke_at_finish_message(struct ceph_connection *con)
 	dout("%s con %p was sending epilogue - noop\n", __func__, con);
 }
 
+/* revoke链接? */
 void ceph_con_v2_revoke(struct ceph_connection *con)
 {
 	WARN_ON(con->v2.out_zero);
@@ -3642,6 +3646,7 @@ void ceph_con_v2_revoke(struct ceph_connection *con)
 	}
 
 	switch (con->v2.out_state) {
+		/* 2024年10月23日23:10:25 */
 	case OUT_S_QUEUE_DATA:
 		revoke_at_queue_data(con);
 		break;

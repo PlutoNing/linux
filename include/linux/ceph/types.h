@@ -13,11 +13,12 @@
 #include <linux/ceph/ceph_hash.h>
 
 /*
+通过inode+snap来表示inode
  * Identify inodes by both their ino AND snapshot id (a u64).
  */
 struct ceph_vino {
 	u64 ino;
-	u64 snap;
+	u64 snap; /* 表示snap的id? */
 };
 
 

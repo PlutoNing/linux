@@ -12,6 +12,7 @@
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 
 /*
+获取进程的栈
  * When accessing the stack of a non-current task that might exit, use
  * try_get_task_stack() instead.  task_stack_page will return a pointer
  * that could get freed out from under you.
@@ -63,6 +64,7 @@ static inline unsigned long *end_of_stack(struct task_struct *p)
 #endif
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
+/* 带引用计数的get */
 static inline void *try_get_task_stack(struct task_struct *tsk)
 {
 	return refcount_inc_not_zero(&tsk->stack_refcount) ?

@@ -20,6 +20,7 @@ struct dentry;
 
 /*
  * Bits in bdi_writeback.state
+ 表示wb的状态
  */
 enum wb_state {
 	WB_registered,		/* bdi_register() was done */
@@ -28,10 +29,18 @@ enum wb_state {
 	WB_start_all,		/* nr_pages == 0 (all) work pending */
 };
 
+/* wb对各种页面的统计 */
 enum wb_stat_item {
-	WB_RECLAIMABLE,
+	WB_RECLAIMABLE,  /* 
+	这个wb负责的可回收,可写回的页面
+	todddo 2024年12月7日21:26:09 多了脏页, 也会加这个
+
+	 */
 	WB_WRITEBACK,
-	WB_DIRTIED,
+	WB_DIRTIED, /* 
+	
+	todddo 2024年12月7日21:26:47  wb也有对脏页的记录
+	 */
 	WB_WRITTEN,
 	NR_WB_STAT_ITEMS
 };
@@ -59,12 +68,12 @@ enum wb_reason {
 
 	WB_REASON_MAX,
 };
-
+/* 等待写回wq写回完成的实体 */
 struct wb_completion {
 	atomic_t		cnt;
 	wait_queue_head_t	*waitq;
 };
-
+/*  */
 #define __WB_COMPLETION_INIT(_waitq)	\
 	(struct wb_completion){ .cnt = ATOMIC_INIT(1), .waitq = (_waitq) }
 
@@ -105,7 +114,9 @@ struct wb_completion {
 struct bdi_writeback {
 	struct backing_dev_info *bdi;	/* our parent bdi */
 
-	unsigned long state;		/* Always use atomic bitops on this */
+	unsigned long state;		/* 
+	此wb现在的状态
+	Always use atomic bitops on this */
 	unsigned long last_old_flush;	/* last old data flush */
 
 	struct list_head b_dirty;	/* dirty inodes */
@@ -114,8 +125,10 @@ struct bdi_writeback {
 	struct list_head b_dirty_time;	/* time stamps are dirty */
 	spinlock_t list_lock;		/* protects the b_* lists */
 
-	atomic_t writeback_inodes;	/* number of inodes under writeback */
-	struct percpu_counter stat[NR_WB_STAT_ITEMS];
+	atomic_t writeback_inodes;	/* 
+	这个wb控制的inode里面正在写回的数量
+	number of inodes under writeback */
+	struct percpu_counter stat[NR_WB_STAT_ITEMS]; //这里是wb对各种页面的统计
 
 	unsigned long bw_time_stamp;	/* last time write bw is updated */
 	unsigned long dirtied_stamp;
@@ -139,24 +152,34 @@ struct bdi_writeback {
 	spinlock_t work_lock;		/* protects work_list & dwork scheduling */
 	struct list_head work_list;
 	struct delayed_work dwork;	/* work item used for writeback */
-	struct delayed_work bw_dwork;	/* work item used for bandwidth estimate */
+	struct delayed_work bw_dwork;	/* 
+	更新带宽的work
+	work item used for bandwidth estimate */
 
 	unsigned long dirty_sleep;	/* last wait */
 
 	struct list_head bdi_node;	/* anchored at bdi->wb_list */
 
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct percpu_ref refcnt;	/* used only for !root wb's */
+	struct percpu_ref refcnt;	/* 
+	引用计数
+	used only for !root wb's */
 	struct fprop_local_percpu memcg_completions;
-	struct cgroup_subsys_state *memcg_css; /* the associated memcg */
-	struct cgroup_subsys_state *blkcg_css; /* and blkcg */
-	struct list_head memcg_node;	/* anchored at memcg->cgwb_list */
+	struct cgroup_subsys_state *memcg_css; /* 
+	对应的memcg
+	the associated memcg */
+	struct cgroup_subsys_state *blkcg_css; /* 
+	对应的blkcg
+	and blkcg */
+	struct list_head memcg_node;	/* 
+	连接到关联的memcg
+	anchored at memcg->cgwb_list */
 	struct list_head blkcg_node;	/* anchored at blkcg->cgwb_list */
 	struct list_head b_attached;	/* attached inodes, protected by list_lock */
 	struct list_head offline_node;	/* anchored at offline_cgwbs */
 
 	union {
-		struct work_struct release_work;
+		struct work_struct release_work; //释放工作
 		struct rcu_head rcu;
 	};
 #endif
@@ -181,9 +204,14 @@ struct backing_dev_info {
 	atomic_long_t tot_write_bandwidth;
 
 	struct bdi_writeback wb;  /* the root writeback info for this bdi */
-	struct list_head wb_list; /* list of all wbs */
+	struct list_head wb_list; /* 
+	wb的bdi_node链接到这个链表
+	list of all wbs */
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct radix_tree_root cgwb_tree; /* radix tree of active cgroup wbs */
+	struct radix_tree_root cgwb_tree; /* 
+	这棵树上存着memcg的id和wb的对应
+	可以实现cgroup级别的io控制
+	radix tree of active cgroup wbs */
 	struct mutex cgwb_release_mutex;  /* protect shutdown of wb structs */
 	struct rw_semaphore wb_switch_rwsem; /* no cgwb switch while syncing */
 #endif

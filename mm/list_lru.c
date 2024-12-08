@@ -16,6 +16,7 @@
 #include "internal.h"
 
 #ifdef CONFIG_MEMCG_KMEM
+/* memcg aware的lru链接到这里 */
 static LIST_HEAD(memcg_list_lrus);
 static DEFINE_MUTEX(list_lrus_mutex);
 
@@ -24,6 +25,7 @@ static inline bool list_lru_memcg_aware(struct list_lru *lru)
 	return lru->memcg_aware;
 }
 
+/* 注册到哪里? */
 static void list_lru_register(struct list_lru *lru)
 {
 	if (!list_lru_memcg_aware(lru))
@@ -49,6 +51,7 @@ static int lru_shrinker_id(struct list_lru *lru)
 	return lru->shrinker_id;
 }
 
+/* 获取lru上面属于memcg和node的链表 */
 static inline struct list_lru_one *
 list_lru_from_memcg_idx(struct list_lru *lru, int nid, int idx)
 {
@@ -175,6 +178,7 @@ void list_lru_isolate_move(struct list_lru_one *list, struct list_head *item,
 }
 EXPORT_SYMBOL_GPL(list_lru_isolate_move);
 
+/* 统计属于此node和此memcg的lru链表元素数量? */
 unsigned long list_lru_count_one(struct list_lru *lru,
 				 int nid, struct mem_cgroup *memcg)
 {
@@ -202,6 +206,7 @@ unsigned long list_lru_count_node(struct list_lru *lru, int nid)
 }
 EXPORT_SYMBOL_GPL(list_lru_count_node);
 
+/* 遍历lru的nid的lru, */
 static unsigned long
 __list_lru_walk_one(struct list_lru *lru, int nid, int memcg_idx,
 		    list_lru_walk_cb isolate, void *cb_arg,
@@ -213,6 +218,7 @@ __list_lru_walk_one(struct list_lru *lru, int nid, int memcg_idx,
 	unsigned long isolated = 0;
 
 restart:
+	/* 获取nid和memcg的lru */
 	l = list_lru_from_memcg_idx(lru, nid, memcg_idx);
 	if (!l)
 		goto out;
@@ -227,7 +233,7 @@ restart:
 		if (!*nr_to_walk)
 			break;
 		--*nr_to_walk;
-
+		/* 遍历每一个,调用回调 */
 		ret = isolate(item, l, &nlru->lock, cb_arg);
 		switch (ret) {
 		case LRU_REMOVED_RETRY:
@@ -280,11 +286,13 @@ list_lru_walk_one(struct list_lru *lru, int nid, struct mem_cgroup *memcg,
 }
 EXPORT_SYMBOL_GPL(list_lru_walk_one);
 
+/* 遍历此lru,nid和memcg是指定的范围,nr_to_walk数量? */
 unsigned long
 list_lru_walk_one_irq(struct list_lru *lru, int nid, struct mem_cgroup *memcg,
 		      list_lru_walk_cb isolate, void *cb_arg,
 		      unsigned long *nr_to_walk)
 {
+	/* lru在不同node上面有不同lru */
 	struct list_lru_node *nlru = &lru->node[nid];
 	unsigned long ret;
 
@@ -327,7 +335,7 @@ unsigned long list_lru_walk_node(struct list_lru *lru, int nid,
 	return isolated;
 }
 EXPORT_SYMBOL_GPL(list_lru_walk_node);
-
+/*  */
 static void init_one_lru(struct list_lru_one *l)
 {
 	INIT_LIST_HEAD(&l->list);
@@ -364,6 +372,7 @@ static void memcg_list_lru_free(struct list_lru *lru, int src_idx)
 		kvfree_rcu(mlru, rcu);
 }
 
+/*  */
 static inline void memcg_init_list_lru(struct list_lru *lru, bool memcg_aware)
 {
 	if (memcg_aware)
@@ -556,6 +565,7 @@ static void memcg_destroy_list_lru(struct list_lru *lru)
 }
 #endif /* CONFIG_MEMCG_KMEM */
 
+/* lru链表的初始化? */
 int __list_lru_init(struct list_lru *lru, bool memcg_aware,
 		    struct lock_class_key *key, struct shrinker *shrinker)
 {
@@ -580,6 +590,7 @@ int __list_lru_init(struct list_lru *lru, bool memcg_aware,
 	}
 
 	memcg_init_list_lru(lru, memcg_aware);
+	
 	list_lru_register(lru);
 
 	return 0;

@@ -120,6 +120,7 @@ static __always_inline unsigned char interrupt_context_level(void)
 #define in_nmi()		(nmi_count())
 #define in_hardirq()		(hardirq_count())
 #define in_serving_softirq()	(softirq_count() & SOFTIRQ_OFFSET)
+/* 是不是用户进程? */
 #define in_task()		(!(in_nmi() | in_hardirq() | in_serving_softirq()))
 
 /*
@@ -200,6 +201,10 @@ extern void preempt_count_sub(int val);
 
 #ifdef CONFIG_PREEMPT_COUNT
 
+/* __preempt_count_add 的作用是在当前 CPU 上对 preempt_count 
+进行增减操作，以便管理内核的抢占机制，
+确保在特定的临界区中不会发生任务切换。在进入关键代码时增加 preempt_count，
+退出时减少，以控制抢占行为，从而实现稳定的内核调度和并发控制。 */
 #define preempt_disable() \
 do { \
 	preempt_count_inc(); \

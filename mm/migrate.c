@@ -2490,7 +2490,7 @@ static struct folio *alloc_misplaced_dst_folio(struct folio *src,
 	}
 	return __folio_alloc_node(gfp, order, nid);
 }
-
+/*  */
 static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 {
 	int nr_pages = thp_nr_pages(page);

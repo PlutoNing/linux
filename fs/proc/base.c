@@ -124,7 +124,9 @@ struct pid_entry {
 	const struct file_operations *fop;
 	union proc_op op;
 };
-
+/* NOD(NAME, MODE, IOP, FOP, OP)：
+NOD 是 DIR 的底层实现，用于创建节点结构体并初始化属性。
+.name 是节点名称，.mode 是节点权限，.iop 是 inode 操作集合指针，.fop 是 file 操作集合指针。 */
 #define NOD(NAME, MODE, IOP, FOP, OP) {			\
 	.name = (NAME),					\
 	.len  = sizeof(NAME) - 1,			\
@@ -133,7 +135,11 @@ struct pid_entry {
 	.fop  = FOP,					\
 	.op   = OP,					\
 }
+/* DIR(NAME, MODE, iops, fops)：
 
+用于定义一个目录节点，传入目录名称、模式（权限）、inode 操作集合和 file 操作集合。
+通过 NOD 宏进一步初始化 name、mode 等属性。
+该宏的 MODE 包含目录权限，如 S_IRUSR（可读）和 S_IXUSR（可执行）。 */
 #define DIR(NAME, MODE, iops, fops)	\
 	NOD(NAME, (S_IFDIR|(MODE)), &iops, &fops, {} )
 #define LNK(NAME, get_link)					\
@@ -213,6 +219,7 @@ static int proc_root_link(struct dentry *dentry, struct path *path)
 }
 
 /*
+
  * If the user used setproctitle(), we just get the string from
  * user space at arg_start, and limit it to a maximum of one page.
  */
@@ -225,12 +232,13 @@ static ssize_t get_mm_proctitle(struct mm_struct *mm, char __user *buf,
 
 	if (pos >= PAGE_SIZE)
 		return 0;
-
+		// 分配一页内核空间用于暂存用户空间的数据
 	page = (char *)__get_free_page(GFP_KERNEL);
 	if (!page)
 		return -ENOMEM;
 
 	ret = 0;
+	// 从用户空间进程mm中读取 PAGE_SIZE 字节的数据到 page
 	got = access_remote_vm(mm, arg_start, page, PAGE_SIZE, FOLL_ANON);
 	if (got > 0) {
 		int len = strnlen(page, got);
@@ -253,6 +261,7 @@ static ssize_t get_mm_proctitle(struct mm_struct *mm, char __user *buf,
 	return ret;
 }
 
+/* 获取mm的cmdline */
 static ssize_t get_mm_cmdline(struct mm_struct *mm, char __user *buf,
 			      size_t count, loff_t *ppos)
 {
@@ -298,6 +307,7 @@ static ssize_t get_mm_cmdline(struct mm_struct *mm, char __user *buf,
 	 *
 	 * Possible future enhancement: do this only once when
 	 * pos is 0, and set a flag in the 'struct file'.
+	 为什么这里需要remote_vm.
 	 */
 	if (access_remote_vm(mm, arg_end-1, &c, 1, FOLL_ANON) == 1 && c)
 		return get_mm_proctitle(mm, buf, count, pos, arg_start);
@@ -340,6 +350,8 @@ static ssize_t get_mm_cmdline(struct mm_struct *mm, char __user *buf,
 	return len;
 }
 
+/* task的cmdline存储在哪里
+存储在mm */
 static ssize_t get_task_cmdline(struct task_struct *tsk, char __user *buf,
 				size_t count, loff_t *pos)
 {
@@ -355,6 +367,7 @@ static ssize_t get_task_cmdline(struct task_struct *tsk, char __user *buf,
 	return ret;
 }
 
+/* cmdline存储在哪里 */
 static ssize_t proc_pid_cmdline_read(struct file *file, char __user *buf,
 				     size_t count, loff_t *pos)
 {
@@ -373,6 +386,7 @@ static ssize_t proc_pid_cmdline_read(struct file *file, char __user *buf,
 	return ret;
 }
 
+/*  */
 static const struct file_operations proc_pid_cmdline_ops = {
 	.read	= proc_pid_cmdline_read,
 	.llseek	= generic_file_llseek,
@@ -489,6 +503,7 @@ static int proc_pid_schedstat(struct seq_file *m, struct pid_namespace *ns,
 #endif
 
 #ifdef CONFIG_LATENCYTOP
+/* 显示进程proc/pid/latency的信息 */
 static int lstats_show_proc(struct seq_file *m, void *v)
 {
 	int i;
@@ -519,6 +534,7 @@ static int lstats_show_proc(struct seq_file *m, void *v)
 	return 0;
 }
 
+/* proc/pid/latency的open函数 */
 static int lstats_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, lstats_show_proc, inode);
@@ -537,6 +553,7 @@ static ssize_t lstats_write(struct file *file, const char __user *buf,
 	return count;
 }
 
+/* proc/pid/latency的fops */
 static const struct file_operations proc_lstats_operations = {
 	.open		= lstats_open,
 	.read		= seq_read,
@@ -813,6 +830,8 @@ struct mm_struct *proc_mem_open(struct inode *inode, unsigned int mode)
 	return mm;
 }
 
+/* 有了inode, 现在open操作其实就是把filep与inode建立关联
+这里的情况就是, mm存储在inode, 现在把mm也搞到file里面 */
 static int __mem_open(struct inode *inode, struct file *file, unsigned int mode)
 {
 	struct mm_struct *mm = proc_mem_open(inode, mode);
@@ -834,6 +853,7 @@ static int mem_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
+/* 好像是读写进程的内存 */
 static ssize_t mem_rw(struct file *file, char __user *buf,
 			size_t count, loff_t *ppos, int write)
 {
@@ -855,10 +875,11 @@ static ssize_t mem_rw(struct file *file, char __user *buf,
 		goto free;
 
 	flags = FOLL_FORCE | (write ? FOLL_WRITE : 0);
-
+	/* 读取count数量 */
 	while (count > 0) {
 		size_t this_len = min_t(size_t, count, PAGE_SIZE);
 
+		/* 如果是写入 /proc/pid/mem */
 		if (write && copy_from_user(page, buf, this_len)) {
 			copied = -EFAULT;
 			break;
@@ -901,6 +922,7 @@ static ssize_t mem_write(struct file *file, const char __user *buf,
 	return mem_rw(file, (char __user*)buf, count, ppos, 1);
 }
 
+/*  */
 loff_t mem_lseek(struct file *file, loff_t offset, int orig)
 {
 	switch (orig) {
@@ -925,6 +947,7 @@ static int mem_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+/*  */
 static const struct file_operations proc_mem_operations = {
 	.llseek		= mem_lseek,
 	.read		= mem_read,
@@ -933,11 +956,13 @@ static const struct file_operations proc_mem_operations = {
 	.release	= mem_release,
 };
 
+/*  */
 static int environ_open(struct inode *inode, struct file *file)
 {
 	return __mem_open(inode, file, PTRACE_MODE_READ);
 }
 
+/* 读取进程的环境变量信息 */
 static ssize_t environ_read(struct file *file, char __user *buf,
 			size_t count, loff_t *ppos)
 {
@@ -1001,6 +1026,7 @@ free:
 	return ret;
 }
 
+/* 进程的环境变量信息的fops */
 static const struct file_operations proc_environ_operations = {
 	.open		= environ_open,
 	.read		= environ_read,
@@ -1013,6 +1039,7 @@ static int auxv_open(struct inode *inode, struct file *file)
 	return __mem_open(inode, file, PTRACE_MODE_READ_FSCREDS);
 }
 
+/* proc fs读取auxv, 位于mm的auxv */
 static ssize_t auxv_read(struct file *file, char __user *buf,
 			size_t count, loff_t *ppos)
 {
@@ -1028,6 +1055,7 @@ static ssize_t auxv_read(struct file *file, char __user *buf,
 				       nwords * sizeof(mm->saved_auxv[0]));
 }
 
+/*  */
 static const struct file_operations proc_auxv_operations = {
 	.open		= auxv_open,
 	.read		= auxv_read,
@@ -1536,6 +1564,7 @@ sched_autogroup_write(struct file *file, const char __user *buf,
 	return count;
 }
 
+/*  */
 static int sched_autogroup_open(struct inode *inode, struct file *filp)
 {
 	int ret;
@@ -1549,6 +1578,7 @@ static int sched_autogroup_open(struct inode *inode, struct file *filp)
 	return ret;
 }
 
+/* 调度的autogroup的proc回调 */
 static const struct file_operations proc_pid_sched_autogroup_operations = {
 	.open		= sched_autogroup_open,
 	.read		= seq_read,
@@ -1689,6 +1719,7 @@ static ssize_t comm_write(struct file *file, const char __user *buf,
 	return count;
 }
 
+/* comm存储在哪里 */
 static int comm_show(struct seq_file *m, void *v)
 {
 	struct inode *inode = m->private;
@@ -1706,11 +1737,13 @@ static int comm_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+/*  */
 static int comm_open(struct inode *inode, struct file *filp)
 {
 	return single_open(filp, comm_show, inode);
 }
 
+/* 读取proc/pid的comm */
 static const struct file_operations proc_pid_set_comm_operations = {
 	.open		= comm_open,
 	.read		= seq_read,
@@ -1885,6 +1918,7 @@ void proc_pid_evict_inode(struct proc_inode *ei)
 	put_pid(pid);
 }
 
+/* proc的pid做什么inode? */
 struct inode *proc_pid_make_inode(struct super_block *sb,
 				  struct task_struct *task, umode_t mode)
 {
@@ -2099,6 +2133,28 @@ end_instantiate:
 /*
  * dname_to_vma_addr - maps a dentry name into two unsigned longs
  * which represent vma start and end addresses.
+ 处理类似的这种东西
+root@ppppp-MS-7E24:/proc/226619#ll map_files/
+total 0
+dr-x------ 2 root root  0 Nov  8 22:08 ./
+dr-xr-xr-x 9 root root  0 Nov  8 22:07 ../
+lr-------- 1 root root 64 Nov  9 22:46 5e3c319b9000-5e3c319e9000 -> /usr/bin/bash*
+lr-------- 1 root root 64 Nov  9 22:46 5e3c319e9000-5e3c31ad8000 -> /usr/bin/bash*
+lr-------- 1 root root 64 Nov  9 22:46 5e3c31ad8000-5e3c31b0d000 -> /usr/bin/bash*
+lr-------- 1 root root 64 Nov  9 22:46 5e3c31b0d000-5e3c31b11000 -> /usr/bin/bash*
+lr-------- 1 root root 64 Nov  9 22:46 5e3c31b11000-5e3c31b1a000 -> /usr/bin/bash*
+lr-------- 1 root root 64 Nov  9 22:46 71cd51400000-71cd521ec000 -> /usr/lib/locale/locale-archive
+lr-------- 1 root root 64 Nov  9 22:46 71cd52200000-71cd52228000 -> /usr/lib/x86_64-linux-gnu/libc.so.6*
+lr-------- 1 root root 64 Nov  9 22:46 71cd52228000-71cd523b0000 -> /usr/lib/x86_64-linux-gnu/libc.so.6*
+lr-------- 1 root root 64 Nov  9 22:46 71cd523b0000-71cd523ff000 -> /usr/lib/x86_64-linux-gnu/libc.so.6*
+lr-------- 1 root root 64 Nov  9 22:46 71cd523ff000-71cd52403000 -> /usr/lib/x86_64-linux-gnu/libc.so.6*
+lr-------- 1 root root 64 Nov  9 22:46 71cd52403000-71cd52405000 -> /usr/lib/x86_64-linux-gnu/libc.so.6*
+lr-------- 1 root root 64 Nov  9 22:46 71cd524af000-71cd524bd000 -> /usr/lib/x86_64-linux-gnu/libtinfo.so.6.4
+lr-------- 1 root root 64 Nov  9 22:46 71cd524bd000-71cd524d0000 -> /usr/lib/x86_64-linux-gnu/libtinfo.so.6.4
+lr-------- 1 root root 64 Nov  9 22:46 71cd524d0000-71cd524de000 -> /usr/lib/x86_64-linux-gnu/libtinfo.so.6.4
+lr-------- 1 root root 64 Nov  9 22:46 71cd524de000-71cd524e2000 -> /usr/lib/x86_64-linux-gnu/libtinfo.so.6.4
+lr-------- 1 root root 64 Nov  9 22:46 71cd524e2000-71cd524e3000 -> /usr/lib/x86_64-linux-gnu/libtinfo.so.6.4
+lr-------- 1 root root 64 Nov  9 22:46 71cd524f3000-71cd524fa000 -> /usr/lib/x86_64-linux-gnu/gconv/gconv-modules.cache
  */
 static int dname_to_vma_addr(struct dentry *dentry,
 			     unsigned long *start, unsigned long *end)
@@ -2261,6 +2317,10 @@ static const struct inode_operations proc_map_files_link_inode_operations = {
 	.setattr	= proc_setattr,
 };
 
+/* 这里是实例化什么
+task是/proc/226619
+dentry可能是lr-------- 1 root root 64 Nov  9 22:46 5e3c319b9000-5e3c319e9000 -> /usr/bin/bash
+ */
 static struct dentry *
 proc_map_files_instantiate(struct dentry *dentry,
 			   struct task_struct *task, const void *ptr)
@@ -2285,6 +2345,33 @@ proc_map_files_instantiate(struct dentry *dentry,
 	return d_splice_alias(inode, dentry);
 }
 
+/* 寻找proc的mmap file list
+-----------------
+root@ppppp-MS-7E24:/proc/226619#ll map_files/
+total 0
+dr-x------ 2 root root  0 Nov  8 22:08 ./
+dr-xr-xr-x 9 root root  0 Nov  8 22:07 ../
+lr-------- 1 root root 64 Nov  9 22:46 5e3c319b9000-5e3c319e9000 -> /usr/bin/bash*
+lr-------- 1 root root 64 Nov  9 22:46 5e3c319e9000-5e3c31ad8000 -> /usr/bin/bash*
+lr-------- 1 root root 64 Nov  9 22:46 5e3c31ad8000-5e3c31b0d000 -> /usr/bin/bash*
+lr-------- 1 root root 64 Nov  9 22:46 5e3c31b0d000-5e3c31b11000 -> /usr/bin/bash*
+lr-------- 1 root root 64 Nov  9 22:46 5e3c31b11000-5e3c31b1a000 -> /usr/bin/bash*
+lr-------- 1 root root 64 Nov  9 22:46 71cd51400000-71cd521ec000 -> /usr/lib/locale/locale-archive
+lr-------- 1 root root 64 Nov  9 22:46 71cd52200000-71cd52228000 -> /usr/lib/x86_64-linux-gnu/libc.so.6*
+lr-------- 1 root root 64 Nov  9 22:46 71cd52228000-71cd523b0000 -> /usr/lib/x86_64-linux-gnu/libc.so.6*
+lr-------- 1 root root 64 Nov  9 22:46 71cd523b0000-71cd523ff000 -> /usr/lib/x86_64-linux-gnu/libc.so.6*
+lr-------- 1 root root 64 Nov  9 22:46 71cd523ff000-71cd52403000 -> /usr/lib/x86_64-linux-gnu/libc.so.6*
+lr-------- 1 root root 64 Nov  9 22:46 71cd52403000-71cd52405000 -> /usr/lib/x86_64-linux-gnu/libc.so.6*
+lr-------- 1 root root 64 Nov  9 22:46 71cd524af000-71cd524bd000 -> /usr/lib/x86_64-linux-gnu/libtinfo.so.6.4
+lr-------- 1 root root 64 Nov  9 22:46 71cd524bd000-71cd524d0000 -> /usr/lib/x86_64-linux-gnu/libtinfo.so.6.4
+lr-------- 1 root root 64 Nov  9 22:46 71cd524d0000-71cd524de000 -> /usr/lib/x86_64-linux-gnu/libtinfo.so.6.4
+lr-------- 1 root root 64 Nov  9 22:46 71cd524de000-71cd524e2000 -> /usr/lib/x86_64-linux-gnu/libtinfo.so.6.4
+lr-------- 1 root root 64 Nov  9 22:46 71cd524e2000-71cd524e3000 -> /usr/lib/x86_64-linux-gnu/libtinfo.so.6.4
+lr-------- 1 root root 64 Nov  9 22:46 71cd524f3000-71cd524fa000 -> /usr/lib/x86_64-linux-gnu/gconv/gconv-modules.cache
+-------------------------------------------
+dir表示/proc/226619
+dentry表示5e3c319b9000-5e3c319e9000
+ */
 static struct dentry *proc_map_files_lookup(struct inode *dir,
 		struct dentry *dentry, unsigned int flags)
 {
@@ -2295,6 +2382,7 @@ static struct dentry *proc_map_files_lookup(struct inode *dir,
 	struct mm_struct *mm;
 
 	result = ERR_PTR(-ENOENT);
+	/*  */
 	task = get_proc_task(dir);
 	if (!task)
 		goto out;
@@ -2316,11 +2404,13 @@ static struct dentry *proc_map_files_lookup(struct inode *dir,
 		goto out_put_mm;
 
 	result = ERR_PTR(-ENOENT);
+	/* 找到位于这个范围的vma
+	比如lr-------- 1 root root 64 Nov  9 22:46 5e3c319b9000-5e3c319e9000 -> /usr/bin/bash */
 	vma = find_exact_vma(mm, vm_start, vm_end);
 	if (!vma)
 		goto out_no_vma;
 
-	if (vma->vm_file)
+	if (vma->vm_file) /* 找到这个vma的mmap的file */
 		result = proc_map_files_instantiate(dentry, task,
 				(void *)(unsigned long)vma->vm_file->f_mode);
 
@@ -2334,6 +2424,7 @@ out:
 	return result;
 }
 
+/*  */
 static const struct inode_operations proc_map_files_inode_operations = {
 	.lookup		= proc_map_files_lookup,
 	.permission	= proc_fd_permission,
@@ -2851,6 +2942,7 @@ static const struct pid_entry apparmor_attr_dir_stuff[] = {
 LSM_DIR_OPS(apparmor);
 #endif
 
+/* 与安全相关 */
 static const struct pid_entry attr_dir_stuff[] = {
 	ATTR(NULL, "current",		0666),
 	ATTR(NULL, "prev",		0444),
@@ -2897,6 +2989,7 @@ static const struct inode_operations proc_attr_dir_inode_operations = {
 #endif
 
 #ifdef CONFIG_ELF_CORE
+/* 这个coredump_filter的信息存储在mm的flag里面 */
 static ssize_t proc_coredump_filter_read(struct file *file, char __user *buf,
 					 size_t count, loff_t *ppos)
 {
@@ -2924,6 +3017,8 @@ static ssize_t proc_coredump_filter_read(struct file *file, char __user *buf,
 	return ret;
 }
 
+/* 写入proc的coredump_filter
+存储在mm的flag里面 */
 static ssize_t proc_coredump_filter_write(struct file *file,
 					  const char __user *buf,
 					  size_t count,
@@ -2966,6 +3061,7 @@ static ssize_t proc_coredump_filter_write(struct file *file,
 	return count;
 }
 
+/* 进程的proc/pid文件夹的coredump_filter */
 static const struct file_operations proc_coredump_filter_operations = {
 	.read		= proc_coredump_filter_read,
 	.write		= proc_coredump_filter_write,
@@ -2974,6 +3070,7 @@ static const struct file_operations proc_coredump_filter_operations = {
 #endif
 
 #ifdef CONFIG_TASK_IO_ACCOUNTING
+/* proc/pid/io的io记账回调 */
 static int do_io_accounting(struct task_struct *task, struct seq_file *m, int whole)
 {
 	struct task_io_accounting acct = task->ioac;
@@ -2993,6 +3090,7 @@ static int do_io_accounting(struct task_struct *task, struct seq_file *m, int wh
 		struct task_struct *t = task;
 
 		task_io_accounting_add(&acct, &task->signal->ioac);
+		/* 遍历每一个tid */
 		while_each_thread(task, t)
 			task_io_accounting_add(&acct, &t->ioac);
 
@@ -3026,6 +3124,7 @@ static int proc_tid_io_accounting(struct seq_file *m, struct pid_namespace *ns,
 	return do_io_accounting(task, m, 0);
 }
 
+/* proc/pid/io的进程io记账 */
 static int proc_tgid_io_accounting(struct seq_file *m, struct pid_namespace *ns,
 				   struct pid *pid, struct task_struct *task)
 {
@@ -3034,6 +3133,8 @@ static int proc_tgid_io_accounting(struct seq_file *m, struct pid_namespace *ns,
 #endif /* CONFIG_TASK_IO_ACCOUNTING */
 
 #ifdef CONFIG_USER_NS
+/* 给file的priv配一个seqfile
+seqfile的ops是seq_ops,priv是ns */
 static int proc_id_map_open(struct inode *inode, struct file *file,
 	const struct seq_operations *seq_ops)
 {
@@ -3045,17 +3146,19 @@ static int proc_id_map_open(struct inode *inode, struct file *file,
 	task = get_proc_task(inode);
 	if (task) {
 		rcu_read_lock();
+		/* 获取tsk的user_ns字段 */
 		ns = get_user_ns(task_cred_xxx(task, user_ns));
 		rcu_read_unlock();
 		put_task_struct(task);
 	}
 	if (!ns)
 		goto err;
-
+	
+	/* file的priv的ops设置为seq_ops */
 	ret = seq_open(file, seq_ops);
 	if (ret)
 		goto err_put_ns;
-
+	/* ,priv的priv设置为ns */
 	seq = file->private_data;
 	seq->private = ns;
 
@@ -3079,6 +3182,8 @@ static int proc_uid_map_open(struct inode *inode, struct file *file)
 	return proc_id_map_open(inode, file, &proc_uid_seq_operations);
 }
 
+/* 给file的priv配一个seqfile
+seqfile的ops是gid的seq_ops,priv是ns */
 static int proc_gid_map_open(struct inode *inode, struct file *file)
 {
 	return proc_id_map_open(inode, file, &proc_gid_seq_operations);
@@ -3097,8 +3202,12 @@ static const struct file_operations proc_uid_map_operations = {
 	.release	= proc_id_map_release,
 };
 
+/*  */
 static const struct file_operations proc_gid_map_operations = {
+	/*  给file的priv配一个seqfile
+seqfile的ops是gid的seq_ops,priv是ns */
 	.open		= proc_gid_map_open,
+	/*  */
 	.write		= proc_gid_map_write,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
@@ -3186,6 +3295,7 @@ static int proc_pid_patch_state(struct seq_file *m, struct pid_namespace *ns,
 #endif /* CONFIG_LIVEPATCH */
 
 #ifdef CONFIG_KSM
+/* /proc/226619/ksm_merging_pages的回调函数 */
 static int proc_pid_ksm_merging_pages(struct seq_file *m, struct pid_namespace *ns,
 				struct pid *pid, struct task_struct *task)
 {
@@ -3199,6 +3309,9 @@ static int proc_pid_ksm_merging_pages(struct seq_file *m, struct pid_namespace *
 
 	return 0;
 }
+
+/* /proc/226619/ksm_stat回调函数
+ */
 static int proc_pid_ksm_stat(struct seq_file *m, struct pid_namespace *ns,
 				struct pid *pid, struct task_struct *task)
 {
@@ -3240,14 +3353,19 @@ static const struct inode_operations proc_task_inode_operations;
 
 static const struct pid_entry tgid_base_stuff[] = {
 	DIR("task",       S_IRUGO|S_IXUGO, proc_task_inode_operations, proc_task_operations),
+	/* proc/pid/fd这个文件夹 */
 	DIR("fd",         S_IRUSR|S_IXUSR, proc_fd_inode_operations, proc_fd_operations),
+	/* 存储的打开的mmap_file  */
 	DIR("map_files",  S_IRUSR|S_IXUSR, proc_map_files_inode_operations, proc_map_files_operations),
+	/* 对应 proc/pid/fdinfo */
 	DIR("fdinfo",     S_IRUGO|S_IXUGO, proc_fdinfo_inode_operations, proc_fdinfo_operations),
 	DIR("ns",	  S_IRUSR|S_IXUGO, proc_ns_dir_inode_operations, proc_ns_dir_operations),
 #ifdef CONFIG_NET
 	DIR("net",        S_IRUGO|S_IXUGO, proc_net_inode_operations, proc_net_operations),
 #endif
+/* 存储进程的环境变量信息 */
 	REG("environ",    S_IRUSR, proc_environ_operations),
+	/* auxv是什么 */
 	REG("auxv",       S_IRUSR, proc_auxv_operations),
 	ONE("status",     S_IRUGO, proc_pid_status),
 	ONE("personality", S_IRUSR, proc_pid_personality),
@@ -3256,6 +3374,7 @@ static const struct pid_entry tgid_base_stuff[] = {
 	REG("sched",      S_IRUGO|S_IWUSR, proc_pid_sched_operations),
 #endif
 #ifdef CONFIG_SCHED_AUTOGROUP
+/* /proc/<pid>/autogroup */
 	REG("autogroup",  S_IRUGO|S_IWUSR, proc_pid_sched_autogroup_operations),
 #endif
 #ifdef CONFIG_TIME_NS
@@ -3266,8 +3385,10 @@ static const struct pid_entry tgid_base_stuff[] = {
 	ONE("syscall",    S_IRUSR, proc_pid_syscall),
 #endif
 	REG("cmdline",    S_IRUGO, proc_pid_cmdline_ops),
+	/*  */
 	ONE("stat",       S_IRUGO, proc_tgid_stat),
 	ONE("statm",      S_IRUGO, proc_pid_statm),
+	/* 进程的地址映射 */
 	REG("maps",       S_IRUGO, proc_pid_maps_operations),
 #ifdef CONFIG_NUMA
 	REG("numa_maps",  S_IRUGO, proc_pid_numa_maps_operations),
@@ -3283,6 +3404,7 @@ static const struct pid_entry tgid_base_stuff[] = {
 	REG("clear_refs", S_IWUSR, proc_clear_refs_operations),
 	REG("smaps",      S_IRUGO, proc_pid_smaps_operations),
 	REG("smaps_rollup", S_IRUGO, proc_pid_smaps_rollup_operations),
+	/* proc/pid/pagemap */
 	REG("pagemap",    S_IRUSR, proc_pagemap_operations),
 #endif
 #ifdef CONFIG_SECURITY
@@ -3301,6 +3423,7 @@ static const struct pid_entry tgid_base_stuff[] = {
 	REG("latency",  S_IRUGO, proc_lstats_operations),
 #endif
 #ifdef CONFIG_PROC_PID_CPUSET
+/* cpu配额相关 */
 	ONE("cpuset",     S_IRUGO, proc_cpuset_show),
 #endif
 #ifdef CONFIG_CGROUPS
@@ -3321,9 +3444,11 @@ static const struct pid_entry tgid_base_stuff[] = {
 	REG("fail-nth", 0644, proc_fail_nth_operations),
 #endif
 #ifdef CONFIG_ELF_CORE
+/* 设置coredump_filter */
 	REG("coredump_filter", S_IRUGO|S_IWUSR, proc_coredump_filter_operations),
 #endif
 #ifdef CONFIG_TASK_IO_ACCOUNTING
+/* 好像是io的记账 */
 	ONE("io",	S_IRUSR, proc_tgid_io_accounting),
 #endif
 #ifdef CONFIG_USER_NS
@@ -3349,7 +3474,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 	ONE("seccomp_cache", S_IRUSR, proc_pid_seccomp_cache),
 #endif
 #ifdef CONFIG_KSM
+/* /proc/226619/ksm_merging_pages */
 	ONE("ksm_merging_pages",  S_IRUSR, proc_pid_ksm_merging_pages),
+/* /proc/226619/ksm_stat */
 	ONE("ksm_stat",  S_IRUSR, proc_pid_ksm_stat),
 #endif
 };
@@ -3583,6 +3710,7 @@ static int proc_tid_comm_permission(struct mnt_idmap *idmap,
 	return generic_permission(&nop_mnt_idmap, inode, mask);
 }
 
+/*  */
 static const struct inode_operations proc_tid_comm_inode_operations = {
 		.setattr	= proc_setattr,
 		.permission	= proc_tid_comm_permission,
@@ -3612,8 +3740,10 @@ static const struct pid_entry tid_base_stuff[] = {
 #ifdef CONFIG_HAVE_ARCH_TRACEHOOK
 	ONE("syscall",   S_IRUSR, proc_pid_syscall),
 #endif
+/* 获取cmdline */
 	REG("cmdline",   S_IRUGO, proc_pid_cmdline_ops),
 	ONE("stat",      S_IRUGO, proc_tid_stat),
+	/* /proc/pid的statm */
 	ONE("statm",     S_IRUGO, proc_pid_statm),
 	REG("maps",      S_IRUGO, proc_pid_maps_operations),
 #ifdef CONFIG_PROC_CHILDREN
@@ -3626,15 +3756,23 @@ static const struct pid_entry tid_base_stuff[] = {
 	LNK("cwd",       proc_cwd_link),
 	LNK("root",      proc_root_link),
 	LNK("exe",       proc_exe_link),
+/* 读出挂载信息 */
 	REG("mounts",    S_IRUGO, proc_mounts_operations),
 	REG("mountinfo",  S_IRUGO, proc_mountinfo_operations),
 #ifdef CONFIG_PROC_PAGE_MONITOR
+/* 在 /proc/<pid>/clear_refs 中，clear_refs 是一个虚拟文件，允许用户或系统
+通过写入命令来清除特定进程的内存页引用统计信息。clear_refs 文件通常用于内存管理
+和调试，用于控制和查看页面访问和引用信息。
+
+
+ */
 	REG("clear_refs", S_IWUSR, proc_clear_refs_operations),
 	REG("smaps",     S_IRUGO, proc_pid_smaps_operations),
 	REG("smaps_rollup", S_IRUGO, proc_pid_smaps_rollup_operations),
 	REG("pagemap",    S_IRUSR, proc_pagemap_operations),
 #endif
 #ifdef CONFIG_SECURITY
+/* /proc/pid/attr */
 	DIR("attr",      S_IRUGO|S_IXUGO, proc_attr_dir_inode_operations, proc_attr_dir_operations),
 #endif
 #ifdef CONFIG_KALLSYMS
@@ -3656,6 +3794,7 @@ static const struct pid_entry tid_base_stuff[] = {
 	ONE("cgroup",  S_IRUGO, proc_cgroup_show),
 #endif
 #ifdef CONFIG_PROC_CPU_RESCTRL
+/* /proc/226619/cpu_resctrl_groups */
 	ONE("cpu_resctrl_groups", S_IRUGO, proc_resctrl_show),
 #endif
 	ONE("oom_score", S_IRUGO, proc_oom_score),
@@ -3688,7 +3827,9 @@ static const struct pid_entry tid_base_stuff[] = {
 	ONE("seccomp_cache", S_IRUSR, proc_pid_seccomp_cache),
 #endif
 #ifdef CONFIG_KSM
+/* /proc/226619/ksm_merging_pages */
 	ONE("ksm_merging_pages",  S_IRUSR, proc_pid_ksm_merging_pages),
+/* /proc/226619/ksm_stat回调函数 */
 	ONE("ksm_stat",  S_IRUSR, proc_pid_ksm_stat),
 #endif
 };

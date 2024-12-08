@@ -19,6 +19,7 @@
 #include <linux/module.h>
 #include "blk.h"
 
+//
 static inline struct inode *bdev_file_inode(struct file *file)
 {
 	return file->f_mapping->host;
@@ -813,6 +814,7 @@ static long blkdev_fallocate(struct file *file, int mode, loff_t start,
 	return error;
 }
 
+//块设备文件的mmap?
 static int blkdev_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct inode *bd_inode = bdev_file_inode(file);
@@ -823,6 +825,7 @@ static int blkdev_mmap(struct file *file, struct vm_area_struct *vma)
 	return generic_file_mmap(file, vma);
 }
 
+// 块设备的fops?
 const struct file_operations def_blk_fops = {
 	.open		= blkdev_open,
 	.release	= blkdev_release,

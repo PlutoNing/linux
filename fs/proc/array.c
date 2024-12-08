@@ -96,6 +96,7 @@
 #include <asm/processor.h>
 #include "internal.h"
 
+/* task__name(comm)存储在哪里 */
 void proc_task_name(struct seq_file *m, struct task_struct *p, bool escape)
 {
 	char tcomm[64];
@@ -108,7 +109,7 @@ void proc_task_name(struct seq_file *m, struct task_struct *p, bool escape)
 		wq_worker_comm(tcomm, sizeof(tcomm), p);
 	else if (p->flags & PF_KTHREAD)
 		get_kthread_comm(tcomm, sizeof(tcomm), p);
-	else
+	else /* 一般的情况 */
 		__get_task_comm(tcomm, sizeof(tcomm), p);
 
 	if (escape)
@@ -118,6 +119,7 @@ void proc_task_name(struct seq_file *m, struct task_struct *p, bool escape)
 }
 
 /*
+
  * The task state array is a strange "bitmap" of
  * reasons to sleep. Thus "running" is zero, and
  * you can test for combinations of others with
@@ -139,6 +141,7 @@ static const char * const task_state_array[] = {
 	"I (idle)",		/* 0x80 */
 };
 
+/*  */
 static inline const char *get_task_state(struct task_struct *tsk)
 {
 	BUILD_BUG_ON(1 + ilog2(TASK_REPORT_MAX) != ARRAY_SIZE(task_state_array));
@@ -464,6 +467,7 @@ int proc_pid_status(struct seq_file *m, struct pid_namespace *ns,
 	return 0;
 }
 
+/* 获取进程的stat */
 static int do_task_stat(struct seq_file *m, struct pid_namespace *ns,
 			struct pid *pid, struct task_struct *task, int whole)
 {
@@ -500,8 +504,9 @@ static int do_task_stat(struct seq_file *m, struct pid_namespace *ns,
 		 * a program is not able to use ptrace(2) in that case. It is
 		 * safe because the task has stopped executing permanently.
 		 */
+		 /* 如果进程快要结束了 */
 		if (permitted && (task->flags & (PF_EXITING|PF_DUMPCORE))) {
-			if (try_get_task_stack(task)) {
+			if (try_get_task_stack(task)) {/* 如果还是获取到了stack */
 				eip = KSTK_EIP(task);
 				esp = KSTK_ESP(task);
 				put_task_stack(task);
@@ -665,12 +670,15 @@ int proc_tid_stat(struct seq_file *m, struct pid_namespace *ns,
 	return do_task_stat(m, ns, pid, task, 0);
 }
 
+/* 读取进程的proc */
 int proc_tgid_stat(struct seq_file *m, struct pid_namespace *ns,
 			struct pid *pid, struct task_struct *task)
 {
 	return do_task_stat(m, ns, pid, task, 1);
 }
 
+/* /proc/<pid>/statm 
+读statm*/
 int proc_pid_statm(struct seq_file *m, struct pid_namespace *ns,
 			struct pid *pid, struct task_struct *task)
 {

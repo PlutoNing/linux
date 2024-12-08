@@ -98,6 +98,7 @@ static void show_type(struct seq_file *m, struct super_block *sb)
 	}
 }
 
+/* 显示系统的mounts? */
 static int show_vfsmnt(struct seq_file *m, struct vfsmount *mnt)
 {
 	struct proc_mounts *p = m->private;
@@ -239,9 +240,11 @@ out:
 	return err;
 }
 
+/* inode是proc的inode */
 static int mounts_open_common(struct inode *inode, struct file *file,
 			      int (*show)(struct seq_file *, struct vfsmount *))
 {
+	/* 获取涉及的tsk */
 	struct task_struct *task = get_proc_task(inode);
 	struct nsproxy *nsp;
 	struct mnt_namespace *ns = NULL;
@@ -254,6 +257,7 @@ static int mounts_open_common(struct inode *inode, struct file *file,
 		goto err;
 
 	task_lock(task);
+	/* 获取task的ns */
 	nsp = task->nsproxy;
 	if (!nsp || !nsp->mnt_ns) {
 		task_unlock(task);
@@ -296,6 +300,7 @@ static int mounts_open_common(struct inode *inode, struct file *file,
 	return ret;
 }
 
+/*  */
 static int mounts_release(struct inode *inode, struct file *file)
 {
 	struct seq_file *m = file->private_data;
@@ -306,6 +311,7 @@ static int mounts_release(struct inode *inode, struct file *file)
 	return seq_release_private(inode, file);
 }
 
+/* 打开proc里面pid的mounts file */
 static int mounts_open(struct inode *inode, struct file *file)
 {
 	return mounts_open_common(inode, file, show_vfsmnt);
@@ -321,9 +327,10 @@ static int mountstats_open(struct inode *inode, struct file *file)
 	return mounts_open_common(inode, file, show_vfsstat);
 }
 
+/* proc/<pid>/mounts这个file的ops */
 const struct file_operations proc_mounts_operations = {
-	.open		= mounts_open,
-	.read_iter	= seq_read_iter,
+	.open		= mounts_open, /* 打开文件 */
+	.read_iter	= seq_read_iter, 
 	.splice_read	= copy_splice_read,
 	.llseek		= seq_lseek,
 	.release	= mounts_release,

@@ -58,6 +58,7 @@ static DEFINE_PER_CPU(struct lru_rotate, lru_rotate) = {
 
 /*
 2024年09月10日16:06:19
+2024年09月10日16:06:19
  * The following folio batches are grouped together because they are protected
  * by disabling preemption (and interrupts remain enabled).
  */
@@ -219,7 +220,8 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
 		就continue. */
 		if (move_fn != lru_add_fn && !folio_test_clear_lru(folio))
 			continue;
-
+		/* 如果是lru_add_fn函数
+		或者本来是lru */
 		lruvec = folio_lruvec_relock_irqsave(folio, lruvec, &flags);
 		move_fn(lruvec, folio);
 
@@ -239,7 +241,7 @@ static void folio_batch_add_and_move(struct folio_batch *fbatch,
 	if (folio_batch_add(fbatch, folio) && !folio_test_large(folio) &&
 	    !lru_cache_disabled()) /* 加入缓存成功还有剩余空间 */
 		return;
-	/* 可能是缓冲fbatch满了 */	
+	/* 可能是缓冲fbatch满了. 不过已经加入成功了 */	
 	folio_batch_move_lru(fbatch, move_fn);
 }
 
@@ -275,6 +277,7 @@ void folio_rotate_reclaimable(struct folio *folio)
 	}
 }
 
+/* 什么cost? */
 void lru_note_cost(struct lruvec *lruvec, bool file,
 		   unsigned int nr_io, unsigned int nr_rotated)
 {
@@ -289,7 +292,7 @@ void lru_note_cost(struct lruvec *lruvec, bool file,
 	 */
 	cost = nr_io * SWAP_CLUSTER_MAX + nr_rotated;
 
-	do {
+	do {/* 逐级处理lruvec */
 		unsigned long lrusize;
 
 		/*
@@ -313,6 +316,7 @@ void lru_note_cost(struct lruvec *lruvec, bool file,
 		 * overflow) we keep these statistics as a floating
 		 * average, which ends up weighing recent refaults
 		 * more than old ones.
+		
 		 */
 		lrusize = lruvec_page_state(lruvec, NR_INACTIVE_ANON) +
 			  lruvec_page_state(lruvec, NR_ACTIVE_ANON) +
@@ -323,24 +327,35 @@ void lru_note_cost(struct lruvec *lruvec, bool file,
 			lruvec->file_cost /= 2;
 			lruvec->anon_cost /= 2;
 		}
+
 		spin_unlock_irq(&lruvec->lru_lock);
+
 	} while ((lruvec = parent_lruvec(lruvec)));
 }
 
+/*  */
 void lru_note_cost_refault(struct folio *folio)
 {
 	lru_note_cost(folio_lruvec(folio), folio_is_file_lru(folio),
 		      folio_nr_pages(folio), 0);
 }
 
+/* 
+avtive这个page
+是个回调,可能是这么调用的
+		lruvec = folio_lruvec_relock_irqsave(folio, lruvec, &flags);
+		move_fn(lruvec, folio);
+ */
 static void folio_activate_fn(struct lruvec *lruvec, struct folio *folio)
 {
-	if (!folio_test_active(folio) && !folio_test_unevictable(folio)) {
+	if (!folio_test_active(folio) && !folio_test_unevictable(folio)) {/* 
+	只有不是active,并且是evictable的时候才操作 */
 		long nr_pages = folio_nr_pages(folio);
 
 		lruvec_del_folio(lruvec, folio);
 		folio_set_active(folio);
 		lruvec_add_folio(lruvec, folio);
+
 		trace_mm_lru_activate(folio);
 
 		__count_vm_events(PGACTIVATE, nr_pages);
@@ -358,6 +373,8 @@ static void folio_activate_drain(int cpu)
 		folio_batch_move_lru(fbatch, folio_activate_fn);
 }
 
+/* active一个lru页面?
+通过加入fbatch,设置回调来active的 */
 void folio_activate(struct folio *folio)
 {
 	if (folio_test_lru(folio) && !folio_test_active(folio) &&
@@ -365,6 +382,7 @@ void folio_activate(struct folio *folio)
 		struct folio_batch *fbatch;
 
 		folio_get(folio);
+		/* 加入fbatch */
 		local_lock(&cpu_fbatches.lock);
 		fbatch = this_cpu_ptr(&cpu_fbatches.activate);
 		folio_batch_add_and_move(fbatch, folio, folio_activate_fn);
@@ -390,6 +408,9 @@ void folio_activate(struct folio *folio)
 }
 #endif
 
+/* 标记一个不active不在lru的page为accessed.
+好像就是假设在fbatch了,找到,然后标记active.
+ */
 static void __lru_cache_activate_folio(struct folio *folio)
 {
 	struct folio_batch *fbatch;
@@ -457,8 +478,11 @@ static void folio_inc_refs(struct folio *folio)
 /*
  * Mark a page as having seen activity.
  *
+ 提升为referenced
  * inactive,unreferenced	->	inactive,referenced
+ 提升为active,为什么unreferenced?
  * inactive,referenced		->	active,unreferenced
+ 提升为?
  * active,unreferenced		->	active,referenced
  *
  * When a newly allocated page is not yet visible, so safe for non-atomic ops,
@@ -466,40 +490,47 @@ static void folio_inc_refs(struct folio *folio)
  */
 void folio_mark_accessed(struct folio *folio)
 {
-	if (lru_gen_enabled()) {
+	if (lru_gen_enabled()) {/* mglru的单独路径 */
 		folio_inc_refs(folio);
 		return;
 	}
 
 	if (!folio_test_referenced(folio)) {
 		folio_set_referenced(folio);
-	} else if (folio_test_unevictable(folio)) {
+	} else if (folio_test_unevictable(folio)) {/* 是referenced,并且是unevictable */
 		/*
 		 * Unevictable pages are on the "LRU_UNEVICTABLE" list. But,
 		 * this list is never rotated or maintained, so marking an
 		 * unevictable page accessed has no effect.
+
 		 */
-	} else if (!folio_test_active(folio)) {
+	} else if (!folio_test_active(folio)) {/* 是referenced,但是不是active? */
+		/* active代表什么? */
 		/*
 		 * If the folio is on the LRU, queue it for activation via
 		 * cpu_fbatches.activate. Otherwise, assume the folio is in a
 		 * folio_batch, mark it active and it'll be moved to the active
 		 * LRU on the next drain.
+		 如果已经在lru, 加入cpu_fbatches.activate
 		 */
 		if (folio_test_lru(folio))
 			folio_activate(folio);
-		else
+		else /* 否则.假设在fbatch, 标记,下次drain的时候会被加入 */
 			__lru_cache_activate_folio(folio);
+		/* 为什么清除referenced? */
 		folio_clear_referenced(folio);
+		/* 工作集相关的操作,为什么里面增加non rss数量 */
 		workingset_activation(folio);
 	}
+
+
 	if (folio_test_idle(folio))
 		folio_clear_idle(folio);
 }
 EXPORT_SYMBOL(folio_mark_accessed);
 
 /**
-把folio放回lru
+把folio加入lru
  * folio_add_lru - Add a folio to an LRU list.
  * @folio: The folio to be added to the LRU.
  *
@@ -507,6 +538,7 @@ EXPORT_SYMBOL(folio_mark_accessed);
  * to add the page to the [in]active [file|anon] list is deferred until the
  * folio_batch is drained. This gives a chance for the caller of folio_add_lru()
  * have the folio added to the active list using folio_mark_accessed().
+   
  */
 void folio_add_lru(struct folio *folio)
 {
@@ -519,6 +551,7 @@ void folio_add_lru(struct folio *folio)
 	/* see the comment in lru_gen_add_folio() */
 	if (lru_gen_enabled() && !folio_test_unevictable(folio) &&
 	    lru_gen_in_fault() && !(current->flags & PF_MEMALLOC))
+
 		folio_set_active(folio);
 
 	folio_get(folio);
@@ -542,9 +575,9 @@ void folio_add_lru_vma(struct folio *folio, struct vm_area_struct *vma)
 	VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
 
 	if (unlikely((vma->vm_flags & (VM_LOCKED | VM_SPECIAL)) == VM_LOCKED))
-		mlock_new_folio(folio);
+		mlock_new_folio(folio); //把page加入锁住的vma的逻辑?
 	else
-		folio_add_lru(folio);
+		folio_add_lru(folio); //加入lru
 }
 
 /*

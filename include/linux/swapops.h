@@ -103,6 +103,7 @@ static inline unsigned swp_type(swp_entry_t entry)
 /*
  * Extract the `offset' field from a swp_entry_t.  The swp_entry_t is in
  * arch-independent format
+   获取swap entry的在swap设备的offset
  */
 static inline pgoff_t swp_offset(swp_entry_t entry)
 {

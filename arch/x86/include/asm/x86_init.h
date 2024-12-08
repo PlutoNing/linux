@@ -316,6 +316,7 @@ struct x86_platform_ops {
 	struct x86_guest guest;
 };
 
+/*  */
 struct x86_apic_ops {
 	unsigned int	(*io_apic_read)   (unsigned int apic, unsigned int reg);
 	void		(*restore)(void);

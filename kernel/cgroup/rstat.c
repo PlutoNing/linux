@@ -8,10 +8,13 @@
 #include <linux/btf_ids.h>
 
 static DEFINE_SPINLOCK(cgroup_rstat_lock);
+
+/*  */
 static DEFINE_PER_CPU(raw_spinlock_t, cgroup_rstat_cpu_lock);
 
 static void cgroup_base_stat_flush(struct cgroup *cgrp, int cpu);
 
+/* 获取cg在此cpu上面的rstat */
 static struct cgroup_rstat_cpu *cgroup_rstat_cpu(struct cgroup *cgrp, int cpu)
 {
 	return per_cpu_ptr(cgrp->rstat_cpu, cpu);
@@ -74,6 +77,8 @@ __bpf_kfunc void cgroup_rstat_updated(struct cgroup *cgrp, int cpu)
 }
 
 /**
+
+从pos网上改变pos遍历到root,
  * cgroup_rstat_cpu_pop_updated - iterate and dismantle rstat_cpu updated tree
  * @pos: current position
  * @root: root of the tree to traversal
@@ -101,17 +106,21 @@ static struct cgroup *cgroup_rstat_cpu_pop_updated(struct cgroup *pos,
 	 * We're gonna walk down to the first leaf and visit/remove it.  We
 	 * can pick whatever unvisited node as the starting point.
 	 */
-	if (!pos) {
+	if (!pos) {/* 如果还没有pos,pos从root开始 */
 		pos = root;
 		/* return NULL if this subtree is not on-list */
 		if (!cgroup_rstat_cpu(pos, cpu)->updated_next)
 			return NULL;
-	} else {
+	} else { /* 否则就往父层级遍历 */
 		pos = cgroup_parent(pos);
 	}
 
-	/* walk down to the first leaf */
+	/* walk down to the first leaf
+	通过rstat保存的变化的updated_children, 一直往下找, 
+	如果updated_children指向自己了,就说明下面的没有变化了?
+	不往下走了?*/
 	while (true) {
+		/* 获取pos在此cpu的rstat */
 		rstatc = cgroup_rstat_cpu(pos, cpu);
 		if (rstatc->updated_children == pos)
 			break;
@@ -119,6 +128,8 @@ static struct cgroup *cgroup_rstat_cpu_pop_updated(struct cgroup *pos,
 	}
 
 	/*
+	现在pos指向有孩子发生变化的cgroup的最低层级
+	pos的孩子cg都没有变化了
 	 * Unlink @pos from the tree.  As the updated_children list is
 	 * singly linked, we have to walk it to find the removal point.
 	 * However, due to the way we traverse, @pos will be the first
@@ -138,6 +149,7 @@ static struct cgroup *cgroup_rstat_cpu_pop_updated(struct cgroup *pos,
 			WARN_ON_ONCE(*nextp == parent);
 			nextp = &nrstatc->updated_next;
 		}
+
 		*nextp = rstatc->updated_next;
 	}
 
@@ -170,7 +182,9 @@ __weak noinline void bpf_rstat_flush(struct cgroup *cgrp,
 
 __diag_pop();
 
-/* see cgroup_rstat_flush() */
+/* see cgroup_rstat_flush()
+刷新cgroup的stat
+ */
 static void cgroup_rstat_flush_locked(struct cgroup *cgrp)
 	__releases(&cgroup_rstat_lock) __acquires(&cgroup_rstat_lock)
 {
@@ -205,6 +219,8 @@ static void cgroup_rstat_flush_locked(struct cgroup *cgrp)
 				css->ss->css_rstat_flush(css, cpu);
 			rcu_read_unlock();
 		}
+
+
 		raw_spin_unlock_irqrestore(cpu_lock, flags);
 
 		/* play nice and yield if necessary */
@@ -340,6 +356,7 @@ static void cgroup_base_stat_sub(struct cgroup_base_stat *dst_bstat,
 #endif
 }
 
+/*  */
 static void cgroup_base_stat_flush(struct cgroup *cgrp, int cpu)
 {
 	struct cgroup_rstat_cpu *rstatc = cgroup_rstat_cpu(cgrp, cpu);
@@ -533,6 +550,8 @@ static const struct btf_kfunc_id_set bpf_rstat_kfunc_set = {
 	.set            = &bpf_rstat_kfunc_ids,
 };
 
+
+/* 和tracepoint相关? */
 static int __init bpf_rstat_kfunc_init(void)
 {
 	return register_btf_kfunc_id_set(BPF_PROG_TYPE_TRACING,

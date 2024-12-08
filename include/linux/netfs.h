@@ -120,11 +120,12 @@ typedef void (*netfs_io_terminated_t)(void *priv, ssize_t transferred_or_error,
 				      bool was_async);
 
 /*
+代表ci对应的cephfs?
  * Per-inode context.  This wraps the VFS inode.
  */
 struct netfs_inode {
 	struct inode		inode;		/* The VFS inode */
-	const struct netfs_request_ops *ops;
+	const struct netfs_request_ops *ops; /* netfs的ops */
 #if IS_ENABLED(CONFIG_FSCACHE)
 	struct fscache_cookie	*cache;
 #endif
@@ -314,6 +315,7 @@ static inline struct netfs_inode *netfs_inode(struct inode *inode)
 }
 
 /**
+netfs如何初始化inode?
  * netfs_inode_init - Initialise a netfslib inode context
  * @ctx: The netfs inode to initialise
  * @ops: The netfs's operations list

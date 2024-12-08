@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>SVG Demo</title>
+</head>
+
+<body>
+    <h1>SVG Generation Demo</h1>
+    <form action="/generate_svg" method="post">
+        <label>
+            <input type="radio" name="option" value="option1"> Option 1
+        </label><br>
+        <label>
+            <input type="radio" name="option" value="option2"> Option 2
+        </label><br>
+        <input type="submit" value="Generate SVG">
+    </form>
+    <div>
+        <img id="svgImage" alt="SVG Image">
+    </div>
+    <script>
+        document.querySelector('form').addEventListener('submit', function (event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            fetch('/generate_svg', {
+                method: 'POST',
+                body: formData
+            })
+           .then(response => response.text())
+           .then(svgData => {
+                const svgImage = document.getElementById('svgImage');
+                svgImage.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+            });
+        });
+    </script>
+</body>
+
+</html>

@@ -26,9 +26,12 @@ enum lru_status {
 				   internally, but has to return locked. */
 };
 
+/*  */
 struct list_lru_one {
 	struct list_head	list;
-	/* may become negative during memcg reparenting */
+	/* 
+	链表的元素数量
+	may become negative during memcg reparenting */
 	long			nr_items;
 };
 
@@ -38,20 +41,29 @@ struct list_lru_memcg {
 	struct list_lru_one	node[];
 };
 
+/* lru的node? lru在不同node上面有不同lru */
 struct list_lru_node {
 	/* protects all lists on the node, including per cgroup */
 	spinlock_t		lock;
-	/* global list, used for the root cgroup in cgroup aware lrus */
+	/* 
+	实际的lru链表?
+	global list, used for the root cgroup in cgroup aware lrus */
 	struct list_lru_one	lru;
 	long			nr_items;
 } ____cacheline_aligned_in_smp;
 
+/*  */
 struct list_lru {
+	/* 每个node上面的lru? */
 	struct list_lru_node	*node;
 #ifdef CONFIG_MEMCG_KMEM
 	struct list_head	list;
+	/* 对应的shrinker的id */
 	int			shrinker_id;
 	bool			memcg_aware;
+	/* 如果是memcg_aware的, 这里存储的是对应memcg id
+	的又一层lru,
+	可以理解为对应memcg的lru */
 	struct xarray		xa;
 #endif
 };
@@ -116,6 +128,7 @@ unsigned long list_lru_count_one(struct list_lru *lru,
 				 int nid, struct mem_cgroup *memcg);
 unsigned long list_lru_count_node(struct list_lru *lru, int nid);
 
+/* 根据sc统计lru上面node的数量 */
 static inline unsigned long list_lru_shrink_count(struct list_lru *lru,
 						  struct shrink_control *sc)
 {
@@ -195,6 +208,7 @@ list_lru_shrink_walk(struct list_lru *lru, struct shrink_control *sc,
 				 &sc->nr_to_scan);
 }
 
+/*  */
 static inline unsigned long
 list_lru_shrink_walk_irq(struct list_lru *lru, struct shrink_control *sc,
 			 list_lru_walk_cb isolate, void *cb_arg)

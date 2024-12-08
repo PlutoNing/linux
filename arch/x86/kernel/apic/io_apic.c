@@ -67,7 +67,7 @@
 #include <asm/apic.h>
 #include <asm/pgtable.h>
 #include <asm/x86_init.h>
-
+/* 遍历系统全部的apic */
 #define	for_each_ioapic(idx)		\
 	for ((idx) = 0; (idx) < nr_ioapics; (idx)++)
 #define	for_each_ioapic_reverse(idx)	\
@@ -98,15 +98,42 @@ struct mp_chip_data {
 	bool				isa_irq;
 	u32 count;
 };
-
+/* GSI 是 Global System Interrupt 的缩写。它指的是系统中唯一的中断编号，用于标识和路由硬件中断。
+在多处理器或多核系统中，GSI 是由 I/O APIC（或其他中断控制器）
+分配给设备的中断编号。不同的硬件设备（如网络卡、磁盘控制器、USB 设备等）
+会被分配一个唯一的 GSI，用于标识它们的中断请求。 */
 struct mp_ioapic_gsi {
 	u32 gsi_base;
 	u32 gsi_end;
 };
+/* 
+APIC（Advanced Programmable Interrupt Controller，高级可编程中断控制器）是一种硬件设备，
+通常用于现代计算机中的中断管理。它的主要作用是帮助处理器有效地管理和处理来自硬件外设的中断请求。
+APIC 的作用和功能：
+中断管理： APIC 负责接收外部设备发送的中断信号，并将这些信号传递给 CPU。它的作用是优化中断处理流程
+，支持多核 CPU 的中断分配、处理和调度。APIC 通过使得多个处理器能够更有效地响应外部中断，提升了系统
+的性能和响应能力。
+支持多处理器架构： 在现代多核处理器系统中，APIC 系统通常被用来分配中断到特定的 CPU 核心。这对于
+实现负载均衡和高效的中断处理非常重要。例如，在多核处理器中，APIC 使得某个中断可以被路由到特定的
+处理器核上，而不是所有核心都去处理中断。
+中断优先级管理： APIC 还提供了中断优先级管理的功能，它可以对不同的中断进行优先级排序，确保更重要
+的中断优先得到处理。
 
+APIC 的两种主要类型：
+Local APIC (LAPIC)：
+每个处理器核心（CPU）都有一个本地 APIC，用于处理该核心的中断。LAPIC 处理本地中断请求，并且可以与其他核心的 APIC 协同工作，以决定中断的路由和分配。
+LAPIC 还可以用于定时器等功能。比如，它可以通过定时器生成定时中断，用于操作系统中的时间管理。
+I/O APIC：
+I/O APIC 负责管理来自 I/O 设备（如网络卡、磁盘控制器、显卡等）发出的中断请求。它接收这些设备的中断信号，并将它们路由到合适的处理器核心。
+I/O APIC 支持更复杂的中断路由机制，可以将中断转发到多个核心或特定核心。
+在多处理器系统中，I/O APIC 通过其“中断路由表”来决定将哪个中断发送到哪个处理器。
+=====================================
+系统的全部apic存在这里
+ */
 static struct ioapic {
 	/*
 	 * # of IRQ routing registers
+	 如果为0, 说明这个是空的,或者已经没有用处了
 	 */
 	int nr_registers;
 	/*
@@ -115,8 +142,10 @@ static struct ioapic {
 	struct IO_APIC_route_entry *saved_registers;
 	/* I/O APIC config */
 	struct mpc_ioapic mp_config;
-	/* IO APIC gsi routing info */
+	/* IO APIC gsi routing info
+	中断的路由信息 */
 	struct mp_ioapic_gsi  gsi_config;
+	/* 关联的domain cfg */
 	struct ioapic_domain_cfg irqdomain_cfg;
 	struct irq_domain *irqdomain;
 	struct resource *iomem_res;
@@ -129,11 +158,13 @@ int mpc_ioapic_id(int ioapic_idx)
 	return ioapics[ioapic_idx].mp_config.apicid;
 }
 
+/*  */
 unsigned int mpc_ioapic_addr(int ioapic_idx)
 {
 	return ioapics[ioapic_idx].mp_config.apicaddr;
 }
 
+/*  */
 static inline struct mp_ioapic_gsi *mp_ioapic_gsi_routing(int ioapic_idx)
 {
 	return &ioapics[ioapic_idx].gsi_config;
@@ -160,7 +191,7 @@ static inline struct irq_domain *mp_ioapic_irqdomain(int ioapic)
 {
 	return ioapics[ioapic].irqdomain;
 }
-
+/* 系统的apic数量 */
 int nr_ioapics;
 
 /* The one past the highest gsi number used */
@@ -260,6 +291,7 @@ struct io_apic {
 	unsigned int eoi;
 };
 
+/* 获取idx代表的apic的中断号base */
 static __attribute_const__ struct io_apic __iomem *io_apic_base(int idx)
 {
 	return (void __iomem *) __fix_to_virt(FIX_IO_APIC_BASE_0 + idx)
@@ -272,6 +304,7 @@ static inline void io_apic_eoi(unsigned int apic, unsigned int vector)
 	writel(vector, &io_apic->eoi);
 }
 
+/* 可以获取apic的中断号范围 */
 unsigned int native_io_apic_read(unsigned int apic, unsigned int reg)
 {
 	struct io_apic __iomem *io_apic = io_apic_base(apic);
@@ -2456,6 +2489,7 @@ static int __init ioapic_init_ops(void)
 
 device_initcall(ioapic_init_ops);
 
+/* 获取中断号范围大小 */
 static int io_apic_get_redir_entries(int ioapic)
 {
 	union IO_APIC_reg_01	reg_01;
@@ -2807,6 +2841,7 @@ static int bad_ioapic_register(int idx)
 	return 0;
 }
 
+/* 找到一个可用的apic的idx,在数组的idx */
 static int find_free_ioapic_entry(void)
 {
 	int idx;
@@ -2819,6 +2854,7 @@ static int find_free_ioapic_entry(void)
 }
 
 /**
+注册一个apic
  * mp_register_ioapic - Register an IOAPIC device
  * @id:		hardware IOAPIC ID
  * @address:	physical address of IOAPIC register area
@@ -2837,13 +2873,14 @@ int mp_register_ioapic(int id, u32 address, u32 gsi_base,
 		pr_warn("Bogus (zero) I/O APIC address found, skipping!\n");
 		return -EINVAL;
 	}
+	/* 看看有没有冲突 */
 	for_each_ioapic(ioapic)
 		if (ioapics[ioapic].mp_config.apicaddr == address) {
 			pr_warn("address 0x%x conflicts with IOAPIC%d\n",
 				address, ioapic);
 			return -EEXIST;
 		}
-
+	/* 在数组里面找一个空位 */
 	idx = find_free_ioapic_entry();
 	if (idx >= MAX_IO_APICS) {
 		pr_warn("Max # of I/O APICs (%d) exceeded (found %d), skipping\n",
@@ -2870,6 +2907,7 @@ int mp_register_ioapic(int id, u32 address, u32 gsi_base,
 	 */
 	entries = io_apic_get_redir_entries(idx);
 	gsi_end = gsi_base + entries - 1;
+	/* 先判断要分配的中断号范围是不是与已经存在的交叉了 */
 	for_each_ioapic(ioapic) {
 		gsi_cfg = mp_ioapic_gsi_routing(ioapic);
 		if ((gsi_base >= gsi_cfg->gsi_base &&
@@ -2879,10 +2917,12 @@ int mp_register_ioapic(int id, u32 address, u32 gsi_base,
 			pr_warn("GSI range [%u-%u] for new IOAPIC conflicts with GSI[%u-%u]\n",
 				gsi_base, gsi_end,
 				gsi_cfg->gsi_base, gsi_cfg->gsi_end);
+	
 			clear_fixmap(FIX_IO_APIC_BASE_0 + idx);
 			return -ENOSPC;
 		}
 	}
+	/* 获取并配置idx的中断号范围 */
 	gsi_cfg = mp_ioapic_gsi_routing(idx);
 	gsi_cfg->gsi_base = gsi_base;
 	gsi_cfg->gsi_end = gsi_end;

@@ -171,6 +171,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+/* /proc/meminfo */
 static int __init proc_meminfo_init(void)
 {
 	struct proc_dir_entry *pde;

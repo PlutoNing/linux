@@ -19,6 +19,7 @@ static inline void apply_paravirt(struct paravirt_patch_site *start,
 #endif
 
 /*
+
  * Currently, the max observed size in the kernel code is
  * JUMP_LABEL_NOP_SIZE/RELATIVEJUMP_SIZE, which are 5.
  * Raise it if needed.
@@ -60,8 +61,9 @@ extern void text_poke_finish(void);
 #define RET_INSN_OPCODE		0xC3
 
 #define CALL_INSN_SIZE		5
+/* 在 x86 架构中，0xE8是call指令的操作码的一部分 */
 #define CALL_INSN_OPCODE	0xE8
-
+/*  */
 #define JMP32_INSN_SIZE		5
 #define JMP32_INSN_OPCODE	0xE9
 
@@ -69,7 +71,7 @@ extern void text_poke_finish(void);
 #define JMP8_INSN_OPCODE	0xEB
 /*  */
 #define DISP32_SIZE		4
-
+/*  */
 static __always_inline int text_opcode_size(u8 opcode)
 {
 	int size = 0;
@@ -89,15 +91,21 @@ static __always_inline int text_opcode_size(u8 opcode)
 
 	return size;
 }
-
+/* 存储hook的机器码?  */
 union text_poke_insn {
 	u8 text[POKE_MAX_OPCODE_SIZE];
+
 	struct {
+		/* 这个insn的opcode,可能是call什么的 */
 		u8 opcode;
+		/* 计算位移量insn->disp = (long)dest - (long)(addr + size);，
+		这个位移量是目标地址与源地址加上指令大小之后的差值，
+		用于生成跳转指令中的相对位移量。 */
 		s32 disp;
 	} __attribute__((packed));
 };
-
+/* 把dest插入到addr, 用opcode，做指令.
+ buf是个text_poke_insn  */
 static __always_inline
 void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, int size)
 {
@@ -106,11 +114,14 @@ void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, i
 	BUG_ON(size < text_opcode_size(opcode));
 
 	/*
+	隐藏地址以避免编译器在引用代码时折叠常量，这可能会弄乱像 ANNOTATE_NOENDBR 这样的注释
 	 * Hide the addresses to avoid the compiler folding in constants when
 	 * referencing code, these can mess up annotations like
 	 * ANNOTATE_NOENDBR.
+
 	 */
 	OPTIMIZER_HIDE_VAR(insn);
+	// __asm__("" : "=r"(insn) : "0"(insn))
 	OPTIMIZER_HIDE_VAR(addr);
 	OPTIMIZER_HIDE_VAR(dest);
 
@@ -126,11 +137,14 @@ void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, i
 			BUG_ON((insn->disp >> 31) != (insn->disp >> 7));
 		}
 	}
-}
 
+}
+/* 把dest插入到addr,
+执行到addr时跳转到dest */
 static __always_inline
 void *text_gen_insn(u8 opcode, const void *addr, const void *dest)
 {
+	/* 为啥好多静态的 */
 	static union text_poke_insn insn; /* per instance */
 	__text_gen_insn(&insn, opcode, addr, dest, text_opcode_size(opcode));
 	return &insn.text;

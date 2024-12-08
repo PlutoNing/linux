@@ -6718,6 +6718,7 @@ void __noreturn do_task_dead(void)
 		cpu_relax();
 }
 
+/* 像是让出cpu前的准备工作 */
 static inline void sched_submit_work(struct task_struct *tsk)
 {
 	unsigned int task_flags;
@@ -6730,7 +6731,7 @@ static inline void sched_submit_work(struct task_struct *tsk)
 	 * If a worker goes to sleep, notify and ask workqueue whether it
 	 * wants to wake up a task to maintain concurrency.
 	 */
-	if (task_flags & (PF_WQ_WORKER | PF_IO_WORKER)) {
+	if (task_flags & (PF_WQ_WORKER | PF_IO_WORKER)) {/* 这两种需要什么特殊处理吗 */
 		if (task_flags & PF_WQ_WORKER)
 			wq_worker_sleeping(tsk);
 		else
@@ -6747,6 +6748,7 @@ static inline void sched_submit_work(struct task_struct *tsk)
 	/*
 	 * If we are going to sleep and we have plugged IO queued,
 	 * make sure to submit it to avoid deadlocks.
+	 刷新IO?
 	 */
 	blk_flush_plug(tsk->plug, true);
 }
@@ -6761,6 +6763,7 @@ static void sched_update_worker(struct task_struct *tsk)
 	}
 }
 
+/* 让出cpu */
 asmlinkage __visible void __sched schedule(void)
 {
 	struct task_struct *tsk = current;

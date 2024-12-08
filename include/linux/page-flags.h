@@ -202,6 +202,7 @@ enum pageflags {
 DECLARE_STATIC_KEY_FALSE(hugetlb_optimize_vmemmap_key);
 
 /*
+
  * Return the real head page struct iff the @page is a fake head page, otherwise
  * return the @page itself. See Documentation/mm/vmemmap_dedup.rst.
  */
@@ -217,7 +218,7 @@ static __always_inline const struct page *page_fixed_fake_head(const struct page
 	 * cold cacheline in some cases.
 	 */
 	if (IS_ALIGNED((unsigned long)page, PAGE_SIZE) &&
-	    test_bit(PG_head, &page->flags)) {
+	    test_bit(PG_head, &page->flags)) {/* 说明这个页面是pg_head */
 		/*
 		 * We can safely access the field of the @page[1] with PG_head
 		 * because the @page is a compound page composed with at least
@@ -228,7 +229,9 @@ static __always_inline const struct page *page_fixed_fake_head(const struct page
 		if (likely(head & 1))
 			return (const struct page *)(head - 1);
 	}
+
 	return page;
+
 }
 #else
 static inline const struct page *page_fixed_fake_head(const struct page *page)
@@ -242,6 +245,7 @@ static __always_inline int page_is_fake_head(struct page *page)
 	return page_fixed_fake_head(page) != page;
 }
 
+/*  */
 static inline unsigned long _compound_head(const struct page *page)
 {
 	unsigned long head = READ_ONCE(page->compound_head);
@@ -254,6 +258,7 @@ static inline unsigned long _compound_head(const struct page *page)
 #define compound_head(page)	((typeof(page))_compound_head(page))
 
 /**
+从page获得folio
  * page_folio - Converts from page to folio.
  * @p: The page.
  *
@@ -470,6 +475,7 @@ static inline int TestClearPage##uname(struct page *page) { return 0; }
 __PAGEFLAG(Locked, locked, PF_NO_TAIL)
 PAGEFLAG(Waiters, waiters, PF_ONLY_HEAD)
 PAGEFLAG(Error, error, PF_NO_TAIL) TESTCLEARFLAG(Error, error, PF_NO_TAIL)
+/* referenced 标记位的作用是指示某个页面最近是否被访问过 */
 PAGEFLAG(Referenced, referenced, PF_HEAD)
 	TESTCLEARFLAG(Referenced, referenced, PF_HEAD)
 	__SETPAGEFLAG(Referenced, referenced, PF_HEAD)
@@ -497,6 +503,8 @@ PAGEFLAG(Reserved, reserved, PF_NO_COMPOUND)
 	__SETPAGEFLAG(Reserved, reserved, PF_NO_COMPOUND)
 PAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
 	__CLEARPAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
+	
+//表示是匿名页
 	__SETPAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
 
 /*
@@ -504,6 +512,7 @@ PAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
  * for its own purposes.
  * - PG_private and PG_private_2 cause release_folio() and co to be invoked
  */
+//priv位被设置的话, 说明priv是有用的
 PAGEFLAG(Private, private, PF_ANY)
 PAGEFLAG(Private2, private_2, PF_ANY) TESTSCFLAG(Private2, private_2, PF_ANY)
 PAGEFLAG(OwnerPriv1, owner_priv_1, PF_ANY)
@@ -513,6 +522,7 @@ PAGEFLAG(OwnerPriv1, owner_priv_1, PF_ANY)
  * Only test-and-set exist for PG_writeback.  The unconditional operators are
  * risky: they bypass page accounting.
  */
+// folio_test_writeback  folio_test_set_writeback
 TESTPAGEFLAG(Writeback, writeback, PF_NO_TAIL)
 	TESTSCFLAG(Writeback, writeback, PF_NO_TAIL)
 PAGEFLAG(MappedToDisk, mappedtodisk, PF_NO_TAIL)
@@ -520,6 +530,7 @@ PAGEFLAG(MappedToDisk, mappedtodisk, PF_NO_TAIL)
 /* PG_readahead is only used for reads; PG_reclaim is only for writes */
 PAGEFLAG(Reclaim, reclaim, PF_NO_TAIL)
 	TESTCLEARFLAG(Reclaim, reclaim, PF_NO_TAIL)
+//folio_test_readahead  folio_test_set_readahead
 PAGEFLAG(Readahead, readahead, PF_NO_COMPOUND)
 	TESTCLEARFLAG(Readahead, readahead, PF_NO_COMPOUND)
 
@@ -558,6 +569,7 @@ PAGEFLAG(Unevictable, unevictable, PF_HEAD)
 	TESTCLEARFLAG(Unevictable, unevictable, PF_HEAD)
 
 #ifdef CONFIG_MMU
+//folio_test_mlocked, 是被vma mlocked的
 PAGEFLAG(Mlocked, mlocked, PF_NO_TAIL)
 	__CLEARPAGEFLAG(Mlocked, mlocked, PF_NO_TAIL)
 	TESTSCFLAG(Mlocked, mlocked, PF_NO_TAIL)
@@ -613,24 +625,33 @@ PAGEFLAG_FALSE(VmemmapSelfHosted, vmemmap_self_hosted)
  * On an anonymous page mapped into a user virtual memory area,
  * page->mapping points to its anon_vma, not to a struct address_space;
  * with the PAGE_MAPPING_ANON bit set to distinguish it.  See rmap.h.
- *
+ * 当一个匿名页面映射到用户虚拟内存区域时，page->mapping指向其anon_vma，而不是
+ 指向struct address_space；设置PAGE_MAPPING_ANON位以区分它。请参阅rmap.h。
  * On an anonymous page in a VM_MERGEABLE area, if CONFIG_KSM is enabled,
  * the PAGE_MAPPING_MOVABLE bit may be set along with the PAGE_MAPPING_ANON
  * bit; and then page->mapping points, not to an anon_vma, but to a private
  * structure which KSM associates with that merged page.  See ksm.h.
- *
+ * 在VM_MERGEABLE区域中的匿名页面上，如果启用了CONFIG_KSM，则可能设置PAGE_MAPPING_MOVABLE位
+ 和PAGE_MAPPING_ANON位； 然后page->mapping指向一个私有结构，KSM将其与合并的页面关联起来。请参阅ksm.h。
  * PAGE_MAPPING_KSM without PAGE_MAPPING_ANON is used for non-lru movable
  * page and then page->mapping points to a struct movable_operations.
- *
+ * 没有PAGE_MAPPING_ANON的PAGE_MAPPING_KSM用于非lru可移动页面，然后page->mapping指向、
+ 一个struct movable_operations。
+ 
  * Please note that, confusingly, "page_mapping" refers to the inode
  * address_space which maps the page from disk; whereas "page_mapped"
  * refers to user virtual address space into which the page is mapped.
- *
+ * 请注意，令人困惑的是，“page_mapping”指的是从磁盘映射页面的inode address_space；
+ 而“page_mapped”指的是页面映射到其中的用户虚拟地址空间。
+ 
  * For slab pages, since slab reuses the bits in struct page to store its
  * internal states, the page->mapping does not exist as such, nor do these
  * flags below.  So in order to avoid testing non-existent bits, please
  * make sure that PageSlab(page) actually evaluates to false before calling
  * the following functions (e.g., PageAnon).  See mm/slab.h.
+ * 对于slab页面，由于slab重用struct page中的位来存储其内部状态，因此page->mapping不存在，
+ 也不存在下面的这些标志。因此，为了避免测试不存在的位，请确保在调用以下函数之前，
+ PageSlab(page)实际上计算为false。请参阅mm/slab.h。
  */
 #define PAGE_MAPPING_ANON	0x1
 #define PAGE_MAPPING_MOVABLE	0x2

@@ -66,7 +66,10 @@ static const char *ftrace_nop_replace(void)
 {
 	return x86_nops[5];
 }
-
+/* @ip是ftrace函数的地址,
+addr是新函数的地址.
+cpu执行到ip时跳转到addr.
+返回的是insn的text代码buf地址 */
 static const char *ftrace_call_replace(unsigned long ip, unsigned long addr)
 {
 	/*
@@ -177,14 +180,19 @@ int ftrace_modify_call(struct dyn_ftrace *rec, unsigned long old_addr,
 	WARN_ON(1);
 	return -EINVAL;
 }
-
+/* 把ftrace func更新为此func ... */
 int ftrace_update_ftrace_func(ftrace_func_t func)
 {
 	unsigned long ip;
 	const char *new;
 
 	ip = (unsigned long)(&ftrace_call);
+	/* 执行到ip时,跳转到func.
+	返回的new是insn的text buf地址 */
 	new = ftrace_call_replace(ip, (unsigned long)func);
+	/* 好像这里才是开始poke代码,
+	new 是insn的text ...
+	现在insn的disp已经可以跳转到new func ... */
 	text_poke_bp((void *)ip, new, MCOUNT_INSN_SIZE, NULL);
 
 	ip = (unsigned long)(&ftrace_regs_call);

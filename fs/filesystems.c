@@ -57,6 +57,7 @@ static struct file_system_type **find_filesystem(const char *name, unsigned len)
 }
 
 /**
+注册文件系统类型
  *	register_filesystem - register a new filesystem
  *	@fs: the file system structure
  *
@@ -81,6 +82,7 @@ int register_filesystem(struct file_system_type * fs)
 	BUG_ON(strchr(fs->name, '.'));
 	if (fs->next)
 		return -EBUSY;
+	/* 加入链表 */
 	write_lock(&file_systems_lock);
 	p = find_filesystem(fs->name, strlen(fs->name));
 	if (*p)
@@ -88,6 +90,7 @@ int register_filesystem(struct file_system_type * fs)
 	else
 		*p = fs;
 	write_unlock(&file_systems_lock);
+
 	return res;
 }
 

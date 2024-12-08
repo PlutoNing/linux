@@ -277,6 +277,7 @@ static unsigned long pmdp_get_lockless_start(void) { return 0; }
 static void pmdp_get_lockless_end(unsigned long irqflags) { }
 #endif
 
+/* 找到pmd上面addr对应的pte */
 pte_t *__pte_offset_map(pmd_t *pmd, unsigned long addr, pmd_t *pmdvalp)
 {
 	unsigned long irqflags;
@@ -289,8 +290,11 @@ pte_t *__pte_offset_map(pmd_t *pmd, unsigned long addr, pmd_t *pmdvalp)
 
 	if (pmdvalp)
 		*pmdvalp = pmdval;
-	if (unlikely(pmd_none(pmdval) || is_pmd_migration_entry(pmdval)))
+	if (unlikely(pmd_none(pmdval) || is_pmd_migration_entry(pmdval)))/* 
+	如果是空的, goto nomap
+	如果不空的,但是是什么migrate, 也goto nomap */
 		goto nomap;
+	
 	if (unlikely(pmd_trans_huge(pmdval) || pmd_devmap(pmdval)))
 		goto nomap;
 	if (unlikely(pmd_bad(pmdval))) {
@@ -298,16 +302,19 @@ pte_t *__pte_offset_map(pmd_t *pmd, unsigned long addr, pmd_t *pmdvalp)
 		goto nomap;
 	}
 	return __pte_map(&pmdval, addr);
+
 nomap:
 	rcu_read_unlock();
 	return NULL;
 }
 
+/* 锁定pmd上面addr? */
 pte_t *pte_offset_map_nolock(struct mm_struct *mm, pmd_t *pmd,
 			     unsigned long addr, spinlock_t **ptlp)
 {
 	pmd_t pmdval;
 	pte_t *pte;
+
 
 	pte = __pte_offset_map(pmd, addr, &pmdval);
 	if (likely(pte))

@@ -1913,6 +1913,7 @@ static unsigned interleave_nodes(struct mempolicy *policy)
 }
 
 /*
+
  * Depending on the memory policy provide a node from which to allocate the
  * next slab entry.
  */
@@ -2163,6 +2164,7 @@ static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
 }
 
 /**
+   给vma分配一个folio
  * vma_alloc_folio - Allocate a folio for a VMA.
  * @gfp: GFP flags.
  * @order: Order of the folio.
@@ -2174,7 +2176,7 @@ static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
  * NUMA policy.  When @vma is not NULL the caller must hold the mmap_lock
  * of the mm_struct of the VMA to prevent it from going away.  Should be
  * used for all allocations for folios that will be mapped into user space.
- *
+ * 分配一个folio
  * Return: The folio on success or NULL if allocation fails.
  */
 struct folio *vma_alloc_folio(gfp_t gfp, int order, struct vm_area_struct *vma,
@@ -2188,7 +2190,7 @@ struct folio *vma_alloc_folio(gfp_t gfp, int order, struct vm_area_struct *vma,
 
 	pol = get_vma_policy(vma, addr);
 
-	if (pol->mode == MPOL_INTERLEAVE) {
+	if (pol->mode == MPOL_INTERLEAVE) { // 可以感知到node级别的分配
 		struct page *page;
 		unsigned nid;
 

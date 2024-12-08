@@ -901,6 +901,7 @@ const char *ceph_session_state_name(int s)
 	}
 }
 
+/*  */
 struct ceph_mds_session *ceph_get_mds_session(struct ceph_mds_session *s)
 {
 	if (refcount_inc_not_zero(&s->s_ref))
@@ -2511,6 +2512,7 @@ ceph_mdsc_create_request(struct ceph_mds_client *mdsc, int op, int mode)
 }
 
 /*
+获取最老的req?
  * return oldest (lowest) request, tid in request tree, 0 if none.
  *
  * called under mdsc->mutex.
@@ -5344,11 +5346,12 @@ restart:
 			nextreq = rb_entry(n, struct ceph_mds_request, r_node);
 		else
 			nextreq = NULL;
+
 		if (req->r_op != CEPH_MDS_OP_SETFILELOCK &&
 		    (req->r_op & CEPH_MDS_OP_WRITE)) {
 			struct ceph_mds_session *s = req->r_session;
 
-			if (!s) {
+			if (!s) { /* 没有session,直接遍历下一个req */
 				req = nextreq;
 				continue;
 			}
@@ -5357,11 +5360,12 @@ restart:
 			ceph_mdsc_get_request(req);
 			if (nextreq)
 				ceph_mdsc_get_request(nextreq);
+			/* session是什么 */
 			s = ceph_get_mds_session(s);
 			mutex_unlock(&mdsc->mutex);
 
 			/* send flush mdlog request to MDS */
-			if (last_session != s) {
+			if (last_session != s) {/* 更新last_session */
 				send_flush_mdlog(s);
 				ceph_put_mds_session(last_session);
 				last_session = s;
@@ -5385,11 +5389,13 @@ restart:
 		}
 		req = nextreq;
 	}
+
 	mutex_unlock(&mdsc->mutex);
 	ceph_put_mds_session(last_session);
 	dout("%s done\n", __func__);
 }
 
+/*  */
 void ceph_mdsc_sync(struct ceph_mds_client *mdsc)
 {
 	u64 want_tid, want_flush;

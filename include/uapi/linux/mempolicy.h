@@ -65,11 +65,14 @@ enum {
 #define MPOL_F_MORON	(1 << 4) /* Migrate On protnone Reference On Node */
 
 /*
+作用是什么?
+可以被sysctl控制.
+
  * These bit locations are exposed in the vm.zone_reclaim_mode sysctl
  * ABI.  New bits are OK, but existing bits can never change.
  */
-#define RECLAIM_ZONE	(1<<0)	/* Run shrink_inactive_list on the zone */
-#define RECLAIM_WRITE	(1<<1)	/* Writeout pages during reclaim */
-#define RECLAIM_UNMAP	(1<<2)	/* Unmap pages during reclaim */
+#define RECLAIM_ZONE	(1<<0)	/* Run shrink_inactive_list on the zone , 可以回收 */
+#define RECLAIM_WRITE	(1<<1)	/* Writeout pages during reclaim , 可以回写 */
+#define RECLAIM_UNMAP	(1<<2)	/* Unmap pages during reclaim , 可以解除映射*/
 
 #endif /* _UAPI_LINUX_MEMPOLICY_H */

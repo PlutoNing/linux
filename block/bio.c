@@ -457,6 +457,7 @@ static struct bio *bio_alloc_percpu_cache(struct block_device *bdev,
 
 /**
  * bio_alloc_bioset - allocate a bio for I/O
+   分配一个bio
  * @bdev:	block device to allocate the bio for (can be %NULL)
  * @nr_vecs:	number of bvecs to pre-allocate
  * @opf:	operation and flags for bio
@@ -464,14 +465,14 @@ static struct bio *bio_alloc_percpu_cache(struct block_device *bdev,
  * @bs:		the bio_set to allocate from.
  *
  * Allocate a bio from the mempools in @bs.
- *
+ * 分配一个bio，从bs的mempool中分配
  * If %__GFP_DIRECT_RECLAIM is set then bio_alloc will always be able to
  * allocate a bio.  This is due to the mempool guarantees.  To make this work,
  * callers must never allocate more than 1 bio at a time from the general pool.
  * Callers that need to allocate more than 1 bio must always submit the
  * previously allocated bio for IO before attempting to allocate a new one.
  * Failure to do so can cause deadlocks under memory pressure.
- *
+ * 如果设置了__GFP_DIRECT_RECLAIM，bio_alloc将总是能够分配一个bio。这是由于mempool的保证。为了使这个工作，调用者永远不应该一次从通用池中分配多于1个bio。需要分配多于1个bio的调用者必须在尝试分配新的bio之前总是提交先前分配的bio进行IO。否则在内存压力下可能会导致死锁。
  * Note that when running under submit_bio_noacct() (i.e. any block driver),
  * bios are not submitted until after you return - see the code in
  * submit_bio_noacct() that converts recursion into iteration, to prevent
@@ -1058,6 +1059,8 @@ EXPORT_SYMBOL_GPL(bio_add_zone_append_page);
 
 /**
  * __bio_add_page - add page(s) to a bio in a new segment
+  把page添加到bio中?
+   设定bio回写page的某个部分
  * @bio: destination bio
  * @page: start page to add
  * @len: length of the data to add, may cross pages
@@ -1065,6 +1068,7 @@ EXPORT_SYMBOL_GPL(bio_add_zone_append_page);
  *
  * Add the data at @page + @off to @bio as a new bvec.  The caller must ensure
  * that @bio has space for another bvec.
+   把page添加到bio中
  */
 void __bio_add_page(struct bio *bio, struct page *page,
 		unsigned int len, unsigned int off)

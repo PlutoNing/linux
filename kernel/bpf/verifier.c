@@ -333,6 +333,7 @@ struct bpf_kfunc_call_arg_meta {
 	u64 mem_size;
 };
 
+/* 代表vmlinux的btf */
 struct btf *btf_vmlinux;
 
 static DEFINE_MUTEX(bpf_verifier_lock);
@@ -19645,6 +19646,8 @@ static int check_attach_btf_id(struct bpf_verifier_env *env)
 	return 0;
 }
 
+/* 获取vmlinux的btf */
+/* 初始化btf_vmlinux */
 struct btf *bpf_get_btf_vmlinux(void)
 {
 	if (!btf_vmlinux && IS_ENABLED(CONFIG_DEBUG_INFO_BTF)) {

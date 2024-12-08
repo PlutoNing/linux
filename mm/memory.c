@@ -538,37 +538,46 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
 
 /*
  * vm_normal_page -- This function gets the "struct page" associated with a pte.
- *
+ * 找到pte对应的page
  * "Special" mappings do not wish to be associated with a "struct page" (either
  * it doesn't exist, or it exists but they don't want to touch it). In this
  * case, NULL is returned here. "Normal" mappings do have a struct page.
- *
+ * 特殊映射不希望与“struct page”关联（要么不存在，要么存在但不希望触及它）。
+ * 在这种情况下，此处返回NULL。 “正常”映射确实有一个结构页。
  * There are 2 broad cases. Firstly, an architecture may define a pte_special()
  * pte bit, in which case this function is trivial. Secondly, an architecture
  * may not have a spare pte bit, which requires a more complicated scheme,
  * described below.
- *
+ * 有两种广泛的情况。首先，架构可以定义一个pte_special() pte位，这种情况下，此函数是微不足道的。
+ * 其次，架构可能没有多余的pte位，这需要一个更复杂的方案，如下所述。
+
  * A raw VM_PFNMAP mapping (ie. one that is not COWed) is always considered a
  * special mapping (even if there are underlying and valid "struct pages").
  * COWed pages of a VM_PFNMAP are always normal.
- *
+ * 是 raw VM_PFNMAP 映射（即未 COWed 的映射）始终被视为特殊映射（即使存在基础且有效的“struct pages”）。
+ * VM_PFNMAP 的 COWed 页始终是正常的。
+
  * The way we recognize COWed pages within VM_PFNMAP mappings is through the
  * rules set up by "remap_pfn_range()": the vma will have the VM_PFNMAP bit
  * set, and the vm_pgoff will point to the first PFN mapped: thus every special
  * mapping will always honor the rule
- *
- *	pfn_of_page == vma->vm_pgoff + ((addr - vma->vm_start) >> PAGE_SHIFT)
+   pfn_of_page == vma->vm_pgoff + ((addr - vma->vm_start) >> PAGE_SHIFT)
+ * 通过“remap_pfn_range()”设置的规则，我们识别 VM_PFNMAP 映射中的 COWed 页的方式是：
+ vma 将设置 VM_PFNMAP 位, vm_pgoff 将指向第一个映射的 PFN：因此每个特殊映射始终遵守规则
+
+
+ *	
  *
  * And for normal mappings this is false.
- *
+ * 对于正常映射，这是错误的。
  * This restricts such mappings to be a linear translation from virtual address
  * to pfn. To get around this restriction, we allow arbitrary mappings so long
  * as the vma is not a COW mapping; in that case, we know that all ptes are
  * special (because none can have been COWed).
- *
- *
+ * 这限制了这种映射是从虚拟地址到pfn的线性转换。为了避开这种限制，我们允许任意映射，只要vma不是COW映射；
+ * 在这种情况下，我们知道所有的pte都是特殊的（因为没有一个可以被COWed）。
  * In order to support COW of arbitrary special mappings, we have VM_MIXEDMAP.
- *
+ * 为了支持任意特殊映射的COW，我们有VM_MIXEDMAP。
  * VM_MIXEDMAP mappings can likewise contain memory with or without "struct
  * page" backing, however the difference is that _all_ pages with a struct
  * page (that is, those where pfn_valid is true) are refcounted and considered
@@ -576,12 +585,15 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
  * (which can be slower and simply not an option for some PFNMAP users). The
  * advantage is that we don't have to follow the strict linearity rule of
  * PFNMAP mappings in order to support COWable mappings.
- *
+ * VM_MIXEDMAP 映射同样可以包含具有或不具有“struct page”支持的内存，
+ * 但是不同之处在于所有具有“struct page”的页面（即pfn_valid为true的页面）都是引用计数的，
+ * 并且被VM视为正常页面。 缺点是页面被引用计数（这可能会更慢，对于某些PFNMAP用户来说根本不是一个选项）。
+ * 优点是我们不必遵循PFNMAP映射的严格线性规则，以支持COWable映射。
  */
 struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 			    pte_t pte)
 {
-	unsigned long pfn = pte_pfn(pte);
+	unsigned long pfn = pte_pfn(pte); //从pte获取到pfn
 
 	if (IS_ENABLED(CONFIG_ARCH_HAS_PTE_SPECIAL)) {
 		if (likely(!pte_special(pte)))
@@ -1793,6 +1805,7 @@ void zap_vma_ptes(struct vm_area_struct *vma, unsigned long address,
 }
 EXPORT_SYMBOL_GPL(zap_vma_ptes);
 
+// 获得pmd
 static pmd_t *walk_to_pmd(struct mm_struct *mm, unsigned long addr)
 {
 	pgd_t *pgd;
@@ -1815,6 +1828,7 @@ static pmd_t *walk_to_pmd(struct mm_struct *mm, unsigned long addr)
 	return pmd;
 }
 
+// 从pmd中获取pte
 pte_t *__get_locked_pte(struct mm_struct *mm, unsigned long addr,
 			spinlock_t **ptl)
 {
@@ -1825,6 +1839,7 @@ pte_t *__get_locked_pte(struct mm_struct *mm, unsigned long addr,
 	return pte_alloc_map_lock(mm, pmd, addr, ptl);
 }
 
+/* 如果页面已经是匿名页了什么的, 就不行 */
 static int validate_page_before_insert(struct page *page)
 {
 	if (PageAnon(page) || PageSlab(page) || page_has_type(page))
@@ -1833,6 +1848,11 @@ static int validate_page_before_insert(struct page *page)
 	return 0;
 }
 
+/* 已经锁住pte了, 这里插入页面
+设置pte
+设置rmap
+更新mm的计数器
+ */
 static int insert_page_into_pte_locked(struct vm_area_struct *vma, pte_t *pte,
 			unsigned long addr, struct page *page, pgprot_t prot)
 {
@@ -1841,17 +1861,22 @@ static int insert_page_into_pte_locked(struct vm_area_struct *vma, pte_t *pte,
 	/* Ok, finally just insert the thing.. */
 	get_page(page);
 	inc_mm_counter(vma->vm_mm, mm_counter_file(page));
+	/* 设置rmap, 为什么是file的rmap呢 */
 	page_add_file_rmap(page, vma, false);
+	/* 插入pte */
 	set_pte_at(vma->vm_mm, addr, pte, mk_pte(page, prot));
 	return 0;
 }
 
 /*
  * This is the old fallback for page remapping.
+   , 这是一个旧的回退方案，用于页面重映射。
  *
  * For historical reasons, it only allows reserved pages. Only
  * old drivers should use this, and they needed to mark their
  * pages reserved for the old functions anyway.
+   因为历史原因，它只允许保留页面。只有旧驱动程序应该使用这个，
+   而且他们需要为旧函数标记他们的页面为保留的。
  */
 static int insert_page(struct vm_area_struct *vma, unsigned long addr,
 			struct page *page, pgprot_t prot)
@@ -1864,6 +1889,7 @@ static int insert_page(struct vm_area_struct *vma, unsigned long addr,
 	if (retval)
 		goto out;
 	retval = -ENOMEM;
+	/* get pte和锁 */
 	pte = get_locked_pte(vma->vm_mm, addr, &ptl);
 	if (!pte)
 		goto out;
@@ -1980,33 +2006,42 @@ int vm_insert_pages(struct vm_area_struct *vma, unsigned long addr,
 EXPORT_SYMBOL(vm_insert_pages);
 
 /**
+
+ 
  * vm_insert_page - insert single page into user vma
+   , 将单个页面插入到用户vma中
  * @vma: user vma to map to
  * @addr: target user address of this page
  * @page: source kernel page
  *
  * This allows drivers to insert individual pages they've allocated
  * into a user vma.
- *
+ * 这允许驱动程序将已分配的单个页面插入到用户vma中。
  * The page has to be a nice clean _individual_ kernel allocation.
  * If you allocate a compound page, you need to have marked it as
  * such (__GFP_COMP), or manually just split the page up yourself
  * (see split_page()).
- *
+ * 页面必须是一个很好的干净的_单个_内核分配. 如果您分配了一个复合页面，
+ * 您需要将其标记为这样(__GFP_COMP)，或者手动拆分页面(请参见split_page())。
  * NOTE! Traditionally this was done with "remap_pfn_range()" which
  * took an arbitrary page protection parameter. This doesn't allow
  * that. Your vma protection will have to be set up correctly, which
  * means that if you want a shared writable mapping, you'd better
  * ask for a shared writable mapping!
- *
+ * 注意! 传统上，这是通过“remap_pfn_range()”完成的，它接受任意的页面保护参数。
+ * 这不允许这样做。您的vma保护必须正确设置，这意味着如果您想要一个共享的可写映射，
+ * 您最好要求一个共享的可写映射!
  * The page does not need to be reserved.
- *
+ * 页面不需要被保留。
  * Usually this function is called from f_op->mmap() handler
  * under mm->mmap_lock write-lock, so it can change vma->vm_flags.
  * Caller must set VM_MIXEDMAP on vma if it wants to call this
  * function from other places, for example from page-fault handler.
- *
+ * 通常，这个函数是从f_op->mmap()处理程序中调用的，该处理程序在mm->mmap_lock写锁下调用，
+ * 因此它可以更改vma->vm_flags。如果调用者希望从其他地方调用此函数，
+ * 例如从页面错误处理程序中调用此函数，调用者必须在vma上设置VM_MIXEDMAP。
  * Return: %0 on success, negative error code otherwise.
+
  */
 int vm_insert_page(struct vm_area_struct *vma, unsigned long addr,
 			struct page *page)
@@ -2026,13 +2061,14 @@ EXPORT_SYMBOL(vm_insert_page);
 
 /*
  * __vm_map_pages - maps range of kernel pages into user vma
- * @vma: user vma to map to
- * @pages: pointer to array of source kernel pages
- * @num: number of pages in page array
- * @offset: user's requested vm_pgoff
+   , 将内核页面范围映射到用户vma中
+ * @vma: user vma to map to, 用户vma映射
+ * @pages: pointer to array of source kernel pages, 源内核页面数组的指针
+ * @num: number of pages in page array , 页面数组中的页面数
+ * @offset: user's requested vm_pgoff, 从用户请求的vm_pgoff开始插入
  *
  * This allows drivers to map range of kernel pages into a user vma.
- *
+ * 是给新的vma映射内核页面吗?
  * Return: 0 on success and error code otherwise.
  */
 static int __vm_map_pages(struct vm_area_struct *vma, struct page **pages,
@@ -2050,7 +2086,7 @@ static int __vm_map_pages(struct vm_area_struct *vma, struct page **pages,
 	if (count > num - offset)
 		return -ENXIO;
 
-	for (i = 0; i < count; i++) {
+	for (i = 0; i < count; i++) { // 遍历所有的页面, 逐个插入
 		ret = vm_insert_page(vma, uaddr, pages[offset + i]);
 		if (ret < 0)
 			return ret;
@@ -2062,19 +2098,22 @@ static int __vm_map_pages(struct vm_area_struct *vma, struct page **pages,
 
 /**
  * vm_map_pages - maps range of kernel pages starts with non zero offset
+   , 将以非零偏移量开始的内核页面范围映射到用户vma中
  * @vma: user vma to map to
  * @pages: pointer to array of source kernel pages
  * @num: number of pages in page array
  *
  * Maps an object consisting of @num pages, catering for the user's
  * requested vm_pgoff
- *
+ * , 映射由@num页组成的对象，满足用户请求的vm_pgoff
  * If we fail to insert any page into the vma, the function will return
  * immediately leaving any previously inserted pages present.  Callers
  * from the mmap handler may immediately return the error as their caller
  * will destroy the vma, removing any successfully inserted pages. Other
  * callers should make their own arrangements for calling unmap_region().
- *
+ * , 如果我们无法将任何页面插入到vma中，该函数将立即返回，保留任何先前插入的页面。
+ * 来自mmap处理程序的调用者可能会立即返回错误，因为他们的调用者将销毁vma，从而删除任何成功插入的页面。
+ * 其他调用者应自行安排调用unmap_region()。
  * Context: Process context. Called by mmap handlers.
  * Return: 0 on success and error code otherwise.
  */
@@ -2950,7 +2989,7 @@ static vm_fault_t do_page_mkwrite(struct vm_fault *vmf, struct folio *folio)
 
 /*
  * Handle dirtying of a page in shared file mapping on a write fault.
- *
+ * 翻译: 处理共享文件映射中的页面脏化时的写错误。
  * The function expects the page to be locked and unlocks it.
  */
 static vm_fault_t fault_dirty_shared_page(struct vm_fault *vmf)
@@ -2968,6 +3007,9 @@ static vm_fault_t fault_dirty_shared_page(struct vm_fault *vmf)
 	 * by truncate after folio_unlock().   The address_space itself remains
 	 * pinned by vma->vm_file's reference.  We rely on folio_unlock()'s
 	 * release semantics to prevent the compiler from undoing this copying.
+	   复制地址空间的本地副本 - folio.mapping 可能在 folio_unlock() 之后被截断清零。
+	   地址空间本身仍然由 vma->vm_file 的引用固定。
+	   我们依赖 folio_unlock() 的释放语义来防止编译器撤销此复制。
 	 */
 	mapping = folio_raw_mapping(folio);
 	folio_unlock(folio);
@@ -2977,18 +3019,20 @@ static vm_fault_t fault_dirty_shared_page(struct vm_fault *vmf)
 
 	/*
 	 * Throttle page dirtying rate down to writeback speed.
-	 *
+	 * 限制页面脏化速度，使其与回写速度相匹配。
 	 * mapping may be NULL here because some device drivers do not
 	 * set page.mapping but still dirty their pages
-	 *
+	 * 这里 mapping 可能为 NULL，因为一些设备驱动程序不设置 page.mapping 但仍然脏化它们的页面
+	 
 	 * Drop the mmap_lock before waiting on IO, if we can. The file
 	 * is pinning the mapping, as per above.
+	
 	 */
 	if ((dirtied || page_mkwrite) && mapping) {
 		struct file *fpin;
 
 		fpin = maybe_unlock_mmap_for_io(vmf, NULL);
-		balance_dirty_pages_ratelimited(mapping);
+		balance_dirty_pages_ratelimited(mapping); //限制脏化速度
 		if (fpin) {
 			fput(fpin);
 			return VM_FAULT_COMPLETED;
@@ -3000,11 +3044,14 @@ static vm_fault_t fault_dirty_shared_page(struct vm_fault *vmf)
 
 /*
  * Handle write page faults for pages that can be reused in the current vma
- *
+ * 处理可以在当前 vma 中重用的页面的写错误
  * This can happen either due to the mapping being with the VM_SHARED flag,
  * or due to us being the last reference standing to the page. In either
  * case, all we need to do here is to mark the page as writable and update
  * any related book-keeping.
+ * 这可能是由于映射带有 VM_SHARED 标志，也可能是由于我们是页面的最后一个引用。
+ 在任何情况下，我们在这里需要做的就是将页面标记为可写，并更新任何相关的簿记。
+   
  */
 static inline void wp_page_reuse(struct vm_fault *vmf)
 	__releases(vmf->ptl)
@@ -3025,11 +3072,14 @@ static inline void wp_page_reuse(struct vm_fault *vmf)
 		page_cpupid_xchg_last(page, (1 << LAST_CPUPID_SHIFT) - 1);
 
 	flush_cache_page(vma, vmf->address, pte_pfn(vmf->orig_pte));
+	
+	//开始重用
 	entry = pte_mkyoung(vmf->orig_pte);
 	entry = maybe_mkwrite(pte_mkdirty(entry), vma);
 	if (ptep_set_access_flags(vma, vmf->address, vmf->pte, entry, 1))
 		update_mmu_cache_range(vmf, vma, vmf->address, vmf->pte, 1);
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
+	
 	count_vm_event(PGREUSE);
 }
 
@@ -3249,6 +3299,10 @@ vm_fault_t finish_mkwrite_fault(struct vm_fault *vmf)
 /*
  * Handle write page faults for VM_MIXEDMAP or VM_PFNMAP for a VM_SHARED
  * mapping
+   如果页描述符为空，说明使用页帧号的特殊映射。 如果是共享的可写特殊映射，
+		不需要复制物理页，调用函数 wp_pfn_shared 来设置页表项的写权限位。如果是
+		私有的可写特殊映射，调用函数 wp_page_copy 以复制物理页，然后把虚拟页映射
+		到新的物理页。
  */
 static vm_fault_t wp_pfn_shared(struct vm_fault *vmf)
 {
@@ -3273,6 +3327,7 @@ static vm_fault_t wp_pfn_shared(struct vm_fault *vmf)
 	return 0;
 }
 
+//cow处理wp情况
 static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 	__releases(vmf->ptl)
 {
@@ -3307,6 +3362,7 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 		wp_page_reuse(vmf);
 		folio_lock(folio);
 	}
+	//这里尝试限速?
 	ret |= fault_dirty_shared_page(vmf);
 	folio_put(folio);
 
@@ -3314,26 +3370,33 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 }
 
 /*
+  wp应该是write protect.
  * This routine handles present pages, when
+   处理存在的页面，当
  * * users try to write to a shared page (FAULT_FLAG_WRITE)
  * * GUP wants to take a R/O pin on a possibly shared anonymous page
  *   (FAULT_FLAG_UNSHARE)
- *
+ * 用户尝试写入共享页面（FAULT_FLAG_WRITE）
+   GUP 想要在可能共享的匿名页面上采取 R/O pin（FAULT_FLAG_UNSHARE）
  * It is done by copying the page to a new address and decrementing the
  * shared-page counter for the old page.
- *
+ * 通过将页面复制到新地址并减少旧页面的共享页面计数来完成。
  * Note that this routine assumes that the protection checks have been
  * done by the caller (the low-level page fault routine in most cases).
  * Thus, with FAULT_FLAG_WRITE, we can safely just mark it writable once we've
  * done any necessary COW.
- *
+ * 请注意，此例程假定保护检查已由调用者（在大多数情况下是低级页面错误例程）完成。
+   因此，使用 FAULT_FLAG_WRITE，我们可以安全地在完成任何必要的 COW 后将其标记为可写。
  * In case of FAULT_FLAG_WRITE, we also mark the page dirty at this point even
  * though the page will change only once the write actually happens. This
  * avoids a few races, and potentially makes it more efficient.
- *
+ * 在 FAULT_FLAG_WRITE 的情况下，我们在此时也标记页面为脏，即使页面只有在实际写入时才会更改。
+   这样可以避免一些竞争，并且可能使其更有效率。
  * We enter with non-exclusive mmap_lock (to exclude vma changes,
  * but allow concurrent faults), with pte both mapped and locked.
  * We return with mmap_lock still held, but pte unmapped and unlocked.
+ * 我们进入时具有非排他性 mmap_lock（用于排除 vma 更改，但允许并发错误），pte 映射和锁定。
+   我们返回时仍然保持 mmap_lock，但 pte 已取消映射并解锁。
  */
 static vm_fault_t do_wp_page(struct vm_fault *vmf)
 	__releases(vmf->ptl)
@@ -3342,7 +3405,7 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 	struct vm_area_struct *vma = vmf->vma;
 	struct folio *folio = NULL;
 
-	if (likely(!unshare)) {
+	if (likely(!unshare)) { //什么情况?
 		if (userfaultfd_pte_wp(vma, ptep_get(vmf->pte))) {
 			pte_unmap_unlock(vmf->pte, vmf->ptl);
 			return handle_userfault(vmf, VM_UFFD_WP);
@@ -3357,6 +3420,8 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 			flush_tlb_page(vmf->vma, vmf->address);
 	}
 
+
+	//获取page
 	vmf->page = vm_normal_page(vma, vmf->address, vmf->orig_pte);
 
 	if (vmf->page)
@@ -3366,7 +3431,7 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 	 * Shared mapping: we are guaranteed to have VM_WRITE and
 	 * FAULT_FLAG_WRITE set at this point.
 	 */
-	if (vma->vm_flags & (VM_SHARED | VM_MAYSHARE)) {
+	if (vma->vm_flags & (VM_SHARED | VM_MAYSHARE)) { //共享映射
 		/*
 		 * VM_MIXEDMAP !pfn_valid() case, or VM_SOFTDIRTY clear on a
 		 * VM_PFNMAP VMA.
@@ -3374,9 +3439,14 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 		 * We should not cow pages in a shared writeable mapping.
 		 * Just mark the pages writable and/or call ops->pfn_mkwrite.
 		 */
+		/* 如果页描述符为空，说明使用页帧号的特殊映射。 如果是共享的可写特殊映射，
+		不需要复制物理页，调用函数 wp_pfn_shared 来设置页表项的写权限位。如果是
+		私有的可写特殊映射，调用函数 wp_page_copy 以复制物理页，然后把虚拟页映射
+		到新的物理页。 */
 		if (!vmf->page)
 			return wp_pfn_shared(vmf);
-		return wp_page_shared(vmf, folio);
+
+		return wp_page_shared(vmf,folio); //如果是私有的可写特殊映射，调用函数 wp_page_copy 以复制物理页，然后把虚拟页映射到新的物理页。
 	}
 
 	/*
@@ -3664,6 +3734,7 @@ static vm_fault_t pte_marker_clear(struct vm_fault *vmf)
 	return 0;
 }
 
+// 处理pte不存在的情况,可能会处理匿名页,cow,共享映射什么的
 static vm_fault_t do_pte_missing(struct vm_fault *vmf)
 {
 	if (vma_is_anonymous(vmf->vma))
@@ -4059,7 +4130,9 @@ out_release:
 	return ret;
 }
 
+
 /*
+  处理匿名页的pte不存在的情况
  * We enter with non-exclusive mmap_lock (to exclude vma changes,
  * but allow concurrent faults), and pte mapped but not yet locked.
  * We return with mmap_lock still held, but pte unmapped and unlocked.
@@ -4104,18 +4177,21 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 			pte_unmap_unlock(vmf->pte, vmf->ptl);
 			return handle_userfault(vmf, VM_UFFD_MISSING);
 		}
+
 		goto setpte;
 	}
 
 	/* Allocate our own private page. */
 	if (unlikely(anon_vma_prepare(vma)))
 		goto oom;
+
 	folio = vma_alloc_zeroed_movable_folio(vma, vmf->address);
 	if (!folio)
 		goto oom;
 
 	if (mem_cgroup_charge(folio, vma->vm_mm, GFP_KERNEL))
 		goto oom_free_page;
+
 	folio_throttle_swaprate(folio, GFP_KERNEL);
 
 	/*
@@ -4151,8 +4227,12 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 	}
 
 	inc_mm_counter(vma->vm_mm, MM_ANONPAGES);
+	
+	//设置rmap映射
 	folio_add_new_anon_rmap(folio, vma, vmf->address);
+	// 加入lru
 	folio_add_lru_vma(folio, vma);
+
 setpte:
 	if (uffd_wp)
 		entry = pte_mkuffd_wp(entry);
@@ -4177,6 +4257,9 @@ oom:
  * The mmap_lock must have been held on entry, and may have been
  * released depending on flags and vma->vm_ops->fault() return value.
  * See filemap_fault() and __lock_page_retry().
+ 文件页映射的几种缺页情况, cow, shared, read的fault
+ 都调用这个处理
+ 本质上是调用vma的fault的ops
  */
 static vm_fault_t __do_fault(struct vm_fault *vmf)
 {
@@ -4205,6 +4288,7 @@ static vm_fault_t __do_fault(struct vm_fault *vmf)
 	}
 
 	ret = vma->vm_ops->fault(vmf);
+
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY |
 			    VM_FAULT_DONE_COW)))
 		return ret;
@@ -4321,6 +4405,7 @@ vm_fault_t do_set_pmd(struct vm_fault *vmf, struct page *page)
 
 /**
  * set_pte_range - Set a range of PTEs to point to pages in a folio.
+   设置一系列的PTE指向一个folio中的页面
  * @vmf: Fault decription.
  * @folio: The folio that contains @page.
  * @page: The first page to create a PTE for.
@@ -4331,6 +4416,7 @@ void set_pte_range(struct vm_fault *vmf, struct folio *folio,
 		struct page *page, unsigned int nr, unsigned long addr)
 {
 	struct vm_area_struct *vma = vmf->vma;
+	// todo
 	bool uffd_wp = vmf_orig_pte_uffd_wp(vmf);
 	bool write = vmf->flags & FAULT_FLAG_WRITE;
 	bool prefault = in_range(vmf->address, addr, nr * PAGE_SIZE);
@@ -4547,6 +4633,7 @@ static inline bool should_fault_around(struct vm_fault *vmf)
 	return fault_around_pages > 1;
 }
 
+//文件映射的读缺页
 static vm_fault_t do_read_fault(struct vm_fault *vmf)
 {
 	vm_fault_t ret = 0;
@@ -4563,7 +4650,9 @@ static vm_fault_t do_read_fault(struct vm_fault *vmf)
 			return ret;
 	}
 
-	if (vmf->flags & FAULT_FLAG_VMA_LOCK) {
+	if (vmf->flags & FAULT_FLAG_VMA_LOCK) {/* 为什么vma读缺页处理fault时
+	不能带lock呢?
+	 */
 		vma_end_read(vmf->vma);
 		return VM_FAULT_RETRY;
 	}
@@ -4580,6 +4669,7 @@ static vm_fault_t do_read_fault(struct vm_fault *vmf)
 	return ret;
 }
 
+// 写时复制的缺页处理
 static vm_fault_t do_cow_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -4590,26 +4680,34 @@ static vm_fault_t do_cow_fault(struct vm_fault *vmf)
 		return VM_FAULT_RETRY;
 	}
 
-	if (unlikely(anon_vma_prepare(vma)))
+	if (unlikely(anon_vma_prepare(vma)))  //准备vma的av, 便于rmap
 		return VM_FAULT_OOM;
 
+	// 为cow_page分配一个页面
 	vmf->cow_page = alloc_page_vma(GFP_HIGHUSER_MOVABLE, vma, vmf->address);
+	
 	if (!vmf->cow_page)
 		return VM_FAULT_OOM;
+	
 
+	// 文件映射, 缺页时, cow时, 超额了
 	if (mem_cgroup_charge(page_folio(vmf->cow_page), vma->vm_mm,
-				GFP_KERNEL)) {
+				GFP_KERNEL)) { //memcg超额了
 		put_page(vmf->cow_page);
 		return VM_FAULT_OOM;
 	}
+
 	folio_throttle_swaprate(page_folio(vmf->cow_page), GFP_KERNEL);
 
-	ret = __do_fault(vmf);
+	ret = __do_fault(vmf); // 开始处理缺页
+
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY)))
 		goto uncharge_out;
+
 	if (ret & VM_FAULT_DONE_COW)
 		return ret;
-
+	//分配好了, 开始拷贝内容
+	//源page内容会变吗
 	copy_user_highpage(vmf->cow_page, vmf->page, vmf->address, vma);
 	__SetPageUptodate(vmf->cow_page);
 
@@ -4624,6 +4722,7 @@ uncharge_out:
 	return ret;
 }
 
+//
 static vm_fault_t do_shared_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -4656,6 +4755,7 @@ static vm_fault_t do_shared_fault(struct vm_fault *vmf)
 	}
 
 	ret |= finish_fault(vmf);
+
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE |
 					VM_FAULT_RETRY))) {
 		folio_unlock(folio);
@@ -4663,6 +4763,7 @@ static vm_fault_t do_shared_fault(struct vm_fault *vmf)
 		return ret;
 	}
 
+	//考虑限制脏页生成速度
 	ret |= fault_dirty_shared_page(vmf);
 	return ret;
 }
@@ -4674,7 +4775,9 @@ static vm_fault_t do_shared_fault(struct vm_fault *vmf)
  * return value.  See filemap_fault() and __folio_lock_or_retry().
  * If mmap_lock is released, vma may become invalid (for example
  * by other thread calling munmap()).
+   这个函数是和do_anomymous_page对立的, 看来像是"文件"
  */
+
 static vm_fault_t do_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -4705,11 +4808,11 @@ static vm_fault_t do_fault(struct vm_fault *vmf)
 			pte_unmap_unlock(vmf->pte, vmf->ptl);
 		}
 	} else if (!(vmf->flags & FAULT_FLAG_WRITE))
-		ret = do_read_fault(vmf);
+		ret = do_read_fault(vmf); //如果不是写fault
 	else if (!(vma->vm_flags & VM_SHARED))
-		ret = do_cow_fault(vmf);
+		ret = do_cow_fault(vmf); //如果不是共享的, 那只能是写时复制
 	else
-		ret = do_shared_fault(vmf);
+		ret = do_shared_fault(vmf);  //可以共享映射同一个页面
 
 	/* preallocated pagetable is unused: free it */
 	if (vmf->prealloc_pte) {
@@ -4930,6 +5033,7 @@ split:
 }
 
 /*
+   处理PTE缺页
  * These routines also need to handle stuff like marking pages dirty
  * and/or accessed for architectures that don't do it in hardware (most
  * RISC architectures).  The early dirtying is also good on the i386.
@@ -4948,7 +5052,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 {
 	pte_t entry;
 
-	if (unlikely(pmd_none(*vmf->pmd))) {
+	if (unlikely(pmd_none(*vmf->pmd))) { // pmd为空
 		/*
 		 * Leave __pte_alloc() until later: because vm_ops->fault may
 		 * want to allocate huge page, and if we expose page table
@@ -4957,12 +5061,14 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 		 */
 		vmf->pte = NULL;
 		vmf->flags &= ~FAULT_FLAG_ORIG_PTE_VALID;
-	} else {
+	} else { // pmd不为空
 		/*
 		 * A regular pmd is established and it can't morph into a huge
 		 * pmd by anon khugepaged, since that takes mmap_lock in write
 		 * mode; but shmem or file collapse to THP could still morph
 		 * it into a huge pmd: just retry later if so.
+		   一个普通的pmd已经建立，它不能通过anon khugepaged转变为huge pmd，因为那需要mmap_lock写模式；
+		   但是shmem或文件合并到THP可能会将其转变为huge pmd：如果是这样，稍后重试。
 		 */
 		vmf->pte = pte_offset_map_nolock(vmf->vma->vm_mm, vmf->pmd,
 						 vmf->address, &vmf->ptl);
@@ -4971,16 +5077,16 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 		vmf->orig_pte = ptep_get_lockless(vmf->pte);
 		vmf->flags |= FAULT_FLAG_ORIG_PTE_VALID;
 
-		if (pte_none(vmf->orig_pte)) {
+		if (pte_none(vmf->orig_pte)) {// pte为空
 			pte_unmap(vmf->pte);
 			vmf->pte = NULL;
 		}
 	}
 
-	if (!vmf->pte)
+	if (!vmf->pte) // pte不存在
 		return do_pte_missing(vmf);
 
-	if (!pte_present(vmf->orig_pte))
+	if (!pte_present(vmf->orig_pte)) //页面不在内存中 
 		return do_swap_page(vmf);
 
 	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
@@ -5023,6 +5129,7 @@ unlock:
 }
 
 /*
+   缺页处理的入口函数
  * On entry, we hold either the VMA lock or the mmap_lock
  * (FAULT_FLAG_VMA_LOCK tells you which).  If VM_FAULT_RETRY is set in
  * the result, the mmap_lock is not held on exit.  See filemap_fault()
@@ -5032,7 +5139,7 @@ static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 		unsigned long address, unsigned int flags)
 {
 	struct vm_fault vmf = {
-		.vma = vma,
+		.vma = vma, 
 		.address = address & PAGE_MASK,
 		.real_address = address,
 		.flags = flags,
@@ -5059,7 +5166,7 @@ retry_pud:
 		ret = create_huge_pud(&vmf);
 		if (!(ret & VM_FAULT_FALLBACK))
 			return ret;
-	} else {
+	} else { // pud不为空 或者不支持hugepage
 		pud_t orig_pud = *vmf.pud;
 
 		barrier();
@@ -5093,14 +5200,16 @@ retry_pud:
 		ret = create_huge_pmd(&vmf);
 		if (!(ret & VM_FAULT_FALLBACK))
 			return ret;
-	} else {
+	} else { // pmd不为空 或者不支持hugepage
 		vmf.orig_pmd = pmdp_get_lockless(vmf.pmd);
 
 		if (unlikely(is_swap_pmd(vmf.orig_pmd))) {
 			VM_BUG_ON(thp_migration_supported() &&
 					  !is_pmd_migration_entry(vmf.orig_pmd));
+
 			if (is_pmd_migration_entry(vmf.orig_pmd))
 				pmd_migration_entry_wait(mm, vmf.pmd);
+
 			return 0;
 		}
 		if (pmd_trans_huge(vmf.orig_pmd) || pmd_devmap(vmf.orig_pmd)) {
@@ -5124,18 +5233,24 @@ retry_pud:
 
 /**
  * mm_account_fault - Do page fault accounting
+   做页面错误计数
  * @mm: mm from which memcg should be extracted. It can be NULL.
  * @regs: the pt_regs struct pointer.  When set to NULL, will skip accounting
  *        of perf event counters, but we'll still do the per-task accounting to
  *        the task who triggered this page fault.
  * @address: the faulted address.
  * @flags: the fault flags.
- * @ret: the fault retcode.
+ * @ret: the fault retcode. 是handle_mm_fault的返回值
+  handle_mm_fault的返回值
+  
  *
  * This will take care of most of the page fault accounting.  Meanwhile, it
  * will also include the PERF_COUNT_SW_PAGE_FAULTS_[MAJ|MIN] perf counter
  * updates.  However, note that the handling of PERF_COUNT_SW_PAGE_FAULTS should
  * still be in per-arch page fault handlers at the entry of page fault.
+   这里将负责大部分页面错误计数。同时，它还将包括PERF_COUNT_SW_PAGE_FAULTS_[MAJ|MIN] perf计数器更新。
+   但是，请注意，PERF_COUNT_SW_PAGE_FAULTS的处理仍然应该在每个arch页面错误处理程序的入口处。
+
  */
 static inline void mm_account_fault(struct mm_struct *mm, struct pt_regs *regs,
 				    unsigned long address, unsigned int flags,
@@ -5145,6 +5260,7 @@ static inline void mm_account_fault(struct mm_struct *mm, struct pt_regs *regs,
 
 	/* Incomplete faults will be accounted upon completion. */
 	if (ret & VM_FAULT_RETRY)
+
 		return;
 
 	/*
@@ -5160,6 +5276,8 @@ static inline void mm_account_fault(struct mm_struct *mm, struct pt_regs *regs,
 	 * valid).  That includes arch_vma_access_permitted() failing before
 	 * reaching here. So this is not a "this many hardware page faults"
 	 * counter.  We should use the hw profiling for that.
+	   不记录不成功的故障（例如，地址无效时）。 这包括在到达这里之前arch_vma_access_permitted（）失败。
+	   因此，这不是“这么多硬件页面故障”计数器。 我们应该使用hw profiling。
 	 */
 	if (ret & VM_FAULT_ERROR)
 		return;
@@ -5168,6 +5286,8 @@ static inline void mm_account_fault(struct mm_struct *mm, struct pt_regs *regs,
 	 * We define the fault as a major fault when the final successful fault
 	 * is VM_FAULT_MAJOR, or if it retried (which implies that we couldn't
 	 * handle it immediately previously).
+	   我们将故障定义为主要故障，当最终成功的故障是VM_FAULT_MAJOR时，或者如果它重试
+	   （这意味着我们以前无法立即处理它）。
 	 */
 	major = (ret & VM_FAULT_MAJOR) || (flags & FAULT_FLAG_TRIED);
 
@@ -5191,6 +5311,7 @@ static inline void mm_account_fault(struct mm_struct *mm, struct pt_regs *regs,
 }
 
 #ifdef CONFIG_LRU_GEN
+// 
 static void lru_gen_enter_fault(struct vm_area_struct *vma)
 {
 	/* the LRU algorithm only applies to accesses with recency */
@@ -5248,7 +5369,7 @@ static vm_fault_t sanitize_fault_flags(struct vm_area_struct *vma,
 
 /*
  * By the time we get here, we already hold the mm semaphore
- *
+ * 在我们到达这里的时候，我们已经持有了mm信号量
  * The mmap_lock may have been released depending on flags and our
  * return value.  See filemap_fault() and __folio_lock_or_retry().
  */
@@ -5267,7 +5388,7 @@ vm_fault_t handle_mm_fault(struct vm_area_struct *vma, unsigned long address,
 
 	if (!arch_vma_access_permitted(vma, flags & FAULT_FLAG_WRITE,
 					    flags & FAULT_FLAG_INSTRUCTION,
-					    flags & FAULT_FLAG_REMOTE)) {
+					    flags & FAULT_FLAG_REMOTE)) {// 检查访问权限
 		ret = VM_FAULT_SIGSEGV;
 		goto out;
 	}
@@ -5275,6 +5396,7 @@ vm_fault_t handle_mm_fault(struct vm_area_struct *vma, unsigned long address,
 	/*
 	 * Enable the memcg OOM handling for faults triggered in user
 	 * space.  Kernel faults are handled more gracefully.
+	   , 为用户空间触发的故障启用memcg OOM处理。 内核故障更加优雅地处理。
 	 */
 	if (flags & FAULT_FLAG_USER)
 		mem_cgroup_enter_user_fault();
@@ -5427,6 +5549,7 @@ fail:
  * Lookup and lock a VMA under RCU protection. Returned VMA is guaranteed to be
  * stable and not isolated. If the VMA is not found or is being modified the
  * function returns NULL.
+   查找和锁定一个VMA，返回的VMA是稳定的，不会被隔离。如果VMA没有找到或正在被修改，函数将返回NULL。
  */
 struct vm_area_struct *lock_vma_under_rcu(struct mm_struct *mm,
 					  unsigned long address)
@@ -5436,7 +5559,7 @@ struct vm_area_struct *lock_vma_under_rcu(struct mm_struct *mm,
 
 	rcu_read_lock();
 retry:
-	vma = mas_walk(&mas);
+	vma = mas_walk(&mas); //在tree中查找VMA
 	if (!vma)
 		goto inval;
 
@@ -5470,6 +5593,7 @@ retry:
 inval_end_read:
 	vma_end_read(vma);
 inval:
+//加读锁成功
 	rcu_read_unlock();
 	count_vm_vma_lock_event(VMA_LOCK_ABORT);
 	return NULL;
@@ -5734,6 +5858,7 @@ EXPORT_SYMBOL_GPL(generic_access_phys);
 #endif
 
 /*
+访问其他进程的mm
  * Access another process' address space as given in mm.
  */
 int __access_remote_vm(struct mm_struct *mm, unsigned long addr, void *buf,
@@ -5815,6 +5940,7 @@ int __access_remote_vm(struct mm_struct *mm, unsigned long addr, void *buf,
 }
 
 /**
+访问其他进程的mm
  * access_remote_vm - access another process' address space
  * @mm:		the mm_struct of the target address space
  * @addr:	start address to access

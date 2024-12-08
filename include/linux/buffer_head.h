@@ -61,7 +61,13 @@ typedef void (bh_end_io_t)(struct buffer_head *bh, int uptodate);
  */
 struct buffer_head {
 	unsigned long b_state;		/* buffer state bitmap (see above) */
+<<<<<<< HEAD
 	struct buffer_head *b_this_page;/* circular list of page's buffers */
+=======
+	struct buffer_head *b_this_page;/*
+	指向此buffer里面的前一个bh
+	 circular list of page's buffers */
+>>>>>>> v66bkp
 	
 	union {
 		struct page *b_page;	/* the page this bh is mapped to */
@@ -133,6 +139,7 @@ TAS_BUFFER_FNS(Req, req)
 BUFFER_FNS(Mapped, mapped)
 BUFFER_FNS(New, new)
 BUFFER_FNS(Async_Read, async_read)
+//标记了这个表示发起回写, 检查到这个标记, 会真正执行回写
 BUFFER_FNS(Async_Write, async_write)
 BUFFER_FNS(Delay, delay)
 BUFFER_FNS(Boundary, boundary)
@@ -177,6 +184,7 @@ static __always_inline int buffer_uptodate(const struct buffer_head *bh)
 	return test_bit_acquire(BH_Uptodate, &bh->b_state);
 }
 
+//
 static inline unsigned long bh_offset(const struct buffer_head *bh)
 {
 	return (unsigned long)(bh)->b_data & (page_size(bh->b_page) - 1);
@@ -191,6 +199,7 @@ static inline unsigned long bh_offset(const struct buffer_head *bh)
 		((struct buffer_head *)page_private(page));	\
 	})
 #define page_has_buffers(page)	PagePrivate(page)
+//获取folio关联的buffer.
 #define folio_buffers(folio)		folio_get_private(folio)
 
 void buffer_check_dirty_writeback(struct folio *folio,

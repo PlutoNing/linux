@@ -61,6 +61,7 @@ struct alloc_context; /* in mm/internal.h */
  * Number of free order-0 pages that should be available above given watermark
  * to make sure compaction has reasonable chance of not running out of free
  * pages that it needs to isolate as migration target during its work.
+ 此order页面的两倍大.
  */
 static inline unsigned long compact_gap(unsigned int order)
 {

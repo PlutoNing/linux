@@ -39,6 +39,9 @@ static void *seq_buf_alloc(unsigned long size)
 }
 
 /**
+seq_open对file做了什么
+让file的priv指向seq_file.
+seq_file由op初始化
  *	seq_open -	initialize sequential file
  *	@file: file we initialize
  *	@op: method table describing the sequence
@@ -569,6 +572,7 @@ static void single_stop(struct seq_file *p, void *v)
 {
 }
 
+/*  */
 int single_open(struct file *file, int (*show)(struct seq_file *, void *),
 		void *data)
 {

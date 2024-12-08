@@ -2314,7 +2314,9 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 	if (!atomic_dec_and_test(&bp_desc.refs))
 		atomic_cond_read_acquire(&bp_desc.refs, !VAL);
 }
-
+/* 改变addr这里的代码.从而执行到此处时,跳转到其他地方.
+opcode是poke insn的text地址
+tp是text_poke结构体 */
 static void text_poke_loc_init(struct text_poke_loc *tp, void *addr,
 			       const void *opcode, size_t len, const void *emulate)
 {
@@ -2323,11 +2325,18 @@ static void text_poke_loc_init(struct text_poke_loc *tp, void *addr,
 
 	if (len == 6)
 		i = 1;
+	/* 拷贝最多五字节的opcode到tp. */
+	/* 这个时候opcode的内容是什么? */
 	memcpy((void *)tp->text, opcode+i, len-i);
 	if (!emulate)
 		emulate = opcode;
+	
+	/* // Expands to
+		insn_decode((&insn), (emulate), 15, INSN_MODE_KERN)
+		这里好像是要解码insn ... */
 
 	ret = insn_decode_kernel(&insn, emulate);
+
 	BUG_ON(ret < 0);
 
 	tp->rel_addr = addr - (void *)_stext;
@@ -2435,6 +2444,9 @@ void __ref text_poke_queue(void *addr, const void *opcode, size_t len, const voi
 }
 
 /**
+改变addr这里的代码.从而执行到此处时,跳转到其他地方.
+opcode是insn的text地址,那么opcode里面存储什么.
+
  * text_poke_bp() -- update instructions on live kernel on SMP
  * @addr:	address to patch
  * @opcode:	opcode of new instruction

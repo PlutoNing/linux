@@ -68,6 +68,7 @@ static inline unsigned long pte_index(unsigned long address)
 }
 
 #ifndef pmd_index
+/* 获取addr在pmd上的idx. */
 static inline unsigned long pmd_index(unsigned long address)
 {
 	return (address >> PMD_SHIFT) & (PTRS_PER_PMD - 1);
@@ -108,6 +109,7 @@ static inline pte_t *__pte_map(pmd_t *pmd, unsigned long address)
 {
 	return pte_offset_kernel(pmd, address);
 }
+//
 static inline void pte_unmap(pte_t *pte)
 {
 	rcu_read_unlock();
@@ -961,6 +963,7 @@ static inline void arch_swap_restore(swp_entry_t entry, struct folio *folio)
 #endif
 
 #ifndef pmd_addr_end
+/* 找到addr所位于的pmd的最大地址 */
 #define pmd_addr_end(addr, end)						\
 ({	unsigned long __boundary = ((addr) + PMD_SIZE) & PMD_MASK;	\
 	(__boundary - 1 < (end) - 1)? __boundary: (end);		\

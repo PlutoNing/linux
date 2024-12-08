@@ -211,6 +211,7 @@ static inline bool __is_kernel_text(unsigned long addr)
 }
 
 /**
+看ip是不是内核范围的?
  * __is_kernel - checks if the pointer address is located in the kernel range
  *
  * @addr: address to check
@@ -224,6 +225,7 @@ static inline bool __is_kernel(unsigned long addr)
 {
 	return ((addr >= (unsigned long)_stext &&
 	         addr < (unsigned long)_end) ||
+
 		(addr >= (unsigned long)__init_begin &&
 		 addr < (unsigned long)__init_end));
 }

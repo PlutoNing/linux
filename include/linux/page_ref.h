@@ -115,12 +115,14 @@ static inline void init_page_count(struct page *page)
 	set_page_count(page, 1);
 }
 
+
 static inline void page_ref_add(struct page *page, int nr)
 {
 	atomic_add(nr, &page->_refcount);
 	if (page_ref_tracepoint_active(page_ref_mod))
 		__page_ref_mod(page, nr);
 }
+
 
 static inline void folio_ref_add(struct folio *folio, int nr)
 {
@@ -288,6 +290,7 @@ static inline bool folio_ref_try_add_rcu(struct folio *folio, int count)
 
 /**
  * folio_try_get_rcu - Attempt to increase the refcount on a folio.
+   尝试增加folio的引用计数
  * @folio: The folio.
  *
  * This is a version of folio_try_get() optimised for non-SMP kernels.

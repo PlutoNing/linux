@@ -320,7 +320,7 @@ static inline unsigned int __first_unset_node(const nodemask_t *maskp)
 } })
 
 #else
-
+/* 预定的nodemask, 表示全部node? */
 #define NODE_MASK_ALL							\
 ((nodemask_t) { {							\
 	[0 ... BITS_TO_LONGS(MAX_NUMNODES)-2] = ~0UL,			\
@@ -328,7 +328,7 @@ static inline unsigned int __first_unset_node(const nodemask_t *maskp)
 } })
 
 #endif
-
+/* 预定义的nodemask, 表示一个也没有 */
 #define NODE_MASK_NONE							\
 ((nodemask_t) { {							\
 	[0 ... BITS_TO_LONGS(MAX_NUMNODES)-1] =  0UL			\
@@ -418,6 +418,7 @@ enum node_states {
 extern nodemask_t node_states[NR_NODE_STATES];
 
 #if MAX_NUMNODES > 1
+/*  */
 static inline int node_state(int node, enum node_states state)
 {
 	return node_isset(node, node_states[state]);

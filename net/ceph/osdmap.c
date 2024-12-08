@@ -735,6 +735,7 @@ DEFINE_RB_FUNCS2(pg_mapping, struct ceph_pg_mapping, pgid, ceph_pg_compare,
  */
 DEFINE_RB_FUNCS(pg_pool, struct ceph_pg_pool_info, id, node)
 
+/* 从osd map根据pool id获取pool */
 struct ceph_pg_pool_info *ceph_pg_pool_by_id(struct ceph_osdmap *map, u64 id)
 {
 	return lookup_pg_pool(&map->pg_pools, id);

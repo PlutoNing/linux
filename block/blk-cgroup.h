@@ -116,6 +116,7 @@ struct blkcg {
 #endif
 };
 
+//获取css对应的blkcg
 static inline struct blkcg *css_to_blkcg(struct cgroup_subsys_state *css)
 {
 	return css ? container_of(css, struct blkcg, css) : NULL;

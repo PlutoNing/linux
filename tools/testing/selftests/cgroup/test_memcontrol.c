@@ -669,16 +669,17 @@ cleanup:
 }
 
 /*
+
  * Reclaim from @memcg until usage reaches @goal by writing to
  * memory.reclaim.
  *
  * This function will return false if the usage is already below the
  * goal.
- *
+ * 
  * This function assumes that writing to memory.reclaim is the only
  * source of change in memory.current (no concurrent allocations or
  * reclaim).
- *
+ * 
  * This function makes sure memory.reclaim is sane. It will return
  * false if memory.reclaim's error codes do not make sense, even if
  * the usage goal was satisfied.

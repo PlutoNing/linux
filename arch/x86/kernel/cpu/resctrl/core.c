@@ -25,7 +25,8 @@
 #include <asm/resctrl.h>
 #include "internal.h"
 
-/* Mutex to protect rdtgroup access. */
+/* Mutex to protect rdtgroup access.
+rdtg机制的锁 */
 DEFINE_MUTEX(rdtgroup_mutex);
 
 /*

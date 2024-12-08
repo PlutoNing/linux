@@ -180,7 +180,9 @@ static inline void *nearest_obj(struct kmem_cache *cache, const struct slab *sla
 	return result;
 }
 
-/* Determine object index from a given position */
+/* Determine object index from a given position
+确定slab obj在slab的idx
+ */
 static inline unsigned int __obj_to_index(const struct kmem_cache *cache,
 					  void *addr, void *obj)
 {
@@ -188,6 +190,7 @@ static inline unsigned int __obj_to_index(const struct kmem_cache *cache,
 				 cache->reciprocal_size);
 }
 
+/*  */
 static inline unsigned int obj_to_index(const struct kmem_cache *cache,
 					const struct slab *slab, void *obj)
 {

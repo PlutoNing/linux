@@ -20,6 +20,7 @@
 
 atomic_long_t _totalram_pages __read_mostly;
 EXPORT_SYMBOL(_totalram_pages);
+/*  */
 unsigned long totalreserve_pages __read_mostly;
 unsigned long totalcma_pages __read_mostly;
 
@@ -178,6 +179,7 @@ static bool node_has_managed_zones(pg_data_t *pgdat, int max_zone_idx)
 }
 
 /*
+打印空闲内存?
  * Show free area list (used inside shift_scroll-lock stuff)
  * We also calculate the percentage fragmentation. We do this by counting the
  * memory on each free list with the exception of the first item on the list.
@@ -231,7 +233,7 @@ static void show_free_areas(unsigned int filter, nodemask_t *nodemask, int max_z
 		global_zone_page_state(NR_FREE_PAGES),
 		free_pcp,
 		global_zone_page_state(NR_FREE_CMA_PAGES));
-
+	/*  */
 	for_each_online_pgdat(pgdat) {
 		if (show_mem_node_skip(filter, pgdat->node_id, nodemask))
 			continue;
@@ -408,6 +410,7 @@ void __show_mem(unsigned int filter, nodemask_t *nodemask, int max_zone_idx)
 	printk("Mem-Info:\n");
 	show_free_areas(filter, nodemask, max_zone_idx);
 
+	/*  */
 	for_each_populated_zone(zone) {
 
 		total += zone->present_pages;

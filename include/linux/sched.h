@@ -81,7 +81,7 @@ struct user_event_mm;
  * modifying one set can't modify the other one by
  * mistake.
  */
-
+/* 进程的状态 */
 /* Used in tsk->__state: */
 #define TASK_RUNNING			0x00000000
 #define TASK_INTERRUPTIBLE		0x00000001
@@ -128,6 +128,7 @@ struct user_event_mm;
 					 __TASK_TRACED | EXIT_DEAD | EXIT_ZOMBIE | \
 					 TASK_PARKED)
 
+/* 判断是否为可运行状态 */
 #define task_is_running(task)		(READ_ONCE((task)->__state) == TASK_RUNNING)
 
 #define task_is_traced(task)		((READ_ONCE(task->jobctl) & JOBCTL_TRACED) != 0)
@@ -142,6 +143,7 @@ struct user_event_mm;
 	((state) & (__TASK_STOPPED | __TASK_TRACED | TASK_PARKED | TASK_DEAD))
 
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
+/* 设置进程的状态 */
 # define debug_normal_state_change(state_value)				\
 	do {								\
 		WARN_ON_ONCE(is_special_task_state(state_value));	\
@@ -214,7 +216,7 @@ struct user_event_mm;
 		debug_normal_state_change((state_value));		\
 		WRITE_ONCE(current->__state, (state_value));		\
 	} while (0)
-
+/* 设置进程状态? */
 #define set_current_state(state_value)					\
 	do {								\
 		debug_normal_state_change((state_value));		\
@@ -748,6 +750,7 @@ struct task_struct {
 	 */
 	struct thread_info		thread_info;
 #endif
+/* 表示进程的状态 */
 	unsigned int			__state;
 
 #ifdef CONFIG_PREEMPT_RT
@@ -1043,7 +1046,7 @@ struct task_struct {
 
 	/* MM fault and swap info: this can arguably be seen as either mm-specific or thread-specific: */
 	unsigned long			min_flt;
-	unsigned long			maj_flt;
+	unsigned long			maj_flt; // 主要故障的次数
 
 	/* Empty if CONFIG_POSIX_CPUTIMERS=n */
 	struct posix_cputimers		posix_cputimers;
@@ -1057,7 +1060,8 @@ struct task_struct {
 	/* Tracer's credentials at attach: */
 	const struct cred __rcu		*ptracer_cred;
 
-	/* Objective and real subjective task credentials (COW): */
+	/* Objective and real subjective task credentials (COW):
+	这是什么 */
 	const struct cred __rcu		*real_cred;
 
 	/* Effective (overridable) subjective task credentials (COW): */
@@ -1074,6 +1078,7 @@ struct task_struct {
 	 * - normally initialized setup_new_exec()
 	 * - access it with [gs]et_task_comm()
 	 * - lock it with task_lock()
+	 task的comm
 	 */
 	char				comm[TASK_COMM_LEN];
 
@@ -1199,7 +1204,7 @@ struct task_struct {
 	unsigned long			ptrace_message;
 	kernel_siginfo_t		*last_siginfo;
 
-	struct task_io_accounting	ioac;
+	struct task_io_accounting	ioac;/* 存储io记账信息 */
 #ifdef CONFIG_PSI
 	/* Pressure stall state */
 	unsigned int			psi_flags;
@@ -1212,6 +1217,7 @@ struct task_struct {
 	/* stime + utime since last update: */
 	u64				acct_timexpd;
 #endif
+
 #ifdef CONFIG_CPUSETS
 	/* Protected by ->alloc_lock: */
 	nodemask_t			mems_allowed;
@@ -1220,6 +1226,7 @@ struct task_struct {
 	int				cpuset_mem_spread_rotor;
 	int				cpuset_slab_spread_rotor;
 #endif
+
 #ifdef CONFIG_CGROUPS
 	/* Control Group info protected by css_set_lock: */
 	struct css_set __rcu		*cgroups;
@@ -1227,8 +1234,8 @@ struct task_struct {
 	struct list_head		cg_list;
 #endif
 #ifdef CONFIG_X86_CPU_RESCTRL
-	u32				closid;
-	u32				rmid;
+	u32				closid; /* 通过自己的这个字段与rdtg一一对应 */
+	u32				rmid; /* 与 mon.rmid 一一对应*/
 #endif
 #ifdef CONFIG_FUTEX
 	struct robust_list_head __user	*robust_list;
@@ -1342,13 +1349,20 @@ struct task_struct {
 	 * When (nr_dirtied >= nr_dirtied_pause), it's time to call
 	 * balance_dirty_pages() for a dirty throttling pause:
 	 */
-	int				nr_dirtied;
+	int				nr_dirtied; /* 
+	这个进程的脏页数量，当这个值大于nr_dirtied_pause时，就会调用
+	balance_dirty_pages()函数来暂停脏页的写入
+	 */
 	int				nr_dirtied_pause;
-	/* Start of a write-and-pause period: */
+
+	/* Start of a write-and-pause period:
+	进行脏页统计的一个时间间隔
+	 */
 	unsigned long			dirty_paused_when;
 
 #ifdef CONFIG_LATENCYTOP
 	int				latency_record_count;
+	/*  */
 	struct latency_record		latency_record[LT_SAVECOUNT];
 #endif
 	/*
@@ -1457,6 +1471,7 @@ struct task_struct {
 #endif
 	struct kmap_ctrl		kmap_ctrl;
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
+/* 保存改变状态时的ip地址 */
 	unsigned long			task_state_change;
 # ifdef CONFIG_PREEMPT_RT
 	unsigned long			saved_state_change;
@@ -1665,6 +1680,7 @@ static inline pid_t task_pgrp_nr(struct task_struct *tsk)
 #define TASK_REPORT_IDLE	(TASK_REPORT + 1)
 #define TASK_REPORT_MAX		(TASK_REPORT_IDLE << 1)
 
+/*  */
 static inline unsigned int __task_state_index(unsigned int tsk_state,
 					      unsigned int tsk_exit_state)
 {
@@ -1686,6 +1702,7 @@ static inline unsigned int __task_state_index(unsigned int tsk_state,
 	return fls(state);
 }
 
+/*  */
 static inline unsigned int task_state_index(struct task_struct *tsk)
 {
 	return __task_state_index(READ_ONCE(tsk->__state), tsk->exit_state);
@@ -1744,7 +1761,8 @@ extern struct pid *cad_pid;
 #define PF_KSWAPD		0x00020000	/* I am kswapd */
 #define PF_MEMALLOC_NOFS	0x00040000	/* All allocation requests will inherit GFP_NOFS */
 #define PF_MEMALLOC_NOIO	0x00080000	/* All allocation requests will inherit GFP_NOIO */
-#define PF_LOCAL_THROTTLE	0x00100000	/* Throttle writes only against the bdi I write to,
+#define PF_LOCAL_THROTTLE	0x00100000	
+/* Throttle writes only against the bdi I write to,
 						 * I am cleaning dirty pages from some other bdi. */
 #define PF_KTHREAD		0x00200000	/* I am a kernel thread */
 #define PF_RANDOMIZE		0x00400000	/* Randomize virtual address space */
@@ -1753,7 +1771,8 @@ extern struct pid *cad_pid;
 #define PF__HOLE__02000000	0x02000000
 #define PF_NO_SETAFFINITY	0x04000000	/* Userland is not allowed to meddle with cpus_mask */
 #define PF_MCE_EARLY		0x08000000      /* Early kill for mce process policy */
-#define PF_MEMALLOC_PIN		0x10000000	/* Allocation context constrained to zones which allow long term pinning. */
+#define PF_MEMALLOC_PIN		0x10000000	
+/* Allocation context constrained to zones which allow long term pinning. */
 #define PF__HOLE__20000000	0x20000000
 #define PF__HOLE__40000000	0x40000000
 #define PF_SUSPEND_TASK		0x80000000      /* This thread called freeze_processes() and should not be frozen */

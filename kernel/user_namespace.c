@@ -917,6 +917,7 @@ static bool verify_root_map(const struct file *file,
 	return true;
 }
 
+/*  */
 static ssize_t map_write(struct file *file, const char __user *buf,
 			 size_t count, loff_t *ppos,
 			 int cap_setid,
@@ -1122,6 +1123,7 @@ ssize_t proc_uid_map_write(struct file *file, const char __user *buf,
 			 &ns->uid_map, &ns->parent->uid_map);
 }
 
+/* 写/proc/pid/的gid file */
 ssize_t proc_gid_map_write(struct file *file, const char __user *buf,
 			   size_t size, loff_t *ppos)
 {

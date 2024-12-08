@@ -186,6 +186,7 @@
 #define EVICTION_MASK	(~0UL >> EVICTION_SHIFT)
 
 /*
+把信息编码到long, 然后make xa entry.
  * Eviction timestamps need to be able to cover the full range of
  * actionable refaults. However, bits are tight in the xarray
  * entry, and after storing the identifier for the lruvec there might
@@ -195,6 +196,7 @@
  */
 static unsigned int bucket_order __read_mostly;
 
+/* 把folio的信息编码到folio里面 */
 static void *pack_shadow(int memcgid, pg_data_t *pgdat, unsigned long eviction,
 			 bool workingset)
 {
@@ -206,6 +208,7 @@ static void *pack_shadow(int memcgid, pg_data_t *pgdat, unsigned long eviction,
 	return xa_mk_value(eviction);
 }
 
+/* shadow是什么? */
 static void unpack_shadow(void *shadow, int *memcgidp, pg_data_t **pgdat,
 			  unsigned long *evictionp, bool *workingsetp)
 {
@@ -343,12 +346,17 @@ static void lru_gen_refault(struct folio *folio, void *shadow)
 #endif /* CONFIG_LRU_GEN */
 
 /**
+ 
  * workingset_age_nonresident - age non-resident entries as LRU ages
  * @lruvec: the lruvec that was aged
  * @nr_pages: the number of pages to count
- *
+ *在内存页面被老化（即被标记为较旧）时，同时老化非驻留页面，以保持对比一致性。
  * As in-memory pages are aged, non-resident pages need to be aged as
- * well, in order for the refault distances later on to be comparable
+ * well, 
+ 随着内存中的页面被老化，非驻留页面也需要同步进行老化，以便在后续的重引用距离
+ （refault distances）比较中保持一致。
+ 这是因为非驻留页面在一定程度上仍然是被跟踪的，尽管它们不在物理内存中。
+ in order for the refault distances later on to be comparable
  * to the in-memory dimensions. This function allows reclaim and LRU
  * operations to drive the non-resident aging along in parallel.
  */
@@ -364,6 +372,8 @@ void workingset_age_nonresident(struct lruvec *lruvec, unsigned long nr_pages)
 	 * So when the physical inactive list of a leaf cgroup ages,
 	 * the virtual inactive lists of all its parents, including
 	 * the root cgroup's, age as well.
+	 每一个页面,在其父层级上的cgroup视角里,都有一个lru的位置.
+
 	 */
 	do {
 		atomic_long_add(nr_pages, &lruvec->nonresident_age);
@@ -371,6 +381,8 @@ void workingset_age_nonresident(struct lruvec *lruvec, unsigned long nr_pages)
 }
 
 /**
+ 表示working set的移除folio ?
+ 把folio的信息编码到shadow里面,然后返回
  * workingset_eviction - note the eviction of a folio from memory
  * @target_memcg: the cgroup that is causing the reclaim
  * @folio: the folio being evicted
@@ -399,11 +411,13 @@ void *workingset_eviction(struct folio *folio, struct mem_cgroup *target_memcg)
 	eviction = atomic_long_read(&lruvec->nonresident_age);
 	eviction >>= bucket_order;
 	workingset_age_nonresident(lruvec, folio_nr_pages(folio));
+
 	return pack_shadow(memcgid, pgdat, eviction,
 				folio_test_workingset(folio));
 }
 
 /**
+ 测试这个shadow ent是不是刚刚被清除的folio的
  * workingset_test_recent - tests if the shadow entry is for a folio that was
  * recently evicted. Also fills in @workingset with the value unpacked from
  * shadow.
@@ -427,8 +441,10 @@ bool workingset_test_recent(void *shadow, bool file, bool *workingset)
 
 	if (lru_gen_enabled())
 		return lru_gen_test_recent(shadow, file, &eviction_lruvec, &eviction, workingset);
-
-	unpack_shadow(shadow, &memcgid, &pgdat, &eviction, workingset);
+	
+	/* 获取shadow包含的memcg,node等信息 */
+	unpack_shadow(shadow, &memcgid, &pgdat, 
+	&eviction, workingset);
 	eviction <<= bucket_order;
 
 	/*
@@ -452,6 +468,7 @@ bool workingset_test_recent(void *shadow, bool file, bool *workingset)
 		return false;
 
 	eviction_lruvec = mem_cgroup_lruvec(eviction_memcg, pgdat);
+	/*  */
 	refault = atomic_long_read(&eviction_lruvec->nonresident_age);
 
 	/*
@@ -479,11 +496,14 @@ bool workingset_test_recent(void *shadow, bool file, bool *workingset)
 	 * workingset competition needs to consider anon or not depends
 	 * on having free swap space.
 	 */
+	/*  */
 	workingset_size = lruvec_page_state(eviction_lruvec, NR_ACTIVE_FILE);
+
 	if (!file) {
 		workingset_size += lruvec_page_state(eviction_lruvec,
 						     NR_INACTIVE_FILE);
 	}
+
 	if (mem_cgroup_get_nr_swap_pages(eviction_memcg) > 0) {
 		workingset_size += lruvec_page_state(eviction_lruvec,
 						     NR_ACTIVE_ANON);
@@ -497,6 +517,9 @@ bool workingset_test_recent(void *shadow, bool file, bool *workingset)
 }
 
 /**
+2024年10月13日17:37:07
+folio刚刚被移除,但是又被加入内存了.
+作用是?
  * workingset_refault - Evaluate the refault of a previously evicted folio.
  * @folio: The freshly allocated replacement folio.
  * @shadow: Shadow entry of the evicted folio.
@@ -541,9 +564,12 @@ void workingset_refault(struct folio *folio, void *shadow)
 
 	if (!workingset_test_recent(shadow, file, &workingset))
 		goto out;
-
+	
+	/*  */
 	folio_set_active(folio);
+	/*  */
 	workingset_age_nonresident(lruvec, nr);
+	/*  */
 	mod_lruvec_state(lruvec, WORKINGSET_ACTIVATE_BASE + file, nr);
 
 	/* Folio was active prior to eviction */
@@ -554,13 +580,16 @@ void workingset_refault(struct folio *folio, void *shadow)
 		 * putback
 		 */
 		lru_note_cost_refault(folio);
+
 		mod_lruvec_state(lruvec, WORKINGSET_RESTORE_BASE + file, nr);
 	}
+
 out:
 	rcu_read_unlock();
 }
 
 /**
+todo? 为什么是增加non rss数量
  * workingset_activation - note a page activation
  * @folio: Folio that is being activated.
  */
@@ -579,12 +608,15 @@ void workingset_activation(struct folio *folio)
 	memcg = folio_memcg_rcu(folio);
 	if (!mem_cgroup_disabled() && !memcg)
 		goto out;
+
 	workingset_age_nonresident(folio_lruvec(folio), folio_nr_pages(folio));
 out:
 	rcu_read_unlock();
 }
 
 /*
+2024年10月12日23:14:34
+作用是?
  * Shadow entries reflect the share of the working set that does not
  * fit into memory, so their number depends on the access pattern of
  * the workload.  In most cases, they will refault or get reclaimed
@@ -597,7 +629,7 @@ out:
  */
 
 struct list_lru shadow_nodes;
-
+/* 是什么xas更新的cb */
 void workingset_update_node(struct xa_node *node)
 {
 	struct address_space *mapping;
@@ -610,12 +642,16 @@ void workingset_update_node(struct xa_node *node)
 	 * already where they should be. The list_empty() test is safe
 	 * as node->private_list is protected by the i_pages lock.
 	 */
+	/* 找到对应xas数组对应的mapping */
 	mapping = container_of(node->array, struct address_space, i_pages);
 	lockdep_assert_held(&mapping->i_pages.xa_lock);
 
-	if (node->count && node->count == node->nr_values) {
+	if (node->count && node->count == node->nr_values) {/* 
+	如果节点仅包含 shadow entries 且 private_list 为空，
+	则将该节点添加到 shadow_nodes 列表中，并更新内存控制组（memcg）的统计信息。 */
 		if (list_empty(&node->private_list)) {
 			list_lru_add(&shadow_nodes, &node->private_list);
+			/* 更新这个node所属的memcg的统计信息 */
 			__inc_lruvec_kmem_state(node, WORKINGSET_NODES);
 		}
 	} else {
@@ -625,7 +661,7 @@ void workingset_update_node(struct xa_node *node)
 		}
 	}
 }
-
+/*  */
 static unsigned long count_shadow_nodes(struct shrinker *shrinker,
 					struct shrink_control *sc)
 {
@@ -633,6 +669,7 @@ static unsigned long count_shadow_nodes(struct shrinker *shrinker,
 	unsigned long nodes;
 	unsigned long pages;
 
+	/* 统计shadow_nodes这个lru上面,属于sc指定范围的lru元素数量 */
 	nodes = list_lru_shrink_count(&shadow_nodes, sc);
 	if (!nodes)
 		return SHRINK_EMPTY;
@@ -660,12 +697,14 @@ static unsigned long count_shadow_nodes(struct shrinker *shrinker,
 	 * PAGE_SIZE / xa_nodes / node_entries * 8 / PAGE_SIZE
 	 */
 #ifdef CONFIG_MEMCG
-	if (sc->memcg) {
+	if (sc->memcg) { /* sc指定了memcg */
 		struct lruvec *lruvec;
 		int i;
 
 		mem_cgroup_flush_stats();
+		/* 获得sc指定的memcg和node上面 的lruvec */
 		lruvec = mem_cgroup_lruvec(sc->memcg, NODE_DATA(sc->nid));
+		/* 获取四种lru的pages和 */
 		for (pages = 0, i = 0; i < NR_LRU_LISTS; i++)
 			pages += lruvec_page_state_local(lruvec,
 							 NR_LRU_BASE + i);
@@ -675,6 +714,8 @@ static unsigned long count_shadow_nodes(struct shrinker *shrinker,
 			lruvec, NR_SLAB_UNRECLAIMABLE_B) >> PAGE_SHIFT;
 	} else
 #endif
+
+
 		pages = node_present_pages(sc->nid);
 
 	max_nodes = pages >> (XA_CHUNK_SHIFT - 3);
@@ -684,6 +725,7 @@ static unsigned long count_shadow_nodes(struct shrinker *shrinker,
 	return nodes - max_nodes;
 }
 
+/* 扫描shadow nodes的lru的回调 */
 static enum lru_status shadow_lru_isolate(struct list_head *item,
 					  struct list_lru_one *lru,
 					  spinlock_t *lru_lock,
@@ -704,7 +746,7 @@ static enum lru_status shadow_lru_isolate(struct list_head *item,
 	 * pin only the address_space of the particular node we want
 	 * to reclaim, take the node off-LRU, and drop the lru_lock.
 	 */
-
+	/* mapping的ipages是node的array */
 	mapping = container_of(node->array, struct address_space, i_pages);
 
 	/* Coming from the list, invert the lock order */
@@ -724,9 +766,13 @@ static enum lru_status shadow_lru_isolate(struct list_head *item,
 		}
 	}
 
+	/* isolate此lru上面的此item */
 	list_lru_isolate(lru, item);
 	__dec_lruvec_kmem_state(node, WORKINGSET_NODES);
-
+	/* 
+	lru上面是,xanode,xanode可以获得一个mapping?
+	
+	 */
 	spin_unlock(lru_lock);
 
 	/*
@@ -738,6 +784,7 @@ static enum lru_status shadow_lru_isolate(struct list_head *item,
 		goto out_invalid;
 	if (WARN_ON_ONCE(node->count != node->nr_values))
 		goto out_invalid;
+	/* 删除node, 触发回调 */
 	xa_delete_node(node, workingset_update_node);
 	__inc_lruvec_kmem_state(node, WORKINGSET_NODERECLAIM);
 
@@ -755,6 +802,7 @@ out:
 	return ret;
 }
 
+/* 扫描shadow nodes? */
 static unsigned long scan_shadow_nodes(struct shrinker *shrinker,
 				       struct shrink_control *sc)
 {
@@ -763,6 +811,7 @@ static unsigned long scan_shadow_nodes(struct shrinker *shrinker,
 					NULL);
 }
 
+/* 进行working set的shadow的shrinker */
 static struct shrinker workingset_shadow_shrinker = {
 	.count_objects = count_shadow_nodes,
 	.scan_objects = scan_shadow_nodes,
@@ -800,15 +849,21 @@ static int __init workingset_init(void)
 	ret = prealloc_shrinker(&workingset_shadow_shrinker, "mm-shadow");
 	if (ret)
 		goto err;
+
+	/* 初始化shrink_nodes这个lru. ... */
 	ret = __list_lru_init(&shadow_nodes, true, &shadow_nodes_key,
 			      &workingset_shadow_shrinker);
 	if (ret)
 		goto err_list_lru;
+	/* 这个注册什么? */
 	register_shrinker_prepared(&workingset_shadow_shrinker);
 	return 0;
+
 err_list_lru:
 	free_prealloced_shrinker(&workingset_shadow_shrinker);
+
 err:
 	return ret;
 }
+
 module_init(workingset_init);

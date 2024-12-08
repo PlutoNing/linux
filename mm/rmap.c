@@ -147,6 +147,7 @@ static void anon_vma_chain_free(struct anon_vma_chain *anon_vma_chain)
 	kmem_cache_free(anon_vma_chain_cachep, anon_vma_chain);
 }
 
+// 关联一个vma和一个anon_vma
 static void anon_vma_chain_link(struct vm_area_struct *vma,
 				struct anon_vma_chain *avc,
 				struct anon_vma *anon_vma)
@@ -159,25 +160,31 @@ static void anon_vma_chain_link(struct vm_area_struct *vma,
 
 /**
  * __anon_vma_prepare - attach an anon_vma to a memory region
+   创建一个anon_vma并且将其附加到一个vma上?
  * @vma: the memory region in question
  *
  * This makes sure the memory mapping described by 'vma' has
  * an 'anon_vma' attached to it, so that we can associate the
  * anonymous pages mapped into it with that anon_vma.
- *
+ * 这保证了由vma描述的内存映射具有附加到它的anon_vma，以便我们
+   可以将映射到其中的匿名页面与该anon_vma关联起来。
  * The common case will be that we already have one, which
  * is handled inline by anon_vma_prepare(). But if
  * not we either need to find an adjacent mapping that we
  * can re-use the anon_vma from (very common when the only
  * reason for splitting a vma has been mprotect()), or we
  * allocate a new one.
- *
+ * 常见情况是我们已经有一个，由anon_vma_prepare()内联处理。
+   但是，如果没有，我们需要找到一个可以重用anon_vma的相邻映射
+   （当拆分vma的唯一原因是mprotect()时非常常见），或者我们分配一个新的。
  * Anon-vma allocations are very subtle, because we may have
  * optimistically looked up an anon_vma in folio_lock_anon_vma_read()
  * and that may actually touch the rwsem even in the newly
  * allocated vma (it depends on RCU to make sure that the
  * anon_vma isn't actually destroyed).
- *
+ * av的分配非常微妙，因为我们可能已经在folio_lock_anon_vma_read()中
+   乐观地查找了一个anon_vma，而这实际上可能会在新分配的vma中触摸rwsem
+   （这取决于RCU，以确保anon_vma实际上没有被销毁）。
  * As a result, we need to do proper anon_vma locking even
  * for the new allocation. At the same time, we do not want
  * to do any locking for the common case of already having
@@ -199,7 +206,7 @@ int __anon_vma_prepare(struct vm_area_struct *vma)
 
 	anon_vma = find_mergeable_anon_vma(vma);
 	allocated = NULL;
-	if (!anon_vma) {
+	if (!anon_vma) { //没找到可以合并的anon_vma, 需要新建一个
 		anon_vma = anon_vma_alloc();
 		if (unlikely(!anon_vma))
 			goto out_enomem_free_avc;
@@ -952,9 +959,11 @@ int folio_referenced(struct folio *folio, int is_locked,
 	return rwc.contended ? -1 : pra.referenced;
 }
 
+////遍历mapping里面的全部vma中, 映射了此folio的vma, 进行mkclean操作
 static int page_vma_mkclean_one(struct page_vma_mapped_walk *pvmw)
 {
 	int cleaned = 0;
+	//这个vma指向了这个folio
 	struct vm_area_struct *vma = pvmw->vma;
 	struct mmu_notifier_range range;
 	unsigned long address = pvmw->address;
@@ -962,21 +971,25 @@ static int page_vma_mkclean_one(struct page_vma_mapped_walk *pvmw)
 	/*
 	 * We have to assume the worse case ie pmd for invalidation. Note that
 	 * the folio can not be freed from this function.
+	   我们必须假设最坏的情况, 即pmd需要失效. 注意, folio不能从此函数中释放.
 	 */
+
+	//初始化mmu_notifier_range
 	mmu_notifier_range_init(&range, MMU_NOTIFY_PROTECTION_PAGE, 0,
 				vma->vm_mm, address, vma_address_end(pvmw));
 	mmu_notifier_invalidate_range_start(&range);
 
-	while (page_vma_mapped_walk(pvmw)) {
+	while (page_vma_mapped_walk(pvmw)) { //遍历指向这个pvmw->address的所有pte
 		int ret = 0;
 
 		address = pvmw->address;
-		if (pvmw->pte) {
+		if (pvmw->pte) { //处理这个pte
+		//是怎么样mk clean的呢
 			pte_t *pte = pvmw->pte;
 			pte_t entry = ptep_get(pte);
 
 			if (!pte_dirty(entry) && !pte_write(entry))
-				continue;
+				continue; //如果这个pte不脏且不可写, 就不用处理
 
 			flush_cache_page(vma, address, pte_pfn(entry));
 			entry = ptep_clear_flush(vma, address, pte);
@@ -984,7 +997,7 @@ static int page_vma_mkclean_one(struct page_vma_mapped_walk *pvmw)
 			entry = pte_mkclean(entry);
 			set_pte_at(vma->vm_mm, address, pte, entry);
 			ret = 1;
-		} else {
+		} else { //没有pte?
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 			pmd_t *pmd = pvmw->pmd;
 			pmd_t entry;
@@ -1014,9 +1027,20 @@ static int page_vma_mkclean_one(struct page_vma_mapped_walk *pvmw)
 	return cleaned;
 }
 
+//对mapping的进行rmap walk, 对folio进行mkclean操作
 static bool page_mkclean_one(struct folio *folio, struct vm_area_struct *vma,
 			     unsigned long address, void *arg)
 {
+	/* struct page_vma_mapped_walk name = {				\
+		.pfn = folio_pfn(_folio),				\
+		.nr_pages = folio_nr_pages(_folio),			\
+		.pgoff = folio_pgoff(_folio),				\
+		.vma = _vma,						\
+		.address = _address,					\
+		.flags = _flags,					\
+	}
+ */
+    //folio在vma的虚拟地址是address
 	DEFINE_FOLIO_VMA_WALK(pvmw, folio, vma, address, PVMW_SYNC);
 	int *cleaned = arg;
 
@@ -1033,6 +1057,7 @@ static bool invalid_mkclean_vma(struct vm_area_struct *vma, void *arg)
 	return true;
 }
 
+//遍历mapping里面的全部vma中, 映射了此folio的vma, 进行mkclean操作
 int folio_mkclean(struct folio *folio)
 {
 	int cleaned = 0;
@@ -1046,7 +1071,8 @@ int folio_mkclean(struct folio *folio)
 	BUG_ON(!folio_test_locked(folio));
 
 	if (!folio_mapped(folio))
-		return 0;
+		return 0;   
+	//为什么只处理mapped的?
 
 	mapping = folio_mapping(folio);
 	if (!mapping)
@@ -1146,6 +1172,7 @@ void page_move_anon_rmap(struct page *page, struct vm_area_struct *vma)
 
 /**
  * __page_set_anon_rmap - set up new anonymous rmap
+  vma的address映射到这个folio.
  * @folio:	Folio which contains page.
  * @page:	Page to add to rmap.
  * @vma:	VM area to add page to.
@@ -1166,6 +1193,7 @@ static void __page_set_anon_rmap(struct folio *folio, struct page *page,
 	 * If the page isn't exclusively mapped into this vma,
 	 * we must use the _oldest_ possible anon_vma for the
 	 * page mapping!
+	   如果这个page不是独占的, 那么我们必顋使用最老的anon_vma?
 	 */
 	if (!exclusive)
 		anon_vma = anon_vma->root;
@@ -1175,10 +1203,15 @@ static void __page_set_anon_rmap(struct folio *folio, struct page *page,
 	 * Make sure the compiler doesn't split the stores of anon_vma and
 	 * the PAGE_MAPPING_ANON type identifier, otherwise the rmap code
 	 * could mistake the mapping for a struct address_space and crash.
+	   page_idle在folio->mapping上进行无锁/乐观的rmap扫描.
+	   确保编译器不会将anon_vma和PAGE_MAPPING_ANON类型标识符的存储拆分,
+	   否则rmap代码可能会将映射错误地识别为struct address_space并崩溃.
+
 	 */
 	anon_vma = (void *) anon_vma + PAGE_MAPPING_ANON;
+	// folio的mapping指向anon_vma
 	WRITE_ONCE(folio->mapping, (struct address_space *) anon_vma);
-	folio->index = linear_page_index(vma, address);
+	folio->index = linear_page_index(vma, address); //万一folio被多个vma映射呢
 out:
 	if (exclusive)
 		SetPageAnonExclusive(page);
@@ -1280,7 +1313,9 @@ void page_add_anon_rmap(struct page *page, struct vm_area_struct *vma,
 }
 
 /**
+   
  * folio_add_new_anon_rmap - Add mapping to a new anonymous folio.
+   
  * @folio:	The folio to add the mapping to.
  * @vma:	the vm area in which the mapping is added
  * @address:	the user virtual address mapped
@@ -1298,13 +1333,14 @@ void folio_add_new_anon_rmap(struct folio *folio, struct vm_area_struct *vma,
 	int nr;
 
 	VM_BUG_ON_VMA(address < vma->vm_start || address >= vma->vm_end, vma);
+
 	__folio_set_swapbacked(folio);
 
 	if (likely(!folio_test_pmd_mappable(folio))) {
 		/* increment count (starts at -1) */
 		atomic_set(&folio->_mapcount, 0);
 		nr = 1;
-	} else {
+	} else { // 
 		/* increment count (starts at -1) */
 		atomic_set(&folio->_entire_mapcount, 0);
 		atomic_set(&folio->_nr_pages_mapped, COMPOUND_MAPPED);
@@ -1313,11 +1349,14 @@ void folio_add_new_anon_rmap(struct folio *folio, struct vm_area_struct *vma,
 	}
 
 	__lruvec_stat_mod_folio(folio, NR_ANON_MAPPED, nr);
+
 	__page_set_anon_rmap(folio, &folio->page, vma, address, 1);
 }
 
 /**
+设置file page的rmap
  * folio_add_file_rmap_range - add pte mapping to page range of a folio
+   , 添加pte映射到folio的页范围. page起始的nr_pages页是folio的, 添加这个folio
  * @folio:	The folio to add the mapping to
  * @page:	The first page to add
  * @nr_pages:	The number of pages which will be mapped
@@ -1325,7 +1364,7 @@ void folio_add_new_anon_rmap(struct folio *folio, struct vm_area_struct *vma,
  * @compound:	charge the page as compound or small page
  *
  * The page range of folio is defined by [first_page, first_page + nr_pages)
- *
+ * , folio的页范围是由[first_page, first_page + nr_pages)定义的
  * The caller needs to hold the pte lock.
  */
 void folio_add_file_rmap_range(struct folio *folio, struct page *page,
@@ -1339,18 +1378,22 @@ void folio_add_file_rmap_range(struct folio *folio, struct page *page,
 	VM_WARN_ON_FOLIO(compound && !folio_test_pmd_mappable(folio), folio);
 
 	/* Is page being mapped by PTE? Is this its first map to be added? */
-	if (likely(!compound)) {
-		do {
+	if (likely(!compound)) { // 如果不是大页
+		do { // 遍历nr_pages个page, 添加pte映射
+
+			//_mapcount是从-1开始的, 所以这里是先加1, 再判断是否为0
 			first = atomic_inc_and_test(&page->_mapcount);
-			if (first && folio_test_large(folio)) {
+			if (first && folio_test_large(folio)) {// 如果是第一个map, 并且是大页
 				first = atomic_inc_return_relaxed(mapped);
 				first = (first < COMPOUND_MAPPED);
 			}
 
 			if (first)
 				nr++;
+
 		} while (page++, --nr_pages > 0);
-	} else if (folio_test_pmd_mappable(folio)) {
+
+	} else if (folio_test_pmd_mappable(folio)) { // 如果是大页
 		/* That test is redundant: it's for safety or to optimize out */
 
 		first = atomic_inc_and_test(&folio->_entire_mapcount);
@@ -1379,12 +1422,15 @@ void folio_add_file_rmap_range(struct folio *folio, struct page *page,
 }
 
 /**
+ 设置page的rmap
  * page_add_file_rmap - add pte mapping to a file page
+   添加pte映射到文件页
  * @page:	the page to add the mapping to
  * @vma:	the vm area in which the mapping is added
  * @compound:	charge the page as compound or small page
  *
  * The caller needs to hold the pte lock.
+   , 调用者需要持有pte锁
  */
 void page_add_file_rmap(struct page *page, struct vm_area_struct *vma,
 		bool compound)
@@ -1399,6 +1445,7 @@ void page_add_file_rmap(struct page *page, struct vm_area_struct *vma,
 	else
 		nr_pages = folio_nr_pages(folio);
 
+	
 	folio_add_file_rmap_range(folio, page, nr_pages, vma, compound);
 }
 
@@ -1465,6 +1512,7 @@ void page_remove_rmap(struct page *page, struct vm_area_struct *vma,
 		__lruvec_stat_mod_folio(folio, idx, -nr_pmdmapped);
 	}
 	if (nr) {
+		/* 减少page类型的计数 */
 		idx = folio_test_anon(folio) ? NR_ANON_MAPPED : NR_FILE_MAPPED;
 		__lruvec_stat_mod_folio(folio, idx, -nr);
 
@@ -2475,12 +2523,15 @@ static void rmap_walk_anon(struct folio *folio,
 
 /*
  * rmap_walk_file - do something to file page using the object-based rmap method
+ 通过rmap方法处理文件页
  * @folio: the folio to be handled
  * @rwc: control variable according to each walk type
  * @locked: caller holds relevant rmap lock
- *
+ * rmap_walk_file 使用反向映射（基于文件对象的 rmap 方法）找到一个物理页面（或 folio）
+ 对应的所有虚拟地址，并对这些地址执行指定的操作。
  * Find all the mappings of a folio using the mapping pointer and the vma chains
  * contained in the address_space struct it points to.
+   找到包含此folio的全部mapping?
  */
 static void rmap_walk_file(struct folio *folio,
 		struct rmap_walk_control *rwc, bool locked)
@@ -2494,6 +2545,9 @@ static void rmap_walk_file(struct folio *folio,
 	 * suddenly be NULLified by truncation, it makes sure that the
 	 * structure at mapping cannot be freed and reused yet,
 	 * so we can safely take mapping->i_mmap_rwsem.
+	   这个页面锁不仅确保 page->mapping 不能被截断突然变为 NULL，
+	   还确保 mapping 指向的结构不能被释放并重用，
+	   因此我们可以安全地获取 mapping->i_mmap_rwsem。
 	 */
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 
@@ -2502,7 +2556,7 @@ static void rmap_walk_file(struct folio *folio,
 
 	pgoff_start = folio_pgoff(folio);
 	pgoff_end = pgoff_start + folio_nr_pages(folio) - 1;
-	if (!locked) {
+	if (!locked) {//如果没有加锁
 		if (i_mmap_trylock_read(mapping))
 			goto lookup;
 
@@ -2514,6 +2568,7 @@ static void rmap_walk_file(struct folio *folio,
 		i_mmap_lock_read(mapping);
 	}
 lookup:
+	//遍历mapping的i_mmap里面的vma, 具体来说是映射范围内的vma
 	vma_interval_tree_foreach(vma, &mapping->i_mmap,
 			pgoff_start, pgoff_end) {
 		unsigned long address = vma_address(&folio->page, vma);
@@ -2522,7 +2577,7 @@ lookup:
 		cond_resched();
 
 		if (rwc->invalid_vma && rwc->invalid_vma(vma, rwc->arg))
-			continue;
+			continue; //跳过vma
 
 		if (!rwc->rmap_one(folio, vma, address, rwc->arg))
 			goto done;
@@ -2535,6 +2590,7 @@ done:
 		i_mmap_unlock_read(mapping);
 }
 
+//
 void rmap_walk(struct folio *folio, struct rmap_walk_control *rwc)
 {
 	if (unlikely(folio_test_ksm(folio)))

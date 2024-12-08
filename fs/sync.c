@@ -23,6 +23,7 @@
 			SYNC_FILE_RANGE_WAIT_AFTER)
 
 /*
+	刷盘fs. 
  * Write out and wait upon all dirty data associated with this
  * superblock.  Filesystem data as well as the underlying block
  * device.  Takes the superblock lock.
@@ -51,17 +52,23 @@ int sync_filesystem(struct super_block *sb)
 	 * methods call sync_dirty_buffer() and thus effectively write one block
 	 * at a time.
 	 */
+	 /* 写回sb的脏inode */
 	writeback_inodes_sb(sb, WB_REASON_SYNC);
+
 	if (sb->s_op->sync_fs) {
 		ret = sb->s_op->sync_fs(sb, 0);
 		if (ret)
 			return ret;
 	}
+	/* 刷盘 */
 	ret = sync_blockdev_nowait(sb->s_bdev);
+
 	if (ret)
 		return ret;
-
+	
+	/* 刷盘 */
 	sync_inodes_sb(sb);
+
 	if (sb->s_op->sync_fs) {
 		ret = sb->s_op->sync_fs(sb, 1);
 		if (ret)
@@ -69,6 +76,7 @@ int sync_filesystem(struct super_block *sb)
 	}
 	return sync_blockdev(sb->s_bdev);
 }
+
 EXPORT_SYMBOL(sync_filesystem);
 
 static void sync_inodes_one_sb(struct super_block *sb, void *arg)
@@ -167,6 +175,7 @@ SYSCALL_DEFINE1(syncfs, int, fd)
 }
 
 /**
+调用fsync回调
  * vfs_fsync_range - helper to sync a range of data & metadata to disk
  * @file:		file to sync
  * @start:		offset in bytes of the beginning of data range to sync

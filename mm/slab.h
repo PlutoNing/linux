@@ -116,6 +116,8 @@ static_assert(IS_ALIGNED(offsetof(struct slab, freelist), sizeof(freelist_aba_t)
 #endif
 
 /**
+ 把folio转为slab
+ 强转?
  * folio_slab - Converts from folio to slab.
  * @folio: The folio.
  *
@@ -431,6 +433,7 @@ static inline bool kmem_cache_debug_flags(struct kmem_cache *s, slab_flags_t fla
 
 #ifdef CONFIG_MEMCG_KMEM
 /*
+ obj_cg编码在memcg_data
  * slab_objcgs - get the object cgroups vector associated with a slab
  * @slab: a pointer to the slab struct
  *

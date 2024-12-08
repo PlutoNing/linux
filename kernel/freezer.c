@@ -213,6 +213,7 @@ unlock:
 }
 
 /**
+标记自己freezable
  * set_freezable - make %current freezable
  *
  * Mark %current freezable and enter refrigerator if necessary.

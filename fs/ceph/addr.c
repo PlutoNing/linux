@@ -503,6 +503,7 @@ static void ceph_netfs_free_request(struct netfs_io_request *rreq)
 	rreq->netfs_priv = NULL;
 }
 
+/* netfs的ops */
 const struct netfs_request_ops ceph_netfs_ops = {
 	.init_request		= ceph_init_request,
 	.free_request		= ceph_netfs_free_request,
@@ -1819,11 +1820,13 @@ void ceph_fill_inline_data(struct inode *inode, struct page *locked_page,
 	}
 }
 
+/* 如何unline呢? */
 int ceph_uninline_data(struct file *file)
 {
 	struct inode *inode = file_inode(file);
 	struct ceph_inode_info *ci = ceph_inode(inode);
 	struct ceph_fs_client *fsc = ceph_inode_to_client(inode);
+	/*  */
 	struct ceph_osd_request *req = NULL;
 	struct ceph_cap_flush *prealloc_cf = NULL;
 	struct folio *folio = NULL;
@@ -1846,7 +1849,8 @@ int ceph_uninline_data(struct file *file)
 
 	if (inline_version == CEPH_INLINE_NONE)
 		return 0;
-
+	
+	/* cf是什么? */
 	prealloc_cf = ceph_alloc_cap_flush();
 	if (!prealloc_cf)
 		return -ENOMEM;
@@ -1854,6 +1858,7 @@ int ceph_uninline_data(struct file *file)
 	if (inline_version == 1) /* initial version, no data */
 		goto out_uninline;
 
+	/* 获取此file的mapping的第一个page? */
 	folio = read_mapping_folio(inode->i_mapping, 0, file);
 	if (IS_ERR(folio)) {
 		err = PTR_ERR(folio);
@@ -1865,7 +1870,7 @@ int ceph_uninline_data(struct file *file)
 	len = i_size_read(inode);
 	if (len > folio_size(folio))
 		len = folio_size(folio);
-
+	/* 初始化req */
 	req = ceph_osdc_new_request(&fsc->client->osdc, &ci->i_layout,
 				    ceph_vino(inode), 0, &len, 0, 1,
 				    CEPH_OSD_OP_CREATE, CEPH_OSD_FLAG_WRITE,
@@ -1876,6 +1881,7 @@ int ceph_uninline_data(struct file *file)
 	}
 
 	req->r_mtime = inode->i_mtime;
+	/* start? 发送? */
 	ceph_osdc_start_request(&fsc->client->osdc, req);
 	err = ceph_osdc_wait_request(&fsc->client->osdc, req);
 	ceph_osdc_put_request(req);
@@ -1974,6 +1980,7 @@ enum {
 	POOL_WRITE	= 2,
 };
 
+/*  */
 static int __ceph_pool_perm_get(struct ceph_inode_info *ci,
 				s64 pool, struct ceph_string *pool_ns)
 {
@@ -2046,7 +2053,9 @@ static int __ceph_pool_perm_get(struct ceph_inode_info *ci,
 		up_write(&mdsc->pool_perm_rwsem);
 		goto out;
 	}
+	/* 这是没在rbtree上面找到东西? */
 
+	/* 分配读的req */
 	rd_req = ceph_osdc_alloc_request(&fsc->client->osdc, NULL,
 					 1, false, GFP_NOFS);
 	if (!rd_req) {
@@ -2055,16 +2064,20 @@ static int __ceph_pool_perm_get(struct ceph_inode_info *ci,
 	}
 
 	rd_req->r_flags = CEPH_OSD_FLAG_READ;
+	/* 初始化请求 */
 	osd_req_op_init(rd_req, 0, CEPH_OSD_OP_STAT, 0);
+	/* 设置存储池? */
 	rd_req->r_base_oloc.pool = pool;
 	if (pool_ns)
 		rd_req->r_base_oloc.pool_ns = ceph_get_string(pool_ns);
 	ceph_oid_printf(&rd_req->r_base_oid, "%llx.00000000", ci->i_vino.ino);
 
+	/* 这里给req分配msg的空间 */
 	err = ceph_osdc_alloc_messages(rd_req, GFP_NOFS);
 	if (err)
 		goto out_unlock;
-
+	
+	/* 这是分配写的req???? */
 	wr_req = ceph_osdc_alloc_request(&fsc->client->osdc, NULL,
 					 1, false, GFP_NOFS);
 	if (!wr_req) {
@@ -2073,7 +2086,10 @@ static int __ceph_pool_perm_get(struct ceph_inode_info *ci,
 	}
 
 	wr_req->r_flags = CEPH_OSD_FLAG_WRITE;
+	/* 初始化这个wr req */
 	osd_req_op_init(wr_req, 0, CEPH_OSD_OP_CREATE, CEPH_OSD_OP_FLAG_EXCL);
+	/* 这是copy什么.
+	应该是同步一下读写req里面关于osd里面要读写的obj的信息 */
 	ceph_oloc_copy(&wr_req->r_base_oloc, &rd_req->r_base_oloc);
 	ceph_oid_copy(&wr_req->r_base_oid, &rd_req->r_base_oid);
 
@@ -2081,15 +2097,18 @@ static int __ceph_pool_perm_get(struct ceph_inode_info *ci,
 	if (err)
 		goto out_unlock;
 
-	/* one page should be large enough for STAT data */
+	/* one page should be large enough for STAT data.
+	这里来分配一个页面, 用于存储req获取的一些信息? */
 	pages = ceph_alloc_page_vector(1, GFP_KERNEL);
 	if (IS_ERR(pages)) {
 		err = PTR_ERR(pages);
 		goto out_unlock;
 	}
 
+	/* 设置读req需要的内存page .  */
 	osd_req_op_raw_data_in_pages(rd_req, 0, pages, PAGE_SIZE,
 				     0, false, true);
+	/* 开始请求 */
 	ceph_osdc_start_request(&fsc->client->osdc, rd_req);
 
 	wr_req->r_mtime = ci->netfs.inode.i_mtime;
@@ -2148,6 +2167,7 @@ out:
 	return err;
 }
 
+/*  */
 int ceph_pool_perm_check(struct inode *inode, int need)
 {
 	struct ceph_inode_info *ci = ceph_inode(inode);
@@ -2176,6 +2196,7 @@ int ceph_pool_perm_check(struct inode *inode, int need)
 	flags = ci->i_ceph_flags;
 	pool = ci->i_layout.pool_id;
 	spin_unlock(&ci->i_ceph_lock);
+
 check:
 	if (flags & CEPH_I_POOL_PERM) {
 		if ((need & CEPH_CAP_FILE_RD) && !(flags & CEPH_I_POOL_RD)) {

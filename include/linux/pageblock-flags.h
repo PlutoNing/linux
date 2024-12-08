@@ -40,6 +40,7 @@ extern unsigned int pageblock_order;
 /*
  * Huge pages are a constant size, but don't exceed the maximum allocation
  * granularity.
+ 9
  */
 #define pageblock_order		min_t(unsigned int, HUGETLB_PAGE_ORDER, MAX_ORDER)
 
@@ -51,7 +52,7 @@ extern unsigned int pageblock_order;
 #define pageblock_order		MAX_ORDER
 
 #endif /* CONFIG_HUGETLB_PAGE */
-
+/* 512 */
 #define pageblock_nr_pages	(1UL << pageblock_order)
 #define pageblock_align(pfn)	ALIGN((pfn), pageblock_nr_pages)
 #define pageblock_aligned(pfn)	IS_ALIGNED((pfn), pageblock_nr_pages)

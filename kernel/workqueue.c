@@ -1269,6 +1269,7 @@ void wq_worker_running(struct task_struct *task)
 }
 
 /**
+PF_WQ_WORKER的特殊处理
  * wq_worker_sleeping - a worker is going to sleep
  * @task: task going to sleep
  *

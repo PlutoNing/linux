@@ -220,6 +220,12 @@ static inline int is_syscall_trace_event(struct trace_event_call *tp_event)
 #define SYSCALL_DEFINE2(name, ...) SYSCALL_DEFINEx(2, _##name, __VA_ARGS__)
 #define SYSCALL_DEFINE3(name, ...) SYSCALL_DEFINEx(3, _##name, __VA_ARGS__)
 #define SYSCALL_DEFINE4(name, ...) SYSCALL_DEFINEx(4, _##name, __VA_ARGS__)
+/* SYSCALL_DEFINE5 是用于定义五个参数的系统调用的宏。
+prctl 是系统调用的名称。
+参数列表包括：
+int option：指定操作类型，用于指示调用要执行的具体功能。
+unsigned long arg2、unsigned long arg3、unsigned long arg4、unsigned long arg5：
+操作的附加参数，不同的 option 可能需要不同的参数。 */
 #define SYSCALL_DEFINE5(name, ...) SYSCALL_DEFINEx(5, _##name, __VA_ARGS__)
 #define SYSCALL_DEFINE6(name, ...) SYSCALL_DEFINEx(6, _##name, __VA_ARGS__)
 

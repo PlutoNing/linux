@@ -214,10 +214,11 @@ struct css_set {
 	 * Set of subsystem states, one for each subsystem. This array is
 	 * immutable after creation apart from the init_css_set during
 	 * subsystem registration (at boot time).
+	 一组css .
 	 */
 	struct cgroup_subsys_state *subsys[CGROUP_SUBSYS_COUNT];
 
-	/* reference count */
+	/* reference count  参考计数，跟踪使用这个 css_set 的任务数量*/
 	refcount_t refcount;
 
 	/*
@@ -228,7 +229,8 @@ struct css_set {
 	 */
 	struct css_set *dom_cset;
 
-	/* the default cgroup associated with this css_set */
+	/* the default cgroup associated with this css_set
+	关联的默认 cgroup，表示当前 css_set 关联的 cgroup */
 	struct cgroup *dfl_cgrp;
 
 	/* internal task count, protected by css_set_lock */
@@ -308,6 +310,8 @@ struct cgroup_base_stat {
 };
 
 /*
+实现控制组内资源使用情况的精确计量，特别是在多核 CPU 系统中，使得每个 CPU 
+的统计信息独立且高效。
  * rstat - cgroup scalable recursive statistics.  Accounting is done
  * per-cpu in cgroup_rstat_cpu which is then lazily propagated up the
  * hierarchy on reads.
@@ -331,13 +335,17 @@ struct cgroup_rstat_cpu {
 	/*
 	 * ->bsync protects ->bstat.  These are the only fields which get
 	 * updated in the hot path.
+	 用于保护 bstat 字段，确保在高频更新时的原子性。它允许以一种高效的方式在
+	 多线程环境中更新统计信息。
 	 */
 	struct u64_stats_sync bsync;
+	/* 存储基础资源统计信息（如 CPU 使用率、内存等） */
 	struct cgroup_base_stat bstat;
 
 	/*
 	 * Snapshots at the last reading.  These are used to calculate the
 	 * deltas to propagate to the global counters.
+	 存储上次读取时的统计快照，用于计算增量变化，以便在全局计数器中进行更新
 	 */
 	struct cgroup_base_stat last_bstat;
 
@@ -346,16 +354,20 @@ struct cgroup_rstat_cpu {
 	 * the cgroup and its descendants. Currently it can be read via
 	 * eBPF/drgn etc, and we are still trying to determine how to
 	 * expose it in the cgroupfs interface.
+	 记录当前 cgroup 及其子 cgroup 的累计资源使用情况，可以通过 eBPF 等工具读取，用于监控和调试。
 	 */
 	struct cgroup_base_stat subtree_bstat;
 
 	/*
 	 * Snapshots at the last reading. These are used to calculate the
 	 * deltas to propagate to the per-cpu subtree_bstat.
+	 用于存储上次读取时的子树统计快照，便于计算增量变化
 	 */
 	struct cgroup_base_stat last_subtree_bstat;
 
 	/*
+	维护自上次读取以来在此 CPU 上发生统计更新的子 cgroup。通过指向更新的 cgroup
+	 的单链表实现，节省了存储空间并提高了效率。
 	 * Child cgroups with stat updates on this cpu since the last read
 	 * are linked on the parent's ->updated_children through
 	 * ->updated_next.
@@ -487,7 +499,9 @@ struct cgroup {
 	struct cgroup *dom_cgrp;
 	struct cgroup *old_dom_cgrp;		/* used while enabling threaded */
 
-	/* per-cpu recursive resource statistics */
+	/* per-cpu recursive resource statistics
+	pcp的rstat
+	 */
 	struct cgroup_rstat_cpu __percpu *rstat_cpu;
 	struct list_head rstat_css_list;
 
@@ -509,7 +523,8 @@ struct cgroup {
 	/* used to schedule release agent */
 	struct work_struct release_agent_work;
 
-	/* used to track pressure stalls */
+	/* used to track pressure stalls
+	此cgroup的psi */
 	struct psi_group *psi;
 
 	/* used to store eBPF programs */
@@ -529,34 +544,40 @@ struct cgroup {
 	struct cgroup *ancestors[];
 };
 
-/*
+/*表示 cgroup 层级结构的根节点。
  * A cgroup_root represents the root of a cgroup hierarchy, and may be
  * associated with a kernfs_root to form an active hierarchy.  This is
  * internal to cgroup core.  Don't access directly from controllers.
  */
 struct cgroup_root {
-	struct kernfs_root *kf_root;
+	struct kernfs_root *kf_root;// 与此 cgroup 层级结构关联的 kernfs 根节点
 
 	/* The bitmask of subsystems attached to this hierarchy */
-	unsigned int subsys_mask;
+	unsigned int subsys_mask; // 附加到此层级结构的子系统（控制器）位掩码
 
-	/* Unique id for this hierarchy. */
+	/* Unique id for this hierarchy.   唯一的层级结构 ID */
 	int hierarchy_id;
 
 	/*
 	 * The root cgroup. The containing cgroup_root will be destroyed on its
 	 * release. cgrp->ancestors[0] will be used overflowing into the
 	 * following field. cgrp_ancestor_storage must immediately follow.
+	 根 cgroup。包含的 cgroup_root 将在释放时被销毁。
+     * cgrp->ancestors[0] 将溢出到下一个字段 cgrp_ancestor_storage。
 	 */
 	struct cgroup cgrp;
 
-	/* must follow cgrp for cgrp->ancestors[0], see above */
+	/* must follow cgrp for cgrp->ancestors[0], see above
+	必须紧跟在 cgrp 之后，以便用于 cgrp->ancestors[0] 
+	这里好像是零长数组 */
 	struct cgroup *cgrp_ancestor_storage;
 
-	/* Number of cgroups in the hierarchy, used only for /proc/cgroups */
+	/* Number of cgroups in the hierarchy, used only for /proc/cgroups
+	该层级结构中的 cgroup 数量 */
 	atomic_t nr_cgrps;
 
-	/* A list running through the active hierarchies */
+	/* A list running through the active hierarchies
+	通过这个挂接到系统全部的rootcg链表 */
 	struct list_head root_list;
 
 	/* Hierarchy-specific flags */
@@ -565,7 +586,8 @@ struct cgroup_root {
 	/* The path to use for release notifications. */
 	char release_agent_path[PATH_MAX];
 
-	/* The name for this hierarchy - may be empty */
+	/* The name for this hierarchy - may be empty 
+	此层级结构的名称，可能为空*/
 	char name[MAX_CGROUP_ROOT_NAMELEN];
 };
 

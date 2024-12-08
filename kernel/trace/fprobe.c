@@ -155,7 +155,9 @@ static int symbols_cmp(const void *a, const void *b)
 	return strcmp(*str_a, *str_b);
 }
 
-/* Convert ftrace location address from symbols */
+/* 
+从sym转换到ftrace loc?
+Convert ftrace location address from symbols */
 static unsigned long *get_ftrace_locations(const char **syms, int num)
 {
 	unsigned long *addrs;

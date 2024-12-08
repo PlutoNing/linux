@@ -11,6 +11,8 @@ extern struct rw_semaphore shrinker_rwsem;
 extern struct list_head shrinker_list;
 
 static DEFINE_IDA(shrinker_debugfs_ida);
+/* shrinker机制在debugfs的root
+2024年10月13日01:14:15 */
 static struct dentry *shrinker_debugfs_root;
 
 static unsigned long shrinker_count_objects(struct shrinker *shrinker,
@@ -99,6 +101,7 @@ static int shrinker_debugfs_count_show(struct seq_file *m, void *v)
 }
 DEFINE_SHOW_ATTRIBUTE(shrinker_debugfs_count);
 
+/*  */
 static int shrinker_debugfs_scan_open(struct inode *inode, struct file *file)
 {
 	file->private_data = inode->i_private;
@@ -165,12 +168,15 @@ static ssize_t shrinker_debugfs_scan_write(struct file *file,
 	return size;
 }
 
+/* 每个shrinker在debugfs有此两个文件
+这是scan的fops */
 static const struct file_operations shrinker_debugfs_scan_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = shrinker_debugfs_scan_open,
 	.write	 = shrinker_debugfs_scan_write,
 };
 
+/* 把shrinker添加到debugfs */
 int shrinker_debugfs_add(struct shrinker *shrinker)
 {
 	struct dentry *entry;
@@ -186,6 +192,7 @@ int shrinker_debugfs_add(struct shrinker *shrinker)
 	id = ida_alloc(&shrinker_debugfs_ida, GFP_KERNEL);
 	if (id < 0)
 		return id;
+	/*  */
 	shrinker->debugfs_id = id;
 
 	snprintf(buf, sizeof(buf), "%s-%d", shrinker->name, id);
@@ -198,6 +205,7 @@ int shrinker_debugfs_add(struct shrinker *shrinker)
 	}
 	shrinker->debugfs_entry = entry;
 
+	/* 每个shrinker在debugfs有此两个文件 */
 	debugfs_create_file("count", 0440, entry, shrinker,
 			    &shrinker_debugfs_count_fops);
 	debugfs_create_file("scan", 0220, entry, shrinker,
@@ -268,6 +276,7 @@ void shrinker_debugfs_remove(struct dentry *debugfs_entry, int debugfs_id)
 	ida_free(&shrinker_debugfs_ida, debugfs_id);
 }
 
+/* 初始化shrinker机制在debugfs的root */
 static int __init shrinker_debugfs_init(void)
 {
 	struct shrinker *shrinker;

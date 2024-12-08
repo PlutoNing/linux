@@ -94,7 +94,9 @@ static inline void verify_lreq_locked(struct ceph_osd_linger_request *lreq) { }
 #endif
 
 /*
- * calculate the mapping of a file extent onto an object, and fill out the
+
+ * calculate the mapping of a file extent onto an object, 
+ and fill out the
  * request accordingly.  shorten extent as necessary if it crosses an
  * object boundary.
  *
@@ -127,6 +129,7 @@ static void ceph_osd_data_init(struct ceph_osd_data *osd_data)
 }
 
 /*
+把pages赋值给这个接受缓冲.
  * Consumes @pages if @own_pages is true.
  */
 static void ceph_osd_data_pages_init(struct ceph_osd_data *osd_data,
@@ -178,6 +181,8 @@ static void ceph_osd_iter_init(struct ceph_osd_data *osd_data,
 	osd_data->iter = *iter;
 }
 
+/* 什么意思?
+获取此req的which对应的op的接受数据缓冲 */
 static struct ceph_osd_data *
 osd_req_op_raw_data_in(struct ceph_osd_request *osd_req, unsigned int which)
 {
@@ -194,14 +199,17 @@ osd_req_op_extent_osd_data(struct ceph_osd_request *osd_req,
 }
 EXPORT_SYMBOL(osd_req_op_extent_osd_data);
 
+/* 
+@pages准备赋值给req的分配的页面. */
 void osd_req_op_raw_data_in_pages(struct ceph_osd_request *osd_req,
 			unsigned int which, struct page **pages,
 			u64 length, u32 alignment,
 			bool pages_from_pool, bool own_pages)
 {
 	struct ceph_osd_data *osd_data;
-
+	/* 获取which的接受缓冲 */
 	osd_data = osd_req_op_raw_data_in(osd_req, which);
+
 	ceph_osd_data_pages_init(osd_data, pages, length, alignment,
 				pages_from_pool, own_pages);
 }
@@ -532,6 +540,7 @@ static void ceph_osdc_release_request(struct kref *kref)
 		kfree(req);
 }
 
+/* get一下引用 */
 void ceph_osdc_get_request(struct ceph_osd_request *req)
 {
 	dout("%s %p (was %d)\n", __func__, req,
@@ -540,6 +549,7 @@ void ceph_osdc_get_request(struct ceph_osd_request *req)
 }
 EXPORT_SYMBOL(ceph_osdc_get_request);
 
+/* put引用 */
 void ceph_osdc_put_request(struct ceph_osd_request *req)
 {
 	if (req) {
@@ -550,6 +560,7 @@ void ceph_osdc_put_request(struct ceph_osd_request *req)
 }
 EXPORT_SYMBOL(ceph_osdc_put_request);
 
+/* 初始化osd的req */
 static void request_init(struct ceph_osd_request *req)
 {
 	/* req only, each op is zeroed in osd_req_op_init() */
@@ -564,6 +575,7 @@ static void request_init(struct ceph_osd_request *req)
 	target_init(&req->r_t);
 }
 
+/* 分配osd的req的内存 */
 struct ceph_osd_request *ceph_osdc_alloc_request(struct ceph_osd_client *osdc,
 					       struct ceph_snap_context *snapc,
 					       unsigned int num_ops,
@@ -571,7 +583,7 @@ struct ceph_osd_request *ceph_osdc_alloc_request(struct ceph_osd_client *osdc,
 					       gfp_t gfp_flags)
 {
 	struct ceph_osd_request *req;
-
+	/* 根据不同的要求,从不同的地方分配内存 ... */
 	if (use_mempool) {
 		BUG_ON(num_ops > CEPH_OSD_SLAB_OPS);
 		req = mempool_alloc(osdc->req_mempool, gfp_flags);
@@ -601,6 +613,7 @@ static int ceph_oloc_encoding_size(const struct ceph_object_locator *oloc)
 	return 8 + 4 + 4 + 4 + (oloc->pool_ns ? oloc->pool_ns->len : 0);
 }
 
+/* 分配req的msg */
 static int __ceph_osdc_alloc_messages(struct ceph_osd_request *req, gfp_t gfp,
 				      int num_request_data_items,
 				      int num_reply_data_items)
@@ -613,7 +626,8 @@ static int __ceph_osdc_alloc_messages(struct ceph_osd_request *req, gfp_t gfp,
 	WARN_ON(ceph_oid_empty(&req->r_base_oid));
 	WARN_ON(ceph_oloc_empty(&req->r_base_oloc));
 
-	/* create request message */
+	/* create request message
+	这里根据通信协议的格式设置msg的大小 */
 	msg_size = CEPH_ENCODING_START_BLK_LEN +
 			CEPH_PGID_ENCODING_LEN + 1; /* spgid */
 	msg_size += 4 + 4 + 4; /* hash, osdmap_epoch, flags */
@@ -642,7 +656,8 @@ static int __ceph_osdc_alloc_messages(struct ceph_osd_request *req, gfp_t gfp,
 	memset(msg->front.iov_base, 0, msg->front.iov_len);
 	req->r_request = msg;
 
-	/* create reply message */
+	/* create reply message
+	开始计算reply msg的大小, 并分配内存, 赋值到req */
 	msg_size = OSD_OPREPLY_FRONT_LEN;
 	msg_size += req->r_base_oid.name_len;
 	msg_size += req->r_num_ops * sizeof(struct ceph_osd_op);
@@ -672,6 +687,8 @@ __CEPH_FORALL_OSD_OPS(GENERATE_CASE)
 	}
 }
 
+/* 获取req的什么数量?
+根据req的不同类型,设置需要的msg数量? */
 static void get_num_data_items(struct ceph_osd_request *req,
 			       int *num_request_data_items,
 			       int *num_reply_data_items)
@@ -719,6 +736,8 @@ static void get_num_data_items(struct ceph_osd_request *req,
 }
 
 /*
+给req分配msg? msg好像就是发送和接受的协议包msg.
+msg是什么
  * oid, oloc and OSD op opcode(s) must be filled in before this function
  * is called.
  */
@@ -733,6 +752,7 @@ int ceph_osdc_alloc_messages(struct ceph_osd_request *req, gfp_t gfp)
 EXPORT_SYMBOL(ceph_osdc_alloc_messages);
 
 /*
+对于opcode不附带数据的osd req的初始化
  * This is an osd op init function for opcodes that have no data or
  * other information associated with them.  It also serves as a
  * common init routine for all the other init functions, below.
@@ -755,11 +775,13 @@ osd_req_op_init(struct ceph_osd_request *osd_req, unsigned int which,
 }
 EXPORT_SYMBOL(osd_req_op_init);
 
+/* opcode附带数据的op的初始化 */
 void osd_req_op_extent_init(struct ceph_osd_request *osd_req,
 				unsigned int which, u16 opcode,
 				u64 offset, u64 length,
 				u64 truncate_size, u32 truncate_seq)
 {
+	/* 先初始化,  */
 	struct ceph_osd_req_op *op = osd_req_op_init(osd_req, which,
 						     opcode, 0);
 	size_t payload_len = 0;
@@ -767,7 +789,7 @@ void osd_req_op_extent_init(struct ceph_osd_request *osd_req,
 	BUG_ON(opcode != CEPH_OSD_OP_READ && opcode != CEPH_OSD_OP_WRITE &&
 	       opcode != CEPH_OSD_OP_WRITEFULL && opcode != CEPH_OSD_OP_ZERO &&
 	       opcode != CEPH_OSD_OP_TRUNCATE && opcode != CEPH_OSD_OP_SPARSE_READ);
-
+	/* 看来extent对应req的data */
 	op->extent.offset = offset;
 	op->extent.length = length;
 	op->extent.truncate_size = truncate_size;
@@ -1068,9 +1090,11 @@ static u32 osd_req_encode_op(struct ceph_osd_op *dst,
 }
 
 /*
+初始化一个对osd的请求?
  * build new request AND message, calculate layout, and adjust file
  * extent as needed.
- *
+ * @opcode: req的opcode ...
+ @flags: opcode的flag ...
  * if the file was recently truncated, we include information about its
  * old and new size so that the object can be updated appropriately.  (we
  * avoid synchronously deleting truncated objects because it's slow.)
@@ -1096,7 +1120,7 @@ struct ceph_osd_request *ceph_osdc_new_request(struct ceph_osd_client *osdc,
 	       opcode != CEPH_OSD_OP_ZERO && opcode != CEPH_OSD_OP_TRUNCATE &&
 	       opcode != CEPH_OSD_OP_CREATE && opcode != CEPH_OSD_OP_DELETE &&
 	       opcode != CEPH_OSD_OP_SPARSE_READ);
-
+	/* 分配初始化req */
 	req = ceph_osdc_alloc_request(osdc, snapc, num_ops, use_mempool,
 					GFP_NOFS);
 	if (!req) {
@@ -1109,9 +1133,9 @@ struct ceph_osd_request *ceph_osdc_new_request(struct ceph_osd_client *osdc,
 	if (r)
 		goto fail;
 
-	if (opcode == CEPH_OSD_OP_CREATE || opcode == CEPH_OSD_OP_DELETE) {
+	if (opcode == CEPH_OSD_OP_CREATE || opcode == CEPH_OSD_OP_DELETE) {/* 不附带数据的op */
 		osd_req_op_init(req, which, opcode, 0);
-	} else {
+	} else {/* 附带数据的op */
 		u32 object_size = layout->object_size;
 		u32 object_base = off - objoff;
 		if (!(truncate_seq == 1 && truncate_size == -1ULL)) {
@@ -1126,7 +1150,7 @@ struct ceph_osd_request *ceph_osdc_new_request(struct ceph_osd_client *osdc,
 		osd_req_op_extent_init(req, which, opcode, objoff, objlen,
 				       truncate_size, truncate_seq);
 	}
-
+	/* 这里设置target相关的东西 */
 	req->r_base_oloc.pool = layout->pool_id;
 	req->r_base_oloc.pool_ns = ceph_try_get_string(layout->pool_ns);
 	ceph_oid_printf(&req->r_base_oid, "%llx.%08llx", vino.ino, objnum);
@@ -1136,7 +1160,7 @@ struct ceph_osd_request *ceph_osdc_new_request(struct ceph_osd_client *osdc,
 	if (flags & CEPH_OSD_FLAG_WRITE)
 		req->r_data_offset = off;
 
-	if (num_ops > 1) {
+	if (num_ops > 1) {/* req有多个ops */
 		int num_req_ops, num_rep_ops;
 
 		/*
@@ -1168,6 +1192,7 @@ struct ceph_osd_request *ceph_osdc_new_request(struct ceph_osd_client *osdc,
 fail:
 	ceph_osdc_put_request(req);
 	return ERR_PTR(r);
+
 }
 EXPORT_SYMBOL(ceph_osdc_new_request);
 
@@ -1234,6 +1259,7 @@ static bool osd_registered(struct ceph_osd *osd)
 }
 
 /*
+初始化创建的osd
  * Assumes @osd is zero-initialized.
  */
 static void osd_init(struct ceph_osd *osd)
@@ -1251,6 +1277,7 @@ static void osd_init(struct ceph_osd *osd)
 	mutex_init(&osd->lock);
 }
 
+/* sparse read是什么 */
 static void ceph_init_sparse_read(struct ceph_sparse_read *sr)
 {
 	kfree(sr->sr_extent);
@@ -1277,6 +1304,8 @@ static void osd_cleanup(struct ceph_osd *osd)
 }
 
 /*
+创建osd?
+@onum好像是osd的id?
  * Track open sessions with osds.
  */
 static struct ceph_osd *create_osd(struct ceph_osd_client *osdc, int onum)
@@ -1288,11 +1317,12 @@ static struct ceph_osd *create_osd(struct ceph_osd_client *osdc, int onum)
 	osd = kzalloc(sizeof(*osd), GFP_NOIO | __GFP_NOFAIL);
 	osd_init(osd);
 	osd->o_osdc = osdc;
-	osd->o_osd = onum;
+	osd->o_osd = onum; /*  */
 	osd->o_sparse_op_idx = -1;
 
 	ceph_init_sparse_read(&osd->o_sparse_read);
 
+	/* 初始化osd的conn */
 	ceph_con_init(&osd->o_con, osd, &osd_con_ops, &osdc->client->msgr);
 
 	return osd;
@@ -1320,6 +1350,7 @@ static void put_osd(struct ceph_osd *osd)
 	}
 }
 
+/* 查找osd */
 DEFINE_RB_FUNCS(osd, struct ceph_osd, o_osd, o_node)
 
 static void __move_osd_to_lru(struct ceph_osd *osd)
@@ -1436,6 +1467,7 @@ static int reopen_osd(struct ceph_osd *osd)
 	return 0;
 }
 
+/* 找到req的osd??? */
 static struct ceph_osd *lookup_create_osd(struct ceph_osd_client *osdc, int o,
 					  bool wrlocked)
 {
@@ -1447,15 +1479,18 @@ static struct ceph_osd *lookup_create_osd(struct ceph_osd_client *osdc, int o,
 		verify_osdc_locked(osdc);
 
 	if (o != CEPH_HOMELESS_OSD)
+		/* 在rbtree查找 */
 		osd = lookup_osd(&osdc->osds, o);
 	else
 		osd = &osdc->homeless_osd;
-	if (!osd) {
+
+	if (!osd) {/* rbtree上面没有osd */
 		if (!wrlocked)
 			return ERR_PTR(-EAGAIN);
-
+		/* 创建并初始化osd */
 		osd = create_osd(osdc, o);
 		insert_osd(&osdc->osds, osd);
+		/* 打开osd的链接 */
 		ceph_con_open(&osd->o_con, CEPH_ENTITY_TYPE_OSD, osd->o_osd,
 			      &osdc->osdmap->osd_addr[osd->o_osd]);
 	}
@@ -1507,6 +1542,7 @@ static void unlink_request(struct ceph_osd *osd, struct ceph_osd_request *req)
 		atomic_dec(&osd->o_osdc->num_homeless);
 }
 
+/* 判断这个pool是否full */
 static bool __pool_full(struct ceph_pg_pool_info *pi)
 {
 	return pi->flags & CEPH_POOL_FLAG_FULL;
@@ -1527,6 +1563,7 @@ static bool have_pool_full(struct ceph_osd_client *osdc)
 	return false;
 }
 
+/* 如何判断poll是否full */
 static bool pool_full(struct ceph_osd_client *osdc, s64 pool_id)
 {
 	struct ceph_pg_pool_info *pi;
@@ -2030,6 +2067,7 @@ static void hoid_fill_from_target(struct ceph_hobject_id *hoid,
 	ceph_hoid_build_hash_cache(hoid);
 }
 
+/* 要阻塞此req吗? */
 static bool should_plug_request(struct ceph_osd_request *req)
 {
 	struct ceph_osd *osd = req->r_osd;
@@ -2158,6 +2196,7 @@ static void encode_oloc(void **p, void *end,
 		ceph_encode_32(p, 0);
 }
 
+/*  */
 static void encode_request_partial(struct ceph_osd_request *req,
 				   struct ceph_msg *msg)
 {
@@ -2328,6 +2367,7 @@ static void encode_request_finish(struct ceph_msg *msg)
 }
 
 /*
+submit req调用此函数
  * @req has to be assigned a tid and registered.
  */
 static void send_request(struct ceph_osd_request *req)
@@ -2344,6 +2384,7 @@ static void send_request(struct ceph_osd_request *req)
 	/*
 	 * We may have a previously queued request message hanging
 	 * around.  Cancel it to avoid corrupting the msgr.
+	 
 	 */
 	if (req->r_sent)
 		ceph_msg_revoke(req->r_request);
@@ -2353,7 +2394,7 @@ static void send_request(struct ceph_osd_request *req)
 		req->r_flags |= CEPH_OSD_FLAG_RETRY;
 	else
 		WARN_ON(req->r_flags & CEPH_OSD_FLAG_RETRY);
-
+	/* 编码msg */
 	encode_request_partial(req, req->r_request);
 
 	dout("%s req %p tid %llu to pgid %llu.%x spgid %llu.%xs%d osd%d e%u flags 0x%x attempt %d\n",
@@ -2368,6 +2409,7 @@ static void send_request(struct ceph_osd_request *req)
 
 	req->r_sent = osd->o_incarnation;
 	req->r_request->hdr.tid = cpu_to_le64(req->r_tid);
+	/* 发送数据? */
 	ceph_con_send(&osd->o_con, ceph_msg_get(req->r_request));
 }
 
@@ -2395,6 +2437,7 @@ static void maybe_request_map(struct ceph_osd_client *osdc)
 static void complete_request(struct ceph_osd_request *req, int err);
 static void send_map_check(struct ceph_osd_request *req);
 
+/* 具体的提交请求的函数 */
 static void __submit_request(struct ceph_osd_request *req, bool wrlocked)
 {
 	struct ceph_osd_client *osdc = req->r_osdc;
@@ -2411,7 +2454,8 @@ again:
 	ct_res = calc_target(osdc, &req->r_t, false);
 	if (ct_res == CALC_TARGET_POOL_DNE && !wrlocked)
 		goto promote;
-
+	
+	/* 查找oid对应的osd */
 	osd = lookup_create_osd(osdc, req->r_t.osd, wrlocked);
 	if (IS_ERR(osd)) {
 		WARN_ON(PTR_ERR(osd) != -EAGAIN || wrlocked);
@@ -2441,6 +2485,7 @@ again:
 				     CEPH_OSD_FLAG_FULL_FORCE)) &&
 		   (ceph_osdmap_flag(osdc, CEPH_OSDMAP_FULL) ||
 		    pool_full(osdc, req->r_t.base_oloc.pool))) {
+				/* 这个是什么情况? map或者pool现在满了 */
 		dout("req %p full/pool_full\n", req);
 		if (ceph_test_opt(osdc->client, ABORT_ON_FULL)) {
 			err = -ENOSPC;
@@ -2459,6 +2504,7 @@ again:
 		maybe_request_map(osdc);
 	}
 
+	/* 现在开始锁osd */
 	mutex_lock(&osd->lock);
 	/*
 	 * Assign the tid atomically with send_request() to protect
@@ -2488,6 +2534,8 @@ promote:
 	goto again;
 }
 
+/* account什么? 
+统计一些信息, 以及设置一些用于统计的信息*/
 static void account_request(struct ceph_osd_request *req)
 {
 	WARN_ON(req->r_flags & (CEPH_OSD_FLAG_ACK | CEPH_OSD_FLAG_ONDISK));
@@ -2500,8 +2548,10 @@ static void account_request(struct ceph_osd_request *req)
 	req->r_start_latency = ktime_get();
 }
 
+/* 提交请求? */
 static void submit_request(struct ceph_osd_request *req, bool wrlocked)
 {
+	/* get ref */
 	ceph_osdc_get_request(req);
 	account_request(req);
 	__submit_request(req, wrlocked);
@@ -2552,6 +2602,7 @@ static void complete_request_workfn(struct work_struct *work)
 }
 
 /*
+submit_req出错的话调用这个.
  * This is open-coded in handle_reply().
  */
 static void complete_request(struct ceph_osd_request *req, int err)
@@ -4666,7 +4717,10 @@ bad:
 	pr_err("osdc handle_watch_notify corrupt msg\n");
 }
 
+
 /*
+开始请求, 所以这个开始到底是做什么?
+哦哦.submit,
  * Register request, send initial attempt.
  */
 void ceph_osdc_start_request(struct ceph_osd_client *osdc,
@@ -4730,6 +4784,7 @@ int ceph_osdc_wait_request(struct ceph_osd_client *osdc,
 EXPORT_SYMBOL(ceph_osdc_wait_request);
 
 /*
+刷新osdc
  * sync - wait for all in-flight requests to flush.  avoid starvation.
  */
 void ceph_osdc_sync(struct ceph_osd_client *osdc)
@@ -4740,6 +4795,7 @@ void ceph_osdc_sync(struct ceph_osd_client *osdc)
 again:
 	down_read(&osdc->lock);
 	for (n = rb_first(&osdc->osds); n; n = rb_next(n)) {
+		/* 取出osdc的全部osd */
 		struct ceph_osd *osd = rb_entry(n, struct ceph_osd, o_node);
 
 		mutex_lock(&osd->lock);
@@ -4748,17 +4804,19 @@ again:
 			    rb_entry(p, struct ceph_osd_request, r_node);
 
 			if (req->r_tid > last_tid)
-				break;
+				break; /* 说明已经发送了? */
 
 			if (!(req->r_flags & CEPH_OSD_FLAG_WRITE))
-				continue;
+				continue; /* 不是写的req, 也不要同步 */
 
 			ceph_osdc_get_request(req);
 			mutex_unlock(&osd->lock);
 			up_read(&osdc->lock);
 			dout("%s waiting on req %p tid %llu last_tid %llu\n",
 			     __func__, req, req->r_tid, last_tid);
+			/* 干等? */
 			wait_for_completion(&req->r_completion);
+
 			ceph_osdc_put_request(req);
 			goto again;
 		}
@@ -5951,6 +6009,8 @@ next_op:
 	return ret;
 }
 
+/* osd的conn ops
+代表链接上面的操作? */
 static const struct ceph_connection_operations osd_con_ops = {
 	.get = osd_get_con,
 	.put = osd_put_con,

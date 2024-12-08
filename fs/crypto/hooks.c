@@ -8,6 +8,7 @@
 #include "fscrypt_private.h"
 
 /**
+ 准备打开一个可能是加密的常规file .
  * fscrypt_file_open() - prepare to open a possibly-encrypted regular file
  * @inode: the inode being opened
  * @filp: the struct file being set up

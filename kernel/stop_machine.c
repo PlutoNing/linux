@@ -24,6 +24,7 @@
 #include <linux/sched/wake_q.h>
 
 /*
+ 
  * Structure to determine completion condition and record errors.  May
  * be shared by works on different cpus.
  */
@@ -33,7 +34,10 @@ struct cpu_stop_done {
 	struct completion	completion;	/* fired if nr_todo reaches 0 */
 };
 
-/* the actual stopper, one per every possible cpu, enabled on online cpus */
+/* 
+pcp的变量.
+停机函数在里面
+the actual stopper, one per every possible cpu, enabled on online cpus */
 struct cpu_stopper {
 	struct task_struct	*thread;
 
@@ -45,7 +49,7 @@ struct cpu_stopper {
 	unsigned long		caller;
 	cpu_stop_fn_t		fn;
 };
-
+/*  */
 static DEFINE_PER_CPU(struct cpu_stopper, cpu_stopper);
 static bool stop_machine_initialized = false;
 
@@ -89,7 +93,9 @@ static void __cpu_stop_queue_work(struct cpu_stopper *stopper,
 	wake_q_add(wakeq, stopper->thread);
 }
 
-/* queue @work to @stopper.  if offline, @work is completed immediately */
+/* 
+触发停机的异步
+queue @work to @stopper.  if offline, @work is completed immediately */
 static bool cpu_stop_queue_work(unsigned int cpu, struct cpu_stop_work *work)
 {
 	struct cpu_stopper *stopper = &per_cpu(cpu_stopper, cpu);
@@ -100,7 +106,7 @@ static bool cpu_stop_queue_work(unsigned int cpu, struct cpu_stop_work *work)
 	preempt_disable();
 	raw_spin_lock_irqsave(&stopper->lock, flags);
 	enabled = stopper->enabled;
-	if (enabled)
+	if (enabled)/* 如果stopper是enabled的 */
 		__cpu_stop_queue_work(stopper, work, &wakeq);
 	else if (work->done)
 		cpu_stop_signal_done(work->done);
@@ -153,7 +159,9 @@ int stop_one_cpu(unsigned int cpu, cpu_stop_fn_t fn, void *arg)
 	return done.ret;
 }
 
-/* This controls the threads on each CPU. */
+/* 
+表示cpu的状态
+This controls the threads on each CPU. */
 enum multi_stop_state {
 	/* Dummy starting state for thread. */
 	MULTI_STOP_NONE,
@@ -177,7 +185,7 @@ struct multi_stop_data {
 	enum multi_stop_state	state;
 	atomic_t		thread_ack;
 };
-
+/* 设置msdata的新状态 */
 static void set_state(struct multi_stop_data *msdata,
 		      enum multi_stop_state newstate)
 {
@@ -193,13 +201,15 @@ static void ack_state(struct multi_stop_data *msdata)
 	if (atomic_dec_and_test(&msdata->thread_ack))
 		set_state(msdata, msdata->state + 1);
 }
-
+/*  */
 notrace void __weak stop_machine_yield(const struct cpumask *cpumask)
 {
 	cpu_relax();
 }
 
-/* This is the cpu_stop function which stops the CPU. */
+/* 
+停止cpu
+This is the cpu_stop function which stops the CPU. */
 static int multi_cpu_stop(void *data)
 {
 	struct multi_stop_data *msdata = data;
@@ -214,7 +224,7 @@ static int multi_cpu_stop(void *data)
 	 * already be disabled.  Save the state and restore it on exit.
 	 */
 	local_save_flags(flags);
-
+	/* 确定涉及的cpu? */
 	if (!msdata->active_cpus) {
 		cpumask = cpu_online_mask;
 		is_active = cpu == cpumask_first(cpumask);
@@ -225,7 +235,8 @@ static int multi_cpu_stop(void *data)
 
 	/* Simple state machine */
 	do {
-		/* Chill out and ensure we re-read multi_stop_state. */
+		/* Chill out and ensure we re-read multi_stop_state.
+		运行nop */
 		stop_machine_yield(cpumask);
 		newstate = READ_ONCE(msdata->state);
 		if (newstate != curstate) {
@@ -387,7 +398,8 @@ bool stop_one_cpu_nowait(unsigned int cpu, cpu_stop_fn_t fn, void *arg,
 	*work_buf = (struct cpu_stop_work){ .fn = fn, .arg = arg, .caller = _RET_IP_, };
 	return cpu_stop_queue_work(cpu, work_buf);
 }
-
+/* @arg可能是msdata
+@fn可能是停机cpu的函数 */
 static bool queue_stop_cpus_work(const struct cpumask *cpumask,
 				 cpu_stop_fn_t fn, void *arg,
 				 struct cpu_stop_done *done)
@@ -403,6 +415,7 @@ static bool queue_stop_cpus_work(const struct cpumask *cpumask,
 	 */
 	preempt_disable();
 	stop_cpus_in_progress = true;
+
 	barrier();
 	for_each_cpu(cpu, cpumask) {
 		work = &per_cpu(cpu_stopper.stop_work, cpu);
@@ -410,24 +423,30 @@ static bool queue_stop_cpus_work(const struct cpumask *cpumask,
 		work->arg = arg;
 		work->done = done;
 		work->caller = _RET_IP_;
+		/* 触发工作 */
 		if (cpu_stop_queue_work(cpu, work))
 			queued = true;
 	}
 	barrier();
+
 	stop_cpus_in_progress = false;
 	preempt_enable();
 
 	return queued;
 }
-
+/* cpu停机
+@arg是msdata
+@fn可能是停机cpu的函数 */
 static int __stop_cpus(const struct cpumask *cpumask,
 		       cpu_stop_fn_t fn, void *arg)
 {
 	struct cpu_stop_done done;
-
+	/* 初始化done */
 	cpu_stop_init_done(&done, cpumask_weight(cpumask));
+	/* 异步完成工作 */
 	if (!queue_stop_cpus_work(cpumask, fn, arg, &done))
 		return -ENOENT;
+
 	wait_for_completion(&done.completion);
 	return done.ret;
 }
@@ -582,7 +601,7 @@ static int __init cpu_stop_init(void)
 	return 0;
 }
 early_initcall(cpu_stop_init);
-
+/* @data是command ... */
 int stop_machine_cpuslocked(cpu_stop_fn_t fn, void *data,
 			    const struct cpumask *cpus)
 {
@@ -618,7 +637,13 @@ int stop_machine_cpuslocked(cpu_stop_fn_t fn, void *data,
 	set_state(&msdata, MULTI_STOP_PREPARE);
 	return stop_cpus(cpu_online_mask, multi_cpu_stop, &msdata);
 }
+<<<<<<< HEAD
 /*  */
+=======
+/* 待分析
+@data是command.
+ */
+>>>>>>> v66bkp
 int stop_machine(cpu_stop_fn_t fn, void *data, const struct cpumask *cpus)
 {
 	int ret;

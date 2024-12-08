@@ -203,11 +203,13 @@
 DEFINE_IDR(btf_idr);
 DEFINE_SPINLOCK(btf_idr_lock);
 
+/* 表示bpf的hook的位置 */
 enum btf_kfunc_hook {
 	BTF_KFUNC_HOOK_COMMON,
 	BTF_KFUNC_HOOK_XDP,
 	BTF_KFUNC_HOOK_TC,
 	BTF_KFUNC_HOOK_STRUCT_OPS,
+	/* 对应于BPF_PROG_TYPE_TRACING */
 	BTF_KFUNC_HOOK_TRACING,
 	BTF_KFUNC_HOOK_SYSCALL,
 	BTF_KFUNC_HOOK_FMODRET,
@@ -264,14 +266,16 @@ struct btf {
 	u32 start_id; /* first type ID in this BTF (0 for base BTF) */
 	u32 start_str_off; /* first string offset (0 for base BTF) */
 	char name[MODULE_NAME_LEN];
-	bool kernel_btf;
+	bool kernel_btf;/* 代表是不是vmlinux的btf? */
 };
 
+/* 表示验证的阶段。这个枚举值可以指示当前验证过程处于哪个阶段 */
 enum verifier_phase {
 	CHECK_META,
 	CHECK_TYPE,
 };
 
+/*  */
 struct resolve_vertex {
 	const struct btf_type *t;
 	u32 type_id;
@@ -299,11 +303,17 @@ struct btf_sec_info {
 	u32 len;
 };
 
+/* 代表什么
+用于跟踪和管理在验证 BPF 程序时所需的信息 */
 struct btf_verifier_env {
 	struct btf *btf;
-	u8 *visit_states;
-	struct resolve_vertex stack[MAX_RESOLVE_DEPTH];
-	struct bpf_verifier_log log;
+	u8 *visit_states;/* 记录在验证过程中访问的状态。
+	这通常用于跟踪已访问的节点，防止在验证过程中出现循环。? */
+	struct resolve_vertex stack[MAX_RESOLVE_DEPTH];/* 
+	一个数组，包含了在解析过程中使用的栈。每个 resolve_vertex 
+	结构体通常用于表示解析过程中的一个节点或状态。? */
+	struct bpf_verifier_log log;/* 一个日志结构体，
+	用于记录验证过程中遇到的错误或警告信息。可以帮助开发者调试 BPF 程序? */
 	u32 log_type_id;
 	u32 top_stack;
 	enum verifier_phase phase;
@@ -5239,6 +5249,9 @@ static int btf_check_sec_info(struct btf_verifier_env *env,
 	return 0;
 }
 
+/* 解析btf的header?
+2024年10月13日15:26:52
+ */
 static int btf_parse_hdr(struct btf_verifier_env *env)
 {
 	u32 hdr_len, hdr_copy, btf_data_size;
@@ -5574,6 +5587,7 @@ errout_free:
 	return ERR_PTR(err);
 }
 
+/* 代表内核btf段的起始地址? */
 extern char __weak __start_BTF[];
 extern char __weak __stop_BTF[];
 extern struct btf *btf_vmlinux;
@@ -5717,6 +5731,8 @@ int get_kern_ctx_btf_id(struct bpf_verifier_log *log, enum bpf_prog_type prog_ty
 BTF_ID_LIST(bpf_ctx_convert_btf_id)
 BTF_ID(struct, bpf_ctx_convert)
 
+/* 获取vmlinux的btf */
+/*  */
 struct btf *btf_parse_vmlinux(void)
 {
 	struct btf_verifier_env *env = NULL;
@@ -7202,6 +7218,7 @@ int btf_new_fd(const union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 	return ret;
 }
 
+/* 获取fd上面有没有绑定的btf,并尝试获取 */
 struct btf *btf_get_by_fd(int fd)
 {
 	struct btf *btf;
@@ -7495,7 +7512,9 @@ struct module *btf_try_get_module(const struct btf *btf)
 	return res;
 }
 
-/* Returns struct btf corresponding to the struct module.
+/* 
+获取module的btf?
+Returns struct btf corresponding to the struct module.
  * This function can return NULL or ERR_PTR.
  */
 static struct btf *btf_get_module_btf(const struct module *module)
@@ -7815,6 +7834,7 @@ static u32 *__btf_kfunc_id_set_contains(const struct btf *btf,
 	return id + 1;
 }
 
+/* 找到bpf prog type对应的kfunc hook? */
 static int bpf_prog_type_to_kfunc_hook(enum bpf_prog_type prog_type)
 {
 	switch (prog_type) {
@@ -7880,6 +7900,7 @@ u32 *btf_kfunc_is_modify_return(const struct btf *btf, u32 kfunc_btf_id,
 	return __btf_kfunc_id_set_contains(btf, BTF_KFUNC_HOOK_FMODRET, kfunc_btf_id, prog);
 }
 
+/* kfunc id set是什么 */
 static int __register_btf_kfunc_id_set(enum btf_kfunc_hook hook,
 				       const struct btf_kfunc_id_set *kset)
 {
@@ -7913,7 +7934,18 @@ err_out:
 	return ret;
 }
 
-/* This function must be invoked only from initcalls/module init functions */
+/* 
+：这个函数只能在初始化调用（initcalls）或模块初始化（module init）函数中被调用。
+这通常是为了确保函数在合适的上下文中运行，以正确设置系统或模块的状态。
+初始化调用（initcall）:
+	在 Linux 内核中，初始化调用是一种机制，用于在内核启动时注册各种初始化函数。这
+	些函数通常用于设置设备驱动、文件系统、网络协议等。在内核启动过程中，内核会依次
+	调用这些函数，以确保各个子系统的初始化顺序。
+模块初始化（module init）:
+	当编写可加载模块时，开发者可以定义一个初始化函数，该函数会在模块加载时被调用。
+	通常通过使用 module_init() 宏来注册该初始化函数。这使得在模块加载时可以执行特定的
+	初始化任务，如注册设备、分配资源等。
+This function must be invoked only from initcalls/module init functions */
 int register_btf_kfunc_id_set(enum bpf_prog_type prog_type,
 			      const struct btf_kfunc_id_set *kset)
 {

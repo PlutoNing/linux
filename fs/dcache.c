@@ -1685,6 +1685,7 @@ static void do_one_tree(struct dentry *dentry)
 }
 
 /*
+卸载此sb的时候回收cache
  * destroy the dentries attached to a superblock on unmounting
  */
 void shrink_dcache_for_umount(struct super_block *sb)

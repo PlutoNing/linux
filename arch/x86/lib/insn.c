@@ -19,7 +19,7 @@
 #include <linux/kconfig.h>
 
 #include <asm/emulate_prefix.h> /* __ignore_sync_check__ */
-
+/* 主要用于将小端字节序（little-endian）转换为 CPU 的本地字节序 */
 #define leXX_to_cpu(t, r)						\
 ({									\
 	__typeof__(t) v;						\
@@ -39,19 +39,21 @@
 
 #define __get_next(t, insn)	\
 	({ t r = get_unaligned((t *)(insn)->next_byte); (insn)->next_byte += sizeof(t); leXX_to_cpu(t, r); })
-
+/* 获得insn的nth的byte, type是t. */
 #define __peek_nbyte_next(t, insn, n)	\
 	({ t r = get_unaligned((t *)(insn)->next_byte + n); leXX_to_cpu(t, r); })
 
 #define get_next(t, insn)	\
 	({ if (unlikely(!validate_next(t, insn, 0))) goto err_out; __get_next(t, insn); })
-
+/* 获得insn的nth的byte, type是t.  */
 #define peek_nbyte_next(t, insn, n)	\
 	({ if (unlikely(!validate_next(t, insn, n))) goto err_out; __peek_nbyte_next(t, insn, n); })
-
+/* 获取第一个指令 */
 #define peek_next(t, insn)	peek_nbyte_next(t, insn, 0)
 
 /**
+初始化insn ...
+ftrace的时候, insn是新结构体, kaddr是opcode(另外一个静态insn的text)
  * insn_init() - initialize struct insn
  * @insn:	&struct insn to be initialized
  * @kaddr:	address (in kernel memory) of instruction (or copy thereof)
@@ -71,6 +73,7 @@ void insn_init(struct insn *insn, const void *kaddr, int buf_len, int x86_64)
 	insn->kaddr = kaddr;
 	insn->end_kaddr = kaddr + buf_len;
 	insn->next_byte = kaddr;
+
 	insn->x86_64 = x86_64 ? 1 : 0;
 	insn->opnd_bytes = 4;
 	if (x86_64)
@@ -78,21 +81,24 @@ void insn_init(struct insn *insn, const void *kaddr, int buf_len, int x86_64)
 	else
 		insn->addr_bytes = 4;
 }
-
+/* prefix是什么
+这是一串指令 */
 static const insn_byte_t xen_prefix[] = { __XEN_EMULATE_PREFIX };
 static const insn_byte_t kvm_prefix[] = { __KVM_EMULATE_PREFIX };
-
+/* prefix就是kvm_prefix那些 */
 static int __insn_get_emulate_prefix(struct insn *insn,
 				     const insn_byte_t *prefix, size_t len)
 {
 	size_t i;
 
 	for (i = 0; i < len; i++) {
+		/* 好像就是遍历insn的next_byte开始的每个byte */
 		if (peek_nbyte_next(insn_byte_t, insn, i) != prefix[i])
 			goto err_out;
 	}
-
+	/* 到这说明是虚拟机制的指令? */
 	insn->emulate_prefix_size = len;
+	/* 跳过逃逸指令, 指向实际代码 */
 	insn->next_byte += len;
 
 	return 1;
@@ -100,7 +106,10 @@ static int __insn_get_emulate_prefix(struct insn *insn,
 err_out:
 	return 0;
 }
+/*
 
+获得insn的逃逸指令相关信息
+  */
 static void insn_get_emulate_prefix(struct insn *insn)
 {
 	if (__insn_get_emulate_prefix(insn, xen_prefix, sizeof(xen_prefix)))
@@ -110,6 +119,8 @@ static void insn_get_emulate_prefix(struct insn *insn)
 }
 
 /**
+获取opcode需要先获取prefix
+prefix bytes是什么.
  * insn_get_prefixes - scan x86 instruction prefix bytes
  * @insn:	&struct insn containing instruction
  *
@@ -130,40 +141,55 @@ int insn_get_prefixes(struct insn *insn)
 
 	if (prefixes->got)
 		return 0;
-
+	/* 获取vm的逃逸指令.好让next_byte跳过这些逃逸指令 */
 	insn_get_emulate_prefix(insn);
 
 	nb = 0;
 	lb = 0;
+	/* 获取next_byte之后的第一个指令byte */
 	b = peek_next(insn_byte_t, insn);
+	/* 查表获得b这个byte的机器码的attr */
 	attr = inat_get_opcode_attribute(b);
-	while (inat_is_legacy_prefix(attr)) {
+
+	while (inat_is_legacy_prefix(attr)) {/* 如果b的attr是legacy prefix */
 		/* Skip if same prefix */
 		for (i = 0; i < nb; i++)
 			if (prefixes->bytes[i] == b)
-				goto found;
+				goto found;/* nb数量的全都匹配,视为找到 */
+
 		if (nb == 4)
-			/* Invalid instruction */
+			/* 越界了, Invalid instruction */
 			break;
+		/* 说明b这个opcode是legacy prefix code? 
+		把b加入到prefixs里面*/
 		prefixes->bytes[nb++] = b;
-		if (inat_is_address_size_prefix(attr)) {
+
+		if (inat_is_address_size_prefix(attr)) {/* 如果b的attr的prefix属性是INAT_PFX_ADDRSZ */
 			/* address size switches 2/4 or 4/8 */
 			if (insn->x86_64)
-				insn->addr_bytes ^= 12;
+				insn->addr_bytes ^= 12; /* 翻转右数第三四位 */
 			else
-				insn->addr_bytes ^= 6;
-		} else if (inat_is_operand_size_prefix(attr)) {
+				insn->addr_bytes ^= 6; /* 翻转右数二三位 */
+		} else if (inat_is_operand_size_prefix(attr)) {/* 如果b的attr的prefix属性是INAT_PFX_OPNDSZ */
 			/* oprand size switches 2/4 */
 			insn->opnd_bytes ^= 6;
 		}
+
 found:
+		/* 找到了一个prefix byte */
 		prefixes->nbytes++;
+		/* 跳过一个prefix byte */
 		insn->next_byte++;
 		lb = b;
+		/* 获取text的下一个byte */
 		b = peek_next(insn_byte_t, insn);
+		/* 继续获得这个新byte机器码的attr */
 		attr = inat_get_opcode_attribute(b);
 	}
-	/* Set the last prefix */
+
+
+	/* Set the last prefix
+	todo 2024年10月11日01:02:47 */
 	if (lb && lb != insn->prefixes.bytes[3]) {
 		if (unlikely(insn->prefixes.bytes[3])) {
 			/* Swap the last prefix */
@@ -172,6 +198,7 @@ found:
 				if (prefixes->bytes[i] == lb)
 					insn_set_byte(prefixes, i, b);
 		}
+
 		insn_set_byte(&insn->prefixes, 3, lb);
 	}
 
@@ -180,16 +207,20 @@ found:
 		b = peek_next(insn_byte_t, insn);
 		attr = inat_get_opcode_attribute(b);
 		if (inat_is_rex_prefix(attr)) {
+			/* 单字节指令用这个? */
 			insn_field_set(&insn->rex_prefix, b, 1);
+			/* 也跳过这个prefix指令 */
 			insn->next_byte++;
 			if (X86_REX_W(b))
 				/* REX.W overrides opnd_size */
 				insn->opnd_bytes = 8;
 		}
 	}
+	/* rex prefix也获取了 */
 	insn->rex_prefix.got = 1;
 
-	/* Decode VEX prefix */
+	/* Decode VEX prefix
+	这里是处理avx,vex什么的prefix */
 	b = peek_next(insn_byte_t, insn);
 	attr = inat_get_opcode_attribute(b);
 	if (inat_is_vex_prefix(attr)) {
@@ -246,9 +277,10 @@ err_out:
 }
 
 /**
+get此insn的opcodes
  * insn_get_opcode - collect opcode(s)
  * @insn:	&struct insn containing instruction
- *
+ * 初始化opcode, 设置next_byte指向机器码.
  * Populates @insn->opcode, updates @insn->next_byte to point past the
  * opcode byte(s), and set @insn->attr (except for groups).
  * If necessary, first collects any preceding (prefix) bytes.
@@ -269,22 +301,33 @@ int insn_get_opcode(struct insn *insn)
 		return 0;
 
 	if (!insn->prefixes.got) {
+		/* 这里获取各种insn的next_byte起始的各种prefix指令,
+		存储到insn的对应结构体里面.然后步进next_byte跳过这些prefix */
 		ret = insn_get_prefixes(insn);
 		if (ret)
 			return ret;
 	}
 
-	/* Get first opcode */
+	/* 函数名叫get opcode, 就是获取insn的next_byte指向的text里面的opcode
+	但是text起始处不一定直接是opcode,可能有些prefix字节码.
+	 所以一开始要跳过prefix指令.现在已经跳过去了,现在next_byte指向的就是opcode了
+	这里开始获取opcode, 存储到opcode(insn的opcode)里面 */
+
+	/* Get first opcode
+	现在跳过了prefix, next_byte起始指向的应该是真正的opcode了,
+	这里获取op. */
 	op = get_next(insn_byte_t, insn);
 	insn_set_byte(opcode, 0, op);
 	opcode->nbytes = 1;
 
+	/* 获取完insn的op了。后面的工作好像是设置insn的attr */
 	/* Check if there is VEX prefix or not */
-	if (insn_is_avx(insn)) {
+	if (insn_is_avx(insn)) {/* 是不是avx的insn */
 		insn_byte_t m, p;
 		m = insn_vex_m_bits(insn);
 		p = insn_vex_p_bits(insn);
 		insn->attr = inat_get_avx_attribute(op, m, p);
+
 		if ((inat_must_evex(insn->attr) && !insn_is_evex(insn)) ||
 		    (!inat_accept_vex(insn->attr) &&
 		     !inat_is_group(insn->attr))) {
@@ -295,10 +338,12 @@ int insn_get_opcode(struct insn *insn)
 		/* VEX has only 1 byte for opcode */
 		goto end;
 	}
-
+	/* 除去avx的情况, insn的attr就是op的attr? */
 	insn->attr = inat_get_opcode_attribute(op);
+
 	while (inat_is_escape(insn->attr)) {
 		/* Get escaped opcode */
+		/* 2024年10月11日01:16:02 */
 		op = get_next(insn_byte_t, insn);
 		opcode->bytes[opcode->nbytes++] = op;
 		pfx_id = insn_last_prefix_id(insn);
@@ -319,6 +364,12 @@ err_out:
 }
 
 /**
+获取ModRM?
+ModR/M 字节是 x86 指令中的一个重要组成部分，用于指定操作数的寻址模式。它包含三部分信息：
+Mod：指示寻址模式，可以是直接地址、寄存器间接寻址或基于寄存器的寻址。
+Reg：指定操作数的寄存器，通常是目标寄存器。
+R/M：指明源操作数的寻址方式，可能是寄存器或内存地址。
+--------------------------------------------------------------------------------
  * insn_get_modrm - collect ModRM byte, if any
  * @insn:	&struct insn containing instruction
  *
@@ -399,9 +450,36 @@ int insn_rip_relative(struct insn *insn)
 }
 
 /**
+获取指令的SIB byte?
+SIB（Scale Index Base）是x86架构中的一种寻址模式，用于有效地计算内存地址。它在使用复合地址时，能够通过组合基址寄存器、索引寄存器和缩放因子来实现更灵活的寻址。
+在x86汇编中，SIB字节通常出现在某些指令的操作数中，特别是涉及到数组或结构体时。SIB字节的格式包括三个部分：
+Scale（缩放因子）：可以是1、2、4或8，用于对索引寄存器的值进行缩放。
+Index（索引寄存器）：通常是用于计算地址的寄存器，比如 EAX、EBX、ECX 等。
+Base（基址寄存器）：用于指定基址的寄存器，类似于 EBP 或 ESI。
+SIB寻址模式的一个常见例子是访问数组元素，比如在处理动态数组时，通过基址加上索引来获取特定元素的位置。
+---------------------------------
+
+分析这条汇编指令 mov eax, [ebx + esi*4] 的机器码及其组成部分。
+指令分析
+操作码：mov 指令的机器码。
+SIB 字节：用于指定索引和基址。
+位移：如果有的话，可以在最后指定。
+示例指令的机器码
+对于指令 mov eax, [ebx + esi*4]，它的机器码可能是类似这样的（以 32 位模式为例）：
+8B 04 2B
+这里的部分内容说明如下：
+操作码（8B）：表示 mov 指令，操作数为 eax 和内存地址。
+ModR/M 字节（04）：指示操作数类型和寻址方式。
+SIB 字节（2B）：这是实际的 SIB 字节，包含索引寄存器和缩放因子的定义。
+SIB 字节细分
+假设 SIB 字节的内容为 2B，其结构为：
+
+Scale：00 (1)
+Index：01 (对应 esi)
+
  * insn_get_sib() - Get the SIB byte of instruction
  * @insn:	&struct insn containing instruction
- *
+ * 
  * If necessary, first collects the instruction up to and including the
  * ModRM byte.
  *
@@ -417,7 +495,7 @@ int insn_get_sib(struct insn *insn)
 	if (insn->sib.got)
 		return 0;
 
-	if (!insn->modrm.got) {
+	if (!insn->modrm.got) {/* 确实sib依赖于modrm */
 		ret = insn_get_modrm(insn);
 		if (ret)
 			return ret;
@@ -441,6 +519,7 @@ err_out:
 
 
 /**
+获取指令的偏移量?
  * insn_get_displacement() - Get the displacement of instruction
  * @insn:	&struct insn containing instruction
  *
@@ -609,6 +688,7 @@ err_out:
 }
 
 /**
+获取指令的直接数
  * insn_get_immediate() - Get the immediate in an instruction
  * @insn:	&struct insn containing instruction
  *
@@ -625,7 +705,7 @@ int insn_get_immediate(struct insn *insn)
 {
 	int ret;
 
-	if (insn->immediate.got)
+	if (insn->immediate.got) /* 已经获取了 */
 		return 0;
 
 	if (!insn->displacement.got) {
@@ -686,6 +766,7 @@ err_out:
 }
 
 /**
+获取insn的长度 ...
  * insn_get_length() - Get the length of instruction
  * @insn:	&struct insn containing instruction
  *
@@ -704,13 +785,16 @@ int insn_get_length(struct insn *insn)
 		return 0;
 
 	if (!insn->immediate.got) {
+		/* 说明还没有运行insn_get_**函数 */
 		ret = insn_get_immediate(insn);
 		if (ret)
 			return ret;
 	}
 
-	insn->length = (unsigned char)((unsigned long)insn->next_byte
-				     - (unsigned long)insn->kaddr);
+	insn->length = (unsigned char)
+	((unsigned long)insn->next_byte - 
+	 (unsigned long)insn->kaddr
+	);
 
 	return 0;
 }
@@ -723,9 +807,13 @@ static inline int insn_complete(struct insn *insn)
 }
 
 /**
+解码x86指令?
+ftrace的时候, insn是新结构体, kaddr是opcode(另外一个静态insn的text)
+
  * insn_decode() - Decode an x86 instruction
  * @insn:	&struct insn to be initialized
  * @kaddr:	address (in kernel memory) of instruction (or copy thereof)
+ 可能是poke insn的text地址
  * @buf_len:	length of the insn buffer at @kaddr
  * @m:		insn mode, see enum insn_mode
  *
@@ -739,12 +827,14 @@ int insn_decode(struct insn *insn, const void *kaddr, int buf_len, enum insn_mod
 
 /* #define INSN_MODE_KERN	-1 __ignore_sync_check__ mode is only valid in the kernel */
 
-	if (m == INSN_MODE_KERN)
+	if (m == INSN_MODE_KERN)/* ftrace时hook代码是这个路径 */
+	/* 把新insn的kaddr和next_byte指向此kaddr(另一个insn的text) */
 		insn_init(insn, kaddr, buf_len, IS_ENABLED(CONFIG_X86_64));
 	else
 		insn_init(insn, kaddr, buf_len, m == INSN_MODE_64);
 
 	ret = insn_get_length(insn);
+
 	if (ret)
 		return ret;
 

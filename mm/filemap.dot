@@ -1,0 +1,205 @@
+strict digraph callgraph {
+"__filemap_add_folio" -> "__mem_cgroup_charge";
+"__mem_cgroup_charge" [style=dashed]
+"__filemap_add_folio" -> "__mem_cgroup_uncharge";
+"__mem_cgroup_uncharge" [style=dashed]
+"__filemap_fdatawait_range" -> "__folio_batch_release";
+"__folio_batch_release" [style=dashed]
+"__filemap_fdatawait_range" -> "filemap_get_folios_tag";
+"__filemap_fdatawait_range" -> "folio_wait_writeback";
+"folio_wait_writeback" [style=dashed]
+"__filemap_fdatawrite_range" -> "filemap_fdatawrite_wbc";
+"__filemap_get_folio" -> "__page_file_index";
+"__page_file_index" [style=dashed]
+"__filemap_get_folio" -> "filemap_add_folio";
+"__filemap_get_folio" -> "filemap_alloc_folio";
+"__filemap_get_folio" -> "filemap_get_entry";
+"__filemap_get_folio" -> "folio_mark_accessed";
+"folio_mark_accessed" [style=dashed]
+"__filemap_get_folio" -> "folio_wait_stable";
+"folio_wait_stable" [style=dashed]
+"__filemap_remove_folio" -> "filemap_unaccount_folio";
+"__filemap_remove_folio" -> "page_cache_delete";
+"__generic_file_write_iter" -> "direct_write_fallback";
+"direct_write_fallback" [style=dashed]
+"__generic_file_write_iter" -> "generic_file_direct_write";
+"__generic_file_write_iter" -> "generic_perform_write";
+"__ia32_sys_cachestat" -> "filemap_cachestat";
+"__ia32_sys_cachestat" -> "is_file_shm_hugepages";
+"is_file_shm_hugepages" [style=dashed]
+"__x64_sys_cachestat" -> "filemap_cachestat";
+"__x64_sys_cachestat" -> "is_file_shm_hugepages";
+"is_file_shm_hugepages" [style=dashed]
+"_sub_I_00099_0" -> "__tsan_init";
+"__tsan_init" [style=dashed]
+"delete_from_page_cache_batch" -> "filemap_free_folio";
+"delete_from_page_cache_batch" -> "filemap_unaccount_folio";
+"delete_from_page_cache_batch" -> "inode_add_lru";
+"inode_add_lru" [style=dashed]
+"delete_from_page_cache_batch" -> "page_cache_delete_batch";
+"do_read_cache_folio" -> "__filemap_get_folio";
+"do_read_cache_folio" -> "filemap_add_folio";
+"do_read_cache_folio" -> "filemap_alloc_folio";
+"do_read_cache_folio" -> "filemap_read_folio";
+"do_read_cache_folio" -> "folio_mark_accessed";
+"folio_mark_accessed" [style=dashed]
+"do_sync_mmap_readahead" -> "maybe_unlock_mmap_for_io";
+"do_sync_mmap_readahead" -> "page_cache_ra_order";
+"page_cache_ra_order" [style=dashed]
+"do_sync_mmap_readahead" -> "page_cache_sync_ra";
+"page_cache_sync_ra" [style=dashed]
+"file_fdatawait_range" -> "__filemap_fdatawait_range";
+"file_fdatawait_range" -> "file_check_and_advance_wb_err";
+"file_write_and_wait_range" -> "__filemap_fdatawait_range";
+"file_write_and_wait_range" -> "__filemap_fdatawrite_range";
+"file_write_and_wait_range" -> "file_check_and_advance_wb_err";
+"filemap_add_folio" -> "__filemap_add_folio";
+"filemap_add_folio" -> "folio_add_lru";
+"folio_add_lru" [style=dashed]
+"filemap_add_folio" -> "workingset_refault";
+"workingset_refault" [style=dashed]
+"filemap_alloc_folio" -> "cpuset_mem_spread_node";
+"cpuset_mem_spread_node" [style=dashed]
+"filemap_alloc_folio" -> "seqcount_lockdep_reader_access";
+"filemap_cachestat" -> "get_shadow_from_swap_cache";
+"get_shadow_from_swap_cache" [style=dashed]
+"filemap_cachestat" -> "hugetlb_basepage_index";
+"hugetlb_basepage_index" [style=dashed]
+"filemap_cachestat" -> "workingset_test_recent";
+"workingset_test_recent" [style=dashed]
+
+
+"filemap_fault" -> "__filemap_get_folio";
+"filemap_fault" -> "__page_file_index";
+"__page_file_index" [style=dashed]
+"filemap_fault" -> "count_memcg_events.constprop.0";
+"filemap_fault" -> "do_sync_mmap_readahead";
+"filemap_fault" -> "filemap_read_folio";
+"filemap_fault" -> "maybe_unlock_mmap_for_io";
+
+
+"filemap_fault" -> "page_cache_async_ra";
+"page_cache_async_ra" [style=dashed]
+"filemap_fdatawait_keep_errors" -> "__filemap_fdatawait_range";
+"filemap_fdatawait_keep_errors" -> "filemap_check_and_keep_errors";
+"filemap_fdatawait_range" -> "__filemap_fdatawait_range";
+"filemap_fdatawait_range" -> "filemap_check_errors";
+"filemap_fdatawait_range_keep_errors" -> "__filemap_fdatawait_range";
+"filemap_fdatawait_range_keep_errors" -> "filemap_check_and_keep_errors";
+"filemap_fdatawrite" -> "__filemap_fdatawrite_range";
+"filemap_fdatawrite_range" -> "__filemap_fdatawrite_range";
+"filemap_fdatawrite_wbc" -> "__inode_attach_wb";
+"__inode_attach_wb" [style=dashed]
+"filemap_fdatawrite_wbc" -> "do_writepages";
+"do_writepages" [style=dashed]
+"filemap_fdatawrite_wbc" -> "wbc_attach_and_unlock_inode";
+"wbc_attach_and_unlock_inode" [style=dashed]
+"filemap_fdatawrite_wbc" -> "wbc_detach_inode";
+"wbc_detach_inode" [style=dashed]
+"filemap_flush" -> "__filemap_fdatawrite_range";
+"filemap_get_pages" -> "filemap_add_folio";
+"filemap_get_pages" -> "filemap_alloc_folio";
+"filemap_get_pages" -> "filemap_get_read_batch";
+"filemap_get_pages" -> "filemap_read_folio";
+"filemap_get_pages" -> "filemap_update_page";
+"filemap_get_pages" -> "page_cache_async_ra";
+"page_cache_async_ra" [style=dashed]
+"filemap_get_pages" -> "page_cache_sync_ra";
+"page_cache_sync_ra" [style=dashed]
+"filemap_map_pages" -> "filemap_map_pmd";
+"filemap_map_pages" -> "next_uptodate_folio";
+"filemap_page_mkwrite" -> "folio_mark_dirty";
+"folio_mark_dirty" [style=dashed]
+"filemap_page_mkwrite" -> "folio_wait_stable";
+"folio_wait_stable" [style=dashed]
+"filemap_read" -> "copy_page_to_iter";
+"copy_page_to_iter" [style=dashed]
+"filemap_read" -> "filemap_get_pages";
+"filemap_read" -> "folio_mark_accessed";
+"folio_mark_accessed" [style=dashed]
+"filemap_release_folio" -> "folio_mapping";
+"folio_mapping" [style=dashed]
+"filemap_release_folio" -> "try_to_free_buffers";
+"try_to_free_buffers" [style=dashed]
+"filemap_remove_folio" -> "filemap_free_folio";
+"filemap_remove_folio" -> "filemap_unaccount_folio";
+"filemap_remove_folio" -> "inode_add_lru";
+"inode_add_lru" [style=dashed]
+"filemap_remove_folio" -> "page_cache_delete";
+"filemap_remove_folio" -> "trace_mm_filemap_delete_from_page_cache";
+"filemap_splice_read" -> "__folio_batch_release";
+"__folio_batch_release" [style=dashed]
+"filemap_splice_read" -> "__get_task_ioprio";
+"__get_task_ioprio" [style=dashed]
+"filemap_splice_read" -> "filemap_get_pages";
+"filemap_splice_read" -> "folio_mark_accessed";
+"folio_mark_accessed" [style=dashed]
+"filemap_splice_read" -> "splice_folio_into_pipe";
+"filemap_unaccount_folio" -> "folio_account_cleaned";
+"folio_account_cleaned" [style=dashed]
+"filemap_update_page" -> "filemap_read_folio";
+"filemap_write_and_wait_range" -> "__filemap_fdatawait_range";
+"filemap_write_and_wait_range" -> "__filemap_fdatawrite_range";
+"filemap_write_and_wait_range" -> "filemap_check_errors";
+"find_lock_entries" -> "__page_file_index";
+"__page_file_index" [style=dashed]
+"folio_end_writeback" -> "__acct_reclaim_writeback";
+"__acct_reclaim_writeback" [style=dashed]
+"folio_end_writeback" -> "__folio_end_writeback";
+"__folio_end_writeback" [style=dashed]
+"folio_end_writeback" -> "folio_rotate_reclaimable";
+"folio_rotate_reclaimable" [style=dashed]
+"folio_seek_hole_data" -> "__sanitizer_cov_trace_cmp1";
+"__sanitizer_cov_trace_cmp1" [style=dashed]
+
+
+"__delayacct_thrashing_end" [style=dashed]
+"__delayacct_thrashing_start" [style=dashed]
+"__wake_up_locked_key_bookmark" [style=dashed]
+"generic_file_direct_write" -> "__mark_inode_dirty";
+"__mark_inode_dirty" [style=dashed]
+"generic_file_direct_write" -> "kiocb_invalidate_pages";
+"generic_file_direct_write" -> "kiocb_invalidate_post_direct_write";
+"generic_file_read_iter" -> "filemap_read";
+"generic_file_read_iter" -> "kiocb_write_and_wait";
+"generic_file_write_iter" -> "__generic_file_write_iter";
+"generic_file_write_iter" -> "generic_write_checks";
+"generic_write_checks" [style=dashed]
+"generic_file_write_iter" -> "vfs_fsync_range";
+"vfs_fsync_range" [style=dashed]
+"generic_perform_write" -> "balance_dirty_pages_ratelimited";
+"balance_dirty_pages_ratelimited" [style=dashed]
+"generic_perform_write" -> "copy_page_from_iter_atomic";
+"copy_page_from_iter_atomic" [style=dashed]
+"generic_perform_write" -> "fault_in_iov_iter_readable";
+"fault_in_iov_iter_readable" [style=dashed]
+"kiocb_invalidate_pages" -> "filemap_range_has_page";
+"kiocb_invalidate_pages" -> "filemap_write_and_wait_range";
+"kiocb_invalidate_pages" -> "invalidate_inode_pages2_range";
+"invalidate_inode_pages2_range" [style=dashed]
+"kiocb_invalidate_post_direct_write" -> "dio_warn_stale_pagecache";
+"kiocb_invalidate_post_direct_write" -> "invalidate_inode_pages2_range";
+"invalidate_inode_pages2_range" [style=dashed]
+"kiocb_write_and_wait" -> "filemap_range_has_writeback";
+"kiocb_write_and_wait" -> "filemap_write_and_wait_range";
+"mapping_read_folio_gfp" -> "do_read_cache_folio";
+"mapping_seek_hole_data" -> "folio_seek_hole_data";
+"migration_entry_wait_on_locked" -> "__delayacct_thrashing_end";
+"__delayacct_thrashing_end" [style=dashed]
+"migration_entry_wait_on_locked" -> "__delayacct_thrashing_start";
+"__delayacct_thrashing_start" [style=dashed]
+"pagecache_init" -> "__init_waitqueue_head";
+"__init_waitqueue_head" [style=dashed]
+"pagecache_init" -> "page_writeback_init";
+"page_writeback_init" [style=dashed]
+"debug_smp_processor_id" [style=dashed]
+"debug_smp_processor_id" [style=dashed]
+"debug_smp_processor_id" [style=dashed]
+"read_cache_folio" -> "do_read_cache_folio";
+"read_cache_page" -> "do_read_cache_folio";
+"read_cache_page_gfp" -> "do_read_cache_folio";
+"replace_page_cache_folio" -> "mem_cgroup_migrate";
+"mem_cgroup_migrate" [style=dashed]
+
+
+}

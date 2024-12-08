@@ -182,6 +182,7 @@ struct sysinfo;
 struct writeback_control;
 struct zone;
 
+
 /*
  * A swap extent maps a range of a swapfile's PAGE_SIZE pages onto a range of
  * disk blocks.  A rbtree of swap extents maps the entire swapfile (Where the
@@ -221,7 +222,7 @@ enum {
 					/* add others here before... */
 	SWP_SCANNING	= (1 << 14),	/* refcount in scan_swap_map */
 };
-
+/*  */
 #define SWAP_CLUSTER_MAX 32UL
 #define COMPACT_CLUSTER_MAX SWAP_CLUSTER_MAX
 
@@ -333,6 +334,7 @@ struct swap_info_struct {
 					   */
 };
 
+//获取page的swap entry?
 static inline swp_entry_t page_swap_entry(struct page *page)
 {
 	struct folio *folio = page_folio(page);
@@ -351,7 +353,12 @@ void workingset_activation(struct folio *folio);
 
 /* Only track the nodes of mappings with shadow entries */
 void workingset_update_node(struct xa_node *node);
+
+/* shadow_nodes是什么
+好像是要回收的什么东西 */
 extern struct list_lru shadow_nodes;
+
+/* 里面初始化shadow_nodes? */
 #define mapping_set_update(xas, mapping) do {				\
 	if (!dax_mapping(mapping) && !shmem_mapping(mapping)) {		\
 		xas_set_update(xas, workingset_update_node);		\
@@ -404,12 +411,15 @@ extern unsigned long zone_reclaimable_pages(struct zone *zone);
 extern unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 					gfp_t gfp_mask, nodemask_t *mask);
 
+/*  */
 #define MEMCG_RECLAIM_MAY_SWAP (1 << 1)
 #define MEMCG_RECLAIM_PROACTIVE (1 << 2)
+
 extern unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 						  unsigned long nr_pages,
 						  gfp_t gfp_mask,
 						  unsigned int reclaim_options);
+
 extern unsigned long mem_cgroup_shrink_node(struct mem_cgroup *mem,
 						gfp_t gfp_mask, bool noswap,
 						pg_data_t *pgdat,
@@ -419,13 +429,14 @@ extern int vm_swappiness;
 long remove_mapping(struct address_space *mapping, struct folio *folio);
 
 #ifdef CONFIG_NUMA
+/*  */
 extern int node_reclaim_mode;
 extern int sysctl_min_unmapped_ratio;
 extern int sysctl_min_slab_ratio;
 #else
 #define node_reclaim_mode 0
 #endif
-
+/*  */
 static inline bool node_reclaim_enabled(void)
 {
 	/* Is any node_reclaim_mode bit set? */

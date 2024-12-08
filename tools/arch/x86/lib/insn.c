@@ -42,7 +42,7 @@
 
 #define __peek_nbyte_next(t, insn, n)	\
 	({ t r = get_unaligned((t *)(insn)->next_byte + n); leXX_to_cpu(t, r); })
-
+/*  */
 #define get_next(t, insn)	\
 	({ if (unlikely(!validate_next(t, insn, 0))) goto err_out; __get_next(t, insn); })
 
@@ -268,14 +268,16 @@ int insn_get_opcode(struct insn *insn)
 	if (opcode->got)
 		return 0;
 
-	if (!insn->prefixes.got) {
+	if (!insn->prefixes.got) {/* 还没有获取prefix, 这里获取prefix . */
 		ret = insn_get_prefixes(insn);
 		if (ret)
 			return ret;
 	}
 
-	/* Get first opcode */
+	/* Get first opcode
+	这里是跳过prefix获取的op? */
 	op = get_next(insn_byte_t, insn);
+	/* 把text buf里面的真正op拷贝到opcode? */
 	insn_set_byte(opcode, 0, op);
 	opcode->nbytes = 1;
 
@@ -297,7 +299,7 @@ int insn_get_opcode(struct insn *insn)
 	}
 
 	insn->attr = inat_get_opcode_attribute(op);
-	while (inat_is_escape(insn->attr)) {
+	while (inat_is_escape(insn->attr)) {/*  */
 		/* Get escaped opcode */
 		op = get_next(insn_byte_t, insn);
 		opcode->bytes[opcode->nbytes++] = op;

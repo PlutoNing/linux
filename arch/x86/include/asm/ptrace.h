@@ -56,18 +56,22 @@ struct pt_regs {
 
 #else /* __i386__ */
 
+/* 代表进程的寄存器 */
 struct pt_regs {
 /*
  * C ABI says these regs are callee-preserved. They aren't saved on kernel entry
  * unless syscall needs a complete, fully filled "struct pt_regs".
+C ABI (Application Binary Interface) 规定这些寄存器是被调用者（callee）保存的，
+     * 所以除非系统调用需要一个完整的 "struct pt_regs"，这些寄存器不会在内核入口时被保存。
  */
 	unsigned long r15;
 	unsigned long r14;
 	unsigned long r13;
 	unsigned long r12;
-	unsigned long bp;
-	unsigned long bx;
-/* These regs are callee-clobbered. Always saved on kernel entry. */
+	unsigned long bp; //基址指针寄存器（rbp）
+	unsigned long bx; // 基址寄存器（rbx）
+/* These regs are callee-clobbered. Always saved on kernel entry.
+这些寄存器是被调用者覆盖的寄存器，在进入内核时始终被保存。 */
 	unsigned long r11;
 	unsigned long r10;
 	unsigned long r9;
@@ -79,16 +83,19 @@ struct pt_regs {
 	unsigned long di;
 /*
  * On syscall entry, this is syscall#. On CPU exception, this is error code.
- * On hw interrupt, it's IRQ number:
+ * On hw interrupt, it's IRQ number: 进入系统调用时，此字段保存系统调用编号；如果是 CPU 异常，则为错误代码；
+     * 如果是硬件中断，则保存 IRQ 编号。
  */
-	unsigned long orig_ax;
-/* Return frame for iretq */
+	unsigned long orig_ax; // 保存系统调用号、错误码或 IRQ 号
+/* Return frame for iretq 
+iretq 的返回帧，保存返回地址、代码段、标志寄存器、栈指针和栈段*/
 	unsigned long ip;
 	unsigned long cs;
 	unsigned long flags;
 	unsigned long sp;
 	unsigned long ss;
 /* top of stack page */
+/* 栈页的顶部 */
 };
 
 #endif /* !__i386__ */

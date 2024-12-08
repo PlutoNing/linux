@@ -123,6 +123,7 @@ static inline void get_mnt_ns(struct mnt_namespace *ns)
 
 extern seqlock_t mount_lock;
 
+/* proc mounts是什么 */
 struct proc_mounts {
 	struct mnt_namespace *ns;
 	struct path root;

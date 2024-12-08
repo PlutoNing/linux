@@ -24,9 +24,15 @@ int sysctl_vm_numa_stat_handler(struct ctl_table *table, int write,
 struct reclaim_stat {
 	unsigned nr_dirty;
 	unsigned nr_unqueued_dirty;
-	unsigned nr_congested;
+	unsigned nr_congested; /* 
+				folio_test_reclaim说明见过一次, 并且现在还在回写
+			所以认为是congested了
+		 
+		if (writeback && folio_test_reclaim(folio))
+			stat->nr_congested += nr_pages;
+	 */
 	unsigned nr_writeback;
-	unsigned nr_immediate;
+	unsigned nr_immediate; /*  已经在被回写且设置了reclaim的page数量  */
 	unsigned nr_pageout;
 	unsigned nr_activate[ANON_AND_FILE];
 	unsigned nr_ref_keep;
@@ -65,7 +71,7 @@ static inline void __count_vm_event(enum vm_event_item item)
 {
 	raw_cpu_inc(vm_event_states.event[item]);
 }
-
+/* 统计一次这个事件 */
 static inline void count_vm_event(enum vm_event_item item)
 {
 	this_cpu_inc(vm_event_states.event[item]);
@@ -138,6 +144,7 @@ static inline void vm_events_fold_cpu(int cpu)
  * Zone and node-based page accounting with per cpu differentials.
  */
 extern atomic_long_t vm_zone_stat[NR_VM_ZONE_STAT_ITEMS];
+/* 全局的页面统计信息 */
 extern atomic_long_t vm_node_stat[NR_VM_NODE_STAT_ITEMS];
 extern atomic_long_t vm_numa_event[NR_VM_NUMA_EVENT_ITEMS];
 
@@ -168,7 +175,7 @@ static inline void zone_page_state_add(long x, struct zone *zone,
 	atomic_long_add(x, &zone->vm_stat[item]);
 	atomic_long_add(x, &vm_zone_stat[item]);
 }
-
+/* 修改node和全局的页面统计信息 */
 static inline void node_page_state_add(long x, struct pglist_data *pgdat,
 				 enum node_stat_item item)
 {
@@ -185,9 +192,8 @@ static inline unsigned long global_zone_page_state(enum zone_stat_item item)
 #endif
 	return x;
 }
-
-static inline
-unsigned long global_node_page_state_pages(enum node_stat_item item)
+/* 读取全局的内存某项统计信息 */
+static inline unsigned long global_node_page_state_pages(enum node_stat_item item)
 {
 	long x = atomic_long_read(&vm_node_stat[item]);
 #ifdef CONFIG_SMP
@@ -196,7 +202,7 @@ unsigned long global_node_page_state_pages(enum node_stat_item item)
 #endif
 	return x;
 }
-
+/* 为什么这里有一个函数 */
 static inline unsigned long global_node_page_state(enum node_stat_item item)
 {
 	VM_WARN_ON_ONCE(vmstat_item_in_bytes(item));
@@ -608,7 +614,7 @@ static inline void __dec_lruvec_page_state(struct page *page,
 {
 	__mod_lruvec_page_state(page, idx, -1);
 }
-
+/*  */
 static inline void __lruvec_stat_mod_folio(struct folio *folio,
 					   enum node_stat_item idx, int val)
 {

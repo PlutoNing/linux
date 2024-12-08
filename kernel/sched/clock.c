@@ -381,6 +381,7 @@ again:
 }
 
 /*
+ 
  * Similar to cpu_clock(), but requires local IRQs to be disabled.
  *
  * See cpu_clock().

@@ -26,7 +26,9 @@ static inline int ceph_fsid_compare(const struct ceph_fsid *a,
  * ino, object, etc.
  */
 typedef __le64 ceph_snapid_t;
-#define CEPH_SNAPDIR ((__u64)(-1))  /* reserved for hidden .snap dir */
+#define CEPH_SNAPDIR ((__u64)(-1))  
+/* snap dir是什么? 
+reserved for hidden .snap dir */
 #define CEPH_NOSNAP  ((__u64)(-2))  /* "head", "live" revision */
 #define CEPH_MAXSNAP ((__u64)(-3))  /* largest valid snapid */
 
@@ -200,6 +202,7 @@ extern const char *ceph_osd_state_name(int s);
 #define __CEPH_OSD_OP(mode, type, nr) \
 	(CEPH_OSD_OP_MODE_##mode | CEPH_OSD_OP_TYPE_##type | (nr))
 
+/* osd的req的opcode */
 #define __CEPH_FORALL_OSD_OPS(f)					    \
 	/** data **/							    \
 	/* read */							    \
@@ -319,6 +322,7 @@ extern const char *ceph_osd_state_name(int s);
 	f(PG_HITSET_LS,	__CEPH_OSD_OP(RD, PG, 3),	"pg-hitset-ls")	    \
 	f(PG_HITSET_GET, __CEPH_OSD_OP(RD, PG, 4),	"pg-hitset-get")
 
+/* 这里定义osd的req的opcode */
 enum {
 #define GENERATE_ENUM_ENTRY(op, opcode, str)	CEPH_OSD_OP_##op = (opcode),
 __CEPH_FORALL_OSD_OPS(GENERATE_ENUM_ENTRY)
@@ -377,6 +381,7 @@ static inline int ceph_osd_op_mode_modify(int op)
 extern const char *ceph_osd_op_name(int op);
 
 /*
+op的flag
  * osd op flags
  *
  * An op may be READ, WRITE, or READ|WRITE.
@@ -384,7 +389,8 @@ extern const char *ceph_osd_op_name(int op);
 enum {
 	CEPH_OSD_FLAG_ACK =            0x0001,  /* want (or is) "ack" ack */
 	CEPH_OSD_FLAG_ONNVRAM =        0x0002,  /* want (or is) "onnvram" ack */
-	CEPH_OSD_FLAG_ONDISK =         0x0004,  /* want (or is) "ondisk" ack */
+	CEPH_OSD_FLAG_ONDISK =         0x0004,  
+	/* want (or is) "ondisk" ack . 提交请求前会置位此 */
 	CEPH_OSD_FLAG_RETRY =          0x0008,  /* resend attempt */
 	CEPH_OSD_FLAG_READ =           0x0010,  /* op may read */
 	CEPH_OSD_FLAG_WRITE =          0x0020,  /* op may write */

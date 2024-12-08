@@ -1808,12 +1808,15 @@ long as the size of the core file isn't limited. But sometimes we don't want
 to dump some memory segments, for example, huge shared memory or DAX.
 Conversely, sometimes we want to save file-backed memory segments into a core
 file, not only the individual files.
-
+当一个进程被转储时，只要核心转储文件的大小没有被限制，所有的匿名内存都会被写入核心转储文件。
+但是，有时候我们不希望转储某些内存段，例如巨大的共享内存或DAX（直接访问存储）。相反，有时候
+我们希望将文件支持的内存段保存到核心转储文件中，而不仅仅是单个文件。
 /proc/<pid>/coredump_filter allows you to customize which memory segments
 will be dumped when the <pid> process is dumped. coredump_filter is a bitmask
 of memory types. If a bit of the bitmask is set, memory segments of the
 corresponding memory type are dumped, otherwise they are not dumped.
-
+/proc/<pid>/coredump_filter 允许自定义在转储 <pid> 进程时哪些内存段会被转储。coredump_filter
+ 是一个内存类型的位掩码。如果位掩码中的某一位被设置，那么对应类型的内存段会被转储，否则不会被转储。
 The following 9 memory types are supported:
 
   - (bit 0) anonymous private memory

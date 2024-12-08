@@ -31,6 +31,7 @@ void psi_trigger_destroy(struct psi_trigger *t);
 __poll_t psi_trigger_poll(void **trigger_ptr, struct file *file,
 			poll_table *wait);
 
+/* 获取cgroup的psi group */
 #ifdef CONFIG_CGROUPS
 static inline struct psi_group *cgroup_psi(struct cgroup *cgrp)
 {

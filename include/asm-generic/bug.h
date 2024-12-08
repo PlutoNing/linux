@@ -119,6 +119,7 @@ extern __printf(1, 2) void __warn_printk(const char *fmt, ...);
 /* used internally by panic.c */
 
 #ifndef WARN_ON
+/*  */
 #define WARN_ON(condition) ({						\
 	int __ret_warn_on = !!(condition);				\
 	if (unlikely(__ret_warn_on))					\

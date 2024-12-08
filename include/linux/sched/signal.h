@@ -649,6 +649,7 @@ extern void flush_itimer_signals(void);
 extern bool current_is_single_threaded(void);
 
 /*
+遍历proc的每一个thread
  * Without tasklist/siglock it is only rcu-safe if g can't exit/exec,
  * otherwise next_thread(t) will never reach g after list_del_rcu(g).
  */
@@ -715,6 +716,7 @@ bool same_thread_group(struct task_struct *p1, struct task_struct *p2)
 	return p1->signal == p2->signal;
 }
 
+/*  */
 static inline struct task_struct *next_thread(const struct task_struct *p)
 {
 	return list_entry_rcu(p->thread_group.next,

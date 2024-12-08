@@ -80,7 +80,7 @@ static void init_once(void *foo)
 
 	inode_init_once(&ei->vfs_inode);
 }
-
+/* 利用slab存储inode ... */
 static int __init init_inodecache(void)
 {
 	minix_inode_cachep = kmem_cache_create("minix_inode_cache",
@@ -88,11 +88,12 @@ static int __init init_inodecache(void)
 					     0, (SLAB_RECLAIM_ACCOUNT|
 						SLAB_MEM_SPREAD|SLAB_ACCOUNT),
 					     init_once);
+
 	if (minix_inode_cachep == NULL)
 		return -ENOMEM;
 	return 0;
 }
-
+/* 销毁minixfs的inode cache */
 static void destroy_inodecache(void)
 {
 	/*
@@ -678,12 +679,13 @@ void minix_truncate(struct inode * inode)
 		V2_minix_truncate(inode);
 }
 
+/* 挂载minix的回调 */
 static struct dentry *minix_mount(struct file_system_type *fs_type,
 	int flags, const char *dev_name, void *data)
 {
 	return mount_bdev(fs_type, flags, dev_name, data, minix_fill_super);
 }
-
+/*  */
 static struct file_system_type minix_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "minix",
@@ -691,10 +693,13 @@ static struct file_system_type minix_fs_type = {
 	.kill_sb	= kill_block_super,
 	.fs_flags	= FS_REQUIRES_DEV,
 };
-MODULE_ALIAS_FS("minix");
 
+MODULE_ALIAS_FS("minix");
+/* 初始化minixfs的函数
+会注册fs类型, 挂载什么的 */
 static int __init init_minix_fs(void)
-{
+{	
+	/* 初始化inode的存储 */
 	int err = init_inodecache();
 	if (err)
 		goto out1;
@@ -707,14 +712,16 @@ out:
 out1:
 	return err;
 }
-
+/* 卸载模块时调用 */
 static void __exit exit_minix_fs(void)
 {
-        unregister_filesystem(&minix_fs_type);
+    unregister_filesystem(&minix_fs_type);
 	destroy_inodecache();
 }
-
+/* 加载模块的时候调用 */
 module_init(init_minix_fs)
+/* 卸载模块时调用 */
 module_exit(exit_minix_fs)
+
 MODULE_LICENSE("GPL");
 

@@ -397,6 +397,7 @@ void wb_wakeup_delayed(struct bdi_writeback *wb)
 	spin_unlock_irq(&wb->work_lock);
 }
 
+//更新带宽
 static void wb_update_bandwidth_workfn(struct work_struct *work)
 {
 	struct bdi_writeback *wb = container_of(to_delayed_work(work),
@@ -409,7 +410,7 @@ static void wb_update_bandwidth_workfn(struct work_struct *work)
  * Initial write bandwidth: 100 MB/s
  */
 #define INIT_BW		(100 << (20 - PAGE_SHIFT))
-
+//初始化新的bdi_writeback结构
 static int wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi,
 		   gfp_t gfp)
 {
@@ -435,7 +436,7 @@ static int wb_init(struct bdi_writeback *wb, struct backing_dev_info *bdi,
 	spin_lock_init(&wb->work_lock);
 	INIT_LIST_HEAD(&wb->work_list);
 	INIT_DELAYED_WORK(&wb->dwork, wb_workfn);
-	INIT_DELAYED_WORK(&wb->bw_dwork, wb_update_bandwidth_workfn);
+	INIT_DELAYED_WORK(&wb->bw_dwork, wb_update_bandwidth_workfn); //设置更新带宽的函数
 	wb->dirty_sleep = jiffies;
 
 	err = fprop_local_init_percpu(&wb->completions, gfp);
@@ -573,6 +574,7 @@ static void cgwb_remove_from_bdi_list(struct bdi_writeback *wb)
 	spin_unlock_irq(&cgwb_lock);
 }
 
+//给这个memcg在bdi上创建一个wb
 static int cgwb_create(struct backing_dev_info *bdi,
 		       struct cgroup_subsys_state *memcg_css, gfp_t gfp)
 {
@@ -583,22 +585,26 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	unsigned long flags;
 	int ret = 0;
 
+	//memcg_css对应的memcg
 	memcg = mem_cgroup_from_css(memcg_css);
+	//memcg_css对应的blkcg css
 	blkcg_css = cgroup_get_e_css(memcg_css->cgroup, &io_cgrp_subsys);
-	memcg_cgwb_list = &memcg->cgwb_list;
-	blkcg_cgwb_list = blkcg_get_cgwb_list(blkcg_css);
+	memcg_cgwb_list = &memcg->cgwb_list; //memcg的cgwb_list
+
+	blkcg_cgwb_list = blkcg_get_cgwb_list(blkcg_css); //获取blkcg的cgwb_list
 
 	/* look up again under lock and discard on blkcg mismatch */
 	spin_lock_irqsave(&cgwb_lock, flags);
 	wb = radix_tree_lookup(&bdi->cgwb_tree, memcg_css->id);
-	if (wb && wb->blkcg_css != blkcg_css) {
+	if (wb && wb->blkcg_css != blkcg_css) { //这说明blkcg发生了变化?
 		cgwb_kill(wb);
 		wb = NULL;
 	}
 	spin_unlock_irqrestore(&cgwb_lock, flags);
-	if (wb)
+	if (wb) //这是说明wb存在, 并且blkcg没有发生变化
 		goto out_put;
 
+	//wb不存在, 需要创建一个新的
 	/* need to create a new one */
 	wb = kmalloc(sizeof(*wb), gfp);
 	if (!wb) {
@@ -606,6 +612,7 @@ static int cgwb_create(struct backing_dev_info *bdi,
 		goto out_put;
 	}
 
+	//初始化wb
 	ret = wb_init(wb, bdi, gfp);
 	if (ret)
 		goto err_free;
@@ -630,13 +637,16 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	 * memcg_cgwb_list and blkcg_cgwb_list's next pointers indicate
 	 * whether they're still online.  Don't link @wb if any is dead.
 	 * See wb_memcg_offline() and wb_blkcg_offline().
+		root wb决定了整个bdi和memcg_cgwb_list和blkcg_cgwb_list的next指针
+		指示它们是否仍然在线。如果有任何一个死了，就不要链接@wb。
+		请参阅wb_memcg_offline()和wb_blkcg_offline()。
 	 */
 	ret = -ENODEV;
 	spin_lock_irqsave(&cgwb_lock, flags);
 	if (test_bit(WB_registered, &bdi->wb.state) &&
-	    blkcg_cgwb_list->next && memcg_cgwb_list->next) {
+	    blkcg_cgwb_list->next && memcg_cgwb_list->next) { //这里是判断memcg和blkcg是否在线,并且wb也在线
 		/* we might have raced another instance of this function */
-		ret = radix_tree_insert(&bdi->cgwb_tree, memcg_css->id, wb);
+		ret = radix_tree_insert(&bdi->cgwb_tree, memcg_css->id, wb);//插入到bdi的cgwb_tree中
 		if (!ret) {
 			list_add_tail_rcu(&wb->bdi_node, &bdi->wb_list);
 			list_add(&wb->memcg_node, memcg_cgwb_list);
@@ -670,26 +680,33 @@ out_put:
 
 /**
  * wb_get_lookup - get wb for a given memcg
+	查找memcg在bdi上的wb
  * @bdi: target bdi
  * @memcg_css: cgroup_subsys_state of the target memcg (must have positive ref)
  *
  * Try to get the wb for @memcg_css on @bdi.  The returned wb has its
  * refcount incremented.
- *
+ *	尝试获取memcg在bdi上的wb, 返回的wb的引用计数会增加
  * This function uses css_get() on @memcg_css and thus expects its refcnt
  * to be positive on invocation.  IOW, rcu_read_lock() protection on
  * @memcg_css isn't enough.  try_get it before calling this function.
- *
+ *	这个函数在调用时使用css_get()来增加@memcg_css的引用计数，因此
+	 *	在调用这个函数之前，@memcg_css的引用计数必须是正的。也就是说，
+	 *	 *	在@memcg_css上的rcu_read_lock()保护是不够的。在调用这个函数之前
  * A wb is keyed by its associated memcg.  As blkcg implicitly enables
  * memcg on the default hierarchy, memcg association is guaranteed to be
  * more specific (equal or descendant to the associated blkcg) and thus can
  * identify both the memcg and blkcg associations.
- *
+ *	一个wb由其关联的memcg键控。由于blkcg隐式地在默认层次结构上启用了memcg，
+   memcg关联保证更具体（等于或是关联的blkcg的后代），因此可以标识memcg和blkcg关联。
  * Because the blkcg associated with a memcg may change as blkcg is enabled
  * and disabled closer to root in the hierarchy, each wb keeps track of
  * both the memcg and blkcg associated with it and verifies the blkcg on
  * each lookup.  On mismatch, the existing wb is discarded and a new one is
  * created.
+   因为与memcg关联的blkcg可能会随着blkcg在层次结构中更接近根部的启用和禁用而改变，
+   每个wb都会跟踪与其关联的memcg和blkcg，并在每次查找时验证blkcg。如果不匹配，
+   则丢弃现有的wb并创建一个新的。
  */
 struct bdi_writeback *wb_get_lookup(struct backing_dev_info *bdi,
 				    struct cgroup_subsys_state *memcg_css)
@@ -701,7 +718,7 @@ struct bdi_writeback *wb_get_lookup(struct backing_dev_info *bdi,
 
 	rcu_read_lock();
 	wb = radix_tree_lookup(&bdi->cgwb_tree, memcg_css->id);
-	if (wb) {
+	if (wb) {//找到了
 		struct cgroup_subsys_state *blkcg_css;
 
 		/* see whether the blkcg association has changed */
@@ -717,12 +734,14 @@ struct bdi_writeback *wb_get_lookup(struct backing_dev_info *bdi,
 
 /**
  * wb_get_create - get wb for a given memcg, create if necessary
+  获取memcg在bdi上的wb，如果不存在则创建
  * @bdi: target bdi
  * @memcg_css: cgroup_subsys_state of the target memcg (must have positive ref)
  * @gfp: allocation mask to use
  *
  * Try to get the wb for @memcg_css on @bdi.  If it doesn't exist, try to
  * create one.  See wb_get_lookup() for more details.
+	尝试获取memcg在bdi上的wb，如果不存在则创建一个
  */
 struct bdi_writeback *wb_get_create(struct backing_dev_info *bdi,
 				    struct cgroup_subsys_state *memcg_css,
@@ -735,7 +754,7 @@ struct bdi_writeback *wb_get_create(struct backing_dev_info *bdi,
 	do {
 		wb = wb_get_lookup(bdi, memcg_css);
 	} while (!wb && !cgwb_create(bdi, memcg_css, gfp));
-
+	/* 有wb了或者创建成功了,就返回 */
 	return wb;
 }
 

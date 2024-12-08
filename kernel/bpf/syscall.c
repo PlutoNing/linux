@@ -2267,6 +2267,8 @@ int bpf_prog_new_fd(struct bpf_prog *prog)
 				O_RDWR | O_CLOEXEC);
 }
 
+/* 获取fd的file的priv,
+保证有file并且是prog file */
 static struct bpf_prog *____bpf_prog_get(struct fd f)
 {
 	if (!f.file)
@@ -2331,15 +2333,17 @@ bool bpf_prog_get_ok(struct bpf_prog *prog,
 	return true;
 }
 
+/* 获取fd的prog */
 static struct bpf_prog *__bpf_prog_get(u32 ufd, enum bpf_prog_type *attach_type,
 				       bool attach_drv)
 {
 	struct fd f = fdget(ufd);
 	struct bpf_prog *prog;
-
+	/* 获取fd指向的prog */
 	prog = ____bpf_prog_get(f);
 	if (IS_ERR(prog))
 		return prog;
+
 	if (!bpf_prog_get_ok(prog, attach_type, attach_drv)) {
 		prog = ERR_PTR(-EINVAL);
 		goto out;
@@ -2351,6 +2355,7 @@ out:
 	return prog;
 }
 
+/* 获取这个fd绑定的prog */
 struct bpf_prog *bpf_prog_get(u32 ufd)
 {
 	return __bpf_prog_get(ufd, NULL, false);
@@ -2363,7 +2368,8 @@ struct bpf_prog *bpf_prog_get_type_dev(u32 ufd, enum bpf_prog_type type,
 }
 EXPORT_SYMBOL_GPL(bpf_prog_get_type_dev);
 
-/* Initially all BPF programs could be loaded w/o specifying
+/* 
+	Initially all BPF programs could be loaded w/o specifying
  * expected_attach_type. Later for some of them specifying expected_attach_type
  * at load time became required so that program could be validated properly.
  * Programs of types that are allowed to be loaded both w/ and w/o (for
@@ -2374,6 +2380,7 @@ EXPORT_SYMBOL_GPL(bpf_prog_get_type_dev);
  * bpf_prog_load_fixup_attach_type() sets expected_attach_type in @attr if
  * prog type requires it but has some attach types that have to be backward
  * compatible.
+
  */
 static void bpf_prog_load_fixup_attach_type(union bpf_attr *attr)
 {
@@ -2548,6 +2555,8 @@ static bool is_perfmon_prog_type(enum bpf_prog_type prog_type)
 /* last field in 'union bpf_attr' used by this command */
 #define	BPF_PROG_LOAD_LAST_FIELD log_true_size
 
+/* @attr,bpf的attr
+ */
 static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 {
 	enum bpf_prog_type type = attr->prog_type;
@@ -2585,7 +2594,8 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 
 	if (attr->insn_cnt == 0 ||
 	    attr->insn_cnt > (bpf_capable() ? BPF_COMPLEXITY_LIMIT_INSNS : BPF_MAXINSNS))
-		return -E2BIG;
+		return -E2BIG;/* 指令数太多了 */
+
 	if (type != BPF_PROG_TYPE_SOCKET_FILTER &&
 	    type != BPF_PROG_TYPE_CGROUP_SKB &&
 	    !bpf_capable())
@@ -2598,10 +2608,11 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 
 	/* attach_prog_fd/attach_btf_obj_fd can specify fd of either bpf_prog
 	 * or btf, we need to check which one it is
+	 检查attach_prog_fd/attach_btf_obj_fd绑定的是prog还是btf
 	 */
-	if (attr->attach_prog_fd) {
+	if (attr->attach_prog_fd) {/*  */
 		dst_prog = bpf_prog_get(attr->attach_prog_fd);
-		if (IS_ERR(dst_prog)) {
+		if (IS_ERR(dst_prog)) {/* 此attach_prog_fd上面没有绑定prog */
 			dst_prog = NULL;
 			attach_btf = btf_get_by_fd(attr->attach_btf_obj_fd);
 			if (IS_ERR(attach_btf))
@@ -2614,7 +2625,7 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 				return -ENOTSUPP;
 			}
 		}
-	} else if (attr->attach_btf_id) {
+	} else if (attr->attach_btf_id) {/*  */
 		/* fall back to vmlinux BTF, if BTF type ID is specified */
 		attach_btf = bpf_get_btf_vmlinux();
 		if (IS_ERR(attach_btf))
@@ -2625,9 +2636,10 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 	}
 
 	bpf_prog_load_fixup_attach_type(attr);
+
 	if (bpf_prog_load_check_attach(type, attr->expected_attach_type,
 				       attach_btf, attr->attach_btf_id,
-				       dst_prog)) {
+				       dst_prog)) {/* 2024年11月05日11:27:57看到这 */
 		if (dst_prog)
 			bpf_prog_put(dst_prog);
 		if (attach_btf)
@@ -2644,7 +2656,7 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 			btf_put(attach_btf);
 		return -ENOMEM;
 	}
-
+	/* 初始化prog */
 	prog->expected_attach_type = attr->expected_attach_type;
 	prog->aux->attach_btf = attach_btf;
 	prog->aux->attach_btf_id = attr->attach_btf_id;
@@ -2653,6 +2665,7 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 	prog->aux->sleepable = attr->prog_flags & BPF_F_SLEEPABLE;
 	prog->aux->xdp_has_frags = attr->prog_flags & BPF_F_XDP_HAS_FRAGS;
 
+	/* 分配aux? */
 	err = security_bpf_prog_alloc(prog->aux);
 	if (err)
 		goto free_prog;
@@ -2665,6 +2678,7 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 			     make_bpfptr(attr->insns, uattr.is_kernel),
 			     bpf_prog_insn_size(prog)) != 0)
 		goto free_prog_sec;
+
 	/* copy eBPF program license from user space */
 	if (strncpy_from_bpfptr(license,
 				make_bpfptr(attr->license, uattr.is_kernel),
@@ -2704,7 +2718,8 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 	if (err < 0)
 		goto free_prog_sec;
 
-	/* run eBPF verifier */
+	/* run eBPF verifier
+	2024年11月05日11:10:01这里check bpf code */
 	err = bpf_check(&prog, attr, uattr, uattr_size);
 	if (err < 0)
 		goto free_used_maps;
@@ -5314,6 +5329,7 @@ static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 
 	/* copy attributes from user space, may be less than sizeof(bpf_attr) */
 	memset(&attr, 0, sizeof(attr));
+	/* bpf ptr是什么 */
 	if (copy_from_bpfptr(&attr, uattr, size) != 0)
 		return -EFAULT;
 
@@ -5341,6 +5357,7 @@ static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 		err = map_freeze(&attr);
 		break;
 	case BPF_PROG_LOAD:
+	/* 加载prog */
 		err = bpf_prog_load(&attr, uattr, size);
 		break;
 	case BPF_OBJ_PIN:

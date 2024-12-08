@@ -185,6 +185,7 @@ struct memcg_cgwb_frn {
 };
 
 /*
+记录slab obj对应的memcg ...
  * Bucket for arbitrarily byte-sized objects charged to a memory
  * cgroup. The bucket can be reparented in one piece when the cgroup
  * is destroyed, without having to round up the individual references
@@ -315,7 +316,7 @@ struct mem_cgroup {
 	struct memcg_vmstats_percpu __percpu *vmstats_percpu;
 
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct list_head cgwb_list;
+	struct list_head cgwb_list; //关联的wb连接到这里
 	struct wb_domain cgwb_domain;
 	struct memcg_cgwb_frn cgwb_frn[MEMCG_CGWB_FRN_CNT];
 #endif
@@ -329,7 +330,8 @@ struct mem_cgroup {
 #endif
 
 #ifdef CONFIG_LRU_GEN
-	/* per-memcg mm_struct list */
+	/* per-memcg mm_struct list
+	这里面链接到什么? */
 	struct lru_gen_mm_list mm_list;
 #endif
 
@@ -359,6 +361,7 @@ enum page_memcg_data_flags {
 static inline bool folio_memcg_kmem(struct folio *folio);
 
 /*
+获取objcg的memcg
  * After the initialization objcg->memcg is always pointing at
  * a valid memcg, but can be atomically swapped to the parent memcg.
  *
@@ -474,6 +477,7 @@ static inline struct mem_cgroup *folio_memcg_rcu(struct folio *folio)
 }
 
 /*
+获取folio的memcg
  * folio_memcg_check - Get the memory cgroup associated with a folio.
  * @folio: Pointer to the folio.
  *
@@ -577,6 +581,7 @@ static inline bool mem_cgroup_disabled(void)
 	return !cgroup_subsys_enabled(memory_cgrp_subsys);
 }
 
+/*  */
 static inline void mem_cgroup_protection(struct mem_cgroup *root,
 					 struct mem_cgroup *memcg,
 					 unsigned long *min,
@@ -665,6 +670,7 @@ static inline bool mem_cgroup_below_min(struct mem_cgroup *target,
 int __mem_cgroup_charge(struct folio *folio, struct mm_struct *mm, gfp_t gfp);
 
 /**
+charge新分配的folio.
  * mem_cgroup_charge - Charge a newly allocated folio to a cgroup.
  * @folio: Folio to charge.
  * @mm: mm context of the allocating task.
@@ -935,6 +941,7 @@ void mem_cgroup_print_oom_context(struct mem_cgroup *memcg,
 
 void mem_cgroup_print_oom_meminfo(struct mem_cgroup *memcg);
 
+//
 static inline void mem_cgroup_enter_user_fault(void)
 {
 	WARN_ON(current->in_user_fault);
@@ -962,7 +969,8 @@ void folio_memcg_unlock(struct folio *folio);
 
 void __mod_memcg_state(struct mem_cgroup *memcg, int idx, int val);
 
-/* try to stablize folio_memcg() for all the pages in a memcg */
+/* try to stablize folio_memcg() for all the pages in a memcg
+锁住memcg的全部page? */
 static inline bool mem_cgroup_trylock_pages(struct mem_cgroup *memcg)
 {
 	rcu_read_lock();
@@ -1596,7 +1604,7 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 	return 0;
 }
 #endif /* CONFIG_MEMCG */
-
+/*  */
 static inline void __inc_lruvec_kmem_state(void *p, enum node_stat_item idx)
 {
 	__mod_lruvec_kmem_state(p, idx, 1);

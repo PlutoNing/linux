@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Pressure stall information for CPU, memory and IO
  *
@@ -775,6 +774,8 @@ static void record_times(struct psi_group_cpu *groupc, u64 now)
 		groupc->times[PSI_NONIDLE] += delta;
 }
 
+/* 处理psi group的flag
+ */
 static void psi_group_change(struct psi_group *group, int cpu,
 			     unsigned int clear, unsigned int set, u64 now,
 			     bool wake_clock)
@@ -784,6 +785,7 @@ static void psi_group_change(struct psi_group *group, int cpu,
 	enum psi_states s;
 	u32 state_mask;
 
+	/* 获取psig的pcp存储 */
 	groupc = per_cpu_ptr(group->pcpu, cpu);
 
 	/*
@@ -794,6 +796,15 @@ static void psi_group_change(struct psi_group *group, int cpu,
 	 * assess the aggregate resource states this CPU's tasks
 	 * have been in since the last change, and account any
 	 * SOME and FULL time these may have resulted in.
+	 首先，我们根据通过 @clear 和 @set 位请求的状态变化更新任务计数。
+然后，如果启用了 cgroup PSI 统计信息的计量，我们会评估自上次状态变化
+以来，这个 CPU 上的任务所处的聚合资源状态，并计算可能导致的 SOME 和 FULL 时间。
+------------------------------------------------------------------------
+root@ppppp-MS-7E24:/proc/pressure# cat memory 
+some avg10=0.00 avg60=0.00 avg300=0.00 total=3099648
+full avg10=0.00 avg60=0.00 avg300=0.00 total=3094679
+root@ppppp-MS-7E24:/proc/pressure# 
+
 	 */
 	write_seqcount_begin(&groupc->seq);
 
@@ -881,20 +892,27 @@ static void psi_group_change(struct psi_group *group, int cpu,
 		schedule_delayed_work(&group->avgs_work, PSI_FREQ);
 }
 
+/* 获取tsk的psi group . 支持cgroup机制 */
 static inline struct psi_group *task_psi_group(struct task_struct *task)
 {
 #ifdef CONFIG_CGROUPS
 	if (static_branch_likely(&psi_cgroups_enabled))
 		return cgroup_psi(task_dfl_cgroup(task));
 #endif
+
 	return &psi_system;
 }
 
+/* 改变psi flag. 去除clear,加上set */
 static void psi_flags_change(struct task_struct *task, int clear, int set)
 {
-	if (((task->psi_flags & set) ||
-	     (task->psi_flags & clear) != clear) &&
+	if (((task->psi_flags & set) || /* 检查当前任务的 PSI 标志中是否已经包含要设置的标志 (set)。
+	如果包含，意味着该任务已经处于某种状态，这可能导致不一致。 */
+	     (task->psi_flags & clear) != clear) /* 检查当前任务的 PSI 标志中是否没有包含要
+		 清除的标志 (clear)。如果没有，表示该任务并没有处于应当被清除的状态，这也可能导致不一致。 */ 
+		 &&
 	    !psi_bug) {
+
 		printk_deferred(KERN_ERR "psi: inconsistent task state! task=%d:%s cpu=%d psi_flags=%x clear=%x set=%x\n",
 				task->pid, task->comm, task_cpu(task),
 				task->psi_flags, clear, set);
@@ -905,6 +923,14 @@ static void psi_flags_change(struct task_struct *task, int clear, int set)
 	task->psi_flags |= set;
 }
 
+/* 作用?
+2024年10月13日21:01:54
+
+
+@clear: 去除clear
+@set: 是要设置的新值
+
+ */
 void psi_task_change(struct task_struct *task, int clear, int set)
 {
 	int cpu = task_cpu(task);
@@ -917,7 +943,7 @@ void psi_task_change(struct task_struct *task, int clear, int set)
 	psi_flags_change(task, clear, set);
 
 	now = cpu_clock(cpu);
-
+	/* 逐层级的处理psi group的flag */
 	group = task_psi_group(task);
 	do {
 		psi_group_change(group, cpu, clear, set, now, true);
@@ -1035,10 +1061,12 @@ void psi_account_irqtime(struct task_struct *task, u32 delta)
 #endif
 
 /**
+代表memory stall section的开始 ...
  * psi_memstall_enter - mark the beginning of a memory stall section
  * @flags: flags to handle nested sections
- *
+
  * Marks the calling task as being stalled due to a lack of memory,
+   比如等着refault或者慢速回收?
  * such as waiting for a refault or performing reclaim.
  */
 void psi_memstall_enter(unsigned long *flags)
@@ -1067,6 +1095,7 @@ void psi_memstall_enter(unsigned long *flags)
 EXPORT_SYMBOL_GPL(psi_memstall_enter);
 
 /**
+
  * psi_memstall_leave - mark the end of an memory stall section
  * @flags: flags to handle nested memdelay sections
  *
@@ -1230,6 +1259,7 @@ void psi_cgroup_restart(struct psi_group *group)
 }
 #endif /* CONFIG_CGROUPS */
 
+/* psi的信息展示 */
 int psi_show(struct seq_file *m, struct psi_group *group, enum psi_res res)
 {
 	bool only_full = false;
@@ -1492,6 +1522,7 @@ static int psi_io_show(struct seq_file *m, void *v)
 	return psi_show(m, &psi_system, PSI_IO);
 }
 
+/* psi的mem展示 */
 static int psi_memory_show(struct seq_file *m, void *v)
 {
 	return psi_show(m, &psi_system, PSI_MEM);
@@ -1507,6 +1538,7 @@ static int psi_io_open(struct inode *inode, struct file *file)
 	return single_open(file, psi_io_show, NULL);
 }
 
+/* psi的mem的procfs接口 */
 static int psi_memory_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, psi_memory_show, NULL);
@@ -1602,6 +1634,7 @@ static const struct proc_ops psi_io_proc_ops = {
 	.proc_release	= psi_fop_release,
 };
 
+/*  */
 static const struct proc_ops psi_memory_proc_ops = {
 	.proc_open	= psi_memory_open,
 	.proc_read	= seq_read,
@@ -1647,6 +1680,19 @@ static const struct proc_ops psi_irq_proc_ops = {
 };
 #endif
 
+/* 初始化psi的proc接口
+root@ppppp-MS-7E24:/proc/pressure# ll
+total 0
+dr-xr-xr-x   5 root root 0 Oct  4 23:38 ./
+dr-xr-xr-x 654 root root 0 Oct  4 23:38 ../
+-rw-rw-rw-   1 root root 0 Oct  4 23:38 cpu
+-rw-rw-rw-   1 root root 0 Oct  4 23:38 io
+-rw-rw-rw-   1 root root 0 Oct  4 23:38 memory
+root@ppppp-MS-7E24:/proc/pressure# cat memory 
+some avg10=0.00 avg60=0.00 avg300=0.00 total=3099648
+full avg10=0.00 avg60=0.00 avg300=0.00 total=3094679
+root@ppppp-MS-7E24:/proc/pressure# 
+ */
 static int __init psi_proc_init(void)
 {
 	if (psi_enable) {

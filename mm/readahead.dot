@@ -1,0 +1,37 @@
+strict digraph callgraph {
+"__ia32_sys_readahead" -> "ksys_readahead";
+"__x64_sys_readahead" -> "ksys_readahead";
+"force_page_cache_ra" -> "page_cache_ra_unbounded";
+"ksys_readahead" -> "vfs_fadvise";
+"vfs_fadvise" [style=dashed]
+"ondemand_readahead" -> "page_cache_ra_order";
+"ondemand_readahead" -> "page_cache_ra_unbounded";
+"page_cache_async_ra" -> "blk_cgroup_congested";
+"blk_cgroup_congested" [style=dashed]
+"page_cache_async_ra" -> "ondemand_readahead";
+"page_cache_ra_order" -> "filemap_add_folio";
+"filemap_add_folio" [style=dashed]
+"page_cache_ra_order" -> "filemap_alloc_folio";
+"filemap_alloc_folio" [style=dashed]
+"page_cache_ra_order" -> "page_cache_ra_unbounded";
+"page_cache_ra_order" -> "read_pages";
+"page_cache_ra_unbounded" -> "filemap_add_folio";
+"filemap_add_folio" [style=dashed]
+"page_cache_ra_unbounded" -> "filemap_alloc_folio";
+"filemap_alloc_folio" [style=dashed]
+"page_cache_ra_unbounded" -> "read_pages";
+"page_cache_sync_ra" -> "blk_cgroup_congested";
+"blk_cgroup_congested" [style=dashed]
+"page_cache_sync_ra" -> "force_page_cache_ra";
+"page_cache_sync_ra" -> "ondemand_readahead";
+"read_pages" -> "blk_finish_plug";
+"blk_finish_plug" [style=dashed]
+"read_pages" -> "blk_start_plug";
+"blk_start_plug" [style=dashed]
+"read_pages" -> "filemap_remove_folio";
+"filemap_remove_folio" [style=dashed]
+"readahead_expand" -> "filemap_add_folio";
+"filemap_add_folio" [style=dashed]
+"readahead_expand" -> "filemap_alloc_folio";
+"filemap_alloc_folio" [style=dashed]
+}

@@ -5,6 +5,7 @@
  * (C) 2004 Nadia Yvette Chambers, Oracle
  */
 
+#include "linux/printk.h"
 void __init_waitqueue_head(struct wait_queue_head *wq_head, const char *name, struct lock_class_key *key)
 {
 	spin_lock_init(&wq_head->lock);
@@ -259,18 +260,23 @@ void __wake_up_pollfree(struct wait_queue_head *wq_head)
  * wake-function that tests for the wait-queue being active
  * will be guaranteed to see waitqueue addition _or_ subsequent
  * tests in this thread will see the wakeup having taken place.
- *
+ * 在将进程添加到等待队列之后才调用 "set_current_state()"，
+ * 因为在多处理器系统上，我们在这里需要一个内存屏障（memory barrier），
+ * 这样任何用于检查等待队列是否活跃的唤醒函数都可以保证看到等待队列
+ * 的加入操作，或者在该线程中的后续检查将能检测到唤醒已经发生。
  * The spin_unlock() itself is semi-permeable and only protects
  * one way (it only protects stuff inside the critical region and
  * stops them from bleeding out - it would still allow subsequent
  * loads to move into the critical region).
+ 将当前进程添加到指定的等待队列 wq_head 中，并设置进程的状态。
  */
 void
 prepare_to_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)
 {
 	unsigned long flags;
 
-	wq_entry->flags &= ~WQ_FLAG_EXCLUSIVE;
+	wq_entry->flags &= ~ WQ_FLAG_EXCLUSIVE;
+	//pr_debug("dsa\n");
 	spin_lock_irqsave(&wq_head->lock, flags);
 	if (list_empty(&wq_entry->entry))
 		__add_wait_queue(wq_head, wq_entry);
@@ -385,6 +391,7 @@ int do_wait_intr_irq(wait_queue_head_t *wq, wait_queue_entry_t *wait)
 EXPORT_SYMBOL(do_wait_intr_irq);
 
 /**
+从wq移除,标记为可运行
  * finish_wait - clean up after waiting in a queue
  * @wq_head: waitqueue waited on
  * @wq_entry: wait descriptor

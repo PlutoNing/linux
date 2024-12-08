@@ -631,6 +631,8 @@ static __always_inline void prefetchw(const void *x)
 
 #define task_top_of_stack(task) ((unsigned long)(task_pt_regs(task) + 1))
 
+/* 获取进程的寄存器.
+所以寄存器存储在哪里? */
 #define task_pt_regs(task) \
 ({									\
 	unsigned long __ptr = (unsigned long)task_stack_page(task);	\
@@ -667,6 +669,8 @@ extern void start_thread(struct pt_regs *regs, unsigned long new_ip,
 #define __TASK_UNMAPPED_BASE(task_size)	(PAGE_ALIGN(task_size / 3))
 #define TASK_UNMAPPED_BASE		__TASK_UNMAPPED_BASE(TASK_SIZE_LOW)
 
+/* 获取进程的ip.
+先获取stack,再获取regs,获取ip */
 #define KSTK_EIP(task)		(task_pt_regs(task)->ip)
 
 /* Get/set a process' ability to use the timestamp counter instruction */

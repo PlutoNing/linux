@@ -1100,10 +1100,28 @@ static struct anon_vma *reusable_anon_vma(struct vm_area_struct *old, struct vm_
  * sequence of mprotects and faults may otherwise lead to distinct
  * anon_vmas being allocated, preventing vma merge in subsequent
  * mprotect.
+   被用于anon_vma_prepare，用于检查相邻的vma是否有合适的anon_vma，
+   在分配一个新的anon_vma之前。它检查是因为重复的mprotect和fault
+   可能会导致分配不同的anon_vma，从而阻止后续的mprotect中的vma合并。
+
  */
 struct anon_vma *find_mergeable_anon_vma(struct vm_area_struct *vma)
 {
 	MA_STATE(mas, &vma->vm_mm->mm_mt, vma->vm_end, vma->vm_end);
+	/* 
+	struct ma_state name = {					\
+		.tree = mt,						\
+		.index = first,						\
+		.last = end,						\
+		.node = MAS_START,					\
+		.min = 0,						\
+		.max = ULONG_MAX,					\
+		.alloc = NULL,						\
+		.mas_flags = 0,						\
+	}
+
+	
+	 */
 	struct anon_vma *anon_vma = NULL;
 	struct vm_area_struct *prev, *next;
 

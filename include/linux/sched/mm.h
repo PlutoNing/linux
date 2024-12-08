@@ -131,7 +131,7 @@ static inline void mmget(struct mm_struct *mm)
 {
 	atomic_inc(&mm->mm_users);
 }
-
+/*  */
 static inline bool mmget_not_zero(struct mm_struct *mm)
 {
 	return atomic_inc_not_zero(&mm->mm_users);
@@ -227,6 +227,7 @@ static inline bool in_vfork(struct task_struct *tsk)
 }
 
 /*
+ 可能会加上一些禁止io,fs,movable的flags
  * Applies per-task gfp context to the given allocation flags.
  * PF_MEMALLOC_NOIO implies GFP_NOIO
  * PF_MEMALLOC_NOFS implies GFP_NOFS
@@ -368,6 +369,8 @@ static inline void memalloc_nofs_restore(unsigned int flags)
 	current->flags = (current->flags & ~PF_MEMALLOC_NOFS) | flags;
 }
 
+/* 返回是否已设置PF_MEMALLOC .
+然后把flag加上这个PF_MEMALLOC */
 static inline unsigned int memalloc_noreclaim_save(void)
 {
 	unsigned int flags = current->flags & PF_MEMALLOC;

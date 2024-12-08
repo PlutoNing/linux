@@ -162,6 +162,7 @@ extern int of_address_to_resource(struct device_node *dev, int index,
 				  struct resource *r);
 void __iomem *of_iomap(struct device_node *node, int index);
 #else
+/*  */
 static inline int of_address_to_resource(struct device_node *dev, int index,
 					 struct resource *r)
 {

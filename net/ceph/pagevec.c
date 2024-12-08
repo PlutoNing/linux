@@ -34,6 +34,7 @@ void ceph_release_page_vector(struct page **pages, int num_pages)
 EXPORT_SYMBOL(ceph_release_page_vector);
 
 /*
+分配cpehfs使用的页面,比如req需要的.
  * allocate a vector new pages
  */
 struct page **ceph_alloc_page_vector(int num_pages, gfp_t flags)
@@ -45,8 +46,10 @@ struct page **ceph_alloc_page_vector(int num_pages, gfp_t flags)
 	if (!pages)
 		return ERR_PTR(-ENOMEM);
 	for (i = 0; i < num_pages; i++) {
+		/* 逐个分配需要的页面 */
 		pages[i] = __page_cache_alloc(flags);
-		if (pages[i] == NULL) {
+		if (pages[i] == NULL) {/* 没分配成功 */
+			/* 释放已分配页面 */
 			ceph_release_page_vector(pages, i);
 			return ERR_PTR(-ENOMEM);
 		}

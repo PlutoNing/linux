@@ -319,6 +319,7 @@ struct kernfs_ops {
 };
 
 /*
+kernfs的fs ctx. 
  * The kernfs superblock creation/mount parameter context.
  */
 struct kernfs_fs_context {

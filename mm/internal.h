@@ -20,6 +20,7 @@ struct folio_batch;
  * behaviour. This is used by the MM to obey the caller constraints
  * about IO, FS and watermark checking while ignoring placement
  * hints such as HIGHMEM usage.
+ 控制内存回收
  */
 #define GFP_RECLAIM_MASK (__GFP_RECLAIM|__GFP_HIGH|__GFP_IO|__GFP_FS|\
 			__GFP_NOWARN|__GFP_RETRY_MAYFAIL|__GFP_NOFAIL|\
@@ -77,6 +78,7 @@ static inline int folio_nr_pages_mapped(struct folio *folio)
 	return atomic_read(&folio->_nr_pages_mapped) & FOLIO_PAGES_MAPPED;
 }
 
+//复制folio的mappping地址
 static inline void *folio_raw_mapping(struct folio *folio)
 {
 	unsigned long mapping = (unsigned long)folio->mapping;
@@ -86,12 +88,15 @@ static inline void *folio_raw_mapping(struct folio *folio)
 
 void __acct_reclaim_writeback(pg_data_t *pgdat, struct folio *folio,
 						int nr_throttled);
+
+//看看能不能唤醒一点这个node上面阻塞的回收进程
 static inline void acct_reclaim_writeback(struct folio *folio)
 {
 	pg_data_t *pgdat = folio_pgdat(folio);
+	//获取现在正在被throttle的回收进程数量
 	int nr_throttled = atomic_read(&pgdat->nr_writeback_throttled);
 
-	if (nr_throttled)
+	if (nr_throttled) //看看能不能唤醒一点
 		__acct_reclaim_writeback(pgdat, folio, nr_throttled);
 }
 
@@ -151,10 +156,13 @@ folio是不是evictable
  *
  * Test whether @folio is evictable -- i.e., should be placed on
  * active/inactive lists vs unevictable list.
- *
+ * 检查folio是否可以被evict , 也就是是否可以被放到active/inactive list上面
  * Reasons folio might not be evictable:
+   原因可能是:
  * 1. folio's mapping marked unevictable
  * 2. One of the pages in the folio is part of an mlocked VMA
+   1. folio的mapping标记为不可evictable
+   2. folio中的某个页面是mlocked的
  */
 static inline bool folio_evictable(struct folio *folio)
 {
@@ -232,6 +240,7 @@ int __meminit init_per_zone_wmark_min(void);
 void page_alloc_sysctl_init(void);
 
 /*
+分配内存的上下文
  * Structure for holding the mostly immutable allocation parameters passed
  * between functions involved in allocations, including the alloc_pages*
  * family of functions.
@@ -247,6 +256,7 @@ void page_alloc_sysctl_init(void);
 struct alloc_context {
 	struct zonelist *zonelist;
 	nodemask_t *nodemask;
+	/*  */
 	struct zoneref *preferred_zoneref;
 	int migratetype;
 
@@ -261,10 +271,12 @@ struct alloc_context {
 	 * usable for this allocation request.
 	 */
 	enum zone_type highest_zoneidx;
+	
 	bool spread_dirty_pages;
 };
 
 /*
+
  * This function returns the order of a free page in the buddy system. In
  * general, page_zone(page)->lock must be held by the caller to prevent the
  * page from being allocated in parallel and returning garbage as the order.
@@ -542,7 +554,7 @@ void init_cma_reserved_pageblock(struct page *page);
 
 int find_suitable_fallback(struct free_area *area, unsigned int order,
 			int migratetype, bool only_stealable, bool *can_steal);
-
+/*  */
 static inline bool free_area_empty(struct free_area *area, int migratetype)
 {
 	return list_empty(&area->free_list[migratetype]);
@@ -669,6 +681,7 @@ vma_pgoff_address(pgoff_t pgoff, unsigned long nr_pages,
  * Return the start of user virtual address of a page within a vma.
  * Returns -EFAULT if all of the page is outside the range of vma.
  * If page is a compound head, the entire compound page is considered.
+   返回page在vma中的地址
  */
 static inline unsigned long
 vma_address(struct page *page, struct vm_area_struct *vma)
@@ -681,6 +694,7 @@ vma_address(struct page *page, struct vm_area_struct *vma)
 
  * Then at what user virtual address will none of the range be found in vma?
  * Assumes that vma_address() already returned a good starting address.
+   找到vma中的结束地址?
  */
 static inline unsigned long vma_address_end(struct page_vma_mapped_walk *pvmw)
 {
@@ -700,6 +714,8 @@ static inline unsigned long vma_address_end(struct page_vma_mapped_walk *pvmw)
 	return address;
 }
 
+// unlock mmap具体指什么?
+//如果返回真,是不是说释放了vma的锁,但是增加了file的ref?
 static inline struct file *maybe_unlock_mmap_for_io(struct vm_fault *vmf,
 						    struct file *fpin)
 {
@@ -712,11 +728,13 @@ static inline struct file *maybe_unlock_mmap_for_io(struct vm_fault *vmf,
 	 * FAULT_FLAG_RETRY_NOWAIT means we don't want to wait on page locks or
 	 * anything, so we only pin the file and drop the mmap_lock if only
 	 * FAULT_FLAG_ALLOW_RETRY is set, while this is the first attempt.
+	   FAULT_FLAG_RETRY_NOWAIT表示我们不想等待页面锁或其他任何东西,所以我们只锁定
+	   文件并在只有FAULT_FLAG_ALLOW_RETRY设置时释放mmap_lock,而这是第一次尝试
 	 */
 	if (fault_flag_allow_retry_first(flags) &&
 	    !(flags & FAULT_FLAG_RETRY_NOWAIT)) {
 		fpin = get_file(vmf->vma->vm_file);
-		release_fault_lock(vmf);
+		release_fault_lock(vmf); //释放开始处理mm fault的时候加的锁
 	}
 	return fpin;
 }
@@ -777,7 +795,7 @@ static inline void mminit_verify_zonelist(void)
 #endif /* CONFIG_DEBUG_MEMORY_INIT */
 
 #define NODE_RECLAIM_NOSCAN	-2
-#define NODE_RECLAIM_FULL	-1
+#define NODE_RECLAIM_FULL	-1 /* node里面回收不出什么东西了 ,可回收的太少了 */ /* 表示节点已经被充分回收了 */
 #define NODE_RECLAIM_SOME	0
 #define NODE_RECLAIM_SUCCESS	1
 
@@ -836,12 +854,13 @@ unsigned int reclaim_clean_pages_from_list(struct zone *zone,
 #define ALLOC_OOM		ALLOC_NO_WATERMARKS
 #endif
 
-#define ALLOC_NON_BLOCK		 0x10 /* Caller cannot block. Allow access
+#define ALLOC_NON_BLOCK		 0x10 
+/* Caller cannot block. Allow access
 				       * to 25% of the min watermark or
 				       * 62.5% if __GFP_HIGH is set.
 				       */
-#define ALLOC_MIN_RESERVE	 0x20 /* __GFP_HIGH set. Allow access to 50%
-				       * of the min watermark.
+#define ALLOC_MIN_RESERVE	 0x20 
+/* __GFP_HIGH set. Allow access to 50% of the min watermark.
 				       */
 #define ALLOC_CPUSET		 0x40 /* check for correct cpuset */
 #define ALLOC_CMA		 0x80 /* allow allocations from CMA areas */

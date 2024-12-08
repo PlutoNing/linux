@@ -977,9 +977,10 @@ struct blk_plug {
 
 struct blk_plug_cb;
 typedef void (*blk_plug_cb_fn)(struct blk_plug_cb *, bool);
+/* 表示一个plug 的cb */
 struct blk_plug_cb {
 	struct list_head list;
-	blk_plug_cb_fn callback;
+	blk_plug_cb_fn callback;/* 调用这个来刷新plug */
 	void *data;
 };
 extern struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug,
@@ -989,6 +990,7 @@ extern void blk_start_plug_nr_ios(struct blk_plug *, unsigned short);
 extern void blk_finish_plug(struct blk_plug *);
 
 void __blk_flush_plug(struct blk_plug *plug, bool from_schedule);
+/* 刷新IO */
 static inline void blk_flush_plug(struct blk_plug *plug, bool async)
 {
 	if (plug)

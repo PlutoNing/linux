@@ -9,7 +9,8 @@
  * More information about RDT be found in the Intel (R) x86 Architecture
  * Software Developer Manual.
  */
-
+/* 2024年11月8日22:34:25
+涉及rdtg机制 */
 #define pr_fmt(fmt)	KBUILD_MODNAME ": " fmt
 
 #include <linux/cacheinfo.h>
@@ -35,8 +36,10 @@
 DEFINE_STATIC_KEY_FALSE(rdt_enable_key);
 DEFINE_STATIC_KEY_FALSE(rdt_mon_enable_key);
 DEFINE_STATIC_KEY_FALSE(rdt_alloc_enable_key);
+/* rdt fs在kernfs的root */
 static struct kernfs_root *rdt_root;
 struct rdtgroup rdtgroup_default;
+/* resctrl机制相关 */
 LIST_HEAD(rdt_all_groups);
 
 /* list of entries for the schemata file */
@@ -53,7 +56,7 @@ static struct kernfs_node *kn_mondata;
 
 static struct seq_buf last_cmd_status;
 static char last_cmd_status_buf[512];
-
+/* resctrl机制在debugfs的句柄 */
 struct dentry *debugfs_resctrl;
 
 void rdt_last_cmd_clear(void)
@@ -757,7 +760,12 @@ static int rdtgroup_tasks_show(struct kernfs_open_file *of,
 
 #ifdef CONFIG_PROC_CPU_RESCTRL
 
-/*
+/*用于显示进程的 resctrl 控制组和监控组的回调函数，它会
+将特定进程的资源控制（Resource Control，resctrl）组和
+监控（Monitor）组信息输出到 /proc/<pid>/cpu_resctrl_groups
+ 中。该函数在 resctrl 系统中，
+允许用户查询特定进程所属的控制组（resctrl 控制组）和监控组，
+以便于资源分配和性能监控管理。
  * A task can only be part of one resctrl control group and of one monitor
  * group which is associated to that control group.
  *
@@ -796,12 +804,14 @@ int proc_resctrl_show(struct seq_file *s, struct pid_namespace *ns,
 
 	mutex_lock(&rdtgroup_mutex);
 
-	/* Return empty if resctrl has not been mounted. */
+	/* Return empty if resctrl has not been mounted.
+	没有开启resctrl机制
+	2024年11月8日22:12:09 */
 	if (!static_branch_unlikely(&rdt_enable_key)) {
 		seq_puts(s, "res:\nmon:\n");
 		goto unlock;
 	}
-
+	/* 遍历全部的rdtg */
 	list_for_each_entry(rdtg, &rdt_all_groups, rdtgroup_list) {
 		struct rdtgroup *crg;
 
@@ -812,7 +822,7 @@ int proc_resctrl_show(struct seq_file *s, struct pid_namespace *ns,
 		if (rdtg->mode != RDT_MODE_SHAREABLE &&
 		    rdtg->mode != RDT_MODE_EXCLUSIVE)
 			continue;
-
+		/* 只有RDT_MODE_SHAREABLE或者RDT_MODE_EXCLUSIVE到这里 */
 		if (rdtg->closid != tsk->closid)
 			continue;
 
@@ -2562,6 +2572,7 @@ enum rdt_param {
 	nr__rdt_params
 };
 
+/* rdt fs的fs type的params */
 static const struct fs_parameter_spec rdt_fs_parameters[] = {
 	fsparam_flag("cdp",		Opt_cdp),
 	fsparam_flag("cdpl2",		Opt_cdpl2),
@@ -2604,12 +2615,14 @@ static void rdt_fs_context_free(struct fs_context *fc)
 	kfree(ctx);
 }
 
+/* rdt fs的fctx的ops */
 static const struct fs_context_operations rdt_fs_context_ops = {
 	.free		= rdt_fs_context_free,
 	.parse_param	= rdt_parse_param,
 	.get_tree	= rdt_get_tree,
 };
 
+/* resctrl 机制fs的创建上下文的函数 */
 static int rdt_init_fs_context(struct fs_context *fc)
 {
 	struct rdt_fs_context *ctx;
@@ -2628,6 +2641,7 @@ static int rdt_init_fs_context(struct fs_context *fc)
 	return 0;
 }
 
+/* 重置一个rdt res? */
 static int reset_all_ctrls(struct rdt_resource *r)
 {
 	struct rdt_hw_resource *hw_res = resctrl_to_arch_res(r);
@@ -2772,6 +2786,7 @@ static void rmdir_all_sub(void)
 	kernfs_remove(kn_mondata);
 }
 
+/* rdt fs的卸载超级块函数 */
 static void rdt_kill_sb(struct super_block *sb)
 {
 	struct rdt_resource *r;
@@ -2784,6 +2799,7 @@ static void rdt_kill_sb(struct super_block *sb)
 	/*Put everything back to default values. */
 	for_each_alloc_capable_rdt_resource(r)
 		reset_all_ctrls(r);
+
 	cdp_disable_all();
 	rmdir_all_sub();
 	rdt_pseudo_lock_release();
@@ -2797,6 +2813,7 @@ static void rdt_kill_sb(struct super_block *sb)
 	cpus_read_unlock();
 }
 
+/* resctrl机制的fs接口实现 */
 static struct file_system_type rdt_fs_type = {
 	.name			= "resctrl",
 	.init_fs_context	= rdt_init_fs_context,
@@ -3806,6 +3823,7 @@ int resctrl_online_domain(struct rdt_resource *r, struct rdt_domain *d)
 }
 
 /*
+初始化resctrl机制
  * rdtgroup_init - rdtgroup initialization
  *
  * Setup resctrl file system including set up root, create mount point,
@@ -3865,6 +3883,7 @@ cleanup_root:
 	return ret;
 }
 
+/* 卸载机制 */
 void __exit rdtgroup_exit(void)
 {
 	debugfs_remove_recursive(debugfs_resctrl);
