@@ -58,6 +58,7 @@ int arch_update_cpu_topology(void);
  * (in whatever arch specific measurement units returned by node_distance())
  * and node_reclaim_mode is enabled then the VM will only call node_reclaim()
  * on nodes within this distance.
+ 
  */
 #define RECLAIM_DISTANCE 30
 #endif

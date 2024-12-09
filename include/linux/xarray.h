@@ -73,6 +73,7 @@ static inline unsigned long xa_to_value(const void *entry)
 
 /**
 判断从xas取出的ent是不是value.
+是value的话,说明不是需要的东西
  * xa_is_value() - Determine if an entry is a value.
  * @entry: XArray entry.
  *

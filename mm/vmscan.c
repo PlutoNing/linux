@@ -1835,7 +1835,7 @@ retry:
 		 *    so instead note that the LRU is being scanned too
 		 *    quickly and the caller can stall after the folio
 		 *    list has been processed.
-		 *
+		 *	
 		 * 2) Global or new memcg reclaim encounters a folio that is
 		 *    not marked for immediate reclaim, or the caller does not
 		 *    have __GFP_FS (or __GFP_IO if it's simply going to swap,
@@ -1868,7 +1868,7 @@ retry:
 		 */
 		if (folio_test_writeback(folio)) {/* 正在写回的情况? */
 			/* Case 1 above */
-			if (current_is_kswapd() &&
+			if (current_is_kswapd() && 
 			    folio_test_reclaim(folio) &&
 			    test_bit(PGDAT_WRITEBACK, &pgdat->flags)) {
 					/* 第一种情况, 很多页面正在回写, 并且当前页面也是reclaim和writeback标记.
@@ -2029,28 +2029,32 @@ retry:
 		 */
 		if (folio_maybe_dma_pinned(folio))
 			goto activate_locked;
-
 		mapping = folio_mapping(folio);
 		if (folio_test_dirty(folio)) {/* 如果是dirty页面.  */
-			/*
-			 * Only kswapd can writeback filesystem folios
-			 * to avoid risk of stack overflow. But avoid
-			 * injecting inefficient single-folio I/O into
+			/* Only kswapd can writeback filesystem folios
+			 * to avoid risk of stack overflow. 
+			 只有kswapd回写dirty
+			 But avoid injecting inefficient single-folio I/O into
 			 * flusher writeback as much as possible: only
 			 * write folios when we've encountered many
 			 * dirty folios, and when we've already scanned
 			 * the rest of the LRU for clean folios and see
 			 * the same dirty folios again (with the reclaim
 			 * flag set).
+			 尽可能的避免回收单个dirty,可能会影响IO.
+			 所以只在看到很多dirty, 并且在把其他的clean page扫描完成之后,再次看到这个dirty之后,才回收这个dirty.
+			具体是说,第一次看到dirty的时候,不直接回收,而是设置此page的reclaim 
+			flag后,去处理下一个页面.等把其他的clean扫描完之后, 再次扫描到这个dirty(已经设置了reclaim
+			flag), 才回收这个dirty.
 			 */
 			if (folio_is_file_lru(folio) &&
 			    (!current_is_kswapd() ||
 			     !folio_test_reclaim(folio) ||
-			     !test_bit(PGDAT_DIRTY, &pgdat->flags))) {/*  */
-				
-				/* 不写回. */
-				/*
-				 * Immediately reclaim when written back.
+			     !test_bit(PGDAT_DIRTY, &pgdat->flags))) {/* 
+				 如果是文件页, 
+				 然后只要自己不是kswapd, 或者这个dirty没有reclaim flag, 或者node还没有很脏, 
+				 就先放弃这个dirty.*/
+				/* Immediately reclaim when written back.
 				 * Similar in principle to folio_deactivate()
 				 * except we already have the folio isolated
 				 * and know it's dirty
@@ -2058,21 +2062,17 @@ retry:
 				node_stat_mod_folio(folio, NR_VMSCAN_IMMEDIATE,
 						nr_pages);
 				folio_set_reclaim(folio);
-
 				goto activate_locked;
 			}
 			/* 下面是准备写回.  */
-
-
+			/* 走到这里就说明, kswap要在node很脏的情况下回收这个已经被扫描过一次的dirty了 */
 			if (references == FOLIOREF_RECLAIM_CLEAN)
 				goto keep_locked;
 			if (!may_enter_fs(folio, sc->gfp_mask))
 				goto keep_locked;
 			if (!sc->may_writepage)
 				goto keep_locked;
-
-			/*
-			 * Folio is dirty. Flush the TLB if a writable entry
+			/*Folio is dirty. Flush the TLB if a writable entry
 			 * potentially exists to avoid CPU writes after I/O
 			 * starts and then write it out here.
 			 */
@@ -5462,7 +5462,10 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 	struct pglist_data *pgdat = lruvec_pgdat(lruvec);
 
 	spin_lock_irq(&lruvec->lru_lock);
-	/* isolate页面到list链表好进行回收. 最多取64个爷们到list进行回收. */
+	/* isolate页面到list链表好进行回收. 最多取64个页面到list进行回收.
+	这里算是回收的偏好, 回收什么页面, 比如文件还是匿名, 全看这里isolate什么
+	页面到list链表进行下一步的回收 */
+
 	scanned = isolate_folios(lruvec, sc, swappiness, &type, &list);
 	/* 更新min_seq的值 */
 	scanned += try_to_inc_min_seq(lruvec, swappiness);
@@ -5690,7 +5693,7 @@ static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 		nr_to_scan = get_nr_to_scan(lruvec, sc, swappiness);
 		if (nr_to_scan <= 0)
 			break;
-		/* 这里进行实质回收
+		/* 这里进行实质回收,每次差不多回收64个
 		返回scan的数量 */
 		delta = evict_folios(lruvec, sc, swappiness);
 		if (!delta)/* 这里退出的条件可能是什么, */
@@ -5740,9 +5743,9 @@ static int shrink_one(struct lruvec *lruvec, struct scan_control *sc)
 
 		memcg_memory_event(memcg, MEMCG_LOW);
 	}
-	/* 收缩lruvec */
+	/* 回收lruvec */
 	success = try_to_shrink_lruvec(lruvec, sc);
-	/* 收缩slab */
+	/* 回收slab */
 	shrink_slab(sc->gfp_mask, pgdat->node_id, memcg, sc->priority);
 
 	if (!sc->proactive)
@@ -5776,7 +5779,11 @@ restart:
 	gen = get_memcg_gen(READ_ONCE(pgdat->memcg_lru.seq));
 
 	rcu_read_lock();
-	/* 这里操作其实本质上是需要找到与node关联的全部lruvec */
+	/* 这里同样是遍历node上面的全部的lruvec
+
+	不过相比于传统lru的iter按照树的结构遍历lruvec, 这里是更快的方式, 还是按照预定义的方式排序的
+	可以更快取到合适的lruvec, 更快达到回收目标.
+	 */
 	hlist_nulls_for_each_entry_rcu(lrugen, pos, &pgdat->memcg_lru.fifo[gen][bin], list) {
 		if (op) {
 			lru_gen_rotate_memcg(lruvec, op);
@@ -5888,11 +5895,12 @@ static void set_initial_priority(struct pglist_data *pgdat, struct scan_control 
 	 where the estimated reclaimed_to_scanned_ratio = inactive / total.
 
 	 */
-	 /* node上面的可回收不活跃匿名页 */
+	 /* node上面的可回收不活跃页 */
 	reclaimable = node_page_state(pgdat, NR_INACTIVE_FILE);
 	if (get_swappiness(lruvec, sc))
 		reclaimable += node_page_state(pgdat, NR_INACTIVE_ANON);
-
+	
+	/* 不活跃页的数量 */
 	reclaimable /= MEMCG_NR_GENS;
 	/*  */
 	/* round down reclaimable and round up sc->nr_to_reclaim */
@@ -6440,7 +6448,7 @@ done:
 }
 
 /* 
-mglru的fs接口那个回收命令
+mglru的fs接口那个触发回收的命令
 see Documentation/admin-guide/mm/multigen_lru.rst for details */
 static ssize_t lru_gen_seq_write(struct file *file, const char __user *src,
 				 size_t len, loff_t *pos)
@@ -6907,7 +6915,6 @@ static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 
 
 /* 回收node的内存
-一次回收的数量?
 =======================
 使用之前可以归零nr_scanned,也可以临时设置nr_to_reclaim(kswap). */
 static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
@@ -6916,12 +6923,17 @@ static void shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 	struct lruvec *target_lruvec;
 	bool reclaimable = false;
 
+
+	/* 全局 mglru 走这里 */
 	if (lru_gen_enabled() && root_reclaim(sc)) {
 		lru_gen_shrink_node(pgdat, sc);
 		return;
 	}
 
-	/* 如果是非mglru或者memcg回收, 就走下面路径.  */
+	/*  全局 传统lru
+		cgroup 传统lru
+		cgroup mglru
+		这三种情况走这个路径  */
 	target_lruvec = mem_cgroup_lruvec(sc->target_mem_cgroup, pgdat);
 
 again:
@@ -7280,7 +7292,7 @@ retry:
 
 		if (sc->compaction_ready) /* 什么需求触发的回收, 会打开这个flag呢.
 		sc设置order的话(快速回收,慢速回收，kswap回收), 可能会走这条路径.
-		free_memcg, 自己实现的逻辑, 没设置order, 就不会 */
+		free_memcg, 自己实现的逻辑, 没设置order, 就不会走这里 */
 			break;
 
 		/*
@@ -7518,11 +7530,22 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 		.reclaim_idx = gfp_zone(gfp_mask),
 		.order = order,
 		.nodemask = nodemask,
-		.priority = DEF_PRIORITY,
+		.priority = DEF_PRIORITY, 					//慢速回收12遍
 		.may_writepage = !laptop_mode,
 		.may_unmap = 1,
 		.may_swap = 1,
 	};
+/* 
+快速回收如下:	
+与快速回收的不同
+struct scan_control sc = {
+		.nr_to_reclaim = max(nr_pages, SWAP_CLUSTER_MAX),
+		.priority = NODE_RECLAIM_PRIORITY, 						//尝试4遍, 快速回收的一个特征
+		.may_writepage = !!(node_reclaim_mode & RECLAIM_WRITE),
+		.may_unmap = !!(node_reclaim_mode & RECLAIM_UNMAP),
+	}; */
+
+
 
 	/*
 	 * scan_control uses s8 fields for order, priority, and reclaim_idx.
@@ -7554,7 +7577,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 #ifdef CONFIG_MEMCG
 
 /* 
-soft回收机制的函数.
+soft回收机制的函数. 只在soft limit reclaim回收
 Only used by soft limit reclaim. Do not reuse for anything else. */
 unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
 						gfp_t gfp_mask, bool noswap,
@@ -7604,7 +7627,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 {
 	unsigned long nr_reclaimed;
 	unsigned int noreclaim_flag;
-	/* 1. 套路都是先制定sc */
+	/* 1. 先制定sc */
 	struct scan_control sc = {
 		.nr_to_reclaim = max(nr_pages, SWAP_CLUSTER_MAX),
 		.gfp_mask = (current_gfp_context(gfp_mask) & GFP_RECLAIM_MASK) |
@@ -7962,7 +7985,7 @@ restart:
 
 		if (!balanced && nr_boost_reclaim) {
 			nr_boost_reclaim = 0;
-			goto restart;
+			goto restart; //不是从这里重启
 		}
 
 		/* case1: 不平衡, 不boost
@@ -8023,6 +8046,7 @@ restart:
 		 * There should be no need to raise the scanning priority if
 		 * enough pages are already being scanned that that high
 		 * watermark would be met at 100% efficiency.
+		 好像一次balance_pgdat只调用一次shrink差不多.
 		 */
 		if (kswapd_shrink_node(pgdat, &sc))
 			raise_priority = false;/* 能回收到页面, 就不刻意加急了 */
@@ -8214,15 +8238,16 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 /*
  * The background pageout daemon, started as a kernel thread
  * from the init process.
- *
+ * kswap后台写回进程
  * This basically trickles out pages so that we have _some_
  * free memory available even if there is no other activity
  * that frees anything up. This is needed for things like routing
  * etc, where we otherwise might have all activity going on in
  * asynchronous contexts that cannot page things out.
- *
+ * 
  * If there are applications that are active memory-allocators
  * (most normal use), this basically shouldn't matter.
+  
  */
 static int kswapd(void *p)
 {
@@ -8459,7 +8484,8 @@ module_init(kswapd_init)
  *
  * If non-zero call node_reclaim when the number of free pages falls below
  * the watermarks.
-
+	如果非零的时候, 如果free页面太少会调用node_reclaim?
+	那为0的时候, node_reclaim不起作用吗?
  */
 int node_reclaim_mode __read_mostly;
 
@@ -8542,7 +8568,7 @@ static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned in
 		.nr_to_reclaim = max(nr_pages, SWAP_CLUSTER_MAX),
 		.gfp_mask = current_gfp_context(gfp_mask),
 		.order = order,
-		.priority = NODE_RECLAIM_PRIORITY,
+		.priority = NODE_RECLAIM_PRIORITY, //尝试4遍, 快速回收的一个特征
 		.may_writepage = !!(node_reclaim_mode & RECLAIM_WRITE),
 		.may_unmap = !!(node_reclaim_mode & RECLAIM_UNMAP),
 		.may_swap = 1,
@@ -8564,6 +8590,7 @@ static int __node_reclaim(struct pglist_data *pgdat, gfp_t gfp_mask, unsigned in
 
 	if (node_pagecache_reclaimable(pgdat) > pgdat->min_unmapped_pages ||
 	    node_page_state_pages(pgdat, NR_SLAB_RECLAIMABLE_B) > pgdat->min_slab_pages) {
+			/* 为什么计算这个, 难道这个回收路径会主要回收文件页? */
 		/*
 		 * Free memory by calling shrink node with increasing
 		 * priorities until we have enough memory freed.

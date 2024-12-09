@@ -2266,6 +2266,7 @@ EXPORT_SYMBOL(vma_alloc_folio);
 
 /**
  * alloc_pages - Allocate pages.
+ 分配内存
  * @gfp: GFP flags.
  * @order: Power of two of number of pages to allocate.
  *
@@ -2304,6 +2305,7 @@ struct page *alloc_pages(gfp_t gfp, unsigned order)
 }
 EXPORT_SYMBOL(alloc_pages);
 
+//
 struct folio *folio_alloc(gfp_t gfp, unsigned order)
 {
 	struct page *page = alloc_pages(gfp | __GFP_COMP, order);

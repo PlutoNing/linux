@@ -843,7 +843,7 @@ void replace_page_cache_folio(struct folio *old, struct folio *new)
 }
 EXPORT_SYMBOL_GPL(replace_page_cache_folio);
 
-/*  */
+/* 把新申请的页面加入mapping */
 noinline int __filemap_add_folio(struct address_space *mapping,
 		struct folio *folio, pgoff_t index, gfp_t gfp, void **shadowp)
 {
@@ -857,7 +857,7 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 	mapping_set_update(&xas, mapping);
 
 	if (!huge) {
-		/* 内部会get然后put. */
+		/* 内部会get memcg然后put. */
 		int error = mem_cgroup_charge(folio, NULL, gfp);
 		VM_BUG_ON_FOLIO(index & (folio_nr_pages(folio) - 1), folio);
 		if (error)
@@ -937,6 +937,7 @@ error:
 
 ALLOW_ERROR_INJECTION(__filemap_add_folio, ERRNO);
 
+/* 页缓存缺少页面时, 这里把缺少的刚刚申请的页面加入pagecache */
 int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 				pgoff_t index, gfp_t gfp)
 {
@@ -966,6 +967,7 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 EXPORT_SYMBOL_GPL(filemap_add_folio);
 
 #ifdef CONFIG_NUMA
+//页缓存缺少页面时这里分配
 struct folio *filemap_alloc_folio(gfp_t gfp, unsigned int order)
 {
 	int n;
@@ -1810,6 +1812,7 @@ EXPORT_SYMBOL(page_cache_prev_miss);
  */
 
 /*
+在mapping查找idx对应的entry
  * filemap_get_entry - Get a page cache entry.
  * @mapping: the address_space to search
  * @index: The page cache index.
@@ -1874,7 +1877,9 @@ struct folio *__filemap_get_folio(struct address_space *mapping, pgoff_t index,
 	struct folio *folio;
 
 repeat:
+
 	folio = filemap_get_entry(mapping, index);
+	//看看mapping里面有没有
 	if (xa_is_value(folio))
 		folio = NULL;
 	if (!folio)
@@ -1910,7 +1915,8 @@ repeat:
 	if (fgp_flags & FGP_STABLE)
 		folio_wait_stable(folio);
 no_page:
-	if (!folio && (fgp_flags & FGP_CREAT)) {
+//页缓存里面还没有这个页面
+	if (!folio && (fgp_flags & FGP_CREAT)) {//不存在页面,且可以申请
 		unsigned order = FGF_GET_ORDER(fgp_flags);
 		int err;
 
@@ -1941,7 +1947,7 @@ no_page:
 				order = 0;
 			if (order > 0)
 				alloc_gfp |= __GFP_NORETRY | __GFP_NOWARN;
-			folio = filemap_alloc_folio(alloc_gfp, order);
+			folio = filemap_alloc_folio(alloc_gfp, order); //分配页面
 			if (!folio)
 				continue;
 
@@ -1949,7 +1955,7 @@ no_page:
 			if (fgp_flags & FGP_ACCESSED)
 				__folio_set_referenced(folio);
 
-			err = filemap_add_folio(mapping, folio, index, gfp);
+			err = filemap_add_folio(mapping, folio, index, gfp); //把申请的页面加入mapping
 			if (!err)
 				break;
 			folio_put(folio);

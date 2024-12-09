@@ -566,7 +566,7 @@ typedef unsigned int __bitwise fgf_t;
 
 #define FGP_ACCESSED		((__force fgf_t)0x00000001)
 #define FGP_LOCK		((__force fgf_t)0x00000002)
-#define FGP_CREAT		((__force fgf_t)0x00000004)
+#define FGP_CREAT		((__force fgf_t)0x00000004)  //页缓存不存在页面时,是否可以申请
 #define FGP_WRITE		((__force fgf_t)0x00000008)
 #define FGP_NOFS		((__force fgf_t)0x00000010)
 #define FGP_NOWAIT		((__force fgf_t)0x00000020)

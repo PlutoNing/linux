@@ -3059,6 +3059,7 @@ static inline unsigned int gfp_to_alloc_flags_cma(gfp_t gfp_mask,
 /*
  * get_page_from_freelist goes through the zonelist trying to allocate
  * a page.
+ 分配页面时先从这里拿, 不行的话就slowpath
  */
 static struct page *
 get_page_from_freelist(gfp_t gfp_mask, unsigned int order, int alloc_flags,
@@ -3084,7 +3085,7 @@ retry:
 
 		if (cpusets_enabled() &&
 			(alloc_flags & ALLOC_CPUSET) &&
-			!__cpuset_zone_allowed(zone, gfp_mask))
+			!__cpuset_zone_allowed(zone, gfp_mask)) //cpu不允许这个zone分配
 				continue;
 		/*
 		 * When allocating a page cache page for writing, we
@@ -3162,7 +3163,7 @@ retry:
 			    !zone_allows_reclaim(ac->preferred_zoneref->zone, zone))
 				continue;
 
-			ret = node_reclaim(zone->zone_pgdat, gfp_mask, order);
+			ret = node_reclaim(zone->zone_pgdat, gfp_mask, order); //回收页面
 			switch (ret) {
 			case NODE_RECLAIM_NOSCAN:
 				/* did not scan */
@@ -3181,6 +3182,7 @@ retry:
 		}
 
 try_this_zone:
+//尝试从这个zone里面取用
 		page = rmqueue(ac->preferred_zoneref->zone, zone, order,
 				gfp_mask, alloc_flags, ac->migratetype);
 		if (page) {
@@ -3687,6 +3689,7 @@ out:
 	return page;
 }
 
+/*  */
 static void wake_all_kswapds(unsigned int order, gfp_t gfp_mask,
 			     const struct alloc_context *ac)
 {
@@ -3912,6 +3915,7 @@ check_retry_cpuset(int cpuset_mems_cookie, struct alloc_context *ac)
 	return false;
 }
 
+/* 慢速回收路径 */
 static inline struct page *
 __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 						struct alloc_context *ac)
@@ -4403,6 +4407,7 @@ EXPORT_SYMBOL_GPL(__alloc_pages_bulk);
 
 /*
  * This is the 'heart' of the zoned buddy allocator.
+ 分配页面
  */
 struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 							nodemask_t *nodemask)
@@ -4453,6 +4458,7 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 	 */
 	ac.nodemask = nodemask;
 
+	//慢速回收
 	page = __alloc_pages_slowpath(alloc_gfp, order, &ac);
 
 out:
@@ -4469,6 +4475,7 @@ out:
 }
 EXPORT_SYMBOL(__alloc_pages);
 
+//
 struct folio *__folio_alloc(gfp_t gfp, unsigned int order, int preferred_nid,
 		nodemask_t *nodemask)
 {
