@@ -772,12 +772,14 @@ void arch_arm_kprobe(struct kprobe *p)
 	text_poke_sync();
 	perf_event_text_poke(p->addr, &p->opcode, 1, &int3, 1);
 }
-
+/* disarm这个kp的函数.
+用备份的原指令替换掉hook的int3  */
 void arch_disarm_kprobe(struct kprobe *p)
 {
 	u8 int3 = INT3_INSN_OPCODE;
 
 	perf_event_text_poke(p->addr, &int3, 1, &p->opcode, 1);
+	
 	text_poke(p->addr, &p->opcode, 1);
 	text_poke_sync();
 }

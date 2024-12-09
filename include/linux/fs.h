@@ -272,7 +272,7 @@ struct iattr {
 
 /** 
  * enum positive_aop_returns - aop return codes with specific semantics
- *
+ * 表示aop返回值的枚举类型
  * @AOP_WRITEPAGE_ACTIVATE: Informs the caller that page writeback has
  * 			    completed, that the page is still locked, and
  * 			    should be considered active.  The VM uses this hint
@@ -281,7 +281,9 @@ struct iattr {
  * 			    future.  Other callers must be careful to unlock
  * 			    the page if they get this return.  Returned by
  * 			    writepage(); 
- *
+ * 这个表示用于通知调用者：页面的写回操作已经完成。
+页依然被锁定（locked），但应该被视为 "活动状态"。
+虚拟内存管理器（VM） 会使用此提示将页面返回到活动列表（active list），避免页面在短时间内再次写回。
  * @AOP_TRUNCATED_PAGE: The AOP method that was handed a locked page has
  *  			unlocked it and the page might have been truncated.
  *  			The caller should back up to acquiring a new page and
@@ -289,7 +291,8 @@ struct iattr {
  *  			precautions not to livelock.  If the caller held a page
  *  			reference, it should drop it before retrying.  Returned
  *  			by read_folio().
- *
+ * 用于通知调用者：aop 操作解锁了一个锁定的页面，并且该页面可能已被截断（truncated）。
+调用者需要重新获取新的页面并重试操作。
  * address_space_operation functions return these large constants to indicate
  * special semantics to the caller.  These are much larger than the bytes in a
  * page to allow for functions that return the number of bytes operated on in a
@@ -370,7 +373,7 @@ enum rw_hint {
 
 struct kiocb {
 	struct file		*ki_filp;
-	loff_t			ki_pos;
+	loff_t			ki_pos; //表示读写的位置
 	void (*ki_complete)(struct kiocb *iocb, long ret);
 	void			*private;
 	int			ki_flags;
@@ -468,8 +471,8 @@ extern const struct address_space_operations empty_aops;
  * @private_data: For use by the owner of the address_space.
  */
 struct address_space {
-	struct inode		*host;
-	struct xarray		i_pages;
+	struct inode		*host; /* 表示与该地址空间相关联的所有者，通常是一个 inode（表示文件）或 block_device（表示块设备）。 */
+	struct xarray		i_pages; /* 用于缓存页面的 xarray。 */
 	struct rw_semaphore	invalidate_lock;
 	gfp_t			gfp_mask;
 	atomic_t		i_mmap_writable;
@@ -477,10 +480,11 @@ struct address_space {
 	/* number of thp, only for non-shmem files */
 	atomic_t		nr_thps;
 #endif
-	struct rb_root_cached	i_mmap;
-	unsigned long		nrpages;
+	struct rb_root_cached	i_mmap;/* 管理与文件相关的内存映射，
+	存储所有映射此文件的 VMA（虚拟内存区域）。 */
+	unsigned long		nrpages; /* 表示该地址空间中页面缓存的数量。 */
 	pgoff_t			writeback_index;
-	const struct address_space_operations *a_ops;
+	const struct address_space_operations *a_ops; /* 定义地址空间的操作方法（address_space_operations），例如读、写和释放页面等。 */
 	unsigned long		flags;
 	struct rw_semaphore	i_mmap_rwsem;
 	errseq_t		wb_err;
@@ -495,12 +499,13 @@ struct address_space {
 	 */
 
 /* XArray tags, for tagging dirty and writeback pages in the pagecache. */
-#define PAGECACHE_TAG_DIRTY	XA_MARK_0
-#define PAGECACHE_TAG_WRITEBACK	XA_MARK_1
+#define PAGECACHE_TAG_DIRTY	XA_MARK_0 //todddo
+#define PAGECACHE_TAG_WRITEBACK	XA_MARK_1 //表示页面正在写回
 #define PAGECACHE_TAG_TOWRITE	XA_MARK_2
 
 /*
  * Returns true if any of the pages in the mapping are marked with the tag.
+	返回true表示mapping有页面标记了标签
  */
 static inline bool mapping_tagged(struct address_space *mapping, xa_mark_t tag)
 {
@@ -632,33 +637,41 @@ is_uncached_acl(struct posix_acl *acl)
 struct fsnotify_mark_connector;
 
 /*
+vfs的inode
  * Keep mostly read-only and often accessed (especially for
  * the RCU path lookup and 'stat' data) fields at the beginning
  * of the 'struct inode'
  */
 struct inode {
-	umode_t			i_mode;
-	unsigned short		i_opflags;
-	kuid_t			i_uid;
-	kgid_t			i_gid;
-	unsigned int		i_flags;
+	umode_t			i_mode; /* 文件的类型和权限位。用 S_IF* 常量来表示文件类型，
+	如普通文件、目录、符号链接等，其他位表示文件的权限（读、写、执行）。 */
+	unsigned short		i_opflags;  /*  inode 操作的标志位。用于描述 inode 的一些操作状态。 */
+	kuid_t			i_uid; /* 文件的所有者用户ID（UID）和所属组ID（GID）。用于访问控制和权限检查。 */
+	kgid_t			i_gid; /* 文件的所有者用户ID（UID）和所属组ID（GID）。用于访问控制和权限检查。 */
+	unsigned int		i_flags; /* inode 的状态标志。可以是 IMI_* 类型的常量，如文件是否是只读的、是否被锁定等。 */
 
 #ifdef CONFIG_FS_POSIX_ACL
-	struct posix_acl	*i_acl;
-	struct posix_acl	*i_default_acl;
+	struct posix_acl	*i_acl; /* 与 POSIX ACL（访问控制列表）相关的字段，用于描述文件的访问控制规则（如果启用了 CONFIG_FS_POSIX_ACL）。 */
+	struct posix_acl	*i_default_acl; /*  */
 #endif
 
-	const struct inode_operations	*i_op;
-	struct super_block	*i_sb;
+
+
+
+	const struct inode_operations	*i_op; /* 指向文件操作结构 inode_operations，包含与 inode 相关的操作函数，如创建、删除、读写操作等。 */
+	struct super_block	*i_sb; /* 指向 inode 所在的超级块（super_block），超级块表示文件系统的一个实例，管理所有文件系统对象。 */
+
 	struct address_space	*i_mapping;/* 
 	dev inode的mapping是存储的bh相关 */
 
 #ifdef CONFIG_SECURITY
-	void			*i_security;
+	void			*i_security; /*  */
 #endif
 
 	/* Stat data, not accessed from path walking */
-	unsigned long		i_ino;/* 可以理解为在bitmap的全局idx */
+	unsigned long i_ino; /* 可以理解为在bitmap的全局idx 
+	 文件的 inode 编号，在文件系统中唯一标识一个文件。可以理解为文件在文件系统中的一个索引号。可以理解为在bitmap的全局idx
+	 */
 	/*
 	 * Filesystems may only read i_nlink directly.  They shall use the
 	 * following functions for modification:
@@ -667,86 +680,93 @@ struct inode {
 	 *    inode_(inc|dec)_link_count
 	 */
 	union {
-		const unsigned int i_nlink;
-		unsigned int __i_nlink;
+		const unsigned int i_nlink; /* 硬链接计数，表示有多少个目录项指向这个 inode。文件被删除时，这个字段减1 */
+		unsigned int __i_nlink; /*  */
 	};
-	dev_t			i_rdev;
-	loff_t			i_size;
-	struct timespec64	i_atime;
-	struct timespec64	i_mtime;
+	dev_t			i_rdev; /* 对于设备文件来说，保存设备的编号（如字符设备、块设备的设备号） */
+	loff_t			i_size; /* 文件的大小，以字节为单位。 */
+	struct timespec64	i_atime; /*  */
+	struct timespec64	i_mtime; /*  */
 	struct timespec64	__i_ctime; /* use inode_*_ctime accessors! */
 	spinlock_t		i_lock;	/* i_blocks, i_bytes, maybe i_size */
-	unsigned short          i_bytes;
-	u8			i_blkbits;
-	u8			i_write_hint;
-	blkcnt_t		i_blocks;
+	unsigned short          i_bytes; /*  */
+	u8			i_blkbits; // 文件块大小的位数，一般为 512 或 4096，用来计算文件所占的物理块数。
+	u8			i_write_hint; /*  */
+	blkcnt_t		i_blocks; /* 文件的块数，用于表示文件占用的磁盘块数量。 */
 
 #ifdef __NEED_I_SIZE_ORDERED
-	seqcount_t		i_size_seqcount;
+	seqcount_t		i_size_seqcount; /*  */
 #endif
 
 	/* Misc */
-	unsigned long		i_state;
-	struct rw_semaphore	i_rwsem;
+	unsigned long		i_state; /*  */
+	struct rw_semaphore	i_rwsem; /* 读写信号量，用于同步访问 i_data 和其他文件数据相关的字段。 */
 
 	unsigned long		dirtied_when;	/* jiffies of first dirtying */
-	unsigned long		dirtied_time_when;
+	unsigned long		dirtied_time_when; /*  */
 
-	struct hlist_node	i_hash;
+	struct hlist_node	i_hash; /*  */
 	struct list_head	i_io_list;	/* backing dev IO list */
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct bdi_writeback	*i_wb;		/* the associated cgroup wb */
+	struct bdi_writeback	*i_wb;		/* 
+	inode对应的cgroup wb
+	the associated cgroup wb
+	也是指目前对这个inode使能的wb,可以实现cgroup级别的io控制什么的
+	 */
 
 	/* foreign inode detection, see wbc_detach_inode() */
-	int			i_wb_frn_winner;
-	u16			i_wb_frn_avg_time;
-	u16			i_wb_frn_history;
+	int			i_wb_frn_winner; /*  */
+	u16			i_wb_frn_avg_time; /*  */
+	u16			i_wb_frn_history; /*  */
 #endif
 	struct list_head	i_lru;		/* inode LRU list */
-	struct list_head	i_sb_list;
+	struct list_head	i_sb_list; /*  */
 	struct list_head	i_wb_list;	/* backing dev writeback list */
 	union {
-		struct hlist_head	i_dentry;
-		struct rcu_head		i_rcu;
+		struct hlist_head	i_dentry; /*  */
+		struct rcu_head		i_rcu; /*  */
 	};
-	atomic64_t		i_version;
+	atomic64_t		i_version; /*  */
 	atomic64_t		i_sequence; /* see futex */
-	atomic_t		i_count;
-	atomic_t		i_dio_count;
-	atomic_t		i_writecount;
+	atomic_t		i_count; /*  */
+	atomic_t		i_dio_count; /*  */
+	atomic_t		i_writecount; /*  */
 #if defined(CONFIG_IMA) || defined(CONFIG_FILE_LOCKING)
 	atomic_t		i_readcount; /* struct files open RO */
 #endif
 	union {
 		const struct file_operations	*i_fop;	/* former ->i_op->default_file_ops */
-		void (*free_inode)(struct inode *);
+		void (*free_inode)(struct inode *); /*  */
 	};
-	struct file_lock_context	*i_flctx;
-	struct address_space	i_data;
-	struct list_head	i_devices;
+	struct file_lock_context	*i_flctx; /*  */
+	struct address_space	i_data; //mapping
+	struct list_head	i_devices; /*  */
 	union {
-		struct pipe_inode_info	*i_pipe;
-		struct cdev		*i_cdev;
-		char			*i_link;
-		unsigned		i_dir_seq;
+		struct pipe_inode_info	*i_pipe; /*  */
+		struct cdev		*i_cdev; /*  */
+		char			*i_link; /*  */
+		unsigned		i_dir_seq; /*  */
 	};
 
-	__u32			i_generation;
+	__u32			i_generation; /*  */
 
 #ifdef CONFIG_FSNOTIFY
 	__u32			i_fsnotify_mask; /* all events this inode cares about */
-	struct fsnotify_mark_connector __rcu	*i_fsnotify_marks;
+	struct fsnotify_mark_connector __rcu	*i_fsnotify_marks; /*  */
 #endif
 
 #ifdef CONFIG_FS_ENCRYPTION
-	struct fscrypt_info	*i_crypt_info;
+	struct fscrypt_info	*i_crypt_info; /*  */
 #endif
 
 #ifdef CONFIG_FS_VERITY
-	struct fsverity_info	*i_verity_info;
+	struct fsverity_info	*i_verity_info; /*  */
 #endif
 
-	void			*i_private; /* fs or device private pointer */
+	void			*i_private; /* 
+	对于shmem的mmap这里是shmem_falloc
+	
+	fs or device private pointer */
 } __randomize_layout;
 
 struct timespec64 timestamp_truncate(struct timespec64 t, struct inode *inode);
@@ -880,6 +900,7 @@ void filemap_invalidate_unlock_two(struct address_space *mapping1,
 
 
 /*
+
  * NOTE: in a 32bit arch with a preemptable kernel and
  * an UP compile the i_size_read/write must be atomic
  * with respect to the local cpu (unlike with preempt disabled),
@@ -1010,7 +1031,7 @@ struct file {
 	struct fown_struct	f_owner;
 	const struct cred	*f_cred;
 	struct file_ra_state	f_ra;
-	struct path		f_path;
+	struct path		f_path; /* 对应的path */
 	struct inode		*f_inode;	/* cached value */
 	const struct file_operations	*f_op;
 
@@ -1038,6 +1059,7 @@ struct file_handle {
 	unsigned char f_handle[];
 };
 
+/* get一个file的ref */
 static inline struct file *get_file(struct file *f)
 {
 	atomic_long_inc(&f->f_count);
@@ -1153,7 +1175,10 @@ extern int send_sigurg(struct fown_struct *fown);
 #define UMOUNT_UNUSED	0x80000000	/* Flag guaranteed to be unused */
 
 /* sb->s_iflags */
-#define SB_I_CGROUPWB	0x00000001	/* cgroup-aware writeback enabled */
+#define SB_I_CGROUPWB	0x00000001	
+/* cgroup-aware writeback enabled
+表示是否支持cgroup writeback 
+ */
 #define SB_I_NOEXEC	0x00000002	/* Ignore executables on this fs */
 #define SB_I_NODEV	0x00000004	/* Ignore devices on this fs */
 #define SB_I_STABLE_WRITES 0x00000008	/* don't modify blks until WB is done */
@@ -2070,7 +2095,7 @@ struct super_operations {
  * flags, so these have to be checked separately. -- rmk@arm.uk.linux.org
  */
 #define __IS_FLG(inode, flg)	((inode)->i_sb->s_flags & (flg))
-
+/*  */
 static inline bool sb_rdonly(const struct super_block *sb) { return sb->s_flags & SB_RDONLY; }
 #define IS_RDONLY(inode)	sb_rdonly((inode)->i_sb)
 #define IS_SYNC(inode)		(__IS_FLG(inode, SB_SYNCHRONOUS) || \
@@ -2130,24 +2155,30 @@ static inline void kiocb_clone(struct kiocb *kiocb, struct kiocb *kiocb_src,
 
 /*
  * Inode state bits.  Protected by inode->i_lock
- *
+ * inode的状态位，受inode->i_lock保护
  * Four bits determine the dirty state of the inode: I_DIRTY_SYNC,
  * I_DIRTY_DATASYNC, I_DIRTY_PAGES, and I_DIRTY_TIME.
- *
+ * 四个位决定了inode的脏状态：I_DIRTY_SYNC、I_DIRTY_DATASYNC、I_DIRTY_PAGES和I_DIRTY_TIME。
+
  * Four bits define the lifetime of an inode.  Initially, inodes are I_NEW,
  * until that flag is cleared.  I_WILL_FREE, I_FREEING and I_CLEAR are set at
  * various stages of removing an inode.
- *
+ * 四个位定义了inode的生命周期。最初，inode是I_NEW，直到该标志被清除。
+ I_WILL_FREE、I_FREEING和I_CLEAR在删除inode的各个阶段设置。
  * Two bits are used for locking and completion notification, I_NEW and I_SYNC.
- *
+ * 两位用于锁定和完成通知，I_NEW和I_SYNC。
  * I_DIRTY_SYNC		Inode is dirty, but doesn't have to be written on
  *			fdatasync() (unless I_DIRTY_DATASYNC is also set).
  *			Timestamp updates are the usual cause.
+   表示inode是脏的，但不必在fdatasync()上写入（除非I_DIRTY_DATASYNC也被设置）。时间戳更新是通常的原因。
  * I_DIRTY_DATASYNC	Data-related inode changes pending.  We keep track of
  *			these changes separately from I_DIRTY_SYNC so that we
  *			don't have to write inode on fdatasync() when only
  *			e.g. the timestamps have changed.
+   表示待处理的与数据相关的inode更改。我们将这些更改与I_DIRTY_SYNC分开跟踪，
+   以便在只更改时间戳时不必在fdatasync()上写入inode。
  * I_DIRTY_PAGES	Inode has dirty pages.  Inode itself may be clean.
+   表示inode有脏页。inode本身可能是干净的。
  * I_DIRTY_TIME		The inode itself has dirty timestamps, and the
  *			lazytime mount option is enabled.  We keep track of this
  *			separately from I_DIRTY_SYNC in order to implement
@@ -2156,6 +2187,11 @@ static inline void kiocb_clone(struct kiocb *kiocb, struct kiocb *kiocb_src,
  *			I_DIRTY_TIME can still be set if I_DIRTY_SYNC is already
  *			in place because writeback might already be in progress
  *			and we don't want to lose the time update
+   这个位表示inode本身有脏时间戳，并且启用了lazytime挂载选项。我们将其与I_DIRTY_SYNC分开跟踪，
+   以实现lazytime。如果设置了I_DIRTY_INODE（I_DIRTY_SYNC和/或I_DIRTY_DATASYNC），
+   则会清除此项。但是，如果I_DIRTY_SYNC已经存在，仍然可以设置I_DIRTY_TIME，
+   因为写回可能已经在进行中，我们不希望丢失时间更新。
+
  * I_NEW		Serves as both a mutex and completion notification.
  *			New inodes set I_NEW.  If two processes both create
  *			the same inode, one of them will release its inode and
@@ -2183,6 +2219,8 @@ static inline void kiocb_clone(struct kiocb *kiocb, struct kiocb *kiocb_src,
  *			data writeback, and cleared with a wakeup on the bit
  *			address once it is done. The bit is also used to pin
  *			the inode in memory for flusher thread.
+   说明inode的写回正在运行。该位在数据写回期间设置，并在完成后通过在位地址上唤醒该位来清除。
+   该位还用于将inode固定在内存中以供刷新线程使用。
  *
  * I_REFERENCED		Marks the inode as recently references on the LRU list.
  *
@@ -2203,8 +2241,9 @@ static inline void kiocb_clone(struct kiocb *kiocb, struct kiocb *kiocb_src,
  * I_SYNC_QUEUED	Inode is queued in b_io or b_more_io writeback lists.
  *			Used to detect that mark_inode_dirty() should not move
  * 			inode between dirty lists.
- *
+ * 表示inode已经在b_io或b_more_io写回列表中排队。用于检测mark_inode_dirty()不应该在脏列表之间移动inode。
  * I_PINNING_FSCACHE_WB	Inode is pinning an fscache object for writeback.
+   表示inode正在固定一个fscache对象以进行写回。???
  *
  * Q: What is the difference between I_WILL_FREE and I_FREEING?
  */
@@ -2241,6 +2280,7 @@ static inline void mark_inode_dirty(struct inode *inode)
 	__mark_inode_dirty(inode, I_DIRTY);
 }
 
+//
 static inline void mark_inode_dirty_sync(struct inode *inode)
 {
 	__mark_inode_dirty(inode, I_DIRTY_SYNC);
@@ -2300,6 +2340,7 @@ int kiocb_modified(struct kiocb *iocb);
 
 int sync_inode_metadata(struct inode *inode, int wait);
 
+/* 表示一个fs实现的定义 */
 struct file_system_type {
 	const char *name;
 	int fs_flags;
@@ -2310,8 +2351,8 @@ struct file_system_type {
 #define FS_DISALLOW_NOTIFY_PERM	16	/* Disable fanotify permission events */
 #define FS_ALLOW_IDMAP         32      /* FS has been updated to handle vfs idmappings. */
 #define FS_RENAME_DOES_D_MOVE	32768	/* FS will handle d_move() during rename() internally. */
-	int (*init_fs_context)(struct fs_context *);
-	const struct fs_parameter_spec *parameters;
+	int (*init_fs_context)(struct fs_context *); /* 初始化文件系统上下文 */
+	const struct fs_parameter_spec *parameters; /* 一组特定类型的结构体的param */
 	struct dentry *(*mount) (struct file_system_type *, int,
 		       const char *, void *);
 	void (*kill_sb) (struct super_block *);
@@ -2578,6 +2619,7 @@ static inline bool iocb_is_dsync(const struct kiocb *iocb)
 }
 
 /*
+   写文件例程会调用此函数来sync自己的写入
  * Sync the bytes written if this was a synchronous write.  Expect ki_pos
  * to already be updated for the write, and will return either the amount
  * of bytes passed in, or an error if syncing the file failed.
@@ -2729,6 +2771,7 @@ static inline int get_write_access(struct inode *inode)
 {
 	return atomic_inc_unless_negative(&inode->i_writecount) ? 0 : -ETXTBSY;
 }
+/* 把file设置为只读? */
 static inline int deny_write_access(struct file *file)
 {
 	struct inode *inode = file_inode(file);

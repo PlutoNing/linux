@@ -35,6 +35,8 @@
 #include "kallsyms_internal.h"
 
 /*
+扩展符号名? 好像是解压.
+off好像是符号名的idx
  * Expand a compressed symbol data into the resulting uncompressed string,
  * if uncompressed string is too long (>= maxlen), it will be truncated,
  * given the offset to where the symbol is in the compressed stream.
@@ -146,6 +148,9 @@ static unsigned int get_symbol_offset(unsigned long pos)
 	return name - kallsyms_names;
 }
 
+/* 
+返回符号地址
+i是符号名在全局符号数组的idx? */
 unsigned long kallsyms_sym_address(int idx)
 {
 	if (!IS_ENABLED(CONFIG_KALLSYMS_BASE_RELATIVE))
@@ -279,6 +284,7 @@ unsigned long kallsyms_lookup_name(const char *name)
 }
 
 /*
+遍历符号,查找地址
  * Iterate over all symbols in vmlinux.  For symbols from modules use
  * module_kallsyms_on_each_symbol instead.
  */
@@ -318,6 +324,7 @@ int kallsyms_on_each_match_symbol(int (*fn)(void *, unsigned long),
 	return ret;
 }
 
+/* addr是内核的ip.  */
 static unsigned long get_symbol_pos(unsigned long addr,
 				    unsigned long *symbolsize,
 				    unsigned long *offset)
@@ -379,6 +386,8 @@ static unsigned long get_symbol_pos(unsigned long addr,
 }
 
 /*
+ 找到不是ksym, 但是在ip上的"东西" ?
+ @addr,一个ip
  * Lookup an address but don't bother to find any names.
  */
 int kallsyms_lookup_size_offset(unsigned long addr, unsigned long *symbolsize,

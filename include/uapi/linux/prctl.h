@@ -130,22 +130,30 @@
  * map which mostly modifies /proc/pid/stat[m]
  * output for a task. This mostly done in a
  * sake of checkpoint/restore functionality.
+ 提供了一种新的内存描述符映射，用于描述进程的内存布局。
+ 它主要用于修改 /proc/pid/stat[m] 文件的输出，方便实现
+ 进程的检查点（checkpoint）和恢复（restore）功能。通过
+ 提供有关代码段、数据段、堆、栈等信息，该结构体可以帮助
+ 恢复进程在特定时刻的内存状态。
  */
 struct prctl_mm_map {
 	__u64	start_code;		/* code section bounds */
 	__u64	end_code;
-	__u64	start_data;		/* data section bounds */
+	__u64	start_data;		/* data section bounds数据段起始地址  */
 	__u64	end_data;
-	__u64	start_brk;		/* heap for brk() syscall */
-	__u64	brk;
-	__u64	start_stack;		/* stack starts at */
-	__u64	arg_start;		/* command line arguments bounds */
-	__u64	arg_end;
-	__u64	env_start;		/* environment variables bounds */
-	__u64	env_end;
-	__u64	*auxv;			/* auxiliary vector */
-	__u32	auxv_size;		/* vector size */
-	__u32	exe_fd;			/* /proc/$pid/exe link file */
+	__u64	start_brk;		/* heap for brk() syscall堆（brk() 系统调用）的起始地址 */
+	__u64	brk; /* 当前堆的结束地址 */
+	__u64	start_stack;		/* stack starts at栈的起始地址  */
+	__u64	arg_start;		/* command line arguments bounds命令行参数起始地址 */
+	__u64	arg_end;		 /* 命令行参数结束地址 */
+	__u64	env_start;		/* environment variables bounds 环境变量起始地址 */
+	__u64	env_end;		/* 环境变量结束地址 */
+	__u64	*auxv;			/* auxiliary vector辅助向量（auxiliary vector）的指针 */
+	__u32	auxv_size;		/* vector size  辅助向量的大小*/
+	__u32	exe_fd;			/* /proc/$pid/exe link file 指向 /proc/$pid/exe 文件的文件描述符
+	比如 
+	root@ppppp-MS-7E24 /proc/226619#ll exe
+	lrwxrwxrwx 1 root root 0 Nov  8 22:08 exe -> /usr/bin/bash* */
 };
 
 /*

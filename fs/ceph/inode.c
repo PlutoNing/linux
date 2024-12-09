@@ -550,6 +550,7 @@ out_unlock:
 }
 
 /*
+ceph分配inodes
  * initialize a newly allocated inode.
  */
 struct inode *ceph_alloc_inode(struct super_block *sb)
@@ -563,7 +564,8 @@ struct inode *ceph_alloc_inode(struct super_block *sb)
 
 	dout("alloc_inode %p\n", &ci->netfs.inode);
 
-	/* Set parameters for the netfs library */
+	/* Set parameters for the netfs library
+	netfs库是什么? */
 	netfs_inode_init(&ci->netfs, &ceph_netfs_ops);
 
 	spin_lock_init(&ci->i_ceph_lock);
@@ -659,6 +661,7 @@ struct inode *ceph_alloc_inode(struct super_block *sb)
 	return &ci->netfs.inode;
 }
 
+/* 释放inode? */
 void ceph_free_inode(struct inode *inode)
 {
 	struct ceph_inode_info *ci = ceph_inode(inode);

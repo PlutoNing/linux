@@ -31,6 +31,7 @@ static inline int is_kernel_text(unsigned long addr)
 	return in_gate_area_no_mm(addr);
 }
 
+/* 看看addr是不是内核范围的ip */
 static inline int is_kernel(unsigned long addr)
 {
 	if (__is_kernel(addr))
@@ -38,6 +39,8 @@ static inline int is_kernel(unsigned long addr)
 	return in_gate_area_no_mm(addr);
 }
 
+/* @addr是一个ip
+看看是不是内核的符号 */
 static inline int is_ksym_addr(unsigned long addr)
 {
 	if (IS_ENABLED(CONFIG_KALLSYMS_ALL))

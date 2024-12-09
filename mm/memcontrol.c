@@ -660,6 +660,7 @@ static void do_flush_stats(void)
 	atomic_set(&stats_flush_ongoing, 0);
 }
 
+/*  */
 void mem_cgroup_flush_stats(void)
 {
 	if (atomic_read(&stats_flush_threshold) > num_online_cpus())
@@ -752,7 +753,7 @@ struct memcg_vmstats {
 	long			state_pending[MEMCG_NR_STAT];
 	unsigned long		events_pending[NR_MEMCG_EVENTS];
 };
-
+/*  */
 unsigned long memcg_page_state(struct mem_cgroup *memcg, int idx)
 {
 	long x = READ_ONCE(memcg->vmstats->state[idx]);
@@ -789,7 +790,7 @@ static unsigned long memcg_page_state_local(struct mem_cgroup *memcg, int idx)
 #endif
 	return x;
 }
-
+/* 修改lruvec的统计信息 */
 void __mod_memcg_lruvec_state(struct lruvec *lruvec, enum node_stat_item idx,
 			      int val)
 {
@@ -831,6 +832,7 @@ void __mod_memcg_lruvec_state(struct lruvec *lruvec, enum node_stat_item idx,
 }
 
 /**
+修改lruvec的统计信息
  * __mod_lruvec_state - update lruvec memory statistics
  * @lruvec: the lruvec
  * @idx: the stat item
@@ -850,7 +852,8 @@ void __mod_lruvec_state(struct lruvec *lruvec, enum node_stat_item idx,
 	if (!mem_cgroup_disabled())
 		__mod_memcg_lruvec_state(lruvec, idx, val);
 }
-
+/* 修改统计信息
+ */
 void __mod_lruvec_page_state(struct page *page, enum node_stat_item idx,
 			     int val)
 {
@@ -874,6 +877,7 @@ void __mod_lruvec_page_state(struct page *page, enum node_stat_item idx,
 }
 EXPORT_SYMBOL(__mod_lruvec_page_state);
 
+/*  */
 void __mod_lruvec_kmem_state(void *p, enum node_stat_item idx, int val)
 {
 	pg_data_t *pgdat = page_pgdat(virt_to_page(p));
@@ -881,6 +885,7 @@ void __mod_lruvec_kmem_state(void *p, enum node_stat_item idx, int val)
 	struct lruvec *lruvec;
 
 	rcu_read_lock();
+
 	memcg = mem_cgroup_from_slab_obj(p);
 
 	/*
@@ -1565,13 +1570,13 @@ static int memcg_page_state_unit(int item)
 		return PAGE_SIZE;
 	}
 }
-
+/*  */
 static inline unsigned long memcg_page_state_output(struct mem_cgroup *memcg,
 						    int item)
 {
 	return memcg_page_state(memcg, item) * memcg_page_state_unit(item);
 }
-
+/*  */
 static void memcg_stat_format(struct mem_cgroup *memcg, struct seq_buf *s)
 {
 	int i;
@@ -1753,7 +1758,7 @@ unlock:
 	mutex_unlock(&oom_lock);
 	return ret;
 }
-
+/* 进行soft回收 */
 static int mem_cgroup_soft_reclaim(struct mem_cgroup *root_memcg,
 				   pg_data_t *pgdat,
 				   gfp_t gfp_mask,
@@ -2111,7 +2116,7 @@ void mem_cgroup_print_oom_group(struct mem_cgroup *memcg)
  *
  * This function prevents unlocked LRU folios from being moved to
  * another cgroup.
- *
+ * . 函数防止page被移到其他cg
  * It ensures lifetime of the bound memcg.  The caller is responsible
  * for the lifetime of the folio.
  */
@@ -2144,7 +2149,7 @@ again:
 		return;
 
 	spin_lock_irqsave(&memcg->move_lock, flags);
-	if (memcg != folio_memcg(folio)) {
+	if (memcg != folio_memcg(folio)) { //race了
 		spin_unlock_irqrestore(&memcg->move_lock, flags);
 		goto again;
 	}
@@ -2154,6 +2159,9 @@ again:
 	 * critical sections holding the fast-path RCU lock and one
 	 * holding the slowpath move_lock. Track the task who has the
 	 * move_lock for folio_memcg_unlock().
+	   当迁移开始时，我们可以有多个竞争区域持有快速路径RCU锁，一个持有slowpath move_lock。
+	   跟踪持有move_lock的任务，以便folio_memcg_unlock()。
+
 	 */
 	memcg->move_lock_task = current;
 	memcg->move_lock_flags = flags;
@@ -2944,6 +2952,7 @@ int memcg_alloc_slab_cgroups(struct slab *slab, struct kmem_cache *s,
 	return 0;
 }
 
+/* 从slab obj所属的folio获取对应的memcg */
 static __always_inline
 struct mem_cgroup *mem_cgroup_from_obj_folio(struct folio *folio, void *p)
 {
@@ -2951,6 +2960,7 @@ struct mem_cgroup *mem_cgroup_from_obj_folio(struct folio *folio, void *p)
 	 * Slab objects are accounted individually, not per-page.
 	 * Memcg membership data for each individual object is saved in
 	 * slab->memcg_data.
+	 slab obj所属的memcg是记录在slab,不是所属page
 	 */
 	if (folio_test_slab(folio)) {
 		struct obj_cgroup **objcgs;
@@ -3570,7 +3580,7 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 	struct mem_cgroup_tree_per_node *mctz;
 	unsigned long excess;
 
-	if (lru_gen_enabled())
+	if (lru_gen_enabled()) /* lrugen下不起作用? */
 		return 0;
 
 	if (order > 0)
@@ -3598,7 +3608,7 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 			mz = mem_cgroup_largest_soft_limit_node(mctz);
 		if (!mz)
 			break;
-
+		/* 进行soft回收 */
 		reclaimed = mem_cgroup_soft_reclaim(mz->memcg, pgdat,
 						    gfp_mask, total_scanned);
 		nr_reclaimed += reclaimed;
@@ -3636,12 +3646,14 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 			loop > MEM_CGROUP_MAX_SOFT_LIMIT_RECLAIM_LOOPS))
 			break;
 	} while (!nr_reclaimed);
+
 	if (next_mz)
 		css_put(&next_mz->memcg->css);
 	return nr_reclaimed;
 }
 
 /*
+回收memcg的全部内存. 
  * Reclaims as many pages from the given memcg as possible.
  *
  * Caller is responsible for holding css reference for memcg.
@@ -3649,7 +3661,6 @@ unsigned long mem_cgroup_soft_limit_reclaim(pg_data_t *pgdat, int order,
 static int mem_cgroup_force_empty(struct mem_cgroup *memcg)
 {
 	int nr_retries = MAX_RECLAIM_RETRIES;
-
 	/* we call try-to-free pages for make this cgroup empty */
 	lru_add_drain_all();
 
@@ -3668,6 +3679,8 @@ static int mem_cgroup_force_empty(struct mem_cgroup *memcg)
 	return 0;
 }
 
+
+/* 清空memcg的内存 */
 static ssize_t mem_cgroup_force_empty_write(struct kernfs_open_file *of,
 					    char *buf, size_t nbytes,
 					    loff_t off)
@@ -3678,6 +3691,10 @@ static ssize_t mem_cgroup_force_empty_write(struct kernfs_open_file *of,
 		return -EINVAL;
 	return mem_cgroup_force_empty(memcg) ?: nbytes;
 }
+
+
+
+
 
 static u64 mem_cgroup_hierarchy_read(struct cgroup_subsys_state *css,
 				     struct cftype *cft)
@@ -4624,6 +4641,7 @@ struct wb_domain *mem_cgroup_wb_domain(struct bdi_writeback *wb)
 
 /**
  * mem_cgroup_wb_stats - retrieve writeback related stats from its memcg
+   获取wb的memcg的写回相关的统计信息
  * @wb: bdi_writeback in question
  * @pfilepages: out parameter for number of file pages
  * @pheadroom: out parameter for number of allocatable pages according to memcg
@@ -4633,7 +4651,8 @@ struct wb_domain *mem_cgroup_wb_domain(struct bdi_writeback *wb)
  * Determine the numbers of file, headroom, dirty, and writeback pages in
  * @wb's memcg.  File, dirty and writeback are self-explanatory.  Headroom
  * is a bit more involved.
- *
+ * 决定wb的memcg中的文件、headroom、脏和写回页面的数量。文件、脏和写回是不言自明的。Headroom
+ * 更复杂一些。
  * A memcg's headroom is "min(max, high) - used".  In the hierarchy, the
  * headroom is calculated as the lowest headroom of itself and the
  * ancestors.  Note that this doesn't consider the actual amount of
@@ -5097,6 +5116,8 @@ static struct cftype mem_cgroup_legacy_files[] = {
 		.name = "force_empty",
 		.write = mem_cgroup_force_empty_write,
 	},
+	
+
 	{
 		.name = "use_hierarchy",
 		.write_u64 = mem_cgroup_hierarchy_write,
@@ -6650,7 +6671,7 @@ static int memory_events_local_show(struct seq_file *m, void *v)
 	__memory_events_show(m, memcg->memory_events_local);
 	return 0;
 }
-
+/*  */
 static int memory_stat_show(struct seq_file *m, void *v)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
@@ -6734,6 +6755,15 @@ static ssize_t memory_oom_group_write(struct kernfs_open_file *of,
 	return nbytes;
 }
 
+//void shrink_node_pagecache(pg_data_t *pgdat, struct scan_control *sc);
+/* 回收memcg的pagecache */
+
+
+
+/* root@paulning:/sys/fs/cgroup/mymemcg# echo 51134592 > memory.reclaim
+的回调函数
+---------------
+不断调用try_to_free_mem_cgroup_pages, 一直到回收够足够页面.  */
 /* 回收memcg指定比例的内存 */
 static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 			      size_t nbytes, loff_t off)
@@ -6750,6 +6780,7 @@ static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 		return err;
 
 	reclaim_options	= MEMCG_RECLAIM_MAY_SWAP | MEMCG_RECLAIM_PROACTIVE;
+
 	while (nr_reclaimed < nr_to_reclaim) {
 		unsigned long reclaimed;
 

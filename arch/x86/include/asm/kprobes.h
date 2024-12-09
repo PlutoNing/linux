@@ -84,11 +84,14 @@ struct arch_specific_insn {
 };
 /* kprob的指令相关: 旧指令和新指令 */
 struct arch_optimized_insn {
-	/* copy of the original instructions */
+	/* copy of the original instructions
+	备份的原指令 */
 	kprobe_opcode_t copied_insn[DISP32_SIZE];
-	/* detour code buffer */
+	/* detour code buffer
+	hook的指令patch */
 	kprobe_opcode_t *insn;
-	/* the size of instructions copied to detour code buffer */
+	/* the size of instructions copied to detour code buffer
+	*insn的大小 */
 	size_t size;
 };
 

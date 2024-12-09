@@ -173,7 +173,7 @@ int seq_release_private(struct inode *, struct file *);
 #ifdef CONFIG_BINARY_PRINTF
 void seq_bprintf(struct seq_file *m, const char *f, const u32 *binary);
 #endif
-
+/* 基本上都是open比较特殊, 别的都是统一的接口 */
 #define DEFINE_SEQ_ATTRIBUTE(__name)					\
 static int __name ## _open(struct inode *inode, struct file *file)	\
 {									\

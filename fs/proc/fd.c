@@ -310,12 +310,14 @@ static int proc_readfd(struct file *file, struct dir_context *ctx)
 	return proc_readfd_common(file, ctx, proc_fd_instantiate);
 }
 
+/*  */
 const struct file_operations proc_fd_operations = {
 	.read		= generic_read_dir,
 	.iterate_shared	= proc_readfd,
 	.llseek		= generic_file_llseek,
 };
 
+/* procfs的查找目录的fd */
 static struct dentry *proc_lookupfd(struct inode *dir, struct dentry *dentry,
 				    unsigned int flags)
 {
@@ -364,6 +366,11 @@ static int proc_fd_getattr(struct mnt_idmap *idmap,
 	return rv;
 }
 
+/* proc_fd_inode_operations 包含：
+lookup：用于查找文件或目录的具体位置，指向 proc_lookupfd 函数。
+permission：用于检查目录的权限，指向 proc_fd_permission 函数。
+getattr：获取文件属性，指向 proc_fd_getattr 函数。
+setattr：设置文件属性，指向 proc_setattr 函数。 */
 const struct inode_operations proc_fd_inode_operations = {
 	.lookup		= proc_lookupfd,
 	.permission	= proc_fd_permission,

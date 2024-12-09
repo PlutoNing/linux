@@ -25,11 +25,13 @@
 #define ALLOC_SPLIT_PTLOCKS	(SPINLOCK_SIZE > BITS_PER_LONG/8)
 
 /*
+进程的内存类型
  * When updating this, please also update struct resident_page_types[] in
  * kernel/fork.c
  */
 enum {
-	MM_FILEPAGES,	/* Resident file mapping pages */
+	MM_FILEPAGES,	/*进程的文件页??? 
+	 Resident file mapping pages */
 	MM_ANONPAGES,	/* Resident anonymous pages */
 	MM_SWAPENTS,	/* Anonymous swap entries */
 	MM_SHMEMPAGES,	/* Resident shared memory pages */

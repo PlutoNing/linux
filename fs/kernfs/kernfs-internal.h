@@ -31,6 +31,7 @@ struct kernfs_iattrs {
 	atomic_t		user_xattr_size;
 };
 
+/*  */
 struct kernfs_root {
 	/* published fields */
 	struct kernfs_node	*kn;

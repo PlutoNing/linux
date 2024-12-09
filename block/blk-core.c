@@ -1066,8 +1066,9 @@ void blk_start_plug_nr_ios(struct blk_plug *plug, unsigned short nr_ios)
 
 /**
  * blk_start_plug - initialize blk_plug and track it inside the task_struct
+ 初始化blk_plug并在task_struct中跟踪它
  * @plug:	The &struct blk_plug that needs to be initialized
- *
+ * 
  * Description:
  *   blk_start_plug() indicates to the block layer an intent by the caller
  *   to submit multiple I/O requests in a batch.  The block layer may use
@@ -1077,7 +1078,10 @@ void blk_start_plug_nr_ios(struct blk_plug *plug, unsigned short nr_ios)
  *   exceeds %BLK_MAX_REQUEST_COUNT, or if the size of the I/O is larger than
  *   %BLK_PLUG_FLUSH_SIZE.  The queued I/Os may also be submitted early if
  *   the task schedules (see below).
- *
+ *		这个函数表示调用者打算批量提交多个I/O请求。
+ 	块层可以使用这个提示来推迟从调用者提交I/O，直到调用blk_finish_plug()。
+	但是，如果排队的I/O数量超过%BLK_MAX_REQUEST_COUNT，或者I/O的大小大于%BLK_PLUG_FLUSH_SIZE，
+	块层可以选择在调用blk_finish_plug()之前提交请求。如果任务调度，排队的I/O也可以提前提交（见下文）。
  *   Tracking blk_plug inside the task_struct will help with auto-flushing the
  *   pending I/O should the task end up blocking between blk_start_plug() and
  *   blk_finish_plug(). This is important from a performance perspective, but
@@ -1086,6 +1090,11 @@ void blk_start_plug_nr_ios(struct blk_plug *plug, unsigned short nr_ios)
  *   page belonging to that request that is currently residing in our private
  *   plug. By flushing the pending I/O when the process goes to sleep, we avoid
  *   this kind of deadlock.
+	跟踪task_struct中的blk_plug将有助于在blk_start_plug()和blk_finish_plug()之间
+	阻塞任务时自动刷新挂起的I/O。
+	这是从性能的角度来看很重要的，但也确保我们不会死锁。
+	比如，如果任务因内存分配而阻塞，内存回收可能会希望释放属于当前驻留在我们的私有插头中的请求的页面。
+	通过在进程进入睡眠时刷新挂起的I/O，我们避免了这种死锁。
  */
 void blk_start_plug(struct blk_plug *plug)
 {
@@ -1093,6 +1102,7 @@ void blk_start_plug(struct blk_plug *plug)
 }
 EXPORT_SYMBOL(blk_start_plug);
 
+/* from_schedule表示是不是因为进程被调度让出cpu了而刷新plug */
 static void flush_plug_callbacks(struct blk_plug *plug, bool from_schedule)
 {
 	LIST_HEAD(callbacks);
@@ -1100,7 +1110,7 @@ static void flush_plug_callbacks(struct blk_plug *plug, bool from_schedule)
 	while (!list_empty(&plug->cb_list)) {
 		list_splice_init(&plug->cb_list, &callbacks);
 
-		while (!list_empty(&callbacks)) {
+		while (!list_empty(&callbacks)) {/* 逐个处理取下来的cb */
 			struct blk_plug_cb *cb = list_first_entry(&callbacks,
 							  struct blk_plug_cb,
 							  list);
@@ -1135,10 +1145,12 @@ struct blk_plug_cb *blk_check_plugged(blk_plug_cb_fn unplug, void *data,
 }
 EXPORT_SYMBOL(blk_check_plugged);
 
+/* 刷新plug的io */
 void __blk_flush_plug(struct blk_plug *plug, bool from_schedule)
 {
 	if (!list_empty(&plug->cb_list))
 		flush_plug_callbacks(plug, from_schedule);
+
 	blk_mq_flush_plug_list(plug, from_schedule);
 	/*
 	 * Unconditionally flush out cached requests, even if the unplug

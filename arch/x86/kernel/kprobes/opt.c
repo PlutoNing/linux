@@ -337,13 +337,14 @@ static int can_optimize(unsigned long paddr)
 	return 1;
 }
 
-/* Check optimized_kprobe can actually be optimized. */
+/* Check optimized_kprobe can actually be optimized. 
+看看kp要hook的位置是不是已经有kp了*/
 int arch_check_optimized_kprobe(struct optimized_kprobe *op)
 {
 	int i;
 	struct kprobe *p;
 
-	for (i = 1; i < op->optinsn.size; i++) {
+	for (i = 1; i < op->optinsn.size; i++) {/* 遍历每一个指令 */
 		p = get_kprobe(op->kp.addr + i);
 		if (p && !kprobe_disarmed(p))
 			return -EEXIST;
@@ -495,6 +496,9 @@ void arch_optimize_kprobes(struct list_head *oplist)
 }
 
 /*
+2024年09月24日11:14:21
+arch unopt这个kp的函数.
+unopt实际上是插入int3,再拷贝原指令?
  * Replace a relative jump (JMP.d32) with a breakpoint (INT3).
  *
  * After that, we can restore the 4 bytes after the INT3 to undo what
@@ -505,21 +509,27 @@ void arch_unoptimize_kprobe(struct optimized_kprobe *op)
 {
 	u8 new[JMP32_INSN_SIZE] = { INT3_INSN_OPCODE, };
 	u8 old[JMP32_INSN_SIZE];
+	/* 被hook的地址 */
 	u8 *addr = op->kp.addr;
-
+	/*  */
 	memcpy(old, op->kp.addr, JMP32_INSN_SIZE);
+	/* 把备份的原指令, 拷贝到new.
+	现在new开头处是个int3 .  */
 	memcpy(new + INT3_INSN_SIZE,
 	       op->optinsn.copied_insn,
 	       JMP32_INSN_SIZE - INT3_INSN_SIZE);
 
+	/* 这里patch int3 */
 	text_poke(addr, new, INT3_INSN_SIZE);
 	text_poke_sync();
+	/* patch剩余的代码 */
 	text_poke(addr + INT3_INSN_SIZE,
 		  new + INT3_INSN_SIZE,
 		  JMP32_INSN_SIZE - INT3_INSN_SIZE);
 	text_poke_sync();
 
-	perf_event_text_poke(op->kp.addr, old, JMP32_INSN_SIZE, new, JMP32_INSN_SIZE);
+	perf_event_text_poke(op->kp.addr, old, 
+	JMP32_INSN_SIZE, new, JMP32_INSN_SIZE);
 }
 
 /*

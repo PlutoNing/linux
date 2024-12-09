@@ -77,9 +77,9 @@ struct shrinker {
 	int id;
 #endif
 #ifdef CONFIG_SHRINKER_DEBUG
-	int debugfs_id;
+	int debugfs_id; /* 在debugfs的id */
 	const char *name;
-	struct dentry *debugfs_entry;
+	struct dentry *debugfs_entry;/* 在debugfs的dent */
 #endif
 	/* objs pending delete, per node */
 	atomic_long_t *nr_deferred;

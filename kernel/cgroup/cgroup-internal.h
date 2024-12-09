@@ -168,11 +168,14 @@ extern spinlock_t css_set_lock;
 extern struct cgroup_subsys *cgroup_subsys[];
 extern struct list_head cgroup_roots;
 
-/* iterate across the hierarchies */
+/* iterate across the hierarchies
+遍历系统全部的rootcg */
 #define for_each_root(root)						\
 	list_for_each_entry((root), &cgroup_roots, root_list)
 
 /**
+遍历全部的子系统
+迭代ssid,子系统在cgroup_subsys[ssid]
  * for_each_subsys - iterate all enabled cgroup subsystems
  * @ss: the iteration cursor
  * @ssid: the index of @ss, CGROUP_SUBSYS_COUNT after reaching the end

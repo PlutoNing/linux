@@ -123,6 +123,7 @@
  *    ->private_lock		(zap_pte_range->block_dirty_folio)
  */
 
+//从mapping xas 删除
 static void page_cache_delete(struct address_space *mapping,
 				   struct folio *folio, void *shadow)
 {
@@ -146,7 +147,11 @@ static void page_cache_delete(struct address_space *mapping,
 	/* Leave page->index set: truncation lookup relies upon it */
 	mapping->nrpages -= nr;
 }
+/* 
 
+从mapping移除此folio之前的统计操作
+
+ */
 static void filemap_unaccount_folio(struct address_space *mapping,
 		struct folio *folio)
 {
@@ -154,9 +159,13 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 
 	VM_BUG_ON_FOLIO(folio_mapped(folio), folio);
 
-	if (!IS_ENABLED(CONFIG_DEBUG_VM) && unlikely(folio_mapped(folio))) {
+	if (!IS_ENABLED(CONFIG_DEBUG_VM) && unlikely(folio_mapped(folio))) {/* 
+	如果是mapped的文件页
+	什么算mapped呢
+	 */
 		pr_alert("BUG: Bad page cache in process %s  pfn:%05lx\n",
 			 current->comm, folio_pfn(folio));
+
 		dump_page(&folio->page, "still mapped when deleted");
 		dump_stack();
 		add_taint(TAINT_BAD_PAGE, LOCKDEP_NOW_UNRELIABLE);
@@ -184,7 +193,8 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 	nr = folio_nr_pages(folio);
 
 	__lruvec_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
-	if (folio_test_swapbacked(folio)) {
+
+	if (folio_test_swapbacked(folio)) { // 匿名页?
 		__lruvec_stat_mod_folio(folio, NR_SHMEM, -nr);
 		if (folio_test_pmd_mappable(folio))
 			__lruvec_stat_mod_folio(folio, NR_SHMEM_THPS, -nr);
@@ -197,12 +207,14 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 	 * At this point folio must be either written or cleaned by
 	 * truncate.  Dirty folio here signals a bug and loss of
 	 * unwritten data - on ordinary filesystems.
-	 *
+	 * 此时folio必须是被写入或者被清理的, 脏页在这里表示一个bug和未写入数据的丢失
+	 
 	 * But it's harmless on in-memory filesystems like tmpfs; and can
 	 * occur when a driver which did get_user_pages() sets page dirty
 	 * before putting it, while the inode is being finally evicted.
-	 *
-	 * Below fixes dirty accounting after removing the folio entirely
+	 * 但是在像tmpfs这样的内存文件系统上是无害的; 并且当一个调用了get_user_pages()
+	 的驱动在最终驱逐inode时设置了脏页, 这种情况可能会发生
+ 	 * Below fixes dirty accounting after removing the folio entirely
 	 * but leaves the dirty flag set: it has no effect for truncated
 	 * folio and anyway will be cleared before returning folio to
 	 * buddy allocator.
@@ -213,6 +225,7 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 }
 
 /*
+从pagecache移除页面.
  * Delete a page from the page cache and free it. Caller has to make
  * sure the page is locked and that nobody else uses it - or that usage
  * is safe.  The caller must hold the i_pages lock.
@@ -222,10 +235,13 @@ void __filemap_remove_folio(struct folio *folio, void *shadow)
 	struct address_space *mapping = folio->mapping;
 
 	trace_mm_filemap_delete_from_page_cache(folio);
+	/* 先统计 */
 	filemap_unaccount_folio(mapping, folio);
+	/* 这里从xas移除 */
 	page_cache_delete(mapping, folio, shadow);
 }
 
+//从mapping中删除folio
 void filemap_free_folio(struct address_space *mapping, struct folio *folio)
 {
 	void (*free_folio)(struct folio *);
@@ -242,6 +258,7 @@ void filemap_free_folio(struct address_space *mapping, struct folio *folio)
 
 /**
  * filemap_remove_folio - Remove folio from page cache.
+   从mapping移除folio
  * @folio: The folio.
  *
  * This must be called only on folios that are locked and have been
@@ -265,7 +282,7 @@ void filemap_remove_folio(struct folio *folio)
 }
 
 /*
-
+ 批量移除
  * page_cache_delete_batch - delete several folios from page cache
  * @mapping: the mapping to which folios belong
  * @fbatch: batch of folios to delete
@@ -319,6 +336,8 @@ static void page_cache_delete_batch(struct address_space *mapping,
 	mapping->nrpages -= total_pages;
 }
 
+// 从mapping中删除一批folio
+// 谁调用: truncate_inode_pages_range
 void delete_from_page_cache_batch(struct address_space *mapping,
 				  struct folio_batch *fbatch)
 {
@@ -333,18 +352,21 @@ void delete_from_page_cache_batch(struct address_space *mapping,
 		struct folio *folio = fbatch->folios[i];
 
 		trace_mm_filemap_delete_from_page_cache(folio);
-		filemap_unaccount_folio(mapping, folio);
+		filemap_unaccount_folio(mapping, folio); //先登记移除了
 	}
+
 	page_cache_delete_batch(mapping, fbatch);
 	xa_unlock_irq(&mapping->i_pages);
 	if (mapping_shrinkable(mapping))
 		inode_add_lru(mapping->host);
+
 	spin_unlock(&mapping->host->i_lock);
 
 	for (i = 0; i < folio_batch_count(fbatch); i++)
 		filemap_free_folio(mapping, fbatch->folios[i]);
 }
 
+//检查mapping的错误
 int filemap_check_errors(struct address_space *mapping)
 {
 	int ret = 0;
@@ -371,12 +393,15 @@ static int filemap_check_and_keep_errors(struct address_space *mapping)
 
 /**
  * filemap_fdatawrite_wbc - start writeback on mapping dirty pages in range
- * @mapping:	address space structure to write
- * @wbc:	the writeback_control controlling the writeout
+  开启mapping中的脏页的写回
+ * @mapping:	address space structure to write , 要写入的地址空间结构
+  * @wbc:	the writeback_control controlling the writeout, 对应的写回控制,
+  包含了这次写回的一些属性,比如同步模式，写回的范围
  *
  * Call writepages on the mapping using the provided wbc to control the
  * writeout.
- *
+ *	调用writepages在mapping上
+ 	使用提供的wbc来控制写出
  * Return: %0 on success, negative error code otherwise.
  */
 int filemap_fdatawrite_wbc(struct address_space *mapping,
@@ -384,12 +409,16 @@ int filemap_fdatawrite_wbc(struct address_space *mapping,
 {
 	int ret;
 
-	if (!mapping_can_writeback(mapping) ||
-	    !mapping_tagged(mapping, PAGECACHE_TAG_DIRTY))
+	if (!mapping_can_writeback(mapping) || //mapping不能写回
+	    !mapping_tagged(mapping, PAGECACHE_TAG_DIRTY)) //为啥要有PAGECACHE_TAG_DIRTY标记才能写回呢
+		//哦哦这个说明mapping里面有脏页
 		return 0;
+	//到这里需要mapping can writeback,并且mapping里面有脏页
 
-	wbc_attach_fdatawrite_inode(wbc, mapping->host);
-	ret = do_writepages(mapping, wbc);
+	wbc_attach_fdatawrite_inode(wbc, mapping->host); //设置wb,wbc,inode三者之间的关系
+	
+	ret = do_writepages(mapping, wbc); //把脏页写回磁盘
+	
 	wbc_detach_inode(wbc);
 	return ret;
 }
@@ -397,25 +426,31 @@ EXPORT_SYMBOL(filemap_fdatawrite_wbc);
 
 /**
  * __filemap_fdatawrite_range - start writeback on mapping dirty pages in range
+	开启mapping中的脏页的写回
  * @mapping:	address space structure to write
+	mapping:要写入的地址空间结构
  * @start:	offset in bytes where the range starts
+	开始的字节偏移量
  * @end:	offset in bytes where the range ends (inclusive)
- * @sync_mode:	enable synchronous operation
+	结束的字节偏移量
+ * @sync_mode:	enable synchronous operation, 同步操作
  *
  * Start writeback against all of a mapping's dirty pages that lie
  * within the byte offsets <start, end> inclusive.
- *
+ *	开启对映射的所有脏页的写回，这些脏页位于字节偏移量<start, end>之间
  * If sync_mode is WB_SYNC_ALL then this is a "data integrity" operation, as
  * opposed to a regular memory cleansing writeback.  The difference between
  * these two operations is that if a dirty page/buffer is encountered, it must
  * be waited upon, and not just skipped over.
- *
+ *	如果sync_mode是WB_SYNC_ALL，那么这是一个“数据完整性”操作，而不是一个常规的内存清洗写回
+	区别在于，如果遇到脏页/缓冲区，必须等待它，而不是跳过它
  * Return: %0 on success, negative error code otherwise.
+
  */
 int __filemap_fdatawrite_range(struct address_space *mapping, loff_t start,
 				loff_t end, int sync_mode)
 {
-	struct writeback_control wbc = {
+	struct writeback_control wbc = {  //这里定义属性包括同步模式，写回的范围
 		.sync_mode = sync_mode,
 		.nr_to_write = LONG_MAX,
 		.range_start = start,
@@ -445,12 +480,14 @@ int filemap_fdatawrite_range(struct address_space *mapping, loff_t start,
 EXPORT_SYMBOL(filemap_fdatawrite_range);
 
 /**
+ 刷新bdev的mapping
  * filemap_flush - mostly a non-blocking flush
  * @mapping:	target address_space
  *
  * This is a mostly non-blocking flush.  Not suitable for data-integrity
  * purposes - I/O may not be started against all dirty pages.
- *
+ * 这是一个几乎不阻塞的刷新。不适用于数据完整性目的-可能不会针对所有脏页启动I/O
+
  * Return: %0 on success, negative error code otherwise.
  */
 int filemap_flush(struct address_space *mapping)
@@ -459,7 +496,8 @@ int filemap_flush(struct address_space *mapping)
 }
 EXPORT_SYMBOL(filemap_flush);
 
-/**
+/** 
+判断范围内是否有页面
  * filemap_range_has_page - check if a page exists in range.
  * @mapping:           address space within which to check
  * @start_byte:        offset in bytes where the range starts
@@ -467,7 +505,7 @@ EXPORT_SYMBOL(filemap_flush);
  *
  * Find at least one page in the range supplied, usually used to check if
  * direct writing in this range will trigger a writeback.
- *
+ * 寻找至少一个在提供的范围内的页面，通常用于检查直接写入这个范围是否会触发回写
  * Return: %true if at least one page exists in the specified range,
  * %false otherwise.
  */
@@ -502,6 +540,7 @@ bool filemap_range_has_page(struct address_space *mapping,
 }
 EXPORT_SYMBOL(filemap_range_has_page);
 
+//等待写回完成
 static void __filemap_fdatawait_range(struct address_space *mapping,
 				     loff_t start_byte, loff_t end_byte)
 {
@@ -516,7 +555,7 @@ static void __filemap_fdatawait_range(struct address_space *mapping,
 		unsigned i;
 
 		nr_folios = filemap_get_folios_tag(mapping, &index, end,
-				PAGECACHE_TAG_WRITEBACK, &fbatch);
+				PAGECACHE_TAG_WRITEBACK, &fbatch);//获取正在写回的folio
 
 		if (!nr_folios)
 			break;
@@ -524,9 +563,10 @@ static void __filemap_fdatawait_range(struct address_space *mapping,
 		for (i = 0; i < nr_folios; i++) {
 			struct folio *folio = fbatch.folios[i];
 
-			folio_wait_writeback(folio);
+			folio_wait_writeback(folio); //等待PG_writeback标志位被清除
 			folio_clear_error(folio);
 		}
+
 		folio_batch_release(&fbatch);
 		cond_resched();
 	}
@@ -534,6 +574,7 @@ static void __filemap_fdatawait_range(struct address_space *mapping,
 
 /**
  * filemap_fdatawait_range - wait for writeback to complete
+   等待写回完成
  * @mapping:		address space structure to wait for
  * @start_byte:		offset in bytes where the range starts
  * @end_byte:		offset in bytes where the range ends (inclusive)
@@ -541,18 +582,22 @@ static void __filemap_fdatawait_range(struct address_space *mapping,
  * Walk the list of under-writeback pages of the given address space
  * in the given range and wait for all of them.  Check error status of
  * the address space and return it.
- *
+ * 
+  在给定范围内遍历给定地址空间的正在写回的页面，并等待所有页面写回完成
+  检查地址空间的错误状态并返回
  * Since the error status of the address space is cleared by this function,
  * callers are responsible for checking the return value and handling and/or
  * reporting the error.
- *
+ * 
+  由于此函数清除了地址空间的错误状态，因此调用者负责检查返回值并处理和/或报告错误
  * Return: error status of the address space.
+  返回地址空间的错误状态
  */
 int filemap_fdatawait_range(struct address_space *mapping, loff_t start_byte,
 			    loff_t end_byte)
 {
-	__filemap_fdatawait_range(mapping, start_byte, end_byte);
-	return filemap_check_errors(mapping);
+	__filemap_fdatawait_range(mapping, start_byte, end_byte); //等待写回完成
+	return filemap_check_errors(mapping); //检查错误
 }
 EXPORT_SYMBOL(filemap_fdatawait_range);
 
@@ -580,6 +625,7 @@ EXPORT_SYMBOL(filemap_fdatawait_range_keep_errors);
 
 /**
  * file_fdatawait_range - wait for writeback to complete
+   等待回写完成
  * @file:		file pointing to address space structure to wait for
  * @start_byte:		offset in bytes where the range starts
  * @end_byte:		offset in bytes where the range ends (inclusive)
@@ -604,6 +650,7 @@ int file_fdatawait_range(struct file *file, loff_t start_byte, loff_t end_byte)
 EXPORT_SYMBOL(file_fdatawait_range);
 
 /**
+ 等待回写完成
  * filemap_fdatawait_keep_errors - wait for writeback without clearing errors
  * @mapping: address space structure to wait for
  *
@@ -624,12 +671,15 @@ int filemap_fdatawait_keep_errors(struct address_space *mapping)
 }
 EXPORT_SYMBOL(filemap_fdatawait_keep_errors);
 
-/* Returns true if writeback might be needed or already in progress. */
+/* 
+感觉更像是判断是否可以回写?
+Returns true if writeback might be needed or already in progress. */
 static bool mapping_needs_writeback(struct address_space *mapping)
 {
 	return mapping->nrpages;
 }
 
+// 返回真说明范围内有至少一个dirty,wb或者locked的folio
 bool filemap_range_has_writeback(struct address_space *mapping,
 				 loff_t start_byte, loff_t end_byte)
 {
@@ -641,28 +691,33 @@ bool filemap_range_has_writeback(struct address_space *mapping,
 		return false;
 
 	rcu_read_lock();
-	xas_for_each(&xas, folio, max) {
+	xas_for_each(&xas, folio, max) { //遍历index到max的全部folio
 		if (xas_retry(&xas, folio))
 			continue;
 		if (xa_is_value(folio))
 			continue;
+		//找到了一个folio
 		if (folio_test_dirty(folio) || folio_test_locked(folio) ||
 				folio_test_writeback(folio))
 			break;
 	}
+
 	rcu_read_unlock();
+	//找到了一个dirty,或者wb的或者locked的folio
 	return folio != NULL;
 }
 EXPORT_SYMBOL_GPL(filemap_range_has_writeback);
 
 /**
+写回mapping的这个范围, 可以阻塞
+先__filemap_fdatawrite_range写, 然后__filemap_fdatawait_range等待
  * filemap_write_and_wait_range - write out & wait on a file range
  * @mapping:	the address_space for the pages
  * @lstart:	offset in bytes where the range starts
  * @lend:	offset in bytes where the range ends (inclusive)
  *
  * Write out and wait upon file offsets lstart->lend, inclusive.
- *
+ * 写入并等待文件偏移量lstart->lend，包括lend
  * Note that @lend is inclusive (describes the last byte to be written) so
  * that this function can be used to write to the very end-of-file (end = -1).
  *
@@ -676,7 +731,7 @@ int filemap_write_and_wait_range(struct address_space *mapping,
 	if (lend < lstart)
 		return 0;
 
-	if (mapping_needs_writeback(mapping)) {
+	if (mapping_needs_writeback(mapping)) { // 说明可以写回(mapping容量不为0), 才操作
 		err = __filemap_fdatawrite_range(mapping, lstart, lend,
 						 WB_SYNC_ALL);
 		/*
@@ -684,10 +739,13 @@ int filemap_write_and_wait_range(struct address_space *mapping,
 		 * written partially (e.g. -ENOSPC), so we wait for it.
 		 * But the -EIO is special case, it may indicate the worst
 		 * thing (e.g. bug) happened, so we avoid waiting for it.
+		   虽然上面返回了错误，但是页面可能被部分写入(例如-ENOSPC)，所以我们需要等待.
+		   不过EIO是最糟糕的情况, 可能等待也没有用
 		 */
 		if (err != -EIO)
 			__filemap_fdatawait_range(mapping, lstart, lend);
 	}
+
 	err2 = filemap_check_errors(mapping);
 	if (!err)
 		err = err2;
@@ -756,6 +814,8 @@ int file_check_and_advance_wb_err(struct file *file)
 EXPORT_SYMBOL(file_check_and_advance_wb_err);
 
 /**
+ 类似filemap_write_and_wait_range， ,但是参数是file?
+ 不过不能直接调用filemap这个函数吗?
  * file_write_and_wait_range - write out & wait on a file range
  * @file:	file pointing to address_space with pages
  * @lstart:	offset in bytes where the range starts
@@ -795,6 +855,7 @@ EXPORT_SYMBOL(file_write_and_wait_range);
 
 /**
  * replace_page_cache_folio - replace a pagecache folio with a new one
+  替换pagecache的一个页面? 目的是什么?
  * @old:	folio to be replaced
  * @new:	folio to replace with
  *
@@ -803,7 +864,9 @@ EXPORT_SYMBOL(file_write_and_wait_range);
  * drops it for the old folio.  Both the old and new folios must be
  * locked.  This function does not add the new folio to the LRU, the
  * caller must do that.
- *
+ * 这个函数用新的folio替换pagecache中的一个folio. 成功后会获取新folio的pagecache引用, 
+ 并且减少旧folio的引用.
+   两个folio都必须是locked的. 这个函数不会把新的folio加入LRU, 调用者必须自己做.
  * The remove + add is atomic.  This function cannot fail.
  */
 void replace_page_cache_folio(struct folio *old, struct folio *new)
@@ -864,6 +927,7 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 			return error;
 		/* charg成功了, memcg ref += nr_pages(folio) */
 		charged = true;
+
 		xas_set_order(&xas, index, folio_order(folio));
 		nr = folio_nr_pages(folio);
 	}
@@ -881,6 +945,7 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 		if (order > folio_order(folio))
 			xas_split_alloc(&xas, xa_load(xas.xa, xas.xa_index),
 					order, gfp);
+
 		xas_lock_irq(&xas);
 		xas_for_each_conflict(&xas, entry) {
 			old = entry;
@@ -938,6 +1003,8 @@ error:
 ALLOW_ERROR_INJECTION(__filemap_add_folio, ERRNO);
 
 /* 页缓存缺少页面时, 这里把缺少的刚刚申请的页面加入pagecache */
+//把新申请的folio加入pagecache
+//1,预读会调用此
 int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 				pgoff_t index, gfp_t gfp)
 {
@@ -945,23 +1012,33 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 	int ret;
 
 	__folio_set_locked(folio);
+
 	ret = __filemap_add_folio(mapping, folio, index, gfp, &shadow);
 	if (unlikely(ret))
 		__folio_clear_locked(folio);
-	else {
+	else {/* add成功了 */
 		/*
 		 * The folio might have been evicted from cache only
 		 * recently, in which case it should be activated like
 		 * any other repeatedly accessed folio.
+		  如果 folio 最近才从缓存中被驱逐，它应该像其他重复访问的 folio 一样被重新激活
 		 * The exception is folios getting rewritten; evicting other
 		 * data from the working set, only to cache data that will
 		 * get overwritten with something else, is a waste of memory.
+		  但是，对于正在被重写的 folio，情况则不同。如果驱逐其他数据以缓存将
+		  被新数据覆盖的 folio，这将导致内存浪费。
 		 */
 		WARN_ON_ONCE(folio_test_active(folio));
+
 		if (!(gfp & __GFP_WRITE) && shadow)
+		/* 2024年10月13日17:59:14
+	了解xarray */
 			workingset_refault(folio, shadow);
+
+		/*  成功了之后,加入lru */
 		folio_add_lru(folio);
 	}
+
 	return ret;
 }
 EXPORT_SYMBOL_GPL(filemap_add_folio);
@@ -1035,16 +1112,24 @@ EXPORT_SYMBOL(filemap_invalidate_unlock_two);
  * sure the appropriate page became available, this saves space
  * at a cost of "thundering herd" phenomena during rare hash
  * collisions.
+   为了等待页面变得可用，必须有与页面关联的等待队列。通过使用等待队列的哈希表，
+   其中桶的规则是维护同一队列上的所有等待者，并在任何页面可用时唤醒所有等待者，
+   并且唤醒的上下文检查以确保适当的页面可用，这可以节省空间，但会导致在罕见的哈希冲突期间出现“雷鸣群”现象。
+
  */
 #define PAGE_WAIT_TABLE_BITS 8
+//值为256
 #define PAGE_WAIT_TABLE_SIZE (1 << PAGE_WAIT_TABLE_BITS)
+//定义一个哈希表，用来存放等待队列,key是folio, value是等待队列
 static wait_queue_head_t folio_wait_table[PAGE_WAIT_TABLE_SIZE] __cacheline_aligned;
 
+//获取folio的等待队列 ,等待什么
 static wait_queue_head_t *folio_waitqueue(struct folio *folio)
 {
 	return &folio_wait_table[hash_ptr(folio, PAGE_WAIT_TABLE_BITS)];
 }
 
+//初始化什么?
 void __init pagecache_init(void)
 {
 	int i;
@@ -1059,7 +1144,8 @@ void __init pagecache_init(void)
  * The page wait code treats the "wait->flags" somewhat unusually, because
  * we have multiple different kinds of waits, not just the usual "exclusive"
  * one.
- *
+ * 这个页面等待代码对“wait->flags”进行了一些不同寻常的处理，因为我们有多种不同类型的等待，
+ 而不仅仅是通常的“独占”等待。
  * We have:
  *
  *  (a) no special bits set:
@@ -1140,6 +1226,7 @@ static int wake_page_function(wait_queue_entry_t *wait, unsigned mode, int sync,
 	return (flags & WQ_FLAG_EXCLUSIVE) != 0;
 }
 
+//唤醒等待flag上面指定bit标记消失的队列
 static void folio_wake_bit(struct folio *folio, int bit_nr)
 {
 	wait_queue_head_t *q = folio_waitqueue(folio);
@@ -1187,6 +1274,7 @@ static void folio_wake_bit(struct folio *folio, int bit_nr)
 	spin_unlock_irqrestore(&q->lock, flags);
 }
 
+//唤醒在等待flag上指定bit标记去除的等待者
 static void folio_wake(struct folio *folio, int bit)
 {
 	if (!folio_test_waiters(folio))
@@ -1229,6 +1317,7 @@ static inline bool folio_trylock_flag(struct folio *folio, int bit_nr,
 /* How many times do we accept lock stealing from under a waiter? */
 int sysctl_page_lock_unfairness = 5;
 
+//
 static inline int folio_wait_bit_common(struct folio *folio, int bit_nr,
 		int state, enum behavior behavior)
 {
@@ -1247,6 +1336,7 @@ static inline int folio_wait_bit_common(struct folio *folio, int bit_nr,
 		thrashing = true;
 	}
 
+	//初始化等待结构
 	init_wait(wait);
 	wait->func = wake_page_function;
 	wait_page.folio = folio;
@@ -1445,6 +1535,7 @@ void migration_entry_wait_on_locked(swp_entry_t entry, spinlock_t *ptl)
 }
 #endif
 
+//等待bit_nr位被清除
 void folio_wait_bit(struct folio *folio, int bit_nr)
 {
 	folio_wait_bit_common(folio, bit_nr, TASK_UNINTERRUPTIBLE, SHARED);
@@ -1458,6 +1549,7 @@ int folio_wait_bit_killable(struct folio *folio, int bit_nr)
 EXPORT_SYMBOL(folio_wait_bit_killable);
 
 /**
+作用是?
  * folio_put_wait_locked - Drop a reference and wait for it to be unlocked
  * @folio: The folio to wait for.
  * @state: The sleep state (TASK_KILLABLE, TASK_UNINTERRUPTIBLE, etc).
@@ -1476,6 +1568,7 @@ static int folio_put_wait_locked(struct folio *folio, int state)
 }
 
 /**
+把waiter添加到folio的队列
  * folio_add_wait_queue - Add an arbitrary waiter to a folio's wait queue
  * @folio: Folio defining the wait queue of interest
  * @waiter: Waiter to add to the queue
@@ -1519,6 +1612,7 @@ static inline bool clear_bit_unlock_is_negative_byte(long nr, volatile void *mem
 
 /**
  * folio_unlock - Unlock a locked folio.
+  清除page的lock标记
  * @folio: The folio.
  *
  * Unlocks the folio and wakes up any thread sleeping on the page lock.
@@ -1597,6 +1691,8 @@ EXPORT_SYMBOL(folio_wait_private_2_killable);
 
 /**
  * folio_end_writeback - End writeback against a folio.
+   写回一个folio完成时的回调?
+   不过为啥感觉swap和buffer io才用这个?
  * @folio: The folio.
  */
 void folio_end_writeback(struct folio *folio)
@@ -1607,6 +1703,10 @@ void folio_end_writeback(struct folio *folio)
 	 * to shuffle a folio marked for immediate reclaim is too mild
 	 * a gain to justify taking an atomic operation penalty at the
 	 * end of every folio writeback.
+	   函数在这里可以用
+	   但是在这种情况下，它是一个原子操作，这是过度的。对于标记为立即回收的folio
+	   失败的洗牌太轻微了，无法证明在每个folio写回的最后都要承担原子操作的惩罚。?
+
 	 */
 	if (folio_test_reclaim(folio)) {
 		folio_clear_reclaim(folio);
@@ -1618,19 +1718,27 @@ void folio_end_writeback(struct folio *folio)
 	 * on truncation to wait for the clearing of PG_writeback.
 	 * But here we must make sure that the folio is not freed and
 	 * reused before the folio_wake().
+	   回写不持有自己的folio引用，依赖于截断等待PG_writeback的清除。
+	   但是在这里，我们必须确保在folio_wake()之前不释放和重用folio。
+
 	 */
 	folio_get(folio);
-	if (!__folio_end_writeback(folio))
+	if (!__folio_end_writeback(folio)) //进行各个相关对象的end
 		BUG();
 
 	smp_mb__after_atomic();
+	//唤醒等待folio回写完成的进程
 	folio_wake(folio, PG_writeback);
+	//既然写回完成了, node应该有新的页面了, 试试唤醒阻塞的回收进程
 	acct_reclaim_writeback(folio);
 	folio_put(folio);
 }
+
+
 EXPORT_SYMBOL(folio_end_writeback);
 
 /**
+ 可能会阻塞的lock
  * __folio_lock - Get a lock on the folio, assuming we need to sleep to get it.
  * @folio: The folio to lock
  */
@@ -1648,6 +1756,7 @@ int __folio_lock_killable(struct folio *folio)
 }
 EXPORT_SYMBOL_GPL(__folio_lock_killable);
 
+//异步的加锁folio
 static int __folio_lock_async(struct folio *folio, struct wait_page_queue *wait)
 {
 	struct wait_queue_head *q = folio_waitqueue(folio);
@@ -1670,6 +1779,7 @@ static int __folio_lock_async(struct folio *folio, struct wait_page_queue *wait)
 		__remove_wait_queue(q, &wait->wait);
 	else
 		ret = -EIOCBQUEUED;
+
 	spin_unlock_irq(&q->lock);
 	return ret;
 }
@@ -1821,6 +1931,8 @@ EXPORT_SYMBOL(page_cache_prev_miss);
  * it is returned with an increased refcount.  If it is a shadow entry
  * of a previously evicted folio, or a swap entry from shmem/tmpfs,
  * it is returned without further action.
+   查找@mapping和@index处的页缓存条目。如果它是folio，则返回时会增加引用计数。
+   如果它是先前逐出的folio的阴影条目，或者是shmem/tmpfs的交换条目，则返回时不会执行进一步操作。
  *
  * Return: The folio, swap or shadow entry, %NULL if nothing is found.
  */
@@ -1838,6 +1950,8 @@ repeat:
 	/*
 	 * A shadow entry of a recently evicted page, or a swap entry from
 	 * shmem/tmpfs.  Return it without attempting to raise page count.
+	   说明是一个阴影条目或者交换条目, 直接返回
+
 	 */
 	if (!folio || xa_is_value(folio))
 		goto out;
@@ -1845,7 +1959,7 @@ repeat:
 	if (!folio_try_get_rcu(folio))
 		goto repeat;
 
-	if (unlikely(folio != xas_reload(&xas))) {
+	if (unlikely(folio != xas_reload(&xas))) { //race了?
 		folio_put(folio);
 		goto repeat;
 	}
@@ -1857,6 +1971,7 @@ out:
 
 /**
  * __filemap_get_folio - Find and get a reference to a folio.
+  找到对应的folio, 不存在会申请
  * @mapping: The address_space to search.
  * @index: The page index.
  * @fgp_flags: %FGP flags modify how the folio is returned.
@@ -1877,11 +1992,11 @@ struct folio *__filemap_get_folio(struct address_space *mapping, pgoff_t index,
 	struct folio *folio;
 
 repeat:
-
+	//在pagecache中查找
 	folio = filemap_get_entry(mapping, index);
 	//看看mapping里面有没有
 	if (xa_is_value(folio))
-		folio = NULL;
+		folio = NULL; //page不存在
 	if (!folio)
 		goto no_page;
 
@@ -1914,6 +2029,7 @@ repeat:
 
 	if (fgp_flags & FGP_STABLE)
 		folio_wait_stable(folio);
+
 no_page:
 //页缓存里面还没有这个页面
 	if (!folio && (fgp_flags & FGP_CREAT)) {//不存在页面,且可以申请
@@ -2126,6 +2242,7 @@ put:
 }
 
 /**
+ 又是get pages? 
  * filemap_get_folios - Get a batch of folios
  * @mapping:	The address_space to search
  * @start:	The starting page index
@@ -2157,7 +2274,9 @@ unsigned filemap_get_folios(struct address_space *mapping, pgoff_t *start,
 		/* Skip over shadow, swap and DAX entries */
 		if (xa_is_value(folio))
 			continue;
-		if (!folio_batch_add(fbatch, folio)) {
+
+		//找到了一个条目了, 加进去
+		if (!folio_batch_add(fbatch, folio)) {//加满了,退出
 			unsigned long nr = folio_nr_pages(folio);
 
 			if (folio_test_hugetlb(folio))
@@ -2186,6 +2305,7 @@ EXPORT_SYMBOL(filemap_get_folios);
 
 /**
  * filemap_get_folios_contig - Get a batch of contiguous folios
+   获取一批连续的folio
  * @mapping:	The address_space to search
  * @start:	The starting page index
  * @end:	The final page index (inclusive)
@@ -2194,7 +2314,9 @@ EXPORT_SYMBOL(filemap_get_folios);
  * filemap_get_folios_contig() works exactly like filemap_get_folios(),
  * except the returned folios are guaranteed to be contiguous. This may
  * not return all contiguous folios if the batch gets filled up.
- *
+ *这个函数很像filemap_get_folios(), 但是返回的folio是连续的
+  如果批量填满了,可能不会返回所有连续的folio
+  
  * Return: The number of folios found.
  * Also update @start to be positioned for traversal of the next folio.
  */
@@ -2259,6 +2381,7 @@ EXPORT_SYMBOL(filemap_get_folios_contig);
 
 /**
  * filemap_get_folios_tag - Get a batch of folios matching @tag
+   获取标记为tag的folio
  * @mapping:    The address_space to search
  * @start:      The starting page index
  * @end:        The final page index (inclusive)
@@ -2333,12 +2456,17 @@ static void shrink_readahead_size_eio(struct file_ra_state *ra)
 
 /*
  * filemap_get_read_batch - Get a batch of folios for read
- *
+ * 读取mapping中的一批范围[index, max]的folio到fbatch中
+
  * Get a batch of folios which represent a contiguous range of bytes in
  * the file.  No exceptional entries will be returned.  If @index is in
  * the middle of a folio, the entire folio will be returned.  The last
  * folio in the batch may have the readahead flag set or the uptodate flag
  * clear so that the caller can take the appropriate action.
+   获取表示文件中一系列内容的folio的一批folio。不会返回异常条目。
+   如果@index在folio的中间，则将返回整个folio。批处理中的最后一个folio可能具有readahead标志，
+   或者uptodate标志被清除，以便调用者可以采取适当的操作。
+
  */
 static void filemap_get_read_batch(struct address_space *mapping,
 		pgoff_t index, pgoff_t max, struct folio_batch *fbatch)
@@ -2347,11 +2475,11 @@ static void filemap_get_read_batch(struct address_space *mapping,
 	struct folio *folio;
 
 	rcu_read_lock();
-	for (folio = xas_load(&xas); folio; folio = xas_next(&xas)) {
+	for (folio = xas_load(&xas); folio; folio = xas_next(&xas)) {//遍历mapping中的folio
 		if (xas_retry(&xas, folio))
 			continue;
 		if (xas.xa_index > max || xa_is_value(folio))
-			break;
+			break; //超过指定范围了, 或者读取到还没有被缓存到pagecache的了
 		if (xa_is_sibling(folio))
 			break;
 		if (!folio_try_get_rcu(folio))
@@ -2361,11 +2489,12 @@ static void filemap_get_read_batch(struct address_space *mapping,
 			goto put_folio;
 
 		if (!folio_batch_add(fbatch, folio))
-			break;
+			break; // 可能是fbatch满了
 		if (!folio_test_uptodate(folio))
-			break;
+			break; //为啥
 		if (folio_test_readahead(folio))
-			break;
+			break; //为什么
+
 		xas_advance(&xas, folio_next_index(folio) - 1);
 		continue;
 put_folio:
@@ -2376,6 +2505,7 @@ retry:
 	rcu_read_unlock();
 }
 
+//调用mapping的回调 读取file到folio, folio已经加入pagecache
 static int filemap_read_folio(struct file *file, filler_t filler,
 		struct folio *folio)
 {
@@ -2409,6 +2539,7 @@ static int filemap_read_folio(struct file *file, filler_t filler,
 	return -EIO;
 }
 
+//测试范围内的页面是不是uptodate的
 static bool filemap_range_uptodate(struct address_space *mapping,
 		loff_t pos, size_t count, struct folio *folio,
 		bool need_uptodate)
@@ -2433,32 +2564,37 @@ static bool filemap_range_uptodate(struct address_space *mapping,
 	return mapping->a_ops->is_partially_uptodate(folio, pos, count);
 }
 
+//预读之后,发现page不新了,重新读取?
 static int filemap_update_page(struct kiocb *iocb,
 		struct address_space *mapping, size_t count,
 		struct folio *folio, bool need_uptodate)
 {
 	int error;
 
-	if (iocb->ki_flags & IOCB_NOWAIT) {
+	if (iocb->ki_flags & IOCB_NOWAIT) { //非阻塞的话, 仅仅是trylock
 		if (!filemap_invalidate_trylock_shared(mapping))
 			return -EAGAIN;
 	} else {
 		filemap_invalidate_lock_shared(mapping);
 	}
 
-	if (!folio_trylock(folio)) {
+	if (!folio_trylock(folio)) { //folio加锁失败
 		error = -EAGAIN;
 		if (iocb->ki_flags & (IOCB_NOWAIT | IOCB_NOIO))
-			goto unlock_mapping;
-		if (!(iocb->ki_flags & IOCB_WAITQ)) {
+			goto unlock_mapping; //如果是NOWAIT或者NOIO锁定page失败, 退出吧
+
+		if (!(iocb->ki_flags & IOCB_WAITQ)) {//这是说可以接受wait?,但是iocb没有设置wq?
+		//其实也是不能等?
 			filemap_invalidate_unlock_shared(mapping);
 			/*
 			 * This is where we usually end up waiting for a
 			 * previously submitted readahead to finish.
 			 */
+			 //2024年12月8日17:40:34 todddo 为什么既然等待了, 等完就直接返回了
 			folio_put_wait_locked(folio, TASK_KILLABLE);
 			return AOP_TRUNCATED_PAGE;
 		}
+
 		error = __folio_lock_async(folio, iocb->ki_waitq);
 		if (error)
 			goto unlock_mapping;
@@ -2476,10 +2612,12 @@ static int filemap_update_page(struct kiocb *iocb,
 	error = -EAGAIN;
 	if (iocb->ki_flags & (IOCB_NOIO | IOCB_NOWAIT | IOCB_WAITQ))
 		goto unlock;
-
+	
+	//这里重新读取
 	error = filemap_read_folio(iocb->ki_filp, mapping->a_ops->read_folio,
 			folio);
 	goto unlock_mapping;
+
 unlock:
 	folio_unlock(folio);
 unlock_mapping:
@@ -2489,6 +2627,7 @@ unlock_mapping:
 	return error;
 }
 
+//预读失败了, 这几手动分配页面,手动调用回调读取到pagecache
 static int filemap_create_folio(struct file *file,
 		struct address_space *mapping, pgoff_t index,
 		struct folio_batch *fbatch)
@@ -2514,13 +2653,14 @@ static int filemap_create_folio(struct file *file,
 	 * well to keep locking rules simple.
 	 */
 	filemap_invalidate_lock_shared(mapping);
+	//加入pagecache
 	error = filemap_add_folio(mapping, folio, index,
 			mapping_gfp_constraint(mapping, GFP_KERNEL));
 	if (error == -EEXIST)
 		error = AOP_TRUNCATED_PAGE;
 	if (error)
 		goto error;
-
+	//手动读取?
 	error = filemap_read_folio(file, mapping->a_ops->read_folio, folio);
 	if (error)
 		goto error;
@@ -2534,6 +2674,7 @@ error:
 	return error;
 }
 
+// 是异步预读?
 static int filemap_readahead(struct kiocb *iocb, struct file *file,
 		struct address_space *mapping, struct folio *folio,
 		pgoff_t last_index)
@@ -2542,10 +2683,12 @@ static int filemap_readahead(struct kiocb *iocb, struct file *file,
 
 	if (iocb->ki_flags & IOCB_NOIO)
 		return -EAGAIN;
+
 	page_cache_async_ra(&ractl, folio, last_index - folio->index);
 	return 0;
 }
 
+//从页缓存中获取页, 可能会预读, 以及不新的话也会重新读取.
 static int filemap_get_pages(struct kiocb *iocb, size_t count,
 		struct folio_batch *fbatch, bool need_uptodate)
 {
@@ -2564,16 +2707,20 @@ retry:
 		return -EINTR;
 
 	filemap_get_read_batch(mapping, index, last_index - 1, fbatch);
-	if (!folio_batch_count(fbatch)) {
+	if (!folio_batch_count(fbatch)) { //fbatch中没有folio?
 		if (iocb->ki_flags & IOCB_NOIO)
 			return -EAGAIN;
+		//预读
 		page_cache_sync_readahead(mapping, ra, filp, index,
 				last_index - index);
+		//重新获取
 		filemap_get_read_batch(mapping, index, last_index - 1, fbatch);
 	}
-	if (!folio_batch_count(fbatch)) {
+
+	if (!folio_batch_count(fbatch)) { //预读之后还是没有?
 		if (iocb->ki_flags & (IOCB_NOWAIT | IOCB_WAITQ))
 			return -EAGAIN;
+		//手动分配, 手动读取到pagecache
 		err = filemap_create_folio(filp, mapping,
 				iocb->ki_pos >> PAGE_SHIFT, fbatch);
 		if (err == AOP_TRUNCATED_PAGE)
@@ -2581,16 +2728,23 @@ retry:
 		return err;
 	}
 
+	//获得从pagecache读取的folio . 现在应该都预读了文件内容?
 	folio = fbatch->folios[folio_batch_count(fbatch) - 1];
-	if (folio_test_readahead(folio)) {
+	if (folio_test_readahead(folio)) { //如果是预读页面,做什么?
+		
+		//为什么这里又开始异步预读?
 		err = filemap_readahead(iocb, filp, mapping, folio, last_index);
 		if (err)
 			goto err;
 	}
-	if (!folio_test_uptodate(folio)) {
+
+	if (!folio_test_uptodate(folio)) { //如果不是最新的, 重新读取
+	//2024年12月8日17:34:30 toddo 为什么这里可能是不最新的? 不是刚刚预读的吗.文件被
+	//别的进程直接IO写入了?
 		if ((iocb->ki_flags & IOCB_WAITQ) &&
 		    folio_batch_count(fbatch) > 1)
 			iocb->ki_flags |= IOCB_NOWAIT;
+
 		err = filemap_update_page(iocb, mapping, count, folio,
 					  need_uptodate);
 		if (err)
@@ -2616,6 +2770,7 @@ static inline bool pos_same_folio(loff_t pos1, loff_t pos2, struct folio *folio)
 }
 
 /**
+文件系统读取文件的例程会调用此例程, 用于从页缓存中读取数据
  * filemap_read - Read data from the page cache.
  * @iocb: The iocb to read.
  * @iter: Destination for the data.
@@ -2623,7 +2778,7 @@ static inline bool pos_same_folio(loff_t pos1, loff_t pos2, struct folio *folio)
  *
  * Copies data from the page cache.  If the data is not currently present,
  * uses the readahead and read_folio address_space operations to fetch it.
- *
+ * 从pagecache中复制数据。如果数据当前不在, 使用readahead和read_folio等ops来获取它。
  * Return: Total number of bytes copied, including those already read by
  * the caller.  If an error happens before any bytes are copied, returns
  * a negative error number.
@@ -2663,13 +2818,14 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 		if (unlikely(iocb->ki_pos >= i_size_read(inode)))
 			break;
 
+		//读取文件的这些内容到pagecache
 		error = filemap_get_pages(iocb, iter->count, &fbatch, false);
 		if (error < 0)
 			break;
 
 		/*
 		 * i_size must be checked after we know the pages are Uptodate.
-		 *
+		 * 必须在我们知道页面是Uptodate之后检查i_size。
 		 * Checking i_size after the check allows us to calculate
 		 * the correct value for "nr", which means the zero-filled
 		 * part of the page is not copied back to userspace (unless
@@ -2694,8 +2850,9 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 				    fbatch.folios[0]))
 			folio_mark_accessed(fbatch.folios[0]);
 
-		for (i = 0; i < folio_batch_count(&fbatch); i++) {
-			struct folio *folio = fbatch.folios[i];
+		for (i = 0; i < folio_batch_count(&fbatch); i++) {//获取一个pagecache的folio,里面存的是要
+		//读取的文件的对应内容
+			struct folio *folio = fbatch.folios[i]; //获取
 			size_t fsize = folio_size(folio);
 			size_t offset = iocb->ki_pos & (fsize - 1);
 			size_t bytes = min_t(loff_t, end_offset - iocb->ki_pos,
@@ -2713,7 +2870,7 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 			 */
 			if (writably_mapped)
 				flush_dcache_folio(folio);
-
+			//开始拷贝
 			copied = copy_folio_to_iter(folio, offset, bytes, iter);
 
 			already_read += copied;
@@ -2737,15 +2894,19 @@ put_folios:
 }
 EXPORT_SYMBOL_GPL(filemap_read);
 
+// 读文件例程会调用此, 是为了要把写入pagecache的范围内的脏页先写回
+//返回RAGIN说明需要先写回
 int kiocb_write_and_wait(struct kiocb *iocb, size_t count)
 {
+	//要写入到这个mapping
 	struct address_space *mapping = iocb->ki_filp->f_mapping;
+	// 文件范围是pos到end
 	loff_t pos = iocb->ki_pos;
 	loff_t end = pos + count - 1;
 
-	if (iocb->ki_flags & IOCB_NOWAIT) {
+	if (iocb->ki_flags & IOCB_NOWAIT) { // NOWAIT标志是什么?
 		if (filemap_range_needs_writeback(mapping, pos, end))
-			return -EAGAIN;
+			return -EAGAIN;  //需要写回
 		return 0;
 	}
 
@@ -2781,16 +2942,18 @@ int kiocb_invalidate_pages(struct kiocb *iocb, size_t count)
 
 /**
  * generic_file_read_iter - generic filesystem read routine
+   文件系统的通用读取函数
  * @iocb:	kernel I/O control block
  * @iter:	destination for the data read
  *
  * This is the "read_iter()" routine for all filesystems
  * that can use the page cache directly.
- *
+ * 这是所有可以直接使用页面缓存的文件系统的“read_iter（）”例程。
  * The IOCB_NOWAIT flag in iocb->ki_flags indicates that -EAGAIN shall
  * be returned when no data can be read without waiting for I/O requests
  * to complete; it doesn't prevent readahead.
- *
+ * IOCB_WAITQ标志表示，如果没有数据可以读取而无需等待I/O请求完成，则应返回
+   -EAGAIN；它不会阻止预读。
  * The IOCB_NOIO flag in iocb->ki_flags indicates that no new I/O
  * requests shall be made for the read or for readahead.  When no data
  * can be read, -EAGAIN shall be returned.  When readahead would be
@@ -2799,6 +2962,8 @@ int kiocb_invalidate_pages(struct kiocb *iocb, size_t count)
  * Return:
  * * number of bytes copied, even for partial reads
  * * negative error code (or 0 if IOCB_NOIO) if nothing was read
+
+ 
  */
 ssize_t
 generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
@@ -2809,12 +2974,13 @@ generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 	if (!count)
 		return 0; /* skip atime */
 
-	if (iocb->ki_flags & IOCB_DIRECT) {
+	if (iocb->ki_flags & IOCB_DIRECT) { //直接IO
 		struct file *file = iocb->ki_filp;
 		struct address_space *mapping = file->f_mapping;
 		struct inode *inode = mapping->host;
 
-		retval = kiocb_write_and_wait(iocb, count);
+		retval = kiocb_write_and_wait(iocb, count); //执行写入之前, 先把范围内脏页写回
+
 		if (retval < 0)
 			return retval;
 		file_accessed(file);
@@ -2838,6 +3004,7 @@ generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 		 */
 		if (retval < 0 || !count || IS_DAX(inode))
 			return retval;
+
 		if (iocb->ki_pos >= i_size_read(inode))
 			return retval;
 	}
@@ -3149,6 +3316,10 @@ static int lock_folio_maybe_drop_mmap(struct vm_fault *vmf, struct folio *folio,
  * to drop the mmap sem we return the file that was pinned in order for us to do
  * that.  If we didn't pin a file then we return NULL.  The file that is
  * returned needs to be fput()'ed when we're done with it.
+   同步预读发生在我们根本找不到页面缓存中的页面时。我们不希望在mmap sem下执行IO，
+   因此，如果我们必须放弃mmap sem，我们将返回固定的文件，以便我们执行该操作。
+   如果我们没有固定文件，则返回NULL。我们完成后需要fput（）返回的文件。
+
  */
 static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 {
@@ -3186,6 +3357,7 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
 
 	if (vm_flags & VM_SEQ_READ) {
 		fpin = maybe_unlock_mmap_for_io(vmf, fpin);
+		//开始预读
 		page_cache_sync_ra(&ractl, ra->ra_pages);
 		return fpin;
 	}
@@ -3218,6 +3390,9 @@ static struct file *do_sync_mmap_readahead(struct vm_fault *vmf)
  * Asynchronous readahead happens when we find the page and PG_readahead,
  * so we want to possibly extend the readahead further.  We return the file that
  * was pinned if we have to drop the mmap_lock in order to do IO.
+   异步预读发生在我们找到页面和PG_readahead时，因此我们希望可能进一步扩展预读。
+   如果我们必须放弃mmap_lock才能执行IO，则返回固定的文件。
+
  */
 static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 					    struct folio *folio)
@@ -3244,21 +3419,23 @@ static struct file *do_async_mmap_readahead(struct vm_fault *vmf,
 }
 
 /**
+ mmap的vma的缺页回调
  * filemap_fault - read in file data for page fault handling
  * @vmf:	struct vm_fault containing details of the fault
  *
  * filemap_fault() is invoked via the vma operations vector for a
  * mapped memory region to read in file data during a page fault.
- *
+ * 函数通过vma操作向量调用，用于在页面错误期间读取文件数据。
+
  * The goto's are kind of ugly, but this streamlines the normal case of having
  * it in the page cache, and handles the special cases reasonably without
  * having a lot of duplicated code.
- *
+ * goto有点丑陋，但这简化了将其放在页面缓存中的正常情况，并合理处理特殊情况，而无需有很多重复的代码。
  * vma->vm_mm->mmap_lock must be held on entry.
- *
+ * 
  * If our return value has VM_FAULT_RETRY set, it's because the mmap_lock
  * may be dropped before doing I/O or by lock_folio_maybe_drop_mmap().
- *
+ * 如果我们的返回值设置了VM_FAULT_RETRY，那是因为在执行I/O之前或通过lock_folio_maybe_drop_mmap（）可能会放弃mmap_lock。
  * If our return value does not have VM_FAULT_RETRY set, the mmap_lock
  * has not been released.
  *
@@ -3285,24 +3462,26 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
 	/*
 	 * Do we have something in the page cache already?
 	 */
+	 //找出对应的folio
 	folio = filemap_get_folio(mapping, index);
-	if (likely(!IS_ERR(folio))) {
+	if (likely(!IS_ERR(folio))) {//一般都会成功找到, 如果之前不存在也会申请
 		/*
 		 * We found the page, so try async readahead before waiting for
 		 * the lock.
+		   找到了页面，因此在等待锁之前尝试异步预读。
 		 */
 		if (!(vmf->flags & FAULT_FLAG_TRIED))
-			fpin = do_async_mmap_readahead(vmf, folio);
+			fpin = do_async_mmap_readahead(vmf, folio); //异步预读
 		if (unlikely(!folio_test_uptodate(folio))) {
 			filemap_invalidate_lock_shared(mapping);
 			mapping_locked = true;
 		}
-	} else {
+	} else { //在pagecache中没有找到. 申请页面也没找到?
 		/* No page in the page cache at all */
 		count_vm_event(PGMAJFAULT);
 		count_memcg_event_mm(vmf->vma->vm_mm, PGMAJFAULT);
 		ret = VM_FAULT_MAJOR;
-		fpin = do_sync_mmap_readahead(vmf);
+		fpin = do_sync_mmap_readahead(vmf);  //同步预读
 retry_find:
 		/*
 		 * See comment in filemap_create_folio() why we need
@@ -3312,6 +3491,7 @@ retry_find:
 			filemap_invalidate_lock_shared(mapping);
 			mapping_locked = true;
 		}
+		//获取folio
 		folio = __filemap_get_folio(mapping, index,
 					  FGP_CREAT|FGP_FOR_MMAP,
 					  vmf->gfp_mask);
@@ -3484,6 +3664,7 @@ skip:
 }
 
 /*
+mmap建立映射
  * Map page range [start_page, start_page + nr_pages) of folio.
  * start_page is gotten from start by folio_page(folio, start)
  */
@@ -3540,6 +3721,7 @@ skip:
 	return ret;
 }
 
+//shmem映射页面
 static vm_fault_t filemap_map_order0_folio(struct vm_fault *vmf,
 		struct folio *folio, unsigned long addr,
 		unsigned int *mmap_miss)
@@ -3556,19 +3738,22 @@ static vm_fault_t filemap_map_order0_folio(struct vm_fault *vmf,
 	 * NOTE: If there're PTE markers, we'll leave them to be
 	 * handled in the specific fault path, and it'll prohibit
 	 * the fault-around logic.
+	  注意: 如果有PTE标记，我们将让它们在特定的故障路径中处理，这将禁止故障环绕逻辑。
+	  ???
 	 */
 	if (!pte_none(ptep_get(vmf->pte)))
 		return ret;
 
 	if (vmf->address == addr)
 		ret = VM_FAULT_NOPAGE;
-
+	//设置pte
 	set_pte_range(vmf, folio, page, 1, addr);
 	folio_ref_inc(folio);
 
 	return ret;
 }
 
+//shmem的mmap回调
 vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 			     pgoff_t start_pgoff, pgoff_t end_pgoff)
 {
@@ -3609,6 +3794,7 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 		nr_pages = min(end, end_pgoff) - xas.xa_index + 1;
 
 		if (!folio_test_large(folio))
+		//开始mmap
 			ret |= filemap_map_order0_folio(vmf,
 					folio, addr, &mmap_miss);
 		else
@@ -3620,6 +3806,8 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 		folio_put(folio);
 	} while ((folio = next_uptodate_folio(&xas, mapping, end_pgoff)) != NULL);
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
+
+
 out:
 	rcu_read_unlock();
 
@@ -3630,9 +3818,11 @@ out:
 		WRITE_ONCE(file->f_ra.mmap_miss, mmap_miss_saved - mmap_miss);
 
 	return ret;
+
 }
 EXPORT_SYMBOL(filemap_map_pages);
 
+//
 vm_fault_t filemap_page_mkwrite(struct vm_fault *vmf)
 {
 	struct address_space *mapping = vmf->vma->vm_file->f_mapping;
@@ -3659,6 +3849,9 @@ out:
 	return ret;
 }
 
+/* 
+mmap文件映射的vma的ops
+ */
 const struct vm_operations_struct generic_file_vm_ops = {
 	.fault		= filemap_fault,
 	.map_pages	= filemap_map_pages,
@@ -3667,6 +3860,7 @@ const struct vm_operations_struct generic_file_vm_ops = {
 
 /* This is used for a general mmap of a disk file */
 
+//  file mmap回调
 int generic_file_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct address_space *mapping = file->f_mapping;
@@ -3679,6 +3873,7 @@ int generic_file_mmap(struct file *file, struct vm_area_struct *vma)
 }
 
 /*
+对于只读的dev map
  * This is for filesystems which do not implement ->writepage.
  */
 int generic_file_readonly_mmap(struct file *file, struct vm_area_struct *vma)
@@ -3706,6 +3901,7 @@ EXPORT_SYMBOL(filemap_page_mkwrite);
 EXPORT_SYMBOL(generic_file_mmap);
 EXPORT_SYMBOL(generic_file_readonly_mmap);
 
+/* 读取pagecache指定index */
 static struct folio *do_read_cache_folio(struct address_space *mapping,
 		pgoff_t index, filler_t filler, struct file *file, gfp_t gfp)
 {
@@ -3715,11 +3911,15 @@ static struct folio *do_read_cache_folio(struct address_space *mapping,
 	if (!filler)
 		filler = mapping->a_ops->read_folio;
 repeat:
+	//获取folio, 不存在会创建
 	folio = filemap_get_folio(mapping, index);
-	if (IS_ERR(folio)) {
+	if (IS_ERR(folio)) {//可能是不存在
+
+		//申请folio
 		folio = filemap_alloc_folio(gfp, 0);
 		if (!folio)
 			return ERR_PTR(-ENOMEM);
+		//加入pagecache
 		err = filemap_add_folio(mapping, folio, index, gfp);
 		if (unlikely(err)) {
 			folio_put(folio);
@@ -3753,6 +3953,7 @@ repeat:
 	}
 
 filler:
+//读取文件内容到pagecache
 	err = filemap_read_folio(file, filler, folio);
 	if (err) {
 		folio_put(folio);
@@ -3767,6 +3968,7 @@ out:
 }
 
 /**
+读取mapping的指定idx的page
  * read_cache_folio - Read into page cache, fill it if needed.
  * @mapping: The address_space to read from.
  * @index: The index to read.
@@ -3775,7 +3977,7 @@ out:
  *
  * Read one page into the page cache.  If it succeeds, the folio returned
  * will contain @index, but it may not be the first page of the folio.
- *
+ * 读取一个页到页缓存中。如果成功，返回的folio将包含@index，但它可能不是folio的第一页。
  * If the filler function returns an error, it will be returned to the
  * caller.
  *
@@ -3814,17 +4016,20 @@ struct folio *mapping_read_folio_gfp(struct address_space *mapping,
 }
 EXPORT_SYMBOL(mapping_read_folio_gfp);
 
+//读取pagecache指定页
 static struct page *do_read_cache_page(struct address_space *mapping,
 		pgoff_t index, filler_t *filler, struct file *file, gfp_t gfp)
 {
 	struct folio *folio;
 
+	//建立文件内容到pagecache的映射
 	folio = do_read_cache_folio(mapping, index, filler, file, gfp);
 	if (IS_ERR(folio))
 		return &folio->page;
 	return folio_file_page(folio, index);
 }
 
+//读取pagecache指定页
 struct page *read_cache_page(struct address_space *mapping,
 			pgoff_t index, filler_t *filler, struct file *file)
 {
@@ -3834,6 +4039,7 @@ struct page *read_cache_page(struct address_space *mapping,
 EXPORT_SYMBOL(read_cache_page);
 
 /**
+ 读取pagecache的指定页
  * read_cache_page_gfp - read into page cache, using specified page allocation flags.
  * @mapping:	the page's address_space
  * @index:	the page index
@@ -3887,6 +4093,7 @@ void kiocb_invalidate_post_direct_write(struct kiocb *iocb, size_t count)
 		dio_warn_stale_pagecache(iocb->ki_filp);
 }
 
+//直接IO写入文件
 ssize_t
 generic_file_direct_write(struct kiocb *iocb, struct iov_iter *from)
 {
@@ -3943,6 +4150,10 @@ generic_file_direct_write(struct kiocb *iocb, struct iov_iter *from)
 }
 EXPORT_SYMBOL(generic_file_direct_write);
 
+//2024年12月8日01:55:36
+//写入到文件, 产生的脏内容会先写到pagecache
+//这个函数会尝试限制脏页生成速度.
+//作用:写入文件, 从i写入到iocb
 ssize_t generic_perform_write(struct kiocb *iocb, struct iov_iter *i)
 {
 	struct file *file = iocb->ki_filp;
@@ -3979,7 +4190,8 @@ again:
 			status = -EINTR;
 			break;
 		}
-
+		/* 2,. 调用fs的mapping的回调, 去赋值这个page.
+		其实一般也就是根据mapping和pos, 在xas里面找到对应index的folio */
 		status = a_ops->write_begin(file, mapping, pos, bytes,
 						&page, &fsdata);
 		if (unlikely(status < 0))
@@ -3987,12 +4199,16 @@ again:
 
 		if (mapping_writably_mapped(mapping))
 			flush_dcache_page(page);
-
+		
+		/* 1. 核心是这里, 要把数据从iter拷贝到内存的页面.
+		所以需要确定page哪里来 */
 		copied = copy_page_from_iter_atomic(page, offset, bytes, i);
 		flush_dcache_page(page);
 
 		status = a_ops->write_end(file, mapping, pos, bytes, copied,
 						page, fsdata);
+
+
 		if (unlikely(status != copied)) {
 			iov_iter_revert(i, copied - max(status, 0L));
 			if (unlikely(status < 0))
@@ -4014,7 +4230,7 @@ again:
 		pos += status;
 		written += status;
 
-		balance_dirty_pages_ratelimited(mapping);
+		balance_dirty_pages_ratelimited(mapping); //限制脏页生成速度
 	} while (iov_iter_count(i));
 
 	if (!written)
@@ -4026,6 +4242,7 @@ EXPORT_SYMBOL(generic_perform_write);
 
 /**
  * __generic_file_write_iter - write data to a file
+  写入到文件
  * @iocb:	IO state structure (file, offset, etc.)
  * @from:	iov_iter with data to write
  *
@@ -4033,17 +4250,20 @@ EXPORT_SYMBOL(generic_perform_write);
  * file. It does all basic checks, removes SUID from the file, updates
  * modification times and calls proper subroutines depending on whether we
  * do direct IO or a standard buffered write.
- *
+ * 这个函数做了所有写入文件的工作.它做了所有基本的检查,从文件中删除SUID,更新修改时间,
+ 并根据我们是进行直接IO还是标准缓冲写入调用适当的子例程.
  * It expects i_rwsem to be grabbed unless we work on a block device or similar
  * object which does not need locking at all.
- *
- * This function does *not* take care of syncing data in case of O_SYNC write.
+         *   除非我们处理块设备或类似对象,否则它期望i_rwsem被抓住,这些对象根本不需要锁定.
+     * This function does *not* take care of syncing data in case of O_SYNC write.
  * A caller has to handle it. This is mainly due to the fact that we want to
  * avoid syncing under i_rwsem.
- *
+ * 这个函数不负责在O_SYNC写入的情况下同步数据.调用者必须处理它.这主要是因为我们不想在i_rwsem下同步.
+   
  * Return:
- * * number of bytes written, even for truncated writes
+        *  * number of bytes written, even for truncated writes
  * * negative error code if no data has been written at all
+   返回写入的字节数,即使是截断写入
  */
 ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
@@ -4060,7 +4280,7 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	if (ret)
 		return ret;
 
-	if (iocb->ki_flags & IOCB_DIRECT) {
+	if (iocb->ki_flags & IOCB_DIRECT) { //直接IO
 		ret = generic_file_direct_write(iocb, from);
 		/*
 		 * If the write stopped short of completing, fall back to
@@ -4068,11 +4288,13 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		 * holes, for example.  For DAX files, a buffered write will
 		 * not succeed (even if it did, DAX does not handle dirty
 		 * page-cache pages correctly).
+		   如果写入没有完成,则退回到缓冲写入.例如,某些文件系统对写入空洞这样做.
+		   对于DAX文件,缓冲写入将不会成功(即使成功,DAX也不会正确处理脏页缓存页).
 		 */
 		if (ret < 0 || !iov_iter_count(from) || IS_DAX(inode))
 			return ret;
 		return direct_write_fallback(iocb, from, ret,
-				generic_perform_write(iocb, from));
+					     generic_perform_write(iocb, from));
 	}
 
 	return generic_perform_write(iocb, from);
@@ -4080,6 +4302,7 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 EXPORT_SYMBOL(__generic_file_write_iter);
 
 /**
+写入内容到文件
  * generic_file_write_iter - write data to a file
  * @iocb:	IO state structure
  * @from:	iov_iter with data to write
@@ -4104,7 +4327,7 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		ret = __generic_file_write_iter(iocb, from);
 	inode_unlock(inode);
 
-	if (ret > 0)
+	if (ret > 0)  //同步内容
 		ret = generic_write_sync(iocb, ret);
 	return ret;
 }
@@ -4150,6 +4373,7 @@ EXPORT_SYMBOL(filemap_release_folio);
 #ifdef CONFIG_CACHESTAT_SYSCALL
 /**
  * filemap_cachestat() - compute the page cache statistics of a mapping
+   计算pagecache的stat?
  * @mapping:	The mapping to compute the statistics for.
  * @first_index:	The starting page cache index.
  * @last_index:	The final page index (inclusive).
@@ -4159,6 +4383,9 @@ EXPORT_SYMBOL(filemap_release_folio);
  * page range of [first_index, last_index] (inclusive). The statistics
  * queried include: number of dirty pages, number of pages marked for
  * writeback, and the number of (recently) evicted pages.
+   函数会查询[first_index, last_index]范围内的pagecache的统计信息
+   查询的统计信息包括:脏页数,标记为写回的页数,以及(最近)驱逐的页数
+
  */
 static void filemap_cachestat(struct address_space *mapping,
 		pgoff_t first_index, pgoff_t last_index, struct cachestat *cs)

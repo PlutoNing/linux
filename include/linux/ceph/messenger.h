@@ -258,12 +258,16 @@ struct ceph_msg_data_cursor {
 };
 
 /*
+代表一个msg
  * a single message.  it contains a header (src, dest, message type, etc.),
  * footer (crc values, mainly), a "front" message body, and possibly a
  * data payload (stored in some number of pages).
  */
 struct ceph_msg {
-	struct ceph_msg_header hdr;	/* header */
+
+	struct ceph_msg_header hdr;	/* 
+	msg的header
+	header */
 	union {
 		struct ceph_msg_footer footer;		/* footer */
 		struct ceph_msg_footer_old old_footer;	/* old format footer */
@@ -278,7 +282,9 @@ struct ceph_msg {
 	struct ceph_msg_data_cursor	cursor;
 
 	struct ceph_connection *con;
-	struct list_head list_head;	/* links for connection lists */
+	struct list_head list_head;	
+	/*通过这个挂接到conn的out queue.
+	 links for connection lists */
 
 	struct kref kref;
 	bool more_to_follow;
@@ -293,7 +299,7 @@ struct ceph_msg {
  * connection states
  */
 #define CEPH_CON_S_CLOSED		1
-#define CEPH_CON_S_PREOPEN		2
+#define CEPH_CON_S_PREOPEN		2 /* 准备要打开这个osd conn了 */
 #define CEPH_CON_S_V1_BANNER		3
 #define CEPH_CON_S_V1_CONNECT_MSG	4
 #define CEPH_CON_S_V2_BANNER_PREFIX	5
@@ -309,13 +315,13 @@ struct ceph_msg {
 /*
  * ceph_connection flag bits
  */
-#define CEPH_CON_F_LOSSYTX		0  /* we can close channel or drop
-					      messages on errors */
+#define CEPH_CON_F_LOSSYTX		0  
+/* we can close channel or drop messages on errors */
 #define CEPH_CON_F_KEEPALIVE_PENDING	1  /* we need to send a keepalive */
 #define CEPH_CON_F_WRITE_PENDING	2  /* we have data ready to send */
 #define CEPH_CON_F_SOCK_CLOSED		3  /* socket state changed to closed */
-#define CEPH_CON_F_BACKOFF		4  /* need to retry queuing delayed
-					      work */
+#define CEPH_CON_F_BACKOFF		4  
+/* need to retry queuing delayed work */
 
 /* ceph connection fault delay defaults, for exponential backoff */
 #define BASE_DELAY_INTERVAL	(HZ / 4)
@@ -398,7 +404,7 @@ struct ceph_connection_v2_info {
 	int in_kvec_cnt;
 	int in_state;  /* IN_S_* */
 
-	struct iov_iter out_iter;
+	struct iov_iter out_iter; /*  */
 	struct kvec out_kvecs[8];  /* sendmsg */
 	struct bio_vec out_bvec;  /* sendpage (out_cursor, out_zero),
 				     sendmsg (out_enc_pages) */
@@ -461,6 +467,7 @@ struct ceph_connection_v2_info {
 };
 
 /*
+一个osd的连接
  * A single connection with another host.
  *
  * We maintain a queue of outgoing messages, and some session state to
@@ -468,11 +475,11 @@ struct ceph_connection_v2_info {
  * messages in the case of a TCP disconnect.
  */
 struct ceph_connection {
-	void *private;
+	void *private; /* 指向osd? osd的conn指向osd */
 
-	const struct ceph_connection_operations *ops;
+	const struct ceph_connection_operations *ops; /* conn的ops集合 */
 
-	struct ceph_messenger *msgr;
+	struct ceph_messenger *msgr; /* 指向osdc的client的msgr */
 
 	int state;  /* CEPH_CON_S_* */
 	atomic_t sock_state;
@@ -488,14 +495,16 @@ struct ceph_connection {
 	struct mutex mutex;
 
 	/* out queue */
-	struct list_head out_queue;
+	struct list_head out_queue; /* msg挂载到这里 */
 	struct list_head out_sent;   /* sending or sent but unacked */
 	u64 out_seq;		     /* last message queued for send */
 
 	u64 in_seq, in_seq_acked;  /* last message received, acked */
 
 	struct ceph_msg *in_msg;
-	struct ceph_msg *out_msg;        /* sending message (== tail of
+	struct ceph_msg *out_msg;        /* 
+	准备发送的msg链表?
+	sending message (== tail of
 					    out_sent) */
 
 	struct page *bounce_page;
@@ -503,10 +512,10 @@ struct ceph_connection {
 
 	struct timespec64 last_keepalive_ack; /* keepalive2 ack stamp */
 
-	struct delayed_work work;	    /* send|recv work */
+	struct delayed_work work;	    /* send|recv work , 挂接到ceph的msg queue */
 	unsigned long       delay;          /* current delay interval */
 
-	union {
+	union {/* 表示不同版本? 版本是什么呢? */
 		struct ceph_connection_v1_info v1;
 		struct ceph_connection_v2_info v2;
 	};

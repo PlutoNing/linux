@@ -42,7 +42,7 @@ struct zone *next_zone(struct zone *zone)
 	}
 	return zone;
 }
-
+/*  */
 static inline int zref_in_nodemask(struct zoneref *zref, nodemask_t *nodes)
 {
 #ifdef CONFIG_NUMA
@@ -52,7 +52,8 @@ static inline int zref_in_nodemask(struct zoneref *zref, nodemask_t *nodes)
 #endif /* CONFIG_NUMA */
 }
 
-/* Returns the next zone at or below highest_zoneidx in a zonelist */
+/* Returns the next zone at or below highest_zoneidx in a zonelist
+ */
 struct zoneref *__next_zones_zonelist(struct zoneref *z,
 					enum zone_type highest_zoneidx,
 					nodemask_t *nodes)
@@ -61,6 +62,7 @@ struct zoneref *__next_zones_zonelist(struct zoneref *z,
 	 * Find the next suitable zone to use for the allocation.
 	 * Only filter based on nodemask if it's set
 	 */
+	 /* 不指定nodemask.  */
 	if (unlikely(nodes == NULL))
 		while (zonelist_zone_idx(z) > highest_zoneidx)
 			z++;

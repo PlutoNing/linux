@@ -582,7 +582,10 @@ struct vm_operations_struct {
 	unsigned long (*pagesize)(struct vm_area_struct * area);
 
 	/* notification that a previously read-only page is about to become
-	 * writable, if an error is returned it will cause a SIGBUS */
+	 * writable, if an error is returned it will cause a SIGBUS
+	   提醒一个之前只读的页面即将变为可写，如果返回错误，将导致SIGBUS 
+	   2024年12月8日00:30:05 todddo
+	  */
 	vm_fault_t (*page_mkwrite)(struct vm_fault *vmf);
 
 	/* same as page_mkwrite when using VM_PFNMAP|VM_MIXEDMAP */
@@ -651,6 +654,8 @@ static inline void vma_numab_state_free(struct vm_area_struct *vma) {}
  * Try to read-lock a vma. The function is allowed to occasionally yield false
  * locked result to avoid performance overhead, in which case we fall back to
  * using mmap_lock. The function should never yield false unlocked result.
+   尝试读锁定vma。 该函数允许偶尔产生错误的锁定结果，以避免性能开销，在这种情况下，
+   我们将退回到使用mmap_lock。 该函数永远不应产生错误的未锁定结果。
  */
 static inline bool vma_start_read(struct vm_area_struct *vma)
 {
@@ -660,6 +665,10 @@ static inline bool vma_start_read(struct vm_area_struct *vma)
 	 * ACQUIRE semantics, because this is just a lockless check whose result
 	 * we don't rely on for anything - the mm_lock_seq read against which we
 	 * need ordering is below.
+	   在锁定之前检查。 竞争可能导致错误的锁定结果。
+	我们可以在这里使用READ_ONCE（）进行mm_lock_seq，而不需要ACQUIRE语义，
+	因为这只是一个无锁检查，我们不依赖于任何结果-我们需要对其进行排序的mm_lock_seq读取在下面。
+
 	 */
 	if (READ_ONCE(vma->vm_lock_seq) == READ_ONCE(vma->vm_mm->mm_lock_seq))
 		return false;
@@ -685,6 +694,7 @@ static inline bool vma_start_read(struct vm_area_struct *vma)
 	return true;
 }
 
+//释放vma的读锁?
 static inline void vma_end_read(struct vm_area_struct *vma)
 {
 	rcu_read_lock(); /* keeps vma alive till the end of up_read */
@@ -749,11 +759,13 @@ static inline void vma_mark_detached(struct vm_area_struct *vma, bool detached)
 	vma->detached = detached;
 }
 
+// 这个释放的什么锁, 什么时候加上的
+//
 static inline void release_fault_lock(struct vm_fault *vmf)
 {
-	if (vmf->flags & FAULT_FLAG_VMA_LOCK)
+	if (vmf->flags & FAULT_FLAG_VMA_LOCK) //说明开始处理mm fault的时候加了读锁
 		vma_end_read(vmf->vma);
-	else
+	else //可能是mmap lock
 		mmap_read_unlock(vmf->vma->vm_mm);
 }
 
@@ -945,6 +957,7 @@ struct vm_area_struct *vma_find(struct vma_iterator *vmi, unsigned long max)
 	return mas_find(&vmi->mas, max - 1);
 }
 
+/* 现在是通过vmi遍历vma吗? */
 static inline struct vm_area_struct *vma_next(struct vma_iterator *vmi)
 {
 	/*
@@ -1015,6 +1028,7 @@ static inline void vma_iter_set(struct vma_iterator *vmi, unsigned long addr)
 	mas_set(&vmi->mas, addr);
 }
 
+/* 遍历vma */
 #define for_each_vma(__vmi, __vma)					\
 	while (((__vma) = vma_next(&(__vmi))) != NULL)
 
@@ -1275,6 +1289,7 @@ static inline struct page *virt_to_head_page(const void *x)
 	return compound_head(page);
 }
 
+/* 获取内核虚拟地址的folio */
 static inline struct folio *virt_to_folio(const void *x)
 {
 	struct page *page = virt_to_page(x);
@@ -1633,6 +1648,7 @@ static inline int page_zone_id(struct page *page)
 #ifdef NODE_NOT_IN_PAGE_FLAGS
 extern int page_to_nid(const struct page *page);
 #else
+/*  */
 static inline int page_to_nid(const struct page *page)
 {
 	struct page *p = (struct page *)page;
@@ -1853,7 +1869,7 @@ static inline struct zone *page_zone(const struct page *page)
 {
 	return &NODE_DATA(page_to_nid(page))->node_zones[page_zonenum(page)];
 }
-
+/*  */
 static inline pg_data_t *page_pgdat(const struct page *page)
 {
 	return NODE_DATA(page_to_nid(page));
@@ -2123,6 +2139,7 @@ static inline unsigned int folio_shift(struct folio *folio)
 
 /**
  * folio_size - The number of bytes in a folio.
+   获取folio的大小
  * @folio: The folio.
  *
  * Context: The caller should have a reference on the folio to prevent
@@ -2581,7 +2598,11 @@ static inline void dec_mm_counter(struct mm_struct *mm, int member)
 	mm_trace_rss_stat(mm, member);
 }
 
-/* Optimized variant when page is already known not to be PageAnon */
+/* Optimized variant when page is already known not to be PageAnon
+获取进程的这个文件页面的类型, 
+如果是交换的, 就是shmem
+不然就是pagecache?
+ */
 static inline int mm_counter_file(struct page *page)
 {
 	if (PageSwapBacked(page))
@@ -2596,6 +2617,8 @@ static inline int mm_counter(struct page *page)
 	return mm_counter_file(page);
 }
 
+/* 获取进程rss大小
+rss什么?  */
 static inline unsigned long get_mm_rss(struct mm_struct *mm)
 {
 	return get_mm_counter(mm, MM_FILEPAGES) +
@@ -2627,6 +2650,7 @@ static inline void update_hiwater_vm(struct mm_struct *mm)
 		mm->hiwater_vm = mm->total_vm;
 }
 
+/* 重置rss的高水位值 */
 static inline void reset_mm_hiwater_rss(struct mm_struct *mm)
 {
 	mm->hiwater_rss = get_mm_rss(mm);
@@ -2670,6 +2694,8 @@ static inline int pte_devmap(pte_t pte)
 
 extern pte_t *__get_locked_pte(struct mm_struct *mm, unsigned long addr,
 			       spinlock_t **ptl);
+
+// 获取pte	还锁住
 static inline pte_t *get_locked_pte(struct mm_struct *mm, unsigned long addr,
 				    spinlock_t **ptl)
 {
@@ -2956,6 +2982,7 @@ static inline pte_t *pte_offset_map_lock(struct mm_struct *mm, pmd_t *pmd,
 pte_t *pte_offset_map_nolock(struct mm_struct *mm, pmd_t *pmd,
 			unsigned long addr, spinlock_t **ptlp);
 
+//
 #define pte_unmap_unlock(pte, ptl)	do {		\
 	spin_unlock(ptl);				\
 	pte_unmap(pte);					\
@@ -3205,7 +3232,7 @@ struct vm_area_struct *vma_interval_tree_iter_first(struct rb_root_cached *root,
 				unsigned long start, unsigned long last);
 struct vm_area_struct *vma_interval_tree_iter_next(struct vm_area_struct *node,
 				unsigned long start, unsigned long last);
-
+/* root是一个包含了很多vma的tree */
 #define vma_interval_tree_foreach(vma, root, start, last)		\
 	for (vma = vma_interval_tree_iter_first(root, start, last);	\
 	     vma; vma = vma_interval_tree_iter_next(vma, start, last))
@@ -3374,6 +3401,7 @@ struct vm_area_struct *find_vma_intersection(struct mm_struct *mm,
 			unsigned long start_addr, unsigned long end_addr);
 
 /**
+找到指定地址范围的vma
  * vma_lookup() - Find a VMA at a specific address
  * @mm: The process address space.
  * @addr: The user address.
@@ -3426,7 +3454,8 @@ static inline unsigned long vma_pages(struct vm_area_struct *vma)
 	return (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
 }
 
-/* Look up the first VMA which exactly match the interval vm_start ... vm_end */
+/* Look up the first VMA which exactly match the interval vm_start ... vm_end
+找到指定地址范围的vma */
 static inline struct vm_area_struct *find_exact_vma(struct mm_struct *mm,
 				unsigned long vm_start, unsigned long vm_end)
 {

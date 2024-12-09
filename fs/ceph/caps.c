@@ -1357,6 +1357,8 @@ void __ceph_remove_caps(struct ceph_inode_info *ci)
 }
 
 /*
+构建这个arg参数结构体.
+cap是元数据吗
  * Prepare to send a cap message to an MDS. Update the cap state, and populate
  * the arg struct with the parameters that will need to be sent. This should
  * be done under the i_ceph_lock to guard against changes to cap state.
@@ -1800,6 +1802,7 @@ int __ceph_mark_dirty_caps(struct ceph_inode_info *ci, int mask,
 	return dirty;
 }
 
+/* 初始化cf */
 struct ceph_cap_flush *ceph_alloc_cap_flush(void)
 {
 	struct ceph_cap_flush *cf;
@@ -2228,6 +2231,8 @@ ack:
 }
 
 /*
+flush caps, caps到底是什么?
+刷新inode到mds
  * Try to flush dirty caps back to the auth mds.
  */
 static int try_flush_caps(struct inode *inode, u64 *ptid)
@@ -2251,14 +2256,17 @@ retry_locked:
 
 		if (ci->i_ceph_flags &
 		    (CEPH_I_KICK_FLUSH | CEPH_I_FLUSH_SNAPS)) {
-			if (ci->i_ceph_flags & CEPH_I_KICK_FLUSH)
+
+			if (ci->i_ceph_flags & CEPH_I_KICK_FLUSH)/* flush caps */
 				__kick_flushing_caps(mdsc, session, ci, 0);
-			if (ci->i_ceph_flags & CEPH_I_FLUSH_SNAPS)
+			if (ci->i_ceph_flags & CEPH_I_FLUSH_SNAPS)/* flush 快照? */
 				__ceph_flush_snaps(ci, session);
+		/* 上面这些flush是到哪? */
 			goto retry_locked;
 		}
 
 		flushing = ci->i_dirty_caps;
+		/* 2024年10月24日00:18:51 */
 		flush_tid = __mark_caps_flushing(inode, session, true,
 						 &oldest_flush_tid);
 
@@ -2423,6 +2431,7 @@ out:
 	return err;
 }
 
+/* ceph的sync函数 */
 int ceph_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 {
 	struct inode *inode = file->f_mapping->host;
@@ -2433,6 +2442,7 @@ int ceph_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 
 	dout("fsync %p%s\n", inode, datasync ? " datasync" : "");
 
+	/* 为什么是调用通用的函数? */
 	ret = file_write_and_wait_range(file, start, end);
 	if (datasync)
 		goto out;
@@ -2468,7 +2478,10 @@ out:
 }
 
 /*
- * Flush any dirty caps back to the mds.  If we aren't asked to wait,
+怎么写inode?
+ * Flush any dirty caps back to the mds.  
+
+ If we aren't asked to wait,
  * queue inode for flush but don't do so immediately, because we can
  * get by with fewer MDS messages if we wait for data writeback to
  * complete first.
@@ -2479,19 +2492,23 @@ int ceph_write_inode(struct inode *inode, struct writeback_control *wbc)
 	u64 flush_tid;
 	int err = 0;
 	int dirty;
-	int wait = (wbc->sync_mode == WB_SYNC_ALL && !wbc->for_sync);
+	int wait = (wbc->sync_mode == WB_SYNC_ALL && !wbc->for_sync); /* 是否可以异步 */
 
 	dout("write_inode %p wait=%d\n", inode, wait);
 	ceph_fscache_unpin_writeback(inode, wbc);
-	if (wait) {
+
+	if (wait) {/* 如果可以异步 */
 		err = ceph_wait_on_async_create(inode);
 		if (err)
 			return err;
+		/* 等待别人清除一个什么CEPH_ASYNC_CREATE_BIT位 */
+		/* 然后 */
 		dirty = try_flush_caps(inode, &flush_tid);
 		if (dirty)
 			err = wait_event_interruptible(ci->i_cap_wq,
 				       caps_are_flushed(inode, flush_tid));
-	} else {
+
+	} else {/* 同步方式? */
 		struct ceph_mds_client *mdsc =
 			ceph_sb_to_client(inode->i_sb)->mdsc;
 
@@ -2503,6 +2520,7 @@ int ceph_write_inode(struct inode *inode, struct writeback_control *wbc)
 	return err;
 }
 
+/* 一个一个的刷新cinode的cap? */
 static void __kick_flushing_caps(struct ceph_mds_client *mdsc,
 				 struct ceph_mds_session *session,
 				 struct ceph_inode_info *ci,
@@ -2510,6 +2528,8 @@ static void __kick_flushing_caps(struct ceph_mds_client *mdsc,
 	__releases(ci->i_ceph_lock)
 	__acquires(ci->i_ceph_lock)
 {
+
+	/* 这个又是哪个inode ? */
 	struct inode *inode = &ci->netfs.inode;
 	struct ceph_cap *cap;
 	struct ceph_cap_flush *cf;
@@ -2543,7 +2563,7 @@ static void __kick_flushing_caps(struct ceph_mds_client *mdsc,
 
 		first_tid = cf->tid + 1;
 
-		if (!cf->is_capsnap) {
+		if (!cf->is_capsnap) {/* 表示不是snap的cap? */
 			struct cap_msg_args arg;
 
 			dout("kick_flushing_caps %p cap %p tid %llu %s\n",
@@ -2557,7 +2577,7 @@ static void __kick_flushing_caps(struct ceph_mds_client *mdsc,
 					  cf->caps, cf->tid, oldest_flush_tid);
 			spin_unlock(&ci->i_ceph_lock);
 			__send_cap(&arg, ci);
-		} else {
+		} else {/* 快照的cap的路径? */
 			struct ceph_cap_snap *capsnap =
 					container_of(cf, struct ceph_cap_snap,
 						    cap_flush);
@@ -2956,6 +2976,7 @@ int ceph_try_get_caps(struct inode *inode, int need, int want,
 }
 
 /*
+caps是什么 ...
  * Wait for caps, and take cap references.  If we can't get a WR cap
  * due to a small max_size, make sure we check_max_size (and possibly
  * ask the mds) so we don't get hung up indefinitely.
@@ -3087,6 +3108,7 @@ int __ceph_get_caps(struct inode *inode, struct ceph_file_info *fi, int need,
 	return 0;
 }
 
+/* caps是什么? */
 int ceph_get_caps(struct file *filp, int need, int want, loff_t endoff,
 		  int *got)
 {
@@ -4544,6 +4566,7 @@ unsigned long ceph_check_delayed_caps(struct ceph_mds_client *mdsc)
 }
 
 /*
+刷新sync文件系统
  * Flush all dirty caps to the mds
  */
 static void flush_dirty_session_caps(struct ceph_mds_session *s)
@@ -4555,6 +4578,7 @@ static void flush_dirty_session_caps(struct ceph_mds_session *s)
 	dout("flush_dirty_caps\n");
 	spin_lock(&mdsc->cap_dirty_lock);
 	while (!list_empty(&s->s_cap_dirty)) {
+		/* 遍历全部的ceph inode */
 		ci = list_first_entry(&s->s_cap_dirty, struct ceph_inode_info,
 				      i_dirty_item);
 		inode = &ci->netfs.inode;
@@ -4570,6 +4594,7 @@ static void flush_dirty_session_caps(struct ceph_mds_session *s)
 	dout("flush_dirty_caps done\n");
 }
 
+/* 异步刷新sync ... */
 void ceph_flush_dirty_caps(struct ceph_mds_client *mdsc)
 {
 	ceph_mdsc_iterate_sessions(mdsc, flush_dirty_session_caps, true);
@@ -4590,6 +4615,8 @@ void __ceph_touch_fmode(struct ceph_inode_info *ci,
 		__cap_delay_requeue(mdsc, ci);
 }
 
+/* ci是刚打开的inode对应的ci.
+fmode是刚打开的文件的fmode */
 void ceph_get_fmode(struct ceph_inode_info *ci, int fmode, int count)
 {
 	struct ceph_mds_client *mdsc = ceph_sb_to_mdsc(ci->netfs.inode.i_sb);
@@ -4617,6 +4644,8 @@ void ceph_get_fmode(struct ceph_inode_info *ci, int fmode, int count)
 	if (!already_opened)
 		percpu_counter_inc(&mdsc->metric.opened_inodes);
 	spin_unlock(&ci->i_ceph_lock);
+
+
 }
 
 /*

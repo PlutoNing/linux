@@ -95,6 +95,7 @@ union proc_op {
 	const char *lsm;
 };
 
+/* proc fs的inode? */
 struct proc_inode {
 	struct pid *pid;
 	unsigned int fd;
@@ -120,11 +121,13 @@ static inline struct proc_dir_entry *PDE(const struct inode *inode)
 	return PROC_I(inode)->pde;
 }
 
+/* 从proc inode获取pid */
 static inline struct pid *proc_pid(const struct inode *inode)
 {
 	return PROC_I(inode)->pid;
 }
 
+/* inode是proc fs里面pid的inode */
 static inline struct task_struct *get_proc_task(const struct inode *inode)
 {
 	return get_pid_task(proc_pid(inode), PIDTYPE_PID);

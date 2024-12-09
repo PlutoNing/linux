@@ -18,7 +18,7 @@
 	struct { type x; } __packed *__pptr = (typeof(__pptr))(ptr);		\
 	__pptr->x = (val);							\
 } while (0)
-
+/*  */
 #define get_unaligned(ptr)	__get_unaligned_t(typeof(*(ptr)), (ptr))
 #define put_unaligned(val, ptr) __put_unaligned_t(typeof(*(ptr)), (val), (ptr))
 

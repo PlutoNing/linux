@@ -451,6 +451,7 @@ static void mark_buffer_async_read(struct buffer_head *bh)
 	set_buffer_async_read(bh);
 }
 
+//通过标记来发起回写, 然后设置endio函数
 static void mark_buffer_async_write_endio(struct buffer_head *bh,
 					  bh_end_io_t *handler)
 {
@@ -911,7 +912,8 @@ int remove_inode_buffers(struct inode *inode)
  * the size of each buffer.. Use the bh->b_this_page linked list to
  * follow the buffers created.  Return NULL if unable to create more
  * buffers.
- *
+ * 给定一个数据区域的folio和每个缓冲区的大小，创建适当的缓冲区。使用bh->b_this_page
+   链接列表来跟踪创建的缓冲区。如果无法创建更多缓冲区，则返回NULL。
  * The retry flag is used to differentiate async IO (paging, swapping)
  * which may not fail from ordinary buffer allocations.
  */
@@ -1540,6 +1542,7 @@ void invalidate_bh_lrus_cpu(void)
 	bh_lru_unlock();
 }
 
+//把新分配的bh关联到folio, 这个bh管理page的offset起始位置
 void folio_set_bh(struct buffer_head *bh, struct folio *folio,
 		  unsigned long offset)
 {
@@ -1643,6 +1646,9 @@ out:
 EXPORT_SYMBOL(block_invalidate_folio);
 
 /*
+   给folio创建buffer
+
+   folio的priv指向一串环形的bh
  * We attach and possibly dirty the buffers atomically wrt
  * block_dirty_folio() via private_lock.  try_to_free_buffers
  * is already excluded via the folio lock.
@@ -1654,7 +1660,7 @@ void folio_create_empty_buffers(struct folio *folio, unsigned long blocksize,
 
 	head = folio_alloc_buffers(folio, blocksize, true);
 	bh = head;
-	do {
+	do {// 遍历这些环形串起来的bh
 		bh->b_state |= b_state;
 		tail = bh;
 		bh = bh->b_this_page;
@@ -1662,7 +1668,8 @@ void folio_create_empty_buffers(struct folio *folio, unsigned long blocksize,
 	tail->b_this_page = head;
 
 	spin_lock(&folio->mapping->private_lock);
-	if (folio_test_uptodate(folio) || folio_test_dirty(folio)) {
+	if (folio_test_uptodate(folio) || folio_test_dirty(folio)) { //如果folio是uptodate或者dirty
+		// 根据page的状态设置bh的状态
 		bh = head;
 		do {
 			if (folio_test_dirty(folio))
@@ -1672,7 +1679,8 @@ void folio_create_empty_buffers(struct folio *folio, unsigned long blocksize,
 			bh = bh->b_this_page;
 		} while (bh != head);
 	}
-	folio_attach_private(folio, head);
+
+	folio_attach_private(folio, head); // 建立bh和folio的关联
 	spin_unlock(&folio->mapping->private_lock);
 }
 EXPORT_SYMBOL(folio_create_empty_buffers);
@@ -1771,16 +1779,18 @@ static inline int block_size_bits(unsigned int blocksize)
 	return ilog2(blocksize);
 }
 
+//获取folio的buffers
 static struct buffer_head *folio_create_buffers(struct folio *folio,
 						struct inode *inode,
 						unsigned int b_state)
 {
 	BUG_ON(!folio_test_locked(folio));
 
-	if (!folio_buffers(folio))
+	if (!folio_buffers(folio)) //如果folio还没有buffer关联
 		folio_create_empty_buffers(folio,
 					   1 << READ_ONCE(inode->i_blkbits),
 					   b_state);
+
 	return folio_buffers(folio);
 }
 
@@ -1802,16 +1812,21 @@ static struct buffer_head *folio_create_buffers(struct folio *folio,
  * the page lock, whoever dirtied the buffers may decide to clean them
  * again at any time.  We handle that by only looking at the buffer
  * state inside lock_buffer().
- *
+ * 在block_write_full_page写回脏缓冲区时,可能会有其他进程再次脏化这些缓冲区.
+ * 我们通过lock_buffer()只在缓冲区状态中查看缓冲区状态来处理这种情况.
  * If block_write_full_page() is called for regular writeback
  * (wbc->sync_mode == WB_SYNC_NONE) then it will redirty a page which has a
  * locked buffer.   This only can happen if someone has written the buffer
  * directly, with submit_bh().  At the address_space level PageWriteback
  * prevents this contention from occurring.
- *
+ * 如果block_write_full_page()用于常规回写(wbc->sync_mode == WB_SYNC_NONE),
+ * 则它将重新脏化具有锁定缓冲区的页面.只有在有人使用submit_bh()直接写入缓冲区时,
+ * 才会发生这种情况.在address_space级别,PageWriteback防止发生这种争用.
  * If block_write_full_page() is called with wbc->sync_mode ==
  * WB_SYNC_ALL, the writes are posted using REQ_SYNC; this
  * causes the writes to be flagged as synchronous writes.
+ * 如果block_write_full_page()使用wbc->sync_mode == WB_SYNC_ALL调用,
+ * 则使用REQ_SYNC发布写入;这将导致写入标记为同步写入
  */
 int __block_write_full_folio(struct inode *inode, struct folio *folio,
 			get_block_t *get_block, struct writeback_control *wbc,
@@ -1825,6 +1840,7 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 	int nr_underway = 0;
 	blk_opf_t write_flags = wbc_to_write_flags(wbc);
 
+	//获取环形bh链的头
 	head = folio_create_buffers(folio, inode,
 				    (1 << BH_Dirty) | (1 << BH_Uptodate));
 
@@ -1833,13 +1849,16 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 	 * here, and the (potentially unmapped) buffers may become dirty at
 	 * any time.  If a buffer becomes dirty here after we've inspected it
 	 * then we just miss that fact, and the folio stays dirty.
-	 *
+	 * 小心.我们在这里没有排除block_dirty_folio,并且(可能未映射的)缓冲区可能随时变脏.
+	 * 如果缓冲区在我们检查后变脏,那么我们只是错过了这一事实,并且folio保持脏.
+	 
 	 * Buffers outside i_size may be dirtied by block_dirty_folio;
 	 * handle that here by just cleaning them.
+	 * block_dirty_folio可能会使i_size之外的缓冲区变脏;通过在此处仅清除它们来处理这一点.
 	 */
 
 	bh = head;
-	blocksize = bh->b_size;
+	blocksize = bh->b_size; //bh的大小
 	bbits = block_size_bits(blocksize);
 
 	block = (sector_t)folio->index << (PAGE_SHIFT - bbits);
@@ -1862,7 +1881,7 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 			clear_buffer_dirty(bh);
 			set_buffer_uptodate(bh);
 		} else if ((!buffer_mapped(bh) || buffer_delay(bh)) &&
-			   buffer_dirty(bh)) {
+			   buffer_dirty(bh)) { //如果bh脏的, 并且没有mapped或者是delay的
 			WARN_ON(bh->b_size != blocksize);
 			err = get_block(inode, block, bh, 1);
 			if (err)
@@ -1874,6 +1893,7 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 				clean_bdev_bh_alias(bh);
 			}
 		}
+
 		bh = bh->b_this_page;
 		block++;
 	} while (bh != head);
@@ -1887,14 +1907,21 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 		 * potentially cause a busy-wait loop from writeback threads
 		 * and kswapd activity, but those code paths have their own
 		 * higher-level throttling.
+		   如果是完全非阻塞的写尝试,并且我们无法锁定缓冲区,则重新脏化folio.
+		   请注意,这可能会导致来自写回线程和kswapd活动的忙等待循环,
+		   但这些代码路径具有自己的节流.
 		 */
-		if (wbc->sync_mode != WB_SYNC_NONE) {
+		if (wbc->sync_mode != WB_SYNC_NONE) { //如果是要求SYNC ALL就阻塞等待可能
 			lock_buffer(bh);
-		} else if (!trylock_buffer(bh)) {
-			folio_redirty_for_writepage(wbc, folio);
+		} else if (!trylock_buffer(bh)) { //其他的sync要求, 可以try lock
+			folio_redirty_for_writepage(wbc, folio); //无法lock的话, 就redirty, 去处理
+			//下一个了
 			continue;
 		}
-		if (test_clear_buffer_dirty(bh)) {
+        
+		//SYNC ALL的要求, 需要等待
+
+		if (test_clear_buffer_dirty(bh)) { //如果bh本来是脏的
 			mark_buffer_async_write_endio(bh, handler);
 		} else {
 			unlock_buffer(bh);
@@ -1904,18 +1931,23 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 	/*
 	 * The folio and its buffers are protected by the writeback flag,
 	 * so we can drop the bh refcounts early.
+	   这个folio和它的buffers被writeback标志保护,所以我们可以提前降低bh的引用计数.
 	 */
 	BUG_ON(folio_test_writeback(folio));
-	folio_start_writeback(folio);
+
+	folio_start_writeback(folio); //在mapping的标记这个folio回写
 
 	do {
 		struct buffer_head *next = bh->b_this_page;
-		if (buffer_async_write(bh)) {
+
+		if (buffer_async_write(bh)) { //如果bh被标记了, 说明需要发起回写
 			submit_bh_wbc(REQ_OP_WRITE | write_flags, bh, wbc);
 			nr_underway++;
 		}
+
 		bh = next;
 	} while (bh != head);
+
 	folio_unlock(folio);
 
 	err = 0;
@@ -1957,6 +1989,7 @@ recover:
 			clear_buffer_dirty(bh);
 		}
 	} while ((bh = bh->b_this_page) != head);
+
 	folio_set_error(folio);
 	BUG_ON(folio_test_writeback(folio));
 	mapping_set_error(folio->mapping, err);
@@ -2777,6 +2810,7 @@ sector_t generic_block_bmap(struct address_space *mapping, sector_t block,
 }
 EXPORT_SYMBOL(generic_block_bmap);
 
+//bio回写bh时的end io函数
 static void end_bio_bh_io_sync(struct bio *bio)
 {
 	struct buffer_head *bh = bio->bi_private;
@@ -2788,6 +2822,7 @@ static void end_bio_bh_io_sync(struct bio *bio)
 	bio_put(bio);
 }
 
+//提交回写这个bh
 static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 			  struct writeback_control *wbc)
 {
@@ -2810,22 +2845,25 @@ static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 		opf |= REQ_META;
 	if (buffer_prio(bh))
 		opf |= REQ_PRIO;
-
+	
+	//创建bio
 	bio = bio_alloc(bh->b_bdev, 1, opf, GFP_NOIO);
 
 	fscrypt_set_bio_crypt_ctx_bh(bio, bh, GFP_NOIO);
 
 	bio->bi_iter.bi_sector = bh->b_blocknr * (bh->b_size >> 9);
 
+	//让bio回写这个page
 	__bio_add_page(bio, bh->b_page, bh->b_size, bh_offset(bh));
 
+	//
 	bio->bi_end_io = end_bio_bh_io_sync;
 	bio->bi_private = bh;
 
 	/* Take care of bh's that straddle the end of the device */
 	guard_bio_eod(bio);
 
-	if (wbc) {
+	if (wbc) { //如果有wbc
 		wbc_init_bio(wbc, bio);
 		wbc_account_cgroup_owner(wbc, bh->b_page, bh->b_size);
 	}
@@ -3028,6 +3066,7 @@ static void recalc_bh_state(void)
 	buffer_heads_over_limit = (tot > max_buffer_heads);
 }
 
+//分配一个bh
 struct buffer_head *alloc_buffer_head(gfp_t gfp_flags)
 {
 	struct buffer_head *ret = kmem_cache_zalloc(bh_cachep, gfp_flags);

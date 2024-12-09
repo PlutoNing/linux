@@ -72,6 +72,7 @@
 #define FTRACE_HASH_MAX_BITS 12
 
 #ifdef CONFIG_DYNAMIC_FTRACE
+
 #define INIT_OPS_HASH(opsname)	\
 	.func_hash		= &opsname.local_hash,			\
 	.local_hash.regex_lock	= __MUTEX_INITIALIZER(opsname.local_hash.regex_lock),
@@ -89,6 +90,11 @@ struct ftrace_ops ftrace_list_end __read_mostly = {
 	.flags		= FTRACE_OPS_FL_STUB,
 	
 	INIT_OPS_HASH(ftrace_list_end)
+	/* 
+	// Expands to
+	.func_hash = &ftrace_list_end.local_hash , 
+	.local_hash.regex_lock = __MUTEX_INITIALIZER(opsname.local_hash.regex_lock),
+	 */
 };
 
 /* ftrace_enabled is a method to turn ftrace on or off */
@@ -121,8 +127,9 @@ static void ftrace_update_trampoline(struct ftrace_ops *ops);
 static int ftrace_disabled __read_mostly;
 
 DEFINE_MUTEX(ftrace_lock);
-
+/* 上面链接的全是ftrace_ops */
 struct ftrace_ops __rcu *ftrace_ops_list __read_mostly = &ftrace_list_end;
+/* 正在被ftrace的函数, 难道同时只能支持一个被ftrace吗 */
 ftrace_func_t ftrace_trace_function __read_mostly = ftrace_stub;
 struct ftrace_ops global_ops;
 
@@ -1113,16 +1120,19 @@ bool is_ftrace_trampoline(unsigned long addr)
 	return ftrace_ops_trampoline(addr) != NULL;
 }
 
+/* 好像records的dyn_ftrace可以代表一串连续text addr的什么东西 */
 struct ftrace_page {
 	struct ftrace_page	*next;
-	struct dyn_ftrace	*records;
-	int			index;
+	struct dyn_ftrace	*records; /*  */
+	int			index; /* 好像是records的大小 */
 	int			order;
 };
 
 #define ENTRY_SIZE sizeof(struct dyn_ftrace)
 #define ENTRIES_PER_PAGE (PAGE_SIZE / ENTRY_SIZE)
 
+/* 2024年10月17日00:13:28
+这个是什么 */
 static struct ftrace_page	*ftrace_pages_start;
 static struct ftrace_page	*ftrace_pages;
 
@@ -1135,7 +1145,9 @@ ftrace_hash_key(struct ftrace_hash *hash, unsigned long ip)
 	return 0;
 }
 
-/* Only use this function if ftrace_hash_empty() has already been tested */
+/* 
+看看hash是否包含此ip?
+Only use this function if ftrace_hash_empty() has already been tested */
 static __always_inline struct ftrace_func_entry *
 __ftrace_lookup_ip(struct ftrace_hash *hash, unsigned long ip)
 {
@@ -1477,7 +1489,7 @@ ftrace_hash_move(struct ftrace_ops *ops, int enable,
 
 	return 0;
 }
-
+/* 检查ip与hash是否匹配 */
 static bool hash_contains_ip(unsigned long ip,
 			     struct ftrace_ops_hash *hash)
 {
@@ -1494,6 +1506,10 @@ static bool hash_contains_ip(unsigned long ip,
 }
 
 /*
+ops是否此ip
+检查hash来确定是不是要call这个ops,
+看ip是不是在filter_hash,并且不在notrace_hash.
+
  * Test the hashes for this ops to see if we want to call
  * the ops->func or not.
  *
@@ -1520,7 +1536,7 @@ ftrace_ops_test(struct ftrace_ops *ops, unsigned long ip, void *regs)
 	if (regs == NULL && (ops->flags & FTRACE_OPS_FL_SAVE_REGS))
 		return 0;
 #endif
-
+	/* 获得ops的func hash */
 	rcu_assign_pointer(hash.filter_hash, ops->func_hash->filter_hash);
 	rcu_assign_pointer(hash.notrace_hash, ops->func_hash->notrace_hash);
 
@@ -1533,6 +1549,7 @@ ftrace_ops_test(struct ftrace_ops *ops, unsigned long ip, void *regs)
 }
 
 /*
+遍历ftrace_pages_start链表上的pg,进而遍历pg的records.
  * This is a double for. Do not use 'break' to break out of the loop,
  * you must use a goto.
  */
@@ -1559,6 +1576,8 @@ static int ftrace_cmp_recs(const void *a, const void *b)
 	return 0;
 }
 
+/* [start, end]是一段指令范围.
+找到对应此范围的dyn_ftrace ... */
 static struct dyn_ftrace *lookup_rec(unsigned long start, unsigned long end)
 {
 	struct ftrace_page *pg;
@@ -1571,8 +1590,11 @@ static struct dyn_ftrace *lookup_rec(unsigned long start, unsigned long end)
 	for (pg = ftrace_pages_start; pg; pg = pg->next) {
 		if (pg->index == 0 ||
 		    end < pg->records[0].ip ||
+
 		    start >= (pg->records[pg->index - 1].ip + MCOUNT_INSN_SIZE))
-			continue;
+			continue;  /*此pg 不在地址范围 */
+
+		/* 此pg与地址范围有交叉 */
 		rec = bsearch(&key, pg->records, pg->index,
 			      sizeof(struct dyn_ftrace),
 			      ftrace_cmp_recs);
@@ -1606,6 +1628,7 @@ unsigned long ftrace_location_range(unsigned long start, unsigned long end)
 }
 
 /**
+ 返回ip处的ftrace
  * ftrace_location - return the ftrace location
  * @ip: the instruction pointer to check
  *
@@ -1620,7 +1643,9 @@ unsigned long ftrace_location(unsigned long ip)
 	unsigned long size;
 
 	rec = lookup_rec(ip, ip);
-	if (!rec) {
+
+	if (!rec) {/* ip处无dyn_ftrace? */
+	
 		if (!kallsyms_lookup_size_offset(ip, &size, &offset))
 			goto out;
 
@@ -1633,6 +1658,9 @@ unsigned long ftrace_location(unsigned long ip)
 		return rec->ip;
 
 out:
+
+
+
 	return 0;
 }
 
@@ -2850,9 +2878,10 @@ void __weak ftrace_arch_code_modify_prepare(void)
 void __weak ftrace_arch_code_modify_post_process(void)
 {
 }
-
+/* 改变ftrace的func */
 static int update_ftrace_func(ftrace_func_t func)
 {
+	/* 静态的? */
 	static ftrace_func_t save_func;
 
 	/* Avoid updating if it hasn't changed */
@@ -2863,7 +2892,7 @@ static int update_ftrace_func(ftrace_func_t func)
 
 	return ftrace_update_ftrace_func(func);
 }
-
+/* 修改hook代码 */
 void ftrace_modify_all_code(int command)
 {
 	int update = command & FTRACE_UPDATE_TRACE_FUNC;
@@ -2873,7 +2902,11 @@ void ftrace_modify_all_code(int command)
 	if (command & FTRACE_MAY_SLEEP)
 		mod_flags = FTRACE_MODIFY_MAY_SLEEP_FL;
 
-	/*
+	/*如果caller直接调用ops
+	需要保证它只trace它期望的函数,
+	切换function的时候, 在old与new call被设置前,
+	需要去先更新ftrace_ops_list_func,
+	ftrace_ops_list_func会检查ops的hash,保证被trace的函数准确
 	 * If the ftrace_caller calls a ftrace_ops func directly,
 	 * we need to make sure that it only traces functions it
 	 * expects to trace. When doing the switch of functions,
@@ -2911,7 +2944,9 @@ void ftrace_modify_all_code(int command)
 		err = ftrace_disable_ftrace_graph_caller();
 	FTRACE_WARN_ON(err);
 }
-/* @data是command */
+
+/* ftrace修改hook代码 *//* @data是command */
+
 static int __ftrace_modify_code(void *data)
 {
 	int *command = data;
@@ -2922,6 +2957,7 @@ static int __ftrace_modify_code(void *data)
 }
 
 /**
+ 2024年10月8日23:46:22
  * ftrace_run_stop_machine - go back to the stop machine method
  * @command: The command to tell ftrace what to do
  *
@@ -2934,6 +2970,7 @@ void ftrace_run_stop_machine(int command)
 }
 
 /**
+修改ftrace的hook代码
  * arch_ftrace_update_code - modify the code to trace or not trace
  * @command: The command that needs to be done
  *
@@ -2944,7 +2981,7 @@ void __weak arch_ftrace_update_code(int command)
 {
 	ftrace_run_stop_machine(command);
 }
-
+/* 更新ftrace的hook代码 */
 static void ftrace_run_update_code(int command)
 {
 	ftrace_arch_code_modify_prepare();
@@ -3023,7 +3060,7 @@ static void ftrace_trampoline_free(struct ftrace_ops *ops)
 
 	arch_ftrace_trampoline_free(ops);
 }
-
+/* 开启ftrace? */
 static void ftrace_startup_enable(int command)
 {
 	if (saved_ftrace_func != ftrace_trace_function) {
@@ -7339,7 +7376,9 @@ void ftrace_reset_array_ops(struct trace_array *tr)
 {
 	tr->ops->func = ftrace_stub;
 }
-/*  */
+
+/* 找到涉及此ip的ops, call 此ops */
+
 static nokprobe_inline void
 __ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 		       struct ftrace_ops *ignored, struct ftrace_regs *fregs)
@@ -7353,9 +7392,12 @@ __ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 	 * which is required since some of the ops may be dynamically
 	 * allocated, they must be freed after a synchronize_rcu().
 	 */
+	 /* 代表一种function tracing recursion的bit位 */
 	bit = trace_test_and_set_recursion(ip, parent_ip, TRACE_LIST_START);
 	if (bit < 0)
 		return;
+
+	/* 遍历这个ftrace_ops_list链表 */
 
 	do_for_each_ftrace_op(op, ftrace_ops_list) {/*  op = *ftrace_ops_list
 	ftrace_ops_list是什么  */
@@ -7384,6 +7426,11 @@ out:
 }
 
 /*
+一些架构只支持传递 ip 和 parent_ip，不支持第三个参数 op。
+虽然某些函数在使用时忽略 op 参数，但为了避免副作用，代码要求在 C 语言中调用时要明确所有参数。
+如果一个架构支持 ftrace_ops，那么它也应该支持 regs（寄存器信息）。
+如果回调函数需要使用寄存器信息，必须检查寄存器是否为 NULL，或者启用 CONFIG_DYNAMIC_FTRACE_WITH_REGS。
+CONFIG_DYNAMIC_FTRACE_WITH_REGS 期望保存完整的寄存器状态，而架构可以通过 ftrace_ops 传递部分寄存器。
  * Some archs only support passing ip and parent_ip. Even though
  * the list function ignores the op parameter, we do not want any
  * C side effects, where a function is called without the caller
@@ -7881,6 +7928,8 @@ void __init ftrace_init_tracefs_toplevel(struct trace_array *tr,
 }
 
 /**
+kill ftrace?怎么算kill了.
+仅仅关闭开关?
  * ftrace_kill - kill ftrace
  *
  * This function should be used by panic code. It stops ftrace
@@ -8097,14 +8146,19 @@ static int symbols_cmp(const void *a, const void *b)
 	return strcmp(*str_a, *str_b);
 }
 
+/* 符号转地址的参数 */
 struct kallsyms_data {
-	unsigned long *addrs;
-	const char **syms;
-	size_t cnt;
+	unsigned long *addrs; /* 找到的地址存在这里 */
+	const char **syms; /* 要找的符号名 */
+	size_t cnt; /* 数量 */
 	size_t found;
 };
 
-/* This function gets called for all kernel and module symbols
+/* 
+@data是sym arg
+@name是解压后的符号名
+@addr是此符号的地址?
+This function gets called for all kernel and module symbols
  * and returns 1 in case we resolved all the requested symbols,
  * 0 otherwise.
  */
@@ -8131,10 +8185,12 @@ static int kallsyms_callback(void *data, const char *name, unsigned long addr)
 }
 
 /**
+在哪里look up?
+查询符号的地址,存储在@addrs
  * ftrace_lookup_symbols - Lookup addresses for array of symbols
  *
  * @sorted_syms: array of symbols pointers symbols to resolve,
- * must be alphabetically sorted
+ * must be alphabetically sorted. cnt个符号名是排好序的.
  * @cnt: number of symbols/addresses in @syms/@addrs arrays
  * @addrs: array for storing resulting addresses
  *
@@ -8160,6 +8216,7 @@ int ftrace_lookup_symbols(const char **sorted_syms, size_t cnt, unsigned long *a
 	found_all = kallsyms_on_each_symbol(kallsyms_callback, &args);
 	if (found_all)
 		return 0;
+
 	found_all = module_kallsyms_on_each_symbol(NULL, kallsyms_callback, &args);
 	return found_all ? 0 : -ESRCH;
 }
@@ -8167,6 +8224,7 @@ int ftrace_lookup_symbols(const char **sorted_syms, size_t cnt, unsigned long *a
 #ifdef CONFIG_SYSCTL
 
 #ifdef CONFIG_DYNAMIC_FTRACE
+/* 开启ftrace机制? */
 static void ftrace_startup_sysctl(void)
 {
 	int command;
@@ -8185,6 +8243,7 @@ static void ftrace_startup_sysctl(void)
 	}
 }
 
+/*  */
 static void ftrace_shutdown_sysctl(void)
 {
 	int command;
@@ -8216,7 +8275,7 @@ static bool is_permanent_ops_registered(void)
 
 	return false;
 }
-
+/*  */
 static int
 ftrace_enable_sysctl(struct ctl_table *table, int write,
 		     void *buffer, size_t *lenp, loff_t *ppos)
@@ -8233,7 +8292,7 @@ ftrace_enable_sysctl(struct ctl_table *table, int write,
 	if (ret || !write || (last_ftrace_enabled == !!ftrace_enabled))
 		goto out;
 
-	if (ftrace_enabled) {
+	if (ftrace_enabled) {/* 重复开启 */
 
 		/* we are starting ftrace again */
 		if (rcu_dereference_protected(ftrace_ops_list,
@@ -8242,7 +8301,7 @@ ftrace_enable_sysctl(struct ctl_table *table, int write,
 
 		ftrace_startup_sysctl();
 
-	} else {
+	} else {/* 关闭的情况 */
 		if (is_permanent_ops_registered()) {
 			ftrace_enabled = true;
 			ret = -EBUSY;
@@ -8260,7 +8319,7 @@ ftrace_enable_sysctl(struct ctl_table *table, int write,
 	mutex_unlock(&ftrace_lock);
 	return ret;
 }
-
+/* ftrace的相关sysctl开关? */
 static struct ctl_table ftrace_sysctls[] = {
 	{
 		.procname       = "ftrace_enabled",
@@ -8271,11 +8330,12 @@ static struct ctl_table ftrace_sysctls[] = {
 	},
 	{}
 };
-
+/* 注册sysctl开关 */
 static int __init ftrace_sysctl_init(void)
 {
 	register_sysctl_init("kernel", ftrace_sysctls);
 	return 0;
 }
+
 late_initcall(ftrace_sysctl_init);
 #endif

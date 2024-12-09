@@ -84,7 +84,9 @@ extern int __read_mostly node_reclaim_distance;
 DECLARE_PER_CPU(int, numa_node);
 
 #ifndef numa_node_id
-/* Returns the number of the current Node. */
+/* Returns the number of the current Node.
+当前cpu的node
+ */
 static inline int numa_node_id(void)
 {
 	return raw_cpu_read(numa_node);
@@ -99,6 +101,7 @@ static inline int cpu_to_node(int cpu)
 #endif
 
 #ifndef set_numa_node
+/* 设置cpu的node */
 static inline void set_numa_node(int node)
 {
 	this_cpu_write(numa_node, node);

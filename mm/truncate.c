@@ -431,6 +431,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 EXPORT_SYMBOL(truncate_inode_pages_range);
 
 /**
+ 
  * truncate_inode_pages - truncate *all* the pages from an offset
  * @mapping: mapping to truncate
  * @lstart: offset from which to truncate
@@ -450,6 +451,7 @@ void truncate_inode_pages(struct address_space *mapping, loff_t lstart)
 EXPORT_SYMBOL(truncate_inode_pages);
 
 /**
+清除inode之前清除页面
  * truncate_inode_pages_final - truncate *all* pages before inode dies
  * @mapping: mapping to truncate
  *
@@ -479,7 +481,7 @@ void truncate_inode_pages_final(struct address_space *mapping)
 		xa_lock_irq(&mapping->i_pages);
 		xa_unlock_irq(&mapping->i_pages);
 	}
-
+	/*  */
 	truncate_inode_pages(mapping, 0);
 }
 EXPORT_SYMBOL(truncate_inode_pages_final);

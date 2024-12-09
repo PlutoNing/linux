@@ -169,6 +169,7 @@ struct ceph_msg_header_old {
 	__le32 crc;       /* header crc32c */
 } __attribute__ ((packed));
 
+/* 代表msg的header的格式 */
 struct ceph_msg_header {
 	__le64 seq;       /* message seq# for this session */
 	__le64 tid;       /* transaction id */
@@ -182,7 +183,7 @@ struct ceph_msg_header {
 	__le16 data_off;  /* sender: include full offset;
 			     receiver: mask against ~PAGE_MASK */
 
-	struct ceph_entity_name src;
+	struct ceph_entity_name src; /* 指向msgr的name */
 	__le16 compat_version;
 	__le16 reserved;
 	__le32 crc;       /* header crc32c */

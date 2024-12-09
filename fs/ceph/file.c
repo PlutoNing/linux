@@ -195,10 +195,12 @@ out:
 	return req;
 }
 
+/* ceph初始化dir */
 static int ceph_init_file_info(struct inode *inode, struct file *file,
 					int fmode, bool isdir)
 {
 	struct ceph_inode_info *ci = ceph_inode(inode);
+	/* 获取的谁的opt? */
 	struct ceph_mount_options *opt =
 		ceph_inode_to_client(&ci->netfs.inode)->mount_options;
 	struct ceph_file_info *fi;
@@ -208,7 +210,7 @@ static int ceph_init_file_info(struct inode *inode, struct file *file,
 			inode->i_mode, isdir ? "dir" : "regular");
 	BUG_ON(inode->i_fop->release != ceph_release);
 
-	if (isdir) {
+	if (isdir) {/* 如果是文件夹 */
 		struct ceph_dir_file_info *dfi =
 			kmem_cache_zalloc(ceph_dir_file_cachep, GFP_KERNEL);
 		if (!dfi)
@@ -218,7 +220,7 @@ static int ceph_init_file_info(struct inode *inode, struct file *file,
 		fi = &dfi->file_info;
 		dfi->next_offset = 2;
 		dfi->readdir_cache_idx = -1;
-	} else {
+	} else {/* 如果不是文件夹 */
 		fi = kmem_cache_zalloc(ceph_file_cachep, GFP_KERNEL);
 		if (!fi)
 			return -ENOMEM;
@@ -254,6 +256,7 @@ error:
 }
 
 /*
+初始化file的priv
  * initialize private struct file data.
  * if we fail, clean up by dropping fmode reference on the ceph_inode
  */
@@ -262,7 +265,7 @@ static int ceph_init_file(struct inode *inode, struct file *file, int fmode)
 	int ret = 0;
 
 	switch (inode->i_mode & S_IFMT) {
-	case S_IFREG:
+	case S_IFREG: /* 常规文件 */
 		ceph_fscache_use_cookie(inode, file->f_mode & FMODE_WRITE);
 		fallthrough;
 	case S_IFDIR:
@@ -535,6 +538,7 @@ static void restore_deleg_ino(struct inode *dir, u64 ino)
 	}
 }
 
+/* create waiters是什么 */
 static void wake_async_create_waiters(struct inode *inode,
 				      struct ceph_mds_session *session)
 {
@@ -543,6 +547,7 @@ static void wake_async_create_waiters(struct inode *inode,
 
 	spin_lock(&ci->i_ceph_lock);
 	if (ci->i_ceph_flags & CEPH_I_ASYNC_CREATE) {
+		/* 自己清除,唤醒别的? */
 		ci->i_ceph_flags &= ~CEPH_I_ASYNC_CREATE;
 		wake_up_bit(&ci->i_ceph_flags, CEPH_ASYNC_CREATE_BIT);
 
@@ -553,6 +558,7 @@ static void wake_async_create_waiters(struct inode *inode,
 	}
 	ceph_kick_flushing_inode_caps(session, ci);
 	spin_unlock(&ci->i_ceph_lock);
+
 
 	if (check_cap)
 		ceph_check_caps(ci, CHECK_CAPS_FLUSH);
@@ -2000,6 +2006,7 @@ ceph_sync_write(struct kiocb *iocb, struct iov_iter *from, loff_t pos,
 }
 
 /*
+cephfs的read函数?
  * Wrap generic_file_aio_read with checks for cap bits on the inode.
  * Atomically grab references, so that those bits are not released
  * back to the MDS mid-read.
@@ -2025,18 +2032,20 @@ again:
 	if (ceph_inode_is_shutdown(inode))
 		return -ESTALE;
 
-	if (direct_lock)
+	if (direct_lock) /* 直接IO? */
 		ceph_start_io_direct(inode);
 	else
 		ceph_start_io_read(inode);
 
 	if (!(fi->flags & CEPH_F_SYNC) && !direct_lock)
-		want |= CEPH_CAP_FILE_CACHE;
+		want |= CEPH_CAP_FILE_CACHE; /* 如果不sync也不是直接IO */
+
 	if (fi->fmode & CEPH_FILE_MODE_LAZY)
 		want |= CEPH_CAP_FILE_LAZYIO;
 
 	ret = ceph_get_caps(filp, CEPH_CAP_FILE_RD, want, -1, &got);
-	if (ret < 0) {
+	
+	if (ret < 0) {/* 失败的情况? */
 		if (direct_lock)
 			ceph_end_io_direct(inode);
 		else
@@ -2410,6 +2419,7 @@ out_unlocked:
 }
 
 /*
+ceph fs的seek函数.
  * llseek.  be sure to verify file size on SEEK_END.
  */
 static loff_t ceph_llseek(struct file *file, loff_t offset, int whence)

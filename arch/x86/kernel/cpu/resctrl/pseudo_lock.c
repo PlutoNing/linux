@@ -1272,6 +1272,7 @@ static ssize_t pseudo_lock_measure_trigger(struct file *file,
 	return ret;
 }
 
+/* resctrl机制的debugfs的文件的cb */
 static const struct file_operations pseudo_measure_fops = {
 	.write = pseudo_lock_measure_trigger,
 	.open = simple_open,
@@ -1358,10 +1359,11 @@ int rdtgroup_pseudo_lock_create(struct rdtgroup *rdtgrp)
 	 */
 	mutex_unlock(&rdtgroup_mutex);
 
-	if (!IS_ERR_OR_NULL(debugfs_resctrl)) {
+	if (!IS_ERR_OR_NULL(debugfs_resctrl)) {/* 与debugfs的交互 */
 		plr->debugfs_dir = debugfs_create_dir(rdtgrp->kn->name,
 						      debugfs_resctrl);
-		if (!IS_ERR_OR_NULL(plr->debugfs_dir))
+
+		if (!IS_ERR_OR_NULL(plr->debugfs_dir))/* 创建debugfs的文件 */
 			debugfs_create_file("pseudo_lock_measure", 0200,
 					    plr->debugfs_dir, rdtgrp,
 					    &pseudo_measure_fops);

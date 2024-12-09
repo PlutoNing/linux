@@ -6,6 +6,7 @@
 #include <linux/wait.h>
 #include <linux/refcount.h>
 
+/* pid的不同类型 */
 enum pid_type
 {
 	PIDTYPE_PID,

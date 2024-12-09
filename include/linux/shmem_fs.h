@@ -66,7 +66,9 @@ struct shmem_sb_info {
 	ino_t __percpu *ino_batch;  /* The next per-cpu inode number to use */
 	struct mempolicy *mpol;     /* default memory policy for mappings */
 	spinlock_t shrinklist_lock;   /* Protects shrinklist */
-	struct list_head shrinklist;  /* List of shinkable inodes */
+	struct list_head shrinklist;  /* List of shinkable inodes
+	这里挂接着fs内可以回收空间的inode
+	 */
 	unsigned long shrinklist_len; /* Length of shrinklist */
 	struct shmem_quota_limits qlimits; /* Default quota limits */
 };

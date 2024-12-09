@@ -326,6 +326,7 @@ static inline bool pte_marker_entry_uffd_wp(swp_entry_t entry)
 #endif
 }
 
+//
 static inline bool pte_marker_uffd_wp(pte_t pte)
 {
 #ifdef CONFIG_PTE_MARKER_UFFD_WP

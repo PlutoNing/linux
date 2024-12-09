@@ -167,6 +167,7 @@ static inline bool mmap_read_trylock(struct mm_struct *mm)
 	return ret;
 }
 
+//释放mmap_lock
 static inline void mmap_read_unlock(struct mm_struct *mm)
 {
 	__mmap_lock_trace_released(mm, false);

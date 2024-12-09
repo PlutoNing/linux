@@ -51,7 +51,7 @@ static inline bool wb_has_dirty_io(struct bdi_writeback *wb)
 {
 	return test_bit(WB_has_dirty_io, &wb->state);
 }
-
+/* 为什么wr bw可以反应dirty io ... */
 static inline bool bdi_has_dirty_io(struct backing_dev_info *bdi)
 {
 	/*
@@ -61,6 +61,7 @@ static inline bool bdi_has_dirty_io(struct backing_dev_info *bdi)
 	return atomic_long_read(&bdi->tot_write_bandwidth);
 }
 
+//
 static inline void wb_stat_mod(struct bdi_writeback *wb,
 				 enum wb_stat_item item, s64 amount)
 {
@@ -116,10 +117,13 @@ int bdi_set_strict_limit(struct backing_dev_info *bdi, unsigned int strict_limit
 
 /*
  * Flags in backing_dev_info::capability
+	表示bdi的能力
  *
  * BDI_CAP_WRITEBACK:		Supports dirty page writeback, and dirty pages
  *				should contribute to accounting
+	表示支持脏页写回，并且脏页支持配额?
  * BDI_CAP_WRITEBACK_ACCT:	Automatically account writeback pages
+	自动配额写回页?
  * BDI_CAP_STRICTLIMIT:		Keep number of dirty pages below bdi threshold
  */
 #define BDI_CAP_WRITEBACK		(1 << 0)
@@ -132,6 +136,7 @@ int bdi_init(struct backing_dev_info *bdi);
 
 /**
  * writeback_in_progress - determine whether there is writeback in progress
+   检测此bdi_writeback是否有writeback在进行
  * @wb: bdi_writeback of interest
  *
  * Determine whether there is writeback waiting to be handled against a
@@ -144,6 +149,7 @@ static inline bool writeback_in_progress(struct bdi_writeback *wb)
 
 struct backing_dev_info *inode_to_bdi(struct inode *inode);
 
+//什么类型的mapping可以写回?
 static inline bool mapping_can_writeback(struct address_space *mapping)
 {
 	return inode_to_bdi(mapping->host)->capabilities & BDI_CAP_WRITEBACK;
@@ -161,18 +167,21 @@ void wb_blkcg_offline(struct cgroup_subsys_state *css);
 
 /**
  * inode_cgwb_enabled - test whether cgroup writeback is enabled on an inode
+	查看inode是否启用了cgroup writeback
  * @inode: inode of interest
  *
  * Cgroup writeback requires support from the filesystem.  Also, both memcg and
  * iocg have to be on the default hierarchy.  Test whether all conditions are
  * met.
- *
+ *	cgroup写回需要文件系统的支持。此外，memcg和iocg都必须在默认层次结构上。
+	 *	测试是否满足所有条件。
  * Note that the test result may change dynamically on the same inode
  * depending on how memcg and iocg are configured.
+ 注意，测试结果可能会在相同的inode上动态更改，具体取决于memcg和iocg的配置。
  */
 static inline bool inode_cgwb_enabled(struct inode *inode)
 {
-	struct backing_dev_info *bdi = inode_to_bdi(inode);
+	struct backing_dev_info *bdi = inode_to_bdi(inode); //找到负责此inode的bdi
 
 	return cgroup_subsys_on_dfl(memory_cgrp_subsys) &&
 		cgroup_subsys_on_dfl(io_cgrp_subsys) &&
@@ -182,11 +191,15 @@ static inline bool inode_cgwb_enabled(struct inode *inode)
 
 /**
  * wb_find_current - find wb for %current on a bdi
+   在bdi上面找到current的wb
  * @bdi: bdi of interest
  *
  * Find the wb of @bdi which matches both the memcg and blkcg of %current.
  * Must be called under rcu_read_lock() which protects the returend wb.
  * NULL if not found.
+   找到与current的memcg和blkcg匹配的bdi的wb。 必须在保护返回的wb的rcu_read_lock()下调用。 
+   如果找不到，则为NULL。
+
  */
 static inline struct bdi_writeback *wb_find_current(struct backing_dev_info *bdi)
 {
@@ -210,6 +223,7 @@ static inline struct bdi_writeback *wb_find_current(struct backing_dev_info *bdi
 
 /**
  * wb_get_create_current - get or create wb for %current on a bdi
+   
  * @bdi: bdi of interest
  * @gfp: allocation mask
  *
@@ -239,12 +253,14 @@ wb_get_create_current(struct backing_dev_info *bdi, gfp_t gfp)
 }
 
 /**
+找到inode的wb
  * inode_to_wb - determine the wb of an inode
  * @inode: inode of interest
  *
  * Returns the wb @inode is currently associated with.  The caller must be
  * holding either @inode->i_lock, the i_pages lock, or the
  * associated wb's list_lock.
+   返回inode当前关联的wb。 调用者必须持有inode->i_lock，i_pages锁或关联的wb的list_lock之一。
  */
 static inline struct bdi_writeback *inode_to_wb(const struct inode *inode)
 {
@@ -257,6 +273,7 @@ static inline struct bdi_writeback *inode_to_wb(const struct inode *inode)
 	return inode->i_wb;
 }
 
+/* 找到负责此inode的wb */
 static inline struct bdi_writeback *inode_to_wb_wbc(
 				struct inode *inode,
 				struct writeback_control *wbc)
@@ -264,11 +281,14 @@ static inline struct bdi_writeback *inode_to_wb_wbc(
 	/*
 	 * If wbc does not have inode attached, it means cgroup writeback was
 	 * disabled when wbc started. Just use the default wb in that case.
+	 如果wbc没有附加inode，这意味着在wbc启动时禁用了cgroup writeback。
+	 在这种情况下，只需使用默认wb,也就是bdi的wb
 	 */
 	return wbc->wb ? wbc->wb : &inode_to_bdi(inode)->wb;
 }
 
 /**
+感觉其实就是找到inode的wb
  * unlocked_inode_to_wb_begin - begin unlocked inode wb access transaction
  * @inode: target inode
  * @cookie: output param, to be passed to the end function

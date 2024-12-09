@@ -28,7 +28,9 @@ enum psi_task_count {
 	NR_PSI_TASK_COUNTS = 4,
 };
 
-/* Task state bitmasks */
+/* 
+进程的状态
+Task state bitmasks */
 #define TSK_IOWAIT	(1 << NR_IOWAIT)
 #define TSK_MEMSTALL	(1 << NR_MEMSTALL)
 #define TSK_RUNNING	(1 << NR_RUNNING)
@@ -81,6 +83,7 @@ enum psi_aggregators {
 	NR_PSI_AGGREGATORS,
 };
 
+/* 这个是psi group的pcp的存储 */
 struct psi_group_cpu {
 	/* 1st cacheline updated by the scheduler */
 
@@ -159,6 +162,7 @@ struct psi_trigger {
 	enum psi_aggregators aggregator;
 };
 
+/* psi的group */
 struct psi_group {
 	struct psi_group *parent;
 	bool enabled;
@@ -166,7 +170,8 @@ struct psi_group {
 	/* Protects data used by the aggregator */
 	struct mutex avgs_lock;
 
-	/* Per-cpu task state & time tracking */
+	/* Per-cpu task state & time tracking
+	这个是psi group的pcp的存储 */
 	struct psi_group_cpu __percpu *pcpu;
 
 	/* Running pressure averages */

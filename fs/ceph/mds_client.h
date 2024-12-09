@@ -259,7 +259,7 @@ typedef int (*ceph_mds_request_wait_callback_t) (struct ceph_mds_client *mdsc,
  */
 struct ceph_mds_request {
 	u64 r_tid;                   /* transaction id */
-	struct rb_node r_node;
+	struct rb_node r_node; /* 挂接到mdsc->request_tree */
 	struct ceph_mds_client *r_mdsc;
 
 	struct kref       r_kref;
@@ -341,7 +341,7 @@ struct ceph_mds_request {
 	/* unsafe requests that modify the target inode */
 	struct list_head r_unsafe_target_item;
 
-	struct ceph_mds_session *r_session;
+	struct ceph_mds_session *r_session; /* req的session, 但是session是什么? */
 
 	int               r_attempts;   /* resend attempts */
 	int               r_num_fwd;    /* number of forward attempts */
@@ -498,7 +498,7 @@ struct ceph_mds_client {
 	spinlock_t	  dentry_list_lock;
 	struct list_head  dentry_leases;     /* fifo list */
 	struct list_head  dentry_dir_leases; /* lru list */
-
+	/*  */
 	struct ceph_client_metric metric;
 
 	spinlock_t		snapid_map_lock;
@@ -605,6 +605,7 @@ extern int ceph_trim_caps(struct ceph_mds_client *mdsc,
 			  struct ceph_mds_session *session,
 			  int max_caps);
 
+/* 这里是异步wait什么 */
 static inline int ceph_wait_on_async_create(struct inode *inode)
 {
 	struct ceph_inode_info *ci = ceph_inode(inode);

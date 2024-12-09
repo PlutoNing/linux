@@ -336,6 +336,7 @@ struct dentry *debugfs_lookup(const char *name, struct dentry *parent)
 }
 EXPORT_SYMBOL_GPL(debugfs_lookup);
 
+/*  */
 static struct dentry *start_creating(const char *name, struct dentry *parent)
 {
 	struct dentry *dentry;
@@ -563,6 +564,7 @@ void debugfs_create_file_size(const char *name, umode_t mode,
 EXPORT_SYMBOL_GPL(debugfs_create_file_size);
 
 /**
+在debugfs创建一个dir
  * debugfs_create_dir - create a directory in the debugfs filesystem
  * @name: a pointer to a string containing the name of the directory to
  *        create.
@@ -745,6 +747,7 @@ static void remove_one(struct dentry *victim)
 }
 
 /**
+删除debugfs的文件夹
  * debugfs_remove - recursively removes a directory
  * @dentry: a pointer to a the dentry of the directory to be removed.  If this
  *          parameter is NULL or an error value, nothing will be done.
@@ -752,7 +755,7 @@ static void remove_one(struct dentry *victim)
  * This function recursively removes a directory tree in debugfs that
  * was previously created with a call to another debugfs function
  * (like debugfs_create_file() or variants thereof.)
- *
+ * 
  * This function is required to be called in order for the file to be
  * removed, no automatic cleanup of files will happen when a module is
  * removed, you are responsible here.

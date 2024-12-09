@@ -17,6 +17,7 @@
 #include <linux/uaccess.h>
 
 /*
+保护代码段的锁, 动态patch
  * mutex protecting text section modification (dynamic code patching).
  * some users need to sleep (allocating memory...) while they hold this lock.
  *

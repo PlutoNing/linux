@@ -64,7 +64,28 @@ static inline void insn_set_byte(struct insn_field *p, unsigned char n,
 	p->value = __le32_to_cpu(p->little);
 }
 #endif
+/* 
+在 Linux 内核中，struct insn 主要用于表示和分析机器指令，尤其是在处理 x86 架构时。
+这个结构体包含了与指令相关的各种信息和字段，旨在支持指令的解码、模拟和执行。
+以下是这个结构体各个字段的作用：
+prefixes: 用于存储指令前缀信息，例如操作码前缀，这对指令的行为有重要影响。
+rex_prefix: 用于存储 REX 前缀信息，REX 前缀在 x86-64 中用于扩展寄存器和操作数的大小。
+vex_prefix: 存储 VEX 前缀信息，用于表示 AVX 指令集中的扩展。
+opcode: 存储指令的操作码，通常包含多个字节，表示不同的操作。
+modrm: 存储 ModRM 字节，该字节用于指示操作数的寻址模式、寄存器等信息。
+sib: 存储 SIB（Scale Index Base）字节，用于复杂寻址模式。
+displacement: 存储位移值，通常用于指针或地址的计算。
+immediate 和 moffset: 存储立即数和内存偏移量的信息，适用于不同的指令和操作。
+emulate_prefix_size: 用于表示指令前缀的大小，以便在模拟或执行指令时使用。
+attr: 用于存储指令的属性，可能包括指令类型、权限等信息。
+opnd_bytes 和 addr_bytes: 用于表示操作数和地址的字节大小，帮助确定指令的处理方式。
+length: 表示指令的长度，有助于解析和跟踪指令流。
+x86_64: 表示该指令是否为 x86-64 架构相关的指令。
 
+next_byte: 指向下一个要处理的字节，通常用于指令解码过程中。
+总体而言，struct insn 使得内核能够有效地解码和模拟 x86/x86-64 指令，
+对于实现调试、动态分析和虚拟化等功能非常重要。
+ */
 struct insn {
 	struct insn_field prefixes;	/*
 					 * Prefixes
@@ -89,7 +110,7 @@ struct insn {
 		struct insn_field moffset2;	/* for 64bit MOV */
 		struct insn_field immediate2;	/* for 64bit imm or seg16 */
 	};
-
+	/* 虚拟机逃逸指令的长度 */
 	int	emulate_prefix_size;
 	insn_attr_t attr;
 	unsigned char opnd_bytes;
@@ -97,9 +118,16 @@ struct insn {
 	unsigned char length;
 	unsigned char x86_64;
 
-	const insn_byte_t *kaddr;	/* kernel address of insn to analyze */
+	const insn_byte_t *kaddr;	/* 
+	好像是poke insn的text地址
+	kernel address of insn to analyze */
 	const insn_byte_t *end_kaddr;	/* kernel address of last insn in buffer */
 	const insn_byte_t *next_byte;
+	/* 	
+	初始化的一种方式
+	insn->kaddr = kaddr;
+	insn->end_kaddr = kaddr + buf_len;
+	insn->next_byte = kaddr; */
 };
 /*  */
 #define MAX_INSN_SIZE	15
@@ -139,7 +167,7 @@ extern int insn_get_sib(struct insn *insn);
 extern int insn_get_displacement(struct insn *insn);
 extern int insn_get_immediate(struct insn *insn);
 extern int insn_get_length(struct insn *insn);
-
+/* poke代码的mode? */
 enum insn_mode {
 	INSN_MODE_32,
 	INSN_MODE_64,
@@ -149,7 +177,10 @@ enum insn_mode {
 };
 
 extern int insn_decode(struct insn *insn, const void *kaddr, int buf_len, enum insn_mode m);
+/* 
+ftrace的时候, insn是新结构体, ptr是opcode(另外一个静态insn的text)
 
+ */
 #define insn_decode_kernel(_insn, _ptr) insn_decode((_insn), (_ptr), MAX_INSN_SIZE, INSN_MODE_KERN)
 
 /* Attribute will be determined after getting ModRM (for opcode groups) */
@@ -160,11 +191,14 @@ static inline void insn_get_attribute(struct insn *insn)
 
 /* Instruction uses RIP-relative addressing */
 extern int insn_rip_relative(struct insn *insn);
-
+/* avx相关 ... 
+看看这个insn是不是avx指令?本质上就是看有没有avx prefix?
+*/
 static inline int insn_is_avx(struct insn *insn)
 {
 	if (!insn->prefixes.got)
 		insn_get_prefixes(insn);
+
 	return (insn->vex_prefix.value != 0);
 }
 

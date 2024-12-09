@@ -79,6 +79,7 @@ static inline unsigned long xa_to_value(const void *entry)
  *
  * Context: Any context.
  * Return: True if the entry is a value, false if it is a pointer.
+ 好像是value的话, 就不是想要的东西
  */
 static inline bool xa_is_value(const void *entry)
 {
@@ -369,6 +370,7 @@ unsigned int xa_extract(struct xarray *, void **dst, unsigned long start,
 void xa_destroy(struct xarray *);
 
 /**
+初始化xarray
  * xa_init_flags() - Initialise an empty XArray with flags.
  * @xa: XArray.
  * @flags: XA_FLAG values.
@@ -413,6 +415,7 @@ static inline bool xa_empty(const struct xarray *xa)
 
 /**
  * xa_marked() - Inquire whether any entry in this array has a mark set
+	作用是判断是否有任何entry有这个mark
  * @xa: Array
  * @mark: Mark value
  *
@@ -1145,6 +1148,8 @@ static inline void xa_release(struct xarray *xa, unsigned long index)
  * doubled the number of slots per node, we'd get only 3 nodes per 4kB page.
  */
 #ifndef XA_CHUNK_SHIFT
+/* 定义 XA_CHUNK_SHIFT，用于确定每个块的大小（以二进制位为单位）。如果 CONFIG_BASE_SMALL 被定义，
+块大小为 16（2^4），否则为 64（2^6）。 */
 #define XA_CHUNK_SHIFT		(CONFIG_BASE_SMALL ? 4 : 6)
 #endif
 #define XA_CHUNK_SIZE		(1UL << XA_CHUNK_SHIFT)
@@ -1160,17 +1165,38 @@ static inline void xa_release(struct xarray *xa, unsigned long index)
  * either a value entry or a sibling of a value entry.
  */
 struct xa_node {
-	unsigned char	shift;		/* Bits remaining in each slot */
-	unsigned char	offset;		/* Slot offset in parent */
-	unsigned char	count;		/* Total entry count */
-	unsigned char	nr_values;	/* Value entry count */
-	struct xa_node __rcu *parent;	/* NULL at top of tree */
-	struct xarray	*array;		/* The array we belong to */
+	unsigned char	shift;		/* 
+	表示每个槽中剩余的位数。这个值用于计算槽的索引，帮助定位树中的节点?
+	Bits remaining in each slot */
+	unsigned char	offset;		/* 
+	表示在父节点中的槽偏移量。它指示当前节点在父节点 slots 数组中的位置?
+	Slot offset in parent */
+	unsigned char	count;		/* Total entry count
+	表示当前节点中所有非 NULL 元素的总数。这包括值条目、重试条目、
+	用户指针、兄弟条目和指向下一级树的指针
+	 */
+	unsigned char	nr_values;	/* Value entry count
+	表示当前节点中值条目（value entry）和它们的兄弟条目的数量。
+	这有助于在遍历树时快速了解节点的使用情况。
+	 */
+	struct xa_node __rcu *parent;	/* 
+	指向父节点的指针。如果当前节点是树的顶端节点（根节点），则此指针为 NULL。
+	NULL at top of tree
+	 */
+	struct xarray	*array;		/* 
+	指向与当前节点相关联的 xarray 结构的指针，表示这个节点属于哪个数组。
+	The array we belong to
+	 */
 	union {
-		struct list_head private_list;	/* For tree user */
-		struct rcu_head	rcu_head;	/* Used when freeing node */
+		struct list_head private_list;	/* For tree user
+		
+		 */
+		struct rcu_head	rcu_head;	/* Used when freeing node
+		
+		 */
 	};
-	void __rcu	*slots[XA_CHUNK_SIZE];
+	void __rcu	*slots[XA_CHUNK_SIZE];/* 这是一个指针数组，用于存储指向实际数据、
+	子节点或其他类型条目的指针。 */
 	union {
 		unsigned long	tags[XA_MAX_MARKS][XA_MARK_LONGS];
 		unsigned long	marks[XA_MAX_MARKS][XA_MARK_LONGS];
@@ -1354,8 +1380,8 @@ struct xa_state {
 	unsigned char xa_pad;		/* Helps gcc generate better code */
 	struct xa_node *xa_node;
 	struct xa_node *xa_alloc;
-	xa_update_node_t xa_update;
-	struct list_lru *xa_lru;
+	xa_update_node_t xa_update; /* 更新的回调函数 */
+	struct list_lru *xa_lru;  /* 相关的lru, 可能是shadow_nodes */
 };
 
 /*
@@ -1660,6 +1686,7 @@ static inline void xas_set_order(struct xa_state *xas, unsigned long index,
 }
 
 /**
+ 设置更新的回调?
  * xas_set_update() - Set up XArray operation state for a callback.
  * @xas: XArray operation state.
  * @update: Function to call when updating a node.
@@ -1672,7 +1699,7 @@ static inline void xas_set_update(struct xa_state *xas, xa_update_node_t update)
 {
 	xas->xa_update = update;
 }
-
+/*  */
 static inline void xas_set_lru(struct xa_state *xas, struct list_lru *lru)
 {
 	xas->xa_lru = lru;
@@ -1777,6 +1804,7 @@ enum {
 };
 
 /**
+ 遍历当前到max的范围
  * xas_for_each() - Iterate over a range of an XArray.
  * @xas: XArray operation state.
  * @entry: Entry retrieved from the array.

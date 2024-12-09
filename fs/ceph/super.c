@@ -116,11 +116,12 @@ static int ceph_statfs(struct dentry *dentry, struct kstatfs *buf)
 	return 0;
 }
 
+/*  */
 static int ceph_sync_fs(struct super_block *sb, int wait)
 {
 	struct ceph_fs_client *fsc = ceph_sb_to_client(sb);
 
-	if (!wait) {
+	if (!wait) {/* 异步的sync */
 		dout("sync_fs (non-blocking)\n");
 		ceph_flush_dirty_caps(fsc->mdsc);
 		dout("sync_fs (non-blocking) done\n");
@@ -128,7 +129,9 @@ static int ceph_sync_fs(struct super_block *sb, int wait)
 	}
 
 	dout("sync_fs (blocking)\n");
+	/* 同步刷新osdc */
 	ceph_osdc_sync(&fsc->client->osdc);
+	/* 同步刷新mds */
 	ceph_mdsc_sync(fsc->mdsc);
 	dout("sync_fs (blocking) done\n");
 	return 0;
@@ -905,9 +908,11 @@ static void destroy_fs_client(struct ceph_fs_client *fsc)
 struct kmem_cache *ceph_inode_cachep;
 struct kmem_cache *ceph_cap_cachep;
 struct kmem_cache *ceph_cap_snap_cachep;
+/* 分配cf的slab */
 struct kmem_cache *ceph_cap_flush_cachep;
 struct kmem_cache *ceph_dentry_cachep;
 struct kmem_cache *ceph_file_cachep;
+/* ceph dir的slab cache */
 struct kmem_cache *ceph_dir_file_cachep;
 struct kmem_cache *ceph_mds_request_cachep;
 mempool_t *ceph_wb_pagevec_pool;
@@ -1024,12 +1029,14 @@ void ceph_umount_begin(struct super_block *sb)
 	__ceph_umount_begin(fsc);
 }
 
+/* ceph sb的ops */
 static const struct super_operations ceph_super_ops = {
 	.alloc_inode	= ceph_alloc_inode,
 	.free_inode	= ceph_free_inode,
 	.write_inode    = ceph_write_inode,
 	.drop_inode	= generic_delete_inode,
 	.evict_inode	= ceph_evict_inode,
+	/* sync fs */
 	.sync_fs        = ceph_sync_fs,
 	.put_super	= ceph_put_super,
 	.show_options   = ceph_show_options,
@@ -1412,6 +1419,7 @@ static const struct fs_context_operations ceph_context_ops = {
 };
 
 /*
+初始化挂载
  * Set up the filesystem mount context.
  */
 static int ceph_init_fs_context(struct fs_context *fc)
@@ -1566,7 +1574,7 @@ static void ceph_kill_sb(struct super_block *s)
 
 	destroy_fs_client(fsc);
 }
-
+/*  */
 static struct file_system_type ceph_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "ceph",

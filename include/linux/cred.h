@@ -307,6 +307,7 @@ static inline void put_cred(const struct cred *_cred)
 	rcu_dereference_protected(current->real_cred, 1)
 
 /**
+
  * __task_cred - Access a task's objective credentials
  * @task: The task to query
  *
@@ -359,6 +360,7 @@ static inline void put_cred(const struct cred *_cred)
 	__groups;					\
 })
 
+/* 获取task的xxx字段 */
 #define task_cred_xxx(task, xxx)			\
 ({							\
 	__typeof__(((struct cred *)NULL)->xxx) ___val;	\

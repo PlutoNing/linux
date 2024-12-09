@@ -5,13 +5,14 @@
 #include <linux/fs.h>
 #include <linux/pagemap.h>
 #include <linux/minix_fs.h>
-
+/*  */
 #define INODE_VERSION(inode)	minix_sb(inode->i_sb)->s_version
 #define MINIX_V1		0x0001		/* original minix fs */
 #define MINIX_V2		0x0002		/* minix V2 fs */
 #define MINIX_V3		0x0003		/* minix V3 fs */
 
 /*
+minix的inode info
  * minix fs inode data in memory
  */
 struct minix_inode_info {
@@ -23,7 +24,11 @@ struct minix_inode_info {
 };
 
 /*
-minix的sb
+
+
+
+minix的sb定义
+
  * minix super-block data in memory
  */
 struct minix_sb_info {
@@ -81,17 +86,17 @@ extern const struct inode_operations minix_file_inode_operations;
 extern const struct inode_operations minix_dir_inode_operations;
 extern const struct file_operations minix_file_operations;
 extern const struct file_operations minix_dir_operations;
-
+/* 从sb获取minix的sb */
 static inline struct minix_sb_info *minix_sb(struct super_block *sb)
 {
 	return sb->s_fs_info;
 }
-
+/* 从inode获取minix的inode */
 static inline struct minix_inode_info *minix_i(struct inode *inode)
 {
 	return container_of(inode, struct minix_inode_info, vfs_inode);
 }
-
+/*  */
 static inline unsigned minix_blocks_needed(unsigned bits, unsigned blocksize)
 {
 	return DIV_ROUND_UP(bits, blocksize * 8);

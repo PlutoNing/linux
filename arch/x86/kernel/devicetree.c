@@ -237,6 +237,7 @@ static void __init dtb_add_ioapic(struct device_node *dn)
 {
 	struct resource r;
 	int ret;
+	/* 设置一个apic的cfg? */
 	struct ioapic_domain_cfg cfg = {
 		.type = IOAPIC_DOMAIN_DYNAMIC,
 		.ops = &ioapic_irq_domain_ops,

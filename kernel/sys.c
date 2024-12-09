@@ -1887,6 +1887,7 @@ SYSCALL_DEFINE1(umask, int, mask)
 	return mask;
 }
 
+/* 设置进程的exe file */
 static int prctl_set_mm_exe_file(struct mm_struct *mm, unsigned int fd)
 {
 	struct fd exe;
@@ -1911,7 +1912,7 @@ static int prctl_set_mm_exe_file(struct mm_struct *mm, unsigned int fd)
 	err = file_permission(exe.file, MAY_EXEC);
 	if (err)
 		goto exit;
-
+	/* 这里设置新的exe file */
 	err = replace_mm_exe_file(mm, exe.file);
 exit:
 	fdput(exe);
@@ -1986,6 +1987,8 @@ out:
 }
 
 #ifdef CONFIG_CHECKPOINT_RESTORE
+/* 用于启用进程的检查点和恢复（Checkpoint/Restore）功能。这一功能允许将一个或多个进程的状态
+保存到磁盘（即“检查点”） */
 static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data_size)
 {
 	struct prctl_mm_map prctl_map = { .exe_fd = (u32)-1, };
@@ -2002,15 +2005,15 @@ static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data
 
 	if (data_size != sizeof(prctl_map))
 		return -EINVAL;
-
+	/* 把用户空间保存的mm_map映像信息拷贝到内核 */
 	if (copy_from_user(&prctl_map, addr, sizeof(prctl_map)))
 		return -EFAULT;
-
+	/* 校验一下 */
 	error = validate_prctl_map_addr(&prctl_map);
 	if (error)
 		return error;
-
-	if (prctl_map.auxv_size) {
+	/* 拷贝auxv */
+	if (prctl_map.auxv_size) {/* 说明存在auxv */
 		/*
 		 * Someone is trying to cheat the auxv vector.
 		 */
@@ -2019,6 +2022,7 @@ static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data
 			return -EINVAL;
 
 		memset(user_auxv, 0, sizeof(user_auxv));
+		/* 把用户空间的拷贝过来 */
 		if (copy_from_user(user_auxv,
 				   (const void __user *)prctl_map.auxv,
 				   prctl_map.auxv_size))
@@ -2040,7 +2044,7 @@ static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data
 		 */
 		if (!checkpoint_restore_ns_capable(current_user_ns()))
 			return -EPERM;
-
+		/* 这里设置exe file */
 		error = prctl_set_mm_exe_file(mm, prctl_map.exe_fd);
 		if (error)
 			return error;
@@ -2065,6 +2069,7 @@ static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data
 	 */
 
 	spin_lock(&mm->arg_lock);
+	/* 设置mm的各种属性 */
 	mm->start_code	= prctl_map.start_code;
 	mm->end_code	= prctl_map.end_code;
 	mm->start_data	= prctl_map.start_data;
@@ -2094,6 +2099,8 @@ static int prctl_set_mm_map(int opt, const void __user *addr, unsigned long data
 }
 #endif /* CONFIG_CHECKPOINT_RESTORE */
 
+/* 谁会set进程的auxv.
+也是直接从userspace拷贝内存来设置 */
 static int prctl_set_auxv(struct mm_struct *mm, unsigned long addr,
 			  unsigned long len)
 {
@@ -2124,6 +2131,7 @@ static int prctl_set_auxv(struct mm_struct *mm, unsigned long addr,
 	return 0;
 }
 
+/* 为什么syscall可以设置进程的mm */
 static int prctl_set_mm(int opt, unsigned long addr,
 			unsigned long arg4, unsigned long arg5)
 {
@@ -2142,6 +2150,7 @@ static int prctl_set_mm(int opt, unsigned long addr,
 		return -EINVAL;
 
 #ifdef CONFIG_CHECKPOINT_RESTORE
+/* 进程的保存和回复 */
 	if (opt == PR_SET_MM_MAP || opt == PR_SET_MM_MAP_SIZE)
 		return prctl_set_mm_map(opt, (const void __user *)addr, arg4);
 #endif
@@ -2395,6 +2404,8 @@ static inline int prctl_get_mdwe(unsigned long arg2, unsigned long arg3,
 		PR_MDWE_REFUSE_EXEC_GAIN : 0;
 }
 
+/* 如何get auxv?
+直接拷贝bit */
 static int prctl_get_auxv(void __user *addr, unsigned long len)
 {
 	struct mm_struct *mm = current->mm;
@@ -2405,6 +2416,8 @@ static int prctl_get_auxv(void __user *addr, unsigned long len)
 	return sizeof(mm->saved_auxv);
 }
 
+/* Linux 内核中的 prctl 系统调用的定义。该系统调用允许进程对其执行环境进行特定的
+控制或配置。prctl 支持多种操作，通过传入不同的 option 参数来指定具体的操作类型。 */
 SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		unsigned long, arg4, unsigned long, arg5)
 {
@@ -2549,6 +2562,8 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 			error = PR_MCE_KILL_DEFAULT;
 		break;
 	case PR_SET_MM:
+/* 设置mm的情况
+但是mm有什么好设置的, */
 		error = prctl_set_mm(arg2, arg3, arg4, arg5);
 		break;
 	case PR_GET_TID_ADDRESS:
@@ -2690,6 +2705,7 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		error = prctl_set_vma(arg2, arg3, arg4, arg5);
 		break;
 	case PR_GET_AUXV:
+	/* get进程的auxv的情况 */
 		if (arg4 || arg5)
 			return -EINVAL;
 		error = prctl_get_auxv((void __user *)arg2, arg3);

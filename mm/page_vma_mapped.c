@@ -139,6 +139,7 @@ static bool check_pmd(unsigned long pfn, struct page_vma_mapped_walk *pvmw)
 	return true;
 }
 
+//步进pvmw的address
 static void step_forward(struct page_vma_mapped_walk *pvmw, unsigned long size)
 {
 	pvmw->address = (pvmw->address + size) & ~(size - 1);
@@ -150,26 +151,31 @@ static void step_forward(struct page_vma_mapped_walk *pvmw, unsigned long size)
 确定pfn是不是被映射了
  * page_vma_mapped_walk - check if @pvmw->pfn is mapped in @pvmw->vma at
  * @pvmw->address
+   检查pfn是否在vma中被address映射
  * @pvmw: pointer to struct page_vma_mapped_walk. page, vma, address and flags
  * must be set. pmd, pte and ptl must be NULL.
  *
  * Returns true if the page is mapped in the vma. @pvmw->pmd and @pvmw->pte point
  * to relevant page table entries. @pvmw->ptl is locked. @pvmw->address is
  * adjusted if needed (for PTE-mapped THPs).
- *
+ * 返回true, 如果页面在vma中被映射, pmd和pte指向相关的页表项, ptl被锁定, address被调整
+ 
  * If @pvmw->pmd is set but @pvmw->pte is not, you have found PMD-mapped page
  * (usually THP). For PTE-mapped THP, you should run page_vma_mapped_walk() in
  * a loop to find all PTEs that map the THP.
- *
+ * 如果pmd被设置但是pte没有, 你找到了pmd映射的页面(通常是THP), 对于pte映射的THP, 
+   你应该在循环中运行page_vma_mapped_walk()来找到所有映射THP的pte
  * For HugeTLB pages, @pvmw->pte is set to the relevant page table entry
  * regardless of which page table level the page is mapped at. @pvmw->pmd is
  * NULL.
- *
+ * 
  * Returns false if there are no more page table entries for the page in
  * the vma. @pvmw->ptl is unlocked and @pvmw->pte is unmapped.
- *
+ * 如果在vma中没有更多的页表项指向这个pfn, 返回false, ptl被解锁, pte被解除映射
  * If you need to stop the walk before page_vma_mapped_walk() returned false,
  * use page_vma_mapped_walk_done(). It will do the housekeeping.
+   如果你需要在page_vma_mapped_walk()返回false之前停止walk, 使用page_vma_mapped_walk_done(), 
+   它会做一些清理工作
  */
 bool page_vma_mapped_walk(struct page_vma_mapped_walk *pvmw)
 {
@@ -186,7 +192,7 @@ bool page_vma_mapped_walk(struct page_vma_mapped_walk *pvmw)
 	if (pvmw->pmd && !pvmw->pte)
 		return not_found(pvmw);
 
-	if (unlikely(is_vm_hugetlb_page(vma))) {
+	if (unlikely(is_vm_hugetlb_page(vma))) { //巨页的情况,以后再说.
 		struct hstate *hstate = hstate_vma(vma);
 		unsigned long size = huge_page_size(hstate);
 		/* The only possible mapping was handled on last iteration */
@@ -207,9 +213,11 @@ bool page_vma_mapped_walk(struct page_vma_mapped_walk *pvmw)
 		return true;
 	}
 
+	//pvmw指定的范围在vma的最后一个地址
 	end = vma_address_end(pvmw);
 	if (pvmw->pte)
 		goto next_pte;
+
 restart:
 	do {
 		pgd = pgd_offset(mm, pvmw->address);
@@ -275,6 +283,7 @@ restart:
 
 				spin_unlock(ptl);
 			}
+			//改变pvmw的addr, 去看下一个页面了.
 			step_forward(pvmw, PMD_SIZE);
 			continue;
 		}
@@ -301,6 +310,7 @@ next_pte:
 				pvmw->pte = NULL;
 				goto restart;
 			}
+
 			pvmw->pte++;
 		} while (pte_none(ptep_get(pvmw->pte)));
 

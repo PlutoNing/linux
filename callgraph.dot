@@ -1,0 +1,70 @@
+digraph callgraph {
+    // 图的全局设置
+    graph [
+        label = "Function Call Graph"
+        labelloc = t
+        fontname = "Helvetica,Arial,sans-serif"
+        fontsize = 20
+    ]
+
+    // 节点的设置
+    node [shape = ellipse];
+    node_reclaim [label = "node_reclaim()"];
+    func2 [label = "func2()"];
+    func3 [label = "func3()"];
+    func4 [label = "func4()"];
+    func5 [label = "func5()"];
+    func6 [label = "func6()"];
+    get_page_from_freelist [label = "get_page_from_freelist()"];
+    // 定义函数节点
+    wake_all_kswapds [label = "wake_all_kswapds()"];
+    __alloc_pages_slowpath [label = "__alloc_pages_slowpath()"];
+    __alloc_pages_direct_reclaim [label = "__alloc_pages_direct_reclaim()"];
+    __perform_reclaim [label = "__perform_reclaim()"];
+    try_to_free_pages [label = "try_to_free_pages()"];
+    __node_reclaim [label = "__node_reclaim()"];
+    kswapd_shrink_node [label = "kswapd_shrink_node()"];
+    try_to_free_mem_cgroup_pages [label = "try_to_free_mem_cgroup_pages()"];
+    do_try_to_free_pages [label = "do_try_to_free_pages()"];
+    shrink_node_memcgs [label = "shrink_node_memcgs()"];
+    shrink_zones [label = "shrink_zones()"];
+    lru_gen_shrink_node [label = "lru_gen_shrink_node()"];
+    shrink_node [label = "shrink_node()"];
+    shrink_one [label = "shrink_one()"];
+    shrink_folio_list [label = "shrink_folio_list()"];
+    isolate_folios [label = "isolate_folios()"];
+    evict_folios [label = "evict_folios()"];
+    try_to_shrink_lruvec [label = "try_to_shrink_lruvec()"];
+    shrink_list [label = "shrink_list()"];
+    shrink_lruvec [label = "shrink_lruvec()"];
+    lru_gen_shrink_lruvec [label = "lru_gen_shrink_lruvec()"];
+    shrink_many [label = "shrink_many()"];
+
+    // 定义函数调用关系
+    shrink_node_memcgs -> shrink_lruvec [label = "处理全部子cgroup在node上面的lruvec"]
+    shrink_node -> shrink_node_memcgs [label = "非mglru或者"];
+    try_to_free_mem_cgroup_pages -> do_try_to_free_pages;
+    shrink_many -> shrink_one [label = "逐个处理node关联的全部lruvec"];
+    lru_gen_shrink_node -> shrink_one;
+    kswapd_shrink_node -> shrink_node;
+    lru_gen_shrink_node -> shrink_many;
+    do_try_to_free_pages -> shrink_zones;
+    __alloc_pages_slowpath   -> wake_all_kswapds  [label = "慢速路径会尝试各种方式,包括kswapd"];
+    __alloc_pages_slowpath   ->  __alloc_pages_direct_reclaim [label = "慢速路径"];
+    __alloc_pages_direct_reclaim  ->  __perform_reclaim [label = "慢速路径"];
+    __perform_reclaim   ->  try_to_free_pages [label = "分配过程中的直接回收"];
+    try_to_free_pages -> do_try_to_free_pages;
+    shrink_zones -> shrink_node;
+    get_page_from_freelist -> node_reclaim  [label = "快速回收"];
+    node_reclaim  -> __node_reclaim;
+    __node_reclaim  -> shrink_node;
+    shrink_node -> lru_gen_shrink_node [label = "mglru的全局shrink_node"];
+    shrink_one -> try_to_shrink_lruvec [label = "mglru的全局shrink_node"];
+    isolate_folios -> shrink_folio_list;
+    evict_folios -> shrink_folio_list;
+    evict_folios -> isolate_folios;
+    try_to_shrink_lruvec -> evict_folios [ label = "while循环shrink"];
+    lru_gen_shrink_lruvec -> try_to_shrink_lruvec;
+    shrink_lruvec -> shrink_list;
+    shrink_lruvec -> lru_gen_shrink_lruvec [ label = "mglru情景"];
+}

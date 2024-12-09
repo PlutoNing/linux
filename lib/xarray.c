@@ -218,6 +218,7 @@ static void *xas_descend(struct xa_state *xas, struct xa_node *node)
 }
 
 /**
+ 
  * xas_load() - Load an entry from the XArray (advanced).
  * @xas: XArray operation state.
  *
@@ -866,6 +867,7 @@ EXPORT_SYMBOL_GPL(xas_get_mark);
 
 /**
  * xas_set_mark() - Sets the mark on this entry and its parents.
+   标记当前node?和父节点?
  * @xas: XArray operation state.
  * @mark: Mark number.
  *
@@ -1750,6 +1752,7 @@ unlock:
 EXPORT_SYMBOL(xa_store_range);
 
 /**
+ 获取ent的order?
  * xa_get_order() - Get the order of an entry.
  * @xa: XArray.
  * @index: Index of the entry.
@@ -1787,6 +1790,7 @@ unlock:
 
 	return order;
 }
+
 EXPORT_SYMBOL(xa_get_order);
 #endif /* CONFIG_XARRAY_MULTI */
 

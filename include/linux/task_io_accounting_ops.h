@@ -105,6 +105,7 @@ static inline void task_chr_io_accounting_add(struct task_io_accounting *dst,
 }
 #endif /* CONFIG_TASK_XACCT */
 
+/* 记账这个thread的ioac信息 */
 static inline void task_io_accounting_add(struct task_io_accounting *dst,
 						struct task_io_accounting *src)
 {

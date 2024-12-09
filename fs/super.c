@@ -644,6 +644,7 @@ void retire_super(struct super_block *sb)
 EXPORT_SYMBOL(retire_super);
 
 /**
+卸载fs的函数
  *	generic_shutdown_super	-	common helper for ->kill_sb()
  *	@sb: superblock to kill
  *
@@ -663,6 +664,7 @@ void generic_shutdown_super(struct super_block *sb)
 
 	if (sb->s_root) {
 		shrink_dcache_for_umount(sb);
+		/* 刷盘sync */
 		sync_filesystem(sb);
 		sb->s_flags &= ~SB_ACTIVE;
 
@@ -1592,7 +1594,7 @@ static int test_bdev_super(struct super_block *s, void *data)
 {
 	return !(s->s_iflags & SB_I_RETIRED) && s->s_dev == *(dev_t *)data;
 }
-
+/* 高压在fs用到此函数, 作用是? */
 struct dentry *mount_bdev(struct file_system_type *fs_type,
 	int flags, const char *dev_name, void *data,
 	int (*fill_super)(struct super_block *, void *, int))
@@ -1638,12 +1640,13 @@ struct dentry *mount_bdev(struct file_system_type *fs_type,
 	return dget(s->s_root);
 }
 EXPORT_SYMBOL(mount_bdev);
-
+/* umount 文件 系统 ?  */
 void kill_block_super(struct super_block *sb)
 {
 	struct block_device *bdev = sb->s_bdev;
 
 	generic_shutdown_super(sb);
+
 	if (bdev) {
 		sync_blockdev(bdev);
 		blkdev_put(bdev, sb);

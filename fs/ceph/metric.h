@@ -164,7 +164,9 @@ struct ceph_metric {
 	ktime_t latency_max;
 };
 
-/* This is the global metrics */
+/* 
+全局的指标数据? 还是统计信息?
+This is the global metrics */
 struct ceph_client_metric {
 	atomic64_t            total_dentries;
 	struct percpu_counter d_lease_hit;
@@ -176,10 +178,12 @@ struct ceph_client_metric {
 
 	struct ceph_metric metric[METRIC_MAX];
 
-	/* The total number of directories and files that are opened */
+	/* The total number of directories and files that are opened
+	打开文件的数量 */
 	atomic64_t opened_files;
 
-	/* The total number of inodes that have opened files or directories */
+	/* The total number of inodes that have opened files or directories
+	打开的inode数量 */
 	struct percpu_counter opened_inodes;
 	struct percpu_counter total_inodes;
 

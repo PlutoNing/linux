@@ -23,6 +23,7 @@
 			SYNC_FILE_RANGE_WAIT_AFTER)
 
 /*
+	刷盘fs. 
  * Write out and wait upon all dirty data associated with this
  * superblock.  Filesystem data as well as the underlying block
  * device.  Takes the superblock lock.
@@ -51,17 +52,23 @@ int sync_filesystem(struct super_block *sb)
 	 * methods call sync_dirty_buffer() and thus effectively write one block
 	 * at a time.
 	 */
+	 /* 写回sb的脏inode */
 	writeback_inodes_sb(sb, WB_REASON_SYNC);
+
 	if (sb->s_op->sync_fs) {
 		ret = sb->s_op->sync_fs(sb, 0);
 		if (ret)
 			return ret;
 	}
+	/* 刷盘 */
 	ret = sync_blockdev_nowait(sb->s_bdev);
+
 	if (ret)
 		return ret;
-
+	
+	/* 刷盘 */
 	sync_inodes_sb(sb);
+
 	if (sb->s_op->sync_fs) {
 		ret = sb->s_op->sync_fs(sb, 1);
 		if (ret)
@@ -69,8 +76,10 @@ int sync_filesystem(struct super_block *sb)
 	}
 	return sync_blockdev(sb->s_bdev);
 }
+
 EXPORT_SYMBOL(sync_filesystem);
 
+//
 static void sync_inodes_one_sb(struct super_block *sb, void *arg)
 {
 	if (!sb_rdonly(sb))
@@ -93,12 +102,20 @@ static void sync_fs_one_sb(struct super_block *sb, void *arg)
  * Finally, we writeout all block devices because some filesystems (e.g. ext2)
  * just write metadata (such as inodes or bitmaps) to block device page cache
  * and do not sync it on their own in ->sync_fs().
+   同步所有内容。我们首先唤醒刷新线程，以便大多数写回在所有设备上并行运行。
+   然后我们可靠地同步所有inode，这实际上也等待所有刷新线程完成写回。
+   此时所有数据都在磁盘上，因此元数据应该是稳定的，并且我们通过->sync_fs()调用告诉文件系统同步它们的元数据。
+   最后，我们写出所有块设备，因为一些文件系统（例如ext2）只将元数据（例如inode或位图）写入块设备页缓存，
+   并且不会在->sync_fs()中自行同步。
+
  */
 void ksys_sync(void)
 {
 	int nowait = 0, wait = 1;
 
+	//唤醒bdi的回写
 	wakeup_flusher_threads(WB_REASON_SYNC);
+	//下面是遍历全部sb, 逐个操作
 	iterate_supers(sync_inodes_one_sb, NULL);
 	iterate_supers(sync_fs_one_sb, &nowait);
 	iterate_supers(sync_fs_one_sb, &wait);
@@ -167,6 +184,7 @@ SYSCALL_DEFINE1(syncfs, int, fd)
 }
 
 /**
+调用fsync回调
  * vfs_fsync_range - helper to sync a range of data & metadata to disk
  * @file:		file to sync
  * @start:		offset in bytes of the beginning of data range to sync

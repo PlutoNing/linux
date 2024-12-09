@@ -182,7 +182,8 @@ static u16 cgrp_dfl_implicit_ss_mask;
 /* some controllers can be threaded on the default hierarchy */
 static u16 cgrp_dfl_threaded_ss_mask;
 
-/* The list of hierarchy roots */
+/* The list of hierarchy roots
+系统全部的rootcg */
 LIST_HEAD(cgroup_roots);
 static int cgroup_root_count;
 
@@ -473,6 +474,7 @@ static u16 cgroup_ss_mask(struct cgroup *cgrp)
 
 /**
  * cgroup_css - obtain a cgroup's css for the specified subsystem
+  获取cgroup的此子系统的css
  * @cgrp: the cgroup of interest
  * @ss: the subsystem of interest (%NULL returns @cgrp->self)
  *
@@ -481,6 +483,9 @@ static u16 cgroup_ss_mask(struct cgroup *cgrp)
  * the caller is responsible for pinning the returned css if it wants to
  * keep accessing it outside the said locks.  This function may return
  * %NULL if @cgrp doesn't have @subsys_id enabled.
+	返回cgrp与ss相关联的css（cgroup_subsys_state）。必须在cgroup_mutex或rcu_read_lock()下调用此函数，
+	如果要在上述锁之外继续访问它，则调用者负责固定返回的css。如果cgrp没有启用subsys_id，则此函数可能返回NULL。
+
  */
 static struct cgroup_subsys_state *cgroup_css(struct cgroup *cgrp,
 					      struct cgroup_subsys *ss)
@@ -557,6 +562,7 @@ struct cgroup_subsys_state *cgroup_e_css(struct cgroup *cgrp,
 
 /**
  * cgroup_get_e_css - get a cgroup's effective css for the specified subsystem
+	获取cgroup的有效css
  * @cgrp: the cgroup of interest
  * @ss: the subsystem of interest
  *
@@ -565,6 +571,9 @@ struct cgroup_subsys_state *cgroup_e_css(struct cgroup *cgrp,
  * has @ss enabled.  If @ss is not mounted on the hierarchy @cgrp is on,
  * the root css is returned, so this function always returns a valid css.
  * The returned css must be put using css_put().
+	寻找并获取cgrp的有效css，有效css被定义为最近的祖先的匹配css，包括自身，该祖先已启用ss。
+	如果ss没有挂载在cgrp所在的层次结构上，则返回根css，因此此函数始终返回有效css。
+	返回的css必须使用css_put()放置。
  */
 struct cgroup_subsys_state *cgroup_get_e_css(struct cgroup *cgrp,
 					     struct cgroup_subsys *ss)
@@ -580,12 +589,13 @@ struct cgroup_subsys_state *cgroup_get_e_css(struct cgroup *cgrp,
 		css = cgroup_css(cgrp, ss);
 
 		if (css && css_tryget_online(css))
-			goto out_unlock;
+			goto out_unlock; //获取成功
 		cgrp = cgroup_parent(cgrp);
-	} while (cgrp);
+	} while (cgrp); // 父级上的谁有这个css, 这个css就是对自己有效的
 
-	css = init_css_set.subsys[ss->id];
-	css_get(css);
+	css = init_css_set.subsys[ss->id]; //刚刚没获取成功，这里获取默认的
+	css_get(css); 
+
 out_unlock:
 	rcu_read_unlock();
 	return css;
@@ -2329,6 +2339,7 @@ static struct file_system_type cpuset_fs_type = {
 };
 #endif
 
+/* 获取cgroup名字存储到buf */
 int cgroup_path_ns_locked(struct cgroup *cgrp, char *buf, size_t buflen,
 			  struct cgroup_namespace *ns)
 {
@@ -2337,6 +2348,7 @@ int cgroup_path_ns_locked(struct cgroup *cgrp, char *buf, size_t buflen,
 	return kernfs_path_from_node(cgrp->kn, root->kn, buf, buflen);
 }
 
+/* 获取这个cgroup的名字,存储到buff */
 int cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
 		   struct cgroup_namespace *ns)
 {
@@ -6237,6 +6249,7 @@ struct cgroup *cgroup_get_from_id(u64 id)
 EXPORT_SYMBOL_GPL(cgroup_get_from_id);
 
 /*
+proc fs的回调函数
  * proc_cgroup_show()
  *  - Print task's cgroup paths into seq_file, one line for each hierarchy
  *  - Used for /proc/<pid>/cgroup.
@@ -6263,11 +6276,13 @@ int proc_cgroup_show(struct seq_file *m, struct pid_namespace *ns,
 
 		if (root == &cgrp_dfl_root && !READ_ONCE(cgrp_dfl_visible))
 			continue;
-
+		/* 
+		root@ppppp-MS-7E24:/proc/226619#cat cgroup 
+		0::/user.slice/user-1001.slice/session-772.scope */
 		seq_printf(m, "%d:", root->hierarchy_id);
 		if (root != &cgrp_dfl_root)
 			for_each_subsys(ss, ssid)
-				if (root->subsys_mask & (1 << ssid))
+				if (root->subsys_mask & (1 << ssid)) /* 如果使能了这个子系统 */
 					seq_printf(m, "%s%s", count++ ? "," : "",
 						   ss->legacy_name);
 		if (strlen(root->name))

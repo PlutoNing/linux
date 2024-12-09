@@ -9,7 +9,9 @@
 /* Attribute tables are generated from opcode map */
 #include "inat-tables.c"
 
-/* Attribute search APIs */
+/* 
+查表获取指令机器码byte的attr ...
+Attribute search APIs */
 insn_attr_t inat_get_opcode_attribute(insn_byte_t opcode)
 {
 	return inat_primary_table[opcode];

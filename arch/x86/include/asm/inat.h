@@ -17,26 +17,40 @@
 #define INAT_GROUP_TABLE_SIZE 8
 
 /* Legacy last prefixes */
+/* 如果后续指令的操作数是 32 位，这个前缀会将其转换为 16 位（反之亦然）。 */
 #define INAT_PFX_OPNDSZ	1	/* 0x66 */ /* LPFX1 */
+/* 用于重复执行后续指令，直到条件不再满足（例如，REP 前缀通常与字符串操作指令一起使用）。 */
 #define INAT_PFX_REPE	2	/* 0xF3 */ /* LPFX2 */
+/* 类似于 REPE，但只在条件不相等时执行。 */
 #define INAT_PFX_REPNE	3	/* 0xF2 */ /* LPFX3 */
 /* Other Legacy prefixes */
+// 用于在多处理器系统中，确保后续指令在执行时不会被其他处理器干扰。
 #define INAT_PFX_LOCK	4	/* 0xF0 */
+/* 指示后续指令应使用 CS 段寄存器。 */
 #define INAT_PFX_CS	5	/* 0x2E */
+/*  指示后续指令应使用 DS 段寄存器。 */
 #define INAT_PFX_DS	6	/* 0x3E */
+/* 指示后续指令应使用 ES 段寄存器 */
 #define INAT_PFX_ES	7	/* 0x26 */
+/*  指示后续指令应使用 FS 段寄存器 */
 #define INAT_PFX_FS	8	/* 0x64 */
+/* 指示后续指令应使用 GS 段寄存器 */
 #define INAT_PFX_GS	9	/* 0x65 */
+/* 指示后续指令应使用 SS 段寄存器 */
 #define INAT_PFX_SS	10	/* 0x36 */
+/* 影响后续指令使用的地址大小（32 位或 16 位）。 */
 #define INAT_PFX_ADDRSZ	11	/* 0x67 */
 /* x86-64 REX prefix */
+/* 在 64 位模式下，REX 前缀用于扩展操作数的大小、选择寄存器以及切换操作数的大小。 */
 #define INAT_PFX_REX	12	/* 0x4X */
 /* AVX VEX prefixes */
+/* 用于支持 AVX 指令集的扩展，提供额外的指令功能 */
 #define INAT_PFX_VEX2	13	/* 2-bytes VEX prefix */
 #define INAT_PFX_VEX3	14	/* 3-bytes VEX prefix */
 #define INAT_PFX_EVEX	15	/* EVEX prefix */
 
 #define INAT_LSTPFX_MAX	3
+/* legacy prefix的范围 */
 #define INAT_LGCPFX_MAX	11
 
 /* Immediate size */
@@ -106,10 +120,14 @@ extern insn_attr_t inat_get_avx_attribute(insn_byte_t opcode,
 					  insn_byte_t vex_m,
 					  insn_byte_t vex_pp);
 
-/* Attribute checking functions */
+/* Attribute checking functions
+legacy prefix是什么
+ */
 static inline int inat_is_legacy_prefix(insn_attr_t attr)
 {
-	attr &= INAT_PFX_MASK;
+
+	attr &= INAT_PFX_MASK;/* 取得prefix的那几位bit */
+	/* 如果落于legacy prefix的范围 */
 	return attr && attr <= INAT_LGCPFX_MAX;
 }
 

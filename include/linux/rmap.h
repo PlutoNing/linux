@@ -151,6 +151,7 @@ void unlink_anon_vmas(struct vm_area_struct *);
 int anon_vma_clone(struct vm_area_struct *, struct vm_area_struct *);
 int anon_vma_fork(struct vm_area_struct *, struct vm_area_struct *);
 
+// 这里是prepare什么
 static inline int anon_vma_prepare(struct vm_area_struct *vma)
 {
 	if (likely(vma->anon_vma))
@@ -401,7 +402,7 @@ struct page_vma_mapped_walk {
 		.address = _address,					\
 		.flags = _flags,					\
 	}
-
+/*  */
 #define DEFINE_FOLIO_VMA_WALK(name, _folio, _vma, _address, _flags)	\
 	struct page_vma_mapped_walk name = {				\
 		.pfn = folio_pfn(_folio),				\

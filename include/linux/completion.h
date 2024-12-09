@@ -75,6 +75,8 @@ static inline void complete_release(struct completion *x) {}
 #endif
 
 /**
+2024年10月21日23:53:40
+completion是什么?
  * init_completion - Initialize a dynamically allocated completion
  * @x:  pointer to completion structure that is to be initialized
  *

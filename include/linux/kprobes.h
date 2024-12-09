@@ -83,7 +83,8 @@ struct kprobe {
 	/* Called after addr is executed, unless... */
 	kprobe_post_handler_t post_handler;
 
-	/* Saved opcode (which has been replaced with breakpoint) */
+	/* Saved opcode (which has been replaced with breakpoint)
+	kp的备份的原指令 */
 	kprobe_opcode_t opcode;
 
 	/* copy of the original instruction */
@@ -101,6 +102,8 @@ struct kprobe {
 #define KPROBE_FLAG_DISABLED	2 /* probe is temporarily disabled */
 #define KPROBE_FLAG_OPTIMIZED	4 
 /*
+表示kp是不是已经optimized了
+
 				   * probe is really optimized.
 				   * NOTE:
 				   * this flag is only for optimized_kprobe.*/
@@ -114,20 +117,23 @@ static inline bool kprobe_gone(struct kprobe *p)
 }
 
 /* Is this kprobe disabled ?
-
+kp是否disabled
  */
 static inline bool kprobe_disabled(struct kprobe *p)
 {
 	return p->flags & (KPROBE_FLAG_DISABLED | KPROBE_FLAG_GONE);
 }
 
-/* Is this kprobe really running optimized path ? */
+/* Is this kprobe really running optimized path ?
+2024年09月24日11:06:32
+ */
 static inline bool kprobe_optimized(struct kprobe *p)
 {
 	return p->flags & KPROBE_FLAG_OPTIMIZED;
 }
 
-/* Is this kprobe uses ftrace ? */
+/* Is this kprobe uses ftrace ?
+是不是ftrace的kp */
 static inline bool kprobe_ftrace(struct kprobe *p)
 {
 	return p->flags & KPROBE_FLAG_FTRACE;
@@ -147,7 +153,7 @@ struct kretprobe_holder {
 	struct kretprobe	*rp;
 	refcount_t		ref;
 };
-
+/* kret的probe */
 struct kretprobe {
 	struct kprobe kp;
 	kretprobe_handler_t handler;
@@ -358,7 +364,8 @@ DEFINE_INSN_CACHE_OPS(insn);
 
 #ifdef CONFIG_OPTPROBES
 /*
-probe的
+kprobe的optimized后的kp.
+多了一个list和arch_optimized_insn
  * Internal structure for direct jump optimized probe
  */
 struct optimized_kprobe {

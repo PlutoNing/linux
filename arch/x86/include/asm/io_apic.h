@@ -27,6 +27,7 @@ union IO_APIC_reg_00 {
 	} __attribute__ ((packed)) bits;
 };
 
+/*  */
 union IO_APIC_reg_01 {
 	u32	raw;
 	struct {
@@ -163,6 +164,7 @@ extern void __init io_apic_init_mappings(void);
 extern unsigned int native_io_apic_read(unsigned int apic, unsigned int reg);
 extern void native_restore_boot_irq_mode(void);
 
+/* 可以获取apic的中断号范围 */
 static inline unsigned int io_apic_read(unsigned int apic, unsigned int reg)
 {
 	return x86_apic_ops.io_apic_read(apic, reg);

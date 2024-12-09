@@ -66,12 +66,13 @@ static __cacheline_aligned_in_smp DEFINE_SPINLOCK(inode_hash_lock);
 const struct address_space_operations empty_aops = {
 };
 EXPORT_SYMBOL(empty_aops);
-
+/* pcp的表示inode数量 */
 static DEFINE_PER_CPU(unsigned long, nr_inodes);
+/* 同上, 没有使用的inode数量 ... */
 static DEFINE_PER_CPU(unsigned long, nr_unused);
 
 static struct kmem_cache *inode_cachep __read_mostly;
-
+/*  */
 static long get_nr_inodes(void)
 {
 	int i;
@@ -80,7 +81,7 @@ static long get_nr_inodes(void)
 		sum += per_cpu(nr_inodes, i);
 	return sum < 0 ? 0 : sum;
 }
-
+/*  */
 static inline long get_nr_inodes_unused(void)
 {
 	int i;
@@ -89,7 +90,7 @@ static inline long get_nr_inodes_unused(void)
 		sum += per_cpu(nr_unused, i);
 	return sum < 0 ? 0 : sum;
 }
-
+/* 用了的就是脏的? */
 long get_nr_dirty_inodes(void)
 {
 	/* not actually dirty inodes, but a wild approximation */
@@ -452,10 +453,12 @@ void ihold(struct inode *inode)
 }
 EXPORT_SYMBOL(ihold);
 
+//
 static void __inode_add_lru(struct inode *inode, bool rotate)
 {
 	if (inode->i_state & (I_DIRTY_ALL | I_SYNC | I_FREEING | I_WILL_FREE))
 		return;
+
 	if (atomic_read(&inode->i_count))
 		return;
 	if (!(inode->i_sb->s_flags & SB_ACTIVE))
@@ -478,7 +481,7 @@ void inode_add_lru(struct inode *inode)
 {
 	__inode_add_lru(inode, false);
 }
-
+/*  */
 static void inode_lru_list_del(struct inode *inode)
 {
 	if (list_lru_del(&inode->i_sb->s_inode_lru, &inode->i_lru))
@@ -630,6 +633,8 @@ void clear_inode(struct inode *inode)
 EXPORT_SYMBOL(clear_inode);
 
 /*
+ 2024年9月29日23:41:10
+ 释放inode ...
  * Free the inode passed in, removing it from the lists it is still connected
  * to. We remove any pages still attached to the inode and wait for any IO that
  * is still in progress before finally destroying the inode.
@@ -664,10 +669,11 @@ static void evict(struct inode *inode)
 
 	if (op->evict_inode) {
 		op->evict_inode(inode);
-	} else {
+	} else {/*  */
 		truncate_inode_pages_final(&inode->i_data);
 		clear_inode(inode);
 	}
+
 	if (S_ISCHR(inode->i_mode) && inode->i_cdev)
 		cd_forget(inode);
 
@@ -682,6 +688,7 @@ static void evict(struct inode *inode)
 }
 
 /*
+清除这个链表什么的inode ... 
  * dispose_list - dispose of the contents of a local list
  * @head: the head of the list to free
  *
@@ -702,6 +709,7 @@ static void dispose_list(struct list_head *head)
 }
 
 /**
+清除未用的inode?
  * evict_inodes	- evict all evictable inodes for a superblock
  * @sb:		superblock to operate on
  *
@@ -717,6 +725,7 @@ void evict_inodes(struct super_block *sb)
 
 again:
 	spin_lock(&sb->s_inode_list_lock);
+	/* 遍历sb的全部inode ... */
 	list_for_each_entry_safe(inode, next, &sb->s_inodes, i_sb_list) {
 		if (atomic_read(&inode->i_count))
 			continue;
@@ -730,6 +739,8 @@ again:
 		inode->i_state |= I_FREEING;
 		inode_lru_list_del(inode);
 		spin_unlock(&inode->i_lock);
+
+
 		list_add(&inode->i_lru, &dispose);
 
 		/*
@@ -2146,6 +2157,7 @@ static int __file_update_time(struct file *file, int sync_mode)
 
 /**
  * file_update_time - update mtime and ctime time
+   更新文件的mtime和ctime时间
  * @file: file accessed
  *
  * Update the mtime and ctime members of an inode and mark the inode for
@@ -2155,7 +2167,9 @@ static int __file_update_time(struct file *file, int sync_mode)
  * flag, e.g. for network filesystem where these imestamps are handled
  * by the server. This can return an error for file systems who need to
  * allocate space in order to update an inode.
- *
+ * 更新文件的mtime和ctime时间，标记inode为脏，这个函数是为了在文件写路径中使用的，
+ 文件系统可以选择忽略通过此函数的更新，例如对于网络文件系统，这些时间戳由服务器处理。
+ 对于需要分配空间才能更新inode的文件系统，这可能会返回错误。
  * Return: 0 on success, negative errno on failure.
  */
 int file_update_time(struct file *file)

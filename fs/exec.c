@@ -1213,6 +1213,7 @@ static int unshare_sighand(struct task_struct *me)
 	return 0;
 }
 
+/* 获取task的comm */
 char *__get_task_comm(char *buf, size_t buf_size, struct task_struct *tsk)
 {
 	task_lock(tsk);

@@ -258,6 +258,7 @@ typedef struct {
 
 /**
 代表连续的字节?
+代表连续的字节?
  * struct folio - Represents a contiguous set of bytes.
  * @flags: Identical to the page flags.
  * @lru: Least Recently Used list; tracks how recently this folio was used.
@@ -308,11 +309,20 @@ struct folio {
 				};
 	/* public: */
 			};
-			struct address_space *mapping;/* 所属的mapping */
+			struct address_space *mapping;/* 所属的mapping 
+			对应匿名页, 这里指向vma的av, 或者av的root av
+			
+			*/
 			pgoff_t index;
+			/* 
+			匿名页的index值是在vma的全局pgoff
+			
+			 */
 			union {
-				void *private;
-				swp_entry_t swap;
+				void *private;/* 
+				对于buffer io,这里指向相关结构体
+				 */
+				swp_entry_t swap; //在swap cache中的swap entry?
 			};
 			atomic_t _mapcount;
 			atomic_t _refcount;
@@ -582,7 +592,9 @@ struct vm_area_struct {
 	};
 
 	struct mm_struct *vm_mm;	/* The address space we belong to. */
-	pgprot_t vm_page_prot;          /* Access permissions of this VMA. */
+	pgprot_t vm_page_prot;          /* 
+	表示vma的page protection,用于mprotect
+	Access permissions of this VMA. */
 
 	/*
 	 * Flags, see mm.h.
@@ -608,7 +620,7 @@ struct vm_area_struct {
 	 * counter reuse can only lead to occasional unnecessary use of the
 	 * slowpath.
 	 */
-	int vm_lock_seq;
+	int vm_lock_seq;  //seq lock
 	struct vma_lock *vm_lock;
 
 	/* Flag to indicate areas detached from the mm->mm_mt tree */
@@ -631,12 +643,17 @@ struct vm_area_struct {
 	 * can only be in the i_mmap tree.  An anonymous MAP_PRIVATE, stack
 	 * or brk vma (with NULL file) can only be in an anon_vma list.
 	 */
-	struct list_head anon_vma_chain; /* Serialized by mmap_lock &
+	struct list_head anon_vma_chain; /* 
+	这里串的全是自己关联的avc
+	Serialized by mmap_lock &
 					  * page_table_lock */
 	struct anon_vma *anon_vma;	/* Serialized by page_table_lock */
 
 	/* Function pointers to deal with this struct. */
 	const struct vm_operations_struct *vm_ops;
+	/* 
+	有多少种vm_ops
+	 */
 
 	/* Information about our backing store: */
 	unsigned long vm_pgoff;		/* Offset (within vm_file) in PAGE_SIZE
@@ -691,7 +708,7 @@ struct mm_struct {
 			 */
 			atomic_t mm_count;
 		} ____cacheline_aligned_in_smp;
-
+		/* 现在这个tree里面存储的是vmas? */
 		struct maple_tree mm_mt;
 #ifdef CONFIG_MMU
 		unsigned long (*get_unmapped_area) (struct file *filp,
@@ -814,7 +831,7 @@ struct mm_struct {
 		unsigned long start_code, end_code, start_data, end_data;
 		unsigned long start_brk, brk, start_stack;
 		unsigned long arg_start, arg_end, env_start, env_end;
-
+		/* 进程的auxv相关 */
 		unsigned long saved_auxv[AT_VECTOR_SIZE]; /* for /proc/PID/auxv */
 
 		struct percpu_counter rss_stat[NR_MM_COUNTERS];
@@ -845,7 +862,8 @@ struct mm_struct {
 #endif
 		struct user_namespace *user_ns;
 
-		/* store ref to file /proc/<pid>/exe symlink points to */
+		/* store ref to file /proc/<pid>/exe symlink points to
+		指向进程的exe file */
 		struct file __rcu *exe_file;
 #ifdef CONFIG_MMU_NOTIFIER
 		struct mmu_notifier_subscriptions *notifier_subscriptions;
@@ -893,6 +911,7 @@ struct mm_struct {
 		/*
 		 * Represent how many pages of this process are involved in KSM
 		 * merging (not including ksm_zero_pages).
+		 有多少ksm页面处于merging?
 		 */
 		unsigned long ksm_merging_pages;
 		/*
@@ -907,14 +926,17 @@ struct mm_struct {
 		unsigned long ksm_zero_pages;
 #endif /* CONFIG_KSM */
 #ifdef CONFIG_LRU_GEN
+/* mm的mglru相关 */
 		struct {
 			/* this mm_struct is on lru_gen_mm_list
+			挂载到lruvec
 			通过这个挂接到memcg的mm_list */
 			struct list_head list;
 			/*
 			 * Set when switching to this mm_struct, as a hint of
 			 * whether it has been used since the last time per-node
 			 * page table walkers cleared the corresponding bits.
+			 node的位图,标记是否刚刚被访问过?
 			 */
 			unsigned long bitmap;
 #ifdef CONFIG_MEMCG
@@ -922,6 +944,7 @@ struct mm_struct {
 			struct mem_cgroup *memcg;
 #endif
 		} lru_gen;
+
 #endif /* CONFIG_LRU_GEN */
 	} __randomize_layout;
 
@@ -952,7 +975,7 @@ static inline cpumask_t *mm_cpumask(struct mm_struct *mm)
 }
 
 #ifdef CONFIG_LRU_GEN
-
+/* 里面是什么 */
 /*  */
 struct lru_gen_mm_list {
 	/* mm_struct list for page table walkers
@@ -1017,6 +1040,7 @@ struct vma_iterator {
 	struct ma_state mas;
 };
 
+/* 生成一个vma的迭代器? */
 #define VMA_ITERATOR(name, __mm, __addr)				\
 	struct vma_iterator name = {					\
 		.mas = {						\
@@ -1229,23 +1253,26 @@ enum tlb_flush_reason {
 };
 
 /**
+  
  * enum fault_flag - Fault flag definitions.
- * @FAULT_FLAG_WRITE: Fault was a write fault.
+ * @FAULT_FLAG_WRITE: Fault was a write fault. 表示是写操作
  * @FAULT_FLAG_MKWRITE: Fault was mkwrite of existing PTE.
  * @FAULT_FLAG_ALLOW_RETRY: Allow to retry the fault if blocked.
  * @FAULT_FLAG_RETRY_NOWAIT: Don't drop mmap_lock and wait when retrying.
  * @FAULT_FLAG_KILLABLE: The fault task is in SIGKILL killable region.
  * @FAULT_FLAG_TRIED: The fault has been tried once.
- * @FAULT_FLAG_USER: The fault originated in userspace.
+ * @FAULT_FLAG_USER: The fault originated in userspace. 表示是用户态的fault
  * @FAULT_FLAG_REMOTE: The fault is not for current task/mm.
  * @FAULT_FLAG_INSTRUCTION: The fault was during an instruction fetch.
  * @FAULT_FLAG_INTERRUPTIBLE: The fault can be interrupted by non-fatal signals.
  * @FAULT_FLAG_UNSHARE: The fault is an unsharing request to break COW in a
  *                      COW mapping, making sure that an exclusive anon page is
  *                      mapped after the fault.
+   说明这个fault是一个unsharing request,用于破坏COW,确保在fault之后有一个独占的anon page被映射
  * @FAULT_FLAG_ORIG_PTE_VALID: whether the fault has vmf->orig_pte cached.
  *                        We should only access orig_pte if this flag set.
  * @FAULT_FLAG_VMA_LOCK: The fault is handled under VMA lock.
+   表示这个fault是在vma lock下处理的
  *
  * About @FAULT_FLAG_ALLOW_RETRY and @FAULT_FLAG_TRIED: we can specify
  * whether we would allow page faults to retry by specifying these two
@@ -1283,7 +1310,7 @@ enum fault_flag {
 	FAULT_FLAG_INTERRUPTIBLE =	1 << 9,
 	FAULT_FLAG_UNSHARE =		1 << 10,
 	FAULT_FLAG_ORIG_PTE_VALID =	1 << 11,
-	FAULT_FLAG_VMA_LOCK =		1 << 12,
+	FAULT_FLAG_VMA_LOCK =		1 << 12, //表示这个fault是在vma lock下处理的
 };
 
 typedef unsigned int __bitwise zap_flags_t;

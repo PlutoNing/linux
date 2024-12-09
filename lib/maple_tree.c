@@ -4871,6 +4871,7 @@ done:
 
 /**
  * mas_walk() - Search for @mas->index in the tree.
+   搜索树中的@mas->index。
  * @mas: The maple state.
  *
  * mas->index and mas->last will be set to the range if there is a value.  If

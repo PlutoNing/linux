@@ -8,7 +8,7 @@
 
 /* Offset to allow distinguishing irq vs. task-based idle entry/exit. */
 #define DYNTICK_IRQ_NONIDLE	((LONG_MAX / 2) + 1)
-
+/*  */
 enum ctx_state {
 	CONTEXT_DISABLED	= -1,	/* returned by ct_state() if unknown */
 	CONTEXT_KERNEL		= 0,
@@ -23,7 +23,7 @@ enum ctx_state {
 
 #define CT_STATE_MASK (CONTEXT_MAX - 1)
 #define CT_DYNTICKS_MASK (~CT_STATE_MASK)
-
+/* 追踪上下文切换? */
 struct context_tracking {
 #ifdef CONFIG_CONTEXT_TRACKING_USER
 	/*
@@ -35,16 +35,21 @@ struct context_tracking {
 	bool active;
 	int recursion;
 #endif
+
 #ifdef CONFIG_CONTEXT_TRACKING
+/* 表示cpu的状态,内核,user,guest ... */
 	atomic_t state;
 #endif
+
 #ifdef CONFIG_CONTEXT_TRACKING_IDLE
 	long dynticks_nesting;		/* Track process nesting level. */
 	long dynticks_nmi_nesting;	/* Track irq/NMI nesting level. */
 #endif
 };
 
+/*  */
 #ifdef CONFIG_CONTEXT_TRACKING
+
 DECLARE_PER_CPU(struct context_tracking, context_tracking);
 #endif
 

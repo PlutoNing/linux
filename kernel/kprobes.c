@@ -44,8 +44,10 @@
 #include <asm/cacheflush.h>
 #include <asm/errno.h>
 #include <linux/uaccess.h>
+
 /* 6 */
 #define KPROBE_HASH_BITS 6
+
 /*  64  */
 #define KPROBE_TABLE_SIZE (1 << KPROBE_HASH_BITS)
 
@@ -451,7 +453,7 @@ static void free_aggr_kprobe(struct kprobe *p)
 }
 
 /* Return true if the kprobe is ready for optimization.
-看看kp是不是ready */
+看看kp是不是ready了opt */
 static inline int kprobe_optready(struct kprobe *p)
 {
 	struct optimized_kprobe *op;
@@ -478,7 +480,8 @@ bool kprobe_disarmed(struct kprobe *p)
 	return kprobe_disabled(p) && list_empty(&op->list);
 }
 
-/* Return true if the probe is queued on (un)optimizing lists */
+/* Return true if the probe is queued on (un)optimizing lists
+是否已经queue到unopt或者opt的list */
 static bool kprobe_queued(struct kprobe *p)
 {
 	struct optimized_kprobe *op;
@@ -488,6 +491,7 @@ static bool kprobe_queued(struct kprobe *p)
 		if (!list_empty(&op->list))
 			return true;
 	}
+
 	return false;
 }
 
@@ -518,7 +522,9 @@ static struct kprobe *get_optimized_kprobe(kprobe_opcode_t *addr)
 
 /* Optimization staging list, protected by 'kprobe_mutex' */
 static LIST_HEAD(optimizing_list);
+/* op的list连接到这里.  */
 static LIST_HEAD(unoptimizing_list);
+/* 之后连接到这个list里面 */
 static LIST_HEAD(freeing_list);
 
 static void kprobe_optimizer(struct work_struct *work);
@@ -604,7 +610,8 @@ static void do_free_cleaned_kprobes(void)
 	}
 }
 
-/* Start optimizer after OPTIMIZE_DELAY passed */
+/* Start optimizer after OPTIMIZE_DELAY passed
+trigger异步函数? */
 static void kick_kprobe_optimizer(void)
 {
 	schedule_delayed_work(&optimizing_work, OPTIMIZE_DELAY);
@@ -668,7 +675,7 @@ void wait_for_kprobe_optimizer(void)
 
 	mutex_unlock(&kprobe_mutex);
 }
-
+/* 看看这个op在不在这个unoptimizing_list */
 bool optprobe_queued_unopt(struct optimized_kprobe *op)
 {
 	struct optimized_kprobe *_op;
@@ -681,7 +688,8 @@ bool optprobe_queued_unopt(struct optimized_kprobe *op)
 	return false;
 }
 
-/* Optimize kprobe if p is ready to be optimized */
+/* Optimize kprobe if p is ready to be optimized
+opt这个kp.  */
 static void optimize_kprobe(struct kprobe *p)
 {
 	struct optimized_kprobe *op;
@@ -695,6 +703,7 @@ static void optimize_kprobe(struct kprobe *p)
 	if (p->post_handler)
 		return;
 
+	/* 获取op */
 	op = container_of(p, struct optimized_kprobe, kp);
 
 	/* Check there is no other kprobes at the optimized instructions */
@@ -703,12 +712,14 @@ static void optimize_kprobe(struct kprobe *p)
 
 	/* Check if it is already optimized. */
 	if (op->kp.flags & KPROBE_FLAG_OPTIMIZED) {
-		if (optprobe_queued_unopt(op)) {
+		if (optprobe_queued_unopt(op)) {/* 如果在opt list上面 */
 			/* This is under unoptimizing. Just dequeue the probe */
 			list_del_init(&op->list);
 		}
+
 		return;
 	}
+	/* 如果没有已经optimized的话.  */
 	op->kp.flags |= KPROBE_FLAG_OPTIMIZED;
 
 	/*
@@ -717,12 +728,13 @@ static void optimize_kprobe(struct kprobe *p)
 	 */
 	if (WARN_ON_ONCE(!list_empty(&op->list)))
 		return;
-
+	/*加入到optimized list  */
 	list_add(&op->list, &optimizing_list);
 	kick_kprobe_optimizer();
 }
 
-/* Short cut to direct unoptimizing */
+/* Short cut to direct unoptimizing 
+强制unopt这个op */
 static void force_unoptimize_kprobe(struct optimized_kprobe *op)
 {
 	lockdep_assert_cpus_held();
@@ -730,38 +742,43 @@ static void force_unoptimize_kprobe(struct optimized_kprobe *op)
 	op->kp.flags &= ~KPROBE_FLAG_OPTIMIZED;
 }
 
-/* Unoptimize a kprobe if p is optimized */
+/* Unoptimize a kprobe if p is optimized
+unoptimize这个kp.  */
 static void unoptimize_kprobe(struct kprobe *p, bool force)
 {
 	struct optimized_kprobe *op;
 
 	if (!kprobe_aggrprobe(p) || kprobe_disarmed(p))
 		return; /* This is not an optprobe nor optimized */
-
+	/* 获取kp的op */
 	op = container_of(p, struct optimized_kprobe, kp);
 	if (!kprobe_optimized(p))
 		return;
 
-	if (!list_empty(&op->list)) {
-		if (optprobe_queued_unopt(op)) {
+	if (!list_empty(&op->list)) {/* op的list连接件连到哪里. */
+	/* 如果op已经queued了, 看看在不在unoptimizing_list */
+		if (optprobe_queued_unopt(op)) {/*   */
 			/* Queued in unoptimizing queue */
 			if (force) {
 				/*
 				 * Forcibly unoptimize the kprobe here, and queue it
 				 * in the freeing list for release afterwards.
 				 */
+				 /* 这里强制unopt ... */
 				force_unoptimize_kprobe(op);
 				list_move(&op->list, &freeing_list);
 			}
-		} else {
+		} else {/* 如果没有queued? */
 			/* Dequeue from the optimizing queue */
 			list_del_init(&op->list);
 			op->kp.flags &= ~KPROBE_FLAG_OPTIMIZED;
 		}
+
 		return;
 	}
 
 	/* Optimized kprobe case */
+	/* 如果opt的list是空的 */
 	if (force) {
 		/* Forcibly update the code: this is a special case */
 		force_unoptimize_kprobe(op);
@@ -1004,17 +1021,21 @@ static void __arm_kprobe(struct kprobe *p)
 	optimize_kprobe(p);	/* Try to optimize (add kprobe to a list) */
 }
 
-/* Remove the breakpoint of a probe. */
+/* Remove the breakpoint of a probe. 
+持有cpu lock和text_lock后disarm这个kp.
+进行unoptimize, 然后arch_disarm.
+*/
 static void __disarm_kprobe(struct kprobe *p, bool reopt)
 {
 	struct kprobe *_p;
 
 	lockdep_assert_held(&text_mutex);
 
-	/* Try to unoptimize */
+	/* Try to unoptimize
+	先进行unopt.  */
 	unoptimize_kprobe(p, kprobes_all_disarmed);
 
-	if (!kprobe_queued(p)) {
+	if (!kprobe_queued(p)) {/*  */
 		arch_disarm_kprobe(p);
 		/* If another kprobe was blocked, re-optimize it. */
 		_p = get_optimized_kprobe(p->addr);
@@ -1187,10 +1208,10 @@ static int arm_kprobe(struct kprobe *kp)
 
 	return 0;
 }
-
+/* disarm这个kp */
 static int disarm_kprobe(struct kprobe *kp, bool reopt)
 {
-	if (unlikely(kprobe_ftrace(kp)))
+	if (unlikely(kprobe_ftrace(kp)))  /* ftrace的路径 */
 		return disarm_kprobe_ftrace(kp);
 
 	cpus_read_lock();
@@ -2854,7 +2875,7 @@ static int show_kprobe_addr(struct seq_file *pi, void *v)
 	preempt_enable();
 	return 0;
 }
-
+/*  */
 static const struct seq_operations kprobes_sops = {
 	.start = kprobe_seq_start,
 	.next  = kprobe_seq_next,
@@ -2956,7 +2977,7 @@ already_enabled:
 	mutex_unlock(&kprobe_mutex);
 	return ret;
 }
-
+/* disarm全部的kp */
 static int disarm_all_kprobes(void)
 {
 	struct hlist_head *head;
@@ -2977,7 +2998,7 @@ static int disarm_all_kprobes(void)
 	for (i = 0; i < KPROBE_TABLE_SIZE; i++) {
 		head = &kprobe_table[i];
 		/* Disarm all kprobes on a best-effort basis */
-		hlist_for_each_entry(p, head, hlist) {
+		hlist_for_each_entry(p, head, hlist) {/* 遍历全部的kp */
 			if (!arch_trampoline_kprobe(p) && !kprobe_disabled(p)) {
 				err = disarm_kprobe(p, false);
 				if (err) {
@@ -3050,7 +3071,9 @@ static int __init debugfs_kprobe_init(void)
 	struct dentry *dir;
 
 	dir = debugfs_create_dir("kprobes", NULL);
-
+	/* 
+	查看启用的kp
+	 */
 	debugfs_create_file("list", 0400, dir, NULL, &kprobes_fops);
 
 	debugfs_create_file("enabled", 0600, dir, NULL, &fops_kp);

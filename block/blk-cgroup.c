@@ -1178,6 +1178,7 @@ static struct cftype blkcg_legacy_files[] = {
 };
 
 #ifdef CONFIG_CGROUP_WRITEBACK
+//这里前提是知道css是blkcg类型的, 所以直接container_of来获取
 struct list_head *blkcg_get_cgwb_list(struct cgroup_subsys_state *css)
 {
 	return &css_to_blkcg(css)->cgwb_list;
@@ -1459,6 +1460,7 @@ static void blkcg_exit(struct task_struct *tsk)
 	tsk->throttle_disk = NULL;
 }
 
+// io的cgroup子系统
 struct cgroup_subsys io_cgrp_subsys = {
 	.css_alloc = blkcg_css_alloc,
 	.css_online = blkcg_css_online,
@@ -2010,7 +2012,9 @@ static inline struct blkcg_gq *blkg_tryget_closest(struct bio *bio,
 }
 
 /**
+ 比如bio回写一个bh的时候, 也会把bio关联到wbc的wb的css
  * bio_associate_blkg_from_css - associate a bio with a specified css
+   把bio与css关联起来
  * @bio: target bio
  * @css: target css
  *
@@ -2019,7 +2023,7 @@ static inline struct blkcg_gq *blkg_tryget_closest(struct bio *bio,
  * the blkg tree.  Therefore, the blkg associated can be anything between @blkg
  * and q->root_blkg.  This situation only happens when a cgroup is dying and
  * then the remaining bios will spill to the closest alive blkg.
- *
+ * 
  * A reference will be taken on the blkg and will be released when @bio is
  * freed.
  */
@@ -2031,7 +2035,7 @@ void bio_associate_blkg_from_css(struct bio *bio,
 
 	if (css && css->parent) {
 		bio->bi_blkg = blkg_tryget_closest(bio, css);
-	} else {
+	} else {/* 如果没有css 或者css就是root */
 		blkg_get(bdev_get_queue(bio->bi_bdev)->root_blkg);
 		bio->bi_blkg = bdev_get_queue(bio->bi_bdev)->root_blkg;
 	}

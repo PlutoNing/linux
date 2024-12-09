@@ -242,17 +242,20 @@ static inline void bio_clear_flag(struct bio *bio, unsigned int bit)
 	bio->bi_flags &= ~(1U << bit);
 }
 
+//
 static inline struct bio_vec *bio_first_bvec_all(struct bio *bio)
 {
 	WARN_ON_ONCE(bio_flagged(bio, BIO_CLONED));
 	return bio->bi_io_vec;
 }
 
+//
 static inline struct page *bio_first_page_all(struct bio *bio)
 {
 	return bio_first_bvec_all(bio)->bv_page;
 }
 
+//
 static inline struct folio *bio_first_folio_all(struct bio *bio)
 {
 	return page_folio(bio_first_page_all(bio));
@@ -426,6 +429,7 @@ int bio_init_clone(struct block_device *bdev, struct bio *bio,
 
 extern struct bio_set fs_bio_set;
 
+//分配一个bio
 static inline struct bio *bio_alloc(struct block_device *bdev,
 		unsigned short nr_vecs, blk_opf_t opf, gfp_t gfp_mask)
 {

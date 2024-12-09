@@ -272,11 +272,16 @@ struct bio {
 	blk_status_t		bi_status;
 	atomic_t		__bi_remaining;
 
-	struct bvec_iter	bi_iter;
+	struct bvec_iter	bi_iter;/* 
+	像是一个总控
+	 */
 
 	blk_qc_t		bi_cookie;
-	bio_end_io_t		*bi_end_io;
-	void			*bi_private;
+	bio_end_io_t		*bi_end_io;/*  */
+	void			*bi_private;/* 
+	特定于使用方式的成员
+	回写bh的时候, 指向bh
+	 */
 #ifdef CONFIG_BLK_CGROUP
 	/*
 	 * Represents the association of the css and request_queue for the bio.
@@ -301,7 +306,9 @@ struct bio {
 #endif
 	};
 
-	unsigned short		bi_vcnt;	/* how many bio_vec's */
+	unsigned short		bi_vcnt;	/* 
+	有多少个bv
+	how many bio_vec's */
 
 	/*
 	 * Everything starting with bi_max_vecs will be preserved by bio_reset()
@@ -311,7 +318,9 @@ struct bio {
 
 	atomic_t		__bi_cnt;	/* pin count */
 
-	struct bio_vec		*bi_io_vec;	/* the actual vec list */
+	struct bio_vec		*bi_io_vec;	/* 
+	里面的每一个元素, 表示一个回写的page的数据,和offset,位置什么的
+	the actual vec list */
 
 	struct bio_set		*bi_pool;
 
@@ -437,6 +446,8 @@ enum req_flag_bits {
 			(__force blk_opf_t)(1ULL << __REQ_FAILFAST_TRANSPORT)
 #define REQ_FAILFAST_DRIVER	\
 			(__force blk_opf_t)(1ULL << __REQ_FAILFAST_DRIVER)
+
+//对应与wbc的sync all
 #define REQ_SYNC	(__force blk_opf_t)(1ULL << __REQ_SYNC)
 #define REQ_META	(__force blk_opf_t)(1ULL << __REQ_META)
 #define REQ_PRIO	(__force blk_opf_t)(1ULL << __REQ_PRIO)

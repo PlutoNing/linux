@@ -54,8 +54,9 @@
 /* Max event bits supported */
 #define MAX_EVT_CONFIG_BITS		GENMASK(6, 0)
 
+/* rdt fs的ctx */
 struct rdt_fs_context {
-	struct kernfs_fs_context	kfc;
+	struct kernfs_fs_context	kfc;/* 也存储在fs ctx的priv里面 */
 	bool				enable_cdpl2;
 	bool				enable_cdpl3;
 	bool				enable_mba_mbps;
@@ -124,7 +125,9 @@ enum rdt_group_type {
 	RDT_NUM_GROUP,
 };
 
-/**
+/**定义了 RDT（Resource Director Technology）资源组的几种模式，用于控制资源组之间
+的共享和隔离行为。每种模式定义了该资源组在共享资源（如缓存和内存带宽）时的策略，允许
+不同的任务组获得不同的资源隔离或共享级别。
  * enum rdtgrp_mode - Mode of a RDT resource group
  * @RDT_MODE_SHAREABLE: This resource group allows sharing of its allocations
  * @RDT_MODE_EXCLUSIVE: No sharing of this resource group's allocations allowed
@@ -137,20 +140,24 @@ enum rdt_group_type {
  * between allocations associated with different resource groups (classes
  * of service). User is able to modify the mode of a resource group by
  * writing to the "mode" resctrl file associated with the resource group.
- *
+ *资源组的模式用于控制不同资源组（服务等级类）之间的分配重叠程度。
+ * 用户可以通过修改与资源组关联的 resctrl 文件 "mode" 来改变资源组的模式。
  * The "shareable", "exclusive", and "pseudo-locksetup" modes are set by
  * writing the appropriate text to the "mode" file. A resource group enters
  * "pseudo-locked" mode after the schemata is written while the resource
  * group is in "pseudo-locksetup" mode.
+ 以通过向 "mode" 文件写入合适的文本来设置 "shareable"、"exclusive" 和
+ * "pseudo-locksetup" 模式。在资源组处于 "pseudo-locksetup" 模式时，写入 schemata 后
+ * 资源组将进入 "pseudo-locked" 模式。
  */
 enum rdtgrp_mode {
-	RDT_MODE_SHAREABLE = 0,
-	RDT_MODE_EXCLUSIVE,
-	RDT_MODE_PSEUDO_LOCKSETUP,
-	RDT_MODE_PSEUDO_LOCKED,
+	RDT_MODE_SHAREABLE = 0, //资源组允许共享分配的资源
+	RDT_MODE_EXCLUSIVE,   // 该资源组的资源分配不允许共享
+	RDT_MODE_PSEUDO_LOCKSETUP,  // 资源组将用于伪锁定（Pseudo-Locking）设置?
+	RDT_MODE_PSEUDO_LOCKED,   // 资源组的资源分配不允许共享，且资源已进行缓存伪锁定?
 
 	/* Must be last */
-	RDT_NUM_MODES,
+	RDT_NUM_MODES,  // 模式的总数量
 };
 
 /**
@@ -162,8 +169,8 @@ enum rdtgrp_mode {
  */
 struct mongroup {
 	struct kernfs_node	*mon_data_kn;
-	struct rdtgroup		*parent;
-	struct list_head	crdtgrp_list;
+	struct rdtgroup		*parent; 
+	struct list_head	crdtgrp_list; /* 通过这个挂接到rdtg->mon.crdtgrp_list */
 	u32			rmid;
 };
 
@@ -200,11 +207,14 @@ struct pseudo_lock_region {
 	unsigned int		size;
 	void			*kmem;
 	unsigned int		minor;
-	struct dentry		*debugfs_dir;
+	struct dentry		*debugfs_dir; /* 在debugfs的对应 */
 	struct list_head	pm_reqs;
 };
 
-/**
+/**结构体 rdtgroup 用于在 resctrl 文件系统中存储一个资源组的相关数据。
+resctrl 文件系统是 Linux 内核的一部分，用于控制和管理 CPU 缓存和内存带宽
+等资源。rdtgroup 结构体中的各字段保存了一个资源组的各种信息，如资源组的 
+ID、所属 CPU、模式、伪锁定区域等。
  * struct rdtgroup - store rdtgroup's data in resctrl file system.
  * @kn:				kernfs node
  * @rdtgroup_list:		linked list for all rdtgroups
@@ -220,15 +230,16 @@ struct pseudo_lock_region {
  * @plr:			pseudo-locked region
  */
 struct rdtgroup {
-	struct kernfs_node		*kn;
+	struct kernfs_node		*kn;  // 与此资源组关联的 kernfs 节点（文件系统节点）
+	/* 通过这个rdtgroup_list挂载到rdt_all_groups */
 	struct list_head		rdtgroup_list;
-	u32				closid;
-	struct cpumask			cpu_mask;
-	int				flags;
-	atomic_t			waitcount;
-	enum rdt_group_type		type;
-	struct mongroup			mon;
-	enum rdtgrp_mode		mode;
+	u32				closid; /* tsk通过自己的这个字段与rdtg一一对应 */
+	struct cpumask			cpu_mask; // 分配给此资源组的 CPU 掩码，表示此资源组可以使用的 CPU 集
+	int				flags;  // 状态标志位，记录资源组的状态信息
+	atomic_t			waitcount; // 等待计数，表示在获取 rdtgroup_mutex 时有多少 CPU 期望找到此资源组
+	enum rdt_group_type		type; // 资源组的类型，表示是监控组（monitor only）还是控制+监控组（ctrl_mon group）
+	struct mongroup			mon;  // 与监控组相关的数据，存储此资源组的监控信息
+	enum rdtgrp_mode		mode;  // 资源组的模式，定义资源共享、独占等行为
 	struct pseudo_lock_region	*plr;
 };
 
@@ -384,6 +395,7 @@ struct rdt_parse_data {
 };
 
 /**
+
  * struct rdt_hw_resource - arch private attributes of a resctrl resource
  * @r_resctrl:		Attributes of the resource used directly by resctrl.
  * @num_closid:		Maximum number of closid this hardware can support,
@@ -412,6 +424,7 @@ struct rdt_hw_resource {
 	bool			cdp_enabled;
 };
 
+/* 从rdt res到hw rdt res */
 static inline struct rdt_hw_resource *resctrl_to_arch_res(struct rdt_resource *r)
 {
 	return container_of(r, struct rdt_hw_resource, r_resctrl);
@@ -427,7 +440,7 @@ extern struct mutex rdtgroup_mutex;
 extern struct rdt_hw_resource rdt_resources_all[];
 extern struct rdtgroup rdtgroup_default;
 DECLARE_STATIC_KEY_FALSE(rdt_alloc_enable_key);
-
+/* resctrl机制的debugfs相关 */
 extern struct dentry *debugfs_resctrl;
 
 enum resctrl_res_level {
@@ -440,6 +453,7 @@ enum resctrl_res_level {
 	RDT_NUM_RESOURCES,
 };
 
+/*  */
 static inline struct rdt_resource *resctrl_inc(struct rdt_resource *res)
 {
 	struct rdt_hw_resource *hw_res = resctrl_to_arch_res(res);
@@ -456,6 +470,7 @@ static inline bool resctrl_arch_get_cdp_enabled(enum resctrl_res_level l)
 int resctrl_arch_set_cdp_enabled(enum resctrl_res_level l, bool enable);
 
 /*
+遍历全部的rdt res
  * To return the common struct rdt_resource, which is contained in struct
  * rdt_hw_resource, walk the resctrl member of struct rdt_hw_resource.
  */
@@ -467,7 +482,7 @@ int resctrl_arch_set_cdp_enabled(enum resctrl_res_level l, bool enable);
 #define for_each_capable_rdt_resource(r)				      \
 	for_each_rdt_resource(r)					      \
 		if (r->alloc_capable || r->mon_capable)
-
+/* 遍历全部的rdt res */
 #define for_each_alloc_capable_rdt_resource(r)				      \
 	for_each_rdt_resource(r)					      \
 		if (r->alloc_capable)

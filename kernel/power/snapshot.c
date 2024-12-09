@@ -1371,11 +1371,12 @@ static inline void *saveable_highmem_page(struct zone *z, unsigned long p)
 #endif /* CONFIG_HIGHMEM */
 
 /**
+睡眠之前, 检查页面是不是savable的, 
  * saveable_page - Check if the given page is saveable.
  *
  * Determine whether a non-highmem page should be included in a hibernation
  * image.
- *
+ * 
  * We should save the page if it isn't Nosave, and is not in the range
  * of pages statically defined as 'unsaveable', and it isn't part of
  * a free chunk of pages.
@@ -1409,7 +1410,9 @@ static struct page *saveable_page(struct zone *zone, unsigned long pfn)
 	return page;
 }
 
+
 /**
+
  * count_data_pages - Compute the total number of saveable non-highmem pages.
  */
 static unsigned int count_data_pages(void)
@@ -1808,6 +1811,7 @@ static unsigned long minimum_image_size(unsigned long saveable)
 }
 
 /**
+
  * hibernate_preallocate_memory - Preallocate memory for hibernation image.
  *
  * To create a hibernation image it is necessary to make a copy of every page

@@ -79,6 +79,8 @@ extern void sched_clock_idle_sleep_event(void);
 extern void sched_clock_idle_wakeup_event(void);
 
 /*
+ 如 clock.c 中所述，提供了一种快速、高分辨率、以纳秒为单位的时间源，该时间源
+ 对于每个 CPU 参数是单调的，并且在 CPU 之间具有有限的漂移。
  * As outlined in clock.c, provides a fast, high resolution, nanosecond
  * time source that is monotonic per cpu argument and has bounded drift
  * between cpus.

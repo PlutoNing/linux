@@ -32,11 +32,12 @@ static void ceph_block_o_direct(struct ceph_inode_info *ci, struct inode *inode)
 }
 
 /**
+ 标记准备读此文件?
  * ceph_start_io_read - declare the file is being used for buffered reads
  * @inode: file inode
  *
  * Declare that a buffered read operation is about to start, and ensure
- * that we block all direct I/O.
+ * that we block all direct I/O. 准备标记为buffer读, 组织直接IO.
  * On exit, the function ensures that the CEPH_I_ODIRECT flag is unset,
  * and holds a shared lock on inode->i_rwsem to ensure that the flag
  * cannot be changed.
@@ -57,6 +58,7 @@ ceph_start_io_read(struct inode *inode)
 	if (!(READ_ONCE(ci->i_ceph_flags) & CEPH_I_ODIRECT))
 		return;
 	up_read(&inode->i_rwsem);
+
 	/* Slow path.... */
 	down_write(&inode->i_rwsem);
 	ceph_block_o_direct(ci, inode);

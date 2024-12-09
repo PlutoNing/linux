@@ -41,6 +41,7 @@ int filemap_fdatawait_range(struct address_space *, loff_t lstart, loff_t lend);
 int filemap_fdatawait_range_keep_errors(struct address_space *mapping,
 		loff_t start_byte, loff_t end_byte);
 
+//作用是等待所有的数据脏页写回?
 static inline int filemap_fdatawait(struct address_space *mapping)
 {
 	return filemap_fdatawait_range(mapping, 0, LLONG_MAX);
@@ -143,6 +144,7 @@ static inline bool mapping_empty(struct address_space *mapping)
 
 /*
  * mapping_shrinkable - test if page cache state allows inode reclaim
+   检查mapping是否允许inode回收, mapping删除页面后一遍会调用此函数
  * @mapping: the page cache mapping
  *
  * This checks the mapping's cache state for the pupose of inode
@@ -253,7 +255,7 @@ static inline bool mapping_unevictable(struct address_space *mapping)
 {
 	return mapping && test_bit(AS_UNEVICTABLE, &mapping->flags);
 }
-
+/*  */
 static inline void mapping_set_exiting(struct address_space *mapping)
 {
 	set_bit(AS_EXITING, &mapping->flags);
@@ -269,6 +271,7 @@ static inline void mapping_set_no_writeback_tags(struct address_space *mapping)
 	set_bit(AS_NO_WRITEBACK_TAGS, &mapping->flags);
 }
 
+//mapping是否使用writeback tags
 static inline int mapping_use_writeback_tags(struct address_space *mapping)
 {
 	return !test_bit(AS_NO_WRITEBACK_TAGS, &mapping->flags);
@@ -516,6 +519,7 @@ static inline struct folio *filemap_alloc_folio(gfp_t gfp, unsigned int order)
 }
 #endif
 
+/* 分配pagecache页面? 但是归属哪个mapping呢? */
 static inline struct page *__page_cache_alloc(gfp_t gfp)
 {
 	return &filemap_alloc_folio(gfp, 0)->page;
@@ -603,6 +607,7 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
 		fgf_t fgp_flags, gfp_t gfp);
 
 /**
+  找出index位置的folio, 缺页会申请
  * filemap_get_folio - Find and get a folio.
  * @mapping: The address_space to search.
  * @index: The page index.
@@ -792,6 +797,7 @@ static inline struct page *folio_file_page(struct folio *folio, pgoff_t index)
 	/* HugeTLBfs indexes the page cache in units of hpage_size */
 	if (folio_test_hugetlb(folio))
 		return &folio->page;
+
 	return folio_page(folio, index & (folio_nr_pages(folio) - 1));
 }
 
@@ -860,6 +866,7 @@ static inline struct page *read_mapping_page(struct address_space *mapping,
 	return read_cache_page(mapping, index, NULL, file);
 }
 
+/*  */
 static inline struct folio *read_mapping_folio(struct address_space *mapping,
 				pgoff_t index, struct file *file)
 {
@@ -935,6 +942,7 @@ static inline loff_t folio_file_pos(struct folio *folio)
 /*
  * Get the offset in PAGE_SIZE (even for hugetlb folios).
  * (TODO: hugetlb folios should have ->index in PAGE_SIZE)
+   获取folio在pagecache中的偏移量?
  */
 static inline pgoff_t folio_pgoff(struct folio *folio)
 {
@@ -946,6 +954,7 @@ static inline pgoff_t folio_pgoff(struct folio *folio)
 extern pgoff_t linear_hugepage_index(struct vm_area_struct *vma,
 				     unsigned long address);
 
+// 获取address在vma的全局pgoff
 static inline pgoff_t linear_page_index(struct vm_area_struct *vma,
 					unsigned long address)
 {
@@ -963,6 +972,7 @@ struct wait_page_key {
 	int page_match;
 };
 
+//代表一个等待页的队列. 表示等待folio的某个bit被设置or清除?
 struct wait_page_queue {
 	struct folio *folio;
 	int bit_nr;
@@ -990,13 +1000,17 @@ void folio_unlock(struct folio *folio);
 
 /**
  * folio_trylock() - Attempt to lock a folio.
+   锁住页面本身
  * @folio: The folio to attempt to lock.
  *
  * Sometimes it is undesirable to wait for a folio to be unlocked (eg
  * when the locks are being taken in the wrong order, or if making
  * progress through a batch of folios is more important than processing
  * them in order).  Usually folio_lock() is the correct function to call.
- *
+ * 有时候不想等待页面一直到它解锁, 可以使用这个函数
+   比如说锁住页面的时候, 有可能会发生死锁, 这个时候就可以使用这个函数, 如果不能锁住就直接返回
+   , 不会阻塞，而folio_lock()会阻塞.
+
  * Context: Any context.
  * Return: Whether the lock was successfully acquired.
  */
@@ -1014,6 +1028,7 @@ static inline int trylock_page(struct page *page)
 }
 
 /**
+对获取到的folio加锁
  * folio_lock() - Lock this folio.
  * @folio: The folio to lock.
  *
@@ -1038,8 +1053,8 @@ static inline int trylock_page(struct page *page)
 static inline void folio_lock(struct folio *folio)
 {
 	might_sleep();
-	if (!folio_trylock(folio))
-		__folio_lock(folio);
+	if (!folio_trylock(folio)) /* 不能try lock就直接lock */
+		__folio_lock(folio); /* 直接lock可能阻塞什么的 */
 }
 
 /**
@@ -1200,6 +1215,10 @@ bool filemap_range_has_writeback(struct address_space *mapping,
 				 loff_t start_byte, loff_t end_byte);
 
 /**
+要以NO_WAIT的方式写入mapping的range[star_byte, end_byte]
+检查这个range是否需要writeback
+如果有至少一个dirty或者wb的folio, 就需要wb
+
  * filemap_range_needs_writeback - check if range potentially needs writeback
  * @mapping:           address space within which to check
  * @start_byte:        offset in bytes where the range starts
@@ -1209,9 +1228,12 @@ bool filemap_range_has_writeback(struct address_space *mapping,
  * direct writing in this range will trigger a writeback. Used by O_DIRECT
  * read/write with IOCB_NOWAIT, to see if the caller needs to do
  * filemap_write_and_wait_range() before proceeding.
- *
+ * 找到至少一个在这个范围内的页面，通常用于检查直接写入这个范围是否会触发回写。
+  用于O_DIRECT读/写IOCB_NOWAIT，以查看调用者是否需要在继续之前执行filemap_write_and_wait_range().
+
  * Return: %true if the caller should do filemap_write_and_wait_range() before
  * doing O_DIRECT to a page in this range, %false otherwise.
+
  */
 static inline bool filemap_range_needs_writeback(struct address_space *mapping,
 						 loff_t start_byte,
@@ -1222,6 +1244,7 @@ static inline bool filemap_range_needs_writeback(struct address_space *mapping,
 	if (!mapping_tagged(mapping, PAGECACHE_TAG_DIRTY) &&
 	    !mapping_tagged(mapping, PAGECACHE_TAG_WRITEBACK))
 		return false;
+	//需要mapping是dirty的或者writeback的
 	return filemap_range_has_writeback(mapping, start_byte, end_byte);
 }
 
@@ -1242,11 +1265,11 @@ static inline bool filemap_range_needs_writeback(struct address_space *mapping,
  * @ra: File readahead state.  May be NULL.
  */
 struct readahead_control {
-	struct file *file;
-	struct address_space *mapping;
-	struct file_ra_state *ra;
+	struct file *file; //要读取file
+	struct address_space *mapping; //涉及的mapping
+	struct file_ra_state *ra; //ra
 /* private: use the readahead_* accessors instead */
-	pgoff_t _index;
+	pgoff_t _index; //起始位置
 	unsigned int _nr_pages;
 	unsigned int _batch_count;
 	bool _workingset;
@@ -1272,6 +1295,8 @@ void readahead_expand(struct readahead_control *ractl,
 		      loff_t new_start, size_t new_len);
 
 /**
+  发起预读
+  读取从index开始的req_count个页面
  * page_cache_sync_readahead - generic file readahead
  * @mapping: address_space which holds the pagecache and I/O vectors
  * @ra: file_ra_state which holds the readahead state
@@ -1289,6 +1314,7 @@ void page_cache_sync_readahead(struct address_space *mapping,
 		struct file_ra_state *ra, struct file *file, pgoff_t index,
 		unsigned long req_count)
 {
+	//初始化ra
 	DEFINE_READAHEAD(ractl, file, ra, mapping, index);
 	page_cache_sync_ra(&ractl, req_count);
 }
@@ -1316,6 +1342,7 @@ void page_cache_async_readahead(struct address_space *mapping,
 	page_cache_async_ra(&ractl, folio, req_count);
 }
 
+//获取ra的下一个预读的folio?
 static inline struct folio *__readahead_folio(struct readahead_control *ractl)
 {
 	struct folio *folio;

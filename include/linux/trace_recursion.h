@@ -10,6 +10,7 @@
 /* Only current can touch trace_recursion */
 
 /*
+
  * For function tracing recursion:
  *  The order of these bits are important.
  *
@@ -79,6 +80,7 @@ enum {
 
 #define trace_recursion_set(bit)	do { (current)->trace_recursion |= (1<<(bit)); } while (0)
 #define trace_recursion_clear(bit)	do { (current)->trace_recursion &= ~(1<<(bit)); } while (0)
+/*  */
 #define trace_recursion_test(bit)	((current)->trace_recursion & (1<<(bit)))
 
 #define trace_recursion_depth() \
@@ -94,12 +96,13 @@ enum {
 #define TRACE_CONTEXT_BITS	4
 
 #define TRACE_FTRACE_START	TRACE_FTRACE_BIT
-
+/* 5 */
 #define TRACE_LIST_START	TRACE_INTERNAL_BIT
 
 #define TRACE_CONTEXT_MASK	((1 << (TRACE_LIST_START + TRACE_CONTEXT_BITS)) - 1)
 
 /*
+对应几种中断级别.
 对应几种中断级别.
  * Used for setting context
  *  NMI     = 0
@@ -153,7 +156,7 @@ extern void ftrace_record_recursion(unsigned long ip, unsigned long parent_ip);
 #endif
 
 /*
-
+ 
  * Preemption is promised to be disabled when return bit >= 0.
  */
 static __always_inline int trace_test_and_set_recursion(unsigned long ip, unsigned long pip,
@@ -164,7 +167,7 @@ static __always_inline int trace_test_and_set_recursion(unsigned long ip, unsign
 
 	if (trace_warn_on_no_rcu(ip))
 		return -1;
-
+	/*  */
 	bit = trace_get_context_bit() + start;
 	if (unlikely(val & (1 << bit))) {
 		/*

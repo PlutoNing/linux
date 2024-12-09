@@ -130,7 +130,7 @@ struct ftrace_regs {
  */
 #define ftrace_regs_set_instruction_pointer(fregs, ip) do { } while (0)
 #endif /* CONFIG_HAVE_DYNAMIC_FTRACE_WITH_ARGS */
-/*  */
+/* 获取ftrace保存的寄存器状态 */
 static __always_inline struct pt_regs *ftrace_get_regs(struct ftrace_regs *fregs)
 {
 	if (!fregs)
@@ -305,7 +305,9 @@ enum ftrace_ops_cmd {
 typedef int (*ftrace_ops_func_t)(struct ftrace_ops *op, enum ftrace_ops_cmd cmd);
 
 #ifdef CONFIG_DYNAMIC_FTRACE
-/* The hash used to know what functions callbacks trace */
+/* 
+代表ops的func hash ...
+The hash used to know what functions callbacks trace */
 struct ftrace_ops_hash {
 	struct ftrace_hash __rcu	*notrace_hash;
 	struct ftrace_hash __rcu	*filter_hash;
@@ -334,18 +336,22 @@ static inline void ftrace_free_mem(struct module *mod, void *start, void *end) {
  * ftrace_ops must perform a schedule_on_each_cpu() before freeing it.
  */
 struct ftrace_ops {
+	/* func */
 	ftrace_func_t			func;
+	/* 指向下一个ops */
 	struct ftrace_ops __rcu		*next;
 	unsigned long			flags;
 	void				*private;
 	ftrace_func_t			saved_func;
 #ifdef CONFIG_DYNAMIC_FTRACE
 	struct ftrace_ops_hash		local_hash;
+	/* hash */
 	struct ftrace_ops_hash		*func_hash;
 	struct ftrace_ops_hash		old_hash;
 	unsigned long			trampoline;
 	unsigned long			trampoline_size;
 	struct list_head		list;
+	/*  */
 	ftrace_ops_func_t		ops_func;
 #ifdef CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS
 	unsigned long			direct_call;
@@ -616,10 +622,10 @@ void ftrace_set_global_filter(unsigned char *buf, int len, int reset);
 void ftrace_set_global_notrace(unsigned char *buf, int len, int reset);
 void ftrace_free_filter(struct ftrace_ops *ops);
 void ftrace_ops_set_global_filter(struct ftrace_ops *ops);
-
+/* ftrace相关的bitmask */
 enum {
 	FTRACE_UPDATE_CALLS		= (1 << 0),
-	FTRACE_DISABLE_CALLS		= (1 << 1),
+	FTRACE_DISABLE_CALLS		= (1 << 1),  /* 关闭的表示 */
 	FTRACE_UPDATE_TRACE_FUNC	= (1 << 2),
 	FTRACE_START_FUNC_RET		= (1 << 3),
 	FTRACE_STOP_FUNC_RET		= (1 << 4),

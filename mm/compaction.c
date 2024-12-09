@@ -867,7 +867,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		/* async migration should just abort */
 		if (cc->mode == MIGRATE_ASYNC)
 			return -EAGAIN;
-
+		/* 阻塞一会儿.  */
 		reclaim_throttle(pgdat, VMSCAN_THROTTLE_ISOLATED);
 
 		if (fatal_signal_pending(current))

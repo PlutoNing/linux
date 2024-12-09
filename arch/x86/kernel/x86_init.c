@@ -163,6 +163,7 @@ struct x86_platform_ops x86_platform __ro_after_init = {
 
 EXPORT_SYMBOL_GPL(x86_platform);
 
+/*  */
 struct x86_apic_ops x86_apic_ops __ro_after_init = {
 	.io_apic_read	= native_io_apic_read,
 	.restore	= native_restore_boot_irq_mode,

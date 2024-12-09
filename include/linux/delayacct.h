@@ -10,6 +10,7 @@
 #include <uapi/linux/taskstats.h>
 
 #ifdef CONFIG_TASK_DELAY_ACCT
+/* 延时核算相关 */
 struct task_delay_info {
 	raw_spinlock_t	lock;
 
@@ -128,7 +129,7 @@ static inline __u64 delayacct_blkio_ticks(struct task_struct *tsk)
 		return __delayacct_blkio_ticks(tsk);
 	return 0;
 }
-
+/* 延时核算相关 */
 static inline void delayacct_freepages_start(void)
 {
 	if (!static_branch_unlikely(&delayacct_key))

@@ -1,0 +1,29 @@
+digraph {
+    rankdir=TB;
+    node [shape=box];
+
+    start [label="开始"];
+    data_collection [label="数据收集阶段"];
+    delay_calculation [label="计算时延 u"];
+    bandwidth_calculation [label="计算带宽 w"];
+    qos_calculation [label="QoS 计算阶段"];
+    qos_iops_calc [label="计算调整后的 IOPS"];
+    qos_bps_calc [label="计算调整后的 BPS"];
+    configure_cgroup [label="配置 cgroup 阶段\n写入 IOPS、BPS 和 latency 值"];
+    dynamic_adjustment [label="动态调整阶段\n持续监测并更新 cgroup 配置"];
+    end [label="结束"];
+
+    start -> data_collection;
+    data_collection -> delay_calculation;
+    data_collection -> bandwidth_calculation;
+    delay_calculation -> qos_calculation;
+    bandwidth_calculation -> qos_calculation;
+    qos_calculation -> qos_iops_calc;
+    qos_calculation -> qos_bps_calc;
+    qos_iops_calc -> configure_cgroup;
+    qos_bps_calc -> configure_cgroup;
+    configure_cgroup -> dynamic_adjustment;
+    dynamic_adjustment -> delay_calculation [label="反馈调整"];
+    dynamic_adjustment -> bandwidth_calculation [label="反馈调整"];
+    dynamic_adjustment -> end;
+}

@@ -40,9 +40,13 @@ enum writeback_sync_modes {
  * in a manner such that unspecified fields are set to zero.
  */
 struct writeback_control {
-	long nr_to_write;		/* Write this many pages, and decrement
+	long nr_to_write;		/* 
+	这个wbc要回写的量
+	Write this many pages, and decrement
 					   this for each page written */
-	long pages_skipped;		/* Pages which were not written */
+	long pages_skipped;		/* 
+	表示因为各种原因决定暂时不回写的page数量
+	Pages which were not written */
 
 	/*
 	 * For a_ops->writepages(): if start or end are non-zero then this is
@@ -78,11 +82,17 @@ struct writeback_control {
 	struct swap_iocb **swap_plug;
 
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct bdi_writeback *wb;	/* wb this writeback is issued under */
-	struct inode *inode;		/* inode being written out */
+	struct bdi_writeback *wb;	/* 
+	指向自己控制的inode的wb
+	wb this writeback is issued under */
+	struct inode *inode;		/* inode being written out
+	指向自己控制的inode 
+	 */
 
 	/* foreign inode detection, see wbc_detach_inode() */
-	int wb_id;			/* current wb id */
+	int wb_id;			/* 
+	也算是指向自己控制的inode的wb的memcg的id
+	current wb id */
 	int wb_lcand_id;		/* last foreign candidate wb id */
 	int wb_tcand_id;		/* this foreign candidate wb id */
 	size_t wb_bytes;		/* bytes written by current wb */
@@ -91,6 +101,7 @@ struct writeback_control {
 #endif
 };
 
+//
 static inline blk_opf_t wbc_to_write_flags(struct writeback_control *wbc)
 {
 	blk_opf_t flags = 0;
@@ -116,6 +127,9 @@ static inline blk_opf_t wbc_to_write_flags(struct writeback_control *wbc)
  * domain, global_wb_domain, that every wb in the system is a member of.
  * This allows measuring the relative bandwidth of each wb to distribute
  * dirtyable memory accordingly.
+   一个 `wb_domain` 表示一个写回域，其中包含了属于该域的写回（bdi_writeback）
+   并在其中相互比较。系统中总是存在一个全局的写回域 `global_wb_domain`，所有写回
+   都属于这个域。这使得系统能够衡量每个写回的相对带宽，并据此分配可脏化的内存。
  */
 struct wb_domain {
 	spinlock_t lock;
@@ -136,6 +150,16 @@ struct wb_domain {
 	 * We introduce a concept of time, a period over which we measure
 	 * these events, because demand can/will vary over time. The length
 	 * of this period itself is measured in page writeback completions.
+	 根据相对的写回速度，按比例调整写回缓存的大小。
+
+我们通过根据页面写回完成事件 [end_page_writeback()] 在各个 BDI 之间保持动态比例来实现这一点。
+写回速度较快的设备将获得更多的缓存份额，而速度较慢的设备则会分配较少的份额。
+
+我们之所以使用页面写回完成事件，是因为我们关注的是清理脏页。将脏页写回是我们的主要目标。
+
+我们引入了时间的概念，即在一个时间段内对这些事件进行衡量，因为需求会随时间变化而变化。
+这个时间段的长度本身是通过页面写回完成事件来度量的。
+
 	 */
 	struct fprop_global completions;
 	struct timer_list period_timer;	/* timer for aging of completions */
@@ -150,6 +174,12 @@ struct wb_domain {
 	 * tracking slowly down to the knocked down dirty threshold.
 	 *
 	 * Both fields are protected by ->lock.
+	 脏页面内存和脏页面阈值可能会由于某些因素突然大幅下降（例如，在无交换空间的系统中启动 KVM）。
+	 这可能会导致系统进入深度脏页超限状态，并限制所有脏页写入器的写回速度。为了保持系统良好的响应性，
+	 我们维护一个 `global_dirty_limit`，用于缓慢跟踪并恢复到调整后的脏页面阈值。
+
+	 这两个字段都由 `->lock` 保护。
+
 	 */
 	unsigned long dirty_limit_tstamp;
 	unsigned long dirty_limit;
@@ -216,12 +246,17 @@ bool cleanup_offline_cgwb(struct bdi_writeback *wb);
 
 /**
  * inode_attach_wb - associate an inode with its wb
+   关联inode和wb. 把找到的wb赋值到inode
  * @inode: inode of interest
  * @folio: folio being dirtied (may be NULL)
  *
  * If @inode doesn't have its wb, associate it with the wb matching the
  * memcg of @folio or, if @folio is NULL, %current.  May be called w/ or w/o
  * @inode->i_lock.
+	如果@inode没有它的wb，则将其与与@folio的memcg匹配的wb关联，或者如果@folio为NULL，
+	则与%current关联。
+	----
+	目前猜测这里可能是为了实现cgrop级别的io控制?
  */
 static inline void inode_attach_wb(struct inode *inode, struct folio *folio)
 {
@@ -246,23 +281,29 @@ static inline void inode_detach_wb(struct inode *inode)
 
 /**
  * wbc_attach_fdatawrite_inode - associate wbc and inode for fdatawrite
+	关联wbc和inode
  * @wbc: writeback_control of interest
  * @inode: target inode
  *
  * This function is to be used by __filemap_fdatawrite_range(), which is an
  * alternative entry point into writeback code, and first ensures @inode is
  * associated with a bdi_writeback and attaches it to @wbc.
+	这个函数是由__filemap_fdatawrite_range()使用的，它是写回代码的另一种入口点，
+	并首先确保@inode与bdi_writeback关联，并将其附加到@wbc。
  */
 static inline void wbc_attach_fdatawrite_inode(struct writeback_control *wbc,
 					       struct inode *inode)
 {
 	spin_lock(&inode->i_lock);
-	inode_attach_wb(inode, NULL);
-	wbc_attach_and_unlock_inode(wbc, inode);
+	//为什么下面分两行代码
+	inode_attach_wb(inode, NULL);  //设置inode的i_wb, 实现io控制
+	wbc_attach_and_unlock_inode(wbc, inode); //把wbc与inode和wb建立关联
 }
 
 /**
  * wbc_init_bio - writeback specific initializtion of bio
+   wbc控制写回bio时候的初始化
+   把bio也与wbc对应的wb关联起来
  * @wbc: writeback_control for the writeback in progress
  * @bio: bio to be initialized
  *
@@ -270,6 +311,8 @@ static inline void wbc_attach_fdatawrite_inode(struct writeback_control *wbc,
  * writeback specific initialization.  This is used to apply the cgroup
  * writeback context.  Must be called after the bio has been associated with
  * a device.
+   bio是由@wbc控制的正在进行的写回的一部分。执行特定于写回的初始化。这用于应用cgroup写回上下文。
+   必须在将bio与设备关联后调用。
  */
 static inline void wbc_init_bio(struct writeback_control *wbc, struct bio *bio)
 {

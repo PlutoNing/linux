@@ -48,13 +48,16 @@ extern int freeze_kernel_threads(void);
 extern void thaw_processes(void);
 extern void thaw_kernel_threads(void);
 
+/* 尝试freeze */
 static inline bool try_to_freeze(void)
 {
 	might_sleep();
 	if (likely(!freezing(current)))
 		return false;
+
 	if (!(current->flags & PF_NOFREEZE))
 		debug_check_no_locks_held();
+
 	return __refrigerator(false);
 }
 

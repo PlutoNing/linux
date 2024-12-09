@@ -204,6 +204,7 @@ void ceph_encode_my_addr(struct ceph_messenger *msgr)
 }
 
 /*
+全局的读写queue?
  * work queue for all reading and writing to/from the socket.
  */
 static struct workqueue_struct *ceph_msgr_wq;
@@ -225,6 +226,7 @@ static void ceph_msgr_slab_exit(void)
 	ceph_msg_cache = NULL;
 }
 
+/* 退出msgr? */
 static void _ceph_msgr_exit(void)
 {
 	if (ceph_msgr_wq) {
@@ -277,6 +279,7 @@ EXPORT_SYMBOL(ceph_msgr_flush);
 
 /* Connection socket state transition functions */
 
+/* 初始化conn的sock? */
 static void con_sock_state_init(struct ceph_connection *con)
 {
 	int old_state;
@@ -532,7 +535,10 @@ static void ceph_con_reset_protocol(struct ceph_connection *con)
 }
 
 /*
- * Reset a connection.  Discard all incoming and outgoing messages
+从哪里remove?
+好像是从挂到的发送队列移除.
+ * Reset a connection.  
+ Discard all incoming and outgoing messages
  * and clear *_seq state.
  */
 static void ceph_msg_remove(struct ceph_msg *msg)
@@ -592,6 +598,10 @@ void ceph_con_close(struct ceph_connection *con)
 EXPORT_SYMBOL(ceph_con_close);
 
 /*
+打开osd的conn
+@con是osd的conn
+@addr=osdc->osdmap->osd_addr[osd->o_osd]
+
  * Reopen a closed connection, with a new peer address.
  */
 void ceph_con_open(struct ceph_connection *con,
@@ -626,6 +636,10 @@ bool ceph_con_opened(struct ceph_connection *con)
 }
 
 /*
+初始化一个osd的链接
+@con是osd的con
+@private指向此osd
+@msgr是osdc的client的msgr
  * initialize a new connection.
  */
 void ceph_con_init(struct ceph_connection *con, void *private,
@@ -1427,6 +1441,7 @@ void ceph_con_process_message(struct ceph_connection *con)
 }
 
 /*
+ 触发这个conn的queue去发送
  * Atomically queue work on a connection after the specified delay.
  * Bump @con reference to avoid races with connection teardown.
  * Returns 0 if work was queued, or an error code otherwise.
@@ -1451,6 +1466,8 @@ static int queue_con_delay(struct ceph_connection *con, unsigned long delay)
 	return 0;
 }
 
+/* 
+触发这个conn的queue去发送 */
 static void queue_con(struct ceph_connection *con)
 {
 	(void) queue_con_delay(con, 0);
@@ -1701,6 +1718,7 @@ void ceph_messenger_fini(struct ceph_messenger *msgr)
 	put_net(read_pnet(&msgr->net));
 }
 
+/* 建立msg与conn的关联? */
 static void msg_con_set(struct ceph_msg *msg, struct ceph_connection *con)
 {
 	if (msg->con)
@@ -1723,6 +1741,7 @@ static void clear_standby(struct ceph_connection *con)
 }
 
 /*
+把给你连接con上的msg放到queue上面
  * Queue up an outgoing message on the given connection.
  *
  * Consumes a ref on @msg.
@@ -1736,7 +1755,7 @@ void ceph_con_send(struct ceph_connection *con, struct ceph_msg *msg)
 
 	mutex_lock(&con->mutex);
 
-	if (con->state == CEPH_CON_S_CLOSED) {
+	if (con->state == CEPH_CON_S_CLOSED) {/* 连接已经关闭了 */
 		dout("con_send %p closed, dropping %p\n", con, msg);
 		ceph_msg_put(msg);
 		mutex_unlock(&con->mutex);
@@ -1759,12 +1778,14 @@ void ceph_con_send(struct ceph_connection *con, struct ceph_msg *msg)
 
 	/* if there wasn't anything waiting to send before, queue
 	 * new work */
-	if (!ceph_con_flag_test_and_set(con, CEPH_CON_F_WRITE_PENDING))
+	if (!ceph_con_flag_test_and_set(con, CEPH_CON_F_WRITE_PENDING))/* 这里设置con有数据了,
+	如果本来没有此标记位,就执行if */
 		queue_con(con);
 }
 EXPORT_SYMBOL(ceph_con_send);
 
 /*
+回滚之前加到发送队列的req的req msg
  * Revoke a message that was previously queued for send
  */
 void ceph_msg_revoke(struct ceph_msg *msg)
@@ -1777,7 +1798,7 @@ void ceph_msg_revoke(struct ceph_msg *msg)
 	}
 
 	mutex_lock(&con->mutex);
-	if (list_empty(&msg->list_head)) {
+	if (list_empty(&msg->list_head)) {/* 表示这个msg没有被发送? */
 		WARN_ON(con->out_msg == msg);
 		dout("%s con %p msg %p not linked\n", __func__, con, msg);
 		mutex_unlock(&con->mutex);
@@ -2179,6 +2200,7 @@ static void ceph_msg_release(struct kref *kref)
 		ceph_msg_free(m);
 }
 
+/* get一下msg, 返回msg */
 struct ceph_msg *ceph_msg_get(struct ceph_msg *msg)
 {
 	dout("%s %p (was %d)\n", __func__, msg,

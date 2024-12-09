@@ -109,7 +109,7 @@ struct work_struct {
 	ATOMIC_LONG_INIT((unsigned long)(WORK_STRUCT_NO_POOL | WORK_STRUCT_STATIC))
 
 struct delayed_work {
-	struct work_struct work;
+	struct work_struct work; //work结构体,代表一个工作的抽象
 	struct timer_list timer;
 
 	/* target workqueue and CPU ->timer uses to queue ->work */
@@ -555,6 +555,7 @@ static inline bool queue_work(struct workqueue_struct *wq,
 }
 
 /**
+把work放到queue上面
  * queue_delayed_work - queue work on a workqueue after delay
  * @wq: workqueue to use
  * @dwork: delayable work to queue
@@ -571,6 +572,7 @@ static inline bool queue_delayed_work(struct workqueue_struct *wq,
 
 /**
  * mod_delayed_work - modify delay of or queue a delayed work
+   
  * @wq: workqueue to use
  * @dwork: work to queue
  * @delay: number of jiffies to wait before queueing

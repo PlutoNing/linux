@@ -169,6 +169,7 @@ static inline int pud_young(pud_t pud)
 	return pud_flags(pud) & _PAGE_ACCESSED;
 }
 
+//判断pte条目是否可写
 static inline int pte_write(pte_t pte)
 {
 	/*
@@ -1004,6 +1005,7 @@ static inline int pmd_present(pmd_t pmd)
 /*
  * These work without NUMA balancing but the kernel does not care. See the
  * comment in include/linux/pgtable.h
+   pte的flag有_PAGE_PROTNONE并且没有_PAGE_PRESENT
  */
 static inline int pte_protnone(pte_t pte)
 {

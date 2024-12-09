@@ -178,16 +178,18 @@ int sb_min_blocksize(struct super_block *sb, int size)
 }
 
 EXPORT_SYMBOL(sb_min_blocksize);
-
+/* 刷盘 */
 int sync_blockdev_nowait(struct block_device *bdev)
 {
 	if (!bdev)
 		return 0;
 	return filemap_flush(bdev->bd_inode->i_mapping);
 }
+
 EXPORT_SYMBOL_GPL(sync_blockdev_nowait);
 
 /*
+	刷新落盘, 设备的脏数据
  * Write out and wait upon all the dirty data associated with a block
  * device via its mapping.  Does not take the superblock lock.
  */
@@ -197,6 +199,7 @@ int sync_blockdev(struct block_device *bdev)
 		return 0;
 	return filemap_write_and_wait(bdev->bd_inode->i_mapping);
 }
+
 EXPORT_SYMBOL(sync_blockdev);
 
 int sync_blockdev_range(struct block_device *bdev, loff_t lstart, loff_t lend)

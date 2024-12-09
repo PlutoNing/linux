@@ -27,6 +27,7 @@
 #include <linux/zswap.h>
 #include "swap.h"
 
+//
 static void __end_swap_bio_write(struct bio *bio)
 {
 	struct folio *folio = bio_first_folio_all(bio);
@@ -40,15 +41,17 @@ static void __end_swap_bio_write(struct bio *bio)
 		 *
 		 * Also clear PG_reclaim to avoid folio_rotate_reclaimable()
 		 */
-		folio_mark_dirty(folio);
+		folio_mark_dirty(folio); //清除reclaim, 调用dirty回调
 		pr_alert_ratelimited("Write-error on swap-device (%u:%u:%llu)\n",
 				     MAJOR(bio_dev(bio)), MINOR(bio_dev(bio)),
 				     (unsigned long long)bio->bi_iter.bi_sector);
 		folio_clear_reclaim(folio);
 	}
+
 	folio_end_writeback(folio);
 }
 
+//swap的bio完成的end函数
 static void end_swap_bio_write(struct bio *bio)
 {
 	__end_swap_bio_write(bio);
@@ -348,6 +351,7 @@ static void swap_writepage_bdev_sync(struct page *page,
 	__end_swap_bio_write(&bio);
 }
 
+//
 static void swap_writepage_bdev_async(struct page *page,
 		struct writeback_control *wbc, struct swap_info_struct *sis)
 {
@@ -357,6 +361,7 @@ static void swap_writepage_bdev_async(struct page *page,
 	bio = bio_alloc(sis->bdev, 1,
 			REQ_OP_WRITE | REQ_SWAP | wbc_to_write_flags(wbc),
 			GFP_NOIO);
+
 	bio->bi_iter.bi_sector = swap_page_sector(page);
 	bio->bi_end_io = end_swap_bio_write;
 	__bio_add_page(bio, page, thp_size(page), 0);

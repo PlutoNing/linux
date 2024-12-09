@@ -160,6 +160,7 @@ void vm_events_fold_cpu(int cpu)
  * vm_stat contains the global counters
  */
 atomic_long_t vm_zone_stat[NR_VM_ZONE_STAT_ITEMS] __cacheline_aligned_in_smp;
+/* 全局的页面统计信息 */
 atomic_long_t vm_node_stat[NR_VM_NODE_STAT_ITEMS] __cacheline_aligned_in_smp;
 atomic_long_t vm_numa_event[NR_VM_NUMA_EVENT_ITEMS] __cacheline_aligned_in_smp;
 EXPORT_SYMBOL(vm_zone_stat);
@@ -369,7 +370,7 @@ void __mod_zone_page_state(struct zone *zone, enum zone_stat_item item,
 	preempt_enable_nested();
 }
 EXPORT_SYMBOL(__mod_zone_page_state);
-
+/* 修改node和全局的页面统计信息 */
 void __mod_node_page_state(struct pglist_data *pgdat, enum node_stat_item item,
 				long delta)
 {
@@ -449,7 +450,7 @@ void __inc_zone_state(struct zone *zone, enum zone_stat_item item)
 
 	preempt_enable_nested();
 }
-
+/* 增加node统计信息 */
 void __inc_node_state(struct pglist_data *pgdat, enum node_stat_item item)
 {
 	struct per_cpu_nodestat __percpu *pcp = pgdat->per_cpu_nodestats;
@@ -505,7 +506,7 @@ void __dec_zone_state(struct zone *zone, enum zone_stat_item item)
 
 	preempt_enable_nested();
 }
-
+/* 减少node统计信息 */
 void __dec_node_state(struct pglist_data *pgdat, enum node_stat_item item)
 {
 	struct per_cpu_nodestat __percpu *pcp = pgdat->per_cpu_nodestats;
@@ -610,11 +611,12 @@ void dec_zone_page_state(struct page *page, enum zone_stat_item item)
 	mod_zone_state(page_zone(page), item, -1, -1);
 }
 EXPORT_SYMBOL(dec_zone_page_state);
-
+/* 修改node统计信息 */
 static inline void mod_node_state(struct pglist_data *pgdat,
        enum node_stat_item item, int delta, int overstep_mode)
 {
 	struct per_cpu_nodestat __percpu *pcp = pgdat->per_cpu_nodestats;
+	/* 先是pcp的缓存 */
 	s8 __percpu *p = pcp->vm_node_stat_diff + item;
 	long o, n, t, z;
 
@@ -765,6 +767,7 @@ EXPORT_SYMBOL(dec_node_page_state);
 #endif
 
 /*
+
  * Fold a differential into the global counters.
  * Returns the number of counters updated.
  */
@@ -1414,6 +1417,8 @@ const char * const vmstat_text[] = {
 
 #if (defined(CONFIG_DEBUG_FS) && defined(CONFIG_COMPACTION)) || \
      defined(CONFIG_PROC_FS)
+
+/*  */
 static void *frag_start(struct seq_file *m, loff_t *pos)
 {
 	pg_data_t *pgdat;
@@ -1427,6 +1432,7 @@ static void *frag_start(struct seq_file *m, loff_t *pos)
 	return pgdat;
 }
 
+/*  */
 static void *frag_next(struct seq_file *m, void *arg, loff_t *pos)
 {
 	pg_data_t *pgdat = (pg_data_t *)arg;
@@ -1435,11 +1441,13 @@ static void *frag_next(struct seq_file *m, void *arg, loff_t *pos)
 	return next_online_pgdat(pgdat);
 }
 
+/*  */
 static void frag_stop(struct seq_file *m, void *arg)
 {
 }
 
 /*
+在node的zones上面进行遍历然后回调
  * Walk zones in a node and print using a callback.
  * If @assert_populated is true, only use callback for zones that are populated.
  */
@@ -1465,6 +1473,16 @@ static void walk_zones_in_node(struct seq_file *m, pg_data_t *pgdat,
 #endif
 
 #ifdef CONFIG_PROC_FS
+/* 打印node的zone的信息
+root@ppppp-MS-7E24:/proc#cat buddyinfo 
+Node 0, zone      DMA      0      0      0      0      0      0      0      0      1      1      2 
+Node 0, zone    DMA32      9     10      7      6      4      5      7      8      7     11    644 
+Node 0, zone   Normal   2684   9827   4087   3378   2860    324    204    506    626    239   5449 
+root@ppppp-MS-7E24:/proc#free -m
+               total        used        free      shared  buff/cache   available
+Mem:           71456        8749       29099          21       34406       62707
+Swap:           8191           0        8191
+ */
 static void frag_show_print(struct seq_file *m, pg_data_t *pgdat,
 						struct zone *zone)
 {
@@ -1481,6 +1499,7 @@ static void frag_show_print(struct seq_file *m, pg_data_t *pgdat,
 }
 
 /*
+显示node的zone的buddy信息
  * This walks the free areas for each zone.
  */
 static int frag_show(struct seq_file *m, void *arg)
@@ -1641,7 +1660,9 @@ static int pagetypeinfo_show(struct seq_file *m, void *arg)
 	return 0;
 }
 
+/* proc/buddyinfo的回调函数 */
 static const struct seq_operations fragmentation_op = {
+	/* 找到一个node */
 	.start	= frag_start,
 	.next	= frag_next,
 	.stop	= frag_stop,
@@ -1878,7 +1899,7 @@ static void refresh_vm_stats(struct work_struct *work)
 {
 	refresh_cpu_vm_stats(true);
 }
-
+/*  */
 int vmstat_refresh(struct ctl_table *table, int write,
 		   void *buffer, size_t *lenp, loff_t *ppos)
 {
@@ -1916,6 +1937,7 @@ int vmstat_refresh(struct ctl_table *table, int write,
 				__func__, zone_stat_name(i), val);
 		}
 	}
+	
 	for (i = 0; i < NR_VM_NODE_STAT_ITEMS; i++) {
 		/*
 		 * Skip checking stats known to go negative occasionally.
@@ -2110,6 +2132,8 @@ static int vmstat_cpu_dead(unsigned int cpu)
 
 struct workqueue_struct *mm_percpu_wq;
 
+/* 2024年11月10日10:30:04
+ */
 void __init init_mm_internals(void)
 {
 	int ret __maybe_unused;
@@ -2135,6 +2159,7 @@ void __init init_mm_internals(void)
 	start_shepherd_timer();
 #endif
 #ifdef CONFIG_PROC_FS
+/* 创建procfs里面 的东西 */
 	proc_create_seq("buddyinfo", 0444, NULL, &fragmentation_op);
 	proc_create_seq("pagetypeinfo", 0400, NULL, &pagetypeinfo_op);
 	proc_create_seq("vmstat", 0444, NULL, &vmstat_op);
@@ -2257,7 +2282,10 @@ static const struct seq_operations extfrag_sops = {
 };
 
 DEFINE_SEQ_ATTRIBUTE(extfrag);
-
+/* 这个是啥
+root@ppppp-MS-7E24:/sys/kernel/debug/extfrag# ls
+extfrag_index  unusable_index
+ */
 static int __init extfrag_debug_init(void)
 {
 	struct dentry *extfrag_debug_root;

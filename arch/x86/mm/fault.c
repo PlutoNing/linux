@@ -1234,6 +1234,9 @@ NOKPROBE_SYMBOL(do_kern_addr_fault);
  * (e.g. get_user(), put_user(), etc.) the same as the WRUSS instruction.
  * The one exception is AC flag handling, which is, per the x86
  * architecture, special for WRUSS.
+   处理地址空间的用户部分中的故障。 这里的任何内容都不应该在没有特定理由的情况下检查X86_PF_USER：
+   对于几乎所有目的，我们应该将对用户内存的正常内核访问（例如get_user（），put_user（）等）
+   与WRUSS指令相同。 唯一的例外是AC标志处理，根据x86架构，WRUSS的AC标志处理是特殊的。
  */
 static inline
 void do_user_addr_fault(struct pt_regs *regs,
@@ -1353,7 +1356,7 @@ void do_user_addr_fault(struct pt_regs *regs,
 	if (!(flags & FAULT_FLAG_USER))
 		goto lock_mmap;
 
-	vma = lock_vma_under_rcu(mm, address);
+	vma = lock_vma_under_rcu(mm, address); //返回vma并加读锁
 	if (!vma)
 		goto lock_mmap;
 
@@ -1361,6 +1364,8 @@ void do_user_addr_fault(struct pt_regs *regs,
 		vma_end_read(vma);
 		goto lock_mmap;
 	}
+
+	//开始处理错误
 	fault = handle_mm_fault(vma, address, flags | FAULT_FLAG_VMA_LOCK, regs);
 	if (!(fault & (VM_FAULT_RETRY | VM_FAULT_COMPLETED)))
 		vma_end_read(vma);

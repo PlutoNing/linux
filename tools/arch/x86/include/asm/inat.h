@@ -12,7 +12,7 @@
  * Internal bits. Don't use bitmasks directly, because these bits are
  * unstable. You should use checking functions.
  */
-
+// INAT 是 "Instruction Attribute" 的缩写，指的是指令属性。
 #define INAT_OPCODE_TABLE_SIZE 256
 #define INAT_GROUP_TABLE_SIZE 8
 
@@ -20,6 +20,8 @@
 #define INAT_PFX_OPNDSZ	1	/* 0x66 */ /* LPFX1 */
 #define INAT_PFX_REPE	2	/* 0xF3 */ /* LPFX2 */
 #define INAT_PFX_REPNE	3	/* 0xF2 */ /* LPFX3 */
+
+
 /* Other Legacy prefixes */
 #define INAT_PFX_LOCK	4	/* 0xF0 */
 #define INAT_PFX_CS	5	/* 0x2E */
@@ -39,7 +41,13 @@
 #define INAT_LSTPFX_MAX	3
 #define INAT_LGCPFX_MAX	11
 
-/* Immediate size */
+/* Immediate size
+这些宏定义了不同类型的立即数的大小：
+INAT_IMM_BYTE: 1 字节立即数。
+INAT_IMM_WORD: 2 字节立即数。
+INAT_IMM_DWORD: 4 字节立即数。
+INAT_IMM_QWORD: 8 字节立即数。
+ */
 #define INAT_IMM_BYTE		1
 #define INAT_IMM_WORD		2
 #define INAT_IMM_DWORD		3
@@ -48,15 +56,27 @@
 #define INAT_IMM_VWORD32	6
 #define INAT_IMM_VWORD		7
 
+/* 指令前缀（Prefix）概念
+在 x86 架构中，指令前缀是附加在指令前面的字节，用于改变后续指令的行为。这些前缀可以用于以下目的：
+
+改变操作数大小: 例如，使用 0x66 前缀可以在指令中切换操作数的大小（从 32 位到 16 位，反之亦然）。
+重复操作: 使用 0xF3 或 0xF2 前缀可以指示后续指令应该重复执行。
+改变段寄存器: 通过特定前缀（如 0x2E 表示 CS 段）来改变指令中使用的段寄存器。
+ */
 /* Legacy prefix */
 #define INAT_PFX_OFFS	0
 #define INAT_PFX_BITS	4
+/* 最大的prefix数量，和获取prefix的bitmask */
 #define INAT_PFX_MAX    ((1 << INAT_PFX_BITS) - 1)
 #define INAT_PFX_MASK	(INAT_PFX_MAX << INAT_PFX_OFFS)
-/* Escape opcodes */
+
+/* 
+逃逸的opcode
+Escape opcodes */
 #define INAT_ESC_OFFS	(INAT_PFX_OFFS + INAT_PFX_BITS)
 #define INAT_ESC_BITS	2
 #define INAT_ESC_MAX	((1 << INAT_ESC_BITS) - 1)
+/* 逃逸的掩码 */
 #define INAT_ESC_MASK	(INAT_ESC_MAX << INAT_ESC_OFFS)
 /* Group opcodes (1-16) */
 #define INAT_GRP_OFFS	(INAT_ESC_OFFS + INAT_ESC_BITS)
@@ -152,7 +172,7 @@ static inline int inat_is_vex3_prefix(insn_attr_t attr)
 {
 	return (attr & INAT_PFX_MASK) == INAT_PFX_VEX3;
 }
-
+/*  */
 static inline int inat_is_escape(insn_attr_t attr)
 {
 	return attr & INAT_ESC_MASK;

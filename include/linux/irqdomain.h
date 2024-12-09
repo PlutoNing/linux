@@ -71,6 +71,9 @@ void of_phandle_args_to_fwspec(struct device_node *np, const u32 *args,
 			       unsigned int count, struct irq_fwspec *fwspec);
 
 /**
+中断域是一种抽象，用于描述和管理硬件中断与 Linux 内核中的虚拟中断之间的映射关系，
+支持硬件和软件的中断控制。这个结构体为中断域的管理提供了核心操作接口，驱动程序可
+以实现这些方法来适应具体的硬件和需求。
  * struct irq_domain_ops - Methods for irq_domain objects
  * @match: Match an interrupt controller device node to a host, returns
  *         1 on a match

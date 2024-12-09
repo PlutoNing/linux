@@ -28,6 +28,8 @@
 
 #define SEQ_PUT_DEC(str, val) \
 		seq_put_decimal_ull_width(m, str, (val) << (PAGE_SHIFT-10), 8)
+
+/*  */
 void task_mem(struct seq_file *m, struct mm_struct *mm)
 {
 	unsigned long text, lib, swap, anon, file, shmem;
@@ -85,6 +87,7 @@ unsigned long task_vsize(struct mm_struct *mm)
 	return PAGE_SIZE * mm->total_vm;
 }
 
+/* 读取mm的内存信息,各种内存text，rss,data什么的 */
 unsigned long task_statm(struct mm_struct *mm,
 			 unsigned long *shared, unsigned long *text,
 			 unsigned long *data, unsigned long *resident)
@@ -230,6 +233,7 @@ static int proc_map_release(struct inode *inode, struct file *file)
 	return seq_release_private(inode, file);
 }
 
+/*  */
 static int do_maps_open(struct inode *inode, struct file *file,
 			const struct seq_operations *ops)
 {
@@ -257,6 +261,7 @@ static void show_vma_header_prefix(struct seq_file *m,
 	seq_putc(m, ' ');
 }
 
+/* 读取进程全部的maps */
 static void
 show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 {
@@ -337,12 +342,14 @@ done:
 	seq_putc(m, '\n');
 }
 
+/* 如何show_map呢. 读取进程的maps */
 static int show_map(struct seq_file *m, void *v)
 {
 	show_map_vma(m, v);
 	return 0;
 }
 
+/* 读取进程的maps的函数 */
 static const struct seq_operations proc_pid_maps_op = {
 	.start	= m_start,
 	.next	= m_next,
@@ -350,12 +357,16 @@ static const struct seq_operations proc_pid_maps_op = {
 	.show	= show_map
 };
 
+/* 读取proc的maps */
 static int pid_maps_open(struct inode *inode, struct file *file)
 {
 	return do_maps_open(inode, file, &proc_pid_maps_op);
 }
 
+/*  */
 const struct file_operations proc_pid_maps_operations = {
+	/* 看来也是open的时候直接初始化好了, 然后直接调用一般的读函数从
+	里面读就行了 */
 	.open		= pid_maps_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
@@ -1061,6 +1072,13 @@ const struct file_operations proc_pid_smaps_rollup_operations = {
 	.release	= smaps_rollup_release,
 };
 
+/* clear_refs 文件并不能直接通过 cat 命令读取，而是通过写入特定值来触发相应的操作：
+
+写入 1：清除所有页面的引用计数。
+写入 2：清除并重置所有匿名页面的访问计数。
+写入 3：清除并重置文件映射页面的访问计数。
+写入 4：设置内存页的脏位。
+写入 5：清除匿名页面的引用位和访问位。 */
 enum clear_refs_types {
 	CLEAR_REFS_ALL = 1,
 	CLEAR_REFS_ANON,
@@ -1242,6 +1260,18 @@ static const struct mm_walk_ops clear_refs_walk_ops = {
 	.walk_lock		= PGWALK_WRLOCK,
 };
 
+/* 在 /proc/<pid>/clear_refs 中，clear_refs 是一个虚拟文件，允许用户
+或系统通过写入命令来清除特定进程的内存页引用统计信息。
+clear_refs 文件通常用于内存管理和调试，用于控制和查看页面访问和引用信息。
+----------------------------------------------------------------
+clear_refs 文件并不能直接通过 cat 命令读取，而是通过写入特定值来触发相应的操作：
+
+写入 1：清除所有页面的引用计数。
+写入 2：清除并重置所有匿名页面的访问计数。
+写入 3：清除并重置文件映射页面的访问计数。
+写入 4：设置内存页的脏位。
+写入 5：重置高水位rss
+ */
 static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 				size_t count, loff_t *ppos)
 {
@@ -1258,9 +1288,11 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 		count = sizeof(buffer) - 1;
 	if (copy_from_user(buffer, buf, count))
 		return -EFAULT;
+	/* 获得buf里面用户写入的cmd整数值到itype */
 	rv = kstrtoint(strstrip(buffer), 10, &itype);
 	if (rv < 0)
 		return rv;
+	/* 转换为命令类型 */
 	type = (enum clear_refs_types)itype;
 	if (type < CLEAR_REFS_ALL || type >= CLEAR_REFS_LAST)
 		return -EINVAL;
@@ -1284,12 +1316,15 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 			/*
 			 * Writing 5 to /proc/pid/clear_refs resets the peak
 			 * resident set size to this mm's current rss value.
+			 当向 /proc/<pid>/clear_refs 写入 5 时，会将当前的 RSS 
+			 峰值（即进程在运行过程中曾经达到的最大 RSS 值）重置为当前的 RSS 值。
 			 */
 			reset_mm_hiwater_rss(mm);
 			goto out_unlock;
 		}
 
 		if (type == CLEAR_REFS_SOFT_DIRTY) {
+			/* 遍历全部vma, 逐个处理 */
 			for_each_vma(vmi, vma) {
 				if (!(vma->vm_flags & VM_SOFTDIRTY))
 					continue;
@@ -1302,6 +1337,7 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 						0, mm, 0, -1UL);
 			mmu_notifier_invalidate_range_start(&range);
 		}
+
 		walk_page_range(mm, 0, -1, &clear_refs_walk_ops, &cp);
 		if (type == CLEAR_REFS_SOFT_DIRTY) {
 			mmu_notifier_invalidate_range_end(&range);
@@ -1313,11 +1349,13 @@ out_unlock:
 out_mm:
 		mmput(mm);
 	}
+
 	put_task_struct(task);
 
 	return count;
 }
 
+/* clear_refs的回调函数 */
 const struct file_operations proc_clear_refs_operations = {
 	.write		= clear_refs_write,
 	.llseek		= noop_llseek,
@@ -1621,6 +1659,11 @@ static const struct mm_walk_ops pagemap_ops = {
 };
 
 /*
+file的priv已经被设置为mm
+用于读取 /proc/<pid>/pagemap 文件的内容。/proc/<pid>/pagemap 是 
+Linux 中的一种虚拟文件，提供了进程地址空间的页面映射信息，可以查询
+到虚拟内存页面和物理页面帧的对应关系，包括页面是否存在、是否被交换
+到硬盘等信息。
  * /proc/pid/pagemap - an array mapping virtual pages to pfns
  *
  * For each page in the address space, this file contains one 64-bit entry
@@ -1741,6 +1784,8 @@ out:
 	return ret;
 }
 
+/* open进程的pagemap 
+把file的priv指向mm*/
 static int pagemap_open(struct inode *inode, struct file *file)
 {
 	struct mm_struct *mm;
@@ -1752,6 +1797,7 @@ static int pagemap_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
+/* drop一下引用 */
 static int pagemap_release(struct inode *inode, struct file *file)
 {
 	struct mm_struct *mm = file->private_data;
@@ -1761,10 +1807,13 @@ static int pagemap_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+/*  */
 const struct file_operations proc_pagemap_operations = {
 	.llseek		= mem_lseek, /* borrow this */
 	.read		= pagemap_read,
+	/*  */
 	.open		= pagemap_open,
+	/*  */
 	.release	= pagemap_release,
 };
 #endif /* CONFIG_PROC_PAGE_MONITOR */

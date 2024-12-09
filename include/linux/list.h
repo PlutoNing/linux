@@ -559,7 +559,8 @@ static inline void list_splice_tail(struct list_head *list,
 		__list_splice(list, head->prev, head);
 }
 
-/**
+/**的作用是将一个链表 list 合并到另一个链表 head 中，
+并重新初始化被合并的链表 list
  * list_splice_init - join two lists and reinitialise the emptied list.
  * @list: the new list to add.
  * @head: the place to add it in the first list.

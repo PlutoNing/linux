@@ -48,7 +48,7 @@ bool can_do_mlock(void)
 EXPORT_SYMBOL(can_do_mlock);
 
 /*
-mlock lru 上面的folio的逻辑. 
+mlock 锁住lru 上面的folio的逻辑. 
  * Mlocked folios are marked with the PG_mlocked flag for efficient testing
  * in vmscan and, possibly, the fault path; and to support semi-accurate
  * statistics.
@@ -305,7 +305,7 @@ void mlock_new_folio(struct folio *folio)
 
 	local_lock(&mlock_fbatch.lock);
 	fbatch = this_cpu_ptr(&mlock_fbatch.fbatch);
-	folio_set_mlocked(folio);
+	folio_set_mlocked(folio); //表示被vma锁了
 
 	zone_stat_mod_folio(folio, NR_MLOCK, nr_pages);
 	__count_vm_events(UNEVICTABLE_PGMLOCKED, nr_pages);

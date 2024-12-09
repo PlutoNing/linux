@@ -487,6 +487,7 @@ static inline struct cgroup *task_cgroup(struct task_struct *task,
 	return task_css(task, subsys_id)->cgroup;
 }
 
+/* 获取tsk的dfl cg? */
 static inline struct cgroup *task_dfl_cgroup(struct task_struct *task)
 {
 	return task_css_set(task)->dfl_cgrp;

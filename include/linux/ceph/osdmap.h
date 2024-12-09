@@ -34,13 +34,14 @@ struct ceph_spg {
 int ceph_pg_compare(const struct ceph_pg *lhs, const struct ceph_pg *rhs);
 int ceph_spg_compare(const struct ceph_spg *lhs, const struct ceph_spg *rhs);
 
-#define CEPH_POOL_FLAG_HASHPSPOOL	(1ULL << 0) /* hash pg seed and pool id
-						       together */
+#define CEPH_POOL_FLAG_HASHPSPOOL	(1ULL << 0)
+ /* hash pg seed and pool id together */
 #define CEPH_POOL_FLAG_FULL		(1ULL << 1) /* pool is full */
-#define CEPH_POOL_FLAG_FULL_QUOTA	(1ULL << 10) /* pool ran out of quota,
-							will set FULL too */
+#define CEPH_POOL_FLAG_FULL_QUOTA	(1ULL << 10) 
+/* pool ran out of quota, will set FULL too */
 #define CEPH_POOL_FLAG_NEARFULL		(1ULL << 11) /* pool is nearfull */
 
+/* 代表一个pool */
 struct ceph_pg_pool_info {
 	struct rb_node node;
 	s64 id;
@@ -188,7 +189,7 @@ struct ceph_osdmap {
 
 	u32 *osd_primary_affinity;
 
-	struct rb_root pg_pools;
+	struct rb_root pg_pools; /* 存储对应的全部pool */
 	u32 pool_max;
 
 	/* the CRUSH map specifies the mapping of placement groups to

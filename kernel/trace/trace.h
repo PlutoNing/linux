@@ -825,7 +825,7 @@ struct ftrace_mod_load {
 enum {
 	FTRACE_HASH_FL_MOD	= (1 << 0),
 };
-
+/*  */
 struct ftrace_hash {
 	unsigned long		size_bits;
 	struct hlist_head	*buckets;

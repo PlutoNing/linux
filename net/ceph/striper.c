@@ -9,6 +9,7 @@
 #include <linux/ceph/types.h>
 
 /*
+把file的extent对应的obj的什么什么东西?
  * Map a file extent to a stripe unit within an object.
  * Fill in objno, offset into object, and object extent length (i.e. the
  * number of bytes mapped, less than or equal to @l->stripe_unit).

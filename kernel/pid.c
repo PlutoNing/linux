@@ -396,6 +396,7 @@ void transfer_pid(struct task_struct *old, struct task_struct *new,
 	hlist_replace_rcu(&old->pid_links[type], &new->pid_links[type]);
 }
 
+/* 从pid获取task */
 struct task_struct *pid_task(struct pid *pid, enum pid_type type)
 {
 	struct task_struct *result = NULL;
@@ -448,6 +449,7 @@ struct pid *get_task_pid(struct task_struct *task, enum pid_type type)
 }
 EXPORT_SYMBOL_GPL(get_task_pid);
 
+/* 从pid获取task */
 struct task_struct *get_pid_task(struct pid *pid, enum pid_type type)
 {
 	struct task_struct *result;

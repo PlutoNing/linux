@@ -16,6 +16,7 @@ struct address_space *page_mapping(struct page *page)
 }
 EXPORT_SYMBOL(page_mapping);
 
+// 权限是什么, 读写啥的
 void unlock_page(struct page *page)
 {
 	return folio_unlock(page_folio(page));

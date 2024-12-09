@@ -2163,6 +2163,7 @@ static struct ctl_table vm_table[] = {
 	},
 #endif
 #ifdef CONFIG_NUMA
+/* 控制zone的回收方式.  */
 	{
 		.procname	= "zone_reclaim_mode",
 		.data		= &node_reclaim_mode,

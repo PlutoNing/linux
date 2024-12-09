@@ -222,6 +222,7 @@ extern int root_mountflags;
 extern bool early_boot_irqs_disabled;
 
 /*
+表示系统的不同阶段?
  * Values used for system_state. Ordering of the states must not be changed
  * as code checks for <, <=, >, >= STATE.
  */

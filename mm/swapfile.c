@@ -227,6 +227,7 @@ offset_to_swap_extent(struct swap_info_struct *sis, unsigned long offset)
 	BUG();
 }
 
+//返回page在swap中的sector?
 sector_t swap_page_sector(struct page *page)
 {
 	struct swap_info_struct *sis = page_swap_info(page);
@@ -234,9 +235,9 @@ sector_t swap_page_sector(struct page *page)
 	sector_t sector;
 	pgoff_t offset;
 
-	offset = __page_file_index(page);
-	se = offset_to_swap_extent(sis, offset);
-	sector = se->start_block + (offset - se->start_page);
+	offset = __page_file_index(page); //获取在swap file的offset
+	se = offset_to_swap_extent(sis, offset); //获取区块
+	sector = se->start_block + (offset - se->start_page); //获取sector
 	return sector << (PAGE_SHIFT - 9);
 }
 
@@ -3382,6 +3383,7 @@ struct address_space *swapcache_mapping(struct folio *folio)
 }
 EXPORT_SYMBOL_GPL(swapcache_mapping);
 
+//
 pgoff_t __page_file_index(struct page *page)
 {
 	swp_entry_t swap = page_swap_entry(page);

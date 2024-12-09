@@ -123,6 +123,7 @@ struct ceph_fs_client {
 	struct list_head metric_wakeup;
 
 	struct ceph_mount_options *mount_options;
+	/* 代表client对象 */
 	struct ceph_client *client;
 
 	int mount_state;
@@ -130,7 +131,7 @@ struct ceph_fs_client {
 	bool blocklisted;
 
 	bool have_copy_from2;
-
+	/* 代表epoch?打开filep时会赋值给filep? */
 	u32 filp_gen;
 	loff_t max_file_size;
 
@@ -205,13 +206,17 @@ struct ceph_cap {
 #define CHECK_CAPS_FLUSH      2  /* flush any dirty caps */
 #define CHECK_CAPS_NOINVAL    4  /* don't invalidate pagecache */
 
+/* cf是什么?
+代表一个cap的flush? */
 struct ceph_cap_flush {
 	u64 tid;
 	int caps;
 	bool wake; /* wake up flush waiters when finish ? */
 	bool is_capsnap; /* true means capsnap */
 	struct list_head g_list; // global
-	struct list_head i_list; // per inode
+	/* 通过这个东西挂到ci->i_cap_flush_list */
+	struct list_head i_list; // per inode 
+
 };
 
 /*
@@ -345,13 +350,18 @@ struct ceph_inode_xattrs_info {
  * Ceph inode.
  */
 struct ceph_inode_info {
-	struct netfs_inode netfs; /* Netfslib context and vfs inode */
-	struct ceph_vino i_vino;   /* ceph ino + snap */
+	/* 代表ci对应的cephfs? */
+	struct netfs_inode netfs; /* 
+	netfsLib是什么
+	Netfslib context and vfs inode */
+	struct ceph_vino i_vino;   /* 
+	inode和snap相关?
+	ceph ino + snap */
 
 	spinlock_t i_ceph_lock;
 
 	u64 i_version;
-	u64 i_inline_version;
+	u64 i_inline_version;/* 代表inline data的version. 可以判断有无inline data */
 	u32 i_time_warp_seq;
 
 	unsigned long i_ceph_flags;
@@ -382,8 +392,10 @@ struct ceph_inode_info {
 
 	/* capabilities.  protected _both_ by i_ceph_lock and cap->session's
 	 * s_mutex. */
-	struct rb_root i_caps;           /* cap list, cap是什么?  */
-	struct ceph_cap *i_auth_cap;     /* authoritative cap, if any */
+	struct rb_root i_caps;           /* cap list, cap是什么? , cap是什么?  */
+	struct ceph_cap *i_auth_cap;     /* 
+	关联的cap, 但是cap是什么?
+	authoritative cap, if any */
 	unsigned i_dirty_caps, i_flushing_caps;     /* mask of dirtied fields */
 
 	/*
@@ -503,6 +515,7 @@ ceph_sb_to_client(const struct super_block *sb)
 	return (struct ceph_fs_client *)sb->s_fs_info;
 }
 
+/* 通过fs client获得mds client */
 static inline struct ceph_mds_client *
 ceph_sb_to_mdsc(const struct super_block *sb)
 {
@@ -545,6 +558,7 @@ static inline u64 ceph_ino(struct inode *inode)
 	return ceph_inode(inode)->i_vino.ino;
 }
 
+/* 看看inode是不是snapshot */
 static inline u64 ceph_snap(struct inode *inode)
 {
 	return ceph_inode(inode)->i_vino.snap;
@@ -634,7 +648,8 @@ static inline struct inode *ceph_find_inode(struct super_block *sb,
 #define CEPH_I_FLUSH_SNAPS	(1 << 8)  /* need flush snapss */
 #define CEPH_I_ERROR_WRITE	(1 << 9) /* have seen write errors */
 #define CEPH_I_ERROR_FILELOCK	(1 << 10) /* have seen file lock errors */
-#define CEPH_I_ODIRECT		(1 << 11) /* inode in direct I/O mode */
+#define CEPH_I_ODIRECT		(1 << 11) /* inode in direct I/O mode .是否正在进行直接IO*/
+
 #define CEPH_ASYNC_CREATE_BIT	(12)	  /* async create in flight for this */
 #define CEPH_I_ASYNC_CREATE	(1 << CEPH_ASYNC_CREATE_BIT)
 #define CEPH_I_SHUTDOWN		(1 << 13) /* 关闭node时会置位. inode is no longer usable */
@@ -823,8 +838,10 @@ extern void change_auth_cap_ses(struct ceph_inode_info *ci,
 
 
 /*
+
  * we keep buffered readdir results attached to file->private_data
  */
+ /* 是否同步写 */
 #define CEPH_F_SYNC     1
 #define CEPH_F_ATEND    2
 
@@ -836,10 +853,12 @@ struct ceph_file_info {
 	spinlock_t rw_contexts_lock;
 	struct list_head rw_contexts;
 
-	u32 filp_gen;
+	u32 filp_gen;/* 文件打开时候的ts? */
 };
 
+/* 代表一个ceph dir filep */
 struct ceph_dir_file_info {
+	/* 此dir的filep */
 	struct ceph_file_info file_info;
 
 	/* readdir: position within the dir */
@@ -1109,6 +1128,8 @@ extern int ceph_getattr(struct mnt_idmap *idmap,
 			u32 request_mask, unsigned int flags);
 void ceph_inode_shutdown(struct inode *inode);
 
+/* 判断inode是不是被关闭了
+综合判断inonde和fs client */
 static inline bool ceph_inode_is_shutdown(struct inode *inode)
 {
 	unsigned long flags = READ_ONCE(ceph_inode(inode)->i_ceph_flags);
@@ -1298,11 +1319,13 @@ extern int ceph_pool_perm_check(struct inode *inode, int need);
 extern void ceph_pool_perm_destroy(struct ceph_mds_client* mdsc);
 int ceph_purge_inode_cap(struct inode *inode, struct ceph_cap *cap, bool *invalidate);
 
+/* 看ci有没有inline data */
 static inline bool ceph_has_inline_data(struct ceph_inode_info *ci)
 {
 	if (ci->i_inline_version == CEPH_INLINE_NONE ||
 	    ci->i_inline_version == 1) /* initial version, no data */
 		return false;
+
 	return true;
 }
 

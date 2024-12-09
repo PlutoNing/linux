@@ -928,6 +928,7 @@ COMPAT_SYSCALL_DEFINE2(arch_prctl, int, option, unsigned long, arg2)
 }
 #endif
 
+/* 获取esp */
 unsigned long KSTK_ESP(struct task_struct *task)
 {
 	return task_pt_regs(task)->sp;

@@ -79,6 +79,7 @@ struct p_log {
 };
 
 /*
+表示fs上下文, 上下文是什么呢?
  * Filesystem context for holding the parameters used in the creation or
  * reconfiguration of a superblock.
  *
@@ -90,10 +91,11 @@ struct p_log {
 struct fs_context {
 	const struct fs_context_operations *ops;
 	struct mutex		uapi_mutex;	/* Userspace access mutex */
-	struct file_system_type	*fs_type;
-	void			*fs_private;	/* The filesystem's context */
+	struct file_system_type	*fs_type; // 指向文件系统类型的指针
+	void			*fs_private;	/* The filesystem's context//
+	 文件系统的私有上下文，用于存储特定的配置或数据 */
 	void			*sget_key;
-	struct dentry		*root;		/* The root and superblock */
+	struct dentry		*root;		/* The root and superblock // 根目录和超级块指针*/
 	struct user_namespace	*user_ns;	/* The user namespace for this mount */
 	struct net		*net_ns;	/* The network namespace for this mount */
 	const struct cred	*cred;		/* The mounter's credentials */

@@ -71,6 +71,7 @@ struct ceph_sparse_read {
 };
 
 /*
+代表一个osd进程?
  * A given osd we're communicating with.
  *
  * Note that the o_requests tree can be searched while holding the "lock" mutex
@@ -83,9 +84,10 @@ struct ceph_osd {
 	int o_osd;
 	int o_incarnation;
 	struct rb_node o_node;
+	/* 代表一个conn */
 	struct ceph_connection o_con;
 	spinlock_t o_requests_lock;
-	struct rb_root o_requests;
+	struct rb_root o_requests; /* osd的全部req */
 	struct rb_root o_linger_requests;
 	struct rb_root o_backoff_mappings;
 	struct rb_root o_backoffs_by_id;
@@ -100,23 +102,26 @@ struct ceph_osd {
 #define CEPH_OSD_SLAB_OPS	2
 #define CEPH_OSD_MAX_OPS	16
 
+/* 好像是描述一个req的ops的接收缓冲的内存类型 */
 enum ceph_osd_data_type {
 	CEPH_OSD_DATA_TYPE_NONE = 0,
-	CEPH_OSD_DATA_TYPE_PAGES,
-	CEPH_OSD_DATA_TYPE_PAGELIST,
+	CEPH_OSD_DATA_TYPE_PAGES, /* 比如说,可能这个是用pages来接受数据? */
+	CEPH_OSD_DATA_TYPE_PAGELIST, /* 这个使用pages链表 */
 #ifdef CONFIG_BLOCK
-	CEPH_OSD_DATA_TYPE_BIO,
+	CEPH_OSD_DATA_TYPE_BIO, /* 这个使用bio? */
 #endif /* CONFIG_BLOCK */
 	CEPH_OSD_DATA_TYPE_BVECS,
 	CEPH_OSD_DATA_TYPE_ITER,
 };
 
+/* 好像req的ops用来容纳数据的缓冲 */
 struct ceph_osd_data {
 	enum ceph_osd_data_type	type;
 	union {
 		struct {
-			struct page	**pages;
-			u64		length;
+			struct page	**pages; /* 一个页面指针,指向存储数据的页面.
+			但是好像这个页面可能是个页面数组还可能是list? 不确定 */
+			u64		length; /* pages的长度 */
 			u32		alignment;
 			bool		pages_from_pool;
 			bool		own_pages;
@@ -136,14 +141,20 @@ struct ceph_osd_data {
 	};
 };
 
+/* osd的req的opcode */
 struct ceph_osd_req_op {
-	u16 op;           /* CEPH_OSD_OP_* */
-	u32 flags;        /* CEPH_OSD_OP_FLAG_* */
+	u16 op;           /* 
+	此op的opcode
+	CEPH_OSD_OP_* */
+	u32 flags;        /* 
+	opcode的flag
+	CEPH_OSD_OP_FLAG_* */
 	u32 indata_len;   /* request */
 	u32 outdata_len;  /* reply */
 	s32 rval;
 
 	union {
+		/* 存储此op的接受的数据什么的 */
 		struct ceph_osd_data raw_data_in;
 		struct {
 			u64 offset, length;
@@ -153,6 +164,7 @@ struct ceph_osd_req_op {
 			struct ceph_sparse_extent *sparse_ext;
 			struct ceph_osd_data osd_data;
 		} extent;
+
 		struct {
 			u32 name_len;
 			u32 value_len;
@@ -160,6 +172,7 @@ struct ceph_osd_req_op {
 			__u8 cmp_mode;     /* CEPH_OSD_CMPXATTR_MODE_* */
 			struct ceph_osd_data osd_data;
 		} xattr;
+
 		struct {
 			const char *class_name;
 			const char *method_name;
@@ -170,27 +183,33 @@ struct ceph_osd_req_op {
 			__u8 method_len;
 			u32 indata_len;
 		} cls;
+
 		struct {
 			u64 cookie;
 			__u8 op;           /* CEPH_OSD_WATCH_OP_ */
 			u32 gen;
 		} watch;
+
 		struct {
 			struct ceph_osd_data request_data;
 		} notify_ack;
+
 		struct {
 			u64 cookie;
 			struct ceph_osd_data request_data;
 			struct ceph_osd_data response_data;
 		} notify;
+
 		struct {
 			struct ceph_osd_data response_data;
 		} list_watchers;
+
 		struct {
 			u64 expected_object_size;
 			u64 expected_write_size;
 			u32 flags;  /* CEPH_OSD_OP_ALLOC_HINT_FLAG_* */
 		} alloc_hint;
+
 		struct {
 			u64 snapid;
 			u64 src_version;
@@ -198,12 +217,16 @@ struct ceph_osd_req_op {
 			u32 src_fadvise_flags;
 			struct ceph_osd_data osd_data;
 		} copy_from;
+
 		struct {
 			u64 ver;
 		} assert_ver;
+
 	};
+
 };
 
+/* osd的req的target */
 struct ceph_osd_request_target {
 	struct ceph_object_id base_oid;
 	struct ceph_object_locator base_oloc;
@@ -228,33 +251,42 @@ struct ceph_osd_request_target {
 	u32 epoch;
 	u32 last_force_resend;
 
-	int osd;
+	int osd; /* 好像是target指向的osd的oid什么的 */
 };
 
-/* an in-flight request */
+/* 
+代表对osd的一个请求
+an in-flight request */
 struct ceph_osd_request {
-	u64             r_tid;              /* unique for this client */
-	struct rb_node  r_node;
+	u64             r_tid;              
+	/*
+	osdc的last tid
+	 unique for this client */
+	struct rb_node  r_node;/* 通过这个挂到osd->o_requests */
 	struct rb_node  r_mc_node;          /* map check */
 	struct work_struct r_complete_work;
 	struct ceph_osd *r_osd;
-
+	/* 对应req的target */
 	struct ceph_osd_request_target r_t;
+
 #define r_base_oid	r_t.base_oid
 #define r_base_oloc	r_t.base_oloc
 #define r_flags		r_t.flags
 
-	struct ceph_msg  *r_request, *r_reply;
-	u32               r_sent;      /* >0 if r_request is sending/sent */
+	struct ceph_msg  *r_request, /* 指向此req的请求msg */
+	*r_reply;
+	u32               r_sent;      /* 
+	大于0的话, 表示已经发送了请求了.
+	>0 if r_request is sending/sent */
 
 	/* request osd ops array  */
 	unsigned int		r_num_ops;
 
 	int               r_result;
-
+	/* 对应osdc */
 	struct ceph_osd_client *r_osdc;
-	struct kref       r_kref;
-	bool              r_mempool;
+	struct kref       r_kref; /* 引用计数 */
+	bool              r_mempool; /* req使用的内存池? */
 	bool		  r_linger;           /* don't resend on failure */
 	struct completion r_completion;       /* private to osd_client.c */
 	ceph_osdc_callback_t r_callback;
@@ -264,20 +296,24 @@ struct ceph_osd_request {
 	void *r_priv;			      /* ditto */
 
 	/* set by submitter */
-	u64 r_snapid;                         /* for reads, CEPH_NOSNAP o/w */
+	u64 r_snapid;                         /* 
+	inode的snapid
+	for reads, CEPH_NOSNAP o/w */
 	struct ceph_snap_context *r_snapc;    /* for writes */
-	struct timespec64 r_mtime;            /* ditto */
+	struct timespec64 r_mtime;            /* 
+	对应inode的mtime
+	ditto */
 	u64 r_data_offset;                    /* ditto */
 
 	/* internal */
 	u64 r_version;			      /* data version sent in reply */
 	unsigned long r_stamp;                /* jiffies, send or check time */
-	unsigned long r_start_stamp;          /* jiffies */
+	unsigned long r_start_stamp;          /* jiffies, 提交请求时的jiffy */
 	ktime_t r_start_latency;              /* ktime_t */
 	ktime_t r_end_latency;                /* ktime_t */
 	int r_attempts;
 	u32 r_map_dne_bound;
-
+	/* req的ops? 可以包含多个ops */
 	struct ceph_osd_req_op r_ops[];
 };
 
@@ -357,6 +393,10 @@ struct ceph_watch_item {
 	struct ceph_entity_addr addr;
 };
 
+/* spg map是什么?
+CephFS的SPG（Striped Pool Group）
+映射用于管理和优化文件系统的数据存储方式。
+它帮助将数据分散到多个存储池中，以实现更高的性能和负载均衡。 */
 struct ceph_spg_mapping {
 	struct rb_node node;
 	struct ceph_spg spgid;
@@ -402,12 +442,15 @@ struct ceph_osd_backoff {
 #define CEPH_LINGER_ID_START	0xffff000000000000ULL
 
 struct ceph_osd_client {
+	/* osdc对应的ceph client */
 	struct ceph_client     *client;
 
 	struct ceph_osdmap     *osdmap;       /* current map */
 	struct rw_semaphore    lock;
 
-	struct rb_root         osds;          /* osds */
+	struct rb_root         osds;          /* 
+	存储此osdc对应的全部osd
+	osds */
 	struct list_head       osd_lru;       /* idle osds */
 	spinlock_t             osd_lru_lock;
 	u32		       epoch_barrier;
@@ -417,7 +460,7 @@ struct ceph_osd_client {
 	struct rb_root         linger_requests; /* lingering requests */
 	struct rb_root         map_checks;
 	struct rb_root         linger_map_checks;
-	atomic_t               num_requests;
+	atomic_t               num_requests; /* 这个osd client发送的请求数量 */
 	atomic_t               num_homeless;
 	int                    abort_err;
 	struct delayed_work    timeout_work;
@@ -435,6 +478,7 @@ struct ceph_osd_client {
 	struct workqueue_struct	*completion_wq;
 };
 
+/* 查看osdmap是否置位此@flag */
 static inline bool ceph_osdmap_flag(struct ceph_osd_client *osdc, int flag)
 {
 	return osdc->osdmap->flags & flag;

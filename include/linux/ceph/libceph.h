@@ -107,6 +107,7 @@ static inline unsigned long ceph_timeout_jiffies(unsigned long timeout)
 struct ceph_mds_client;
 
 /*
+代表一个ceph的client
  * per client state
  *
  * possibly shared by multiple mount points, if they are
@@ -129,8 +130,11 @@ struct ceph_client {
 	u64 supported_features;
 	u64 required_features;
 
-	struct ceph_messenger msgr;   /* messenger instance */
+	struct ceph_messenger msgr;   /* 
+	msgr,发送消息?
+	messenger instance */
 	struct ceph_mon_client monc;
+	/* 代表osd的client */
 	struct ceph_osd_client osdc;
 
 #ifdef CONFIG_DEBUG_FS
@@ -141,8 +145,10 @@ struct ceph_client {
 #endif
 };
 
+/* 从msgr获取client */
 #define from_msgr(ms)	container_of(ms, struct ceph_client, msgr)
 
+/*  */
 static inline bool ceph_msgr2(struct ceph_client *client)
 {
 	return client->options->con_modes[0] != CEPH_CON_MODE_UNKNOWN;

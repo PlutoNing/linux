@@ -47,7 +47,8 @@ enum migratetype {
 	MIGRATE_UNMOVABLE,
 	MIGRATE_MOVABLE,
 	MIGRATE_RECLAIMABLE,
-	MIGRATE_PCPTYPES,	/* the number of types on the pcp lists */
+	MIGRATE_PCPTYPES,	/* the number of types on the pcp lists
+	这些是在pcp链表上面有的mt. 如果想处理pcp的情况,就范围设置为此enum */
 	MIGRATE_HIGHATOMIC = MIGRATE_PCPTYPES,
 #ifdef CONFIG_CMA
 	/*
@@ -109,6 +110,7 @@ extern int page_group_by_mobility_disabled;
 #define folio_migratetype(folio)				\
 	get_pfnblock_flags_mask(&folio->page, folio_pfn(folio),		\
 			MIGRATETYPE_MASK)
+/* 表示一个order的freelist */
 struct free_area {
 	struct list_head	free_list[MIGRATE_TYPES];
 	unsigned long		nr_free;
@@ -139,7 +141,9 @@ enum zone_stat_item {
 	NR_ZONE_INACTIVE_FILE,
 	NR_ZONE_ACTIVE_FILE,
 	NR_ZONE_UNEVICTABLE,
-	NR_ZONE_WRITE_PENDING,	/* Count of dirty, writeback and unstable pages */
+	NR_ZONE_WRITE_PENDING,	/* 
+	todddo, 2024年12月7日21:25:32
+	Count of dirty, writeback and unstable pages */
 	NR_MLOCK,		/* mlock()ed pages found and moved off LRU */
 	/* Second 128 byte cacheline */
 	NR_BOUNCE,
@@ -174,11 +178,14 @@ enum node_stat_item {
 	WORKINGSET_RESTORE_ANON = WORKINGSET_RESTORE_BASE,
 	WORKINGSET_RESTORE_FILE,
 	WORKINGSET_NODERECLAIM,
-	NR_ANON_MAPPED,	/* Mapped anonymous pages */
+	NR_ANON_MAPPED,	/* 
+	表示被映射的匿名页, 就是一般意义上的那种匿名页
+	Mapped anonymous pages */
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
 			   only modified from process context */
 	NR_FILE_PAGES,
-	NR_FILE_DIRTY,
+	NR_FILE_DIRTY, /*有脏文件页了,
+	todddo, 2024年12月7日21:25:18 为什么可以认为是reclaimable的 */
 	NR_WRITEBACK,
 	NR_WRITEBACK_TEMP,	/* Writeback using temporary buffers */
 	NR_SHMEM,		/* shmem pages (included tmpfs/GEM pages) */
@@ -189,7 +196,9 @@ enum node_stat_item {
 	NR_ANON_THPS,
 	NR_VMSCAN_WRITE,
 	NR_VMSCAN_IMMEDIATE,	/* Prioritise for reclaim when writeback ends */
-	NR_DIRTIED,		/* page dirtyings since bootup */
+	NR_DIRTIED,		/* 
+	todddo, 2024年12月7日21:25:43
+	page dirtyings since bootup */
 	NR_WRITTEN,		/* page writings since bootup */
 	NR_THROTTLED_WRITTEN,	/* NR_WRITTEN while reclaim throttled */
 	NR_KERNEL_MISC_RECLAIMABLE,	/* reclaimable non-slab kernel pages */
@@ -269,10 +278,13 @@ enum lru_list {
 	LRU_UNEVICTABLE,
 	NR_LRU_LISTS
 };
+/*  */
 
-/* vmscan的throttle的类型 */
+/* vmscan的throttle的类型
+回收进程可能会因为这些原因主动减缓回收速度 
+ */
 enum vmscan_throttle_state {
-	VMSCAN_THROTTLE_WRITEBACK,
+	VMSCAN_THROTTLE_WRITEBACK, // writeback过多而减缓回收?
 	VMSCAN_THROTTLE_ISOLATED,
 	VMSCAN_THROTTLE_NOPROGRESS,
 	VMSCAN_THROTTLE_CONGESTED,
@@ -324,6 +336,7 @@ enum lruvec_flags {
  * offset within MAX_NR_GENS, i.e., gen, indexes the LRU list of the
  * corresponding generation. The gen counter in folio->flags stores gen+1 while
  * a page is on one of lrugen->folios[]. Otherwise it stores 0.
+ * 可回收页面被分为多个gen, 每个gen的
  * 可回收页面被分为多个gen, 每个gen的
  * A page is added to the youngest generation on faulting. The aging needs to
  * check the accessed bit at least twice before handing this page over to the
@@ -435,6 +448,7 @@ struct lru_gen_folio {
 	struct list_head folios[MAX_NR_GENS][ANON_AND_FILE][MAX_NR_ZONES];
 	/* the multi-gen LRU sizes, eventually consistent
 	这里是lru的大小信息.
+
 	不同gen的file或者anon在不同zone都是分开存储的 */
 	long nr_pages[MAX_NR_GENS][ANON_AND_FILE][MAX_NR_ZONES];
 	/* the exponential moving average of refaulted */
@@ -460,6 +474,7 @@ struct lru_gen_folio {
 	链入每个node的memcg代数统计结构体 */
 	struct hlist_nulls_node list;
 #endif
+
 };
 
 enum {
@@ -645,9 +660,13 @@ struct lruvec {
 	 */
 	unsigned long			anon_cost;
 	unsigned long			file_cost;
-	/* Non-resident age, driven by LRU movement */
+	/* Non-resident age, driven by LRU movement
+	非驻留的页面数量? */
 	atomic_long_t			nonresident_age;
-	/* Refaults at the time of last reclaim cycle */
+	/* Refaults at the time of last reclaim cycle
+	RefaultDistance算法，该算法用于优化page cache的页面回收，
+	通过衡量页面访问间隔来预测和防止内存颠簸?
+	 */
 	unsigned long			refaults[ANON_AND_FILE];
 	/* Various lruvec state flags (enum lruvec_flags) */
 	unsigned long			flags;
@@ -673,6 +692,7 @@ struct lruvec {
 /* LRU Isolation modes. */
 typedef unsigned __bitwise isolate_mode_t;
 
+/*  */
 enum zone_watermarks {
 	WMARK_MIN,
 	WMARK_LOW,
@@ -698,11 +718,13 @@ enum zone_watermarks {
 #define min_wmark_pages(z) (z->_watermark[WMARK_MIN] + z->watermark_boost)
 #define low_wmark_pages(z) (z->_watermark[WMARK_LOW] + z->watermark_boost)
 #define high_wmark_pages(z) (z->_watermark[WMARK_HIGH] + z->watermark_boost)
-#define wmark_pages(z, i) (z->_watermark[i] + z->watermark_boost)
 
+#define wmark_pages(z, i) (z->_watermark[i] + z->watermark_boost)
+/* pcp的free pages信息 */
 struct per_cpu_pages {
 	spinlock_t lock;	/* Protects lists field */
-	int count;		/* number of pages in the list */
+	int count;		/* number of pages in the list
+	 */
 	int high;		/* high watermark, emptying needed */
 	int batch;		/* chunk size for buddy add/remove */
 	short free_factor;	/* batch scaling factor during free */
@@ -728,7 +750,7 @@ struct per_cpu_zonestat {
 	unsigned long vm_numa_event[NR_VM_NUMA_EVENT_ITEMS];
 #endif
 };
-
+/* pcp的node stat */
 struct per_cpu_nodestat {
 	s8 stat_threshold;
 	s8 vm_node_stat_diff[NR_VM_NODE_STAT_ITEMS];
@@ -836,6 +858,7 @@ struct zone {
 
 	/* zone watermarks, access with *_wmark_pages(zone) macros */
 	unsigned long _watermark[NR_WMARK];
+	/* 表示boost之后的水位 */
 	unsigned long watermark_boost;
 
 	unsigned long nr_reserved_highatomic;
@@ -847,7 +870,8 @@ struct zone {
 	 * memory (otherwise we risk to run OOM on the lower zones despite
 	 * there being tons of freeable ram on the higher zones).  This array is
 	 * recalculated at runtime if the sysctl_lowmem_reserve_ratio sysctl
-	 * changes.
+	 * changes.必须保留一些低区内存（否则即使高区有大量可释放的 RAM，我们也有可能在低区发生 OOM）。
+* 如果 sysctl_lowmem_reserve_ratio 的 sysctl 设置发生变化，这个数组将在运行时重新计算。
 	 */
 	long lowmem_reserve[MAX_NR_ZONES];
 
@@ -855,6 +879,7 @@ struct zone {
 	int node;
 #endif
 	struct pglist_data	*zone_pgdat;
+	/*  */
 	struct per_cpu_pages	__percpu *per_cpu_pageset;
 	struct per_cpu_zonestat	__percpu *per_cpu_zonestats;
 	/*
@@ -1019,7 +1044,9 @@ enum pgdat_flags {
 
 /*  */
 enum zone_flags {
-	ZONE_BOOSTED_WATERMARK,		/* zone recently boosted watermarks.
+	ZONE_BOOSTED_WATERMARK,		/* 
+	表示zone刚刚boost了水位
+	zone recently boosted watermarks.
 					 * Cleared when kswapd is woken.
 					 表示刚刚boost了这个zone
 					 */
@@ -1198,11 +1225,16 @@ static inline bool zone_intersects(struct zone *zone,
  */
 #define DEF_PRIORITY 12
 
-/* Maximum number of zones on a zonelist */
+/* 
+最大的zonelist容量?
+最大的node数量乘以最大的zone_nr?
+Maximum number of zones on a zonelist */
+
 #define MAX_ZONES_PER_ZONELIST (MAX_NUMNODES * MAX_NR_ZONES)
 
 enum {
 	ZONELIST_FALLBACK,	/* zonelist with fallback */
+
 #ifdef CONFIG_NUMA
 	/*
 	 * The NUMA zonelists are doubled because we need zonelists that
@@ -1214,6 +1246,7 @@ enum {
 };
 
 /*
+
  * This struct contains information about a zone in a zonelist. It is stored
  * here to avoid dereferences into large structures and lookups of tables
  */
@@ -1223,6 +1256,7 @@ struct zoneref {
 };
 
 /*
+
  * One allocation request operates on a zonelist. A zonelist
  * is a list of zones, the first one is the 'goal' of the
  * allocation, the other zones are fallback zones, in decreasing
@@ -1293,6 +1327,7 @@ typedef struct pglist_data {
 	 * node_zones contains just the zones for THIS node. Not all of the
 	 * zones may be populated, but it is the full list. It is referenced by
 	 * this node's node_zonelists as well as other node's node_zonelists.
+	 只包含本node的zones
 	 */
 	struct zone node_zones[MAX_NR_ZONES];
 
@@ -1300,6 +1335,7 @@ typedef struct pglist_data {
 	 * node_zonelists contains references to all zones in all nodes.
 	 * Generally the first zones will be references to this node's
 	 * node_zones.
+	 包含全部node的全部zones?
 	 */
 	struct zonelist node_zonelists[MAX_ZONELISTS];
 
@@ -1330,10 +1366,13 @@ typedef struct pglist_data {
 	unsigned long node_spanned_pages; /* total size of physical page
 					     range, including holes */
 	int node_id;
+	/* 触发kswapd,这里是等待队列 */
 	wait_queue_head_t kswapd_wait;
+	/* 好像是被限流的进程挂在这里? */
 	wait_queue_head_t pfmemalloc_wait;
 
-	/* workqueues for throttling reclaim for different reasons. */
+	/* workqueues for throttling reclaim for different reasons.
+	回收过程中因为各种原因被限流, 阻塞在这里 */
 	wait_queue_head_t reclaim_wait[NR_VMSCAN_THROTTLE];
 
 	atomic_t nr_writeback_throttled;/* nr of writeback-throttled tasks */
@@ -1343,10 +1382,14 @@ typedef struct pglist_data {
 	struct mutex kswapd_lock;
 #endif
 	struct task_struct *kswapd;	/* Protected by kswapd_lock */
+	/* 要回收的order */
 	int kswapd_order;
+	/* kswapd允许的zone范围 */
 	enum zone_type kswapd_highest_zoneidx;
 
-	int kswapd_failures;		/* Number of 'reclaimed == 0' runs */
+	int kswapd_failures;		/* 
+	 kswapd不行之后, 尝试直接回收.
+	Number of 'reclaimed == 0' runs */
 
 #ifdef CONFIG_COMPACTION
 	int kcompactd_max_order;
@@ -1366,8 +1409,8 @@ typedef struct pglist_data {
 	 * node reclaim becomes active if more unmapped pages exist.
 	 node reclaim会注意的必须保留的数量 的页面
 	 */
-	unsigned long		min_unmapped_pages;
-	unsigned long		min_slab_pages;
+	unsigned long		min_unmapped_pages;/* node上面最少的纯pagecache页 */
+	unsigned long		min_slab_pages; /* 最少的slab页面? */
 #endif /* CONFIG_NUMA */
 
 	/* Write-intensive fields used by page reclaim */
@@ -1520,6 +1563,7 @@ static inline bool populated_zone(struct zone *zone)
 }
 
 #ifdef CONFIG_NUMA
+/*  */
 static inline int zone_to_nid(struct zone *zone)
 {
 	return zone->node;
@@ -1622,12 +1666,12 @@ static inline struct zone *zonelist_zone(struct zoneref *zoneref)
 {
 	return zoneref->zone;
 }
-
+/*  */
 static inline int zonelist_zone_idx(struct zoneref *zoneref)
 {
 	return zoneref->zone_idx;
 }
-
+/*  */
 static inline int zonelist_node_idx(struct zoneref *zoneref)
 {
 	return zone_to_nid(zoneref->zone);
@@ -1638,7 +1682,9 @@ struct zoneref *__next_zones_zonelist(struct zoneref *z,
 					nodemask_t *nodes);
 
 /**
- * next_zones_zonelist - Returns the next zone at or below highest_zoneidx within the allowed nodemask using a cursor within a zonelist as a starting point
+
+ * next_zones_zonelist - Returns the next zone at or below highest_zoneidx 
+ within the allowed nodemask using a cursor within a zonelist as a starting point
  * @z: The cursor used as a starting point for the search
  * @highest_zoneidx: The zone index of the highest zone to return
  * @nodes: An optional nodemask to filter the zonelist with
@@ -1656,12 +1702,15 @@ static __always_inline struct zoneref *next_zones_zonelist(struct zoneref *z,
 					enum zone_type highest_zoneidx,
 					nodemask_t *nodes)
 {
+	/* 没指定nodemask, 并且这个z还在范围内, 那么直接返回.  */
 	if (likely(!nodes && zonelist_zone_idx(z) <= highest_zoneidx))
 		return z;
+	/* 指定了nodesmask, 或者z已经是最后一个zone_idx了,需要步进到下一个node ... */
 	return __next_zones_zonelist(z, highest_zoneidx, nodes);
 }
 
 /**
+获取zonelist和nodemask指定的第一个zone. 
  * first_zones_zonelist - Returns the first zone at or below highest_zoneidx within the allowed nodemask in a zonelist
  * @zonelist: The zonelist to search for a suitable zone
  * @highest_zoneidx: The zone index of the highest zone to return
@@ -1682,12 +1731,13 @@ static inline struct zoneref *first_zones_zonelist(struct zonelist *zonelist,
 					enum zone_type highest_zoneidx,
 					nodemask_t *nodes)
 {
-	return next_zones_zonelist(zonelist->_zonerefs,
-							highest_zoneidx, nodes);
+	return next_zones_zonelist(zonelist->_zonerefs,highest_zoneidx, nodes);
 }
 
 /**
- * for_each_zone_zonelist_nodemask - helper macro to iterate over valid zones in a zonelist at or below a given zone index and within a nodemask
+
+ * for_each_zone_zonelist_nodemask - helper macro to iterate over valid zones in a zonelist at or below a given 
+ zone index and within a nodemask
  * @zone: The current zone in the iterator
  * @z: The current pointer within zonelist->_zonerefs being iterated
  * @zlist: The zonelist being iterated
@@ -1702,7 +1752,7 @@ static inline struct zoneref *first_zones_zonelist(struct zonelist *zonelist,
 		zone;							\
 		z = next_zones_zonelist(++z, highidx, nodemask),	\
 			zone = zonelist_zone(z))
-
+/*  */
 #define for_next_zone_zonelist_nodemask(zone, z, highidx, nodemask) \
 	for (zone = z->zone;	\
 		zone;							\
@@ -1722,7 +1772,9 @@ static inline struct zoneref *first_zones_zonelist(struct zonelist *zonelist,
 #define for_each_zone_zonelist(zone, z, zlist, highidx) \
 	for_each_zone_zonelist_nodemask(zone, z, zlist, highidx, NULL)
 
-/* Whether the 'nodes' are all movable nodes */
+/* 
+2024年09月25日14:20:36
+Whether the 'nodes' are all movable nodes */
 static inline bool movable_only_nodes(nodemask_t *nodes)
 {
 	struct zonelist *zonelist;

@@ -32,7 +32,7 @@ struct nsproxy {
 	refcount_t count;
 	struct uts_namespace *uts_ns;
 	struct ipc_namespace *ipc_ns;
-	struct mnt_namespace *mnt_ns;
+	struct mnt_namespace *mnt_ns; /* 与挂载相关的ns */
 	struct pid_namespace *pid_ns_for_children;
 	struct net 	     *net_ns;
 	struct time_namespace *time_ns;

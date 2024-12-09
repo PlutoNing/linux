@@ -131,6 +131,7 @@ static int max_threads;		/* tunable limit on nr_threads */
 
 #define NAMED_ARRAY_INDEX(x)	[x] = __stringify(x)
 
+/*  */
 static const char * const resident_page_types[] = {
 	NAMED_ARRAY_INDEX(MM_FILEPAGES),
 	NAMED_ARRAY_INDEX(MM_ANONPAGES),
@@ -1432,6 +1433,7 @@ int set_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 }
 
 /**
+替换进程的exe file
  * replace_mm_exe_file - replace a reference to the mm's executable file
  *
  * This changes mm's executable file (shown as symlink /proc/[pid]/exe).
@@ -1446,12 +1448,13 @@ int replace_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 
 	/* Forbid mm->exe_file change if old file still mapped. */
 	old_exe_file = get_mm_exe_file(mm);
-	if (old_exe_file) {
+	if (old_exe_file) {/* 如果之前有exe file */
 		VMA_ITERATOR(vmi, mm, 0);
 		mmap_read_lock(mm);
 		for_each_vma(vmi, vma) {
 			if (!vma->vm_file)
 				continue;
+			/* 肯定有一个vma的mmap是exe file */
 			if (path_equal(&vma->vm_file->f_path,
 				       &old_exe_file->f_path)) {
 				ret = -EBUSY;
@@ -1463,7 +1466,7 @@ int replace_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 		if (ret)
 			return ret;
 	}
-
+	/* 此时vma指向的是old exe file那个vma */
 	ret = deny_write_access(new_exe_file);
 	if (ret)
 		return -EACCES;
@@ -1472,6 +1475,7 @@ int replace_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 	/* set the new file */
 	mmap_write_lock(mm);
 	old_exe_file = rcu_dereference_raw(mm->exe_file);
+	/* 开始指向新的exe file */
 	rcu_assign_pointer(mm->exe_file, new_exe_file);
 	mmap_write_unlock(mm);
 
@@ -1483,6 +1487,7 @@ int replace_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 }
 
 /**
+获取进程的exe file
  * get_mm_exe_file - acquire a reference to the mm's executable file
  *
  * Returns %NULL if mm has no associated executable file.

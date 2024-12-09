@@ -9,9 +9,10 @@
 #define notrace __attribute__((no_instrument_function))
 
 #ifdef CONFIG_64BIT
-/*
+/*在 64 位系统下获取当前指令的地址（即指令指针）
  * The generic version tends to create spurious ENDBR instructions under
  * certain conditions.
+ 通过 LEA 指令（加载有效地址）将当前 RIP 的地址存储在 __here 变量中。
  */
 #define _THIS_IP_ ({ unsigned long __here; asm ("lea 0(%%rip), %0" : "=r" (__here)); __here; })
 #endif

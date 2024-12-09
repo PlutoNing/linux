@@ -9,7 +9,10 @@
  *  Some part derived from fs/eventfd.c (anon inode setup) and
  *  mm/ksm.c (mm hashing).
  */
-
+/* userfaultfd 是 Linux 内核中提供的一种机制，允许用户空间应用程序监听和
+处理内存页的缺页（page fault）。这种机制通常用于支持用户空间内存管理的功能
+，例如，在内存映射文件、虚拟内存和大规模数据集的操作中，可以用来实现自定义
+的页面错误处理逻辑。 */
 #include <linux/list.h>
 #include <linux/hashtable.h>
 #include <linux/sched/signal.h>
