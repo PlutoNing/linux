@@ -1378,13 +1378,12 @@ atomic_dec_and_test(atomic_t *v)
 
 /**
  * atomic_inc_and_test() - atomic increment and test if zero with full ordering
-   作用是原子的将v的值加1，并判断加1后的值是否为0
  * @v: pointer to atomic_t
  *
  * Atomically updates @v to (@v + 1) with full ordering.
- * 增加v的值，并判断增加后的值是否为0
+ *
  * Unsafe to use in noinstr code; use raw_atomic_inc_and_test() there.
- * 
+ *
  * Return: @true if the resulting value of @v is zero, @false otherwise.
  */
 static __always_inline bool
