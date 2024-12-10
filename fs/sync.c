@@ -184,7 +184,7 @@ SYSCALL_DEFINE1(syncfs, int, fd)
 }
 
 /**
-调用fsync回调
+调用fsync回调, 回写指定范围
  * vfs_fsync_range - helper to sync a range of data & metadata to disk
  * @file:		file to sync
  * @start:		offset in bytes of the beginning of data range to sync

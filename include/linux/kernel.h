@@ -130,16 +130,18 @@ extern void __cant_sleep(const char *file, int line, int preempt_offset);
 extern void __cant_migrate(const char *file, int line);
 
 /**
+   can sleep是什么?
  * might_sleep - annotation for functions that can sleep
  *
  * this macro will print a stack trace if it is executed in an atomic
  * context (spinlock, irq-handler, ...). Additional sections where blocking is
  * not allowed can be annotated with non_block_start() and non_block_end()
  * pairs.
- *
+ * 
  * This is a useful debugging help to be able to catch problems early and not
  * be bitten later when the calling function happens to sleep when it is not
  * supposed to.
+   
  */
 # define might_sleep() \
 	do { __might_sleep(__FILE__, __LINE__); might_resched(); } while (0)

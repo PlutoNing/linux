@@ -456,6 +456,8 @@ extern const struct address_space_operations empty_aops;
  *   file offset->disk block mappings in the filesystem during invalidates.
  *   It is also used to block modification of page cache contents through
  *   memory mappings.
+     保证invalidate期间的页缓存和磁盘的一致性?
+	 用于阻止通过mapping对pagecache内容的修改?
  * @gfp_mask: Memory allocation flags to use for allocating pages.
  * @i_mmap_writable: Number of VM_SHARED mappings.
  * @nr_thps: Number of THPs in the pagecache (non-shmem only).
@@ -490,7 +492,9 @@ struct address_space {
 	errseq_t		wb_err;
 	spinlock_t		private_lock;
 	struct list_head	private_list;
-	void			*private_data;
+	void			*private_data; /* 特定于实现的成员
+	
+	 */
 } __attribute__((aligned(sizeof(long)))) __randomize_layout;
 	/*
 	 * On most architectures that alignment is already the case; but
@@ -873,6 +877,7 @@ static inline void filemap_invalidate_unlock(struct address_space *mapping)
 	up_write(&mapping->invalidate_lock);
 }
 
+//加读锁, invalidate_lock是做什么的
 static inline void filemap_invalidate_lock_shared(struct address_space *mapping)
 {
 	down_read(&mapping->invalidate_lock);
@@ -883,7 +888,7 @@ static inline int filemap_invalidate_trylock_shared(
 {
 	return down_read_trylock(&mapping->invalidate_lock);
 }
-
+//释放此读锁
 static inline void filemap_invalidate_unlock_shared(
 					struct address_space *mapping)
 {
@@ -1136,7 +1141,7 @@ extern int send_sigurg(struct fown_struct *fown);
 #define SB_NOSUID       BIT(1)	/* Ignore suid and sgid bits */
 #define SB_NODEV        BIT(2)	/* Disallow access to device special files */
 #define SB_NOEXEC       BIT(3)	/* Disallow program execution */
-#define SB_SYNCHRONOUS  BIT(4)	/* Writes are synced at once */
+#define SB_SYNCHRONOUS  BIT(4)	/* Writes are synced at once, 此fs每次的回写都会同步? */
 #define SB_MANDLOCK     BIT(6)	/* Allow mandatory locks on an FS */
 #define SB_DIRSYNC      BIT(7)	/* Directory modifications are synchronous */
 #define SB_NOATIME      BIT(10)	/* Do not update access times. */
@@ -2058,7 +2063,7 @@ struct super_operations {
 /*
  * Inode flags - they have no relation to superblock flags now
  */
-#define S_SYNC		(1 << 0)  /* Writes are synced at once */
+#define S_SYNC		(1 << 0)  /* Writes are synced at once, inode要求同步写 */
 #define S_NOATIME	(1 << 1)  /* Do not update access times */
 #define S_APPEND	(1 << 2)  /* Append-only file */
 #define S_IMMUTABLE	(1 << 3)  /* Immutable file */
@@ -2098,6 +2103,7 @@ struct super_operations {
 /*  */
 static inline bool sb_rdonly(const struct super_block *sb) { return sb->s_flags & SB_RDONLY; }
 #define IS_RDONLY(inode)	sb_rdonly((inode)->i_sb)
+// 
 #define IS_SYNC(inode)		(__IS_FLG(inode, SB_SYNCHRONOUS) || \
 					((inode)->i_flags & S_SYNC))
 #define IS_DIRSYNC(inode)	(__IS_FLG(inode, SB_SYNCHRONOUS|SB_DIRSYNC) || \
@@ -2612,6 +2618,7 @@ extern int vfs_fsync(struct file *file, int datasync);
 extern int sync_file_range(struct file *file, loff_t offset, loff_t nbytes,
 				unsigned int flags);
 
+//
 static inline bool iocb_is_dsync(const struct kiocb *iocb)
 {
 	return (iocb->ki_flags & IOCB_DSYNC) ||
@@ -2626,7 +2633,7 @@ static inline bool iocb_is_dsync(const struct kiocb *iocb)
  */
 static inline ssize_t generic_write_sync(struct kiocb *iocb, ssize_t count)
 {
-	if (iocb_is_dsync(iocb)) {
+	if (iocb_is_dsync(iocb)) { //如果要求同步
 		int ret = vfs_fsync_range(iocb->ki_filp,
 				iocb->ki_pos - count, iocb->ki_pos - 1,
 				(iocb->ki_flags & IOCB_SYNC) ? 0 : 1);

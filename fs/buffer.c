@@ -566,6 +566,8 @@ repeat:
 }
 
 /**
+   写回一个mapping的关联的buffer
+   写回并等待写回完成
  * sync_mapping_buffers - write out & wait upon a mapping's "associated" buffers
  * @mapping: the mapping which wants those buffers written
  *
@@ -591,7 +593,7 @@ EXPORT_SYMBOL(sync_mapping_buffers);
 /**
  * generic_buffers_fsync_noflush - generic buffer fsync implementation
  * for simple filesystems with no inode lock
- *
+ * 在不锁inode的情况下, 对于简单文件系统的通用buffer同步实现
  * @file:	file to synchronize
  * @start:	start offset in bytes
  * @end:	end offset in bytes (inclusive)
@@ -600,6 +602,7 @@ EXPORT_SYMBOL(sync_mapping_buffers);
  * This is a generic implementation of the fsync method for simple
  * filesystems which track all non-inode metadata in the buffers list
  * hanging off the address_space structure.
+   
  */
 int generic_buffers_fsync_noflush(struct file *file, loff_t start, loff_t end,
 				  bool datasync)
@@ -608,6 +611,7 @@ int generic_buffers_fsync_noflush(struct file *file, loff_t start, loff_t end,
 	int err;
 	int ret;
 
+	//为什么这里还是写入文件?
 	err = file_write_and_wait_range(file, start, end);
 	if (err)
 		return err;
@@ -757,23 +761,31 @@ bool block_dirty_folio(struct address_space *mapping, struct folio *folio)
 EXPORT_SYMBOL(block_dirty_folio);
 
 /*
+
+   写回一系列buffer, 并等待写回完成
  * Write out and wait upon a list of buffers.
- *
+ * 
  * We have conflicting pressures: we want to make sure that all
  * initially dirty buffers get waited on, but that any subsequently
  * dirtied buffers don't.  After all, we don't want fsync to last
  * forever if somebody is actively writing to the file.
- *
+ * 我们想等待所有的脏inode完成, 但是总会有新变脏的. 如果一直有人持续写入的话,
+ 我们也不想一直等待
  * Do this in two main stages: first we copy dirty buffers to a
  * temporary inode list, queueing the writes as we go.  Then we clean
  * up, waiting for those writes to complete.
- * 
+ * 分两个阶段完成回写, 首先把此时此刻的脏inode拷贝到临时链表,发起回写 然后清理, 
+ 等待回写完成
  * During this second stage, any subsequent updates to the file may end
  * up refiling the buffer on the original inode's dirty list again, so
  * there is a chance we will end up with a buffer queued for write but
  * not yet completed on that list.  So, as a final cleanup we go through
  * the osync code to catch these locked, dirty buffers without requeuing
  * any newly dirty buffers for write.
+   
+
+-----------
+mapping的buffers是什么.
  */
 static int fsync_buffers_list(spinlock_t *lock, struct list_head *list)
 {
@@ -787,10 +799,11 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list)
 	blk_start_plug(&plug);
 
 	spin_lock(lock);
-	while (!list_empty(list)) {
+	while (!list_empty(list)) { //上面全是脏buffer,遍历
 		bh = BH_ENTRY(list->next);
 		mapping = bh->b_assoc_map;
-		__remove_assoc_queue(bh);
+		__remove_assoc_queue(bh); //这里都清除了什么
+
 		/* Avoid race with mark_buffer_dirty_inode() which does
 		 * a lockless check and we rely on seeing the dirty bit */
 		smp_mb();
@@ -806,6 +819,7 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list)
 				 * current contents - it is a noop if I/O is
 				 * still in flight on potentially older
 				 * contents.
+				   保证确实写回了实际内容?
 				 */
 				write_dirty_buffer(bh, REQ_SYNC);
 
@@ -2822,7 +2836,7 @@ static void end_bio_bh_io_sync(struct bio *bio)
 	bio_put(bio);
 }
 
-//提交回写这个bh
+//提交回写这个bh, 创建bio, 把bh的page交给bio来回写, 然后submit bio ...
 static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 			  struct writeback_control *wbc)
 {
@@ -2837,6 +2851,7 @@ static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 
 	/*
 	 * Only clear out a write error when rewriting
+	 什么意思
 	 */
 	if (test_set_buffer_req(bh) && (op == REQ_OP_WRITE))
 		clear_buffer_write_io_error(bh);
@@ -2846,7 +2861,7 @@ static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 	if (buffer_prio(bh))
 		opf |= REQ_PRIO;
 	
-	//创建bio
+	// 创建bio
 	bio = bio_alloc(bh->b_bdev, 1, opf, GFP_NOIO);
 
 	fscrypt_set_bio_crypt_ctx_bh(bio, bh, GFP_NOIO);
@@ -2868,19 +2883,22 @@ static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 		wbc_account_cgroup_owner(wbc, bh->b_page, bh->b_size);
 	}
 
+	//提交bio
 	submit_bio(bio);
 }
 
+//提交写回bh
 void submit_bh(blk_opf_t opf, struct buffer_head *bh)
 {
 	submit_bh_wbc(opf, bh, NULL);
 }
 EXPORT_SYMBOL(submit_bh);
 
+//写回脏buffer
 void write_dirty_buffer(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	lock_buffer(bh);
-	if (!test_clear_buffer_dirty(bh)) {
+	if (!test_clear_buffer_dirty(bh)) { //本来buffer不脏
 		unlock_buffer(bh);
 		return;
 	}

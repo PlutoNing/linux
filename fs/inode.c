@@ -90,7 +90,7 @@ static inline long get_nr_inodes_unused(void)
 		sum += per_cpu(nr_unused, i);
 	return sum < 0 ? 0 : sum;
 }
-/* 用了的就是脏的? */
+/* 用了的就是脏的吗 什么算是用什么算是unused. todddo  */
 long get_nr_dirty_inodes(void)
 {
 	/* not actually dirty inodes, but a wild approximation */

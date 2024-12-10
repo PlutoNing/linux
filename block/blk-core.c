@@ -710,6 +710,7 @@ void submit_bio_noacct_nocheck(struct bio *bio)
 }
 
 /**
+   
  * submit_bio_noacct - re-submit a bio to the block device layer for I/O
  * @bio:  The bio describing the location in memory and on the device.
  *
@@ -717,10 +718,12 @@ void submit_bio_noacct_nocheck(struct bio *bio)
  * resubmitted to lower level drivers by stacking block drivers.  All file
  * systems and other upper level users of the block layer should use
  * submit_bio() instead.
+   
  */
 void submit_bio_noacct(struct bio *bio)
 {
 	struct block_device *bdev = bio->bi_bdev;
+	//获取rq队列
 	struct request_queue *q = bdev_get_queue(bdev);
 	blk_status_t status = BLK_STS_IOERR;
 
@@ -810,6 +813,7 @@ end_io:
 EXPORT_SYMBOL(submit_bio_noacct);
 
 /**
+   提交bio
  * submit_bio - submit a bio to the block device layer for I/O
  * @bio: The &struct bio which describes the I/O
  *

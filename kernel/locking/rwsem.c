@@ -1273,6 +1273,7 @@ static __always_inline int __down_read_killable(struct rw_semaphore *sem)
 	return __down_read_common(sem, TASK_KILLABLE);
 }
 
+//返回1成功
 static inline int __down_read_trylock(struct rw_semaphore *sem)
 {
 	int ret = 0;
@@ -1513,6 +1514,7 @@ static inline bool is_rwsem_reader_owned(struct rw_semaphore *sem)
 
 /*
  * lock for reading
+   加读锁
  */
 void __sched down_read(struct rw_semaphore *sem)
 {
@@ -1552,6 +1554,7 @@ int __sched down_read_killable(struct rw_semaphore *sem)
 EXPORT_SYMBOL(down_read_killable);
 
 /*
+   返回1成功
  * trylock for reading -- returns 1 if successful, 0 if contention
  */
 int down_read_trylock(struct rw_semaphore *sem)

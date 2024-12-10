@@ -724,6 +724,7 @@ out:
 	return ret;
 }
 
+//xfs的write回调
 STATIC ssize_t
 xfs_file_buffered_write(
 	struct kiocb		*iocb,
@@ -782,12 +783,15 @@ out:
 
 	if (ret > 0) {
 		XFS_STATS_ADD(ip->i_mount, xs_write_bytes, ret);
-		/* Handle various SYNC-type writes */
+		/* Handle various SYNC-type writes
+		处理不同的同步需求?
+		 */
 		ret = generic_write_sync(iocb, ret);
 	}
 	return ret;
 }
 
+// 
 STATIC ssize_t
 xfs_file_write_iter(
 	struct kiocb		*iocb,
@@ -806,7 +810,7 @@ xfs_file_write_iter(
 	if (xfs_is_shutdown(ip->i_mount))
 		return -EIO;
 
-	if (IS_DAX(inode))
+	if (IS_DAX(inode))  //直接IO
 		return xfs_file_dax_write(iocb, from);
 
 	if (iocb->ki_flags & IOCB_DIRECT) {
@@ -1186,6 +1190,7 @@ out_unlock:
 	return remapped > 0 ? remapped : ret;
 }
 
+//
 STATIC int
 xfs_file_open(
 	struct inode	*inode,
@@ -1441,6 +1446,7 @@ xfs_file_mmap(
 	return 0;
 }
 
+//xfs的file fops
 const struct file_operations xfs_file_operations = {
 	.llseek		= xfs_file_llseek,
 	.read_iter	= xfs_file_read_iter,
@@ -1462,7 +1468,7 @@ const struct file_operations xfs_file_operations = {
 	.fadvise	= xfs_file_fadvise,
 	.remap_file_range = xfs_file_remap_range,
 };
-
+//xfs的dir fops
 const struct file_operations xfs_dir_file_operations = {
 	.open		= xfs_dir_open,
 	.read		= generic_read_dir,

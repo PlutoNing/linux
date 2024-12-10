@@ -1141,6 +1141,9 @@ void __init pagecache_init(void)
 }
 
 /*
+  等待页面bit位解锁的时候, 这个函数是实体在wq被唤醒时的回调函数.可以自己通过不同的返回值
+  告诉waker在队列上面叫醒自己的时候该怎么做.
+  参见wake_common函数,
  * The page wait code treats the "wait->flags" somewhat unusually, because
  * we have multiple different kinds of waits, not just the usual "exclusive"
  * one.
@@ -1178,12 +1181,15 @@ void __init pagecache_init(void)
 static int wake_page_function(wait_queue_entry_t *wait, unsigned mode, int sync, void *arg)
 {
 	unsigned int flags;
+	
+	//key里面存储了要等待的bit位什么的
 	struct wait_page_key *key = arg;
+	//获取自己所等待的页面
 	struct wait_page_queue *wait_page
 		= container_of(wait, struct wait_page_queue, wait);
 
 	if (!wake_page_match(wait_page, key))
-		return 0;
+		return 0;   //不要管我, 去看wq的下一个wakee.
 
 	/*
 	 * If it's a lock handoff wait, we get the bit for it, and
@@ -1192,7 +1198,7 @@ static int wake_page_function(wait_queue_entry_t *wait, unsigned mode, int sync,
 	flags = wait->flags;
 	if (flags & WQ_FLAG_EXCLUSIVE) {
 		if (test_bit(key->bit_nr, &key->folio->flags))
-			return -1;
+			return -1; //如果自己要求独占锁, 这里还是有锁, 时机还不成熟
 		if (flags & WQ_FLAG_CUSTOM) {
 			if (test_and_set_bit(key->bit_nr, &key->folio->flags))
 				return -1;
@@ -1244,6 +1250,7 @@ static void folio_wake_bit(struct folio *folio, int bit_nr)
 	INIT_LIST_HEAD(&bookmark.entry);
 
 	spin_lock_irqsave(&q->lock, flags);
+	//这里唤醒
 	__wake_up_locked_key_bookmark(q, TASK_NORMAL, &key, &bookmark);
 
 	while (bookmark.flags & WQ_FLAG_BOOKMARK) {
@@ -1288,12 +1295,15 @@ static void folio_wake(struct folio *folio, int bit)
 enum behavior {
 	EXCLUSIVE,	/* Hold ref to page and take the bit when woken, like
 			 * __folio_lock() waiting on then setting PG_locked.
+			 等待期间持有ref
 			 */
 	SHARED,		/* Hold ref to page and check the bit when woken, like
 			 * folio_wait_writeback() waiting on PG_writeback.
+			 等待期间也持有ref, 醒来检查有没有获得锁.
 			 */
 	DROP,		/* Drop ref to page before wait, no check when woken,
 			 * like folio_put_wait_locked() on PG_locked.
+			 等待期间drop ref,
 			 */
 };
 
@@ -1317,7 +1327,7 @@ static inline bool folio_trylock_flag(struct folio *folio, int bit_nr,
 /* How many times do we accept lock stealing from under a waiter? */
 int sysctl_page_lock_unfairness = 5;
 
-//
+//等待bit位的标记消失, 等待状态是state, behavior指定了对ref,以及check的行为.
 static inline int folio_wait_bit_common(struct folio *folio, int bit_nr,
 		int state, enum behavior behavior)
 {
@@ -1366,7 +1376,7 @@ repeat:
 	 */
 	spin_lock_irq(&q->lock);
 	folio_set_waiters(folio);
-	if (!folio_trylock_flag(folio, bit_nr, wait))
+	if (!folio_trylock_flag(folio, bit_nr, wait)) //try lock失败, 不得不去wq等待
 		__add_wait_queue_entry_tail(q, wait);
 	spin_unlock_irq(&q->lock);
 
@@ -1377,6 +1387,7 @@ repeat:
 	 * been done by the wake function.
 	 *
 	 * We can drop our reference to the folio.
+	   根据参数drop ref
 	 */
 	if (behavior == DROP)
 		folio_put(folio);
@@ -1394,34 +1405,42 @@ repeat:
 
 		/* Loop until we've been woken or interrupted */
 		flags = smp_load_acquire(&wait->flags);
-		if (!(flags & WQ_FLAG_WOKEN)) {
+		if (!(flags & WQ_FLAG_WOKEN)) { //只要没有被唤醒,就继续
 			if (signal_pending_state(state, current))
 				break;
 
 			io_schedule();
 			continue;
 		}
-
+		//说明被唤醒了? , 此时如果是要求drop或者shared的wakee可以走了,
+		//因为他们自己回检查自己有没有获得锁?
 		/* If we were non-exclusive, we're done */
 		if (behavior != EXCLUSIVE)
 			break;
+		//到这里是 获取exclusive行为的情况
 
 		/* If the waker got the lock for us, we're done */
 		if (flags & WQ_FLAG_DONE)
-			break;
+			break;  //不过waker把锁给wakee了, 所以 ok ....
 
 		/*
 		 * Otherwise, if we're getting the lock, we need to
 		 * try to get it ourselves.
 		 *
 		 * And if that fails, we'll have to retry this all.
+		  现在是exclusive的wakee被唤醒, 但是还没有锁的情况,
+		  因为他是exclusive的(要求自己有锁的话才退出)
+		  所以这里尝试try lock, 不行的话重复这个过程
 		 */
 		if (unlikely(test_and_set_bit(bit_nr, folio_flags(folio, 0))))
 			goto repeat;
-
+		
+		//这里是exclusive的wakee, 通过自己的努力try lock成功了,也退出
 		wait->flags |= WQ_FLAG_DONE;
 		break;
 	}
+
+//现在是获得锁的情况
 
 	/*
 	 * If a signal happened, this 'finish_wait()' may remove the last
@@ -1449,9 +1468,9 @@ repeat:
 	 * Also note that WQ_FLAG_WOKEN is sufficient for a non-exclusive
 	 * waiter, but an exclusive one requires WQ_FLAG_DONE.
 	 */
-	if (behavior == EXCLUSIVE)
+	if (behavior == EXCLUSIVE)  //对于exclusive的wakee, 返回是否获得锁
 		return wait->flags & WQ_FLAG_DONE ? 0 : -EINTR;
-
+	//对于其他类型:drop和shared的wakee, 告诉他们是不是被唤醒了就行?
 	return wait->flags & WQ_FLAG_WOKEN ? 0 : -EINTR;
 }
 
@@ -1549,17 +1568,19 @@ int folio_wait_bit_killable(struct folio *folio, int bit_nr)
 EXPORT_SYMBOL(folio_wait_bit_killable);
 
 /**
-作用是?
+
  * folio_put_wait_locked - Drop a reference and wait for it to be unlocked
  * @folio: The folio to wait for.
- * @state: The sleep state (TASK_KILLABLE, TASK_UNINTERRUPTIBLE, etc).
+ * @state: The sleep state (TASK_KILLABLE, TASK_UNINTERRUPTIBLE, etc).等待
+ 期间的进程状态
  *
  * The caller should hold a reference on @folio.  They expect the page to
  * become unlocked relatively soon, but do not wish to hold up migration
  * (for example) by holding the reference while waiting for the folio to
  * come unlocked.  After this function returns, the caller should not
  * dereference @folio.
- *
+ * caller应该有对此folio的引用, 希望folio很快解锁?
+   但是又不希望因为持有引用耽误了等待期间的migrate_pages?
  * Return: 0 if the folio was unlocked or -EINTR if interrupted by a signal.
  */
 static int folio_put_wait_locked(struct folio *folio, int state)
@@ -1756,7 +1777,7 @@ int __folio_lock_killable(struct folio *folio)
 }
 EXPORT_SYMBOL_GPL(__folio_lock_killable);
 
-//异步的加锁folio
+//尝试加入folio的wq来等待folio解锁. 如果直接try lock成功了会退出wq
 static int __folio_lock_async(struct folio *folio, struct wait_page_queue *wait)
 {
 	struct wait_queue_head *q = folio_waitqueue(folio);
@@ -1775,7 +1796,7 @@ static int __folio_lock_async(struct folio *folio, struct wait_page_queue *wait)
 	 * safe to remove and return success, we know the callback
 	 * isn't going to trigger.
 	 */
-	if (!ret)
+	if (!ret) //直接try lock就成功了
 		__remove_wait_queue(q, &wait->wait);
 	else
 		ret = -EIOCBQUEUED;
@@ -2574,17 +2595,17 @@ static int filemap_update_page(struct kiocb *iocb,
 	if (iocb->ki_flags & IOCB_NOWAIT) { //非阻塞的话, 仅仅是trylock
 		if (!filemap_invalidate_trylock_shared(mapping))
 			return -EAGAIN;
-	} else {
+	} else { //可以接受wait
 		filemap_invalidate_lock_shared(mapping);
 	}
+	//现在对invalidate_lock加了读锁
 
 	if (!folio_trylock(folio)) { //folio加锁失败
 		error = -EAGAIN;
 		if (iocb->ki_flags & (IOCB_NOWAIT | IOCB_NOIO))
 			goto unlock_mapping; //如果是NOWAIT或者NOIO锁定page失败, 退出吧
 
-		if (!(iocb->ki_flags & IOCB_WAITQ)) {//这是说可以接受wait?,但是iocb没有设置wq?
-		//其实也是不能等?
+		if (!(iocb->ki_flags & IOCB_WAITQ)) {//如果还没有加入wq
 			filemap_invalidate_unlock_shared(mapping);
 			/*
 			 * This is where we usually end up waiting for a
@@ -2621,6 +2642,7 @@ static int filemap_update_page(struct kiocb *iocb,
 unlock:
 	folio_unlock(folio);
 unlock_mapping:
+//释放对invalidate_lock的读锁
 	filemap_invalidate_unlock_shared(mapping);
 	if (error == AOP_TRUNCATED_PAGE)
 		folio_put(folio);
@@ -2772,8 +2794,8 @@ static inline bool pos_same_folio(loff_t pos1, loff_t pos2, struct folio *folio)
 /**
 文件系统读取文件的例程会调用此例程, 用于从页缓存中读取数据
  * filemap_read - Read data from the page cache.
- * @iocb: The iocb to read.
- * @iter: Destination for the data.
+ * @iocb: The iocb to read. 从这里读
+ * @iter: Destination for the data. 读到这
  * @already_read: Number of bytes already read by the caller.
  *
  * Copies data from the page cache.  If the data is not currently present,
@@ -2805,12 +2827,13 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 	folio_batch_init(&fbatch);
 
 	do {
-		cond_resched();
+		cond_resched(); 
 
 		/*
 		 * If we've already successfully copied some data, then we
 		 * can no longer safely return -EIOCBQUEUED. Hence mark
 		 * an async read NOWAIT at that point.
+		   
 		 */
 		if ((iocb->ki_flags & IOCB_WAITQ) && already_read)
 			iocb->ki_flags |= IOCB_NOWAIT;
@@ -2952,7 +2975,7 @@ int kiocb_invalidate_pages(struct kiocb *iocb, size_t count)
  * The IOCB_NOWAIT flag in iocb->ki_flags indicates that -EAGAIN shall
  * be returned when no data can be read without waiting for I/O requests
  * to complete; it doesn't prevent readahead.
- * IOCB_WAITQ标志表示，如果没有数据可以读取而无需等待I/O请求完成，则应返回
+ * IOCB_NOWAIT标志表示，如果没有数据可以读取而无需等待I/O请求完成，则应返回
    -EAGAIN；它不会阻止预读。
  * The IOCB_NOIO flag in iocb->ki_flags indicates that no new I/O
  * requests shall be made for the read or for readahead.  When no data

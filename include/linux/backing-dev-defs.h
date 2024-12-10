@@ -117,8 +117,11 @@ struct bdi_writeback {
 	unsigned long state;		/* 
 	此wb现在的状态
 	Always use atomic bitops on this */
+
 	unsigned long last_old_flush;	/* 
-	上次刷新old的时间
+	表示后台刷新机制上次刷新old的时间
+
+	如果此值加上设定的间隔,超出了now,就表示此需要刷盘了
 	last old data flush */
 
 	struct list_head b_dirty;	/* dirty inodes */

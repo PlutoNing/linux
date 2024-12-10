@@ -251,6 +251,7 @@ static inline u64 get_jiffies_64(void)
  */
 
 /**
+返回是不是已经过了这个时间.
  * time_is_before_jiffies - return true if a is before jiffies
  * @a: time (unsigned long) to compare to jiffies
  *

@@ -561,6 +561,7 @@ ssize_t kernel_write(struct file *file, const void *buf, size_t count,
 }
 EXPORT_SYMBOL(kernel_write);
 
+//write调用, 写入pos
 ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_t *pos)
 {
 	ssize_t ret;
@@ -584,8 +585,9 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 		ret = new_sync_write(file, buf, count, pos);
 	else
 		ret = -EINVAL;
+
 	if (ret > 0) {
-		fsnotify_modify(file);
+		fsnotify_modify(file); //fsnotify机制
 		add_wchar(current, ret);
 	}
 	inc_syscw(current);
@@ -623,6 +625,7 @@ SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
 	return ksys_read(fd, buf, count);
 }
 
+//write系统调用
 ssize_t ksys_write(unsigned int fd, const char __user *buf, size_t count)
 {
 	struct fd f = fdget_pos(fd);
@@ -642,7 +645,7 @@ ssize_t ksys_write(unsigned int fd, const char __user *buf, size_t count)
 
 	return ret;
 }
-
+//write系统调用
 SYSCALL_DEFINE3(write, unsigned int, fd, const char __user *, buf,
 		size_t, count)
 {

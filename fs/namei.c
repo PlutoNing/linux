@@ -3592,6 +3592,7 @@ finish_lookup:
 
 /*
  * Handle the last step of open()
+ 执行open系统调用的最后一步
  */
 static int do_open(struct nameidata *nd,
 		   struct file *file, const struct open_flags *op)
@@ -3774,6 +3775,7 @@ static int do_o_path(struct nameidata *nd, unsigned flags, struct file *file)
 	return error;
 }
 
+//执行打开文件的系统调用, 
 static struct file *path_openat(struct nameidata *nd,
 			const struct open_flags *op, unsigned flags)
 {
@@ -3781,6 +3783,7 @@ static struct file *path_openat(struct nameidata *nd,
 	int error;
 
 	file = alloc_empty_file(op->open_flag, current_cred());
+	//此时file已经有打开时指定的flag了
 	if (IS_ERR(file))
 		return file;
 
@@ -3788,7 +3791,7 @@ static struct file *path_openat(struct nameidata *nd,
 		error = do_tmpfile(nd, flags, op, file);
 	} else if (unlikely(file->f_flags & O_PATH)) {
 		error = do_o_path(nd, flags, file);
-	} else {
+	} else {//一般的打开情况
 		const char *s = path_init(nd, flags);
 		while (!(error = link_path_walk(s, nd)) &&
 		       (s = open_last_lookups(nd, file, op)) != NULL)
@@ -3813,6 +3816,7 @@ static struct file *path_openat(struct nameidata *nd,
 	return ERR_PTR(error);
 }
 
+//执行打开文件的系统调用
 struct file *do_filp_open(int dfd, struct filename *pathname,
 		const struct open_flags *op)
 {
@@ -3821,6 +3825,7 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 	struct file *filp;
 
 	set_nameidata(&nd, dfd, pathname, NULL);
+	//尝试打开
 	filp = path_openat(&nd, op, flags | LOOKUP_RCU);
 	if (unlikely(filp == ERR_PTR(-ECHILD)))
 		filp = path_openat(&nd, op, flags);

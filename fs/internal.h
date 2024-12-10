@@ -160,7 +160,7 @@ static inline void sb_end_ro_state_change(struct super_block *sb)
  * open.c
  */
 struct open_flags {
-	int open_flag;
+	int open_flag;  //存储一些flag, 比如sync与否
 	umode_t mode;
 	int acc_mode;
 	int intent;

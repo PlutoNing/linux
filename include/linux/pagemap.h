@@ -972,7 +972,7 @@ struct wait_page_key {
 	int page_match;
 };
 
-//代表一个等待页的队列. 表示等待folio的某个bit被设置or清除?
+//代表一个等待page的实体. 表示等待folio的某个bit被设置or清除?
 struct wait_page_queue {
 	struct folio *folio;
 	int bit_nr;
@@ -1013,6 +1013,7 @@ void folio_unlock(struct folio *folio);
 
  * Context: Any context.
  * Return: Whether the lock was successfully acquired.
+   返回是否成功加锁
  */
 static inline bool folio_trylock(struct folio *folio)
 {
@@ -1020,6 +1021,7 @@ static inline bool folio_trylock(struct folio *folio)
 }
 
 /*
+try lock此page
  * Return true if the page was successfully locked
  */
 static inline int trylock_page(struct page *page)
@@ -1028,7 +1030,7 @@ static inline int trylock_page(struct page *page)
 }
 
 /**
-对获取到的folio加锁
+对获取到的folio加锁, 可能会睡眠
  * folio_lock() - Lock this folio.
  * @folio: The folio to lock.
  *
@@ -1037,18 +1039,19 @@ static inline int trylock_page(struct page *page)
  * either from its backing file or from swap.  It is also held while a
  * folio is being truncated from its address_space, so holding the lock
  * is sufficient to keep folio->mapping stable.
- *
+ * 这个锁的范围很大
  * The folio lock is also held while write() is modifying the page to
  * provide POSIX atomicity guarantees (as long as the write does not
  * cross a page boundary).  Other modifications to the data in the folio
  * do not hold the folio lock and can race with writes, eg DMA and stores
  * to mapped pages.
- *
+ * 写入页面的时候也要持有此锁
  * Context: May sleep.  If you need to acquire the locks of two or
  * more folios, they must be in order of ascending index, if they are
  * in the same address_space.  If they are in different address_spaces,
  * acquire the lock of the folio which belongs to the address_space which
  * has the lowest address in memory first.
+   
  */
 static inline void folio_lock(struct folio *folio)
 {
@@ -1058,13 +1061,14 @@ static inline void folio_lock(struct folio *folio)
 }
 
 /**
+  加锁此page的folio
  * lock_page() - Lock the folio containing this page.
  * @page: The page to lock.
  *
  * See folio_lock() for a description of what the lock protects.
  * This is a legacy function and new code should probably use folio_lock()
  * instead.
- *
+ * 
  * Context: May sleep.  Pages in the same folio share a lock, so do not
  * attempt to lock two pages which share a folio.
  */
@@ -1079,6 +1083,7 @@ static inline void lock_page(struct page *page)
 }
 
 /**
+ killable的lock
  * folio_lock_killable() - Lock this folio, interruptible by a fatal signal.
  * @folio: The folio to lock.
  *

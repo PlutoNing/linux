@@ -378,7 +378,7 @@ subsys_initcall(default_bdi_init);
  * periodic background write-out of dirty inodes. Since the write-out would
  * starts only 'dirty_writeback_interval' centisecs from now anyway, we just
  * set up a timer which wakes the bdi thread up later.
- *
+ * 
  * Note, we wouldn't bother setting up the timer, but this function is on the
  * fast-path (used by '__mark_inode_dirty()'), so we save few context switches
  * by delaying the wake-up.

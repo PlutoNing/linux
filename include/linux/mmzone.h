@@ -1050,7 +1050,9 @@ enum zone_flags {
 					 * Cleared when kswapd is woken.
 					 表示刚刚boost了这个zone
 					 */
-	ZONE_RECLAIM_ACTIVE,		/* kswapd may be scanning the zone. */
+	ZONE_RECLAIM_ACTIVE,		/* 
+	代表kswap可以回收这个zone
+	kswapd may be scanning the zone. */
 };
 
 static inline unsigned long zone_managed_pages(struct zone *zone)

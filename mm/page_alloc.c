@@ -2901,11 +2901,12 @@ static inline long __zone_watermark_unusable_free(struct zone *z,
 }
 
 /*
-检查@mark这个水位是否ok
+检查@mark这个水位是否ok, 并且可以满足order的分配.
  * Return true if free base pages are above 'mark'. For high-order checks it
  * will return true of the order-0 watermark is reached and there is at least
  * one free page of a suitable size. Checking now avoids taking the zone lock
  * to check in the allocation paths if no pages are free.
+   返回真如果free base pages高于这个水位mark, 并且可以满足order的分配
  */
 bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 			 int highest_zoneidx, unsigned int alloc_flags,
@@ -2947,7 +2948,8 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 		if (alloc_flags & ALLOC_OOM)
 			min -= min / 2;
 	}
-	/* 如果内存分配的等级越高, min越小 ...
+
+	/* 如果内存分配的等级越高, min越小 ... 也就是更容易返回ok, 更容易让caller继续分配
 	min代表一种限制 ... */
 
 
@@ -2955,16 +2957,20 @@ bool __zone_watermark_ok(struct zone *z, unsigned int order, unsigned long mark,
 	 * Check watermarks for an order-0 allocation request. If these
 	 * are not met, then a high-order request also cannot go ahead
 	 * even if a suitable page happened to be free.
-	 freepages太少了, 不满足这个mark水位.
+	 freepages太少了, 肯定不满足这个mark水位.
 	 */
 	if (free_pages <= min + z->lowmem_reserve[highest_zoneidx])
 		return false;
+    //freepages足够
 
-	/* If this is an order-0 request then the watermark is fine */
+
+	/* If this is an order-0 request then the watermark is fine
+	如果要求分配的是单页面, 那直接ok了 */
 	if (!order)
 		return true;
 
-	/* For a high-order request, check at least one suitable page is free */
+	/* For a high-order request, check at least one suitable page is free
+	如果是分配多页面, 要检查有足够size的 */
 	for (o = order; o <= MAX_ORDER; o++) {
 		struct free_area *area = &z->free_area[o];
 		int mt;
@@ -4018,7 +4024,7 @@ check_retry_cpuset(int cpuset_mems_cookie, struct alloc_context *ac)
 
 	return false;
 }
-/* 
+
 
 /* 慢速回收路径 */
 /*慢速路径会唤醒zonelist的全部的kswapd...

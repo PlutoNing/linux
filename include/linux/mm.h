@@ -3774,8 +3774,12 @@ extern bool process_shares_mm(struct task_struct *p, struct mm_struct *mm);
 
 #ifdef CONFIG_SYSCTL
 extern int sysctl_drop_caches;
+extern int sysctl_trigger_flush;
 int drop_caches_sysctl_handler(struct ctl_table *, int, void *, size_t *,
 		loff_t *);
+int trigger_flush_sysctl_handler(struct ctl_table *, int, void *, size_t *,
+		loff_t *);
+		
 #endif
 
 void drop_slab(void);

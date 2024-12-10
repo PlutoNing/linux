@@ -586,7 +586,9 @@ static bool grab_super_dead(struct super_block *sb)
 }
 
 /*
+    防止fs被卸载
  *	super_trylock_shared - try to grab ->s_umount shared
+    对s_umount加共享锁
  *	@sb: reference we are trying to grab
  *
  *	Try to prevent fs shutdown.  This is used in places where we
@@ -596,7 +598,10 @@ static bool grab_super_dead(struct super_block *sb)
  *	filesystem already got into shutdown, and returns true with the s_umount
  *	lock held in read mode in case of success. On successful return,
  *	the caller must drop the s_umount lock when done.
- *
+ *  尝试阻止fs被卸载. 感觉相当于保活. 
+    加锁失败相当于是此时此刻已经有人开始卸载此fs了.
+	加锁成功,表示成功拿到了共享锁, 可以保证在自己操作此fs期间,fs不会被卸载
+	完成自己工作后, 需要主动手动释放 ...
  *	Note that unlike get_super() et.al. this one does *not* bump ->s_count.
  *	The reason why it's safe is that we are OK with doing trylock instead
  *	of down_read().  There's a couple of places that are OK with that, but
@@ -608,6 +613,7 @@ bool super_trylock_shared(struct super_block *sb)
 		if (!(sb->s_flags & SB_DYING) && sb->s_root &&
 		    (sb->s_flags & SB_BORN))
 			return true;
+
 		super_unlock_shared(sb);
 	}
 

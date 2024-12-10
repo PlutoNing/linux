@@ -2096,6 +2096,7 @@ static void process_timeout(struct timer_list *t)
 
 /**
  * schedule_timeout - sleep until timeout
+    一直睡眠到超时
  * @timeout: timeout value in jiffies
  *
  * Make the current task sleep until @timeout jiffies have elapsed.

@@ -190,7 +190,7 @@ This tunable is used to define when dirty data is old enough to be eligible
 for writeout by the kernel flusher threads.  It is expressed in 100'ths
 of a second.  Data which has been dirty in-memory for longer than this
 interval will be written out next time a flusher thread wakes up.
-
+变脏多久后开始回写磁盘
 
 dirty_ratio
 ===========
@@ -220,7 +220,7 @@ dirty_writeback_centisecs
 The kernel flusher threads will periodically wake up and write `old` data
 out to disk.  This tunable expresses the interval between those wakeups, in
 100'ths of a second.
-
+内核flusher按照此间隔刷新脏数据到磁盘
 Setting this to zero disables periodic writeback altogether.
 
 
@@ -230,17 +230,18 @@ drop_caches
 Writing to this will cause the kernel to drop clean caches, as well as
 reclaimable slab objects like dentries and inodes.  Once dropped, their
 memory becomes free.
+通过写入控制内核刷盘脏页,dentry和inode的slab
 
 To free pagecache::
-
+写1释放pagecache
 	echo 1 > /proc/sys/vm/drop_caches
 
 To free reclaimable slab objects (includes dentries and inodes)::
-
+写2释放可回收的slab
 	echo 2 > /proc/sys/vm/drop_caches
 
 To free slab objects and pagecache::
-
+写3释放两者
 	echo 3 > /proc/sys/vm/drop_caches
 
 This is a non-destructive operation and will not free any dirty objects.

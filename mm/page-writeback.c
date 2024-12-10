@@ -70,12 +70,14 @@ static long ratelimit_pages = 32;
 
 /*
  * Start background writeback (via writeback threads) at this percentage
+ 开始刷盘的脏页比例
  */
 static int dirty_background_ratio = 10;
 
 /*
  * dirty_background_bytes starts at 0 (disabled) so that it is a function of
  * dirty_background_ratio * the amount of dirtyable memory
+ 脏页达到此量后, 开始刷盘
  */
 static unsigned long dirty_background_bytes;
 
@@ -87,13 +89,14 @@ static int vm_highmem_is_dirtyable;
 
 /*
  * The generator of dirty data starts writeback at this percentage
+ 超过了这个比例, 产生脏页的进程也要刷盘, 不仅仅是后台刷盘.
  */
 static int vm_dirty_ratio = 20;
 
 /*
  * vm_dirty_bytes starts at 0 (disabled) so that it is a function of
  * vm_dirty_ratio * the amount of dirtyable memory
-   表示? 2024年12月7日22:32:42
+ 2024年12月7日22:32:42
  */
 static unsigned long vm_dirty_bytes;
 
@@ -2262,7 +2265,7 @@ void writeback_set_ratelimit(void)
 		ratelimit_pages = 16;
 }
 
-//负责回写的wb内核线程?
+//限制脏页比例
 static int page_writeback_cpu_online(unsigned int cpu)
 {
 	writeback_set_ratelimit();
@@ -3098,7 +3101,7 @@ static void wb_inode_writeback_end(struct bdi_writeback *wb)
 
 	 */
 	spin_lock_irqsave(&wb->work_lock, flags);
-	if (test_bit(WB_registered, &wb->state)) //更新带宽
+	if (test_bit(WB_registered, &wb->state)) //回写
 		queue_delayed_work(bdi_wq, &wb->bw_dwork, BANDWIDTH_INTERVAL);
 	spin_unlock_irqrestore(&wb->work_lock, flags);
 }

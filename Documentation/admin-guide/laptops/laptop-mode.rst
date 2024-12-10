@@ -89,7 +89,11 @@ immediately after the most recent read operation. The value of the laptop_mode
 knob determines the time between the occurrence of disk I/O and when the flush
 is triggered. A sensible value for the knob is 5 seconds. Setting the knob to
 0 disables laptop mode.
-
+笔记本模式由控制开关 /proc/sys/vm/laptop_mode 控制。对于所有包含笔记本模式补丁的内核，无论任何
+配置选项，这个控制开关都是存在的。当设置了这个开关时，任何可能导致硬盘旋转的物理磁盘 I/O 操作都会
+使 Linux 刷新所有脏块。其结果是，在磁盘停止旋转后，它不会再因为写入脏块而重新旋转，因为这些脏块
+已经在最近一次读操作后立即被写入。laptop_mode 控制开关的值决定了磁盘 I/O 发生和触发刷新之间的
+时间。一个合理的值是 5 秒。将该开关设置为 0 则禁用笔记本模式。
 To increase the effectiveness of the laptop_mode strategy, the laptop_mode
 control script increases dirty_expire_centisecs and dirty_writeback_centisecs in
 /proc/sys/vm to about 10 minutes (by default), which means that pages that are
@@ -100,7 +104,11 @@ ext3 or ReiserFS filesystems (also done automatically by the control script),
 this results in concentration of disk activity in a small time interval which
 occurs only once every 10 minutes, or whenever the disk is forced to spin up by
 a cache miss. The disk can then be spun down in the periods of inactivity.
-
+为了提高笔记本模式策略的有效性，笔记本模式控制脚本将 /proc/sys/vm 中的 dirty_expire_centisecs 
+和 dirty_writeback_centisecs 增加到大约 10 分钟（默认值），这意味着被弄脏的页面不会被强制频繁地
+写入磁盘。控制脚本还改变了脏页的后台写回比例，这样后台写回脏页的操作就不再进行了。结合对 ext3 或 
+ReiserFS 文件系统的更高提交值（也是 10 分钟，由控制脚本自动完成），这导致磁盘活动集中在一个小的时间
+间隔内，每 10 分钟发生一次，或者在缓存未命中时强制磁盘旋转。然后，磁盘可以在不活动的时间段内停止旋转。
 
 Configuration
 -------------

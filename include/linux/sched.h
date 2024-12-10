@@ -284,6 +284,7 @@ struct user_event_mm;
 		raw_spin_unlock(&current->pi_lock);			\
 	} while (0);
 
+// 
 #define get_current_state()	READ_ONCE(current->__state)
 
 /*
@@ -2146,6 +2147,7 @@ static inline int _cond_resched(void)
 
 #endif /* !CONFIG_PREEMPTION || CONFIG_PREEMPT_DYNAMIC */
 
+//准备做很长的循环之类的操作中可以调用这个?
 #define cond_resched() ({			\
 	__might_resched(__FILE__, __LINE__, 0);	\
 	_cond_resched();			\

@@ -10102,6 +10102,7 @@ void __init sched_init(void)
 
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
 
+// 2024年12月10日10:51:45 看看sched
 void __might_sleep(const char *file, int line)
 {
 	unsigned int state = get_current_state();
@@ -10141,6 +10142,7 @@ static inline bool resched_offsets_ok(unsigned int offsets)
 	return nested == offsets;
 }
 
+// 
 void __might_resched(const char *file, int line, unsigned int offsets)
 {
 	/* Ratelimiting timestamp: */
@@ -10152,13 +10154,15 @@ void __might_resched(const char *file, int line, unsigned int offsets)
 	rcu_sleep_check();
 
 	if ((resched_offsets_ok(offsets) && !irqs_disabled() &&
-	     !is_idle_task(current) && !current->non_block_count) ||
+	     !is_idle_task(current) && !current->non_block_count)
+		  ||
 	    system_state == SYSTEM_BOOTING || system_state > SYSTEM_RUNNING ||
 	    oops_in_progress)
-		return;
+		return; //这些情况不处理
 
 	if (time_before(jiffies, prev_jiffy + HZ) && prev_jiffy)
-		return;
+		return; //如果距离上次调用这个函数还没到HZ
+
 	prev_jiffy = jiffies;
 
 	/* Save this before calling printk(), since that will clobber it: */
