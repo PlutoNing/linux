@@ -1378,6 +1378,7 @@ atomic_dec_and_test(atomic_t *v)
 
 /**
  * atomic_inc_and_test() - atomic increment and test if zero with full ordering
++1, 然后看看结果是不是0
  * @v: pointer to atomic_t
  *
  * Atomically updates @v to (@v + 1) with full ordering.
@@ -1396,6 +1397,7 @@ atomic_inc_and_test(atomic_t *v)
 
 /**
  * atomic_add_negative() - atomic add and test if negative with full ordering
+   加上i,然后测试是不是结果为负了. 
  * @i: int value to add
  * @v: pointer to atomic_t
  *

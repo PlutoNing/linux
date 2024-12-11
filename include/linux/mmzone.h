@@ -183,6 +183,7 @@ enum node_stat_item {
 	Mapped anonymous pages */
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
 			   only modified from process context */
+
 	NR_FILE_PAGES,
 	NR_FILE_DIRTY, /*有脏文件页了,
 	todddo, 2024年12月7日21:25:18 为什么可以认为是reclaimable的 */

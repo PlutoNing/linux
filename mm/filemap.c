@@ -1319,7 +1319,7 @@ static inline bool folio_trylock_flag(struct folio *folio, int bit_nr,
 			return false;
 	} else if (test_bit(bit_nr, &folio->flags))
 		return false;
-
+	//加锁成功了
 	wait->flags |= WQ_FLAG_WOKEN | WQ_FLAG_DONE;
 	return true;
 }
@@ -1992,7 +1992,7 @@ out:
 
 /**
  * __filemap_get_folio - Find and get a reference to a folio.
-  找到对应的folio, 不存在会申请
+  找到对应的folio, 不存在会申请. 返回的是带锁的
  * @mapping: The address_space to search.
  * @index: The page index.
  * @fgp_flags: %FGP flags modify how the folio is returned.
@@ -2022,16 +2022,18 @@ repeat:
 		goto no_page;
 
 	if (fgp_flags & FGP_LOCK) {
-		if (fgp_flags & FGP_NOWAIT) {
-			if (!folio_trylock(folio)) {
-				folio_put(folio);
+		if (fgp_flags & FGP_NOWAIT) { //要求不能阻塞加锁
+			if (!folio_trylock(folio)) { 
+				folio_put(folio);//try lock失败, 这里直接返回再试
 				return ERR_PTR(-EAGAIN);
 			}
-		} else {
+		} else { //阻塞加锁
 			folio_lock(folio);
 		}
 
-		/* Has the page been truncated? */
+		/* Has the page been truncated?
+		发生了race, 期间被截断了
+		 */
 		if (unlikely(folio->mapping != mapping)) {
 			folio_unlock(folio);
 			folio_put(folio);

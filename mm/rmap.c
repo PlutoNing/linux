@@ -475,6 +475,7 @@ void __init anon_vma_init(void)
 }
 
 /*
+返回这个匿名页folio的av
  * Getting a lock on a stable anon_vma from a page off the LRU is tricky!
  *
  * Since there is no serialization what so ever against page_remove_rmap()
@@ -510,6 +511,7 @@ struct anon_vma *folio_get_anon_vma(struct folio *folio)
 	if (!folio_mapped(folio))
 		goto out;
 
+/* 是匿名页, 并且被映射了 */
 	anon_vma = (struct anon_vma *) (anon_mapping - PAGE_MAPPING_ANON);
 	if (!atomic_inc_not_zero(&anon_vma->refcount)) {
 		anon_vma = NULL;
@@ -1172,7 +1174,7 @@ void page_move_anon_rmap(struct page *page, struct vm_area_struct *vma)
 
 /**
  * __page_set_anon_rmap - set up new anonymous rmap
-  vma的address映射到这个folio.
+  vma的address映射到这个folio. 页面是第一次被映射
  * @folio:	Folio which contains page.
  * @page:	Page to add to rmap.
  * @vma:	VM area to add page to.
@@ -1186,7 +1188,7 @@ static void __page_set_anon_rmap(struct folio *folio, struct page *page,
 
 	BUG_ON(!anon_vma);
 
-	if (folio_test_anon(folio))
+	if (folio_test_anon(folio)) //说明不是第一次被映射为anon, 已经具有相关属性了?
 		goto out;
 
 	/*
@@ -1246,6 +1248,9 @@ static void __page_check_anon_rmap(struct folio *folio, struct page *page,
 
 /**
  * page_add_anon_rmap - add pte mapping to an anonymous page
+   给匿名页添加rmap
+---------
+为什么基本都是swap和migrate调用这个函数
  * @page:	the page to add the mapping to
  * @vma:	the vm area in which the mapping is added
  * @address:	the user virtual address mapped
@@ -1255,6 +1260,7 @@ static void __page_check_anon_rmap(struct folio *folio, struct page *page,
  * the anon_vma case: to serialize mapping,index checking after setting,
  * and to ensure that PageAnon is not being upgraded racily to PageKsm
  * (but PageKsm is never downgraded to PageAnon).
+    
  */
 void page_add_anon_rmap(struct page *page, struct vm_area_struct *vma,
 		unsigned long address, rmap_t flags)
@@ -1263,7 +1269,7 @@ void page_add_anon_rmap(struct page *page, struct vm_area_struct *vma,
 	atomic_t *mapped = &folio->_nr_pages_mapped;
 	int nr = 0, nr_pmdmapped = 0;
 	bool compound = flags & RMAP_COMPOUND;
-	bool first = true;
+	bool first = true; //自己是不是第一个映射这个page的
 
 	/* Is page being mapped by PTE? Is this its first map to be added? */
 	if (likely(!compound)) {
@@ -1302,7 +1308,7 @@ void page_add_anon_rmap(struct page *page, struct vm_area_struct *vma,
 
 	if (likely(!folio_test_ksm(folio))) {
 		/* address might be in next vma when migration races vma_merge */
-		if (first)
+		if (first) //如果这个页面第一次被映射
 			__page_set_anon_rmap(folio, page, vma, address,
 					     !!(flags & RMAP_EXCLUSIVE));
 		else
@@ -1315,7 +1321,9 @@ void page_add_anon_rmap(struct page *page, struct vm_area_struct *vma,
 /**
    
  * folio_add_new_anon_rmap - Add mapping to a new anonymous folio.
-   
+   给新匿名页添加rmap?
+   ---------
+   fork复制mm, 缺页申请页面,调用此函数
  * @folio:	The folio to add the mapping to.
  * @vma:	the vm area in which the mapping is added
  * @address:	the user virtual address mapped
@@ -1323,7 +1331,7 @@ void page_add_anon_rmap(struct page *page, struct vm_area_struct *vma,
  * Like page_add_anon_rmap() but must only be called on *new* folios.
  * This means the inc-and-test can be bypassed.
  * The folio does not have to be locked.
- *
+ * 
  * If the folio is large, it is accounted as a THP.  As the folio
  * is new, it's assumed to be mapped exclusively by a single process.
  */
@@ -1336,7 +1344,7 @@ void folio_add_new_anon_rmap(struct folio *folio, struct vm_area_struct *vma,
 
 	__folio_set_swapbacked(folio);
 
-	if (likely(!folio_test_pmd_mappable(folio))) {
+	if (likely(!folio_test_pmd_mappable(folio))) { //可以直接设置为0
 		/* increment count (starts at -1) */
 		atomic_set(&folio->_mapcount, 0);
 		nr = 1;
@@ -1354,7 +1362,7 @@ void folio_add_new_anon_rmap(struct folio *folio, struct vm_area_struct *vma,
 }
 
 /**
-设置file page的rmap
+设置file page的rmap . range是说对folio里面的page范围逐个设置页表
  * folio_add_file_rmap_range - add pte mapping to page range of a folio
    , 添加pte映射到folio的页范围. page起始的nr_pages页是folio的, 添加这个folio
  * @folio:	The folio to add the mapping to
@@ -1379,7 +1387,7 @@ void folio_add_file_rmap_range(struct folio *folio, struct page *page,
 
 	/* Is page being mapped by PTE? Is this its first map to be added? */
 	if (likely(!compound)) { // 如果不是大页
-		do { // 遍历nr_pages个page, 添加pte映射
+		do { // 遍历nr_pages个page, 逐个添加pte映射
 
 			//_mapcount是从-1开始的, 所以这里是先加1, 再判断是否为0
 			first = atomic_inc_and_test(&page->_mapcount);
@@ -1422,7 +1430,7 @@ void folio_add_file_rmap_range(struct folio *folio, struct page *page,
 }
 
 /**
- 设置page的rmap
+ 设置单个page的rmap . 看来应该都是page_mapped的页面
  * page_add_file_rmap - add pte mapping to a file page
    添加pte映射到文件页
  * @page:	the page to add the mapping to
@@ -1450,6 +1458,7 @@ void page_add_file_rmap(struct page *page, struct vm_area_struct *vma,
 }
 
 /**
+   去掉page的一个rmap?
  * page_remove_rmap - take down pte mapping from a page
  * @page:	page to remove mapping from
  * @vma:	the vm area from which the mapping is removed
@@ -1463,7 +1472,7 @@ void page_remove_rmap(struct page *page, struct vm_area_struct *vma,
 	struct folio *folio = page_folio(page);
 	atomic_t *mapped = &folio->_nr_pages_mapped;
 	int nr = 0, nr_pmdmapped = 0;
-	bool last;
+	bool last; //我们是不是最后一个映射此页面的
 	enum node_stat_item idx;
 
 	VM_BUG_ON_PAGE(compound && !PageHead(page), page);
@@ -1483,7 +1492,7 @@ void page_remove_rmap(struct page *page, struct vm_area_struct *vma,
 			nr = atomic_dec_return_relaxed(mapped);
 			nr = (nr < COMPOUND_MAPPED);
 		}
-	} else if (folio_test_pmd_mappable(folio)) {
+	} else if (folio_test_pmd_mappable(folio)) { //大页的情况
 		/* That test is redundant: it's for safety or to optimize out */
 
 		last = atomic_add_negative(-1, &folio->_entire_mapcount);
@@ -1502,7 +1511,7 @@ void page_remove_rmap(struct page *page, struct vm_area_struct *vma,
 		}
 	}
 
-	if (nr_pmdmapped) {
+	if (nr_pmdmapped) { //如果是大页的话
 		if (folio_test_anon(folio))
 			idx = NR_ANON_THPS;
 		else if (folio_test_swapbacked(folio))
@@ -1510,7 +1519,9 @@ void page_remove_rmap(struct page *page, struct vm_area_struct *vma,
 		else
 			idx = NR_FILE_PMDMAPPED;
 		__lruvec_stat_mod_folio(folio, idx, -nr_pmdmapped);
+		//看来大页的mapped分了三种, 匿名, 文件, 还有shmem
 	}
+
 	if (nr) {
 		/* 减少page类型的计数 */
 		idx = folio_test_anon(folio) ? NR_ANON_MAPPED : NR_FILE_MAPPED;
@@ -1538,7 +1549,7 @@ void page_remove_rmap(struct page *page, struct vm_area_struct *vma,
 }
 
 /*
-
+尝试解除映射某页面?
  * @arg: enum ttu_flags will be passed to this argument
  */
 static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,

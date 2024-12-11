@@ -1682,15 +1682,18 @@ static void folio_check_dirty_writeback(struct folio *folio,
 	 * MADV_FREE anonymous folios are put into inactive file list too.
 	 * They could be mistakenly treated as file lru. So further anon
 	 * test is needed.
+	 flusher不处理匿名页, 所以匿名页在
 	 */
 	if (!folio_is_file_lru(folio) ||
 	    (folio_test_anon(folio) && !folio_test_swapbacked(folio))) {/* 如果
-		不是文件lru
-		或者是file lru, 并且是匿名,但是不是交换? */
+		如果是swap_backed,
+		或者不是swapbacked, 但是匿名页 */
 		*dirty = false;
 		*writeback = false;
 		return;
 	}
+
+	/* 到这里不是swapbacked 并且  */
 
 	/* By default assume that the folio flags are accurate */
 	*dirty = folio_test_dirty(folio);
@@ -1847,11 +1850,15 @@ retry:
 		if (!sc->may_unmap && folio_mapped(folio))
 			goto keep_locked;
 
+		/* 不是mapped, 或者可以unmap */
 		/* folio_update_gen() tried to promote this page? */
-		/* todddo */
+		/* todddo 看来mglru开启情况下, 大多数情况都不回收mapped, 即使开启了may_unmap*/
+
 		if (lru_gen_enabled() && !ignore_references &&
 		    folio_mapped(folio) && folio_test_referenced(folio))
 			goto keep_locked;
+
+
 
 		/*
 		 * The number of dirty pages determines if a node is marked
@@ -1942,9 +1949,7 @@ retry:
 			if (current_is_kswapd() && 
 			    folio_test_reclaim(folio) &&
 			    test_bit(PGDAT_WRITEBACK, &pgdat->flags)) {
-					/* 第一种情况, kswap遇到了很多页面正在回写, 并且当前页面也是reclaim和writeback标记.
-					为了防止阻塞风险.
-					这里不进行等待, 保留页面, 处理下一个页面. */
+					/* 对于kswap来说, 现在node很多回写,并且这个页面已经是第二次遇见了, 去处理下一个 */
 				stat->nr_immediate += nr_pages;
 				goto activate_locked;
 

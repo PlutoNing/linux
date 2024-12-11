@@ -884,7 +884,7 @@ copy_nonpresent_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 
 /*
  * Copy a present and normal page.
- *
+ * 复制页面?
  * NOTE! The usual case is that this isn't required;
  * instead, the caller can just increase the page refcount
  * and re-use the pte the traditional way.
@@ -1276,6 +1276,7 @@ vma_needs_copy(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
 	return false;
 }
 
+//fork时拷贝vma
 int
 copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
 {
@@ -1310,10 +1311,11 @@ copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
 	 * there could be a permission downgrade on the ptes of the
 	 * parent mm. And a permission downgrade will only happen if
 	 * is_cow_mapping() returns true.
+
 	 */
 	is_cow = is_cow_mapping(src_vma->vm_flags);
 
-	if (is_cow) {
+	if (is_cow) {//
 		mmu_notifier_range_init(&range, MMU_NOTIFY_PROTECTION_PAGE,
 					0, src_mm, addr, end);
 		mmu_notifier_invalidate_range_start(&range);
@@ -1331,7 +1333,7 @@ copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
 	ret = 0;
 	dst_pgd = pgd_offset(dst_mm, addr);
 	src_pgd = pgd_offset(src_mm, addr);
-	do {
+	do {//开始逐级页表的copy
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(src_pgd))
 			continue;
@@ -1848,7 +1850,7 @@ static int validate_page_before_insert(struct page *page)
 	return 0;
 }
 
-/* 已经锁住pte了, 这里插入页面
+/* 已经锁住pte了, 这里插入file页面?
 设置pte
 设置rmap
 更新mm的计数器
@@ -4435,12 +4437,12 @@ void set_pte_range(struct vm_fault *vmf, struct folio *folio,
 	if (unlikely(uffd_wp))
 		entry = pte_mkuffd_wp(entry);
 	/* copy-on-write page */
-	if (write && !(vma->vm_flags & VM_SHARED)) {
+	if (write && !(vma->vm_flags & VM_SHARED)) { /* 好像mmap的私有可写就是匿名页? */
 		add_mm_counter(vma->vm_mm, MM_ANONPAGES, nr);
 		VM_BUG_ON_FOLIO(nr != 1, folio);
 		folio_add_new_anon_rmap(folio, vma, addr);
 		folio_add_lru_vma(folio, vma);
-	} else {
+	} else { /* 共享的是mmap页面, 映射文件, 共享. */
 		add_mm_counter(vma->vm_mm, mm_counter_file(page), nr);
 		folio_add_file_rmap_range(folio, page, nr, vma, false);
 	}

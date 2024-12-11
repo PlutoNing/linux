@@ -911,6 +911,7 @@ out:
  * A bad page could be due to a number of fields. Instead of multiple branches,
  * try and check multiple fields with one check. The caller must do a detailed
  * check if necessary.
+   
  */
 static inline bool page_expected_state(struct page *page,
 					unsigned long check_flags)

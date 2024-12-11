@@ -694,7 +694,8 @@ vma_address(struct page *page, struct vm_area_struct *vma)
 
  * Then at what user virtual address will none of the range be found in vma?
  * Assumes that vma_address() already returned a good starting address.
-   找到vma中的结束地址?
+   找到pvmw涉及的范围的尾部地址
+   
  */
 static inline unsigned long vma_address_end(struct page_vma_mapped_walk *pvmw)
 {

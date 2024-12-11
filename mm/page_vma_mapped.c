@@ -13,11 +13,12 @@ static inline bool not_found(struct page_vma_mapped_walk *pvmw)
 	return false;
 }
 
+//
 static bool map_pte(struct page_vma_mapped_walk *pvmw, spinlock_t **ptlp)
 {
 	pte_t ptent;
 
-	if (pvmw->flags & PVMW_SYNC) {
+	if (pvmw->flags & PVMW_SYNC) { //特殊情况, 以后再看
 		/* Use the stricter lookup */
 		pvmw->pte = pte_offset_map_lock(pvmw->vma->vm_mm, pvmw->pmd,
 						pvmw->address, &pvmw->ptl);
@@ -42,7 +43,7 @@ static bool map_pte(struct page_vma_mapped_walk *pvmw, spinlock_t **ptlp)
 	if (pvmw->flags & PVMW_MIGRATION) {
 		if (!is_swap_pte(ptent))
 			return false;
-	} else if (is_swap_pte(ptent)) {
+	} else if (is_swap_pte(ptent)) { //是不是被换出到了swap
 		swp_entry_t entry;
 		/*
 		 * Handle un-addressable ZONE_DEVICE memory.
@@ -64,9 +65,10 @@ static bool map_pte(struct page_vma_mapped_walk *pvmw, spinlock_t **ptlp)
 		if (!is_device_private_entry(entry) &&
 		    !is_device_exclusive_entry(entry))
 			return false;
-	} else if (!pte_present(ptent)) {
+	} else if (!pte_present(ptent)) { //pte不存在
 		return false;
 	}
+
 	pvmw->ptl = *ptlp;
 	spin_lock(pvmw->ptl);
 	return true;
@@ -245,7 +247,7 @@ restart:
 		pmde = pmdp_get_lockless(pvmw->pmd);
 
 		if (pmd_trans_huge(pmde) || is_pmd_migration_entry(pmde) ||
-		    (pmd_present(pmde) && pmd_devmap(pmde))) {
+		    (pmd_present(pmde) && pmd_devmap(pmde))) { //这些是特殊情况的pmd?
 			pvmw->ptl = pmd_lock(mm, pvmw->pmd);
 			pmde = *pvmw->pmd;
 			if (!pmd_present(pmde)) {
@@ -268,9 +270,10 @@ restart:
 				return true;
 			}
 			/* THP pmd was split under us: handle on pte level */
+			/* 也算是处理完了pmd */
 			spin_unlock(pvmw->ptl);
 			pvmw->ptl = NULL;
-		} else if (!pmd_present(pmde)) {
+		} else if (!pmd_present(pmde)) { //pmde不存在的情况?
 			/*
 			 * If PVMW_SYNC, take and drop THP pmd lock so that we
 			 * cannot return prematurely, while zap_huge_pmd() has
@@ -283,10 +286,13 @@ restart:
 
 				spin_unlock(ptl);
 			}
+			//直接把pvmw的addr跳过这个pmd范围
 			//改变pvmw的addr, 去看下一个页面了.
 			step_forward(pvmw, PMD_SIZE);
 			continue;
 		}
+
+		//到这里应该就是判断pte了
 		if (!map_pte(pvmw, &ptl)) {
 			if (!pvmw->pte)
 				goto restart;

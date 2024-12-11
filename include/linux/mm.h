@@ -1187,6 +1187,7 @@ static inline int folio_entire_mapcount(struct folio *folio)
  * The atomic page->_mapcount, starts from -1: so that transitions
  * both from it and to it can be tracked, using atomic_inc_and_test
  * and atomic_add_negative(-1).
+   这个值初始化是从-1开始的. 
  */
 static inline void page_mapcount_reset(struct page *page)
 {
@@ -1195,15 +1196,17 @@ static inline void page_mapcount_reset(struct page *page)
 
 /**
  * page_mapcount() - Number of times this precise page is mapped.
+   返回这个page被映射的数量?
  * @page: The page.
  *
  * The number of times this page is mapped.  If this page is part of
  * a large folio, it includes the number of times this page is mapped
  * as part of that folio.
- *
+ * 
  * The result is undefined for pages which cannot be mapped into userspace.
  * For example SLAB or special types of pages. See function page_has_type().
  * They use this field in struct page differently.
+   
  */
 static inline int page_mapcount(struct page *page)
 {
@@ -1218,7 +1221,7 @@ static inline int page_mapcount(struct page *page)
 int folio_total_mapcount(struct folio *folio);
 
 /**
-获取folio的引用计数
+  获取folio的引用计数
  * folio_mapcount() - Calculate the number of mappings of this folio.
  * @folio: The folio.
  *
@@ -1271,6 +1274,7 @@ static inline bool folio_mapped(struct folio *folio)
 }
 
 /*
+   测试page是不是被映射到了页表
  * Return true if this page is mapped into pagetables.
  * For compound page it returns true if any sub-page of compound page is mapped,
  * even if this particular sub-page is not itself mapped by any PTE or PMD.
@@ -1608,6 +1612,7 @@ void unpin_user_page_range_dirty_lock(struct page *page, unsigned long npages,
 				      bool make_dirty);
 void unpin_user_pages(struct page **pages, unsigned long npages);
 
+//可写但是共享的vma, 在fork的时候要cow
 static inline bool is_cow_mapping(vm_flags_t flags)
 {
 	return (flags & (VM_SHARED | VM_MAYWRITE)) == VM_MAYWRITE;

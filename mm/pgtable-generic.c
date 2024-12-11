@@ -308,7 +308,7 @@ nomap:
 	return NULL;
 }
 
-/* 锁定pmd上面addr? */
+/* 锁定mm的pmd上面addr? */
 pte_t *pte_offset_map_nolock(struct mm_struct *mm, pmd_t *pmd,
 			     unsigned long addr, spinlock_t **ptlp)
 {
@@ -319,6 +319,7 @@ pte_t *pte_offset_map_nolock(struct mm_struct *mm, pmd_t *pmd,
 	pte = __pte_offset_map(pmd, addr, &pmdval);
 	if (likely(pte))
 		*ptlp = pte_lockptr(mm, &pmdval);
+
 	return pte;
 }
 
