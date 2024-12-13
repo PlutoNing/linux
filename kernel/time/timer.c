@@ -2096,13 +2096,13 @@ static void process_timeout(struct timer_list *t)
 
 /**
  * schedule_timeout - sleep until timeout
-    一直睡眠到超时
+    最多睡眠到超时, 返回实际sleep的时间
  * @timeout: timeout value in jiffies
  *
  * Make the current task sleep until @timeout jiffies have elapsed.
  * The function behavior depends on the current task state
  * (see also set_current_state() description):
- *
+ * 
  * %TASK_RUNNING - the scheduler is called, but the task does not sleep
  * at all. That happens because sched_submit_work() does nothing for
  * tasks in %TASK_RUNNING state.
@@ -2110,7 +2110,7 @@ static void process_timeout(struct timer_list *t)
  * %TASK_UNINTERRUPTIBLE - at least @timeout jiffies are guaranteed to
  * pass before the routine returns unless the current task is explicitly
  * woken up, (e.g. by wake_up_process()).
- *
+ * 
  * %TASK_INTERRUPTIBLE - the routine may return early if a signal is
  * delivered to the current task or the current task is explicitly woken
  * up.
@@ -2143,7 +2143,7 @@ signed long __sched schedule_timeout(signed long timeout)
 		 */
 		schedule();
 		goto out;
-	default:
+	default: //更一般的情况下
 		/*
 		 * Another bit of PARANOID. Note that the retval will be
 		 * 0 since no piece of kernel is supposed to do a check
@@ -2181,6 +2181,7 @@ EXPORT_SYMBOL(schedule_timeout);
 /*
  * We can use __set_current_state() here because schedule_timeout() calls
  * schedule() unconditionally.
+ 可中断状态下睡眠一段时间,返回睡眠的时间
  */
 signed long __sched schedule_timeout_interruptible(signed long timeout)
 {

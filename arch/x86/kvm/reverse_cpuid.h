@@ -103,6 +103,7 @@ static __always_inline void reverse_cpuid_check(unsigned int x86_leaf)
 /*
  * Translate feature bits that are scattered in the kernel's cpufeatures word
  * into KVM feature words that align with hardware's definitions.
+   把内核的feature转为kvm的feature?
  */
 static __always_inline u32 __feature_translate(int x86_feature)
 {
@@ -130,6 +131,7 @@ static __always_inline u32 __feature_leaf(int x86_feature)
  * the hardware defined bit number (stored in bits 4:0) and a software defined
  * "word" (stored in bits 31:5).  The word is used to index into arrays of
  * bit masks that hold the per-cpu feature capabilities, e.g. this_cpu_has().
+   每个特性通过寄存器的比特位来表示?
  */
 static __always_inline u32 __feature_bit(int x86_feature)
 {

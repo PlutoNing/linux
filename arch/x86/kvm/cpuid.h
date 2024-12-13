@@ -85,6 +85,7 @@ static __always_inline u32 *guest_cpuid_get_register(struct kvm_vcpu *vcpu,
 	return __cpuid_entry_get_reg(entry, cpuid.reg);
 }
 
+//
 static __always_inline bool guest_cpuid_has(struct kvm_vcpu *vcpu,
 					    unsigned int x86_feature)
 {

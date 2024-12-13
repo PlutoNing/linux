@@ -16,15 +16,19 @@
  * before returning to user mode.  If it's already running in user mode,
  * it will enter the kernel and call resume_user_mode_work() soon.
  * If it's blocked, it will not be woken.
+ 安排指定的任务在返回用户模式之前调用 resume_user_mode_work() 函数。具体来说，
+ 它设置一个标志（TIF_NOTIFY_RESUME），并在必要时唤醒任务以确保它会尽快进入内核并
+ 调用 resume_user_mode_work()。
  */
 static inline void set_notify_resume(struct task_struct *task)
 {
 	if (!test_and_set_tsk_thread_flag(task, TIF_NOTIFY_RESUME))
-		kick_process(task);
+		kick_process(task); //如果之前没有TIF_NOTIFY_RESUME. 就触发一次
 }
 
 
 /**
+   返回用户模式前执行指定hook任务
  * resume_user_mode_work - Perform work before returning to user mode
  * @regs:		user-mode registers of @current task
  *

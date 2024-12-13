@@ -137,6 +137,7 @@ task_work_cancel(struct task_struct *task, task_work_func_t func)
 }
 
 /**
+   执行task_work_add添加到进程的任务
  * task_work_run - execute the works added by task_work_add()
  *
  * Flush the pending works. Should be used by the core kernel code.
@@ -175,7 +176,7 @@ void task_work_run(void)
 		raw_spin_lock_irq(&task->pi_lock);
 		raw_spin_unlock_irq(&task->pi_lock);
 
-		do {
+		do { //执行任务
 			next = work->next;
 			work->func(work);
 			work = next;

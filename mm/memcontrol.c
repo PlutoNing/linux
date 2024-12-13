@@ -2573,6 +2573,7 @@ static unsigned long calculate_high_delay(struct mem_cgroup *memcg,
 /*
  * Scheduled by try_charge() to be executed from the userland return path
  * and reclaims memory over the high limit.
+   从用户空间返回的时候调用.
  */
 void mem_cgroup_handle_over_high(gfp_t gfp_mask)
 {
