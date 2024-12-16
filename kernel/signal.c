@@ -59,7 +59,7 @@
 /*
  * SLAB caches for signal bits.
  */
-
+/* 信号队列元素的slab */
 static struct kmem_cache *sigqueue_cachep;
 
 int print_fatal_signals __read_mostly;
@@ -404,6 +404,7 @@ void task_join_group_stop(struct task_struct *task)
 }
 
 /*
+分配一个信号队列的元素?
  * allocate a new signal queue record
  * - this may be called without locks if and only if t == current, otherwise an
  *   appropriate lock must be held to stop the target task from exiting
@@ -882,6 +883,7 @@ static void ptrace_trap_notify(struct task_struct *t)
 }
 
 /*
+   
  * Handle magic process-wide effects of stop/continue signals. Unlike
  * the signal actions, these happen immediately at signal-generation
  * time regardless of blocking, ignoring, or handling.  This does the
@@ -1062,6 +1064,7 @@ static inline bool legacy_queue(struct sigpending *signals, int sig)
 	return (sig < SIGRTMIN) && sigismember(&signals->signal, sig);
 }
 
+/* 发送信号 */
 static int __send_signal(int sig, struct kernel_siginfo *info, struct task_struct *t,
 			enum pid_type type, bool force)
 {
@@ -1200,6 +1203,7 @@ static inline bool has_si_pid_and_uid(struct kernel_siginfo *info)
 	return ret;
 }
 
+/* 发送信号 */
 static int send_signal(int sig, struct kernel_siginfo *info, struct task_struct *t,
 			enum pid_type type)
 {
@@ -1275,7 +1279,7 @@ __group_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *
 	return send_signal(sig, info, p, PIDTYPE_TGID);
 }
 /* 2024年06月28日16:19:29
-
+发送信号到进程
  */
 int do_send_sig_info(int sig, struct kernel_siginfo *info, struct task_struct *p,
 			enum pid_type type)
@@ -1348,7 +1352,7 @@ int zap_other_threads(struct task_struct *p)
 
 	p->signal->group_stop_count = 0;
 
-	while_each_thread(p, t) {
+	while_each_thread(p, t) { //遍历p里面的thread
 		task_clear_jobctl_pending(t, JOBCTL_PENDING_MASK);
 		count++;
 
@@ -2520,6 +2524,7 @@ static int ptrace_signal(int signr, kernel_siginfo_t *info)
 	return signr;
 }
 
+/*  */
 bool get_signal(struct ksignal *ksig)
 {
 	struct sighand_struct *sighand = current->sighand;

@@ -69,6 +69,7 @@ static inline void update_ti_thread_flag(struct thread_info *ti, int flag,
 		clear_ti_thread_flag(ti, flag);
 }
 
+//tas此ti的flag
 static inline int test_and_set_ti_thread_flag(struct thread_info *ti, int flag)
 {
 	return test_and_set_bit(flag, (unsigned long *)&ti->flags);

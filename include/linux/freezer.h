@@ -21,6 +21,7 @@ extern unsigned int freeze_timeout_msecs;
 
 /*
  * Check if a process has been frozen
+ 进程被frozen代表什么?
  */
 static inline bool frozen(struct task_struct *p)
 {

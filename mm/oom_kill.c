@@ -73,7 +73,7 @@ oom_killer（out of memory killer）是Linux内核的一种内存管理机制，
  */
 DEFINE_MUTEX(oom_lock);
 /* 2024年06月28日11:58:47
-
+是否是memcg内的oom
  */
 static inline bool is_memcg_oom(struct oom_control *oc)
 {
@@ -275,8 +275,8 @@ static const char * const oom_constraint_text[] = {
 
 /*
 2024年06月28日12:11:20
-做什么的
-
+检查分配的限制?
+主要是填充一些oc的信息, 获得节点亲和性什么的
  * Determine the type of allocation constraint.
  */
 static enum oom_constraint constrained_alloc(struct oom_control *oc)
@@ -526,7 +526,7 @@ static bool oom_killer_disabled __read_mostly;
 
 /*
 2024年06月28日12:03:59
-
+返回在p内是不是有使用此mm的thread
  * task->mm can be NULL if the task is the exited group leader.  So to
  * determine whether the task is using a particular mm, we examine all the
  * task's threads: if one of those is using this mm then this task was also
@@ -541,6 +541,7 @@ bool process_shares_mm(struct task_struct *p, struct mm_struct *mm)
 		if (t_mm)
 			return t_mm == mm;
 	}
+
 	return false;
 }
 
@@ -556,9 +557,8 @@ oom reaper wq */
 static DECLARE_WAIT_QUEUE_HEAD(oom_reaper_wait);
 static struct task_struct *oom_reaper_list;
 static DEFINE_SPINLOCK(oom_reaper_lock);
-/* 2024年06月28日15:58:22
-2024年7月18日23:11:00
-还是todo
+/* 
+oom reaper回收mm的具体函数
  */
 bool __oom_reap_task_mm(struct mm_struct *mm)
 {
@@ -674,19 +674,24 @@ out_unlock:
 
  */
 #define MAX_OOM_REAP_RETRIES 10
+/* 
+oom reaper来回收被标记为oom的函数
+ */
 static void oom_reap_task(struct task_struct *tsk)
 {
 	int attempts = 0;
+	//获取mm
 	struct mm_struct *mm = tsk->signal->oom_mm;
 
 	/* Retry the down_read_trylock(mmap_sem) a few times */
 	while (attempts++ < MAX_OOM_REAP_RETRIES && !oom_reap_task_mm(tsk, mm))
 		schedule_timeout_idle(HZ/10);
-
+	
 	if (attempts <= MAX_OOM_REAP_RETRIES ||
 	    test_bit(MMF_OOM_SKIP, &mm->flags))
 		goto done;
 
+	//出错了
 	pr_info("oom_reaper: unable to reap pid:%d (%s)\n",
 		task_pid_nr(tsk), tsk->comm);
 	debug_show_all_locks();
@@ -759,12 +764,13 @@ static inline void wake_oom_reaper(struct task_struct *tsk)
 
 /**
 2024年06月28日12:04:57
+标记进程为正在oom
  * mark_oom_victim - mark the given task as OOM victim
  * @tsk: task to mark
  *
  * Has to be called with oom_lock held and never after
  * oom has been disabled already.
- *
+ * 
  * tsk->mm has to be non NULL and caller has to guarantee it is stable (either
  * under task_lock or operate on the current).
  */
@@ -788,6 +794,7 @@ static void mark_oom_victim(struct task_struct *tsk)
 	 * if it is frozen because OOM killer wouldn't be able to free
 	 * any memory and livelock. freezing_slow_path will tell the freezer
 	 * that TIF_MEMDIE tasks should be ignored.
+	   这里确保唤醒进程
 	 */
 	__thaw_task(tsk);
 	atomic_inc(&oom_victims);
@@ -881,7 +888,7 @@ static inline bool __task_will_free_mem(struct task_struct *task)
 
 /*
 2024年06月28日12:01:03
-检查进程是否要退出
+检查进程是否已经是dying或者exiting了
  * Checks whether the given task is dying or exiting and likely to
  * release its address space. This means that all threads and processes
  * sharing the same mm have to be killed or exiting.
@@ -919,6 +926,7 @@ static bool task_will_free_mem(struct task_struct *task)
 	 * Make sure that all tasks which share the mm with the given tasks
 	 * are dying as well to make sure that a) nobody pins its mm and
 	 * b) the task is also reapable by the oom reaper.
+	 可能有别的进程共享这个mm, 检查.
 	 */
 	rcu_read_lock();
 	/* 这里遍历系统全部进程吗 */
@@ -960,6 +968,7 @@ static void __oom_kill_process(struct task_struct *victim, const char *message)
 
 	/* Raise event before sending signal: task reaper must see this */
 	count_vm_event(OOM_KILL);
+	//记录一次memcg内的oom
 	memcg_memory_event_mm(mm, MEMCG_OOM_KILL);
 
 	/*
@@ -986,7 +995,7 @@ static void __oom_kill_process(struct task_struct *victim, const char *message)
 	 * its contended by another thread trying to allocate memory itself.
 	 * That thread will now get access to memory reserves since it has a
 	 * pending fatal signal.
-
+		也kill共享此mm的进程
 	 */
 	rcu_read_lock();
 	for_each_process(p) {
@@ -1008,8 +1017,10 @@ static void __oom_kill_process(struct task_struct *victim, const char *message)
 		 */
 		if (unlikely(p->flags & PF_KTHREAD))
 			continue;
+		//kill共享mm的进程
 		do_send_sig_info(SIGKILL, SEND_SIG_PRIV, p, PIDTYPE_TGID);
 	}
+
 	rcu_read_unlock();
 
 	if (can_oom_reap)
@@ -1051,11 +1062,12 @@ static void oom_kill_process(struct oom_control *oc, const char *message)
 	 * If the task is already exiting, don't alarm the sysadmin or kill
 	 * its children or threads, just give it access to memory reserves
 	 * so it can die quickly
+	   
 	 */
 	task_lock(victim);
 	if (task_will_free_mem(victim)) {
-		mark_oom_victim(victim);
-		wake_oom_reaper(victim);
+		mark_oom_victim(victim); //在mm和ti上面打上标记
+		wake_oom_reaper(victim); //
 		task_unlock(victim);
 		put_task_struct(victim);
 		return;
@@ -1089,7 +1101,7 @@ static void oom_kill_process(struct oom_control *oc, const char *message)
 
 /*
 2024年06月28日12:13:06
-
+检查内核需要不需要panic
  * Determines whether the kernel must panic because of the panic_on_oom sysctl.
  */
 static void check_panic_on_oom(struct oom_control *oc)
@@ -1159,7 +1171,7 @@ bool out_of_memory(struct oom_control *oc)
 	 * select it.  The goal is to allow it to allocate so that it may
 	 * quickly exit and free its memory.
 	 */
-	if (task_will_free_mem(current)) {
+	if (task_will_free_mem(current)) { //如果当前进程就适合进行oom(已经被发送了sigkill信号)
 		/* 准备kill cur */
 		mark_oom_victim(current);
 		wake_oom_reaper(current);
@@ -1172,6 +1184,7 @@ bool out_of_memory(struct oom_control *oc)
 	 * make sure exclude 0 mask - all other users should have at least
 	 * ___GFP_DIRECT_RECLAIM to get here. But mem_cgroup_oom() has to
 	 * invoke the OOM killer even if it is a GFP_NOFS allocation.
+
 	 */
 	if (oc->gfp_mask && !(oc->gfp_mask & __GFP_FS) && !is_memcg_oom(oc))
 		return true;
@@ -1189,13 +1202,15 @@ bool out_of_memory(struct oom_control *oc)
 	if (!is_memcg_oom(oc) && sysctl_oom_kill_allocating_task &&
 	    current->mm && !oom_unkillable_task(current) &&
 	    oom_cpuset_eligible(current, oc) &&
-	    current->signal->oom_score_adj != OOM_SCORE_ADJ_MIN) {
+	    current->signal->oom_score_adj != OOM_SCORE_ADJ_MIN) {/* 如果是全局oom, 并且优先oom当前进程, 并且....的
+		 */
 			/* kill 当前进程 */
 		get_task_struct(current);
 		oc->chosen = current;
 		oom_kill_process(oc, "Out of memory (oom_kill_allocating_task)");
 		return true;
 	}
+
 	/* 寻找合适的进程 */
 	select_bad_process(oc);
 	/* Found nothing?!?! */

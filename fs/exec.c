@@ -1059,6 +1059,7 @@ static int exec_mmap(struct mm_struct *mm)
  * so that flush_signal_handlers can later reset the handlers without
  * disturbing other processes.  (Other processes might share the signal
  * table via the CLONE_SIGHAND option to clone().)
+   
  */
 static int de_thread(struct task_struct *tsk)
 {

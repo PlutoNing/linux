@@ -2127,7 +2127,7 @@ enum oom_status {
 	OOM_SKIPPED
 };
 /* 2024年7月14日13:11:18
-
+在memcg内部进行oom
  */
 static enum oom_status mem_cgroup_oom(struct mem_cgroup *memcg, gfp_t mask, int order)
 {
@@ -2157,7 +2157,7 @@ static enum oom_status mem_cgroup_oom(struct mem_cgroup *memcg, gfp_t mask, int 
 	 * Please note that mem_cgroup_out_of_memory might fail to find a
 	 * victim and then we have to bail out from the charge path.
 	 */
-	if (memcg->oom_kill_disable) {
+	if (memcg->oom_kill_disable) { //memcg关闭了oom
 		if (!current->in_user_fault)
 			return OOM_SKIPPED;
 
@@ -2987,7 +2987,7 @@ try charge的时候try free memcg，那调用try chage的时候检测不到吗�
 	 * keep retrying as long as the memcg oom killer is able to make
 	 * a forward progress or bypass the charge if the oom killer
 	 * couldn't make any progress.
-	 无法回收足够的内存，触发oom killer
+	 无法回收足够的内存，触发oom killer. 在memcg里面kill一个进程
 	 */
 	oom_status = mem_cgroup_oom(mem_over_limit, gfp_mask,
 		       get_order(nr_pages * PAGE_SIZE));
@@ -3000,6 +3000,7 @@ try charge的时候try free memcg，那调用try chage的时候检测不到吗�
 	default:
 		goto nomem;
 	}
+
 nomem:
 	if (!(gfp_mask & __GFP_NOFAIL))
 		return -ENOMEM;
@@ -4763,6 +4764,7 @@ static void mem_cgroup_oom_unregister_event(struct mem_cgroup *memcg,
 	spin_unlock(&memcg_oom_lock);
 }
 
+//获取memcg的oom设置
 static int mem_cgroup_oom_control_read(struct seq_file *sf, void *v)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_seq(sf);
@@ -6886,8 +6888,7 @@ static void __memory_events_show(struct seq_file *m, atomic_long_t *events)
 	seq_printf(m, "high %lu\n", atomic_long_read(&events[MEMCG_HIGH]));
 	seq_printf(m, "max %lu\n", atomic_long_read(&events[MEMCG_MAX]));
 	seq_printf(m, "oom %lu\n", atomic_long_read(&events[MEMCG_OOM]));
-	seq_printf(m, "oom_kill %lu\n",
-		   atomic_long_read(&events[MEMCG_OOM_KILL]));
+	seq_printf(m, "oom_kill %lu\n",atomic_long_read(&events[MEMCG_OOM_KILL]));
 }
 
 static int memory_events_show(struct seq_file *m, void *v)

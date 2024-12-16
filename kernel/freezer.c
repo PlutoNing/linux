@@ -144,6 +144,7 @@ bool freeze_task(struct task_struct *p)
 	return true;
 }
 
+//唤醒frozen的tsk
 void __thaw_task(struct task_struct *p)
 {
 	unsigned long flags;

@@ -48,7 +48,7 @@ enum memcg_memory_event {
 	MEMCG_HIGH,
 	MEMCG_MAX,
 	MEMCG_OOM,
-	MEMCG_OOM_KILL,
+	MEMCG_OOM_KILL, //memcg内部发生oom的次数?
 	MEMCG_SWAP_MAX,
 	MEMCG_SWAP_FAIL,
 	/* 标记枚举的大小 */
@@ -321,7 +321,9 @@ memcg soft limit reclaim会用到此
 	int		under_oom;
 	/* todoo */
 	int	swappiness;
-	/* OOM-Killer disable */
+	/* OOM-Killer disable
+	如果为1, 说明memcg内部不进行oom
+	 */
 	int		oom_kill_disable;
 
 	/* memory.events and memory.events.local */

@@ -4701,7 +4701,7 @@ check_retry_cpuset(int cpuset_mems_cookie, struct alloc_context *ac)
 	return false;
 }
 /* 2024年7月3日00:21:23
-
+慢速路径
  */
 static inline struct page *
 __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
@@ -4838,7 +4838,7 @@ retry_cpuset:
 			compact_priority = INIT_COMPACT_PRIORITY;
 		}
 	}
-/* 如果上面的分配都失败了，会进行retry操作。 */
+/* 如果分配失败了，会进行retry操作。 */
 retry:
 	/* Ensure kswapd doesn't accidentally go to sleep as long as we loop
 	retry 的过程中会重新唤醒kswapd线程(防止意外的休眠) */
