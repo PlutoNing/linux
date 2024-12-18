@@ -714,6 +714,7 @@ static void check_stack_usage(void)
 static inline void check_stack_usage(void) {}
 #endif
 
+/* 线程退出 */
 void __noreturn do_exit(long code)
 {
 	struct task_struct *tsk = current;
@@ -795,6 +796,7 @@ void __noreturn do_exit(long code)
 		if (tsk->mm)
 			setmax_mm_hiwater_rss(&tsk->signal->maxrss, tsk->mm);
 	}
+
 	acct_collect(code, group_dead);
 	if (group_dead)
 		tty_audit_exit();
@@ -895,6 +897,7 @@ SYSCALL_DEFINE1(exit, int, error_code)
 /*
  * Take down every thread in the group.  This is called by fatal signals
  * as well as by sys_exit_group (below).
+   退出这个线程组, 可能是因为系统调用或者kill信号什么的
  */
 void
 do_group_exit(int exit_code)
@@ -903,9 +906,10 @@ do_group_exit(int exit_code)
 
 	BUG_ON(exit_code & 0x80); /* core dumps don't get here */
 
-	if (signal_group_exit(sig))
+	if (signal_group_exit(sig)) // 可能是因为kill信号
 		exit_code = sig->group_exit_code;
-	else if (!thread_group_empty(current)) {
+	else if (!thread_group_empty(current)) { /* 是因为系统调用退出?
+	程组内有其他线程? */
 		struct sighand_struct *const sighand = current->sighand;
 
 		spin_lock_irq(&sighand->siglock);
@@ -915,7 +919,7 @@ do_group_exit(int exit_code)
 		else {
 			sig->group_exit_code = exit_code;
 			sig->flags = SIGNAL_GROUP_EXIT;
-			zap_other_threads(current);
+			zap_other_threads(current); //清除什么
 		}
 		spin_unlock_irq(&sighand->siglock);
 	}

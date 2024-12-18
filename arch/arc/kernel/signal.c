@@ -355,6 +355,7 @@ handle_signal(struct ksignal *ksig, struct pt_regs *regs)
 	signal_setup_done(failed, ksig, 0);
 }
 
+/* 系统调用返回前处理信号 */
 void do_signal(struct pt_regs *regs)
 {
 	struct ksignal ksig;

@@ -794,7 +794,7 @@ void __mod_memcg_state(struct mem_cgroup *memcg, int idx, int val)
 
 	if (mem_cgroup_disabled())
 		return;
-
+	// 计算pcp的新值
 	x = val + __this_cpu_read(memcg->vmstats_percpu->stat[idx]);
 	if (unlikely(abs(x) > MEMCG_CHARGE_BATCH)) {
 		struct mem_cgroup *mi;
@@ -807,10 +807,14 @@ void __mod_memcg_state(struct mem_cgroup *memcg, int idx, int val)
 		/* 一直加到cg层级的的根吗 */
 		for (mi = memcg; mi; mi = parent_mem_cgroup(mi))
 			atomic_long_add(x, &mi->vmstats[idx]);
+
 		x = 0;
 	}
+	/* 写入pcp的新值, 这里可能会写入0 ,因为可能会刷新到了local里面 */
 	__this_cpu_write(memcg->vmstats_percpu->stat[idx], x);
 }
+
+
 /* 2024年06月21日15:41:22
 返回父cg对应的nid的node
  */
@@ -928,6 +932,7 @@ static unsigned long memcg_events(struct mem_cgroup *memcg, int event)
 	return atomic_long_read(&memcg->vmevents[event]);
 }
 
+/* 获取memcg自己的事件计数, 不包括子层级的计数*/
 static unsigned long memcg_events_local(struct mem_cgroup *memcg, int event)
 {
 	long x = 0;
@@ -952,7 +957,7 @@ static void mem_cgroup_charge_statistics(struct mem_cgroup *memcg,
 		__mod_memcg_state(memcg, MEMCG_RSS, nr_pages);
 	else {/* 可以理解为不是匿名页就是文件页吗？ */
 		__mod_memcg_state(memcg, MEMCG_CACHE, nr_pages);
-		if (PageSwapBacked(page))/* 交换页，为什么是shmem */
+		if (PageSwapBacked(page))/* 交换页，计为shmem? 2024年06月18日15:42:25*/
 			__mod_memcg_state(memcg, NR_SHMEM, nr_pages);
 	}
 
@@ -4290,7 +4295,9 @@ static const unsigned int memcg1_stats[] = {
 	NR_WRITEBACK,
 	MEMCG_SWAP,
 };
+/* 
 
+ */
 static const char *const memcg1_stat_names[] = {
 	"cache",
 	"rss",
@@ -4317,7 +4324,7 @@ static const char *const memcg1_event_names[] = {
 	"pgmajfault",
 };
 /* 2024年7月13日15:43:09
-
+查看memcg的mem信息
  */
 static int memcg_stat_show(struct seq_file *m, void *v)
 {
@@ -4329,6 +4336,16 @@ static int memcg_stat_show(struct seq_file *m, void *v)
 	BUILD_BUG_ON(ARRAY_SIZE(memcg1_stat_names) != ARRAY_SIZE(memcg1_stats));
 	BUILD_BUG_ON(ARRAY_SIZE(mem_cgroup_lru_names) != NR_LRU_LISTS);
 
+	/* 
+cache 0
+rss 0
+rss_huge 0
+shmem 0
+mapped_file 0
+dirty 0
+writeback 0
+swap 0
+	 */
 	for (i = 0; i < ARRAY_SIZE(memcg1_stats); i++) {
 		if (memcg1_stats[i] == MEMCG_SWAP && !do_memsw_account())
 			continue;
@@ -4336,28 +4353,54 @@ static int memcg_stat_show(struct seq_file *m, void *v)
 			   memcg_page_state_local(memcg, memcg1_stats[i]) *
 			   PAGE_SIZE);
 	}
-
+/* 
+pgpgin 0
+pgpgout 0
+pgfault 0
+pgmajfault 0
+ */
 	for (i = 0; i < ARRAY_SIZE(memcg1_events); i++)
 		seq_printf(m, "%s %lu\n", memcg1_event_names[i],
 			   memcg_events_local(memcg, memcg1_events[i]));
 
+/* 
+inactive_anon 0
+active_anon 0
+inactive_file 0
+active_file 0
+unevictable 0
+ */
 	for (i = 0; i < NR_LRU_LISTS; i++)
 		seq_printf(m, "%s %lu\n", mem_cgroup_lru_names[i],
 			   memcg_page_state_local(memcg, NR_LRU_BASE + i) *
 			   PAGE_SIZE);
 
 	/* Hierarchical information */
+/* 找到父层级上面的最小限制 */
 	memory = memsw = PAGE_COUNTER_MAX;
 	for (mi = memcg; mi; mi = parent_mem_cgroup(mi)) {
 		memory = min(memory, mi->memory.max);
 		memsw = min(memsw, mi->memsw.max);
 	}
+
 	seq_printf(m, "hierarchical_memory_limit %llu\n",
 		   (u64)memory * PAGE_SIZE);
 	if (do_memsw_account())
 		seq_printf(m, "hierarchical_memsw_limit %llu\n",
 			   (u64)memsw * PAGE_SIZE);
+/* ************************* */
 
+/* 
+total_cache 0
+total_rss 0
+total_rss_huge 0
+total_shmem 0
+total_mapped_file 0
+total_dirty 0
+total_writeback 0
+total_swap 0
+
+ */
 	for (i = 0; i < ARRAY_SIZE(memcg1_stats); i++) {
 		if (memcg1_stats[i] == MEMCG_SWAP && !do_memsw_account())
 			continue;
@@ -4365,11 +4408,22 @@ static int memcg_stat_show(struct seq_file *m, void *v)
 			   (u64)memcg_page_state(memcg, memcg1_stats[i]) *
 			   PAGE_SIZE);
 	}
-
+/* 
+total_pgpgin 0
+total_pgpgout 0
+total_pgfault 0
+total_pgmajfault 0
+ */
 	for (i = 0; i < ARRAY_SIZE(memcg1_events); i++)
 		seq_printf(m, "total_%s %llu\n", memcg1_event_names[i],
 			   (u64)memcg_events(memcg, memcg1_events[i]));
-
+/* 
+total_inactive_anon 0
+total_active_anon 0
+total_inactive_file 0
+total_active_file 0
+total_unevictable 0
+ */
 	for (i = 0; i < NR_LRU_LISTS; i++)
 		seq_printf(m, "total_%s %llu\n", mem_cgroup_lru_names[i],
 			   (u64)memcg_page_state(memcg, NR_LRU_BASE + i) *
@@ -7404,7 +7458,7 @@ static void uncharge_batch(const struct uncharge_gather *ug)
 	}
 
 	local_irq_save(flags);
-	/* 下面是具体的还账吗 */
+	/* 更新uncharge后的stat信息 */
 	__mod_memcg_state(ug->memcg, MEMCG_RSS, -ug->nr_anon);
 	__mod_memcg_state(ug->memcg, MEMCG_CACHE, -ug->nr_file);
 	__mod_memcg_state(ug->memcg, MEMCG_RSS_HUGE, -ug->nr_huge);

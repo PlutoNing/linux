@@ -907,7 +907,7 @@ struct task_struct {
 	/* PID/PID hash table linkage. */
 	struct pid			*thread_pid;
 	struct hlist_node		pid_links[PIDTYPE_MAX];
-	struct list_head		thread_group;
+	struct list_head		thread_group; //通过这个挂接到线程组
 	/*  */
 	struct list_head		thread_node;
 /* vfork是否完成 */
@@ -1001,11 +1001,11 @@ struct task_struct {
 	/* Signal handlers: */
 	struct signal_struct		*signal;
 	struct sighand_struct		*sighand;
-	sigset_t			blocked;
+	sigset_t			blocked; //代表进程屏蔽的信号?
 	sigset_t			real_blocked;
 	/* Restored if set_restore_sigmask() was used: */
 	sigset_t			saved_sigmask;
-	struct sigpending		pending;
+	struct sigpending		pending; /* 进程自己的pending 信号 */
 	unsigned long			sas_ss_sp;
 	size_t				sas_ss_size;
 	unsigned int			sas_ss_flags;

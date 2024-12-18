@@ -59,7 +59,7 @@ static inline void sigaddset(sigset_t *set, int _sig)
 	else
 		set->sig[sig / _NSIG_BPW] |= 1UL << (sig % _NSIG_BPW);
 }
-
+/* 代表取走了这个信号, 这里清除*/
 static inline void sigdelset(sigset_t *set, int _sig)
 {
 	unsigned long sig = _sig - 1;
@@ -68,7 +68,7 @@ static inline void sigdelset(sigset_t *set, int _sig)
 	else
 		set->sig[sig / _NSIG_BPW] &= ~(1UL << (sig % _NSIG_BPW));
 }
-
+//判断是不是set里面的信号
 static inline int sigismember(sigset_t *set, int _sig)
 {
 	unsigned long sig = _sig - 1;

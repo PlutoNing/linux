@@ -140,8 +140,10 @@ static void exit_to_usermode_loop(struct pt_regs *regs, u32 cached_flags)
 	 * can be set at any time on preemptible kernels if we have IRQs on,
 	 * so we need to loop.  Disabling preemption wouldn't help: doing the
 	 * work to clear some of the flags can sleep.
+	   
 	 */
 	while (true) {
+		/* 系统调用返回前有工作要做 */
 		/* We have work to do. */
 		local_irq_enable();
 
@@ -177,7 +179,9 @@ static void exit_to_usermode_loop(struct pt_regs *regs, u32 cached_flags)
 	}
 }
 
-/* Called with IRQs disabled. */
+/* Called with IRQs disabled.
+系统调用返回前调用?
+ */
 __visible inline void prepare_exit_to_usermode(struct pt_regs *regs)
 {
 	struct thread_info *ti = current_thread_info();
@@ -356,7 +360,8 @@ __visible void do_int80_syscall_32(struct pt_regs *regs)
 	do_syscall_32_irqs_on(regs);
 }
 
-/* Returns 0 to return using IRET or 1 to return using SYSEXIT/SYSRETL. */
+/* Returns 0 to return using IRET or 1 to return using SYSEXIT/SYSRETL.
+系统调用返回 */
 __visible long do_fast_syscall_32(struct pt_regs *regs)
 {
 	/*
@@ -396,6 +401,7 @@ __visible long do_fast_syscall_32(struct pt_regs *regs)
 		/* User code screwed up. */
 		local_irq_disable();
 		regs->ax = -EFAULT;
+		//返回用户模式
 		prepare_exit_to_usermode(regs);
 		return 0;	/* Keep it simple: use IRET. */
 	}

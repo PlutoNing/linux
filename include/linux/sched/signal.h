@@ -233,7 +233,7 @@ struct signal_struct {
  */
 #define SIGNAL_STOP_STOPPED	0x00000001 /* job control stop in effect */
 #define SIGNAL_STOP_CONTINUED	0x00000002 /* SIGCONT since WCONTINUED reap */
-#define SIGNAL_GROUP_EXIT	0x00000004 /* group exit in progress */
+#define SIGNAL_GROUP_EXIT	0x00000004 /* 表示整个线程组被kill了的情况, group exit in progress */
 #define SIGNAL_GROUP_COREDUMP	0x00000008 /* coredump in progress */
 /*
  * Pending notifications to parent.
@@ -254,7 +254,9 @@ static inline void signal_set_stop_flags(struct signal_struct *sig,
 	sig->flags = (sig->flags & ~SIGNAL_STOP_MASK) | flags;
 }
 
-/* If true, all threads except ->group_exit_task have pending SIGKILL */
+/* If true, all threads except ->group_exit_task have pending SIGKILL
+表示线程组要退出了
+ */
 static inline int signal_group_exit(const struct signal_struct *sig)
 {
 	return	(sig->flags & SIGNAL_GROUP_EXIT) ||
@@ -659,6 +661,7 @@ bool same_thread_group(struct task_struct *p1, struct task_struct *p2)
 	return p1->signal == p2->signal;
 }
 
+//获取线程组的下一个线程
 static inline struct task_struct *next_thread(const struct task_struct *p)
 {
 	return list_entry_rcu(p->thread_group.next,

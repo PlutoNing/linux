@@ -151,12 +151,14 @@ static inline bool has_pending_signals(sigset_t *signal, sigset_t *blocked)
 
 #define PENDING(p,b) has_pending_signals(&(p)->signal, (b))
 
+// 检查是否还有信号?
 static bool recalc_sigpending_tsk(struct task_struct *t)
 {
 	if ((t->jobctl & (JOBCTL_PENDING_MASK | JOBCTL_TRAP_FREEZE)) ||
 	    PENDING(&t->pending, &t->blocked) ||
 	    PENDING(&t->signal->shared_pending, &t->blocked) ||
 	    cgroup_task_frozen(t)) {
+
 		set_tsk_thread_flag(t, TIF_SIGPENDING);
 		return true;
 	}
@@ -959,6 +961,7 @@ static bool prepare_signal(int sig, struct task_struct *p, bool force)
 }
 
 /*
+   看看线程p能不能处理线程组的这个紧急信号
  * Test if P wants to take SIG.  After we've checked all threads with this,
  * it's equivalent to finding no threads not blocking SIG.  Any threads not
  * blocking SIG were ruled out because they are not running and already
@@ -972,17 +975,17 @@ static inline bool wants_signal(int sig, struct task_struct *p)
 		return false;
 
 	if (p->flags & PF_EXITING)
-		return false;
+		return false;  //要退出的线程
 
 	if (sig == SIGKILL)
-		return true;
+		return true; //kill信号必须处理
 
 	if (task_is_stopped_or_traced(p))
 		return false;
 
 	return task_curr(p) || !signal_pending(p);
 }
-
+//发送信号的环节
 static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 {
 	struct signal_struct *signal = p->signal;
@@ -993,9 +996,10 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 	 *
 	 * If the main thread wants the signal, it gets first crack.
 	 * Probably the least surprising to the average bear.
+	   现在找一个线程来接这个信号
 	 */
 	if (wants_signal(sig, p))
-		t = p;
+		t = p;  //交给p来处理信号
 	else if ((type == PIDTYPE_PID) || thread_group_empty(p))
 		/*
 		 * There is just one thread and it does not need to be woken.
@@ -1007,7 +1011,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 		 * Otherwise try to find a suitable thread.
 		 */
 		t = signal->curr_target;
-		while (!wants_signal(sig, t)) {
+		while (!wants_signal(sig, t)) { //逐个遍历线程组的线程
 			t = next_thread(t);
 			if (t == signal->curr_target)
 				/*
@@ -1028,6 +1032,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 	    !(signal->flags & SIGNAL_GROUP_EXIT) &&
 	    !sigismember(&t->real_blocked, sig) &&
 	    (sig == SIGKILL || !p->ptrace)) {
+			/* 需要kill整个线程组的情况?*/
 		/*
 		 * This signal will be fatal to the whole group.
 		 */
@@ -1037,6 +1042,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 			 * This way we don't have other threads
 			 * running and doing things after a slower
 			 * thread has the fatal signal pending.
+			 结束线程组
 			 */
 			signal->flags = SIGNAL_GROUP_EXIT;
 			signal->group_exit_code = sig;
@@ -1054,6 +1060,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 	/*
 	 * The signal is already in the shared-pending queue.
 	 * Tell the chosen thread to wake up and dequeue it.
+	 现在信号已经放到了线程组的共享的pending队列里面了, 唤醒选中的线程去处理
 	 */
 	signal_wake_up(t, sig == SIGKILL);
 	return;
@@ -1113,6 +1120,7 @@ static int __send_signal(int sig, struct kernel_siginfo *info, struct task_struc
 	q = __sigqueue_alloc(sig, t, GFP_ATOMIC, override_rlimit);
 	if (q) {
 		list_add_tail(&q->list, &pending->list);
+
 		switch ((unsigned long) info) {
 		case (unsigned long) SEND_SIG_NOINFO:
 			clear_siginfo(&q->info);
@@ -1158,7 +1166,12 @@ static int __send_signal(int sig, struct kernel_siginfo *info, struct task_struc
 	}
 
 out_set:
+/* 如果发送的是kill
+或者发送到内核线程 */
+
+/* singal fd机制 */
 	signalfd_notify(t, sig);
+
 	sigaddset(&pending->signal, sig);
 
 	/* Let multiprocess signals appear after on-going forks */
@@ -1176,6 +1189,7 @@ out_set:
 	}
 
 	complete_signal(sig, t, type);
+
 ret:
 	trace_signal_generate(sig, info, t, type != PIDTYPE_PID, result);
 	return ret;
@@ -1344,6 +1358,7 @@ int force_sig_info(struct kernel_siginfo *info)
 
 /*
  * Nuke all other threads in the group.
+ 退出线程组的时候,清理其他线程
  */
 int zap_other_threads(struct task_struct *p)
 {
@@ -2524,7 +2539,7 @@ static int ptrace_signal(int signr, kernel_siginfo_t *info)
 	return signr;
 }
 
-/*  */
+/* 获取current的信号到ksig */
 bool get_signal(struct ksignal *ksig)
 {
 	struct sighand_struct *sighand = current->sighand;
@@ -2583,7 +2598,7 @@ relock:
 	}
 
 	/* Has this task already been marked for death? */
-	if (signal_group_exit(signal)) {
+	if (signal_group_exit(signal)) {/* 如果是要退出的进程 */
 		ksig->info.si_signo = signr = SIGKILL;
 		sigdelset(&current->pending.signal, SIGKILL);
 		trace_signal_deliver(SIGKILL, SEND_SIG_NOINFO,
@@ -2711,6 +2726,7 @@ relock:
 		}
 
 	fatal:
+/* 如果发现线程组被kill了 */
 		spin_unlock_irq(&sighand->siglock);
 		if (unlikely(cgroup_task_frozen(current)))
 			cgroup_leave_frozen(true);
@@ -2737,6 +2753,7 @@ relock:
 
 		/*
 		 * Death signals, no core dump.
+		 这里开始退出?
 		 */
 		do_group_exit(ksig->info.si_signo);
 		/* NOTREACHED */
@@ -2814,6 +2831,7 @@ static void retarget_shared_pending(struct task_struct *tsk, sigset_t *which)
 	}
 }
 
+/* 设置进程为exiting */
 void exit_signals(struct task_struct *tsk)
 {
 	int group_stop = 0;

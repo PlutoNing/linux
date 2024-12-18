@@ -368,6 +368,7 @@ memcg soft limit reclaim会用到此
 	struct task_struct	*move_lock_task;
 
 	/* Legacy local VM stats and events
+	这里是memcg自己的计数(相对于vmstats的包含子层级的计数)
 	 */
 	struct memcg_vmstats_percpu __percpu *vmstats_local;
 
@@ -377,8 +378,10 @@ memcg soft limit reclaim会用到此
 	struct memcg_vmstats_percpu __percpu *vmstats_percpu;
 
 	MEMCG_PADDING(_pad2_);
-/* 保存memcg的内存各种类型页面使用信息 */
+/* 保存memcg的内存各种类型页面使用信息(包含子层级的计数,对比vmstats_local)
+ */
 	atomic_long_t		vmstats[MEMCG_NR_STAT];
+	/* 事件计数, 和stats计数一样 */
 	atomic_long_t		vmevents[NR_VM_EVENT_ITEMS];
 
 	/* memory.events */
@@ -756,7 +759,9 @@ static inline unsigned long memcg_page_state_local(struct mem_cgroup *memcg,
 
 void __mod_memcg_state(struct mem_cgroup *memcg, int idx, int val);
 
-/* idx can be of type enum memcg_stat_item or node_stat_item */
+/* idx can be of type enum memcg_stat_item or node_stat_item
+更新memcg的stats计数
+ */
 static inline void mod_memcg_state(struct mem_cgroup *memcg,
 				   int idx, int val)
 {
