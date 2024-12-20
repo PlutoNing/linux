@@ -181,14 +181,18 @@ Default Mode--MPOL_DEFAULT
 	removed when MPOL_DEFAULT is specified.  As a result,
 	MPOL_DEFAULT means "fall back to the next most specific policy
 	scope."
+	这个模式仅在内存策略API中使用。在内部，MPOL_DEFAULT转换为所有策略范围中的NULL内存策略。
+	当指定MPOL_DEFAULT时，任何现有的非默认策略将被简单地删除。因此，MPOL_DEFAULT意味着“
+	回退到下一个最具体的策略范围”。
 
 	For example, a NULL or default task policy will fall back to the
 	system default policy.  A NULL or default vma policy will fall
 	back to the task policy.
+	例如，空或默认任务策略将回退到系统默认策略。空或默认vma策略将回退到任务策略。
 
 	When specified in one of the memory policy APIs, the Default mode
 	does not use the optional set of nodes.
-
+	当在内存策略API之一中指定时，默认模式不使用可选节点集。
 	It is an error for the set of nodes specified for this policy to
 	be non-empty.
 
@@ -197,13 +201,16 @@ MPOL_BIND
 	nodes specified by the policy.  Memory will be allocated from
 	the node in the set with sufficient free memory that is
 	closest to the node where the allocation takes place.
-
+	这个模式指定内存必须来自策略中指定的节点集。内存将从节点中分配，
+	该节点具有足够的空闲内存，最接近进行分配的节点。
 MPOL_PREFERRED
 	This mode specifies that the allocation should be attempted
 	from the single node specified in the policy.  If that
 	allocation fails, the kernel will search other nodes, in order
 	of increasing distance from the preferred node based on
 	information provided by the platform firmware.
+	这个模式指定分配应该尝试从策略中指定的单个节点进行。如果分配失败，内核将搜索其他节点，
+	按照基于平台固件提供的信息，按照与首选节点的距离递增的顺序。
 
 	Internally, the Preferred policy uses a single node--the
 	preferred_node member of struct mempolicy.  When the internal
@@ -212,19 +219,25 @@ MPOL_PREFERRED
 	allocation policy can be viewed as a Preferred policy that
 	starts at the node containing the cpu where the allocation
 	takes place.
+	在内部，首选策略使用单个节点--struct mempolicy的preferred_node成员。
+	当设置了内部模式标志MPOL_F_LOCAL时，将忽略preferred_node，并将策略解释为本地分配。
+	“本地”分配策略可以视为从包含进行分配的cpu的节点开始的首选策略。
 
 	It is possible for the user to specify that local allocation
 	is always preferred by passing an empty nodemask with this
 	mode.  If an empty nodemask is passed, the policy cannot use
 	the MPOL_F_STATIC_NODES or MPOL_F_RELATIVE_NODES flags
 	described below.
+	对用户来说，通过传递空的nodemask，始终首选本地分配是可能的。如果传递了空的nodemask，
+	则策略不能使用下面描述的MPOL_F_STATIC_NODES或MPOL_F_RELATIVE_NODES标志。
 
 MPOL_INTERLEAVED
 	This mode specifies that page allocations be interleaved, on a
 	page granularity, across the nodes specified in the policy.
 	This mode also behaves slightly differently, based on the
 	context where it is used:
-
+	这个模式指定页面分配在策略中指定的节点之间交错进行，以页面为粒度。
+	这个模式也会根据使用的上下文稍有不同：
 	For allocation of anonymous pages and shared memory pages,
 	Interleave mode indexes the set of nodes specified by the
 	policy using the page offset of the faulting address into the
@@ -234,6 +247,9 @@ MPOL_INTERLEAVED
 	specified by a Preferred policy or had been selected by a
 	local allocation.  That is, allocation will follow the per
 	node zonelist.
+	对于匿名页面和共享内存页面的分配，交错模式使用故障地址的页偏移量对策略中指定的节点集进行索引，
+	取模策略中指定的节点数。然后，它尝试分配一个页面，从所选节点开始，就好像节点已经被首选策略指定，
+	或者已经被本地分配选择。也就是说，分配将遵循每个节点的zonelist。
 
 	For allocation of page cache pages, Interleave mode indexes
 	the set of nodes specified by the policy using a node counter
@@ -244,6 +260,9 @@ MPOL_INTERLEAVED
 	allocated, rather than based on any page offset into an
 	address range or file.  During system boot up, the temporary
 	interleaved system default policy works in this mode.
+	对于页面缓存页面的分配，交错模式使用每个任务维护的节点计数器对策略中指定的节点集进行索引。
+	计数器在达到最高指定节点后会回到最低指定节点。这将倾向于根据分配的顺序将页面分散到策略中指定的节点上，
+	而不是基于地址范围或文件中的任何页面偏移量。在系统启动期间，临时交错系统默认策略以此模式工作。
 
 NUMA memory policy supports the following optional mode flags:
 

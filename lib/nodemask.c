@@ -3,12 +3,14 @@
 #include <linux/module.h>
 #include <linux/random.h>
 /* 2024年07月04日12:40:34
+在src中找到n后面的node 
+循环交错
  */
 int __next_node_in(int node, const nodemask_t *srcp)
 {
 	int ret = __next_node(node, srcp);
 
-	if (ret == MAX_NUMNODES)
+	if (ret == MAX_NUMNODES) //循环交错
 		ret = __first_node(srcp);
 	return ret;
 }

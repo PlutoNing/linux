@@ -27,7 +27,7 @@
 #if BITS_PER_LONG == 64
 
 /**
-
+n = n / base;
  * do_div - returns 2 values: calculate remainder and update new dividend
  * @n: uint64_t dividend (will be updated)
  * @base: uint32_t divisor

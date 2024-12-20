@@ -154,7 +154,7 @@ struct mempolicy *get_task_policy(struct task_struct *p)
 
 	return &default_policy;
 }
-
+//定义 mpol_ops数组，用来存储不同的策略对应的操作函数
 static const struct mempolicy_operations {
 	int (*create)(struct mempolicy *pol, const nodemask_t *nodes);
 	void (*rebind)(struct mempolicy *pol, const nodemask_t *nodes);
@@ -393,7 +393,7 @@ void mpol_rebind_mm(struct mm_struct *mm, nodemask_t *new)
 		mpol_rebind_policy(vma->vm_policy, new);
 	up_write(&mm->mmap_sem);
 }
-
+// 
 static const struct mempolicy_operations mpol_ops[MPOL_MAX] = {
 	[MPOL_DEFAULT] = {
 		.rebind = mpol_rebind_default,
@@ -828,6 +828,7 @@ static long do_set_mempolicy(unsigned short mode, unsigned short flags,
 	current->mempolicy = new;
 	if (new && new->mode == MPOL_INTERLEAVE)
 		current->il_prev = MAX_NUMNODES-1;
+
 	task_unlock(current);
 	mpol_put(old);
 	ret = 0;
@@ -1839,14 +1840,16 @@ static int policy_node(gfp_t gfp, struct mempolicy *policy,
 	return nd;
 }
 
-/* Do dynamic interleaving for a process */
+/* Do dynamic interleaving for a process
+在交错分配内存下, 找到下一个应该交错的node
+ */
 static unsigned interleave_nodes(struct mempolicy *policy)
 {
 	unsigned next;
 	struct task_struct *me = current;
 
 	next = next_node_in(me->il_prev, policy->v.nodes);
-	if (next < MAX_NUMNODES)
+	if (next < MAX_NUMNODES) //如果next是有效的node
 		me->il_prev = next;
 	return next;
 }
@@ -2217,7 +2220,7 @@ struct page *alloc_pages_current(gfp_t gfp, unsigned order)
 	 * No reference counting needed for current->mempolicy
 	 * nor system default_policy
 	 */
-	if (pol->mode == MPOL_INTERLEAVE)
+	if (pol->mode == MPOL_INTERLEAVE) /* 交错分配内存 */
 		page = alloc_page_interleave(gfp, order, interleave_nodes(pol));
 	else
 		page = __alloc_pages_nodemask(gfp, order,

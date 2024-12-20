@@ -1838,12 +1838,13 @@ Cpuset Interface Files
   cpuset.cpus
 	A read-write multiple values file which exists on non-root
 	cpuset-enabled cgroups.
-
+	一个可读写的多值文件，存在于非根cpuset启用的cgroups上。
 	It lists the requested CPUs to be used by tasks within this
 	cgroup.  The actual list of CPUs to be granted, however, is
 	subjected to constraints imposed by its parent and can differ
 	from the requested CPUs.
-
+	列出了此cgroup中的任务要使用的请求的CPU。然而, 际授予的CPU列表受其父级
+	施加的约束的影响,能与请求的CPU不同。
 	The CPU numbers are comma-separated numbers or ranges.
 	For example:
 
@@ -1853,17 +1854,18 @@ Cpuset Interface Files
 	An empty value indicates that the cgroup is using the same
 	setting as the nearest cgroup ancestor with a non-empty
 	"cpuset.cpus" or all the available CPUs if none is found.
-
+	空值表示cgroup使用与最近的具有非空“cpuset.cpus”或所有可用CPU的祖先相同的设置。
 	The value of "cpuset.cpus" stays constant until the next update
 	and won't be affected by any CPU hotplug events.
 
   cpuset.cpus.effective
 	A read-only multiple values file which exists on all
 	cpuset-enabled cgroups.
-
+	一个只读的多值文件，存在于所有cpuset启用的cgroups上。
 	It lists the onlined CPUs that are actually granted to this
 	cgroup by its parent.  These CPUs are allowed to be used by
 	tasks within the current cgroup.
+	列出了由其父级实际授予给此cgroup的在线CPU。这些CPU允许由当前cgroup中的任务使用。
 
 	If "cpuset.cpus" is empty, the "cpuset.cpus.effective" file shows
 	all the CPUs from the parent cgroup that can be available to
@@ -1871,17 +1873,23 @@ Cpuset Interface Files
 	"cpuset.cpus" unless none of the CPUs listed in "cpuset.cpus"
 	can be granted.  In this case, it will be treated just like an
 	empty "cpuset.cpus".
+	如果“cpuset.cpus”为空,则“cpuset.cpus.effective”文件显示可以由此cgroup使用的
+	父cgroup中的所有CPU。
+	否则,它应该是“cpuset.cpus”的子集,除非“cpuset.cpus”中列出的CPU都无法授予。在这种
+	情况下,它将被视为一个空的“cpuset.cpus”。
 
 	Its value will be affected by CPU hotplug events.
 
   cpuset.mems
 	A read-write multiple values file which exists on non-root
 	cpuset-enabled cgroups.
-
+	一个可读写的多值文件，存在于非根cpuset启用的cgroups上。
 	It lists the requested memory nodes to be used by tasks within
 	this cgroup.  The actual list of memory nodes granted, however,
 	is subjected to constraints imposed by its parent and can differ
 	from the requested memory nodes.
+	列出了此cgroup中的任务要使用的请求的内存节点。然而, 实际授予的内存节点列表受其父级
+	施加的约束的影响,能与请求的内存节点不同。
 
 	The memory node numbers are comma-separated numbers or ranges.
 	For example:
@@ -1893,23 +1901,28 @@ Cpuset Interface Files
 	setting as the nearest cgroup ancestor with a non-empty
 	"cpuset.mems" or all the available memory nodes if none
 	is found.
+	空值表示cgroup使用与最近的具有非空“cpuset.mems”或所有可用内存节点的祖先相同的设置。
 
 	The value of "cpuset.mems" stays constant until the next update
 	and won't be affected by any memory nodes hotplug events.
-
+	值“cpuset.mems”保持不变，直到下一次更新，并且不会受到任何内存节点热插拔事件的影响。
   cpuset.mems.effective
 	A read-only multiple values file which exists on all
 	cpuset-enabled cgroups.
-
+	一个只读的多值文件，存在于所有cpuset启用的cgroups上。
 	It lists the onlined memory nodes that are actually granted to
 	this cgroup by its parent. These memory nodes are allowed to
 	be used by tasks within the current cgroup.
+	列出了由其父级实际授予给此cgroup的在线内存节点。这些内存节点允许由当前cgroup中的任务使用。
 
 	If "cpuset.mems" is empty, it shows all the memory nodes from the
 	parent cgroup that will be available to be used by this cgroup.
 	Otherwise, it should be a subset of "cpuset.mems" unless none of
 	the memory nodes listed in "cpuset.mems" can be granted.  In this
 	case, it will be treated just like an empty "cpuset.mems".
+	如果“cpuset.mems”为空,则显示将可供此cgroup使用的父cgroup中的所有内存节点。
+	否则,它应该是“cpuset.mems”的子集,除非“cpuset.mems”中列出的内存节点都无法授予。在这种
+	情况下,它将被视为一个空的“cpuset.mems”。
 
 	Its value will be affected by memory nodes hotplug events.
 
@@ -1917,18 +1930,23 @@ Cpuset Interface Files
 	A read-write single value file which exists on non-root
 	cpuset-enabled cgroups.  This flag is owned by the parent cgroup
 	and is not delegatable.
+	一个可读写的单值文件，存在于非根cpuset启用的cgroups上。此标志由父cgroup拥有，不可委托。
 
         It accepts only the following input values when written to.
 
         "root"   - a paritition root
         "member" - a non-root member of a partition
+	接受以下输入值：
 
+		"root"   - 分区根
+		"member" - 分区的非根成员
 	When set to be a partition root, the current cgroup is the
 	root of a new partition or scheduling domain that comprises
 	itself and all its descendants except those that are separate
 	partition roots themselves and their descendants.  The root
 	cgroup is always a partition root.
-
+	当设置为分区根时，当前cgroup是一个新分区或调度域的根，包括它自己和所有后代，除了那些
+	
 	There are constraints on where a partition root can be set.
 	It can only be set in a cgroup if all the following conditions
 	are true.

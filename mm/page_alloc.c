@@ -8312,6 +8312,7 @@ static void setup_per_zone_lowmem_reserve(void)
 /* 改变min_free_kbytes时重新设置各zone水位 */
 static void __setup_per_zone_wmarks(void)
 {
+	// 转为页面数量
 	unsigned long pages_min = min_free_kbytes >> (PAGE_SHIFT - 10);
 	unsigned long lowmem_pages = 0;
 	struct zone *zone;
@@ -8328,7 +8329,10 @@ static void __setup_per_zone_wmarks(void)
 
 		spin_lock_irqsave(&zone->lock, flags);
 		tmp = (u64)pages_min * zone_managed_pages(zone);
-		do_div(tmp, lowmem_pages);
+
+		do_div(tmp, lowmem_pages);   // tmp = zone_managed_pages(zone) * pages_min / lowmem_pages
+
+		// 新值是按比例缩放
 		if (is_highmem(zone)) {
 			/*
 			 * __GFP_HIGH and PF_MEMALLOC allocations usually don't
@@ -8445,6 +8449,7 @@ int __meminit init_per_zone_wmark_min(void)
 core_initcall(init_per_zone_wmark_min)
 
 /*
+新设置min_free_kbytes的回调函数, 设置之后, 如何在node上面设置新的水位?如何分配比例?
  * min_free_kbytes_sysctl_handler - just a wrapper around proc_dointvec() so
  *	that we can call two helper functions whenever min_free_kbytes
  *	changes.
