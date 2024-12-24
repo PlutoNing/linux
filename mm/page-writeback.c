@@ -2203,7 +2203,7 @@ static int dirty_writeback_centisecs_handler(struct ctl_table *table, int write,
 }
 #endif
 
-//
+// bdi的laptop_mode定时器的cb
 void laptop_mode_timer_fn(struct timer_list *t)
 {
 	struct backing_dev_info *backing_dev_info =

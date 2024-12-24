@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// PX-License-Identifier: GPL-2.0-only
 
 #include <linux/blkdev.h>
 #include <linux/wait.h>
@@ -29,10 +29,12 @@ static const char *bdi_unknown_name = "(unknown)";
  */
 DEFINE_SPINLOCK(bdi_lock);
 static u64 bdi_id_cursor;
+//bdi_tree是一个红黑树，用来存储所有的bdi
 static struct rb_root bdi_tree = RB_ROOT;
 LIST_HEAD(bdi_list);
 
-/* bdi_wq serves all asynchronous writeback tasks */
+/* bdi_wq serves all asynchronous writeback tasks
+异步回写任务 */
 struct workqueue_struct *bdi_wq;
 
 #ifdef CONFIG_DEBUG_FS
@@ -463,13 +465,14 @@ static void cgwb_remove_from_bdi_list(struct bdi_writeback *wb);
 
 /*
  * Remove bdi from the global list and shutdown any threads we have running
+ 关闭bdi的什么
  */
 static void wb_shutdown(struct bdi_writeback *wb)
 {
 	/* Make sure nobody queues further work */
 	spin_lock_irq(&wb->work_lock);
 	if (!test_and_clear_bit(WB_registered, &wb->state)) {
-		spin_unlock_irq(&wb->work_lock);
+		spin_unlock_irq(&wb->work_lock); //如果没有注册,就直接返回
 		return;
 	}
 	spin_unlock_irq(&wb->work_lock);
@@ -479,6 +482,8 @@ static void wb_shutdown(struct bdi_writeback *wb)
 	 * Drain work list and shutdown the delayed_work.  !WB_registered
 	 * tells wb_workfn() that @wb is dying and its work_list needs to
 	 * be drained no matter what.
+	 	排空工作列表并关闭延迟工作。！WB_registered告诉wb_workfn（）@wb正在dying，
+	 	无论如何都需要排空其work_list。			
 	 */
 	mod_delayed_work(bdi_wq, &wb->dwork, 0);
 	flush_delayed_work(&wb->dwork);
@@ -508,7 +513,7 @@ static void wb_exit(struct bdi_writeback *wb)
  */
 static DEFINE_SPINLOCK(cgwb_lock);
 static struct workqueue_struct *cgwb_release_wq;
-
+//被删除的wb挂到这里?
 static LIST_HEAD(offline_cgwbs);
 static void cleanup_offline_cgwbs_workfn(struct work_struct *work);
 static DECLARE_WORK(cleanup_offline_cgwbs_work, cleanup_offline_cgwbs_workfn);
@@ -557,6 +562,7 @@ static void cgwb_release(struct percpu_ref *refcnt)
 	queue_work(cgwb_release_wq, &wb->release_work);
 }
 
+//
 static void cgwb_kill(struct bdi_writeback *wb)
 {
 	lockdep_assert_held(&cgwb_lock);
@@ -568,6 +574,7 @@ static void cgwb_kill(struct bdi_writeback *wb)
 	percpu_ref_kill(&wb->refcnt);
 }
 
+//解除wb与bdi的关联
 static void cgwb_remove_from_bdi_list(struct bdi_writeback *wb)
 {
 	spin_lock_irq(&cgwb_lock);
@@ -775,6 +782,7 @@ static int cgwb_bdi_init(struct backing_dev_info *bdi)
 	return ret;
 }
 
+//
 static void cgwb_bdi_unregister(struct backing_dev_info *bdi)
 {
 	struct radix_tree_iter iter;
@@ -784,8 +792,10 @@ static void cgwb_bdi_unregister(struct backing_dev_info *bdi)
 	WARN_ON(test_bit(WB_registered, &bdi->wb.state));
 
 	spin_lock_irq(&cgwb_lock);
+	//遍历bdi的cgwb_tree的所有wb?
 	radix_tree_for_each_slot(slot, &bdi->cgwb_tree, &iter, 0)
 		cgwb_kill(*slot);
+
 	spin_unlock_irq(&cgwb_lock);
 
 	mutex_lock(&bdi->cgwb_release_mutex);
@@ -794,7 +804,7 @@ static void cgwb_bdi_unregister(struct backing_dev_info *bdi)
 		wb = list_first_entry(&bdi->wb_list, struct bdi_writeback,
 				      bdi_node);
 		spin_unlock_irq(&cgwb_lock);
-		wb_shutdown(wb);
+		wb_shutdown(wb);//关闭wb
 		spin_lock_irq(&cgwb_lock);
 	}
 	spin_unlock_irq(&cgwb_lock);
@@ -963,6 +973,7 @@ struct backing_dev_info *bdi_alloc(int node_id)
 	timer_setup(&bdi->laptop_mode_wb_timer, laptop_mode_timer_fn, 0);
 	return bdi;
 }
+
 EXPORT_SYMBOL(bdi_alloc);
 
 static struct rb_node **bdi_lookup_rb_node(u64 id, struct rb_node **parentp)
@@ -1069,6 +1080,7 @@ void bdi_set_owner(struct backing_dev_info *bdi, struct device *owner)
 
 /*
  * Remove bdi from bdi_list, and ensure that it is no longer visible
+ 从全局的bdi_list中删除bdi, 确保它不再可见
  */
 static void bdi_remove_from_list(struct backing_dev_info *bdi)
 {
@@ -1082,11 +1094,14 @@ static void bdi_remove_from_list(struct backing_dev_info *bdi)
 
 void bdi_unregister(struct backing_dev_info *bdi)
 {
+	//删除laptop_mode_wb_timer的定时器
 	del_timer_sync(&bdi->laptop_mode_wb_timer);
 
 	/* make sure nobody finds us on the bdi_list anymore */
 	bdi_remove_from_list(bdi);
+
 	wb_shutdown(&bdi->wb);
+
 	cgwb_bdi_unregister(bdi);
 
 	/*
@@ -1116,6 +1131,7 @@ static void release_bdi(struct kref *ref)
 
 	WARN_ON_ONCE(test_bit(WB_registered, &bdi->wb.state));
 	WARN_ON_ONCE(bdi->dev);
+
 	wb_exit(&bdi->wb);
 	kfree(bdi);
 }
@@ -1140,6 +1156,8 @@ struct backing_dev_info *inode_to_bdi(struct inode *inode)
 #endif
 	return sb->s_bdi;
 }
+
+
 EXPORT_SYMBOL(inode_to_bdi);
 
 const char *bdi_dev_name(struct backing_dev_info *bdi)

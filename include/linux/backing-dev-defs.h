@@ -49,13 +49,14 @@ enum wb_stat_item {
 
 /*
  * why some writeback work was initiated
+ 表示发起bdi刷盘的原因
  */
 enum wb_reason {
 	WB_REASON_BACKGROUND,
 	WB_REASON_VMSCAN,
 	WB_REASON_SYNC,
 	WB_REASON_PERIODIC,
-	WB_REASON_LAPTOP_TIMER,
+	WB_REASON_LAPTOP_TIMER,  //laptopmode的刷盘
 	WB_REASON_FS_FREE_SPACE,
 	/*
 	 * There is no bdi forker thread any more and works are done
@@ -165,7 +166,9 @@ struct bdi_writeback {
 
 	unsigned long dirty_sleep;	/* last wait */
 
-	struct list_head bdi_node;	/* anchored at bdi->wb_list */
+	struct list_head bdi_node;	/* 
+	挂接到bdi
+	anchored at bdi->wb_list */
 
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct percpu_ref refcnt;	/* 
@@ -212,7 +215,7 @@ struct backing_dev_info {
 
 	struct bdi_writeback wb;  /* the root writeback info for this bdi */
 	struct list_head wb_list; /* 
-	wb的bdi_node链接到这个链表
+	bdi的wb链接到这个链表
 	list of all wbs */
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct radix_tree_root cgwb_tree; /* 
@@ -228,7 +231,7 @@ struct backing_dev_info {
 	char dev_name[64];
 	struct device *owner;
 
-	struct timer_list laptop_mode_wb_timer;
+	struct timer_list laptop_mode_wb_timer; //lapto模式的wb定时器?
 
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debug_dir;

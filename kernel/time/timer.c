@@ -186,6 +186,7 @@ EXPORT_SYMBOL(jiffies_64);
  */
 #define WHEEL_SIZE	(LVL_SIZE * LVL_DEPTH)
 
+// def表示可延迟的定时器
 #ifdef CONFIG_NO_HZ_COMMON
 # define NR_BASES	2
 # define BASE_STD	0
@@ -871,6 +872,7 @@ void init_timer_key(struct timer_list *timer,
 }
 EXPORT_SYMBOL(init_timer_key);
 
+//移除timer
 static inline void detach_timer(struct timer_list *timer, bool clear_pending)
 {
 	struct hlist_node *entry = &timer->entry;
@@ -883,6 +885,7 @@ static inline void detach_timer(struct timer_list *timer, bool clear_pending)
 	entry->next = LIST_POISON2;
 }
 
+//timer和base是关联的. 
 static int detach_if_pending(struct timer_list *timer, struct timer_base *base,
 			     bool clear_pending)
 {
@@ -900,6 +903,7 @@ static int detach_if_pending(struct timer_list *timer, struct timer_base *base,
 	return 1;
 }
 
+// cpu表示定时器所在的cpu?
 static inline struct timer_base *get_timer_cpu_base(u32 tflags, u32 cpu)
 {
 	struct timer_base *base = per_cpu_ptr(&timer_bases[BASE_STD], cpu);
@@ -907,6 +911,7 @@ static inline struct timer_base *get_timer_cpu_base(u32 tflags, u32 cpu)
 	/*
 	 * If the timer is deferrable and NO_HZ_COMMON is set then we need
 	 * to use the deferrable base.
+	 如果一个定时器是可延迟的，并且NO_HZ_COMMON被设置，那么需要使用可延迟的base。
 	 */
 	if (IS_ENABLED(CONFIG_NO_HZ_COMMON) && (tflags & TIMER_DEFERRABLE))
 		base = per_cpu_ptr(&timer_bases[BASE_DEF], cpu);
@@ -969,15 +974,17 @@ static inline void forward_timer_base(struct timer_base *base)
 
 
 /*
+获取timer的base
  * We are using hashed locking: Holding per_cpu(timer_bases[x]).lock means
  * that all timers which are tied to this base are locked, and the base itself
  * is locked too.
- *
+ * 
  * So __run_timers/migrate_timers can safely modify all timers which could
  * be found in the base->vectors array.
  *
  * When a timer is migrating then the TIMER_MIGRATING flag is set and we need
  * to wait until the migration is done.
+ 如果一个定时器正在迁移，那么TIMER_MIGRATING标志被设置，我们需要等待直到迁移完成。
  */
 static struct timer_base *lock_timer_base(struct timer_list *timer,
 					  unsigned long *flags)
@@ -996,11 +1003,13 @@ static struct timer_base *lock_timer_base(struct timer_list *timer,
 
 		if (!(tf & TIMER_MIGRATING)) {
 			base = get_timer_base(tf);
+			//
 			raw_spin_lock_irqsave(&base->lock, *flags);
-			if (timer->flags == tf)
+			if (timer->flags == tf) //没有race
 				return base;
 			raw_spin_unlock_irqrestore(&base->lock, *flags);
 		}
+
 		cpu_relax();
 	}
 }
@@ -1385,6 +1394,7 @@ EXPORT_SYMBOL_GPL(timer_shutdown);
 
 /**
  * __try_to_del_timer_sync - Internal function: Try to deactivate a timer
+ 关闭一个timer
  * @timer:	Timer to deactivate
  * @shutdown:	If true, this indicates that the timer is about to be
  *		shutdown permanently.
@@ -1393,11 +1403,13 @@ EXPORT_SYMBOL_GPL(timer_shutdown);
  * timer base lock which prevents further rearming of the timer. Any
  * attempt to rearm @timer after this function returns will be silently
  * ignored.
- *
+ * 如果设置了@shutdown，则在定时器基本锁下将@timer->function设置为NULL，这将阻止
+ * 定时器的进一步重新使用。在此函数返回后，任何尝试重新使用@timer都将被忽略。
  * This function cannot guarantee that the timer cannot be rearmed
  * right after dropping the base lock if @shutdown is false. That
  * needs to be prevented by the calling code if necessary.
- *
+ * 函数不保证在放弃基本锁后定时器不能重新启动，如果@shutdown为false。如果有必要，
+ * 则需要调用代码来防止这种情况。
  * Return:
  * * %0  - The timer was not pending
  * * %1  - The timer was pending and deactivated
@@ -1410,7 +1422,7 @@ static int __try_to_del_timer_sync(struct timer_list *timer, bool shutdown)
 	int ret = -1;
 
 	debug_assert_init(timer);
-
+	//获取timer的base
 	base = lock_timer_base(timer, &flags);
 
 	if (base->running_timer != timer)
@@ -1521,18 +1533,21 @@ static inline void del_timer_wait_running(struct timer_list *timer) { }
 /**
  * __timer_delete_sync - Internal function: Deactivate a timer and wait
  *			 for the handler to finish.
+ 关闭一个定时器并等待处理程序完成。
  * @timer:	The timer to be deactivated
  * @shutdown:	If true, @timer->function will be set to NULL under the
  *		timer base lock which prevents rearming of @timer
- *
+ *如果为真,@timer->function将在定时器基本锁下设置为NULL，这将阻止重新使用@timer
  * If @shutdown is not set the timer can be rearmed later. If the timer can
  * be rearmed concurrently, i.e. after dropping the base lock then the
  * return value is meaningless.
- *
+ * 如果没有设置@shutdown，则稍后可以重新启动定时器。如果可以并发重新启动定时器，即在
+ 放弃lock之后，则返回值是无意义的。
  * If @shutdown is set then @timer->function is set to NULL under timer
  * base lock which prevents rearming of the timer. Any attempt to rearm
  * a shutdown timer is silently ignored.
- *
+ * 如果设置了@shutdown，则在定时器基本锁下将@timer->function设置为NULL，这将阻止
+ 重新启动定时器。任何尝试重新启动关闭定时器都将被忽略。
  * If the timer should be reused after shutdown it has to be initialized
  * again.
  *
@@ -1559,6 +1574,7 @@ static int __timer_delete_sync(struct timer_list *timer, bool shutdown)
 	/*
 	 * don't use it in hardirq context, because it
 	 * could lead to deadlock.
+	  如果timer不是irqsafe的，不要在硬中断上下文中使用它，因为它可能导致死锁。
 	 */
 	WARN_ON(in_hardirq() && !(timer->flags & TIMER_IRQSAFE));
 
@@ -1572,7 +1588,7 @@ static int __timer_delete_sync(struct timer_list *timer, bool shutdown)
 	do {
 		ret = __try_to_del_timer_sync(timer, shutdown);
 
-		if (unlikely(ret < 0)) {
+		if (unlikely(ret < 0)) { //在其他cpu上面运行
 			del_timer_wait_running(timer);
 			cpu_relax();
 		}

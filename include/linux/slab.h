@@ -724,7 +724,7 @@ static inline __alloc_size(1) void *kzalloc(size_t size, gfp_t flags)
  * kzalloc_node - allocate zeroed memory from a particular memory node.
  * @size: how many bytes of memory are required.
  * @flags: the type of memory to allocate (see kmalloc).
- * @node: memory node from which to allocate
+ * @node: memory node from which to allocate, 在这个node上面分配内存
  */
 static inline __alloc_size(1) void *kzalloc_node(size_t size, gfp_t flags, int node)
 {

@@ -57,6 +57,7 @@ static inline bool bdi_has_dirty_io(struct backing_dev_info *bdi)
 	/*
 	 * @bdi->tot_write_bandwidth is guaranteed to be > 0 if there are
 	 * any dirty wbs.  See wb_update_write_bandwidth().
+	   这个值大于0，说明有脏页
 	 */
 	return atomic_long_read(&bdi->tot_write_bandwidth);
 }

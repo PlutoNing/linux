@@ -13,7 +13,7 @@ struct timer_list {
 	 * All fields that change during normal runtime grouped to the
 	 * same cacheline
 	 */
-	struct hlist_node	entry;
+	struct hlist_node	entry; //挂到pending队列上
 	unsigned long		expires;
 	void			(*function)(struct timer_list *);
 	u32			flags;
@@ -155,17 +155,19 @@ static inline void destroy_timer_on_stack(struct timer_list *timer) { }
 
 /**
  * timer_pending - is a timer pending?
+ 判断一个定时器是否处于pending状态
  * @timer: the timer in question
  *
  * timer_pending will tell whether a given timer is currently pending,
  * or not. Callers must ensure serialization wrt. other operations done
  * to this timer, eg. interrupt contexts, or other CPUs on SMP.
- *
+ * 会告诉一个给定的定时器当前是否处于pending状态。调用者必须确保与对该定时器执行的
+ 其他操作的串行化，例如中断上下文或SMP上的其他CPU。
  * return value: 1 if the timer is pending, 0 if not.
  */
 static inline int timer_pending(const struct timer_list * timer)
 {
-	return !hlist_unhashed_lockless(&timer->entry);
+	return !hlist_unhashed_lockless(&timer->entry); //是否在hash表上
 }
 
 extern void add_timer_on(struct timer_list *timer, int cpu);

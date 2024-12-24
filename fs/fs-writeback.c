@@ -2703,6 +2703,7 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 			return;
 		}
 	}
+
 out_unlock:
 	if (wb)
 		spin_unlock(&wb->list_lock);

@@ -1434,6 +1434,7 @@ void *radix_tree_delete_item(struct radix_tree_root *root,
 EXPORT_SYMBOL(radix_tree_delete_item);
 
 /**
+删除index对应的节点
  * radix_tree_delete - delete an entry from a radix tree
  * @root: radix tree root
  * @index: index key
