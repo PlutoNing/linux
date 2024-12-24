@@ -1243,7 +1243,7 @@ EXPORT_SYMBOL(congestion_wait);
 
 /**
 2024年07月18日14:47:31
-等待一直到拥塞（很多脏页)
+等待一直到不拥塞（如果很多脏页的话)
  * wait_iff_congested - Conditionally wait for a backing_dev to become uncongested or a 
  pgdat to complete writes
  * @sync: SYNC or ASYNC IO
@@ -1252,10 +1252,12 @@ EXPORT_SYMBOL(congestion_wait);
  * In the event of a congested backing_dev (any backing_dev) this waits
  * for up to @timeout jiffies for either a BDI to exit congestion of the
  * given @sync queue or a write to complete.
- *
+ * 翻译:在拥塞的backing_dev（任何backing_dev）的情况下，等待最多@timeout jiffies，
+ 直到BDI结束给定@sync队列的拥塞或写入完成。
  * The return value is 0 if the sleep is for the full timeout. Otherwise,
  * it is the number of jiffies that were still remaining when the function
  * returned. return_value == timeout implies the function did not sleep.
+	翻译:如果睡眠持续了整个超时时间，则返回值为0。否则，当函数返回时，它是剩余的滴答数。
  */
 long wait_iff_congested(int sync, long timeout)
 {
@@ -1282,7 +1284,7 @@ long wait_iff_congested(int sync, long timeout)
 
 	/* Sleep until uncongested or a write happens */
 	prepare_to_wait(wqh, &wait, TASK_UNINTERRUPTIBLE);
-	/* 是io wait */
+	/* 是io wait .等待这么多时间*/
 	ret = io_schedule_timeout(timeout);
 	finish_wait(wqh, &wait);
 

@@ -3304,7 +3304,8 @@ static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 
 		} while ((memcg = mem_cgroup_iter(root, memcg, NULL)));
 
-		if (reclaim_state) {
+		//回收node上面的target memcg层级一遍
+		if (reclaim_state) { //把nr_reclaimed回收的(slab什么的)计入到sc
 			sc->nr_reclaimed += reclaim_state->reclaimed_slab;
 			reclaim_state->reclaimed_slab = 0;
 		}
@@ -3315,7 +3316,7 @@ static bool shrink_node(pg_data_t *pgdat, struct scan_control *sc)
 			   sc->nr_reclaimed - nr_reclaimed);
 
 		if (sc->nr_reclaimed - nr_reclaimed)
-			reclaimable = true;
+			reclaimable = true; //这一遍回收到了内存
 
 		if (current_is_kswapd()) {
 			/*

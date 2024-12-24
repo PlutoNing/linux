@@ -5833,6 +5833,7 @@ out_irq:
 }
 EXPORT_SYMBOL_GPL(yield_to);
 
+//iowait阻塞之前的prepare
 int io_schedule_prepare(void)
 {
 	int old_iowait = current->in_iowait;
@@ -5859,7 +5860,7 @@ long __sched io_schedule_timeout(long timeout)
 	int token;
 	long ret;
 
-	token = io_schedule_prepare();
+	token = io_schedule_prepare(); //这里设置了current->in_iowait = 1;
 	ret = schedule_timeout(timeout);
 	io_schedule_finish(token);
 
