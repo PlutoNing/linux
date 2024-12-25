@@ -247,6 +247,7 @@ int bus_register_notifier(const struct bus_type *bus, struct notifier_block *nb)
 int bus_unregister_notifier(const struct bus_type *bus, struct notifier_block *nb);
 
 /**
+代表发生的总线通知事件
  * enum bus_notifier_event - Bus Notifier events that have happened
  * @BUS_NOTIFY_ADD_DEVICE: device is added to this bus
  * @BUS_NOTIFY_DEL_DEVICE: device is about to be removed from this bus
@@ -266,10 +267,10 @@ int bus_unregister_notifier(const struct bus_type *bus, struct notifier_block *n
  * All bus notifiers are called with the target struct device * as an argument.
  */
 enum bus_notifier_event {
-	BUS_NOTIFY_ADD_DEVICE,
-	BUS_NOTIFY_DEL_DEVICE,
-	BUS_NOTIFY_REMOVED_DEVICE,
-	BUS_NOTIFY_BIND_DRIVER,
+	BUS_NOTIFY_ADD_DEVICE, //设备添加到总线
+	BUS_NOTIFY_DEL_DEVICE, //设备即将从总线中删除
+	BUS_NOTIFY_REMOVED_DEVICE, //设备已经从总线中删除
+	BUS_NOTIFY_BIND_DRIVER, //
 	BUS_NOTIFY_BOUND_DRIVER,
 	BUS_NOTIFY_UNBIND_DRIVER,
 	BUS_NOTIFY_UNBOUND_DRIVER,

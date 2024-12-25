@@ -47,17 +47,21 @@ static inline void kref_get(struct kref *kref)
 
 /**
  * kref_put - decrement refcount for object.
+   减少kref的引用计数
  * @kref: object.
  * @release: pointer to the function that will clean up the object when the
  *	     last reference to the object is released.
  *	     This pointer is required, and it is not acceptable to pass kfree
  *	     in as this function.
- *
+ *	release是一个函数指针，当kref的引用计数为0时，会调用这个函数, 用于清理对象
+
  * Decrement the refcount, and if 0, call release().
  * Return 1 if the object was removed, otherwise return 0.  Beware, if this
  * function returns 0, you still can not count on the kref from remaining in
  * memory.  Only use the return value if you want to see if the kref is now
  * gone, not present.
+ 减少kref的引用计数，如果引用计数为0，调用release函数
+ 返回1，如果对象被移除，否则返回0。
  */
 static inline int kref_put(struct kref *kref, void (*release)(struct kref *kref))
 {

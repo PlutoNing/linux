@@ -63,7 +63,7 @@ enum kobject_action {
 
 struct kobject {
 	const char		*name;
-	struct list_head	entry;
+	struct list_head	entry; //通过这个挂到kset
 	struct kobject		*parent;
 	struct kset		*kset;
 	const struct kobj_type	*ktype;
@@ -150,13 +150,14 @@ struct sock;
 
 /**
  * struct kset - a set of kobjects of a specific type, belonging to a specific subsystem.
- *
+ * 表示一个特定类型的kobject集合，属于特定的子系统。
  * A kset defines a group of kobjects.  They can be individually
  * different "types" but overall these kobjects all want to be grouped
  * together and operated on in the same manner.  ksets are used to
  * define the attribute callbacks and other common events that happen to
  * a kobject.
- *
+ * 一个kset定义了一组kobjects。它们可以是不同的“类型”，但总体上这些kobjects都希望
+ 被分组在一起，并以相同的方式进行操作。 用于定义发生在kobject上的属性回调和其他常见事件。
  * @list: the list of all kobjects for this kset
  * @list_lock: a lock for iterating over the kobjects
  * @kobj: the embedded kobject for this kset (recursion, isn't it fun...)
@@ -166,10 +167,10 @@ struct sock;
  * desired.
  */
 struct kset {
-	struct list_head list;
-	spinlock_t list_lock;
-	struct kobject kobj;
-	const struct kset_uevent_ops *uevent_ops;
+	struct list_head list; // kobject链表
+	spinlock_t list_lock; // 用于迭代kobjects的锁
+	struct kobject kobj; // 嵌入的kobject
+	const struct kset_uevent_ops *uevent_ops; 
 } __randomize_layout;
 
 void kset_init(struct kset *kset);

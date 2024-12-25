@@ -40,7 +40,7 @@
  * driver core should ever touch these fields.
  */
 struct subsys_private {
-	struct kset subsys;
+	struct kset subsys; //相关的kset
 	struct kset *devices_kset;
 	struct list_head interfaces;
 	struct mutex mutex;
@@ -115,7 +115,7 @@ struct device_private {
 	struct device_driver *async_driver;
 	char *deferred_probe_reason;
 	struct device *device;
-	u8 dead:1;
+	u8 dead:1; //表示设备是否被kill了
 };
 #define to_device_private_parent(obj)	\
 	container_of(obj, struct device_private, knode_parent)

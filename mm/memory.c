@@ -4181,7 +4181,7 @@ static vm_fault_t do_anonymous_page(struct vm_fault *vmf)
 		}
 
 		goto setpte;
-	}
+	} /* 如果是写错误, 或者mm_forbids_zeropage */
 
 	/* Allocate our own private page. */
 	if (unlikely(anon_vma_prepare(vma)))

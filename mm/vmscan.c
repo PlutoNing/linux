@@ -2021,13 +2021,17 @@ retry:
 		 * Anonymous process memory has backing store?
 		 * Try to allocate it some swap space here.
 		 * Lazyfree folio could be freed directly
+		   匿名页有交换空间? 尝试在这里分配一些交换空间.
+		   lazyfree folio可以直接释放.
 		 */
 		if (folio_test_anon(folio) && folio_test_swapbacked(folio)) {/* 如果是交换匿名页 */
-			if (!folio_test_swapcache(folio)) { /* 如果还没分配swp file空间? */
+			if (!folio_test_swapcache(folio)) { /* 如果仅仅只在swap file? */
 				if (!(sc->gfp_mask & __GFP_IO))
 					goto keep_locked;
+
 				if (folio_maybe_dma_pinned(folio))
 					goto keep_locked;
+
 				if (folio_test_large(folio)) {
 					/* cannot split folio, skip it */
 					if (!can_split_folio(folio, NULL))
@@ -2042,7 +2046,7 @@ retry:
 								folio_list))
 						goto activate_locked;
 				}
-				/* 给folio分配swp 空间 */
+				/* 给folio分配swp cache 空间?*/
 				if (!add_to_swap(folio)) {/*  */
 					if (!folio_test_large(folio))
 						goto activate_locked_split;
@@ -2057,8 +2061,9 @@ retry:
 						goto activate_locked_split;
 				}
 			}
+
 		} else 
-		/* 不是匿名页或者不是交换页 */
+		/* 如果是被交换的其他大页?比如shmem的大页 */
 		if (folio_test_swapbacked(folio) &&
 			   folio_test_large(folio)) {/* 如果是多页面的交换页 */
 			/* Split shmem folio */

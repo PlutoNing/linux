@@ -782,7 +782,7 @@ static int cgwb_bdi_init(struct backing_dev_info *bdi)
 	return ret;
 }
 
-//
+//关闭cgwb_tree和wb_list.
 static void cgwb_bdi_unregister(struct backing_dev_info *bdi)
 {
 	struct radix_tree_iter iter;
@@ -1101,7 +1101,7 @@ void bdi_unregister(struct backing_dev_info *bdi)
 	bdi_remove_from_list(bdi);
 
 	wb_shutdown(&bdi->wb);
-
+	// 关闭bdi的cgwb_tree和wb_list
 	cgwb_bdi_unregister(bdi);
 
 	/*
@@ -1112,8 +1112,8 @@ void bdi_unregister(struct backing_dev_info *bdi)
 		bdi_set_min_ratio(bdi, 0);
 
 	if (bdi->dev) {
-		bdi_debug_unregister(bdi);
-		device_unregister(bdi->dev);
+		bdi_debug_unregister(bdi); //移除debugfs的文件
+		device_unregister(bdi->dev); 
 		bdi->dev = NULL;
 	}
 
@@ -1122,6 +1122,7 @@ void bdi_unregister(struct backing_dev_info *bdi)
 		bdi->owner = NULL;
 	}
 }
+
 EXPORT_SYMBOL(bdi_unregister);
 
 static void release_bdi(struct kref *ref)

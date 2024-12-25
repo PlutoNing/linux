@@ -3733,6 +3733,7 @@ void put_device(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(put_device);
 
+//
 bool kill_device(struct device *dev)
 {
 	/*
@@ -3753,6 +3754,7 @@ EXPORT_SYMBOL_GPL(kill_device);
 
 /**
  * device_del - delete device from system.
+ 从系统中删除设备
  * @dev: device.
  *
  * This is the first part of the device unregistration
@@ -3760,7 +3762,9 @@ EXPORT_SYMBOL_GPL(kill_device);
  * from here, has it removed from the other driver model
  * subsystems it was added to in device_add(), and removes it
  * from the kobject hierarchy.
- *
+ * 这是设备注销的第一部分。这将设备从我们控制的列表中删除，
+ * 从device_add()中添加到的其他驱动程序模型子系统中删除它，
+ * 并将其从kobject层次结构中删除。
  * NOTE: this should be called manually _iff_ device_add() was
  * also called manually.
  */
@@ -3839,6 +3843,7 @@ EXPORT_SYMBOL_GPL(device_del);
 
 /**
  * device_unregister - unregister device from system.
+   从系统中注销设备
  * @dev: device going away.
  *
  * We do this in two parts, like we do device_register(). First,
@@ -3847,6 +3852,9 @@ EXPORT_SYMBOL_GPL(device_del);
  * is the final reference count, the device will be cleaned up
  * via device_release() above. Otherwise, the structure will
  * stick around until the final reference to the device is dropped.
+ 分两步进行，首先通过device_del()将其从所有子系统中移除，然后通过put_device()
+ 减少引用计数。如果这是最后的引用计数，设备将通过device_release()进行清理。
+ 否则，该结构将一直保留，直到最后一个对设备的引用被删除。
  */
 void device_unregister(struct device *dev)
 {

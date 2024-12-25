@@ -711,7 +711,9 @@ struct device {
 	const char		*init_name; /* initial name of the device */
 	const struct device_type *type;
 
-	const struct bus_type	*bus;	/* type of bus device is on */
+	const struct bus_type	*bus;	/* 
+	dev的bus指针指向的是bus_type结构体，bus_type结构体是总线类型的结构体
+	type of bus device is on */
 	struct device_driver *driver;	/* which driver has allocated this
 					   device */
 	void		*platform_data;	/* Platform specific data, device
@@ -986,7 +988,7 @@ static inline bool dev_pm_test_driver_flags(struct device *dev, u32 flags)
 {
 	return !!(dev->power.driver_flags & flags);
 }
-
+//
 static inline void device_lock(struct device *dev)
 {
 	mutex_lock(&dev->mutex);

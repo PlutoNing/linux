@@ -25,7 +25,9 @@
 /* /sys/devices/system */
 static struct kset *system_kset;
 
-/* /sys/bus */
+/* /sys/bus
+表示总线的kset?
+ */
 static struct kset *bus_kset;
 
 #define to_bus_attr(_attr) container_of(_attr, struct bus_attribute, attr)
@@ -45,17 +47,19 @@ static int __must_check bus_rescan_devices_helper(struct device *dev,
 
 /**
  * bus_to_subsys - Turn a struct bus_type into a struct subsys_private
- *
+ * 把bus_type转换为subsys_private?
  * @bus: pointer to the struct bus_type to look up
  *
  * The driver core internals needs to work on the subsys_private structure, not
  * the external struct bus_type pointer.  This function walks the list of
  * registered busses in the system and finds the matching one and returns the
  * internal struct subsys_private that relates to that bus.
- *
+ * 驱动的核心内部需要在subsys_private结构上工作，而不是外部的bus_type指针。这个函数遍历
+ 系统中注册的总线列表，找到匹配的总线并返回与该总线相关的内部struct subsys_private。
  * Note, the reference count of the return value is INCREMENTED if it is not
  * NULL.  A call to subsys_put() must be done when finished with the pointer in
  * order for it to be properly freed.
+ 注意，如果返回值不为NULL，则引用计数将增加。在完成指针后，必须调用subsys_put()才能正确释放它。
  */
 static struct subsys_private *bus_to_subsys(const struct bus_type *bus)
 {
@@ -70,14 +74,15 @@ static struct subsys_private *bus_to_subsys(const struct bus_type *bus)
 	if (list_empty(&bus_kset->list))
 		goto done;
 
-	list_for_each_entry(kobj, &bus_kset->list, entry) {
-		struct kset *kset = container_of(kobj, struct kset, kobj);
+	list_for_each_entry(kobj, &bus_kset->list, entry) { //遍历kset的全部kobj
+		struct kset *kset = container_of(kobj, struct kset, kobj);//获取kobj的kset
 
-		sp = container_of_const(kset, struct subsys_private, subsys);
+		sp = container_of_const(kset, struct subsys_private, subsys); //获取子系统
 		if (sp->bus == bus)
 			goto done;
 	}
 	sp = NULL;
+
 done:
 	sp = subsys_get(sp);
 	spin_unlock(&bus_kset->list_lock);
@@ -977,9 +982,10 @@ int bus_unregister_notifier(const struct bus_type *bus, struct notifier_block *n
 }
 EXPORT_SYMBOL_GPL(bus_unregister_notifier);
 
+//
 void bus_notify(struct device *dev, enum bus_notifier_event value)
 {
-	struct subsys_private *sp = bus_to_subsys(dev->bus);
+	struct subsys_private *sp = bus_to_subsys(dev->bus); //获取对应的subsys子系统
 
 	if (!sp)
 		return;

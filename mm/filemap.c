@@ -148,10 +148,8 @@ static void page_cache_delete(struct address_space *mapping,
 	mapping->nrpages -= nr;
 }
 /* 
-
 从mapping移除此folio之前的统计操作
-
- */
+*/
 static void filemap_unaccount_folio(struct address_space *mapping,
 		struct folio *folio)
 {
@@ -160,9 +158,8 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 	VM_BUG_ON_FOLIO(folio_mapped(folio), folio);
 
 	if (!IS_ENABLED(CONFIG_DEBUG_VM) && unlikely(folio_mapped(folio))) {/* 
-	如果是mapped的文件页
-	什么算mapped呢
-	 */
+	如果这次是要移除被map的文件页
+	*/
 		pr_alert("BUG: Bad page cache in process %s  pfn:%05lx\n",
 			 current->comm, folio_pfn(folio));
 
@@ -194,7 +191,7 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 
 	__lruvec_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 
-	if (folio_test_swapbacked(folio)) { // 匿名页?
+	if (folio_test_swapbacked(folio)) { // 如果这个文件页是交换页
 		__lruvec_stat_mod_folio(folio, NR_SHMEM, -nr);
 		if (folio_test_pmd_mappable(folio))
 			__lruvec_stat_mod_folio(folio, NR_SHMEM_THPS, -nr);
@@ -894,11 +891,13 @@ void replace_page_cache_folio(struct folio *old, struct folio *new)
 	if (!folio_test_hugetlb(old))
 		__lruvec_stat_sub_folio(old, NR_FILE_PAGES);
 	if (!folio_test_hugetlb(new))
+
 		__lruvec_stat_add_folio(new, NR_FILE_PAGES);
 	if (folio_test_swapbacked(old))
 		__lruvec_stat_sub_folio(old, NR_SHMEM);
 	if (folio_test_swapbacked(new))
 		__lruvec_stat_add_folio(new, NR_SHMEM);
+
 	xas_unlock_irq(&xas);
 	if (free_folio)
 		free_folio(old);

@@ -5819,6 +5819,7 @@ static struct page *mc_handle_file_pte(struct vm_area_struct *vma,
 
 /**
  * mem_cgroup_move_account - move account of the page
+   在memcg之间移动页的时候计算account的更改
  * @page: the page
  * @compound: charge the page as compound or small page
  * @from: mem_cgroup which the page is moved from.
@@ -5828,6 +5829,7 @@ static struct page *mc_handle_file_pte(struct vm_area_struct *vma,
  *
  * This function doesn't do "charge" to new cgroup and doesn't do "uncharge"
  * from old cgroup.
+
  */
 static int mem_cgroup_move_account(struct page *page,
 				   bool compound,
@@ -5893,7 +5895,7 @@ static int mem_cgroup_move_account(struct page *page,
 	}
 
 #ifdef CONFIG_SWAP
-	if (folio_test_swapcache(folio)) {
+	if (folio_test_swapcache(folio)) { //
 		__mod_lruvec_state(from_vec, NR_SWAPCACHE, -nr_pages);
 		__mod_lruvec_state(to_vec, NR_SWAPCACHE, nr_pages);
 	}

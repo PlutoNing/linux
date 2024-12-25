@@ -730,6 +730,7 @@ void kobject_put(struct kobject *kobj)
 			WARN(1, KERN_WARNING
 				"kobject: '%s' (%p): is not initialized, yet kobject_put() is being called.\n",
 			     kobject_name(kobj), kobj);
+				 //是kref
 		kref_put(&kobj->kref, kobject_release);
 	}
 }

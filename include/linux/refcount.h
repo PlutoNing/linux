@@ -310,6 +310,7 @@ static inline __must_check bool refcount_sub_and_test(int i, refcount_t *r)
 	return __refcount_sub_and_test(i, r, NULL);
 }
 
+// 减少计数并测试减少后是否为0
 static inline __must_check bool __refcount_dec_and_test(refcount_t *r, int *oldp)
 {
 	return __refcount_sub_and_test(1, r, oldp);
@@ -317,15 +318,15 @@ static inline __must_check bool __refcount_dec_and_test(refcount_t *r, int *oldp
 
 /**
  * refcount_dec_and_test - decrement a refcount and test if it is 0
+   减少计数并测试减少后是否为0
  * @r: the refcount
  *
  * Similar to atomic_dec_and_test(), it will WARN on underflow and fail to
  * decrement when saturated at REFCOUNT_SATURATED.
- *
+ * 类似于atomic_dec_and_test()，当饱和时，它将在下溢时发出警告并无法减少。
  * Provides release memory ordering, such that prior loads and stores are done
  * before, and provides an acquire ordering on success such that free()
  * must come after.
- *
  * Return: true if the resulting refcount is 0, false otherwise
  */
 static inline __must_check bool refcount_dec_and_test(refcount_t *r)
