@@ -158,6 +158,7 @@ int numa_map_to_online_node(int node)
 }
 EXPORT_SYMBOL_GPL(numa_map_to_online_node);
 
+// 获取当前进程的内存pol
 struct mempolicy *get_task_policy(struct task_struct *p)
 {
 	struct mempolicy *pol = p->mempolicy;

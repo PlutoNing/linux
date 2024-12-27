@@ -818,10 +818,13 @@ int proc_resctrl_show(struct seq_file *s, struct pid_namespace *ns,
 		/*
 		 * Task information is only relevant for shareable
 		 * and exclusive groups.
+		   进程信息只对共享组和独占组有意义
 		 */
 		if (rdtg->mode != RDT_MODE_SHAREABLE &&
 		    rdtg->mode != RDT_MODE_EXCLUSIVE)
 			continue;
+
+
 		/* 只有RDT_MODE_SHAREABLE或者RDT_MODE_EXCLUSIVE到这里 */
 		if (rdtg->closid != tsk->closid)
 			continue;
@@ -1263,6 +1266,7 @@ static bool rdtgroup_mode_test_exclusive(struct rdtgroup *rdtgrp)
 
 /**
  * rdtgroup_mode_write - Modify the resource group's mode
+ 改变资源组的模式
  *
  */
 static ssize_t rdtgroup_mode_write(struct kernfs_open_file *of,
@@ -1276,7 +1280,7 @@ static ssize_t rdtgroup_mode_write(struct kernfs_open_file *of,
 	if (nbytes == 0 || buf[nbytes - 1] != '\n')
 		return -EINVAL;
 	buf[nbytes - 1] = '\0';
-
+	// 存储在kn的priv中
 	rdtgrp = rdtgroup_kn_lock_live(of->kn);
 	if (!rdtgrp) {
 		rdtgroup_kn_unlock(of->kn);
@@ -1292,7 +1296,7 @@ static ssize_t rdtgroup_mode_write(struct kernfs_open_file *of,
 	    (!strcmp(buf, "pseudo-locksetup") &&
 	     mode == RDT_MODE_PSEUDO_LOCKSETUP) ||
 	    (!strcmp(buf, "pseudo-locked") && mode == RDT_MODE_PSEUDO_LOCKED))
-		goto out;
+		goto out; //无需改变
 
 	if (mode == RDT_MODE_PSEUDO_LOCKED) {
 		rdt_last_cmd_puts("Cannot change pseudo-locked group\n");
@@ -2296,6 +2300,8 @@ static void cdp_disable_all(void)
  * in which case the rdtgroup structure is pointed at by the "priv"
  * field, otherwise we have a file, and need only look to the parent
  * to find the rdtgroup.
+	不允许在任何地方创建rdtgroup目录，除了根目录。因此，当查找kernfs节点的rdtgroup结构时，
+	我们要么查看一个目录，在这种情况下，rdtgroup结构由“priv”字段指向，要么查看父目录以找到rdtgroup。
  */
 static struct rdtgroup *kernfs_to_rdtgroup(struct kernfs_node *kn)
 {
@@ -2310,7 +2316,7 @@ static struct rdtgroup *kernfs_to_rdtgroup(struct kernfs_node *kn)
 			return NULL;
 		else
 			return kn->priv;
-	} else {
+	} else { // 如果是file或者link什么的
 		return kn->parent->priv;
 	}
 }
@@ -2335,6 +2341,7 @@ static void rdtgroup_kn_put(struct rdtgroup *rdtgrp, struct kernfs_node *kn)
 	}
 }
 
+// 获取rdtgroup，加锁
 struct rdtgroup *rdtgroup_kn_lock_live(struct kernfs_node *kn)
 {
 	struct rdtgroup *rdtgrp = kernfs_to_rdtgroup(kn);

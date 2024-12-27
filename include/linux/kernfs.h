@@ -91,6 +91,7 @@ struct kernfs_global_locks {
 	struct mutex open_file_mutex[NR_KERNFS_LOCKS];
 };
 
+// 用于表示kernfs节点的类型
 enum kernfs_node_type {
 	KERNFS_DIR		= 0x0001,
 	KERNFS_FILE		= 0x0002,
@@ -333,6 +334,7 @@ struct kernfs_fs_context {
 
 #ifdef CONFIG_KERNFS
 
+// 判断
 static inline enum kernfs_node_type kernfs_type(struct kernfs_node *kn)
 {
 	return kn->flags & KERNFS_TYPE_MASK;

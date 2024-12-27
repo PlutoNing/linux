@@ -129,7 +129,9 @@ enum rdt_group_type {
 的共享和隔离行为。每种模式定义了该资源组在共享资源（如缓存和内存带宽）时的策略，允许
 不同的任务组获得不同的资源隔离或共享级别。
  * enum rdtgrp_mode - Mode of a RDT resource group
+   不同的模式定义了资源组在共享资源（如缓存和内存带宽）时的策略，允许不同的任务组获得不同的资源隔离或共享级别。
  * @RDT_MODE_SHAREABLE: This resource group allows sharing of its allocations
+	
  * @RDT_MODE_EXCLUSIVE: No sharing of this resource group's allocations allowed
  * @RDT_MODE_PSEUDO_LOCKSETUP: Resource group will be used for Pseudo-Locking
  * @RDT_MODE_PSEUDO_LOCKED: No sharing of this resource group's allocations
@@ -231,7 +233,7 @@ ID、所属 CPU、模式、伪锁定区域等。
  */
 struct rdtgroup {
 	struct kernfs_node		*kn;  // 与此资源组关联的 kernfs 节点（文件系统节点）
-	/* 通过这个rdtgroup_list挂载到rdt_all_groups */
+	/* 通过这个rdtgroup_list挂载到全局的rdt_all_groups */
 	struct list_head		rdtgroup_list;
 	u32				closid; /* tsk通过自己的这个字段与rdtg一一对应 */
 	struct cpumask			cpu_mask; // 分配给此资源组的 CPU 掩码，表示此资源组可以使用的 CPU 集

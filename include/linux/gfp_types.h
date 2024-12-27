@@ -103,6 +103,7 @@ typedef unsigned int __bitwise gfp_t;
  *
  * %__GFP_THISNODE forces the allocation to be satisfied from the requested
  * node with no fallbacks or placement policy enforcements.
+ 强制分配从请求节点满足，没有回退或放置策略执行。
  *
  * %__GFP_ACCOUNT causes the allocation to be accounted to kmemcg.
  */
