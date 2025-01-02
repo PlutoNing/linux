@@ -323,6 +323,7 @@ struct swap_info_struct {
 	struct work_struct discard_work; /* discard worker */
 	struct swap_cluster_list discard_clusters; /* discard clusters list */
 	struct plist_node avail_lists[]; /*
+	数组大小是node的数量, 数组对应nid的成员挂接到swap_avail_heads[nid]上
 					   * entries in swap_avail_heads, one
 					   * entry per node.
 					   * Must be last as the number of the
@@ -638,6 +639,7 @@ static inline int mem_cgroup_swappiness(struct mem_cgroup *mem)
 
 #if defined(CONFIG_SWAP) && defined(CONFIG_MEMCG) && defined(CONFIG_BLK_CGROUP)
 void __folio_throttle_swaprate(struct folio *folio, gfp_t gfp);
+//
 static inline void folio_throttle_swaprate(struct folio *folio, gfp_t gfp)
 {
 	if (mem_cgroup_disabled())
@@ -662,6 +664,7 @@ static inline int mem_cgroup_try_charge_swap(struct folio *folio,
 }
 
 extern void __mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages);
+
 static inline void mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages)
 {
 	if (mem_cgroup_disabled())

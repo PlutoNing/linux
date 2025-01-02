@@ -92,6 +92,7 @@ static PLIST_HEAD(swap_active_head);
  * add/remove itself to/from this list, but the swap_info_struct->lock
  * is held and the locking order requires swap_lock to be taken
  * before any swap_info_struct->lock.
+ 是一个哈希表指针的数组, 好像是每个node一个
  */
 static struct plist_head *swap_avail_heads;
 static DEFINE_SPINLOCK(swap_avail_lock);
@@ -355,6 +356,7 @@ static inline void cluster_clear_huge(struct swap_cluster_info *info)
 	info->flags &= ~CLUSTER_FLAG_HUGE;
 }
 
+// 
 static inline struct swap_cluster_info *lock_cluster(struct swap_info_struct *si,
 						     unsigned long offset)
 {
@@ -377,6 +379,7 @@ static inline void unlock_cluster(struct swap_cluster_info *ci)
 /*
  * Determine the locking method in use for this device.  Return
  * swap_cluster_info if SSD-style cluster-based locking is in place.
+ 确定此设备使用的锁定方法。如果使用基于SSD风格的cluster-based lock，则返回swap_cluster_info。
  */
 static inline struct swap_cluster_info *lock_cluster_or_swap_info(
 		struct swap_info_struct *si, unsigned long offset)
@@ -1289,6 +1292,7 @@ put_out:
 	return NULL;
 }
 
+//释放si的entry
 static unsigned char __swap_entry_free(struct swap_info_struct *p,
 				       swp_entry_t entry)
 {
@@ -1304,7 +1308,7 @@ static unsigned char __swap_entry_free(struct swap_info_struct *p,
 
 	return usage;
 }
-
+// 释放swap的条目
 static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 {
 	struct swap_cluster_info *ci;
@@ -1427,16 +1431,18 @@ void swapcache_free_entries(swp_entry_t *entries, int n)
 	 */
 	if (nr_swapfiles > 1)
 		sort(entries, n, sizeof(entries[0]), swp_entry_cmp, NULL);
+	
 	for (i = 0; i < n; ++i) {
 		p = swap_info_get_cont(entries[i], prev);
 		if (p)
 			swap_entry_free(p, entries[i]);
 		prev = p;
 	}
+
 	if (p)
 		spin_unlock(&p->lock);
 }
-
+// 返回值说明什么
 int __swap_count(swp_entry_t entry)
 {
 	struct swap_info_struct *si = swp_swap_info(entry);
@@ -3616,6 +3622,7 @@ static void free_swap_count_continuations(struct swap_info_struct *si)
 }
 
 #if defined(CONFIG_MEMCG) && defined(CONFIG_BLK_CGROUP)
+//实质上限制什么
 void __folio_throttle_swaprate(struct folio *folio, gfp_t gfp)
 {
 	struct swap_info_struct *si, *next;
@@ -3630,6 +3637,7 @@ void __folio_throttle_swaprate(struct folio *folio, gfp_t gfp)
 	/*
 	 * We've already scheduled a throttle, avoid taking the global swap
 	 * lock.
+	 如果已经发起过throttle，返回
 	 */
 	if (current->throttle_disk)
 		return;
@@ -3637,12 +3645,13 @@ void __folio_throttle_swaprate(struct folio *folio, gfp_t gfp)
 	spin_lock(&swap_avail_lock);
 	plist_for_each_entry_safe(si, next, &swap_avail_heads[nid],
 				  avail_lists[nid]) {
-		if (si->bdev) {
+		if (si->bdev) { //找到在nid上面的si
 			blkcg_schedule_throttle(si->bdev->bd_disk, true);
 			break;
 		}
 	}
 	spin_unlock(&swap_avail_lock);
+
 }
 #endif
 

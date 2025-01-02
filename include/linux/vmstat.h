@@ -246,6 +246,7 @@ static inline unsigned long zone_page_state_snapshot(struct zone *zone,
 #ifdef CONFIG_NUMA
 /* See __count_vm_event comment on why raw_cpu_inc is used. */
 static inline void
+// 一共有哪些numa event?
 __count_numa_event(struct zone *zone, enum numa_stat_item item)
 {
 	struct per_cpu_zonestat __percpu *pzstats = zone->per_cpu_zonestats;

@@ -234,6 +234,7 @@ static inline void warn_if_node_offline(int this_node, gfp_t gfp_mask)
 /*
  * Allocate pages, preferring the node given as nid. The node must be valid and
  * online. For more general interface, see alloc_pages_node().
+   分配内存, 优先使用nid指定的节点. nid必须是有效的, 并且在线.
  */
 static inline struct page *
 __alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order)
@@ -244,6 +245,7 @@ __alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order)
 	return __alloc_pages(gfp_mask, order, nid, NULL);
 }
 
+//
 static inline
 struct folio *__folio_alloc_node(gfp_t gfp, unsigned int order, int nid)
 {

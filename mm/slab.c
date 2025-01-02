@@ -1340,10 +1340,12 @@ slab_out_of_memory(struct kmem_cache *cachep, gfp_t gfpflags, int nodeid)
 /*
  * Interface to system's page allocator. No need to hold the
  * kmem_cache_node ->list_lock.
- *
+ * 是从系统的页面分配器中获取页面的接口。不需要持有kmem_cache_node ->list_lock。
  * If we requested dmaable memory, we will get it. Even if we
  * did not request dmaable memory, we might get it, but that
  * would be relatively rare and ignorable.
+ 如果我们请求了dmaable内存，我们将得到它。即使我们没有请求dmaable内存，我们也可能
+ 得到它，但这种情况相对较少，可以忽略。
  */
 static struct slab *kmem_getpages(struct kmem_cache *cachep, gfp_t flags,
 								int nodeid)

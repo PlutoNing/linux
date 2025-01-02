@@ -1858,6 +1858,7 @@ static void *setup_object(struct kmem_cache *s, void *object)
 
 /*
  * Slab allocation and freeing
+ slab的分配和释放
  */
 static inline struct slab *alloc_slab_page(gfp_t flags, int node,
 		struct kmem_cache_order_objects oo)

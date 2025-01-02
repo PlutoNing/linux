@@ -523,7 +523,10 @@ struct vm_fault {
 					 * the 'address'
 					 */
 	union {
-		pte_t orig_pte;		/* Value of PTE at the time of fault */
+		pte_t orig_pte;		/* Value of PTE at the time of fault
+		发生错误时PTE条目的值
+					 * used by PTE fault only.
+		 */
 		pmd_t orig_pmd;		/* Value of PMD at the time of fault,
 					 * used by PMD fault only.
 					 */
@@ -717,6 +720,8 @@ static bool __is_vma_write_locked(struct vm_area_struct *vma, int *mm_lock_seq)
 
 /*
  * Begin writing to a VMA.
+ 开始写入一个VMA。 何谓写入呢?
+ 好像过程上来讲就是加锁.
  * Exclude concurrent readers under the per-VMA lock until the currently
  * write-locked mmap_lock is dropped or downgraded.
  */
@@ -2975,6 +2980,7 @@ static inline pte_t *pte_offset_map(pmd_t *pmd, unsigned long addr)
 
 pte_t *__pte_offset_map_lock(struct mm_struct *mm, pmd_t *pmd,
 			unsigned long addr, spinlock_t **ptlp);
+
 static inline pte_t *pte_offset_map_lock(struct mm_struct *mm, pmd_t *pmd,
 			unsigned long addr, spinlock_t **ptlp)
 {

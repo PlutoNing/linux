@@ -326,16 +326,19 @@ static inline bool swap_use_vma_readahead(void)
  * unlocked and with its refcount incremented - we rely on the kernel
  * lock getting page table operations atomic even if we drop the folio
  * lock before returning.
- *
+ * 在交换缓存中查找一个交换项。找到的 folio 将被解锁并且其引用计数将被增加 -
+  我们依赖于内核锁使得页面表操作原子化，即使我们在返回之前放弃 folio 锁。
+ 
  * Caller must lock the swap device or hold a reference to keep it valid.
+ 调用者必须锁定交换设备或持有引用以保持其有效。
  */
 struct folio *swap_cache_get_folio(swp_entry_t entry,
 		struct vm_area_struct *vma, unsigned long addr)
 {
 	struct folio *folio;
-
+	// 从swap的mapping里面获取folio
 	folio = filemap_get_folio(swap_address_space(entry), swp_offset(entry));
-	if (!IS_ERR(folio)) {
+	if (!IS_ERR(folio)) {// 如果获取没问题
 		bool vma_ra = swap_use_vma_readahead();
 		bool readahead;
 
@@ -841,6 +844,7 @@ skip:
 
 /**
  * swapin_readahead - swap in pages in hope we need them soon
+   预读swap
  * @entry: swap entry of this memory
  * @gfp_mask: memory allocation flags
  * @vmf: fault information

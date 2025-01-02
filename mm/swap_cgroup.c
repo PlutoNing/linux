@@ -62,6 +62,7 @@ not_enough_page:
 	return -ENOMEM;
 }
 
+//offset是ent的offset, ctrl是对应的type的ctrl
 static struct swap_cgroup *__lookup_swap_cgroup(struct swap_cgroup_ctrl *ctrl,
 						pgoff_t offset)
 {
@@ -73,6 +74,7 @@ static struct swap_cgroup *__lookup_swap_cgroup(struct swap_cgroup_ctrl *ctrl,
 	return sc + offset % SC_PER_PAGE;
 }
 
+//查找swap ent的memcg?
 static struct swap_cgroup *lookup_swap_cgroup(swp_entry_t ent,
 					struct swap_cgroup_ctrl **ctrlp)
 {
@@ -115,6 +117,7 @@ unsigned short swap_cgroup_cmpxchg(swp_entry_t ent,
 }
 
 /**
+找到id开始的nr_ents个swap entry的memcg?
  * swap_cgroup_record - record mem_cgroup for a set of swap entries
  * @ent: the first swap entry to be recorded into
  * @id: mem_cgroup to be recorded
@@ -132,7 +135,7 @@ unsigned short swap_cgroup_record(swp_entry_t ent, unsigned short id,
 	unsigned long flags;
 	pgoff_t offset = swp_offset(ent);
 	pgoff_t end = offset + nr_ents;
-
+	//找到对应的swap cgroup
 	sc = lookup_swap_cgroup(ent, &ctrl);
 
 	spin_lock_irqsave(&ctrl->lock, flags);

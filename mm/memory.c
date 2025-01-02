@@ -1004,6 +1004,7 @@ static inline struct folio *page_copy_prealloc(struct mm_struct *src_mm,
 		folio_put(new_folio);
 		return NULL;
 	}
+
 	folio_throttle_swaprate(new_folio, GFP_KERNEL);
 
 	return new_folio;
@@ -3703,6 +3704,7 @@ static inline bool should_try_to_free_swap(struct folio *folio,
 {
 	if (!folio_test_swapcache(folio))
 		return false;
+
 	if (mem_cgroup_swap_full(folio) || (vma->vm_flags & VM_LOCKED) ||
 	    folio_test_mlocked(folio))
 		return true;
@@ -3788,14 +3790,17 @@ static vm_fault_t handle_pte_marker(struct vm_fault *vmf)
  * We enter with non-exclusive mmap_lock (to exclude vma changes,
  * but allow concurrent faults), and pte mapped but not yet locked.
  * We return with pte unmapped and unlocked.
- *
+ * 我们进入时具有非排他性 mmap_lock（用于排除 vma 更改，但允许并发错误），pte 映射但尚未锁定。
+   我们返回时 pte 已取消映射并解锁。
  * We return with the mmap_lock locked or unlocked in the same cases
  * as does filemap_fault().
+ 返回时 mmap_lock 在与 filemap_fault() 相同的情况下锁定或解锁。
  */
 vm_fault_t do_swap_page(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
-	struct folio *swapcache, *folio = NULL;
+	struct folio *swapcache, // 说明是从swap的mapping里面获取的页面
+	 *folio = NULL;
 	struct page *page;
 	struct swap_info_struct *si = NULL;
 	rmap_t rmap_flags = RMAP_NONE;
@@ -3808,8 +3813,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	if (!pte_unmap_same(vmf))
 		goto out;
 
-	entry = pte_to_swp_entry(vmf->orig_pte);
-	if (unlikely(non_swap_entry(entry))) {
+	entry = pte_to_swp_entry(vmf->orig_pte); // 获取pte条目
+	if (unlikely(non_swap_entry(entry))) {// 不是交换的条目, 为什么会进入这个函数呢?
 		if (is_migration_entry(entry)) {
 			migration_entry_wait(vma->vm_mm, vmf->pmd,
 					     vmf->address);
@@ -3851,9 +3856,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			print_bad_pte(vma, vmf->address, vmf->orig_pte, NULL);
 			ret = VM_FAULT_SIGBUS;
 		}
+
+		//如果不是swp ent的话, 返回
 		goto out;
 	}
-
+	/* 现在可以确定entry是swap条目了 */
 	/* Prevent swapoff from happening to us. */
 	si = get_swap_device(entry);
 	if (unlikely(!si))
@@ -3864,14 +3871,15 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		page = folio_file_page(folio, swp_offset(entry));
 	swapcache = folio;
 
-	if (!folio) {
+	if (!folio) { // page不存在于swap的mapping里面的话
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
 		    __swap_count(entry) == 1) {
 			/* skip swapcache */
+			/* 缺页也不在swap mapping里面,这里申请页面 */
 			folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0,
 						vma, vmf->address, false);
 			page = &folio->page;
-			if (folio) {
+			if (folio) {//如果申请成功了
 				__folio_set_locked(folio);
 				__folio_set_swapbacked(folio);
 
@@ -3894,7 +3902,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				swap_readpage(page, true, NULL);
 				folio->private = NULL;
 			}
-		} else {
+		} else {// 预读swap的情况
 			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 						vmf);
 			if (page)
@@ -3902,7 +3910,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 			swapcache = folio;
 		}
 
-		if (!folio) {
+		if (!folio) { //还是没有
 			/*
 			 * Back out if somebody else faulted in this pte
 			 * while we released the pte lock.
@@ -3928,21 +3936,25 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 		goto out_release;
 	}
 
+	//到这里folio不为空了
 	ret |= folio_lock_or_retry(folio, vmf);
 	if (ret & VM_FAULT_RETRY)
 		goto out_release;
 
-	if (swapcache) {
+	if (swapcache) { // 如果是从swap的mapping里面获取的页面
 		/*
 		 * Make sure folio_free_swap() or swapoff did not release the
 		 * swapcache from under us.  The page pin, and pte_same test
 		 * below, are not enough to exclude that.  Even if it is still
 		 * swapcache, we need to check that the page's swap has not
 		 * changed.
+		   保证 folio_free_swap() 或 swapoff 没有在我们下面释放 swapcache。
+		   页面引脚和 pte_same 测试不足以排除这一点。即使它仍然是 swapcache，
+		   我们也需要检查页面的交换是否发生了变化。
 		 */
 		if (unlikely(!folio_test_swapcache(folio) ||
 			     page_swap_entry(page).val != entry.val))
-			goto out_page;
+			goto out_page; // 因为race，page已经不是swap了
 
 		/*
 		 * KSM sometimes has to copy on read faults, for example, if
@@ -3977,13 +3989,15 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 */
 	vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd, vmf->address,
 			&vmf->ptl);
+
 	if (unlikely(!vmf->pte || !pte_same(ptep_get(vmf->pte), vmf->orig_pte)))
 		goto out_nomap;
-
+//到这里说明pte没有变化,并且pte不为null
 	if (unlikely(!folio_test_uptodate(folio))) {
 		ret = VM_FAULT_SIGBUS;
 		goto out_nomap;
 	}
+	//到这里说明页面是uptodate的
 
 	/*
 	 * PG_anon_exclusive reuses PG_mappedtodisk for anon pages. A swap pte
@@ -4036,6 +4050,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 * Some architectures may have to restore extra metadata to the page
 	 * when reading from swap. This metadata may be indexed by swap entry
 	 * so this must be called before swap_free().
+	 一些架构可能需要在从交换区读取时将额外的元数据恢复到页面中。此元数据可能由交换条目索引，
+	 因此必題在 swap_free() 之前调用此函数。
 	 */
 	arch_swap_restore(entry, folio);
 
@@ -4043,8 +4059,11 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	 * Remove the swap entry and conditionally try to free up the swapcache.
 	 * We're already holding a reference on the page but haven't mapped it
 	 * yet.
+	 移除交换条目并有条件地尝试释放交换缓存。我们已经持有页面的引用，但尚未映射它。
+	 这里要free什么呢?
 	 */
 	swap_free(entry);
+
 	if (should_try_to_free_swap(folio, vma, vmf->flags))
 		folio_free_swap(folio);
 

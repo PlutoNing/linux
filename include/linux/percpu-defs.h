@@ -313,6 +313,7 @@ extern void __this_cpu_preempt_check(const char *op);
 static __always_inline void __this_cpu_preempt_check(const char *op) { }
 #endif
 
+// 
 #define __pcpu_size_call_return(stem, variable)				\
 ({									\
 	typeof(variable) pscr_ret__;					\
@@ -398,7 +399,7 @@ do {									\
  * Operations for contexts where we do not want to do any checks for
  * preemptions.  Unless strictly necessary, always use [__]this_cpu_*()
  * instead.
- *
+ * 
  * If there is no other protection through preempt disable and/or disabling
  * interrupts then one of these RMW operations can show unexpected behavior
  * because the execution thread was rescheduled on another processor or an

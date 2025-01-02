@@ -136,7 +136,7 @@ enum vm_event_item { PGPGIN, PGPGOUT, PSWPIN, PSWPOUT,
 		NR_TLB_LOCAL_FLUSH_ONE,
 #endif /* CONFIG_DEBUG_TLBFLUSH */
 #ifdef CONFIG_SWAP
-		SWAP_RA,
+		SWAP_RA, // swap的预读
 		SWAP_RA_HIT,
 #ifdef CONFIG_KSM
 		KSM_SWPIN_COPY,

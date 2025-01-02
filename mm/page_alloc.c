@@ -4318,6 +4318,7 @@ got_pg:
 	return page;
 }
 
+// 分配内存前, 填充ac的成员
 static inline bool prepare_alloc_pages(gfp_t gfp_mask, unsigned int order,
 		int preferred_nid, nodemask_t *nodemask,
 		struct alloc_context *ac, gfp_t *alloc_gfp,
@@ -4363,6 +4364,7 @@ static inline bool prepare_alloc_pages(gfp_t gfp_mask, unsigned int order,
 
 /*
  * __alloc_pages_bulk - Allocate a number of order-0 pages to a list or array
+ 分配多个单页到一个list或者array
  * @gfp: GFP flags for the allocation
  * @preferred_nid: The preferred NUMA node ID to allocate from
  * @nodemask: Set of nodes to allocate from, may be NULL
@@ -4373,7 +4375,7 @@ static inline bool prepare_alloc_pages(gfp_t gfp_mask, unsigned int order,
  * This is a batched version of the page allocator that attempts to
  * allocate nr_pages quickly. Pages are added to page_list if page_list
  * is not NULL, otherwise it is assumed that the page_array is valid.
- *
+ * 
  * For lists, nr_pages is the number of pages that should be allocated.
  *
  * For arrays, only NULL elements are populated with pages and nr_pages
@@ -4532,7 +4534,7 @@ EXPORT_SYMBOL_GPL(__alloc_pages_bulk);
 
 /*
  * This is the 'heart' of the zoned buddy allocator.
- 分配页面
+ 分配页面, 倾向于从preferred_nid分配
  */
 struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 							nodemask_t *nodemask)
@@ -4545,6 +4547,7 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 	/*
 	 * There are several places where we assume that the order value is sane
 	 * so bail out early if the request is out of bound.
+	    有些情况下,我们假设order是合理的,所以如果请求超出范围,则提前退出
 	 */
 	if (WARN_ON_ONCE_GFP(order > MAX_ORDER, gfp))
 		return NULL;
@@ -4559,6 +4562,7 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 	 */
 	gfp = current_gfp_context(gfp);
 	alloc_gfp = gfp;
+
 	if (!prepare_alloc_pages(gfp, order, preferred_nid, nodemask, &ac,
 			&alloc_gfp, &alloc_flags))
 		return NULL;
@@ -4566,10 +4570,13 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 	/*
 	 * Forbid the first pass from falling back to types that fragment
 	 * memory until all local zones are considered.
+	 
 	 */
 	alloc_flags |= alloc_flags_nofragment(ac.preferred_zoneref->zone, gfp);
 
-	/* First allocation attempt */
+	/* First allocation attempt 
+	先从free list中分配 
+	*/
 	page = get_page_from_freelist(alloc_gfp, order, alloc_flags, &ac);
 	if (likely(page))
 		goto out;
@@ -4587,6 +4594,7 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 	page = __alloc_pages_slowpath(alloc_gfp, order, &ac);
 
 out:
+// 分配成功的后处理
 	if (memcg_kmem_online() && (gfp & __GFP_ACCOUNT) && page &&
 	    unlikely(__memcg_kmem_charge_page(page, gfp, order) != 0)) {
 		__free_pages(page, order);
@@ -4600,7 +4608,7 @@ out:
 }
 EXPORT_SYMBOL(__alloc_pages);
 
-//
+//分配folio
 struct folio *__folio_alloc(gfp_t gfp, unsigned int order, int preferred_nid,
 		nodemask_t *nodemask)
 {

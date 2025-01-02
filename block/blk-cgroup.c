@@ -1931,6 +1931,7 @@ out:
 
 /**
  * blkcg_schedule_throttle - this task needs to check for throttling
+ 进程需要throttling
  * @disk: disk to throttle
  * @use_memdelay: do we charge this to memory delay for PSI
  *
@@ -1940,7 +1941,7 @@ out:
  * instance will only have a block_device at that point.  This set's the
  * notify_resume for the task to check and see if it requires throttling before
  * returning to user space.
- *
+ * 
  * We will only schedule once per syscall.  You can call this over and over
  * again and it will only do the check once upon return to user space, and only
  * throttle once.  If the task needs to be throttled again it'll need to be

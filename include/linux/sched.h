@@ -1259,7 +1259,7 @@ struct task_struct {
 #ifdef CONFIG_NUMA
 	/* Protected by alloc_lock: */
 	struct mempolicy		*mempolicy;
-	short				il_prev;
+	short				il_prev;  /* 可能是进程在il方式下的上一次使用的node */
 	short				pref_node_fork;
 #endif
 #ifdef CONFIG_NUMA_BALANCING

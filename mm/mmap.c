@@ -2677,6 +2677,7 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	return do_vmi_munmap(&vmi, mm, start, len, uf, false);
 }
 
+//mmap文件和vma
 unsigned long mmap_region(struct file *file, unsigned long addr,
 		unsigned long len, vm_flags_t vm_flags, unsigned long pgoff,
 		struct list_head *uf)
@@ -2966,6 +2967,7 @@ SYSCALL_DEFINE2(munmap, unsigned long, addr, size_t, len)
 
 /*
  * Emulation of deprecated remap_file_pages() syscall.
+ 
  */
 SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 		unsigned long, prot, unsigned long, pgoff, unsigned long, flags)
@@ -2994,7 +2996,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
-
+		//查找vma
 	vma = vma_lookup(mm, start);
 
 	if (!vma || !(vma->vm_flags & VM_SHARED))
@@ -3074,6 +3076,7 @@ int do_vma_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 
 /*
  * do_brk_flags() - Increase the brk vma if the flags match.
+ 提升brk边界
  * @vmi: The vma iterator
  * @addr: The start address
  * @len: The length of the increase
@@ -3107,28 +3110,33 @@ static int do_brk_flags(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	/*
 	 * Expand the existing vma if possible; Note that singular lists do not
 	 * occur after forking, so the expand will only happen on new VMAs.
+	   看看能不能扩展现有的vma. 
 	 */
 	if (vma && vma->vm_end == addr && !vma_policy(vma) &&
 	    can_vma_merge_after(vma, flags, NULL, NULL,
 				addr >> PAGE_SHIFT, NULL_VM_UFFD_CTX, NULL)) {
+		
 		vma_iter_config(vmi, vma->vm_start, addr + len);
 		if (vma_iter_prealloc(vmi, vma))
 			goto unacct_fail;
 
-		vma_start_write(vma);
+		vma_start_write(vma); //加锁
 
 		init_vma_prep(&vp, vma);
 		vma_prepare(&vp);
 		vma_adjust_trans_huge(vma, vma->vm_start, addr + len, 0);
-		vma->vm_end = addr + len;
+		vma->vm_end = addr + len; //调整结束后, 改变vma的边界
 		vm_flags_set(vma, VM_SOFTDIRTY);
 		vma_iter_store(vmi, vma);
 
 		vma_complete(&vp, vmi, mm);
 		khugepaged_enter_vma(vma, flags);
+
+		//以调整
 		goto out;
 	}
 
+	// 后面以创建新vma来调整brk
 	if (vma)
 		vma_iter_next_range(vmi);
 	/* create a vma struct for an anonymous mapping */
@@ -3149,6 +3157,7 @@ static int do_brk_flags(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	mm->map_count++;
 	validate_mm(mm);
 	ksm_add_vma(vma);
+
 out:
 	perf_event_mmap(vma);
 	mm->total_vm += len >> PAGE_SHIFT;
@@ -3156,6 +3165,7 @@ out:
 	if (flags & VM_LOCKED)
 		mm->locked_vm += (len >> PAGE_SHIFT);
 	vm_flags_set(vma, VM_SOFTDIRTY);
+	
 	return 0;
 
 mas_store_fail:
@@ -3165,6 +3175,7 @@ unacct_fail:
 	return -ENOMEM;
 }
 
+//分配内存
 int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
 {
 	struct mm_struct *mm = current->mm;
@@ -3197,6 +3208,7 @@ int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
 		goto munmap_failed;
 
 	vma = vma_prev(&vmi);
+	//分配内存时,调整brk的边界
 	ret = do_brk_flags(&vmi, vma, addr, len, flags);
 	populate = ((mm->def_flags & VM_LOCKED) != 0);
 	mmap_write_unlock(mm);
@@ -3212,6 +3224,7 @@ limits_failed:
 }
 EXPORT_SYMBOL(vm_brk_flags);
 
+//分配内存
 int vm_brk(unsigned long addr, unsigned long len)
 {
 	return vm_brk_flags(addr, len, 0);

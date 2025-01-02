@@ -119,6 +119,7 @@ struct free_area {
 struct pglist_data;
 
 #ifdef CONFIG_NUMA
+// numa的event
 enum numa_stat_item {
 	NUMA_HIT,		/* allocated in intended node */
 	NUMA_MISS,		/* allocated in non intended node */

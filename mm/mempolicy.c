@@ -128,6 +128,7 @@ static struct mempolicy default_policy = {
 	.mode = MPOL_LOCAL,
 };
 
+//node倾向的内存策略
 static struct mempolicy preferred_node_policy[MAX_NUMNODES];
 
 /**
@@ -168,14 +169,15 @@ struct mempolicy *get_task_policy(struct task_struct *p)
 		return pol;
 
 	node = numa_node_id();
-	if (node != NUMA_NO_NODE) {
+
+	if (node != NUMA_NO_NODE) { //如果current cpu有node指定
 		pol = &preferred_node_policy[node];
 		/* preferred_node_policy is not initialised early in boot */
 		if (pol->mode)
 			return pol;
 	}
 
-	return &default_policy;
+	return &default_policy; //否则返回默认的pol
 }
 
 static const struct mempolicy_operations {
@@ -1211,6 +1213,10 @@ int do_migrate_pages(struct mm_struct *mm, const nodemask_t *from,
  * Search forward from there, if not.  N.B., this assumes that the
  * list of pages handed to migrate_pages()--which is how we get here--
  * is in virtual address order.
+    分配一个新的页面用于基于vma策略的页面迁移。
+	首先假设页面由包含@start的vma映射。如果不是，请从那里开始搜索。N.B.，这假设我们
+	传递给migrate_pages()的页面列表按虚拟地址顺序排列。
+
  */
 static struct folio *new_folio(struct folio *src, unsigned long start)
 {
@@ -1763,6 +1769,7 @@ bool vma_migratable(struct vm_area_struct *vma)
 	return true;
 }
 
+//
 struct mempolicy *__get_vma_policy(struct vm_area_struct *vma,
 						unsigned long addr)
 {
@@ -1799,6 +1806,10 @@ struct mempolicy *__get_vma_policy(struct vm_area_struct *vma,
  * count--added by the get_policy() vm_op, as appropriate--to protect against
  * freeing by another task.  It is the caller's responsibility to free the
  * extra reference for shared policies.
+   返回指定地址的VMA的有效策略。根据需要回退到current->mempolicy或系统默认策略。共享策略
+   [标记为MPOL_F_SHARED]需要额外的引用计数-由get_policy() vm_op添加，适当地-以防止被
+   另一个任务释放。调用者有责任释放共享策略的额外引用。
+
  */
 static struct mempolicy *get_vma_policy(struct vm_area_struct *vma,
 						unsigned long addr)
@@ -1901,7 +1912,8 @@ static int policy_node(gfp_t gfp, struct mempolicy *policy, int nd)
 	return nd;
 }
 
-/* Do dynamic interleaving for a process */
+/* Do dynamic interleaving for a process
+没指定vma获取il的node, 就是从进程级别的il_prev来计算 */
 static unsigned interleave_nodes(struct mempolicy *policy)
 {
 	unsigned next;
@@ -1962,6 +1974,8 @@ unsigned int mempolicy_slab_node(void)
 }
 
 /*
+给vma以il方式分配内存, n是vma内的地址计算的off, 这里通过pol和n值,来
+计算要从哪个node获取内存
  * Do static interleaving for a VMA with known offset @n.  Returns the n'th
  * node in pol->nodes (starting from n=0), wrapping around if n exceeds the
  * number of present nodes.
@@ -1975,9 +1989,12 @@ static unsigned offset_il_node(struct mempolicy *pol, unsigned long n)
 	/*
 	 * The barrier will stabilize the nodemask in a register or on
 	 * the stack so that it will stop changing under the code.
-	 *
+	 * 这个barrer是为了保证nodemask在寄存器或者栈上稳定,不会在代码执行过程中改变
+	 
 	 * Between first_node() and next_node(), pol->nodes could be changed
 	 * by other threads. So we put pol->nodes in a local stack.
+	   在first_node()和next_node()之间，pol->nodes可能会被其他线程更改。
+	   因此，我们将pol->nodes放在本地堆栈中。
 	 */
 	barrier();
 
@@ -1991,7 +2008,9 @@ static unsigned offset_il_node(struct mempolicy *pol, unsigned long n)
 	return nid;
 }
 
-/* Determine a node number for interleave */
+/* Determine a node number for interleave
+interleave方式分配内存的时候,确定要分配的node
+ */
 static inline unsigned interleave_nid(struct mempolicy *pol,
 		 struct vm_area_struct *vma, unsigned long addr, int shift)
 {
@@ -2004,6 +2023,8 @@ static inline unsigned interleave_nid(struct mempolicy *pol,
 		 * for huge pages, since vm_pgoff is in units of small
 		 * pages, we need to shift off the always 0 bits to get
 		 * a useful offset.
+		 对于小页面，shift和PAGE_SHIFT之间没有区别，因此位移是安全的。
+		 对于大页面，由于vm_pgoff以小页面为单位，我们需要移位以获取有用的偏移量。
 		 */
 		BUG_ON(shift < PAGE_SHIFT);
 		off = vma->vm_pgoff >> (shift - PAGE_SHIFT);
@@ -2125,7 +2146,8 @@ bool mempolicy_in_oom_domain(struct task_struct *tsk,
 }
 
 /* Allocate a page in interleaved policy.
-   Own path because it needs to do special accounting. */
+   Own path because it needs to do special accounting.
+   il方式分配内存 */
 static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
 					unsigned nid)
 {
@@ -2135,6 +2157,7 @@ static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
 	/* skip NUMA_INTERLEAVE_HIT counter update if numa stats is disabled */
 	if (!static_branch_likely(&vm_numa_stat_key))
 		return page;
+    //看来是🈶一些统计信息的, 不过可以到cgroup级别的计数吗?
 	if (page && page_to_nid(page) == nid) {
 		preempt_disable();
 		__count_numa_event(page_zone(page), NUMA_INTERLEAVE_HIT);
@@ -2143,6 +2166,7 @@ static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
 	return page;
 }
 
+// prefer many与其他方式的区别
 static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
 						int nid, struct mempolicy *pol)
 {
@@ -2154,9 +2178,11 @@ static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
 	 * preferred nodes but skip the direct reclaim and allow the
 	 * allocation to fail, while the second pass will try all the
 	 * nodes in system.
+	 这是一个两步方法。第一步只尝试首选节点，但跳过直接回收并允许分配失败，
+	 第二种方法将尝试系统中的所有节点。
 	 */
 	preferred_gfp = gfp | __GFP_NOWARN;
-	preferred_gfp &= ~(__GFP_DIRECT_RECLAIM | __GFP_NOFAIL);
+	preferred_gfp &= ~(__GFP_DIRECT_RECLAIM | __GFP_NOFAIL); //去掉gfp里面的__GFP_DIRECT_RECLAIM | __GFP_NOFAIL
 	page = __alloc_pages(preferred_gfp, order, nid, &pol->nodes);
 	if (!page)
 		page = __alloc_pages(gfp, order, nid, NULL);
@@ -2177,8 +2203,10 @@ static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
  * NUMA policy.  When @vma is not NULL the caller must hold the mmap_lock
  * of the mm_struct of the VMA to prevent it from going away.  Should be
  * used for all allocations for folios that will be mapped into user space.
- * 分配一个folio
+ * 分配一个folio给vma, 使用合适的NUMA策略。当vma不为NULL时，调用者必须持有VMA的mmap_lock，
+ * 以防止它消失。应该用于所有将映射到用户空间的folio的分配。
  * Return: The folio on success or NULL if allocation fails.
+  返回成功的folio，如果分配失败则返回NULL。
  */
 struct folio *vma_alloc_folio(gfp_t gfp, int order, struct vm_area_struct *vma,
 		unsigned long addr, bool hugepage)
@@ -2194,7 +2222,7 @@ struct folio *vma_alloc_folio(gfp_t gfp, int order, struct vm_area_struct *vma,
 	if (pol->mode == MPOL_INTERLEAVE) { // 可以感知到node级别的分配
 		struct page *page;
 		unsigned nid;
-
+		//从nid分配内存
 		nid = interleave_nid(pol, vma, addr, PAGE_SHIFT + order);
 		mpol_cond_put(pol);
 		gfp |= __GFP_COMP;
@@ -2205,7 +2233,7 @@ struct folio *vma_alloc_folio(gfp_t gfp, int order, struct vm_area_struct *vma,
 		goto out;
 	}
 
-	if (pol->mode == MPOL_PREFERRED_MANY) {
+	if (pol->mode == MPOL_PREFERRED_MANY) { // 如果是prefer many
 		struct page *page;
 
 		node = policy_node(gfp, pol, node);
@@ -2218,7 +2246,7 @@ struct folio *vma_alloc_folio(gfp_t gfp, int order, struct vm_area_struct *vma,
 		goto out;
 	}
 
-	if (unlikely(IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) && hugepage)) {
+	if (unlikely(IS_ENABLED(CONFIG_TRANSPARENT_HUGEPAGE) && hugepage)) {// 巨页情况下
 		int hpage_node = node;
 
 		/*
@@ -2241,6 +2269,7 @@ struct folio *vma_alloc_folio(gfp_t gfp, int order, struct vm_area_struct *vma,
 			 * First, try to allocate THP only on local node, but
 			 * don't reclaim unnecessarily, just compact.
 			 */
+			 //也是调用folo_alloc
 			folio = __folio_alloc_node(gfp | __GFP_THISNODE |
 					__GFP_NORETRY, order, hpage_node);
 
@@ -2306,6 +2335,7 @@ struct page *alloc_pages(gfp_t gfp, unsigned order)
 
 	return page;
 }
+
 EXPORT_SYMBOL(alloc_pages);
 
 //
@@ -2918,7 +2948,9 @@ static inline void __init check_numabalancing_enable(void)
 }
 #endif /* CONFIG_NUMA_BALANCING */
 
-/* assumes fs == KERNEL_DS */
+/* assumes fs == KERNEL_DS
+初始化node的policy
+ */
 void __init numa_policy_init(void)
 {
 	nodemask_t interleave_nodes;

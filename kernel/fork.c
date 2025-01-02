@@ -488,6 +488,7 @@ struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 		return NULL;
 
 	vma_init(vma, mm);
+
 	if (!vma_lock_alloc(vma)) {
 		kmem_cache_free(vm_area_cachep, vma);
 		return NULL;
