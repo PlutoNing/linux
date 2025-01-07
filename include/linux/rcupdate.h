@@ -553,7 +553,7 @@ do {									      \
 
 /**
  * rcu_read_lock() - mark the beginning of an RCU read-side critical section
- *
+ * 标记一个RCU读侧临界区的开始
  * When synchronize_rcu() is invoked on one CPU while other CPUs
  * are within RCU read-side critical sections, then the
  * synchronize_rcu() is guaranteed to block until after all the other
@@ -561,7 +561,10 @@ do {									      \
  * on one CPU while other CPUs are within RCU read-side critical
  * sections, invocation of the corresponding RCU callback is deferred
  * until after the all the other CPUs exit their critical sections.
- *
+ * 当一个CPU上调用synchronize_rcu()时，而其他CPU在RCU读侧临界区内时，
+ * synchronize_rcu()保证会阻塞，直到其他CPU退出它们的临界区。
+ * 同样，如果一个CPU上调用call_rcu()时，而其他CPU在RCU读侧临界区内时，
+ * 调用相应的RCU回调会被推迟，直到所有其他CPU退出它们的临界区。
  * Note, however, that RCU callbacks are permitted to run concurrently
  * with new RCU read-side critical sections.  One way that this can happen
  * is via the following sequence of events: (1) CPU 0 enters an RCU
@@ -573,7 +576,12 @@ do {									      \
  * therefore might be referencing something that the corresponding RCU
  * callback would free up) has completed before the corresponding
  * RCU callback is invoked.
- *
+ * 注意, RCU回调允许与新的RCU读侧临界区并发运行。这种情况发生的一种方式是：
+ * (1) CPU 0进入RCU读侧临界区，(2) CPU 1调用call_rcu()注册一个RCU回调，
+ * (3) CPU 0退出RCU读侧临界区，(4) CPU 2进入RCU读侧临界区，(5)调用RCU回调。
+ * 这是合法的，因为RCU读侧临界区与call_rcu()并发运行(因此可能引用了
+ * RCU回调将释放的某些内容)在调用相应的RCU回调之前已经完成。
+ 
  * RCU read-side critical sections may be nested.  Any deferred actions
  * will be deferred until the outermost RCU read-side critical section
  * completes.

@@ -177,3 +177,4 @@ sphinx_*/
 
 arch/x86/modules.builtin
 arch/x86/modules.builtin
+compile_commands_v66.json

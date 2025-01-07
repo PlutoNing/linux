@@ -132,6 +132,7 @@ static inline int srcu_read_lock_held(const struct srcu_struct *ssp)
 
 /**
  * srcu_read_lock - register a new reader for an SRCU-protected structure.
+   注册一个新的读者到一个SRCU保护的结构中
  * @ssp: srcu_struct in which to register the new reader.
  *
  * Enter an SRCU read-side critical section.  Note that SRCU read-side
@@ -141,11 +142,16 @@ static inline int srcu_read_lock_held(const struct srcu_struct *ssp)
  * one way to indirectly wait on an SRCU grace period is to acquire
  * a mutex that is held elsewhere while calling synchronize_srcu() or
  * synchronize_srcu_expedited().
- *
+ * 作用是进入一个SRCU读端临界区。注意，SRCU读端临界区可能是嵌套的。但是，调用任何等待相同
+ srcu_struct的SRCU宽限期的东西是非法的，无论是直接还是间接的。请注意，间接等待SRCU宽限期
+ 的一种方法是在调用synchronize_srcu()或synchronize_srcu_expedited()时获取其他地方
+ 持有的互斥锁。
  * Note that srcu_read_lock() and the matching srcu_read_unlock() must
  * occur in the same context, for example, it is illegal to invoke
  * srcu_read_unlock() in an irq handler if the matching srcu_read_lock()
  * was invoked in process context.
+ * 注意，srcu_read_lock()和匹配的srcu_read_unlock()必须在相同的上下文中发生，例如，
+ 如果在进程上下文中调用srcu_read_lock()，则在中断处理程序中调用srcu_read_unlock()是非法的。
  */
 static inline int srcu_read_lock(struct srcu_struct *ssp) __acquires(ssp)
 {

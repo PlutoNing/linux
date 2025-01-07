@@ -107,6 +107,7 @@ static inline void set_numa_node(int node)
 #endif
 
 #ifndef set_cpu_numa_node
+// 设置cpu的numa_node
 static inline void set_cpu_numa_node(int cpu, int node)
 {
 	per_cpu(numa_node, cpu) = node;

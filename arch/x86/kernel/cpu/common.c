@@ -1807,6 +1807,8 @@ static void setup_getcpu(int cpu)
  * initialized (naturally) in the bootstrap process, such as the GDT
  * and IDT. We reload them nevertheless, this function acts as a
  * 'CPU state barrier', nothing should get across.
+ 初始化每个CPU的状态。一些数据已经在引导过程中初始化（自然），例如GDT和IDT。尽管如此，
+ 我们仍然重新加载它们，这个函数充当“CPU状态屏障”，不应该有任何东西穿过。
  */
 #ifdef CONFIG_X86_64
 

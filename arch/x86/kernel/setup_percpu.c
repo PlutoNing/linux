@@ -244,6 +244,7 @@ void __init setup_per_cpu_areas(void)
 		per_cpu(x86_cpu_to_logical_apicid, cpu) =
 			early_per_cpu_map(x86_cpu_to_logical_apicid, cpu);
 #endif
+
 #ifdef CONFIG_NUMA
 		per_cpu(x86_cpu_to_node_map, cpu) =
 			early_per_cpu_map(x86_cpu_to_node_map, cpu);
@@ -254,9 +255,14 @@ void __init setup_per_cpu_areas(void)
 		 * MEMORY_HOTPLUG is defined, before per_cpu(numa_node) is set
 		 * up later with c_init aka intel_init/amd_init.
 		 * So set them all (boot cpu and all APs).
+		 保证引导cpu的numa_node在引导cpu位于没有安装内存的节点上时是正确的。
+		 此外，当定义了MEMORY_HOTPLUG时，cpu_up()将在稍后使用c_init（即intel_init/amd_init）设置
+		 per_cpu(numa_node)之前，为AP调用cpu_to_node()。
+		 因此，设置所有这些（引导cpu和所有AP）。
 		 */
 		set_cpu_numa_node(cpu, early_cpu_to_node(cpu));
 #endif
+
 		/*
 		 * Up to this point, the boot CPU has been using .init.data
 		 * area.  Reload any changed state for the boot CPU.

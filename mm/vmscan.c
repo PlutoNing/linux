@@ -990,9 +990,9 @@ static pageout_t pageout(struct page *page, struct address_space *mapping,
 __remove_mapping()尝试分离page->mapping。
 2024年7月14日14:44:01
 2024年8月25日21:28:07
-todo
  * Same as remove_mapping, but if the page is removed from the mapping, it
  * gets returned with a refcount of 0.
+ * 与remove_mapping相同，但是如果页面从映射中删除，则它将以引用计数为0返回。
  */
 static int __remove_mapping(struct address_space *mapping, struct page *page,
 			    bool reclaimed)
@@ -1050,7 +1050,7 @@ static int __remove_mapping(struct address_space *mapping, struct page *page,
 		xa_unlock_irqrestore(&mapping->i_pages, flags);
 		/*  */
 		put_swap_page(page, swap);
-	} else {
+	} else { // 要从pagecache移除的是文件页
 		void (*freepage)(struct page *);
 		void *shadow = NULL;
 
@@ -1091,12 +1091,16 @@ cannot_free:
 }
 
 /*
+从mapping移出页面
 2024年7月14日18:12:25
 2024年07月29日11:12:57
  * Attempt to detach a locked page from its ->mapping.  If it is dirty or if
  * someone else has a ref on the page, abort and return 0.  If it was
  * successfully detached, return 1.  Assumes the caller has a single ref on
  * this page.
+ 尝试从mapping移出页面，如果页面是脏的或者有其他人引用，返回0，否则返回1。
+ 如果成功移出，返回1。
+ 假设调用者对该页面有一个引用。
  */
 int remove_mapping(struct address_space *mapping, struct page *page)
 {

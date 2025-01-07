@@ -14,24 +14,26 @@
 /* A global variable is a bit ugly, but it keeps the code simple */
 int sysctl_drop_caches;
 
+// drop_cache遍历每个fs调用这个来驱逐cache
 static void drop_pagecache_sb(struct super_block *sb, void *unused)
 {
 	struct inode *inode, *toput_inode = NULL;
 
 	spin_lock(&sb->s_inode_list_lock);
-	list_for_each_entry(inode, &sb->s_inodes, i_sb_list) {
+	list_for_each_entry(inode, &sb->s_inodes, i_sb_list) {// 遍历每个inode来回写
 		spin_lock(&inode->i_lock);
 		/*
 		 * We must skip inodes in unusual state. We may also skip
 		 * inodes without pages but we deliberately won't in case
 		 * we need to reschedule to avoid softlockups.
+		  跳过不正常状态的inode，也可以跳过没有页面的inode，但是我们故意不这样做，以防需要重新调度以避免软锁定。
 		 */
 		if ((inode->i_state & (I_FREEING|I_WILL_FREE|I_NEW)) ||
 		    (inode->i_mapping->nrpages == 0 && !need_resched())) {
 			spin_unlock(&inode->i_lock);
 			continue;
 		}
-		__iget(inode);
+		__iget(inode); // get一下ref
 		spin_unlock(&inode->i_lock);
 		spin_unlock(&sb->s_inode_list_lock);
 

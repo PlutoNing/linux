@@ -190,13 +190,15 @@ struct zone_padding {
 #endif
 
 #ifdef CONFIG_NUMA
+/* zone包含这些统计项 
+全局也有这些统计项*/
 enum numa_stat_item {
-	NUMA_HIT,		/* allocated in intended node */
-	NUMA_MISS,		/* allocated in non intended node */
-	NUMA_FOREIGN,		/* was intended here, hit elsewhere */
+	NUMA_HIT,		/* allocated in intended node. 成功在preferred zone分配 */
+	NUMA_MISS,		/* allocated in non intended node, 没能在preferred zone分配内存 */
+	NUMA_FOREIGN,		/* was intended here, hit elsewhere, 别人想在自己这里分配, 但是没能成功 */
 	NUMA_INTERLEAVE_HIT,	/* interleaver preferred this zone */
-	NUMA_LOCAL,		/* allocation from local node */
-	NUMA_OTHER,		/* allocation from other node */
+	NUMA_LOCAL,		/* allocation from local node, 成功在cpu对应的node分配内存 */
+	NUMA_OTHER,		/* allocation from other node, 没能在cpu对应的node分配内存 */
 	NR_VM_NUMA_STAT_ITEMS
 };
 #else

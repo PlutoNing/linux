@@ -4203,6 +4203,7 @@ static int mem_cgroup_move_charge_write(struct cgroup_subsys_state *css,
 #define LRU_ALL	     ((1 << NR_LRU_LISTS) - 1)
 /* 2024年7月13日15:40:27
 统计函数
+memcg在node上的lru页面数量
  */
 static unsigned long mem_cgroup_node_nr_lru_pages(struct mem_cgroup *memcg,
 					   int nid, unsigned int lru_mask)
@@ -4248,9 +4249,11 @@ static int memcg_numa_stat_show(struct seq_file *m, void *v)
 		{ "anon", LRU_ALL_ANON },
 		{ "unevictable", BIT(LRU_UNEVICTABLE) },
 	};
+
 	const struct numa_stat *stat;
 	int nid;
 	unsigned long nr;
+	// 获取对应的memcg
 	struct mem_cgroup *memcg = mem_cgroup_from_seq(m);
 
 	for (stat = stats; stat < stats + ARRAY_SIZE(stats); stat++) {

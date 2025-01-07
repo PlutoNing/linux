@@ -1120,7 +1120,7 @@ void __pagevec_lru_add(struct pagevec *pvec)
 EXPORT_SYMBOL(__pagevec_lru_add);
 
 /**
-查找pagecache放在pvec。
+查找pagecache一些页面放在pvec。
  * pagevec_lookup_entries - gang pagecache lookup
  * @pvec:	Where the resulting entries are placed
  * @mapping:	The address_space to search

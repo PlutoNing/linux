@@ -52,7 +52,9 @@ extern int early_cpu_to_node(int cpu);
 
 #else	/* !CONFIG_DEBUG_PER_CPU_MAPS */
 
-/* Same function but used if called before per_cpu areas are setup */
+/* Same function but used if called before per_cpu areas are setup
+启动时期寻找cpu对应的node ?
+ */
 static inline int early_cpu_to_node(int cpu)
 {
 	return early_per_cpu(x86_cpu_to_node_map, cpu);

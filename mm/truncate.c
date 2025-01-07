@@ -215,6 +215,7 @@ truncate_cleanup_page(struct address_space *mapping, struct page *page)
 }
 
 /*
+从pagecache移除页面
 2024年07月29日11:03:06
 page是没有映射的干净文件页。
  * This is for invalidate_mapping_pages().  That function can be called at
@@ -272,6 +273,7 @@ int generic_error_remove_page(struct address_space *mapping, struct page *page)
 EXPORT_SYMBOL(generic_error_remove_page);
 
 /*
+从页缓存移出页面
 2024年07月29日11:02:58
 page是没有映射的干净文件页。
 返回1表示成功。
@@ -598,17 +600,18 @@ EXPORT_SYMBOL(truncate_inode_pages_final);
 /**
 2024年07月29日10:59:17
  * invalidate_mapping_pages - Invalidate all the unlocked pages of one inode
+ 驱逐inode的所有页面
  * @mapping: the address_space which holds the pages to invalidate
  * @start: the offset 'from' which to invalidate
  * @end: the offset 'to' which to invalidate (inclusive)
  *
  * This function only removes the unlocked pages, if you want to
  * remove all the pages of one inode, you must call truncate_inode_pages.
- *
+ * 仅仅移除没有锁住的页面，如果你想移除inode的所有页面，你必须调用truncate_inode_pages
  * invalidate_mapping_pages() will not block on IO activity. It will not
  * invalidate pages which are dirty, locked, under writeback or mapped into
  * pagetables.
- *
+ * 不会阻塞IO活动。不会使脏页，锁住的页，正在回写的页，或者映射到页表的页失效。
  * Return: the number of the pages that were invalidated
  */
 unsigned long invalidate_mapping_pages(struct address_space *mapping,
@@ -625,7 +628,7 @@ unsigned long invalidate_mapping_pages(struct address_space *mapping,
 	while (index <= end && pagevec_lookup_entries(&pvec, mapping, index,
 			min(end - index, (pgoff_t)PAGEVEC_SIZE - 1) + 1,
 			indices)) {
-		for (i = 0; i < pagevec_count(&pvec); i++) {
+		for (i = 0; i < pagevec_count(&pvec); i++) {//处理这一批找到的page
 			struct page *page = pvec.pages[i];
 
 			/* We rely upon deletion not changing page->index */
@@ -633,7 +636,7 @@ unsigned long invalidate_mapping_pages(struct address_space *mapping,
 			if (index > end)
 				break;
 
-			if (xa_is_value(page)) {
+			if (xa_is_value(page)) { //
 				invalidate_exceptional_entry(mapping, index,
 							     page);
 				continue;

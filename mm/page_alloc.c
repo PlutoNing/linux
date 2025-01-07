@@ -3404,7 +3404,7 @@ int __isolate_free_page(struct page *page, unsigned int order)
 
 /*
 2024年8月25日01:23:30
-感觉主要是numa
+主要是numa, 统计numa的命中与否
  * Update NUMA hit/miss statistics
  *
  * Must be called with interrupts disabled.
@@ -3419,7 +3419,9 @@ static inline void zone_statistics(struct zone *preferred_zone, struct zone *z)
 		return;
 
 	if (zone_to_nid(z) != numa_node_id())
-		local_stat = NUMA_OTHER;
+		local_stat = NUMA_OTHER; //如果实际的zone不是本地的，那么就是NUMA_OTHER
+	//这个时候可否检测是不是在线cgroup? 是的话驱逐此node上面的离线内存.
+
 
 	if (zone_to_nid(z) == zone_to_nid(preferred_zone))
 		__inc_numa_state(z, NUMA_HIT);
@@ -3427,6 +3429,7 @@ static inline void zone_statistics(struct zone *preferred_zone, struct zone *z)
 		__inc_numa_state(z, NUMA_MISS);
 		__inc_numa_state(preferred_zone, NUMA_FOREIGN);
 	}
+
 	__inc_numa_state(z, local_stat);
 #endif
 }
@@ -3483,6 +3486,7 @@ static struct page *rmqueue_pcplist(struct zone *preferred_zone,
 	if (page) {
 		/* 申请成功，更新统计信息 */
 		__count_zid_vm_events(PGALLOC, page_zonenum(page), 1);
+		// 统计numa命中信息
 		zone_statistics(preferred_zone, zone);
 	}
 	local_irq_restore(flags);
