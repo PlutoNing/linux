@@ -365,7 +365,8 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 	return err;
 }
 /* 2024年8月11日16:24:34
-遍历vma page，执行ops定义的回调 */
+遍历vma page，执行ops定义的回调
+对每个page. */
 int walk_page_vma(struct vm_area_struct *vma, const struct mm_walk_ops *ops,
 		void *private)
 {

@@ -5,6 +5,7 @@
 /*
  * Determines how hard direct compaction should try to succeed.
  * Lower value means higher priority, analogically to reclaim priority.
+ 表示内存规整的优先级,紧急程度,力度子类的
  */
 enum compact_priority {
 	COMPACT_PRIO_SYNC_FULL,
@@ -17,7 +18,9 @@ enum compact_priority {
 };
 
 /* Return values for compact_zone() and try_to_compact_pages() */
-/* When adding new states, please adjust include/trace/events/compaction.h */
+/* When adding new states, please adjust include/trace/events/compaction.h
+表示内存规整的返回值
+ */
 enum compact_result {
 	/* For more detailed tracepoint output - internal to compaction */
 	COMPACT_NOT_SUITABLE_ZONE,

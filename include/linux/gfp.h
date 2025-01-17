@@ -468,14 +468,17 @@ static inline enum zone_type gfp_zone(gfp_t flags)
  * it. The alloc_page*() variants return 'struct page *' and as such
  * can allocate highmem pages, the *get*page*() variants return
  * virtual kernel addresses to the allocated page(s).
+ 翻译:只有一个页面分配器函数，它有两个主要的命名空间。alloc_page*()变体返回'struct page *'，
+ 因此可以分配高端页面，*get*page*()变体返回分配的页面的虚拟内核地址。
  */
 
 static inline int gfp_zonelist(gfp_t flags)
 {
 #ifdef CONFIG_NUMA
 	if (unlikely(flags & __GFP_THISNODE))
-		return ZONELIST_NOFALLBACK;
+		return ZONELIST_NOFALLBACK; //不能使用fallback
 #endif
+
 	return ZONELIST_FALLBACK;
 }
 

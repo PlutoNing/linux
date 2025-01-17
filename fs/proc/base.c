@@ -3434,6 +3434,17 @@ static const struct pid_entry tid_base_stuff[] = {
 	REG("children",  S_IRUGO, proc_tid_children_operations),
 #endif
 #ifdef CONFIG_NUMA
+/* (base) [root@VM-194-80-tencentos 11287]# cat numa_maps 
+55fd4aa00000 default file=/usr/bin/bash mapped=240 mapmax=14 N0=230 N1=10 kernelpagesize_kB=4
+55fd4ad0a000 default file=/usr/bin/bash anon=4 dirty=4 active=0 N1=4 kernelpagesize_kB=4
+55fd4ad0e000 default file=/usr/bin/bash anon=9 dirty=9 active=0 N1=9 kernelpagesize_kB=4
+55fd4ad17000 default anon=13 dirty=13 active=0 N1=13 kernelpagesize_kB=4
+55fd4ca26000 default heap anon=666 dirty=666 active=0 N1=666 kernelpagesize_kB=4
+7f3103768000 default file=/usr/lib64/libnss_files-2.28.so mapped=11 mapmax=41 N0=11 kernelpagesize_kB=4
+7f3103773000 default file=/usr/lib64/libnss_files-2.28.so
+7f3103973000 default file=/usr/lib64/libnss_files-2.28.so anon=1 dirty=1 active=0 N1=1 kernelpagesize_kB=4
+7f3103974000 default file=/usr/lib64/libnss_files-2.28.so anon=1 dirty=1 active=0 N1=1 kernelpagesize_kB=4
+7f3103975000 default */
 	REG("numa_maps", S_IRUGO, proc_pid_numa_maps_operations),
 #endif
 	REG("mem",       S_IRUSR|S_IWUSR, proc_mem_operations),

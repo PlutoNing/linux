@@ -1160,7 +1160,7 @@ struct task_struct {
 #endif
 #ifdef CONFIG_NUMA
 	/* Protected by alloc_lock:
-	内存分配策略？
+	内存分配pol
 	 */
 	struct mempolicy		*mempolicy;
 	short				il_prev;

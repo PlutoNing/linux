@@ -3495,6 +3495,7 @@ static struct page *rmqueue_pcplist(struct zone *preferred_zone,
 
 /*
 2024年6月26日22:44:53
+好像是buddy的最顶层接口
 从buddy分配
 如果没有合适order，会从更大order切分
  * Allocate a page from the given zone. Use pcplists for order-0 allocations.
@@ -3835,6 +3836,8 @@ alloc_flags_nofragment(struct zone *zone, gfp_t gfp_mask)
 /*
 2024年6月26日22:32:22
 是内存分配的fastpath,
+遍历全部的zone,找到可用的之后, rmqueue来找内存
+调用入口有很多, 一开始就会调用,不行的话,会进行回收,规整,可能oom什么的再来调用一次
  * get_page_from_freelist goes through the zonelist trying to allocate
  * a page.
  */
@@ -4187,7 +4190,7 @@ __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 
 	psi_memstall_enter(&pflags);
 	noreclaim_flag = memalloc_noreclaim_save();
-
+	//规整页面
 	*compact_result = try_to_compact_pages(gfp_mask, order, alloc_flags, ac,
 								prio, &page);
 
@@ -4197,6 +4200,7 @@ __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 	/*
 	 * At least in one zone compaction wasn't deferred or skipped, so let's
 	 * count a compaction stall
+	   至少在一个zone上没有推迟或跳过压缩，因此让我们计算一次内存规整的stall
 	 */
 	count_vm_event(COMPACTSTALL);
 
@@ -4778,15 +4782,22 @@ retry_cpuset:
 	 * movable high-order allocations, do that as well, as compaction will
 	 * try prevent permanent fragmentation by migrating from blocks of the
 	 * same migratetype.
+	   对于昂贵的分配，首先尝试直接压缩，因为我们可能有足够的基本页面而不需要回收。
+	   对于不可移动的高阶分配，也是如此，因为压缩将尝试通过从相同的迁移类型块中迁移来防止永久碎片化。
+
 	 * Don't try this for allocations that are allowed to ignore
 	 * watermarks, as the ALLOC_NO_WATERMARKS attempt didn't yet happen.
+	 对于允许忽略水印的分配，不要尝试这样做，因为ALLOC_NO_WATERMARKS尝试尚未发生。
+
 	 */
 	if (can_direct_reclaim &&
 			(costly_order ||
 			   (order > 0 && ac->migratetype != MIGRATE_MOVABLE))
-			&& !gfp_pfmemalloc_allowed(gfp_mask)) {
+			&& !gfp_pfmemalloc_allowed(gfp_mask)) {/* 虽然可以直接回收,
+			但是先尝试内存规整 */
+
 				/* 如果分配失败，满足“允许直接回收内存（can_direct_reclaim）” 
-				或者 "不适用pfmemalloc的内存分配请求"等条件，将会进行一次内存的压缩并分配页面 */
+				或者 "不适用pfmemalloc的内存分配请求"等条件，将会进行一次内存的规整并分配页面 */
 		page = __alloc_pages_direct_compact(gfp_mask, order,
 						alloc_flags, ac,
 						INIT_COMPACT_PRIORITY,
@@ -4842,6 +4853,8 @@ retry_cpuset:
 			compact_priority = INIT_COMPACT_PRIORITY;
 		}
 	}
+
+
 /* 如果分配失败了，会进行retry操作。 */
 retry:
 	/* Ensure kswapd doesn't accidentally go to sleep as long as we loop
@@ -4872,7 +4885,8 @@ retry:
 		goto got_pg;
 
 	/* Caller is not willing to reclaim, we can't balance anything 
-	如果分配失败了，并且不能够直接内存回收， 就跳转到"no_page"*/
+	如果分配失败了，规整了之后还是不行,
+	并且不能够直接内存回收， 就跳转到"no_page" */
 	if (!can_direct_reclaim)
 		goto nopage;
 
@@ -5109,7 +5123,9 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order, int preferred_nid,
 	page = get_page_from_freelist(alloc_mask, order, alloc_flags, &ac);
 	if (likely(page))
 		goto out;
-
+	
+	/* 运行到这里,是第一次没分配到页面, 马上要通过回收,规整什么的先来一遍清理内存
+	再来调用一次这个函数 */
 	/*
 	 * Apply scoped allocation constraints. This is mainly about GFP_NOFS
 	 * resp. GFP_NOIO which has to be inherited for all allocation requests

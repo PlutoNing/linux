@@ -145,7 +145,7 @@ static void m_cache_vma(struct seq_file *m, struct vm_area_struct *vma)
 	if (m->count < m->size)	/* vma is copied successfully */
 		m->version = m_next_vma(m->private, vma) ? vma->vm_end : -1UL;
 }
-
+/* 给seqfile使用的, 遍历全部的vma作为参数交给其他函数比如show什么的 */
 static void *m_start(struct seq_file *m, loff_t *ppos)
 {
 	struct proc_maps_private *priv = m->private;
@@ -1648,6 +1648,7 @@ const struct file_operations proc_pagemap_operations = {
 
 #ifdef CONFIG_NUMA
 
+/* 记录vma之类的东西的numa信息 */
 struct numa_maps {
 	unsigned long pages;
 	unsigned long anon;
@@ -1664,6 +1665,7 @@ struct numa_maps_private {
 	struct numa_maps md;
 };
 
+/*  */
 static void gather_stats(struct page *page, struct numa_maps *md, int pte_dirty,
 			unsigned long nr_pages)
 {
@@ -1690,7 +1692,7 @@ static void gather_stats(struct page *page, struct numa_maps *md, int pte_dirty,
 
 	md->node[page_to_nid(page)] += nr_pages;
 }
-
+/* 判断打印numa信息的时候, 是否有必要打印这个page */
 static struct page *can_gather_numa_stats(pte_t pte, struct vm_area_struct *vma,
 		unsigned long addr)
 {
@@ -1739,7 +1741,7 @@ static struct page *can_gather_numa_stats_pmd(pmd_t pmd,
 	return page;
 }
 #endif
-
+/* 统计页表页的相关信息 */
 static int gather_pte_stats(pmd_t *pmd, unsigned long addr,
 		unsigned long end, struct mm_walk *walk)
 {
@@ -1766,13 +1768,15 @@ static int gather_pte_stats(pmd_t *pmd, unsigned long addr,
 		return 0;
 #endif
 	orig_pte = pte = pte_offset_map_lock(walk->mm, pmd, addr, &ptl);
-	do {
+	do {/* 遍历每一个页表项 */
 		struct page *page = can_gather_numa_stats(*pte, vma, addr);
 		if (!page)
 			continue;
+
 		gather_stats(page, md, pte_dirty(*pte), 1);
 
 	} while (pte++, addr += PAGE_SIZE, addr != end);
+
 	pte_unmap_unlock(orig_pte, ptl);
 	cond_resched();
 	return 0;
@@ -1804,14 +1808,32 @@ static int gather_hugetlb_stats(pte_t *pte, unsigned long hmask,
 	return 0;
 }
 #endif
-
+/* 
+打印vma的numa信息时
+walk page vma对每个page调用这个回调函数
+ */
 static const struct mm_walk_ops show_numa_ops = {
-	.hugetlb_entry = gather_hugetlb_stats,
-	.pmd_entry = gather_pte_stats,
+	.hugetlb_entry = gather_hugetlb_stats,/* todo */
+	.pmd_entry = gather_pte_stats, /* 遍历到页表页的时候,统计numa信息什么的 */
 };
 
 /*
  * Display pages allocated per node and memory policy via /proc.
+(base) [root@VM-194-80-tencentos 11287]# cat numa_maps 
+55fd4aa00000 default file=/usr/bin/bash mapped=240 mapmax=14 N0=230 N1=10 kernelpagesize_kB=4
+55fd4ad0a000 default file=/usr/bin/bash anon=4 dirty=4 active=0 N1=4 kernelpagesize_kB=4
+55fd4ad0e000 default file=/usr/bin/bash anon=9 dirty=9 active=0 N1=9 kernelpagesize_kB=4
+55fd4ad17000 default anon=13 dirty=13 active=0 N1=13 kernelpagesize_kB=4
+55fd4ca26000 default heap anon=666 dirty=666 active=0 N1=666 kernelpagesize_kB=4
+7f3103768000 default file=/usr/lib64/libnss_files-2.28.so mapped=11 mapmax=41 N0=11 kernelpagesize_kB=4
+7f3103773000 default file=/usr/lib64/libnss_files-2.28.so
+7f3103973000 default file=/usr/lib64/libnss_files-2.28.so anon=1 dirty=1 active=0 N1=1 kernelpagesize_kB=4
+7f3103974000 default file=/usr/lib64/libnss_files-2.28.so anon=1 dirty=1 active=0 N1=1 kernelpagesize_kB=4
+7f3103975000 default
+
+==================================================
+@v; v是当前要打印的vma
+
  */
 static int show_numa_map(struct seq_file *m, void *v)
 {
@@ -1832,16 +1854,17 @@ static int show_numa_map(struct seq_file *m, void *v)
 	memset(md, 0, sizeof(*md));
 
 	pol = __get_vma_policy(vma, vma->vm_start);
-	if (pol) {
+
+	if (pol) {// 如果找到了vma的pol,就打印?
 		mpol_to_str(buffer, sizeof(buffer), pol);
 		mpol_cond_put(pol);
-	} else {
+	} else { // 否则打印task的pol?
 		mpol_to_str(buffer, sizeof(buffer), proc_priv->task_mempolicy);
 	}
 
 	seq_printf(m, "%08lx %s", vma->vm_start, buffer);
 
-	if (file) {
+	if (file) { //如果是文件映射的vma
 		seq_puts(m, " file=");
 		seq_file_path(m, file, "\n\t= ");
 	} else if (vma->vm_start <= mm->brk && vma->vm_end >= mm->start_brk) {
@@ -1852,10 +1875,12 @@ static int show_numa_map(struct seq_file *m, void *v)
 
 	if (is_vm_hugetlb_page(vma))
 		seq_puts(m, " huge");
-
-	/* mmap_sem is held by m_start */
+	
+	/* 接下来打印这种mapped=11 mapmax=41 N0=11 kernelpagesize_kB=4格式类似的信息 */
+	/* mmap_sem is held by m_start
+	 */
 	walk_page_vma(vma, &show_numa_ops, md);
-
+	/* 看来是通过这个东西吧vma的信息存到md */
 	if (!md->pages)
 		goto out;
 
@@ -1891,19 +1916,44 @@ out:
 	return 0;
 }
 
+/*  */
 static const struct seq_operations proc_pid_numa_maps_op = {
 	.start  = m_start,
 	.next   = m_next,
 	.stop   = m_stop,
 	.show   = show_numa_map,
 };
-
+/* 
+(base) [root@VM-194-80-tencentos 11287]# cat numa_maps 
+55fd4aa00000 default file=/usr/bin/bash mapped=240 mapmax=14 N0=230 N1=10 kernelpagesize_kB=4
+55fd4ad0a000 default file=/usr/bin/bash anon=4 dirty=4 active=0 N1=4 kernelpagesize_kB=4
+55fd4ad0e000 default file=/usr/bin/bash anon=9 dirty=9 active=0 N1=9 kernelpagesize_kB=4
+55fd4ad17000 default anon=13 dirty=13 active=0 N1=13 kernelpagesize_kB=4
+55fd4ca26000 default heap anon=666 dirty=666 active=0 N1=666 kernelpagesize_kB=4
+7f3103768000 default file=/usr/lib64/libnss_files-2.28.so mapped=11 mapmax=41 N0=11 kernelpagesize_kB=4
+7f3103773000 default file=/usr/lib64/libnss_files-2.28.so
+7f3103973000 default file=/usr/lib64/libnss_files-2.28.so anon=1 dirty=1 active=0 N1=1 kernelpagesize_kB=4
+7f3103974000 default file=/usr/lib64/libnss_files-2.28.so anon=1 dirty=1 active=0 N1=1 kernelpagesize_kB=4
+7f3103975000 default
+ */
 static int pid_numa_maps_open(struct inode *inode, struct file *file)
 {
 	return proc_maps_open(inode, file, &proc_pid_numa_maps_op,
 				sizeof(struct numa_maps_private));
 }
-
+/* 
+(base) [root@VM-194-80-tencentos 11287]# cat numa_maps 
+55fd4aa00000 default file=/usr/bin/bash mapped=240 mapmax=14 N0=230 N1=10 kernelpagesize_kB=4
+55fd4ad0a000 default file=/usr/bin/bash anon=4 dirty=4 active=0 N1=4 kernelpagesize_kB=4
+55fd4ad0e000 default file=/usr/bin/bash anon=9 dirty=9 active=0 N1=9 kernelpagesize_kB=4
+55fd4ad17000 default anon=13 dirty=13 active=0 N1=13 kernelpagesize_kB=4
+55fd4ca26000 default heap anon=666 dirty=666 active=0 N1=666 kernelpagesize_kB=4
+7f3103768000 default file=/usr/lib64/libnss_files-2.28.so mapped=11 mapmax=41 N0=11 kernelpagesize_kB=4
+7f3103773000 default file=/usr/lib64/libnss_files-2.28.so
+7f3103973000 default file=/usr/lib64/libnss_files-2.28.so anon=1 dirty=1 active=0 N1=1 kernelpagesize_kB=4
+7f3103974000 default file=/usr/lib64/libnss_files-2.28.so anon=1 dirty=1 active=0 N1=1 kernelpagesize_kB=4
+7f3103975000 default
+ */
 const struct file_operations proc_pid_numa_maps_operations = {
 	.open		= pid_numa_maps_open,
 	.read		= seq_read,

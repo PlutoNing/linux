@@ -655,7 +655,8 @@ struct zone {
 #endif
 
 #if defined CONFIG_COMPACTION || defined CONFIG_CMA
-	/* Set to true when the PG_migrate_skip bits should be cleared */
+	/* Set to true when the PG_migrate_skip bits should be cleared
+	好像通过内存规整分配成功的话, 会设为false */
 	bool			compact_blockskip_flush;
 #endif
 

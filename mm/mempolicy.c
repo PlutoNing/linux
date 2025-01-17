@@ -172,7 +172,7 @@ static void mpol_relative_nodemask(nodemask_t *ret, const nodemask_t *orig,
 	nodes_fold(tmp, *orig, nodes_weight(*rel));
 	nodes_onto(*ret, tmp, *rel);
 }
-
+//给pol指定新的nodes
 static int mpol_new_interleave(struct mempolicy *pol, const nodemask_t *nodes)
 {
 	if (nodes_empty(*nodes))
@@ -1016,9 +1016,9 @@ page allocation callback for NUMA node migration */
 struct page *alloc_new_node_page(struct page *page, unsigned long node)
 {
 	if (PageHuge(page))/* 巨页 */
-		return alloc_huge_page_node(page_hstate(compound_head(page)),
-					node);
-	else if (PageTransHuge(page)) {
+		return alloc_huge_page_node(page_hstate(compound_head(page)),node);
+
+	else if (PageTransHuge(page)) {/*  */
 		struct page *thp;
 
 		thp = alloc_pages_node(node,
@@ -2966,6 +2966,20 @@ out:
 #endif /* CONFIG_TMPFS */
 
 /**
+格式化一个mempolicy结构以供打印
+(base) [root@VM-194-80-tencentos 11287]# cat numa_maps 
+55fd4aa00000 default file=/usr/bin/bash mapped=240 mapmax=14 N0=230 N1=10 kernelpagesize_kB=4
+55fd4ad0a000 default file=/usr/bin/bash anon=4 dirty=4 active=0 N1=4 kernelpagesize_kB=4
+55fd4ad0e000 default file=/usr/bin/bash anon=9 dirty=9 active=0 N1=9 kernelpagesize_kB=4
+55fd4ad17000 default anon=13 dirty=13 active=0 N1=13 kernelpagesize_kB=4
+55fd4ca26000 default heap anon=666 dirty=666 active=0 N1=666 kernelpagesize_kB=4
+7f3103768000 default file=/usr/lib64/libnss_files-2.28.so mapped=11 mapmax=41 N0=11 kernelpagesize_kB=4
+7f3103773000 default file=/usr/lib64/libnss_files-2.28.so
+7f3103973000 default file=/usr/lib64/libnss_files-2.28.so anon=1 dirty=1 active=0 N1=1 kernelpagesize_kB=4
+7f3103974000 default file=/usr/lib64/libnss_files-2.28.so anon=1 dirty=1 active=0 N1=1 kernelpagesize_kB=4
+7f3103975000 default
+
+
  * mpol_to_str - format a mempolicy structure for printing
  * @buffer:  to contain formatted mempolicy string
  * @maxlen:  length of @buffer
@@ -3000,12 +3014,14 @@ void mpol_to_str(char *buffer, int maxlen, struct mempolicy *pol)
 	case MPOL_INTERLEAVE:
 		nodes = pol->v.nodes;
 		break;
+
 	default:
 		WARN_ON_ONCE(1);
 		snprintf(p, maxlen, "unknown");
 		return;
 	}
 
+	// 打印模式的名称
 	p += snprintf(p, maxlen, "%s", policy_modes[mode]);
 
 	if (flags & MPOL_MODE_FLAGS) {

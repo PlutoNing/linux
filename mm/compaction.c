@@ -2525,10 +2525,12 @@ enum compact_result try_to_compact_pages(gfp_t gfp_mask, unsigned int order,
 		enum compact_result status;
 
 		if (prio > MIN_COMPACT_PRIORITY
-					&& compaction_deferred(zone, order)) {/* 推迟这个zone */
+					&& compaction_deferred(zone, order)) {/* 如果还不是很紧急, 并且这个zone可以跳过,
+					推迟这个zone */
 			rc = max_t(enum compact_result, COMPACT_DEFERRED, rc);
 			continue;
 		}
+
 		/* 进行规整 */
 		status = compact_zone_order(zone, order, gfp_mask, prio,
 				alloc_flags, ac_classzone_idx(ac), capture);
