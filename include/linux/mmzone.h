@@ -94,10 +94,12 @@ static inline bool is_migrate_movable(int mt)
 extern int page_group_by_mobility_disabled;
 /* 2 - 0 +1 =3 */
 #define NR_MIGRATETYPE_BITS (PB_migrate_end - PB_migrate + 1)
-/* 1<<3  -  1 = 8-1=7 */
+/* 
+提取出page type的掩码,三个1
+1<<3  -  1 = 8-1=7 */
 #define MIGRATETYPE_MASK ((1UL << NR_MIGRATETYPE_BITS) - 1)
 /* get_pfnblock_flags_mask(page, pfn,2, 0x111)
-获取迁移类型 
+获取page的迁移类型 
 */
 #define get_pageblock_migratetype(page)					\
 	get_pfnblock_flags_mask(page, page_to_pfn(page),		\
@@ -206,6 +208,7 @@ enum numa_stat_item {
 #endif
 /* 
 2024年6月26日22:34:37
+zone的一些vmstat项
  */
 enum zone_stat_item {
 	/* First 128 byte cacheline (assuming 64 bit words) */
@@ -225,8 +228,9 @@ enum zone_stat_item {
 #if IS_ENABLED(CONFIG_ZSMALLOC)
 	NR_ZSPAGES,		/* allocated in zsmalloc */
 #endif
-	NR_FREE_CMA_PAGES,
-	NR_VM_ZONE_STAT_ITEMS };
+	NR_FREE_CMA_PAGES, // 11
+	NR_VM_ZONE_STAT_ITEMS //12
+	 };
 /* 2024年06月21日16:08:22
  */
 enum node_stat_item {
@@ -409,12 +413,14 @@ struct per_cpu_pageset {
 	struct per_cpu_pages pcp;
 #ifdef CONFIG_NUMA
 	s8 expire;
+	/* 一样的东西, vmstat的pcp的diff, 会在某些时刻刷新到zone和全局 */
 	u16 vm_numa_stat_diff[NR_VM_NUMA_STAT_ITEMS];
 #endif
 #ifdef CONFIG_SMP
 	s8 stat_threshold;
 	
-	s8 vm_stat_diff[NR_VM_ZONE_STAT_ITEMS];/* 用处？ */
+	s8 vm_stat_diff[NR_VM_ZONE_STAT_ITEMS];/* 用处？ 保存的是vmstat的diff
+	会累加到zone的vm_stat和全局的global_diff */
 #endif
 };
 /* 2024年6月24日23:09:18

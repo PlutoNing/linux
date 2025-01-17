@@ -3294,12 +3294,15 @@ EXPORT_SYMBOL(cancel_delayed_work_sync);
 
 /**
  * schedule_on_each_cpu - execute a function synchronously on each online CPU
+ 在每个在线CPU上同步执行一个函数
  * @func: the function to call
  *
  * schedule_on_each_cpu() executes @func on each online CPU using the
  * system workqueue and blocks until all CPUs have completed.
  * schedule_on_each_cpu() is very slow.
- *
+ * 在每个在线CPU上使用系统工作队列执行@func并阻塞，直到所有CPU都完成。
+ * schedule_on_each_cpu()非常慢。
+
  * Return:
  * 0 on success, -errno on failure.
  */
@@ -3312,13 +3315,14 @@ int schedule_on_each_cpu(work_func_t func)
 	if (!works)
 		return -ENOMEM;
 
-	get_online_cpus();
+	get_online_cpus(); //先getcpu的引用
 
-	for_each_online_cpu(cpu) {
+	for_each_online_cpu(cpu) { //遍历每个在线cpu
+		//获取pcp 的worker在当前cpu的地址
 		struct work_struct *work = per_cpu_ptr(works, cpu);
 
 		INIT_WORK(work, func);
-		schedule_work_on(cpu, work);
+		schedule_work_on(cpu, work); //调度
 	}
 
 	for_each_online_cpu(cpu)

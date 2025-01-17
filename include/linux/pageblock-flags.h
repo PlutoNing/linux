@@ -21,7 +21,9 @@ enum pageblock_bits {
 			/* 
 			等于2
 			3 bits required for migrate types */
-	PB_migrate_skip,/* If set the block is skipped by compaction */
+	PB_migrate_skip,/* 
+	等于3
+	If set the block is skipped by compaction */
 
 	/*
 	 * Assume the bits will always align on a word. If this assumption

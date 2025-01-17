@@ -484,7 +484,8 @@ EXPORT_SYMBOL(__dec_node_page_state);
 /*
  * If we have cmpxchg_local support then we do not need to incur the overhead
  * that comes with local_irq_save/restore if we use this_cpu_cmpxchg.
- *
+ * 如果有原子操作的支持，那么我们就不需要local_irq_save/restore的开销
+ 
  * mod_state() modifies the zone counter state through atomic per cpu
  * operations.
  *
@@ -744,18 +745,24 @@ static int fold_diff(int *zone_diff, int *node_diff)
 
 /*
  * Update the zone counters for the current cpu.
- *
+ * 更新cpu的各种zone的统计信息
+ 
  * Note that refresh_cpu_vm_stats strives to only access
  * node local memory. The per cpu pagesets on remote zones are placed
  * in the memory local to the processor using that pageset. So the
  * loop over all zones will access a series of cachelines local to
  * the processor.
- *
+ * 注意，refresh_cpu_vm_stats努力只访问本地内存。远程区域上的每个cpu页面集都放置
+ 在使用该页面集的处理器的本地内存中。因此，对所有区域的循环将访问一系列本地处理器的高速缓存行。
+
  * The call to zone_page_state_add updates the cachelines with the
  * statistics in the remote zone struct as well as the global cachelines
  * with the global counters. These could cause remote node cache line
  * bouncing and will have to be only done when necessary.
- *
+ * 这个zone_page_state_add调用更新了远程区域结构中的统计信息的高速缓存行，
+ 以及全局高速缓存行中的全局计数器。这可能会导致远程节点高速缓存行反弹，
+ 并且只有在必要时才能执行。
+ 
  * The function returns the number of global counters updated.
  */
 static int refresh_cpu_vm_stats(bool do_pagesets)
@@ -763,6 +770,7 @@ static int refresh_cpu_vm_stats(bool do_pagesets)
 	struct pglist_data *pgdat;
 	struct zone *zone;
 	int i;
+	//保存的是diff
 	int global_zone_diff[NR_VM_ZONE_STAT_ITEMS] = { 0, };
 #ifdef CONFIG_NUMA
 	int global_numa_diff[NR_VM_NUMA_STAT_ITEMS] = { 0, };
@@ -770,21 +778,23 @@ static int refresh_cpu_vm_stats(bool do_pagesets)
 	int global_node_diff[NR_VM_NODE_STAT_ITEMS] = { 0, };
 	int changes = 0;
 
-	for_each_populated_zone(zone) {
+	for_each_populated_zone(zone) {// 遍历所有的zone
+	//先获取pageset
 		struct per_cpu_pageset __percpu *p = zone->pageset;
 
 		for (i = 0; i < NR_VM_ZONE_STAT_ITEMS; i++) {
 			int v;
 
 			v = this_cpu_xchg(p->vm_stat_diff[i], 0);
-			if (v) {
-
+			if (v) { //
 				atomic_long_add(v, &zone->vm_stat[i]);
 				global_zone_diff[i] += v;
+
 #ifdef CONFIG_NUMA
 				/* 3 seconds idle till flush */
 				__this_cpu_write(p->expire, 3);
 #endif
+
 			}
 		}
 #ifdef CONFIG_NUMA
@@ -800,7 +810,7 @@ static int refresh_cpu_vm_stats(bool do_pagesets)
 			}
 		}
 
-		if (do_pagesets) {
+		if (do_pagesets) {// 
 			cond_resched();
 			/*
 			 * Deal with draining the remote pageset of this
@@ -832,7 +842,7 @@ static int refresh_cpu_vm_stats(bool do_pagesets)
 #endif
 	}
 
-	for_each_online_pgdat(pgdat) {
+	for_each_online_pgdat(pgdat) { // 处理每个node
 		struct per_cpu_nodestat __percpu *p = pgdat->per_cpu_nodestats;
 
 		for (i = 0; i < NR_VM_NODE_STAT_ITEMS; i++) {
@@ -859,6 +869,8 @@ static int refresh_cpu_vm_stats(bool do_pagesets)
  * Fold the data for an offline cpu into the global array.
  * There cannot be any access by the offline cpu and therefore
  * synchronization is simplified.
+   把下线的cpu的数据合并到全局数组中
+
  */
 void cpu_vm_stats_fold(int cpu)
 {
@@ -1010,7 +1022,8 @@ unsigned long sum_zone_numa_state(int node,
 
 /*
 2024年06月26日11:29:17
-返回node中vm stat数组某个状态的计数值
+返回node中vm stat数组某个状态的计数值.
+挺常用的.算是获取node信息的常用方法吧
  * Determine the per node value of a stat item.
  */
 unsigned long node_page_state(struct pglist_data *pgdat,
@@ -1040,6 +1053,9 @@ struct contig_page_info {
  * how many suitable free blocks there *might* be if MOVABLE pages were
  * migrated. Calculating that is possible, but expensive and can be
  * figured out from userspace
+ 计算zone中的空闲页数，有多少连续的页是空闲的，有多少是足够大的以满足目标大小的分配。
+ 注意，此函数不会尝试估计如果可移动页面迁移了，可能有多少合适的空闲块。计算这个是可能的，
+ 但是昂贵的，并且可以从用户空间中找到.
  */
 static void fill_contig_page_info(struct zone *zone,
 				unsigned int suitable_order,
@@ -1321,6 +1337,7 @@ const char * const vmstat_text[] = {
 
 #if (defined(CONFIG_DEBUG_FS) && defined(CONFIG_COMPACTION)) || \
      defined(CONFIG_PROC_FS)
+/* 遍历系统全部的node, pos是nid */
 static void *frag_start(struct seq_file *m, loff_t *pos)
 {
 	pg_data_t *pgdat;
@@ -1348,6 +1365,7 @@ static void frag_stop(struct seq_file *m, void *arg)
 
 /*
  * Walk zones in a node and print using a callback.
+ 遍历内存的zone,调用回调函数
  * If @assert_populated is true, only use callback for zones that are populated.
  */
 static void walk_zones_in_node(struct seq_file *m, pg_data_t *pgdat,
@@ -1372,6 +1390,7 @@ static void walk_zones_in_node(struct seq_file *m, pg_data_t *pgdat,
 #endif
 
 #ifdef CONFIG_PROC_FS
+/* /proc/buddyinfo的回调 */
 static void frag_show_print(struct seq_file *m, pg_data_t *pgdat,
 						struct zone *zone)
 {
@@ -1385,6 +1404,7 @@ static void frag_show_print(struct seq_file *m, pg_data_t *pgdat,
 
 /*
  * This walks the free areas for each zone.
+ /proc/buddyinfo的show函数
  */
 static int frag_show(struct seq_file *m, void *arg)
 {
@@ -1392,18 +1412,18 @@ static int frag_show(struct seq_file *m, void *arg)
 	walk_zones_in_node(m, pgdat, true, false, frag_show_print);
 	return 0;
 }
-
+/* 打印每个类型的每个order的 */
 static void pagetypeinfo_showfree_print(struct seq_file *m,
 					pg_data_t *pgdat, struct zone *zone)
 {
 	int order, mtype;
 
-	for (mtype = 0; mtype < MIGRATE_TYPES; mtype++) {
+	for (mtype = 0; mtype < MIGRATE_TYPES; mtype++) { //遍历type
 		seq_printf(m, "Node %4d, zone %8s, type %12s ",
 					pgdat->node_id,
 					zone->name,
 					migratetype_names[mtype]);
-		for (order = 0; order < MAX_ORDER; ++order) {
+		for (order = 0; order < MAX_ORDER; ++order) { // 遍历order
 			unsigned long freecount = 0;
 			struct free_area *area;
 			struct list_head *curr;
@@ -1435,7 +1455,8 @@ static void pagetypeinfo_showfree_print(struct seq_file *m,
 	}
 }
 
-/* Print out the free pages at each order for each migatetype */
+/* Print out the free pages at each order for each migatetype 
+打印每个类型的每个order的空闲页面*/
 static int pagetypeinfo_showfree(struct seq_file *m, void *arg)
 {
 	int order;
@@ -1452,6 +1473,8 @@ static int pagetypeinfo_showfree(struct seq_file *m, void *arg)
 	return 0;
 }
 
+
+// 打印type的pageblock数量
 static void pagetypeinfo_showblockcount_print(struct seq_file *m,
 					pg_data_t *pgdat, struct zone *zone)
 {
@@ -1461,7 +1484,7 @@ static void pagetypeinfo_showblockcount_print(struct seq_file *m,
 	unsigned long end_pfn = zone_end_pfn(zone);
 	unsigned long count[MIGRATE_TYPES] = { 0, };
 
-	for (pfn = start_pfn; pfn < end_pfn; pfn += pageblock_nr_pages) {
+	for (pfn = start_pfn; pfn < end_pfn; pfn += pageblock_nr_pages) {/* 遍历zone的pfn范围 */
 		struct page *page;
 
 		page = pfn_to_online_page(pfn);
@@ -1488,7 +1511,8 @@ static void pagetypeinfo_showblockcount_print(struct seq_file *m,
 	seq_putc(m, '\n');
 }
 
-/* Print out the number of pageblocks for each migratetype */
+/* Print out the number of pageblocks for each migratetype
+打印每个类型的pageblock数量 */
 static int pagetypeinfo_showblockcount(struct seq_file *m, void *arg)
 {
 	int mtype;
@@ -1498,6 +1522,7 @@ static int pagetypeinfo_showblockcount(struct seq_file *m, void *arg)
 	for (mtype = 0; mtype < MIGRATE_TYPES; mtype++)
 		seq_printf(m, "%12s ", migratetype_names[mtype]);
 	seq_putc(m, '\n');
+	// 遍历迭代
 	walk_zones_in_node(m, pgdat, true, false,
 		pagetypeinfo_showblockcount_print);
 
@@ -1531,6 +1556,45 @@ static void pagetypeinfo_showmixedcount(struct seq_file *m, pg_data_t *pgdat)
 }
 
 /*
+(base) [root@VM-194-80-tencentos extfrag]# cat /proc/pagetypeinfo 
+Page block order: 9      # 一个page block有512个页
+Pages per block:  512
+
+Free pages count per migrate type at order       0      1      2      3      4      5      6      7      8      9     10 
+Node    0, zone      DMA, type    Unmovable      0      0      0      0      0      0      0      0      1      0      0 
+Node    0, zone      DMA, type      Movable      0      0      0      0      0      0      0      0      0      1      3 
+Node    0, zone      DMA, type  Reclaimable      0      0      0      0      0      0      0      0      0      0      0 
+Node    0, zone      DMA, type   HighAtomic      0      0      0      0      0      0      0      0      0      0      0 
+Node    0, zone      DMA, type      Isolate      0      0      0      0      0      0      0      0      0      0      0 
+Node    0, zone    DMA32, type    Unmovable      1      0      0      0      0      0      1      1      1      1      0 
+Node    0, zone    DMA32, type      Movable      4      7      6      8      8      6      7      8      5      3    668 
+Node    0, zone    DMA32, type  Reclaimable      0      0      0      0      0      0      0      0      0      0      0 
+Node    0, zone    DMA32, type   HighAtomic      0      0      0      0      0      0      0      0      0      0      0 
+Node    0, zone    DMA32, type      Isolate      0      0      0      0      0      0      0      0      0      0      0 
+Node    0, zone   Normal, type    Unmovable   2175   4990   1981    620    163     29      2      1      0      0      0 
+Node    0, zone   Normal, type      Movable  16586   9925   1559    637    540   4143   1577    495    182     57   3389 
+Node    0, zone   Normal, type  Reclaimable    316     16     25      6      1      3      1      1      1      1      0 
+Node    0, zone   Normal, type   HighAtomic      0      0      0      0      0      0      0      0      0      0      0 
+Node    0, zone   Normal, type      Isolate      0      0      0      0      0      0      0      0      0      0      0 
+
+Number of blocks type     Unmovable      Movable  Reclaimable   HighAtomic      Isolate 
+Node 0, zone      DMA            1            7            0            0            0 
+Node 0, zone    DMA32            2         1526            0            0            0 
+Node 0, zone   Normal          316        14130          402            0            0 
+-------------上面是一个node的输出
+Page block order: 9
+Pages per block:  512
+
+Free pages count per migrate type at order       0      1      2      3      4      5      6      7      8      9     10 
+Node    1, zone   Normal, type    Unmovable    444    978    493    150     71     84     26      9      1      1      0 
+Node    1, zone   Normal, type      Movable      1    297   1094    294    141     65     24     22      7      3   3343 
+Node    1, zone   Normal, type  Reclaimable      5     73      8     10      2      0      1      0      1      1      0 
+Node    1, zone   Normal, type   HighAtomic      0      0      0      0      0      0      0      0      0      0      0 
+Node    1, zone   Normal, type      Isolate      0      0      0      0      0      0      0      0      0      0      0 
+
+Number of blocks type     Unmovable      Movable  Reclaimable   HighAtomic      Isolate 
+Node 1, zone   Normal          308        15622          454            0            0 
+(base) [root@VM-194-80-tencentos extfrag]# 
  * This prints out statistics in relation to grouping pages by mobility.
  * It is expensive to collect so do not constantly read the file.
  */
@@ -1551,14 +1615,14 @@ static int pagetypeinfo_show(struct seq_file *m, void *arg)
 
 	return 0;
 }
-
+/* /proc/buddyinfo的ops */
 static const struct seq_operations fragmentation_op = {
 	.start	= frag_start,
 	.next	= frag_next,
 	.stop	= frag_stop,
 	.show	= frag_show,
 };
-
+/* /proc/pagetypeinfo的回调 */
 static const struct seq_operations pagetypeinfo_op = {
 	.start	= frag_start,
 	.next	= frag_next,
@@ -1579,7 +1643,7 @@ static bool is_zone_first_populated(pg_data_t *pgdat, struct zone *zone)
 
 	return false;
 }
-
+/* 打印zoneinfo */
 static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 							struct zone *zone)
 {
@@ -1666,6 +1730,9 @@ static void zoneinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
  * of whether they are populated or not: lowmem_reserve_ratio operates on the
  * set of all zones and userspace would not be aware of such zones if they are
  * suppressed here (zoneinfo displays the effect of lowmem_reserve_ratio).
+ 输出关于@pgdat中的zones的信息。所有zones都会被打印，无论它们是否被填充：lowmem_reserve_ratio作用于所有zones的集合，
+ 如果这里被抑制了，用户空间将不会意识到这样的zones（zoneinfo显示了lowmem_reserve_ratio的效果）。
+
  */
 static int zoneinfo_show(struct seq_file *m, void *arg)
 {
@@ -1673,7 +1740,7 @@ static int zoneinfo_show(struct seq_file *m, void *arg)
 	walk_zones_in_node(m, pgdat, false, false, zoneinfo_show_print);
 	return 0;
 }
-
+/* /proc/zoneinfo的ops */
 static const struct seq_operations zoneinfo_op = {
 	.start	= frag_start, /* iterate over all zones. The same as in
 			       * fragmentation. */
@@ -1687,7 +1754,7 @@ enum writeback_stat_item {
 	NR_DIRTY_BG_THRESHOLD,
 	NR_VM_WRITEBACK_STAT_ITEMS,
 };
-
+/* vmstat的迭代器.迭代的pos是全局的vmstat的项 */
 static void *vmstat_start(struct seq_file *m, loff_t *pos)
 {
 	unsigned long *v;
@@ -1695,6 +1762,7 @@ static void *vmstat_start(struct seq_file *m, loff_t *pos)
 
 	if (*pos >= ARRAY_SIZE(vmstat_text))
 		return NULL;
+
 	stat_items_size = NR_VM_ZONE_STAT_ITEMS * sizeof(unsigned long) +
 			  NR_VM_NUMA_STAT_ITEMS * sizeof(unsigned long) +
 			  NR_VM_NODE_STAT_ITEMS * sizeof(unsigned long) +
@@ -1706,12 +1774,19 @@ static void *vmstat_start(struct seq_file *m, loff_t *pos)
 
 	BUILD_BUG_ON(stat_items_size !=
 		     ARRAY_SIZE(vmstat_text) * sizeof(unsigned long));
+	// 分配内存,看来vmsat有点重呀
 	v = kmalloc(stat_items_size, GFP_KERNEL);
 	m->private = v;
 	if (!v)
 		return ERR_PTR(-ENOMEM);
+	
+	// 获取zone相关的统计项
+	/* 
+	
+	 */
 	for (i = 0; i < NR_VM_ZONE_STAT_ITEMS; i++)
 		v[i] = global_zone_page_state(i);
+
 	v += NR_VM_ZONE_STAT_ITEMS;
 
 #ifdef CONFIG_NUMA
@@ -1760,7 +1835,7 @@ static void vmstat_stop(struct seq_file *m, void *arg)
 	kfree(m->private);
 	m->private = NULL;
 }
-
+/* vmstat的ops */
 static const struct seq_operations vmstat_op = {
 	.start	= vmstat_start,
 	.next	= vmstat_next,
@@ -1774,11 +1849,12 @@ static DEFINE_PER_CPU(struct delayed_work, vmstat_work);
 int sysctl_stat_interval __read_mostly = HZ;
 
 #ifdef CONFIG_PROC_FS
+// 刷新cpu的vmstat,这是一个在cpu上面执行的一部函数
 static void refresh_vm_stats(struct work_struct *work)
 {
 	refresh_cpu_vm_stats(true);
 }
-
+/* 控制vmstat的刷新频率 */
 int vmstat_refresh(struct ctl_table *table, int write,
 		   void __user *buffer, size_t *lenp, loff_t *ppos)
 {
@@ -1793,15 +1869,22 @@ int vmstat_refresh(struct ctl_table *table, int write,
 	 * pages, immediately after running a test.  /proc/sys/vm/stat_refresh,
 	 * which can equally be echo'ed to or cat'ted from (by root),
 	 * can be used to update the stats just before reading them.
-	 *
+	 * 通常的更新，每隔sysctl_stat_interval，可能比预期晚：在per_cpu桶中留下了大量的数据。
+	 * 当在运行测试后立即检查大量的HUGE页面时，这尤其令人困惑。
+	 * /proc/sys/vm/stat_refresh，可以通过echo或cat（由root）来更新统计数据，可以在读取之前更新统计数据。
+	 
 	 * Oh, and since global_zone_page_state() etc. are so careful to hide
 	 * transiently negative values, report an error here if any of
 	 * the stats is negative, so we know to go looking for imbalance.
+	 * 由于global_zone_page_state()等非常小心地隐藏了短暂的负值，所以如果任何统计数据为负数，
+	 * 则此报告错误，以便我们知道去寻找不平衡。
 	 */
 	err = schedule_on_each_cpu(refresh_vm_stats);
+
 	if (err)
 		return err;
-	for (i = 0; i < NR_VM_ZONE_STAT_ITEMS; i++) {
+
+	for (i = 0; i < NR_VM_ZONE_STAT_ITEMS; i++) {//检查每一个统计项,是否负值
 		val = atomic_long_read(&vm_zone_stat[i]);
 		if (val < 0) {
 			pr_warn("%s: %s %ld\n",
@@ -1809,6 +1892,7 @@ int vmstat_refresh(struct ctl_table *table, int write,
 			err = -EINVAL;
 		}
 	}
+
 #ifdef CONFIG_NUMA
 	for (i = 0; i < NR_VM_NUMA_STAT_ITEMS; i++) {
 		val = atomic_long_read(&vm_numa_stat[i]);
@@ -1820,12 +1904,13 @@ int vmstat_refresh(struct ctl_table *table, int write,
 	}
 #endif
 	if (err)
-		return err;
+		return err; //表示有负值等异常情况出现
 	if (write)
 		*ppos += *lenp;
 	else
 		*lenp = 0;
 	return 0;
+
 }
 #endif /* CONFIG_PROC_FS */
 
@@ -1909,6 +1994,7 @@ void quiet_vmstat(void)
  * differentials of processors that have their worker
  * threads for vm statistics updates disabled because of
  * inactivity.
+   这个worker是用来检查那些因为不活动而被禁用的处理器的vm统计更新的worker线
  */
 static void vmstat_shepherd(struct work_struct *w);
 
@@ -1943,7 +2029,7 @@ static void __init start_shepherd_timer(void)
 	schedule_delayed_work(&shepherd,
 		round_jiffies_relative(sysctl_stat_interval));
 }
-
+// 初始化cpu节点状态
 static void __init init_cpu_node_state(void)
 {
 	int node;
@@ -1987,10 +2073,13 @@ static int vmstat_cpu_dead(unsigned int cpu)
 /* drain pcp链表的异步队列 */
 struct workqueue_struct *mm_percpu_wq;
 
+/*  */
+
 void __init init_mm_internals(void)
 {
 	int ret __maybe_unused;
 
+	//好像是排空ppc的wq
 	mm_percpu_wq = alloc_workqueue("mm_percpu_wq", WQ_MEM_RECLAIM, 0);
 
 #ifdef CONFIG_SMP
@@ -2011,8 +2100,11 @@ void __init init_mm_internals(void)
 
 	start_shepherd_timer();
 #endif
+
 #ifdef CONFIG_PROC_FS
+	/* 就是遍历buddy的链表,打印nr_free, 有现成的结构体 */
 	proc_create_seq("buddyinfo", 0444, NULL, &fragmentation_op);
+	/*  */
 	proc_create_seq("pagetypeinfo", 0400, NULL, &pagetypeinfo_op);
 	proc_create_seq("vmstat", 0444, NULL, &vmstat_op);
 	proc_create_seq("zoneinfo", 0444, NULL, &zoneinfo_op);
@@ -2042,7 +2134,9 @@ static int unusable_free_index(unsigned int order,
 	return div_u64((info->free_pages - (info->free_blocks_suitable << order)) * 1000ULL, info->free_pages);
 
 }
-
+/* 
+打印不可用的空闲空间索引
+ */
 static void unusable_show_print(struct seq_file *m,
 					pg_data_t *pgdat, struct zone *zone)
 {
@@ -2064,12 +2158,14 @@ static void unusable_show_print(struct seq_file *m,
 
 /*
  * Display unusable free space index
- *
+ * 展示不可用的空闲空间索引
  * The unusable free space index measures how much of the available free
  * memory cannot be used to satisfy an allocation of a given size and is a
  * value between 0 and 1. The higher the value, the more of free memory is
  * unusable and by implication, the worse the external fragmentation is. This
  * can be expressed as a percentage by multiplying by 100.
+  这个不可用的空闲空间指数测量了有多少可用的空闲内存不能用来满足给定大小的分配，它是一个介于0和1之间的值。
+  值越高，可用内存越多是不可用的，间接地，外部碎片化越严重。这可以通过乘以100来表示为百分比。
  */
 static int unusable_show(struct seq_file *m, void *arg)
 {
@@ -2096,6 +2192,7 @@ static int unusable_open(struct inode *inode, struct file *file)
 	return seq_open(file, &unusable_op);
 }
 
+/*  */
 static const struct file_operations unusable_file_ops = {
 	.open		= unusable_open,
 	.read		= seq_read,
@@ -2103,6 +2200,7 @@ static const struct file_operations unusable_file_ops = {
 	.release	= seq_release,
 };
 
+/* 打印node的这个zone的碎片程度 */
 static void extfrag_show_print(struct seq_file *m,
 					pg_data_t *pgdat, struct zone *zone)
 {
@@ -2115,7 +2213,7 @@ static void extfrag_show_print(struct seq_file *m,
 	seq_printf(m, "Node %d, zone %8s ",
 				pgdat->node_id,
 				zone->name);
-	for (order = 0; order < MAX_ORDER; ++order) {
+	for (order = 0; order < MAX_ORDER; ++order) {/* 遍历zone的每个order的链表 */
 		fill_contig_page_info(zone, order, &info);
 		index = __fragmentation_index(order, &info);
 		seq_printf(m, "%d.%03d ", index / 1000, index % 1000);
@@ -2126,6 +2224,7 @@ static void extfrag_show_print(struct seq_file *m,
 
 /*
  * Display fragmentation index for orders that allocations would fail for
+ 算出节点的碎片程度
  */
 static int extfrag_show(struct seq_file *m, void *arg)
 {
@@ -2135,7 +2234,7 @@ static int extfrag_show(struct seq_file *m, void *arg)
 
 	return 0;
 }
-
+/* 反应内存碎片程度 */
 static const struct seq_operations extfrag_op = {
 	.start	= frag_start,
 	.next	= frag_next,
@@ -2154,7 +2253,7 @@ static const struct file_operations extfrag_file_ops = {
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
-
+/* 反应内存的碎片程度 */
 static int __init extfrag_debug_init(void)
 {
 	struct dentry *extfrag_debug_root;

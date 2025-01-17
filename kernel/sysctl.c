@@ -1623,6 +1623,7 @@ static struct ctl_table vm_table[] = {
 		.proc_handler	= proc_dointvec_jiffies,
 	},
 	{
+		/* 控制vmstat的刷新频率 */
 		.procname	= "stat_refresh",
 		.data		= NULL,
 		.maxlen		= 0,
