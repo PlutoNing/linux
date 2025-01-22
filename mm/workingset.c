@@ -26,6 +26,10 @@
  * are promoted to the active list, to protect them from reclaim,
  * whereas active pages are demoted to the inactive list when the
  * active list grows too big.
+   对于每个节点，为文件页面维护两个时钟列表：非活动列表和活动列表。
+   新故障页面(其实就是do_fault新分配的)最初位于非活动列表的头部，然后页面回收从尾部扫描页面。
+   在非活动列表上多次访问的页面被提升到活动列表，以保护它们免受回收，
+   而当活动列表变得太大时，活动页面被降级到非活动列表。
  *
  *   fault ------------------------+
  *                                 |
@@ -41,17 +45,17 @@
  * A workload is thrashing when its pages are frequently used but they
  * are evicted from the inactive list every time before another access
  * would have promoted them to the active list.
- *
+ * 当页面频繁使用但在另一次访问之前每次都会从非活动列表中驱逐时，工作负载会抖动。
  * In cases where the average access distance between thrashing pages
  * is bigger than the size of memory there is nothing that can be
  * done - the thrashing set could never fit into memory under any
  * circumstance.
- *
+ * 好像是说如果工作集大于内存大小, 什么办法也没有
  * However, the average access distance could be bigger than the
  * inactive list, yet smaller than the size of memory.  In this case,
  * the set could fit into memory if it weren't for the currently
  * active pages - which may be used more, hopefully less frequently:
- *
+ * 
  *      +-memory available to cache-+
  *      |                           |
  *      +-inactive------+-active----+
@@ -62,7 +66,7 @@
  * of pages.  But a reasonable approximation can be made to measure
  * thrashing on the inactive list, after which refaulting pages can be
  * activated optimistically to compete with the existing active pages.
- *
+ * 
  * Approximating inactive page access frequency - Observations:
  *
  * 1. When a page is accessed for the first time, it is added to the
@@ -166,6 +170,7 @@
  * On cache misses for which there are shadow entries, an eligible
  * refault distance will immediately activate the refaulting page.
  */
+
 /* 1 + 1 + 10 + 16 = 28 */
 #define EVICTION_SHIFT	((BITS_PER_LONG - BITS_PER_XA_VALUE) +	\
 			 1 + NODES_SHIFT + MEM_CGROUP_ID_SHIFT)
@@ -553,6 +558,8 @@ static int __init workingset_init(void)
 	 * memory (totalram_pages/2). However, memory hotplug may add
 	 * some more pages at runtime, so keep working with up to
 	 * double the initial memory by using totalram_pages as-is.
+	翻译: 计算驱逐桶的大小，以覆盖最长的可操作的重故障距离，目前是内存的一半（totalram_pages/2）。
+	但是，内存热插拔可能会在运行时添加更多的页面，因此通过使用totalram_pages不变，继续使用最初的内存的两倍。
 	 */
 	timestamp_bits = BITS_PER_LONG - EVICTION_SHIFT;
 	max_order = fls_long(totalram_pages() - 1);
