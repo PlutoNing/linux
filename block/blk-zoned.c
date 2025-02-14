@@ -233,6 +233,7 @@ static int blkdev_zone_reset_all(struct block_device *bdev, gfp_t gfp_mask)
 
 /**
  * blkdev_zone_mgmt - Execute a zone management operation on a range of zones
+ 执行对一系列区域的区管理操作
  * @bdev:	Target block device
  * @op:		Operation to be performed on the zones
  * @sector:	Start sector of the first zone to operate on
@@ -246,6 +247,7 @@ static int blkdev_zone_reset_all(struct block_device *bdev, gfp_t gfp_mask)
  *    is valid, but the specified range should not contain conventional zones.
  *    The operation to execute on each zone can be a zone reset, open, close
  *    or finish request.
+ 执行对指定的区域的区执行操作，指定的区域不应包含常规区
  */
 int blkdev_zone_mgmt(struct block_device *bdev, enum req_op op,
 		     sector_t sector, sector_t nr_sectors, gfp_t gfp_mask)

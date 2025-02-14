@@ -79,7 +79,7 @@ static inline unsigned folio_batch_add(struct folio_batch *fbatch,
 }
 
 void __folio_batch_release(struct folio_batch *pvec);
-
+// 释放到哪? buddy
 static inline void folio_batch_release(struct folio_batch *fbatch)
 {
 	if (folio_batch_count(fbatch))

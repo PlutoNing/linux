@@ -114,11 +114,15 @@ struct blk_integrity {
 
 typedef unsigned int __bitwise blk_mode_t;
 
-/* open for reading */
+/* open for reading
+打开用来读取
+ */
 #define BLK_OPEN_READ		((__force blk_mode_t)(1 << 0))
 /* open for writing */
 #define BLK_OPEN_WRITE		((__force blk_mode_t)(1 << 1))
-/* open exclusively (vs other exclusive openers */
+/* open exclusively (vs other exclusive openers
+以独占方式打开（与其他独占打开者相对
+ */
 #define BLK_OPEN_EXCL		((__force blk_mode_t)(1 << 2))
 /* opened with O_NDELAY */
 #define BLK_OPEN_NDELAY		((__force blk_mode_t)(1 << 3))
@@ -265,7 +269,8 @@ static inline bool blk_op_is_passthrough(blk_opf_t op)
 
 /*
  * Zoned block device models (zoned limit).
- *
+ * 传统的块设备（如 HDD、SSD）允许随意读写任何 LBA（逻辑块地址），但一些新型存储介质
+ （如 SMR 硬盘、ZNS NVMe SSD）为了优化存储密度和性能，引入了分区（Zone）概念：
  * Note: This needs to be ordered from the least to the most severe
  * restrictions for the inheritance in blk_stack_limits() to work.
  */
@@ -404,6 +409,7 @@ struct request_queue {
 
 	/*
 	 * various queue flags, see QUEUE_* below
+	 rq的flags
 	 */
 	unsigned long		queue_flags;
 	/*
@@ -631,6 +637,7 @@ blk_queue_zoned_model(struct request_queue *q)
 	return BLK_ZONED_NONE;
 }
 
+/* 是不是分区的块设备 */
 static inline bool blk_queue_is_zoned(struct request_queue *q)
 {
 	switch (blk_queue_zoned_model(q)) {
@@ -761,12 +768,13 @@ static inline sector_t get_start_sect(struct block_device *bdev)
 {
 	return bdev->bd_start_sect;
 }
-
+// 获取bdev的扇区数
 static inline sector_t bdev_nr_sectors(struct block_device *bdev)
 {
 	return bdev->bd_nr_sectors;
 }
 
+// 获取bdev的大小
 static inline loff_t bdev_nr_bytes(struct block_device *bdev)
 {
 	return (loff_t)bdev_nr_sectors(bdev) << SECTOR_SHIFT;
@@ -854,7 +862,7 @@ const char *blk_status_to_str(blk_status_t status);
 int bio_poll(struct bio *bio, struct io_comp_batch *iob, unsigned int flags);
 int iocb_bio_iopoll(struct kiocb *kiocb, struct io_comp_batch *iob,
 			unsigned int flags);
-
+/*  */
 static inline struct request_queue *bdev_get_queue(struct block_device *bdev)
 {
 	return bdev->bd_queue;	/* this is never NULL */
@@ -1069,7 +1077,7 @@ static inline int sb_issue_zeroout(struct super_block *sb, sector_t block,
 						  SECTOR_SHIFT),
 				    gfp_mask, 0);
 }
-
+// 检查是否是分区
 static inline bool bdev_is_partition(struct block_device *bdev)
 {
 	return bdev->bd_partno;
@@ -1265,7 +1273,7 @@ static inline enum blk_zoned_model bdev_zoned_model(struct block_device *bdev)
 {
 	return blk_queue_zoned_model(bdev_get_queue(bdev));
 }
-
+// 是否是zoned设备
 static inline bool bdev_is_zoned(struct block_device *bdev)
 {
 	return blk_queue_is_zoned(bdev_get_queue(bdev));

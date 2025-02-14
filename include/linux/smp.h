@@ -98,6 +98,9 @@ static inline void on_each_cpu_mask(const struct cpumask *mask,
  * cond_func returns a positive value. This may include the local
  * processor.  May be used during early boot while early_boot_irqs_disabled is
  * set. Use local_irq_save/restore() instead of local_irq_disable/enable().
+ 在提供的函数cond_func返回正值的每个处理器上调用一个函数。这可能包括本地处理器。
+ 在early_boot_irqs_disabled设置时可能在早期引导期间使用。使用local_irq_save/restore()
+ 而不是local_irq_disable/enable()。
  */
 static inline void on_each_cpu_cond(smp_cond_func_t cond_func,
 				    smp_call_func_t func, void *info, bool wait)

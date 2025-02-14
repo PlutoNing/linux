@@ -699,6 +699,7 @@ static void node_states_set_node(int node, struct memory_notify *arg)
 		node_set_state(node, N_MEMORY);
 }
 
+// 把这些page上线加入到zone, 这里调整zone的大小
 static void __meminit resize_zone_range(struct zone *zone, unsigned long start_pfn,
 		unsigned long nr_pages)
 {
@@ -710,6 +711,7 @@ static void __meminit resize_zone_range(struct zone *zone, unsigned long start_p
 	zone->spanned_pages = max(start_pfn + nr_pages, old_end_pfn) - zone->zone_start_pfn;
 }
 
+// 调整pgdat的大小
 static void __meminit resize_pgdat_range(struct pglist_data *pgdat, unsigned long start_pfn,
                                      unsigned long nr_pages)
 {
@@ -736,13 +738,18 @@ static inline void section_taint_zone_device(unsigned long pfn)
 #endif
 
 /*
+上线这些page的时候会调用这个函数, 似乎是把这个些page塞到zone里面
+这里调整zone的大小, 还有初始化每个page的属性
  * Associate the pfn range with the given zone, initializing the memmaps
  * and resizing the pgdat/zone data to span the added pages. After this
  * call, all affected pages are PG_reserved.
- *
+ * 关联zone与pfn, 初始化memmaps, 调整pgdat/zone数据以跨越添加的页。调用后，
+ 所有受影响的页面都是PG_reserved。
  * All aligned pageblocks are initialized to the specified migratetype
  * (usually MIGRATE_MOVABLE). Besides setting the migratetype, no related
  * zone stats (e.g., nr_isolate_pageblock) are touched.
+  全部对齐的pageblocks都初始化为指定的migratetype（通常是MIGRATE_MOVABLE）。
+  除了设置migratetype之外，不会触及任何相关的区域统计信息（例如，nr_isolate_pageblock）。
  */
 void __ref move_pfn_range_to_zone(struct zone *zone, unsigned long start_pfn,
 				  unsigned long nr_pages,
@@ -751,10 +758,11 @@ void __ref move_pfn_range_to_zone(struct zone *zone, unsigned long start_pfn,
 	struct pglist_data *pgdat = zone->zone_pgdat;
 	int nid = pgdat->node_id;
 
-	clear_zone_contiguous(zone);
+	clear_zone_contiguous(zone); // 作用?
 
-	if (zone_is_empty(zone))
+	if (zone_is_empty(zone)) // 如果zone是空的, 就初始化
 		init_currently_empty_zone(zone, start_pfn, nr_pages);
+	// 调整zone的起始和结束
 	resize_zone_range(zone, start_pfn, nr_pages);
 	resize_pgdat_range(pgdat, start_pfn, nr_pages);
 
@@ -776,6 +784,7 @@ void __ref move_pfn_range_to_zone(struct zone *zone, unsigned long start_pfn,
 	 * with their zone properly. Not nice but set_pfnblock_flags_mask
 	 * expects the zone spans the pfn range. All the pages in the range
 	 * are reserved so nobody should be touching them so we should be safe
+	  这里初始化page的属性还有mt什么的
 	 */
 	memmap_init_range(nr_pages, nid, zone_idx(zone), start_pfn, 0,
 			 MEMINIT_HOTPLUG, altmap, migratetype);
@@ -887,9 +896,12 @@ static bool auto_movable_can_online_movable(int nid, struct memory_group *group,
 }
 
 /*
+返回这个node里面负责这个范围的zone
  * Returns a default kernel memory zone for the given pfn range.
  * If no kernel zone covers this pfn range it will automatically go
  * to the ZONE_NORMAL.
+ 返回给定pfn范围的默认内核内存zone
+ 如果没有内核区覆盖此pfn范围，它将自动转到ZONE_NORMAL。
  */
 static struct zone *default_kernel_zone_for_pfn(int nid, unsigned long start_pfn,
 		unsigned long nr_pages)
@@ -901,9 +913,9 @@ static struct zone *default_kernel_zone_for_pfn(int nid, unsigned long start_pfn
 		struct zone *zone = &pgdat->node_zones[zid];
 
 		if (zone_intersects(zone, start_pfn, nr_pages))
-			return zone;
+			return zone; // 如果这个zone与pfn范围相交，则返回这个zone
 	}
-
+	// 如果没有内核区覆盖此pfn范围，它将自动转到ZONE_NORMAL。
 	return &pgdat->node_zones[ZONE_NORMAL];
 }
 
@@ -1042,14 +1054,15 @@ static inline struct zone *default_zone_for_pfn(int nid, unsigned long start_pfn
 	return movable_node_enabled ? movable_zone : kernel_zone;
 }
 
+// 获取pfn范围的zone
 struct zone *zone_for_pfn_range(int online_type, int nid,
 		struct memory_group *group, unsigned long start_pfn,
 		unsigned long nr_pages)
 {
-	if (online_type == MMOP_ONLINE_KERNEL)
+	if (online_type == MMOP_ONLINE_KERNEL) // 通过地址交叉找到zone
 		return default_kernel_zone_for_pfn(nid, start_pfn, nr_pages);
 
-	if (online_type == MMOP_ONLINE_MOVABLE)
+	if (online_type == MMOP_ONLINE_MOVABLE) // 如果是movable的话, 就直接是movable的zone
 		return &NODE_DATA(nid)->node_zones[ZONE_MOVABLE];
 
 	if (online_policy == ONLINE_POLICY_AUTO_MOVABLE)
@@ -1129,6 +1142,7 @@ void mhp_deinit_memmap_on_memory(unsigned long pfn, unsigned long nr_pages)
 	kasan_remove_zero_shadow(__va(PFN_PHYS(pfn)), PFN_PHYS(nr_pages));
 }
 
+// 上线mem block时调用来上线范围内的页
 int __ref online_pages(unsigned long pfn, unsigned long nr_pages,
 		       struct zone *zone, struct memory_group *group)
 {
@@ -1151,7 +1165,10 @@ int __ref online_pages(unsigned long pfn, unsigned long nr_pages,
 
 	mem_hotplug_begin();
 
-	/* associate pfn range with the zone */
+	/* associate pfn range with the zone
+	关联pfn范围与zone, 其实就是把pfn加入zone.
+	调整zone和node的大小, 初始化page的属性
+	*/
 	move_pfn_range_to_zone(zone, pfn, nr_pages, NULL, MIGRATE_ISOLATE);
 
 	arg.start_pfn = pfn;
@@ -1168,6 +1185,7 @@ int __ref online_pages(unsigned long pfn, unsigned long nr_pages,
 	 * onlining, such that undo_isolate_page_range() works correctly.
 	 */
 	spin_lock_irqsave(&zone->lock, flags);
+	// 看来新上线的页面都属于isolated的
 	zone->nr_isolate_pageblock += nr_pages / pageblock_nr_pages;
 	spin_unlock_irqrestore(&zone->lock, flags);
 
@@ -1180,7 +1198,7 @@ int __ref online_pages(unsigned long pfn, unsigned long nr_pages,
 		need_zonelists_rebuild = 1;
 		setup_zone_pageset(zone);
 	}
-
+	// 为啥这里又online?
 	online_pages_range(pfn, nr_pages);
 	adjust_present_page_count(pfn_to_page(pfn), group, nr_pages);
 

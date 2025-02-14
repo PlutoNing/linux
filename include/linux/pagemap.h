@@ -59,7 +59,7 @@ void __filemap_set_wb_err(struct address_space *mapping, int err);
 int filemap_fdatawrite_wbc(struct address_space *mapping,
 			   struct writeback_control *wbc);
 int kiocb_write_and_wait(struct kiocb *iocb, size_t count);
-
+// 刷盘mapping
 static inline int filemap_write_and_wait(struct address_space *mapping)
 {
 	return filemap_write_and_wait_range(mapping, 0, LLONG_MAX);
@@ -1164,6 +1164,7 @@ static inline void __set_page_dirty(struct page *page,
 }
 void folio_account_cleaned(struct folio *folio, struct bdi_writeback *wb);
 void __folio_cancel_dirty(struct folio *folio);
+// 从mapping中删除folio前会调用此函数
 static inline void folio_cancel_dirty(struct folio *folio)
 {
 	/* Avoid atomic ops, locking, etc. when not actually needed. */

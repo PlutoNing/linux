@@ -60,6 +60,7 @@ static inline void set_section_nid(unsigned long section_nr, int nid)
 #endif
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
+// 给mem section分配内存
 static noinline struct mem_section __ref *sparse_index_alloc(int nid)
 {
 	struct mem_section *section = NULL;
@@ -78,9 +79,11 @@ static noinline struct mem_section __ref *sparse_index_alloc(int nid)
 
 	return section;
 }
-
+// 给这个section_nr对应的ms结构体创建内存空间
 static int __meminit sparse_index_init(unsigned long section_nr, int nid)
 {
+	// 计算这个section_nr对应的ms结构体应该位于第几个内存块(一个块一般就是一个页面)
+	// 这些块存储在mem_section[root]
 	unsigned long root = SECTION_NR_TO_ROOT(section_nr);
 	struct mem_section *section;
 
@@ -88,12 +91,13 @@ static int __meminit sparse_index_init(unsigned long section_nr, int nid)
 	 * An existing section is possible in the sub-section hotplug
 	 * case. First hot-add instantiates, follow-on hot-add reuses
 	 * the existing section.
-	 *
+	 * 一个现有的部分在子部分热插拔的情况下是可能的。首次热添加实例化，后续热添加重用现有部分。
+	 
 	 * The mem_hotplug_lock resolves the apparent race below.
 	 */
 	if (mem_section[root])
 		return 0;
-
+	// 分配内存
 	section = sparse_index_alloc(nid);
 	if (!section)
 		return -ENOMEM;
@@ -110,10 +114,14 @@ static inline int sparse_index_init(unsigned long section_nr, int nid)
 #endif
 
 /*
+在ms->section_mem_map编码中存储NUMA节点号
  * During early boot, before section_mem_map is used for an actual
  * mem_map, we use section_mem_map to store the section's NUMA
  * node.  This keeps us from having to use another data structure.  The
  * node information is cleared just before we store the real mem_map.
+ 在实际mem_map之前，我们使用section_mem_map存储section的NUMA节点。
+ 这样我们就不必使用另一个数据结构。在存储真正的mem_map之前，节点信息会被清除。
+
  */
 static inline unsigned long sparse_encode_early_nid(int nid)
 {
@@ -125,7 +133,10 @@ static inline int sparse_early_nid(struct mem_section *section)
 	return (section->section_mem_map >> SECTION_NID_SHIFT);
 }
 
-/* Validate the physical addressing limitations of the model */
+/* Validate the physical addressing limitations of the model
+似乎是验证模型的物理寻址限制
+ 
+*/
 static void __meminit mminit_validate_memmodel_limits(unsigned long *start_pfn,
 						unsigned long *end_pfn)
 {
@@ -156,11 +167,15 @@ static void __meminit mminit_validate_memmodel_limits(unsigned long *start_pfn,
  * looking for section_present() on each.  But, when we have very
  * large physical address spaces, NR_MEM_SECTIONS can also be
  * very large which makes the loops quite long.
- *
+ * 有很多次我们循环遍历NR_MEM_SECTIONS，查找每个section_present()。
+ * 但是，当我们的物理地址空间非常大时，NR_MEM_SECTIONS也可能非常大，
+ * 这使得循环变得非常长。
  * Keeping track of this gives us an easy way to break out of
  * those loops early.
+ * 跟踪这一点可以让我们很容易地提前退出这些循环。
  */
 unsigned long __highest_present_section_nr;
+// 标记一个内存区段为存在?
 static void __section_mark_present(struct mem_section *ms,
 		unsigned long section_nr)
 {
@@ -221,7 +236,9 @@ void __init subsection_map_init(unsigned long pfn, unsigned long nr_pages)
 }
 #endif
 
-/* Record a memory area against a node. */
+/* Record a memory area against a node.
+创建范围内的页面的mem_section结构体, 并且进行初始化
+ */
 static void __init memory_present(int nid, unsigned long start, unsigned long end)
 {
 	unsigned long pfn;
@@ -241,15 +258,18 @@ static void __init memory_present(int nid, unsigned long start, unsigned long en
 
 	start &= PAGE_SECTION_MASK;
 	mminit_validate_memmodel_limits(&start, &end);
-	for (pfn = start; pfn < end; pfn += PAGES_PER_SECTION) {
+	for (pfn = start; pfn < end; pfn += PAGES_PER_SECTION) { //每次是步进32K个页面, 也就是128MB(一个mem
+		//section的大小)
+		// 获取pfn对应的section的编号索引
 		unsigned long section = pfn_to_section_nr(pfn);
 		struct mem_section *ms;
-
+		// 给这个section_nr对应的ms结构体创建内存空间
 		sparse_index_init(section, nid);
-		set_section_nid(section, nid);
 
+		set_section_nid(section, nid);
+		// 然后就可在mem_section[root]中找到这个section_nr对应的ms结构体了
 		ms = __nr_to_section(section);
-		if (!ms->section_mem_map) {
+		if (!ms->section_mem_map) { // 如果这个ms结构体还没有被初始化
 			ms->section_mem_map = sparse_encode_early_nid(nid) |
 							SECTION_IS_ONLINE;
 			__section_mark_present(ms, section);
@@ -588,7 +608,10 @@ void __init sparse_init(void)
 
 #ifdef CONFIG_MEMORY_HOTPLUG
 
-/* Mark all memory sections within the pfn range as online */
+/* Mark all memory sections within the pfn range as online
+上线这一串mem section
+ 
+*/
 void online_mem_sections(unsigned long start_pfn, unsigned long end_pfn)
 {
 	unsigned long pfn;

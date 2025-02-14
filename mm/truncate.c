@@ -27,6 +27,9 @@
  * Regular page slots are stabilized by the page lock even without the tree
  * itself locked.  These unlocked entries need verification under the tree
  * lock.
+ 常规的页面插槽即使没有树本身被锁定，也可以通过页面锁稳定。这些未锁定的条目需要在树锁下进行验证。
+
+ entry folio在mapping的索引是index. 这个folio是个不正常的slot
  */
 static inline void __clear_shadow_entry(struct address_space *mapping,
 				pgoff_t index, void *entry)
@@ -55,6 +58,8 @@ static void clear_shadow_entry(struct address_space *mapping, pgoff_t index,
  * Unconditionally remove exceptional entries. Usually called from truncate
  * path. Note that the folio_batch may be altered by this function by removing
  * exceptional entries similar to what folio_batch_remove_exceptionals() does.
+ 无条件的从fbatch删除异常条目。通常从截断路径调用。请注意，此函数可能通过删除异常条目而更改folio_batch，
+ 类似于folio_batch_remove_exceptionals()的操作。
  */
 static void truncate_folio_batch_exceptionals(struct address_space *mapping,
 				struct folio_batch *fbatch, pgoff_t *indices)
@@ -69,9 +74,10 @@ static void truncate_folio_batch_exceptionals(struct address_space *mapping,
 	for (j = 0; j < folio_batch_count(fbatch); j++)
 		if (xa_is_value(fbatch->folios[j]))
 			break;
+	/* 现在0到j都是合法的 */
 
 	if (j == folio_batch_count(fbatch))
-		return;
+		return; // 说明没有异常条目?
 
 	dax = dax_mapping(mapping);
 	if (!dax) {
@@ -79,11 +85,11 @@ static void truncate_folio_batch_exceptionals(struct address_space *mapping,
 		xa_lock_irq(&mapping->i_pages);
 	}
 
-	for (i = j; i < folio_batch_count(fbatch); i++) {
+	for (i = j; i < folio_batch_count(fbatch); i++) {/* 现在处理从j到末尾的 */
 		struct folio *folio = fbatch->folios[i];
 		pgoff_t index = indices[i];
 
-		if (!xa_is_value(folio)) {
+		if (!xa_is_value(folio)) {// 如果是正常条目,就往前搬
 			fbatch->folios[j++] = folio;
 			continue;
 		}
@@ -92,7 +98,7 @@ static void truncate_folio_batch_exceptionals(struct address_space *mapping,
 			dax_delete_mapping_entry(mapping, index);
 			continue;
 		}
-
+		// 如果不正常的条目,执行clear_shadow_entry
 		__clear_shadow_entry(mapping, index, folio);
 	}
 
@@ -160,39 +166,45 @@ void folio_invalidate(struct folio *folio, size_t offset, size_t length)
 EXPORT_SYMBOL_GPL(folio_invalidate);
 
 /*
+从pagecache截断这个folio
  * If truncate cannot remove the fs-private metadata from the page, the page
  * becomes orphaned.  It will be left on the LRU and may even be mapped into
  * user pagetables if we're racing with filemap_fault().
- *
+ * 如果截断无法从页面中删除fs-private元数据, 则页面将变为孤立的。它将保留在LRU上, 
+ 甚至可能映射到用户页表中, 如果我们正在与filemap_fault()竞争。
+ 
  * We need to bail out if page->mapping is no longer equal to the original
  * mapping.  This happens a) when the VM reclaimed the page while we waited on
  * its lock, b) when a concurrent invalidate_mapping_pages got there first and
  * c) when tmpfs swizzles a page between a tmpfs inode and swapper_space.
+ 我们需要退出, 如果page->mapping不再等于原始映射。这发生在a)当VM在我们等待其锁时回收页面时,
  */
 static void truncate_cleanup_folio(struct folio *folio)
 {
-	if (folio_mapped(folio))
-		unmap_mapping_folio(folio);
+	if (folio_mapped(folio)) // 如果是mapped的文件页
+		unmap_mapping_folio(folio); // 解除映射
 
-	if (folio_has_private(folio))
+	if (folio_has_private(folio)) // 如果有私有数据, 移除
 		folio_invalidate(folio, 0, folio_size(folio));
 
 	/*
 	 * Some filesystems seem to re-dirty the page even after
 	 * the VM has canceled the dirty bit (eg ext3 journaling).
 	 * Hence dirty accounting check is placed after invalidation.
+	 一些文件系统似乎在VM取消了脏位之后重新设置页面为脏页(例如ext3日志)。
+	 因此, 在使无效之后放置了脏计数检查。
 	 */
-	folio_cancel_dirty(folio);
+	folio_cancel_dirty(folio); // 取消脏标志, 进行必要的回写
 	folio_clear_mappedtodisk(folio);
 }
-
+// 干嘛? 可能会回写, 取消page的脏位, 然后从xas移除
 int truncate_inode_folio(struct address_space *mapping, struct folio *folio)
 {
 	if (folio->mapping != mapping)
 		return -EIO;
 
-	truncate_cleanup_folio(folio);
-	filemap_remove_folio(folio);
+	truncate_cleanup_folio(folio); // 
+	filemap_remove_folio(folio); // 从xas移除
 	return 0;
 }
 
@@ -203,9 +215,11 @@ int truncate_inode_folio(struct address_space *mapping, struct folio *folio)
  * it's large.  split_page_range() will discard pages which now lie beyond
  * i_size, and we rely on the caller to discard pages which lie within a
  * newly created hole.
- *
+ * 处理部分folio。如果分裂与我们同时进行, folio可能完全在范围内。如果不是, 
+ 我们将清零在[start, end]范围内的folio的部分, 然后如果folio很大, 就分裂folio。
  * Returns false if splitting failed so the caller can avoid
  * discarding the entire folio which is stubbornly unsplit.
+ 返回false, 如果分裂失败, 这样调用者就可以避免丢弃顽固不分裂的整个folio。
  */
 bool truncate_inode_partial_folio(struct folio *folio, loff_t start, loff_t end)
 {
@@ -265,7 +279,7 @@ int generic_error_remove_page(struct address_space *mapping, struct page *page)
 	return truncate_inode_folio(mapping, page_folio(page));
 }
 EXPORT_SYMBOL(generic_error_remove_page);
-
+//从pagecache移除这个folio
 static long mapping_evict_folio(struct address_space *mapping,
 		struct folio *folio)
 {
@@ -275,9 +289,10 @@ static long mapping_evict_folio(struct address_space *mapping,
 	if (folio_ref_count(folio) >
 			folio_nr_pages(folio) + folio_has_private(folio) + 1)
 		return 0;
+	//在驱逐之前, 释放相关priv等成员
 	if (!filemap_release_folio(folio, 0))
 		return 0;
-
+		//真正的驱逐
 	return remove_mapping(mapping, folio);
 }
 
@@ -304,6 +319,7 @@ long invalidate_inode_page(struct page *page)
 
 /**
  * truncate_inode_pages_range - truncate range of pages specified by start & end byte offsets
+ 戒断由开始和结束字节偏移量指定的页面范围
  * @mapping: mapping to truncate
  * @lstart: offset from which to truncate
  * @lend: offset to which to truncate (inclusive)
@@ -311,20 +327,24 @@ long invalidate_inode_page(struct page *page)
  * Truncate the page cache, removing the pages that are between
  * specified offsets (and zeroing out partial pages
  * if lstart or lend + 1 is not page aligned).
- *
+ *截断页面缓存, 删除指定偏移量之间的页面(如果lstart或lend + 1不是页面对齐的, 则将部分页面清零)
  * Truncate takes two passes - the first pass is nonblocking.  It will not
  * block on page locks and it will not block on writeback.  The second pass
  * will wait.  This is to prevent as much IO as possible in the affected region.
  * The first pass will remove most pages, so the search cost of the second pass
  * is low.
- *
+ * 分为两个阶段, 第一阶段是非阻塞的, 不会阻塞在页面锁上, 也不会阻塞在写回上, 第二阶段会等待, 
+ 这是为了尽可能减少受影响区域的IO
  * We pass down the cache-hot hint to the page freeing code.  Even if the
  * mapping is large, it is probably the case that the final pages are the most
  * recently touched, and freeing happens in ascending file offset order.
- *
+ * 我们将缓存热提示传递给页面释放代码, 即使映射很大, 最终的页面可能是最近访问的, 并且释放按照
+ 升序文件偏移顺序进行
  * Note that since ->invalidate_folio() accepts range to invalidate
  * truncate_inode_pages_range is able to handle cases where lend + 1 is not
  * page aligned properly.
+ 注意, 由于->invalidate_folio()接受范围来使无效, truncate_inode_pages_range能够处理lend + 1
+ 不正确对齐的情况
  */
 void truncate_inode_pages_range(struct address_space *mapping,
 				loff_t lstart, loff_t lend)
@@ -346,6 +366,8 @@ void truncate_inode_pages_range(struct address_space *mapping,
 	 * truncated. Partial pages are covered with 'partial_start' at the
 	 * start of the range and 'partial_end' at the end of the range.
 	 * Note that 'end' is exclusive while 'lend' is inclusive.
+	 开始和结束总是覆盖要完全截断的页面范围, 部分页面由范围开始处的'partial_start'
+	 和范围结束处的'partial_end'覆盖
 	 */
 	start = (lstart + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	if (lend == -1)
@@ -361,16 +383,22 @@ void truncate_inode_pages_range(struct address_space *mapping,
 	folio_batch_init(&fbatch);
 	index = start;
 	while (index < end && find_lock_entries(mapping, &index, end - 1,
-			&fbatch, indices)) {
+			&fbatch, indices)) {// 先收拢一部分
+			//先截断收拢的fbatch里面的异常条目
 		truncate_folio_batch_exceptionals(mapping, &fbatch, indices);
+		// 现在fbatch里面的都是正常的条目
 		for (i = 0; i < folio_batch_count(&fbatch); i++)
 			truncate_cleanup_folio(fbatch.folios[i]);
+		// 开始删除fbatch里面的页,从xas里面删除
 		delete_from_page_cache_batch(mapping, &fbatch);
 		for (i = 0; i < folio_batch_count(&fbatch); i++)
 			folio_unlock(fbatch.folios[i]);
+		// 释放fbatch到buddy
 		folio_batch_release(&fbatch);
 		cond_resched();
 	}
+	// 刚刚已经处理了xas和归还内存, 下面干嘛呢?
+	// 2025年2月14日02:06:22
 
 	same_folio = (lstart >> PAGE_SHIFT) == (lend >> PAGE_SHIFT);
 	folio = __filemap_get_folio(mapping, lstart >> PAGE_SHIFT, FGP_LOCK, 0);
@@ -409,7 +437,8 @@ void truncate_inode_pages_range(struct address_space *mapping,
 			index = start;
 			continue;
 		}
-
+		// 刚刚获得了一些到fbatch
+        // 下面处理batch
 		for (i = 0; i < folio_batch_count(&fbatch); i++) {
 			struct folio *folio = fbatch.folios[i];
 
@@ -421,10 +450,13 @@ void truncate_inode_pages_range(struct address_space *mapping,
 			folio_lock(folio);
 			VM_BUG_ON_FOLIO(!folio_contains(folio, indices[i]), folio);
 			folio_wait_writeback(folio);
+			// 从xas移除
 			truncate_inode_folio(mapping, folio);
 			folio_unlock(folio);
 		}
+		// 这里继续调整batch内的元素, 忽略异常的, 把正常的往前搬
 		truncate_folio_batch_exceptionals(mapping, &fbatch, indices);
+		// 释放到buddy
 		folio_batch_release(&fbatch);
 	}
 }
@@ -433,16 +465,19 @@ EXPORT_SYMBOL(truncate_inode_pages_range);
 /**
  
  * truncate_inode_pages - truncate *all* the pages from an offset
+ 截断从偏移量开始的所有页面
  * @mapping: mapping to truncate
  * @lstart: offset from which to truncate
  *
  * Called under (and serialised by) inode->i_rwsem and
  * mapping->invalidate_lock.
- *
+ * 在inode->i_rwsem和mapping->invalidate_lock下调用(并串行化)。
  * Note: When this function returns, there can be a page in the process of
  * deletion (inside __filemap_remove_folio()) in the specified range.  Thus
  * mapping->nrpages can be non-zero when this function returns even after
  * truncation of the whole mapping.
+ 注意: 当此函数返回时, 指定范围内可能有一个正在删除的页面(在__filemap_remove_folio()中)。
+ 因此, 即使整个映射被截断, 当此函数返回时, mapping->nrpages可能不为零。
  */
 void truncate_inode_pages(struct address_space *mapping, loff_t lstart)
 {
@@ -488,6 +523,7 @@ EXPORT_SYMBOL(truncate_inode_pages_final);
 
 /**
  * mapping_try_invalidate - Invalidate all the evictable folios of one inode
+ 无效化inode的所有可驱逐的folio
  * @mapping: the address_space which holds the folios to invalidate
  * @start: the offset 'from' which to invalidate
  * @end: the offset 'to' which to invalidate (inclusive)
@@ -495,6 +531,7 @@ EXPORT_SYMBOL(truncate_inode_pages_final);
  *
  * This function is similar to invalidate_mapping_pages(), except that it
  * returns the number of folios which could not be evicted in @nr_failed.
+ 函数类似于invalidate_mapping_pages()，只是它返回无法驱逐的folio的数量
  */
 unsigned long mapping_try_invalidate(struct address_space *mapping,
 		pgoff_t start, pgoff_t end, unsigned long *nr_failed)
@@ -507,7 +544,7 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 	int i;
 
 	folio_batch_init(&fbatch);
-	while (find_lock_entries(mapping, &index, end, &fbatch, indices)) {
+	while (find_lock_entries(mapping, &index, end, &fbatch, indices)) {//先查找收拢一些folio
 		for (i = 0; i < folio_batch_count(&fbatch); i++) {
 			struct folio *folio = fbatch.folios[i];
 
@@ -518,14 +555,14 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 							     indices[i], folio);
 				continue;
 			}
-
+			//从pagecache移除这个folio
 			ret = mapping_evict_folio(mapping, folio);
 			folio_unlock(folio);
 			/*
 			 * Invalidation is a hint that the folio is no longer
 			 * of interest and try to speed up its reclaim.
 			 */
-			if (!ret) {
+			if (!ret) {// 没有成功移除的情况
 				deactivate_file_folio(folio);
 				/* Likely in the lru cache of a remote CPU */
 				if (nr_failed)
@@ -542,16 +579,17 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 
 /**
  * invalidate_mapping_pages - Invalidate all clean, unlocked cache of one inode
+ 无效化inode的所有干净的未锁定的缓存
  * @mapping: the address_space which holds the cache to invalidate
  * @start: the offset 'from' which to invalidate
  * @end: the offset 'to' which to invalidate (inclusive)
  *
  * This function removes pages that are clean, unmapped and unlocked,
  * as well as shadow entries. It will not block on IO activity.
- *
+ * 这个函数删除干净的、未映射的、未锁定的页面，以及影子条目。它不会阻塞IO活动。
  * If you want to remove all the pages of one inode, regardless of
  * their use and writeback state, use truncate_inode_pages().
- *
+ * 如果要删除一个inode的所有页面，无论其使用和回写状态如何，请使用truncate_inode_pages()。
  * Return: The number of indices that had their contents invalidated
  */
 unsigned long invalidate_mapping_pages(struct address_space *mapping,
@@ -608,13 +646,14 @@ static int folio_launder(struct address_space *mapping, struct folio *folio)
 
 /**
  * invalidate_inode_pages2_range - remove range of pages from an address_space
+ 从address_space中删除页面范围. 一个个的等待写回完成,解除映射?
  * @mapping: the address_space
  * @start: the page offset 'from' which to invalidate
  * @end: the page offset 'to' which to invalidate (inclusive)
  *
  * Any pages which are found to be mapped into pagetables are unmapped prior to
  * invalidation.
- *
+ * 任何发现映射到页表中的页面在使无效之前都会被取消映射。
  * Return: -EBUSY if any pages could not be invalidated.
  */
 int invalidate_inode_pages2_range(struct address_space *mapping,
@@ -633,23 +672,27 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 
 	folio_batch_init(&fbatch);
 	index = start;
-	while (find_get_entries(mapping, &index, end, &fbatch, indices)) {
+	while (find_get_entries(mapping, &index, end, &fbatch, indices)) {/* 
+		收拢一些到fbatch */
 		for (i = 0; i < folio_batch_count(&fbatch); i++) {
 			struct folio *folio = fbatch.folios[i];
 
 			/* We rely upon deletion not changing folio->index */
 
-			if (xa_is_value(folio)) {
+			if (xa_is_value(folio)) {/* 不是正常的pagecache页面 */
 				if (!invalidate_exceptional_entry2(mapping,
-						indices[i], folio))
+						indices[i], folio)) //如果不可以忽略的话?
 					ret = -EBUSY;
-				continue;
+				continue; //跳过
 			}
 
 			if (!did_range_unmap && folio_mapped(folio)) {
+				/* 只会在遇到被映射的folio时进来执行一次
+				执行的是解除映射 */
 				/*
 				 * If folio is mapped, before taking its lock,
 				 * zap the rest of the file in one hit.
+				 这个pagecache的folio被映射了
 				 */
 				unmap_mapping_pages(mapping, indices[i],
 						(1 + end - indices[i]), false);
@@ -657,15 +700,15 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 			}
 
 			folio_lock(folio);
-			if (unlikely(folio->mapping != mapping)) {
+			if (unlikely(folio->mapping != mapping)) {// 这是什么情况?
 				folio_unlock(folio);
 				continue;
 			}
 			VM_BUG_ON_FOLIO(!folio_contains(folio, indices[i]), folio);
-			folio_wait_writeback(folio);
+			folio_wait_writeback(folio); // 真的要等吗?
 
 			if (folio_mapped(folio))
-				unmap_mapping_folio(folio);
+				unmap_mapping_folio(folio); // 这里遍历相关的全部vma, 然后遍历页表解除映射
 			BUG_ON(folio_mapped(folio));
 
 			ret2 = folio_launder(mapping, folio);
@@ -697,6 +740,7 @@ EXPORT_SYMBOL_GPL(invalidate_inode_pages2_range);
 
 /**
  * invalidate_inode_pages2 - remove all pages from an address_space
+  移除address_space中的所有页面
  * @mapping: the address_space
  *
  * Any pages which are found to be mapped into pagetables are unmapped prior to
@@ -712,6 +756,7 @@ EXPORT_SYMBOL_GPL(invalidate_inode_pages2);
 
 /**
  * truncate_pagecache - unmap and remove pagecache that has been truncated
+  解除映射和删除已经被截断的pagecache
  * @inode: inode
  * @newsize: new file size
  *
@@ -724,6 +769,10 @@ EXPORT_SYMBOL_GPL(invalidate_inode_pages2);
  * with on-disk format, and the filesystem would not have to deal with
  * situations such as writepage being called for a page that has already
  * had its underlying blocks deallocated.
+ 这个函数通常在文件系统释放与释放范围相关的资源之前调用(例如释放块)。
+ 这样, pagecache将始终在逻辑上与磁盘格式一致, 文件系统不必处理诸如writepage
+ 被调用的页面已经释放其基础块的情况。
+
  */
 void truncate_pagecache(struct inode *inode, loff_t newsize)
 {
@@ -738,8 +787,14 @@ void truncate_pagecache(struct inode *inode, loff_t newsize)
 	 * private pages to be COWed, which remain after
 	 * truncate_inode_pages finishes, hence the second
 	 * unmap_mapping_range call must be made for correctness.
+	 unmap_mapping_range被调用两次, 首先仅仅是为了效率, 以便truncate_inode_pages
+	 做更少的单页解除映射。然而在第一次调用之后, 在truncate_inode_pages完成之前,
+	 可能会对私有页面进行COW, 这些页面在truncate_inode_pages完成后仍然存在,
+	 因此第二次unmap_mapping_range调用必须为了正确性。
 	 */
+	// 找到并遍历涉及的全部vma, 然后遍历页表解除映射
 	unmap_mapping_range(mapping, holebegin, 0, 1);
+	// 这里开始truncate操作
 	truncate_inode_pages(mapping, newsize);
 	unmap_mapping_range(mapping, holebegin, 0, 1);
 }

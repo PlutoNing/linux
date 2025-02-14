@@ -403,6 +403,7 @@ static inline struct page *pageblock_pfn_to_page(unsigned long start_pfn,
 
 void set_zone_contiguous(struct zone *zone);
 
+// 啥意思2024年5月15日02:08:17
 static inline void clear_zone_contiguous(struct zone *zone)
 {
 	zone->contiguous = false;

@@ -3177,6 +3177,7 @@ int __memcg_kmem_charge_page(struct page *page, gfp_t gfp, int order)
 
 /**
  * __memcg_kmem_uncharge_page: uncharge a kmem page
+ 对一个kmem page进行uncharge
  * @page: page to uncharge
  * @order: allocation order
  */

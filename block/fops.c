@@ -19,7 +19,7 @@
 #include <linux/module.h>
 #include "blk.h"
 
-//
+//获取块设备filp的bdinode
 static inline struct inode *bdev_file_inode(struct file *file)
 {
 	return file->f_mapping->host;
@@ -44,6 +44,7 @@ static bool blkdev_dio_unaligned(struct block_device *bdev, loff_t pos,
 
 #define DIO_INLINE_BIO_VECS 4
 
+// 块设备的direct IO实现中的一种
 static ssize_t __blkdev_direct_IO_simple(struct kiocb *iocb,
 		struct iov_iter *iter, unsigned int nr_pages)
 {
@@ -363,7 +364,7 @@ static ssize_t __blkdev_direct_IO_async(struct kiocb *iocb,
 	}
 	return -EIOCBQUEUED;
 }
-
+// 块设备的direct IO实现
 static ssize_t blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 {
 	unsigned int nr_pages;
@@ -372,7 +373,8 @@ static ssize_t blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 		return 0;
 
 	nr_pages = bio_iov_vecs_to_alloc(iter, BIO_MAX_VECS + 1);
-	if (likely(nr_pages <= BIO_MAX_VECS)) {
+	if (likely(nr_pages <= BIO_MAX_VECS)) {/* 
+	这一块是啥意思? */
 		if (is_sync_kiocb(iocb))
 			return __blkdev_direct_IO_simple(iocb, iter, nr_pages);
 		return __blkdev_direct_IO_async(iocb, iter, nr_pages);
@@ -402,6 +404,8 @@ static const struct iomap_ops blkdev_iomap_ops = {
 };
 
 #ifdef CONFIG_BUFFER_HEAD
+/* dev在io过程中的get ref操作
+表示dev的某个block与bh建立了映射关联? */
 static int blkdev_get_block(struct inode *inode, sector_t iblock,
 		struct buffer_head *bh, int create)
 {
@@ -410,12 +414,12 @@ static int blkdev_get_block(struct inode *inode, sector_t iblock,
 	set_buffer_mapped(bh);
 	return 0;
 }
-
+// bdev的inode mapping的write_page回调
 static int blkdev_writepage(struct page *page, struct writeback_control *wbc)
 {
 	return block_write_full_page(page, blkdev_get_block, wbc);
 }
-
+/* bdev fs的inode的mapping的read folio回调 */
 static int blkdev_read_folio(struct file *file, struct folio *folio)
 {
 	return block_read_full_folio(folio, blkdev_get_block);
@@ -444,10 +448,12 @@ static int blkdev_write_end(struct file *file, struct address_space *mapping,
 
 	return ret;
 }
-
+//块设备的inode的mapping的ops
+/* 块设备的inode的mapping是什么? */
 const struct address_space_operations def_blk_aops = {
 	.dirty_folio	= block_dirty_folio,
 	.invalidate_folio = block_invalidate_folio,
+	//读取设备到folio里面
 	.read_folio	= blkdev_read_folio,
 	.readahead	= blkdev_readahead,
 	.writepage	= blkdev_writepage,
@@ -507,11 +513,15 @@ const struct address_space_operations def_blk_aops = {
 #endif /* CONFIG_BUFFER_HEAD */
 
 /*
+块设备的fops的seek回调
  * for a block special file file_inode(file)->i_size is zero
  * so we compute the size by hand (just as in block_read/write above)
+ 对于块特殊文件file_inode(file)->i_size为零，因此我们手动计算大小（就像上面的block_read/write一样）
+
  */
 static loff_t blkdev_llseek(struct file *file, loff_t offset, int whence)
 {
+	// 获取vfs file结构体对应的bd_inode
 	struct inode *bd_inode = bdev_file_inode(file);
 	loff_t retval;
 
@@ -520,13 +530,15 @@ static loff_t blkdev_llseek(struct file *file, loff_t offset, int whence)
 	inode_unlock(bd_inode);
 	return retval;
 }
-
+/*  */
 static int blkdev_fsync(struct file *filp, loff_t start, loff_t end,
 		int datasync)
 {
+	// 获取vfs file结构体对应的bdev
 	struct block_device *bdev = I_BDEV(filp->f_mapping->host);
 	int error;
 
+	// 写入并等待范围内的数据
 	error = file_write_and_wait_range(filp, start, end);
 	if (error)
 		return error;
@@ -535,6 +547,8 @@ static int blkdev_fsync(struct file *filp, loff_t start, loff_t end,
 	 * There is no need to serialise calls to blkdev_issue_flush with
 	 * i_mutex and doing so causes performance issues with concurrent
 	 * O_SYNC writers to a block device.
+	  没有必要使用i_mutex对blkdev_issue_flush的调用进行串行化，这样做会导致
+	  对块设备的并发O_SYNC写入的性能问题。
 	 */
 	error = blkdev_issue_flush(bdev);
 	if (error == -EOPNOTSUPP)
@@ -566,7 +580,10 @@ blk_mode_t file_to_blk_mode(struct file *file)
 
 	return mode;
 }
-
+/* 块设备fops的open回调
+------------
+打开的过程似乎就是获取设备号(通过inode获得, 这个inode就是/dev/sda的inode?)对应的bdev,然后filp
+与设备inode共享mapping */
 static int blkdev_open(struct inode *inode, struct file *filp)
 {
 	struct block_device *bdev;
@@ -576,6 +593,10 @@ static int blkdev_open(struct inode *inode, struct file *filp)
 	 * even if userspace doesn't ask for it explicitly. Some mkfs
 	 * binary needs it. We might want to drop this workaround
 	 * during an unstable branch.
+	   保持向后兼容性，即使用户空间没有明确要求，也允许大文件访问。
+	   一些mkfs二进制文件需要它。我们可能会在不稳定的分支中放弃这个解决方案。
+	   ---------------
+	   看来确实是/dev/sda之类的文件
 	 */
 	filp->f_flags |= O_LARGEFILE;
 	filp->f_mode |= FMODE_BUF_RASYNC | FMODE_CAN_ODIRECT;
@@ -583,10 +604,13 @@ static int blkdev_open(struct inode *inode, struct file *filp)
 	/*
 	 * Use the file private data to store the holder for exclusive openes.
 	 * file_to_blk_mode relies on it being present to set BLK_OPEN_EXCL.
+	  使用文件私有数据存储独占打开的持有者。
+	  file_to_blk_mode依赖于它的存在来设置BLK_OPEN_EXCL。
 	 */
 	if (filp->f_flags & O_EXCL)
 		filp->private_data = filp;
-
+	
+	// 通过设备号获取bdev结构体
 	bdev = blkdev_get_by_dev(inode->i_rdev, file_to_blk_mode(filp),
 				 filp->private_data, NULL);
 	if (IS_ERR(bdev))
@@ -599,9 +623,16 @@ static int blkdev_open(struct inode *inode, struct file *filp)
 	filp->f_wb_err = filemap_sample_wb_err(filp->f_mapping);
 	return 0;
 }
-
+/* 
+块设备的fops的release回调
+似乎是 */
 static int blkdev_release(struct inode *inode, struct file *filp)
 {
+	/* 
+	open的时候filp的mapping指向了bdev的inode的mapping
+	这里获得此bdev fs inode对应的bdev
+	
+	 */
 	blkdev_put(I_BDEV(filp->f_mapping->host), filp->private_data);
 	return 0;
 }
@@ -690,17 +721,22 @@ static ssize_t blkdev_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	iov_iter_reexpand(from, iov_iter_count(from) + shorted);
 	return ret;
 }
-
+// 块设备fops的read_iter回调
 static ssize_t blkdev_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
+	/* 获取file对应的bdev
+	大概过程就是:
+	iocb存储了读写的file结构体, file的mapping就是bd_inode的mapping
+	然后bd_inode与bdev是一一对应的
+	 */
 	struct block_device *bdev = I_BDEV(iocb->ki_filp->f_mapping->host);
-	loff_t size = bdev_nr_bytes(bdev);
+	loff_t size = bdev_nr_bytes(bdev); // 获取bdev的大小
 	loff_t pos = iocb->ki_pos;
 	size_t shorted = 0;
 	ssize_t ret = 0;
 	size_t count;
 
-	if (unlikely(pos + iov_iter_count(to) > size)) {
+	if (unlikely(pos + iov_iter_count(to) > size)) {// 表示读取的位置超过了bdev的大小?
 		if (pos >= size)
 			return 0;
 		size -= pos;
@@ -712,7 +748,7 @@ static ssize_t blkdev_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	if (!count)
 		goto reexpand; /* skip atime */
 
-	if (iocb->ki_flags & IOCB_DIRECT) {
+	if (iocb->ki_flags & IOCB_DIRECT) { // 直接io的读取
 		ret = kiocb_write_and_wait(iocb, count);
 		if (ret < 0)
 			goto reexpand;
@@ -727,7 +763,7 @@ static ssize_t blkdev_read_iter(struct kiocb *iocb, struct iov_iter *to)
 		if (ret < 0 || !count)
 			goto reexpand;
 	}
-
+	// 从page cache中读取数据
 	ret = filemap_read(iocb, to, ret);
 
 reexpand:
@@ -821,20 +857,28 @@ static int blkdev_mmap(struct file *file, struct vm_area_struct *vma)
 
 	if (bdev_read_only(I_BDEV(bd_inode)))
 		return generic_file_readonly_mmap(file, vma);
-
+		// 一般的通用的mmap实现
 	return generic_file_mmap(file, vma);
 }
 
 // 块设备的fops?
+/* 这个是/dev/sda的fops回调吗? */
 const struct file_operations def_blk_fops = {
+	/* 话说也需要看看fops的这些回调是怎么被调用的 */
 	.open		= blkdev_open,
+	/* 就是put bdev */
 	.release	= blkdev_release,
+/* 就是一个包装的通用seek实现 */
 	.llseek		= blkdev_llseek,
+	/*  */
 	.read_iter	= blkdev_read_iter,
 	.write_iter	= blkdev_write_iter,
 	.iopoll		= iocb_bio_iopoll,
+	/* 也是一般的mmap实现 */
 	.mmap		= blkdev_mmap,
+	/* sync块设备 */
 	.fsync		= blkdev_fsync,
+	// 这个是什么回调
 	.unlocked_ioctl	= blkdev_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= compat_blkdev_ioctl,

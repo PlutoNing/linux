@@ -145,7 +145,9 @@ enum zone_stat_item {
 	NR_ZONE_WRITE_PENDING,	/* 
 	todddo, 2024年12月7日21:25:32
 	Count of dirty, writeback and unstable pages */
-	NR_MLOCK,		/* mlock()ed pages found and moved off LRU */
+	NR_MLOCK,		/* mlock()ed pages found and moved off LRU
+	表示mlock的页?
+	*/
 	/* Second 128 byte cacheline */
 	NR_BOUNCE,
 #if IS_ENABLED(CONFIG_ZSMALLOC)
@@ -213,7 +215,7 @@ enum node_stat_item {
 	NR_PAGETABLE,		/* used for pagetables */
 	NR_SECONDARY_PAGETABLE, /* secondary pagetables, e.g. KVM pagetables */
 #ifdef CONFIG_SWAP
-	NR_SWAPCACHE,
+	NR_SWAPCACHE, //表示被换入到内存的交换页
 #endif
 #ifdef CONFIG_NUMA_BALANCING
 	PGPROMOTE_SUCCESS,	/* promote successfully */
@@ -961,6 +963,9 @@ struct zone {
 	 * Number of isolated pageblock. It is used to solve incorrect
 	 * freepage counting problem due to racy retrieving migratetype
 	 * of pageblock. Protected by zone->lock.
+	  表示被隔离的pageblock数量
+	  被用于解决由于pageblock的migratetype的竞争而导致的错误的freepage计数问题
+
 	 */
 	unsigned long		nr_isolate_pageblock;
 #endif
@@ -1815,10 +1820,11 @@ static inline bool movable_only_nodes(nodemask_t *nodes)
  * PFN_SECTION_SHIFT		pfn to/from section number
  */
 #define PA_SECTION_SHIFT	(SECTION_SIZE_BITS)
+// 27 - 12 = 15, 表示为大小是2的15次方的section, 大小是32k个页面
 #define PFN_SECTION_SHIFT	(SECTION_SIZE_BITS - PAGE_SHIFT)
 
 #define NR_MEM_SECTIONS		(1UL << SECTIONS_SHIFT)
-
+//  大小为2的15次方 = 32768 = 32k个页面
 #define PAGES_PER_SECTION       (1UL << PFN_SECTION_SHIFT)
 #define PAGE_SECTION_MASK	(~(PAGES_PER_SECTION-1))
 
@@ -1828,11 +1834,12 @@ static inline bool movable_only_nodes(nodemask_t *nodes)
 #if (MAX_ORDER + PAGE_SHIFT) > SECTION_SIZE_BITS
 #error Allocator MAX_ORDER exceeds SECTION_SIZE
 #endif
-
+// 把pfn转换为section_nr, 每个section有2^15个页面,
 static inline unsigned long pfn_to_section_nr(unsigned long pfn)
 {
 	return pfn >> PFN_SECTION_SHIFT;
 }
+// 把section_nr转换为pfn, 每个section有2^15个页面
 static inline unsigned long section_nr_to_pfn(unsigned long sec)
 {
 	return sec << PFN_SECTION_SHIFT;
@@ -1874,13 +1881,18 @@ struct mem_section {
 	 * This is, logically, a pointer to an array of struct
 	 * pages.  However, it is stored with some other magic.
 	 * (see sparse.c::sparse_init_one_section())
-	 *
+	 * 这是一个指向struct pages数组的指针, 但是它存储在一些其他的魔法中?
+	 
 	 * Additionally during early boot we encode node id of
 	 * the location of the section here to guide allocation.
 	 * (see sparse.c::memory_present())
-	 *
+	 * 在早期引导期间, 我们在这里编码了节点id, 以指导分配.
+	 
 	 * Making it a UL at least makes someone do a cast
 	 * before using it wrong.
+	   让它至少成为一个UL, 这样就可以让某人在错误使用之前进行转换.
+	   --------------------
+	   里面会被编码nid, 以及是否online,present等bit位信息
 	 */
 	unsigned long section_mem_map;
 
@@ -1900,11 +1912,13 @@ struct mem_section {
 };
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
+// 一个page上面可以有多个mem_section结构体
 #define SECTIONS_PER_ROOT       (PAGE_SIZE / sizeof (struct mem_section))
 #else
 #define SECTIONS_PER_ROOT	1
 #endif
-
+// 这里是计算这个编号为sec的ms结构体,应该位于第几个页面.
+//全部的ms结构体是一个数组,分布在多个页面上面,每个页面有PAGE_SIZE/sizeof(struct mem_section)个ms结构体
 #define SECTION_NR_TO_ROOT(sec)	((sec) / SECTIONS_PER_ROOT)
 #define NR_SECTION_ROOTS	DIV_ROUND_UP(NR_MEM_SECTIONS, SECTIONS_PER_ROOT)
 #define SECTION_ROOT_MASK	(SECTIONS_PER_ROOT - 1)
@@ -1940,6 +1954,8 @@ extern size_t mem_section_usage_size(void);
  * a little bit of information.  The pointer is calculated
  * as mem_map - section_nr_to_pfn(pnum).  The result is
  * aligned to the minimum alignment of the two values:
+ 我们使用mem_map指针的低位来存储一些信息。指针计算为mem_map - section_nr_to_pfn(pnum)。
+ 结果对两个值的最小对齐方式进行了对齐：
  *   1. All mem_map arrays are page-aligned.
  *   2. section_nr_to_pfn() always clears PFN_SECTION_SHIFT
  *      lowest bits.  PFN_SECTION_SHIFT is arch-specific
@@ -1963,8 +1979,10 @@ enum {
 	SECTION_MAP_LAST_BIT,
 };
 
+// 这个section是否被标记为存在
 #define SECTION_MARKED_PRESENT		BIT(SECTION_MARKED_PRESENT_BIT)
 #define SECTION_HAS_MEM_MAP		BIT(SECTION_HAS_MEM_MAP_BIT)
+// 这个section是否在线
 #define SECTION_IS_ONLINE		BIT(SECTION_IS_ONLINE_BIT)
 #define SECTION_IS_EARLY		BIT(SECTION_IS_EARLY_BIT)
 #ifdef CONFIG_ZONE_DEVICE
@@ -1984,7 +2002,7 @@ static inline int present_section(struct mem_section *section)
 {
 	return (section && (section->section_mem_map & SECTION_MARKED_PRESENT));
 }
-
+// 似乎是判断nr对应的section是否存在?
 static inline int present_section_nr(unsigned long nr)
 {
 	return present_section(__nr_to_section(nr));
@@ -2033,7 +2051,7 @@ static inline int online_section_nr(unsigned long nr)
 void online_mem_sections(unsigned long start_pfn, unsigned long end_pfn);
 void offline_mem_sections(unsigned long start_pfn, unsigned long end_pfn);
 #endif
-
+// pfn转为mem section,
 static inline struct mem_section *__pfn_to_section(unsigned long pfn)
 {
 	return __nr_to_section(pfn_to_section_nr(pfn));

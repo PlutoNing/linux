@@ -95,7 +95,9 @@ enum vm_event_item { PGPGIN, PGPGOUT, PSWPIN, PSWPOUT,
 		UNEVICTABLE_PGRESCUED,	/* rescued from noreclaim list */
 		UNEVICTABLE_PGMLOCKED,
 		UNEVICTABLE_PGMUNLOCKED,
-		UNEVICTABLE_PGCLEARED,	/* on COW, page truncate */
+		UNEVICTABLE_PGCLEARED,	/* on COW, page truncate
+		如果mlocked的页面被操作的话, 这里统计.
+		*/
 		UNEVICTABLE_PGSTRANDED,	/* unable to isolate on unlock */
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 		THP_FAULT_ALLOC,

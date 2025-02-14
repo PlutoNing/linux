@@ -555,6 +555,7 @@ out:
 	node_states[N_MEMORY] = saved_node_state;
 }
 
+// 这个页面刚刚加入zone
 static void __meminit __init_single_page(struct page *page, unsigned long pfn,
 				unsigned long zone, int nid)
 {
@@ -831,6 +832,8 @@ static void __init init_unavailable_range(unsigned long spfn,
 }
 
 /*
+刚刚把start pfn开始的size个页面加入到了nid的zone
+这里是初始化每一个页面,属性和mt什么的
  * Initially all pages are reserved - free ones are freed
  * up by memblock_free_all() once the early boot process is
  * done. Non-atomic initialization, single-pass.
@@ -868,7 +871,7 @@ void __meminit memmap_init_range(unsigned long size, int nid, unsigned long zone
 	}
 #endif
 
-	for (pfn = start_pfn; pfn < end_pfn; ) {
+	for (pfn = start_pfn; pfn < end_pfn; ) { // 遍历新加入的页面
 		/*
 		 * There can be holes in boot-time mem_map[]s handed to this
 		 * function.  They do not exist on hotplugged memory.
@@ -883,6 +886,7 @@ void __meminit memmap_init_range(unsigned long size, int nid, unsigned long zone
 		}
 
 		page = pfn_to_page(pfn);
+		// 初始化单个页面
 		__init_single_page(page, pfn, zone, nid);
 		if (context == MEMINIT_HOTPLUG)
 			__SetPageReserved(page);
@@ -892,7 +896,7 @@ void __meminit memmap_init_range(unsigned long size, int nid, unsigned long zone
 		 * such that unmovable allocations won't be scattered all
 		 * over the place during system boot.
 		 */
-		if (pageblock_aligned(pfn)) {
+		if (pageblock_aligned(pfn)) { // 说明pfn是一个pageblock的第一个page, 处理完了一个block
 			set_pageblock_migratetype(page, migratetype);
 			cond_resched();
 		}
@@ -1375,6 +1379,7 @@ static void __meminit zone_init_internals(struct zone *zone, enum zone_type idx,
 	zone_pcp_init(zone);
 }
 
+// 初始化zone的free list
 static void __meminit zone_init_free_lists(struct zone *zone)
 {
 	unsigned int order, t;
@@ -1388,6 +1393,7 @@ static void __meminit zone_init_free_lists(struct zone *zone)
 #endif
 }
 
+// 初始化zone
 void __meminit init_currently_empty_zone(struct zone *zone,
 					unsigned long zone_start_pfn,
 					unsigned long size)
@@ -1405,7 +1411,7 @@ void __meminit init_currently_empty_zone(struct zone *zone,
 			pgdat->node_id,
 			(unsigned long)zone_idx(zone),
 			zone_start_pfn, (zone_start_pfn + size));
-
+	// 初始化zone内存的free list
 	zone_init_free_lists(zone);
 	zone->initialized = 1;
 }

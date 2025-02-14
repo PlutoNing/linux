@@ -57,7 +57,9 @@
 #include "shuffle.h"
 #include "page_reporting.h"
 
-/* Free Page Internal flags: for internal, non-pcp variants of free_pages(). */
+/* Free Page Internal flags: for internal, non-pcp variants of free_pages().
+翻译: 内部标志: 用于free_pages()的内部、非pcp变体。 
+*/
 typedef int __bitwise fpi_t;
 
 /* No special request */
@@ -217,7 +219,7 @@ static inline int get_pcppage_migratetype(struct page *page)
 {
 	return page->index;
 }
-
+// 设置page的mt
 static inline void set_pcppage_migratetype(struct page *page, int migratetype)
 {
 	page->index = migratetype;
@@ -349,6 +351,7 @@ static inline unsigned long *get_pageblock_bitmap(const struct page *page,
 							unsigned long pfn)
 {
 #ifdef CONFIG_SPARSEMEM
+// 先获取ms(mem section),然后获取对应的usemap(bitmap位图)
 	return section_to_usemap(__pfn_to_section(pfn));
 #else
 	return page_zone(page)->pageblock_flags;
@@ -366,9 +369,11 @@ static inline int pfn_to_bitidx(const struct page *page, unsigned long pfn)
 }
 
 /**
-
+返回页面的migration type
+ 这些type好像都是存储在位图里面的
  * get_pfnblock_flags_mask - Return the requested group of flags
   for the pageblock_nr_pages block of pages.
+  返回pageblock_nr_pages块页面的请求标志组.
  * @page: The page within the block of interest
  * @pfn: The target page frame number
  * @mask: mask of bits that the caller is interested in
@@ -381,7 +386,7 @@ unsigned long get_pfnblock_flags_mask(const struct page *page,
 	unsigned long *bitmap;
 	unsigned long bitidx, word_bitidx;
 	unsigned long word;
-
+	// 获取page对应的bitmap, 位图存储了page的mt
 	bitmap = get_pageblock_bitmap(page, pfn);
 	bitidx = pfn_to_bitidx(page, pfn);
 	word_bitidx = bitidx / BITS_PER_LONG;
@@ -390,11 +395,13 @@ unsigned long get_pfnblock_flags_mask(const struct page *page,
 	 * This races, without locks, with set_pfnblock_flags_mask(). Ensure
 	 * a consistent read of the memory array, so that results, even though
 	 * racy, are not corrupted.
+	  这是一个竞争条件,没有锁,与set_pfnblock_flags_mask()竞争.
+	  确保对内存数组的一致读取,以便即使结果是有竞争的,也不会被破坏.
 	 */
 	word = READ_ONCE(bitmap[word_bitidx]);
 	return (word >> bitidx) & mask;
 }
-
+// 获取page的mt
 static __always_inline int get_pfnblock_migratetype(const struct page *page,
 					unsigned long pfn)
 {
@@ -746,7 +753,8 @@ buddy_merge_likely(unsigned long pfn, unsigned long buddy_pfn,
 
 /*
  * Freeing function for a buddy system allocator.
- *
+ * buddy的释放函数
+ 
  * The concept of a buddy system is to maintain direct-mapped table
  * (containing bit values) for memory blocks of various "orders".
  * The bottom level table contains the map for the smallest allocatable
@@ -1035,10 +1043,12 @@ out:
 
 /*
  * Skip KASAN memory poisoning when either:
- *
+ * 当以下情况时跳过KASAN内存中毒:
  * 1. For generic KASAN: deferred memory initialization has not yet completed.
  *    Tag-based KASAN modes skip pages freed via deferred memory initialization
  *    using page tags instead (see below).
+  对于通用KASAN:延迟内存初始化尚未完成。 基于标签的KASAN模式通过使用页面标签而不是内存
+  标签跳过通过延迟内存初始化释放的页面
  * 2. For tag-based KASAN modes: the page has a match-all KASAN tag, indicating
  *    that error detection is disabled for accesses via the page address.
  *
@@ -1081,6 +1091,7 @@ static void kernel_init_pages(struct page *page, int numpages)
 	kasan_enable_current();
 }
 
+// 归还页面到buddy之前的准备工作
 static __always_inline bool free_pages_prepare(struct page *page,
 			unsigned int order, fpi_t fpi_flags)
 {
@@ -1089,14 +1100,16 @@ static __always_inline bool free_pages_prepare(struct page *page,
 	bool init = want_init_on_free();
 
 	VM_BUG_ON_PAGE(PageTail(page), page);
-
+	// tp点
 	trace_mm_page_free(page, order);
 	kmsan_free_page(page, order);
 
-	if (unlikely(PageHWPoison(page)) && !order) {
+	if (unlikely(PageHWPoison(page)) && !order) {// 如果是单页面并且是hwpoison
 		/*
 		 * Do not let hwpoison pages hit pcplists/buddy
 		 * Untie memcg state and reset page's owner
+		 不要让hwpoison页面命中pcplists/buddy
+		 解开memcg状态并重置页面的所有者
 		 */
 		if (memcg_kmem_online() && PageMemcgKmem(page))
 			__memcg_kmem_uncharge_page(page, order);
@@ -1108,8 +1121,9 @@ static __always_inline bool free_pages_prepare(struct page *page,
 	/*
 	 * Check tail pages before head page information is cleared to
 	 * avoid checking PageCompound for order-0 pages.
+	 检查尾页，然后清除头页信息，以避免检查PageCompound以获取0级页面。
 	 */
-	if (unlikely(order)) {
+	if (unlikely(order)) { // 如果是多页面
 		bool compound = PageCompound(page);
 		int i;
 
@@ -1247,7 +1261,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 
 	spin_unlock_irqrestore(&zone->lock, flags);
 }
-
+// 释放一个页面到buddy
 static void free_one_page(struct zone *zone,
 				struct page *page, unsigned long pfn,
 				unsigned int order,
@@ -1260,6 +1274,7 @@ static void free_one_page(struct zone *zone,
 		is_migrate_isolate(migratetype))) {
 		migratetype = get_pfnblock_migratetype(page, pfn);
 	}
+	// 
 	__free_one_page(page, pfn, zone, order, migratetype, fpi_flags);
 	spin_unlock_irqrestore(&zone->lock, flags);
 }
@@ -2365,7 +2380,7 @@ void drain_all_pages(struct zone *zone)
 {
 	__drain_all_pages(zone, false);
 }
-
+// 归还页面到buudy allocator之前的准备工作
 static bool free_unref_page_prepare(struct page *page, unsigned long pfn,
 							unsigned int order)
 {
@@ -2497,6 +2512,8 @@ void free_unref_page(struct page *page, unsigned int order)
 
 /*
  * Free a list of 0-order pages
+ 释放页面, 归还到buddy allocator
+ 此时页面好像都是没有ref的
  */
 void free_unref_page_list(struct list_head *list)
 {
@@ -2508,19 +2525,23 @@ void free_unref_page_list(struct list_head *list)
 	int migratetype;
 
 	/* Prepare pages for freeing */
-	list_for_each_entry_safe(page, next, list, lru) {
+	list_for_each_entry_safe(page, next, list, lru) {/* 
+		遍历待释放列表的每一个页面
+		 */
 		unsigned long pfn = page_to_pfn(page);
 		if (!free_unref_page_prepare(page, pfn, 0)) {
-			list_del(&page->lru);
+			list_del(&page->lru); // 跳过
 			continue;
 		}
 
 		/*
 		 * Free isolated pages directly to the allocator, see
 		 * comment in free_unref_page.
+		  直接释放到allocator
 		 */
-		migratetype = get_pcppage_migratetype(page);
-		if (unlikely(is_migrate_isolate(migratetype))) {
+		migratetype = get_pcppage_migratetype(page); // 先获取page的migratetype
+		if (unlikely(is_migrate_isolate(migratetype))) { // 如果是MIGRATE_ISOLATE类型
+			/* 看这里的操作似乎就是直接释放了?2024年6月15日02:00:39 */
 			list_del(&page->lru);
 			free_one_page(page_zone(page), page, pfn, 0, migratetype, FPI_NONE);
 			continue;

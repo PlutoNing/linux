@@ -105,7 +105,9 @@ struct page {
 			/* See page-flags.h for PAGE_MAPPING_FLAGS */
 			struct address_space *mapping;
 			union {
-				pgoff_t index;		/* Our offset within mapping. */
+				pgoff_t index;		/* Our offset within mapping.
+				如果是空闲页面, 这里是mt
+				*/
 				unsigned long share;	/* share count for fsdax */
 			};
 			/**
@@ -649,7 +651,8 @@ struct vm_area_struct {
 					  * page_table_lock */
 	struct anon_vma *anon_vma;	/* Serialized by page_table_lock */
 
-	/* Function pointers to deal with this struct. */
+	/* Function pointers to deal with this struct.
+	如果mmap的是file, 这里就是对应的fops, */
 	const struct vm_operations_struct *vm_ops;
 	/* 
 	有多少种vm_ops

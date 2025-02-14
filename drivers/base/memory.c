@@ -68,6 +68,7 @@ static inline unsigned long phys_to_block_id(unsigned long phys)
 static int memory_subsys_online(struct device *dev);
 static int memory_subsys_offline(struct device *dev);
 
+// ls /sys/devices/system/memory/memory0/
 static struct bus_type memory_subsys = {
 	.name = MEMORY_CLASS_NAME,
 	.dev_name = MEMORY_CLASS_NAME,
@@ -79,6 +80,7 @@ static struct bus_type memory_subsys = {
  * Memory blocks are cached in a local radix tree to avoid
  * a costly linear search for the corresponding device on
  * the subsystem bus.
+   被缓存在本地的radix tree中，以避免在subsystem总线上对应设备的昂贵的线性搜索。
  */
 static DEFINE_XARRAY(memory_blocks);
 
@@ -102,6 +104,7 @@ void unregister_memory_notifier(struct notifier_block *nb)
 }
 EXPORT_SYMBOL(unregister_memory_notifier);
 
+// mem block的release函数, 释放内存
 static void memory_block_release(struct device *dev)
 {
 	struct memory_block *mem = to_memory_block(dev);
@@ -109,7 +112,7 @@ static void memory_block_release(struct device *dev)
 	WARN_ON(mem->altmap);
 	kfree(mem);
 }
-
+// 获取memory block的属性
 unsigned long __weak memory_block_size_bytes(void)
 {
 	return MIN_MEMORY_BLOCK_SIZE;
@@ -180,8 +183,10 @@ static inline unsigned long memblk_nr_poison(struct memory_block *mem)
 }
 #endif
 
+// 上线一个memory block的函数
 static int memory_block_online(struct memory_block *mem)
 {
+	// 获得memory block的对应的mem section的pfn编号
 	unsigned long start_pfn = section_nr_to_pfn(mem->start_section_nr);
 	unsigned long nr_pages = PAGES_PER_SECTION * sections_per_block;
 	unsigned long nr_vmemmap_pages = 0;
@@ -190,7 +195,7 @@ static int memory_block_online(struct memory_block *mem)
 
 	if (memblk_nr_poison(mem))
 		return -EHWPOISON;
-
+	// 获取pfn对应的zone
 	zone = zone_for_pfn_range(mem->online_type, mem->nid, mem->group,
 				  start_pfn, nr_pages);
 
@@ -209,10 +214,10 @@ static int memory_block_online(struct memory_block *mem)
 		if (ret)
 			return ret;
 	}
-
+	// 实际的上线操作
 	ret = online_pages(start_pfn + nr_vmemmap_pages,
 			   nr_pages - nr_vmemmap_pages, zone, mem->group);
-	if (ret) {
+	if (ret) { // 上线失败
 		if (nr_vmemmap_pages)
 			mhp_deinit_memmap_on_memory(start_pfn, nr_vmemmap_pages);
 		return ret;
@@ -271,6 +276,7 @@ static int memory_block_offline(struct memory_block *mem)
 /*
  * MEMORY_HOTPLUG depends on SPARSEMEM in mm/Kconfig, so it is
  * OK to have direct references to sparsemem variables in here.
+ 改变memory block的状态到action对应的状态
  */
 static int
 memory_block_action(struct memory_block *mem, unsigned long action)
@@ -278,7 +284,7 @@ memory_block_action(struct memory_block *mem, unsigned long action)
 	int ret;
 
 	switch (action) {
-	case MEM_ONLINE:
+	case MEM_ONLINE: // online memory block
 		ret = memory_block_online(mem);
 		break;
 	case MEM_OFFLINE:
@@ -293,6 +299,7 @@ memory_block_action(struct memory_block *mem, unsigned long action)
 	return ret;
 }
 
+// 改变memory block的状态
 static int memory_block_change_state(struct memory_block *mem,
 		unsigned long to_state, unsigned long from_state_req)
 {
@@ -310,9 +317,11 @@ static int memory_block_change_state(struct memory_block *mem,
 	return ret;
 }
 
-/* The device lock serializes operations on memory_subsys_[online|offline] */
+/* The device lock serializes operations on memory_subsys_[online|offline]
+似乎是通过sysfs的dev回调来online对应的mem block的回调? */
 static int memory_subsys_online(struct device *dev)
 {
+	// 每个memory block对应一个device
 	struct memory_block *mem = to_memory_block(dev);
 	int ret;
 
@@ -643,6 +652,13 @@ static const struct attribute_group *memory_memblk_attr_groups[] = {
 	NULL,
 };
 
+/* 
+mem block是啥?
+@memory: memory block结构体,
+
+这里其就是继续初始化memory block的属性, 并注册到subsystem总线上
+然后存到radix tree中
+*/
 static int __add_memory_block(struct memory_block *memory)
 {
 	int ret;
@@ -660,7 +676,7 @@ static int __add_memory_block(struct memory_block *memory)
 	}
 	ret = xa_err(xa_store(&memory_blocks, memory->dev.id, memory,
 			      GFP_KERNEL));
-	if (ret)
+	if (ret) // 存储失败, 注销设备
 		device_unregister(&memory->dev);
 
 	return ret;
@@ -742,6 +758,7 @@ void memory_block_add_nid(struct memory_block *mem, int nid,
 }
 #endif
 
+// mem block是什么?
 static int add_memory_block(unsigned long block_id, unsigned long state,
 			    struct vmem_altmap *altmap,
 			    struct memory_group *group)
@@ -774,7 +791,7 @@ static int add_memory_block(unsigned long block_id, unsigned long state,
 		 */
 		mem->zone = early_node_zone_for_memory_block(mem, NUMA_NO_NODE);
 #endif /* CONFIG_NUMA */
-
+	// 分配好内存, 初始化好成员, 这里开始add
 	ret = __add_memory_block(mem);
 	if (ret)
 		return ret;
@@ -786,7 +803,10 @@ static int add_memory_block(unsigned long block_id, unsigned long state,
 
 	return 0;
 }
-
+/* 分为boot和热插拔的add block
+base_section_nr是内存块的起始section号? 类似那种绝对的内存块号?
+实际过程就是初始化一个memory block, 然后注册到subsystem总线上, 然后存到radix tree中
+*/
 static int __init add_boot_memory_block(unsigned long base_section_nr)
 {
 	int section_count = 0;
@@ -799,6 +819,8 @@ static int __init add_boot_memory_block(unsigned long base_section_nr)
 
 	if (section_count == 0)
 		return 0;
+	// 似乎只要有一个section是present的就可以了
+
 	return add_memory_block(memory_block_id(base_section_nr),
 				MEM_ONLINE, NULL,  NULL);
 }
@@ -912,10 +934,11 @@ static struct attribute *memory_root_attrs[] = {
 	NULL
 };
 
+//
 static const struct attribute_group memory_root_attr_group = {
 	.attrs = memory_root_attrs,
 };
-
+// /sys/devices/system/memory/ ?
 static const struct attribute_group *memory_root_attr_groups[] = {
 	&memory_root_attr_group,
 	NULL,
@@ -925,18 +948,22 @@ static const struct attribute_group *memory_root_attr_groups[] = {
  * Initialize the sysfs support for memory devices. At the time this function
  * is called, we cannot have concurrent creation/deletion of memory block
  * devices, the device_hotplug_lock is not needed.
+ 初始化内存设备的sysfs支持。在调用此函数时，我们不能并发创建/删除内存块设备，不需要device_hotplug_lock。
+
  */
 void __init memory_dev_init(void)
 {
 	int ret;
 	unsigned long block_sz, nr;
 
-	/* Validate the configured memory block size */
+	/* Validate the configured memory block size
+	校验配置的内存块大小
+	*/
 	block_sz = memory_block_size_bytes();
 	if (!is_power_of_2(block_sz) || block_sz < MIN_MEMORY_BLOCK_SIZE)
 		panic("Memory block size not suitable: 0x%lx\n", block_sz);
 	sections_per_block = block_sz / MIN_MEMORY_BLOCK_SIZE;
-
+	// 创建/sys下的文件?
 	ret = subsys_system_register(&memory_subsys, memory_root_attr_groups);
 	if (ret)
 		panic("%s() failed to register subsystem: %d\n", __func__, ret);
@@ -944,9 +971,11 @@ void __init memory_dev_init(void)
 	/*
 	 * Create entries for memory sections that were found
 	 * during boot and have been initialized
+	 创建在boot期间找到并已初始化的内存部分的条目
 	 */
 	for (nr = 0; nr <= __highest_present_section_nr;
 	     nr += sections_per_block) {
+			// 注册这个mem block
 		ret = add_boot_memory_block(nr);
 		if (ret)
 			panic("%s() failed to add memory block: %d\n", __func__,

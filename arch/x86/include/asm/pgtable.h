@@ -945,7 +945,7 @@ static inline pgd_t pti_set_user_pgtbl(pgd_t *pgdp, pgd_t pgd)
 #include <linux/mmdebug.h>
 #include <linux/log2.h>
 #include <asm/fixmap.h>
-
+/*  */
 static inline int pte_none(pte_t pte)
 {
 	return !(pte.pte & ~(_PAGE_KNL_ERRATUM_MASK));
@@ -1290,6 +1290,7 @@ static inline pte_t ptep_get_and_clear(struct mm_struct *mm, unsigned long addr,
 }
 
 #define __HAVE_ARCH_PTEP_GET_AND_CLEAR_FULL
+// 将页表项清空（即是解除了映射关系），并返回原来的页表项的内容
 static inline pte_t ptep_get_and_clear_full(struct mm_struct *mm,
 					    unsigned long addr, pte_t *ptep,
 					    int full)

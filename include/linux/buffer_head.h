@@ -99,6 +99,7 @@ struct buffer_head {
  * and buffer_foo() functions.
  * To avoid reset buffer flags that are already set, because that causes
  * a costly cache line transition, check the flag first.
+   用于设置buffer的标志位
  */
 #define BUFFER_FNS(bit, name)						\
 static __always_inline void set_buffer_##name(struct buffer_head *bh)	\
@@ -201,7 +202,7 @@ static inline unsigned long bh_offset(const struct buffer_head *bh)
 		((struct buffer_head *)page_private(page));	\
 	})
 #define page_has_buffers(page)	PagePrivate(page)
-//获取folio关联的buffer.
+//获取folio关联的buffer. 用于缓冲io的时候priv就是buffer
 #define folio_buffers(folio)		folio_get_private(folio)
 
 void buffer_check_dirty_writeback(struct folio *folio,

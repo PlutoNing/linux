@@ -2603,7 +2603,7 @@ struct dentry *kern_path_locked(const char *name, struct path *path)
 	putname(filename);
 	return res;
 }
-
+// 查找name路径,放在path里面
 int kern_path(const char *name, unsigned int flags, struct path *path)
 {
 	struct filename *filename = getname_kernel(name);

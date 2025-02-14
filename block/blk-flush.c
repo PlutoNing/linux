@@ -468,6 +468,7 @@ bool blk_insert_flush(struct request *rq)
 
 /**
  * blkdev_issue_flush - queue a flush
+ 发起一个flush请求
  * @bdev:	blockdev to issue flush for
  *
  * Description:

@@ -932,6 +932,7 @@ repeat:
 /*
  * find_inode_fast is the fast path version of find_inode, see the comment at
  * iget_locked for details.
+  是查找inode的快速路径版本, 详细信息请参见iget_locked的注释
  */
 static struct inode *find_inode_fast(struct super_block *sb,
 				struct hlist_head *head, unsigned long ino)
@@ -1036,12 +1037,16 @@ struct inode *new_inode_pseudo(struct super_block *sb)
  *	for the page cache are not reclaimable or migratable,
  *	mapping_set_gfp_mask() must be called with suitable flags on the
  *	newly created inode's mapping
+ 翻译: 为给定的superblock分配一个新的inode. 与inode->i_mapping相关的分配的默认
+ gfp_mask是GFP_HIGHUSER_MOVABLE.
+ 如果HIGHMEM页面不合适, 或者已知为页缓存分配的页面不可回收或迁移,
+ mapping_set_gfp_mask()必须在新创建的inode的映射上调用适当的标志
  *
  */
 struct inode *new_inode(struct super_block *sb)
 {
 	struct inode *inode;
-
+	// 从sb分配inode
 	inode = new_inode_pseudo(sb);
 	/* 分配成功, 加入sb */
 	if (inode)
@@ -1512,6 +1517,7 @@ EXPORT_SYMBOL(ilookup5);
 
 /**
  * ilookup - search for an inode in the inode cache
+ 查找inode
  * @sb:		super block of file system to search
  * @ino:	inode number to search for
  *

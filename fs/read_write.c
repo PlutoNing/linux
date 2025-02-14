@@ -41,6 +41,7 @@ static inline bool unsigned_offsets(struct file *file)
 
 /**
  * vfs_setpos - update the file offset for lseek
+ 设置lseek的文件偏移
  * @file:	file structure in question
  * @offset:	file offset to seek to
  * @maxsize:	maximum file size
@@ -48,8 +49,10 @@ static inline bool unsigned_offsets(struct file *file)
  * This is a low-level filesystem helper for updating the file offset to
  * the value specified by @offset if the given offset is valid and it is
  * not equal to the current file offset.
- *
+ * 这是一个用于更新文件偏移的底层文件系统助手，如果给定的偏移是有效的，并且它不等于
+ 当前文件偏移，则将文件偏移更新为@offset指定的值。
  * Return the specified offset on success and -EINVAL on invalid offset.
+ 返回成功的指定偏移，并在无效偏移时返回-EINVAL。
  */
 loff_t vfs_setpos(struct file *file, loff_t offset, loff_t maxsize)
 {
@@ -68,6 +71,7 @@ EXPORT_SYMBOL(vfs_setpos);
 
 /**
  * generic_file_llseek_size - generic llseek implementation for regular files
+ 对于常规文件的通用llseek实现
  * @file:	file structure to seek on
  * @offset:	file offset to seek to
  * @whence:	type of seek
@@ -76,11 +80,18 @@ EXPORT_SYMBOL(vfs_setpos);
  *
  * This is a variant of generic_file_llseek that allows passing in a custom
  * maximum file size and a custom EOF position, for e.g. hashed directories
- *
+ * 这是generic_file_llseek的变体，允许传入自定义的最大文件大小和自定义的EOF位置，例如，散列目录
+
  * Synchronization:
  * SEEK_SET and SEEK_END are unsynchronized (but atomic on 64bit platforms)
  * SEEK_CUR is synchronized against other SEEK_CURs, but not read/writes.
  * read/writes behave like SEEK_SET against seeks.
+ 同步情况:
+ * SEEK_SET和SEEK_END是不同步的（但在64位平台上是原子的）
+ * SEEK_CUR与其他SEEK_CUR同步，但不同步读/写。
+ * 读/写的行为类似于对寻求的SEEK_SET。
+ ------------------------
+ 似乎就行先计算offset, 然后直接设置file的相关属性, 然后返回offset
  */
 loff_t
 generic_file_llseek_size(struct file *file, loff_t offset, int whence,
@@ -153,6 +164,7 @@ EXPORT_SYMBOL(generic_file_llseek);
 
 /**
  * fixed_size_llseek - llseek implementation for fixed-sized devices
+ 对于固定大小的设备的llseek实现
  * @file:	file structure to seek on
  * @offset:	file offset to seek to
  * @whence:	type of seek

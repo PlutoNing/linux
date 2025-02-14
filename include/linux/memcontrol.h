@@ -544,11 +544,15 @@ retry:
 #ifdef CONFIG_MEMCG_KMEM
 /*
  * folio_memcg_kmem - Check if the folio has the memcg_kmem flag set.
+ 判断是否是kmem folio
  * @folio: Pointer to the folio.
  *
  * Checks if the folio has MemcgKmem flag set. The caller must ensure
  * that the folio has an associated memory cgroup. It's not safe to call
  * this function against some types of folios, e.g. slab folios.
+ 检查是否是kmem folio, 也就是这个folio是由kmem_cache分配的
+ caller必须确保这个folio有一个memcg. 不安全的folio不能调用这个函数, 例如slab folio
+ 
  */
 static inline bool folio_memcg_kmem(struct folio *folio)
 {
@@ -712,6 +716,7 @@ static inline void mem_cgroup_uncharge(struct folio *folio)
 }
 
 void __mem_cgroup_uncharge_list(struct list_head *page_list);
+// memcg对这些取消记账
 static inline void mem_cgroup_uncharge_list(struct list_head *page_list)
 {
 	if (mem_cgroup_disabled())
@@ -1637,7 +1642,7 @@ static inline void unlock_page_lruvec_irq(struct lruvec *lruvec)
 {
 	spin_unlock_irq(&lruvec->lru_lock);
 }
-
+// 解锁
 static inline void unlock_page_lruvec_irqrestore(struct lruvec *lruvec,
 		unsigned long flags)
 {

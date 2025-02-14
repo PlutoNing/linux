@@ -27,6 +27,7 @@ struct bio_crypt_ctx;
  * multiple of 512 bytes. Hence these two constants.
  */
 #ifndef SECTOR_SHIFT
+// sector的大小是512字节
 #define SECTOR_SHIFT 9
 #endif
 #ifndef SECTOR_SIZE
@@ -39,10 +40,10 @@ struct bio_crypt_ctx;
 
 struct block_device {
 	sector_t		bd_start_sect;
-	sector_t		bd_nr_sectors;
-	struct gendisk *	bd_disk;
-	struct request_queue *	bd_queue;
-	struct disk_stats __percpu *bd_stats;
+	sector_t		bd_nr_sectors; // 总扇区数
+	struct gendisk *	bd_disk;//对应的gendisk
+	struct request_queue *	bd_queue;// bdev的q,对应gendisk的queue
+	struct disk_stats __percpu *bd_stats;// pcp的stats统计结构
 	unsigned long		bd_stamp;
 	bool			bd_read_only;	/* read-only policy */
 	u8			bd_partno;
@@ -51,7 +52,9 @@ struct block_device {
 	dev_t			bd_dev;
 	atomic_t		bd_openers;
 	spinlock_t		bd_size_lock; /* for bd_inode->i_size updates */
-	struct inode *		bd_inode;	/* will die */
+	struct inode *		bd_inode;	/* will die ,设备对应的inode
+	似乎就是/dev/sda的inode?  好像不是,好像是dev fs的inode
+	*/
 	void *			bd_claiming;
 	void *			bd_holder;
 	const struct blk_holder_ops *bd_holder_ops;
@@ -377,7 +380,7 @@ typedef __u32 __bitwise blk_mq_req_flags_t;
  * meaning.
  */
 enum req_op {
-	/* read sectors from the device */
+	/* read sectors from the device, 读取设备 */
 	REQ_OP_READ		= (__force blk_opf_t)0,
 	/* write sectors to the device */
 	REQ_OP_WRITE		= (__force blk_opf_t)1,

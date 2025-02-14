@@ -161,6 +161,14 @@ struct blk_zone_range {
  *                The 512 B sector range must be zone aligned.
  * @BLKFINISHZONE: Mark the zones as full in the specified sector range.
  *                 The 512 B sector range must be zone aligned.
+ ioctl 命令	作用	详细说明
+BLKREPORTZONE	获取 Zone 信息	获取设备上某个区域的 Zone 详细信息，例如 Zone 状态、写指针位置等。
+BLKRESETZONE	重置 Zone	将某个 Zone 的写指针重置到起始位置，使 Zone 可重新写入（通常用于擦除操作）。
+BLKGETZONESZ	获取 Zone 大小	以512 字节扇区为单位返回设备的 Zone 大小。
+BLKGETNRZONES	获取设备 Zone 数量	获取设备上可用的 Zone 总数。
+BLKOPENZONE	打开 Zone	将某个 Zone 置为 open 状态，使其可写（仅适用于某些 Host-Managed 设备）。
+BLKCLOSEZONE	关闭 Zone	关闭某个 Zone，使其不能继续写入，确保数据完整性。
+BLKFINISHZONE	完成 Zone	标记 Zone 已写满（full），表示数据不可更改，避免无序写入。
  */
 #define BLKREPORTZONE	_IOWR(0x12, 130, struct blk_zone_report)
 #define BLKRESETZONE	_IOW(0x12, 131, struct blk_zone_range)

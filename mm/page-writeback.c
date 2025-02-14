@@ -2948,6 +2948,7 @@ int set_page_dirty_lock(struct page *page)
 EXPORT_SYMBOL(set_page_dirty_lock);
 
 /*
+从mapping中删除一个folio前会调用这个函数
  * This cancels just the dirty bit on the kernel page itself, it does NOT
  * actually remove dirty bits on any mmap's that may be around. It also
  * leaves the page tagged dirty, so any sync activity will still find it on
@@ -2965,7 +2966,7 @@ void __folio_cancel_dirty(struct folio *folio)
 {
 	struct address_space *mapping = folio_mapping(folio);
 
-	if (mapping_can_writeback(mapping)) {
+	if (mapping_can_writeback(mapping)) { // 如果需要写回
 		struct inode *inode = mapping->host;
 		struct bdi_writeback *wb;
 		struct wb_lock_cookie cookie = {};
@@ -2978,7 +2979,7 @@ void __folio_cancel_dirty(struct folio *folio)
 
 		unlocked_inode_to_wb_end(inode, &cookie);
 		folio_memcg_unlock(folio);
-	} else {//清除dirty
+	} else {//清除dirty. 不用写回似乎就是直接清除脏位
 		folio_clear_dirty(folio);
 	}
 }

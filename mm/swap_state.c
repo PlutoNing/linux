@@ -135,6 +135,9 @@ unlock:
 /*
  * This must be called only on folios that have
  * been verified to be in the swap cache.
+  必须仅在已验证在交换缓存中的folio上调用此函数。
+
+  从swapcache移除folio,用于换出,释放pagecache等操作.
  */
 void __delete_from_swap_cache(struct folio *folio,
 			swp_entry_t entry, void *shadow)
@@ -157,6 +160,7 @@ void __delete_from_swap_cache(struct folio *folio,
 		xas_next(&xas);
 	}
 	folio->swap.val = 0;
+	//清除标记位
 	folio_clear_swapcache(folio);
 	address_space->nrpages -= nr;
 	__node_stat_mod_folio(folio, NR_FILE_PAGES, -nr);

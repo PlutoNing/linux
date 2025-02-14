@@ -1461,6 +1461,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
  从mapping移除folio
  * Same as remove_mapping, but if the folio is removed from the mapping, it
  * gets returned with a refcount of 0.
+ 与remove_mapping相同,但是如果folio从mapping移除,它会返回一个引用计数为0的值
  */
 static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 			    bool reclaimed, struct mem_cgroup *target_memcg)
@@ -1468,7 +1469,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	int refcount;
 	void *shadow = NULL;
 
-	BUG_ON(!folio_test_locked(folio));
+	BUG_ON(!folio_test_locked(folio)); // 应该已经加锁了?
 	BUG_ON(mapping != folio_mapping(folio));
 
 	if (!folio_test_swapcache(folio))
@@ -1509,16 +1510,18 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		goto cannot_free;
 	}
 
-	if (folio_test_swapcache(folio)) {
+	if (folio_test_swapcache(folio)) { // 如果是swapcache的folio, 说明是内存中的swap
 		swp_entry_t swap = folio->swap;
 
 		if (reclaimed && !mapping_exiting(mapping))
 			shadow = workingset_eviction(folio, target_memcg);
+		//从swapcache移除folio
 		__delete_from_swap_cache(folio, swap, shadow);
+		// 是换出, 因为把内存中的folio移除了
 		mem_cgroup_swapout(folio, swap);
 		xa_unlock_irq(&mapping->i_pages);
 		put_swap_folio(folio, swap);
-	} else {
+	} else {// 普通的pagecache folio?
 		void (*free_folio)(struct folio *);
 
 		free_folio = mapping->a_ops->free_folio;
@@ -1568,8 +1571,10 @@ cannot_free:
  *
  * If the folio is dirty, under writeback or if someone else has a ref
  * on it, removal will fail.
+ 如果folio是脏的,在回写中,或者有其他人引用,移除会失败
  * Return: The number of pages removed from the mapping.  0 if the folio
  * could not be removed.
+ 返回: 从mapping移除的页数. 0表示无法移除
  * Context: The caller should have a single refcount on the folio and
  * hold its lock.
  */

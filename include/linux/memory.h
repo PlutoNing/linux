@@ -19,7 +19,7 @@
 #include <linux/node.h>
 #include <linux/compiler.h>
 #include <linux/mutex.h>
-
+// 大小为2^27,也就是128M
 #define MIN_MEMORY_BLOCK_SIZE     (1UL << SECTION_SIZE_BITS)
 
 /**
@@ -63,7 +63,10 @@ struct memory_group {
 		} d;
 	};
 };
-
+/* 
+每个mem block通过blockid存储在radix tree中
+ 
+*/
 struct memory_block {
 	unsigned long start_section_nr;
 	unsigned long state;		/* serialized by the dev->lock */
@@ -75,7 +78,7 @@ struct memory_block {
 	 * managed by a single zone. NULL if multiple zones (including nodes)
 	 * apply.
 	 */
-	struct zone *zone;
+	struct zone *zone; // 这个block所属的zone
 	struct device dev;
 	struct vmem_altmap *altmap;
 	struct memory_group *group;	/* group (if any) for this block */

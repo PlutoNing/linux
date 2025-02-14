@@ -222,7 +222,7 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 }
 
 /*
-从pagecache移除页面.
+从pagecache的xas移除页面.
  * Delete a page from the page cache and free it. Caller has to make
  * sure the page is locked and that nobody else uses it - or that usage
  * is safe.  The caller must hold the i_pages lock.
@@ -280,6 +280,7 @@ void filemap_remove_folio(struct folio *folio)
 
 /*
  批量移除
+ 从xas数组移除
  * page_cache_delete_batch - delete several folios from page cache
  * @mapping: the mapping to which folios belong
  * @fbatch: batch of folios to delete
@@ -333,7 +334,7 @@ static void page_cache_delete_batch(struct address_space *mapping,
 	mapping->nrpages -= total_pages;
 }
 
-// 从mapping中删除一批folio
+// 从mapping中删除一批folio  从xas数组移除
 // 谁调用: truncate_inode_pages_range
 void delete_from_page_cache_batch(struct address_space *mapping,
 				  struct folio_batch *fbatch)
@@ -351,7 +352,7 @@ void delete_from_page_cache_batch(struct address_space *mapping,
 		trace_mm_filemap_delete_from_page_cache(folio);
 		filemap_unaccount_folio(mapping, folio); //先登记移除了
 	}
-
+	// 从xas数组移除
 	page_cache_delete_batch(mapping, fbatch);
 	xa_unlock_irq(&mapping->i_pages);
 	if (mapping_shrinkable(mapping))
@@ -462,7 +463,7 @@ static inline int __filemap_fdatawrite(struct address_space *mapping,
 {
 	return __filemap_fdatawrite_range(mapping, 0, LLONG_MAX, sync_mode);
 }
-
+/*  */
 int filemap_fdatawrite(struct address_space *mapping)
 {
 	return __filemap_fdatawrite(mapping, WB_SYNC_ALL);
@@ -3875,6 +3876,7 @@ out:
 
 /* 
 mmap文件映射的vma的ops
+如果一个vma mmap了file,他的vm_ops就是这个
  */
 const struct vm_operations_struct generic_file_vm_ops = {
 	.fault		= filemap_fault,
@@ -3884,7 +3886,7 @@ const struct vm_operations_struct generic_file_vm_ops = {
 
 /* This is used for a general mmap of a disk file */
 
-//  file mmap回调
+//  file 的mmap回调
 int generic_file_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct address_space *mapping = file->f_mapping;
@@ -4358,7 +4360,8 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 EXPORT_SYMBOL(generic_file_write_iter);
 
 /**
-释放folio的fs priv数据,buffer等相关.
+
+一种情况是,从mapping驱逐folio之前,释放folio的fs priv数据,buffer等相关.
 返回是否还需要释放(是否成功)
  * filemap_release_folio() - Release fs-specific metadata on a folio.
  * @folio: The folio which the kernel is trying to free.

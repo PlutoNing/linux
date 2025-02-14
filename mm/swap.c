@@ -234,7 +234,7 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
 	folios_put(fbatch->folios, folio_batch_count(fbatch));
 	folio_batch_reinit(fbatch);
 }
-/* 把folio加入fbatch.  */
+/* 使用指定的move_fn函数把folio加入fbatch.  */
 static void folio_batch_add_and_move(struct folio_batch *fbatch,
 		struct folio *folio, move_fn_t move_fn)
 {
@@ -581,15 +581,18 @@ void folio_add_lru_vma(struct folio *folio, struct vm_area_struct *vma)
 }
 
 /*
+以deactivate folio为目的的move lru函数
  * If the folio cannot be invalidated, it is moved to the
  * inactive list to speed up its reclaim.  It is moved to the
  * head of the list, rather than the tail, to give the flusher
  * threads some time to write it out, as this is much more
  * effective than the single-page writeout from reclaim.
- *
+ * 如果folio不能被invalidate, 就加入inactive list, 但是加入到头部,而不是尾部.
+ * 这样flusher线程有时间把它写出去,因为这比reclaim的单页写出要有效得多.
  * If the folio isn't mapped and dirty/writeback, the folio
  * could be reclaimed asap using the reclaim flag.
- *
+ * 如果folio没有被映射,并且不是dirty/writeback, folio可以被立即回收,使用reclaim标志.
+
  * 1. active, mapped folio -> none
  * 2. active, dirty/writeback folio -> inactive, head, reclaim
  * 3. inactive, mapped folio -> none
@@ -612,12 +615,13 @@ static void lru_deactivate_file_fn(struct lruvec *lruvec, struct folio *folio)
 	/* Some processes are using the folio */
 	if (folio_mapped(folio))
 		return;
-
+	//先从lru移除一下
 	lruvec_del_folio(lruvec, folio);
 	folio_clear_active(folio);
 	folio_clear_referenced(folio);
 
 	if (folio_test_writeback(folio) || folio_test_dirty(folio)) {
+		// 如果是dirty或者writeback,就加入到头部,并且设置reclaim标志
 		/*
 		 * Setting the reclaim flag could race with
 		 * folio_end_writeback() and confuse readahead.  But the
@@ -722,24 +726,29 @@ void lru_add_drain_cpu(int cpu)
 
 /**
  * deactivate_file_folio() - Deactivate a file folio.
+ deactive表示什么?
+ 好像就是提示mm子系统这个folio可以被回收
  * @folio: Folio to deactivate.
  *
  * This function hints to the VM that @folio is a good reclaim candidate,
  * for example if its invalidation fails due to the folio being dirty
  * or under writeback.
- *
+ * 这个函数提示VM,这个folio是一个好的回收候选者,例如如果它的失效失败是因为folio是脏的或者正在回写。
  * Context: Caller holds a reference on the folio.
  */
 void deactivate_file_folio(struct folio *folio)
 {
 	struct folio_batch *fbatch;
 
-	/* Deactivating an unevictable folio will not accelerate reclaim */
+	/* Deactivating an unevictable folio will not accelerate reclaim
+	deactive一个unevictable的folio不会加速回收
+	 */
 	if (folio_test_unevictable(folio))
 		return;
 
 	folio_get(folio);
 	local_lock(&cpu_fbatches.lock);
+	// 使用deactive_file这个fbatch
 	fbatch = this_cpu_ptr(&cpu_fbatches.lru_deactivate_file);
 	folio_batch_add_and_move(fbatch, folio, lru_deactivate_file_fn);
 	local_unlock(&cpu_fbatches.lock);
@@ -788,7 +797,7 @@ void folio_mark_lazyfree(struct folio *folio)
 		local_unlock(&cpu_fbatches.lock);
 	}
 }
-/*  */
+/* 进行unmap的时候会调用这个 */
 void lru_add_drain(void)
 {
 	local_lock(&cpu_fbatches.lock);
@@ -803,6 +812,9 @@ void lru_add_drain(void)
  * lru_add_drain_cpu and invalidate_bh_lrus_cpu should run on
  * the same cpu. It shouldn't be a problem in !SMP case since
  * the core is only one and the locks will disable preemption.
+   函数被调用在per-cpu工作队列上下文中,所以lru_add_drain_cpu和invalidate_bh_lrus_cpu
+   应该在同一个cpu上运行。
+   在!SMP的情况下不应该有问题,因为核心只有一个,锁会禁用抢占。
  */
 static void lru_add_and_bh_lrus_drain(void)
 {
@@ -825,7 +837,7 @@ void lru_add_drain_cpu_zone(struct zone *zone)
 #ifdef CONFIG_SMP
 
 static DEFINE_PER_CPU(struct work_struct, lru_add_drain_work);
-
+//
 static void lru_add_drain_per_cpu(struct work_struct *dummy)
 {
 	lru_add_and_bh_lrus_drain();
@@ -850,8 +862,10 @@ static bool cpu_needs_drain(unsigned int cpu)
  * Doesn't need any cpu hotplug locking because we do rely on per-cpu
  * kworkers being shut down before our page_alloc_cpu_dead callback is
  * executed on the offlined cpu.
+   不需要cpu热插拔锁,因为我们依赖于在我们的page_alloc_cpu_dead回调在离线cpu上执行之前???
  * Calling this function with cpu hotplug locks held can actually lead
  * to obscure indirect dependencies via WQ context.
+ 在cpu热插拔锁的情况下调用这个函数实际上可能会导致通过WQ上下文的模糊间接依赖关系。
  */
 static inline void __lru_add_drain_all(bool force_all_cpus)
 {
@@ -991,6 +1005,7 @@ void lru_cache_disable(void)
 
 /**
  * release_pages - batched put_page()
+ 这里的释放指什么?
  * @arg: array of pages to release
  * @nr: number of pages
  *
@@ -1000,6 +1015,8 @@ void lru_cache_disable(void)
  * Note that the argument can be an array of pages, encoded pages,
  * or folio pointers. We ignore any encoded bits, and turn any of
  * them into just a folio that gets free'd.
+ 注意参数可以是一个页面数组,编码的页面s或folios的指针。我们忽略任何编码位,并将
+ 它们中的任何一个转换为只是一个被释放的folio。
  */
 void release_pages(release_pages_arg arg, int nr)
 {
@@ -1020,6 +1037,8 @@ void release_pages(release_pages_arg arg, int nr)
 		 * Make sure the IRQ-safe lock-holding time does not get
 		 * excessive with a continuous string of pages from the
 		 * same lruvec. The lock is held only if lruvec != NULL.
+		 保证中断安全锁持有时间不会因为连续的来自同一个lruvec的页面而变得过长。
+		 只有在lruvec != NULL时才持有锁。
 		 */
 		if (lruvec && ++lock_batch == SWAP_CLUSTER_MAX) {
 			unlock_page_lruvec_irqrestore(lruvec, flags);
@@ -1041,10 +1060,10 @@ void release_pages(release_pages_arg arg, int nr)
 			continue;
 		}
 
-		if (!folio_put_testzero(folio))
+		if (!folio_put_testzero(folio)) // put之后还有引用
 			continue;
 
-		if (folio_test_large(folio)) {
+		if (folio_test_large(folio)) { // 如果是大页,就这样处理
 			if (lruvec) {
 				unlock_page_lruvec_irqrestore(lruvec, flags);
 				lruvec = NULL;
@@ -1070,19 +1089,23 @@ void release_pages(release_pages_arg arg, int nr)
 		 * munlock after VM_LOCKED was cleared, Mlocked may still be
 		 * found set here.  This does not indicate a problem, unless
 		 * "unevictable_pgs_cleared" appears worryingly large.
+		  在罕见的情况下,当截断或holepunching与VM_LOCKED清除之后的munlock竞争时,
+		  Mlocked可能仍然被发现在这里。这并不表示有问题,除非"unevictable_pgs_cleared"看起来很大。
+
 		 */
 		if (unlikely(folio_test_mlocked(folio))) {
 			__folio_clear_mlocked(folio);
 			zone_stat_sub_folio(folio, NR_MLOCK);
 			count_vm_event(UNEVICTABLE_PGCLEARED);
 		}
-
+		// 加入到pages_to_free
 		list_add(&folio->lru, &pages_to_free);
 	}
 	if (lruvec)
-		unlock_page_lruvec_irqrestore(lruvec, flags);
-
+		unlock_page_lruvec_irqrestore(lruvec, flags); // 哪里加锁的?
+	// 处理memcg相关的统计
 	mem_cgroup_uncharge_list(&pages_to_free);
+	//  释放
 	free_unref_page_list(&pages_to_free);
 }
 EXPORT_SYMBOL(release_pages);
@@ -1092,10 +1115,15 @@ EXPORT_SYMBOL(release_pages);
  * queues.  That would prevent them from really being freed right now.  That's
  * OK from a correctness point of view but is inefficient - those folios may be
  * cache-warm and we want to give them back to the page allocator ASAP.
- *
+ * 这些即将释放的folio可能在延迟的lru-addition队列中。这将阻止它们立即被释放。从正确性的
+ 角度来看这是可以的,但是是低效的-这些folio可能是cache-warm的,我们希望尽快将它们还给页面分配器。
+ 
  * So __folio_batch_release() will drain those queues here.
  * folio_batch_move_lru() calls folios_put() directly to avoid
  * mutual recursion.
+ 所以__folio_batch_release()将在这里排空这些队列。
+ folio_batch_move_lru()直接调用folios_put()以避免相互递归。
+
  */
 void __folio_batch_release(struct folio_batch *fbatch)
 {

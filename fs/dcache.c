@@ -3338,7 +3338,7 @@ void __init vfs_caches_init_early(void)
 	dcache_init_early();
 	inode_init_early();
 }
-
+// 初始化vfs缓存
 void __init vfs_caches_init(void)
 {
 	names_cachep = kmem_cache_create_usercopy("names_cache", PATH_MAX, 0,
@@ -3349,6 +3349,7 @@ void __init vfs_caches_init(void)
 	files_init();
 	files_maxfiles_init();
 	mnt_init();
+	// 初始bdev缓存
 	bdev_cache_init();
 	chrdev_init();
 }

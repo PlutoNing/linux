@@ -242,7 +242,7 @@ out_unlock:
 out:
 	return ret;
 }
-
+// 结束buffer io,进行清理工作?
 static void end_buffer_async_read(struct buffer_head *bh, int uptodate)
 {
 	unsigned long flags;
@@ -266,6 +266,8 @@ static void end_buffer_async_read(struct buffer_head *bh, int uptodate)
 	 * Be _very_ careful from here on. Bad things can happen if
 	 * two buffer heads end IO at almost the same time and both
 	 * decide that the page is now completely done.
+	   小心处理, 如果两个buffer head几乎同时结束IO, 并且都认为page已经完成, 那么会发生很糟糕的事情
+
 	 */
 	first = folio_buffers(folio);
 	spin_lock_irqsave(&first->b_uptodate_lock, flags);
@@ -350,6 +352,7 @@ static void decrypt_bh(struct work_struct *work)
 /*
  * I/O completion handler for block_read_full_folio() - pages
  * which come unlocked at the end of I/O.
+ buffer io的end io函数
  */
 static void end_buffer_async_read_io(struct buffer_head *bh, int uptodate)
 {
@@ -381,6 +384,7 @@ static void end_buffer_async_read_io(struct buffer_head *bh, int uptodate)
 /*
  * Completion handler for block_write_full_page() - pages which are unlocked
  * during I/O, and which have PageWriteback cleared upon I/O completion.
+    block_write_full_page的end io函数
  */
 void end_buffer_async_write(struct buffer_head *bh, int uptodate)
 {
@@ -432,7 +436,10 @@ EXPORT_SYMBOL(end_buffer_async_write);
  * locked buffer would confuse end_buffer_async_read() into not unlocking
  * the page.  So the absence of BH_Async_Read tells end_buffer_async_read()
  * that this buffer is not under async I/O.
- *
+ * 如果一个page的buffer在异步读取中, 那么有可能另一个线程在某个buffer完成后锁定了这个buffer,
+ * 但是其他的buffer还没有完成. 这个锁定的buffer会让end_buffer_async_read()在没有解锁page的情况下
+ * 退出. 所以BH_Async_Read的缺失告诉end_buffer_async_read()这个buffer不在异步I/O中.
+ 
  * The page comes unlocked when it has no locked buffer_async buffers
  * left.
  *
@@ -1309,10 +1316,12 @@ static struct buffer_head *__bread_slow(struct buffer_head *bh)
  * refcount elevated by one when they're in an LRU.  A buffer can only appear
  * once in a particular CPU's LRU.  A single buffer can be present in multiple
  * CPU's LRUs at the same time.
- *
+ * percpu的bh lru实现, 为了减少__find_get_block()的开销
+ * bhs[]数组是排序的, 最新的buffer在bhs[0]. 当buffer在LRU中时, refcount+1
+ * 一个buffer只能出现在一个cpu的LRU中, 一个single buffer可以同时出现在多个cpu的LRU中???
  * This is a transparent caching front-end to sb_bread(), sb_getblk() and
  * sb_find_get_block().
- *
+ * 这是对sb_bread(), sb_getblk()和sb_find_get_block()的透明缓存前端
  * The LRUs themselves only need locking against invalidate_bh_lrus.  We use
  * a local interrupt disable for that.
  */
@@ -1322,7 +1331,7 @@ static struct buffer_head *__bread_slow(struct buffer_head *bh)
 struct bh_lru {
 	struct buffer_head *bhs[BH_LRU_SIZE];
 };
-/*  */
+/* 每个cpu的bh使用的lru? */
 static DEFINE_PER_CPU(struct bh_lru, bh_lrus) = {{ NULL }};
 
 #ifdef CONFIG_SMP
@@ -1522,7 +1531,7 @@ static void invalidate_bh_lru(void *arg)
 	__invalidate_bh_lrus(b);
 	put_cpu_var(bh_lrus);
 }
-
+// 判断cpu的bh lru是否有bh
 bool has_bh_in_lru(int cpu, void *dummy)
 {
 	struct bh_lru *b = per_cpu_ptr(&bh_lrus, cpu);
@@ -1535,7 +1544,7 @@ bool has_bh_in_lru(int cpu, void *dummy)
 
 	return false;
 }
-
+// 如果cpu的bh lru有bh, 就清空
 void invalidate_bh_lrus(void)
 {
 	on_each_cpu_cond(has_bh_in_lru, invalidate_bh_lru, NULL, 1);
@@ -1783,17 +1792,19 @@ EXPORT_SYMBOL(clean_bdev_aliases);
 /*
  * Size is a power-of-two in the range 512..PAGE_SIZE,
  * and the case we care about most is PAGE_SIZE.
- *
+ * size是512到PAGE_SIZE之间的2的幂,我们最关心的情况是PAGE_SIZE
  * So this *could* possibly be written with those
  * constraints in mind (relevant mostly if some
  * architecture has a slow bit-scan instruction)
+ 所以这个函数可能是为了这些约束而编写的(如果某些架构有一个慢的位扫描指令)
  */
 static inline int block_size_bits(unsigned int blocksize)
 {
 	return ilog2(blocksize);
 }
 
-//获取folio的buffers
+//获取folio的buffers,是获取还是创建?
+/* 这个folio作为读写这个inode的缓冲 */
 static struct buffer_head *folio_create_buffers(struct folio *folio,
 						struct inode *inode,
 						unsigned int b_state)
@@ -2413,9 +2424,16 @@ EXPORT_SYMBOL(block_is_partially_uptodate);
  * Reads the folio asynchronously --- the unlock_buffer() and
  * set/clear_buffer_uptodate() functions propagate buffer state into the
  * folio once IO has completed.
+   通用的"read_folio"函数,用于具有正常get_block功能的块设备.这是大多数块设备文件系统.
+   异步读取folio---unlock_buffer()和set/clear_buffer_uptodate()函数在IO完成后将
+   缓冲区状态传播到folio中.
+   ----------------------
+   get_block是函数回调.get的含义似乎是获取ref
+
  */
 int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 {
+	//先获取涉及的inode
 	struct inode *inode = folio->mapping->host;
 	sector_t iblock, lblock;
 	struct buffer_head *bh, *head, *arr[MAX_BUF_PER_PAGE];
@@ -2430,7 +2448,7 @@ int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 		limit = inode->i_sb->s_maxbytes;
 
 	VM_BUG_ON_FOLIO(folio_test_large(folio), folio);
-
+	//获取folio的buffers
 	head = folio_create_buffers(folio, inode, 0);
 	blocksize = head->b_size;
 	bbits = block_size_bits(blocksize);
@@ -2488,7 +2506,9 @@ int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 		return 0;
 	}
 
-	/* Stage two: lock the buffers */
+	/* Stage two: lock the buffers
+	阶段2:锁定缓冲区
+	 */
 	for (i = 0; i < nr; i++) {
 		bh = arr[i];
 		lock_buffer(bh);
@@ -2499,12 +2519,13 @@ int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 	 * Stage 3: start the IO.  Check for uptodateness
 	 * inside the buffer lock in case another process reading
 	 * the underlying blockdev brought it uptodate (the sct fix).
+	 第三阶段:开始IO.在缓冲区锁中检查是否为最新状态,以防其他进程读取底层块设备并将其更新(修复sct).
 	 */
 	for (i = 0; i < nr; i++) {
 		bh = arr[i];
 		if (buffer_uptodate(bh))
 			end_buffer_async_read(bh, 1);
-		else
+		else // 发起io
 			submit_bh(REQ_OP_READ, bh);
 	}
 	return 0;
@@ -2778,12 +2799,14 @@ EXPORT_SYMBOL(block_truncate_page);
 
 /*
  * The generic ->writepage function for buffer-backed address_spaces
+写东西到设备
  */
 int block_write_full_page(struct page *page, get_block_t *get_block,
 			struct writeback_control *wbc)
 {
 	struct folio *folio = page_folio(page);
 	struct inode * const inode = folio->mapping->host;
+	// dev的inode的size是什么?
 	loff_t i_size = i_size_read(inode);
 
 	/* Is the folio fully inside i_size? */

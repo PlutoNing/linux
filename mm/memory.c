@@ -461,7 +461,7 @@ int __pte_alloc_kernel(pmd_t *pmd)
 		pte_free_kernel(&init_mm, new);
 	return 0;
 }
-
+// rssvec是什么?2025年2月15日00:13:52
 static inline void init_rss_vec(int *rss)
 {
 	memset(rss, 0, sizeof(int) * NR_MM_COUNTERS);
@@ -1405,7 +1405,7 @@ zap_install_uffd_wp_if_needed(struct vm_area_struct *vma,
 
 	pte_install_uffd_wp_if_needed(vma, addr, pte, pteval);
 }
-
+// 遍历pte表，释放页表项
 static unsigned long zap_pte_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pmd_t *pmd,
 				unsigned long addr, unsigned long end,
@@ -1427,22 +1427,23 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 
 	flush_tlb_batched_pending(mm);
 	arch_enter_lazy_mmu_mode();
-	do {
+	do { // 遍历每一个页表项
 		pte_t ptent = ptep_get(pte);
 		struct page *page;
 
 		if (pte_none(ptent))
-			continue;
+			continue; // 无需操作?
 
 		if (need_resched())
 			break;
 
-		if (pte_present(ptent)) {
+		if (pte_present(ptent)) { // 页面在内存的情况
 			unsigned int delay_rmap;
-
+			// 获取到page
 			page = vm_normal_page(vma, addr, ptent);
 			if (unlikely(!should_zap_page(details, page)))
 				continue;
+			//将页表项清空（即是解除了映射关系），并返回原来的页表项的内容
 			ptent = ptep_get_and_clear_full(mm, addr, pte,
 							tlb->fullmm);
 			arch_check_zapped_pte(vma, ptent);
@@ -1455,7 +1456,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 			}
 
 			delay_rmap = 0;
-			if (!PageAnon(page)) {
+			if (!PageAnon(page)) {// 被映射的在内存中的文件页?
 				if (pte_dirty(ptent)) {
 					set_page_dirty(page);
 					if (tlb_delay_rmap(tlb)) {
@@ -1477,9 +1478,11 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 				addr += PAGE_SIZE;
 				break;
 			}
+
 			continue;
 		}
 
+		// 下面是页面为交换页的情况?
 		entry = pte_to_swp_entry(ptent);
 		if (is_device_private_entry(entry) ||
 		    is_device_exclusive_entry(entry)) {
@@ -1550,7 +1553,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 
 	return addr;
 }
-
+// 遍历pmd, 解除映射
 static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pud_t *pud,
 				unsigned long addr, unsigned long end,
@@ -1592,7 +1595,7 @@ static inline unsigned long zap_pmd_range(struct mmu_gather *tlb,
 
 	return addr;
 }
-
+/* 遍历页表, 解除映射 */
 static inline unsigned long zap_pud_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, p4d_t *p4d,
 				unsigned long addr, unsigned long end,
@@ -1621,7 +1624,7 @@ next:
 
 	return addr;
 }
-
+/* 遍历页表 , 解除映射 */
 static inline unsigned long zap_p4d_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pgd_t *pgd,
 				unsigned long addr, unsigned long end,
@@ -1640,7 +1643,9 @@ static inline unsigned long zap_p4d_range(struct mmu_gather *tlb,
 
 	return addr;
 }
-
+/* 解除范围内的页面映射
+好像实际上就是一级一级的遍历各层页表了
+*/
 void unmap_page_range(struct mmu_gather *tlb,
 			     struct vm_area_struct *vma,
 			     unsigned long addr, unsigned long end,
@@ -1661,7 +1666,7 @@ void unmap_page_range(struct mmu_gather *tlb,
 	tlb_end_vma(tlb, vma);
 }
 
-
+/* 解除vma的范围内的映射 */
 static void unmap_single_vma(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, unsigned long start_addr,
 		unsigned long end_addr,
@@ -1755,9 +1760,10 @@ void unmap_vmas(struct mmu_gather *tlb, struct ma_state *mas,
 
 /**
  * zap_page_range_single - remove user pages in a given range
+ 解除范围内的用户页面映射
  * @vma: vm_area_struct holding the applicable pages
- * @address: starting address of pages to zap
- * @size: number of bytes to zap
+ * @address: starting address of pages to zap,开始处
+ * @size: number of bytes to zap 涉及的size
  * @details: details of shared cache invalidation
  *
  * The range must fit into one VMA.
@@ -1773,6 +1779,7 @@ void zap_page_range_single(struct vm_area_struct *vma, unsigned long address,
 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, vma->vm_mm,
 				address, end);
 	hugetlb_zap_begin(vma, &range.start, &range.end);
+	// 这里给tlb初始化上相关的参数
 	tlb_gather_mmu(&tlb, vma->vm_mm);
 	update_hiwater_rss(vma->vm_mm);
 	mmu_notifier_invalidate_range_start(&range);
@@ -1780,6 +1787,7 @@ void zap_page_range_single(struct vm_area_struct *vma, unsigned long address,
 	 * unmap 'address-end' not 'range.start-range.end' as range
 	 * could have been expanded for hugetlb pmd sharing.
 	 */
+	 /* 这里是实际的操作? */
 	unmap_single_vma(&tlb, vma, address, end, details, false);
 	mmu_notifier_invalidate_range_end(&range);
 	tlb_finish_mmu(&tlb);
@@ -3525,13 +3533,18 @@ copy:
 	return wp_page_copy(vmf);
 }
 
+/*  */
 static void unmap_mapping_range_vma(struct vm_area_struct *vma,
 		unsigned long start_addr, unsigned long end_addr,
 		struct zap_details *details)
 {
 	zap_page_range_single(vma, start_addr, end_addr - start_addr, details);
 }
-
+/* 解除范围内的映射
+root可能存储了映射到此mapping的所有vma
+----------------------------
+可能是因为有多对多的关系, 这里先找到vma, 再处理vma
+*/
 static inline void unmap_mapping_range_tree(struct rb_root_cached *root,
 					    pgoff_t first_index,
 					    pgoff_t last_index,
@@ -3540,14 +3553,14 @@ static inline void unmap_mapping_range_tree(struct rb_root_cached *root,
 	struct vm_area_struct *vma;
 	pgoff_t vba, vea, zba, zea;
 
-	vma_interval_tree_foreach(vma, root, first_index, last_index) {
+	vma_interval_tree_foreach(vma, root, first_index, last_index) {/* 遍历涉及的全部vma */
 		vba = vma->vm_pgoff;
-		vea = vba + vma_pages(vma) - 1;
+		vea = vba + vma_pages(vma) - 1; // vba和vea分别代表此vma的pgoff的起始和结束
 		zba = max(first_index, vba);
-		zea = min(last_index, vea);
+		zea = min(last_index, vea); // zba和zea分别代表此vma和要解除映射的范围的pgoff的起始和结束
 
 		unmap_mapping_range_vma(vma,
-			((zba - vba) << PAGE_SHIFT) + vma->vm_start,
+			((zba - vba) << PAGE_SHIFT) + vma->vm_start, // vm_start虚拟地址加上页数乘以4KB就是pgoff转为地址
 			((zea - vba + 1) << PAGE_SHIFT) + vma->vm_start,
 				details);
 	}
@@ -3555,6 +3568,8 @@ static inline void unmap_mapping_range_tree(struct rb_root_cached *root,
 
 /**
  * unmap_mapping_folio() - Unmap single folio from processes.
+ 解除被映射的页的映射
+ 可能是mapped的文件页
  * @folio: The locked folio to be unmapped.
  *
  * Unmap this folio from any userspace process which still has it mmaped.
@@ -3563,6 +3578,10 @@ static inline void unmap_mapping_range_tree(struct rb_root_cached *root,
  * truncation or invalidation holds the lock on a folio, it may find that
  * the page has been remapped again: and then uses unmap_mapping_folio()
  * to unmap it finally.
+   从任何仍然映射它的用户空间进程中取消映射此页。
+   通常，为了效率，附近页面的范围已经被 unmap_mapping_pages() 或 unmap_mapping_range() 取消映射。
+   但是一旦截断或无效保持 folio 上的锁，可能会发现页面已经被重新映射：然后使用 unmap_mapping_folio() 最终取消映射它。
+   
  */
 void unmap_mapping_folio(struct folio *folio)
 {
@@ -3589,6 +3608,7 @@ void unmap_mapping_folio(struct folio *folio)
 
 /**
  * unmap_mapping_pages() - Unmap pages from processes.
+ 解除被映射的页的映射
  * @mapping: The address space containing pages to be unmapped.
  * @start: Index of first page to be unmapped.
  * @nr: Number of pages to be unmapped.  0 to unmap to end of file.
@@ -3598,6 +3618,9 @@ void unmap_mapping_folio(struct folio *folio)
  * has them mmaped.  Generally, you want to remove COWed pages as well when
  * a file is being truncated, but not when invalidating pages from the page
  * cache.
+ 解除此地址空间中的页面从任何用户空间进程中取消映射。
+ 通常，当截断文件时，您还希望删除 COWed 页面，但在从页面缓存中使页面无效时不这样做。
+ --------------为什么这里cow特殊处理?
  */
 void unmap_mapping_pages(struct address_space *mapping, pgoff_t start,
 		pgoff_t nr, bool even_cows)
@@ -3622,7 +3645,8 @@ EXPORT_SYMBOL_GPL(unmap_mapping_pages);
  * unmap_mapping_range - unmap the portion of all mmaps in the specified
  * address_space corresponding to the specified byte range in the underlying
  * file.
- *
+ * 解除指定地址空间中所有 mmaps 的部分映射，这些 mmaps 对应于底层文件中指定的字节范围。
+ 
  * @mapping: the address space containing mmaps to be unmapped.
  * @holebegin: byte in first page to unmap, relative to the start of
  * the underlying file.  This will be rounded down to a PAGE_SIZE

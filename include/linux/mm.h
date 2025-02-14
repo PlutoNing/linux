@@ -1116,7 +1116,7 @@ static inline int put_page_testzero(struct page *page)
 	VM_BUG_ON_PAGE(page_ref_count(page) == 0, page);
 	return page_ref_dec_and_test(page);
 }
-
+// put一下, 返回put之后还有没有ref
 static inline int folio_put_testzero(struct folio *folio)
 {
 	return put_page_testzero(&folio->page);
@@ -2055,6 +2055,7 @@ static inline void set_page_node(struct page *page, unsigned long node)
 	page->flags |= (node & NODES_MASK) << NODES_PGSHIFT;
 }
 
+// 建立与zone的关联
 static inline void set_page_links(struct page *page, enum zone_type zone,
 	unsigned long node, unsigned long pfn)
 {

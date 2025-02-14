@@ -487,9 +487,15 @@ static int blkdev_bszset(struct block_device *bdev, blk_mode_t mode,
 }
 
 /*
+ioctl（input/output control）是 Linux 提供的设备驱动程序控制接口，用于对设备执行特殊的 I/O 操作
+，通常超出了标准 read/write 能力。例如：
+获取设备状态
+配置设备
+执行特定的管理命令
  * Common commands that are handled the same way on native and compat
  * user space. Note the separate arg/argp parameters that are needed
  * to deal with the compat_ptr() conversion.
+   用于处理本机和兼容用户空间的相同方式的常见命令。请注意，需要单独的arg/argp参数来处理compat_ptr()转换。
  */
 static int blkdev_common_ioctl(struct block_device *bdev, blk_mode_t mode,
 			       unsigned int cmd, unsigned long arg,
@@ -577,8 +583,12 @@ static int blkdev_common_ioctl(struct block_device *bdev, blk_mode_t mode,
 /*
  * Always keep this in sync with compat_blkdev_ioctl()
  * to handle all incompatible commands in both functions.
- *
+ * 一直保持与compat_blkdev_ioctl()同步，以处理这两个函数中的所有不兼容命令。
+ 
  * New commands must be compatible and go into blkdev_common_ioctl
+ 新命令必须兼容并进入blkdev_common_ioctl
+ --------------
+ 块设备的fops的ioctl回调
  */
 long blkdev_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 {
