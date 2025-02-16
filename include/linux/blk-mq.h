@@ -79,8 +79,8 @@ enum mq_rq_state {
  */
 struct request {
 	struct request_queue *q;
-	struct blk_mq_ctx *mq_ctx;
-	struct blk_mq_hw_ctx *mq_hctx;
+	struct blk_mq_ctx *mq_ctx; // 指向软件队列
+	struct blk_mq_hw_ctx *mq_hctx; // 指向硬件队列
 
 	blk_opf_t cmd_flags;		/* op and common flags */
 	req_flags_t rq_flags;
@@ -284,6 +284,7 @@ enum blk_eh_timer_return {
 /**
  * struct blk_mq_hw_ctx - State for a hardware queue facing the hardware
  * block device
+ struct blk_mq_hw_ctx代表硬件队列，块设备至少有一个；
  */
 struct blk_mq_hw_ctx {
 	struct {
@@ -295,6 +296,8 @@ struct blk_mq_hw_ctx {
 		 * resources) could not be sent to the hardware. As soon as the
 		 * driver can send new requests, requests at this list will
 		 * be sent first for a fairer dispatch.
+		   翻译: 用于准备发送到硬件的请求，但由于某种原因（例如，缺乏资源）无法发送到硬件。 
+		   一旦驱动程序可以发送新请求，此列表中的请求将首先发送以获得更公平的调度。
 		 */
 		struct list_head	dispatch;
 		 /**

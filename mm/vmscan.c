@@ -1459,6 +1459,8 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 
 /*
  从mapping移除folio
+
+ 看看具体做了什么工作: 这里好像仅仅是从xas移除, 没有释放页面什么的
  * Same as remove_mapping, but if the folio is removed from the mapping, it
  * gets returned with a refcount of 0.
  与remove_mapping相同,但是如果folio从mapping移除,它会返回一个引用计数为0的值
@@ -1520,6 +1522,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		// 是换出, 因为把内存中的folio移除了
 		mem_cgroup_swapout(folio, swap);
 		xa_unlock_irq(&mapping->i_pages);
+		// 以后看看如何put的
 		put_swap_folio(folio, swap);
 	} else {// 普通的pagecache folio?
 		void (*free_folio)(struct folio *);
@@ -1528,26 +1531,31 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		/*
 		 * Remember a shadow entry for reclaimed file cache in
 		 * order to detect refaults, thus thrashing, later on.
-		 *
+		 * 记录一个阴影条目,用于检测以后的重访,从而导致抖动
 		 * But don't store shadows in an address space that is
 		 * already exiting.  This is not just an optimization,
 		 * inode reclaim needs to empty out the radix tree or
 		 * the nodes are lost.  Don't plant shadows behind its
 		 * back.
-		 *
+		 * 但是不要在已经退出的地址空间中存储阴影. 这不仅仅是一种优化,
+		 inode回收需要清空基数树,否则节点会丢失.不要在其背后种植阴影.
 		 * We also don't store shadows for DAX mappings because the
 		 * only page cache folios found in these are zero pages
 		 * covering holes, and because we don't want to mix DAX
 		 * exceptional entries and shadow exceptional entries in the
 		 * same address_space.
+		  我们也不为DAX映射存储阴影,因为在这些映射中找到的唯一页面缓存folio是覆盖空洞的零页,
+		 * 因为我们不想在同一个地址空间中混合DAX异常条目和阴影异常条目.
+
 		 */
 		if (reclaimed && folio_is_file_lru(folio) &&
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
 			shadow = workingset_eviction(folio, target_memcg);
+		// 从xas中移除folio
 		__filemap_remove_folio(folio, shadow);
 		xa_unlock_irq(&mapping->i_pages);
 		if (mapping_shrinkable(mapping))
-			inode_add_lru(mapping->host);
+			inode_add_lru(mapping->host); // 添加到sb的某个lru
 		spin_unlock(&mapping->host->i_lock);
 
 		if (free_folio)

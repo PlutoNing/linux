@@ -145,24 +145,29 @@ static inline bool mapping_empty(struct address_space *mapping)
 /*
  * mapping_shrinkable - test if page cache state allows inode reclaim
    检查mapping是否允许inode回收, mapping删除页面后一遍会调用此函数
+   -------
+   什么叫做mapping允许inode回收呢?
  * @mapping: the page cache mapping
  *
  * This checks the mapping's cache state for the pupose of inode
  * reclaim and LRU management.
- *
+ * 这个操作检查mapping的缓存状态, 用于inode回收和LRU管理
  * The caller is expected to hold the i_lock, but is not required to
  * hold the i_pages lock, which usually protects cache state. That's
  * because the i_lock and the list_lru lock that protect the inode and
  * its LRU state don't nest inside the irq-safe i_pages lock.
- *
+ * 调用者应该持有i_lock, 但不需要持有i_pages锁, i_pages锁通常保护缓存状态。
  * Cache deletions are performed under the i_lock, which ensures that
  * when an inode goes empty, it will reliably get queued on the LRU.
- *
+ * 缓存删除是在i_lock下执行的, 这确保了当inode变为空时, 它将可靠地排队到LRU上。
  * Cache additions do not acquire the i_lock and may race with this
  * check, in which case we'll report the inode as shrinkable when it
  * has cache pages. This is okay: the shrinker also checks the
  * refcount and the referenced bit, which will be elevated or set in
  * the process of adding new cache pages to an inode.
+ * 缓存添加不会获取i_lock, 可能会与此检查竞争, 在这种情况下, 当inode有缓存页面时, 我们将报告inode
+ * 可以收缩。这没问题: 收缩器还会检查引用计数和引用位, 这些位将在向inode添加新缓存页面的过程中升高或设置。
+
  */
 static inline bool mapping_shrinkable(struct address_space *mapping)
 {
@@ -172,6 +177,7 @@ static inline bool mapping_shrinkable(struct address_space *mapping)
 	 * On highmem systems, there could be lowmem pressure from the
 	 * inodes before there is highmem pressure from the page
 	 * cache. Make inodes shrinkable regardless of cache state.
+	 在高内存系统上, 可能会在页面缓存之前出现来自inode的低内存压力。使inode可以收缩, 而不考虑缓存状态。
 	 */
 	if (IS_ENABLED(CONFIG_HIGHMEM))
 		return true;
@@ -255,12 +261,12 @@ static inline bool mapping_unevictable(struct address_space *mapping)
 {
 	return mapping && test_bit(AS_UNEVICTABLE, &mapping->flags);
 }
-/*  */
+/* 一种情况是驱逐inode前, 表示mapping在退出了 */
 static inline void mapping_set_exiting(struct address_space *mapping)
 {
 	set_bit(AS_EXITING, &mapping->flags);
 }
-
+// 判断mapping是否在退出, 比如可以推测出inode被删除了
 static inline int mapping_exiting(struct address_space *mapping)
 {
 	return test_bit(AS_EXITING, &mapping->flags);

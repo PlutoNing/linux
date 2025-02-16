@@ -86,7 +86,7 @@ void invalidate_bdev(struct block_device *bdev)
 	if (mapping->nrpages) {// dev还有pagecache
 		invalidate_bh_lrus();
 		lru_add_drain_all();	/* make sure all lru add caches are flushed */
-		invalidate_mapping_pages(mapping, 0, -1); // 移除pagecache页面
+		invalidate_mapping_pages(mapping, 0, -1); // 移除全部可以移除的pagecache页面
 	}
 }
 EXPORT_SYMBOL(invalidate_bdev);
@@ -107,11 +107,14 @@ int truncate_bdev_range(struct block_device *bdev, blk_mode_t mode,
 	 如果我们没有独占设备的句柄, 则在丢弃缓冲区缓存时升级它, 以避免在活动文件系统下丢弃缓冲区
 	 */
 	if (!(mode & BLK_OPEN_EXCL)) {//没有独占
+		// 这里等待独占
 		int err = bd_prepare_to_claim(bdev, truncate_bdev_range, NULL);
-		if (err)
+		if (err) // 等待独占失败
 			goto invalidate;
+	// 好,现在是自己独占了
 	}
 
+	// 从pagecache中移除
 	truncate_inode_pages_range(bdev->bd_inode->i_mapping, lstart, lend);
 	if (!(mode & BLK_OPEN_EXCL))
 		bd_abort_claiming(bdev, truncate_bdev_range);
@@ -121,6 +124,7 @@ invalidate:
 	/*
 	 * Someone else has handle exclusively open. Try invalidating instead.
 	 * The 'end' argument is inclusive so the rounding is safe.
+	   说明有其他人独占打开句柄, 尝试无效化, end参数是包含的, 因此舍入是安全的
 	 */
 	return invalidate_inode_pages2_range(bdev->bd_inode->i_mapping,
 					     lstart >> PAGE_SHIFT,
@@ -337,10 +341,12 @@ static void init_once(void *data)
 
 	inode_init_once(&ei->vfs_inode);
 }
-
+// bdev和inode各是什么?
 static void bdev_evict_inode(struct inode *inode)
 {
+	// 释放inode的pagecache
 	truncate_inode_pages_final(&inode->i_data);
+	// 清理inode的buffer
 	invalidate_inode_buffers(inode); /* is it needed here? */
 	clear_inode(inode);
 }
@@ -348,9 +354,11 @@ static void bdev_evict_inode(struct inode *inode)
 static const struct super_operations bdev_sops = {
 	.statfs = simple_statfs,
 	/* 从slab取一个 */
+	/* 似乎bdevfs 的inode就是借助vfs inode的框架加上了bdev成员 */
 	.alloc_inode = bdev_alloc_inode,
 	.free_inode = bdev_free_inode,
 	.drop_inode = generic_delete_inode,
+	// bdev fs驱逐inode
 	.evict_inode = bdev_evict_inode,
 };
 /* 初始化bdev fs */
@@ -522,7 +530,10 @@ int bd_prepare_to_claim(struct block_device *bdev, void *holder,
 		return -EINVAL;
 retry:
 	mutex_lock(&bdev_lock);
-	/* if someone else claimed, fail */
+	/* if someone else claimed, fail
+	已经有其他人claim了,失败
+	 
+	*/
 	if (!bd_may_claim(bdev, holder, hops)) {
 		mutex_unlock(&bdev_lock);
 		return -EBUSY;
@@ -542,7 +553,9 @@ retry:
 		goto retry;
 	}
 
-	/* yay, all mine */
+	/* yay, all mine
+	自己可以独占了
+	*/
 	whole->bd_claiming = holder;
 	mutex_unlock(&bdev_lock);
 	return 0;
@@ -655,7 +668,7 @@ static void blkdev_flush_mapping(struct block_device *bdev)
 	kill_bdev(bdev);
 	bdev_write_inode(bdev);
 }
-
+// 
 static int blkdev_get_whole(struct block_device *bdev, blk_mode_t mode)
 {
 	struct gendisk *disk = bdev->bd_disk;

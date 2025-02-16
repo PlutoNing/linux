@@ -115,6 +115,7 @@ int blkdev_issue_discard(struct block_device *bdev, sector_t sector,
 }
 EXPORT_SYMBOL(blkdev_issue_discard);
 
+// 填充一个块范围为0
 static int __blkdev_issue_write_zeroes(struct block_device *bdev,
 		sector_t sector, sector_t nr_sects, gfp_t gfp_mask,
 		struct bio **biop, unsigned flags)
@@ -131,8 +132,9 @@ static int __blkdev_issue_write_zeroes(struct block_device *bdev,
 	if (max_write_zeroes_sectors == 0)
 		return -EOPNOTSUPP;
 
-	while (nr_sects) {
+	while (nr_sects) { // 一个一个的写0?
 		bio = blk_next_bio(bio, bdev, 0, REQ_OP_WRITE_ZEROES, gfp_mask);
+		// 现在的bio是之前的bio的链式后面的bio了
 		bio->bi_iter.bi_sector = sector;
 		if (flags & BLKDEV_ZERO_NOUNMAP)
 			bio->bi_opf |= REQ_NOUNMAP;
@@ -238,6 +240,7 @@ EXPORT_SYMBOL(__blkdev_issue_zeroout);
 
 /**
  * blkdev_issue_zeroout - zero-fill a block range
+ 填充一个块范围为0
  * @bdev:	blockdev to write
  * @sector:	start sector
  * @nr_sects:	number of sectors to write
@@ -248,6 +251,8 @@ EXPORT_SYMBOL(__blkdev_issue_zeroout);
  *  Zero-fill a block range, either using hardware offload or by explicitly
  *  writing zeroes to the device.  See __blkdev_issue_zeroout() for the
  *  valid values for %flags.
+ 描述: 填充一个块范围为0, 可以使用硬件卸载或者显式地写0到设备上
+ 请看__blkdev_issue_zeroout()函数, 查看%flags的有效值
  */
 int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 		sector_t nr_sects, gfp_t gfp_mask, unsigned flags)
@@ -265,13 +270,13 @@ int blkdev_issue_zeroout(struct block_device *bdev, sector_t sector,
 retry:
 	bio = NULL;
 	blk_start_plug(&plug);
-	if (try_write_zeroes) {
+	if (try_write_zeroes) { // 什么意思,好像是支持写0的情况
 		ret = __blkdev_issue_write_zeroes(bdev, sector, nr_sects,
 						  gfp_mask, &bio, flags);
-	} else if (!(flags & BLKDEV_ZERO_NOFALLBACK)) {
+	} else if (!(flags & BLKDEV_ZERO_NOFALLBACK)) { // 尝试fallback
 		ret = __blkdev_issue_zero_pages(bdev, sector, nr_sects,
 						gfp_mask, &bio);
-	} else {
+	} else { // 说明不支持写0
 		/* No zeroing offload support */
 		ret = -EOPNOTSUPP;
 	}

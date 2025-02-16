@@ -453,18 +453,18 @@ void ihold(struct inode *inode)
 }
 EXPORT_SYMBOL(ihold);
 
-//
+// 添加到sb的lru
 static void __inode_add_lru(struct inode *inode, bool rotate)
 {
 	if (inode->i_state & (I_DIRTY_ALL | I_SYNC | I_FREEING | I_WILL_FREE))
 		return;
 
 	if (atomic_read(&inode->i_count))
-		return;
+		return; // 有引用, 不加入lru
 	if (!(inode->i_sb->s_flags & SB_ACTIVE))
-		return;
+		return; // 超级块不活跃, 不加入lru
 	if (!mapping_shrinkable(&inode->i_data))
-		return;
+		return; // mapping不允许inode回收?, 不加入lru
 
 	if (list_lru_add(&inode->i_sb->s_inode_lru, &inode->i_lru))
 		this_cpu_inc(nr_unused);
@@ -474,7 +474,7 @@ static void __inode_add_lru(struct inode *inode, bool rotate)
 
 /*
  * Add inode to LRU if needed (inode is unused and clean).
- *
+ * 添加到sb的lru
  * Needs inode->i_lock held.
  */
 void inode_add_lru(struct inode *inode)
@@ -634,7 +634,7 @@ EXPORT_SYMBOL(clear_inode);
 
 /*
  2024年9月29日23:41:10
- 释放inode ...
+ 在释放sb的情况下, 释放inode ...
  * Free the inode passed in, removing it from the lists it is still connected
  * to. We remove any pages still attached to the inode and wait for any IO that
  * is still in progress before finally destroying the inode.
@@ -664,13 +664,16 @@ static void evict(struct inode *inode)
 	 * does not start destroying it while writeback is still running. Since
 	 * the inode has I_FREEING set, flusher thread won't start new work on
 	 * the inode.  We just have to wait for running writeback to finish.
+	 等待flusher线程完成inode的写回, 这样文件系统不会在写回还在进行的时候销毁inode
+	 由于inode已经设置了I_FREEING, flusher线程不会在inode上开始新的工作
+	 我们只需要等待正在进行的写回完成
 	 */
 	inode_wait_for_writeback(inode);
 
-	if (op->evict_inode) {
+	if (op->evict_inode) { // 如果有自定义的销毁inode的函数, 就调用这个函数
 		op->evict_inode(inode);
 	} else {/*  */
-		truncate_inode_pages_final(&inode->i_data);
+		truncate_inode_pages_final(&inode->i_data); // 释放inode的所有pagecache
 		clear_inode(inode);
 	}
 
@@ -688,7 +691,7 @@ static void evict(struct inode *inode)
 }
 
 /*
-清除这个链表什么的inode ... 
+清除这个链表里面暂存的inode ... 
  * dispose_list - dispose of the contents of a local list
  * @head: the head of the list to free
  *
@@ -697,19 +700,20 @@ static void evict(struct inode *inode)
  */
 static void dispose_list(struct list_head *head)
 {
-	while (!list_empty(head)) {
+	while (!list_empty(head)) {// 一个一个的释放
 		struct inode *inode;
 
 		inode = list_first_entry(head, struct inode, i_lru);
 		list_del_init(&inode->i_lru);
 
-		evict(inode);
+		evict(inode); // 真正执行释放inode的函数
 		cond_resched();
 	}
 }
 
 /**
 清除未用的inode?
+可能是卸载fs之前调用这个函数
  * evict_inodes	- evict all evictable inodes for a superblock
  * @sb:		superblock to operate on
  *
@@ -727,13 +731,13 @@ again:
 	spin_lock(&sb->s_inode_list_lock);
 	/* 遍历sb的全部inode ... */
 	list_for_each_entry_safe(inode, next, &sb->s_inodes, i_sb_list) {
-		if (atomic_read(&inode->i_count))
+		if (atomic_read(&inode->i_count)) // 这次只处理引用计数为0的inode
 			continue;
 
 		spin_lock(&inode->i_lock);
 		if (inode->i_state & (I_NEW | I_FREEING | I_WILL_FREE)) {
 			spin_unlock(&inode->i_lock);
-			continue;
+			continue; // 无需处理
 		}
 
 		inode->i_state |= I_FREEING;
@@ -747,11 +751,12 @@ again:
 		 * We can have a ton of inodes to evict at unmount time given
 		 * enough memory, check to see if we need to go to sleep for a
 		 * bit so we don't livelock.
+		 让出cpu, 给其他进程执行
 		 */
 		if (need_resched()) {
 			spin_unlock(&sb->s_inode_list_lock);
 			cond_resched();
-			dispose_list(&dispose);
+			dispose_list(&dispose); // 先处理一波
 			goto again;
 		}
 	}

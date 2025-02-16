@@ -879,10 +879,13 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list)
  * Invalidate any and all dirty buffers on a given inode.  We are
  * probably unmounting the fs, but that doesn't mean we have already
  * done a sync().  Just drop the buffers from the inode list.
- *
+ * 无效化inode上的所有脏buffer, 可能是卸载文件系统, 但是这并不意味着我们已经同步了
+ * 只是从inode list中删除buffer
  * NOTE: we take the inode's blockdev's mapping's private_lock.  Which
  * assumes that all the buffers are against the blockdev.  Not true
  * for reiserfs.
+   注意: 我们获取inode的块设备的mapping的private_lock, 假设所有的buffer都是针对块设备的
+   对于reiserfs不是这样的
  */
 void invalidate_inode_buffers(struct inode *inode)
 {

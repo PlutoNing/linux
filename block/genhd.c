@@ -187,7 +187,7 @@ void blkdev_show(struct seq_file *seqf, off_t offset)
 
 /**
  * __register_blkdev - register a new block device
- *
+ * 注册新的块设备,比如loop设备初始化的时候就得注册
  * @major: the requested major device number [1..BLKDEV_MAJOR_MAX-1]. If
  *         @major = 0, try to allocate any unused major number.
  * @name: the name of the new block device as a zero terminated string
@@ -220,7 +220,7 @@ int __register_blkdev(unsigned int major, const char *name,
 	mutex_lock(&major_names_lock);
 
 	/* temporary */
-	if (major == 0) {
+	if (major == 0) { // 主设备号为0的是什么设备?以后看看
 		for (index = ARRAY_SIZE(major_names)-1; index > 0; index--) {
 			if (major_names[index] == NULL)
 				break;
@@ -383,9 +383,11 @@ int disk_scan_partitions(struct gendisk *disk, blk_mode_t mode)
 		bd_abort_claiming(disk->part0, disk_scan_partitions);
 	return ret;
 }
-
+/* 2025年2月16日23:17:53开始disk,part,bdev */
 /**
+
  * device_add_disk - add disk information to kernel list
+ 添加磁盘设备
  * @parent: parent device for the disk
  * @disk: per-device partitioning information
  * @groups: Additional per-device sysfs groups
@@ -409,6 +411,8 @@ int __must_check device_add_disk(struct device *parent, struct gendisk *disk,
 	 * the device for the elevator code to pick an adequate default
 	 * elevator if one is needed, that is, for devices requesting queue
 	 * registration.
+	 这个磁盘队列现在应该已经设置好了足够的关于设备的信息，以便电梯代码选择一个
+	 足够的默认电梯，如果需要的话，也就是说，对于请求队列注册的设备。
 	 */
 	elevator_init_mq(disk->queue);
 

@@ -3766,9 +3766,9 @@ static vm_fault_t pte_marker_clear(struct vm_fault *vmf)
 static vm_fault_t do_pte_missing(struct vm_fault *vmf)
 {
 	if (vma_is_anonymous(vmf->vma))
-		return do_anonymous_page(vmf);
+		return do_anonymous_page(vmf); //匿名页
 	else
-		return do_fault(vmf);
+		return do_fault(vmf); // 文件页
 }
 
 /*
@@ -4304,6 +4304,7 @@ oom:
  * See filemap_fault() and __lock_page_retry().
  文件页映射的几种缺页情况, cow, shared, read的fault
  都调用这个处理
+ --------------------------------
  本质上是调用vma的fault的ops
  */
 static vm_fault_t __do_fault(struct vm_fault *vmf)
@@ -4331,7 +4332,7 @@ static vm_fault_t __do_fault(struct vm_fault *vmf)
 		if (!vmf->prealloc_pte)
 			return VM_FAULT_OOM;
 	}
-
+	// 实际上调用回调来处理
 	ret = vma->vm_ops->fault(vmf);
 
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY |
@@ -4346,6 +4347,7 @@ static vm_fault_t __do_fault(struct vm_fault *vmf)
 				unmap_mapping_pages(page_mapping(page),
 						    page->index, 1, false);
 			/* Retry if a clean page was removed from the cache. */
+			//为什么会涉及到从mapping移除页面?
 			if (invalidate_inode_page(page))
 				poisonret = VM_FAULT_NOPAGE;
 			unlock_page(page);
@@ -4821,6 +4823,7 @@ static vm_fault_t do_shared_fault(struct vm_fault *vmf)
  * If mmap_lock is released, vma may become invalid (for example
  * by other thread calling munmap()).
    这个函数是和do_anomymous_page对立的, 看来像是"文件"
+   其实就是处理文件页的缺页,比如读缺页,cow,共享页等.
  */
 
 static vm_fault_t do_fault(struct vm_fault *vmf)
@@ -4832,7 +4835,7 @@ static vm_fault_t do_fault(struct vm_fault *vmf)
 	/*
 	 * The VMA was not fully populated on mmap() or missing VM_DONTEXPAND
 	 */
-	if (!vma->vm_ops->fault) {
+	if (!vma->vm_ops->fault) { // 没有回调就不能处理吗?
 		vmf->pte = pte_offset_map_lock(vmf->vma->vm_mm, vmf->pmd,
 					       vmf->address, &vmf->ptl);
 		if (unlikely(!vmf->pte))
@@ -5079,6 +5082,7 @@ split:
 
 /*
    处理PTE缺页
+   处理缺页或者被交换的情况
  * These routines also need to handle stuff like marking pages dirty
  * and/or accessed for architectures that don't do it in hardware (most
  * RISC architectures).  The early dirtying is also good on the i386.
@@ -5128,7 +5132,8 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 		}
 	}
 
-	if (!vmf->pte) // pte不存在
+	if (!vmf->pte) // pte不存在, 这里可能是匿名页的缺页, 也可能是文件页缺页, 这
+	//函数内部会分开处理
 		return do_pte_missing(vmf);
 
 	if (!pte_present(vmf->orig_pte)) //页面不在内存中 
@@ -5174,6 +5179,8 @@ unlock:
 }
 
 /*
+上层是分别处理巨页和普通页
+自己这层是负责follow页表到pte?
    缺页处理的入口函数
  * On entry, we hold either the VMA lock or the mmap_lock
  * (FAULT_FLAG_VMA_LOCK tells you which).  If VM_FAULT_RETRY is set in
@@ -5273,7 +5280,7 @@ retry_pud:
 		}
 	}
 
-	return handle_pte_fault(&vmf);
+	return handle_pte_fault(&vmf); // 可以处理pte了
 }
 
 /**
@@ -5448,11 +5455,12 @@ vm_fault_t handle_mm_fault(struct vm_area_struct *vma, unsigned long address,
 
 	lru_gen_enter_fault(vma);
 
+	// 开始处理缺页, 巨页和普通页是分开处理的
 	if (unlikely(is_vm_hugetlb_page(vma)))
 		ret = hugetlb_fault(vma->vm_mm, vma, address, flags);
 	else
-		ret = __handle_mm_fault(vma, address, flags);
-
+	// 处理单个pte
+		ret = __handle_mm_fault(vma, address, flags); 
 	lru_gen_exit_fault();
 
 	if (flags & FAULT_FLAG_USER) {

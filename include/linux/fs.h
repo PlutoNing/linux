@@ -1332,7 +1332,7 @@ struct super_block {
 	 * There is no need to put them into separate cachelines.
 	 */
 	struct list_lru		s_dentry_lru;
-	struct list_lru		s_inode_lru;
+	struct list_lru		s_inode_lru; // 这上面是什么
 	struct rcu_head		rcu;
 	struct work_struct	destroy_work;
 
@@ -1346,7 +1346,10 @@ struct super_block {
 	/* s_inode_list_lock protects s_inodes
 	操作sb的全部inode的时候的写锁？ */
 	spinlock_t		s_inode_list_lock ____cacheline_aligned_in_smp;
-	struct list_head	s_inodes;	/* all inodes */
+	struct list_head	s_inodes;	/* all inodes
+	上面是sb的全部inode
+	 
+	*/
 
 	spinlock_t		s_inode_wblist_lock;
 	struct list_head	s_inodes_wb;	/* writeback inodes */

@@ -298,6 +298,8 @@ static long mapping_evict_folio(struct address_space *mapping,
 
 /**
  * invalidate_inode_page() - Remove an unused page from the pagecache.
+ 从pagecache移除一个页面
+ 目前只有处理文件页缺页时如果被poisoned的话会调用
  * @page: The page to remove.
  *
  * Safely invalidate one page from its pagecache mapping.
@@ -395,7 +397,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 			folio_unlock(fbatch.folios[i]);
 		// 释放fbatch到buddy
 		folio_batch_release(&fbatch);
-		cond_resched();
+		cond_resched();    
 	}
 	// 刚刚已经处理了xas和归还内存, 下面干嘛呢?
 	// 2025年2月14日02:06:22
@@ -486,7 +488,7 @@ void truncate_inode_pages(struct address_space *mapping, loff_t lstart)
 EXPORT_SYMBOL(truncate_inode_pages);
 
 /**
-清除inode之前清除页面
+清除inode之前清除pagecache页面
  * truncate_inode_pages_final - truncate *all* pages before inode dies
  * @mapping: mapping to truncate
  *
@@ -494,6 +496,7 @@ EXPORT_SYMBOL(truncate_inode_pages);
  *
  * Filesystems have to use this in the .evict_inode path to inform the
  * VM that this is the final truncate and the inode is going away.
+ 文件系统必须在.evict_inode路径中使用此函数来通知VM这是最终截断, 并且inode即将消失。
  */
 void truncate_inode_pages_final(struct address_space *mapping)
 {
@@ -503,6 +506,8 @@ void truncate_inode_pages_final(struct address_space *mapping)
 	 * inode teardown.  Tell it when the address space is exiting,
 	 * so that it does not install eviction information after the
 	 * final truncate has begun.
+	  页面回收不能参与常规inode生命周期管理(不能调用iput()), 因此可能与inode的驱逐发生race。
+	  告诉它address space何时退出, 以便在最终截断开始后不进行驱逐信息。
 	 */
 	mapping_set_exiting(mapping);
 
@@ -512,6 +517,8 @@ void truncate_inode_pages_final(struct address_space *mapping)
 		 * the tree lock to make sure any ongoing tree
 		 * modification that does not see AS_EXITING is
 		 * completed before starting the final truncate.
+		 由于截断使用无锁树查找, 因此循环树锁以确保在开始最终截断之前完成任何不看到
+		 AS_EXITING的正在进行的树修改。
 		 */
 		xa_lock_irq(&mapping->i_pages);
 		xa_unlock_irq(&mapping->i_pages);
@@ -523,7 +530,7 @@ EXPORT_SYMBOL(truncate_inode_pages_final);
 
 /**
  * mapping_try_invalidate - Invalidate all the evictable folios of one inode
- 无效化inode的所有可驱逐的folio
+ 无效化inode的所有可驱逐的folio. 注意不是截断全部的folio
  * @mapping: the address_space which holds the folios to invalidate
  * @start: the offset 'from' which to invalidate
  * @end: the offset 'to' which to invalidate (inclusive)
@@ -570,7 +577,9 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 			}
 			count += ret;
 		}
+		// 出路fbatch, 跳过和整理搬移数组里面的可以free的条目
 		folio_batch_remove_exceptionals(&fbatch);
+		// free到buddy
 		folio_batch_release(&fbatch);
 		cond_resched();
 	}
@@ -605,6 +614,11 @@ EXPORT_SYMBOL(invalidate_mapping_pages);
  * invalidation guarantees, and cannot afford to leave pages behind because
  * shrink_page_list() has a temp ref on them, or because they're transiently
  * sitting in the folio_add_lru() caches.
+   这个函数类似于invalidate_inode_page(), 但是它忽略了页面的引用计数。
+   我们这样做是因为invalidate_inode_pages2()需要更强的无效化保证, 不能因为shrink_page_list()
+   对它们有一个临时引用 或者 因为它们暂时停留在folio_add_lru()缓存中而留下页面
+----------------------------------------
+这是个更猛的无效化, 会等待写回完成,然后从xas移除
  */
 static int invalidate_complete_folio2(struct address_space *mapping,
 					struct folio *folio)
@@ -612,21 +626,24 @@ static int invalidate_complete_folio2(struct address_space *mapping,
 	if (folio->mapping != mapping)
 		return 0;
 
+		// 检查是否有私有数据, 有的话, 移除
 	if (!filemap_release_folio(folio, GFP_KERNEL))
 		return 0;
 
 	spin_lock(&mapping->host->i_lock);
 	xa_lock_irq(&mapping->i_pages);
+	// 不处理dirty的
 	if (folio_test_dirty(folio))
 		goto failed;
 
 	BUG_ON(folio_has_private(folio));
+	// 从xas移除
 	__filemap_remove_folio(folio, NULL);
 	xa_unlock_irq(&mapping->i_pages);
 	if (mapping_shrinkable(mapping))
 		inode_add_lru(mapping->host);
 	spin_unlock(&mapping->host->i_lock);
-
+	// 调用mapping的free_folio回调
 	filemap_free_folio(mapping, folio);
 	return 1;
 failed:
@@ -646,6 +663,7 @@ static int folio_launder(struct address_space *mapping, struct folio *folio)
 
 /**
  * invalidate_inode_pages2_range - remove range of pages from an address_space
+ 好像重点在于无效化?
  从address_space中删除页面范围. 一个个的等待写回完成,解除映射?
  * @mapping: the address_space
  * @start: the page offset 'from' which to invalidate
@@ -721,7 +739,7 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 			folio_unlock(folio);
 		}
 		folio_batch_remove_exceptionals(&fbatch);
-		folio_batch_release(&fbatch);
+		folio_batch_release(&fbatch); // 释放到buddy
 		cond_resched();
 	}
 	/*
@@ -772,6 +790,7 @@ EXPORT_SYMBOL_GPL(invalidate_inode_pages2);
  这个函数通常在文件系统释放与释放范围相关的资源之前调用(例如释放块)。
  这样, pagecache将始终在逻辑上与磁盘格式一致, 文件系统不必处理诸如writepage
  被调用的页面已经释放其基础块的情况。
+--------------------------------------------------------------------------
 
  */
 void truncate_pagecache(struct inode *inode, loff_t newsize)
@@ -802,6 +821,7 @@ EXPORT_SYMBOL(truncate_pagecache);
 
 /**
  * truncate_setsize - update inode and pagecache for a new file size
+ 更新inode和pagecache的新文件大小
  * @inode: inode
  * @newsize: new file size
  *
@@ -826,6 +846,7 @@ EXPORT_SYMBOL(truncate_setsize);
 
 /**
  * pagecache_isize_extended - update pagecache after extension of i_size
+ 更新i_size后更新pagecache
  * @inode:	inode for which i_size was extended
  * @from:	original inode size
  * @to:		new inode size
@@ -877,6 +898,7 @@ EXPORT_SYMBOL(pagecache_isize_extended);
 
 /**
  * truncate_pagecache_range - unmap and remove pagecache that is hole-punched
+ 解除映射和删除被打洞的pagecache
  * @inode: inode
  * @lstart: offset of beginning of hole
  * @lend: offset of last byte of hole

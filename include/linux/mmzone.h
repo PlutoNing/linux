@@ -192,7 +192,9 @@ enum node_stat_item {
 	todddo, 2024年12月7日21:25:18 为什么可以认为是reclaimable的 */
 	NR_WRITEBACK,
 	NR_WRITEBACK_TEMP,	/* Writeback using temporary buffers */
-	NR_SHMEM,		/* shmem pages (included tmpfs/GEM pages) */
+	NR_SHMEM,		/* shmem pages (included tmpfs/GEM pages)
+	现在对这个的理解好像就是被map的被交换的文件页?
+	*/
 	NR_SHMEM_THPS,
 	NR_SHMEM_PMDMAPPED,
 	NR_FILE_THPS,

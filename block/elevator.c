@@ -46,6 +46,7 @@
 #include "blk-cgroup.h"
 
 static DEFINE_SPINLOCK(elv_list_lock);
+// 所有的电梯算法都是通过链表的方式连接起来的
 static LIST_HEAD(elv_list);
 
 /*
@@ -83,6 +84,7 @@ bool elv_bio_merge_ok(struct request *rq, struct bio *bio)
 }
 EXPORT_SYMBOL(elv_bio_merge_ok);
 
+// 看看电梯算法e是否支持q所要求的特性
 static inline bool elv_support_features(struct request_queue *q,
 		const struct elevator_type *e)
 {
@@ -103,6 +105,7 @@ static bool elevator_match(const struct elevator_type *e, const char *name)
 		(e->elevator_alias && !strcmp(e->elevator_alias, name));
 }
 
+// 根据名字找到指定的电梯算法
 static struct elevator_type *__elevator_find(const char *name)
 {
 	struct elevator_type *e;
@@ -113,6 +116,7 @@ static struct elevator_type *__elevator_find(const char *name)
 	return NULL;
 }
 
+// 给q找一个电梯算法
 static struct elevator_type *elevator_find_get(struct request_queue *q,
 		const char *name)
 {
@@ -566,6 +570,7 @@ static inline bool elv_support_iosched(struct request_queue *q)
 /*
  * For single queue devices, default to using mq-deadline. If we have multiple
  * queues or mq-deadline is not available, default to "none".
+   对于单队列设备,默认使用mq-deadline。如果我们有多个队列或mq-deadline不可用,则默认为“无”。
  */
 static struct elevator_type *elevator_get_default(struct request_queue *q)
 {
@@ -582,6 +587,7 @@ static struct elevator_type *elevator_get_default(struct request_queue *q)
 /*
  * Get the first elevator providing the features required by the request queue.
  * Default to "none" if no matching elevator is found.
+   获取第一个提供请求队列所需特性的电梯。如果找不到匹配的电梯,则默认为“无”。
  */
 static struct elevator_type *elevator_get_by_features(struct request_queue *q)
 {
@@ -608,6 +614,8 @@ static struct elevator_type *elevator_get_by_features(struct request_queue *q)
  * settings. Otherwise, use the first elevator available matching the required
  * features. If no suitable elevator is find or if the chosen elevator
  * initialization fails, fall back to the "none" elevator (no elevator).
+   翻译: 对于没有必要特性的设备队列,使用默认的电梯设置。否则,使用第一个可用的电梯匹配所需特性。
+   如果找不到合适的电梯或所选电梯初始化失败,则回退到“无”电梯(无电梯)。
  */
 void elevator_init_mq(struct request_queue *q)
 {
@@ -623,7 +631,7 @@ void elevator_init_mq(struct request_queue *q)
 		return;
 
 	if (!q->required_elevator_features)
-		e = elevator_get_default(q);
+		e = elevator_get_default(q); // 默认的电梯?
 	else
 		e = elevator_get_by_features(q);
 	if (!e)
@@ -635,8 +643,11 @@ void elevator_init_mq(struct request_queue *q)
 	 * drain any dispatch activities originated from passthrough
 	 * requests, then no need to quiesce queue which may add long boot
 	 * latency, especially when lots of disks are involved.
+	   是在添加磁盘之前调用的,没有任何FS I/O,因此冻结队列加上取消调度工作就足以
+	   排除任何由透传请求发起的调度活动,然后不需要使队列安静,这可能会增加长时间的
+	   启动延迟,特别是当涉及大量磁盘时。
 	 */
-	blk_mq_freeze_queue(q);
+	blk_mq_freeze_queue(q); // 冻结队列
 	blk_mq_cancel_work_sync(q);
 
 	err = blk_mq_init_sched(q, e);

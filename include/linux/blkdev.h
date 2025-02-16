@@ -737,6 +737,8 @@ static inline unsigned int blk_queue_depth(struct request_queue *q)
 
 int __must_check device_add_disk(struct device *parent, struct gendisk *disk,
 				 const struct attribute_group **groups);
+
+/*  */
 static inline int __must_check add_disk(struct gendisk *disk)
 {
 	return device_add_disk(NULL, disk, NULL);
@@ -1067,6 +1069,7 @@ static inline int sb_issue_discard(struct super_block *sb, sector_t block,
 						  SECTOR_SHIFT),
 				    gfp_mask);
 }
+// 主要是ext4在用
 static inline int sb_issue_zeroout(struct super_block *sb, sector_t block,
 		sector_t nr_blocks, gfp_t gfp_mask)
 {

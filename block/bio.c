@@ -27,11 +27,13 @@
 
 #define ALLOC_CACHE_THRESHOLD	16
 #define ALLOC_CACHE_MAX		256
-
+/* 好像是每个cpu有这么一个缓存
+用于给指定了需要缓存的bio创建请求分配bio?
+*/
 struct bio_alloc_cache {
-	struct bio		*free_list;
+	struct bio		*free_list; // 可用的bio挂在这里
 	struct bio		*free_list_irq;
-	unsigned int		nr;
+	unsigned int		nr; // 当前缓存的bio数量
 	unsigned int		nr_irq;
 };
 
@@ -242,6 +244,7 @@ static void bio_free(struct bio *bio)
  * Users of this function have their own bio allocation. Subsequently,
  * they must remember to pair any call to bio_init() with bio_uninit()
  * when IO has completed, or when the bio is released.
+   这个函数的用户有自己的bio分配。随后，他们必须记住将任何对bio_init()的调用与bio_uninit()配对，
  */
 void bio_init(struct bio *bio, struct block_device *bdev, struct bio_vec *table,
 	      unsigned short max_vecs, blk_opf_t opf)
@@ -309,6 +312,7 @@ void bio_reset(struct bio *bio, struct block_device *bdev, blk_opf_t opf)
 }
 EXPORT_SYMBOL(bio_reset);
 
+// 获取链式bio的前一个bio
 static struct bio *__bio_chain_endio(struct bio *bio)
 {
 	struct bio *parent = bio->bi_private;
@@ -319,6 +323,7 @@ static struct bio *__bio_chain_endio(struct bio *bio)
 	return parent;
 }
 
+// 链式bio的endio函数
 static void bio_chain_endio(struct bio *bio)
 {
 	bio_endio(__bio_chain_endio(bio));
@@ -326,6 +331,7 @@ static void bio_chain_endio(struct bio *bio)
 
 /**
  * bio_chain - chain bio completions
+   链式bio
  * @bio: the target bio
  * @parent: the parent bio of @bio
  *
@@ -341,16 +347,17 @@ void bio_chain(struct bio *bio, struct bio *parent)
 
 	bio->bi_private = parent;
 	bio->bi_end_io	= bio_chain_endio;
-	bio_inc_remaining(parent);
+	bio_inc_remaining(parent);  // 增加这个链式bio的后续bio数量
 }
 EXPORT_SYMBOL(bio_chain);
 
+// 在链式bio中增加一个bio
 struct bio *blk_next_bio(struct bio *bio, struct block_device *bdev,
 		unsigned int nr_pages, blk_opf_t opf, gfp_t gfp)
 {
 	struct bio *new = bio_alloc(bdev, nr_pages, opf, gfp);
 
-	if (bio) {
+	if (bio) { // 如果有前一个bio, 链接到前一个bio的后面
 		bio_chain(bio, new);
 		submit_bio(bio);
 	}
@@ -429,6 +436,7 @@ static void bio_alloc_irq_cache_splice(struct bio_alloc_cache *cache)
 	local_irq_restore(flags);
 }
 
+// 表示分配带有缓存的bio?
 static struct bio *bio_alloc_percpu_cache(struct block_device *bdev,
 		unsigned short nr_vecs, blk_opf_t opf, gfp_t gfp,
 		struct bio_set *bs)
@@ -437,7 +445,7 @@ static struct bio *bio_alloc_percpu_cache(struct block_device *bdev,
 	struct bio *bio;
 
 	cache = per_cpu_ptr(bs->cache, get_cpu());
-	if (!cache->free_list) {
+	if (!cache->free_list) { // 如果没有空闲的bio?
 		if (READ_ONCE(cache->nr_irq) >= ALLOC_CACHE_THRESHOLD)
 			bio_alloc_irq_cache_splice(cache);
 		if (!cache->free_list) {
@@ -445,6 +453,7 @@ static struct bio *bio_alloc_percpu_cache(struct block_device *bdev,
 			return NULL;
 		}
 	}
+	// 下面几行是从缓存中取出一个bio
 	bio = cache->free_list;
 	cache->free_list = bio->bi_next;
 	cache->nr--;
@@ -477,7 +486,8 @@ static struct bio *bio_alloc_percpu_cache(struct block_device *bdev,
  * bios are not submitted until after you return - see the code in
  * submit_bio_noacct() that converts recursion into iteration, to prevent
  * stack overflows.
- *
+ * 注意，当运行在submit_bio_noacct()下（即任何块驱动程序），bios直到你返回后才会提交 - 
+ 请参阅submit_bio_noacct()中的代码，将递归转换为迭代，以防止堆栈溢出。
  * This would normally mean allocating multiple bios under submit_bio_noacct()
  * would be susceptible to deadlocks, but we have
  * deadlock avoidance code that resubmits any blocked bios from a rescuer
@@ -501,9 +511,11 @@ struct bio *bio_alloc_bioset(struct block_device *bdev, unsigned short nr_vecs,
 	/* should not use nobvec bioset for nr_vecs > 0 */
 	if (WARN_ON_ONCE(!mempool_initialized(&bs->bvec_pool) && nr_vecs > 0))
 		return NULL;
-
-	if (opf & REQ_ALLOC_CACHE) {
+	// 2025年2月16日22:55:03 开始bio了
+	if (opf & REQ_ALLOC_CACHE) { // 针对这个op的特殊处理
+		// 表示需要给bio分配缓存?
 		if (bs->cache && nr_vecs <= BIO_INLINE_VECS) {
+			// 那就从pcp的缓存分配bio?
 			bio = bio_alloc_percpu_cache(bdev, nr_vecs, opf,
 						     gfp_mask, bs);
 			if (bio)
@@ -511,8 +523,9 @@ struct bio *bio_alloc_bioset(struct block_device *bdev, unsigned short nr_vecs,
 			/*
 			 * No cached bio available, bio returned below marked with
 			 * REQ_ALLOC_CACHE to particpate in per-cpu alloc cache.
+			  走到这里说明：没有可用的缓存bio，下面返回的bio标记为REQ_ALLOC_CACHE，以便参与每cpu分配缓存。?
 			 */
-		} else {
+		} else { // 虽然用户要求了REQ_ALLOC_CACHE，但是没有bs->cache，所以不走上面的逻辑
 			opf &= ~REQ_ALLOC_CACHE;
 		}
 	}
@@ -552,7 +565,7 @@ struct bio *bio_alloc_bioset(struct block_device *bdev, unsigned short nr_vecs,
 	if (!mempool_is_saturated(&bs->bio_pool))
 		opf &= ~REQ_ALLOC_CACHE;
 
-	bio = p + bs->front_pad;
+	bio = p + bs->front_pad; // 把从mempool中分配的内存转换为bio
 	if (nr_vecs > BIO_INLINE_VECS) {
 		struct bio_vec *bvl = NULL;
 

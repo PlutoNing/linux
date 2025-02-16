@@ -22,7 +22,9 @@ typedef struct mempool_s {
 	void *pool_data;
 	mempool_alloc_t *alloc;
 	mempool_free_t *free;
-	wait_queue_head_t wait;
+	wait_queue_head_t wait;/* 
+	等待出现空余元素的等待者在这里等待
+	*/
 } mempool_t;
 
 static inline bool mempool_initialized(mempool_t *pool)

@@ -590,13 +590,14 @@ static inline blk_status_t blk_check_zone_append(struct request_queue *q,
 	return BLK_STS_OK;
 }
 
+// 提交bio
 static void __submit_bio(struct bio *bio)
 {
 	if (unlikely(!blk_crypto_bio_prep(&bio)))
 		return;
 
 	if (!bio->bi_bdev->bd_has_submit_bio) {
-		blk_mq_submit_bio(bio);
+		blk_mq_submit_bio(bio); // 提交bio 2025年2月17日00:12:31 分析的这个路径
 	} else if (likely(bio_queue_enter(bio) == 0)) {
 		struct gendisk *disk = bio->bi_bdev->bd_disk;
 
@@ -619,10 +620,22 @@ static void __submit_bio(struct bio *bio)
  *  - In this case we really did just take the bio of the top of the list (no
  *    pretending) and so remove it from bio_list, and call into ->submit_bio()
  *    again.
- *
+ *翻译: 这个函数中的循环可能有点不明显，因此值得一些解释:
+ *	- 在进入循环之前，bio->bi_next为NULL(因为所有调用者都确保这一点)，所以我们有一个包含
+ 单个bio的列表。
+ *	- 我们假设我们刚刚从一个更长的列表中取出它，因此我们将bio_list分配给指向bio_list_on_stack
+ 的指针，
+ *	  从而初始化要添加的新bios的bio_list。->submit_bio()确实可能通过对submit_bio_noacct的
+ 递归调用添加一些更多的bios。
+ *	  如果是这样，我们会在bio_list中找到一个非NULL值，并从顶部重新进入循环。
+ *	- 在这种情况下，我们确实刚刚从列表的顶部取出了bio(没有假装)，因此将其从bio_list中删除，
+ 并再次调用->submit_bio()。
+
  * bio_list_on_stack[0] contains bios submitted by the current ->submit_bio.
  * bio_list_on_stack[1] contains bios that were submitted before the current
  *	->submit_bio, but that haven't been processed yet.
+  翻译: bio_list_on_stack[0] 包含当前->submit_bio提交的bios。
+	   bio_list_on_stack[1] 包含在当前->submit_bio之前提交的bios，但尚未处理。
  */
 static void __submit_bio_noacct(struct bio *bio)
 {
@@ -643,6 +656,7 @@ static void __submit_bio_noacct(struct bio *bio)
 		bio_list_on_stack[1] = bio_list_on_stack[0];
 		bio_list_init(&bio_list_on_stack[0]);
 
+		// 提交bio
 		__submit_bio(bio);
 
 		/*
@@ -681,6 +695,7 @@ static void __submit_bio_noacct_mq(struct bio *bio)
 	current->bio_list = NULL;
 }
 
+// 提交bio
 void submit_bio_noacct_nocheck(struct bio *bio)
 {
 	blk_cgroup_bio_start(bio);
@@ -712,12 +727,15 @@ void submit_bio_noacct_nocheck(struct bio *bio)
 /**
    
  * submit_bio_noacct - re-submit a bio to the block device layer for I/O
+   作用: 重新提交一个bio到块设备层进行I/O
  * @bio:  The bio describing the location in memory and on the device.
  *
  * This is a version of submit_bio() that shall only be used for I/O that is
  * resubmitted to lower level drivers by stacking block drivers.  All file
  * systems and other upper level users of the block layer should use
  * submit_bio() instead.
+   这应该只用于由堆叠块驱动程序重新提交到较低级别驱动程序的I/O。所有文件系统和其他块层
+   的上层用户应该使用submit_bio()。
    
  */
 void submit_bio_noacct(struct bio *bio)
@@ -766,7 +784,7 @@ void submit_bio_noacct(struct bio *bio)
 	if (!test_bit(QUEUE_FLAG_POLL, &q->queue_flags))
 		bio_clear_polled(bio);
 
-	switch (bio_op(bio)) {
+	switch (bio_op(bio)) { // 获取bio的操作类型, 针对不同的操作类型做不同的处理
 	case REQ_OP_DISCARD:
 		if (!bdev_max_discard_sectors(bdev))
 			goto not_supported;
@@ -820,7 +838,8 @@ EXPORT_SYMBOL(submit_bio_noacct);
  * submit_bio() is used to submit I/O requests to block devices.  It is passed a
  * fully set up &struct bio that describes the I/O that needs to be done.  The
  * bio will be send to the device described by the bi_bdev field.
- *
+ * 被用于提交I/O请求到块设备。传递一个完全设置好的描述I/O的bio结构体。这个bio将会被发送
+ 到bi_bdev字段描述的设备。
  * The success/failure status of the request, along with notification of
  * completion, is delivered asynchronously through the ->bi_end_io() callback
  * in @bio.  The bio must NOT be touched by the caller until ->bi_end_io() has
@@ -828,6 +847,7 @@ EXPORT_SYMBOL(submit_bio_noacct);
  */
 void submit_bio(struct bio *bio)
 {
+	//先做一些统计
 	if (bio_op(bio) == REQ_OP_READ) {
 		task_io_account_read(bio->bi_iter.bi_size);
 		count_vm_events(PGPGIN, bio_sectors(bio));

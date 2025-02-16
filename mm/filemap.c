@@ -158,7 +158,7 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 	VM_BUG_ON_FOLIO(folio_mapped(folio), folio);
 
 	if (!IS_ENABLED(CONFIG_DEBUG_VM) && unlikely(folio_mapped(folio))) {/* 
-	如果这次是要移除被map的文件页
+	如果这次移除的是被map的文件页
 	*/
 		pr_alert("BUG: Bad page cache in process %s  pfn:%05lx\n",
 			 current->comm, folio_pfn(folio));
@@ -167,7 +167,10 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 		dump_stack();
 		add_taint(TAINT_BAD_PAGE, LOCKDEP_NOW_UNRELIABLE);
 
-		if (mapping_exiting(mapping) && !folio_test_large(folio)) {
+		if (mapping_exiting(mapping) && !folio_test_large(folio)) {/* 
+			这种情况可能是mapping对应的inode正在被删除
+			所以该怎么处理呢
+			*/
 			int mapcount = page_mapcount(&folio->page);
 
 			if (folio_ref_count(folio) >= mapcount + 2) {
@@ -176,6 +179,8 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 				 * a good bet that actually the page is unmapped
 				 * and we'd rather not leak it: if we're wrong,
 				 * another bad page check should catch it later.
+				 说明全部的vma已经被拆除, 所以很有可能这个页已经被解除映射了
+				 我们不想泄漏它: 如果我们错了, 另一个坏页检查应该稍后捕获到
 				 */
 				page_mapcount_reset(&folio->page);
 				folio_ref_sub(folio, mapcount);
@@ -183,15 +188,19 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 		}
 	}
 
-	/* hugetlb folios do not participate in page cache accounting. */
+	/* hugetlb folios do not participate in page cache accounting.
+	巨页folio不参与页面缓存计数
+	*/
 	if (folio_test_hugetlb(folio))
 		return;
 
 	nr = folio_nr_pages(folio);
 
+	// 表示文件页少了nr页
 	__lruvec_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 
-	if (folio_test_swapbacked(folio)) { // 如果这个文件页是交换页
+	if (folio_test_swapbacked(folio)) { // 如果这个文件页是被交换的
+		// 看来shmem就是被map的交换的文件页?
 		__lruvec_stat_mod_folio(folio, NR_SHMEM, -nr);
 		if (folio_test_pmd_mappable(folio))
 			__lruvec_stat_mod_folio(folio, NR_SHMEM_THPS, -nr);
@@ -238,7 +247,7 @@ void __filemap_remove_folio(struct folio *folio, void *shadow)
 	page_cache_delete(mapping, folio, shadow);
 }
 
-//从mapping中删除folio
+// 调用mapping的free_folio回调, 然后减少引用计数
 void filemap_free_folio(struct address_space *mapping, struct folio *folio)
 {
 	void (*free_folio)(struct folio *);
@@ -2960,6 +2969,8 @@ int kiocb_invalidate_pages(struct kiocb *iocb, size_t count)
 	 * the new data.  We invalidate clean cached page from the region we're
 	 * about to write.  We do this *before* the write so that we can return
 	 * without clobbering -EIOCBQUEUED from ->direct_IO().
+	 在写入后，我们希望缓冲读取确保到磁盘获取新数据。我们从我们即将写入的区域中使缓存的干净页面无效。
+	 我们在写入之前执行此操作，以便我们可以返回而不会从->direct_IO（）中破坏-EIOCBQUEUED。
 	 */
 	return invalidate_inode_pages2_range(mapping, pos >> PAGE_SHIFT,
 					     end >> PAGE_SHIFT);
@@ -4360,7 +4371,7 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 EXPORT_SYMBOL(generic_file_write_iter);
 
 /**
-
+总的来说就是检查一下需要释放的东西
 一种情况是,从mapping驱逐folio之前,释放folio的fs priv数据,buffer等相关.
 返回是否还需要释放(是否成功)
  * filemap_release_folio() - Release fs-specific metadata on a folio.

@@ -19,7 +19,7 @@
 #include <linux/module.h>
 #include "blk.h"
 
-//获取块设备filp的bdinode
+//获取块设备filp的vfs inode
 static inline struct inode *bdev_file_inode(struct file *file)
 {
 	return file->f_mapping->host;
@@ -776,10 +776,13 @@ reexpand:
 		(FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE |		\
 		 FALLOC_FL_ZERO_RANGE | FALLOC_FL_NO_HIDE_STALE)
 
+// 看看块设备如何实现fallocate
 static long blkdev_fallocate(struct file *file, int mode, loff_t start,
 			     loff_t len)
 {
+	// 获取vfs inode
 	struct inode *inode = bdev_file_inode(file);
+	// 获取bdev
 	struct block_device *bdev = I_BDEV(inode);
 	loff_t end = start + len - 1;
 	loff_t isize;
@@ -812,10 +815,11 @@ static long blkdev_fallocate(struct file *file, int mode, loff_t start,
 	/*
 	 * Invalidate the page cache, including dirty pages, for valid
 	 * de-allocate mode calls to fallocate().
+	 无效化页面缓存，包括脏页，以便对fallocate()的有效释放模式调用。
 	 */
 	switch (mode) {
 	case FALLOC_FL_ZERO_RANGE:
-	case FALLOC_FL_ZERO_RANGE | FALLOC_FL_KEEP_SIZE:
+	case FALLOC_FL_ZERO_RANGE | FALLOC_FL_KEEP_SIZE: // 保持文件大小,仅仅分配空间
 		error = truncate_bdev_range(bdev, file_to_blk_mode(file), start, end);
 		if (error)
 			goto fail;
@@ -885,6 +889,7 @@ const struct file_operations def_blk_fops = {
 #endif
 	.splice_read	= filemap_splice_read,
 	.splice_write	= iter_file_splice_write,
+	// 块设备的fallocate回调
 	.fallocate	= blkdev_fallocate,
 };
 

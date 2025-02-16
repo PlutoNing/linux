@@ -47,6 +47,7 @@ enum {
 
 struct loop_func_table;
 
+/*  */
 struct loop_device {
 	int		lo_number;
 	loff_t		lo_offset;
@@ -1985,7 +1986,9 @@ static const struct blk_mq_ops loop_mq_ops = {
 	.queue_rq       = loop_queue_rq,
 	.complete	= lo_complete_rq,
 };
+/* 2025年2月16日23:19:00看看loop机制 */
 
+/* 添加loop设备,会添加多个 */
 static int loop_add(int i)
 {
 	struct loop_device *lo;
@@ -2045,6 +2048,9 @@ static int loop_add(int i)
 	 * merge because the I/O submitted to backing file is handled page by
 	 * page. For directio mode, merge does help to dispatch bigger request
 	 * to underlayer disk. We will enable merge once directio is enabled.
+	 默认情况下,我们执行缓冲区IO,因此启用合并没有意义,因为提交给后备文件的IO是逐页
+	 处理的。对于直接io模式,合并确实有助于将更大的请求分派给底层磁盘。一旦启用了
+	 直接io,我们将启用合并。
 	 */
 	blk_queue_flag_set(QUEUE_FLAG_NOMERGES, lo->lo_queue);
 
@@ -2056,7 +2062,9 @@ static int loop_add(int i)
 	 * extended minor space, the main loop device numbers will continue
 	 * to match the loop minors, regardless of the number of partitions
 	 * used.
-	 *
+	 * 默认情况下禁用分区扫描。内核分区扫描可以在其设置期间针对每个设备单独请求。
+	 * 用户空间始终可以向所有设备添加和删除分区。所需的分区次设备号是从扩展次设备
+	 * 空间分配的,主要的循环设备号将继续匹配循环次设备号,而不管使用的分区数量。
 	 * If max_part is given, partition scanning is globally enabled for
 	 * all loop devices. The minors for the main loop devices will be
 	 * multiples of max_part.
@@ -2234,6 +2242,7 @@ static struct miscdevice loop_misc = {
 MODULE_ALIAS_MISCDEV(LOOP_CTRL_MINOR);
 MODULE_ALIAS("devname:loop-control");
 
+/* loop模块初始化的时候执行这个函数 */
 static int __init loop_init(void)
 {
 	int i;
@@ -2276,7 +2285,7 @@ static int __init loop_init(void)
 
 	/* pre-create number of devices given by config or max_loop */
 	for (i = 0; i < max_loop; i++)
-		loop_add(i);
+		loop_add(i); // 一个一个添加loop设备,看来应该就像添加一个个磁盘一样
 
 	printk(KERN_INFO "loop: module loaded\n");
 	return 0;

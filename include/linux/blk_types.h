@@ -273,7 +273,9 @@ struct bio {
 	unsigned short		bi_flags;	/* BIO_* below */
 	unsigned short		bi_ioprio;
 	blk_status_t		bi_status;
-	atomic_t		__bi_remaining;
+	atomic_t		__bi_remaining;/* 在链式 bio 中，bi_remaining 字段会记录剩余的 I/O 操作数。
+	这个字段在链式 BIO 中帮助内核在完成一个 bio 后，正确地处理下一个 bio，
+	直到整个链条的操作完成。 */
 
 	struct bvec_iter	bi_iter;/* 
 	像是一个总控
@@ -284,6 +286,7 @@ struct bio {
 	void			*bi_private;/* 
 	特定于使用方式的成员
 	回写bh的时候, 指向bh
+	在链式bio中指向parent
 	 */
 #ifdef CONFIG_BLK_CGROUP
 	/*
@@ -346,7 +349,11 @@ enum {
 	BIO_CLONED,		/* doesn't own data */
 	BIO_BOUNCED,		/* bio is a bounce bio */
 	BIO_QUIET,		/* Make BIO Quiet */
-	BIO_CHAIN,		/* chained bio, ->bi_remaining in effect */
+	BIO_CHAIN,		/* chained bio, ->bi_remaining in effect
+	当一个 I/O 请求需要拆分成多个较小的请求时（例如，写入多个连续的数据块），
+	或者在某些情况下一个 I/O 请求会依赖于其他多个 I/O 请求时，内核会使用 
+	BIO_CHAIN 标志来将这些 bio 请求链起来。
+	*/
 	BIO_REFFED,		/* bio has elevated ->bi_cnt */
 	BIO_BPS_THROTTLED,	/* This bio has already been subjected to
 				 * throttling rules. Don't do it again. */
@@ -463,7 +470,11 @@ enum req_flag_bits {
 #define REQ_BACKGROUND	(__force blk_opf_t)(1ULL << __REQ_BACKGROUND)
 #define REQ_NOWAIT	(__force blk_opf_t)(1ULL << __REQ_NOWAIT)
 #define REQ_POLLED	(__force blk_opf_t)(1ULL << __REQ_POLLED)
+/* REQ_ALLOC_CACHE 标志用于指示在执行 I/O 请求时，为请求分配一个缓存。
+这通常是在处理请求时，确保数据被缓存在内存中，从而提高后续访问的速度?
+还是说从pcp的缓存分配这个bio? */
 #define REQ_ALLOC_CACHE	(__force blk_opf_t)(1ULL << __REQ_ALLOC_CACHE)
+
 #define REQ_SWAP	(__force blk_opf_t)(1ULL << __REQ_SWAP)
 #define REQ_DRV		(__force blk_opf_t)(1ULL << __REQ_DRV)
 #define REQ_FS_PRIVATE	(__force blk_opf_t)(1ULL << __REQ_FS_PRIVATE)

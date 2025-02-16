@@ -132,6 +132,7 @@ static __always_inline void add_element(mempool_t *pool, void *element)
 	pool->elements[pool->curr_nr++] = element;
 }
 
+// 从pool的元素数组里面取出一个元素
 static void *remove_element(mempool_t *pool)
 {
 	void *element = pool->elements[--pool->curr_nr];
@@ -365,6 +366,7 @@ EXPORT_SYMBOL(mempool_resize);
 
 /**
  * mempool_alloc - allocate an element from a specific memory pool
+   从特定的内存池中分配一个元素
  * @pool:      pointer to the memory pool which was allocated via
  *             mempool_create().
  * @gfp_mask:  the usual allocation bitmask.
@@ -398,9 +400,9 @@ repeat_alloc:
 	element = pool->alloc(gfp_temp, pool->pool_data);
 	if (likely(element != NULL))
 		return element;
-
+	// 走到这里说明分配失败
 	spin_lock_irqsave(&pool->lock, flags);
-	if (likely(pool->curr_nr)) {
+	if (likely(pool->curr_nr)) {// 那就从pool的元素数组里面取出一个元素
 		element = remove_element(pool);
 		spin_unlock_irqrestore(&pool->lock, flags);
 		/* paired with rmb in mempool_free(), read comment there */
@@ -429,7 +431,10 @@ repeat_alloc:
 		return NULL;
 	}
 
-	/* Let's wait for someone else to return an element to @pool */
+	/* Let's wait for someone else to return an element to @pool
+	走到这里说明pool的元素数组为空，那就等待其他线程释放元素到pool中
+	 
+	*/
 	init_wait(&wait);
 	prepare_to_wait(&pool->wait, &wait, TASK_UNINTERRUPTIBLE);
 

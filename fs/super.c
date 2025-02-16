@@ -676,7 +676,9 @@ void generic_shutdown_super(struct super_block *sb)
 
 		cgroup_writeback_umount();
 
-		/* Evict all inodes with zero refcount. */
+		/* Evict all inodes with zero refcount.
+		驱逐所有引用计数为0的inode
+		*/
 		evict_inodes(sb);
 
 		/*

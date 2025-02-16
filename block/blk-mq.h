@@ -14,6 +14,7 @@ struct blk_mq_ctxs {
 
 /**
  * struct blk_mq_ctx - State for a software queue facing the submitting CPUs
+ struct blk_mq_ctx代表每个CPU独有的软件队列；
  */
 struct blk_mq_ctx {
 	struct {

@@ -660,6 +660,8 @@ static inline struct bio *bio_list_get(struct bio_list *bl)
 /*
  * Increment chain count for the bio. Make sure the CHAIN flag update
  * is visible before the raised count.
+   增加bio的链计数。确保在增加计数之前，CHAIN标志的更新是可见的。
+
  */
 static inline void bio_inc_remaining(struct bio *bio)
 {
@@ -682,10 +684,11 @@ struct bio_set {
 
 	/*
 	 * per-cpu bio alloc cache
+	 这个是pcp的分配带缓存的bio的cache
 	 */
 	struct bio_alloc_cache __percpu *cache;
 
-	mempool_t bio_pool;
+	mempool_t bio_pool; /* bio的内存池 */
 	mempool_t bvec_pool;
 #if defined(CONFIG_BLK_DEV_INTEGRITY)
 	mempool_t bio_integrity_pool;

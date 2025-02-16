@@ -121,6 +121,7 @@ void blk_mq_in_flight_rw(struct request_queue *q, struct block_device *part,
 	inflight[1] = mi.inflight[1];
 }
 
+// 冻结队列
 void blk_freeze_queue_start(struct request_queue *q)
 {
 	mutex_lock(&q->mq_freeze_lock);
@@ -153,6 +154,7 @@ EXPORT_SYMBOL_GPL(blk_mq_freeze_queue_wait_timeout);
 /*
  * Guarantee no request is in use, so we can change any data structure of
  * the queue afterward.
+   保证没有请求在使用，因此我们可以在此之后更改队列的任何数据结构。
  */
 void blk_freeze_queue(struct request_queue *q)
 {
@@ -162,6 +164,11 @@ void blk_freeze_queue(struct request_queue *q)
 	 * and waits for it to return to zero.  For this reason there is
 	 * no blk_unfreeze_queue(), and blk_freeze_queue() is not
 	 * exported to drivers as the only user for unfreeze is blk_mq.
+	   翻译: 在!blk_mq情况下，我们只调用它来杀死q_usage_counter，否则这会增加
+	   冻结深度并等待它返回到零。
+	 * 由于这个原因，没有blk_unfreeze_queue()，并且blk_freeze_queue()不会导出给驱动程序，
+	 因为解冻的唯一用户是blk_mq。
+
 	 */
 	blk_freeze_queue_start(q);
 	blk_mq_freeze_queue_wait(q);
@@ -1458,6 +1465,7 @@ void blk_mq_requeue_request(struct request *rq, bool kick_requeue_list)
 }
 EXPORT_SYMBOL(blk_mq_requeue_request);
 
+/* 2025年2月16日23:44:05 rq work */
 static void blk_mq_requeue_work(struct work_struct *work)
 {
 	struct request_queue *q =
@@ -1470,8 +1478,8 @@ static void blk_mq_requeue_work(struct work_struct *work)
 	list_splice_init(&q->requeue_list, &rq_list);
 	list_splice_init(&q->flush_list, &flush_list);
 	spin_unlock_irq(&q->requeue_lock);
-
-	while (!list_empty(&rq_list)) {
+	// 刚才把requeue_list和flush_list从rq_list和flush_list中取出来了
+	while (!list_empty(&rq_list)) { //如果里面有东西
 		rq = list_entry(rq_list.next, struct request, queuelist);
 		/*
 		 * If RQF_DONTPREP ist set, the request has been started by the
@@ -2437,14 +2445,17 @@ static void blk_mq_run_work_fn(struct work_struct *work)
 
 /**
  * blk_mq_request_bypass_insert - Insert a request at dispatch list.
+ 插入请求到调度列表
  * @rq: Pointer to request to be inserted.
  * @flags: BLK_MQ_INSERT_*
  *
  * Should only be used carefully, when the caller knows we want to
  * bypass a potential IO scheduler on the target device.
+ 仅在调用者知道我们要绕过目标设备上的潜在IO调度程序时才应小心使用。
  */
 static void blk_mq_request_bypass_insert(struct request *rq, blk_insert_t flags)
 {
+	// 获取请求对应的硬件队列
 	struct blk_mq_hw_ctx *hctx = rq->mq_hctx;
 
 	spin_lock(&hctx->lock);
@@ -2504,10 +2515,14 @@ static void blk_mq_insert_request(struct request *rq, blk_insert_t flags)
 		 * directly.  The device may be in a situation where it can't
 		 * handle FS request, and always returns BLK_STS_RESOURCE for
 		 * them, which gets them added to hctx->dispatch.
-		 *
+		 * 翻译: 透传请求必须直接添加到hctx->dispatch中。设备可能处于无法处理FS请求的情况，
+		 * 并且总是为它们返回BLK_STS_RESOURCE，这会将它们添加到hctx->dispatch中。
+		 
 		 * If a passthrough request is required to unblock the queues,
 		 * and it is added to the scheduler queue, there is no chance to
 		 * dispatch it given we prioritize requests in hctx->dispatch.
+		 如果需要透传请求来解除队列的阻塞，并且将其添加到调度程序队列中，则没有机会将其分派，
+		 因为我们优先处理hctx->dispatch中的请求。
 		 */
 		blk_mq_request_bypass_insert(rq, flags);
 	} else if (req_op(rq) == REQ_OP_FLUSH) {
@@ -2533,14 +2548,14 @@ static void blk_mq_insert_request(struct request *rq, blk_insert_t flags)
 		 * intensive flush workloads can benefit in case of NCQ HW.
 		 */
 		blk_mq_request_bypass_insert(rq, BLK_MQ_INSERT_AT_HEAD);
-	} else if (q->elevator) {
+	} else if (q->elevator) { // 如果有电梯调度器
 		LIST_HEAD(list);
 
 		WARN_ON_ONCE(rq->tag != BLK_MQ_NO_TAG);
 
 		list_add(&rq->queuelist, &list);
 		q->elevator->type->ops.insert_requests(hctx, &list, flags);
-	} else {
+	} else { // 这是什么情况?
 		trace_block_rq_insert(rq);
 
 		spin_lock(&ctx->lock);
@@ -2949,6 +2964,7 @@ static void bio_set_ioprio(struct bio *bio)
 
 /**
  * blk_mq_submit_bio - Create and send a request to block device.
+   创建并发送请求到块设备
  * @bio: Bio pointer.
  *
  * Builds up a request structure from @q and @bio and send to the device. The
@@ -2957,8 +2973,13 @@ static void bio_set_ioprio(struct bio *bio)
  * * We want to place request at plug queue for possible future merging
  * * There is an IO scheduler active at this queue
  *
+ 翻译: 从@q和@bio构建请求结构并发送到设备。如果满足以下条件，请求可能不会直接排队到硬件:
+ * * 此请求可以与另一个请求合并
+ * * 我们希望将请求放置在插入队列中，以便将来可能合并
+ * * 此队列上有IO调度程序处于活动状态
  * It will not queue the request if there is an error with the bio, or at the
  * request creation.
+   他不会将请求排队，如果bio有错误，或者在请求创建时。
  */
 void blk_mq_submit_bio(struct bio *bio)
 {
@@ -2981,7 +3002,7 @@ void blk_mq_submit_bio(struct bio *bio)
 		return;
 
 	bio_set_ioprio(bio);
-
+	// 2025年2月17日00:13:08 到这了
 	rq = blk_mq_get_cached_request(q, plug, &bio, nr_segs);
 	if (!rq) {
 		if (!bio)
