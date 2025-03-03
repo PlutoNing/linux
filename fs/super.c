@@ -2128,10 +2128,14 @@ int thaw_super(struct super_block *sb, enum freeze_holder who)
 EXPORT_SYMBOL(thaw_super);
 
 /*
- * Create workqueue for deferred direct IO completions. We allocate the
+ * Create workqueue for deferred direct IO completions. 
+ 为延迟的直接IO完成创建工作队列。
+ We allocate the
  * workqueue when it's first needed. This avoids creating workqueue for
  * filesystems that don't need it and also allows us to create the workqueue
  * late enough so the we can include s_id in the name of the workqueue.
+ 我们在第一次需要时分配工作队列。这样可以避免为不需要它的文件系统创建工作队列，
+ 也可以让我们在足够晚的时候创建工作队列，以便我们可以在工作队列的名称中包含s_id。
  */
 int sb_init_dio_done_wq(struct super_block *sb)
 {
@@ -2143,6 +2147,7 @@ int sb_init_dio_done_wq(struct super_block *sb)
 		return -ENOMEM;
 	/*
 	 * This has to be atomic as more DIOs can race to create the workqueue
+	 这里为什么要把旧的替换掉呢?
 	 */
 	old = cmpxchg(&sb->s_dio_done_wq, NULL, wq);
 	/* Someone created workqueue before us? Free ours... */

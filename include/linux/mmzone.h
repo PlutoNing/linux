@@ -209,7 +209,9 @@ enum node_stat_item {
 	NR_THROTTLED_WRITTEN,	/* NR_WRITTEN while reclaim throttled */
 	NR_KERNEL_MISC_RECLAIMABLE,	/* reclaimable non-slab kernel pages */
 	NR_FOLL_PIN_ACQUIRED,	/* via: pin_user_page(), gup flag: FOLL_PIN */
-	NR_FOLL_PIN_RELEASED,	/* pages returned via unpin_user_page() */
+	NR_FOLL_PIN_RELEASED,	/* 
+	有多少被pin的用户页面被释放了
+	pages returned via unpin_user_page() */
 	NR_KERNEL_STACK_KB,	/* measured in KiB */
 #if IS_ENABLED(CONFIG_SHADOW_CALL_STACK)
 	NR_KERNEL_SCS_KB,	/* measured in KiB */
@@ -393,9 +395,9 @@ enum lruvec_flags {
 
 struct lruvec;
 struct page_vma_mapped_walk;
-/*  */
+/* 这里是page的flag中有关lru_gen的掩码 */
 #define LRU_GEN_MASK		((BIT(LRU_GEN_WIDTH) - 1) << LRU_GEN_PGOFF)
-/*  */
+/* flag里面的ref相关flag是什么 */
 #define LRU_REFS_MASK		((BIT(LRU_REFS_WIDTH) - 1) << LRU_REFS_PGOFF)
 
 #ifdef CONFIG_LRU_GEN

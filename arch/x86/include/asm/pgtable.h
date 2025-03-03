@@ -1638,6 +1638,10 @@ static inline bool __pkru_allows_pkey(u16 pkey, bool write)
  * 'pteval' can come from a PTE, PMD or PUD.  We only check
  * _PAGE_PRESENT, _PAGE_USER, and _PAGE_RW in here which are the
  * same value on all 3 types.
+    pteval可能来自PTE、PMD或PUD。我们只在这里检查_PAGE_PRESENT、
+	_PAGE_USER和_PAGE_RW，这3种类型的值是相同的。
+	======================
+感觉这里更像是检查pte是否具有那个能力的permit,而不是权限高低的permit
  */
 static inline bool __pte_access_permitted(unsigned long pteval, bool write)
 {
@@ -1652,7 +1656,7 @@ static inline bool __pte_access_permitted(unsigned long pteval, bool write)
 		need_pte_bits |= _PAGE_RW;
 
 	if ((pteval & need_pte_bits) != need_pte_bits)
-		return 0;
+		return 0; // pte必须具有这三个bit位
 
 	return __pkru_allows_pkey(pte_flags_pkey(pteval), write);
 }

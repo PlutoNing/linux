@@ -17,7 +17,7 @@
 
 /*
  * MS_SYNC syncs the entire file - including mappings.
- *
+ * 作用是将文件的所有数据和元数据都刷到磁盘上
  * MS_ASYNC does not start I/O (it used to, up to 2.5.67).
  * Nor does it marks the relevant pages dirty (it used to up to 2.6.17).
  * Now it doesn't do anything, since dirty pages are properly tracked.

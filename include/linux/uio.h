@@ -18,7 +18,7 @@ struct kvec {
 	void *iov_base; /* and that should *never* hold a userland pointer */
 	size_t iov_len;
 };
-
+/* 表示iter的种类 */
 enum iter_type {
 	/* iter types */
 	ITER_IOVEC,
@@ -39,7 +39,7 @@ struct iov_iter_state {
 };
 
 struct iov_iter {
-	u8 iter_type;
+	u8 iter_type; // 一共有几种呢?
 	bool copy_mc;
 	bool nofault;
 	bool data_source;

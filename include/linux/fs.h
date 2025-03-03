@@ -3034,6 +3034,7 @@ void inode_dio_wait(struct inode *inode);
 
 /**
  * inode_dio_begin - signal start of a direct I/O requests
+ 表示要开始一个direct I/O请求
  * @inode: inode the direct I/O happens on
  *
  * This is called once we've finished processing a direct I/O request,

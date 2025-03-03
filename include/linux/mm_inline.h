@@ -65,6 +65,7 @@ static __always_inline void update_lru_size(struct lruvec *lruvec,
 
 /**
  * __folio_clear_lru_flags - Clear page lru flags before releasing a page.
+ 清除lru标志
  * @folio: The folio that was on lru and now has a zero reference.
  */
 static __always_inline void __folio_clear_lru_flags(struct folio *folio)
@@ -76,7 +77,7 @@ static __always_inline void __folio_clear_lru_flags(struct folio *folio)
 	/* this shouldn't happen, so leave the flags to bad_page() */
 	if (folio_test_active(folio) && folio_test_unevictable(folio))
 		return;
-
+// 如果不是active或者不是unevictable
 	__folio_clear_active(folio);
 	__folio_clear_unevictable(folio);
 }
@@ -341,7 +342,7 @@ static inline bool lru_gen_del_folio(struct lruvec *lruvec, struct folio *folio,
 }
 
 #endif /* CONFIG_LRU_GEN */
-/* 把folio或者page加到lru */
+/* 把folio或者page加到lruvec */
 static __always_inline
 void lruvec_add_folio(struct lruvec *lruvec, struct folio *folio)
 {
@@ -379,7 +380,7 @@ void lruvec_del_folio(struct lruvec *lruvec, struct folio *folio)
 
 	if (lru_gen_del_folio(lruvec, folio, false))
 		return;
-
+    // 如果folio的gen小于0就走下面
 	if (lru != LRU_UNEVICTABLE)
 		list_del(&folio->lru);
 	update_lru_size(lruvec, lru, folio_zonenum(folio),

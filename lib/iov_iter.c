@@ -985,7 +985,7 @@ unsigned long iov_iter_gap_alignment(const struct iov_iter *i)
 	return res;
 }
 EXPORT_SYMBOL(iov_iter_gap_alignment);
-
+/* 给pages指针数组分配内存空间 */
 static int want_pages_array(struct page ***res, size_t size,
 			    size_t start, unsigned int maxpages)
 {
@@ -1743,13 +1743,14 @@ static ssize_t iov_iter_extract_kvec_pages(struct iov_iter *i,
 }
 
 /*
+从i提取一些pages到pages数组
  * Extract a list of contiguous pages from a user iterator and get a pin on
  * each of them.  This should only be used if the iterator is user-backed
  * (IOBUF/UBUF).
  *
  * It does not get refs on the pages, but the pages must be unpinned by the
  * caller once the transfer is complete.
- *
+ *  不获取ref. 但是必须在传输完成后由调用者取消固定。
  * This is safe to be used where background IO/DMA *is* going to be modifying
  * the buffer; using a pin rather than a ref makes forces fork() to give the
  * child a copy of the page.
@@ -1789,6 +1790,7 @@ static ssize_t iov_iter_extract_user_pages(struct iov_iter *i,
 
 /**
  * iov_iter_extract_pages - Extract a list of contiguous pages from an iterator
+ 从iter获取一系列连续的页面
  * @i: The iterator to extract from
  * @pages: Where to return the list of pages
  * @maxsize: The maximum amount of iterator to extract
@@ -1799,7 +1801,8 @@ static ssize_t iov_iter_extract_user_pages(struct iov_iter *i,
  * Extract a list of contiguous pages from the current point of the iterator,
  * advancing the iterator.  The maximum number of pages and the maximum amount
  * of page contents can be set.
- *
+ * 从迭代器的当前点提取一系列连续的页面，然后推进迭代器。可以设置最大页面数和页面内容的最大量。
+
  * If *@pages is NULL, a page list will be allocated to the required size and
  * *@pages will be set to its base.  If *@pages is not NULL, it will be assumed
  * that the caller allocated a page list at least @maxpages in size and this
@@ -1840,7 +1843,7 @@ ssize_t iov_iter_extract_pages(struct iov_iter *i,
 	maxsize = min_t(size_t, min_t(size_t, maxsize, i->count), MAX_RW_COUNT);
 	if (!maxsize)
 		return 0;
-
+	// 下面分了四种情况处理
 	if (likely(user_backed_iter(i)))
 		return iov_iter_extract_user_pages(i, pages, maxsize,
 						   maxpages, extraction_flags,

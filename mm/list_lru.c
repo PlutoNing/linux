@@ -343,11 +343,13 @@ static void init_one_lru(struct list_lru_one *l)
 }
 
 #ifdef CONFIG_MEMCG_KMEM
+// 分配一个mlru2025年3月3日23:54:31
 static struct list_lru_memcg *memcg_init_list_lru_one(gfp_t gfp)
 {
 	int nid;
 	struct list_lru_memcg *mlru;
 
+	// 分配mlru的内存, 里面有变长数组, 大小是node数量
 	mlru = kmalloc(struct_size(mlru, node, nr_node_ids), gfp);
 	if (!mlru)
 		return NULL;
@@ -469,7 +471,7 @@ void memcg_reparent_list_lrus(struct mem_cgroup *memcg, struct mem_cgroup *paren
 		memcg_reparent_list_lru(lru, src_idx, parent);
 	mutex_unlock(&list_lrus_mutex);
 }
-
+/* 返回memcg是不是被存到了lru的xas里面 */
 static inline bool memcg_list_lru_allocated(struct mem_cgroup *memcg,
 					    struct list_lru *lru)
 {
@@ -478,6 +480,7 @@ static inline bool memcg_list_lru_allocated(struct mem_cgroup *memcg,
 	return idx < 0 || xa_load(&lru->xa, idx);
 }
 
+/* 这个是哪里的lru? */
 int memcg_list_lru_alloc(struct mem_cgroup *memcg, struct list_lru *lru,
 			 gfp_t gfp)
 {
@@ -501,10 +504,11 @@ int memcg_list_lru_alloc(struct mem_cgroup *memcg, struct list_lru *lru,
 	 * Because the list_lru can be reparented to the parent cgroup's
 	 * list_lru, we should make sure that this cgroup and all its
 	 * ancestors have allocated list_lru_memcg.
+	 因为list_lru可以重新分配到父cgroup的list_lru，所以我们应该确保此cgroup及其所有祖先都已分配了list_lru_memcg。
 	 */
 	for (i = 0; memcg; memcg = parent_mem_cgroup(memcg), i++) {
 		if (memcg_list_lru_allocated(memcg, lru))
-			break;
+			break; // memcg已经被塞到了lru的xas数组
 
 		table[i].memcg = memcg;
 		table[i].mlru = memcg_init_list_lru_one(gfp);

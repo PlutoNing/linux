@@ -1361,7 +1361,10 @@ void xa_delete_node(struct xa_node *, xa_update_node_t);
  * The various elements in it should not be accessed directly, but only
  * through the provided accessor functions.  The below documentation is for
  * the benefit of those working on the code, not for users of the XArray.
- *
+ * 翻译: xa_state 对于其用户是不透明的。它包含了当前操作 XArray 的各种不同状态。
+ * 它应该在堆栈上声明，并在各种内部例程之间传递。它中的各个元素不应直接访问，
+ * 而只能通过提供的访问器函数访问。下面的文档是为那些在代码上工作的人提供的，
+ * 而不是 XArray 的用户。
  * @xa_node usually points to the xa_node containing the slot we're operating
  * on (and @xa_offset is the offset in the slots array).  If there is a
  * single entry in the array at index 0, there are no allocated xa_nodes to
@@ -1370,6 +1373,10 @@ void xa_delete_node(struct xa_node *, xa_update_node_t);
  * position in the tree of nodes for this operation.  If an error occurs
  * during an operation, it is set to an %XAS_ERROR value.  If we run off the
  * end of the allocated nodes, it is set to %XAS_BOUNDS.
+ * 翻译: @xa_node 通常指向包含我们正在操作的槽的 xa_node（@xa_offset 是 slots 数组中的偏移量）。
+ * 如果索引 0 处的数组中有一个条目，那么没有分配的 xa_node 指向，因此我们在 @xa_node 中存储 %NULL。
+ * 如果 xa_state 没有遍历到此操作的节点树的正确位置，则将 @xa_node 设置为 %XAS_RESTART。如果操作期间发生错误，
+ * 它将设置为 %XAS_ERROR 值。如果我们超出了分配的节点的末尾，则将其设置为 %XAS_BOUNDS。
  */
 struct xa_state {
 	struct xarray *xa;

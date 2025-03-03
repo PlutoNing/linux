@@ -60,7 +60,10 @@
  * we need to convert dio_blocks to fs_blocks by scaling the dio_block quantity
  * down by dio->blkfactor.  Similarly, fs-blocksize quantities are converted
  * to bio_block quantities by shifting left by blkfactor.
- *
+ * 这些代码是以“dio_blocks”为单位工作的。dio_block在硬扇区大小和文件系统块大小之间。
+ * 它是根据每次调用确定的。当与文件系统通信时，我们需要通过将dio_block数量缩小dio->blkfactor
+ * 来将dio_blocks转换为fs_blocks。同样，fs-blocksize数量通过左移blkfactor转换为bio_block数量。
+
  * If blkfactor is zero then the user's request was aligned to the filesystem's
  * blocksize.
  */
@@ -163,13 +166,15 @@ static inline unsigned dio_pages_present(struct dio_submit *sdio)
 
 /*
  * Go grab and pin some userspace pages.   Typically we'll get 64 at a time.
+   获取和固定一些用户空间页面。通常我们一次会获取64个。
  */
 static inline int dio_refill_pages(struct dio *dio, struct dio_submit *sdio)
-{
+{	
+	// page的指针数组
 	struct page **pages = dio->pages;
 	const enum req_op dio_op = dio->opf & REQ_OP_MASK;
 	ssize_t ret;
-
+	// 从iter提取到pages数组
 	ret = iov_iter_extract_pages(sdio->iter, &pages, LONG_MAX,
 				     DIO_PAGES, 0, &sdio->from);
 
@@ -204,6 +209,8 @@ static inline int dio_refill_pages(struct dio *dio, struct dio_submit *sdio)
  * buffered inside the dio so that we can call iov_iter_extract_pages()
  * against a decent number of pages, less frequently.  To provide nicer use of
  * the L1 cache.
+   获取另一个用户空间页面。在错误时返回ERR_PTR。页面在dio中缓冲，以便我们可以针对
+   相当数量的页面调用iov_iter_extract_pages()，频率较低。以提供对L1缓存的更好使用。
  */
 static inline struct page *dio_get_page(struct dio *dio,
 					struct dio_submit *sdio)
@@ -563,15 +570,16 @@ static inline int dio_bio_reap(struct dio *dio, struct dio_submit *sdio)
 	}
 	return ret;
 }
-
+/* 把dio设置为defer */
 static int dio_set_defer_completion(struct dio *dio)
 {
+	// 找到sb
 	struct super_block *sb = dio->inode->i_sb;
 
 	if (dio->defer_completion)
 		return 0;
 	dio->defer_completion = true;
-	if (!sb->s_dio_done_wq)
+	if (!sb->s_dio_done_wq) // sb还没有初始化dio wq
 		return sb_init_dio_done_wq(sb);
 	return 0;
 }
@@ -887,17 +895,22 @@ static inline void dio_zero_block(struct dio *dio, struct dio_submit *sdio,
  * Walk the user pages, and the file, mapping blocks to disk and generating
  * a sequence of (page,offset,len,block) mappings.  These mappings are injected
  * into submit_page_section(), which takes care of the next stage of submission
- *
+ * 遍历用户页和文件，将块映射到磁盘并生成(page,offset,len,block)映射序列。这些映射被
+ 注入到submit_page_section()中，该函数负责提交的下一阶段
  * Direct IO against a blockdev is different from a file.  Because we can
  * happily perform page-sized but 512-byte aligned IOs.  It is important that
  * blockdev IO be able to have fine alignment and large sizes.
- *
+ * 对块设备的直接IO与文件不同。因为我们可以愉快地执行页面大小但512字节对齐的IO。
+ * 重要的是块设备IO能够具有良好的对齐和大尺寸。
  * So what we do is to permit the ->get_block function to populate bh.b_size
  * with the size of IO which is permitted at this offset and this i_blkbits.
- *
+ * 所以我们要做的是允许->get_block函数填充bh.b_size，这个IO的大小在这个偏移量和这个i_blkbits是允许的。
+
  * For best results, the blockdev should be set up with 512-byte i_blkbits and
  * it should set b_size to PAGE_SIZE or more inside get_block().  This gives
  * fine alignment but still allows this function to work in PAGE_SIZE units.
+	 * 为了获得最佳结果，块设备应该设置为512字节i_blkbits，并且在get_block()内部应该将b_size设置为PAGE_SIZE或更大。
+	 * 这样可以获得良好的对齐，但仍然允许这个函数以PAGE_SIZE为单位工作。
  */
 static int do_direct_IO(struct dio *dio, struct dio_submit *sdio,
 			struct buffer_head *map_bh)
@@ -1078,24 +1091,31 @@ static inline int drop_refcount(struct dio *dio)
 
 /*
  * This is a library function for use by filesystem drivers.
- *
+ * 这是一个供文件系统驱动程序使用的库函数。
  * The locking rules are governed by the flags parameter:
+   参数控制锁定规则：
  *  - if the flags value contains DIO_LOCKING we use a fancy locking
  *    scheme for dumb filesystems.
  *    For writes this function is called under i_mutex and returns with
  *    i_mutex held, for reads, i_mutex is not held on entry, but it is
  *    taken and dropped again before returning.
+      如果flags值包含DIO_LOCKING，则对于愚蠢的文件系统使用复杂的锁定方案。
+	  对于写入，此函数在i_mutex下调用，并在保持i_mutex的情况下返回，对于读取，不在入口处保持i_mutex，但在返回之前获取并释放。
+
  *  - if the flags value does NOT contain DIO_LOCKING we don't use any
  *    internal locking but rather rely on the filesystem to synchronize
  *    direct I/O reads/writes versus each other and truncate.
- *
+ *    如果flags值不包含DIO_LOCKING，则不使用任何内部锁定，而是依赖于文件系统来同步直接I/O读/写与截断。
+
  * To help with locking against truncate we incremented the i_dio_count
  * counter before starting direct I/O, and decrement it once we are done.
  * Truncate can wait for it to reach zero to provide exclusion.  It is
  * expected that filesystem provide exclusion between new direct I/O
  * and truncates.  For DIO_LOCKING filesystems this is done by i_mutex,
  * but other filesystems need to take care of this on their own.
- *
+ * 为了帮助锁定截断，我们在开始直接I/O之前增加了i_dio_count计数器，并在完成后减少它。
+   截断可以等待它达到零以提供排除。 预计文件系统在新的直接I/O和截断之间提供排除。
+   对于DIO_LOCKING文件系统，这是通过i_mutex完成的，但其他文件系统需要自行处理这个问题。
  * NOTE: if you pass "sdio" to anything by pointer make sure that function
  * is always inlined. Otherwise gcc is unable to split the structure into
  * individual fields and will generate much worse code. This is important
@@ -1127,7 +1147,7 @@ ssize_t __blockdev_direct_IO(struct kiocb *iocb, struct inode *inode,
 	/* watch out for a 0 len io from a tricksy fs */
 	if (iov_iter_rw(iter) == READ && !count)
 		return 0;
-
+	// 从slab分配dio
 	dio = kmem_cache_alloc(dio_cache, GFP_KERNEL);
 	if (!dio)
 		return -ENOMEM;
@@ -1162,7 +1182,7 @@ ssize_t __blockdev_direct_IO(struct kiocb *iocb, struct inode *inode,
 
 	if (dio->flags & DIO_LOCKING && iov_iter_rw(iter) == READ) {
 		struct address_space *mapping = iocb->ki_filp->f_mapping;
-
+		// 回写指定范围的
 		retval = filemap_write_and_wait_range(mapping, offset, end - 1);
 		if (retval)
 			goto fail_dio;
@@ -1171,8 +1191,10 @@ ssize_t __blockdev_direct_IO(struct kiocb *iocb, struct inode *inode,
 	/*
 	 * For file extending writes updating i_size before data writeouts
 	 * complete can expose uninitialized blocks in dumb filesystems.
+	 对于文件扩展写入，在数据写出完成之前更新i_size可能会在愚蠢的文件系统中暴露未初始化的块。
 	 * In that case we need to wait for I/O completion even if asked
 	 * for an asynchronous write.
+	 在这种情况下，即使要求进行异步写入，我们也需要等待I/O完成。
 	 */
 	if (is_sync_kiocb(iocb))
 		dio->is_async = false;
@@ -1193,16 +1215,19 @@ ssize_t __blockdev_direct_IO(struct kiocb *iocb, struct inode *inode,
 	/*
 	 * For AIO O_(D)SYNC writes we need to defer completions to a workqueue
 	 * so that we can call ->fsync.
+	 对于AIO O_(D)SYNC写入，我们需要将完成延迟到工作队列，以便我们可以调用->fsync。
 	 */
 	if (dio->is_async && iov_iter_rw(iter) == WRITE) {
 		retval = 0;
 		if (iocb_is_dsync(iocb))
 			retval = dio_set_defer_completion(dio);
-		else if (!dio->inode->i_sb->s_dio_done_wq) {
+		else if (!dio->inode->i_sb->s_dio_done_wq) {/* 文件系统没有dio done wq的情况? */
 			/*
 			 * In case of AIO write racing with buffered read we
 			 * need to defer completion. We can't decide this now,
 			 * however the workqueue needs to be initialized here.
+			   翻译: 在AIO写入与缓冲读取竞争的情况下，我们需要推迟完成。 但是我们现在无法做出决定，
+			   但是工作队列需要在这里初始化。
 			 */
 			retval = sb_init_dio_done_wq(dio->inode->i_sb);
 		}

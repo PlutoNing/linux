@@ -79,7 +79,7 @@ typedef int __bitwise fpi_t;
  * Place the (possibly merged) page to the tail of the freelist. Will ignore
  * page shuffling (relevant code - e.g., memory onlining - is expected to
  * shuffle the whole zone).
- *
+ * 把(可能合并的)页面放到空闲列表的尾部。将忽略页面洗牌(相关代码-例如，内存在线化-预计会洗牌整个区域)。
  * Note: No code should rely on this flag for correctness - it's purely
  *       to allow for optimizations when handing back either fresh pages
  *       (memory onlining) or untouched pages (page isolation, free page
@@ -214,6 +214,10 @@ gfp_t gfp_allowed_mask __read_mostly = GFP_BOOT_MASK;
  * Also the migratetype set in the page does not necessarily match the pcplist
  * index, e.g. page might have MIGRATE_CMA set but be on a pcplist with any
  * other index - this ensures that it will be put on the correct CMA freelist.
+   翻译: 页面的pageblock的migratetype的缓存值,当页面放在pcplist上时使用,用于避免在
+   大多数情况下从pcplists释放时的pageblock migratetype查找,代价是可能变得过时.
+   此外,页面中设置的migratetype不一定与pcplist索引匹配,例如,页面可能设置了MIGRATE_CMA,
+   但在具有任何其他索引的pcplist上,这确保它将放在正确的CMA空闲列表上.
  */
 static inline int get_pcppage_migratetype(struct page *page)
 {
@@ -531,7 +535,7 @@ out:
 	page_mapcount_reset(page); /* remove PageBuddy */
 	add_taint(TAINT_BAD_PAGE, LOCKDEP_NOW_UNRELIABLE);
 }
-
+/* 编码【mt和order】到唯一id索引 */
 static inline unsigned int order_to_pindex(int migratetype, int order)
 {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
@@ -559,22 +563,22 @@ static inline int pindex_to_order(unsigned int pindex)
 
 	return order;
 }
-
+// 看看是不是适合pcp的order, 好像就是比较小的order
 static inline bool pcp_allowed_order(unsigned int order)
 {
 	if (order <= PAGE_ALLOC_COSTLY_ORDER)
-		return true;
+		return true; // 如果是比较小的order, 就pcp?
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	if (order == pageblock_order)
 		return true;
 #endif
 	return false;
 }
-
+// 释放页面
 static inline void free_the_page(struct page *page, unsigned int order)
 {
 	if (pcp_allowed_order(order))		/* Via pcp? */
-		free_unref_page(page, order);
+		free_unref_page(page, order); // pcp的方式
 	else
 		__free_pages_ok(page, order, FPI_NONE);
 }
@@ -606,7 +610,7 @@ void prep_compound_page(struct page *page, unsigned int order)
 void destroy_large_folio(struct folio *folio)
 {
 	if (folio_test_hugetlb(folio)) {
-		free_huge_folio(folio);
+		free_huge_folio(folio); // 处理huge页面
 		return;
 	}
 
@@ -616,7 +620,7 @@ void destroy_large_folio(struct folio *folio)
 	mem_cgroup_uncharge(folio);
 	free_the_page(&folio->page, folio_order(folio));
 }
-
+// 把page归还之前, 这里设置page的order以及buddy flag
 static inline void set_buddy_order(struct page *page, unsigned int order)
 {
 	set_page_private(page, order);
@@ -633,7 +637,7 @@ static inline struct capture_control *task_capc(struct zone *zone)
 		!capc->page &&
 		capc->cc->zone == zone ? capc : NULL;
 }
-
+// 把这个mt的这个order的page释放前调用这个函数
 static inline bool
 compaction_capture(struct capture_control *capc, struct page *page,
 		   int order, int migratetype)
@@ -641,7 +645,9 @@ compaction_capture(struct capture_control *capc, struct page *page,
 	if (!capc || order != capc->cc->order)
 		return false;
 
-	/* Do not accidentally pollute CMA or isolated regions*/
+	/* Do not accidentally pollute CMA or isolated regions
+	不要意外地污染CMA或隔离区域
+	*/
 	if (is_migrate_cma(migratetype) ||
 	    is_migrate_isolate(migratetype))
 		return false;
@@ -651,6 +657,9 @@ compaction_capture(struct capture_control *capc, struct page *page,
 	 * This might let an unmovable request use a reclaimable pageblock
 	 * and vice-versa but no more than normal fallback logic which can
 	 * have trouble finding a high-order free page.
+	 不要让低阶分配污染可移动的pageblock.
+	 这可能会让一个不可移动的请求使用一个可回收的pageblock,
+	 反之亦然,但不会比正常的回退逻辑更多,后者可能会在找到高阶空闲页面时出现问题.
 	 */
 	if (order < pageblock_order && migratetype == MIGRATE_MOVABLE)
 		return false;
@@ -683,7 +692,9 @@ static inline void add_to_free_list(struct page *page, struct zone *zone,
 	area->nr_free++;
 }
 
-/* Used for pages not on another list */
+/* Used for pages not on another list
+归还page到buddy的时候用于挂接到freelist
+*/
 static inline void add_to_free_list_tail(struct page *page, struct zone *zone,
 					 unsigned int order, int migratetype)
 {
@@ -705,7 +716,7 @@ static inline void move_to_free_list(struct page *page, struct zone *zone,
 
 	list_move_tail(&page->buddy_list, &area->free_list[migratetype]);
 }
-
+// 把page从buddy的freelist移除
 static inline void del_page_from_free_list(struct page *page, struct zone *zone,
 					   unsigned int order)
 {
@@ -714,7 +725,7 @@ static inline void del_page_from_free_list(struct page *page, struct zone *zone,
 		__ClearPageReported(page);
 
 	list_del(&page->buddy_list);
-	__ClearPageBuddy(page);
+	__ClearPageBuddy(page);   
 	set_page_private(page, 0);
 	zone->free_area[order].nr_free--;
 }
@@ -733,6 +744,9 @@ static inline struct page *get_page_from_free_area(struct free_area *area,
  * that is happening, add the free page to the tail of the list
  * so it's less likely to be used soon and more likely to be merged
  * as a higher order page
+   如果这不是最大可能的页面,则检查下一个最高顺序的buddy是否空闲.
+   如果是,则可能正在归还的是很快将合并的页面.在这种情况下,将空闲页面添加到列表的尾部,
+   这样它不太可能很快被使用,而更可能被合并为更高顺序的页面
  */
 static inline bool
 buddy_merge_likely(unsigned long pfn, unsigned long buddy_pfn,
@@ -754,7 +768,7 @@ buddy_merge_likely(unsigned long pfn, unsigned long buddy_pfn,
 /*
  * Freeing function for a buddy system allocator.
  * buddy的释放函数
- 
+ 释放到zone的list?
  * The concept of a buddy system is to maintain direct-mapped table
  * (containing bit values) for memory blocks of various "orders".
  * The bottom level table contains the map for the smallest allocatable
@@ -791,7 +805,7 @@ static inline void __free_one_page(struct page *page,
 	VM_BUG_ON_PAGE(page->flags & PAGE_FLAGS_CHECK_AT_PREP, page);
 
 	VM_BUG_ON(migratetype == -1);
-	if (likely(!is_migrate_isolate(migratetype)))
+	if (likely(!is_migrate_isolate(migratetype))) // 更新统计信息
 		__mod_zone_freepage_state(zone, 1 << order, migratetype);
 
 	VM_BUG_ON_PAGE(pfn & ((1 << order) - 1), page);
@@ -801,36 +815,43 @@ static inline void __free_one_page(struct page *page,
 		if (compaction_capture(capc, page, order, migratetype)) {
 			__mod_zone_freepage_state(zone, -(1 << order),
 								migratetype);
-			return;
+			return; // 说明是被什么capc捕获了,就先不用归还了?
 		}
-
+		// 找到page同order的buddy page
 		buddy = find_buddy_page_pfn(page, pfn, order, &buddy_pfn);
 		if (!buddy)
 			goto done_merging;
 
-		if (unlikely(order >= pageblock_order)) {
+		if (unlikely(order >= pageblock_order)) { // 比较大的页面
 			/*
 			 * We want to prevent merge between freepages on pageblock
 			 * without fallbacks and normal pageblock. Without this,
 			 * pageblock isolation could cause incorrect freepage or CMA
 			 * accounting or HIGHATOMIC accounting.
+			  我们希望阻止在没有回退和正常pageblock的pageblock之间合并freepages.
+			  如果没有这个,pageblock隔离可能会导致不正确的freepage或CMA计数或HIGHATOMIC计数.
+
 			 */
+			 // 获取page的buddy page的mt
 			int buddy_mt = get_pfnblock_migratetype(buddy, buddy_pfn);
 
 			if (migratetype != buddy_mt
 					&& (!migratetype_is_mergeable(migratetype) ||
 						!migratetype_is_mergeable(buddy_mt)))
 				goto done_merging;
+		// 如果是比较大的页面, 只有mt相同, 或者两个mt都是mergeable的才继续
 		}
-
+		// 现在找到了对应的buddy page
 		/*
 		 * Our buddy is free or it is CONFIG_DEBUG_PAGEALLOC guard page,
 		 * merge with it and move up one order.
+		 这个buddy page是空闲的或者是CONFIG_DEBUG_PAGEALLOC的guard page,
+		 与它合并并向上移动一个order.
 		 */
 		if (page_is_guard(buddy))
 			clear_page_guard(zone, buddy, order, migratetype);
 		else
-			del_page_from_free_list(buddy, zone, order);
+			del_page_from_free_list(buddy, zone, order); // 这里是先把buddy page从freelist中移除?
 		combined_pfn = buddy_pfn & pfn;
 		page = page + (combined_pfn - pfn);
 		pfn = combined_pfn;
@@ -839,15 +860,16 @@ static inline void __free_one_page(struct page *page,
 
 done_merging:
 	set_buddy_order(page, order);
-
+	// 这里判断归还page的时候是挂到freelist的哪里
 	if (fpi_flags & FPI_TO_TAIL)
 		to_tail = true;
 	else if (is_shuffle_order(order))
 		to_tail = shuffle_pick_tail();
 	else
-		to_tail = buddy_merge_likely(pfn, buddy_pfn, page, order);
+		to_tail = buddy_merge_likely(pfn, buddy_pfn, page, order); // 说明正在归还的页面的order被合并的概率很大
 
-	if (to_tail)
+	// 这个时候page是准备好了的, 或许可以理解为page的flag啥的各种属性配置好了, 就差挂到freelist上了?
+	if (to_tail)  // 就是直接挂上去
 		add_to_free_list_tail(page, zone, order, migratetype);
 	else
 		add_to_free_list(page, zone, order, migratetype);
@@ -919,13 +941,13 @@ out:
  * A bad page could be due to a number of fields. Instead of multiple branches,
  * try and check multiple fields with one check. The caller must do a detailed
  * check if necessary.
-   
+   在释放这个页面前检查一下是不是还有不该有的东西
  */
 static inline bool page_expected_state(struct page *page,
 					unsigned long check_flags)
 {
 	if (unlikely(atomic_read(&page->_mapcount) != -1))
-		return false;
+		return false; // 说明是bad
 
 	if (unlikely((unsigned long)page->mapping |
 			page_ref_count(page) |
@@ -966,13 +988,15 @@ static void free_page_is_bad_report(struct page *page)
 	bad_page(page,
 		 page_bad_reason(page, PAGE_FLAGS_CHECK_AT_FREE));
 }
-
+// 怎么样算bad呢?
 static inline bool free_page_is_bad(struct page *page)
 {
 	if (likely(page_expected_state(page, PAGE_FLAGS_CHECK_AT_FREE)))
 		return false;
 
-	/* Something has gone sideways, find it */
+	/* Something has gone sideways, find it
+	
+	*/
 	free_page_is_bad_report(page);
 	return true;
 }
@@ -981,7 +1005,8 @@ static inline bool is_check_pages_enabled(void)
 {
 	return static_branch_unlikely(&check_pages_enabled);
 }
-
+// head_page是多order页面的第一个. page是后续的某一个页面
+// 释放这个order之前会调用这个函数
 static int free_tail_page_prepare(struct page *head_page, struct page *page)
 {
 	struct folio *folio = (struct folio *)head_page;
@@ -990,16 +1015,20 @@ static int free_tail_page_prepare(struct page *head_page, struct page *page)
 	/*
 	 * We rely page->lru.next never has bit 0 set, unless the page
 	 * is PageTail(). Let's make sure that's true even for poisoned ->lru.
+	   我们依赖page->lru.next从不设置位0,除非页面是PageTail().
+	   让我们确保即使对于中毒的->lru,这也是正确的.
 	 */
 	BUILD_BUG_ON((unsigned long)LIST_POISON1 & 1);
 
-	if (!is_check_pages_enabled()) {
+	if (!is_check_pages_enabled()) { // 不应该进入这个函数, 但是进入这个函数之前不是已经check了吗?
 		ret = 0;
 		goto out;
 	}
-	switch (page - head_page) {
+	switch (page - head_page) {//  这里检查这个后续页面距离order头页面的距离
 	case 1:
-		/* the first tail page: these may be in place of ->mapping */
+		/* the first tail page: these may be in place of ->mapping
+		说明这个尾页面是第一个尾页面
+		*/
 		if (unlikely(folio_entire_mapcount(folio))) {
 			bad_page(page, "nonzero entire_mapcount");
 			goto out;
@@ -1092,6 +1121,7 @@ static void kernel_init_pages(struct page *page, int numpages)
 }
 
 // 归还页面到buddy之前的准备工作
+// 进行一些bad检查 ,flag重置的工作
 static __always_inline bool free_pages_prepare(struct page *page,
 			unsigned int order, fpi_t fpi_flags)
 {
@@ -1124,19 +1154,19 @@ static __always_inline bool free_pages_prepare(struct page *page,
 	 检查尾页，然后清除头页信息，以避免检查PageCompound以获取0级页面。
 	 */
 	if (unlikely(order)) { // 如果是多页面
-		bool compound = PageCompound(page);
+		bool compound = PageCompound(page); // 难道不是应该肯定是复合页吗?
 		int i;
 
 		VM_BUG_ON_PAGE(compound && compound_order(page) != order, page);
 
 		if (compound)
 			page[1].flags &= ~PAGE_FLAGS_SECOND;
-		for (i = 1; i < (1 << order); i++) {
+		for (i = 1; i < (1 << order); i++) { // 遍历除第一页的同order页面
 			if (compound)
 				bad += free_tail_page_prepare(page, page + i);
 			if (is_check_pages_enabled()) {
 				if (free_page_is_bad(page + i)) {
-					bad++;
+					bad++; // 为什么这里又多统计了一下bad数量
 					continue;
 				}
 			}
@@ -1144,9 +1174,9 @@ static __always_inline bool free_pages_prepare(struct page *page,
 		}
 	}
 	if (PageMappingFlags(page))
-		page->mapping = NULL;
+		page->mapping = NULL; // 去除mapping
 	if (memcg_kmem_online() && PageMemcgKmem(page))
-		__memcg_kmem_uncharge_page(page, order);
+		__memcg_kmem_uncharge_page(page, order); // 如果是kmem的
 	if (is_check_pages_enabled()) {
 		if (free_page_is_bad(page))
 			bad++;
@@ -1202,6 +1232,11 @@ static __always_inline bool free_pages_prepare(struct page *page,
  * Frees a number of pages from the PCP lists
  * Assumes all pages on list are in same zone.
  * count is the number of pages to free.
+ 从pcp列表中释放一定数量的页面
+ 假设列表中的所有页面都在同一区域中。
+ 计数是要释放的页面数。
+ ===============
+ 好像是从pcp释放到buddy
  */
 static void free_pcppages_bulk(struct zone *zone, int count,
 					struct per_cpu_pages *pcp,
@@ -1218,7 +1253,9 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 	 */
 	count = min(pcp->count, count);
 
-	/* Ensure requested pindex is drained first. */
+	/* Ensure requested pindex is drained first.
+	保证首先排空请求的pindex。
+	*/
 	pindex = pindex - 1;
 
 	spin_lock_irqsave(&zone->lock, flags);
@@ -1244,7 +1281,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 			mt = get_pcppage_migratetype(page);
 
 			/* must delete to avoid corrupting pcp list */
-			list_del(&page->pcp_list);
+			list_del(&page->pcp_list); // 从pcplist移除
 			count -= nr_pages;
 			pcp->count -= nr_pages;
 
@@ -1274,11 +1311,12 @@ static void free_one_page(struct zone *zone,
 		is_migrate_isolate(migratetype))) {
 		migratetype = get_pfnblock_migratetype(page, pfn);
 	}
-	// 
+	// 调用实质的释放函数
 	__free_one_page(page, pfn, zone, order, migratetype, fpi_flags);
 	spin_unlock_irqrestore(&zone->lock, flags);
 }
 
+// 归还页面到buddy
 static void __free_pages_ok(struct page *page, unsigned int order,
 			    fpi_t fpi_flags)
 {
@@ -1294,6 +1332,8 @@ static void __free_pages_ok(struct page *page, unsigned int order,
 	 * Calling get_pfnblock_migratetype() without spin_lock_irqsave() here
 	 * is used to avoid calling get_pfnblock_migratetype() under the lock.
 	 * This will reduce the lock holding time.
+	 调用get_pfnblock_migratetype()而不使用spin_lock_irqsave()是为了避免在锁下调用get_pfnblock_migratetype()。
+	 这将减少锁持有时间。
 	 */
 	migratetype = get_pfnblock_migratetype(page, pfn);
 
@@ -1302,6 +1342,7 @@ static void __free_pages_ok(struct page *page, unsigned int order,
 		is_migrate_isolate(migratetype))) {
 		migratetype = get_pfnblock_migratetype(page, pfn);
 	}
+	// 调用实质的释放函数
 	__free_one_page(page, pfn, zone, order, migratetype, fpi_flags);
 	spin_unlock_irqrestore(&zone->lock, flags);
 
@@ -2440,7 +2481,7 @@ static int nr_pcp_high(struct per_cpu_pages *pcp, struct zone *zone,
 	 */
 	return min(READ_ONCE(pcp->batch) << 2, high);
 }
-
+// 归还页面到buddy, 这个好像是快速路径
 static void free_unref_page_commit(struct zone *zone, struct per_cpu_pages *pcp,
 				   struct page *page, int migratetype,
 				   unsigned int order)
@@ -2459,6 +2500,9 @@ static void free_unref_page_commit(struct zone *zone, struct per_cpu_pages *pcp,
 	 * to fragmentation, limit the number stored when PCP is heavily
 	 * freeing without allocation. The remainder after bulk freeing
 	 * stops will be drained from vmstat refresh context.
+	   因为高阶页面除了THP之外存储在PCP上会导致碎片化, 所以当PCP在没有分配的情况下大量释放时,
+	   限制存储的数量. 停止大量释放后的剩余部分将从vmstat刷新上下文中排出.
+
 	 */
 	free_high = (pcp->free_factor && order && order <= PAGE_ALLOC_COSTLY_ORDER);
 
@@ -2470,6 +2514,7 @@ static void free_unref_page_commit(struct zone *zone, struct per_cpu_pages *pcp,
 
 /*
  * Free a pcp page
+ 释放pcp页面到buddy
  */
 void free_unref_page(struct page *page, unsigned int order)
 {
@@ -2479,6 +2524,7 @@ void free_unref_page(struct page *page, unsigned int order)
 	unsigned long pfn = page_to_pfn(page);
 	int migratetype, pcpmigratetype;
 
+	// 进行bad检查什么的, 然后把mt存到index上面
 	if (!free_unref_page_prepare(page, pfn, order))
 		return;
 
@@ -2488,10 +2534,13 @@ void free_unref_page(struct page *page, unsigned int order)
 	 * offlined but treat HIGHATOMIC and CMA as movable pages so we can
 	 * get those areas back if necessary. Otherwise, we may have to free
 	 * excessively into the page allocator
+	 我们仅仅追踪unmovable, reclaimable和movable在pcp列表上.
+	 将ISOLATE页面放到isolated列表上, 因为它们正在被下线, 但是将HIGHATOMIC和CMA视为movable页面,
+	 这样我们就可以在必要时获得这些区域. 否则, 我们可能不得不过度释放到页面分配器
 	 */
 	migratetype = pcpmigratetype = get_pcppage_migratetype(page);
 	if (unlikely(migratetype >= MIGRATE_PCPTYPES)) {
-		if (unlikely(is_migrate_isolate(migratetype))) {
+		if (unlikely(is_migrate_isolate(migratetype))) { //为什么这里单独处理
 			free_one_page(page_zone(page), page, pfn, order, migratetype, FPI_NONE);
 			return;
 		}
@@ -2501,7 +2550,7 @@ void free_unref_page(struct page *page, unsigned int order)
 	zone = page_zone(page);
 	pcp_trylock_prepare(UP_flags);
 	pcp = pcp_spin_trylock(zone->per_cpu_pageset);
-	if (pcp) {
+	if (pcp) { //感觉像是个fastpath?
 		free_unref_page_commit(zone, pcp, page, pcpmigratetype, order);
 		pcp_spin_unlock(pcp);
 	} else {
@@ -4667,6 +4716,7 @@ EXPORT_SYMBOL(get_zeroed_page);
 
 /**
  * __free_pages - Free pages allocated with alloc_pages().
+   释放alloc_pages分配的页面
  * @page: The page pointer returned from alloc_pages().
  * @order: The order of the allocation.
  *
@@ -4674,7 +4724,8 @@ EXPORT_SYMBOL(get_zeroed_page);
  * pages.  It does not check that the @order passed in matches that of
  * the allocation, so it is easy to leak memory.  Freeing more memory
  * than was allocated will probably emit a warning.
- *
+ * 这个函数可以释放非复合页面的多页分配。它不检查传入的@order是否与分配的@order
+ 匹配，因此很容易泄漏内存。释放比分配的内存更多的内存可能会发出警告。
  * If the last reference to this page is speculative, it will be released
  * by put_page() which only frees the first page of a non-compound
  * allocation.  To prevent the remaining pages from being leaked, we free
@@ -4692,7 +4743,7 @@ void __free_pages(struct page *page, unsigned int order)
 
 	if (put_page_testzero(page))
 		free_the_page(page, order);
-	else if (!head)
+	else if (!head) // 如果还有别人持有ref, 并且没有head?
 		while (order-- > 0)
 			free_the_page(page + (1 << order), order);
 }

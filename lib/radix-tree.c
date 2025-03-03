@@ -286,9 +286,10 @@ out:
 	}
 	return ret;
 }
-
+// 释放这个head所属的node的资源
 void radix_tree_node_rcu_free(struct rcu_head *head)
 {
+	// 从head获取到node
 	struct radix_tree_node *node =
 			container_of(head, struct radix_tree_node, rcu_head);
 

@@ -1064,7 +1064,9 @@ struct inode;
 /*
  * compound_order() can be called without holding a reference, which means
  * that niceties like page_folio() don't work.  These callers should be
- * prepared to handle wild return values.  For example, PG_head may be
+ * prepared to handle wild return values.  
+被用来获取一个folio的order 
+ For example, PG_head may be
  * set before the order is initialised, or this may be a tail page.
  * See compaction.c for some good examples.
  */
@@ -1181,6 +1183,9 @@ todo?
  * PMD or PUD entry).  This is probably not what you want, except for
  * debugging purposes - it does not include PTE-mapped sub-pages; look
  * at folio_mapcount() or page_mapcount() or total_mapcount() instead.
+   表示整个folio被映射的次数
+   这可能不是你想要的，除非是为了调试目的-它不包括PTE映射的子页面;
+   而是查看folio_mapcount()或page_mapcount()或total_mapcount()。
  */
 static inline int folio_entire_mapcount(struct folio *folio)
 {
@@ -1491,6 +1496,7 @@ static inline __must_check bool try_get_page(struct page *page)
 
 /**
  * folio_put - Decrement the reference count on a folio.
+ 减少folio的ref
  * @folio: The folio.
  *
  * If the folio's reference count reaches zero, the memory will be
@@ -1510,6 +1516,7 @@ static inline void folio_put(struct folio *folio)
 
 /**
  * folio_put_refs - Reduce the reference count on a folio.
+ 减少folio的引用计数
  * @folio: The folio.
  * @refs: The amount to subtract from the folio's reference count.
  *
@@ -1518,7 +1525,9 @@ static inline void folio_put(struct folio *folio)
  * allocation immediately.  Do not access the memory or the struct folio
  * after calling folio_put_refs() unless you can be sure that these weren't
  * the last references.
- *
+ * 如果folio的引用计数减少到0, 那么这个内存会被释放回给page allocator, 然后可以被其他的分配立即使用.
+ 除非你确定这不是最后的引用, 否则不要在调用folio_put_refs()之后访问这个内存或者struct folio
+ 
  * Context: May be called in process or interrupt context, but not in NMI
  * context.  May be called while holding a spinlock.
  */
@@ -1742,7 +1751,7 @@ static inline int page_cpupid_last(struct page *page)
 }
 
 extern int page_cpupid_xchg_last(struct page *page, int cpupid);
-
+// 去除掉flag里面有关cpu pid的信息
 static inline void page_cpupid_reset_last(struct page *page)
 {
 	page->flags |= LAST_CPUPID_MASK << LAST_CPUPID_PGSHIFT;
@@ -2974,6 +2983,7 @@ static inline void pagetable_pte_dtor(struct ptdesc *ptdesc)
 }
 
 pte_t *__pte_offset_map(pmd_t *pmd, unsigned long addr, pmd_t *pmdvalp);
+/* 获取到addr的pte */
 static inline pte_t *pte_offset_map(pmd_t *pmd, unsigned long addr)
 {
 	return __pte_offset_map(pmd, addr, NULL);

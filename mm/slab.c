@@ -3210,6 +3210,12 @@ __do_cache_alloc(struct kmem_cache *cachep, gfp_t flags, int nodeid __maybe_unus
 
 #endif /* CONFIG_NUMA */
 
+/* 
+2025年3月3日23:41:50
+@cache: kmem_cache结构体
+@lru:干嘛的?
+
+*/
 static __always_inline void *
 slab_alloc_node(struct kmem_cache *cachep, struct list_lru *lru, gfp_t flags,
 		int nodeid, size_t orig_size, unsigned long caller)
@@ -3224,6 +3230,7 @@ slab_alloc_node(struct kmem_cache *cachep, struct list_lru *lru, gfp_t flags,
 	if (unlikely(!cachep))
 		return NULL;
 
+	//开始分配
 	objp = kfence_alloc(cachep, orig_size, flags);
 	if (unlikely(objp))
 		goto out;
@@ -3241,6 +3248,7 @@ out:
 	return objp;
 }
 
+// slab分配内存
 static __always_inline void *
 slab_alloc(struct kmem_cache *cachep, struct list_lru *lru, gfp_t flags,
 	   size_t orig_size, unsigned long caller)
@@ -3418,6 +3426,7 @@ void ___cache_free(struct kmem_cache *cachep, void *objp,
 	__free_one(ac, objp);
 }
 
+// 给xas数组分配node
 static __always_inline
 void *__kmem_cache_alloc_lru(struct kmem_cache *cachep, struct list_lru *lru,
 			     gfp_t flags)
@@ -3434,7 +3443,7 @@ void *kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
 	return __kmem_cache_alloc_lru(cachep, NULL, flags);
 }
 EXPORT_SYMBOL(kmem_cache_alloc);
-
+// 给xas数组分配node
 void *kmem_cache_alloc_lru(struct kmem_cache *cachep, struct list_lru *lru,
 			   gfp_t flags)
 {

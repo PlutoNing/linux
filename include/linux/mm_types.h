@@ -99,14 +99,14 @@ struct page {
 				};
 
 				/* Or, free page */
-				struct list_head buddy_list;
+				struct list_head buddy_list; // 通过这个挂接到freelist
 				struct list_head pcp_list;
 			};
 			/* See page-flags.h for PAGE_MAPPING_FLAGS */
 			struct address_space *mapping;
 			union {
 				pgoff_t index;		/* Our offset within mapping.
-				如果是空闲页面, 这里是mt
+				如果是空闲页面,或者是准备释放的页面, 这里是mt
 				*/
 				unsigned long share;	/* share count for fsdax */
 			};
@@ -115,6 +115,8 @@ struct page {
 			 * Usually used for buffer_heads if PagePrivate.
 			 * Used for swp_entry_t if PageSwapCache.
 			 * Indicates order in the buddy system if PageBuddy.
+
+			 对于buddy freelist上面的page, 这里是order的值
 			 */
 			unsigned long private;
 		};
@@ -141,7 +143,9 @@ struct page {
 			};
 		};
 		struct {	/* Tail pages of compound page */
-			unsigned long compound_head;	/* Bit zero is set */
+			unsigned long compound_head;	/* 
+			如果最后一位是1,说明是复合页?
+			Bit zero is set */
 		};
 		struct {	/* ZONE_DEVICE pages */
 			/** @pgmap: Points to the hosting device page map. */
@@ -828,6 +832,8 @@ struct mm_struct {
 		 * @write_protect_seq: Locked when any thread is write
 		 * protecting pages mapped by this mm to enforce a later COW,
 		 * for instance during page table copying for fork().
+			当有线程写保护这个mm的页面时,锁住,以强制后续的COW,例如在fork()期间进行页表复制
+			
 		 */
 		seqcount_t write_protect_seq;
 

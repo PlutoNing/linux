@@ -2206,7 +2206,7 @@ retry:
 		 * If the folio has buffers, try to free the buffer
 		 * mappings associated with this folio. If we succeed
 		 * we try to free the folio as well.
-		 *
+		 * 如果这个folio有buffer, 尝试释放buffer mapping, 如果成功, 尝试释放folio.
 		 * We do this even if the folio is dirty.
 		 * filemap_release_folio() does not perform I/O, but it
 		 * is possible for a folio to have the dirty flag set,
@@ -2216,7 +2216,11 @@ retry:
 		 * the blockdev mapping.  filemap_release_folio() will
 		 * discover that cleanness and will drop the buffers
 		 * and mark the folio clean - it can be freed.
-		 *
+		 * 我们这样做即使这个folio是dirty的.
+		 * filemap_release_folio()不执行I/O, 但是可能folio有dirty标记,但是实际上是clean的(所有的buffer都是clean的)
+		 * 如果buffer直接写出去,会发生这种情况, ext3会这样做, 以及blockdev mapping.
+		 * filemap_release_folio()会发现这个clean, 并且会释放buffer,标记folio为clean,可以释放.
+		 
 		 * Rarely, folios can have buffers and no ->mapping.
 		 * These are the folios which were not successfully
 		 * invalidated in truncate_cleanup_folio().  We try to
@@ -2224,14 +2228,18 @@ retry:
 		 * folio is no longer mapped into process address space
 		 * (refcount == 1) it can be freed.  Otherwise, leave
 		 * the folio on the LRU so it is swappable.
+		   很少见的情况下, folio有buffer, 但是没有mapping.
+		   这些folio在truncate_cleanup_folio()中没有成功失效.
+		   我们尝试在这里释放这些buffer, 如果成功,并且folio不再映射到进程地址空间(引用计数==1),可以释放.
+		   否则,保留在LRU上,以便可以交换.
 		 */
-		if (folio_needs_release(folio)) {
+		if (folio_needs_release(folio)) { 
 			if (!filemap_release_folio(folio, sc->gfp_mask))
 				goto activate_locked;
 			if (!mapping && folio_ref_count(folio) == 1) {
 				folio_unlock(folio);
 				if (folio_put_testzero(folio))
-					goto free_it;
+					goto free_it; // 释放这个页面
 				else {
 					/*
 					 * rare race with speculative reference.
@@ -2257,6 +2265,8 @@ retry:
 			 * folio will be freed anyway. It doesn't matter
 			 * which lru it goes on. So we don't bother checking
 			 * the dirty flag here.
+			   这个folio只有一个引用, 就是isolation的引用. 在调用者把folio放回lru之后,并且
+			   释放了引用, folio会被释放. 这个folio会被释放,所以不用检查dirty flag
 			 */
 			count_vm_events(PGLAZYFREED, nr_pages);
 			count_memcg_folio_events(folio, PGLAZYFREED, nr_pages);
@@ -2269,15 +2279,17 @@ free_it:
 		/*
 		 * Folio may get swapped out as a whole, need to account
 		 * all pages in it.
+		  folio可能被整体换出, 需要统计所有的页面
 		 */
 		nr_reclaimed += nr_pages;
 
 		/*
 		 * Is there need to periodically free_folio_list? It would
 		 * appear not as the counts should be low
+		 翻译: 有必要定期释放free_folio_list吗? 看起来不需要, 因为计数应该很低
 		 */
 		if (unlikely(folio_test_large(folio)))
-			destroy_large_folio(folio);
+			destroy_large_folio(folio); // 看来大页是立即释放的?
 		else
 			list_add(&folio->lru, &free_folios);
 		continue;
@@ -2715,17 +2727,21 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 		 *     list_add(&folio->lru,)
 		 *                                        list_add(&folio->lru,)
 		 */
+		/* 下面开始加入lruvec */
+
+		/* 第一步先设置lru flag */
 		folio_set_lru(folio);
 
+		/* 然后put一下 */
 		if (unlikely(folio_put_testzero(folio))) {/* 如果put之后
-		就没人引用了 */
+		就没人引用了, 就归还到buddy */
 			__folio_clear_lru_flags(folio);
-
-			if (unlikely(folio_test_large(folio))) {
+		// 下面走的就是free的逻辑了
+			if (unlikely(folio_test_large(folio))) { // 大页面单独处理
 				spin_unlock_irq(&lruvec->lru_lock);
 				destroy_large_folio(folio);
 				spin_lock_irq(&lruvec->lru_lock);
-			} else
+			} else // 普通页面, 加入待处理页表, 统一处理
 				list_add(&folio->lru, &folios_to_free);
 
 			continue;
@@ -2737,12 +2753,13 @@ static unsigned int move_folios_to_lru(struct lruvec *lruvec,
 		 */
 		VM_BUG_ON_FOLIO(!folio_matches_lruvec(folio, lruvec), folio);
 
+		// 最后加入lruvec
 		lruvec_add_folio(lruvec, folio);
 		nr_pages = folio_nr_pages(folio);
 		nr_moved += nr_pages;
 		if (folio_test_active(folio))
 			workingset_age_nonresident(lruvec, nr_pages);
-	}
+	} // 遍历list结束
 
 	/*
 	 * To save our caller's stack, now use input list for pages to free.

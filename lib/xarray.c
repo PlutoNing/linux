@@ -261,6 +261,8 @@ static void xa_node_free(struct xa_node *node)
 
 /*
  * xas_destroy() - Free any resources allocated during the XArray operation.
+   释放xas的资源
+   一直是往上层级遍历的
  * @xas: XArray operation state.
  *
  * Most users will not need to call this function; it is called for you
@@ -990,6 +992,7 @@ static void node_set_marks(struct xa_node *node, unsigned int offset,
 
 /**
  * xas_split_alloc() - Allocate memory for splitting an entry.
+   好像是xas数组分裂node的时候分配内存
  * @xas: XArray operation state.
  * @entry: New entry which will be stored in the array.
  * @order: Current entry order.
@@ -999,7 +1002,9 @@ static void node_set_marks(struct xa_node *node, unsigned int offset,
  * If necessary, it will allocate new nodes (and fill them with @entry)
  * to prepare for the upcoming split of an entry of @order size into
  * entries of the order stored in the @xas.
- *
+ * 这个函数应该在调用xas_split()之前调用。
+ * 如果需要，它将分配新节点（并用@entry填充它们），
+ * 以准备将@order大小的条目拆分为存储在@xas中的顺序的条目。
  * Context: May sleep if @gfp flags permit.
  */
 void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
@@ -1037,7 +1042,7 @@ void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
 
 	return;
 nomem:
-	xas_destroy(xas);
+	xas_destroy(xas); // 销毁全部父节点的资源
 	xas_set_err(xas, -ENOMEM);
 }
 EXPORT_SYMBOL_GPL(xas_split_alloc);

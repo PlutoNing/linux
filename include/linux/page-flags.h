@@ -193,7 +193,7 @@ enum pageflags {
 	PG_hugetlb = PG_active,
 	PG_large_rmappable = PG_workingset, /* anon or file-backed */
 };
-
+// pageflag的掩码
 #define PAGEFLAGS_MASK		((1UL << NR_PAGEFLAGS) - 1)
 
 #ifndef __GENERATING_BOUNDS_H
@@ -205,6 +205,8 @@ DECLARE_STATIC_KEY_FALSE(hugetlb_optimize_vmemmap_key);
 
  * Return the real head page struct iff the @page is a fake head page, otherwise
  * return the @page itself. See Documentation/mm/vmemmap_dedup.rst.
+ 返回真正的头页面结构，如果@page是一个假的头页面，则返回@page本身。
+ 请参阅Documentation/mm/vmemmap_dedup.rst。
  */
 static __always_inline const struct page *page_fixed_fake_head(const struct page *page)
 {
@@ -216,6 +218,9 @@ static __always_inline const struct page *page_fixed_fake_head(const struct page
 	 * struct page. The alignment check aims to avoid access the fields (
 	 * e.g. compound_head) of the @page[1]. It can avoid touch a (possibly)
 	 * cold cacheline in some cases.
+	   只有与struct page的PAGE_SIZE对齐的地址才可能是假的头结构页。
+	   对齐检查旨在避免访问@page[1]的字段（例如compound_head）。
+	   它可以在某些情况下避免触摸（可能）冷的缓存行。
 	 */
 	if (IS_ALIGNED((unsigned long)page, PAGE_SIZE) &&
 	    test_bit(PG_head, &page->flags)) {/* 说明这个页面是pg_head */
@@ -223,13 +228,14 @@ static __always_inline const struct page *page_fixed_fake_head(const struct page
 		 * We can safely access the field of the @page[1] with PG_head
 		 * because the @page is a compound page composed with at least
 		 * two contiguous pages.
+		 我们可以安全地访问@page[1]的字段，因为@page是由至少两个连续页面组成的复合页面。
 		 */
 		unsigned long head = READ_ONCE(page[1].compound_head);
 
 		if (likely(head & 1))
 			return (const struct page *)(head - 1);
 	}
-
+ 
 	return page;
 
 }
@@ -245,7 +251,7 @@ static __always_inline int page_is_fake_head(struct page *page)
 	return page_fixed_fake_head(page) != page;
 }
 
-/*  */
+/* 转为复合页? */
 static inline unsigned long _compound_head(const struct page *page)
 {
 	unsigned long head = READ_ONCE(page->compound_head);
@@ -291,7 +297,7 @@ static __always_inline int PageTail(struct page *page)
 {
 	return READ_ONCE(page->compound_head) & 1 || page_is_fake_head(page);
 }
-
+// 确定是不是复合页面
 static __always_inline int PageCompound(struct page *page)
 {
 	return test_bit(PG_head, &page->flags) ||
@@ -1095,9 +1101,12 @@ static __always_inline void __ClearPageAnonExclusive(struct page *page)
  * Flags checked when a page is prepped for return by the page allocator.
  * Pages being prepped should not have these flags set.  If they are set,
  * there has been a kernel bug or struct page corruption.
- *
+   这些标志是在释放页面前要检查的标志。正在准备的页面不应该设置这些标志。如果设置了这些标志，
+   则存在内核错误或struct page损坏。
  * __PG_HWPOISON is exceptional because it needs to be kept beyond page's
  * alloc-free cycle to prevent from reusing the page.
+ =========================
+ 好像是释放页面前会检查bad,如果检查并统计完了, 就去除页面的这些flag
  */
 #define PAGE_FLAGS_CHECK_AT_PREP	\
 	((PAGEFLAGS_MASK & ~__PG_HWPOISON) | LRU_GEN_MASK | LRU_REFS_MASK)
@@ -1105,6 +1114,7 @@ static __always_inline void __ClearPageAnonExclusive(struct page *page)
 /*
  * Flags stored in the second page of a compound page.  They may overlap
  * the CHECK_AT_FREE flags above, so need to be cleared.
+   是存储在复合页的第二页中的标志。它们可能与上面的CHECK_AT_FREE标志重叠，因此需要清除。
  */
 #define PAGE_FLAGS_SECOND						\
 	(0xffUL /* order */		| 1UL << PG_has_hwpoisoned |	\

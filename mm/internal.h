@@ -338,9 +338,10 @@ static inline bool page_is_buddy(struct page *page, struct page *buddy,
 }
 
 /*
+啥意思?
  * Locate the struct page for both the matching buddy in our
  * pair (buddy1) and the combined O(n+1) page they form (page).
- *
+ * 
  * 1) Any buddy B1 will have an order O twin B2 which satisfies
  * the following equation:
  *     B2 = B1 ^ (1 << O)
@@ -362,6 +363,9 @@ __find_buddy_pfn(unsigned long page_pfn, unsigned int order)
 
 /*
  * Find the buddy of @page and validate it.
+ 找到page的buddy page, 并且验证它
+【pfn和order都属于page
+
  * @page: The input page
  * @pfn: The pfn of the page, it saves a call to page_to_pfn() when the
  *       function is used in the performance-critical __free_one_page().
@@ -980,13 +984,17 @@ struct page *follow_trans_huge_pmd(struct vm_area_struct *vma,
 				   unsigned int flags);
 
 enum {
-	/* mark page accessed */
+	/* mark page accessed
+	标记页面已访问 
+	*/
 	FOLL_TOUCH = 1 << 16,
 	/* a retry, previous pass started an IO */
 	FOLL_TRIED = 1 << 17,
 	/* we are working on non-current tsk/mm */
 	FOLL_REMOTE = 1 << 18,
-	/* pages must be released via unpin_user_page */
+	/* pages must be released via unpin_user_page
+	表示页面必须通过unpin_user_page释放
+	*/
 	FOLL_PIN = 1 << 19,
 	/* gup_fast: prevent fall-back to slow gup */
 	FOLL_FAST_ONLY = 1 << 20,

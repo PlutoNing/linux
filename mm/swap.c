@@ -80,20 +80,23 @@ static DEFINE_PER_CPU(struct cpu_fbatches, cpu_fbatches) = {
 /*
  * This path almost never happens for VM activity - pages are normally freed
  * in batches.  But it gets used by networking - and for compound pages.
+   这个函数几乎不会被VM活动使用，因为页面通常是批量释放的。但是它被网络使用，以及对于复合页面。
+   ==============
+   w为啥叫page_cache.......
  */
 static void __page_cache_release(struct folio *folio)
 {
-	if (folio_test_lru(folio)) {
+	if (folio_test_lru(folio)) {// 如果在lru上面
 		struct lruvec *lruvec;
 		unsigned long flags;
 
 		lruvec = folio_lruvec_lock_irqsave(folio, &flags);
-		lruvec_del_folio(lruvec, folio);
-		__folio_clear_lru_flags(folio);
+		lruvec_del_folio(lruvec, folio); // 从lruvec中删除folio
+		__folio_clear_lru_flags(folio);  // 清除lru标志
 		unlock_page_lruvec_irqrestore(lruvec, flags);
 	}
 	/* See comment on folio_test_mlocked in release_pages() */
-	if (unlikely(folio_test_mlocked(folio))) {
+	if (unlikely(folio_test_mlocked(folio))) { // 对mlock的处理 
 		long nr_pages = folio_nr_pages(folio);
 
 		__folio_clear_mlocked(folio);
@@ -101,14 +104,14 @@ static void __page_cache_release(struct folio *folio)
 		count_vm_events(UNEVICTABLE_PGCLEARED, nr_pages);
 	}
 }
-
+// 释放folio的page到系统
 static void __folio_put_small(struct folio *folio)
 {
 	__page_cache_release(folio);
 	mem_cgroup_uncharge(folio);
 	free_unref_page(&folio->page, 0);
 }
-
+// 用于释放大页, thp和hugetlb
 static void __folio_put_large(struct folio *folio)
 {
 	/*
@@ -116,12 +119,15 @@ static void __folio_put_large(struct folio *folio)
 	 * hugetlb. This is because hugetlb page does never have PageLRU set
 	 * (it's never listed to any LRU lists) and no memcg routines should
 	 * be called for hugetlb (it has a separate hugetlb_cgroup.)
+	 __page_cache_release应该用于thp，而不是用于hugetlb。这是因为hugetlb页面
+	 永远不会设置PageLRU（它永远不会列在任何LRU列表中），并且不应该为hugetlb调用
+	 任何memcg例程（它有一个单独的hugetlb_cgroup）。
 	 */
 	if (!folio_test_hugetlb(folio))
-		__page_cache_release(folio);
+		__page_cache_release(folio); // 说明是thp
 	destroy_large_folio(folio);
 }
-
+// 归还folio到系统?
 void __folio_put(struct folio *folio)
 {
 	if (unlikely(folio_is_zone_device(folio)))
@@ -531,6 +537,7 @@ EXPORT_SYMBOL(folio_mark_accessed);
 
 /**
 把folio加入lru
+这里也没指定lruvec, 加入哪里呢?
  * folio_add_lru - Add a folio to an LRU list.
  * @folio: The folio to be added to the LRU.
  *

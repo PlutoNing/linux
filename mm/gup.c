@@ -99,6 +99,7 @@ retry:
 
 /**
  * try_grab_folio() - Attempt to get or pin a folio.
+ 尝试去获取或者固定一个folio
  * @page:  pointer to page to be grabbed
  * @refs:  the value to (effectively) add to the folio's refcount
  * @flags: gup flags: these are the FOLL_* flag values.
@@ -185,7 +186,7 @@ struct folio *try_grab_folio(struct page *page, int refs, unsigned int flags)
 
 	return folio;
 }
-
+// 释放被pin的folio?
 static void gup_put_folio(struct folio *folio, int refs, unsigned int flags)
 {
 	if (flags & FOLL_PIN) {
@@ -317,16 +318,16 @@ static inline struct folio *gup_folio_range_next(struct page *start,
 	*ntails = nr;
 	return folio;
 }
-
+/* list这个page数组大小是npages, i是当前的索引, ntails这次的folio大小? */
 static inline struct folio *gup_folio_next(struct page **list,
 		unsigned long npages, unsigned long i, unsigned int *ntails)
 {
 	struct folio *folio = page_folio(list[i]);
 	unsigned int nr;
 
-	for (nr = i + 1; nr < npages; nr++) {
+	for (nr = i + 1; nr < npages; nr++) { //遍历余下的page
 		if (page_folio(list[nr]) != folio)
-			break;
+			break; // 一直遍历到不属于同一个folio的page
 	}
 
 	*ntails = nr - i;
@@ -439,7 +440,7 @@ void unpin_user_page_range_dirty_lock(struct page *page, unsigned long npages,
 	}
 }
 EXPORT_SYMBOL(unpin_user_page_range_dirty_lock);
-
+// 这是unpin数组里面的这些页面?
 static void unpin_user_pages_lockless(struct page **pages, unsigned long npages)
 {
 	unsigned long i;
@@ -450,6 +451,8 @@ static void unpin_user_pages_lockless(struct page **pages, unsigned long npages)
 	 * Don't perform any sanity checks because we might have raced with
 	 * fork() and some anonymous pages might now actually be shared --
 	 * which is why we're unpinning after all.
+	   不执行任何健全性检查，因为我们可能与fork()发生了竞争，一些匿名页面现在
+	   可能实际上是共享的——这就是我们之后要取消固定的原因。
 	 */
 	for (i = 0; i < npages; i += nr) {
 		folio = gup_folio_next(pages, npages, i, &nr);
@@ -492,6 +495,9 @@ EXPORT_SYMBOL(unpin_user_pages);
  * Set the MMF_HAS_PINNED if not set yet; after set it'll be there for the mm's
  * lifecycle.  Avoid setting the bit unless necessary, or it might cause write
  * cache bouncing on large SMP machines for concurrent pinned gups.
+ 设置MMF_HAS_PINNED标志位，如果还没有设置的话；设置之后，它将在mm的生命周期内一直存在。
+ 除非有必要，否则避免设置该位，否则可能会导致在大型SMP机器上并发固定gups时写缓存反弹。
+
  */
 static inline void mm_set_has_pinned_flag(unsigned long *mm_flags)
 {
@@ -2534,6 +2540,7 @@ static void __maybe_unused undo_dev_pagemap(int *nr, int nr_start,
 
 #ifdef CONFIG_ARCH_HAS_PTE_SPECIAL
 /*
+开始处理pmd上面的pte
  * Fast-gup relies on pte change detection to avoid concurrent pgtable
  * operations.
  *
@@ -2574,6 +2581,8 @@ static int gup_pte_range(pmd_t pmd, pmd_t *pmdp, unsigned long addr,
 		 * either way: otherwise, GUP-fast might succeed in
 		 * cases where ordinary GUP would fail due to VMA access
 		 * permissions.
+		 一直回退到普通的GUP，因为pte_access_permitted()应该拒绝这些页面，
+		 否则GUP-fast可能会成功，而普通的GUP由于VMA访问权限而失败。
 		 */
 		if (pte_protnone(pte))
 			goto pte_unmap;
@@ -2594,7 +2603,7 @@ static int gup_pte_range(pmd_t pmd, pmd_t *pmdp, unsigned long addr,
 			goto pte_unmap;
 
 		VM_BUG_ON(!pfn_valid(pte_pfn(pte)));
-		page = pte_page(pte);
+		page = pte_page(pte); // 获取pte对应的page
 
 		folio = try_grab_folio(page, 1, flags);
 		if (!folio)
@@ -2626,6 +2635,8 @@ static int gup_pte_range(pmd_t pmd, pmd_t *pmdp, unsigned long addr,
 		 * going to access its content (the FOLL_PIN case).  Please
 		 * see Documentation/core-api/pin_user_pages.rst for
 		 * details.
+		   我们需要使页面可访问，如果且仅当我们将访问其内容（FOLL_PIN情况）。
+		   请参阅Documentation/core-api/pin_user_pages.rst了解详细信息。
 		 */
 		if (flags & FOLL_PIN) {
 			ret = arch_make_page_accessible(page);
@@ -2977,7 +2988,7 @@ static int gup_huge_pgd(pgd_t orig, pgd_t *pgdp, unsigned long addr,
 	folio_set_referenced(folio);
 	return 1;
 }
-
+// 一级一级的迭代页表
 static int gup_pmd_range(pud_t *pudp, pud_t pud, unsigned long addr, unsigned long end,
 		unsigned int flags, struct page **pages, int *nr)
 {
@@ -3016,7 +3027,7 @@ static int gup_pmd_range(pud_t *pudp, pud_t pud, unsigned long addr, unsigned lo
 
 	return 1;
 }
-
+// 一级一级的迭代页表
 static int gup_pud_range(p4d_t *p4dp, p4d_t p4d, unsigned long addr, unsigned long end,
 			 unsigned int flags, struct page **pages, int *nr)
 {
@@ -3044,7 +3055,7 @@ static int gup_pud_range(p4d_t *p4dp, p4d_t p4d, unsigned long addr, unsigned lo
 
 	return 1;
 }
-
+// 一级一级的迭代页表
 static int gup_p4d_range(pgd_t *pgdp, pgd_t pgd, unsigned long addr, unsigned long end,
 			 unsigned int flags, struct page **pages, int *nr)
 {
@@ -3078,6 +3089,7 @@ static void gup_pgd_range(unsigned long addr, unsigned long end,
 
 	pgdp = pgd_offset(current->mm, addr);
 	do {
+		/* 从pgd指针读取pgd条目 */
 		pgd_t pgd = READ_ONCE(*pgdp);
 
 		next = pgd_addr_end(addr, end);
@@ -3093,7 +3105,7 @@ static void gup_pgd_range(unsigned long addr, unsigned long end,
 				return;
 		} else if (!gup_p4d_range(pgdp, pgd, addr, next, flags, pages, nr))
 			return;
-	} while (pgdp++, addr = next, addr != end);
+	} while (pgdp++, addr = next, addr != end); // 处理下一个pgd
 }
 #else
 static inline void gup_pgd_range(unsigned long addr, unsigned long end,
@@ -3112,7 +3124,7 @@ static bool gup_fast_permitted(unsigned long start, unsigned long end)
 	return true;
 }
 #endif
-
+// pin住范围内的page, 保存在pages中
 static unsigned long lockless_pages_from_mm(unsigned long start,
 					    unsigned long end,
 					    unsigned int gup_flags,
@@ -3135,21 +3147,26 @@ static unsigned long lockless_pages_from_mm(unsigned long start,
 	/*
 	 * Disable interrupts. The nested form is used, in order to allow full,
 	 * general purpose use of this routine.
-	 *
+	 * 关中断, 用了嵌套形式, 以便允许完全的、通用的使用这个函数
+	 
 	 * With interrupts disabled, we block page table pages from being freed
 	 * from under us. See struct mmu_table_batch comments in
 	 * include/asm-generic/tlb.h for more details.
-	 *
+	 * 关中断是为了阻止页表页在我们下面被释放. 更多细节见include/asm-generic/tlb.h中的struct mmu_table_batch注释
+	 
 	 * We do not adopt an rcu_read_lock() here as we also want to block IPIs
 	 * that come from THPs splitting.
 	 */
 	local_irq_save(flags);
+	// 这里开始pin?
 	gup_pgd_range(start, end, gup_flags, pages, &nr_pinned);
 	local_irq_restore(flags);
 
 	/*
 	 * When pinning pages for DMA there could be a concurrent write protect
 	 * from fork() via copy_page_range(), in this case always fail fast GUP.
+	   当为DMA固定页面时，可能会有一个并发的写保护来自fork()通过copy_page_range()，
+	   在这种情况下，总是快速失败GUP。
 	 */
 	if (gup_flags & FOLL_PIN) {
 		if (read_seqcount_retry(&current->mm->write_protect_seq, seq)) {
@@ -3161,7 +3178,7 @@ static unsigned long lockless_pages_from_mm(unsigned long start,
 	}
 	return nr_pinned;
 }
-
+// pin住start开始的nr_pages个page, 保存在pages中
 static int internal_get_user_pages_fast(unsigned long start,
 					unsigned long nr_pages,
 					unsigned int gup_flags,
@@ -3283,6 +3300,7 @@ int get_user_pages_fast(unsigned long start, int nr_pages,
 EXPORT_SYMBOL_GPL(get_user_pages_fast);
 
 /**
+addr是iter的空间. 把他习惯的有些pages pin到pages
  * pin_user_pages_fast() - pin user pages in memory without taking locks
  *
  * @start:      starting user address
@@ -3294,10 +3312,12 @@ EXPORT_SYMBOL_GPL(get_user_pages_fast);
  * Nearly the same as get_user_pages_fast(), except that FOLL_PIN is set. See
  * get_user_pages_fast() for documentation on the function arguments, because
  * the arguments here are identical.
- *
+ * 与get_user_pages_fast()几乎相同，只是设置了FOLL_PIN。请参阅get_user_pages_fast()以
+ 获取有关函数参数的文档，因为这里的参数是相同的。
  * FOLL_PIN means that the pages must be released via unpin_user_page(). Please
  * see Documentation/core-api/pin_user_pages.rst for further details.
- *
+ * FOLL_PIN表示必须通过unpin_user_page()释放页面。请参阅
+ * 有关详细信息，请参阅Documentation/core-api/pin_user_pages.rst。
  * Note that if a zero_page is amongst the returned pages, it will not have
  * pins in it and unpin_user_page() will not remove pins from it.
  */

@@ -375,6 +375,7 @@ static inline struct mem_cgroup *obj_cgroup_memcg(struct obj_cgroup *objcg)
 
 /*
  * __folio_memcg - Get the memory cgroup associated with a non-kmem folio
+ 获取folio的memcg
  * @folio: Pointer to the folio.
  *
  * Returns a pointer to the memory cgroup associated with the folio,
@@ -382,6 +383,8 @@ static inline struct mem_cgroup *obj_cgroup_memcg(struct obj_cgroup *objcg)
  * proper memory cgroup pointer. It's not safe to call this function
  * against some type of folios, e.g. slab folios or ex-slab folios or
  * kmem folios.
+ 返回一个指向与folio关联的内存cgroup的指针，或者NULL。此函数假定已知folio具有适当的内存cgroup指针。不安全调用此函数
+ * 对某些类型的folios，例如slab folios或ex-slab folios或kmem folios。
  */
 static inline struct mem_cgroup *__folio_memcg(struct folio *folio)
 {
@@ -438,7 +441,7 @@ static inline struct obj_cgroup *__folio_objcg(struct folio *folio)
  */
 static inline struct mem_cgroup *folio_memcg(struct folio *folio)
 {
-	if (folio_memcg_kmem(folio))
+	if (folio_memcg_kmem(folio)) // kmem相关
 		return obj_cgroup_memcg(__folio_objcg(folio));
 	return __folio_memcg(folio);
 }
@@ -704,6 +707,7 @@ void __mem_cgroup_uncharge(struct folio *folio);
 
 /**
  * mem_cgroup_uncharge - Uncharge a folio.
+ 从memcg记账移除
  * @folio: Folio to uncharge.
  *
  * Uncharge a folio previously charged with mem_cgroup_charge().

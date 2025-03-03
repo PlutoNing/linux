@@ -79,6 +79,8 @@ static inline int get_dumpable(struct mm_struct *mm)
  * a counter on its own. We're aggresive on this bit for now: even if the
  * pinned pages were unpinned later on, we'll still keep this bit set for the
  * lifecycle of this mm, just for simplicity.
+    表示这个mm是否有固定的页面。这在将来可以通过mm.pinned_vm替换，当它变得稳定时，或者自己增长为一个计数器。
+	现在我们对这个位很有侵略性:即使固定的页面后来被取消固定，我们仍然会保持这个位设置为这个mm的生命周期，只是为了简单起见。
  */
 #define MMF_HAS_PINNED		27	/* FOLL_PIN has run, never cleared */
 

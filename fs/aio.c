@@ -1067,13 +1067,15 @@ static inline struct aio_kiocb *aio_get_req(struct kioctx *ctx)
 	req->ki_eventfd = NULL;
 	return req;
 }
-
+// 通过id查询kioctx current->mm->ioctx_table->table[id]
 static struct kioctx *lookup_ioctx(unsigned long ctx_id)
 {
+	// 原来id就是地址. 地址转换了就是. 用户看见
 	struct aio_ring __user *ring  = (void __user *)ctx_id;
 	struct mm_struct *mm = current->mm;
 	struct kioctx *ctx, *ret = NULL;
 	struct kioctx_table *table;
+	// 这里应该是ring的id
 	unsigned id;
 
 	if (get_user(id, &ring->id))
@@ -1191,6 +1193,7 @@ static inline void iocb_put(struct aio_kiocb *iocb)
 /* aio_read_events_ring
  *	Pull an event off of the ioctx's event ring.  Returns the number of
  *	events fetched
+  作用: 从ctx的ring里面读取事件 返回读取的事件数量
  */
 static long aio_read_events_ring(struct kioctx *ctx,
 				 struct io_event __user *event, long nr)
@@ -1268,7 +1271,7 @@ out:
 
 	return ret;
 }
-
+// 读取ctx的事件数量,放入i里面
 static bool aio_read_events(struct kioctx *ctx, long min_nr, long nr,
 			    struct io_event __user *event, long *i)
 {
@@ -1285,7 +1288,7 @@ static bool aio_read_events(struct kioctx *ctx, long min_nr, long nr,
 
 	return ret < 0 || *i >= min_nr;
 }
-
+// 读取ctx里的事件数量?
 static long read_events(struct kioctx *ctx, long min_nr, long nr,
 			struct io_event __user *event,
 			ktime_t until)
@@ -1296,10 +1299,11 @@ static long read_events(struct kioctx *ctx, long min_nr, long nr,
 	 * Note that aio_read_events() is being called as the conditional - i.e.
 	 * we're calling it after prepare_to_wait() has set task state to
 	 * TASK_INTERRUPTIBLE.
-	 *
+	 * 注意，aio_read_events()是在条件下调用的，即在prepare_to_wait()将任务状态设置为TASK_INTERRUPTIBLE之后调用的。
+	 
 	 * But aio_read_events() can block, and if it blocks it's going to flip
 	 * the task state back to TASK_RUNNING.
-	 *
+	 * 但是aio_read_events()可能会阻塞，如果它阻塞，它将把任务状态切换回TASK_RUNNING。
 	 * This should be ok, provided it doesn't flip the state back to
 	 * TASK_RUNNING and return 0 too much - that causes us to spin. That
 	 * will only happen if the mutex_lock() call blocks, and we then find
@@ -2163,7 +2167,7 @@ SYSCALL_DEFINE3(io_cancel, aio_context_t, ctx_id, struct iocb __user *, iocb,
 
 	return ret;
 }
-
+// 好像是主要函数,下面几个syscall都调用
 static long do_io_getevents(aio_context_t ctx_id,
 		long min_nr,
 		long nr,
@@ -2171,6 +2175,7 @@ static long do_io_getevents(aio_context_t ctx_id,
 		struct timespec64 *ts)
 {
 	ktime_t until = ts ? timespec64_to_ktime(*ts) : KTIME_MAX;
+	// 在mm的table里面找
 	struct kioctx *ioctx = lookup_ioctx(ctx_id);
 	long ret = -EINVAL;
 

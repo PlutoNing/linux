@@ -1363,6 +1363,7 @@ struct lruvec *folio_lruvec_lock_irq(struct folio *folio)
 
 /**
  * folio_lruvec_lock_irqsave - Lock the lruvec for a folio.
+ lock这个folio的lruvec?
  * @folio: Pointer to the folio.
  * @flags: Pointer to irqsave flags.
  *
@@ -7275,7 +7276,7 @@ static void uncharge_folio(struct folio *folio, struct uncharge_gather *ug)
 
 	css_put(&memcg->css);
 }
-
+// uncharge这个 folio
 void __mem_cgroup_uncharge(struct folio *folio)
 {
 	struct uncharge_gather ug;

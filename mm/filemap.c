@@ -915,7 +915,7 @@ void replace_page_cache_folio(struct folio *old, struct folio *new)
 }
 EXPORT_SYMBOL_GPL(replace_page_cache_folio);
 
-/* 把新申请的页面加入mapping */
+/* 把新申请的页面加入mapping ,xas数组*/
 noinline int __filemap_add_folio(struct address_space *mapping,
 		struct folio *folio, pgoff_t index, gfp_t gfp, void **shadowp)
 {
@@ -928,7 +928,7 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 	VM_BUG_ON_FOLIO(folio_test_swapbacked(folio), folio);
 	mapping_set_update(&xas, mapping);
 
-	if (!huge) {
+	if (!huge) {/* 统计memcg, 设置xas的order */
 		/* 内部会get memcg然后put. */
 		int error = mem_cgroup_charge(folio, NULL, gfp);
 		VM_BUG_ON_FOLIO(index & (folio_nr_pages(folio) - 1), folio);
@@ -1020,7 +1020,7 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 	void *shadow = NULL;
 	int ret;
 
-	__folio_set_locked(folio);
+	__folio_set_locked(folio); //什么时候解锁呢?
 
 	ret = __filemap_add_folio(mapping, folio, index, gfp, &shadow);
 	if (unlikely(ret))
@@ -1045,7 +1045,7 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 			workingset_refault(folio, shadow);
 
 		/*  成功了之后,加入lru */
-		folio_add_lru(folio);
+		folio_add_lru(folio); /* 这是新申请的folio, 居然这里加入lru */
 	}
 
 	return ret;
@@ -2008,12 +2008,12 @@ out:
  * @gfp: Memory allocation flags to use if %FGP_CREAT is specified.
  *
  * Looks up the page cache entry at @mapping & @index.
- *
+ * 查找pagecache里的index
  * If %FGP_LOCK or %FGP_CREAT are specified then the function may sleep even
  * if the %GFP flags specified for %FGP_CREAT are atomic.
  *
  * If this function returns a folio, it is returned with an increased refcount.
- *
+ * 返回的folio会add ref
  * Return: The found folio or an ERR_PTR() otherwise.
  */
 struct folio *__filemap_get_folio(struct address_space *mapping, pgoff_t index,
@@ -2028,8 +2028,8 @@ repeat:
 	if (xa_is_value(folio))
 		folio = NULL; //page不存在
 	if (!folio)
-		goto no_page;
-
+		goto no_page; // mapping里面还没有缓存这个page
+	// 在mapping里面找到了这个folio的逻辑
 	if (fgp_flags & FGP_LOCK) {
 		if (fgp_flags & FGP_NOWAIT) { //要求不能阻塞加锁
 			if (!folio_trylock(folio)) { 
@@ -2061,7 +2061,7 @@ repeat:
 
 	if (fgp_flags & FGP_STABLE)
 		folio_wait_stable(folio);
-
+	// 其实就是直接返回了
 no_page:
 //页缓存里面还没有这个页面
 	if (!folio && (fgp_flags & FGP_CREAT)) {//不存在页面,且可以申请
@@ -2095,21 +2095,22 @@ no_page:
 				order = 0;
 			if (order > 0)
 				alloc_gfp |= __GFP_NORETRY | __GFP_NOWARN;
-			folio = filemap_alloc_folio(alloc_gfp, order); //分配页面
+			folio = filemap_alloc_folio(alloc_gfp, order); //分配准备加到pagecache的页面
 			if (!folio)
 				continue;
 
 			/* Init accessed so avoid atomic mark_page_accessed later */
-			if (fgp_flags & FGP_ACCESSED)
+			if (fgp_flags & FGP_ACCESSED) //
 				__folio_set_referenced(folio);
 
 			err = filemap_add_folio(mapping, folio, index, gfp); //把申请的页面加入mapping
 			if (!err)
 				break;
+			// 出错了
 			folio_put(folio);
 			folio = NULL;
 		} while (order-- > 0);
-
+		// 申请成功后,马上也是返回了
 		if (err == -EEXIST)
 			goto repeat;
 		if (err)
@@ -2124,7 +2125,7 @@ no_page:
 
 	if (!folio)
 		return ERR_PTR(-ENOENT);
-	return folio;
+	return folio; // 返回folio, 可能是新申请的, 也可能是已经存在的
 }
 EXPORT_SYMBOL(__filemap_get_folio);
 
