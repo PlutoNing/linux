@@ -412,6 +412,8 @@ struct cgroup {
 	 * step down the hierarchy increments the level.  This along with
 	 * ancestors[] can determine whether a given cgroup is a
 	 * descendant of another without traversing the hierarchy.
+	 表示此 cgroup 的深度。根位于深度为零的位置，每向下一级深度加一。
+	 这个值和 ancestors[] 可以确定一个 cgroup 是否是另一个 cgroup 的后代，而无需遍历整个层级结构。
 	 */
 	int level;
 

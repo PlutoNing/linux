@@ -425,6 +425,7 @@ static inline struct css_set *task_css_set(struct task_struct *task)
 
 /**
  * task_css - obtain css for (task, subsys)
+ 获取task在某个cgroup子系统的css
  * @task: the target task
  * @subsys_id: the target subsystem ID
  *

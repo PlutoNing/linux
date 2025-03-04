@@ -371,6 +371,7 @@ static void **dbg_userword(struct kmem_cache *cachep, void *objp)
 static int slab_max_order = SLAB_MAX_ORDER_LO;
 static bool slab_max_order_set __initdata;
 
+// 获取一块内存
 static inline void *index_to_obj(struct kmem_cache *cache,
 				 const struct slab *slab, unsigned int idx)
 {
@@ -2484,6 +2485,7 @@ static void cache_init_objs(struct kmem_cache *cachep,
 	}
 }
 
+// 从slab取一块内存
 static void *slab_get_obj(struct kmem_cache *cachep, struct slab *slab)
 {
 	void *objp;
@@ -2782,15 +2784,16 @@ static noinline struct slab *get_valid_first_slab(struct kmem_cache_node *n,
 
 	return NULL;
 }
-
+// 从kmem_cache_node的slab链表获取
 static struct slab *get_first_slab(struct kmem_cache_node *n, bool pfmemalloc)
 {
 	struct slab *slab;
 
 	assert_raw_spin_locked(&n->list_lock);
+	// 从slabs_partial取一个slab
 	slab = list_first_entry_or_null(&n->slabs_partial, struct slab,
 					slab_list);
-	if (!slab) {
+	if (!slab) { // slabs_partial没有的话就从slabs_free取一个slab
 		n->free_touched = 1;
 		slab = list_first_entry_or_null(&n->slabs_free, struct slab,
 						slab_list);
@@ -2815,12 +2818,13 @@ static noinline void *cache_alloc_pfmemalloc(struct kmem_cache *cachep,
 		return NULL;
 
 	raw_spin_lock(&n->list_lock);
+	// 从n获取一个slab
 	slab = get_first_slab(n, true);
 	if (!slab) {
 		raw_spin_unlock(&n->list_lock);
 		return NULL;
 	}
-
+	// 获取一块内存
 	obj = slab_get_obj(cachep, slab);
 	n->free_objects--;
 
@@ -2856,6 +2860,7 @@ static __always_inline int alloc_block(struct kmem_cache *cachep,
 	return batchcount;
 }
 
+// 填充slab的缓存?
 static void *cache_alloc_refill(struct kmem_cache *cachep, gfp_t flags)
 {
 	int batchcount;
@@ -2914,8 +2919,10 @@ alloc_done:
 
 direct_grow:
 	if (unlikely(!ac->avail)) {
-		/* Check if we can use obj in pfmemalloc slab */
-		if (sk_memalloc_socks()) {
+		/* Check if we can use obj in pfmemalloc slab
+		检查我们是否可以使用pfmemalloc slab中的obj
+		*/
+		if (sk_memalloc_socks()) { // 从这个路径来获得内存?
 			void *obj = cache_alloc_pfmemalloc(cachep, n, flags);
 
 			if (obj)
@@ -2994,10 +3001,11 @@ static inline void *____cache_alloc(struct kmem_cache *cachep, gfp_t flags)
 		objp = ac->entry[--ac->avail];
 
 		STATS_INC_ALLOCHIT(cachep);
-		goto out;
+		goto out; // 从缓存分配成功?
 	}
 
 	STATS_INC_ALLOCMISS(cachep);
+	// 填充缓存?
 	objp = cache_alloc_refill(cachep, flags);
 	/*
 	 * the 'ac' may be updated by cache_alloc_refill(),
@@ -3021,7 +3029,7 @@ static void *____cache_alloc_node(struct kmem_cache *, gfp_t, int);
 
 /*
  * Try allocating on another node if PFA_SPREAD_SLAB is a mempolicy is set.
- *
+ * 尝试在另一个node上分配内存如果PFA_SPREAD_SLAB是一个mempolicy被设置
  * If we are in_interrupt, then process context, including cpusets and
  * mempolicy, may not apply and should not be used for allocation policy.
  */
@@ -3163,13 +3171,14 @@ must_grow:
 	return obj ? obj : fallback_alloc(cachep, flags);
 }
 
+// slab分配的函数?
 static __always_inline void *
 __do_cache_alloc(struct kmem_cache *cachep, gfp_t flags, int nodeid)
 {
 	void *objp = NULL;
 	int slab_node = numa_mem_id();
 
-	if (nodeid == NUMA_NO_NODE) {
+	if (nodeid == NUMA_NO_NODE) { // 没有指定非要从哪个node
 		if (current->mempolicy || cpuset_do_slab_mem_spread()) {
 			objp = alternate_node_alloc(cachep, flags);
 			if (objp)
@@ -3226,11 +3235,13 @@ slab_alloc_node(struct kmem_cache *cachep, struct list_lru *lru, gfp_t flags,
 	bool init = false;
 
 	flags &= gfp_allowed_mask;
+	// 检查工作
 	cachep = slab_pre_alloc_hook(cachep, lru, &objcg, 1, flags);
 	if (unlikely(!cachep))
 		return NULL;
 
 	//开始分配
+	// null 函数
 	objp = kfence_alloc(cachep, orig_size, flags);
 	if (unlikely(objp))
 		goto out;
@@ -3238,6 +3249,7 @@ slab_alloc_node(struct kmem_cache *cachep, struct list_lru *lru, gfp_t flags,
 	local_irq_save(save_flags);
 	objp = __do_cache_alloc(cachep, flags, nodeid);
 	local_irq_restore(save_flags);
+
 	objp = cache_alloc_debugcheck_after(cachep, flags, objp, caller);
 	prefetchw(objp);
 	init = slab_want_init_on_alloc(flags, cachep);

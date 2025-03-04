@@ -1641,6 +1641,7 @@ static inline void *xas_reload(struct xa_state *xas)
 
 /**
  * xas_set() - Set up XArray operation state for a different index.
+ 设置一个xas的操作状态为不同的索引。
  * @xas: XArray operation state.
  * @index: New index into the XArray.
  *

@@ -1004,6 +1004,7 @@ static void memcg_check_events(struct mem_cgroup *memcg, int nid)
 	}
 }
 
+// 获取tsk的memcg, 通过tsk对应的css来获取
 struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p)
 {
 	/*
@@ -3038,6 +3039,8 @@ struct mem_cgroup *mem_cgroup_from_slab_obj(void *p)
 	return mem_cgroup_from_obj_folio(virt_to_folio(p), p);
 }
 
+// 获取memcg对应的objcg
+// 每个memcg都有objcg成员, 就是顺着父层级往上找, 谁的有效就取谁的
 static struct obj_cgroup *__get_obj_cgroup_from_memcg(struct mem_cgroup *memcg)
 {
 	struct obj_cgroup *objcg = NULL;
@@ -3051,6 +3054,7 @@ static struct obj_cgroup *__get_obj_cgroup_from_memcg(struct mem_cgroup *memcg)
 	return objcg;
 }
 
+// 获取current的objcg, 就是先获取memcg, 再获取objcg
 __always_inline struct obj_cgroup *get_obj_cgroup_from_current(void)
 {
 	struct obj_cgroup *objcg = NULL;
@@ -3064,6 +3068,7 @@ __always_inline struct obj_cgroup *get_obj_cgroup_from_current(void)
 		memcg = active_memcg();
 	else
 		memcg = mem_cgroup_from_task(current);
+	
 	objcg = __get_obj_cgroup_from_memcg(memcg);
 	rcu_read_unlock();
 	return objcg;
@@ -3394,6 +3399,7 @@ static void refill_obj_stock(struct obj_cgroup *objcg, unsigned int nr_bytes,
 		obj_cgroup_uncharge_pages(objcg, nr_pages);
 }
 
+//
 int obj_cgroup_charge(struct obj_cgroup *objcg, gfp_t gfp, size_t size)
 {
 	unsigned int nr_pages, nr_bytes;

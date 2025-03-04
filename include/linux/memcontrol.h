@@ -530,6 +530,7 @@ static inline struct mem_cgroup *page_memcg_check(struct page *page)
 	return folio_memcg_check((struct folio *)page);
 }
 
+// 获取objcg->memcg
 static inline struct mem_cgroup *get_mem_cgroup_from_objcg(struct obj_cgroup *objcg)
 {
 	struct mem_cgroup *memcg;

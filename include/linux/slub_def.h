@@ -150,7 +150,7 @@ struct kmem_cache {
 	unsigned int useroffset;	/* Usercopy region offset */
 	unsigned int usersize;		/* Usercopy region size */
 #endif
-
+	// 在每个node上面都有存储空间?
 	struct kmem_cache_node *node[MAX_NUMNODES];
 };
 

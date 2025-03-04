@@ -474,6 +474,8 @@ static inline size_t obj_full_size(struct kmem_cache *s)
 /*
  * Returns false if the allocation should fail.
  slab分配前的检查
+ =============================================
+ 感觉实质上就是找到负责的objcg, 进行charge
  */
 static inline bool memcg_slab_pre_alloc_hook(struct kmem_cache *s,
 					     struct list_lru *lru,
@@ -487,7 +489,7 @@ static inline bool memcg_slab_pre_alloc_hook(struct kmem_cache *s,
 
 	if (!(flags & __GFP_ACCOUNT) && !(s->flags & SLAB_ACCOUNT))
 		return true;
-
+	// 获取进程的objcg
 	objcg = get_obj_cgroup_from_current();
 	if (!objcg)
 		return true;
@@ -495,7 +497,7 @@ static inline bool memcg_slab_pre_alloc_hook(struct kmem_cache *s,
 	if (lru) {
 		int ret;
 		struct mem_cgroup *memcg;
-
+		// 下面给objcg的memcg的父层级分配mlru, 加入lru的xas数组
 		memcg = get_mem_cgroup_from_objcg(objcg);
 		ret = memcg_list_lru_alloc(memcg, lru, flags);
 		css_put(&memcg->css);
@@ -702,7 +704,8 @@ static inline size_t slab_ksize(const struct kmem_cache *s)
 	return s->size;
 #endif
 }
-
+// 一些“检查”工作, 主要是charge objcg
+// 返回的时候objcgp会被赋值为负责此事的objcg
 static inline struct kmem_cache *slab_pre_alloc_hook(struct kmem_cache *s,
 						     struct list_lru *lru,
 						     struct obj_cgroup **objcgp,

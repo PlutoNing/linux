@@ -4179,6 +4179,7 @@ int cpuset_mem_spread_node(void)
 
 /**
  * cpuset_slab_spread_node() - On which node to begin search for a slab page
+  在哪个节点开始搜索slab页
  */
 int cpuset_slab_spread_node(void)
 {

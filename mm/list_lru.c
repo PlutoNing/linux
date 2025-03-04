@@ -480,7 +480,11 @@ static inline bool memcg_list_lru_allocated(struct mem_cgroup *memcg,
 	return idx < 0 || xa_load(&lru->xa, idx);
 }
 
-/* 这个是哪里的lru? */
+/* 这个是哪里的lru?
+好像就是给memcg的全部父层级分配一个mlru,
+然后把mlru存入lru的xas数组
+
+*/
 int memcg_list_lru_alloc(struct mem_cgroup *memcg, struct list_lru *lru,
 			 gfp_t gfp)
 {
@@ -496,6 +500,7 @@ int memcg_list_lru_alloc(struct mem_cgroup *memcg, struct list_lru *lru,
 		return 0;
 
 	gfp &= GFP_RECLAIM_MASK;
+	// table的大小是memcg的深度
 	table = kmalloc_array(memcg->css.cgroup->level, sizeof(*table), gfp);
 	if (!table)
 		return -ENOMEM;
@@ -506,12 +511,12 @@ int memcg_list_lru_alloc(struct mem_cgroup *memcg, struct list_lru *lru,
 	 * ancestors have allocated list_lru_memcg.
 	 因为list_lru可以重新分配到父cgroup的list_lru，所以我们应该确保此cgroup及其所有祖先都已分配了list_lru_memcg。
 	 */
-	for (i = 0; memcg; memcg = parent_mem_cgroup(memcg), i++) {
+	for (i = 0; memcg; memcg = parent_mem_cgroup(memcg), i++) { // 一直遍历到根, 给每一层的父memcg填充内容
 		if (memcg_list_lru_allocated(memcg, lru))
 			break; // memcg已经被塞到了lru的xas数组
 
 		table[i].memcg = memcg;
-		table[i].mlru = memcg_init_list_lru_one(gfp);
+		table[i].mlru = memcg_init_list_lru_one(gfp); // 分配一个记录了每个node信息的mlru
 		if (!table[i].mlru) {
 			while (i--)
 				kfree(table[i].mlru);
@@ -520,8 +525,9 @@ int memcg_list_lru_alloc(struct mem_cgroup *memcg, struct list_lru *lru,
 		}
 	}
 
+	// 现在i的值就是memcg的深度, 也是table的大小, table记录了父层级上的每一个memcg和mlru的对应, 每个mlru记录了每个node.
 	xas_lock_irqsave(&xas, flags);
-	while (i--) {
+	while (i--) {// 逐层级的处理, 从根往下处理
 		int index = READ_ONCE(table[i].memcg->kmemcg_id);
 		struct list_lru_memcg *mlru = table[i].mlru;
 
@@ -541,6 +547,8 @@ retry:
 				 * can be reparented before us. So reload
 				 * memcg id. More details see the comments
 				 * in memcg_reparent_list_lrus().
+				 xas的锁已经释放，这个memcg可以在我们之前被重新分配。
+				 因此重新加载memcg id。更多细节请参见memcg_reparent_list_lrus()中的注释。
 				 */
 				index = READ_ONCE(table[i].memcg->kmemcg_id);
 				if (index < 0)

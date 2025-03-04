@@ -1929,6 +1929,7 @@ static unsigned interleave_nodes(struct mempolicy *policy)
 
  * Depending on the memory policy provide a node from which to allocate the
  * next slab entry.
+   依据内存策略提供一个node, 从这个node获取下一个slab entry
  */
 unsigned int mempolicy_slab_node(void)
 {
