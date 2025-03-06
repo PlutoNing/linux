@@ -3457,7 +3457,7 @@ static __fastpath_inline void *slab_alloc_node(struct kmem_cache *s, struct list
 	void *object;
 	struct obj_cgroup *objcg = NULL;
 	bool init = false;
-
+	// 这个hook进行一些检查工作
 	s = slab_pre_alloc_hook(s, lru, &objcg, 1, gfpflags);
 	if (!s)
 		return NULL;

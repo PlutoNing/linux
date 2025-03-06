@@ -956,31 +956,33 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 
 		if (order > folio_order(folio))
 			xas_split_alloc(&xas, xa_load(xas.xa, xas.xa_index),
-					order, gfp);
+					order, gfp); // 这里会创建新node
 
 		xas_lock_irq(&xas);
-		xas_for_each_conflict(&xas, entry) {
+		xas_for_each_conflict(&xas, entry) {// 不断的读取出值, 赋值到entry
 			old = entry;
 			if (!xa_is_value(entry)) {
 				xas_set_err(&xas, -EEXIST);
 				goto unlock;
 			}
 		}
-
+		// 刚才的foreach循环是为了获取到最后的old和entry值吗?
 		if (old) {
 			if (shadowp)
 				*shadowp = old;
-			/* entry may have been split before we acquired lock */
+			/* entry may have been split before we acquired lock
+			ent可能在我们获取锁之前被分割
+			*/
 			order = xa_get_order(xas.xa, xas.xa_index);
 			if (order > folio_order(folio)) {
 				/* How to handle large swap entries? */
 				BUG_ON(shmem_mapping(mapping));
-				xas_split(&xas, old, order);
+				xas_split(&xas, old, order); // todo
 				xas_reset(&xas);
 			}
 		}
 
-		xas_store(&xas, folio);
+		xas_store(&xas, folio); // 存入值
 		if (xas_error(&xas))
 			goto unlock;
 

@@ -77,11 +77,12 @@ static inline void xa_mark_clear(struct xarray *xa, xa_mark_t mark)
 		xa->xa_flags &= ~(XA_FLAGS_MARK(mark));
 }
 
+// 获取node的mark索引处的mark
 static inline unsigned long *node_marks(struct xa_node *node, xa_mark_t mark)
 {
 	return node->marks[(__force unsigned)mark];
 }
-
+// 测试mark这个索引处的标记是否标记了offset?
 static inline bool node_get_mark(struct xa_node *node,
 		unsigned int offset, xa_mark_t mark)
 {
@@ -111,7 +112,7 @@ static inline void node_mark_all(struct xa_node *node, xa_mark_t mark)
 {
 	bitmap_fill(node_marks(node, mark), XA_CHUNK_SIZE);
 }
-
+// 变成下一个mark
 #define mark_inc(mark) do { \
 	mark = (__force xa_mark_t)((__force unsigned)(mark) + 1); \
 } while (0)
@@ -369,7 +370,7 @@ static bool __xas_nomem(struct xa_state *xas, gfp_t gfp)
 	xas->xa_node = XAS_RESTART;
 	return true;
 }
-
+// update什么?
 static void xas_update(struct xa_state *xas, struct xa_node *node)
 {
 	if (xas->xa_update)
@@ -378,6 +379,7 @@ static void xas_update(struct xa_state *xas, struct xa_node *node)
 		XA_NODE_BUG_ON(node, !list_empty(&node->private_list));
 }
 
+// 好像是分配刚刚初始化的新node
 static void *xas_alloc(struct xa_state *xas, unsigned int shift)
 {
 	struct xa_node *parent = xas->xa_node;
@@ -388,7 +390,7 @@ static void *xas_alloc(struct xa_state *xas, unsigned int shift)
 
 	if (node) {
 		xas->xa_alloc = NULL;
-	} else {
+	} else {// 如果刚刚没有分配新node?
 		gfp_t gfp = GFP_NOWAIT | __GFP_NOWARN;
 
 		if (xas->xa->xa_flags & XA_FLAGS_ACCOUNT)
@@ -400,9 +402,9 @@ static void *xas_alloc(struct xa_state *xas, unsigned int shift)
 			return NULL;
 		}
 	}
-
-	if (parent) {
-		node->offset = xas->xa_offset;
+	// 现在持有了刚刚分配的新node, 并且xa_alloc被置空了
+	if (parent) {// 存在parent的话, 设置子node的offset
+		node->offset = xas->xa_offset; 
 		parent->count++;
 		XA_NODE_BUG_ON(node, parent->count > XA_CHUNK_SIZE);
 		xas_update(xas, parent);
@@ -431,6 +433,8 @@ static unsigned long xas_size(const struct xa_state *xas)
  * in order to add the entry described by @xas.  Because we cannot store a
  * multi-index entry at index 0, the calculation is a little more complex
  * than you might expect.
+   使用这个函数来计算需要创建的最大索引, 以便添加由xas描述的entry.
+   因为我们不能在索引0处存储多索引entry, 所以计算比你期望的要复杂一些
  */
 static unsigned long xas_max(struct xa_state *xas)
 {
@@ -448,7 +452,9 @@ static unsigned long xas_max(struct xa_state *xas)
 	return max;
 }
 
-/* The maximum index that can be contained in the array without expanding it */
+/* The maximum index that can be contained in the array without expanding it
+计算不扩大数组的情况下可以包含的最大索引
+*/
 static unsigned long max_index(void *entry)
 {
 	if (!xa_is_node(entry))
@@ -577,13 +583,14 @@ static void xas_free_nodes(struct xa_state *xas, struct xa_node *top)
 /*
  * xas_expand adds nodes to the head of the tree until it has reached
  * sufficient height to be able to contain @xas->xa_index
+   xas_expand添加节点到树的头部, 直到它达到足够的高度, 以便能够包含xas->xa_index
  */
 static int xas_expand(struct xa_state *xas, void *head)
 {
 	struct xarray *xa = xas->xa;
 	struct xa_node *node = NULL;
 	unsigned int shift = 0;
-	unsigned long max = xas_max(xas);
+	unsigned long max = xas_max(xas); // 有时就是xas的index
 
 	if (!head) {
 		if (max == 0)
@@ -596,11 +603,13 @@ static int xas_expand(struct xa_state *xas, void *head)
 		shift = node->shift + XA_CHUNK_SHIFT;
 	}
 	xas->xa_node = NULL;
+	// 算得了shift
 
-	while (max > max_index(head)) {
+	while (max > max_index(head)) { // 好像是往上增长的,
 		xa_mark_t mark = 0;
 
 		XA_NODE_BUG_ON(node, shift > BITS_PER_LONG);
+		// 这里返回新node
 		node = xas_alloc(xas, shift);
 		if (!node)
 			return -ENOMEM;
@@ -611,7 +620,7 @@ static int xas_expand(struct xa_state *xas, void *head)
 		RCU_INIT_POINTER(node->slots[0], head);
 
 		/* Propagate the aggregated mark info to the new child */
-		for (;;) {
+		for (;;) { // 以后
 			if (xa_track_free(xa) && mark == XA_FREE_MARK) {
 				node_mark_all(node, XA_FREE_MARK);
 				if (!xa_marked(xa, XA_FREE_MARK)) {
@@ -629,10 +638,12 @@ static int xas_expand(struct xa_state *xas, void *head)
 		/*
 		 * Now that the new node is fully initialised, we can add
 		 * it to the tree
+		 现在新节点已经完全初始化, 我们可以将它添加到树中
 		 */
 		if (xa_is_node(head)) {
 			xa_to_node(head)->offset = 0;
 			rcu_assign_pointer(xa_to_node(head)->parent, node);
+		// woc是往上生长的?
 		}
 		head = xa_mk_node(node);
 		rcu_assign_pointer(xa->xa_head, head);
@@ -647,16 +658,21 @@ static int xas_expand(struct xa_state *xas, void *head)
 
 /*
  * xas_create() - Create a slot to store an entry in.
+   创建一个slot来存储一个entry
  * @xas: XArray operation state.
  * @allow_root: %true if we can store the entry in the root directly
  *
  * Most users will not need to call this function directly, as it is called
  * by xas_store().  It is useful for doing conditional store operations
  * (see the xa_cmpxchg() implementation for an example).
- *
+ * 大多数用户不需要直接调用这个函数, 因为它被xas_store()调用. 它对于执行条件存储操作
+ * 是有用的(请参阅xa_cmpxchg()的实现以获取示例)
  * Return: If the slot already existed, returns the contents of this slot.
  * If the slot was newly created, returns %NULL.  If it failed to create the
  * slot, returns %NULL and indicates the error in @xas.
+   返回值: 如果slot已经存在, 返回这个slot的内容. 如果slot是新创建的, 返回NULL. 如果创建slot失败,
+   返回NULL并在xas中指示错误
+  ==========================
  */
 static void *xas_create(struct xa_state *xas, bool allow_root)
 {
@@ -672,6 +688,7 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 		xas->xa_node = NULL;
 		if (!entry && xa_zero_busy(xa))
 			entry = XA_ZERO_ENTRY;
+		// 何谓expand?
 		shift = xas_expand(xas, entry);
 		if (shift < 0)
 			return NULL;
@@ -701,12 +718,15 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 				break;
 			if (xa_track_free(xa))
 				node_mark_all(node, XA_FREE_MARK);
+			// slot指向这个node
 			rcu_assign_pointer(*slot, xa_mk_node(node));
 		} else if (xa_is_node(entry)) {
 			node = xa_to_node(entry);
 		} else {
 			break;
 		}
+
+
 		entry = xas_descend(xas, node);
 		slot = &node->slots[xas->xa_offset];
 	}
@@ -783,6 +803,7 @@ static void update_node(struct xa_state *xas, struct xa_node *node,
 
 /**
  * xas_store() - Store this entry in the XArray.
+   在XArray中存储这个entry
  * @xas: XArray operation state.
  * @entry: New entry.
  *
@@ -791,7 +812,10 @@ static void update_node(struct xa_state *xas, struct xa_node *node,
  * may be %NULL, even if there are non-NULL entries at some of the indices
  * covered by the range).  This is not a problem for any current users,
  * and can be changed if needed.
- *
+ * 如果xas正在操作一个多索引entry, 这个函数返回的entry基本上是没有意义的(它可能是一个内部entry
+ 或者是NULL, 即使在范围内的一些索引处有非NULL的entries). 这对于任何当前的用户来说都不是问题,
+ 并且可以根据需要进行更改
+
  * Return: The old entry at this index.
  */
 void *xas_store(struct xa_state *xas, void *entry)
@@ -807,12 +831,13 @@ void *xas_store(struct xa_state *xas, void *entry)
 	if (entry) {
 		bool allow_root = !xa_is_node(entry) && !xa_is_zero(entry);
 		first = xas_create(xas, allow_root);
-	} else {
+	} else {// entry为空的情况?
 		first = xas_load(xas);
 	}
 
 	if (xas_invalid(xas))
 		return first;
+
 	node = xas->xa_node;
 	if (node && (xas->xa_shift < node->shift))
 		xas->xa_sibs = 0;
@@ -837,7 +862,10 @@ void *xas_store(struct xa_state *xas, void *entry)
 		 * stop early.  rcu_assign_pointer contains a release barrier
 		 * so the mark clearing will appear to happen before the
 		 * entry is set to NULL.
-		 */
+		  必须清除entry之前的标记, 否则xas_for_each_marked可能会找到一个NULL entry并提前停止.
+		  rcu_assign_pointer包含一个释放屏障, 因此标记清除将在entry设置为NULL之前发生
+		  
+		  		 */
 		rcu_assign_pointer(*slot, entry);
 		if (xa_is_node(next) && (!node || node->shift))
 			xas_free_nodes(xas, xa_to_node(next));
@@ -976,17 +1004,18 @@ void xas_init_marks(const struct xa_state *xas)
 EXPORT_SYMBOL_GPL(xas_init_marks);
 
 #ifdef CONFIG_XARRAY_MULTI
+// marks是什么. 返回node的哪些mark标记了offset
 static unsigned int node_get_marks(struct xa_node *node, unsigned int offset)
 {
 	unsigned int marks = 0;
 	xa_mark_t mark = XA_MARK_0;
 
 	for (;;) {
-		if (node_get_mark(node, offset, mark))
+		if (node_get_mark(node, offset, mark)) // 如果mark标记了offset, 就设置对应的bit位
 			marks |= 1 << (__force unsigned int)mark;
 		if (mark == XA_MARK_MAX)
 			break;
-		mark_inc(mark);
+		mark_inc(mark); // 处理下一个mark
 	}
 
 	return marks;
@@ -998,7 +1027,7 @@ static void node_set_marks(struct xa_node *node, unsigned int offset,
 	xa_mark_t mark = XA_MARK_0;
 
 	for (;;) {
-		if (marks & (1 << (__force unsigned int)mark)) {
+		if (marks & (1 << (__force unsigned int)mark)) {// 如果marks标记了mark比特位
 			node_set_mark(node, offset, mark);
 			if (child)
 				node_mark_all(child, mark);
@@ -1011,7 +1040,7 @@ static void node_set_marks(struct xa_node *node, unsigned int offset,
 
 /**
  * xas_split_alloc() - Allocate memory for splitting an entry.
-
+分配新order的node
  * @xas: XArray operation state.
  * @entry: New entry which will be stored in the array.
  * @order: Current entry order.
@@ -1042,12 +1071,13 @@ void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
 		unsigned int i;
 		void *sibling = NULL;
 		struct xa_node *node;
-
+		// 从slab分配一个新node
 		node = kmem_cache_alloc_lru(radix_tree_node_cachep, xas->xa_lru, gfp);
 		if (!node)
 			goto nomem;
 		node->array = xas->xa;
-		for (i = 0; i < XA_CHUNK_SIZE; i++) {
+
+		for (i = 0; i < XA_CHUNK_SIZE; i++) { // 初始化每一个slot
 			if ((i & mask) == 0) {
 				RCU_INIT_POINTER(node->slots[i], entry);
 				sibling = xa_mk_sibling(i);
@@ -1055,6 +1085,7 @@ void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
 				RCU_INIT_POINTER(node->slots[i], sibling);
 			}
 		}
+
 		RCU_INIT_POINTER(node->parent, xas->xa_alloc);
 		xas->xa_alloc = node;
 	} while (sibs-- > 0);
@@ -1068,13 +1099,14 @@ EXPORT_SYMBOL_GPL(xas_split_alloc);
 
 /**
  * xas_split() - Split a multi-index entry into smaller entries.
+   把一个大的entry分割成小的entry
  * @xas: XArray operation state.
  * @entry: New entry to store in the array.
  * @order: Current entry order.
  *
  * The size of the new entries is set in @xas.  The value in @entry is
  * copied to all the replacement entries.
- *
+ * 新的entry的大小在xas中设置,entry的值被复制到所有的替换entry中
  * Context: Any context.  The caller should hold the xa_lock.
  */
 void xas_split(struct xa_state *xas, void *entry, unsigned int order)
@@ -1088,7 +1120,7 @@ void xas_split(struct xa_state *xas, void *entry, unsigned int order)
 	node = xas->xa_node;
 	if (xas_top(node))
 		return;
-
+	// 找到哪些mark标记了offset
 	marks = node_get_marks(node, xas->xa_offset);
 
 	offset = xas->xa_offset + sibs;
@@ -1410,12 +1442,15 @@ EXPORT_SYMBOL_GPL(xas_find_marked);
 
 /**
  * xas_find_conflict() - Find the next present entry in a range.
+   找到下一个entry
  * @xas: XArray operation state.
  *
  * The @xas describes both a range and a position within that range.
  *
  * Context: Any context.  Expects xa_lock to be held.
  * Return: The next entry in the range covered by @xas or %NULL.
+ ====================
+ 啥意思呢?
  */
 void *xas_find_conflict(struct xa_state *xas)
 {
@@ -1431,7 +1466,7 @@ void *xas_find_conflict(struct xa_state *xas)
 		curr = xas_start(xas);
 		if (!curr)
 			return NULL;
-		while (xa_is_node(curr)) {
+		while (xa_is_node(curr)) {// 只要是node,xas就一直往下走
 			struct xa_node *node = xa_to_node(curr);
 			curr = xas_descend(xas, node);
 		}
@@ -1446,7 +1481,7 @@ void *xas_find_conflict(struct xa_state *xas)
 		if (xas->xa_node->shift == xas->xa_shift) {
 			if ((xas->xa_offset & xas->xa_sibs) == xas->xa_sibs)
 				break;
-		} else if (xas->xa_offset == XA_CHUNK_MASK) {
+		} else if (xas->xa_offset == XA_CHUNK_MASK) { // 遍历完了当前node?
 			xas->xa_offset = xas->xa_node->offset;
 			xas->xa_node = xa_parent_locked(xas->xa, xas->xa_node);
 			if (!xas->xa_node)

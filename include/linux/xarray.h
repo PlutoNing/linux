@@ -1194,10 +1194,18 @@ static inline void xa_release(struct xarray *xa, unsigned long index)
    nr_values表示slots数组中值条目和它们的兄弟条目的数量。
  */
 struct xa_node {
+	/* 
+	shift=8
+	101111101011110000100010111
+	            |offset| shift
+	*/
 	unsigned char	shift;		/*
+	好像是一个与node深度有关系的值
 	(index >> node->shift) & XA_CHUNK_MASK 表示读取的index是node的第几个slot
+	(XA_CHUNK_SIZE << node->shift) - 1 表示xa可容纳的最大元素数量
 	Bits remaining in each slot */
-	unsigned char	offset;		/* 
+	unsigned char	offset;		/*
+	新建node时初始化时会等于xas->xa_offset. 然后一般也是xa_node的offset, 也是parent. 
 	表示在父节点中的槽偏移量。它指示当前节点在父节点 slots 数组中的位置?
 	Slot offset in parent */
 	unsigned char	count;		/* Total entry count
@@ -1213,7 +1221,7 @@ struct xa_node {
 	NULL at top of tree
 	 */
 	struct xarray	*array;		/* 
-	指向与当前节点相关联的 xarray 结构的指针，表示这个节点属于哪个数组。
+	指向与当前node相关联的 xarray 结构的指针，表示这个node属于哪个xa。
 	The array we belong to
 	 */
 	union {
@@ -1224,7 +1232,9 @@ struct xa_node {
 		
 		 */
 	};
-	void __rcu	*slots[XA_CHUNK_SIZE];/* 这是一个指针数组，用于存储指向实际数据、
+	void __rcu	*slots[XA_CHUNK_SIZE];/* 
+	slots[0]存储什么?
+	这是一个指针数组，用于存储指向实际数据、
 	子节点或其他类型条目的指针。 */
 	union {
 		unsigned long	tags[XA_MAX_MARKS][XA_MARK_LONGS];
@@ -1262,7 +1272,9 @@ static inline void *xa_head(const struct xarray *xa)
 						lockdep_is_held(&xa->xa_lock));
 }
 
-/* Private */
+/* Private
+获取xa的head
+*/
 static inline void *xa_head_locked(const struct xarray *xa)
 {
 	return rcu_dereference_protected(xa->xa_head,
@@ -1282,7 +1294,9 @@ static inline void *xa_entry(const struct xarray *xa,
 						lockdep_is_held(&xa->xa_lock));
 }
 
-/* Private */
+/* Private
+读取node的offset位置处的ent
+*/
 static inline void *xa_entry_locked(const struct xarray *xa,
 				const struct xa_node *node, unsigned int offset)
 {
@@ -1299,7 +1313,9 @@ static inline struct xa_node *xa_parent(const struct xarray *xa,
 						lockdep_is_held(&xa->xa_lock));
 }
 
-/* Private */
+/* Private
+返回node的父节点
+*/
 static inline struct xa_node *xa_parent_locked(const struct xarray *xa,
 					const struct xa_node *node)
 {
@@ -1307,7 +1323,9 @@ static inline struct xa_node *xa_parent_locked(const struct xarray *xa,
 						lockdep_is_held(&xa->xa_lock));
 }
 
-/* Private */
+/* Private
+把一个node转为entry
+*/
 static inline void *xa_mk_node(const struct xa_node *node)
 {
 	return (void *)((unsigned long)node | 2);
@@ -1439,7 +1457,7 @@ struct xa_state {
 	struct xa_node *xa_node;/* node->slots[offset]
 	
 	如果最后两个bit是1, 处于无效状态 */
-	struct xa_node *xa_alloc;
+	struct xa_node *xa_alloc;/* 好像是指向新分配的node */
 	xa_update_node_t xa_update; /* 更新的回调函数 */
 	struct list_lru *xa_lru;  /* 相关的lru, 可能是shadow_nodes */
 };
@@ -1583,7 +1601,9 @@ static inline bool xas_frozen(struct xa_node *node)
 	return (unsigned long)node & 2;
 }
 
-/* True if the node represents head-of-tree, RESTART or BOUNDS */
+/* True if the node represents head-of-tree, RESTART or BOUNDS
+   测试是否是树的顶端节点、RESTART 或 BOUNDS
+*/
 static inline bool xas_top(struct xa_node *node)
 {
 	return node <= XAS_RESTART;
@@ -1591,12 +1611,14 @@ static inline bool xas_top(struct xa_node *node)
 
 /**
  * xas_reset() - Reset an XArray operation state.
+   重置xas的错误或遍历状态
  * @xas: XArray operation state.
  *
  * Resets the error or walk state of the @xas so future walks of the
  * array will start from the root.  Use this if you have dropped the
  * xarray lock and want to reuse the xa_state.
- *
+ * 重置xas的错误或遍历状态，以便将来对数组的遍历将从根开始。
+ * 如果您已经释放了xarray锁并希望重用xa_state，请使用此函数。
  * Context: Any context.
  */
 static inline void xas_reset(struct xa_state *xas)
@@ -1923,6 +1945,7 @@ enum {
 
 /**
  * xas_for_each_conflict() - Iterate over a range of an XArray.
+   遍历xa的一段范围
  * @xas: XArray operation state.
  * @entry: Entry retrieved from the array.
  *
@@ -1932,6 +1955,10 @@ enum {
  * which will leave @entry set to the conflicting entry.  The caller
  * may also call xa_set_err() to exit the loop while setting an error
  * to record the reason.
+   这个循环体将针对XArray中位于由xas指定的范围内的每个条目执行。
+   如果循环正常终止，entry将为NULL。用户可以中断循环，这将使entry设置为冲突的条目。
+   调用者还可以调用xa_set_err()退出循环，同时设置错误以记录原因。
+   
  */
 #define xas_for_each_conflict(xas, entry) \
 	while ((entry = xas_find_conflict(xas)))
