@@ -928,7 +928,9 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 	VM_BUG_ON_FOLIO(folio_test_swapbacked(folio), folio);
 	mapping_set_update(&xas, mapping);
 
-	if (!huge) {/* 统计memcg, 设置xas的order */
+	if (!huge) {
+		
+		/* 统计memcg, 设置xas的order */
 		/* 内部会get memcg然后put. */
 		int error = mem_cgroup_charge(folio, NULL, gfp);
 		VM_BUG_ON_FOLIO(index & (folio_nr_pages(folio) - 1), folio);
@@ -936,7 +938,7 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 			return error;
 		/* charg成功了, memcg ref += nr_pages(folio) */
 		charged = true;
-
+// 这里设置xas对应位置的order, 说明这里要装多个页面
 		xas_set_order(&xas, index, folio_order(folio));
 		nr = folio_nr_pages(folio);
 	}
@@ -948,6 +950,7 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 
 	/* 加入mapping */
 	do {
+		// 获取index位置可以存储的最大的order?
 		unsigned int order = xa_get_order(xas.xa, xas.xa_index);
 		void *entry, *old = NULL;
 

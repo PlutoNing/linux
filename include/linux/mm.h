@@ -1081,6 +1081,7 @@ static inline unsigned int compound_order(struct page *page)
 
 /**
  * folio_order - The allocation order of a folio.
+   获取一个folio的order
  * @folio: The folio.
  *
  * A folio is composed of 2^order pages.  See get_order() for the definition

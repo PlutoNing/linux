@@ -343,7 +343,9 @@ struct folio {
 
 	union {
 		struct {
-			unsigned long _flags_1;
+			unsigned long _flags_1;/* 
+			有时候对于大页来说, 后八个bit表示order大小?
+			*/
 			unsigned long _head_1;
 			unsigned long _folio_avail;
 	/* public: */

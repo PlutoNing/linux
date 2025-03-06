@@ -140,7 +140,9 @@ static void xas_squash_marks(const struct xa_state *xas)
 	} while (mark++ != (__force unsigned)XA_MARK_MAX);
 }
 
-/* extracts the offset within this node from the index */
+/* extracts the offset within this node from the index
+看看要读取的index是node的第几个slot
+*/
 static unsigned int get_offset(unsigned long index, struct xa_node *node)
 {
 	return (index >> node->shift) & XA_CHUNK_MASK;
@@ -164,7 +166,7 @@ static void xas_next_offset(struct xa_state *xas)
 	xas->xa_offset++;
 	xas_move_index(xas, xas->xa_offset);
 }
-
+/* set了bounds的实质作用是什么? */
 static void *set_bounds(struct xa_state *xas)
 {
 	xas->xa_node = XAS_BOUNDS;
@@ -177,37 +179,50 @@ static void *set_bounds(struct xa_state *xas)
  * error state, return NULL.  If the index is outside the current scope
  * of the xarray, return NULL without changing @xas->xa_node.  Otherwise
  * set @xas->xa_node to NULL and return the current head of the array.
+   开启一个遍历. 如果xas已经有效, 我们假设它在正确的路径上并返回我们到达的位置.
+ 如果我们处于错误状态, 返回NULL. 如果索引在xarray的当前范围之外, 返回NULL而不改变xas->xa_node.
+ 否则将xas->xa_node设置为NULL并返回数组的当前头
+ ==========================
+ 所以似乎函数的作用就是,如果xas是valid的话,就读取值
+ 否则就是从head开始读取值?
  */
 static void *xas_start(struct xa_state *xas)
 {
 	void *entry;
 
-	if (xas_valid(xas))
-		return xas_reload(xas);
-	if (xas_error(xas))
+	if (xas_valid(xas)) // xa_node后两位bit不是11,就是合法的
+		return xas_reload(xas); // 合法的直接读取xas的xa_node的xa_offset处的值
+	if (xas_error(xas)) // 如果xas的xa_node的值位于err代表的范围的话, 就是err了
 		return NULL;
-
+	// 所以运行到这里说明是invalid?
 	entry = xa_head(xas->xa);
-	if (!xa_is_node(entry)) {
+	if (!xa_is_node(entry)) { // 如果ent不是node地址, 不是node还可能是什么呢?
 		if (xas->xa_index)
 			return set_bounds(xas);
-	} else {
-		if ((xas->xa_index >> xa_to_node(entry)->shift) > XA_CHUNK_MASK)
+	} else { // 如果ent是node, 也就是说ent是内部node, 并且值位于node的范围
+		if (
+			(xas->xa_index >> xa_to_node(entry)->shift) 
+				> XA_CHUNK_MASK)
 			return set_bounds(xas);
 	}
 
 	xas->xa_node = NULL;
 	return entry;
 }
-
+/* 
+参数的一种情况是,现在node是xas的xa_node的"下一层"node
+把xas这个游标指针状态移到下一个node, 更新node和offset成员.
+*/
 static void *xas_descend(struct xa_state *xas, struct xa_node *node)
 {
+	// 看看idx在node上面是第几个slot
 	unsigned int offset = get_offset(xas->xa_index, node);
+	// 现在读取node的这个slot
 	void *entry = xa_entry(xas->xa, node, offset);
 
 	xas->xa_node = node;
-	while (xa_is_sibling(entry)) {
-		offset = xa_to_sibling(entry);
+	while (xa_is_sibling(entry)) { // 这个ent是个sibling
+		offset = xa_to_sibling(entry); // 跳到了node的另一个offset?
 		entry = xa_entry(xas->xa, node, offset);
 		if (node->shift && xa_is_node(entry))
 			entry = XA_RETRY_ENTRY;
@@ -220,25 +235,29 @@ static void *xas_descend(struct xa_state *xas, struct xa_node *node)
 /**
  
  * xas_load() - Load an entry from the XArray (advanced).
+   从xas中加载一个entry
  * @xas: XArray operation state.
  *
  * Usually walks the @xas to the appropriate state to load the entry
  * stored at xa_index.  However, it will do nothing and return %NULL if
  * @xas is in an error state.  xas_load() will never expand the tree.
- *
+ * 通常遍历xas到合适的状态来加载存储在xa_index中的entry, 不管怎样, 如果xas处于
+ 错误状态, 将不会做任何事情并返回NULL
  * If the xa_state is set up to operate on a multi-index entry, xas_load()
  * may return %NULL or an internal entry, even if there are entries
  * present within the range specified by @xas.
- *
+ * 如果xa_state被设置为操作一个多索引entry, xas_load()可能返回NULL或者一个内部entry,
+ 即使在xas指定的范围内有entries
  * Context: Any context.  The caller should hold the xa_lock or the RCU lock.
  * Return: Usually an entry in the XArray, but see description for exceptions.
  */
 void *xas_load(struct xa_state *xas)
 {
+	// 这里开始读取一个node和offset相关的一个ent值.
 	void *entry = xas_start(xas);
 
-	while (xa_is_node(entry)) {
-		struct xa_node *node = xa_to_node(entry);
+	while (xa_is_node(entry)) {// 读取到的是一个node,所以继续读取"树"的下一层的值?
+		struct xa_node *node = xa_to_node(entry); // 先转为node
 
 		if (xas->xa_shift > node->shift)
 			break;
@@ -992,7 +1011,7 @@ static void node_set_marks(struct xa_node *node, unsigned int offset,
 
 /**
  * xas_split_alloc() - Allocate memory for splitting an entry.
-   好像是xas数组分裂node的时候分配内存
+
  * @xas: XArray operation state.
  * @entry: New entry which will be stored in the array.
  * @order: Current entry order.
@@ -1002,14 +1021,14 @@ static void node_set_marks(struct xa_node *node, unsigned int offset,
  * If necessary, it will allocate new nodes (and fill them with @entry)
  * to prepare for the upcoming split of an entry of @order size into
  * entries of the order stored in the @xas.
- * 这个函数应该在调用xas_split()之前调用。
- * 如果需要，它将分配新节点（并用@entry填充它们），
- * 以准备将@order大小的条目拆分为存储在@xas中的顺序的条目。
+
  * Context: May sleep if @gfp flags permit.
  */
 void xas_split_alloc(struct xa_state *xas, void *entry, unsigned int order,
 		gfp_t gfp)
 {
+	// 如果order是9 ,512个页面,那么sibs是7, 因为好像是一个node最大是64个,
+	// 还需要其他7个sib来存储
 	unsigned int sibs = (1 << (order % XA_CHUNK_SHIFT)) - 1;
 	unsigned int mask = xas->xa_sibs;
 
@@ -1771,6 +1790,7 @@ int xa_get_order(struct xarray *xa, unsigned long index)
 	int order = 0;
 
 	rcu_read_lock();
+	// 读取一个值
 	entry = xas_load(&xas);
 
 	if (!entry)
@@ -1778,8 +1798,10 @@ int xa_get_order(struct xarray *xa, unsigned long index)
 
 	if (!xas.xa_node)
 		goto unlock;
+	// 现在有了有效的ent和node
 
-	for (;;) {
+	for (;;) { // 是个贪心的循环, 一直把order能多大就多大?
+		// 现在slot指向order组里面的最后一个页面的slot位置
 		unsigned int slot = xas.xa_offset + (1 << order);
 
 		if (slot >= XA_CHUNK_SIZE)

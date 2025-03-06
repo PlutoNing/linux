@@ -858,6 +858,7 @@ CLEARPAGEFLAG(HugeTLB, hugetlb, PF_SECOND)
 
 /**
  * folio_test_hugetlb - Determine if the folio belongs to hugetlbfs
+   检测folio是不是hugetlbfs的
  * @folio: The folio to test.
  *
  * Context: Any context.  Caller should have a reference on the folio to
