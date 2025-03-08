@@ -822,6 +822,7 @@ enum inode_i_mutex_lock_class
 	I_MUTEX_PARENT2,
 };
 
+// 这个锁保护了什么?
 static inline void inode_lock(struct inode *inode)
 {
 	down_write(&inode->i_rwsem);
@@ -2075,7 +2076,10 @@ struct super_operations {
 #define S_NOQUOTA	(1 << 5)  /* Inode is not counted to quota */
 #define S_DIRSYNC	(1 << 6)  /* Directory modifications are synchronous */
 #define S_NOCMTIME	(1 << 7)  /* Do not update file c/mtime */
-#define S_SWAPFILE	(1 << 8)  /* Do not truncate: swapon got its bmaps */
+#define S_SWAPFILE	(1 << 8)  
+/* 
+表示这个是swap的file
+Do not truncate: swapon got its bmaps */
 #define S_PRIVATE	(1 << 9)  /* Inode is fs-internal */
 #define S_IMA		(1 << 10) /* Inode has an associated IMA struct */
 #define S_AUTOMOUNT	(1 << 11) /* Automount/referral quasi-directory */

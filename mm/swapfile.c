@@ -63,7 +63,7 @@ atomic_long_t nr_swap_pages;
  */
 EXPORT_SYMBOL_GPL(nr_swap_pages);
 /* protected with swap_lock. reading in vm_swap_full() doesn't need lock */
-long total_swap_pages;
+long total_swap_pages; // 全部的可交换空间?
 static int least_priority = -1;
 unsigned long swapfile_maximum_size;
 #ifdef CONFIG_MIGRATION
@@ -78,6 +78,7 @@ static const char Unused_offset[] = "Unused swap offset entry ";
 /*
  * all active swap_info_structs
  * protected with swap_lock, and ordered by priority.
+   全部的活跃的si挂在这里
  */
 static PLIST_HEAD(swap_active_head);
 
@@ -107,6 +108,7 @@ static atomic_t proc_poll_event = ATOMIC_INIT(0);
 
 atomic_t nr_rotate_swap = ATOMIC_INIT(0);
 
+// 找到type对应的si
 static struct swap_info_struct *swap_type_to_swap_info(int type)
 {
 	if (type >= MAX_SWAPFILES)
@@ -115,6 +117,7 @@ static struct swap_info_struct *swap_type_to_swap_info(int type)
 	return READ_ONCE(swap_info[type]); /* rcu_dereference() */
 }
 
+// ent是swap map对应offset的条目
 static inline unsigned char swap_count(unsigned char ent)
 {
 	return ent & ~SWAP_HAS_CACHE;	/* may include COUNT_CONTINUED flag */
@@ -208,6 +211,7 @@ static int discard_swap(struct swap_info_struct *si)
 	return err;		/* That will often be -EOPNOTSUPP */
 }
 
+// se通过rbnode连接件挂在si的rbtree上面, key是page地址
 static struct swap_extent *
 offset_to_swap_extent(struct swap_info_struct *sis, unsigned long offset)
 {
@@ -245,24 +249,29 @@ sector_t swap_page_sector(struct page *page)
 /*
  * swap allocation tell device that a cluster of swap can now be discarded,
  * to allow the swap device to optimize its wear-levelling.
+   swap allocation告诉设备现在可以丢弃一簇交换，以便交换设备优化其磨损平衡。
  */
 static void discard_swap_cluster(struct swap_info_struct *si,
 				 pgoff_t start_page, pgoff_t nr_pages)
 {
+	// 在红黑树上面查到指定的se
 	struct swap_extent *se = offset_to_swap_extent(si, start_page);
 
 	while (nr_pages) {
+		// offset是要处理的页面在se的offset
 		pgoff_t offset = start_page - se->start_page;
+		// 现在把这个偏移转为block地址
 		sector_t start_block = se->start_block + offset;
 		sector_t nr_blocks = se->nr_pages - offset;
 
 		if (nr_blocks > nr_pages)
-			nr_blocks = nr_pages;
+			nr_blocks = nr_pages; // 说明要处理的页面范围都在这个se里面
 		start_page += nr_blocks;
 		nr_pages -= nr_blocks;
 
 		start_block <<= PAGE_SHIFT - 9;
 		nr_blocks <<= PAGE_SHIFT - 9;
+		// 发起discard
 		if (blkdev_issue_discard(si->bdev, start_block,
 					nr_blocks, GFP_NOIO))
 			break;
@@ -272,6 +281,7 @@ static void discard_swap_cluster(struct swap_info_struct *si,
 }
 
 #ifdef CONFIG_THP_SWAP
+// 512
 #define SWAPFILE_CLUSTER	HPAGE_PMD_NR
 
 #define swap_entry_size(size)	(size)
@@ -286,6 +296,7 @@ static void discard_swap_cluster(struct swap_info_struct *si,
 #endif
 #define LATENCY_LIMIT		256
 
+// 设置ci的flags
 static inline void cluster_set_flag(struct swap_cluster_info *info,
 	unsigned int flag)
 {
@@ -356,7 +367,8 @@ static inline void cluster_clear_huge(struct swap_cluster_info *info)
 	info->flags &= ~CLUSTER_FLAG_HUGE;
 }
 
-// 
+//  offset参数好像是全局的页面地址?有时候是刚刚被discard的范围
+// 还是在swapfile的偏移地址呢? 看来更像是pgoff
 static inline struct swap_cluster_info *lock_cluster(struct swap_info_struct *si,
 						     unsigned long offset)
 {
@@ -420,6 +432,7 @@ static void cluster_list_init(struct swap_cluster_list *list)
 	cluster_set_null(&list->tail);
 }
 
+// 把一个cluster挂到si的一个list.
 static void cluster_list_add_tail(struct swap_cluster_list *list,
 				  struct swap_cluster_info *ci,
 				  unsigned int idx)
@@ -443,6 +456,7 @@ static void cluster_list_add_tail(struct swap_cluster_list *list,
 	}
 }
 
+// 从list中删除第一个?
 static unsigned int cluster_list_del_first(struct swap_cluster_list *list,
 					   struct swap_cluster_info *ci)
 {
@@ -477,6 +491,7 @@ static void swap_cluster_schedule_discard(struct swap_info_struct *si,
 	schedule_work(&si->discard_work);
 }
 
+// 好像是释放一个si的cluster, idx是ci的索引
 static void __free_cluster(struct swap_info_struct *si, unsigned long idx)
 {
 	struct swap_cluster_info *ci = si->cluster_info;
@@ -488,23 +503,29 @@ static void __free_cluster(struct swap_info_struct *si, unsigned long idx)
 /*
  * Doing discard actually. After a cluster discard is finished, the cluster
  * will be added to free cluster list. caller should hold si->lock.
+   事实上正在做丢弃。完成cluster丢弃后，cluster将被添加到空闲cluster列表。
+   调用者应持有si->lock。
 */
 static void swap_do_scheduled_discard(struct swap_info_struct *si)
 {
 	struct swap_cluster_info *info, *ci;
 	unsigned int idx;
 
+	// 获取ci
 	info = si->cluster_info;
 
 	while (!cluster_list_empty(&si->discard_clusters)) {
 		idx = cluster_list_del_first(&si->discard_clusters, info);
 		spin_unlock(&si->lock);
 
+		// 执行discard, 处理这些页面范围
 		discard_swap_cluster(si, idx * SWAPFILE_CLUSTER,
 				SWAPFILE_CLUSTER);
 
 		spin_lock(&si->lock);
+		// 这里获取这个区域的ci作为句柄
 		ci = lock_cluster(si, idx * SWAPFILE_CLUSTER);
+		// 释放这个区域
 		__free_cluster(si, idx);
 		memset(si->swap_map + idx * SWAPFILE_CLUSTER,
 				0, SWAPFILE_CLUSTER);
@@ -512,13 +533,15 @@ static void swap_do_scheduled_discard(struct swap_info_struct *si)
 	}
 }
 
+// 好像是负责发起discard, 释放一些cluster什么的
 static void swap_discard_work(struct work_struct *work)
 {
 	struct swap_info_struct *si;
-
+	// 获取对应的si
 	si = container_of(work, struct swap_info_struct, discard_work);
 
 	spin_lock(&si->lock);
+	// 执行工作
 	swap_do_scheduled_discard(si);
 	spin_unlock(&si->lock);
 }
@@ -531,6 +554,7 @@ static void swap_users_ref_free(struct percpu_ref *ref)
 	complete(&si->comp);
 }
 
+// 这里分配什么?
 static void alloc_cluster(struct swap_info_struct *si, unsigned long idx)
 {
 	struct swap_cluster_info *ci = si->cluster_info;
@@ -562,6 +586,8 @@ static void free_cluster(struct swap_info_struct *si, unsigned long idx)
 /*
  * The cluster corresponding to page_nr will be used. The cluster will be
  * removed from free cluster list and its usage counter will be increased.
+   翻译: 与page_nr对应的cluster将被使用。cluster将从空闲cluster列表中删除，
+   并且其使用计数器将增加。
  */
 static void inc_cluster_info_page(struct swap_info_struct *p,
 	struct swap_cluster_info *cluster_info, unsigned long page_nr)
@@ -2296,6 +2322,7 @@ static int swap_node(struct swap_info_struct *p)
 	return bdev ? bdev->bd_disk->node_id : NUMA_NO_NODE;
 }
 
+// 为swap_info_struct初始化avail_lists
 static void setup_swap_info(struct swap_info_struct *p, int prio,
 			    unsigned char *swap_map,
 			    struct swap_cluster_info *cluster_info)
@@ -2311,7 +2338,7 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 	 * low-to-high, while swap ordering is high-to-low
 	 */
 	p->list.prio = -p->prio;
-	for_each_node(i) {
+	for_each_node(i) { // 初始化每个node的prio
 		if (p->prio >= 0)
 			p->avail_lists[i].prio = -p->prio;
 		else {
@@ -2349,6 +2376,7 @@ static void _enable_swap_info(struct swap_info_struct *p)
 		add_to_avail_list(p);
 }
 
+// 
 static void enable_swap_info(struct swap_info_struct *p, int prio,
 				unsigned char *swap_map,
 				struct swap_cluster_info *cluster_info)
@@ -2357,6 +2385,7 @@ static void enable_swap_info(struct swap_info_struct *p, int prio,
 
 	spin_lock(&swap_lock);
 	spin_lock(&p->lock);
+	// 设置si的map和ci等属性
 	setup_swap_info(p, prio, swap_map, cluster_info);
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
@@ -2766,11 +2795,12 @@ static struct swap_info_struct *alloc_swap_info(void)
 	return p;
 }
 
+// 设置si的swap file相关属性
 static int claim_swapfile(struct swap_info_struct *p, struct inode *inode)
 {
 	int error;
 
-	if (S_ISBLK(inode->i_mode)) {
+	if (S_ISBLK(inode->i_mode)) { // 如果是块设备
 		p->bdev = blkdev_get_by_dev(inode->i_rdev,
 				BLK_OPEN_READ | BLK_OPEN_WRITE, p, NULL);
 		if (IS_ERR(p->bdev)) {
@@ -2790,7 +2820,7 @@ static int claim_swapfile(struct swap_info_struct *p, struct inode *inode)
 		if (bdev_is_zoned(p->bdev))
 			return -EINVAL;
 		p->flags |= SWP_BLKDEV;
-	} else if (S_ISREG(inode->i_mode)) {
+	} else if (S_ISREG(inode->i_mode)) {// 如果是文件
 		p->bdev = inode->i_sb->s_bdev;
 	}
 
@@ -2826,6 +2856,7 @@ __weak unsigned long arch_max_swapfile_size(void)
 	return generic_max_swapfile_size();
 }
 
+// 读取swap header页面的相关元数据信息
 static unsigned long read_swap_header(struct swap_info_struct *p,
 					union swap_header *swap_header,
 					struct inode *inode)
@@ -2901,6 +2932,7 @@ static unsigned long read_swap_header(struct swap_info_struct *p,
 #define SWAP_CLUSTER_COLS						\
 	max_t(unsigned int, SWAP_CLUSTER_INFO_COLS, SWAP_CLUSTER_SPACE_COLS)
 
+//
 static int setup_swap_map_and_extents(struct swap_info_struct *p,
 					union swap_header *swap_header,
 					unsigned char *swap_map,
@@ -2982,6 +3014,7 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 	return nr_extents;
 }
 
+// 开启swap的系统调用
 SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 {
 	struct swap_info_struct *p;
@@ -3013,7 +3046,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	p = alloc_swap_info();
 	if (IS_ERR(p))
 		return PTR_ERR(p);
-
+	// 初始化工作队列
 	INIT_WORK(&p->discard_work, swap_discard_work);
 
 	name = getname(specialfile);
@@ -3022,6 +3055,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		name = NULL;
 		goto bad_swap;
 	}
+	// 打开swap文件
 	swap_file = file_open_name(name, O_RDWR|O_LARGEFILE, 0);
 	if (IS_ERR(swap_file)) {
 		error = PTR_ERR(swap_file);
@@ -3034,7 +3068,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	dentry = swap_file->f_path.dentry;
 	inode = mapping->host;
 
-	error = claim_swapfile(p, inode);
+	error = claim_swapfile(p, inode); // 设置si的swap file相关属性
 	if (unlikely(error))
 		goto bad_swap;
 
@@ -3050,25 +3084,30 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 
 	/*
 	 * Read the swap header.
+	 读取swap文件的头部信息
 	 */
 	if (!mapping->a_ops->read_folio) {
 		error = -EINVAL;
 		goto bad_swap_unlock_inode;
 	}
+	// 读取第一个页面
 	page = read_mapping_page(mapping, 0, swap_file);
 	if (IS_ERR(page)) {
 		error = PTR_ERR(page);
 		goto bad_swap_unlock_inode;
 	}
+	// 这个page是swap file的第一个page在页缓存的page
 	swap_header = kmap(page);
-
+	// 读取元数据信息
 	maxpages = read_swap_header(p, swap_header, inode);
 	if (unlikely(!maxpages)) {
 		error = -EINVAL;
 		goto bad_swap_unlock_inode;
 	}
 
-	/* OK, set up the swap map and apply the bad block list */
+	/* OK, set up the swap map and apply the bad block list
+	现在开始设置swap map和应用坏块列表
+	*/
 	swap_map = vzalloc(maxpages);
 	if (!swap_map) {
 		error = -ENOMEM;
@@ -3081,7 +3120,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	if (p->bdev && bdev_synchronous(p->bdev))
 		p->flags |= SWP_SYNCHRONOUS_IO;
 
-	if (p->bdev && bdev_nonrot(p->bdev)) {
+	if (p->bdev && bdev_nonrot(p->bdev)) {// 如果是ssd的话, 有cluster的概念
 		int cpu;
 		unsigned long ci, nr_cluster;
 
@@ -3121,15 +3160,17 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 			cluster = per_cpu_ptr(p->percpu_cluster, cpu);
 			cluster_set_null(&cluster->index);
 		}
-	} else {
+	} else {// 如果是hdd作为swap设备
 		atomic_inc(&nr_rotate_swap);
 		inced_nr_rotate_swap = true;
 	}
 
+	// swap cgroup相关. 主要是给分配内存
 	error = swap_cgroup_swapon(p->type, maxpages);
 	if (error)
 		goto bad_swap_unlock_inode;
 
+		// 设置swap map和extents
 	nr_extents = setup_swap_map_and_extents(p, swap_header, swap_map,
 		cluster_info, maxpages, &span);
 	if (unlikely(nr_extents < 0)) {
@@ -3167,7 +3208,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 					p, err);
 		}
 	}
-
+	// 初始化swap设备的地址空间
 	error = init_swap_address_space(p->type, maxpages);
 	if (error)
 		goto bad_swap_unlock_inode;
@@ -3177,7 +3218,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	 * swap device.
 	 */
 	inode->i_flags |= S_SWAPFILE;
-	error = inode_drain_writes(inode);
+	error = inode_drain_writes(inode); // 刷盘
 	if (error) {
 		inode->i_flags &= ~S_SWAPFILE;
 		goto free_swap_address_space;
@@ -3244,6 +3285,7 @@ out:
 	return error;
 }
 
+// 好像是查看si的信息
 void si_swapinfo(struct sysinfo *val)
 {
 	unsigned int type;
@@ -3263,7 +3305,7 @@ void si_swapinfo(struct sysinfo *val)
 
 /*
  * Verify that a swap entry is valid and increment its swap map count.
- *
+ * 检查swap entry是否有效并增加其swap map计数
  * Returns error code in following case.
  * - success -> 0
  * - swp_entry is invalid -> EINVAL
@@ -3280,30 +3322,36 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 	unsigned char count;
 	unsigned char has_cache;
 	int err;
-
+	// 获取swap_info_struct
 	p = swp_swap_info(entry);
 
 	offset = swp_offset(entry);
+	// 找到对应的ci?
 	ci = lock_cluster_or_swap_info(p, offset);
 
+	// 直接从swap_map中获取swap entry的引用计数?
 	count = p->swap_map[offset];
 
 	/*
 	 * swapin_readahead() doesn't check if a swap entry is valid, so the
 	 * swap entry could be SWAP_MAP_BAD. Check here with lock held.
+	   swapin_readahead()不检查swap条目是否有效，因此swap条目可能是SWAP_MAP_BAD。
+	   在持有锁的情况下检查这里。
 	 */
 	if (unlikely(swap_count(count) == SWAP_MAP_BAD)) {
 		err = -ENOENT;
 		goto unlock_out;
 	}
-
+	// 看看has_cache这个bit位是否设置了
 	has_cache = count & SWAP_HAS_CACHE;
-	count &= ~SWAP_HAS_CACHE;
+	count &= ~SWAP_HAS_CACHE; // 然后去掉编码的这个bit位
 	err = 0;
 
 	if (usage == SWAP_HAS_CACHE) {
 
-		/* set SWAP_HAS_CACHE if there is no cache and entry is used */
+		/* set SWAP_HAS_CACHE if there is no cache and entry is used
+		设置SWAP_HAS_CACHE，如果没有缓存并且条目正在使用
+		*/
 		if (!has_cache && count)
 			has_cache = SWAP_HAS_CACHE;
 		else if (has_cache)		/* someone else added cache */
@@ -3311,9 +3359,12 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 		else				/* no users remaining */
 			err = -ENOENT;
 
-	} else if (count || has_cache) {
+	} else if (count || has_cache) {// 如果正在使用,或者有缓存
+	// （感觉是一般的情况,这时候usage好像是1什么的）
 
-		if ((count & ~COUNT_CONTINUED) < SWAP_MAP_MAX)
+		if (
+			(count & ~COUNT_CONTINUED) //去掉count里面编码的bit位后的值 
+			< SWAP_MAP_MAX)
 			count += usage;
 		else if ((count & ~COUNT_CONTINUED) > SWAP_MAP_MAX)
 			err = -EINVAL;
@@ -3342,6 +3393,7 @@ void swap_shmem_alloc(swp_entry_t entry)
 
 /*
  * Increase reference count of swap entry by 1.
+   增加swap entry的引用计数
  * Returns 0 for success, or -ENOMEM if a swap_count_continuation is required
  * but could not be atomically allocated.  Returns 0, just as if it succeeded,
  * if __swap_duplicate() fails for another reason (-EINVAL or -ENOENT), which
@@ -3369,6 +3421,7 @@ int swapcache_prepare(swp_entry_t entry)
 	return __swap_duplicate(entry, SWAP_HAS_CACHE);
 }
 
+// 获取swap条目的si
 struct swap_info_struct *swp_swap_info(swp_entry_t entry)
 {
 	return swap_type_to_swap_info(swp_type(entry));
@@ -3518,6 +3571,11 @@ outer:
  * borrow from the continuation and report whether it still holds more.
  * Called while __swap_duplicate() or swap_entry_free() holds swap or cluster
  * lock.
+ swap_count_continued - 当原始的交换映射（swap_map）计数从 SWAP_MAP_MAX 递增时，
+ 检查是否已经存在一个延续页（continuation page）可供承接计数。若存在，则进行承接；
+ 否则，在分配新的延续页之前返回失败。当原始的交换映射计数从 0 且带有延续页的情况下
+ 递减时，从延续页中借用计数，并报告延续页是否还持有更多计数。该函数在 __swap_duplicate() 
+ 或 swap_entry_free() 持有交换锁或簇锁时被调用。
  */
 static bool swap_count_continued(struct swap_info_struct *si,
 				 pgoff_t offset, unsigned char count)
@@ -3526,30 +3584,38 @@ static bool swap_count_continued(struct swap_info_struct *si,
 	struct page *page;
 	unsigned char *map;
 	bool ret;
-
+	// 获取swap map这个offset对应的page（swap map是vmalloc分配的）
 	head = vmalloc_to_page(si->swap_map + offset);
 	if (page_private(head) != SWP_CONTINUED) {
 		BUG_ON(count & COUNT_CONTINUED);
 		return false;		/* need to add count continuation */
 	}
-
+	// 到这里是page_private(head) = SWP_CONTINUED?
 	spin_lock(&si->cont_lock);
-	offset &= ~PAGE_MASK;
+	offset &= ~PAGE_MASK; // offset变成页内偏移
+	// 找到head page在lru链表的下一个page?
+	// 为什么可以这么做? swap_continued保证了什么?
 	page = list_next_entry(head, lru);
-	map = kmap_atomic(page) + offset;
+	map = kmap_atomic(page) + offset; // 这个是map应该是offset对应的那个swap
+	// map的条目的地址吧, 也就是一个字节.
 
-	if (count == SWAP_MAP_MAX)	/* initial increment from swap_map */
+	if (count == SWAP_MAP_MAX)	/* 
+	count == 0011 1110
+	initial increment from swap_map */
 		goto init_map;		/* jump over SWAP_CONT_MAX checks */
 
-	if (count == (SWAP_MAP_MAX | COUNT_CONTINUED)) { /* incrementing */
+	if (count == (SWAP_MAP_MAX | COUNT_CONTINUED)) { /* 
+		count == 1011 1110
+		incrementing */
 		/*
 		 * Think of how you add 1 to 999
 		 */
 		while (*map == (SWAP_CONT_MAX | COUNT_CONTINUED)) {
+			// 如果map的值是1111 1111
 			kunmap_atomic(map);
 			page = list_next_entry(page, lru);
 			BUG_ON(page == head);
-			map = kmap_atomic(page) + offset;
+			map = kmap_atomic(page) + offset; // map就变成了下一个page的同样地址?
 		}
 		if (*map == SWAP_CONT_MAX) {
 			kunmap_atomic(map);
@@ -3622,7 +3688,7 @@ static void free_swap_count_continuations(struct swap_info_struct *si)
 }
 
 #if defined(CONFIG_MEMCG) && defined(CONFIG_BLK_CGROUP)
-//实质上限制什么
+//实质上限制什么, 本质上是对磁盘的throttle
 void __folio_throttle_swaprate(struct folio *folio, gfp_t gfp)
 {
 	struct swap_info_struct *si, *next;
@@ -3644,7 +3710,7 @@ void __folio_throttle_swaprate(struct folio *folio, gfp_t gfp)
 
 	spin_lock(&swap_avail_lock);
 	plist_for_each_entry_safe(si, next, &swap_avail_heads[nid],
-				  avail_lists[nid]) {
+				  avail_lists[nid]) {// 遍历nid上面的全部si?
 		if (si->bdev) { //找到在nid上面的si
 			blkcg_schedule_throttle(si->bdev->bd_disk, true);
 			break;
@@ -3655,6 +3721,7 @@ void __folio_throttle_swaprate(struct folio *folio, gfp_t gfp)
 }
 #endif
 
+// 这个是什么? 没人调用这个函数?2025年3月8日23:25:53
 static int __init swapfile_init(void)
 {
 	int nid;
@@ -3666,6 +3733,7 @@ static int __init swapfile_init(void)
 		return -ENOMEM;
 	}
 
+	// 给每个node初始化一个哈希表
 	for_each_node(nid)
 		plist_head_init(&swap_avail_heads[nid]);
 

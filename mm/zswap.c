@@ -1494,6 +1494,7 @@ void zswap_invalidate(int type, pgoff_t offset)
 	spin_unlock(&tree->lock);
 }
 
+// 看来是zswap相关
 void zswap_swapon(int type)
 {
 	struct zswap_tree *tree;

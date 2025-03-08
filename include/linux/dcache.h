@@ -325,6 +325,7 @@ extern struct dentry *dget_parent(struct dentry *dentry);
 
 /**
  *	d_unhashed -	is dentry hashed
+    检测dentry是否已经被哈希
  *	@dentry: entry to check
  *
  *	Returns true if the dentry passed is not currently hashed.

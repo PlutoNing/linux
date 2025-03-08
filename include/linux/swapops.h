@@ -94,6 +94,7 @@ static inline swp_entry_t swp_entry(unsigned long type, pgoff_t offset)
 /*
  * Extract the `type' field from a swp_entry_t.  The swp_entry_t is in
  * arch-independent format
+   条目里面编码了type,也就是所属的swap file
  */
 static inline unsigned swp_type(swp_entry_t entry)
 {
@@ -130,6 +131,7 @@ static inline int is_swap_pte(pte_t pte)
 /*
  * Convert the arch-dependent pte representation of a swp_entry_t into an
  * arch-independent swp_entry_t.
+   把pte转换成swp_entry
  */
 static inline swp_entry_t pte_to_swp_entry(pte_t pte)
 {
@@ -578,6 +580,7 @@ static inline int is_hwpoison_entry(swp_entry_t swp)
 }
 #endif
 
+// 不是属于swap的交换条目? 可能是被其他机制复用的?
 static inline int non_swap_entry(swp_entry_t entry)
 {
 	return swp_type(entry) >= MAX_SWAPFILES;

@@ -140,11 +140,11 @@ union swap_header {
 		char		bootbits[1024];	/* Space for disklabel etc. */
 		__u32		version;
 		__u32		last_page;
-		__u32		nr_badpages;
+		__u32		nr_badpages; // badpages的数量
 		unsigned char	sws_uuid[16];
 		unsigned char	sws_volume[16];
 		__u32		padding[117];
-		__u32		badpages[1];
+		__u32		badpages[1]; // 好像是存储badpage的索引
 	} info;
 };
 
@@ -188,7 +188,9 @@ struct zone;
  * disk blocks.  A rbtree of swap extents maps the entire swapfile (Where the
  * term `swapfile' refers to either a blockdevice or an IS_REG file). Apart
  * from setup, they're handled identically.
- *
+ * 一个swap extent映射一个swapfile的PAGE_SIZE页的范围到一个磁盘块的范围。
+ * 一个swap extents的rbtree映射整个swapfile（其中术语“swapfile”指的是块设备或IS_REG文件）。
+ * 除了设置外，它们的处理方式是相同的。
  * We always assume that blocks are of size PAGE_SIZE.
  */
 struct swap_extent {
@@ -212,7 +214,7 @@ enum {
 	SWP_DISCARDING	= (1 << 3),	/* now discarding a free cluster */
 	SWP_SOLIDSTATE	= (1 << 4),	/* blkdev seeks are cheap */
 	SWP_CONTINUED	= (1 << 5),	/* swap_map has count continuation */
-	SWP_BLKDEV	= (1 << 6),	/* its a block device */
+	SWP_BLKDEV	= (1 << 6),	/* its a block device, 交换文件是块设备 */
 	SWP_ACTIVATED	= (1 << 7),	/* set after swap_activate success */
 	SWP_FS_OPS	= (1 << 8),	/* swapfile operations go through fs */
 	SWP_AREA_DISCARD = (1 << 9),	/* single-time swap area discards */
@@ -226,17 +228,35 @@ enum {
 #define SWAP_CLUSTER_MAX 32UL
 #define COMPACT_CLUSTER_MAX SWAP_CLUSTER_MAX
 
-/* Bit flag in swap_map */
-#define SWAP_HAS_CACHE	0x40	/* Flag page is cached, in first swap_map */
-#define COUNT_CONTINUED	0x80	/* Flag swap_map continuation for full count */
+/* Bit flag in swap_map
+这些好像是编码到swap map的每个条目（一个字节）的bit
+*/
+#define SWAP_HAS_CACHE	0x40	
+/* 
+0100 0000
+Flag page is cached, in first swap_map */
+#define COUNT_CONTINUED	0x80	
+/* 
+1000 0000
+Flag swap_map continuation for full count */
 
 /* Special value in first swap_map */
-#define SWAP_MAP_MAX	0x3e	/* Max count */
-#define SWAP_MAP_BAD	0x3f	/* Note page is bad */
+#define SWAP_MAP_MAX	0x3e	
+/* 
+0011 1110
+Max count */
+#define SWAP_MAP_BAD	0x3f	
+/* 
+swap_map[page_nr] = SWAP_MAP_BAD 表示是badpage
+Note page is bad
+ */
 #define SWAP_MAP_SHMEM	0xbf	/* Owned by shmem/tmpfs */
 
 /* Special value in each swap_map continuation */
-#define SWAP_CONT_MAX	0x7f	/* Max count */
+#define SWAP_CONT_MAX	0x7f	
+/* 
+0111 1111
+Max count */
 
 /*
  * We use this to track usage of a cluster. A cluster is a block of swap disk
@@ -258,7 +278,8 @@ struct swap_cluster_info {
 	unsigned int data:24;
 	unsigned int flags:8;
 };
-#define CLUSTER_FLAG_FREE 1 /* This cluster is free */
+#define CLUSTER_FLAG_FREE 1 
+/* This cluster is free 被释放了 */
 #define CLUSTER_FLAG_NEXT_NULL 2 /* This cluster has no next cluster */
 #define CLUSTER_FLAG_HUGE 4 /* This cluster is backing a transparent huge page */
 
@@ -287,7 +308,10 @@ struct swap_info_struct {
 	struct plist_node list;		/* entry in swap_active_head */
 	signed char	type;		/* strange name for an index */
 	unsigned int	max;		/* extent of the swap_map */
-	unsigned char *swap_map;	/* vmalloc'ed array of usage counts */
+	unsigned char *swap_map;	
+	/* 
+	所属的swapmap
+	vmalloc'ed array of usage counts */
 	struct swap_cluster_info *cluster_info; /* cluster info. Only for SSD */
 	struct swap_cluster_list free_clusters; /* free clusters list */
 	unsigned int lowest_bit;	/* index of first free in swap_map */
@@ -300,7 +324,9 @@ struct swap_info_struct {
 	struct percpu_cluster __percpu *percpu_cluster; /* per cpu's swap location */
 	struct rb_root swap_extent_root;/* root of the swap extent rbtree */
 	struct block_device *bdev;	/* swap device or bdev of swap file */
-	struct file *swap_file;		/* seldom referenced */
+	struct file *swap_file;		/* 
+	si对应的swap文件
+	seldom referenced */
 	unsigned int old_block_size;	/* seldom referenced */
 	struct completion comp;		/* seldom referenced */
 	spinlock_t lock;		/*
@@ -324,6 +350,9 @@ struct swap_info_struct {
 	struct swap_cluster_list discard_clusters; /* discard clusters list */
 	struct plist_node avail_lists[]; /*
 	数组大小是node的数量, 数组对应nid的成员挂接到swap_avail_heads[nid]上
+	==========
+	也就是说swap_avail_heads[nid]是在swap_avail_heads[nid]的连接件
+	因为每个si要挂到每个node上面
 					   * entries in swap_avail_heads, one
 					   * entry per node.
 					   * Must be last as the number of the
@@ -639,7 +668,7 @@ static inline int mem_cgroup_swappiness(struct mem_cgroup *mem)
 
 #if defined(CONFIG_SWAP) && defined(CONFIG_MEMCG) && defined(CONFIG_BLK_CGROUP)
 void __folio_throttle_swaprate(struct folio *folio, gfp_t gfp);
-//
+// swap速率有啥好限制的?
 static inline void folio_throttle_swaprate(struct folio *folio, gfp_t gfp)
 {
 	if (mem_cgroup_disabled())

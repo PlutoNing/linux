@@ -772,6 +772,9 @@ try_restore_exclusive_pte(pte_t *src_pte, struct vm_area_struct *vma,
  * copy one vm_area from one task to the other. Assumes the page tables
  * already present in the new task to be cleared in the whole range
  * covered by this vma.
+ 页面不在内存
+ 拷贝一个vm_area从一个进程到另一个进程。
+ 假设新任务中已经存在的页表在此vma覆盖的整个范围内被清除。
  */
 
 static unsigned long
@@ -780,6 +783,7 @@ copy_nonpresent_pte(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 		struct vm_area_struct *src_vma, unsigned long addr, int *rss)
 {
 	unsigned long vm_flags = dst_vma->vm_flags;
+	// 获取pte条目
 	pte_t orig_pte = ptep_get(src_pte);
 	pte_t pte = orig_pte;
 	struct page *page;
@@ -1010,6 +1014,7 @@ static inline struct folio *page_copy_prealloc(struct mm_struct *src_mm,
 	return new_folio;
 }
 
+// 拷贝pte范围
 static int
 copy_pte_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 	       pmd_t *dst_pmd, pmd_t *src_pmd, unsigned long addr,
@@ -1058,19 +1063,23 @@ again:
 		/*
 		 * We are holding two locks at this point - either of them
 		 * could generate latencies in another task on another CPU.
+		 我们现在持有两个锁 - 任何一个都可能在另一个CPU上的另一个任务中产生延迟。
 		 */
-		if (progress >= 32) {
+		if (progress >= 32) {// 让出一下cpu
 			progress = 0;
 			if (need_resched() ||
 			    spin_needbreak(src_ptl) || spin_needbreak(dst_ptl))
 				break;
 		}
+		// 获取源pte条目
 		ptent = ptep_get(src_pte);
-		if (pte_none(ptent)) {
+		if (pte_none(ptent)) {// 源pte没有页面
 			progress++;
 			continue;
 		}
-		if (unlikely(!pte_present(ptent))) {
+		// 源pte有页面
+
+		if (unlikely(!pte_present(ptent))) { // 源pte有页面,但是不在内存
 			ret = copy_nonpresent_pte(dst_mm, src_mm,
 						  dst_pte, src_pte,
 						  dst_vma, src_vma,
@@ -1091,6 +1100,7 @@ again:
 			 */
 			WARN_ON_ONCE(ret != -ENOENT);
 		}
+		// 源pte有页面, 而且在内存
 		/* copy_present_pte() will clear `*prealloc' if consumed */
 		ret = copy_present_pte(dst_vma, src_vma, dst_pte, src_pte,
 				       addr, rss, &prealloc);
@@ -1147,6 +1157,7 @@ out:
 	return ret;
 }
 
+// 拷贝pte
 static inline int
 copy_pmd_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 	       pud_t *dst_pud, pud_t *src_pud, unsigned long addr,
@@ -1184,6 +1195,7 @@ copy_pmd_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 	return 0;
 }
 
+// 拷贝pud
 static inline int
 copy_pud_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 	       p4d_t *dst_p4d, p4d_t *src_p4d, unsigned long addr,
@@ -1221,6 +1233,7 @@ copy_pud_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 	return 0;
 }
 
+// 拷贝p4d
 static inline int
 copy_p4d_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma,
 	       pgd_t *dst_pgd, pgd_t *src_pgd, unsigned long addr,
@@ -1294,13 +1307,14 @@ copy_page_range(struct vm_area_struct *dst_vma, struct vm_area_struct *src_vma)
 	if (!vma_needs_copy(dst_vma, src_vma))
 		return 0;
 
-	if (is_vm_hugetlb_page(src_vma))
+	if (is_vm_hugetlb_page(src_vma)) // huge的路径
 		return copy_hugetlb_page_range(dst_mm, src_mm, dst_vma, src_vma);
 
 	if (unlikely(src_vma->vm_flags & VM_PFNMAP)) {
 		/*
 		 * We do not free on error cases below as remove_vma
 		 * gets called on error from higher level routine
+		 我们不会在下面的错误情况下释放，因为在更高级别的例程中从错误中调用remove_vma
 		 */
 		ret = track_pfn_copy(src_vma);
 		if (ret)
@@ -5726,6 +5740,7 @@ int __pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address)
 
 /**
  * follow_pte - look up PTE at a user virtual address
+ 查找用户虚拟地址处的PTE
  * @mm: the mm_struct of the target address space
  * @address: user virtual address
  * @ptepp: location to store found PTE
@@ -5736,10 +5751,12 @@ int __pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address)
  * The contents of the PTE are only stable until @ptlp is released;
  * any further use, if any, must be protected against invalidation
  * with MMU notifiers.
- *
+ * 成功返回的时候，PTE的指针存储在ptepp中，相应的锁被获取并存储在ptlp中。
+ * PTE的内容只有在ptlp被释放之前才是稳定的；任何进一步的使用，如果有的话，必须受到MMU通知器的无效保护。
+
  * Only IO mappings and raw PFN mappings are allowed.  The mmap semaphore
  * should be taken for read.
- *
+ * 仅仅允许IO映射和原始PFN映射。应该获取mmap信号量以进行读取。
  * KVM uses this function.  While it is arguably less bad than ``follow_pfn``,
  * it is not a good general-purpose API.
  *
@@ -5754,6 +5771,7 @@ int follow_pte(struct mm_struct *mm, unsigned long address,
 	pmd_t *pmd;
 	pte_t *ptep;
 
+	// 获取pgd
 	pgd = pgd_offset(mm, address);
 	if (pgd_none(*pgd) || unlikely(pgd_bad(*pgd)))
 		goto out;
@@ -5769,6 +5787,7 @@ int follow_pte(struct mm_struct *mm, unsigned long address,
 	pmd = pmd_offset(pud, address);
 	VM_BUG_ON(pmd_trans_huge(*pmd));
 
+	// 一直获取到pte
 	ptep = pte_offset_map_lock(mm, pmd, address, ptlp);
 	if (!ptep)
 		goto out;
@@ -5816,6 +5835,7 @@ int follow_pfn(struct vm_area_struct *vma, unsigned long address,
 EXPORT_SYMBOL(follow_pfn);
 
 #ifdef CONFIG_HAVE_IOREMAP_PROT
+// 函数作用是?
 int follow_phys(struct vm_area_struct *vma,
 		unsigned long address, unsigned int flags,
 		unsigned long *prot, resource_size_t *phys)
@@ -5827,13 +5847,15 @@ int follow_phys(struct vm_area_struct *vma,
 	if (!(vma->vm_flags & (VM_IO | VM_PFNMAP)))
 		goto out;
 
+	// 主要逻辑
 	if (follow_pte(vma->vm_mm, address, &ptep, &ptl))
 		goto out;
+
 	pte = ptep_get(ptep);
 
 	if ((flags & FOLL_WRITE) && !pte_write(pte))
 		goto unlock;
-
+	// 写入返回值
 	*prot = pgprot_val(pte_pgprot(pte));
 	*phys = (resource_size_t)pte_pfn(pte) << PAGE_SHIFT;
 

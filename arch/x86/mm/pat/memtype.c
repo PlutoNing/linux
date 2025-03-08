@@ -135,7 +135,7 @@ static inline enum page_cache_mode get_page_memtype(struct page *pg)
 	else
 		return _PAGE_CACHE_MODE_WT;
 }
-
+/* 设置page的flag */
 static inline void set_page_memtype(struct page *pg,
 				    enum page_cache_mode memtype)
 {
@@ -402,6 +402,7 @@ struct pagerange_state {
 	int			not_ram;
 };
 
+//
 static int
 pagerange_is_ram_callback(unsigned long initial_pfn, unsigned long total_nr_pages, void *arg)
 {
@@ -431,7 +432,7 @@ static int pat_pagerange_is_ram(resource_size_t start, resource_size_t end)
 	if (start_pfn < ISA_END_ADDRESS >> PAGE_SHIFT)
 		start_pfn = ISA_END_ADDRESS >> PAGE_SHIFT;
 
-	if (start_pfn < end_pfn) {
+	if (start_pfn < end_pfn) { //核心逻辑
 		ret = walk_system_ram_range(start_pfn, end_pfn - start_pfn,
 				&state, pagerange_is_ram_callback);
 	}
@@ -662,6 +663,7 @@ int memtype_free(u64 start, u64 end)
 
 /**
  * lookup_memtype - Looks up the memory type for a physical address
+ 查找物理地址的内存类型
  * @paddr: physical address of which memory type needs to be looked up
  *
  * Only to be called when PAT is enabled
@@ -870,6 +872,8 @@ int memtype_kernel_map_sync(u64 base, unsigned long size,
  * Internal interface to reserve a range of physical memory with prot.
  * Reserved non RAM regions only and after successful memtype_reserve,
  * this func also keeps identity mapping (if any) in sync with this new prot.
+   适用于保留具有prot的物理内存范围的内部接口。仅保留非RAM区域，并在成功的memtype_reserve之后，
+   此函数还将标识映射（如果有）与此新prot保持同步。
  */
 static int reserve_pfn_range(u64 paddr, unsigned long size, pgprot_t *vma_prot,
 				int strict_prot)
@@ -902,6 +906,7 @@ static int reserve_pfn_range(u64 paddr, unsigned long size, pgprot_t *vma_prot,
 					     (~_PAGE_CACHE_MASK)) |
 					     cachemode2protval(pcm));
 		}
+
 		return 0;
 	}
 
@@ -953,9 +958,11 @@ static void free_pfn_range(u64 paddr, unsigned long size)
 /*
  * track_pfn_copy is called when vma that is covering the pfnmap gets
  * copied through copy_page_range().
- *
+ * 函数被调用是因为通过copy_page_range()进行复制了包含了pfnmap的vma。
  * If the vma has a linear pfn mapping for the entire range, we get the prot
  * from pte and reserve the entire vma range with single reserve_pfn_range call.
+   如果vma对整个范围有线性pfn映射，我们从pte获取prot并使用单个reserve_pfn_range
+   调用保留整个vma范围。
  */
 int track_pfn_copy(struct vm_area_struct *vma)
 {
@@ -968,12 +975,15 @@ int track_pfn_copy(struct vm_area_struct *vma)
 		/*
 		 * reserve the whole chunk covered by vma. We need the
 		 * starting address and protection from pte.
+		   保留vma覆盖的整个块。我们需要pte中的起始地址和保护。
 		 */
 		if (follow_phys(vma, vma->vm_start, 0, &prot, &paddr)) {
 			WARN_ON_ONCE(1);
 			return -EINVAL;
 		}
+
 		pgprot = __pgprot(prot);
+		// 现在好像是找到了vma起始地址的物理地址?
 		return reserve_pfn_range(paddr, vma_size, &pgprot, 1);
 	}
 

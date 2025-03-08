@@ -20,8 +20,11 @@ int swap_writepage(struct page *page, struct writeback_control *wbc);
 void __swap_writepage(struct page *page, struct writeback_control *wbc);
 
 /* linux/mm/swap_state.c */
-/* One swap address space for each 64M swap space */
+/* One swap address space for each 64M swap space
+一个64M交换空间对应一个交换地址空间
+*/
 #define SWAP_ADDRESS_SPACE_SHIFT	14
+// 一个地址空间是64MB
 #define SWAP_ADDRESS_SPACE_PAGES	(1 << SWAP_ADDRESS_SPACE_SHIFT)
 extern struct address_space *swapper_spaces[];
 // 获取entry对应的address_space

@@ -35,6 +35,7 @@ struct swap_cgroup {
 
 /*
  * allocate buffer for swap_cgroup.
+  为swap cgroup分配内存
  */
 static int swap_cgroup_prepare(int type)
 {
@@ -54,6 +55,7 @@ static int swap_cgroup_prepare(int type)
 			cond_resched();
 	}
 	return 0;
+
 not_enough_page:
 	max = idx;
 	for (idx = 0; idx < max; idx++)
@@ -167,6 +169,7 @@ unsigned short lookup_swap_cgroup_id(swp_entry_t ent)
 	return lookup_swap_cgroup(ent, NULL)->id;
 }
 
+// 设置swap的cgroup机制
 int swap_cgroup_swapon(int type, unsigned long max_pages)
 {
 	void *array;
@@ -181,13 +184,15 @@ int swap_cgroup_swapon(int type, unsigned long max_pages)
 	array = vcalloc(length, sizeof(void *));
 	if (!array)
 		goto nomem;
-
+	// 找到swap文件对应的全局的句柄
 	ctrl = &swap_cgroup_ctrl[type];
 	mutex_lock(&swap_cgroup_mutex);
+	// 这里赋值和设置句柄的相关属性
 	ctrl->length = length;
 	ctrl->map = array;
 	spin_lock_init(&ctrl->lock);
 	if (swap_cgroup_prepare(type)) {
+		// 出错了
 		/* memory shortage */
 		ctrl->map = NULL;
 		ctrl->length = 0;

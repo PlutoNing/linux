@@ -655,6 +655,9 @@ EXPORT_SYMBOL_GPL(is_vmalloc_or_module_addr);
  * Walk a vmap address to the struct page it maps. Huge vmap mappings will
  * return the tail page that corresponds to the base page address, which
  * matches small vmap mappings.
+
+  把一个vmap地址映射到它映射的struct page。
+  巨大的vmap映射将返回与基页地址对应的尾页，与小的vmap映射相匹配。
  */
 struct page *vmalloc_to_page(const void *vmalloc_addr)
 {
@@ -679,6 +682,7 @@ struct page *vmalloc_to_page(const void *vmalloc_addr)
 	if (WARN_ON_ONCE(pgd_bad(*pgd)))
 		return NULL;
 
+		// 通过pgd找到p4d
 	p4d = p4d_offset(pgd, addr);
 	if (p4d_none(*p4d))
 		return NULL;
@@ -686,7 +690,7 @@ struct page *vmalloc_to_page(const void *vmalloc_addr)
 		return p4d_page(*p4d) + ((addr & ~P4D_MASK) >> PAGE_SHIFT);
 	if (WARN_ON_ONCE(p4d_bad(*p4d)))
 		return NULL;
-
+	// 通过p4d找到pud
 	pud = pud_offset(p4d, addr);
 	if (pud_none(*pud))
 		return NULL;
@@ -694,7 +698,7 @@ struct page *vmalloc_to_page(const void *vmalloc_addr)
 		return pud_page(*pud) + ((addr & ~PUD_MASK) >> PAGE_SHIFT);
 	if (WARN_ON_ONCE(pud_bad(*pud)))
 		return NULL;
-
+	// 通过pud找到pmd
 	pmd = pmd_offset(pud, addr);
 	if (pmd_none(*pmd))
 		return NULL;
@@ -702,7 +706,7 @@ struct page *vmalloc_to_page(const void *vmalloc_addr)
 		return pmd_page(*pmd) + ((addr & ~PMD_MASK) >> PAGE_SHIFT);
 	if (WARN_ON_ONCE(pmd_bad(*pmd)))
 		return NULL;
-
+	// 通过pmd找到pte
 	ptep = pte_offset_kernel(pmd, addr);
 	pte = ptep_get(ptep);
 	if (pte_present(pte))
@@ -3362,6 +3366,7 @@ fail:
 
 /**
  * __vmalloc_node - allocate virtually contiguous memory
+ 分配虚拟连续内存
  * @size:	    allocation size
  * @align:	    desired alignment
  * @gfp_mask:	    flags for the page level allocator
@@ -3370,7 +3375,7 @@ fail:
  *
  * Allocate enough pages to cover @size from the page level allocator with
  * @gfp_mask flags.  Map them into contiguous kernel virtual space.
- *
+ * 分配足够的页面以覆盖@size，从页面级分配器中分配它们并将它们映射到连续的内核虚拟空间。
  * Reclaim modifiers in @gfp_mask - __GFP_NORETRY, __GFP_RETRY_MAYFAIL
  * and __GFP_NOFAIL are not supported
  *
@@ -3442,12 +3447,14 @@ EXPORT_SYMBOL_GPL(vmalloc_huge);
 
 /**
  * vzalloc - allocate virtually contiguous memory with zero fill
+   使用vmalloc分配内存，并且将分配的内存清零
  * @size:    allocation size
  *
  * Allocate enough pages to cover @size from the page level
  * allocator and map them into contiguous kernel virtual space.
  * The memory allocated is set to zero.
- *
+ * 分配足够的页面以覆盖@size，从页面级分配器中分配它们并将它们映射到连续的内核虚拟空间。
+ * 分配的内存被设置为零。
  * For tight control over page level allocator and protection flags
  * use __vmalloc() instead.
  *

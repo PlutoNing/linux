@@ -86,6 +86,7 @@ EXPORT_SYMBOL(__blkdev_issue_discard);
 
 /**
  * blkdev_issue_discard - queue a discard
+ 发起一个discard
  * @bdev:	blockdev to issue discard for
  * @sector:	start sector
  * @nr_sects:	number of sectors to discard

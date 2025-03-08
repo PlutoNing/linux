@@ -88,7 +88,7 @@ extern unsigned int ptrs_per_p4d;
 /*
  * PMD_SHIFT determines the size of the area a middle-level
  * page table can map
- 
+ 一个是2MB
  */
 #define PMD_SHIFT	21
 /* 512个pte */

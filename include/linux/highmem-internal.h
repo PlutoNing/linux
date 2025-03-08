@@ -164,6 +164,7 @@ static inline struct page *kmap_to_page(void *addr)
 	return virt_to_page(addr);
 }
 
+// kmap这个页面
 static inline void *kmap(struct page *page)
 {
 	might_sleep();

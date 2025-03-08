@@ -2446,13 +2446,17 @@ EXPORT_SYMBOL(inode_owner_or_capable);
 
 /*
  * Direct i/o helper functions
+ 好像是等待, 一直等到inode没有dio了吧
  */
 static void __inode_dio_wait(struct inode *inode)
 {
+	// 获取这个inode的dio的wq
 	wait_queue_head_t *wq = bit_waitqueue(&inode->i_state, __I_DIO_WAKEUP);
+	// 初始化一个等待指定bit的wait连接件
 	DEFINE_WAIT_BIT(q, &inode->i_state, __I_DIO_WAKEUP);
 
 	do {
+		// 开始等待
 		prepare_to_wait(wq, &q.wq_entry, TASK_UNINTERRUPTIBLE);
 		if (atomic_read(&inode->i_dio_count))
 			schedule();
@@ -2462,11 +2466,13 @@ static void __inode_dio_wait(struct inode *inode)
 
 /**
  * inode_dio_wait - wait for outstanding DIO requests to finish
+   等待未完成的DIO请求完成
  * @inode: inode to wait for
  *
  * Waits for all pending direct I/O requests to finish so that we can
  * proceed with a truncate or equivalent operation.
- *
+ * 等待所有挂起的直接I/O请求完成，以便我们可以继续截断或等效操作。
+
  * Must be called under a lock that serializes taking new references
  * to i_dio_count, usually by inode->i_mutex.
  */

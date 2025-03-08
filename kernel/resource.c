@@ -448,6 +448,8 @@ int walk_mem_res(u64 start, u64 end, void *arg,
  * This function calls the @func callback against all memory ranges of type
  * System RAM which are marked as IORESOURCE_SYSTEM_RAM and IORESOUCE_BUSY.
  * It is to be used only for System RAM.
+   这个函数调用@func回调，针对所有标记为IORESOURCE_SYSTEM_RAM和IORESOURCE_BUSY的类型的系统RAM的内存范围。
+	   它仅用于系统RAM.
  */
 int walk_system_ram_range(unsigned long start_pfn, unsigned long nr_pages,
 			  void *arg, int (*func)(unsigned long, unsigned long, void *))

@@ -130,10 +130,13 @@ static inline errseq_t file_sample_sb_err(struct file *file)
  * Flush file data before changing attributes.  Caller must hold any locks
  * required to prevent further writes to this file until we're done setting
  * flags.
+   刷新文件数据, 在更改属性之前。
+   调用者必须持有任何锁, 以防止在我们设置标志之前对此文件进行进一步写入。
  */
 static inline int inode_drain_writes(struct inode *inode)
 {
-	inode_dio_wait(inode);
+	inode_dio_wait(inode);// 等待没有dio
+	//现在dio请求没有了
 	return filemap_write_and_wait(inode->i_mapping);
 }
 
@@ -209,7 +212,7 @@ enum mapping_flags {
 	AS_UNEVICTABLE	= 3,	/* e.g., ramdisk, SHM_LOCK */
 	AS_EXITING	= 4, 	/* final truncate in progress */
 	/* writeback related tags are not used */
-	AS_NO_WRITEBACK_TAGS = 5,
+	AS_NO_WRITEBACK_TAGS = 5, // 表示忽略writeback相关的标记?
 	AS_LARGE_FOLIO_SUPPORT = 6,
 	AS_RELEASE_ALWAYS,	/* Call ->release_folio(), even if no private data */
 };
@@ -866,6 +869,8 @@ struct page *read_cache_page(struct address_space *, pgoff_t index,
 extern struct page * read_cache_page_gfp(struct address_space *mapping,
 				pgoff_t index, gfp_t gfp_mask);
 
+// 读取index位置的page
+// 好像有时mapping就是file的mapping
 static inline struct page *read_mapping_page(struct address_space *mapping,
 				pgoff_t index, struct file *file)
 {

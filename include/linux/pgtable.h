@@ -60,6 +60,7 @@
  * the page table folding, they are always available, regardless of
  * CONFIG_PGTABLE_LEVELS value. For the folded levels they simply return 0
  * because in such cases PTRS_PER_PxD equals 1.
+ 找到地址的在pmd页面的offset?
  */
 
 static inline unsigned long pte_index(unsigned long address)
@@ -90,6 +91,7 @@ static inline unsigned long pud_index(unsigned long address)
 #endif
 
 #ifndef pte_offset_kernel
+// 在pmd找到addr的pte. 好像就是先找到pmd的页面,然后加上address的（pmd内）offset 
 static inline pte_t *pte_offset_kernel(pmd_t *pmd, unsigned long address)
 {
 	return (pte_t *)pmd_page_vaddr(*pmd) + pte_index(address);
@@ -150,6 +152,7 @@ static inline pgd_t *pgd_offset_pgd(pgd_t *pgd, unsigned long address)
 /*
  * a shortcut which implies the use of the kernel's pgd, instead
  * of a process's
+   获取内核的pgd,而不是进程的
  */
 #ifndef pgd_offset_k
 #define pgd_offset_k(address)		pgd_offset(&init_mm, (address))

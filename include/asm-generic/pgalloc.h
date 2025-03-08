@@ -115,6 +115,7 @@ static inline void pte_free(struct mm_struct *mm, struct page *pte_page)
 #ifndef __HAVE_ARCH_PMD_ALLOC_ONE
 /**
  * pmd_alloc_one - allocate memory for a PMD-level page table
+ 分配内存给PMD级别的页表
  * @mm: the mm_struct of the current context
  *
  * Allocate memory for a page table and ptdesc and runs pagetable_pmd_ctor().

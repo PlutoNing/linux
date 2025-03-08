@@ -252,6 +252,7 @@ static inline unsigned long pgd_pfn(pgd_t pgd)
 	return (pgd_val(pgd) & PTE_PFN_MASK) >> PAGE_SHIFT;
 }
 
+// 空函数
 #define p4d_leaf	p4d_large
 static inline int p4d_large(p4d_t p4d)
 {
@@ -1028,6 +1029,7 @@ static inline int pmd_none(pmd_t pmd)
 	return (val & ~_PAGE_KNL_ERRATUM_MASK) == 0;
 }
 
+// 好像是找到pmd的页面的地址
 static inline unsigned long pmd_page_vaddr(pmd_t pmd)
 {
 	return (unsigned long)__va(pmd_val(pmd) & pmd_pfn_mask(pmd));

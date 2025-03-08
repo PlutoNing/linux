@@ -27,6 +27,8 @@
 /*
  * swapper_space is a fiction, retained to simplify the path through
  * vmscan's shrink_page_list.
+ swap地址空间的ops
+   swapper_space是一个虚构的东西，保留下来是为了简化vmscan的shrink_page_list路径。
  */
 static const struct address_space_operations swap_aops = {
 	.writepage	= swap_writepage,
@@ -35,8 +37,9 @@ static const struct address_space_operations swap_aops = {
 	.migrate_folio	= migrate_folio,
 #endif
 };
-
+// 这个swap设备的几个地址空间的数组
 struct address_space *swapper_spaces[MAX_SWAPFILES] __read_mostly;
+// 表示这个swap设备有几个地址空间
 static unsigned int nr_swapper_spaces[MAX_SWAPFILES] __read_mostly;
 static bool enable_vma_readahead __read_mostly = true;
 
@@ -678,21 +681,25 @@ skip:
 	return read_swap_cache_async(entry, gfp_mask, vma, addr, NULL);
 }
 
+//初始化这个swap设备的地址空间
 int init_swap_address_space(unsigned int type, unsigned long nr_pages)
 {
 	struct address_space *spaces, *space;
 	unsigned int i, nr;
-
+	// 计算地址空间数量
 	nr = DIV_ROUND_UP(nr_pages, SWAP_ADDRESS_SPACE_PAGES);
 	spaces = kvcalloc(nr, sizeof(struct address_space), GFP_KERNEL);
 	if (!spaces)
 		return -ENOMEM;
-	for (i = 0; i < nr; i++) {
+	for (i = 0; i < nr; i++) { // 逐个初始化地址空间
 		space = spaces + i;
+		// 初始化地址空间的xas数组的flag
 		xa_init_flags(&space->i_pages, XA_FLAGS_LOCK_IRQ);
 		atomic_set(&space->i_mmap_writable, 0);
 		space->a_ops = &swap_aops;
-		/* swap cache doesn't use writeback related tags */
+		/* swap cache doesn't use writeback related tags
+		swap的地址空间不使用writeback相关的标记
+		*/
 		mapping_set_no_writeback_tags(space);
 	}
 	nr_swapper_spaces[type] = nr;
