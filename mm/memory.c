@@ -2838,6 +2838,7 @@ int apply_to_existing_page_range(struct mm_struct *mm, unsigned long addr,
 EXPORT_SYMBOL_GPL(apply_to_existing_page_range);
 
 /*
+ 判断pte和orig pte是否相同
  * handle_pte_fault chooses page fault handler according to an entry which was
  * read non-atomically.  Before making any commitment, on those architectures
  * or configurations (e.g. i386 with PAE) which might give a mix of unmatched
@@ -3903,7 +3904,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	si = get_swap_device(entry);
 	if (unlikely(!si))
 		goto out;
-
+	// 找到页面
 	folio = swap_cache_get_folio(entry, vma, vmf->address);
 	if (folio)
 		page = folio_file_page(folio, swp_offset(entry));
@@ -3911,7 +3912,10 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 	if (!folio) { // page不存在于swap的mapping里面的话
 		if (data_race(si->flags & SWP_SYNCHRONOUS_IO) &&
-		    __swap_count(entry) == 1) {
+		    __swap_count(entry) == 1) {/* 这个逻辑分支是什么情况?
+				缺页,不在swap mapping, 不是应该去读取吗,为什么这里
+				申请页面呢? ... 申请页面就是为了把swap file读入到内存
+				*/
 			/* skip swapcache */
 			/* 缺页也不在swap mapping里面,这里申请页面 */
 			folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0,
@@ -3933,14 +3937,16 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				if (shadow)
 					workingset_refault(folio, shadow);
 
+				// 添加到lruvec
 				folio_add_lru(folio);
 
 				/* To provide entry to swap_readpage() */
 				folio->swap = entry;
+				// 这里把swap file的内容换入到内存
 				swap_readpage(page, true, NULL);
 				folio->private = NULL;
 			}
-		} else {// 预读swap的情况
+		} else {// 预读swap的情况, 看来这个if分支也是从swap file读取.
 			page = swapin_readahead(entry, GFP_HIGHUSER_MOVABLE,
 						vmf);
 			if (page)
@@ -5149,7 +5155,9 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	if (!vmf->pte) // pte不存在, 这里可能是匿名页的缺页, 也可能是文件页缺页, 这
 	//函数内部会分开处理
 		return do_pte_missing(vmf);
+	// 现在是有页面,但是不在内存中?
 
+	// 被交换的情况
 	if (!pte_present(vmf->orig_pte)) //页面不在内存中 
 		return do_swap_page(vmf);
 

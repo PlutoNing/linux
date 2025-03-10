@@ -427,6 +427,7 @@ static void sio_read_complete(struct kiocb *iocb, long ret)
 	mempool_free(sio, sio_pool);
 }
 
+// 像是初始化了“plug”这个“任务”
 static void swap_readpage_fs(struct page *page,
 			     struct swap_iocb **plug)
 {
@@ -451,6 +452,8 @@ static void swap_readpage_fs(struct page *page,
 		sio->pages = 0;
 		sio->len = 0;
 	}
+	// 初始化sio完成
+
 	bvec_set_page(&sio->bvec[sio->pages], page, thp_size(page), 0);
 	sio->len += thp_size(page);
 	sio->pages += 1;
@@ -458,10 +461,12 @@ static void swap_readpage_fs(struct page *page,
 		swap_read_unplug(sio);
 		sio = NULL;
 	}
+
 	if (plug)
 		*plug = sio;
 }
 
+// 好像是初始化一个bio来读取page的东西, 读入一个被swap出去的页面
 static void swap_readpage_bdev_sync(struct page *page,
 		struct swap_info_struct *sis)
 {
@@ -469,7 +474,9 @@ static void swap_readpage_bdev_sync(struct page *page,
 	struct bio bio;
 
 	bio_init(&bio, sis->bdev, &bv, 1, REQ_OP_READ);
+	// 设置要读取的东西
 	bio.bi_iter.bi_sector = swap_page_sector(page);
+	// 是要把读取的内容写入到这个page
 	__bio_add_page(&bio, page, thp_size(page), 0);
 	/*
 	 * Keep this task valid during swap readpage because the oom killer may
@@ -477,11 +484,14 @@ static void swap_readpage_bdev_sync(struct page *page,
 	 */
 	get_task_struct(current);
 	count_vm_event(PSWPIN);
+	// 提交这个bio
 	submit_bio_wait(&bio);
+	// 现在读写完成了, swap file里面的页面已经被换入到内存了
 	__end_swap_bio_read(&bio);
 	put_task_struct(current);
 }
 
+// 异步读取swap file换入到page的函数
 static void swap_readpage_bdev_async(struct page *page,
 		struct swap_info_struct *sis)
 {
@@ -495,9 +505,11 @@ static void swap_readpage_bdev_async(struct page *page,
 	submit_bio(bio);
 }
 
+// 把swap file的内容换入到page里面
 void swap_readpage(struct page *page, bool synchronous, struct swap_iocb **plug)
 {
 	struct folio *folio = page_folio(page);
+	//
 	struct swap_info_struct *sis = page_swap_info(page);
 	bool workingset = folio_test_workingset(folio);
 	unsigned long pflags;
@@ -522,9 +534,9 @@ void swap_readpage(struct page *page, bool synchronous, struct swap_iocb **plug)
 		folio_mark_uptodate(folio);
 		folio_unlock(folio);
 	} else if (data_race(sis->flags & SWP_FS_OPS)) {
-		swap_readpage_fs(page, plug);
+		swap_readpage_fs(page, plug); // 东西初始化和指定在plug里面
 	} else if (synchronous || (sis->flags & SWP_SYNCHRONOUS_IO)) {
-		swap_readpage_bdev_sync(page, sis);
+		swap_readpage_bdev_sync(page, sis); // 把swap file里面的换入到page
 	} else {
 		swap_readpage_bdev_async(page, sis);
 	}

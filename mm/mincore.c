@@ -7,6 +7,7 @@
 
 /*
  * The mincore() system call.
+ mincore syscall[1] 告诉您进程的内存页是否驻留在内存中
  */
 #include <linux/pagemap.h>
 #include <linux/gfp.h>
@@ -44,6 +45,7 @@ static int mincore_hugetlb(pte_t *pte, unsigned long hmask, unsigned long addr,
 }
 
 /*
+mincore检查这个swap的页面
  * Later we can get more picky about what "in core" means precisely.
  * For now, simply check to see if the page is in the page cache,
  * and is up to date; i.e. that no page-in operation would be required
@@ -97,6 +99,7 @@ static int mincore_unmapped_range(unsigned long addr, unsigned long end,
 	return 0;
 }
 
+//遍历进程页面的回调ops中对遇到pte的回调函数
 static int mincore_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 			struct mm_walk *walk)
 {
@@ -121,12 +124,14 @@ static int mincore_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 	for (; addr != end; ptep++, addr += PAGE_SIZE) {
 		pte_t pte = ptep_get(ptep);
 
-		/* We need to do cache lookup too for pte markers */
+		/* We need to do cache lookup too for pte markers
+		我们需要对pte标记进行缓存查找
+		*/
 		if (pte_none_mostly(pte))
 			__mincore_unmapped_range(addr, addr + PAGE_SIZE,
 						 vma, vec);
 		else if (pte_present(pte))
-			*vec = 1;
+			*vec = 1; // 在内存 , 统计一个
 		else { /* pte is a swap entry */
 			swp_entry_t entry = pte_to_swp_entry(pte);
 
@@ -155,6 +160,7 @@ out:
 	return 0;
 }
 
+// 检查这个vma是否可以执行mincore检查
 static inline bool can_do_mincore(struct vm_area_struct *vma)
 {
 	if (vma_is_anonymous(vma))
@@ -172,7 +178,9 @@ static inline bool can_do_mincore(struct vm_area_struct *vma)
 	       file_permission(vma->vm_file, MAY_WRITE) == 0;
 }
 
+// mincore系统调用在检查进程页面范围时遍历页面执行的回调ops
 static const struct mm_walk_ops mincore_walk_ops = {
+	// 遇到不同类型的执行的不同函数
 	.pmd_entry		= mincore_pte_range,
 	.pte_hole		= mincore_unmapped_range,
 	.hugetlb_entry		= mincore_hugetlb,
@@ -183,6 +191,8 @@ static const struct mm_walk_ops mincore_walk_ops = {
  * Do a chunk of "sys_mincore()". We've already checked
  * all the arguments, we hold the mmap semaphore: we should
  * just return the amount of info we're asked for.
+   做一块“sys_mincore()”。我们已经检查了所有的参数，我们
+   持有mmap信号量：我们应该只返回我们要求的信息量。
  */
 static long do_mincore(unsigned long addr, unsigned long pages, unsigned char *vec)
 {
@@ -190,15 +200,17 @@ static long do_mincore(unsigned long addr, unsigned long pages, unsigned char *v
 	unsigned long end;
 	int err;
 
+	// 找到涉及的vma
 	vma = vma_lookup(current->mm, addr);
 	if (!vma)
 		return -ENOMEM;
 	end = min(vma->vm_end, addr + (pages << PAGE_SHIFT));
-	if (!can_do_mincore(vma)) {
+	if (!can_do_mincore(vma)) { // 什么样子算作不能执行mincore检查呢
 		unsigned long pages = DIV_ROUND_UP(end - addr, PAGE_SIZE);
 		memset(vec, 1, pages);
 		return pages;
 	}
+	// 执行实际操作, 看来是靠遍历+回调执行的检查
 	err = walk_page_range(vma->vm_mm, addr, end, &mincore_walk_ops, vec);
 	if (err < 0)
 		return err;
@@ -213,12 +225,14 @@ static long do_mincore(unsigned long addr, unsigned long pages, unsigned char *v
  * The status is returned in a vector of bytes.  The least significant
  * bit of each byte is 1 if the referenced page is in memory, otherwise
  * it is zero.
- *
+ * 返回当前进程地址空间中指定的页面的内存驻留状态
+
  * Because the status of a page can change after mincore() checks it
  * but before it returns to the application, the returned vector may
  * contain stale information.  Only locked pages are guaranteed to
  * remain in memory.
- *
+ * 因为页面的状态在mincore()检查之后但在返回给应用程序之前可能会发生变化，所以返回
+ 的向量可能包含过时的信息。只有锁定的页面才能保证保留在内存中。
  * return values:
  *  zero    - success
  *  -EFAULT - vec points to an illegal address
@@ -228,6 +242,7 @@ static long do_mincore(unsigned long addr, unsigned long pages, unsigned char *v
  *		specify one or more pages which are not currently
  *		mapped
  *  -EAGAIN - A kernel resource was temporarily unavailable.
+ ======================
  */
 SYSCALL_DEFINE3(mincore, unsigned long, start, size_t, len,
 		unsigned char __user *, vec)
@@ -247,12 +262,15 @@ SYSCALL_DEFINE3(mincore, unsigned long, start, size_t, len,
 		return -ENOMEM;
 
 	/* This also avoids any overflows on PAGE_ALIGN */
+	/* 要检查的page数量 */
 	pages = len >> PAGE_SHIFT;
+	/* 不够一页的也算 */
 	pages += (offset_in_page(len)) != 0;
 
 	if (!access_ok(vec, pages))
 		return -EFAULT;
 
+		// 分配一个单页面
 	tmp = (void *) __get_free_page(GFP_USER);
 	if (!tmp)
 		return -EAGAIN;
@@ -264,6 +282,7 @@ SYSCALL_DEFINE3(mincore, unsigned long, start, size_t, len,
 		 * the temporary buffer size.
 		 */
 		mmap_read_lock(current->mm);
+		// 执行实际操作
 		retval = do_mincore(start, min(pages, PAGE_SIZE), tmp);
 		mmap_read_unlock(current->mm);
 

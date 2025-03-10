@@ -20,6 +20,7 @@ static int real_depth(int depth)
 	return depth;
 }
 
+//
 static int walk_pte_range_inner(pte_t *pte, unsigned long addr,
 				unsigned long end, struct mm_walk *walk)
 {
@@ -38,6 +39,7 @@ static int walk_pte_range_inner(pte_t *pte, unsigned long addr,
 	return err;
 }
 
+// 遍历pte, 执行回调
 static int walk_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -112,6 +114,7 @@ static int walk_hugepd_range(hugepd_t *phpd, unsigned long addr,
 }
 #endif
 
+// 遍历pmd, 执行回调
 static int walk_pmd_range(pud_t *pud, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -162,6 +165,7 @@ again:
 		if (is_hugepd(__hugepd(pmd_val(*pmd))))
 			err = walk_hugepd_range((hugepd_t *)pmd, addr, next, walk, PMD_SHIFT);
 		else
+		// 遍历pte, 执行回调
 			err = walk_pte_range(pmd, addr, next, walk);
 		if (err)
 			break;
@@ -174,6 +178,7 @@ again:
 	return err;
 }
 
+// 遍历pud, 执行回调
 static int walk_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -226,6 +231,7 @@ static int walk_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 	return err;
 }
 
+// 遍历p4d, 执行回调
 static int walk_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -261,6 +267,7 @@ static int walk_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
 	return err;
 }
 
+// 遍历pgd, 执行回调
 static int walk_pgd_range(unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -375,6 +382,7 @@ static int walk_page_test(unsigned long start, unsigned long end,
 	return 0;
 }
 
+// 依据walk结构体，遍历页表
 static int __walk_page_range(unsigned long start, unsigned long end,
 			struct mm_walk *walk)
 {
@@ -429,6 +437,7 @@ static inline void process_vma_walk_lock(struct vm_area_struct *vma,
 
 /**
  * walk_page_range - walk page table with caller specific callbacks
+   遍历页表，使用调用者特定的回调
  * @mm:		mm_struct representing the target process of page table walk
  * @start:	start address of the virtual address range
  * @end:	end address of the virtual address range
@@ -474,8 +483,9 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 	int err = 0;
 	unsigned long next;
 	struct vm_area_struct *vma;
+	// 构造一个mm_walk结构体
 	struct mm_walk walk = {
-		.ops		= ops,
+		.ops		= ops, // 回调函数
 		.mm		= mm,
 		.private	= private,
 	};
@@ -488,6 +498,7 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 
 	process_mm_walk_lock(walk.mm, ops->walk_lock);
 
+	// 找到start所在的vma
 	vma = find_vma(walk.mm, start);
 	do {
 		if (!vma) { /* after the last vma */
@@ -518,6 +529,7 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 			}
 			if (err < 0)
 				break;
+			// 现在walk结构体信息更完整了, 开始执行遍历
 			err = __walk_page_range(start, next, &walk);
 		}
 		if (err)

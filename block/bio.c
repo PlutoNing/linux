@@ -1361,6 +1361,7 @@ static void submit_bio_wait_endio(struct bio *bio)
 
 /**
  * submit_bio_wait - submit a bio, and wait until it completes
+   提交一个bio然后等待它完成
  * @bio: The &struct bio which describes the I/O
  *
  * Simple wrapper around submit_bio(). Returns 0 on success, or the error from
@@ -1379,7 +1380,7 @@ int submit_bio_wait(struct bio *bio)
 	bio->bi_private = &done;
 	bio->bi_end_io = submit_bio_wait_endio;
 	bio->bi_opf |= REQ_SYNC;
-	submit_bio(bio);
+	submit_bio(bio); // 提交bio
 
 	/* Prevent hang_check timer from firing at us during very long I/O */
 	hang_check = sysctl_hung_task_timeout_secs;

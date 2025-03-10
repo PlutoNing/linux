@@ -4696,6 +4696,8 @@ EXPORT_SYMBOL(__folio_alloc);
  * Common helper functions. Never use with __GFP_HIGHMEM because the returned
  * address cannot represent highmem pages. Use alloc_pages and then kmap if
  * you need to access high mem.
+ * 通用的帮助函数。永远不要使用__GFP_HIGHMEM，因为返回的地址不能表示高内存页。
+ 如果需要访问高内存，请使用alloc_pages然后kmap。
  */
 unsigned long __get_free_pages(gfp_t gfp_mask, unsigned int order)
 {

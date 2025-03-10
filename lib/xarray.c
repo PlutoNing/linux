@@ -736,12 +736,16 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 
 /**
  * xas_create_range() - Ensure that stores to this range will succeed
+   保证存储到这个范围将成功
  * @xas: XArray operation state.
  *
  * Creates all of the slots in the range covered by @xas.  Sets @xas to
  * create single-index entries and positions it at the beginning of the
  * range.  This is for the benefit of users which have not yet been
  * converted to use multi-index entries.
+   创建由xas覆盖的范围中的所有slots. 设置xas以创建单索引entries并将其定位在范围的开头.
+   这对于尚未转换为使用多索引entries的用户是有益的
+  ==========================
  */
 void xas_create_range(struct xa_state *xas)
 {

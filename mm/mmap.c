@@ -1881,6 +1881,7 @@ EXPORT_SYMBOL(find_vma_intersection);
 
 /**
  * find_vma() - Find the VMA for a given address, or the next VMA.
+   获取地址addr对应的VMA，如果没有则返回下一个VMA
  * @mm: The mm_struct to check
  * @addr: The address
  *

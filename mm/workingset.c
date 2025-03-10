@@ -654,6 +654,7 @@ void workingset_update_node(struct xa_node *node)
 			/* 更新这个node所属的memcg的统计信息 */
 			__inc_lruvec_kmem_state(node, WORKINGSET_NODES);
 		}
+
 	} else {
 		if (!list_empty(&node->private_list)) {
 			list_lru_del(&shadow_nodes, &node->private_list);

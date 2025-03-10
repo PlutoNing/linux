@@ -27,7 +27,7 @@ void __swap_writepage(struct page *page, struct writeback_control *wbc);
 // 一个地址空间是64MB
 #define SWAP_ADDRESS_SPACE_PAGES	(1 << SWAP_ADDRESS_SPACE_SHIFT)
 extern struct address_space *swapper_spaces[];
-// 获取entry对应的address_space
+// 获取entry对应的address_space（mapping, 也就是交换缓存）
 #define swap_address_space(entry)			    \
 	(&swapper_spaces[swp_type(entry)][swp_offset(entry) \
 		>> SWAP_ADDRESS_SPACE_SHIFT])

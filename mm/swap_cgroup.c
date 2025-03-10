@@ -145,9 +145,11 @@ unsigned short swap_cgroup_record(swp_entry_t ent, unsigned short id,
 	for (;;) {
 		VM_BUG_ON(sc->id != old);
 		sc->id = id;
+
 		offset++;
 		if (offset == end)
 			break;
+
 		if (offset % SC_PER_PAGE)
 			sc++;
 		else

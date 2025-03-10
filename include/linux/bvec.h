@@ -36,6 +36,9 @@ struct bio_vec {
 
 /**
  * bvec_set_page - initialize a bvec based off a struct page
+   基于一个page初始化一个bvec
+   ==================
+   这个bv就是读写这个page的
  * @bv:		bvec to initialize
  * @page:	page the bvec should point to
  * @len:	length of the bvec

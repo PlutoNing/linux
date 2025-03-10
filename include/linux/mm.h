@@ -2267,6 +2267,7 @@ extern pgoff_t __page_file_index(struct page *page);
 /*
  * Return the pagecache index of the passed page.  Regular pagecache pages
  * use ->index whereas swapcache pages use swp_offset(->private)
+   返回page的index. 通常是index, 但是swapcache的话是swp_offset(->private)
  */
 static inline pgoff_t page_index(struct page *page)
 {

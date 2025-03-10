@@ -424,7 +424,7 @@ enum req_flag_bits {
 		REQ_OP_BITS,
 	__REQ_FAILFAST_TRANSPORT, /* no driver retries of transport errors */
 	__REQ_FAILFAST_DRIVER,	/* no driver retries of driver errors */
-	__REQ_SYNC,		/* request is sync (sync write or read) */
+	__REQ_SYNC,		/* 表示这个读写是同步的,request is sync (sync write or read) */
 	__REQ_META,		/* metadata io request */
 	__REQ_PRIO,		/* boost priority in cfq */
 	__REQ_NOMERGE,		/* don't touch this for merging */

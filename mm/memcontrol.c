@@ -5276,6 +5276,7 @@ static inline void mem_cgroup_id_put(struct mem_cgroup *memcg)
 
 /**
  * mem_cgroup_from_id - look up a memcg from a memcg id
+ 通过id查找memcg
  * @id: the memcg id to look up
  *
  * Caller must hold rcu_read_lock().
@@ -7157,10 +7158,11 @@ int mem_cgroup_swapin_charge_folio(struct folio *folio, struct mm_struct *mm,
 
 /*
  * mem_cgroup_swapin_uncharge_swap - uncharge swap slot
+   uncharge一个swap的slot
  * @entry: swap entry for which the page is charged
  *
  * Call this function after successfully adding the charged page to swapcache.
- *
+ * 调用这个函数, 在成功添加一个页面到swapcache之后.
  * Note: This function assumes the page for which swap slot is being uncharged
  * is order 0 page.
  */
@@ -7183,6 +7185,8 @@ void mem_cgroup_swapin_uncharge_swap(swp_entry_t entry)
 		 * The swap entry might not get freed for a long time,
 		 * let's not wait for it.  The page already received a
 		 * memory+swap charge, drop the swap entry duplicate.
+		   这个swap的条目可能不会被释放很长时间, 我们不等待它.
+		   这个页面已经收到了一个memory+swap的charge, 丢弃这个swap的条目的副本.
 		 */
 		mem_cgroup_uncharge_swap(entry, 1);
 	}
@@ -7647,6 +7651,7 @@ int __mem_cgroup_try_charge_swap(struct folio *folio, swp_entry_t entry)
 
 /**
  * __mem_cgroup_uncharge_swap - uncharge swap space
+   uncharge swap的条目
  * @entry: swap entry to uncharge
  * @nr_pages: the amount of swap space to uncharge
  */
@@ -7655,16 +7660,18 @@ void __mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages)
 	struct mem_cgroup *memcg;
 	unsigned short id;
 
+	// 找到memcg的id
 	id = swap_cgroup_record(entry, 0, nr_pages);
 	rcu_read_lock();
 	memcg = mem_cgroup_from_id(id);
-	if (memcg) {
+	if (memcg) {// 找到了memcg, 开始uncharge
 		if (!mem_cgroup_is_root(memcg)) {
 			if (do_memsw_account())
 				page_counter_uncharge(&memcg->memsw, nr_pages);
 			else
 				page_counter_uncharge(&memcg->swap, nr_pages);
 		}
+		//
 		mod_memcg_state(memcg, MEMCG_SWAP, -nr_pages);
 		mem_cgroup_id_put_many(memcg, nr_pages);
 	}

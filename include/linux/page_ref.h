@@ -116,6 +116,7 @@ static inline void init_page_count(struct page *page)
 }
 
 
+//
 static inline void page_ref_add(struct page *page, int nr)
 {
 	atomic_add(nr, &page->_refcount);
@@ -124,6 +125,7 @@ static inline void page_ref_add(struct page *page, int nr)
 }
 
 
+//
 static inline void folio_ref_add(struct folio *folio, int nr)
 {
 	page_ref_add(&folio->page, nr);

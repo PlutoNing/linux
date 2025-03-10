@@ -388,6 +388,7 @@ static inline struct mem_cgroup *obj_cgroup_memcg(struct obj_cgroup *objcg)
  */
 static inline struct mem_cgroup *__folio_memcg(struct folio *folio)
 {
+	// 有memcg成员
 	unsigned long memcg_data = folio->memcg_data;
 
 	VM_BUG_ON_FOLIO(folio_test_slab(folio), folio);

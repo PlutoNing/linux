@@ -623,9 +623,11 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
  *
  * Looks up the page cache entry at @mapping & @index.  If a folio is
  * present, it is returned with an increased refcount.
- *
+ * 查找@mapping和@index处的页缓存条目。如果存在folio, 则返回时会增加引用计数。
  * Return: A folio or ERR_PTR(-ENOENT) if there is no folio in the cache for
  * this index.  Will not return a shadow, swap or DAX entry.
+ 返回: 如果没有此索引的缓存中没有folio, 则返回一个folio或ERR_PTR(-ENOENT)。
+ 不会返回阴影、交换或DAX条目。
  */
 static inline struct folio *filemap_get_folio(struct address_space *mapping,
 					pgoff_t index)
@@ -793,12 +795,13 @@ static inline pgoff_t folio_next_index(struct folio *folio)
 
 /**
  * folio_file_page - The page for a particular index.
+   在folio中找到index位置的page
  * @folio: The folio which contains this index.
  * @index: The index we want to look up.
  *
  * Sometimes after looking up a folio in the page cache, we need to
  * obtain the specific page for an index (eg a page fault).
- *
+ * 有时候在查找页缓存中的folio之后, 我们需要为索引获取特定的页(例如页面错误)。
  * Return: The page containing the file data for this index.
  */
 static inline struct page *folio_file_page(struct folio *folio, pgoff_t index)
@@ -806,7 +809,7 @@ static inline struct page *folio_file_page(struct folio *folio, pgoff_t index)
 	/* HugeTLBfs indexes the page cache in units of hpage_size */
 	if (folio_test_hugetlb(folio))
 		return &folio->page;
-
+	// 找到folio中间的page
 	return folio_page(folio, index & (folio_nr_pages(folio) - 1));
 }
 
@@ -924,6 +927,7 @@ static inline loff_t page_offset(struct page *page)
 	return ((loff_t)page->index) << PAGE_SHIFT;
 }
 
+// 获取page在pagecache中的偏移量
 static inline loff_t page_file_offset(struct page *page)
 {
 	return ((loff_t)page_index(page)) << PAGE_SHIFT;

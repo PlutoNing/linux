@@ -213,7 +213,9 @@ enum {
 	SWP_DISCARDABLE = (1 << 2),	/* blkdev support discard */
 	SWP_DISCARDING	= (1 << 3),	/* now discarding a free cluster */
 	SWP_SOLIDSTATE	= (1 << 4),	/* blkdev seeks are cheap */
-	SWP_CONTINUED	= (1 << 5),	/* swap_map has count continuation */
+	SWP_CONTINUED	= (1 << 5),	/*
+	刚分配的continue page的priv是这个
+	swap_map has count continuation */
 	SWP_BLKDEV	= (1 << 6),	/* its a block device, 交换文件是块设备 */
 	SWP_ACTIVATED	= (1 << 7),	/* set after swap_activate success */
 	SWP_FS_OPS	= (1 << 8),	/* swapfile operations go through fs */
@@ -694,6 +696,7 @@ static inline int mem_cgroup_try_charge_swap(struct folio *folio,
 
 extern void __mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages);
 
+// 如何uncharge一个swap条目呢?而且还是在添加到swap一个页面之后.
 static inline void mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages)
 {
 	if (mem_cgroup_disabled())

@@ -57,6 +57,7 @@ static DEFINE_PER_CPU(struct lru_rotate, lru_rotate) = {
 };
 
 /*
+聚集了各种各样的fbatch
 2024年09月10日16:06:19
 2024年09月10日16:06:19
  * The following folio batches are grouped together because they are protected
@@ -227,7 +228,8 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
 		if (move_fn != lru_add_fn && !folio_test_clear_lru(folio))
 			continue;
 		/* 如果是lru_add_fn函数
-		或者本来是lru */
+		或者本来是lru
+		就开始找到lruvec, 然后移动 */
 		lruvec = folio_lruvec_relock_irqsave(folio, lruvec, &flags);
 		move_fn(lruvec, folio);
 
@@ -251,9 +253,11 @@ static void folio_batch_add_and_move(struct folio_batch *fbatch,
 	folio_batch_move_lru(fbatch, move_fn);
 }
 
+// 从fbatch里面移动folio到lru
+// 这个是回调的函数指针
 static void lru_move_tail_fn(struct lruvec *lruvec, struct folio *folio)
 {
-	if (!folio_test_unevictable(folio)) {
+	if (!folio_test_unevictable(folio)) {// 只操作可以evictable的
 		lruvec_del_folio(lruvec, folio);
 		folio_clear_active(folio);
 		lruvec_add_folio_tail(lruvec, folio);
@@ -694,24 +698,28 @@ static void lru_lazyfree_fn(struct lruvec *lruvec, struct folio *folio)
 
 /*
  * Drain pages out of the cpu's folio_batch.
+   把cpu的folio_batch里面的folio移动到lru上面?
  * Either "cpu" is the current CPU, and preemption has already been
  * disabled; or "cpu" is being hot-unplugged, and is already dead.
  */
 void lru_add_drain_cpu(int cpu)
 {
 	struct cpu_fbatches *fbatches = &per_cpu(cpu_fbatches, cpu);
+	// 找到lru_add这个fbatch
 	struct folio_batch *fbatch = &fbatches->lru_add;
 
-	if (folio_batch_count(fbatch))
+	if (folio_batch_count(fbatch)) // 如果这个fbatch有内容，就移动
 		folio_batch_move_lru(fbatch, lru_add_fn);
 
+		// 这个又是什么fbatch?
 	fbatch = &per_cpu(lru_rotate.fbatch, cpu);
 	/* Disabling interrupts below acts as a compiler barrier. */
-	if (data_race(folio_batch_count(fbatch))) {
+	if (data_race(folio_batch_count(fbatch))) {// 如果这个fbatch里面也有东西
 		unsigned long flags;
 
 		/* No harm done if a racing interrupt already did this */
 		local_lock_irqsave(&lru_rotate.lock, flags);
+		// 开始移动
 		folio_batch_move_lru(fbatch, lru_move_tail_fn);
 		local_unlock_irqrestore(&lru_rotate.lock, flags);
 	}

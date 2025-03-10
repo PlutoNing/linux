@@ -286,6 +286,7 @@ static inline struct folio *folio_alloc(gfp_t gfp, unsigned int order)
 #define vma_alloc_folio(gfp, order, vma, addr, hugepage)		\
 	folio_alloc(gfp, order)
 #endif
+// 分配一个页
 #define alloc_page(gfp_mask) alloc_pages(gfp_mask, 0)
 
 // 给vma分配一个页
@@ -304,6 +305,7 @@ void *alloc_pages_exact(size_t size, gfp_t gfp_mask) __alloc_size(1);
 void free_pages_exact(void *virt, size_t size);
 __meminit void *alloc_pages_exact_nid(int nid, size_t size, gfp_t gfp_mask) __alloc_size(2);
 
+// 分配一个单页面
 #define __get_free_page(gfp_mask) \
 		__get_free_pages((gfp_mask), 0)
 

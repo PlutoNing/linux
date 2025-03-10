@@ -1255,12 +1255,17 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
  * of swapoff.  Then, we need to enclose all swap related functions
  * with get_swap_device() and put_swap_device(), unless the swap
  * functions call get/put_swap_device() by themselves.
- *
+ * 当我们获取一个交换条目时，如果没有其他方法来防止交换机关闭，例如交换缓存中的
+ folio被锁定，页面表被保持等，交换条目可能会因为交换机关闭而变得无效。然后，
+ 我们需要将所有与交换相关的函数封装在get_swap_device()和put_swap_device()中，
+ 除非交换函数自己调用get/put_swap_device()。
  * Check whether swap entry is valid in the swap device.  If so,
  * return pointer to swap_info_struct, and keep the swap entry valid
  * via preventing the swap device from being swapoff, until
  * put_swap_device() is called.  Otherwise return NULL.
- *
+ * 检查交换条目是否在交换设备中有效。如果是，则返回指向swap_info_struct的指针，
+ 并通过防止交换设备被交换关闭来保持交换条目有效，直到调用put_swap_device()。
+ 否则返回NULL。
  * Notice that swapoff or swapoff+swapon can still happen before the
  * percpu_ref_tryget_live() in get_swap_device() or after the
  * percpu_ref_put() in put_swap_device() if there isn't any other way
@@ -1566,7 +1571,7 @@ unlock_out:
 	unlock_cluster_or_swap_info(si, ci);
 	return ret;
 }
-
+/* 2025年3月10日10:37:45 */
 static bool folio_swapped(struct folio *folio)
 {
 	swp_entry_t entry = folio->swap;
@@ -1583,11 +1588,13 @@ static bool folio_swapped(struct folio *folio)
 
 /**
  * folio_free_swap() - Free the swap space used for this folio.
+   释放这个folio的交换空间
  * @folio: The folio to remove.
  *
  * If swap is getting full, or if there are no more mappings of this folio,
  * then call folio_free_swap to free its swap space.
- *
+ * 如果交换正在变满，或者没有这个folio的更多映射，那么调用folio_free_swap
+ 来释放它的交换空间。
  * Return: true if we were able to release the swap space.
  */
 bool folio_free_swap(struct folio *folio)
@@ -3365,7 +3372,7 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 		if (
 			(count & ~COUNT_CONTINUED) //去掉count里面编码的bit位后的值 
 			< SWAP_MAP_MAX)
-			count += usage;
+			count += usage; // 最普遍的情况?
 		else if ((count & ~COUNT_CONTINUED) > SWAP_MAP_MAX)
 			err = -EINVAL;
 		else if (swap_count_continued(p, offset, count))
@@ -3403,6 +3410,7 @@ int swap_duplicate(swp_entry_t entry)
 {
 	int err = 0;
 
+	// 返回enomem就添加新的continue page
 	while (!err && __swap_duplicate(entry, 1) == -ENOMEM)
 		err = add_swap_count_continuation(entry, GFP_ATOMIC);
 	return err;
@@ -3410,10 +3418,12 @@ int swap_duplicate(swp_entry_t entry)
 
 /*
  * @entry: swap entry for which we allocate swap cache.
- *
+ * entry是我们为其分配交换缓存的交换条目。
  * Called when allocating swap cache for existing swap entry,
  * This can return error codes. Returns 0 at success.
  * -EEXIST means there is a swap cache.
+   当为现有交换条目分配交换缓存时调用，这可能返回错误代码。
+   成功时返回0。-EEXIST表示有一个交换缓存。
  * Note: return code is different from swap_duplicate().
  */
 int swapcache_prepare(swp_entry_t entry)
@@ -3427,6 +3437,7 @@ struct swap_info_struct *swp_swap_info(swp_entry_t entry)
 	return swap_type_to_swap_info(swp_type(entry));
 }
 
+// 获取page的si
 struct swap_info_struct *page_swap_info(struct page *page)
 {
 	swp_entry_t entry = page_swap_entry(page);
@@ -3456,14 +3467,20 @@ EXPORT_SYMBOL_GPL(__page_file_index);
  * page of the original vmalloc'ed swap_map, to hold the continuation count
  * (for that entry and for its neighbouring PAGE_SIZE swap entries).  Called
  * again when count is duplicated beyond SWAP_MAP_MAX * SWAP_CONT_MAX, etc.
- *
+ * 当一个交换计数被复制超过 SWAP_MAP_MAX 时，它会分配一个新页面，并将其链接到原始的
+ * vmalloc'ed swap_map 的条目页面，以保存延续计数（对于该条目及其相邻的 PAGE_SIZE 个交换条目）。
+ * 当计数超过 SWAP_MAP_MAX * SWAP_CONT_MAX 等时再次调用。
  * These continuation pages are seldom referenced: the common paths all work
  * on the original swap_map, only referring to a continuation page when the
  * low "digit" of a count is incremented or decremented through SWAP_MAP_MAX.
- *
+ * 这些延续页很少被引用：常见路径都在原始的 swap_map 上工作，只有在通过 SWAP_MAP_MAX
+ * 递增或递减计数的低“数字”时才引用延续页。
+
  * add_swap_count_continuation(, GFP_ATOMIC) can be called while holding
  * page table locks; if it fails, add_swap_count_continuation(, GFP_KERNEL)
  * can be called after dropping locks.
+ ==================
+ 作用好像是申请新的continue page
  */
 int add_swap_count_continuation(swp_entry_t entry, gfp_t gfp_mask)
 {
@@ -3482,6 +3499,7 @@ int add_swap_count_continuation(swp_entry_t entry, gfp_t gfp_mask)
 	 */
 	page = alloc_page(gfp_mask | __GFP_HIGHMEM);
 
+	// 获取swap_info_struct
 	si = get_swap_device(entry);
 	if (!si) {
 		/*
@@ -3519,6 +3537,7 @@ int add_swap_count_continuation(swp_entry_t entry, gfp_t gfp_mask)
 	/*
 	 * Page allocation does not initialize the page's lru field,
 	 * but it does always reset its private field.
+	 页面分配不会初始化页面的lru字段，但它总是重置其私有字段。
 	 */
 	if (!page_private(head)) {
 		BUG_ON(count & COUNT_CONTINUED);
@@ -3527,16 +3546,18 @@ int add_swap_count_continuation(swp_entry_t entry, gfp_t gfp_mask)
 		si->flags |= SWP_CONTINUED;
 	}
 
-	list_for_each_entry(list_page, &head->lru, lru) {
+	list_for_each_entry(list_page, &head->lru, lru) {// 遍历head page现在的continue page
 		unsigned char *map;
 
 		/*
 		 * If the previous map said no continuation, but we've found
 		 * a continuation page, free our allocation and use this one.
+		 如果前一个map的flag说没有延续，但我们现在找到了一个延续页，
+		 释放我们的分配并使用这个。
 		 */
 		if (!(count & COUNT_CONTINUED))
 			goto out_unlock_cont;
-
+		// 获取现在这个continue page的map值
 		map = kmap_atomic(list_page) + offset;
 		count = *map;
 		kunmap_atomic(map);
@@ -3545,10 +3566,11 @@ int add_swap_count_continuation(swp_entry_t entry, gfp_t gfp_mask)
 		 * If this continuation count now has some space in it,
 		 * free our allocation and use this one.
 		 */
-		if ((count & ~COUNT_CONTINUED) != SWAP_CONT_MAX)
+		if ((count & ~COUNT_CONTINUED) != SWAP_CONT_MAX) // 如果count现在不是1111 1111或者0111 1111
 			goto out_unlock_cont;
 	}
-
+	// 到这里说明现在现存的continue page都满了
+	// 使用我们新申请的, 挂到head-lru先
 	list_add_tail(&page->lru, &head->lru);
 	page = NULL;			/* now it's attached, don't free it */
 out_unlock_cont:
@@ -3617,7 +3639,7 @@ static bool swap_count_continued(struct swap_info_struct *si,
 			BUG_ON(page == head);
 			map = kmap_atomic(page) + offset; // map就变成了下一个page的同样地址?
 		}
-		if (*map == SWAP_CONT_MAX) {
+		if (*map == SWAP_CONT_MAX) { // 0111 1111
 			kunmap_atomic(map);
 			page = list_next_entry(page, lru);
 			if (page == head) {
@@ -3625,8 +3647,11 @@ static bool swap_count_continued(struct swap_info_struct *si,
 				goto out;
 			}
 			map = kmap_atomic(page) + offset;
+
+// 这两个if用来调整map的位置
 init_map:		*map = 0;		/* we didn't zero the page */
 		}
+
 		*map += 1;
 		kunmap_atomic(map);
 		while ((page = list_prev_entry(page, lru)) != head) {
