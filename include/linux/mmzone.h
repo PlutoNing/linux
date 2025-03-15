@@ -187,7 +187,7 @@ enum node_stat_item {
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
 			   only modified from process context */
 
-	NR_FILE_PAGES,
+	NR_FILE_PAGES, /* 被交换的页也算在里面 */
 	NR_FILE_DIRTY, /*有脏文件页了,
 	todddo, 2024年12月7日21:25:18 为什么可以认为是reclaimable的 */
 	NR_WRITEBACK,
@@ -216,10 +216,10 @@ enum node_stat_item {
 #if IS_ENABLED(CONFIG_SHADOW_CALL_STACK)
 	NR_KERNEL_SCS_KB,	/* measured in KiB */
 #endif
-	NR_PAGETABLE,		/* used for pagetables */
+	NR_PAGETABLE,		/* 表示用于页表的page数量,used for pagetables */
 	NR_SECONDARY_PAGETABLE, /* secondary pagetables, e.g. KVM pagetables */
 #ifdef CONFIG_SWAP
-	NR_SWAPCACHE, //表示被换入到内存的交换页
+	NR_SWAPCACHE, //表示被换入到内存的交换页的mapping大小?
 #endif
 #ifdef CONFIG_NUMA_BALANCING
 	PGPROMOTE_SUCCESS,	/* promote successfully */

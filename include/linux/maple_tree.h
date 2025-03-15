@@ -587,6 +587,7 @@ void mas_set_range(struct ma_state *mas, unsigned long start, unsigned long last
 
 /**
  * mas_set() - Set up Maple Tree operation state for a different index.
+ 设置mas的新index?
  * @mas: Maple Tree operation state.
  * @index: New index into the Maple Tree.
  *
@@ -607,12 +608,13 @@ static inline bool mt_external_lock(const struct maple_tree *mt)
 
 /**
  * mt_init_flags() - Initialise an empty maple tree with flags.
+ 初始化一个空的mt?
  * @mt: Maple Tree
  * @flags: maple tree flags.
  *
  * If you need to initialise a Maple Tree with special flags (eg, an
  * allocation tree), use this function.
- *
+ * 如果你需要初始化一个带有特殊标志的枫树（例如，分配树），请使用此函数。
  * Context: Any context.
  */
 static inline void mt_init_flags(struct maple_tree *mt, unsigned int flags)

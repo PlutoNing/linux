@@ -10,10 +10,11 @@
 #define THRESHOLD_ACTIVATE_SWAP_SLOTS_CACHE	(5*SWAP_SLOTS_CACHE_SIZE)
 #define THRESHOLD_DEACTIVATE_SWAP_SLOTS_CACHE	(2*SWAP_SLOTS_CACHE_SIZE)
 
+// 表示申请swap slots的cache
 struct swap_slots_cache {
 	bool		lock_initialized;
 	struct mutex	alloc_lock; /* protects slots, nr, cur */
-	swp_entry_t	*slots;
+	swp_entry_t	*slots; // 缓存的可用的swap slot
 	int		nr;
 	int		cur;
 	spinlock_t	free_lock;  /* protects slots_ret, n_ret */

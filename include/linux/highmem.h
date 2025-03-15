@@ -541,6 +541,7 @@ static inline void folio_zero_segment(struct folio *folio,
 
 /**
  * folio_zero_range() - Zero a byte range in a folio.
+    清零 folio 中的一段字节范围
  * @folio: The folio to write to.
  * @start: The first byte to zero.
  * @length: The number of bytes to zero.

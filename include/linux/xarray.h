@@ -45,7 +45,7 @@
 #define BITS_PER_XA_VALUE	(BITS_PER_LONG - 1)
 
 /**
-把整数转为xas的entry.
+把值转为xas的value entry.
 就是左移一位,最后一bit置1表示是value?
  * xa_mk_value() - Create an XArray entry from an integer.
  * @v: Value to store in XArray.
@@ -61,6 +61,8 @@ static inline void *xa_mk_value(unsigned long v)
 
 /**
  * xa_to_value() - Get value stored in an XArray entry.
+ 获取一个xas entry的值
+ 也就是说,去掉编码的元数据信息
  * @entry: XArray entry.
  *
  * Context: Any context.
@@ -80,6 +82,7 @@ static inline unsigned long xa_to_value(const void *entry)
  * Context: Any context.
  * Return: True if the entry is a value, false if it is a pointer.
  好像是value的话, 就不是想要的东西
+ 比如说shmem mapping里面找到的is_value的, 就说明是交换条目
  */
 static inline bool xa_is_value(const void *entry)
 {
@@ -1811,13 +1814,14 @@ static inline void xas_set_lru(struct xa_state *xas, struct list_lru *lru)
 
 /**
  * xas_next_entry() - Advance iterator to next present entry.
+   把xas的游标移动到下一个存在的条目。
  * @xas: XArray operation state.
  * @max: Highest index to return.
  *
  * xas_next_entry() is an inline function to optimise xarray traversal for
  * speed.  It is equivalent to calling xas_find(), and will call xas_find()
  * for all the hard cases.
- *
+ * 是一个inline的
  * Return: The next present entry after the one currently referred to by @xas.
  */
 static inline void *xas_next_entry(struct xa_state *xas, unsigned long max)
@@ -1834,6 +1838,7 @@ static inline void *xas_next_entry(struct xa_state *xas, unsigned long max)
 			return xas_find(xas, max);
 		if (unlikely(xas->xa_offset == XA_CHUNK_MASK))
 			return xas_find(xas, max);
+		//查找下一个entry
 		entry = xa_entry(xas->xa, node, xas->xa_offset + 1);
 		if (unlikely(xa_is_internal(entry)))
 			return xas_find(xas, max);

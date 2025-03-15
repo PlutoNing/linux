@@ -403,6 +403,7 @@ static inline bool is_sync_kiocb(struct kiocb *kiocb)
 }
 
 struct address_space_operations {
+	/* 用于写回mapping的脏页 */
 	int (*writepage)(struct page *page, struct writeback_control *wbc);
 	int (*read_folio)(struct file *, struct folio *);
 
@@ -477,7 +478,7 @@ struct address_space {
 	struct xarray		i_pages; /* 用于缓存页面的 xarray。 */
 	struct rw_semaphore	invalidate_lock;
 	gfp_t			gfp_mask;
-	atomic_t		i_mmap_writable;
+	atomic_t		i_mmap_writable; // 表示mmap到这个mapping的vma的数量
 #ifdef CONFIG_READ_ONLY_THP_FOR_FS
 	/* number of thp, only for non-shmem files */
 	atomic_t		nr_thps;
@@ -578,6 +579,7 @@ static inline int mapping_writably_mapped(struct address_space *mapping)
 	return atomic_read(&mapping->i_mmap_writable) > 0;
 }
 
+// 如果有vma mmap到了这个mapping, 调用一次
 static inline int mapping_map_writable(struct address_space *mapping)
 {
 	return atomic_inc_unless_negative(&mapping->i_mmap_writable) ?

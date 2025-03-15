@@ -1282,6 +1282,7 @@ EXPORT_SYMBOL_GPL(__xas_next);
 
 /**
  * xas_find() - Find the next present entry in the XArray.
+ 在xa找到下一个存在的条目
  * @xas: XArray operation state.
  * @max: Highest index to return.
  *

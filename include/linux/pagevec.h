@@ -48,7 +48,7 @@ static inline void folio_batch_reinit(struct folio_batch *fbatch)
 {
 	fbatch->nr = 0;
 }
-/*  */
+/* 获取fbatch的内容量 */
 static inline unsigned int folio_batch_count(struct folio_batch *fbatch)
 {
 	return fbatch->nr;

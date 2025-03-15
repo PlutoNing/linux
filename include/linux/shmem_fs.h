@@ -25,7 +25,9 @@ struct shmem_inode_info {
 	unsigned long		swapped;	/* subtotal assigned to swap */
 	pgoff_t			fallocend;	/* highest fallocate endindex */
 	struct list_head        shrinklist;     /* shrinkable hpage inodes */
-	struct list_head	swaplist;	/* chain of maybes on swap */
+	struct list_head	swaplist;	/*
+	挂接到全局的swap链表
+	chain of maybes on swap */
 	struct shared_policy	policy;		/* NUMA memory alloc policy */
 	struct simple_xattrs	xattrs;		/* list of xattrs */
 	atomic_t		stop_eviction;	/* hold when working on inode */
@@ -96,6 +98,7 @@ extern unsigned long shmem_get_unmapped_area(struct file *, unsigned long addr,
 extern int shmem_lock(struct file *file, int lock, struct ucounts *ucounts);
 #ifdef CONFIG_SHMEM
 extern const struct address_space_operations shmem_aops;
+// 测试mapping是不是shmem的mapping
 static inline bool shmem_mapping(struct address_space *mapping)
 {
 	return mapping->a_ops == &shmem_aops;
@@ -145,6 +148,7 @@ static inline struct folio *shmem_read_folio(struct address_space *mapping,
 	return shmem_read_folio_gfp(mapping, index, mapping_gfp_mask(mapping));
 }
 
+// 好像都是其他模块调用
 static inline struct page *shmem_read_mapping_page(
 				struct address_space *mapping, pgoff_t index)
 {
@@ -152,6 +156,7 @@ static inline struct page *shmem_read_mapping_page(
 					mapping_gfp_mask(mapping));
 }
 
+// 判断是不是shmem的file?
 static inline bool shmem_file(struct file *file)
 {
 	if (!IS_ENABLED(CONFIG_SHMEM))

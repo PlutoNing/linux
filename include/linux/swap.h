@@ -686,6 +686,7 @@ static inline void folio_throttle_swaprate(struct folio *folio, gfp_t gfp)
 #if defined(CONFIG_MEMCG) && defined(CONFIG_SWAP)
 void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry);
 int __mem_cgroup_try_charge_swap(struct folio *folio, swp_entry_t entry);
+// 刚刚给folio分配了entry这个swap slot, 这里进行charge
 static inline int mem_cgroup_try_charge_swap(struct folio *folio,
 		swp_entry_t entry)
 {

@@ -173,8 +173,8 @@ static int swsusp_extents_insert(unsigned long swap_offset)
 /*
  *	alloc_swapdev_block - allocate a swap page and register that it has
  *	been allocated, so that it can be freed in case of an error.
+    分配一个交换页并注册它已经被分配，以便在出现错误时可以释放它。
  */
-
 sector_t alloc_swapdev_block(int swap)
 {
 	unsigned long offset;

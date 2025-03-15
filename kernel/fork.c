@@ -455,6 +455,7 @@ static struct kmem_cache *mm_cachep;
 /* SLAB cache for vm_area_struct.lock */
 static struct kmem_cache *vma_lock_cachep;
 
+// 锁还要单独分配吗
 static bool vma_lock_alloc(struct vm_area_struct *vma)
 {
 	vma->vm_lock = kmem_cache_alloc(vma_lock_cachep, GFP_KERNEL);
@@ -479,6 +480,7 @@ static inline void vma_lock_free(struct vm_area_struct *vma) {}
 
 #endif /* CONFIG_PER_VMA_LOCK */
 
+// 为mm新建一个vma
 struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;

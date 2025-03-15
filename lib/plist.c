@@ -134,7 +134,7 @@ void plist_del(struct plist_node *node, struct plist_head *head)
 
 /**
  * plist_requeue - Requeue @node at end of same-prio entries.
- *
+ * 作用: 将一个已经在plist中的node移动到同样优先级的node的后面?
  * This is essentially an optimized plist_del() followed by
  * plist_add().  It moves an entry already in the plist to
  * after any other same-priority entries.

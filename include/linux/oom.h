@@ -80,15 +80,17 @@ static inline bool tsk_is_oom_victim(struct task_struct * tsk)
 
 /*
  * Checks whether a page fault on the given mm is still reliable.
+   检查这个mm上的页面错误是否仍然可靠。
  * This is no longer true if the oom reaper started to reap the
  * address space which is reflected by MMF_UNSTABLE flag set in
  * the mm. At that moment any !shared mapping would lose the content
  * and could cause a memory corruption (zero pages instead of the
  * original content).
- *
+ * 这不再是真的，如果oom收割者开始收割反映在mm中设置的MMF_UNSTABLE标志的地址空间。
+ 此时，任何非共享映射都会丢失内容，并可能导致内存损坏（零页而不是原始内容）。
  * User should call this before establishing a page table entry for
  * a !shared mapping and under the proper page table lock.
- *
+ * 我们应该在为非共享映射建立页表项之前调用此函数，并在适当的页表锁下调用。
  * Return 0 when the PF is safe VM_FAULT_SIGBUS otherwise.
  */
 static inline vm_fault_t check_stable_address_space(struct mm_struct *mm)

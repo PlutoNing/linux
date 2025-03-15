@@ -71,7 +71,9 @@ extern struct kobj_attribute shmem_enabled_attr;
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 // 21
 #define HPAGE_PMD_SHIFT PMD_SHIFT
+// 2MB
 #define HPAGE_PMD_SIZE	((1UL) << HPAGE_PMD_SHIFT)
+// 21个0
 #define HPAGE_PMD_MASK	(~(HPAGE_PMD_SIZE - 1))
 
 #define HPAGE_PUD_SHIFT PUD_SHIFT
@@ -104,17 +106,22 @@ static inline bool transhuge_vma_suitable(struct vm_area_struct *vma,
 {
 	unsigned long haddr;
 
-	/* Don't have to check pgoff for anonymous vma */
+	/* Don't have to check pgoff for anonymous vma
+	匿名页无需检查
+	*/
 	if (!vma_is_anonymous(vma)) {
-		if (!IS_ALIGNED((vma->vm_start >> PAGE_SHIFT) - vma->vm_pgoff,
-				HPAGE_PMD_NR))
+		if (!IS_ALIGNED(
+			(vma->vm_start >> PAGE_SHIFT) - vma->vm_pgoff,
+				HPAGE_PMD_NR
+			)  // 这是看看vma起始地址的pgoff与vma的opgoff的差值是不是512对齐?
+			)
 			return false;
 	}
-
+	// 去掉地址的后21位
 	haddr = addr & HPAGE_PMD_MASK;
 
 	if (haddr < vma->vm_start || haddr + HPAGE_PMD_SIZE > vma->vm_end)
-		return false;
+		return false; //看来是要求addr后续的一个huge pmd的页面都要在vma范围内
 	return true;
 }
 
@@ -193,7 +200,10 @@ static inline int is_swap_pmd(pmd_t pmd)
 	return !pmd_none(pmd) && !pmd_present(pmd);
 }
 
-/* mmap_lock must be held on entry */
+/* mmap_lock must be held on entry
+加锁成功说明是特殊情况,比如swap pmd, huge,devmap
+之类的情况
+*/
 static inline spinlock_t *pmd_trans_huge_lock(pmd_t *pmd,
 		struct vm_area_struct *vma)
 {
@@ -251,6 +261,7 @@ static inline bool is_huge_zero_pud(pud_t pud)
 struct page *mm_get_huge_zero_page(struct mm_struct *mm);
 void mm_put_huge_zero_page(struct mm_struct *mm);
 
+// 生成一个huge的pmd
 #define mk_huge_pmd(page, prot) pmd_mkhuge(mk_pmd(page, prot))
 
 static inline bool thp_migration_supported(void)

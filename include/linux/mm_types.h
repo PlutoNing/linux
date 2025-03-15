@@ -414,6 +414,7 @@ FOLIO_MATCH(compound_head, _head_2a);
 
 /**
  * struct ptdesc -    Memory descriptor for page tables.
+   页表的描述符
  * @__page_flags:     Same as page flags. Unused for page tables.
  * @pt_rcu_head:      For freeing page table pages.
  * @pt_list:          List of used page tables. Used for s390 and x86.
@@ -449,16 +450,22 @@ struct ptdesc {
 		atomic_t pt_frag_refcount;
 	};
 
+
+
 	union {
 		unsigned long _pt_pad_2;
 #if ALLOC_SPLIT_PTLOCKS
 		spinlock_t *ptl;
 #else
-		spinlock_t ptl;
+		spinlock_t ptl; //好像是啥锁
 #endif
 	};
+
 	unsigned int __page_type;
 	atomic_t _refcount;
+
+
+
 #ifdef CONFIG_MEMCG
 	unsigned long pt_memcg_data;
 #endif
@@ -483,10 +490,11 @@ static_assert(sizeof(struct ptdesc) <= sizeof(struct page));
 	const struct ptdesc *:		(const struct page *)(pt),	\
 	struct ptdesc *:		(struct page *)(pt)))
 
+	// 又把ptdesc转为page
 #define ptdesc_folio(pt)		(_Generic((pt),			\
 	const struct ptdesc *:		(const struct folio *)(pt),	\
 	struct ptdesc *:		(struct folio *)(pt)))
-
+// 把获取的用于页表的page地址转为ptdesc
 #define page_ptdesc(p)			(_Generic((p),			\
 	const struct page *:		(const struct ptdesc *)(p),	\
 	struct page *:			(struct ptdesc *)(p)))
@@ -655,7 +663,9 @@ struct vm_area_struct {
 	这里串的全是自己关联的avc
 	Serialized by mmap_lock &
 					  * page_table_lock */
-	struct anon_vma *anon_vma;	/* Serialized by page_table_lock */
+	struct anon_vma *anon_vma;	/*
+	匿名页vma有这个东西?
+	Serialized by page_table_lock */
 
 	/* Function pointers to deal with this struct.
 	如果mmap的是file, 这里就是对应的fops, */

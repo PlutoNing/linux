@@ -205,7 +205,7 @@ DECLARE_STATIC_KEY_FALSE(hugetlb_optimize_vmemmap_key);
 
  * Return the real head page struct iff the @page is a fake head page, otherwise
  * return the @page itself. See Documentation/mm/vmemmap_dedup.rst.
- 返回真正的头页面结构，如果@page是一个假的头页面，则返回@page本身。
+ 返回真正的头页面结构，如果@page是一个假的头页面. 否则返回@page本身。
  请参阅Documentation/mm/vmemmap_dedup.rst。
  */
 static __always_inline const struct page *page_fixed_fake_head(const struct page *page)
@@ -566,6 +566,7 @@ static __always_inline bool PageSwapCache(struct page *page)
 }
 
 SETPAGEFLAG(SwapCache, swapcache, PF_NO_TAIL)
+// 如果回收了swap mapping的空间, 就置空
 CLEARPAGEFLAG(SwapCache, swapcache, PF_NO_TAIL)
 #else
 PAGEFLAG_FALSE(SwapCache, swapcache)
@@ -894,6 +895,8 @@ static inline int PageTransHuge(struct page *page)
  * PageTransCompound returns true for both transparent huge pages
  * and hugetlbfs pages, so it should only be called when it's known
  * that hugetlbfs pages aren't involved.
+   对于透明大页和hugetlbfs页面，PageTransCompound返回true，因此只有在
+   已知不涉及hugetlbfs页面时才应调用它。
  */
 static inline int PageTransCompound(struct page *page)
 {
@@ -1041,6 +1044,7 @@ extern void page_offline_end(void);
 
 /*
  * Marks pages in use as page tables.
+ 标记正在使用的页面为页表。
  */
 PAGE_TYPE_OPS(Table, table, pgtable)
 

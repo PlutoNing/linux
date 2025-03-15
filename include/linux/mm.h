@@ -553,7 +553,9 @@ struct vm_fault {
 					 * Protects pte page table if 'pte'
 					 * is not NULL, otherwise pmd.
 					 */
-	pgtable_t prealloc_pte;		/* Pre-allocated pte page table.
+	pgtable_t prealloc_pte;		/* 
+	指向分配的pte页表
+	Pre-allocated pte page table.
 					 * vm_ops->map_pages() sets up a page
 					 * table from atomic context.
 					 * do_fault_around() pre-allocates
@@ -727,7 +729,7 @@ static bool __is_vma_write_locked(struct vm_area_struct *vma, int *mm_lock_seq)
 /*
  * Begin writing to a VMA.
  开始写入一个VMA。 何谓写入呢?
- 好像过程上来讲就是加锁.
+ 好像过程上来讲就是加锁. 加写锁
  * Exclude concurrent readers under the per-VMA lock until the currently
  * write-locked mmap_lock is dropped or downgraded.
  */
@@ -762,6 +764,7 @@ static inline void vma_assert_locked(struct vm_area_struct *vma)
 		vma_assert_write_locked(vma);
 }
 
+// 标记vma为被删除?
 static inline void vma_mark_detached(struct vm_area_struct *vma, bool detached)
 {
 	/* When detaching vma should be write-locked */
@@ -825,6 +828,8 @@ extern const struct vm_operations_struct vma_dummy_vm_ops;
 /*
  * WARNING: vma_init does not initialize vma->vm_lock.
  * Use vm_area_alloc()/vm_area_free() if vma needs locking.
+ 初始化vma
+ vma是为mm新建的
  */
 static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 {
@@ -897,6 +902,7 @@ static inline void vm_flags_mod(struct vm_area_struct *vma,
 	__vm_flags_mod(vma, set, clear);
 }
 
+// 为啥匿名的不需要这个呢
 static inline void vma_set_anonymous(struct vm_area_struct *vma)
 {
 	vma->vm_ops = NULL;
@@ -962,6 +968,7 @@ static inline bool vma_is_accessible(struct vm_area_struct *vma)
 	return vma->vm_flags & VM_ACCESS_FLAGS;
 }
 
+// 找到有交叉的vma
 static inline
 struct vm_area_struct *vma_find(struct vma_iterator *vmi, unsigned long max)
 {
@@ -974,6 +981,8 @@ static inline struct vm_area_struct *vma_next(struct vma_iterator *vmi)
 	/*
 	 * Uses mas_find() to get the first VMA when the iterator starts.
 	 * Calling mas_next() could skip the first entry.
+	   使用mas_find（）在迭代器开始时获取第一个VMA。
+	调用mas_next（）可能会跳过第一个条目。
 	 */
 	return mas_find(&vmi->mas, ULONG_MAX);
 }
@@ -984,7 +993,7 @@ struct vm_area_struct *vma_iter_next_range(struct vma_iterator *vmi)
 	return mas_next_range(&vmi->mas, ULONG_MAX);
 }
 
-
+// 获取prev
 static inline struct vm_area_struct *vma_prev(struct vma_iterator *vmi)
 {
 	return mas_prev(&vmi->mas, 0);
@@ -2166,7 +2175,8 @@ static inline unsigned int folio_shift(struct folio *folio)
 
 /**
  * folio_size - The number of bytes in a folio.
-   获取folio的大小
+   获取folio的内存大小
+   order为2, 就是16KB
  * @folio: The folio.
  *
  * Context: The caller should have a reference on the folio to prevent
@@ -2664,6 +2674,7 @@ static inline unsigned long get_mm_hiwater_vm(struct mm_struct *mm)
 	return max(mm->hiwater_vm, mm->total_vm);
 }
 
+// 更新mm的rss大小
 static inline void update_hiwater_rss(struct mm_struct *mm)
 {
 	unsigned long _rss = get_mm_rss(mm);
@@ -2808,6 +2819,7 @@ static inline unsigned long mm_pgtables_bytes(const struct mm_struct *mm)
 	return atomic_long_read(&mm->pgtables_bytes);
 }
 
+// 统计页表所占的内存量
 static inline void mm_inc_nr_ptes(struct mm_struct *mm)
 {
 	atomic_long_add(PTRS_PER_PTE * sizeof(pte_t), &mm->pgtables_bytes);
@@ -2877,16 +2889,18 @@ static inline bool pagetable_is_reserved(struct ptdesc *pt)
 
 /**
  * pagetable_alloc - Allocate pagetables
+ 分配页表
  * @gfp:    GFP flags
  * @order:  desired pagetable order
  *
  * pagetable_alloc allocates memory for page tables as well as a page table
  * descriptor to describe that memory.
- *
+ * 为页表分配内存, 以及一个描述页表的描述符
  * Return: The ptdesc describing the allocated page tables.
  */
 static inline struct ptdesc *pagetable_alloc(gfp_t gfp, unsigned int order)
 {
+	// 页表在page上面构建
 	struct page *page = alloc_pages(gfp | __GFP_COMP, order);
 
 	return page_ptdesc(page);
@@ -2930,6 +2944,7 @@ static inline void ptlock_free(struct ptdesc *ptdesc)
 {
 }
 
+// 加锁, 好像是获得锁
 static inline spinlock_t *ptlock_ptr(struct ptdesc *ptdesc)
 {
 	return &ptdesc->ptl;
@@ -2970,6 +2985,8 @@ static inline bool ptlock_init(struct ptdesc *ptdesc) { return true; }
 static inline void ptlock_free(struct ptdesc *ptdesc) {}
 #endif /* USE_SPLIT_PTE_PTLOCKS */
 
+// 参数是刚刚分配的页表page转为的ptdesc
+// 这里是初始化类似的操作
 static inline bool pagetable_pte_ctor(struct ptdesc *ptdesc)
 {
 	struct folio *folio = ptdesc_folio(ptdesc);
@@ -3000,6 +3017,7 @@ static inline pte_t *pte_offset_map(pmd_t *pmd, unsigned long addr)
 pte_t *__pte_offset_map_lock(struct mm_struct *mm, pmd_t *pmd,
 			unsigned long addr, spinlock_t **ptlp);
 
+// 获取页表项
 static inline pte_t *pte_offset_map_lock(struct mm_struct *mm, pmd_t *pmd,
 			unsigned long addr, spinlock_t **ptlp)
 {
@@ -3033,17 +3051,23 @@ pte_t *pte_offset_map_nolock(struct mm_struct *mm, pmd_t *pmd,
 
 #if USE_SPLIT_PMD_PTLOCKS
 
+// 获得pmd的page
 static inline struct page *pmd_pgtable_page(pmd_t *pmd)
 {
+	// 512个八字节的mask
 	unsigned long mask = ~(PTRS_PER_PMD * sizeof(pmd_t) - 1);
-	return virt_to_page((void *)((unsigned long) pmd & mask));
+	return virt_to_page(
+		(void *)((unsigned long) pmd & mask)
+	);
 }
 
+// 获得pmd的ptdesc
 static inline struct ptdesc *pmd_ptdesc(pmd_t *pmd)
 {
 	return page_ptdesc(pmd_pgtable_page(pmd));
 }
 
+// 给pmd加锁, 但是为啥没有用到mm参数呢
 static inline spinlock_t *pmd_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
 	return ptlock_ptr(pmd_ptdesc(pmd));
@@ -3081,6 +3105,7 @@ static inline void pmd_ptlock_free(struct ptdesc *ptdesc) {}
 
 #endif
 
+// 给pmd加锁
 static inline spinlock_t *pmd_lock(struct mm_struct *mm, pmd_t *pmd)
 {
 	spinlock_t *ptl = pmd_lockptr(mm, pmd);
@@ -3479,6 +3504,7 @@ static inline unsigned long vm_end_gap(struct vm_area_struct *vma)
 	return vm_end;
 }
 
+// 计算vma的页面数量
 static inline unsigned long vma_pages(struct vm_area_struct *vma)
 {
 	return (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;

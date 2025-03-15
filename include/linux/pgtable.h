@@ -60,7 +60,7 @@
  * the page table folding, they are always available, regardless of
  * CONFIG_PGTABLE_LEVELS value. For the folded levels they simply return 0
  * because in such cases PTRS_PER_PxD equals 1.
- 找到地址的在pmd页面的offset?
+ 找到地址的在pte页表页面的offset?
  */
 
 static inline unsigned long pte_index(unsigned long address)

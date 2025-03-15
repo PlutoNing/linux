@@ -5421,6 +5421,7 @@ EXPORT_SYMBOL_GPL(mas_store);
 
 /**
  * mas_store_gfp() - Store a value into the tree.
+   把一个值存储到树中。
  * @mas: The maple state
  * @entry: The entry to store
  * @gfp: The GFP_FLAGS to use for allocations if necessary.
@@ -5466,6 +5467,7 @@ EXPORT_SYMBOL_GPL(mas_store_prealloc);
 
 /**
  * mas_preallocate() - Preallocate enough nodes for a store operation
+ 为下一次的存储操作预分配空间?
  * @mas: The maple state
  * @entry: The entry that will be stored
  * @gfp: The GFP_FLAGS to use for allocations.
@@ -5816,6 +5818,7 @@ none:
 
 /**
  * mas_prev() - Get the previous entry
+ 获取前一个条目
  * @mas: The maple state
  * @min: The minimum value to check.
  *
@@ -5838,6 +5841,7 @@ EXPORT_SYMBOL_GPL(mas_prev);
 
 /**
  * mas_prev_range() - Advance to the previous range
+   移动到前一个范围
  * @mas: The maple state
  * @min: The minimum value to check.
  *

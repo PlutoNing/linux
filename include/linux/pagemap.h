@@ -809,7 +809,7 @@ static inline struct page *folio_file_page(struct folio *folio, pgoff_t index)
 	/* HugeTLBfs indexes the page cache in units of hpage_size */
 	if (folio_test_hugetlb(folio))
 		return &folio->page;
-	// 找到folio中间的page
+	// 找到folio最后一个page?
 	return folio_page(folio, index & (folio_nr_pages(folio) - 1));
 }
 

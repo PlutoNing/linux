@@ -82,6 +82,7 @@ static inline pte_t pte_swp_clear_flags(pte_t pte)
 
 /*
  * Store a type+offset into a swp_entry_t in an arch-independent format
+ 这里好像是直接通过type和offset编码生成swap entry
  */
 static inline swp_entry_t swp_entry(unsigned long type, pgoff_t offset)
 {
@@ -122,7 +123,10 @@ static inline unsigned long swp_offset_pfn(swp_entry_t entry)
 	return swp_offset(entry) & SWP_PFN_MASK;
 }
 
-/* check whether a pte points to a swap entry */
+/* check whether a pte points to a swap entry
+检查这个页表项是不是交换页.
+要求不为null, 并且不在内存
+*/
 static inline int is_swap_pte(pte_t pte)
 {
 	return !pte_none(pte) && !pte_present(pte);
@@ -154,6 +158,7 @@ static inline pte_t swp_entry_to_pte(swp_entry_t entry)
 	return __swp_entry_to_pte(arch_entry);
 }
 
+// 获取xas entry的值
 static inline swp_entry_t radix_to_swp_entry(void *arg)
 {
 	swp_entry_t entry;
@@ -162,6 +167,8 @@ static inline swp_entry_t radix_to_swp_entry(void *arg)
 	return entry;
 }
 
+// 这里把swap条目做成xas的value, 马上存储到shmem mapping里面
+// 看来也说明了,xas里面有时候is_value的就是swap 条目
 static inline void *swp_to_radix_entry(swp_entry_t entry)
 {
 	return xa_mk_value(entry.val);
