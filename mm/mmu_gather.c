@@ -86,15 +86,15 @@ static void tlb_batch_pages_flush(struct mmu_gather *tlb)
 {
 	struct mmu_gather_batch *batch;
 
-	for (batch = &tlb->local; batch && batch->nr; batch = batch->next) {
+	for (batch = &tlb->local; batch && batch->nr; batch = batch->next) { // 处理每个batch
 		struct encoded_page **pages = batch->encoded_pages;
 
-		do {
+		do { // 逐批次处理全部的页面
 			/*
 			 * limit free batch count when PAGE_SIZE > 4K
 			 */
 			unsigned int nr = min(512U, batch->nr);
-
+			// 把这些页面全部从swap mapping移除
 			free_pages_and_swap_cache(pages, nr);
 			pages += nr;
 			batch->nr -= nr;
@@ -300,6 +300,7 @@ void tlb_flush_mmu(struct mmu_gather *tlb)
 	tlb_flush_mmu_free(tlb);
 }
 
+// 初始化一个mmu_gather结构体用于页表的撤销
 static void __tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm,
 			     bool fullmm)
 {
@@ -327,6 +328,7 @@ static void __tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm,
 
 /**
  * tlb_gather_mmu - initialize an mmu_gather structure for page-table tear-down
+   初始化一个mmu_gather结构体用于页表的撤销
  * @tlb: the mmu_gather structure to initialize
  * @mm: the mm_struct of the target address space
  *

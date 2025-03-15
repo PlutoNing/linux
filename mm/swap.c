@@ -574,19 +574,24 @@ void folio_add_lru(struct folio *folio)
 EXPORT_SYMBOL(folio_add_lru);
 
 /**
+主要是do fault调用这个函数
+好像一般是folio的因为缺页刚刚分配给vma的页面
  * folio_add_lru_vma() - Add a folio to the appropate LRU list for this VMA.
+   为vma
  * @folio: The folio to be added to the LRU.
  * @vma: VMA in which the folio is mapped.
  *
  * If the VMA is mlocked, @folio is added to the unevictable list.
  * Otherwise, it is treated the same way as folio_add_lru().
+ 如果vma是mlocked,就加入unevictable list,否则和folio_add_lru()一样.
  */
 void folio_add_lru_vma(struct folio *folio, struct vm_area_struct *vma)
 {
 	VM_BUG_ON_FOLIO(folio_test_lru(folio), folio);
 
+	// 为什么这里分开处理呢
 	if (unlikely((vma->vm_flags & (VM_LOCKED | VM_SPECIAL)) == VM_LOCKED))
-		mlock_new_folio(folio); //把page加入锁住的vma的逻辑?
+		mlock_new_folio(folio); // 如果是加入锁住的vma
 	else
 		folio_add_lru(folio); //加入lru
 }

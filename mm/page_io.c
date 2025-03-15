@@ -78,6 +78,7 @@ static void end_swap_bio_read(struct bio *bio)
 	bio_put(bio);
 }
 
+// 怎么算是activate?
 int generic_swapfile_activate(struct swap_info_struct *sis,
 				struct file *swap_file,
 				sector_t *span)
@@ -176,6 +177,7 @@ bad_bmap:
 }
 
 /*
+  回写swap cache page到swap分区
  * We may have stale swap cache pages in memory: notice
  * them here and get rid of the unnecessary final write.
  */
@@ -204,6 +206,7 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 		folio_end_writeback(folio);
 		return 0;
 	}
+	// 实质的回写
 	__swap_writepage(&folio->page, wbc);
 	return 0;
 }
@@ -292,15 +295,21 @@ static void sio_write_complete(struct kiocb *iocb, long ret)
 	mempool_free(sio, sio_pool);
 }
 
+// 如果swap是文件而不是磁盘的话, 调用这个来回写
+// page是swap mapping里面的页面
 static void swap_writepage_fs(struct page *page, struct writeback_control *wbc)
 {
 	struct swap_iocb *sio = NULL;
+	// 获取si
 	struct swap_info_struct *sis = page_swap_info(page);
+	// 获取对应的swap file
 	struct file *swap_file = sis->swap_file;
+	// swap mapping page的index就是在swap file的全局pgoff
 	loff_t pos = page_file_offset(page);
 
 	set_page_writeback(page);
 	unlock_page(page);
+	// 1 看看是现成的sio
 	if (wbc->swap_plug)
 		sio = *wbc->swap_plug;
 	if (sio) {
@@ -310,7 +319,7 @@ static void swap_writepage_fs(struct page *page, struct writeback_control *wbc)
 			sio = NULL;
 		}
 	}
-	if (!sio) {
+	if (!sio) { // 2 还是要分配sio
 		sio = mempool_alloc(sio_pool, GFP_NOIO);
 		init_sync_kiocb(&sio->iocb, swap_file);
 		sio->iocb.ki_complete = sio_write_complete;
@@ -318,6 +327,9 @@ static void swap_writepage_fs(struct page *page, struct writeback_control *wbc)
 		sio->pages = 0;
 		sio->len = 0;
 	}
+	// 现在有了sio
+
+	// 把page加入sio的bvec
 	bvec_set_page(&sio->bvec[sio->pages], page, thp_size(page), 0);
 	sio->len += thp_size(page);
 	sio->pages += 1;
@@ -329,29 +341,34 @@ static void swap_writepage_fs(struct page *page, struct writeback_control *wbc)
 		*wbc->swap_plug = sio;
 }
 
+// 如果交换分区是磁盘的话
+// 调用这个函数把swap mapping的page回写到磁盘
 static void swap_writepage_bdev_sync(struct page *page,
 		struct writeback_control *wbc, struct swap_info_struct *sis)
 {
 	struct bio_vec bv;
 	struct bio bio;
 	struct folio *folio = page_folio(page);
-
+	// 初始化bio
 	bio_init(&bio, sis->bdev, &bv, 1,
 		 REQ_OP_WRITE | REQ_SWAP | wbc_to_write_flags(wbc));
 	bio.bi_iter.bi_sector = swap_page_sector(page);
 	__bio_add_page(&bio, page, thp_size(page), 0);
-
+		// 关联blk cg
 	bio_associate_blkg_from_page(&bio, folio);
 	count_swpout_vm_event(folio);
 
+	//开启回写
 	folio_start_writeback(folio);
 	folio_unlock(folio);
 
-	submit_bio_wait(&bio);
+	submit_bio_wait(&bio); //等待回写完成
 	__end_swap_bio_write(&bio);
 }
 
-//
+// 如果交换分区是磁盘的话
+// 调用这个函数把swap mapping的page回写到磁盘
+// 异步的实现
 static void swap_writepage_bdev_async(struct page *page,
 		struct writeback_control *wbc, struct swap_info_struct *sis)
 {
@@ -373,6 +390,7 @@ static void swap_writepage_bdev_async(struct page *page,
 	submit_bio(bio);
 }
 
+// 回写swap mapping的folio
 void __swap_writepage(struct page *page, struct writeback_control *wbc)
 {
 	struct swap_info_struct *sis = page_swap_info(page);
@@ -384,13 +402,14 @@ void __swap_writepage(struct page *page, struct writeback_control *wbc)
 	 * is safe.
 	 */
 	if (data_race(sis->flags & SWP_FS_OPS))
-		swap_writepage_fs(page, wbc);
+		swap_writepage_fs(page, wbc); // 如果交换分区是文件
 	else if (sis->flags & SWP_SYNCHRONOUS_IO)
-		swap_writepage_bdev_sync(page, wbc, sis);
+		swap_writepage_bdev_sync(page, wbc, sis); // 如果交换分区是磁盘
 	else
 		swap_writepage_bdev_async(page, wbc, sis);
 }
 
+// 好像是提交io
 void swap_write_unplug(struct swap_iocb *sio)
 {
 	struct iov_iter from;
@@ -505,7 +524,7 @@ static void swap_readpage_bdev_async(struct page *page,
 	submit_bio(bio);
 }
 
-// 把swap file的内容换入到page里面
+// 把swap file的内容读入到page里面?
 void swap_readpage(struct page *page, bool synchronous, struct swap_iocb **plug)
 {
 	struct folio *folio = page_folio(page);

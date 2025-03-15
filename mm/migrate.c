@@ -864,6 +864,7 @@ EXPORT_SYMBOL_GPL(filemap_migrate_folio);
 
 /*
  * Writeback a folio to clean the dirty state
+   写回一个folio以清除脏状态
  */
 static int writeout(struct address_space *mapping, struct folio *folio)
 {
@@ -880,7 +881,7 @@ static int writeout(struct address_space *mapping, struct folio *folio)
 		/* No write method for the address space */
 		return -EINVAL;
 
-	if (!folio_clear_dirty_for_io(folio))
+	if (!folio_clear_dirty_for_io(folio)) // 清除dirty标志返回之前的dirty状态
 		/* Someone else already triggered a write */
 		return -EAGAIN;
 

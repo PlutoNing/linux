@@ -7601,6 +7601,7 @@ void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry)
 
 /**
  * __mem_cgroup_try_charge_swap - try charging swap space for a folio
+ 刚刚给folio分配了entry这个swap slot, 这里进行charge
  * @folio: folio being added to swap
  * @entry: swap entry to charge
  *
@@ -7632,7 +7633,7 @@ int __mem_cgroup_try_charge_swap(struct folio *folio, swp_entry_t entry)
 	memcg = mem_cgroup_id_get_online(memcg);
 
 	if (!mem_cgroup_is_root(memcg) &&
-	    !page_counter_try_charge(&memcg->swap, nr_pages, &counter)) {
+	    !page_counter_try_charge(&memcg->swap, nr_pages, &counter)) {// 这里进行charge
 		memcg_memory_event(memcg, MEMCG_SWAP_MAX);
 		memcg_memory_event(memcg, MEMCG_SWAP_FAIL);
 		mem_cgroup_id_put(memcg);

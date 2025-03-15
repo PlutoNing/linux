@@ -1383,6 +1383,7 @@ typedef enum {
 /*
  * pageout is called by shrink_folio_list() for each dirty folio.
  * Calls ->writepage().
+   shrink_folio_list()调用pageout()来处理每个脏folio
  */
 static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			 struct swap_iocb **plug)
@@ -1437,6 +1438,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 		};
 
 		folio_set_reclaim(folio);
+		// 回写mapping的这个脏folio
 		res = mapping->a_ops->writepage(&folio->page, &wbc);
 		if (res < 0)
 			handle_write_error(mapping, folio, res);
@@ -2013,7 +2015,7 @@ retry:
 		case FOLIOREF_KEEP:
 			stat->nr_ref_keep += nr_pages;
 			goto keep_locked;
-
+		/* 是下面两种情况的话, 就尝试回收 */
 		case FOLIOREF_RECLAIM:
 		case FOLIOREF_RECLAIM_CLEAN:
 			; /* try to reclaim the folio below */
@@ -2022,9 +2024,11 @@ retry:
 		/*
 		 * Before reclaiming the folio, try to relocate
 		 * its contents to another node.
+		 在回收folio之前,尝试将其内容迁移到另一个node.
 		 */
 		if (do_demote_pass &&
 		    (thp_migration_supported() || !folio_test_large(folio))) {
+				// 加入准备demote的链表
 			list_add(&folio->lru, &demote_folios);
 			folio_unlock(folio);
 			continue;
@@ -2075,9 +2079,7 @@ retry:
 				}
 			}
 
-		} else 
-		/* 如果是被交换的其他大页?比如shmem的大页 */
-		if (folio_test_swapbacked(folio) &&
+		} else if (folio_test_swapbacked(folio) &&
 			   folio_test_large(folio)) {/* 如果是多页面的交换页 */
 			/* Split shmem folio */
 			if (split_folio_to_list(folio, folio_list))

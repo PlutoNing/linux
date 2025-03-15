@@ -1958,6 +1958,7 @@ EXPORT_SYMBOL(page_cache_prev_miss);
 
 /*
 在mapping查找idx对应的entry
+没有就是没有, 不会新建
  * filemap_get_entry - Get a page cache entry.
  * @mapping: the address_space to search
  * @index: The page cache index.
@@ -2069,7 +2070,7 @@ repeat:
 	// 其实就是直接返回了
 no_page:
 //页缓存里面还没有这个页面
-	if (!folio && (fgp_flags & FGP_CREAT)) {//不存在页面,且可以申请
+	if (!folio && (fgp_flags & FGP_CREAT)) {//不存在页面,且caller指定可以申请的话
 		unsigned order = FGF_GET_ORDER(fgp_flags);
 		int err;
 
@@ -2134,6 +2135,7 @@ no_page:
 }
 EXPORT_SYMBOL(__filemap_get_folio);
 
+// 从mapping里面找到下一个符合mark的entry, max是最大搜索范围
 static inline struct folio *find_get_entry(struct xa_state *xas, pgoff_t max,
 		xa_mark_t mark)
 {
@@ -2171,6 +2173,7 @@ reset:
 
 /**
  * find_get_entries - gang pagecache lookup
+   查找mapping的一组元素
  * @mapping:	The address_space to search
  * @start:	The starting page cache index
  * @end:	The final page index (inclusive).
@@ -2180,13 +2183,15 @@ reset:
  * find_get_entries() will search for and return a batch of entries in
  * the mapping.  The entries are placed in @fbatch.  find_get_entries()
  * takes a reference on any actual folios it returns.
- *
+ * 函数会返回一组folio, 会增加引用计数
+   这些folio会放在fbatch里面
+
  * The entries have ascending indexes.  The indices may not be consecutive
  * due to not-present entries or large folios.
- *
+ * 这些entry的index是递增的, 但是不一定是连续的, 可能有大folio
  * Any shadow entries of evicted folios, or swap entries from
  * shmem/tmpfs, are included in the returned array.
- *
+ * 任何阴影条目或者交换条目都会被返回
  * Return: The number of entries which were found.
  */
 unsigned find_get_entries(struct address_space *mapping, pgoff_t *start,
@@ -2199,7 +2204,7 @@ unsigned find_get_entries(struct address_space *mapping, pgoff_t *start,
 	while ((folio = find_get_entry(&xas, end, XA_PRESENT)) != NULL) {
 		indices[fbatch->nr] = xas.xa_index;
 		if (!folio_batch_add(fbatch, folio))
-			break;
+			break; // 一直加到满
 	}
 	rcu_read_unlock();
 
@@ -2207,10 +2212,10 @@ unsigned find_get_entries(struct address_space *mapping, pgoff_t *start,
 		unsigned long nr = 1;
 		int idx = folio_batch_count(fbatch) - 1;
 
-		folio = fbatch->folios[idx];
+		folio = fbatch->folios[idx]; // 找到本批次最后一个folio
 		if (!xa_is_value(folio) && !folio_test_hugetlb(folio))
 			nr = folio_nr_pages(folio);
-		*start = indices[idx] + nr;
+		*start = indices[idx] + nr; //更新下次搜索的起始范围
 	}
 	return folio_batch_count(fbatch);
 }
@@ -3648,25 +3653,29 @@ static bool filemap_map_pmd(struct vm_fault *vmf, struct folio *folio,
 		return true;
 	}
 
-	if (pmd_none(*vmf->pmd) && folio_test_pmd_mappable(folio)) {
+	if (pmd_none(*vmf->pmd) && folio_test_pmd_mappable(folio)) {// 如果现在pmd是空的
+		// 并且folio足够大,就设置一个pmd指向新的页表?
 		struct page *page = folio_file_page(folio, start);
 		vm_fault_t ret = do_set_pmd(vmf, page);
 		if (!ret) {
 			/* The page is mapped successfully, reference consumed. */
 			folio_unlock(folio);
-			return true;
+			return true; // 成功了直接返回
 		}
 	}
 
+    // 如果不是的. 就这条路径
 	if (pmd_none(*vmf->pmd))
 		pmd_install(mm, vmf->pmd, &vmf->prealloc_pte);
 
 	return false;
 }
 
+// 获取下一个folio
 static struct folio *next_uptodate_folio(struct xa_state *xas,
 		struct address_space *mapping, pgoff_t end_pgoff)
 {
+	// 获取下一个folio,最大不会超过end_pgoff
 	struct folio *folio = xas_next_entry(xas, end_pgoff);
 	unsigned long max_idx;
 
@@ -3802,6 +3811,7 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 	struct vm_area_struct *vma = vmf->vma;
 	struct file *file = vma->vm_file;
 	struct address_space *mapping = file->f_mapping;
+	/* vma和file的mapping的关系 */
 	pgoff_t last_pgoff = start_pgoff;
 	unsigned long addr;
 	XA_STATE(xas, &mapping->i_pages, start_pgoff);
@@ -3810,10 +3820,12 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 	unsigned int nr_pages = 0, mmap_miss = 0, mmap_miss_saved;
 
 	rcu_read_lock();
+	// 这里都是file相关的,获取start_pgoff后续的folio
 	folio = next_uptodate_folio(&xas, mapping, end_pgoff);
 	if (!folio)
 		goto out;
 
+	//
 	if (filemap_map_pmd(vmf, folio, start_pgoff)) {
 		ret = VM_FAULT_NOPAGE;
 		goto out;
@@ -3903,7 +3915,7 @@ const struct vm_operations_struct generic_file_vm_ops = {
 
 /* This is used for a general mmap of a disk file */
 
-//  file 的mmap回调
+//  file 的mmap回调 . 把vma设置为mmapfile的vma
 int generic_file_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct address_space *mapping = file->f_mapping;
@@ -3918,6 +3930,7 @@ int generic_file_mmap(struct file *file, struct vm_area_struct *vma)
 /*
 对于只读的dev map
  * This is for filesystems which do not implement ->writepage.
+   是为了那些没有实现writepage的文件系统
  */
 int generic_file_readonly_mmap(struct file *file, struct vm_area_struct *vma)
 {

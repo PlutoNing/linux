@@ -2622,6 +2622,7 @@ continue_unlock:
 }
 EXPORT_SYMBOL(write_cache_pages);
 
+// data参数是mapping, 调用mapping的writepage方法
 static int writepage_cb(struct folio *folio, struct writeback_control *wbc,
 		void *data)
 {
@@ -2653,7 +2654,7 @@ int do_writepages(struct address_space *mapping, struct writeback_control *wbc)
 
 		} else if (mapping->a_ops->writepage) {//没有writepages方法，有writepage方法也行
 			struct blk_plug plug;
-			//但是这里为什么没有调用write_page呢？
+			//但是这里为什么没有调用write_page呢？是在writepage_cb这里调用的
 
 			blk_start_plug(&plug);   
 			//按照wbc写回mapping的脏页, 遍历脏页,调用writepage_cb回写

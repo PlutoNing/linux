@@ -86,18 +86,23 @@ void *get_shadow_from_swap_cache(swp_entry_t entry)
 
 /*
 把页面加入到swap的mapping
+========================
+一种情况是shmem的mapping准备回写这个folio, entry是刚刚分配的swap slot,
+这里把folio加入到swap 的mapping, 并且设置folio的swap cache page flag.
  * add_to_swap_cache resembles filemap_add_folio on swapper_space,
  * but sets SwapCache flag and private instead of mapping and index.
    add_to_swap_cache类似于filemap_add_folio在swapper_space上，
-   但是设置SwapCache标志和私有标志，而不是映射和索引。
+   但是设置SwapCache标志和私有标志，而不是mapping和index。
+   ==============
+返回0表示成功
  */
 int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 			gfp_t gfp, void **shadowp)
 {
 	/*
 	其实就是一个添加page到页缓存的过程
+	这里是添加到swap的mapping
 	*/
-
 	// 先获取mapping
 	struct address_space *address_space = swap_address_space(entry);
 	// 获取在swap file的idx
@@ -144,7 +149,7 @@ unlock:
 	if (!xas_error(&xas))
 		return 0;
 
-		// 如果出错了
+	// 如果出错了
 	folio_clear_swapcache(folio);
 	folio_ref_sub(folio, nr);
 	return xas_error(&xas);
@@ -153,9 +158,11 @@ unlock:
 /*
  * This must be called only on folios that have
  * been verified to be in the swap cache.
-  必须仅在已验证在交换缓存中的folio上调用此函数。
-
-  从swapcache移除folio,用于换出,释放pagecache等操作.
+  必须仅在已验证在swap mapping中的folio上调用此函数。
+  从swap mapping移除folio,用于换出,释放pagecache等操作.
+  ===================
+  就是把mapping里面对应的slot设置为null
+  然后去除folio的swap_cache flag, 表示不在swap mapping了
  */
 void __delete_from_swap_cache(struct folio *folio,
 			swp_entry_t entry, void *shadow)
@@ -172,7 +179,8 @@ void __delete_from_swap_cache(struct folio *folio,
 	VM_BUG_ON_FOLIO(!folio_test_swapcache(folio), folio);
 	VM_BUG_ON_FOLIO(folio_test_writeback(folio), folio);
 
-	for (i = 0; i < nr; i++) {
+	for (i = 0; i < nr; i++) { // 一个一个覆盖这些条目（实质的一种情况是
+	// 用空值覆盖,应该就是删除了）
 		void *entry = xas_store(&xas, shadow);
 		VM_BUG_ON_PAGE(entry != folio, entry);
 		xas_next(&xas);
@@ -192,7 +200,7 @@ void __delete_from_swap_cache(struct folio *folio,
  *
  * Allocate swap space for the folio and add the folio to the
  * swap cache.
- *
+ * 给页面分配交换空间, 并且加入到swap cache
  * Context: Caller needs to hold the folio lock.
  * Return: Whether the folio was added to the swap cache.
  */
@@ -204,6 +212,7 @@ bool add_to_swap(struct folio *folio)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_uptodate(folio), folio);
 
+	//这里获取swap slot
 	entry = folio_alloc_swap(folio);
 	if (!entry.val)
 		return false;
@@ -212,12 +221,14 @@ bool add_to_swap(struct folio *folio)
 	 * XArray node allocations from PF_MEMALLOC contexts could
 	 * completely exhaust the page allocator. __GFP_NOMEMALLOC
 	 * stops emergency reserves from being allocated.
-	 *
+	 * xarray node分配可能完全耗尽页面分配器。__GFP_NOMEMALLOC
+	 * 阻止分配紧急储备。
 	 * TODO: this could cause a theoretical memory reclaim
 	 * deadlock in the swap out path.
 	 */
 	/*
 	 * Add it to the swap cache.
+	  把folio添加到swap mapping?
 	 */
 	err = add_to_swap_cache(folio, entry,
 			__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN, NULL);
@@ -225,6 +236,7 @@ bool add_to_swap(struct folio *folio)
 		/*
 		 * add_to_swap_cache() doesn't return -EEXIST, so we can safely
 		 * clear SWAP_HAS_CACHE flag.
+		  函数不会返回-EEXIST，因此我们可以安全地清除SWAP_HAS_CACHE标志。
 		 */
 		goto fail;
 	/*
@@ -248,24 +260,29 @@ fail:
 }
 
 /*
+一种情况是folio是swap mapping里面的
  * This must be called only on folios that have
  * been verified to be in the swap cache and locked.
  * It will never put the folio into the free list,
  * the caller has a reference on the folio.
+   这个函数必须仅在已验证在交换缓存中并锁定的folio上调用。
+   它永远不会将folio放入空闲列表，调用者对folio有引用。
+  从swapcache删除folio,并释放swap空间.
  */
 void delete_from_swap_cache(struct folio *folio)
 {
-	swp_entry_t entry = folio->swap;
-	struct address_space *address_space = swap_address_space(entry);
+	swp_entry_t entry = folio->swap; // 找到交换条目
+	struct address_space *address_space = swap_address_space(entry); // 获取所在的swap file的mapping
 
-	xa_lock_irq(&address_space->i_pages);
-	__delete_from_swap_cache(folio, entry, NULL);
+	xa_lock_irq(&address_space->i_pages); // 锁定mapping的xas数组, 开始操作
+	__delete_from_swap_cache(folio, entry, NULL);// 从swap mapping xas移除
 	xa_unlock_irq(&address_space->i_pages);
 
-	put_swap_folio(folio, entry);
+	put_swap_folio(folio, entry); // 移除后减少ref计数
 	folio_ref_sub(folio, folio_nr_pages(folio));
 }
 
+// 从 swap mapping移除
 void clear_shadow_from_swap_cache(int type, unsigned long begin,
 				unsigned long end)
 {
@@ -273,7 +290,9 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 	void *old;
 
 	for (;;) {
+		// 获取swap entry
 		swp_entry_t entry = swp_entry(type, curr);
+		// 在获取指定的mapping
 		struct address_space *address_space = swap_address_space(entry);
 		XA_STATE(xas, &address_space->i_pages, curr);
 
@@ -283,6 +302,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 		xas_for_each(&xas, old, end) {
 			if (!xa_is_value(old))
 				continue;
+			// 置为null
 			xas_store(&xas, NULL);
 		}
 		xa_unlock_irq(&address_space->i_pages);
@@ -297,6 +317,7 @@ void clear_shadow_from_swap_cache(int type, unsigned long begin,
 }
 
 /*
+  释放这个页面所占的swap cache的空间,也就是从mapping移除
  * If we are the only user, then try to free up the swap cache.
  * 如果我们是唯一的用户，那么尝试释放交换缓存。
  * Its ok to check the swapcache flag without the folio lock
@@ -318,6 +339,7 @@ void free_swap_cache(struct page *page)
 /*
  * Perform a free_page(), also freeing any swap cache associated with
  * this page if it is the last user of the page.
+   执行free_page()，如果这是页面的最后一个用户，则还会释放与此页面关联的任何交换缓存。
  */
 void free_page_and_swap_cache(struct page *page)
 {
@@ -358,9 +380,10 @@ static inline bool swap_use_vma_readahead(void)
  调用者必须锁定交换设备或持有引用以保持其有效。
  -----------------------
  entry是由页表的条目转换来的, 编码了swap和idx信息
- 去swap的mapping找到页面
+ 去swap的mapping找到页面,然后读入到返回的folio里面, 是个
+ 换入的过程
  ============
- 可能返回null
+ 只在mapping查找,没有就算了，可能返回null
  */
 struct folio *swap_cache_get_folio(swp_entry_t entry,
 		struct vm_area_struct *vma, unsigned long addr)
@@ -445,7 +468,7 @@ struct folio *filemap_get_incore_folio(struct address_space *mapping,
 	return folio;
 }
 
-// 查找entry对应的页面
+// 查找entry对应的页面, 如果mapping没有,新申请页面加入swap mapping.
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
 			bool *new_page_allocated)
@@ -581,7 +604,8 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
 			vma, addr, &page_was_allocated);
 
-	if (page_was_allocated) // 如果为真，说明刚刚一开始没找到, 申请的新页面加入到swap的mapping
+	if (page_was_allocated) // 如果为真，说明刚刚一开始没找到, 申请的新页面加入到swap的mapping.
+	// 所以现在需要把swap file的page读入这个新page
 		swap_readpage(retpage, false, plug);
 
 	return retpage;
@@ -652,6 +676,7 @@ static unsigned long swapin_nr_pages(unsigned long offset)
 
 /**
  * swap_cluster_readahead - swap in pages in hope we need them soon
+ swap预读
  * @entry: swap entry of this memory
  * @gfp_mask: memory allocation flags
  * @vmf: fault information
@@ -687,7 +712,9 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 	if (!mask)
 		goto skip;
 
-	/* Read a page_cluster sized and aligned cluster around offset. */
+	/* Read a page_cluster sized and aligned cluster around offset.
+	读取一个大小为page_cluster的size, 对齐.
+	*/
 	start_offset = offset & ~mask;
 	end_offset = offset | mask;
 	if (!start_offset)	/* First page is swap header. */
@@ -696,15 +723,16 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 		end_offset = si->max - 1;
 
 	blk_start_plug(&plug);
-	for (offset = start_offset; offset <= end_offset ; offset++) {
+	for (offset = start_offset; offset <= end_offset ; offset++) {// 一个一个的读取
 		/* Ok, do the async read-ahead now */
 		page = __read_swap_cache_async(
 			swp_entry(swp_type(entry), offset),
 			gfp_mask, vma, addr, &page_allocated);
-		if (!page)
+		if (!page) // 读取失败,处理下一个offset
 			continue;
-		if (page_allocated) {
-			swap_readpage(page, false, &splug);
+		// 从swap读取成功了（可能是swap mapping本来就有, 也可能是申请页面新加入swap mapping的（page还没有装入swap file的内容））
+		if (page_allocated) {// 如果是申请页面新换入的（page的内容还不是swap file的对应page）
+			swap_readpage(page, false, &splug); // 现在把swap file的页面读入到page
 			if (offset != entry_offset) {
 				SetPageReadahead(page);
 				count_vm_event(SWAP_RA);
@@ -712,12 +740,15 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 		}
 		put_page(page);
 	}
+
 	blk_finish_plug(&plug);
 	swap_read_unplug(splug);
 
 	lru_add_drain();	/* Push any new pages onto the LRU now */
 skip:
-	/* The page was likely read above, so no need for plugging here */
+	/* The page was likely read above, so no need for plugging here
+	只需要读取一个页面
+	*/
 	return read_swap_cache_async(entry, gfp_mask, vma, addr, NULL);
 }
 
@@ -820,7 +851,7 @@ static void swap_ra_info(struct vm_fault *vmf,
 
 /**
  * swap_vma_readahead - swap in pages in hope we need them soon
-   预读换入页面
+   预读换入页面, swap mapping不存在的话,可能新申请页面然后读入
  * @fentry: swap entry of this memory
  * @gfp_mask: memory allocation flags
  * @vmf: fault information
@@ -876,7 +907,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 					       addr, &page_allocated);
 		if (!page)
 			continue;
-		if (page_allocated) {
+		if (page_allocated) {// 刚刚是新申请的swap mapping页面, 这里要读入
 			swap_readpage(page, false, &splug);
 			if (i != ra_info.offset) {
 				SetPageReadahead(page);

@@ -35,6 +35,7 @@
 #include <linux/mutex.h>
 #include <linux/mm.h>
 
+// 好像是申请swap slot的cache?
 static DEFINE_PER_CPU(struct swap_slots_cache, swp_slots);
 static bool	swap_slot_cache_active;
 bool	swap_slot_cache_enabled;
@@ -49,14 +50,17 @@ static void __drain_swap_slots_cache(unsigned int type);
 #define SLOTS_CACHE 0x1
 #define SLOTS_CACHE_RET 0x2
 
+// 失效swap slot缓存
 static void deactivate_swap_slots_cache(void)
 {
 	mutex_lock(&swap_slots_cache_mutex);
 	swap_slot_cache_active = false;
+	// 排空缓存项
 	__drain_swap_slots_cache(SLOTS_CACHE|SLOTS_CACHE_RET);
 	mutex_unlock(&swap_slots_cache_mutex);
 }
 
+// 重新激活swap slot缓存
 static void reactivate_swap_slots_cache(void)
 {
 	mutex_lock(&swap_slots_cache_mutex);
@@ -64,7 +68,9 @@ static void reactivate_swap_slots_cache(void)
 	mutex_unlock(&swap_slots_cache_mutex);
 }
 
-/* Must not be called with cpu hot plug lock */
+/* Must not be called with cpu hot plug lock
+swapoff调用这个函数
+*/
 void disable_swap_slots_cache_lock(void)
 {
 	mutex_lock(&swap_slots_cache_enable_mutex);
@@ -72,44 +78,49 @@ void disable_swap_slots_cache_lock(void)
 	if (swap_slot_cache_initialized) {
 		/* serialize with cpu hotplug operations */
 		cpus_read_lock();
+		// 排空swap slot的cache
 		__drain_swap_slots_cache(SLOTS_CACHE|SLOTS_CACHE_RET);
 		cpus_read_unlock();
 	}
 }
 
+// 重启缓存
 static void __reenable_swap_slots_cache(void)
 {
 	swap_slot_cache_enabled = has_usable_swap();
 }
 
+// 重启缓存
 void reenable_swap_slots_cache_unlock(void)
 {
 	__reenable_swap_slots_cache();
 	mutex_unlock(&swap_slots_cache_enable_mutex);
 }
 
+// 检查缓存是否激活
 static bool check_cache_active(void)
 {
 	long pages;
 
 	if (!swap_slot_cache_enabled)
-		return false;
+		return false; // swap slot缓存没打开
 
 	pages = get_nr_swap_pages();
 	if (!swap_slot_cache_active) {
 		if (pages > num_online_cpus() *
-		    THRESHOLD_ACTIVATE_SWAP_SLOTS_CACHE)
+		    THRESHOLD_ACTIVATE_SWAP_SLOTS_CACHE) // 交换页多于一定量才启用缓存
 			reactivate_swap_slots_cache();
 		goto out;
 	}
 
 	/* if global pool of slot caches too low, deactivate cache */
 	if (pages < num_online_cpus() * THRESHOLD_DEACTIVATE_SWAP_SLOTS_CACHE)
-		deactivate_swap_slots_cache();
+		deactivate_swap_slots_cache(); // 使失效
 out:
 	return swap_slot_cache_active;
 }
 
+// 分配swap slot的缓存的结构体
 static int alloc_swap_slot_cache(unsigned int cpu)
 {
 	struct swap_slots_cache *cache;
@@ -120,6 +131,7 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	 * as kvzalloc could trigger reclaim and folio_alloc_swap,
 	 * which can lock swap_slots_cache_mutex.
 	 */
+	 /* 先分配缓存cache用于存储slot的slots数组 */
 	slots = kvcalloc(SWAP_SLOTS_CACHE_SIZE, sizeof(swp_entry_t),
 			 GFP_KERNEL);
 	if (!slots)
@@ -133,8 +145,9 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	}
 
 	mutex_lock(&swap_slots_cache_mutex);
+	// 获取这个cpu的pcp cache指针
 	cache = &per_cpu(swp_slots, cpu);
-	if (cache->slots || cache->slots_ret) {
+	if (cache->slots || cache->slots_ret) { // 这个cpu已经有cache了
 		/* cache already allocated */
 		mutex_unlock(&swap_slots_cache_mutex);
 
@@ -165,15 +178,17 @@ static int alloc_swap_slot_cache(unsigned int cpu)
 	return 0;
 }
 
+// 排空这个cpu在这swap file的swap slot cache
 static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 				  bool free_slots)
 {
 	struct swap_slots_cache *cache;
 	swp_entry_t *slots = NULL;
-
+	// 获得这个cache
 	cache = &per_cpu(swp_slots, cpu);
-	if ((type & SLOTS_CACHE) && cache->slots) {
+	if ((type & SLOTS_CACHE) && cache->slots) {// cache有容量
 		mutex_lock(&cache->alloc_lock);
+		// 释放这些entries
 		swapcache_free_entries(cache->slots + cache->cur, cache->nr);
 		cache->cur = 0;
 		cache->nr = 0;
@@ -183,6 +198,7 @@ static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 		}
 		mutex_unlock(&cache->alloc_lock);
 	}
+
 	if ((type & SLOTS_CACHE_RET) && cache->slots_ret) {
 		spin_lock_irq(&cache->free_lock);
 		swapcache_free_entries(cache->slots_ret, cache->n_ret);
@@ -196,6 +212,7 @@ static void drain_slots_cache_cpu(unsigned int cpu, unsigned int type,
 	}
 }
 
+// 排空swap slot的cache?
 static void __drain_swap_slots_cache(unsigned int type)
 {
 	unsigned int cpu;
@@ -223,10 +240,11 @@ static void __drain_swap_slots_cache(unsigned int type)
 	 * fill any swap slots in slots cache of such cpu.
 	 * There are no slots on such cpu that need to be drained.
 	 */
-	for_each_online_cpu(cpu)
+	for_each_online_cpu(cpu) // 排空每个cpu在这个swap file的slot cache
 		drain_slots_cache_cpu(cpu, type, false);
 }
 
+// 释放swap slot的分配缓存
 static int free_slot_cache(unsigned int cpu)
 {
 	mutex_lock(&swap_slots_cache_mutex);
@@ -235,6 +253,7 @@ static int free_slot_cache(unsigned int cpu)
 	return 0;
 }
 
+// swapon的时候启用swap slot的缓存
 void enable_swap_slots_cache(void)
 {
 	mutex_lock(&swap_slots_cache_enable_mutex);
@@ -255,7 +274,9 @@ out_unlock:
 	mutex_unlock(&swap_slots_cache_enable_mutex);
 }
 
-/* called with swap slot cache's alloc lock held */
+/* called with swap slot cache's alloc lock held
+重新填充swap slot的缓存
+*/
 static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 {
 	if (!use_swap_slot_cache)
@@ -263,12 +284,14 @@ static int refill_swap_slots_cache(struct swap_slots_cache *cache)
 
 	cache->cur = 0;
 	if (swap_slot_cache_active)
+	// 这里申请新的, 直接放到cache的slots数组里面
 		cache->nr = get_swap_pages(SWAP_SLOTS_CACHE_SIZE,
 					   cache->slots, 1);
 
 	return cache->nr;
 }
 
+// 释放swap的slot, 好像是释放swap mapping的slot
 void free_swap_slot(swp_entry_t entry)
 {
 	struct swap_slots_cache *cache;
@@ -294,11 +317,17 @@ void free_swap_slot(swp_entry_t entry)
 		cache->slots_ret[cache->n_ret++] = entry;
 		spin_unlock_irq(&cache->free_lock);
 	} else {
+
+
+
+
 direct_free:
 		swapcache_free_entries(&entry, 1);
 	}
 }
 
+// 给folio分配swap slot, 好像就是在swap file分配slot, 和swap map有关
+// 这时候应该和mapping还没有关系
 swp_entry_t folio_alloc_swap(struct folio *folio)
 {
 	swp_entry_t entry;
@@ -306,8 +335,9 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 
 	entry.val = 0;
 
-	if (folio_test_large(folio)) {
+	if (folio_test_large(folio)) { // 大页的情况
 		if (IS_ENABLED(CONFIG_THP_SWAP) && arch_thp_swp_supported())
+		// 分配swap的slot存储在entry里面
 			get_swap_pages(1, &entry, folio_nr_pages(folio));
 		goto out;
 	}
@@ -317,21 +347,24 @@ swp_entry_t folio_alloc_swap(struct folio *folio)
 	 * in refill_swap_slots_cache().  But it is safe, because
 	 * accesses to the per-CPU data structure are protected by the
 	 * mutex cache->alloc_lock.
-	 *
+	 * 这里允许抢占，因为我们可能在refill_swap_slots_cache()中睡眠。
+	 * 但是这是安全的，因为对每个CPU数据结构的访问受到互斥锁cache->alloc_lock的保护。
 	 * The alloc path here does not touch cache->slots_ret
 	 * so cache->free_lock is not taken.
+	 这个分配路径不会触及cache->slots_ret，所以不会使用cache->free_lock。
 	 */
+	 // 找到申请slots的cache
 	cache = raw_cpu_ptr(&swp_slots);
 
-	if (likely(check_cache_active() && cache->slots)) {
+	if (likely(check_cache_active() && cache->slots)) {// 如果cache里面还有可用的slot
 		mutex_lock(&cache->alloc_lock);
 		if (cache->slots) {
 repeat:
-			if (cache->nr) {
+			if (cache->nr) { // cache还有东西
 				entry = cache->slots[cache->cur];
 				cache->slots[cache->cur++].val = 0;
 				cache->nr--;
-			} else if (refill_swap_slots_cache(cache)) {
+			} else if (refill_swap_slots_cache(cache)) { // cache里面没有了, 重新填充
 				goto repeat;
 			}
 		}
@@ -339,9 +372,10 @@ repeat:
 		if (entry.val)
 			goto out;
 	}
-
+	// 无法利用缓存获取,. 这里直接自己申请
 	get_swap_pages(1, &entry, 1);
 out:
+// 现在entry里面存储的是分配的新的slot
 	if (mem_cgroup_try_charge_swap(folio, entry)) {
 		put_swap_folio(folio, entry);
 		entry.val = 0;

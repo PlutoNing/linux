@@ -1098,6 +1098,7 @@ static inline bool vma_soft_dirty_enabled(struct vm_area_struct *vma)
 	return !(vma->vm_flags & VM_SOFTDIRTY);
 }
 
+// 设置vmi的范围
 static inline void vma_iter_config(struct vma_iterator *vmi,
 		unsigned long index, unsigned long last)
 {
@@ -1108,6 +1109,7 @@ static inline void vma_iter_config(struct vma_iterator *vmi,
 
 /*
  * VMA Iterator functions shared between nommu and mmap
+ 这里分配什么?
  */
 static inline int vma_iter_prealloc(struct vma_iterator *vmi,
 		struct vm_area_struct *vma)
@@ -1136,7 +1138,9 @@ static inline struct vm_area_struct *vma_iter_load(struct vma_iterator *vmi)
 	return mas_walk(&vmi->mas);
 }
 
-/* Store a VMA with preallocated memory */
+/* Store a VMA with preallocated memory
+把vma存入vmi的预先分配的槽位
+*/
 static inline void vma_iter_store(struct vma_iterator *vmi,
 				  struct vm_area_struct *vma)
 {

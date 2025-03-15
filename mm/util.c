@@ -530,6 +530,9 @@ int account_locked_vm(struct mm_struct *mm, unsigned long pages, bool inc)
 }
 EXPORT_SYMBOL_GPL(account_locked_vm);
 
+// 执行mmap
+// 参数的作用是:映射addr开始的len长度的地址空间到 
+// 文件file的pgoff开始处
 unsigned long vm_mmap_pgoff(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long prot,
 	unsigned long flag, unsigned long pgoff)
@@ -540,9 +543,10 @@ unsigned long vm_mmap_pgoff(struct file *file, unsigned long addr,
 	LIST_HEAD(uf);
 
 	ret = security_mmap_file(file, prot, flag);
-	if (!ret) {
+	if (!ret) {// 通过权限检查才开始
 		if (mmap_write_lock_killable(mm))
 			return -EINTR;
+		// 执行mmap
 		ret = do_mmap(file, addr, len, prot, flag, 0, pgoff, &populate,
 			      &uf);
 		mmap_write_unlock(mm);

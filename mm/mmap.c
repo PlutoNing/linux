@@ -419,6 +419,7 @@ static int vma_link(struct mm_struct *mm, struct vm_area_struct *vma)
 
 /*
  * init_multi_vma_prep() - Initializer for struct vma_prepare
+ 初始化vma_prepare
  * @vp: The vma_prepare struct
  * @vma: The vma that will be altered once locked
  * @next: The next vma if it is to be adjusted
@@ -458,6 +459,7 @@ static inline void init_vma_prep(struct vma_prepare *vp,
 
 /*
  * vma_prepare() - Helper function for handling locking VMAs prior to altering
+   在真正变动之前预先加锁
  * @vp: The initialized vma_prepare struct
  */
 static inline void vma_prepare(struct vma_prepare *vp)
@@ -502,7 +504,7 @@ static inline void vma_prepare(struct vma_prepare *vp)
 /*
  * vma_complete- Helper function for handling the unlocking after altering VMAs,
  * or for inserting a VMA.
- *
+ * 扩展完毕后解锁
  * @vp: The vma_prepare struct
  * @vmi: The vma iterator
  * @mm: The mm_struct
@@ -581,6 +583,9 @@ again:
 
 /*
  * dup_anon_vma() - Helper function to duplicate anon_vma
+ 为啥要dup这个av? 理解的一种情况是,扩展vma的情况, 就是扩展dst要包住src了,所以需要复制和吸纳av的rmap信息
+ ====================================================
+ 一种调用情况是,扩展dst这个vma, src是后面的vma, dst要扩展到刚好包住src
  * @dst: The destination VMA
  * @src: The source VMA
  * @dup: Pointer to the destination VMA when successful.
@@ -599,7 +604,7 @@ static inline int dup_anon_vma(struct vm_area_struct *dst,
 		int ret;
 
 		vma_assert_write_locked(dst);
-		dst->anon_vma = src->anon_vma;
+		dst->anon_vma = src->anon_vma; // 就是指针赋值?
 		ret = anon_vma_clone(dst, src);
 		if (ret)
 			return ret;
@@ -612,11 +617,11 @@ static inline int dup_anon_vma(struct vm_area_struct *dst,
 
 /*
  * vma_expand - Expand an existing VMA
- *
+ * 扩展一个现存的vma
  * @vmi: The vma iterator
  * @vma: The vma to expand
- * @start: The start of the vma
- * @end: The exclusive end of the vma
+ * @start: The start of the vma,这里是要扩展到的地址
+ * @end: The exclusive end of the vma,这里是要扩展到的地址
  * @pgoff: The page offset of vma
  * @next: The current of next vma.
  *
@@ -624,7 +629,8 @@ static inline int dup_anon_vma(struct vm_area_struct *dst,
  * expand over @next if it's different from @vma and @end == @next->vm_end.
  * Checking if the @vma can expand and merge with @next needs to be handled by
  * the caller.
- *
+ * 扩展vma到start和end。可以扩展到start和end。如果end==next->vm_end,则可以扩展到next上。
+ * 检查vma是否可以扩展并与next合并需要由调用者处理。
  * Returns: 0 on success
  */
 int vma_expand(struct vma_iterator *vmi, struct vm_area_struct *vma,
@@ -636,16 +642,22 @@ int vma_expand(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	struct vma_prepare vp;
 
 	vma_start_write(vma);
-	if (next && (vma != next) && (end == next->vm_end)) {
+	if (next && (vma != next) && (end == next->vm_end)) { //mmap的情况有可能是这样
+		// 如果prev也可以merge的情况
+		// start          addr--------addr+len            end  
+		// prev_start---prev_end      next_start-----next_end
+		// vma_start                  next这个vma      
+		// vma这个vma
 		int ret;
 
 		remove_next = true;
-		vma_start_write(next);
+		vma_start_write(next); // 对next也加写锁
+		// 一种情况是vma要往后扩展包住next了,这里把av信息拷贝过来
 		ret = dup_anon_vma(vma, next, &anon_dup);
-		if (ret)
+		if (ret) // 出错了
 			return ret;
 	}
-
+	// vp有啥用?
 	init_multi_vma_prep(&vp, vma, NULL, remove_next ? next : NULL, NULL);
 	/* Not merging but overwriting any part of next is not handled. */
 	VM_WARN_ON(next && !vp.remove &&
@@ -658,8 +670,9 @@ int vma_expand(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	if (vma_iter_prealloc(vmi, vma))
 		goto nomem;
 
-	vma_prepare(&vp);
+	vma_prepare(&vp);  //进行提前加锁
 	vma_adjust_trans_huge(vma, start, end, 0);
+	// 难道扩展就是直接改变属性吗?
 	vma->vm_start = start;
 	vma->vm_end = end;
 	vma->vm_pgoff = pgoff;
@@ -757,6 +770,7 @@ static inline bool is_mergeable_anon_vma(struct anon_vma *anon_vma1,
 }
 
 /*
+是否可以往前合并这个vma
  * Return true if we can merge this (vm_flags,anon_vma,file,vm_pgoff)
  * in front of (at a lower virtual address and file offset than) the vma.
  *
@@ -1216,6 +1230,7 @@ static inline bool file_mmap_ok(struct file *file, struct inode *inode,
 }
 
 /*
+执行mmap系统调用
  * The caller must write-lock current->mm->mmap_lock.
  */
 unsigned long do_mmap(struct file *file, unsigned long addr,
@@ -1242,7 +1257,9 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		if (!(file && path_noexec(&file->f_path)))
 			prot |= PROT_EXEC;
 
-	/* force arch specific MAP_FIXED handling in get_unmapped_area */
+	/* force arch specific MAP_FIXED handling in get_unmapped_area
+	这里在get_unmapped_area中强制了arch特定的MAP_FIXED处理
+	 */
 	if (flags & MAP_FIXED_NOREPLACE)
 		flags |= MAP_FIXED;
 
@@ -1264,6 +1281,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 
 	/* Obtain the address to map to. we verify (or select) it and ensure
 	 * that it represents a valid section of the address space.
+	 获取要映射到的地址。我们验证（或选择）它，并确保它表示地址空间的有效部分。
 	 */
 	addr = get_unmapped_area(file, addr, len, pgoff, flags);
 	if (IS_ERR_VALUE(addr))
@@ -1271,7 +1289,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 
 	if (flags & MAP_FIXED_NOREPLACE) {
 		if (find_vma_intersection(mm, addr, addr + len))
-			return -EEXIST;
+			return -EEXIST; // 如果要求不能交叉, 但是找到的地址其实是有交叉的,返回
 	}
 
 	if (prot == PROT_EXEC) {
@@ -1294,7 +1312,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	if (!mlock_future_ok(mm, vm_flags, len))
 		return -EAGAIN;
 
-	if (file) {
+	if (file) { // 说明是有文件的mmap?
 		struct inode *inode = file_inode(file);
 		unsigned long flags_mask;
 
@@ -1353,7 +1371,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		default:
 			return -EINVAL;
 		}
-	} else {
+	} else { // 匿名页的情况?
 		switch (flags & MAP_TYPE) {
 		case MAP_SHARED:
 			if (vm_flags & (VM_GROWSDOWN|VM_GROWSUP))
@@ -1378,6 +1396,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	/*
 	 * Set 'VM_NORESERVE' if we should not account for the
 	 * memory use of this mapping.
+	 设置'VM_NORESERVE'，如果我们不应该计算此映射的内存使用。
 	 */
 	if (flags & MAP_NORESERVE) {
 		/* We honor MAP_NORESERVE if allowed to overcommit */
@@ -1388,7 +1407,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		if (file && is_file_hugepages(file))
 			vm_flags |= VM_NORESERVE;
 	}
-
+// 这里开始mmap
 	addr = mmap_region(file, addr, len, vm_flags, pgoff, uf);
 	if (!IS_ERR_VALUE(addr) &&
 	    ((vm_flags & VM_LOCKED) ||
@@ -1397,6 +1416,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	return addr;
 }
 
+// 似乎是addr开始的len, 想mmap到fd的pgoff开始
 unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 			      unsigned long prot, unsigned long flags,
 			      unsigned long fd, unsigned long pgoff)
@@ -1404,7 +1424,8 @@ unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 	struct file *file = NULL;
 	unsigned long retval;
 
-	if (!(flags & MAP_ANONYMOUS)) {
+	if (!(flags & MAP_ANONYMOUS)) {// 如果不是匿名的, 映射具体文件
+		// 设置一下文件
 		audit_mmap_fd(fd, flags);
 		file = fget(fd);
 		if (!file)
@@ -1415,7 +1436,7 @@ unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 			retval = -EINVAL;
 			goto out_fput;
 		}
-	} else if (flags & MAP_HUGETLB) {
+	} else if (flags & MAP_HUGETLB) {// 巨页相关
 		struct hstate *hs;
 
 		hs = hstate_sizelog((flags >> MAP_HUGE_SHIFT) & MAP_HUGE_MASK);
@@ -1434,7 +1455,7 @@ unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 		if (IS_ERR(file))
 			return PTR_ERR(file);
 	}
-
+	// 执行mmap
 	retval = vm_mmap_pgoff(file, addr, len, prot, flags, pgoff);
 out_fput:
 	if (file)
@@ -1442,9 +1463,13 @@ out_fput:
 	return retval;
 }
 
-SYSCALL_DEFINE6(mmap_pgoff, unsigned long, addr, unsigned long, len,
-		unsigned long, prot, unsigned long, flags,
-		unsigned long, fd, unsigned long, pgoff)
+SYSCALL_DEFINE6(mmap_pgoff, 
+	unsigned long, addr, 
+	unsigned long, len,
+		unsigned long, prot, 
+		unsigned long, flags,
+		unsigned long, fd, 
+		unsigned long, pgoff)
 {
 	return ksys_mmap_pgoff(addr, len, prot, flags, fd, pgoff);
 }
@@ -1861,6 +1886,7 @@ EXPORT_SYMBOL(get_unmapped_area);
 
 /**
  * find_vma_intersection() - Look up the first VMA which intersects the interval
+   查找与区间交集的第一个VMA
  * @mm: The process address space.
  * @start_addr: The inclusive start user address.
  * @end_addr: The exclusive end user address.
@@ -2335,8 +2361,11 @@ static inline void remove_mt(struct mm_struct *mm, struct ma_state *mas)
 
 /*
  * Get rid of page table information in the indicated region.
- *
+ * unmap这些vma, 释放页表
  * Called with the mm semaphore held.
+ 要unmap的vma都在mas存着, tree_end个,地址范围在start到end
+ @vma是第一个vma
+prev和next还不清楚
  */
 static void unmap_region(struct mm_struct *mm, struct ma_state *mas,
 		struct vm_area_struct *vma, struct vm_area_struct *prev,
@@ -2349,6 +2378,7 @@ static void unmap_region(struct mm_struct *mm, struct ma_state *mas,
 	lru_add_drain();
 	tlb_gather_mmu(&tlb, mm);
 	update_hiwater_rss(mm);
+	// unmap这些vma
 	unmap_vmas(&tlb, mas, vma, start, end, tree_end, mm_wr_locked);
 	mas_set(mas, mt_start);
 	free_pgtables(&tlb, mas, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
@@ -2455,8 +2485,10 @@ int split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
 
 /*
  * do_vmi_align_munmap() - munmap the aligned region from @start to @end.
+ unmap范围从start到end
+ 先加锁mm找到这些vma,detach加入mas,.然后再unmap
  * @vmi: The vma iterator
- * @vma: The starting vm_area_struct
+ * @vma: The starting vm_area_struct, 范围内第一个vma
  * @mm: The mm_struct
  * @start: The aligned start address to munmap.
  * @end: The aligned end address to munmap.
@@ -2478,6 +2510,7 @@ do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	int error = -ENOMEM;
 	unsigned long locked_vm = 0;
 	MA_STATE(mas_detach, &mt_detach, 0, 0);
+	// 初始化mt_detach这个maple tree
 	mt_init_flags(&mt_detach, vmi->mas.tree->ma_flags & MT_FLAGS_LOCK_MASK);
 	mt_on_stack(mt_detach);
 
@@ -2518,10 +2551,13 @@ do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 				goto end_split_failed;
 		}
 		vma_start_write(next);
+		// count是一种类似idx的东西
 		mas_set(&mas_detach, count);
+		// 把当前这个vma存储到detach这个mt
 		error = mas_store_gfp(&mas_detach, next, GFP_KERNEL);
 		if (error)
 			goto munmap_gather_failed;
+		// 标记为已经detached
 		vma_mark_detached(next, true);
 		if (next->vm_flags & VM_LOCKED)
 			locked_vm += vma_pages(next);
@@ -2569,7 +2605,7 @@ do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 #endif
 
 	while (vma_iter_addr(vmi) > start)
-		vma_iter_prev_range(vmi);
+		vma_iter_prev_range(vmi); // 往前移动vmi的mas状态的index
 
 	error = vma_iter_clear_gfp(vmi, start, end, GFP_KERNEL);
 	if (error)
@@ -2585,12 +2621,15 @@ do_vmi_align_munmap(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	next = vma_next(vmi);
 	if (next)
 		vma_iter_prev_range(vmi);
-
+	// 刚才在加锁的情况下
+	// detach这个mt上存储了vma, 现在要把这些vma从mm上删除
 	/*
 	 * We can free page tables without write-locking mmap_lock because VMAs
 	 * were isolated before we downgraded mmap_lock.
+	 我们可以
 	 */
 	mas_set(&mas_detach, 1);
+	// 这里开始unmap?
 	unmap_region(mm, &mas_detach, vma, prev, next, start, end, count,
 		     !unlock);
 	/* Statistics and freeing VMAs */
@@ -2620,6 +2659,7 @@ map_count_exceeded:
 
 /*
  * do_vmi_munmap() - munmap a given range.
+   unmap指定的地址范围
  * @vmi: The vma iterator
  * @mm: The mm_struct
  * @start: The start address to munmap
@@ -2643,7 +2683,7 @@ int do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
 
 	if ((offset_in_page(start)) || start > TASK_SIZE || len > TASK_SIZE-start)
 		return -EINVAL;
-
+	// 确定地址范围, 都是页对齐的
 	end = start + PAGE_ALIGN(len);
 	if (end == start)
 		return -EINVAL;
@@ -2651,9 +2691,11 @@ int do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
 	 /* arch_unmap() might do unmaps itself.  */
 	arch_unmap(mm, start, end);
 
-	/* Find the first overlapping VMA */
+	/* Find the first overlapping VMA
+	找到第一个与start有交集的VMA
+	*/
 	vma = vma_find(vmi, end);
-	if (!vma) {
+	if (!vma) {// 没有有交叉的vma, 没必要继续了
 		if (unlock)
 			mmap_write_unlock(mm);
 		return 0;
@@ -2683,6 +2725,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 		unsigned long len, vm_flags_t vm_flags, unsigned long pgoff,
 		struct list_head *uf)
 {
+	// 是current的mm吗
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma = NULL;
 	struct vm_area_struct *next, *prev, *merge;
@@ -2709,7 +2752,10 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 			return -ENOMEM;
 	}
 
-	/* Unmap any existing mapping in the area */
+	/* Unmap any existing mapping in the area
+	先把范围内的vma全部unmap
+	理解是因为要重新映射,用户肯定是不要这些旧的了
+	*/
 	if (do_vmi_munmap(&vmi, mm, addr, len, uf, false))
 		return -ENOMEM;
 
@@ -2732,33 +2778,47 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	}
 
 	/* Attempt to expand an old mapping */
-	/* Check next */
+	/* Check next
+	如果下一个vma的起始地址刚好是我们新范围的末尾
+	尝试合并
+	*/
 	if (next && next->vm_start == end && !vma_policy(next) &&
 	    can_vma_merge_before(next, vm_flags, NULL, file, pgoff+pglen,
 				 NULL_VM_UFFD_CTX, NULL)) {
 		merge_end = next->vm_end;
 		vma = next;
+		// 如果可以merge的话, vm_pgoff就是新vma的pgoff
+		// 计算方式就是next的pgoff减去len的这些页数
 		vm_pgoff = next->vm_pgoff - pglen;
 	}
 
-	/* Check prev */
+	/* Check prev
+	如果上一个vma的结束地址刚好是我们新范围的起始
+	==============================
+	这个判断是和上一个判断有关系的, 所以需要结合vma是不是null（能不能与next合并）
+	来改变这里merge_after的判断方式
+	*/
 	if (prev && prev->vm_end == addr && !vma_policy(prev) &&
-	    (vma ? can_vma_merge_after(prev, vm_flags, vma->anon_vma, file,
-				       pgoff, vma->vm_userfaultfd_ctx, NULL) :
-		   can_vma_merge_after(prev, vm_flags, NULL, file, pgoff,
-				       NULL_VM_UFFD_CTX, NULL))) {
-		merge_start = prev->vm_start;
-		vma = prev;
-		vm_pgoff = prev->vm_pgoff;
+	    (vma ? /* vma不为null, 就是可以与next合并 */
+			can_vma_merge_after(prev, vm_flags, vma->anon_vma, file,pgoff, vma->vm_userfaultfd_ctx, NULL) :
+		    can_vma_merge_after(prev, vm_flags, NULL, file, pgoff,
+				       NULL_VM_UFFD_CTX, NULL)
+		)
+	) {
+		merge_start = prev->vm_start; // 如果可以merge prev,那么新vma的start就是prev的start
+		vma = prev; // 如果prev可以merge, 马上vma_expand的起始vma参数就是prev了
+		vm_pgoff = prev->vm_pgoff; // 相应的pgoff也要更新
 	} else if (prev) {
 		vma_iter_next_range(&vmi);
 	}
 
 	/* Actually expand, if possible */
-	if (vma &&
+	if (vma && // 只要vma不为null, 就是可以merge.
+		// 其中的vma, merge_start, merge_end, vm_pgoff这些参数刚才都考虑到prev和next的merge情况改变了
+		// 所以这里直接开始merge
 	    !vma_expand(&vmi, vma, merge_start, merge_end, vm_pgoff, next)) {
 		khugepaged_enter_vma(vma, vm_flags);
-		goto expanded;
+		goto expanded; // 扩展成功直接跳过新建vma的步骤
 	}
 
 	if (vma == prev)
@@ -2777,20 +2837,21 @@ cannot_expand:
 	}
 
 	vma_iter_config(&vmi, addr, end);
-	vma->vm_start = addr;
+	vma->vm_start = addr; // 这里的范围就是一开始的mmap系统调用要求的范围了
 	vma->vm_end = end;
 	vm_flags_init(vma, vm_flags);
 	vma->vm_page_prot = vm_get_page_prot(vm_flags);
 	vma->vm_pgoff = pgoff;
 
-	if (file) {
-		if (vm_flags & VM_SHARED) {
+	if (file) {//如果是有文件的mmap
+		if (vm_flags & VM_SHARED) { // 共享的非匿名的映射
 			error = mapping_map_writable(file->f_mapping);
 			if (error)
 				goto free_vma;
 		}
 
 		vma->vm_file = get_file(file);
+		// 调用fops的mmap回调
 		error = call_mmap(file, vma);
 		if (error)
 			goto unmap_and_free_vma;
@@ -2831,11 +2892,11 @@ cannot_expand:
 		}
 
 		vm_flags = vma->vm_flags;
-	} else if (vm_flags & VM_SHARED) {
+	} else if (vm_flags & VM_SHARED) { // 如果是共享的内存分配映射
 		error = shmem_zero_setup(vma);
 		if (error)
 			goto free_vma;
-	} else {
+	} else { // 这里就是私有的匿名的情况?
 		vma_set_anonymous(vma);
 	}
 
@@ -3430,6 +3491,7 @@ out:
 /*
  * Return true if the calling process may expand its vm space by the passed
  * number of pages
+   检查这个进程是否可以扩展它的vm空间
  */
 bool may_expand_vm(struct mm_struct *mm, vm_flags_t flags, unsigned long npages)
 {

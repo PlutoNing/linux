@@ -185,7 +185,9 @@ out:
  */
 #define LRU_FOLIO 0x1
 #define NEW_FOLIO 0x2
-/* 实际是给folio地址加了个1或者2的偏移 */
+/* 实际是给folio地址加了个1或者2的偏移
+哪些需求以这种方式锁定
+*/
 static inline struct folio *mlock_lru(struct folio *folio)
 {
 	return (struct folio *)((unsigned long)folio + LRU_FOLIO);
@@ -214,7 +216,7 @@ static void mlock_folio_batch(struct folio_batch *fbatch)
 
 	for (i = 0; i < folio_batch_count(fbatch); i++) {
 		folio = fbatch->folios[i];
-		/* mlock表示是lru folio还是new folio */
+		/* mlock表示是lru folio或者new folio */
 		mlock = (unsigned long)folio & (LRU_FOLIO | NEW_FOLIO);
 		/* 获取folio的实际地址. 因为刚才folio的地址被打上了new还是lru的标记 */
 		folio = (struct folio *)((unsigned long)folio - mlock);
@@ -275,6 +277,7 @@ void mlock_folio(struct folio *folio)
 	local_lock(&mlock_fbatch.lock);
 	fbatch = this_cpu_ptr(&mlock_fbatch.fbatch);
 
+	// 设置mlock flag
 	if (!folio_test_set_mlocked(folio)) {/* 设置mlock flag,返回本来有无mlock, */
 	/* 如果本来没有mlock的话,这里进行统计 */
 		int nr_pages = folio_nr_pages(folio);
@@ -296,6 +299,7 @@ void mlock_folio(struct folio *folio)
 
 /**
  * mlock_new_folio - mlock a newly allocated folio not yet on LRU
+ mlock一个还不在lru的新分配的folio
  * @folio: folio to be mlocked, either normal or a THP head.
  */
 void mlock_new_folio(struct folio *folio)
@@ -313,7 +317,7 @@ void mlock_new_folio(struct folio *folio)
 	folio_get(folio);
 	if (!folio_batch_add(fbatch, mlock_new(folio)) ||
 	    folio_test_large(folio) || lru_cache_disabled())
-		mlock_folio_batch(fbatch);
+		mlock_folio_batch(fbatch); // 批量的mlock这些folio
 	local_unlock(&mlock_fbatch.lock);
 }
 
@@ -338,6 +342,8 @@ void munlock_folio(struct folio *folio)
 	local_unlock(&mlock_fbatch.lock);
 }
 
+// 仅自己调用mlock_folio函数
+
 static int mlock_pte_range(pmd_t *pmd, unsigned long addr,
 			   unsigned long end, struct mm_walk *walk)
 
@@ -349,16 +355,17 @@ static int mlock_pte_range(pmd_t *pmd, unsigned long addr,
 	struct folio *folio;
 
 	ptl = pmd_trans_huge_lock(pmd, vma);
-	if (ptl) {
+	if (ptl) {// 说明是特殊情况的页表,huge什么的
 		if (!pmd_present(*pmd))
 			goto out;
 		if (is_huge_zero_pmd(*pmd))
 			goto out;
 		folio = page_folio(pmd_page(*pmd));
 		if (vma->vm_flags & VM_LOCKED)
-			mlock_folio(folio);
+			mlock_folio(folio); // 依据vma的情况加锁
 		else
 			munlock_folio(folio);
+
 		goto out;
 	}
 

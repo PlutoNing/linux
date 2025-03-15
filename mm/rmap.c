@@ -267,6 +267,7 @@ static inline void unlock_anon_vma_root(struct anon_vma *root)
 }
 
 /*
+clone av的过程是什么样的?
  * Attach the anon_vmas from src to dst.
  * Returns 0 on success, -ENOMEM on failure.
  *
@@ -276,7 +277,9 @@ static inline void unlock_anon_vma_root(struct anon_vma *root)
  * prevent endless growth of anon_vma. Since dst->anon_vma is set to NULL before
  * call, we can identify this case by checking (!dst->anon_vma &&
  * src->anon_vma).
- *
+ * 这个函数被vma_expand(), vma_merge(), __split_vma(), copy_vma() and anon_vma_fork()调用
+ * 前四个想要src的一个精确拷贝, 而最后一个可能会尝试重用一个已经存在的anon_vma来防止anon_vma的无限增长
+ * 因为在调用之前dst->anon_vma被设置为NULL, 我们可以通过检查(!dst->anon_vma && src->anon_vma)来识别这种情况
  * If (!dst->anon_vma && src->anon_vma) is true, this function tries to find
  * and reuse existing anon_vma which has no vmas and only one child anon_vma.
  * This prevents degradation of anon_vma hierarchy to endless linear chain in
@@ -284,6 +287,11 @@ static inline void unlock_anon_vma_root(struct anon_vma *root)
  * than one child isn't reused even if there was no alive vma, thus rmap
  * walker has a good chance of avoiding scanning the whole hierarchy when it
  * searches where page is mapped.
+   如果(!dst->anon_vma && src->anon_vma)为真,则此函数尝试查找并重用没有vmas且只有一个子anon_vma的现有anon_vma
+   这可以防止在不断fork任务的情况下将anon_vma层次结构降级为无限线性链
+   另一方面,即使没有活动的vma,也不会重用具有多个子anon_vma的anon_vma,因此rmap walker在搜索页面映射位置时有很好的机会避免扫描整个层次结构
+==================================
+理解的一种情况是,扩展vma的情况, 就是扩展dst要包住src了,所以需要复制和吸纳av的rmap信息
  */
 int anon_vma_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
 {
@@ -1402,6 +1410,7 @@ void folio_add_file_rmap_range(struct folio *folio, struct page *page,
 		} while (page++, --nr_pages > 0);
 
 	} else if (folio_test_pmd_mappable(folio)) { // 如果是大页
+		// do_set_pmd函数是这个路径
 		/* That test is redundant: it's for safety or to optimize out */
 
 		first = atomic_inc_and_test(&folio->_entire_mapcount);
@@ -1453,7 +1462,7 @@ void page_add_file_rmap(struct page *page, struct vm_area_struct *vma,
 	else
 		nr_pages = folio_nr_pages(folio);
 
-	
+	// 添加rmap
 	folio_add_file_rmap_range(folio, page, nr_pages, vma, compound);
 }
 

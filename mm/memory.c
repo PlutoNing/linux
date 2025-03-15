@@ -405,13 +405,17 @@ void free_pgtables(struct mmu_gather *tlb, struct ma_state *mas,
 		vma = next;
 	} while (vma);
 }
-
+// 都install些什么
+/* 
+@pte是个pte页表
+@pmd是个pmd表项的指针
+*/
 void pmd_install(struct mm_struct *mm, pmd_t *pmd, pgtable_t *pte)
 {
 	spinlock_t *ptl = pmd_lock(mm, pmd);
 
 	if (likely(pmd_none(*pmd))) {	/* Has another populated it ? */
-		mm_inc_nr_ptes(mm);
+		mm_inc_nr_ptes(mm); // 统计页表所占的内存量
 		/*
 		 * Ensure all pte setup (eg. pte page lock and page clearing) are
 		 * visible before the pte is made visible to other CPUs by being
@@ -1563,7 +1567,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 	 * memory too. Come back again if we didn't do everything.
 	 */
 	if (force_flush)
-		tlb_flush_mmu(tlb);
+		tlb_flush_mmu(tlb); // 好像是也会清理这些页面的swap cache
 
 	return addr;
 }
@@ -1727,6 +1731,7 @@ static void unmap_single_vma(struct mmu_gather *tlb,
 
 /**
  * unmap_vmas - unmap a range of memory covered by a list of vma's
+   unmap这一系列vma
  * @tlb: address of the caller's struct mmu_gather
  * @mas: the maple state
  * @vma: the starting vma
@@ -1757,14 +1762,15 @@ void unmap_vmas(struct mmu_gather *tlb, struct ma_state *mas,
 		/* Careful - we need to zap private pages too! */
 		.even_cows = true,
 	};
-
+	// 感觉其实就是设置了start_addr和end_addr这两个参数
 	mmu_notifier_range_init(&range, MMU_NOTIFY_UNMAP, 0, vma->vm_mm,
 				start_addr, end_addr);
 	mmu_notifier_invalidate_range_start(&range);
-	do {
+	do { // 遍历存储的每一个vma
 		unsigned long start = start_addr;
 		unsigned long end = end_addr;
 		hugetlb_zap_begin(vma, &start, &end);
+		// unmap这个vma
 		unmap_single_vma(tlb, vma, start, end, &details,
 				 mm_wr_locked);
 		hugetlb_zap_end(vma, &details);
@@ -4399,21 +4405,26 @@ static void deposit_prealloc_pte(struct vm_fault *vmf)
 	vmf->prealloc_pte = NULL;
 }
 
+// 直接把这个复合页面page作为pmd表项的指向
+// 一种情况可能是page是fault处理刚刚返回的复合页
 vm_fault_t do_set_pmd(struct vm_fault *vmf, struct page *page)
 {
 	struct vm_area_struct *vma = vmf->vma;
 	bool write = vmf->flags & FAULT_FLAG_WRITE;
+	// 去除addr的后21位, 也就是直接忽略了pte页表, 因为是大页
+	// 这里其实haddr就可理解为是大页的地址, 一个大页可能是2MB
 	unsigned long haddr = vmf->address & HPAGE_PMD_MASK;
 	pmd_t entry;
 	vm_fault_t ret = VM_FAULT_FALLBACK;
 
 	if (!transhuge_vma_suitable(vma, haddr))
 		return ret;
-
+	// 把page转为复合页
 	page = compound_head(page);
 	if (compound_order(page) != HPAGE_PMD_ORDER)
 		return ret;
-
+	// order必须是9? 这么大
+	//在filemap_map_pmd中这是个512的复合页面
 	/*
 	 * Just backoff if any subpage of a THP is corrupted otherwise
 	 * the corrupted page may mapped by PMD silently to escape the
@@ -4433,17 +4444,19 @@ vm_fault_t do_set_pmd(struct vm_fault *vmf, struct page *page)
 			return VM_FAULT_OOM;
 	}
 
+	// 锁住pmd?
 	vmf->ptl = pmd_lock(vma->vm_mm, vmf->pmd);
 	if (unlikely(!pmd_none(*vmf->pmd)))
 		goto out;
 
 	flush_icache_pages(vma, page, HPAGE_PMD_NR);
-
+	// 转为一个huge的pmd表项
 	entry = mk_huge_pmd(page, vma->vm_page_prot);
 	if (write)
 		entry = maybe_pmd_mkwrite(pmd_mkdirty(entry), vma);
 
 	add_mm_counter(vma->vm_mm, mm_counter_file(page), HPAGE_PMD_NR);
+	// 设置rmap
 	page_add_file_rmap(page, vma, true);
 
 	/*
@@ -4452,6 +4465,7 @@ vm_fault_t do_set_pmd(struct vm_fault *vmf, struct page *page)
 	if (arch_needs_pgtable_deposit())
 		deposit_prealloc_pte(vmf);
 
+	// vmf->pmd指向的值设置为entry
 	set_pmd_at(vma->vm_mm, haddr, vmf->pmd, entry);
 
 	update_mmu_cache_pmd(vma, haddr, vmf->pmd);
@@ -4478,6 +4492,8 @@ vm_fault_t do_set_pmd(struct vm_fault *vmf, struct page *page)
  * @page: The first page to create a PTE for.
  * @nr: The number of PTEs to create.
  * @addr: The first address to create a PTE for.
+ ====================
+ 一种情况是page是addr缺页刚刚分配的页面
  */
 void set_pte_range(struct vm_fault *vmf, struct folio *folio,
 		struct page *page, unsigned int nr, unsigned long addr)
@@ -4490,6 +4506,7 @@ void set_pte_range(struct vm_fault *vmf, struct folio *folio,
 	pte_t entry;
 
 	flush_icache_pages(vma, page, nr);
+	// 生成page的pte页表项
 	entry = mk_pte(page, vma->vm_page_prot);
 
 	if (prefault && arch_wants_old_prefaulted_pte())
@@ -4502,11 +4519,12 @@ void set_pte_range(struct vm_fault *vmf, struct folio *folio,
 	if (unlikely(uffd_wp))
 		entry = pte_mkuffd_wp(entry);
 	/* copy-on-write page */
-	if (write && !(vma->vm_flags & VM_SHARED)) { /* 好像mmap的私有可写就是匿名页? */
+	if (write && !(vma->vm_flags & VM_SHARED)) { /* 如果是私有vma的写错误 */
+		// 生成参数指定的nr个pte
 		add_mm_counter(vma->vm_mm, MM_ANONPAGES, nr);
 		VM_BUG_ON_FOLIO(nr != 1, folio);
 		folio_add_new_anon_rmap(folio, vma, addr);
-		folio_add_lru_vma(folio, vma);
+		folio_add_lru_vma(folio, vma); // 这是fault刚刚新建的页面, 所以要加入lru?
 	} else { /* 共享的是mmap页面, 映射文件, 共享. */
 		add_mm_counter(vma->vm_mm, mm_counter_file(page), nr);
 		folio_add_file_rmap_range(folio, page, nr, vma, false);
@@ -4527,17 +4545,18 @@ static bool vmf_pte_changed(struct vm_fault *vmf)
 
 /**
  * finish_fault - finish page fault once we have prepared the page to fault
- *
+ * 在准备好缺页的页面后完成缺页处理
  * @vmf: structure describing the fault
  *
  * This function handles all that is needed to finish a page fault once the
  * page to fault in is prepared. It handles locking of PTEs, inserts PTE for
  * given page, adds reverse page mapping, handles memcg charges and LRU
  * addition.
- *
+ * 这函数处理所有需要完成缺页处理的事情，一旦准备好要缺页的页面。它处理PTE的锁定，
+ * 为给定页面插入PTE，添加反向页面映射，处理memcg收费和LRU添加。
  * The function expects the page to be locked and on success it consumes a
  * reference of a page being mapped (for the PTE which maps it).
- *
+ * 函数期望页面被锁定，并且成功时消耗了被映射的页面的引用（用于映射它的PTE）。
  * Return: %0 on success, %VM_FAULT_ code in case of error.
  */
 vm_fault_t finish_fault(struct vm_fault *vmf)
@@ -4546,15 +4565,17 @@ vm_fault_t finish_fault(struct vm_fault *vmf)
 	struct page *page;
 	vm_fault_t ret;
 
-	/* Did we COW the page? */
-	if ((vmf->flags & FAULT_FLAG_WRITE) && !(vma->vm_flags & VM_SHARED))
-		page = vmf->cow_page;
+	/* Did we COW the page?
+	*/
+	if ((vmf->flags & FAULT_FLAG_WRITE) && !(vma->vm_flags & VM_SHARED)) // 如果处理的是私有vma的写缺页
+		page = vmf->cow_page; // 就得cow page
 	else
 		page = vmf->page;
 
 	/*
 	 * check even for read faults because we might have lost our CoWed
 	 * page
+	   即使是读错误,也检查, 因为可能丢失了cow page?
 	 */
 	if (!(vma->vm_flags & VM_SHARED)) {
 		ret = check_stable_address_space(vma->vm_mm);
@@ -4562,14 +4583,14 @@ vm_fault_t finish_fault(struct vm_fault *vmf)
 			return ret;
 	}
 
-	if (pmd_none(*vmf->pmd)) {
-		if (PageTransCompound(page)) {
+	if (pmd_none(*vmf->pmd)) { // 如果pmd表项还是空的
+		if (PageTransCompound(page)) { // 如果是复合页面
 			ret = do_set_pmd(vmf, page);
 			if (ret != VM_FAULT_FALLBACK)
-				return ret;
+				return ret; // 出错了
 		}
 
-		if (vmf->prealloc_pte)
+		if (vmf->prealloc_pte) // 如果分配了页表, 让pmd页表项指向这个页表
 			pmd_install(vma->vm_mm, vmf->pmd, &vmf->prealloc_pte);
 		else if (unlikely(pte_alloc(vma->vm_mm, vmf->pmd)))
 			return VM_FAULT_OOM;
@@ -4638,13 +4659,14 @@ late_initcall(fault_around_debugfs);
  * do_fault_around() tries to map few pages around the fault address. The hope
  * is that the pages will be needed soon and this will lower the number of
  * faults to handle.
- *
+ * 函数尝试在缺页地址周围映射几个页面。希望这些页面很快就会需要，
+ * 这将降低处理的缺页数。
  * It uses vm_ops->map_pages() to map the pages, which skips the page if it's
  * not ready to be mapped: not up-to-date, locked, etc.
- *
+ * 使用vm_ops->map_pages()来映射页面，如果页面尚未准备好映射，则跳过该页面：未更新，锁定等。
  * This function doesn't cross VMA or page table boundaries, in order to call
  * map_pages() and acquire a PTE lock only once.
- *
+ * 函数不会交叉vma
  * fault_around_pages defines how many pages we'll try to map.
  * do_fault_around() expects it to be set to a power of two less than or equal
  * to PTRS_PER_PTE.
@@ -4657,17 +4679,24 @@ late_initcall(fault_around_debugfs);
 static vm_fault_t do_fault_around(struct vm_fault *vmf)
 {
 	pgoff_t nr_pages = READ_ONCE(fault_around_pages);
+	// 这是在pte页表的offset
 	pgoff_t pte_off = pte_index(vmf->address);
-	/* The page offset of vmf->address within the VMA. */
+	/* The page offset of vmf->address within the VMA.
+	这个是要fault的页面在vma的pgoff
+	*/
 	pgoff_t vma_off = vmf->pgoff - vmf->vma->vm_pgoff;
 	pgoff_t from_pte, to_pte;
 	vm_fault_t ret;
 
-	/* The PTE offset of the start address, clamped to the VMA. */
+	/* The PTE offset of the start address, clamped to the VMA.
+	一种情况是把pteoff向下对齐到nr_pages
+	*/
 	from_pte = max(ALIGN_DOWN(pte_off, nr_pages),
 		       pte_off - min(pte_off, vma_off));
 
-	/* The PTE offset of the end address, clamped to the VMA and PTE. */
+	/* The PTE offset of the end address, clamped to the VMA and PTE.
+	更大可能性是from_pte + nr_pages
+	*/
 	to_pte = min3(from_pte + nr_pages, (pgoff_t)PTRS_PER_PTE,
 		      pte_off + vma_pages(vmf->vma) - vma_off) - 1;
 
@@ -4680,7 +4709,7 @@ static vm_fault_t do_fault_around(struct vm_fault *vmf)
 	rcu_read_lock();
 	ret = vmf->vma->vm_ops->map_pages(vmf,
 			vmf->pgoff + from_pte - pte_off,
-			vmf->pgoff + to_pte - pte_off);
+			vmf->pgoff + to_pte - pte_off); // 大约是出错地址前后一共nr_pages的范围
 	rcu_read_unlock();
 
 	return ret;
@@ -4710,6 +4739,7 @@ static vm_fault_t do_read_fault(struct vm_fault *vmf)
 	 * Let's call ->map_pages() first and use ->fault() as fallback
 	 * if page by the offset is not ready to be mapped (cold cache or
 	 * something).
+	 这里使用map_pages, 如果失败了, 就用fault
 	 */
 	if (should_fault_around(vmf)) {
 		ret = do_fault_around(vmf);
@@ -4720,11 +4750,11 @@ static vm_fault_t do_read_fault(struct vm_fault *vmf)
 	if (vmf->flags & FAULT_FLAG_VMA_LOCK) {/* 为什么vma读缺页处理fault时
 	不能带lock呢?
 	 */
-		vma_end_read(vmf->vma);
+		vma_end_read(vmf->vma); // 释放读锁, 返回
 		return VM_FAULT_RETRY;
 	}
 
-	ret = __do_fault(vmf);
+	ret = __do_fault(vmf); // 这里调用vma的fault回调函数
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY)))
 		return ret;
 
