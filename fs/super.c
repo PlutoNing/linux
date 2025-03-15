@@ -1331,8 +1331,7 @@ static int test_single_super(struct super_block *s, struct fs_context *fc)
 
 static int vfs_get_super(struct fs_context *fc,
 		int (*test)(struct super_block *, struct fs_context *),
-		int (*fill_super)(struct super_block *sb,
-				  struct fs_context *fc))
+		int (*fill_super)(struct super_block *sb, struct fs_context *fc))
 {
 	struct super_block *sb;
 	int err;
@@ -1342,7 +1341,7 @@ static int vfs_get_super(struct fs_context *fc,
 		return PTR_ERR(sb);
 
 	if (!sb->s_root) {
-		err = fill_super(sb, fc);
+		err = fill_super(sb, fc); // 调用fill_super函数回调
 		if (err)
 			goto error;
 
