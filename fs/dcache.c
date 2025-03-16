@@ -1993,6 +1993,7 @@ type_determined:
 	return add_flags;
 }
 
+// 为dentry填充inode信息
 static void __d_instantiate(struct dentry *dentry, struct inode *inode)
 {
 	unsigned add_flags = d_flags_for_inode(inode);
@@ -2014,6 +2015,7 @@ static void __d_instantiate(struct dentry *dentry, struct inode *inode)
 
 /**
  * d_instantiate - fill in inode information for a dentry
+   为dentry填充inode信息
  * @entry: dentry to complete
  * @inode: inode to attach to this dentry
  *
@@ -3247,6 +3249,7 @@ void d_genocide(struct dentry *parent)
 	d_walk(parent, parent, d_genocide_kill);
 }
 
+// 初始化tmpfile @file的新inode
 void d_tmpfile(struct file *file, struct inode *inode)
 {
 	struct dentry *dentry = file->f_path.dentry;

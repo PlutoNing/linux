@@ -3667,7 +3667,8 @@ EXPORT_SYMBOL_GPL(unmap_mapping_pages);
  * address_space corresponding to the specified byte range in the underlying
  * file.
  * 解除指定地址空间中所有 mmaps 的部分映射，这些 mmaps 对应于底层文件中指定的字节范围。
- 
+ ===============================
+ 比如shmem的打孔fallocate会调用,丢弃范围内的东西
  * @mapping: the address space containing mmaps to be unmapped.
  * @holebegin: byte in first page to unmap, relative to the start of
  * the underlying file.  This will be rounded down to a PAGE_SIZE

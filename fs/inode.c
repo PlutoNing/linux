@@ -338,6 +338,7 @@ EXPORT_SYMBOL(drop_nlink);
 
 /**
  * clear_nlink - directly zero an inode's link count
+   直接清除inode的link
  * @inode: inode
  *
  * This is a low-level filesystem helper to replace any

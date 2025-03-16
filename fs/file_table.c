@@ -315,6 +315,7 @@ static struct file *alloc_file(const struct path *path, int flags,
 	return file;
 }
 
+// 分配一个伪文件,比如有时候临时用的,或者只是为了其他机制使用的
 struct file *alloc_file_pseudo(struct inode *inode, struct vfsmount *mnt,
 				const char *name, int flags,
 				const struct file_operations *fops)

@@ -364,6 +364,7 @@ anon_vma_interval_tree_post_update_vma(struct vm_area_struct *vma)
 		anon_vma_interval_tree_insert(avc, &avc->anon_vma->rb_root);
 }
 
+// 计算mm的vma页面数量
 static unsigned long count_vma_pages_range(struct mm_struct *mm,
 		unsigned long addr, unsigned long end)
 {
@@ -1197,6 +1198,7 @@ bool mlock_future_ok(struct mm_struct *mm, unsigned long flags,
 	return locked_pages <= limit_pages;
 }
 
+// 一个文件的mmap最大大小
 static inline u64 file_mmap_size_max(struct file *file, struct inode *inode)
 {
 	if (S_ISREG(inode->i_mode))
@@ -1216,6 +1218,7 @@ static inline u64 file_mmap_size_max(struct file *file, struct inode *inode)
 	return ULONG_MAX;
 }
 
+// 检查mmap的大小是否合法
 static inline bool file_mmap_ok(struct file *file, struct inode *inode,
 				unsigned long pgoff, unsigned long len)
 {
@@ -1289,7 +1292,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 
 	if (flags & MAP_FIXED_NOREPLACE) {
 		if (find_vma_intersection(mm, addr, addr + len))
-			return -EEXIST; // 如果要求不能交叉, 但是找到的地址其实是有交叉的,返回
+			return -EEXIST; // 如果要求不能交叉, 但是找到的地址其实是有交叉的?,返回?
 	}
 
 	if (prot == PROT_EXEC) {
@@ -1322,7 +1325,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		flags_mask = LEGACY_MAP_MASK | file->f_op->mmap_supported_flags;
 
 		switch (flags & MAP_TYPE) {
-		case MAP_SHARED:
+		case MAP_SHARED:// 共享的文件映射
 			/*
 			 * Force use of MAP_SHARED_VALIDATE with non-legacy
 			 * flags. E.g. MAP_SYNC is dangerous to use with
@@ -1353,11 +1356,11 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 			if (!(file->f_mode & FMODE_WRITE))
 				vm_flags &= ~(VM_MAYWRITE | VM_SHARED);
 			fallthrough;
-		case MAP_PRIVATE:
+		case MAP_PRIVATE:// 私有文件mmap
 			if (!(file->f_mode & FMODE_READ))
 				return -EACCES;
-			if (path_noexec(&file->f_path)) {
-				if (vm_flags & VM_EXEC)
+			if (path_noexec(&file->f_path)) { // 不可执行
+				if (vm_flags & VM_EXEC) // 但是是代码段?
 					return -EPERM;
 				vm_flags &= ~VM_MAYEXEC;
 			}
@@ -1373,7 +1376,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		}
 	} else { // 匿名页的情况?
 		switch (flags & MAP_TYPE) {
-		case MAP_SHARED:
+		case MAP_SHARED: // 共享的匿名, ipc?
 			if (vm_flags & (VM_GROWSDOWN|VM_GROWSUP))
 				return -EINVAL;
 			/*
@@ -1382,7 +1385,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 			pgoff = 0;
 			vm_flags |= VM_SHARED | VM_MAYSHARE;
 			break;
-		case MAP_PRIVATE:
+		case MAP_PRIVATE: // 私有匿名页, 应该就是内存吧
 			/*
 			 * Set pgoff according to addr for anon_vma.
 			 */
@@ -1580,6 +1583,7 @@ int vma_wants_writenotify(struct vm_area_struct *vma, pgprot_t vm_page_prot)
 /*
  * We account for memory if it's a private writeable mapping,
  * not hugepages and VM_NORESERVE wasn't set.
+   如果是个私有可写映射, 不是巨页, 且VM_NORESERVE没有设置, 我们就会计算内存
  */
 static inline int accountable_mapping(struct file *file, vm_flags_t vm_flags)
 {
@@ -2660,7 +2664,7 @@ map_count_exceeded:
 /*
  * do_vmi_munmap() - munmap a given range.
    unmap指定的地址范围
- * @vmi: The vma iterator
+ * @vmi: The vma iterator, 是对mm的vma的迭代器
  * @mm: The mm_struct
  * @start: The start address to munmap
  * @len: The length of the range to munmap
@@ -2670,9 +2674,11 @@ map_count_exceeded:
  * This function takes a @mas that is either pointing to the previous VMA or set
  * to MA_START and sets it up to remove the mapping(s).  The @len will be
  * aligned and any arch_unmap work will be preformed.
- *
+ * 这个函数接受一个mas, 它要么指向前一个VMA, 要么设置为MA_START, 用来删除映射
+  len会被对齐, arch_unmap工作会被执行
  * Return: 0 on success and drops the lock if so directed, error and leaves the
  * lock held otherwise.
+  返回0表示成功
  */
 int do_vmi_munmap(struct vma_iterator *vmi, struct mm_struct *mm,
 		  unsigned long start, size_t len, struct list_head *uf,
@@ -2735,15 +2741,20 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	unsigned long merge_start = addr, merge_end = end;
 	pgoff_t vm_pgoff;
 	int error;
+	// 这里是maple tree相关的, 生成一个有状态的mas迭代器指向mm的vma那些
+	// 马上方便查找和删除
 	VMA_ITERATOR(vmi, mm, addr);
 
-	/* Check against address space limit. */
+	/* Check against address space limit.
+	检查地址空间的限制
+	*/
 	if (!may_expand_vm(mm, vm_flags, len >> PAGE_SHIFT)) {
 		unsigned long nr_pages;
 
 		/*
 		 * MAP_FIXED may remove pages of mappings that intersects with
 		 * requested mapping. Account for the pages it would unmap.
+		   MAP_FIXED可能会删除与请求映射相交的映射的页面。计算它将取消映射的页面。
 		 */
 		nr_pages = count_vma_pages_range(mm, addr, end);
 
@@ -2761,6 +2772,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 
 	/*
 	 * Private writable mapping: check memory availability
+	   私有可写映射：检查内存可用性
 	 */
 	if (accountable_mapping(file, vm_flags)) {
 		charged = len >> PAGE_SHIFT;
@@ -2823,6 +2835,8 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 
 	if (vma == prev)
 		vma_iter_set(&vmi, addr);
+
+// 这里是需要新建vma的情况
 cannot_expand:
 
 	/*

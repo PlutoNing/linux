@@ -558,6 +558,8 @@ otherwise noted.
 	called by the symlink(2) system call.  Only required if you want
 	to support symlinks.  You will probably need to call
 	d_instantiate() just as you would in the create() method
+	被symlink(2)系统调用调用。 如果要支持符号链接，则必须调用。 您可能需要调用
+	d_instantiate()，就像在create()方法中一样
 
 ``mkdir``
 	called by the mkdir(2) system call.  Only required if you want
@@ -666,6 +668,9 @@ otherwise noted.
 	directory.  On success needs to return with the file already
 	open; this can be done by calling finish_open_simple() right at
 	the end.
+	用于O_TMPFILE打开的最后。 可选，相当于在给定目录中原子地创建，打开和
+	删除文件。 成功后需要返回文件已经打开; 这可以通过在最后立即调用
+	finish_open_simple()来完成。
 
 ``fileattr_get``
 	called on ioctl(FS_IOC_GETFLAGS) and ioctl(FS_IOC_FSGETXATTR) to

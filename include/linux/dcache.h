@@ -507,6 +507,7 @@ static inline unsigned long vfs_pressure_ratio(unsigned long val)
 
 /**
  * d_inode - Get the actual inode of this dentry
+   获取dentey的inode
  * @dentry: The dentry to query
  *
  * This is the helper normal filesystems should use to get at their own inodes

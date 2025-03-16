@@ -261,13 +261,15 @@ long memfd_fcntl(struct file *file, unsigned int cmd, unsigned int arg)
 
 	return error;
 }
-
+// 'memfd:'
 #define MFD_NAME_PREFIX "memfd:"
+// 'memfd'的长度
 #define MFD_NAME_PREFIX_LEN (sizeof(MFD_NAME_PREFIX) - 1)
 #define MFD_NAME_MAX_LEN (NAME_MAX - MFD_NAME_PREFIX_LEN)
 
 #define MFD_ALL_FLAGS (MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_HUGETLB | MFD_NOEXEC_SEAL | MFD_EXEC)
 
+// 为什么这里还跟namespace有关系
 static int check_sysctl_memfd_noexec(unsigned int *flags)
 {
 #ifdef CONFIG_SYSCTL
@@ -291,6 +293,7 @@ static int check_sysctl_memfd_noexec(unsigned int *flags)
 	return 0;
 }
 
+// 创建一个memfd文件. 感觉好像就是创建一个指定名字的shmem file
 SYSCALL_DEFINE2(memfd_create,
 		const char __user *, uname,
 		unsigned int, flags)
@@ -320,23 +323,26 @@ SYSCALL_DEFINE2(memfd_create,
 			"%s[%d]: memfd_create() called without MFD_EXEC or MFD_NOEXEC_SEAL set\n",
 			current->comm, task_pid_nr(current));
 	}
-
+	//
 	error = check_sysctl_memfd_noexec(&flags);
 	if (error < 0)
 		return error;
 
-	/* length includes terminating zero */
+	/* length includes terminating zero
+	获取用户传来的memfd名字的长度
+	*/
 	len = strnlen_user(uname, MFD_NAME_MAX_LEN + 1);
 	if (len <= 0)
 		return -EFAULT;
 	if (len > MFD_NAME_MAX_LEN + 1)
 		return -EINVAL;
-
+	// 给创建的memfd的名字分配内存空间, 并且拷贝用户传来的memfd名字
 	name = kmalloc(len + MFD_NAME_PREFIX_LEN, GFP_KERNEL);
 	if (!name)
 		return -ENOMEM;
-
+	// 先拷贝前缀, 前缀也是在内核, 所以直接拷贝
 	strcpy(name, MFD_NAME_PREFIX);
+	// 用户传来的名字,在用户空间,所以拷贝方式不一样
 	if (copy_from_user(&name[MFD_NAME_PREFIX_LEN], uname, len)) {
 		error = -EFAULT;
 		goto err_name;
@@ -347,7 +353,7 @@ SYSCALL_DEFINE2(memfd_create,
 		error = -EFAULT;
 		goto err_name;
 	}
-
+	// 获取一个fd
 	fd = get_unused_fd_flags((flags & MFD_CLOEXEC) ? O_CLOEXEC : 0);
 	if (fd < 0) {
 		error = fd;
@@ -359,7 +365,7 @@ SYSCALL_DEFINE2(memfd_create,
 					HUGETLB_ANONHUGE_INODE,
 					(flags >> MFD_HUGE_SHIFT) &
 					MFD_HUGE_MASK);
-	} else
+	} else // 创建和获取一个shmem的文件供自己使用shmem的功能
 		file = shmem_file_setup(name, 0, VM_NORESERVE);
 	if (IS_ERR(file)) {
 		error = PTR_ERR(file);

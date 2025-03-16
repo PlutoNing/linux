@@ -34,7 +34,8 @@
 /*
  * The historical set of flags that all mmap implementations implicitly
  * support when a ->mmap_validate() op is not provided in file_operations.
- *
+ * 这些是 mmap 的标志位，用于 mmap 的时候，指定一些特性
+   
  * MAP_EXECUTABLE and MAP_DENYWRITE are completely ignored throughout the
  * kernel.
  */

@@ -250,6 +250,7 @@ static inline void mapping_set_error(struct address_space *mapping, int error)
 		set_bit(AS_EIO, &mapping->flags);
 }
 
+// 设置mapping为unevictable
 static inline void mapping_set_unevictable(struct address_space *mapping)
 {
 	set_bit(AS_UNEVICTABLE, &mapping->flags);
@@ -301,6 +302,7 @@ static inline void mapping_clear_release_always(struct address_space *mapping)
 	clear_bit(AS_RELEASE_ALWAYS, &mapping->flags);
 }
 
+// 获取mapping的gfp, mapping的gfp在哪里起作用?
 static inline gfp_t mapping_gfp_mask(struct address_space * mapping)
 {
 	return mapping->gfp_mask;

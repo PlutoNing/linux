@@ -107,7 +107,7 @@ typedef int (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
  * to O_WRONLY and O_RDWR via the strange trick in do_dentry_open()
  */
 
-/* file is open for reading */
+/* file is open for reading , 读文件*/
 #define FMODE_READ		((__force fmode_t)0x1)
 /* file is open for writing */
 #define FMODE_WRITE		((__force fmode_t)0x2)
@@ -665,7 +665,8 @@ struct inode {
 
 
 	const struct inode_operations	*i_op; /* 指向文件操作结构 inode_operations，包含与 inode 相关的操作函数，如创建、删除、读写操作等。 */
-	struct super_block	*i_sb; /* 指向 inode 所在的超级块（super_block），超级块表示文件系统的一个实例，管理所有文件系统对象。 */
+	struct super_block	*i_sb; /* 指向 inode 所在的超级块（super_block），
+	超级块表示文件系统的一个实例，管理所有文件系统对象。 */
 
 	struct address_space	*i_mapping;/* 
 	dev inode的mapping是存储的bh相关 */
@@ -686,7 +687,8 @@ struct inode {
 	 *    inode_(inc|dec)_link_count
 	 */
 	union {
-		const unsigned int i_nlink; /* 硬链接计数，表示有多少个目录项指向这个 inode。文件被删除时，这个字段减1 */
+		const unsigned int i_nlink; /* 硬链接计数，表示有多少个目录项指向这个 inode。
+		文件被删除时，这个字段减1 */
 		unsigned int __i_nlink; /*  */
 	};
 	dev_t			i_rdev; /* 对于设备文件来说，保存设备的编号（如字符设备、块设备的设备号） */
