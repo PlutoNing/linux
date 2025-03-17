@@ -117,6 +117,7 @@ static inline void cpuhp_lock_release(bool bringup) { }
 
 /**
  * struct cpuhp_step - Hotplug state machine step
+   热插拔状态机的step
  * @name:	Name of the step
  * @startup:	Startup function of the step
  * @teardown:	Teardown function of the step
@@ -157,6 +158,7 @@ static bool cpuhp_step_empty(bool bringup, struct cpuhp_step *step)
 
 /**
  * cpuhp_invoke_callback - Invoke the callbacks for a given state
+   对于给定的状态调用回调
  * @cpu:	The cpu for which the callback should be invoked
  * @state:	The state to do callbacks for
  * @bringup:	True if the bringup callback should be invoked
@@ -250,6 +252,7 @@ err:
 }
 
 #ifdef CONFIG_SMP
+/* ap是什么 */
 static bool cpuhp_is_ap_state(enum cpuhp_state state)
 {
 	/*
@@ -1123,6 +1126,7 @@ cpuhp_invoke_ap_callback(int cpu, enum cpuhp_state state, bool bringup,
 	/*
 	 * If we are up and running, use the hotplug thread. For early calls
 	 * we invoke the thread function directly.
+	   如果我们已经运行，使用热插拔线程。对于早期调用，我们直接调用线程函数。
 	 */
 	if (!st->thread)
 		return cpuhp_invoke_callback(cpu, state, bringup, node, NULL);
@@ -1150,6 +1154,7 @@ cpuhp_invoke_ap_callback(int cpu, enum cpuhp_state state, bool bringup,
 	/*
 	 * Clean up the leftovers so the next hotplug operation wont use stale
 	 * data.
+	   清理剩余的数据，以便下一个热插拔操作不使用过时的数据。
 	 */
 	st->node = st->last = NULL;
 	return ret;
@@ -2309,6 +2314,7 @@ static int cpuhp_reserve_state(enum cpuhp_state state)
 	return -ENOSPC;
 }
 
+// 安装回调
 static int cpuhp_store_callbacks(enum cpuhp_state state, const char *name,
 				 int (*startup)(unsigned int cpu),
 				 int (*teardown)(unsigned int cpu),
@@ -2337,7 +2343,7 @@ static int cpuhp_store_callbacks(enum cpuhp_state state, const char *name,
 	sp = cpuhp_get_step(state);
 	if (name && sp->name)
 		return -EBUSY;
-
+	// 设置回调函数
 	sp->startup.single = startup;
 	sp->teardown.single = teardown;
 	sp->name = name;
@@ -2354,6 +2360,7 @@ static void *cpuhp_get_teardown_cb(enum cpuhp_state state)
 /*
  * Call the startup/teardown function for a step either on the AP or
  * on the current CPU.
+   在AP上或当前CPU上调用步骤的startup/teardown函数。
  */
 static int cpuhp_issue_call(int cpu, enum cpuhp_state state, bool bringup,
 			    struct hlist_node *node)
@@ -2466,6 +2473,7 @@ EXPORT_SYMBOL_GPL(__cpuhp_state_add_instance);
 
 /**
  * __cpuhp_setup_state_cpuslocked - Setup the callbacks for an hotplug machine state
+   为一个热插拔机器状态设置回调
  * @state:		The state to setup
  * @name:		Name of the step
  * @invoke:		If true, the startup function is invoked for cpus where
@@ -2474,6 +2482,7 @@ EXPORT_SYMBOL_GPL(__cpuhp_state_add_instance);
  * @teardown:		teardown callback function
  * @multi_instance:	State is set up for multiple instances which get
  *			added afterwards.
+   状态被设置为多个实例，之后添加?
  *
  * The caller needs to hold cpus read locked while calling this function.
  * Return:
@@ -2509,7 +2518,7 @@ int __cpuhp_setup_state_cpuslocked(enum cpuhp_state state,
 
 	if (ret || !invoke || !startup)
 		goto out;
-
+	// 如果要invoke, 继续
 	/*
 	 * Try to call the startup callback for each present cpu
 	 * depending on the hotplug state of the cpu.
@@ -2541,6 +2550,7 @@ out:
 }
 EXPORT_SYMBOL(__cpuhp_setup_state_cpuslocked);
 
+// 封装了一层rcu
 int __cpuhp_setup_state(enum cpuhp_state state,
 			const char *name, bool invoke,
 			int (*startup)(unsigned int cpu),

@@ -1809,6 +1809,7 @@ static int exec_binprm(struct linux_binprm *bprm)
 
 /*
  * sys_execve() executes a new program.
+   sys_execve() 执行一个新程序
  */
 static int bprm_execve(struct linux_binprm *bprm,
 		       int fd, struct filename *filename, int flags)
@@ -1971,6 +1972,7 @@ out_ret:
 	return retval;
 }
 
+// 执行程序
 int kernel_execve(const char *kernel_filename,
 		  const char *const *argv, const char *const *envp)
 {

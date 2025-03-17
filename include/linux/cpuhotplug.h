@@ -28,7 +28,8 @@
  * during a CPU online operation. During a CPU offline operation the
  * installed teardown callbacks are invoked in the reverse order from
  * CPU_ONLINE - 1 down to CPUHP_OFFLINE.
- *
+ * cpu的热插拔状态, 状态机从CPUHP_OFFLINE + 1到CPUHP_ONLINE依次调用安装的状态
+ 启动回调函数, 在CPU离线操作期间, 从CPU_ONLINE - 1到CPUHP_OFFLINE逆序调用安装的回调函数
  * The state space has three sections: PREPARE, STARTING and ONLINE.
  *
  * PREPARE: The callbacks are invoked on a control CPU before the
@@ -92,7 +93,7 @@ enum cpuhp_state {
 	CPUHP_MM_MEMCQ_DEAD,
 	CPUHP_PERCPU_CNT_DEAD,
 	CPUHP_RADIX_DEAD,
-	CPUHP_PAGE_ALLOC,
+	CPUHP_PAGE_ALLOC, // 内存初始化的时候?
 	CPUHP_NET_DEV_DEAD,
 	CPUHP_PCI_XGENE_DEAD,
 	CPUHP_IOMMU_IOVA_DEAD,
@@ -270,6 +271,7 @@ int __cpuhp_setup_state_cpuslocked(enum cpuhp_state state, const char *name,
 /**
  * cpuhp_setup_state - Setup hotplug state callbacks with calling the @startup
  *                     callback
+   设置热插拔状态回调并调用@startup回调
  * @state:	The state for which the calls are installed
  * @name:	Name of the callback (will be used in debug output)
  * @startup:	startup callback function or NULL if not required
@@ -310,6 +312,7 @@ static inline int cpuhp_setup_state_cpuslocked(enum cpuhp_state state,
 /**
  * cpuhp_setup_state_nocalls - Setup hotplug state callbacks without calling the
  *			       @startup callback
+   设置热插拔状态callback而不调用@startup回调
  * @state:	The state for which the calls are installed
  * @name:	Name of the callback.
  * @startup:	startup callback function or NULL if not required
@@ -317,6 +320,8 @@ static inline int cpuhp_setup_state_cpuslocked(enum cpuhp_state state,
  *
  * Same as cpuhp_setup_state() except that the @startup callback is not
  * invoked during installation. NOP if SMP=n or HOTPLUG_CPU=n.
+   与cpuhp_setup_state()相同, 除了在安装期间不调用@startup回调
+  如果SMP=n或HOTPLUG_CPU=n, 则NOP
  */
 static inline int cpuhp_setup_state_nocalls(enum cpuhp_state state,
 					    const char *name,

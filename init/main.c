@@ -119,6 +119,8 @@ static int kernel_init(void *);
  * two things - IRQ must not be enabled before the flag is cleared and some
  * operations which are not allowed with IRQ disabled are allowed while the
  * flag is set.
+   通过这个标志，我们知道我们处于“早期引导代码”中，只有引导处理器在运行，IRQ被禁用。
+   这意味着两件事——在清除标志之前不能启用IRQ，并且在设置标志时允许一些在IRQ禁用时不允许的操作。
  */
 bool early_boot_irqs_disabled __read_mostly;
 
@@ -185,7 +187,9 @@ static int __init set_reset_devices(char *str)
 
 __setup("reset_devices", set_reset_devices);
 
+// init程序的参数
 static const char *argv_init[MAX_INIT_ARGS+2] = { "init", NULL, };
+// init程序的环境变量
 const char *envp_init[MAX_INIT_ENVS+2] = { "HOME=/", "TERM=linux", NULL, };
 static const char *panic_later, *panic_param;
 
@@ -867,6 +871,7 @@ static void __init print_unknown_bootoptions(void)
 }
 
 asmlinkage __visible __init __no_sanitize_address __noreturn __no_stack_protector
+// 启动内核
 void start_kernel(void)
 {
 	char *command_line;
@@ -1338,6 +1343,7 @@ static void __init do_pre_smp_initcalls(void)
 		do_one_initcall(initcall_from_entry(fn));
 }
 
+// 启动的时候运行init命令
 static int run_init_process(const char *init_filename)
 {
 	const char *const *p;
@@ -1350,9 +1356,11 @@ static int run_init_process(const char *init_filename)
 	pr_debug("  with environment:\n");
 	for (p = envp_init; *p; p++)
 		pr_debug("    %s\n", *p);
+	// 执行init程序
 	return kernel_execve(init_filename, argv_init, envp_init);
 }
 
+// 好像是启动的时候尝试运行其他地方的init命令
 static int try_to_run_init_process(const char *init_filename)
 {
 	int ret;
@@ -1459,7 +1467,7 @@ static int __ref kernel_init(void *unused)
 
 	do_sysctl_args();
 
-	if (ramdisk_execute_command) {
+	if (ramdisk_execute_command) { // 这个命令是init
 		ret = run_init_process(ramdisk_execute_command);
 		if (!ret)
 			return 0;

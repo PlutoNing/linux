@@ -2764,10 +2764,12 @@ static void __init mem_init_print_info(void)
 
 /*
  * Set up kernel memory allocators
+   设置内核内存分配器
  */
 void __init mm_core_init(void)
 {
 	/* Initializations relying on SMP setup */
+	/* 初始化zonelist */
 	build_all_zonelists(NULL);
 	page_alloc_init_cpuhp();
 

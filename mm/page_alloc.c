@@ -5321,7 +5321,9 @@ static DEFINE_PER_CPU(struct per_cpu_pages, boot_pageset);
 static DEFINE_PER_CPU(struct per_cpu_zonestat, boot_zonestats);
 /* 
 
-@data是个node  */
+@data是个node
+启动或者热插拔的时候调用
+*/
 static void __build_all_zonelists(void *data)
 {
 	int nid;
@@ -5352,7 +5354,8 @@ static void __build_all_zonelists(void *data)
 	 */
 	if (self && !node_online(self->node_id)) {/* 如果此node刚刚进入系统? */
 		build_zonelists(self);
-	} else {
+	} else {/* self为空 或者node在线
+		其中self为空可能是内核启动时调用此函数 */
 		/*
 		 * All possible nodes have pgdat preallocated
 		 * in free_area_init
@@ -5381,12 +5384,12 @@ static void __build_all_zonelists(void *data)
 	write_sequnlock_irqrestore(&zonelist_update_seq, flags);
 }
 
-/*  */
+// 内核启动的时候初始化zone机制,
 static noinline void __init
 build_all_zonelists_init(void)
 {
 	int cpu;
-
+	// 初始化node上面的zonelist
 	__build_all_zonelists(NULL);
 
 	/*
@@ -5394,13 +5397,18 @@ build_all_zonelists_init(void)
 	 * for bootstrapping processors. The real pagesets for
 	 * each zone will be allocated later when the per cpu
 	 * allocator is available.
-	 *
+	 * 初始化boot_pageset, 用于启动处理器
+	   真正的pageset会在per cpu分配器可用的时候分配
 	 * boot_pagesets are used also for bootstrapping offline
 	 * cpus if the system is already booted because the pagesets
 	 * are needed to initialize allocators on a specific cpu too.
 	 * F.e. the percpu allocator needs the page allocator which
 	 * needs the percpu allocator in order to allocate its pagesets
 	 * (a chicken-egg dilemma).
+	   boot_pagesets被用于启动离线的cpu, 如果系统已经启动
+	   因为pagesets也需要初始化分配器在特定的cpu上
+	   例如percpu分配器需要page分配器, page分配器需要percpu分配器
+	   为了分配它的pagesets(一个鸡生蛋的困境)
 	 */
 	for_each_possible_cpu(cpu)
 		per_cpu_pages_init(&per_cpu(boot_pageset, cpu), &per_cpu(boot_zonestats, cpu));
@@ -5410,6 +5418,7 @@ build_all_zonelists_init(void)
 }
 
 /*
+初始化zone机制
  * unless system_state == SYSTEM_BOOTING.
  *
  * __ref due to call of __init annotated helper build_all_zonelists_init
@@ -5421,11 +5430,13 @@ void __ref build_all_zonelists(pg_data_t *pgdat)
 
 	if (system_state == SYSTEM_BOOTING) {
 		build_all_zonelists_init();
-	} else {
+	} else {/* 好像内存热插拔也会调用这个函数 */
 		__build_all_zonelists(pgdat);
 		/* cpuset refresh routine should be here */
 	}
-	/* Get the number of free pages beyond high watermark in all zones. */
+	/* Get the number of free pages beyond high watermark in all zones.
+	获取全部zone的高水位之上的空闲页面数量
+	*/
 	vm_total_pages = nr_free_zone_pages(gfp_zone(GFP_HIGHUSER_MOVABLE));
 	/*
 	 * Disable grouping by mobility if the number of pages in the
@@ -5568,6 +5579,7 @@ static void pageset_update(struct per_cpu_pages *pcp, unsigned long high,
 	WRITE_ONCE(pcp->high, high);
 }
 
+// 初始化pcp的pageset供内存分配
 static void per_cpu_pages_init(struct per_cpu_pages *pcp, struct per_cpu_zonestat *pzstats)
 {
 	int pindex;
@@ -5791,6 +5803,7 @@ static int page_alloc_cpu_online(unsigned int cpu)
 	return 0;
 }
 
+// 这是啥?
 void __init page_alloc_init_cpuhp(void)
 {
 	int ret;
