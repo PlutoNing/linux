@@ -930,6 +930,7 @@ void start_kernel(void)
 	vfs_caches_init_early();
 	sort_main_extable();
 	trap_init();
+	// 内存?
 	mm_core_init();
 	poking_init();
 	ftrace_init();

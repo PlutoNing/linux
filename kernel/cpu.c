@@ -146,11 +146,13 @@ struct cpuhp_step {
 static DEFINE_MUTEX(cpuhp_state_mutex);
 static struct cpuhp_step cpuhp_hp_states[];
 
+// 看来state是存储在数组里面的
 static struct cpuhp_step *cpuhp_get_step(enum cpuhp_state state)
 {
 	return cpuhp_hp_states + state;
 }
 
+// 看看是不是没有安装对应的回调函数（即为empty）
 static bool cpuhp_step_empty(bool bringup, struct cpuhp_step *step)
 {
 	return bringup ? !step->startup.single : !step->teardown.single;
@@ -174,6 +176,7 @@ static int cpuhp_invoke_callback(unsigned int cpu, enum cpuhp_state state,
 				 struct hlist_node **lastp)
 {
 	struct cpuhp_cpu_state *st = per_cpu_ptr(&cpuhp_state, cpu);
+	// step代表一个状态, 里面就是要调用的函数
 	struct cpuhp_step *step = cpuhp_get_step(state);
 	int (*cbm)(unsigned int cpu, struct hlist_node *node);
 	int (*cb)(unsigned int cpu);
@@ -184,6 +187,7 @@ static int cpuhp_invoke_callback(unsigned int cpu, enum cpuhp_state state,
 		return -EAGAIN;
 	}
 
+	// 没有要执行的函数
 	if (cpuhp_step_empty(bringup, step)) {
 		WARN_ON_ONCE(1);
 		return 0;
@@ -191,10 +195,11 @@ static int cpuhp_invoke_callback(unsigned int cpu, enum cpuhp_state state,
 
 	if (!step->multi_instance) {
 		WARN_ON_ONCE(lastp && *lastp);
+		// 现在cb指向安装的回调函数
 		cb = bringup ? step->startup.single : step->teardown.single;
 
 		trace_cpuhp_enter(cpu, st->target, state, cb);
-		ret = cb(cpu);
+		ret = cb(cpu); // 调用回调函数
 		trace_cpuhp_exit(cpu, st->state, state, ret);
 		return ret;
 	}
@@ -1106,7 +1111,10 @@ end:
 		complete_ap_thread(st, bringup);
 }
 
-/* Invoke a single callback on a remote cpu */
+/* 
+在一个cpu上调用一个回调
+
+Invoke a single callback on a remote cpu */
 static int
 cpuhp_invoke_ap_callback(int cpu, enum cpuhp_state state, bool bringup,
 			 struct hlist_node *node)
@@ -2320,13 +2328,15 @@ static int cpuhp_store_callbacks(enum cpuhp_state state, const char *name,
 				 int (*teardown)(unsigned int cpu),
 				 bool multi_instance)
 {
-	/* (Un)Install the callbacks for further cpu hotplug operations */
+	/* (Un)Install the callbacks for further cpu hotplug operations
+	为未来的cpu热插拔操作安装回调函数
+	*/
 	struct cpuhp_step *sp;
 	int ret = 0;
 
 	/*
 	 * If name is NULL, then the state gets removed.
-	 *
+	 * 如果name是NULL，则删除状态。
 	 * CPUHP_AP_ONLINE_DYN and CPUHP_BP_PREPARE_DYN are handed out on
 	 * the first allocation from these dynamic ranges, so the removal
 	 * would trigger a new allocation and clear the wrong (already
@@ -2340,6 +2350,7 @@ static int cpuhp_store_callbacks(enum cpuhp_state state, const char *name,
 			return ret;
 		state = ret;
 	}
+	// 从取出sp
 	sp = cpuhp_get_step(state);
 	if (name && sp->name)
 		return -EBUSY;
@@ -2365,10 +2376,12 @@ static void *cpuhp_get_teardown_cb(enum cpuhp_state state)
 static int cpuhp_issue_call(int cpu, enum cpuhp_state state, bool bringup,
 			    struct hlist_node *node)
 {
+	// 获取sp, 回调函数存储在里面
 	struct cpuhp_step *sp = cpuhp_get_step(state);
 	int ret;
 
 	/*
+	如果回调函数是空的
 	 * If there's nothing to do, we done.
 	 * Relies on the union for multi_instance.
 	 */
@@ -2506,7 +2519,7 @@ int __cpuhp_setup_state_cpuslocked(enum cpuhp_state state,
 		return -EINVAL;
 
 	mutex_lock(&cpuhp_state_mutex);
-
+	// 把函数安装到全局数组里面的某个state里面
 	ret = cpuhp_store_callbacks(state, name, startup, teardown,
 				    multi_instance);
 
@@ -2529,7 +2542,7 @@ int __cpuhp_setup_state_cpuslocked(enum cpuhp_state state,
 
 		if (cpustate < state)
 			continue;
-
+		// 调用函数
 		ret = cpuhp_issue_call(cpu, state, true, NULL);
 		if (ret) {
 			if (teardown)

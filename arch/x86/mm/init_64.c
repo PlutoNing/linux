@@ -811,6 +811,7 @@ void __init initmem_init(void)
 }
 #endif
 
+// 启动的时候setup_arch调用
 void __init paging_init(void)
 {
 	sparse_init();
@@ -1334,7 +1335,9 @@ void __init mem_init(void)
 
 	/* clear_bss() already clear the empty_zero_page */
 
-	/* this will put all memory onto the freelists */
+	/* this will put all memory onto the freelists
+	这个操作会把所有的内存放到空闲链表上 
+	*/
 	memblock_free_all();
 	after_bootmem = 1;
 	x86_init.hyper.init_after_bootmem();

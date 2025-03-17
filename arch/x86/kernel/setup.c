@@ -1234,6 +1234,7 @@ void __init setup_arch(char **cmdline_p)
 	if (!early_xdbc_setup_hardware())
 		early_xdbc_register_console();
 
+		// 调用x86_init里面的paging的paging_init函数.
 	x86_init.paging.pagetable_init();
 
 	kasan_init();

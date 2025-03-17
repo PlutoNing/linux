@@ -158,6 +158,8 @@ struct x86_guest {
 
 /**
  * struct x86_init_ops - functions for platform specific setup
+ 启动过程中, 平台相关的初始化函数
+ 初始化一些关键组件
  *
  */
 struct x86_init_ops {

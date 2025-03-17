@@ -24,6 +24,7 @@
  * 1) mem_section	- memory sections, mem_map's for valid memory
  */
 #ifdef CONFIG_SPARSEMEM_EXTREME
+// 是一个指针的数组, 每个指针指向一个mem_section结构体
 struct mem_section **mem_section;
 #else
 struct mem_section mem_section[NR_SECTION_ROOTS][SECTIONS_PER_ROOT]
@@ -249,6 +250,7 @@ static void __init memory_present(int nid, unsigned long start, unsigned long en
 
 		size = sizeof(struct mem_section *) * NR_SECTION_ROOTS;
 		align = 1 << (INTERNODE_CACHE_SHIFT);
+		// 使用的是memblock的内存分配函数
 		mem_section = memblock_alloc(size, align);
 		if (!mem_section)
 			panic("%s: Failed to allocate %lu bytes align=0x%lx\n",
@@ -281,12 +283,15 @@ static void __init memory_present(int nid, unsigned long start, unsigned long en
  * Mark all memblocks as present using memory_present().
  * This is a convenience function that is useful to mark all of the systems
  * memory as present during initialization.
+   使用memory_present()标记所有memblock为存在。
+   这是一个方便的函数，用于在初始化期间将所有系统内存标记为存在。
  */
 static void __init memblocks_present(void)
 {
 	unsigned long start, end;
 	int i, nid;
 
+	// 好像返回的时候, start和end就是一个region的范围表示
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, &nid)
 		memory_present(nid, start, end);
 }
@@ -574,6 +579,7 @@ failed:
 /*
  * Allocate the accumulated non-linear sections, allocate a mem_map
  * for each and record the physical to section mapping.
+   分配累积的非线性section, 为每个section分配一个mem_map，并记录物理地址到section的映射。
  */
 void __init sparse_init(void)
 {

@@ -248,11 +248,14 @@ static inline size_t slab_size(const struct slab *slab)
 
 /*
  * State of the slab allocator.
- *
+ * 表示slab allocator的状态
  * This is used to describe the states of the allocator during bootup.
  * Allocators use this to gradually bootstrap themselves. Most allocators
  * have the problem that the structures used for managing slab caches are
  * allocated from slab caches themselves.
+   用于描述bootup期间slab分配器的状态
+   分配器使用这个来逐步引导自己
+   大多数分配器都有一个问题, 用于管理slab cache的结构本身是从slab cache中分配的
  */
 enum slab_state {
 	DOWN,			/* No slab functionality yet */

@@ -249,13 +249,15 @@ void mlock_drain_local(void)
 	local_unlock(&mlock_fbatch.lock);
 }
 
+// 作用是?
 void mlock_drain_remote(int cpu)
 {
 	struct folio_batch *fbatch;
 
 	WARN_ON_ONCE(cpu_online(cpu));
+	// 获取到pcp的molock fbatch
 	fbatch = &per_cpu(mlock_fbatch.fbatch, cpu);
-	if (folio_batch_count(fbatch))
+	if (folio_batch_count(fbatch)) // 如果里面有东西
 		mlock_folio_batch(fbatch);
 }
 

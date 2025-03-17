@@ -123,7 +123,7 @@ struct memblock memblock __initdata_memblock = {
 	.reserved.max		= INIT_MEMBLOCK_RESERVED_REGIONS,
 	.reserved.name		= "reserved",
 
-	.bottom_up		= false,
+	.bottom_up		= false, // 为什么是false呢? 为什么不是true呢?
 	.current_limit		= MEMBLOCK_ALLOC_ANYWHERE,
 };
 
@@ -201,6 +201,7 @@ bool __init_memblock memblock_overlaps_region(struct memblock_type *type,
 }
 
 /**
+memblock分配内存的时候在指定的范围内查找空闲的内存块, 自底向上
  * __memblock_find_range_bottom_up - find free area utility in bottom-up
  * @start: start of candidate range
  * @end: end of candidate range, can be %MEMBLOCK_ALLOC_ANYWHERE or
@@ -224,12 +225,13 @@ __memblock_find_range_bottom_up(phys_addr_t start, phys_addr_t end,
 	u64 i;
 
 	for_each_free_mem_range(i, nid, flags, &this_start, &this_end, NULL) {
+		// 把this_start和this_end限制在start和end之间
 		this_start = clamp(this_start, start, end);
 		this_end = clamp(this_end, start, end);
 
 		cand = round_up(this_start, align);
 		if (cand < this_end && this_end - cand >= size)
-			return cand;
+			return cand; // 找到可用的free 区域就行
 	}
 
 	return 0;
@@ -275,6 +277,7 @@ __memblock_find_range_top_down(phys_addr_t start, phys_addr_t end,
 }
 
 /**
+memblock分配内存的时候在指定的范围内查找空闲的内存块
  * memblock_find_in_range_node - find free area in given range and node
  * @size: size of free area to find
  * @align: alignment of free area to find
@@ -303,7 +306,7 @@ static phys_addr_t __init_memblock memblock_find_in_range_node(phys_addr_t size,
 	start = max_t(phys_addr_t, start, PAGE_SIZE);
 	end = max(start, end);
 
-	if (memblock_bottom_up())
+	if (memblock_bottom_up()) // 如果要自底向上的分配内存
 		return __memblock_find_range_bottom_up(start, end, size, align,
 						       nid, flags);
 	else
@@ -569,6 +572,7 @@ static void __init_memblock memblock_insert_region(struct memblock_type *type,
 }
 
 /**
+把【base,size】描述的区域作为region添加到type
  * memblock_add_range - add new memblock region
  * @type: memblock type to add new region into
  * @base: base address of the new region
@@ -868,6 +872,7 @@ int __init_memblock memblock_phys_free(phys_addr_t base, phys_addr_t size)
 	return memblock_remove_range(&memblock.reserved, base, size);
 }
 
+// 判断参数描述的内存区域是不是保留的
 int __init_memblock memblock_reserve(phys_addr_t base, phys_addr_t size)
 {
 	phys_addr_t end = base + size - 1;
@@ -1032,6 +1037,7 @@ static bool should_skip_region(struct memblock_type *type,
 }
 
 /**
+for_each_free_mem_range()是一个宏，用于遍历memblock.memory中的所有空闲内存区域。
  * __next_mem_range - next function for for_each_free_mem_range() etc.
  * @idx: pointer to u64 loop variable
  * @nid: node selector, %NUMA_NO_NODE for all nodes
@@ -1235,20 +1241,24 @@ void __init_memblock __next_mem_range_rev(u64 *idx, int nid,
 
 /*
  * Common iterator interface used to define for_each_mem_pfn_range().
+   用于定义for_each_mem_pfn_range()的常见迭代器接口。
+   @idx: 看来是当前遍历到这个type的某个region的idx
  */
 void __init_memblock __next_mem_pfn_range(int *idx, int nid,
 				unsigned long *out_start_pfn,
 				unsigned long *out_end_pfn, int *out_nid)
 {
+	// 获取可用的内存类型
 	struct memblock_type *type = &memblock.memory;
 	struct memblock_region *r;
 	int r_nid;
 
-	while (++*idx < type->cnt) {
+	while (++*idx < type->cnt) { // 还有region
+		// 获取这个idx指向的region
 		r = &type->regions[*idx];
 		r_nid = memblock_get_region_node(r);
 
-		if (PFN_UP(r->base) >= PFN_DOWN(r->base + r->size))
+		if (PFN_UP(r->base) >= PFN_DOWN(r->base + r->size)) // 怎么可能?
 			continue;
 		if (nid == MAX_NUMNODES || nid == r_nid)
 			break;
@@ -1258,6 +1268,8 @@ void __init_memblock __next_mem_pfn_range(int *idx, int nid,
 		return;
 	}
 
+	// 设置返回值
+	// 代表iter到了下一个region
 	if (out_start_pfn)
 		*out_start_pfn = PFN_UP(r->base);
 	if (out_end_pfn)
@@ -1363,6 +1375,7 @@ __next_mem_pfn_range_in_zone(u64 *idx, struct zone *zone,
 #endif /* CONFIG_DEFERRED_STRUCT_PAGE_INIT */
 
 /**
+memblock机制的内存分配函数
  * memblock_alloc_range_nid - allocate boot memory block
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
@@ -1405,10 +1418,11 @@ phys_addr_t __init memblock_alloc_range_nid(phys_addr_t size,
 	}
 
 again:
+//found是找到的内存块的物理地址
 	found = memblock_find_in_range_node(size, align, start, end, nid,
 					    flags);
 	if (found && !memblock_reserve(found, size))
-		goto done;
+		goto done; // 如果找到了, 并且不是保留的
 
 	if (nid != NUMA_NO_NODE && !exact_nid) {
 		found = memblock_find_in_range_node(size, align, start,
@@ -1427,7 +1441,8 @@ again:
 
 	return 0;
 
-done:
+done: // 找到了可用的内存区域来到这里
+
 	/*
 	 * Skip kmemleak for those places like kasan_init() and
 	 * early_pgtable_alloc() due to high volume.
@@ -1497,6 +1512,7 @@ phys_addr_t __init memblock_phys_alloc_try_nid(phys_addr_t size, phys_addr_t ali
 }
 
 /**
+memblock机制的内存分配函数
  * memblock_alloc_internal - allocate boot memory block
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
@@ -1507,7 +1523,7 @@ phys_addr_t __init memblock_phys_alloc_try_nid(phys_addr_t size, phys_addr_t ali
  *
  * Allocates memory block using memblock_alloc_range_nid() and
  * converts the returned physical address to virtual.
- *
+ * 使用memblock_alloc_range_nid()分配内存块，并将返回的物理地址转换为虚拟地址。
  * The @min_addr limit is dropped if it can not be satisfied and the allocation
  * will fall back to memory below @min_addr. Other constraints, such
  * as node and mirrored memory will be handled again in
@@ -1534,10 +1550,13 @@ static void * __init memblock_alloc_internal(
 	if (max_addr > memblock.current_limit)
 		max_addr = memblock.current_limit;
 
+		// 分配内存
 	alloc = memblock_alloc_range_nid(size, align, min_addr, max_addr, nid,
 					exact_nid);
 
-	/* retry allocation without lower limit */
+	/* retry allocation without lower limit
+	取消lower limit，再次尝试分配
+	*/
 	if (!alloc && min_addr)
 		alloc = memblock_alloc_range_nid(size, align, 0, max_addr, nid,
 						exact_nid);
@@ -1612,7 +1631,9 @@ void * __init memblock_alloc_try_nid_raw(
 }
 
 /**
+memblock的内存分配函数
  * memblock_alloc_try_nid - allocate boot memory block
+ 分配boot时期的内存
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
  * @min_addr: the lower bound of the memory region from where the allocation
@@ -1638,6 +1659,7 @@ void * __init memblock_alloc_try_nid(
 	memblock_dbg("%s: %llu bytes align=0x%llx nid=%d from=%pa max_addr=%pa %pS\n",
 		     __func__, (u64)size, (u64)align, nid, &min_addr,
 		     &max_addr, (void *)_RET_IP_);
+			 // 内部实现
 	ptr = memblock_alloc_internal(size, align,
 					   min_addr, max_addr, nid, false);
 	if (ptr)
@@ -2000,6 +2022,7 @@ static void __init free_memmap(unsigned long start_pfn, unsigned long end_pfn)
 
 /*
  * The mem_map array can get very big.  Free the unused area of the memory map.
+   mem_map可能会变得非常大。释放内存映射的未使用区域。
  */
 static void __init free_unused_memmap(void)
 {
@@ -2169,6 +2192,7 @@ void __init reset_all_zones_managed_pages(void)
 }
 
 /**
+  把所有的内存释放给伙伴系统?
  * memblock_free_all - release free pages to the buddy allocator
  */
 void __init memblock_free_all(void)

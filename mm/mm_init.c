@@ -2771,11 +2771,13 @@ void __init mm_core_init(void)
 	/* Initializations relying on SMP setup */
 	/* 初始化zonelist */
 	build_all_zonelists(NULL);
+	// 设置在cpu上线下线时候初始化和销毁pcp pageset的回调函数
 	page_alloc_init_cpuhp();
 
 	/*
 	 * page_ext requires contiguous pages,
 	 * bigger than MAX_ORDER unless SPARSEMEM.
+	   page_ext需要连续的页面，大于MAX_ORDER，除非是SPARSEMEM
 	 */
 	page_ext_init_flatmem();
 	mem_debugging_and_hardening_init();
@@ -2783,6 +2785,7 @@ void __init mm_core_init(void)
 	report_meminit();
 	kmsan_init_shadow();
 	stack_depot_early_init();
+	//
 	mem_init();
 	mem_init_print_info();
 	kmem_cache_init();

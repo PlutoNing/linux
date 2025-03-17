@@ -2295,21 +2295,24 @@ void drain_zone_pages(struct zone *zone, struct per_cpu_pages *pcp)
 #endif
 
 /*
+  排空指定zone上的指定cpu的pcp相关页面
  * Drain pcplists of the indicated processor and zone.
  */
 static void drain_pages_zone(unsigned int cpu, struct zone *zone)
 {
 	struct per_cpu_pages *pcp;
-
+	// 获取pcp的pageset
 	pcp = per_cpu_ptr(zone->per_cpu_pageset, cpu);
-	if (pcp->count) {
+	if (pcp->count) {// 如果pageset还有页面
 		spin_lock(&pcp->lock);
+		// 这里释放
 		free_pcppages_bulk(zone, pcp->count, pcp, 0);
 		spin_unlock(&pcp->lock);
 	}
 }
 
 /*
+ 排空所有zone上的这个cpu的pcp list
  * Drain pcplists of all zones on the indicated processor.
  */
 static void drain_pages(unsigned int cpu)
@@ -5557,17 +5560,23 @@ static int zone_highsize(struct zone *zone, int batch, int cpu_online)
 }
 
 /*
+设置pcp pageset的batch和high
  * pcp->high and pcp->batch values are related and generally batch is lower
  * than high. They are also related to pcp->count such that count is lower
  * than high, and as soon as it reaches high, the pcplist is flushed.
- *
+ * 这两个值是相关的, 通常batch比high小, 他们也和pcp->count相关
+ * 例如count小于high, 一旦达到high, pcplist就会被刷新
  * However, guaranteeing these relations at all times would require e.g. write
  * barriers here but also careful usage of read barriers at the read side, and
  * thus be prone to error and bad for performance. Thus the update only prevents
  * store tearing. Any new users of pcp->batch and pcp->high should ensure they
  * can cope with those fields changing asynchronously, and fully trust only the
  * pcp->count field on the local CPU with interrupts disabled.
- *
+ * 无论如何, 保证这些关系总是需要写屏障, 但是也需要在读的时候小心使用读屏障
+ * 因此容易出错, 对性能不好. 因此更新只是防止store tearing
+ * 任何新的使用pcp->batch和pcp->high的用户应该确保他们能够处理这些字段的异步变化
+ * 并且只信任本地CPU上的pcp->count字段, 并且中断被禁用
+
  * mutex_is_locked(&pcp_batch_high_lock) required when calling this function
  * outside of boot time (or some other assurance that no concurrent updaters
  * exist).
@@ -5602,6 +5611,7 @@ static void per_cpu_pages_init(struct per_cpu_pages *pcp, struct per_cpu_zonesta
 	pcp->free_factor = 0;
 }
 
+// 设置zone上面所有cpu的pageset的batch和high
 static void __zone_set_pageset_high_and_batch(struct zone *zone, unsigned long high,
 		unsigned long batch)
 {
@@ -5609,12 +5619,14 @@ static void __zone_set_pageset_high_and_batch(struct zone *zone, unsigned long h
 	int cpu;
 
 	for_each_possible_cpu(cpu) {
+		// 获取zone上的这个cpu的pageset
 		pcp = per_cpu_ptr(zone->per_cpu_pageset, cpu);
 		pageset_update(pcp, high, batch);
 	}
 }
 
 /*
+设置zone的全部cpu的pageset的信息
  * Calculate and set new high and batch values for all per-cpu pagesets of a
  * zone based on the zone's size.
  */
@@ -5631,7 +5643,7 @@ static void zone_set_pageset_high_and_batch(struct zone *zone, int cpu_online)
 
 	zone->pageset_high = new_high;
 	zone->pageset_batch = new_batch;
-
+	// 设置zone的每个cpu的pageset的batch和high
 	__zone_set_pageset_high_and_batch(zone, new_high, new_batch);
 }
 
@@ -5657,12 +5669,14 @@ void __meminit setup_zone_pageset(struct zone *zone)
 }
 
 /*
+初始化zone的pcp pageset
  * The zone indicated has a new number of managed_pages; batch sizes and percpu
  * page high values need to be recalculated.
  */
 static void zone_pcp_update(struct zone *zone, int cpu_online)
 {
 	mutex_lock(&pcp_batch_high_lock);
+	// 设置zone的每个cpu的pageset
 	zone_set_pageset_high_and_batch(zone, cpu_online);
 	mutex_unlock(&pcp_batch_high_lock);
 }
@@ -5763,6 +5777,7 @@ unsigned long free_reserved_area(void *start, void *end, int poison, const char 
 	return pages;
 }
 
+// 参考对应的online函数
 static int page_alloc_cpu_dead(unsigned int cpu)
 {
 	struct zone *zone;
@@ -5794,6 +5809,9 @@ static int page_alloc_cpu_dead(unsigned int cpu)
 	return 0;
 }
 
+// 内存初始化的时候, 把这个函数安装为cpu热插拔状态机的
+// 回调函数
+// 函数设置zone的每个cpu的pageset
 static int page_alloc_cpu_online(unsigned int cpu)
 {
 	struct zone *zone;
@@ -5804,6 +5822,7 @@ static int page_alloc_cpu_online(unsigned int cpu)
 }
 
 // 这是啥?
+// 设置cpu状态变化时候的初始化和销毁pageset的回调函数
 void __init page_alloc_init_cpuhp(void)
 {
 	int ret;

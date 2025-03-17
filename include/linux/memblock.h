@@ -50,6 +50,7 @@ enum memblock_flags {
 };
 
 /**
+代表一个内存区域
  * struct memblock_region - represents a memory region
  * @base: base address of the region
  * @size: size of the region
@@ -61,11 +62,13 @@ struct memblock_region {
 	phys_addr_t size;
 	enum memblock_flags flags;
 #ifdef CONFIG_NUMA
-	int nid;
+	int nid; // 这个region所属的node id
 #endif
 };
 
 /**
+代表某种类型内存的n个区域的集合
+比如保留的内存, 以及这些内存的regions
  * struct memblock_type - collection of memory regions of certain type
  * @cnt: number of regions
  * @max: size of the allocated array
@@ -74,7 +77,7 @@ struct memblock_region {
  * @name: the memory type symbolic name
  */
 struct memblock_type {
-	unsigned long cnt;
+	unsigned long cnt; // type里面的region数量
 	unsigned long max;
 	phys_addr_t total_size;
 	struct memblock_region *regions;
@@ -82,11 +85,12 @@ struct memblock_type {
 };
 
 /**
+memblock 分配器的元数据
  * struct memblock - memblock allocator metadata
  * @bottom_up: is bottom up direction?
  * @current_limit: physical address of the current allocation limit
- * @memory: usable memory regions
- * @reserved: reserved memory regions
+ * @memory: usable memory regions, 可用的内存区域的集合
+ * @reserved: reserved memory regions, 保留的内存区域的集合
  */
 struct memblock {
 	bool bottom_up;  /* is bottom up direction? */
@@ -170,6 +174,7 @@ static inline void __next_physmem_range(u64 *idx, struct memblock_type *type,
 /**
  * __for_each_mem_range - iterate through memblock areas from type_a and not
  * included in type_b. Or just type_a if type_b is NULL.
+ 翻译: 从type_a中迭代memblock区域, 并且不包含在type_b中. 如果type_b是NULL, 则只有type_a
  * @i: u64 used as loop variable
  * @type_a: ptr to memblock_type to iterate
  * @type_b: ptr to memblock_type which excludes from the iteration
@@ -270,6 +275,7 @@ void __next_mem_pfn_range(int *idx, int nid, unsigned long *out_start_pfn,
 			  unsigned long *out_end_pfn, int *out_nid);
 
 /**
+早期的内存pfn范围迭代器
  * for_each_mem_pfn_range - early memory pfn range iterator
  * @i: an integer used as loop variable
  * @nid: node selector, %MAX_NUMNODES for all nodes
@@ -329,6 +335,7 @@ int __init deferred_page_init_max_threads(const struct cpumask *node_cpumask);
 
 /**
  * for_each_free_mem_range - iterate through free memblock areas
+   遍历memblock中的空闲区域
  * @i: u64 used as loop variable
  * @nid: node selector, %NUMA_NO_NODE for all nodes
  * @flags: pick from blocks based on memory attributes
@@ -369,6 +376,7 @@ static inline void memblock_set_region_node(struct memblock_region *r, int nid)
 	r->nid = nid;
 }
 
+// 获取mem region的node id
 static inline int memblock_get_region_node(const struct memblock_region *r)
 {
 	return r->nid;
@@ -420,6 +428,8 @@ void *memblock_alloc_try_nid(phys_addr_t size, phys_addr_t align,
 			     phys_addr_t min_addr, phys_addr_t max_addr,
 			     int nid);
 
+
+				 // memblock机制的内存分配函数
 static __always_inline void *memblock_alloc(phys_addr_t size, phys_addr_t align)
 {
 	return memblock_alloc_try_nid(size, align, MEMBLOCK_LOW_LIMIT,
@@ -468,6 +478,8 @@ static inline __init_memblock void memblock_set_bottom_up(bool enable)
  * Check if the allocation direction is bottom-up or not.
  * if this is true, that said, memblock will allocate memory
  * in bottom-up direction.
+   检查分配方向是否是自底向上的
+   如果是，memblock将以自底向上的方向分配内存
  */
 static inline __init_memblock bool memblock_bottom_up(void)
 {

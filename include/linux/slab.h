@@ -603,6 +603,7 @@ static __always_inline __alloc_size(1) void *kmalloc(size_t size, gfp_t flags)
 	return __kmalloc(size, flags);
 }
 
+// 从指定的node上面分配内存
 static __always_inline __alloc_size(1) void *kmalloc_node(size_t size, gfp_t flags, int node)
 {
 	if (__builtin_constant_p(size) && size) {
@@ -721,6 +722,7 @@ static inline __alloc_size(1) void *kzalloc(size_t size, gfp_t flags)
 }
 
 /**
+从指定的node上面分配内存
  * kzalloc_node - allocate zeroed memory from a particular memory node.
  * @size: how many bytes of memory are required.
  * @flags: the type of memory to allocate (see kmalloc).
