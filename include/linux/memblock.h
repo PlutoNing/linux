@@ -259,6 +259,7 @@ static inline bool memblock_is_mirror(struct memblock_region *m)
 	return m->flags & MEMBLOCK_MIRROR;
 }
 
+// nomap是啥?
 static inline bool memblock_is_nomap(struct memblock_region *m)
 {
 	return m->flags & MEMBLOCK_NOMAP;
@@ -573,6 +574,7 @@ static inline unsigned long memblock_region_reserved_end_pfn(const struct memblo
 }
 
 /**
+遍历全部的memory regions
  * for_each_mem_region - itereate over memory regions
  * @region: loop variable
  */

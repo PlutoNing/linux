@@ -744,10 +744,14 @@ static inline void init_reserved_page(unsigned long pfn, int nid)
 #endif /* CONFIG_DEFERRED_STRUCT_PAGE_INIT */
 
 /*
+start和end是node的一个region
  * Initialised pages do not have PageReserved set. This function is
  * called for each range allocated by the bootmem allocator and
  * marks the pages PageReserved. The remaining valid pages are later
  * sent to the buddy page allocator.
+   已经初始化的页面没有设置PageReserved。这个函数是为bootmem分配器分配的
+   每个范围调用的，
+   并标记页面为PageReserved。稍后，剩余的有效页面将被发送到伙伴页面分配器
  */
 void __meminit reserve_bootmem_region(phys_addr_t start,
 				      phys_addr_t end, int nid)
@@ -755,6 +759,7 @@ void __meminit reserve_bootmem_region(phys_addr_t start,
 	unsigned long start_pfn = PFN_DOWN(start);
 	unsigned long end_pfn = PFN_UP(end);
 
+	// 遍历这个区域的每一个页面
 	for (; start_pfn < end_pfn; start_pfn++) {
 		if (pfn_valid(start_pfn)) {
 			struct page *page = pfn_to_page(start_pfn);

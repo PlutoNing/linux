@@ -1299,6 +1299,7 @@ void __init_memblock __next_mem_pfn_range(int *idx, int nid,
 
 /**
  * memblock_set_node - set node ID on memblock regions
+ 设置memory region的node id
  * @base: base of area to set node ID for
  * @size: size of area to set node ID for
  * @type: memblock type to set node ID for
@@ -1306,7 +1307,8 @@ void __init_memblock __next_mem_pfn_range(int *idx, int nid,
  *
  * Set the nid of memblock @type regions in [@base, @base + @size) to @nid.
  * Regions which cross the area boundaries are split as necessary.
- *
+ * 设置memblock @type regions中[@base, @base + @size)的nid为@nid.
+ * 跨越区域边界的region将根据需要拆分.
  * Return:
  * 0 on success, -errno on failure.
  */
@@ -2017,6 +2019,7 @@ static int __init early_memblock(char *p)
 }
 early_param("memblock", early_memblock);
 
+// 释放范围内的内存, 好像是从reserved memory type移除
 static void __init free_memmap(unsigned long start_pfn, unsigned long end_pfn)
 {
 	struct page *start_pg, *end_pg;
@@ -2089,6 +2092,7 @@ static void __init free_unused_memmap(void)
 		 * Align up here since many operations in VM subsystem
 		 * presume that there are no holes in the memory map inside
 		 * a pageblock
+		 一样的需要对齐
 		 */
 		prev_end = pageblock_align(end);
 	}
@@ -2150,6 +2154,7 @@ static void __init memmap_init_reserved_pages(void)
 	/*
 	 * set nid on all reserved pages and also treat struct
 	 * pages for the NOMAP regions as PageReserved
+	   在所有保留的页面上设置nid，并将NOMAP region的struct页面视为PageReserved
 	 */
 	for_each_mem_region(region) {
 		nid = memblock_get_region_node(region);
@@ -2157,7 +2162,7 @@ static void __init memmap_init_reserved_pages(void)
 		end = start + region->size;
 
 		if (memblock_is_nomap(region))
-			reserve_bootmem_region(start, end, nid);
+			reserve_bootmem_region(start, end, nid); // 标记每个页面为reserved
 
 		memblock_set_node(start, end, &memblock.reserved, nid);
 	}
@@ -2196,6 +2201,7 @@ static unsigned long __init free_low_memory_core_early(void)
 
 static int reset_managed_pages_done __initdata;
 
+// 为什么这里要reset
 static void __init reset_node_managed_pages(pg_data_t *pgdat)
 {
 	struct zone *z;
@@ -2204,6 +2210,7 @@ static void __init reset_node_managed_pages(pg_data_t *pgdat)
 		atomic_long_set(&z->managed_pages, 0);
 }
 
+// 就是把node的全部zone的managed_pages都置为0
 void __init reset_all_zones_managed_pages(void)
 {
 	struct pglist_data *pgdat;
@@ -2225,7 +2232,7 @@ void __init memblock_free_all(void)
 {
 	unsigned long pages;
 
-	free_unused_memmap();
+	free_unused_memmap(); // 好像是释放region之间的内存?
 	reset_all_zones_managed_pages();
 
 	pages = free_low_memory_core_early();
