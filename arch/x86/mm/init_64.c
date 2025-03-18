@@ -1535,6 +1535,9 @@ int __meminit vmemmap_check_pmd(pmd_t *pmd, int node,
 	return large;
 }
 
+/* 
+start和end是nid上面某一个memsection的第一个和最后一个页面对应的page结构体地址
+*/
 int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 		struct vmem_altmap *altmap)
 {
@@ -1543,15 +1546,15 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 	VM_BUG_ON(!PAGE_ALIGNED(start));
 	VM_BUG_ON(!PAGE_ALIGNED(end));
 
-	if (end - start < PAGES_PER_SECTION * sizeof(struct page))
+	if (end - start < PAGES_PER_SECTION * sizeof(struct page)) // 什么时候走这个路径呢?
 		err = vmemmap_populate_basepages(start, end, node, NULL);
 	else if (boot_cpu_has(X86_FEATURE_PSE))
 		err = vmemmap_populate_hugepages(start, end, node, altmap);
-	else if (altmap) {
+	else if (altmap) { // 这个altmap参数也是空的
 		pr_err_once("%s: no cpu support for altmap allocations\n",
 				__func__);
 		err = -ENOMEM;
-	} else
+	} else // 感觉走的应该是这个路径
 		err = vmemmap_populate_basepages(start, end, node, NULL);
 	if (!err)
 		sync_global_pgds(start, end - 1);

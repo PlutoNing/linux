@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-,icense-Identifier: GPL-2.0-or-later */
 #ifndef _LINUX_MEMBLOCK_H
 #define _LINUX_MEMBLOCK_H
 
@@ -459,6 +459,7 @@ static inline void *memblock_alloc_low(phys_addr_t size,
 				      ARCH_LOW_ADDRESS_LIMIT, NUMA_NO_NODE);
 }
 
+// memblock机制的内存分配函数
 static inline void *memblock_alloc_node(phys_addr_t size,
 						phys_addr_t align, int nid)
 {

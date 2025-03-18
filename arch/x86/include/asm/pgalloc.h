@@ -131,6 +131,7 @@ static inline void __pud_free_tlb(struct mmu_gather *tlb, pud_t *pud,
 }
 
 #if CONFIG_PGTABLE_LEVELS > 4
+// pgd是空的,p4d是刚刚分配给他的page页面
 static inline void pgd_populate(struct mm_struct *mm, pgd_t *pgd, p4d_t *p4d)
 {
 	if (!pgtable_l5_enabled())

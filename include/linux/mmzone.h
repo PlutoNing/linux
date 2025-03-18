@@ -1823,15 +1823,20 @@ static inline bool movable_only_nodes(nodemask_t *nodes)
  * PA_SECTION_SHIFT		physical address to/from section number
  * PFN_SECTION_SHIFT		pfn to/from section number
  */
+// 27
 #define PA_SECTION_SHIFT	(SECTION_SIZE_BITS)
-// 27 - 12 = 15, 表示为大小是2的15次方的section, 大小是32k个页面
+// 27 - 12 = 15, 表示一个memsection大小是2^15次方,32k个页面
 #define PFN_SECTION_SHIFT	(SECTION_SIZE_BITS - PAGE_SHIFT)
 
 #define NR_MEM_SECTIONS		(1UL << SECTIONS_SHIFT)
 //  大小为2的15次方 = 32768 = 32k个页面
 #define PAGES_PER_SECTION       (1UL << PFN_SECTION_SHIFT)
+// ~32767,大约是1111111111111000000000什么的, 15个0
 #define PAGE_SECTION_MASK	(~(PAGES_PER_SECTION-1))
-
+// 计算一个memsection的全部pageblock需要多少bit来表示状态
+// 需要 64*4个bit
+// 1<(15-9) = 2^6 = 64, 看来是一个memsection里面有64个pageblock, 
+// 每个pageblock需要4个bit好像
 #define SECTION_BLOCKFLAGS_BITS \
 	((1UL << (PFN_SECTION_SHIFT - pageblock_order)) * NR_PAGEBLOCK_BITS)
 
@@ -1938,6 +1943,7 @@ static inline unsigned long *section_to_usemap(struct mem_section *ms)
 	return ms->usage->pageblock_flags;
 }
 
+// 根据section_nr找到对应的mem_section结构体地址
 static inline struct mem_section *__nr_to_section(unsigned long nr)
 {
 	unsigned long root = SECTION_NR_TO_ROOT(nr);
@@ -1949,6 +1955,7 @@ static inline struct mem_section *__nr_to_section(unsigned long nr)
 	if (!mem_section || !mem_section[root])
 		return NULL;
 #endif
+// 先找到nr对应的root, 在这个root page上面根据offset就可以找到nr对应的memsection结构体
 	return &mem_section[root][nr & SECTION_ROOT_MASK];
 }
 extern size_t mem_section_usage_size(void);
@@ -2127,6 +2134,7 @@ static inline int pfn_in_present_section(unsigned long pfn)
 	return present_section(__pfn_to_section(pfn));
 }
 
+// 找到section_nr对应的下一个存在的section_nr
 static inline unsigned long next_present_section_nr(unsigned long section_nr)
 {
 	while (++section_nr <= __highest_present_section_nr) {

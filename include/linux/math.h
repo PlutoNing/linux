@@ -49,6 +49,7 @@
 #endif
 
 /**
+把x向上取整为y的倍数
  * roundup - round up to the next specified multiple
  * @x: the value to up
  * @y: multiple to round up to

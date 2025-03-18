@@ -35,6 +35,8 @@
  * Allocate a block of memory to be used to back the virtual memory map
  * or to back the page tables that are used to create the mapping.
  * Uses the main allocators if they are available, else bootmem.
+   分配一个内存块, 用于支持虚拟内存映射或用于支持用于创建映射的页表.
+   如果主分配器可用,则使用主分配器,否则使用bootmem.
  */
 
 static void * __ref __earlyonly_bootmem_alloc(int node,
@@ -46,10 +48,11 @@ static void * __ref __earlyonly_bootmem_alloc(int node,
 					       MEMBLOCK_ALLOC_ACCESSIBLE, node);
 }
 
+// 分配一个内存块, 用于支持虚拟内存映射或用于支持用于创建映射的页表.
 void * __meminit vmemmap_alloc_block(unsigned long size, int node)
 {
 	/* If the main allocator is up use that, fallback to bootmem. */
-	if (slab_is_available()) {
+	if (slab_is_available()) { // boot代码分析的时候先不考虑这个slab路径
 		gfp_t gfp_mask = GFP_KERNEL|__GFP_RETRY_MAYFAIL|__GFP_NOWARN;
 		int order = get_order(size);
 		static bool warned;
@@ -79,7 +82,7 @@ void * __meminit vmemmap_alloc_block_buf(unsigned long size, int node,
 {
 	void *ptr;
 
-	if (altmap)
+	if (altmap) // boot过程中altmap是空的
 		return altmap_alloc_block_buf(size, altmap);
 
 	ptr = sparse_buffer_alloc(size);
@@ -141,16 +144,17 @@ void __meminit vmemmap_verify(pte_t *pte, int node,
 			start, end - 1);
 }
 
+//
 pte_t * __meminit vmemmap_pte_populate(pmd_t *pmd, unsigned long addr, int node,
 				       struct vmem_altmap *altmap,
 				       struct page *reuse)
 {
 	pte_t *pte = pte_offset_kernel(pmd, addr);
-	if (pte_none(ptep_get(pte))) {
+	if (pte_none(ptep_get(pte))) { // 如果pte是空的
 		pte_t entry;
 		void *p;
 
-		if (!reuse) {
+		if (!reuse) { // boot过程中是这个路径
 			p = vmemmap_alloc_block_buf(PAGE_SIZE, node, altmap);
 			if (!p)
 				return NULL;
@@ -173,6 +177,7 @@ pte_t * __meminit vmemmap_pte_populate(pmd_t *pmd, unsigned long addr, int node,
 	return pte;
 }
 
+// 内存分配函数, 分配的内存会被清零
 static void * __meminit vmemmap_alloc_block_zero(unsigned long size, int node)
 {
 	void *p = vmemmap_alloc_block(size, node);
@@ -184,6 +189,7 @@ static void * __meminit vmemmap_alloc_block_zero(unsigned long size, int node)
 	return p;
 }
 
+// 给addr分配pte页表
 pmd_t * __meminit vmemmap_pmd_populate(pud_t *pud, unsigned long addr, int node)
 {
 	pmd_t *pmd = pmd_offset(pud, addr);
@@ -200,6 +206,7 @@ void __weak __meminit pmd_init(void *addr)
 {
 }
 
+// 给addr分配pud页表
 pud_t * __meminit vmemmap_pud_populate(p4d_t *p4d, unsigned long addr, int node)
 {
 	pud_t *pud = pud_offset(p4d, addr);
@@ -217,6 +224,7 @@ void __weak __meminit pud_init(void *addr)
 {
 }
 
+// 给addr分配p4d页表
 p4d_t * __meminit vmemmap_p4d_populate(pgd_t *pgd, unsigned long addr, int node)
 {
 	p4d_t *p4d = p4d_offset(pgd, addr);
@@ -230,10 +238,13 @@ p4d_t * __meminit vmemmap_p4d_populate(pgd_t *pgd, unsigned long addr, int node)
 	return p4d;
 }
 
+// 给addr分配p4d页表
 pgd_t * __meminit vmemmap_pgd_populate(unsigned long addr, int node)
 {
+	// 获取内核页表的pgd
 	pgd_t *pgd = pgd_offset_k(addr);
-	if (pgd_none(*pgd)) {
+	if (pgd_none(*pgd)) {// 如果pgd是空的
+		// 分配一个page作为pgd页表
 		void *p = vmemmap_alloc_block_zero(PAGE_SIZE, node);
 		if (!p)
 			return NULL;
@@ -242,6 +253,7 @@ pgd_t * __meminit vmemmap_pgd_populate(unsigned long addr, int node)
 	return pgd;
 }
 
+// addr是page的地址
 static pte_t * __meminit vmemmap_populate_address(unsigned long addr, int node,
 					      struct vmem_altmap *altmap,
 					      struct page *reuse)
@@ -272,6 +284,7 @@ static pte_t * __meminit vmemmap_populate_address(unsigned long addr, int node,
 	return pte;
 }
 
+// start和end是nid的某一个section_nr的首尾page结构体地址的范围
 static int __meminit vmemmap_populate_range(unsigned long start,
 					    unsigned long end, int node,
 					    struct vmem_altmap *altmap,
@@ -280,7 +293,7 @@ static int __meminit vmemmap_populate_range(unsigned long start,
 	unsigned long addr = start;
 	pte_t *pte;
 
-	for (; addr < end; addr += PAGE_SIZE) {
+	for (; addr < end; addr += PAGE_SIZE) { // 遍历每一个page
 		pte = vmemmap_populate_address(addr, node, altmap, reuse);
 		if (!pte)
 			return -ENOMEM;
@@ -289,6 +302,7 @@ static int __meminit vmemmap_populate_range(unsigned long start,
 	return 0;
 }
 
+// start和end是nid的某一个section_nr的首尾page结构体地址的范围
 int __meminit vmemmap_populate_basepages(unsigned long start, unsigned long end,
 					 int node, struct vmem_altmap *altmap)
 {
@@ -449,11 +463,17 @@ static int __meminit vmemmap_populate_compound_pages(unsigned long start_pfn,
 
 #endif
 
+/* 
+pfn是nid上面的某一个memsection的起始pfn
+nr_pages是这个memsection的大小
+*/
 struct page * __meminit __populate_section_memmap(unsigned long pfn,
 		unsigned long nr_pages, int nid, struct vmem_altmap *altmap,
 		struct dev_pagemap *pgmap)
 {
+	// 获取pfn对应的page结构体的地址?
 	unsigned long start = (unsigned long) pfn_to_page(pfn);
+	// memsection的最后一个page结构体的地址
 	unsigned long end = start + nr_pages * sizeof(struct page);
 	int r;
 
@@ -463,7 +483,7 @@ struct page * __meminit __populate_section_memmap(unsigned long pfn,
 
 	if (vmemmap_can_optimize(altmap, pgmap))
 		r = vmemmap_populate_compound_pages(pfn, start, end, nid, pgmap);
-	else
+	else // 走这个路径
 		r = vmemmap_populate(start, end, nid, altmap);
 
 	if (r < 0)

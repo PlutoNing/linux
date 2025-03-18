@@ -740,6 +740,7 @@ int __init_memblock memblock_add(phys_addr_t base, phys_addr_t size)
 
 /**
  * memblock_isolate_range - isolate given range into disjoint memblocks
+   释放type中base和size描述的内存区域
  * @type: memblock type to isolate range for
  * @base: base of range to isolate
  * @size: size of range to isolate
@@ -750,7 +751,8 @@ int __init_memblock memblock_add(phys_addr_t base, phys_addr_t size)
  * [@base, @base + @size).  Crossing regions are split at the boundaries,
  * which may create at most two more regions.  The index of the first
  * region inside the range is returned in *@start_rgn and end in *@end_rgn.
- *
+ * 遍历type, 确保区域不跨越由[@base, @base + @size)定义的边界. 交叉的区域在边界处分割, 
+ 这可能会创建多达两个区域. 第一个区域的索引在*@start_rgn中返回, 结束在*@end_rgn中返回.
  * Return:
  * 0 on success, -errno on failure.
  */
@@ -814,6 +816,7 @@ static int __init_memblock memblock_isolate_range(struct memblock_type *type,
 	return 0;
 }
 
+// 从type中删除base和size描述的内存区域
 static int __init_memblock memblock_remove_range(struct memblock_type *type,
 					  phys_addr_t base, phys_addr_t size)
 {
@@ -841,6 +844,7 @@ int __init_memblock memblock_remove(phys_addr_t base, phys_addr_t size)
 
 /**
  * memblock_free - free boot memory allocation
+ memblock释放内存
  * @ptr: starting address of the  boot memory allocation
  * @size: size of the boot memory block in bytes
  *
@@ -855,6 +859,7 @@ void __init_memblock memblock_free(void *ptr, size_t size)
 
 /**
  * memblock_phys_free - free boot memory block
+ memblock释放内存
  * @base: phys starting address of the  boot memory block
  * @size: size of the boot memory block in bytes
  *
@@ -1569,6 +1574,7 @@ static void * __init memblock_alloc_internal(
 
 /**
  * memblock_alloc_exact_nid_raw - allocate boot memory block on the exact node
+   在指定的node上分配内存 memblock
  * without zeroing memory
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
@@ -1601,6 +1607,7 @@ void * __init memblock_alloc_exact_nid_raw(
 /**
  * memblock_alloc_try_nid_raw - allocate boot memory block without zeroing
  * memory and without panicking
+   分配memblock内存，不清零，不panic
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
  * @min_addr: the lower bound of the memory region from where the allocation

@@ -16,16 +16,20 @@
 #define PB_migratetype_bits 3
 /* Bit indices that affect a whole block of pages */
 enum pageblock_bits {
-	PB_migrate,
-	PB_migrate_end = PB_migrate + PB_migratetype_bits - 1,
+	PB_migrate, // 0
+	PB_migrate_end = PB_migrate + PB_migratetype_bits - 1, // 2
 			/* 3 bits required for migrate types */
-	PB_migrate_skip,/* If set the block is skipped by compaction */
+	PB_migrate_skip,/* 
+	If set the block is skipped by compaction
+	如果设置了,那么这个block会被跳过compaction
+	*/
 
 	/*
 	 * Assume the bits will always align on a word. If this assumption
 	 * changes then get/set pageblock needs updating.
+	   假设这些bit总是在一个word上面对齐的, 如果这个假设改变了, 那么get/set pageblock需要更新
 	 */
-	NR_PAGEBLOCK_BITS
+	NR_PAGEBLOCK_BITS // 4
 };
 
 #ifdef CONFIG_HUGETLB_PAGE
@@ -40,7 +44,7 @@ extern unsigned int pageblock_order;
 /*
  * Huge pages are a constant size, but don't exceed the maximum allocation
  * granularity.
- 9
+ min（9,10）= 9
  */
 #define pageblock_order		min_t(unsigned int, HUGETLB_PAGE_ORDER, MAX_ORDER)
 

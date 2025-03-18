@@ -62,9 +62,11 @@ static inline void set_section_nid(unsigned long section_nr, int nid)
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
 // 给mem section分配内存
+// 准确来说是给这个memsection结构体所在的page申请内存空间
 static noinline struct mem_section __ref *sparse_index_alloc(int nid)
 {
 	struct mem_section *section = NULL;
+	// 这里的大小其实就是4KB
 	unsigned long array_size = SECTIONS_PER_ROOT *
 				   sizeof(struct mem_section);
 
@@ -80,7 +82,7 @@ static noinline struct mem_section __ref *sparse_index_alloc(int nid)
 
 	return section;
 }
-// 给这个section_nr对应的ms结构体创建内存空间
+// 给这个section_nr对应的ms结构体所在的page创建内存空间
 static int __meminit sparse_index_init(unsigned long section_nr, int nid)
 {
 	// 计算这个section_nr对应的ms结构体应该位于第几个内存块(一个块一般就是一个页面)
@@ -98,6 +100,7 @@ static int __meminit sparse_index_init(unsigned long section_nr, int nid)
 	 */
 	if (mem_section[root])
 		return 0;
+	// 说明这个memsection结构体所在的page还没有分配内存
 	// 分配内存
 	section = sparse_index_alloc(nid);
 	if (!section)
@@ -129,6 +132,7 @@ static inline unsigned long sparse_encode_early_nid(int nid)
 	return ((unsigned long)nid << SECTION_NID_SHIFT);
 }
 
+// 获取section的nid
 static inline int sparse_early_nid(struct mem_section *section)
 {
 	return (section->section_mem_map >> SECTION_NID_SHIFT);
@@ -186,11 +190,13 @@ static void __section_mark_present(struct mem_section *ms,
 	ms->section_mem_map |= SECTION_MARKED_PRESENT;
 }
 
+// 遍历所有的section_nr, 找到下一个存在的section_nr
 #define for_each_present_section_nr(start, section_nr)		\
 	for (section_nr = next_present_section_nr(start-1);	\
 	     section_nr != -1;								\
 	     section_nr = next_present_section_nr(section_nr))
 
+		 // 找到第一个存在的section_nr
 static inline unsigned long first_present_section_nr(void)
 {
 	return next_present_section_nr(-1);
@@ -265,7 +271,9 @@ static void __init memory_present(int nid, unsigned long start, unsigned long en
 		// 获取pfn对应的section的编号索引
 		unsigned long section = pfn_to_section_nr(pfn);
 		struct mem_section *ms;
-		// 给这个section_nr对应的ms结构体创建内存空间
+		// 给这个section_nr对应的ms结构体所在的page创建内存空间
+		// 连续的section_nr对应的ms结构体会在同一个page上面
+		// 这个函数会给这个page分配内存空间
 		sparse_index_init(section, nid);
 
 		set_section_nid(section, nid);
@@ -280,6 +288,8 @@ static void __init memory_present(int nid, unsigned long start, unsigned long en
 }
 
 /*
+memblock初始化内存布局,
+遍历全部的free范围,作为memsection来标记为存在
  * Mark all memblocks as present using memory_present().
  * This is a convenience function that is useful to mark all of the systems
  * memory as present during initialization.
@@ -332,11 +342,17 @@ static void __meminit sparse_init_one_section(struct mem_section *ms,
 	ms->usage = usage;
 }
 
+// 计算memsection的使用情况的大小
+// 计算memsection的全部pageblock需要多少bit来表示状态
+/* 需要64*4个bit
+然后需要4个long来做usemap
+所以这里返回32, 4个long是32字节 */
 static unsigned long usemap_size(void)
 {
 	return BITS_TO_LONGS(SECTION_BLOCKFLAGS_BITS) * sizeof(unsigned long);
 }
 
+// 每个memsection需要一个mem_section_usage结构体大小加上usemap_size大小的内存
 size_t mem_section_usage_size(void)
 {
 	return sizeof(struct mem_section_usage) + usemap_size();
@@ -353,6 +369,7 @@ static inline phys_addr_t pgdat_to_phys(struct pglist_data *pgdat)
 #endif
 }
 
+// 似乎是在pgdat的第一个memsection分配size大小的内存
 static struct mem_section_usage * __init
 sparse_early_usemaps_alloc_pgdat_section(struct pglist_data *pgdat,
 					 unsigned long size)
@@ -370,10 +387,13 @@ sparse_early_usemaps_alloc_pgdat_section(struct pglist_data *pgdat,
 	 * from the same section as the pgdat where possible to avoid
 	 * this problem.
 	 */
+	// 物理地址后面27bit变为0 , 看来goal代表的是memsection的idx之类的东西
 	goal = pgdat_to_phys(pgdat) & (PAGE_SECTION_MASK << PAGE_SHIFT);
+	// 为啥又加上一个类似memsection大小的东西
 	limit = goal + (1UL << PA_SECTION_SHIFT);
 	nid = early_pfn_to_nid(goal >> PAGE_SHIFT);
 again:
+// 看来是在node的第一个memsection分配点内存,size大小
 	usage = memblock_alloc_try_nid(size, SMP_CACHE_BYTES, goal, limit, nid);
 	if (!usage && limit) {
 		limit = 0;
@@ -439,6 +459,7 @@ static void __init check_usemap_section_nr(int nid,
 #endif /* CONFIG_MEMORY_HOTREMOVE */
 
 #ifdef CONFIG_SPARSEMEM_VMEMMAP
+// 计算一个memsection的全部page的结构体需要的size?
 static unsigned long __init section_map_size(void)
 {
 	return ALIGN(sizeof(struct page) * PAGES_PER_SECTION, PMD_SIZE);
@@ -473,12 +494,14 @@ struct page __init *__populate_section_memmap(unsigned long pfn,
 static void *sparsemap_buf __meminitdata;
 static void *sparsemap_buf_end __meminitdata;
 
+// sparsemap_buf释放头部的size大小内存
 static inline void __meminit sparse_buffer_free(unsigned long size)
 {
 	WARN_ON(!sparsemap_buf || size == 0);
 	memblock_free(sparsemap_buf, size);
 }
 
+// 分配sparsemap的内存, 大小是node的全部memsection的全部page结构体所占的内存的数量
 static void __init sparse_buffer_init(unsigned long size, int nid)
 {
 	phys_addr_t addr = __pa(MAX_DMA_ADDRESS);
@@ -487,6 +510,8 @@ static void __init sparse_buffer_init(unsigned long size, int nid)
 	 * Pre-allocated buffer is mainly used by __populate_section_memmap
 	 * and we want it to be properly aligned to the section size - this is
 	 * especially the case for VMEMMAP which maps memmap to PMDs
+	 翻译: 预分配的缓冲区主要由__populate_section_memmap使用，我们希望它正确对齐到节大小
+	 -这对于VMEMMAP特别重要，它将memmap映射到PMDs
 	 */
 	sparsemap_buf = memmap_alloc(size, section_map_size(), addr, nid, true);
 	sparsemap_buf_end = sparsemap_buf + size;
@@ -506,13 +531,15 @@ void * __meminit sparse_buffer_alloc(unsigned long size)
 	void *ptr = NULL;
 
 	if (sparsemap_buf) {
+		// ptr是sparsemap_buf的地址, 并且是对齐size的
+		// 比如sparsemap_buf是500, size是64,那么ptr对齐到512
 		ptr = (void *) roundup((unsigned long)sparsemap_buf, size);
 		if (ptr + size > sparsemap_buf_end)
-			ptr = NULL;
+			ptr = NULL; // 无法分配
 		else {
 			/* Free redundant aligned space */
-			if ((unsigned long)(ptr - sparsemap_buf) > 0)
-				sparse_buffer_free((unsigned long)(ptr - sparsemap_buf));
+			if ((unsigned long)(ptr - sparsemap_buf) > 0) // 为了对齐产生了间隙,512-500=12
+				sparse_buffer_free((unsigned long)(ptr - sparsemap_buf)); // 先把这个12字节的内存释放掉
 			sparsemap_buf = ptr + size;
 		}
 	}
@@ -524,6 +551,8 @@ void __weak __meminit vmemmap_populate_print_last(void)
 }
 
 /*
+pnum_begin和pnum_end是一个node上的section_nr的范围
+他们之间有map_count个section_nr是present的, 并且这些section_nr都在同一个node上
  * Initialize sparse on a specific node. The node spans [pnum_begin, pnum_end)
  * And number of present sections in this node is map_count.
  */
@@ -534,15 +563,29 @@ static void __init sparse_init_nid(int nid, unsigned long pnum_begin,
 	struct mem_section_usage *usage;
 	unsigned long pnum;
 	struct page *map;
+/* 
+size是memsection的数量乘以mem_section_usage_size
+mem_section_usage_size是一个memsection的使用情况的大小,
 
+也就是说分配内存
+内存用来表示node的全部memsection的使用情况
+每个memsection需要的大小是mem_section_usage_size
+包括一个mem_section_usage结构体大小加上usemap_size大小的内存, usemap是个位图,表示memsection
+内部全部pageblock的使用情况
+=================
+并且这size的内存都位于node的第一个memsection里面
+*/
 	usage = sparse_early_usemaps_alloc_pgdat_section(NODE_DATA(nid),
 			mem_section_usage_size() * map_count);
 	if (!usage) {
 		pr_err("%s: node[%d] usemap allocation failed", __func__, nid);
 		goto failed;
 	}
+	// size是此nid的node的全部memsection的全部page结构体所占的内存的pmd数量
+	// 分配sparsemap的内存
 	sparse_buffer_init(map_count * section_map_size(), nid);
 	for_each_present_section_nr(pnum_begin, pnum) {
+		// 获取这个section_nr起始的pfn
 		unsigned long pfn = section_nr_to_pfn(pnum);
 
 		if (pnum >= pnum_end)
@@ -585,22 +628,28 @@ void __init sparse_init(void)
 {
 	unsigned long pnum_end, pnum_begin, map_count = 1;
 	int nid_begin;
-
+	// 初始化memblock的布局
 	memblocks_present();
-
+	// 找到第一个存在的section_nr
 	pnum_begin = first_present_section_nr();
+	// 获取这个memsection所在的node
 	nid_begin = sparse_early_nid(__nr_to_section(pnum_begin));
 
 	/* Setup pageblock_order for HUGETLB_PAGE_SIZE_VARIABLE */
 	set_pageblock_order();
 
+	// 遍历所有存在的section_nr
+	// 遍历过程中,pnum_end会变成下一个存在的section_nr
 	for_each_present_section_nr(pnum_begin + 1, pnum_end) {
+		// 获取这个section_nr对应的node
 		int nid = sparse_early_nid(__nr_to_section(pnum_end));
 
 		if (nid == nid_begin) {
 			map_count++;
 			continue;
 		}
+		// 现在从pnum_begin到pnum_end这一段的section_nr都是在同一个node上的
+		// 都是第一个node, 一共有map_count个section_nr
 		/* Init node with sections in range [pnum_begin, pnum_end) */
 		sparse_init_nid(nid_begin, pnum_begin, pnum_end, map_count);
 		nid_begin = nid;

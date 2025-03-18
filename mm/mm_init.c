@@ -1611,6 +1611,7 @@ static void __init free_area_init_core(struct pglist_data *pgdat)
 	}
 }
 
+// memblock分配内存
 void __init *memmap_alloc(phys_addr_t size, phys_addr_t align,
 			  phys_addr_t min_addr, int nid, bool exact_nid)
 {

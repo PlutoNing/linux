@@ -16,6 +16,7 @@
 #endif
 /* type有多少bit */
 #define BITS_PER_TYPE(type)	(sizeof(type) * BITS_PER_BYTE)
+// 计算表示nr个bit需要多少long. 比如说nr是65, 那么就是2个long
 #define BITS_TO_LONGS(nr)	__KERNEL_DIV_ROUND_UP(nr, BITS_PER_TYPE(long))
 #define BITS_TO_U64(nr)		__KERNEL_DIV_ROUND_UP(nr, BITS_PER_TYPE(u64))
 #define BITS_TO_U32(nr)		__KERNEL_DIV_ROUND_UP(nr, BITS_PER_TYPE(u32))
