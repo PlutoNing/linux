@@ -84,9 +84,9 @@ void * __meminit vmemmap_alloc_block_buf(unsigned long size, int node,
 
 	if (altmap) // boot过程中altmap是空的
 		return altmap_alloc_block_buf(size, altmap);
-
+	// 从sparsemap_buf分配内存
 	ptr = sparse_buffer_alloc(size);
-	if (!ptr)
+	if (!ptr) //如果从sparsemap_buf分配失败, 则从memblock中分配
 		ptr = vmemmap_alloc_block(size, node);
 	return ptr;
 }
@@ -144,7 +144,7 @@ void __meminit vmemmap_verify(pte_t *pte, int node,
 			start, end - 1);
 }
 
-//
+//populate参数addr的page?
 pte_t * __meminit vmemmap_pte_populate(pmd_t *pmd, unsigned long addr, int node,
 				       struct vmem_altmap *altmap,
 				       struct page *reuse)
@@ -171,7 +171,9 @@ pte_t * __meminit vmemmap_pte_populate(pmd_t *pmd, unsigned long addr, int node,
 			get_page(reuse);
 			p = page_to_virt(reuse);
 		}
+		// 制作pfn的pte条目
 		entry = pfn_pte(__pa(p) >> PAGE_SHIFT, PAGE_KERNEL);
+		// 为什么addr指向这个page呢?
 		set_pte_at(&init_mm, addr, pte, entry);
 	}
 	return pte;
@@ -276,6 +278,7 @@ static pte_t * __meminit vmemmap_populate_address(unsigned long addr, int node,
 	pmd = vmemmap_pmd_populate(pud, addr, node);
 	if (!pmd)
 		return NULL;
+	//这里populate参数addr的page?
 	pte = vmemmap_pte_populate(pmd, addr, node, altmap, reuse);
 	if (!pte)
 		return NULL;
@@ -294,6 +297,7 @@ static int __meminit vmemmap_populate_range(unsigned long start,
 	pte_t *pte;
 
 	for (; addr < end; addr += PAGE_SIZE) { // 遍历每一个page
+		// 这里初始化每个page的pte?
 		pte = vmemmap_populate_address(addr, node, altmap, reuse);
 		if (!pte)
 			return -ENOMEM;
@@ -464,6 +468,7 @@ static int __meminit vmemmap_populate_compound_pages(unsigned long start_pfn,
 #endif
 
 /* 
+处理nid的一个memsection
 pfn是nid上面的某一个memsection的起始pfn
 nr_pages是这个memsection的大小
 */

@@ -763,6 +763,7 @@ static inline pgprotval_t check_pgprot(pgprot_t pgprot)
 	return massaged_val;
 }
 
+// 把pfn转换为pte条目
 static inline pte_t pfn_pte(unsigned long page_nr, pgprot_t pgprot)
 {
 	phys_addr_t pfn = (phys_addr_t)page_nr << PAGE_SHIFT;

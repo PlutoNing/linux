@@ -951,8 +951,8 @@ struct zone {
 	 * present_pages should use get_online_mems() to get a stable value.
 	 */
 	atomic_long_t		managed_pages;
-	unsigned long		spanned_pages;
-	unsigned long		present_pages;
+	unsigned long		spanned_pages; // 首尾pfn相减
+	unsigned long		present_pages; // spanned_pages - absent_pages
 #if defined(CONFIG_MEMORY_HOTPLUG)
 	unsigned long		present_early_pages;
 #endif
@@ -1856,11 +1856,12 @@ static inline unsigned long section_nr_to_pfn(unsigned long sec)
 
 #define SECTION_ALIGN_UP(pfn)	(((pfn) + PAGES_PER_SECTION - 1) & PAGE_SECTION_MASK)
 #define SECTION_ALIGN_DOWN(pfn)	((pfn) & PAGE_SECTION_MASK)
-
+// 21
 #define SUBSECTION_SHIFT 21
 #define SUBSECTION_SIZE (1UL << SUBSECTION_SHIFT)
-
+// 21 - 12 = 9
 #define PFN_SUBSECTION_SHIFT (SUBSECTION_SHIFT - PAGE_SHIFT)
+// 512, 服了,这subsection又是啥....
 #define PAGES_PER_SUBSECTION (1UL << PFN_SUBSECTION_SHIFT)
 #define PAGE_SUBSECTION_MASK (~(PAGES_PER_SUBSECTION-1))
 
@@ -1875,6 +1876,7 @@ static inline unsigned long section_nr_to_pfn(unsigned long sec)
 
 struct mem_section_usage {
 #ifdef CONFIG_SPARSEMEM_VMEMMAP
+// 这个位图描述, 在当前ms有多少页面?
 	DECLARE_BITMAP(subsection_map, SUBSECTIONS_PER_SECTION);
 #endif
 	/* See declaration of similar field in struct zone */
@@ -1899,13 +1901,18 @@ struct mem_section {
 	 
 	 * Making it a UL at least makes someone do a cast
 	 * before using it wrong.
-	   让它至少成为一个UL, 这样就可以让某人在错误使用之前进行转换.
+
+	 让它至少成为一个UL, 这样就可以让某人在错误使用之前进行转换.
 	   --------------------
 	   里面会被编码nid, 以及是否online,present等bit位信息
+	   =================
+	   会被编码ms是pnum对应的memsection结构体
+mem_map是pnum加入kernel页表的返回值,看样子好像是ms的第一个page
+usage是node的memsection usage结构体
 	 */
 	unsigned long section_mem_map;
 
-	struct mem_section_usage *usage;
+	struct mem_section_usage *usage;/* 对应的node的memsection usage */
 #ifdef CONFIG_PAGE_EXTENSION
 	/*
 	 * If SPARSEMEM, pgdat doesn't have page_ext pointer. We use
@@ -2070,6 +2077,12 @@ static inline struct mem_section *__pfn_to_section(unsigned long pfn)
 
 extern unsigned long __highest_present_section_nr;
 
+//
+/*
+(pfn & ~(PAGE_SECTION_MASK)) / PAGES_PER_SUBSECTION
+ pfn在所在的memsection中的index / 每个subsection的页面数量(512)
+ pfn的subsection idx
+*/
 static inline int subsection_map_index(unsigned long pfn)
 {
 	return (pfn & ~(PAGE_SECTION_MASK)) / PAGES_PER_SUBSECTION;

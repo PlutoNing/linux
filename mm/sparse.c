@@ -203,6 +203,7 @@ static inline unsigned long first_present_section_nr(void)
 }
 
 #ifdef CONFIG_SPARSEMEM_VMEMMAP
+// pfn起始有nr_pages个页面位于当前ms, map是ms的subsection_map
 static void subsection_mask_set(unsigned long *map, unsigned long pfn,
 		unsigned long nr_pages)
 {
@@ -212,20 +213,23 @@ static void subsection_mask_set(unsigned long *map, unsigned long pfn,
 	bitmap_set(map, idx, end - idx + 1);
 }
 
+// pfn和nr_pages是一个范围, 描述一个region?
 void __init subsection_map_init(unsigned long pfn, unsigned long nr_pages)
 {
+	//
 	int end_sec = pfn_to_section_nr(pfn + nr_pages - 1);
 	unsigned long nr, start_sec = pfn_to_section_nr(pfn);
 
 	if (!nr_pages)
 		return;
 
-	for (nr = start_sec; nr <= end_sec; nr++) {
+	for (nr = start_sec; nr <= end_sec; nr++) {// 遍历范围内的memsection
 		struct mem_section *ms;
 		unsigned long pfns;
 
-		pfns = min(nr_pages, PAGES_PER_SECTION
-				- (pfn & ~PAGE_SECTION_MASK));
+		// pfns就是参数指定的范围在当前memsection涉及的页面数量
+		pfns = min(nr_pages, PAGES_PER_SECTION - (pfn & ~PAGE_SECTION_MASK));
+		// 找到当前的memsection
 		ms = __nr_to_section(nr);
 		subsection_mask_set(ms->usage->subsection_map, pfn, pfns);
 
@@ -332,6 +336,11 @@ struct page *sparse_decode_mem_map(unsigned long coded_mem_map, unsigned long pn
 }
 #endif /* CONFIG_MEMORY_HOTPLUG */
 
+/*
+ms是pnum对应的memsection结构体
+mem_map是pnum加入kernel页表的返回值,看样子好像是ms的第一个page
+usage是node的memsection usage结构体
+*/
 static void __meminit sparse_init_one_section(struct mem_section *ms,
 		unsigned long pnum, struct page *mem_map,
 		struct mem_section_usage *usage, unsigned long flags)
@@ -402,6 +411,9 @@ again:
 	return usage;
 }
 
+/*
+usage是node的一个概念, 似乎内存地址位于nid的第一个memsection
+*/
 static void __init check_usemap_section_nr(int nid,
 		struct mem_section_usage *usage)
 {
@@ -416,11 +428,12 @@ static void __init check_usemap_section_nr(int nid,
 		old_usemap_snr = NR_MEM_SECTIONS;
 		old_pgdat_snr = NR_MEM_SECTIONS;
 	}
-
+	// 获取usemap的memsection nr
 	usemap_snr = pfn_to_section_nr(__pa(usage) >> PAGE_SHIFT);
+	// 获取pgdat的memsection nr
 	pgdat_snr = pfn_to_section_nr(pgdat_to_phys(pgdat) >> PAGE_SHIFT);
 	if (usemap_snr == pgdat_snr)
-		return;
+		return; // 按理说应该是相等的, usemap位于nid的第一个memsection
 
 	if (old_usemap_snr == usemap_snr && old_pgdat_snr == pgdat_snr)
 		/* skip redundant message */
@@ -517,6 +530,7 @@ static void __init sparse_buffer_init(unsigned long size, int nid)
 	sparsemap_buf_end = sparsemap_buf + size;
 }
 
+// 释放掉sparsemap_buf?
 static void __init sparse_buffer_fini(void)
 {
 	unsigned long size = sparsemap_buf_end - sparsemap_buf;
@@ -526,6 +540,7 @@ static void __init sparse_buffer_fini(void)
 	sparsemap_buf = NULL;
 }
 
+// 从sparsemap_buf分配内存
 void * __meminit sparse_buffer_alloc(unsigned long size)
 {
 	void *ptr = NULL;
@@ -540,7 +555,7 @@ void * __meminit sparse_buffer_alloc(unsigned long size)
 			/* Free redundant aligned space */
 			if ((unsigned long)(ptr - sparsemap_buf) > 0) // 为了对齐产生了间隙,512-500=12
 				sparse_buffer_free((unsigned long)(ptr - sparsemap_buf)); // 先把这个12字节的内存释放掉
-			sparsemap_buf = ptr + size;
+			sparsemap_buf = ptr + size; // 移动sparsemap_buf的头部往后,相当于分配出了这些内存
 		}
 	}
 	return ptr;
@@ -566,7 +581,6 @@ static void __init sparse_init_nid(int nid, unsigned long pnum_begin,
 /* 
 size是memsection的数量乘以mem_section_usage_size
 mem_section_usage_size是一个memsection的使用情况的大小,
-
 也就是说分配内存
 内存用来表示node的全部memsection的使用情况
 每个memsection需要的大小是mem_section_usage_size
@@ -590,7 +604,7 @@ mem_section_usage_size是一个memsection的使用情况的大小,
 
 		if (pnum >= pnum_end)
 			break;
-
+		// 像是处理和初始化这个memsection, 加入kernel的页表?
 		map = __populate_section_memmap(pfn, PAGES_PER_SECTION,
 				nid, NULL, NULL);
 		if (!map) {
@@ -601,8 +615,10 @@ mem_section_usage_size是一个memsection的使用情况的大小,
 			goto failed;
 		}
 		check_usemap_section_nr(nid, usage);
+		// 设置这个ms的一些属性
 		sparse_init_one_section(__nr_to_section(pnum), pnum, map, usage,
 				SECTION_IS_EARLY);
+		//看这个后退的逻辑,好像是usage刚刚被用了?但是在哪里?
 		usage = (void *) usage + mem_section_usage_size();
 	}
 	sparse_buffer_fini();
@@ -620,6 +636,7 @@ failed:
 }
 
 /*
+完成sparse内存模型的初始化
  * Allocate the accumulated non-linear sections, allocate a mem_map
  * for each and record the physical to section mapping.
    分配累积的非线性section, 为每个section分配一个mem_map，并记录物理地址到section的映射。
@@ -652,6 +669,7 @@ void __init sparse_init(void)
 		// 都是第一个node, 一共有map_count个section_nr
 		/* Init node with sections in range [pnum_begin, pnum_end) */
 		sparse_init_nid(nid_begin, pnum_begin, pnum_end, map_count);
+		// 处理下一个node了
 		nid_begin = nid;
 		pnum_begin = pnum_end;
 		map_count = 1;

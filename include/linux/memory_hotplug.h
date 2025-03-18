@@ -35,6 +35,7 @@ extern void arch_refresh_nodedata(int nid, pg_data_t *pgdat);
 
 #ifdef CONFIG_NUMA
 /*
+好像是分配node结构体的内存
  * XXX: node aware allocation can't work well to get new node's memory at this time.
  *	Because, pgdat for the new node is not allocated/initialized yet itself.
  *	To use new node's memory, more consideration will be necessary.

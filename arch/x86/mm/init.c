@@ -1037,6 +1037,7 @@ void __init memblock_find_dma_reserve(void)
 #endif
 }
 
+// 初始化zone和node
 void __init zone_sizes_init(void)
 {
 	unsigned long max_zone_pfns[MAX_NR_ZONES];

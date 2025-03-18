@@ -135,6 +135,7 @@ extern int mmap_rnd_compat_bits __read_mostly;
  * this can result in several of the writes here being dropped.
  */
 #define	mm_zero_struct_page(pp) __mm_zero_struct_page(pp)
+// 做什么?
 static inline void __mm_zero_struct_page(struct page *page)
 {
 	unsigned long *_pp = (void *)page;
@@ -217,7 +218,9 @@ int overcommit_policy_handler(struct ctl_table *, int, void *, size_t *,
 #define folio_page_idx(folio, p)	((p) - &(folio)->page)
 #endif
 
-/* to align the pointer to the (next) page boundary */
+/* to align the pointer to the (next) page boundary
+把addr向上对齐到4KB
+*/
 #define PAGE_ALIGN(addr) ALIGN(addr, PAGE_SIZE)
 
 /* to align the pointer to the (prev) page boundary */

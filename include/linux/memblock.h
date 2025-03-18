@@ -276,12 +276,19 @@ void __next_mem_pfn_range(int *idx, int nid, unsigned long *out_start_pfn,
 
 /**
 早期的内存pfn范围迭代器
- * for_each_mem_pfn_range - early memory pfn range iterator
+===================/
+如果指定nid, 就是只遍历nid的region
+* for_each_mem_pfn_range - early memory pfn range iterator
  * @i: an integer used as loop variable
+   循环变量
  * @nid: node selector, %MAX_NUMNODES for all nodes
+   节点选择器
  * @p_start: ptr to ulong for start pfn of the range, can be %NULL
+   指向pfn范围的开始
  * @p_end: ptr to ulong for end pfn of the range, can be %NULL
+ 指向pfn范围的结束
  * @p_nid: ptr to int for nid of the range, can be %NULL
+指向range的node id
  *
  * Walks over configured memory ranges.
  */

@@ -260,7 +260,7 @@ static int sysctl_lowmem_reserve_ratio[MAX_NR_ZONES] = {
 #endif
 	[ZONE_MOVABLE] = 0,
 };
-
+// 系统中zone的name
 char * const zone_names[MAX_NR_ZONES] = {
 #ifdef CONFIG_ZONE_DMA
 	 "DMA",

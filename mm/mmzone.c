@@ -74,6 +74,7 @@ struct zoneref *__next_zones_zonelist(struct zoneref *z,
 	return z;
 }
 
+// 初始化node的lruvec
 void lruvec_init(struct lruvec *lruvec)
 {
 	enum lru_list lru;

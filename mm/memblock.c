@@ -144,6 +144,7 @@ struct memblock_type physmem = {
  */
 static __refdata struct memblock_type *memblock_memory = &memblock.memory;
 
+// 遍历type的每一个memblock
 #define for_each_memblock_type(i, memblock_type, rgn)			\
 	for (i = 0, rgn = &memblock_type->regions[0];			\
 	     i < memblock_type->cnt;					\
@@ -171,7 +172,9 @@ static enum memblock_flags __init_memblock choose_memblock_flags(void)
 	return system_has_some_mirror ? MEMBLOCK_MIRROR : MEMBLOCK_NONE;
 }
 
-/* adjust *@size so that (@base + *@size) doesn't overflow, return new size */
+/*
+防止溢出
+adjust *@size so that (@base + *@size) doesn't overflow, return new size */
 static inline phys_addr_t memblock_cap_size(phys_addr_t base, phys_addr_t *size)
 {
 	return *size = min(*size, PHYS_ADDR_MAX - base);
@@ -347,7 +350,7 @@ again:
 
 	return ret;
 }
-
+/*  */
 static void __init_memblock memblock_remove_region(struct memblock_type *type, unsigned long r)
 {
 	type->total_size -= type->regions[r].size;
@@ -769,22 +772,32 @@ static int __init_memblock memblock_isolate_range(struct memblock_type *type,
 	if (!size)
 		return 0;
 
-	/* we'll create at most two more regions */
+	/* we'll create at most two more regions
+	因为归还内存可能会多创建两个region, 所以这里要确保type不会超过max
+	*/
 	while (type->cnt + 2 > type->max)
 		if (memblock_double_array(type, base, size) < 0)
 			return -ENOMEM;
-
+	// 遍历type的每一个memblock
 	for_each_memblock_type(idx, type, rgn) {
+		// 获得这个memblock的base和end
 		phys_addr_t rbase = rgn->base;
 		phys_addr_t rend = rbase + rgn->size;
 
 		if (rbase >= end)
-			break;
+			break; // 超过了end, 退出循环
 		if (rend <= base)
-			continue;
-
+			continue; //还没到要释放的地址,继续
+		//到这里rbase小于end, rend>base
+/*
+下面就是归还内存过程中不同情况的讨论了
+*/
 		if (rbase < base) {
 			/*
+			rbase小于base, rend大于base
+			|-------------|
+           rbase         rend
+                  base
 			 * @rgn intersects from below.  Split and continue
 			 * to process the next region - the new top half.
 			 */
@@ -1245,6 +1258,7 @@ void __init_memblock __next_mem_range_rev(u64 *idx, int nid,
 }
 
 /*
+似乎如果nid为max_numnodes, 那么就是获取下一个region?
  * Common iterator interface used to define for_each_mem_pfn_range().
    用于定义for_each_mem_pfn_range()的常见迭代器接口。
    @idx: 看来是当前遍历到这个type的某个region的idx
@@ -1715,7 +1729,9 @@ phys_addr_t __init_memblock memblock_reserved_size(void)
 	return memblock.reserved.total_size;
 }
 
-/* lowest address */
+/* lowest address
+原来最低地址记录在这里
+*/
 phys_addr_t __init_memblock memblock_start_of_DRAM(void)
 {
 	return memblock.memory.regions[0].base;
@@ -2044,11 +2060,13 @@ static void __init free_unused_memmap(void)
 	 * This relies on each bank being in address order.
 	 * The banks are sorted previously in bootmem_init().
 	 */
+	 /* 遍历系统全部的region */
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start, &end, NULL) {
 #ifdef CONFIG_SPARSEMEM
 		/*
 		 * Take care not to free memmap entries that don't exist
 		 * due to SPARSEMEM sections which aren't present.
+		   小心不要释放由于不存在的SPARSEMEM部分而不存在的memmap条目。
 		 */
 		start = min(start, ALIGN(prev_end, PAGES_PER_SECTION));
 #endif
@@ -2056,6 +2074,7 @@ static void __init free_unused_memmap(void)
 		 * Align down here since many operations in VM subsystem
 		 * presume that there are no holes in the memory map inside
 		 * a pageblock
+		   这里向下对齐，因为VM子系统中的许多操作假定在pageblock内存映射中没有空洞
 		 */
 		start = pageblock_start_pfn(start);
 

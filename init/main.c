@@ -895,6 +895,7 @@ void start_kernel(void)
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	early_security_init();
+	// 这里会设置内存
 	setup_arch(&command_line);
 	setup_boot_config();
 	setup_command_line(command_line);

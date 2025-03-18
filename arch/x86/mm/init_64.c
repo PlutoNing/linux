@@ -814,7 +814,7 @@ void __init initmem_init(void)
 // 启动的时候setup_arch调用
 void __init paging_init(void)
 {
-	sparse_init();
+	sparse_init(); // 初始化sparse vmemmap内存模型
 
 	/*
 	 * clear the default setting with node 0
@@ -824,7 +824,7 @@ void __init paging_init(void)
 	 */
 	node_clear_state(0, N_MEMORY);
 	node_clear_state(0, N_NORMAL_MEMORY);
-
+	// 初始化zone和node信息
 	zone_sizes_init();
 }
 
@@ -1536,6 +1536,7 @@ int __meminit vmemmap_check_pmd(pmd_t *pmd, int node,
 }
 
 /* 
+处理nid的一个memsection
 start和end是nid上面某一个memsection的第一个和最后一个页面对应的page结构体地址
 */
 int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
