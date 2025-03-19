@@ -8,9 +8,7 @@
 
 /* PAGE_SHIFT determines the page size */
 #define PAGE_SHIFT		12
-/* 4096 */
 #define PAGE_SIZE		(_AC(1,UL) << PAGE_SHIFT)
-// 把后面十二个bit置0?
 #define PAGE_MASK		(~(PAGE_SIZE-1))
 
 #define __VIRTUAL_MASK		((1UL << __VIRTUAL_MASK_SHIFT) - 1)
@@ -31,7 +29,6 @@
 
 #define HUGE_MAX_HSTATE 2
 
-// 内核地址转换的offset?
 #define PAGE_OFFSET		((unsigned long)__PAGE_OFFSET)
 
 #define VM_DATA_DEFAULT_FLAGS	VM_DATA_FLAGS_TSK_EXEC
@@ -56,7 +53,6 @@ extern phys_addr_t physical_mask;
 #define __PHYSICAL_MASK		physical_mask
 #else
 /* 
-1<<52 -1 大约是 52个1
 */
 #define __PHYSICAL_MASK		((phys_addr_t)((1ULL << __PHYSICAL_MASK_SHIFT) - 1))
 #endif

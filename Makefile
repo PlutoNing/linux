@@ -564,7 +564,11 @@ KBUILD_CFLAGS += -fno-common
 KBUILD_CFLAGS += -fno-PIE
 KBUILD_CFLAGS += -fno-strict-aliasing
 KBUILD_CFLAGS += -fdump-rtl-expand
-
+# KBUILD_CFLAGS += -fno-default-inline
+# KBUILD_CFLAGS += -fno-inline  bad
+# KBUILD_CFLAGS += -fno-inline-small-functions
+# KBUILD_CFLAGS += -fno-indirect-inlining
+# KBUILD_CFLAGS += -fno-inline-functions-called-once bad
 KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_RUSTFLAGS := $(rust_common_flags) \
 		    --target=$(objtree)/scripts/target.json \
