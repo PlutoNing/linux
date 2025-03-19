@@ -568,10 +568,6 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
    pfn_of_page == vma->vm_pgoff + ((addr - vma->vm_start) >> PAGE_SHIFT)
  * 通过“remap_pfn_range()”设置的规则，我们识别 VM_PFNMAP 映射中的 COWed 页的方式是：
  vma 将设置 VM_PFNMAP 位, vm_pgoff 将指向第一个映射的 PFN：因此每个特殊映射始终遵守规则
-
-
- *	
- *
  * And for normal mappings this is false.
  * 对于正常映射，这是错误的。
  * This restricts such mappings to be a linear translation from virtual address

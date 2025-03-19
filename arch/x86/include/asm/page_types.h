@@ -55,6 +55,9 @@
 extern phys_addr_t physical_mask;
 #define __PHYSICAL_MASK		physical_mask
 #else
+/* 
+1<<52 -1 大约是 52个1
+*/
 #define __PHYSICAL_MASK		((phys_addr_t)((1ULL << __PHYSICAL_MASK_SHIFT) - 1))
 #endif
 

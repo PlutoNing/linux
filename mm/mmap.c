@@ -335,16 +335,18 @@ static void validate_mm(struct mm_struct *mm)
 /*
  * vma has some anon_vma assigned, and is already inserted on that
  * anon_vma's interval trees.
- *
+ * vma已经有了一些anon_vma, 并且已经插入到了anon_vma的interval tree中
  * Before updating the vma's vm_start / vm_end / vm_pgoff fields, the
  * vma must be removed from the anon_vma's interval trees using
  * anon_vma_interval_tree_pre_update_vma().
- *
+ * 在更新vma的vm_start / vm_end / vm_pgoff字段之前, 必须使用
+ * anon_vma_interval_tree_pre_update_vma()从anon_vma的interval tree中删除vma。
  * After the update, the vma will be reinserted using
  * anon_vma_interval_tree_post_update_vma().
- *
+ * 更新后, vma将使用anon_vma_interval_tree_post_update_vma()重新插入。
  * The entire update must be protected by exclusive mmap_lock and by
  * the root anon_vma's mutex.
+ * 整个更新必须由独占的mmap_lock和根anon_vma的互斥锁保护。
  */
 static inline void
 anon_vma_interval_tree_pre_update_vma(struct vm_area_struct *vma)
@@ -382,6 +384,8 @@ static unsigned long count_vma_pages_range(struct mm_struct *mm,
 	return nr_pages;
 }
 
+// vma映射了file, mapping属于file
+// 这里把vma插入mapping的i_mmap
 static void __vma_link_file(struct vm_area_struct *vma,
 			    struct address_space *mapping)
 {
@@ -393,19 +397,22 @@ static void __vma_link_file(struct vm_area_struct *vma,
 	flush_dcache_mmap_unlock(mapping);
 }
 
+//把vma插入mm中
 static int vma_link(struct mm_struct *mm, struct vm_area_struct *vma)
 {
+	// 一个对mm的vma的迭代器
 	VMA_ITERATOR(vmi, mm, 0);
 	struct address_space *mapping = NULL;
 
 	vma_iter_config(&vmi, vma->vm_start, vma->vm_end);
 	if (vma_iter_prealloc(&vmi, vma))
 		return -ENOMEM;
-
+	// 加锁
 	vma_start_write(vma);
 
 	vma_iter_store(&vmi, vma);
 
+	// 如果vma有file, 那么把vma插入到file的mapping的i_mmap中
 	if (vma->vm_file) {
 		mapping = vma->vm_file->f_mapping;
 		i_mmap_lock_write(mapping);
@@ -1955,9 +1962,12 @@ find_vma_prev(struct mm_struct *mm, unsigned long addr,
 }
 
 /*
+@size: vma的新size
+@grow: 增长的页数
  * Verify that the stack growth is acceptable and
  * update accounting. This is shared with both the
  * grow-up and grow-down cases.
+ 检查栈增长是否可接受并更新计数。这适用于增长和减少的情况。
  */
 static int acct_stack_growth(struct vm_area_struct *vma,
 			     unsigned long size, unsigned long grow)
@@ -2095,8 +2105,11 @@ static int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 #endif /* CONFIG_STACK_GROWSUP || CONFIG_IA64 */
 
 /*
+扩展这个vma的栈
  * vma is the first one with address < vma->vm_start.  Have to extend vma.
  * mmap_lock held for writing.
+ vma是第一个地址小于vma->vm_start的vma。必须扩展vma。持有写入的mmap_lock。
+ 因为address小于vma的start, 调用此函数扩展
  */
 int expand_downwards(struct vm_area_struct *vma, unsigned long address)
 {
@@ -2135,7 +2148,9 @@ int expand_downwards(struct vm_area_struct *vma, unsigned long address)
 		return -ENOMEM;
 	}
 
-	/* Lock the VMA before expanding to prevent concurrent page faults */
+	/* Lock the VMA before expanding to prevent concurrent page faults
+	锁住VMA以防止并发页面故障
+	*/
 	vma_start_write(vma);
 	/*
 	 * vma->vm_start/vm_end cannot change under us because the caller
@@ -2144,10 +2159,21 @@ int expand_downwards(struct vm_area_struct *vma, unsigned long address)
 	 */
 	anon_vma_lock_write(vma->anon_vma);
 
-	/* Somebody else might have raced and expanded it already */
+	/* Somebody else might have raced and expanded it already
+
+	*/
 	if (address < vma->vm_start) {
 		unsigned long size, grow;
-
+		/* 
+		            size
+		    |---------------------------|
+		   old_vma_start
+		      |-------------------------|
+		|-------------------------------|
+    new_vma_start
+		*/
+		/* size是vma的新size
+		grow是需要增加的页面数量 */
 		size = vma->vm_end - address;
 		grow = (vma->vm_start - address) >> PAGE_SHIFT;
 
@@ -2168,6 +2194,7 @@ int expand_downwards(struct vm_area_struct *vma, unsigned long address)
 				if (vma->vm_flags & VM_LOCKED)
 					mm->locked_vm += grow;
 				vm_stat_account(mm, vma->vm_flags, grow);
+				// rmap相关
 				anon_vma_interval_tree_pre_update_vma(vma);
 				vma->vm_start = address;
 				vma->vm_pgoff -= grow;
@@ -3374,6 +3401,8 @@ void exit_mmap(struct mm_struct *mm)
 /* Insert vm structure into process list sorted by address
  * and into the inode's i_mmap tree.  If vm_file is non-NULL
  * then i_mmap_rwsem is taken here.
+   把vm结构插入到进程列表中, 按地址排序, 并插入到inode的i_mmap树中
+   如果vm_file不为NULL, 那么i_mmap_rwsem在这里被获取
  */
 int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 {
@@ -3532,6 +3561,7 @@ bool may_expand_vm(struct mm_struct *mm, vm_flags_t flags, unsigned long npages)
 	return true;
 }
 
+// 扩展vma的时候,统计mm的内存使用信息
 void vm_stat_account(struct mm_struct *mm, vm_flags_t flags, long npages)
 {
 	WRITE_ONCE(mm->total_vm, READ_ONCE(mm->total_vm)+npages);

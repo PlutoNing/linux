@@ -1005,6 +1005,7 @@ void free_large_kmalloc(struct folio *folio, void *object)
 
 static void *__kmalloc_large_node(size_t size, gfp_t flags, int node);
 static __always_inline
+// slab分配
 void *__do_kmalloc_node(size_t size, gfp_t flags, int node, unsigned long caller)
 {
 	struct kmem_cache *s;

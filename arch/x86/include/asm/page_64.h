@@ -65,7 +65,7 @@ void copy_page(void *to, void *from);
 /*
  * User space process size.  This is the first address outside the user range.
  * There are a few constraints that determine this:
- *
+ * 用户进程的大小. 这是用户范围之外的第一个地址.
  * On Intel CPUs, if a SYSCALL instruction is at the highest canonical
  * address, then that syscall will enter the kernel with a
  * non-canonical return address, and SYSRET will explode dangerously.

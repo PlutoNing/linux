@@ -733,7 +733,7 @@ struct mm_struct {
 			 */
 			atomic_t mm_count;
 		} ____cacheline_aligned_in_smp;
-		/* 现在这个tree里面存储的是vmas? */
+		/* 现在这个tree里面存储的是vma? */
 		struct maple_tree mm_mt;
 #ifdef CONFIG_MMU
 		unsigned long (*get_unmapped_area) (struct file *filp,
@@ -1018,6 +1018,7 @@ void lru_gen_del_mm(struct mm_struct *mm);
 void lru_gen_migrate_mm(struct mm_struct *mm);
 #endif
 
+// 初始化lru_gen
 static inline void lru_gen_init_mm(struct mm_struct *mm)
 {
 	INIT_LIST_HEAD(&mm->lru_gen.list);
@@ -1126,6 +1127,7 @@ static inline cpumask_t *mm_cidmask(struct mm_struct *mm)
 	return (struct cpumask *)cid_bitmap;
 }
 
+// cid是什么
 static inline void mm_init_cid(struct mm_struct *mm)
 {
 	int i;

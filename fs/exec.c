@@ -194,6 +194,9 @@ static void acct_arg_size(struct linux_binprm *bprm, unsigned long pages)
 	add_mm_counter(mm, MM_ANONPAGES, diff);
 }
 
+/* 
+返回这个bprm在pos的page
+*/
 static struct page *get_arg_page(struct linux_binprm *bprm, unsigned long pos,
 		int write)
 {
@@ -206,8 +209,10 @@ static struct page *get_arg_page(struct linux_binprm *bprm, unsigned long pos,
 	 * Avoid relying on expanding the stack down in GUP (which
 	 * does not work for STACK_GROWSUP anyway), and just do it
 	 * by hand ahead of time.
+	   避免依赖在GUP中向下扩展栈(对于STACK_GROWSUP也不起作用),
+	   并且提前手动执行
 	 */
-	if (write && pos < vma->vm_start) {
+	if (write && pos < vma->vm_start) {// 这个vma太小了
 		mmap_write_lock(mm);
 		ret = expand_downwards(vma, pos);
 		if (unlikely(ret < 0)) {
@@ -250,6 +255,7 @@ static void flush_arg_page(struct linux_binprm *bprm, unsigned long pos,
 	flush_cache_page(bprm->vma, pos, page_to_pfn(page));
 }
 
+// 初始化分配的bprm
 static int __bprm_mm_init(struct linux_binprm *bprm)
 {
 	int err;
@@ -259,6 +265,7 @@ static int __bprm_mm_init(struct linux_binprm *bprm)
 	bprm->vma = vma = vm_area_alloc(mm);
 	if (!vma)
 		return -ENOMEM;
+	// 设置为匿名的vma
 	vma_set_anonymous(vma);
 
 	if (mmap_write_lock_killable(mm)) {
@@ -273,15 +280,17 @@ static int __bprm_mm_init(struct linux_binprm *bprm)
 	 * configured yet.
 	 */
 	BUILD_BUG_ON(VM_STACK_FLAGS & VM_STACK_INCOMPLETE_SETUP);
+	// 难道这个vma是栈吗
 	vma->vm_end = STACK_TOP_MAX;
 	vma->vm_start = vma->vm_end - PAGE_SIZE;
+	// 给这个vma打上一些标记
 	vm_flags_init(vma, VM_SOFTDIRTY | VM_STACK_FLAGS | VM_STACK_INCOMPLETE_SETUP);
 	vma->vm_page_prot = vm_get_page_prot(vma->vm_flags);
-
+	// 把vma插入mm
 	err = insert_vm_struct(mm, vma);
 	if (err)
 		goto err;
-
+	// 看来刚才第一个vma确实是栈
 	mm->stack_vm = mm->total_vm = 1;
 	mmap_write_unlock(mm);
 	bprm->p = vma->vm_end - sizeof(void *);
@@ -360,16 +369,20 @@ static bool valid_arg_len(struct linux_binprm *bprm, long len)
 #endif /* CONFIG_MMU */
 
 /*
+初始化新分配的bprm
  * Create a new mm_struct and populate it with a temporary stack
  * vm_area_struct.  We don't have enough context at this point to set the stack
  * flags, permissions, and offset, so we use temporary values.  We'll update
  * them later in setup_arg_pages().
+   创建一个新的mm_struct并用一个临时的stack vm_area_struct填充它
+   在这一点上我们没有足够的上下文设置stack的flags,权限和offset
+   所以我们使用临时值,稍后我们会在setup_arg_pages()中更新它们
  */
 static int bprm_mm_init(struct linux_binprm *bprm)
 {
 	int err;
 	struct mm_struct *mm = NULL;
-
+	// 先分配并初始化mm_struct
 	bprm->mm = mm = mm_alloc();
 	err = -ENOMEM;
 	if (!mm)
@@ -379,7 +392,7 @@ static int bprm_mm_init(struct linux_binprm *bprm)
 	task_lock(current->group_leader);
 	bprm->rlim_stack = current->signal->rlim[RLIMIT_STACK];
 	task_unlock(current->group_leader);
-
+	// 初始化分配的bprm
 	err = __bprm_mm_init(bprm);
 	if (err)
 		goto err;
@@ -406,7 +419,10 @@ struct user_arg_ptr {
 #endif
 	} ptr;
 };
-
+/* 
+拷贝argv.ptr.native这个用户空间指针开始的第nr个变量
+并返回
+*/
 static const char __user *get_user_arg_ptr(struct user_arg_ptr argv, int nr)
 {
 	const char __user *native;
@@ -516,6 +532,7 @@ static int bprm_stack_limits(struct linux_binprm *bprm)
 }
 
 /*
+启动新进程的时候, 拷贝环境变量到新进程
  * 'copy_strings()' copies argument/environment strings from the old
  * processes's memory to the new process's stack.  The call to get_user_pages()
  * ensures the destination page is created and not swapped out.
@@ -529,11 +546,13 @@ static int copy_strings(int argc, struct user_arg_ptr argv,
 	int ret;
 
 	while (argc-- > 0) {
+		// str是个用户空间的地址
 		const char __user *str;
 		int len;
 		unsigned long pos;
 
 		ret = -EFAULT;
+		// 拷贝第argc个变量
 		str = get_user_arg_ptr(argv, argc);
 		if (IS_ERR(str))
 			goto out;
@@ -548,8 +567,8 @@ static int copy_strings(int argc, struct user_arg_ptr argv,
 
 		/* We're going to work our way backwards. */
 		pos = bprm->p;
-		str += len;
-		bprm->p -= len;
+		str += len; // 准备接下一个变量了
+		bprm->p -= len; // 看样子马上还要拷贝到bprm->p的位置
 #ifdef CONFIG_MMU
 		if (bprm->p < bprm->argmin)
 			goto out;
@@ -563,7 +582,10 @@ static int copy_strings(int argc, struct user_arg_ptr argv,
 				goto out;
 			}
 			cond_resched();
-
+			/* 
+			pos是个地址
+			offset此地址在所在page的偏移
+			*/
 			offset = pos % PAGE_SIZE;
 			if (offset == 0)
 				offset = PAGE_SIZE;
@@ -614,6 +636,7 @@ out:
 
 /*
  * Copy and argument/environment string from the kernel to the processes stack.
+ 把内核的参数/环境字符串复制到进程的栈中
  */
 int copy_string_kernel(const char *arg, struct linux_binprm *bprm)
 {
@@ -625,7 +648,9 @@ int copy_string_kernel(const char *arg, struct linux_binprm *bprm)
 	if (!valid_arg_len(bprm, len))
 		return -E2BIG;
 
-	/* We're going to work our way backwards. */
+	/* We're going to work our way backwards.
+	这里有一点奇怪,因为栈是倒着长的?
+	*/
 	arg += len;
 	bprm->p -= len;
 	if (IS_ENABLED(CONFIG_MMU) && bprm->p < bprm->argmin)
@@ -639,7 +664,7 @@ int copy_string_kernel(const char *arg, struct linux_binprm *bprm)
 		pos -= bytes_to_copy;
 		arg -= bytes_to_copy;
 		len -= bytes_to_copy;
-
+		// 获取新进程在pos的page
 		page = get_arg_page(bprm, pos, 1);
 		if (!page)
 			return -E2BIG;
@@ -903,12 +928,15 @@ EXPORT_SYMBOL(transfer_args_to_stack);
 
 #endif /* CONFIG_MMU */
 
+/* 
+要执行这个file
+*/
 static struct file *do_open_execat(int fd, struct filename *name, int flags)
 {
 	struct file *file;
 	int err;
 	struct open_flags open_exec_flags = {
-		.open_flag = O_LARGEFILE | O_RDONLY | __FMODE_EXEC,
+		.open_flag = O_LARGEFILE | O_RDONLY | __FMODE_EXEC, // 只读可执行
 		.acc_mode = MAY_EXEC,
 		.intent = LOOKUP_OPEN,
 		.lookup_flags = LOOKUP_FOLLOW,
@@ -920,7 +948,7 @@ static struct file *do_open_execat(int fd, struct filename *name, int flags)
 		open_exec_flags.lookup_flags &= ~LOOKUP_FOLLOW;
 	if (flags & AT_EMPTY_PATH)
 		open_exec_flags.lookup_flags |= LOOKUP_EMPTY;
-
+	// 打开这个文件
 	file = do_filp_open(fd, name, &open_exec_flags);
 	if (IS_ERR(file))
 		goto out;
@@ -1510,6 +1538,7 @@ static void free_bprm(struct linux_binprm *bprm)
 	kfree(bprm);
 }
 
+// 分配一个linux_binprm结构体
 static struct linux_binprm *alloc_bprm(int fd, struct filename *filename)
 {
 	struct linux_binprm *bprm = kzalloc(sizeof(*bprm), GFP_KERNEL);
@@ -1531,7 +1560,7 @@ static struct linux_binprm *alloc_bprm(int fd, struct filename *filename)
 		bprm->filename = bprm->fdpath;
 	}
 	bprm->interp = bprm->filename;
-
+	// 分配和初始化bprm,也有mm和第一个vma
 	retval = bprm_mm_init(bprm);
 	if (retval)
 		goto out_free;
@@ -1761,7 +1790,9 @@ static int search_binary_handler(struct linux_binprm *bprm)
 	return retval;
 }
 
-/* binfmt handlers will call back into begin_new_exec() on success. */
+/* binfmt handlers will call back into begin_new_exec() on success.
+   binfmt handlers将在成功时回调begin_new_exec()
+*/
 static int exec_binprm(struct linux_binprm *bprm)
 {
 	pid_t old_pid, old_vpid;
@@ -1801,7 +1832,9 @@ static int exec_binprm(struct linux_binprm *bprm)
 	}
 
 	audit_bprm(bprm);
+	// tracepoint相关
 	trace_sched_process_exec(current, old_pid, bprm);
+	// 调试相关
 	ptrace_event(PTRACE_EVENT_EXEC, old_vpid);
 	proc_exec_connector(current);
 	return 0;
@@ -1829,7 +1862,7 @@ static int bprm_execve(struct linux_binprm *bprm,
 	check_unsafe_exec(bprm);
 	current->in_execve = 1;
 	sched_mm_cid_before_execve(current);
-
+	// 打开程序文件
 	file = do_open_execat(fd, filename, flags);
 	retval = PTR_ERR(file);
 	if (IS_ERR(file))
@@ -1854,7 +1887,7 @@ static int bprm_execve(struct linux_binprm *bprm,
 	retval = security_bprm_creds_for_exec(bprm);
 	if (retval)
 		goto out;
-
+	// 执行程序
 	retval = exec_binprm(bprm);
 	if (retval < 0)
 		goto out;
@@ -1887,6 +1920,7 @@ out_unmark:
 	return retval;
 }
 
+// execve的系统调用
 static int do_execveat_common(int fd, struct filename *filename,
 			      struct user_arg_ptr argv,
 			      struct user_arg_ptr envp,
@@ -1913,13 +1947,13 @@ static int do_execveat_common(int fd, struct filename *filename,
 	/* We're below the limit (still or again), so we don't want to make
 	 * further execve() calls fail. */
 	current->flags &= ~PF_NPROC_EXCEEDED;
-
+	// 分配一个linux_binprm结构体
 	bprm = alloc_bprm(fd, filename);
 	if (IS_ERR(bprm)) {
 		retval = PTR_ERR(bprm);
 		goto out_ret;
 	}
-
+	// 处理参数和环境变量数组
 	retval = count(argv, MAX_ARG_STRINGS);
 	if (retval == 0)
 		pr_warn_once("process '%s' launched '%s' with NULL argv: empty string added\n",
@@ -1936,16 +1970,16 @@ static int do_execveat_common(int fd, struct filename *filename,
 	retval = bprm_stack_limits(bprm);
 	if (retval < 0)
 		goto out_free;
-
+	// 拷贝args什么的
 	retval = copy_string_kernel(bprm->filename, bprm);
 	if (retval < 0)
 		goto out_free;
 	bprm->exec = bprm->p;
-
+	// 拷贝环境变量
 	retval = copy_strings(bprm->envc, envp, bprm);
 	if (retval < 0)
 		goto out_free;
-
+	// 拷贝参数
 	retval = copy_strings(bprm->argc, argv, bprm);
 	if (retval < 0)
 		goto out_free;
@@ -2041,6 +2075,7 @@ static int do_execve(struct filename *filename,
 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
 }
 
+// execveat的系统调用
 static int do_execveat(int fd, struct filename *filename,
 		const char __user *const __user *__argv,
 		const char __user *const __user *__envp,

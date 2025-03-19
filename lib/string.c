@@ -423,6 +423,9 @@ EXPORT_SYMBOL(strlen);
 #endif
 
 #ifndef __HAVE_ARCH_STRNLEN
+/* 
+作用: 计算字符串s的长度, 但是最多计算count个字符
+*/
 size_t strnlen(const char *s, size_t count)
 {
 	const char *sc;

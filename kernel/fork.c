@@ -795,6 +795,7 @@ fail_nomem:
 	goto loop_out;
 }
 
+// 为mm分配一个pgd
 static inline int mm_alloc_pgd(struct mm_struct *mm)
 {
 	mm->pgd = pgd_alloc(mm);
@@ -843,6 +844,7 @@ static void check_mm(struct mm_struct *mm)
 #endif
 }
 
+// 从slab中分配一个mm
 #define allocate_mm()	(kmem_cache_alloc(mm_cachep, GFP_KERNEL))
 #define free_mm(mm)	(kmem_cache_free(mm_cachep, (mm)))
 
@@ -1259,6 +1261,7 @@ static void mm_init_uprobes_state(struct mm_struct *mm)
 #endif
 }
 
+// 初始化一个mm_struct结构体
 static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	struct user_namespace *user_ns)
 {
@@ -1302,7 +1305,7 @@ static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 
 	if (mm_alloc_pgd(mm))
 		goto fail_nopgd;
-
+	// context是什么?
 	if (init_new_context(p, mm))
 		goto fail_nocontext;
 
@@ -1330,6 +1333,7 @@ fail_nopgd:
 
 /*
  * Allocate and initialize an mm_struct.
+ 分配一个mm_struct结构体
  */
 struct mm_struct *mm_alloc(void)
 {
@@ -1340,6 +1344,7 @@ struct mm_struct *mm_alloc(void)
 		return NULL;
 
 	memset(mm, 0, sizeof(*mm));
+	// 初始化一个mm_struct结构体
 	return mm_init(mm, current, current_user_ns());
 }
 
@@ -2242,10 +2247,11 @@ static void rv_task_fork(struct task_struct *p)
 /*
  * This creates a new process as a copy of the old one,
  * but does not actually start it yet.
- *
+ * 基于当前进程创建一个新进程，但是不立即启动
  * It copies the registers, and all the appropriate
  * parts of the process environment (as per the clone
  * flags). The actual kick-off is left to the caller.
+   拷贝寄存器和进程环境，但是不立即启动，由调用者决定
  */
 __latent_entropy struct task_struct *copy_process(
 					struct pid *pid,
@@ -2320,6 +2326,7 @@ __latent_entropy struct task_struct *copy_process(
 	 * before the fork happens.  Collect up signals sent to multiple
 	 * processes that happen during the fork and delay them so that
 	 * they appear to happen after the fork.
+	   强制在fork之前收到的信号在fork之前被传递
 	 */
 	sigemptyset(&delayed.signal);
 	INIT_HLIST_NODE(&delayed.node);
@@ -2334,6 +2341,7 @@ __latent_entropy struct task_struct *copy_process(
 		goto fork_out;
 
 	retval = -ENOMEM;
+	// 先dup tsk
 	p = dup_task_struct(current, node);
 	if (!p)
 		goto fork_out;
@@ -2869,7 +2877,7 @@ struct task_struct *create_io_thread(int (*fn)(void *), void *arg, int node)
 
 /*
  *  Ok, this is the main fork-routine.
- *
+ * 运行新进程的主要函数
  * It copies the process, and if successful kick-starts
  * it and waits for it to finish using the VM if required.
  *
@@ -2915,7 +2923,7 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 		if (likely(!ptrace_event_enabled(current, trace)))
 			trace = 0;
 	}
-
+ // 运行新进程
 	p = copy_process(NULL, trace, NUMA_NO_NODE, args);
 	add_latent_entropy();
 

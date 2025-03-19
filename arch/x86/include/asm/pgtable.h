@@ -1132,7 +1132,9 @@ static inline pud_t *p4d_pgtable(p4d_t p4d)
  * linux/mmzone.h's __section_mem_map_addr() definition:
  */
 #define p4d_page(p4d)	pfn_to_page(p4d_pfn(p4d))
-
+/* 
+bad的含义是什么?
+*/
 static inline int p4d_bad(p4d_t p4d)
 {
 	unsigned long ignore_flags = _KERNPG_TABLE | _PAGE_USER;
@@ -1157,6 +1159,10 @@ static inline int pgd_present(pgd_t pgd)
 	return pgd_flags(pgd) & _PAGE_PRESENT;
 }
 
+/* 
+根pgd条目的值
+获得到p4d页表的page
+*/
 static inline unsigned long pgd_page_vaddr(pgd_t pgd)
 {
 	return (unsigned long)__va((unsigned long)pgd_val(pgd) & PTE_PFN_MASK);
@@ -1168,7 +1174,9 @@ static inline unsigned long pgd_page_vaddr(pgd_t pgd)
  */
 #define pgd_page(pgd)	pfn_to_page(pgd_pfn(pgd))
 
-/* to find an entry in a page-table-directory. */
+/* to find an entry in a page-table-directory.
+在pgd页表查找p4d条目
+*/
 static inline p4d_t *p4d_offset(pgd_t *pgd, unsigned long address)
 {
 	if (!pgtable_l5_enabled())

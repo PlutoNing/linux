@@ -313,7 +313,9 @@ static struct vm_area_struct gate_vma __ro_after_init = {
 	.vm_flags	= VM_READ | VM_EXEC,
 	.vm_ops		= &gate_vma_ops,
 };
-
+/* 
+gate_vma是什么?
+*/
 struct vm_area_struct *get_gate_vma(struct mm_struct *mm)
 {
 #ifdef CONFIG_COMPAT

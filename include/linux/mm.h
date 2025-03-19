@@ -311,7 +311,10 @@ Page-ranges managed without "struct page", just pure PFN */
 #define VM_DONTDUMP	0x04000000	/* Do not include in the core dump */
 
 #ifdef CONFIG_MEM_SOFT_DIRTY
-# define VM_SOFTDIRTY	0x08000000	/* Not soft dirty clean area */
+# define VM_SOFTDIRTY	0x08000000	
+/* Not soft dirty clean area
+这什么意思
+*/
 #else
 # define VM_SOFTDIRTY	0
 #endif
@@ -844,7 +847,9 @@ static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 	vma_numab_state_init(vma);
 }
 
-/* Use when VMA is not part of the VMA tree and needs no locking */
+/* Use when VMA is not part of the VMA tree and needs no locking
+当VMA不是VMA树的一部分且不需要锁定时使用
+*/
 static inline void vm_flags_init(struct vm_area_struct *vma,
 				 vm_flags_t flags)
 {
@@ -2812,6 +2817,7 @@ static inline void mm_dec_nr_pmds(struct mm_struct *mm)
 #endif
 
 #ifdef CONFIG_MMU
+// 初始化mm的pgtables_bytes
 static inline void mm_pgtables_bytes_init(struct mm_struct *mm)
 {
 	atomic_long_set(&mm->pgtables_bytes, 0);

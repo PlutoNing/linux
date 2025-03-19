@@ -14,6 +14,7 @@ struct coredump_params;
 
 /*
  * This structure is used to hold the arguments that are used when loading binaries.
+   这个结构用于保存加载二进制文件时使用的参数.
  */
 struct linux_binprm {
 #ifdef CONFIG_MMU
@@ -45,13 +46,14 @@ struct linux_binprm {
 		point_of_no_return:1;
 	struct file *executable; /* Executable to pass to the interpreter */
 	struct file *interpreter;
-	struct file *file;
+	struct file *file; // 所执行的文件
 	struct cred *cred;	/* new credentials */
 	int unsafe;		/* how unsafe this exec is (mask of LSM_UNSAFE_*) */
 	unsigned int per_clear;	/* bits to clear in current->personality */
 	int argc, envc;
 	const char *filename;	/* Name of binary as seen by procps */
-	const char *interp;	/* Name of the binary really executed. Most
+	const char *interp;	/* 
+	Name of the binary really executed. Most
 				   of the time same as filename, but could be
 				   different for binfmt_{misc,script} */
 	const char *fdpath;	/* generated filename for execveat */

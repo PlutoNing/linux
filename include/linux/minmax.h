@@ -92,6 +92,7 @@
 
 /**
  * min_not_zero - return the minimum that is _not_ zero, unless both are zero
+ 作用: 返回两个值中不为0的最小值，如果两个值都为0，则返回0
  * @x: value1
  * @y: value2
  */

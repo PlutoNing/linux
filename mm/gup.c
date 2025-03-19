@@ -582,6 +582,7 @@ static inline bool can_follow_write_pte(pte_t pte, struct page *page,
 	return !userfaultfd_pte_wp(vma, pte);
 }
 
+// 获取pte对应的page
 static struct page *follow_page_pte(struct vm_area_struct *vma,
 		unsigned long address, pmd_t *pmd, unsigned int flags,
 		struct dev_pagemap **pgmap)
@@ -600,8 +601,9 @@ static struct page *follow_page_pte(struct vm_area_struct *vma,
 	ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
 	if (!ptep)
 		return no_page_table(vma, flags);
+	// 从pte指针读取出pte条目
 	pte = ptep_get(ptep);
-	if (!pte_present(pte))
+	if (!pte_present(pte)) // 不在内存
 		goto no_page;
 	if (pte_protnone(pte) && !gup_can_follow_protnone(vma, flags))
 		goto no_page;
@@ -694,6 +696,10 @@ no_page:
 	return no_page_table(vma, flags);
 }
 
+/* 
+查找用户地址空间的页面
+在pud的基础上查找pmd
+*/
 static struct page *follow_pmd_mask(struct vm_area_struct *vma,
 				    unsigned long address, pud_t *pudp,
 				    unsigned int flags,
@@ -703,12 +709,13 @@ static struct page *follow_pmd_mask(struct vm_area_struct *vma,
 	spinlock_t *ptl;
 	struct page *page;
 	struct mm_struct *mm = vma->vm_mm;
-
+	// 获得pmd的指针
 	pmd = pmd_offset(pudp, address);
+	// read_once读取出pmd条目
 	pmdval = pmdp_get_lockless(pmd);
-	if (pmd_none(pmdval))
+	if (pmd_none(pmdval)) // 用户地址空间还没有这个页面
 		return no_page_table(vma, flags);
-	if (!pmd_present(pmdval))
+	if (!pmd_present(pmdval)) // 用户这个地址还不在内存
 		return no_page_table(vma, flags);
 	if (pmd_devmap(pmdval)) {
 		ptl = pmd_lock(mm, pmd);
@@ -717,9 +724,10 @@ static struct page *follow_pmd_mask(struct vm_area_struct *vma,
 		if (page)
 			return page;
 	}
-	if (likely(!pmd_trans_huge(pmdval)))
+	if (likely(!pmd_trans_huge(pmdval))) // 不是巨页的情况
 		return follow_page_pte(vma, address, pmd, flags, &ctx->pgmap);
 
+	// 如果是巨页的情况
 	if (pmd_protnone(pmdval) && !gup_can_follow_protnone(vma, flags))
 		return no_page_table(vma, flags);
 
@@ -745,6 +753,9 @@ static struct page *follow_pmd_mask(struct vm_area_struct *vma,
 	return page;
 }
 
+/* 查找用户地址空间的页面
+follow
+*/
 static struct page *follow_pud_mask(struct vm_area_struct *vma,
 				    unsigned long address, p4d_t *p4dp,
 				    unsigned int flags,
@@ -767,10 +778,13 @@ static struct page *follow_pud_mask(struct vm_area_struct *vma,
 	}
 	if (unlikely(pud_bad(*pud)))
 		return no_page_table(vma, flags);
-
+	// 继续查看
 	return follow_pmd_mask(vma, address, pud, flags, ctx);
 }
 
+/* 
+查找用户地址空间的页面
+*/
 static struct page *follow_p4d_mask(struct vm_area_struct *vma,
 				    unsigned long address, pgd_t *pgdp,
 				    unsigned int flags,
@@ -784,12 +798,13 @@ static struct page *follow_p4d_mask(struct vm_area_struct *vma,
 	BUILD_BUG_ON(p4d_huge(*p4d));
 	if (unlikely(p4d_bad(*p4d)))
 		return no_page_table(vma, flags);
-
+	// 继续查找
 	return follow_pud_mask(vma, address, p4d, flags, ctx);
 }
 
 /**
  * follow_page_mask - look up a page descriptor from a user-virtual address
+ 查找用户地址空间的地址对应的页面
  * @vma: vm_area_struct mapping @address
  * @address: virtual address to look up
  * @flags: flags modifying lookup behaviour
@@ -834,7 +849,7 @@ static struct page *follow_page_mask(struct vm_area_struct *vma,
 
 	if (pgd_none(*pgd) || unlikely(pgd_bad(*pgd)))
 		return no_page_table(vma, flags);
-
+	// 继续查找
 	return follow_p4d_mask(vma, address, pgd, flags, ctx);
 }
 
@@ -1032,7 +1047,9 @@ static bool writable_file_mapping_allowed(struct vm_area_struct *vma,
 	 */
 	return !vma_needs_dirty_tracking(vma);
 }
-
+/* 
+检查刚刚根据@gup_flags获取的vma是否符合要求
+ */
 static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
 {
 	vm_flags_t vm_flags = vma->vm_flags;
@@ -1043,6 +1060,7 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
 	if (vm_flags & (VM_IO | VM_PFNMAP))
 		return -EFAULT;
 
+		// 如果gup
 	if ((gup_flags & FOLL_ANON) && !vma_anon)
 		return -EFAULT;
 
@@ -1097,6 +1115,7 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
 /*
  * This is "vma_lookup()", but with a warning if we would have
  * historically expanded the stack in the GUP code.
+  是一个查询vma的函数, 不过如果我们在GUP代码中扩展了栈的话, 就会有一个警告
  */
 static struct vm_area_struct *gup_vma_lookup(struct mm_struct *mm,
 	 unsigned long addr)
@@ -1135,6 +1154,7 @@ static struct vm_area_struct *gup_vma_lookup(struct mm_struct *mm,
 
 /**
  * __get_user_pages() - pin user pages in memory
+ 获取用户页在内存中的页框
  * @mm:		mm_struct of target mm
  * @start:	starting user address
  * @nr_pages:	number of pages from start to pin
@@ -1208,8 +1228,11 @@ static long __get_user_pages(struct mm_struct *mm,
 		unsigned int foll_flags = gup_flags;
 		unsigned int page_increm;
 
-		/* first iteration or cross vma bound */
-		if (!vma || start >= vma->vm_end) {
+		/* first iteration or cross vma bound
+		*/
+		if (!vma || start >= vma->vm_end) {/* 1, 函数刚刚开始循环,vma还是空的
+			 */
+			// 查找相应的vma
 			vma = gup_vma_lookup(mm, start);
 			if (!vma && in_gate_area(mm, start)) {
 				ret = get_gate_page(mm, start & PAGE_MASK,
@@ -1221,14 +1244,16 @@ static long __get_user_pages(struct mm_struct *mm,
 				goto next_page;
 			}
 
-			if (!vma) {
+			if (!vma) { // 没找到vma
 				ret = -EFAULT;
-				goto out;
+				goto out; // 直接返回
 			}
+			// 找到了vma
 			ret = check_vma_flags(vma, gup_flags);
-			if (ret)
+			if (ret) // 找到的vma有问题
 				goto out;
 		}
+		// 现在找到了对应的vma
 retry:
 		/*
 		 * If we have a pending SIGKILL, don't keep faulting pages and
@@ -1239,7 +1264,7 @@ retry:
 			goto out;
 		}
 		cond_resched();
-
+		// 在vma里面找到start地址对应的page
 		page = follow_page_mask(vma, start, foll_flags, &ctx);
 		if (!page || PTR_ERR(page) == -EMLINK) {
 			ret = faultin_page(vma, start, &foll_flags,
@@ -1272,6 +1297,7 @@ retry:
 			ret = PTR_ERR(page);
 			goto out;
 		}
+		// 找到了一个page
 next_page:
 		page_increm = 1 + (~(start >> PAGE_SHIFT) & ctx.page_mask);
 		if (page_increm > nr_pages)
@@ -1455,6 +1481,7 @@ static bool gup_signal_pending(unsigned int flags)
 }
 
 /*
+获取其他进程的页
  * Locking: (*locked == 1) means that the mmap_lock has already been acquired by
  * the caller. This function may drop the mmap_lock. If it does so, then it will
  * set (*locked = 0).
@@ -1480,8 +1507,9 @@ static __always_inline long __get_user_pages_locked(struct mm_struct *mm,
 	/*
 	 * The internal caller expects GUP to manage the lock internally and the
 	 * lock must be released when this returns.
+	   内部调用者期望GUP在内部管理锁，并且在返回时必须释放锁。
 	 */
-	if (!*locked) {
+	if (!*locked) {// 如果caller没有提前加锁
 		if (mmap_read_lock_killable(mm))
 			return -EAGAIN;
 		must_unlock = true;
@@ -2274,6 +2302,8 @@ static bool is_valid_gup_args(struct page **pages, int *locked,
 
 #ifdef CONFIG_MMU
 /**
+读取其他进程地址空间的一个页面
+读取mm的start地址开始的nr_pages个页面，存放到pages
  * get_user_pages_remote() - pin user pages in memory
  * @mm:		mm_struct of target mm
  * @start:	starting user address
@@ -2302,7 +2332,8 @@ static bool is_valid_gup_args(struct page **pages, int *locked,
  * to each struct page that each user address corresponds to at a given
  * instant. That is, it takes the page that would be accessed if a user
  * thread accesses the given user virtual address at that instant.
- *
+ * 函数遍历进程的页表，获取每个用户地址对应的struct page的引用
+ * 也就是说，获取用户线程在给定时刻访问给定用户虚拟地址时将访问的页面
  * This does not guarantee that the page exists in the user mappings when
  * get_user_pages_remote returns, and there may even be a completely different
  * page there in some cases (eg. if mmapped pagecache has been invalidated

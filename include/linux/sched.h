@@ -2416,7 +2416,7 @@ static inline void rseq_fork(struct task_struct *t, unsigned long clone_flags)
 		t->rseq_event_mask = current->rseq_event_mask;
 	}
 }
-
+// 这个是啥?
 static inline void rseq_execve(struct task_struct *t)
 {
 	t->rseq = NULL;

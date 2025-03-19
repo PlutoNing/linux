@@ -712,6 +712,7 @@ static inline void *kmem_cache_zalloc(struct kmem_cache *k, gfp_t flags)
 }
 
 /**
+分配内存, 并且初始化为0
  * kzalloc - allocate memory. The memory is set to zero.
  * @size: how many bytes of memory are required.
  * @flags: the type of memory to allocate (see kmalloc).

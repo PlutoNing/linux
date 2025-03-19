@@ -141,6 +141,7 @@ extern void free_pid(struct pid *pid);
 extern void disable_pid_allocation(struct pid_namespace *ns);
 
 /*
+获取pid的namespace?
  * ns_of_pid() returns the pid namespace in which the specified pid was
  * allocated.
  *

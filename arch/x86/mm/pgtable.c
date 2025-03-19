@@ -121,6 +121,7 @@ struct mm_struct *pgd_page_get_mm(struct page *page)
 	return page_ptdesc(page)->pt_mm;
 }
 
+// pgd是刚刚给新mm分配的
 static void pgd_ctor(struct mm_struct *mm, pgd_t *pgd)
 {
 	/* If the pgd points to a shared pagetable level (either the
@@ -416,6 +417,7 @@ static inline void _pgd_free(pgd_t *pgd)
 }
 #else
 
+// 分配一个pgd
 static inline pgd_t *_pgd_alloc(void)
 {
 	return (pgd_t *)__get_free_pages(GFP_PGTABLE_USER,
@@ -428,12 +430,13 @@ static inline void _pgd_free(pgd_t *pgd)
 }
 #endif /* CONFIG_X86_PAE */
 
+// 分配一个pgd
 pgd_t *pgd_alloc(struct mm_struct *mm)
 {
 	pgd_t *pgd;
 	pmd_t *u_pmds[MAX_PREALLOCATED_USER_PMDS];
 	pmd_t *pmds[MAX_PREALLOCATED_PMDS];
-
+	// 分配两个页面作为pgd
 	pgd = _pgd_alloc();
 
 	if (pgd == NULL)

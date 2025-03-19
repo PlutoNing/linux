@@ -89,6 +89,7 @@ extern int __get_user_bad(void);
 
 /**
  * get_user - Get a simple variable from user space.
+   从用户空间获取一个简单的变量
  * @x:   Variable to store result.
  * @ptr: Source address, in user space.
  *
@@ -98,10 +99,11 @@ extern int __get_user_bad(void);
  * This macro copies a single simple variable from user space to kernel
  * space.  It supports simple types like char and int, but not larger
  * data types like structures or arrays.
- *
+ * 这个macro从用户空间复制一个简单的变量到内核空间
+ * 它支持简单的类型，如char和int，但不支持结构体或数组等较大的数据类型
  * @ptr must have pointer-to-simple-variable type, and the result of
  * dereferencing @ptr must be assignable to @x without a cast.
- *
+ * @ptr必须具有指向简单变量的类型，并且解引用@ptr的结果必须可以分配给@x而不需要转换
  * Return: zero on success, or -EFAULT on error.
  * On error, the variable @x is set to zero.
  */

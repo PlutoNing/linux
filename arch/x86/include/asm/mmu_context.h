@@ -134,6 +134,7 @@ static inline void mm_reset_untag_mask(struct mm_struct *mm)
 extern void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk);
 
 /*
+初始化一个新的mm,用于mm的拷贝,如fork()和在execve()时的全新mm
  * Init a new mm.  Used on mm copies, like at fork()
  * and on mm's that are brand-new, like at execve().
  */

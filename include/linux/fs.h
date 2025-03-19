@@ -109,15 +109,17 @@ typedef int (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
 
 /* file is open for reading , 读文件*/
 #define FMODE_READ		((__force fmode_t)0x1)
-/* file is open for writing */
+/* file is open for writing,写文件 */
 #define FMODE_WRITE		((__force fmode_t)0x2)
-/* file is seekable */
+/* file is seekable, 可寻址 */
 #define FMODE_LSEEK		((__force fmode_t)0x4)
 /* file can be accessed using pread */
 #define FMODE_PREAD		((__force fmode_t)0x8)
 /* file can be accessed using pwrite */
 #define FMODE_PWRITE		((__force fmode_t)0x10)
-/* File is opened for execution with sys_execve / sys_uselib */
+/* File is opened for execution with sys_execve / sys_uselib
+打开文件是为了执行，sys_execve/sys_uselib
+*/
 #define FMODE_EXEC		((__force fmode_t)0x20)
 /* 32bit hashes as llseek() offset (for directories) */
 #define FMODE_32BITHASH         ((__force fmode_t)0x200)
