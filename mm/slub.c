@@ -5019,7 +5019,7 @@ static struct kmem_cache * __init bootstrap(struct kmem_cache *static_cache)
 	list_add(&s->list, &slab_caches);
 	return s;
 }
-
+/* 启动的时候初始化slab */
 void __init kmem_cache_init(void)
 {
 	static __initdata struct kmem_cache boot_kmem_cache,

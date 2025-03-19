@@ -137,8 +137,9 @@ PUD_SIZE = 2^30 = 1073741824 字节（即 1 GB） */
 
 #define __VMALLOC_BASE_L4	0xffffc90000000000UL
 #define __VMALLOC_BASE_L5 	0xffa0000000000000UL
-
+// 32
 #define VMALLOC_SIZE_TB_L4	32UL
+// 12800
 #define VMALLOC_SIZE_TB_L5	12800UL
 
 #define __VMEMMAP_BASE_L4	0xffffea0000000000UL
@@ -156,6 +157,7 @@ PUD_SIZE = 2^30 = 1073741824 字节（即 1 GB） */
 
 /*
  * End of the region for which vmalloc page tables are pre-allocated.
+   是vmalloc的结束地址
  * For non-KMSAN builds, this is the same as VMALLOC_END.
  * For KMSAN builds, VMALLOC_START..VMEMORY_END is 4 times bigger than
  * VMALLOC_START..VMALLOC_END (see below).

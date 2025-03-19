@@ -221,6 +221,7 @@ static inline u64 protnone_mask(u64 val);
 
 #define PFN_PTE_SHIFT	PAGE_SHIFT
 
+// 从pte中获取物理页号
 static inline unsigned long pte_pfn(pte_t pte)
 {
 	phys_addr_t pfn = pte_val(pte);
@@ -259,7 +260,7 @@ static inline int p4d_large(p4d_t p4d)
 	/* No 512 GiB pages yet */
 	return 0;
 }
-
+// 获取pte条目指向的page
 #define pte_page(pte)	pfn_to_page(pte_pfn(pte))
 
 #define pmd_leaf	pmd_large

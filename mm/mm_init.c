@@ -745,6 +745,8 @@ static inline void init_reserved_page(unsigned long pfn, int nid)
 
 /*
 start和end是node的一个region
+=============================
+设置范围内全部page的lru成员, reserved标志
  * Initialised pages do not have PageReserved set. This function is
  * called for each range allocated by the bootmem allocator and
  * marks the pages PageReserved. The remaining valid pages are later
@@ -2643,6 +2645,10 @@ void __init set_dma_reserve(unsigned long new_dma_reserve)
 	dma_reserve = new_dma_reserve;
 }
 
+// page是pfn的对应, order是准备释放pfn开始的order大小的page范围
+/* 
+把页面归还到zone的buddy
+*/
 void __init memblock_free_pages(struct page *page, unsigned long pfn,
 							unsigned int order)
 {
@@ -2781,6 +2787,7 @@ static void __init report_meminit(void)
 		pr_info("mem auto-init: clearing system memory may take some time...\n");
 }
 
+/* mem_init完成之后打印一些信息 */
 static void __init mem_init_print_info(void)
 {
 	unsigned long physpages, codesize, datasize, rosize, bss_size;
@@ -2868,6 +2875,7 @@ void __init mm_core_init(void)
 	ptlock_cache_init();
 	pgtable_cache_init();
 	debug_objects_mem_init();
+	// 初始化vmalloc机制
 	vmalloc_init();
 	/* If no deferred init page_ext now, as vmap is fully initialized */
 	if (!deferred_struct_pages)

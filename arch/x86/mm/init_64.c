@@ -1269,6 +1269,7 @@ void __ref arch_remove_memory(u64 start, u64 size, struct vmem_altmap *altmap)
 
 static struct kcore_list kcore_vsyscall;
 
+//在把bootmem放入buudy之后调用
 static void __init register_page_bootmem_info(void)
 {
 #if defined(CONFIG_NUMA) || defined(CONFIG_HUGETLB_PAGE_OPTIMIZE_VMEMMAP)
@@ -1280,16 +1281,20 @@ static void __init register_page_bootmem_info(void)
 }
 
 /*
+预分配页表页
  * Pre-allocates page-table pages for the vmalloc area in the kernel page-table.
  * Only the level which needs to be synchronized between all page-tables is
  * allocated because the synchronization can be expensive.
+   为vmalloc区域在内核页表中预分配页表页,
+   只有需要在所有页表之间同步的级别才会被分配,因为同步可能是昂贵的
  */
 static void __init preallocate_vmalloc_pages(void)
 {
 	unsigned long addr;
 	const char *lvl;
 
-	for (addr = VMALLOC_START; addr <= VMEMORY_END; addr = ALIGN(addr + 1, PGDIR_SIZE)) {
+	for (addr = VMALLOC_START; addr <= VMEMORY_END; addr = ALIGN(addr + 1, PGDIR_SIZE)) {//一个pgd
+		// 一个pgd的处理
 		pgd_t *pgd = pgd_offset_k(addr);
 		p4d_t *p4d;
 		pud_t *pud;
@@ -1329,6 +1334,10 @@ failed:
 	panic("Failed to pre-allocate %s pages for vmalloc area\n", lvl);
 }
 
+/* 
+好像是把页面从初始的memblock那些移到buddy
+然后初始化memsection的page的type?
+*/
 void __init mem_init(void)
 {
 	pci_iommu_alloc();
@@ -1336,7 +1345,7 @@ void __init mem_init(void)
 	/* clear_bss() already clear the empty_zero_page */
 
 	/* this will put all memory onto the freelists
-	这个操作会把所有的内存放到空闲链表上 
+	这个操作会把所有的内存放到空闲链表上 ,也就是释放到buddy
 	*/
 	memblock_free_all();
 	after_bootmem = 1;
@@ -1347,13 +1356,16 @@ void __init mem_init(void)
 	 * might set fields in deferred struct pages that have not yet been
 	 * initialized, and memblock_free_all() initializes all the reserved
 	 * deferred pages for us.
+	 在bootmem之后执行,因为这里可能会设置deferred struct pages中的字段,而这些字段还没有被初始化,
+	 而memblock_free_all()初始化了所有的保留的deferred pages
 	 */
-	register_page_bootmem_info();
+	register_page_bootmem_info(); //以后
 
 	/* Register memory areas for /proc/kcore */
 	if (get_gate_vma(&init_mm))
 		kclist_add(&kcore_vsyscall, (void *)VSYSCALL_ADDR, PAGE_SIZE, KCORE_USER);
 
+	// 预分配页表页
 	preallocate_vmalloc_pages();
 }
 
@@ -1563,6 +1575,11 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 }
 
 #ifdef CONFIG_HAVE_BOOTMEM_INFO_NODE
+/* 
+page是section_nr的第一个pfn?对应的的memmap, 在memsection结构体的section memmap提取出来的
+nr_pages是ms的page数量
+加入页表映射?还是说在干嘛?
+*/
 void register_page_bootmem_memmap(unsigned long section_nr,
 				  struct page *start_page, unsigned long nr_pages)
 {
@@ -1581,7 +1598,7 @@ void register_page_bootmem_memmap(unsigned long section_nr,
 
 		pgd = pgd_offset_k(addr);
 		if (pgd_none(*pgd)) {
-			next = (addr + PAGE_SIZE) & PAGE_MASK;
+			next = (addr + PAGE_SIZE) & PAGE_MASK; // 步进到4KB之后
 			continue;
 		}
 		get_page_bootmem(section_nr, pgd_page(*pgd), MIX_SECTION_INFO);

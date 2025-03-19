@@ -197,7 +197,9 @@ void  __init early_alloc_pgt_buf(void)
 	pgt_buf_end = pgt_buf_start;
 	pgt_buf_top = pgt_buf_start + (tables >> PAGE_SHIFT);
 }
-
+/* 
+如果为1的话,说明已经把系统内存放到了buddy
+*/
 int after_bootmem;
 
 early_param_on_off("gbpages", "nogbpages", direct_gbpages, CONFIG_X86_DIRECT_GBPAGES);

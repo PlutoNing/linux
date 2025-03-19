@@ -8,6 +8,8 @@
 /*
  * Types for free bootmem stored in page->lru.next. These have to be in
  * some random range in unsigned long space for debugging purposes.
+   翻译: 存储在page->lru.next中的空闲bootmem的类型. 为了调试目的,这些类型必须
+   在unsigned long空间中的某个随机范围内.
  */
 enum {
 	MEMORY_HOTPLUG_MIN_BOOTMEM_TYPE = 12,

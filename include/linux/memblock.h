@@ -174,7 +174,7 @@ static inline void __next_physmem_range(u64 *idx, struct memblock_type *type,
 /**
  * __for_each_mem_range - iterate through memblock areas from type_a and not
  * included in type_b. Or just type_a if type_b is NULL.
- 翻译: 从type_a中迭代memblock区域, 并且不包含在type_b中. 如果type_b是NULL, 则只有type_a
+ 翻译: 从type_a中迭代memblock region, 并且不包含在type_b中. 如果type_b是NULL, 则只有type_a
  * @i: u64 used as loop variable
  * @type_a: ptr to memblock_type to iterate
  * @type_b: ptr to memblock_type which excludes from the iteration
@@ -343,7 +343,7 @@ int __init deferred_page_init_max_threads(const struct cpumask *node_cpumask);
 
 /**
  * for_each_free_mem_range - iterate through free memblock areas
-   遍历memblock中的空闲区域
+   遍历memblock中的空闲region
  * @i: u64 used as loop variable
  * @nid: node selector, %NUMA_NO_NODE for all nodes
  * @flags: pick from blocks based on memory attributes
@@ -379,6 +379,7 @@ int memblock_set_node(phys_addr_t base, phys_addr_t size,
 		      struct memblock_type *type, int nid);
 
 #ifdef CONFIG_NUMA
+// 设置memory region的node id
 static inline void memblock_set_region_node(struct memblock_region *r, int nid)
 {
 	r->nid = nid;
@@ -585,7 +586,8 @@ static inline unsigned long memblock_region_reserved_end_pfn(const struct memblo
 
 /**
  * for_each_reserved_mem_region - itereate over reserved memory regions
- * @region: loop variable
+ * 遍历reserved type的全部region 
+ @region: loop variable
  */
 #define for_each_reserved_mem_region(region)				\
 	for (region = memblock.reserved.regions;			\

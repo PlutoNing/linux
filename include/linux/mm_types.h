@@ -107,6 +107,9 @@ struct page {
 			union {
 				pgoff_t index;		/* Our offset within mapping.
 				如果是空闲页面,或者是准备释放的页面, 这里是mt
+				================================
+				一种情况:void get_page_bootmem(unsigned long info, struct page *page, unsigned long type)
+							 {page->index = type;
 				*/
 				unsigned long share;	/* share count for fsdax */
 			};
@@ -515,6 +518,7 @@ static_assert(sizeof(struct ptdesc) <= sizeof(struct page));
  */
 #define page_private(page)		((page)->private)
 
+// 设置page的private
 static inline void set_page_private(struct page *page, unsigned long private)
 {
 	page->private = private;

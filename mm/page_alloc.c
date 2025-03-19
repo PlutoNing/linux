@@ -1349,6 +1349,7 @@ static void __free_pages_ok(struct page *page, unsigned int order,
 	__count_vm_events(PGFREE, 1 << order);
 }
 
+// 释放page开始的order大小的页面
 void __free_pages_core(struct page *page, unsigned int order)
 {
 	unsigned int nr_pages = 1 << order;
@@ -1361,10 +1362,11 @@ void __free_pages_core(struct page *page, unsigned int order)
 	 * refcount of all involved pages to 0.
 	 */
 	prefetchw(p);
-	for (loop = 0; loop < (nr_pages - 1); loop++, p++) {
+	for (loop = 0; loop < (nr_pages - 1); loop++, p++) {// 遍历每一个page
 		prefetchw(p + 1);
 		__ClearPageReserved(p);
 		set_page_count(p, 0);
+		// 清除了page的reserved标志,并且初始化ref
 	}
 	__ClearPageReserved(p);
 	set_page_count(p, 0);
@@ -1381,6 +1383,7 @@ void __free_pages_core(struct page *page, unsigned int order)
 	/*
 	 * Bypass PCP and place fresh pages right to the tail, primarily
 	 * relevant for memory onlining.
+	   直接bypass此zone的pcp缓存, 直接放到freelist的尾部
 	 */
 	__free_pages_ok(page, order, FPI_TO_TAIL);
 }

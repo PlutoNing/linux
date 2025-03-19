@@ -950,7 +950,9 @@ struct zone {
 	 * mem_hotplug_begin/done(). Any reader who can't tolerant drift of
 	 * present_pages should use get_online_mems() to get a stable value.
 	 */
-	atomic_long_t		managed_pages;
+	atomic_long_t		managed_pages;/* 
+	这个managed是啥?如果往zone里free页面的话,这里会增加.
+	*/
 	unsigned long		spanned_pages; // 首尾pfn相减
 	unsigned long		present_pages; // spanned_pages - absent_pages
 #if defined(CONFIG_MEMORY_HOTPLUG)
@@ -1494,6 +1496,7 @@ typedef struct pglist_data {
 #define node_start_pfn(nid)	(NODE_DATA(nid)->node_start_pfn)
 #define node_end_pfn(nid) pgdat_end_pfn(NODE_DATA(nid))
 
+// 获取pgdat的结束pfn
 static inline unsigned long pgdat_end_pfn(pg_data_t *pgdat)
 {
 	return pgdat->node_start_pfn + pgdat->node_spanned_pages;

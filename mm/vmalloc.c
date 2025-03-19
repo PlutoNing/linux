@@ -87,6 +87,9 @@ struct vfree_deferred {
 	struct llist_head list;
 	struct work_struct wq;
 };
+/* 
+vmalloc机制相关
+*/
 static DEFINE_PER_CPU(struct vfree_deferred, vfree_deferred);
 
 /*** Page table manipulation functions ***/
@@ -735,11 +738,15 @@ EXPORT_SYMBOL(vmalloc_to_pfn);
 static DEFINE_SPINLOCK(vmap_area_lock);
 static DEFINE_SPINLOCK(free_vmap_area_lock);
 /* Export for kexec only */
+// vmap_area_list是一个双向链表，用于存储vmap_area对象
 LIST_HEAD(vmap_area_list);
+// vmap_area_root是一个红黑树，用于存储vmap_area对象
 static struct rb_root vmap_area_root = RB_ROOT;
+// 表示内核启动mem_init已经初始化了vmalloc机制
 static bool vmap_initialized __read_mostly;
 
 static struct rb_root purge_vmap_area_root = RB_ROOT;
+
 static LIST_HEAD(purge_vmap_area_list);
 static DEFINE_SPINLOCK(purge_vmap_area_lock);
 
@@ -754,6 +761,7 @@ static struct kmem_cache *vmap_area_cachep;
 /*
  * This linked list is used in pair with free_vmap_area_root.
  * It gives O(1) access to prev/next to perform fast coalescing.
+ 这个链接列表与free_vmap_area_root配对使用。它提供了O(1)访问prev/next以执行快速合并。
  */
 static LIST_HEAD(free_vmap_area_list);
 
@@ -762,10 +770,13 @@ static LIST_HEAD(free_vmap_area_list);
  * All vmap_area objects in this tree are sorted by va->va_start
  * address. It is used for allocation and merging when a vmap
  * object is released.
- *
+ * 这个增强红黑树表示空闲的vmap空间。这个树中的所有vmap_area对象都按va->va_start地址排序。
+ * 它用于分配和合并，当一个vmap对象被释放时。
+ 
  * Each vmap_area node contains a maximum available free block
  * of its sub-tree, right or left. Therefore it is possible to
  * find a lowest match of free area.
+ 每个vmap_area节点包含其子树的最大可用空闲块，右侧或左侧。因此，可以找到最低匹配的空闲区域。
  */
 static struct rb_root free_vmap_area_root = RB_ROOT;
 
@@ -1078,6 +1089,9 @@ augment_tree_propagate_from(struct vmap_area *va)
 #endif
 }
 
+/* vmalloc机制
+插入一个vmap_area到红黑树中
+ */
 static void
 insert_vmap_area(struct vmap_area *va,
 	struct rb_root *root, struct list_head *head)
@@ -1945,7 +1959,8 @@ struct vmap_block {
 	struct list_head purge;
 };
 
-/* Queue of free and dirty vmap blocks, for allocation and flushing purposes */
+/* Queue of free and dirty vmap blocks, for allocation and flushing purposes
+是一个队列，用于存放空闲和脏的vmap块，用于分配和刷新的目的*/
 static DEFINE_PER_CPU(struct vmap_block_queue, vmap_block_queue);
 
 /*
@@ -2501,6 +2516,7 @@ void __init vm_area_register_early(struct vm_struct *vm, size_t align)
 	kasan_populate_early_vm_area_shadow(vm->addr, vm->size);
 }
 
+/* 把除了busy之外的vmalloc地址空间视为free,加入free */
 static void vmap_init_free_space(void)
 {
 	unsigned long vmap_start = 1;
@@ -2513,10 +2529,10 @@ static void vmap_init_free_space(void)
 	 *  |           The KVA space           |
 	 *  |<--------------------------------->|
 	 */
-	list_for_each_entry(busy, &vmap_area_list, list) {
+	list_for_each_entry(busy, &vmap_area_list, list) {// 从上面取下一个vmap_area
 		if (busy->va_start - vmap_start > 0) {
 			free = kmem_cache_zalloc(vmap_area_cachep, GFP_NOWAIT);
-			if (!WARN_ON_ONCE(!free)) {
+			if (!WARN_ON_ONCE(!free)) {//那这个busy前面的就是free的
 				free->va_start = vmap_start;
 				free->va_end = busy->va_start;
 
@@ -2525,7 +2541,7 @@ static void vmap_init_free_space(void)
 						&free_vmap_area_list);
 			}
 		}
-
+		// 这个busy的结束,和下一个busy的起始之间的地址,也是free的
 		vmap_start = busy->va_end;
 	}
 
@@ -4457,7 +4473,11 @@ static int __init proc_vmalloc_init(void)
 module_init(proc_vmalloc_init);
 
 #endif
+/* 内核启动的时候初始化vmalloc机制
+创建相关的pcp结构体
+收拢已经存在的vmap
 
+*/
 void __init vmalloc_init(void)
 {
 	struct vmap_area *va;
@@ -4466,6 +4486,7 @@ void __init vmalloc_init(void)
 
 	/*
 	 * Create the cache for vmap_area objects.
+	 为vmap_area对象创建缓存
 	 */
 	vmap_area_cachep = KMEM_CACHE(vmap_area, SLAB_PANIC);
 
@@ -4482,8 +4503,11 @@ void __init vmalloc_init(void)
 		xa_init(&vbq->vmap_blocks);
 	}
 
-	/* Import existing vmlist entries. */
+	/* Import existing vmlist entries.
+	导入现有的vmlist条目
+	*/
 	for (tmp = vmlist; tmp; tmp = tmp->next) {
+		// 从slab分配一个vmap_area对象来装这个tmp
 		va = kmem_cache_zalloc(vmap_area_cachep, GFP_NOWAIT);
 		if (WARN_ON_ONCE(!va))
 			continue;
@@ -4496,6 +4520,7 @@ void __init vmalloc_init(void)
 
 	/*
 	 * Now we can initialize a free vmap space.
+	 现在我们可以初始化一个空闲的vmap空间
 	 */
 	vmap_init_free_space();
 	vmap_initialized = true;

@@ -602,6 +602,9 @@ extern char			ignore_fpu_irq;
 #endif
 
 /*
+这段代码定义了一个名为 prefetchw 的静态内联函数，用于在 x86 架构上执行 3DNow! 指令集
+中的 prefetchw 指令。该指令用于预取数据到缓存中，
+并获取一个独占的缓存行，这在处理自旋锁时非常有用，因为它可以避免缓存一致性协议中的一次状态转换。
  * Prefetch instructions for Pentium III (+) and AMD Athlon (+)
  *
  * It's not worth to care about 3dnow prefetches for the K6

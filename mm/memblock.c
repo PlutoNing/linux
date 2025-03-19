@@ -144,7 +144,7 @@ struct memblock_type physmem = {
  */
 static __refdata struct memblock_type *memblock_memory = &memblock.memory;
 
-// 遍历type的每一个memblock
+// 遍历type的每一个region
 #define for_each_memblock_type(i, memblock_type, rgn)			\
 	for (i = 0, rgn = &memblock_type->regions[0];			\
 	     i < memblock_type->cnt;					\
@@ -510,6 +510,7 @@ static int __init_memblock memblock_double_array(struct memblock_type *type,
 
 /**
  * memblock_merge_regions - merge neighboring compatible regions
+   合并相邻的相同的region
  * @type: memblock type to scan
  * @start_rgn: start scanning from (@start_rgn - 1)
  * @end_rgn: end scanning at (@end_rgn - 1)
@@ -524,23 +525,29 @@ static void __init_memblock memblock_merge_regions(struct memblock_type *type,
 		i = start_rgn - 1;
 	end_rgn = min(end_rgn, type->cnt - 1);
 	while (i < end_rgn) {
+		// 找到当前cursor的两个相邻region
 		struct memblock_region *this = &type->regions[i];
 		struct memblock_region *next = &type->regions[i + 1];
 
 		if (this->base + this->size != next->base ||
 		    memblock_get_region_node(this) !=
 		    memblock_get_region_node(next) ||
-		    this->flags != next->flags) {
+		    this->flags != next->flags) { // 无法合并的情况
 			BUG_ON(this->base + this->size > next->base);
 			i++;
 			continue;
 		}
-
+		/* 
+		可以合并的情况
+		this->base + this->size == next->base 并且 this->nid == next->nid 并且 flag相同
+		*/
 		this->size += next->size;
-		/* move forward from next + 1, index of which is i + 2 */
+		/* move forward from next + 1, index of which is i + 2
+		这些region结构体都是连续排布在内存中, 移除一个, 就是后面的排排往前搬
+		*/
 		memmove(next, next + 1, (type->cnt - (i + 2)) * sizeof(*next));
-		type->cnt--;
-		end_rgn--;
+		type->cnt--; // 合并后region的数量减少
+		end_rgn--; // 循环范围也相应-1
 	}
 }
 
@@ -743,7 +750,9 @@ int __init_memblock memblock_add(phys_addr_t base, phys_addr_t size)
 
 /**
  * memblock_isolate_range - isolate given range into disjoint memblocks
-   释放type中base和size描述的内存区域
+   释放type中base和size描述的内存区域, 从与之交叉的region的范围移除
+   start_rgn和end_rgn是out参数, 用于返回此region的idx
+   严格来说这里的移除,其实是把范围首尾与已存在region交叉的范围单独isolate为region
  * @type: memblock type to isolate range for
  * @base: base of range to isolate
  * @size: size of range to isolate
@@ -778,9 +787,9 @@ static int __init_memblock memblock_isolate_range(struct memblock_type *type,
 	while (type->cnt + 2 > type->max)
 		if (memblock_double_array(type, base, size) < 0)
 			return -ENOMEM;
-	// 遍历type的每一个memblock
+	// 遍历type的每一个region
 	for_each_memblock_type(idx, type, rgn) {
-		// 获得这个memblock的base和end
+		// 获得这个region的base和end
 		phys_addr_t rbase = rgn->base;
 		phys_addr_t rend = rbase + rgn->size;
 
@@ -791,13 +800,22 @@ static int __init_memblock memblock_isolate_range(struct memblock_type *type,
 		//到这里rbase小于end, rend>base
 /*
 下面就是归还内存过程中不同情况的讨论了
+			|-------------------------|
+           rbase                    rend
+                  base       end
+				  base                          end
+	base	               end 
+	base                                         end 
 */
 		if (rbase < base) {
 			/*
-			rbase小于base, rend大于base
-			|-------------|
-           rbase         rend
-                  base
+			这个if是图的rbase小于base, rend大于base
+			|-------------------------|
+           rbase                    rend
+                  base       end
+				  base                          end
+			|------|-----------------|
+			 insert	  changed region
 			 * @rgn intersects from below.  Split and continue
 			 * to process the next region - the new top half.
 			 */
@@ -808,7 +826,12 @@ static int __init_memblock memblock_isolate_range(struct memblock_type *type,
 					       memblock_get_region_node(rgn),
 					       rgn->flags);
 		} else if (rend > end) {
-			/*
+/*
+			|-------------------------|
+           rbase                    rend
+    base                 end  
+	 |--------------------|-----------|
+			     insert	    changed region
 			 * @rgn intersects from above.  Split and redo the
 			 * current region - the new bottom half.
 			 */
@@ -819,7 +842,11 @@ static int __init_memblock memblock_isolate_range(struct memblock_type *type,
 					       memblock_get_region_node(rgn),
 					       rgn->flags);
 		} else {
-			/* @rgn is fully contained, record it */
+			/* 
+			|-------------------------|
+           rbase                    rend
+	base                                         end 
+			@rgn is fully contained, record it */
 			if (!*end_rgn)
 				*start_rgn = idx;
 			*end_rgn = idx + 1;
@@ -915,13 +942,14 @@ int __init_memblock memblock_physmem_add(phys_addr_t base, phys_addr_t size)
 
 /**
  * memblock_setclr_flag - set or clear flag for a memory region
- * @base: base address of the region
+ * 清除base和size描述的region的flag标志 
+ @base: base address of the region
  * @size: size of the region
  * @set: set or clear the flag
  * @flag: the flag to update
  *
  * This function isolates region [@base, @base + @size), and sets/clears flag
- *
+ * 函数移出base和size描述的内存区域, 并设置/清除flag
  * Return: 0 on success, -errno on failure.
  */
 static int __init_memblock memblock_setclr_flag(phys_addr_t base,
@@ -929,7 +957,8 @@ static int __init_memblock memblock_setclr_flag(phys_addr_t base,
 {
 	struct memblock_type *type = &memblock.memory;
 	int i, ret, start_rgn, end_rgn;
-
+	// 从type包含的与此范围交叉的region中移除base和size描述的内存区域
+	// start_rgn和end_rgn是out参数, 用于返回此region的idx
 	ret = memblock_isolate_range(type, base, size, &start_rgn, &end_rgn);
 	if (ret)
 		return ret;
@@ -937,7 +966,7 @@ static int __init_memblock memblock_setclr_flag(phys_addr_t base,
 	for (i = start_rgn; i < end_rgn; i++) {
 		struct memblock_region *r = &type->regions[i];
 
-		if (set)
+		if (set) // 根据调用者参数决定是设置flag还是清除flag
 			r->flags |= flag;
 		else
 			r->flags &= ~flag;
@@ -961,6 +990,7 @@ int __init_memblock memblock_mark_hotplug(phys_addr_t base, phys_addr_t size)
 
 /**
  * memblock_clear_hotplug - Clear flag MEMBLOCK_HOTPLUG for a specified region.
+   清除base和size描述的region的MEMBLOCK_HOTPLUG标志
  * @base: the base phys addr of the region
  * @size: the size of the region
  *
@@ -1020,6 +1050,12 @@ int __init_memblock memblock_clear_nomap(phys_addr_t base, phys_addr_t size)
 	return memblock_setclr_flag(base, size, 0, MEMBLOCK_NOMAP);
 }
 
+/* 
+决定是否跳过这个region
+1. 从来不跳过reserverd和physmem
+2. 如果指定了nid, 那么只处理nid相同的region
+3. 根据flags决定是否跳过region
+*/
 static bool should_skip_region(struct memblock_type *type,
 			       struct memblock_region *m,
 			       int nid, int flags)
@@ -1086,6 +1122,7 @@ void __next_mem_range(u64 *idx, int nid, enum memblock_flags flags,
 		      struct memblock_type *type_b, phys_addr_t *out_start,
 		      phys_addr_t *out_end, int *out_nid)
 {
+	// idx右边32位是type_a的index, 左边32位是type_b的index
 	int idx_a = *idx & 0xffffffff;
 	int idx_b = *idx >> 32;
 
@@ -1094,16 +1131,17 @@ void __next_mem_range(u64 *idx, int nid, enum memblock_flags flags,
 		nid = NUMA_NO_NODE;
 
 	for (; idx_a < type_a->cnt; idx_a++) {
+		// 找到idx_a对应的region
 		struct memblock_region *m = &type_a->regions[idx_a];
 
 		phys_addr_t m_start = m->base;
 		phys_addr_t m_end = m->base + m->size;
 		int	    m_nid = memblock_get_region_node(m);
-
+		// 决定是否跳过这个region
 		if (should_skip_region(type_a, m, nid, flags))
 			continue;
 
-		if (!type_b) {
+		if (!type_b) { // 如果不需要排除type_b
 			if (out_start)
 				*out_start = m_start;
 			if (out_end)
@@ -1299,7 +1337,8 @@ void __init_memblock __next_mem_pfn_range(int *idx, int nid,
 
 /**
  * memblock_set_node - set node ID on memblock regions
- 设置memory region的node id
+ 设置范围内的region的node id
+ 一种情况是base和size刚好描述一个region
  * @base: base of area to set node ID for
  * @size: size of area to set node ID for
  * @type: memblock type to set node ID for
@@ -1319,13 +1358,14 @@ int __init_memblock memblock_set_node(phys_addr_t base, phys_addr_t size,
 	int start_rgn, end_rgn;
 	int i, ret;
 
+	// 把base和size描述的内存区域从type中"移除"
 	ret = memblock_isolate_range(type, base, size, &start_rgn, &end_rgn);
 	if (ret)
 		return ret;
 
 	for (i = start_rgn; i < end_rgn; i++)
 		memblock_set_region_node(&type->regions[i], nid);
-
+	// 在移除之后, 避免可能造成的碎片化
 	memblock_merge_regions(type, start_rgn, end_rgn);
 #endif
 	return 0;
@@ -2105,6 +2145,10 @@ static void __init free_unused_memmap(void)
 #endif
 }
 
+/* 
+参数是一个free的memory type region
+把范围内的页面按照尽可能大的order释放到buddy
+*/
 static void __init __free_pages_memory(unsigned long start, unsigned long end)
 {
 	int order;
@@ -2115,6 +2159,7 @@ static void __init __free_pages_memory(unsigned long start, unsigned long end)
 		 *
 		 * __ffs() behaviour is undefined for 0. start == 0 is
 		 * MAX_ORDER-aligned, set order to MAX_ORDER for the case.
+		 __ffs(start)=4的话,就是说start是16页对齐的?
 		 */
 		if (start)
 			order = min_t(int, MAX_ORDER, __ffs(start));
@@ -2122,14 +2167,20 @@ static void __init __free_pages_memory(unsigned long start, unsigned long end)
 			order = MAX_ORDER;
 
 		while (start + (1UL << order) > end)
-			order--;
+			order--; // 这里是为了保证start起始的order内存不会越界
+		//反正尽可能找到最大的合适的order
 
+		// 把页面释放给伙伴系统
 		memblock_free_pages(pfn_to_page(start), start, order);
 
-		start += (1UL << order);
+		start += (1UL << order);// 继续循环
 	}
 }
 
+// 参数是一个free的memory type region
+/* 
+把这个region的页面释放到buddy
+*/
 static unsigned long __init __free_memory_core(phys_addr_t start,
 				 phys_addr_t end)
 {
@@ -2139,12 +2190,16 @@ static unsigned long __init __free_memory_core(phys_addr_t start,
 
 	if (start_pfn >= end_pfn)
 		return 0;
-
+		// 释放到buddy
 	__free_pages_memory(start_pfn, end_pfn);
 
 	return end_pfn - start_pfn;
 }
 
+/* 
+函数的作用是?
+
+*/
 static void __init memmap_init_reserved_pages(void)
 {
 	struct memblock_region *region;
@@ -2154,8 +2209,9 @@ static void __init memmap_init_reserved_pages(void)
 	/*
 	 * set nid on all reserved pages and also treat struct
 	 * pages for the NOMAP regions as PageReserved
-	   在所有保留的页面上设置nid，并将NOMAP region的struct页面视为PageReserved
+	   在所有reserved的页面上设置nid，并将NOMAP region的struct页面视为PageReserved
 	 */
+	// 这里遍历全部的memory regions
 	for_each_mem_region(region) {
 		nid = memblock_get_region_node(region);
 		start = region->base;
@@ -2163,11 +2219,13 @@ static void __init memmap_init_reserved_pages(void)
 
 		if (memblock_is_nomap(region))
 			reserve_bootmem_region(start, end, nid); // 标记每个页面为reserved
-
+		// 设置范围内的region的node id , 不过为什么遍历的是memory type 但是这里是reserved type呢
 		memblock_set_node(start, end, &memblock.reserved, nid);
 	}
 
-	/* initialize struct pages for the reserved regions */
+	/* initialize struct pages for the reserved regions
+	初始化reserved region的struct pages
+	*/
 	for_each_reserved_mem_region(region) {
 		nid = memblock_get_region_node(region);
 		start = region->base;
@@ -2177,12 +2235,15 @@ static void __init memmap_init_reserved_pages(void)
 	}
 }
 
+/* 
+遍历free的regions,释放到buddy
+*/
 static unsigned long __init free_low_memory_core_early(void)
 {
 	unsigned long count = 0;
 	phys_addr_t start, end;
 	u64 i;
-
+	// 清除所有region的热插拔标志
 	memblock_clear_hotplug(0, -1);
 
 	memmap_init_reserved_pages();
@@ -2191,10 +2252,12 @@ static unsigned long __init free_low_memory_core_early(void)
 	 * We need to use NUMA_NO_NODE instead of NODE_DATA(0)->node_id
 	 *  because in some case like Node0 doesn't have RAM installed
 	 *  low ram will be on Node1
+	  之所以使用NUMA_NO_NODE而不是NODE_DATA(0)->node_id，是因为在某些情况下，
+	  例如Node0没有安装RAM，low RAM将位于Node1上
 	 */
 	for_each_free_mem_range(i, NUMA_NO_NODE, MEMBLOCK_NONE, &start, &end,
 				NULL)
-		count += __free_memory_core(start, end);
+		count += __free_memory_core(start, end); // 把region释放到buddy
 
 	return count;
 }
@@ -2233,7 +2296,7 @@ void __init memblock_free_all(void)
 	unsigned long pages;
 
 	free_unused_memmap(); // 好像是释放region之间的内存?
-	reset_all_zones_managed_pages();
+	reset_all_zones_managed_pages(); // 这里把所有node所有zone的managed_pages置为0
 
 	pages = free_low_memory_core_early();
 	totalram_pages_add(pages);

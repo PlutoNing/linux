@@ -14,6 +14,9 @@
 #include <linux/memory_hotplug.h>
 #include <linux/kmemleak.h>
 
+/* 
+参数info是nid
+*/
 void get_page_bootmem(unsigned long info, struct page *page, unsigned long type)
 {
 	page->index = type;
@@ -75,6 +78,11 @@ static void __init register_page_bootmem_info_section(unsigned long start_pfn)
 
 }
 #else /* CONFIG_SPARSEMEM_VMEMMAP */
+/* 
+在把bootmem放入buudy之后调用
+处理每一个node, 这里好像就是把各种page设置了一下type?
+start_pfn是node的每一个memsection的起始pfn
+*/
 static void __init register_page_bootmem_info_section(unsigned long start_pfn)
 {
 	unsigned long mapsize, section_nr, i;
@@ -86,7 +94,7 @@ static void __init register_page_bootmem_info_section(unsigned long start_pfn)
 	ms = __nr_to_section(section_nr);
 
 	memmap = sparse_decode_mem_map(ms->section_mem_map, section_nr);
-
+	//
 	register_page_bootmem_memmap(section_nr, memmap, PAGES_PER_SECTION);
 
 	usage = ms->usage;
@@ -99,23 +107,25 @@ static void __init register_page_bootmem_info_section(unsigned long start_pfn)
 }
 #endif /* !CONFIG_SPARSEMEM_VMEMMAP */
 
+// 在把bootmem放入buudy之后调用
 void __init register_page_bootmem_info_node(struct pglist_data *pgdat)
 {
 	unsigned long i, pfn, end_pfn, nr_pages;
 	int node = pgdat->node_id;
 	struct page *page;
 
+	// 存放这个node结构体需要几个页面?
 	nr_pages = PAGE_ALIGN(sizeof(struct pglist_data)) >> PAGE_SHIFT;
 	page = virt_to_page(pgdat);
 
-	for (i = 0; i < nr_pages; i++, page++)
+	for (i = 0; i < nr_pages; i++, page++) //遍历处理node的前nr_page个页面?
 		get_page_bootmem(node, page, NODE_INFO);
 
 	pfn = pgdat->node_start_pfn;
 	end_pfn = pgdat_end_pfn(pgdat);
 
 	/* register section info */
-	for (; pfn < end_pfn; pfn += PAGES_PER_SECTION) {
+	for (; pfn < end_pfn; pfn += PAGES_PER_SECTION) {/* 遍历node的每一个ms的起始页面 */
 		/*
 		 * Some platforms can assign the same pfn to multiple nodes - on
 		 * node0 as well as nodeN.  To avoid registering a pfn against
@@ -123,6 +133,7 @@ void __init register_page_bootmem_info_node(struct pglist_data *pgdat)
 		 * reside in some other nodes.
 		 */
 		if (pfn_valid(pfn) && (early_pfn_to_nid(pfn) == node))
-			register_page_bootmem_info_section(pfn);
+			register_page_bootmem_info_section(pfn); // 处理这个memsection
+		// 好像里面会处理页表的page, usemap的page什么的
 	}
 }
