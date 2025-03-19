@@ -356,6 +356,7 @@ static inline int cpuhp_setup_state_nocalls_cpuslocked(enum cpuhp_state state,
 
 /**
  * cpuhp_setup_state_multi - Add callbacks for multi state
+   为multi state添加回调
  * @state:	The state for which the calls are installed
  * @name:	Name of the callback.
  * @startup:	startup callback function or NULL if not required
@@ -365,6 +366,9 @@ static inline int cpuhp_setup_state_nocalls_cpuslocked(enum cpuhp_state state,
  * instance callback. No callbacks are invoked at this point. The callbacks are
  * invoked once an instance for this state are registered via
  * cpuhp_state_add_instance() or cpuhp_state_add_instance_nocalls()
+   设置内部multi_instance标志, 并准备一个状态以作为多实例回调工作
+   此时不调用任何回调, 一旦通过cpuhp_state_add_instance()或cpuhp_state_add_instance_nocalls()
+   注册了此状态的实例, 则调用回调
  */
 static inline int cpuhp_setup_state_multi(enum cpuhp_state state,
 					  const char *name,

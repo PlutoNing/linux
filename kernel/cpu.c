@@ -2573,6 +2573,7 @@ int __cpuhp_setup_state(enum cpuhp_state state,
 	int ret;
 
 	cpus_read_lock();
+	// 这里添加
 	ret = __cpuhp_setup_state_cpuslocked(state, name, invoke, startup,
 					     teardown, multi_instance);
 	cpus_read_unlock();

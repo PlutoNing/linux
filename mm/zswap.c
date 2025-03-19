@@ -441,19 +441,25 @@ static struct zswap_entry *zswap_entry_find_get(struct rb_root *root,
 /*********************************
 * per-cpu code
 **********************************/
+/* cpu热插拔时候初始化 */
 static DEFINE_PER_CPU(u8 *, zswap_dstmem);
 /*
  * If users dynamically change the zpool type and compressor at runtime, i.e.
  * zswap is running, zswap can have more than one zpool on one cpu, but they
  * are sharing dtsmem. So we need this mutex to be per-cpu.
+ 如果用户在运行时动态更改zpool类型和压缩器，即zswap正在运行，zswap可以在一个cpu上有多个zpool，
+ 但它们共享dtsmem。因此，我们需要这个互斥锁是每个cpu的。
  */
 static DEFINE_PER_CPU(struct mutex *, zswap_mutex);
-
+/* 
+zswap的cpu热插拔回调
+初始化pcp的zswap机制的数据结构
+*/
 static int zswap_dstmem_prepare(unsigned int cpu)
 {
 	struct mutex *mutex;
 	u8 *dst;
-
+	// 分配2页的内存
 	dst = kmalloc_node(PAGE_SIZE * 2, GFP_KERNEL, cpu_to_node(cpu));
 	if (!dst)
 		return -ENOMEM;
@@ -470,6 +476,10 @@ static int zswap_dstmem_prepare(unsigned int cpu)
 	return 0;
 }
 
+/* 
+zswap的cpu热拔回调
+释放pcp的zswap机制的数据结构
+*/
 static int zswap_dstmem_dead(unsigned int cpu)
 {
 	struct mutex *mutex;
@@ -485,9 +495,12 @@ static int zswap_dstmem_dead(unsigned int cpu)
 
 	return 0;
 }
-
+/* 
+zswap pool的cpu热插拔回调
+*/
 static int zswap_cpu_comp_prepare(unsigned int cpu, struct hlist_node *node)
 {
+	// 从node取出zspool
 	struct zswap_pool *pool = hlist_entry(node, struct zswap_pool, node);
 	struct crypto_acomp_ctx *acomp_ctx = per_cpu_ptr(pool->acomp_ctx, cpu);
 	struct crypto_acomp *acomp;
@@ -1576,17 +1589,20 @@ static int zswap_debugfs_init(void)
 /*********************************
 * module init and exit
 **********************************/
+/* 
+设置zswap机制
+*/
 static int zswap_setup(void)
 {
 	struct zswap_pool *pool;
 	int ret;
-
+	// 初始化zswap_entry的slab缓存
 	zswap_entry_cache = KMEM_CACHE(zswap_entry, 0);
 	if (!zswap_entry_cache) {
 		pr_err("entry cache creation failed\n");
 		goto cache_fail;
 	}
-
+	// 设置cpu热插拔的swap相关回调
 	ret = cpuhp_setup_state(CPUHP_MM_ZSWP_MEM_PREPARE, "mm/zswap:prepare",
 				zswap_dstmem_prepare, zswap_dstmem_dead);
 	if (ret) {
@@ -1635,6 +1651,7 @@ cache_fail:
 	return -ENOMEM;
 }
 
+/* 初始化zswap模块 */
 static int __init zswap_init(void)
 {
 	if (!zswap_enabled)
