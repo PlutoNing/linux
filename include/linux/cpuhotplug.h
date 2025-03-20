@@ -390,6 +390,7 @@ int __cpuhp_state_add_instance_cpuslocked(enum cpuhp_state state,
 /**
  * cpuhp_state_add_instance - Add an instance for a state and invoke startup
  *                            callback.
+ 添加状态的实例并调用启动回调
  * @state:	The state for which the instance is installed
  * @node:	The node for this individual state.
  *
@@ -397,6 +398,9 @@ int __cpuhp_state_add_instance_cpuslocked(enum cpuhp_state state,
  * callback on the online cpus which have already reached the @state. The
  * @state must have been earlier marked as multi-instance by
  * cpuhp_setup_state_multi().
+ 安装@state的实例, 并在已经到达@state的在线cpu上调用注册的启动回调
+ @state必须先通过cpuhp_setup_state_multi()标记为多实例
+
  */
 static inline int cpuhp_state_add_instance(enum cpuhp_state state,
 					   struct hlist_node *node)

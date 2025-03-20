@@ -87,7 +87,7 @@ struct vfree_deferred {
 	struct llist_head list;
 	struct work_struct wq;
 };
-/* 
+/*
 vmalloc机制相关
 */
 static DEFINE_PER_CPU(struct vfree_deferred, vfree_deferred);

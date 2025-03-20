@@ -18,7 +18,7 @@
 
 /**
  * struct acomp_req - asynchronous (de)compression request
- *
+ * 异步的解压/压缩请求
  * @base:	Common attributes for asynchronous crypto requests
  * @src:	Source Data
  * @dst:	Destination data
@@ -40,9 +40,11 @@ struct acomp_req {
 /**
  * struct crypto_acomp - user-instantiated objects which encapsulate
  * algorithms and core processing logic
- *
+ * 用户实例化的对象，封装算法和核心处理逻辑
  * @compress:		Function performs a compress operation
+   压缩操作
  * @decompress:		Function performs a de-compress operation
+   解压函数
  * @dst_free:		Frees destination buffer if allocated inside the
  *			algorithm
  * @reqsize:		Context size for (de)compression requests
@@ -53,7 +55,7 @@ struct crypto_acomp {
 	int (*decompress)(struct acomp_req *req);
 	void (*dst_free)(struct scatterlist *dst);
 	unsigned int reqsize;
-	struct crypto_tfm base;
+	struct crypto_tfm base; // 对应的tfm
 };
 
 /*
@@ -126,7 +128,7 @@ struct crypto_acomp *crypto_alloc_acomp(const char *alg_name, u32 type,
  */
 struct crypto_acomp *crypto_alloc_acomp_node(const char *alg_name, u32 type,
 					u32 mask, int node);
-
+// 获取crypto的tfm
 static inline struct crypto_tfm *crypto_acomp_tfm(struct crypto_acomp *tfm)
 {
 	return &tfm->base;
@@ -167,7 +169,7 @@ static inline struct crypto_acomp *crypto_acomp_reqtfm(struct acomp_req *req)
 
 /**
  * crypto_free_acomp() -- free ACOMPRESS tfm handle
- *
+ * 释放ACOMPRESS tfm句柄
  * @tfm:	ACOMPRESS tfm handle allocated with crypto_alloc_acomp()
  *
  * If @tfm is a NULL or error pointer, this function does nothing.
@@ -177,6 +179,7 @@ static inline void crypto_free_acomp(struct crypto_acomp *tfm)
 	crypto_destroy_tfm(tfm, crypto_acomp_tfm(tfm));
 }
 
+// 检查是否存在算法
 static inline int crypto_has_acomp(const char *alg_name, u32 type, u32 mask)
 {
 	type &= ~CRYPTO_ALG_TYPE_MASK;

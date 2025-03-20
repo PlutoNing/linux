@@ -469,6 +469,9 @@ struct folio *filemap_get_incore_folio(struct address_space *mapping,
 }
 
 // 查找entry对应的页面, 如果mapping没有,新申请页面加入swap mapping.
+/*
+把页面读入swap cache
+*/
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
 			bool *new_page_allocated)

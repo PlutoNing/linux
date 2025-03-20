@@ -46,6 +46,7 @@
 
 /**
  * struct cpuhp_cpu_state - Per cpu hotplug state storage
+ 每个cpu的热插拔状态存储
  * @state:	The current cpu state
  * @target:	The target state
  * @fail:	Current CPU hotplug callback state
@@ -65,6 +66,9 @@
  * @done_down:	Signal completion to the issuer of the task for cpu-down
  */
 struct cpuhp_cpu_state {
+	/*
+	当前cpu状态
+	*/
 	enum cpuhp_state	state;
 	enum cpuhp_state	target;
 	enum cpuhp_state	fail;
@@ -130,12 +134,12 @@ struct cpuhp_step {
 		int		(*single)(unsigned int cpu);
 		int		(*multi)(unsigned int cpu,
 					 struct hlist_node *node);
-	} startup;
+	} startup; // 启动的回调
 	union {
 		int		(*single)(unsigned int cpu);
 		int		(*multi)(unsigned int cpu,
 					 struct hlist_node *node);
-	} teardown;
+	} teardown; // 销毁的回调
 	/* private: */
 	struct hlist_head	list;
 	/* public: */
@@ -160,6 +164,7 @@ static bool cpuhp_step_empty(bool bringup, struct cpuhp_step *step)
 
 /**
  * cpuhp_invoke_callback - Invoke the callbacks for a given state
+   因为cpu的当前状态小于@state, 所以要调用回调函数
    对于给定的状态调用回调
  * @cpu:	The cpu for which the callback should be invoked
  * @state:	The state to do callbacks for
@@ -1114,7 +1119,9 @@ end:
 /* 
 在一个cpu上调用一个回调
 
-Invoke a single callback on a remote cpu */
+Invoke a single callback on a remote cpu
+因为cpu的当前状态小于caller指定的@state, 所以我们需要调用回调函数
+*/
 static int
 cpuhp_invoke_ap_callback(int cpu, enum cpuhp_state state, bool bringup,
 			 struct hlist_node *node)
@@ -2372,6 +2379,8 @@ static void *cpuhp_get_teardown_cb(enum cpuhp_state state)
  * Call the startup/teardown function for a step either on the AP or
  * on the current CPU.
    在AP上或当前CPU上调用步骤的startup/teardown函数。
+=======================
+因为cpu的当前状态小于caller指定的@state,调用回调
  */
 static int cpuhp_issue_call(int cpu, enum cpuhp_state state, bool bringup,
 			    struct hlist_node *node)
@@ -2436,7 +2445,7 @@ int __cpuhp_state_add_instance_cpuslocked(enum cpuhp_state state,
 	int ret;
 
 	lockdep_assert_cpus_held();
-
+	// 获取这个state的step
 	sp = cpuhp_get_step(state);
 	if (sp->multi_instance == false)
 		return -EINVAL;
@@ -2444,11 +2453,12 @@ int __cpuhp_state_add_instance_cpuslocked(enum cpuhp_state state,
 	mutex_lock(&cpuhp_state_mutex);
 
 	if (!invoke || !sp->startup.multi)
-		goto add_node;
+		goto add_node; // 如果caller不要求调用,或者step不是multi的,直接添加node
 
 	/*
 	 * Try to call the startup callback for each present cpu
 	 * depending on the hotplug state of the cpu.
+	 尝试为每个现有的cpu调用启动回调，具体取决于cpu的热插拔状态。
 	 */
 	for_each_present_cpu(cpu) {
 		struct cpuhp_cpu_state *st = per_cpu_ptr(&cpuhp_state, cpu);

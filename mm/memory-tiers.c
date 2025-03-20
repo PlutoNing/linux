@@ -105,7 +105,7 @@ static int top_tier_adistance;
  * node_demotion[2].preferred = <empty>
  *
  */
- /* 
+ /*
  一个node_demotion的数组.
 
 */

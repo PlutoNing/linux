@@ -3764,12 +3764,12 @@ static bool swap_count_continued(struct swap_info_struct *si,
 	map = kmap_atomic(page) + offset; // 这个是map应该是offset对应的那个swap
 	// map的条目的地址吧, 也就是一个字节.
 
-	if (count == SWAP_MAP_MAX)	/* 
+	if (count == SWAP_MAP_MAX)	/*
 	count == 0011 1110
 	initial increment from swap_map */
 		goto init_map;		/* jump over SWAP_CONT_MAX checks */
 
-	if (count == (SWAP_MAP_MAX | COUNT_CONTINUED)) { /* 
+	if (count == (SWAP_MAP_MAX | COUNT_CONTINUED)) { /*
 		count == 1011 1110
 		incrementing */
 		/*

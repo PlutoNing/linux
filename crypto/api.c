@@ -324,6 +324,9 @@ struct crypto_alg *crypto_alg_mod_lookup(const char *name, u32 type, u32 mask)
 	 * Also, if a caller wants to allocate a cipher that may or may
 	 * not be an internal cipher, use type | CRYPTO_ALG_INTERNAL and
 	 * !(mask & CRYPTO_ALG_INTERNAL).
+	  如果对于密码设置了内部标志，则要求调用者使用内部标志调用密码才能使用该密码。
+	  并且，如果调用者想要分配一个可能是内部密码的密码，使用type | CRYPTO_ALG_INTERNAL和!(mask
+	  & CRYPTO_ALG_INTERNAL)。
 	 */
 	if (!((type | mask) & CRYPTO_ALG_INTERNAL))
 		mask |= CRYPTO_ALG_INTERNAL;
@@ -480,7 +483,10 @@ err:
 	return ERR_PTR(err);
 }
 EXPORT_SYMBOL_GPL(crypto_alloc_base);
-
+/*
+创建tfm的时候
+分配内存
+*/
 static void *crypto_alloc_tfmmem(struct crypto_alg *alg,
 				 const struct crypto_type *frontend, int node,
 				 gfp_t gfp)
@@ -504,7 +510,9 @@ static void *crypto_alloc_tfmmem(struct crypto_alg *alg,
 
 	return mem;
 }
-
+/*
+从alg创建一个tfm?
+*/
 void *crypto_create_tfm_node(struct crypto_alg *alg,
 			     const struct crypto_type *frontend,
 			     int node)
@@ -583,9 +591,9 @@ EXPORT_SYMBOL_GPL(crypto_find_alg);
 
 /*
  *	crypto_alloc_tfm_node - Locate algorithm and allocate transform
- *	@alg_name: Name of algorithm
- *	@frontend: Frontend algorithm type
- *	@type: Type of algorithm
+ *	@alg_name: Name of algorithm, 算法名称
+ *	@frontend: Frontend algorithm type, 前端算法类型
+ *	@type: Type of algorithm, 算法类型
  *	@mask: Mask for type comparison
  *	@node: NUMA node in which users desire to put requests, if node is
  *		NUMA_NO_NODE, it means users have no special requirement.
@@ -596,11 +604,12 @@ EXPORT_SYMBOL_GPL(crypto_find_alg);
  *	alias.  If that fails it will send a query to any loaded crypto manager
  *	to construct an algorithm on the fly.  A refcount is grabbed on the
  *	algorithm which is then associated with the new transform.
- *
+ * 函数会首先尝试查找已加载的算法。如果失败并且内核支持动态加载模块，它将尝试加载同名或别名的模块。
+ * 如果失败，它将向任何已加载的加密管理器发送查询，以动态构建算法。然后将算法的引用计数与新的transform关联。
  *	The returned transform is of a non-determinate type.  Most people
  *	should use one of the more specific allocation functions such as
  *	crypto_alloc_skcipher().
- *
+ * 返回的transform是不确定类型的。大多数人应该使用更具体的分配函数，如crypto_alloc_skcipher()。
  *	In case of error the return value is an error pointer.
  */
 
@@ -619,7 +628,7 @@ void *crypto_alloc_tfm_node(const char *alg_name,
 			err = PTR_ERR(alg);
 			goto err;
 		}
-
+		// 查找到了alg,创建一个tfm
 		tfm = crypto_create_tfm_node(alg, frontend, node);
 		if (!IS_ERR(tfm))
 			return tfm;
@@ -628,6 +637,8 @@ void *crypto_alloc_tfm_node(const char *alg_name,
 		err = PTR_ERR(tfm);
 
 err:
+/* 如果错误不是again,就退出
+有kill信号之类的也退出 */
 		if (err != -EAGAIN)
 			break;
 		if (fatal_signal_pending(current)) {
@@ -642,11 +653,13 @@ EXPORT_SYMBOL_GPL(crypto_alloc_tfm_node);
 
 /*
  *	crypto_destroy_tfm - Free crypto transform
+ 释放crypto transform
  *	@mem: Start of tfm slab
  *	@tfm: Transform to free
  *
  *	This function frees up the transform and any associated resources,
  *	then drops the refcount on the associated algorithm.
+ 函数释放transform和任何相关资源，然后减少与关联算法的引用计数。
  */
 void crypto_destroy_tfm(void *mem, struct crypto_tfm *tfm)
 {

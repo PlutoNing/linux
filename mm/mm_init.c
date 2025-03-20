@@ -2646,7 +2646,7 @@ void __init set_dma_reserve(unsigned long new_dma_reserve)
 }
 
 // page是pfn的对应, order是准备释放pfn开始的order大小的page范围
-/* 
+/*
 把页面归还到zone的buddy
 */
 void __init memblock_free_pages(struct page *page, unsigned long pfn,

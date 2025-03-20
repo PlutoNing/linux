@@ -537,7 +537,7 @@ static void __init_memblock memblock_merge_regions(struct memblock_type *type,
 			i++;
 			continue;
 		}
-		/* 
+		/*
 		可以合并的情况
 		this->base + this->size == next->base 并且 this->nid == next->nid 并且 flag相同
 		*/
@@ -842,7 +842,7 @@ static int __init_memblock memblock_isolate_range(struct memblock_type *type,
 					       memblock_get_region_node(rgn),
 					       rgn->flags);
 		} else {
-			/* 
+			/*
 			|-------------------------|
            rbase                    rend
 	base                                         end 
@@ -1050,7 +1050,7 @@ int __init_memblock memblock_clear_nomap(phys_addr_t base, phys_addr_t size)
 	return memblock_setclr_flag(base, size, 0, MEMBLOCK_NOMAP);
 }
 
-/* 
+/*
 决定是否跳过这个region
 1. 从来不跳过reserverd和physmem
 2. 如果指定了nid, 那么只处理nid相同的region
@@ -2145,7 +2145,7 @@ static void __init free_unused_memmap(void)
 #endif
 }
 
-/* 
+/*
 参数是一个free的memory type region
 把范围内的页面按照尽可能大的order释放到buddy
 */
@@ -2178,7 +2178,7 @@ static void __init __free_pages_memory(unsigned long start, unsigned long end)
 }
 
 // 参数是一个free的memory type region
-/* 
+/*
 把这个region的页面释放到buddy
 */
 static unsigned long __init __free_memory_core(phys_addr_t start,
@@ -2196,7 +2196,7 @@ static unsigned long __init __free_memory_core(phys_addr_t start,
 	return end_pfn - start_pfn;
 }
 
-/* 
+/*
 函数的作用是?
 
 */
@@ -2235,7 +2235,7 @@ static void __init memmap_init_reserved_pages(void)
 	}
 }
 
-/* 
+/*
 遍历free的regions,释放到buddy
 */
 static unsigned long __init free_low_memory_core_early(void)

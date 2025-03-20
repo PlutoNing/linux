@@ -646,7 +646,7 @@ void workingset_update_node(struct xa_node *node)
 	mapping = container_of(node->array, struct address_space, i_pages);
 	lockdep_assert_held(&mapping->i_pages.xa_lock);
 
-	if (node->count && node->count == node->nr_values) {/* 
+	if (node->count && node->count == node->nr_values) {/*
 	如果节点仅包含 shadow entries 且 private_list 为空，
 	则将该节点添加到 shadow_nodes 列表中，并更新内存控制组（memcg）的统计信息。 */
 		if (list_empty(&node->private_list)) {
@@ -770,7 +770,7 @@ static enum lru_status shadow_lru_isolate(struct list_head *item,
 	/* isolate此lru上面的此item */
 	list_lru_isolate(lru, item);
 	__dec_lruvec_kmem_state(node, WORKINGSET_NODES);
-	/* 
+	/*
 	lru上面是,xanode,xanode可以获得一个mapping?
 	
 	 */

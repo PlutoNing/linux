@@ -112,7 +112,7 @@ struct scan_control {
 
 	/* Can folios be swapped as part of reclaim? */
 	unsigned int may_swap:1;
-	/* 
+	/*
 	1. 老化的时候, 会根据sc判断能否交换, 可以的话会认为有偏多可回收的lruvec, 不会老化.
 	所以会减少老化?
 
@@ -450,10 +450,10 @@ void reparent_shrinker_deferred(struct mem_cgroup *memcg)
 	up_read(&shrinker_rwsem);
 }
 
-/* 
+/*
 是否是cgroup范围的scan
 Returns true for reclaim through cgroup limits or cgroup interfaces. */
-/* 
+/*
 是否是cgroup范围的scan
 Returns true for reclaim through cgroup limits or cgroup interfaces. */
 static bool cgroup_reclaim(struct scan_control *sc)
@@ -1301,7 +1301,7 @@ void reclaim_throttle(pg_data_t *pgdat, enum vmscan_throttle_state reason)
 	case VMSCAN_THROTTLE_CONGESTED:
 		fallthrough;
 	case VMSCAN_THROTTLE_NOPROGRESS:
-		if (skip_throttle_noprogress(pgdat)) {/* 
+		if (skip_throttle_noprogress(pgdat)) {/*
 		1. kswapd不起作用了
 		2. write_pending的页面还不多, 可回收页面比较多
 		*/
@@ -1683,7 +1683,7 @@ static enum folio_references folio_check_references(struct folio *folio,
 	return FOLIOREF_RECLAIM;
 }
 
-/* 
+/*
 检查一个folio是否dirty或者在写回
 Check if a folio is dirty or under writeback */
 static void folio_check_dirty_writeback(struct folio *folio,
@@ -2148,7 +2148,7 @@ retry:
 			if (folio_is_file_lru(folio) &&
 			    (!current_is_kswapd() ||
 			     !folio_test_reclaim(folio) ||
-			     !test_bit(PGDAT_DIRTY, &pgdat->flags))) {/* 
+			     !test_bit(PGDAT_DIRTY, &pgdat->flags))) {/*
 				 如果是文件页, 
 				 然后只要自己不是kswapd, 或者这个dirty没有reclaim flag, 或者node还没有很脏, 
 				 就先放弃这个dirty.*/
@@ -3553,7 +3553,7 @@ static bool should_clear_pmd_young(void)
 
 #define DEFINE_MAX_SEQ(lruvec)						\
 	unsigned long max_seq = READ_ONCE((lruvec)->lrugen.max_seq)
-/* 
+/*
 
 获取file和anon的最新gen,存储在min_seq[2]
  */
@@ -3612,7 +3612,7 @@ static int get_swappiness(struct lruvec *lruvec, struct scan_control *sc)
 
 	return mem_cgroup_swappiness(memcg);
 }
-/* 
+/*
 获取这个type最老的gen有多老?
  */
 static int get_nr_gens(struct lruvec *lruvec, int type)
@@ -3838,7 +3838,7 @@ void lru_gen_migrate_mm(struct mm_struct *mm)
 }
 #endif
 
-/* 
+/*
 no mmu walk的老化调用的函数
 reset哪些? 清空lruvec->mm_state.stats,这是什么 */
 static void reset_mm_stats(struct lruvec *lruvec, struct lru_gen_mm_walk *walk, bool last)
@@ -5677,7 +5677,7 @@ retry:
 
 	return scanned;
 }
-/* 
+/*
 2024年10月28日10:33:19
 主要还是获取可以scan的数量
 也会根据获取的中间状态顺便判断是否可以age了.
@@ -6582,7 +6582,7 @@ done:
 	return err;
 }
 
-/* 
+/*
 mglru的fs接口那个触发回收的命令
 see Documentation/admin-guide/mm/multigen_lru.rst for details */
 static ssize_t lru_gen_seq_write(struct file *file, const char __user *src,
@@ -7523,7 +7523,7 @@ retry:
 
 	return 0;
 }
-/* 
+/*
 检查水位是否ok
 不ok的话,会唤醒kswap
  */
@@ -7570,7 +7570,7 @@ static bool allow_direct_reclaim(pg_data_t *pgdat)
 	return wmark_ok;
 }
 
-/* 
+/*
 如果后备存储比较慢, 就限流一下.
 一直阻塞, 一直唤醒kswap, 直到allow_direct_reclaim为真(意味着水位ok).
  * Throttle direct reclaimers if backing storage is backed by the network
@@ -7642,7 +7642,7 @@ static bool throttle_direct_reclaim(gfp_t gfp_mask, struct zonelist *zonelist,
 
 		break;
 	}
-	/* 
+	/*
 	到这里说明,刚才测试的所有zone的node的水位都不ok, 并且已经唤醒了这些node的kswap
 	 */
 	/* If no zone was usable by the allocation flags then do not throttle */
@@ -7678,7 +7678,7 @@ static bool throttle_direct_reclaim(gfp_t gfp_mask, struct zonelist *zonelist,
 out:
 	return false;
 }
-/* 
+/*
 慢速回收等等
 回收SWAP_CLUSTER_MAX,指定了order ...  */
 unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
@@ -7696,7 +7696,7 @@ unsigned long try_to_free_pages(struct zonelist *zonelist, int order,
 		.may_unmap = 1,
 		.may_swap = 1,
 	};
-/* 
+/*
 快速回收如下:	
 与快速回收的不同
 struct scan_control sc = {
@@ -7735,7 +7735,7 @@ struct scan_control sc = {
 
 #ifdef CONFIG_MEMCG
 
-/* 
+/*
 soft回收机制的函数. 只在soft limit reclaim回收
 Only used by soft limit reclaim. Do not reuse for anything else. */
 unsigned long mem_cgroup_shrink_node(struct mem_cgroup *memcg,
@@ -7927,7 +7927,7 @@ static bool pgdat_balanced(pg_data_t *pgdat, int order, int highest_zoneidx)
 	return false;
 }
 
-/* 
+/*
 清空node的阻塞状态
 Clear pgdat state for congested, dirty or under writeback.
 待分析,什么时候置位这些bit? */
@@ -8189,7 +8189,7 @@ restart:
 		balanced = pgdat_balanced(pgdat, sc.order, highest_zoneidx);
 
 
-		if (!balanced && nr_boost_reclaim) {/* 
+		if (!balanced && nr_boost_reclaim) {/*
 		如果第一次没有回收成功, 就把nr_boost_reclaim置零重试.
 		 */
 			nr_boost_reclaim = 0;

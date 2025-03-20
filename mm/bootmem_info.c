@@ -14,7 +14,7 @@
 #include <linux/memory_hotplug.h>
 #include <linux/kmemleak.h>
 
-/* 
+/*
 参数info是nid
 */
 void get_page_bootmem(unsigned long info, struct page *page, unsigned long type)
@@ -78,7 +78,7 @@ static void __init register_page_bootmem_info_section(unsigned long start_pfn)
 
 }
 #else /* CONFIG_SPARSEMEM_VMEMMAP */
-/* 
+/*
 在把bootmem放入buudy之后调用
 处理每一个node, 这里好像就是把各种page设置了一下type?
 start_pfn是node的每一个memsection的起始pfn

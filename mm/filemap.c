@@ -147,7 +147,7 @@ static void page_cache_delete(struct address_space *mapping,
 	/* Leave page->index set: truncation lookup relies upon it */
 	mapping->nrpages -= nr;
 }
-/* 
+/*
 从mapping移除此folio之前的统计操作
 */
 static void filemap_unaccount_folio(struct address_space *mapping,
@@ -157,7 +157,7 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 
 	VM_BUG_ON_FOLIO(folio_mapped(folio), folio);
 
-	if (!IS_ENABLED(CONFIG_DEBUG_VM) && unlikely(folio_mapped(folio))) {/* 
+	if (!IS_ENABLED(CONFIG_DEBUG_VM) && unlikely(folio_mapped(folio))) {/*
 	如果这次移除的是被map的文件页
 	*/
 		pr_alert("BUG: Bad page cache in process %s  pfn:%05lx\n",
@@ -167,7 +167,7 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 		dump_stack();
 		add_taint(TAINT_BAD_PAGE, LOCKDEP_NOW_UNRELIABLE);
 
-		if (mapping_exiting(mapping) && !folio_test_large(folio)) {/* 
+		if (mapping_exiting(mapping) && !folio_test_large(folio)) {/*
 			这种情况可能是mapping对应的inode正在被删除
 			所以该怎么处理呢
 			*/
@@ -678,7 +678,7 @@ int filemap_fdatawait_keep_errors(struct address_space *mapping)
 }
 EXPORT_SYMBOL(filemap_fdatawait_keep_errors);
 
-/* 
+/*
 感觉更像是判断是否可以回写?
 Returns true if writeback might be needed or already in progress. */
 static bool mapping_needs_writeback(struct address_space *mapping)
@@ -3903,7 +3903,7 @@ out:
 	return ret;
 }
 
-/* 
+/*
 mmap文件映射的vma的ops
 如果一个vma mmap了file,他的vm_ops就是这个
  */

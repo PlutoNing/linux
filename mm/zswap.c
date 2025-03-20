@@ -93,7 +93,9 @@ static const struct kernel_param_ops zswap_enabled_param_ops = {
 };
 module_param_cb(enabled, &zswap_enabled_param_ops, &zswap_enabled, 0644);
 
-/* Crypto compressor to use */
+/* Crypto compressor to use/
+zswap使用的加密压缩器
+*/
 static char *zswap_compressor = CONFIG_ZSWAP_COMPRESSOR_DEFAULT;
 static int zswap_compressor_param_set(const char *,
 				      const struct kernel_param *);
@@ -105,7 +107,9 @@ static const struct kernel_param_ops zswap_compressor_param_ops = {
 module_param_cb(compressor, &zswap_compressor_param_ops,
 		&zswap_compressor, 0644);
 
-/* Compressed storage zpool to use */
+/* Compressed storage zpool to use
+这里config的是zbud
+*/
 static char *zswap_zpool_type = CONFIG_ZSWAP_ZPOOL_DEFAULT;
 static int zswap_zpool_param_set(const char *, const struct kernel_param *);
 static const struct kernel_param_ops zswap_zpool_param_ops = {
@@ -141,7 +145,9 @@ static bool zswap_exclusive_loads_enabled = IS_ENABLED(
 		CONFIG_ZSWAP_EXCLUSIVE_LOADS_DEFAULT_ON);
 module_param_named(exclusive_loads, zswap_exclusive_loads_enabled, bool, 0644);
 
-/* Number of zpools in zswap_pool (empirically determined for scalability) */
+/* Number of zpools in zswap_pool (empirically determined for scalability)
+zswap_pool中的zpools数量(经验确定的可扩展性)
+*/
 #define ZSWAP_NR_ZPOOLS 32
 
 /*********************************
@@ -163,6 +169,7 @@ struct crypto_acomp_ctx {
  * needs to be verified that it's still valid in the tree.
  */
 struct zswap_pool {
+	/* pool里面的zpool */
 	struct zpool *zpools[ZSWAP_NR_ZPOOLS];
 	struct crypto_acomp_ctx __percpu *acomp_ctx;
 	struct kref kref;
@@ -180,7 +187,7 @@ struct zswap_pool {
  *
  * This structure contains the metadata for tracking a single compressed
  * page within zswap.
- *
+ * 表示zswap一个压缩page的元数据
  * rbnode - links the entry into red-black tree for the appropriate swap type
  * swpentry - associated swap entry, the offset indexes into the red-black tree
  * refcount - the number of outstanding reference to the entry. This is needed
@@ -201,18 +208,24 @@ struct zswap_pool {
 struct zswap_entry {
 	struct rb_node rbnode;
 	swp_entry_t swpentry;
-	int refcount;
+	int refcount; // zsentry的ref
 	unsigned int length;
+	/* 所属的pool */
 	struct zswap_pool *pool;
 	union {
-		unsigned long handle;
-		unsigned long value;
+		unsigned long handle;/*
+		存储了压缩的页面数据?
+		*/
+		unsigned long value;/*
+		是一个相同值的填充页?
+		*/
 	};
 	struct obj_cgroup *objcg;
 	struct list_head lru;
 };
 
 /*
+似乎是zswap中对应swap的swap file的结构体
  * The tree lock in the zswap_tree struct protects a few things:
  * - the rbtree
  * - the refcount field of each entry in the tree
@@ -221,7 +234,9 @@ struct zswap_tree {
 	struct rb_root rbroot;
 	spinlock_t lock;
 };
-
+/*
+每个zstree对应swap的一个file
+*/
 static struct zswap_tree *zswap_trees[MAX_SWAPFILES];
 
 /* RCU-protected iteration */
@@ -312,6 +327,10 @@ static void zswap_entry_cache_free(struct zswap_entry *entry)
 /*********************************
 * rbtree functions
 **********************************/
+/*
+root是zstree的红黑树, offset是swap pgoff
+返回的是zs entry
+*/
 static struct zswap_entry *zswap_rb_search(struct rb_root *root, pgoff_t offset)
 {
 	struct rb_node *node = root->rb_node;
@@ -370,6 +389,10 @@ static bool zswap_rb_erase(struct rb_root *root, struct zswap_entry *entry)
 	return false;
 }
 
+/*
+找到zswap entry对应的zpool
+哈希值是所属的zpool的idx
+*/
 static struct zpool *zswap_find_zpool(struct zswap_entry *entry)
 {
 	int i = 0;
@@ -404,7 +427,9 @@ static void zswap_free_entry(struct zswap_entry *entry)
 	zswap_update_total_size();
 }
 
-/* caller must hold the tree lock */
+/* caller must hold the tree lock
+get一下ref
+*/
 static void zswap_entry_get(struct zswap_entry *entry)
 {
 	entry->refcount++;
@@ -451,7 +476,7 @@ static DEFINE_PER_CPU(u8 *, zswap_dstmem);
  但它们共享dtsmem。因此，我们需要这个互斥锁是每个cpu的。
  */
 static DEFINE_PER_CPU(struct mutex *, zswap_mutex);
-/* 
+/*
 zswap的cpu热插拔回调
 初始化pcp的zswap机制的数据结构
 */
@@ -476,7 +501,7 @@ static int zswap_dstmem_prepare(unsigned int cpu)
 	return 0;
 }
 
-/* 
+/*
 zswap的cpu热拔回调
 释放pcp的zswap机制的数据结构
 */
@@ -495,7 +520,7 @@ static int zswap_dstmem_dead(unsigned int cpu)
 
 	return 0;
 }
-/* 
+/*
 zswap pool的cpu热插拔回调
 */
 static int zswap_cpu_comp_prepare(unsigned int cpu, struct hlist_node *node)
@@ -505,7 +530,7 @@ static int zswap_cpu_comp_prepare(unsigned int cpu, struct hlist_node *node)
 	struct crypto_acomp_ctx *acomp_ctx = per_cpu_ptr(pool->acomp_ctx, cpu);
 	struct crypto_acomp *acomp;
 	struct acomp_req *req;
-
+	// 创建tfm
 	acomp = crypto_alloc_acomp_node(pool->tfm_name, 0, 0, cpu_to_node(cpu));
 	if (IS_ERR(acomp)) {
 		pr_err("could not alloc crypto acomp %s : %ld\n",
@@ -513,7 +538,7 @@ static int zswap_cpu_comp_prepare(unsigned int cpu, struct hlist_node *node)
 		return PTR_ERR(acomp);
 	}
 	acomp_ctx->acomp = acomp;
-
+	// 以后
 	req = acomp_request_alloc(acomp_ctx->acomp);
 	if (!req) {
 		pr_err("could not alloc crypto acomp_request %s\n",
@@ -531,19 +556,24 @@ static int zswap_cpu_comp_prepare(unsigned int cpu, struct hlist_node *node)
 	 */
 	acomp_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
 				   crypto_req_done, &acomp_ctx->wait);
-
+	/*
+	关联上zswap的数据结构
+	*/
 	acomp_ctx->mutex = per_cpu(zswap_mutex, cpu);
 	acomp_ctx->dstmem = per_cpu(zswap_dstmem, cpu);
 
 	return 0;
 }
-
+/*
+zswap在cpu热拔回调
+*/
 static int zswap_cpu_comp_dead(unsigned int cpu, struct hlist_node *node)
 {
 	struct zswap_pool *pool = hlist_entry(node, struct zswap_pool, node);
 	struct crypto_acomp_ctx *acomp_ctx = per_cpu_ptr(pool->acomp_ctx, cpu);
 
 	if (!IS_ERR_OR_NULL(acomp_ctx)) {
+		// 看来还是这个req还是acomp最关键
 		if (!IS_ERR_OR_NULL(acomp_ctx->req))
 			acomp_request_free(acomp_ctx->req);
 		if (!IS_ERR_OR_NULL(acomp_ctx->acomp))
@@ -655,6 +685,7 @@ static int zswap_reclaim_entry(struct zswap_pool *pool)
 		spin_unlock(&pool->lru_lock);
 		return -EINVAL;
 	}
+	/* 取下一个entry用于操作 */
 	entry = list_last_entry(&pool->lru, struct zswap_entry, lru);
 	list_del_init(&entry->lru);
 	/*
@@ -668,6 +699,7 @@ static int zswap_reclaim_entry(struct zswap_pool *pool)
 
 	/* Check for invalidate() race */
 	spin_lock(&tree->lock);
+	/* 在zstree里面搜索这个pgoff */
 	if (entry != zswap_rb_search(&tree->rbroot, swpoffset)) {
 		ret = -EAGAIN;
 		goto unlock;
@@ -702,26 +734,35 @@ unlock:
 	return ret ? -EAGAIN : 0;
 }
 
+/*
+zswap_pool的shrink_worker回调线程
+*/
 static void shrink_worker(struct work_struct *w)
 {
+	/* container_of获取自己所属的要操作的zspool */
 	struct zswap_pool *pool = container_of(w, typeof(*pool),
 						shrink_work);
 	int ret, failures = 0;
 
 	do {
 		ret = zswap_reclaim_entry(pool);
-		if (ret) {
+		if (ret) {// 出错了
 			zswap_reject_reclaim_fail++;
 			if (ret != -EAGAIN)
-				break;
+				break; // 遇到了again之外的错误,退出
 			if (++failures == MAX_RECLAIM_RETRIES)
-				break;
+				break; // 超过错误次数了,退出.
+		//如果是again的错误, 就继续
 		}
 		cond_resched();
 	} while (!zswap_can_accept());
 	zswap_pool_put(pool);
 }
 
+/*
+初始化过程中确定了comp和pool
+这里开始创建zswap_pool
+*/
 static struct zswap_pool *zswap_pool_create(char *type, char *compressor)
 {
 	int i;
@@ -740,7 +781,7 @@ static struct zswap_pool *zswap_pool_create(char *type, char *compressor)
 		if (!strcmp(compressor, ZSWAP_PARAM_UNSET))
 			return NULL;
 	}
-
+	// 分配结构体的内存
 	pool = kzalloc(sizeof(*pool), GFP_KERNEL);
 	if (!pool)
 		return NULL;
@@ -765,7 +806,7 @@ static struct zswap_pool *zswap_pool_create(char *type, char *compressor)
 		pr_err("percpu alloc failed\n");
 		goto error;
 	}
-
+	/* 把pool加入cpu的热插拔机制里面 */
 	ret = cpuhp_state_add_instance(CPUHP_MM_ZSWP_POOL_PREPARE,
 				       &pool->node);
 	if (ret)
@@ -829,10 +870,10 @@ static struct zswap_pool *__zswap_pool_create_fallback(void)
 		param_free_charp(&zswap_zpool_type);
 		zswap_zpool_type = ZSWAP_PARAM_UNSET;
 	}
-
+	// 刚刚确定了comp和pool
 	if (!has_comp || !has_zpool)
 		return NULL;
-
+	// 到这里是has_pool并且has_zpool
 	return zswap_pool_create(zswap_zpool_type, zswap_compressor);
 }
 
@@ -1057,13 +1098,17 @@ static int zswap_enabled_param_set(const char *val,
  * Attempts to free an entry by adding a page to the swap cache,
  * decompressing the entry data into the page, and issuing a
  * bio write to write the page back to the swap device.
- *
+ * 尝试释放一个entry, 通过将一个page添加到swap cache, 将entry的数据
+ 解压缩到page中, 并发出一个bio写入将page写回swap设备
  * This can be thought of as a "resumed writeback" of the page
  * to the swap device.  We are basically resuming the same swap
  * writeback path that was intercepted with the zswap_store()
  * in the first place.  After the page has been decompressed into
  * the swap cache, the compressed version stored by zswap can be
  * freed.
+   翻译: 这可以被认为是一个page的"恢复写回"到swap设备。我们基本上恢复了
+   与zswap_store()拦截的相同的swap写回路径。在page被解压缩到swap缓存之后，
+   zswap存储的压缩版本可以被释放。
  */
 static int zswap_writeback_entry(struct zswap_entry *entry,
 				 struct zswap_tree *tree)
@@ -1095,7 +1140,9 @@ static int zswap_writeback_entry(struct zswap_entry *entry,
 		goto fail;
 	}
 
-	/* Found an existing page, we raced with load/swapin */
+	/* Found an existing page, we raced with load/swapin
+	如果page_was_allocated为false,说明page已经在swap cache中了
+	*/
 	if (!page_was_allocated) {
 		put_page(page);
 		ret = -EEXIST;
@@ -1110,14 +1157,19 @@ static int zswap_writeback_entry(struct zswap_entry *entry,
 	 * avoid overwriting a new swap page with old compressed data.
 	 */
 	spin_lock(&tree->lock);
-	if (zswap_rb_search(&tree->rbroot, swp_offset(entry->swpentry)) != entry) {
+	if (zswap_rb_search(&tree->rbroot, swp_offset(entry->swpentry)) != entry) {/*
+		如果从zstree查到的这个pgoff的entry发生了变化
+		不过变化可以说明什么呢,todddo
+		 */
 		spin_unlock(&tree->lock);
 		delete_from_swap_cache(page_folio(page));
 		ret = -ENOMEM;
 		goto fail;
 	}
 	spin_unlock(&tree->lock);
-
+	/*
+	到这里说明, page刚刚不在swap cache,是新读进来的, 并且也是稳定的
+	*/
 	/* decompress */
 	acomp_ctx = raw_cpu_ptr(entry->pool->acomp_ctx);
 	dlen = PAGE_SIZE;
@@ -1160,6 +1212,10 @@ static int zswap_writeback_entry(struct zswap_entry *entry,
 	return ret;
 
 fail:
+/*
+如果无法从swap file读入到swap cache
+或者swap entry对应的页面已经在swap cache了
+*/
 	if (!zpool_can_sleep_mapped(pool))
 		kfree(tmp);
 
@@ -1589,7 +1645,7 @@ static int zswap_debugfs_init(void)
 /*********************************
 * module init and exit
 **********************************/
-/* 
+/*
 设置zswap机制
 */
 static int zswap_setup(void)

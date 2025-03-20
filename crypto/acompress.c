@@ -144,6 +144,9 @@ struct crypto_acomp *crypto_alloc_acomp(const char *alg_name, u32 type,
 }
 EXPORT_SYMBOL_GPL(crypto_alloc_acomp);
 
+/*
+返回的是个tfm
+*/
 struct crypto_acomp *crypto_alloc_acomp_node(const char *alg_name, u32 type,
 					u32 mask, int node)
 {
@@ -152,6 +155,9 @@ struct crypto_acomp *crypto_alloc_acomp_node(const char *alg_name, u32 type,
 }
 EXPORT_SYMBOL_GPL(crypto_alloc_acomp_node);
 
+/*
+zswap里面参数是刚刚分配的tfm
+*/
 struct acomp_req *acomp_request_alloc(struct crypto_acomp *acomp)
 {
 	struct crypto_tfm *tfm = crypto_acomp_tfm(acomp);
@@ -164,7 +170,9 @@ struct acomp_req *acomp_request_alloc(struct crypto_acomp *acomp)
 	return req;
 }
 EXPORT_SYMBOL_GPL(acomp_request_alloc);
-
+/*
+释放acompreq
+*/
 void acomp_request_free(struct acomp_req *req)
 {
 	struct crypto_acomp *acomp = crypto_acomp_reqtfm(req);

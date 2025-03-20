@@ -17,6 +17,10 @@ cipher types:
 
 -  User space interface
 
+内核的加密API提供了不同的API调用，用于以下密码类型：
+对称密码、AEAD密码、消息摘要，包括密钥消息摘要、随机数生成、用户空间接口
+
+
 Ciphers And Templates
 ---------------------
 

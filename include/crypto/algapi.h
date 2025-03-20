@@ -53,7 +53,9 @@ struct rtattr;
 struct scatterlist;
 struct seq_file;
 struct sk_buff;
-
+/*
+好像是frontend的类型
+*/
 struct crypto_type {
 	unsigned int (*ctxsize)(struct crypto_alg *alg, u32 type, u32 mask);
 	unsigned int (*extsize)(struct crypto_alg *alg);

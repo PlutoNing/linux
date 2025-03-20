@@ -690,7 +690,7 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 
 	folio_batch_init(&fbatch);
 	index = start;
-	while (find_get_entries(mapping, &index, end, &fbatch, indices)) {/* 
+	while (find_get_entries(mapping, &index, end, &fbatch, indices)) {/*
 		收拢一些到fbatch */
 		for (i = 0; i < folio_batch_count(&fbatch); i++) {
 			struct folio *folio = fbatch.folios[i];

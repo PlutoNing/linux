@@ -535,6 +535,7 @@ void *kmalloc_large_node(size_t size, gfp_t flags, int node) __assume_page_align
 
 /**
  * kmalloc - allocate kernel memory
+ 内核分配内存
  * @size: how many bytes of memory are required.
  * @flags: describe the allocation context
  *

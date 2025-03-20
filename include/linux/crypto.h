@@ -264,10 +264,13 @@ struct compress_alg {
 
 /**
  * struct crypto_alg - definition of a cryptograpic cipher algorithm
+  一个加密算法的定义
  * @cra_flags: Flags describing this transformation. See include/linux/crypto.h
  *	       CRYPTO_ALG_* flags for the flags which go in here. Those are
  *	       used for fine-tuning the description of the transformation
  *	       algorithm.
+   是一个标志位，用来描述这个转换。参见include/linux/crypto.h中的CRYPTO_ALG_*标志，
+   这些标志用于微调转换算法的描述。
  * @cra_blocksize: Minimum block size of this transformation. The size in bytes
  *		   of the smallest possible unit which can be transformed with
  *		   this algorithm. The users must respect this value.
@@ -276,9 +279,14 @@ struct compress_alg {
  *		   transformation, in case of any other transformation type, an
  * 		   error will be returned upon any attempt to transform smaller
  *		   than @cra_blocksize chunks.
+   transformation的最小块大小。这个算法可以转换的最小单位的大小（以字节为单位）。
+   用户必须遵守这个值。在HASH转换的情况下，可以将比@cra_blocksize小的块传递给
+   crypto API进行转换，对于其他任何转换类型，任何尝试转换小于@cra_blocksize的块
+   都会返回错误。
  * @cra_ctxsize: Size of the operational context of the transformation. This
  *		 value informs the kernel crypto API about the memory size
  *		 needed to be allocated for the transformation context.
+   transformation的操作上下文的大小。这个值通知内核crypto API需要为转换上下文分配的内存大小。
  * @cra_alignmask: Alignment mask for the input and output data buffer. The data
  *		   buffer containing the input data for the algorithm must be
  *		   aligned to this alignment mask. The data buffer for the
@@ -291,30 +299,45 @@ struct compress_alg {
  *		   For output hash destination buf.
  *		   This is needed on hardware which is flawed by design and
  *		   cannot pick data from arbitrary addresses.
+ 翻译: 输入和输出数据缓冲区的对齐掩码。包含算法输入数据的数据缓冲区必须对齐到这个对齐掩码。
+ 输出数据的数据缓冲区必须对齐到这个对齐掩码。请注意，Crypto API将在软件中重新对齐，但只在特殊条件下，
+ 并且会有性能损失。重新对齐发生在不同@cra_u类型的这些场合：cipher -- 对于输入数据和输出数据缓冲区；
+ ahash -- 对于输出哈希目的地缓冲区；shash -- 对于输出哈希目的地缓冲区。这在硬件上是必需的，因为硬件设计存在缺陷，
+ 无法从任意地址选择数据。
  * @cra_priority: Priority of this transformation implementation. In case
  *		  multiple transformations with same @cra_name are available to
  *		  the Crypto API, the kernel will use the one with highest
  *		  @cra_priority.
+ transformation实现的优先级。如果有多个具有相同@cra_name的转换可用于Crypto API，
+内核将使用具有最高@cra_priority的转换。
  * @cra_name: Generic name (usable by multiple implementations) of the
  *	      transformation algorithm. This is the name of the transformation
  *	      itself. This field is used by the kernel when looking up the
  *	      providers of particular transformation.
+ transformation的通用名称（可由多个实现使用）。这是转换本身的名称。内核在查找特定转换的提供者时使用此字段。
  * @cra_driver_name: Unique name of the transformation provider. This is the
  *		     name of the provider of the transformation. This can be any
  *		     arbitrary value, but in the usual case, this contains the
  *		     name of the chip or provider and the name of the
  *		     transformation algorithm.
+ transformation提供者的唯一名称。这是转换提供者的名称。这可以是任何任意值，但通常情况下，
+它包含芯片或提供者的名称和转换算法的名称。
  * @cra_type: Type of the cryptographic transformation. This is a pointer to
  *	      struct crypto_type, which implements callbacks common for all
  *	      transformation types. There are multiple options, such as
  *	      &crypto_skcipher_type, &crypto_ahash_type, &crypto_rng_type.
  *	      This field might be empty. In that case, there are no common
  *	      callbacks. This is the case for: cipher, compress, shash.
+ 加密转换的类型。这是指向struct crypto_type的指针，它实现了所有转换类型的通用回调。有多个选项，
+例如&crypto_skcipher_type、&crypto_ahash_type、&crypto_rng_type。这个字段可能是空的。
+在这种情况下，没有通用回调。这是cipher、compress、shash的情况。
  * @cra_u: Callbacks implementing the transformation. This is a union of
  *	   multiple structures. Depending on the type of transformation selected
  *	   by @cra_type and @cra_flags above, the associated structure must be
  *	   filled with callbacks. This field might be empty. This is the case
  *	   for ahash, shash.
+ 实现转换的回调。这是多个结构的联合体。根据@cra_type和@cra_flags上选择的转换类型，
+关联的结构必须填充回调。这个字段可能是空的。这是ahash、shash的情况。
  * @cra_init: Initialize the cryptographic transformation object. This function
  *	      is used to initialize the cryptographic transformation object.
  *	      This function is called only once at the instantiation time, right
@@ -323,9 +346,13 @@ struct compress_alg {
  *	      be handled by software, this function shall check for the precise
  *	      requirement of the transformation and put any software fallbacks
  *	      in place.
+ 初始化加密转换对象。此函数用于初始化加密转换对象。此函数仅在实例化时调用一次，
+在分配转换上下文之后立即调用。如果加密硬件有一些需要软件处理的特殊要求，
+此函数应检查转换的精确要求并放置任何软件回退。
  * @cra_exit: Deinitialize the cryptographic transformation object. This is a
  *	      counterpart to @cra_init, used to remove various changes set in
  *	      @cra_init.
+   析构加密转换对象。这是@cra_init的对应函数，用于删除@cra_init中设置的各种更改。
  * @cra_u.cipher: Union member which contains a single-block symmetric cipher
  *		  definition. See @struct @cipher_alg.
  * @cra_u.compress: Union member which contains a (de)compression algorithm.
@@ -339,6 +366,8 @@ struct compress_alg {
  * The struct crypto_alg describes a generic Crypto API algorithm and is common
  * for all of the transformations. Any variable not documented here shall not
  * be used by a cipher implementation as it is internal to the Crypto API.
+ 这个结构体描述了一个通用的Crypto API算法，对于所有的转换都是通用的。任何未在此处记录的变量都不应该被
+ 密码实现使用，因为它是Crypto API的内部变量。
  */
 struct crypto_alg {
 	struct list_head cra_list;
@@ -403,6 +432,7 @@ static inline int crypto_wait_req(int err, struct crypto_wait *wait)
 	return err;
 }
 
+/* 初始化等待队列? */
 static inline void crypto_init_wait(struct crypto_wait *wait)
 {
 	init_completion(&wait->completion);

@@ -290,7 +290,7 @@ pte_t *__pte_offset_map(pmd_t *pmd, unsigned long addr, pmd_t *pmdvalp)
 
 	if (pmdvalp)
 		*pmdvalp = pmdval;
-	if (unlikely(pmd_none(pmdval) || is_pmd_migration_entry(pmdval)))/* 
+	if (unlikely(pmd_none(pmdval) || is_pmd_migration_entry(pmdval)))/*
 	如果是空的, goto nomap
 	如果不空的,但是是什么migrate, 也goto nomap */
 		goto nomap;

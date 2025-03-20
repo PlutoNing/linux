@@ -350,7 +350,7 @@ void lru_note_cost_refault(struct folio *folio)
 		      folio_nr_pages(folio), 0);
 }
 
-/* 
+/*
 avtive这个page
 是个回调,可能是这么调用的
 		lruvec = folio_lruvec_relock_irqsave(folio, lruvec, &flags);
@@ -358,7 +358,7 @@ avtive这个page
  */
 static void folio_activate_fn(struct lruvec *lruvec, struct folio *folio)
 {
-	if (!folio_test_active(folio) && !folio_test_unevictable(folio)) {/* 
+	if (!folio_test_active(folio) && !folio_test_unevictable(folio)) {/*
 	只有不是active,并且是evictable的时候才操作 */
 		long nr_pages = folio_nr_pages(folio);
 

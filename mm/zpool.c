@@ -19,6 +19,7 @@
 #include <linux/zpool.h>
 
 struct zpool {
+	/* 对应的后端driver */
 	struct zpool_driver *driver;
 	void *pool;
 };
@@ -66,7 +67,10 @@ int zpool_unregister_driver(struct zpool_driver *driver)
 }
 EXPORT_SYMBOL(zpool_unregister_driver);
 
-/* this assumes @type is null-terminated. */
+/* this assumes @type is null-terminated.
+获取后端类型的driver的ref
+type是一种后端类型，比如zbud,zsmalloc,z3fold
+*/
 static struct zpool_driver *zpool_get_driver(const char *type)
 {
 	struct zpool_driver *driver;
@@ -129,15 +133,18 @@ bool zpool_has_pool(char *type)
 EXPORT_SYMBOL(zpool_has_pool);
 
 /**
+给zswap_pool创建zpool
  * zpool_create_pool() - Create a new zpool
+ 创建zpool
  * @type:	The type of the zpool to create (e.g. zbud, zsmalloc)
+ 后端类型,比如zbud,zsmalloc,z3fold
  * @name:	The name of the zpool (e.g. zram0, zswap)
  * @gfp:	The GFP flags to use when allocating the pool.
  *
  * This creates a new zpool of the specified type.  The gfp flags will be
  * used when allocating memory, if the implementation supports it.  If the
  * ops param is NULL, then the created zpool will not be evictable.
- *
+ * 函数创建一个新的zpool，gfp标志将在分配内存时使用，如果实现支持的话。
  * Implementations must guarantee this to be thread-safe.
  *
  * The @type and @name strings must be null-terminated.
@@ -150,7 +157,7 @@ struct zpool *zpool_create_pool(const char *type, const char *name, gfp_t gfp)
 	struct zpool *zpool;
 
 	pr_debug("creating pool type %s\n", type);
-
+	// 获取ref, 并返回
 	driver = zpool_get_driver(type);
 
 	if (!driver) {
@@ -162,7 +169,7 @@ struct zpool *zpool_create_pool(const char *type, const char *name, gfp_t gfp)
 		pr_err("no driver for type %s\n", type);
 		return NULL;
 	}
-
+	/* 获取到了后端driver,这里开始创建zpool */
 	zpool = kmalloc(sizeof(*zpool), gfp);
 	if (!zpool) {
 		pr_err("couldn't create zpool - out of memory\n");
@@ -171,6 +178,7 @@ struct zpool *zpool_create_pool(const char *type, const char *name, gfp_t gfp)
 	}
 
 	zpool->driver = driver;
+	// 原来是让后端的回调创建pool?
 	zpool->pool = driver->create(name, gfp);
 
 	if (!zpool->pool) {

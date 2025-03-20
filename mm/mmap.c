@@ -1130,7 +1130,7 @@ static struct anon_vma *reusable_anon_vma(struct vm_area_struct *old, struct vm_
 struct anon_vma *find_mergeable_anon_vma(struct vm_area_struct *vma)
 {
 	MA_STATE(mas, &vma->vm_mm->mm_mt, vma->vm_end, vma->vm_end);
-	/* 
+	/*
 	struct ma_state name = {					\
 		.tree = mt,						\
 		.index = first,						\
@@ -2164,7 +2164,7 @@ int expand_downwards(struct vm_area_struct *vma, unsigned long address)
 	*/
 	if (address < vma->vm_start) {
 		unsigned long size, grow;
-		/* 
+		/*
 		            size
 		    |---------------------------|
 		   old_vma_start

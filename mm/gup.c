@@ -696,7 +696,7 @@ no_page:
 	return no_page_table(vma, flags);
 }
 
-/* 
+/*
 查找用户地址空间的页面
 在pud的基础上查找pmd
 */
@@ -782,7 +782,7 @@ static struct page *follow_pud_mask(struct vm_area_struct *vma,
 	return follow_pmd_mask(vma, address, pud, flags, ctx);
 }
 
-/* 
+/*
 查找用户地址空间的页面
 */
 static struct page *follow_p4d_mask(struct vm_area_struct *vma,
@@ -1047,7 +1047,7 @@ static bool writable_file_mapping_allowed(struct vm_area_struct *vma,
 	 */
 	return !vma_needs_dirty_tracking(vma);
 }
-/* 
+/*
 检查刚刚根据@gup_flags获取的vma是否符合要求
  */
 static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)

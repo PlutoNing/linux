@@ -467,7 +467,7 @@ static int __meminit vmemmap_populate_compound_pages(unsigned long start_pfn,
 
 #endif
 
-/* 
+/*
 处理nid的一个memsection
 pfn是nid上面的某一个memsection的起始pfn
 nr_pages是这个memsection的大小

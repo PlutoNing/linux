@@ -8,6 +8,9 @@
 #include <linux/mm.h>
 #include <asm/io.h>
 
+/*
+
+*/
 struct scatterlist {
 	unsigned long	page_link;
 	unsigned int	offset;
@@ -35,7 +38,9 @@ struct scatterlist {
 #else
 #define sg_dma_len(sg)		((sg)->length)
 #endif
-
+/*
+保存scatterlist的数组指针和长度
+*/
 struct sg_table {
 	struct scatterlist *sgl;	/* the list */
 	unsigned int nents;		/* number of mapped entries */

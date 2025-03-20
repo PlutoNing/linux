@@ -348,7 +348,7 @@ static inline bool deferred_pages_enabled(void)
 }
 #endif /* CONFIG_DEFERRED_STRUCT_PAGE_INIT */
 
-/* 
+/*
 mt是存储在位图上面的.
 Return a pointer to the bitmap storing bits affecting a block of pages */
 static inline unsigned long *get_pageblock_bitmap(const struct page *page,
@@ -2580,7 +2580,7 @@ void free_unref_page_list(struct list_head *list)
 	int migratetype;
 
 	/* Prepare pages for freeing */
-	list_for_each_entry_safe(page, next, list, lru) {/* 
+	list_for_each_entry_safe(page, next, list, lru) {/*
 		遍历待释放列表的每一个页面
 		 */
 		unsigned long pfn = page_to_pfn(page);
@@ -2812,7 +2812,7 @@ struct page *rmqueue_buddy(struct zone *preferred_zone, struct zone *zone,
 	return page;
 }
 
-/* 
+/*
 从pcp分配buddy页面
 Remove page from the per-cpu list, caller must protect the list */
 static inline
@@ -2855,7 +2855,7 @@ struct page *__rmqueue_pcplist(struct zone *zone, unsigned int order,
 	return page;
 }
 
-/* 
+/*
 从pcp分配页面
 Lock and remove page from the per-cpu list */
 static struct page *rmqueue_pcplist(struct zone *preferred_zone,
@@ -3124,7 +3124,7 @@ static inline bool zone_watermark_fast(struct zone *z, unsigned int order,
 
 	 */
 	if (unlikely(!order && (alloc_flags & ALLOC_MIN_RESERVE) && z->watermark_boost
-		&& ((alloc_flags & ALLOC_WMARK_MASK) == WMARK_MIN))) {/* 
+		&& ((alloc_flags & ALLOC_WMARK_MASK) == WMARK_MIN))) {/*
 		如果分配单页面, 并且检查min时. */
 		/* 就拿min mark来做ok检查 */
 		mark = z->_watermark[WMARK_MIN];
@@ -3727,7 +3727,7 @@ static bool __need_reclaim(gfp_t gfp_mask)
 	if (!(gfp_mask & __GFP_DIRECT_RECLAIM))
 		return false;
 
-	/* 
+	/*
 	是__GFP_DIRECT_RECLAIM
 	 */
 	/* this guy won't enter reclaim */
@@ -3806,7 +3806,7 @@ static unsigned int check_retry_zonelist(unsigned int seq)
 	return seq;
 }
 
-/* 
+/*
 同步的直接回收.
 返回回收的页面数量
 Perform direct synchronous page reclaim */
@@ -3835,7 +3835,7 @@ __perform_reclaim(gfp_t gfp_mask, unsigned int order,
 	return progress;
 }
 
-/* 
+/*
 慢速分配, 会直接回收.
 The really slow allocator path where we enter direct reclaim */
 static inline struct page *
@@ -5325,7 +5325,7 @@ static void per_cpu_pages_init(struct per_cpu_pages *pcp, struct per_cpu_zonesta
 #define BOOT_PAGESET_BATCH	1
 static DEFINE_PER_CPU(struct per_cpu_pages, boot_pageset);
 static DEFINE_PER_CPU(struct per_cpu_zonestat, boot_zonestats);
-/* 
+/*
 
 @data是个node
 启动或者热插拔的时候调用

@@ -2586,7 +2586,7 @@ static void __split_huge_page(struct page *page, struct list_head *list,
 	}
 }
 
-/* 
+/*
 尝试split多页面的folio.
 Racy check whether the huge page can be split */
 bool can_split_folio(struct folio *folio, int *pextra_pins)

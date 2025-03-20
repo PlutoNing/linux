@@ -69,6 +69,9 @@ static inline void acomp_request_complete(struct acomp_req *req,
 	crypto_request_complete(&req->base, err);
 }
 
+/*
+在干嘛?
+*/
 static inline struct acomp_req *__acomp_request_alloc(struct crypto_acomp *tfm)
 {
 	struct acomp_req *req;
@@ -79,6 +82,7 @@ static inline struct acomp_req *__acomp_request_alloc(struct crypto_acomp *tfm)
 	return req;
 }
 
+// 释放内存
 static inline void __acomp_request_free(struct acomp_req *req)
 {
 	kfree_sensitive(req);

@@ -578,7 +578,7 @@ static void __init sparse_init_nid(int nid, unsigned long pnum_begin,
 	struct mem_section_usage *usage;
 	unsigned long pnum;
 	struct page *map;
-/* 
+/*
 size是memsection的数量乘以mem_section_usage_size
 mem_section_usage_size是一个memsection的使用情况的大小,
 也就是说分配内存

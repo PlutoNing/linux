@@ -2824,7 +2824,7 @@ static const struct inode_operations shmem_short_symlink_operations;
 
 
 //准备写出到文件时, 会调用mapping的这个write_begin函数
-/* 
+/*
 file: 文件
 mapping: 文件的mapping
 pos和len: 写入的位置和长度
