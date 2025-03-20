@@ -28,6 +28,9 @@ static LIST_HEAD(drivers_head);
 static DEFINE_SPINLOCK(drivers_lock);
 
 /**
+注册一个后端实现
+=============
+初始化ref, 加入到drivers_head链表
  * zpool_register_driver() - register a zpool implementation.
  * @driver:	driver to register
  */
@@ -42,8 +45,9 @@ EXPORT_SYMBOL(zpool_register_driver);
 
 /**
  * zpool_unregister_driver() - unregister a zpool implementation.
+ 移除一个后端实现
  * @driver:	driver to unregister.
- *
+ * 减少一个引用,如果降到0了就移除
  * Module usage counting is used to prevent using a driver
  * while/after unloading, so if this is called from module
  * exit function, this should never fail; if called from
