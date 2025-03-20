@@ -12,7 +12,7 @@
 
 */
 struct scatterlist {
-	unsigned long	page_link;
+	unsigned long	page_link; // 含有一些bit位是flag,比如是不是end
 	unsigned int	offset;
 	unsigned int	length;
 	dma_addr_t	dma_address;
@@ -69,8 +69,8 @@ struct sg_append_table {
  *
  */
 
-#define SG_CHAIN	0x01UL
-#define SG_END		0x02UL
+#define SG_CHAIN	0x01UL // 参考sgend
+#define SG_END		0x02UL  // 表示这个sglist在sg是末尾
 
 /*
  * We overload the LSB of the page pointer to indicate whether it's
@@ -101,6 +101,7 @@ static inline bool sg_is_last(struct scatterlist *sg)
 
 /**
  * sg_assign_page - Assign a given page to an SG entry
+ 给sglist附加page
  * @sg:		    SG entry
  * @page:	    The page
  *
@@ -111,6 +112,7 @@ static inline bool sg_is_last(struct scatterlist *sg)
  **/
 static inline void sg_assign_page(struct scatterlist *sg, struct page *page)
 {
+	// 后面两个bit用作标记了
 	unsigned long page_link = sg->page_link & (SG_CHAIN | SG_END);
 
 	/*
@@ -126,6 +128,7 @@ static inline void sg_assign_page(struct scatterlist *sg, struct page *page)
 
 /**
  * sg_set_page - Set sg entry to point at given page
+ 给sg附加上buf
  * @sg:		 SG entry
  * @page:	 The page
  * @len:	 Length of data
@@ -179,6 +182,7 @@ static inline struct page *sg_page(struct scatterlist *sg)
 }
 
 /**
+给sg附加上buf
  * sg_set_buf - Set sg entry to point at given data
  * @sg:		 SG entry
  * @buf:	 Data
@@ -247,6 +251,7 @@ static inline void sg_chain(struct scatterlist *prv, unsigned int prv_nents,
 }
 
 /**
+把这个sglist标记为是sg的最后一个
  * sg_mark_end - Mark the end of the scatterlist
  * @sg:		 SG entryScatterlist
  *
@@ -411,6 +416,7 @@ static inline void *sg_virt(struct scatterlist *sg)
 
 /**
  * sg_init_marker - Initialize markers in sg table
+ 把sg的最后一个sglist标记为sg_end
  * @sgl:	   The SG table
  * @nents:	   Number of entries in table
  *

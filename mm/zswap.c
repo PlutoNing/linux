@@ -156,7 +156,7 @@ zswap_pool中的zpools数量(经验确定的可扩展性)
 
 struct crypto_acomp_ctx {
 	struct crypto_acomp *acomp;
-	struct acomp_req *req;
+	struct acomp_req *req; // req包含了加解密的src,dst什么的
 	struct crypto_wait wait;
 	u8 *dstmem;
 	struct mutex *mutex;
@@ -1182,10 +1182,14 @@ static int zswap_writeback_entry(struct zswap_entry *entry,
 	}
 
 	mutex_lock(acomp_ctx->mutex);
+	// 把input这个sglist初始化单条目的sg,用于src的io
 	sg_init_one(&input, src, entry->length);
+	// 把output这个sglist初始化单条目的sg,用于page的io
 	sg_init_table(&output, 1);
+	// 设置output的page, 输出到这个page?
 	sg_set_page(&output, page, PAGE_SIZE, 0);
-	acomp_request_set_params(acomp_ctx->req, &input, &output, entry->length, dlen);
+	acomp_request_set_params(acomp_ctx->req, &input, &output,
+		entry->length, dlen);
 	ret = crypto_wait_req(crypto_acomp_decompress(acomp_ctx->req), &acomp_ctx->wait);
 	dlen = acomp_ctx->req->dlen;
 	mutex_unlock(acomp_ctx->mutex);
@@ -1197,7 +1201,9 @@ static int zswap_writeback_entry(struct zswap_entry *entry,
 
 	BUG_ON(ret);
 	BUG_ON(dlen != PAGE_SIZE);
-
+	/*
+	那现在数据解压到了page上面?
+	*/
 	/* page is up to date */
 	SetPageUptodate(page);
 

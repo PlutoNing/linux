@@ -115,6 +115,7 @@ EXPORT_SYMBOL(sg_last);
 
 /**
  * sg_init_table - Initialize SG table
+ 初始化sg
  * @sgl:	   The SG table
  * @nents:	   Number of entries in table
  *
@@ -125,13 +126,16 @@ EXPORT_SYMBOL(sg_last);
  **/
 void sg_init_table(struct scatterlist *sgl, unsigned int nents)
 {
+	// sg就是连续排布的sglist
 	memset(sgl, 0, sizeof(*sgl) * nents);
+	// 标记出sg的最后一个sglist, 类似字符串的结束符
 	sg_init_marker(sgl, nents);
 }
 EXPORT_SYMBOL(sg_init_table);
 
 /**
  * sg_init_one - Initialize a single entry sg list
+ 初始化一个单条目的sg
  * @sg:		 SG entry
  * @buf:	 Virtual address for IO
  * @buflen:	 IO length
@@ -139,6 +143,7 @@ EXPORT_SYMBOL(sg_init_table);
  **/
 void sg_init_one(struct scatterlist *sg, const void *buf, unsigned int buflen)
 {
+	// 现在sg可以视为一个真正的sg了, 不过大小是1
 	sg_init_table(sg, 1);
 	sg_set_buf(sg, buf, buflen);
 }

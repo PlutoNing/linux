@@ -417,7 +417,9 @@ struct crypto_wait {
  * Async ops completion helper functioons
  */
 void crypto_req_done(void *req, int err);
-
+/*
+err是一个req任务的返回值
+*/
 static inline int crypto_wait_req(int err, struct crypto_wait *wait)
 {
 	switch (err) {

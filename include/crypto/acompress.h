@@ -19,6 +19,7 @@
 /**
  * struct acomp_req - asynchronous (de)compression request
  * 异步的解压/压缩请求
+ 包含加解密的src,dst什么的
  * @base:	Common attributes for asynchronous crypto requests
  * @src:	Source Data
  * @dst:	Destination data
@@ -230,6 +231,7 @@ static inline void acomp_request_set_callback(struct acomp_req *req,
 }
 
 /**
+好像是设置加解密的参数
  * acomp_request_set_params() -- Sets request parameters
  *
  * Sets parameters required by an acomp operation
@@ -307,7 +309,7 @@ static inline int crypto_acomp_compress(struct acomp_req *req)
 
 /**
  * crypto_acomp_decompress() -- Invoke asynchronous decompress operation
- *
+ * 发起异步的解压请求?
  * Function invokes the asynchronous decompress operation
  *
  * @req:	asynchronous compress request
