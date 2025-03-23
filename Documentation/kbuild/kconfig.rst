@@ -23,7 +23,7 @@ for you, so you may find that you need to see what NEW kernel
 symbols have been introduced.
 
 To see a list of new config symbols, use::
-
+使用以下命令查看新的配置符号::
 	cp user/some/old.config .config
 	make listnewconfig
 

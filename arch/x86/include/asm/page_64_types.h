@@ -13,8 +13,8 @@
 #endif
 /*  */
 #define THREAD_SIZE_ORDER	(2 + KASAN_STACK_ORDER)
-/* 4个页面大小 
-表示内核分配给每个进程或线程的内核栈（kernel stack）大小*/
+/* 4 pages in size
+Indicates the size of the kernel stack allocated by the kernel to each process or thread */
 #define THREAD_SIZE  (PAGE_SIZE << THREAD_SIZE_ORDER)
 
 #define EXCEPTION_STACK_ORDER (1 + KASAN_STACK_ORDER)

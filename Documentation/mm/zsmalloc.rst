@@ -9,19 +9,28 @@ fail under memory pressure. On the other hand, if we just use single
 (0-order) pages, it would suffer from very high fragmentation --
 any object of size PAGE_SIZE/2 or larger would occupy an entire page.
 This was one of the major issues with its predecessor (xvmalloc).
+翻译: 这个分配器是为zram设计的。因此,分配器应该在低内存条件下工作良好。
+特别是，它永远不会尝试更高的页面分配，这在内存压力下很可能会失败。
+另一方面，如果我们只使用单个(0阶)页面，它将遭受非常严重的碎片化——
+大小为PAGE_SIZE/2或更大的任何对象都将占用整个页面。
+这是其前身(xvmalloc)的主要问题之一。
 
 To overcome these issues, zsmalloc allocates a bunch of 0-order pages
 and links them together using various 'struct page' fields. These linked
 pages act as a single higher-order page i.e. an object can span 0-order
 page boundaries. The code refers to these linked pages as a single entity
 called zspage.
-
+为了克服这些问题,zsmalloc分配一堆0阶页面,并使用各种“struct page”字段将它们链接在一起。
+这些链接的页面充当单个更高阶页面,即一个对象可以跨越0阶页面边界。
+代码将这些链接的页面称为单个实体,称为zspage。
 For simplicity, zsmalloc can only allocate objects of size up to PAGE_SIZE
 since this satisfies the requirements of all its current users (in the
 worst case, page is incompressible and is thus stored "as-is" i.e. in
 uncompressed form). For allocation requests larger than this size, failure
 is returned (see zs_malloc).
-
+为了简单起见,zsmalloc只能分配大小不超过PAGE_SIZE的对象,因为这满足了所有当前用户的要求
+(在最坏的情况下,页面是不可压缩的,因此以“原样”即未压缩形式存储)。
+对于大于此大小的分配请求,将返回失败(请参阅zs_malloc)。
 Additionally, zs_malloc() does not return a dereferenceable pointer.
 Instead, it returns an opaque handle (unsigned long) which encodes actual
 location of the allocated object. The reason for this indirection is that
@@ -30,7 +39,11 @@ issues on 32-bit systems where the VA region for kernel space mappings
 is very small. So, before using the allocating memory, the object has to
 be mapped using zs_map_object() to get a usable pointer and subsequently
 unmapped using zs_unmap_object().
-
+除此之外,zs_malloc()不返回可解引用的指针。相反,它返回一个不透明的句柄(unsigned long),
+该句柄编码了分配对象的实际位置。这种间接的原因是zsmalloc不会永久保留zspages映射,
+因为这会导致32位系统出现问题,其中内核空间映射的VA区域非常小。
+因此,在使用分配的内存之前,必须使用zs_map_object()映射对象以获得可用指针,
+然后使用zs_unmap_object()取消映射。
 stat
 ====
 

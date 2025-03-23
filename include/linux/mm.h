@@ -103,6 +103,7 @@ extern int mmap_rnd_compat_bits __read_mostly;
 #endif
 
 #ifndef page_to_virt
+// page转为内核地址
 #define page_to_virt(x)	__va(PFN_PHYS(page_to_pfn(x)))
 #endif
 
@@ -2241,7 +2242,7 @@ static inline int arch_make_folio_accessible(struct folio *folio)
  * Some inline functions in vmstat.h depend on page_zone()
  */
 #include <linux/vmstat.h>
-
+// 获取page的内存内核地址
 static __always_inline void *lowmem_page_address(const struct page *page)
 {
 	return page_to_virt(page);
@@ -2270,6 +2271,7 @@ void page_address_init(void);
 #endif
 
 #if !defined(HASHED_PAGE_VIRTUAL) && !defined(WANT_PAGE_VIRTUAL)
+// 获取page的内存地址
 #define page_address(page) lowmem_page_address(page)
 #define set_page_address(page, address)  do { } while(0)
 #define page_address_init()  do { } while(0)

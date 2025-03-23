@@ -3,24 +3,19 @@
 Linux kernel release 6.x <http://kernel.org/>
 =============================================
 
-These are the release notes for Linux version 6.  Read them carefully,
-as they tell you what this is all about, explain how to install the
-kernel, and what to do if something goes wrong.
+这些是Linux 6版本的发行说明.请仔细阅读,因为它们会告诉你这是什么,
+解释如何安装内核,以及如果出现问题该怎么办.
 
 What is Linux?
 --------------
+Linux 是一个类 Unix 操作系统,由 Linus Torvalds 从头开始编写,并得到了网络上一群
+松散组织的黑客团队的协助.它旨在符合 POSIX 和单一 UNIX 规范.
 
-  Linux is a clone of the operating system Unix, written from scratch by
-  Linus Torvalds with assistance from a loosely-knit team of hackers across
-  the Net. It aims towards POSIX and Single UNIX Specification compliance.
+它具有现代全功能 Unix 所期望的所有功能，包括真正的多任务处理/虚拟内存、共享库、
+按需加载、共享写时复制可执行文件、适当的内存管理和多栈网络（包括 IPv4 和 IPv6）。
 
-  It has all the features you would expect in a modern fully-fledged Unix,
-  including true multitasking, virtual memory, shared libraries, demand
-  loading, shared copy-on-write executables, proper memory management,
-  and multistack networking including IPv4 and IPv6.
-
-  It is distributed under the GNU General Public License v2 - see the
-  accompanying COPYING file for more details.
+它是根据 GNU 通用公共许可证 v2 发行的 - 有关更多详细信息,请参阅随附的 COPYING 
+文件.
 
 On what hardware does it run?
 -----------------------------
@@ -30,15 +25,11 @@ On what hardware does it run?
   UltraSPARC, Motorola 68000, PowerPC, PowerPC64, ARM, Hitachi SuperH, Cell,
   IBM S/390, MIPS, HP PA-RISC, Intel IA-64, DEC VAX, AMD x86-64 Xtensa, and
   ARC architectures.
-
-  Linux is easily portable to most general-purpose 32- or 64-bit architectures
-  as long as they have a paged memory management unit (PMMU) and a port of the
-  GNU C compiler (gcc) (part of The GNU Compiler Collection, GCC). Linux has
-  also been ported to a number of architectures without a PMMU, although
-  functionality is then obviously somewhat limited.
-  Linux has also been ported to itself. You can now run the kernel as a
-  userspace application - this is called UserMode Linux (UML).
-
+  Linux 很容易移植到大多数通用的 32 位或 64 位架构,只要它们有分页内存管理单元 (PMMU) 和 
+  GNU C 编译器 (gcc)(GNU 编译器集合的一部分)的端口。Linux 也已移植到许多没有 PMMU 的架构上,
+  尽管功能显然有所限制.
+  Linux 也已移植到自身.您现在可以将内核作为用户空间应用程序运行 - 这称为 UserMode Linux (UML)。
+  
 Documentation
 -------------
 
@@ -131,6 +122,9 @@ Build directory for the kernel
    Using the option ``make O=output/dir`` allows you to specify an alternate
    place for the output files (including .config).
    Example::
+   编译内核时,所有输出文件默认将与内核源代码一起存储.
+   使用选项 ``make O=output/dir`` 可以指定输出文件(包括 .config)的备用位置.
+   例如::
 
      kernel source code: /usr/src/linux-6.x
      build directory:    /home/name/build/kernel
@@ -154,7 +148,9 @@ Configuring the kernel
    as expected.  If you want to carry your existing configuration to a
    new version with minimal work, use ``make oldconfig``, which will
    only ask you for the answers to new questions.
-
+   不要跳过这一步,即使你只是升级一个次要版本.每个版本都会添加新的配置选项,如果配置文件没有按预期设置,
+    将会出现奇怪的问题.如果你想将现有配置带到新版本,并且工作量最小,请使用 ``make oldconfig``,
+    它只会要求你回答新问题.
  - Alternative configuration commands are::
 
      "make config"      Plain text interface.
@@ -236,26 +232,31 @@ Configuring the kernel
 
    You can find more information on using the Linux kernel config tools
    in Documentation/kbuild/kconfig.rst.
-
+   你可以在 Documentation/kbuild/kconfig.rst 中找到更多关于使用 Linux 内核配置工具的信息.
  - NOTES on ``make config``:
 
     - Having unnecessary drivers will make the kernel bigger, and can
       under some circumstances lead to problems: probing for a
       nonexistent controller card may confuse your other controllers.
-
+      包含不必要的驱动程序会使内核变得更大,并且在某些情况下可能会导致问题:
+      探测不存在的控制器卡可能会混淆其他控制器.
     - A kernel with math-emulation compiled in will still use the
       coprocessor if one is present: the math emulation will just
       never get used in that case.  The kernel will be slightly larger,
       but will work on different machines regardless of whether they
       have a math coprocessor or not.
-
+      一个编译了数学仿真的内核仍然会使用协处理器,如果存在的话:在这种情况下,数学仿真将永远不会被使用.
+      内核会稍微变大,但无论机器是否有数学协处理器,它都可以在不同的机器上工作.
     - The "kernel hacking" configuration details usually result in a
       bigger or slower kernel (or both), and can even make the kernel
       less stable by configuring some routines to actively try to
       break bad code to find kernel problems (kmalloc()).  Thus you
       should probably answer 'n' to the questions for "development",
       "experimental", or "debugging" features.
-
+      kernel hacking的配置细节通常会导致内核变得更大或更慢(或两者兼有),甚至
+      可以通过配置一些例程来积极尝试
+      打破坏代码来查找内核问题(kmalloc())来使内核不稳定.因此,你可能应该对“开发”、
+      “实验”或“调试”功能的问题回答“n”.
 Compiling the kernel
 --------------------
 
@@ -279,12 +280,13 @@ Compiling the kernel
    to see compile, link, or other commands exactly as they are executed.
    For this, use "verbose" build mode.  This is done by passing
    ``V=1`` to the ``make`` command, e.g.::
-
+   正常情况下,内核构建系统以相当安静的模式运行(但不是完全静音).然而,有时你或其他内核开发人员需要
+    看到编译、链接或其他命令的确切执行方式.为此,使用“详细”构建模式.这是通过将 ``V=1`` 传递给 ``make`` 命令来完成的,例如::
      make V=1 all
 
    To have the build system also tell the reason for the rebuild of each
    target, use ``V=2``.  The default is ``V=0``.
-
+   为了让构建系统还告诉每个目标重新构建的原因,使用 ``V=2``.默认值是 ``V=0``.
  - Keep a backup kernel handy in case something goes wrong.  This is
    especially true for the development releases, since each new release
    contains new code which has not been debugged.  Make sure you keep a
@@ -300,10 +302,11 @@ Compiling the kernel
  - In order to boot your new kernel, you'll need to copy the kernel
    image (e.g. .../linux/arch/x86/boot/bzImage after compilation)
    to the place where your regular bootable kernel is found.
-
+   为了启动新内核,你需要将内核映像(例如.../linux/arch/x86/boot/bzImage)
+   复制到常规可引导内核所在的位置.
  - Booting a kernel directly from a floppy without the assistance of a
    bootloader such as LILO, is no longer supported.
-
+   直接从软盘引导内核而不使用 LILO 等引导加载程序的支持已不再受支持.
    If you boot Linux from the hard drive, chances are you use LILO, which
    uses the kernel image as specified in the file /etc/lilo.conf.  The
    kernel image file is usually /vmlinuz, /boot/vmlinuz, /bzImage or
@@ -311,7 +314,10 @@ Compiling the kernel
    and copy the new image over the old one.  Then, you MUST RERUN LILO
    to update the loading map! If you don't, you won't be able to boot
    the new kernel image.
-
+   如果你从硬盘引导 Linux,你很可能使用 LILO,它使用 /etc/lilo.conf 文件中指定的内核映像.
+    内核映像文件通常是 /vmlinuz, /boot/vmlinuz, /bzImage 或 /boot/bzImage.为了使用新内核,
+    保存旧映像的副本,并将新映像复制到旧映像上.然后,你必须重新运行 LILO 来更新加载映射!
+    如果不这样做,你将无法引导新的内核映像.
    Reinstalling LILO is usually a matter of running /sbin/lilo.
    You may wish to edit /etc/lilo.conf to specify an entry for your
    old kernel image (say, /vmlinux.old) in case the new one does not

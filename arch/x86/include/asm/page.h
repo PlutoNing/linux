@@ -55,6 +55,7 @@ static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 	__phys_addr_symbol(__phys_reloc_hide((unsigned long)(x)))
 
 #ifndef __va
+// 内核的地址映射
 #define __va(x)			((void *)((unsigned long)(x)+PAGE_OFFSET))
 #endif
 

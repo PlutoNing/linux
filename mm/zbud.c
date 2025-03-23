@@ -82,6 +82,10 @@
 /* 64 */
 #define ZHDR_SIZE_ALIGNED CHUNK_SIZE
 /*
+把每个page的内存分为chunk大小来管理
+每个chunk64字节
+因为page前面一部分内存用作zhdr结构体的内存了
+所以这里每个page(zhdr)是63个chunk可用
 (4096 - 64 ) >> 6 = 63?
 */
 #define NCHUNKS		((PAGE_SIZE - ZHDR_SIZE_ALIGNED) >> CHUNK_SHIFT)
@@ -119,6 +123,8 @@ struct zbud_pool {
 };
 
 /*
+zbud的每个chunk链表
+代表某个大小chunk的链表头
  * struct zbud_header - zbud page metadata occupying the first chunk of each
  *			zbud page.
  * @buddy:	links the zbud page into the unbuddied/buddied lists in the pool
@@ -126,7 +132,7 @@ struct zbud_pool {
  * @last_chunks:	the size of the last buddy in chunks, 0 if free
  */
 struct zbud_header {
-	struct list_head buddy;
+	struct list_head buddy; // 挂接到chunk链表
 	unsigned int first_chunks;
 	unsigned int last_chunks;
 };
@@ -140,16 +146,29 @@ enum buddy {
 	LAST
 };
 
-/* Converts an allocation size in bytes to size in zbud chunks */
+/* Converts an allocation size in bytes to size in zbud chunks
+把要分配的size向上对齐到chunk大小, 以chunk为单位
+一个chunk是64字节
+*/
 static int size_to_chunks(size_t size)
 {
 	return (size + CHUNK_SIZE - 1) >> CHUNK_SHIFT;
 }
-
+/* 
+这里应该是遍历每一个大小chunk的链表
+大小为1的chunk的
+大小为2个chunk的
+------
+大小63个chunk的链表
+*/
 #define for_each_unbuddied_list(_iter, _begin) \
 	for ((_iter) = (_begin); (_iter) < NCHUNKS; (_iter)++)
 
-/* Initializes the zbud header of a newly allocated zbud page */
+/* 
+把一个新分配的page初始化为zhdr
+把页面的开始一部分内存作为zhdr结构体的内存
+供zbud使用
+Initializes the zbud header of a newly allocated zbud page */
 static struct zbud_header *init_zbud_page(struct page *page)
 {
 	struct zbud_header *zhdr = page_address(page);
@@ -166,8 +185,13 @@ static void free_zbud_page(struct zbud_header *zhdr)
 }
 
 /*
+编码一个zbud链表上面的元素页面, bud表示是第几次使用?
  * Encodes the handle of a particular buddy within a zbud page
  * Pool lock should be held as this function accesses first|last_chunks
+ 编码方式是:
+ 如果第一次使用这个 page, 返回值就是page的第一个已分配区间的开头
+ 如果是第二次使用这个page, 返回值就是第二个已分配区间的开头
+ (总共也只能使用两次好像)
  */
 static unsigned long encode_handle(struct zbud_header *zhdr, enum buddy bud)
 {
@@ -188,18 +212,24 @@ static unsigned long encode_handle(struct zbud_header *zhdr, enum buddy bud)
 	return handle;
 }
 
-/* Returns the zbud page where a given handle is stored */
+/* 
+从handle得出zhdr
+Returns the zbud page where a given handle is stored */
 static struct zbud_header *handle_to_zbud_header(unsigned long handle)
 {
 	return (struct zbud_header *)(handle & PAGE_MASK);
 }
 
-/* Returns the number of free chunks in a zbud page */
+/* 
+计算这个zhdr还有多少free的chunk
+Returns the number of free chunks in a zbud page */
 static int num_free_chunks(struct zbud_header *zhdr)
 {
 	/*
 	 * Rather than branch for different situations, just use the fact that
 	 * free buddies have a length of zero to simplify everything.
+       zhdr |-----------first_______free_________last-------  
+	 |------------------------------------------------------|
 	 */
 	return NCHUNKS - zhdr->first_chunks - zhdr->last_chunks;
 }
@@ -245,6 +275,8 @@ static void zbud_destroy_pool(struct zbud_pool *pool)
 }
 
 /**
+在zbud pool分配一个区间满足size
+返回值就是分配内存的起始地址
  * zbud_alloc() - allocates a region of a given size
  * @pool:	zbud pool from which to allocate
  * @size:	size in bytes of the desired allocation
@@ -273,20 +305,25 @@ static int zbud_alloc(struct zbud_pool *pool, size_t size, gfp_t gfp,
 
 	if (!size || (gfp & __GFP_HIGHMEM))
 		return -EINVAL;
+	/* size大于0. 并且不是highmem */
 	if (size > PAGE_SIZE - ZHDR_SIZE_ALIGNED - CHUNK_SIZE)
 		return -ENOSPC;
+	// size要小于PAGE_SIZE - ZHDR_SIZE_ALIGNED - CHUNK_SIZE
 	chunks = size_to_chunks(size);
+	/* 转为需要分配的chunk数量 */
 	spin_lock(&pool->lock);
 
-	/* First, try to find an unbuddied zbud page. */
+	/* First, try to find an unbuddied zbud page.
+	先尝试从unbuddied页面寻找
+	*/
 	for_each_unbuddied_list(i, chunks) {
 		if (!list_empty(&pool->unbuddied[i])) {
 			zhdr = list_first_entry(&pool->unbuddied[i],
 					struct zbud_header, buddy);
 			list_del(&zhdr->buddy);
-			if (zhdr->first_chunks == 0)
+			if (zhdr->first_chunks == 0) // first_chunks为0, 说明是第一次分配
 				bud = FIRST;
-			else
+			else // last_chunks为0, 说明是第二次使用这个page了,好像总共只能使用两次
 				bud = LAST;
 			goto found;
 		}
@@ -300,9 +337,10 @@ static int zbud_alloc(struct zbud_pool *pool, size_t size, gfp_t gfp,
 	spin_lock(&pool->lock);
 	pool->pages_nr++;
 	zhdr = init_zbud_page(page);
-	bud = FIRST;
+	bud = FIRST; //刚分配的新的, 从头开始用
 
 found:
+// 现在无论是链表找的,还是新分配的, 只要到这里都是找到了
 	if (bud == FIRST)
 		zhdr->first_chunks = chunks;
 	else
@@ -313,10 +351,12 @@ found:
 		freechunks = num_free_chunks(zhdr);
 		list_add(&zhdr->buddy, &pool->unbuddied[freechunks]);
 	} else {
+		// first和last都有了, 说明这个page已经满了
 		/* Add to buddied list */
 		list_add(&zhdr->buddy, &pool->buddied);
 	}
 
+	// 现在zhdr已经是zbud链表上面一个节点了,无论是在buddied还是unbuddied
 	*handle = encode_handle(zhdr, bud);
 	spin_unlock(&pool->lock);
 
@@ -324,6 +364,7 @@ found:
 }
 
 /**
+释放zbud pool的内存
  * zbud_free() - frees the allocation associated with the given handle
  * @pool:	pool in which the allocation resided
  * @handle:	handle associated with the allocation returned by zbud_alloc()
@@ -334,9 +375,15 @@ static void zbud_free(struct zbud_pool *pool, unsigned long handle)
 	int freechunks;
 
 	spin_lock(&pool->lock);
-	zhdr = handle_to_zbud_header(handle);
+	// 把分配函数的返回值解码出zhdr的地址
+	// 分配时返回的handle的编码方式起始就是handle指向zbud page的最后一个已分配区间的
+	// 起始地址
+	zhdr = handle_to_zbud_header(handle); // 所以这里其实就是直接返回页面地址就ok
 
-	/* If first buddy, handle will be page aligned */
+	/* If first buddy, handle will be page aligned
+	如果handle指向page开始处的ZHDR_SIZE_ALIGNED地址处
+	也就是说指向第一个已分配区间的首地址
+	*/
 	if ((handle - ZHDR_SIZE_ALIGNED) & ~PAGE_MASK)
 		zhdr->last_chunks = 0;
 	else
@@ -349,7 +396,7 @@ static void zbud_free(struct zbud_pool *pool, unsigned long handle)
 		/* zbud page is empty, free */
 		free_zbud_page(zhdr);
 		pool->pages_nr--;
-	} else {
+	} else {// 还有一个区间被占用
 		/* Add to unbuddied list */
 		freechunks = num_free_chunks(zhdr);
 		list_add(&zhdr->buddy, &pool->unbuddied[freechunks]);
@@ -412,11 +459,13 @@ static void zbud_zpool_destroy(void *pool)
 	zbud_destroy_pool(pool);
 }
 
+// 在zbud pool上面分配内存
 static int zbud_zpool_malloc(void *pool, size_t size, gfp_t gfp,
 			unsigned long *handle)
 {
 	return zbud_alloc(pool, size, gfp, handle);
 }
+// 释放zbud pool的内存
 static void zbud_zpool_free(void *pool, unsigned long handle)
 {
 	zbud_free(pool, handle);
@@ -444,8 +493,8 @@ static struct zpool_driver zbud_zpool_driver = {
 	.owner =	THIS_MODULE,
 	.create =	zbud_zpool_create, // 创建zbud pool,初始化
 	.destroy =	zbud_zpool_destroy,
-	.malloc =	zbud_zpool_malloc,
-	.free =		zbud_zpool_free,
+	.malloc =	zbud_zpool_malloc, // 在zbud pool上面分配内存
+	.free =		zbud_zpool_free, // 释放zbud pool的内存
 	.map =		zbud_zpool_map,
 	.unmap =	zbud_zpool_unmap,
 	.total_size =	zbud_zpool_total_size, // 获取zbud的pool size

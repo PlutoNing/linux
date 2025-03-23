@@ -18,33 +18,34 @@ release date 1991) and second virtualization platform for an x86 PC.
 How is UML Different from a VM using Virtualization package X?
 ==============================================================
 
-We have come to assume that virtualization also means some level of
-hardware emulation. In fact, it does not. As long as a virtualization
-package provides the OS with devices which the OS can recognize and
-has a driver for, the devices do not need to emulate real hardware.
-Most OSes today have built-in support for a number of "fake"
-devices used only under virtualization.
-User Mode Linux takes this concept to the ultimate extreme - there
-is not a single real device in sight. It is 100% artificial or if
-we use the correct term 100% paravirtual. All UML devices are abstract
-concepts which map onto something provided by the host - files, sockets,
-pipes, etc.
+我们已经习惯了虚拟化也意味着某种程度的硬件仿真。事实上,并不需要.只要虚拟化软件包
+为操作系统提供了操作系统可以识别并有驱动程序的设备,这些设备就不需要仿真真实硬件.
+今天大多数操作系统都有内置支持一些仅在虚拟化下使用的"虚拟"设备.
+用户模式Linux将这个概念发挥到了极致_没有一个真实设备在视野中.它是100%人工的,或者
+如果我们使用正确的术语, 100%准虚拟化.所有UML设备都是抽象概念,映射到主机提供的某些
+东西_文件/套接字/管道等.
 
 The other major difference between UML and various virtualization
 packages is that there is a distinct difference between the way the UML
 kernel and the UML programs operate.
+UML和其他虚拟化包的另一个主要区别是UML内核和UML程序操作的方式之间存在明显的区别.
 The UML kernel is just a process running on Linux - same as any other
 program. It can be run by an unprivileged user and it does not require
 anything in terms of special CPU features.
+UML内核只是在Linux上运行的进程-与任何其他程序一样.它可以由非特权用户运行,并且不需要
+任何特殊的CPU功能.
 The UML userspace, however, is a bit different. The Linux kernel on the
 host machine assists UML in intercepting everything the program running
 on a UML instance is trying to do and making the UML kernel handle all
 of its requests.
+在UML的用户空间中,情况有所不同.主机上的Linux内核协助UML拦截运行在UML实例上的程序
+尝试执行的所有操作,并使UML内核处理其所有请求.
 This is different from other virtualization packages which do not make any
 difference between the guest kernel and guest programs. This difference
 results in a number of advantages and disadvantages of UML over let's say
 QEMU which we will cover later in this document.
-
+这与其他虚拟化包不区分客户内核和客户程序的方式不同.这种差异导致UML相对于QEMU等虚拟化
+包具有一些优点和缺点,我们将在本文档后面讨论.
 
 Why Would I Want User Mode Linux?
 =================================
@@ -53,26 +54,28 @@ Why Would I Want User Mode Linux?
 * If User Mode Linux kernel crashes, your host kernel is still fine. It
   is not accelerated in any way (vhost, kvm, etc) and it is not trying to
   access any devices directly.  It is, in fact, a process like any other.
-
+  如果用户模式Linux内核崩溃,您的主机内核仍然正常.它没有以任何方式加速(vhost, kvm等),
+  也没有尝试直接访问任何设备.实际上,它就像任何其他进程一样.
 * You can run a usermode kernel as a non-root user (you may need to
   arrange appropriate permissions for some devices).
-
+  你可以作为非root用户运行用户模式内核(您可能需要为某些设备安排适当的权限).
 * You can run a very small VM with a minimal footprint for a specific
   task (for example 32M or less).
-
+  你可以为特定任务运行一个非常小的VM,占用空间很小(例如32M或更少).
 * You can get extremely high performance for anything which is a "kernel
   specific task" such as forwarding, firewalling, etc while still being
   isolated from the host kernel.
-
+  你可以获得极高的性能,用于任何"内核特定任务",如转发,防火墙等,同时仍然与主机内核隔离.
 * You can play with kernel concepts without breaking things.
-
+  你可以玩弄内核概念而不会破坏东西.
 * You are not bound by "emulating" hardware, so you can try weird and
   wonderful concepts which are very difficult to support when emulating
   real hardware such as time travel and making your system clock
   dependent on what UML does (very useful for things like tests).
-
+  你不会被"模拟"硬件所限制,因此您可以尝试一些奇怪和奇妙的概念,这些概念在模拟真实硬件时
+  非常难以支持,例如时间旅行和使您的系统时钟依赖于UML的操作(对于诸如测试之类的事情非常有用).
 * It's fun.
-
+  这很有趣.
 Why not to run UML
 ==================
 
@@ -82,11 +85,13 @@ Why not to run UML
   **slow**. The root cause is that UML has a very high cost of creating
   new processes and threads (something most Unix/Linux applications
   take for granted).
-
+  UML使用的系统调用拦截技术使其对任何用户空间应用程序本质上更慢.虽然它可以与大多数
+  其他虚拟化包一样执行内核任务,但其用户空间**慢**.根本原因是UML创建新进程和线程的成本
+  非常高(这是大多数Unix/Linux应用程序认为理所当然的).
 * UML is strictly uniprocessor at present. If you want to run an
   application which needs many CPUs to function, it is clearly the
   wrong choice.
-
+  UML目前严格是单处理器的.如果您想运行需要多个CPU才能运行的应用程序,那显然是错误的选择.
 ***********************
 Building a UML instance
 ***********************
@@ -95,16 +100,18 @@ There is no UML installer in any distribution. While you can use off
 the shelf install media to install into a blank VM using a virtualization
 package, there is no UML equivalent. You have to use appropriate tools on
 your host to build a viable filesystem image.
-
+没有发行版中的UML安装程序.虽然您可以使用现成的安装媒体通过虚拟化包安装到空白VM中,
+但没有UML等效项.您必须在主机上使用适当的工具来构建一个可行的文件系统映像.
 This is extremely easy on Debian - you can do it using debootstrap. It is
 also easy on OpenWRT - the build process can build UML images. All other
 distros - YMMV.
-
+在Debian上非常容易-您可以使用debootstrap来完成.在OpenWRT上也很容易-构建过程可以构建UML映像.
+所有其他发行版-您的体验可能有所不同.
 Creating an image
 =================
 
 Create a sparse raw disk image::
-
+创建一个稀疏的原始磁盘映像::
    # dd if=/dev/zero of=disk_image_name bs=1 count=1 seek=16G
 
 This will create a 16G disk image. The OS will initially allocate only one
@@ -113,24 +120,27 @@ version 4.19 UML fully supports TRIM (as usually used by flash drives).
 Using TRIM inside the UML image by specifying discard as a mount option
 or by running ``tune2fs -o discard /dev/ubdXX`` will request UML to
 return any unused blocks to the OS.
-
+这个操作将创建一个16G的磁盘映像.操作系统最初只分配一个块,并在UML写入时分配更多块.
+从内核版本4.19开始,UML完全支持TRIM(通常由闪存驱动器使用).通过将discard作为挂载选项
+指定到UML映像中,或者通过运行``tune2fs -o discard /dev/ubdXX``来请求UML将任何未使用的块
+返回给操作系统.
 Create a filesystem on the disk image and mount it::
-
+在磁盘映像上创建文件系统并挂载它::
    # mkfs.ext4 ./disk_image_name && mount ./disk_image_name /mnt
 
 This example uses ext4, any other filesystem such as ext3, btrfs, xfs,
 jfs, etc will work too.
-
+示例使用ext4,任何其他文件系统,如ext3,btrfs,xfs,jfs
 Create a minimal OS installation on the mounted filesystem::
-
+在挂载的文件系统上创建最小的操作系统安装::
    # debootstrap buster /mnt http://deb.debian.org/debian
 
 debootstrap does not set up the root password, fstab, hostname or
 anything related to networking. It is up to the user to do that.
-
+debootstrap不设置根密码,fstab,主机名或与网络有关的任何内容.这取决于用户.
 Set the root password - the easiest way to do that is to chroot into the
 mounted image::
-
+设置根密码-最简单的方法是chroot到挂载的映像中::
    # chroot /mnt
    # passwd
    # exit
@@ -140,22 +150,25 @@ Edit key system files
 
 UML block devices are called ubds. The fstab created by debootstrap
 will be empty and it needs an entry for the root file system::
-
+UML的块设备称为ubds.由debootstrap创建的fstab将为空,并且需要一个根文件系统的条目::
    /dev/ubd0   ext4    discard,errors=remount-ro  0       1
 
 The image hostname will be set to the same as the host on which you
 are creating its image. It is a good idea to change that to avoid
 "Oh, bummer, I rebooted the wrong machine".
+映像的主机名将设置为与创建其映像的主机相同.最好更改以避免"哦,糟糕,我重启了错误的机器".
 
 UML supports two classes of network devices - the older uml_net ones
 which are scheduled for obsoletion. These are called ethX. It also
 supports the newer vector IO devices which are significantly faster
 and have support for some standard virtual network encapsulations like
 Ethernet over GRE and Ethernet over L2TPv3. These are called vec0.
-
+UML支持两类网络设备-较旧的uml_net设备,计划淘汰.这些称为ethX.它还支持较新的矢量IO设备,
+这些设备速度更快,并且支持一些标准的虚拟网络封装,如GRE上的以太网和L2TPv3上的以太网.
+这些称为vec0.
 Depending on which one is in use, ``/etc/network/interfaces`` will
 need entries like::
-
+依据使用的设备不同,``/etc/network/interfaces``将需要类似的条目::
    # legacy UML network devices
    auto eth0
    iface eth0 inet dhcp
@@ -166,28 +179,31 @@ need entries like::
 
 We now have a UML image which is nearly ready to run, all we need is a
 UML kernel and modules for it.
-
+现在我们有一个准备运行的UML映像,我们所需要的只是一个UML内核和相应的模块.
 Most distributions have a UML package. Even if you intend to use your own
 kernel, testing the image with a stock one is always a good start. These
 packages come with a set of modules which should be copied to the target
 filesystem. The location is distribution dependent. For Debian these
 reside under /usr/lib/uml/modules. Copy recursively the content of this
 directory to the mounted UML filesystem::
-
+大多数发行版都有一个UML包.即使您打算使用自己的内核,使用存储的内核测试映像总是一个很好的开始.
+这些包带有一组模块,应将其复制到目标文件系统.位置取决于发行版.对于Debian,这些位于/usr/lib/uml/modules下.
+递归复制此目录的内容到挂载的UML文件系统::
    # cp -rax /usr/lib/uml/modules /mnt/lib/modules
 
 If you have compiled your own kernel, you need to use the usual "install
 modules to a location" procedure by running::
-
+如果您已经编译了自己的内核,您需要使用通常的"将模块安装到位置"过程,运行::
   # make INSTALL_MOD_PATH=/mnt/lib/modules modules_install
 
 This will install modules into /mnt/lib/modules/$(KERNELRELEASE).
+这会将模块安装到/mnt/lib/modules/$(KERNELRELEASE).
 To specify the full module installation path, use::
-
+为了指定完整的模块安装路径,使用::
   # make MODLIB=/mnt/lib/modules modules_install
 
 At this point the image is ready to be brought up.
-
+此时系统映像已经可以启动了
 *************************
 Setting Up UML Networking
 *************************
@@ -602,32 +618,37 @@ Mandatory Arguments:
 
 * ``mem=int[K,M,G]`` - amount of memory. By default in bytes. It will
   also accept K, M or G qualifiers.
-
+  表示使用的内存大小.默认单位是字节.也可以使用K,M,G作为单位.
 * ``ubdX[s,d,c,t]=`` virtual disk specification. This is not really
   mandatory, but it is likely to be needed in nearly all cases so we can
   specify a root file system.
+  指定虚拟磁盘的规格.这不是真正的必需项,但在几乎所有情况下都可能需要,以便我们可以指定根文件系统.
   The simplest possible image specification is the name of the image
   file for the filesystem (created using one of the methods described
   in `Creating an image`_).
-
+  最简单的映像规格是文件系统的映像文件名称(使用`Creating an image`_中描述的方法之一创建).
   * UBD devices support copy on write (COW). The changes are kept in
     a separate file which can be discarded allowing a rollback to the
     original pristine image.  If COW is desired, the UBD image is
     specified as: ``cow_file,master_image``.
     Example:``ubd0=Filesystem.cow,Filesystem.img``
-
+    UBD设备支持写时复制(COW).更改保留在一个单独的文件中,可以丢弃,从而允许回滚到原始的原始映像.
+    如果需要COW,则指定UBD映像为:``cow_file,master_image``.
+    示例:``ubd0=Filesystem.cow,Filesystem.img``
   * UBD devices can be set to use synchronous IO. Any writes are
     immediately flushed to disk. This is done by adding ``s`` after
     the ``ubdX`` specification.
-
+    UBD设备可以设置为使用同步IO.任何写入都会立即刷新到磁盘.通过在``ubdX``规格后添加``s``来完成.
   * UBD performs some heuristics on devices specified as a single
     filename to make sure that a COW file has not been specified as
     the image. To turn them off, use the ``d`` flag after ``ubdX``.
-
+    UBD执行一些启发式算法,以确保将COW文件指定为映像.要关闭它们,请在``ubdX``
+    后使用``d``标志.
   * UBD supports TRIM - asking the Host OS to reclaim any unused
     blocks in the image. To turn it off, specify the ``t`` flag after
     ``ubdX``.
-
+    UBD支持TRIM-请求Host OS回收映像中未使用的任何块.要关闭它,请在``ubdX``
+    后指定``t``标志.
 * ``root=`` root device - most likely ``/dev/ubd0`` (this is a Linux
   filesystem image)
 
@@ -640,13 +661,16 @@ Linux distributions). Each console is started inside an
 xterm. This makes it nice and easy to use UML on a host with a GUI. It is,
 however, the wrong approach if UML is to be used as a testing harness or run
 in a text-only environment.
-
+如果UML作为"linux"运行,没有额外的参数,它将尝试为映像内配置的每个控制台启动一个xterm
+(在大多数Linux发行版中最多6个). 每个控制台都在一个xterm中启动.如果UML将用作测试工具
+或在纯文本环境中运行,
 In order to change this behaviour we need to specify an alternative console
 and wire it to one of the supported "line" channels. For this we need to map a
 console to use something different from the default xterm.
-
+为了更改这种行为,我们需要指定一个替代控制台,并将其连接到支持的"line"通道之一.
+为此,我们需要映射一个控制台以使用与默认xterm不同的内容.
 Example which will divert console number 1 to stdin/stdout::
-
+比如将控制台1重定向到stdin/stdout::
    con1=fd:0,fd:1
 
 UML supports a wide variety of serial line channels which are specified using
@@ -698,7 +722,9 @@ This will run an instance with ``2048M RAM`` and try to use the image file
 called ``Filesystem.img`` as root. It will connect to the host using tap0.
 All consoles except ``con1`` will be disabled and console 1 will
 use standard input/output making it appear in the same terminal it was started.
-
+这个命令会运行一个实例,使用``2048M RAM``并尝试使用名为``Filesystem.img``的映像文件作为根.
+它将使用tap0连接到主机.除了``con1``之外的所有控制台都将被禁用,控制台1将使用标准输入/输出,
+使其出现在启动它的同一个终端中.
 Logging in
 ============
 
@@ -706,7 +732,8 @@ If you have not set up a password when generating the image, you will have to
 shut down the UML instance, mount the image, chroot into it and set it - as
 described in the Generating an Image section.  If the password is already set,
 you can just log in.
-
+如果在生成映像时没有设置密码,您将不得不关闭UML实例,挂载映像,进入其中并设置密码-如生成映像部分所述.
+如果密码已经设置,您可以直接登录.
 The UML Management Console
 ============================
 
@@ -716,9 +743,11 @@ management console. The UML management console is a low-level interface to the
 kernel on a running UML instance, somewhat like the i386 SysRq interface. Since
 there is a full-blown operating system under UML, there is much greater
 flexibility possible than with the SysRq mechanism.
-
+除了使用常规sysadmin工具从"内部"管理映像外,还可以使用UML管理控制台执行许多低级操作.
+UML管理控制台是运行中UML实例上内核的低级接口,有点像i386 SysRq接口.由于UML下有一个完整的操作系统,
+因此比SysRq机制更灵活.
 There are a number of things you can do with the mconsole interface:
-
+通过mconsole接口,您可以做很多事情:
 * get the kernel version
 * add and remove devices
 * halt or reboot the machine
@@ -729,7 +758,7 @@ There are a number of things you can do with the mconsole interface:
 
 You need the mconsole client (uml\_mconsole) which is a part of the UML
 tools package available in most Linux distritions.
-
+你需要mconsole客户端(uml\_mconsole),它是大多数Linux发行版中的UML工具包的一部分.
 You also need ``CONFIG_MCONSOLE`` (under 'General Setup') enabled in the UML
 kernel.  When you boot UML, you'll see a line like::
 
@@ -1101,13 +1130,15 @@ Tracing UML
 When running, UML consists of a main kernel thread and a number of
 helper threads. The ones of interest for tracing are NOT the ones
 that are already ptraced by UML as a part of its MMU emulation.
-
+运行的时候, UML 由一个主内核线程和一些辅助线程组成.对于跟踪感兴趣的线程不是
+UML作为其MMU仿真的一部分已经ptraced的线程.
 These are usually the first three threads visible in a ps display.
 The one with the lowest PID number and using most CPU is usually the
 kernel thread. The other threads are the disk
 (ubd) device helper thread and the SIGIO helper thread.
 Running ptrace on this thread usually results in the following picture::
-
+这些通常是ps显示中可见的前三个线程.具有最低PID号并使用最多CPU的通常是内核线程.
+其他线程是磁盘(ubd)设备辅助线程和SIGIO辅助线程.在此线程上运行ptrace通常会得到以下图片::
    host$ strace -p 16566
    --- SIGIO {si_signo=SIGIO, si_code=POLL_IN, si_band=65} ---
    epoll_wait(4, [{EPOLLIN, {u32=3721159424, u64=3721159424}}], 64, 0) = 1
@@ -1147,6 +1178,7 @@ This is a typical picture from a mostly idle UML instance.
 As you can see UML will generate quite a bit of output even in idle. The output
 can be very informative when observing IO. It shows the actual IO calls, their
 arguments and returns values.
+正如你所看到的,即使在空闲时,UML也会产生相当多的输出.当观察IO时,输出可能非常有用.
 
 Kernel debugging
 ================
@@ -1154,15 +1186,17 @@ Kernel debugging
 You can run UML under gdb now, though it will not necessarily agree to
 be started under it. If you are trying to track a runtime bug, it is
 much better to attach gdb to a running UML instance and let UML run.
-
+你现在可以在gdb下运行UML,尽管它不一定同意在gdb下启动.如果您试图跟踪运行时错误,
+最好将gdb附加到正在运行的UML实例并让UML运行.
 Assuming the same PID number as in the previous example, this would be::
-
+假设与前面示例中相同的PID号,这将是::
    # gdb -p 16566
 
 This will STOP the UML instance, so you must enter `cont` at the GDB
 command line to request it to continue. It may be a good idea to make
 this into a gdb script and pass it to gdb as an argument.
-
+这会停止UML实例,因此您必须在GDB命令行中输入`cont`以请求它继续.将其制作为gdb脚本
+并将其作为参数传递给gdb可能是个好主意.
 Developing Device Drivers
 =========================
 
@@ -1200,7 +1234,8 @@ UML is an excellent test platform for device driver development. As
 with most things UML, "some user assembly may be required". It is
 up to the user to build their emulation environment. UML at present
 provides only the kernel infrastructure.
-
+UML是设备驱动程序开发的绝佳测试平台.与大多数UML一样,"可能需要一些用户组装".用户需要构建他们的仿真环境.
+目前,UML只提供内核基础设施.
 Part of this infrastructure is the ability to load and parse fdt
 device tree blobs as used in Arm or Open Firmware platforms. These
 are supplied as an optional extra argument to the kernel command

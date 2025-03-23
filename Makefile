@@ -10,21 +10,24 @@ NAME = Hurr durr I'ma ninja sloth
 # More info can be located in ./README
 # Comments in this file are targeted only to the developer, do not
 # expect to learn how to build the kernel reading this file.
-
+# 执行"make help"可以看到典型目标的列表
+# 更多信息可以在./README中找到
+# 本文件中的注释仅针对开发人员，不要指望通过阅读本文件来学习如何构建内核。
 ifeq ($(filter undefine,$(.FEATURES)),)
 $(error GNU Make >= 3.82 is required. Your Make version is $(MAKE_VERSION))
 endif
 
 $(if $(filter __%, $(MAKECMDGOALS)), \
 	$(error targets prefixed with '__' are only for internal use))
-
+# MAKECMDGOALS是make命令行上的目标列表, 比如make all, MAKECMDGOALS就是all
+# 这里代码作用是判断MAKECMDGOALS中是否有以'__'开头的目标，如果有则报错
 # That's our default target when none is given on the command line
 PHONY := __all
 __all:
 
 # We are using a recursive build, so we need to do a little thinking
 # to get the ordering right.
-#
+# 我们使用递归构建，因此需要进行一些思考
 # Most importantly: sub-Makefiles should only ever modify files in
 # their own directory. If in some directory we have a dependency on
 # a file in another dir (which doesn't happen often, but it's often
@@ -32,21 +35,29 @@ __all:
 # turn into vmlinux), we will call a sub make in that other dir, and
 # after that we are sure that everything which is in that other dir
 # is now up to date.
-#
+# 最重要的是：子Makefile只能修改自己目录中的文件。如果在某个目录中有对另一个目录
+# 中的文件的依赖（这种情况并不经常发生，但在链接内置.a目标时通常是不可避免的，最终
+# 转换为vmlinux），我们将在另一个目录中调用子make，之后我们可以确保另一个目录中的
+# 所有内容现在都是最新的。
 # The only cases where we need to modify files which have global
 # effects are thus separated out and done before the recursive
 # descending is started. They are now explicitly listed as the
 # prepare rule.
-
+# 我们需要修改具有全局效果的文件的唯一情况是在递归下降开始之前分离出来并完成的。
 this-makefile := $(lastword $(MAKEFILE_LIST))
 export abs_srctree := $(realpath $(dir $(this-makefile)))
 export abs_objtree := $(CURDIR)
-
+# MAKEFILE_LIST是makefile的列表, 比如makefile1 makefile2 makefile3
+# $(lastword $(MAKEFILE_LIST))就是makefile3
+# abs_srctree是makefile所在目录的绝对路径
+# CURDIR是make命令执行时的当前目录
 ifneq ($(sub_make_done),1)
 
 # Do not use make's built-in rules and variables
 # (this increases performance and avoids hard-to-debug behaviour)
 MAKEFLAGS += -rR
+# -rR作用是禁止使用make的内置规则和变量，这样可以提高性能并避免难以调试的行为,
+# 其中-r是禁止使用内置规则，-R是禁止使用内置变量
 
 # Avoid funny character set dependencies
 unexport LC_ALL
@@ -82,15 +93,16 @@ unexport GREP_OPTIONS
 ifeq ("$(origin V)", "command line")
   KBUILD_VERBOSE = $(V)
 endif
+# 这行代码原理是判断V是否是命令行传入的参数，如果是则将KBUILD_VERBOSE设置为V
 
 quiet = quiet_
 Q = @
-
+# 这里定义了两个变量，quiet和Q
 ifneq ($(findstring 1, $(KBUILD_VERBOSE)),)
   quiet =
   Q =
 endif
-
+# 如果KBUILD_VERBOSE包含1，则将quiet设置为空，Q设置为空,说明不是verbose模式
 # If the user is running make -s (silent mode), suppress echoing of
 # commands
 # make-4.0 (and later) keep single letter options in the 1st word of MAKEFLAGS.
@@ -99,26 +111,33 @@ ifeq ($(filter 3.%,$(MAKE_VERSION)),)
 short-opts := $(firstword -$(MAKEFLAGS))
 else
 short-opts := $(filter-out --%,$(MAKEFLAGS))
+# filter-out --%是过滤掉MAKEFLAGS中以--开头的单词?
+# 比如MAKEFLAGS=-s --no-print-directory, 那么short-opts就是-s
 endif
+# 这里先判断make的版本是否是3.x，如果是则将short-opts设置为MAKEFLAGS的第一个单词
+# 如果不是则将short-opts设置为MAKEFLAGS中不包含--的单词
 
 ifneq ($(findstring s,$(short-opts)),)
 quiet=silent_
 override KBUILD_VERBOSE :=
 endif
-
+# 如果short-opts中包含s,说明用户指定了-s选项
+# 那么将quiet设置为silent_,并将KBUILD_VERBOSE设置为空
 export quiet Q KBUILD_VERBOSE
 
 # Call a source code checker (by default, "sparse") as part of the
 # C compilation.
-#
+# 作为C编译的一部分调用源代码检查器（默认为"sparse"）。
 # Use 'make C=1' to enable checking of only re-compiled files.
 # Use 'make C=2' to enable checking of *all* source files, regardless
 # of whether they are re-compiled or not.
-#
+# 使用'make C=1'仅启用重新编译的文件的检查。
+# 使用'make C=2'启用*所有*源文件的检查，无论它们是否重新编译。
 # See the file "Documentation/dev-tools/sparse.rst" for more details,
 # including where to get the "sparse" utility.
 
 ifeq ("$(origin C)", "command line")
+# origin C是判断C是否是命令行传入的参数
   KBUILD_CHECKSRC = $(C)
 endif
 ifndef KBUILD_CHECKSRC
@@ -138,6 +157,7 @@ export KBUILD_CLIPPY
 
 # Use make M=dir or set the environment variable KBUILD_EXTMOD to specify the
 # directory of external module to build. Setting M= takes precedence.
+# make命令的M=选项作用是指定要构建的外部模块的目录?。设置M=优先级更高。
 ifeq ("$(origin M)", "command line")
   KBUILD_EXTMOD := $(M)
 endif
@@ -157,14 +177,15 @@ export KBUILD_EXTMOD
 
 # Kbuild will save output files in the current working directory.
 # This does not need to match to the root of the kernel source tree.
-#
+# kbuild默认会将输出文件保存在当前工作目录中。
+# 这不需要与内核源树的根目录匹配。
 # For example, you can do this:
 #
 #  cd /dir/to/store/output/files; make -f /dir/to/kernel/source/Makefile
 #
 # If you want to save output files in a different location, there are
 # two syntaxes to specify it.
-#
+# 如果要将输出文件保存在不同的位置，有两种语法可以指定它。
 # 1) O=
 # Use "make O=dir/to/store/output/files/"
 #
@@ -176,7 +197,9 @@ export KBUILD_EXTMOD
 # variable.
 
 # Do we want to change the working directory?
+# 这里判断是否要改变工作目录
 ifeq ("$(origin O)", "command line")
+# 如果用户在命令行中指定了O=选项
   KBUILD_OUTPUT := $(O)
 endif
 
@@ -216,6 +239,7 @@ need-sub-make := 1
 endif
 
 ifeq ($(filter --no-print-directory, $(MAKEFLAGS)),)
+# 如果--no-print-directory没有设置，则再次递归设置它?
 # If --no-print-directory is unset, recurse once again to set it.
 # You may end up recursing into __sub-make twice. This is needed due to the
 # behavior change in GNU Make 4.4.1.
@@ -225,15 +249,15 @@ endif
 ifeq ($(need-sub-make),1)
 
 PHONY += $(MAKECMDGOALS) __sub-make
-
+# 这行代码的作用是将MAKECMDGOALS和__sub-make添加到PHONY变量中
 $(filter-out $(this-makefile), $(MAKECMDGOALS)) __all: __sub-make
 	@:
-
+# 这里的代码作用是将MAKECMDGOALS中不包含this-makefile的目标和__all目标传递给__sub-make?
 # Invoke a second make in the output directory, passing relevant variables
 __sub-make:
 	$(Q)$(MAKE) $(no-print-directory) -C $(abs_objtree) \
 	-f $(abs_srctree)/Makefile $(MAKECMDGOALS)
-
+# 这里定义了一个__sub-make目标，作用是在输出目录中调用第二个make，传递相关变量
 else # need-sub-make
 
 # We process the rest of the Makefile if this is the final invocation of make
@@ -290,6 +314,7 @@ mixed-build	:=
 need-config	:= 1
 need-compiler	:= 1
 may-sync-config	:= 1
+# 这里:=1的作用是将这些变量设置为1?
 single-build	:=
 
 ifneq ($(filter $(no-dot-config-targets), $(MAKECMDGOALS)),)
@@ -364,7 +389,8 @@ __build_one_by_one:
 else # !mixed-build
 
 include $(srctree)/scripts/Kbuild.include
-
+# 这里include的作用是包含Kbuild.include文件?作用是?
+# make的include指令是将指定文件的内容插入到当前位置
 # Read KERNELRELEASE from include/config/kernel.release (if it exists)
 KERNELRELEASE = $(call read-file, include/config/kernel.release)
 KERNELVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(SUBLEVEL)))$(EXTRAVERSION)
@@ -379,9 +405,8 @@ include $(srctree)/scripts/subarch.include
 # to the target architecture. (See arch/* for the possibilities).
 # ARCH can be set during invocation of make:
 # make ARCH=ia64
-# Another way is to have ARCH set in the environment.
-# The default ARCH is the host where make is executed.
-
+# 交叉编译的时候，ARCH应该设置为目标架构。可以在make命令中设置ARCH，也可以在环境变量中设置。
+# 默认的ARCH是执行make的主机。
 # CROSS_COMPILE specify the prefix used for all executables used
 # during compilation. Only gcc and related bin-utils executables
 # are prefixed with $(CROSS_COMPILE).
@@ -391,7 +416,7 @@ include $(srctree)/scripts/subarch.include
 # Default value for CROSS_COMPILE is not to prefix executables
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
 ARCH		?= $(SUBARCH)
-
+# 如果 ARCH 变量没有被定义或为空，则将其设置为 SUBARCH 变量的值
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
 SRCARCH 	:= $(ARCH)
@@ -433,7 +458,9 @@ HOST_LFS_LDFLAGS := $(shell getconf LFS_LDFLAGS 2>/dev/null)
 HOST_LFS_LIBS := $(shell getconf LFS_LIBS 2>/dev/null)
 
 ifneq ($(LLVM),)
+# 如果 LLVM 变量被定义且不为空，则条件成立。
 ifneq ($(filter %/,$(LLVM)),)
+# 如果 LLVM 变量的值以斜杠结尾，则条件成立。
 LLVM_PREFIX := $(LLVM)
 else ifneq ($(filter -%,$(LLVM)),)
 LLVM_SUFFIX := $(LLVM)
@@ -450,7 +477,14 @@ HOSTPKG_CONFIG	= pkg-config
 
 KBUILD_USERHOSTCFLAGS := -Wall -Wmissing-prototypes -Wstrict-prototypes \
 			 -O2 -fomit-frame-pointer -std=gnu11
+# -Wall：启用所有常见的警告信息。这有助于捕捉潜在的代码问题。
+# -Wmissing-prototypes：警告没有原型声明的函数。这有助于确保函数在使用前已声明。
+# -Wstrict-prototypes：要求函数声明中必须有参数类型。这有助于避免函数声明中的模糊性。
+# -O2：启用编译器的优化选项，优化代码以提高运行时性能。
+# -fomit-frame-pointer：在生成的代码中省略帧指针。这通常用于优化，特别是在x86架构上。
+# -std=gnu11：指定使用GNU扩展的C11标准进行编译。
 KBUILD_USERCFLAGS  := $(KBUILD_USERHOSTCFLAGS) $(USERCFLAGS)
+# Makefile中USERCFLAGS表示用户自定义的CFLAGS,举例来说，如果用户在命令行中执行make USERCFLAGS="-O3 -march=native"，
 KBUILD_USERLDFLAGS := $(USERLDFLAGS)
 
 # These flags apply to all Rust code in the tree, including the kernel and
@@ -480,6 +514,7 @@ KBUILD_HOSTLDLIBS   := $(HOST_LFS_LIBS) $(HOSTLDLIBS)
 # Make variables (CC, etc...)
 CPP		= $(CC) -E
 ifneq ($(LLVM),)
+# 如果 LLVM 变量被定义且不为空，则条件成立。
 CC		= $(LLVM_PREFIX)clang$(LLVM_SUFFIX)
 LD		= $(LLVM_PREFIX)ld.lld$(LLVM_SUFFIX)
 AR		= $(LLVM_PREFIX)llvm-ar$(LLVM_SUFFIX)
@@ -489,6 +524,7 @@ OBJDUMP		= $(LLVM_PREFIX)llvm-objdump$(LLVM_SUFFIX)
 READELF		= $(LLVM_PREFIX)llvm-readelf$(LLVM_SUFFIX)
 STRIP		= $(LLVM_PREFIX)llvm-strip$(LLVM_SUFFIX)
 else
+# 否则使用默认的gcc等工具
 CC		= $(CROSS_COMPILE)gcc
 LD		= $(CROSS_COMPILE)ld
 AR		= $(CROSS_COMPILE)ar
@@ -526,6 +562,7 @@ PAHOLE_FLAGS	= $(shell PAHOLE=$(PAHOLE) $(srctree)/scripts/pahole-flags.sh)
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void -Wno-unknown-attribute $(CF)
+# -D的作用是定义宏，这里定义了一些宏
 NOSTDINC_FLAGS :=
 CFLAGS_MODULE   =
 RUSTFLAGS_MODULE =
@@ -544,6 +581,7 @@ USERINCLUDE    := \
 		-I$(objtree)/include/generated/uapi \
                 -include $(srctree)/include/linux/compiler-version.h \
                 -include $(srctree)/include/linux/kconfig.h
+# debug的是,一种情况下USERINCLUDE := -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconfig.h
 
 # Use LINUXINCLUDE when you must reference the include/ directory.
 # Needed to be compatible with the O= option
@@ -590,6 +628,7 @@ KBUILD_LDFLAGS :=
 CLANG_FLAGS :=
 
 ifeq ($(KBUILD_CLIPPY),1)
+# CLIPPY是一个linter，用于检查Rust代码中的错误
 	RUSTC_OR_CLIPPY_QUIET := CLIPPY
 	RUSTC_OR_CLIPPY = $(CLIPPY_DRIVER)
 else
@@ -626,6 +665,7 @@ export PAHOLE_FLAGS
 export RCS_FIND_IGNORE := \( -name SCCS -o -name BitKeeper -o -name .svn -o    \
 			  -name CVS -o -name .pc -o -name .hg -o -name .git \) \
 			  -prune -o
+# 这个是用来忽略find命令中的文件的，这些文件是SCCS BitKeeper .svn CVS .pc .hg .git
 export RCS_TAR_IGNORE := --exclude SCCS --exclude BitKeeper --exclude .svn \
 			 --exclude CVS --exclude .pc --exclude .hg --exclude .git
 
@@ -633,6 +673,7 @@ export RCS_TAR_IGNORE := --exclude SCCS --exclude BitKeeper --exclude .svn \
 # Rules shared between *config targets and build targets
 
 # Basic helpers built in scripts/basic/
+# 这段代码定义了一个伪目标 scripts_basic，当执行该目标时，会在 basic 子目录中运行 make 命令
 PHONY += scripts_basic
 scripts_basic:
 	$(Q)$(MAKE) $(build)=scripts/basic
@@ -705,7 +746,8 @@ else #!config-build
 # ===========================================================================
 # Build targets only - this includes vmlinux, arch specific targets, clean
 # targets and others. In general all targets except *config targets.
-
+# 仅涉及构建目标的部分，包括vmlinux、特定于架构的目标、clean目标和其他目标。
+# 通常除了*config目标之外的所有目标。
 # If building an external module we do not care about the all: rule
 # but instead __all depend on modules
 PHONY += all
@@ -747,6 +789,7 @@ include include/config/auto.conf
 endif
 
 ifeq ($(KBUILD_EXTMOD),)
+# 如果KBUILD_EXTMOD为空，则执行下面的代码
 # Objects we will link into vmlinux / subdirs we need to visit
 core-y		:=
 drivers-y	:=
@@ -757,6 +800,9 @@ endif # KBUILD_EXTMOD
 # command line.
 # This allow a user to issue only 'make' to build a kernel including modules
 # Defaults to vmlinux, but the arch makefile usually adds further targets
+# all是默认目标，当命令行没有给出目标时，默认构建内核
+# 这样的话，用户只需要执行make命令就可以构建包括模块在内的内核
+# 默认构建vmlinux，但是架构makefile通常会添加更多的目标
 all: vmlinux
 
 CFLAGS_GCOV	:= -fprofile-arcs -ftest-coverage
@@ -791,7 +837,8 @@ $(KCONFIG_CONFIG):
 # The actual configuration files used during the build are stored in
 # include/generated/ and include/config/. Update them if .config is newer than
 # include/config/auto.conf (which mirrors .config).
-#
+# 真正用于构建的配置文件存储在include/generated/和include/config/中
+# 如果.config比include/config/auto.conf新，则更新它们
 # This exploits the 'multi-target pattern rule' trick.
 # The syncconfig should be executed only once to make all the targets.
 # (Note: use the grouped target '&:' when we bump to GNU Make 4.3)
@@ -801,10 +848,13 @@ $(KCONFIG_CONFIG):
 %/config/auto.conf %/config/auto.conf.cmd %/generated/autoconf.h %/generated/rustc_cfg: $(KCONFIG_CONFIG)
 	$(Q)$(kecho) "  SYNC    $@"
 	$(Q)$(MAKE) -f $(srctree)/Makefile syncconfig
+# syncconfig是什么? syncconfig是一个伪目标，它会在include/config/auto.conf.cmd文件中记录所有的Kconfig文件的依赖关系?
 else # !may-sync-config
 # External modules and some install targets need include/generated/autoconf.h
 # and include/config/auto.conf but do not care if they are up-to-date.
 # Use auto.conf to trigger the test
+# 外部模块和一些安装目标需要include/generated/autoconf.h和include/config/auto.conf
+# 但不关心它们是否是最新的。使用auto.conf来触发测试
 PHONY += include/config/auto.conf
 
 include/config/auto.conf:
@@ -843,10 +893,16 @@ KBUILD_CFLAGS	+= $(call cc-option,-fno-allow-store-data-races)
 endif
 
 ifdef CONFIG_READABLE_ASM
+# 这是一个在make config定义的东西
 # Disable optimizations that make assembler listings hard to read.
 # reorder blocks reorders the control in the function
 # ipa clone creates specialized cloned functions
 # partial inlining inlines only parts of functions
+# 关闭使汇编列表难以阅读的优化
+# 重新排序块重新排序函数中的控制
+# ipa clone创建专门的克隆函数
+# 部分内联只内联函数的部分
+# 看来也是通过flag控制的
 KBUILD_CFLAGS += -fno-reorder-blocks -fno-ipa-cp-clone -fno-partial-inlining
 endif
 
@@ -943,6 +999,9 @@ ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
 KBUILD_CFLAGS_KERNEL += -ffunction-sections -fdata-sections
 KBUILD_RUSTFLAGS_KERNEL += -Zfunction-sections=y
 LDFLAGS_vmlinux += --gc-sections
+# 这是一个链接器选项，表示链接器应该进行“垃圾收集”操作，删除未使用的代码和数据段。
+# 这个选项可以帮助减小最终生成的可执行文件的大小，因为它会移除那些在程序中没有被
+# 引用的部分。
 endif
 
 ifdef CONFIG_SHADOW_CALL_STACK
@@ -1038,7 +1097,7 @@ KBUILD_RUSTFLAGS += $(KRUSTFLAGS)
 
 KBUILD_LDFLAGS_MODULE += --build-id=sha1
 LDFLAGS_vmlinux += --build-id=sha1
-
+# 告诉链接器在生成的可执行文件中包含一个基于 SHA-1 哈希的构建 ID。构建 ID 是一个唯一标识符，用于标识特定的构建版本，这在调试和版本管理中非常有用。
 KBUILD_LDFLAGS	+= -z noexecstack
 ifeq ($(CONFIG_LD_IS_BFD),y)
 KBUILD_LDFLAGS	+= $(call ld-option,--no-warn-rwx-segments)
@@ -1047,7 +1106,8 @@ endif
 ifeq ($(CONFIG_STRIP_ASM_SYMS),y)
 LDFLAGS_vmlinux	+= -X
 endif
-
+# 如果 CONFIG_STRIP_ASM_SYMS 被设置为 y，则在链接 vmlinux 时使用 -X 标志。
+# 这个标志通常用于控制链接器的行为，例如剥离符号等。
 ifeq ($(CONFIG_RELR),y)
 # ld.lld before 15 did not support -z pack-relative-relocs.
 LDFLAGS_vmlinux	+= $(call ld-option,--pack-dyn-relocs=relr,-z pack-relative-relocs)
@@ -1077,6 +1137,9 @@ CHECKFLAGS += $(if $(CONFIG_64BIT),-m64,-m32)
 # set in the environment
 # Also any assignments in arch/$(ARCH)/Makefile take precedence over
 # this default value
+# 当没有给出特定目标时，默认构建的内核映像
+# KBUILD_IMAGE 可能会在命令行上被覆盖，或者在环境中设置
+# 同样，arch/$(ARCH)/Makefile 中的任何赋值都优先于这个默认值
 export KBUILD_IMAGE ?= vmlinux
 
 #
