@@ -109,6 +109,8 @@ void exit_fs(struct task_struct *tsk)
 	}
 }
 
+// fork的时候调用拷贝fs_struct
+// fs_struct是一个进程的文件系统信息?
 struct fs_struct *copy_fs_struct(struct fs_struct *old)
 {
 	struct fs_struct *fs = kmem_cache_alloc(fs_cachep, GFP_KERNEL);

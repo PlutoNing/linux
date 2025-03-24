@@ -967,7 +967,9 @@ struct mm_struct {
 			 */
 			unsigned long bitmap;
 #ifdef CONFIG_MEMCG
-			/* points to the memcg of "owner" above */
+			/* points to the memcg of "owner" above
+			所属的memcg
+			*/
 			struct mem_cgroup *memcg;
 #endif
 		} lru_gen;

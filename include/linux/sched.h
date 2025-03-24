@@ -764,7 +764,7 @@ struct task_struct {
 	 * scheduling-critical items should be added above here.
 	 */
 	randomized_struct_fields_start
-
+/* 进程的栈内存, 一般指向vmalloc, 8KB大小 */
 	void				*stack;
 	refcount_t			usage;
 	/* Per task flags (PF_*), defined further below: */
@@ -1004,7 +1004,7 @@ struct task_struct {
 	struct list_head		ptrace_entry;
 
 	/* PID/PID hash table linkage. */
-	struct pid			*thread_pid;
+	struct pid			*thread_pid; // PIDTYPE_PID对应的pid
 	struct hlist_node		pid_links[PIDTYPE_MAX];
 	struct list_head		thread_group;
 	struct list_head		thread_node;
@@ -1096,7 +1096,9 @@ struct task_struct {
 	/* Filesystem information: */
 	struct fs_struct		*fs;
 
-	/* Open file information: */
+	/* Open file information:
+	表示打开的文件信息
+	*/
 	struct files_struct		*files;
 
 #ifdef CONFIG_IO_URING
@@ -1109,10 +1111,13 @@ struct task_struct {
 	/* Signal handlers: */
 	struct signal_struct		*signal;
 	struct sighand_struct __rcu		*sighand;
+	/*  */
 	sigset_t			blocked;
 	sigset_t			real_blocked;
 	/* Restored if set_restore_sigmask() was used: */
 	sigset_t			saved_sigmask;
+	// 如果是 tkill 发送的，也就是发给某个线程的，就应该发给 t->pending，
+	// 这里面是这个线程的 task_struct 独享的。
 	struct sigpending		pending;
 	unsigned long			sas_ss_sp;
 	size_t				sas_ss_size;
@@ -1260,7 +1265,7 @@ struct task_struct {
 	/* Protected by alloc_lock: */
 	struct mempolicy		*mempolicy;
 	short				il_prev;  /* 可能是进程在il方式下的上一次使用的node */
-	short				pref_node_fork;
+	short				pref_node_fork; // fork的时候的node,分配相关结构体的内存
 #endif
 #ifdef CONFIG_NUMA_BALANCING
 	int				numa_scan_seq;
@@ -1486,6 +1491,7 @@ struct task_struct {
 	struct timer_list		oom_reaper_timer;
 #endif
 #ifdef CONFIG_VMAP_STACK
+/* 用作栈的vmalloc, 8KB */
 	struct vm_struct		*stack_vm_area;
 #endif
 #ifdef CONFIG_THREAD_INFO_IN_TASK
@@ -1559,7 +1565,9 @@ struct task_struct {
 	 */
 	randomized_struct_fields_end
 
-	/* CPU-specific state of this task: */
+	/* CPU-specific state of this task:
+	进程的thread相关
+	*/
 	struct thread_struct		thread;
 
 	/*
@@ -2048,6 +2056,7 @@ static inline void scheduler_ipi(void) { }
 extern unsigned long wait_task_inactive(struct task_struct *, unsigned int match_state);
 
 /*
+设置线程的flag
  * Set thread flags in other task's structures.
  * See asm/thread_info.h for TIF_xxxx flags available:
  */

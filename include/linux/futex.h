@@ -59,6 +59,7 @@ enum {
 	FUTEX_STATE_DEAD,
 };
 
+// fork的时候初始化futex
 static inline void futex_init_task(struct task_struct *tsk)
 {
 	tsk->robust_list = NULL;

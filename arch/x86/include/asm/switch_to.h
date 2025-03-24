@@ -38,9 +38,12 @@ struct inactive_task_frame {
 	 * needed by get_frame_pointer().
 	 */
 	unsigned long bp;
-	unsigned long ret_addr;
+	unsigned long ret_addr; // 表示返回地址
 };
 
+/* 
+表示什么?
+*/
 struct fork_frame {
 	struct inactive_task_frame frame;
 	struct pt_regs regs;

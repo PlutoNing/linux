@@ -6330,6 +6330,7 @@ out:
 }
 
 /**
+copy_process()中调用初始化cgroup
  * cgroup_fork - initialize cgroup related fields during copy_process()
  * @child: pointer to task_struct of forking parent process.
  *

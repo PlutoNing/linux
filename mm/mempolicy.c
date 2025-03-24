@@ -2351,6 +2351,7 @@ struct folio *folio_alloc(gfp_t gfp, unsigned order)
 }
 EXPORT_SYMBOL(folio_alloc);
 
+// interleave方式分配内存,分配nr_pages个page,放到page_array里面
 static unsigned long alloc_pages_bulk_array_interleave(gfp_t gfp,
 		struct mempolicy *pol, unsigned long nr_pages,
 		struct page **page_array)
@@ -2406,7 +2407,9 @@ static unsigned long alloc_pages_bulk_array_preferred_many(gfp_t gfp, int nid,
 	return nr_allocated;
 }
 
-/* alloc pages bulk and mempolicy should be considered at the
+/* 
+分配nr_pages个page, 并且返回page的数组
+alloc pages bulk and mempolicy should be considered at the
  * same time in some situation such as vmalloc.
  *
  * It can accelerate memory allocation especially interleaving
@@ -2420,6 +2423,7 @@ unsigned long alloc_pages_bulk_array_mempolicy(gfp_t gfp,
 	if (!in_interrupt() && !(gfp & __GFP_THISNODE))
 		pol = get_task_policy(current);
 
+		// 如果是interleave
 	if (pol->mode == MPOL_INTERLEAVE)
 		return alloc_pages_bulk_array_interleave(gfp, pol,
 							 nr_pages, page_array);

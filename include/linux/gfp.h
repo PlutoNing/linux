@@ -208,6 +208,10 @@ alloc_pages_bulk_array(gfp_t gfp, unsigned long nr_pages, struct page **page_arr
 	return __alloc_pages_bulk(gfp, numa_mem_id(), NULL, nr_pages, NULL, page_array);
 }
 
+/* 
+vmalloc分配内存, 优先使用nid指定的节点. 
+给刚刚分配的地址空间分配映射物理内存
+*/
 static inline unsigned long
 alloc_pages_bulk_array_node(gfp_t gfp, int nid, unsigned long nr_pages, struct page **page_array)
 {

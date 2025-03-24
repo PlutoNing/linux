@@ -3726,8 +3726,7 @@ static void reset_bloom_filter(struct lruvec *lruvec, unsigned long seq)
 /******************************************************************************
  *                          mm_struct list
  ******************************************************************************/
-/*  */
-/*  */
+/* mm_list是什么 */
 static struct lru_gen_mm_list *get_mm_list(struct mem_cgroup *memcg)
 {
 	static struct lru_gen_mm_list mm_list = {
@@ -3744,6 +3743,9 @@ static struct lru_gen_mm_list *get_mm_list(struct mem_cgroup *memcg)
 	return &mm_list;
 }
 
+/* 
+fork的时候会调用这个函数,初始化新进程
+*/
 void lru_gen_add_mm(struct mm_struct *mm)
 {
 	int nid;
@@ -3758,6 +3760,7 @@ void lru_gen_add_mm(struct mm_struct *mm)
 	spin_lock(&mm_list->lock);
 
 	for_each_node_state(nid, N_MEMORY) {
+		// 获取memcg在每个node的lruvec
 		struct lruvec *lruvec = get_lruvec(memcg, nid);
 
 		/* the first addition since the last iteration */

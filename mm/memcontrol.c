@@ -1014,7 +1014,7 @@ struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p)
 	 */
 	if (unlikely(!p))
 		return NULL;
-
+	// 先获取task对应的某个子系统的css, 再获取memcg
 	return mem_cgroup_from_css(task_css(p, memory_cgrp_id));
 }
 EXPORT_SYMBOL(mem_cgroup_from_task);
@@ -2656,7 +2656,7 @@ out:
 	css_put(&memcg->css);
 }
 
-/*  */
+/* charge内存 */
 static int try_charge_memcg(struct mem_cgroup *memcg, gfp_t gfp_mask,
 			unsigned int nr_pages)
 {
@@ -3098,6 +3098,7 @@ struct obj_cgroup *get_obj_cgroup_from_folio(struct folio *folio)
 	return objcg;
 }
 
+// charge此memcg的kmem
 static void memcg_account_kmem(struct mem_cgroup *memcg, int nr_pages)
 {
 	mod_memcg_state(memcg, MEMCG_KMEM, nr_pages);
@@ -3129,6 +3130,7 @@ static void obj_cgroup_uncharge_pages(struct obj_cgroup *objcg,
 }
 
 /*
+从一个objcg中charge一些kmem page
  * obj_cgroup_charge_pages: charge a number of kernel pages to a objcg
  * @objcg: object cgroup to charge
  * @gfp: reclaim mode
@@ -3143,7 +3145,7 @@ static int obj_cgroup_charge_pages(struct obj_cgroup *objcg, gfp_t gfp,
 	int ret;
 
 	memcg = get_mem_cgroup_from_objcg(objcg);
-
+	// 看来kmem也会计算到memcg,
 	ret = try_charge_memcg(memcg, gfp, nr_pages);
 	if (ret)
 		goto out;
@@ -3156,6 +3158,7 @@ out:
 }
 
 /**
+从当前的memcg中charge一个kmem page
  * __memcg_kmem_charge_page: charge a kmem page to the current memory cgroup
  * @page: page to charge
  * @gfp: reclaim mode
@@ -3169,7 +3172,7 @@ int __memcg_kmem_charge_page(struct page *page, gfp_t gfp, int order)
 	int ret = 0;
 
 	objcg = get_obj_cgroup_from_current();
-	if (objcg) {
+	if (objcg) { // objcg是干什么的呢?
 		ret = obj_cgroup_charge_pages(objcg, gfp, 1 << order);
 		if (!ret) {
 			page->memcg_data = (unsigned long)objcg |

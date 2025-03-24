@@ -7,19 +7,20 @@
 
 /* Most things should be clean enough to redefine this at will, if care
    is taken to make libc match.  */
-
+// 信号的数量?
 #define _NSIG		64
 
 #ifdef __i386__
 # define _NSIG_BPW	32
 #else
+//
 # define _NSIG_BPW	64
 #endif
-
+// 1 表示多少long的bit可以表示本机的全部信号?
 #define _NSIG_WORDS	(_NSIG / _NSIG_BPW)
 
 typedef unsigned long old_sigset_t;		/* at least 32 bits */
-
+// 一个long就可以表示支持的64个信号了
 typedef struct {
 	unsigned long sig[_NSIG_WORDS];
 } sigset_t;

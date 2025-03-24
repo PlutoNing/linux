@@ -169,6 +169,7 @@ void __weak arch_release_task_struct(struct task_struct *tsk)
 #ifndef CONFIG_ARCH_TASK_STRUCT_ALLOCATOR
 static struct kmem_cache *task_struct_cachep;
 
+// 从指定的节点分配task_struct
 static inline struct task_struct *alloc_task_struct_node(int node)
 {
 	return kmem_cache_alloc_node(task_struct_cachep, GFP_KERNEL, node);
@@ -192,8 +193,11 @@ static inline void free_task_struct(struct task_struct *tsk)
 /*
  * vmalloc() is a bit slow, and calling vfree() enough times will force a TLB
  * flush.  Try to minimize the number of calls by caching stacks.
+ 因为vmalloc()比较慢，而且调用vfree()足够多次会强制TLB刷新。
+ 尝试通过缓存栈来最小化调用次数。
  */
 #define NR_CACHED_STACKS 2
+// 每个cpu缓存的栈
 static DEFINE_PER_CPU(struct vm_struct *, cached_stacks[NR_CACHED_STACKS]);
 
 struct vm_stack {
@@ -249,6 +253,7 @@ static int free_vm_stack_cache(unsigned int cpu)
 	return 0;
 }
 
+// fork过程中为新的task_struct分配stack之后charge
 static int memcg_charge_kernel_stack(struct vm_struct *vm)
 {
 	int i;
@@ -258,6 +263,7 @@ static int memcg_charge_kernel_stack(struct vm_struct *vm)
 	BUG_ON(vm->nr_pages != THREAD_SIZE / PAGE_SIZE);
 
 	for (i = 0; i < THREAD_SIZE / PAGE_SIZE; i++) {
+	/* 一个页面一个页面的charge, 一般是两个页面大小 */
 		ret = memcg_kmem_charge_page(vm->pages[i], GFP_KERNEL, 0);
 		if (ret)
 			goto err;
@@ -270,6 +276,7 @@ err:
 	return ret;
 }
 
+// fork的时候dup之后为新的task_struct分配stack?
 static int alloc_thread_stack_node(struct task_struct *tsk, int node)
 {
 	struct vm_struct *vm;
@@ -278,21 +285,25 @@ static int alloc_thread_stack_node(struct task_struct *tsk, int node)
 
 	for (i = 0; i < NR_CACHED_STACKS; i++) {
 		struct vm_struct *s;
-
+		// 从cpu缓存中获取栈
 		s = this_cpu_xchg(cached_stacks[i], NULL);
 
 		if (!s)
 			continue;
 
-		/* Reset stack metadata. */
+		/* Reset stack metadata.
+		重置栈元数据。
+		*/
 		kasan_unpoison_range(s->addr, THREAD_SIZE);
 
 		stack = kasan_reset_tag(s->addr);
 
-		/* Clear stale pointers from reused stack. */
+		/* Clear stale pointers from reused stack.
+		8KB,两个page
+		*/
 		memset(stack, 0, THREAD_SIZE);
 
-		if (memcg_charge_kernel_stack(s)) {
+		if (memcg_charge_kernel_stack(s)) {// 进行kmem的charge
 			vfree(s->addr);
 			return -ENOMEM;
 		}
@@ -302,22 +313,26 @@ static int alloc_thread_stack_node(struct task_struct *tsk, int node)
 		return 0;
 	}
 
+	/* 刚刚从stack cache分配失败了 */
 	/*
 	 * Allocated stacks are cached and later reused by new threads,
 	 * so memcg accounting is performed manually on assigning/releasing
 	 * stacks to tasks. Drop __GFP_ACCOUNT.
+	
 	 */
+	 // 这里从vmalloc分配栈空间
 	stack = __vmalloc_node_range(THREAD_SIZE, THREAD_ALIGN,
 				     VMALLOC_START, VMALLOC_END,
 				     THREADINFO_GFP & ~__GFP_ACCOUNT,
 				     PAGE_KERNEL,
 				     0, node, __builtin_return_address(0));
-	if (!stack)
+	if (!stack) // 还是分配不成, 内存不足报错
 		return -ENOMEM;
-
+	// 获取stack对应的vmap_area所属的vm_struct
 	vm = find_vm_area(stack);
+	// 进行kmem的charge
 	if (memcg_charge_kernel_stack(vm)) {
-		vfree(stack);
+		vfree(stack); // charge失败, 释放内存
 		return -ENOMEM;
 	}
 	/*
@@ -553,9 +568,13 @@ void vm_area_free(struct vm_area_struct *vma)
 #endif
 }
 
+/* 
+统计栈的内存使用信息?
+*/
 static void account_kernel_stack(struct task_struct *tsk, int account)
 {
 	if (IS_ENABLED(CONFIG_VMAP_STACK)) {
+		// 获取进程栈的vm_struct
 		struct vm_struct *vm = task_stack_vm_area(tsk);
 		int i;
 
@@ -1092,6 +1111,7 @@ void __init fork_init(void)
 	uprobes_init();
 }
 
+// 逐bit的复制
 int __weak arch_dup_task_struct(struct task_struct *dst,
 					       struct task_struct *src)
 {
@@ -1099,6 +1119,7 @@ int __weak arch_dup_task_struct(struct task_struct *dst,
 	return 0;
 }
 
+// 给栈的末尾设置一个magic number
 void set_task_stack_end_magic(struct task_struct *tsk)
 {
 	unsigned long *stackend;
@@ -1107,6 +1128,7 @@ void set_task_stack_end_magic(struct task_struct *tsk)
 	*stackend = STACK_END_MAGIC;	/* for overflow detection */
 }
 
+// fork的时候拷贝task_struct
 static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 {
 	struct task_struct *tsk;
@@ -1117,11 +1139,11 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk = alloc_task_struct_node(node);
 	if (!tsk)
 		return NULL;
-
+	// 逐bit的复制
 	err = arch_dup_task_struct(tsk, orig);
 	if (err)
 		goto free_tsk;
-
+	// 从node分配新进程的栈
 	err = alloc_thread_stack_node(tsk, node);
 	if (err)
 		goto free_tsk;
@@ -1129,6 +1151,7 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	refcount_set(&tsk->stack_refcount, 1);
 #endif
+	// 进行account
 	account_kernel_stack(tsk, 1);
 
 	err = scs_prepare(tsk, node);
@@ -1148,6 +1171,7 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	setup_thread_stack(tsk, orig);
 	clear_user_return_notifier(tsk);
 	clear_tsk_need_resched(tsk);
+	// 设置栈的末尾magic number
 	set_task_stack_end_magic(tsk);
 	clear_syscall_work_syscall_user_dispatch(tsk);
 
@@ -1720,6 +1744,7 @@ fail_nomem:
 	return NULL;
 }
 
+// fork的时候拷贝mm,其实更多的是初始化
 static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct mm_struct *mm, *oldmm;
@@ -1758,6 +1783,7 @@ static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 	return 0;
 }
 
+// fork的时候拷贝fs?
 static int copy_fs(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct fs_struct *fs = current->fs;
@@ -1800,7 +1826,7 @@ static int copy_files(unsigned long clone_flags, struct task_struct *tsk,
 		atomic_inc(&oldf->count);
 		goto out;
 	}
-
+	// 拷贝fd
 	newf = dup_fd(oldf, NR_OPEN_MAX, &error);
 	if (!newf)
 		goto out;
@@ -1811,6 +1837,7 @@ out:
 	return error;
 }
 
+// fork的时候拷贝signal_struct
 static int copy_sighand(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct sighand_struct *sig;
@@ -1819,6 +1846,7 @@ static int copy_sighand(unsigned long clone_flags, struct task_struct *tsk)
 		refcount_inc(&current->sighand->count);
 		return 0;
 	}
+	// slab分配signal_struct结构体
 	sig = kmem_cache_alloc(sighand_cachep, GFP_KERNEL);
 	RCU_INIT_POINTER(tsk->sighand, sig);
 	if (!sig)
@@ -1860,13 +1888,14 @@ static void posix_cpu_timers_init_group(struct signal_struct *sig)
 	posix_cputimers_group_init(pct, cpu_limit);
 }
 
+// fork的时候拷贝signal相关的拷贝
 static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct signal_struct *sig;
 
 	if (clone_flags & CLONE_THREAD)
 		return 0;
-
+	// slab分配signal_struct结构体
 	sig = kmem_cache_zalloc(signal_cachep, GFP_KERNEL);
 	tsk->signal = sig;
 	if (!sig)
@@ -1883,6 +1912,7 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 
 	init_waitqueue_head(&sig->wait_chldexit);
 	sig->curr_target = tsk;
+	// 初始化pending信号
 	init_sigpending(&sig->shared_pending);
 	INIT_HLIST_HEAD(&sig->multiprocess);
 	seqlock_init(&sig->stats_lock);
@@ -1970,6 +2000,7 @@ static inline void init_task_pid_links(struct task_struct *task)
 		INIT_HLIST_NODE(&task->pid_links[type]);
 }
 
+// pid有啥好初始化的
 static inline void
 init_task_pid(struct task_struct *task, enum pid_type type, struct pid *pid)
 {
@@ -2334,7 +2365,7 @@ __latent_entropy struct task_struct *copy_process(
 	spin_lock_irq(&current->sighand->siglock);
 	if (!(clone_flags & CLONE_THREAD))
 		hlist_add_head(&delayed.node, &current->signal->multiprocess);
-	recalc_sigpending();
+	recalc_sigpending(); // 重新计算是否还有未处理的信号
 	spin_unlock_irq(&current->sighand->siglock);
 	retval = -ERESTARTNOINTR;
 	if (task_sigpending(current))
@@ -2441,6 +2472,7 @@ __latent_entropy struct task_struct *copy_process(
 
 	p->io_context = NULL;
 	audit_set_context(p, NULL);
+	// 初始化cgroup
 	cgroup_fork(p);
 	if (args->kthread) {
 		if (!set_kthread_struct(p))
@@ -2504,18 +2536,23 @@ __latent_entropy struct task_struct *copy_process(
 	retval = copy_semundo(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_security;
+	// 拷贝文件相关的信息
 	retval = copy_files(clone_flags, p, args->no_files);
 	if (retval)
 		goto bad_fork_cleanup_semundo;
+	// 拷贝fs, fs是什么?
 	retval = copy_fs(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_files;
+	// 进行信号处理相关的拷贝
 	retval = copy_sighand(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_fs;
+	// 拷贝signal_struct
 	retval = copy_signal(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_sighand;
+	//
 	retval = copy_mm(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_signal;
@@ -2525,6 +2562,7 @@ __latent_entropy struct task_struct *copy_process(
 	retval = copy_io(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_namespaces;
+	// 拷贝thread_info?
 	retval = copy_thread(p, args);
 	if (retval)
 		goto bad_fork_cleanup_io;
@@ -2532,6 +2570,7 @@ __latent_entropy struct task_struct *copy_process(
 	stackleak_task_init(p);
 
 	if (pid != &init_struct_pid) {
+		// 初始化pid
 		pid = alloc_pid(p->nsproxy->pid_ns_for_children, args->set_tid,
 				args->set_tid_size);
 		if (IS_ERR(pid)) {

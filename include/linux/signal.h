@@ -196,7 +196,7 @@ static inline void sigemptyset(sigset_t *set)
 		break;
 	case 2: set->sig[1] = 0;
 		fallthrough;
-	case 1:	set->sig[0] = 0;
+	case 1:	set->sig[0] = 0; // 本机代码是这个情况
 		break;
 	}
 }
@@ -259,6 +259,7 @@ static inline void siginitsetinv(sigset_t *set, unsigned long mask)
 
 #endif /* __HAVE_ARCH_SIG_SETOPS */
 
+// 初始化sigpending结构体
 static inline void init_sigpending(struct sigpending *sig)
 {
 	sigemptyset(&sig->signal);

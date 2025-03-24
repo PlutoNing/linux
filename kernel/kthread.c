@@ -390,7 +390,10 @@ static int kthread(void *_create)
 	kthread_exit(ret);
 }
 
-/* called from kernel_clone() to get node information for about to be created task */
+/* 
+fork的时候调用的函数用于获取node信息
+called from kernel_clone() to get node information for 
+about to be created task */
 int tsk_fork_get_node(struct task_struct *tsk)
 {
 #ifdef CONFIG_NUMA

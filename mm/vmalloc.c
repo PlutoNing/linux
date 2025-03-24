@@ -321,6 +321,7 @@ int ioremap_page_range(unsigned long addr, unsigned long end,
 	return err;
 }
 
+// vmalloc机制相关解除pte映射
 static void vunmap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 			     pgtbl_mod_mask *mask)
 {
@@ -334,6 +335,7 @@ static void vunmap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 	*mask |= PGTBL_PTE_MODIFIED;
 }
 
+// vmalloc机制相关解除pte映射
 static void vunmap_pmd_range(pud_t *pud, unsigned long addr, unsigned long end,
 			     pgtbl_mod_mask *mask)
 {
@@ -359,6 +361,7 @@ static void vunmap_pmd_range(pud_t *pud, unsigned long addr, unsigned long end,
 	} while (pmd++, addr = next, addr != end);
 }
 
+// vmalloc机制相关解除pud映射
 static void vunmap_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 			     pgtbl_mod_mask *mask)
 {
@@ -382,6 +385,7 @@ static void vunmap_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 	} while (pud++, addr = next, addr != end);
 }
 
+// vmalloc机制相关解除p4d映射
 static void vunmap_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
 			     pgtbl_mod_mask *mask)
 {
@@ -403,6 +407,7 @@ static void vunmap_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
 }
 
 /*
+类似于vunmap_range，但不刷新缓存或TLB。
  * vunmap_range_noflush is similar to vunmap_range, but does not
  * flush caches or TLBs.
  *
@@ -411,7 +416,7 @@ static void vunmap_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
  * successfully (and before the addresses are expected to cause a page fault
  * or be re-mapped for something else, if TLB flushes are being delayed or
  * coalesced).
- *
+ * 调用者
  * This is an internal function only. Do not use outside mm/.
  */
 void __vunmap_range_noflush(unsigned long start, unsigned long end)
@@ -422,6 +427,7 @@ void __vunmap_range_noflush(unsigned long start, unsigned long end)
 	pgtbl_mod_mask mask = 0;
 
 	BUG_ON(addr >= end);
+	// 先找到pgd
 	pgd = pgd_offset_k(addr);
 	do {
 		next = pgd_addr_end(addr, end);
@@ -436,6 +442,7 @@ void __vunmap_range_noflush(unsigned long start, unsigned long end)
 		arch_sync_kernel_mappings(start, end);
 }
 
+/* 解除页表映射 */
 void vunmap_range_noflush(unsigned long start, unsigned long end)
 {
 	kmsan_vunmap_range_noflush(start, end);
@@ -458,6 +465,7 @@ void vunmap_range(unsigned long addr, unsigned long end)
 	flush_tlb_kernel_range(addr, end);
 }
 
+// vmalloc机制相关映射物理页到分配的地址空间
 static int vmap_pages_pte_range(pmd_t *pmd, unsigned long addr,
 		unsigned long end, pgprot_t prot, struct page **pages, int *nr,
 		pgtbl_mod_mask *mask)
@@ -473,6 +481,7 @@ static int vmap_pages_pte_range(pmd_t *pmd, unsigned long addr,
 	if (!pte)
 		return -ENOMEM;
 	do {
+		// 获得一个准备映射的物理页
 		struct page *page = pages[*nr];
 
 		if (WARN_ON(!pte_none(ptep_get(pte))))
@@ -481,7 +490,7 @@ static int vmap_pages_pte_range(pmd_t *pmd, unsigned long addr,
 			return -ENOMEM;
 		if (WARN_ON(!pfn_valid(page_to_pfn(page))))
 			return -EINVAL;
-
+		// 映射物理页到虚拟地址, 也就是设置pte
 		set_pte_at(&init_mm, addr, pte, mk_pte(page, prot));
 		(*nr)++;
 	} while (pte++, addr += PAGE_SIZE, addr != end);
@@ -489,6 +498,7 @@ static int vmap_pages_pte_range(pmd_t *pmd, unsigned long addr,
 	return 0;
 }
 
+// vmalloc机制相关映射物理页到分配的地址空间
 static int vmap_pages_pmd_range(pud_t *pud, unsigned long addr,
 		unsigned long end, pgprot_t prot, struct page **pages, int *nr,
 		pgtbl_mod_mask *mask)
@@ -500,13 +510,14 @@ static int vmap_pages_pmd_range(pud_t *pud, unsigned long addr,
 	if (!pmd)
 		return -ENOMEM;
 	do {
-		next = pmd_addr_end(addr, end);
+		next = pmd_addr_end(addr, end); // next是本pmd的结束地址
 		if (vmap_pages_pte_range(pmd, addr, next, prot, pages, nr, mask))
 			return -ENOMEM;
 	} while (pmd++, addr = next, addr != end);
 	return 0;
 }
 
+// vmalloc机制相关映射物理页到分配的地址空间
 static int vmap_pages_pud_range(p4d_t *p4d, unsigned long addr,
 		unsigned long end, pgprot_t prot, struct page **pages, int *nr,
 		pgtbl_mod_mask *mask)
@@ -518,13 +529,14 @@ static int vmap_pages_pud_range(p4d_t *p4d, unsigned long addr,
 	if (!pud)
 		return -ENOMEM;
 	do {
-		next = pud_addr_end(addr, end);
+		next = pud_addr_end(addr, end); // next是本pud的结束地址
 		if (vmap_pages_pmd_range(pud, addr, next, prot, pages, nr, mask))
 			return -ENOMEM;
 	} while (pud++, addr = next, addr != end);
 	return 0;
 }
 
+// vmalloc机制相关映射物理页到分配的地址空间
 static int vmap_pages_p4d_range(pgd_t *pgd, unsigned long addr,
 		unsigned long end, pgprot_t prot, struct page **pages, int *nr,
 		pgtbl_mod_mask *mask)
@@ -543,6 +555,7 @@ static int vmap_pages_p4d_range(pgd_t *pgd, unsigned long addr,
 	return 0;
 }
 
+// vmalloc机制相关映射物理页(位于pages)到分配的地址空间[addr, end)
 static int vmap_small_pages_range_noflush(unsigned long addr, unsigned long end,
 		pgprot_t prot, struct page **pages)
 {
@@ -554,8 +567,10 @@ static int vmap_small_pages_range_noflush(unsigned long addr, unsigned long end,
 	pgtbl_mod_mask mask = 0;
 
 	BUG_ON(addr >= end);
+	// 找到pgd
 	pgd = pgd_offset_k(addr);
 	do {
+		// next是本pgd的结束地址
 		next = pgd_addr_end(addr, end);
 		if (pgd_bad(*pgd))
 			mask |= PGTBL_PGD_MODIFIED;
@@ -571,6 +586,8 @@ static int vmap_small_pages_range_noflush(unsigned long addr, unsigned long end,
 }
 
 /*
+vmalloc把申请的物理页映射到自己分配的vmalloc空间的地址范围
+vmap_pages_range_noflush类似于vmap_pages_range，但不刷新缓存。
  * vmap_pages_range_noflush is similar to vmap_pages_range, but does not
  * flush caches.
  *
@@ -589,7 +606,7 @@ int __vmap_pages_range_noflush(unsigned long addr, unsigned long end,
 	if (!IS_ENABLED(CONFIG_HAVE_ARCH_HUGE_VMALLOC) ||
 			page_shift == PAGE_SHIFT)
 		return vmap_small_pages_range_noflush(addr, end, prot, pages);
-
+	/* 下面是huge的路径 */
 	for (i = 0; i < nr; i += 1U << (page_shift - PAGE_SHIFT)) {
 		int err;
 
@@ -605,6 +622,7 @@ int __vmap_pages_range_noflush(unsigned long addr, unsigned long end,
 	return 0;
 }
 
+// vmalloc机制相关映射物理页到分配的地址空间
 int vmap_pages_range_noflush(unsigned long addr, unsigned long end,
 		pgprot_t prot, struct page **pages, unsigned int page_shift)
 {
@@ -613,15 +631,17 @@ int vmap_pages_range_noflush(unsigned long addr, unsigned long end,
 
 	if (ret)
 		return ret;
+	// 映射物理页到vmalloc空间
 	return __vmap_pages_range_noflush(addr, end, prot, pages, page_shift);
 }
 
 /**
+vmalloc把申请的物理页映射到自己分配的vmalloc空间的地址范围
  * vmap_pages_range - map pages to a kernel virtual address
- * @addr: start of the VM area to map
+ * @addr: start of the VM area to map, 是vmalloc分配的地址空间
  * @end: end of the VM area to map (non-inclusive)
  * @prot: page protection flags to use
- * @pages: pages to map (always PAGE_SIZE pages)
+ * @pages: pages to map (always PAGE_SIZE pages),这些是要map到[addr, end)的物理页
  * @page_shift: maximum shift that the pages may be mapped with, @pages must
  * be aligned and contiguous up to at least this shift.
  *
@@ -632,7 +652,7 @@ static int vmap_pages_range(unsigned long addr, unsigned long end,
 		pgprot_t prot, struct page **pages, unsigned int page_shift)
 {
 	int err;
-
+	// 映射物理页到vmalloc空间
 	err = vmap_pages_range_noflush(addr, end, prot, pages, page_shift);
 	flush_cache_vmap(addr, end);
 	return err;
@@ -793,6 +813,7 @@ va_size(struct vmap_area *va)
 	return (va->va_end - va->va_start);
 }
 
+/*  */
 static __always_inline unsigned long
 get_subtree_max_size(struct rb_node *node)
 {
@@ -809,7 +830,7 @@ static void reclaim_and_purge_vmap_areas(void);
 static BLOCKING_NOTIFIER_HEAD(vmap_notify_list);
 static void drain_vmap_area_work(struct work_struct *work);
 static DECLARE_WORK(drain_vmap_work, drain_vmap_area_work);
-
+// 表示vmalloc机制已经分配的物理页数
 static atomic_long_t nr_vmalloc_pages;
 
 unsigned long vmalloc_nr_pages(void)
@@ -842,6 +863,7 @@ static struct vmap_area *find_vmap_area_exceed_addr(unsigned long addr)
 	return va;
 }
 
+// 在红黑树中查找addr所在的vmap_area
 static struct vmap_area *__find_vmap_area(unsigned long addr, struct rb_root *root)
 {
 	struct rb_node *n = root->rb_node;
@@ -864,6 +886,9 @@ static struct vmap_area *__find_vmap_area(unsigned long addr, struct rb_root *ro
 }
 
 /*
+找到va应该插入的地方
+va表示了一段已经分配的,准备使用的地址范围
+这里插入vmap_area_root红黑树中
  * This function returns back addresses of parent node
  * and its left or right link for further processing.
  *
@@ -893,6 +918,8 @@ find_va_links(struct vmap_area *va,
 	 * Go to the bottom of the tree. When we hit the last point
 	 * we end up with parent rb_node and correct direction, i name
 	 * it link, where the new va->rb_node will be attached to.
+	 去树的底部。当我们到达最后一点时，我们最终得到父rb_node和正确的方向，
+	 称之为link，新的va->rb_node将附加到其中。
 	 */
 	do {
 		tmp_va = rb_entry(*link, struct vmap_area, rb_node);
@@ -903,10 +930,10 @@ find_va_links(struct vmap_area *va,
 		 * or full overlaps.
 		 */
 		if (va->va_end <= tmp_va->va_start)
-			link = &(*link)->rb_left;
+			link = &(*link)->rb_left; // 如果新va在当前va的左边
 		else if (va->va_start >= tmp_va->va_end)
-			link = &(*link)->rb_right;
-		else {
+			link = &(*link)->rb_right; // 如果新va在当前va的右边
+		else {// 这是有交叉了, 表示地址空间重复分配了?
 			WARN(1, "vmalloc bug: 0x%lx-0x%lx overlaps with 0x%lx-0x%lx\n",
 				va->va_start, va->va_end, tmp_va->va_start, tmp_va->va_end);
 
@@ -992,6 +1019,7 @@ link_va_augment(struct vmap_area *va, struct rb_root *root,
 	__link_va(va, root, parent, link, head, true);
 }
 
+// 从vmap_area的红黑树和链表中删除一个vmap_area
 static __always_inline void
 __unlink_va(struct vmap_area *va, struct rb_root *root, bool augment)
 {
@@ -1008,6 +1036,7 @@ __unlink_va(struct vmap_area *va, struct rb_root *root, bool augment)
 	RB_CLEAR_NODE(&va->rb_node);
 }
 
+// vmalloc机制从红黑树中删除一个vmap_area
 static __always_inline void
 unlink_va(struct vmap_area *va, struct rb_root *root)
 {
@@ -1090,15 +1119,16 @@ augment_tree_propagate_from(struct vmap_area *va)
 }
 
 /* vmalloc机制
+寻找可用地址范围, 用新建的vmap_area对象表示
 插入一个vmap_area到红黑树中
- */
+*/
 static void
 insert_vmap_area(struct vmap_area *va,
 	struct rb_root *root, struct list_head *head)
 {
 	struct rb_node **link;
 	struct rb_node *parent;
-
+	// 找到va应该插入的地方
 	link = find_va_links(va, root, NULL, &parent);
 	if (link)
 		link_va(va, root, parent, link, head);
@@ -1124,11 +1154,14 @@ insert_vmap_area_augment(struct vmap_area *va,
 }
 
 /*
+把va重新插入vmap红黑树
+可能会与前后合并
  * Merge de-allocated chunk of VA memory with previous
  * and next free blocks. If coalesce is not done a new
  * free area is inserted. If VA has been merged, it is
  * freed.
- *
+ * 翻译: 将VA内存的释放块与前一个和后一个空闲块合并。如果未合并，
+ 则插入新的空闲区域。如果VA已合并，则释放它。
  * Please note, it can return NULL in case of overlap
  * ranges, followed by WARN() report. Despite it is a
  * buggy behaviour, a system can be alive and keep
@@ -1147,6 +1180,7 @@ __merge_or_add_vmap_area(struct vmap_area *va,
 	/*
 	 * Find a place in the tree where VA potentially will be
 	 * inserted, unless it is merged with its sibling/siblings.
+	 在树中找到VA可能被插入的位置，除非它与其兄弟/姐妹合并。
 	 */
 	link = find_va_links(va, root, NULL, &parent);
 	if (!link)
@@ -1218,6 +1252,9 @@ insert:
 	return va;
 }
 
+/* 
+把va重新插入红黑树,表示空闲
+*/
 static __always_inline struct vmap_area *
 merge_or_add_vmap_area(struct vmap_area *va,
 	struct rb_root *root, struct list_head *head)
@@ -1225,6 +1262,7 @@ merge_or_add_vmap_area(struct vmap_area *va,
 	return __merge_or_add_vmap_area(va, root, head, false);
 }
 
+// vmalloc机制的空闲地址范围插入这个free_vmap_area_root红黑树中
 static __always_inline struct vmap_area *
 merge_or_add_vmap_area_augment(struct vmap_area *va,
 	struct rb_root *root, struct list_head *head)
@@ -1236,12 +1274,21 @@ merge_or_add_vmap_area_augment(struct vmap_area *va,
 	return va;
 }
 
+/* 本次vmalloc内存分配
+要求分配size, 并且在vstart之后, 以align对齐
+检查当前这个vmap_area是否满足要求，如果满足，返回这个vmap_area
+*/
 static __always_inline bool
 is_within_this_va(struct vmap_area *va, unsigned long size,
 	unsigned long align, unsigned long vstart)
 {
 	unsigned long nva_start_addr;
-
+	/* 
+	    |vstart
+	|------------------|
+		+		|------------------|
+				+
+		*/
 	if (va->va_start > vstart)
 		nva_start_addr = ALIGN(va->va_start, align);
 	else
@@ -1261,6 +1308,8 @@ is_within_this_va(struct vmap_area *va, unsigned long size,
  * parameters. Please note, with an alignment bigger than PAGE_SIZE,
  * a search length is adjusted to account for worst case alignment
  * overhead.
+ 从树中找到vstart之后的第一个空闲块(最低的起始地址)，它将满足与传递参数对应的请求。
+ 请注意，如果对齐大于PAGE_SIZE，则搜索长度将调整以考虑最坏情况的对齐开销。
  */
 static __always_inline struct vmap_area *
 find_vmap_lowest_match(struct rb_root *root, unsigned long size,
@@ -1277,14 +1326,23 @@ find_vmap_lowest_match(struct rb_root *root, unsigned long size,
 	length = adjust_search_size ? size + align - 1 : size;
 
 	while (node) {
+		// 从rbnode获得varea
 		va = rb_entry(node, struct vmap_area, rb_node);
 
 		if (get_subtree_max_size(node->rb_left) >= length &&
-				vstart < va->va_start) {
+				vstart < va->va_start) {/* 
+					如果subtree_max_size大于length，说明左子树有足够的空间，且vstart小于va->va_start
+					说明vstart在va的左边，所以往左子树找
+					*/
 			node = node->rb_left;
 		} else {
 			if (is_within_this_va(va, size, align, vstart))
-				return va;
+				return va; // 如果满足要求，返回这个vmap_area	
+
+				/* 
+				刚刚判断了左边
+				和当前vmap_area都不能满足内存分配
+				*/
 
 			/*
 			 * Does not make sense to go deeper towards the right
@@ -1293,9 +1351,12 @@ find_vmap_lowest_match(struct rb_root *root, unsigned long size,
 			 */
 			if (get_subtree_max_size(node->rb_right) >= length) {
 				node = node->rb_right;
-				continue;
+				continue; // 如果右边的子树有足够的空间，继续往右子树找
 			}
 
+			/* 
+			现在是右边的子树也不能满足内存分配
+			*/
 			/*
 			 * OK. We roll back and find the first right sub-tree,
 			 * that will satisfy the search criteria. It can happen
@@ -1373,6 +1434,10 @@ enum fit_type {
 	NE_FIT_TYPE = 4		/* no edge fit */
 };
 
+/* 
+va这个vma满足了size的内存分配
+nvastartaddr是max(va->start,  vstart)对齐后的新地址
+*/
 static __always_inline enum fit_type
 classify_va_fit_type(struct vmap_area *va,
 	unsigned long nva_start_addr, unsigned long size)
@@ -1382,7 +1447,7 @@ classify_va_fit_type(struct vmap_area *va,
 	/* Check if it is within VA. */
 	if (nva_start_addr < va->va_start ||
 			nva_start_addr + size > va->va_end)
-		return NOTHING_FIT;
+		return NOTHING_FIT; // 异常情况?
 
 	/* Now classify. */
 	if (va->va_start == nva_start_addr) {
@@ -1399,6 +1464,10 @@ classify_va_fit_type(struct vmap_area *va,
 	return type;
 }
 
+/* 
+root和head分别是vmalloc机制的红黑树和双向链表\
+va是满足了size内存分配的vmap_area, 要把它返回了,这里更新root和head
+*/
 static __always_inline int
 adjust_va_to_fit_type(struct rb_root *root, struct list_head *head,
 		      struct vmap_area *va, unsigned long nva_start_addr,
@@ -1500,7 +1569,9 @@ adjust_va_to_fit_type(struct rb_root *root, struct list_head *head,
 }
 
 /*
- * Returns a start address of the newly allocated area, if success.
+vmalloc机制分配一个区域内存, 从红黑树中查找
+从vstart与vend之间查找一个合适的区域
+ * Returns a start address of the newly allocated area, if succes.
  * Otherwise a vend is returned that indicates failure.
  */
 static __always_inline unsigned long
@@ -1508,6 +1579,7 @@ __alloc_vmap_area(struct rb_root *root, struct list_head *head,
 	unsigned long size, unsigned long align,
 	unsigned long vstart, unsigned long vend)
 {
+	// 如果为真表示align小于PAGE_SIZE
 	bool adjust_search_size = true;
 	unsigned long nva_start_addr;
 	struct vmap_area *va;
@@ -1524,7 +1596,7 @@ __alloc_vmap_area(struct rb_root *root, struct list_head *head,
 	 */
 	if (align <= PAGE_SIZE || (align > PAGE_SIZE && (vend - vstart) == size))
 		adjust_search_size = false;
-
+	// 找到红黑树上面vstart之后最左边的满足条件的vmap_area
 	va = find_vmap_lowest_match(root, size, align, vstart, adjust_search_size);
 	if (unlikely(!va))
 		return vend;
@@ -1538,7 +1610,9 @@ __alloc_vmap_area(struct rb_root *root, struct list_head *head,
 	if (nva_start_addr + size > vend)
 		return vend;
 
-	/* Update the free vmap_area. */
+	/* Update the free vmap_area.
+	更新红黑树
+	*/
 	ret = adjust_va_to_fit_type(root, head, va, nva_start_addr, size);
 	if (WARN_ON_ONCE(ret))
 		return vend;
@@ -1551,6 +1625,7 @@ __alloc_vmap_area(struct rb_root *root, struct list_head *head,
 }
 
 /*
+释放一段vmalloc机制分配的内存地址空间
  * Free a region of KVA allocated by alloc_vmap_area
  */
 static void free_vmap_area(struct vmap_area *va)
@@ -1559,11 +1634,13 @@ static void free_vmap_area(struct vmap_area *va)
 	 * Remove from the busy tree/list.
 	 */
 	spin_lock(&vmap_area_lock);
+	// 首先把表示已使用这段地址空间的vmap_area从红黑树中删除
 	unlink_va(va, &vmap_area_root);
 	spin_unlock(&vmap_area_lock);
 
 	/*
 	 * Insert/Merge it back to the free tree/list.
+	 然后把这个vmap_area插入到表示free范围的free_vmap_area_root红黑树中
 	 */
 	spin_lock(&free_vmap_area_lock);
 	merge_or_add_vmap_area_augment(va, &free_vmap_area_root, &free_vmap_area_list);
@@ -1594,6 +1671,7 @@ preload_this_cpu_lock(spinlock_t *lock, gfp_t gfp_mask, int node)
 }
 
 /*
+vmap机制分配一个区域
  * Allocate a region of KVA of the specified size and alignment, within the
  * vstart and vend.
  */
@@ -1617,7 +1695,7 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
 
 	might_sleep();
 	gfp_mask = gfp_mask & GFP_RECLAIM_MASK;
-
+	// 从vmap_area_cachep中分配一个vmap_area对象
 	va = kmem_cache_alloc_node(vmap_area_cachep, gfp_mask, node);
 	if (unlikely(!va))
 		return ERR_PTR(-ENOMEM);
@@ -1630,6 +1708,7 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
 
 retry:
 	preload_this_cpu_lock(&free_vmap_area_lock, gfp_mask, node);
+	// 从红黑树分配一个vmap_area
 	addr = __alloc_vmap_area(&free_vmap_area_root, &free_vmap_area_list,
 		size, align, vstart, vend);
 	spin_unlock(&free_vmap_area_lock);
@@ -1649,6 +1728,8 @@ retry:
 	va->flags = va_flags;
 
 	spin_lock(&vmap_area_lock);
+	// 把这个vmap_area插入到红黑树中
+	// 看来vmap_area_root是一个已使用范围的红黑树?
 	insert_vmap_area(va, &vmap_area_root, &vmap_area_list);
 	spin_unlock(&vmap_area_lock);
 
@@ -1657,7 +1738,7 @@ retry:
 	BUG_ON(va->va_end > vend);
 
 	ret = kasan_populate_vmalloc(addr, size);
-	if (ret) {
+	if (ret) {// 出错了, 释放这个vmap_area
 		free_vmap_area(va);
 		return ERR_PTR(ret);
 	}
@@ -1828,6 +1909,10 @@ static void drain_vmap_area_work(struct work_struct *work)
 }
 
 /*
+vmalloc释放内存
+释放分配的vm_struct
+释放一个vmap_area
+重新插入红黑树, 表示空闲
  * Free a vmap area, caller ensuring that the area has been unmapped,
  * unlinked and flush_cache_vunmap had been called for the correct
  * range previously.
@@ -1846,8 +1931,10 @@ static void free_vmap_area_noflush(struct vmap_area *va)
 
 	/*
 	 * Merge or place it to the purge tree/list.
+	 2025年3月24日02:41:48
 	 */
 	spin_lock(&purge_vmap_area_lock);
+	// 重新插入红黑树
 	merge_or_add_vmap_area(va,
 		&purge_vmap_area_root, &purge_vmap_area_list);
 	spin_unlock(&purge_vmap_area_lock);
@@ -1860,34 +1947,41 @@ static void free_vmap_area_noflush(struct vmap_area *va)
 }
 
 /*
+释放一个vmap_area
+解除页表映射, 把地址范围重新插入红黑树, 表示空闲
  * Free and unmap a vmap area
  */
 static void free_unmap_vmap_area(struct vmap_area *va)
 {
 	flush_cache_vunmap(va->va_start, va->va_end);
+	// 解除页表映射
 	vunmap_range_noflush(va->va_start, va->va_end);
 	if (debug_pagealloc_enabled_static())
 		flush_tlb_kernel_range(va->va_start, va->va_end);
-
+	// 重新插入红黑树, 表示空闲
 	free_vmap_area_noflush(va);
 }
 
+// 从vmap_area_root红黑树中找到addr对应的vmap_area
 struct vmap_area *find_vmap_area(unsigned long addr)
 {
 	struct vmap_area *va;
 
 	spin_lock(&vmap_area_lock);
+	// 从红黑树中找到这个vmap_area
 	va = __find_vmap_area(addr, &vmap_area_root);
 	spin_unlock(&vmap_area_lock);
 
 	return va;
 }
 
+// 从红黑树中删除一个vmap_area
 static struct vmap_area *find_unlink_vmap_area(unsigned long addr)
 {
 	struct vmap_area *va;
 
 	spin_lock(&vmap_area_lock);
+	// 从红黑树中找到这个vmap_area
 	va = __find_vmap_area(addr, &vmap_area_root);
 	if (va)
 		unlink_va(va, &vmap_area_root);
@@ -2440,6 +2534,7 @@ EXPORT_SYMBOL(vm_map_ram);
 
 static struct vm_struct *vmlist __initdata;
 
+// 获取一个vm_struct结构体的page_order
 static inline unsigned int vm_area_page_order(struct vm_struct *vm)
 {
 #ifdef CONFIG_HAVE_ARCH_HUGE_VMALLOC
@@ -2449,6 +2544,7 @@ static inline unsigned int vm_area_page_order(struct vm_struct *vm)
 #endif
 }
 
+// 普通页面的话order就是0 ,huge的话是对应的值
 static inline void set_vm_area_page_order(struct vm_struct *vm, unsigned int order)
 {
 #ifdef CONFIG_HAVE_ARCH_HUGE_VMALLOC
@@ -2558,6 +2654,12 @@ static void vmap_init_free_space(void)
 	}
 }
 
+/* 
+一般情况下
+va是刚刚从红黑树取下的满足size的vmap_area
+area是一个vm_struct结构体,里面存放了va的信息,就是返回给
+用户的分配的内存的表示
+*/
 static inline void setup_vmalloc_vm_locked(struct vm_struct *vm,
 	struct vmap_area *va, unsigned long flags, const void *caller)
 {
@@ -2587,6 +2689,9 @@ static void clear_vm_uninitialized_flag(struct vm_struct *vm)
 	vm->flags &= ~VM_UNINITIALIZED;
 }
 
+// vmalloc的分配内存的时候,分配vm_area结构体的内存,分配vmalloc内存
+// 调用__get_vm_area_node获取空闲的线性地址区域后，此时的线性地址是没有对应的物理内存的，
+// 然后调用__vmalloc_area_node为其申请物理内存
 static struct vm_struct *__get_vm_area_node(unsigned long size,
 		unsigned long align, unsigned long shift, unsigned long flags,
 		unsigned long start, unsigned long end, int node,
@@ -2604,20 +2709,21 @@ static struct vm_struct *__get_vm_area_node(unsigned long size,
 	if (flags & VM_IOREMAP)
 		align = 1ul << clamp_t(int, get_count_order_long(size),
 				       PAGE_SHIFT, IOREMAP_MAX_ORDER);
-
+	// 从slab中分配一个vmap_area结构体
 	area = kzalloc_node(sizeof(*area), gfp_mask & GFP_RECLAIM_MASK, node);
 	if (unlikely(!area))
 		return NULL;
 
 	if (!(flags & VM_NO_GUARD))
 		size += PAGE_SIZE;
-
+	// 分配vmap_area
 	va = alloc_vmap_area(size, align, start, end, node, gfp_mask, 0);
 	if (IS_ERR(va)) {
 		kfree(area);
 		return NULL;
 	}
 
+	// va加入area
 	setup_vmalloc_vm(area, va, flags, caller);
 
 	/*
@@ -2671,19 +2777,21 @@ struct vm_struct *get_vm_area_caller(unsigned long size, unsigned long flags,
 }
 
 /**
+找到addr对应的vmap_area
  * find_vm_area - find a continuous kernel virtual area
  * @addr:	  base address
  *
  * Search for the kernel VM area starting at @addr, and return it.
  * It is up to the caller to do all required locking to keep the returned
  * pointer valid.
- *
+ * 搜索从@addr开始的内核VM区域，并返回它。
+ 调用者负责执行所有必需的锁定以保持返回的指针有效。
  * Return: the area descriptor on success or %NULL on failure.
  */
 struct vm_struct *find_vm_area(const void *addr)
 {
 	struct vmap_area *va;
-
+	// 从红黑树找到vmap_area
 	va = find_vmap_area((unsigned long)addr);
 	if (!va)
 		return NULL;
@@ -2692,13 +2800,17 @@ struct vm_struct *find_vm_area(const void *addr)
 }
 
 /**
+释放vmalloc分配的内存
+释放地址空间, 解除映射
+释放物理内存归还页面是其他函数做的
  * remove_vm_area - find and remove a continuous kernel virtual area
  * @addr:	    base address
  *
  * Search for the kernel VM area starting at @addr, and remove it.
  * This function returns the found VM area, but using it is NOT safe
  * on SMP machines, except for its size or flags.
- *
+ * 搜索从@addr开始的内核VM区域，并删除它。
+ 此函数返回找到的VM区域，但在SMP机器上使用它是不安全的，除非它的大小或标志。
  * Return: the area descriptor on success or %NULL on failure.
  */
 struct vm_struct *remove_vm_area(const void *addr)
@@ -2712,16 +2824,17 @@ struct vm_struct *remove_vm_area(const void *addr)
 			addr))
 		return NULL;
 
+	// 从红黑树找到并删除vmap_area
 	va = find_unlink_vmap_area((unsigned long)addr);
 	if (!va || !va->vm)
 		return NULL;
 	vm = va->vm;
-
+	// va存在并且va->vm存在
 	debug_check_no_locks_freed(vm->addr, get_vm_area_size(vm));
 	debug_check_no_obj_freed(vm->addr, get_vm_area_size(vm));
 	kasan_free_module_shadow(vm);
 	kasan_poison_vmalloc(vm->addr, get_vm_area_size(vm));
-
+	// 这里好像是释放映射的物理内存
 	free_unmap_vmap_area(va);
 	return vm;
 }
@@ -2784,11 +2897,13 @@ static void delayed_vfree_work(struct work_struct *w)
 }
 
 /**
+释放vmalloc分配的物理内存
  * vfree_atomic - release memory allocated by vmalloc()
  * @addr:	  memory base address
  *
  * This one is just like vfree() but can be called in any atomic context
  * except NMIs.
+ 函数类似于vfree()，但可以在任何原子上下文中调用，除了NMI。
  */
 void vfree_atomic(const void *addr)
 {
@@ -2808,6 +2923,8 @@ void vfree_atomic(const void *addr)
 }
 
 /**
+释放给vm_struct分配的物理页
+物理页数量在nr_pages成员中
  * vfree - Release memory allocated by vmalloc()
  * @addr:  Memory base address
  *
@@ -2815,7 +2932,8 @@ void vfree_atomic(const void *addr)
  * from one of the vmalloc() family of APIs.  This will usually also free the
  * physical memory underlying the virtual allocation, but that memory is
  * reference counted, so it will not be freed until the last user goes away.
- *
+ * 释放从@addr开始的虚拟连续内存区域，如从vmalloc()系列API中获得的那样。
+ 这通常也会释放虚拟分配下的物理内存，但是该内存是引用计数的，因此直到最后一个用户消失才会释放。
  * If @addr is NULL, no operation is performed.
  *
  * Context:
@@ -2840,7 +2958,7 @@ void vfree(const void *addr)
 
 	if (!addr)
 		return;
-
+	// 释放地址空间,解除映射
 	vm = remove_vm_area(addr);
 	if (unlikely(!vm)) {
 		WARN(1, KERN_ERR "Trying to vfree() nonexistent vm area (%p)\n",
@@ -2850,6 +2968,7 @@ void vfree(const void *addr)
 
 	if (unlikely(vm->flags & VM_FLUSH_RESET_PERMS))
 		vm_reset_perms(vm);
+	// 一个一个释放物理页
 	for (i = 0; i < vm->nr_pages; i++) {
 		struct page *page = vm->pages[i];
 
@@ -3008,6 +3127,13 @@ void *vmap_pfn(unsigned long *pfns, unsigned int count, pgprot_t prot)
 EXPORT_SYMBOL_GPL(vmap_pfn);
 #endif /* CONFIG_VMAP_PFN */
 
+/* 
+vmalloc机制为已分配的地址空间分配物理页面
+从nid分配, order是本次vmalloc分配的order
+nr_pages是需要分配的页数,不管是巨页还是单页, 都是根据size算的大小
+可能巨页的话后续再设置order
+分配的页面放到pages数组中
+*/
 static inline unsigned int
 vm_area_alloc_pages(gfp_t gfp, int nid,
 		unsigned int order, unsigned int nr_pages, struct page **pages)
@@ -3023,12 +3149,14 @@ vm_area_alloc_pages(gfp_t gfp, int nid,
 	 * the page array is partly or not at all populated due
 	 * to fails, fallback to a single page allocator that is
 	 * more permissive.
+	 对于order-0页面，我们使用批量分配器，如果由于失败而导致页面数组部分或根本未填充，
+	 则回退到更宽松的单页面分配器。
 	 */
 	if (!order) {
 		/* bulk allocator doesn't support nofail req. officially */
 		gfp_t bulk_gfp = gfp & ~__GFP_NOFAIL;
 
-		while (nr_allocated < nr_pages) {
+		while (nr_allocated < nr_pages) { // 一直分配,直到分配完nr_pages
 			unsigned int nr, nr_pages_request;
 
 			/*
@@ -3036,6 +3164,7 @@ vm_area_alloc_pages(gfp_t gfp, int nid,
 			 * pages per call. That is done in order to prevent a
 			 * long preemption off scenario in the bulk-allocator
 			 * so the range is [1:100].
+			   最大允许的请求是硬编码的，每次为100页。这样做是为了防止批量分配器中的长时间抢占，
 			 */
 			nr_pages_request = min(100U, nr_pages - nr_allocated);
 
@@ -3049,7 +3178,7 @@ vm_area_alloc_pages(gfp_t gfp, int nid,
 							nr_pages_request,
 							pages + nr_allocated);
 
-			else
+			else // 如果指定了nid
 				nr = alloc_pages_bulk_array_node(bulk_gfp, nid,
 							nr_pages_request,
 							pages + nr_allocated);
@@ -3118,6 +3247,12 @@ vm_area_alloc_pages(gfp_t gfp, int nid,
 	return nr_allocated;
 }
 
+/* 
+area是刚才vmalloc机制分配的内存 
+是从vmalloc的地址空间分配的
+现在需要为其映射物理内存
+@page_shift一般是12
+*/
 static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 				 pgprot_t prot, unsigned int page_shift,
 				 int node)
@@ -3131,7 +3266,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	unsigned int page_order;
 	unsigned int flags;
 	int ret;
-
+	// 申请一个数组,用来存放page指针
 	array_size = (unsigned long)nr_small_pages * sizeof(struct page *);
 
 	if (!(gfp_mask & (GFP_DMA | GFP_DMA32)))
@@ -3139,23 +3274,28 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 
 	/* Please note that the recursion is strictly bounded. */
 	if (array_size > PAGE_SIZE) {
+		// 如果需要的page数组大小大于一个页,那么就用vmalloc分配
 		area->pages = __vmalloc_node(array_size, 1, nested_gfp, node,
 					area->caller);
 	} else {
+		// 如果小于一个页,那么就用kmalloc分配
 		area->pages = kmalloc_node(array_size, nested_gfp, node);
 	}
 
-	if (!area->pages) {
+	if (!area->pages) {// 如果为vm_area的pages指针数组分配内存都失败了,
+		//放弃操作
 		warn_alloc(gfp_mask, NULL,
 			"vmalloc error: size %lu, failed to allocated page array size %lu",
 			nr_small_pages * PAGE_SIZE, array_size);
-		free_vm_area(area);
+		// 这里把刚刚分配的地址空间释放,还到红黑树上面, 表示空闲
+			free_vm_area(area);
 		return NULL;
 	}
-
+	// 这里是设置vm_area的page_order
 	set_vm_area_page_order(area, page_shift - PAGE_SHIFT);
 	page_order = vm_area_page_order(area);
 
+	// 为vm_area分配物理页面
 	area->nr_pages = vm_area_alloc_pages(gfp_mask | __GFP_NOWARN,
 		node, page_order, nr_small_pages, area->pages);
 
@@ -3170,6 +3310,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	/*
 	 * If not enough pages were obtained to accomplish an
 	 * allocation request, free them via vfree() if any.
+	 如果没有获得足够的页面来完成分配请求，则通过vfree()释放它们。
 	 */
 	if (area->nr_pages != nr_small_pages) {
 		/*
@@ -3188,6 +3329,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 				area->nr_pages * PAGE_SIZE);
 		goto fail;
 	}
+	/* 现在分配到了足够的物理页 */
 
 	/*
 	 * page tables allocations ignore external gfp mask, enforce it
@@ -3199,6 +3341,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 		flags = memalloc_noio_save();
 
 	do {
+		// 为vm_area的pages映射物理内存
 		ret = vmap_pages_range(addr, addr + size, prot, area->pages,
 			page_shift);
 		if (nofail && (ret < 0))
@@ -3220,11 +3363,13 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	return area->addr;
 
 fail:
+// 如果没有分配到足够的页面,那么就释放vm_area的pages数组
 	vfree(area->addr);
 	return NULL;
 }
 
 /**
+分配连续的vmap地址空间
  * __vmalloc_node_range - allocate virtually contiguous memory
  * @size:		  allocation size
  * @align:		  desired alignment
@@ -3297,10 +3442,11 @@ void *__vmalloc_node_range(unsigned long size, unsigned long align,
 	}
 
 again:
+// vmalloc分配一段空闲的线性地址空间
 	area = __get_vm_area_node(real_size, align, shift, VM_ALLOC |
 				  VM_UNINITIALIZED | vm_flags, start, end, node,
 				  gfp_mask, caller);
-	if (!area) {
+	if (!area) {// 分配失败
 		bool nofail = gfp_mask & __GFP_NOFAIL;
 		warn_alloc(gfp_mask, NULL,
 			"vmalloc error: size %lu, vm_struct allocation failed%s",
@@ -3336,7 +3482,11 @@ again:
 		kasan_flags |= KASAN_VMALLOC_PROT_NORMAL;
 	}
 
-	/* Allocate physical pages and map them into vmalloc space. */
+	/* Allocate physical pages and map them into vmalloc space.
+	分配物理页面并将它们映射到vmalloc空间?
+	调用__get_vm_area_node获取空闲的线性地址区域后，此时的线性地址是没有对应的物理内存的，
+	然后调用__vmalloc_area_node为其申请物理内存
+	*/
 	ret = __vmalloc_area_node(area, gfp_mask, prot, shift, node);
 	if (!ret)
 		goto fail;
@@ -3941,6 +4091,7 @@ int remap_vmalloc_range(struct vm_area_struct *vma, void *addr,
 }
 EXPORT_SYMBOL(remap_vmalloc_range);
 
+// 释放vmalloc分配的内存
 void free_vm_area(struct vm_struct *area)
 {
 	struct vm_struct *ret;

@@ -417,7 +417,11 @@ struct thread_struct {
 #ifdef CONFIG_X86_32
 	unsigned long		sp0;
 #endif
-	unsigned long		sp;
+/* 
+对应的fork_frame
+存储在进程stack的某个位置
+*/
+	unsigned long		sp; 
 #ifdef CONFIG_X86_32
 	unsigned long		sysenter_cs;
 #else

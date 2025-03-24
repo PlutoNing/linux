@@ -122,8 +122,10 @@ static bool sig_ignored(struct task_struct *t, int sig, bool force)
 }
 
 /*
+看看signal的信号有没有没有被block的信号
  * Re-calculate pending state from the set of locally pending
  * signals, globally pending signals, and blocked signals.
+ 重新计算挂起状态，从本地挂起信号集，全局挂起信号集和阻塞信号集来计算?
  */
 static inline bool has_pending_signals(sigset_t *signal, sigset_t *blocked)
 {
@@ -145,20 +147,24 @@ static inline bool has_pending_signals(sigset_t *signal, sigset_t *blocked)
 	case 2: ready  = signal->sig[1] &~ blocked->sig[1];
 		ready |= signal->sig[0] &~ blocked->sig[0];
 		break;
-
+	// 一个long就可以表示系统全部信号了,所以这里直接异或即可
 	case 1: ready  = signal->sig[0] &~ blocked->sig[0];
 	}
+	// 如果从signal里面去除了blocked的比特位还有bit置位
 	return ready !=	0;
 }
 
+// 看看signal有没有没有被屏蔽的信号
 #define PENDING(p,b) has_pending_signals(&(p)->signal, (b))
 
+// 是否还有没有被处理的挂起的信号
 static bool recalc_sigpending_tsk(struct task_struct *t)
 {
 	if ((t->jobctl & (JOBCTL_PENDING_MASK | JOBCTL_TRAP_FREEZE)) ||
 	    PENDING(&t->pending, &t->blocked) ||
 	    PENDING(&t->signal->shared_pending, &t->blocked) ||
 	    cgroup_task_frozen(t)) {
+			// 如果还有没有处理的信号,就设置TIF_SIGPENDING
 		set_tsk_thread_flag(t, TIF_SIGPENDING);
 		return true;
 	}
@@ -181,6 +187,7 @@ void recalc_sigpending_and_wake(struct task_struct *t)
 		signal_wake_up(t, 0);
 }
 
+// 如果没有了挂起的信号，就去除线程的TIF_SIGPENDING标志
 void recalc_sigpending(void)
 {
 	if (!recalc_sigpending_tsk(current) && !freezing(current))

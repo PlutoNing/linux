@@ -321,6 +321,7 @@ struct pid *find_vpid(int nr)
 }
 EXPORT_SYMBOL_GPL(find_vpid);
 
+// 获取进程的某个pid
 static struct pid **task_pid_ptr(struct task_struct *task, enum pid_type type)
 {
 	return (type == PIDTYPE_PID) ?
@@ -439,6 +440,7 @@ struct task_struct *find_get_task_by_vpid(pid_t nr)
 	return task;
 }
 
+// 获取task的pid
 struct pid *get_task_pid(struct task_struct *task, enum pid_type type)
 {
 	struct pid *pid;

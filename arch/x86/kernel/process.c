@@ -156,6 +156,7 @@ __visible void ret_from_fork(struct task_struct *prev, struct pt_regs *regs,
 	syscall_exit_to_user_mode(regs);
 }
 
+// fork的时候调用, 进行thread相关的初始化
 int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 {
 	unsigned long clone_flags = args->flags;
@@ -213,7 +214,9 @@ int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 
 	fpu_clone(p, clone_flags, args->fn, new_ssp);
 
-	/* Kernel thread ? */
+	/* Kernel thread ? 
+	如果是内核线程
+	*/
 	if (unlikely(p->flags & PF_KTHREAD)) {
 		p->thread.pkru = pkru_get_init_value();
 		memset(childregs, 0, sizeof(struct pt_regs));

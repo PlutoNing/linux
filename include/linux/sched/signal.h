@@ -102,7 +102,10 @@ struct signal_struct {
 	/* current thread group signal load-balancing target: */
 	struct task_struct	*curr_target;
 
-	/* shared signal handling: */
+	/* shared signal handling:
+	如果是 kill 发送的，也就是发送给整个进程的，就应该发送给 t->signal->shared_pending，
+	这里面是整个进程所有线程共享的信号；
+	*/
 	struct sigpending	shared_pending;
 
 	/* For collecting multiprocess signals during fork */
@@ -160,7 +163,7 @@ struct signal_struct {
 	struct posix_cputimers posix_cputimers;
 
 	/* PID/PID hash table linkage. */
-	struct pid *pids[PIDTYPE_MAX];
+	struct pid *pids[PIDTYPE_MAX]; // 其他的pid type对应的pid
 
 #ifdef CONFIG_NO_HZ_FULL
 	atomic_t tick_dep_mask;
@@ -384,6 +387,7 @@ static inline int restart_syscall(void)
 	return -ERESTARTNOINTR;
 }
 
+// 检查是否有信号需要处理
 static inline int task_sigpending(struct task_struct *p)
 {
 	return unlikely(test_tsk_thread_flag(p,TIF_SIGPENDING));

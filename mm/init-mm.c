@@ -20,6 +20,7 @@
 const struct vm_operations_struct vma_dummy_vm_ops;
 
 /*
+表示内核的mm?
  * For dynamically allocated mm_structs, there is a dynamically sized cpumask
  * at the end of the structure, the size of which depends on the maximum CPU
  * number the system can see. That way we allocate only as much memory for

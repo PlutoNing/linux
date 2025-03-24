@@ -293,6 +293,7 @@ out:
 }
 EXPORT_SYMBOL_GPL(set_task_ioprio);
 
+// fork的时候调用拷贝io相关
 int __copy_io(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct io_context *ioc = current->io_context;

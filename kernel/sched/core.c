@@ -2825,6 +2825,7 @@ static cpumask_t *alloc_user_cpus_ptr(int node)
 	return kmalloc_node(size, GFP_KERNEL, node);
 }
 
+// user_cpus_ptr是啥?
 int dup_user_cpus_ptr(struct task_struct *dst, struct task_struct *src,
 		      int node)
 {
@@ -4725,6 +4726,7 @@ late_initcall(sched_core_sysctl_init);
 
 /*
  * fork()/clone()-time setup:
+ fork的时候设置新进程的调度信息
  */
 int sched_fork(unsigned long clone_flags, struct task_struct *p)
 {

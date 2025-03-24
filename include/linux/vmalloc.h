@@ -45,7 +45,9 @@ struct iov_iter;		/* in uio.h */
 #ifndef IOREMAP_MAX_ORDER
 #define IOREMAP_MAX_ORDER	(7 + PAGE_SHIFT)	/* 128 pages */
 #endif
-
+/* 
+表示vmalloc的结构体
+*/
 struct vm_struct {
 	struct vm_struct	*next;
 	void			*addr;
@@ -53,6 +55,7 @@ struct vm_struct {
 	unsigned long		flags;
 	struct page		**pages;
 #ifdef CONFIG_HAVE_ARCH_HUGE_VMALLOC
+// 代表页面的order, 普通的页面order为0,huge page的order为对应的值
 	unsigned int		page_order;
 #endif
 	unsigned int		nr_pages;

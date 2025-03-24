@@ -34,7 +34,7 @@ enum memcg_stat_item {
 	MEMCG_SOCK,
 	MEMCG_PERCPU_B,
 	MEMCG_VMALLOC,
-	MEMCG_KMEM,
+	MEMCG_KMEM, // 使用的kmem, 比如用于栈内存的额
 	MEMCG_ZSWAP_B,
 	MEMCG_ZSWAPPED,
 	MEMCG_NR_STAT,
@@ -1812,6 +1812,7 @@ static inline bool memcg_kmem_online(void)
 	return static_branch_likely(&memcg_kmem_online_key);
 }
 
+// charge此cg的kmem
 static inline int memcg_kmem_charge_page(struct page *page, gfp_t gfp,
 					 int order)
 {

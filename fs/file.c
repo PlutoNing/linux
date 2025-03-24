@@ -47,6 +47,7 @@ static void free_fdtable_rcu(struct rcu_head *rcu)
 #define BITBIT_SIZE(nr)	(BITBIT_NR(nr) * sizeof(long))
 
 /*
+拷贝打开文件的位图
  * Copy 'count' fd bits from the old table to the new table and clear the extra
  * space if any.  This does not copy the file pointers.  Called with the files
  * spinlock held for write.
@@ -309,6 +310,7 @@ static unsigned int sane_fdtable_size(struct fdtable *fdt, unsigned int max_fds)
 }
 
 /*
+拷贝files_struct
  * Allocate a new files structure and copy contents from the
  * passed in files structure.
  * errorp will be valid only when the returned files_struct is NULL.
@@ -373,7 +375,7 @@ struct files_struct *dup_fd(struct files_struct *oldf, unsigned int max_fds, int
 		old_fdt = files_fdtable(oldf);
 		open_files = sane_fdtable_size(old_fdt, max_fds);
 	}
-
+	// 拷贝fd
 	copy_fd_bitmaps(new_fdt, old_fdt, open_files);
 
 	old_fds = old_fdt->fd;
