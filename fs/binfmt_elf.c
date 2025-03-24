@@ -97,7 +97,9 @@ static int elf_core_dump(struct coredump_params *cprm);
 #define ELF_PAGESTART(_v) ((_v) & ~(int)(ELF_MIN_ALIGN-1))
 #define ELF_PAGEOFFSET(_v) ((_v) & (ELF_MIN_ALIGN-1))
 #define ELF_PAGEALIGN(_v) (((_v) + ELF_MIN_ALIGN - 1) & ~(ELF_MIN_ALIGN - 1))
-
+/* 
+定义elf的执行格式?
+*/
 static struct linux_binfmt elf_format = {
 	.module		= THIS_MODULE,
 	.load_binary	= load_elf_binary,
@@ -423,10 +425,11 @@ static unsigned long total_mapping_size(const struct elf_phdr *phdr, int nr)
 	return pt_load ? (max_addr - min_addr) : 0;
 }
 
+// 读取elf文件的header, 或者其他的各种东西
 static int elf_read(struct file *file, void *buf, size_t len, loff_t pos)
 {
 	ssize_t rv;
-
+	// 从文件中读取数据
 	rv = kernel_read(file, buf, len, &pos);
 	if (unlikely(rv != len)) {
 		return (rv < 0) ? rv : -EIO;
@@ -455,6 +458,7 @@ static unsigned long maximum_alignment(struct elf_phdr *cmds, int nr)
 }
 
 /**
+加载elf文件的header
  * load_elf_phdrs() - load ELF program headers
  * @elf_ex:   ELF header of the binary whose program headers should be loaded
  * @elf_file: the opened ELF binary file
@@ -462,6 +466,7 @@ static unsigned long maximum_alignment(struct elf_phdr *cmds, int nr)
  * Loads ELF program headers from the binary file elf_file, which has the ELF
  * header pointed to by elf_ex, into a newly allocated array. The caller is
  * responsible for freeing the allocated data. Returns NULL upon failure.
+ 从elf文件中加载elf的program header
  */
 static struct elf_phdr *load_elf_phdrs(const struct elfhdr *elf_ex,
 				       struct file *elf_file)
@@ -482,12 +487,14 @@ static struct elf_phdr *load_elf_phdrs(const struct elfhdr *elf_ex,
 	size = sizeof(struct elf_phdr) * elf_ex->e_phnum;
 	if (size == 0 || size > 65536 || size > ELF_MIN_ALIGN)
 		goto out;
-
+	// 给elf header分配内存
 	elf_phdata = kmalloc(size, GFP_KERNEL);
 	if (!elf_phdata)
 		goto out;
 
-	/* Read in the program headers */
+	/* Read in the program headers
+	读入elf文件的program header
+	*/
 	retval = elf_read(elf_file, elf_phdata, size, elf_ex->e_phoff);
 
 out:
@@ -820,13 +827,16 @@ static int parse_elf_properties(struct file *f, const struct elf_phdr *phdr,
 	return ret == -ENOENT ? 0 : ret;
 }
 
+// 加载elf的回调函数
 static int load_elf_binary(struct linux_binprm *bprm)
 {
 	struct file *interpreter = NULL; /* to shut gcc up */
 	unsigned long load_bias = 0, phdr_addr = 0;
 	int first_pt_load = 1;
 	unsigned long error;
-	struct elf_phdr *elf_ppnt, *elf_phdata, *interp_elf_phdata = NULL;
+	struct elf_phdr *elf_ppnt, 
+	*elf_phdata, // 存储elf文件的header
+	*interp_elf_phdata = NULL;
 	struct elf_phdr *elf_property_phdata = NULL;
 	unsigned long elf_bss, elf_brk;
 	int bss_prot = 0;
@@ -856,12 +866,13 @@ static int load_elf_binary(struct linux_binprm *bprm)
 		goto out;
 	if (!bprm->file->f_op->mmap)
 		goto out;
-
+	// 读取elf文件的header
 	elf_phdata = load_elf_phdrs(elf_ex, bprm->file);
 	if (!elf_phdata)
 		goto out;
 
 	elf_ppnt = elf_phdata;
+	// 这个循环是处理interpreter段?
 	for (i = 0; i < elf_ex->e_phnum; i++, elf_ppnt++) {
 		char *elf_interpreter;
 
@@ -876,6 +887,7 @@ static int load_elf_binary(struct linux_binprm *bprm)
 		/*
 		 * This is the program interpreter used for shared libraries -
 		 * for now assume that this is an a.out format binary.
+		 这是用于共享库的程序解释器-现在假设这是一个a.out格式的二进制文件。
 		 */
 		retval = -ENOEXEC;
 		if (elf_ppnt->p_filesz > PATH_MAX || elf_ppnt->p_filesz < 2)
@@ -885,7 +897,7 @@ static int load_elf_binary(struct linux_binprm *bprm)
 		elf_interpreter = kmalloc(elf_ppnt->p_filesz, GFP_KERNEL);
 		if (!elf_interpreter)
 			goto out_free_ph;
-
+		// 把这个段读进来?
 		retval = elf_read(bprm->file, elf_interpreter, elf_ppnt->p_filesz,
 				  elf_ppnt->p_offset);
 		if (retval < 0)
@@ -913,7 +925,9 @@ static int load_elf_binary(struct linux_binprm *bprm)
 			goto out_free_file;
 		}
 
-		/* Get the exec headers */
+		/* Get the exec headers
+		现在是读取interpreter的header?
+		*/
 		retval = elf_read(interpreter, interp_elf_ex,
 				  sizeof(*interp_elf_ex), 0);
 		if (retval < 0)
@@ -935,7 +949,7 @@ out_free_interp:
 			else
 				executable_stack = EXSTACK_DISABLE_X;
 			break;
-
+		// 表示当 switch 语句的表达式值在 PT_LOPROC 和 PT_HIPROC 之间（包括两者）时，执行相应的 case 代码块
 		case PT_LOPROC ... PT_HIPROC:
 			retval = arch_elf_pt_proc(elf_ex, elf_ppnt,
 						  bprm->file, false,
@@ -945,7 +959,9 @@ out_free_interp:
 			break;
 		}
 
-	/* Some simple consistency checks for the interpreter */
+	/* Some simple consistency checks for the interpreter
+	一些对interpreter的简单一致性检查
+	*/
 	if (interpreter) {
 		retval = -ELIBBAD;
 		/* Not an ELF interpreter */

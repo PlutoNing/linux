@@ -1428,9 +1428,9 @@ EXPORT_SYMBOL_GPL(mmput_async);
 
 /**
  * set_mm_exe_file - change a reference to the mm's executable file
- *
+ * 改变mm的exe file
  * This changes mm's executable file (shown as symlink /proc/[pid]/exe).
- *
+ * 
  * Main users are mmput() and sys_execve(). Callers prevent concurrent
  * invocations: in mmput() nobody alive left, in execve it happens before
  * the new mm is made visible to anyone.
@@ -1445,6 +1445,7 @@ int set_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 	 * It is safe to dereference the exe_file without RCU as
 	 * this function is only called if nobody else can access
 	 * this mm -- see comment above for justification.
+	 获取mm现在的exe file
 	 */
 	old_exe_file = rcu_dereference_raw(mm->exe_file);
 
@@ -1457,6 +1458,7 @@ int set_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 			return -EACCES;
 		get_file(new_exe_file);
 	}
+	// 开始指向新的exe file
 	rcu_assign_pointer(mm->exe_file, new_exe_file);
 	if (old_exe_file) {
 		allow_write_access(old_exe_file);
@@ -1639,13 +1641,18 @@ static int wait_for_vfork_done(struct task_struct *child,
 	return killed;
 }
 
-/* Please note the differences between mmput and mm_release.
+/* 
+tsk要丢弃自己这个旧mm了
+Please note the differences between mmput and mm_release.
  * mmput is called whenever we stop holding onto a mm_struct,
  * error success whatever.
- *
+ * 请注意mmput和mm_release之间的区别。
+ * mmput在我们停止持有mm_struct时调用，
+ * 无论是错误还是成功。
  * mm_release is called after a mm_struct has been removed
  * from the current process.
- *
+ * 在从当前进程中删除mm_struct之后调用mm_release。
+ * 这种差异对于错误处理很重要，
  * This difference is important for error handling, when we
  * only half set up a mm_struct for a new process and need to restore
  * the old one.  Because we mmput the new mm_struct before
@@ -1656,13 +1663,17 @@ static void mm_release(struct task_struct *tsk, struct mm_struct *mm)
 {
 	uprobe_free_utask(tsk);
 
-	/* Get rid of any cached register state */
+	/* Get rid of any cached register state
+	这是啥
+	*/
 	deactivate_mm(tsk, mm);
 
-	/*
+	/* 
 	 * Signal userspace if we're not exiting with a core dump
 	 * because we want to leave the value intact for debugging
 	 * purposes.
+	 如果我们不带核心转储退出，就向用户空间发出信号，
+	 因为我们希望为调试目的保留该值。
 	 */
 	if (tsk->clear_child_tid) {
 		if (atomic_read(&mm->mm_users) > 1) {
@@ -1670,6 +1681,7 @@ static void mm_release(struct task_struct *tsk, struct mm_struct *mm)
 			 * We don't check the error code - if userspace has
 			 * not set up a proper pointer then tough luck.
 			 */
+			// 往用户空间的这个变量写入0
 			put_user(0, tsk->clear_child_tid);
 			do_futex(tsk->clear_child_tid, FUTEX_WAKE,
 					1, NULL, NULL, 0, 0);
@@ -3044,6 +3056,7 @@ pid_t user_mode_thread(int (*fn)(void *), void *arg, unsigned long flags)
 	return kernel_clone(&args);
 }
 
+// fork的系统调用
 #ifdef __ARCH_WANT_SYS_FORK
 SYSCALL_DEFINE0(fork)
 {
@@ -3413,6 +3426,7 @@ static int unshare_fs(unsigned long unshare_flags, struct fs_struct **new_fsp)
 }
 
 /*
+如果文件描述符表正在被共享,则取消共享文件描述符表
  * Unshare file descriptor table if it is being shared
  */
 int unshare_fd(unsigned long unshare_flags, unsigned int max_fds,
@@ -3564,6 +3578,7 @@ SYSCALL_DEFINE1(unshare, unsigned long, unshare_flags)
 }
 
 /*
+保证进程的文件全是私有的?
  *	Helper to unshare the files of the current task.
  *	We don't want to expose copy_files internals to
  *	the exec layer of the kernel.
@@ -3578,10 +3593,10 @@ int unshare_files(void)
 	error = unshare_fd(CLONE_FILES, NR_OPEN_MAX, &copy);
 	if (error || !copy)
 		return error;
-
+	/* no error并且copy成功 */
 	old = task->files;
 	task_lock(task);
-	task->files = copy;
+	task->files = copy; // 设置新的文件描述符表
 	task_unlock(task);
 	put_files_struct(old);
 	return 0;

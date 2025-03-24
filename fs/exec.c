@@ -974,7 +974,10 @@ exit:
 	fput(file);
 	return ERR_PTR(err);
 }
-
+/* 
+参数有可能是elf文件的interpreter段
+返回打开的文件
+*/
 struct file *open_exec(const char *name)
 {
 	struct filename *filename = getname_kernel(name);
@@ -1000,6 +1003,7 @@ EXPORT_SYMBOL(read_code);
 #endif
 
 /*
+让当前进程映射这个mm?
  * Maps the mm_struct mm into the current task struct.
  * On success, this function returns with exec_update_lock
  * held for writing.
@@ -1110,6 +1114,7 @@ static int de_thread(struct task_struct *tsk)
 	 * At this point all other threads have exited, all we have to
 	 * do is to wait for the thread group leader to become inactive,
 	 * and to assume its PID:
+	 此时所有其他线程都已退出,我们所要做的就是等待线程组领导者变为非活动状态,并假定其PID:
 	 */
 	if (!thread_group_leader(tsk)) {
 		struct task_struct *leader = tsk->group_leader;
@@ -1289,6 +1294,7 @@ int begin_new_exec(struct linux_binprm * bprm)
 
 	/*
 	 * Make this the only thread in the thread group.
+	 保证这个线程是线程组中唯一的线程
 	 */
 	retval = de_thread(me);
 	if (retval)
@@ -1299,7 +1305,9 @@ int begin_new_exec(struct linux_binprm * bprm)
 	 */
 	io_uring_task_cancel();
 
-	/* Ensure the files table is not shared. */
+	/* Ensure the files table is not shared.
+	保证文件表不是共享的
+	*/
 	retval = unshare_files();
 	if (retval)
 		goto out;
@@ -1308,6 +1316,8 @@ int begin_new_exec(struct linux_binprm * bprm)
 	 * Must be called _before_ exec_mmap() as bprm->mm is
 	 * not visible until then. Doing it here also ensures
 	 * we don't race against replace_mm_exe_file().
+	 必须在exec_mmap()之前调用,因为bprm->mm在那之前是不可见的.
+	 在这里这样做也确保我们不会与replace_mm_exe_file()竞争
 	 */
 	retval = set_mm_exe_file(bprm->mm, bprm->file);
 	if (retval)

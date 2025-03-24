@@ -138,6 +138,7 @@ void futex_wake_mark(struct wake_q_head *wake_q, struct futex_q *q)
 }
 
 /*
+唤醒n个在uaddr指向的锁变量上挂起等待的进程
  * Wake up waiters matching bitset queued on this futex (uaddr).
  */
 int futex_wake(u32 __user *uaddr, unsigned int flags, int nr_wake, u32 bitset)
@@ -628,7 +629,10 @@ retry_private:
 
 	return ret;
 }
+/* 
+uaddr指向一个地址，val代表这个地址期待的值，当*uaddr==val时，才会进行wait
 
+*/
 int futex_wait(u32 __user *uaddr, unsigned int flags, u32 val, ktime_t *abs_time, u32 bitset)
 {
 	struct hrtimer_sleeper timeout, *to;

@@ -451,6 +451,7 @@ extern void calculate_sigpending(void);
 
 extern void signal_wake_up_state(struct task_struct *t, unsigned int state);
 
+// 信号唤醒线程
 static inline void signal_wake_up(struct task_struct *t, bool fatal)
 {
 	unsigned int state = 0;
@@ -727,6 +728,7 @@ static inline struct task_struct *next_thread(const struct task_struct *p)
 			      struct task_struct, thread_group);
 }
 
+// 一个线程组是否为空
 static inline int thread_group_empty(struct task_struct *p)
 {
 	return list_empty(&p->thread_group);

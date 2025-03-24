@@ -81,7 +81,9 @@ err_unlock:
 
 	return ret;
 }
-
+/* 
+Futex是一种用户态和内核态混合的同步机制，支持进程内的线程之间和进程间的同步锁操作。
+*/
 long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 		u32 __user *uaddr2, u32 val2, u32 val3)
 {

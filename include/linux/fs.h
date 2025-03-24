@@ -372,9 +372,11 @@ enum rw_hint {
 	{ IOCB_NOIO,		"NOIO" }, \
 	{ IOCB_ALLOC_CACHE,	"ALLOC_CACHE" }, \
 	{ IOCB_DIO_CALLER_COMP,	"CALLER_COMP" }
-
+/* 
+内核读写io的表示和控制结构
+*/
 struct kiocb {
-	struct file		*ki_filp;
+	struct file		*ki_filp; // 表示与该iocb相关联的文件
 	loff_t			ki_pos; //表示读写的位置
 	void (*ki_complete)(struct kiocb *iocb, long ret);
 	void			*private;
@@ -2802,6 +2804,7 @@ static inline void put_write_access(struct inode * inode)
 {
 	atomic_dec(&inode->i_writecount);
 }
+// 使文件可写
 static inline void allow_write_access(struct file *file)
 {
 	if (file)

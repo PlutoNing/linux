@@ -2189,6 +2189,7 @@ static int effective_prio(struct task_struct *p)
 
 /**
  * task_curr - is this task currently executing on a CPU?
+   检查任务是否当前正在CPU上执行
  * @p: the task in question.
  *
  * Return: 1 if the task is currently executing. 0 otherwise.
@@ -3504,11 +3505,12 @@ out:
 
 /***
  * kick_process - kick a running thread to enter/exit the kernel
+   kick一个正在运行的线程进入/退出内核
  * @p: the to-be-kicked thread
  * 
  * Cause a process which is running on another CPU to enter
  * kernel-mode, without any delay. (to get signals handled.)
- * 
+ * 导致正在另一个CPU上运行的进程进入内核模式，而不会有任何延迟。(以处理信号)
  * NOTE: this function doesn't have to take the runqueue lock,
  * because all it wants to ensure is that the remote task enters
  * the kernel. If the IPI races and the task has been migrated
@@ -4163,6 +4165,7 @@ bool ttwu_state_match(struct task_struct *p, unsigned int state, int *success)
 
 /**
  * try_to_wake_up - wake up a thread
+ 唤醒一个线程
  * @p: the thread to be awakened
  * @state: the mask of task states that can be woken
  * @wake_flags: wake modifier flags (WF_*)
@@ -4481,6 +4484,7 @@ int wake_up_process(struct task_struct *p)
 }
 EXPORT_SYMBOL(wake_up_process);
 
+// 唤醒一个进程
 int wake_up_state(struct task_struct *p, unsigned int state)
 {
 	return try_to_wake_up(p, state, 0);

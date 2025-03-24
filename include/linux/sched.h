@@ -1006,7 +1006,7 @@ struct task_struct {
 	/* PID/PID hash table linkage. */
 	struct pid			*thread_pid; // PIDTYPE_PID对应的pid
 	struct hlist_node		pid_links[PIDTYPE_MAX];
-	struct list_head		thread_group;
+	struct list_head		thread_group; // 线程组
 	struct list_head		thread_node;
 
 	struct completion		*vfork_done;
@@ -1014,7 +1014,9 @@ struct task_struct {
 	/* CLONE_CHILD_SETTID: */
 	int __user			*set_child_tid;
 
-	/* CLONE_CHILD_CLEARTID: */
+	/* CLONE_CHILD_CLEARTID:
+	Clear TID on mm_release()?
+	*/
 	int __user			*clear_child_tid;
 
 	/* PF_KTHREAD | PF_IO_WORKER */

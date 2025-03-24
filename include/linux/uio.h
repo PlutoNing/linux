@@ -13,10 +13,16 @@
 struct page;
 
 typedef unsigned int __bitwise iov_iter_extraction_t;
-
+/* 
+内核读写的缓冲区
+*/
 struct kvec {
-	void *iov_base; /* and that should *never* hold a userland pointer */
-	size_t iov_len;
+	void *iov_base; /* 
+	读写到这里
+	and that should *never* hold a userland pointer */
+	size_t iov_len;/* 
+	读写这么多
+	*/
 };
 /* 表示iter的种类 */
 enum iter_type {

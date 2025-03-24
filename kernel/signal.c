@@ -764,7 +764,7 @@ still_pending:
 
 /*
  * Tell a process that it has a new active signal..
- *
+ * 告诉一个进程它有一个新的活动信号
  * NOTE! we rely on the previous spin_lock to
  * lock interrupts for us! We can only be called with
  * "siglock" held, and the local interrupt must
@@ -776,7 +776,7 @@ still_pending:
 void signal_wake_up_state(struct task_struct *t, unsigned int state)
 {
 	lockdep_assert_held(&t->sighand->siglock);
-
+	// 设置TIF_SIGPENDING标志
 	set_tsk_thread_flag(t, TIF_SIGPENDING);
 
 	/*
@@ -1381,6 +1381,7 @@ int force_sig_info(struct kernel_siginfo *info)
 
 /*
  * Nuke all other threads in the group.
+ 杀死组中的所有其他线程
  */
 int zap_other_threads(struct task_struct *p)
 {
@@ -1389,7 +1390,7 @@ int zap_other_threads(struct task_struct *p)
 
 	p->signal->group_stop_count = 0;
 
-	while_each_thread(p, t) {
+	while_each_thread(p, t) { // 遍历组中的所有线程
 		task_clear_jobctl_pending(t, JOBCTL_PENDING_MASK);
 		/* Don't require de_thread to wait for the vhost_worker */
 		if ((t->flags & (PF_IO_WORKER | PF_USER_WORKER)) != PF_USER_WORKER)

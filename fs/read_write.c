@@ -364,6 +364,7 @@ out_putf:
 }
 #endif
 
+// 内核读写函数进行的权限检查
 int rw_verify_area(int read_write, struct file *file, const loff_t *ppos, size_t count)
 {
 	if (unlikely((ssize_t) count < 0))
@@ -413,6 +414,7 @@ static int warn_unsupported(struct file *file, const char *op)
 	return -EINVAL;
 }
 
+// 内核读文件的函数
 ssize_t __kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 {
 	struct kvec iov = {
@@ -448,10 +450,11 @@ ssize_t __kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 	return ret;
 }
 
+// 内核读文件的函数
 ssize_t kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 {
 	ssize_t ret;
-
+	// 读取文件的权限检查
 	ret = rw_verify_area(READ, file, pos, count);
 	if (ret)
 		return ret;

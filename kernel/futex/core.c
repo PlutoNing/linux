@@ -192,6 +192,7 @@ static u64 get_inode_sequence_number(struct inode *inode)
 
 /**
  * get_futex_key() - Get parameters which are the keys for a futex
+ 作用: 获取futex的key参数
  * @uaddr:	virtual address of the futex
  * @fshared:	false for a PROCESS_PRIVATE futex, true for PROCESS_SHARED
  * @key:	address where result is stored.
@@ -1095,6 +1096,9 @@ static void futex_cleanup_end(struct task_struct *tsk, int state)
 	mutex_unlock(&tsk->futex_exit_mutex);
 }
 
+/* 
+这个futex是保护什么的?
+*/
 void futex_exec_release(struct task_struct *tsk)
 {
 	/*

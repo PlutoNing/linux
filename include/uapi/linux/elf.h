@@ -22,15 +22,17 @@ typedef __u32	Elf64_Word;
 typedef __u64	Elf64_Xword;
 typedef __s64	Elf64_Sxword;
 
-/* These constants are for the segment types stored in the image headers */
+/* These constants are for the segment types stored in the image headers
+这些变量是存储在映像头中的段类型
+*/
 #define PT_NULL    0
-#define PT_LOAD    1
-#define PT_DYNAMIC 2
-#define PT_INTERP  3
-#define PT_NOTE    4
+#define PT_LOAD    1 // 表示可加载段，包含程序的代码和数据?
+#define PT_DYNAMIC 2 //表示动态链接信息段，包含动态链接所需的信息?
+#define PT_INTERP  3 //表示解释器段，包含程序运行时需要的解释器路径?
+#define PT_NOTE    4 //表示注释段，包含附加信息?
 #define PT_SHLIB   5
-#define PT_PHDR    6
-#define PT_TLS     7               /* Thread local storage segment */
+#define PT_PHDR    6 //表示程序头表段，包含程序头表的位置和大小
+#define PT_TLS     7               /* Thread local storage segmentc表示线程局部存储段，包含线程局部存储数 */
 #define PT_LOOS    0x60000000      /* OS-specific */
 #define PT_HIOS    0x6fffffff      /* OS-specific */
 #define PT_LOPROC  0x70000000
@@ -223,6 +225,7 @@ typedef struct elf32_hdr {
   Elf32_Half	e_shstrndx;
 } Elf32_Ehdr;
 
+/* elf head的定义 */
 typedef struct elf64_hdr {
   unsigned char	e_ident[EI_NIDENT];	/* ELF "magic number" */
   Elf64_Half e_type;
@@ -263,7 +266,7 @@ typedef struct elf64_phdr {
   Elf64_Off p_offset;		/* Segment file offset */
   Elf64_Addr p_vaddr;		/* Segment virtual address */
   Elf64_Addr p_paddr;		/* Segment physical address */
-  Elf64_Xword p_filesz;		/* Segment size in file */
+  Elf64_Xword p_filesz;		/* Segment size in file,这个段的大小 */
   Elf64_Xword p_memsz;		/* Segment size in memory */
   Elf64_Xword p_align;		/* Segment alignment, file & memory */
 } Elf64_Phdr;
