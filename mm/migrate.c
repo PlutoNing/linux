@@ -128,6 +128,9 @@ out:
 	return false;
 }
 
+/* 
+putback一种mapping可以转为movable_operations的folio
+*/
 static void putback_movable_folio(struct folio *folio)
 {
 	const struct movable_operations *mops = folio_movable_ops(folio);
@@ -137,12 +140,16 @@ static void putback_movable_folio(struct folio *folio)
 }
 
 /*
+就是放回lru, 不过特殊处理的是:
+如果mapping的movable的话, 有特殊处理
  * Put previously isolated pages back onto the appropriate lists
  * from where they were once taken off for compaction/migration.
- *
+ * 把之前隔离的页面放回到适当的列表中,从中取出用于压缩/迁移。
  * This function shall be used whenever the isolated pageset has been
  * built from lru, balloon, hugetlbfs page. See isolate_migratepages_range()
  * and isolate_hugetlb().
+ 这函数应该在从lru、balloon、hugetlbfs页面构建隔离页面集时使用。
+ 请参见isolate_migratepages_range()和isolate_hugetlb()。
  */
 void putback_movable_pages(struct list_head *l)
 {
@@ -150,7 +157,7 @@ void putback_movable_pages(struct list_head *l)
 	struct folio *folio2;
 
 	list_for_each_entry_safe(folio, folio2, l, lru) {
-		if (unlikely(folio_test_hugetlb(folio))) {
+		if (unlikely(folio_test_hugetlb(folio))) {/* 巨页的情况 */
 			folio_putback_active_hugetlb(folio);
 			continue;
 		}
@@ -163,16 +170,18 @@ void putback_movable_pages(struct list_head *l)
 		if (unlikely(__folio_test_movable(folio))) {
 			VM_BUG_ON_FOLIO(!folio_test_isolated(folio), folio);
 			folio_lock(folio);
-			if (folio_test_movable(folio))
+			// 这俩函数啥区别.....
+			if (folio_test_movable(folio)) // 如果真的是movable的? 如果folio的page的mapping还可以转为movable_operations
 				putback_movable_folio(folio);
-			else
+			else // 仅仅有PAGE_MAPPING_MOVABLE这一个flag,不能转为movable_operations
 				folio_clear_isolated(folio);
 			folio_unlock(folio);
 			folio_put(folio);
-		} else {
+		} else {// 说明mapping不是movable的
+			// 那就是普通的anon mapping?
 			node_stat_mod_folio(folio, NR_ISOLATED_ANON +
 					folio_is_file_lru(folio), -folio_nr_pages(folio));
-			folio_putback_lru(folio);
+			folio_putback_lru(folio); // 放回lru
 		}
 	}
 }
@@ -1979,6 +1988,10 @@ out:
 	return rc_gather;
 }
 
+/* 
+好几个机制移动页面都是用的这个"目标位置分配"函数
+看着好像就是单纯的分配函数
+*/
 struct folio *alloc_migration_target(struct folio *src, unsigned long private)
 {
 	struct migration_target_control *mtc;

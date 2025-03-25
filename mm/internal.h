@@ -150,7 +150,7 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 
 /**
 folio是不是evictable
-需要mapping是evictable, 并且不能mlocked
+需要mapping是evictable, 并且folio不能有mlocked的page
  * folio_evictable - Test whether a folio is evictable.
  * @folio: The folio to test.
  *

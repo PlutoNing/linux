@@ -169,8 +169,7 @@ void put_pages_list(struct list_head *pages)
 EXPORT_SYMBOL(put_pages_list);
 
 typedef void (*move_fn_t)(struct lruvec *lruvec, struct folio *folio);
-/* 把folio加入lruvec. 
-调用add lru, 之前判断和设置evictable相关.  */
+/* 把folio加入lruvec. */
 static void lru_add_fn(struct lruvec *lruvec, struct folio *folio)
 {
 	int was_unevictable = folio_test_clear_unevictable(folio);
@@ -211,7 +210,7 @@ static void lru_add_fn(struct lruvec *lruvec, struct folio *folio)
 	trace_mm_lru_insertion(folio);
 }
 
-/* 调用move_fn操作fbatch里面的folio */
+/* 调用move_fn操作fbatch里面的folio, 移动到所属的lru */
 static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
 {
 	int i;
@@ -219,19 +218,18 @@ static void folio_batch_move_lru(struct folio_batch *fbatch, move_fn_t move_fn)
 	unsigned long flags = 0;
 
 	for (i = 0; i < folio_batch_count(fbatch); i++) {
+		// 一个一个处理fbatch里面的folio
 		struct folio *folio = fbatch->folios[i];
 
 		/* block memcg migration while the folio moves between lru */
-		/* 如果是lru_add_fn函数
-		或者本来是lru
-		就continue. */
 		if (move_fn != lru_add_fn && !folio_test_clear_lru(folio))
 			continue;
 		/* 如果是lru_add_fn函数
-		或者本来是lru
-		就开始找到lruvec, 然后移动 */
+		   或者本来是lru
+		=========================
+		   就开始找到lruvec, 然后移动 */
 		lruvec = folio_lruvec_relock_irqsave(folio, lruvec, &flags);
-		move_fn(lruvec, folio);
+		move_fn(lruvec, folio); // 开始移动
 
 		folio_set_lru(folio);
 	}
@@ -249,18 +247,22 @@ static void folio_batch_add_and_move(struct folio_batch *fbatch,
 	if (folio_batch_add(fbatch, folio) && !folio_test_large(folio) &&
 	    !lru_cache_disabled()) /* 加入缓存成功还有剩余空间 */
 		return;
-	/* 可能是缓冲fbatch满了. 不过已经加入成功了 */	
+	/* 可能是缓冲fbatch满了
+	可能是large folio
+	可能是lru_cache关闭了
+	但是这三种情况下,现在folio都已经在fbatch了?
+	*/	
 	folio_batch_move_lru(fbatch, move_fn);
 }
 
 // 从fbatch里面移动folio到lru
-// 这个是回调的函数指针
+// 这个是回调的函数指针, lru_rotate这个fbatch的
 static void lru_move_tail_fn(struct lruvec *lruvec, struct folio *folio)
 {
 	if (!folio_test_unevictable(folio)) {// 只操作可以evictable的
 		lruvec_del_folio(lruvec, folio);
 		folio_clear_active(folio);
-		lruvec_add_folio_tail(lruvec, folio);
+		lruvec_add_folio_tail(lruvec, folio); //添加到尾部
 		__count_vm_events(PGROTATED, folio_nr_pages(folio));
 	}
 }
@@ -549,7 +551,6 @@ EXPORT_SYMBOL(folio_mark_accessed);
  * to add the page to the [in]active [file|anon] list is deferred until the
  * folio_batch is drained. This gives a chance for the caller of folio_add_lru()
  * have the folio added to the active list using folio_mark_accessed().
-   
  */
 void folio_add_lru(struct folio *folio)
 {
@@ -562,12 +563,13 @@ void folio_add_lru(struct folio *folio)
 	/* see the comment in lru_gen_add_folio() */
 	if (lru_gen_enabled() && !folio_test_unevictable(folio) &&
 	    lru_gen_in_fault() && !(current->flags & PF_MEMALLOC))
-
 		folio_set_active(folio);
 
 	folio_get(folio);
 	local_lock(&cpu_fbatches.lock);
+	// 获得lru_add那个fbatch
 	fbatch = this_cpu_ptr(&cpu_fbatches.lru_add);
+	// 移动到对应的lru
 	folio_batch_add_and_move(fbatch, folio, lru_add_fn);
 	local_unlock(&cpu_fbatches.lock);
 }
@@ -702,6 +704,8 @@ static void lru_lazyfree_fn(struct lruvec *lruvec, struct folio *folio)
 }
 
 /*
+把pcp的fbatch里面的不同内容的cache移到
+对应的lru
  * Drain pages out of the cpu's folio_batch.
    把cpu的folio_batch里面的folio移动到lru上面?
  * Either "cpu" is the current CPU, and preemption has already been
@@ -839,6 +843,7 @@ void lru_add_drain(void)
 static void lru_add_and_bh_lrus_drain(void)
 {
 	local_lock(&cpu_fbatches.lock);
+	// 排空当前cpu的lru add
 	lru_add_drain_cpu(smp_processor_id());
 	local_unlock(&cpu_fbatches.lock);
 	invalidate_bh_lrus_cpu();
@@ -857,12 +862,13 @@ void lru_add_drain_cpu_zone(struct zone *zone)
 #ifdef CONFIG_SMP
 
 static DEFINE_PER_CPU(struct work_struct, lru_add_drain_work);
-//
+// 排空cpu的lru add
 static void lru_add_drain_per_cpu(struct work_struct *dummy)
 {
 	lru_add_and_bh_lrus_drain();
 }
 
+// 如何判断cpu需要drain呢?
 static bool cpu_needs_drain(unsigned int cpu)
 {
 	struct cpu_fbatches *fbatches = &per_cpu(cpu_fbatches, cpu);
@@ -891,10 +897,10 @@ static inline void __lru_add_drain_all(bool force_all_cpus)
 {
 	/*
 	 * lru_drain_gen - Global pages generation number
-	 *
+	 * lru_drain_gen - 全局页面生成号
 	 * (A) Definition: global lru_drain_gen = x implies that all generations
 	 *     0 < n <= x are already *scheduled* for draining.
-	 *
+	 * 定义: 全局lru_drain_gen = x意味着所有的生成0 < n <= x已经被*调度*排水。
 	 * This is an optimization for the highly-contended use case where a
 	 * user space workload keeps constantly generating a flow of pages for
 	 * each CPU.
@@ -915,6 +921,7 @@ static inline void __lru_add_drain_all(bool force_all_cpus)
 	 * Guarantee folio_batch counter stores visible by this CPU
 	 * are visible to other CPUs before loading the current drain
 	 * generation.
+	 保证这个CPU可见的folio_batch计数器存储在加载当前排水生成之前对其他CPU可见。
 	 */
 	smp_mb();
 
@@ -978,6 +985,7 @@ done:
 	mutex_unlock(&lock);
 }
 
+// 排空pcp的lru add缓存 
 void lru_add_drain_all(void)
 {
 	__lru_add_drain_all(false);

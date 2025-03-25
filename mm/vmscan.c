@@ -2597,16 +2597,19 @@ move:/* 默认的move是move到src */
 }
 
 /**
+从lru移除folio, 清除lru标记
  * folio_isolate_lru() - Try to isolate a folio from its LRU list.
  * @folio: Folio to isolate from its LRU list.
  *
  * Isolate a @folio from an LRU list and adjust the vmstat statistic
  * corresponding to whatever LRU list the folio was on.
- *
+ * 把folio从lru list移除,并且调整vmstat的统计.
  * The folio will have its LRU flag cleared.  If it was found on the
  * active list, it will have the Active flag set.  If it was found on the
  * unevictable list, it will have the Unevictable flag set.  These flags
  * may need to be cleared by the caller before letting the page go.
+ * 这个folio会被清除lru flag. 如果在active list上,会设置active flag.
+ * 如果在unevictable list上,会设置unevictable flag. 这些flag可能需要在调用者释放页面之前清除.
  *
  * Context:
  *
@@ -2625,11 +2628,12 @@ bool folio_isolate_lru(struct folio *folio)
 
 	VM_BUG_ON_FOLIO(!folio_ref_count(folio), folio);
 
-	if (folio_test_clear_lru(folio)) {
+	if (folio_test_clear_lru(folio)) {// 如果本来有lru flag
 		struct lruvec *lruvec;
 
 		folio_get(folio);
 		lruvec = folio_lruvec_lock_irq(folio);
+		// 需要从lruvec中移除
 		lruvec_del_folio(lruvec, folio);
 		unlock_page_lruvec_irq(lruvec);
 		ret = true;

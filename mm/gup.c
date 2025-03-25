@@ -262,6 +262,7 @@ int __must_check try_grab_page(struct page *page, unsigned int flags)
 }
 
 /**
+释放一个dma-pinned page?
  * unpin_user_page() - release a dma-pinned page
  * @page:            pointer to page to be released
  *
@@ -269,6 +270,8 @@ int __must_check try_grab_page(struct page *page, unsigned int flags)
  * unpin_user_page(), or one of the unpin_user_pages*() routines. This is so
  * that such pages can be separately tracked and uniquely handled. In
  * particular, interactions with RDMA and filesystems need special handling.
+ 被pin_user_pages*()固定的页面必须通过unpin_user_page()或unpin_user_pages*()之一释放。
+ 这样，这些页面可以被单独跟踪和唯一处理。特别是与RDMA和文件系统的交互需要特殊处理。
  */
 void unpin_user_page(struct page *page)
 {
@@ -440,7 +443,12 @@ void unpin_user_page_range_dirty_lock(struct page *page, unsigned long npages,
 	}
 }
 EXPORT_SYMBOL(unpin_user_page_range_dirty_lock);
-// 这是unpin数组里面的这些页面?
+/* 
+pages里面是npages个page,是gup的fast-path一级一级检查页表
+直到pte层面返回的
+===============
+为什么这里又put了呢
+*/
 static void unpin_user_pages_lockless(struct page **pages, unsigned long npages)
 {
 	unsigned long i;
@@ -497,7 +505,6 @@ EXPORT_SYMBOL(unpin_user_pages);
  * cache bouncing on large SMP machines for concurrent pinned gups.
  设置MMF_HAS_PINNED标志位，如果还没有设置的话；设置之后，它将在mm的生命周期内一直存在。
  除非有必要，否则避免设置该位，否则可能会导致在大型SMP机器上并发固定gups时写缓存反弹。
-
  */
 static inline void mm_set_has_pinned_flag(unsigned long *mm_flags)
 {
@@ -727,7 +734,7 @@ static struct page *follow_pmd_mask(struct vm_area_struct *vma,
 	if (likely(!pmd_trans_huge(pmdval))) // 不是巨页的情况
 		return follow_page_pte(vma, address, pmd, flags, &ctx->pgmap);
 
-	// 如果是巨页的情况
+	// 下面是如果是巨页的情况
 	if (pmd_protnone(pmdval) && !gup_can_follow_protnone(vma, flags))
 		return no_page_table(vma, flags);
 
@@ -778,7 +785,7 @@ static struct page *follow_pud_mask(struct vm_area_struct *vma,
 	}
 	if (unlikely(pud_bad(*pud)))
 		return no_page_table(vma, flags);
-	// 继续查看
+	// pud存在并且不是bad, 继续查找
 	return follow_pmd_mask(vma, address, pud, flags, ctx);
 }
 
@@ -798,7 +805,7 @@ static struct page *follow_p4d_mask(struct vm_area_struct *vma,
 	BUILD_BUG_ON(p4d_huge(*p4d));
 	if (unlikely(p4d_bad(*p4d)))
 		return no_page_table(vma, flags);
-	// 继续查找
+	// p4d存在并且不是bad, 继续查找
 	return follow_pud_mask(vma, address, p4d, flags, ctx);
 }
 
@@ -849,7 +856,7 @@ static struct page *follow_page_mask(struct vm_area_struct *vma,
 
 	if (pgd_none(*pgd) || unlikely(pgd_bad(*pgd)))
 		return no_page_table(vma, flags);
-	// 继续查找
+	// pgd存在并且不是bad, 继续查找
 	return follow_p4d_mask(vma, address, pgd, flags, ctx);
 }
 
@@ -1155,6 +1162,7 @@ static struct vm_area_struct *gup_vma_lookup(struct mm_struct *mm,
 /**
  * __get_user_pages() - pin user pages in memory
  获取用户页在内存中的页框
+ 一个一个follow page, 加入到pages数组
  * @mm:		mm_struct of target mm
  * @start:	starting user address
  * @nr_pages:	number of pages from start to pin
@@ -1231,7 +1239,8 @@ static long __get_user_pages(struct mm_struct *mm,
 		/* first iteration or cross vma bound
 		*/
 		if (!vma || start >= vma->vm_end) {/* 1, 函数刚刚开始循环,vma还是空的
-			 */
+			2, 或者这个vma遍历完了 
+			*/
 			// 查找相应的vma
 			vma = gup_vma_lookup(mm, start);
 			if (!vma && in_gate_area(mm, start)) {
@@ -1338,7 +1347,7 @@ next_page:
 				}
 			}
 
-			for (j = 0; j < page_increm; j++) {
+			for (j = 0; j < page_increm; j++) {// 添加到pages数组
 				subpage = nth_page(page, j);
 				pages[i + j] = subpage;
 				flush_anon_page(vma, subpage, start + j * PAGE_SIZE);
@@ -1482,15 +1491,18 @@ static bool gup_signal_pending(unsigned int flags)
 
 /*
 获取其他进程的页
+一个一个follow page, 加入到pages数组
+不是FOLL_LONGTERM的情况下, 会调用__get_user_pages_locked
  * Locking: (*locked == 1) means that the mmap_lock has already been acquired by
  * the caller. This function may drop the mmap_lock. If it does so, then it will
  * set (*locked = 0).
- *
+ * locked=1表示caller已经提前加锁, 这个函数可能会释放锁, 如果释放了, 那么会设置locked=0
  * (*locked == 0) means that the caller expects this function to acquire and
  * drop the mmap_lock. Therefore, the value of *locked will still be zero when
  * the function returns, even though it may have changed temporarily during
  * function execution.
- *
+ * locked=0表示caller期望这个函数获取并释放mmap_lock, 因此当函数返回时, locked的值仍然为0, 
+ * 即使在函数执行期间它可能会临时改变。
  * Please note that this function, unlike __get_user_pages(), will not return 0
  * for nr_pages > 0, unless FOLL_NOWAIT is used.
  */
@@ -1511,7 +1523,8 @@ static __always_inline long __get_user_pages_locked(struct mm_struct *mm,
 	 */
 	if (!*locked) {// 如果caller没有提前加锁
 		if (mmap_read_lock_killable(mm))
-			return -EAGAIN;
+			return -EAGAIN; // 获取mmap_lock失败
+		// 现在获取mmap_lock成功
 		must_unlock = true;
 		*locked = 1;
 	}
@@ -1589,7 +1602,7 @@ retry:
 				pages_done = -EINTR;
 			break;
 		}
-
+		// 重新获取mmap_lock
 		ret = mmap_read_lock_killable(mm);
 		if (ret) {
 			BUG_ON(ret > 0);
@@ -2058,6 +2071,8 @@ struct page *get_dump_page(unsigned long addr)
 #ifdef CONFIG_MIGRATION
 /*
  * Returns the number of collected pages. Return value is always >= 0.
+ 判断哪些是不能LONGTERM_PIN的,一般是比较"灵活的"
+ 就从lru移除, 收集到movable_page_list上面
  */
 static unsigned long collect_longterm_unpinnable_pages(
 					struct list_head *movable_page_list,
@@ -2072,12 +2087,14 @@ static unsigned long collect_longterm_unpinnable_pages(
 		struct folio *folio = page_folio(pages[i]);
 
 		if (folio == prev_folio)
-			continue;
+			continue;// 有可能连续的几个页面是同一个folio
 		prev_folio = folio;
 
 		if (folio_is_longterm_pinnable(folio))
 			continue;
 
+		// 找到了不能被固定的page
+		// 感觉比较灵活的都是不能LONGTERM_PIN的
 		collected++;
 
 		if (folio_is_device_coherent(folio))
@@ -2088,14 +2105,19 @@ static unsigned long collect_longterm_unpinnable_pages(
 			continue;
 		}
 
+		// 如果folio还不在lru上面?
 		if (!folio_test_lru(folio) && drain_allow) {
-			lru_add_drain_all();
+			lru_add_drain_all(); // 排空pcp的lru缓存
 			drain_allow = false;
 		}
+		// 排空之后应该在了
 
+		// 清除folio的lru flag
 		if (!folio_isolate_lru(folio))
-			continue;
+			continue;// 如果本来不在lru上面
 
+		// 这是个本来在lru的folio
+		// 下面把它收集起来
 		list_add_tail(&folio->lru, movable_page_list);
 		node_stat_mod_folio(folio,
 				    NR_ISOLATED_ANON + folio_is_file_lru(folio),
@@ -2106,9 +2128,15 @@ static unsigned long collect_longterm_unpinnable_pages(
 }
 
 /*
+movalbe_page_list上面的页面都是从pages里面筛选的不能LONGTERM_PIN的,是刚刚
+从lru移除,收集到movable_page_list上面的,一般是比较"灵活的"
+================
+这里unpin全部的页面,然后把movable_page_list上面的页面迁移,然后再重新放回lru
  * Unpins all pages and migrates device coherent pages and movable_page_list.
  * Returns -EAGAIN if all pages were successfully migrated or -errno for failure
  * (or partial success).
+ unpin全部的页面,迁移device coherent的页面和movable_page_list上面的
+ 如果所有页面都成功迁移,返回-EAGAIN,否则返回-errno
  */
 static int migrate_longterm_unpinnable_pages(
 					struct list_head *movable_page_list,
@@ -2149,12 +2177,13 @@ static int migrate_longterm_unpinnable_pages(
 		pages[i] = NULL;
 	}
 
-	if (!list_empty(movable_page_list)) {
+	if (!list_empty(movable_page_list)) {// 如果有需要迁移的
 		struct migration_target_control mtc = {
 			.nid = NUMA_NO_NODE,
 			.gfp_mask = GFP_USER | __GFP_NOWARN,
 		};
 
+		// 移动页面
 		if (migrate_pages(movable_page_list, alloc_migration_target,
 				  NULL, (unsigned long)&mtc, MIGRATE_SYNC,
 				  MR_LONGTERM_PIN, NULL)) {
@@ -2162,7 +2191,7 @@ static int migrate_longterm_unpinnable_pages(
 			goto err;
 		}
 	}
-
+	// 放回lru
 	putback_movable_pages(movable_page_list);
 
 	return -EAGAIN;
@@ -2177,15 +2206,17 @@ err:
 }
 
 /*
+把数组里面的不能LONGTERM_PIN的页面收集起来,然后迁移,然后重新放回lru
  * Check whether all pages are *allowed* to be pinned. Rather confusingly, all
  * pages in the range are required to be pinned via FOLL_PIN, before calling
  * this routine.
- *
+ * 检查所有页面是否允许被固定。令人困惑的是，在调用此例程之前，所有页面都需要通过FOLL_PIN固定。
  * If any pages in the range are not allowed to be pinned, then this routine
  * will migrate those pages away, unpin all the pages in the range and return
  * -EAGAIN. The caller should re-pin the entire range with FOLL_PIN and then
  * call this routine again.
- *
+ * 如果范围内的任何页面不允许被固定，则此例程将迁移这些页面，取消固定范围内的所有页面并返回-EAGAIN。
+ * 调用者应重新使用FOLL_PIN固定整个范围，然后再次调用此例程。
  * If an error other than -EAGAIN occurs, this indicates a migration failure.
  * The caller should give up, and propagate the error back up the call stack.
  *
@@ -2197,12 +2228,12 @@ static long check_and_migrate_movable_pages(unsigned long nr_pages,
 {
 	unsigned long collected;
 	LIST_HEAD(movable_page_list);
-
+	// 先收集
 	collected = collect_longterm_unpinnable_pages(&movable_page_list,
 						nr_pages, pages);
 	if (!collected)
-		return 0;
-
+		return 0; // 很好, 一个也没有
+	// unppin全部的页面,然后把movable_page_list上面的页面迁移,然后再重新放回lru
 	return migrate_longterm_unpinnable_pages(&movable_page_list, nr_pages,
 						pages);
 }
@@ -2215,8 +2246,10 @@ static long check_and_migrate_movable_pages(unsigned long nr_pages,
 #endif /* CONFIG_MIGRATION */
 
 /*
+一个一个follow page, 加入到pages数组
  * __gup_longterm_locked() is a wrapper for __get_user_pages_locked which
  * allows us to process the FOLL_LONGTERM flag.
+   是一个__get_user_pages_locked的包装器，允许我们处理FOLL_LONGTERM标志。
  */
 static long __gup_longterm_locked(struct mm_struct *mm,
 				  unsigned long start,
@@ -2228,12 +2261,13 @@ static long __gup_longterm_locked(struct mm_struct *mm,
 	unsigned int flags;
 	long rc, nr_pinned_pages;
 
-	if (!(gup_flags & FOLL_LONGTERM))
+	if (!(gup_flags & FOLL_LONGTERM)) // 如果不是LONGTERM
 		return __get_user_pages_locked(mm, start, nr_pages, pages,
 					       locked, gup_flags);
-
+	// 如果是LONGTERM
 	flags = memalloc_pin_save();
 	do {
+		// 获取一些pages
 		nr_pinned_pages = __get_user_pages_locked(mm, start, nr_pages,
 							  pages, locked,
 							  gup_flags);
@@ -2243,13 +2277,16 @@ static long __gup_longterm_locked(struct mm_struct *mm,
 		}
 
 		/* FOLL_LONGTERM implies FOLL_PIN */
+		// 把pages里面不能LONGTERM_PIN的收集起来,然后迁移,然后重新放回lru
 		rc = check_and_migrate_movable_pages(nr_pinned_pages, pages);
+		// 返回0是没事
 	} while (rc == -EAGAIN);
 	memalloc_pin_restore(flags);
 	return rc ? rc : nr_pinned_pages;
 }
 
 /*
+什么算是valid?
  * Check that the given flags are valid for the exported gup/pup interface, and
  * update them with the required flags that the caller must have set.
  */
@@ -2479,17 +2516,20 @@ EXPORT_SYMBOL(get_user_pages_unlocked);
 #ifdef CONFIG_HAVE_FAST_GUP
 
 /*
+在gup-fast路径中使用，用于确定是否允许为特定的folio固定页。
  * Used in the GUP-fast path to determine whether a pin is permitted for a
  * specific folio.
  *
  * This call assumes the caller has pinned the folio, that the lowest page table
  * level still points to this folio, and that interrupts have been disabled.
- *
+ * 这个调用假设调用者已经固定了folio，最低的页表级别仍然指向这个folio，并且中断已经被禁用。
  * Writing to pinned file-backed dirty tracked folios is inherently problematic
  * (see comment describing the writable_file_mapping_allowed() function). We
  * therefore try to avoid the most egregious case of a long-term mapping doing
  * so.
- *
+ * 写入固定的文件支持的脏跟踪folio本质上是有问题的（请参阅描述writable_file_mapping_allowed()
+ 函数的注释）。
+ * 因此，我们尝试避免长期映射这样做的最严重情况。
  * This function cannot be as thorough as that one as the VMA is not available
  * in the fast path, so instead we whitelist known good cases and if in doubt,
  * fall back to the slow path.
@@ -2502,11 +2542,15 @@ static bool folio_fast_pin_allowed(struct folio *folio, unsigned int flags)
 	/*
 	 * If we aren't pinning then no problematic write can occur. A long term
 	 * pin is the most egregious case so this is the one we disallow.
+	 如果我们不固定，那么不会发生任何问题的写入。
+	 长期固定是最严重的情况，所以我们不允许这种情况。
 	 */
 	if ((flags & (FOLL_PIN | FOLL_LONGTERM | FOLL_WRITE)) !=
 	    (FOLL_PIN | FOLL_LONGTERM | FOLL_WRITE))
 		return true;
 
+	/* 如果是LONGTERM的PIN WRITE就往下
+	 */
 	/* The folio is pinned, so we can safely access folio fields. */
 
 	if (WARN_ON_ONCE(folio_test_slab(folio)))
@@ -2520,16 +2564,19 @@ static bool folio_fast_pin_allowed(struct folio *folio, unsigned int flags)
 	 * GUP-fast disables IRQs. When IRQS are disabled, RCU grace periods
 	 * cannot proceed, which means no actions performed under RCU can
 	 * proceed either.
-	 *
+	 * GUP-fast禁用IRQS。当禁用IRQS时，RCU宽限期无法继续，这意味着在RCU下执行的操作也无法继续。
 	 * inodes and thus their mappings are freed under RCU, which means the
 	 * mapping cannot be freed beneath us and thus we can safely dereference
 	 * it.
+	 inodes和它们的映射在RCU下被释放，这意味着映射不能在我们下面被释放，因此我们
+	 可以安全地对其进行解引用。
 	 */
 	lockdep_assert_irqs_disabled();
 
 	/*
 	 * However, there may be operations which _alter_ the mapping, so ensure
 	 * we read it once and only once.
+	 * 但是，可能有操作会更改映射，因此确保我们只读取一次。
 	 */
 	mapping = READ_ONCE(folio->mapping);
 
@@ -2537,6 +2584,7 @@ static bool folio_fast_pin_allowed(struct folio *folio, unsigned int flags)
 	 * The mapping may have been truncated, in any case we cannot determine
 	 * if this mapping is safe - fall back to slow path to determine how to
 	 * proceed.
+	 mapping可能已经被截断，无论如何，我们无法确定这个映射是否安全-退回到慢路径以确定如何继续。
 	 */
 	if (!mapping)
 		return false;
@@ -2550,6 +2598,8 @@ static bool folio_fast_pin_allowed(struct folio *folio, unsigned int flags)
 	 * At this point, we know the mapping is non-null and points to an
 	 * address_space object. The only remaining whitelisted file system is
 	 * shmem.
+	 此时，我们知道映射是非空的，并且指向一个address_space对象。 
+	 唯一剩下的白名单文件系统是shmem。
 	 */
 	return shmem_mapping(mapping);
 }
@@ -2574,14 +2624,16 @@ static void __maybe_unused undo_dev_pagemap(int *nr, int nr_start,
 开始处理pmd上面的pte
  * Fast-gup relies on pte change detection to avoid concurrent pgtable
  * operations.
- *
+ * fast-gup依赖于pte更改检测，以避免并发的pgtable操作。
  * To pin the page, fast-gup needs to do below in order:
  * (1) pin the page (by prefetching pte), then (2) check pte not changed.
- *
+ * 为了固定页面，fast-gup需要按顺序执行以下操作：
+ * （1）固定页面（通过预取pte），然后（2）检查pte未更改。
  * For the rest of pgtable operations where pgtable updates can be racy
  * with fast-gup, we need to do (1) clear pte, then (2) check whether page
  * is pinned.
- *
+ * 对于pgtable更新可能与fast-gup竞争的其他pgtable操作，我们需要执行（1）清除pte，
+ * 然后（2）检查页面是否被固定。
  * Above will work for all pte-level operations, including THP split.
  *
  * For THP collapse, it's a bit more complicated because fast-gup may be
@@ -2602,6 +2654,7 @@ static int gup_pte_range(pmd_t pmd, pmd_t *pmdp, unsigned long addr,
 	if (!ptep)
 		return 0;
 	do {
+		// 读取pte条目
 		pte_t pte = ptep_get_lockless(ptep);
 		struct page *page;
 		struct folio *folio;
@@ -2620,7 +2673,10 @@ static int gup_pte_range(pmd_t pmd, pmd_t *pmdp, unsigned long addr,
 
 		if (!pte_access_permitted(pte, flags & FOLL_WRITE))
 			goto pte_unmap;
+		/* 现在pte还是rw,present,user的 */
 
+
+		// 处理两个特殊情况
 		if (pte_devmap(pte)) {
 			if (unlikely(flags & FOLL_LONGTERM))
 				goto pte_unmap;
@@ -2646,12 +2702,14 @@ static int gup_pte_range(pmd_t pmd, pmd_t *pmdp, unsigned long addr,
 		}
 
 		if (unlikely(pmd_val(pmd) != pmd_val(*pmdp)) ||
-		    unlikely(pte_val(pte) != pte_val(ptep_get(ptep)))) {
+		    unlikely(pte_val(pte) != pte_val(ptep_get(ptep)))) {/* 
+				如果获取之后, pmd和pte更改了, 放弃
+				*/
 			gup_put_folio(folio, 1, flags);
 			goto pte_unmap;
 		}
 
-		if (!folio_fast_pin_allowed(folio, flags)) {
+		if (!folio_fast_pin_allowed(folio, flags)) {// 如果不允许
 			gup_put_folio(folio, 1, flags);
 			goto pte_unmap;
 		}
@@ -2676,6 +2734,7 @@ static int gup_pte_range(pmd_t pmd, pmd_t *pmdp, unsigned long addr,
 				goto pte_unmap;
 			}
 		}
+		// 设置referenced标志
 		folio_set_referenced(folio);
 		pages[*nr] = page;
 		(*nr)++;
@@ -3019,7 +3078,7 @@ static int gup_huge_pgd(pgd_t orig, pgd_t *pgdp, unsigned long addr,
 	folio_set_referenced(folio);
 	return 1;
 }
-// 一级一级的迭代页表
+// 一级一级的迭代页表,如果有空页表就返回, 最后把pte层面经过检查的页面操作之后,放入pages数组
 static int gup_pmd_range(pud_t *pudp, pud_t pud, unsigned long addr, unsigned long end,
 		unsigned int flags, struct page **pages, int *nr)
 {
@@ -3052,13 +3111,14 @@ static int gup_pmd_range(pud_t *pudp, pud_t pud, unsigned long addr, unsigned lo
 			if (!gup_huge_pd(__hugepd(pmd_val(pmd)), addr,
 					 PMD_SHIFT, next, flags, pages, nr))
 				return 0;
+		// 开始处理pte层面的
 		} else if (!gup_pte_range(pmd, pmdp, addr, next, flags, pages, nr))
 			return 0;
 	} while (pmdp++, addr = next, addr != end);
 
 	return 1;
 }
-// 一级一级的迭代页表
+// 一级一级的迭代页表, 如果有空页表就返回, 最后把pmd层面经过检查的页面操作之后,放入pages数组
 static int gup_pud_range(p4d_t *p4dp, p4d_t p4d, unsigned long addr, unsigned long end,
 			 unsigned int flags, struct page **pages, int *nr)
 {
@@ -3067,6 +3127,7 @@ static int gup_pud_range(p4d_t *p4dp, p4d_t p4d, unsigned long addr, unsigned lo
 
 	pudp = pud_offset_lockless(p4dp, p4d, addr);
 	do {
+		// 读取pud条目
 		pud_t pud = READ_ONCE(*pudp);
 
 		next = pud_addr_end(addr, end);
@@ -3086,7 +3147,11 @@ static int gup_pud_range(p4d_t *p4dp, p4d_t p4d, unsigned long addr, unsigned lo
 
 	return 1;
 }
-// 一级一级的迭代页表
+// 一级一级的迭代页表, 是做什么呢?
+/* 
+返回0表示有不存在的页表?
+最后在pte层面经过检查的页面操作之后,放入pages数组
+*/
 static int gup_p4d_range(pgd_t *pgdp, pgd_t pgd, unsigned long addr, unsigned long end,
 			 unsigned int flags, struct page **pages, int *nr)
 {
@@ -3095,6 +3160,7 @@ static int gup_p4d_range(pgd_t *pgdp, pgd_t pgd, unsigned long addr, unsigned lo
 
 	p4dp = p4d_offset_lockless(pgdp, pgd, addr);
 	do {
+		// 读取p4d条目
 		p4d_t p4d = READ_ONCE(*p4dp);
 
 		next = p4d_addr_end(addr, end);
@@ -3126,7 +3192,7 @@ static void gup_pgd_range(unsigned long addr, unsigned long end,
 		next = pgd_addr_end(addr, end);
 		if (pgd_none(pgd))
 			return;
-		if (unlikely(pgd_huge(pgd))) {
+		if (unlikely(pgd_huge(pgd))) {// huge的情况
 			if (!gup_huge_pgd(pgd, pgdp, addr, next, flags,
 					  pages, nr))
 				return;
@@ -3134,6 +3200,7 @@ static void gup_pgd_range(unsigned long addr, unsigned long end,
 			if (!gup_huge_pd(__hugepd(pgd_val(pgd)), addr,
 					 PGDIR_SHIFT, next, flags, pages, nr))
 				return;
+		// 直接把要执行的操作放在了if里面
 		} else if (!gup_p4d_range(pgdp, pgd, addr, next, flags, pages, nr))
 			return;
 	} while (pgdp++, addr = next, addr != end); // 处理下一个pgd
@@ -3179,17 +3246,18 @@ static unsigned long lockless_pages_from_mm(unsigned long start,
 	 * Disable interrupts. The nested form is used, in order to allow full,
 	 * general purpose use of this routine.
 	 * 关中断, 用了嵌套形式, 以便允许完全的、通用的使用这个函数
-	 
 	 * With interrupts disabled, we block page table pages from being freed
 	 * from under us. See struct mmu_table_batch comments in
 	 * include/asm-generic/tlb.h for more details.
-	 * 关中断是为了阻止页表页在我们下面被释放. 更多细节见include/asm-generic/tlb.h中的struct mmu_table_batch注释
-	 
+	 * 关中断是为了阻止页表页在我们下面被释放. 更多细节见include/asm-generic/tlb.h中的
+	 struct mmu_table_batch注释
 	 * We do not adopt an rcu_read_lock() here as we also want to block IPIs
 	 * that come from THPs splitting.
 	 */
 	local_irq_save(flags);
-	// 这里开始pin?
+	// 这里开始pin? 这里是fast-path, 一级一级检查页表
+	// 如果有空页表就返回
+	// 最后把pte层面经过检查的页面操作之后,放入pages数组
 	gup_pgd_range(start, end, gup_flags, pages, &nr_pinned);
 	local_irq_restore(flags);
 
@@ -3240,14 +3308,15 @@ static int internal_get_user_pages_fast(unsigned long start,
 		return -EFAULT;
 	if (unlikely(!access_ok((void __user *)start, len)))
 		return -EFAULT;
-
+	// 先尝试fast-path
 	nr_pinned = lockless_pages_from_mm(start, end, gup_flags, pages);
 	if (nr_pinned == nr_pages || gup_flags & FOLL_FAST_ONLY)
 		return nr_pinned;
-
+	/* pinned还不够, 并且不限制只能fast-path */
 	/* Slow path: try to get the remaining pages with get_user_pages */
 	start += nr_pinned << PAGE_SHIFT;
 	pages += nr_pinned;
+	// 一个一个follow page, 加入pages
 	ret = __gup_longterm_locked(current->mm, start, nr_pages - nr_pinned,
 				    pages, &locked,
 				    gup_flags | FOLL_TOUCH | FOLL_UNLOCKABLE);
@@ -3260,11 +3329,13 @@ static int internal_get_user_pages_fast(unsigned long start,
 			return nr_pinned;
 		return ret;
 	}
+	// 返回实际pin的页面
 	return ret + nr_pinned;
 }
 
 /**
  * get_user_pages_fast_only() - pin user pages in memory
+   pin住内存中的用户页面
  * @start:      starting user address
  * @nr_pages:   number of pages from start to pin
  * @gup_flags:  flags modifying pin behaviour
@@ -3273,10 +3344,10 @@ static int internal_get_user_pages_fast(unsigned long start,
  *
  * Like get_user_pages_fast() except it's IRQ-safe in that it won't fall back to
  * the regular GUP.
- *
+ * 就像get_user_pages_fast()一样，只是它是IRQ安全的，因为它不会回退到常规GUP。
  * If the architecture does not support this function, simply return with no
  * pages pinned.
- *
+ * 如果架构不支持此功能，则只需返回而不固定页面。
  * Careful, careful! COW breaking can go either way, so a non-write
  * access can get ambiguous page results. If you call this function without
  * 'write' set, you'd better be sure that you're ok with that ambiguity.
@@ -3300,6 +3371,7 @@ int get_user_pages_fast_only(unsigned long start, int nr_pages,
 EXPORT_SYMBOL_GPL(get_user_pages_fast_only);
 
 /**
+获取用户地址空间的页面, 并且pin住
  * get_user_pages_fast() - pin user pages in memory
  * @start:      starting user address
  * @nr_pages:   number of pages from start to pin
@@ -3310,7 +3382,8 @@ EXPORT_SYMBOL_GPL(get_user_pages_fast_only);
  * Attempt to pin user pages in memory without taking mm->mmap_lock.
  * If not successful, it will fall back to taking the lock and
  * calling get_user_pages().
- *
+ * 尝试去pin住用户地址空间的页面, 不需要获取mm->mmap_lock
+   如果不成功, 会获取锁并调用get_user_pages()
  * Returns number of pages pinned. This may be fewer than the number requested.
  * If nr_pages is 0 or negative, returns 0. If no pages were pinned, returns
  * -errno.
