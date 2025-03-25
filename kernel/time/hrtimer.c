@@ -325,6 +325,7 @@ EXPORT_SYMBOL_GPL(__ktime_divns);
 
 /*
  * Add two ktime values and do a safety check for overflow:
+ 相加两个ktime值并对溢出进行安全检查
  */
 ktime_t ktime_add_safe(const ktime_t lhs, const ktime_t rhs)
 {

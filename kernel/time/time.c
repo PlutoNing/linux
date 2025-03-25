@@ -861,6 +861,7 @@ struct timespec64 timespec64_add_safe(const struct timespec64 lhs,
 
 /**
  * get_timespec64 - get user's time value into kernel space
+ 作用: 将用户空间的时间值转换为内核空间的时间值
  * @ts: destination &struct timespec64
  * @uts: user's time value as &struct __kernel_timespec
  *
@@ -873,11 +874,12 @@ int get_timespec64(struct timespec64 *ts,
 {
 	struct __kernel_timespec kts;
 	int ret;
-
+	// 先读入到内核空间的kts变量
 	ret = copy_from_user(&kts, uts, sizeof(kts));
 	if (ret)
 		return -EFAULT;
 
+	// 赋值ts的tv_sec和tv_nsec
 	ts->tv_sec = kts.tv_sec;
 
 	/* Zero out the padding in compat mode */

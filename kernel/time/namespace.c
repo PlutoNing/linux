@@ -19,7 +19,9 @@
 #include <linux/mm.h>
 
 #include <vdso/datapage.h>
-
+/* 
+根据不同的时钟类型对时间进行不同的调整
+*/
 ktime_t do_timens_ktime_to_host(clockid_t clockid, ktime_t tim,
 				struct timens_offsets *ns_offsets)
 {

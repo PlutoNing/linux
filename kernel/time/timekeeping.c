@@ -833,7 +833,11 @@ void ktime_get_real_ts64(struct timespec64 *ts)
 }
 EXPORT_SYMBOL(ktime_get_real_ts64);
 
-/*  */
+/* 
+适用于可靠的时间戳和测量短时间间隔.
+准确.
+在系统引导时启动，但在挂起期间停止。
+*/
 ktime_t ktime_get(void)
 {
 	struct timekeeper *tk = &tk_core.timekeeper;

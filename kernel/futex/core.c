@@ -233,7 +233,7 @@ int get_futex_key(u32 __user *uaddr, bool fshared, union futex_key *key,
 	key->both.offset = address % PAGE_SIZE;
 	if (unlikely((address % sizeof(u32)) != 0))
 		return -EINVAL;
-	address -= key->both.offset;
+	address -= key->both.offset; // 现在address是页对齐的了
 
 	if (unlikely(!access_ok(uaddr, sizeof(u32))))
 		return -EFAULT;
@@ -247,18 +247,21 @@ int get_futex_key(u32 __user *uaddr, bool fshared, union futex_key *key,
 	 * virtual address, we dont even have to find the underlying vma.
 	 * Note : We do have to check 'uaddr' is a valid user address,
 	 *        but access_ok() should be faster than find_vma()
+	 PRIVATE futexes是快速的，因为mm在我们下面不会消失，而且'key'只需要虚拟地址，
+	 我们甚至不需要找到底层的vma
+	 注意：我们必须检查'uaddr'是有效的用户地址，但是access_ok()应该比find_vma()更快
 	 */
-	if (!fshared) {
+	if (!fshared) {// 如果是PROCESS_PRIVATE的futex
 		key->private.mm = mm;
 		key->private.address = address;
 		return 0;
 	}
-
+	/* 下面就是shared的情况了 */
 again:
 	/* Ignore any VERIFY_READ mapping (futex common case) */
 	if (unlikely(should_fail_futex(true)))
 		return -EFAULT;
-
+	// 获取address对应的page
 	err = get_user_pages_fast(address, 1, FOLL_WRITE, &page);
 	/*
 	 * If write access is not required (eg. FUTEX_WAIT), try
@@ -278,18 +281,25 @@ again:
 	 * lock protects many things but in this context the page lock
 	 * stabilizes mapping, prevents inode freeing in the shared
 	 * file-backed region case and guards against movement to swap cache.
-	 *
+	 * 翻译: 从这一点开始对mapping的处理是关键的。页面锁保护许多东西，但在这种情况下，
+	 * 页面锁稳定了映射，防止了共享file-backed区域中的inode释放，并防止了移动到交换缓存。
+	 
 	 * Strictly speaking the page lock is not needed in all cases being
 	 * considered here and page lock forces unnecessarily serialization
 	 * From this point on, mapping will be re-verified if necessary and
 	 * page lock will be acquired only if it is unavoidable
-	 *
+	 * 严格来说，在这里考虑的所有情况中并不是所有情况都需要页面锁，页面锁强制不必要的串行化
+	 * 从这一点开始，如果必要，将重新验证映射，并且只有在不可避免的情况下才会获取页面锁
+	 
 	 * Mapping checks require the head page for any compound page so the
 	 * head page and mapping is looked up now. For anonymous pages, it
 	 * does not matter if the page splits in the future as the key is
 	 * based on the address. For filesystem-backed pages, the tail is
 	 * required as the index of the page determines the key. For
 	 * base pages, there is no tail page and tail == page.
+	   mapping检查需要任何复合页面的头页面，因此现在查找头页面和映射。对于匿名页面，
+	   如果页面在将来分裂，也不重要，因为key是基于地址的。对于支持文件系统的页面，
+	   需要尾部，因为页面的索引决定了密key,对于基本页面，没有尾页，尾==页面。
 	 */
 	tail = page;
 	page = compound_head(page);
@@ -305,7 +315,11 @@ again:
 	 * cases which we are happy to fail).  And we hold a reference,
 	 * so refcount care in invalidate_inode_page's remove_mapping
 	 * prevents drop_caches from setting mapping to NULL beneath us.
-	 *
+	 * 如果page->mapping为NULL，则它不能是PageAnon页面；但它可能是ZERO_PAGE或在gate区域
+	 * 或在特殊映射中（我们乐意失败的所有情况）；或者当get_user_pages_fast找到它时，
+	 * 它可能是一个好的文件页面，但在我们获得页面锁之前被截断或打洞或受到invalidate_complete_page2的影响
+	 * （我们也乐意失败的情况）。而且我们持有一个引用，因此invalidate_inode_page的remove_mapping中的refcount
+	 * 确保drop_caches不会在我们下面将映射设置为NULL。
 	 * The case we do have to guard against is when memory pressure made
 	 * shmem_writepage move it from filecache to swapcache beneath us:
 	 * an unlikely race, but we do need to retry for page->mapping.
@@ -331,10 +345,10 @@ again:
 
 	/*
 	 * Private mappings are handled in a simple way.
-	 *
+	 * private映射以简单的方式处理
 	 * If the futex key is stored on an anonymous page, then the associated
 	 * object is the mm which is implicitly pinned by the calling process.
-	 *
+	 * 如果futex key存储在匿名页面上，则关联的对象是隐式由调用进程固定的mm
 	 * NOTE: When userspace waits on a MAP_SHARED mapping, even if
 	 * it's a read-only handle, it's expected that futexes attach to
 	 * the object not the particular process.
@@ -375,7 +389,8 @@ again:
 
 			goto again;
 		}
-
+		// 获取page的mapping对应的inode
+		// 也就是这个文件映射page的文件
 		inode = READ_ONCE(mapping->host);
 		if (!inode) {
 			rcu_read_unlock();

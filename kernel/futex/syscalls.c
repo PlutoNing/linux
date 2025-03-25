@@ -136,6 +136,7 @@ long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 	return -ENOSYS;
 }
 
+// 下面这几种cmd有timeout?
 static __always_inline bool futex_cmd_has_timeout(u32 cmd)
 {
 	switch (cmd) {
@@ -149,6 +150,11 @@ static __always_inline bool futex_cmd_has_timeout(u32 cmd)
 	return false;
 }
 
+/* 
+把t转为ts
+如果是FUTE_WAIT,就把t这个timeout加上当前时间
+
+*/
 static __always_inline int
 futex_init_timeout(u32 cmd, u32 op, struct timespec64 *ts, ktime_t *t)
 {
@@ -171,7 +177,7 @@ SYSCALL_DEFINE6(futex, u32 __user *, uaddr, int, op, u32, val,
 	ktime_t t, *tp = NULL;
 	struct timespec64 ts;
 
-	if (utime && futex_cmd_has_timeout(cmd)) {
+	if (utime && futex_cmd_has_timeout(cmd)) { // 如果是有timeout的cmd
 		if (unlikely(should_fail_futex(!(op & FUTEX_PRIVATE_FLAG))))
 			return -EFAULT;
 		if (get_timespec64(&ts, utime))
@@ -180,7 +186,7 @@ SYSCALL_DEFINE6(futex, u32 __user *, uaddr, int, op, u32, val,
 		if (ret)
 			return ret;
 		tp = &t;
-	}
+	}// 刚刚初始化了一些时间
 
 	return do_futex(uaddr, op, val, tp, uaddr2, (unsigned long)utime, val3);
 }
@@ -224,6 +230,7 @@ static int futex_parse_waitv(struct futex_vector *futexv,
 
 /**
  * sys_futex_waitv - Wait on a list of futexes
+ 等待一组futex
  * @waiters:    List of futexes to wait on
  * @nr_futexes: Length of futexv
  * @flags:      Flag for timeout (monotonic/realtime)
@@ -237,17 +244,26 @@ static int futex_parse_waitv(struct futex_vector *futexv,
  * the syscall should be used solely for specifying the timeout as realtime, if
  * needed. Flags for private futexes, sizes, etc. should be used on the
  * individual flags of each waiter.
- *
+ * 给定一个`struct futex_waitv`数组，等待每个uaddr。如果在任何uaddr上执行了futex_wake()，线程将唤醒。
+ * 如果任何waiter有*uaddr != val，则立即返回。*timeout是操作的可选超时值。每个waiter都有独立的标志。
+ * 系统调用的`flags`参数应仅用于指定超时为实时，如果需要的话。应在每个waiter的个别标志上使用私有futexes、
+ 大小等标志。
  * Returns the array index of one of the woken futexes. No further information
  * is provided: any number of other futexes may also have been woken by the
  * same event, and if more than one futex was woken, the retrned index may
  * refer to any one of them. (It is not necessaryily the futex with the
  * smallest index, nor the one most recently woken, nor...)
+ 返回其中一个唤醒的futexes的数组索引。不提供进一步的信息：同一事件可能唤醒了任意数量
+ 的其他futexes, 如果唤醒了多个futex，则返回的索引可能指向其中任何一个.
+ (不一定是索引最小的futex, 也不一定是最近唤醒的futex, 也不一定是...)
  */
 
-SYSCALL_DEFINE5(futex_waitv, struct futex_waitv __user *, waiters,
-		unsigned int, nr_futexes, unsigned int, flags,
-		struct __kernel_timespec __user *, timeout, clockid_t, clockid)
+SYSCALL_DEFINE5(futex_waitv, 
+	 struct futex_waitv __user *, waiters,
+	 unsigned int, nr_futexes,
+	 unsigned int, flags,
+	 struct __kernel_timespec __user *, timeout,
+	 clockid_t, clockid)
 {
 	struct hrtimer_sleeper to;
 	struct futex_vector *futexv;
@@ -272,14 +288,18 @@ SYSCALL_DEFINE5(futex_waitv, struct futex_waitv __user *, waiters,
 
 		if (clockid != CLOCK_REALTIME && clockid != CLOCK_MONOTONIC)
 			return -EINVAL;
+		// clockid必须是CLOCK_REALTIME或CLOCK_MONOTONIC
 
+		//把用户空间的timeout转换为内核空间的ts
 		if (get_timespec64(&ts, timeout))
 			return -EFAULT;
 
 		/*
 		 * Since there's no opcode for futex_waitv, use
 		 * FUTEX_WAIT_BITSET that uses absolute timeout as well
+		 因为futex_waitv没有opcode，所以使用FUTEX_WAIT_BITSET，它也使用绝对超时
 		 */
+		// 这里进行时间的调整, 现在time有可能真的是现在时间加上timeout值了
 		ret = futex_init_timeout(FUTEX_WAIT_BITSET, flag_init, &ts, &time);
 		if (ret)
 			return ret;
@@ -307,6 +327,9 @@ destroy_timer:
 	return ret;
 }
 
+/* 
+设置robust futex列表的head
+*/
 #ifdef CONFIG_COMPAT
 COMPAT_SYSCALL_DEFINE2(set_robust_list,
 		struct compat_robust_list_head __user *, head,
@@ -319,7 +342,42 @@ COMPAT_SYSCALL_DEFINE2(set_robust_list,
 
 	return 0;
 }
+/* 
+These system calls deal with per-thread robust futex lists.  These
+       lists are managed in user space: the kernel knows only about the
+       location of the head of the list.  A thread can inform the kernel
+       of the location of its robust futex list using set_robust_list().
+       The address of a thread's robust futex list can be obtained using
+       get_robust_list().
+这个系统调用处理每个线程的鲁棒futex列表。这些列表在用户空间中管理：内核只知道列表头的位置。
+线程可以使用set_robust_list()通知内核其鲁棒futex列表的位置。可以使用get_robust_list()
+获取线程的robust futex列表的地址。
+       The purpose of the robust futex list is to ensure that if a thread
+       accidentally fails to unlock a futex before terminating or calling
+       execve(2), another thread that is waiting on that futex is
+       notified that the former owner of the futex has died.  This
+       notification consists of two pieces: the FUTEX_OWNER_DIED bit is
+       set in the futex word, and the kernel performs a futex(2)
+       FUTEX_WAKE operation on one of the threads waiting on the futex.
+robust futex list的目的是确保如果一个线程在终止或调用execve(2)之前意外地未解锁futex，
+则等待该futex的另一个线程将被通知futex的前任所有者已经死亡。此通知由两部分组成：
+在futex字中设置FUTEX_OWNER_DIED位，并且内核对等待futex的线程之一执行futex(2) FUTEX_WAKE操作。
+       The get_robust_list() system call returns the head of the robust
+       futex list of the thread whose thread ID is specified in pid.  If
+       pid is 0, the head of the list for the calling thread is returned.
+       The list head is stored in the location pointed to by head_ptr.
+       The size of the object pointed to by **head_ptr is stored in
+       sizep.
+get_robust_list()系统调用返回指定pid的线程的鲁棒futex列表的头。如果pid为0，则返回调用线程的列表头。
+列表头存储在head_ptr指向的位置。**head_ptr指向的对象的大小存储在sizep中.
+       Permission to employ get_robust_list() is governed by a ptrace
+       access mode PTRACE_MODE_READ_REALCREDS check; see ptrace(2).
 
+       The set_robust_list() system call requests the kernel to record
+       the head of the list of robust futexes owned by the calling
+       thread.  The head argument is the list head to record.  The size
+       argument should be sizeof(*head).
+*/
 COMPAT_SYSCALL_DEFINE3(get_robust_list, int, pid,
 			compat_uptr_t __user *, head_ptr,
 			compat_size_t __user *, len_ptr)
@@ -357,6 +415,7 @@ err_unlock:
 }
 #endif /* CONFIG_COMPAT */
 
+/* 32版本 */
 #ifdef CONFIG_COMPAT_32BIT_TIME
 SYSCALL_DEFINE6(futex_time32, u32 __user *, uaddr, int, op, u32, val,
 		const struct old_timespec32 __user *, utime, u32 __user *, uaddr2,
