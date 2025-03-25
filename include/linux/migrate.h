@@ -117,12 +117,20 @@ static inline void __ClearPageMovable(struct page *page)
 {
 }
 #endif
-
+/* 
+测试folio是不是movable的
+要求folio的page的mapping仅仅有PAGE_MAPPING_MOVABLE这一个flag
+并且可以转为movable_operations
+*/
 static inline bool folio_test_movable(struct folio *folio)
 {
 	return PageMovable(&folio->page);
 }
 
+/* 
+获取folio的movable_operations
+其实就是mapping的类型转换
+*/
 static inline
 const struct movable_operations *folio_movable_ops(struct folio *folio)
 {
@@ -132,11 +140,18 @@ const struct movable_operations *folio_movable_ops(struct folio *folio)
 		((unsigned long)folio->mapping - PAGE_MAPPING_MOVABLE);
 }
 
+/* 
+把mapping转为movable_operations
+movable_operations是什么?
+*/
 static inline
 const struct movable_operations *page_movable_ops(struct page *page)
 {
 	VM_BUG_ON(!__PageMovable(page));
-
+	/* 
+	一般情况下这个时候已经知道了mapping仅仅有PAGE_MAPPING_MOVABLE这一个flag
+	所以直接减去就是原地址了
+	*/
 	return (const struct movable_operations *)
 		((unsigned long)page->mapping - PAGE_MAPPING_MOVABLE);
 }

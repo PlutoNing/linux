@@ -45,15 +45,19 @@ struct timezone {
 
 /*
  * The IDs of the various system clocks (for POSIX.1b interval timers):
+ 不同的系统时钟的ID（用于POSIX.1b间隔计时器）：
  */
 #define CLOCK_REALTIME			0
+// 系统的实时时钟，表示当前的日期和时间。
 #define CLOCK_MONOTONIC			1
+// 单调递增的时钟，不受系统时间更改的影响，通常用于测量时间间隔。
 #define CLOCK_PROCESS_CPUTIME_ID	2
 #define CLOCK_THREAD_CPUTIME_ID		3
 #define CLOCK_MONOTONIC_RAW		4
 #define CLOCK_REALTIME_COARSE		5
 #define CLOCK_MONOTONIC_COARSE		6
 #define CLOCK_BOOTTIME			7
+// 系统启动后的时间，包括系统休眠时间
 #define CLOCK_REALTIME_ALARM		8
 #define CLOCK_BOOTTIME_ALARM		9
 /*

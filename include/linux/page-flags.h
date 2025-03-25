@@ -692,13 +692,19 @@ static __always_inline bool PageAnon(struct page *page)
 {
 	return folio_test_anon(page_folio(page));
 }
-
+/* 
+检查这个folio是不是movable的
+是通过检查mapping的flags实现的
+这个flag是什么时候设置的?
+*/
 static __always_inline bool __folio_test_movable(const struct folio *folio)
 {
 	return ((unsigned long)folio->mapping & PAGE_MAPPING_FLAGS) ==
 			PAGE_MAPPING_MOVABLE;
 }
-
+/* 
+检查page是不是movable的
+*/
 static __always_inline int __PageMovable(struct page *page)
 {
 	return ((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) ==

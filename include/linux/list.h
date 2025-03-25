@@ -849,6 +849,7 @@ static inline size_t list_count_nodes(struct list_head *head)
 	     pos = list_prev_entry(pos, member))
 
 /**
+n是pos的下一个位置
  * list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
  * @pos:	the type * to use as a loop cursor.
  * @n:		another type * to use as temporary storage

@@ -11,6 +11,9 @@
 struct user_namespace;
 extern struct user_namespace init_user_ns;
 
+/* 
+这个ns下的不同时钟的时间
+*/
 struct timens_offsets {
 	struct timespec64 monotonic;
 	struct timespec64 boottime;
@@ -93,6 +96,11 @@ static inline void timens_sub_boottime(struct timespec64 *ts)
 ktime_t do_timens_ktime_to_host(clockid_t clockid, ktime_t tim,
 				struct timens_offsets *offsets);
 
+/* 
+也是调整时间
+根据不同的时钟类型进行不同的调整
+并且这个是ns相关的,根据ns内的时间作为基准调整
+*/
 static inline ktime_t timens_ktime_to_host(clockid_t clockid, ktime_t tim)
 {
 	struct time_namespace *ns = current->nsproxy->time_ns;

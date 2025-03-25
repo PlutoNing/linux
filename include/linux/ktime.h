@@ -52,8 +52,10 @@ static inline ktime_t ktime_set(const s64 secs, const unsigned long nsecs)
 /*
  * Same as ktime_add(), but avoids undefined behaviour on overflow; however,
  * this means that you must check the result for overflow yourself.
+与ktime_add()相同，但避免了溢出的未定义行为；但是，这意味着您必须自己检查结果是否溢出。 
  */
 #define ktime_add_unsafe(lhs, rhs)	((u64) (lhs) + (rhs))
+
 
 /*
  * Add a ktime_t variable and a scalar nanosecond value.

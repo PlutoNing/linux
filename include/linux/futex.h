@@ -37,10 +37,10 @@ union futex_key {
 	} shared;
 	struct {
 		union {
-			struct mm_struct *mm;
+			struct mm_struct *mm; // 进程的mm_struct
 			u64 __tmp;
 		};
-		unsigned long address;
+		unsigned long address; // 进程的虚拟地址
 		unsigned int offset;
 	} private;
 	struct {

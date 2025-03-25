@@ -1684,17 +1684,23 @@ static inline struct lruvec *folio_lruvec_relock_irq(struct folio *folio,
 	return folio_lruvec_lock_irq(folio);
 }
 
-/* Don't lock again iff page's lruvec locked */
+
+/* 
+就是从folio的属性找到对应的lruvec
+Don't lock again iff page's lruvec locked
+locked_lruvec: 是上次的lruvec,但是不确定是否适用于现在这个folio
+如果可以复用就复用,不可的话就解锁, 找folio实际的lruvec
+*/
 static inline struct lruvec *folio_lruvec_relock_irqsave(struct folio *folio,
 		struct lruvec *locked_lruvec, unsigned long *flags)
 {
 	if (locked_lruvec) {
 		if (folio_matches_lruvec(folio, locked_lruvec))
-			return locked_lruvec;
-
+			return locked_lruvec; // 如果还是属于之前的lruvec,就直接返回,复用
+		// 这个folio不属于之前的lruvec,解锁之前的lruvec
 		unlock_page_lruvec_irqrestore(locked_lruvec, *flags);
 	}
-
+	// 不能复用之前的lruvec,就找到folio的lruvec
 	return folio_lruvec_lock_irqsave(folio, flags);
 }
 

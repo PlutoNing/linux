@@ -848,8 +848,8 @@ struct mm_struct {
 		 * @write_protect_seq: Locked when any thread is write
 		 * protecting pages mapped by this mm to enforce a later COW,
 		 * for instance during page table copying for fork().
-			当有线程写保护这个mm的页面时,锁住,以强制后续的COW,例如在fork()期间进行页表复制
-			
+			当有线程写保护这个mm的页面时,锁住,以强制后续的COW,
+			例如在fork()期间进行页表复制
 		 */
 		seqcount_t write_protect_seq;
 
