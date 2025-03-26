@@ -5549,6 +5549,8 @@ static inline void prefetch_curr_exec_start(struct task_struct *p)
  * Return accounted runtime for the task.
  * In case the task is currently running, return the runtime plus current's
  * pending runtime that have not been accounted yet.
+   返回任务的运行时间
+   以防任务当前正在运行，返回运行时间加上当前的未计算的运行时间
  */
 unsigned long long task_sched_runtime(struct task_struct *p)
 {
@@ -5571,6 +5573,7 @@ unsigned long long task_sched_runtime(struct task_struct *p)
 	if (!p->on_cpu || !task_on_rq_queued(p))
 		return p->se.sum_exec_runtime;
 #endif
+	// on_cpu并且on_rq_queued
 
 	rq = task_rq_lock(p, &rf);
 	/*

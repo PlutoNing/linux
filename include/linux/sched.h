@@ -95,7 +95,8 @@ struct user_event_mm;
 /* Used in tsk->__state again: */
 #define TASK_PARKED			0x00000040
 #define TASK_DEAD			0x00000080
-#define TASK_WAKEKILL			0x00000100
+// 收到fatal signal后唤醒进程
+#define TASK_WAKEKILL			0x00000100 
 #define TASK_WAKING			0x00000200
 #define TASK_NOLOAD			0x00000400
 #define TASK_NEW			0x00000800
@@ -550,27 +551,50 @@ struct sched_statistics {
 
 struct sched_entity {
 	/* For load-balancing: */
+
+	/*
+	load 表示当前调度实体的权重，这个权重决定了一个调度实体的运行优先级，
+	对进程实体而言，它是由静态优先级计算得到，对应调度组而言，
+	是组内各实体的 load 之和。
+	*/
 	struct load_weight		load;
+	//  红黑树的数据节点，使用该 rb_node 将当前节点挂到红黑树上面，
 	struct rb_node			run_node;
 	u64				deadline;
 	u64				min_deadline;
-
+// 链表节点，被链接到 percpu 的 rq->cfs_tasks 上，在做 CPU 之间的负载均衡时，
+// 就会从该链表上选出 group_node 节点作为迁移进程。  
 	struct list_head		group_node;
+	// 标志位，代表当前调度实体是否在就绪队列上
 	unsigned int			on_rq;
-
+// 当前实体上次被调度执行的时间
 	u64				exec_start;
+	// 当前实体总执行时间
 	u64				sum_exec_runtime;
+	// 截止到上次统计，进程执行的时间，
+	// 通常，通过 sum_exec_runtime - prev_sum_exec_runtime 来统计进程本次
+	// 在 CPU 上执行了多长时间，以执行某些时间相关的操作 
 	u64				prev_sum_exec_runtime;
+	// 当前实体的虚拟时间，调度器就是通过调度实体的虚拟时间进行调度，
+	// 在选择下一个待执行实体时总是选择虚拟时间最小的。
 	u64				vruntime;
 	s64				vlag;
 	u64				slice;
-
+	// 实体执行迁移的次数，在多核系统中，CPU 之间会经常性地执行负载均衡操作，
+	// 因此调度实体很可能因为负载均衡而迁移到其它 CPU 的就绪队列上。  
 	u64				nr_migrations;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
+/*
+由于调度实体可能是调度组，调度组中存在嵌套的调度实体，
+这个标志表示当前实体处于调度组中的深度，当不属于调度组时， depth 为 0.
+*/
 	int				depth;
+	// 指向父级调度实体
 	struct sched_entity		*parent;
-	/* rq on which this entity is (to be) queued: */
+	/* rq on which this entity is (to be) queued:
+	当前调度实体属于的 cfs_rq.
+	*/
 	struct cfs_rq			*cfs_rq;
 	/* rq "owned" by this entity/group: */
 	struct cfs_rq			*my_q;
@@ -584,6 +608,8 @@ struct sched_entity {
 	 *
 	 * Put into separate cache line so it does not
 	 * collide with read-mostly values above.
+	 在多核系统中，需要记录 CPU 的负载，其统计方式精确到每一个调度实体，
+	 而这里的 avg 成员就是用来记录当前实体对于 CPU 的负载贡献。 
 	 */
 	struct sched_avg		avg;
 #endif
@@ -649,6 +675,7 @@ struct sched_dl_entity {
 	 *
 	 * @dl_overrun tells if the task asked to be informed about runtime
 	 * overruns.
+	 表示是否已经耗尽了运行时间。
 	 */
 	unsigned int			dl_throttled      : 1;
 	unsigned int			dl_yielded        : 1;
@@ -794,7 +821,9 @@ struct task_struct {
 	int				static_prio;
 	int				normal_prio;
 	unsigned int			rt_priority;
-
+/*
+进程的调度实体
+*/
 	struct sched_entity		se;
 	struct sched_rt_entity		rt;
 	struct sched_dl_entity		dl;
@@ -1248,7 +1277,7 @@ struct task_struct {
 #ifdef CONFIG_FUTEX
 	struct robust_list_head __user	*robust_list;
 #ifdef CONFIG_COMPAT
-/* 
+/*
 robus_list是什么?
 */
 	struct compat_robust_list_head __user *compat_robust_list;
@@ -1360,7 +1389,7 @@ robus_list是什么?
 	 * When (nr_dirtied >= nr_dirtied_pause), it's time to call
 	 * balance_dirty_pages() for a dirty throttling pause:
 	 */
-	int				nr_dirtied; /* 
+	int				nr_dirtied; /*
 	这个进程的脏页数量，当这个值大于nr_dirtied_pause时，就会调用
 	balance_dirty_pages()函数来暂停脏页的写入
 	 */
@@ -1582,7 +1611,7 @@ robus_list是什么?
 	 * Do not put anything below here!
 	 */
 };
-
+// 获取进程的pid
 static inline struct pid *task_pid(struct task_struct *task)
 {
 	return task->thread_pid;

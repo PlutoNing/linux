@@ -306,6 +306,7 @@ static u64 read_sum_exec_runtime(struct task_struct *t)
 #endif
 
 /*
+统计tsk的cputime到times中
  * Accumulate raw cputime values of dead tasks (sig->[us]time) and live
  * tasks (sum on group iteration) belonging to @tsk's group.
  */
@@ -324,6 +325,9 @@ void thread_group_cputime(struct task_struct *tsk, struct task_cputime *times)
 	 * their runtime can affect syscall performance, so we skip account
 	 * those pending times and rely only on values updated on tick or
 	 * other scheduler action.
+	 更新当前任务的运行时间，以便计算自上次调度操作或thread_group_cputime()调用以来的挂起时间。
+	 此线程组可能在不同的CPU上有其他运行任务，但是更新它们的运行时间可能会影响系统调用的性能，
+	 因此我们跳过对这些挂起时间的计算，仅依赖于在tick或其他调度器操作上更新的值。
 	 */
 	if (same_thread_group(current, tsk))
 		(void) task_sched_runtime(current);
