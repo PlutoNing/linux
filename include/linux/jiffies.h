@@ -135,6 +135,7 @@ static inline u64 get_jiffies_64(void)
 #define time_before(a,b)	time_after(b,a)
 
 /**
+a是不是晚于b
  * time_after_eq - returns true if the time a is after or the same as time b.
  * @a: first comparable as unsigned long
  * @b: second comparable as unsigned long

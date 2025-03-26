@@ -101,6 +101,7 @@ ___test_and_set_bit(unsigned long nr, volatile unsigned long *addr)
 }
 
 /**
+
  * ___test_and_clear_bit - Clear a bit and return its old value
  * @nr: Bit to clear
  * @addr: Address to count from

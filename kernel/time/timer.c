@@ -65,21 +65,25 @@ EXPORT_SYMBOL(jiffies_64);
  * The timer wheel has LVL_DEPTH array levels. Each level provides an array of
  * LVL_SIZE buckets. Each level is driven by its own clock and therefor each
  * level has a different granularity.
- *
+ * 时间轮有LVL_DEPTH个数组级别。每个级别提供LVL_SIZE个桶。每个级别由自己的时钟驱动，
+ 因此每个级别都有不同的粒度。
  * The level granularity is:		LVL_CLK_DIV ^ lvl
  * The level clock frequency is:	HZ / (LVL_CLK_DIV ^ level)
  *
  * The array level of a newly armed timer depends on the relative expiry
  * time. The farther the expiry time is away the higher the array level and
  * therefor the granularity becomes.
- *
+ * 新设置的定时器的数组级别取决于相对到期时间。到期时间越远，数组级别越高，因此粒度也越高。
  * Contrary to the original timer wheel implementation, which aims for 'exact'
  * expiry of the timers, this implementation removes the need for recascading
  * the timers into the lower array levels. The previous 'classic' timer wheel
  * implementation of the kernel already violated the 'exact' expiry by adding
  * slack to the expiry time to provide batched expiration. The granularity
  * levels provide implicit batching.
- *
+ * 与原始的定时器轮实现相反，原始实现旨在“精确”到期定时器，这个实现消除了将定时器重新级联
+ 到较低的数组级别的需要。
+ 内核的先前的“经典”定时器轮实现已经通过在到期时间中添加松弛来提供批量到期来违反“精确”到期。
+ 粒度级别提供了隐式批处理。
  * This is an optimization of the original timer wheel implementation for the
  * majority of the timer wheel use cases: timeouts. The vast majority of
  * timeout timers (networking, disk I/O ...) are canceled before expiry. If
@@ -151,7 +155,9 @@ EXPORT_SYMBOL(jiffies_64);
 
 /* Clock divisor for the next level */
 #define LVL_CLK_SHIFT	3
+// 8
 #define LVL_CLK_DIV	(1UL << LVL_CLK_SHIFT)
+// 3个1
 #define LVL_CLK_MASK	(LVL_CLK_DIV - 1)
 #define LVL_SHIFT(n)	((n) * LVL_CLK_SHIFT)
 #define LVL_GRAN(n)	(1UL << LVL_SHIFT(n))
@@ -165,7 +171,9 @@ EXPORT_SYMBOL(jiffies_64);
 
 /* Size of each clock level */
 #define LVL_BITS	6
+/* 64 */
 #define LVL_SIZE	(1UL << LVL_BITS)
+/* 6个1 */
 #define LVL_MASK	(LVL_SIZE - 1)
 #define LVL_OFFS(n)	((n) * LVL_SIZE)
 
@@ -183,6 +191,7 @@ EXPORT_SYMBOL(jiffies_64);
 /*
  * The resulting wheel size. If NOHZ is configured we allocate two
  * wheels so we have a separate storage for the deferrable timers.
+   表示: 64 * 9 = 576
  */
 #define WHEEL_SIZE	(LVL_SIZE * LVL_DEPTH)
 
@@ -205,12 +214,14 @@ struct timer_base {
 	atomic_t		timer_waiters;
 #endif
 	unsigned long		clk; // 时钟jeffies
-	unsigned long		next_expiry;
+	unsigned long		next_expiry; // base的最左边timer的到期时间?
 	unsigned int		cpu; // 对应的cpu
 	bool			next_expiry_recalc;
 	bool			is_idle;
 	bool			timers_pending;
+	// 576大小的bitmap
 	DECLARE_BITMAP(pending_map, WHEEL_SIZE);
+	// 576个哈希表?
 	struct hlist_head	vectors[WHEEL_SIZE];
 } ____cacheline_aligned;
 
@@ -1771,7 +1782,9 @@ static void expire_timers(struct timer_base *base, struct hlist_head *head)
 		}
 	}
 }
-
+/* 
+收集base的过期定时器到heads中?
+*/
 static int collect_expired_timers(struct timer_base *base,
 				  struct hlist_head *heads)
 {
@@ -1781,9 +1794,12 @@ static int collect_expired_timers(struct timer_base *base,
 	unsigned int idx;
 
 	for (i = 0; i < LVL_DEPTH; i++) {
+		// 取clk的后六位为基准, 然后每LVL_SIZE个为一个batch
+		// 每个级别有64个bucket
 		idx = (clk & LVL_MASK) + i * LVL_SIZE;
 
 		if (__test_and_clear_bit(idx, base->pending_map)) {
+			// 找到对应时间的哈希表?
 			vec = base->vectors + idx;
 			hlist_move_list(vec, heads++);
 			levels++;
@@ -1791,7 +1807,9 @@ static int collect_expired_timers(struct timer_base *base,
 		/* Is it time to look at the next level? */
 		if (clk & LVL_CLK_MASK)
 			break;
-		/* Shift clock for the next level granularity */
+		/* Shift clock for the next level granularity
+		每次右移三位
+		*/
 		clk >>= LVL_CLK_SHIFT;
 	}
 	return levels;
@@ -1819,6 +1837,8 @@ static int next_pending_bucket(struct timer_base *base, unsigned offset,
 /*
  * Search the first expiring timer in the various clock levels. Caller must
  * hold base->lock.
+ 在各种时钟级别中搜索第一个到期的定时器.
+ 调用者必须持有base->lock。
  */
 static unsigned long __next_timer_interrupt(struct timer_base *base)
 {
@@ -2006,6 +2026,7 @@ void timer_clear_idle(void)
 
 /**
  * __run_timers - run all expired timers (if any) on this CPU.
+ 运行这个CPU上所有过期的定时器（如果有的话）。
  * @base: the timer vector to be processed.
  */
 static inline void __run_timers(struct timer_base *base)
@@ -2020,7 +2041,7 @@ static inline void __run_timers(struct timer_base *base)
 	raw_spin_lock_irq(&base->lock);
 
 	while (time_after_eq(jiffies, base->clk) &&
-	       time_after_eq(jiffies, base->next_expiry)) {
+	       time_after_eq(jiffies, base->next_expiry)) {// 有需要处理的timer
 		levels = collect_expired_timers(base, heads);
 		/*
 		 * The two possible reasons for not finding any expired
