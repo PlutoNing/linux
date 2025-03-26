@@ -108,7 +108,7 @@ static void split_map_pages(struct list_head *list)
 }
 
 #ifdef CONFIG_COMPACTION
-/* 
+/*
 检查page是不是movable的
 如果是的话, page的mapping必须仅仅有PAGE_MAPPING_MOVABLE这一个flag
 并且可以转为movable_operations

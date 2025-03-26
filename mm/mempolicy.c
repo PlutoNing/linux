@@ -2407,7 +2407,7 @@ static unsigned long alloc_pages_bulk_array_preferred_many(gfp_t gfp, int nid,
 	return nr_allocated;
 }
 
-/* 
+/*
 分配nr_pages个page, 并且返回page的数组
 alloc pages bulk and mempolicy should be considered at the
  * same time in some situation such as vmalloc.

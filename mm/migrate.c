@@ -128,7 +128,7 @@ out:
 	return false;
 }
 
-/* 
+/*
 putback一种mapping可以转为movable_operations的folio
 */
 static void putback_movable_folio(struct folio *folio)
@@ -1988,7 +1988,7 @@ out:
 	return rc_gather;
 }
 
-/* 
+/*
 好几个机制移动页面都是用的这个"目标位置分配"函数
 看着好像就是单纯的分配函数
 */

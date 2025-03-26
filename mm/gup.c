@@ -443,7 +443,7 @@ void unpin_user_page_range_dirty_lock(struct page *page, unsigned long npages,
 	}
 }
 EXPORT_SYMBOL(unpin_user_page_range_dirty_lock);
-/* 
+/*
 pages里面是npages个page,是gup的fast-path一级一级检查页表
 直到pte层面返回的
 ===============
@@ -2702,7 +2702,7 @@ static int gup_pte_range(pmd_t pmd, pmd_t *pmdp, unsigned long addr,
 		}
 
 		if (unlikely(pmd_val(pmd) != pmd_val(*pmdp)) ||
-		    unlikely(pte_val(pte) != pte_val(ptep_get(ptep)))) {/* 
+		    unlikely(pte_val(pte) != pte_val(ptep_get(ptep)))) {/*
 				如果获取之后, pmd和pte更改了, 放弃
 				*/
 			gup_put_folio(folio, 1, flags);
@@ -3148,7 +3148,7 @@ static int gup_pud_range(p4d_t *p4dp, p4d_t p4d, unsigned long addr, unsigned lo
 	return 1;
 }
 // 一级一级的迭代页表, 是做什么呢?
-/* 
+/*
 返回0表示有不存在的页表?
 最后在pte层面经过检查的页面操作之后,放入pages数组
 */

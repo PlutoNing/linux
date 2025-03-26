@@ -1252,7 +1252,7 @@ insert:
 	return va;
 }
 
-/* 
+/*
 把va重新插入红黑树,表示空闲
 */
 static __always_inline struct vmap_area *
@@ -1283,7 +1283,7 @@ is_within_this_va(struct vmap_area *va, unsigned long size,
 	unsigned long align, unsigned long vstart)
 {
 	unsigned long nva_start_addr;
-	/* 
+	/*
 	    |vstart
 	|------------------|
 		+		|------------------|
@@ -1330,7 +1330,7 @@ find_vmap_lowest_match(struct rb_root *root, unsigned long size,
 		va = rb_entry(node, struct vmap_area, rb_node);
 
 		if (get_subtree_max_size(node->rb_left) >= length &&
-				vstart < va->va_start) {/* 
+				vstart < va->va_start) {/*
 					如果subtree_max_size大于length，说明左子树有足够的空间，且vstart小于va->va_start
 					说明vstart在va的左边，所以往左子树找
 					*/
@@ -1339,7 +1339,7 @@ find_vmap_lowest_match(struct rb_root *root, unsigned long size,
 			if (is_within_this_va(va, size, align, vstart))
 				return va; // 如果满足要求，返回这个vmap_area	
 
-				/* 
+				/*
 				刚刚判断了左边
 				和当前vmap_area都不能满足内存分配
 				*/
@@ -1354,7 +1354,7 @@ find_vmap_lowest_match(struct rb_root *root, unsigned long size,
 				continue; // 如果右边的子树有足够的空间，继续往右子树找
 			}
 
-			/* 
+			/*
 			现在是右边的子树也不能满足内存分配
 			*/
 			/*
@@ -1434,7 +1434,7 @@ enum fit_type {
 	NE_FIT_TYPE = 4		/* no edge fit */
 };
 
-/* 
+/*
 va这个vma满足了size的内存分配
 nvastartaddr是max(va->start,  vstart)对齐后的新地址
 */
@@ -1464,7 +1464,7 @@ classify_va_fit_type(struct vmap_area *va,
 	return type;
 }
 
-/* 
+/*
 root和head分别是vmalloc机制的红黑树和双向链表\
 va是满足了size内存分配的vmap_area, 要把它返回了,这里更新root和head
 */
@@ -2654,7 +2654,7 @@ static void vmap_init_free_space(void)
 	}
 }
 
-/* 
+/*
 一般情况下
 va是刚刚从红黑树取下的满足size的vmap_area
 area是一个vm_struct结构体,里面存放了va的信息,就是返回给
@@ -3127,7 +3127,7 @@ void *vmap_pfn(unsigned long *pfns, unsigned int count, pgprot_t prot)
 EXPORT_SYMBOL_GPL(vmap_pfn);
 #endif /* CONFIG_VMAP_PFN */
 
-/* 
+/*
 vmalloc机制为已分配的地址空间分配物理页面
 从nid分配, order是本次vmalloc分配的order
 nr_pages是需要分配的页数,不管是巨页还是单页, 都是根据size算的大小
@@ -3247,7 +3247,7 @@ vm_area_alloc_pages(gfp_t gfp, int nid,
 	return nr_allocated;
 }
 
-/* 
+/*
 area是刚才vmalloc机制分配的内存 
 是从vmalloc的地址空间分配的
 现在需要为其映射物理内存

@@ -3747,7 +3747,7 @@ static struct lru_gen_mm_list *get_mm_list(struct mem_cgroup *memcg)
 	return &mm_list;
 }
 
-/* 
+/*
 fork的时候会调用这个函数,初始化新进程
 */
 void lru_gen_add_mm(struct mm_struct *mm)

@@ -154,7 +154,7 @@ static int size_to_chunks(size_t size)
 {
 	return (size + CHUNK_SIZE - 1) >> CHUNK_SHIFT;
 }
-/* 
+/*
 这里应该是遍历每一个大小chunk的链表
 大小为1的chunk的
 大小为2个chunk的
@@ -164,7 +164,7 @@ static int size_to_chunks(size_t size)
 #define for_each_unbuddied_list(_iter, _begin) \
 	for ((_iter) = (_begin); (_iter) < NCHUNKS; (_iter)++)
 
-/* 
+/*
 把一个新分配的page初始化为zhdr
 把页面的开始一部分内存作为zhdr结构体的内存
 供zbud使用
@@ -212,7 +212,7 @@ static unsigned long encode_handle(struct zbud_header *zhdr, enum buddy bud)
 	return handle;
 }
 
-/* 
+/*
 从handle得出zhdr
 Returns the zbud page where a given handle is stored */
 static struct zbud_header *handle_to_zbud_header(unsigned long handle)
@@ -220,7 +220,7 @@ static struct zbud_header *handle_to_zbud_header(unsigned long handle)
 	return (struct zbud_header *)(handle & PAGE_MASK);
 }
 
-/* 
+/*
 计算这个zhdr还有多少free的chunk
 Returns the number of free chunks in a zbud page */
 static int num_free_chunks(struct zbud_header *zhdr)
