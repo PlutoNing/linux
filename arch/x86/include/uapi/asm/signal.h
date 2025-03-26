@@ -44,9 +44,19 @@ typedef unsigned long sigset_t;
 #define SIGTTIN		21
 #define SIGTTOU		22
 #define SIGURG		23
+/*
+当进程超过其分配的 CPU 时间时，它会收到此信号作为警告。
+如果进程没有适当地处理此信号，它将由系统终止。
+*/
 #define SIGXCPU		24
 #define SIGXFSZ		25
 #define SIGVTALRM	26
+/*
+如果你用 setitimer 这一类的报警设置函数设置了一个时限，到达时限时进程会接收到 
+SIGALRM, SIGVTALRM 或者 SIGPROF。但是这三个信号量的含义各有不同，SIGALRM 
+计时的是真实时间，SIGVTALRM计时的是进程使用了多少CPU时间，而 SIGPROF
+ 计时的是进程和代表该进程的内核用了多少时间。
+*/
 #define SIGPROF		27
 #define SIGWINCH	28
 #define SIGIO		29

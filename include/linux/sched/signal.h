@@ -20,6 +20,7 @@
 struct sighand_struct {
 	spinlock_t		siglock;
 	refcount_t		count;
+	// signalfd的监听等待队列
 	wait_queue_head_t	signalfd_wqh;
 	struct k_sigaction	action[_NSIG];
 };
@@ -43,6 +44,7 @@ struct cpu_itimer {
 /*
  * This is the atomic variant of task_cputime, which can be used for
  * storing and updating task_cputime statistics without locking.
+ 这是task_cputime的原子变体，可以用于存储和更新task_cputime统计数据而无需锁定
  */
 struct task_cputime_atomic {
 	atomic64_t utime;
@@ -57,11 +59,14 @@ struct task_cputime_atomic {
 		.sum_exec_runtime = ATOMIC64_INIT(0),		\
 	}
 /**
+原子方式存储了utime, stime什么的
  * struct thread_group_cputimer - thread group interval timer counts
+ 线程组的间隔计时器计数
  * @cputime_atomic:	atomic thread group interval timers.
  *
  * This structure contains the version of task_cputime, above, that is
  * used for thread group CPU timer calculations.
+ 这个结构包含了task_cputime的版本，用于线程组CPU计时器计算
  */
 struct thread_group_cputimer {
 	struct task_cputime_atomic cputime_atomic;
@@ -99,7 +104,10 @@ struct signal_struct {
 
 	wait_queue_head_t	wait_chldexit;	/* for wait4() */
 
-	/* current thread group signal load-balancing target: */
+	/* current thread group signal load-balancing target:
+	表示当前线程组信号负载平衡的目标?什么意思
+	看代码好像是线程组出来解决信号的线程
+	*/
 	struct task_struct	*curr_target;
 
 	/* shared signal handling:
@@ -111,7 +119,9 @@ struct signal_struct {
 	/* For collecting multiprocess signals during fork */
 	struct hlist_head	multiprocess;
 
-	/* thread group exit support */
+	/* thread group exit support
+	表示导致group_exit的fatal信号
+	*/
 	int			group_exit_code;
 	/* notify group_exec_task when notify_count is less or equal to 0 */
 	int			notify_count;
@@ -149,17 +159,23 @@ struct signal_struct {
 	 * ITIMER_PROF and ITIMER_VIRTUAL timers for the process, we use
 	 * CPUCLOCK_PROF and CPUCLOCK_VIRT for indexing array as these
 	 * values are defined to 0 and 1 respectively
+	 表示进程的ITIMER_PROF和ITIMER_VIRTUAL定时器
+	 我们使用CPUCLOCK_PROF和CPUCLOCK_VIRT来索引数组，因为这些值分别定义为0和1
 	 */
 	struct cpu_itimer it[2];
 
 	/*
 	 * Thread group totals for process CPU timers.
 	 * See thread_group_cputimer(), et al, for details.
+	 存储了线程组的总数
+	 用于process的CPU计时器
 	 */
 	struct thread_group_cputimer cputimer;
 
 #endif
-	/* Empty if CONFIG_POSIX_TIMERS=n */
+	/* Empty if CONFIG_POSIX_TIMERS=n
+	为什么signal_struct里面有一个posix_cputimers呢？
+	*/
 	struct posix_cputimers posix_cputimers;
 
 	/* PID/PID hash table linkage. */
@@ -255,7 +271,10 @@ struct signal_struct {
  */
 #define SIGNAL_STOP_STOPPED	0x00000001 /* job control stop in effect */
 #define SIGNAL_STOP_CONTINUED	0x00000002 /* SIGCONT since WCONTINUED reap */
-#define SIGNAL_GROUP_EXIT	0x00000004 /* group exit in progress */
+#define SIGNAL_GROUP_EXIT	0x00000004 
+/* group exit in progress
+说明整个线程组收到了fatal signal，即将退出
+*/
 /*
  * Pending notifications to parent.
  */
@@ -451,7 +470,7 @@ extern void calculate_sigpending(void);
 
 extern void signal_wake_up_state(struct task_struct *t, unsigned int state);
 
-// 信号唤醒线程
+// 信号唤醒线程, 如果fatal为true, 要退出.
 static inline void signal_wake_up(struct task_struct *t, bool fatal)
 {
 	unsigned int state = 0;
@@ -721,7 +740,7 @@ bool same_thread_group(struct task_struct *p1, struct task_struct *p2)
 	return p1->signal == p2->signal;
 }
 
-/*  */
+/* 找到p在自己线程组的下一个线程 */
 static inline struct task_struct *next_thread(const struct task_struct *p)
 {
 	return list_entry_rcu(p->thread_group.next,
@@ -741,7 +760,9 @@ extern bool thread_group_exited(struct pid *pid);
 
 extern struct sighand_struct *__lock_task_sighand(struct task_struct *task,
 							unsigned long *flags);
-
+/*
+加锁进程 的 sighand_struct
+*/
 static inline struct sighand_struct *lock_task_sighand(struct task_struct *task,
 						       unsigned long *flags)
 {

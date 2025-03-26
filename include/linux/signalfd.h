@@ -15,6 +15,7 @@
 
 /*
  * Deliver the signal to listening signalfd.
+   传送信号给监听的signalfd
  */
 static inline void signalfd_notify(struct task_struct *tsk, int sig)
 {

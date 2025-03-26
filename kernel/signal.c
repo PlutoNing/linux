@@ -308,13 +308,15 @@ bool task_set_jobctl_pending(struct task_struct *task, unsigned long mask)
 
 /**
  * task_clear_jobctl_trapping - clear jobctl trapping bit
+ 清除jobctl的trapping位
  * @task: target task
  *
  * If JOBCTL_TRAPPING is set, a ptracer is waiting for us to enter TRACED.
  * Clear it and wake up the ptracer.  Note that we don't need any further
  * locking.  @task->siglock guarantees that @task->parent points to the
  * ptracer.
- *
+ * 如果JOBCTL_TRAPPING被设置，那么ptracer正在等待我们进入TRACED。清除它并唤醒ptracer。
+   注意，我们不需要进一步的锁定。@task->siglock保证@task->parent指向ptracer。
  * CONTEXT:
  * Must be called with @task->sighand->siglock held.
  */
@@ -329,13 +331,15 @@ void task_clear_jobctl_trapping(struct task_struct *task)
 
 /**
  * task_clear_jobctl_pending - clear jobctl pending bits
+ 清除jobctl的pending位?
  * @task: target task
  * @mask: pending bits to clear
  *
  * Clear @mask from @task->jobctl.  @mask must be subset of
  * %JOBCTL_PENDING_MASK.  If %JOBCTL_STOP_PENDING is being cleared, other
  * STOP bits are cleared together.
- *
+ * 从task->jobctl中清除mask。mask必须是JOBCTL_PENDING_MASK的子集。如果JOBCTL_STOP_PENDING
+   被清除，其他STOP位也会被一起清除。
  * If clearing of @mask leaves no stop or trap pending, this function calls
  * task_clear_jobctl_trapping().
  *
@@ -346,12 +350,12 @@ void task_clear_jobctl_pending(struct task_struct *task, unsigned long mask)
 {
 	BUG_ON(mask & ~JOBCTL_PENDING_MASK);
 
-	if (mask & JOBCTL_STOP_PENDING)
+	if (mask & JOBCTL_STOP_PENDING) // 如果是线程组退出的信号mask
 		mask |= JOBCTL_STOP_CONSUME | JOBCTL_STOP_DEQUEUED;
 
-	task->jobctl &= ~mask;
+	task->jobctl &= ~mask; // 去除这些掩码
 
-	if (!(task->jobctl & JOBCTL_PENDING_MASK))
+	if (!(task->jobctl & JOBCTL_PENDING_MASK)) // 如果不是STOP_PENDING也不是STOP或者NOTIFY而TRAP
 		task_clear_jobctl_trapping(task);
 }
 
@@ -990,6 +994,10 @@ static bool prepare_signal(int sig, struct task_struct *p, bool force)
  * have pending signals.  Such threads will dequeue from the shared queue
  * as soon as they're available, so putting the signal on the shared queue
  * will be equivalent to sending it to one such thread.
+   测试P是否要接受SIG。在我们检查了所有这些线程之后，找不到不阻止SIG的线程是等效的。
+   任何不阻止SIG的线程都被排除在外，因为它们没有运行，并且已经有挂起的信号。
+   这样的线程一旦可用，将从共享队列中出列，因此将信号放在共享队列中将等效于将其发送
+   到这样的一个线程。
  */
 static inline bool wants_signal(int sig, struct task_struct *p)
 {
@@ -1007,7 +1015,12 @@ static inline bool wants_signal(int sig, struct task_struct *p)
 
 	return task_curr(p) || !task_sigpending(p);
 }
-
+/*
+刚刚把sig根据type加入了p的pending或者shared_pending
+=====================
+感觉函数的作用是,如果加入的是shared_pending
+函数找一个线程唤醒来解决它
+*/
 static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 {
 	struct signal_struct *signal = p->signal;
@@ -1015,7 +1028,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 
 	/*
 	 * Now find a thread we can wake up to take the signal off the queue.
-	 *
+	 * 现在找到一个线程，我们可以唤醒它，以便从队列中取出信号。
 	 * Try the suggested task first (may or may not be the main thread).
 	 */
 	if (wants_signal(sig, p))
@@ -1024,14 +1037,15 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 		/*
 		 * There is just one thread and it does not need to be woken.
 		 * It will dequeue unblocked signals before it runs again.
+		 这里只有一个线程，不需要唤醒它。它将在再次运行之前出列未阻止的信号。
 		 */
 		return;
-	else {
+	else {// 表示是线程组的PIDTYPE_TGID?
 		/*
 		 * Otherwise try to find a suitable thread.
 		 */
 		t = signal->curr_target;
-		while (!wants_signal(sig, t)) {
+		while (!wants_signal(sig, t)) {//只要t不想要这个信号，就一直找下一个线程
 			t = next_thread(t);
 			if (t == signal->curr_target)
 				/*
@@ -1044,9 +1058,12 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 		signal->curr_target = t;
 	}
 
+	// 刚才的作用是找到出来解决信号的线程t
+
 	/*
 	 * Found a killable thread.  If the signal will be fatal,
 	 * then start taking the whole group down immediately.
+	   找到了一个可杀死的线程。如果信号将是致命的，那么立即开始带走整个组。
 	 */
 	if (sig_fatal(p, sig) &&
 	    (signal->core_state || !(signal->flags & SIGNAL_GROUP_EXIT)) &&
@@ -1054,6 +1071,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 	    (sig == SIGKILL || !p->ptrace)) {
 		/*
 		 * This signal will be fatal to the whole group.
+		 这是一个对整个组都是致命的信号。
 		 */
 		if (!sig_kernel_coredump(sig)) {
 			/*
@@ -1067,6 +1085,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 			signal->group_stop_count = 0;
 			t = p;
 			do {
+				// 清除JOBCTL_PENDING_MASK
 				task_clear_jobctl_pending(t, JOBCTL_PENDING_MASK);
 				sigaddset(&t->pending.signal, SIGKILL);
 				signal_wake_up(t, 1);
@@ -1078,6 +1097,7 @@ static void complete_signal(int sig, struct task_struct *p, enum pid_type type)
 	/*
 	 * The signal is already in the shared-pending queue.
 	 * Tell the chosen thread to wake up and dequeue it.
+	 现在信号已经在共享挂起队列中。告诉选择的线程唤醒并解决这个信号。
 	 */
 	signal_wake_up(t, sig == SIGKILL);
 	return;
@@ -1406,6 +1426,9 @@ int zap_other_threads(struct task_struct *p)
 	return count;
 }
 
+/*
+在rcu的保护下,spin_lock_irqsave()获取
+*/
 struct sighand_struct *__lock_task_sighand(struct task_struct *tsk,
 					   unsigned long *flags)
 {
@@ -1983,6 +2006,9 @@ void sigqueue_free(struct sigqueue *q)
 		__sigqueue_free(q);
 }
 
+/*
+发送一个信号q到pid
+*/
 int send_sigqueue(struct sigqueue *q, struct pid *pid, enum pid_type type)
 {
 	int sig = q->info.si_signo;
@@ -2001,11 +2027,16 @@ int send_sigqueue(struct sigqueue *q, struct pid *pid, enum pid_type type)
 	 * Where type is PIDTYPE_PID (such as for timers with SIGEV_THREAD_ID
 	 * set), the signal must be delivered to the specific thread (queues
 	 * into t->pending).
-	 *
+	 * 这个函数用于POSIX定时器传递timer信号
+	 * 如果type是PIDTYPE_PID(例如对于设置了SIGEV_THREAD_ID的定时器),信号必须
+	   传递给特定的线程(排队到t->pending)
 	 * Where type is not PIDTYPE_PID, signals must be delivered to the
 	 * process. In this case, prefer to deliver to current if it is in
 	 * the same thread group as the target process, which avoids
 	 * unnecessarily waking up a potentially idle task.
+	 如果type不是PIDTYPE_PID,信号必须传递给进程.在这种情况下,如果当前进程
+	 与目标进程在同一个线程组中,则优先传递给当前进程,这样可以避免不必要地唤醒
+	 可能处于空闲状态的任务
 	 */
 	t = pid_task(pid, type);
 	if (!t)
@@ -2031,12 +2062,15 @@ int send_sigqueue(struct sigqueue *q, struct pid *pid, enum pid_type type)
 		result = TRACE_SIGNAL_ALREADY_PENDING;
 		goto out;
 	}
+	/* q是空的 */
 	q->info.si_overrun = 0;
 
 	signalfd_notify(t, sig);
+	// 如果type不是PIDTYPE_PID,则pending指向t->signal->shared_pending,否则指向t->pending
 	pending = (type != PIDTYPE_PID) ? &t->signal->shared_pending : &t->pending;
 	list_add_tail(&q->list, &pending->list);
 	sigaddset(&pending->signal, sig);
+	// 如果加入了shared_pending,找一个线程来处理
 	complete_signal(sig, t, type);
 	result = TRACE_SIGNAL_DELIVERED;
 out:

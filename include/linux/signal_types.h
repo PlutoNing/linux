@@ -18,7 +18,9 @@ struct ucounts;
 /*
  * Real Time signals may be queued.
  */
-
+/*
+好像是加入pending队列的东西
+*/
 struct sigqueue {
 	struct list_head list;
 	int flags;
@@ -31,7 +33,7 @@ struct sigqueue {
 
 struct sigpending {
 	struct list_head list;
-	sigset_t signal;
+	sigset_t signal; // bit数组,代表了信号的集合
 };
 
 struct sigaction {
