@@ -5,12 +5,20 @@
 #include <linux/rbtree.h>
 #include <linux/ktime.h>
 
-
+/*
+进程的pct的posix_cputimers的
+一个代表不同时间统计方式的posix_cputimer_base的
+tqhead红黑树上的节点
+*/
 struct timerqueue_node {
 	struct rb_node node;
-	ktime_t expires;
+	ktime_t expires; // 如果值为0的话, 表示不再被触发了?
 };
 
+/*
+包含一个红黑树
+似乎是挂着一些timer
+*/
 struct timerqueue_head {
 	struct rb_root_cached rb_root;
 };
@@ -24,8 +32,9 @@ extern struct timerqueue_node *timerqueue_iterate_next(
 						struct timerqueue_node *node);
 
 /**
+head是pcb的posix_cputimers的一个posix_cputimer_base的tqhead
  * timerqueue_getnext - Returns the timer with the earliest expiration time
- *
+ * 返回具有最早到期时间的计时器的指针
  * @head: head of timerqueue
  *
  * Returns a pointer to the timer node that has the earliest expiration time.

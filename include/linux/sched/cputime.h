@@ -13,6 +13,9 @@ extern bool task_cputime(struct task_struct *t,
 			 u64 *utime, u64 *stime);
 extern u64 task_gtime(struct task_struct *t);
 #else
+/*
+获取任务的用户态和内核态时间
+*/
 static inline bool task_cputime(struct task_struct *t,
 				u64 *utime, u64 *stime)
 {

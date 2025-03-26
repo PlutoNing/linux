@@ -90,25 +90,43 @@ struct tk_read_base {
  * accelerate the VDSO update for CLOCK_BOOTTIME.
  */
 struct timekeeper {
+	// 记录单调时间的结构体。
 	struct tk_read_base	tkr_mono;
+	//记录原始单调时间的结构体。
 	struct tk_read_base	tkr_raw;
+	//  实时时间当前的秒数。
 	u64			xtime_sec;
+	// 
 	unsigned long		ktime_sec;
+	/*  */
 	struct timespec64	wall_to_monotonic;
+	/*  */
 	ktime_t			offs_real;
+	/*  */
 	ktime_t			offs_boot;
+	/*  */
 	ktime_t			offs_tai;
+	/*  */
 	s32			tai_offset;
+	/*  */
 	unsigned int		clock_was_set_seq;
+	/*  */
 	u8			cs_was_changed_seq;
+	/*  */
 	ktime_t			next_leap_ktime;
+	/*  */
 	u64			raw_sec;
+	/*  */
 	struct timespec64	monotonic_to_boot;
 
 	/* The following members are for timekeeping internal use */
+	/*  */
 	u64			cycle_interval;
+	/*  */
 	u64			xtime_interval;
+	/*  */
 	s64			xtime_remainder;
+	/*  */
 	u64			raw_interval;
 	/* The ntp_tick_length() value currently being used.
 	 * This cached copy ensures we consistently apply the tick
@@ -120,10 +138,13 @@ struct timekeeper {
 	/* Difference between accumulated time and NTP time in ntp
 	 * shifted nano seconds. */
 	s64			ntp_error;
+	/*  */
 	u32			ntp_error_shift;
+	/*  */
 	u32			ntp_err_mult;
 	/* Flag used to avoid updating NTP twice with same second */
 	u32			skip_second_overflow;
+
 #ifdef CONFIG_DEBUG_TIMEKEEPING
 	long			last_warning;
 	/*

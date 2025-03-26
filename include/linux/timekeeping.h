@@ -72,6 +72,7 @@ extern ktime_t ktime_get_raw(void);
 extern u32 ktime_get_resolution_ns(void);
 
 /**
+获取墙钟时间
  * ktime_get_real - get the real (wall-) time in ktime_t format
  */
 static inline ktime_t ktime_get_real(void)

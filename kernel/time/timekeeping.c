@@ -41,6 +41,9 @@ enum timekeeping_adv_mode {
 	TK_ADV_FREQ
 };
 
+/*
+
+*/
 DEFINE_RAW_SPINLOCK(timekeeper_lock);
 
 /*
@@ -833,7 +836,8 @@ void ktime_get_real_ts64(struct timespec64 *ts)
 }
 EXPORT_SYMBOL(ktime_get_real_ts64);
 
-/* 
+/*
+获取的应该是mono时间
 适用于可靠的时间戳和测量短时间间隔.
 准确.
 在系统引导时启动，但在挂起期间停止。
@@ -2151,6 +2155,7 @@ static u64 logarithmic_accumulation(struct timekeeper *tk, u64 offset,
 /*
  * timekeeping_advance - Updates the timekeeper to the current time and
  * current NTP tick length
+ 更新timekeeper到当前时间和当前NTP滴答长度
  */
 static bool timekeeping_advance(enum timekeeping_adv_mode mode)
 {
@@ -2229,6 +2234,12 @@ out:
 
 /**
  * update_wall_time - Uses the current clocksource to increment the wall time
+ 使用当前时钟源增加walltime
+ ===================
+tick_periodic() 中调用了 update_wall_time()，用来更新墙上时间，所谓墙上时间，
+就是用户在系统中看到的时间，换句话说，就是在 shell 中使用 data 命令显示的时间。
+时间静止
+如果我注释掉 update_wall_time() 函数，墙上时间是不是就静止了？好像是的
  *
  */
 void update_wall_time(void)
