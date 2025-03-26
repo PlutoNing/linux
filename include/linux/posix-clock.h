@@ -83,10 +83,10 @@ struct posix_clock_operations {
  * a release function for this private structure.
  */
 struct posix_clock {
-	struct posix_clock_operations ops;
-	struct cdev cdev;
+	struct posix_clock_operations ops; // posix clock的ops,包含clock的实现
+	struct cdev cdev; // 对应的char device, 是inode的i_cdev
 	struct device *dev;
-	struct rw_semaphore rwsem;
+	struct rw_semaphore rwsem; // 信号量
 	bool zombie;
 };
 

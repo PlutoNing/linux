@@ -276,7 +276,10 @@ void posixtimer_rearm(struct kernel_siginfo *info)
 
 	unlock_timer(timr, flags);
 }
-
+/*
+timer要被触发了
+这里发送timr->sigq信号到pid
+*/
 int posix_timer_event(struct k_itimer *timr, int si_private)
 {
 	enum pid_type type;
@@ -295,6 +298,7 @@ int posix_timer_event(struct k_itimer *timr, int si_private)
 	timr->sigq->info.si_sys_private = si_private;
 
 	type = !(timr->it_sigev_notify & SIGEV_THREAD_ID) ? PIDTYPE_TGID : PIDTYPE_PID;
+	// 发送信号到进程
 	ret = send_sigqueue(timr->sigq, timr->it_pid, type);
 	/* If we failed to send the signal the timer stops. */
 	return ret > 0;
@@ -440,7 +444,9 @@ static int common_timer_create(struct k_itimer *new_timer)
 	return 0;
 }
 
-/* Create a POSIX.1b interval timer. */
+/*
+创建timer
+Create a POSIX.1b interval timer. */
 static int do_timer_create(clockid_t which_clock, struct sigevent *event,
 			   timer_t __user *created_timer_id)
 {
@@ -527,10 +533,14 @@ out:
 	return error;
 }
 
+/*
+系统调用
+*/
 SYSCALL_DEFINE3(timer_create, const clockid_t, which_clock,
 		struct sigevent __user *, timer_event_spec,
 		timer_t __user *, created_timer_id)
 {
+	// 带不带event有啥区别?
 	if (timer_event_spec) {
 		sigevent_t event;
 
@@ -1524,14 +1534,17 @@ static const struct k_clock * const posix_clocks[] = {
 	[CLOCK_BOOTTIME_ALARM]		= &alarm_clock,
 	[CLOCK_TAI]			= &clock_tai,
 };
+/*
 
+*/
 static const struct k_clock *clockid_to_kclock(const clockid_t id)
 {
 	clockid_t idx = id;
 
 	if (id < 0) {
 		return (id & CLOCKFD_MASK) == CLOCKFD ?
-			&clock_posix_dynamic : &clock_posix_cpu;
+			&clock_posix_dynamic : /* 如果是prof,virt,sched这三个东西 */ 
+			&clock_posix_cpu; // 这个好像是统计进程的时间的东西
 	}
 
 	if (id >= ARRAY_SIZE(posix_clocks))

@@ -15,6 +15,8 @@
 #include "posix-timers.h"
 
 /*
+从file获取posix clock实例
+存储在priv里面
  * Returns NULL if the posix_clock instance attached to 'fp' is old and stale.
  */
 static struct posix_clock *get_posix_clock(struct file *fp)
@@ -36,6 +38,8 @@ static void put_posix_clock(struct posix_clock *clk)
 	up_read(&clk->rwsem);
 }
 
+// posix clock文件的read回调
+// 实质上调用clock的ops
 static ssize_t posix_clock_read(struct file *fp, char __user *buf,
 				size_t count, loff_t *ppos)
 {
@@ -104,10 +108,15 @@ static long posix_clock_compat_ioctl(struct file *fp,
 	return err;
 }
 #endif
-
+/*
+posix clock文件的fops的open回调
+============
+让fp的priv指向inode的cdev代表的posix clock dev
+*/
 static int posix_clock_open(struct inode *inode, struct file *fp)
 {
 	int err;
+	// 从inode的i_cdev获取posix clock实例
 	struct posix_clock *clk =
 		container_of(inode->i_cdev, struct posix_clock, cdev);
 
@@ -131,6 +140,7 @@ out:
 	return err;
 }
 
+// posix clock文件的fops的release回调
 static int posix_clock_release(struct inode *inode, struct file *fp)
 {
 	struct posix_clock *clk = fp->private_data;
@@ -145,26 +155,34 @@ static int posix_clock_release(struct inode *inode, struct file *fp)
 
 	return err;
 }
-
+/*
+如果这个文件是posix clock的文件
+文件的fops如下
+*/
 static const struct file_operations posix_clock_file_operations = {
 	.owner		= THIS_MODULE,
 	.llseek		= no_llseek,
 	.read		= posix_clock_read,
 	.poll		= posix_clock_poll,
 	.unlocked_ioctl	= posix_clock_ioctl,
-	.open		= posix_clock_open,
+	.open		= posix_clock_open, // posix clock的open回调 
 	.release	= posix_clock_release,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= posix_clock_compat_ioctl,
 #endif
 };
 
+/*
+好像是初始化注册一个posix clock时钟的函数
+现在ptp驱动会调用
+
+*/
 int posix_clock_register(struct posix_clock *clk, struct device *dev)
 {
 	int err;
 
 	init_rwsem(&clk->rwsem);
-
+	// posix clock文件的fops的特定的
 	cdev_init(&clk->cdev, &posix_clock_file_operations);
 	err = cdev_device_add(&clk->cdev, dev);
 	if (err) {
@@ -190,14 +208,24 @@ void posix_clock_unregister(struct posix_clock *clk)
 	put_device(clk->dev);
 }
 EXPORT_SYMBOL_GPL(posix_clock_unregister);
-
+/*
+代表一个posix CPU计时器的表示
+包含一个file, 兼容内核的接口?
+一个真正的posix clock, 真正的实现?
+*/
 struct posix_clock_desc {
 	struct file *fp;
 	struct posix_clock *clk;
 };
-
+/*
+通过clockid查找到posix clock的描述符
+=================
+clockid编码了文件
+posix clock存储在文件的private_data里面
+*/
 static int get_clock_desc(const clockid_t id, struct posix_clock_desc *cd)
-{
+{	
+	// 这个file是什么?
 	struct file *fp = fget(clockid_to_fd(id));
 	int err = -EINVAL;
 
@@ -206,7 +234,9 @@ static int get_clock_desc(const clockid_t id, struct posix_clock_desc *cd)
 
 	if (fp->f_op->open != posix_clock_open || !fp->private_data)
 		goto out;
-
+	/*
+	file的open函数是posix_clock_open, 并且file的private_data不为空
+	*/
 	cd->fp = fp;
 	cd->clk = get_posix_clock(fp);
 
@@ -223,6 +253,8 @@ static void put_clock_desc(struct posix_clock_desc *cd)
 	fput(cd->fp);
 }
 
+// posix clock的kclock的adjtime回调
+// 实质上调用posix clock的ops的adjtime回调
 static int pc_clock_adjtime(clockid_t id, struct __kernel_timex *tx)
 {
 	struct posix_clock_desc cd;
@@ -247,6 +279,8 @@ out:
 	return err;
 }
 
+// posix clock的kclock的gettime函数
+// 实质上调用posix clock的ops的gettime回调
 static int pc_clock_gettime(clockid_t id, struct timespec64 *ts)
 {
 	struct posix_clock_desc cd;
@@ -266,15 +300,20 @@ static int pc_clock_gettime(clockid_t id, struct timespec64 *ts)
 	return err;
 }
 
+/*
+posix clock的kclock的getres函数
+实质上调用posix clock的ops的getres回调
+*/
 static int pc_clock_getres(clockid_t id, struct timespec64 *ts)
 {
 	struct posix_clock_desc cd;
 	int err;
-
+	// 先找到posix cloc的描述符
 	err = get_clock_desc(id, &cd);
 	if (err)
 		return err;
 
+	// 调用posix cloc描述符的posix clock的ops回调获取精度
 	if (cd.clk->ops.clock_getres)
 		err = cd.clk->ops.clock_getres(cd.clk, ts);
 	else
@@ -285,6 +324,8 @@ static int pc_clock_getres(clockid_t id, struct timespec64 *ts)
 	return err;
 }
 
+// posix clock的kclock的adjtime回调
+// 实质上调用posix clock的ops的adjtime回调
 static int pc_clock_settime(clockid_t id, const struct timespec64 *ts)
 {
 	struct posix_clock_desc cd;
@@ -308,9 +349,11 @@ out:
 
 	return err;
 }
-
+/*
+代表posix clock的kclock定义
+*/
 const struct k_clock clock_posix_dynamic = {
-	.clock_getres		= pc_clock_getres,
+	.clock_getres		= pc_clock_getres, // posix clock的getres回调
 	.clock_set		= pc_clock_settime,
 	.clock_get_timespec	= pc_clock_gettime,
 	.clock_adj		= pc_clock_adjtime,

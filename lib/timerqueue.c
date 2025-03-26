@@ -24,7 +24,7 @@ static inline bool __timerqueue_less(struct rb_node *a, const struct rb_node *b)
 
 /**
  * timerqueue_add - Adds timer to timerqueue.
- *
+ * 把timer添加到timerqueue
  * @head: head of timerqueue
  * @node: timer node to be added
  *

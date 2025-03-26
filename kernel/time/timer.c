@@ -204,9 +204,9 @@ struct timer_base {
 	spinlock_t		expiry_lock;
 	atomic_t		timer_waiters;
 #endif
-	unsigned long		clk;
+	unsigned long		clk; // 时钟jeffies
 	unsigned long		next_expiry;
-	unsigned int		cpu;
+	unsigned int		cpu; // 对应的cpu
 	bool			next_expiry_recalc;
 	bool			is_idle;
 	bool			timers_pending;
@@ -2043,6 +2043,7 @@ static inline void __run_timers(struct timer_base *base)
 
 /*
  * This function runs timers and the timer-tq in bottom half context.
+ 函数在底半部上下文中运行定时器和定时器-tq。
  */
 static __latent_entropy void run_timer_softirq(struct softirq_action *h)
 {
@@ -2297,14 +2298,19 @@ int timers_dead_cpu(unsigned int cpu)
 }
 
 #endif /* CONFIG_HOTPLUG_CPU */
-
+/*
+初始化指定的cpu的timer_base
+*/
 static void __init init_timer_cpu(int cpu)
 {
 	struct timer_base *base;
 	int i;
 
-	for (i = 0; i < NR_BASES; i++) {
+	// timer_bases是一个数组，数组的每个元素都是一个timer_base结构体
+	// 是一个static定义的pcp变量
+	for (i = 0; i < NR_BASES; i++) { // 遍历所有的timer_base
 		base = per_cpu_ptr(&timer_bases[i], cpu);
+		// 初始化一些属性
 		base->cpu = cpu;
 		raw_spin_lock_init(&base->lock);
 		base->clk = jiffies;
@@ -2313,6 +2319,7 @@ static void __init init_timer_cpu(int cpu)
 	}
 }
 
+// 初始化所有的cpu的timer_base
 static void __init init_timer_cpus(void)
 {
 	int cpu;
@@ -2323,8 +2330,11 @@ static void __init init_timer_cpus(void)
 
 void __init init_timers(void)
 {
+	// 初始化所有的cpu的timer_base
 	init_timer_cpus();
+	// 初始化posix定时器
 	posix_cputimers_init_work();
+	// 初始化timer的softirq
 	open_softirq(TIMER_SOFTIRQ, run_timer_softirq);
 }
 
