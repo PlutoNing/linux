@@ -8,27 +8,32 @@ reduce the number of scheduling-clock interrupts, thereby improving energy
 efficiency and reducing OS jitter.  Reducing OS jitter is important for
 some types of computationally intensive high-performance computing (HPC)
 applications and for real-time applications.
+这个文档描述了可以减少调度时钟中断数量的Kconfig选项和引导参数，从而提高能效和减少OS抖动。
+减少OS抖动对于某些类型的计算密集型高性能计算（HPC）应用程序和实时应用程序非常重要。
 
 There are three main ways of managing scheduling-clock interrupts
 (also known as "scheduling-clock ticks" or simply "ticks"):
-
+这里有三种管理调度时钟中断（也称为“调度时钟滴答声”或简称为“滴答声”）的主要方法：
 1.	Never omit scheduling-clock ticks (CONFIG_HZ_PERIODIC=y or
 	CONFIG_NO_HZ=n for older kernels).  You normally will -not-
 	want to choose this option.
-
+1. 永远不要省略调度时钟滴答声（CONFIG_HZ_PERIODIC=y或CONFIG_NO_HZ=n对于旧内核）。
+通常你不会选择这个选项。
 2.	Omit scheduling-clock ticks on idle CPUs (CONFIG_NO_HZ_IDLE=y or
 	CONFIG_NO_HZ=y for older kernels).  This is the most common
 	approach, and should be the default.
-
+2. 在空闲CPU上省略调度时钟滴答声（CONFIG_NO_HZ_IDLE=y或CONFIG_NO_HZ=y对于旧内核）。
+这是最常见的方法，应该是默认的。
 3.	Omit scheduling-clock ticks on CPUs that are either idle or that
 	have only one runnable task (CONFIG_NO_HZ_FULL=y).  Unless you
 	are running realtime applications or certain types of HPC
 	workloads, you will normally -not- want this option.
-
+3. 在空闲或只有一个可运行任务的CPU上省略调度时钟滴答声（CONFIG_NO_HZ_FULL=y）。
+除非你运行实时应用程序或某些类型的HPC工作负载，否则通常不会选择此选项。
 These three cases are described in the following three sections, followed
 by a third section on RCU-specific considerations, a fourth section
 discussing testing, and a fifth and final section listing known issues.
-
+这三种情况在以下三节中描述，然后是第三节关于RCU特定考虑事项，第四节讨论测试，第五节列出已知问题。
 
 Never Omit Scheduling-Clock Ticks
 =================================
@@ -45,22 +50,30 @@ will frequently be multiple runnable tasks per CPU.  In these cases,
 attempting to turn off the scheduling clock interrupt will have no effect
 other than increasing the overhead of switching to and from idle and
 transitioning between user and kernel execution.
-
+非常旧的Linux版本（从20世纪90年代到21世纪初）无法省略调度时钟滴答声。事实证明，
+在某些情况下，这种老式方法仍然是正确的方法，例如，在具有大量使用短暂CPU的任务的
+重型工作负载中，在这些空闲期间非常频繁，但这些空闲期间也相当短（几十或几百微秒）。
+对于这些类型的工作负载，调度时钟中断通常会被传递，因为通常每个CPU会有多个可运行
+任务。在这些情况下，尝试关闭调度时钟中断将没有任何效果，只会增加从空闲状态切换
+到空闲状态以及在用户和内核执行之间转换的开销。
 This mode of operation can be selected using CONFIG_HZ_PERIODIC=y (or
 CONFIG_NO_HZ=n for older kernels).
-
+这个操作模式可以使用CONFIG_HZ_PERIODIC=y（或CONFIG_NO_HZ=n对于旧内核）选择。
 However, if you are instead running a light workload with long idle
 periods, failing to omit scheduling-clock interrupts will result in
 excessive power consumption.  This is especially bad on battery-powered
 devices, where it results in extremely short battery lifetimes.  If you
 are running light workloads, you should therefore read the following
 section.
-
+然而, 如果你运行的是具有长空闲期的轻负载，那么不省略调度时钟中断将导致过多的
+能耗。这在使用电池供电的设备上尤为糟糕，因为它会导致极短的电池寿命。因此，
+如果你运行轻负载，你应该阅读以下部分。
 In addition, if you are running either a real-time workload or an HPC
 workload with short iterations, the scheduling-clock interrupts can
 degrade your applications performance.  If this describes your workload,
 you should read the following two sections.
-
+除此之外，如果你运行实时工作负载或具有短迭代的HPC工作负载，调度时钟中断可能会
+降低你的应用程序性能。如果这描述了你的工作负载，你应该阅读以下两节。
 
 Omit Scheduling-Clock Ticks For Idle CPUs
 =========================================
@@ -69,11 +82,14 @@ If a CPU is idle, there is little point in sending it a scheduling-clock
 interrupt.  After all, the primary purpose of a scheduling-clock interrupt
 is to force a busy CPU to shift its attention among multiple duties,
 and an idle CPU has no duties to shift its attention among.
-
+如果CPU是空闲的，那么发送调度时钟中断给它就没有什么意义。毕竟，调度时钟中断的
+主要目的是强制繁忙的CPU在多个任务之间转移注意力，而空闲的CPU没有任务需要转移
+注意力。
 An idle CPU that is not receiving scheduling-clock interrupts is said to
 be "dyntick-idle", "in dyntick-idle mode", "in nohz mode", or "running
 tickless".  The remainder of this document will use "dyntick-idle mode".
-
+一个不接收调度时钟中断的空闲CPU被称为“dyntick-idle”，“处于dyntick-idle模式”，
+“处于nohz模式”或“运行tickless”。本文档的其余部分将使用“dyntick-idle模式”。
 The CONFIG_NO_HZ_IDLE=y Kconfig option causes the kernel to avoid sending
 scheduling-clock interrupts to idle CPUs, which is critically important
 both to battery-powered devices and to highly virtualized mainframes.
@@ -84,6 +100,9 @@ same device running a CONFIG_NO_HZ_IDLE=y kernel.  A mainframe running
 unnecessary scheduling-clock interrupts.  In these situations, there
 is strong motivation to avoid sending scheduling-clock interrupts to
 idle CPUs.  That said, dyntick-idle mode is not free:
+这个CONFIG_NO_HZ_IDLE=y Kconfig选项使内核避免向空闲CPU发送调度时钟中断，
+这对于使用电池供电的设备和高度虚拟化的大型机来说至关重要。运行CONFIG_HZ_PERIODIC=y
+内核的电池供电设备会非常快地耗尽电池，很容易比运行CONFIG_NO_HZ_IDLE=y内核的
 
 1.	It increases the number of instructions executed on the path
 	to and from the idle loop.
