@@ -548,7 +548,7 @@ DECLARE_STATIC_KEY_FALSE(force_irqthreads_key);
 enum
 {
 	HI_SOFTIRQ=0,
-	TIMER_SOFTIRQ,
+	TIMER_SOFTIRQ, // 表示timer的softirq
 	NET_TX_SOFTIRQ,
 	NET_RX_SOFTIRQ,
 	BLOCK_SOFTIRQ,
