@@ -10,6 +10,9 @@
 
 #define MAX_DL_PRIO		0
 
+/* 
+判断是不是deadline任务
+*/
 static inline int dl_prio(int prio)
 {
 	if (unlikely(prio < MAX_DL_PRIO))
