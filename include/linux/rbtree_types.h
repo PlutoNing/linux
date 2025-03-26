@@ -14,6 +14,7 @@ struct rb_root {
 };
 
 /*
+带有leftmost缓存的rbtree
  * Leftmost-cached rbtrees.
  *
  * We do not cache the rightmost node based on footprint
