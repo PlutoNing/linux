@@ -7,6 +7,7 @@
 
 typedef void (*task_work_func_t)(struct callback_head *);
 
+// 初始化任务工作
 static inline void
 init_task_work(struct callback_head *twork, task_work_func_t func)
 {
