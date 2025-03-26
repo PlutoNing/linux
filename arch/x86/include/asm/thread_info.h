@@ -77,9 +77,11 @@ struct thread_info {
  * thread information flags
  * - these are process state flags that various assembly files
  *   may need to access
+ 这些是thread_info的flag
  */
 #define TIF_NOTIFY_RESUME	1	/* callback before returning to user */
-#define TIF_SIGPENDING		2	/* signal pending */
+#define TIF_SIGPENDING		2	
+/* signal pending , 表示进程收到了信号*/
 #define TIF_NEED_RESCHED	3	/* rescheduling necessary */
 #define TIF_SINGLESTEP		4	/* reenable singlestep on user return*/
 #define TIF_SSBD		5	/* Speculative store bypass disable */
