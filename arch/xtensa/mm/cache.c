@@ -32,7 +32,7 @@
 #include <asm/tlbflush.h>
 #include <asm/page.h>
 
-/* 
+/*
  * Note:
  * The kernel provides one architecture bit PG_arch_1 in the page flags that 
  * can be used for cache coherency.
@@ -143,7 +143,7 @@ void flush_dcache_folio(struct folio *folio)
 		unsigned long alias = !(DCACHE_ALIAS_EQ(temp, phys));
 		unsigned long virt;
 
-		/* 
+		/*
 		 * Flush the page in kernel space and user space.
 		 * Note that we can omit that step if aliasing is not
 		 * an issue, but we do have to synchronize I$ and D$
@@ -187,7 +187,7 @@ void local_flush_cache_range(struct vm_area_struct *vma,
 }
 EXPORT_SYMBOL(local_flush_cache_range);
 
-/* 
+/*
  * Remove any entry in the cache for this page. 
  *
  * Note that this function is only called for user pages, so use the
