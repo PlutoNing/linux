@@ -145,6 +145,7 @@ struct hrtimer_sleeper {
 #endif
 
 /**
+代表hrtimer的一个时钟源的表示
  * struct hrtimer_clock_base - the timer base for a specific clock
  * @cpu_base:		per cpu clock base
  * @index:		clock type index for per_cpu support when moving a
@@ -157,16 +158,19 @@ struct hrtimer_sleeper {
  * @offset:		offset of this clock to the monotonic base
  */
 struct hrtimer_clock_base {
-	struct hrtimer_cpu_base	*cpu_base;
-	unsigned int		index;
-	clockid_t		clockid;
+	struct hrtimer_cpu_base	*cpu_base; // 所属的hrimer_cpu_base
+	unsigned int		index; // 不同的时钟源,HRTIMER_BASE_MONOTONIC
+	clockid_t		clockid; // 不同的clockid
 	seqcount_raw_spinlock_t	seq;
 	struct hrtimer		*running;
-	struct timerqueue_head	active;
-	ktime_t			(*get_time)(void);
+	struct timerqueue_head	active; // 代表了一个红黑树
+	ktime_t			(*get_time)(void); // 获取时间的回调函数
 	ktime_t			offset;
 } __hrtimer_clock_base_align;
 
+/*
+代表hrtimer的时钟源?
+*/
 enum  hrtimer_base_type {
 	HRTIMER_BASE_MONOTONIC,
 	HRTIMER_BASE_REALTIME,
@@ -234,6 +238,9 @@ struct hrtimer_cpu_base {
 	struct hrtimer			*next_timer;
 	ktime_t				softirq_expires_next;
 	struct hrtimer			*softirq_next_timer;
+	/*
+	下面好像是代表了不同的时钟源
+	*/
 	struct hrtimer_clock_base	clock_base[HRTIMER_MAX_CLOCK_BASES];
 } ____cacheline_aligned;
 

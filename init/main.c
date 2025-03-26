@@ -979,8 +979,10 @@ void start_kernel(void)
 	init_IRQ();
 	tick_init();
 	rcu_init_nohz();
+	//
 	init_timers();
 	srcu_init();
+	// 初始化hr-timers
 	hrtimers_init();
 	softirq_init();
 	timekeeping_init();

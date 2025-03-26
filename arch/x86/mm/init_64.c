@@ -1334,7 +1334,7 @@ failed:
 	panic("Failed to pre-allocate %s pages for vmalloc area\n", lvl);
 }
 
-/* 
+/*
 好像是把页面从初始的memblock那些移到buddy
 然后初始化memsection的page的type?
 */
@@ -1547,7 +1547,7 @@ int __meminit vmemmap_check_pmd(pmd_t *pmd, int node,
 	return large;
 }
 
-/* 
+/*
 处理nid的一个memsection
 start和end是nid上面某一个memsection的第一个和最后一个页面对应的page结构体地址
 */
@@ -1575,7 +1575,7 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 }
 
 #ifdef CONFIG_HAVE_BOOTMEM_INFO_NODE
-/* 
+/*
 page是section_nr的第一个pfn?对应的的memmap, 在memsection结构体的section memmap提取出来的
 nr_pages是ms的page数量
 加入页表映射?还是说在干嘛?

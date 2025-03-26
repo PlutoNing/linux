@@ -1757,6 +1757,7 @@ static void __hrtimer_run_queues(struct hrtimer_cpu_base *cpu_base, ktime_t now,
 	}
 }
 
+// HR Timer Soft IRQ的action函数
 static __latent_entropy void hrtimer_run_softirq(struct softirq_action *h)
 {
 	struct hrtimer_cpu_base *cpu_base = this_cpu_ptr(&hrtimer_bases);
@@ -2165,10 +2166,13 @@ SYSCALL_DEFINE2(nanosleep_time32, struct old_timespec32 __user *, rqtp,
  */
 int hrtimers_prepare_cpu(unsigned int cpu)
 {
+	// 获取cpu对应的hrtimer_cpu_base
 	struct hrtimer_cpu_base *cpu_base = &per_cpu(hrtimer_bases, cpu);
 	int i;
 
+	// 初始化每一个clock_base
 	for (i = 0; i < HRTIMER_MAX_CLOCK_BASES; i++) {
+		// 遍历hrimer_cpu_base中的clock_base
 		struct hrtimer_clock_base *clock_b = &cpu_base->clock_base[i];
 
 		clock_b->cpu_base = cpu_base;
