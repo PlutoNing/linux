@@ -521,7 +521,11 @@ do {									      \
 })
 
 /**
+读端使用rcu_access_pointer（）获取一个RCU保护的指针，之后并不引用它。
+这种情况下，我们只关心指针本身的值，而不关心指针指向的内容。
+比如我们可以使用该API来判断指针是否为NULL。
  * rcu_access_pointer() - fetch RCU pointer with no dereferencing
+   在没有解引用的情况下获取RCU指针
  * @p: The pointer to read
  *
  * Return the value of the specified RCU-protected pointer, but omit the
@@ -533,7 +537,11 @@ do {									      \
  * you should instead use rcu_dereference_protected() for this use case.
  * Within an RCU read-side critical section, there is little reason to
  * use rcu_access_pointer().
- *
+ * 返回指定的RCU保护指针的值，但省略了用于在RCU读侧critical section的锁定检查。
+ * 当访问此指针的值但不解引用指针时，这是有用的，例如，当将RCU保护指针与NULL进行测试时。
+ * 尽管rcu_access_pointer()也可以用于更新侧锁定防止指针值更改的情况，但是应该使用
+   rcu_dereference_protected()来处理这种情况。
+ * 在RCU读侧关键部分中，几乎没有理由使用rcu_access_pointer()。
  * It is usually best to test the rcu_access_pointer() return value
  * directly in order to avoid accidental dereferences being introduced
  * by later inattentive changes.  In other words, assigning the
