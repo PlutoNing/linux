@@ -520,6 +520,7 @@ void cdev_set_parent(struct cdev *p, struct kobject *kobj)
 
 /**
  * cdev_device_add() - add a char device and it's corresponding
+   添加一个字符设备和它对应的设备
  *	struct device, linkink
  * @dev: the device structure
  * @cdev: the cdev structure
@@ -530,7 +531,6 @@ void cdev_set_parent(struct cdev *p, struct kobject *kobj)
  * needs to be initialized first. This helper function correctly takes a
  * reference to the parent device so the parent will not get released until
  * all references to the cdev are released.
- *
  * This helper uses dev->devt for the device number. If it is not set
  * it will not add the cdev and it will be equivalent to device_add.
  *
@@ -649,6 +649,7 @@ struct cdev *cdev_alloc(void)
 
 /**
  * cdev_init() - initialize a cdev structure
+ 初始化一个cdev结构
  * @cdev: the structure to initialize
  * @fops: the file_operations for this device
  *
