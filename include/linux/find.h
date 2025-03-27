@@ -42,11 +42,18 @@ unsigned long _find_next_bit_le(const unsigned long *addr, unsigned
 
 #ifndef find_next_bit
 /**
+功能：在addr指向的位图中，从索引为offset的bit位（包括该位）开始，
+找到第一个为1的bit位，返回该位的索引。
+@addr：位图（数组）的起始地址。
+@size:位图的大小
+@offset:查找起点。即从位图中索引为offset的位（包括该位）开始，查找第一个为1的bit位
  * find_next_bit - find the next set bit in a memory region
- * @addr: The address to base the search on
- * @size: The bitmap size in bits
- * @offset: The bitnumber to start searching at
+ 在内存区域中找到下一个设置的位
+ * @addr: The address to base the search on, 表示要搜索的地址
+ * @size: The bitmap size in bits,表示位图的大小
+ * @offset: The bitnumber to start searching at,表示要开始搜索的bitnumber?
  *
+ bitnumber是什么意思?
  * Returns the bit number for the next set bit
  * If no bits are set, returns @size.
  */
@@ -54,7 +61,7 @@ static inline
 unsigned long find_next_bit(const unsigned long *addr, unsigned long size,
 			    unsigned long offset)
 {
-	if (small_const_nbits(size)) {
+	if (small_const_nbits(size)) {// 可能是个性能优化的路径, 以后
 		unsigned long val;
 
 		if (unlikely(offset >= size))

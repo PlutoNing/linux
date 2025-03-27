@@ -2144,6 +2144,8 @@ static struct cpuhp_step cpuhp_hp_states[] = {
 	 * On the tear-down path, timers_dead_cpu() must be invoked
 	 * before blk_mq_queue_reinit_notify() from notify_dead(),
 	 * otherwise a RCU stall occurs.
+	 在tear-down的路径上，必须在notify_dead()中的blk_mq_queue_reinit_notify()
+	 之前调用timers_dead_cpu()，否则会发生RCU停滞。
 	 */
 	[CPUHP_TIMERS_PREPARE] = {
 		.name			= "timers:prepare",

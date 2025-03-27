@@ -1104,6 +1104,7 @@ hlist_is_singular_node(struct hlist_node *n, struct hlist_head *h)
  *
  * Move a list from one list head to another. Fixup the pprev
  * reference of the first entry if it exists.
+   移动一个链表，从一个链表头到另一个链表头。如果存在第一个条目，则修复第一个条目的pprev引用。
  */
 static inline void hlist_move_list(struct hlist_head *old,
 				   struct hlist_head *new)

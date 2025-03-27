@@ -81,7 +81,14 @@ extern bool static_key_initialized;
 #define STATIC_KEY_CHECK_USE(key) WARN(!static_key_initialized,		      \
 				    "%s(): static key '%pS' used before call to jump_label_init()", \
 				    __func__, (key))
-
+/* 
+内核中有很多判断条件在正常情况下的结果都是固定的，除非极其罕见的场景才会改变，
+通常单个的这种判断的代价很低可以忽略，但是如果这种判断数量巨大且被频繁执行，
+那就会带来性能损失了。
+内核的static-key机制就是为了优化这种场景,其优化的结果是：
+对于大多数情况，对应的判断被优化为一个NOP指令，在非常有场景的时候就变成
+jump XXX一类的指令，使得对应的代码段得到执行。
+*/
 struct static_key {
 	atomic_t enabled;
 #ifdef CONFIG_JUMP_LABEL
@@ -352,7 +359,7 @@ static inline void static_key_disable(struct static_key *key)
 /*
  * Two type wrappers around static_key, such that we can use compile time
  * type differentiation to emit the right code.
- *
+ * 两种类型的包装器，围绕static_key，以便我们可以使用编译时类型差异化来发出正确的代码。
  * All the below code is macros in order to play type games.
  */
 
@@ -490,7 +497,14 @@ extern bool ____wrong_branch_error(void);
 		branch = ____wrong_branch_error();				\
 	likely_notrace(branch);								\
 })
-
+/* 
+static_branch_unlikely 是 Linux 内核中用于优化分支预测的一个宏，它与静态键（static key）
+机制结合使用，以提高代码性能。
+这个宏主要用于条件编译和运行时条件检查的优化，特别是在内核特性或选项很少被启用或禁用的情况下。
+static_branch_unlikely 宏用于告诉编译器某个条件分支在大多数情况下不会发生（即不太可能为真）。
+这有助于编译器优化代码生成，使得更常见的代码路径保持直线执行，减少分支预测失败的概率，从而提高
+性能。
+*/
 #define static_branch_unlikely(x)						\
 ({										\
 	bool branch;								\

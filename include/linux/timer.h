@@ -7,13 +7,15 @@
 #include <linux/stddef.h>
 #include <linux/debugobjects.h>
 #include <linux/stringify.h>
-
+/* 
+定时器的表示
+*/
 struct timer_list {
 	/*
 	 * All fields that change during normal runtime grouped to the
 	 * same cacheline
 	 */
-	struct hlist_node	entry; //挂到pending队列上
+	struct hlist_node	entry; //挂到pending队列上,插入到时间轮上
 	unsigned long		expires;
 	void			(*function)(struct timer_list *);
 	u32			flags;
@@ -61,6 +63,7 @@ struct timer_list {
  * should be placed on a particular CPU, then add_timer_on() has to be
  * used.
  */
+// timer的flag中编码cpu的掩码
 #define TIMER_CPUMASK		0x0003FFFF
 #define TIMER_MIGRATING		0x00040000
 #define TIMER_BASEMASK		(TIMER_CPUMASK | TIMER_MIGRATING)
@@ -69,6 +72,7 @@ struct timer_list {
 #define TIMER_IRQSAFE		0x00200000
 #define TIMER_INIT_FLAGS	(TIMER_DEFERRABLE | TIMER_PINNED | TIMER_IRQSAFE)
 #define TIMER_ARRAYSHIFT	22
+// timer的flag中编码timer在时间轮的idx的掩码
 #define TIMER_ARRAYMASK		0xFFC00000
 
 #define TIMER_TRACE_FLAGMASK	(TIMER_MIGRATING | TIMER_DEFERRABLE | TIMER_PINNED | TIMER_IRQSAFE)
@@ -98,6 +102,9 @@ extern void init_timer_on_stack_key(struct timer_list *timer,
 				    unsigned int flags, const char *name,
 				    struct lock_class_key *key);
 #else
+/* 
+func是timer的回调函数
+*/
 static inline void init_timer_on_stack_key(struct timer_list *timer,
 					   void (*func)(struct timer_list *),
 					   unsigned int flags,
@@ -140,7 +147,7 @@ static inline void init_timer_on_stack_key(struct timer_list *timer,
  */
 #define timer_setup(timer, callback, flags)			\
 	__init_timer((timer), (callback), (flags))
-
+// timer在栈上初始化
 #define timer_setup_on_stack(timer, callback, flags)		\
 	__init_timer_on_stack((timer), (callback), (flags))
 
@@ -191,6 +198,7 @@ extern int timer_shutdown(struct timer_list *timer);
 
 /**
  * del_timer_sync - Delete a pending timer and wait for a running callback
+ 删除一个挂起的定时器并等待运行回调
  * @timer:	The timer to be deleted
  *
  * See timer_delete_sync() for detailed explanation.

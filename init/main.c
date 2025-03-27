@@ -979,7 +979,7 @@ void start_kernel(void)
 	init_IRQ();
 	tick_init();
 	rcu_init_nohz();
-	//
+	// 初始化posix定时器,softirq的timer
 	init_timers();
 	srcu_init();
 	// 初始化hr-timers

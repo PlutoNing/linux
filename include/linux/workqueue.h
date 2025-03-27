@@ -241,7 +241,10 @@ struct execute_work {
 	.timer = __TIMER_INITIALIZER(delayed_work_timer_fn,\
 				     (tflags) | TIMER_IRQSAFE),		\
 	}
-
+/* 
+DECLARE_WORK 宏用于声明一个工作结构，但并不对其进行初始化，
+通常用于在代码中声明工作结构，而不立即初始化。
+*/
 #define DECLARE_WORK(n, f)						\
 	struct work_struct n = __WORK_INITIALIZER(n, f)
 
