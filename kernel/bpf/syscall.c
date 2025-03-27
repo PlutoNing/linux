@@ -5501,6 +5501,10 @@ BPF_CALL_3(bpf_sys_bpf, int, cmd, union bpf_attr *, attr, u32, attr_size)
  * This function is used by the kernel light skeleton
  * to load bpf programs when modules are loaded or during kernel boot.
  * See tools/lib/bpf/skel_internal.h
+ 为了消除-Wmissing-prototypes。
+ * 此函数由内核轻型骨架使用
+ * 在加载模块时加载bpf程序或在内核引导期间。
+ * 请参阅tools/lib/bpf/skel_internal.h
  */
 int kern_sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
 
