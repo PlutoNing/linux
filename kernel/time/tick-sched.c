@@ -52,6 +52,8 @@ struct tick_sched *tick_get_tick_sched(int cpu)
 static ktime_t last_jiffies_update;
 
 /*
+内核内部的全局变量jiffies，用于记录自系统启动以来经过了多少个TICK。
+jiffies由tick_do_update_jiffies64函数来更新
  * Must be called with interrupts disabled !
  */
 static void tick_do_update_jiffies64(ktime_t now)
@@ -181,7 +183,21 @@ static ktime_t tick_init_jiffy_update(void)
 }
 
 #define MAX_STALLED_JIFFIES 5
-
+/* 
+内核内部的全局变量jiffies，用于记录自系统启动以来经过了多少个TICK。
+jiffies由tick_do_update_jiffies64函数来更新
+jiffies变量更新时调用的相关函数：
+timer timeout
+	-> tick_nohz_handler
+		-> tick_sched_do_timer
+			-> tick_do_update_jiffies64
+=============================================
+			|-->tick_sched_do_timer(ts, now);
+    |-->tick_do_update_jiffies64(now);
+      |-->  jiffies_64 += ticks;     //更新jiffies变量
+    |-->  calc_global_load();    //每10 jiffies计算1次全局负载
+    |-->  update_wall_time();   //更新墙上时间(系统时间)
+*/
 static void tick_sched_do_timer(struct tick_sched *ts, ktime_t now)
 {
 	int cpu = smp_processor_id();
@@ -227,7 +243,20 @@ static void tick_sched_do_timer(struct tick_sched *ts, ktime_t now)
 	if (ts->inidle)
 		ts->got_idle_tick = 1;
 }
-
+/* 
+sched_timer定时器中断处理程序内容如下，sched_timer此时就是系统节拍定时器，
+不仅给调度程序提供心跳，更新jiffies，还充当了一个管理者，以jiffies时间精度给内核其他程序提供定时服务。
+原有的timer的功能接口，如timer_setup()、add_timer()以及其经典的time wheel方式被保留，
+继续给内核中其他程序提供定时服务。
+|-->tick_sched_handle(ts, regs);
+  |-->  update_process_times(user_mode(regs)); //更新当前进程时间
+  |-->  account_process_tick(p, user_tick); //计算进程运行tick
+  |-->  run_local_timers(); //运行自己管理的低精度定时任务
+  |-->  rraise_softirq(TIMER_SOFTIRQ); //通过TIMER_SOFTIRQ处理本地定时任务
+  |-->  rcu_sched_clock_irq(user_tick);
+  |-->  scheduler_tick(); //调度程序tick处理
+  |-->  run_posix_cpu_timers(); //处理posix timer与  cpu  运行时间相关的事务
+*/
 static void tick_sched_handle(struct tick_sched *ts, struct pt_regs *regs)
 {
 #ifdef CONFIG_NO_HZ_COMMON
@@ -1364,6 +1393,13 @@ void tick_nohz_idle_exit(void)
 }
 
 /*
+内核内部的全局变量jiffies，用于记录自系统启动以来经过了多少个TICK。
+jiffies由tick_do_update_jiffies64函数来更新
+jiffies变量更新时调用的相关函数：
+timer timeout
+	-> tick_nohz_handler
+		-> tick_sched_do_timer
+			-> tick_do_update_jiffies64
  * The nohz low res interrupt handler
  */
 static void tick_nohz_handler(struct clock_event_device *dev)
@@ -1472,8 +1508,24 @@ void tick_irq_enter(void)
  */
 #ifdef CONFIG_HIGH_RES_TIMERS
 /*
+早期linux使用低精度定时器timer，代码位于kernel/time/timer.c中，
+虽然精度比较低，但是很多内核定时触发代码都是在这个基础上搭建的，
+例如调度、时间更新、各种低精度定时任务。在高精度时钟模式下，
+内核仍然需要周期性的tick中断，以便刷新内核的一些任务，所以仍然保留
+了低精度timer的角色和运作模式，通过hrtimer模拟出原本的timer，
+称之为sched_timer，将其超时时间设置为一个tick时长，在超时回来后，
+完成对应的工作，然后再次设置下一个tick的超时时间，以此达到周期性tick中断的需求。
+
+sched_timer触发频率为CONFIG_HZ，在CONFIG_HZ=250的系统中，每4ms触发一次，
+也就是一个jiffies时间间隔。虽然触发时间粒度比较大，但是精度仍然是纳秒级，
+属于高精度定时器。
+设置sched_timer定时器处理函数
  * We rearm the timer until we get disabled by the idle code.
  * Called with interrupts disabled.
+ sched_timer定时器中断处理程序内容如下，sched_timer此时就是系统节拍定时器，
+ 不仅给调度程序提供心跳，更新jiffies，还充当了一个管理者，以jiffies时间精度给内核其他程序提供定时服务。
+ 原有的timer的功能接口，如timer_setup()、add_timer()以及其经典的time wheel方式被保留，
+ 继续给内核中其他程序提供定时服务。
  */
 static enum hrtimer_restart tick_sched_timer(struct hrtimer *timer)
 {
@@ -1481,7 +1533,13 @@ static enum hrtimer_restart tick_sched_timer(struct hrtimer *timer)
 		container_of(timer, struct tick_sched, sched_timer);
 	struct pt_regs *regs = get_irq_regs();
 	ktime_t now = ktime_get();
-
+/* 
+|-->tick_sched_do_timer(ts, now);
+    |-->tick_do_update_jiffies64(now);
+      |-->  jiffies_64 += ticks;     //更新jiffies变量
+    |-->  calc_global_load();    //每10 jiffies计算1次全局负载
+    |-->  update_wall_time();   //更新墙上时间(系统时间)
+*/
 	tick_sched_do_timer(ts, now);
 
 	/*
@@ -1513,6 +1571,7 @@ static int __init skew_tick(char *str)
 early_param("skew_tick", skew_tick);
 
 /**
+设置sched_timer
  * tick_setup_sched_timer - setup the tick emulation timer
  */
 void tick_setup_sched_timer(void)
@@ -1524,7 +1583,7 @@ void tick_setup_sched_timer(void)
 	 * Emulate tick processing via per-CPU hrtimers:
 	 */
 	hrtimer_init(&ts->sched_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_HARD);
-	ts->sched_timer.function = tick_sched_timer;
+	ts->sched_timer.function = tick_sched_timer; //设置sched_timer定时器处理函数
 
 	/* Get the next period (per-CPU) */
 	hrtimer_set_expires(&ts->sched_timer, tick_init_jiffy_update());

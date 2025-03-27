@@ -56,7 +56,10 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/timer.h>
-
+/* 
+内核内部的全局变量jiffies，用于记录自系统启动以来经过了多少个TICK。
+jiffies由tick_do_update_jiffies64函数来更新
+*/
 __visible u64 jiffies_64 __cacheline_aligned_in_smp = INITIAL_JIFFIES;
 
 EXPORT_SYMBOL(jiffies_64);

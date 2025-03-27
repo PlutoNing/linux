@@ -37,12 +37,16 @@ struct tk_read_base {
 	u64			cycle_last;
 	u32			mult;
 	u32			shift;
+	/* 系统时间“纳秒”由两部分组成，一部分是内核已经记录的timekeeper的时间tk_core.timekeeper.xtime_nsec
+	（这个变量需要先右移tk_core.timekeeper.tkr_mono.shift才表示纳秒），
+	另一部分是内核还没记录进timekeeper的，来自clocksource的时间。 */
 	u64			xtime_nsec;
 	ktime_t			base;
 	u64			base_real;
 };
 
 /**
+linux系统时间由内核全局变量tk_core.timekeeper维护。
  * struct timekeeper - Structure holding internal timekeeping values.
  * @tkr_mono:		The readout base structure for CLOCK_MONOTONIC
  * @tkr_raw:		The readout base structure for CLOCK_MONOTONIC_RAW
@@ -94,7 +98,7 @@ struct timekeeper {
 	struct tk_read_base	tkr_mono;
 	//记录原始单调时间的结构体。
 	struct tk_read_base	tkr_raw;
-	//  实时时间当前的秒数。
+	//  实时时间当前的秒数。系统时间“秒”的部分来自tk_core.timekeeper.xtime_sec
 	u64			xtime_sec;
 	// 
 	unsigned long		ktime_sec;

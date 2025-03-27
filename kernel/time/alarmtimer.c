@@ -11,6 +11,7 @@
  * Copyright (C) 2010 IBM Corporation
  *
  * Author: John Stultz <john.stultz@linaro.org>
+ alarm基于itimer实现来定时，并且以秒为单位，时间到内核会给该进程发送SIGALRM信号。
  */
 #include <linux/time.h>
 #include <linux/hrtimer.h>

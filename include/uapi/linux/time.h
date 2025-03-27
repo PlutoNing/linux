@@ -48,12 +48,21 @@ struct timezone {
  不同的系统时钟的ID（用于POSIX.1b间隔计时器）：
  */
 #define CLOCK_REALTIME			0
-// 系统的实时时钟，表示当前的日期和时间。
+/* 系统的实时时钟，表示当前的日期和时间。
+以 1970年1月1日… 为起点，随 time-of-day 被修改的时候而改变（例如，NTP网络时间协议）
+*/
 #define CLOCK_MONOTONIC			1
-// 单调递增的时钟，不受系统时间更改的影响，通常用于测量时间间隔。
+/* 单调递增的时钟，不受系统时间更改的影响，通常用于测量时间间隔。
+代表从过去某个固定的时间点开始的绝对的逝去时间，它不受任何系统time-of-day时钟修改的影响，
+在没有机器重启的情况下，若你想计算出两个事件发生的间隔时间的话，那么它将是最好的选择。
+但是 CLOCK_MONOTONIC 在系统 suspend 时并不会增长。
+*/
 #define CLOCK_PROCESS_CPUTIME_ID	2
 #define CLOCK_THREAD_CPUTIME_ID		3
 #define CLOCK_MONOTONIC_RAW		4
+/* 与 CLOCK_MONOTONIC 相似，虽然 CLOCK_MONOTONIC 不受 NTP 的影响，
+但是随着 NTP 了解本地振荡器和上游服务器之间存在错误时，它的频率确实会发生变化，
+而 CLOCK_MONOTONIC_RAW 完全取决于本地振荡器。 */
 #define CLOCK_REALTIME_COARSE		5
 #define CLOCK_MONOTONIC_COARSE		6
 #define CLOCK_BOOTTIME			7

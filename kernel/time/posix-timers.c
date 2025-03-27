@@ -127,9 +127,10 @@ static inline void unlock_timer(struct k_itimer *timr, unsigned long flags)
 {
 	spin_unlock_irqrestore(&timr->it_lock, flags);
 }
-
+// 是realtime clock这个k_clock的gettime函数
 static int posix_get_realtime_timespec(clockid_t which_clock, struct timespec64 *tp)
 {
+	// 获取当前wall time
 	ktime_get_real_ts64(tp);
 	return 0;
 }
@@ -144,7 +145,9 @@ static int posix_clock_realtime_set(const clockid_t which_clock,
 {
 	return do_sys_settimeofday64(tp, NULL);
 }
-
+/* 
+调整系统时间wall_time
+*/
 static int posix_clock_realtime_adj(const clockid_t which_clock,
 				    struct __kernel_timex *t)
 {
@@ -1119,7 +1122,11 @@ void exit_itimers(struct task_struct *tsk)
 		itimer_delete(tmr);
 	}
 }
-
+/* 
+adjtimex、clock_settime、settimeofday等系统调用都能直接设置系统时间。
+adjtimex通过将一个时间差累加进内核时钟来设置时间；
+clock_settime和settimeofday底层都是调用do_settimeofday64来设置系统时间。
+*/
 SYSCALL_DEFINE2(clock_settime, const clockid_t, which_clock,
 		const struct __kernel_timespec __user *, tp)
 {
@@ -1435,13 +1442,15 @@ SYSCALL_DEFINE4(clock_nanosleep_time32, clockid_t, which_clock, int, flags,
 }
 
 #endif
-
+/* 
+代表realtime的kclock?
+*/
 static const struct k_clock clock_realtime = {
 	.clock_getres		= posix_get_hrtimer_res,
 	.clock_get_timespec	= posix_get_realtime_timespec,
 	.clock_get_ktime	= posix_get_realtime_ktime,
 	.clock_set		= posix_clock_realtime_set,
-	.clock_adj		= posix_clock_realtime_adj,
+	.clock_adj		= posix_clock_realtime_adj, // 调整时间
 	.nsleep			= common_nsleep,
 	.timer_create		= common_timer_create,
 	.timer_set		= common_timer_set,

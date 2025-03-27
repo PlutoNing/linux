@@ -151,7 +151,18 @@ struct signal_struct {
 	unsigned int		next_posix_timer_id;
 	struct list_head	posix_timers;
 
-	/* ITIMER_REAL timer for the process */
+	/* ITIMER_REAL timer for the process
+	itimer基于hrtimer和信号配合实现，通过hrtimer设置高精度超时时间，
+	到期后通过信号方式通知进程。itimer提供下面三种定时方式，收到的信号也不同。
+
+定时类型	含义	到期信号
+ITIMER_REAL	真实时间	SIGALRM
+ITIMER_VIRTUAL	当前进程在用户态实际执行时间	SIGVTALRM
+ITIMER_PROF	当前进程在用户态和内核态实际执行时间	SIGPROF
+如下signal_struct结构体定义中包含的定时器相关的成员，与itimer相关的有，
+real_timer是该线程对应真实时间hrtimer定时器，
+it[2]是2种cpu执行时间定时的cpu_itimer定时器。
+	*/
 	struct hrtimer real_timer;
 	ktime_t it_real_incr;
 
@@ -161,6 +172,9 @@ struct signal_struct {
 	 * values are defined to 0 and 1 respectively
 	 表示进程的ITIMER_PROF和ITIMER_VIRTUAL定时器
 	 我们使用CPUCLOCK_PROF和CPUCLOCK_VIRT来索引数组，因为这些值分别定义为0和1
+	 如下signal_struct结构体定义中包含的定时器相关的成员，与itimer相关的有，
+real_timer是该线程对应真实时间hrtimer定时器，
+it[2]是2种cpu执行时间定时的cpu_itimer定时器。
 	 */
 	struct cpu_itimer it[2];
 

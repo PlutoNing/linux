@@ -733,6 +733,17 @@ static inline int hrtimer_is_hres_enabled(void)
 static void retrigger_next_event(void *arg);
 
 /*
+早期linux使用低精度定时器timer，代码位于kernel/time/timer.c中，
+虽然精度比较低，但是很多内核定时触发代码都是在这个基础上搭建的，
+例如调度、时间更新、各种低精度定时任务。在高精度时钟模式下，
+内核仍然需要周期性的tick中断，以便刷新内核的一些任务，所以仍然保留
+了低精度timer的角色和运作模式，通过hrtimer模拟出原本的timer，
+称之为sched_timer，将其超时时间设置为一个tick时长，在超时回来后，
+完成对应的工作，然后再次设置下一个tick的超时时间，以此达到周期性tick中断的需求。
+
+sched_timer触发频率为CONFIG_HZ，在CONFIG_HZ=250的系统中，每4ms触发一次，
+也就是一个jiffies时间间隔。虽然触发时间粒度比较大，但是精度仍然是纳秒级，
+属于高精度定时器。
  * Switch to high resolution mode
  */
 static void hrtimer_switch_to_hres(void)
@@ -1579,6 +1590,7 @@ static void __hrtimer_init(struct hrtimer *timer, clockid_t clock_id,
 }
 
 /**
+初始化hrimer结构体
  * hrtimer_init - initialize a timer to the given clock
  * @timer:	the timer to be initialized
  * @clock_id:	the clock to be used
@@ -1780,6 +1792,9 @@ static __latent_entropy void hrtimer_run_softirq(struct softirq_action *h)
 #ifdef CONFIG_HIGH_RES_TIMERS
 
 /*
+在定时器中断到来时进入硬中断处理函数hrtimer_interrupt()，如果最近到期的任务是硬timer，
+则继续在当前中断环境下处理。如果是软timer，则挂起软中断HRTIMER_SOFTIRQ，
+软中断在hrtimer_run_softirq()中处理软timer任务。
  * High resolution timer interrupt
  * Called with interrupts disabled
  */
@@ -1812,7 +1827,7 @@ retry:
 		cpu_base->softirq_activated = 1;
 		raise_softirq_irqoff(HRTIMER_SOFTIRQ);
 	}
-
+	// 处理硬timer?
 	__hrtimer_run_queues(cpu_base, now, flags, HRTIMER_ACTIVE_HARD);
 
 	/* Reevaluate the clock bases for the [soft] next expiry */
@@ -2119,7 +2134,14 @@ out:
 }
 
 #ifdef CONFIG_64BIT
-
+/* 
+nanosleep基于hrtimer来实现纳秒级延时，内核中提供hrtimer_nanosleep接口，
+并且封装成系统调用nanosleep给用户空间使用。其核心是do_nanosleep，会将
+线程设置为TASK_INTERRUPTIBLE|TASK_FREEZABLE状态，然后调度出去，当定时
+时间到期后，定时器中断唤醒该task。
+从2.3时钟源精度52ns就可以看出，在加上这里会有任务调度，和代码执行耗时，
+真想实现ns级延时是不现实的，微秒级应该是可以的。
+*/
 SYSCALL_DEFINE2(nanosleep, struct __kernel_timespec __user *, rqtp,
 		struct __kernel_timespec __user *, rmtp)
 {
@@ -2162,6 +2184,7 @@ SYSCALL_DEFINE2(nanosleep_time32, struct old_timespec32 __user *, rqtp,
 #endif
 
 /*
+开机或者cpu热插拔的时候初始化cpu的hrtimer
  * Functions related to boot-time initialization:
  */
 int hrtimers_prepare_cpu(unsigned int cpu)
@@ -2177,6 +2200,7 @@ int hrtimers_prepare_cpu(unsigned int cpu)
 
 		clock_b->cpu_base = cpu_base;
 		seqcount_raw_spinlock_init(&clock_b->seq, &cpu_base->lock);
+		// 初始化tqhead红黑树
 		timerqueue_init_head(&clock_b->active);
 	}
 
@@ -2270,10 +2294,14 @@ int hrtimers_dead_cpu(unsigned int scpu)
 }
 
 #endif /* CONFIG_HOTPLUG_CPU */
-
+/* 
+启动的时候初始化hrtimer
+*/
 void __init hrtimers_init(void)
 {
+	// 初始化cpu的hrtimer
 	hrtimers_prepare_cpu(smp_processor_id());
+	// 注册HRTIMER_SOFTIRQ
 	open_softirq(HRTIMER_SOFTIRQ, hrtimer_run_softirq);
 }
 

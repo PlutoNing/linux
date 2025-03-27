@@ -239,6 +239,7 @@ static inline void pps_fill_timex(struct __kernel_timex *txc)
 
 
 /**
+ntp是不是在同步中
  * ntp_synced - Returns 1 if the NTP status is not UNSYNC
  *
  */
@@ -253,6 +254,7 @@ static inline int ntp_synced(void)
  */
 
 /*
+主要是个计算的逻辑
  * Update (tick_length, tick_length_base, tick_nsec), based
  * on (tick_usec, ntp_tick_adj, time_freq):
  */
@@ -347,6 +349,7 @@ static void ntp_update_offset(long offset)
 
 /**
  * ntp_clear - Clears the NTP state variables
+ 清除NTP状态变量
  */
 void ntp_clear(void)
 {
@@ -496,10 +499,14 @@ out:
 
 #if defined(CONFIG_GENERIC_CMOS_UPDATE) || defined(CONFIG_RTC_SYSTOHC)
 static void sync_hw_clock(struct work_struct *work);
+// 好像是和ntp相关的hrtimer的回调函数的异步工作
 static DECLARE_WORK(sync_work, sync_hw_clock);
+// 好像是和ntp相关的hrtimer
 static struct hrtimer sync_hrtimer;
 #define SYNC_PERIOD_NS (11ULL * 60 * NSEC_PER_SEC)
-
+/* 
+和ntp相关的hrtimer的回调函数
+*/
 static enum hrtimer_restart sync_timer_callback(struct hrtimer *timer)
 {
 	queue_work(system_freezable_power_efficient_wq, &sync_work);
@@ -577,23 +584,26 @@ static inline int update_persistent_clock64(struct timespec64 now64)
 #endif
 
 #ifdef CONFIG_RTC_SYSTOHC
-/* Save NTP synchronized time to the RTC */
+/* Save NTP synchronized time to the RTC
+把ntp同步的时间保存到rtc
+*/
 static int update_rtc(struct timespec64 *to_set, unsigned long *offset_nsec)
 {
 	struct rtc_device *rtc;
 	struct rtc_time tm;
 	int err = -ENODEV;
-
+	// 打开设备
 	rtc = rtc_class_open(CONFIG_RTC_SYSTOHC_DEVICE);
 	if (!rtc)
 		return -ENODEV;
 
 	if (!rtc->ops || !rtc->ops->set_time)
 		goto out_close;
-
+	// rtc必须存在ops并且ops中存在set_time
 	/* First call might not have the correct offset */
 	if (*offset_nsec == rtc->set_offset_nsec) {
 		rtc_time64_to_tm(to_set->tv_sec, &tm);
+		// 把时间写入rtc
 		err = rtc_set_time(rtc, &tm);
 	} else {
 		/* Store the update offset and let the caller try again */
@@ -612,12 +622,16 @@ static inline int update_rtc(struct timespec64 *to_set, unsigned long *offset_ns
 #endif
 
 /*
+好像是和ntp相关的异步工作
  * If we have an externally synchronized Linux clock, then update RTC clock
  * accordingly every ~11 minutes. Generally RTCs can only store second
  * precision, but many RTCs will adjust the phase of their second tick to
  * match the moment of update. This infrastructure arranges to call to the RTC
  * set at the correct moment to phase synchronize the RTC second tick over
  * with the kernel clock.
+ 如果我们有一个外部同步的Linux时钟，那么每隔大约11分钟就相应地更新RTC时钟。
+ 通常RTC只能存储秒精度，但许多RTC将调整其秒滴答的相位以匹配更新的时刻。
+ 此基础结构安排在正确的时刻调用RTC设置，以使RTC秒滴答与内核时钟同步。
  */
 static void sync_hw_clock(struct work_struct *work)
 {
@@ -625,6 +639,8 @@ static void sync_hw_clock(struct work_struct *work)
 	 * The default synchronization offset is 500ms for the deprecated
 	 * update_persistent_clock64() under the assumption that it uses
 	 * the infamous CMOS clock (MC146818).
+	 默认的同步偏移量为500ms，用于假设使用臭名昭著的CMOS时钟（MC146818）
+	 的已弃用的update_persistent_clock64()。
 	 */
 	static unsigned long offset_nsec = NSEC_PER_SEC / 2;
 	struct timespec64 now, to_set;
@@ -637,7 +653,7 @@ static void sync_hw_clock(struct work_struct *work)
 	 */
 	if (!ntp_synced() || hrtimer_is_queued(&sync_hrtimer))
 		return;
-
+	// 必须要ntp_synced()为真并且sync_hrtime没有被排队
 	ktime_get_real_ts64(&now);
 	/* If @now is not in the allowed window, try again */
 	if (!rtc_tv_nsec_ok(offset_nsec, &to_set, &now))
@@ -651,8 +667,10 @@ static void sync_hw_clock(struct work_struct *work)
 	res = update_persistent_clock64(to_set);
 	if (res != -ENODEV)
 		goto rearm;
-
-	/* Try the RTC class */
+	// 刚刚函数直接返回NO_DEVICE, 来到这里尝试rtc
+	/* Try the RTC class
+	把从ntp同步的时间保存到rtc
+	*/
 	res = update_rtc(&to_set, &offset_nsec);
 	if (res == -ENODEV)
 		return;
@@ -670,7 +688,9 @@ void ntp_notify_cmos_timer(void)
 	if (ntp_synced() && !hrtimer_is_queued(&sync_hrtimer))
 		queue_work(system_freezable_power_efficient_wq, &sync_work);
 }
-
+/* 
+ntp的初始化
+*/
 static void __init ntp_init_cmos_sync(void)
 {
 	hrtimer_init(&sync_hrtimer, CLOCK_REALTIME, HRTIMER_MODE_ABS);
@@ -1088,7 +1108,9 @@ static int __init ntp_tick_adj_setup(char *str)
 }
 
 __setup("ntp_tick_adj=", ntp_tick_adj_setup);
-
+/* 
+初始化timekeeping的时候会调用ntp_init
+*/
 void __init ntp_init(void)
 {
 	ntp_clear();

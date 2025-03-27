@@ -61,7 +61,9 @@ static inline bool timerqueue_node_expires(struct timerqueue_node *node)
 {
 	return node->expires;
 }
-
+/* 
+初始化clock_base的tqhead
+*/
 static inline void timerqueue_init_head(struct timerqueue_head *head)
 {
 	head->rb_root = RB_ROOT_CACHED;

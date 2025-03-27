@@ -136,13 +136,15 @@ SYSCALL_DEFINE1(stime32, old_time32_t __user *, tptr)
 
 #endif /* __ARCH_WANT_SYS_TIME32 */
 #endif
-
+/* 
+gettimeofday()系统调用
+*/
 SYSCALL_DEFINE2(gettimeofday, struct __kernel_old_timeval __user *, tv,
 		struct timezone __user *, tz)
 {
 	if (likely(tv != NULL)) {
 		struct timespec64 ts;
-
+		// 获取wall_time
 		ktime_get_real_ts64(&ts);
 		if (put_user(ts.tv_sec, &tv->tv_sec) ||
 		    put_user(ts.tv_nsec / 1000, &tv->tv_usec))
@@ -156,6 +158,7 @@ SYSCALL_DEFINE2(gettimeofday, struct __kernel_old_timeval __user *, tv,
 }
 
 /*
+clock_settime和settimeofday底层都是调用do_settimeofday64来设置系统时间。
  * In case for some reason the CMOS clock has not already been running
  * in UTC, but in some local time: The first time we set the timezone,
  * we will warp the clock so that it is ticking UTC time instead of
@@ -195,7 +198,11 @@ int do_sys_settimeofday64(const struct timespec64 *tv, const struct timezone *tz
 		return do_settimeofday64(tv);
 	return 0;
 }
-
+/* 
+adjtimex、clock_settime、settimeofday等系统调用都能直接设置系统时间。
+adjtimex通过将一个时间差累加进内核时钟来设置时间；
+clock_settime和settimeofday底层都是调用do_settimeofday64来设置系统时间。
+*/
 SYSCALL_DEFINE2(settimeofday, struct __kernel_old_timeval __user *, tv,
 		struct timezone __user *, tz)
 {
@@ -239,7 +246,11 @@ COMPAT_SYSCALL_DEFINE2(gettimeofday, struct old_timeval32 __user *, tv,
 
 	return 0;
 }
-
+/* 
+adjtimex、clock_settime、settimeofday等系统调用都能直接设置系统时间。
+adjtimex通过将一个时间差累加进内核时钟来设置时间；
+clock_settime和settimeofday底层都是调用do_settimeofday64来设置系统时间。
+*/
 COMPAT_SYSCALL_DEFINE2(settimeofday, struct old_timeval32 __user *, tv,
 		       struct timezone __user *, tz)
 {
@@ -266,6 +277,14 @@ COMPAT_SYSCALL_DEFINE2(settimeofday, struct old_timeval32 __user *, tv,
 #endif
 
 #ifdef CONFIG_64BIT
+/* 
+NTP相关应用，如chrony或者ntpd等通过adjtimex系统调用来调整内核时间和时间流速。
+adjtimex在内核中通过do_adjtimex函数来实现具体功能。
+================================
+adjtimex、clock_settime、settimeofday等系统调用都能直接设置系统时间。
+adjtimex通过将一个时间差累加进内核时钟来设置时间；
+clock_settime和settimeofday底层都是调用do_settimeofday64来设置系统时间。
+*/
 SYSCALL_DEFINE1(adjtimex, struct __kernel_timex __user *, txc_p)
 {
 	struct __kernel_timex txc;		/* Local copy of parameter */
@@ -345,7 +364,10 @@ int put_old_timex32(struct old_timex32 __user *utp, const struct __kernel_timex 
 		return -EFAULT;
 	return 0;
 }
-
+/* 
+NTP相关应用，如chrony或者ntpd等通过adjtimex系统调用来调整内核时间和时间流速。
+adjtimex在内核中通过do_adjtimex函数来实现具体功能。
+*/
 SYSCALL_DEFINE1(adjtimex_time32, struct old_timex32 __user *, utp)
 {
 	struct __kernel_timex txc;

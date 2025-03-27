@@ -47,8 +47,10 @@ enum timekeeping_adv_mode {
 DEFINE_RAW_SPINLOCK(timekeeper_lock);
 
 /*
+linux系统时间由内核全局变量tk_core.timekeeper维护。
  * The most important data for readout fits into a single 64 byte
  * cache line.
+   最重要的数据适合于一个64字节的缓存行。
  */
 static struct {
 	seqcount_raw_spinlock_t	seq;
@@ -383,7 +385,9 @@ static inline u64 timekeeping_delta_to_ns(const struct tk_read_base *tkr, u64 de
 
 	return nsec;
 }
-
+/* 
+不同的时间获取系统调用time、gettimeofday、clock_gettime最终都是调用timekeeping_get_ns
+*/
 static inline u64 timekeeping_get_ns(const struct tk_read_base *tkr)
 {
 	u64 delta;
@@ -810,6 +814,8 @@ static void timekeeping_forward_now(struct timekeeper *tk)
 }
 
 /**
+gettimeofday和clock_time系统调用调用的函数
+获取的是wall_time
  * ktime_get_real_ts64 - Returns the time of day in a timespec64.
  * @ts:		pointer to the timespec to be set
  *
@@ -1313,6 +1319,7 @@ int get_device_system_crosststamp(int (*get_time_fn)
 EXPORT_SYMBOL_GPL(get_device_system_crosststamp);
 
 /**
+clock_settime和settimeofday底层都是调用do_settimeofday64来设置系统时间。
  * do_settimeofday64 - Sets the time of day.
  * @ts:     pointer to the timespec64 variable containing the new time
  *
@@ -1582,6 +1589,7 @@ u64 timekeeping_max_deferment(void)
 
 /**
  * read_persistent_clock64 -  Return time from the persistent clock.
+ 从持久时钟读取时间
  * @ts: Pointer to the storage for the readout value
  *
  * Weak dummy function for arches that do not yet support it.
@@ -1599,6 +1607,7 @@ void __weak read_persistent_clock64(struct timespec64 *ts)
 /**
  * read_persistent_wall_and_boot_offset - Read persistent clock, and also offset
  *                                        from the boot.
+ 从持久时钟读取时间，并且从启动时间读取偏移量
  * @wall_time:	  current time as returned by persistent clock
  * @boot_offset:  offset that is defined as wall_time - boot_time
  *
@@ -1613,6 +1622,7 @@ void __weak __init
 read_persistent_wall_and_boot_offset(struct timespec64 *wall_time,
 				     struct timespec64 *boot_offset)
 {
+	// 读取到wall_time
 	read_persistent_clock64(wall_time);
 	*boot_offset = ns_to_timespec64(local_clock());
 }
@@ -1632,11 +1642,19 @@ read_persistent_wall_and_boot_offset(struct timespec64 *wall_time,
  */
 static bool suspend_timing_needed;
 
-/* Flag for if there is a persistent clock on this platform */
+/* Flag for if there is a persistent clock on this platform
+表示是否在此平台上有持久时钟
+*/
 static bool persistent_clock_exists;
 
 /*
+tk_core.timekeeping初始化相关的逻辑在kernel/time/timekeeping.c: timekeeping_init。
+初始化的主要操作之一是从主板上读取硬件时间，并根据硬件时间设置tk_core.timekeeping中的时间初始值。
  * timekeeping_init - Initializes the clocksource and common timekeeping values
+ 初始化时钟源和常见的时间值
+ ============================================================================
+ timekeeper在初始化的过程中，读取当前的RTC值和clocksource的值，
+ 来初始化xtime、monotonic time、raw time、boot time，以及各种offset。
  */
 void __init timekeeping_init(void)
 {
@@ -1644,7 +1662,7 @@ void __init timekeeping_init(void)
 	struct timekeeper *tk = &tk_core.timekeeper;
 	struct clocksource *clock;
 	unsigned long flags;
-
+	// 读取到wall_time和boot_offset
 	read_persistent_wall_and_boot_offset(&wall_time, &boot_offset);
 	if (timespec64_valid_settod(&wall_time) &&
 	    timespec64_to_ns(&wall_time) > 0) {
@@ -1660,12 +1678,13 @@ void __init timekeeping_init(void)
 	/*
 	 * We want set wall_to_mono, so the following is true:
 	 * wall time + wall_to_mono = boot time
+	 wall_to_mono是wall_time和boot_time的差值
 	 */
 	wall_to_mono = timespec64_sub(boot_offset, wall_time);
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
 	write_seqcount_begin(&tk_core.seq);
-	ntp_init();
+	ntp_init(); // ntp相关
 
 	clock = clocksource_default_clock();
 	if (clock->enable)
@@ -2153,6 +2172,7 @@ static u64 logarithmic_accumulation(struct timekeeper *tk, u64 offset,
 }
 
 /*
+内核时间的更新由timekeeping_advance函数负责。timekeeping_advance函数由计时器中断不定期触发执行。
  * timekeeping_advance - Updates the timekeeper to the current time and
  * current NTP tick length
  更新timekeeper到当前时间和当前NTP滴答长度
@@ -2233,6 +2253,8 @@ out:
 }
 
 /**
+内核时间的更新由update_wall_time->timekeeping_advance函数负责。
+timekeeping_advance函数由计时器中断不定期触发执行。
  * update_wall_time - Uses the current clocksource to increment the wall time
  使用当前时钟源增加walltime
  ===================
@@ -2240,7 +2262,10 @@ tick_periodic() 中调用了 update_wall_time()，用来更新墙上时间，所
 就是用户在系统中看到的时间，换句话说，就是在 shell 中使用 data 命令显示的时间。
 时间静止
 如果我注释掉 update_wall_time() 函数，墙上时间是不是就静止了？好像是的
- *
+========================
+clocksource定时器的值要定时的读出来，并且把增量加到timekeeper中，
+不然clocksource定时器会溢出。这个定时更新的时间一般是1 tick，
+调用的函数是update_wall_time()：
  */
 void update_wall_time(void)
 {
@@ -2433,6 +2458,8 @@ unsigned long random_get_entropy_fallback(void)
 EXPORT_SYMBOL_GPL(random_get_entropy_fallback);
 
 /**
+NTP相关应用，如chrony或者ntpd等通过adjtimex系统调用来调整内核时间和时间流速。
+adjtimex在内核中通过do_adjtimex函数来实现具体功能。
  * do_adjtimex() - Accessor function to NTP __do_adjtimex function
  */
 int do_adjtimex(struct __kernel_timex *txc)

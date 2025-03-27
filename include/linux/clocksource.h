@@ -32,9 +32,18 @@ struct module;
 #include <vdso/clocksource.h>
 
 /**
+一个global timer对应注册一个clocksource。
+一个系统中可以有多个clocksource，timekeeper选择精度最高的那个来使用。
+用户使用timekeeper提供的接口来获取系统的时间戳。
+为了避免无人主动获取时间clocksource定时器的溢出，timekeeper需要定期
+的去获取clocksource的值来更新系统时间，一般是在tick处理中更新。
+====================================================================
  * struct clocksource - hardware abstraction for a free running counter
  *	Provides mostly state-free accessors to the underlying hardware.
  *	This is the structure used for system time.
+ 表示一个硬件抽象的自由运行计数器
+ 提供对底层硬件的大部分无状态访问器
+ 这是用于系统时间的结构
  *
  * @read:		Returns a cycle value, passes clocksource as argument
  * @mask:		Bitmask for two's complement

@@ -92,6 +92,7 @@ enum hrtimer_restart {
  * All state transitions are protected by cpu_base->lock.
  */
 #define HRTIMER_STATE_INACTIVE	0x00
+// 代表hrtimer已经被加入到queue中
 #define HRTIMER_STATE_ENQUEUED	0x01
 
 /**
@@ -217,7 +218,7 @@ enum  hrtimer_base_type {
  */
 struct hrtimer_cpu_base {
 	raw_spinlock_t			lock;
-	unsigned int			cpu;
+	unsigned int			cpu; // 这个hrtimer_base所属的cpu
 	unsigned int			active_bases;
 	unsigned int			clock_was_set_seq;
 	unsigned int			hres_active		: 1,
@@ -466,6 +467,7 @@ extern bool hrtimer_active(const struct hrtimer *timer);
 
 /**
  * hrtimer_is_queued - check, whether the timer is on one of the queues
+ 检查timer是否在队列中
  * @timer:	Timer to check
  *
  * Returns: True if the timer is queued, false otherwise

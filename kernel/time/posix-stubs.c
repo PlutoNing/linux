@@ -55,6 +55,9 @@ SYS_NI(alarm);
  * We preserve minimal support for CLOCK_REALTIME and CLOCK_MONOTONIC
  * as it is easy to remain compatible with little code. CLOCK_BOOTTIME
  * is also included for convenience as at least systemd uses it.
+ adjtimex、clock_settime、settimeofday等系统调用都能直接设置系统时间。
+ adjtimex通过将一个时间差累加进内核时钟来设置时间；
+ clock_settime和settimeofday底层都是调用do_settimeofday64来设置系统时间。
  */
 
 SYSCALL_DEFINE2(clock_settime, const clockid_t, which_clock,

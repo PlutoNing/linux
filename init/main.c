@@ -985,6 +985,7 @@ void start_kernel(void)
 	// 初始化hr-timers
 	hrtimers_init();
 	softirq_init();
+	// 初始化timekeeping
 	timekeeping_init();
 	time_init();
 

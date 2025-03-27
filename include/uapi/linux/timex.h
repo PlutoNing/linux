@@ -167,6 +167,7 @@ struct __kernel_timex {
 
 /*
  * Status codes (timex.status)
+ ntp的状态变量?
  */
 #define STA_PLL		0x0001	/* enable PLL updates (rw) */
 #define STA_PPSFREQ	0x0002	/* enable PPS freq discipline (rw) */

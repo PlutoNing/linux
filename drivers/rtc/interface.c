@@ -122,7 +122,9 @@ int rtc_read_time(struct rtc_device *rtc, struct rtc_time *tm)
 	return err;
 }
 EXPORT_SYMBOL_GPL(rtc_read_time);
-
+/* 
+rtc设置时间
+*/
 int rtc_set_time(struct rtc_device *rtc, struct rtc_time *tm)
 {
 	int err, uie;
