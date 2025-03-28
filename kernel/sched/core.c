@@ -5644,6 +5644,14 @@ static inline u64 cpu_resched_latency(struct rq *rq) { return 0; }
 /*
  * This function gets called by the timer code, with HZ frequency.
  * We call it with interrupts disabled.
+ 这个函数被定时器代码以HZ频率调用
+ * We call it with中断禁用
+ scheduler_tick()的主要工作：
+1. 更新rq的clock和clock_task //update_rq_clock()
+2. 更新cfs_rq的min_vruntime以及task的vruntime //update_curr()
+3. 更新entity和cfs_rq的平均负载统计 //update_load_avg()
+4. 检查当前是否需要重新调度并设置TIF_NEED_RESCHED //check_preempt_tick()
+5. 步骤3中已经更新了负载，最后一步判断是否进行负载均衡 //trigger_load_balance()
  */
 void scheduler_tick(void)
 {

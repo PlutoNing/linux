@@ -253,6 +253,11 @@ static void do_idle(void)
 	 */
 
 	__current_set_polling();
+	/* 
+	如果当前CPU进入空闲状态，Linux系统先会调用tick_nohz_idle_enter函数，
+	通知Tick模拟层进入空闲状态，接着会调用tick_nohz_idle_stop_tick函数，
+	正式停掉当前CPU上的Tick。
+	*/
 	tick_nohz_idle_enter();
 
 	while (!need_resched()) {

@@ -345,6 +345,7 @@ static inline void calc_global_nohz(void) { }
  * CPUs have updated calc_load_tasks.
  *
  * Called from the global timer code.
+ 更新系统负载
  */
 void calc_global_load(void)
 {
@@ -364,7 +365,7 @@ void calc_global_load(void)
 
 	active = atomic_long_read(&calc_load_tasks);
 	active = active > 0 ? active * FIXED_1 : 0;
-
+	// 在 Linux 内核中，使用了avenrun数组来存储 1 分钟、5 分钟和 15 分钟的系统平均负载
 	avenrun[0] = calc_load(avenrun[0], EXP_1, active);
 	avenrun[1] = calc_load(avenrun[1], EXP_5, active);
 	avenrun[2] = calc_load(avenrun[2], EXP_15, active);
