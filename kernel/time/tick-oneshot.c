@@ -74,6 +74,9 @@ void tick_setup_oneshot(struct clock_event_device *newdev,
 }
 
 /**
+通过了测试正式准备切换到单次触发模式了，最终会调用tick_switch_to_oneshot函数。
+如果切换成功，函数的最后会调用tick_broadcast_switch_to_oneshot函数，将Tick广播层
+也切换到单次触发模式
  * tick_switch_to_oneshot - switch to oneshot mode
  */
 int tick_switch_to_oneshot(void (*handler)(struct clock_event_device *))

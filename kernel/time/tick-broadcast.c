@@ -20,6 +20,13 @@
 #include "tick-internal.h"
 
 /*
+当系统中没有别的进程需要处理的时候，会将当前CPU切换到NO_HZ状态，不会每一个
+Tick都收到定时中断，从而达到节电的目的。但此时，当前CPU上的定时事件设备还是
+打开的，处于工作状态，只不过不产生Tick了。但是，如果当前CPU上的定时事件设备
+还支持一种叫做C3_STOP的状态的话，有可能当CPU进入某些空闲状态的时候，连为本
+CPU服务的定时事件设备都会被完全停止掉。这时候，本CPU将完全接收不到任何定时
+中断，也不会自己把自己唤醒，必须寻求外部设备或其它没有休眠CPU的帮助，这就是
+Tick广播层存在的目的
  * Broadcast support for broken x86 hardware, where the local apic
  * timer stops in C3 state.
  */
@@ -27,7 +34,13 @@
 表示广播设备
 */
 static struct tick_device tick_broadcast_device;
+/* 
+该变量中的每一位表示对应的CPU是否需要Tick广播层提供Tick周期广播服务，如果需要则对应的位被置位
+*/
 static cpumask_var_t tick_broadcast_mask __cpumask_var_read_mostly;
+/* 
+这个变量是用来控制打开或关闭Tick周期广播服务的开关，如果当前CPU有可能会进入深度休眠状态，则对应该CPU的位会被置位
+*/
 static cpumask_var_t tick_broadcast_on __cpumask_var_read_mostly;
 static cpumask_var_t tmpmask __cpumask_var_read_mostly;
 static int tick_broadcast_forced;
@@ -75,6 +88,11 @@ const struct clock_event_device *tick_get_wakeup_device(int cpu)
 }
 
 /*
+全局变量tick_broadcast_mask表示有没有CPU会请求Tick广播服务。如果当前系统中所有
+的CPU都不会睡死进入C3_STOP状态，那么即使进入了NO_HZ状态，它们各自维护的定时器也会
+得到妥善的处理，就不需要Tick广播了。如果tick_broadcast_mask不是0，表明系统中至少
+有一个设备会完全停止需要Tick广播，那么接下来就需要调用tick_broadcast_start_periodic
+函数，启动Tick周期广播.
  * Start the device in periodic mode
  以周期性模式启动设备
  */
@@ -164,6 +182,7 @@ static bool tick_set_oneshot_wakeup_device(struct clock_event_device *newdev,
 #endif
 
 /*
+主要功能是检查和比较新老定时事件设备，看看新的能不能替换老的作为Tick广播设备
 检查新添加的ce能否作为广播设备?
  * Conditionally install/replace broadcast device
  */
@@ -256,6 +275,9 @@ static void tick_device_setup_broadcast_func(struct clock_event_device *dev)
 /*
  * Check, if the device is dysfunctional and a placeholder, which
  * needs to be handled by the broadcast device.
+ ============================================================================
+ 当有一个新的定时事件设备注册上来，需要替换当前CPU上Tick层的设备时，会调用tick_setup_device
+ 函数，在这个函数中，会调用tick_device_uses_broadcast函数
  */
 int tick_device_uses_broadcast(struct clock_event_device *dev, int cpu)
 {
@@ -354,6 +376,13 @@ int tick_receive_broadcast(void)
 }
 
 /*
+首先检查需要广播服务的CPU位图中是否包含了本CPU，如果是的话会将其清除，
+然后函数退出的时候会返回真。接着，如果还有CPU等着接收Tick广播的话，
+就从所有这些CPU对应的Tick设备上挑选出一个，这里选的是第一个设备，
+然后调用它的广播函数。这里其实有一个假设，就是系统中所有CPU上的Tick
+设备中的定时事件设备的broadcast函数都被设置成一样的。在后面会看到它们
+确实都是一样的，被设置成了tick_broadcast函数。
+
  * Broadcast the event to the cpus, which are set in the mask (mangled).
  */
 static bool tick_do_broadcast(struct cpumask *mask)
@@ -390,6 +419,12 @@ static bool tick_do_broadcast(struct cpumask *mask)
 		 * have different broadcast functions. For now, just use the
 		 * one of the first device. This works as long as we have this
 		 * misfeature only on x86 (lapic)
+		 首先检查需要广播服务的CPU位图中是否包含了本CPU，如果是的话会将其清除，
+		 然后函数退出的时候会返回真。接着，如果还有CPU等着接收Tick广播的话，
+		 就从所有这些CPU对应的Tick设备上挑选出一个，这里选的是第一个设备，然后
+		 调用它的广播函数。这里其实有一个假设，就是系统中所有CPU上的Tick设备中
+		 的定时事件设备的broadcast函数都被设置成一样的。在后面会看到它们确实都
+		 是一样的，被设置成了tick_broadcast函数。
 		 */
 		td = &per_cpu(tick_cpu_device, cpumask_first(mask));
 		td->evtdev->broadcast(mask);
@@ -408,6 +443,12 @@ static bool tick_do_periodic_broadcast(void)
 }
 
 /*
+	// 调用tick_do_periodic_broadcast函数，向可能需要服务的CPU发送广播。
+	// 不过，如果当前正在处理这个中断的CPU也需要广播服务的话，也就是说Tick
+	// 广播设备的定时中断搞好激活了某个进入空闲状态的CPU，就没有必要再对自己
+	// 进行广播了，因此函数最后直接调用属于本CPU的Tick设备的事件处理函数就行了。
+	// 如果Tick广播使用的定时事件设备工作在单次触发模式，那么还需要对其进行编程，
+	// 让它在下一个Tick周期到来的时间点上再次触发中断。
 广播开启情况下周期性ce设备的event_handler
  * Event handler for periodic broadcast ticks
  */
@@ -423,7 +464,12 @@ static void tick_handle_periodic_broadcast(struct clock_event_device *dev)
 		raw_spin_unlock(&tick_broadcast_lock);
 		return;
 	}
-
+	// 调用tick_do_periodic_broadcast函数，向可能需要服务的CPU发送广播。
+	// 不过，如果当前正在处理这个中断的CPU也需要广播服务的话，也就是说Tick
+	// 广播设备的定时中断搞好激活了某个进入空闲状态的CPU，就没有必要再对自己
+	// 进行广播了，因此函数最后直接调用属于本CPU的Tick设备的事件处理函数就行了。
+	// 如果Tick广播使用的定时事件设备工作在单次触发模式，那么还需要对其进行编程，
+	// 让它在下一个Tick周期到来的时间点上再次触发中断。
 	bc_local = tick_do_periodic_broadcast();
 
 	if (clockevent_state_oneshot(dev)) {
@@ -619,7 +665,10 @@ void tick_resume_broadcast(void)
 }
 
 #ifdef CONFIG_TICK_ONESHOT
-
+/* 
+当Tick广播层被切换到单次触发模式后，用来记录哪些CPU已经进入的深度休眠模式，
+也就是本地定时事件设备被关闭了，需要Tick广播层提供服务
+*/
 static cpumask_var_t tick_broadcast_oneshot_mask __cpumask_var_read_mostly;
 static cpumask_var_t tick_broadcast_pending_mask __cpumask_var_read_mostly;
 static cpumask_var_t tick_broadcast_force_mask __cpumask_var_read_mostly;
@@ -1035,6 +1084,8 @@ static inline ktime_t tick_get_next_period(void)
 }
 
 /**
+如果当前系统中用于Tick广播的定时事件设备不为0，则调用tick_broadcast_setup_oneshot
+将其设置到单次触发模式
  * tick_broadcast_setup_oneshot - setup the broadcast device
  */
 static void tick_broadcast_setup_oneshot(struct clock_event_device *bc,
@@ -1200,6 +1251,7 @@ int tick_broadcast_oneshot_active(void)
 }
 
 /*
+调用tick_broadcast_oneshot_available函数，看看Tick广播层是否已经准备好了
  * Check whether the broadcast device supports oneshot.
  */
 bool tick_broadcast_oneshot_available(void)

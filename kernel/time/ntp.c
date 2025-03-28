@@ -776,6 +776,7 @@ static inline void process_adjtimex_modes(const struct __kernel_timex *txc,
 
 
 /*
+修改系统时间
  * adjtimex mainly allows reading (and writing, if superuser) of
  * kernel time-keeping variables. used by xntpd.
  */

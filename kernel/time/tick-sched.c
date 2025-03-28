@@ -35,6 +35,7 @@
 
 /*
  * Per-CPU nohz control structure
+ 好像是表示那个什么模拟的tick层
  */
 static DEFINE_PER_CPU(struct tick_sched, tick_cpu_sched);
 
@@ -45,9 +46,12 @@ struct tick_sched *tick_get_tick_sched(int cpu)
 
 #if defined(CONFIG_NO_HZ_COMMON) || defined(CONFIG_HIGH_RES_TIMERS)
 /*
+last_jiffies_update是一个全局变量，用来记录上一次jiffy更新时的时间：
  * The time, when the last jiffy update happened. Write access must hold
  * jiffies_lock and jiffies_seq. tick_nohz_next_event() needs to get a
  * consistent view of jiffies and last_jiffies_update.
+   上一次jiffy更新发生的时间。写访问必须持有jiffies_lock和jiffies_seq。
+   tick_nohz_next_event()需要获得jiffies和last_jiffies_update的一致视图。
  */
 static ktime_t last_jiffies_update;
 
@@ -75,7 +79,6 @@ static void tick_do_update_jiffies64(ktime_t now)
 			return;
 	} else {
 		unsigned int seq;
-
 		/*
 		 * Avoid contention on jiffies_lock and protect the quick
 		 * check with the sequence count.
@@ -146,14 +149,16 @@ static void tick_do_update_jiffies64(ktime_t now)
 	 * concurrent invocations.
 	 */
 	write_seqcount_end(&jiffies_seq);
-
+	// 计算负载
 	calc_global_load();
 
 	raw_spin_unlock(&jiffies_lock);
+	// 更新墙钟
 	update_wall_time();
 }
 
 /*
+tick_init_jiffy_update函数用来获得上一次jiffy更新的时间：
  * Initialize and return retrieve the jiffies update.
  */
 static ktime_t tick_init_jiffy_update(void)
@@ -184,6 +189,9 @@ static ktime_t tick_init_jiffy_update(void)
 
 #define MAX_STALLED_JIFFIES 5
 /* 
+根据当前时间来更新系统jiffies
+也是一个驱动的作用
+===========================================================
 内核内部的全局变量jiffies，用于记录自系统启动以来经过了多少个TICK。
 jiffies由tick_do_update_jiffies64函数来更新
 jiffies变量更新时调用的相关函数：
@@ -212,16 +220,20 @@ static void tick_sched_do_timer(struct tick_sched *ts, ktime_t now)
 	 *
 	 * If nohz_full is enabled, this should not happen because the
 	 * tick_do_timer_cpu never relinquishes.
+	 如果还没有选中由哪个CPU来更新系统jiffies
 	 */
 	if (unlikely(tick_do_timer_cpu == TICK_DO_TIMER_NONE)) {
 #ifdef CONFIG_NO_HZ_FULL
 		WARN_ON_ONCE(tick_nohz_full_running);
 #endif
+// 就选择当前CPU来更新系统jiffies
 		tick_do_timer_cpu = cpu;
 	}
 #endif
 
-	/* Check, if the jiffies need an update */
+	/* Check, if the jiffies need an update
+	调用tick_do_update_jiffies64函数，负责更新系统jiffies
+	*/
 	if (tick_do_timer_cpu == cpu)
 		tick_do_update_jiffies64(now);
 
@@ -244,6 +256,9 @@ static void tick_sched_do_timer(struct tick_sched *ts, ktime_t now)
 		ts->got_idle_tick = 1;
 }
 /* 
+tick_sched_handle函数主要的功能是通知（低分辨率）定时器层Tick已经到来了，
+可以开始处理定时器了。一旦切换到高精度模式，（低分辨率）定时器层实际是由Tick模拟层来触发的。
+===================================================================
 sched_timer定时器中断处理程序内容如下，sched_timer此时就是系统节拍定时器，
 不仅给调度程序提供心跳，更新jiffies，还充当了一个管理者，以jiffies时间精度给内核其他程序提供定时服务。
 原有的timer的功能接口，如timer_setup()、add_timer()以及其经典的time wheel方式被保留，
@@ -686,7 +701,9 @@ static void tick_nohz_update_jiffies(ktime_t now)
 
 	touch_softlockup_watchdog_sched();
 }
-
+/* 
+处于空闲状态，则调用tick_nohz_stop_idle函数退出
+*/
 static void tick_nohz_stop_idle(struct tick_sched *ts, ktime_t now)
 {
 	ktime_t delta;
@@ -708,7 +725,11 @@ static void tick_nohz_stop_idle(struct tick_sched *ts, ktime_t now)
 
 	sched_clock_idle_wakeup_event();
 }
-
+/* 
+该函数也主要是完成一些字段设置的工作，先将表示进入空闲状态时间的idle_entrytime
+字段设置为当前时间，然后将表示当前CPU确实是处于空闲状态的字段idle_active也置1。
+到此，准备工作就完成了，接着会调用tick_nohz_idle_stop_tick函数开始停Tick
+*/
 static void tick_nohz_start_idle(struct tick_sched *ts)
 {
 	write_seqcount_begin(&ts->idle_sleeptime_seq);
@@ -799,7 +820,9 @@ u64 get_cpu_iowait_time_us(int cpu, u64 *last_update_time)
 				     nr_iowait_cpu(cpu), last_update_time);
 }
 EXPORT_SYMBOL_GPL(get_cpu_iowait_time_us);
-
+/*
+恢复Tick
+*/
 static void tick_nohz_restart(struct tick_sched *ts, ktime_t now)
 {
 	hrtimer_cancel(&ts->sched_timer);
@@ -826,7 +849,24 @@ static inline bool local_timer_softirq_pending(void)
 {
 	return local_softirq_pending() & BIT(TIMER_SOFTIRQ);
 }
-
+/* 
+虽然关掉了当前CPU的Tick，但是并不能停止当前CPU上的（低分辨率）定时器和高分辨率定时器，
+如果这都停了，那所有定时器都将会超时，这个是不能接受的。所以，很自然的想到，马上需要
+获得系统中所有定时器的最近到期的时间。不过，需要注意的是，目前系统中其实有两种类型的
+定时器，所以必须要分别从（低分辨率）定时器层和高分辨率定时器层获得它们各自的最近要到期
+的定时器的时间，然后再比较两者哪个更早。这些是在tick_nohz_next_event函数中实现的：
+=======================================
+如果tick_nohz_next_event函数返回0，则表示任然需要保留当前CPU上的Tick；
+而如果返回值大于0，则表示可以停止Tick了，但必须在这个返回值指定的时间后
+触发事件处理。不是所有情况下都需要停止Tick的，如果真的需要保留，那么就将
+下一次Tick的到来时间设置成本来Tick到来的时间。如果确实不需要保留Tick了，
+则先要获得系统中所有定时器中最近要到期的到期时间，如果这个到期时间还小于
+下一个Tick到来的时间，并且当前Tick还没停止的话，那还是选择保留Tick。最后，
+如果当前的CPU负责更新系统jiffies的话，那么对睡眠时间还有一个限制，否则想
+停多长时间的Tick都可以。在分析时钟源层代码的时候，曾经提到过有一个max_idle_ns
+值，表示最大允许的空闲间隔时间，如果停止Tick的时间超过了这个最大时间，那么
+在读取时钟源设备周期数并将其转换成纳秒数的时候有可能会产生溢出。
+*/
 static ktime_t tick_nohz_next_event(struct tick_sched *ts, int cpu)
 {
 	u64 basemono, next_tick, delta, expires;
@@ -1000,7 +1040,9 @@ static void tick_nohz_stop_sched_tick(struct tick_sched *ts, int cpu)
 		tick_nohz_retain_tick(ts);
 }
 #endif /* CONFIG_NO_HZ_FULL */
-
+/* 
+调用了tick_nohz_restart_sched_tick函数恢复Tick
+*/
 static void tick_nohz_restart_sched_tick(struct tick_sched *ts, ktime_t now)
 {
 	/* Update jiffies first */
@@ -1018,6 +1060,7 @@ static void tick_nohz_restart_sched_tick(struct tick_sched *ts, ktime_t now)
 	 * Cancel the scheduled timer and restore the tick
 	 */
 	ts->tick_stopped  = 0;
+	/* 在更新了系统jiffies和一些状态字段后，直接调用了tick_nohz_restart函数 */
 	tick_nohz_restart(ts, now);
 }
 
@@ -1130,6 +1173,7 @@ static bool can_stop_idle_tick(int cpu, struct tick_sched *ts)
 }
 
 /**
+调用tick_nohz_idle_stop_tick函数开始停Tick
  * tick_nohz_idle_stop_tick - stop the idle tick from the idle task
  *
  * When the next event is more than a tick into the future, stop the idle tick
@@ -1146,6 +1190,7 @@ void tick_nohz_idle_stop_tick(void)
 	 */
 	if (ts->timer_expires_base)
 		expires = ts->timer_expires;
+	// 调用can_stop_idle_tick函数判断现在是否可以真的停掉Tick
 	else if (can_stop_idle_tick(cpu, ts))
 		expires = tick_nohz_next_event(ts, cpu);
 	else
@@ -1181,6 +1226,9 @@ void tick_nohz_idle_retain_tick(void)
 }
 
 /**
+如果当前CPU进入空闲状态，Linux系统先会调用tick_nohz_idle_enter函数，
+通知Tick模拟层进入空闲状态，接着会调用tick_nohz_idle_stop_tick函数，
+正式停掉当前CPU上的Tick。
  * tick_nohz_idle_enter - prepare for entering idle on the current CPU
  *
  * Called when we start the idle loop.
@@ -1192,7 +1240,10 @@ void tick_nohz_idle_enter(void)
 	lockdep_assert_irqs_enabled();
 
 	local_irq_disable();
-
+	/* 
+	找到当前CPU的tick_sched结构体，将表示当前处于空闲状态的inidle字段
+	置1，然后调用了tick_nohz_start_idle函数
+	*/
 	ts = this_cpu_ptr(&tick_cpu_sched);
 
 	WARN_ON_ONCE(ts->timer_expires_base);
@@ -1336,7 +1387,9 @@ static void tick_nohz_account_idle_time(struct tick_sched *ts,
 	if (ticks && ticks < LONG_MAX)
 		account_idle_ticks(ticks);
 }
-
+/* 
+如果当前的Tick确实是被停止调了，则调用__tick_nohz_idle_restart_tick函数恢复
+*/
 void tick_nohz_idle_restart_tick(void)
 {
 	struct tick_sched *ts = this_cpu_ptr(&tick_cpu_sched);
@@ -1359,6 +1412,7 @@ static void tick_nohz_idle_update_tick(struct tick_sched *ts, ktime_t now)
 }
 
 /**
+如果想恢复Tick，Linux系统是通过调用tick_nohz_idle_exit函数实现的
  * tick_nohz_idle_exit - restart the idle tick from the idle task
  *
  * Restart the idle tick when the CPU is woken up from idle
@@ -1393,13 +1447,7 @@ void tick_nohz_idle_exit(void)
 }
 
 /*
-内核内部的全局变量jiffies，用于记录自系统启动以来经过了多少个TICK。
-jiffies由tick_do_update_jiffies64函数来更新
-jiffies变量更新时调用的相关函数：
-timer timeout
-	-> tick_nohz_handler
-		-> tick_sched_do_timer
-			-> tick_do_update_jiffies64
+在切换到低精度动态时钟模式下，定时事件设备的到期处理函数被设置成了tick_nohz_handler
  * The nohz low res interrupt handler
  */
 static void tick_nohz_handler(struct clock_event_device *dev)
@@ -1426,28 +1474,32 @@ static void tick_nohz_handler(struct clock_event_device *dev)
 	hrtimer_forward(&ts->sched_timer, now, TICK_NSEC);
 	tick_program_event(hrtimer_get_expires(&ts->sched_timer), 1);
 }
-
+/* 
+调用tick_nohz_activate函数，试着将Tick模拟层切换到NOHZ_MODE_HIGHRES模式
+*/
 static inline void tick_nohz_activate(struct tick_sched *ts, int mode)
 {
-	if (!tick_nohz_enabled)
+	if (!tick_nohz_enabled) // 如果没有启用NO_HZ模式则直接退出
 		return;
 	ts->nohz_mode = mode;
 	/* One update is enough */
 	if (!test_and_set_bit(0, &tick_nohz_active))
-		timers_update_nohz();
+		timers_update_nohz(); // 通知（低分辨率）定时器层切换到NO_HZ模式
 }
 
 /**
+调用tick_nohz_switch_to_nohz函数，将Tick模拟层设置成低精度动态时钟模式
  * tick_nohz_switch_to_nohz - switch to nohz mode
  */
 static void tick_nohz_switch_to_nohz(void)
 {
+	// 获得当前CPU对应的tick_sched结构体
 	struct tick_sched *ts = this_cpu_ptr(&tick_cpu_sched);
 	ktime_t next;
-
+	// 如果不支持NO_HZ模式则直接退出
 	if (!tick_nohz_enabled)
 		return;
-
+	// 切换到单次触发模式
 	if (tick_switch_to_oneshot(tick_nohz_handler))
 		return;
 
@@ -1529,11 +1581,13 @@ sched_timer触发频率为CONFIG_HZ，在CONFIG_HZ=250的系统中，每4ms触�
  */
 static enum hrtimer_restart tick_sched_timer(struct hrtimer *timer)
 {
+	// 获得tick_sched
 	struct tick_sched *ts =
 		container_of(timer, struct tick_sched, sched_timer);
 	struct pt_regs *regs = get_irq_regs();
 	ktime_t now = ktime_get();
 /* 
+tick_sched_do_timer主要的职责是根据当前时间来更新系统jiffies
 |-->tick_sched_do_timer(ts, now);
     |-->tick_do_update_jiffies64(now);
       |-->  jiffies_64 += ticks;     //更新jiffies变量
@@ -1572,6 +1626,15 @@ early_param("skew_tick", skew_tick);
 
 /**
 设置sched_timer
+==============
+由于已经没有Tick了，而这时候高分辨率定时器层是处在高精度模式的，
+那么想制造一个Tick其实很简单，只需要向高分辨率定时器层添加一个
+定时间隔是一个Tick的高分辨率定时器模拟一下以前的系统Tick就好了。
+函数首先初始化了在本CPU结构体变量tick_sched中的sched_timer
+高分辨率定时器。可以看到，它是用的单调时间，到期时间是绝对值，
+并且是一个“硬”定时器，
+定时器的到期函数被设置成了tick_sched_timer。
+
  * tick_setup_sched_timer - setup the tick emulation timer
  */
 void tick_setup_sched_timer(void)
@@ -1598,6 +1661,7 @@ void tick_setup_sched_timer(void)
 
 	hrtimer_forward(&ts->sched_timer, now, TICK_NSEC);
 	hrtimer_start_expires(&ts->sched_timer, HRTIMER_MODE_ABS_PINNED_HARD);
+	// 最后调用tick_nohz_activate函数，试着将Tick模拟层切换到NOHZ_MODE_HIGHRES模式
 	tick_nohz_activate(ts, NOHZ_MODE_HIGHRES);
 }
 #endif /* HIGH_RES_TIMERS */
@@ -1640,6 +1704,9 @@ void tick_oneshot_notify(void)
 }
 
 /*
+在低精度模式下的周期处理函数hrtimer_run_queues中，每次都会调用tick_check_oneshot_change
+函数，判断目前是否可以切换到高精度模式。而在这个函数中，还会调用tick_is_oneshot_available
+函数判断Tick层是否已经准备好切换了
  * Check, if a change happened, which makes oneshot possible.
  *
  * Called cyclic from the hrtimer softirq (driven by the timer

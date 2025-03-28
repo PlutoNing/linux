@@ -48,6 +48,11 @@ ktime_t tick_next_period;
  *    TICK_DO_TIMER_NONE, i.e. a non existing CPU. So the next cpu which looks
  *    at it will take over and keep the time keeping alive.  The handover
  *    procedure also covers cpu hotplug.
+ tick_do_timer_cpu是一个定时器核心内部变量，保存着负责调用do_timer()的CPU编号
+ * (也就是负责时间保持的CPU编号)。这个变量有两个作用：
+ * 1) 防止一大堆CPU同时获取时间保持锁的问题。只有被分配来更新的CPU会处理它。
+ * 2) 在NOHZ空闲的情况下，设置值为TICK_DO_TIMER_NONE，也就是一个不存在的CPU。
+ * 这样下一个查看它的CPU就会接管它，保持时间保持。这个交接过程也覆盖了CPU热插拔。
  */
 int tick_do_timer_cpu __read_mostly = TICK_DO_TIMER_BOOT;
 #ifdef CONFIG_NO_HZ_FULL
@@ -68,6 +73,9 @@ struct tick_device *tick_get_device(int cpu)
 }
 
 /**
+在低精度模式下的周期处理函数hrtimer_run_queues中，每次都会调用tick_check_oneshot_change
+函数，判断目前是否可以切换到高精度模式。而在这个函数中，还会调用tick_is_oneshot_available
+函数判断Tick层是否已经准备好切换了：
  * tick_is_oneshot_available - check for a oneshot capable event device
  */
 int tick_is_oneshot_available(void)
@@ -78,11 +86,19 @@ int tick_is_oneshot_available(void)
 		return 0;
 	if (!(dev->features & CLOCK_EVT_FEAT_C3STOP))
 		return 1;
+	//调用tick_broadcast_oneshot_available函数，看看Tick广播层是否已经准备好了
 	return tick_broadcast_oneshot_available();
 }
 
 /*
  * Periodic tick
+ 设置jiffies_64、计算负载、更新墙上时间
+ =================================================================
+ 系统中每个CPU都会有一个系统定时器，本质上是一个可编程中断时钟。
+ 通过配置可以让其每秒生成固定HZ个中断(类似于心跳)。在其中断处理程序
+ 中要做的事情会涉及到体系架构部分和非体系架构部分。体系架构无关的部分
+ 位于tick_periodic(cpu)函数中。tick_periodic(cpu)会做很多事情
+ 其中周期性调度器的部分：tick_periodic->update_process_times->scheduler_tick()计算负载?
  */
 static void tick_periodic(int cpu)
 {
@@ -92,10 +108,11 @@ static void tick_periodic(int cpu)
 
 		/* Keep track of the next tick event */
 		tick_next_period = ktime_add_ns(tick_next_period, TICK_NSEC);
-
+		// 更新jiffies_64, 计算负载
 		do_timer(1);
 		write_seqcount_end(&jiffies_seq);
 		raw_spin_unlock(&jiffies_lock);
+		// 更新墙钟
 		update_wall_time();
 	}
 
@@ -106,12 +123,16 @@ static void tick_periodic(int cpu)
 /*
  * Event handler for periodic ticks
  广播关闭情况下周期性ce设备的event handler
+ ========================================================
+ 此函数主要是更新jiffies_64、计算负载、更新墙上时间也就是系统时间，
+ 由于是工作在periodic模式，所以每次执行完毕，没必要reprogram下一次的event
+ 2025年3月29日00:04:38
  */
 void tick_handle_periodic(struct clock_event_device *dev)
 {
 	int cpu = smp_processor_id();
 	ktime_t next = dev->next_event;
-
+	// 主要的工作
 	tick_periodic(cpu);
 
 #if defined(CONFIG_HIGH_RES_TIMERS) || defined(CONFIG_NO_HZ_COMMON)
@@ -126,6 +147,7 @@ void tick_handle_periodic(struct clock_event_device *dev)
 
 	if (!clockevent_state_oneshot(dev))
 		return;
+	// one-shot模式下，设置下一个到期时间
 	for (;;) {
 		/*
 		 * Setup the next period for devices, which do not have
@@ -363,6 +385,9 @@ bool tick_check_replacement(struct clock_event_device *curdev,
 }
 
 /*
+当注册上来一个新的定时事件设备的时候，会调用Tick层的
+tick_check_new_device函数尝试使用新的定时事件设备替换老的定时事件设备，
+作为当前CPU上的Tick设备。
  * Check, if the new registered device should be used. Called with
  * clockevents_lock held and interrupts disabled.
  检查新注册的设备是否应该使用。在持有clockevents_lock并禁用中断时调用。
@@ -406,6 +431,9 @@ void tick_check_new_device(struct clock_event_device *newdev)
 out_bc:
 	/*
 	 * Can the new device be used as a broadcast device ?
+	 但是，如果新的设备某些条件不满足或者还不如老的设备的时候，
+	 会接着尝试调用tick_install_broadcast_device函数，
+	 看看这个设备能不能作为Tick广播层的设备
 	 */
 	tick_install_broadcast_device(newdev, cpu);
 }

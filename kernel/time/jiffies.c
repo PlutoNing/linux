@@ -67,7 +67,12 @@ static int __init init_jiffies_clocksource(void)
 }
 
 core_initcall(init_jiffies_clocksource);
-
+/* 
+在timekeeping初始化的时候，很难选择一个最好的clock source，
+因为很有可能最好的那个还没有初始化呢。
+因此，这里的策略就是采用一个在timekeeping初始化时一定是ready的
+clock source，也就是基于jiffies 的那个clocksource。
+*/
 struct clocksource * __init __weak clocksource_default_clock(void)
 {
 	return &clocksource_jiffies;
