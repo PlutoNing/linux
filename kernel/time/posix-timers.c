@@ -178,7 +178,9 @@ static int posix_get_realtime_coarse(clockid_t which_clock, struct timespec64 *t
 	ktime_get_coarse_real_ts64(tp);
 	return 0;
 }
-
+/* 
+posix的一个kclock的回调函数
+*/
 static int posix_get_monotonic_coarse(clockid_t which_clock,
 						struct timespec64 *tp)
 {
@@ -1529,7 +1531,9 @@ static const struct k_clock clock_boottime = {
 	.timer_wait_running	= common_timer_wait_running,
 	.timer_arm		= common_hrtimer_arm,
 };
-
+/* 
+这么多kclock.........
+*/
 static const struct k_clock * const posix_clocks[] = {
 	[CLOCK_REALTIME]		= &clock_realtime,
 	[CLOCK_MONOTONIC]		= &clock_monotonic,

@@ -243,6 +243,7 @@ static DEFINE_STATIC_KEY_FALSE(timers_nohz_active);
 static DEFINE_MUTEX(timer_keys_mutex);
 
 static void timer_update_keys(struct work_struct *work);
+// 通知（低分辨率）定时器层切换到NO_HZ模式
 static DECLARE_WORK(timer_update_work, timer_update_keys);
 
 #ifdef CONFIG_SMP
@@ -297,7 +298,7 @@ static inline void timers_update_migration(void) { }
 #endif /* !CONFIG_SMP */
 
 /* 
-
+通知（低分辨率）定时器层切换到NO_HZ模式
 */
 static void timer_update_keys(struct work_struct *work)
 {
@@ -307,7 +308,7 @@ static void timer_update_keys(struct work_struct *work)
 	mutex_unlock(&timer_keys_mutex);
 }
 /* 
-
+通知（低分辨率）定时器层切换到NO_HZ模式
 */
 void timers_update_nohz(void)
 {
@@ -2062,6 +2063,8 @@ static u64 cmp_next_hrtimer_event(u64 basem, u64 expires)
 }
 
 /**
+
+获得系统中所有定时器中最近要到期的到期时间
  * get_next_timer_interrupt - return the time (clock mono) of the next timer
  * @basej:	base time jiffies
  * @basem:	base time clock monotonic
@@ -2196,6 +2199,9 @@ static __latent_entropy void run_timer_softirq(struct softirq_action *h)
 /*
  * Called by the local, per-CPU timer interrupt on SMP.
  触发当前cpu的softirq的timer?
+ =================================================================
+ 定时器的激活和过期，这是通过调用run_local_timers触发的。
+ 该函数又引发了软中断TIMER_SOFTIRQ，而其处理程序函数负责运行低精度定时器
  */
 static void run_local_timers(void)
 {
@@ -2217,6 +2223,11 @@ static void run_local_timers(void)
 }
 
 /*
+update_process_times()函数根据时钟中断产生的位置（用户态 or 内核态），
+对用户或对系统进行相应的时间更新。
+=========================================================================
+update_process_times需要由SMP系统上的每个CPU执行。
+除了进程统计之外，它还激活了所有注册的经典低精度定时器并使之到期，并向调度器提供时间感知。
  * Called from the timer interrupt handler to charge one tick to the current
  * process.  user_tick is 1 if the tick is user time, 0 for system.
  */
@@ -2226,15 +2237,17 @@ void update_process_times(int user_tick)
 
 	/* Note: this timer irq context must be accounted for as well. */
 	account_process_tick(p, user_tick);
+	// 运行hrtimer与softirq相关的定时器
 	run_local_timers();
 	rcu_sched_clock_irq(user_tick);
 #ifdef CONFIG_IRQ_WORK
 	if (in_irq())
 		irq_work_tick();
 #endif
+// sched相关
 	scheduler_tick();
 	if (IS_ENABLED(CONFIG_POSIX_TIMERS))
-		run_posix_cpu_timers();
+		run_posix_cpu_timers(); // 为啥这里还处理posix timer
 }
 
 /*

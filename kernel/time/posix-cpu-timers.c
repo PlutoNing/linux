@@ -1416,6 +1416,9 @@ void __init posix_cputimers_init_work(void)
  * in hard interrupt context or in task context with interrupts
  * disabled. Aside of that the writer/reader interaction is always in the
  * context of the current task, which means they are strict per CPU.
+ 注意：对tsk->posix_cputimer_work.scheduled的所有操作都发生在硬中断上下文中，
+ * 或者在禁用中断的任务上下文中。除此之外，读/写器交互总是在当前任务的上下文中，
+ * 这意味着它们是严格的每个CPU。
  */
 static inline bool posix_cpu_timers_work_scheduled(struct task_struct *tsk)
 {
@@ -1625,6 +1628,8 @@ static void handle_posix_cpu_timers(struct task_struct *tsk)
  * This is called from the timer interrupt handler.  The irq handler has
  * already updated our counts.  We need to check if any timers fire now.
  * Interrupts are disabled.
+ 这是从定时器中断处理程序调用的。irq处理程序已经更新了我们的计数。
+ 我们需要检查是否有任何计时器现在触发。中断被禁用。
  */
 void run_posix_cpu_timers(void)
 {
@@ -1635,6 +1640,8 @@ void run_posix_cpu_timers(void)
 	/*
 	 * If the actual expiry is deferred to task work context and the
 	 * work is already scheduled there is no point to do anything here.
+	 如果实际的到期被推迟到任务工作上下文，并且工作已经安排在那里，
+	 * 这里没有任何意义。
 	 */
 	if (posix_cpu_timers_work_scheduled(tsk))
 		return;
@@ -1642,6 +1649,8 @@ void run_posix_cpu_timers(void)
 	/*
 	 * The fast path checks that there are no expired thread or thread
 	 * group timers.  If that's so, just return.
+	 fastpath检查没有过期的线程或线程组定时器。
+	 如果是这样，就返回。
 	 */
 	if (!fastpath_timer_check(tsk))
 		return;

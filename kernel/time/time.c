@@ -296,6 +296,7 @@ SYSCALL_DEFINE1(adjtimex, struct __kernel_timex __user *, txc_p)
 	 */
 	if (copy_from_user(&txc, txc_p, sizeof(struct __kernel_timex)))
 		return -EFAULT;
+	// 设置系统时间
 	ret = do_adjtimex(&txc);
 	return copy_to_user(txc_p, &txc, sizeof(struct __kernel_timex)) ? -EFAULT : ret;
 }

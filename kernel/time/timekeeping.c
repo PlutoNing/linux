@@ -145,14 +145,19 @@ static void tk_set_xtime(struct timekeeper *tk, const struct timespec64 *ts)
 	tk->xtime_sec = ts->tv_sec;
 	tk->tkr_mono.xtime_nsec = (u64)ts->tv_nsec << tk->tkr_mono.shift;
 }
-
+/* 
+tk是系统的timekeeper
+ts可能是用户要修改系统时间的偏移
+*/
 static void tk_xtime_add(struct timekeeper *tk, const struct timespec64 *ts)
 {
 	tk->xtime_sec += ts->tv_sec;
 	tk->tkr_mono.xtime_nsec += (u64)ts->tv_nsec << tk->tkr_mono.shift;
 	tk_normalize_xtime(tk);
 }
-
+/* 
+设置tk的wall_to_mono
+*/
 static void tk_set_wall_to_mono(struct timekeeper *tk, struct timespec64 wtm)
 {
 	struct timespec64 tmp;
@@ -181,6 +186,7 @@ static inline void tk_update_sleep_time(struct timekeeper *tk, ktime_t delta)
 }
 
 /*
+timekeeping读取自己的clocksource的时间来更新时间
  * tk_clock_read - atomic clocksource read() helper
  *
  * This helper is necessary to use in the read paths because, while the
@@ -301,6 +307,7 @@ static inline u64 timekeeping_get_delta(const struct tk_read_base *tkr)
 #endif
 
 /**
+建立default clocksource和timekeeping关系
  * tk_setup_internals - Set up internals to use clocksource clock.
  *
  * @tk:		The target timekeeper to setup.
@@ -760,7 +767,11 @@ static inline void tk_update_ktime_data(struct timekeeper *tk)
 	tk->tkr_raw.base = ns_to_ktime(tk->raw_sec * NSEC_PER_SEC);
 }
 
-/* must hold timekeeper_lock */
+/* 调用timekeeping_update函数。由于更新了clocksource，因此timekeeping模块要
+更新其内部数据。TK_CLEAR_NTP控制clear 旧的NTP的状态数据。TK_MIRROR用来更新
+shadow timekeeper，主要是为了保持和real timekeeper同步。TK_CLOCK_WAS_SET
+用在paravirtual clock场景中
+must hold timekeeper_lock */
 static void timekeeping_update(struct timekeeper *tk, unsigned int action)
 {
 	if (action & TK_CLEAR_NTP) {
@@ -791,6 +802,9 @@ static void timekeeping_update(struct timekeeper *tk, unsigned int action)
 }
 
 /**
+调用timekeeping_forward_now函数。就要更换新的clocksource了，就是旧clocksource
+最后再发挥一次作用。调用旧的clocksource的read函数，将最后的这段时间间隔（当前到上次
+read）加到real time system clock以及minitonic raw system clock上去
  * timekeeping_forward_now - update clock to the current time
  * @tk:		Pointer to the timekeeper to update
  *
@@ -814,8 +828,10 @@ static void timekeeping_forward_now(struct timekeeper *tk)
 }
 
 /**
+获取时间到ts
+===================
 gettimeofday和clock_time系统调用调用的函数
-获取的是wall_time
+获取的是wall_time到ts
  * ktime_get_real_ts64 - Returns the time of day in a timespec64.
  * @ts:		pointer to the timespec to be set
  *
@@ -1370,6 +1386,9 @@ out:
 EXPORT_SYMBOL(do_settimeofday64);
 
 /**
+好像这里就已经修改tk的时间了?
+==========================
+比如ts可能是用户提供的要修改的时间偏移
  * timekeeping_inject_offset - Adds or subtracts from the current time.
  * @ts:		Pointer to the timespec variable containing the offset
  *
@@ -1393,12 +1412,13 @@ static int timekeeping_inject_offset(const struct timespec64 *ts)
 	/* Make sure the proposed value is valid */
 	tmp = timespec64_add(tk_xtime(tk), *ts);
 	if (timespec64_compare(&tk->wall_to_monotonic, ts) > 0 ||
-	    !timespec64_valid_settod(&tmp)) {
+	    !timespec64_valid_settod(&tmp)) {//为什么这样校验?
 		ret = -EINVAL;
 		goto error;
 	}
-
+	// 这里修改时间
 	tk_xtime_add(tk, ts);
+	// 修改tk
 	tk_set_wall_to_mono(tk, timespec64_sub(tk->wall_to_monotonic, *ts));
 
 error: /* even if we error out, we forwarded the time, so call update */
@@ -1457,6 +1477,8 @@ static void __timekeeping_set_tai_offset(struct timekeeper *tk, s32 tai_offset)
 }
 
 /*
+当系统中有更高精度的clocksource的时候，会调用timekeeping_notify函数通知
+timekeeping模块进行clock source的切换
  * change_clocksource - Swaps clocksources if a new one is available
  *
  * Accumulates current time interval and initializes new clocksource
@@ -1483,14 +1505,26 @@ static int change_clocksource(void *data)
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
 	write_seqcount_begin(&tk_core.seq);
-
+	/* 
+	调用timekeeping_forward_now函数。就要更换新的clocksource了，
+	就是旧clocksource最后再发挥一次作用。调用旧的clocksource的read函数，
+	将最后的这段时间间隔（当前到上次read）加到real time system clock以及
+	minitonic raw system clock上去
+	*/
 	timekeeping_forward_now(tk);
 
-	if (change) {
+	if (change) {/* 
+		调用tk_setup_internals函数设定新的clocksource，disable旧的clocksource
+		*/
 		old = tk->tkr_mono.clock;
 		tk_setup_internals(tk, new);
 	}
-
+	/* 
+	调用timekeeping_update函数。由于更新了clocksource，因此timekeeping模块要更新
+	其内部数据。TK_CLEAR_NTP控制clear 旧的NTP的状态数据。TK_MIRROR用来更新shadow
+	 timekeeper，主要是为了保持和real timekeeper同步。TK_CLOCK_WAS_SET用在
+	 paravirtual clock场景中
+	*/
 	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_seqcount_end(&tk_core.seq);
@@ -1507,6 +1541,9 @@ static int change_clocksource(void *data)
 }
 
 /**
+timekeeping和clocksource主要的交互就是change clocksource的操作了。当系统
+中有更高精度的clocksource的时候，会调用timekeeping_notify函数通知
+timekeeping模块进行clock source的切换
  * timekeeping_notify - Install a new clock source
  * @clock:		pointer to the clock source
  *
@@ -1605,6 +1642,10 @@ void __weak read_persistent_clock64(struct timespec64 *ts)
 }
 
 /**
+timekeeping模块中支持若干种system clock，这些system clock的数据保存在ram中，
+一旦断电，数据就丢失了。因此，在系加电启动后，会从persistent clock中中取出当前时间值
+（例如RTC，RTC有battery供电，因此系统断电也可以保存数据），根据情况初始化各种system clock
+
  * read_persistent_wall_and_boot_offset - Read persistent clock, and also offset
  *                                        from the boot.
  从持久时钟读取时间，并且从启动时间读取偏移量
@@ -1685,12 +1726,15 @@ void __init timekeeping_init(void)
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
 	write_seqcount_begin(&tk_core.seq);
 	ntp_init(); // ntp相关
-
+	/* 
+	采用一个在timekeeping初始化时一定是ready的clock source，也就是基于jiffies 的那个clocksource
+	*/
 	clock = clocksource_default_clock();
 	if (clock->enable)
 		clock->enable(clock);
+	// 建立default clocksource和timekeeping关系
 	tk_setup_internals(tk, clock);
-
+	// 初始化real time clock、monotonic clock和monotonic raw clock
 	tk_set_xtime(tk, &wall_time);
 	tk->raw_sec = 0;
 
@@ -2292,7 +2336,9 @@ void getboottime64(struct timespec64 *ts)
 	*ts = ktime_to_timespec64(t);
 }
 EXPORT_SYMBOL_GPL(getboottime64);
-
+/* 
+获取一个稍微粗糙的时间
+*/
 void ktime_get_coarse_real_ts64(struct timespec64 *ts)
 {
 	struct timekeeper *tk = &tk_core.timekeeper;
@@ -2305,7 +2351,9 @@ void ktime_get_coarse_real_ts64(struct timespec64 *ts)
 	} while (read_seqcount_retry(&tk_core.seq, seq));
 }
 EXPORT_SYMBOL(ktime_get_coarse_real_ts64);
-
+/* 
+好像是获取一个比较粗糙的时间
+*/
 void ktime_get_coarse_ts64(struct timespec64 *ts)
 {
 	struct timekeeper *tk = &tk_core.timekeeper;
@@ -2325,6 +2373,9 @@ void ktime_get_coarse_ts64(struct timespec64 *ts)
 EXPORT_SYMBOL(ktime_get_coarse_ts64);
 
 /*
+do_timer负责全系统范围的、全局性的任务：更新jiffies值，处理进程统计。在多处理器系统上，会选择一个特定的CPU来执行这两个任务，而不涉及其他CPU
+更新jiffies
+计算全局负载
  * Must hold jiffies_lock
  */
 void do_timer(unsigned long ticks)
@@ -2334,6 +2385,7 @@ void do_timer(unsigned long ticks)
 }
 
 /**
+读取mono time
  * ktime_get_update_offsets_now - hrtimer helper
  * @cwsseq:	pointer to check and store the clock was set sequence number
  * @offs_real:	pointer to storage for monotonic -> realtime offset
@@ -2345,6 +2397,8 @@ void do_timer(unsigned long ticks)
  * different.
  *
  * Called from hrtimer_interrupt() or retrigger_next_event()
+ 返回当前单调时间，并在@cwsseq和timekeeper.clock_was_set_seq不同的情况下更新偏移量
+
  */
 ktime_t ktime_get_update_offsets_now(unsigned int *cwsseq, ktime_t *offs_real,
 				     ktime_t *offs_boot, ktime_t *offs_tai)
@@ -2378,6 +2432,7 @@ ktime_t ktime_get_update_offsets_now(unsigned int *cwsseq, ktime_t *offs_real,
 }
 
 /*
+修改系统时间的时候, 校验用户提供的修改偏移txc
  * timekeeping_validate_timex - Ensures the timex is ok for use in do_adjtimex
  */
 static int timekeeping_validate_timex(const struct __kernel_timex *txc)
@@ -2479,20 +2534,22 @@ int do_adjtimex(struct __kernel_timex *txc)
 	add_device_randomness(txc, sizeof(*txc));
 
 	if (txc->modes & ADJ_SETOFFSET) {
+		// delta是用户提供的时间修改
 		struct timespec64 delta;
 		delta.tv_sec  = txc->time.tv_sec;
 		delta.tv_nsec = txc->time.tv_usec;
 		if (!(txc->modes & ADJ_NANO))
 			delta.tv_nsec *= 1000;
+		// 开始调整
 		ret = timekeeping_inject_offset(&delta);
-		if (ret)
+		if (ret) // 出错了
 			return ret;
 
 		audit_tk_injoffset(delta);
 	}
 
 	audit_ntp_init(&ad);
-
+	// 获取时间到ts
 	ktime_get_real_ts64(&ts);
 	add_device_randomness(&ts, sizeof(ts));
 
