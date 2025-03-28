@@ -137,6 +137,7 @@ static inline void init_timer_on_stack_key(struct timer_list *timer,
 
 /**
  * timer_setup - prepare a timer for first use
+ 设置和初始化一个timer
  * @timer: the timer in question
  * @callback: the function to call when timer expires
  * @flags: any TIMER_* flags

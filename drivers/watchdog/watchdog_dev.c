@@ -54,7 +54,10 @@
 static dev_t watchdog_devt;
 /* Reference to watchdog device behind /dev/watchdog */
 static struct watchdog_core_data *old_wd_data;
-
+/* 
+在内核空间也有一个定时器定时喂狗，流程如下：
+1、在 watchdog_dev_init 接口中，注册了一个优先级为 MAX_RT_PRIO - 1、调度策略为 SCHED_FIFO、名为 watchdogd 的内核线程；
+*/
 static struct kthread_worker *watchdog_kworker;
 
 static bool handle_boot_enabled =
@@ -682,6 +685,8 @@ static int watchdog_ioctl_op(struct watchdog_device *wdd, unsigned int cmd,
 }
 
 /*
+watchdog_write 接口实现喂狗功能，写任意值都能喂狗； 
+“V” 是 magic 字符，写 “V” 之后使能 watchdog 的魔法关闭功能:
  * watchdog_write - writes to the watchdog
  * @file:	File from VFS
  * @data:	User address of data
@@ -736,6 +741,7 @@ static ssize_t watchdog_write(struct file *file, const char __user *data,
 }
 
 /*
+watchdog_ioctl 支持一系列 watchdog 设置和信息获取操作。
  * watchdog_ioctl - handle the different ioctl's for the watchdog device
  * @file:	File handle to the device
  * @cmd:	Watchdog command
@@ -851,6 +857,7 @@ out_ioctl:
 }
 
 /*
+watchdog_open 接口中调用 watchdog_start 接口，start watchdog 和更新内核喂狗定时器。
  * watchdog_open - open the /dev/watchdog* devices
  * @inode:	Inode of device
  * @file:	File handle to device
@@ -988,7 +995,9 @@ done:
 	}
 	return 0;
 }
-
+/* 
+watchdog创建的misc 设备和 cdev 的文件操作函数都是 watchdog_fops：
+*/
 static const struct file_operations watchdog_fops = {
 	.owner		= THIS_MODULE,
 	.write		= watchdog_write,
@@ -1220,6 +1229,8 @@ int watchdog_set_last_hw_keepalive(struct watchdog_device *wdd,
 EXPORT_SYMBOL_GPL(watchdog_set_last_hw_keepalive);
 
 /**
+在内核空间也有一个定时器定时喂狗，流程如下：
+1、在 watchdog_dev_init 接口中，注册了一个优先级为 MAX_RT_PRIO - 1、调度策略为 SCHED_FIFO、名为 watchdogd 的内核线程；
  * watchdog_dev_init - init dev part of watchdog core
  *
  * Allocate a range of chardev nodes to use for watchdog devices.

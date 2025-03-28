@@ -133,7 +133,7 @@ struct clocksource {
 	/* Watchdog related data, used by the framework */
 	struct list_head	wd_list;
 	u64			cs_last;
-	u64			wd_last;
+	u64			wd_last; // 挂到watchdog_list上
 #endif
 	struct module		*owner;
 };

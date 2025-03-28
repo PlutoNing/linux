@@ -56,7 +56,7 @@ struct watchdog_ops {
 };
 
 /** struct watchdog_device - The structure that defines a watchdog device
- *
+ *watchdog_device 表示一个 watchdog 设备，保存了 watchdog 的各种操作参数和操作 ops
  * @id:		The watchdog's ID. (Allocated by watchdog_register_device)
  * @parent:	The parent bus device
  * @groups:	List of sysfs attribute groups to create when creating the
@@ -94,10 +94,25 @@ struct watchdog_ops {
 struct watchdog_device {
 	int id;
 	struct device *parent;
+	/* 
+	创建watchdog device的sysfs属性列表
+	*/
 	const struct attribute_group **groups;
+	/* 
+	记录watchdog的特性，例如WDIOF_SETTIMEOUT WDIOF_KEEPALIVEPING
+	*/
 	const struct watchdog_info *info;
+	/* 
+	watchdog 操作接口
+	*/
 	const struct watchdog_ops *ops;
+	/* 
+	 pretimeout使用的governor
+	*/
 	const struct watchdog_governor *gov;
+	/* 
+	boot 时 watchdog 的状态
+	*/
 	unsigned int bootstatus;
 	unsigned int timeout;
 	unsigned int pretimeout;

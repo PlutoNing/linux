@@ -343,6 +343,8 @@ extern const struct obs_kernel_param __setup_start[], __setup_end[];
 		= { __setup_str_##unique_id, fn, early }
 
 /*
+__setup 宏的作用是将命令行参数与处理函数绑定，在Linux启动时匹配 
+cmdline 命令行参数则调用绑定的函数处理这些参数。‌
  * NOTE: __setup functions return values:
  * @fn returns 1 (or non-zero) if the option argument is "handled"
  * and returns 0 if the option argument is "not handled".

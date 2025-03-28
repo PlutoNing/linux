@@ -89,6 +89,7 @@ EXPORT_SYMBOL_GPL(clocks_calc_mult_shift);
  */
 static struct clocksource *curr_clocksource;
 static struct clocksource *suspend_clocksource;
+// 系统的所有clocksource
 static LIST_HEAD(clocksource_list);
 static DEFINE_MUTEX(clocksource_mutex);
 static char override_name[CS_NAME_LEN];
@@ -126,7 +127,9 @@ static u64 suspend_start;
 #ifdef CONFIG_CLOCKSOURCE_WATCHDOG
 static void clocksource_watchdog_work(struct work_struct *work);
 static void clocksource_select(void);
-
+/* 
+好像标记为不稳定的cs会通过wd_list挂接到这里
+*/
 static LIST_HEAD(watchdog_list);
 static struct clocksource *watchdog;
 static struct timer_list watchdog_timer;
@@ -147,7 +150,9 @@ static inline void clocksource_watchdog_unlock(unsigned long *flags)
 
 static int clocksource_watchdog_kthread(void *data);
 static void __clocksource_change_rating(struct clocksource *cs, int rating);
-
+/* 
+watchdog_work的执行函数
+*/
 static void clocksource_watchdog_work(struct work_struct *work)
 {
 	/*
@@ -155,17 +160,21 @@ static void clocksource_watchdog_work(struct work_struct *work)
 	 * clocksource_select() calls timekeeping_notify() which uses
 	 * stop_machine(). One cannot use stop_machine() from a workqueue() due
 	 * lock inversions wrt CPU hotplug.
-	 *
+	 * 我们不能直接在这里运行clocksource_watchdog_kthread()，因为clocksource_select()调用timekeeping_notify()，
+	 * 它使用stop_machine()。由于与CPU热插拔相关的锁倒置，不能从workqueue()中使用stop_machine().
 	 * Also, we only ever run this work once or twice during the lifetime
 	 * of the kernel, so there is no point in creating a more permanent
 	 * kthread for this.
-	 *
+	 * 并且，在内核的生命周期中，我们只运行这项工作一次或两次，因此没有必要为此创建一个更持久的kthread。
+	 
 	 * If kthread_run fails the next watchdog scan over the
 	 * watchdog_list will find the unstable clock again.
 	 */
 	kthread_run(clocksource_watchdog_kthread, NULL, "kwatchdog");
 }
-
+/* 
+把cs标记为不稳定?
+*/
 static void __clocksource_unstable(struct clocksource *cs)
 {
 	cs->flags &= ~(CLOCK_SOURCE_VALID_FOR_HRES | CLOCK_SOURCE_WATCHDOG);
@@ -190,17 +199,19 @@ static void __clocksource_unstable(struct clocksource *cs)
 
 /**
  * clocksource_mark_unstable - mark clocksource unstable via watchdog
+ 通过看门狗标记时钟源不稳定
  * @cs:		clocksource to be marked unstable
  *
  * This function is called by the x86 TSC code to mark clocksources as unstable;
  * it defers demotion and re-selection to a kthread.
+ 这个函数由x86 TSC代码调用，用于标记时钟源不稳定；它将降级和重新选择推迟到kthread。
  */
 void clocksource_mark_unstable(struct clocksource *cs)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&watchdog_lock, flags);
-	if (!(cs->flags & CLOCK_SOURCE_UNSTABLE)) {
+	if (!(cs->flags & CLOCK_SOURCE_UNSTABLE)) {/* 如果cs目前还是stable的 */
 		if (!list_empty(&cs->list) && list_empty(&cs->wd_list))
 			list_add(&cs->wd_list, &watchdog_list);
 		__clocksource_unstable(cs);
@@ -386,7 +397,10 @@ void clocksource_verify_percpu(struct clocksource *cs)
 			testcpu, cs_nsec_min, cs_nsec_max, cs->name);
 }
 EXPORT_SYMBOL_GPL(clocksource_verify_percpu);
-
+/* 
+改变wd之后调用
+不知道干什么
+*/
 static inline void clocksource_reset_watchdog(void)
 {
 	struct clocksource *cs;
@@ -395,7 +409,10 @@ static inline void clocksource_reset_watchdog(void)
 		cs->flags &= ~CLOCK_SOURCE_WATCHDOG;
 }
 
-
+/* 
+watchdog timer的回调函数
+这函数干嘛?
+*/
 static void clocksource_watchdog(struct timer_list *unused)
 {
 	u64 csnow, wdnow, cslast, wdlast, delta;
@@ -556,21 +573,29 @@ static void clocksource_watchdog(struct timer_list *unused)
 out:
 	spin_unlock(&watchdog_lock);
 }
-
+/* 
+改变wd之后reset这个wd之后, 调用
+*/
 static inline void clocksource_start_watchdog(void)
 {
 	if (watchdog_running || !watchdog || list_empty(&watchdog_list))
 		return;
+	/* 
+	wd没在running, 且wd_list不为空
+	*/
 	timer_setup(&watchdog_timer, clocksource_watchdog, 0);
 	watchdog_timer.expires = jiffies + WATCHDOG_INTERVAL;
 	add_timer_on(&watchdog_timer, cpumask_first(cpu_online_mask));
 	watchdog_running = 1;
 }
+/* 
 
+*/
 static inline void clocksource_stop_watchdog(void)
 {
 	if (!watchdog_running || (watchdog && !list_empty(&watchdog_list)))
 		return;
+	// 要求watchdog running,且watchdog为空或者wd_list为空
 	del_timer(&watchdog_timer);
 	watchdog_running = 0;
 }
@@ -594,7 +619,10 @@ static void clocksource_enqueue_watchdog(struct clocksource *cs)
 			cs->flags |= CLOCK_SOURCE_VALID_FOR_HRES;
 	}
 }
-
+/* 
+要移除现在作为watchdog的clocksource了
+这里再找一个
+*/
 static void clocksource_select_watchdog(bool fallback)
 {
 	struct clocksource *cs, *old_wd;
@@ -606,7 +634,9 @@ static void clocksource_select_watchdog(bool fallback)
 	if (fallback)
 		watchdog = NULL;
 
-	list_for_each_entry(cs, &clocksource_list, list) {
+	list_for_each_entry(cs, &clocksource_list, list) {/* 
+		遍历每一个clocksource
+		*/
 		/* cs is a clocksource to be watched. */
 		if (cs->flags & CLOCK_SOURCE_MUST_VERIFY)
 			continue;
@@ -615,7 +645,9 @@ static void clocksource_select_watchdog(bool fallback)
 		if (fallback && cs == old_wd)
 			continue;
 
-		/* Pick the best watchdog. */
+		/* Pick the best watchdog.
+		这个分高
+		*/
 		if (!watchdog || cs->rating > watchdog->rating)
 			watchdog = cs;
 	}
@@ -623,7 +655,9 @@ static void clocksource_select_watchdog(bool fallback)
 	if (!watchdog)
 		watchdog = old_wd;
 
-	/* If we changed the watchdog we need to reset cycles. */
+	/* If we changed the watchdog we need to reset cycles.
+	如果我们改变了看门狗，我们需要重置周期。
+	*/
 	if (watchdog != old_wd)
 		clocksource_reset_watchdog();
 
@@ -657,9 +691,11 @@ static int __clocksource_watchdog_kthread(void)
 		clocksource_verify_percpu(curr_clocksource);
 
 	spin_lock_irqsave(&watchdog_lock, flags);
+	// 遍历watchdog_list的每一个cs
 	list_for_each_entry_safe(cs, tmp, &watchdog_list, wd_list) {
 		if (cs->flags & CLOCK_SOURCE_UNSTABLE) {
 			list_del_init(&cs->wd_list);
+			// 这里像是重新初始化并插入了这个cs
 			__clocksource_change_rating(cs, 0);
 			select = 1;
 		}
@@ -674,7 +710,9 @@ static int __clocksource_watchdog_kthread(void)
 
 	return select;
 }
-
+/* 
+watchdog_work的执行函数
+*/
 static int clocksource_watchdog_kthread(void *data)
 {
 	mutex_lock(&clocksource_mutex);
@@ -683,7 +721,9 @@ static int clocksource_watchdog_kthread(void *data)
 	mutex_unlock(&clocksource_mutex);
 	return 0;
 }
-
+/* 
+检查一个clocksource是否是watchdog
+*/
 static bool clocksource_is_watchdog(struct clocksource *cs)
 {
 	return cs == watchdog;
@@ -1069,6 +1109,7 @@ fs_initcall(clocksource_done_booting);
 
 /*
  * Enqueue the clocksource sorted by rating
+   插入一个clocksource,按照rating排序
  */
 static void clocksource_enqueue(struct clocksource *cs)
 {
@@ -1216,7 +1257,9 @@ int __clocksource_register_scale(struct clocksource *cs, u32 scale, u32 freq)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(__clocksource_register_scale);
-
+/* 
+像是移除,重置rating,然后重新加入
+*/
 static void __clocksource_change_rating(struct clocksource *cs, int rating)
 {
 	list_del(&cs->list);
@@ -1246,6 +1289,7 @@ void clocksource_change_rating(struct clocksource *cs, int rating)
 EXPORT_SYMBOL(clocksource_change_rating);
 
 /*
+解绑指定的clocksource
  * Unbind clocksource @cs. Called with clocksource_mutex held
  */
 static int clocksource_unbind(struct clocksource *cs)
@@ -1368,6 +1412,7 @@ static DEVICE_ATTR_RW(current_clocksource);
 
 /**
  * unbind_clocksource_store - interface for manually unbinding clocksource
+ 手动解绑clocksource的sysfs接口
  * @dev:	unused
  * @attr:	unused
  * @buf:	unused
@@ -1392,6 +1437,7 @@ static ssize_t unbind_clocksource_store(struct device *dev,
 	list_for_each_entry(cs, &clocksource_list, list) {
 		if (strcmp(cs->name, name))
 			continue;
+		// 遍历全部的clocksource，找到要解绑的clocksource
 		ret = clocksource_unbind(cs);
 		break;
 	}
@@ -1403,6 +1449,7 @@ static DEVICE_ATTR_WO(unbind_clocksource);
 
 /**
  * available_clocksource_show - sysfs interface for listing clocksource
+ 查看可用的clocksource的sysfs接口
  * @dev:	unused
  * @attr:	unused
  * @buf:	char buffer to be filled with clocksource list
@@ -1455,7 +1502,9 @@ static struct device device_clocksource = {
 	.bus	= &clocksource_subsys,
 	.groups	= clocksource_groups,
 };
-
+/* 
+初始化clock source的sysfs相关
+*/
 static int __init init_clocksource_sysfs(void)
 {
 	int error = subsys_system_register(&clocksource_subsys, NULL);
@@ -1471,10 +1520,12 @@ device_initcall(init_clocksource_sysfs);
 
 /**
  * boot_override_clocksource - boot clock override
+ 启动的时候，覆盖clocksource?
  * @str:	override name
  *
  * Takes a clocksource= boot argument and uses it
  * as the clocksource override name.
+   接收一个clocksource= boot参数，并使用它作为clocksource覆盖名称
  */
 static int __init boot_override_clocksource(char* str)
 {
@@ -1489,6 +1540,7 @@ __setup("clocksource=", boot_override_clocksource);
 
 /**
  * boot_override_clock - Compatibility layer for deprecated boot option
+ 对于已经废弃的boot参数，提供兼容性层
  * @str:	override name
  *
  * DEPRECATED! Takes a clock= boot argument and uses it

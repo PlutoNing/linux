@@ -411,6 +411,7 @@ static void devm_watchdog_unregister_device(struct device *dev, void *res)
 }
 
 /**
+devm_watchdog_register_device 接口用于注册 watchdog 设备:
  * devm_watchdog_register_device() - resource managed watchdog_register_device()
  * @dev: device that is registering this watchdog device
  * @wdd: watchdog device

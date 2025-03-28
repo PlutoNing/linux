@@ -41,6 +41,7 @@ bool kthread_is_per_cpu(struct task_struct *k);
 
 /**
  * kthread_run - create and wake a thread.
+ 创建和唤醒一个线程
  * @threadfn: the function to run until signal_pending(current).
  * @data: data ptr for @threadfn.
  * @namefmt: printf-style name for the thread.
