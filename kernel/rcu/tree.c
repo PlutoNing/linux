@@ -2214,6 +2214,9 @@ static void rcu_do_batch(struct rcu_data *rdp)
  * core processing.  If the current grace period has gone on too long,
  * it will ask the scheduler to manufacture a context switch for the sole
  * purpose of providing the needed quiescent state.
+ 函数是被每个调度时钟中断调用的，并检查这个CPU是否处于非上下文切换的安静状态，
+ 例如用户模式或空闲循环。它还会调度RCU核心处理。如果当前的宽限期太长，它将要求
+ 调度程序制造一个上下文切换，单纯是为了提供所需的安静状态。
  */
 void rcu_sched_clock_irq(int user)
 {

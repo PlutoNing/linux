@@ -549,6 +549,16 @@ static ktime_t __hrtimer_next_event_base(struct hrtimer_cpu_base *cpu_base,
 }
 
 /*
+用来在所有激活的定时器中查找最近即将到期定时器的到期时间。可以看出来，
+在高分辨率定时器层还没有切换到高精度模式前，该函数会返回即将到期定时器的
+到期时间，而一旦已经完成了切换，该函数将返回KTIME_MAX。也就是当高分辨率
+定时器层切换到高精度模式后，get_next_timer_interrupt函数在查找系统中
+所有定时器中最近将要到期的定时器时完全不用考虑高分辨率定时器。这是因为
+在高精度模式下，所有系统的Tick都是靠一个高分辨率定时器模拟的，停掉系统
+Tick只是取消了这个定时器，对系统中其它的高分辨率定时器没有任何影响，
+因此也不需要特殊处理。但是对于低分辨率定时器来说，在高精度模式下，
+它是通过模拟出的系统Tick来触发的，因此在没有Tick的情况下，需要对其进行
+特殊的处理，也就是根据其最近要到期的定时器的到期时间，
  * Recomputes cpu_base::*next_timer and returns the earliest expires_next
  * but does not set cpu_base::*expires_next, that is done by
  * hrtimer[_force]_reprogram and hrtimer_interrupt only. When updating
@@ -733,6 +743,8 @@ static inline int hrtimer_is_hres_enabled(void)
 static void retrigger_next_event(void *arg);
 
 /*
+低精度模式切换到高精度模式场景的hrtimer_switch_to_hres函数
+=============================
 早期linux使用低精度定时器timer，代码位于kernel/time/timer.c中，
 虽然精度比较低，但是很多内核定时触发代码都是在这个基础上搭建的，
 例如调度、时间更新、各种低精度定时任务。在高精度时钟模式下，
@@ -757,7 +769,9 @@ static void hrtimer_switch_to_hres(void)
 	}
 	base->hres_active = 1;
 	hrtimer_resolution = HIGH_RES_NSEC;
-
+	/* 
+	调用tick_setup_sched_timer函数设置Tick模拟层
+	*/
 	tick_setup_sched_timer();
 	/* "Retrigger" the interrupt to get things going */
 	retrigger_next_event(NULL);
@@ -1033,6 +1047,7 @@ void unlock_hrtimer_base(const struct hrtimer *timer, unsigned long *flags)
 }
 
 /**
+hrtimer_forward函数按照给定的当前时间和一个周期经过的时间来更新定时器的到期时间
  * hrtimer_forward - forward the timer expiry
  * @timer:	hrtimer to forward
  * @now:	forward past this time
@@ -1048,12 +1063,16 @@ void unlock_hrtimer_base(const struct hrtimer *timer, unsigned long *flags)
  *
  * Note: This only updates the timer expiry value and does not requeue
  * the timer.
+   前进计时器到期时间，使其在将来到期。返回超时次数。
+   可以安全地从@timer的回调函数中调用。如果从其他上下文调用@timer，
+   则@timer既不得排队也不得运行回调，并且调用者需要注意串行化。
+
  */
 u64 hrtimer_forward(struct hrtimer *timer, ktime_t now, ktime_t interval)
 {
 	u64 orun = 1;
 	ktime_t delta;
-
+	// 计算当前时间和定时器到期时间之间的差值
 	delta = ktime_sub(now, hrtimer_get_expires(timer));
 
 	if (delta < 0)
@@ -1487,6 +1506,7 @@ EXPORT_SYMBOL_GPL(__hrtimer_get_remaining);
 
 #ifdef CONFIG_NO_HZ_COMMON
 /**
+hrtimer_get_next_event函数负责从高分辨率定时器层获得最早将要到期的定时器的到期时间
  * hrtimer_get_next_event - get the time until next expiry event
  *
  * Returns the next expiry time or KTIME_MAX if no timer is pending.
@@ -2247,7 +2267,9 @@ static void migrate_hrtimer_list(struct hrtimer_clock_base *old_base,
 		enqueue_hrtimer(timer, new_base, HRTIMER_MODE_ABS);
 	}
 }
-
+/* 
+cpu下线的时候调用
+*/
 int hrtimers_dead_cpu(unsigned int scpu)
 {
 	struct hrtimer_cpu_base *old_base, *new_base;

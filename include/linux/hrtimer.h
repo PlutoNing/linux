@@ -428,15 +428,22 @@ static inline void hrtimer_start(struct hrtimer *timer, ktime_t tim,
 
 extern int hrtimer_cancel(struct hrtimer *timer);
 extern int hrtimer_try_to_cancel(struct hrtimer *timer);
-
+/* 
+将定时器到期时间更新到下一个Tick应该到来的时间后，tick_setup_sched_timer
+函数调用hrtimer_start_expires函数，正式激活该定时器
+该函数分别获得高分辨率定时器的“软”和“硬”到期时间，计算它们的差值，
+然后最终调用hrtimer_start_range_ns函数激活它。
+*/
 static inline void hrtimer_start_expires(struct hrtimer *timer,
 					 enum hrtimer_mode mode)
 {
 	u64 delta;
 	ktime_t soft, hard;
+	// 获得高分辨率定时器的“软”和“硬”到期时间
 	soft = hrtimer_get_softexpires(timer);
 	hard = hrtimer_get_expires(timer);
 	delta = ktime_to_ns(ktime_sub(hard, soft));
+	// 调用hrtimer_start_range_ns函数激活它
 	hrtimer_start_range_ns(timer, soft, delta, mode);
 }
 

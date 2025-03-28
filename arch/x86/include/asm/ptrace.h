@@ -127,6 +127,7 @@ static inline void regs_set_return_value(struct pt_regs *regs, unsigned long rc)
 }
 
 /*
+user_mode()宏查询处理器寄存器regs的状态。如果时钟中断发生在用户空间，它返回1；如果发生在内核，则返回0。
  * user_mode(regs) determines whether a register set came from user
  * mode.  On x86_32, this is true if V8086 mode was enabled OR if the
  * register set was from protected mode with RPL-3 CS value.  This
