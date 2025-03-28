@@ -1628,7 +1628,9 @@ void tick_clock_notify(void)
 }
 
 /*
+好像是变更one-shot的ce设备之后调用这个函数来提醒触发?
  * Async notification about clock event changes
+ 关于时钟事件的变化的异步通知
  */
 void tick_oneshot_notify(void)
 {

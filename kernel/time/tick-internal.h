@@ -40,7 +40,9 @@ static inline enum clock_event_state clockevent_get_state(struct clock_event_dev
 {
 	return dev->state_use_accessors;
 }
-
+/* 
+设置定时事件设备的状态
+*/
 static inline void clockevent_set_state(struct clock_event_device *dev,
 					enum clock_event_state state)
 {

@@ -8,7 +8,9 @@ enum tick_device_mode {
 	TICKDEV_MODE_PERIODIC,
 	TICKDEV_MODE_ONESHOT,
 };
-
+/* 
+表示pcp的tick设备
+*/
 struct tick_device {
 	struct clock_event_device *evtdev;
 	enum tick_device_mode mode;

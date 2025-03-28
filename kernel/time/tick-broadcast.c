@@ -23,7 +23,9 @@
  * Broadcast support for broken x86 hardware, where the local apic
  * timer stops in C3 state.
  */
-
+/* 
+表示广播设备
+*/
 static struct tick_device tick_broadcast_device;
 static cpumask_var_t tick_broadcast_mask __cpumask_var_read_mostly;
 static cpumask_var_t tick_broadcast_on __cpumask_var_read_mostly;
@@ -52,6 +54,7 @@ static inline void tick_broadcast_oneshot_offline(unsigned int cpu) { }
 #endif
 
 /*
+获取广播设备
  * Debugging: see timer_list.c
  */
 struct tick_device *tick_get_broadcast_device(void)
@@ -73,6 +76,7 @@ const struct clock_event_device *tick_get_wakeup_device(int cpu)
 
 /*
  * Start the device in periodic mode
+ 以周期性模式启动设备
  */
 static void tick_broadcast_start_periodic(struct clock_event_device *bc)
 {
@@ -112,13 +116,15 @@ static void tick_oneshot_wakeup_handler(struct clock_event_device *wd)
 	 */
 	tick_receive_broadcast();
 }
-
+/* 
+可以用于把cpu从广播机制移除
+*/
 static bool tick_set_oneshot_wakeup_device(struct clock_event_device *newdev,
 					   int cpu)
 {
 	struct clock_event_device *curdev = tick_get_oneshot_wakeup_device(cpu);
 
-	if (!newdev)
+	if (!newdev) // 表示移除
 		goto set_device;
 
 	if ((newdev->features & CLOCK_EVT_FEAT_DUMMY) ||
@@ -158,10 +164,12 @@ static bool tick_set_oneshot_wakeup_device(struct clock_event_device *newdev,
 #endif
 
 /*
+检查新添加的ce能否作为广播设备?
  * Conditionally install/replace broadcast device
  */
 void tick_install_broadcast_device(struct clock_event_device *dev, int cpu)
 {
+	// 获取现在用于广播的ce设备
 	struct clock_event_device *cur = tick_broadcast_device.evtdev;
 
 	if (tick_set_oneshot_wakeup_device(dev, cpu))
@@ -172,10 +180,12 @@ void tick_install_broadcast_device(struct clock_event_device *dev, int cpu)
 
 	if (!try_module_get(dev->owner))
 		return;
-
+	// 进行相关的put和get
 	clockevents_exchange_device(cur, dev);
+	// "销毁"现在的ce
 	if (cur)
 		cur->event_handler = clockevents_handle_noop;
+	// 把新ce作为广播设备
 	tick_broadcast_device.evtdev = dev;
 	if (!cpumask_empty(tick_broadcast_mask))
 		tick_broadcast_start_periodic(dev);
@@ -205,17 +215,20 @@ void tick_install_broadcast_device(struct clock_event_device *dev, int cpu)
 
 /*
  * Check, if the device is the broadcast device
+ 检查ce设备是否是广播设备
  */
 int tick_is_broadcast_device(struct clock_event_device *dev)
 {
 	return (dev && tick_broadcast_device.evtdev == dev);
 }
-
+/* 
+更新ce的频率
+*/
 int tick_broadcast_update_freq(struct clock_event_device *dev, u32 freq)
 {
 	int ret = -ENODEV;
 
-	if (tick_is_broadcast_device(dev)) {
+	if (tick_is_broadcast_device(dev)) {// 如果ce设备用作广播设备
 		raw_spin_lock(&tick_broadcast_lock);
 		ret = __clockevents_update_freq(dev, freq);
 		raw_spin_unlock(&tick_broadcast_lock);
@@ -395,6 +408,7 @@ static bool tick_do_periodic_broadcast(void)
 }
 
 /*
+广播开启情况下周期性ce设备的event_handler
  * Event handler for periodic broadcast ticks
  */
 static void tick_handle_periodic_broadcast(struct clock_event_device *dev)
@@ -511,6 +525,7 @@ EXPORT_SYMBOL_GPL(tick_broadcast_control);
 
 /*
  * Set the periodic handler depending on broadcast on/off
+ 根据广播开/关设置周期性ce设备的event_handler
  */
 void tick_set_periodic_handler(struct clock_event_device *dev, int broadcast)
 {
@@ -533,6 +548,7 @@ static void tick_shutdown_broadcast(void)
 
 /*
  * Remove a CPU from broadcasting
+ 把CPU从广播机制中移除
  */
 void tick_broadcast_offline(unsigned int cpu)
 {
@@ -1156,6 +1172,7 @@ void hotplug_cpu__broadcast_tick_pull(int deadcpu)
 
 /*
  * Remove a dying CPU from broadcasting
+ 把一个将要下线的CPU从广播机制中移除
  */
 static void tick_broadcast_oneshot_offline(unsigned int cpu)
 {
@@ -1165,6 +1182,7 @@ static void tick_broadcast_oneshot_offline(unsigned int cpu)
 	/*
 	 * Clear the broadcast masks for the dead cpu, but do not stop
 	 * the broadcast device!
+	   清除下线cpu的广播掩码，但不停止广播设备
 	 */
 	cpumask_clear_cpu(cpu, tick_broadcast_oneshot_mask);
 	cpumask_clear_cpu(cpu, tick_broadcast_pending_mask);
@@ -1174,6 +1192,7 @@ static void tick_broadcast_oneshot_offline(unsigned int cpu)
 
 /*
  * Check, whether the broadcast device is in one shot mode
+ 检查广播设备是否处于单次模式
  */
 int tick_broadcast_oneshot_active(void)
 {

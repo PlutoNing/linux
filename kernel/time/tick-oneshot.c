@@ -56,14 +56,20 @@ void tick_resume_oneshot(void)
 }
 
 /**
+替换td设备的ce设备的时候设置ce设备为one-shot模式
+handler是旧ce设备的event_handler
+next_event是旧ce设备的next_event到期时间
  * tick_setup_oneshot - setup the event device for oneshot mode (hres or nohz)
  */
 void tick_setup_oneshot(struct clock_event_device *newdev,
 			void (*handler)(struct clock_event_device *),
 			ktime_t next_event)
 {
+	// 设置event_handler回调函数
 	newdev->event_handler = handler;
+	// 切换为one-shot模式
 	clockevents_switch_state(newdev, CLOCK_EVT_STATE_ONESHOT);
+	// 设置下一次到期时间
 	clockevents_program_event(newdev, next_event, true);
 }
 

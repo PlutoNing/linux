@@ -581,6 +581,7 @@ void flush_smp_call_function_queue(void)
 
 /*
  * smp_call_function_single - Run a function on a specific CPU
+ 在特定的CPU上运行一个函数
  * @func: The function to run. This must be fast and non-blocking.
  * @info: An arbitrary pointer to pass to the function.
  * @wait: If true, wait until function has completed on other CPUs.

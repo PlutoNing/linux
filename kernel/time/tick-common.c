@@ -24,9 +24,11 @@
 
 /*
  * Tick devices
+ pcp的tick设备
  */
 DEFINE_PER_CPU(struct tick_device, tick_cpu_device);
 /*
+tick_next_period是在Tick层定义的，表示下一次Tick的到期时间。
  * Tick next event: keeps track of the tick time. It's updated by the
  * CPU which handles the tick and protected by jiffies_lock. There is
  * no requirement to write hold the jiffies seqcount for it.
@@ -103,6 +105,7 @@ static void tick_periodic(int cpu)
 
 /*
  * Event handler for periodic ticks
+ 广播关闭情况下周期性ce设备的event handler
  */
 void tick_handle_periodic(struct clock_event_device *dev)
 {
@@ -148,9 +151,11 @@ void tick_handle_periodic(struct clock_event_device *dev)
 
 /*
  * Setup the device for a periodic tick
+ 设置ce设备为周期性或者one-shot
  */
 void tick_setup_periodic(struct clock_event_device *dev, int broadcast)
 {
+	// 这里根据广播开启情况设置event_handler
 	tick_set_periodic_handler(dev, broadcast);
 
 	/* Broadcast setup ? */
@@ -159,21 +164,26 @@ void tick_setup_periodic(struct clock_event_device *dev, int broadcast)
 
 	if ((dev->features & CLOCK_EVT_FEAT_PERIODIC) &&
 	    !tick_broadcast_oneshot_active()) {
+		// 切换ce设备为周期性
 		clockevents_switch_state(dev, CLOCK_EVT_STATE_PERIODIC);
-	} else {
+	} else {/* 
+		1 dev不是周期性的
+		2 广播设备处于one-shot模式
+		*/
 		unsigned int seq;
 		ktime_t next;
 
 		do {
 			seq = read_seqcount_begin(&jiffies_seq);
-			next = tick_next_period;
+			next = tick_next_period; //获取下一个周期性tick触发的时间
 		} while (read_seqcount_retry(&jiffies_seq, seq));
-
+		// 切换ce设备为one-shot
 		clockevents_switch_state(dev, CLOCK_EVT_STATE_ONESHOT);
 
 		for (;;) {
+			// 设置ce设备下一次到期时间
 			if (!clockevents_program_event(dev, next, false))
-				return;
+				return; // clockevents_program_event设置好了就返回
 			next = ktime_add_ns(next, TICK_NSEC);
 		}
 	}
@@ -201,6 +211,7 @@ static void tick_take_do_timer_from_boot(void)
 
 /*
  * Setup the tick device
+ 设置某个cpu的pcp的tick设备
  */
 static void tick_setup_device(struct tick_device *td,
 			      struct clock_event_device *newdev, int cpu,
@@ -211,6 +222,7 @@ static void tick_setup_device(struct tick_device *td,
 
 	/*
 	 * First device setup ?
+	 如果是初始化tick设备
 	 */
 	if (!td->evtdev) {
 		/*
@@ -242,12 +254,15 @@ static void tick_setup_device(struct tick_device *td,
 		 * Startup in periodic mode first.
 		 */
 		td->mode = TICKDEV_MODE_PERIODIC;
-	} else {
+	} else {// 如果是拿newdev替换旧的tick设备的clock event设备
+		// 获取tick设备之前的clock event设备的event_handler
 		handler = td->evtdev->event_handler;
+		// 获取tick设备之前的clock event设备的next_event触发时间
 		next_event = td->evtdev->next_event;
+		// 关闭旧设备的ce设备
 		td->evtdev->event_handler = clockevents_handle_noop;
 	}
-
+	// 设置新的clock event设备
 	td->evtdev = newdev;
 
 	/*
@@ -263,27 +278,36 @@ static void tick_setup_device(struct tick_device *td,
 	 * This allows us to handle this x86 misfeature in a generic
 	 * way. This function also returns !=0 when we keep the
 	 * current active broadcast state for this CPU.
+	 如果是全局广播模式, 则检查当前设备是否注册为广播模式的占位符
+	 这允许我们以通用方式处理这个x86错误特性。 当我们保持当前活动的广播状态时，此函数还返回！= 0
 	 */
 	if (tick_device_uses_broadcast(newdev, cpu))
 		return;
 
 	if (td->mode == TICKDEV_MODE_PERIODIC)
-		tick_setup_periodic(newdev, 0);
+		tick_setup_periodic(newdev, 0); // 设置ce设备为周期性,也可能是one-shot
 	else
 		tick_setup_oneshot(newdev, handler, next_event);
 }
-
+/* 
+安装新设备用于替换旧设备
+新设备更合适
+=======================
+可以用来删除解绑旧设备
+*/
 void tick_install_replacement(struct clock_event_device *newdev)
 {
+	// 获取当前cpu的tick设备
 	struct tick_device *td = this_cpu_ptr(&tick_cpu_device);
 	int cpu = smp_processor_id();
-
+	// 进行相关设备的put和get
 	clockevents_exchange_device(td->evtdev, newdev);
+	// 设置td的新ce
 	tick_setup_device(td, newdev, cpu, cpumask_of(cpu));
 	if (newdev->features & CLOCK_EVT_FEAT_ONESHOT)
 		tick_oneshot_notify();
 }
-
+// 检查newdev是否比curdev更适合
 static bool tick_check_percpu(struct clock_event_device *curdev,
 			      struct clock_event_device *newdev, int cpu)
 {
@@ -299,7 +323,9 @@ static bool tick_check_percpu(struct clock_event_device *curdev,
 		return false;
 	return true;
 }
-
+/* 
+检查newdev是否比curdev更适合
+*/
 static bool tick_check_preferred(struct clock_event_device *curdev,
 				 struct clock_event_device *newdev)
 {
@@ -323,6 +349,9 @@ static bool tick_check_preferred(struct clock_event_device *curdev,
 /*
  * Check whether the new device is a better fit than curdev. curdev
  * can be NULL !
+ 检查新设备是否比curdev更适合。curdev可以为NULL！
+ ==============================================
+ 卸载解绑curdev的时候可能会调用这个函数
  */
 bool tick_check_replacement(struct clock_event_device *curdev,
 			    struct clock_event_device *newdev)
@@ -336,6 +365,7 @@ bool tick_check_replacement(struct clock_event_device *curdev,
 /*
  * Check, if the new registered device should be used. Called with
  * clockevents_lock held and interrupts disabled.
+ 检查新注册的设备是否应该使用。在持有clockevents_lock并禁用中断时调用。
  */
 void tick_check_new_device(struct clock_event_device *newdev)
 {
@@ -346,7 +376,10 @@ void tick_check_new_device(struct clock_event_device *newdev)
 	cpu = smp_processor_id();
 	td = &per_cpu(tick_cpu_device, cpu);
 	curdev = td->evtdev;
+	// 刚刚是获取cpu现在的td和ce
 
+
+	// 如果新设备更适合
 	if (!tick_check_replacement(curdev, newdev))
 		goto out_bc;
 
@@ -362,7 +395,9 @@ void tick_check_new_device(struct clock_event_device *newdev)
 		clockevents_shutdown(curdev);
 		curdev = NULL;
 	}
+	// 进行相关的put和get
 	clockevents_exchange_device(curdev, newdev);
+	// 设置新的ce
 	tick_setup_device(td, newdev, cpu, cpumask_of(cpu));
 	if (newdev->features & CLOCK_EVT_FEAT_ONESHOT)
 		tick_oneshot_notify();
@@ -411,15 +446,22 @@ void tick_handover_do_timer(void)
 }
 
 /*
+下线cpu的时候调用
+关闭td和ce
  * Shutdown an event device on a given cpu:
  *
  * This is called on a life CPU, when a CPU is dead. So we cannot
  * access the hardware device itself.
  * We just set the mode and remove it from the lists.
+ 当一个cpu下线的时候，调用这个函数
+ 所以我们不能访问硬件设备本身
+ 我们只是设置模式并将其从列表中删除
  */
 void tick_shutdown(unsigned int cpu)
 {
+	// 获取td设备
 	struct tick_device *td = &per_cpu(tick_cpu_device, cpu);
+	// 获取ce设备
 	struct clock_event_device *dev = td->evtdev;
 
 	td->mode = TICKDEV_MODE_PERIODIC;
@@ -427,6 +469,7 @@ void tick_shutdown(unsigned int cpu)
 		/*
 		 * Prevent that the clock events layer tries to call
 		 * the set mode function!
+		 阻止时钟事件层尝试调用设置模式函数！
 		 */
 		clockevent_set_state(dev, CLOCK_EVT_STATE_DETACHED);
 		clockevents_exchange_device(dev, NULL);

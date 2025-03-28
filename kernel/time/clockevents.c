@@ -16,8 +16,11 @@
 
 #include "tick-internal.h"
 
-/* The registered clock event devices */
+/* The registered clock event devices
+系统的ce设备在这里
+*/
 static LIST_HEAD(clockevent_devices);
+// 要被释放的设备
 static LIST_HEAD(clockevents_released);
 /* Protection for the above */
 static DEFINE_RAW_SPINLOCK(clockevents_lock);
@@ -87,7 +90,9 @@ u64 clockevent_delta2ns(unsigned long latch, struct clock_event_device *evt)
 	return cev_delta2ns(latch, evt, false);
 }
 EXPORT_SYMBOL_GPL(clockevent_delta2ns);
-
+/* 
+切换设备的状态到指定的状态state
+*/
 static int __clockevents_switch_state(struct clock_event_device *dev,
 				      enum clock_event_state state)
 {
@@ -97,7 +102,9 @@ static int __clockevents_switch_state(struct clock_event_device *dev,
 	/* Transition with new state-specific callbacks */
 	switch (state) {
 	case CLOCK_EVT_STATE_DETACHED:
-		/* The clockevent device is getting replaced. Shut it down. */
+		/* The clockevent device is getting replaced. Shut it down.
+		设备正在被替换，关闭它
+		*/
 
 	case CLOCK_EVT_STATE_SHUTDOWN:
 		if (dev->set_state_shutdown)
@@ -139,6 +146,7 @@ static int __clockevents_switch_state(struct clock_event_device *dev,
 
 /**
  * clockevents_switch_state - set the operating state of a clock event device
+ 设置定时事件设备的状态
  * @dev:	device to modify
  * @state:	new state
  *
@@ -147,24 +155,25 @@ static int __clockevents_switch_state(struct clock_event_device *dev,
 void clockevents_switch_state(struct clock_event_device *dev,
 			      enum clock_event_state state)
 {
-	if (clockevent_get_state(dev) != state) {
+	if (clockevent_get_state(dev) != state) {// 需要变化
+		// 开始切换
 		if (__clockevents_switch_state(dev, state))
 			return;
-
+		// 这里设置状态标志位
 		clockevent_set_state(dev, state);
 
 		/*
 		 * A nsec2cyc multiplicator of 0 is invalid and we'd crash
 		 * on it, so fix it up and emit a warning:
 		 */
-		if (clockevent_state_oneshot(dev)) {
+		if (clockevent_state_oneshot(dev)) {// 如果是单次触发的定时事件设备
 			if (WARN_ON(!dev->mult))
 				dev->mult = 1;
 		}
 	}
 }
 
-/**
+/**状态切换为关闭
  * clockevents_shutdown - shutdown the device and clear next_event
  * @dev:	device to shutdown
  */
@@ -176,6 +185,7 @@ void clockevents_shutdown(struct clock_event_device *dev)
 
 /**
  * clockevents_tick_resume -	Resume the tick device before using it again
+ 再次使用ce设备之前恢复tick设备
  * @dev:			device to resume
  */
 int clockevents_tick_resume(struct clock_event_device *dev)
@@ -225,6 +235,8 @@ static int clockevents_increase_min_delta(struct clock_event_device *dev)
 }
 
 /**
+在设置one-shot的ce设备的next到期时间expires的时候
+如果发现expires已经过期了，那么就会调用这个函数
  * clockevents_program_min_delta - Set clock event device to the minimum delay.
  * @dev:	device to program
  *
@@ -253,6 +265,8 @@ static int clockevents_program_min_delta(struct clock_event_device *dev)
 			 * We tried 3 times to program the device with the
 			 * given min_delta_ns. Try to increase the minimum
 			 * delta, if that fails as well get out of here.
+			 我们尝试了3次使用给定的min_delta_ns来编程设备。
+			 如果增加最小delta也失败了，那么就退出。
 			 */
 			if (clockevents_increase_min_delta(dev))
 				return -ETIME;
@@ -293,9 +307,12 @@ static int clockevents_program_min_delta(struct clock_event_device *dev)
 #endif /* CONFIG_GENERIC_CLOCKEVENTS_MIN_ADJUST */
 
 /**
+把ce设备切换为one-shot状态之后会调用这个函数
+大概是设置设备的下一次到期时间
  * clockevents_program_event - Reprogram the clock event device.
  * @dev:	device to program
- * @expires:	absolute expiry time (monotonic clock)
+ * @expires:	absolute expiry time (monotonic clock),是获取的获取下一个周期性tick触发的时间
+ 也就是tick_next_period的时间
  * @force:	program minimum delay if expires can not be set
  *
  * Returns 0 on success, -ETIME when the event is in the past.
@@ -309,7 +326,7 @@ int clockevents_program_event(struct clock_event_device *dev, ktime_t expires,
 
 	if (WARN_ON_ONCE(expires < 0))
 		return -ETIME;
-
+	// 设置ce设备的下一次到期绝对时间
 	dev->next_event = expires;
 
 	if (clockevent_state_shutdown(dev))
@@ -322,14 +339,15 @@ int clockevents_program_event(struct clock_event_device *dev, ktime_t expires,
 	/* Shortcut for clockevent devices that can deal with ktime. */
 	if (dev->features & CLOCK_EVT_FEAT_KTIME)
 		return dev->set_next_ktime(expires, dev);
-
+	// delta表示还有多久到期
 	delta = ktime_to_ns(ktime_sub(expires, ktime_get()));
 	if (delta <= 0)
 		return force ? clockevents_program_min_delta(dev) : -ETIME;
 
+	// 保证delta在min_delta_ns和max_delta_ns之间
 	delta = min(delta, (int64_t) dev->max_delta_ns);
 	delta = max(delta, (int64_t) dev->min_delta_ns);
-
+	// 进行转换, 然后设置下一次到期的时间
 	clc = ((unsigned long long) delta * dev->mult) >> dev->shift;
 	rc = dev->set_next_event((unsigned long) clc, dev);
 
@@ -339,12 +357,14 @@ int clockevents_program_event(struct clock_event_device *dev, ktime_t expires,
 /*
  * Called after a notify add to make devices available which were
  * released from the notifier call.
+ 在通知添加后调用，以使从通知器调用中释放的设备可用。
  */
 static void clockevents_notify_released(void)
 {
 	struct clock_event_device *dev;
 
-	while (!list_empty(&clockevents_released)) {
+	while (!list_empty(&clockevents_released)) {/* 遍历要被释放的ce设备 */
+		// 取下来一个ce
 		dev = list_entry(clockevents_released.next,
 				 struct clock_event_device, list);
 		list_move(&dev->list, &clockevent_devices);
@@ -354,6 +374,9 @@ static void clockevents_notify_released(void)
 
 /*
  * Try to install a replacement clock event device
+尝试安装一个替换的时钟事件设备
+========================
+可以用来解绑clock event设备
  */
 static int clockevents_replace(struct clock_event_device *ced)
 {
@@ -362,18 +385,19 @@ static int clockevents_replace(struct clock_event_device *ced)
 	list_for_each_entry(dev, &clockevent_devices, list) {
 		if (dev == ced || !clockevent_state_detached(dev))
 			continue;
-
+		// 找到了一个不一样并且不是detached状态的设备
 		if (!tick_check_replacement(newdev, dev))
 			continue;
-
+		// 并且dev更适合
 		if (!try_module_get(dev->owner))
 			continue;
-
+		// 并且get成功了
 		if (newdev)
 			module_put(newdev->owner);
 		newdev = dev;
 	}
-	if (newdev) {
+	if (newdev) { // 找到了更合适的用于替换的新设备
+		// td安装新ce
 		tick_install_replacement(newdev);
 		list_del_init(&ced->list);
 	}
@@ -382,6 +406,7 @@ static int clockevents_replace(struct clock_event_device *ced)
 
 /*
  * Called with clockevents_mutex and clockevents_lock held
+ 解绑定一个clock event设备
  */
 static int __clockevents_try_unbind(struct clock_event_device *ced, int cpu)
 {
@@ -396,15 +421,17 @@ static int __clockevents_try_unbind(struct clock_event_device *ced, int cpu)
 
 /*
  * SMP function call to unbind a device
+ 解绑定一个设备的smp函数调用
  */
 static void __clockevents_unbind(void *arg)
 {
 	struct ce_unbind *cu = arg;
+	// cu的ce就是要解绑的clock event设备
 	int res;
 
 	raw_spin_lock(&clockevents_lock);
 	res = __clockevents_try_unbind(cu->ce, smp_processor_id());
-	if (res == -EAGAIN)
+	if (res == -EAGAIN) // 这里替换旧ce
 		res = clockevents_replace(cu->ce);
 	cu->res = res;
 	raw_spin_unlock(&clockevents_lock);
@@ -413,6 +440,7 @@ static void __clockevents_unbind(void *arg)
 /*
  * Issues smp function call to unbind a per cpu device. Called with
  * clockevents_mutex held.
+ 发起一个smp函数调用来解绑定一个cpu设备。在clockevents_mutex中调用。
  */
 static int clockevents_unbind(struct clock_event_device *ced, int cpu)
 {
@@ -424,6 +452,7 @@ static int clockevents_unbind(struct clock_event_device *ced, int cpu)
 
 /*
  * Unbind a clockevents device.
+   解绑定一个时钟事件设备
  */
 int clockevents_unbind_device(struct clock_event_device *ced, int cpu)
 {
@@ -437,6 +466,7 @@ int clockevents_unbind_device(struct clock_event_device *ced, int cpu)
 EXPORT_SYMBOL_GPL(clockevents_unbind_device);
 
 /**
+注册ce设备
  * clockevents_register_device - register a clock event device
  * @dev:	device to register
  */
@@ -444,7 +474,9 @@ void clockevents_register_device(struct clock_event_device *dev)
 {
 	unsigned long flags;
 
-	/* Initialize state to DETACHED */
+	/* Initialize state to DETACHED
+	先初始化为detached状态
+	*/
 	clockevent_set_state(dev, CLOCK_EVT_STATE_DETACHED);
 
 	if (!dev->cpumask) {
@@ -459,15 +491,18 @@ void clockevents_register_device(struct clock_event_device *dev)
 	}
 
 	raw_spin_lock_irqsave(&clockevents_lock, flags);
-
+	// 添加到ce设备链表中
 	list_add(&dev->list, &clockevent_devices);
+	// 使用新设备
 	tick_check_new_device(dev);
 	clockevents_notify_released();
 
 	raw_spin_unlock_irqrestore(&clockevents_lock, flags);
 }
 EXPORT_SYMBOL_GPL(clockevents_register_device);
-
+/* 
+配置ce的频率
+*/
 static void clockevents_config(struct clock_event_device *dev, u32 freq)
 {
 	u64 sec;
@@ -494,6 +529,7 @@ static void clockevents_config(struct clock_event_device *dev, u32 freq)
 
 /**
  * clockevents_config_and_register - Configure and register a clock event device
+ 配置和注册一个ce设备
  * @dev:	device to register
  * @freq:	The clock frequency
  * @min_delta:	The minimum clock ticks to program in oneshot mode
@@ -507,13 +543,19 @@ void clockevents_config_and_register(struct clock_event_device *dev,
 {
 	dev->min_delta_ticks = min_delta;
 	dev->max_delta_ticks = max_delta;
+	// 配置ce的频率
 	clockevents_config(dev, freq);
+	// 注册ce设备
 	clockevents_register_device(dev);
 }
 EXPORT_SYMBOL_GPL(clockevents_config_and_register);
-
+/* 
+ce设备用作广播设备
+这里更新ce的频率
+*/
 int __clockevents_update_freq(struct clock_event_device *dev, u32 freq)
 {
+	// 计算和配置新freq
 	clockevents_config(dev, freq);
 
 	if (clockevent_state_oneshot(dev))
@@ -527,6 +569,7 @@ int __clockevents_update_freq(struct clock_event_device *dev, u32 freq)
 
 /**
  * clockevents_update_freq - Update frequency and reprogram a clock event device.
+ 更新频率并重新编程时钟事件设备
  * @dev:	device to modify
  * @freq:	new device frequency
  *
@@ -534,7 +577,8 @@ int __clockevents_update_freq(struct clock_event_device *dev, u32 freq)
  * mode. Must be called on the cpu for which the device delivers per
  * cpu timer events. If called for the broadcast device the core takes
  * care of serialization.
- *
+ * 重新配置和重新编程一个单次触发模式的时钟事件设备。必须在设备传递每个cpu计时器事件的cpu上调用。
+  如果为广播设备调用，核心将负责序列化。
  * Returns 0 on success, -ETIME when the event is in the past.
  */
 int clockevents_update_freq(struct clock_event_device *dev, u32 freq)
@@ -559,6 +603,7 @@ void clockevents_handle_noop(struct clock_event_device *dev)
 
 /**
  * clockevents_exchange_device - release and request clock devices
+ 释放和请求时钟设备
  * @old:	device to release (can be NULL)
  * @new:	device to request (can be NULL)
  *
@@ -571,9 +616,11 @@ void clockevents_exchange_device(struct clock_event_device *old,
 	/*
 	 * Caller releases a clock event device. We queue it into the
 	 * released list and do a notify add later.
+	 调用者释放一个时钟事件设备。我们将其排入已释放列表中，并稍后进行通知添加。
 	 */
 	if (old) {
 		module_put(old->owner);
+		// 切换为DETACHED状态
 		clockevents_switch_state(old, CLOCK_EVT_STATE_DETACHED);
 		list_move(&old->list, &clockevents_released);
 	}
@@ -586,6 +633,9 @@ void clockevents_exchange_device(struct clock_event_device *old,
 
 /**
  * clockevents_suspend - suspend clock devices
+ timekeeping系统挂起和恢复的时候调用
+ ================
+ 调用每个ce设备的suspend函数
  */
 void clockevents_suspend(void)
 {
@@ -598,6 +648,9 @@ void clockevents_suspend(void)
 
 /**
  * clockevents_resume - resume clock devices
+ timekeeping系统挂起和恢复的时候调用
+ ================
+ 调用每个ce设备的resume函数
  */
 void clockevents_resume(void)
 {
@@ -612,7 +665,9 @@ void clockevents_resume(void)
 
 # ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
 /**
+take_cpu_down的时候调用
  * tick_offline_cpu - Take CPU out of the broadcast mechanism
+ 把CPU从广播机制中移除
  * @cpu:	The outgoing CPU
  *
  * Called on the outgoing CPU after it took itself offline.
@@ -626,7 +681,9 @@ void tick_offline_cpu(unsigned int cpu)
 # endif
 
 /**
+tear-down某cpu的时候调用
  * tick_cleanup_dead_cpu - Cleanup the tick and clockevents of a dead cpu
+ 清理一个下线cpu的tick和clockevents
  * @cpu:	The dead CPU
  */
 void tick_cleanup_dead_cpu(int cpu)
@@ -659,6 +716,7 @@ void tick_cleanup_dead_cpu(int cpu)
 #endif
 
 #ifdef CONFIG_SYSFS
+// 表示一个总线类型
 static struct bus_type clockevents_subsys = {
 	.name		= "clockevents",
 	.dev_name       = "clockevent",
@@ -666,7 +724,9 @@ static struct bus_type clockevents_subsys = {
 
 static DEFINE_PER_CPU(struct device, tick_percpu_dev);
 static struct tick_device *tick_get_tick_dev(struct device *dev);
-
+/* 
+sysfs的回调函数
+*/
 static ssize_t current_device_show(struct device *dev,
 				   struct device_attribute *attr,
 				   char *buf)
@@ -683,7 +743,9 @@ static ssize_t current_device_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(current_device);
 
-/* We don't support the abomination of removable broadcast devices */
+/* We don't support the abomination of removable broadcast devices
+tick设备在sysfs的相关回调函数
+*/
 static ssize_t unbind_device_store(struct device *dev,
 				   struct device_attribute *attr,
 				   const char *buf, size_t count)
@@ -722,13 +784,18 @@ static struct device tick_bc_dev = {
 	.id		= 0,
 	.bus		= &clockevents_subsys,
 };
-
+/* 
+sysfs相关的概念
+从device获取td
+*/
 static struct tick_device *tick_get_tick_dev(struct device *dev)
 {
-	return dev == &tick_bc_dev ? tick_get_broadcast_device() :
-		&per_cpu(tick_cpu_device, dev->id);
+	return dev == &tick_bc_dev ? tick_get_broadcast_device() : // 如果开启了广播, 那么就返回广播设备
+		&per_cpu(tick_cpu_device, dev->id); // 否则就是pcp的td设备, cpu存储在dev结构体
 }
-
+/* 
+tick的广播相关的sysfs文件初始化
+*/
 static __init int tick_broadcast_init_sysfs(void)
 {
 	int err = device_register(&tick_bc_dev);
@@ -744,28 +811,34 @@ static struct tick_device *tick_get_tick_dev(struct device *dev)
 }
 static inline int tick_broadcast_init_sysfs(void) { return 0; }
 #endif
-
+/* 
+初始化sysfs的tick设备相关
+*/
 static int __init tick_init_sysfs(void)
 {
 	int cpu;
 
 	for_each_possible_cpu(cpu) {
+		// 初始化pcp的tick device
 		struct device *dev = &per_cpu(tick_percpu_dev, cpu);
 		int err;
 
 		dev->id = cpu;
 		dev->bus = &clockevents_subsys;
 		err = device_register(dev);
-		if (!err)
+		if (!err) // 创建sysfs的文件
 			err = device_create_file(dev, &dev_attr_current_device);
-		if (!err)
+		if (!err) // 创建sysfs的文件
 			err = device_create_file(dev, &dev_attr_unbind_device);
 		if (err)
 			return err;
 	}
+	// 初始化tick的广播相关的sysfs文件
 	return tick_broadcast_init_sysfs();
 }
-
+/* 
+ce的sysfs相关初始化
+*/
 static int __init clockevents_init_sysfs(void)
 {
 	int err = subsys_system_register(&clockevents_subsys, NULL);
