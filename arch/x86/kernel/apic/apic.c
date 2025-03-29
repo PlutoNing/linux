@@ -1330,6 +1330,8 @@ void __init init_bsp_APIC(void)
 	/*
 	 * Don't do the setup now if we have a SMP BIOS as the
 	 * through-I/O-APIC virtual wire mode might be active.
+	 如果BIOS已经配置了SMP,则不需要设置APIC
+	 
 	 */
 	if (smp_found_config || !boot_cpu_has(X86_FEATURE_APIC))
 		return;

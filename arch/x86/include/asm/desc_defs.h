@@ -73,16 +73,18 @@ struct idt_bits {
 			dpl	: 2,
 			p	: 1;
 } __attribute__((packed));
-
+/* 
+打表除零之类的异常处理gate
+*/
 struct idt_data {
-	unsigned int	vector;
+	unsigned int	vector; // vector是除零之类的异常名,实际上是个数字序号
 	unsigned int	segment;
 	struct idt_bits	bits;
-	const void	*addr;
+	const void	*addr; // handle函数的地址
 };
 
 struct gate_struct {
-	u16		offset_low;
+	u16		offset_low; // handle函数的地址
 	u16		segment;
 	struct idt_bits	bits;
 	u16		offset_middle;

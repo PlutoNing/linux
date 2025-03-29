@@ -32,6 +32,8 @@
 /*
  * IDT vectors usable for external interrupt sources start at 0x20.
  * (0x80 is the syscall vector, 0x30-0x3f are for ISA)
+ 表示外部中断源可用的IDT向量从0x20开始。
+ * (0x80是系统调用向量，0x30-0x3f用于ISA)
  */
 #define FIRST_EXTERNAL_VECTOR		0x20
 
@@ -40,6 +42,8 @@
 /*
  * Vectors 0x30-0x3f are used for ISA interrupts.
  *   round up to the next 16-vector boundary
+ 0x30到0x3f用于ISA中断。
+irq是0到15的值，这里把他映射到0x30到0x3f
  */
 #define ISA_IRQ_VECTOR(irq)		(((FIRST_EXTERNAL_VECTOR + 16) & ~15) + irq)
 

@@ -1879,7 +1879,9 @@ static inline int change_page_attr_set(unsigned long *addr, int numpages,
 	return change_page_attr_set_clr(addr, numpages, mask, __pgprot(0), 0,
 		(array ? CPA_ARRAY : 0), NULL);
 }
-
+/* 
+去除掉addr开始的numpages个页的mask表示的属性
+*/
 static inline int change_page_attr_clear(unsigned long *addr, int numpages,
 					 pgprot_t mask, int array)
 {
@@ -2071,7 +2073,9 @@ int set_memory_nx(unsigned long addr, int numpages)
 
 	return change_page_attr_set(&addr, numpages, __pgprot(_PAGE_NX), 0);
 }
-
+/* 
+设置addr开始的numpages个页为只读
+*/
 int set_memory_ro(unsigned long addr, int numpages)
 {
 	return change_page_attr_clear(&addr, numpages, __pgprot(_PAGE_RW | _PAGE_DIRTY), 0);

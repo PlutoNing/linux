@@ -47,7 +47,9 @@ static inline void cr4_set_bits(unsigned long mask)
 	local_irq_restore(flags);
 }
 
-/* Clear in this cpu's CR4. */
+/* Clear in this cpu's CR4.
+清理这个cpu的cr4
+*/
 static inline void cr4_clear_bits(unsigned long mask)
 {
 	unsigned long flags;

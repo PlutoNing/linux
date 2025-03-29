@@ -130,6 +130,9 @@ int nr_irqs = NR_IRQS;
 EXPORT_SYMBOL_GPL(nr_irqs);
 
 static DEFINE_MUTEX(sparse_irq_lock);
+/* 
+为啥中断也是存储在maple tree, 很多吗...
+*/
 static struct maple_tree sparse_irqs = MTREE_INIT_EXT(sparse_irqs,
 					MT_FLAGS_ALLOC_RANGE |
 					MT_FLAGS_LOCK_EXTERN |
@@ -375,7 +378,9 @@ static void irq_sysfs_add(int irq, struct irq_desc *desc) {}
 static void irq_sysfs_del(struct irq_desc *desc) {}
 
 #endif /* CONFIG_SYSFS */
-
+/* 
+查询irq中断号对应的描述符desc
+*/
 struct irq_desc *irq_to_desc(unsigned int irq)
 {
 	return mtree_load(&sparse_irqs, irq);
@@ -857,7 +862,9 @@ unsigned int irq_get_next_irq(unsigned int offset)
 {
 	return irq_find_at_or_after(offset);
 }
-
+/* 
+获取irq的描述符
+*/
 struct irq_desc *
 __irq_get_desc_lock(unsigned int irq, unsigned long *flags, bool bus,
 		    unsigned int check)

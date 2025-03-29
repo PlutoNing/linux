@@ -121,6 +121,12 @@ static inline int desc_empty(const void *ptr)
 
 #define write_ldt_entry(dt, entry, desc)	native_write_ldt_entry(dt, entry, desc)
 #define write_gdt_entry(dt, entry, desc, type)	native_write_gdt_entry(dt, entry, desc, type)
+/* 
+初始化idt
+dt是idt_table
+gate是<异常,handle>数组初始化的一个gate
+entry的异常名.,比如除零,其实是个异常序号
+*/
 #define write_idt_entry(dt, entry, g)		native_write_idt_entry(dt, entry, g)
 
 static inline void paravirt_alloc_ldt(struct desc_struct *ldt, unsigned entries)
@@ -133,7 +139,12 @@ static inline void paravirt_free_ldt(struct desc_struct *ldt, unsigned entries)
 #endif	/* CONFIG_PARAVIRT_XXL */
 
 #define store_ldt(ldt) asm("sldt %0" : "=m"(ldt))
-
+/* 
+写入idt_table
+idt是idt_table
+entry是异常序号
+gate是<异常,handle>数组初始化的一个gate
+*/
 static inline void native_write_idt_entry(gate_desc *idt, int entry, const gate_desc *gate)
 {
 	memcpy(&idt[entry], gate, sizeof(*gate));
@@ -403,7 +414,9 @@ static inline void set_desc_limit(struct desc_struct *desc, unsigned long limit)
 }
 
 void alloc_intr_gate(unsigned int n, const void *addr);
-
+/* 
+设置和初始化一个idt_data
+*/
 static inline void init_idt_data(struct idt_data *data, unsigned int n,
 				 const void *addr)
 {
@@ -416,9 +429,12 @@ static inline void init_idt_data(struct idt_data *data, unsigned int n,
 	data->bits.type	= GATE_INTERRUPT;
 	data->bits.p	= 1;
 }
-
+/* 
+idt设置gate的handle函数
+*/
 static inline void idt_init_desc(gate_desc *gate, const struct idt_data *d)
 {
+	// 这里addr就是handle的地址
 	unsigned long addr = (unsigned long) d->addr;
 
 	gate->offset_low	= (u16) addr;

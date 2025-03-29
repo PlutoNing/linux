@@ -16,7 +16,10 @@
 #define DPL3		0x3
 
 #define DEFAULT_STACK	0
-
+/* 
+vector是除零之类的异常名,实际上是个数字序号
+addr是对应的处理函数handle的地址
+*/
 #define G(_vector, _addr, _ist, _type, _dpl, _segment)	\
 	{						\
 		.vector		= _vector,		\
@@ -28,7 +31,10 @@
 		.segment	= _segment,		\
 	}
 
-/* Interrupt gate */
+/* Interrupt gate
+vector是除零之类的异常名,实际上是个数字序号
+addr是对应的处理函数handle的地址
+*/
 #define INTG(_vector, _addr)				\
 	G(_vector, _addr, DEFAULT_STACK, GATE_INTERRUPT, DPL0, __KERNEL_CS)
 
@@ -79,6 +85,9 @@ static const __initconst struct idt_data early_idts[] = {
  * cpu_init() is invoked. Interrupt stacks cannot be used at that point and
  * the traps which use them are reinitialized with IST after cpu_init() has
  * set up TSS.
+ 这些是在trap_init()中设置的默认 IDT 条目，在调用 cpu_init() 之前。
+ * 在这时，无法使用中断堆栈，并且在 cpu_init() 设置 TSS 后使用 IST 重新初始化它们。
+ * 这些条目在 cpu_init() 之前设置，以便在异常处理程序中使用。
  */
 static const __initconst struct idt_data def_idts[] = {
 	INTG(X86_TRAP_DE,		asm_exc_divide_error),
@@ -125,6 +134,7 @@ static const __initconst struct idt_data def_idts[] = {
 
 /*
  * The APIC and SMP idt entries
+ apic的中断门
  */
 static const __initconst struct idt_data apic_idts[] = {
 #ifdef CONFIG_SMP
@@ -182,26 +192,33 @@ bool idt_is_f00f_address(unsigned long address)
 	return ((address - idt_descr.address) >> 3) == 6;
 }
 #endif
-
+/* 
+idt是idt_table
+t指向系统设置好的<异常,handle>数组,大小是size
+这里把这些handle赋给idt的表项
+*/
 static __init void
 idt_setup_from_table(gate_desc *idt, const struct idt_data *t, int size, bool sys)
 {
 	gate_desc desc;
 
-	for (; size > 0; t++, size--) {
-		idt_init_desc(&desc, t);
+	for (; size > 0; t++, size--) {// 一个个的遍历系统预置的表项
+		// 设置gate
+		idt_init_desc(&desc, t); // 赋值
 		write_idt_entry(idt, t->vector, &desc);
 		if (sys)
 			set_bit(t->vector, system_vectors);
 	}
 }
-
+/* 
+把序号n和函数addr设置到idt_table中
+*/
 static __init void set_intr_gate(unsigned int n, const void *addr)
 {
 	struct idt_data data;
-
+	// 初始化data
 	init_idt_data(&data, n, addr);
-
+	// 加入idt_table
 	idt_setup_from_table(idt_table, &data, 1, false);
 }
 
@@ -221,6 +238,7 @@ void __init idt_setup_early_traps(void)
 
 /**
  * idt_setup_traps - Initialize the idt table with default traps
+ 使用默认的def_idts表项初始化idt_table
  */
 void __init idt_setup_traps(void)
 {
@@ -275,9 +293,9 @@ void __init idt_setup_apic_and_irq_gates(void)
 {
 	int i = FIRST_EXTERNAL_VECTOR;
 	void *entry;
-
+	// 把apic_idts表项设置到idt_table中
 	idt_setup_from_table(idt_table, apic_idts, ARRAY_SIZE(apic_idts), true);
-
+	// 这里又加入了一些到idt_table中
 	for_each_clear_bit_from(i, system_vectors, FIRST_SYSTEM_VECTOR) {
 		entry = irq_entries_start + IDT_ALIGN * (i - FIRST_EXTERNAL_VECTOR);
 		set_intr_gate(i, entry);
@@ -294,11 +312,15 @@ void __init idt_setup_apic_and_irq_gates(void)
 		set_intr_gate(i, entry);
 	}
 #endif
-	/* Map IDT into CPU entry area and reload it. */
+	/* Map IDT into CPU entry area and reload it. 
+	把idt的内存加入cea
+	*/
 	idt_map_in_cea();
 	load_idt(&idt_descr);
 
-	/* Make the IDT table read only */
+	/* Make the IDT table read only
+	设置idt为只读
+	*/
 	set_memory_ro((unsigned long)&idt_table, 1);
 
 	idt_setup_done = true;

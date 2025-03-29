@@ -544,7 +544,9 @@ SYM_CODE_END(spurious_entries_start)
  */
 #define X86_TRAP_OTHER		0xFFFF
 
-/* Simple exception entry points. No hardware error code */
+/* Simple exception entry points. No hardware error code
+一些中断和异常的处理函数
+*/
 DECLARE_IDTENTRY(X86_TRAP_DE,		exc_divide_error);
 DECLARE_IDTENTRY(X86_TRAP_OF,		exc_overflow);
 DECLARE_IDTENTRY(X86_TRAP_BR,		exc_bounds);

@@ -126,8 +126,9 @@ extern char spurious_entries_start[];
 #define VECTOR_UNUSED		NULL
 #define VECTOR_SHUTDOWN		((void *)-1L)
 #define VECTOR_RETRIGGERED	((void *)-2L)
-
+// vector_irq_t表示256个中断向量的描述符指针的数组
 typedef struct irq_desc* vector_irq_t[NR_VECTORS];
+// 每个cpu声明一个vector_irq_t数组
 DECLARE_PER_CPU(vector_irq_t, vector_irq);
 
 #endif /* !ASSEMBLY_ */

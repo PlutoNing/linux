@@ -2209,6 +2209,8 @@ static inline void tss_setup_io_bitmap(struct tss_struct *tss)
 /*
  * Setup everything needed to handle exceptions from the IDT, including the IST
  * exceptions which use paranoid_entry().
+ 设置任何需要的异常处理程序
+ 包括 IST 异常?
  */
 void cpu_init_exception_handling(void)
 {
@@ -2228,7 +2230,9 @@ void cpu_init_exception_handling(void)
 	/* GHCB needs to be setup to handle #VC. */
 	setup_ghcb();
 
-	/* Finally load the IDT */
+	/* Finally load the IDT
+	加载idt
+	*/
 	load_current_idt();
 }
 
@@ -2237,6 +2241,10 @@ void cpu_init_exception_handling(void)
  * initialized (naturally) in the bootstrap process, such as the GDT.  We
  * reload it nevertheless, this function acts as a 'CPU state barrier',
  * nothing should get across.
+ 翻译: cpu_init() 初始化每个 CPU 的状态。
+ * 一些数据已经在引导过程中初始化，例如 GDT。
+ * 我们重新加载它，尽管如此，这个函数充当一个“CPU 状态屏障”，
+ * 没有什么应该跨越。
  */
 void cpu_init(void)
 {

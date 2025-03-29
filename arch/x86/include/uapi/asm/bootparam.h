@@ -65,6 +65,9 @@ struct setup_indirect {
 };
 
 struct setup_header {
+	/* 
+	实模式代码setup镜像的扇区个数
+	*/
 	__u8	setup_sects;
 	__u16	root_flags;
 	__u32	syssize;
@@ -75,19 +78,40 @@ struct setup_header {
 	__u16	jump;
 	__u32	header;
 	__u16	version;
+	/* 
+	用来设置hook函数
+	setup在进入保护模式之前会调用这个函数
+	*/
 	__u32	realmode_swtch;
 	__u16	start_sys_seg;
 	__u16	kernel_version;
+	/* 
+	bootloader的类别
+	不同的bootloader会有不同的值
+	*/
 	__u8	type_of_loader;
 	__u8	loadflags;
 	__u16	setup_move_size;
+	/* 
+	保护模式代码的入口
+	*/
 	__u32	code32_start;
+	/* 
+	bootloader把ramdisk镜像文件加载到内存中
+	设置该参数指向ramdisk镜像文件的内存地址
+	*/
 	__u32	ramdisk_image;
+	/* 
+	ramdisk文件大小
+	*/
 	__u32	ramdisk_size;
 	__u32	bootsect_kludge;
 	__u16	heap_end_ptr;
 	__u8	ext_loader_ver;
 	__u8	ext_loader_type;
+	/* 
+	bootloader存放内核参数的地址
+	*/
 	__u32	cmd_line_ptr;
 	__u32	initrd_addr_max;
 	__u32	kernel_alignment;

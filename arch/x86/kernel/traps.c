@@ -189,13 +189,17 @@ static __always_inline void __user *error_get_trap_addr(struct pt_regs *regs)
 {
 	return (void __user *)uprobe_get_trap_addr(regs);
 }
-
+/* 
+除零的异常处理函数
+*/
 DEFINE_IDTENTRY(exc_divide_error)
 {
 	do_error_trap(regs, 0, "divide error", X86_TRAP_DE, SIGFPE,
 		      FPE_INTDIV, error_get_trap_addr(regs));
 }
-
+/* 
+溢出的异常处理函数
+*/
 DEFINE_IDTENTRY(exc_overflow)
 {
 	do_error_trap(regs, 0, "overflow", X86_TRAP_OF, SIGSEGV, 0, NULL);
@@ -1367,7 +1371,9 @@ DEFINE_IDTENTRY_SW(iret_error)
 	local_irq_disable();
 }
 #endif
-
+/* 
+start_kernel执行
+*/
 void __init trap_init(void)
 {
 	/* Init cpu_entry_area before IST entries are set up */
@@ -1379,6 +1385,6 @@ void __init trap_init(void)
 	/* Initialize TSS before setting up traps so ISTs work */
 	cpu_init_exception_handling();
 	/* Setup traps as cpu_init() might #GP */
-	idt_setup_traps();
-	cpu_init();
+	idt_setup_traps(); // 使用默认的def_idts初始化idt_table
+	cpu_init(); // 以后
 }

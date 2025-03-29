@@ -120,6 +120,13 @@ extern const struct irq_domain_ops irq_generic_chip_ops;
 struct irq_domain_chip_generic;
 
 /**
+每个中断控制器都对应一个irq domain。IRQ domain支持三种映射方式：linear map(线性映射)，
+Radix tree map(树映射)，no map(直接映射)。
+根据不同的场景选择不同的映射方式：
+linear map：维护固定大小的表，索引是硬件中断号，如果硬件中断最大数量固定，并且数值不大，
+硬件中断号连续，可以选择线性映射；
+Radix tree map：硬件中断号可能很大，可以选择树映射；
+no map：硬件中断号直接就是Linux的中断号；
  * struct irq_domain - Hardware interrupt number translation object
  * @link:	Element in global irq_domain list.
  * @name:	Name of interrupt domain
@@ -342,6 +349,8 @@ static inline struct irq_domain *irq_domain_add_simple(struct device_node *of_no
 }
 
 /**
+在中断控制器的驱动程序中，都要注册irq domain，不同的映射方式，调用的api也不同。
+对于线性映射，其接口API如下
  * irq_domain_add_linear() - Allocate and register a linear revmap irq_domain.
  * @of_node: pointer to interrupt controller's device tree node.
  * @size: Number of interrupts in the domain.
@@ -367,7 +376,10 @@ static inline struct irq_domain *irq_domain_add_nomap(struct device_node *of_nod
 
 extern unsigned int irq_create_direct_mapping(struct irq_domain *host);
 #endif
-
+/* 
+在中断控制器的驱动程序中，都要注册irq domain，不同的映射方式，调用的api也不同。
+对于Radix Tree map，其接口API如下：
+*/
 static inline struct irq_domain *irq_domain_add_tree(struct device_node *of_node,
 					 const struct irq_domain_ops *ops,
 					 void *host_data)

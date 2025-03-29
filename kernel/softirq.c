@@ -704,6 +704,7 @@ void open_softirq(int nr, void (*action)(struct softirq_action *))
 
 /*
  * Tasklets
+ 每个cpu都有这个结构体
  */
 struct tasklet_head {
 	struct tasklet_struct *head;
@@ -801,7 +802,9 @@ static void tasklet_action_common(struct softirq_action *a,
 		local_irq_enable();
 	}
 }
-
+/* 
+TASKLET_SOFTIRQ的action函数
+*/
 static __latent_entropy void tasklet_action(struct softirq_action *a)
 {
 	tasklet_action_common(a, this_cpu_ptr(&tasklet_vec), TASKLET_SOFTIRQ);

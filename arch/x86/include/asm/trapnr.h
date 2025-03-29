@@ -2,7 +2,9 @@
 #ifndef _ASM_X86_TRAPNR_H
 #define _ASM_X86_TRAPNR_H
 
-/* Interrupts/Exceptions */
+/* Interrupts/Exceptions
+中断和异常
+*/
 
 #define X86_TRAP_DE		 0	/* Divide-by-zero */
 #define X86_TRAP_DB		 1	/* Debug */

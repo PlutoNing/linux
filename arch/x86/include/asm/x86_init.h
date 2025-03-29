@@ -40,6 +40,7 @@ struct x86_init_resources {
 
 /**
  * struct x86_init_irqs - platform specific interrupt setup
+ 平台相关的中断设置
  * @pre_vector_init:		init code to run before interrupt vectors
  *				are set up.
  * @intr_init:			interrupt init code
@@ -48,10 +49,25 @@ struct x86_init_resources {
  * @create_pci_msi_domain:	Create the PCI/MSI interrupt domain
  */
 struct x86_init_irqs {
+	/* 
+	初始化中断向量之前运行的代码
+	*/
 	void (*pre_vector_init)(void);
+	/* 
+	中断初始化代码
+	*/
 	void (*intr_init)(void);
+	/* 
+	选择中断传递模式
+	*/
 	void (*intr_mode_select)(void);
+	/* 
+	设置中断传递模式
+	*/
 	void (*intr_mode_init)(void);
+	/* 
+	创建PCI/MSI中断域
+	*/
 	struct irq_domain *(*create_pci_msi_domain)(void);
 };
 
@@ -165,7 +181,7 @@ struct x86_guest {
 struct x86_init_ops {
 	struct x86_init_resources	resources;
 	struct x86_init_mpparse		mpparse;
-	struct x86_init_irqs		irqs;
+	struct x86_init_irqs		irqs; // 中断初始化相关
 	struct x86_init_oem		oem;
 	struct x86_init_paging		paging;
 	struct x86_init_timers		timers;

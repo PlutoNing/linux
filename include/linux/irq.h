@@ -164,6 +164,7 @@ struct irq_common_data {
 
 /**
  * struct irq_data - per irq chip data passed down to chip functions
+ 
  * @mask:		precomputed bitmask for accessing the chip registers
  * @irq:		interrupt number
  * @hwirq:		hardware interrupt number, local to the interrupt domain
@@ -181,7 +182,7 @@ struct irq_data {
 	unsigned int		irq;
 	unsigned long		hwirq;
 	struct irq_common_data	*common;
-	struct irq_chip		*chip;
+	struct irq_chip		*chip; // irq所属的中断控制器
 	struct irq_domain	*domain;
 #ifdef	CONFIG_IRQ_DOMAIN_HIERARCHY
 	struct irq_data		*parent_data;
@@ -469,6 +470,11 @@ static inline irq_hw_number_t irqd_to_hwirq(struct irq_data *d)
 }
 
 /**
+中断控制器描述符
+这个结构中就是一些函数指针，无论中断控制器有什么区别，对于内核来说，硬件差异都被
+屏蔽了。内核无须关心中断控制器之间的硬件差异，中断控制器的驱动模块只需要提供硬件
+相关的操作函数，然后定义一个irq_chip对象就可以了，内核调用startup对中断控制器
+进行初始化，调用enable和disable对中断控制器进行开启和关闭操作，等等。
  * struct irq_chip - hardware interrupt chip descriptor
  *
  * @name:		name for /proc/interrupts
@@ -729,7 +735,10 @@ extern struct irq_chip dummy_irq_chip;
 extern void
 irq_set_chip_and_handler_name(unsigned int irq, const struct irq_chip *chip,
 			      irq_flow_handler_t handle, const char *name);
-
+/* 
+irq是isa的16个中断号
+chip可能是8259的chip
+*/
 static inline void irq_set_chip_and_handler(unsigned int irq,
 					    const struct irq_chip *chip,
 					    irq_flow_handler_t handle)

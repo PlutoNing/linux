@@ -222,7 +222,16 @@ spurious_8259A_irq:
 		goto handle_real_irq;
 	}
 }
+/* 
+8259中断控制器
+这个结构中就是一些函数指针，无论中断控制器有什么区别，对于内核来说，
+硬件差异都被屏蔽了。内核无须关心中断控制器之间的硬件差异，中断控制器
+的驱动模块只需要提供硬件相关的操作函数，然后定义一个irq_chip对象就
+可以了，内核调用startup对中断控制器进行初始化，调用enable和disable
+对中断控制器进行开启和关闭操作，等等。
+其中8259A的中断控制器对象如下：
 
+*/
 struct irq_chip i8259A_chip = {
 	.name		= "XT-PIC",
 	.irq_mask	= disable_8259A_irq,
@@ -340,7 +349,9 @@ static int probe_8259A(void)
 	raw_spin_unlock_irqrestore(&i8259A_lock, flags);
 	return nr_legacy_irqs();
 }
+/* 
 
+*/
 static void init_8259A(int auto_eoi)
 {
 	unsigned long flags;
@@ -423,7 +434,9 @@ struct legacy_pic null_legacy_pic = {
 	.irq_pending = legacy_pic_irq_pending_noop,
 	.make_irq = legacy_pic_uint_noop,
 };
-
+/* 
+8259
+*/
 static struct legacy_pic default_legacy_pic = {
 	.nr_legacy_irqs = NR_IRQS_LEGACY,
 	.chip  = &i8259A_chip,
@@ -436,7 +449,7 @@ static struct legacy_pic default_legacy_pic = {
 	.irq_pending = i8259A_irq_pending,
 	.make_irq = make_8259A_irq,
 };
-
+// 8259那个
 struct legacy_pic *legacy_pic = &default_legacy_pic;
 EXPORT_SYMBOL(legacy_pic);
 

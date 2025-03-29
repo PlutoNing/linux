@@ -186,7 +186,9 @@ irq_put_desc_busunlock(struct irq_desc *desc, unsigned long flags)
 {
 	__irq_put_desc_unlock(desc, flags, true);
 }
-
+/* 
+获取irq的desc?
+*/
 static inline struct irq_desc *
 irq_get_desc_lock(unsigned int irq, unsigned long *flags, unsigned int check)
 {

@@ -35,17 +35,19 @@ struct irqaction chained_action = {
 
 /**
  *	irq_set_chip - set the irq chip for an irq
+ 设置一个中断号的中断控制器?
  *	@irq:	irq number
  *	@chip:	pointer to irq chip description structure
  */
 int irq_set_chip(unsigned int irq, const struct irq_chip *chip)
 {
 	unsigned long flags;
+	// 获取desc
 	struct irq_desc *desc = irq_get_desc_lock(irq, &flags, 0);
 
 	if (!desc)
 		return -EINVAL;
-
+	// 设置chip
 	desc->irq_data.chip = (struct irq_chip *)(chip ?: &no_irq_chip);
 	irq_put_desc_unlock(desc, flags);
 	/*
@@ -980,7 +982,9 @@ void handle_percpu_devid_fasteoi_nmi(struct irq_desc *desc)
 	if (chip->irq_eoi)
 		chip->irq_eoi(&desc->irq_data);
 }
-
+/* 
+设置desc的handle
+*/
 static void
 __irq_do_set_handler(struct irq_desc *desc, irq_flow_handler_t handle,
 		     int is_chained, const char *name)
@@ -996,6 +1000,9 @@ __irq_do_set_handler(struct irq_desc *desc, irq_flow_handler_t handle,
 		 * up, but the inner chips are there.  Instead of
 		 * bailing we install the handler, but obviously we
 		 * cannot enable/startup the interrupt at this point.
+		 在层级中断域中，可能会出现外部芯片尚未设置，但内部芯片已存在的情况。
+		 * 在这种情况下，我们安装处理程序，但显然无法在此时启用/启动中断。
+		 * 这可能会导致中断处理程序在外部芯片设置之前被调用。
 		 */
 		while (irq_data) {
 			if (irq_data->chip != &no_irq_chip)
@@ -1010,13 +1017,16 @@ __irq_do_set_handler(struct irq_desc *desc, irq_flow_handler_t handle,
 			/* Try the parent */
 			irq_data = irq_data->parent_data;
 		}
+		/* 刚刚在父层级上一直找到一个可用的irq_data */
 #endif
+
 		if (WARN_ON(!irq_data || irq_data->chip == &no_irq_chip))
 			return;
+		// 必须有irq_data并且irq_data->chip不能是no_irq_chip
 	}
 
 	/* Uninstall? */
-	if (handle == handle_bad_irq) {
+	if (handle == handle_bad_irq) {// 把handle设置为handle_bad_irq表示卸载?
 		if (desc->irq_data.chip != &no_irq_chip)
 			mask_ack_irq(desc);
 		irq_state_set_disabled(desc);
@@ -1053,7 +1063,9 @@ __irq_do_set_handler(struct irq_desc *desc, irq_flow_handler_t handle,
 		irq_activate_and_startup(desc, IRQ_RESEND);
 	}
 }
-
+/* 
+handle是irq的处理函数
+*/
 void
 __irq_set_handler(unsigned int irq, irq_flow_handler_t handle, int is_chained,
 		  const char *name)
@@ -1086,11 +1098,14 @@ irq_set_chained_handler_and_data(unsigned int irq, irq_flow_handler_t handle,
 }
 EXPORT_SYMBOL_GPL(irq_set_chained_handler_and_data);
 
+/* 
+irq是中断号，chip是中断控制器的结构体，handle是中断处理函数，name是中断名称?
+*/
 void
 irq_set_chip_and_handler_name(unsigned int irq, const struct irq_chip *chip,
 			      irq_flow_handler_t handle, const char *name)
 {
-	irq_set_chip(irq, chip);
+	irq_set_chip(irq, chip); // 设置irq->desc->irq_data.chip
 	__irq_set_handler(irq, handle, 0, name);
 }
 EXPORT_SYMBOL_GPL(irq_set_chip_and_handler_name);

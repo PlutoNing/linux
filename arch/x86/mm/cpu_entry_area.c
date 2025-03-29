@@ -75,7 +75,10 @@ noinstr struct cpu_entry_area *get_cpu_entry_area(int cpu)
 	return (struct cpu_entry_area *) va;
 }
 EXPORT_SYMBOL(get_cpu_entry_area);
-
+/* 
+cea是cpu entry area
+这里好像是把pa加入cea
+*/
 void cea_set_pte(void *cea_vaddr, phys_addr_t pa, pgprot_t flags)
 {
 	unsigned long va = (unsigned long) cea_vaddr;

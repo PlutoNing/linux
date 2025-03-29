@@ -16,6 +16,7 @@
 /*
  * Invoke the realmode switch hook if present; otherwise
  * disable all interrupts.
+ 进入保护模式前执行hdr中的hook函数
  */
 static void realmode_switch_hook(void)
 {
@@ -98,10 +99,14 @@ static void setup_idt(void)
 
 /*
  * Actual invocation sequence
+ 进入保护模式
  */
 void go_to_protected_mode(void)
 {
-	/* Hook before leaving real mode, also disables interrupts */
+	/* Hook before leaving real mode, also disables interrupts
+	在进入保护模式前执行hdr中的hook函数
+	可以在这里理由函数指针最后在实模式执行一些代码
+	*/
 	realmode_switch_hook();
 
 	/* Enable the A20 gate */
@@ -118,7 +123,14 @@ void go_to_protected_mode(void)
 
 	/* Actual transition to protected mode... */
 	setup_idt();
+	/* 
+	在全局描述符表中设置代码段和数据段供保护模式使用
+	*/
 	setup_gdt();
+	/* 
+	code32_start是保护模式下的代码入口
+	bl把bzImage的第二段加载到内存中, 设置该参数
+	*/
 	protected_mode_jump(boot_params.hdr.code32_start,
 			    (u32)&boot_params + (ds() << 4));
 }
