@@ -1289,6 +1289,8 @@ free_map:
 
 /* if error is returned, fd is released.
  * On success caller should complete fd access with matching fdput()
+ 如果返回错误，则释放fd。
+ * 成功时，调用者应使用匹配的fdput()完成fd访问
  */
 struct bpf_map *__bpf_map_get(struct fd f)
 {

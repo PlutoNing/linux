@@ -149,6 +149,11 @@ struct bpf_map_ops {
 	 * verification time.  When inserting an inner map at the runtime,
 	 * map_meta_equal has to ensure the inserting map has the same
 	 * properties that the verifier has used earlier.
+	 这个函数必须被用作inner map的map实现
+	 他是一个运行时检查，以确保一个inner map可以被插入到一个outer map中
+	 一些inner map的属性在验证时被使用
+	 当在运行时插入一个inner map时，map_meta_equal必须确保插入的map具有相同的属性
+	 * 验证器之前使用过
 	 */
 	bool (*map_meta_equal)(const struct bpf_map *meta0,
 			       const struct bpf_map *meta1);

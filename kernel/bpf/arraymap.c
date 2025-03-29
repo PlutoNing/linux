@@ -1325,7 +1325,7 @@ const struct bpf_map_ops cgroup_array_map_ops = {
 static struct bpf_map *array_of_map_alloc(union bpf_attr *attr)
 {
 	struct bpf_map *map, *inner_map_meta;
-
+	// 拷贝fd的inner_map
 	inner_map_meta = bpf_map_meta_alloc(attr->inner_map_fd);
 	if (IS_ERR(inner_map_meta))
 		return inner_map_meta;

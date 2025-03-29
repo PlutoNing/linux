@@ -6,7 +6,9 @@
 #include <linux/btf.h>
 
 #include "map_in_map.h"
-
+/*
+拷贝ufd的inner_map?
+*/
 struct bpf_map *bpf_map_meta_alloc(int inner_map_ufd)
 {
 	struct bpf_map *inner_map, *inner_map_meta;
@@ -15,6 +17,7 @@ struct bpf_map *bpf_map_meta_alloc(int inner_map_ufd)
 	int ret;
 
 	f = fdget(inner_map_ufd);
+	// 存储在fd.file的private_data中
 	inner_map = __bpf_map_get(f);
 	if (IS_ERR(inner_map))
 		return inner_map;
@@ -25,7 +28,7 @@ struct bpf_map *bpf_map_meta_alloc(int inner_map_ufd)
 		goto put;
 	}
 
-	if (!inner_map->ops->map_meta_equal) {
+	if (!inner_map->ops->map_meta_equal) {// inner map必须实现的方法
 		ret = -ENOTSUPP;
 		goto put;
 	}
@@ -33,14 +36,15 @@ struct bpf_map *bpf_map_meta_alloc(int inner_map_ufd)
 	inner_map_meta_size = sizeof(*inner_map_meta);
 	/* In some cases verifier needs to access beyond just base map. */
 	if (inner_map->ops == &array_map_ops)
-		inner_map_meta_size = sizeof(struct bpf_array);
+		inner_map_meta_size = sizeof(struct bpf_array);// 说明inner_map是个array map?
 
+	// inner_map_meta大小与inner_map相同?
 	inner_map_meta = kzalloc(inner_map_meta_size, GFP_USER);
 	if (!inner_map_meta) {
 		ret = -ENOMEM;
 		goto put;
 	}
-
+	// 感觉像是拷贝的逻辑?
 	inner_map_meta->map_type = inner_map->map_type;
 	inner_map_meta->key_size = inner_map->key_size;
 	inner_map_meta->value_size = inner_map->value_size;
@@ -60,8 +64,11 @@ struct bpf_map *bpf_map_meta_alloc(int inner_map_ufd)
 	 * which relies on BTF being same for both maps, as some members like
 	 * record->fields.list_head have pointers like value_rec pointing into
 	 * inner_map->btf.
+	 注意我们必须使用相同的BTF，因为我们还使用btf_record_dup
+	 * 上面依赖于BTF与两个map相同，因为一些成员像record->fields.list_head
+	 * 有指针，比如value_rec指向inner_map->btf。
 	 */
-	if (inner_map->btf) {
+	if (inner_map->btf) { // 复用btf?
 		btf_get(inner_map->btf);
 		inner_map_meta->btf = inner_map->btf;
 	}
@@ -69,6 +76,7 @@ struct bpf_map *bpf_map_meta_alloc(int inner_map_ufd)
 	/* Misc members not needed in bpf_map_meta_equal() check. */
 	inner_map_meta->ops = inner_map->ops;
 	if (inner_map->ops == &array_map_ops) {
+		//
 		struct bpf_array *inner_array_meta =
 			container_of(inner_map_meta, struct bpf_array, map);
 		struct bpf_array *inner_array = container_of(inner_map, struct bpf_array, map);
