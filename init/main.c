@@ -930,6 +930,7 @@ void start_kernel(void)
 	setup_log_buf(0);
 	vfs_caches_init_early();
 	sort_main_extable();
+	// 中断相关
 	trap_init();
 	// 内存?
 	mm_core_init();
@@ -976,6 +977,7 @@ void start_kernel(void)
 	context_tracking_init();
 	/* init some links before init_ISA_irqs() */
 	early_irq_init();
+	// 初始化中断
 	init_IRQ();
 	tick_init();
 	rcu_init_nohz();

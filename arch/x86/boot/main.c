@@ -9,6 +9,7 @@
 
 /*
  * Main module for the real-mode kernel code
+ 实模式下的内核代码
  */
 #include <linux/build_bug.h>
 
@@ -26,6 +27,10 @@ char *heap_end = _end;		/* Default end of heap = no heap */
  * Copy the header into the boot parameter block.  Since this
  * screws up the old-style command line protocol, adjust by
  * filling in the new-style command line pointer instead.
+ 拷贝boot header到boot参数块中
+ 由于这会破坏旧式命令行协议，因此通过填充新的命令行指针来进行调整
+ ===============
+ 把第一个扇区的内容拷贝到boot_params.hdr中
  */
 
 static void copy_boot_params(void)
@@ -137,7 +142,9 @@ void main(void)
 {
 	init_default_io_ops();
 
-	/* First, copy the boot header into the "zeropage" */
+	/* First, copy the boot header into the "zeropage"
+	把第一个扇区的参数复制到boot_params
+	*/
 	copy_boot_params();
 
 	/* Initialize the early-boot console */
@@ -158,7 +165,9 @@ void main(void)
 	/* Tell the BIOS what CPU mode we intend to run in. */
 	set_bios_mode();
 
-	/* Detect memory layout */
+	/* Detect memory layout
+	通过BIOS调用获取内存布局
+	*/
 	detect_memory();
 
 	/* Set keyboard repeat rate (why?) and query the lock flags */
@@ -180,6 +189,8 @@ void main(void)
 	/* Set the video mode */
 	set_video();
 
-	/* Do the last things and invoke protected mode */
+	/* Do the last things and invoke protected mode
+	进入保护模式
+	*/
 	go_to_protected_mode();
 }
