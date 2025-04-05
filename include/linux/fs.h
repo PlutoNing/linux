@@ -968,7 +968,7 @@ static inline void i_size_write(struct inode *inode, loff_t i_size)
 	inode->i_size = i_size;
 #endif
 }
-
+// 获取次设备号?
 static inline unsigned iminor(const struct inode *inode)
 {
 	return MINOR(inode->i_rdev);

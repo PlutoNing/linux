@@ -70,7 +70,7 @@ static void show_irq_gap(struct seq_file *p, unsigned int gap)
 static void show_all_irqs(struct seq_file *p)
 {
 	unsigned int i, next = 0;
-
+	// 打印每个中断的总数统计信息
 	for_each_active_irq(i) {
 		show_irq_gap(p, i - next);
 		seq_put_decimal_ull(p, " ", kstat_irqs_usr(i));
@@ -167,7 +167,7 @@ static int show_stat(struct seq_file *p, void *v)
 		seq_putc(p, '\n');
 	}
 	seq_put_decimal_ull(p, "intr ", (unsigned long long)sum);
-
+	// 打印中断发生的总数
 	show_all_irqs(p);
 
 	seq_printf(p,

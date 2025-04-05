@@ -59,7 +59,7 @@ static void show_cpuinfo_misc(struct seq_file *m, struct cpuinfo_x86 *c)
 		   c->cpuid_level);
 }
 #endif
-
+/* /proc/cpuinfo打印cpu信息 */
 static int show_cpuinfo(struct seq_file *m, void *v)
 {
 	struct cpuinfo_x86 *c = v;
@@ -152,15 +152,18 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 
 	return 0;
 }
-
+/* 
+遍历系统的cpu
+*/
 static void *c_start(struct seq_file *m, loff_t *pos)
 {
+	/* *pos是int类型的cpu id */
 	*pos = cpumask_next(*pos - 1, cpu_online_mask);
 	if ((*pos) < nr_cpu_ids)
 		return &cpu_data(*pos);
 	return NULL;
 }
-
+/* 下一个cpu */
 static void *c_next(struct seq_file *m, void *v, loff_t *pos)
 {
 	(*pos)++;
@@ -170,7 +173,9 @@ static void *c_next(struct seq_file *m, void *v, loff_t *pos)
 static void c_stop(struct seq_file *m, void *v)
 {
 }
-
+/* 
+遍历每个cpu,迭代读出cpu的信息
+*/
 const struct seq_operations cpuinfo_op = {
 	.start	= c_start,
 	.next	= c_next,

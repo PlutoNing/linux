@@ -18,11 +18,15 @@ typedef void (*smp_call_func_t)(void *info);
 typedef bool (*smp_cond_func_t)(int cpu, void *info);
 
 /*
+代表一个要在cpu上执行的函数任务什么的
  * structure shares (partial) layout with struct irq_work
  */
 struct __call_single_data {
+	// 连接件,挂在到pcp的csd列表上面
 	struct __call_single_node node;
+	//要执行的函数
 	smp_call_func_t func;
+	// 函数参数
 	void *info;
 };
 

@@ -230,7 +230,9 @@ static inline void irqd_clr_managed_shutdown(struct irq_data *d)
 {
 	__irqd_to_state(d) &= ~IRQD_MANAGED_SHUTDOWN;
 }
-
+/* 
+清除irq_data的mask flag
+*/
 static inline void irqd_clear(struct irq_data *d, unsigned int mask)
 {
 	__irqd_to_state(d) &= ~mask;

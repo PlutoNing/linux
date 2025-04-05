@@ -230,7 +230,9 @@ void irq_debugfs_copy_devname(int irq, struct device *dev)
 	if (name)
 		desc->dev_name = kstrdup(name, GFP_KERNEL);
 }
-
+/* 
+添加到debugfs
+*/
 void irq_add_debugfs_entry(unsigned int irq, struct irq_desc *desc)
 {
 	char name [10];

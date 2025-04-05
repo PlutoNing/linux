@@ -3822,7 +3822,9 @@ void __kmem_cache_free(struct kmem_cache *s, void *x, unsigned long caller)
 {
 	slab_free(s, virt_to_slab(x), x, NULL, &x, 1, caller);
 }
-
+/* 
+从slab释放
+*/
 void kmem_cache_free(struct kmem_cache *s, void *x)
 {
 	s = cache_from_obj(s, x);

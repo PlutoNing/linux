@@ -117,7 +117,7 @@ static inline void irq_lock_sparse(void) { }
 static inline void irq_unlock_sparse(void) { }
 extern struct irq_desc irq_desc[NR_IRQS];
 #endif
-
+/* 获得pcp的中断触发次数 */
 static inline unsigned int irq_desc_kstat_cpu(struct irq_desc *desc,
 					      unsigned int cpu)
 {
@@ -133,7 +133,9 @@ static inline unsigned int irq_desc_get_irq(struct irq_desc *desc)
 {
 	return desc->irq_data.irq;
 }
-
+/* 
+获取desc的irq_data
+*/
 static inline struct irq_data *irq_desc_get_irq_data(struct irq_desc *desc)
 {
 	return &desc->irq_data;
@@ -157,6 +159,7 @@ static inline void *irq_desc_get_handler_data(struct irq_desc *desc)
 /*
  * Architectures call this to let the generic IRQ layer
  * handle an interrupt.
+ x86_64的情况下处理这个desc
  */
 static inline void generic_handle_irq_desc(struct irq_desc *desc)
 {

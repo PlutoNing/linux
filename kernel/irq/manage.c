@@ -589,6 +589,7 @@ EXPORT_SYMBOL_GPL(irq_set_affinity_notifier);
 
 #ifndef CONFIG_AUTO_IRQ_AFFINITY
 /*
+affinity是什么?
  * Generic version of the affinity autoselector.
  */
 int irq_setup_affinity(struct irq_desc *desc)
@@ -627,6 +628,7 @@ int irq_setup_affinity(struct irq_desc *desc)
 		if (cpumask_intersects(&mask, nodemask))
 			cpumask_and(&mask, &mask, nodemask);
 	}
+	// 这里设置?
 	ret = irq_do_set_affinity(&desc->irq_data, &mask, false);
 	raw_spin_unlock(&mask_lock);
 	return ret;
@@ -780,7 +782,10 @@ void disable_nmi_nosync(unsigned int irq)
 {
 	disable_irq_nosync(irq);
 }
-
+/* 
+启用中断
+开启这个irq
+*/
 void __enable_irq(struct irq_desc *desc)
 {
 	switch (desc->depth) {
@@ -800,6 +805,10 @@ void __enable_irq(struct irq_desc *desc)
 		 * needs to be invoked when it gets enabled the first
 		 * time. If it was already started up, then irq_startup()
 		 * will invoke irq_enable() under the hood.
+		 在这里调用irq_startup()而不是irq_enable()，因为中断可能被标记为NOAUTOEN。
+		 * 因此，当它第一次启用时需要调用irq_startup()。
+		 * 如果它已经启动，那么irq_startup()将在底层调用irq_enable()。
+		 * 这将确保irq_enable()在irq_startup()之后被调用。
 		 */
 		irq_startup(desc, IRQ_RESEND, IRQ_START_FORCE);
 		break;
@@ -810,6 +819,7 @@ void __enable_irq(struct irq_desc *desc)
 }
 
 /**
+开启这个irq
  *	enable_irq - enable handling of an irq
  *	@irq: Interrupt to enable
  *
@@ -1289,6 +1299,9 @@ static void wake_up_and_wait_for_irq_thread_ready(struct irq_desc *desc,
 }
 
 /*
+设备添加中断服务程序的时候
+创建中断处理线程
+data是刚创建的irqaction
  * Interrupt handler thread
  */
 static int irq_thread(void *data)
@@ -1401,7 +1414,9 @@ static int irq_setup_forced_threading(struct irqaction *new)
 	new->handler = irq_default_primary_handler;
 	return 0;
 }
-
+/* 
+调用chip的irq_request_resources函数
+*/
 static int irq_request_resources(struct irq_desc *desc)
 {
 	struct irq_data *d = &desc->irq_data;
@@ -1451,7 +1466,10 @@ static void irq_nmi_teardown(struct irq_desc *desc)
 	if (c->irq_nmi_teardown)
 		c->irq_nmi_teardown(d);
 }
-
+/* 
+设备添加中断服务程序的时候
+如果提供了thread_fn，并且中断没有嵌套到另一个中断线程中，则创建处理程序线程
+*/
 static int
 setup_irq_thread(struct irqaction *new, unsigned int irq, bool secondary)
 {
@@ -1488,6 +1506,8 @@ setup_irq_thread(struct irqaction *new, unsigned int irq, bool secondary)
 }
 
 /*
+用于设备添加中断服务程序到irq
+new是刚分配的irqaction
  * Internal function to register an irqaction - typically used to
  * allocate special interrupts that are part of the architecture.
  *
@@ -1553,6 +1573,7 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	 * Create a handler thread when a thread function is supplied
 	 * and the interrupt does not nest into another interrupt
 	 * thread.
+	 如果提供了线程函数，并且中断没有嵌套到另一个中断线程中，则创建处理程序线程
 	 */
 	if (new->thread_fn && !nested) {
 		ret = setup_irq_thread(new, irq, false);
@@ -1595,6 +1616,7 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 
 	/* First installed action requests resources. */
 	if (!desc->action) {
+		// 调用chip的irq_request_resources函数
 		ret = irq_request_resources(desc);
 		if (ret) {
 			pr_err("Failed to request resources for %s (irq %d) on irqchip %s\n",
@@ -1612,7 +1634,7 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	raw_spin_lock_irqsave(&desc->lock, flags);
 	old_ptr = &desc->action;
 	old = *old_ptr;
-	if (old) {
+	if (old) {// 如果存在旧的中断处理程序?
 		/*
 		 * Can't share interrupts unless both agree to and are
 		 * the same type (level, edge, polarity). So both flag
@@ -1651,7 +1673,9 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 		    (new->flags & IRQF_PERCPU))
 			goto mismatch;
 
-		/* add new interrupt at end of irq queue */
+		/* add new interrupt at end of irq queue
+		
+		在尾部添加新程序*/
 		do {
 			/*
 			 * Or all existing action->thread_mask bits,
@@ -1796,7 +1820,7 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 			pr_warn("irq %d uses trigger mode %u; requested %u\n",
 				irq, omsk, nmsk);
 	}
-
+// 赋值新程序
 	*old_ptr = new;
 
 	irq_pm_install_action(desc, new);
@@ -1808,6 +1832,8 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	/*
 	 * Check whether we disabled the irq via the spurious handler
 	 * before. Reenable it and give it another chance.
+	 检查我们是否通过spurious处理程序禁用irq
+	 * 重新启用它并给它另一个机会
 	 */
 	if (shared && (desc->istate & IRQS_SPURIOUS_DISABLED)) {
 		desc->istate &= ~IRQS_SPURIOUS_DISABLED;
@@ -1819,12 +1845,13 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	mutex_unlock(&desc->request_mutex);
 
 	irq_setup_timings(desc, new);
-
+	// 唤醒irq线程
 	wake_up_and_wait_for_irq_thread_ready(desc, new);
 	wake_up_and_wait_for_irq_thread_ready(desc, new->secondary);
-
+	// 创建proc文件
 	register_irq_proc(irq, desc);
 	new->dir = NULL;
+	// 创建handler的proc文件
 	register_handler_proc(irq, new);
 	return 0;
 
@@ -2102,6 +2129,7 @@ const void *free_nmi(unsigned int irq, void *dev_id)
 }
 
 /**
+设备把自己的中断服务程序handler注册到irq
  *	request_threaded_irq - allocate an interrupt line
  *	@irq: Interrupt line to allocate
  *	@handler: Function to be called when the IRQ occurs.
@@ -2172,7 +2200,7 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 	    (!(irqflags & IRQF_SHARED) && (irqflags & IRQF_COND_SUSPEND)) ||
 	    ((irqflags & IRQF_NO_SUSPEND) && (irqflags & IRQF_COND_SUSPEND)))
 		return -EINVAL;
-
+	// 获取对应的desc
 	desc = irq_to_desc(irq);
 	if (!desc)
 		return -EINVAL;
@@ -2186,11 +2214,11 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 			return -EINVAL;
 		handler = irq_default_primary_handler;
 	}
-
+	// 分配irqaction
 	action = kzalloc(sizeof(struct irqaction), GFP_KERNEL);
 	if (!action)
 		return -ENOMEM;
-
+	// 初始化irqaction
 	action->handler = handler;
 	action->thread_fn = thread_fn;
 	action->flags = irqflags;
@@ -2202,7 +2230,7 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 		kfree(action);
 		return retval;
 	}
-
+	// 设置这个irqaction
 	retval = __setup_irq(irq, desc, action);
 
 	if (retval) {

@@ -41,12 +41,14 @@
 #include <asm/msr.h>
 
 static enum cpuhp_state cpuhp_cpuid_state;
-
+/* 
+读取cpuid
+*/
 struct cpuid_regs_done {
 	struct cpuid_regs regs;
 	struct completion done;
 };
-
+/* 执行cpuid指令 */
 static void cpuid_smp_cpuid(void *cmd_block)
 {
 	struct cpuid_regs_done *cmd = cmd_block;
@@ -58,6 +60,9 @@ static void cpuid_smp_cpuid(void *cmd_block)
 	complete(&cmd->done);
 }
 
+/* 
+读取cpu的信息
+*/
 static ssize_t cpuid_read(struct file *file, char __user *buf,
 			  size_t count, loff_t *ppos)
 {
@@ -74,16 +79,17 @@ static ssize_t cpuid_read(struct file *file, char __user *buf,
 	init_completion(&cmd.done);
 	for (; count; count -= 16) {
 		call_single_data_t csd;
-
+		/* 构造csd结构体,存储要调用的回调函数什么的 */
 		INIT_CSD(&csd, cpuid_smp_cpuid, &cmd);
 
 		cmd.regs.eax = pos;
 		cmd.regs.ecx = pos >> 32;
-
+		// 这里是执行cpuid相关的东西, 以后分析
 		err = smp_call_function_single_async(cpu, &csd);
 		if (err)
 			break;
 		wait_for_completion(&cmd.done);
+		// 看来刚才cpuid的结果存入了cmd.regs里面
 		if (copy_to_user(tmp, &cmd.regs, 16)) {
 			err = -EFAULT;
 			break;
@@ -96,16 +102,18 @@ static ssize_t cpuid_read(struct file *file, char __user *buf,
 
 	return bytes ? bytes : err;
 }
-
+/* 
+打开对应的cpudata
+*/
 static int cpuid_open(struct inode *inode, struct file *file)
 {
 	unsigned int cpu;
 	struct cpuinfo_x86 *c;
-
+	// 这里的cpu是次设备号?
 	cpu = iminor(file_inode(file));
 	if (cpu >= nr_cpu_ids || !cpu_online(cpu))
 		return -ENXIO;	/* No such CPU */
-
+	// 获取pcp的cpu_info
 	c = &cpu_data(cpu);
 	if (c->cpuid_level < 0)
 		return -EIO;	/* CPUID not supported */
@@ -115,10 +123,12 @@ static int cpuid_open(struct inode *inode, struct file *file)
 
 /*
  * File operations we support
+ 好像是什么cpu字符设备的fops
  */
 static const struct file_operations cpuid_fops = {
 	.owner = THIS_MODULE,
 	.llseek = no_seek_end_llseek,
+	// 读取cpuid信息
 	.read = cpuid_read,
 	.open = cpuid_open,
 };
@@ -147,7 +157,9 @@ static int cpuid_device_destroy(unsigned int cpu)
 	device_destroy(&cpuid_class, MKDEV(CPUID_MAJOR, cpu));
 	return 0;
 }
-
+/* 
+cpuid模块初始化函数
+*/
 static int __init cpuid_init(void)
 {
 	int err;

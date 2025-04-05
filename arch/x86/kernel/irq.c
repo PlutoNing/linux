@@ -230,7 +230,7 @@ u64 arch_irq_stat(void)
 	u64 sum = atomic_read(&irq_err_count);
 	return sum;
 }
-
+/* 处理这个desc */
 static __always_inline void handle_irq(struct irq_desc *desc,
 				       struct pt_regs *regs)
 {
@@ -241,19 +241,27 @@ static __always_inline void handle_irq(struct irq_desc *desc,
 }
 
 /*
+
  * common_interrupt() handles all normal device IRQ's (the special SMP
  * cross-CPU interrupts have their own entry points).
+ 宏的作用是声明相关的额外函数
+ void asm_common_interrupt(void);
+void xen_asm_common_interrupt(void);
+__attribute__((__externally_visible__)) void
+common_interrupt(struct pt_regs *regs, unsigned long error_code);
+static void __common_interrupt(struct pt_regs *regs, u32 vector);
  */
 DEFINE_IDTENTRY_IRQ(common_interrupt)
 {
+	// 把regs写入pcp的irq_regs
 	struct pt_regs *old_regs = set_irq_regs(regs);
 	struct irq_desc *desc;
 
 	/* entry code tells RCU that we're not quiescent.  Check it. */
 	RCU_LOCKDEP_WARN(!rcu_is_watching(), "IRQ failed to wake up RCU");
-
+	// 获取对应的desc
 	desc = __this_cpu_read(vector_irq[vector]);
-	if (likely(!IS_ERR_OR_NULL(desc))) {
+	if (likely(!IS_ERR_OR_NULL(desc))) { // 正常处理路径?
 		handle_irq(desc, regs);
 	} else {
 		apic_eoi();
@@ -275,6 +283,7 @@ DEFINE_IDTENTRY_IRQ(common_interrupt)
 void (*x86_platform_ipi_callback)(void) = NULL;
 /*
  * Handler for X86_PLATFORM_IPI_VECTOR.
+ ipi是什么
  */
 DEFINE_IDTENTRY_SYSVEC(sysvec_x86_platform_ipi)
 {

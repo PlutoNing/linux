@@ -781,6 +781,7 @@ struct device {
 	u32			id;	/* device instance */
 
 	spinlock_t		devres_lock;
+	/* 挂接相关的devres */
 	struct list_head	devres_head;
 
 	const struct class	*class;

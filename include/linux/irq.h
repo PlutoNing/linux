@@ -168,6 +168,7 @@ struct irq_common_data {
  * @mask:		precomputed bitmask for accessing the chip registers
  * @irq:		interrupt number
  * @hwirq:		hardware interrupt number, local to the interrupt domain
+ 中断域的硬件中断号
  * @common:		point to data shared by all irqchips
  * @chip:		low level interrupt hardware access
  * @domain:		Interrupt translation domain; responsible for mapping
@@ -486,6 +487,8 @@ static inline irq_hw_number_t irqd_to_hwirq(struct irq_data *d)
  * @irq_mask:		mask an interrupt source
  * @irq_mask_ack:	ack and mask an interrupt source
  * @irq_unmask:		unmask an interrupt source
+ unmask一个中断源
+ 应该是开启的意思
  * @irq_eoi:		end of interrupt
  * @irq_set_affinity:	Set the CPU affinity on SMP machines. If the force
  *			argument is true, it tells the driver to

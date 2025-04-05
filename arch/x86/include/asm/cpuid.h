@@ -7,7 +7,10 @@
 #define _ASM_X86_CPUID_H
 
 #include <asm/string.h>
-
+/* 
+好像是cpuid指令相关的寄存器
+往eax写入某些值,可以读取到cpu的相关信息写入到其他几个寄存器
+*/
 struct cpuid_regs {
 	u32 eax, ebx, ecx, edx;
 };
@@ -27,6 +30,7 @@ static inline int have_cpuid_p(void)
 	return 1;
 }
 #endif
+/* 执行cpuid指令 */
 static inline void native_cpuid(unsigned int *eax, unsigned int *ebx,
 				unsigned int *ecx, unsigned int *edx)
 {
@@ -78,7 +82,9 @@ static inline void cpuid(unsigned int op,
 	__cpuid(eax, ebx, ecx, edx);
 }
 
-/* Some CPUID calls want 'count' to be placed in ecx */
+/* 
+执行cpuid指令
+Some CPUID calls want 'count' to be placed in ecx */
 static inline void cpuid_count(unsigned int op, int count,
 			       unsigned int *eax, unsigned int *ebx,
 			       unsigned int *ecx, unsigned int *edx)

@@ -245,6 +245,7 @@ int alloc_chrdev_region(dev_t *dev, unsigned baseminor, unsigned count,
 }
 
 /**
+注册字符设备
  * __register_chrdev() - create and register a cdev occupying a range of minors
  * @major: major device number or 0 for dynamic allocation
  * @baseminor: first of the requested range of minor numbers

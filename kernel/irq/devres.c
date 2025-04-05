@@ -145,7 +145,9 @@ void devm_free_irq(struct device *dev, unsigned int irq, void *dev_id)
 	free_irq(irq, dev_id);
 }
 EXPORT_SYMBOL(devm_free_irq);
-
+/* 
+好像就是描述一个设备的中断号范围?
+*/
 struct irq_desc_devres {
 	unsigned int from;
 	unsigned int cnt;
@@ -159,6 +161,7 @@ static void devm_irq_desc_release(struct device *dev, void *res)
 }
 
 /**
+为设备分配一段连续的中断号
  * __devm_irq_alloc_descs - Allocate and initialize a range of irq descriptors
  *			    for a managed device
  * @dev:	Device to allocate the descriptors for
@@ -181,7 +184,7 @@ int __devm_irq_alloc_descs(struct device *dev, int irq, unsigned int from,
 {
 	struct irq_desc_devres *dr;
 	int base;
-
+	// 分配devres
 	dr = devres_alloc(devm_irq_desc_release, sizeof(*dr), GFP_KERNEL);
 	if (!dr)
 		return -ENOMEM;
@@ -194,6 +197,7 @@ int __devm_irq_alloc_descs(struct device *dev, int irq, unsigned int from,
 
 	dr->from = base;
 	dr->cnt = cnt;
+	// 加入dev的devres链表
 	devres_add(dev, dr);
 
 	return base;

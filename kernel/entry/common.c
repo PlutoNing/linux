@@ -15,9 +15,12 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/syscalls.h>
 
-/* See comment for enter_from_user_mode() in entry-common.h */
+/* 
+系统调用前例行的一些检查
+See comment for enter_from_user_mode() in entry-common.h */
 static __always_inline void __enter_from_user_mode(struct pt_regs *regs)
 {
+	// 做了一些usermode,堆栈的检查
 	arch_enter_from_user_mode(regs);
 	lockdep_hardirqs_off(CALLER_ADDR0);
 
@@ -297,7 +300,10 @@ __visible noinstr void syscall_exit_to_user_mode(struct pt_regs *regs)
 	instrumentation_end();
 	__exit_to_user_mode();
 }
-
+/* 
+进入中断的时候
+用户模式的情况
+*/
 noinstr void irqentry_enter_from_user_mode(struct pt_regs *regs)
 {
 	__enter_from_user_mode(regs);
@@ -311,14 +317,15 @@ noinstr void irqentry_exit_to_user_mode(struct pt_regs *regs)
 	__exit_to_user_mode();
 }
 
+/* 一些检查的工作 */
 noinstr irqentry_state_t irqentry_enter(struct pt_regs *regs)
 {
 	irqentry_state_t ret = {
 		.exit_rcu = false,
 	};
 
-	if (user_mode(regs)) {
-		irqentry_enter_from_user_mode(regs);
+	if (user_mode(regs)) { // 用户模式的路径
+		irqentry_enter_from_user_mode(regs); // 检查
 		return ret;
 	}
 
@@ -352,6 +359,7 @@ noinstr irqentry_state_t irqentry_enter(struct pt_regs *regs)
 		 * as in irqentry_enter_from_user_mode().
 		 */
 		lockdep_hardirqs_off(CALLER_ADDR0);
+		// 似乎是rcu相关, 以后
 		ct_irq_enter();
 		instrumentation_begin();
 		kmsan_unpoison_entry_regs(regs);

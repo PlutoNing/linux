@@ -51,6 +51,7 @@ DEFINE_PER_CPU(vector_irq_t, vector_irq) = {
 };
 /* 
 x86_init.irqs.pre_vector_init()函数
+主要是对外部中断设置
 */
 void __init init_ISA_irqs(void)
 {

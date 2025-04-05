@@ -215,6 +215,7 @@ static inline bool __llist_add_batch(struct llist_node *new_first,
  * @head:	the head for your lock-less list
  *
  * Returns true if the list was empty prior to adding this entry.
+ 返回真表示
  */
 static inline bool llist_add(struct llist_node *new, struct llist_head *head)
 {

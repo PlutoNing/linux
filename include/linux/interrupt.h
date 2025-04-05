@@ -149,6 +149,7 @@ request_threaded_irq(unsigned int irq, irq_handler_t handler,
 		     unsigned long flags, const char *name, void *dev);
 
 /**
+设备把自己的中断服务程序添加到中断请求队列
  * request_irq - Add a handler for an interrupt line
  * @irq:	The interrupt line to allocate
  * @handler:	Function to be called when the IRQ occurs.
@@ -157,6 +158,7 @@ request_threaded_irq(unsigned int irq, irq_handler_t handler,
  * @flags:	Handling flags
  * @name:	Name of the device generating this interrupt
  * @dev:	A cookie passed to the handler function
+ 类似priv数据?
  *
  * This call allocates an interrupt and establishes a handler; see
  * the documentation for request_threaded_irq() for details.

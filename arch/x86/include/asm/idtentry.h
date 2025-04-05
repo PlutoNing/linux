@@ -66,6 +66,7 @@ static __always_inline void __##func(struct pt_regs *regs)
 #define DEFINE_IDTENTRY_SW	DEFINE_IDTENTRY
 
 /**
+宏额外给函数声明了asm,xen的版本
  * DECLARE_IDTENTRY_ERRORCODE - Declare functions for simple IDT entry points
  *				Error code pushed by hardware
  * @vector:	Vector number (ignored for C)
@@ -168,6 +169,7 @@ __visible noinstr void func(struct pt_regs *regs, unsigned long error_code)
 /**
  * DECLARE_IDTENTRY_IRQ - Declare functions for device interrupt IDT entry
  *			  points (common/spurious)
+ 宏的作用是为函数额外声明一些函数
  * @vector:	Vector number (ignored for C)
  * @func:	Function name of the entry point
  *
@@ -177,6 +179,9 @@ __visible noinstr void func(struct pt_regs *regs, unsigned long error_code)
 	DECLARE_IDTENTRY_ERRORCODE(vector, func)
 
 /**
+在func外面包裹了一层检查的逻辑
+func的代码块实质上是__func
+然后真正的func函数是一些检查加上调用__func函数
  * DEFINE_IDTENTRY_IRQ - Emit code for device interrupt IDT entry points
  * @func:	Function name of the entry point
  *
@@ -541,6 +546,7 @@ SYM_CODE_END(spurious_entries_start)
  * Dummy trap number so the low level ASM macro vector number checks do not
  * match which results in emitting plain IDTENTRY stubs without bells and
  * whistles.
+ 仅仅作为占位符
  */
 #define X86_TRAP_OTHER		0xFFFF
 

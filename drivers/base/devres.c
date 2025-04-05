@@ -17,6 +17,7 @@
 #include "trace.h"
 
 struct devres_node {
+	/* 挂接到dev的devres_head */
 	struct list_head		entry;
 	dr_release_t			release;
 	const char			*name;
@@ -128,7 +129,9 @@ static __always_inline struct devres * alloc_dr(dr_release_t release,
 	dr->node.release = release;
 	return dr;
 }
-
+/* 
+加入到dev的devres_head链表
+*/
 static void add_dr(struct device *dev, struct devres_node *node)
 {
 	devres_log(dev, node, "ADD");
@@ -145,6 +148,8 @@ static void replace_dr(struct device *dev,
 }
 
 /**
+分配devres
+好像是用于描述设备中断号范围的
  * __devres_alloc_node - Allocate device resource data
  * @release: Release function devres will be associated with
  * @size: Allocation size
@@ -215,6 +220,7 @@ void devres_for_each_res(struct device *dev, dr_release_t release,
 EXPORT_SYMBOL_GPL(devres_for_each_res);
 
 /**
+释放devres
  * devres_free - Free device resource data
  * @res: Pointer to devres data to free
  *
@@ -232,6 +238,8 @@ void devres_free(void *res)
 EXPORT_SYMBOL_GPL(devres_free);
 
 /**
+注册devres
+就是加入到对应设备的devres_head链表
  * devres_add - Register device resource
  * @dev: Device to add resource to
  * @res: Resource to register
@@ -242,10 +250,12 @@ EXPORT_SYMBOL_GPL(devres_free);
  */
 void devres_add(struct device *dev, void *res)
 {
+	// 获取devres结构体
 	struct devres *dr = container_of(res, struct devres, data);
 	unsigned long flags;
 
 	spin_lock_irqsave(&dev->devres_lock, flags);
+	// 加入devdev的devres_head链表
 	add_dr(dev, &dr->node);
 	spin_unlock_irqrestore(&dev->devres_lock, flags);
 }

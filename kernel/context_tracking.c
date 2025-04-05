@@ -342,7 +342,7 @@ EXPORT_SYMBOL_GPL(ct_idle_exit);
 
 /**
  * ct_irq_enter - inform RCU that current CPU is entering irq away from idle
- *
+ * 告知RCU当前CPU正在从空闲状态进入中断
  * Enter an interrupt handler, which might possibly result in exiting
  * idle mode, in other words, entering the mode in which read-side critical
  * sections can occur.  The caller must have disabled interrupts.

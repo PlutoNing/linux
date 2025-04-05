@@ -315,7 +315,9 @@ static int name_unique(unsigned int irq, struct irqaction *new_action)
 	raw_spin_unlock_irqrestore(&desc->lock, flags);
 	return ret;
 }
-
+/* 
+创建handler的proc文件夹
+*/
 void register_handler_proc(unsigned int irq, struct irqaction *action)
 {
 	char name [MAX_NAMELEN];
@@ -334,7 +336,7 @@ void register_handler_proc(unsigned int irq, struct irqaction *action)
 #undef MAX_NAMELEN
 
 #define MAX_NAMELEN 10
-
+/* 创建proc相关的东西 */
 void register_irq_proc(unsigned int irq, struct irq_desc *desc)
 {
 	static DEFINE_MUTEX(register_lock);
@@ -356,7 +358,9 @@ void register_irq_proc(unsigned int irq, struct irq_desc *desc)
 
 	sprintf(name, "%d", irq);
 
-	/* create /proc/irq/1234 */
+	/* create /proc/irq/1234
+	创建在proc的文件夹
+	*/
 	desc->dir = proc_mkdir(name, root_irq_dir);
 	if (!desc->dir)
 		goto out_unlock;
@@ -389,7 +393,9 @@ void register_irq_proc(unsigned int irq, struct irq_desc *desc)
 out_unlock:
 	mutex_unlock(&register_lock);
 }
-
+/* 
+移除desc的proc相关文件
+*/
 void unregister_irq_proc(unsigned int irq, struct irq_desc *desc)
 {
 	char name [MAX_NAMELEN];
@@ -456,7 +462,9 @@ int __weak arch_show_interrupts(struct seq_file *p, int prec)
 #ifndef ACTUAL_NR_IRQS
 # define ACTUAL_NR_IRQS nr_irqs
 #endif
-
+/* 
+中断/proc/irq/迭代的seq show函数
+*/
 int show_interrupts(struct seq_file *p, void *v)
 {
 	static int prec;

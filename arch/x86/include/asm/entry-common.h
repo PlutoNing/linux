@@ -9,7 +9,9 @@
 #include <asm/io_bitmap.h>
 #include <asm/fpu/api.h>
 
-/* Check that the stack and regs on entry from user mode are sane. */
+/* Check that the stack and regs on entry from user mode are sane.
+检查用户模式下的堆栈和寄存器是否正常
+*/
 static __always_inline void arch_enter_from_user_mode(struct pt_regs *regs)
 {
 	if (IS_ENABLED(CONFIG_DEBUG_ENTRY)) {
@@ -18,6 +20,7 @@ static __always_inline void arch_enter_from_user_mode(struct pt_regs *regs)
 		 * register.  Native because we want to check the actual CPU
 		 * state, not the interrupt state as imagined by Xen.
 		 */
+		// 获取标志寄存器内容
 		unsigned long flags = native_save_fl();
 		unsigned long mask = X86_EFLAGS_DF | X86_EFLAGS_NT;
 

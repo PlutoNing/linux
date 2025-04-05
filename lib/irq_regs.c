@@ -9,6 +9,8 @@
 #include <asm/irq_regs.h>
 
 #ifndef ARCH_HAS_OWN_IRQ_REGS
+/* pcp的irq regs
+估计是中断的时候使用的 */
 DEFINE_PER_CPU(struct pt_regs *, __irq_regs);
 EXPORT_PER_CPU_SYMBOL(__irq_regs);
 #endif

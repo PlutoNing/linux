@@ -621,6 +621,7 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	 * Switch the PDA and FPU contexts.
 	 */
 	raw_cpu_write(pcpu_hot.current_task, next_p);
+	// 看来存储的是下一个进程的thread_info的regs哪里大概的位置?
 	raw_cpu_write(pcpu_hot.top_of_stack, task_top_of_stack(next_p));
 
 	switch_fpu_finish();

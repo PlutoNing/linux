@@ -98,7 +98,9 @@ alloc_masks(struct irq_desc *desc, int node) { return 0; }
 static inline void
 desc_smp_init(struct irq_desc *desc, int node, const struct cpumask *affinity) { }
 #endif
+/* 
 
+*/
 static void desc_set_defaults(unsigned int irq, struct irq_desc *desc, int node,
 			      const struct cpumask *affinity, struct module *owner)
 {
@@ -114,6 +116,7 @@ static void desc_set_defaults(unsigned int irq, struct irq_desc *desc, int node,
 	irq_settings_clr_and_set(desc, ~0, _IRQ_DEFAULT_INIT_FLAGS);
 	irqd_set(&desc->irq_data, IRQD_IRQ_DISABLED);
 	irqd_set(&desc->irq_data, IRQD_IRQ_MASKED);
+	/* nop */
 	desc->handle_irq = handle_bad_irq;
 	desc->depth = 1;
 	desc->irq_count = 0;
@@ -155,13 +158,17 @@ static unsigned int irq_find_at_or_after(unsigned int offset)
 
 	return desc ? irq_desc_get_irq(desc) : nr_irqs;
 }
-
+/* 
+把desc存入全局的sparse_irqs中
+*/
 static void irq_insert_desc(unsigned int irq, struct irq_desc *desc)
 {
 	MA_STATE(mas, &sparse_irqs, irq, irq);
 	WARN_ON(mas_store_gfp(&mas, desc, GFP_KERNEL) != 0);
 }
-
+/* 
+从sparse_irqs中删除desc
+ */
 static void delete_irq_desc(unsigned int irq)
 {
 	MA_STATE(mas, &sparse_irqs, irq, irq);
@@ -196,8 +203,9 @@ static ssize_t per_cpu_count_show(struct kobject *kobj,
 	ret += scnprintf(buf + ret, PAGE_SIZE - ret, "\n");
 	return ret;
 }
+/* 批量定义proc函数 */
 IRQ_ATTR_RO(per_cpu_count);
-
+/* 中断控制器名称 */
 static ssize_t chip_name_show(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
@@ -311,13 +319,17 @@ static struct attribute *irq_attrs[] = {
 	NULL
 };
 ATTRIBUTE_GROUPS(irq);
-
+/* 
+好像ops是默认的
+*/
 static const struct kobj_type irq_kobj_type = {
 	.release	= irq_kobj_release,
 	.sysfs_ops	= &kobj_sysfs_ops,
 	.default_groups = irq_groups,
 };
-
+/* 
+添加desc到sysfs
+*/
 static void irq_sysfs_add(int irq, struct irq_desc *desc)
 {
 	if (irq_kobj_base) {
@@ -332,7 +344,9 @@ static void irq_sysfs_add(int irq, struct irq_desc *desc)
 			desc->istate |= IRQS_SYSFS;
 	}
 }
-
+/* 
+移除desc的sysfs的相关文件
+*/
 static void irq_sysfs_del(struct irq_desc *desc)
 {
 	/*
@@ -413,7 +427,9 @@ void irq_unlock_sparse(void)
 {
 	mutex_unlock(&sparse_irq_lock);
 }
-
+/* 
+分配desc
+*/
 static struct irq_desc *alloc_desc(int irq, int node, unsigned int flags,
 				   const struct cpumask *affinity,
 				   struct module *owner)
@@ -439,6 +455,7 @@ static struct irq_desc *alloc_desc(int irq, int node, unsigned int flags,
 
 	desc_set_defaults(irq, desc, node, affinity, owner);
 	irqd_set(&desc->irq_data, flags);
+	// 分配对应的kobj
 	kobject_init(&desc->kobj, &irq_kobj_type);
 	irq_resend_init(desc);
 
@@ -450,7 +467,9 @@ err_desc:
 	kfree(desc);
 	return NULL;
 }
-
+/* 
+释放desc的kobj
+*/
 static void irq_kobj_release(struct kobject *kobj)
 {
 	struct irq_desc *desc = container_of(kobj, struct irq_desc, kobj);
@@ -466,12 +485,15 @@ static void delayed_free_desc(struct rcu_head *rhp)
 
 	kobject_put(&desc->kobj);
 }
-
+/* 
+通过中断号释放desc
+*/
 static void free_desc(unsigned int irq)
 {
 	struct irq_desc *desc = irq_to_desc(irq);
 
 	irq_remove_debugfs_entry(desc);
+	// 移除proc文件
 	unregister_irq_proc(irq, desc);
 
 	/*
@@ -484,6 +506,7 @@ static void free_desc(unsigned int irq)
 	 * irq_sysfs_init() as well.
 	 */
 	irq_sysfs_del(desc);
+	// 从全局的sparse_irqs中删除desc
 	delete_irq_desc(irq);
 
 	/*
@@ -491,10 +514,13 @@ static void free_desc(unsigned int irq)
 	 * allows demultiplex interrupts to do rcu based management of
 	 * the child interrupts.
 	 * This also allows us to use rcu in kstat_irqs_usr().
+	 我们通过RCU来释放描述符、掩码和状态字段。这允许我们对中断进行rcu
 	 */
 	call_rcu(&desc->rcu, delayed_free_desc);
 }
-
+/* 
+分配start开始的cnt个中断号
+*/
 static int alloc_descs(unsigned int start, unsigned int cnt, int node,
 		       const struct irq_affinity_desc *affinity,
 		       struct module *owner)
@@ -527,7 +553,9 @@ static int alloc_descs(unsigned int start, unsigned int cnt, int node,
 		desc = alloc_desc(start + i, node, flags, mask, owner);
 		if (!desc)
 			goto err;
+		// 将desc插入到全局的sparse_irqs中
 		irq_insert_desc(start + i, desc);
+		// 添加desc到sysfs
 		irq_sysfs_add(start + i, desc);
 		irq_add_debugfs_entry(start + i, desc);
 	}
@@ -538,7 +566,9 @@ err:
 		free_desc(start + i);
 	return -ENOMEM;
 }
-
+/* 
+更新扩展系统的中断号数量
+*/
 static int irq_expand_nr_irqs(unsigned int nr)
 {
 	if (nr > MAX_SPARSE_IRQS)
@@ -779,6 +809,7 @@ int generic_handle_domain_nmi(struct irq_domain *domain, unsigned int hwirq)
 /* Dynamic interrupt handling */
 
 /**
+释放指定范围内的中断号
  * irq_free_descs - free irq descriptors
  * @from:	Start of descriptor range
  * @cnt:	Number of consecutive irqs to free
@@ -791,6 +822,7 @@ void irq_free_descs(unsigned int from, unsigned int cnt)
 		return;
 
 	mutex_lock(&sparse_irq_lock);
+	// 一个一个的释放desc
 	for (i = 0; i < cnt; i++)
 		free_desc(from + i);
 
@@ -799,6 +831,8 @@ void irq_free_descs(unsigned int from, unsigned int cnt)
 EXPORT_SYMBOL_GPL(irq_free_descs);
 
 /**
+从差不多from的地方开始分配cnt个中断号
+如果指定了irq,就得从irq开始搜索
  * __irq_alloc_descs - allocate and initialize a range of irq descriptors
  * @irq:	Allocate for specific irq number if irq >= 0
  * @from:	Start the search from this irq number
@@ -839,12 +873,13 @@ __irq_alloc_descs(int irq, unsigned int from, unsigned int cnt, int node,
 	ret = -EEXIST;
 	if (irq >=0 && start != irq)
 		goto unlock;
-
+	// 如果要分配的范围,超过了系统目前的irq数量,则需要扩展
 	if (start + cnt > nr_irqs) {
 		ret = irq_expand_nr_irqs(start + cnt);
 		if (ret)
 			goto unlock;
 	}
+	// 开始分配
 	ret = alloc_descs(start, cnt, node, affinity, owner);
 unlock:
 	mutex_unlock(&sparse_irq_lock);
@@ -948,12 +983,14 @@ void kstat_incr_irq_this_cpu(unsigned int irq)
 
 /**
  * kstat_irqs_cpu - Get the statistics for an interrupt on a cpu
+ 获取cpu上中断的统计信息
  * @irq:	The interrupt number
  * @cpu:	The cpu number
  *
  * Returns the sum of interrupt counts on @cpu since boot for
  * @irq. The caller must ensure that the interrupt is not removed
  * concurrently.
+ 返回cpu上面此中断发生总数
  */
 unsigned int kstat_irqs_cpu(unsigned int irq, int cpu)
 {
@@ -967,7 +1004,9 @@ static bool irq_is_nmi(struct irq_desc *desc)
 {
 	return desc->istate & IRQS_NMI;
 }
-
+/* 
+获取这个中断发生的次数
+*/
 static unsigned int kstat_irqs(unsigned int irq)
 {
 	struct irq_desc *desc = irq_to_desc(irq);
@@ -988,10 +1027,11 @@ static unsigned int kstat_irqs(unsigned int irq)
 
 /**
  * kstat_irqs_usr - Get the statistics for an interrupt from thread context
+ 从thread上下文获得中断的统计信息
  * @irq:	The interrupt number
  *
  * Returns the sum of interrupt counts on all cpus since boot for @irq.
- *
+ * 返回所有cpu的中断统计信息
  * It uses rcu to protect the access since a concurrent removal of an
  * interrupt descriptor is observing an rcu grace period before
  * delayed_free_desc()/irq_kobj_release().

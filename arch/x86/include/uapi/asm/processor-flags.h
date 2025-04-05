@@ -7,8 +7,11 @@
 
 /*
  * EFLAGS bits
+ 标志寄存器的flag
  */
-#define X86_EFLAGS_CF_BIT	0 /* Carry Flag */
+#define X86_EFLAGS_CF_BIT	0 
+/* Carry Flag
+*/
 #define X86_EFLAGS_CF		_BITUL(X86_EFLAGS_CF_BIT)
 #define X86_EFLAGS_FIXED_BIT	1 /* Bit 1 - always on */
 #define X86_EFLAGS_FIXED	_BITUL(X86_EFLAGS_FIXED_BIT)
@@ -24,13 +27,21 @@
 #define X86_EFLAGS_TF		_BITUL(X86_EFLAGS_TF_BIT)
 #define X86_EFLAGS_IF_BIT	9 /* Interrupt Flag */
 #define X86_EFLAGS_IF		_BITUL(X86_EFLAGS_IF_BIT)
-#define X86_EFLAGS_DF_BIT	10 /* Direction Flag */
+#define X86_EFLAGS_DF_BIT	10 
+/* Direction Flag
+方向标志。DF=0时，每次执行字符串指令后，源或目的地址指针用加法自动地修改地址；
+DF=1时用减法修改地址。它用来控制地址的方向变化。
+ */
 #define X86_EFLAGS_DF		_BITUL(X86_EFLAGS_DF_BIT)
 #define X86_EFLAGS_OF_BIT	11 /* Overflow Flag */
 #define X86_EFLAGS_OF		_BITUL(X86_EFLAGS_OF_BIT)
 #define X86_EFLAGS_IOPL_BIT	12 /* I/O Privilege Level (2 bits) */
 #define X86_EFLAGS_IOPL		(_AC(3,UL) << X86_EFLAGS_IOPL_BIT)
-#define X86_EFLAGS_NT_BIT	14 /* Nested Task */
+#define X86_EFLAGS_NT_BIT	14 
+/* Nested Task
+Nested task flag (286+ only),
+always 1 on 8086 and 186
+ */
 #define X86_EFLAGS_NT		_BITUL(X86_EFLAGS_NT_BIT)
 #define X86_EFLAGS_RF_BIT	16 /* Resume Flag */
 #define X86_EFLAGS_RF		_BITUL(X86_EFLAGS_RF_BIT)
@@ -47,10 +58,17 @@
 
 /*
  * Basic CPU control in CR0
+ CR0 寄存器中的位字段包含了各种系统和处理器状态的控制位
  */
-#define X86_CR0_PE_BIT		0 /* Protection Enable */
+#define X86_CR0_PE_BIT		0 
+/* Protection Enable
+表示是保护模式还是实模式
+*/
 #define X86_CR0_PE		_BITUL(X86_CR0_PE_BIT)
-#define X86_CR0_MP_BIT		1 /* Monitor Coprocessor */
+#define X86_CR0_MP_BIT		1 
+/* Monitor Coprocessor 
+当 MP = 1 时，处理器监视协处理器的使用情况，当发生对协处理器的操作时，会触发异常。
+*/
 #define X86_CR0_MP		_BITUL(X86_CR0_MP_BIT)
 #define X86_CR0_EM_BIT		2 /* Emulation */
 #define X86_CR0_EM		_BITUL(X86_CR0_EM_BIT)
@@ -73,6 +91,7 @@
 
 /*
  * Paging options in CR3
+ * CR3 寄存器中的位字段包含了各种分页选项的控制位
  */
 #define X86_CR3_PWT_BIT		3 /* Page Write Through */
 #define X86_CR3_PWT		_BITUL(X86_CR3_PWT_BIT)
@@ -91,6 +110,7 @@
 
 /*
  * Intel CPU features in CR4
+ * CR4 寄存器中的位字段包含了各种处理器功能的控制位
  */
 #define X86_CR4_VME_BIT		0 /* enable vm86 extensions */
 #define X86_CR4_VME		_BITUL(X86_CR4_VME_BIT)
@@ -141,6 +161,10 @@
 
 /*
  * x86-64 Task Priority Register, CR8
+CR8-提供对任务优先级寄存器（Task Priority Register, TPR）的读写访问。它指定优先级值，
+操作系统用于控制允许中断处理器的外部中断的优先级类别。此寄存器仅在 64 位模式下可用。
+ 任务优先级寄存器存储了当前任务的优先级级别。优先级级别是一个 0 到 15 的值，其中 0
+ 表示最高优先级，15 表示最低优先级。处理器使用该寄存器中的值来确定任务的调度顺序和优先级。
  */
 #define X86_CR8_TPR		_AC(0x0000000f,UL) /* task priority register */
 

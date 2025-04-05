@@ -161,7 +161,9 @@ struct irq_data *irq_get_irq_data(unsigned int irq)
 	return desc ? &desc->irq_data : NULL;
 }
 EXPORT_SYMBOL_GPL(irq_get_irq_data);
-
+/* 
+清除irq_data的disabled位
+*/
 static void irq_state_clr_disabled(struct irq_desc *desc)
 {
 	irqd_clear(&desc->irq_data, IRQD_IRQ_DISABLED);
@@ -176,7 +178,9 @@ static void irq_state_clr_started(struct irq_desc *desc)
 {
 	irqd_clear(&desc->irq_data, IRQD_IRQ_STARTED);
 }
-
+/* 
+设置irq_data的started flag
+*/
 static void irq_state_set_started(struct irq_desc *desc)
 {
 	irqd_set(&desc->irq_data, IRQD_IRQ_STARTED);
@@ -189,6 +193,9 @@ enum {
 };
 
 #ifdef CONFIG_SMP
+/* 
+获取chip的管理方式?
+*/
 static int
 __irq_startup_managed(struct irq_desc *desc, const struct cpumask *aff,
 		      bool force)
@@ -233,7 +240,9 @@ __irq_startup_managed(struct irq_desc *desc, const struct cpumask *aff,
 	return IRQ_STARTUP_NORMAL;
 }
 #endif
-
+/* 
+开启irq
+*/
 static int __irq_startup(struct irq_desc *desc)
 {
 	struct irq_data *d = irq_desc_get_irq_data(desc);
@@ -243,16 +252,19 @@ static int __irq_startup(struct irq_desc *desc)
 	WARN_ON_ONCE(!irqd_is_activated(d));
 
 	if (d->chip->irq_startup) {
+		// 调用chip的startup回调
 		ret = d->chip->irq_startup(d);
 		irq_state_clr_disabled(desc);
 		irq_state_clr_masked(desc);
 	} else {
-		irq_enable(desc);
+		irq_enable(desc); // 调用相应的chip的函数
 	}
 	irq_state_set_started(desc);
 	return ret;
 }
-
+/* 
+开启中断desc
+*/
 int irq_startup(struct irq_desc *desc, bool resend, bool force)
 {
 	struct irq_data *d = irq_desc_get_irq_data(desc);
@@ -262,12 +274,13 @@ int irq_startup(struct irq_desc *desc, bool resend, bool force)
 	desc->depth = 0;
 
 	if (irqd_is_started(d)) {
-		irq_enable(desc);
-	} else {
+		irq_enable(desc); // 调用chip的相关函数, 清除设置相关的bit位,开启这个中断
+	} else {// 还没有started
 		switch (__irq_startup_managed(desc, aff, force)) {
 		case IRQ_STARTUP_NORMAL:
 			if (d->chip->flags & IRQCHIP_AFFINITY_PRE_STARTUP)
 				irq_setup_affinity(desc);
+			// 开启irq
 			ret = __irq_startup(desc);
 			if (!(d->chip->flags & IRQCHIP_AFFINITY_PRE_STARTUP))
 				irq_setup_affinity(desc);
@@ -333,12 +346,14 @@ void irq_shutdown_and_deactivate(struct irq_desc *desc)
 	 */
 	irq_domain_deactivate_irq(&desc->irq_data);
 }
-
+/* 
+这个好像是在irq已经started的情况下enable
+*/
 void irq_enable(struct irq_desc *desc)
 {
 	if (!irqd_irq_disabled(&desc->irq_data)) {
-		unmask_irq(desc);
-	} else {
+		unmask_irq(desc); // 调用irq_chip的unmask函数
+	} else {// 如果irq已经disabled了?
 		irq_state_clr_disabled(desc);
 		if (desc->irq_data.chip->irq_enable) {
 			desc->irq_data.chip->irq_enable(&desc->irq_data);
@@ -430,7 +445,9 @@ void mask_irq(struct irq_desc *desc)
 		irq_state_set_masked(desc);
 	}
 }
-
+/* 
+调用irqchip的unmask函数
+*/
 void unmask_irq(struct irq_desc *desc)
 {
 	if (!irqd_irq_masked(&desc->irq_data))
@@ -1602,6 +1619,7 @@ static struct device *irq_get_pm_device(struct irq_data *data)
  *
  * Enable the power to the IRQ chip referenced by the interrupt data
  * structure.
+ 开启IRQ芯片的电源?
  */
 int irq_chip_pm_get(struct irq_data *data)
 {

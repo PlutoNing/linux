@@ -43,7 +43,7 @@ struct call_function_data {
 };
 
 static DEFINE_PER_CPU_ALIGNED(struct call_function_data, cfd_data);
-
+/* pcp的csd队列, 挂载着要调用的csd函数 */
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct llist_head, call_single_queue);
 
 static DEFINE_PER_CPU(atomic_t, trigger_backtrace) = ATOMIC_INIT(1);
@@ -107,7 +107,7 @@ void __init call_function_init(void)
 
 	smpcfd_prepare_cpu(smp_processor_id());
 }
-
+/* 好像是执行这个cpu的csd列表 */
 static __always_inline void
 send_call_function_single_ipi(int cpu)
 {
@@ -125,7 +125,7 @@ send_call_function_ipi_mask(struct cpumask *mask)
 			       generic_smp_call_function_single_interrupt);
 	arch_send_call_function_ipi_mask(mask);
 }
-
+/* 调用这个csd函数 */
 static __always_inline void
 csd_do_func(smp_call_func_t func, void *info, struct __call_single_data *csd)
 {
@@ -334,7 +334,7 @@ static __always_inline void csd_unlock(struct __call_single_data *csd)
 }
 
 static DEFINE_PER_CPU_SHARED_ALIGNED(call_single_data_t, csd_data);
-
+/* 在其他cpu上面执行csd函数的情况 */
 void __smp_call_single_queue(int cpu, struct llist_node *node)
 {
 	/*
@@ -375,10 +375,12 @@ void __smp_call_single_queue(int cpu, struct llist_node *node)
  * Insert a previously allocated call_single_data_t element
  * for execution on the given CPU. data must already have
  * ->func, ->info, and ->flags set.
+ 插入一个已经分配的call_single_data_t元素到指定的CPU上用于执行.
  */
 static int generic_exec_single(int cpu, struct __call_single_data *csd)
 {
 	if (cpu == smp_processor_id()) {
+		// 如果是在当前cpu上面. 取出要调用的函数
 		smp_call_func_t func = csd->func;
 		void *info = csd->info;
 		unsigned long flags;
@@ -390,17 +392,18 @@ static int generic_exec_single(int cpu, struct __call_single_data *csd)
 		csd_lock_record(csd);
 		csd_unlock(csd);
 		local_irq_save(flags);
+		// 调用
 		csd_do_func(func, info, NULL);
 		csd_lock_record(NULL);
 		local_irq_restore(flags);
 		return 0;
 	}
 
-	if ((unsigned)cpu >= nr_cpu_ids || !cpu_online(cpu)) {
+	if ((unsigned)cpu >= nr_cpu_ids || !cpu_online(cpu)) {// 没这个cpu
 		csd_unlock(csd);
 		return -ENXIO;
 	}
-
+	// 加入到cpu的llist队列中未来会被执行
 	__smp_call_single_queue(cpu, &csd->node.llist);
 
 	return 0;
@@ -648,12 +651,13 @@ EXPORT_SYMBOL(smp_call_function_single);
 /**
  * smp_call_function_single_async() - Run an asynchronous function on a
  * 			         specific CPU.
+ 在特定的CPU上运行一个异步函数
  * @cpu: The CPU to run on.
  * @csd: Pre-allocated and setup data structure
  *
  * Like smp_call_function_single(), but the call is asynchonous and
  * can thus be done from contexts with disabled interrupts.
- *
+ * 就像smp_call_function_single()一样,但是调用是异步的,因此可以在禁用中断的上下文中完成
  * The caller passes his own pre-allocated data structure
  * (ie: embedded in an object) and is responsible for synchronizing it
  * such that the IPIs performed on the @csd are strictly serialized.
@@ -681,7 +685,7 @@ int smp_call_function_single_async(int cpu, struct __call_single_data *csd)
 
 	csd->node.u_flags = CSD_FLAG_LOCK;
 	smp_wmb();
-
+	// 真正执行
 	err = generic_exec_single(cpu, csd);
 
 out:

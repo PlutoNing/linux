@@ -78,6 +78,7 @@ extern u16 __read_mostly tlb_lld_1g[NR_INFO];
  *  CPU type and hardware bug flags. Kept separately for each CPU.
  *  Members of this structure are referenced in head_32.S, so think twice
  *  before touching them. [mj]
+ 翻译: 
  */
 
 struct cpuinfo_x86 {
@@ -173,6 +174,7 @@ extern __u32			cpu_caps_set[NCAPINTS + NBUGINTS];
 
 #ifdef CONFIG_SMP
 DECLARE_PER_CPU_READ_MOSTLY(struct cpuinfo_x86, cpu_info);
+/* 通过cpu id查询cpu 信息 */
 #define cpu_data(cpu)		per_cpu(cpu_info, cpu)
 #else
 #define cpu_info		boot_cpu_data
@@ -514,7 +516,7 @@ static __always_inline void native_swapgs(void)
 	asm volatile("swapgs" ::: "memory");
 #endif
 }
-
+/* 获取当前cpu运行进程的thread_info的regs的大概位置 */
 static __always_inline unsigned long current_top_of_stack(void)
 {
 	/*
@@ -524,7 +526,7 @@ static __always_inline unsigned long current_top_of_stack(void)
 	 */
 	return this_cpu_read_stable(pcpu_hot.top_of_stack);
 }
-
+/* 计算逻辑是? */
 static __always_inline bool on_thread_stack(void)
 {
 	return (unsigned long)(current_top_of_stack() -
@@ -635,7 +637,7 @@ static __always_inline void prefetchw(const void *x)
 
 #define TOP_OF_INIT_STACK ((unsigned long)&init_stack + sizeof(init_stack) - \
 			   TOP_OF_KERNEL_STACK_PADDING)
-
+/*大概是获取thread_info中regs的位置 */
 #define task_top_of_stack(task) ((unsigned long)(task_pt_regs(task) + 1))
 
 /* 获取进程的寄存器.
