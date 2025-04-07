@@ -160,6 +160,7 @@ static inline bool read_mems_allowed_retry(unsigned int seq)
 	return read_seqcount_retry(&current->mems_allowed_seq, seq);
 }
 
+/* 设置节点允许的内存节点 */
 static inline void set_mems_allowed(nodemask_t nodemask)
 {
 	unsigned long flags;
@@ -167,6 +168,7 @@ static inline void set_mems_allowed(nodemask_t nodemask)
 	task_lock(current);
 	local_irq_save(flags);
 	write_seqcount_begin(&current->mems_allowed_seq);
+	// 设置允许的内存节点掩码
 	current->mems_allowed = nodemask;
 	write_seqcount_end(&current->mems_allowed_seq);
 	local_irq_restore(flags);

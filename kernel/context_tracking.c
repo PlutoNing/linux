@@ -191,8 +191,9 @@ static void noinstr ct_kernel_enter(bool user, int offset)
 }
 
 /**
+以后
  * ct_nmi_exit - inform RCU of exit from NMI context
- *
+ * 告知rcu现在CPU正在从NMI上下文退出
  * If we are returning from the outermost NMI handler that interrupted an
  * RCU-idle period, update ct->state and ct->dynticks_nmi_nesting
  * to let the RCU grace-period handling know that the CPU is back to
@@ -370,7 +371,7 @@ noinstr void ct_irq_enter(void)
 
 /**
  * ct_irq_exit - inform RCU that current CPU is exiting irq towards idle
- *
+ * 告知rcu当前CPU正在从中断状态退出到空闲状态
  * Exit from an interrupt handler, which might possibly result in entering
  * idle mode, in other words, leaving the mode in which read-side critical
  * sections can occur.  The caller must have disabled interrupts.

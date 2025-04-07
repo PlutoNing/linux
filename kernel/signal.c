@@ -533,7 +533,7 @@ void flush_itimer_signals(void)
 	spin_unlock_irqrestore(&tsk->sighand->siglock, flags);
 }
 #endif
-
+/* 把每个sigaction的handler设置为SIG_IGN */
 void ignore_signals(struct task_struct *t)
 {
 	int i;

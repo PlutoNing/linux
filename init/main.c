@@ -705,6 +705,7 @@ noinline void __ref __noreturn rest_init(void)
 	rcu_read_unlock();
 
 	numa_default_policy();
+	//创建添加kthreadd线程的线程
 	pid = kernel_thread(kthreadd, NULL, NULL, CLONE_FS | CLONE_FILES);
 	rcu_read_lock();
 	kthreadd_task = find_task_by_pid_ns(pid, &init_pid_ns);
@@ -986,6 +987,7 @@ void start_kernel(void)
 	srcu_init();
 	// 初始化hr-timers
 	hrtimers_init();
+	// 初始化软中断
 	softirq_init();
 	// 初始化timekeeping
 	timekeeping_init();

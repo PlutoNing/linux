@@ -75,6 +75,7 @@ static __always_inline bool test_preempt_need_resched(void)
 
 /*
  * The various preempt_count add/sub methods
+ 增加pcp的preempt_count计数
  */
 
 static __always_inline void __preempt_count_add(int val)

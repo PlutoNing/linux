@@ -86,6 +86,7 @@ typedef void __restorefn_t(void);
 typedef __restorefn_t __user *__sigrestore_t;
 
 #define SIG_DFL	((__force __sighandler_t)0)	/* default signal handling */
+// 表示忽略信号
 #define SIG_IGN	((__force __sighandler_t)1)	/* ignore signal */
 #define SIG_ERR	((__force __sighandler_t)-1)	/* error return from signal */
 #endif

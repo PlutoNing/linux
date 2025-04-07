@@ -54,7 +54,9 @@ struct task_struct;
 #include <linux/atomic.h>
 
 struct thread_info {
-	unsigned long		flags;		/* low level flags */
+	unsigned long		flags;		/* low level flags
+	比如表示是否有信号存在的flag
+	*/
 	unsigned long		syscall_work;	/* SYSCALL_WORK_ flags */
 	u32			status;		/* thread synchronous flags */
 #ifdef CONFIG_SMP

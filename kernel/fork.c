@@ -3022,6 +3022,7 @@ pid_t kernel_clone(struct kernel_clone_args *args)
 }
 
 /*
+创建内核线程
  * Create a kernel thread.
  */
 pid_t kernel_thread(int (*fn)(void *), void *arg, const char *name,

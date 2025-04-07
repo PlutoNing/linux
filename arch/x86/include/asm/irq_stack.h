@@ -78,6 +78,12 @@
  *     Function calls can clobber anything except the callee-saved
  *     registers. Tell the compiler.
  */
+ /* 
+ stack是pcpu_hot.hardirq_stack_ptr之类的东西
+ func是do_softirq之类的东西
+ asm_call是个宏
+ 好像是手动执行了call?
+ */
 #define call_on_stack(stack, func, asm_call, argconstr...)		\
 {									\
 	register void *tos asm("r11");					\
@@ -114,7 +120,7 @@
 #define ASM_CALL_ARG3							\
 	"movq	%[arg3], %%rdx				\n"		\
 	ASM_CALL_ARG2
-
+/* 在hard_irq的栈上面执行func? */
 #define call_on_irqstack(func, asm_call, argconstr...)			\
 	call_on_stack(__this_cpu_read(pcpu_hot.hardirq_stack_ptr),	\
 		      func, asm_call, argconstr)
@@ -205,7 +211,9 @@
 
 #ifdef CONFIG_SOFTIRQ_ON_OWN_STACK
 /*
- * Macro to invoke __do_softirq on the irq stack. This is only called from
+ * Macro to invoke __do_softirq on the irq stack. 
+ 在irq stack上执行__do_softirq
+ This is only called from
  * task context when bottom halves are about to be reenabled and soft
  * interrupts are pending to be processed. The interrupt stack cannot be in
  * use here.

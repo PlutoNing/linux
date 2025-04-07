@@ -82,8 +82,10 @@ static LIST_HEAD(hotplug_threads);
 static DEFINE_MUTEX(smpboot_threads_lock);
 
 struct smpboot_thread_data {
+	// 所在的cpu
 	unsigned int			cpu;
 	unsigned int			status;
+	// 指向相关的cpu热插拔线程
 	struct smp_hotplug_thread	*ht;
 };
 
@@ -95,12 +97,13 @@ enum {
 
 /**
  * smpboot_thread_fn - percpu hotplug thread loop function
+ pcp的热插拔循环函数
  * @data:	thread data pointer
  *
  * Checks for thread stop and park conditions. Calls the necessary
  * setup, cleanup, park and unpark functions for the registered
  * thread.
- *
+ * 检查线程停止和停车条件。调用注册线程的必要设置、清理、停车和解锁函数。
  * Returns 1 when the thread should exit, 0 otherwise.
  */
 static int smpboot_thread_fn(void *data)
@@ -158,14 +161,14 @@ static int smpboot_thread_fn(void *data)
 		if (!ht->thread_should_run(td->cpu)) {
 			preempt_enable_no_resched();
 			schedule();
-		} else {
+		} else {// 执行ht的函数
 			__set_current_state(TASK_RUNNING);
 			preempt_enable();
 			ht->thread_fn(td->cpu);
 		}
 	}
 }
-
+/* 会执行ht的函数 */
 static int
 __smpboot_create_thread(struct smp_hotplug_thread *ht, unsigned int cpu)
 {
@@ -180,7 +183,7 @@ __smpboot_create_thread(struct smp_hotplug_thread *ht, unsigned int cpu)
 		return -ENOMEM;
 	td->cpu = cpu;
 	td->ht = ht;
-
+	/* 创建smpboot_thread_fn的内核线程 */
 	tsk = kthread_create_on_cpu(smpboot_thread_fn, td, cpu,
 				    ht->thread_comm);
 	if (IS_ERR(tsk)) {
@@ -282,9 +285,11 @@ static void smpboot_destroy_threads(struct smp_hotplug_thread *ht)
 /**
  * smpboot_register_percpu_thread - Register a per_cpu thread related
  * 					    to hotplug
+ 注册一个热插拔相关的pcp 线程
  * @plug_thread:	Hotplug thread descriptor
  *
  * Creates and starts the threads on all online cpus.
+ 在全部在线的cpu上面创建和启动plug_thread指定的函数的线程
  */
 int smpboot_register_percpu_thread(struct smp_hotplug_thread *plug_thread)
 {
@@ -294,6 +299,7 @@ int smpboot_register_percpu_thread(struct smp_hotplug_thread *plug_thread)
 	cpus_read_lock();
 	mutex_lock(&smpboot_threads_lock);
 	for_each_online_cpu(cpu) {
+		// 在这个cpu上面创建线程
 		ret = __smpboot_create_thread(plug_thread, cpu);
 		if (ret) {
 			smpboot_destroy_threads(plug_thread);

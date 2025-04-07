@@ -10,6 +10,7 @@ extern void __local_bh_disable_ip(unsigned long ip, unsigned int cnt);
 #else
 static __always_inline void __local_bh_disable_ip(unsigned long ip, unsigned int cnt)
 {
+	// 增加pcp的preempt_count计数
 	preempt_count_add(cnt);
 	barrier();
 }

@@ -22,6 +22,7 @@ struct sighand_struct {
 	refcount_t		count;
 	// signalfd的监听等待队列
 	wait_queue_head_t	signalfd_wqh;
+	/* 实际上就是一组sigaction */
 	struct k_sigaction	action[_NSIG];
 };
 

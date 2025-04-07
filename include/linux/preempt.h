@@ -99,7 +99,9 @@ static __always_inline unsigned char interrupt_context_level(void)
 
 	return level;
 }
-
+/* 展开为
+preempt_count() & (((1UL << (4)) - 1) << (((0 + 8) + 8) + 4))
+*/
 #define nmi_count()	(preempt_count() & NMI_MASK)
 #define hardirq_count()	(preempt_count() & HARDIRQ_MASK)
 #ifdef CONFIG_PREEMPT_RT
@@ -188,6 +190,7 @@ extern void preempt_count_sub(int val);
 #define preempt_count_dec_and_test() \
 	({ preempt_count_sub(1); should_resched(0); })
 #else
+//增加pcp的preempt_count计数
 #define preempt_count_add(val)	__preempt_count_add(val)
 #define preempt_count_sub(val)	__preempt_count_sub(val)
 #define preempt_count_dec_and_test() __preempt_count_dec_and_test()

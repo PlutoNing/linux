@@ -1256,7 +1256,9 @@ struct task_struct {
 #endif
 
 #ifdef CONFIG_CPUSETS
-	/* Protected by ->alloc_lock: */
+	/* Protected by ->alloc_lock:
+	这是进程允许的节点?\
+	参考set_mems_allowed */
 	nodemask_t			mems_allowed;
 	/* Sequence number to catch updates: */
 	seqcount_spinlock_t		mems_allowed_seq;
@@ -2061,7 +2063,7 @@ static inline void kick_process(struct task_struct *tsk) { }
 #endif
 
 extern void __set_task_comm(struct task_struct *tsk, const char *from, bool exec);
-
+/* 修改进程的comm */
 static inline void set_task_comm(struct task_struct *tsk, const char *from)
 {
 	__set_task_comm(tsk, from, false);
@@ -2098,7 +2100,8 @@ static inline void set_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	set_ti_thread_flag(task_thread_info(tsk), flag);
 }
-
+/* 清除进程的某个flag
+实际上是清除ti的 */
 static inline void clear_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	clear_ti_thread_flag(task_thread_info(tsk), flag);

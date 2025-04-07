@@ -32,14 +32,18 @@
 
 
 static DEFINE_SPINLOCK(kthread_create_lock);
+// 创建kthread的信息结构体都挂在这里
 static LIST_HEAD(kthread_create_list);
+/* 创建kthread的线程 */
 struct task_struct *kthreadd_task;
 
 struct kthread_create_info
 {
 	/* Information passed to kthread() from kthreadd. */
 	char *full_name;
+	/* 线程要执行的函数 */
 	int (*threadfn)(void *data);
+	/* 函数参数? */
 	void *data;
 	int node;
 
@@ -336,13 +340,18 @@ void __noreturn kthread_complete_and_exit(struct completion *comp, long code)
 	kthread_exit(code);
 }
 EXPORT_SYMBOL(kthread_complete_and_exit);
-
+/* 
+是kernel_thread函数的fn参数
+*/
 static int kthread(void *_create)
 {
 	static const struct sched_param param = { .sched_priority = 0 };
 	/* Copy data: it's on kthread's stack */
+	/* 参数是create_info */
 	struct kthread_create_info *create = _create;
+	/* 内核线程要执行的函数 */
 	int (*threadfn)(void *data) = create->threadfn;
+	/* 内核线程函数的参数 */
 	void *data = create->data;
 	struct completion *done;
 	struct kthread *self;
@@ -402,7 +411,7 @@ int tsk_fork_get_node(struct task_struct *tsk)
 #endif
 	return NUMA_NO_NODE;
 }
-
+/* 根据create_info创建kthread */
 static void create_kthread(struct kthread_create_info *create)
 {
 	int pid;
@@ -428,6 +437,7 @@ static void create_kthread(struct kthread_create_info *create)
 }
 
 static __printf(4, 0)
+/* 创建一个内核线程.使用thread_fn函数 */
 struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 						    void *data, int node,
 						    const char namefmt[],
@@ -435,6 +445,7 @@ struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 {
 	DECLARE_COMPLETION_ONSTACK(done);
 	struct task_struct *task;
+	/* 这是创建线程所需要的信息? */
 	struct kthread_create_info *create = kmalloc(sizeof(*create),
 						     GFP_KERNEL);
 
@@ -451,6 +462,7 @@ struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 	}
 
 	spin_lock(&kthread_create_lock);
+	// 挂接到kthread_create_list上
 	list_add_tail(&create->list, &kthread_create_list);
 	spin_unlock(&kthread_create_lock);
 
@@ -482,6 +494,7 @@ free_create:
 
 /**
  * kthread_create_on_node - create a kthread.
+ 創建kthread
  * @threadfn: the function to run until signal_pending(current).
  * @data: data ptr for @threadfn.
  * @node: task and thread structures for the thread are allocated on this node
@@ -569,6 +582,8 @@ EXPORT_SYMBOL(kthread_bind);
  *	     to "name.*%u". Code fills in cpu number.
  *
  * Description: This helper function creates and names a kernel thread
+ =================
+ thread_fn可能是smpboot_thread_fn
  */
 struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
 					  void *data, unsigned int cpu,
@@ -586,7 +601,7 @@ struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
 	return p;
 }
 EXPORT_SYMBOL(kthread_create_on_cpu);
-
+/* 让k这个kthread指向cpu */
 void kthread_set_per_cpu(struct task_struct *k, int cpu)
 {
 	struct kthread *kthread = to_kthread(k);
@@ -717,7 +732,7 @@ int kthread_stop(struct task_struct *k)
 	return ret;
 }
 EXPORT_SYMBOL(kthread_stop);
-
+/* 创建kthread_create_list上面需要创建的线程 */
 int kthreadd(void *unused)
 {
 	struct task_struct *tsk = current;
@@ -726,6 +741,7 @@ int kthreadd(void *unused)
 	set_task_comm(tsk, "kthreadd");
 	ignore_signals(tsk);
 	set_cpus_allowed_ptr(tsk, housekeeping_cpumask(HK_TYPE_KTHREAD));
+	// 设置允许的内存节点
 	set_mems_allowed(node_states[N_MEMORY]);
 
 	current->flags |= PF_NOFREEZE;
@@ -743,9 +759,10 @@ int kthreadd(void *unused)
 
 			create = list_entry(kthread_create_list.next,
 					    struct kthread_create_info, list);
+			// 取下一个create_info
 			list_del_init(&create->list);
 			spin_unlock(&kthread_create_lock);
-
+			//根据create_info创建线程
 			create_kthread(create);
 
 			spin_lock(&kthread_create_lock);

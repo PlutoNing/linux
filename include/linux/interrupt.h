@@ -524,9 +524,11 @@ DECLARE_STATIC_KEY_FALSE(force_irqthreads_key);
 #ifndef local_softirq_pending_ref
 #define local_softirq_pending_ref irq_stat.__softirq_pending
 #endif
-
+// 读取pcp的软中断掩码
 #define local_softirq_pending()	(__this_cpu_read(local_softirq_pending_ref))
+//
 #define set_softirq_pending(x)	(__this_cpu_write(local_softirq_pending_ref, (x)))
+//在pcp的softirq flag上标记有了x软中断
 #define or_softirq_pending(x)	(__this_cpu_or(local_softirq_pending_ref, (x)))
 
 #endif /* local_softirq_pending */
@@ -610,7 +612,7 @@ extern void __raise_softirq_irqoff(unsigned int nr);
 
 extern void raise_softirq_irqoff(unsigned int nr);
 extern void raise_softirq(unsigned int nr);
-
+/* 出来softirq的线程 */
 DECLARE_PER_CPU(struct task_struct *, ksoftirqd);
 
 static inline struct task_struct *this_cpu_ksoftirqd(void)
@@ -640,7 +642,7 @@ static inline struct task_struct *this_cpu_ksoftirqd(void)
      wrt another tasklets. If client needs some intertask synchronization,
      he makes it with spinlocks.
  */
-
+/* 用于描述一个tasklet对象 */
 struct tasklet_struct
 {
 	struct tasklet_struct *next;
@@ -690,6 +692,9 @@ enum
 };
 
 #if defined(CONFIG_SMP) || defined(CONFIG_PREEMPT_RT)
+/* 设置这个tasklet为要执行了
+如果本来就要这个标志位,返回0
+返回1表示本来没有这个标志位,那就算属于自己执行了 */
 static inline int tasklet_trylock(struct tasklet_struct *t)
 {
 	return !test_and_set_bit(TASKLET_STATE_RUN, &(t)->state);
@@ -707,7 +712,7 @@ static inline void tasklet_unlock_spin_wait(struct tasklet_struct *t) { }
 #endif
 
 extern void __tasklet_schedule(struct tasklet_struct *t);
-
+/* 执行一个tasklet任务 */
 static inline void tasklet_schedule(struct tasklet_struct *t)
 {
 	if (!test_and_set_bit(TASKLET_STATE_SCHED, &t->state))
@@ -715,11 +720,11 @@ static inline void tasklet_schedule(struct tasklet_struct *t)
 }
 
 extern void __tasklet_hi_schedule(struct tasklet_struct *t);
-
+/* 都是外部在调用这个函数 */
 static inline void tasklet_hi_schedule(struct tasklet_struct *t)
 {
 	if (!test_and_set_bit(TASKLET_STATE_SCHED, &t->state))
-		__tasklet_hi_schedule(t);
+		__tasklet_hi_schedule(t); // 如果置位之前没有这个标志
 }
 
 static inline void tasklet_disable_nosync(struct tasklet_struct *t)

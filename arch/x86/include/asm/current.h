@@ -22,6 +22,7 @@ struct pcpu_hot {
 #endif
 			unsigned long		top_of_stack;
 			void			*hardirq_stack_ptr;
+			/* 表示当前cpu有的softirq的bit idx */
 			u16			softirq_pending;
 #ifdef CONFIG_X86_64
 			bool			hardirq_stack_inuse;
