@@ -362,6 +362,987 @@ git push
 cd
 ls
 free -mh
+cd
+ls
+cd
+cd study/linux/
+git log
+git  pull
+git push
+code .
+sudo snap install code
+sudo snap install code   --classic
+code .
+lscpu
+free -mh
+cd fs/
+ls
+cloc *.c
+ls *.c
+cd
+vim .ssh/authorized_keys 
+vim .bashrc 
+curl google.com
+ip a
+ping 172.19.144.1
+vim .bashrc 
+source .bashrc 
+curl google.com
+ls
+lsblk
+sudo apt update
+sudo apt install lvm2
+sudo pvscan
+sudo vgscan
+sudo lvscan
+cd
+cd study/linux/
+code .
+sudo snap remove --purge code
+vgchange --help
+cd
+mkdir mylv
+sudo mount /dev/myvg/mylv   /home/paulning/mylv
+ls mylv/
+ll mylv/
+sudo chown -R paulning mylv
+ll mylv/
+cd
+cd study/
+ls
+ll
+mkdir ~/za
+mv split_aa ~/za/
+mv split_ab ~/za/
+mv split_ac ~/za/
+mv split_ad ~/za/
+mv split_ae ~/za/
+cd
+cd za/
+ls
+ll -h
+mv ~/study/split_af .
+ls
+ll
+ll -h
+cat split_a* > wordpressdir_bkp.tar.gz
+ls
+md5sum wordpressdir_bkp.tar.gz 
+python
+python3
+cd
+cd study/linux/
+ls
+git log
+git push
+curl google.com
+git push
+env | grep proxy
+git pull
+curl github.com
+echo $?
+git pull
+git push
+cat ~/.ssh/id_rsa.pub 
+cd
+ls
+ifconfig
+ip a
+ip gw
+ip help
+ip route
+vim .bashrc 
+source .bashrc 
+echo $http_proxy 
+curl google.com
+cd study/linux/
+ls
+code .
+curl 'http://paper.buptnsrc.com/prod-api/paper/student/review/records'   -H 'Connection: keep-alive'   -b 'username=2022111090; rememberMe=true; password=RB8Cy8wm1A6tFOYT6FExWS2qrjK5Z+g/FbVmeXjeterBfuYEXYqd6bUTRUCGMmV2Kb9Bp2w/kil/NqjjrMm8Og==; Admin-Token=eyJhbGciOiJIUzUxMiJ9.eyJsb2dpbl91c2VyX2tleSI6Ijc3MGQ0NWRiLWE5MzctNDZkYS04ZjM3LWU0ODg2YjllOGYxNCJ9.oX8Bge3pm15gvEJlp40Cz1zJVUkpeROk017r1wFyFRgZ0Q-P7bzxtM7WpBj5dN7_2mPfvV295i58tq2f8UMXEg'   -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0'   -H 'accept: application/json, text/plain, */*'   -H 'accept-language: zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6'   -H 'authorization: Bearer eyJhbGciOiJIUzUxMiJ9.eyJsb2dpbl91c2VyX2tleSI6Ijc3MGQ0NWRiLWE5MzctNDZkYS04ZjM3LWU0ODg2YjllOGYxNCJ9.oX8Bge3pm15gvEJlp40Cz1zJVUkpeROk017r1wFyFRgZ0Q-P7bzxtM7WpBj5dN7_2mPfvV295i58tq2f8UMXEg'   --insecure
+cloc mm
+cloc mm/damon/
+git push
+git log
+curl google.com
+git push
+cat ~/.ssh/id_rsa.pub ]
+cat ~/.ssh/id_rsa.pub
+git push
+git pull
+git push
+cd
+env | grep proxy
+ping 172.22.192.1
+ip a
+cd
+cat .ssh/id_rsa.pub 
+cd study/linux/
+git log
+curl google.com
+git pull
+git remote -v
+nslookup github.com
+ifconfig
+sudo apt install net-tools
+sudo apt update
+cd
+cd study/linux/
+git pull
+ping baidu.com
+ping google.com
+unset http_proxy 
+unset https_proxy 
+ping baidu.com
+ping 8.8.8.8
+ping 114.114.114.114
+ping 129.29.29.29
+ping baidu.com
+history | grep install
+cd
+cat .bashrc 
+cd study/linux/
+ls
+git format-patch -1
+cat 0001-.patch | wc -l
+cp 0001-.patch   /mnt/c/Users/paul14459/Documents/
+git log
+ping baidu.com
+git log
+ping baidu.com
+env | grep proxy
+source ~/.bashrc 
+env | grep proxy
+ping baidu.com
+curl baidu.com
+curl google.com
+git push
+git log
+git status
+git add .
+git commit -m "20250304"
+git push
+                                                                                                                                                                                                                                                                                                                                                                      cd
+sudo lvs
+sudo mount /dev/myvg/mylv   /home/paulning/mylv
+ls mylv/
+ls
+ls study/pyv/
+cd study/pyv/
+git log
+cloc kernel/power/
+ls kernel/power/*.c
+ls kernel/power/*.c -l
+wsl -d Ubuntu
+git add .vscode/settings.json 
+git status
+ls
+git log
+ll .git
+ls
+git log
+cd
+cd study/linux/
+git log
+du -sh .git
+cp -a .git ~/.git_old313
+sync
+git fsck --full
+rm .git/objects/7e/b3b6db143879a7d749d7f3746777dcb89c315c
+find .git/objects/ -type f -empty -delete
+git fsck --full
+git reflog
+tail -n 2 .git/logs/refs/heads/master
+git show 712e14250dd2907346617eba275c46f53db8fae7
+git branch 
+git status
+git log
+git fetch -p
+git pull
+git log
+git show 712e14250dd2907346617eba275c46f53db8fae7\
+git log
+cd ..
+cp -a linux/  linux_bkp
+sync
+free -mh
+sudo bash -c 'echo 3 > /proc/sys/vm/drop_caches'
+sync
+free -mh
+env | grep proxy
+cd
+cd study/linux2/
+ls
+rm -rf *
+git clone git@github.com:PlutoNing/linux.git
+cat ~/.gitconfig 
+env | grep proxy
+git config --global http.proxy  http://172.22.192.1:10808
+git config --global https.proxy  http://172.22.192.1:10808
+curl google.com
+git clone git@github.com:PlutoNing/linux.git
+cd ../linux
+ls
+find . -type f \( -name "*.c" -o -name "*.h" \) -print0 | xargs -0 stat -c "%Y %n" | sort -rn | head -n 100 | while read -r line; do timestamp=$(echo "$line" | cut -d ' ' -f 1) file_path=$(echo "$line" | cut -d ' ' -f 2-) formatted_time=$(date -d "@$timestamp" +"%Y-%m-%d %H:%M:%S") echo "$file_path: $formatted_time" done
+target_dir="."
+# 递归查找并筛选
+find "$target_dir" -type f $ -name "*.c" -o -name "*.h" $   -printf "%T@ %p\n" |           # 输出时间戳和路径
+sort -k1,1 -nr |                # 按时间戳倒序排序
+cut -d' ' -f2- |                # 删除时间戳列
+head -n 100    
+find "$target_dir" -type f $ -name "*.c" -o -name "*.h" $   -printf "%T@ %p\n" |           # 输出时间戳和路径
+sort -k1,1 -nr |                # 按时间戳倒序排序
+cut -d' ' -f2- |                # 删除时间戳列
+head -n 100    
+find . -type f -name "*.c" -o -name "*.h"  -printf "%T@ %p\n" | sort -k1,1 -nr  | cut -d' ' -f2- |  head -n 100
+find . -type f -name "*.c" -o -name "*.h"  -printf "%T@ %p\n"
+find . -type f -name "*.c" -o -name "*.h"  -printf "%T@ %p\n" | sort -k1,1 -nr  | cut -d' ' -f2- |  head -n 100
+find mm -type f -name "*.c" -o -name "*.h"  -printf "%T@ %p\n" | sort -k1,1 -nr  | cut -d' ' -f2- |  head -n 100
+find . -type f  \( -name "*.c" -o -name "*.h" \) -printf "%T@ %p\n" | sort -k1,1 -nr  | cut -d' ' -f2- |  head -n 100
+find . -type f  \( -name "*.c" -o -name "*.h" \) -printf "%T@ %p\n" | sort -k1,1 -nr  | cut -d' ' -f2- |  head -n 200
+find . -type f  \( -name "*.c" -o -name "*.h" \) -printf "%T@ %p\n" | sort -k1,1 -nr  | cut -d' ' -f2- |  head -n 300
+find . -type f  \( -name "*.c" -o -name "*.h" \) -printf "%T@ %p\n" | sort -k1,1 -nr  | cut -d' ' -f2- |  head -n 300 
+find . -type f  \( -name "*.c" -o -name "*.h" \) -printf "%T@ %p\n" | sort -k1,1 -nr  | cut -d' ' -f2- |  head -n 300   | xargs tar -cvf updated_files.tar
+ls
+ls updated_files.tar 
+du -sh updated_files.tar 
+cp updated_files.tar   /mnt/c/Users/paul14459/
+ip route | grep default
+ip route
+env | grep proxy
+find . -type f -name main.c
+ls init/
+cloc init/
+cloc init/main.
+cloc init/main.c
+git status
+history -a
+cd
+ls
+cd study/linux
+ls
+git log
+cd ..
+ls
+rm -rf linux
+ls
+history 
+ls
+ls -a
+cd ..
+ls
+ls -a
+du -sh .git_old313/
+ll .git_old313/
+stat .git_old313/
+rm -rf .git_old313/
+cd study/
+ls
+stat linux
+stat linux2/
+stat linux_bkp/
+rm -rf linux2/
+rm -rf linux_bkp/
+ls
+git clone git@github.com:PlutoNing/linux.git
+cp /mnt/d/storage/home/Download/linux-master.zip   .
+unzip linux-master.zip 
+sudo apt install unzip
+unzip linux-master.zip 
+ls
+mv linux-master linux
+cd linux/
+git branch 
+ls
+cd ..
+rm -rf linux
+git clone git@github.com:PlutoNing/linux.git
+git clone https://github.com/PlutoNing/linux.git
+cd linux/
+git branch 
+git branch -a
+git checkout -b v66 origin/v66 
+git log
+ls
+make all -j`nproc`
+make defconfig
+make menuconfig
+cp .config config-v66
+git status
+make all -j 16
+make all -j 16 -s
+vim arch/x86/entry/vdso/vdso.lds +125
+make all -j 16 -s
+vim arch/x86/entry/vdso/vdso.lds +121
+make all -j 16 -s
+vim arch/x86/realmode/rm/realmode.lds +121
+make all -j 16 -s
+vim arch/x86/entry/vdso/vdso32/vdso32.lds +125
+make all -j 16 -s
+echo $?
+make bzImage -j 16 -s
+make modules -j 16 -s
+python scripts/clang-tools/gen_compile_commands.py 
+sudo apt install  python-is-python3
+ls
+python scripts/clang-tools/gen_compile_commands.py 
+ll compile_commands.json 
+ll compile_commands.json  -h
+ls
+history -a
+history
+history -n
+history 
+history -a
+history -a
+history 
+find . -type f -name *.lds
+history | grep vim
+git branch 
+git show master:arch/x86/entry/vdso/.gitignore 
+git log --since="2024-01-01" --until="2025-12-31" -p --  arch/x86/entry/vdso/vdso.lds
+git log --since="2024-01-01" --until="2025-12-31" -p --  arch/x86/entry/vdso/vdso32/vdso32.lds
+stat fs/eventpoll.c.245r.expand
+cally.py ./lib/dpif-netlink-rtnl.c.229r.expand |    dot -Grankdir=LR -Tpng -o full_call_graph.png
+python cally/cally.py ./lib/dpif-netlink-rtnl.c.229r.expand |    dot -Grankdir=LR -Tpng -o full_call_graph.png
+sudo apt install graphviz
+find fs/exec.c.245r.expand -name *.expand | xargs   python cally/cally.py  --max-depth 6    --exclude "ds_.*"  
+find fs/exec.c.245r.expand -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*"  
+history 
+find fs/exec.c.245r.expand -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/exec.svg
+find fs/exec.c.245r.expand -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*"   
+find fs/exec.c.245r.expand -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/exec.svg
+mkdir callgraph
+find fs/exec.c.245r.expand -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/exec.svg
+ll callgraph/exec.svg 
+ll callgraph/exec.svg  -h
+ls fs/
+find init/main.c.245r.expand -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/init/main.c.svg
+touch callgraph/init/main.c.svg
+mkdir -p callgraph/init
+find init/main.c.245r.expand -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/init/main.c.svg
+find init/main.c.245r.expand -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/init/main.c.svg
+find init/main.c.245r.expand -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/init/main.c.svg
+git log
+git push
+cloc mm
+grep .config -i flat
+grep -i flat .config
+grep -i flatmem .config
+make menuconfig
+grep -i cgroup .config
+make menuconfig
+git diff --check 
+git pull
+git log
+cat /proc/kcore
+sudo cat /proc/kcore
+cloc kernel/
+cloc mm
+cloc kernel/sched/
+find . -type f -name fork.c
+find kernel/fork.c.245r.expand -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/fork.c.svg
+ll mm/zs*
+ll mm/
+history | grep checkout
+git show v54:Makefile | grep dump-rtl-expand
+git branch 
+git branch -a
+git checkout -b v54 origin/v54 
+git checkout -b v66
+git checkout  v66
+git status
+git show v54:Makefile | grep dump-rtl-expand
+git show v54:Makefile | grep dump-rtl-expand -A 10
+git show v54:Makefile
+git ls-tree -d v54:cally
+git ls-tree -d v54:cally/images 
+git ls-tree -d v54:cally/
+git show v54:cally.readme 
+git diff v54:cally.Makefile   v54:Makefile 
+git show v54:cally.Makefile 
+git diff v54:cally.Makefile   v54:Makefile 
+git show v54:cally.readme 
+vim .config
+make all -s -j20
+make clean
+make all -s -j20
+vim arch/x86/realmode/rm/realmode.lds +69
+make clean
+make all -s -j20
+make clean
+make all -s -j20
+cloc .
+make clean
+make all -s -j20
+ls mm/zswap.c 
+ls mm/
+rm mm/maccess.c.245r.expand 
+make clean && make all -s -j20 
+ll mm/maccess.c.245r.expand -l
+grep    zswap    .config  
+grep  -i  zswap    .config  
+make menuconfig
+make clean && make all -s -j20 
+ls mm/zswap.*
+make clean && make all -s -j20 
+gcc --help=optimizers
+gcc --help=optimizers | grep inline
+make clean && make all -s -j20 
+find  mm/zswap.c.245r.expand  mm/zsmalloc.c.245r.expand  mm/zpool.c.245r.expand  mm/z3fold.c.245r.expand  mm/zbud.c.245r.expand  mm/swap*     -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/zswap.svg
+find  mm/zswap.c.245r.expand  mm/zsmalloc.c.245r.expand  mm/zpool.c.245r.expand  mm/z3fold.c.245r.expand  mm/zbud.c.245r.expand  mm/swap*     -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*|.*_rcu_read_unlock.*|.*__rcu_read_lock.*|.*efcount_warn_satura.*|.*queue_work_.*|.*_raw_spin_lo.*|.*w_spin_unlo.*|.*efcount_warn_satura.*|.*dump_pag.*|.*folio_flags.*|.*_mod_lruvec_stat.*|.*__page_ref_mod.*|.*__folio_put.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/zswap.svg
+find  mm/zswap.c.245r.expand  mm/zsmalloc.c.245r.expand  mm/zpool.c.245r.expand  mm/z3fold.c.245r.expand  mm/zbud.c.245r.expand  mm/swap*     -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*|.*_rcu_read_unlock.*|.*__rcu_read_lock.*|.*efcount_warn_satura.*|.*queue_work_.*|.*_raw_spin_lo.*|.*w_spin_unlo.*|.*efcount_warn_satura.*|.*dump_pag.*|.*folio_flags.*|.*_mod_lruvec_stat.*|.*__page_ref_mod.*|.*__folio_put.*|.*mutex_lock.*|.*mutex_unlock.*|.*unlock_page.*|.*is_first_page.*|.*get_next_page.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/zswap.svg
+find  mm/zswap.c.245r.expand  mm/zsmalloc.c.245r.expand  mm/zpool.c.245r.expand  mm/z3fold.c.245r.expand  mm/zbud.c.245r.expand  mm/swap*     -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*|.*_rcu_read_unlock.*|.*__rcu_read_lock.*|.*efcount_warn_satura.*|.*queue_work_.*|.*_raw_spin_lo.*|.*w_spin_unlo.*|.*efcount_warn_satura.*|.*dump_pag.*|.*folio_flags.*|.*_mod_lruvec_stat.*|.*__page_ref_mod.*|.*__folio_put.*|.*mutex_lock.*|.*mutex_unlock.*|.*unlock_page.*|.*is_first_page.*|.*get_next_page.*|.*t_devmap_managed_page_r.*|.*strcmp.*|.*put_swap_folio.*|.*folio_unlock.*|.*phys_addr.*|.*aw_read_lock.*|.*raw_read_unlock.*|.*raw_spin_trylock.*|.*trace.*|.*dynamic_pr_debug.*|.*kfree.*|.*lru_add_drain.*|.*flush_work.*|.*free_percpu.*|.*cond_resched.*|.*vfree.*|.*kvfree.*|.*plug.*|.*memcpy.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/zswap.svg
+find  mm/zswap.c.245r.expand  mm/zsmalloc.c.245r.expand  mm/zpool.c.245r.expand  mm/z3fold.c.245r.expand  mm/zbud.c.245r.expand  mm/swap*     -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*|.*_rcu_read_unlock.*|.*__rcu_read_lock.*|.*efcount_warn_satura.*|.*queue_work_.*|.*_raw_spin_lo.*|.*w_spin_unlo.*|.*efcount_warn_satura.*|.*dump_pag.*|.*folio_flags.*|.*_mod_lruvec_stat.*|.*__page_ref_mod.*|.*__folio_put.*|.*mutex_lock.*|.*mutex_unlock.*|.*unlock_page.*|.*is_first_page.*|.*get_next_page.*|.*t_devmap_managed_page_r.*|.*strcmp.*|.*put_swap_folio.*|.*folio_unlock.*|.*phys_addr.*|.*aw_read_lock.*|.*raw_read_unlock.*|.*raw_spin_trylock.*|.*trace.*|.*dynamic_pr_debug.*|.*kfree.*|.*lru_add_drain.*|.*flush_work.*|.*free_percpu.*|.*cond_resched.*|.*vfree.*|.*kvfree.*|.*plug.*|.*memcpy.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/zmem.svg
+find  mm/zswap.c.245r.expand      -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*|.*_rcu_read_unlock.*|.*__rcu_read_lock.*|.*efcount_warn_satura.*|.*queue_work_.*|.*_raw_spin_lo.*|.*w_spin_unlo.*|.*efcount_warn_satura.*|.*dump_pag.*|.*folio_flags.*|.*_mod_lruvec_stat.*|.*__page_ref_mod.*|.*__folio_put.*|.*mutex_lock.*|.*mutex_unlock.*|.*unlock_page.*|.*is_first_page.*|.*get_next_page.*|.*t_devmap_managed_page_r.*|.*strcmp.*|.*put_swap_folio.*|.*folio_unlock.*|.*phys_addr.*|.*aw_read_lock.*|.*raw_read_unlock.*|.*raw_spin_trylock.*|.*trace.*|.*dynamic_pr_debug.*|.*kfree.*|.*lru_add_drain.*|.*flush_work.*|.*free_percpu.*|.*cond_resched.*|.*vfree.*|.*kvfree.*|.*plug.*|.*memcpy.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/zswap.svg
+history -a
+git pull
+git log
+git pull
+CD
+cd
+ls
+lsblk
+sudo mount /dev/myvg/mylv   /home/paulning/mylv
+ls mylv/
+du -sh mylv/*
+du -sh mylv/HK4T/*
+qemu
+qemu-system-x86
+sudo apt-get install qemu-system
+python
+git status
+d study/l;
+cd
+env | grep proxy
+ifconifg
+ifconfig
+sudo apt install net-tools
+ifconfig
+cd study/linux/
+git status
+git push
+cp .config config-v66 
+git pull
+cp config-v66  .config
+make clean ; make all -s -j20
+python scripts/clang-tools/gen_compile_commands.py 
+ll compile_commands.json 
+cloc crypto/
+make menuconfig
+git diff --check 
+cloc mm/z*.c
+git diff --check 
+git log --graph 
+git log --
+git log --oneline 
+git log --since=ffc253263a13
+cd
+lsblk
+df -Th
+python
+git log
+git pull
+git status
+make menuconfig
+diff .config config-v66 
+cp .config config-v66 
+make all -j20 -s
+python scripts/clang-tools/gen_compile_commands.py 
+ll clangd
+ll compile_commands.json 
+make menuconfig
+cloc kernel/
+cloc kernel/time/
+make menuconfig
+ls /dev/rtc0
+cloc drivers/rtc
+vim ~/.bashrc 
+source ~/.bashrc 
+cd
+cd study/linux/
+ls
+git log
+git pull
+git push
+git remote -v
+env | grep proxy
+curl google.com
+ifconfig 
+ip gw
+ip gateway
+ip route 
+git pull
+source ~/.bashrc
+ls -l
+history 
+find  kernel/time/clockevents.*     -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*|.*_rcu_read_unlock.*|.*__rcu_read_lock.*|.*efcount_warn_satura.*|.*queue_work_.*|.*_raw_spin_lo.*|.*w_spin_unlo.*|.*efcount_warn_satura.*|.*dump_pag.*|.*folio_flags.*|.*_mod_lruvec_stat.*|.*__page_ref_mod.*|.*__folio_put.*|.*mutex_lock.*|.*mutex_unlock.*|.*unlock_page.*|.*is_first_page.*|.*get_next_page.*|.*t_devmap_managed_page_r.*|.*strcmp.*|.*put_swap_folio.*|.*folio_unlock.*|.*phys_addr.*|.*aw_read_lock.*|.*raw_read_unlock.*|.*raw_spin_trylock.*|.*trace.*|.*dynamic_pr_debug.*|.*kfree.*|.*lru_add_drain.*|.*flush_work.*|.*free_percpu.*|.*cond_resched.*|.*vfree.*|.*kvfree.*|.*plug.*|.*memcpy.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/time/clockevent.svg
+ls /proc/timer_list 
+cat /proc/timer_list 
+sudo cat /proc/timer_list 
+cd
+sudo mount /dev/myvg/mylv   /home/paulning/mylv
+ls mylv/
+git diff --check 
+git status 
+git status --short
+cloc drivers/watchdog/
+grep -i watchdog .config
+make menuconfig
+make all -s- j20
+make all -s -j20
+python scripts/clang-tools/gen_compile_commands.py 
+cp .config config-v66 
+cloc drivers/watchdog/
+cloc kernel/sched/
+cloc kernel/time/
+cloc kernel/trace
+cloc kernel/locking/
+cloc kernel/events/
+cloc kernel/irq
+make menuconfig
+make all -s -j20
+ls
+python scripts/clang-tools/gen_compile_commands.py 
+cd mm
+ls
+ls damon/
+cd damon/
+make help
+make --help
+less Makefile 
+cd ..
+less Makefile 
+cd ..
+make mm/ --trace  -n
+make mm/ --trace > mmgcc.txt
+cat mmgcc.txt 
+cat mmgcc.txt | wc -l
+make mm/vmscan --trace 
+make mm/ --trace 
+cp compile_commands.json compile_commands.json.bkp 
+make clean
+make mm/ --trace > mmgcc.txt
+gcc -Wp,-MMD,arch/x86/tools/.relocs_common.o.d -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu11   -I./tools/include  -c -o arch/x86/tools/relocs_common.o arch/x86/tools/relocs_common.c
+cloc arch/x86/
+cloc arch/x86/mm/
+mv compile_commands.json.bkp  compile_commands.json
+git diff --check
+mkdir callgraph/irq
+vim ~/.bashrc 
+source  ~/.bashrc 
+history | grep cally
+find  kernel/irq     -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*|.*_rcu_read_unlock.*|.*__rcu_read_lock.*|.*efcount_warn_satura.*|.*queue_work_.*|.*_raw_spin_lo.*|.*w_spin_unlo.*|.*efcount_warn_satura.*|.*dump_pag.*|.*folio_flags.*|.*_mod_lruvec_stat.*|.*__page_ref_mod.*|.*__folio_put.*|.*mutex_lock.*|.*mutex_unlock.*|.*unlock_page.*|.*is_first_page.*|.*get_next_page.*|.*t_devmap_managed_page_r.*|.*strcmp.*|.*put_swap_folio.*|.*folio_unlock.*|.*phys_addr.*|.*aw_read_lock.*|.*raw_read_unlock.*|.*raw_spin_trylock.*|.*trace.*|.*dynamic_pr_debug.*|.*kfree.*|.*lru_add_drain.*|.*flush_work.*|.*free_percpu.*|.*cond_resched.*|.*vfree.*|.*kvfree.*|.*plug.*|.*memcpy.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/irq/irq.svg
+timr make all -s -j20
+time make all -s -j20
+cd mylv/WD5T/w/uBT/ZLIB_CN/
+ls
+mkdir pdf
+mount -o loop PDF.iso pdf
+sudo mount -o loop PDF.iso pdf
+cd pdf/
+ls
+sudo umount pdf
+cd ..
+sudo umount pdf
+ls
+ls pdf/
+find  kernel/irq     -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*|.*_rcu_read_unlock.*|.*__rcu_read_lock.*|.*efcount_warn_satura.*|.*queue_work_.*|.*_raw_spin_lo.*|.*w_spin_unlo.*|.*efcount_warn_satura.*|.*dump_pag.*|.*folio_flags.*|.*_mod_lruvec_stat.*|.*__page_ref_mod.*|.*__folio_put.*|.*mutex_lock.*|.*mutex_unlock.*|.*unlock_page.*|.*is_first_page.*|.*get_next_page.*|.*t_devmap_managed_page_r.*|.*strcmp.*|.*put_swap_folio.*|.*folio_unlock.*|.*phys_addr.*|.*aw_read_lock.*|.*raw_read_unlock.*|.*raw_spin_trylock.*|.*trace.*|.*dynamic_pr_debug.*|.*kfree.*|.*lru_add_drain.*|.*flush_work.*|.*free_percpu.*|.*cond_resched.*|.*vfree.*|.*kvfree.*|.*plug.*|.*memcpy.*"     |    dot -Grankdir=LR -Tsvg -o callgraph/irq/irq.svg
+find  kernel/irq     -name *.expand | xargs   python cally/cally.py    --exclude "ds_.*|.*printk.*|.*stack_chk_fail.*|.*strlen.*|.*strcpy.*|.*_rcu_read_unlock.*|.*__rcu_read_lock.*|.*efcount_warn_satura.*|.*queue_work_.*|.*_raw_spin_lo.*|.*w_spin_unlo.*|.*efcount_warn_satura.*|.*dump_pag.*|.*folio_flags.*|.*_mod_lruvec_stat.*|.*__page_ref_mod.*|.*__folio_put.*|.*mutex_lock.*|.*mutex_unlock.*|.*unlock_page.*|.*is_first_page.*|.*get_next_page.*|.*t_devmap_managed_page_r.*|.*strcmp.*|.*put_swap_folio.*|.*folio_unlock.*|.*phys_addr.*|.*aw_read_lock.*|.*raw_read_unlock.*|.*raw_spin_trylock.*|.*trace.*|.*dynamic_pr_debug.*|.*kfree.*|.*lru_add_drain.*|.*flush_work.*|.*free_percpu.*|.*cond_resched.*|.*vfree.*|.*kvfree.*|.*plug.*|.*memcpy.*|irq_thread|__setup_irq|free_irq|irq_chip_pm_put|irq_chip_pm_get|seq_printf|irq_to_desc|__irq_put_desc_unlock|sprintf|__irq_get_desc_lock|mtree_load"     |    dot -Grankdir=LR -Tsvg -o callgraph/irq/irq.svg
+python
+ll vmlinux
+cd arch/x86/kernel/
+;s
+ls
+ll x86_init.o 
+ll x86_init.o -h
+cd ..
+nm vmlinux | grep x86_init
+readelf -s vmlinux | grep x86_init
+file vmlinux
+ll vmlinux -h
+make menuconfig
+cloc kernel/irq
+cd
+ls
+top
+ll compile_commands.json 
+python scripts/clang-tools/gen_compile_commands.py 
+make all -s -j20
+cd
+cd study/
+ls
+git clone https://github.com/PlutoNing/qemu.git
+cd qemu/
+cd ../linux/
+git pull
+cd
+cat study/linux/bashrc 
+vim .bashrc 
+history 
+ls
+ping baidu.com
+ip a
+lsblk
+sudo apt update
+l
+ls
+free -mh
+ls
+lsblk
+mkdir st4t
+sudo mount /dev/sdd1 /home/paulning/st4t
+ls st4t/
+sudo chown paulning:paulning  -R st4t
+ll st4t/
+rm st4t/hk4t 
+df -Th
+sudo apt update
+sudo apt install samba cifs-utils
+sudo vim /etc/samba/smb.conf
+sudo smbpasswd -a paulning
+sudo service smbd start
+sudo service smbd status
+testparm
+ip 
+ip a
+du -sh st4t/bdwp/xiezhen5-379GB-compressed/
+cd st4t/bdwp/gangjieyawan/
+du -sh .
+find . -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 100 | grep -v crf
+find . -type f ! -name "*.mp4"   ! -name "*.MP4"      -exec du -m {} + | sort -hr  | head -n 20
+find . -type f ! -name "*.mp4"   ! -name "*.MP4"   ! -name "*.MOV"   -exec du -m {} + | sort -hr  | head -n 20
+find . -type f ! -name "*.mp4"   ! -name "*.MP4"   ! -name "*.MOV"  ! -name "*.mov" -exec du -m {} + | sort -hr  | head -n 20
+history -a
+history -n
+find . -type f ! -name "*.mp4"   ! -name "*.MP4"   ! -name "*.MOV"  ! -name "*.mov" -exec du -m {} + | sort -hr  | head -n 100
+free -mh
+find . -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 100 | grep -v crf
+sudo mount /dev/sdd1 /home/paulning/st4t
+ls st4t/
+sudo service smbd status
+sudo apt install iostat
+curl google.com
+ip a
+export http_proxy=http://172.17.238.154:10809
+export https_proxy=http://172.17.238.154:10809
+curl google.com
+export https_proxy=http://172.17.238.1:10809
+export http_proxy=http://172.17.238.1:10809
+curl google.com
+export http_proxy=http://172.17.224.1:10809
+export https_proxy=http://172.17.224.1:10809
+curl google.com
+history -a
+lsblk
+sudo mount /dev/sdd1 /home/paulning/st4t
+sudo mount /dev/sdc1 /home/paulning/st4t
+lsblk
+ls st4t/
+sudo service smbd status
+l
+cd st4t/
+ls
+ll
+ll bdwp/
+cd ..
+sudo mount /dev/sdc1 /home/paulning/st4t
+rsync -av --progress st4t/bdwp/batch    /mnt/d/xiezhenpro/
+rsync -av --progress    --remove-source-files     st4t/bdwp/batch    /mnt/d/xiezhenpro/
+du -sh st4t/bdwp/batch/
+df -Th
+cd /home/paulning/st4t/bdwp/
+du -sh * | sotr -h
+du -sh * | sort -h
+ls
+cd
+cd study/pyv/.git/
+cd ..
+vim merge.py 
+cd -
+cd
+cd st4t/bdwp/gangjieyawan/
+ls
+python3 /home/paulning/study/pyv/merge.py 
+find . | wc -l
+find . > find.txt
+tree . > tree.txt
+sudo apt install tree
+tree . > tree.txt
+find . -type f ! -name "*.mp4"   ! -name "*.MP4"   ! -name "*.MOV"  ! -name "*.mov" -exec du -m {} + | sort -hr  | head -n 100
+find . -type f ! -name "*.mp4"   ! -name "*.MP4"   ! -name "*.MOV"  ! -name "*.mov" -exec du -m {} + | sort -hr  | head -n 500
+du -sh .
+cd
+cd study/ffmpeg_source/
+ls
+./ffmpeg
+./ffmpeg  -hide_banner -c:v h264_cuvid   -i  ~/st4t/bdwp/gangjieyawan/001-100-001/小容仔咕咕咕wNO.001黑暗护士58P-747MB/
+./ffmpeg  -hide_banner -c:v h264_cuvid   -i  ~/st4t/bdwp/gangjieyawan/A-075-课件_001/桃暖酱NO.001兔年专属恭喜发财66P681MB/IMG_
+find ~/st4t/bdwp/gangjieyawan/  -name *.mp4 | head -n 10
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 100 | grep -v crf
+./ffmpeg  -hide_banner -c:v h264_cuvid   -i   /home/paulning/st4t/bdwp/gangjieyawan/A-034-课件_005/鹿八岁NO.005椅子芷绿79P1V-3.07GB/鹿八岁椅子视频素材.mp4     -c:v h264_nvenc  -c:a copy -crf 20    /home/paulning/st4t/bdwp/gangjieyawan/A-034-课件_005/鹿八岁NO.005椅子芷绿79P1V-3.07GB/鹿八岁椅子视频素材_crf20.mp4
+cd
+cd st4t/bdwp/gangjieyawan/
+bash /home/paulning/study/pyv/transcode.sh .
+ffmpeg
+bash /home/paulning/study/pyv/transcode.sh .
+ls ./主版本-课件_332/HaneAme雨波NO.332原神雷電将軍夜蘭ビキニ大会ビデオ13V3.36GB/原神_雷電將軍_比基尼3.mp4
+rm ./主版本-课件_332/HaneAme雨波NO.332原神雷電将軍夜蘭ビキニ大会ビデオ13V3.36GB/原神_雷電將軍_比基尼3_crf20.mp4 
+lsblk
+sudo mount /dev/sdc1 /home/paulning/st4t
+cd st4t/bdwp/gangjieyawan/
+bash /home/paulning/study/pyv/transcode.sh .
+du -sh .
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 100 | grep -v crf
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 200 | grep -v crf
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 300 | grep -v crf
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 400 | grep -v crf
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 500 | grep -v crf
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 600 | grep -v crf 
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 700 | grep -v crf
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 700 | grep -v crf  | wc -l
+vim  /home/paulning/study/pyv/transcode.sh
+du -sh ../*
+find . -type f ! -name "*.mp4"   ! -name "*.MP4"   ! -name "*.MOV"  ! -name "*.mov" -exec du -m {} + | sort -hr  | head -n 500
+vim /home/paulning/study/pyv/merge.py 
+python3 /home/paulning/study/pyv/merge.py 
+find . -type f ! -name "*.mp4"   ! -name "*.MP4"   ! -name "*.MOV"  ! -name "*.mov" -exec du -m {} + | sort -hr  | head -n 500
+ls ./英语B-课件_235/ByoruNO.235HelmChanderlierNIKKE63P8V-1.44GB/HD/Helm-HD02.JPG 
+du -sh .
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 700 | grep -v crf  | wc -l
+find    ~/st4t/bdwp/gangjieyawan/   -type f \( -name "*.mp4" -o -name "*.mov" -o -name "*.MOV" -o -name "*.mkv" -o -name "*.MKV" \) -exec du -m {} + | sort -hr | head -n 700 | grep -v crf 
+vim  /home/paulning/study/pyv/transcode.sh
+bash /home/paulning/study/pyv/transcode.sh .
+rm ./主版本-课件_285/HaneAme雨波NO.28524年01月GenshinImpactXianyunCloudRetainer53P4V715MB/视频/4_crf20.mp4 
+sudo vim /etc/samba/smb.conf
+sudo service smbd restart
+sudo service smbd status 
+du -sh hk4t/
+lsblk
+mkdir hk4t
+sudo mount /dev/sdc1 /home/paulning/hk4t
+ls hk4t/
+sudo chown paulning:paulning  -R hk4t/
+ls
+du hk4t/  -sh
+rsync -av --progress   /home/paulning/hk4t   /mnt/p/
+rsync -av --progress    /home/paulning/hk4t   /mnt/p/
+sync
+ls
+history 
+sudo mount UUID='0da6b968-dbfe-409f-a92a-57cf37db3723' /home/paulning/hk4t
+sudo mount UUID='2a0344ee-f637-4499-9216-fcc45d5a9bdc' /home/paulning/st4t
+df -Th
+rsync -avh --progress  --remove-source-files  /home/paulning/hk4t/bdwp/xiezhen5-640-没删   /mnt/o/bdwp/
+du -sh   /home/paulning/hk4t/bdwp/xiezhen5-640-没删
+rm -rf   /home/paulning/hk4t/bdwp/xiezhen5-640-没删
+df -Th
+rsync -avh --progress  --remove-source-files  /home/paulning/st4t/bdwp/gangjieyawan   /mnt/o/xiezhenpro/
+rsync -avh --progress    /home/paulning/st4t/bdwp/gangjieyawan   /mnt/o/xiezhenpro/
+cd
+ls
+history -a
+df -Th
+cd st4t/
+ls
+du -sh .
+cd bdwp/
+ls
+cd gangjieyawan/
+ls
+cd ..
+find . -type f
+history -a
+history -a
+history -a
+history -a
+history -n
+ls
+curl google.com
+ls
+df -Th
+ls
+history | wc -l
+history 
+ls
+export https_proxy=http://172.17.224.1:10809
+export http_proxy=http://172.17.224.1:10809
+curl google.com
+cd study/
+ls
+s
+git clone git@github.com:PlutoNing/linux.git
+mkdir clangd
+mv compile_commands.json clangd/
+git branch 
+git branch -a
+git branch -r
+git checkout -b v1 origin/master 
+git branch 
+export https_proxy=http://172.17.224.1:10809
+export http_proxy=http://172.17.224.1:10809
+curl google.com
+cd study/linux/
+ls
+du -sh .
+git branch 
+git branch -a
+git checkout -b v66 origin/v66 
+ls
+du -sh .
+sudo pat update
+sudo apt update
+sudo apt install build-essential
+sudo apt install -y build-essential flex bison libssl-dev libelf-dev bc     dwarves pahole libncurses-dev rsync fakeroot cpio kmod     libudev-dev libpci-dev libiberty-dev autoconf
+ls
+git branch 
+ls
+make defconfig
+ls
+git log --oneline --  clangd
+git log --oneline --  clang
+make clean
+ll .config 
+make all -j8
+make bzImage -j8
+make modules -j8
+python
+python3
+python3 scripts/clang-tools/gen_compile_commands.py 
+ll compile_commands.json 
+ll compile_commands.json  -h
+cd
+vim .ssh/authorized_keys 
+ip a
+sudo service ssh status
+ssh paulning@172.17.238.154
+cd -
+ls
+code .
+curl google.com
+unset http_proxy 
+unset https_proxy 
+export http_proxy=http://172.17.224.1:10809
+nvidia-smi
+ls
+git status
+du -sh .
+ls
+cd ..
+ls
+mkdir fs
+cd fs/
+ls
+git clone git@github.com:PlutoNing/encfs.git
+ls
+cd encfs/
+ls
+cloc .
+sudo apt install cloc
+cloc .
+code .
+cd ..
+ls
+mkdir alg
+cd alg/
+git clone git@github.com:PlutoNing/Btree-source-code.git
+ls
+cd Btree-source-code/
+ls
+cloc .
+code .
+cd ..
+ls
+git clone git@github.com:sanastas/LockFreeBtree.git
+cd LockFreeBtree/
+ls
+cloc .
+code .
+cloc block/
+cloc fs/xfs/
+history 
+make menuconfig
+cd study/linux/
+make menuconfig
+cp .config .config.bkp.optimized
+make clean
+make all -s -j 8
+make defconfig
+make all -s -j 8
+cp .config.bkp.optimized  .config
+git restore include/linux/atomic/atomic-instrumented.h
+make all -s -j 8
+make bzImage -j8
+make modules -j8
+python3 scripts/clang-tools/gen_compile_commands.py 
+ll compile_commands.json 
+ll compile_commands.json  -h
+cp compile_commands.json clangd/
+ls /sys/devices/system/memory/
+ls /sys/devices/system/memory/memory0/
+ls /sys/devices/system/memory/memory0/ -l
+uname -r
+ls /sys/devices/system/memory/
+ls /sys/devices/system/memory/ | wc -l
+free -mh
+top
+uptime 
+top
+free -mh
+ls /sys/devices/system/memory/ | wc -l
+ls /sys/devices/system/memory/
+ls /sys/devices/system/memory/memory* | wc -l
+ls /sys/devices/system/memory/memory*
+bc
+free -mh
+bc
+su
+sudo passwd root
+su
+curl google.com
+git status
+git restore include/linux/atomic/atomic-instrumented.h
+git status
+git restore include/linux/atomic/atomic-instrumented.h  && git commit -m "mm block 和截断"
+git add .
+git status
+git restore include/linux/atomic/atomic-instrumented.h  && git commit -m "mm block 和截断"
+git push
+cloc mm/
+cloc src/
+cd study/linux/
+ls
+du -sh .
+git status
+make all -s -j8
+git status
+free -mh
+cd ..
+git clone https://github.com/rostedt/ureadahead.git
+cd ureadahead/
+cloc .
+tree
+code .
+cloc fs/btrfs/
+find . -type d -name lvm
+find . -type d -name *lvm*
+find . -type f -name *lvm*
+find . -type d -name mapper
+grep lvm .config
+grep LVM .config
+grep MAPPER .config
+grep MAP .config
+cloc mm/damon/
+cd study/
+ls
+cd
+cd study/linux/
+git status
+git add .
+git commit  -m "block io"
+git push
+cd
+ls
+free -mh
 ls
 cd
 ls
@@ -1438,3 +2419,56 @@ ll ~/.bash_history  -h
 vim ~/.bashrc 
 git log
 mkdir mydata
+cat study/linux/bash_history >> .bash_history 
+history -a
+history -a
+history 
+cd study/qemu/
+ls
+mkdir -p bin/debug/native
+cd bin/debug/native/
+ls
+../../../configure  --enable-debug   --disable-kvm --disable-xen --disable-user --disable-linux-user --disable-bsd-user --disable-hvf     --extra-cflags=-fdump-rtl-expand    --target-list='x86_64-softmmu,riscv64-softmmu,riscv32-softmmu,i386-softmmu,arm-softmmu,x86_64-linux-user,riscv64-linux-user,riscv32-linux-user,i386-linux-user,arm-linux-user'  --enable-debug-tcg    --enable-tcg-interpreter   --enable-tcg  
+history | grep install
+../../../configure  --enable-debug   --disable-kvm --disable-xen --disable-user --disable-linux-user --disable-bsd-user --disable-hvf     --extra-cflags=-fdump-rtl-expand    --target-list='x86_64-softmmu,riscv64-softmmu,riscv32-softmmu,i386-softmmu,arm-softmmu,x86_64-linux-user,riscv64-linux-user,riscv32-linux-user,i386-linux-user,arm-linux-user'  --enable-debug-tcg    --enable-tcg-interpreter   --enable-tcg  
+python
+python -m pip install toml
+../../../configure  --enable-debug   --disable-kvm --disable-xen --disable-user --disable-linux-user --disable-bsd-user --disable-hvf     --extra-cflags=-fdump-rtl-expand    --target-list='x86_64-softmmu,riscv64-softmmu,riscv32-softmmu,i386-softmmu,arm-softmmu,x86_64-linux-user,riscv64-linux-user,riscv32-linux-user,i386-linux-user,arm-linux-user'  --enable-debug-tcg    --enable-tcg-interpreter   --enable-tcg  
+python -m pip install tomli
+../../../configure  --enable-debug   --disable-kvm --disable-xen --disable-user --disable-linux-user --disable-bsd-user --disable-hvf     --extra-cflags=-fdump-rtl-expand    --target-list='x86_64-softmmu,riscv64-softmmu,riscv32-softmmu,i386-softmmu,arm-softmmu,x86_64-linux-user,riscv64-linux-user,riscv32-linux-user,i386-linux-user,arm-linux-user'  --enable-debug-tcg    --enable-tcg-interpreter   --enable-tcg  
+sudo apt-get install git libglib2.0-dev libfdt-dev libpixman-1-dev zlib1g-dev ninja-build
+apt --help
+apt install --help
+env | grep proxy
+sudo apt update -o Acquire::http::Proxy='http://172.22.192.1:10808'
+sudo apt-get install git libglib2.0-dev libfdt-dev libpixman-1-dev zlib1g-dev ninja-build   -o Acquire::http::Proxy='http://172.22.192.1:10808'
+history 
+../../../configure  --enable-debug   --disable-kvm --disable-xen --disable-user --disable-linux-user --disable-bsd-user --disable-hvf     --extra-cflags=-fdump-rtl-expand    --target-list='x86_64-softmmu,riscv64-softmmu,riscv32-softmmu,i386-softmmu,arm-softmmu,x86_64-linux-user,riscv64-linux-user,riscv32-linux-user,i386-linux-user,arm-linux-user'  --enable-debug-tcg    --enable-tcg-interpreter   --enable-tcg
+../../../configure  --enable-debug   --disable-kvm --disable-xen --disable-bsd-user --disable-hvf     --extra-cflags=-fdump-rtl-expand    --target-list='x86_64-softmmu,riscv64-softmmu,riscv32-softmmu,i386-softmmu,arm-softmmu,x86_64-linux-user,riscv64-linux-user,riscv32-linux-user,i386-linux-user,arm-linux-user'  --enable-debug-tcg    --enable-tcg-interpreter   --enable-tcg
+ls
+history | grep make
+make all -s -j20 
+ls
+echo $?
+./qemu-system-x86_64 -L pc-bios
+ls
+cd ..
+mkdir exp
+cd exp/
+makdir bare_metal_arm
+mkdir bare_metal_arm
+cd bare_metal_arm/
+ls
+wget https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf.tar.xz
+ls
+file arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf.tar.xz
+tar -xvfj arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf.tar.xz 
+tar -xvf arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf.tar.xz 
+ls
+cd arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/
+ls
+cd
+cd ..
+cd
+cd study/linux/
+git status
