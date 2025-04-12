@@ -34,6 +34,7 @@ struct kernfs_iattrs {
 /*  */
 struct kernfs_root {
 	/* published fields */
+	/* 对应的kn, root自己也会对应一个kn */
 	struct kernfs_node	*kn;
 	unsigned int		flags;	/* KERNFS_ROOT_* flags */
 

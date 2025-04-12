@@ -557,12 +557,12 @@ out:
 	spin_unlock(&files->file_lock);
 	return error;
 }
-
+/* 分配fd */
 int __get_unused_fd_flags(unsigned flags, unsigned long nofile)
 {
 	return alloc_fd(0, nofile, flags);
 }
-
+/* 分配fd */
 int get_unused_fd_flags(unsigned flags)
 {
 	return __get_unused_fd_flags(flags, rlimit(RLIMIT_NOFILE));

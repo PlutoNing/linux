@@ -20,7 +20,9 @@
 
 #include "sysfs.h"
 
+/* sysfs对应的kernfs_root */
 static struct kernfs_root *sysfs_root;
+/* sysfs对应的kern_node */
 struct kernfs_node *sysfs_root_kn;
 
 static int sysfs_get_tree(struct fs_context *fc)
@@ -86,23 +88,24 @@ static void sysfs_kill_sb(struct super_block *sb)
 	kernfs_kill_sb(sb);
 	kobj_ns_drop(KOBJ_NS_TYPE_NET, ns);
 }
-
+/* 表示sysfs */
 static struct file_system_type sysfs_fs_type = {
 	.name			= "sysfs",
 	.init_fs_context	= sysfs_init_fs_context,
 	.kill_sb		= sysfs_kill_sb,
 	.fs_flags		= FS_USERNS_MOUNT,
 };
-
+/* 初始化sysfs的sysroot
+注册sysfs文件系统类型 */
 int __init sysfs_init(void)
 {
 	int err;
-
+	// 是/sys?
 	sysfs_root = kernfs_create_root(NULL, KERNFS_ROOT_EXTRA_OPEN_PERM_CHECK,
 					NULL);
 	if (IS_ERR(sysfs_root))
 		return PTR_ERR(sysfs_root);
-
+	// 获得kernfs_root的kn
 	sysfs_root_kn = kernfs_root_to_node(sysfs_root);
 
 	err = register_filesystem(&sysfs_fs_type);

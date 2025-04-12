@@ -27,7 +27,7 @@ struct vfsmount;
 struct path;
 
 enum fs_context_purpose {
-	FS_CONTEXT_FOR_MOUNT,		/* New superblock for explicit mount */
+	FS_CONTEXT_FOR_MOUNT,		/* 是为了挂载, New superblock for explicit mount */
 	FS_CONTEXT_FOR_SUBMOUNT,	/* New superblock for automatic submount */
 	FS_CONTEXT_FOR_RECONFIGURE,	/* Superblock reconfiguration (remount) */
 };
@@ -115,10 +115,14 @@ struct fs_context {
 };
 
 struct fs_context_operations {
+	// 释放fc的时候调用
 	void (*free)(struct fs_context *fc);
 	int (*dup)(struct fs_context *fc, struct fs_context *src_fc);
+	// 解析文件系统参数
 	int (*parse_param)(struct fs_context *fc, struct fs_parameter *param);
 	int (*parse_monolithic)(struct fs_context *fc, void *data);
+	/* Get the mountable root in fc->root, with a ref on the root and a ref
+	 * on the superblock. */
 	int (*get_tree)(struct fs_context *fc);
 	int (*reconfigure)(struct fs_context *fc);
 };

@@ -168,7 +168,7 @@ static int enable_single_step(struct task_struct *child)
 
 	return 1;
 }
-
+/* 开关进程的blockstep调试 */
 void set_task_blockstep(struct task_struct *task, bool on)
 {
 	unsigned long debugctl;
@@ -223,7 +223,7 @@ void user_enable_block_step(struct task_struct *child)
 {
 	enable_step(child, 1);
 }
-
+/* 关闭子进程的调试 */
 void user_disable_single_step(struct task_struct *child)
 {
 	/*

@@ -1231,6 +1231,7 @@ struct super_block {
 	unsigned char		s_blocksize_bits;
 	unsigned long		s_blocksize; /* 以byte为单位 */
 	loff_t			s_maxbytes;	/* Max file size */
+	/* 自己的fs_type */
 	struct file_system_type	*s_type;
 	const struct super_operations	*s_op;
 	const struct dquot_operations	*dq_op;
@@ -1263,6 +1264,7 @@ struct super_block {
 	struct block_device	*s_bdev;
 	struct backing_dev_info *s_bdi;
 	struct mtd_info		*s_mtd;
+	/* 加入到s->s_type->fs_supers */
 	struct hlist_node	s_instances;
 	unsigned int		s_quota_types;	/* Bitmask of supported quota types */
 	struct quota_info	s_dquot;	/* Diskquota specific options */
@@ -2380,6 +2382,7 @@ struct file_system_type {
 	void (*kill_sb) (struct super_block *);
 	struct module *owner;
 	struct file_system_type * next;
+	/* 这个类型的全部实例的sb在这里 */
 	struct hlist_head fs_supers;
 
 	struct lock_class_key s_lock_key;

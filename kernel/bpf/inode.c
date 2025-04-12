@@ -762,12 +762,12 @@ static int bpf_get_tree(struct fs_context *fc)
 {
 	return get_tree_nodev(fc, bpf_fill_super);
 }
-
+/* 简单释放fc的priv */
 static void bpf_free_fc(struct fs_context *fc)
 {
 	kfree(fc->fs_private);
 }
-
+/* bpf的fc的ops */
 static const struct fs_context_operations bpf_context_ops = {
 	.free		= bpf_free_fc,
 	.parse_param	= bpf_parse_param,
@@ -775,6 +775,7 @@ static const struct fs_context_operations bpf_context_ops = {
 };
 
 /*
+bpf_fs的fs_context_ops回调
  * Set up the filesystem mount context.
  */
 static int bpf_init_fs_context(struct fs_context *fc)
@@ -791,27 +792,52 @@ static int bpf_init_fs_context(struct fs_context *fc)
 	fc->ops = &bpf_context_ops;
 	return 0;
 }
-
+/* bpf_fs的fs_type */
 static struct file_system_type bpf_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "bpf",
 	.init_fs_context = bpf_init_fs_context,
 	.parameters	= bpf_fs_parameters,
+	// 清理super
 	.kill_sb	= kill_litter_super,
 };
-
+/* 
+函数作用: 
+	1. 创建一个名为 bpf 的 sysfs mount point
+	2. 注册一个文件系统类型 bpf_fs_type	
+*/
 static int __init bpf_init(void)
 {
 	int ret;
-
+	// 创建在sysfs的东西, /sys/fs/bpf/
 	ret = sysfs_create_mount_point(fs_kobj, "bpf");
 	if (ret)
 		return ret;
-
+	// 注册bpf_fs文件系统类型
 	ret = register_filesystem(&bpf_fs_type);
-	if (ret)
+	if (ret) // 出错了
 		sysfs_remove_mount_point(fs_kobj, "bpf");
 
 	return ret;
 }
 fs_initcall(bpf_init);
+/* 
+宏展开如下
+static void *__attribute__((__used__))
+__attribute__((__section__(".discard.addressable")))
+__UNIQUE_ID___addressable_bpf_init624 = (void *)&bpf_init;
+// 作用是将 bpf_init 函数的地址写入 .initcall5.init 段中
+asm(".section	\""
+    ".initcall5"
+    ".init"
+    "\", \"a\"		\n"
+    "__initcall__kmod_inode__623_817_bpf_init5"
+    ":			\n"
+    ".long	"
+    "bpf_init"
+    " - .	\n"
+    ".previous					\n");
+_Static_assert(__builtin_types_compatible_p(typeof(initcall_t),
+					    typeof(&bpf_init)),
+	       "__same_type(initcall_t, &bpf_init)");
+; */

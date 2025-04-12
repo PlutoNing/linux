@@ -57,6 +57,7 @@ enum uprobe_task_state {
 
 /*
  * uprobe_task: Metadata of a task while it singlesteps.
+ 这是干啥的
  */
 struct uprobe_task {
 	enum uprobe_task_state		state;

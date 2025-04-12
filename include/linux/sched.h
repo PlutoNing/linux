@@ -899,7 +899,7 @@ struct task_struct {
 #endif /* #ifdef CONFIG_TASKS_TRACE_RCU */
 
 	struct sched_info		sched_info;
-
+	/* 好像是挂在到init_task.tasks */
 	struct list_head		tasks;
 #ifdef CONFIG_SMP
 	struct plist_node		pushable_tasks;
@@ -911,6 +911,7 @@ struct task_struct {
 
 	int				exit_state;
 	int				exit_code;
+	/* 大于等于0就是thread_group_leader */
 	int				exit_signal;
 	/* The signal sent when the parent dies: */
 	int				pdeath_signal;
@@ -1035,7 +1036,9 @@ struct task_struct {
 	/* PID/PID hash table linkage. */
 	struct pid			*thread_pid; // PIDTYPE_PID对应的pid
 	struct hlist_node		pid_links[PIDTYPE_MAX];
+	/* 加入p->group_leader->thread_group */
 	struct list_head		thread_group; // 线程组
+	/* 加入p->signal->thread_head */
 	struct list_head		thread_node;
 
 	struct completion		*vfork_done;

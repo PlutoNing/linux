@@ -159,6 +159,7 @@ struct kernfs_elem_dir {
 	/*
 	 * The kernfs hierarchy this directory belongs to.  This fits
 	 * better directly in kernfs_node but is here to save space.
+	 指向所属的kernfs root
 	 */
 	struct kernfs_root	*root;
 	/*
@@ -208,6 +209,7 @@ struct kernfs_node {
 	const void		*ns;	/* namespace tag */
 	unsigned int		hash;	/* ns + name hash */
 	union {
+		/* 对应的sysfs的dir? */
 		struct kernfs_elem_dir		dir;
 		struct kernfs_elem_symlink	symlink;
 		struct kernfs_elem_attr		attr;

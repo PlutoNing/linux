@@ -41,6 +41,8 @@ static inline void syscall_tracepoint_update(struct task_struct *p)
 		set_task_syscall_work(p, SYSCALL_TRACEPOINT);
 	else
 		clear_task_syscall_work(p, SYSCALL_TRACEPOINT);
+	/*
+	*/
 }
 #else
 static inline void syscall_tracepoint_update(struct task_struct *p)

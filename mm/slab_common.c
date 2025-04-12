@@ -247,6 +247,7 @@ out:
 }
 
 /**
+创建一个特殊的kmem_cache, 该kmem_cache的对象可以被复制到用户空间?
  * kmem_cache_create_usercopy - Create a cache with a region suitable
  * for copying to userspace
  * @name: A string which is used in /proc/slabinfo to identify this cache.

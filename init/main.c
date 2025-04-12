@@ -1063,6 +1063,7 @@ void start_kernel(void)
 	security_init();
 	dbg_late_init();
 	net_ns_init();
+	// 初始化一些vfs相关的东西
 	vfs_caches_init();
 	pagecache_init();
 	signals_init();

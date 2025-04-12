@@ -191,7 +191,7 @@ static void kobj_kset_leave(struct kobject *kobj)
 	spin_unlock(&kobj->kset->list_lock);
 	kset_put(kobj->kset);
 }
-
+/* 初始化kobj的一些属性 */
 static void kobject_init_internal(struct kobject *kobj)
 {
 	if (!kobj)
@@ -347,7 +347,7 @@ void kobject_init(struct kobject *kobj, const struct kobj_type *ktype)
 		       kobj);
 		dump_stack_lvl(KERN_ERR);
 	}
-
+	// 初始化kobj
 	kobject_init_internal(kobj);
 	kobj->ktype = ktype;
 	return;
@@ -374,6 +374,7 @@ static __printf(3, 0) int kobject_add_varg(struct kobject *kobj,
 }
 
 /**
+添加一个kobj
  * kobject_add() - The main kobject add function.
  * @kobj: the kobject to add
  * @parent: pointer to the parent of the kobject.
@@ -749,11 +750,12 @@ static const struct kobj_type dynamic_kobj_ktype = {
 };
 
 /**
+创建一个kobj
  * kobject_create() - Create a struct kobject dynamically.
  *
  * This function creates a kobject structure dynamically and sets it up
  * to be a "dynamic" kobject with a default release function set up.
- *
+ * 函数创建一个kobject结构体，并设置为一个动态kobject，默认释放函数
  * If the kobject was not able to be created, NULL will be returned.
  * The kobject structure returned from here must be cleaned up with a
  * call to kobject_put() and not kfree(), as kobject_init() has
@@ -762,16 +764,17 @@ static const struct kobj_type dynamic_kobj_ktype = {
 static struct kobject *kobject_create(void)
 {
 	struct kobject *kobj;
-
+	// 分配内存
 	kobj = kzalloc(sizeof(*kobj), GFP_KERNEL);
 	if (!kobj)
 		return NULL;
-
+// 初始化kobj
 	kobject_init(kobj, &dynamic_kobj_ktype);
 	return kobj;
 }
 
 /**
+创建一个kobj并添加到sysfs
  * kobject_create_and_add() - Create a struct kobject dynamically and
  *                            register it with sysfs.
  * @name: the name for the kobject
@@ -788,11 +791,11 @@ struct kobject *kobject_create_and_add(const char *name, struct kobject *parent)
 {
 	struct kobject *kobj;
 	int retval;
-
+	// 分配并初始化kobj
 	kobj = kobject_create();
 	if (!kobj)
 		return NULL;
-
+	// 添加一个kobj
 	retval = kobject_add(kobj, parent, "%s", name);
 	if (retval) {
 		pr_warn("%s: kobject_add error: %d\n", __func__, retval);
