@@ -35,10 +35,14 @@ struct mountpoint {
 	struct hlist_head m_list;
 	int m_count;
 };
-
+/* 表示系统一次挂载的mnt
+包含了一个vfsmnt */
 struct mount {
 	struct hlist_node mnt_hash;
 	struct mount *mnt_parent;
+	/* 指向mnt->mnt.mnt_root
+	也就是下面那个vfsmnt的mnt_root
+	其实是fc的root */
 	struct dentry *mnt_mountpoint;
 	struct vfsmount mnt;
 	union {
@@ -53,7 +57,9 @@ struct mount {
 #endif
 	struct list_head mnt_mounts;	/* list of children, anchored here */
 	struct list_head mnt_child;	/* and going through their mnt_child */
-	struct list_head mnt_instance;	/* mount instance on sb->s_mounts */
+	struct list_head mnt_instance;	/* 
+	链接在sb上
+	mount instance on sb->s_mounts */
 	const char *mnt_devname;	/* Name of device e.g. /dev/dsk/hda1 */
 	struct list_head mnt_list;
 	struct list_head mnt_expire;	/* link in fs-specific expiry list */

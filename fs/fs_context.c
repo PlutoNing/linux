@@ -109,6 +109,7 @@ int vfs_parse_fs_param_source(struct fs_context *fc, struct fs_parameter *param)
 EXPORT_SYMBOL(vfs_parse_fs_param_source);
 
 /**
+添加一个sb配置的参数
  * vfs_parse_fs_param - Add a single parameter to a superblock config
  * @fc: The filesystem context to modify
  * @param: The parameter
@@ -260,6 +261,8 @@ int generic_parse_monolithic(struct fs_context *fc, void *data)
 EXPORT_SYMBOL(generic_parse_monolithic);
 
 /**
+挂载fs_type这个fs的时候
+创建fc
  * alloc_fs_context - Create a filesystem context.
  * @fs_type: The filesystem type.
  * @reference: The dentry from which this one derives (or NULL)
@@ -295,7 +298,7 @@ static struct fs_context *alloc_fs_context(struct file_system_type *fs_type,
 	fc->log.prefix	= fs_type->name;
 
 	mutex_init(&fc->uapi_mutex);
-
+	// 设置user_ns
 	switch (purpose) {
 	case FS_CONTEXT_FOR_MOUNT:
 		fc->user_ns = get_user_ns(fc->cred->user_ns);
@@ -314,7 +317,7 @@ static struct fs_context *alloc_fs_context(struct file_system_type *fs_type,
 	init_fs_context = fc->fs_type->init_fs_context;
 	if (!init_fs_context)
 		init_fs_context = legacy_init_fs_context;
-
+	// 调用fs的init_fs_context函数
 	ret = init_fs_context(fc);
 	if (ret < 0)
 		goto err_fc;
@@ -325,7 +328,8 @@ err_fc:
 	put_fs_context(fc);
 	return ERR_PTR(ret);
 }
-
+/* 挂载type这个fs的时候
+创建分配fc */
 struct fs_context *fs_context_for_mount(struct file_system_type *fs_type,
 					unsigned int sb_flags)
 {
@@ -502,6 +506,7 @@ static void put_fc_log(struct fs_context *fc)
 }
 
 /**
+销毁一个fc
  * put_fs_context - Dispose of a superblock configuration context.
  * @fc: The context to dispose of.
  */
@@ -517,7 +522,7 @@ void put_fs_context(struct fs_context *fc)
 	}
 
 	if (fc->need_free && fc->ops && fc->ops->free)
-		fc->ops->free(fc);
+		fc->ops->free(fc); //调用fc的free回调
 
 	security_free_mnt_opts(&fc->security);
 	put_net(fc->net_ns);
@@ -735,7 +740,7 @@ int parse_monolithic_mount_data(struct fs_context *fc, void *data)
 void vfs_clean_context(struct fs_context *fc)
 {
 	if (fc->need_free && fc->ops && fc->ops->free)
-		fc->ops->free(fc);
+		fc->ops->free(fc); // 先调用fc的free回调
 	fc->need_free = false;
 	fc->fs_private = NULL;
 	fc->s_fs_info = NULL;

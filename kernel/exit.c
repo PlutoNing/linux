@@ -131,6 +131,7 @@ static void __unhash_process(struct task_struct *p, bool group_dead)
 
 		list_del_rcu(&p->tasks);
 		list_del_init(&p->sibling);
+		// 减少全局的计数
 		__this_cpu_dec(process_counts);
 	}
 	list_del_rcu(&p->thread_group);

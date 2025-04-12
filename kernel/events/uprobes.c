@@ -586,7 +586,7 @@ set_orig_insn(struct arch_uprobe *auprobe, struct mm_struct *mm, unsigned long v
 	return uprobe_write_opcode(auprobe, mm, vaddr,
 			*(uprobe_opcode_t *)&auprobe->insn);
 }
-
+/* 获取一个引用 */
 static struct uprobe *get_uprobe(struct uprobe *uprobe)
 {
 	refcount_inc(&uprobe->ref);
@@ -1743,12 +1743,12 @@ static struct uprobe_task *get_utask(void)
 		current->utask = kzalloc(sizeof(struct uprobe_task), GFP_KERNEL);
 	return current->utask;
 }
-
+/* 复制utask的每一个return_instance */
 static int dup_utask(struct task_struct *t, struct uprobe_task *o_utask)
 {
 	struct uprobe_task *n_utask;
 	struct return_instance **p, *o, *n;
-
+	// 分配新utask
 	n_utask = kzalloc(sizeof(struct uprobe_task), GFP_KERNEL);
 	if (!n_utask)
 		return -ENOMEM;
@@ -1756,6 +1756,7 @@ static int dup_utask(struct task_struct *t, struct uprobe_task *o_utask)
 
 	p = &n_utask->return_instances;
 	for (o = o_utask->return_instances; o; o = o->next) {
+		// 复制old的每一个return_instance
 		n = kmalloc(sizeof(struct return_instance), GFP_KERNEL);
 		if (!n)
 			return -ENOMEM;

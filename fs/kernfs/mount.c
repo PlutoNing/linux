@@ -20,7 +20,7 @@
 #include <linux/statfs.h>
 
 #include "kernfs-internal.h"
-
+/* 分配kernfs node的slab */
 struct kmem_cache *kernfs_node_cache, *kernfs_iattrs_cache;
 struct kernfs_global_locks *kernfs_locks;
 
@@ -418,7 +418,7 @@ static void __init kernfs_lock_init(void)
 
 	kernfs_mutex_init();
 }
-
+/* 初始化kernfs的slab什么的 */
 void __init kernfs_init(void)
 {
 	kernfs_node_cache = kmem_cache_create("kernfs_node_cache",

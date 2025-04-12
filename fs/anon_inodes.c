@@ -105,7 +105,9 @@ static struct file *__anon_inode_getfile(const char *name,
 		 */
 		ihold(inode);
 	}
+	//刚刚是获取了inode
 
+	// 这里分配对应的伪文件
 	file = alloc_file_pseudo(inode, anon_inode_mnt, name,
 				 flags & (O_ACCMODE | O_NONBLOCK), fops);
 	if (IS_ERR(file))
@@ -125,6 +127,7 @@ err:
 }
 
 /**
+创建一个伪文件
  * anon_inode_getfile - creates a new file instance by hooking it up to an
  *                      anonymous inode, and a dentry that describe the "class"
  *                      of the file

@@ -66,7 +66,8 @@ struct proc_fs_info {
 	enum proc_hidepid hide_pid;
 	enum proc_pidonly pidonly;
 };
-
+/* 这不就是获取s_fs_info吗
+和proc关系是什么? */
 static inline struct proc_fs_info *proc_sb_info(struct super_block *sb)
 {
 	return sb->s_fs_info;
@@ -235,7 +236,9 @@ struct ns_common;
 int open_related_ns(struct ns_common *ns,
 		   struct ns_common *(*get_ns)(struct ns_common *ns));
 
-/* get the associated pid namespace for a file in procfs */
+/* 
+获取sb的pid_ns
+get the associated pid namespace for a file in procfs */
 static inline struct pid_namespace *proc_pid_ns(struct super_block *sb)
 {
 	return proc_sb_info(sb)->pid_ns;
