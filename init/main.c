@@ -940,7 +940,7 @@ void start_kernel(void)
 
 	/* trace_printk can be enabled here */
 	early_trace_init();
-
+/* 1233 */
 	/*
 	 * Set up the scheduler prior starting any interrupts (such as the
 	 * timer interrupt). Full topology setup happens at smp_init()
