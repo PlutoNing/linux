@@ -1328,7 +1328,7 @@ static int test_single_super(struct super_block *s, struct fs_context *fc)
 {
 	return 1;
 }
-
+/*  */
 static int vfs_get_super(struct fs_context *fc,
 		int (*test)(struct super_block *, struct fs_context *),
 		int (*fill_super)(struct super_block *sb, struct fs_context *fc))
