@@ -19658,7 +19658,7 @@ struct btf *bpf_get_btf_vmlinux(void)
 	}
 	return btf_vmlinux;
 }
-
+/* 这里开始verify */
 int bpf_check(struct bpf_prog **prog, union bpf_attr *attr, bpfptr_t uattr, __u32 uattr_size)
 {
 	u64 start_time = ktime_get_ns();

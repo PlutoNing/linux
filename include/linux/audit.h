@@ -309,7 +309,8 @@ static inline void audit_set_context(struct task_struct *task, struct audit_cont
 {
 	task->audit_context = ctx;
 }
-
+/* 获取bpf的audit上下文
+存储在current */
 static inline struct audit_context *audit_context(void)
 {
 	return current->audit_context;

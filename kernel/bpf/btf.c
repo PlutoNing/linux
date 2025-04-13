@@ -7218,7 +7218,8 @@ int btf_new_fd(const union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 	return ret;
 }
 
-/* 获取fd上面有没有绑定的btf,并尝试获取 */
+/* 获取fd上面有没有绑定的btf,并尝试获取
+存储在file的priv里面 */
 struct btf *btf_get_by_fd(int fd)
 {
 	struct btf *btf;

@@ -1614,7 +1614,7 @@ const struct bpf_verifier_ops kprobe_verifier_ops = {
 	.get_func_proto  = kprobe_prog_func_proto,
 	.is_valid_access = kprobe_prog_is_valid_access,
 };
-
+/* 还是空的？ */
 const struct bpf_prog_ops kprobe_prog_ops = {
 };
 
@@ -1720,7 +1720,7 @@ const struct bpf_verifier_ops tracepoint_verifier_ops = {
 	.get_func_proto  = tp_prog_func_proto,
 	.is_valid_access = tp_prog_is_valid_access,
 };
-
+/* 为什么是空的呢？ */
 const struct bpf_prog_ops tracepoint_prog_ops = {
 };
 
@@ -2031,7 +2031,7 @@ const struct bpf_verifier_ops raw_tracepoint_verifier_ops = {
 	.get_func_proto  = raw_tp_prog_func_proto,
 	.is_valid_access = raw_tp_prog_is_valid_access,
 };
-
+/* raw tp的不是空函数 */
 const struct bpf_prog_ops raw_tracepoint_prog_ops = {
 #ifdef CONFIG_NET
 	.test_run = bpf_prog_test_run_raw_tp,

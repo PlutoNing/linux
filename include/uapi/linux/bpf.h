@@ -52,17 +52,17 @@
 
 /* Register numbers */
 enum {
-	BPF_REG_0 = 0,
-	BPF_REG_1,
+	BPF_REG_0 = 0,/* 存储函数返回值或操作结果（类似 x86 的 EAX/RAX） */
+	BPF_REG_1,/* 函数调用时传递参数（类似 x86 的 RDI, RSI, RDX, RCX, R8）。 */
 	BPF_REG_2,
 	BPF_REG_3,
 	BPF_REG_4,
 	BPF_REG_5,
-	BPF_REG_6,
+	BPF_REG_6,/* R6-R9：​​被调用者保存寄存器​​（Callee-saved），在函数调用后需恢复原值。 */
 	BPF_REG_7,
 	BPF_REG_8,
 	BPF_REG_9,
-	BPF_REG_10,
+	BPF_REG_10, /* 栈帧指针（Frame Pointer）​​，指向当前栈帧的底部（固定用途，不可修改）。 */
 	__MAX_BPF_REG,
 };
 
@@ -869,12 +869,14 @@ enum bpf_cmd {
 	BPF_MAP_UPDATE_ELEM,
 	BPF_MAP_DELETE_ELEM,
 	BPF_MAP_GET_NEXT_KEY,
+	/* 刚刚存入了insns， data和一些属性什么的 */
 	BPF_PROG_LOAD,
 	BPF_OBJ_PIN,
 	BPF_OBJ_GET,
 	BPF_PROG_ATTACH,
 	BPF_PROG_DETACH,
 	BPF_PROG_TEST_RUN,
+	/* attr有了prog fd */
 	BPF_PROG_RUN = BPF_PROG_TEST_RUN,
 	BPF_PROG_GET_NEXT_ID,
 	BPF_MAP_GET_NEXT_ID,
@@ -1358,7 +1360,9 @@ struct bpf_stack_build_id {
 
 union bpf_attr {
 	struct { /* anonymous struct used by BPF_MAP_CREATE command */
-		__u32	map_type;	/* one of enum bpf_map_type */
+		__u32	map_type;	/* 
+		这个map的类型
+		one of enum bpf_map_type */
 		__u32	key_size;	/* size of key in bytes */
 		__u32	value_size;	/* size of value in bytes */
 		__u32	max_entries;	/* max number of entries in a map */
@@ -1387,8 +1391,10 @@ union bpf_attr {
 		__u64	map_extra;
 	};
 
-	struct { /* anonymous struct used by BPF_MAP_*_ELEM commands */
-		__u32		map_fd;
+	struct { /* 
+		对于查找命令的attr
+		anonymous struct used by BPF_MAP_*_ELEM commands */
+		__u32		map_fd; /* 要查找的map对应的fd */
 		__aligned_u64	key;
 		union {
 			__aligned_u64 value;
@@ -1414,7 +1420,9 @@ union bpf_attr {
 		__u64		flags;
 	} batch;
 
-	struct { /* anonymous struct used by BPF_PROG_LOAD command */
+	struct { /* 
+		好像是用于prog的attr
+		anonymous struct used by BPF_PROG_LOAD command */
 		__u32		prog_type;	/* one of enum bpf_prog_type */
 		__u32		insn_cnt;
 		__aligned_u64	insns;
@@ -1447,7 +1455,10 @@ union bpf_attr {
 			__u32		attach_btf_obj_fd;
 		};
 		__u32		core_relo_cnt;	/* number of bpf_core_relo */
-		__aligned_u64	fd_array;	/* array of FDs */
+		__aligned_u64	fd_array;	/* 
+		对应的相关的fd
+		比如map（存了字节码）的fd
+		array of FDs */
 		__aligned_u64	core_relos;
 		__u32		core_relo_rec_size; /* sizeof(struct bpf_core_relo) */
 		/* output: actual total log contents size (including termintaing zero).
@@ -1487,7 +1498,7 @@ union bpf_attr {
 	};
 
 	struct { /* anonymous struct used by BPF_PROG_TEST_RUN command */
-		__u32		prog_fd;
+		__u32		prog_fd;/* 是prog的fd */
 		__u32		retval;
 		__u32		data_size_in;	/* input: len of data_in */
 		__u32		data_size_out;	/* input/output: len of data_out

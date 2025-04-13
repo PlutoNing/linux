@@ -12,7 +12,7 @@ static inline bool bpfptr_is_kernel(bpfptr_t bpfptr)
 {
 	return bpfptr.is_kernel;
 }
-
+/* 转换为所谓kernel的ptr */
 static inline bpfptr_t KERNEL_BPFPTR(void *p)
 {
 	return (bpfptr_t) { .kernel = p, .is_kernel = true };
@@ -45,7 +45,7 @@ static inline void bpfptr_add(bpfptr_t *bpfptr, size_t val)
 	else
 		bpfptr->user += val;
 }
-
+/* 用户空间和内核空间拷贝 */
 static inline int copy_from_bpfptr_offset(void *dst, bpfptr_t src,
 					  size_t offset, size_t size)
 {
@@ -64,7 +64,7 @@ static inline int copy_to_bpfptr_offset(bpfptr_t dst, size_t offset,
 {
 	return copy_to_sockptr_offset((sockptr_t) dst, offset, src, size);
 }
-
+/* 从src这个用户空间拷贝到内核空间 */
 static inline void *kvmemdup_bpfptr(bpfptr_t src, size_t len)
 {
 	void *p = kvmalloc(len, GFP_USER | __GFP_NOWARN);

@@ -703,7 +703,7 @@ static void bpf_preload_mod_put(void)
 }
 
 static DEFINE_MUTEX(bpf_preload_lock);
-
+/* 如何populated? */
 static int populate_bpffs(struct dentry *parent)
 {
 	struct bpf_preload_info objs[BPF_PRELOAD_LINKS] = {};
@@ -743,7 +743,7 @@ static int bpf_fill_super(struct super_block *sb, struct fs_context *fc)
 	struct bpf_mount_opts *opts = fc->fs_private;
 	struct inode *inode;
 	int ret;
-
+	// 利用系统提供的简易初始化
 	ret = simple_fill_super(sb, BPF_FS_MAGIC, bpf_rfiles);
 	if (ret)
 		return ret;

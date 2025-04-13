@@ -74,7 +74,9 @@ static struct inode *anon_inode_make_secure_inode(
 	}
 	return inode;
 }
-
+/* 获取一个匿名inode的file
+这里name, fops,priv都是caller制定的
+看来没有什么预制的条件, 就是获取一个, 可能是系统的匿名inode都存在一个什么地方吧 */
 static struct file *__anon_inode_getfile(const char *name,
 					 const struct file_operations *fops,
 					 void *priv, int flags,
@@ -179,7 +181,7 @@ struct file *anon_inode_getfile_secure(const char *name,
 	return __anon_inode_getfile(name, fops, priv, flags,
 				    context_inode, true);
 }
-
+/* 给新创建的map分配一个fd */
 static int __anon_inode_getfd(const char *name,
 			      const struct file_operations *fops,
 			      void *priv, int flags,
@@ -188,7 +190,7 @@ static int __anon_inode_getfd(const char *name,
 {
 	int error, fd;
 	struct file *file;
-
+// 分配一个fd
 	error = get_unused_fd_flags(flags);
 	if (error < 0)
 		return error;
@@ -210,6 +212,7 @@ err_put_unused_fd:
 }
 
 /**
+给新创建的map或者prog分配一个fd
  * anon_inode_getfd - creates a new file instance by hooking it up to
  *                    an anonymous inode and a dentry that describe
  *                    the "class" of the file

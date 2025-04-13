@@ -218,7 +218,7 @@ __rb_insert(struct rb_node *node, struct rb_root *root,
 		}
 	}
 }
-
+/*  */
 /*
  * Inline version for rb_erase() use - we want to be able to inline
  * and eliminate the dummy_rotate callback there

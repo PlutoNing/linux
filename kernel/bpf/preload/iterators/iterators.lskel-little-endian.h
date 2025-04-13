@@ -69,11 +69,12 @@ iterators_bpf__destroy(struct iterators_bpf *skel)
 	skel_closenz(skel->maps.rodata.map_fd);
 	skel_free(skel);
 }
+/* 分配一个skel的内存 */
 static inline struct iterators_bpf *
 iterators_bpf__open(void)
 {
 	struct iterators_bpf *skel;
-
+	// 分配内存
 	skel = skel_alloc(sizeof(*skel));
 	if (!skel)
 		goto cleanup;
@@ -400,6 +401,7 @@ iterators_bpf__load(struct iterators_bpf *skel)
 \0\0\0\0\x63\x06\x28\0\0\0\0\0\x61\xa0\x84\xff\0\0\0\0\x63\x06\x2c\0\0\0\0\0\
 \x18\x61\0\0\0\0\0\0\0\0\0\0\0\0\0\0\x61\x10\0\0\0\0\0\0\x63\x06\x18\0\0\0\0\0\
 \xb7\0\0\0\0\0\0\0\x95\0\0\0\0\0\0\0";
+/* load和运行 */
 	err = bpf_load_and_run(&opts);
 	if (err < 0)
 		return err;

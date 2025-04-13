@@ -899,6 +899,7 @@ const struct address_space_operations ram_aops = {
 EXPORT_SYMBOL(ram_aops);
 
 /*
+初始化sb?
  * the inodes created here are not hashed. If you use iunique to generate
  * unique inode values later for this filesystem, then you must take care
  * to pass it an appropriate max_reserved value to avoid collisions.
