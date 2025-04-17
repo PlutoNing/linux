@@ -600,7 +600,7 @@ int __init early_irq_init(void)
 
 	for (i = 0; i < initcnt; i++) {
 		desc = alloc_desc(i, node, 0, NULL, NULL);
-		irq_insert_desc(i, desc);
+		irq_insert_desc(i, desc);/* 插入全局的tree */
 	}
 	return arch_early_irq_init();
 }

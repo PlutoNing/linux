@@ -705,7 +705,7 @@ static inline __alloc_size(1, 2) void *kcalloc_node(size_t n, size_t size, gfp_t
 }
 
 /*
- * Shortcuts
+ * Shortcuts，
  */
 static inline void *kmem_cache_zalloc(struct kmem_cache *k, gfp_t flags)
 {

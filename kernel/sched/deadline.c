@@ -2714,7 +2714,7 @@ static int task_is_throttled_dl(struct task_struct *p, int cpu)
 	return p->dl.dl_throttled;
 }
 #endif
-
+/* 定义dl的调度类 */
 DEFINE_SCHED_CLASS(dl) = {
 
 	.enqueue_task		= enqueue_task_dl,

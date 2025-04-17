@@ -1846,7 +1846,7 @@ static inline bool movable_only_nodes(nodemask_t *nodes)
 #if (MAX_ORDER + PAGE_SHIFT) > SECTION_SIZE_BITS
 #error Allocator MAX_ORDER exceeds SECTION_SIZE
 #endif
-// 把pfn转换为section_nr, 每个section有2^15个页面,
+// 右移15，把pfn转换为section_nr, 每个section有2^15个页面,
 static inline unsigned long pfn_to_section_nr(unsigned long pfn)
 {
 	return pfn >> PFN_SECTION_SHIFT;
@@ -2106,14 +2106,14 @@ static inline int pfn_section_valid(struct mem_section *ms, unsigned long pfn)
 #endif
 
 #ifndef CONFIG_HAVE_ARCH_PFN_VALID
-/**
+/** 什么算是valid的pfn？
  * pfn_valid - check if there is a valid memory map entry for a PFN
  * @pfn: the page frame number to check
  *
- * Check if there is a valid memory map entry aka struct page for the @pfn.
- * Note, that availability of the memory map entry does not imply that
- * there is actual usable memory at that @pfn. The struct page may
- * represent a hole or an unusable page frame.
+ 检查@pfn是否有一个有效的内存映射条目，也就是struct page。
+ * 注意，有内存映射条目并不意味着@pfn处有实际可用的内存。
+ * struct page可能表示一个空洞
+ 或不可用的页帧。
  *
  * Return: 1 for PFNs that have memory map entries and 0 otherwise
  */
@@ -2122,10 +2122,10 @@ static inline int pfn_valid(unsigned long pfn)
 	struct mem_section *ms;
 
 	/*
-	 * Ensure the upper PAGE_SHIFT bits are clear in the
-	 * pfn. Else it might lead to false positives when
-	 * some of the upper bits are set, but the lower bits
-	 * match a valid pfn.
+* 确保pfn的高位PAGE_SHIFT位是清零的。
+	 * 否则，当高位某些位被设置，
+	 但低位与有效的pfn匹配时，
+	 * 可能会导致误判。
 	 */
 	if (PHYS_PFN(PFN_PHYS(pfn)) != pfn)
 		return 0;

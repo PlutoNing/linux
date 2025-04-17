@@ -49,7 +49,7 @@ asm (".global __static_call_return\n\t"
      ANNOTATE_RETPOLINE_SAFE
      "ret; int3\n\t"
      ".size __static_call_return, . - __static_call_return \n\t");
-
+/* 通过插入指令从addr跳到func？type决定插入什么指令？ */
 static void __ref __static_call_transform(void *insn, enum insn_type type,
 					  void *func, bool modinit)
 {
@@ -76,7 +76,7 @@ static void __ref __static_call_transform(void *insn, enum insn_type type,
 		code = x86_nops[5];
 		break;
 
-	case JMP:
+	case JMP: /* 修改指令， 跳转 */
 		code = text_gen_insn(JMP32_INSN_OPCODE, insn, func);
 		break;
 
@@ -103,9 +103,9 @@ static void __ref __static_call_transform(void *insn, enum insn_type type,
 	}
 
 	if (memcmp(insn, code, size) == 0)
-		return;
+		return;/* 按理说这个时候应该修改好了？ */
 
-	if (system_state == SYSTEM_BOOTING || modinit)
+	if (system_state == SYSTEM_BOOTING || modinit)/* 如果在boot时期美好也没关系，其他方法再试试？ */
 		return text_poke_early(insn, code, size);
 
 	text_poke_bp(insn, code, size, emulate);
@@ -115,7 +115,7 @@ static void __static_call_validate(u8 *insn, bool tail, bool tramp)
 {
 	u8 opcode = insn[0];
 
-	if (tramp && memcmp(insn+5, tramp_ud, 3)) {
+	if (tramp && memcmp(insn+5, tramp_ud, 3)) {/* -exec x/10i insn retint3 nop nop nop   	ud1    ecx,esp */
 		pr_err("trampoline signature fail");
 		BUG();
 	}
@@ -153,7 +153,7 @@ static inline enum insn_type __sc_insn(bool null, bool tail)
 	 */
 	return 2*tail + null;
 }
-
+/* 修改tramp为func */
 void arch_static_call_transform(void *site, void *tramp, void *func, bool tail)
 {
 	mutex_lock(&text_mutex);

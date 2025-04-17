@@ -62,7 +62,7 @@ static inline void __pte_free_tlb(struct mmu_gather *tlb, struct page *pte,
 {
 	___pte_free_tlb(tlb, pte);
 }
-
+/* pte指向一个满是pte的页面，pmd是指向这个页面 */
 static inline void pmd_populate_kernel(struct mm_struct *mm,
 				       pmd_t *pmd, pte_t *pte)
 {

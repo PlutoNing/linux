@@ -579,7 +579,7 @@ out:
  * members (mimicking the global state we have today).
  */
 struct root_domain def_root_domain;
-
+/* domain是什么 */
 void __init init_defrootdomain(void)
 {
 	init_rootdomain(&def_root_domain);

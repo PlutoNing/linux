@@ -60,7 +60,7 @@
  * the page table folding, they are always available, regardless of
  * CONFIG_PGTABLE_LEVELS value. For the folded levels they simply return 0
  * because in such cases PTRS_PER_PxD equals 1.
- 找到地址的在pte页表页面的offset?
+ 找到地址的在pte页表页面的offset? 也就是说这个物理地址应该被放到第几个pte页表上面？
  */
 
 static inline unsigned long pte_index(unsigned long address)
@@ -86,7 +86,7 @@ static inline unsigned long pud_index(unsigned long address)
 #endif
 
 #ifndef pgd_index
-/* Must be a compile-time constant, so implement it as a macro */
+/* Must be a compile-time constant, so implement it as a macro, 查找在pgd页面的idx */
 #define pgd_index(a)  (((a) >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1))
 #endif
 

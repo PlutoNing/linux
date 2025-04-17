@@ -1596,7 +1596,9 @@ union bpf_attr {
 		__u64		probe_addr;	/* output: probe_addr */
 	} task_fd_query;
 
-	struct { /* struct used by BPF_LINK_CREATE command */
+	struct { /* 
+		创建link的attr
+		struct used by BPF_LINK_CREATE command */
 		union {
 			__u32		prog_fd;	/* eBPF program to attach */
 			__u32		map_fd;		/* struct_ops to attach */

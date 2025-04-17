@@ -17,7 +17,7 @@
  */
 BLOCKING_NOTIFIER_HEAD(reboot_notifier_list);
 
-/*
+/*注册notifier
  *	Notifier chain core routines.  The exported routines below
  *	are layered on top of these, with appropriate locking added.
  */
@@ -33,11 +33,11 @@ static int notifier_chain_register(struct notifier_block **nl,
 			return -EEXIST;
 		}
 		if (n->priority > (*nl)->priority)
-			break;
+			break;/* 高优先级的在chain的前面 */
 		if (n->priority == (*nl)->priority && unique_priority)
 			return -EBUSY;
 		nl = &((*nl)->next);
-	}
+	}/* 找到一个合适的插入位置 */
 	n->next = *nl;
 	rcu_assign_pointer(*nl, n);
 	trace_notifier_register((void *)n->notifier_call);
@@ -275,7 +275,7 @@ static int __blocking_notifier_chain_register(struct blocking_notifier_head *nh,
 }
 
 /**
- *	blocking_notifier_chain_register - Add notifier to a blocking notifier chain
+ *	blocking_notifier_chain_register - 添加一个notifier到blocking notifier chain
  *	@nh: Pointer to head of the blocking notifier chain
  *	@n: New entry in notifier chain
  *

@@ -6513,7 +6513,7 @@ static inline void wq_watchdog_init(void) { }
 #endif	/* CONFIG_WQ_WATCHDOG */
 
 /**
- * workqueue_init_early - early init for workqueue subsystem
+ * workqueue_init_early - wq子系统的早期初始化
  *
  * This is the first step of three-staged workqueue subsystem initialization and
  * invoked as soon as the bare basics - memory allocation, cpumasks and idr are

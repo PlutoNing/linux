@@ -1,14 +1,8 @@
 eBPF sample programs
 ====================
-
-This directory contains a test stubs, verifier test-suite and examples
-for using eBPF. The examples use libbpf from tools/lib/bpf.
-
-Note that the XDP-specific samples have been removed from this directory and
-moved to the xdp-tools repository: https://github.com/xdp-project/xdp-tools
-See the commit messages removing each tool from this directory for how to
-convert specific command invocations between the old samples and the utilities
-in xdp-tools.
+这个目录包含测试stubs、verifier测试套件和使用 eBPF 的示例。示例使用来自 tools/lib/bpf 的 libbpf。
+注意，特定于 XDP 的示例已从此目录中移除，并迁移到 xdp-tools 仓库：https://github.com/xdp-project/xdp-tools
+请参阅从此目录中移除每个工具的提交消息，以了解如何将特定命令调用从旧示例转换为 xdp-tools 中的实用程序。
 
 Build dependencies
 ==================
@@ -18,17 +12,14 @@ Compiling requires having installed:
  * llvm
  * pahole
 
-Consult :ref:`Documentation/process/changes.rst <changes>` for the minimum
-version numbers required and how to update them. Note that LLVM's tool
-'llc' must support target 'bpf', list version and supported targets with
-command: ``llc --version``
+请参阅 :ref:`Documentation/process/changes.rst <changes>` 以了解所需的最低版本号以及如何
+更新它们。请注意，LLVM 的工具 'llc' 必须支持目标 'bpf'，可以通过以下命令列出版本和支持的目标：
+``llc --version``
 
 Clean and configuration
 -----------------------
 
-It can be needed to clean tools, samples or kernel before trying new arch or
-after some changes (on demand)::
-
+在尝试新的架构或进行某些更改后（按需），可能需要清理工具、示例或内核::
  make -C tools clean
  make -C samples/bpf clean
  make clean
@@ -41,43 +32,34 @@ Configure kernel, defconfig for instance
 Kernel headers
 --------------
 
-There are usually dependencies to header files of the current kernel.
-To avoid installing devel kernel headers system wide, as a normal
-user, simply call::
-
+通常需要当前内核的头文件作为依赖项。
+为了避免以普通用户身份在系统范围内安装开发内核头文件，只需调用以下命令::
  make headers_install
-
-This will create a local "usr/include" directory in the git/build top
-level directory, that the make system will automatically pick up first.
+这将在 git/build 顶层目录中创建一个本地的 "usr/include" 目录，make 系统会优先自动使用该目录。
 
 Compiling
 =========
 
-For building the BPF samples, issue the below command from the kernel
-top level directory::
+要构建 BPF 示例，请从内核顶层目录运行以下命令::
 
  make M=samples/bpf
 
-It is also possible to call make from this directory.  This will just
-hide the invocation of make as above.
+也可以从此目录调用 make。这将隐藏上述 make 的调用方式。
 
 Manually compiling LLVM with 'bpf' support
 ------------------------------------------
 
-Since version 3.7.0, LLVM adds a proper LLVM backend target for the
-BPF bytecode architecture.
+自版本 3.7.0 起，LLVM 为 BPF 字节码架构添加了一个正式的 LLVM 后端目标。
 
-By default llvm will build all non-experimental backends including bpf.
-To generate a smaller llc binary one can use::
+默认情况下，LLVM 将构建所有非实验性后端，包括 BPF。
+为了生成更小的 llc 二进制文件，可以使用以下命令::
 
  -DLLVM_TARGETS_TO_BUILD="BPF"
 
-We recommend that developers who want the fastest incremental builds
-use the Ninja build system, you can find it in your system's package
-manager, usually the package is ninja or ninja-build.
+我们建议希望获得最快增量构建的开发人员使用 Ninja 构建系统，您可以在系统的包管理器中找到它，通常包名为 ninja 或 ninja-build。
 
-Quick sniplet for manually compiling LLVM and clang
-(build dependencies are ninja, cmake and gcc-c++)::
+手动编译 LLVM 和 clang 的快速片段
+（构建依赖项包括 ninja、cmake 和 gcc-c++）::
 
  $ git clone https://github.com/llvm/llvm-project.git
  $ mkdir -p llvm-project/llvm/build
@@ -88,17 +70,14 @@ Quick sniplet for manually compiling LLVM and clang
             -DLLVM_BUILD_RUNTIME=OFF
  $ ninja
 
-It is also possible to point make to the newly compiled 'llc' or
-'clang' command via redefining LLC or CLANG on the make command line::
+还可以通过在 make 命令行中重新定义 LLC 或 CLANG，将 make 指向新编译的 'llc' 或 'clang' 命令::
 
  make M=samples/bpf LLC=~/git/llvm-project/llvm/build/bin/llc CLANG=~/git/llvm-project/llvm/build/bin/clang
 
 Cross compiling samples
 -----------------------
-In order to cross-compile, say for arm64 targets, export CROSS_COMPILE and ARCH
-environment variables before calling make. But do this before clean,
-configuration and header install steps described above. This will direct make to
-build samples for the cross target::
+为了交叉编译，例如针对 arm64 目标，在调用 make 之前，先导出 CROSS_COMPILE 和 ARCH 环境变量。
+但请在上述清理、配置和头文件安装步骤之前执行此操作。这将指示 make 为交叉目标构建示例程序::
 
  export ARCH=arm64
  export CROSS_COMPILE="aarch64-linux-gnu-"

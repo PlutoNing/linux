@@ -1401,10 +1401,10 @@ free:
 }
 
 /*
- * Called after the kmem_caches are functional to setup a dedicated
- * cache pool, which has the SLAB_DEBUG_OBJECTS flag set. This flag
- * prevents that the debug code is called on kmem_cache_free() for the
- * debug tracker objects to avoid recursive calls.
+ * 在 kmem_caches 功能正常后调用，用于设置一个专用的缓存池，
+ * 该缓存池设置了 SLAB_DEBUG_OBJECTS 标志。此标志防止在
+ * kmem_cache_free() 上调用调试代码，
+ 以避免对调试跟踪对象的递归调用。
  */
 void __init debug_objects_mem_init(void)
 {

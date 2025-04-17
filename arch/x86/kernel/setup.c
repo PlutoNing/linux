@@ -201,7 +201,7 @@ void * __init extend_brk(size_t size, size_t align)
 	_brk_end = (_brk_end + mask) & ~mask;
 	BUG_ON((char *)(_brk_end + size) > __brk_limit);
 
-	ret = (void *)_brk_end;
+	ret = (void *)_brk_end;/* 分配了size内存 */
 	_brk_end += size;
 
 	memset(ret, 0, size);
@@ -769,7 +769,7 @@ static void __init early_reserve_memory(void)
 	 * Reserve the memory occupied by the kernel between _text and
 	 * __end_of_kernel_reserve symbols. Any kernel sections after the
 	 * __end_of_kernel_reserve symbol must be explicitly reserved with a
-	 * separate memblock_reserve() or they will be discarded.
+	 * separate memblock_reserve() or they will be discarded. 保留内核的一些代码段
 	 */
 	memblock_reserve(__pa_symbol(_text),
 			 (unsigned long)__end_of_kernel_reserve - (unsigned long)_text);
@@ -785,7 +785,7 @@ static void __init early_reserve_memory(void)
 	 * In addition, make sure page 0 is always reserved because on
 	 * systems with L1TF its contents can be leaked to user processes.
 	 */
-	memblock_reserve(0, SZ_64K);
+	memblock_reserve(0, SZ_64K);/* 为bios保留64KB */
 
 	early_reserve_initrd();
 
@@ -813,7 +813,7 @@ dump_kernel_offset(struct notifier_block *self, unsigned long v, void *p)
 
 	return 0;
 }
-
+/* NX 位允许将内存页标记为 ​​不可执行​​，防止攻击者通过缓冲区溢出在栈/堆中执行恶意代码 */
 void x86_configure_nx(void)
 {
 	if (boot_cpu_has(X86_FEATURE_NX))
@@ -938,11 +938,11 @@ void __init setup_arch(char **cmdline_p)
 	 * xen_memory_setup() on Xen dom0 which relies on the fact that those
 	 * early reservations have happened already.
 	 */
-	early_reserve_memory();
+	early_reserve_memory();/* 保留内核的一些代码段，bios内存什么的 */
 
 	iomem_resource.end = (1ULL << boot_cpu_data.x86_phys_bits) - 1;
-	e820__memory_setup();
-	parse_setup_data();
+	e820__memory_setup();/* 处理bios e820表示的物理内存布局 */
+	parse_setup_data();/* 没有运行， 好像是空的 */
 
 	copy_edd();
 
@@ -982,7 +982,7 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	x86_configure_nx();
 
-	parse_early_param();
+	parse_early_param();/* 提前处理一些内核参数 */
 
 	if (efi_enabled(EFI_BOOT))
 		efi_memblock_x86_reserve_range();
@@ -1013,7 +1013,7 @@ void __init setup_arch(char **cmdline_p)
 
 	x86_report_nx();
 
-	apic_setup_apic_calls();
+	apic_setup_apic_calls();/* 更新apic的static call */
 
 	if (acpi_mps_check()) {
 #ifdef CONFIG_X86_LOCAL_APIC
@@ -1022,7 +1022,7 @@ void __init setup_arch(char **cmdline_p)
 		setup_clear_cpu_cap(X86_FEATURE_APIC);
 	}
 
-	e820__reserve_setup_data();
+	e820__reserve_setup_data();/* 这俩好像都是空的 */
 	e820__finish_early_params();
 
 	if (efi_enabled(EFI_BOOT))
@@ -1102,7 +1102,7 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	find_smp_config();
 
-	early_alloc_pgt_buf();
+	early_alloc_pgt_buf();/* 预先分配一块物理内存，专门用于存放 ​​临时页表 */
 
 	/*
 	 * Need to conclude brk, before e820__memblock_setup()
@@ -1163,7 +1163,7 @@ void __init setup_arch(char **cmdline_p)
 
 	init_mem_mapping();
 
-	idt_setup_early_pf();
+	idt_setup_early_pf(); /* 把一个pf处理的handler加到idt */
 
 	/*
 	 * Update mmu_cr4_features (and, indirectly, trampoline_cr4_features)
@@ -1176,7 +1176,7 @@ void __init setup_arch(char **cmdline_p)
 	 */
 	mmu_cr4_features = __read_cr4() & ~X86_CR4_PCIDE;
 
-	memblock_set_current_limit(get_max_mapped());
+	memblock_set_current_limit(get_max_mapped());/* 写入当前map的页面数量 */
 
 	/*
 	 * NOTE: On x86-32, only from this point on, fixmaps are ready for use.
@@ -1205,7 +1205,7 @@ void __init setup_arch(char **cmdline_p)
 
 	reserve_initrd();
 
-	acpi_table_upgrade();
+	acpi_table_upgrade();/* acpi的以后 */
 	/* Look for ACPI tables and reserve memory occupied by them. */
 	acpi_boot_table_init();
 
@@ -1217,7 +1217,7 @@ void __init setup_arch(char **cmdline_p)
 
 	early_acpi_boot_init();
 
-	initmem_init();
+	initmem_init();/* 初始化什么 */
 	dma_contiguous_reserve(max_pfn_mapped << PAGE_SHIFT);
 
 	if (boot_cpu_has(X86_FEATURE_GBPAGES))
@@ -1296,7 +1296,7 @@ void __init setup_arch(char **cmdline_p)
 #endif
 	x86_init.oem.banner();
 
-	x86_init.timers.wallclock_init();
+	x86_init.timers.wallclock_init();/* 初始化墙钟？ */
 
 	/*
 	 * This needs to run before setup_local_APIC() which soft-disables the

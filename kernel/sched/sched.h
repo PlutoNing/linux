@@ -365,7 +365,7 @@ struct task_group {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* schedulable entities of this group on each CPU */
-	struct sched_entity	**se;
+	struct sched_entity	**se;/* 其实是数组，大小是cpu数量 */
 	/* runqueue "owned" by this group on each CPU */
 	struct cfs_rq		**cfs_rq;
 	unsigned long		shares;

@@ -5036,6 +5036,7 @@ err_put:
 }
 
 #define BPF_LINK_CREATE_LAST_FIELD link_create.uprobe_multi.pid
+/*  */
 static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 {
 	struct bpf_prog *prog;
@@ -5046,7 +5047,7 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 
 	if (attr->link_create.attach_type == BPF_STRUCT_OPS)
 		return bpf_struct_ops_link_create(attr);
-
+	/* 获取prog */
 	prog = bpf_prog_get(attr->link_create.prog_fd);
 	if (IS_ERR(prog))
 		return PTR_ERR(prog);
@@ -5055,7 +5056,7 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 						attr->link_create.attach_type);
 	if (ret)
 		goto out;
-
+		/* 不同类型的prog不同的处理 */
 	switch (prog->type) {
 	case BPF_PROG_TYPE_CGROUP_SKB:
 	case BPF_PROG_TYPE_CGROUP_SOCK:
@@ -5106,10 +5107,10 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 		break;
 #endif
 	case BPF_PROG_TYPE_PERF_EVENT:
-	case BPF_PROG_TYPE_TRACEPOINT:
+	case BPF_PROG_TYPE_TRACEPOINT: /* trace类型的？ */
 		ret = bpf_perf_link_attach(attr, prog);
 		break;
-	case BPF_PROG_TYPE_KPROBE:
+	case BPF_PROG_TYPE_KPROBE: /* probe类型的？ */
 		if (attr->link_create.attach_type == BPF_PERF_EVENT)
 			ret = bpf_perf_link_attach(attr, prog);
 		else if (attr->link_create.attach_type == BPF_TRACE_KPROBE_MULTI)
@@ -5557,7 +5558,7 @@ static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 	case BPF_MAP_DELETE_BATCH:
 		err = bpf_map_do_batch(&attr, uattr.user, BPF_MAP_DELETE_BATCH);
 		break;
-	case BPF_LINK_CREATE:
+	case BPF_LINK_CREATE:/* 创建link */
 		err = link_create(&attr, uattr);
 		break;
 	case BPF_LINK_UPDATE:

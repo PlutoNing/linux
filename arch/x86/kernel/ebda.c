@@ -48,7 +48,7 @@
  * obviously.
  */
 
-#define BIOS_RAM_SIZE_KB_PTR	0x413
+#define BIOS_RAM_SIZE_KB_PTR	0x413/* bios开始的内存地址 */
 
 #define BIOS_START_MIN		0x20000U	/* 128K, less than this is insane */
 #define BIOS_START_MAX		0x9f000U	/* 640K, absolute maximum */
@@ -93,6 +93,6 @@ void __init reserve_bios_regions(void)
 	if (ebda_start >= BIOS_START_MIN && ebda_start < bios_start)
 		bios_start = ebda_start;
 
-	/* Reserve all memory between bios_start and the 1MB mark: */
+	/* Reserve all memory between bios_start and the 1MB mark: 保留从bios开始处到1MB的地方， 大概三百多KB */
 	memblock_reserve(bios_start, 0x100000 - bios_start);
 }

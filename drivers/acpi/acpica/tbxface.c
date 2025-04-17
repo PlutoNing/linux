@@ -317,7 +317,7 @@ acpi_get_table(char *signature,
 
 	(void)acpi_ut_acquire_mutex(ACPI_MTX_TABLES);
 
-	/* Walk the root table list */
+	/* Walk the root table list，这个root list是什么 */
 
 	for (i = 0, j = 0; i < acpi_gbl_root_table_list.current_table_count;
 	     i++) {
@@ -331,7 +331,7 @@ acpi_get_table(char *signature,
 			continue;
 		}
 
-		status = acpi_tb_get_table(table_desc, out_table);
+		status = acpi_tb_get_table(table_desc, out_table); /* 找到目标desc */
 		break;
 	}
 

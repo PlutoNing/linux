@@ -743,8 +743,8 @@ static inline void init_reserved_page(unsigned long pfn, int nid)
 }
 #endif /* CONFIG_DEFERRED_STRUCT_PAGE_INIT */
 
-/*
-start和end是node的一个region
+/* 启动的时候调用，是把memblock转为buddy？
+start和end是node的一个memblock region
 =============================
 设置范围内全部page的lru成员, reserved标志
  * Initialised pages do not have PageReserved set. This function is
@@ -764,7 +764,7 @@ void __meminit reserve_bootmem_region(phys_addr_t start,
 	// 遍历这个区域的每一个页面
 	for (; start_pfn < end_pfn; start_pfn++) {
 		if (pfn_valid(start_pfn)) {
-			struct page *page = pfn_to_page(start_pfn);
+			struct page *page = pfn_to_page(start_pfn);/* 就是vmemmap_base + (start_pfn) */
 
 			init_reserved_page(start_pfn, nid);
 
@@ -2862,10 +2862,10 @@ void __init mm_core_init(void)
 	report_meminit();
 	kmsan_init_shadow();
 	stack_depot_early_init();
-	//
+	//这里又是初始化什么
 	mem_init();
 	mem_init_print_info();
-	kmem_cache_init();
+	kmem_cache_init();/* 初始化slab */
 	/*
 	 * page_owner must be initialized after buddy is ready, and also after
 	 * slab is ready so that stack_depot_init() works properly
@@ -2883,7 +2883,7 @@ void __init mm_core_init(void)
 	/* Should be run before the first non-init thread is created */
 	init_espfix_bsp();
 	/* Should be run after espfix64 is set up. */
-	pti_init();
+	pti_init();/* 页表隔离 */
 	kmsan_init_runtime();
-	mm_cache_init();
+	mm_cache_init();/* 创建mm的slab */
 }

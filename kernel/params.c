@@ -177,7 +177,7 @@ char *parse_args(const char *doing,
 	if (*args)
 		pr_debug("doing %s, parsing ARGS: '%s'\n", doing, args);
 
-	while (*args) {
+	while (*args) {/* 逐个取出内核启动参数， 判断是否需要处理 */
 		int ret;
 		int irq_was_disabled;
 

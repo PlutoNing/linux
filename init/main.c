@@ -469,7 +469,7 @@ static void __init exit_boot_config(void)
 }
 
 #else	/* !CONFIG_BOOT_CONFIG */
-
+/*  */
 static void __init setup_boot_config(void)
 {
 	/* Remove bootconfig data from initrd */
@@ -680,7 +680,7 @@ static void __init setup_command_line(char *command_line)
  */
 
 static __initdata DECLARE_COMPLETION(kthreadd_done);
-
+/* 进行启动的rest init */
 noinline void __ref __noreturn rest_init(void)
 {
 	struct task_struct *tsk;
@@ -688,9 +688,9 @@ noinline void __ref __noreturn rest_init(void)
 
 	rcu_scheduler_starting();
 	/*
-	 * We need to spawn init first so that it obtains pid 1, however
-	 * the init task will end up wanting to create kthreads, which, if
-	 * we schedule it before we create kthreadd, will OOPS.
+	 * 我们需要首先生成 init 进程，以便它获得 pid 1，
+	 * 然而 init 任务最终会尝试创建内核线程，
+	 * 如果我们在创建 kthreadd 之前调度它，将会导致 OOPS。
 	 */
 	pid = user_mode_thread(kernel_init, NULL, CLONE_FS);
 	/*
@@ -731,7 +731,7 @@ noinline void __ref __noreturn rest_init(void)
 	cpu_startup_entry(CPUHP_ONLINE);
 }
 
-/* Check for early params. */
+/* Check for early params. 检查需要提前处理的内核参数？*/
 static int __init do_early_param(char *param, char *val,
 				 const char *unused, void *arg)
 {
@@ -749,7 +749,7 @@ static int __init do_early_param(char *param, char *val,
 	/* We accept everything at this stage. */
 	return 0;
 }
-
+/* 这里处理需要提前处理的内核启动参数？ */
 void __init parse_early_options(char *cmdline)
 {
 	parse_args("early options", cmdline, NULL, 0, 0, 0, NULL,
@@ -822,7 +822,7 @@ static int __init early_randomize_kstack_offset(char *buf)
 }
 early_param("randomize_kstack_offset", early_randomize_kstack_offset);
 #endif
-
+/* 进行rest init */
 void __init __weak __noreturn arch_call_rest_init(void)
 {
 	rest_init();
@@ -898,12 +898,12 @@ void start_kernel(void)
 	early_security_init();
 	// 这里会设置内存
 	setup_arch(&command_line);
-	setup_boot_config();
+	setup_boot_config();/* boot config是什么 */
 	setup_command_line(command_line);
 	setup_nr_cpu_ids();
-	setup_per_cpu_areas();
+	setup_per_cpu_areas(); /* 初始化pcp机制？ */
 	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
-	boot_cpu_hotplug_init();
+	boot_cpu_hotplug_init();/* cpu热插拔初始化 */
 
 	pr_notice("Kernel command line: %s\n", saved_command_line);
 	/* parameters may set static keys */
@@ -929,7 +929,7 @@ void start_kernel(void)
 	 * initalization of page allocator
 	 */
 	setup_log_buf(0);
-	vfs_caches_init_early();
+	vfs_caches_init_early();/* vfs的一些hash和slab什么的 */
 	sort_main_extable();
 	// 中断相关
 	trap_init();
@@ -946,7 +946,7 @@ void start_kernel(void)
 	 * timer interrupt). Full topology setup happens at smp_init()
 	 * time - but meanwhile we still have a functioning scheduler.
 	 */
-	sched_init();
+	sched_init();/* 初始化调度 */
 
 	if (WARN(!irqs_disabled(),
 		 "Interrupts were enabled *very* early, fixing it\n"))
@@ -956,14 +956,14 @@ void start_kernel(void)
 
 	/*
 	 * Set up housekeeping before setting up workqueues to allow the unbound
-	 * workqueue to take non-housekeeping into account.
+	 * workqueue to take non-housekeeping into account.在设置工作队列之前设置housekeeping，以便无绑定工作队列可以考虑非housekeeping任务。
 	 */
 	housekeeping_init();
 
 	/*
 	 * Allow workqueue creation and work item queueing/cancelling
 	 * early.  Work item execution depends on kthreads and starts after
-	 * workqueue_init().
+	 * workqueue_init().允许工作队列的创建以及工作项的排队/取消。 工作项的执行依赖于内核线程，并在workqueue_init()之后开始。
 	 */
 	workqueue_init_early();
 

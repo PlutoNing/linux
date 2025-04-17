@@ -9926,7 +9926,7 @@ LIST_HEAD(task_groups);
 /* Cacheline aligned slab cache for task_group */
 static struct kmem_cache *task_group_cache __read_mostly;
 #endif
-
+/* 调度机制的初始化 */
 void __init sched_init(void)
 {
 	unsigned long ptr = 0;
@@ -9948,10 +9948,10 @@ void __init sched_init(void)
 #ifdef CONFIG_RT_GROUP_SCHED
 	ptr += 2 * nr_cpu_ids * sizeof(void **);
 #endif
-	if (ptr) {
+	if (ptr) {/* ptr作用是？ */
 		ptr = (unsigned long)kzalloc(ptr, GFP_NOWAIT);
 
-#ifdef CONFIG_FAIR_GROUP_SCHED
+#ifdef CONFIG_FAIR_GROUP_SCHED/* ptr作为这些结构体成员的内存 */
 		root_task_group.se = (struct sched_entity **)ptr;
 		ptr += nr_cpu_ids * sizeof(void **);
 
@@ -9991,7 +9991,7 @@ void __init sched_init(void)
 	autogroup_init(&init_task);
 #endif /* CONFIG_CGROUP_SCHED */
 
-	for_each_possible_cpu(i) {
+	for_each_possible_cpu(i) {/* 初始化每个cpu的rq */
 		struct rq *rq;
 
 		rq = cpu_rq(i);
@@ -10094,7 +10094,7 @@ void __init sched_init(void)
 	WARN_ON(!set_kthread_struct(current));
 
 	/*
-	 * Make us the idle thread. Technically, schedule() should not be
+	 * 生成idle进程. Technically, schedule() should not be
 	 * called from this thread, however somewhere below it might be,
 	 * but because we are the idle thread, we just pick up running again
 	 * when this runqueue becomes "idle".
@@ -10107,13 +10107,13 @@ void __init sched_init(void)
 	idle_thread_set_boot_cpu();
 	balance_push_set(smp_processor_id(), false);
 #endif
-	init_sched_fair_class();
+	init_sched_fair_class();/* 初始化cfs调度类 */
 
 	psi_init();
 
 	init_uclamp();
 
-	preempt_dynamic_init();
+	preempt_dynamic_init();/* 以后分析 */
 
 	scheduler_running = 1;
 }

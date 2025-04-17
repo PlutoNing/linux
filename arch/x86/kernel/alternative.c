@@ -1684,7 +1684,7 @@ void __init_or_module text_poke_early(void *addr, const void *opcode,
 		memcpy(addr, opcode, len);
 	} else {
 		local_irq_save(flags);
-		memcpy(addr, opcode, len);
+		memcpy(addr, opcode, len);/* 直接拷贝啊？ */
 		local_irq_restore(flags);
 		sync_core();
 

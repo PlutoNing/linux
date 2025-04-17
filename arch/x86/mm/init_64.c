@@ -448,7 +448,7 @@ void __init cleanup_highmap(void)
 
 /*
  * Create PTE level page table mapping for physical addresses.
- * It returns the last physical address mapped.
+ * It returns the last physical address mapped. 用这个pte page作为pte页表，装载paddr范围的页面？
  */
 static unsigned long __meminit
 phys_pte_init(pte_t *pte_page, unsigned long paddr, unsigned long paddr_end,
@@ -464,7 +464,7 @@ phys_pte_init(pte_t *pte_page, unsigned long paddr, unsigned long paddr_end,
 
 	for (; i < PTRS_PER_PTE; i++, paddr = paddr_next, pte++) {
 		paddr_next = (paddr & PAGE_MASK) + PAGE_SIZE;
-		if (paddr >= paddr_end) {
+		if (paddr >= paddr_end) {/* 如果超出了本次函数参数指定的需要映射的物理地址范围 */
 			if (!after_bootmem &&
 			    !e820__mapped_any(paddr & PAGE_MASK, paddr_next,
 					     E820_TYPE_RAM) &&
@@ -480,7 +480,7 @@ phys_pte_init(pte_t *pte_page, unsigned long paddr, unsigned long paddr_end,
 		 * pagetable pages as RO. So assume someone who pre-setup
 		 * these mappings are more intelligent.
 		 */
-		if (!pte_none(*pte)) {
+		if (!pte_none(*pte)) {/* 如果这个pte已经有页面了 */
 			if (!after_bootmem)
 				pages++;
 			continue;
@@ -489,8 +489,8 @@ phys_pte_init(pte_t *pte_page, unsigned long paddr, unsigned long paddr_end,
 		if (0)
 			pr_info("   pte=%p addr=%lx pte=%016lx\n", pte, paddr,
 				pfn_pte(paddr >> PAGE_SHIFT, PAGE_KERNEL).pte);
-		pages++;
-		set_pte_init(pte, pfn_pte(paddr >> PAGE_SHIFT, prot), init);
+		pages++;/* pages表示本次函数调用成功映射的物理页面数量 */ /* 下面这句，其实就是包裹着赋值pte，被各种宏，和内联 */
+		set_pte_init(pte, pfn_pte(paddr >> PAGE_SHIFT, prot), init);/* pte指向这个paddr的页面 */
 		paddr_last = (paddr & PAGE_MASK) + PAGE_SIZE;
 	}
 
@@ -499,7 +499,7 @@ phys_pte_init(pte_t *pte_page, unsigned long paddr, unsigned long paddr_end,
 	return paddr_last;
 }
 
-/*
+/* 填充满这个pmd页面， 每个条目都指向一个塞满pte的pte 页面
  * Create PMD level page table mapping for physical addresses. The virtual
  * and physical address have to be aligned at this level.
  * It returns the last physical address mapped.
@@ -514,7 +514,7 @@ phys_pmd_init(pmd_t *pmd_page, unsigned long paddr, unsigned long paddr_end,
 	int i = pmd_index(paddr);
 
 	for (; i < PTRS_PER_PMD; i++, paddr = paddr_next) {
-		pmd_t *pmd = pmd_page + pmd_index(paddr);
+		pmd_t *pmd = pmd_page + pmd_index(paddr); /* pmd指向一个pte条目页面 */
 		pte_t *pte;
 		pgprot_t new_prot = prot;
 
@@ -571,11 +571,11 @@ phys_pmd_init(pmd_t *pmd_page, unsigned long paddr, unsigned long paddr_end,
 			continue;
 		}
 
-		pte = alloc_low_page();
+		pte = alloc_low_page();/* 分配一个页面 */  /* 现在pte指向的页面排列满了pte ent，(pte[3].pte >> 12)& 0xfffffffff */
 		paddr_last = phys_pte_init(pte, paddr, paddr_end, new_prot, init);
 
 		spin_lock(&init_mm.page_table_lock);
-		pmd_populate_kernel_init(&init_mm, pmd, pte, init);
+		pmd_populate_kernel_init(&init_mm, pmd, pte, init);/* 让pmd指向这个pte页面 */
 		spin_unlock(&init_mm.page_table_lock);
 	}
 	update_page_count(PG_LEVEL_2M, pages);
@@ -583,10 +583,10 @@ phys_pmd_init(pmd_t *pmd_page, unsigned long paddr, unsigned long paddr_end,
 }
 
 /*
- * Create PUD level page table mapping for physical addresses. The virtual
- * and physical address do not have to be aligned at this level. KASLR can
- * randomize virtual addresses up to this level.
- * It returns the last physical address mapped.
+ * 为物理地址创建PUD级别的页表映射。虚拟地址和物理地址在此级别不需要对齐。
+ * KASLR可以将虚拟地址
+ 随机化到此级别。
+ * 它返回最后一个被映射的物理地址。
  */
 static unsigned long __meminit
 phys_pud_init(pud_t *pud_page, unsigned long paddr, unsigned long paddr_end,
@@ -606,7 +606,7 @@ phys_pud_init(pud_t *pud_page, unsigned long paddr, unsigned long paddr_end,
 		pud = pud_page + pud_index(vaddr);
 		paddr_next = (paddr & PUD_MASK) + PUD_SIZE;
 
-		if (paddr >= paddr_end) {
+		if (paddr >= paddr_end) { /* r14 r15 */
 			if (!after_bootmem &&
 			    !e820__mapped_any(paddr & PUD_MASK, paddr_next,
 					     E820_TYPE_RAM) &&
@@ -616,13 +616,13 @@ phys_pud_init(pud_t *pud_page, unsigned long paddr, unsigned long paddr_end,
 			continue;
 		}
 
-		if (!pud_none(*pud)) {
+		if (!pud_none(*pud)) {/* 如果已经准备好了页表页面 */
 			if (!pud_large(*pud)) {
 				pmd = pmd_offset(pud, 0);
 				paddr_last = phys_pmd_init(pmd, paddr,
 							   paddr_end,
 							   page_size_mask,
-							   prot, init);
+							   prot, init); /* 填满这个pmd页面， */
 				continue;
 			}
 			/*
@@ -721,7 +721,7 @@ phys_p4d_init(p4d_t *p4d_page, unsigned long paddr, unsigned long paddr_end,
 
 	return paddr_last;
 }
-
+/* 建立paddr范围的页面映射 */
 static unsigned long __meminit
 __kernel_physical_mapping_init(unsigned long paddr_start,
 			       unsigned long paddr_end,
@@ -737,7 +737,7 @@ __kernel_physical_mapping_init(unsigned long paddr_start,
 	vaddr_start = vaddr;
 
 	for (; vaddr < vaddr_end; vaddr = vaddr_next) {
-		pgd_t *pgd = pgd_offset_k(vaddr);
+		pgd_t *pgd = pgd_offset_k(vaddr);/* rdx是pgd页面 */
 		p4d_t *p4d;
 
 		vaddr_next = (vaddr & PGDIR_MASK) + PGDIR_SIZE;
@@ -773,11 +773,11 @@ __kernel_physical_mapping_init(unsigned long paddr_start,
 }
 
 
-/*
- * Create page table mapping for the physical memory for specific physical
- * addresses. Note that it can only be used to populate non-present entries.
- * The virtual and physical addresses have to be aligned on PMD level
- * down. It returns the last physical address mapped.
+/*开机的时候建立映射
+ * 为特定的物理地址创建物理内存的页表映射。注意，
+ 它只能用于填充不存在的条目。
+ * 虚拟地址和物理地址必须在PMD级别及以下对齐。
+ * 它返回最后一个被映射的物理地址。
  */
 unsigned long __meminit
 kernel_physical_mapping_init(unsigned long paddr_start,

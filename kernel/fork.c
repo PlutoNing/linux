@@ -3335,7 +3335,7 @@ static void sighand_ctor(void *data)
 	spin_lock_init(&sighand->siglock);
 	init_waitqueue_head(&sighand->signalfd_wqh);
 }
-
+/* 创建mm的slab */
 void __init mm_cache_init(void)
 {
 	unsigned int mm_size;

@@ -6,7 +6,7 @@
 #include <linux/memblock.h>
 
 #include "numa_internal.h"
-
+/* setup arch函数调用 */
 void __init initmem_init(void)
 {
 	x86_numa_init();

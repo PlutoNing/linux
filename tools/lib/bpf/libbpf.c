@@ -1323,7 +1323,7 @@ static int bpf_object__elf_init(struct bpf_object *obj)
 		/* obj_buf should have been validated by bpf_object__open_mem(). */
 		elf = elf_memory((char *)obj->efile.obj_buf, obj->efile.obj_buf_sz);
 	} else {
-		obj->efile.fd = open(obj->path, O_RDONLY | O_CLOEXEC);
+		obj->efile.fd = open(obj->path, O_RDONLY | O_CLOEXEC); //打开bpf.o文件
 		if (obj->efile.fd < 0) {
 			char errmsg[STRERR_BUFSIZE], *cp;
 
@@ -1333,7 +1333,7 @@ static int bpf_object__elf_init(struct bpf_object *obj)
 			return err;
 		}
 
-		elf = elf_begin(obj->efile.fd, ELF_C_READ_MMAP, NULL);
+		elf = elf_begin(obj->efile.fd, ELF_C_READ_MMAP, NULL);/* 读取elf出来 */
 	}
 
 	if (!elf) {
@@ -3381,7 +3381,7 @@ static int cmp_progs(const void *_a, const void *_b)
 	/* sec_insn_off can't be the same within the section */
 	return a->sec_insn_off < b->sec_insn_off ? -1 : 1;
 }
-
+/* 开始读取elf的各个section？ */
 static int bpf_object__elf_collect(struct bpf_object *obj)
 {
 	struct elf_sec_desc *sec_desc;
@@ -3404,7 +3404,7 @@ static int bpf_object__elf_collect(struct bpf_object *obj)
 			obj->path, elf_errmsg(-1));
 		return -LIBBPF_ERRNO__FORMAT;
 	}
-	obj->efile.secs = calloc(obj->efile.sec_cnt, sizeof(*obj->efile.secs));
+	obj->efile.secs = calloc(obj->efile.sec_cnt, sizeof(*obj->efile.secs));/* 分配各段的指针 */
 	if (!obj->efile.secs)
 		return -ENOMEM;
 
@@ -3412,7 +3412,7 @@ static int bpf_object__elf_collect(struct bpf_object *obj)
 	 * so do the first pass and find the symbol table
 	 */
 	scn = NULL;
-	while ((scn = elf_nextscn(elf, scn)) != NULL) {
+	while ((scn = elf_nextscn(elf, scn)) != NULL) {/* 先读取符号表 */
 		sh = elf_sec_hdr(obj, scn);
 		if (!sh)
 			return -LIBBPF_ERRNO__FORMAT;
@@ -7366,7 +7366,7 @@ static int bpf_object_init_progs(struct bpf_object *obj, const struct bpf_object
 
 	return 0;
 }
-
+/* 打开这个内核态的prog */
 static struct bpf_object *bpf_object_open(const char *path, const void *obj_buf, size_t obj_buf_sz,
 					  const struct bpf_object_open_opts *opts)
 {
@@ -7437,8 +7437,8 @@ static struct bpf_object *bpf_object_open(const char *path, const void *obj_buf,
 		}
 	}
 
-	err = bpf_object__elf_init(obj);
-	err = err ? : bpf_object__check_endianness(obj);
+	err = bpf_object__elf_init(obj); /* 读取了elf */
+	err = err ? : bpf_object__check_endianness(obj); /* 检查这个有啥用 */
 	err = err ? : bpf_object__elf_collect(obj);
 	err = err ? : bpf_object__collect_externs(obj);
 	err = err ? : bpf_object_fixup_btf(obj);

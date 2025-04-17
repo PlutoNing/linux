@@ -255,7 +255,7 @@ static const __initconst struct idt_data early_pf_idts[] = {
 };
 
 /**
- * idt_setup_early_pf - Initialize the idt table with early pagefault handler
+ * idt_setup_early_pf - 使用早期页错误处理程序初始化 idt 表
  *
  * On X8664 this does not use interrupt stacks as they can't work before
  * cpu_init() is invoked and sets up TSS. The IST variant is installed
@@ -264,7 +264,7 @@ static const __initconst struct idt_data early_pf_idts[] = {
  * Note, that X86_64 cannot install the real #PF handler in
  * idt_setup_early_traps() because the memory initialization needs the #PF
  * handler from the early_idt_handler_array to initialize the early page
- * tables.
+ * tables.  好像是把t加到idt
  */
 void __init idt_setup_early_pf(void)
 {

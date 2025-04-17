@@ -5,7 +5,7 @@
 #include <uapi/asm/bootparam.h>
 
 /*
- * These are the E820 types known to the kernel:
+ * These are the E820 types known to the kernel: e829条目的类型
  */
 enum e820_type {
 	E820_TYPE_RAM		= 1,

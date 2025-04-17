@@ -602,7 +602,7 @@ static void pti_set_kernel_image_nonglobal(void)
 	set_memory_nonglobal(start, (end - start) >> PAGE_SHIFT);
 }
 
-/*
+/* 以后
  * Initialize kernel page table isolation
  */
 void __init pti_init(void)

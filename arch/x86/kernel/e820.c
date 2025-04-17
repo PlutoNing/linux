@@ -61,7 +61,7 @@ static struct e820_table e820_table_kexec_init		__initdata;
 static struct e820_table e820_table_firmware_init	__initdata;
 
 struct e820_table *e820_table __refdata			= &e820_table_init;
-struct e820_table *e820_table_kexec __refdata		= &e820_table_kexec_init;
+struct e820_table *e820_table_kexec __refdata		= &e820_table_kexec_init; /* 下面俩都是从上面这个e820拷贝过来的 */
 struct e820_table *e820_table_firmware __refdata	= &e820_table_firmware_init;
 
 /* For PCI or other memory-mapped resources */
@@ -105,7 +105,7 @@ EXPORT_SYMBOL_GPL(e820__mapped_any);
 
 /*
  * This function checks if the entire <start,end> range is mapped with 'type'.
- *
+ * 函数检查指定的范围是否被映射为指定的类型
  * Note: this function only works correctly once the E820 table is sorted and
  * not-overlapping (at least for the range specified), which is the case normally.
  */
@@ -161,7 +161,7 @@ int e820__get_entry_type(u64 start, u64 end)
 }
 
 /*
- * Add a memory region to the kernel E820 map.
+ * Add a memory region to the kernel E820 map. 把bios的一个map添加到内核的map中
  */
 static void __init __e820__range_add(struct e820_table *table, u64 start, u64 size, enum e820_type type)
 {
@@ -178,7 +178,7 @@ static void __init __e820__range_add(struct e820_table *table, u64 start, u64 si
 	table->entries[x].type = type;
 	table->nr_entries++;
 }
-
+/* 把e820 map一个段添加到内存 */
 void __init e820__range_add(u64 start, u64 size, enum e820_type type)
 {
 	__e820__range_add(e820_table, start, size, type);
@@ -418,7 +418,7 @@ int __init e820__update_table(struct e820_table *table)
 
 	return 0;
 }
-
+/* 把这nr个boot params里的e820 entry加到kernel */
 static int __init __append_e820_table(struct boot_e820_entry *entries, u32 nr_entries)
 {
 	struct boot_e820_entry *entry = entries;
@@ -433,7 +433,7 @@ static int __init __append_e820_table(struct boot_e820_entry *entries, u32 nr_en
 		if (start > end && likely(size))
 			return -1;
 
-		e820__range_add(start, size, type);
+		e820__range_add(start, size, type); /* 处理boot params描述的一个e820 map的section */
 
 		entry++;
 		nr_entries--;
@@ -443,7 +443,7 @@ static int __init __append_e820_table(struct boot_e820_entry *entries, u32 nr_en
 
 /*
  * Copy the BIOS E820 map into a safe place.
- *
+ * boot params一共提供了@nr_entries个e820条目，每个描述了一段内存
  * Sanity-check it while we're at it..
  *
  * If we're lucky and live on a modern system, the setup code
@@ -1150,7 +1150,7 @@ static bool __init do_mark_busy(enum e820_type type, struct resource *res)
  */
 
 static struct resource __initdata *e820_res;
-
+/* 这里保留什么资源 */
 void __init e820__reserve_resources(void)
 {
 	int i;
@@ -1262,12 +1262,12 @@ char *__init e820__memory_setup_default(void)
 	char *who = "BIOS-e820";
 
 	/*
-	 * Try to copy the BIOS-supplied E820-map.
+	 * 尝试拷贝bios提供的e820 map
 	 *
-	 * Otherwise fake a memory map; one section from 0k->640k,
+	 * 否则就伪造一个mem map，一个section从0到640kb
 	 * the next section from 1mb->appropriate_mem_k
 	 */
-	if (append_e820_table(boot_params.e820_table, boot_params.e820_entries) < 0) {
+	if (append_e820_table(boot_params.e820_table, boot_params.e820_entries) < 0) {/* 把这个几个段全加到kernel */
 		u64 mem_size;
 
 		/* Compare results from other methods and take the one that gives more RAM: */
@@ -1284,16 +1284,16 @@ char *__init e820__memory_setup_default(void)
 		e820__range_add(HIGH_MEMORY, mem_size << 10, E820_TYPE_RAM);
 	}
 
-	/* We just appended a lot of ranges, sanitize the table: */
+	/* We just appended a lot of ranges, sanitize the table: 刚刚添加了一些范围，现在sanitize一下 */
 	e820__update_table(e820_table);
 
 	return who;
 }
 
 /*
- * Calls e820__memory_setup_default() in essence to pick up the firmware/bootloader
- * E820 map - with an optional platform quirk available for virtual platforms
- * to override this method of boot environment processing:
+ * 调用 e820__memory_setup_default()，本质上是获取固件/引导加载程序的
+ * E820 映射——虚拟平台可以通过可选的平台特
+ 性覆盖这种引导环境处理方法：
  */
 void __init e820__memory_setup(void)
 {
@@ -1328,7 +1328,7 @@ void __init e820__memblock_setup(void)
 	memblock_allow_resize();
 
 	for (i = 0; i < e820_table->nr_entries; i++) {
-		struct e820_entry *entry = &e820_table->entries[i];
+		struct e820_entry *entry = &e820_table->entries[i];/* 取出e820用于表示一段物理内存的条目 */
 
 		end = entry->addr + entry->size;
 		if (end != (resource_size_t)end)
@@ -1339,7 +1339,7 @@ void __init e820__memblock_setup(void)
 
 		if (entry->type != E820_TYPE_RAM && entry->type != E820_TYPE_RESERVED_KERN)
 			continue;
-
+/* 如果是ram或者可用的内核内存， 就加到memblock */
 		memblock_add(entry->addr, entry->size);
 	}
 

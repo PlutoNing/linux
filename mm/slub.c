@@ -4508,7 +4508,7 @@ static int calculate_sizes(struct kmem_cache *s)
 
 	return !!oo_objects(s->oo);
 }
-
+/* 什么算打开 */
 static int kmem_cache_open(struct kmem_cache *s, slab_flags_t flags)
 {
 	s->flags = kmem_cache_flags(s->size, flags, s->name);
@@ -4988,11 +4988,11 @@ static int slab_memory_callback(struct notifier_block *self,
  *******************************************************************/
 
 /*
- * Used for early kmem_cache structures that were allocated using
- * the page allocator. Allocate them properly then fix up the pointers
- * that may be pointing to the wrong kmem_cache structure.
+* 用于早期通过页面分配器分配的 kmem_cache 结构。
+ * 正确地分配它们，然后修复可能指向错误 
+ kmem_cache 结构的指针。
  */
-
+/* 参数是boot kmem cache， 从里面分配一个， 然后把boot kmem cache拷贝上去 */
 static struct kmem_cache * __init bootstrap(struct kmem_cache *static_cache)
 {
 	int node;
@@ -5018,7 +5018,7 @@ static struct kmem_cache * __init bootstrap(struct kmem_cache *static_cache)
 			p->slab_cache = s;
 #endif
 	}
-	list_add(&s->list, &slab_caches);
+	list_add(&s->list, &slab_caches);/* 添加到全局的slab cache链表 */
 	return s;
 }
 /* 启动的时候初始化slab */
@@ -5048,7 +5048,7 @@ void __init kmem_cache_init(void)
 	create_boot_cache(kmem_cache_node, "kmem_cache_node",
 		sizeof(struct kmem_cache_node), SLAB_HWCACHE_ALIGN, 0, 0);
 
-	hotplug_memory_notifier(slab_memory_callback, SLAB_CALLBACK_PRI);
+	hotplug_memory_notifier(slab_memory_callback, SLAB_CALLBACK_PRI);/* 注册到notifier chain */
 
 	/* Able to allocate the per node structures */
 	slab_state = PARTIAL;
@@ -5058,18 +5058,18 @@ void __init kmem_cache_init(void)
 				nr_node_ids * sizeof(struct kmem_cache_node *),
 		       SLAB_HWCACHE_ALIGN, 0, 0);
 
-	kmem_cache = bootstrap(&boot_kmem_cache);
+	kmem_cache = bootstrap(&boot_kmem_cache);/* 这是什么自举 */
 	kmem_cache_node = bootstrap(&boot_kmem_cache_node);
 
 	/* Now we can use the kmem_cache to allocate kmalloc slabs */
 	setup_kmalloc_cache_index_table();
-	create_kmalloc_caches(0);
+	create_kmalloc_caches(0);/* 创建kmalloc_caches， 开启kmalloc */
 
 	/* Setup random freelists for each cache */
 	init_freelist_randomization();
 
 	cpuhp_setup_state_nocalls(CPUHP_SLUB_DEAD, "slub:dead", NULL,
-				  slub_cpu_dead);
+				  slub_cpu_dead);/* cpu热插拔相关 */
 
 	pr_info("SLUB: HWalign=%d, Order=%u-%u, MinObjects=%u, CPUs=%u, Nodes=%u\n",
 		cache_line_size(),
@@ -5108,7 +5108,7 @@ __kmem_cache_alias(const char *name, unsigned int size, unsigned int align,
 
 	return s;
 }
-
+/* 初始化slab缓存 */
 int __kmem_cache_create(struct kmem_cache *s, slab_flags_t flags)
 {
 	int err;

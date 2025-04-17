@@ -140,14 +140,14 @@ __early_ioremap(resource_size_t phys_addr, unsigned long size, pgprot_t prot)
 		return NULL;
 
 	/*
-	 * Ok, go for it..
+	 * 刚刚进行了一下对齐， Ok, go for it..
 	 */
 	idx = FIX_BTMAP_BEGIN - NR_FIX_BTMAPS*slot;
 	while (nrpages > 0) {
 		if (after_paging_init)
 			__late_set_fixmap(idx, phys_addr, prot);
 		else
-			__early_set_fixmap(idx, phys_addr, prot);
+			__early_set_fixmap(idx, phys_addr, prot);/* 好像是进行内存映射 */
 		phys_addr += PAGE_SIZE;
 		--idx;
 		--nrpages;

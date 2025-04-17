@@ -612,7 +612,7 @@ static int __init_memblock memblock_add_range(struct memblock_type *type,
 		return 0;
 
 	/* special case for empty array */
-	if (type->regions[0].size == 0) {
+	if (type->regions[0].size == 0) {/* 如果是第一次保留内存 */
 		WARN_ON(type->cnt != 1 || type->total_size);
 		type->regions[0].base = base;
 		type->regions[0].size = size;
@@ -728,7 +728,7 @@ int __init_memblock memblock_add_node(phys_addr_t base, phys_addr_t size,
 }
 
 /**
- * memblock_add - add new memblock region
+ * memblock_add - add new memblock region，把一段内存加入到memblock
  * @base: base address of the new region
  * @size: size of the new region
  *
@@ -917,7 +917,7 @@ int __init_memblock memblock_phys_free(phys_addr_t base, phys_addr_t size)
 	return memblock_remove_range(&memblock.reserved, base, size);
 }
 
-// 判断参数描述的内存区域是不是保留的
+// 保留这一块内存
 int __init_memblock memblock_reserve(phys_addr_t base, phys_addr_t size)
 {
 	phys_addr_t end = base + size - 1;
@@ -1530,7 +1530,7 @@ done: // 找到了可用的内存区域来到这里
 }
 
 /**
- * memblock_phys_alloc_range - allocate a memory block inside specified range
+ * memblock_phys_alloc_range - allocate a memory block inside specified range，在指定范围内分配内存
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
  * @start: the lower bound of the memory region to allocate (physical address)
@@ -1964,7 +1964,7 @@ bool __init_memblock memblock_is_region_reserved(phys_addr_t base, phys_addr_t s
 {
 	return memblock_overlaps_region(&memblock.reserved, base, size);
 }
-
+/* 启动的时候把探测的物理内存加入到memblock之后， trim一下 */
 void __init_memblock memblock_trim_memory(phys_addr_t align)
 {
 	phys_addr_t start, end, orig_start, orig_end;
@@ -2198,7 +2198,7 @@ static unsigned long __init __free_memory_core(phys_addr_t start,
 
 /*
 函数的作用是?
-
+把memblock转为buddy？ 初始化page什么的
 */
 static void __init memmap_init_reserved_pages(void)
 {
@@ -2246,7 +2246,7 @@ static unsigned long __init free_low_memory_core_early(void)
 	// 清除所有region的热插拔标志
 	memblock_clear_hotplug(0, -1);
 
-	memmap_init_reserved_pages();
+	memmap_init_reserved_pages();/* 初始化这些memblock的page，lru什么的 */
 
 	/*
 	 * We need to use NUMA_NO_NODE instead of NODE_DATA(0)->node_id
@@ -2282,7 +2282,7 @@ void __init reset_all_zones_managed_pages(void)
 		return;
 
 	for_each_online_pgdat(pgdat)
-		reset_node_managed_pages(pgdat);
+		reset_node_managed_pages(pgdat);/* reset这个node */
 
 	reset_managed_pages_done = 1;
 }

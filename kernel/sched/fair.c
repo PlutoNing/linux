@@ -12187,7 +12187,7 @@ out:
 	return pulled_task;
 }
 
-/*
+/*调度软中断的action函数
  * run_rebalance_domains is triggered when needed from the scheduler tick.
  * Also triggered for nohz idle balancing (with nohz_balancing_kick set).
  */
@@ -12986,7 +12986,7 @@ void show_numa_stats(struct task_struct *p, struct seq_file *m)
 }
 #endif /* CONFIG_NUMA_BALANCING */
 #endif /* CONFIG_SCHED_DEBUG */
-
+/* 初始化cfs调度类？ */
 __init void init_sched_fair_class(void)
 {
 #ifdef CONFIG_SMP
@@ -12999,12 +12999,12 @@ __init void init_sched_fair_class(void)
 					GFP_KERNEL, cpu_to_node(i));
 
 #ifdef CONFIG_CFS_BANDWIDTH
-		INIT_CSD(&cpu_rq(i)->cfsb_csd, __cfsb_csd_unthrottle, cpu_rq(i));
+		INIT_CSD(&cpu_rq(i)->cfsb_csd, __cfsb_csd_unthrottle, cpu_rq(i));/* 构造cfsb_csd结构体的简写 */
 		INIT_LIST_HEAD(&cpu_rq(i)->cfsb_csd_list);
 #endif
 	}
 
-	open_softirq(SCHED_SOFTIRQ, run_rebalance_domains);
+	open_softirq(SCHED_SOFTIRQ, run_rebalance_domains);/* 调度软中断的简写 */
 
 #ifdef CONFIG_NO_HZ_COMMON
 	nohz.next_balance = jiffies;

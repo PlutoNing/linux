@@ -103,7 +103,7 @@ enum page_cache_mode pgprot2cachemode(pgprot_t pgprot)
 		return 0;
 	return __pte2cachemode_tbl[__pte2cm_idx(masked)];
 }
-
+/* 预先分配一块物理内存，专门用于存放 ​​临时页表 */
 static unsigned long __initdata pgt_buf_start;
 static unsigned long __initdata pgt_buf_end;
 static unsigned long __initdata pgt_buf_top;
@@ -136,7 +136,7 @@ __ref void *alloc_low_pages(unsigned int num)
 	if ((pgt_buf_end + num) > pgt_buf_top || !can_use_brk_pgt) {
 		unsigned long ret = 0;
 
-		if (min_pfn_mapped < max_pfn_mapped) {
+		if (min_pfn_mapped < max_pfn_mapped) {/* 分配num页内存 */
 			ret = memblock_phys_alloc_range(
 					PAGE_SIZE * num, PAGE_SIZE,
 					min_pfn_mapped << PAGE_SHIFT,
@@ -154,7 +154,7 @@ __ref void *alloc_low_pages(unsigned int num)
 		pgt_buf_end += num;
 	}
 
-	for (i = 0; i < num; i++) {
+	for (i = 0; i < num; i++) {/* 清除刚刚分配的页面的什么东西 */
 		void *adr;
 
 		adr = __va((pfn + i) << PAGE_SHIFT);
@@ -503,9 +503,9 @@ static int __meminit split_mem_range(struct map_range *mr, int nr_range,
 
 struct range pfn_mapped[E820_MAX_ENTRIES];
 int nr_pfn_mapped;
-
+/* 内核启动刚刚映射了这些pfn */
 static void add_pfn_range_mapped(unsigned long start_pfn, unsigned long end_pfn)
-{
+{/* rdi rsi rdx  rbp rbx */
 	nr_pfn_mapped = add_range_with_merge(pfn_mapped, E820_MAX_ENTRIES,
 					     nr_pfn_mapped, start_pfn, end_pfn);
 	nr_pfn_mapped = clean_sort_range(pfn_mapped, E820_MAX_ENTRIES);
@@ -530,9 +530,9 @@ bool pfn_range_is_mapped(unsigned long start_pfn, unsigned long end_pfn)
 }
 
 /*
- * Setup the direct mapping of the physical memory at PAGE_OFFSET.
- * This runs before bootmem is initialized and gets pages directly from
- * the physical memory. To access them they are temporarily mapped.
+ * 设置物理内存在 PAGE_OFFSET 的直接映射。
+ * 这段代码在 bootmem 初始化之前运行，并直接从物理内存中获取页面。
+ * 为了访问这些页面，它们会被临时映射。
  */
 unsigned long __ref init_memory_mapping(unsigned long start,
 					unsigned long end, pgprot_t prot)
@@ -546,7 +546,7 @@ unsigned long __ref init_memory_mapping(unsigned long start,
 
 	memset(mr, 0, sizeof(mr));
 	nr_range = split_mem_range(mr, 0, start, end);
-
+/* mr数组描述了内存范围， 好像就是初始化这些范围的映射 */
 	for (i = 0; i < nr_range; i++)
 		ret = kernel_physical_mapping_init(mr[i].start, mr[i].end,
 						   mr[i].page_size_mask,
@@ -557,7 +557,7 @@ unsigned long __ref init_memory_mapping(unsigned long start,
 	return ret >> PAGE_SHIFT;
 }
 
-/*
+/* 映射这些物理页面
  * We need to iterate through the E820 memory map and create direct mappings
  * for only E820_TYPE_RAM and E820_KERN_RESERVED regions. We cannot simply
  * create direct mappings for all pfns from [0 to max_low_pfn) and
@@ -579,18 +579,18 @@ static unsigned long __init init_range_memory_mapping(
 	int i;
 
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start_pfn, &end_pfn, NULL) {
-		u64 start = clamp_val(PFN_PHYS(start_pfn), r_start, r_end);
+		u64 start = clamp_val(PFN_PHYS(start_pfn), r_start, r_end);/* 返回的start pfn和end pfn可能远在参数范围之外 */
 		u64 end = clamp_val(PFN_PHYS(end_pfn), r_start, r_end);
 		if (start >= end)
 			continue;
-
+/* 现在查到的范围在参数指定的范围了， 也就是说处理for循环返回的范围与参数交叉的部分 */
 		/*
 		 * if it is overlapping with brk pgt, we need to
 		 * alloc pgt buf from memblock instead.
 		 */
 		can_use_brk_pgt = max(start, (u64)pgt_buf_end<<PAGE_SHIFT) >=
 				    min(end, (u64)pgt_buf_top<<PAGE_SHIFT);
-		init_memory_mapping(start, end, PAGE_KERNEL);
+		init_memory_mapping(start, end, PAGE_KERNEL);/* 建立这些页面的映射 */
 		mapped_ram_size += end - start;
 		can_use_brk_pgt = true;
 	}
@@ -670,7 +670,7 @@ static void __init memory_map_top_down(unsigned long map_start,
 		} else
 			start = map_start;
 		mapped_ram_size += init_range_memory_mapping(start,
-							last_start);
+							last_start);/* 映射这些物理范围 */
 		last_start = start;
 		min_pfn_mapped = last_start >> PAGE_SHIFT;
 		if (mapped_ram_size >= step_size)
@@ -802,10 +802,10 @@ void __init init_mem_mapping(void)
 	early_ioremap_page_table_range_init();
 #endif
 
-	load_cr3(swapper_pg_dir);
+	load_cr3(swapper_pg_dir);/* 初始化cr3寄存器 */
 	__flush_tlb_all();
 
-	x86_init.hyper.init_mem_mapping();
+	x86_init.hyper.init_mem_mapping();/* 这是和虚拟化相关的吗 */
 
 	early_memtest(0, max_pfn_mapped << PAGE_SHIFT);
 }

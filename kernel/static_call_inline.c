@@ -130,7 +130,7 @@ static inline struct static_call_site *static_call_key_sites(struct static_call_
 
 	return (struct static_call_site *)(key->type & ~1);
 }
-
+/* Static Call 是 Linux 内核中一种 ​​低开销的函数调用优化技术​​，通过代码修补（如 JMP 或 NOP 指令）直接跳转到目标函数，避免传统函数指针的间接调用开销。 */
 void __static_call_update(struct static_call_key *key, void *tramp, void *func)
 {
 	struct static_call_site *site, *stop;
@@ -138,7 +138,7 @@ void __static_call_update(struct static_call_key *key, void *tramp, void *func)
 
 	cpus_read_lock();
 	static_call_lock();
-
+/* func可能的取值 native_apic_mem_eoi  */
 	if (key->func == func)
 		goto done;
 

@@ -299,7 +299,7 @@ static inline int skel_link_create(int prog_fd, int target_fd,
 	attr.link_create.prog_fd = prog_fd;
 	attr.link_create.target_fd = target_fd;
 	attr.link_create.attach_type = attach_type;
-
+//开始执行
 	return skel_sys_bpf(BPF_LINK_CREATE, &attr, attr_sz);
 }
 
