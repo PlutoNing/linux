@@ -206,7 +206,7 @@ static inline void shmem_unacct_blocks(unsigned long flags, long pages)
 	if (flags & VM_NORESERVE)
 		vm_unacct_memory(pages * VM_ACCT(PAGE_SIZE));
 }
-
+/* 内存的记账 */
 static int shmem_inode_acct_block(struct inode *inode, long pages)
 {
 	struct shmem_inode_info *info = SHMEM_I(inode);
@@ -267,7 +267,9 @@ bool vma_is_anon_shmem(struct vm_area_struct *vma)
 {
 	return vma->vm_ops == &shmem_anon_vm_ops;
 }
-
+/* 
+vma的ops是shmem_vm_ops或者shmem_anon_vm_ops
+*/
 bool vma_is_shmem(struct vm_area_struct *vma)
 {
 	return vma_is_anon_shmem(vma) || vma->vm_ops == &shmem_vm_ops;
@@ -1720,7 +1722,9 @@ static struct folio *shmem_alloc_hugefolio(gfp_t gfp,
 		count_vm_event(THP_FILE_FALLBACK);
 	return folio;
 }
-
+/* 
+shmem分配页面
+*/
 static struct folio *shmem_alloc_folio(gfp_t gfp,
 			struct shmem_inode_info *info, pgoff_t index)
 {
@@ -1728,6 +1732,7 @@ static struct folio *shmem_alloc_folio(gfp_t gfp,
 	struct folio *folio;
 
 	shmem_pseudo_vma_init(&pvma, info, index);
+	/* 通过一个伪vma来分配页面 */
 	folio = vma_alloc_folio(gfp, 0, &pvma, 0, false);
 	shmem_pseudo_vma_destroy(&pvma);
 
@@ -2266,9 +2271,9 @@ unlock:
 	return error;
 }
 
-// 获取shmem的mapping页面
-// 是一个很通用很频繁的接口
-// 1 直接找, 2 换入, 3 分配新页加入mapping
+/*  获取shmem的mapping页面
+ 是一个很通用很频繁的接口
+ 1 直接找, 2 换入, 3 分配新页加入mapping */
 int shmem_get_folio(struct inode *inode, pgoff_t index, struct folio **foliop,
 		enum sgp_type sgp)
 {
@@ -2705,6 +2710,7 @@ static inline struct inode *shmem_get_inode(struct mnt_idmap *idmap,
 #endif /* CONFIG_TMPFS_QUOTA */
 
 #ifdef CONFIG_USERFAULTFD
+/* 把页面添加到shmem的mapping，uffd安装pte */
 int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 			   struct vm_area_struct *dst_vma,
 			   unsigned long dst_addr,
@@ -2716,12 +2722,15 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 	struct shmem_inode_info *info = SHMEM_I(inode);
 	struct address_space *mapping = inode->i_mapping;
 	gfp_t gfp = mapping_gfp_mask(mapping);
+	/* 获取到dst addr对应的pgoff */
 	pgoff_t pgoff = linear_page_index(dst_vma, dst_addr);
 	void *page_kaddr;
 	struct folio *folio;
 	int ret;
 	pgoff_t max_off;
-
+	/* 
+	内存的记账？
+	*/
 	if (shmem_inode_acct_block(inode, 1)) {
 		/*
 		 * We may have got a page, returned -ENOENT triggering a retry,
@@ -2735,13 +2744,17 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 		return -ENOMEM;
 	}
 
-	if (!*foliop) {
+	if (!*foliop) {/* 如果folio还没有页面 */
 		ret = -ENOMEM;
+		/* 分配一个页面 */
 		folio = shmem_alloc_folio(gfp, info, pgoff);
 		if (!folio)
 			goto out_unacct_blocks;
 
-		if (uffd_flags_mode_is(flags, MFILL_ATOMIC_COPY)) {
+		if (uffd_flags_mode_is(flags, MFILL_ATOMIC_COPY)) {/* 
+			如果是copy的uffd
+			把用户src处的数据copy到这个页面
+			*/
 			page_kaddr = kmap_local_folio(folio, 0);
 			/*
 			 * The read mmap_lock is held here.  Despite the
@@ -2758,6 +2771,7 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 			 * Disable page faults to prevent potential deadlock
 			 * and retry the copy outside the mmap_lock.
 			 */
+			/* 先关闭pf，然后拷贝数据 */
 			pagefault_disable();
 			ret = copy_from_user(page_kaddr,
 					     (const void __user *)src_addr,
@@ -2777,7 +2791,7 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 		} else {		/* ZEROPAGE */
 			clear_user_highpage(&folio->page, dst_addr);
 		}
-	} else {
+	} else {/* 参数的folio直接有页面了 */
 		folio = *foliop;
 		VM_BUG_ON_FOLIO(folio_test_large(folio), folio);
 		*foliop = NULL;
@@ -2793,12 +2807,12 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 	max_off = DIV_ROUND_UP(i_size_read(inode), PAGE_SIZE);
 	if (unlikely(pgoff >= max_off))
 		goto out_release;
-
+	/* 这里是把这个页面加入到shmem的mapping */
 	ret = shmem_add_to_page_cache(folio, mapping, pgoff, NULL,
 				      gfp & GFP_RECLAIM_MASK, dst_vma->vm_mm);
 	if (ret)
 		goto out_release;
-
+	/* 安装pte */
 	ret = mfill_atomic_install_pte(dst_pmd, dst_vma, dst_addr,
 				       &folio->page, true, flags);
 	if (ret)
