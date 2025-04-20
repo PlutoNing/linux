@@ -499,11 +499,11 @@ static inline void vma_lock_free(struct vm_area_struct *vma) {}
 struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
-
+	/* 分配这个vma结构体以及内存 */
 	vma = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);
 	if (!vma)
 		return NULL;
-
+	/* 初始化他俩的关系 */
 	vma_init(vma, mm);
 
 	if (!vma_lock_alloc(vma)) {
@@ -513,7 +513,9 @@ struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 
 	return vma;
 }
-
+/* 
+复制vma
+*/
 struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 {
 	struct vm_area_struct *new = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);
@@ -534,11 +536,12 @@ struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 	}
 	INIT_LIST_HEAD(&new->anon_vma_chain);
 	vma_numab_state_init(new);
+	/* */
 	dup_anon_vma_name(orig, new);
 
 	return new;
 }
-
+/* 比如退出mm的时候，会调用这个 */
 void __vm_area_free(struct vm_area_struct *vma)
 {
 	vma_numab_state_free(vma);
@@ -548,6 +551,7 @@ void __vm_area_free(struct vm_area_struct *vma)
 }
 
 #ifdef CONFIG_PER_VMA_LOCK
+/* 以rcu方式销毁vma */
 static void vm_area_free_rcu_cb(struct rcu_head *head)
 {
 	struct vm_area_struct *vma = container_of(head, struct vm_area_struct,
@@ -558,7 +562,7 @@ static void vm_area_free_rcu_cb(struct rcu_head *head)
 	__vm_area_free(vma);
 }
 #endif
-
+/* 销毁这个vma */
 void vm_area_free(struct vm_area_struct *vma)
 {
 #ifdef CONFIG_PER_VMA_LOCK
@@ -3052,7 +3056,7 @@ pid_t kernel_thread(int (*fn)(void *), void *arg, const char *name,
 }
 
 /*
- * Create a user mode thread.
+ * Create a user mode thread.,创建一个用户模式线程
  */
 pid_t user_mode_thread(int (*fn)(void *), void *arg, unsigned long flags)
 {
@@ -3064,7 +3068,7 @@ pid_t user_mode_thread(int (*fn)(void *), void *arg, unsigned long flags)
 		.fn_arg		= arg,
 	};
 
-	return kernel_clone(&args);
+	return kernel_clone(&args);/* 创建线程 */
 }
 
 // fork的系统调用

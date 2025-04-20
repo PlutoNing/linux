@@ -61,7 +61,7 @@ static inline void switch_fpu_prepare(struct fpu *old_fpu, int cpu)
  * PKRU is handled separately.
  */
 static inline void switch_fpu_finish(void)
-{
+{/* 就是set_ti_thread_flag(((struct thread_info *)get_current()), 14); */
 	if (cpu_feature_enabled(X86_FEATURE_FPU))
 		set_thread_flag(TIF_NEED_FPU_LOAD);
 }

@@ -2218,7 +2218,7 @@ static inline void check_class_changed(struct rq *rq, struct task_struct *p,
 	} else if (oldprio != p->prio || dl_task(p))
 		p->sched_class->prio_changed(rq, p, oldprio);
 }
-
+/* 检查当前进程需不需要让出cpu吗 */
 void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 {
 	if (p->sched_class == rq->curr->sched_class)
@@ -4845,7 +4845,7 @@ unsigned long to_ratio(u64 period, u64 runtime)
 	return div64_u64(runtime << BW_SHIFT, period);
 }
 
-/*
+/*唤醒刚刚创建的进程
  * wake_up_new_task - wake up a newly created task for the first time.
  *
  * This function will do some initial scheduler statistics housekeeping
@@ -4876,7 +4876,7 @@ void wake_up_new_task(struct task_struct *p)
 	update_rq_clock(rq);
 	post_init_entity_util_avg(p);
 
-	activate_task(rq, p, ENQUEUE_NOCLOCK);
+	activate_task(rq, p, ENQUEUE_NOCLOCK);/* 激活新进程 */
 	trace_sched_wakeup_new(p);
 	check_preempt_curr(rq, p, WF_FORK);
 #ifdef CONFIG_SMP
@@ -5169,7 +5169,7 @@ static inline void kmap_local_sched_in(void)
 #endif
 }
 
-/**
+/**准备进程切换
  * prepare_task_switch - prepare to switch tasks
  * @rq: the runqueue preparing to switch
  * @prev: the current task that is being switched out
@@ -5192,7 +5192,7 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
 	rseq_preempt(prev);
 	fire_sched_out_preempt_notifiers(prev, next);
 	kmap_local_sched_out();
-	prepare_task(next);
+	prepare_task(next);/* 修改进程的on cpu状态 */
 	prepare_arch_switch(next);
 }
 
@@ -5324,7 +5324,7 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 	calculate_sigpending();
 }
 
-/*
+/*执行进程切换
  * context_switch - switch to the new MM and the new thread's register state.
  */
 static __always_inline struct rq *
@@ -5350,7 +5350,7 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	 * switch_mm_cid() needs to be updated if the barriers provided
 	 * by context_switch() are modified.
 	 */
-	if (!next->mm) {                                // to kernel
+	if (!next->mm) {  // to kernel， 说明是切换到内核
 		enter_lazy_tlb(prev->active_mm, next);
 
 		next->active_mm = prev->active_mm;
@@ -6552,7 +6552,7 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 # define SM_MASK_PREEMPT	SM_PREEMPT
 #endif
 
-/*
+/*调度函数
  * __schedule() is the main scheduler function.
  *
  * The main means of driving the scheduler and thus entering this function are:
@@ -6674,7 +6674,7 @@ static void __sched notrace __schedule(unsigned int sched_mode)
 		switch_count = &prev->nvcsw;
 	}
 
-	next = pick_next_task(rq, prev, &rf);
+	next = pick_next_task(rq, prev, &rf);/* 选择下一个任务 */
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
 #ifdef CONFIG_SCHED_DEBUG
@@ -6682,7 +6682,7 @@ static void __sched notrace __schedule(unsigned int sched_mode)
 #endif
 
 	if (likely(prev != next)) {
-		rq->nr_switches++;
+		rq->nr_switches++;/* 统计切换信息 */
 		/*
 		 * RCU users of rcu_dereference(rq->curr) may not see
 		 * changes to task_struct made by pick_next_task().
@@ -6709,7 +6709,7 @@ static void __sched notrace __schedule(unsigned int sched_mode)
 
 		trace_sched_switch(sched_mode & SM_MASK_PREEMPT, prev, next, prev_state);
 
-		/* Also unlocks the rq: */
+		/* Also unlocks the rq: 这里开始切换进程*/
 		rq = context_switch(rq, prev, next, &rf);
 	} else {
 		rq->clock_update_flags &= ~(RQCF_ACT_SKIP|RQCF_REQ_SKIP);
@@ -6789,7 +6789,7 @@ asmlinkage __visible void __sched schedule(void)
 	sched_submit_work(tsk);
 	do {
 		preempt_disable();
-		__schedule(SM_NONE);
+		__schedule(SM_NONE);/* 调度 */
 		sched_preempt_enable_no_resched();
 	} while (need_resched());
 	sched_update_worker(tsk);
@@ -6840,15 +6840,15 @@ asmlinkage __visible void __sched schedule_user(void)
 }
 #endif
 
-/**
+/** 关闭抢占执行
  * schedule_preempt_disabled - called with preemption disabled
  *
  * Returns with preemption disabled. Note: preempt_count must be 1
  */
 void __sched schedule_preempt_disabled(void)
 {
-	sched_preempt_enable_no_resched();
-	schedule();
+	sched_preempt_enable_no_resched();/* 执行内存屏障，关抢占 */
+	schedule();/* 调度一次 */
 	preempt_disable();
 }
 
