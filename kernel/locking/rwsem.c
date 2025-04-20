@@ -1580,6 +1580,7 @@ EXPORT_SYMBOL(down_write);
 
 /*
  * lock for writing
+ 加写锁
  */
 int __sched down_write_killable(struct rw_semaphore *sem)
 {
