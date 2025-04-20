@@ -257,7 +257,7 @@ static int mpol_set_nodemask(struct mempolicy *pol,
 	return ret;
 }
 
-/*
+/*新建一个内存pol
  * This function just creates a new policy, does some check and simple
  * initialization. You must invoke mpol_set_nodemask() to set nodes.
  */
@@ -857,7 +857,7 @@ static int mbind_range(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	return vma_replace_policy(vma, new_pol);
 }
 
-/* Set the process memory policy */
+/* Set the process memory policy，设置进程内存pol */
 static long do_set_mempolicy(unsigned short mode, unsigned short flags,
 			     nodemask_t *nodes)
 {
@@ -875,7 +875,7 @@ static long do_set_mempolicy(unsigned short mode, unsigned short flags,
 	}
 
 	task_lock(current);
-	ret = mpol_set_nodemask(new, nodes, scratch);
+	ret = mpol_set_nodemask(new, nodes, scratch);/* 设置内存pol */
 	if (ret) {
 		task_unlock(current);
 		mpol_put(new);
@@ -2192,7 +2192,9 @@ static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
 }
 
 /**
-   给vma分配一个folio
+   给vma的addr分配一个folio
+   =====
+   addr用于获取nid和pol
  * vma_alloc_folio - Allocate a folio for a VMA.
  * @gfp: GFP flags.
  * @order: Order of the folio.

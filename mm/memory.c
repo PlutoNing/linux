@@ -182,6 +182,7 @@ void mm_trace_rss_stat(struct mm_struct *mm, int member)
 }
 
 /*
+销毁页表
  * Note: this doesn't free the actual pages themselves. That
  * has been handled earlier when unmapping all the memory regions.
  */
@@ -193,7 +194,7 @@ static void free_pte_range(struct mmu_gather *tlb, pmd_t *pmd,
 	pte_free_tlb(tlb, token, addr);
 	mm_dec_nr_ptes(tlb->mm);
 }
-
+/* 销毁页表 */
 static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -227,7 +228,7 @@ static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 	pmd_free_tlb(tlb, pmd, start);
 	mm_dec_nr_pmds(tlb->mm);
 }
-
+/* 销毁页表 */
 static inline void free_pud_range(struct mmu_gather *tlb, p4d_t *p4d,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -261,7 +262,7 @@ static inline void free_pud_range(struct mmu_gather *tlb, p4d_t *p4d,
 	pud_free_tlb(tlb, pud, start);
 	mm_dec_nr_puds(tlb->mm);
 }
-
+/* 销毁页表 */
 static inline void free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -296,6 +297,7 @@ static inline void free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
 }
 
 /*
+释放范围内的页表
  * This function frees user-level page tables of a process.
  */
 void free_pgd_range(struct mmu_gather *tlb,
@@ -351,6 +353,7 @@ void free_pgd_range(struct mmu_gather *tlb,
 	 * (see pte_free_tlb()), flush the tlb if we need
 	 */
 	tlb_change_page_size(tlb, PAGE_SIZE);
+	/*  */
 	pgd = pgd_offset(tlb->mm, addr);
 	do {
 		next = pgd_addr_end(addr, end);
@@ -359,18 +362,24 @@ void free_pgd_range(struct mmu_gather *tlb,
 		free_p4d_range(tlb, pgd, addr, next, floor, ceiling);
 	} while (pgd++, addr = next, addr != end);
 }
+/* 
+销毁页表
 
+mas是mm的， vma是第一个vma
+*/
 void free_pgtables(struct mmu_gather *tlb, struct ma_state *mas,
 		   struct vm_area_struct *vma, unsigned long floor,
 		   unsigned long ceiling, bool mm_wr_locked)
 {
 	do {
+		/* 找到当前vma的起始地址 */
 		unsigned long addr = vma->vm_start;
 		struct vm_area_struct *next;
 
 		/*
 		 * Note: USER_PGTABLES_CEILING may be passed as ceiling and may
 		 * be 0.  This will underflow and is okay.
+		 预先存着下一个循环要处理的next
 		 */
 		next = mas_find(mas, ceiling - 1);
 
@@ -380,15 +389,18 @@ void free_pgtables(struct mmu_gather *tlb, struct ma_state *mas,
 		 */
 		if (mm_wr_locked)
 			vma_start_write(vma);
+		/* 解除rmap */
 		unlink_anon_vmas(vma);
+		/* 把vma从自己映射的file的mapping的i mmap树移除 */
 		unlink_file_vma(vma);
 
-		if (is_vm_hugetlb_page(vma)) {
+		if (is_vm_hugetlb_page(vma)) {/* 巨页的情况 */
 			hugetlb_free_pgd_range(tlb, addr, vma->vm_end,
 				floor, next ? next->vm_start : ceiling);
 		} else {
 			/*
 			 * Optimization: gather nearby vmas into one call down
+			 这是一个优化，为了顺带处理后续的vma
 			 */
 			while (next && next->vm_start <= vma->vm_end + PMD_SIZE
 			       && !is_vm_hugetlb_page(next)) {
@@ -399,9 +411,12 @@ void free_pgtables(struct mmu_gather *tlb, struct ma_state *mas,
 				unlink_anon_vmas(vma);
 				unlink_file_vma(vma);
 			}
+			/* 释放这个范围的页表？ */
 			free_pgd_range(tlb, addr, vma->vm_end,
 				floor, next ? next->vm_start : ceiling);
 		}
+
+		/* 处理下一个 */
 		vma = next;
 	} while (vma);
 }
@@ -435,7 +450,9 @@ void pmd_install(struct mm_struct *mm, pmd_t *pmd, pgtable_t *pte)
 	}
 	spin_unlock(ptl);
 }
-
+/* 
+给这个pmd分配一个pte页表页面
+*/
 int __pte_alloc(struct mm_struct *mm, pmd_t *pmd)
 {
 	pgtable_t new = pte_alloc_one(mm);
@@ -3433,8 +3450,10 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 	struct vm_area_struct *vma = vmf->vma;
 	struct folio *folio = NULL;
 
-	if (likely(!unshare)) { //什么情况?
-		if (userfaultfd_pte_wp(vma, ptep_get(vmf->pte))) {
+	if (likely(!unshare)) {/* 如果是共享的vma vmf？ */
+		if (userfaultfd_pte_wp(vma, ptep_get(vmf->pte))) {/* 
+			如果应该交给uffd处理
+			*/
 			pte_unmap_unlock(vmf->pte, vmf->ptl);
 			return handle_userfault(vmf, VM_UFFD_WP);
 		}
@@ -5239,6 +5258,7 @@ unlock:
 static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 		unsigned long address, unsigned int flags)
 {
+	/* 构造vmf结构体 */
 	struct vm_fault vmf = {
 		.vma = vma, 
 		.address = address & PAGE_MASK,
@@ -5328,7 +5348,10 @@ retry_pud:
 			}
 		}
 	}
-
+	/* 
+	刚刚是先follow下来，安装好各级页表
+	处理好巨页等各种特殊情况
+	*/
 	return handle_pte_fault(&vmf); // 可以处理pte了
 }
 
@@ -5704,6 +5727,7 @@ inval:
 
 #ifndef __PAGETABLE_P4D_FOLDED
 /*
+给pgd条目分配p4d页面
  * Allocate p4d page table.
  * We've already handled the fast-path in-line.
  */
@@ -5750,6 +5774,7 @@ int __pud_alloc(struct mm_struct *mm, p4d_t *p4d, unsigned long address)
 
 #ifndef __PAGETABLE_PMD_FOLDED
 /*
+分配pmd页面
  * Allocate page middle directory.
  * We've already handled the fast-path in-line.
  */

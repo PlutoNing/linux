@@ -289,6 +289,7 @@ enum page_cache_mode {
 #define PTE_PFN_MASK		((pteval_t)PHYSICAL_PAGE_MASK)
 
 /*
+提取处pte的flag
  *  Extracts the flags from a (pte|pmd|pud|pgd)val_t
  *  This includes the protection key value.
  */
@@ -479,7 +480,7 @@ static inline pteval_t native_pte_val(pte_t pte)
 {
 	return pte.pte;
 }
-
+/* 获取pte条目的flag */
 static inline pteval_t pte_flags(pte_t pte)
 {
 	return native_pte_val(pte) & PTE_FLAGS_MASK;

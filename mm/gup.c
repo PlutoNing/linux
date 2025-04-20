@@ -938,6 +938,7 @@ unmap:
 }
 
 /*
+必须持有mmap_lock才能进入
  * mmap_lock must be held on entry.  If @flags has FOLL_UNLOCKABLE but not
  * FOLL_NOWAIT, the mmap_lock may be released.  If it is, *@locked will be set
  * to 0 and -EBUSY returned.
@@ -980,7 +981,7 @@ static int faultin_page(struct vm_area_struct *vma,
 		/* FAULT_FLAG_WRITE and FAULT_FLAG_UNSHARE are incompatible */
 		VM_BUG_ON(fault_flags & FAULT_FLAG_WRITE);
 	}
-
+	/* 解决pf */
 	ret = handle_mm_fault(vma, address, fault_flags, NULL);
 
 	if (ret & VM_FAULT_COMPLETED) {

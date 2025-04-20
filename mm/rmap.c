@@ -408,7 +408,9 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 	unlink_anon_vmas(vma);
 	return -ENOMEM;
 }
-
+/* 
+销毁vma的时候解除av的关联
+*/
 void unlink_anon_vmas(struct vm_area_struct *vma)
 {
 	struct anon_vma_chain *avc, *next;
@@ -418,7 +420,9 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 	 * Unlink each anon_vma chained to the VMA.  This list is ordered
 	 * from newest to oldest, ensuring the root anon_vma gets freed last.
 	 */
+	/* 找到vma的avc链表上面的全部avc */
 	list_for_each_entry_safe(avc, next, &vma->anon_vma_chain, same_vma) {
+		/* 获取这个avc的av */
 		struct anon_vma *anon_vma = avc->anon_vma;
 
 		root = lock_anon_vma_root(root, anon_vma);

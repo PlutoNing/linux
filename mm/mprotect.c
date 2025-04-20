@@ -349,7 +349,9 @@ pgtable_populate_needed(struct vm_area_struct *vma, unsigned long cp_flags)
 		}							\
 		err;							\
 	})
-
+/* 改变范围内的可写性
+以后分析
+ */
 static inline long change_pmd_range(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, pud_t *pud, unsigned long addr,
 		unsigned long end, pgprot_t newprot, unsigned long cp_flags)
@@ -433,7 +435,7 @@ next:
 		count_vm_numa_events(NUMA_HUGE_PTE_UPDATES, nr_huge_updates);
 	return pages;
 }
-
+/* 改变范围内的可写性 */
 static inline long change_pud_range(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, p4d_t *p4d, unsigned long addr,
 		unsigned long end, pgprot_t newprot, unsigned long cp_flags)
@@ -456,7 +458,7 @@ static inline long change_pud_range(struct mmu_gather *tlb,
 
 	return pages;
 }
-
+/* 改变范围内的可写性 */
 static inline long change_p4d_range(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, pgd_t *pgd, unsigned long addr,
 		unsigned long end, pgprot_t newprot, unsigned long cp_flags)
@@ -479,7 +481,9 @@ static inline long change_p4d_range(struct mmu_gather *tlb,
 
 	return pages;
 }
-
+/* 
+修改范围内页面的可写性
+*/
 static long change_protection_range(struct mmu_gather *tlb,
 		struct vm_area_struct *vma, unsigned long addr,
 		unsigned long end, pgprot_t newprot, unsigned long cp_flags)
@@ -491,6 +495,7 @@ static long change_protection_range(struct mmu_gather *tlb,
 
 	BUG_ON(addr >= end);
 	pgd = pgd_offset(mm, addr);
+	/* 针对这个vma调整tlb的设置 */
 	tlb_start_vma(tlb, vma);
 	do {
 		next = pgd_addr_end(addr, end);
@@ -509,7 +514,9 @@ static long change_protection_range(struct mmu_gather *tlb,
 
 	return pages;
 }
+/* 
 
+*/
 long change_protection(struct mmu_gather *tlb,
 		       struct vm_area_struct *vma, unsigned long start,
 		       unsigned long end, unsigned long cp_flags)
