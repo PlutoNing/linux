@@ -1096,6 +1096,7 @@ void __bio_add_page(struct bio *bio, struct page *page,
 EXPORT_SYMBOL_GPL(__bio_add_page);
 
 /**
+把page的一部分添加到bio
  *	bio_add_page	-	attempt to add page(s) to bio
  *	@bio: destination bio
  *	@page: start page to add
@@ -1138,6 +1139,7 @@ void bio_add_folio_nofail(struct bio *bio, struct folio *folio, size_t len,
 }
 
 /**
+把folio的一部分添加到bio
  * bio_add_folio - Attempt to add part of a folio to a bio.
  * @bio: BIO to add to.
  * @folio: Folio to add.

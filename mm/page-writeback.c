@@ -2696,6 +2696,7 @@ int do_writepages(struct address_space *mapping, struct writeback_control *wbc)
 }
 
 /*
+可以用作anon inode的mapping ops
  * For address_spaces which do not use buffers nor write back.
  */
 bool noop_dirty_folio(struct address_space *mapping, struct folio *folio)
