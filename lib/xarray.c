@@ -1345,7 +1345,7 @@ void *xas_find(struct xa_state *xas, unsigned long max)
 }
 EXPORT_SYMBOL_GPL(xas_find);
 
-/**
+/**在xas找到下一个条目
  * xas_find_marked() - Find the next marked entry in the XArray.
  * @xas: XArray operation state.
  * @max: Highest index to return.
