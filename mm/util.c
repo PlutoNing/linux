@@ -751,13 +751,13 @@ struct anon_vma *folio_anon_vma(struct folio *folio)
 }
 
 /**
-获取folio所属的mapping. 直接返回mapping
+获取页缓存和交换缓存folio所属的mapping. 直接返回mapping
 slab与swp是特殊情况
  * folio_mapping - Find the mapping where this folio is stored.
  * @folio: The folio.
  *
- * For folios which are in the page cache, return the mapping that this
- * page belongs to.  Folios in the swap cache return the swap mapping
+ *对于page cache的folio， 返回mapping
+ 对于swap cache的mapping， 返回swap mapping 
  * this page is stored in (which is different from the mapping for the
  * swap file or swap device where the data is stored).
  *

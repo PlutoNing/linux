@@ -2566,7 +2566,7 @@ static int filemap_read_folio(struct file *file, filler_t filler,
 	/* Start the actual read. The read will unlock the page. */
 	if (unlikely(workingset))
 		psi_memstall_enter(&pflags);
-	error = filler(file, folio);
+	error = filler(file, folio);/* ext2的filler函数可能是ext2_read_folio */
 	if (unlikely(workingset))
 		psi_memstall_leave(&pflags);
 	if (error)
@@ -3957,7 +3957,7 @@ EXPORT_SYMBOL(filemap_page_mkwrite);
 EXPORT_SYMBOL(generic_file_mmap);
 EXPORT_SYMBOL(generic_file_readonly_mmap);
 
-/* 读取pagecache指定index */
+/* 读取pagecache指定index，filler用于把文件读入到mapping */
 static struct folio *do_read_cache_folio(struct address_space *mapping,
 		pgoff_t index, filler_t filler, struct file *file, gfp_t gfp)
 {
@@ -3984,7 +3984,7 @@ repeat:
 			/* Presumably ENOMEM for xarray node */
 			return ERR_PTR(err);
 		}
-
+		/* 现在新folio加入mapping了，需要把内容读进去 */
 		goto filler;
 	}
 	if (folio_test_uptodate(folio))
