@@ -903,7 +903,7 @@ int ext2_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 
 	return ret;
 }
-
+/* folio是新加入mapping的，这里把file的内容读进去 */
 static int ext2_read_folio(struct file *file, struct folio *folio)
 {
 	return mpage_read_folio(folio, ext2_get_block);
@@ -942,7 +942,9 @@ static sector_t ext2_bmap(struct address_space *mapping, sector_t block)
 {
 	return generic_block_bmap(mapping,block,ext2_get_block);
 }
-
+/* 
+ext2回写page的函数
+*/
 static int
 ext2_writepages(struct address_space *mapping, struct writeback_control *wbc)
 {

@@ -57,7 +57,7 @@ static inline __le16 ext2_rec_len_to_disk(unsigned len)
 	return cpu_to_le16(len);
 }
 
-/*
+/*获取ext2的块大小， 一般是1024
  * ext2 uses block-sized chunks. Arguably, sector-sized ones would be
  * more robust, but we have what we have
  */
@@ -179,7 +179,7 @@ fail:
 	return false;
 }
 
-/*
+/*获取ext2目录inode的第n个页面，放在page？
  * Calls to ext2_get_page()/ext2_put_page() must be nested according to the
  * rules documented in kmap_local_page()/kunmap_local().
  *
@@ -252,7 +252,7 @@ static inline void ext2_set_de_type(ext2_dirent *de, struct inode *inode)
 	else
 		de->file_type = 0;
 }
-
+/* ext2读取目录的ops回调 */
 static int
 ext2_readdir(struct file *file, struct dir_context *ctx)
 {
