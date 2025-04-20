@@ -704,7 +704,7 @@ noinline void __ref __noreturn rest_init(void)
 	set_cpus_allowed_ptr(tsk, cpumask_of(smp_processor_id()));
 	rcu_read_unlock();
 
-	numa_default_policy();
+	numa_default_policy();/* default plolicy是什么 */
 	//创建添加kthreadd线程的线程
 	pid = kernel_thread(kthreadd, NULL, NULL, CLONE_FS | CLONE_FILES);
 	rcu_read_lock();
@@ -723,8 +723,8 @@ noinline void __ref __noreturn rest_init(void)
 	complete(&kthreadd_done);
 
 	/*
-	 * The boot idle thread must execute schedule()
-	 * at least once to get things moving:
+	 * boot idle thread必须执行schedule()
+	 * 至少一次来让事情启动起来
 	 */
 	schedule_preempt_disabled();
 	/* Call into cpu_idle with preempt disabled */

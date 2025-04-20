@@ -1675,6 +1675,7 @@ out:
 EXPORT_SYMBOL(security_inode_init_security);
 
 /**
+初始化一个新创建的anon inode
  * security_inode_init_security_anon() - Initialize an anonymous inode
  * @inode: the inode
  * @name: the anonymous inode class
