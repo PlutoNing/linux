@@ -23,7 +23,7 @@
 #include <linux/pseudo_fs.h>
 
 #include <linux/uaccess.h>
-
+/* 匿名inode的mnt */
 static struct vfsmount *anon_inode_mnt __read_mostly;
 static struct inode *anon_inode_inode;
 
@@ -54,7 +54,7 @@ static struct file_system_type anon_inode_fs_type = {
 	.init_fs_context = anon_inodefs_init_fs_context,
 	.kill_sb	= kill_anon_super,
 };
-
+/* 创建anon inode */
 static struct inode *anon_inode_make_secure_inode(
 	const char *name,
 	const struct inode *context_inode)
@@ -62,7 +62,7 @@ static struct inode *anon_inode_make_secure_inode(
 	struct inode *inode;
 	const struct qstr qname = QSTR_INIT(name, strlen(name));
 	int error;
-
+	/* 分配一个新的anon inode */
 	inode = alloc_anon_inode(anon_inode_mnt->mnt_sb);
 	if (IS_ERR(inode))
 		return inode;
@@ -89,7 +89,8 @@ static struct file *__anon_inode_getfile(const char *name,
 	if (fops->owner && !try_module_get(fops->owner))
 		return ERR_PTR(-ENOENT);
 
-	if (secure) {
+	if (secure) {/* userfaultfd是secure的 */
+		/* 创建inode */
 		inode =	anon_inode_make_secure_inode(name, context_inode);
 		if (IS_ERR(inode)) {
 			file = ERR_CAST(inode);
@@ -181,7 +182,7 @@ struct file *anon_inode_getfile_secure(const char *name,
 	return __anon_inode_getfile(name, fops, priv, flags,
 				    context_inode, true);
 }
-/* 给新创建的map分配一个fd */
+/* 给新创建的bpf map，userfaultfd分配一个fd */
 static int __anon_inode_getfd(const char *name,
 			      const struct file_operations *fops,
 			      void *priv, int flags,
@@ -195,7 +196,7 @@ static int __anon_inode_getfd(const char *name,
 	if (error < 0)
 		return error;
 	fd = error;
-
+/* 创建anon file */
 	file = __anon_inode_getfile(name, fops, priv, flags, context_inode,
 				    secure);
 	if (IS_ERR(file)) {
@@ -237,6 +238,7 @@ int anon_inode_getfd(const char *name, const struct file_operations *fops,
 EXPORT_SYMBOL_GPL(anon_inode_getfd);
 
 /**
+创建anon inode
  * anon_inode_getfd_secure - Like anon_inode_getfd(), but creates a new
  * !S_PRIVATE anon inode rather than reuse the singleton anon inode, and calls
  * the inode_init_security_anon() LSM hook. This allows the inode to have its

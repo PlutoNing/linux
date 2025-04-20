@@ -389,7 +389,9 @@ static const struct file_operations timerfd_fops = {
 	.show_fdinfo	= timerfd_show,
 	.unlocked_ioctl	= timerfd_ioctl,
 };
-
+/* 
+获取ufd对应的fd
+*/
 static int timerfd_fget(int fd, struct fd *p)
 {
 	struct fd f = fdget(fd);
@@ -522,7 +524,9 @@ static int do_timerfd_settime(int ufd, int flags,
 	fdput(f);
 	return ret;
 }
-
+/* 
+获取定时器间隔
+*/
 static int do_timerfd_gettime(int ufd, struct itimerspec64 *t)
 {
 	struct fd f;
@@ -554,7 +558,8 @@ static int do_timerfd_gettime(int ufd, struct itimerspec64 *t)
 	fdput(f);
 	return 0;
 }
-
+/* 设置定时器的 ​​启动时间​​ 和 ​​间隔周期​​，控制定时器的触发行为。
+​​ */
 SYSCALL_DEFINE4(timerfd_settime, int, ufd, int, flags,
 		const struct __kernel_itimerspec __user *, utmr,
 		struct __kernel_itimerspec __user *, otmr)
@@ -572,7 +577,7 @@ SYSCALL_DEFINE4(timerfd_settime, int, ufd, int, flags,
 
 	return ret;
 }
-
+/* 获取定时器的 ​​当前剩余时间​​ 和 ​​间隔周期​​ */
 SYSCALL_DEFINE2(timerfd_gettime, int, ufd, struct __kernel_itimerspec __user *, otmr)
 {
 	struct itimerspec64 kotmr;
@@ -610,3 +615,4 @@ SYSCALL_DEFINE2(timerfd_gettime32, int, ufd,
 	return put_old_itimerspec32(&kotmr, otmr) ? -EFAULT : 0;
 }
 #endif
+/* timerfd 定时器文件描述符​​ 相关的系统调用，用于创建和管理定时器事件 */

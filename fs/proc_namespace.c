@@ -17,7 +17,12 @@
 
 #include "pnode.h"
 #include "internal.h"
+/* 
+解决/proc/pid下的mount相关文件；
 
+
+
+*/
 static __poll_t mounts_poll(struct file *file, poll_table *wait)
 {
 	struct seq_file *m = file->private_data;
@@ -132,7 +137,7 @@ static int show_vfsmnt(struct seq_file *m, struct vfsmount *mnt)
 out:
 	return err;
 }
-
+/* 查看pid的mountinfo */
 static int show_mountinfo(struct seq_file *m, struct vfsmount *mnt)
 {
 	struct proc_mounts *p = m->private;
@@ -316,12 +321,12 @@ static int mounts_open(struct inode *inode, struct file *file)
 {
 	return mounts_open_common(inode, file, show_vfsmnt);
 }
-
+/* 查看pid的mountinfo */
 static int mountinfo_open(struct inode *inode, struct file *file)
 {
 	return mounts_open_common(inode, file, show_mountinfo);
 }
-
+/* 查看pid的mountstats */
 static int mountstats_open(struct inode *inode, struct file *file)
 {
 	return mounts_open_common(inode, file, show_vfsstat);
@@ -336,7 +341,14 @@ const struct file_operations proc_mounts_operations = {
 	.release	= mounts_release,
 	.poll		= mounts_poll,
 };
-
+/* 打印pid下的mountinfo
+paulning@laptop:/proc/237695$ cd /proc/$$
+paulning@laptop:/proc/237695$ cat mountinfo 
+26 31 0:24 / /sys rw,nosuid,nodev,noexec,relatime shared:7 - sysfs sysfs rw
+27 31 0:25 / /proc rw,nosuid,nodev,noexec,relatime shared:13 - proc proc rw
+28 31 0:6 / /dev rw,nosuid,relatime shared:2 - devtmpfs udev rw,size=32772136k,nr_inodes=8193034,mode=755,inode64
+29 28 0:26 / /dev/pts rw,nosuid,noexec,relatime shared:3 - devpts devpts rw,gid=5,mode=620,ptmxmode=000
+30 31 0:27 / /run rw,nosuid,nodev,noexec,relatime shared:5 - tmpfs tmpfs rw,size=6562408k,mode=755,inode64 */
 const struct file_operations proc_mountinfo_operations = {
 	.open		= mountinfo_open,
 	.read_iter	= seq_read_iter,

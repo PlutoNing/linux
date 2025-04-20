@@ -352,6 +352,7 @@ int may_setattr(struct mnt_idmap *idmap, struct inode *inode,
 EXPORT_SYMBOL(may_setattr);
 
 /**
+修改文件系统对象的属性
  * notify_change - modify attributes of a filesytem object
  * @idmap:	idmap of the mount the inode was found from
  * @dentry:	object affected

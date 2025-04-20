@@ -877,6 +877,7 @@ out:
 
 #ifdef CONFIG_COMPAT
 /**
+
  * compat_ptr_ioctl - generic implementation of .compat_ioctl file operation
  * @file: The file to operate on.
  * @cmd: The ioctl command number.

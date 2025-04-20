@@ -152,7 +152,7 @@ static int __init init_fs_stat_sysctls(void)
 }
 fs_initcall(init_fs_stat_sysctls);
 #endif
-
+/* 初始化新创建的file结构体 */
 static int init_file(struct file *f, int flags, const struct cred *cred)
 {
 	int error;
@@ -175,15 +175,16 @@ static int init_file(struct file *f, int flags, const struct cred *cred)
 	return 0;
 }
 
-/* Find an unused file structure and return a pointer to it.
- * Returns an error pointer if some error happend e.g. we over file
- * structures limit, run out of memory or operation is not permitted.
+/* 
+创建file
+找到一个未使用的文件结构并返回其指针。
+ * 如果发生错误，例如超过文件结构限制、内存不足或操作不被允许，
+ * 则返回一个错误指针。
  *
- * Be very careful using this.  You are responsible for
- * getting write access to any mount that you might assign
- * to this filp, if it is opened for write.  If this is not
- * done, you will imbalance int the mount's writer count
- * and a warning at __fput() time.
+ * 使用此函数时要非常小心。您需要负责为可能分配给此文件结构的
+ * 挂载点获取写访问权限（如果它是以写模式打开的）。
+ * 如果未执行此操作，挂载点的写入计数将失衡，
+ * 并在 __fput() 时发出警告。
  */
 struct file *alloc_empty_file(int flags, const struct cred *cred)
 {
@@ -203,10 +204,11 @@ struct file *alloc_empty_file(int flags, const struct cred *cred)
 			goto over;
 	}
 
+	/* 从slab分配file结构体 */
 	f = kmem_cache_zalloc(filp_cachep, GFP_KERNEL);
 	if (unlikely(!f))
 		return ERR_PTR(-ENOMEM);
-
+	/* 初始化 */
 	error = init_file(f, flags, cred);
 	if (unlikely(error)) {
 		kmem_cache_free(filp_cachep, f);
@@ -279,6 +281,7 @@ struct file *alloc_empty_backing_file(int flags, const struct cred *cred)
 }
 
 /**
+创建一个file结构体
  * alloc_file - allocate and initialize a 'struct file'
  *
  * @path: the (dentry, vfsmount) pair for the new file
@@ -290,6 +293,7 @@ static struct file *alloc_file(const struct path *path, int flags,
 {
 	struct file *file;
 
+	/* 创建file结构体 */
 	file = alloc_empty_file(flags, current_cred());
 	if (IS_ERR(file))
 		return file;
@@ -309,13 +313,16 @@ static struct file *alloc_file(const struct path *path, int flags,
 		file->f_mode |= FMODE_CAN_WRITE;
 	file->f_iocb_flags = iocb_flags(file);
 	file->f_mode |= FMODE_OPENED;
+	/* 赋值fops */
 	file->f_op = fop;
 	if ((file->f_mode & (FMODE_READ | FMODE_WRITE)) == FMODE_READ)
 		i_readcount_inc(path->dentry->d_inode);
 	return file;
 }
 
-// 分配一个伪文件,比如有时候临时用的,或者只是为了其他机制使用的
+/* 分配一个伪文件,比如有时候临时用的,或者只是为了其他机制使用的
+走的是一个创建文件的逻辑
+*/
 struct file *alloc_file_pseudo(struct inode *inode, struct vfsmount *mnt,
 				const char *name, int flags,
 				const struct file_operations *fops)
@@ -334,6 +341,7 @@ struct file *alloc_file_pseudo(struct inode *inode, struct vfsmount *mnt,
 		d_set_d_op(path.dentry, &anon_ops);
 	path.mnt = mntget(mnt);
 	d_instantiate(path.dentry, inode);
+	/* 创建并初始化file结构体 */
 	file = alloc_file(&path, flags, fops);
 	if (IS_ERR(file)) {
 		ihold(inode);
@@ -342,10 +350,14 @@ struct file *alloc_file_pseudo(struct inode *inode, struct vfsmount *mnt,
 	return file;
 }
 EXPORT_SYMBOL(alloc_file_pseudo);
-
+/* 
+为什么要clone文件
+创建管道会调用这个函数
+*/
 struct file *alloc_file_clone(struct file *base, int flags,
 				const struct file_operations *fops)
 {
+	/* 就是普通的创建文件 */
 	struct file *f = alloc_file(&base->f_path, flags, fops);
 	if (!IS_ERR(f)) {
 		path_get(&f->f_path);
@@ -354,7 +366,9 @@ struct file *alloc_file_clone(struct file *base, int flags,
 	return f;
 }
 
-/* the real guts of fput() - releasing the last reference to file
+/* 
+释放文件
+the real guts of fput() - releasing the last reference to file
  */
 static void __fput(struct file *file)
 {
@@ -381,6 +395,7 @@ static void __fput(struct file *file)
 		if (file->f_op->fasync)
 			file->f_op->fasync(-1, file, 0);
 	}
+	/* 调用release的回调 */
 	if (file->f_op->release)
 		file->f_op->release(inode, file);
 	if (unlikely(S_ISCHR(inode->i_mode) && inode->i_cdev != NULL &&
@@ -453,6 +468,7 @@ void fput(struct file *file)
 }
 
 /*
+释放文件
  * synchronous analog of fput(); for kernel threads that might be needed
  * in some umount() (and thus can't use flush_delayed_fput() without
  * risking deadlocks), need to wait for completion of __fput() and know

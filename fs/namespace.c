@@ -1628,6 +1628,7 @@ static bool disconnect_mount(struct mount *mnt, enum umount_tree_flags how)
 }
 
 /*
+必须持有mount lock
  * mount_lock must be held
  * namespace_sem must be held for write
  */
@@ -4759,7 +4760,7 @@ void put_mnt_ns(struct mnt_namespace *ns)
 	free_mnt_ns(ns);
 }
 
-// 挂载文件系统
+/* 挂载文件系统 */
 struct vfsmount *kern_mount(struct file_system_type *type)
 {
 	struct vfsmount *mnt;

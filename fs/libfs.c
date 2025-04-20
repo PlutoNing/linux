@@ -1496,12 +1496,13 @@ void kfree_link(void *p)
 	kfree(p);
 }
 EXPORT_SYMBOL(kfree_link);
-
+/*  */
 struct inode *alloc_anon_inode(struct super_block *s)
 {
 	static const struct address_space_operations anon_aops = {
 		.dirty_folio	= noop_dirty_folio,
 	};
+	/* 从sb分配inode */
 	struct inode *inode = new_inode_pseudo(s);
 
 	if (!inode)

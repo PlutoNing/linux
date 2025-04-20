@@ -218,13 +218,15 @@ getname(const char __user * filename)
 {
 	return getname_flags(filename, 0, NULL);
 }
+/* 
 
+*/
 struct filename *
 getname_kernel(const char * filename)
 {
 	struct filename *result;
 	int len = strlen(filename) + 1;
-
+	/* 从slab分配一块filename结构体内存 */
 	result = __getname();
 	if (unlikely(!result))
 		return ERR_PTR(-ENOMEM);
@@ -3164,6 +3166,7 @@ static inline umode_t vfs_prepare_mode(struct mnt_idmap *idmap,
 }
 
 /**
+创建新文件
  * vfs_create - create new file
  * @idmap:	idmap of the mount the inode was found from
  * @dir:	inode of @dentry
@@ -3195,6 +3198,7 @@ int vfs_create(struct mnt_idmap *idmap, struct inode *dir,
 	error = security_inode_create(dir, dentry, mode);
 	if (error)
 		return error;
+	/* 调用dir的ops来创建 */
 	error = dir->i_op->create(idmap, dir, dentry, mode, want_excl);
 	if (!error)
 		fsnotify_create(dir, dentry);
@@ -3285,7 +3289,7 @@ static int may_open(struct mnt_idmap *idmap, const struct path *path,
 
 	return 0;
 }
-
+/* 如果打开标志指定了截断选项 */
 static int handle_truncate(struct mnt_idmap *idmap, struct file *filp)
 {
 	const struct path *path = &filp->f_path;
@@ -3295,7 +3299,7 @@ static int handle_truncate(struct mnt_idmap *idmap, struct file *filp)
 		return error;
 
 	error = security_file_truncate(filp);
-	if (!error) {
+	if (!error) {/* 截断文件 */
 		error = do_truncate(idmap, path->dentry, 0,
 				    ATTR_MTIME|ATTR_CTIME|ATTR_OPEN,
 				    filp);
@@ -3631,6 +3635,7 @@ static int do_open(struct nameidata *nd,
 		open_flag &= ~O_TRUNC;
 		acc_mode = 0;
 	} else if (d_is_reg(nd->path.dentry) && open_flag & O_TRUNC) {
+		/* 如果需要截断文件 */
 		error = mnt_want_write(nd->path.mnt);
 		if (error)
 			return error;
@@ -3638,6 +3643,7 @@ static int do_open(struct nameidata *nd,
 	}
 	error = may_open(idmap, &nd->path, acc_mode, open_flag);
 	if (!error && !(file->f_mode & FMODE_OPENED))
+	/* 打开文件 */
 		error = vfs_open(&nd->path, file);
 	if (!error)
 		error = ima_file_check(file, op->acc_mode);
@@ -3653,6 +3659,7 @@ static int do_open(struct nameidata *nd,
 }
 
 /**
+创建一个tmpfile
  * vfs_tmpfile - create tmpfile
  * @idmap:	idmap of the mount the inode was found from
  * @parentpath:	pointer to the path of the base directory
@@ -3689,6 +3696,7 @@ static int vfs_tmpfile(struct mnt_idmap *idmap,
 	file->f_path.mnt = parentpath->mnt;
 	file->f_path.dentry = child;
 	mode = vfs_prepare_mode(idmap, dir, mode, mode, mode);
+	/* 调用dir的ops创建tmpfile */
 	error = dir->i_op->tmpfile(idmap, dir, file, mode);
 	dput(child);
 	if (error)
@@ -3739,12 +3747,15 @@ struct file *kernel_tmpfile_open(struct mnt_idmap *idmap,
 	return file;
 }
 EXPORT_SYMBOL(kernel_tmpfile_open);
-
+/* 
+打开一个tmpfile
+*/
 static int do_tmpfile(struct nameidata *nd, unsigned flags,
 		const struct open_flags *op,
 		struct file *file)
 {
 	struct path path;
+	/* 查找文件 */
 	int error = path_lookupat(nd, flags | LOOKUP_DIRECTORY, &path);
 
 	if (unlikely(error))
@@ -3752,6 +3763,7 @@ static int do_tmpfile(struct nameidata *nd, unsigned flags,
 	error = mnt_want_write(path.mnt);
 	if (unlikely(error))
 		goto out;
+	/* 打开一个tmpfile */
 	error = vfs_tmpfile(mnt_idmap(path.mnt), &path, file, op->mode);
 	if (error)
 		goto out2;
@@ -3787,7 +3799,8 @@ static struct file *path_openat(struct nameidata *nd,
 	if (IS_ERR(file))
 		return file;
 
-	if (unlikely(file->f_flags & __O_TMPFILE)) {
+	if (unlikely(file->f_flags & __O_TMPFILE)) {/* 
+		打开tmpfile */
 		error = do_tmpfile(nd, flags, op, file);
 	} else if (unlikely(file->f_flags & O_PATH)) {
 		error = do_o_path(nd, flags, file);
@@ -3816,7 +3829,9 @@ static struct file *path_openat(struct nameidata *nd,
 	return ERR_PTR(error);
 }
 
-//执行打开文件的系统调用
+/* 
+执行打开文件的系统调用
+*/
 struct file *do_filp_open(int dfd, struct filename *pathname,
 		const struct open_flags *op)
 {
@@ -3834,7 +3849,9 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 	restore_nameidata();
 	return filp;
 }
-
+/* 
+也是打开文件
+*/
 struct file *do_file_open_root(const struct path *root,
 		const char *name, const struct open_flags *op)
 {

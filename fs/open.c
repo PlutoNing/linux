@@ -36,7 +36,7 @@
 #include <linux/filelock.h>
 
 #include "internal.h"
-
+/* 截断文件 */
 int do_truncate(struct mnt_idmap *idmap, struct dentry *dentry,
 		loff_t length, unsigned int time_attrs, struct file *filp)
 {
@@ -1054,6 +1054,7 @@ char *file_path(struct file *filp, char *buf, int buflen)
 EXPORT_SYMBOL(file_path);
 
 /**
+打开path表示的文件
  * vfs_open - open the file at the given path
  * @path: path to open
  * @file: newly allocated file with f_flag initialized
@@ -1349,6 +1350,7 @@ inline int build_open_flags(const struct open_how *how, struct open_flags *op)
 }
 
 /**
+根据名字打开文件
  * file_open_name - open file and return file pointer
  *
  * @name:	struct filename containing path to open
@@ -1370,6 +1372,7 @@ struct file *file_open_name(struct filename *name, int flags, umode_t mode)
 }
 
 /**
+打开一个文件，返回filp
  * filp_open - open file and return file pointer
  *
  * @filename:	path to open
@@ -1382,17 +1385,22 @@ struct file *file_open_name(struct filename *name, int flags, umode_t mode)
  */
 struct file *filp_open(const char *filename, int flags, umode_t mode)
 {
+	/* 把字符串转为filename结构体 */
 	struct filename *name = getname_kernel(filename);
 	struct file *file = ERR_CAST(name);
 	
-	if (!IS_ERR(name)) {
+	if (!IS_ERR(name)) {/* 
+		
+		*/
 		file = file_open_name(name, flags, mode);
 		putname(name);
 	}
 	return file;
 }
 EXPORT_SYMBOL(filp_open);
-
+/* 
+也是用于打开文件的
+*/
 struct file *file_open_root(const struct path *root,
 			    const char *filename, int flags, umode_t mode)
 {
@@ -1485,6 +1493,7 @@ SYSCALL_DEFINE4(openat2, int, dfd, const char __user *, filename,
 
 #ifdef CONFIG_COMPAT
 /*
+执行open系统调用
  * Exactly like sys_open(), except that it doesn't set the
  * O_LARGEFILE flag.
  */
@@ -1494,6 +1503,7 @@ COMPAT_SYSCALL_DEFINE3(open, const char __user *, filename, int, flags, umode_t,
 }
 
 /*
+打开文件的系统调用
  * Exactly like sys_openat(), except that it doesn't set the
  * O_LARGEFILE flag.
  */
@@ -1520,6 +1530,7 @@ SYSCALL_DEFINE2(creat, const char __user *, pathname, umode_t, mode)
 #endif
 
 /*
+这里flush的是什么
  * "id" is the POSIX thread ID. We use the
  * files pointer for this..
  */
@@ -1546,7 +1557,7 @@ static int filp_flush(struct file *filp, fl_owner_t id)
 int filp_close(struct file *filp, fl_owner_t id)
 {
 	int retval;
-
+	/* flush文件 */
 	retval = filp_flush(filp, id);
 	fput(filp);
 
@@ -1555,24 +1566,24 @@ int filp_close(struct file *filp, fl_owner_t id)
 EXPORT_SYMBOL(filp_close);
 
 /*
- * Careful here! We test whether the file pointer is NULL before
- * releasing the fd. This ensures that one clone task can't release
- * an fd while another clone is opening it.
+ * 注意这里！我们在释放文件描述符之前测试文件指针是否为 NULL。
+ * 这样可以确保一个克隆任务在另一个克隆任务正在打开它时，不能释放文件描述符。
  */
 SYSCALL_DEFINE1(close, unsigned int, fd)
 {
 	int retval;
 	struct file *file;
-
+	/* 获取到对应的文件 */
 	file = close_fd_get_file(fd);
 	if (!file)
 		return -EBADF;
-
+	/* 执行file的flush的ops */
 	retval = filp_flush(file, current->files);
 
 	/*
 	 * We're returning to user space. Don't bother
 	 * with any delayed fput() cases.
+	 释放文件
 	 */
 	__fput_sync(file);
 

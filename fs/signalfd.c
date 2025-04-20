@@ -41,13 +41,17 @@ void signalfd_cleanup(struct sighand_struct *sighand)
 struct signalfd_ctx {
 	sigset_t sigmask;
 };
-
+/* 
+释放signalfd
+ */
 static int signalfd_release(struct inode *inode, struct file *file)
 {
 	kfree(file->private_data);
 	return 0;
 }
-
+/* 
+对signalfd执行poll调用
+*/
 static __poll_t signalfd_poll(struct file *file, poll_table *wait)
 {
 	struct signalfd_ctx *ctx = file->private_data;
@@ -229,6 +233,7 @@ static ssize_t signalfd_read(struct file *file, char __user *buf, size_t count,
 }
 
 #ifdef CONFIG_PROC_FS
+/* signalfd打印基本信息 */
 static void signalfd_show_fdinfo(struct seq_file *m, struct file *f)
 {
 	struct signalfd_ctx *ctx = f->private_data;
@@ -239,7 +244,7 @@ static void signalfd_show_fdinfo(struct seq_file *m, struct file *f)
 	render_sigset_t(m, "sigmask:\t", &sigmask);
 }
 #endif
-
+/* signalfd机制的核心fops */
 static const struct file_operations signalfd_fops = {
 #ifdef CONFIG_PROC_FS
 	.show_fdinfo	= signalfd_show_fdinfo,
@@ -249,7 +254,9 @@ static const struct file_operations signalfd_fops = {
 	.read		= signalfd_read,
 	.llseek		= noop_llseek,
 };
-
+/* 最后调用的都是这个函数
+构造一个文件，主要通过fops实现这个机制
+*/
 static int do_signalfd4(int ufd, sigset_t *mask, int flags)
 {
 	struct signalfd_ctx *ctx;
@@ -298,7 +305,9 @@ static int do_signalfd4(int ufd, sigset_t *mask, int flags)
 
 	return ufd;
 }
-
+/* 内核提供的一种 ​​信号处理机制​​，允许将信号（如 SIGINT、SIGTERM）转换为 
+​​文件描述符的可读事件​​，使应用程序可以通过 select、poll、epoll 等 I/O
+ 多路复用接口同步处理信号，替代传统的异步信号处理函数 */
 SYSCALL_DEFINE4(signalfd4, int, ufd, sigset_t __user *, user_mask,
 		size_t, sizemask, int, flags)
 {

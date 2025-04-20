@@ -22,7 +22,10 @@
 
 #include <linux/uaccess.h>
 #include <asm/page.h>
-
+/* 
+seqfile的实现
+一种用于简化顺序文件操作的机制，主要用于在 /proc 或 /sys 等虚拟文件系统中生成动态内容。
+*/
 static struct kmem_cache *seq_file_cache __ro_after_init;
 
 static void seq_set_overflow(struct seq_file *m)
@@ -1147,7 +1150,7 @@ seq_hlist_next_percpu(void *v, struct hlist_head __percpu *head,
 	return NULL;
 }
 EXPORT_SYMBOL(seq_hlist_next_percpu);
-
+/* 初始化seq-file机制 */
 void __init seq_file_init(void)
 {
 	seq_file_cache = KMEM_CACHE(seq_file, SLAB_ACCOUNT|SLAB_PANIC);
