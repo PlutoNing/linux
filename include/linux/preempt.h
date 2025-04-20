@@ -213,7 +213,7 @@ do { \
 	preempt_count_inc(); \
 	barrier(); \
 } while (0)
-
+/* 其实就是执行__asm__ __volatile__("" : : : "memory") 和sub一下 count */
 #define sched_preempt_enable_no_resched() \
 do { \
 	barrier(); \

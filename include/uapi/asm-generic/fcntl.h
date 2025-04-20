@@ -15,24 +15,35 @@
 /*
  * When introducing new O_* bits, please check its uniqueness in fcntl_init().
  */
-
+/*  */
 #define O_ACCMODE	00000003
+/*  */
 #define O_RDONLY	00000000
+/*  */
+
 #define O_WRONLY	00000001
+/*  */
+
 #define O_RDWR		00000002
+/*  */
+
 #ifndef O_CREAT
+/* 如果文件不存在，则创建文件。需配合 mode 参数（如 0666）设置文件权限。 */
 #define O_CREAT		00000100	/* not fcntl */
 #endif
 #ifndef O_EXCL
+/* 与 O_CREAT 一起使用时，若文件已存在，则打开失败（用于确保原子性创建新文件）。 */
 #define O_EXCL		00000200	/* not fcntl */
 #endif
 #ifndef O_NOCTTY
 #define O_NOCTTY	00000400	/* not fcntl */
 #endif
 #ifndef O_TRUNC
+/* 如果文件存在且为普通文件，打开时将其长度截断为 0（清空内容）。 */
 #define O_TRUNC		00001000	/* not fcntl */
 #endif
 #ifndef O_APPEND
+/* 每次写入前将文件偏移量移到文件末尾（追加写入）。 */
 #define O_APPEND	00002000
 #endif
 #ifndef O_NONBLOCK
@@ -84,10 +95,12 @@
 #endif
 
 #ifndef O_PATH
+/* 以“路径”模式打开文件，仅获取文件描述符用于操作文件路径（如 fstat()），不实际读写内容。 */
 #define O_PATH		010000000
 #endif
 
 #ifndef __O_TMPFILE
+// 创建匿名临时文件，文件不会出现在文件系统中，适用于需要快速创建和销毁的临时数据
 #define __O_TMPFILE	020000000
 #endif
 

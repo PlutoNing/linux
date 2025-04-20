@@ -882,7 +882,7 @@ static inline struct page *read_mapping_page(struct address_space *mapping,
 	return read_cache_page(mapping, index, NULL, file);
 }
 
-/*  */
+/* 获取这个index位置的folio */
 static inline struct folio *read_mapping_folio(struct address_space *mapping,
 				pgoff_t index, struct file *file)
 {
@@ -1506,7 +1506,7 @@ static inline size_t readahead_batch_length(struct readahead_control *rac)
 {
 	return rac->_batch_count * PAGE_SIZE;
 }
-
+/* inode的大小需要几个page */
 static inline unsigned long dir_pages(struct inode *inode)
 {
 	return (unsigned long)(inode->i_size + PAGE_SIZE - 1) >>

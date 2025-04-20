@@ -708,6 +708,7 @@ struct vm_area_struct {
 #ifdef CONFIG_NUMA_BALANCING
 	struct vma_numab_state *numab_state;	/* NUMA Balancing state */
 #endif
+/* uffd相关 */
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
 } __randomize_layout;
 
@@ -1081,7 +1082,8 @@ struct vma_iterator {
 			.node = MAS_START,				\
 		},							\
 	}
-
+/* 初始化一个vmi
+用于遍历从addr开始的vma */
 static inline void vma_iter_init(struct vma_iterator *vmi,
 		struct mm_struct *mm, unsigned long addr)
 {

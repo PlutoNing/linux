@@ -131,7 +131,7 @@ static inline void mmget(struct mm_struct *mm)
 {
 	atomic_inc(&mm->mm_users);
 }
-/*  */
+/* 获取引用， 如果没有人在用了，就不获取了 */
 static inline bool mmget_not_zero(struct mm_struct *mm)
 {
 	return atomic_inc_not_zero(&mm->mm_users);

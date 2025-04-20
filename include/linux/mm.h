@@ -291,7 +291,10 @@ extern unsigned int kobjsize(const void *objp);
 /* 
 说明这个VMA是一个PFN映射，而不是一个文件映射。
 Page-ranges managed without "struct page", just pure PFN */
-#define VM_UFFD_WP	0x00001000	/* wrprotect pages tracking */
+#define VM_UFFD_WP	0x00001000	
+/* 
+说明被uffd写保护了？
+wrprotect pages tracking */
 
 #define VM_LOCKED	0x00002000
 #define VM_IO           0x00004000	/* Memory mapped I/O or similar */
@@ -524,9 +527,15 @@ struct vm_fault {
 	const struct {
 		struct vm_area_struct *vma;	/* Target VMA */
 		gfp_t gfp_mask;			/* gfp mask to be used for allocations */
-		pgoff_t pgoff;			/* Logical page offset based on vma */
-		unsigned long address;		/* Faulting virtual address - masked */
-		unsigned long real_address;	/* Faulting virtual address - unmasked */
+		pgoff_t pgoff;			/* 
+		缺页地址的pgoff
+		Logical page offset based on vma */
+		unsigned long address;		/* 
+		页面对齐的地址
+		Faulting virtual address - masked */
+		unsigned long real_address;	/* 
+		原本的缺页地址
+		Faulting virtual address - unmasked */
 	};
 	enum fault_flag flags;		/* FAULT_FLAG_xxx flags
 					 * XXX: should really be 'const' */
@@ -835,14 +844,14 @@ extern const struct vm_operations_struct vma_dummy_vm_ops;
 /*
  * WARNING: vma_init does not initialize vma->vm_lock.
  * Use vm_area_alloc()/vm_area_free() if vma needs locking.
- 初始化vma
+ 初始化vma与mm的关系，以及vma
  vma是为mm新建的
  */
 static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 {
 	memset(vma, 0, sizeof(*vma));
-	vma->vm_mm = mm;
-	vma->vm_ops = &vma_dummy_vm_ops;
+	vma->vm_mm = mm; /* vma指向这个mm */
+	vma->vm_ops = &vma_dummy_vm_ops; /* 设置vma的ops */
 	INIT_LIST_HEAD(&vma->anon_vma_chain);
 	vma_mark_detached(vma, false);
 	vma_numab_state_init(vma);
@@ -977,7 +986,8 @@ static inline bool vma_is_accessible(struct vm_area_struct *vma)
 	return vma->vm_flags & VM_ACCESS_FLAGS;
 }
 
-// 找到有交叉的vma
+/* 找到下一个条目
+不超过max */
 static inline
 struct vm_area_struct *vma_find(struct vma_iterator *vmi, unsigned long max)
 {
@@ -2860,12 +2870,14 @@ int __pte_alloc(struct mm_struct *mm, pmd_t *pmd);
 int __pte_alloc_kernel(pmd_t *pmd);
 
 #if defined(CONFIG_MMU)
-
+/* 找到addr在pgd条目的p4d页面 */
 static inline p4d_t *p4d_alloc(struct mm_struct *mm, pgd_t *pgd,
 		unsigned long address)
 {
+	/* 如果pgd是空，就分配p4d页面 */
 	return (unlikely(pgd_none(*pgd)) && __p4d_alloc(mm, pgd, address)) ?
-		NULL : p4d_offset(pgd, address);
+		NULL : /* 如果pgd是null的， 并且分配p4d页面失败了 */
+		p4d_offset(pgd, address);
 }
 
 static inline pud_t *pud_alloc(struct mm_struct *mm, p4d_t *p4d,
@@ -2874,7 +2886,7 @@ static inline pud_t *pud_alloc(struct mm_struct *mm, p4d_t *p4d,
 	return (unlikely(p4d_none(*p4d)) && __pud_alloc(mm, p4d, address)) ?
 		NULL : pud_offset(p4d, address);
 }
-
+/* 获取的是pmd页面，上面都是pmd条目 */
 static inline pmd_t *pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address)
 {
 	return (unlikely(pud_none(*pud)) && __pmd_alloc(mm, pud, address))?
@@ -3032,7 +3044,7 @@ static inline pte_t *pte_offset_map(pmd_t *pmd, unsigned long addr)
 pte_t *__pte_offset_map_lock(struct mm_struct *mm, pmd_t *pmd,
 			unsigned long addr, spinlock_t **ptlp);
 
-// 获取页表项
+/* 获取pte指针 */
 static inline pte_t *pte_offset_map_lock(struct mm_struct *mm, pmd_t *pmd,
 			unsigned long addr, spinlock_t **ptlp)
 {
@@ -3495,7 +3507,7 @@ static inline unsigned long stack_guard_start_gap(struct vm_area_struct *vma)
 
 	return 0;
 }
-
+/* 获取减去gap之后的vma开始地址 */
 static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
 {
 	unsigned long gap = stack_guard_start_gap(vma);
@@ -3537,7 +3549,7 @@ static inline struct vm_area_struct *find_exact_vma(struct mm_struct *mm,
 
 	return vma;
 }
-
+/* 检查vma是不是完全包住了这个范围 */
 static inline bool range_in_vma(struct vm_area_struct *vma,
 				unsigned long start, unsigned long end)
 {

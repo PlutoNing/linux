@@ -6,14 +6,18 @@
 #include <asm-generic/hugetlb_encode.h>
 #include <linux/types.h>
 
+/* 允许内核在无法​​原地扩展内存映射区域​​时，将其移动到新的虚拟地址。 */
 #define MREMAP_MAYMOVE		1
+/* 强制将内存映射移动到用户指定的新地址 new_address？ */
 #define MREMAP_FIXED		2
+/* 调整内存映射后，​​保留原地址的映射​​，避免自动解除？ */
 #define MREMAP_DONTUNMAP	4
 
 #define OVERCOMMIT_GUESS		0
 #define OVERCOMMIT_ALWAYS		1
 #define OVERCOMMIT_NEVER		2
 
+/* 当进程调用 mmap(MAP_SHARED) 映射匿名内存时，内核会隐式使用 shmem 机制分配内存。 */
 #define MAP_SHARED	0x01		/* Share changes */
 #define MAP_PRIVATE	0x02		/* Changes are private */
 #define MAP_SHARED_VALIDATE 0x03	/* share + validate extension flags */

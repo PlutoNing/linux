@@ -1524,6 +1524,8 @@ robus_list是什么?
 #endif
 	struct rcu_head			rcu;
 	refcount_t			rcu_users;
+	/* 用于开关pf
+	通过inc来关闭pf */
 	int				pagefault_disabled;
 #ifdef CONFIG_MMU
 	struct task_struct		*oom_reaper_list;

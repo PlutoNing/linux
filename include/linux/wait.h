@@ -85,7 +85,9 @@ static inline void init_waitqueue_entry(struct wait_queue_entry *wq_entry, struc
 	wq_entry->private	= p;
 	wq_entry->func		= default_wake_function;
 }
-
+/* 
+初始化一个waitqueue entry
+*/
 static inline void
 init_waitqueue_func_entry(struct wait_queue_entry *wq_entry, wait_queue_func_t func)
 {

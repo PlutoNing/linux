@@ -199,6 +199,7 @@ static inline void invalidate_kernel_vmap_range(void *vaddr, int size)
 
 /* when CONFIG_HIGHMEM is not set these will be plain clear/copy_page */
 #ifndef clear_user_highpage
+/* zero， 清空这个用户的页面 */
 static inline void clear_user_highpage(struct page *page, unsigned long vaddr)
 {
 	void *addr = kmap_local_page(page);

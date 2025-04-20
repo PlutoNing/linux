@@ -672,7 +672,7 @@ struct inode {
 	struct super_block	*i_sb; /* 指向 inode 所在的超级块（super_block），
 	超级块表示文件系统的一个实例，管理所有文件系统对象。 */
 
-	struct address_space	*i_mapping;/* 
+	struct address_space	*i_mapping;/* 为什么inode也有mapping呢
 	dev inode的mapping是存储的bh相关 */
 
 #ifdef CONFIG_SECURITY
@@ -1918,6 +1918,7 @@ struct file_operations {
 	int (*fsync) (struct file *, loff_t, loff_t, int datasync);
 	int (*fasync) (int, struct file *, int);
 	int (*lock) (struct file *, int, struct file_lock *);
+	/* mmap时候使用，找一段可以map的地址 */
 	unsigned long (*get_unmapped_area)(struct file *, unsigned long, unsigned long, unsigned long, unsigned long);
 	int (*check_flags)(int);
 	int (*flock) (struct file *, int, struct file_lock *);
@@ -1933,6 +1934,7 @@ struct file_operations {
 #endif
 	ssize_t (*copy_file_range)(struct file *, loff_t, struct file *,
 			loff_t, size_t, unsigned int);
+		/* 用于dedup */
 	loff_t (*remap_file_range)(struct file *file_in, loff_t pos_in,
 				   struct file *file_out, loff_t pos_out,
 				   loff_t len, unsigned int remap_flags);
@@ -1991,13 +1993,13 @@ struct inode_operations {
 	int (*fileattr_get)(struct dentry *dentry, struct fileattr *fa);
 	struct offset_ctx *(*get_offset_ctx)(struct inode *inode);
 } ____cacheline_aligned;
-
+/* fops的函数 */
 static inline ssize_t call_read_iter(struct file *file, struct kiocb *kio,
 				     struct iov_iter *iter)
 {
 	return file->f_op->read_iter(kio, iter);
 }
-
+/* 调用fops回调 */
 static inline ssize_t call_write_iter(struct file *file, struct kiocb *kio,
 				      struct iov_iter *iter)
 {
@@ -2039,7 +2041,9 @@ enum freeze_holder {
 	FREEZE_HOLDER_KERNEL	= (1U << 0),
 	FREEZE_HOLDER_USERSPACE	= (1U << 1),
 };
+/* 
 
+*/
 struct super_operations {
    	struct inode *(*alloc_inode)(struct super_block *sb);
 	void (*destroy_inode)(struct inode *);
@@ -2156,7 +2160,7 @@ static inline bool HAS_UNMAPPED_ID(struct mnt_idmap *idmap,
 	return !vfsuid_valid(i_uid_into_vfsuid(idmap, inode)) ||
 	       !vfsgid_valid(i_gid_into_vfsgid(idmap, inode));
 }
-
+/* 初始化kiocb */
 static inline void init_sync_kiocb(struct kiocb *kiocb, struct file *filp)
 {
 	*kiocb = (struct kiocb) {
@@ -2569,7 +2573,7 @@ extern void __init vfs_caches_init_early(void);
 extern void __init vfs_caches_init(void);
 
 extern struct kmem_cache *names_cachep;
-
+/* 分配一个filename */
 #define __getname()		kmem_cache_alloc(names_cachep, GFP_KERNEL)
 #define __putname(name)		kmem_cache_free(names_cachep, (void *)(name))
 

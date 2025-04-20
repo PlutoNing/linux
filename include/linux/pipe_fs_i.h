@@ -60,6 +60,7 @@ struct pipe_inode_info {
 	wait_queue_head_t rd_wait, wr_wait;
 	unsigned int head;
 	unsigned int tail;
+	/* pipe使用的页面数量 */
 	unsigned int max_usage;
 	unsigned int ring_size;
 #ifdef CONFIG_WATCH_QUEUE
