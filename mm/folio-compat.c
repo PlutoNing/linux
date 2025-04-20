@@ -9,7 +9,7 @@
 #include <linux/rmap.h>
 #include <linux/swap.h>
 #include "internal.h"
-
+/* 获取页缓存和交换缓存的folio的mapping */
 struct address_space *page_mapping(struct page *page)
 {
 	return folio_mapping(page_folio(page));
