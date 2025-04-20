@@ -93,6 +93,9 @@ SYSCALL_DEFINE6(mmap, unsigned long, addr, unsigned long, len,
 	return ksys_mmap_pgoff(addr, len, prot, flags, fd, off >> PAGE_SHIFT);
 }
 
+/*
+
+*/
 static void find_start_end(unsigned long addr, unsigned long flags,
 		unsigned long *begin, unsigned long *end)
 {
@@ -115,14 +118,21 @@ static void find_start_end(unsigned long addr, unsigned long flags,
 	*begin	= get_mmap_base(1);
 	if (in_32bit_syscall())
 		*end = task_size_32bit();
-	else
+	else/* 64bit syscall情况 */
 		*end = task_size_64bit(addr > DEFAULT_MAP_WINDOW);
 }
 
+/* 
+mmap的get area回调函数
+caller希望map到addr和len指定的范围
+file是mm的一个vma的file
+pgoff是这个vma的一个old地址的pgoff
+*/
 unsigned long
 arch_get_unmapped_area(struct file *filp, unsigned long addr,
 		unsigned long len, unsigned long pgoff, unsigned long flags)
 {
+	/* 当前进程进行的操作， 取出当前进程的mm */
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	struct vm_unmapped_area_info info;
@@ -136,12 +146,16 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	if (len > end)
 		return -ENOMEM;
 
-	if (addr) {
+	if (addr) {/* 还能不指定地址？
+		如果caller指定了要map的地址
+		 */
+
 		addr = PAGE_ALIGN(addr);
+		/* 查找这个地址有没有vma  */
 		vma = find_vma(mm, addr);
 		if (end - len >= addr &&
 		    (!vma || addr + len <= vm_start_gap(vma)))
-			return addr;
+			return addr;/* 如果指定的范围合法 */
 	}
 
 	info.flags = 0;
@@ -154,9 +168,15 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 		info.align_mask = get_align_mask();
 		info.align_offset += get_align_bits();
 	}
+	/* 在mm的maple tree找 */
 	return vm_unmapped_area(&info);
 }
-
+/* 
+mmap的get area回调函数
+caller希望map到addr和len指定的范围
+file是mm的一个vma的file
+pgoff是这个vma的一个old地址的pgoff
+*/
 unsigned long
 arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 			  const unsigned long len, const unsigned long pgoff,

@@ -1476,12 +1476,16 @@ void would_dump(struct linux_binprm *bprm, struct file *file)
 	}
 }
 EXPORT_SYMBOL(would_dump);
-
+/* 
+exec之后
+设置mm的一些属性
+*/
 void setup_new_exec(struct linux_binprm * bprm)
 {
 	/* Setup things that can depend upon the personality */
 	struct task_struct *me = current;
 
+	/* 给mm设置mmap时候的get area函数 */
 	arch_pick_mmap_layout(me->mm, &bprm->rlim_stack);
 
 	arch_setup_new_exec();
