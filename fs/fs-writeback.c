@@ -1285,7 +1285,7 @@ void inode_io_list_del(struct inode *inode)
 
 EXPORT_SYMBOL(inode_io_list_del);
 
-/*
+/*标记这个inode开始回写了
  * mark an inode as under writeback on the sb
  */
 void sb_mark_inode_writeback(struct inode *inode)
@@ -1400,7 +1400,7 @@ static bool inode_dirtied_after(struct inode *inode, unsigned long t)
 	return ret;
 }
 
-/*
+/*移动要回写的脏inode
  * Move expired (dirtied before dirtied_before) dirty inodes from
  * @delaying_queue to @dispatch_queue.
  */
@@ -1420,7 +1420,7 @@ static int move_expired_inodes(struct list_head *delaying_queue,
 		if (inode_dirtied_after(inode, dirtied_before))
 			break;
 		spin_lock(&inode->i_lock);
-		list_move(&inode->i_io_list, &tmp);
+		list_move(&inode->i_io_list, &tmp);/* 移动,准备回写 */
 		moved++;
 		inode->i_state |= I_SYNC_QUEUED;
 		spin_unlock(&inode->i_lock);
@@ -1864,7 +1864,7 @@ static long writeback_chunk_size(struct bdi_writeback *wb,
 	return pages;
 }
 
-/*
+/*work是wb的一个work,sb是work负责的一个inode的sb
 回写wb时, 取下inode后, 最终都会调用此, 不是取下任何一个fs的inode就立马开始回写.
 而是都会和sb相关,先回写某sb的
 按照sb批量的回写有利于IO么 todddo
@@ -1991,7 +1991,7 @@ static long writeback_sb_inodes(struct super_block *sb,
 		   使用I_SYNC将inode在内存中pin住。 
 		   只要设置了它，evict_inode()就会等待，
 		 */
-		__writeback_single_inode(inode, &wbc); //开始回写
+		__writeback_single_inode(inode, &wbc); //开始回写inode
 
 		wbc_detach_inode(&wbc);
 		work->nr_pages -= write_chunk - wbc.nr_to_write;
@@ -2051,7 +2051,7 @@ static long __writeback_inodes_wb(struct bdi_writeback *wb,
 	long wrote = 0;
 
 	while (!list_empty(&wb->b_io)) {/* 遍历所有b_io上面的inode, 进行回写 */
-		struct inode *inode = wb_inode(wb->b_io.prev);
+		struct inode *inode = wb_inode(wb->b_io.prev);/* 取下wb负责的一个inode */
 		struct super_block *sb = inode->i_sb;
 
 		if (!super_trylock_shared(sb)) { //对fs unmount加共享锁失败了
@@ -2062,7 +2062,7 @@ static long __writeback_inodes_wb(struct bdi_writeback *wb,
 			 */
 			redirty_tail(inode, wb);
 			continue;
-		}
+		}/* work是wb的一个work,sb是work负责的一个inode的sb */
 		wrote += writeback_sb_inodes(sb, wb, work);
 		up_read(&sb->s_umount);
 
@@ -2301,7 +2301,7 @@ static long wb_check_old_data_flush(struct bdi_writeback *wb)
 	nr_pages = get_nr_dirty_pages();
 
 	if (nr_pages) {
-		//这个work就是刷新全部的脏页
+		//这个work就是刷新全部的脏页,定义这个work
 		struct wb_writeback_work work = {
 			.nr_pages	= nr_pages,
 			.sync_mode	= WB_SYNC_NONE,
@@ -2310,7 +2310,7 @@ static long wb_check_old_data_flush(struct bdi_writeback *wb)
 			.reason		= WB_REASON_PERIODIC,
 		};
 
-		return wb_writeback(wb, &work);
+		return wb_writeback(wb, &work);/* 执行这个work */
 	}
 
 	return 0;
@@ -2387,7 +2387,7 @@ static long wb_do_writeback(struct bdi_writeback *wb)
 
  */
 void wb_workfn(struct work_struct *work)
-{
+{/* 取出dwork代表的bdi回写任务 */
 	struct bdi_writeback *wb = container_of(to_delayed_work(work),
 						struct bdi_writeback, dwork);
 	long pages_written;
