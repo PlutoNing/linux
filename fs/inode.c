@@ -1893,7 +1893,7 @@ static int relatime_need_update(struct vfsmount *mnt, struct inode *inode,
 	return 0;
 }
 
-/**
+/**更新文件的三个时间
  * inode_update_timestamps - update the timestamps on the inode
  * @inode: inode to be updated
  * @flags: S_* flags that needed to be updated
@@ -1940,7 +1940,7 @@ int inode_update_timestamps(struct inode *inode, int flags)
 }
 EXPORT_SYMBOL(inode_update_timestamps);
 
-/**
+/**写文件前更新文件时间
  * generic_update_time - update the timestamps on the inode
  * @inode: inode to be updated
  * @flags: S_* flags that needed to be updated
@@ -1953,7 +1953,7 @@ EXPORT_SYMBOL(inode_update_timestamps);
  * Returns a S_* mask indicating which fields were updated.
  */
 int generic_update_time(struct inode *inode, int flags)
-{
+{/* 这里进行更新 */
 	int updated = inode_update_timestamps(inode, flags);
 	int dirty_flags = 0;
 
@@ -1966,7 +1966,7 @@ int generic_update_time(struct inode *inode, int flags)
 }
 EXPORT_SYMBOL(generic_update_time);
 
-/*
+/*更新文件时间
  * This does the actual work of updating an inodes time or version.  Must have
  * had called mnt_want_write() before calling this.
  */
@@ -2115,7 +2115,7 @@ static int __file_remove_privs(struct file *file, unsigned int flags)
 	return error;
 }
 
-/**
+/**写入之前移除
  * file_remove_privs - remove special file privileges (suid, capabilities)
  * @file: file to remove privileges from
  *
@@ -2129,7 +2129,7 @@ int file_remove_privs(struct file *file)
 	return __file_remove_privs(file, 0);
 }
 EXPORT_SYMBOL(file_remove_privs);
-
+/* 写入文件之前,判断是否需要更新时间 */
 static int inode_needs_update_time(struct inode *inode)
 {
 	int sync_it = 0;
@@ -2152,7 +2152,7 @@ static int inode_needs_update_time(struct inode *inode)
 
 	return sync_it;
 }
-
+/* 更新文件时间 */
 static int __file_update_time(struct file *file, int sync_mode)
 {
 	int ret = 0;

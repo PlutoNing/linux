@@ -497,7 +497,7 @@ static int __mpage_writepage(struct folio *folio, struct writeback_control *wbc,
 	struct buffer_head map_bh;
 	loff_t i_size = i_size_read(inode);
 	int ret = 0;
-	/* 获取folio看看有没有buffer */
+	/* 获取folio看看有没有buffer,可能需要buffer io */
 	struct buffer_head *head = folio_buffers(folio);
 
 	if (head) {/* 如果folio有buffer */
@@ -647,14 +647,14 @@ alloc_new:
 		bio = mpage_bio_submit_write(bio);
 		goto alloc_new;
 	}
-
+/* 就是清除一些buffer的dirty */
 	clean_buffers(&folio->page, first_unmapped);
 
 	BUG_ON(folio_test_writeback(folio));
-	folio_start_writeback(folio);
+	folio_start_writeback(folio);/* 开启这个folio的写回 */
 	folio_unlock(folio);
 	if (boundary || (first_unmapped != blocks_per_page)) {
-		bio = mpage_bio_submit_write(bio);
+		bio = mpage_bio_submit_write(bio);/* 提交io */
 		if (boundary_block) {
 			write_boundary_block(boundary_bdev,
 					boundary_block, 1 << blkbits);

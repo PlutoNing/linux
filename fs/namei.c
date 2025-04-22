@@ -568,33 +568,33 @@ EXPORT_SYMBOL(path_put);
 
 #define EMBEDDED_LEVELS 2
 struct nameidata {
-	struct path	path;
-	struct qstr	last;
-	struct path	root;
-	struct inode	*inode; /* path.dentry.d_inode */
-	unsigned int	flags, state;
-	unsigned	seq, next_seq, m_seq, r_seq;
-	int		last_type;
-	unsigned	depth;
-	int		total_link_count;
+	struct path		path; /* 当前解析到的路径的挂载点和目录项（dentry）。例如，在解析 /usr/bin/ls 时，当解析到 /usr/bin 时，path 指向该目录的挂载点和目录项。 */
+	struct qstr		last; /* 保存路径中当前正在解析的最后一个组件（component）的名称。例如，解析 /usr/bin/ls 时，当处理到 ls 时，last 存储字符串 "ls" */
+	struct path root; /* 进程的根目录（通过 chroot 设置），用于限制路径查找的范围。如果未设置，默认使用系统根目录 */
+	struct inode *inode; /* path.dentry.d_inode  直接指向 path.dentry->d_inode，即当前路径的索引节点（inode），用于快速访问文件元数据。*/
+	unsigned int flags, state; /*  */
+	unsigned seq, next_seq, m_seq, r_seq; /*  */
+	int last_type; /*  */
+	unsigned depth; /* 限制符号链接递归解析的深度，防止恶意或错误的符号链接导致内核栈溢出或死循环。 */
+	int total_link_count; /* 限制符号链接递归解析的深度，防止恶意或错误的符号链接导致内核栈溢出或死循环。 */
 	struct saved {
-		struct path link;
-		struct delayed_call done;
-		const char *name;
-		unsigned seq;
-	} *stack, internal[EMBEDDED_LEVELS];
-	struct filename	*name;
-	struct nameidata *saved;
-	unsigned	root_seq;
-	int		dfd;
-	vfsuid_t	dir_vfsuid;
-	umode_t		dir_mode;
+		struct path link; /*  */
+		struct delayed_call done; /*  */
+		const char *name; /*  */
+		unsigned seq; /*  */
+	} *stack, internal[EMBEDDED_LEVELS]; /* 保存符号链接解析的中间状态。当遇到符号链接时，内核需要递归解析链接目标路径，stack 保存未完成的解析任务，防止无限递归（通过 depth 限制深度） */
+	struct filename *name; /* 指向要解析的完整文件名（如 /usr/bin/ls）。 */
+	struct nameidata *saved;/* 保存自己代替的current的旧的nd */
+	unsigned root_seq; /*  */
+	int dfd; /*  */
+	vfsuid_t dir_vfsuid; /*  */
+	umode_t dir_mode; /*  */
 } __randomize_layout;
 
 #define ND_ROOT_PRESET 1
 #define ND_ROOT_GRABBED 2
 #define ND_JUMPED 4
-
+/* 代替旧的nd, 初始化新nd */
 static void __set_nameidata(struct nameidata *p, int dfd, struct filename *name)
 {
 	struct nameidata *old = current->nameidata;
@@ -608,7 +608,7 @@ static void __set_nameidata(struct nameidata *p, int dfd, struct filename *name)
 	p->saved = old;
 	current->nameidata = p;
 }
-
+/* 初始化这个nd */
 static inline void set_nameidata(struct nameidata *p, int dfd, struct filename *name,
 			  const struct path *root)
 {
@@ -3387,9 +3387,9 @@ static struct dentry *atomic_open(struct nameidata *nd, struct dentry *dentry,
 	return dentry;
 }
 
-/*
+/*打开文件,根据nd,初始化file
  * Look up and maybe create and open the last component.
- *
+ * 查找,可能创建或者打开路径表示的最后一个文件
  * Must be called with parent locked (exclusive in O_CREAT case).
  *
  * Returns 0 on success, that is, if
@@ -3496,7 +3496,7 @@ static struct dentry *lookup_open(struct nameidata *nd, struct file *file,
 			error = -EACCES;
 			goto out_dput;
 		}
-
+/* 这里创建文件? */
 		error = dir_inode->i_op->create(idmap, dir_inode, dentry,
 						mode, open_flag & O_EXCL);
 		if (error)
@@ -3512,7 +3512,7 @@ out_dput:
 	dput(dentry);
 	return ERR_PTR(error);
 }
-
+// 打开文件,根据nd查找文件,初始化新建的file
 static const char *open_last_lookups(struct nameidata *nd,
 		   struct file *file, const struct open_flags *op)
 {
@@ -3565,7 +3565,7 @@ static const char *open_last_lookups(struct nameidata *nd,
 		inode_lock(dir->d_inode);
 	else
 		inode_lock_shared(dir->d_inode);
-	dentry = lookup_open(nd, file, op, got_write);
+	dentry = lookup_open(nd, file, op, got_write);/* 查找打开文件 */
 	if (!IS_ERR(dentry) && (file->f_mode & FMODE_CREATED))
 		fsnotify_create(dir->d_inode, dentry);
 	if (open_flag & O_CREAT)
@@ -3787,7 +3787,7 @@ static int do_o_path(struct nameidata *nd, unsigned flags, struct file *file)
 	return error;
 }
 
-//执行打开文件的系统调用, 
+//执行打开文件的系统调用, nd保存着各种信息
 static struct file *path_openat(struct nameidata *nd,
 			const struct open_flags *op, unsigned flags)
 {
@@ -3807,7 +3807,7 @@ static struct file *path_openat(struct nameidata *nd,
 	} else {//一般的打开情况
 		const char *s = path_init(nd, flags);
 		while (!(error = link_path_walk(s, nd)) &&
-		       (s = open_last_lookups(nd, file, op)) != NULL)
+		       (s = open_last_lookups(nd, file, op)) != NULL) /* 初始化这个file */
 			;
 		if (!error)
 			error = do_open(nd, file, op);
@@ -3838,7 +3838,7 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 	struct nameidata nd;
 	int flags = op->lookup_flags;
 	struct file *filp;
-
+	/* 初始化这个nd */
 	set_nameidata(&nd, dfd, pathname, NULL);
 	//尝试打开
 	filp = path_openat(&nd, op, flags | LOOKUP_RCU);

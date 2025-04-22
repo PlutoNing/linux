@@ -136,7 +136,7 @@ static int set_new_tls(struct task_struct *p, unsigned long tls)
 	else
 		return do_set_thread_area_64(p, ARCH_SET_FS, tls);
 }
-
+/* fn可能是kthread */
 __visible void ret_from_fork(struct task_struct *prev, struct pt_regs *regs,
 				     int (*fn)(void *), void *fn_arg)
 {

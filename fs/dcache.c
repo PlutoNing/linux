@@ -2041,7 +2041,7 @@ void d_instantiate(struct dentry *entry, struct inode * inode)
 }
 EXPORT_SYMBOL(d_instantiate);
 
-/*
+/*在文件系统层面把inode加入dentry之后,在内核数据结构层面建立联系
  * This should be equivalent to d_instantiate() + unlock_new_inode(),
  * with lockdep-related part of unlock_new_inode() done before
  * anything else.  Use that instead of open-coding d_instantiate()/
