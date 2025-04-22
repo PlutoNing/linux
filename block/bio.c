@@ -680,7 +680,7 @@ static void bio_truncate(struct bio *bio, unsigned new_size)
 	bio->bi_iter.bi_size = new_size;
 }
 
-/**
+/**为什么要truncate这个bio
  * guard_bio_eod - truncate a BIO to fit the block device
  * @bio:	bio to truncate
  *
@@ -693,7 +693,7 @@ static void bio_truncate(struct bio *bio, unsigned new_size)
  * sector" case.
  */
 void guard_bio_eod(struct bio *bio)
-{
+{/* bdev的扇区数量,磁盘大小和扇区大小可以算出 */
 	sector_t maxsector = bdev_nr_sectors(bio->bi_bdev);
 
 	if (!maxsector)
@@ -1151,7 +1151,7 @@ void bio_add_folio_nofail(struct bio *bio, struct folio *folio, size_t len,
  * PAGE_SIZE, this function can create a bio_vec that starts in a page
  * after the bv_page.  BIOs do not support folios that are 4GiB or larger.
  *
- * Return: Whether the addition was successful.
+ * Return: Whether the addition was success,返回已添加是否成功
  */
 bool bio_add_folio(struct bio *bio, struct folio *folio, size_t len,
 		   size_t off)
