@@ -135,7 +135,7 @@ static int ext2_file_mmap(struct file *file, struct vm_area_struct *vma)
 #define ext2_file_mmap	generic_file_mmap
 #endif
 
-/*
+/* ext2的release回调ops
  * Called when filp is released. This happens when all file descriptors
  * for a single struct file are closed. Note that different open() calls
  * for the same file yield different struct file structures.
@@ -290,7 +290,7 @@ static ssize_t ext2_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 
 	return generic_file_read_iter(iocb, to);
 }
-
+/* ext2的write iter函数 */
 static ssize_t ext2_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 #ifdef CONFIG_FS_DAX
@@ -299,7 +299,7 @@ static ssize_t ext2_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 #endif
 	if (iocb->ki_flags & IOCB_DIRECT)
 		return ext2_dio_write_iter(iocb, from);
-
+/* 从from写到kiocb */
 	return generic_file_write_iter(iocb, from);
 }
 
@@ -319,7 +319,9 @@ const struct file_operations ext2_file_operations = {
 	.splice_read	= filemap_splice_read,
 	.splice_write	= iter_file_splice_write,
 };
+/* 
 
+*/
 const struct inode_operations ext2_file_inode_operations = {
 	.listxattr	= ext2_listxattr,
 	.getattr	= ext2_getattr,

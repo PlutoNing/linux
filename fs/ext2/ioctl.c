@@ -50,9 +50,10 @@ int ext2_fileattr_set(struct mnt_idmap *idmap,
 	return 0;
 }
 
-
+/* ext2的ioctl实现 */
 long ext2_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
+	
 	struct inode *inode = file_inode(filp);
 	struct ext2_inode_info *ei = EXT2_I(inode);
 	unsigned short rsv_window_size;

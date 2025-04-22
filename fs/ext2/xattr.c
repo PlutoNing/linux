@@ -275,6 +275,7 @@ cleanup:
 }
 
 /*
+获取dent的attr到buf
  * ext2_xattr_list()
  *
  * Copy a list of attribute names into the buffer
@@ -364,6 +365,7 @@ cleanup:
 }
 
 /*
+查看属性
  * Inode operation listxattr()
  *
  * d_inode(dentry)->i_mutex: don't care

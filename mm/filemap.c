@@ -1979,7 +1979,7 @@ void *filemap_get_entry(struct address_space *mapping, pgoff_t index)
 
 	rcu_read_lock();
 repeat:
-	xas_reset(&xas);
+	xas_reset(&xas); /* 把xa_node = XAS_RESTART */
 	folio = xas_load(&xas);
 	if (xas_retry(&xas, folio))
 		goto repeat;
@@ -4215,7 +4215,7 @@ ssize_t generic_perform_write(struct kiocb *iocb, struct iov_iter *i)
 	struct file *file = iocb->ki_filp;
 	loff_t pos = iocb->ki_pos;
 	struct address_space *mapping = file->f_mapping;
-	const struct address_space_operations *a_ops = mapping->a_ops;
+	const struct address_space_operations *a_ops = mapping->a_ops;/* 先写到mapping */
 	long status = 0;
 	ssize_t written = 0;
 
@@ -4247,7 +4247,7 @@ again:
 			break;
 		}
 		/* 2,. 调用fs的mapping的回调, 去赋值这个page.
-		其实一般也就是根据mapping和pos, 在xas里面找到对应index的folio */
+		其实一般也就是根据mapping和pos, 在xas里面找到对应index的folio,赋值到page */
 		status = a_ops->write_begin(file, mapping, pos, bytes,
 						&page, &fsdata);
 		if (unlikely(status < 0))
@@ -4257,10 +4257,10 @@ again:
 			flush_dcache_page(page);
 		
 		/* 1. 核心是这里, 要把数据从iter拷贝到内存的页面.
-		所以需要确定page哪里来 */
+		通过kmap, 把写入内容拷贝到page的这个page */
 		copied = copy_page_from_iter_atomic(page, offset, bytes, i);
 		flush_dcache_page(page);
-
+		/* commit bh的修改, 调整inode大小 */
 		status = a_ops->write_end(file, mapping, pos, bytes, copied,
 						page, fsdata);
 
@@ -4331,7 +4331,7 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	ret = file_remove_privs(file);
 	if (ret)
 		return ret;
-
+/* 判断是否需要更新时间 */
 	ret = file_update_time(file);
 	if (ret)
 		return ret;
@@ -4352,13 +4352,13 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		return direct_write_fallback(iocb, from, ret,
 					     generic_perform_write(iocb, from));
 	}
-
+/*  */
 	return generic_perform_write(iocb, from);
 }
 EXPORT_SYMBOL(__generic_file_write_iter);
 
 /**
-写入内容到文件
+写入内容到文件,从from写到kiocb
  * generic_file_write_iter - write data to a file
  * @iocb:	IO state structure
  * @from:	iov_iter with data to write
@@ -4380,7 +4380,7 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	inode_lock(inode);
 	ret = generic_write_checks(iocb, from);
 	if (ret > 0)
-		ret = __generic_file_write_iter(iocb, from);
+		ret = __generic_file_write_iter(iocb, from);/* 开始写入 */
 	inode_unlock(inode);
 
 	if (ret > 0)  //同步内容

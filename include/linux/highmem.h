@@ -269,7 +269,7 @@ void zero_user_segments(struct page *page, unsigned start1, unsigned end1,
 static inline void zero_user_segments(struct page *page,
 		unsigned start1, unsigned end1,
 		unsigned start2, unsigned end2)
-{
+{/* 把页面的一部分清零 */
 	void *kaddr = kmap_local_page(page);
 	unsigned int i;
 
@@ -528,7 +528,7 @@ static inline void folio_zero_segments(struct folio *folio,
 	zero_user_segments(&folio->page, start1, xend1, start2, xend2);
 }
 
-/**
+/**把folio的一部分内容置0
  * folio_zero_segment() - Zero a byte range in a folio.
  * @folio: The folio to write to.
  * @start: The first byte to zero.

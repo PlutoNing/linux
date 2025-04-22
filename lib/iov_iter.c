@@ -565,7 +565,7 @@ size_t iov_iter_zero(size_t bytes, struct iov_iter *i)
 	return bytes;
 }
 EXPORT_SYMBOL(iov_iter_zero);
-
+/* 拷贝内容到page, io会用到这个 */
 size_t copy_page_from_iter_atomic(struct page *page, size_t offset,
 		size_t bytes, struct iov_iter *i)
 {

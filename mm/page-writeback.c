@@ -2436,7 +2436,7 @@ EXPORT_SYMBOL(tag_pages_for_writeback);
  * @mapping: address space structure to write, 用于写入的地址空间结构
  * @wbc: subtract the number of written pages from *@wbc->nr_to_write, 
  * @writepage: function called for each page, 负责写回遍历到的每个页的函数
- * @data: data passed to writepage function, 传递给writepage函数的数据参数
+ * @data: data passed to writepage function, 传递给writepage函数的数据参数,里面有fs的get block函数
  *
  * If a page is already under I/O, write_cache_pages() skips it, even
  * if it's dirty.  This is desirable behaviour for memory-cleaning writeback,
@@ -3187,7 +3187,7 @@ bool __folio_start_writeback(struct folio *folio, bool keep_write)
 
 			on_wblist = mapping_tagged(mapping,
 						   PAGECACHE_TAG_WRITEBACK);
-
+/* 给xas打上这个tag */
 			xas_set_mark(&xas, PAGECACHE_TAG_WRITEBACK);
 			if (bdi->capabilities & BDI_CAP_WRITEBACK_ACCT) {
 				struct bdi_writeback *wb = inode_to_wb(inode);

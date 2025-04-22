@@ -20,7 +20,7 @@
 #include <linux/buffer_head.h>
 #include <linux/capability.h>
 
-/*
+/*inode和数据块的分配例程
  * balloc.c contains the blocks allocation and deallocation routines
  */
 
@@ -35,7 +35,7 @@
  * when a file system is mounted (see ext2_fill_super).
  */
 
-
+/* 找到指定group的desc */
 struct ext2_group_desc * ext2_get_group_desc(struct super_block * sb,
 					     unsigned int block_group,
 					     struct buffer_head ** bh)
@@ -52,7 +52,7 @@ struct ext2_group_desc * ext2_get_group_desc(struct super_block * sb,
 
 		return NULL;
 	}
-
+	/* 把block_group转为group desc的idx */
 	group_desc = block_group >> EXT2_DESC_PER_BLOCK_BITS(sb);
 	offset = block_group & (EXT2_DESC_PER_BLOCK(sb) - 1);
 	if (!sbi->s_group_desc[group_desc]) {
@@ -355,7 +355,7 @@ void ext2_rsv_window_add(struct super_block *sb,
 	rb_insert_color(node, root);
 }
 
-/**
+/**释放文件的时候释放这些
  * rsv_window_remove() -- unlink a window from the reservation rb tree
  * @sb:			super block
  * @rsv:		reservation window to remove
@@ -435,7 +435,7 @@ void ext2_init_block_alloc_info(struct inode *inode)
 	ei->i_block_alloc_info = block_i;
 }
 
-/**
+/**ext2释放文件的时候调用
  * ext2_discard_reservation()
  * @inode:		inode
  *

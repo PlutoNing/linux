@@ -17,7 +17,7 @@ def set_function_breakpoints():
         "filemap_splice_read",          # .splice_read
         "iter_file_splice_write"        # .splice_write
     ]
-    
+
     # ext2_file_inode_operations相关函数
     inode_ops_functions = [
         # "ext2_listxattr",               # .listxattr
@@ -29,12 +29,12 @@ def set_function_breakpoints():
         # "ext2_fileattr_get",            # .fileattr_get
         # "ext2_fileattr_set"             # .fileattr_set
     ]
-    
+
     # ext2_dax_vm_ops相关函数
     dax_vm_ops_functions = [
         "ext2_dax_fault",               # .fault, .page_mkwrite, .pfn_mkwrite
     ]
-    
+
     # ext2_aops相关函数
     aops_functions = [
         # "block_dirty_folio",            # .dirty_folio
@@ -50,14 +50,26 @@ def set_function_breakpoints():
         "block_is_partially_uptodate",  # .is_partially_uptodate
         "generic_error_remove_page"     # .error_remove_page
     ]
-    
+
+    target = [
+        "ext2_prepare_chunk",
+        "ext2_commit_chunk",
+        "ext2_add_link",
+        "ext2_prepare_chunk",
+        "ext2_new_inode",
+    ]
     # 合并所有函数列表
-    all_functions = (file_ops_functions + inode_ops_functions + 
-                    dax_vm_ops_functions + aops_functions)
-    
+    all_functions = (
+        file_ops_functions
+        + inode_ops_functions
+        + dax_vm_ops_functions
+        + aops_functions
+        + target
+    )
+
     # 去重（有些函数可能被多个操作结构使用）
     unique_functions = list(set(all_functions))
-    
+
     # 设置断点
     success_count = 0
     for func in unique_functions:
@@ -67,7 +79,7 @@ def set_function_breakpoints():
             success_count += 1
         except gdb.error as e:
             print(f"Failed to set breakpoint for {func}: {str(e)}")
-    
+
     print(f"\nBreakpoints summary: {success_count} succeeded, "
          f"{len(unique_functions)-success_count} failed")
 

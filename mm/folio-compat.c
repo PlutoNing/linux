@@ -90,7 +90,7 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 	return filemap_add_folio(mapping, page_folio(page), index, gfp);
 }
 EXPORT_SYMBOL(add_to_page_cache_lru);
-
+/* 获取pagecache的一个页面 */
 noinline
 struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
 		fgf_t fgp_flags, gfp_t gfp)
@@ -103,7 +103,7 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
 	return folio_file_page(folio, index);
 }
 EXPORT_SYMBOL(pagecache_get_page);
-
+/*  */
 struct page *grab_cache_page_write_begin(struct address_space *mapping,
 					pgoff_t index)
 {

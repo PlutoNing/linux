@@ -195,7 +195,7 @@ static void *xas_start(struct xa_state *xas)
 		return xas_reload(xas); // 合法的直接读取xas的xa_node的xa_offset处的值
 	if (xas_error(xas)) // 如果xas的xa_node的值位于err代表的范围的话, 就是err了
 		return NULL;
-	// 所以运行到这里说明是invalid?
+	// 运行到这里说明是invalid,读取xas的xa数组头
 	entry = xa_head(xas->xa);
 	if (!xa_is_node(entry)) { // 如果ent不是node地址, 不是node还可能是什么呢?
 		if (xas->xa_index)
@@ -218,11 +218,11 @@ static void *xas_descend(struct xa_state *xas, struct xa_node *node)
 {
 	// 看看idx在node上面是第几个slot
 	unsigned int offset = get_offset(xas->xa_index, node);
-	// 现在读取node的这个slot
+	// 现在读取node的这个slot, node->slots[offset]
 	void *entry = xa_entry(xas->xa, node, offset);
 
 	xas->xa_node = node;
-	while (xa_is_sibling(entry)) { // 这个ent是个sibling
+	while (xa_is_sibling(entry)) { // 是内部节点,并且小于64
 		offset = xa_to_sibling(entry); // 跳到了node的另一个offset?
 		entry = xa_entry(xas->xa, node, offset);
 		if (node->shift && xa_is_node(entry))
@@ -262,7 +262,7 @@ void *xas_load(struct xa_state *xas)
 
 		if (xas->xa_shift > node->shift)
 			break;
-		entry = xas_descend(xas, node);
+		entry = xas_descend(xas, node);/* 找下一层节点? */
 		if (node->shift == 0)
 			break;
 	}

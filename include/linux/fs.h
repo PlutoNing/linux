@@ -718,7 +718,7 @@ struct inode {
 	unsigned long		dirtied_time_when; /*  */
 
 	struct hlist_node	i_hash; /*  */
-	struct list_head	i_io_list;	/* backing dev IO list */
+	struct list_head	i_io_list;	/* backing dev IO list,挂接到wb的b_io? */
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct bdi_writeback	*i_wb;		/* 
 	inode对应的cgroup wb
@@ -947,7 +947,7 @@ static inline loff_t i_size_read(const struct inode *inode)
 #endif
 }
 
-/*
+/*改变inode的大小
  * NOTE: unlike i_size_read(), i_size_write() does need locking around it
  * (normally i_mutex), otherwise on 32bit/SMP an update of i_size_seqcount
  * can be lost, resulting in subsequent i_size_read() calls spinning forever.
@@ -1960,13 +1960,13 @@ struct inode_operations {
 	int (*readlink) (struct dentry *, char __user *,int);
 
 	int (*create) (struct mnt_idmap *, struct inode *,struct dentry *,
-		       umode_t, bool);
+		       umode_t, bool); /* 在目录下创建新文件（如 open 使用 O_CREAT 标志时触发） */
 	int (*link) (struct dentry *,struct inode *,struct dentry *);
 	int (*unlink) (struct inode *,struct dentry *);
 	int (*symlink) (struct mnt_idmap *, struct inode *,struct dentry *,
 			const char *);
-	int (*mkdir) (struct mnt_idmap *, struct inode *,struct dentry *,
-		      umode_t);
+	int (*mkdir)(struct mnt_idmap *, struct inode *, struct dentry *,
+		     umode_t); /* 创建子目录 */
 	int (*rmdir) (struct inode *,struct dentry *);
 	int (*mknod) (struct mnt_idmap *, struct inode *,struct dentry *,
 		      umode_t,dev_t);
@@ -2727,7 +2727,7 @@ static inline bool file_start_write_trylock(struct file *file)
 	return sb_start_write_trylock(file_inode(file)->i_sb);
 }
 
-/**
+/**意义是?
  * file_end_write - drop write access to a superblock of a regular file
  * @file: the file we wrote to
  *

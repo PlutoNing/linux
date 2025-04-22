@@ -74,7 +74,7 @@ enum KTHREAD_BITS {
 	KTHREAD_SHOULD_STOP,
 	KTHREAD_SHOULD_PARK,
 };
-
+/* 存储在tsk的priv里面 */
 static inline struct kthread *to_kthread(struct task_struct *k)
 {
 	WARN_ON(!(k->flags & PF_KTHREAD));

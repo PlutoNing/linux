@@ -921,7 +921,7 @@ static inline pgoff_t page_to_pgoff(struct page *page)
 	return page_to_index(page);
 }
 
-/*
+/*把pgoff转为addr
  * Return byte-offset into filesystem object for page.
  */
 static inline loff_t page_offset(struct page *page)

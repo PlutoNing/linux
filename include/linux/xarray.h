@@ -191,7 +191,7 @@ static inline bool xa_is_internal(const void *entry)
 
 #define XA_ZERO_ENTRY		xa_mk_internal(257)
 
-/**
+/**值不能是0x402
  * xa_is_zero() - Is the entry a zero entry?
  * @entry: Entry retrieved from the XArray
  *
@@ -1346,9 +1346,9 @@ static inline struct xa_node *xa_to_node(const void *entry)
 
 /* Private
 判断ent是不是node
-还是一样的逻辑, 是内部节点, 并且值位于某些范围,就是node的ent
-但是node的ent是什么呢? 好像是如果是node的ent, 就说明ent其实是个
-node的地址
+右2bit置一,并且大于4096
+但
+n
 */
 static inline bool xa_is_node(const void *entry)
 {
@@ -1356,7 +1356,7 @@ static inline bool xa_is_node(const void *entry)
 }
 
 /* Private
-参数好像一般是node里面的一个offset?
+把offset的最右俩bit变为10
 */
 static inline void *xa_mk_sibling(unsigned int offset)
 {

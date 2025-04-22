@@ -179,7 +179,7 @@ static __always_inline void clear_buffer_uptodate(struct buffer_head *bh)
 {
 	clear_bit(BH_Uptodate, &bh->b_state);
 }
-
+/*  */
 static __always_inline int buffer_uptodate(const struct buffer_head *bh)
 {
 	/*
@@ -354,7 +354,7 @@ sb_bread_unmovable(struct super_block *sb, sector_t block)
 {
 	return __bread_gfp(sb->s_bdev, block, sb->s_blocksize, 0);
 }
-
+/* 读取sb的指定块 */
 static inline void
 sb_breadahead(struct super_block *sb, sector_t block)
 {
@@ -379,7 +379,7 @@ sb_find_get_block(struct super_block *sb, sector_t block)
 {
 	return __find_get_block(sb->s_bdev, block, sb->s_blocksize);
 }
-
+/* 让bh负责sb的block块号的buffer io */
 static inline void
 map_bh(struct buffer_head *bh, struct super_block *sb, sector_t block)
 {
@@ -421,7 +421,7 @@ static inline struct buffer_head *__getblk(struct block_device *bdev,
 {
 	return __getblk_gfp(bdev, block, size, __GFP_MOVABLE);
 }
-
+/* 进行一次buffer io */
 static inline void bh_readahead(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	if (!buffer_uptodate(bh) && trylock_buffer(bh)) {

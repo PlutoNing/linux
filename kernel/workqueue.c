@@ -188,7 +188,7 @@ struct worker_pool {
 	struct list_head        dying_workers;  /* A: workers about to die */
 	struct completion	*detach_completion; /* all workers detached */
 
-	struct ida		worker_ida;	/* worker IDs for task name */
+	struct ida		worker_ida;	/* worker IDs for task name,存储全部worker的id? */
 
 	struct workqueue_attrs	*attrs;		/* I: worker attributes */
 	struct hlist_node	hash_node;	/* PL: unbound_pool_hash node */
@@ -968,7 +968,7 @@ static void worker_leave_idle(struct worker *worker)
 	list_del_init(&worker->entry);
 }
 
-/**
+/**在pool里找到正在执行这个work的worker
  * find_worker_executing_work - find worker which is executing a work
  * @pool: pool of interest
  * @work: work to find worker for
@@ -1015,7 +1015,7 @@ static struct worker *find_worker_executing_work(struct worker_pool *pool,
 	return NULL;
 }
 
-/**
+/**把挂接到同链表的work移到head
  * move_linked_works - move linked works to a list
  * @work: start of series of works to be scheduled
  * @head: target list to append @work to
@@ -1053,7 +1053,7 @@ static void move_linked_works(struct work_struct *work, struct list_head *head,
 		*nextp = n;
 }
 
-/**
+/**把从pool取下的work交给worker
  * assign_work - assign a work item and its linked work items to a worker
  * @work: work to assign
  * @worker: worker to assign to
@@ -1084,13 +1084,13 @@ static bool assign_work(struct work_struct *work, struct worker *worker,
 	 * @work is not executed concurrently by multiple workers from the same
 	 * pool. Check whether anyone is already processing the work. If so,
 	 * defer the work to the currently executing one.
-	 */
+	 找到正在做这个work的worker*/
 	collision = find_worker_executing_work(pool, work);
-	if (unlikely(collision)) {
+	if (unlikely(collision)) {/* 如果真有冲突的做同一个work的worker */
 		move_linked_works(work, &collision->scheduled, nextp);
 		return false;
 	}
-
+/* 把工作交给worker */
 	move_linked_works(work, &worker->scheduled, nextp);
 	return true;
 }
@@ -2121,7 +2121,7 @@ static void worker_attach_to_pool(struct worker *worker,
 	mutex_unlock(&wq_pool_attach_mutex);
 }
 
-/**
+/**worker取消的时候,从pool移除
  * worker_detach_from_pool() - detach a worker from its pool
  * @worker: worker which is attached to its pool
  *
@@ -2520,7 +2520,7 @@ static bool manage_workers(struct worker *worker)
 	return true;
 }
 
-/**
+/**执行一个work
  * process_one_work - process single work
  * @worker: self
  * @work: work to process
@@ -2628,7 +2628,7 @@ __acquires(&pool->lock)
 	 */
 	lockdep_invariant_state(true);
 	trace_workqueue_execute_start(work);
-	worker->current_func(work);
+	worker->current_func(work);/* 开始执行 */
 	/*
 	 * While we must be careful to not use "work" after this, the trace
 	 * point will only record its address.
@@ -2678,7 +2678,7 @@ __acquires(&pool->lock)
 	pwq_dec_nr_in_flight(pwq, work_data);
 }
 
-/**
+/**调度执行worker的work
  * process_scheduled_works - process scheduled works
  * @worker: self
  *
@@ -2696,15 +2696,15 @@ static void process_scheduled_works(struct worker *worker)
 	bool first = true;
 
 	while ((work = list_first_entry_or_null(&worker->scheduled,
-						struct work_struct, entry))) {
+						struct work_struct, entry))) {/* 取下worker的一个工作 */
 		if (first) {
 			worker->pool->watchdog_ts = jiffies;
 			first = false;
 		}
-		process_one_work(worker, work);
+		process_one_work(worker, work);/* 执行 */
 	}
 }
-
+/* 设置自己的flag为worker */
 static void set_pf_worker(bool val)
 {
 	mutex_lock(&wq_pool_attach_mutex);
@@ -2715,7 +2715,7 @@ static void set_pf_worker(bool val)
 	mutex_unlock(&wq_pool_attach_mutex);
 }
 
-/**
+/**worker的线程函数
  * worker_thread - the worker thread function
  * @__worker: self
  *
@@ -2733,7 +2733,7 @@ static int worker_thread(void *__worker)
 	struct worker_pool *pool = worker->pool;
 
 	/* tell the scheduler that this is a workqueue worker */
-	set_pf_worker(true);
+	set_pf_worker(true); /* 设置current->flags |= PF_WQ_WORKER */
 woke_up:
 	raw_spin_lock_irq(&pool->lock);
 
@@ -2744,7 +2744,7 @@ woke_up:
 
 		set_task_comm(worker->task, "kworker/dying");
 		ida_free(&pool->worker_ida, worker->id);
-		worker_detach_from_pool(worker);
+		worker_detach_from_pool(worker);/* 从pool移除 */
 		WARN_ON_ONCE(!list_empty(&worker->entry));
 		kfree(worker);
 		return 0;
@@ -2779,10 +2779,10 @@ recheck:
 	do {
 		struct work_struct *work =
 			list_first_entry(&pool->worklist,
-					 struct work_struct, entry);
+					 struct work_struct, entry);/* 从pool取下一个工作 */
 
-		if (assign_work(work, worker, NULL))
-			process_scheduled_works(worker);
+		if (assign_work(work, worker, NULL))/* 如果成功分配给了worker */
+			process_scheduled_works(worker);/* 调度执行 */
 	} while (keep_working(pool));
 
 	worker_set_flags(worker, WORKER_PREP);
@@ -5003,7 +5003,7 @@ unsigned int work_busy(struct work_struct *work)
 }
 EXPORT_SYMBOL_GPL(work_busy);
 
-/**
+/**设置worker的名字
  * set_worker_desc - set description for the current work item
  * @fmt: printf-style format string
  * @...: arguments for the format string
