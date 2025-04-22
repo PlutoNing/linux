@@ -177,7 +177,7 @@ void end_buffer_write_sync(struct buffer_head *bh, int uptodate)
 EXPORT_SYMBOL(end_buffer_write_sync);
 
 /*
-找到block的bh
+找到block的bh,加入全局lru bh cache
  * Various filesystems appear to want __find_get_block to be non-blocking.
  * But it's the page lock which protects the buffers.  To get around this,
  * we get exclusion from try_to_free_buffers with the blockdev mapping's
@@ -189,7 +189,7 @@ EXPORT_SYMBOL(end_buffer_write_sync);
  */
 static struct buffer_head *
 __find_get_block_slow(struct block_device *bdev, sector_t block)
-{
+{/* 获取dev的inode */
 	struct inode *bd_inode = bdev->bd_inode;
 	struct address_space *bd_mapping = bd_inode->i_mapping;
 	struct buffer_head *ret = NULL;
@@ -199,14 +199,14 @@ __find_get_block_slow(struct block_device *bdev, sector_t block)
 	struct folio *folio;
 	int all_mapped = 1;
 	static DEFINE_RATELIMIT_STATE(last_warned, HZ, 1);
-
-	index = block >> (PAGE_SHIFT - bd_inode->i_blkbits);
+/* 把dev的block nr转为在mapping的pgoff */
+	index = block >> (PAGE_SHIFT - bd_inode->i_blkbits);/* 从dev的mapping里查找block对应的page */
 	folio = __filemap_get_folio(bd_mapping, index, FGP_ACCESSED, 0);
 	if (IS_ERR(folio))
 		goto out;
-
+/* 找到了mapping里面对应的folio */
 	spin_lock(&bd_mapping->private_lock);
-	head = folio_buffers(folio);
+	head = folio_buffers(folio);/* 找到folio的buffer */
 	if (!head)
 		goto out_unlock;
 	bh = head;
@@ -1229,18 +1229,18 @@ void mark_buffer_dirty(struct buffer_head *bh)
 			return;
 	}
 
-	if (!test_set_buffer_dirty(bh)) {
+	if (!test_set_buffer_dirty(bh)) {/* 如果这个bh本来不是dirty */
 		struct folio *folio = bh->b_folio;
 		struct address_space *mapping = NULL;
 
-		folio_memcg_lock(folio);
-		if (!folio_test_set_dirty(folio)) {
+		folio_memcg_lock(folio);/* 把folio也置脏 */
+		if (!folio_test_set_dirty(folio)) {/* 如果folio本来不是脏的 */
 			mapping = folio->mapping;
-			if (mapping)
+			if (mapping)/* 把mapping也置脏 */
 				__folio_mark_dirty(folio, mapping, 0);
 		}
 		folio_memcg_unlock(folio);
-		if (mapping)
+		if (mapping)/* 把mapping的inode也置脏? */
 			__mark_inode_dirty(mapping->host, I_DIRTY_PAGES);
 	}
 }
@@ -1352,7 +1352,7 @@ static inline void check_irqs_on(void)
 #endif
 }
 
-/*
+/*把新从mapping读取的bh加入全局缓存
  * Install a buffer_head into this cpu's LRU.  If not already in the LRU, it is
  * inserted at the front, and the buffer_head at the back if any is evicted.
  * Or, if already in the LRU it is moved to the front.
@@ -1409,7 +1409,7 @@ lookup_bh_lru(struct block_device *bdev, sector_t block, unsigned size)
 	}
 	for (i = 0; i < BH_LRU_SIZE; i++) {
 		struct buffer_head *bh = __this_cpu_read(bh_lrus.bhs[i]);
-
+/* 对比buffer的块号和dev */
 		if (bh && bh->b_blocknr == block && bh->b_bdev == bdev &&
 		    bh->b_size == size) {
 			if (i) {
@@ -1437,15 +1437,15 @@ lookup_bh_lru(struct block_device *bdev, sector_t block, unsigned size)
  */
 struct buffer_head *
 __find_get_block(struct block_device *bdev, sector_t block, unsigned size)
-{
+{/* 看来是先在什么bh lru缓存里查找 */
 	struct buffer_head *bh = lookup_bh_lru(bdev, block, size);
 
 	if (bh == NULL) {
-		/* 没找到,尝试慢速路径 */
+		/* 没找到,尝试慢速路径,在dev inode mapping读取block nr对应index pgoff处的page */
 		/* __find_get_block_slow will mark the page accessed */
 		bh = __find_get_block_slow(bdev, block);
 		if (bh)
-			bh_lru_install(bh);
+			bh_lru_install(bh);/* 把新bh装到全局的lru cache */
 	} else
 		touch_buffer(bh);
 
@@ -1465,7 +1465,7 @@ EXPORT_SYMBOL(__find_get_block);
 struct buffer_head *
 __getblk_gfp(struct block_device *bdev, sector_t block,
 	     unsigned size, gfp_t gfp)
-{
+{/* 从缓存或者mapping读取bh */
 	struct buffer_head *bh = __find_get_block(bdev, block, size);
 
 	might_sleep();
@@ -1475,13 +1475,13 @@ __getblk_gfp(struct block_device *bdev, sector_t block,
 }
 EXPORT_SYMBOL(__getblk_gfp);
 
-/*
+/*进行一次块设备的buffer io
  * Do async read-ahead on a buffer..
  */
 void __breadahead(struct block_device *bdev, sector_t block, unsigned size)
-{
+{/* 获取这个block的buffer */
 	struct buffer_head *bh = __getblk(bdev, block, size);
-	if (likely(bh)) {
+	if (likely(bh)) {/* 找到buffer了开始io */
 		bh_readahead(bh, REQ_RAHEAD);
 		brelse(bh);
 	}
@@ -2146,7 +2146,7 @@ iomap_to_bh(struct inode *inode, sector_t block, struct buffer_head *bh,
 		return -EIO;
 	}
 }
-
+/* 改变了mapping里面的folio的pos和len的位置,准备发起buffer io的写入 */
 int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 		get_block_t *get_block, const struct iomap *iomap)
 {
@@ -2163,11 +2163,11 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 	BUG_ON(from > PAGE_SIZE);
 	BUG_ON(to > PAGE_SIZE);
 	BUG_ON(from > to);
-
+/* 创建buffer io */
 	head = folio_create_buffers(folio, inode, 0);
-	blocksize = head->b_size;
-	bbits = block_size_bits(blocksize);
-
+	blocksize = head->b_size;/* 可能是1024 */
+	bbits = block_size_bits(blocksize);/* 可能是10 */
+/* 获得在磁盘的块号 */
 	block = (sector_t)folio->index << (PAGE_SHIFT - bbits);
 
 	for(bh = head, block_start = 0; bh != head || !block_start;
@@ -2190,7 +2190,7 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 				err = iomap_to_bh(inode, block, bh, iomap);
 			if (err)
 				break;
-
+/* 刚刚fs的get block函数找到了一个block,并且把bh初始化了为负责这个block的buffer io */
 			if (buffer_new(bh)) {
 				clean_bdev_bh_alias(bh);
 				if (folio_test_uptodate(folio)) {
@@ -2230,22 +2230,22 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 		folio_zero_new_buffers(folio, from, to);
 	return err;
 }
-
+/* 准备在mapping page的pos和len表示的范围io, get block应该是用于获取磁盘块的位置 */
 int __block_write_begin(struct page *page, loff_t pos, unsigned len,
 		get_block_t *get_block)
-{
+{/* 准备发起bufferio的写入 */
 	return __block_write_begin_int(page_folio(page), pos, len, get_block,
 				       NULL);
 }
 EXPORT_SYMBOL(__block_write_begin);
-
+/* 刚刚发起了对folio的这个位置的io,这里进行end */
 static void __block_commit_write(struct folio *folio, size_t from, size_t to)
-{
+{/* 就是把范围内的buffer都置脏 */
 	size_t block_start, block_end;
 	bool partial = false;
 	unsigned blocksize;
 	struct buffer_head *bh, *head;
-
+/* priv就是bh */
 	bh = head = folio_buffers(folio);
 	blocksize = bh->b_size;
 
@@ -2255,7 +2255,7 @@ static void __block_commit_write(struct folio *folio, size_t from, size_t to)
 		if (block_end <= from || block_start >= to) {
 			if (!buffer_uptodate(bh))
 				partial = true;
-		} else {
+		} else {/* 把范围内的buffer都置脏, 这里为什么先set uptodate */
 			set_buffer_uptodate(bh);
 			mark_buffer_dirty(bh);
 		}
@@ -2276,7 +2276,7 @@ static void __block_commit_write(struct folio *folio, size_t from, size_t to)
 		folio_mark_uptodate(folio);
 }
 
-/*
+/* 可以作为mapping的写入ops, 写入file的pos和len
  * block_write_begin takes care of the basic task of block allocation and
  * bringing partial write blocks uptodate first.
  *
@@ -2288,11 +2288,11 @@ int block_write_begin(struct address_space *mapping, loff_t pos, unsigned len,
 	pgoff_t index = pos >> PAGE_SHIFT;
 	struct page *page;
 	int status;
-
+/* 获取index位置的page */
 	page = grab_cache_page_write_begin(mapping, index);
 	if (!page)
 		return -ENOMEM;
-
+/* 开始block io的写入,创建buffer io */
 	status = __block_write_begin(page, pos, len, get_block);
 	if (unlikely(status)) {
 		unlock_page(page);
@@ -2304,7 +2304,7 @@ int block_write_begin(struct address_space *mapping, loff_t pos, unsigned len,
 	return status;
 }
 EXPORT_SYMBOL(block_write_begin);
-
+/* 方法发起了对mapping的file的[pos,pos+len]位置的buffer io, 这里进行write end,就是commit,把范围内的buffer置脏 */
 int block_write_end(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned copied,
 			struct page *page, void *fsdata)
@@ -2332,13 +2332,13 @@ int block_write_end(struct file *file, struct address_space *mapping,
 	}
 	flush_dcache_folio(folio);
 
-	/* This could be a short (even 0-length) commit */
+	/* This could be a short (even 0-length) commit,把folio的范围内的buffer都置脏 */
 	__block_commit_write(folio, start, start + copied);
 
 	return copied;
 }
 EXPORT_SYMBOL(block_write_end);
-
+/* file io的write end方法. commit bh的修改, 调整inode大小 */
 int generic_write_end(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned copied,
 			struct page *page, void *fsdata)
@@ -2346,7 +2346,7 @@ int generic_write_end(struct file *file, struct address_space *mapping,
 	struct inode *inode = mapping->host;
 	loff_t old_size = inode->i_size;
 	bool i_size_changed = false;
-
+/* 这里commit, 把涉及的page的bh置脏 */
 	copied = block_write_end(file, mapping, pos, len, copied, page, fsdata);
 
 	/*
