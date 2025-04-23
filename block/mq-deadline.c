@@ -768,7 +768,7 @@ static int dd_request_merge(struct request_queue *q, struct request **rq,
 	return ELEVATOR_NO_MERGE;
 }
 
-/*
+/*dd调度算法的合并bio的函数
  * Attempt to merge a bio into an existing request. This function is called
  * before @bio is associated with a request.
  */

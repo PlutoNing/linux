@@ -335,7 +335,7 @@ void blk_mq_sched_dispatch_requests(struct blk_mq_hw_ctx *hctx)
 			blk_mq_run_hw_queue(hctx, true);
 	}
 }
-
+/* 尝试合并bio */
 bool blk_mq_sched_bio_merge(struct request_queue *q, struct bio *bio,
 		unsigned int nr_segs)
 {
@@ -344,7 +344,7 @@ bool blk_mq_sched_bio_merge(struct request_queue *q, struct bio *bio,
 	struct blk_mq_hw_ctx *hctx;
 	bool ret = false;
 	enum hctx_type type;
-
+/* 调用调度算法的bio merge函数 */
 	if (e && e->type->ops.bio_merge) {
 		ret = e->type->ops.bio_merge(q, bio, nr_segs);
 		goto out_put;

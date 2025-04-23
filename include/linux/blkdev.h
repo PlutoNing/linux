@@ -392,7 +392,7 @@ struct request_queue {
 
 	const struct blk_mq_ops	*mq_ops;
 
-	/* sw queues */
+	/* sw queues. pcp的queue ctx */
 	struct blk_mq_ctx __percpu	*queue_ctx;
 
 	unsigned int		queue_depth;
@@ -976,7 +976,7 @@ struct blk_plug {
 	struct request *mq_list; /* blk-mq requests */
 
 	/* if ios_left is > 1, we can batch tag/rq allocations */
-	struct request *cached_rq;
+	struct request *cached_rq;/* 缓存的rq */
 	unsigned short nr_ios;
 
 	unsigned short rq_count;

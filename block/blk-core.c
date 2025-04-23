@@ -681,7 +681,7 @@ static void __submit_bio_noacct(struct bio *bio)
 
 	current->bio_list = NULL;
 }
-
+/* 提交bio */
 static void __submit_bio_noacct_mq(struct bio *bio)
 {
 	struct bio_list bio_list[2] = { };
@@ -819,7 +819,7 @@ void submit_bio_noacct(struct bio *bio)
 
 	if (blk_throtl_bio(bio))
 		return;
-	submit_bio_noacct_nocheck(bio);
+	submit_bio_noacct_nocheck(bio);/* 提交io */
 	return;
 
 not_supported:

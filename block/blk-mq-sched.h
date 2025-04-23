@@ -27,7 +27,7 @@ static inline void blk_mq_sched_restart(struct blk_mq_hw_ctx *hctx)
 	if (test_bit(BLK_MQ_S_SCHED_RESTART, &hctx->state))
 		__blk_mq_sched_restart(hctx);
 }
-
+/* 判断能否合并这个bio */
 static inline bool bio_mergeable(struct bio *bio)
 {
 	return !(bio->bi_opf & REQ_NOMERGE_FLAGS);

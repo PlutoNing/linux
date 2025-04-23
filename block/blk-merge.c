@@ -1080,7 +1080,7 @@ static enum bio_merge_status blk_attempt_bio_merge(struct request_queue *q,
 	return BIO_MERGE_FAILED;
 }
 
-/**
+/**尝试合并这个bio
  * blk_attempt_plug_merge - try to merge with %current's plugged list
  * @q: request_queue new bio is being queued at
  * @bio: new bio being queued
@@ -1105,7 +1105,7 @@ bool blk_attempt_plug_merge(struct request_queue *q, struct bio *bio,
 {
 	struct blk_plug *plug;
 	struct request *rq;
-
+/* 从current获取plug */
 	plug = blk_mq_plug(bio);
 	if (!plug || rq_list_empty(plug->mq_list))
 		return false;
@@ -1156,7 +1156,7 @@ bool blk_bio_list_merge(struct request_queue *q, struct list_head *list,
 	return false;
 }
 EXPORT_SYMBOL_GPL(blk_bio_list_merge);
-
+/* sched方式合并bio */
 bool blk_mq_sched_try_merge(struct request_queue *q, struct bio *bio,
 		unsigned int nr_segs, struct request **merged_request)
 {
