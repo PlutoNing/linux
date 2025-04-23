@@ -108,9 +108,9 @@ static void __page_cache_release(struct folio *folio)
 // 释放folio的page到系统
 static void __folio_put_small(struct folio *folio)
 {
-	__page_cache_release(folio);
+	__page_cache_release(folio);/* 从lru移除 */
 	mem_cgroup_uncharge(folio);
-	free_unref_page(&folio->page, 0);
+	free_unref_page(&folio->page, 0);/* 还到buddy */
 }
 // 用于释放大页, thp和hugetlb
 static void __folio_put_large(struct folio *folio)

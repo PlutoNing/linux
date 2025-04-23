@@ -464,7 +464,7 @@ static inline bool page_copy_sane(struct page *page, size_t offset, size_t n)
 		return false;
 	return true;
 }
-
+/* 把page的内容读出到i */
 size_t copy_page_to_iter(struct page *page, size_t offset, size_t bytes,
 			 struct iov_iter *i)
 {

@@ -1380,10 +1380,10 @@ typedef enum {
 	PAGE_CLEAN,
 } pageout_t;
 
-/*
+/*shrink_folio_list()调用pageout()来处理每个脏folio
  * pageout is called by shrink_folio_list() for each dirty folio.
  * Calls ->writepage().
-   shrink_folio_list()调用pageout()来处理每个脏folio
+   .
  */
 static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			 struct swap_iocb **plug)
@@ -1409,7 +1409,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 	 */
 	if (!is_page_cache_freeable(folio))
 		return PAGE_KEEP;
-	if (!mapping) {
+	if (!mapping) {/* 一般情况下都是有mapping的 */
 		/*
 		 * Some data journaling orphaned folios can have
 		 * folio->mapping == NULL while being dirty with clean buffers.
@@ -1425,7 +1425,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 	}
 	if (mapping->a_ops->writepage == NULL)
 		return PAGE_ACTIVATE;
-
+/* 准备处理这个脏folio了,先清除dirty位,成功了就处理 */
 	if (folio_clear_dirty_for_io(folio)) {
 		int res;
 		struct writeback_control wbc = {
@@ -1436,10 +1436,10 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			.for_reclaim = 1,
 			.swap_plug = plug,
 		};
-
+/* 设置这个folio的回收位 */
 		folio_set_reclaim(folio);
 		// 回写mapping的这个脏folio
-		res = mapping->a_ops->writepage(&folio->page, &wbc);
+		res = mapping->a_ops->writepage(&folio->page, &wbc);/* 可能是shmem_writepage */
 		if (res < 0)
 			handle_write_error(mapping, folio, res);
 		if (res == AOP_WRITEPAGE_ACTIVATE) {
@@ -1459,7 +1459,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 	return PAGE_CLEAN;
 }
 
-/*
+/*文件页或者交换页,此时位于mapping
  从mapping移除folio
 
  看看具体做了什么工作: 这里好像仅仅是从xas移除, 没有释放页面什么的
@@ -1514,7 +1514,7 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		goto cannot_free;
 	}
 
-	if (folio_test_swapcache(folio)) { // 如果是swapcache的folio, 说明是内存中的swap
+	if (folio_test_swapcache(folio)) { // 如果还是swapcache的folio, 说明是内存中的swap
 		swp_entry_t swap = folio->swap;
 
 		if (reclaimed && !mapping_exiting(mapping))
@@ -2256,7 +2256,7 @@ retry:
 			}
 		}
 
-		if (folio_test_anon(folio) && !folio_test_swapbacked(folio)) {
+		if (folio_test_anon(folio) && !folio_test_swapbacked(folio)) {/* 不是交换的匿名页 */
 			/* follow __remove_mapping for reference */
 			if (!folio_ref_freeze(folio, 1))
 				goto keep_locked;
@@ -2274,7 +2274,7 @@ retry:
 			count_memcg_folio_events(folio, PGLAZYFREED, nr_pages);
 		} else if (!mapping || !__remove_mapping(mapping, folio, true,
 							 sc->target_mem_cgroup))
-			goto keep_locked;
+			goto keep_locked;/* 如果是文件页或者交换页(匿名页),  没有mapping或者无法从mapping移除 */
 
 		folio_unlock(folio);
 free_it:

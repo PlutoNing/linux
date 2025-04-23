@@ -1452,7 +1452,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 
 	tlb_change_page_size(tlb, PAGE_SIZE);
 	init_rss_vec(rss);
-	start_pte = pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
+	start_pte = pte = pte_offset_map_lock(mm, pmd, addr, &ptl);/* 获取ptep */
 	if (!pte)
 		return addr;
 
@@ -4671,7 +4671,7 @@ static int __init fault_around_debugfs(void)
 late_initcall(fault_around_debugfs);
 #endif
 
-/*
+/*处理pf的时候会考虑调用这个,一次性多弄一些页面
  * do_fault_around() tries to map few pages around the fault address. The hope
  * is that the pages will be needed soon and this will lower the number of
  * faults to handle.
@@ -5491,7 +5491,7 @@ static vm_fault_t sanitize_fault_flags(struct vm_area_struct *vma,
 	return 0;
 }
 
-/*
+/*处理user的pf
  * By the time we get here, we already hold the mm semaphore
  * 在我们到达这里的时候，我们已经持有了mm信号量
  * The mmap_lock may have been released depending on flags and our

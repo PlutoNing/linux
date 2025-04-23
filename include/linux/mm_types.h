@@ -331,7 +331,7 @@ struct folio {
 				void *private;/* 
 				对于buffer io,这里指向相关结构体
 				 */
-				swp_entry_t swap; //在swap cache中的swap entry?
+				swp_entry_t swap; //在swap cache中的swap entry? 如果从mapping移除了,就置0
 			};
 			atomic_t _mapcount;
 			atomic_t _refcount;

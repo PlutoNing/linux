@@ -378,7 +378,7 @@ static void swap_writepage_bdev_async(struct page *page,
 	bio = bio_alloc(sis->bdev, 1,
 			REQ_OP_WRITE | REQ_SWAP | wbc_to_write_flags(wbc),
 			GFP_NOIO);
-
+/* 这里获取这个page是存储在swap 磁盘的哪个扇区 */
 	bio->bi_iter.bi_sector = swap_page_sector(page);
 	bio->bi_end_io = end_swap_bio_write;
 	__bio_add_page(bio, page, thp_size(page), 0);
@@ -387,7 +387,7 @@ static void swap_writepage_bdev_async(struct page *page,
 	count_swpout_vm_event(folio);
 	folio_start_writeback(folio);
 	folio_unlock(folio);
-	submit_bio(bio);
+	submit_bio(bio);/* 提交io */
 }
 
 // 回写swap mapping的folio
@@ -406,7 +406,7 @@ void __swap_writepage(struct page *page, struct writeback_control *wbc)
 	else if (sis->flags & SWP_SYNCHRONOUS_IO)
 		swap_writepage_bdev_sync(page, wbc, sis); // 如果交换分区是磁盘
 	else
-		swap_writepage_bdev_async(page, wbc, sis);
+		swap_writepage_bdev_async(page, wbc, sis);/* 异步回写到磁盘 */
 }
 
 // 好像是提交io

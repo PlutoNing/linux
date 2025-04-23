@@ -2497,8 +2497,8 @@ static void free_unref_page_commit(struct zone *zone, struct per_cpu_pages *pcp,
 	bool free_high;
 
 	__count_vm_events(PGFREE, 1 << order);
-	pindex = order_to_pindex(migratetype, order);
-	list_add(&page->pcp_list, &pcp->lists[pindex]);
+	pindex = order_to_pindex(migratetype, order);/* 每对mt和order对应唯一pindex */
+	list_add(&page->pcp_list, &pcp->lists[pindex]);/* 挂到pcp结构体上面pindex专属链表 */
 	pcp->count += 1 << order;
 
 	/*

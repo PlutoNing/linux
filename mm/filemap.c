@@ -3640,7 +3640,7 @@ out_retry:
 	return ret | VM_FAULT_RETRY;
 }
 EXPORT_SYMBOL(filemap_fault);
-
+/*  */
 static bool filemap_map_pmd(struct vm_fault *vmf, struct folio *folio,
 		pgoff_t start)
 {
@@ -3804,7 +3804,7 @@ static vm_fault_t filemap_map_order0_folio(struct vm_fault *vmf,
 	return ret;
 }
 
-//shmem的mmap回调
+//shmem的map_pages回调,处理pf的时候会尝试用这个一次性多弄一些页面
 vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 			     pgoff_t start_pgoff, pgoff_t end_pgoff)
 {
@@ -4252,7 +4252,7 @@ again:
 						&page, &fsdata);
 		if (unlikely(status < 0))
 			break;
-
+/* 刚刚找到了要写的page,存入了page参数 */
 		if (mapping_writably_mapped(mapping))
 			flush_dcache_page(page);
 		

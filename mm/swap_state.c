@@ -103,7 +103,7 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 	其实就是一个添加page到页缓存的过程
 	这里是添加到swap的mapping
 	*/
-	// 先获取mapping
+	// 先获取对应swapfile的mapping
 	struct address_space *address_space = swap_address_space(entry);
 	// 获取在swap file的idx
 	pgoff_t idx = swp_offset(entry);
@@ -126,7 +126,7 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 	// 现在加入xas
 	do {
 		xas_lock_irq(&xas);
-		xas_create_range(&xas);
+		xas_create_range(&xas);/* 预分配空间 */
 		if (xas_error(&xas))
 			goto unlock;
 		for (i = 0; i < nr; i++) {
@@ -136,7 +136,7 @@ int add_to_swap_cache(struct folio *folio, swp_entry_t entry,
 				if (shadowp)
 					*shadowp = old;
 			}
-			xas_store(&xas, folio);
+			xas_store(&xas, folio);/* 存入xas */
 			xas_next(&xas);
 		}
 		address_space->nrpages += nr;

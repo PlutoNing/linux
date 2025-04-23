@@ -23,9 +23,9 @@
  * shmem/tmpfs to shift it all up a further one bit: see swp_to_radix_entry().
  *
  * swp_entry_t's are *never* stored anywhere in their arch-dependent format.
- */
+ 值是58 0x3a */
 #define SWP_TYPE_SHIFT	(BITS_PER_XA_VALUE - MAX_SWAPFILES_SHIFT)
-#define SWP_OFFSET_MASK	((1UL << SWP_TYPE_SHIFT) - 1)
+#define SWP_OFFSET_MASK	((1UL << SWP_TYPE_SHIFT) - 1) /* 五十几个1 */
 
 /*
  * Definitions only for PFN swap entries (see is_pfn_swap_entry()).  To

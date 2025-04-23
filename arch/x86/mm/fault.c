@@ -1143,7 +1143,7 @@ access_error(unsigned long error_code, struct vm_area_struct *vma)
 
 	return 0;
 }
-
+/* 判断pf是不是内核引起的 */
 bool fault_in_kernel_space(unsigned long address)
 {
 	/*
@@ -1227,7 +1227,7 @@ do_kern_addr_fault(struct pt_regs *regs, unsigned long hw_error_code,
 }
 NOKPROBE_SYMBOL(do_kern_addr_fault);
 
-/*
+/*处理user space的pf
  * Handle faults in the user portion of the address space.  Nothing in here
  * should check X86_PF_USER without a specific justification: for almost
  * all purposes, we should treat a normal kernel access to user memory
@@ -1493,7 +1493,7 @@ trace_page_fault_entries(struct pt_regs *regs, unsigned long error_code,
 	else
 		trace_page_fault_kernel(address, regs, error_code);
 }
-
+/* 处理pf */
 static __always_inline void
 handle_page_fault(struct pt_regs *regs, unsigned long error_code,
 			      unsigned long address)
@@ -1518,7 +1518,7 @@ handle_page_fault(struct pt_regs *regs, unsigned long error_code,
 		local_irq_disable();
 	}
 }
-
+/* 好像是从内核的异常跳转过来的 */
 DEFINE_IDTENTRY_RAW_ERRORCODE(exc_page_fault)
 {
 	unsigned long address = read_cr2();
