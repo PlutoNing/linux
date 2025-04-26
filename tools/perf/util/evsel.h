@@ -42,7 +42,7 @@ enum perf_tool_event perf_tool_event__from_str(const char *str);
 	for ((ev) = PERF_TOOL_DURATION_TIME; (ev) < PERF_TOOL_MAX; ev++)
 
 /** struct evsel - event selector
- *
+ * 包裹着一个perf evsel
  * @evlist - evlist this evsel is in, if it is in one.
  * @core - libperf evsel object
  * @name - Can be set to retain the original event name passed by the user,

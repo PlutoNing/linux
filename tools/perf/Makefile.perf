@@ -18,9 +18,9 @@ include ../scripts/utilities.mak
 # Define CROSS_COMPILE as prefix name of compiler if you want cross-builds.
 #
 # Define NO_LIBPERL to disable perl script extension.
-#
+# NO_LIBPERL关闭perl脚本扩展
 # Define NO_LIBPYTHON to disable python script extension.
-#
+# NO_LIBPYTHON关闭python脚本扩展
 # Define PYTHON to point to the python binary if the default
 # `python' is not correct; for example: PYTHON=python2
 #
@@ -32,7 +32,7 @@ include ../scripts/utilities.mak
 # Define DOCBOOK_XSL_172 if you want to format man pages with DocBook XSL v1.72.
 #
 # Define LDFLAGS=-static to build a static binary.
-#
+# LDFLAGS=-static构建静态库
 # Define EXTRA_CFLAGS=-m64 or EXTRA_CFLAGS=-m32 as appropriate for cross-builds.
 #
 # Define EXCLUDE_EXTLIBS=-lmylib to exclude libmylib from the auto-generated

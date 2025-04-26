@@ -37,7 +37,7 @@ struct perf_sample_id {
 	/* Holds total ID period value for PERF_SAMPLE_READ processing. */
 	u64			 period;
 };
-
+/* 表示什么? */
 struct perf_evsel {
 	struct list_head	 node;
 	struct perf_event_attr	 attr;

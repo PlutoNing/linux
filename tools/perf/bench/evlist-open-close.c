@@ -135,7 +135,7 @@ static int bench__do_evlist_open_close(struct evlist *evlist)
 
 	return 0;
 }
-
+/* 运行'internals/evlist-open-close' benchmark */
 static int bench_evlist_open_close__run(char *evstr)
 {
 	// used to print statistics only
@@ -222,7 +222,7 @@ out_error:
 	return NULL;
 }
 
-
+/* 执行'internals/evlist-open-close' benchmark */
 int bench_evlist_open_close(int argc, const char **argv)
 {
 	char *evstr, errbuf[BUFSIZ];

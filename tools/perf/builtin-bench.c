@@ -203,7 +203,7 @@ static int bench_str2int(const char *str)
 	return BENCH_FORMAT_UNKNOWN;
 }
 
-/*
+/*运行子系统的一个套件
  * Run a specific benchmark but first rename the running task's ->comm[]
  * to something meaningful:
  */
@@ -224,13 +224,13 @@ static int run_bench(const char *coll_name, const char *bench_name, bench_fn_t f
 	prctl(PR_SET_NAME, name);
 	argv[0] = name;
 
-	ret = fn(argc, argv);
+	ret = fn(argc, argv);/* 运行套件的主函数 */
 
 	free(name);
 
 	return ret;
 }
-
+/* 如果是测试子系统全部的话, 比如bench syscall all */
 static void run_collection(struct collection *coll)
 {
 	struct bench *bench;
@@ -254,7 +254,7 @@ static void run_collection(struct collection *coll)
 		printf("\n");
 	}
 }
-
+/*  */
 static void run_all_collections(void)
 {
 	struct collection *coll;
@@ -262,7 +262,7 @@ static void run_all_collections(void)
 	for_each_collection(coll)
 		run_collection(coll);
 }
-
+/* bench子命令的主函数 */
 int cmd_bench(int argc, const char **argv)
 {
 	struct collection *coll;
@@ -297,7 +297,7 @@ int cmd_bench(int argc, const char **argv)
 		goto end;
 	}
 
-	if (!strcmp(argv[0], "all")) {
+	if (!strcmp(argv[0], "all")) {/* bench all 测试全部子系统才会走这里 */
 		run_all_collections();
 		goto end;
 	}
@@ -314,18 +314,18 @@ int cmd_bench(int argc, const char **argv)
 			goto end;
 		}
 
-		if (!strcmp(argv[1], "all")) {
+		if (!strcmp(argv[1], "all")) {/* 如果是bench subsystem all的话 */
 			run_collection(coll);
 			goto end;
 		}
-
+/* coll代表一个子系统,比如numa, bench代表一个套件,比如mem*/
 		for_each_bench(coll, bench) {
 			if (strcmp(bench->name, argv[1]))
 				continue;
 
 			if (bench_format == BENCH_FORMAT_DEFAULT)
 				printf("# Running '%s/%s' benchmark:\n", coll->name, bench->name);
-			ret = run_bench(coll->name, bench->name, bench->fn, argc-1, argv+1);
+			ret = run_bench(coll->name, bench->name, bench->fn, argc-1, argv+1);/* 运行套件 */
 			goto end;
 		}
 

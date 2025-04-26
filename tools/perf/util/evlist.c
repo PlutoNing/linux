@@ -67,7 +67,7 @@ int sigqueue(pid_t pid, int sig, const union sigval value);
 
 #define FD(e, x, y) (*(int *)xyarray__entry(e->core.fd, x, y))
 #define SID(e, x, y) xyarray__entry(e->core.sample_id, x, y)
-
+/* 初始化新建的evlist */
 void evlist__init(struct evlist *evlist, struct perf_cpu_map *cpus,
 		  struct perf_thread_map *threads)
 {
@@ -79,7 +79,7 @@ void evlist__init(struct evlist *evlist, struct perf_cpu_map *cpus,
 	evlist->ctl_fd.ack = -1;
 	evlist->ctl_fd.pos = -1;
 }
-
+/* 给session新建一个svlist */
 struct evlist *evlist__new(void)
 {
 	struct evlist *evlist = zalloc(sizeof(*evlist));
@@ -703,7 +703,7 @@ static int evlist__event2id(struct evlist *evlist, union perf_event *event, u64 
 }
 
 struct evsel *evlist__event2evsel(struct evlist *evlist, union perf_event *event)
-{
+{/* 从evlist取下一个evsel */
 	struct evsel *first = evlist__first(evlist);
 	struct hlist_head *head;
 	struct perf_sample_id *sid;
@@ -1538,7 +1538,7 @@ int evlist__start_workload(struct evlist *evlist)
 }
 
 int evlist__parse_sample(struct evlist *evlist, union perf_event *event, struct perf_sample *sample)
-{
+{/* 从evlist取下一个evsel */
 	struct evsel *evsel = evlist__event2evsel(evlist, event);
 	int ret;
 
@@ -1559,7 +1559,7 @@ int evlist__parse_sample(struct evlist *evlist, union perf_event *event, struct 
 }
 
 int evlist__parse_sample_timestamp(struct evlist *evlist, union perf_event *event, u64 *timestamp)
-{
+{/* 从evlist取下一个evsel */
 	struct evsel *evsel = evlist__event2evsel(evlist, event);
 
 	if (!evsel)

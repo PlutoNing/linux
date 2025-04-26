@@ -509,7 +509,7 @@ struct perf_event_attr *perf_evsel__attr(struct perf_evsel *evsel)
 {
 	return &evsel->attr;
 }
-
+/* 给新evsel分配一个id */
 int perf_evsel__alloc_id(struct perf_evsel *evsel, int ncpus, int nthreads)
 {
 	if (ncpus == 0 || nthreads == 0)

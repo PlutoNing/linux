@@ -5,7 +5,7 @@
 #include <linux/refcount.h>
 #include <sys/types.h>
 #include <unistd.h>
-
+/* 代表要分析的进程的一个子进程? */
 struct thread_map_data {
 	pid_t	 pid;
 	char	*comm;

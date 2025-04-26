@@ -48,7 +48,7 @@ static const char *const bench_usage[] = {
 };
 
 static atomic_t event_count;
-
+/* 分析进程的简单示例 */
 static int process_synthesized_event(struct perf_tool *tool __maybe_unused,
 				     union perf_event *event __maybe_unused,
 				     struct perf_sample *sample __maybe_unused,
@@ -57,7 +57,7 @@ static int process_synthesized_event(struct perf_tool *tool __maybe_unused,
 	atomic_inc(&event_count);
 	return 0;
 }
-
+/*  */
 static int do_run_single_threaded(struct perf_session *session,
 				struct perf_thread_map *threads,
 				struct target *target, bool data_mmap)
@@ -106,7 +106,7 @@ static int do_run_single_threaded(struct perf_session *session,
 		time_average / event_average);
 	return 0;
 }
-
+/*perf bench  internals-synthesize测试的单线程测试方式 */
 static int run_single_threaded(void)
 {
 	struct perf_session *session;
@@ -117,11 +117,11 @@ static int run_single_threaded(void)
 	int err;
 
 	perf_set_singlethreaded();
-	session = perf_session__new(NULL, NULL);
+	session = perf_session__new(NULL, NULL);/* session是什么 */
 	if (IS_ERR(session)) {
 		pr_err("Session creation failed.\n");
 		return PTR_ERR(session);
-	}
+	} /* thread_map__new_by_pid 是 perf 工具中用于 ​收集指定进程的线程信息​ 的核心函数，为性能监控和事件合成提供目标线程的元数据 */
 	threads = thread_map__new_by_pid(getpid());
 	if (!threads) {
 		pr_err("Thread map creation failed.\n");
@@ -234,7 +234,7 @@ static int run_multi_threaded(void)
 	perf_set_singlethreaded();
 	return 0;
 }
-
+/* internals-synthesize的测试函数 */
 int bench_synthesize(int argc, const char **argv)
 {
 	int err = 0;

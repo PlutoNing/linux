@@ -426,7 +426,7 @@ struct map_rb_node *maps__find_node(struct maps *maps, struct map *map)
 	}
 	return NULL;
 }
-
+/* 找到ip对应的map */
 struct map *maps__find(struct maps *maps, u64 ip)
 {
 	struct rb_node *p;

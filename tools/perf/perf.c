@@ -301,7 +301,7 @@ static int handle_options(const char ***argv, int *argc, int *envchanged)
 
 #define RUN_SETUP	(1<<0)
 #define USE_PAGER	(1<<1)
-
+/* 运行子命令p,里面有子命令主函数什么的 */
 static int run_builtin(struct cmd_struct *p, int argc, const char **argv)
 {
 	int status;
@@ -319,7 +319,7 @@ static int run_builtin(struct cmd_struct *p, int argc, const char **argv)
 
 	perf_env__init(&perf_env);
 	perf_env__set_cmdline(&perf_env, argc, argv);
-	status = p->fn(argc, argv);
+	status = p->fn(argc, argv);/* 调用子命令的主函数 */
 	perf_config__exit();
 	exit_browser(status);
 	perf_env__exit(&perf_env);
@@ -365,14 +365,14 @@ static void handle_internal_command(int argc, const char **argv)
 		argv[1] = argv[0];
 		argv[0] = cmd = "help";
 	}
-
+/* 遍历一个个的子命令对象 */
 	for (i = 0; i < ARRAY_SIZE(commands); i++) {
 		struct cmd_struct *p = commands+i;
 		if (p->fn == NULL)
 			continue;
 		if (strcmp(p->cmd, cmd))
 			continue;
-		exit(run_builtin(p, argc, argv));
+		exit(run_builtin(p, argc, argv));/* 找到了,执行 */
 	}
 }
 
@@ -412,7 +412,7 @@ do_die:
 	argv[0] = tmp;
 	zfree(&cmd);
 }
-
+/* 执行命令 */
 static int run_argv(int *argcp, const char ***argv)
 {
 	/* See if it's an internal command */
@@ -511,7 +511,7 @@ int main(int argc, const char **argv)
 		printf("\n %s\n\n", perf_more_info_string);
 		goto out;
 	}
-	cmd = argv[0];
+	cmd = argv[0];/* 获取到子命令,比如bench */
 
 	test_attr__init();
 
@@ -531,7 +531,7 @@ int main(int argc, const char **argv)
 
 	while (1) {
 		static int done_help;
-
+/* 开始执行 */
 		run_argv(&argc, &argv);
 
 		if (errno != ENOENT)

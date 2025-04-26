@@ -34,7 +34,7 @@ static const char * const bench_syscall_usage[] = {
 	"perf bench syscall <options>",
 	NULL
 };
-
+/* 测试一个简单的fork */
 static void test_fork(void)
 {
 	pid_t pid = fork();
@@ -62,7 +62,7 @@ static void test_execve(void)
 		fprintf(stderr, "fork failed\n");
 		exit(1);
 	} else if (pid == 0) {
-		execve(pathname, argv, NULL);
+		execve(pathname, argv, NULL);/* exec系统调用 */
 		fprintf(stderr, "execve /bin/true failed\n");
 		exit(1);
 	} else {
@@ -72,7 +72,7 @@ static void test_execve(void)
 		}
 	}
 }
-
+/* 测试指定系统调用 */
 static int bench_syscall_common(int argc, const char **argv, int syscall)
 {
 	struct timeval start, stop, diff;
@@ -162,7 +162,7 @@ static int bench_syscall_common(int argc, const char **argv, int syscall)
 
 	return 0;
 }
-
+/* 测试syscall的basic */
 int bench_syscall_basic(int argc, const char **argv)
 {
 	return bench_syscall_common(argc, argv, __NR_getppid);

@@ -29,7 +29,7 @@ struct io {
 	/* Set true on when the end of file on read error. */
 	bool eof;
 };
-
+/* 初始化io结构体 */
 static inline void io__init(struct io *io, int fd,
 			    char *buf, unsigned int buf_len)
 {
@@ -86,7 +86,7 @@ static inline int io__get_char(struct io *io)
 	return *ptr;
 }
 
-/* Read a hexadecimal value with no 0x prefix into the out argument hex. If the
+/* 读取一个十六进制出来到hex, Read a hexadecimal value with no 0x prefix into the out argument hex. If the
  * first character isn't hexadecimal returns -2, io->eof returns -1, otherwise
  * returns the character after the hexadecimal value which may be -1 for eof.
  * If the read value is larger than a u64 the high-order bits will be dropped.

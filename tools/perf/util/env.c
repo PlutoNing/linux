@@ -228,7 +228,7 @@ void perf_env__exit(struct perf_env *env)
 	}
 	zfree(&env->pmu_caps);
 }
-
+/* 初始化perf的环境变量集合 */
 void perf_env__init(struct perf_env *env)
 {
 #ifdef HAVE_LIBBPF_SUPPORT
@@ -259,7 +259,7 @@ int perf_env__kernel_is_64_bit(struct perf_env *env)
 
 	return env->kernel_is_64_bit;
 }
-
+/* 设置perf环境变量对象的comm */
 int perf_env__set_cmdline(struct perf_env *env, int argc, const char *argv[])
 {
 	int i;

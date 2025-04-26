@@ -71,7 +71,7 @@ static const char *const bench_usage[] = {
 	NULL
 };
 
-/*
+/*把包含build id的so添加到dso_list,用于event测试
  * Helper for collect_dso that adds the given file as a dso to dso_list
  * if it contains a build-id.  Stops after collecting 4 times more than
  * we need (for MMAP2 events).
@@ -101,7 +101,7 @@ static int add_dso(const char *fpath, const struct stat *sb __maybe_unused,
 
 	return 0;
 }
-
+/*  */
 static void collect_dso(void)
 {
 	dsos = calloc(nr_mmaps * DSO_MMAP_RATIO, sizeof(*dsos));
@@ -109,7 +109,7 @@ static void collect_dso(void)
 		printf("  Memory allocation failed\n");
 		exit(1);
 	}
-
+/* 对每个文件添加dso */
 	if (nftw("/usr/lib/", add_dso, 10, FTW_PHYS) < 0)
 		return;
 
@@ -292,7 +292,7 @@ static int setup_injection(struct bench_data *data, bool build_id_all)
 	if (data->pid < 0)
 		return -1;
 
-	if (data->pid == 0) {
+	if (data->pid == 0) {/* 子进程 */
 		const char **inject_argv;
 		int inject_argc = 2;
 
@@ -300,16 +300,16 @@ static int setup_injection(struct bench_data *data, bool build_id_all)
 		close(data->output_pipe[0]);
 		close(ready_pipe[0]);
 
-		dup2(data->input_pipe[0], STDIN_FILENO);
+		dup2(data->input_pipe[0], STDIN_FILENO);/* 从input pipe0接受输入 */
 		close(data->input_pipe[0]);
-		dup2(data->output_pipe[1], STDOUT_FILENO);
+		dup2(data->output_pipe[1], STDOUT_FILENO);/* 输出到output让父进程读 */
 		close(data->output_pipe[1]);
 
 		dev_null_fd = open("/dev/null", O_WRONLY);
 		if (dev_null_fd < 0)
 			exit(1);
 
-		dup2(dev_null_fd, STDERR_FILENO);
+		dup2(dev_null_fd, STDERR_FILENO);/* 错误输出到/dev/null */
 
 		if (build_id_all)
 			inject_argc++;
@@ -446,7 +446,7 @@ static void do_inject_loop(struct bench_data *data, bool build_id_all)
 	printf("  Average memory usage: %.0f KB (+- %.0f KB)\n",
 		mem_average, mem_stddev);
 }
-
+/* 执行internals/inject-build-id' benchmark */
 static int do_inject_loops(struct bench_data *data)
 {
 
@@ -469,7 +469,7 @@ static int do_inject_loops(struct bench_data *data)
 	release_dso();
 	return 0;
 }
-
+/* 执行internals/inject-build-id' benchmark */
 int bench_inject_build_id(int argc, const char **argv)
 {
 	struct bench_data data;

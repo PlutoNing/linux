@@ -136,7 +136,7 @@ struct event_entry {
 
 static int dso__inject_build_id(struct dso *dso, struct perf_tool *tool,
 				struct machine *machine, u8 cpumode, u32 flags);
-
+/* 写入perf data */
 static int output_bytes(struct perf_inject *inject, void *buf, size_t sz)
 {
 	ssize_t size;
@@ -148,7 +148,7 @@ static int output_bytes(struct perf_inject *inject, void *buf, size_t sz)
 	inject->bytes_written += size;
 	return 0;
 }
-
+/* 写到data file */
 static int perf_event__repipe_synth(struct perf_tool *tool,
 				    union perf_event *event)
 {
@@ -187,7 +187,7 @@ static int perf_event__repipe_op4_synth(struct perf_session *session,
 {
 	return perf_event__repipe_synth(session->tool, event);
 }
-
+/* PERF_RECORD_HEADER_ATTR情况下处理一个user event */
 static int perf_event__repipe_attr(struct perf_tool *tool,
 				   union perf_event *event,
 				   struct evlist **pevlist)
@@ -283,7 +283,7 @@ perf_event__repipe_auxtrace(struct perf_session *session __maybe_unused,
 }
 
 #endif
-
+/* 把事件写到文件 */
 static int perf_event__repipe(struct perf_tool *tool,
 			      union perf_event *event,
 			      struct perf_sample *sample __maybe_unused,
@@ -565,7 +565,7 @@ static int perf_event__repipe_buildid_mmap2(struct perf_tool *tool,
 
 	return 0;
 }
-
+/* 处理fork事件 */
 static int perf_event__repipe_fork(struct perf_tool *tool,
 				   union perf_event *event,
 				   struct perf_sample *sample,
@@ -574,7 +574,7 @@ static int perf_event__repipe_fork(struct perf_tool *tool,
 	int err;
 
 	err = perf_event__process_fork(tool, event, sample, machine);
-	perf_event__repipe(tool, event, sample, machine);
+	perf_event__repipe(tool, event, sample, machine);/* 写到data file */
 
 	return err;
 }
@@ -626,7 +626,7 @@ static int perf_event__repipe_tracing_data(struct perf_session *session,
 	return perf_event__process_tracing_data(session, event);
 }
 #endif
-
+/* 读取完善dso的bid成员 */
 static int dso__read_build_id(struct dso *dso)
 {
 	struct nscookie nsc;
@@ -635,7 +635,7 @@ static int dso__read_build_id(struct dso *dso)
 		return 0;
 
 	mutex_lock(&dso->lock);
-	nsinfo__mountns_enter(dso->nsinfo, &nsc);
+	nsinfo__mountns_enter(dso->nsinfo, &nsc);/* 完善dso的bid */
 	if (filename__read_build_id(dso->long_name, &dso->bid) > 0)
 		dso->has_build_id = true;
 	else if (dso->nsinfo) {
@@ -728,12 +728,12 @@ static int dso__inject_build_id(struct dso *dso, struct perf_tool *tool,
 	if (inject->known_build_ids != NULL &&
 	    perf_inject__lookup_known_build_id(inject, dso))
 		return 1;
-
+/* 读取dso的bid */
 	if (dso__read_build_id(dso) < 0) {
 		pr_debug("no build_id found for %s\n", dso->long_name);
 		return -1;
 	}
-
+/* 好香就是把dso bid构造为一个事件,写出到文件 */
 	err = perf_event__synthesize_build_id(tool, dso, cpumode,
 					      perf_event__repipe, machine);
 	if (err) {
@@ -1969,13 +1969,13 @@ static int output_fd(struct perf_inject *inject)
 {
 	return inject->in_place_update ? -1 : perf_data__fd(&inject->output);
 }
-
+/*  */
 static int __cmd_inject(struct perf_inject *inject)
 {
 	int ret = -EINVAL;
 	struct guest_session *gs = &inject->guest_session;
 	struct perf_session *session = inject->session;
-	int fd = output_fd(inject);
+	int fd = output_fd(inject);/* inject的perf data的fd */
 	u64 output_data_offset;
 
 	signal(SIGINT, sig_handler);
@@ -2090,7 +2090,7 @@ static int __cmd_inject(struct perf_inject *inject)
 
 	if (!inject->is_pipe && !inject->in_place_update)
 		lseek(fd, output_data_offset, SEEK_SET);
-
+/*session处理事件的函数  */
 	ret = perf_session__process_events(session);
 	if (ret)
 		return ret;
@@ -2157,7 +2157,7 @@ static int __cmd_inject(struct perf_inject *inject)
 
 	return ret;
 }
-
+/* 执行inject */
 int cmd_inject(int argc, const char **argv)
 {
 	struct perf_inject inject = {
@@ -2306,7 +2306,7 @@ int cmd_inject(int argc, const char **argv)
 			inject.output.is_dir = true;
 			inject.copy_kcore_dir = true;
 		}
-		if (perf_data__open(&inject.output)) {
+		if (perf_data__open(&inject.output)) {/* 打开和设置一下inject.output */
 			perror("failed to create output file");
 			return -1;
 		}
@@ -2323,7 +2323,7 @@ int cmd_inject(int argc, const char **argv)
 		if (strcmp(inject.input_name, "-"))
 			repipe = false;
 	}
-
+/* 为inject生成session */
 	inject.session = __perf_session__new(&data, repipe,
 					     output_fd(&inject),
 					     &inject.tool);
@@ -2395,7 +2395,7 @@ int cmd_inject(int argc, const char **argv)
 	ret = symbol__init(&inject.session->header.env);
 	if (ret < 0)
 		goto out_delete;
-
+/* 执行inject */
 	ret = __cmd_inject(&inject);
 
 	guest_session__exit(&inject.guest_session);

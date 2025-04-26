@@ -24,7 +24,7 @@
  */
 
 /*
- * attr.type
+ * attr.type, 表示perf系统调用要干嘛
  */
 enum perf_type_id {
 	PERF_TYPE_HARDWARE			= 0,
@@ -32,7 +32,7 @@ enum perf_type_id {
 	PERF_TYPE_TRACEPOINT			= 2,
 	PERF_TYPE_HW_CACHE			= 3,
 	PERF_TYPE_RAW				= 4,
-	PERF_TYPE_BREAKPOINT			= 5,
+	PERF_TYPE_BREAKPOINT			= 5,/* 插个断点 */
 
 	PERF_TYPE_MAX,				/* non-ABI */
 };
@@ -830,7 +830,7 @@ enum {
 
 	NR_NAMESPACES,		/* number of available namespaces */
 };
-
+/* perf事件的类型? */
 enum perf_event_type {
 
 	/*

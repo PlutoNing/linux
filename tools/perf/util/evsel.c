@@ -2192,7 +2192,7 @@ int evsel__open_per_thread(struct evsel *evsel, struct perf_thread_map *threads)
 {
 	return evsel__open(evsel, NULL, threads);
 }
-
+/*  */
 static int perf_evsel__parse_id_sample(const struct evsel *evsel,
 				       const union perf_event *event,
 				       struct perf_sample *sample)
@@ -2343,7 +2343,7 @@ u64 evsel__bitfield_swap_branch_flags(u64 value)
 
 	return new_val;
 }
-
+/* 使用evsel采样event到sample */
 int evsel__parse_sample(struct evsel *evsel, union perf_event *event,
 			struct perf_sample *data)
 {
@@ -2690,7 +2690,7 @@ int evsel__parse_sample(struct evsel *evsel, union perf_event *event,
 
 	return 0;
 }
-
+/* evsel是刚刚取下来的 */
 int evsel__parse_sample_timestamp(struct evsel *evsel, union perf_event *event,
 				  u64 *timestamp)
 {
@@ -2713,7 +2713,7 @@ int evsel__parse_sample_timestamp(struct evsel *evsel, union perf_event *event,
 		*timestamp = data.time;
 		return 0;
 	}
-
+	/* event是PERF_RECORD_SAMPLE才处理 */
 	array = event->sample.array;
 
 	if (perf_event__check_size(event, evsel->sample_size))

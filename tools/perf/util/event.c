@@ -594,7 +594,7 @@ int perf_event__process(struct perf_tool *tool __maybe_unused,
 {
 	return machine__process_event(machine, event, sample);
 }
-
+/* 获取到addr对应的map,存储到al */
 struct map *thread__find_map(struct thread *thread, u8 cpumode, u64 addr,
 			     struct addr_location *al)
 {

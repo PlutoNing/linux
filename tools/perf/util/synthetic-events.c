@@ -46,7 +46,7 @@
 #define DEFAULT_PROC_MAP_PARSE_TIMEOUT 500
 
 unsigned int proc_map_timeout = DEFAULT_PROC_MAP_PARSE_TIMEOUT;
-
+/* 分析event指定的线程 */
 int perf_tool__process_synth_event(struct perf_tool *tool,
 				   union perf_event *event,
 				   struct machine *machine,
@@ -65,7 +65,7 @@ int perf_tool__process_synth_event(struct perf_tool *tool,
 	return process(tool, event, &synth_sample, machine);
 };
 
-/*
+/*提取出线程的comm,pid,tid什么的
  * Assumes that the first 4095 bytes of /proc/pid/stat contains
  * the comm, tgid and ppid.
  */
@@ -85,13 +85,13 @@ static int perf_event__get_comm_ids(pid_t pid, pid_t tid, char *comm, size_t len
 		snprintf(bf, sizeof(bf), "/proc/%d/task/%d/status", pid, tid);
 	else
 		snprintf(bf, sizeof(bf), "/proc/%d/status", tid);
-
+/* /proc/pid/status */
 	fd = open(bf, O_RDONLY);
 	if (fd < 0) {
 		pr_debug("couldn't open %s\n", bf);
 		return -1;
 	}
-
+	/* Name:   bash /n Umask:  0002 */
 	n = read(fd, bf, sizeof(bf) - 1);
 	close(fd);
 	if (n <= 0) {
@@ -149,7 +149,7 @@ static int perf_event__get_comm_ids(pid_t pid, pid_t tid, char *comm, size_t len
 
 	return 0;
 }
-
+/* 填充event的comm成员 */
 static int perf_event__prepare_comm(union perf_event *event, pid_t pid, pid_t tid,
 				    struct machine *machine,
 				    pid_t *tgid, pid_t *ppid, bool *kernel)
@@ -186,7 +186,7 @@ static int perf_event__prepare_comm(union perf_event *event, pid_t pid, pid_t ti
 
 	return 0;
 }
-
+/* perf分析一个子进程 */
 pid_t perf_event__synthesize_comm(struct perf_tool *tool,
 					 union perf_event *event, pid_t pid,
 					 perf_event__handler_t process,
@@ -194,7 +194,7 @@ pid_t perf_event__synthesize_comm(struct perf_tool *tool,
 {
 	pid_t tgid, ppid;
 	bool kernel_thread;
-
+/* 填充event的comm成员 */
 	if (perf_event__prepare_comm(event, 0, pid, machine, &tgid, &ppid,
 				     &kernel_thread) != 0)
 		return -1;
@@ -217,7 +217,7 @@ static void perf_event__get_ns_link_info(pid_t pid, const char *ns,
 		ns_link_info->ino = st.st_ino;
 	}
 }
-
+/* bench分析ns的简单demo */
 int perf_event__synthesize_namespaces(struct perf_tool *tool,
 				      union perf_event *event,
 				      pid_t pid, pid_t tgid,
@@ -741,7 +741,7 @@ static int filter_task(const struct dirent *dirent)
 {
 	return isdigit(dirent->d_name[0]);
 }
-
+/* 分析target的一个子进程 */
 static int __event__synthesize_thread(union perf_event *comm_event,
 				      union perf_event *mmap_event,
 				      union perf_event *fork_event,
@@ -757,13 +757,13 @@ static int __event__synthesize_thread(union perf_event *comm_event,
 	int i, n;
 
 	/* special case: only send one comm event using passed in pid */
-	if (!full) {
+	if (!full) {/* 分析comm */
 		tgid = perf_event__synthesize_comm(tool, comm_event, pid,
 						   process, machine);
 
 		if (tgid == -1)
 			return -1;
-
+/* 分析ns */
 		if (perf_event__synthesize_namespaces(tool, namespaces_event, pid,
 						      tgid, process, machine) < 0)
 			return -1;
@@ -835,7 +835,7 @@ static int __event__synthesize_thread(union perf_event *comm_event,
 
 	return rc;
 }
-
+/* synthesize有task的target */
 int perf_event__synthesize_thread_map(struct perf_tool *tool,
 				      struct perf_thread_map *threads,
 				      perf_event__handler_t process,
@@ -1907,7 +1907,7 @@ int perf_event__synthesize_id_index(struct perf_tool *tool, perf_event__handler_
 {
 	return __perf_event__synthesize_id_index(tool, process, evlist, machine, 0);
 }
-
+/* synthesize的主要函数  */
 int __machine__synthesize_threads(struct machine *machine, struct perf_tool *tool,
 				  struct target *target, struct perf_thread_map *threads,
 				  perf_event__handler_t process, bool needs_mmap,
@@ -2229,7 +2229,7 @@ int perf_event__synthesize_build_id(struct perf_tool *tool, struct dso *pos, u16
 	ev.build_id.pid = machine->pid;
 	ev.build_id.header.size = sizeof(ev.build_id) + len;
 	memcpy(&ev.build_id.filename, pos->long_name, pos->long_name_len);
-
+/* 刚刚构造了一个bid的perf event */
 	return process(tool, &ev, NULL, machine);
 }
 

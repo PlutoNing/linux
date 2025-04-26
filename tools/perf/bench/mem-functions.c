@@ -114,7 +114,7 @@ struct bench_mem_info {
 	const char *const *usage;
 	bool alloc_src;
 };
-
+/* 打印bench mem的结果 */
 static void __bench_mem_function(struct bench_mem_info *info, int r_idx, size_t size, double size_total)
 {
 	const struct function *r = &info->functions[r_idx];
@@ -287,7 +287,7 @@ static const char * const bench_mem_memcpy_usage[] = {
 	"perf bench mem memcpy <options>",
 	NULL
 };
-
+/* bench memcpy走这里 */
 int bench_mem_memcpy(int argc, const char **argv)
 {
 	struct bench_mem_info info = {

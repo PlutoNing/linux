@@ -42,7 +42,7 @@ struct perf_session {
 	void			*one_mmap_addr;
 	u64			one_mmap_offset;
 	struct ordered_events	ordered_events;
-	struct perf_data	*data;
+	struct perf_data	*data;/* 存储着perf事件 */
 	struct perf_tool	*tool;
 	u64			bytes_transferred;
 	u64			bytes_compressed;

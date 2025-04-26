@@ -25,11 +25,11 @@ struct perf_data_file {
 	};
 	unsigned long	 size;
 };
-
+/* 代表一个perf data文件 */
 struct perf_data {
 	const char		*path;
 	struct perf_data_file	 file;
-	bool			 is_pipe;
+	bool			 is_pipe;/* 表示往repipefd写入了数据 */
 	bool			 is_dir;
 	bool			 force;
 	bool			 use_stdio;

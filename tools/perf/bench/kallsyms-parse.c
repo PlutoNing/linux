@@ -23,7 +23,7 @@ static const char *const bench_usage[] = {
 	"perf bench internals kallsyms-parse <options>",
 	NULL
 };
-
+/* 作为解析ksyms的回调 */
 static int bench_process_symbol(void *arg __maybe_unused,
 				const char *name __maybe_unused,
 				char type __maybe_unused,
@@ -31,7 +31,7 @@ static int bench_process_symbol(void *arg __maybe_unused,
 {
 	return 0;
 }
-
+/* 执行kallsyms_parse的bench */
 static int do_kallsyms_parse(void)
 {
 	struct timeval start, end, diff;
@@ -46,7 +46,7 @@ static int do_kallsyms_parse(void)
 	for (i = 0; i < iterations; i++) {
 		gettimeofday(&start, NULL);
 		err = kallsyms__parse("/proc/kallsyms", NULL,
-				bench_process_symbol);
+				bench_process_symbol);/* 调用cb处理内核符号 */
 		if (err)
 			return err;
 
@@ -62,7 +62,7 @@ static int do_kallsyms_parse(void)
 		time_average, time_stddev);
 	return 0;
 }
-
+/* bench internals kallsyms_parse的测试函数 */
 int bench_kallsyms_parse(int argc, const char **argv)
 {
 	argc = parse_options(argc, argv, options, bench_usage, 0);

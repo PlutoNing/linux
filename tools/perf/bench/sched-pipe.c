@@ -50,7 +50,7 @@ static const char * const bench_sched_pipe_usage[] = {
 	"perf bench sched pipe <options>",
 	NULL
 };
-
+/* 执行sched pipe测试的函数 */
 static void *worker_thread(void *__tdata)
 {
 	struct thread_data *td = __tdata;
@@ -73,7 +73,7 @@ static void *worker_thread(void *__tdata)
 
 	return NULL;
 }
-
+/* pipe测试 */
 int bench_sched_pipe(int argc, const char **argv)
 {
 	struct thread_data threads[2], *td;
@@ -103,17 +103,17 @@ int bench_sched_pipe(int argc, const char **argv)
 
 		td->nr = t;
 
-		if (t == 0) {
+		if (t == 0) {/* 第一个端 */
 			td->pipe_read = pipe_1[0];
 			td->pipe_write = pipe_2[1];
-		} else {
+		} else {/* 管道的另一段 */
 			td->pipe_write = pipe_1[1];
 			td->pipe_read = pipe_2[0];
 		}
 	}
 
 
-	if (threaded) {
+	if (threaded) {/* 线程的pipe测试 */
 
 		for (t = 0; t < nr_threads; t++) {
 			td = threads + t;
@@ -129,7 +129,7 @@ int bench_sched_pipe(int argc, const char **argv)
 			BUG_ON(ret);
 		}
 
-	} else {
+	} else {/* 多进程的pipe测试 */
 		pid = fork();
 		assert(pid >= 0);
 
