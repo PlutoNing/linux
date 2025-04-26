@@ -610,7 +610,7 @@ struct elf_state {
 	const void *obj_buf;
 	size_t obj_buf_sz;
 	Elf *elf;
-	Elf64_Ehdr *ehdr;
+	Elf64_Ehdr *ehdr;/* 指向elf成员的hdr */
 	Elf_Data *symbols;
 	Elf_Data *st_ops_data;
 	Elf_Data *st_ops_link_data;
@@ -1244,7 +1244,7 @@ static int bpf_object_init_struct_ops(struct bpf_object *obj)
 					  BPF_F_LINK);
 	return err;
 }
-
+/* 构造和填充bpf obj */
 static struct bpf_object *bpf_object__new(const char *path,
 					  const void *obj_buf,
 					  size_t obj_buf_sz,
@@ -1307,7 +1307,7 @@ static void bpf_object__elf_finish(struct bpf_object *obj)
 	obj->efile.obj_buf = NULL;
 	obj->efile.obj_buf_sz = 0;
 }
-
+/* 基于obj_buf初始化elf成员 */
 static int bpf_object__elf_init(struct bpf_object *obj)
 {
 	Elf64_Ehdr *ehdr;
@@ -1320,7 +1320,7 @@ static int bpf_object__elf_init(struct bpf_object *obj)
 	}
 
 	if (obj->efile.obj_buf_sz > 0) {
-		/* obj_buf should have been validated by bpf_object__open_mem(). */
+		/* obj_buf should have been validated by bpf_object__open_mem().将内存中的二进制数据（例如从网络接收的 ELF 文件、动态加载的模块或进程内存中的代码段）解析为 ELF 对象 */
 		elf = elf_memory((char *)obj->efile.obj_buf, obj->efile.obj_buf_sz);
 	} else {
 		obj->efile.fd = open(obj->path, O_RDONLY | O_CLOEXEC); //打开bpf.o文件
@@ -1489,7 +1489,7 @@ static Elf64_Sym *find_elf_var_sym(const struct bpf_object *obj, const char *nam
 
 	return ERR_PTR(-ENOENT);
 }
-
+/* 给bpf obj添加一个map */
 static struct bpf_map *bpf_object__add_map(struct bpf_object *obj)
 {
 	struct bpf_map *map;
@@ -1630,7 +1630,7 @@ static bool map_is_mmapable(struct bpf_object *obj, struct bpf_map *map)
 
 	return false;
 }
-
+/* 这是elf的一个段, 初始化到bpf obj的map */
 static int
 bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
 			      const char *real_name, int sec_idx, void *data, size_t data_sz)
@@ -1639,7 +1639,7 @@ bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
 	struct bpf_map *map;
 	size_t mmap_sz;
 	int err;
-
+/* 给bpf obj创建添加一个新map */
 	map = bpf_object__add_map(obj);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
@@ -1691,7 +1691,7 @@ bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
 	pr_debug("map %td is \"%s\"\n", map - obj->maps, map->name);
 	return 0;
 }
-
+/* 初始化bpf obj的global_data_maps */
 static int bpf_object__init_global_data_maps(struct bpf_object *obj)
 {
 	struct elf_sec_desc *sec_desc;
@@ -2610,7 +2610,7 @@ static int bpf_object__init_user_btf_map(struct bpf_object *obj,
 
 	return 0;
 }
-
+/* 初始化bpf obj的user_btf_maps */
 static int bpf_object__init_user_btf_maps(struct bpf_object *obj, bool strict,
 					  const char *pin_root_path)
 {
@@ -2662,7 +2662,7 @@ static int bpf_object__init_user_btf_maps(struct bpf_object *obj, bool strict,
 
 	return 0;
 }
-
+/* 初始化bpf obj的maps */
 static int bpf_object__init_maps(struct bpf_object *obj,
 				 const struct bpf_object_open_opts *opts)
 {
@@ -2906,7 +2906,7 @@ static int compare_vsi_off(const void *_a, const void *_b)
 
 	return a->offset - b->offset;
 }
-
+/* 修复btf,过程? */
 static int btf_fixup_datasec(struct bpf_object *obj, struct btf *btf,
 			     struct btf_type *t)
 {
@@ -3273,7 +3273,7 @@ static Elf64_Shdr *elf_sec_hdr(const struct bpf_object *obj, Elf_Scn *scn)
 
 	return shdr;
 }
-
+/* 获取elf的sec名字 */
 static const char *elf_sec_name(const struct bpf_object *obj, Elf_Scn *scn)
 {
 	const char *name;
@@ -7366,7 +7366,7 @@ static int bpf_object_init_progs(struct bpf_object *obj, const struct bpf_object
 
 	return 0;
 }
-/* 打开这个内核态的prog */
+/* 打开这个bpf prog */
 static struct bpf_object *bpf_object_open(const char *path, const void *obj_buf, size_t obj_buf_sz,
 					  const struct bpf_object_open_opts *opts)
 {
@@ -7406,7 +7406,7 @@ static struct bpf_object *bpf_object_open(const char *path, const void *obj_buf,
 		return ERR_PTR(-EINVAL);
 	if (log_size && !log_buf)
 		return ERR_PTR(-EINVAL);
-
+/* 构造和填充bpf obj */
 	obj = bpf_object__new(path, obj_buf, obj_buf_sz, obj_name);
 	if (IS_ERR(obj))
 		return obj;
@@ -7471,7 +7471,7 @@ struct bpf_object *bpf_object__open(const char *path)
 {
 	return bpf_object__open_file(path, NULL);
 }
-
+/*  */
 struct bpf_object *
 bpf_object__open_mem(const void *obj_buf, size_t obj_buf_sz,
 		     const struct bpf_object_open_opts *opts)
@@ -13205,7 +13205,7 @@ void bpf_object__detach_skeleton(struct bpf_object_skeleton *s)
 		*link = NULL;
 	}
 }
-
+/* 销毁bpf obj skelton */
 void bpf_object__destroy_skeleton(struct bpf_object_skeleton *s)
 {
 	if (!s)
