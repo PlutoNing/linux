@@ -894,7 +894,7 @@ bpf_object__find_map_fd_by_name(const struct bpf_object *obj, const char *name);
 
 LIBBPF_API struct bpf_map *
 bpf_object__next_map(const struct bpf_object *obj, const struct bpf_map *map);
-
+/* 遍历obj的每一个map */
 #define bpf_object__for_each_map(pos, obj)		\
 	for ((pos) = bpf_object__next_map((obj), NULL);	\
 	     (pos) != NULL;				\

@@ -226,7 +226,7 @@ alloc_zero_tailing_info(const void *orecord, __u32 cnt,
 
 	return info;
 }
-
+/* 通过系统调用加载load */
 int bpf_prog_load(enum bpf_prog_type prog_type,
 		  const char *prog_name, const char *license,
 		  const struct bpf_insn *insns, size_t insn_cnt,
@@ -253,7 +253,7 @@ int bpf_prog_load(enum bpf_prog_type prog_type,
 		attempts = PROG_LOAD_ATTEMPTS;
 
 	memset(&attr, 0, attr_sz);
-
+/* 填充attr的各种属性, 座位sysbpf系统调用的参数 */
 	attr.prog_type = prog_type;
 	attr.expected_attach_type = OPTS_GET(opts, expected_attach_type, 0);
 
@@ -310,7 +310,7 @@ int bpf_prog_load(enum bpf_prog_type prog_type,
 		attr.log_size = log_size;
 		attr.log_level = log_level;
 	}
-
+/* 调用系统调用加载prog */
 	fd = sys_bpf_prog_load(&attr, attr_sz, attempts);
 	OPTS_SET(opts, log_true_size, attr.log_true_size);
 	if (fd >= 0)
@@ -376,7 +376,7 @@ done:
 	free(linfo);
 	return libbpf_err_errno(fd);
 }
-
+/* 修改map的一个value */
 int bpf_map_update_elem(int fd, const void *key, const void *value,
 			__u64 flags)
 {

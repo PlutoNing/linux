@@ -75,7 +75,7 @@ struct btf {
 	 * raw_data----->+----------+---------+-----------+
 	 */
 	struct btf_header *hdr;
-
+/* 存储类型数据,通过type_off存储的idx来索引 */
 	void *types_data;
 	size_t types_data_cap; /* used size stored in hdr->type_len */
 
@@ -83,7 +83,7 @@ struct btf {
 	 * type_offs[0] corresponds to the first non-VOID type:
 	 *   - for base BTF it's type [1];
 	 *   - for split BTF it's the first non-base BTF type.
-	 */
+	 存储type_data的索引*/
 	__u32 *type_offs;
 	size_t type_offs_cap;
 	/* number of types in this BTF instance:
@@ -467,7 +467,7 @@ struct btf_type *btf_type_by_id(const struct btf *btf, __u32 type_id)
 		return btf_type_by_id(btf->base_btf, type_id);
 	return btf->types_data + btf->type_offs[type_id - btf->start_id];
 }
-
+/* 通过type id查找btf_type */
 const struct btf_type *btf__type_by_id(const struct btf *btf, __u32 type_id)
 {
 	if (type_id >= btf->start_id + btf->nr_types)

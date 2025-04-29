@@ -62,7 +62,7 @@ static int bench_uprobe__setup_bpf_skel(enum bench_uprobe bench)
 {
 	DECLARE_LIBBPF_OPTS(bpf_uprobe_opts, uprobe_opts);
 	int err;
-
+/* 创建skel, 加载程序 */
 	/* Load and verify BPF application */
 	skel = bench_uprobe_bpf__open();
 	if (!skel) {
