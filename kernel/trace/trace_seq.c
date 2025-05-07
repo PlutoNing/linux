@@ -40,6 +40,7 @@ static inline void __trace_seq_init(struct trace_seq *s)
 }
 
 /**
+拷贝到seq file
  * trace_print_seq - move the contents of trace_seq into a seq_file
  * @m: the seq_file descriptor that is the destination
  * @s: the trace_seq descriptor that is the source.
@@ -349,6 +350,7 @@ int trace_seq_path(struct trace_seq *s, const struct path *path)
 EXPORT_SYMBOL_GPL(trace_seq_path);
 
 /**
+把seq buf拷贝到用户空间
  * trace_seq_to_user - copy the sequence buffer to user space
  * @s: trace sequence descriptor
  * @ubuf: The userspace memory location to copy to

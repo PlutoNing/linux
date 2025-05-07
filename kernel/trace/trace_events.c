@@ -3098,7 +3098,10 @@ __trace_add_event_dirs(struct trace_array *tr)
 	}
 }
 
-/* Returns any file that matches the system and event */
+/* 
+找到指定的event file
+event file是什么
+Returns any file that matches the system and event */
 struct trace_event_file *
 __find_event_file(struct trace_array *tr, const char *system, const char *event)
 {
@@ -3106,6 +3109,7 @@ __find_event_file(struct trace_array *tr, const char *system, const char *event)
 	struct trace_event_call *call;
 	const char *name;
 
+	/* 遍历全部的event file */
 	list_for_each_entry(file, &tr->events, list) {
 
 		call = file->event_call;

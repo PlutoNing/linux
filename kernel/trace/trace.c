@@ -120,6 +120,7 @@ static DEFINE_PER_CPU(bool, trace_taskinfo_save);
  */
 static int tracing_disabled = 1;
 
+/* ftrace的cpumask */
 cpumask_var_t __read_mostly	tracing_buffer_mask;
 
 /*
@@ -535,7 +536,7 @@ void trace_array_put(struct trace_array *this_tr)
 	mutex_unlock(&trace_types_lock);
 }
 EXPORT_SYMBOL_GPL(trace_array_put);
-
+/* 打开tr前的准备 */
 int tracing_check_open_get_tr(struct trace_array *tr)
 {
 	int ret;
@@ -804,6 +805,7 @@ int trace_pid_write(struct trace_pid_list *filtered_pids,
 	return read;
 }
 
+/* 为什么获取时间还封装这么些层 */
 static u64 buffer_ftrace_now(struct array_buffer *buf, int cpu)
 {
 	u64 ts;
@@ -857,7 +859,9 @@ int tracing_is_enabled(void)
 
 static unsigned long		trace_buf_size = TRACE_BUF_SIZE_DEFAULT;
 
-/* trace_types holds a link list of available tracers. */
+/* trace_types holds a link list of available tracers.
+系统的可用的tracer链表
+*/
 static struct tracer		*trace_types __read_mostly;
 
 /*
@@ -980,6 +984,7 @@ trace_event_setup(struct ring_buffer_event *event,
 	tracing_generic_entry_update(ent, type, trace_ctx);
 }
 
+/* 预分配buffer */
 static __always_inline struct ring_buffer_event *
 __trace_buffer_lock_reserve(struct trace_buffer *buffer,
 			  int type,
@@ -995,6 +1000,7 @@ __trace_buffer_lock_reserve(struct trace_buffer *buffer,
 	return event;
 }
 
+/* 开启trace */
 void tracer_tracing_on(struct trace_array *tr)
 {
 	if (tr->array_buffer.buffer)
@@ -1515,6 +1521,7 @@ void disable_trace_on_warning(void)
 }
 
 /**
+检查这个buffer是不是开启的
  * tracer_tracing_is_on - show real state of ring buffer enabled
  * @tr : the trace array to know if ring buffer is enabled
  *
@@ -1582,12 +1589,16 @@ unsigned long nsecs_to_usecs(unsigned long nsecs)
 #undef C
 #define C(a, b) b
 
-/* These must match the bit positions in trace_iterator_flags */
+/* 
+trace的options
+trace options
+These must match the bit positions in trace_iterator_flags */
 static const char *trace_options[] = {
 	TRACE_FLAGS
 	NULL
 };
 
+/* trace可以使用的时钟源？ */
 static struct {
 	u64 (*func)(void);
 	const char *name;
@@ -1638,6 +1649,7 @@ void trace_parser_put(struct trace_parser *parser)
 }
 
 /*
+把ubuf中的数据读到parser中
  * trace_get_user - reads the user input string separated by  space
  * (matched by isspace(ch))
  *
@@ -2215,6 +2227,7 @@ int __init register_tracer(struct tracer *type)
 	return ret;
 }
 
+/* rb清空指定cpu的pcp buffer */
 static void tracing_reset_cpu(struct array_buffer *buf, int cpu)
 {
 	struct trace_buffer *buffer = buf->buffer;
@@ -2222,6 +2235,7 @@ static void tracing_reset_cpu(struct array_buffer *buf, int cpu)
 	if (!buffer)
 		return;
 
+		/* 加写锁 */
 	ring_buffer_record_disable(buffer);
 
 	/* Make sure all commits have finished */
@@ -2231,8 +2245,10 @@ static void tracing_reset_cpu(struct array_buffer *buf, int cpu)
 	ring_buffer_record_enable(buffer);
 }
 
+/* 清除trace buffer在所有cpu pcp buffer的结果 */
 void tracing_reset_online_cpus(struct array_buffer *buf)
 {
+	/* 取出trace buffer */
 	struct trace_buffer *buffer = buf->buffer;
 
 	if (!buffer)
@@ -2243,8 +2259,10 @@ void tracing_reset_online_cpus(struct array_buffer *buf)
 	/* Make sure all commits have finished */
 	synchronize_rcu();
 
+	/* 更新时间 */
 	buf->time_start = buffer_ftrace_now(buf, buf->cpu);
 
+	/* 清空buffer */
 	ring_buffer_reset_online_cpus(buffer);
 
 	ring_buffer_record_enable(buffer);
@@ -3660,26 +3678,32 @@ EXPORT_SYMBOL_GPL(trace_vprintk);
 
 static void trace_iterator_increment(struct trace_iterator *iter)
 {
+	/* 获取cpu对应的pcp iter */
 	struct ring_buffer_iter *buf_iter = trace_buffer_iter(iter, iter->cpu);
 
+	/* idx是什么 */
 	iter->idx++;
 	if (buf_iter)
 		ring_buffer_iter_advance(buf_iter);
 }
 
+/* 从rb读取一个trace entry */
 static struct trace_entry *
 peek_next_entry(struct trace_iterator *iter, int cpu, u64 *ts,
 		unsigned long *lost_events)
 {
 	struct ring_buffer_event *event;
+	/* 取出cpu对应的iter */
 	struct ring_buffer_iter *buf_iter = trace_buffer_iter(iter, cpu);
 
 	if (buf_iter) {
+		/* 从iter读出一个事件 */
 		event = ring_buffer_iter_peek(buf_iter, ts);
 		if (lost_events)
 			*lost_events = ring_buffer_iter_dropped(buf_iter) ?
 				(unsigned long)-1 : 0;
 	} else {
+		/* 没有pcp iter的情况？ */
 		event = ring_buffer_peek(iter->array_buffer->buffer, cpu, ts,
 					 lost_events);
 	}
@@ -3692,10 +3716,12 @@ peek_next_entry(struct trace_iterator *iter, int cpu, u64 *ts,
 	return NULL;
 }
 
+/* 从rb读出一个trace entry */
 static struct trace_entry *
 __find_next_entry(struct trace_iterator *iter, int *ent_cpu,
 		  unsigned long *missing_events, u64 *ent_ts)
 {
+	/* 获取trace buffer */
 	struct trace_buffer *buffer = iter->array_buffer->buffer;
 	struct trace_entry *ent, *next = NULL;
 	unsigned long lost_events = 0, next_lost = 0;
@@ -3706,12 +3732,16 @@ __find_next_entry(struct trace_iterator *iter, int *ent_cpu,
 	int cpu;
 
 	/*
+	如果是pcp的读取
 	 * If we are in a per_cpu trace file, don't bother by iterating over
 	 * all cpu and peek directly.
 	 */
 	if (cpu_file > RING_BUFFER_ALL_CPUS) {
+		/* 检查是否为空 */
 		if (ring_buffer_empty_cpu(buffer, cpu_file))
 			return NULL;
+
+		/* 读出一个trace entry */
 		ent = peek_next_entry(iter, cpu_file, ent_ts, missing_events);
 		if (ent_cpu)
 			*ent_cpu = cpu_file;
@@ -3719,11 +3749,13 @@ __find_next_entry(struct trace_iterator *iter, int *ent_cpu,
 		return ent;
 	}
 
+	/* 如果是全局的读取 */
 	for_each_tracing_cpu(cpu) {
 
 		if (ring_buffer_empty_cpu(buffer, cpu))
 			continue;
 
+		/* 取出当前cpu的一个entry */
 		ent = peek_next_entry(iter, cpu, &ts, &lost_events);
 
 		/*
@@ -4102,9 +4134,12 @@ struct trace_entry *trace_find_next_entry(struct trace_iterator *iter,
 	return entry;
 }
 
-/* Find the next real entry, and increment the iterator to the next entry */
+/* 
+找到下一个entry
+Find the next real entry, and increment the iterator to the next entry */
 void *trace_find_next_entry_inc(struct trace_iterator *iter)
 {
+	/* 找到一个entry */
 	iter->ent = __find_next_entry(iter, &iter->cpu,
 				      &iter->lost_events, &iter->ts);
 
@@ -4114,14 +4149,17 @@ void *trace_find_next_entry_inc(struct trace_iterator *iter)
 	return iter->ent ? iter : NULL;
 }
 
+/* 消耗一个事件 */
 static void trace_consume(struct trace_iterator *iter)
 {
 	ring_buffer_consume(iter->array_buffer->buffer, iter->cpu, &iter->ts,
 			    &iter->lost_events);
 }
 
+/* 找到下一个trace entry */
 static void *s_next(struct seq_file *m, void *v, loff_t *pos)
 {
+	/* 获取到iter */
 	struct trace_iterator *iter = m->private;
 	int i = (int)*pos;
 	void *ent;
@@ -4147,6 +4185,7 @@ static void *s_next(struct seq_file *m, void *v, loff_t *pos)
 	return ent;
 }
 
+/* 重置cpu对应的iter */
 void tracing_iter_reset(struct trace_iterator *iter, int cpu)
 {
 	struct ring_buffer_iter *buf_iter;
@@ -4155,6 +4194,7 @@ void tracing_iter_reset(struct trace_iterator *iter, int cpu)
 
 	per_cpu_ptr(iter->array_buffer->data, cpu)->skipped_entries = 0;
 
+	/* 取出iter后reset */
 	buf_iter = trace_buffer_iter(iter, cpu);
 	if (!buf_iter)
 		return;
@@ -4177,6 +4217,7 @@ void tracing_iter_reset(struct trace_iterator *iter, int cpu)
 }
 
 /*
+以后
  * The current tracer is copied to avoid a global locking
  * all around.
  */
@@ -4211,6 +4252,7 @@ static void *s_start(struct seq_file *m, loff_t *pos)
 		iter->cpu = 0;
 		iter->idx = -1;
 
+		/* 重置相关的iter */
 		if (cpu_file == RING_BUFFER_ALL_CPUS) {
 			for_each_tracing_cpu(cpu)
 				tracing_iter_reset(iter, cpu);
@@ -4239,6 +4281,7 @@ static void *s_start(struct seq_file *m, loff_t *pos)
 	return p;
 }
 
+/* 读取trace结果的seq file的停止 ops */
 static void s_stop(struct seq_file *m, void *p)
 {
 	struct trace_iterator *iter = m->private;
@@ -4564,25 +4607,31 @@ static enum print_line_t print_bin_fmt(struct trace_iterator *iter)
 		TRACE_TYPE_HANDLED;
 }
 
+/* 判断有没有trace结果 */
 int trace_empty(struct trace_iterator *iter)
 {
 	struct ring_buffer_iter *buf_iter;
 	int cpu;
 
-	/* If we are looking at one CPU buffer, only check that one */
+	/* If we are looking at one CPU buffer, only check that one
+	如果是指定cpu的iter
+	*/
 	if (iter->cpu_file != RING_BUFFER_ALL_CPUS) {
 		cpu = iter->cpu_file;
 		buf_iter = trace_buffer_iter(iter, cpu);
+		/* 获取到这个cpu的iter */
 		if (buf_iter) {
 			if (!ring_buffer_iter_empty(buf_iter))
-				return 0;
+				return 0;/* 不空 */
 		} else {
+			/* 没有对应的pcp iter，直接判断pcp buffer */
 			if (!ring_buffer_empty_cpu(iter->array_buffer->buffer, cpu))
 				return 0;
 		}
 		return 1;
 	}
 
+	/* 如果是指定cpu的情况 */
 	for_each_tracing_cpu(cpu) {
 		buf_iter = trace_buffer_iter(iter, cpu);
 		if (buf_iter) {
@@ -4597,7 +4646,9 @@ int trace_empty(struct trace_iterator *iter)
 	return 1;
 }
 
-/*  Called with trace_event_read_lock() held. */
+/*  
+打印trace结果？
+Called with trace_event_read_lock() held. */
 enum print_line_t print_trace_line(struct trace_iterator *iter)
 {
 	struct trace_array *tr = iter->tr;
@@ -4605,6 +4656,7 @@ enum print_line_t print_trace_line(struct trace_iterator *iter)
 	enum print_line_t ret;
 
 	if (iter->lost_events) {
+		/* 以后 */
 		if (iter->lost_events == (unsigned long)-1)
 			trace_seq_printf(&iter->seq, "CPU:%d [LOST EVENTS]\n",
 					 iter->cpu);
@@ -4615,6 +4667,7 @@ enum print_line_t print_trace_line(struct trace_iterator *iter)
 			return TRACE_TYPE_PARTIAL_LINE;
 	}
 
+	/* 先尝试调用tracer的print line回调 */
 	if (iter->trace && iter->trace->print_line) {
 		ret = iter->trace->print_line(iter);
 		if (ret != TRACE_TYPE_UNHANDLED)
@@ -4744,12 +4797,14 @@ static void print_snapshot_help(struct seq_file *m, struct trace_iterator *iter)
 static inline void print_snapshot_help(struct seq_file *m, struct trace_iterator *iter) { }
 #endif
 
+/* 读取trace结果的seq file的show ops */
 static int s_show(struct seq_file *m, void *v)
 {
 	struct trace_iterator *iter = v;
 	int ret;
 
 	if (iter->ent == NULL) {
+		/* 如果iter没有读出条目 */
 		if (iter->tr) {
 			seq_printf(m, "# tracer: %s\n", iter->trace->name);
 			seq_puts(m, "#\n");
@@ -4773,6 +4828,7 @@ static int s_show(struct seq_file *m, void *v)
 		iter->leftover = ret;
 
 	} else {
+		/* 打印trace 条目？ */
 		print_trace_line(iter);
 		ret = trace_print_seq(m, &iter->seq);
 		/*
@@ -4789,6 +4845,7 @@ static int s_show(struct seq_file *m, void *v)
 }
 
 /*
+看来trace结果所属的cpu存在了cdev号上面
  * Should be used after trace_array_get(), trace_types_lock
  * ensures that i_cdev was already initialized.
  */
@@ -4799,14 +4856,19 @@ static inline int tracing_get_cpu(struct inode *inode)
 	return RING_BUFFER_ALL_CPUS;
 }
 
+/* 读取trace文件结果的seq ops */
 static const struct seq_operations tracer_seq_ops = {
 	.start		= s_start,
+	/* 找到下一个trace entry */
 	.next		= s_next,
+	/*  */
 	.stop		= s_stop,
+	/* 打印结果 */
 	.show		= s_show,
 };
 
 /*
+释放iter的相关内存
  * Note, as iter itself can be allocated and freed in different
  * ways, this function is only used to free its content, and not
  * the iterator itself. The only requirement to all the allocations
@@ -4825,9 +4887,11 @@ static void free_trace_iter_content(struct trace_iterator *iter)
 	free_cpumask_var(iter->started);
 }
 
+/* 打开trace文件用于读取trace结果 */
 static struct trace_iterator *
 __tracing_open(struct inode *inode, struct file *file, bool snapshot)
 {
+	/*  */
 	struct trace_array *tr = inode->i_private;
 	struct trace_iterator *iter;
 	int cpu;
@@ -4835,10 +4899,12 @@ __tracing_open(struct inode *inode, struct file *file, bool snapshot)
 	if (tracing_disabled)
 		return ERR_PTR(-ENODEV);
 
+	/* 创建seq file和iter */
 	iter = __seq_open_private(file, &tracer_seq_ops, sizeof(*iter));
 	if (!iter)
 		return ERR_PTR(-ENOMEM);
 
+	/* 分配存储每个cpu对应的iter的iter数组的内存 */
 	iter->buffer_iter = kcalloc(nr_cpu_ids, sizeof(*iter->buffer_iter),
 				    GFP_KERNEL);
 	if (!iter->buffer_iter)
@@ -4905,8 +4971,10 @@ __tracing_open(struct inode *inode, struct file *file, bool snapshot)
 	if (!iter->snapshot && (tr->trace_flags & TRACE_ITER_PAUSE_ON_TRACE))
 		tracing_stop_tr(tr);
 
+	/* 开始初始化iter的pcp iter */
 	if (iter->cpu_file == RING_BUFFER_ALL_CPUS) {
 		for_each_tracing_cpu(cpu) {
+			/* 初始化每个cpu的pcp iter */
 			iter->buffer_iter[cpu] =
 				ring_buffer_read_prepare(iter->array_buffer->buffer,
 							 cpu, GFP_KERNEL);
@@ -4917,6 +4985,7 @@ __tracing_open(struct inode *inode, struct file *file, bool snapshot)
 			tracing_iter_reset(iter, cpu);
 		}
 	} else {
+		/* 初始化指定cpu */
 		cpu = iter->cpu_file;
 		iter->buffer_iter[cpu] =
 			ring_buffer_read_prepare(iter->array_buffer->buffer,
@@ -4938,6 +5007,7 @@ release:
 	return ERR_PTR(-ENOMEM);
 }
 
+/* 打开tr */
 int tracing_open_generic(struct inode *inode, struct file *filp)
 {
 	int ret;
@@ -4956,6 +5026,7 @@ bool tracing_is_disabled(void)
 }
 
 /*
+打开tr
  * Open and update trace_array ref count.
  * Must have the current trace_array passed to it.
  */
@@ -5006,6 +5077,7 @@ static int tracing_mark_open(struct inode *inode, struct file *filp)
 	return tracing_open_generic_tr(inode, filp);
 }
 
+/* 释放trace file的ops */
 static int tracing_release(struct inode *inode, struct file *file)
 {
 	struct trace_array *tr = inode->i_private;
@@ -5044,6 +5116,7 @@ static int tracing_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+/*  */
 static int tracing_release_generic_tr(struct inode *inode, struct file *file)
 {
 	struct trace_array *tr = inode->i_private;
@@ -5052,6 +5125,7 @@ static int tracing_release_generic_tr(struct inode *inode, struct file *file)
 	return 0;
 }
 
+/* 释放打开时创建的seq file */
 static int tracing_single_release_tr(struct inode *inode, struct file *file)
 {
 	struct trace_array *tr = inode->i_private;
@@ -5061,6 +5135,7 @@ static int tracing_single_release_tr(struct inode *inode, struct file *file)
 	return single_release(inode, file);
 }
 
+/* 打开trace结果文件的open ops */
 static int tracing_open(struct inode *inode, struct file *file)
 {
 	struct trace_array *tr = inode->i_private;
@@ -5071,7 +5146,9 @@ static int tracing_open(struct inode *inode, struct file *file)
 	if (ret)
 		return ret;
 
-	/* If this file was open for write, then erase contents */
+	/* If this file was open for write, then erase contents
+	清空trace结果的时候是这个选项？
+	*/
 	if ((file->f_mode & FMODE_WRITE) && (file->f_flags & O_TRUNC)) {
 		int cpu = tracing_get_cpu(inode);
 		struct array_buffer *trace_buf = &tr->array_buffer;
@@ -5081,13 +5158,16 @@ static int tracing_open(struct inode *inode, struct file *file)
 			trace_buf = &tr->max_buffer;
 #endif
 
-		if (cpu == RING_BUFFER_ALL_CPUS)
+		if (cpu == RING_BUFFER_ALL_CPUS)/* 如果是清除所有cpu的ring buffer */
 			tracing_reset_online_cpus(trace_buf);
 		else
+		/* 清空指定的pcp buffer */
 			tracing_reset_cpu(trace_buf, cpu);
 	}
 
+	/* 如果是为了读取trace结果打开trace文件 */
 	if (file->f_mode & FMODE_READ) {
+		/* 打开iter */
 		iter = __tracing_open(inode, file, false);
 		if (IS_ERR(iter))
 			ret = PTR_ERR(iter);
@@ -5135,7 +5215,7 @@ t_next(struct seq_file *m, void *v, loff_t *pos)
 
 	return t;
 }
-
+/* seq file的priv就是tr， 这里开始迭代tr */
 static void *t_start(struct seq_file *m, loff_t *pos)
 {
 	struct trace_array *tr = m->private;
@@ -5155,7 +5235,7 @@ static void t_stop(struct seq_file *m, void *p)
 {
 	mutex_unlock(&trace_types_lock);
 }
-
+/* seq file查看一个tracer的回调 */
 static int t_show(struct seq_file *m, void *v)
 {
 	struct tracer *t = v;
@@ -5171,16 +5251,18 @@ static int t_show(struct seq_file *m, void *v)
 
 	return 0;
 }
-
+/* 查看系统tracers的seq file的ops */
 static const struct seq_operations show_traces_seq_ops = {
 	.start		= t_start,
 	.next		= t_next,
 	.stop		= t_stop,
 	.show		= t_show,
 };
-
+/* 开始查看系统当前可用tracers的fops的开始回调
+打开一个seq file */
 static int show_traces_open(struct inode *inode, struct file *file)
 {
+	/* trace array存储在inode的priv */
 	struct trace_array *tr = inode->i_private;
 	struct seq_file *m;
 	int ret;
@@ -5188,19 +5270,19 @@ static int show_traces_open(struct inode *inode, struct file *file)
 	ret = tracing_check_open_get_tr(tr);
 	if (ret)
 		return ret;
-
+/* 给file创建和初始化一个seq file，存在file的priv里面 */
 	ret = seq_open(file, &show_traces_seq_ops);
 	if (ret) {
 		trace_array_put(tr);
 		return ret;
 	}
-
+/* m是file的seq file */
 	m = file->private_data;
 	m->private = tr;
 
 	return 0;
 }
-
+/* 释放seq file */
 static int show_traces_release(struct inode *inode, struct file *file)
 {
 	struct trace_array *tr = inode->i_private;
@@ -5228,23 +5310,31 @@ loff_t tracing_lseek(struct file *file, loff_t offset, int whence)
 	return ret;
 }
 
+/* 读取trace结果的文件的ops */
 static const struct file_operations tracing_fops = {
+	/* 打开iter和seq file */
 	.open		= tracing_open,
 	.read		= seq_read,
 	.read_iter	= seq_read_iter,
 	.splice_read	= copy_splice_read,
+	/* 空函数 */
 	.write		= tracing_write_stub,
+	/* 通用函数 的包装 */
 	.llseek		= tracing_lseek,
+	/* 释放资源 */
 	.release	= tracing_release,
 };
-
+/* 查看系统当前可用的tracers */
 static const struct file_operations show_traces_fops = {
+	/* 创建seq file */
 	.open		= show_traces_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
+	/* 释放seq file */
 	.release	= show_traces_release,
 };
 
+/* 读取ftrace的cpumask */
 static ssize_t
 tracing_cpumask_read(struct file *filp, char __user *ubuf,
 		     size_t count, loff_t *ppos)
@@ -5273,6 +5363,7 @@ out_err:
 	return count;
 }
 
+/* 设置ftrace的cpu mask */
 int tracing_set_cpumask(struct trace_array *tr,
 			cpumask_var_t tracing_cpumask_new)
 {
@@ -5283,6 +5374,7 @@ int tracing_set_cpumask(struct trace_array *tr,
 
 	local_irq_disable();
 	arch_spin_lock(&tr->max_lock);
+	/* 遍历每一个正在ftrace的cpu */
 	for_each_tracing_cpu(cpu) {
 		/*
 		 * Increase/decrease the disabled counter if we are
@@ -5313,6 +5405,7 @@ int tracing_set_cpumask(struct trace_array *tr,
 	return 0;
 }
 
+/* 设置ftrace的cpumask */
 static ssize_t
 tracing_cpumask_write(struct file *filp, const char __user *ubuf,
 		      size_t count, loff_t *ppos)
@@ -5345,11 +5438,13 @@ err_free:
 static const struct file_operations tracing_cpumask_fops = {
 	.open		= tracing_open_generic_tr,
 	.read		= tracing_cpumask_read,
+	/* 设置ftrace的cpu mask */
 	.write		= tracing_cpumask_write,
 	.release	= tracing_release_generic_tr,
 	.llseek		= generic_file_llseek,
 };
 
+/* trace options的seq file的ops的show回调 */
 static int tracing_trace_options_show(struct seq_file *m, void *v)
 {
 	struct tracer_opt *trace_opts;
@@ -5363,8 +5458,10 @@ static int tracing_trace_options_show(struct seq_file *m, void *v)
 
 	for (i = 0; trace_options[i]; i++) {
 		if (tr->trace_flags & (1 << i))
+		/* 打开的选项 */
 			seq_printf(m, "%s\n", trace_options[i]);
 		else
+		/* 关闭的选项 */
 			seq_printf(m, "no%s\n", trace_options[i]);
 	}
 
@@ -5379,6 +5476,7 @@ static int tracing_trace_options_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+/* 设置tracer的flag */
 static int __set_tracer_option(struct trace_array *tr,
 			       struct tracer_flags *tracer_flags,
 			       struct tracer_opt *opts, int neg)
@@ -5397,7 +5495,9 @@ static int __set_tracer_option(struct trace_array *tr,
 	return 0;
 }
 
-/* Try to assign a tracer specific option */
+/* 
+设置tracer的option flag
+Try to assign a tracer specific option */
 static int set_tracer_option(struct trace_array *tr, char *cmp, int neg)
 {
 	struct tracer *trace = tr->current_trace;
@@ -5424,6 +5524,7 @@ int trace_keep_overwrite(struct tracer *tracer, u32 mask, int set)
 	return 0;
 }
 
+/* 写入新的trace option */
 int set_tracer_flag(struct trace_array *tr, unsigned int mask, int enabled)
 {
 	int *map;
@@ -5492,6 +5593,7 @@ int set_tracer_flag(struct trace_array *tr, unsigned int mask, int enabled)
 	return 0;
 }
 
+/* 设置trace options选项 */
 int trace_set_options(struct trace_array *tr, char *option)
 {
 	char *cmp;
@@ -5551,11 +5653,14 @@ static void __init apply_trace_boot_options(void)
 	}
 }
 
+/* 修改trace options选项 */
 static ssize_t
 tracing_trace_options_write(struct file *filp, const char __user *ubuf,
 			size_t cnt, loff_t *ppos)
 {
+	/* 为什么还要获取seq file */
 	struct seq_file *m = filp->private_data;
+	/* 获取tr */
 	struct trace_array *tr = m->private;
 	char buf[64];
 	int ret;
@@ -5568,6 +5673,7 @@ tracing_trace_options_write(struct file *filp, const char __user *ubuf,
 
 	buf[cnt] = 0;
 
+	/* 设置trace options选项 */
 	ret = trace_set_options(tr, buf);
 	if (ret < 0)
 		return ret;
@@ -5577,6 +5683,7 @@ tracing_trace_options_write(struct file *filp, const char __user *ubuf,
 	return cnt;
 }
 
+/* trace options文件的open ops */
 static int tracing_trace_options_open(struct inode *inode, struct file *file)
 {
 	struct trace_array *tr = inode->i_private;
@@ -5586,6 +5693,7 @@ static int tracing_trace_options_open(struct inode *inode, struct file *file)
 	if (ret)
 		return ret;
 
+	/* 打开一个指定show 函数的seq file */
 	ret = single_open(file, tracing_trace_options_show, inode->i_private);
 	if (ret < 0)
 		trace_array_put(tr);
@@ -5593,11 +5701,14 @@ static int tracing_trace_options_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
+/* trace options的fops */
 static const struct file_operations tracing_iter_fops = {
+	/* 打开一个seq file */
 	.open		= tracing_trace_options_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= tracing_single_release_tr,
+	/* 修改trace options选项 */
 	.write		= tracing_trace_options_write,
 };
 
@@ -6297,22 +6408,25 @@ static void trace_insert_eval_map(struct module *mod,
 
 	trace_insert_eval_map_file(mod, start, len);
 }
-
+/* ftrace的current tracer的read ops */
 static ssize_t
 tracing_set_trace_read(struct file *filp, char __user *ubuf,
 		       size_t cnt, loff_t *ppos)
 {
+	/* 获取tr */
 	struct trace_array *tr = filp->private_data;
 	char buf[MAX_TRACER_SIZE+2];
 	int r;
 
 	mutex_lock(&trace_types_lock);
+	/* 读取cur tracer的name */
 	r = sprintf(buf, "%s\n", tr->current_trace->name);
 	mutex_unlock(&trace_types_lock);
 
 	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
 }
 
+/* 使用tracer前运行init回调 */
 int tracer_init(struct tracer *t, struct trace_array *tr)
 {
 	tracing_reset_online_cpus(&tr->array_buffer);
@@ -6327,6 +6441,7 @@ static void set_buffer_entries(struct array_buffer *buf, unsigned long val)
 		per_cpu_ptr(buf->data, cpu)->entries = val;
 }
 
+/*  */
 static void update_buffer_entries(struct array_buffer *buf, int cpu)
 {
 	if (cpu == RING_BUFFER_ALL_CPUS) {
@@ -6364,6 +6479,7 @@ static int resize_buffer_duplicate_size(struct array_buffer *trace_buf,
 }
 #endif /* CONFIG_TRACER_MAX_TRACE */
 
+/* tracer扩展ringbuffer */
 static int __tracing_resize_ring_buffer(struct trace_array *tr,
 					unsigned long size, int cpu)
 {
@@ -6380,6 +6496,7 @@ static int __tracing_resize_ring_buffer(struct trace_array *tr,
 	if (!tr->array_buffer.buffer)
 		return 0;
 
+	/* 扩充cpu buffer */
 	ret = ring_buffer_resize(tr->array_buffer.buffer, size, cpu);
 	if (ret < 0)
 		return ret;
@@ -6424,6 +6541,7 @@ static int __tracing_resize_ring_buffer(struct trace_array *tr,
 	return ret;
 }
 
+/* 修改trace buffer大小 */
 ssize_t tracing_resize_ring_buffer(struct trace_array *tr,
 				  unsigned long size, int cpu_id)
 {
@@ -6439,6 +6557,7 @@ ssize_t tracing_resize_ring_buffer(struct trace_array *tr,
 		}
 	}
 
+	/* 修改buffer大小 */
 	ret = __tracing_resize_ring_buffer(tr, size, cpu_id);
 	if (ret < 0)
 		ret = -ENOMEM;
@@ -6510,6 +6629,7 @@ static void add_tracer_options(struct trace_array *tr, struct tracer *t)
 	create_trace_option_files(tr, t);
 }
 
+/* 设置cur tracer */
 int tracing_set_tracer(struct trace_array *tr, const char *buf)
 {
 	struct tracer *t;
@@ -6520,7 +6640,9 @@ int tracing_set_tracer(struct trace_array *tr, const char *buf)
 
 	mutex_lock(&trace_types_lock);
 
+	/* ringbuf干嘛的 */
 	if (!ring_buffer_expanded) {
+		/* 扩充cpu buffer */
 		ret = __tracing_resize_ring_buffer(tr, trace_buf_size,
 						RING_BUFFER_ALL_CPUS);
 		if (ret < 0)
@@ -6528,10 +6650,12 @@ int tracing_set_tracer(struct trace_array *tr, const char *buf)
 		ret = 0;
 	}
 
+	/* 找到目标tracer */
 	for (t = trace_types; t; t = t->next) {
 		if (strcmp(t->name, buf) == 0)
 			break;
 	}
+	/* t就是要被设置为cur的tracer */
 	if (!t) {
 		ret = -EINVAL;
 		goto out;
@@ -6604,12 +6728,14 @@ int tracing_set_tracer(struct trace_array *tr, const char *buf)
 	tr->current_trace = &nop_trace;
 #endif
 
+/* 初始化tracer */
 	if (t->init) {
 		ret = tracer_init(t, tr);
 		if (ret)
 			goto out;
 	}
 
+	/* 设置cur tracer */
 	tr->current_trace = t;
 	tr->current_trace->enabled++;
 	trace_branch_enable(tr);
@@ -6618,11 +6744,12 @@ int tracing_set_tracer(struct trace_array *tr, const char *buf)
 
 	return ret;
 }
-
+/* cur tracer文件的写ops */
 static ssize_t
 tracing_set_trace_write(struct file *filp, const char __user *ubuf,
 			size_t cnt, loff_t *ppos)
 {
+	/* 获取tr */
 	struct trace_array *tr = filp->private_data;
 	char buf[MAX_TRACER_SIZE+1];
 	char *name;
@@ -6641,6 +6768,7 @@ tracing_set_trace_write(struct file *filp, const char __user *ubuf,
 
 	name = strim(buf);
 
+	/* 设置当前cur tracer */
 	err = tracing_set_tracer(tr, name);
 	if (err)
 		return err;
@@ -6734,6 +6862,7 @@ tracing_max_lat_write(struct file *filp, const char __user *ubuf,
 
 #endif
 
+/* 在tr的pipe cpumask标记cpu */
 static int open_pipe_on_cpu(struct trace_array *tr, int cpu)
 {
 	if (cpu == RING_BUFFER_ALL_CPUS) {
@@ -6759,6 +6888,7 @@ static void close_pipe_on_cpu(struct trace_array *tr, int cpu)
 	}
 }
 
+/* trace pipe文件的open ops */
 static int tracing_open_pipe(struct inode *inode, struct file *filp)
 {
 	struct trace_array *tr = inode->i_private;
@@ -6772,6 +6902,7 @@ static int tracing_open_pipe(struct inode *inode, struct file *filp)
 
 	mutex_lock(&trace_types_lock);
 	cpu = tracing_get_cpu(inode);
+	/* 在tr的pipe cpumask标记cpu */
 	ret = open_pipe_on_cpu(tr, cpu);
 	if (ret)
 		goto fail_pipe_on_cpu;
@@ -6783,6 +6914,7 @@ static int tracing_open_pipe(struct inode *inode, struct file *filp)
 		goto fail_alloc_iter;
 	}
 
+	/* 初始化iter的trace seq的seq buf */
 	trace_seq_init(&iter->seq);
 	iter->trace = tr->current_trace;
 
@@ -6801,12 +6933,14 @@ static int tracing_open_pipe(struct inode *inode, struct file *filp)
 	if (trace_clocks[tr->clock_id].in_ns)
 		iter->iter_flags |= TRACE_FILE_TIME_IN_NS;
 
+	/* 初始化iter */
 	iter->tr = tr;
 	iter->array_buffer = &tr->array_buffer;
 	iter->cpu_file = cpu;
 	mutex_init(&iter->mutex);
 	filp->private_data = iter;
 
+	/* 就是调用tracer的回调创建pipe吗 */
 	if (iter->trace->pipe_open)
 		iter->trace->pipe_open(iter);
 
@@ -6827,6 +6961,7 @@ fail_pipe_on_cpu:
 	return ret;
 }
 
+/* 释放trace pipe文件的ops */
 static int tracing_release_pipe(struct inode *inode, struct file *file)
 {
 	struct trace_iterator *iter = file->private_data;
@@ -6914,6 +7049,8 @@ static int tracing_wait_pipe(struct file *filp)
 }
 
 /*
+读取trace pipe文件的read ops
+好像是打印， 并且也拷贝到了ubuf
  * Consumer reader.
  */
 static ssize_t
@@ -6930,13 +7067,16 @@ tracing_read_pipe(struct file *filp, char __user *ubuf,
 	 */
 	mutex_lock(&iter->mutex);
 
-	/* return any leftover data */
+	/* return any leftover data
+	把seq buf拷贝到用户空间ubuf
+	*/
 	sret = trace_seq_to_user(&iter->seq, ubuf, cnt);
 	if (sret != -EBUSY)
 		goto out;
 
 	trace_seq_init(&iter->seq);
 
+	/* 为什么又调用回调来读 */
 	if (iter->trace->read) {
 		sret = iter->trace->read(iter, filp, ubuf, cnt, ppos);
 		if (sret)
@@ -6950,6 +7090,7 @@ waitagain:
 
 	/* stop when tracing is finished */
 	if (trace_empty(iter)) {
+		/* 如果没有trace结果了 */
 		sret = 0;
 		goto out;
 	}
@@ -6964,10 +7105,12 @@ waitagain:
 
 	trace_event_read_lock();
 	trace_access_lock(iter->cpu_file);
+	/* 循环不断取出trace entry */
 	while (trace_find_next_entry_inc(iter) != NULL) {
 		enum print_line_t ret;
 		int save_len = iter->seq.seq.len;
 
+		/* 打印结果 */
 		ret = print_trace_line(iter);
 		if (ret == TRACE_TYPE_PARTIAL_LINE) {
 			/*
@@ -7004,7 +7147,9 @@ waitagain:
 	trace_access_unlock(iter->cpu_file);
 	trace_event_read_unlock();
 
-	/* Now copy what we have to the user */
+	/* Now copy what we have to the user
+	为什么这里又拷贝
+	*/
 	sret = trace_seq_to_user(&iter->seq, ubuf, cnt);
 	if (iter->seq.seq.readpos >= trace_seq_used(&iter->seq))
 		trace_seq_init(&iter->seq);
@@ -7161,10 +7306,12 @@ out_err:
 	goto out;
 }
 
+/* 读取ops */
 static ssize_t
 tracing_entries_read(struct file *filp, char __user *ubuf,
 		     size_t cnt, loff_t *ppos)
 {
+	/* 获取inode获取tr */
 	struct inode *inode = file_inode(filp);
 	struct trace_array *tr = inode->i_private;
 	int cpu = tracing_get_cpu(inode);
@@ -7174,6 +7321,7 @@ tracing_entries_read(struct file *filp, char __user *ubuf,
 
 	mutex_lock(&trace_types_lock);
 
+	/* 如果是所有cpu */
 	if (cpu == RING_BUFFER_ALL_CPUS) {
 		int cpu, buf_size_same;
 		unsigned long size;
@@ -7209,6 +7357,7 @@ tracing_entries_read(struct file *filp, char __user *ubuf,
 	return ret;
 }
 
+/* 设置trace buffer大小 */
 static ssize_t
 tracing_entries_write(struct file *filp, const char __user *ubuf,
 		      size_t cnt, loff_t *ppos)
@@ -7228,6 +7377,7 @@ tracing_entries_write(struct file *filp, const char __user *ubuf,
 
 	/* value is in KB */
 	val <<= 10;
+	/* 修改trace buffer大小 */
 	ret = tracing_resize_ring_buffer(tr, val, tracing_get_cpu(inode));
 	if (ret < 0)
 		return ret;
@@ -7237,6 +7387,7 @@ tracing_entries_write(struct file *filp, const char __user *ubuf,
 	return cnt;
 }
 
+/* 读取总大小 */
 static ssize_t
 tracing_total_entries_read(struct file *filp, char __user *ubuf,
 				size_t cnt, loff_t *ppos)
@@ -7248,6 +7399,7 @@ tracing_total_entries_read(struct file *filp, char __user *ubuf,
 
 	mutex_lock(&trace_types_lock);
 	for_each_tracing_cpu(cpu) {
+		/* 统计每个pcp buffer的大小 */
 		size += per_cpu_ptr(tr->array_buffer.data, cpu)->entries >> 10;
 		if (!ring_buffer_expanded)
 			expanded_size += trace_buf_size >> 10;
@@ -7261,6 +7413,7 @@ tracing_total_entries_read(struct file *filp, char __user *ubuf,
 	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
 }
 
+/* 清空buffer */
 static ssize_t
 tracing_free_buffer_write(struct file *filp, const char __user *ubuf,
 			  size_t cnt, loff_t *ppos)
@@ -7275,6 +7428,7 @@ tracing_free_buffer_write(struct file *filp, const char __user *ubuf,
 	return cnt;
 }
 
+/*  */
 static int
 tracing_free_buffer_release(struct inode *inode, struct file *filp)
 {
@@ -7291,6 +7445,7 @@ tracing_free_buffer_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+/* 通过trace marker文件插入标记事件 */
 static ssize_t
 tracing_mark_write(struct file *filp, const char __user *ubuf,
 					size_t cnt, loff_t *fpos)
@@ -7311,6 +7466,7 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 	if (tracing_disabled)
 		return -EINVAL;
 
+	/* 没有开启功能 */
 	if (!(tr->trace_flags & TRACE_ITER_MARKERS))
 		return -EINVAL;
 
@@ -7325,16 +7481,21 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 	if (cnt < FAULTED_SIZE)
 		size += FAULTED_SIZE - cnt;
 
+		/* 获取trace buffer */
 	buffer = tr->array_buffer.buffer;
+	/* 预分配事件空间 */
 	event = __trace_buffer_lock_reserve(buffer, TRACE_PRINT, size,
 					    tracing_gen_ctx());
 	if (unlikely(!event))
 		/* Ring buffer disabled, return as if not open for write */
 		return -EBADF;
 
+	/* 类型转换 */
 	entry = ring_buffer_event_data(event);
+	/* 开始写入 */
 	entry->ip = _THIS_IP_;
 
+	/* 把事件内容拷贝过来 */
 	len = __copy_from_user_inatomic(&entry->buf, ubuf, cnt);
 	if (len) {
 		memcpy(&entry->buf, FAULTED_STR, FAULTED_SIZE);
@@ -7346,6 +7507,7 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 	if (tr->trace_marker_file && !list_empty(&tr->trace_marker_file->triggers)) {
 		/* do not add \n before testing triggers, but add \0 */
 		entry->buf[cnt] = '\0';
+		/* 调用triggers */
 		tt = event_triggers_call(tr->trace_marker_file, buffer, entry, event);
 	}
 
@@ -7368,6 +7530,7 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 /* Limit it for now to 3K (including tag) */
 #define RAW_DATA_MAX_SIZE (1024*3)
 
+/* trace mark raw文件的写入ops */
 static ssize_t
 tracing_mark_raw_write(struct file *filp, const char __user *ubuf,
 					size_t cnt, loff_t *fpos)
@@ -7402,6 +7565,7 @@ tracing_mark_raw_write(struct file *filp, const char __user *ubuf,
 		size += FAULT_SIZE_ID - cnt;
 
 	buffer = tr->array_buffer.buffer;
+	/* 预留空间 */
 	event = __trace_buffer_lock_reserve(buffer, TRACE_RAW_DATA, size,
 					    tracing_gen_ctx());
 	if (!event)
@@ -7423,6 +7587,11 @@ tracing_mark_raw_write(struct file *filp, const char __user *ubuf,
 	return written;
 }
 
+/* trace clock文件对应的seq file的show ops
+查看可以使用的时钟源
+root@laptop:/sys/kernel/debug/tracing# cat trace_clock 
+[local] global counter uptime perf mono mono_raw boot tai x86-tsc
+*/
 static int tracing_clock_show(struct seq_file *m, void *v)
 {
 	struct trace_array *tr = m->private;
@@ -7438,6 +7607,7 @@ static int tracing_clock_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+/* 设置trace时钟源 */
 int tracing_set_clock(struct trace_array *tr, const char *clockstr)
 {
 	int i;
@@ -7451,8 +7621,10 @@ int tracing_set_clock(struct trace_array *tr, const char *clockstr)
 
 	mutex_lock(&trace_types_lock);
 
+	/* 设置tracer的时钟源 */
 	tr->clock_id = i;
 
+	/* 设置buffer的时钟 */
 	ring_buffer_set_clock(tr->array_buffer.buffer, trace_clocks[i].func);
 
 	/*
@@ -7472,6 +7644,7 @@ int tracing_set_clock(struct trace_array *tr, const char *clockstr)
 	return 0;
 }
 
+/* 设置trace时钟源 */
 static ssize_t tracing_clock_write(struct file *filp, const char __user *ubuf,
 				   size_t cnt, loff_t *fpos)
 {
@@ -7500,6 +7673,7 @@ static ssize_t tracing_clock_write(struct file *filp, const char __user *ubuf,
 	return cnt;
 }
 
+/* 打开trace clock文件的open ops */
 static int tracing_clock_open(struct inode *inode, struct file *file)
 {
 	struct trace_array *tr = inode->i_private;
@@ -7509,6 +7683,7 @@ static int tracing_clock_open(struct inode *inode, struct file *file)
 	if (ret)
 		return ret;
 
+	/* 创建seq file */
 	ret = single_open(file, tracing_clock_show, inode->i_private);
 	if (ret < 0)
 		trace_array_put(tr);
@@ -7516,6 +7691,7 @@ static int tracing_clock_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
+/* 显示时间戳模式的seq file的show函数 */
 static int tracing_time_stamp_mode_show(struct seq_file *m, void *v)
 {
 	struct trace_array *tr = m->private;
@@ -7532,6 +7708,7 @@ static int tracing_time_stamp_mode_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+/* 打开文件， 读取事件戳显示模式 */
 static int tracing_time_stamp_mode_open(struct inode *inode, struct file *file)
 {
 	struct trace_array *tr = inode->i_private;
@@ -7790,66 +7967,92 @@ static const struct file_operations tracing_max_lat_fops = {
 	.release	= tracing_release_generic_tr,
 };
 #endif
-
+/* ftrace的current tracer文件的fops */
 static const struct file_operations set_tracer_fops = {
+	/* 打开tr */
 	.open		= tracing_open_generic_tr,
+	/* 读取cur tracer得到name */
 	.read		= tracing_set_trace_read,
+	/* 设置新的cur tracer */
 	.write		= tracing_set_trace_write,
+
 	.llseek		= generic_file_llseek,
+
 	.release	= tracing_release_generic_tr,
 };
 
+/* 类似 trace，但以流式方式实时输出跟踪数据（阻塞读取，适合动态分析）。 */
 static const struct file_operations tracing_pipe_fops = {
+	/* 打开pipe */
 	.open		= tracing_open_pipe,
 	.poll		= tracing_poll_pipe,
+	/* 打印，读取 */
 	.read		= tracing_read_pipe,
 	.splice_read	= tracing_splice_read_pipe,
 	.release	= tracing_release_pipe,
 	.llseek		= no_llseek,
 };
 
+/*  */
 static const struct file_operations tracing_entries_fops = {
+	/* 打开tr的通用函数
+	ref，链接到priv */
 	.open		= tracing_open_generic_tr,
+	/* 读取当前大小 */
 	.read		= tracing_entries_read,
+	/* 修改buffer大小 */
 	.write		= tracing_entries_write,
 	.llseek		= generic_file_llseek,
 	.release	= tracing_release_generic_tr,
 };
 
+/* 缓冲区总大小 */
 static const struct file_operations tracing_total_entries_fops = {
+	/* 打开tr，增加ref，指针放到priv里面 */
 	.open		= tracing_open_generic_tr,
+	/* 读取总大小 */
 	.read		= tracing_total_entries_read,
 	.llseek		= generic_file_llseek,
 	.release	= tracing_release_generic_tr,
 };
 
+/*  */
 static const struct file_operations tracing_free_buffer_fops = {
+	/* 打开tr */
 	.open		= tracing_open_generic_tr,
+	/* 通过写入来清空buffer */
 	.write		= tracing_free_buffer_write,
 	.release	= tracing_free_buffer_release,
 };
 
 static const struct file_operations tracing_mark_fops = {
 	.open		= tracing_mark_open,
+	/* 插入标记事件 */
 	.write		= tracing_mark_write,
 	.release	= tracing_release_generic_tr,
 };
 
+/* trace mark raw文件 */
 static const struct file_operations tracing_mark_raw_fops = {
 	.open		= tracing_mark_open,
 	.write		= tracing_mark_raw_write,
 	.release	= tracing_release_generic_tr,
 };
 
+/* trace clock的fops */
 static const struct file_operations trace_clock_fops = {
+	/* 打开tr， 打开seq file */
 	.open		= tracing_clock_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= tracing_single_release_tr,
+	/* 设置时钟源 */
 	.write		= tracing_clock_write,
 };
 
+/*  */
 static const struct file_operations trace_time_stamp_mode_fops = {
+	/* 创建seq file */
 	.open		= tracing_time_stamp_mode_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
@@ -8126,8 +8329,10 @@ static void clear_tracing_err_log(struct trace_array *tr)
 	mutex_unlock(&tracing_err_log_lock);
 }
 
+/* seq file开始读取ftrace错误日志 */
 static void *tracing_err_log_seq_start(struct seq_file *m, loff_t *pos)
 {
+	/*  */
 	struct trace_array *tr = m->private;
 
 	mutex_lock(&tracing_err_log_lock);
@@ -8135,6 +8340,7 @@ static void *tracing_err_log_seq_start(struct seq_file *m, loff_t *pos)
 	return seq_list_start(&tr->err_log, *pos);
 }
 
+/* seq file读取下一个错误日志 */
 static void *tracing_err_log_seq_next(struct seq_file *m, void *v, loff_t *pos)
 {
 	struct trace_array *tr = m->private;
@@ -8177,6 +8383,7 @@ static int tracing_err_log_seq_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+/* 读取ftrace错误日志的seq file的fops */
 static const struct seq_operations tracing_err_log_seq_ops = {
 	.start  = tracing_err_log_seq_start,
 	.next   = tracing_err_log_seq_next,
@@ -8184,6 +8391,7 @@ static const struct seq_operations tracing_err_log_seq_ops = {
 	.show   = tracing_err_log_seq_show
 };
 
+/* ftrace打开错误日志文件 */
 static int tracing_err_log_open(struct inode *inode, struct file *file)
 {
 	struct trace_array *tr = inode->i_private;
@@ -8198,6 +8406,7 @@ static int tracing_err_log_open(struct inode *inode, struct file *file)
 		clear_tracing_err_log(tr);
 
 	if (file->f_mode & FMODE_READ) {
+		/* 打开一个seq file，读取错误日志 */
 		ret = seq_open(file, &tracing_err_log_seq_ops);
 		if (!ret) {
 			struct seq_file *m = file->private_data;
@@ -8228,6 +8437,7 @@ static int tracing_err_log_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+/* ftrace错误日志文件的fops */
 static const struct file_operations tracing_err_log_fops = {
 	.open           = tracing_err_log_open,
 	.write		= tracing_err_log_write,
@@ -8593,6 +8803,7 @@ static const struct file_operations tracing_buffers_fops = {
 	.llseek		= no_llseek,
 };
 
+/* 读取pcp文件夹下面的cpu stats文件 */
 static ssize_t
 tracing_stats_read(struct file *filp, char __user *ubuf,
 		   size_t count, loff_t *ppos)
@@ -8657,6 +8868,7 @@ tracing_stats_read(struct file *filp, char __user *ubuf,
 	return count;
 }
 
+/* pcp的stats文件的fops */
 static const struct file_operations tracing_stats_fops = {
 	.open		= tracing_open_generic_tr,
 	.read		= tracing_stats_read,
@@ -8867,6 +9079,7 @@ static struct dentry *tracing_get_dentry(struct trace_array *tr)
 	return tr->dir;
 }
 
+/* 获取ftrace的percpu的文件夹的某cpu文件夹 */
 static struct dentry *tracing_dentry_percpu(struct trace_array *tr, int cpu)
 {
 	struct dentry *d_tracer;
@@ -8878,6 +9091,7 @@ static struct dentry *tracing_dentry_percpu(struct trace_array *tr, int cpu)
 	if (IS_ERR(d_tracer))
 		return NULL;
 
+	/* 创建percpu文件夹 */
 	tr->percpu_dir = tracefs_create_dir("per_cpu", d_tracer);
 
 	MEM_FAIL(!tr->percpu_dir,
@@ -8897,6 +9111,7 @@ trace_create_cpu_file(const char *name, umode_t mode, struct dentry *parent,
 	return ret;
 }
 
+/* ftrace创建percpu文件夹 */
 static void
 tracing_init_tracefs_percpu(struct trace_array *tr, long cpu)
 {
@@ -8908,12 +9123,17 @@ tracing_init_tracefs_percpu(struct trace_array *tr, long cpu)
 		return;
 
 	snprintf(cpu_dir, 30, "cpu%ld", cpu);
+	/* 创建这个cpu的pcp 文件夹 */
 	d_cpu = tracefs_create_dir(cpu_dir, d_percpu);
 	if (!d_cpu) {
 		pr_warn("Could not create tracefs '%s' entry\n", cpu_dir);
 		return;
 	}
 
+	/* 开始创建文件夹内容
+	root@laptop:/sys/kernel/debug/tracing# ls per_cpu/cpu0/
+	buffer_size_kb  snapshot  snapshot_raw  stats  trace  trace_pipe  trace_pipe_raw
+ */
 	/* per cpu trace_pipe */
 	trace_create_cpu_file("trace_pipe", TRACE_MODE_READ, d_cpu,
 				tr, cpu, &tracing_pipe_fops);
@@ -9051,15 +9271,18 @@ static void get_tr_index(void *data, struct trace_array **ptr,
 			    trace_flags_index);
 }
 
+/* 读取option file的值的ops */
 static ssize_t
 trace_options_core_read(struct file *filp, char __user *ubuf, size_t cnt,
 			loff_t *ppos)
 {
+	/*  */
 	void *tr_index = filp->private_data;
 	struct trace_array *tr;
 	unsigned int index;
 	char *buf;
 
+	/* 获取对应选项的值 */
 	get_tr_index(tr_index, &tr, &index);
 
 	if (tr->trace_flags & (1 << index))
@@ -9070,10 +9293,12 @@ trace_options_core_read(struct file *filp, char __user *ubuf, size_t cnt,
 	return simple_read_from_buffer(ubuf, cnt, ppos, buf, 2);
 }
 
+/* 写入option file选项的值 */
 static ssize_t
 trace_options_core_write(struct file *filp, const char __user *ubuf, size_t cnt,
 			 loff_t *ppos)
 {
+	/*  */
 	void *tr_index = filp->private_data;
 	struct trace_array *tr;
 	unsigned int index;
@@ -9091,6 +9316,7 @@ trace_options_core_write(struct file *filp, const char __user *ubuf, size_t cnt,
 
 	mutex_lock(&event_mutex);
 	mutex_lock(&trace_types_lock);
+	/* 写入选项 */
 	ret = set_tracer_flag(tr, 1 << index, val);
 	mutex_unlock(&trace_types_lock);
 	mutex_unlock(&event_mutex);
@@ -9103,13 +9329,14 @@ trace_options_core_write(struct file *filp, const char __user *ubuf, size_t cnt,
 	return cnt;
 }
 
+/* option file的fops */
 static const struct file_operations trace_options_core_fops = {
 	.open = tracing_open_generic,
 	.read = trace_options_core_read,
 	.write = trace_options_core_write,
 	.llseek = generic_file_llseek,
 };
-
+/* 创建一个ftrace的文件 */
 struct dentry *trace_create_file(const char *name,
 				 umode_t mode,
 				 struct dentry *parent,
@@ -9117,7 +9344,7 @@ struct dentry *trace_create_file(const char *name,
 				 const struct file_operations *fops)
 {
 	struct dentry *ret;
-
+/* 在tracefs创建一个文件 */
 	ret = tracefs_create_file(name, mode, parent, data, fops);
 	if (!ret)
 		pr_warn("Could not create tracefs '%s' entry\n", name);
@@ -9126,6 +9353,7 @@ struct dentry *trace_create_file(const char *name,
 }
 
 
+/* 创建options文件夹 */
 static struct dentry *trace_options_init_dentry(struct trace_array *tr)
 {
 	struct dentry *d_tracer;
@@ -9137,6 +9365,7 @@ static struct dentry *trace_options_init_dentry(struct trace_array *tr)
 	if (IS_ERR(d_tracer))
 		return NULL;
 
+	/* 创建文件夹 */
 	tr->options = tracefs_create_dir("options", d_tracer);
 	if (!tr->options) {
 		pr_warn("Could not create tracefs directory 'options'\n");
@@ -9228,6 +9457,7 @@ create_trace_option_files(struct trace_array *tr, struct tracer *tracer)
 	}
 }
 
+/* 创建option file */
 static struct dentry *
 create_trace_option_core_file(struct trace_array *tr,
 			      const char *option, long index)
@@ -9243,16 +9473,34 @@ create_trace_option_core_file(struct trace_array *tr,
 				 &trace_options_core_fops);
 }
 
+/* 
+root@laptop:/sys/kernel/debug/tracing# ls options/
+annotate           funcgraph-cpu         function-trace   record-cmd
+bin                funcgraph-duration    graph-time       record-tgid
+blk_cgname         funcgraph-irqs        hash-ptr         sleep-time
+blk_cgroup         funcgraph-overhead    hex              stacktrace
+blk_classic        funcgraph-overrun     irq-info         sym-addr
+block              funcgraph-proc        latency-format   sym-offset
+context-info       funcgraph-retval      markers          sym-userobj
+disable_on_free    funcgraph-retval-hex  overwrite        test_nop_accept
+display-graph      funcgraph-tail        pause-on-trace   test_nop_refuse
+event-fork         func-no-repeats       printk-msg-only  trace_printk
+fields             func_stack_trace      print-parent     userstacktrace
+funcgraph-abstime  function-fork         raw              verbose
+root@laptop:/sys/kernel/debug/tracing# 
+*/
 static void create_trace_options_dir(struct trace_array *tr)
 {
 	struct dentry *t_options;
 	bool top_level = tr == &global_trace;
 	int i;
 
+	/* 创建文件夹 */
 	t_options = trace_options_init_dentry(tr);
 	if (!t_options)
 		return;
 
+	/* 逐个创建文件 */
 	for (i = 0; trace_options[i]; i++) {
 		if (top_level ||
 		    !((1 << i) & TOP_LEVEL_TRACE_FLAGS))
@@ -9260,38 +9508,46 @@ static void create_trace_options_dir(struct trace_array *tr)
 	}
 }
 
+/* 读取当前ftrace是不是开启的 */
 static ssize_t
 rb_simple_read(struct file *filp, char __user *ubuf,
 	       size_t cnt, loff_t *ppos)
 {
+	/* 取出tr */
 	struct trace_array *tr = filp->private_data;
 	char buf[64];
 	int r;
 
+	/* 检查是否是开启的 */
 	r = tracer_tracing_is_on(tr);
 	r = sprintf(buf, "%d\n", r);
 
 	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
 }
 
+/* tracing on文件的写ops */
 static ssize_t
 rb_simple_write(struct file *filp, const char __user *ubuf,
 		size_t cnt, loff_t *ppos)
 {
+	/*  */
 	struct trace_array *tr = filp->private_data;
 	struct trace_buffer *buffer = tr->array_buffer.buffer;
 	unsigned long val;
 	int ret;
 
+	/* 获取用户写入的值，赋值到val */
 	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
 	if (ret)
 		return ret;
 
 	if (buffer) {
+		/*  */
 		mutex_lock(&trace_types_lock);
 		if (!!val == tracer_tracing_is_on(tr)) {
 			val = 0; /* do nothing */
 		} else if (val) {
+			/* 开启tracing */
 			tracer_tracing_on(tr);
 			if (tr->current_trace->start)
 				tr->current_trace->start(tr);
@@ -9310,18 +9566,23 @@ rb_simple_write(struct file *filp, const char __user *ubuf,
 	return cnt;
 }
 
+/* tracing on文件的fops */
 static const struct file_operations rb_simple_fops = {
 	.open		= tracing_open_generic_tr,
+	/* 读取当前是不是开启的 */
 	.read		= rb_simple_read,
+	/* 控制trace的开关 */
 	.write		= rb_simple_write,
 	.release	= tracing_release_generic_tr,
 	.llseek		= default_llseek,
 };
 
+/* 读取trace percent */
 static ssize_t
 buffer_percent_read(struct file *filp, char __user *ubuf,
 		    size_t cnt, loff_t *ppos)
 {
+	/*  */
 	struct trace_array *tr = filp->private_data;
 	char buf[64];
 	int r;
@@ -9332,6 +9593,7 @@ buffer_percent_read(struct file *filp, char __user *ubuf,
 	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
 }
 
+/* 写入新的buffer percent值 */
 static ssize_t
 buffer_percent_write(struct file *filp, const char __user *ubuf,
 		     size_t cnt, loff_t *ppos)
@@ -9354,9 +9616,12 @@ buffer_percent_write(struct file *filp, const char __user *ubuf,
 	return cnt;
 }
 
+/*  */
 static const struct file_operations buffer_percent_fops = {
 	.open		= tracing_open_generic_tr,
+	/* 读取值 */
 	.read		= buffer_percent_read,
+	/* 写入新的percent */
 	.write		= buffer_percent_write,
 	.release	= tracing_release_generic_tr,
 	.llseek		= default_llseek,
@@ -9755,72 +10020,85 @@ static __init void create_trace_instances(struct dentry *d_tracer)
 	mutex_unlock(&trace_types_lock);
 	mutex_unlock(&event_mutex);
 }
-
+/* 初始化ftrace的fs相关 */
 static void
 init_tracer_tracefs(struct trace_array *tr, struct dentry *d_tracer)
 {
 	struct trace_event_file *file;
 	int cpu;
-
+/* 下面都是tracefs的文件 */
+/* 当前系统的tracers */
 	trace_create_file("available_tracers", TRACE_MODE_READ, d_tracer,
 			tr, &show_traces_fops);
-
+/* 设置当前的tracer */
 	trace_create_file("current_tracer", TRACE_MODE_WRITE, d_tracer,
 			tr, &set_tracer_fops);
-
+/* trace的cpu */
 	trace_create_file("tracing_cpumask", TRACE_MODE_WRITE, d_tracer,
 			  tr, &tracing_cpumask_fops);
-
+/* 控制trace选项，比如是否记录时间戳 */
 	trace_create_file("trace_options", TRACE_MODE_WRITE, d_tracer,
 			  tr, &tracing_iter_fops);
-
+/* 从这里读取trace的结果 */
 	trace_create_file("trace", TRACE_MODE_WRITE, d_tracer,
 			  tr, &tracing_fops);
 
+/* 也是读取trace结果的 */
 	trace_create_file("trace_pipe", TRACE_MODE_READ, d_tracer,
 			  tr, &tracing_pipe_fops);
-
+/* 设置缓冲区大小 */
 	trace_create_file("buffer_size_kb", TRACE_MODE_WRITE, d_tracer,
 			  tr, &tracing_entries_fops);
 
+/* 总大小 */
 	trace_create_file("buffer_total_size_kb", TRACE_MODE_READ, d_tracer,
 			  tr, &tracing_total_entries_fops);
-
+/* 清空buffer缓冲区 */
 	trace_create_file("free_buffer", 0200, d_tracer,
 			  tr, &tracing_free_buffer_fops);
 
+/* 允许用户空间程序向跟踪缓冲区插入标记事件（用于关联用户态和内核态行为）。
+作用是？ */
 	trace_create_file("trace_marker", 0220, d_tracer,
 			  tr, &tracing_mark_fops);
 
+	/*  
+	root@laptop:/sys/kernel/debug/tracing# ls events/ftrace/print/
+	format  hist  id  inject  trigger
+	root@laptop:/sys/kernel/debug/tracing# 
+ */
 	file = __find_event_file(tr, "ftrace", "print");
-	if (file && file->ef)
+	if (file && file->ef)/* 添加trigger这个ef文件 */
 		eventfs_add_file("trigger", TRACE_MODE_WRITE, file->ef,
 				  file, &event_trigger_fops);
 	tr->trace_marker_file = file;
-
+/*  */
 	trace_create_file("trace_marker_raw", 0220, d_tracer,
 			  tr, &tracing_mark_raw_fops);
 
+/* 选择跟踪时钟源（如 local、global、mono 等）。 */
 	trace_create_file("trace_clock", TRACE_MODE_WRITE, d_tracer, tr,
 			  &trace_clock_fops);
-
+/* 控制开启关闭 */
 	trace_create_file("tracing_on", TRACE_MODE_WRITE, d_tracer,
 			  tr, &rb_simple_fops);
-
+/* 时间戳的显示模式 */
 	trace_create_file("timestamp_mode", TRACE_MODE_READ, d_tracer, tr,
 			  &trace_time_stamp_mode_fops);
 
 	tr->buffer_percent = 50;
-
+/* 设置缓冲区填充百分比阈值（用于触发快照或事件）。？ */
 	trace_create_file("buffer_percent", TRACE_MODE_WRITE, d_tracer,
 			tr, &buffer_percent_fops);
 
+	/* 创建options文件夹 */
 	create_trace_options_dir(tr);
 
 #ifdef CONFIG_TRACER_MAX_TRACE
 	trace_create_maxlat_file(tr, d_tracer);
 #endif
 
+/* 创建黑名单白名单文件夹 */
 	if (ftrace_create_function_files(tr, d_tracer))
 		MEM_FAIL(1, "Could not allocate function filter files");
 
@@ -9829,9 +10107,11 @@ init_tracer_tracefs(struct trace_array *tr, struct dentry *d_tracer)
 			  tr, &snapshot_fops);
 #endif
 
+/* 日志文件 */
 	trace_create_file("error_log", TRACE_MODE_WRITE, d_tracer,
 			  tr, &tracing_err_log_fops);
 
+/* 创建percpu文件夹 */
 	for_each_tracing_cpu(cpu)
 		tracing_init_tracefs_percpu(tr, cpu);
 

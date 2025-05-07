@@ -249,6 +249,7 @@ enum {
 	FTRACE_OPS_FL_STUB			= BIT(5),
 	FTRACE_OPS_FL_INITIALIZED		= BIT(6),
 	FTRACE_OPS_FL_DELETED			= BIT(7),
+	/* 表示正在处于添加过程中 */
 	FTRACE_OPS_FL_ADDING			= BIT(8),
 	FTRACE_OPS_FL_REMOVING			= BIT(9),
 	FTRACE_OPS_FL_MODIFYING			= BIT(10),
@@ -341,13 +342,15 @@ struct ftrace_ops {
 	/* 指向下一个ops */
 	struct ftrace_ops __rcu		*next;
 	unsigned long			flags;
+	/* 指向tr */
 	void				*private;
 	ftrace_func_t			saved_func;
 #ifdef CONFIG_DYNAMIC_FTRACE
 	struct ftrace_ops_hash		local_hash;
-	/* hash */
+	/* hash表，存的是ip */
 	struct ftrace_ops_hash		*func_hash;
 	struct ftrace_ops_hash		old_hash;
+	/* 是什么跳板地址 */
 	unsigned long			trampoline;
 	unsigned long			trampoline_size;
 	struct list_head		list;
@@ -403,6 +406,7 @@ extern enum ftrace_tracing_type_t ftrace_tracing_type;
 int register_ftrace_function(struct ftrace_ops *ops);
 int unregister_ftrace_function(struct ftrace_ops *ops);
 
+/* 占位的空函数 */
 extern void ftrace_stub(unsigned long a0, unsigned long a1,
 			struct ftrace_ops *op, struct ftrace_regs *fregs);
 
@@ -424,9 +428,12 @@ static inline int ftrace_lookup_symbols(const char **sorted_syms, size_t cnt, un
 }
 #endif /* CONFIG_FUNCTION_TRACER */
 
+/*  */
 struct ftrace_func_entry {
+	/* 链接到ftrace的hash */
 	struct hlist_node hlist;
 	unsigned long ip;
+	/* 是一个addr */
 	unsigned long direct; /* for direct lookup only */
 };
 
@@ -560,6 +567,8 @@ struct ftrace_ops *ftrace_ops_trampoline(unsigned long addr);
 bool is_ftrace_trampoline(unsigned long addr);
 
 /*
+dyn_ftrace 记录的 flags 字段的各个标志位，这些标志位用于控制 ftrace 
+对内核函数的跟踪行为。
  * The dyn_ftrace record's flags field is split into two parts.
  * the first part which is '0-FTRACE_REF_MAX' is a counter of
  * the number of callbacks that have registered the function that
@@ -584,26 +593,41 @@ bool is_ftrace_trampoline(unsigned long addr);
  * from tracing that function.
  */
 enum {
+	/* 表示该函数当前正在被跟踪 */
 	FTRACE_FL_ENABLED	= (1UL << 31),
+	/* 表示至少一个 ftrace_ops 要求保存寄存器上下文（pt_regs）。 */
 	FTRACE_FL_REGS		= (1UL << 30),
+	/* 表示该函数已配置为实际保存寄存器上下文。 */
 	FTRACE_FL_REGS_EN	= (1UL << 29),
+	/* 表示使用跳板函数（trampoline）进行跟踪。 */
 	FTRACE_FL_TRAMP		= (1UL << 28),
+	
 	FTRACE_FL_TRAMP_EN	= (1UL << 27),
+	/* 允许修改函数的指令指针（IP），用于动态跳转（如动态修改调用目标）。 */
 	FTRACE_FL_IPMODIFY	= (1UL << 26),
+	/* 暂时禁用对该函数的跟踪操作（例如函数正在被修改时）。 */
 	FTRACE_FL_DISABLED	= (1UL << 25),
+	/* 表示至少一个 ftrace_ops 要求使用直接调用（绕过 ftrace 框架）。 */
 	FTRACE_FL_DIRECT	= (1UL << 24),
+	
 	FTRACE_FL_DIRECT_EN	= (1UL << 23),
+	/* 表示该函数可以调用与调用位置（callsite）相关的特定操作集。 */
 	FTRACE_FL_CALL_OPS	= (1UL << 22),
+	
 	FTRACE_FL_CALL_OPS_EN	= (1UL << 21),
+	
 	FTRACE_FL_TOUCHED	= (1UL << 20),
+	/* 表示该函数已被动态修改（如插入 IPMODIFY 或 DIRECT 相关指令）。 */
 	FTRACE_FL_MODIFIED	= (1UL << 19),
 };
 
 #define FTRACE_REF_MAX_SHIFT	19
 #define FTRACE_REF_MAX		((1UL << FTRACE_REF_MAX_SHIFT) - 1)
 
+/* 表示正在被ref？ */
 #define ftrace_rec_count(rec)	((rec)->flags & FTRACE_REF_MAX)
 
+/*  */
 struct dyn_ftrace {
 	unsigned long		ip; /* address of mcount call-site */
 	unsigned long		flags;
@@ -624,8 +648,10 @@ void ftrace_free_filter(struct ftrace_ops *ops);
 void ftrace_ops_set_global_filter(struct ftrace_ops *ops);
 /* ftrace相关的bitmask */
 enum {
+	/*  */
 	FTRACE_UPDATE_CALLS		= (1 << 0),
 	FTRACE_DISABLE_CALLS		= (1 << 1),  /* 关闭的表示 */
+	/*  */
 	FTRACE_UPDATE_TRACE_FUNC	= (1 << 2),
 	FTRACE_START_FUNC_RET		= (1 << 3),
 	FTRACE_STOP_FUNC_RET		= (1 << 4),
@@ -644,9 +670,13 @@ enum {
  *  MAKE_NOP         - Stop tracing the function
  */
 enum {
+	/* 无需操作 */
 	FTRACE_UPDATE_IGNORE,
+	/* 开始trace这个func */
 	FTRACE_UPDATE_MAKE_CALL,
+	/* 停止保存寄存器 */
 	FTRACE_UPDATE_MODIFY_CALL,
+	/* 停止trace这个函数 */
 	FTRACE_UPDATE_MAKE_NOP,
 };
 
@@ -655,7 +685,9 @@ enum {
 	FTRACE_ITER_NOTRACE	= (1 << 1),
 	FTRACE_ITER_PRINTALL	= (1 << 2),
 	FTRACE_ITER_DO_PROBES	= (1 << 3),
+	/* 遍历probe的iter */
 	FTRACE_ITER_PROBE	= (1 << 4),
+	/* 遍历mod的iter */
 	FTRACE_ITER_MOD		= (1 << 5),
 	FTRACE_ITER_ENABLED	= (1 << 6),
 	FTRACE_ITER_TOUCHED	= (1 << 7),

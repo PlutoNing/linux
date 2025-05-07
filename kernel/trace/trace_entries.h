@@ -237,6 +237,7 @@ FTRACE_ENTRY(bprint, bprint_entry,
 		 (void *)__entry->ip, __entry->fmt)
 );
 
+/* 一种条目的类型 */
 FTRACE_ENTRY_REG(print, print_entry,
 
 	TRACE_PRINT,

@@ -77,6 +77,7 @@ void ftrace_free_ftrace_ops(struct trace_array *tr)
 	tr->ops = NULL;
 }
 
+/* 创建黑名单白名单文件夹 */
 int ftrace_create_function_files(struct trace_array *tr,
 				 struct dentry *parent)
 {

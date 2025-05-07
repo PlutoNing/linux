@@ -184,6 +184,7 @@ struct trace_array_cpu {
 	atomic_t		disabled;
 	void			*buffer_page;	/* ring buffer spare */
 
+	/* 指buffer大小 */
 	unsigned long		entries;
 	unsigned long		saved_latency;
 	unsigned long		critical_start;
@@ -199,6 +200,7 @@ struct trace_array_cpu {
 	char			comm[TASK_COMM_LEN];
 
 #ifdef CONFIG_FUNCTION_TRACER
+/*  */
 	int			ftrace_ignore_pid;
 #endif
 	bool			ignore_pid;
@@ -207,9 +209,13 @@ struct trace_array_cpu {
 struct tracer;
 struct trace_option_dentry;
 
+/* 一个trace buffer的wrapper */
 struct array_buffer {
+	/* 对应的tr */
 	struct trace_array		*tr;
+	/* 真正的trace buffer */
 	struct trace_buffer		*buffer;
+	/* 这个data存储什么 */
 	struct trace_array_cpu __percpu	*data;
 	u64				time_start;
 	int				cpu;
@@ -236,6 +242,7 @@ enum {
 	TRACE_NO_PIDS		= BIT(1),
 };
 
+/* 是否开启了pid trace */
 static inline bool pid_type_enabled(int type, struct trace_pid_list *pid_list,
 				    struct trace_pid_list *no_pid_list)
 {
@@ -312,6 +319,7 @@ struct trace_func_repeats {
 };
 
 /*
+一个tracer的数组
  * The trace array - an array of per-CPU trace arrays. This is the
  * highest level data structure that individual tracers deal with.
  * They have on/off state as well:
@@ -367,16 +375,21 @@ struct trace_array {
 	struct trace_event_file __rcu *exit_syscall_files[NR_syscalls];
 #endif
 	int			stop_count;
+	/* 使用的时钟源 */
 	int			clock_id;
 	int			nr_topts;
 	bool			clear_trace;
+	/* 对应buffer percent文件 */
 	int			buffer_percent;
 	unsigned int		n_err_log_entries;
+	/* 系统的current tracer */
 	struct tracer		*current_trace;
 	unsigned int		trace_flags;
+	/* trace options的数组 */
 	unsigned char		trace_flags_index[TRACE_FLAGS_MAX_SIZE];
 	unsigned int		flags;
 	raw_spinlock_t		start_lock;
+	/* 对应错误日志文件 */
 	struct list_head	err_log;
 	struct dentry		*dir;
 	struct dentry		*options;
@@ -384,16 +397,20 @@ struct trace_array {
 	struct dentry		*event_dir;
 	struct trace_options	*topts;
 	struct list_head	systems;
+	/* 链接着相关的event file */
 	struct list_head	events;
 	struct trace_event_file *trace_marker_file;
 	cpumask_var_t		tracing_cpumask; /* only trace on set CPUs */
 	/* one per_cpu trace_pipe can be opened by only one user */
 	cpumask_var_t		pipe_cpumask;
 	int			ref;
+	/* 好像是表示正在被使用？ */
 	int			trace_ref;
 #ifdef CONFIG_FUNCTION_TRACER
 	struct ftrace_ops	*ops;
+	/* 要trace的pid？ */
 	struct trace_pid_list	__rcu *function_pids;
+	/* 不要trace的pid？ */
 	struct trace_pid_list	__rcu *function_no_pids;
 #ifdef CONFIG_DYNAMIC_FTRACE
 	/* All of these are protected by the ftrace_lock */
@@ -513,6 +530,7 @@ struct tracer_opt {
 };
 
 /*
+表示一个tracer的flag option
  * The set of specific options for a tracer. Your tracer
  * have to set the initial value of the flags val.
  */
@@ -534,6 +552,7 @@ struct trace_option_dentry {
 };
 
 /**
+表示一个tracer
  * struct tracer - a specific tracer and its callbacks to interact with tracefs
  * @name: the name chosen to select it on the available_tracers file
  * @init: called when one switches to this tracer (echo name > current_tracer)
@@ -554,10 +573,13 @@ struct trace_option_dentry {
  * @flags: your private flags
  */
 struct tracer {
+	/* tracer的名字 */
 	const char		*name;
 	int			(*init)(struct trace_array *tr);
 	void			(*reset)(struct trace_array *tr);
+	/* 开启trace后， 会调用这个 */
 	void			(*start)(struct trace_array *tr);
+	/* 关闭trace机制后调用 */
 	void			(*stop)(struct trace_array *tr);
 	int			(*update_thresh)(struct trace_array *tr);
 	void			(*open)(struct trace_iterator *iter);
@@ -579,13 +601,16 @@ struct tracer {
 #endif
 	void			(*print_header)(struct seq_file *m);
 	enum print_line_t	(*print_line)(struct trace_iterator *iter);
-	/* If you handled the flag setting, return 0 */
+	/* 
+	设置tracer的flag的回调
+	If you handled the flag setting, return 0 */
 	int			(*set_flag)(struct trace_array *tr,
 					    u32 old_flags, u32 bit, int set);
 	/* Return 0 if OK with change, else return non-zero */
 	int			(*flag_changed)(struct trace_array *tr,
 						u32 mask, int set);
 	struct tracer		*next;
+	/* trace的option flag */
 	struct tracer_flags	*flags;
 	int			enabled;
 	bool			print_max;
@@ -593,10 +618,13 @@ struct tracer {
 #ifdef CONFIG_TRACER_MAX_TRACE
 	bool			use_max_tr;
 #endif
-	/* True if tracer cannot be enabled in kernel param */
+	/* 
+	能否在boot使用
+	True if tracer cannot be enabled in kernel param */
 	bool			noboot;
 };
 
+/* 取出cpu对应的iter */
 static inline struct ring_buffer_iter *
 trace_buffer_iter(struct trace_iterator *iter, int cpu)
 {
@@ -686,6 +714,7 @@ loff_t tracing_lseek(struct file *file, loff_t offset, int whence);
 
 extern cpumask_var_t __read_mostly tracing_buffer_mask;
 
+/* 遍历每一个正在ftrace的cpu */
 #define for_each_tracing_cpu(cpu)	\
 	for_each_cpu(cpu, tracing_buffer_mask)
 
@@ -828,7 +857,9 @@ enum {
 /*  */
 struct ftrace_hash {
 	unsigned long		size_bits;
+	/* 一个hash slot， 供rec ip链接 */
 	struct hlist_head	*buckets;
+	/* hash里面的rec数量 */
 	unsigned long		count;
 	unsigned long		flags;
 	struct rcu_head		rcu;
@@ -1155,6 +1186,7 @@ struct trace_parser {
 	unsigned	size;
 };
 
+/*  */
 static inline bool trace_parser_loaded(struct trace_parser *parser)
 {
 	return (parser->idx != 0);
@@ -1212,6 +1244,7 @@ extern int trace_get_user(struct trace_parser *parser, const char __user *ubuf,
 #endif
 
 /*
+ftrace的trace options
  * trace_iterator_flags is an enumeration that defines bit
  * positions into trace_flags that controls the output.
  *
@@ -1480,6 +1513,13 @@ struct regex;
 
 typedef int (*regex_match_func)(char *str, struct regex *r, int len);
 
+/* 
+MATCH_INDEX	按数字索引或地址匹配（如 123）。
+MATCH_END_ONLY	后缀匹配（如 *alloc）。
+MATCH_FRONT_ONLY	前缀匹配（如 ext4_*）。
+MATCH_MIDDLE_ONLY	中间模糊匹配（如 start*end，需手动截断）。
+MATCH_GLOB	复杂通配符（如 ne*twork 或 dev[ab]），需调用 glob 函数处理。
+MATCH_FULL	完全匹配（无通配符，如 schedule）。 */
 enum regex_type {
 	MATCH_FULL = 0,
 	MATCH_FRONT_ONLY,
@@ -1585,6 +1625,7 @@ struct event_trigger_data {
 	void				*private_data;
 	bool				paused;
 	bool				paused_tmp;
+	/* 链接到file的triggers */
 	struct list_head		list;
 	char				*name;
 	struct list_head		named_list;

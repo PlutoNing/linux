@@ -35,6 +35,7 @@
 
 #ifdef CONFIG_DYNAMIC_FTRACE
 
+/*  */
 static int ftrace_poke_late = 0;
 
 void ftrace_arch_code_modify_prepare(void)
@@ -62,14 +63,20 @@ void ftrace_arch_code_modify_post_process(void)
 	mutex_unlock(&text_mutex);
 }
 
+/* 返回一段表示nop的字节码 */
 static const char *ftrace_nop_replace(void)
 {
 	return x86_nops[5];
 }
-/* @ip是ftrace函数的地址,
+/* 
+@ip是ftrace函数的地址,
 addr是新函数的地址.
 cpu执行到ip时跳转到addr.
-返回的是insn的text代码buf地址 */
+返回的是insn的text代码buf地址
+========================
+更新静态的insn结构体的opcode（call指令），disp（从ip跳到addr）成员，
+然后返回他的text成员buff地址
+*/
 static const char *ftrace_call_replace(unsigned long ip, unsigned long addr)
 {
 	/*
@@ -79,6 +86,7 @@ static const char *ftrace_call_replace(unsigned long ip, unsigned long addr)
 	return text_gen_insn(CALL_INSN_OPCODE, (void *)ip, (void *)addr);
 }
 
+/* 准备把ip处的字节码替换为别的字节码， 先检查一下现在的字节码是不是符合预期 */
 static int ftrace_verify_code(unsigned long ip, const char *old_code)
 {
 	char cur_code[MCOUNT_INSN_SIZE];
@@ -95,7 +103,7 @@ static int ftrace_verify_code(unsigned long ip, const char *old_code)
 		WARN_ON(1);
 		return -EFAULT;
 	}
-
+	/* 现在cur code是ip处现在的字节码 */
 	/* Make sure it is what we expect it to be */
 	if (memcmp(cur_code, old_code, MCOUNT_INSN_SIZE) != 0) {
 		ftrace_expected = old_code;
@@ -107,7 +115,8 @@ static int ftrace_verify_code(unsigned long ip, const char *old_code)
 }
 
 /*
- * Marked __ref because it calls text_poke_early() which is .init.text. That is
+现在ip处的代码应该是old code，替换为new code
+* Marked __ref because it calls text_poke_early() which is .init.text. That is
  * ok because that call will happen early, during boot, when .init sections are
  * still present.
  */
@@ -115,14 +124,19 @@ static int __ref
 ftrace_modify_code_direct(unsigned long ip, const char *old_code,
 			  const char *new_code)
 {
+	/* 看看ip处现在的字节码是不是old code */
 	int ret = ftrace_verify_code(ip, old_code);
 	if (ret)
 		return ret;
 
-	/* replace the text with the new text */
+	/* replace the text with the new text
+	开始hook
+	*/
 	if (ftrace_poke_late)
+	/* 把hook信息计入全局的tp vec数组，等待别人后续执行 */
 		text_poke_queue((void *)ip, new_code, MCOUNT_INSN_SIZE, NULL);
 	else
+	/* 直接现在修改 */
 		text_poke_early((void *)ip, new_code, MCOUNT_INSN_SIZE);
 	return 0;
 }
@@ -154,15 +168,21 @@ int ftrace_make_nop(struct module *mod, struct dyn_ftrace *rec, unsigned long ad
 	return -EINVAL;
 }
 
+/* 开始trace这个函数
+addr是rec的ip对应要跳转的addr */
 int ftrace_make_call(struct dyn_ftrace *rec, unsigned long addr)
 {
 	unsigned long ip = rec->ip;
 	const char *new, *old;
 
+	/* 生成插入的nop机器码 */
 	old = ftrace_nop_replace();
+	/* 生成call机器码 */
 	new = ftrace_call_replace(ip, addr);
 
-	/* Should only be called when module is loaded */
+	/* Should only be called when module is loaded
+	现在的ip处是nop指令，替换为call指令
+	*/
 	return ftrace_modify_code_direct(rec->ip, old, new);
 }
 
@@ -188,9 +208,11 @@ int ftrace_update_ftrace_func(ftrace_func_t func)
 
 	ip = (unsigned long)(&ftrace_call);
 	/* 执行到ip时,跳转到func.
-	返回的new是insn的text buf地址 */
+	返回的new是insn的text buf地址
+	new是insn->text的地址 */
 	new = ftrace_call_replace(ip, (unsigned long)func);
-	/* 好像这里才是开始poke代码,
+	/* 
+	好像这里才是开始poke代码,
 	new 是insn的text ...
 	现在insn的disp已经可以跳转到new func ... */
 	text_poke_bp((void *)ip, new, MCOUNT_INSN_SIZE, NULL);
