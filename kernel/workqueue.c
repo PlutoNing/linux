@@ -420,6 +420,9 @@ static struct workqueue_attrs *ordered_wq_attrs[NR_STD_WORKER_POOLS];
  */
 static struct kthread_worker *pwq_release_worker;
 
+/* 比如说要在其他cpu上面运行异步任务
+就链接到这个wq
+ */
 struct workqueue_struct *system_wq __read_mostly;
 EXPORT_SYMBOL(system_wq);
 struct workqueue_struct *system_highpri_wq __read_mostly;
@@ -1810,6 +1813,7 @@ out:
 }
 
 /**
+在指定cpu上面运行异步任务， 使用参数指定的wq
  * queue_work_on - queue work on specific cpu
  * @cpu: CPU number to execute work on
  * @wq: workqueue to use
