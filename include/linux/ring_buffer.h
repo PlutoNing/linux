@@ -10,6 +10,7 @@ struct trace_buffer;
 struct ring_buffer_iter;
 
 /*
+表示一个rb里面的event
  * Don't refer to this struct directly, use functions below.
  */
 struct ring_buffer_event {

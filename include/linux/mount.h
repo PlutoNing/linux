@@ -69,6 +69,7 @@ struct path;
 
 struct vfsmount {
 	struct dentry *mnt_root;	/* 
+	就是挂载的文件夹
 	指向fc->root
 	root of the mounted tree */
 	struct super_block *mnt_sb;	/* 

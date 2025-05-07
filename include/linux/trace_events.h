@@ -87,6 +87,7 @@ struct trace_entry {
 	((1 << (sizeof(((struct trace_entry *)0)->type) * 8)) - 1)
 
 /*
+用于获取trace结果
  * Trace iterator - used by printout routines who present trace
  * results to users and which routines might sleep, etc:
  */
@@ -97,6 +98,7 @@ struct trace_iterator {
 	void			*private;
 	int			cpu_file;
 	struct mutex		mutex;
+	/* 存储着每个cpu对应的iter */
 	struct ring_buffer_iter	**buffer_iter;
 	unsigned long		iter_flags;
 	void			*temp;	/* temp holder */
@@ -115,6 +117,7 @@ struct trace_iterator {
 
 	/* The below is zeroed out in pipe_read */
 	struct trace_seq	seq;
+	/* 从rb读取的trace entry存储在这里 */
 	struct trace_entry	*ent;
 	unsigned long		lost_events;
 	int			leftover;
@@ -459,6 +462,7 @@ static inline bool bpf_prog_array_valid(struct trace_event_call *call)
 }
 #endif
 
+/* 获取event call的名字 */
 static inline const char *
 trace_event_name(struct trace_event_call *call)
 {

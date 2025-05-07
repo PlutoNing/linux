@@ -29,6 +29,7 @@ static inline void seq_buf_clear(struct seq_buf *s)
 	s->readpos = 0;
 }
 
+/* 初始化seq buf */
 static inline void
 seq_buf_init(struct seq_buf *s, char *buf, unsigned int size)
 {

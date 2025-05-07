@@ -13,6 +13,7 @@
 
 #if defined(__BYTE_ORDER) ? __BYTE_ORDER == __LITTLE_ENDIAN : defined(__LITTLE_ENDIAN)
 
+/*  */
 struct insn_field {
 	union {
 		insn_value_t value;
@@ -178,8 +179,9 @@ enum insn_mode {
 
 extern int insn_decode(struct insn *insn, const void *kaddr, int buf_len, enum insn_mode m);
 /* 
-ftrace的时候, insn是新结构体, ptr是opcode(另外一个静态insn的text)
-
+ftrace的时候, 
+insn是新结构体, 
+ptr是opcode(另外一个静态insn的text)
  */
 #define insn_decode_kernel(_insn, _ptr) insn_decode((_insn), (_ptr), MAX_INSN_SIZE, INSN_MODE_KERN)
 

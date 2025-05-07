@@ -104,11 +104,14 @@ union text_poke_insn {
 		s32 disp;
 	} __attribute__((packed));
 };
-/* 把dest插入到addr, 用opcode，做指令.
- buf是个text_poke_insn  */
+/* 
+构造insn结构体（buf就是）
+把dest插入到addr, 用opcode（可能是call）做指令.
+  */
 static __always_inline
 void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, int size)
 {
+	/* 类型转换 */
 	union text_poke_insn *insn = buf;
 
 	BUG_ON(size < text_opcode_size(opcode));
@@ -128,7 +131,8 @@ void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, i
 	insn->opcode = opcode;/* opcode是要插入的指令 */
 
 	if (size > 1) {/* 这些地址都是代码段的，是指令,比如 -exec x/x dest 0xffffffff83faba64 <insn.0>:	0xff698ae8    */
-		insn->disp = (long)dest - (long)(addr + size);/* -exec x/i dest 0xffffffff83faba64 <insn.0>:	call   0xffffffff83fa23f3  */
+		insn->disp = (long)dest - (long)(addr + size);
+		/* -exec x/i dest 0xffffffff83faba64 <insn.0>:	call   0xffffffff83fa23f3  */
 		if (size == 2) {
 			/*
 			 * Ensure that for JMP8 the displacement
@@ -140,12 +144,16 @@ void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, i
 
 }
 /* 把dest插入到addr,
-执行到addr时跳转到dest */
+执行到addr时跳转到dest
+======
+更新静态的insn结构体的opcode，disp成员，然后返回他的text成员buff地址
+*/
 static __always_inline
 void *text_gen_insn(u8 opcode, const void *addr, const void *dest)
 {
 	/* 为啥好多静态的 */
 	static union text_poke_insn insn; /* per instance */
+	/* 构造insn结构体 */
 	__text_gen_insn(&insn, opcode, addr, dest, text_opcode_size(opcode));
 	return &insn.text;
 }

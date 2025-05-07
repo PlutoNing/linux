@@ -17,6 +17,7 @@ struct trace_seq {
 	int			full;
 };
 
+/* 初始化这个trace seq的seq buf */
 static inline void
 trace_seq_init(struct trace_seq *s)
 {

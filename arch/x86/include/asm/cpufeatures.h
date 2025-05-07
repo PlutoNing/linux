@@ -61,7 +61,8 @@
 /* Don't duplicate feature flags which are redundant with Intel! */
 #define X86_FEATURE_SYSCALL		( 1*32+11) /* SYSCALL/SYSRET */
 #define X86_FEATURE_MP			( 1*32+19) /* MP Capable */
-#define X86_FEATURE_NX			( 1*32+20) /* Execute Disable，NX 位允许将内存页标记为 ​​不可执行​​，防止攻击者通过缓冲区溢出在栈/堆中执行恶意代码 */
+/* Execute Disable，NX 位允许将内存页标记为 ​​不可执行​​，防止攻击者通过缓冲区溢出在栈/堆中执行恶意代码 */
+#define X86_FEATURE_NX			( 1*32+20) 
 #define X86_FEATURE_MMXEXT		( 1*32+22) /* AMD MMX extensions */
 #define X86_FEATURE_FXSR_OPT		( 1*32+25) /* FXSAVE/FXRSTOR optimizations */
 #define X86_FEATURE_GBPAGES		( 1*32+26) /* "pdpe1gb" GB pages */

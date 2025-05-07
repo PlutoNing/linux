@@ -808,6 +808,7 @@ struct perf_event_mmap_page {
  */
 #define PERF_RECORD_MISC_EXT_RESERVED		(1 << 15)
 
+/*  */
 struct perf_event_header {
 	__u32	type;
 	__u16	misc;
@@ -1131,6 +1132,7 @@ enum perf_event_type {
 	PERF_RECORD_NAMESPACES			= 16,
 
 	/*
+	记录添加删除ksym的事件
 	 * Record ksymbol register/unregister events:
 	 *
 	 * struct {
@@ -1210,6 +1212,7 @@ enum perf_event_type {
 	PERF_RECORD_MAX,			/* non-ABI */
 };
 
+/*  */
 enum perf_record_ksymbol_type {
 	PERF_RECORD_KSYMBOL_TYPE_UNKNOWN	= 0,
 	PERF_RECORD_KSYMBOL_TYPE_BPF		= 1,

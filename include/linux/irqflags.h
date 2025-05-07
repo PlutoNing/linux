@@ -184,6 +184,7 @@ extern void warn_bogus_irq_restore(void);
 		raw_check_bogus_irq_restore();		\
 		arch_local_irq_restore(flags);		\
 	} while (0)
+/*  */
 #define raw_local_save_flags(flags)			\
 	do {						\
 		typecheck(unsigned long, flags);	\
@@ -261,7 +262,7 @@ extern void warn_bogus_irq_restore(void);
 #define safe_halt()		do { raw_safe_halt(); } while (0)
 
 #endif /* CONFIG_TRACE_IRQFLAGS */
-
+/* 保存标志寄存器 */
 #define local_save_flags(flags)	raw_local_save_flags(flags)
 
 /*

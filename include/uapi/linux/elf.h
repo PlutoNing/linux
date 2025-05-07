@@ -196,7 +196,9 @@ typedef struct elf32_sym {
   Elf32_Half	st_shndx;
 } Elf32_Sym;
 
+/* 表示一个符号 */
 typedef struct elf64_sym {
+  /* 名字的idx */
   Elf64_Word st_name;		/* Symbol name, index in string tbl */
   unsigned char	st_info;	/* Type and binding attributes */
   unsigned char	st_other;	/* No defined meaning, 0 */

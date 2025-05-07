@@ -126,6 +126,8 @@ static inline void watchdog_buddy_check_hardlockup(int hrtimer_interrupts) {}
 #endif
 
 /**
+手动重置硬件看门狗（hardlockup watchdog）和软件看门狗（softlockup watchdog）的超时计时器​​，
+防止系统因长时间未响应而被判定为锁死（lockup）。
  * touch_nmi_watchdog - manually reset the hardlockup watchdog timeout.
  *
  * If we support detecting hardlockups, touch_nmi_watchdog() may be

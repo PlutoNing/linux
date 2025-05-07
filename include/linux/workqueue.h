@@ -590,6 +590,7 @@ static inline bool mod_delayed_work(struct workqueue_struct *wq,
 }
 
 /**
+在这个cpu上面运行异步任务
  * schedule_work_on - put work task on a specific cpu
  * @cpu: cpu to put the work task on
  * @work: job to be done
