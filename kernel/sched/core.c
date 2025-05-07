@@ -945,6 +945,7 @@ static inline bool set_nr_if_polling(struct task_struct *p)
 #endif
 #endif
 
+/* 把tsk加入head */
 static bool __wake_q_add(struct wake_q_head *head, struct task_struct *task)
 {
 	struct wake_q_node *node = &task->wake_q;
@@ -970,6 +971,7 @@ static bool __wake_q_add(struct wake_q_head *head, struct task_struct *task)
 }
 
 /**
+把task加入head
  * wake_q_add() - queue a wakeup for 'later' waking.
  * @head: the wake_q_head to add @task to
  * @task: the task to queue for 'later' wakeup
@@ -1010,6 +1012,7 @@ void wake_q_add_safe(struct wake_q_head *head, struct task_struct *task)
 		put_task_struct(task);
 }
 
+/* 唤醒head里面的task */
 void wake_up_q(struct wake_q_head *head)
 {
 	struct wake_q_node *node = head->first;
@@ -2409,6 +2412,7 @@ static void migrate_disable_switch(struct rq *rq, struct task_struct *p)
 	__do_set_cpus_allowed(p, &ac);
 }
 
+/* 关闭进程的页面迁移？ */
 void migrate_disable(void)
 {
 	struct task_struct *p = current;
