@@ -625,6 +625,7 @@ static __always_inline bool bpf_tree_less(struct latch_tree_node *a,
 	return bpf_get_ksym_start(a) < bpf_get_ksym_start(b);
 }
 
+/* 在bpf tree查找ksym时使用 */
 static __always_inline int bpf_tree_comp(void *key, struct latch_tree_node *n)
 {
 	unsigned long val = (unsigned long)key;
@@ -640,6 +641,8 @@ static __always_inline int bpf_tree_comp(void *key, struct latch_tree_node *n)
 	return 0;
 }
 
+/* 在bpf tree查找ksym的ops
+比较相同的ksym */
 static const struct latch_tree_ops bpf_tree_ops = {
 	.less	= bpf_tree_less,
 	.comp	= bpf_tree_comp,
@@ -647,6 +650,7 @@ static const struct latch_tree_ops bpf_tree_ops = {
 
 static DEFINE_SPINLOCK(bpf_lock);
 static LIST_HEAD(bpf_kallsyms);
+/* bpf kysm存储在这颗树 */
 static struct latch_tree_root bpf_tree __cacheline_aligned;
 /* 添加到哪里 */
 void bpf_ksym_add(struct bpf_ksym *ksym)
@@ -700,6 +704,7 @@ void bpf_prog_kallsyms_del(struct bpf_prog *fp)
 	bpf_ksym_del(&fp->aux->ksym);
 }
 
+/* 查找addr地址处的bpf ksym */
 static struct bpf_ksym *bpf_ksym_find(unsigned long addr)
 {
 	struct latch_tree_node *n;
@@ -708,6 +713,7 @@ static struct bpf_ksym *bpf_ksym_find(unsigned long addr)
 	return n ? container_of(n, struct bpf_ksym, tnode) : NULL;
 }
 
+/* 查找bpf ksym */
 const char *__bpf_address_lookup(unsigned long addr, unsigned long *size,
 				 unsigned long *off, char *sym)
 {
