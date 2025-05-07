@@ -299,6 +299,7 @@ static void load_new_mm_cr3(pgd_t *pgdir, u16 new_asid, unsigned long lam,
 	write_cr3(new_mm_cr3);
 }
 
+/* 切换到内核mm */
 void leave_mm(int cpu)
 {
 	struct mm_struct *loaded_mm = this_cpu_read(cpu_tlbstate.loaded_mm);
@@ -307,7 +308,7 @@ void leave_mm(int cpu)
 	 * It's plausible that we're in lazy TLB mode while our mm is init_mm.
 	 * If so, our callers still expect us to flush the TLB, but there
 	 * aren't any user TLB entries in init_mm to worry about.
-	 *
+	 * 
 	 * This needs to happen before any other sanity checks due to
 	 * intel_idle's shenanigans.
 	 */
@@ -321,6 +322,7 @@ void leave_mm(int cpu)
 }
 EXPORT_SYMBOL_GPL(leave_mm);
 
+/*  */
 void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	       struct task_struct *tsk)
 {
@@ -903,6 +905,7 @@ static bool tlb_is_not_lazy(int cpu, void *data)
 	return !per_cpu(cpu_tlbstate_shared.is_lazy, cpu);
 }
 
+/* 似乎是表示pcp的tlb状态 */
 DEFINE_PER_CPU_SHARED_ALIGNED(struct tlb_state_shared, cpu_tlbstate_shared);
 EXPORT_PER_CPU_SYMBOL(cpu_tlbstate_shared);
 
@@ -998,6 +1001,7 @@ static void put_flush_tlb_info(void)
 #endif
 }
 
+/* 以后 */
 void flush_tlb_mm_range(struct mm_struct *mm, unsigned long start,
 				unsigned long end, unsigned int stride_shift,
 				bool freed_tables)
