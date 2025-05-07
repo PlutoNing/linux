@@ -396,6 +396,7 @@ static atomic_t nr_namespaces_events __read_mostly;
 static atomic_t nr_task_events __read_mostly;
 static atomic_t nr_freq_events __read_mostly;
 static atomic_t nr_switch_events __read_mostly;
+/*  */
 static atomic_t nr_ksymbol_events __read_mostly;
 static atomic_t nr_bpf_events __read_mostly;
 static atomic_t nr_cgroup_events __read_mostly;
@@ -580,6 +581,7 @@ static inline u64 perf_clock(void)
 	return local_clock();
 }
 
+/* 获取事件事件 */
 static inline u64 perf_event_clock(struct perf_event *event)
 {
 	return event->clock();
@@ -1336,6 +1338,7 @@ static u32 perf_event_tid(struct perf_event *event, struct task_struct *p)
 }
 
 /*
+获取事件的id
  * If we inherit events we want to return the parent event id
  * to userspace.
  */
@@ -5199,6 +5202,7 @@ static void _free_event(struct perf_event *event)
 }
 
 /*
+用于释放event
  * Used to free events which have a known refcount of 1, such as in error paths
  * where the event isn't exposed yet and inherited events.
  */
@@ -7075,44 +7079,60 @@ out_put:
 			     PERF_SAMPLE_ID | PERF_SAMPLE_STREAM_ID |	\
 			     PERF_SAMPLE_CPU | PERF_SAMPLE_IDENTIFIER)
 
+/* 在sample的data里面记录一些信息 */
 static void __perf_event_header__init_id(struct perf_sample_data *data,
 					 struct perf_event *event,
 					 u64 sample_type)
 {
+	/* 初始化sample的类型 */
 	data->type = event->attr.sample_type;
 	data->sample_flags |= data->type & PERF_SAMPLE_ID_ALL;
 
+	/* 在sample记录pid */
 	if (sample_type & PERF_SAMPLE_TID) {
 		/* namespace issues */
 		data->tid_entry.pid = perf_event_pid(event, current);
 		data->tid_entry.tid = perf_event_tid(event, current);
 	}
 
+	/* 在sample记录时间 */
 	if (sample_type & PERF_SAMPLE_TIME)
 		data->time = perf_event_clock(event);
 
+		/* 记录id */
 	if (sample_type & (PERF_SAMPLE_ID | PERF_SAMPLE_IDENTIFIER))
 		data->id = primary_event_id(event);
 
 	if (sample_type & PERF_SAMPLE_STREAM_ID)
 		data->stream_id = event->id;
 
+	/* 记录cpu */
 	if (sample_type & PERF_SAMPLE_CPU) {
 		data->cpu_entry.cpu	 = raw_smp_processor_id();
 		data->cpu_entry.reserved = 0;
 	}
 }
 
+/* 
+在sample记录信息
+============================
+header是要输出的事件的header
+sample是空的sample
+perf_event是从ctx的eventlist或者系统的pmu list取的event
+*/
 void perf_event_header__init_id(struct perf_event_header *header,
 				struct perf_sample_data *data,
 				struct perf_event *event)
 {
+	/* 如果event的属性是sample all */
 	if (event->attr.sample_id_all) {
 		header->size += event->id_header_size;
+		/* 开始在sample的data里面记录一些trace信息 */
 		__perf_event_header__init_id(data, event, event->attr.sample_type);
 	}
 }
 
+/* 根据设置，选择输出sample里面的事件信息 */
 static void __perf_event__output_id_sample(struct perf_output_handle *handle,
 					   struct perf_sample_data *data)
 {
@@ -7137,6 +7157,7 @@ static void __perf_event__output_id_sample(struct perf_output_handle *handle,
 		perf_output_put(handle, data->id);
 }
 
+/* 根据event设置， 选择性的往handle输出sample记录的信息 */
 void perf_event__output_id_sample(struct perf_event *event,
 				  struct perf_output_handle *handle,
 				  struct perf_sample_data *sample)
@@ -7897,6 +7918,8 @@ perf_event_read_event(struct perf_event *event,
 
 typedef void (perf_iterate_f)(struct perf_event *event, void *data);
 
+/* perf输出事件到指定的ctx？
+ */
 static void
 perf_iterate_ctx(struct perf_event_context *ctx,
 		   perf_iterate_f output,
@@ -7904,6 +7927,8 @@ perf_iterate_ctx(struct perf_event_context *ctx,
 {
 	struct perf_event *event;
 
+	/* 找到一个event， 调用output回调输出事件
+	 */
 	list_for_each_entry_rcu(event, &ctx->event_list, event_entry) {
 		if (!all) {
 			if (event->state < PERF_EVENT_STATE_INACTIVE)
@@ -7916,6 +7941,7 @@ perf_iterate_ctx(struct perf_event_context *ctx,
 	}
 }
 
+/* 在pmu list上面找到一个event， 调用output回调输出事件 */
 static void perf_iterate_sb_cpu(perf_iterate_f output, void *data)
 {
 	struct pmu_event_list *pel = this_cpu_ptr(&pmu_sb_events);
@@ -7939,6 +7965,7 @@ static void perf_iterate_sb_cpu(perf_iterate_f output, void *data)
 }
 
 /*
+调用output回调函数，输出事件
  * Iterate all events that need to receive side-band events.
  *
  * For new callers; ensure that account_pmu_sb_event() includes
@@ -7963,6 +7990,8 @@ perf_iterate_sb(perf_iterate_f output, void *data,
 		goto done;
 	}
 
+	/* 调用output回调函数，输出事件
+	 */
 	perf_iterate_sb_cpu(output, data);
 
 	ctx = rcu_dereference(current->perf_event_ctxp);
@@ -9099,13 +9128,17 @@ struct perf_ksymbol_event {
 	} event_id;
 };
 
+/*  */
 static int perf_event_ksymbol_match(struct perf_event *event)
 {
 	return event->attr.ksymbol;
 }
 
+/* 输出ksym事件的output函数
+把事件输出到buffer */
 static void perf_event_ksymbol_output(struct perf_event *event, void *data)
 {
+	/* 参数就是ksym事件 */
 	struct perf_ksymbol_event *ksymbol_event = data;
 	struct perf_output_handle handle;
 	struct perf_sample_data sample;
@@ -9114,20 +9147,30 @@ static void perf_event_ksymbol_output(struct perf_event *event, void *data)
 	if (!perf_event_ksymbol_match(event))
 		return;
 
+	/* 根据event的设置，在sample记录信息 */
 	perf_event_header__init_id(&ksymbol_event->event_id.header,
 				   &sample, event);
+	/* 开始输出事件， 从event找到buffer，进行设置
+	让handle记录所需要的信息
+	*/
 	ret = perf_output_begin(&handle, &sample, event,
 				ksymbol_event->event_id.header.size);
 	if (ret)
 		return;
 
+	/* 寻找句柄存储了所需要的buffer等信息，开始输出 */
 	perf_output_put(&handle, ksymbol_event->event_id);
+	/* 输出事件名字 */
 	__output_copy(&handle, ksymbol_event->name, ksymbol_event->name_len);
+	/* 
+	根据event的设置，输出sample记录的信息到handle中
+	*/
 	perf_event__output_id_sample(event, &handle, &sample);
 
 	perf_output_end(&handle);
 }
 
+/* 输出一个ksym事件 */
 void perf_event_ksymbol(u16 ksym_type, u64 addr, u32 len, bool unregister,
 			const char *sym)
 {
@@ -9143,6 +9186,7 @@ void perf_event_ksymbol(u16 ksym_type, u64 addr, u32 len, bool unregister,
 	    ksym_type == PERF_RECORD_KSYMBOL_TYPE_UNKNOWN)
 		goto err;
 
+/* 只处理bpf与ool的kysm */
 	strscpy(name, sym, KSYM_NAME_LEN);
 	name_len = strlen(name) + 1;
 	while (!IS_ALIGNED(name_len, sizeof(u64)))
@@ -9152,9 +9196,11 @@ void perf_event_ksymbol(u16 ksym_type, u64 addr, u32 len, bool unregister,
 	if (unregister)
 		flags |= PERF_RECORD_KSYMBOL_FLAGS_UNREGISTER;
 
+	/* 构造perf事件 */
 	ksymbol_event = (struct perf_ksymbol_event){
 		.name = name,
 		.name_len = name_len,
+		/* 构造event */
 		.event_id = {
 			.header = {
 				.type = PERF_RECORD_KSYMBOL,
@@ -9168,6 +9214,7 @@ void perf_event_ksymbol(u16 ksym_type, u64 addr, u32 len, bool unregister,
 		},
 	};
 
+	/* 输出perf事件？ */
 	perf_iterate_sb(perf_event_ksymbol_output, &ksymbol_event, NULL);
 	return;
 err:
@@ -9302,6 +9349,7 @@ static int perf_event_text_poke_match(struct perf_event *event)
 	return event->attr.text_poke;
 }
 
+/* perf输出text poke事件 */
 static void perf_event_text_poke_output(struct perf_event *event, void *data)
 {
 	struct perf_text_poke_event *text_poke_event = data;
@@ -9335,6 +9383,8 @@ static void perf_event_text_poke_output(struct perf_event *event, void *data)
 	perf_output_end(&handle);
 }
 
+/* perf输出一个text_poke事件
+ */
 void perf_event_text_poke(const void *addr, const void *old_bytes,
 			  size_t old_len, const void *new_bytes, size_t new_len)
 {

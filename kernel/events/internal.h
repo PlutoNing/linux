@@ -23,7 +23,9 @@ struct perf_buffer {
 
 	atomic_t			poll;		/* POLL_ for wakeups */
 
-	local_t				head;		/* write position    */
+	local_t				head;		/* 
+	类似pos吧
+	write position    */
 	unsigned int			nest;		/* nested writers    */
 	local_t				events;		/* event limit       */
 	local_t				wakeup;		/* wakeup stamp      */
@@ -103,6 +105,7 @@ perf_mmap_to_page(struct perf_buffer *rb, unsigned long pgoff);
  * Required for architectures that have d-cache aliasing issues.
  */
 
+/*  */
 static inline int page_order(struct perf_buffer *rb)
 {
 	return rb->page_order;
