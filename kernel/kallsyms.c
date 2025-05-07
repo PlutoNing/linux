@@ -36,7 +36,7 @@
 
 /*
 扩展符号名? 好像是解压.
-off好像是符号名的idx
+off好像是符号名的idx？
  * Expand a compressed symbol data into the resulting uncompressed string,
  * if uncompressed string is too long (>= maxlen), it will be truncated,
  * given the offset to where the symbol is in the compressed stream.
@@ -112,6 +112,8 @@ static char kallsyms_get_symbol_type(unsigned int off)
 
 
 /*
+pos表示符号的idx
+
  * Find the offset on the compressed stream given and index in the
  * kallsyms array.
  */
@@ -131,6 +133,7 @@ static unsigned int get_symbol_offset(unsigned long pos)
 	 * for. Every symbol is stored in a [<len>][<len> bytes of data] format,
 	 * so we just need to add the len to the current pointer for every
 	 * symbol we wish to skip.
+	顺序扫描到我们在搜索的位置，
 	 */
 	for (i = 0; i < (pos & 0xFF); i++) {
 		len = *name;
@@ -150,7 +153,7 @@ static unsigned int get_symbol_offset(unsigned long pos)
 
 /* 
 返回符号地址
-i是符号名在全局符号数组的idx? */
+i是符号名在排序的全局符号数组的idx? */
 unsigned long kallsyms_sym_address(int idx)
 {
 	if (!IS_ENABLED(CONFIG_KALLSYMS_BASE_RELATIVE))
@@ -324,7 +327,9 @@ int kallsyms_on_each_match_symbol(int (*fn)(void *, unsigned long),
 	return ret;
 }
 
-/* addr是内核的ip.  */
+/* addr是内核的ip.
+获取内核符号
+*/
 static unsigned long get_symbol_pos(unsigned long addr,
 				    unsigned long *symbolsize,
 				    unsigned long *offset)
@@ -338,7 +343,9 @@ static unsigned long get_symbol_pos(unsigned long addr,
 	else
 		BUG_ON(!kallsyms_offsets);
 
-	/* Do a binary search on the sorted kallsyms_addresses array. */
+	/* Do a binary search on the sorted kallsyms_addresses array.
+	在排序的内核符号数组中二分查找
+	*/
 	low = 0;
 	high = kallsyms_num_syms;
 
@@ -351,6 +358,7 @@ static unsigned long get_symbol_pos(unsigned long addr,
 	}
 
 	/*
+	现在low应该就是要找的符号附近了
 	 * Search for the first aliased symbol. Aliased
 	 * symbols are symbols with the same address.
 	 */
@@ -377,6 +385,7 @@ static unsigned long get_symbol_pos(unsigned long addr,
 			symbol_end = (unsigned long)_etext;
 	}
 
+	/* 下面返回结果 */
 	if (symbolsize)
 		*symbolsize = symbol_end - symbol_start;
 	if (offset)
@@ -403,6 +412,8 @@ int kallsyms_lookup_size_offset(unsigned long addr, unsigned long *symbolsize,
 	       !!__bpf_address_lookup(addr, symbolsize, offset, namebuf);
 }
 
+/* 查找指定地址的符号，返回size和offset
+如果是模块符号， 模块名会放入modname */
 static const char *kallsyms_lookup_buildid(unsigned long addr,
 			unsigned long *symbolsize,
 			unsigned long *offset, char **modname,
@@ -414,8 +425,10 @@ static const char *kallsyms_lookup_buildid(unsigned long addr,
 	namebuf[0] = 0;
 
 	if (is_ksym_addr(addr)) {
+		/* 如果是内核符号 */
 		unsigned long pos;
 
+		/* pos表示addr地址处符号在全局有序符号数组的idx */
 		pos = get_symbol_pos(addr, symbolsize, offset);
 		/* Grab name */
 		kallsyms_expand_symbol(get_symbol_offset(pos),
@@ -430,13 +443,16 @@ static const char *kallsyms_lookup_buildid(unsigned long addr,
 	}
 
 	/* See if it's in a module or a BPF JITed image. */
+	/* 如果是模块的符号 */
 	ret = module_address_lookup(addr, symbolsize, offset,
 				    modname, modbuildid, namebuf);
+	/* 如果是btf */
 	if (!ret)
 		ret = bpf_address_lookup(addr, symbolsize,
 					 offset, modname, namebuf);
 
 	if (!ret)
+	/* 在ftrace mod maps里面寻找 */
 		ret = ftrace_mod_address_lookup(addr, symbolsize,
 						offset, modname, namebuf);
 
@@ -446,6 +462,8 @@ found:
 }
 
 /*
+查找符号
+如果是模块符号， 模块名会放入modname
  * Lookup an address
  * - modname is set to NULL if it's in the kernel.
  * - We guarantee that the returned name is valid until we reschedule even if.
