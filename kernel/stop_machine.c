@@ -45,7 +45,9 @@ struct cpu_stopper {
 	bool			enabled;	/* is this stopper enabled? */
 	struct list_head	works;		/* list of pending works */
 
-	struct cpu_stop_work	stop_work;	/* for stop_cpus */
+	struct cpu_stop_work	stop_work;	/* 
+	停止cpu时执行的work，设置work的fn，塞到cpu上面执行
+	for stop_cpus */
 	unsigned long		caller;
 	cpu_stop_fn_t		fn;
 };
@@ -69,12 +71,17 @@ void print_stop_info(const char *log_lvl, struct task_struct *task)
 
 /* static data for stop_cpus */
 static DEFINE_MUTEX(stop_cpus_mutex);
+/* 表示正在进行stop cpu的过程 */
 static bool stop_cpus_in_progress;
 
+/* 初始化done结构体，要完成nr */
 static void cpu_stop_init_done(struct cpu_stop_done *done, unsigned int nr_todo)
 {
+	/* 置零 */
 	memset(done, 0, sizeof(*done));
+	/* 设置要完成的数量 */
 	atomic_set(&done->nr_todo, nr_todo);
+	/* 初始化等待结构体 */
 	init_completion(&done->completion);
 }
 
@@ -85,15 +92,19 @@ static void cpu_stop_signal_done(struct cpu_stop_done *done)
 		complete(&done->completion);
 }
 
+/* 停止cpu， stopper所属的cpu */
 static void __cpu_stop_queue_work(struct cpu_stopper *stopper,
 					struct cpu_stop_work *work,
 					struct wake_q_head *wakeq)
 {
+	/* 把work加入stopper */
 	list_add_tail(&work->list, &stopper->works);
+	/* 把stopper加入head */
 	wake_q_add(wakeq, stopper->thread);
 }
 
 /* 
+在cpu上面执行work
 触发停机的异步
 queue @work to @stopper.  if offline, @work is completed immediately */
 static bool cpu_stop_queue_work(unsigned int cpu, struct cpu_stop_work *work)
@@ -107,11 +118,13 @@ static bool cpu_stop_queue_work(unsigned int cpu, struct cpu_stop_work *work)
 	raw_spin_lock_irqsave(&stopper->lock, flags);
 	enabled = stopper->enabled;
 	if (enabled)/* 如果stopper是enabled的 */
+	/* 把work加入stopper，把stopper加入wakeq */
 		__cpu_stop_queue_work(stopper, work, &wakeq);
 	else if (work->done)
 		cpu_stop_signal_done(work->done);
 	raw_spin_unlock_irqrestore(&stopper->lock, flags);
 
+	/* 唤醒执行wakeq里面的task */
 	wake_up_q(&wakeq);
 	preempt_enable();
 
@@ -201,7 +214,7 @@ static void ack_state(struct multi_stop_data *msdata)
 	if (atomic_dec_and_test(&msdata->thread_ack))
 		set_state(msdata, msdata->state + 1);
 }
-/*  */
+/* 执行nop */
 notrace void __weak stop_machine_yield(const struct cpumask *cpumask)
 {
 	cpu_relax();
@@ -209,6 +222,7 @@ notrace void __weak stop_machine_yield(const struct cpumask *cpumask)
 
 /* 
 停止cpu
+通过在每个cpu上面运行一个此函数
 This is the cpu_stop function which stops the CPU. */
 static int multi_cpu_stop(void *data)
 {
@@ -223,8 +237,11 @@ static int multi_cpu_stop(void *data)
 	 * When called from stop_machine_from_inactive_cpu(), irq might
 	 * already be disabled.  Save the state and restore it on exit.
 	 */
+	/* 
+	保存标志寄存器
+	*/
 	local_save_flags(flags);
-	/* 确定涉及的cpu? */
+	/* 确定涉及的cpu范围*/
 	if (!msdata->active_cpus) {
 		cpumask = cpu_online_mask;
 		is_active = cpu == cpumask_first(cpumask);
@@ -398,7 +415,9 @@ bool stop_one_cpu_nowait(unsigned int cpu, cpu_stop_fn_t fn, void *arg,
 	*work_buf = (struct cpu_stop_work){ .fn = fn, .arg = arg, .caller = _RET_IP_, };
 	return cpu_stop_queue_work(cpu, work_buf);
 }
-/* @arg可能是msdata
+/* 
+在每个cpu上面执行fn
+@arg可能是msdata
 @fn可能是停机cpu的函数 */
 static bool queue_stop_cpus_work(const struct cpumask *cpumask,
 				 cpu_stop_fn_t fn, void *arg,
@@ -418,6 +437,7 @@ static bool queue_stop_cpus_work(const struct cpumask *cpumask,
 
 	barrier();
 	for_each_cpu(cpu, cpumask) {
+		/* 在每个cpu上面异步执行fn */
 		work = &per_cpu(cpu_stopper.stop_work, cpu);
 		work->fn = fn;
 		work->arg = arg;
@@ -443,15 +463,17 @@ static int __stop_cpus(const struct cpumask *cpumask,
 	struct cpu_stop_done done;
 	/* 初始化done */
 	cpu_stop_init_done(&done, cpumask_weight(cpumask));
-	/* 异步完成工作 */
+	/* 在每个cpu异步完成工作执行fn */
 	if (!queue_stop_cpus_work(cpumask, fn, arg, &done))
 		return -ENOENT;
 
+	/* 等待完成 */
 	wait_for_completion(&done.completion);
 	return done.ret;
 }
 
 /**
+停止cpu
  * stop_cpus - stop multiple cpus
  * @cpumask: cpus to stop
  * @fn: function to execute
@@ -485,6 +507,7 @@ static int stop_cpus(const struct cpumask *cpumask, cpu_stop_fn_t fn, void *arg)
 
 	/* static works are used, process one request at a time */
 	mutex_lock(&stop_cpus_mutex);
+	/* 停止cpu，通过在每个cpu上面异步执行fn */
 	ret = __stop_cpus(cpumask, fn, arg);
 	mutex_unlock(&stop_cpus_mutex);
 	return ret;
@@ -634,6 +657,8 @@ int stop_machine_cpuslocked(cpu_stop_fn_t fn, void *data,
 	}
 
 	/* Set the initial state and stop all online cpus. */
+	/* 设置msstate新状态为MULTI_STOP_PREPARE
+	 */
 	set_state(&msdata, MULTI_STOP_PREPARE);
 	return stop_cpus(cpu_online_mask, multi_cpu_stop, &msdata);
 }
@@ -648,6 +673,7 @@ int stop_machine(cpu_stop_fn_t fn, void *data, const struct cpumask *cpus)
 
 	/* No CPUs can come up or down during this. */
 	cpus_read_lock();
+	/* 停止cpu */
 	ret = stop_machine_cpuslocked(fn, data, cpus);
 	cpus_read_unlock();
 	return ret;
