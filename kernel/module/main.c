@@ -78,6 +78,7 @@ static void do_free_init(struct work_struct *w);
 static DECLARE_WORK(init_free_wq, do_free_init);
 static LLIST_HEAD(init_free_list);
 
+/* 全部模块的地址的搜索树 */
 struct mod_tree_root mod_tree __cacheline_aligned = {
 	.addr_min = -1UL,
 };
@@ -3261,6 +3262,7 @@ bool is_module_address(unsigned long addr)
 }
 
 /**
+找到这个地址的module
  * __module_address() - get the module which contains an address.
  * @addr: the address.
  *
@@ -3272,7 +3274,7 @@ struct module *__module_address(unsigned long addr)
 	struct module *mod;
 
 	if (addr >= mod_tree.addr_min && addr <= mod_tree.addr_max)
-		goto lookup;
+		goto lookup; /* 合法范围， 去搜索 */
 
 #ifdef CONFIG_ARCH_WANTS_MODULES_DATA_IN_VMALLOC
 	if (addr >= mod_tree.data_addr_min && addr <= mod_tree.data_addr_max)
@@ -3282,8 +3284,10 @@ struct module *__module_address(unsigned long addr)
 	return NULL;
 
 lookup:
+/* 在树中搜索模块 */
 	module_assert_mutex_or_preempt();
 
+	/* 搜索模块 */
 	mod = mod_find(addr, &mod_tree);
 	if (mod) {
 		BUG_ON(!within_module(addr, mod));
@@ -3294,6 +3298,7 @@ lookup:
 }
 
 /**
+是不是模块的代码
  * is_module_text_address() - is this address inside module code?
  * @addr: the address to check.
  *
@@ -3313,6 +3318,7 @@ bool is_module_text_address(unsigned long addr)
 }
 
 /**
+检查addr是不是模块的代码
  * __module_text_address() - get the module whose code contains an address.
  * @addr: the address.
  *

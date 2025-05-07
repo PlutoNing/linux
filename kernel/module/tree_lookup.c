@@ -100,6 +100,7 @@ void mod_tree_remove(struct module *mod)
 	}
 }
 
+/* 在树中搜索这个地址的模块 */
 struct module *mod_find(unsigned long addr, struct mod_tree_root *tree)
 {
 	struct latch_tree_node *ltn;
