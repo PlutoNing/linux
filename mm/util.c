@@ -265,6 +265,7 @@ char *strndup_user(const char __user *s, long n)
 EXPORT_SYMBOL(strndup_user);
 
 /**
+复制用户空间的ubuf
  * memdup_user_nul - duplicate memory region from user space and NUL-terminate
  *
  * @src: source address in user space

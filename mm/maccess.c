@@ -13,6 +13,7 @@ bool __weak copy_from_kernel_nofault_allowed(const void *unsafe_src,
 	return true;
 }
 
+/* 拷贝内存 */
 #define copy_from_kernel_nofault_loop(dst, src, len, type, err_label)	\
 	while (len >= sizeof(type)) {					\
 		__get_kernel_nofault(dst, src, type, err_label);		\
@@ -21,6 +22,7 @@ bool __weak copy_from_kernel_nofault_allowed(const void *unsafe_src,
 		len -= sizeof(type);					\
 	}
 
+/* 拷贝src处的size大小到dst */
 long copy_from_kernel_nofault(void *dst, const void *src, size_t size)
 {
 	unsigned long align = 0;

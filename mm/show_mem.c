@@ -30,6 +30,7 @@ static inline void show_node(struct zone *zone)
 		printk("Node %d ", zone_to_nid(zone));
 }
 
+/* 似乎是计算系统可以分配的页面数量 */
 long si_mem_available(void)
 {
 	long available;
