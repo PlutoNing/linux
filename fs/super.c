@@ -857,6 +857,7 @@ share_extant_sb:
 EXPORT_SYMBOL(sget_fc);
 
 /**
+挂载新文件系统的时候寻找type对应的超级块？
  *	sget	-	find or create a superblock
  *	@type:	  filesystem type superblock should belong to
  *	@test:	  comparison callback
@@ -899,20 +900,21 @@ retry:
 			return old;
 		}
 	}
-	if (!s) {
+	if (!s) {/* 如果没有成功找到 */
 		spin_unlock(&sb_lock);
 		s = alloc_super(type, (flags & ~SB_SUBMOUNT), user_ns);
 		if (!s)
 			return ERR_PTR(-ENOMEM);
-		goto retry;
+		goto retry;/* 重试 */
 	}
-
+/* 设置找到的sb */
 	err = set(s, data);
 	if (err) {
 		spin_unlock(&sb_lock);
 		destroy_unused_super(s);
 		return ERR_PTR(err);
 	}
+	/* 初始化找到的sb */
 	s->s_type = type;
 	strscpy(s->s_id, type->name, sizeof(s->s_id));
 	list_add_tail(&s->s_list, &super_blocks);
@@ -1722,18 +1724,19 @@ static int compare_single(struct super_block *s, void *p)
 {
 	return 1;
 }
-
+/* 通用的挂载函数， fill-super是调用者提供的 */
 struct dentry *mount_single(struct file_system_type *fs_type,
 	int flags, void *data,
 	int (*fill_super)(struct super_block *, void *, int))
 {
 	struct super_block *s;
 	int error;
-
+/* 查找或者创建要使用的sb */
 	s = sget(fs_type, compare_single, set_anon_super, flags, NULL);
 	if (IS_ERR(s))
 		return ERR_CAST(s);
 	if (!s->s_root) {
+		/*  */
 		error = fill_super(s, data, flags & SB_SILENT ? 1 : 0);
 		if (!error)
 			s->s_flags |= SB_ACTIVE;

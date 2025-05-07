@@ -969,7 +969,7 @@ out:
 EXPORT_SYMBOL(simple_fill_super);
 
 static DEFINE_SPINLOCK(pin_fs_lock);
-
+/* 获取fs的ref */
 int simple_pin_fs(struct file_system_type *type, struct vfsmount **mount, int *count)
 {
 	struct vfsmount *mnt = NULL;

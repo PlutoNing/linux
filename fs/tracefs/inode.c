@@ -25,7 +25,7 @@
 
 #define TRACEFS_DEFAULT_MODE	0700
 static struct kmem_cache *tracefs_inode_cachep __ro_after_init;
-
+/* ftrace tracefs的挂载点 */
 static struct vfsmount *tracefs_mount;
 static int tracefs_mount_count;
 static bool tracefs_registered;
@@ -146,9 +146,10 @@ static const struct inode_operations tracefs_dir_inode_operations = {
 	.mkdir		= tracefs_syscall_mkdir,
 	.rmdir		= tracefs_syscall_rmdir,
 };
-
+/* 没有什么复杂的机制， 就是简单创建inode */
 struct inode *tracefs_get_inode(struct super_block *sb)
 {
+	/* 直接创建inode */
 	struct inode *inode = new_inode(sb);
 	if (inode) {
 		inode->i_ino = get_next_ino();
@@ -392,7 +393,7 @@ static void tracefs_dentry_iput(struct dentry *dentry, struct inode *inode)
 static const struct dentry_operations tracefs_dentry_operations = {
 	.d_iput = tracefs_dentry_iput,
 };
-
+/* tracefs挂载时候的fill super函数， 初始化sb */
 static int trace_fill_super(struct super_block *sb, void *data, int silent)
 {
 	static const struct tree_descr trace_files[] = {{""}};
@@ -413,7 +414,7 @@ static int trace_fill_super(struct super_block *sb, void *data, int silent)
 	err  =  simple_fill_super(sb, TRACEFS_MAGIC, trace_files);
 	if (err)
 		goto fail;
-
+/*  */
 	sb->s_op = &tracefs_super_operations;
 	sb->s_d_op = &tracefs_dentry_operations;
 
@@ -426,14 +427,14 @@ fail:
 	sb->s_fs_info = NULL;
 	return err;
 }
-
+/* 挂载tracefs的回调函数， 调用的是通用的mount函数 */
 static struct dentry *trace_mount(struct file_system_type *fs_type,
 			int flags, const char *dev_name,
 			void *data)
 {
 	return mount_single(fs_type, flags, data, trace_fill_super);
 }
-
+/* tracefs的fstype */
 static struct file_system_type trace_fs_type = {
 	.owner =	THIS_MODULE,
 	.name =		"tracefs",
@@ -441,14 +442,14 @@ static struct file_system_type trace_fs_type = {
 	.kill_sb =	kill_litter_super,
 };
 MODULE_ALIAS_FS("tracefs");
-
+/*  */
 struct dentry *tracefs_start_creating(const char *name, struct dentry *parent)
 {
 	struct dentry *dentry;
 	int error;
 
 	pr_debug("tracefs: creating file '%s'\n",name);
-
+/* 获取fs的ref */
 	error = simple_pin_fs(&trace_fs_type, &tracefs_mount,
 			      &tracefs_mount_count);
 	if (error)
@@ -569,6 +570,7 @@ struct dentry *eventfs_end_creating(struct dentry *dentry)
 }
 
 /**
+在tracefs创建一个文件
  * tracefs_create_file - create a file in the tracefs filesystem
  * @name: a pointer to a string containing the name of the file to create.
  * @mode: the permission that the file should have.
@@ -607,20 +609,22 @@ struct dentry *tracefs_create_file(const char *name, umode_t mode,
 	if (!(mode & S_IFMT))
 		mode |= S_IFREG;
 	BUG_ON(!S_ISREG(mode));
+	/* 获取fs的ref， 找到一个什么dentry */
 	dentry = tracefs_start_creating(name, parent);
 
 	if (IS_ERR(dentry))
 		return NULL;
-
+/* 创建inode */
 	inode = tracefs_get_inode(dentry->d_sb);
 	if (unlikely(!inode))
 		return tracefs_failed_creating(dentry);
-
+/* 初始化新inode */
 	inode->i_mode = mode;
 	inode->i_fop = fops ? fops : &tracefs_file_operations;
 	inode->i_private = data;
 	inode->i_uid = d_inode(dentry->d_parent)->i_uid;
 	inode->i_gid = d_inode(dentry->d_parent)->i_gid;
+	/* 建立inode与dentry的相关 */
 	d_instantiate(dentry, inode);
 	fsnotify_create(d_inode(dentry->d_parent), dentry);
 	return tracefs_end_creating(dentry);

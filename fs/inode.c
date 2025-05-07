@@ -1052,7 +1052,7 @@ struct inode *new_inode_pseudo(struct super_block *sb)
 struct inode *new_inode(struct super_block *sb)
 {
 	struct inode *inode;
-	// 从sb分配inode
+	// 从sb分配伪inode
 	inode = new_inode_pseudo(sb);
 	/* 分配成功, 加入sb */
 	if (inode)
