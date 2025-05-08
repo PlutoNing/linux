@@ -936,6 +936,8 @@ void start_kernel(void)
 	// 内存?
 	mm_core_init();
 	poking_init();
+	/* 初始化ftrace
+	 */
 	ftrace_init();
 
 	/* trace_printk can be enabled here */

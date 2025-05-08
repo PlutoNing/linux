@@ -1611,6 +1611,7 @@ static void free_modinfo(struct module *mod)
 	}
 }
 
+/* 模块分配内存？ */
 void * __weak module_alloc(unsigned long size)
 {
 	return __vmalloc_node_range(size, 1, VMALLOC_START, VMALLOC_END,

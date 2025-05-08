@@ -856,6 +856,7 @@ enum {
 };
 /*  */
 struct ftrace_hash {
+	/* 和slot的数量有关 */
 	unsigned long		size_bits;
 	/* 一个hash slot， 供rec ip链接 */
 	struct hlist_head	*buckets;
@@ -868,6 +869,7 @@ struct ftrace_hash {
 struct ftrace_func_entry *
 ftrace_lookup_ip(struct ftrace_hash *hash, unsigned long ip);
 
+/* 检查hash是不是空的 */
 static __always_inline bool ftrace_hash_empty(struct ftrace_hash *hash)
 {
 	return !hash || !(hash->count || (hash->flags & FTRACE_HASH_FL_MOD));

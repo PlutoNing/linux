@@ -568,7 +568,8 @@ int call_filter_check_discard(struct trace_event_call *call, void *rec,
 }
 
 /**
- * trace_find_filtered_pid - check if a pid exists in a filtered_pid list
+检查一个pid是否在过滤列表中
+* trace_find_filtered_pid - check if a pid exists in a filtered_pid list
  * @filtered_pids: The list of pids to check
  * @search_pid: The PID to find in @filtered_pids
  *
@@ -581,6 +582,7 @@ trace_find_filtered_pid(struct trace_pid_list *filtered_pids, pid_t search_pid)
 }
 
 /**
+检查一个pid是否在过滤列表中
  * trace_ignore_this_task - should a task be ignored for tracing
  * @filtered_pids: The list of pids to check
  * @filtered_no_pids: The list of pids not to be traced
@@ -718,6 +720,8 @@ int trace_pid_show(struct seq_file *m, void *v)
 /* 128 should be much more than enough */
 #define PID_BUF_SIZE		127
 
+/* ubuf里面是用户输入的要排除的pid
+把这些输入和filtered pids合起来，放入new pid list */
 int trace_pid_write(struct trace_pid_list *filtered_pids,
 		    struct trace_pid_list **new_pid_list,
 		    const char __user *ubuf, size_t cnt)
@@ -725,12 +729,14 @@ int trace_pid_write(struct trace_pid_list *filtered_pids,
 	struct trace_pid_list *pid_list;
 	struct trace_parser parser;
 	unsigned long val;
+	/* 记录加入pid list的pid数量 */
 	int nr_pids = 0;
 	ssize_t read = 0;
 	ssize_t ret;
 	loff_t pos;
 	pid_t pid;
 
+	/* 给parser分配内存 */
 	if (trace_parser_get_init(&parser, PID_BUF_SIZE + 1))
 		return -ENOMEM;
 
@@ -739,6 +745,7 @@ int trace_pid_write(struct trace_pid_list *filtered_pids,
 	 * operation. Always create a new array when adding new pids by
 	 * the user. If the operation fails, then the current list is
 	 * not modified.
+	 创建pid list
 	 */
 	pid_list = trace_pid_list_alloc();
 	if (!pid_list) {
@@ -748,19 +755,26 @@ int trace_pid_write(struct trace_pid_list *filtered_pids,
 
 	if (filtered_pids) {
 		/* copy the current bits to the new max */
+		/* 找到list的第一个pid放进pid */
 		ret = trace_pid_list_first(filtered_pids, &pid);
 		while (!ret) {
+			/* 把pid加入pid list */
 			trace_pid_list_set(pid_list, pid);
+			/* 继续寻找下一个 */
 			ret = trace_pid_list_next(filtered_pids, pid + 1, &pid);
 			nr_pids++;
 		}
 	}
-
+	/* 不管有没有filter list都会运行到这里，无非就是pid list现在会不会是空的 */
 	ret = 0;
+	/* 
+	下面开始把用户输入的也加到pid list
+	cnt是剩余的没有解析的用户输入的长度 */
 	while (cnt > 0) {
 
 		pos = 0;
 
+		/* 获取用户输入 */
 		ret = trace_get_user(&parser, ubuf, cnt, &pos);
 		if (ret < 0)
 			break;
@@ -773,6 +787,7 @@ int trace_pid_write(struct trace_pid_list *filtered_pids,
 			break;
 
 		ret = -EINVAL;
+		/* 获取用户输入的pid */
 		if (kstrtoul(parser.buffer, 0, &val))
 			break;
 
@@ -795,11 +810,16 @@ int trace_pid_write(struct trace_pid_list *filtered_pids,
 	}
 
 	if (!nr_pids) {
+		/* 说明没有往pid list加任何东西
+		也就是说没有要排除的pid
+		*/
 		/* Cleared the list of pids */
 		trace_pid_list_free(pid_list);
 		pid_list = NULL;
 	}
-
+/* 是否会运行到这里
+pid list是否为空
+ */
 	*new_pid_list = pid_list;
 
 	return read;
@@ -1625,6 +1645,8 @@ bool trace_clock_in_ns(struct trace_array *tr)
 }
 
 /*
+给parser的buffer分配内存
+用于存储用户输入的字符串
  * trace_parser_get_init - gets the buffer for trace parser
  */
 int trace_parser_get_init(struct trace_parser *parser, int size)

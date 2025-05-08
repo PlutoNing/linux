@@ -241,8 +241,10 @@ ftrace_func_t ftrace_ops_get_func(struct ftrace_ops *ops);
  *            (internal ftrace only, should not be used by others)
  */
 enum {
+	/* ops是否启用了 */
 	FTRACE_OPS_FL_ENABLED			= BIT(0),
 	FTRACE_OPS_FL_DYNAMIC			= BIT(1),
+	/*  */
 	FTRACE_OPS_FL_SAVE_REGS			= BIT(2),
 	FTRACE_OPS_FL_SAVE_REGS_IF_SUPPORTED	= BIT(3),
 	FTRACE_OPS_FL_RECURSION			= BIT(4),
@@ -253,6 +255,8 @@ enum {
 	FTRACE_OPS_FL_ADDING			= BIT(8),
 	FTRACE_OPS_FL_REMOVING			= BIT(9),
 	FTRACE_OPS_FL_MODIFYING			= BIT(10),
+	/* 表示这个ftrace ops完成了hook（create trampoline函数完成），
+	 */
 	FTRACE_OPS_FL_ALLOC_TRAMP		= BIT(11),
 	FTRACE_OPS_FL_IPMODIFY			= BIT(12),
 	FTRACE_OPS_FL_PID			= BIT(13),
@@ -311,6 +315,7 @@ typedef int (*ftrace_ops_func_t)(struct ftrace_ops *op, enum ftrace_ops_cmd cmd)
 The hash used to know what functions callbacks trace */
 struct ftrace_ops_hash {
 	struct ftrace_hash __rcu	*notrace_hash;
+	/*  */
 	struct ftrace_hash __rcu	*filter_hash;
 	struct mutex			regex_lock;
 };
@@ -344,6 +349,7 @@ struct ftrace_ops {
 	unsigned long			flags;
 	/* 指向tr */
 	void				*private;
+	/* 保存原本的func */
 	ftrace_func_t			saved_func;
 #ifdef CONFIG_DYNAMIC_FTRACE
 	struct ftrace_ops_hash		local_hash;

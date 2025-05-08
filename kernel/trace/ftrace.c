@@ -302,6 +302,7 @@ static void update_ftrace_function(void)
 	ftrace_trace_function = func;
 }
 
+/* 把ops加入list */
 static void add_ftrace_ops(struct ftrace_ops __rcu **list,
 			   struct ftrace_ops *ops)
 {
@@ -346,6 +347,7 @@ static int remove_ftrace_ops(struct ftrace_ops __rcu **list,
 
 static void ftrace_update_trampoline(struct ftrace_ops *ops);
 
+/* 注册这个ops */
 int __register_ftrace_function(struct ftrace_ops *ops)
 {
 	if (ops->flags & FTRACE_OPS_FL_DELETED)
@@ -373,6 +375,8 @@ int __register_ftrace_function(struct ftrace_ops *ops)
 	if (!is_kernel_core_data((unsigned long)ops))
 		ops->flags |= FTRACE_OPS_FL_DYNAMIC;
 
+	/* 把ops加入list
+	 */
 	add_ftrace_ops(&ftrace_ops_list, ops);
 
 	/* Always save the function, and reset at unregistering */
@@ -381,6 +385,7 @@ int __register_ftrace_function(struct ftrace_ops *ops)
 	if (ftrace_pids_enabled(ops))
 		ops->func = ftrace_pid_func;
 
+	/*  */
 	ftrace_update_trampoline(ops);
 
 	if (ftrace_enabled)
@@ -2772,7 +2777,7 @@ unsigned long ftrace_get_addr_curr(struct dyn_ftrace *rec)
 		return (unsigned long)FTRACE_ADDR;
 }
 
-/*  */
+/* 替换rec ip处的字节码 */
 static int
 __ftrace_replace_code(struct dyn_ftrace *rec, bool enable)
 {
@@ -2800,13 +2805,16 @@ __ftrace_replace_code(struct dyn_ftrace *rec, bool enable)
 	/* 开始trace这个函数 */
 	case FTRACE_UPDATE_MAKE_CALL:
 		ftrace_bug_type = FTRACE_BUG_CALL;
+		/* 把rec的ip地址的nop改为call，跳转到ftrace_addr*/
 		return ftrace_make_call(rec, ftrace_addr);
 
 	case FTRACE_UPDATE_MAKE_NOP:
+	/* 停止trace这个函数 */
 		ftrace_bug_type = FTRACE_BUG_NOP;
 		return ftrace_make_nop(NULL, rec, ftrace_old_addr);
 
 	case FTRACE_UPDATE_MODIFY_CALL:
+	/* 函数现在是跳转到ftrace old addr的 */
 		ftrace_bug_type = FTRACE_BUG_UPDATE;
 		return ftrace_modify_call(rec, ftrace_old_addr, ftrace_addr);
 	}
@@ -2814,7 +2822,9 @@ __ftrace_replace_code(struct dyn_ftrace *rec, bool enable)
 	return -1; /* unknown ftrace bug */
 }
 
-/*  */
+/* 遍历系统全部的rec，根据使用情况决定是trace还是关闭trace
+也就是说把rec->ip处的nop换成call，还是把call换成nop
+ */
 void __weak ftrace_replace_code(int mod_flags)
 {
 	struct dyn_ftrace *rec;
@@ -2832,6 +2842,9 @@ void __weak ftrace_replace_code(int mod_flags)
 		if (skip_record(rec))
 			continue;
 
+		/* 替换rec->ip处的字节码
+		根据使用情况决定是trace还是关闭trace
+		是把ip处的nop换成call，还是把call换成nop */
 		failed = __ftrace_replace_code(rec, enable);
 		if (failed) {
 			ftrace_bug(failed, rec);
@@ -2996,6 +3009,7 @@ void ftrace_modify_all_code(int command)
 			return;
 	}
 
+	/* 遍历每一个rec，把rec->ip处的nop换成call，或者把call换成nop*/
 	if (command & FTRACE_UPDATE_CALLS)
 		ftrace_replace_code(mod_flags | FTRACE_MODIFY_ENABLE_FL);
 	else if (command & FTRACE_DISABLE_CALLS)
@@ -3007,6 +3021,7 @@ void ftrace_modify_all_code(int command)
 		/* If irqs are disabled, we are in stop machine */
 		if (!irqs_disabled())
 			smp_call_function(ftrace_sync_ipi, NULL, 1);
+		/* 更新ftrace call函数， 以后跳转到ftrace trace function */
 		err = update_ftrace_func(ftrace_trace_function);
 		if (FTRACE_WARN_ON(err))
 			return;
@@ -3035,6 +3050,8 @@ static int __ftrace_modify_code(void *data)
 
 /**
  2024年10月8日23:46:22
+ 先stop cpu
+ 然后poke 代码
  * ftrace_run_stop_machine - go back to the stop machine method
  * @command: The command to tell ftrace what to do
  *
@@ -3050,7 +3067,7 @@ void ftrace_run_stop_machine(int command)
 }
 
 /**
-修改ftrace的hook代码
+stop cpu之后修改ftrace的hook代码
  * arch_ftrace_update_code - modify the code to trace or not trace
  * @command: The command that needs to be done
  *
@@ -3061,7 +3078,7 @@ void __weak arch_ftrace_update_code(int command)
 {
 	ftrace_run_stop_machine(command);
 }
-/*  */
+/* stop cpu，poke代码 */
 static void ftrace_run_update_code(int command)
 {
 	ftrace_arch_code_modify_prepare();
@@ -3071,6 +3088,7 @@ static void ftrace_run_update_code(int command)
 	 * But archs can do what ever they want as long as it
 	 * is safe. The stop_machine() is the safest, but also
 	 * produces the most overhead.
+	先stop cpu，后面的poke代码
 	 */
 	arch_ftrace_update_code(command);
 
@@ -3151,11 +3169,11 @@ static void ftrace_startup_enable(int command)
 
 	if (!command || !ftrace_enabled)
 		return;
-
+	/* poke代码 */
 	ftrace_run_update_code(command);
 }
 
-/*  */
+/* 开始ftrace */
 static void ftrace_startup_all(int command)
 {
 	update_all_ops = true;
@@ -3163,6 +3181,7 @@ static void ftrace_startup_all(int command)
 	update_all_ops = false;
 }
 
+/* 开启这个ops？ */
 int ftrace_startup(struct ftrace_ops *ops, int command)
 {
 	int ret;
@@ -3170,6 +3189,7 @@ int ftrace_startup(struct ftrace_ops *ops, int command)
 	if (unlikely(ftrace_disabled))
 		return -ENODEV;
 
+	/*  */
 	ret = __register_ftrace_function(ops);
 	if (ret)
 		return ret;
@@ -3324,6 +3344,7 @@ unsigned long		ftrace_update_tot_cnt;
 unsigned long		ftrace_number_of_pages;
 unsigned long		ftrace_number_of_groups;
 
+/*  */
 static inline int ops_traces_mod(struct ftrace_ops *ops)
 {
 	/*
@@ -6695,6 +6716,7 @@ static void test_is_sorted(unsigned long *start, unsigned long count)
 }
 #endif
 
+/* loc是什么 */
 static int ftrace_process_locs(struct module *mod,
 			       unsigned long *start,
 			       unsigned long *end)
@@ -6860,6 +6882,7 @@ static int ftrace_get_trampoline_kallsym(unsigned int symnum,
 
 #if defined(CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS) || defined(CONFIG_MODULES)
 /*
+检查当前的ops是否引用了给定的ip（在filter hash，不在notrace hash）。
  * Check if the current ops references the given ip.
  *
  * If the ops traces all functions, then it was already accounted for.
@@ -7447,6 +7470,8 @@ int __init __weak ftrace_dyn_arch_init(void)
 	return 0;
 }
 
+/* 初始化ftrace
+ */
 void __init ftrace_init(void)
 {
 	extern unsigned long __start_mcount_loc[];
@@ -7455,6 +7480,7 @@ void __init ftrace_init(void)
 	int ret;
 
 	local_irq_save(flags);
+	/* 空函数？ */
 	ret = ftrace_dyn_arch_init();
 	local_irq_restore(flags);
 	if (ret)
@@ -7500,6 +7526,7 @@ static void ftrace_update_trampoline(struct ftrace_ops *ops)
 {
 	unsigned long trampoline = ops->trampoline;
 
+	/* 更新ftrace ops的跳板，跳转到当前的func */
 	arch_ftrace_update_trampoline(ops);
 	if (ops->trampoline && ops->trampoline != trampoline &&
 	    (ops->flags & FTRACE_OPS_FL_ALLOC_TRAMP)) {
@@ -7679,6 +7706,7 @@ static void ftrace_ops_assist_func(unsigned long ip, unsigned long parent_ip,
 NOKPROBE_SYMBOL(ftrace_ops_assist_func);
 
 /**
+获取跳板要调用的函数
  * ftrace_ops_get_func - get the function a trampoline should call
  * @ops: the ops to get the function for
  *
@@ -7687,6 +7715,8 @@ NOKPROBE_SYMBOL(ftrace_ops_assist_func);
  * have its own recursion protection, then it should call the
  * ftrace_ops_assist_func() instead.
  *
+ 正常情况下，mcount 跳板将调用 ops->func，但有时不应该这样做。
+ * 例如，如果 ops 没有自己的递归保护，则它应该调用 ftrace_ops_assist_func()。
  * Returns the function that the trampoline should call for @ops.
  */
 ftrace_func_t ftrace_ops_get_func(struct ftrace_ops *ops)
@@ -7702,6 +7732,7 @@ ftrace_func_t ftrace_ops_get_func(struct ftrace_ops *ops)
 	return ops->func;
 }
 
+/*  */
 static void
 ftrace_filter_pid_sched_switch_probe(void *data, bool preempt,
 				     struct task_struct *prev,
@@ -7979,6 +8010,8 @@ ftrace_no_pid_open(struct inode *inode, struct file *file)
 	return pid_open(inode, file, TRACE_NO_PIDS);
 }
 
+/* 看看是否需要把current的pid排除在外
+ */
 static void ignore_task_cpu(void *data)
 {
 	struct trace_array *tr = data;
@@ -8002,6 +8035,7 @@ static void ignore_task_cpu(void *data)
 			       current->pid);
 }
 
+/* 写入要trace或者notrace的pid？ */
 static ssize_t
 pid_write(struct file *filp, const char __user *ubuf,
 	  size_t cnt, loff_t *ppos, int type)
@@ -8018,6 +8052,7 @@ pid_write(struct file *filp, const char __user *ubuf,
 
 	mutex_lock(&ftrace_lock);
 
+	/* 先获取到要trace或者排除的pid */
 	switch (type) {
 	case TRACE_PIDS:
 		filtered_pids = rcu_dereference_protected(tr->function_pids,
@@ -8037,6 +8072,7 @@ pid_write(struct file *filp, const char __user *ubuf,
 		goto out;
 	}
 
+	/* 把ubuf和filp->f_pos的内容写入到pid_list中*/
 	ret = trace_pid_write(filtered_pids, &pid_list, ubuf, cnt);
 	if (ret < 0)
 		goto out;
@@ -8055,7 +8091,14 @@ pid_write(struct file *filp, const char __user *ubuf,
 		synchronize_rcu();
 		trace_pid_list_free(filtered_pids);
 	} else if (pid_list && !other_pids) {
-		/* Register a probe to set whether to ignore the tracing of a task */
+		/* 
+		trace的情况， 之前没有trace的pid，现在加了几个要trace的pid，并且也没有要排除的pid
+		no trace的情况， 之前没有要no trace的pid，现在加了几个要no trace的pid，并且也没有要trace的pid
+		就是说之前没有排除或者trace的pid，现在有了
+		*/
+		/* 
+		以后
+		Register a probe to set whether to ignore the tracing of a task */
 		register_trace_sched_switch(ftrace_filter_pid_sched_switch_probe, tr);
 	}
 
@@ -8063,10 +8106,12 @@ pid_write(struct file *filp, const char __user *ubuf,
 	 * Ignoring of pids is done at task switch. But we have to
 	 * check for those tasks that are currently running.
 	 * Always do this in case a pid was appended or removed.
+	 在每个cpu上都检查一下当前的current是否需要被ignore
 	 */
 	on_each_cpu(ignore_task_cpu, tr, 1);
 
 	ftrace_update_pid_func();
+	/* 开始ftrace */
 	ftrace_startup_all(0);
  out:
 	mutex_unlock(&ftrace_lock);
@@ -8104,14 +8149,17 @@ ftrace_pid_release(struct inode *inode, struct file *file)
 /* set pid文件的fops */
 static const struct file_operations ftrace_pid_fops = {
 	.open		= ftrace_pid_open,
+	/* 设置pid */
 	.write		= ftrace_pid_write,
 	.read		= seq_read,
 	.llseek		= tracing_lseek,
 	.release	= ftrace_pid_release,
 };
 
+/* no pid文件的fops */
 static const struct file_operations ftrace_no_pid_fops = {
 	.open		= ftrace_no_pid_open,
+	/* 写入no pid */
 	.write		= ftrace_no_pid_write,
 	.read		= seq_read,
 	.llseek		= tracing_lseek,
@@ -8165,6 +8213,8 @@ int ftrace_is_dead(void)
 
 #ifdef CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS
 /*
+在注册ops之前
+检查一下没有冲突的ops
  * When registering ftrace_ops with IPMODIFY, it is necessary to make sure
  * it doesn't conflict with any direct ftrace_ops. If there is existing
  * direct ftrace_ops on a kernel function being patched, call
@@ -8191,11 +8241,17 @@ static int prepare_direct_functions_for_ipmodify(struct ftrace_ops *ops)
 	hash = ops->func_hash->filter_hash;
 	size = 1 << hash->size_bits;
 	for (i = 0; i < size; i++) {
+		/* 遍历每一个slot */
 		hlist_for_each_entry(entry, &hash->buckets[i], hlist) {
+			/* 遍历slot的每一个entry 
+			*/
+			/* 检查当前entry的ip */
 			unsigned long ip = entry->ip;
 			bool found_op = false;
 
 			mutex_lock(&ftrace_lock);
+			/* 检查ftrace_ops_list中是否有ops包含这个ip
+			 */
 			do_for_each_ftrace_op(op, ftrace_ops_list) {
 				if (!(op->flags & FTRACE_OPS_FL_DIRECT))
 					continue;
@@ -8283,6 +8339,7 @@ static void cleanup_direct_functions_after_ipmodify(struct ftrace_ops *ops)
 #endif  /* CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS */
 
 /*
+注册这个ftrace ops
  * Similar to register_ftrace_function, except we don't lock direct_mutex.
  */
 static int register_ftrace_function_nolock(struct ftrace_ops *ops)
@@ -8293,6 +8350,7 @@ static int register_ftrace_function_nolock(struct ftrace_ops *ops)
 
 	mutex_lock(&ftrace_lock);
 
+	/* 开启ops */
 	ret = ftrace_startup(ops, 0);
 
 	mutex_unlock(&ftrace_lock);
@@ -8301,6 +8359,7 @@ static int register_ftrace_function_nolock(struct ftrace_ops *ops)
 }
 
 /**
+注册一个函数
  * register_ftrace_function - register a function for profiling
  * @ops:	ops structure that holds the function for profiling.
  *
@@ -8316,10 +8375,12 @@ int register_ftrace_function(struct ftrace_ops *ops)
 	int ret;
 
 	lock_direct_mutex();
+	/* 进行准备工作 */
 	ret = prepare_direct_functions_for_ipmodify(ops);
 	if (ret < 0)
 		goto out_unlock;
 
+	/*  */
 	ret = register_ftrace_function_nolock(ops);
 
 out_unlock:
@@ -8453,7 +8514,7 @@ static void ftrace_startup_sysctl(void)
 	}
 }
 
-/*  */
+/* 关闭ftrace */
 static void ftrace_shutdown_sysctl(void)
 {
 	int command;

@@ -747,6 +747,7 @@ EXPORT_SYMBOL_GPL(smp_call_function_any);
 #define SCF_WAIT	(1U << 0)
 #define SCF_RUN_LOCAL	(1U << 1)
 
+/*  */
 static void smp_call_function_many_cond(const struct cpumask *mask,
 					smp_call_func_t func, void *info,
 					unsigned int scf_flags,
@@ -852,6 +853,7 @@ static void smp_call_function_many_cond(const struct cpumask *mask,
 }
 
 /**
+在所有给定的CPU上运行一个函数
  * smp_call_function_many(): Run a function on a set of CPUs.
  * @mask: The set of cpus to run on (only runs on online subset).
  * @func: The function to run. This must be fast and non-blocking.
@@ -875,6 +877,7 @@ void smp_call_function_many(const struct cpumask *mask,
 EXPORT_SYMBOL(smp_call_function_many);
 
 /**
+在所有其他CPU上运行一个函数
  * smp_call_function(): Run a function on all other CPUs.
  * @func: The function to run. This must be fast and non-blocking.
  * @info: An arbitrary pointer to pass to the function.

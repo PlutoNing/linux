@@ -7,6 +7,7 @@
 # error Compiler does not support fentry?
 #endif
 # define MCOUNT_ADDR		((unsigned long)(__fentry__))
+/* 五个字节， call + offset */
 #define MCOUNT_INSN_SIZE	5 /* sizeof mcount call */
 
 /* Ignore unused weak functions which will have non zero offsets */

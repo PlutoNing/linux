@@ -105,6 +105,8 @@ union text_poke_insn {
 	} __attribute__((packed));
 };
 /* 
+在buf里面构造利用opcode从addr跳到dest的机器码
+=======
 构造insn结构体（buf就是）
 把dest插入到addr, 用opcode（可能是call）做指令.
   */
@@ -121,7 +123,10 @@ void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, i
 	 * Hide the addresses to avoid the compiler folding in constants when
 	 * referencing code, these can mess up annotations like
 	 * ANNOTATE_NOENDBR.
-
+	展开为
+	 __asm__("" : "=r"(insn) : "0"(insn));
+	__asm__("" : "=r"(addr) : "0"(addr));
+	__asm__("" : "=r"(dest) : "0"(dest));
 	 */
 	OPTIMIZER_HIDE_VAR(insn);
 	// __asm__("" : "=r"(insn) : "0"(insn))
