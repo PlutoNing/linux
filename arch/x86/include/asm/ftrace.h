@@ -6,6 +6,7 @@
 #ifndef CC_USING_FENTRY
 # error Compiler does not support fentry?
 #endif
+/* fentry是个函数， ftrace_64.S定义 */
 # define MCOUNT_ADDR		((unsigned long)(__fentry__))
 /* 五个字节， call + offset */
 #define MCOUNT_INSN_SIZE	5 /* sizeof mcount call */

@@ -1599,6 +1599,7 @@ static ssize_t empty_dir_listxattr(struct dentry *dentry, char *list, size_t siz
 	return -EOPNOTSUPP;
 }
 
+/* 空文件夹的inode ops */
 static const struct inode_operations empty_dir_inode_operations = {
 	.lookup		= empty_dir_lookup,
 	.permission	= generic_permission,
@@ -1619,6 +1620,7 @@ static int empty_dir_readdir(struct file *file, struct dir_context *ctx)
 	return 0;
 }
 
+/* 空文件夹的fops */
 static const struct file_operations empty_dir_operations = {
 	.llseek		= empty_dir_llseek,
 	.read		= generic_read_dir,
@@ -1627,9 +1629,13 @@ static const struct file_operations empty_dir_operations = {
 };
 
 
+/* 
+把一个新inode初始化为一个空文件夹的inode？
+*/
 void make_empty_dir_inode(struct inode *inode)
 {
 	set_nlink(inode, 2);
+	/* 一个user，group，other都可以r，x的DIR */
 	inode->i_mode = S_IFDIR | S_IRUGO | S_IXUGO;
 	inode->i_uid = GLOBAL_ROOT_UID;
 	inode->i_gid = GLOBAL_ROOT_GID;

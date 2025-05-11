@@ -391,13 +391,18 @@ struct trace_array {
 	raw_spinlock_t		start_lock;
 	/* 对应错误日志文件 */
 	struct list_head	err_log;
+	/* 比如说代表/sys/kernel/debug/tracing文件夹
+	 */
 	struct dentry		*dir;
 	struct dentry		*options;
 	struct dentry		*percpu_dir;
 	struct dentry		*event_dir;
 	struct trace_options	*topts;
 	struct list_head	systems;
-	/* 链接着相关的event file */
+	/* 链接着相关的event file
+	如果是全局或者顶层的tr，对应系统的available_events文件
+	一般的tr，似乎是代表着trace的event类型？
+	*/
 	struct list_head	events;
 	struct trace_event_file *trace_marker_file;
 	cpumask_var_t		tracing_cpumask; /* only trace on set CPUs */
@@ -449,6 +454,7 @@ extern int tracing_set_clock(struct trace_array *tr, const char *clockstr);
 extern bool trace_clock_in_ns(struct trace_array *tr);
 
 /*
+ftrace_trace_arrays是什么
  * The global tracer (top) should be the first trace array added,
  * but we check the flag anyway.
  */

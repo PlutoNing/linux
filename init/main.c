@@ -940,7 +940,9 @@ void start_kernel(void)
 	 */
 	ftrace_init();
 
-	/* trace_printk can be enabled here */
+	/* 
+	初始化trace机制
+	trace_printk can be enabled here */
 	early_trace_init();
 /* 1233 */
 	/*

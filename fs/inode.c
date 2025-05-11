@@ -355,6 +355,7 @@ void clear_nlink(struct inode *inode)
 EXPORT_SYMBOL(clear_nlink);
 
 /**
+直接设置inode的link
  * set_nlink - directly set an inode's link count
  * @inode: inode
  * @nlink: new nlink (should be non-zero)

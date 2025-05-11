@@ -314,8 +314,9 @@ typedef int (*ftrace_ops_func_t)(struct ftrace_ops *op, enum ftrace_ops_cmd cmd)
 代表ops的func hash ...
 The hash used to know what functions callbacks trace */
 struct ftrace_ops_hash {
+	/* 里面是ip，不trace的黑名单函数 */
 	struct ftrace_hash __rcu	*notrace_hash;
-	/*  */
+	/* 里面是ip，要trace的白名单 */
 	struct ftrace_hash __rcu	*filter_hash;
 	struct mutex			regex_lock;
 };
@@ -355,8 +356,11 @@ struct ftrace_ops {
 	struct ftrace_ops_hash		local_hash;
 	/* hash表，存的是ip */
 	struct ftrace_ops_hash		*func_hash;
+	/* 每次修改hash后，这里面是老hash的备份 */
 	struct ftrace_ops_hash		old_hash;
-	/* 是什么跳板地址 */
+	/* 是什么跳板地址
+	这个ops包含的rec， rec的ip都跳转到这里
+	*/
 	unsigned long			trampoline;
 	unsigned long			trampoline_size;
 	struct list_head		list;
@@ -827,6 +831,8 @@ extern int ftrace_make_nop(struct module *mod,
 #endif
 
 /**
+初始化一个nop call site
+把rec->ip处的call改成nop
  * ftrace_init_nop - initialize a nop call site
  * @mod: module structure if called by module load initialization
  * @rec: the call site record (e.g. mcount/fentry)
@@ -850,6 +856,8 @@ extern int ftrace_make_nop(struct module *mod,
 #ifndef ftrace_init_nop
 static inline int ftrace_init_nop(struct module *mod, struct dyn_ftrace *rec)
 {
+	/* 把rec->ip处的call改成nop
+	 */
 	return ftrace_make_nop(mod, rec, MCOUNT_ADDR);
 }
 #endif

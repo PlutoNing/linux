@@ -2332,25 +2332,34 @@ static size_t tgid_map_max;
  * where interrupt is disabled.
  */
 static arch_spinlock_t trace_cmdline_lock = __ARCH_SPIN_LOCK_UNLOCKED;
+/* 用于做[pid，comm]的缓存数组？ */
 struct saved_cmdlines_buffer {
+	/* pid作为索引， */
 	unsigned map_pid_to_cmdline[PID_MAX_DEFAULT+1];
 	unsigned *map_cmdline_to_pid;
 	unsigned cmdline_num;
 	int cmdline_idx;
+	/* 存储[idx，保存的comm]的数组 */
 	char *saved_cmdlines;
 };
 static struct saved_cmdlines_buffer *savedcmd;
 
+/* 通过idx获得对应的存储的comm */
 static inline char *get_saved_cmdlines(int idx)
 {
 	return &savedcmd->saved_cmdlines[idx * TASK_COMM_LEN];
 }
 
+/* 
+设置saved cmdline中idx对应的comm
+cmdline是task的comm
+*/
 static inline void set_cmdline(int idx, const char *cmdline)
 {
 	strncpy(get_saved_cmdlines(idx), cmdline, TASK_COMM_LEN);
 }
 
+/* 给saved_cmdline的buffer分配内存空间 */
 static int allocate_cmdlines_buffer(unsigned int val,
 				    struct saved_cmdlines_buffer *s)
 {
@@ -2376,14 +2385,18 @@ static int allocate_cmdlines_buffer(unsigned int val,
 	return 0;
 }
 
+/* 初始化savedcmd
+ */
 static int trace_create_savedcmd(void)
 {
 	int ret;
 
+	/* 分配结构体内存空间 */
 	savedcmd = kmalloc(sizeof(*savedcmd), GFP_KERNEL);
 	if (!savedcmd)
 		return -ENOMEM;
 
+	/* 分配buffer的内存空间 */
 	ret = allocate_cmdlines_buffer(SAVED_CMDLINES_DEFAULT, savedcmd);
 	if (ret < 0) {
 		kfree(savedcmd);
@@ -2528,6 +2541,11 @@ static void tracing_stop_tr(struct trace_array *tr)
 	raw_spin_unlock_irqrestore(&tr->start_lock, flags);
 }
 
+/* 
+tp点中上下文切换时会调用这个函数
+保存记录任务信息
+在savedcmd中保存pid与comm的映射关系 
+*/
 static int trace_save_cmdline(struct task_struct *tsk)
 {
 	unsigned tpid, idx;
@@ -2537,7 +2555,7 @@ static int trace_save_cmdline(struct task_struct *tsk)
 		return 1;
 
 	tpid = tsk->pid & (PID_MAX_DEFAULT - 1);
-
+	/* 获取到pid与tpid */
 	/*
 	 * It's not the end of the world if we don't get
 	 * the lock, but we also don't want to spin
@@ -2553,13 +2571,16 @@ static int trace_save_cmdline(struct task_struct *tsk)
 
 	idx = savedcmd->map_pid_to_cmdline[tpid];
 	if (idx == NO_CMDLINE_MAP) {
+		/* 扩展数组 */
 		idx = (savedcmd->cmdline_idx + 1) % savedcmd->cmdline_num;
 
 		savedcmd->map_pid_to_cmdline[tpid] = idx;
 		savedcmd->cmdline_idx = idx;
 	}
 
+	/* 设置idx对应的pid */
 	savedcmd->map_cmdline_to_pid[idx] = tsk->pid;
+	/* 设置idx对应的新的comm */
 	set_cmdline(idx, tsk->comm);
 
 	arch_spin_unlock(&trace_cmdline_lock);
@@ -2605,6 +2626,7 @@ void trace_find_cmdline(int pid, char comm[])
 	preempt_enable();
 }
 
+/* 获取pid对应的pid的存储位置 */
 static int *trace_find_tgid_ptr(int pid)
 {
 	/*
@@ -2627,6 +2649,9 @@ int trace_find_tgid(int pid)
 	return ptr ? *ptr : 0;
 }
 
+/* 
+trace在上下文切换的时候保存prev next的pid
+*/
 static int trace_save_tgid(struct task_struct *tsk)
 {
 	int *ptr;
@@ -2643,6 +2668,7 @@ static int trace_save_tgid(struct task_struct *tsk)
 	return 1;
 }
 
+/* 是否开启了记录 */
 static bool tracing_record_taskinfo_skip(int flags)
 {
 	if (unlikely(!(flags & (TRACE_RECORD_CMDLINE | TRACE_RECORD_TGID))))
@@ -2681,6 +2707,7 @@ void tracing_record_taskinfo(struct task_struct *task, int flags)
 }
 
 /**
+上下文切换时记录任务信息，记录comm和tgid
  * tracing_record_taskinfo_sched_switch - record task info for sched_switch
  *
  * @prev: previous task during sched_switch
@@ -2694,14 +2721,16 @@ void tracing_record_taskinfo_sched_switch(struct task_struct *prev,
 	bool done;
 
 	if (tracing_record_taskinfo_skip(flags))
-		return;
+		return;/* 不需要记录 */
 
 	/*
 	 * Record as much task information as possible. If some fail, continue
 	 * to try to record the others.
 	 */
+	/* 保存comm */
 	done  = !(flags & TRACE_RECORD_CMDLINE) || trace_save_cmdline(prev);
 	done &= !(flags & TRACE_RECORD_CMDLINE) || trace_save_cmdline(next);
+	/* 保存prev和next */
 	done &= !(flags & TRACE_RECORD_TGID) || trace_save_tgid(prev);
 	done &= !(flags & TRACE_RECORD_TGID) || trace_save_tgid(next);
 
@@ -2830,6 +2859,7 @@ void trace_buffered_event_enable(void)
 	trace_buffered_event_disable();
 }
 
+/*  */
 static void enable_trace_buffered_event(void *data)
 {
 	/* Probably not needed, but do it anyway */
@@ -2843,6 +2873,7 @@ static void disable_trace_buffered_event(void *data)
 }
 
 /**
+关闭buffered events
  * trace_buffered_event_disable - disable buffering events
  *
  * When a filter is removed, it is faster to not use the buffered
@@ -2861,7 +2892,8 @@ void trace_buffered_event_disable(void)
 
 	if (--trace_buffered_event_ref)
 		return;
-
+/* 现在trace_buffered_event_ref为0，表示没有使用buffered event了
+ */
 	preempt_disable();
 	/* For each CPU, set the buffer as used. */
 	smp_call_function_many(tracing_buffer_mask,
@@ -2871,6 +2903,7 @@ void trace_buffered_event_disable(void)
 	/* Wait for all current users to finish */
 	synchronize_rcu();
 
+	/* 释放内存 */
 	for_each_tracing_cpu(cpu) {
 		free_page((unsigned long)per_cpu(trace_buffered_event, cpu));
 		per_cpu(trace_buffered_event, cpu) = NULL;
@@ -10163,6 +10196,7 @@ static struct vfsmount *trace_automount(struct dentry *mntpt, void *ingore)
 }
 
 /**
+创建tracing文件夹
  * tracing_init_dentry - initialize top level trace array
  *
  * This is called when creating files or directories in the tracing
@@ -10190,6 +10224,7 @@ int tracing_init_dentry(void)
 	 * files to exist in debugfs/tracing, we must automount
 	 * the tracefs file system there, so older tools still
 	 * work with the newer kernel.
+	 创建/sys/kernel/debug/tracing文件夹
 	 */
 	tr->dir = debugfs_create_automount("tracing", NULL,
 					   trace_automount, NULL);
@@ -10312,6 +10347,9 @@ static struct notifier_block trace_module_nb = {
 };
 #endif /* CONFIG_MODULES */
 
+/* 
+创建tracing文件夹什么的
+*/
 static __init void tracer_init_tracefs_work_func(struct work_struct *work)
 {
 
@@ -10350,17 +10388,22 @@ static __init void tracer_init_tracefs_work_func(struct work_struct *work)
 
 	update_tracer_options(&global_trace);
 }
-
+/* 
+初始化ftrace
+*/
 static __init int tracer_init_tracefs(void)
 {
 	int ret;
 
+	/*  */
 	trace_access_lock_init();
 
+	/* 创建tracing文件夹 */
 	ret = tracing_init_dentry();
 	if (ret)
 		return 0;
 
+	/* 开始初始化tracing文件夹内容什么的 */
 	if (eval_map_wq) {
 		INIT_WORK(&tracerfs_init_work, tracer_init_tracefs_work_func);
 		queue_work(eval_map_wq, &tracerfs_init_work);
@@ -10372,7 +10415,9 @@ static __init int tracer_init_tracefs(void)
 
 	return 0;
 }
-
+/* 
+初始化ftrace
+*/
 fs_initcall(tracer_init_tracefs);
 
 static int trace_die_panic_handler(struct notifier_block *self,
@@ -10717,6 +10762,7 @@ __init static void enable_instances(void)
 	}
 }
 
+/*  */
 __init static int tracer_alloc_buffers(void)
 {
 	int ring_buf_size;
@@ -10773,6 +10819,8 @@ __init static int tracer_alloc_buffers(void)
 	if (!temp_buffer)
 		goto out_rm_hp_state;
 
+	/* 创建初始化saved_cmdlines
+	 */
 	if (trace_create_savedcmd() < 0)
 		goto out_free_temp_buffer;
 
@@ -10870,9 +10918,11 @@ void __init ftrace_boot_snapshot(void)
 #endif
 }
 
+/* 启动的时候初始化trace */
 void __init early_trace_init(void)
 {
 	if (tracepoint_printk) {
+		/* 以后 */
 		tracepoint_print_iter =
 			kzalloc(sizeof(*tracepoint_print_iter), GFP_KERNEL);
 		if (MEM_FAIL(!tracepoint_print_iter,
@@ -10881,6 +10931,7 @@ void __init early_trace_init(void)
 		else
 			static_key_enable(&tracepoint_printk_key.key);
 	}
+	/*  */
 	tracer_alloc_buffers();
 
 	init_events();

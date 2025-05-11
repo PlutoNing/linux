@@ -68,6 +68,7 @@
 	})
 
 /* hash bits for specific function selection */
+/* 和hash slot数量有关 */
 #define FTRACE_HASH_DEFAULT_BITS 10
 #define FTRACE_HASH_MAX_BITS 12
 
@@ -1142,10 +1143,12 @@ bool is_ftrace_trampoline(unsigned long addr)
 struct ftrace_page {
 	/* 指向下一个page */
 	struct ftrace_page	*next;
-	/* 一组ftrace */
+	/* 一组ftrace，一个数组，其实是几个page
+	大小由order来描述 */
 	struct dyn_ftrace	*records; 
 	/* 当前被读到的ftrace的idx */
 	int			index;
+	/* records内存空间的大小 */
 	int			order;
 };
 
@@ -1155,6 +1158,8 @@ struct ftrace_page {
 /* 2024年10月17日00:13:28
 这个是什么 */
 static struct ftrace_page	*ftrace_pages_start;
+/* 指向分配的ftrace pg链， 每个pg是一组rec，rec的ip
+指向mcount的指针值 */
 static struct ftrace_page	*ftrace_pages;
 
 /* 要把这个ip所属的entry加入hash，这里计算key */
@@ -1335,16 +1340,21 @@ void ftrace_free_filter(struct ftrace_ops *ops)
 }
 EXPORT_SYMBOL_GPL(ftrace_free_filter);
 
+/* 
+分配一个新的ftrace hash
+*/
 static struct ftrace_hash *alloc_ftrace_hash(int size_bits)
 {
 	struct ftrace_hash *hash;
 	int size;
 
+	/* 分配hash表结构体内存 */
 	hash = kzalloc(sizeof(*hash), GFP_KERNEL);
 	if (!hash)
 		return NULL;
 
 	size = 1 << size_bits;
+	/* 分配hash表slots的内存 */
 	hash->buckets = kcalloc(size, sizeof(*hash->buckets), GFP_KERNEL);
 
 	if (!hash->buckets) {
@@ -1387,6 +1397,7 @@ static int ftrace_add_mod(struct trace_array *tr,
 	return -ENOMEM;
 }
 
+/* 复制一份这个hash，deep copy */
 static struct ftrace_hash *
 alloc_and_copy_ftrace_hash(int size_bits, struct ftrace_hash *hash)
 {
@@ -1396,6 +1407,8 @@ alloc_and_copy_ftrace_hash(int size_bits, struct ftrace_hash *hash)
 	int ret;
 	int i;
 
+	/* 分配新的hash表
+	 */
 	new_hash = alloc_ftrace_hash(size_bits);
 	if (!new_hash)
 		return NULL;
@@ -1408,8 +1421,11 @@ alloc_and_copy_ftrace_hash(int size_bits, struct ftrace_hash *hash)
 		return new_hash;
 
 	size = 1 << hash->size_bits;
+	/* 遍历老hash的每一个slot */
 	for (i = 0; i < size; i++) {
+		/* 遍历此slot的每一个元素 */
 		hlist_for_each_entry(entry, &hash->buckets[i], hlist) {
+			/* 把每一个元素添加到新hash */
 			ret = add_hash_entry(new_hash, entry->ip);
 			if (ret < 0)
 				goto free_hash;
@@ -1433,6 +1449,7 @@ ftrace_hash_rec_enable_modify(struct ftrace_ops *ops, int filter_hash);
 static int ftrace_hash_ipmodify_update(struct ftrace_ops *ops,
 				       struct ftrace_hash *new_hash);
 
+/* move hash表 */
 static struct ftrace_hash *dup_hash(struct ftrace_hash *src, int size)
 {
 	struct ftrace_func_entry *entry;
@@ -1469,6 +1486,7 @@ static struct ftrace_hash *dup_hash(struct ftrace_hash *src, int size)
 	return new_hash;
 }
 
+/* 把src的内容偷到新创建的hash表，返回新hash */
 static struct ftrace_hash *
 __ftrace_hash_move(struct ftrace_hash *src)
 {
@@ -1483,6 +1501,10 @@ __ftrace_hash_move(struct ftrace_hash *src)
 	return dup_hash(src, size);
 }
 
+/* 
+dst是ops的老hash
+src是从老hash中copy过来的新hash，然后更新了黑名单白名单
+*/
 static int
 ftrace_hash_move(struct ftrace_ops *ops, int enable,
 		 struct ftrace_hash **dst, struct ftrace_hash *src)
@@ -1494,13 +1516,17 @@ ftrace_hash_move(struct ftrace_ops *ops, int enable,
 	if (ops->flags & FTRACE_OPS_FL_IPMODIFY && !enable)
 		return -EINVAL;
 
+	/* 把src的内容偷到新创建的hash表，返回新hash
+	 */
 	new_hash = __ftrace_hash_move(src);
 	if (!new_hash)
 		return -ENOMEM;
 
 	/* Make sure this can be applied if it is IPMODIFY ftrace_ops */
 	if (enable) {
-		/* IPMODIFY should be updated only when filter_hash updating */
+		/* IPMODIFY should be updated only when filter_hash updating
+		调用每个被加入或删除白名单的rec的func
+		*/
 		ret = ftrace_hash_ipmodify_update(ops, new_hash);
 		if (ret < 0) {
 			free_ftrace_hash(new_hash);
@@ -1798,6 +1824,7 @@ static bool __ftrace_hash_rec_update(struct ftrace_ops *ops,
 			return false;
 	}
 
+	/* 遍历每一个rec */
 	do_for_each_ftrace_rec(pg, rec) {
 		int in_other_hash = 0;
 		int in_hash = 0;
@@ -1948,6 +1975,9 @@ static bool ftrace_hash_rec_enable(struct ftrace_ops *ops,
 	return __ftrace_hash_rec_update(ops, filter_hash, 1);
 }
 
+/* 
+update什么
+*/
 static void ftrace_hash_rec_update_modify(struct ftrace_ops *ops,
 					  int filter_hash, int inc)
 {
@@ -1984,6 +2014,7 @@ static void ftrace_hash_rec_enable_modify(struct ftrace_ops *ops,
 }
 
 /*
+new_hash是ops的最新的更新了白名单黑名单的hash
  * Try to update IPMODIFY flag on each ftrace_rec. Return 0 if it is OK
  * or no-needed to update, -EBUSY if it detects a conflict of the flag
  * on a ftrace_rec, and -EINVAL if the new_hash tries to trace all recs.
@@ -2018,7 +2049,8 @@ static int __ftrace_hash_update_ipmodify(struct ftrace_ops *ops,
 	/* neither IPMODIFY nor DIRECT, skip */
 	if (!is_ipmodify && !is_direct)
 		return 0;
-
+/* 必须是ipmodify或者direct
+ */
 	if (WARN_ON_ONCE(is_ipmodify && is_direct))
 		return 0;
 
@@ -2030,7 +2062,9 @@ static int __ftrace_hash_update_ipmodify(struct ftrace_ops *ops,
 	if (!new_hash || !old_hash)
 		return -EINVAL;
 
-	/* Update rec->flags */
+	/* Update rec->flags
+	遍历当前系统全部的rec
+	*/
 	do_for_each_ftrace_rec(pg, rec) {
 
 		if (rec->flags & FTRACE_FL_DISABLED)
@@ -2041,8 +2075,9 @@ static int __ftrace_hash_update_ipmodify(struct ftrace_ops *ops,
 		in_new = !!ftrace_lookup_ip(new_hash, rec->ip);
 		if (in_old == in_new)
 			continue;
-
+/* 如果rec的trace状态发生了变化 */
 		if (in_new) {
+			/* rec现在开始被traace了 */
 			if (rec->flags & FTRACE_FL_IPMODIFY) {
 				int ret;
 
@@ -2060,6 +2095,7 @@ static int __ftrace_hash_update_ipmodify(struct ftrace_ops *ops,
 				 */
 				if (!ops->ops_func)
 					return -EBUSY;
+				/*  */
 				ret = ops->ops_func(ops, FTRACE_OPS_CMD_ENABLE_SHARE_IPMODIFY_SELF);
 				if (ret)
 					return ret;
@@ -2121,9 +2157,12 @@ static void ftrace_hash_ipmodify_disable(struct ftrace_ops *ops)
 	__ftrace_hash_update_ipmodify(ops, hash, EMPTY_HASH);
 }
 
+/* newhash是ops的最新的更新了白名单黑名单的hash */
 static int ftrace_hash_ipmodify_update(struct ftrace_ops *ops,
 				       struct ftrace_hash *new_hash)
 {
+	/* 获取ops的老hash
+	 */
 	struct ftrace_hash *old_hash = ops->func_hash->filter_hash;
 
 	if (ftrace_hash_empty(old_hash))
@@ -2132,6 +2171,7 @@ static int ftrace_hash_ipmodify_update(struct ftrace_ops *ops,
 	if (ftrace_hash_empty(new_hash))
 		new_hash = NULL;
 
+	/*  */
 	return __ftrace_hash_update_ipmodify(ops, old_hash, new_hash);
 }
 
@@ -2620,7 +2660,7 @@ static DEFINE_MUTEX(direct_mutex);
 int ftrace_direct_func_count;
 
 /*
-在direct functions里面搜索ip直接跳转的func？
+在direct functions这个kv里面搜索ip直接跳转的func
  * Search the direct_functions hash to see if the given instruction pointer
  * has a direct caller attached to it.
  */
@@ -2682,6 +2722,9 @@ static void call_direct_funcs(unsigned long ip, unsigned long pip,
 
 /**
 找到这个rec要跳转的地址？
+可能是直接跳转的， 在direct_functions里面有rec的ip对应的entry，返回entry->direct
+也可能是跳板类型的，就找到对应的ops，返回ops->trampoline
+如果是regs类型的，就返回ftrace_call系列函数
  * ftrace_get_addr_new - Get the call address to set to
  * @rec:  The ftrace record descriptor
  *
@@ -2728,7 +2771,8 @@ unsigned long ftrace_get_addr_new(struct dyn_ftrace *rec)
 }
 
 /**
-就是返回EN类型的rec的ip对应的地址
+返回rec当前跳转的地址
+就是返回EN类型（已经启用的）的rec的ip对应的地址
  * ftrace_get_addr_curr - Get the call address that is already there
  * @rec:  The ftrace record descriptor
  *
@@ -2777,7 +2821,8 @@ unsigned long ftrace_get_addr_curr(struct dyn_ftrace *rec)
 		return (unsigned long)FTRACE_ADDR;
 }
 
-/* 替换rec ip处的字节码 */
+/* 替换rec ip处的字节码
+跳转到修改后的目的地 */
 static int
 __ftrace_replace_code(struct dyn_ftrace *rec, bool enable)
 {
@@ -2785,15 +2830,19 @@ __ftrace_replace_code(struct dyn_ftrace *rec, bool enable)
 	unsigned long ftrace_addr;
 	int ret;
 
-	/* 找到rec要跳转的地址
+	/* 找到rec要跳转的新地址
+	可能是direct functions里面的entry，也可能是ftrace ops的trampoline
+	也可能是ftrace_call函数
 	 */
 	ftrace_addr = ftrace_get_addr_new(rec);
 
 	/* This needs to be done before we call ftrace_update_record
+	获取rec当前跳转的地址
 	返回EN类型的rec的ip对应的地址
 	*/
 	ftrace_old_addr = ftrace_get_addr_curr(rec);
 
+	/*  */
 	ret = ftrace_update_record(rec, enable);
 
 	ftrace_bug_type = FTRACE_BUG_UNKNOWN;
@@ -2822,7 +2871,8 @@ __ftrace_replace_code(struct dyn_ftrace *rec, bool enable)
 	return -1; /* unknown ftrace bug */
 }
 
-/* 遍历系统全部的rec，根据使用情况决定是trace还是关闭trace
+/* 
+遍历系统全部的rec，根据使用情况决定是trace还是关闭trace
 也就是说把rec->ip处的nop换成call，还是把call换成nop
  */
 void __weak ftrace_replace_code(int mod_flags)
@@ -2928,6 +2978,9 @@ struct dyn_ftrace *ftrace_rec_iter_record(struct ftrace_rec_iter *iter)
 	return &iter->pg->records[iter->index];
 }
 
+/* 
+把rec->ip处的call换成nop
+返回0表示出错 */
 static int
 ftrace_nop_initialize(struct module *mod, struct dyn_ftrace *rec)
 {
@@ -2936,6 +2989,8 @@ ftrace_nop_initialize(struct module *mod, struct dyn_ftrace *rec)
 	if (unlikely(ftrace_disabled))
 		return 0;
 
+	/* 把rec->ip处的call换成nop
+	 */
 	ret = ftrace_init_nop(mod, rec);
 	if (ret) {
 		ftrace_bug_type = FTRACE_BUG_INIT;
@@ -2960,7 +3015,7 @@ void __weak ftrace_arch_code_modify_prepare(void)
 void __weak ftrace_arch_code_modify_post_process(void)
 {
 }
-/* 改变ftrace到func
+/* 改变ftrace call跳板函数到func
 以后跳转到func */
 static int update_ftrace_func(ftrace_func_t func)
 {
@@ -2974,7 +3029,8 @@ static int update_ftrace_func(ftrace_func_t func)
 	/* 更新save func */
 	save_func = func;
 
-	/* 开始跳转到func */
+	/* 开始跳转到func
+	ftrace all就是实质修改为func了 */
 	return ftrace_update_ftrace_func(func);
 }
 /* 修改hook代码 */
@@ -3003,7 +3059,7 @@ void ftrace_modify_all_code(int command)
 	 * traced.
 	 */
 	if (update) {
-		/* 修改ftrace的poke，以后跳转到func */
+		/* 修改ftrace call跳板函数的poke，以后实质上跳转到func参数 */
 		err = update_ftrace_func(ftrace_ops_list_func);
 		if (FTRACE_WARN_ON(err))
 			return;
@@ -3095,12 +3151,16 @@ static void ftrace_run_update_code(int command)
 	ftrace_arch_code_modify_post_process();
 }
 
+/* 
+
+*/
 static void ftrace_run_modify_code(struct ftrace_ops *ops, int command,
 				   struct ftrace_ops_hash *old_hash)
 {
 	ops->flags |= FTRACE_OPS_FL_MODIFYING;
 	ops->old_hash.filter_hash = old_hash->filter_hash;
 	ops->old_hash.notrace_hash = old_hash->notrace_hash;
+	/*  */
 	ftrace_run_update_code(command);
 	ops->old_hash.filter_hash = NULL;
 	ops->old_hash.notrace_hash = NULL;
@@ -3339,9 +3399,12 @@ out:
 	return 0;
 }
 
+/* 一个耗时 */
 static u64		ftrace_update_time;
 unsigned long		ftrace_update_tot_cnt;
+/* ftrace pg使用的page数量 */
 unsigned long		ftrace_number_of_pages;
+/* ftrace pg的数量 */
 unsigned long		ftrace_number_of_groups;
 
 /*  */
@@ -3355,6 +3418,9 @@ static inline int ops_traces_mod(struct ftrace_ops *ops)
 		ftrace_hash_empty(ops->func_hash->notrace_hash);
 }
 
+/* 
+把系统的pg链上的每一个rec的ip处的call换成nop
+*/
 static int ftrace_update_code(struct module *mod, struct ftrace_page *new_pgs)
 {
 	bool init_nop = ftrace_need_init_nop();
@@ -3365,6 +3431,7 @@ static int ftrace_update_code(struct module *mod, struct ftrace_page *new_pgs)
 	unsigned long rec_flags = 0;
 	int i;
 
+	/* 获取时间 */
 	start = ftrace_now(raw_smp_processor_id());
 
 	/*
@@ -3381,20 +3448,26 @@ static int ftrace_update_code(struct module *mod, struct ftrace_page *new_pgs)
 	if (mod)
 		rec_flags |= FTRACE_FL_DISABLED;
 
+	/* 遍历每一个ftrace pg */
 	for (pg = new_pgs; pg; pg = pg->next) {
 
+		/* 遍历此pg的每一个rec */
 		for (i = 0; i < pg->index; i++) {
 
 			/* If something went wrong, bail without enabling anything */
 			if (unlikely(ftrace_disabled))
 				return -1;
 
+			/* 取下这个rec */
 			p = &pg->records[i];
 			p->flags = rec_flags;
 
 			/*
 			 * Do the initial record conversion from mcount jump
 			 * to the NOP instructions.
+			 */
+			/* 如果init_nop为真，表示需要初始化nop（把rec->ip处的call换成nop），
+			如果返回值为假，说明初始化出错了，就break
 			 */
 			if (init_nop && !ftrace_nop_initialize(mod, p))
 				break;
@@ -3410,6 +3483,8 @@ static int ftrace_update_code(struct module *mod, struct ftrace_page *new_pgs)
 	return 0;
 }
 
+/* 给当前pg分配内存空间， 存储rec
+现在系统总共还要count个需要存储， 返回值表示本次存储了几个rec */
 static int ftrace_allocate_records(struct ftrace_page *pg, int count)
 {
 	int order;
@@ -3420,20 +3495,26 @@ static int ftrace_allocate_records(struct ftrace_page *pg, int count)
 		return -EINVAL;
 
 	/* We want to fill as much as possible, with no empty pages */
+	/* 计算存储count个rec需要几个页面 */
 	pages = DIV_ROUND_UP(count, ENTRIES_PER_PAGE);
+	/* 这pages个页面的order是几 */
 	order = fls(pages) - 1;
 
  again:
+ /*  */
 	pg->records = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, order);
 
 	if (!pg->records) {
+		/* 本次pg内存分配失败 */
 		/* if we can't allocate this size, try something smaller */
 		if (!order)
 			return -ENOMEM;
+		/* 如果是因为order比较大分配失败了，分配小点的试试 */
 		order--;
 		goto again;
 	}
 
+	/* 内存分配成功 */
 	ftrace_number_of_pages += 1 << order;
 	ftrace_number_of_groups++;
 
@@ -3462,6 +3543,8 @@ static void ftrace_free_pages(struct ftrace_page *pages)
 	}
 }
 
+/* 分配一连串可以存储num个rec的ftrace pg
+ */
 static struct ftrace_page *
 ftrace_allocate_pages(unsigned long num_to_init)
 {
@@ -3472,6 +3555,7 @@ ftrace_allocate_pages(unsigned long num_to_init)
 	if (!num_to_init)
 		return NULL;
 
+	/* 分配ftrace pg结构体的内存 */
 	start_pg = pg = kzalloc(sizeof(*pg), GFP_KERNEL);
 	if (!pg)
 		return NULL;
@@ -3480,8 +3564,12 @@ ftrace_allocate_pages(unsigned long num_to_init)
 	 * Try to allocate as much as possible in one continues
 	 * location that fills in all of the space. We want to
 	 * waste as little space as possible.
+	 接下来不断创建一连串ftrace pg
+	 给每个pg分配存储rec的内存空间
+	 一直存储够num_to_init个rec
 	 */
 	for (;;) {
+		/* 给当前pg分配内存空间存储rec， cnt表示这次pg存了几个rec */
 		cnt = ftrace_allocate_records(pg, num_to_init);
 		if (cnt < 0)
 			goto free_pages;
@@ -4593,8 +4681,9 @@ match_records(struct ftrace_hash *hash, char *func, int len, char *mod)
 	return found;
 }
 
-/* hash是iter的hash
-处理buff正则匹配到的rec，决定白名单黑名单
+/* 
+hash是iter的hash，比如是ftrace_ops->func_hash->filter_hash或者notrace_hash
+在hash里面的rec，处理buff里面的正则匹配到的rec，决定是加入到白名单还是黑名单
 */
 static int
 ftrace_match_records(struct ftrace_hash *hash, char *buff, int len)
@@ -4602,6 +4691,10 @@ ftrace_match_records(struct ftrace_hash *hash, char *buff, int len)
 	return match_records(hash, buff, len, NULL);
 }
 
+/* 
+ops被改变了
+old_hash是之前的老hash
+*/
 static void ftrace_ops_update_code(struct ftrace_ops *ops,
 				   struct ftrace_ops_hash *old_hash)
 {
@@ -4614,6 +4707,8 @@ static void ftrace_ops_update_code(struct ftrace_ops *ops,
 		ftrace_run_modify_code(ops, FTRACE_UPDATE_CALLS, old_hash);
 		return;
 	}
+
+	/* 如果是还没启用的ops？ */
 
 	/*
 	 * If this is the shared global_ops filter, then we need to
@@ -4633,6 +4728,12 @@ static void ftrace_ops_update_code(struct ftrace_ops *ops,
 	} while_for_each_ftrace_op(op);
 }
 
+/* 
+设置ftrace_ops的白名单黑名单
+orig_hash是ftrace_ops->func_hash->filter_hash或者notrace_hash，总之是老hash
+hash是新hash，是cow方式修改的，根据用户输入处理了函数在hash的删除还是保留
+这里应该是进行替换hash表什么的
+*/
 static int ftrace_hash_move_and_update_ops(struct ftrace_ops *ops,
 					   struct ftrace_hash **orig_hash,
 					   struct ftrace_hash *hash,
@@ -4642,11 +4743,15 @@ static int ftrace_hash_move_and_update_ops(struct ftrace_ops *ops,
 	struct ftrace_hash *old_hash;
 	int ret;
 
+	/* 用于对老hash结构体内存的ref */
 	old_hash = *orig_hash;
+	/* 保留对老hash的ref */
 	old_hash_ops.filter_hash = ops->func_hash->filter_hash;
 	old_hash_ops.notrace_hash = ops->func_hash->notrace_hash;
+	/*  */
 	ret = ftrace_hash_move(ops, enable, orig_hash, hash);
 	if (!ret) {
+		/*  */
 		ftrace_ops_update_code(ops, &old_hash_ops);
 		free_ftrace_hash_rcu(old_hash);
 	}
@@ -5522,6 +5627,10 @@ ftrace_match_addr(struct ftrace_hash *hash, unsigned long *ips,
 	return 0;
 }
 
+/* 
+buf和len是一个用户指定的正则表达式
+enable表示是启用还是关闭ops对这个regex匹配的函数的trace
+*/
 static int
 ftrace_set_hash(struct ftrace_ops *ops, unsigned char *buf, int len,
 		unsigned long *ips, unsigned int cnt,
@@ -5544,6 +5653,8 @@ ftrace_set_hash(struct ftrace_ops *ops, unsigned char *buf, int len,
 	if (reset)
 		hash = alloc_ftrace_hash(FTRACE_HASH_DEFAULT_BITS);
 	else
+	/* 处理开机命令行参数的函数正则是这个路径
+		复制一个新hash */
 		hash = alloc_and_copy_ftrace_hash(FTRACE_HASH_DEFAULT_BITS, *orig_hash);
 
 	if (!hash) {
@@ -5551,11 +5662,14 @@ ftrace_set_hash(struct ftrace_ops *ops, unsigned char *buf, int len,
 		goto out_regex_unlock;
 	}
 
+	/* 处理hash里面被buf正则匹配到的rec， 决定是移除还是保留
+	代表着是trace还是notrace */
 	if (buf && !ftrace_match_records(hash, buf, len)) {
 		ret = -EINVAL;
 		goto out_regex_unlock;
 	}
 	if (ips) {
+		/* 以后 */
 		ret = ftrace_match_addr(hash, ips, cnt, remove);
 		if (ret < 0)
 			goto out_regex_unlock;
@@ -5915,6 +6029,11 @@ void ftrace_ops_set_global_filter(struct ftrace_ops *ops)
 }
 EXPORT_SYMBOL_GPL(ftrace_ops_set_global_filter);
 
+/* 
+buf是一个函数
+让ftrace_ops启用或者关闭对这个函数的跟踪
+enable=1表示启用，enable=0表示关闭
+*/
 static int
 ftrace_set_regex(struct ftrace_ops *ops, unsigned char *buf, int len,
 		 int reset, int enable)
@@ -6015,12 +6134,14 @@ static int __init set_ftrace_notrace(char *str)
 }
 __setup("ftrace_notrace=", set_ftrace_notrace);
 
+/* 获取参数 */
 static int __init set_ftrace_filter(char *str)
 {
 	ftrace_filter_param = true;
 	strscpy(ftrace_filter_buf, str, FTRACE_FILTER_SIZE);
 	return 1;
 }
+/* 当内核启动命令行中包含类似 ftrace_filter=func1,func2 的参数时，触发此函数。 */
 __setup("ftrace_filter=", set_ftrace_filter);
 
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
@@ -6077,21 +6198,29 @@ static void __init set_ftrace_early_graph(char *buf, int enable)
 }
 #endif /* CONFIG_FUNCTION_GRAPH_TRACER */
 
+/* 
+buf是启动命令行中传入的参数，指定了一些函数
+enable表示这是白名单还是黑名单
+*/
 void __init
 ftrace_set_early_filter(struct ftrace_ops *ops, char *buf, int enable)
 {
 	char *func;
 
+	/* 初始化ftrace ops */
 	ftrace_ops_init(ops);
 
 	while (buf) {
+		/* 取出一个参数指定的func */
 		func = strsep(&buf, ",");
+		/*  */
 		ftrace_set_regex(ops, func, strlen(func), 0, enable);
 	}
 }
 
 static void __init set_ftrace_early_filters(void)
 {
+	/* 如果启动命令行有参数，处理 */
 	if (ftrace_filter_buf[0])
 		ftrace_set_early_filter(&global_ops, ftrace_filter_buf, 1);
 	if (ftrace_notrace_buf[0])
@@ -6683,6 +6812,9 @@ static __init int ftrace_init_dyn_tracefs(struct dentry *d_tracer)
 	return 0;
 }
 
+/* 
+用于排序__start_mcount_loc到__stop_mcount_loc之间的函数指针
+*/
 static int ftrace_cmp_ips(const void *a, const void *b)
 {
 	const unsigned long *ipa = a;
@@ -6716,7 +6848,13 @@ static void test_is_sorted(unsigned long *start, unsigned long count)
 }
 #endif
 
-/* loc是什么 */
+/* 处理镜像文件中mcount数据段的mcount loc
+分配ftrace pg链的空间，存储系统全部的rec
+每个rec的ip指向mcount loc
+然后把每个rec的ip处的call换成nop
+======
+就是把每个mcount loc的call换成nop？
+*/
 static int ftrace_process_locs(struct module *mod,
 			       unsigned long *start,
 			       unsigned long *end)
@@ -6732,6 +6870,7 @@ static int ftrace_process_locs(struct module *mod,
 	unsigned long flags = 0; /* Shut up gcc */
 	int ret = -ENOMEM;
 
+	/* mcount段的大小 */
 	count = end - start;
 
 	if (!count)
@@ -6749,6 +6888,8 @@ static int ftrace_process_locs(struct module *mod,
 		test_is_sorted(start, count);
 	}
 
+	/* 分配一连串的ftrace_page
+	 */
 	start_pg = ftrace_allocate_pages(count);
 	if (!start_pg)
 		return -ENOMEM;
@@ -6761,10 +6902,13 @@ static int ftrace_process_locs(struct module *mod,
 	 * Force a new page to be allocated for modules.
 	 */
 	if (!mod) {
+		/* 表示处理的不是模块的，而是内核的mcount代码段
+		 */
 		WARN_ON(ftrace_pages || ftrace_pages_start);
 		/* First initialization */
 		ftrace_pages = ftrace_pages_start = start_pg;
 	} else {
+		/* 处理的是模块的 */
 		if (!ftrace_pages)
 			goto out;
 
@@ -6777,10 +6921,14 @@ static int ftrace_process_locs(struct module *mod,
 		ftrace_pages->next = start_pg;
 	}
 
+	/* p指向的mcount， rec之类的东西
+	pg是ftrace pg，存储着一组rec */
 	p = start;
 	pg = start_pg;
+	/* 遍历每一个mocunt，获取addr，把rec的ip设置为addr */
 	while (p < end) {
 		unsigned long end_offset;
+		/* 处理当前指向的rec */
 		addr = ftrace_call_adjust(*p++);
 		/*
 		 * Some architecture linkers will pad between
@@ -6795,6 +6943,7 @@ static int ftrace_process_locs(struct module *mod,
 
 		end_offset = (pg->index+1) * sizeof(pg->records[0]);
 		if (end_offset > PAGE_SIZE << pg->order) {
+			/* 如果跨pg了，指向下一个pg */
 			/* We should have allocated enough */
 			if (WARN_ON(!pg->next))
 				break;
@@ -6823,6 +6972,8 @@ static int ftrace_process_locs(struct module *mod,
 	 */
 	if (!mod)
 		local_irq_save(flags);
+	/* 把每一个rec的ip处的call换成nop
+	 */
 	ftrace_update_code(mod, start_pg);
 	if (!mod)
 		local_irq_restore(flags);
@@ -7495,6 +7646,10 @@ void __init ftrace_init(void)
 	pr_info("ftrace: allocating %ld entries in %ld pages\n",
 		count, DIV_ROUND_UP(count, ENTRIES_PER_PAGE));
 
+	/* 
+	建立每一个mcount loc的ftrace rec
+	然后把每一个mcount loc的call换成nop
+	*/
 	ret = ftrace_process_locs(NULL,
 				  __start_mcount_loc,
 				  __stop_mcount_loc);

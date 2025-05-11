@@ -222,7 +222,7 @@ notrace void __weak stop_machine_yield(const struct cpumask *cpumask)
 
 /* 
 停止cpu
-通过在每个cpu上面运行一个此函数
+通过在每个cpu上面运行一个此函数来实现停止cpu
 This is the cpu_stop function which stops the CPU. */
 static int multi_cpu_stop(void *data)
 {

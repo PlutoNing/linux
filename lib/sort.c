@@ -189,6 +189,7 @@ static size_t parent(size_t i, unsigned int lsbit, size_t size)
 }
 
 /**
+size是数组每个元素的大小
  * sort_r - sort an array of elements
  * @base: pointer to data to sort
  * @num: number of elements
@@ -278,6 +279,7 @@ void sort_r(void *base, size_t num, size_t size,
 }
 EXPORT_SYMBOL(sort_r);
 
+/* size是每个元素的大小 */
 void sort(void *base, size_t num, size_t size,
 	  cmp_func_t cmp_func,
 	  swap_func_t swap_func)

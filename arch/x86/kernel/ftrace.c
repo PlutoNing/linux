@@ -141,7 +141,9 @@ ftrace_modify_code_direct(unsigned long ip, const char *old_code,
 	return 0;
 }
 
-/* 停止trace这个函数 */
+/* 停止trace这个函数
+把rec->ip处的call指令替换为nop指令
+*/
 int ftrace_make_nop(struct module *mod, struct dyn_ftrace *rec, unsigned long addr)
 {
 	unsigned long ip = rec->ip;
@@ -159,6 +161,8 @@ int ftrace_make_nop(struct module *mod, struct dyn_ftrace *rec, unsigned long ad
 	 * or before the code will ever be executed (module load).
 	 * We do not want to use the breakpoint version in this case,
 	 * just modify the code directly.
+	 */
+	/* 如果addr的地址是fentry，才执行
 	 */
 	if (addr == MCOUNT_ADDR)
 		return ftrace_modify_code_direct(ip, old, new);
@@ -204,12 +208,14 @@ int ftrace_modify_call(struct dyn_ftrace *rec, unsigned long old_addr,
 	WARN_ON(1);
 	return -EINVAL;
 }
-/* 把ftrace func更新为此func ... */
+/* 把ftrace func更新为此func ...
+也就是说， 以后ftrace all函数就是调用func了。
+*/
 int ftrace_update_ftrace_func(ftrace_func_t func)
 {
 	unsigned long ip;
 	const char *new;
-
+	/* 先修改ftrace all函数 */
 	ip = (unsigned long)(&ftrace_call);
 	/* 生成从ip跳到func的字节码，放在new */
 	new = ftrace_call_replace(ip, (unsigned long)func);
@@ -217,6 +223,7 @@ int ftrace_update_ftrace_func(ftrace_func_t func)
 	好像这里才是开始poke代码 */
 	text_poke_bp((void *)ip, new, MCOUNT_INSN_SIZE, NULL);
 
+	/* 同样地方式修改ftrace call保存regs的版本 */
 	ip = (unsigned long)(&ftrace_regs_call);
 	new = ftrace_call_replace(ip, (unsigned long)func);
 	text_poke_bp((void *)ip, new, MCOUNT_INSN_SIZE, NULL);

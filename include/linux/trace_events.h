@@ -368,6 +368,7 @@ enum {
 
 #define TRACE_EVENT_FL_UKPROBE (TRACE_EVENT_FL_KPROBE | TRACE_EVENT_FL_UPROBE)
 
+/*  */
 struct trace_event_call {
 	struct list_head	list;
 	struct trace_event_class *class;
@@ -462,7 +463,9 @@ static inline bool bpf_prog_array_valid(struct trace_event_call *call)
 }
 #endif
 
-/* 获取event call的名字 */
+/* 
+对应available的trace event
+获取event call的名字 */
 static inline const char *
 trace_event_name(struct trace_event_call *call)
 {
@@ -637,6 +640,7 @@ extern int __kprobe_event_add_fields(struct dynevent_cmd *cmd, ...);
  */
 enum {
 	EVENT_FILE_FL_ENABLED		= (1 << EVENT_FILE_FL_ENABLED_BIT),
+	/* 上下文切换的时候记录comm？ */
 	EVENT_FILE_FL_RECORDED_CMD	= (1 << EVENT_FILE_FL_RECORDED_CMD_BIT),
 	EVENT_FILE_FL_RECORDED_TGID	= (1 << EVENT_FILE_FL_RECORDED_TGID_BIT),
 	EVENT_FILE_FL_FILTERED		= (1 << EVENT_FILE_FL_FILTERED_BIT),

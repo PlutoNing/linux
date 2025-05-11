@@ -606,6 +606,11 @@ void trace_event_enable_tgid_record(bool enable)
 	} while_for_each_event_file();
 }
 
+/* 
+file是tr的event_file链表的一个节点
+enable是1表示enable，0表示disable
+这里是控制对这个event的enable和disable
+*/
 static int __ftrace_event_enable_disable(struct trace_event_file *file,
 					 int enable, int soft_disable)
 {
@@ -635,11 +640,14 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 			disable = file->flags & EVENT_FILE_FL_SOFT_DISABLED;
 			clear_bit(EVENT_FILE_FL_SOFT_MODE_BIT, &file->flags);
 			/* Disable use of trace_buffered_event */
+			/* 减少buffer的ref，如果零了就释放 */
 			trace_buffered_event_disable();
 		} else
 			disable = !(file->flags & EVENT_FILE_FL_SOFT_MODE);
 
+		/* 关闭这个event的trace？ */
 		if (disable && (file->flags & EVENT_FILE_FL_ENABLED)) {
+			/*  */
 			clear_bit(EVENT_FILE_FL_ENABLED_BIT, &file->flags);
 			if (file->flags & EVENT_FILE_FL_RECORDED_CMD) {
 				tracing_stop_cmdline_record();
@@ -730,6 +738,9 @@ static int ftrace_event_enable_disable(struct trace_event_file *file,
 	return __ftrace_event_enable_disable(file, enable, 0);
 }
 
+/* 
+清空/sys/kernel/debug/tracing/set_event会调用这个函数
+*/
 static void ftrace_clear_events(struct trace_array *tr)
 {
 	struct trace_event_file *file;
@@ -1194,6 +1205,10 @@ ftrace_event_write(struct file *file, const char __user *ubuf,
 	return ret;
 }
 
+/* 
+用于seq file读取下一个available event时，seq_file会调用t_next函数
+
+*/
 static void *
 t_next(struct seq_file *m, void *v, loff_t *pos)
 {
@@ -1216,10 +1231,13 @@ t_next(struct seq_file *m, void *v, loff_t *pos)
 
 	return NULL;
 }
-
+/* 
+seq file开始读取系统的available events时，seq_file会调用t_start函数
+*/
 static void *t_start(struct seq_file *m, loff_t *pos)
 {
 	struct trace_event_file *file;
+	/* 获取tr */
 	struct trace_array *tr = m->private;
 	loff_t l;
 
@@ -1267,6 +1285,10 @@ static void *s_start(struct seq_file *m, loff_t *pos)
 	return file;
 }
 
+/* 
+seq file读取系统的available events时，seq_file会调用t_show函数
+参数是tr的events链表中的一个event_file
+*/
 static int t_show(struct seq_file *m, void *v)
 {
 	struct trace_event_file *file = v;
@@ -2030,6 +2052,9 @@ static int ftrace_event_set_pid_open(struct inode *inode, struct file *file);
 static int ftrace_event_set_npid_open(struct inode *inode, struct file *file);
 static int ftrace_event_release(struct inode *inode, struct file *file);
 
+/* 
+查看available events的seq file的ops
+*/
 static const struct seq_operations show_event_seq_ops = {
 	.start = t_start,
 	.next = t_next,
@@ -2058,14 +2083,23 @@ static const struct seq_operations show_set_no_pid_seq_ops = {
 	.stop = p_stop,
 };
 
+/* 
+读取available events的fops
+*/
 static const struct file_operations ftrace_avail_fops = {
+	/* 打开一个seq file，读取available events
+	 */
 	.open = ftrace_event_avail_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
 	.release = seq_release,
 };
 
+/* 
+/sys/kernel/debug/tracing/set_event的fops
+*/
 static const struct file_operations ftrace_set_event_fops = {
+	/*  */
 	.open = ftrace_event_set_open,
 	.read = seq_read,
 	.write = ftrace_event_write,
@@ -2147,6 +2181,8 @@ static const struct file_operations ftrace_show_header_fops = {
 	.llseek = default_llseek,
 };
 
+/* 新建一个seq file
+ */
 static int
 ftrace_event_open(struct inode *inode, struct file *file,
 		  const struct seq_operations *seq_ops)
@@ -2158,6 +2194,7 @@ ftrace_event_open(struct inode *inode, struct file *file,
 	if (ret)
 		return ret;
 
+	/* 新建一个指定ops的seq file */
 	ret = seq_open(file, seq_ops);
 	if (ret < 0)
 		return ret;
@@ -2177,6 +2214,10 @@ static int ftrace_event_release(struct inode *inode, struct file *file)
 	return seq_release(inode, file);
 }
 
+/* 
+available events的fops的open函数
+打开一个seq file，读取available events
+*/
 static int
 ftrace_event_avail_open(struct inode *inode, struct file *file)
 {
@@ -2186,21 +2227,24 @@ ftrace_event_avail_open(struct inode *inode, struct file *file)
 	return ftrace_event_open(inode, file, seq_ops);
 }
 
+/* 
+/sys/kernel/debug/tracing/set_event的fops的open函数
+*/
 static int
 ftrace_event_set_open(struct inode *inode, struct file *file)
 {
 	const struct seq_operations *seq_ops = &show_set_event_seq_ops;
 	struct trace_array *tr = inode->i_private;
 	int ret;
-
+	/* 打开tr，获取ref */
 	ret = tracing_check_open_get_tr(tr);
 	if (ret)
 		return ret;
-
+	/* 如果是清空截断， 清空事件 */
 	if ((file->f_mode & FMODE_WRITE) &&
 	    (file->f_flags & O_TRUNC))
 		ftrace_clear_events(tr);
-
+	/* 创建seq file */
 	ret = ftrace_event_open(inode, file, seq_ops);
 	if (ret < 0)
 		trace_array_put(tr);
@@ -3633,6 +3677,10 @@ create_event_toplevel_files(struct dentry *parent, struct trace_array *tr)
 	struct dentry *entry;
 	int error = 0;
 
+	/* 
+	对应/sys/kernel/debug/tracing/set_event文件
+	手动启用指定事件（如 echo 'sched:sched_switch' > set_event）。
+	*/
 	entry = trace_create_file("set_event", TRACE_MODE_WRITE, parent,
 				  tr, &ftrace_set_event_fops);
 	if (!entry)
@@ -3868,6 +3916,10 @@ static __init int event_trace_init_fields(void)
 	return 0;
 }
 
+/* 
+初始化/sys/kernel/debug/tracing/available_events
+ * 这个文件是用来显示所有的trace event的
+*/
 __init int event_trace_init(void)
 {
 	struct trace_array *tr;
@@ -3877,6 +3929,8 @@ __init int event_trace_init(void)
 	if (!tr)
 		return -ENODEV;
 
+	/* 创建/sys/kernel/debug/tracing/available_events文件 
+	 */
 	trace_create_file("available_events", TRACE_MODE_READ,
 			  NULL, tr, &ftrace_avail_fops);
 

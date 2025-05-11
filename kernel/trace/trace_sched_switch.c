@@ -20,6 +20,7 @@ static int		sched_cmdline_ref;
 static int		sched_tgid_ref;
 static DEFINE_MUTEX(sched_register_mutex);
 
+/* 上下文切换的时候记录trace的comm，pid */
 static void
 probe_sched_switch(void *ignore, bool preempt,
 		   struct task_struct *prev, struct task_struct *next,
@@ -27,14 +28,19 @@ probe_sched_switch(void *ignore, bool preempt,
 {
 	int flags;
 
+	/* 
+	flags编码了两种记录的启用情况
+	*/
 	flags = (RECORD_TGID * !!sched_tgid_ref) +
 		(RECORD_CMDLINE * !!sched_cmdline_ref);
 
 	if (!flags)
 		return;
+	/* 记录信息 */
 	tracing_record_taskinfo_sched_switch(prev, next, flags);
 }
 
+/* 记录trace的信息 */
 static void
 probe_sched_wakeup(void *ignore, struct task_struct *wakee)
 {
@@ -81,10 +87,16 @@ fail_deprobe:
 	return ret;
 }
 
+/* 
+这是什么？
+*/
 static void tracing_sched_unregister(void)
 {
+	/* 取消使用tp点？  */
 	unregister_trace_sched_switch(probe_sched_switch, NULL);
+	/*  */
 	unregister_trace_sched_wakeup_new(probe_sched_wakeup, NULL);
+	/*  */
 	unregister_trace_sched_wakeup(probe_sched_wakeup, NULL);
 }
 
@@ -110,6 +122,10 @@ static void tracing_start_sched_switch(int ops)
 	mutex_unlock(&sched_register_mutex);
 }
 
+/* 
+停止在sched_switch中记录comm和tgid之类的
+ops是RECORD_CMDLINE和RECORD_TGID
+*/
 static void tracing_stop_sched_switch(int ops)
 {
 	mutex_lock(&sched_register_mutex);
@@ -124,6 +140,8 @@ static void tracing_stop_sched_switch(int ops)
 		break;
 	}
 
+	/* 如果这俩个都为0了，说明没有需要记录的了
+	 */
 	if (!sched_cmdline_ref && !sched_tgid_ref)
 		tracing_sched_unregister();
 	mutex_unlock(&sched_register_mutex);
@@ -134,6 +152,7 @@ void tracing_start_cmdline_record(void)
 	tracing_start_sched_switch(RECORD_CMDLINE);
 }
 
+/* 停止记录comm？ */
 void tracing_stop_cmdline_record(void)
 {
 	tracing_stop_sched_switch(RECORD_CMDLINE);

@@ -93,7 +93,8 @@ struct dentry {
 	/* Ref lookup also touches following */
 	struct lockref d_lockref;	/* per-dentry lock and refcount */
 	const struct dentry_operations *d_op;/* 操作函数表，定义 dentry 的特定行为（如哈希生成、名称比较、释放回调） */
-	struct super_block *d_sb;	/* The root of the dentry tree 指向该 dentry 所属的 ​超级块​（文件系统实例）*/
+	struct super_block *d_sb;	/* The root of the dentry tree 
+	指向该 dentry 所属的 ​超级块​（文件系统实例）*/
 	unsigned long d_time;		/* used by d_revalidate */
 	void *d_fsdata;			/* fs-specific data */
 
