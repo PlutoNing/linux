@@ -1438,3 +1438,766 @@ ll ~/.bash_history  -h
 vim ~/.bashrc 
 git log
 mkdir mydata
+history -w
+history -w
+history 
+cat ~/.bash_history.bkp | grep remote
+cat ~/.bash_history.bkp
+gdb -ex 'target remote :1234' ./vmlinux
+ll vmlinux
+code init/main.c
+pkill qemu-system-x86 
+qemu-system-x86_64 -m 2G          -kernel arch/x86/boot/bzImage   -append "console=ttyS0 root=/dev/sda earlyprintk=serial nokaslr init=/bin/sh"    -drive file=~/alpine_fs,format=raw  -nographic -s -S -pidfile vm.pid 2>&1
+history 
+env | grep -i hist
+env | grep -i HIST
+env 
+env | grep size
+env | grep size -i
+history 
+COLUMNS=1000 history 
+echo "HISTSIZE=$HISTSIZE"
+echo "HISTFILESIZE=$HISTFILESIZE"
+echo "HISTCONTROL=$HISTCONTROL"
+grep "qemu-system-x86_64" ~/.bash_history
+echo "HISTSIZE=$HISTSIZE"
+echo "HISTFILESIZE=$HISTFILESIZE"
+echo "HISTCONTROL=$HISTCONTROL"
+sudo apt search kconsole
+cd
+wget https://download.kde.org/stable/release-service/24.12.3/src/konsole-24.12.3.tar.xz
+cd
+tar -xvf konsole-24.12.3.tar.xz
+ls
+cd kconsole
+cd kconsole-2
+cd
+vim ~/.bashrc 
+ls
+snap connections konsole
+sudo snap remove konsole
+sudo apt install konsole
+kill -9 291737
+sudo kill -9 291737
+sudo apt install konsole
+ls
+sudo ls
+ls
+history 
+cd study/linux/
+make menuconfig
+time make all -s -j16
+ll ~/vm.pid
+ps -ef | grep qemu
+cat ~/.bash_history | grep remote
+gdb -ex 'target remote :1234' ./vmlinux
+pkill qemu-system-x86 
+qemu-system-x86_64 -m 2G          -kernel arch/x86/boot/bzImage   -append "console=ttyS0 root=/dev/sda earlyprintk=serial nokaslr init=/bin/sh"    -drive file=~/alpine_fs,format=raw  -nographic -s -S -pidfile vm.pid 2>&1
+make menuconfig
+time make all -s -j16
+cd study/linux/
+python scripts/clang-tools/gen_compile_commands.py 
+cat ~/.bash_history.bkp | grep cally
+ok
+less ~/.bash_history
+find arch/x86 mm/  init/  -name *.expand | xargs  python   cally/cally.py  --exclude "ds_.*|write_|clockid_to_kclock|ns_to_timespec64|pid_task|pid_for_clock|__lock_task_sighand|_stack_chk_fail|_raw_spin_unlock_irqrestore|_raw_spin_lock_irqsave|_raw_spin_unlock|_raw_spin_lock|_printk|mutex_unlock|mutex_lock|_raw_spin_lock_irq|__rcu_read_unlock|__rcu_read_lock|trace_raw_output_prep|trace_handle_return|trace_event_printf|trace_event_buffer_reserve|trace_event_buffer_commit|refcount_warn_saturate|perf_trace_run_bpf_submit|perf_trace_buf_alloc|_raw_spin_unlock_irq|__trace_trigger_soft_disabled|ktime_get|_copy_to_user|_copy_from_user|__stack_chk_fail"| grep memblock | dot -Grankdir=LR -Tsvg -o memblock.svg
+sudo apt install graphviz
+find arch/x86 mm/  init/  -name *.expand | xargs  python   cally/cally.py  --exclude "ds_.*|write_|clockid_to_kclock|ns_to_timespec64|pid_task|pid_for_clock|__lock_task_sighand|_stack_chk_fail|_raw_spin_unlock_irqrestore|_raw_spin_lock_irqsave|_raw_spin_unlock|_raw_spin_lock|_printk|mutex_unlock|mutex_lock|_raw_spin_lock_irq|__rcu_read_unlock|__rcu_read_lock|trace_raw_output_prep|trace_handle_return|trace_event_printf|trace_event_buffer_reserve|trace_event_buffer_commit|refcount_warn_saturate|perf_trace_run_bpf_submit|perf_trace_buf_alloc|_raw_spin_unlock_irq|__trace_trigger_soft_disabled|ktime_get|_copy_to_user|_copy_from_user|__stack_chk_fail"| grep memblock | dot -Grankdir=LR -Tsvg -o memblock.svg
+find arch/x86 mm/  init/  -name *.expand | xargs  python   cally/cally.py  --exclude "ds_.*|write_|clockid_to_kclock|ns_to_timespec64|pid_task|pid_for_clock|__lock_task_sighand|_stack_chk_fail|_raw_spin_unlock_irqrestore|_raw_spin_lock_irqsave|_raw_spin_unlock|_raw_spin_lock|_printk|mutex_unlock|mutex_lock|_raw_spin_lock_irq|__rcu_read_unlock|__rcu_read_lock|trace_raw_output_prep|trace_handle_return|trace_event_printf|trace_event_buffer_reserve|trace_event_buffer_commit|refcount_warn_saturate|perf_trace_run_bpf_submit|perf_trace_buf_alloc|_raw_spin_unlock_irq|__trace_trigger_soft_disabled|ktime_get|_copy_to_user|_copy_from_user|__stack_chk_fail"
+find arch/x86 mm/  init/  -name *.expand | xargs  python   cally/cally.py  --exclude "ds_.*|write_|clockid_to_kclock|ns_to_timespec64|pid_task|pid_for_clock|__lock_task_sighand|_stack_chk_fail|_raw_spin_unlock_irqrestore|_raw_spin_lock_irqsave|_raw_spin_unlock|_raw_spin_lock|_printk|mutex_unlock|mutex_lock|_raw_spin_lock_irq|__rcu_read_unlock|__rcu_read_lock|trace_raw_output_prep|trace_handle_return|trace_event_printf|trace_event_buffer_reserve|trace_event_buffer_commit|refcount_warn_saturate|perf_trace_run_bpf_submit|perf_trace_buf_alloc|_raw_spin_unlock_irq|__trace_trigger_soft_disabled|ktime_get|_copy_to_user|_copy_from_user|__stack_chk_fail" | wc -l
+find arch/x86 mm/  init/  -name *.expand | xargs  python   cally/cally.py  --exclude "ds_.*|write_|clockid_to_kclock|ns_to_timespec64|pid_task|pid_for_clock|__lock_task_sighand|_stack_chk_fail|_raw_spin_unlock_irqrestore|_raw_spin_lock_irqsave|_raw_spin_unlock|_raw_spin_lock|_printk|mutex_unlock|mutex_lock|_raw_spin_lock_irq|__rcu_read_unlock|__rcu_read_lock|trace_raw_output_prep|trace_handle_return|trace_event_printf|trace_event_buffer_reserve|trace_event_buffer_commit|refcount_warn_saturate|perf_trace_run_bpf_submit|perf_trace_buf_alloc|_raw_spin_unlock_irq|__trace_trigger_soft_disabled|ktime_get|_copy_to_user|_copy_from_user|__stack_chk_fail" | grep memblock | wc -l
+find arch/x86 mm/  init/  -name *.expand | xargs  python   cally/cally.py  --exclude "ds_.*|write_|clockid_to_kclock|ns_to_timespec64|pid_task|pid_for_clock|__lock_task_sighand|_stack_chk_fail|_raw_spin_unlock_irqrestore|_raw_spin_lock_irqsave|_raw_spin_unlock|_raw_spin_lock|_printk|mutex_unlock|mutex_lock|_raw_spin_lock_irq|__rcu_read_unlock|__rcu_read_lock|trace_raw_output_prep|trace_handle_return|trace_event_printf|trace_event_buffer_reserve|trace_event_buffer_commit|refcount_warn_saturate|perf_trace_run_bpf_submit|perf_trace_buf_alloc|_raw_spin_unlock_irq|__trace_trigger_soft_disabled|ktime_get|_copy_to_user|_copy_from_user|__stack_chk_fail"| grep memblock | dot -Grankdir=LR -Tsvg -o memblock.svg
+find arch/x86 mm/  init/  -name *.expand | xargs  python   cally/cally.py  --exclude "ds_.*|write_|clockid_to_kclock|ns_to_timespec64|pid_task|pid_for_clock|__lock_task_sighand|_stack_chk_fail|_raw_spin_unlock_irqrestore|_raw_spin_lock_irqsave|_raw_spin_unlock|_raw_spin_lock|_printk|mutex_unlock|mutex_lock|_raw_spin_lock_irq|__rcu_read_unlock|__rcu_read_lock|trace_raw_output_prep|trace_handle_return|trace_event_printf|trace_event_buffer_reserve|trace_event_buffer_commit|refcount_warn_saturate|perf_trace_run_bpf_submit|perf_trace_buf_alloc|_raw_spin_unlock_irq|__trace_trigger_soft_disabled|ktime_get|_copy_to_user|_copy_from_user|__stack_chk_fail"| grep memblock | dot  -Tsvg -o memblock.svg
+find arch/x86 mm/  init/  -name *.expand | xargs  python   cally/cally.py  --exclude "ds_.*|write_|clockid_to_kclock|ns_to_timespec64|pid_task|pid_for_clock|__lock_task_sighand|_stack_chk_fail|_raw_spin_unlock_irqrestore|_raw_spin_lock_irqsave|_raw_spin_unlock|_raw_spin_lock|_printk|mutex_unlock|mutex_lock|_raw_spin_lock_irq|__rcu_read_unlock|__rcu_read_lock|trace_raw_output_prep|trace_handle_return|trace_event_printf|trace_event_buffer_reserve|trace_event_buffer_commit|refcount_warn_saturate|perf_trace_run_bpf_submit|perf_trace_buf_alloc|_raw_spin_unlock_irq|__trace_trigger_soft_disabled|ktime_get|_copy_to_user|_copy_from_user|__stack_chk_fail"| grep memblock 
+find arch/x86 mm/  init/  -name *.expand | xargs  python   cally/cally.py  --exclude "ds_.*|write_|clockid_to_kclock|ns_to_timespec64|pid_task|pid_for_clock|__lock_task_sighand|_stack_chk_fail|_raw_spin_unlock_irqrestore|_raw_spin_lock_irqsave|_raw_spin_unlock|_raw_spin_lock|_printk|mutex_unlock|mutex_lock|_raw_spin_lock_irq|__rcu_read_unlock|__rcu_read_lock|trace_raw_output_prep|trace_handle_return|trace_event_printf|trace_event_buffer_reserve|trace_event_buffer_commit|refcount_warn_saturate|perf_trace_run_bpf_submit|perf_trace_buf_alloc|_raw_spin_unlock_irq|__trace_trigger_soft_disabled|ktime_get|_copy_to_user|_copy_from_user|__stack_chk_fail"| grep memblock | wc -l
+find arch/x86 mm/  init/  -name *.expand | xargs  python   cally/cally.py  --exclude "ds_.*|write_|clockid_to_kclock|ns_to_timespec64|pid_task|pid_for_clock|__lock_task_sighand|_stack_chk_fail|_raw_spin_unlock_irqrestore|_raw_spin_lock_irqsave|_raw_spin_unlock|_raw_spin_lock|_printk|mutex_unlock|mutex_lock|_raw_spin_lock_irq|__rcu_read_unlock|__rcu_read_lock|trace_raw_output_prep|trace_handle_return|trace_event_printf|trace_event_buffer_reserve|trace_event_buffer_commit|refcount_warn_saturate|perf_trace_run_bpf_submit|perf_trace_buf_alloc|_raw_spin_unlock_irq|__trace_trigger_soft_disabled|ktime_get|_copy_to_user|_copy_from_user|__stack_chk_fail"| grep memblock
+cat ls
+ls
+cat bpftrace.sh
+cat bpftrace.sh | head -n 200
+ps -ef | grep edge
+ps -e | grep edge
+ps -ef | grep edge
+pstree edge
+pstree msedge
+pstree -p msedge
+pstree --help
+pstree
+pstree --help
+pstree -gp
+pstree -gp | grep edge
+ps -ef | grep edge
+sudo nethogs -p  254590
+sudo apt install nethos
+sudo apt install nethogs
+sudo nethogs -p  254590
+pid=254590 ; PORTS=$(sudo lsof -Pan -p $PID -i | awk '/TCP|UDP/ {print $9}' | cut -d: -f2 | sort -u | tr '\n' ' ')
+pid=254590 ; PORTS=$(sudo lsof -Pan -p $PID | awk '/TCP|UDP/ {print $9}' | cut -d: -f2 | sort -u | tr '\n' ' ')
+less ~/.bash_history.bkp 
+gdb -ex 'target remote :1234' ./vmlinux
+pkill qemu-system-x86 
+qemu-system-x86_64 -m 2G          -kernel arch/x86/boot/bzImage   -append "console=ttyS0 root=/dev/sda earlyprintk=serial nokaslr init=/bin/sh"    -drive file=~/alpine_fs,format=raw  -nographic -s -S -pidfile vm.pid 2>&1
+grep -i readable .config
+ls *sym*
+addr2line -e vmlinux 0xffffffff83faba64
+addr2line -e vmlinux 0xffffffff82f0ec84
+cat System.map | grep ffffffff82f0ec84
+objdump -t vmlinux | grep mem_eoi
+sudo aptitude install kde-standard
+sudo apt install kde-standard
+nvidia-smi 
+sudo apt-get install easystroke
+sudo add-apt-repository ppa:easystroke/ppa
+sudo apt update
+sudo apt-get install easystroke
+wget http://archive.ubuntu.com/ubuntu/pool/universe/e/easystroke/easystroke_0.6.0-10_amd64.deb
+sudo apt install touchegg
+touchegg 
+flatpak install flathub com.github.joseexposito.touche
+mkdir za
+cd za/
+wget https://github.com/JoseExposito/touche/releases/download/2.0.14/archive.tar.gz
+ls
+tar -zxvf archive.tar.gz 
+ls
+ls rpm/
+cd ..
+rm -rf za/
+cd study/linux/
+ls
+ls ~/
+cat arch/x86/mm/.init.o.cmd 
+cat arch/x86/mm/.init.o.cmd  | less
+gcc --save-temps  -Wp,-MMD,arch/x86/mm/.init.o.d -nostdinc -I./arch/x86/include -I./arch/x86/include/generated  -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconfig.h -include ./include/linux/compiler_types.h -D__KERNEL__ -fmacro-prefix-map=./= -Werror -std=gnu11 -fshort-wchar -funsigned-char -fno-common -fno-PIE -fno-strict-aliasing -fdump-rtl-expand -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -fcf-protection=branch -fno-jump-tables -m64 -falign-jumps=1 -falign-loops=1 -mno-80387 -mno-fp-ret-in-387 -mpreferred-stack-boundary=3 -mskip-rax-setup -mtune=generic -mno-red-zone -mcmodel=kernel -Wno-sign-compare -fno-asynchronous-unwind-tables -fno-delete-null-pointer-checks -O2 -fno-allow-store-data-races -fno-reorder-blocks -fno-ipa-cp-clone -fno-partial-inlining -fstack-protector-strong -fomit-frame-pointer -fno-stack-clash-protection -fno-inline-functions-called-once -falign-functions=16 -fstrict-flex-arrays=3 -fno-strict-overflow -fno-stack-check -fconserve-stack -Wall -Wundef -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=strict-prototypes -Wno-format-security -Wno-trigraphs -Wno-frame-address -Wno-address-of-packed-member -Wframe-larger-than=2048 -Wno-main -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-dangling-pointer -Wvla -Wno-pointer-sign -Wcast-function-type -Wno-array-bounds -Wno-alloc-size-larger-than -Wimplicit-fallthrough=5 -Werror=date-time -Werror=incompatible-pointer-types -Werror=designated-init -Wenum-conversion -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-restrict -Wno-packed-not-aligned -Wno-format-overflow -Wno-format-truncation -Wno-stringop-overflow -Wno-stringop-truncation -Wno-missing-field-initializers -Wno-type-limits -Wno-shift-negative-value -Wno-maybe-uninitialized -Wno-sign-compare -g -gdwarf-5    -DKBUILD_MODFILE='"arch/x86/mm/init"' -DKBUILD_BASENAME='"init"' -DKBUILD_MODNAME='"init"' -D__KBUILD_MODNAME=kmod_init -c -o arch/x86/mm/init.o arch/x86/mm/init.c
+cat arch/x86/mm/.init_64.o.cmd 
+cat arch/x86/mm/.init_64.o.cmd  | less
+gcc --save-temps  -Wp,-MMD,arch/x86/mm/.init_64.o.d -nostdinc -I./arch/x86/include -I./ar
+ch/x86/include/generated  -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./inclu
+de/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconf
+ig.h -include ./include/linux/compiler_types.h -D__KERNEL__ -fmacro-prefix-map=./= -Werror -std=gnu11 -fshort
+-wchar -funsigned-char -fno-common -fno-PIE -fno-strict-aliasing -fdump-rtl-expand -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -fcf-protection=branch -fno-jump-tables -m64 -falign-jumps=1 -falign-loops=1 -mno-80387 -mno-fp-ret-in-387 -mpreferred-stack-boundary=3 -mskip-rax-setup -mtune=generic -mno-red-zone -mcmodel=kernel -Wno-sign-compare -fno-asynchronous-unwind-tables -fno-delete-null-pointer-checks -O2 -fno-allow-store-data-races -fno-reorder-blocks -fno-ipa-cp-clone -fno-partial-inlining -fstack-protector-strong -fomit-frame-pointer -fno-stack-clash-protection -fno-inline-functions-called-once -falign-functions=16 -fstrict-flex-arrays=3 -fno-strict-overflow -fno-stack-check -fconserve-stack -Wall -Wundef -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=strict-prototypes -Wno-format-security -Wno-trigraphs -Wno-frame-address -Wno-address-of-packed-member -Wframe-larger-than=2048 -Wno-main -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-dangling-pointer -Wvla -Wno-pointer-sign -Wcast-function-type -Wno-array-bounds -Wno-alloc-size-larger-than -Wimplicit-fallthrough=5 -Werror=date-time -Werror=incompatible-pointer-types -Werror=designated-init -Wenum-conversion -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-restrict -Wno-packed-not-aligned -Wno-format-overflow -Wno-format-truncation -Wno-stringop-overflow -Wno-stringop-truncation -Wno-missing-field-initializers -Wno-type-limits -Wno-shift-negative-value -Wno-maybe-uninitialized -Wno-sign-compare -g -gdwarf-5    -DKBUILD_MODFILE='"arch/x86/mm/init_64"' -DKBUILD_BASENAME='"init_64"' -DKBUILD_MODNAME='"init_64"' -D__KBUILD_MODNAME=kmod_init_64 -c -o arch/x86/mm/init_64.o arch/x86/mm/init_64.c
+cat arch/x86/mm/.init_64.o.cmd  | less
+gcc --save-temps  -Wp,-MMD,arch/x86/mm/.init_64.o.d -nostdinc -I./arch/x86/include -I./arch/x86/include/generated  -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconfig.h -include ./include/linux/compiler_types.h -D__KERNEL__ -fmacro-prefix-map=./= -Werror -std=gnu11 -fshort-wchar -funsigned-char -fno-common -fno-PIE -fno-strict-aliasing -fdump-rtl-expand -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -fcf-protection=branch -fno-jump-tables -m64 -falign-jumps=1 -falign-loops=1 -mno-80387 -mno-fp-ret-in-387 -mpreferred-stack-boundary=3 -mskip-rax-setup -mtune=generic -mno-red-zone -mcmodel=kernel -Wno-sign-compare -fno-asynchronous-unwind-tables -fno-delete-null-pointer-checks -O2 -fno-allow-store-data-races -fno-reorder-blocks -fno-ipa-cp-clone -fno-partial-inlining -fstack-protector-strong -fomit-frame-pointer -fno-stack-clash-protection -fno-inline-functions-called-once -falign-functions=16 -fstrict-flex-arrays=3 -fno-strict-overflow -fno-stack-check -fconserve-stack -Wall -Wundef -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=strict-prototypes -Wno-format-security -Wno-trigraphs -Wno-frame-address -Wno-address-of-packed-member -Wframe-larger-than=2048 -Wno-main -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-dangling-pointer -Wvla -Wno-pointer-sign -Wcast-function-type -Wno-array-bounds -Wno-alloc-size-larger-than -Wimplicit-fallthrough=5 -Werror=date-time -Werror=incompatible-pointer-types -Werror=designated-init -Wenum-conversion -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-restrict -Wno-packed-not-aligned -Wno-format-overflow -Wno-format-truncation -Wno-stringop-overflow -Wno-stringop-truncation -Wno-missing-field-initializers -Wno-type-limits -Wno-shift-negative-value -Wno-maybe-uninitialized -Wno-sign-compare -g -gdwarf-5    -DKBUILD_MODFILE='"arch/x86/mm/init_64"' -DKBUILD_BASENAME='"init_64"' -DKBUILD_MODNAME='"init_64"' -D__KBUILD_MODNAME=kmod_init_64 -c -o arch/x86/mm/init_64.o arch/x86/mm/init_64.c
+cat ~/.bash_history.bkp | grep clang-format
+vim ~/.bash_history.bkp 
+clang-format -style=file -i arch/x86/mm/init_64.i 
+python
+clang-format -style=file -i arch/x86/mm/init.i 
+python
+vim ~/.gdbinit 
+clang-format -style=file -i arch/x86/mm/init_64.i 
+cat arch/x86/kernel/.idt.o.cmd 
+cat arch/x86/kernel/.idt.o.cmd  | head -n 20
+gcc  --save-temps  -Wp,-MMD,arch/x86/kernel/.idt.o.d -nostdinc -I./arch/x86/include -I./arch/x86/include/generated  -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconfig.h -include ./include/linux/compiler_types.h -D__KERNEL__ -fmacro-prefix-map=./= -Werror -std=gnu11 -fshort-wchar -funsigned-char -fno-common -fno-PIE -fno-strict-aliasing -fdump-rtl-expand -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -fcf-protection=branch -fno-jump-tables -m64 -falign-jumps=1 -falign-loops=1 -mno-80387 -mno-fp-ret-in-387 -mpreferred-stack-boundary=3 -mskip-rax-setup -mtune=generic -mno-red-zone -mcmodel=kernel -Wno-sign-compare -fno-asynchronous-unwind-tables -fno-delete-null-pointer-checks -O2 -fno-allow-store-data-races -fno-reorder-blocks -fno-ipa-cp-clone -fno-partial-inlining -fstack-protector-strong -fomit-frame-pointer -fno-stack-clash-protection -fno-inline-functions-called-once -falign-functions=16 -fstrict-flex-arrays=3 -fno-strict-overflow -fno-stack-check -fconserve-stack -Wall -Wundef -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=strict-prototypes -Wno-format-security -Wno-trigraphs -Wno-frame-address -Wno-address-of-packed-member -Wframe-larger-than=2048 -Wno-main -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-dangling-pointer -Wvla -Wno-pointer-sign -Wcast-function-type -Wno-array-bounds -Wno-alloc-size-larger-than -Wimplicit-fallthrough=5 -Werror=date-time -Werror=incompatible-pointer-types -Werror=designated-init -Wenum-conversion -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-restrict -Wno-packed-not-aligned -Wno-format-overflow -Wno-format-truncation -Wno-stringop-overflow -Wno-stringop-truncation -Wno-missing-field-initializers -Wno-type-limits -Wno-shift-negative-value -Wno-maybe-uninitialized -Wno-sign-compare -g -gdwarf-5    -DKBUILD_MODFILE='"arch/x86/kernel/idt"' -DKBUILD_BASENAME='"idt"' -DKBUILD_MODNAME='"idt"' -D__KBUILD_MODNAME=kmod_idt -c -o arch/x86/kernel/idt.o arch/x86/kernel/idt.c
+clang-format -style=file -i arch/x86/kernel/idt.i  
+cat mm/.mm_init.o.cmd  | head -n 20
+gcc --save-temps -Wp,-MMD,mm/.mm_init.o.d -nostdinc -I./arch/x86/include -I./arch/x86/include/generated  -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconfig.h -include ./include/linux/compiler_types.h -D__KERNEL__ -fmacro-prefix-map=./= -Werror -std=gnu11 -fshort-wchar -funsigned-char -fno-common -fno-PIE -fno-strict-aliasing -fdump-rtl-expand -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -fcf-protection=branch -fno-jump-tables -m64 -falign-jumps=1 -falign-loops=1 -mno-80387 -mno-fp-ret-in-387 -mpreferred-stack-boundary=3 -mskip-rax-setup -mtune=generic -mno-red-zone -mcmodel=kernel -Wno-sign-compare -fno-asynchronous-unwind-tables -fno-delete-null-pointer-checks -O2 -fno-allow-store-data-races -fno-reorder-blocks -fno-ipa-cp-clone -fno-partial-inlining -fstack-protector-strong -fomit-frame-pointer -fno-stack-clash-protection -fno-inline-functions-called-once -falign-functions=16 -fstrict-flex-arrays=3 -fno-strict-overflow -fno-stack-check -fconserve-stack -Wall -Wundef -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=strict-prototypes -Wno-format-security -Wno-trigraphs -Wno-frame-address -Wno-address-of-packed-member -Wframe-larger-than=2048 -Wno-main -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-dangling-pointer -Wvla -Wno-pointer-sign -Wcast-function-type -Wno-array-bounds -Wno-alloc-size-larger-than -Wimplicit-fallthrough=5 -Werror=date-time -Werror=incompatible-pointer-types -Werror=designated-init -Wenum-conversion -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-restrict -Wno-packed-not-aligned -Wno-format-overflow -Wno-format-truncation -Wno-stringop-overflow -Wno-stringop-truncation -Wno-missing-field-initializers -Wno-type-limits -Wno-shift-negative-value -Wno-maybe-uninitialized -Wno-sign-compare -g -gdwarf-5    -DKBUILD_MODFILE='"mm/mm_init"' -DKBUILD_BASENAME='"mm_init"' -DKBUILD_MODNAME='"mm_init"' -D__KBUILD_MODNAME=kmod_mm_init -c -o mm/mm_init.o mm/mm_init.c
+clang-format -style=file -i mm/mm_init.i 
+cat mm/.memblock.o.cmd  | head -n 20
+gcc --save-temps  -Wp,-MMD,mm/.memblock.o.d -nostdinc -I./arch/x86/include -I./arch/x86/include/generated  -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconfig.h -include ./include/linux/compiler_types.h -D__KERNEL__ -fmacro-prefix-map=./= -Werror -std=gnu11 -fshort-wchar -funsigned-char -fno-common -fno-PIE -fno-strict-aliasing -fdump-rtl-expand -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -fcf-protection=branch -fno-jump-tables -m64 -falign-jumps=1 -falign-loops=1 -mno-80387 -mno-fp-ret-in-387 -mpreferred-stack-boundary=3 -mskip-rax-setup -mtune=generic -mno-red-zone -mcmodel=kernel -Wno-sign-compare -fno-asynchronous-unwind-tables -fno-delete-null-pointer-checks -O2 -fno-allow-store-data-races -fno-reorder-blocks -fno-ipa-cp-clone -fno-partial-inlining -fstack-protector-strong -fomit-frame-pointer -fno-stack-clash-protection -fno-inline-functions-called-once -falign-functions=16 -fstrict-flex-arrays=3 -fno-strict-overflow -fno-stack-check -fconserve-stack -Wall -Wundef -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=strict-prototypes -Wno-format-security -Wno-trigraphs -Wno-frame-address -Wno-address-of-packed-member -Wframe-larger-than=2048 -Wno-main -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-dangling-pointer -Wvla -Wno-pointer-sign -Wcast-function-type -Wno-array-bounds -Wno-alloc-size-larger-than -Wimplicit-fallthrough=5 -Werror=date-time -Werror=incompatible-pointer-types -Werror=designated-init -Wenum-conversion -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-restrict -Wno-packed-not-aligned -Wno-format-overflow -Wno-format-truncation -Wno-stringop-overflow -Wno-stringop-truncation -Wno-missing-field-initializers -Wno-type-limits -Wno-shift-negative-value -Wno-maybe-uninitialized -Wno-sign-compare -g -gdwarf-5    -DKBUILD_MODFILE='"mm/memblock"' -DKBUILD_BASENAME='"memblock"' -DKBUILD_MODNAME='"memblock"' -D__KBUILD_MODNAME=kmod_memblock -c -o mm/memblock.o mm/memblock.c
+clang-format -style=file -i mm/memblock.i 
+grep -i watchdog .config
+make menuconfig
+grep -i watchdog .config
+time make all -s -j14
+python scripts/clang-tools/gen_compile_commands.py 
+grep -i ftrace .config
+grep -i poking .config
+grep -i poke .config
+grep -i trace .config
+git status
+rm vm.log 
+rm trace_output.bpf.c
+rm trace_output.bpf.bc
+git status
+cat gdbasroot 
+rm bpftrace.log 
+rm bpftrace.sh
+git status
+time make all -s -j14
+make menuconfig
+cp .config config-v66 
+make defconfig
+time make all -s -j14
+cp config-v66 .config
+time make all -s -j14
+cat kernel/.fork.o.cmd  | head -n 20
+gcc --save-temps -Wp,-MMD,kernel/.fork.o.d -nostdinc -I./arch/x86/include -I./arch/x86/include/generated  -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconfig.h -include ./include/linux/compiler_types.h -D__KERNEL__ -fmacro-prefix-map=./= -Werror -std=gnu11 -fshort-wchar -funsigned-char -fno-common -fno-PIE -fno-strict-aliasing -fdump-rtl-expand -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -fcf-protection=branch -fno-jump-tables -m64 -falign-jumps=1 -falign-loops=1 -mno-80387 -mno-fp-ret-in-387 -mpreferred-stack-boundary=3 -mskip-rax-setup -mtune=generic -mno-red-zone -mcmodel=kernel -Wno-sign-compare -fno-asynchronous-unwind-tables -fno-delete-null-pointer-checks -O2 -fno-allow-store-data-races -fno-reorder-blocks -fno-ipa-cp-clone -fno-partial-inlining -fstack-protector-strong -fomit-frame-pointer -fno-stack-clash-protection -fno-inline-functions-called-once -falign-functions=16 -fstrict-flex-arrays=3 -fno-strict-overflow -fno-stack-check -fconserve-stack -Wall -Wundef -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=strict-prototypes -Wno-format-security -Wno-trigraphs -Wno-frame-address -Wno-address-of-packed-member -Wframe-larger-than=2048 -Wno-main -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-dangling-pointer -Wvla -Wno-pointer-sign -Wcast-function-type -Wno-array-bounds -Wno-alloc-size-larger-than -Wimplicit-fallthrough=5 -Werror=date-time -Werror=incompatible-pointer-types -Werror=designated-init -Wenum-conversion -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-restrict -Wno-packed-not-aligned -Wno-format-overflow -Wno-format-truncation -Wno-stringop-overflow -Wno-stringop-truncation -Wno-missing-field-initializers -Wno-type-limits -Wno-shift-negative-value -Wno-maybe-uninitialized -Wno-sign-compare -g -gdwarf-5    -DKBUILD_MODFILE='"kernel/fork"' -DKBUILD_BASENAME='"fork"' -DKBUILD_MODNAME='"fork"' -D__KBUILD_MODNAME=kmod_fork -c -o kernel/fork.o kernel/fork.c
+clang-format -style=file -i kernel/fork.i
+cat kernel/.fork.o.cmd  | head -n 20
+cat kernel/.fork.o.cmd  | head -n 1
+cat kernel/.fork.o.cmd  | head -n 1 | grep -oE 'gcc.*$'
+cat kernel/.fork.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/'
+cat kernel/.fork.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/'· 
+cat kernel/.fork.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/'
+cat kernel/.fork.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/' | bash
+clang-format -style=file -i kernel/fork.i
+cat kernel/sched/.core.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/' | bash
+clang-format -style=file -i kernel/sched/core.i 
+cat arch/x86/mm/.tlb.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/' | bash
+clang-format -style=file -i arch/x86/mm/tlb.i 
+uptime 
+cat arch/x86/kernel/.process_64.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/' | bash
+clang-format -style=file -i arch/x86/kernel/process_64.i 
+strace ls
+pkill qemu-system-x86 
+qemu-system-x86_64 -m 4G          -kernel arch/x86/boot/bzImage   -append "console=ttyS0 root=/dev/sda earlyprintk=serial nokaslr init=/bin/sh"    -drive file=~/alpine_fs,format=raw  -nographic
+cd
+cd study/
+ls
+git clone https://github.com/google/syzkaller
+ls
+cd syzkaller/
+ls
+cloc .
+du -sh .
+go
+sudo apt show golang-go
+sudo apt show golang-1.22-go
+sudo apt show golang-1.22-src 
+go
+sudo apt show gccgo-go
+g++
+sudo add-apt-repository ppa:longsleep/golang-backports
+sudo apt update
+sudo apt install golang-go
+sudo env
+sudo env | grep proxy
+flatpak install flathub com.github.joseexposito.touche
+env | grep proxy
+http_proxy=http://127.0.0.1:10808  https_proxy=http://127.0.0.1:10808  sudo env
+http_proxy=http://127.0.0.1:10808  https_proxy=http://127.0.0.1:10808  sudo env | grep proxy
+su
+sudo apt install golang-go
+code .
+uname -r
+uname -m
+cd ..
+rm -rf syzkaller/
+git clone https://github.com/PlutoNing/syzkaller.git
+cd syzkaller/
+ls
+git remote 
+git remote -v
+git branch -a
+git checkout -b v1 origin/master 
+git log
+echo init > init.txt
+git log
+git status
+git add .
+git commit  -m "init"
+git push
+git push origin HEAD
+code .
+cd tools/
+ls
+chmod +x create-image.sh 
+./create-image.sh 
+debootstrap
+sudo apt install debootstrap
+./create-image.sh 
+ok
+file bullseye
+file bullseye.img 
+cd
+pkill qemu-system-x86 
+qemu-system-x86_64 -m 4G  -cpu host        -kernel /home/paulning/study/linux/arch/x86/boot/bzImage   -append "console=ttyS0 root=/dev/sda earlyprintk=serial nokaslr"    -drive file=~/study/syzkaller/tools/bullseye.img,format=raw  -nographic -enable-kvm
+history 
+python
+history 
+exit
+exit
+exit
+history 
+systemctl --list
+systemctl -l
+systemctl -H
+systemctl --help
+systemctl list-unit-files 
+systemctl list-unit-files  | grep network
+lsblk
+ls /mnt/bullseye/
+qemu-system-x86_64 -m 4G  -cpu host        -kernel /home/paulning/study/linux/arch/x86/boot/bzImage   -append "console=ttyS0 root=/dev/sda earlyprintk=serial net.ifnames=0  nokaslr"   -net user,host=10.0.2.10,hostfwd=tcp:127.0.0.1:10021-:22  -net nic,model=e1000   -drive file=~/study/syzkaller/tools/bullseye.img,format=raw  -nographic -enable-kvm
+ls
+cd study/linux/
+make menuconfig
+time make all -s -j16
+cd
+exit
+qemu-system-x86_64 -m 4G  -cpu host        -kernel /home/paulning/study/linux/arch/x86/boot/bzImage   -append "console=ttyS0 root=/dev/sda earlyprintk=serial   nokaslr"      -drive file=~/study/syzkaller/tools/bullseye.img,format=raw  -nographic -enable-kvm
+git status
+code mm/mmap.c
+exit
+cd study/linux/'
+
+cd study/linux/
+cat mm/.mmap.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/' | bash
+clang-format -style=file -i mm/mmap.i 
+python scripts/clang-tools/gen_compile_commands.py 
+su
+git branch 
+git show v54:mm/mmap.c
+cloc fs/
+cloc fs/*.c fs/*.h
+ll
+ls
+history | grep cally
+ls fs/*.expand
+time make all -s -j16
+python scripts/clang-tools/gen_compile_commands.py 
+rm -rf .cache/clangd/index/
+ls /dev/userfaultfd 
+ls samples/
+uptime 
+cat mm/.userfaultfd.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/' | bash
+clang-format -style=file -i mm/userfaultfd.i 
+htop
+cloc fs/xfs/
+cloc fs/ext2/
+cloc fs/ext4/
+lsblk
+mke2fs /dev/sda1 
+sudo mke2fs /dev/sda1 
+sudo mount  /dev/sda1 /mnt/thinkplus
+sudo mkdir /mnt/thinkplus
+sudo mount  /dev/sda1 /mnt/thinkplus
+sudo chown -R paulning /mnt/thinkplus
+cd /mnt/thinkplus/
+ls
+pwd
+rm -rf *
+cd /mnt/thinkplus/
+history -a
+history -n
+fio --name=seq_write_test --filename=testfile --size=20G --bs=1M --rw=write --ioengine=libaio --direct=1
+sudo apt install fio
+ls
+fio --name=seq_write_test --filename=testfile --size=20G --bs=1M --rw=write --ioengine=libaio --direct=1
+ls
+fio --name=random_write_test --filename=testfile --size=10G --rw=randwrite --bs=4k --direct=1 --numjobs=1 --iodepth=32
+fio --name=random_write_test --filename=testfile --size=10G --rw=randwrite --bs=4k  --numjobs=1 --iodepth=32
+fio --name=seq_write_test --filename=testfile --size=20G --bs=1M --rw=write --ioengine=libaio
+sync
+fio --name=seq_write_test --filename=testfile --size=20G --bs=1M --rw=write --ioengine=libaio
+history -a
+history -n
+history 
+ls
+cd
+sudo umount /mnt/thinkplus
+cd
+ls
+uptime
+cd /proc/$$
+cat mountinfo 
+cat mountinfo  | wc -l
+cd /proc/$$
+cat mountinfo 
+cd
+cd study/linux/
+python scripts/clang-tools/gen_compile_commands.py 
+ls
+df -Th
+ls
+sudo apt autoremove 
+cloc arch/riscv/
+cloc fs/ext2/
+ls fs/ext2/
+cloc fs/ext2/*.c
+history 
+history | greo bulls
+history | grep bulls
+file study/syzkaller/tools/bullseye.img 
+ll -h study/syzkaller/tools/bullseye.img 
+qemu-system-x86_64 -m 4G  -cpu host        -kernel /home/paulning/study/linux/arch/x86/boot/bzImage   -append "console=ttyS0 root=/dev/sda earlyprintk=serial   nokaslr"      -drive file=~/study/syzkaller/tools/bullseye.img,format=raw  -nographic -enable-kvm
+cloc block
+time make all -s -j16
+git restore include/linux/atomic/atomic-instrumented.h
+time make all -s -j16
+code fs/ext2/
+code fs/ext2/file.c
+exit
+cd study/linux/
+ls
+ll -h vmlinux-gdb.py 
+cat vmlinux-gdb.py 
+ls scripts/gdb/
+ls scripts/gdb/vmlinux-gdb.py  -lh
+history 
+exit
+history 
+cd study/linux/
+grep -i debug .config
+ll ~/vm.pid
+make menuconfig
+diff .config config-v66 
+mv /home/paulning/study/linux/fs/ext2/debug.txt /home/paulning/study/linux/fs/ext2/debug.py
+pkill qemu-system-x86 
+history 
+cat mm/.page-writeback.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/' | bash
+clang-format -style=file -i mm/page-writeback.i 
+qemu-system-x86_64 -m 4G         -kernel /home/paulning/study/linux/arch/x86/boot/bzImage   -append "console=ttyS0 root=/dev/sda earlyprintk=serial   nokaslr"      -drive file=~/study/syzkaller/tools/bullseye.img,format=raw  -nographic
+history 
+git status
+git diff .config config-v66
+cp .config config-v66 
+sync
+cd ..
+ls
+cd llvm-project/
+cloc .
+df -Th
+ls
+cd study/
+cd linux/
+git status
+git push
+cd ..
+ls
+cd llvm-project/
+git status
+cd ../qemu/
+ls
+git status
+git add .
+git branch 
+git commit -m "tmp"
+git push
+cd ../syzkaller/
+ls
+git status
+git add .
+git commit -m "tmp"
+git push
+git branch 
+git remote -v
+git push origin HEAD
+curl google.com
+cd study/linux/
+git pull
+git log
+ls
+make defconfig
+make menuconfig
+git show HEAD~1
+git show HEAD
+git show --  HEAD 
+git show --name-only   HEAD 
+git show --name-only   HEAD~1 
+git show --name-only   HEAD~2
+git show --name-only   HEAD~3
+git show --name-only   HEAD~4
+git show --name-only   HEAD~5
+git show --name-only   HEAD~6
+git show --name-only   HEAD~7
+git show --name-only   HEAD~8
+git show --name-only   HEAD~9
+git show --name-only   HEAD~10
+git show --name-only   HEAD~11
+git show --name-only   HEAD~12
+ls
+free -mh
+make menuconfig
+make clean
+time make all -j14
+ls
+ls /etc/default/grub
+ls /etc/default/grub -l
+info -f grub -n 'Simple configuration'
+ls /usr/share/grub/
+ls /boot/grub/
+sudo find / -name theme.txt
+sudo find / -name theme.txt 2>/dev/null 
+sudo find / -name grub 2>/dev/null 
+history 
+cycletest
+cyclictest
+sudo apt install rt-tests
+cyclictest -S -m -p 99
+sudo cyclictest -S -m -p 99
+uname
+uname -a
+ls
+codecodecodls
+ls
+code kernel/trace/ftrace.c
+grep -i sysctl .config
+python scripts/clang-tools/gen_compile_commands.py 
+du -sh .cache/clangd/
+grep -i ftrace .config
+rm -rf .cache/clangd/index/
+cloc fs
+cloc fs/tracefs/
+cloc kernel/trace
+make all -j14 -s
+make all -j14 
+git diff --check 
+make all -j14 
+sudo su
+ibus
+history | grep ibus
+ibus restart
+ls kernel/trace
+find . -type d
+find kernel/ -type d
+cloc kernel/time/
+make all -j14 
+code kernel/trace/ftrace.
+code kernel/trace/ftrace.c
+grep -i trampo .config
+grep -i tramp .config
+grep -i tra .config
+grep -i oline .config
+rm kernel/trace/ftrace.o 
+cat kernel/trace/.ftrace.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/' | bash
+clang-format -style=file -i kernel/trace/ftrace.i 
+cat kernel/trace/ftrace.i | wc -l
+code kernel/trace/ftrace.i 
+cloc kernel/events/
+uname -r
+grep -i ftrace .config
+sudo su
+make menuconfig
+grep -i poke .config
+rm -rf .cache/clangd/index/
+python scripts/clang-tools/gen_compile_commands.py 
+rm -rf .cache/clangd/index/
+grep tlb.c compile_commands.json 
+htop
+q
+code kernel/trace/ftrace.i 
+cat arch/x86/kernel/.ftrace.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/' | bash
+clang-format -style=file -i arch/x86/kernel/ftrace.i 
+cat arch/x86/kernel/.alternative.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/' | bash
+cat arch/x86/kernel/.alternative.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/'
+history -a
+history -n
+history 
+cat arch/x86/kernel/.alternative.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/'
+make all -j16
+git status
+git add mm/
+git commit -m "mm"
+git status
+git add  kernel/trace/
+git status
+git commit -m "trace"
+git status
+git add fs/
+git commit -m "fs"
+git status
+git add  kernel/events/
+git commit -m "events"
+git status
+git add  kernel/module/
+git commit -m "module"
+git status
+git add arch/x86/mm/init.c 
+git commit -m "boot"
+git add arch/x86/mm/tlb.c 
+git commit -m "tlb"
+git status
+git add kernel/sched
+git commit -m "sched"
+git status
+git add kernel/bpf
+git commit -m "bpf"
+git add kernel/kallsyms.c 
+git commit -m "kallsym"
+git add kernel/stop_machine.c 
+git status
+git add arch/x86/kernel/alternative.c 
+git add arch/x86/lib/insn.c 
+git commit -m "poke asm"
+git status
+git add kernel/workqueue.c 
+git commit -m "wq"
+git add lib/seq_buf.c 
+git commit -m "seq file"
+git status
+git add 
+git add .
+git commit -m "include"
+git status
+git push
+make all -j16
+ls arch/x86/kernel/ftrace
+ls arch/x86/kernel/ftrace*
+cat arch/x86/kernel/.ftrace_64.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/'
+gcc --save-temps -Wp,-MMD,arch/x86/kernel/.ftrace_64.o.d -nostdinc -I./arch/x86/include -I./arch/x86/include/generated  -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconfig.h -D__KERNEL__ -fmacro-prefix-map=./= -Werror -D__ASSEMBLY__ -fno-PIE -m64 -DCC_USING_FENTRY -g    -c -o arch/x86/kernel/ftrace_64.o arch/x86/kernel/ftrace_64.S
+ls arch/x86/kernel/ftrace_64.* -l
+code arch/x86/kernel/ftrace_64.s
+make all -j16
+ls arch/x86/kernel/ftrace.o 
+ls arch/x86/kernel/ftrace_64.o 
+objdump -d arch/x86/kernel/ftrace_64.o >  arch/x86/kernel/ftrace_64.txt
+code arch/x86/kernel/ftrace_64.txt 
+cat arch/x86/kernel/.ftrace_64.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/'
+code arch/x86/kernel/ftrace_64.s 
+stress-ng --cpu 14 --timeout 2h
+sudo apt install stress-ng
+htop
+uptime 
+htop
+turbostat
+sudo turbostat --Summary --quiet --show Busy%,Avg_MHz,PkgTmp,PkgWatt --interval 1
+history -a
+history -n
+gpuburn
+gpu-burn
+sudo snap install gpu-burn
+cd
+cd study/
+git clone https://github.com/wilicc/gpu-burn
+cd gpu-burn/
+ls
+make 
+nvidia-smi 
+nvidia-smi --help
+nvidia-smi -l
+nvidia-smi -l --display=POWER
+nvidia-smi --display=POWER
+nvidia-smi -d=POWER
+nvidia-smi -dPOWER
+nvidia-smi -d POWER
+uptime 
+1
+sudo turbostat --Summary --quiet --show Busy%,Avg_MHz,PkgTmp,PkgWatt --interval 1
+watch -n 1 "nvidia-smi --query-gpu=power.draw,memory.used --format=csv,noheader,nounits"
+history a
+history -a
+history -n
+# 安装CUDA Toolkit（包含cublas头文件）
+sudo apt install nvidia-cuda-toolkit
+# 安装CUBLAS开发库
+sudo apt install libcublas-dev
+watch -n 1 "nvidia-smi --query-gpu=power.draw,memory.used --format=csv,noheader,nounits"
+sudo apt install libcublas-dev 
+sudo apt search cublas
+make
+cloc .
+gpu-burn -d 7200
+stress-ng --cpu 14 --timeout 2h
+nm -n arch/x86/kernel/ftrace.o | grep "ftrace_caller\|ftrace_regs_caller"
+nm -n vmlinux | grep "ftrace_caller\|ftrace_regs_caller"
+objdump -d arch/x86/kernel/ftrace.o --disassemble=ftrace_caller
+objdump -d arch/x86/kernel/ftrace_64.o --disassemble=ftrace_caller
+grep -i frame .config
+grep -i POINTER .config
+make menuconfig
+objdump -d arch/x86/kernel/ftrace_64.o --disassemble=ftrace_caller
+nm -n vmlinux | grep "ftrace_caller\|ftrace_regs_caller"
+nm -n vmlinux | grep "ftrace_"
+nm -n vmlinux | grep "ftrace_stub"
+objdump -d arch/x86/kernel/ftrace_64.o --disassemble=ftrace_stub
+objdump -d vmlinux --disassemble=ftrace_stub
+objdump -d arch/x86/kernel/ftrace_64.o --disassemble=ftrace_stub
+nm -n vmlinux | grep "ftrace_regs"
+objdump -d vmlinux --disassemble=ftrace_regs_caller
+make all -j16
+nm -n vmlinux | grep "ftrace_regs"
+objdump -d vmlinux --disassemble=ftrace_regs_caller_jmp
+cat arch/x86/kernel/.ftrace.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/'
+gcc -O0 -Wp,-MMD,arch/x86/kernel/.ftrace.o.d -nostdinc -I./arch/x86/include -I./arch/x86/include/generated  -I./include -I./arch/x86/include/uapi -I./arch/x86/include/generated/uapi -I./include/uapi -I./include/generated/uapi -include ./include/linux/compiler-version.h -include ./include/linux/kconfig.h -include ./include/linux/compiler_types.h -D__KERNEL__ -fmacro-prefix-map=./= -Werror -std=gnu11 -fshort-wchar -funsigned-char -fno-common -fno-PIE -fno-strict-aliasing -fdump-rtl-expand -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -fcf-protection=branch -fno-jump-tables -m64 -falign-jumps=1 -falign-loops=1 -mno-80387 -mno-fp-ret-in-387 -mpreferred-stack-boundary=3 -mskip-rax-setup -mtune=generic -mno-red-zone -mcmodel=kernel -Wno-sign-compare -fno-asynchronous-unwind-tables -mindirect-branch=thunk-extern -mindirect-branch-register -mindirect-branch-cs-prefix -mfunction-return=thunk-extern -fno-jump-tables -fpatchable-function-entry=16,16 -fno-delete-null-pointer-checks -O2 -fno-allow-store-data-races -fno-reorder-blocks -fno-ipa-cp-clone -fno-partial-inlining -fstack-protector-strong -ftrivial-auto-var-init=zero -fno-stack-clash-protection -mrecord-mcount -mfentry -DCC_USING_FENTRY -fno-inline-functions-called-once -falign-functions=16 -fstrict-flex-arrays=3 -fno-strict-overflow -fno-stack-check -fconserve-stack -Wall -Wundef -Werror=implicit-function-declaration -Werror=implicit-int -Werror=return-type -Werror=strict-prototypes -Wno-format-security -Wno-trigraphs -Wno-frame-address -Wno-address-of-packed-member -Wframe-larger-than=2048 -Wno-main -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-dangling-pointer -Wvla -Wno-pointer-sign -Wcast-function-type -Wno-array-bounds -Wno-alloc-size-larger-than -Wimplicit-fallthrough=5 -Werror=date-time -Werror=incompatible-pointer-types -Werror=designated-init -Wenum-conversion -Wno-unused-but-set-variable -Wno-unused-const-variable -Wno-restrict -Wno-packed-not-aligned -Wno-format-overflow -Wno-format-truncation -Wno-stringop-overflow -Wno-stringop-truncation -Wno-missing-field-initializers -Wno-type-limits -Wno-shift-negative-value -Wno-maybe-uninitialized -Wno-sign-compare -g3    -DKBUILD_MODFILE='"arch/x86/kernel/ftrace"' -DKBUILD_BASENAME='"ftrace"' -DKBUILD_MODNAME='"ftrace"' -D__KBUILD_MODNAME=kmod_ftrace -c -o arch/x86/kernel/ftrace.o arch/x86/kernel/ftrace.c
+objdump -d arch/x86/kernel/ftrace.o  --disassemble=create_trampoline
+objdump --help
+objdump -d arch/x86/kernel/ftrace.o  --disassemble=create_trampoline -S
+objdump -d arch/x86/kernel/ftrace.o  --disassemble=create_trampoline -S -l
+nm -n vmlinux | grep "ftrace_regs"
+objdump -d vmlinux --disassemble=ftrace_regs_caller
+objdump -d vmlinux --disassemble=ftrace_regs_caller -Sl
+objdump -d vmlinux --disassemble=ftrace_regs_caller -S
+pahole --help
+pahole -C ftrace_op_code_union vmlinux
+objdump --help
+objdump -t vmlinux | grep function_trace_op
+objdump -d vmlinux --disassemble=ftrace_regs_caller -S
+make all -j16
+objdump -d vmlinux --disassemble=ftrace_regs_caller -S
+cloc arch/x86/mm/
+cloc arch/x86/mm/pat/
+cat arch/x86/mm/pat/.set_memory.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/'  | bash
+exit
+clang-format -style=file -i arch/x86/mm/pat/set_memory.i 
+nm -n vmlinux | grep "ftrace_regs"
+ls
+history -a
+history -n
+plasmashell --version
+ls
+sudo apt update
+sudo apt upgrade 
+nvidia-smi 
+watch -n 1 "nvidia-smi --query-gpu=power.draw,memory.used --format=csv,noheader,nounits"
+lsmod | grep nouveau
+ubuntu-drivers devices
+sudo ubuntu-drivers autoinstall
+nvidia-smi 
+sudo reboot 
+nvidia-smi 
+sudo poweroff 
+cat /proc/cpuinfo 
+cat /proc/cpuinfo  | grep Mhz
+cat /proc/cpuinfo  | grep mHz
+cat /proc/cpuinfo  | grep MHz
+grep 'MHz' /proc/cpuinfo | awk '{sum += $NF; count++} END {printf "平均频率: %.2f MHz\n", sum/count}'
+sudo turbostat --Summary --quiet --show Busy%,Avg_MHz,PkgTmp,PkgWatt --interval 1
+grep 'MHz' /proc/cpuinfo | awk '{sum += $NF; count++} END {printf "平均频率: %.2f MHz\n", sum/count}'
+sudo turbostat --Summary --quiet --show Busy%,Avg_MHz,PkgTmp,PkgWatt --interval 1
+grep 'MHz' /proc/cpuinfo | awk '{sum += $NF; count++} END {printf "平均频率: %.2f MHz\n", sum/count}'
+sudo turbostat --Summary --quiet --show Busy%,Avg_MHz,PkgTmp,PkgWatt --interval 1
+sudo turbostat --Summary --quiet --show Busy%,Avg_GHz,PkgTmp,PkgWatt --interval 1
+sudo turbostat --Summary --quiet --show Busy%,Avg_MHz,PkgTmp,PkgWatt --interval 1
+nm -n vmlinux | grep "__start_mcount_loc"
+nm -n vmlinux | grep "__stop_mcount_loc"
+nm -n vmlinux | grep "__stop_mcount_loc" -A 10
+nm -n vmlinux | grep "__stop_mcount_loc" -A 100
+nm -n vmlinux | grep "__start_mcount_loc" -A 100
+nm -n vmlinux | grep "__start_mcount_loc" -A 10
+ls
+objdump --help
+objdump -a vmlinux
+objdump -f vmlinux
+objdump -H vmlinux
+objdump -h vmlinux
+objdump -h vmlinux | grep mcount
+ls scripts/recordmcount.pl 
+ls scripts/recordmcount.pl  -lh
+objdump -x vmlinux
+objdump -x vmlinux | grep mcount
+objdump -t vmlinux | grep mcount
+objdump -s -j .data --start-address=0xffffffff84332480 --stop-address=0xffffffff843aabe8 vmlinux
+objdump -s -j .init.data --start-address=0xffffffff84332480 --stop-address=0xffffffff843aabe8 vmlinux
+sudo turbostat --Summary --quiet --show Busy%,Avg_MHz,PkgTmp,PkgWatt --interval 1
+objdump -t vmlinux | grep __fentry__
+objdump -t vmlinux | grep '\s__fentry__'
+objdump -t vmlinux | grep '\s__fentry__' -A 10
+history -a
+history -n
+sudo poweroff 
+objdump -t vmlinux | grep 'ftrace_arch_code_modify_prepare'
+objdump -d vmlinux --disassemble=ftrace_arch_code_modify_prepare -S
+objdump -S  -d vmlinux --disassemble=ftrace_run_update_code
+objdump -t vmlinux | grep 'ftrace_run_update_code'
+sudo turbostat --Summary --quiet --show Busy%,Avg_MHz,PkgTmp,PkgWatt --interval 1
+cat kernel/trace/.trace_sched_switch.o.cmd  | head -n 1 | grep -oE 'gcc.*$' | sed 's/^gcc/gcc --save-temps/'  | bash
+sudo su
+clang-format -style=file -i kernel/trace/trace_sched_switch.i 
+sudo turbostat --Summary --quiet --show Busy%,Avg_MHz,PkgTmp,PkgWatt --interval 1
+code kernel/trace/trace_sched_switch.i 
+grep 'MHz' /proc/cpuinfo | awk '{sum += $NF; count++} END {printf "平均频率: %.2f MHz\n", sum/count}'
+watch -n 1 grep 'MHz' /proc/cpuinfo | awk '{sum += $NF; count++} END {printf "平均频率: %.2f MHz\n", sum/count}'
+grep 'MHz' /proc/cpuinfo | awk '{sum += $NF; count++} END {printf "平均频率: %.2f MHz\n", sum/count}'
+make all -j16
+grep 'MHz' /proc/cpuinfo | awk '{sum += $NF; count++} END {printf "平均频率: %.2f MHz\n", sum/count}'
+sudo turbostat --Summary --quiet --show Busy%,Avg_MHz,PkgTmp,PkgWatt --interval 1
+uname -r
+ls
+df -Th
+ls
+git status
+git add .
+git commit  -m "ftrace"
+history -a
+history -n
