@@ -827,7 +827,7 @@ struct task_struct {
 	struct sched_entity		se;
 	struct sched_rt_entity		rt;
 	struct sched_dl_entity		dl;
-	const struct sched_class	*sched_class;
+	const struct sched_class	*sched_class;/* 进程所属的调度类 */
 
 #ifdef CONFIG_SCHED_CORE
 	struct rb_node			core_node;

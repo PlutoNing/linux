@@ -1088,7 +1088,7 @@ static enum hrtimer_restart perf_mux_hrtimer_handler(struct hrtimer *hr)
 
 	return rotations ? HRTIMER_RESTART : HRTIMER_NORESTART;
 }
-
+/* 初始化pmu的hrtimer */
 static void __perf_mux_hrtimer_init(struct perf_cpu_pmu_context *cpc, int cpu)
 {
 	struct hrtimer *timer = &cpc->hrtimer;
@@ -4683,7 +4683,7 @@ static void __perf_event_init_context(struct perf_event_context *ctx)
 	INIT_LIST_HEAD(&ctx->event_list);
 	refcount_set(&ctx->refcount, 1);
 }
-
+/* 初始化pmu的ctx */
 static void
 __perf_init_event_pmu_context(struct perf_event_pmu_context *epc, struct pmu *pmu)
 {
@@ -10064,7 +10064,7 @@ static int perf_swevent_init(struct perf_event *event)
 
 	return 0;
 }
-
+/*  */
 static struct pmu perf_swevent = {
 	.task_ctx_nr	= perf_sw_context,
 
@@ -10106,7 +10106,7 @@ static int perf_tp_event_init(struct perf_event *event)
 
 	return 0;
 }
-
+/* perf的tp pmu */
 static struct pmu perf_tracepoint = {
 	.task_ctx_nr	= perf_sw_context,
 
@@ -10404,7 +10404,7 @@ static int perf_uprobe_event_init(struct perf_event *event)
 	return 0;
 }
 #endif /* CONFIG_UPROBE_EVENTS */
-
+/* 注册perf的tracepoint */
 static inline void perf_tp_register(void)
 {
 	perf_pmu_register(&perf_tracepoint, "tracepoint", PERF_TYPE_TRACEPOINT);
@@ -11493,7 +11493,7 @@ free_dev:
 
 static struct lock_class_key cpuctx_mutex;
 static struct lock_class_key cpuctx_lock;
-
+/* 注册pmu, pmu可能是perf_swevent,perf_cpu_clock,perf_task_clock */
 int perf_pmu_register(struct pmu *pmu, const char *name, int type)
 {
 	int cpu, ret, max = PERF_TYPE_MAX;
@@ -11534,7 +11534,7 @@ int perf_pmu_register(struct pmu *pmu, const char *name, int type)
 	pmu->cpu_pmu_context = alloc_percpu(struct perf_cpu_pmu_context);
 	if (!pmu->cpu_pmu_context)
 		goto free_dev;
-
+/* 初始化pcp的pmu ctx和timer */
 	for_each_possible_cpu(cpu) {
 		struct perf_cpu_pmu_context *cpc;
 
@@ -11570,7 +11570,7 @@ int perf_pmu_register(struct pmu *pmu, const char *name, int type)
 
 	if (!pmu->event_idx)
 		pmu->event_idx = perf_event_idx_default;
-
+/* 添加到全局链表 */
 	list_add_rcu(&pmu->entry, &pmus);
 	atomic_set(&pmu->exclusive_cnt, 0);
 	ret = 0;
@@ -13594,7 +13594,7 @@ int perf_event_init_task(struct task_struct *child, u64 clone_flags)
 
 	return 0;
 }
-
+/* perf初始化 */
 static void __init perf_event_init_all_cpus(void)
 {
 	struct swevent_htable *swhash;
@@ -13673,7 +13673,7 @@ static void perf_event_exit_cpu_context(int cpu)
 static void perf_event_exit_cpu_context(int cpu) { }
 
 #endif
-
+/* 初始化当前cpu的perf event */
 int perf_event_init_cpu(unsigned int cpu)
 {
 	struct perf_cpu_context *cpuctx;
@@ -13719,7 +13719,7 @@ static struct notifier_block perf_reboot_notifier = {
 	.notifier_call = perf_reboot,
 	.priority = INT_MIN,
 };
-
+/* 初始化 perf event机制 */
 void __init perf_event_init(void)
 {
 	int ret;
@@ -13727,14 +13727,14 @@ void __init perf_event_init(void)
 	idr_init(&pmu_idr);
 
 	perf_event_init_all_cpus();
-	init_srcu_struct(&pmus_srcu);
+	init_srcu_struct(&pmus_srcu);/* 注册pmu */
 	perf_pmu_register(&perf_swevent, "software", PERF_TYPE_SOFTWARE);
 	perf_pmu_register(&perf_cpu_clock, "cpu_clock", -1);
 	perf_pmu_register(&perf_task_clock, "task_clock", -1);
-	perf_tp_register();
+	perf_tp_register();/* 注册tp,kprobe,uprobe相关的pmu */
 	perf_event_init_cpu(smp_processor_id());
 	register_reboot_notifier(&perf_reboot_notifier);
-
+/* 也是注册pmu */
 	ret = init_hw_breakpoint();
 	WARN(ret, "hw_breakpoint initialization failed with: %d", ret);
 

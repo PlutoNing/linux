@@ -660,7 +660,7 @@ void __init reserve_top_address(unsigned long reserve)
 int fixmaps_set;
 
 void __native_set_fixmap(enum fixed_addresses idx, pte_t pte)
-{
+{ /* 结果可能是0xffffffffff5fb000 */
 	unsigned long address = __fix_to_virt(idx);
 
 #ifdef CONFIG_X86_64
@@ -679,7 +679,7 @@ void __native_set_fixmap(enum fixed_addresses idx, pte_t pte)
 	set_pte_vaddr(address, pte);
 	fixmaps_set++;
 }
-
+/* 设置fixmap地址空间区域的idx页表映射到phys */
 void native_set_fixmap(unsigned /* enum fixed_addresses */ idx,
 		       phys_addr_t phys, pgprot_t flags)
 {

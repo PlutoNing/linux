@@ -6714,7 +6714,7 @@ static struct event_command trigger_hist_cmd = {
 	.get_trigger_ops	= event_hist_get_trigger_ops,
 	.set_filter		= set_trigger_filter,
 };
-
+/* 注册trigger hist cmd(添加到全局链表) */
 __init int register_trigger_hist_cmd(void)
 {
 	int ret;

@@ -78,7 +78,7 @@ trace_get_syscall_nr(struct task_struct *task, struct pt_regs *regs)
 	return syscall_get_nr(task, regs);
 }
 #endif /* ARCH_TRACE_IGNORE_COMPAT_SYSCALLS */
-
+/* 获取系统调用的meta, 参数是在table的地址 */
 static __init struct syscall_metadata *
 find_syscall_meta(unsigned long syscall)
 {
@@ -90,7 +90,7 @@ find_syscall_meta(unsigned long syscall)
 	start = __start_syscalls_metadata;
 	stop = __stop_syscalls_metadata;
 	kallsyms_lookup(syscall, NULL, NULL, NULL, str);
-
+	/* 查到的str可能是__x64_sys_read */
 	if (arch_syscall_match_sym_name(str, "sys_ni_syscall"))
 		return NULL;
 
@@ -500,12 +500,12 @@ struct trace_event_class __refdata event_class_syscall_exit = {
 	.fields		= LIST_HEAD_INIT(event_class_syscall_exit.fields),
 	.raw_init	= init_syscall_trace,
 };
-
+/* 获取系统调用的地址 */
 unsigned long __init __weak arch_syscall_addr(int nr)
 {
 	return (unsigned long)sys_call_table[nr];
 }
-
+/* 初始化syscalls_metadata[i]数组, 以及每个meta的nr号码 */
 void __init init_ftrace_syscalls(void)
 {
 	struct syscall_metadata *meta;
@@ -522,9 +522,9 @@ void __init init_ftrace_syscalls(void)
 			return;
 		}
 	}
-
+	/* 初始化syscalls_metadata[i]数组, 以及每个meta的nr号码 */
 	for (i = 0; i < NR_syscalls; i++) {
-		addr = arch_syscall_addr(i);
+		addr = arch_syscall_addr(i); /* 从sys_call_table查的地址 */
 		meta = find_syscall_meta(addr);
 		if (!meta)
 			continue;

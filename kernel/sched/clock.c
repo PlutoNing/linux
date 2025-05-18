@@ -54,7 +54,7 @@
  *
  */
 
-/*
+/* 获取sched clock, jiffies时钟源
  * Scheduler clock - returns current time in nanosec units.
  * This is default implementation.
  * Architectures and sub-architectures can override this.
@@ -92,7 +92,7 @@ struct sched_clock_data {
 };
 
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct sched_clock_data, sched_clock_data);
-
+/* 读取pcp的sched_clock_data */
 static __always_inline struct sched_clock_data *this_scd(void)
 {
 	return this_cpu_ptr(&sched_clock_data);
@@ -107,7 +107,7 @@ notrace int sched_clock_stable(void)
 {
 	return static_branch_likely(&__sched_clock_stable);
 }
-
+/* 设置scd */
 notrace static void __scd_stamp(struct sched_clock_data *scd)
 {
 	scd->tick_gtod = ktime_get_ns();
@@ -193,15 +193,15 @@ notrace void clear_sched_clock_stable(void)
 	if (static_key_count(&sched_clock_running.key) == 2)
 		__clear_sched_clock_stable();
 }
-
+/*  */
 notrace static void __sched_clock_gtod_offset(void)
-{
+{ /* 读取sched_clock_data */
 	struct sched_clock_data *scd = this_scd();
 
 	__scd_stamp(scd);
 	__gtod_offset = (scd->tick_raw + __sched_clock_offset) - scd->tick_gtod;
 }
-
+/* 初始化 */
 void __init sched_clock_init(void)
 {
 	/*
@@ -292,7 +292,7 @@ again:
 
 	return clock;
 }
-
+/* 获取的是boottime */
 noinstr u64 local_clock_noinstr(void)
 {
 	u64 clock;
@@ -301,13 +301,13 @@ noinstr u64 local_clock_noinstr(void)
 		return sched_clock_noinstr() + __sched_clock_offset;
 
 	if (!static_branch_likely(&sched_clock_running))
-		return sched_clock_noinstr();
+		return sched_clock_noinstr(); /* 执行这个分支 */
 
 	clock = sched_clock_local(this_scd());
 
 	return clock;
 }
-
+/* 获取的好像是boottime */
 u64 local_clock(void)
 {
 	u64 now;

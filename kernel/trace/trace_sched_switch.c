@@ -57,7 +57,7 @@ probe_sched_wakeup(void *ignore, struct task_struct *wakee)
 static int tracing_sched_register(void)
 {
 	int ret;
-
+/* 开启一个tracepoint? */
 	ret = register_trace_sched_wakeup(probe_sched_wakeup, NULL);
 	if (ret) {
 		pr_info("wakeup trace: Couldn't activate tracepoint"
@@ -99,7 +99,7 @@ static void tracing_sched_unregister(void)
 	/*  */
 	unregister_trace_sched_wakeup(probe_sched_wakeup, NULL);
 }
-
+/*  */
 static void tracing_start_sched_switch(int ops)
 {
 	bool sched_register;
@@ -146,7 +146,7 @@ static void tracing_stop_sched_switch(int ops)
 		tracing_sched_unregister();
 	mutex_unlock(&sched_register_mutex);
 }
-
+/* init一个tracer的时候会调用这个 */
 void tracing_start_cmdline_record(void)
 {
 	tracing_start_sched_switch(RECORD_CMDLINE);

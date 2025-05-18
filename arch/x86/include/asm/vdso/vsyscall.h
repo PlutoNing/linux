@@ -11,7 +11,7 @@
 #include <asm/vvar.h>
 
 DEFINE_VVAR(struct vdso_data, _vdso_data);
-/*
+/* 获取时间相关系统调用的vdso
  * Update the vDSO data page to keep in sync with kernel timekeeping.
  */
 static __always_inline

@@ -1824,7 +1824,7 @@ static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t l
 		if (cross_page_boundary)
 			pages[1] = vmalloc_to_page(addr + PAGE_SIZE);
 	} else {/* 是内核代码段. */
-		pages[0] = virt_to_page(addr);
+		pages[0] = virt_to_page(addr); /* pages[0] = (((struct page *)vmemmap_base) +(__phys_addr((unsigned long)(addr)) >> 12)); */
 		WARN_ON(!PageReserved(pages[0]));
 		if (cross_page_boundary)
 			pages[1] = virt_to_page(addr + PAGE_SIZE);
@@ -2046,7 +2046,7 @@ void *text_poke_set(void *addr, int c, size_t len)
 	mutex_unlock(&text_mutex);
 	return addr;
 }
-
+/* 执行serialize指令 */
 static void do_sync_core(void *info)
 {
 	sync_core();
@@ -2071,7 +2071,7 @@ struct text_poke_loc {
 	u8 opcode;
 	const u8 text[POKE_MAX_OPCODE_SIZE];
 	/* see text_poke_bp_batch() */
-	/* 保存ip？ */
+	/* 保存ip本来的代码,保存要hook的addr处的老代码备份 */
 	u8 old;
 };
 
@@ -2106,7 +2106,7 @@ static __always_inline void put_desc(void)
 	raw_atomic_dec(&desc->refs);
 }
 
-/* 算是获取ip？ */
+/* 算是获取ip？这里是获得要hook的addr */
 static __always_inline void *text_poke_addr(struct text_poke_loc *tp)
 {
 	return _stext + tp->rel_addr;
@@ -2210,7 +2210,7 @@ static struct text_poke_loc tp_vec[TP_VEC_MAX];
 static int tp_vec_nr;
 
 /**
-修改代码二进制
+修改代码二进制, tp的reladdr和text表示着hook的addr和opcode
  * text_poke_bp_batch() -- update instructions on live kernel on SMP
  * @tp:			vector of instructions to patch
  * @nr_entries:		number of entries in the vector
@@ -2265,7 +2265,7 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 	 */
 	smp_wmb();
 
-	/*
+	/* 先插入int3指令
 	 * First step: add a int3 trap to the address that will be patched.
 	 */
 	for (i = 0; i < nr_entries; i++) {
@@ -2273,16 +2273,16 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 		tp[i].old = *(u8 *)text_poke_addr(&tp[i]);
 		text_poke(text_poke_addr(&tp[i]), &int3, INT3_INSN_SIZE);
 	}
-
+/* 在每个cpu上面执行serialize指令 */
 	text_poke_sync();
 
 	/*
 	 * Second step: update all but the first byte of the patched range.
 	 */
 	for (do_sync = 0, i = 0; i < nr_entries; i++) {
-		u8 old[POKE_MAX_OPCODE_SIZE+1] = { tp[i].old, };
+		u8 old[POKE_MAX_OPCODE_SIZE+1] = { tp[i].old, }; /* 备份? x/i old 0xffffc9000111fbc4:	jmp    0xffffc8ffffa8acb4 */
 		u8 _new[POKE_MAX_OPCODE_SIZE+1];
-		const u8 *new = tp[i].text;
+		const u8 *new = tp[i].text; /* x/i new  	jmp    0xffffc8ffffc034da */
 		int len = tp[i].len;
 
 		if (len - INT3_INSN_SIZE > 0) {
@@ -2295,7 +2295,7 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 				memcpy(_new + 1, new, 5);
 				new = _new;
 			}
-
+/* 在int3指令后面继续插入 */
 			text_poke(text_poke_addr(&tp[i]) + INT3_INSN_SIZE,
 				  new + INT3_INSN_SIZE,
 				  len - INT3_INSN_SIZE);
@@ -2326,7 +2326,7 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 		 * executable code.
 		 * The old instruction is recorded so that the event can be
 		 * processed forwards or backwards.
-		 */
+		 记录perf事件*/
 		perf_event_text_poke(text_poke_addr(&tp[i]), old, len, new, len);
 	}
 
@@ -2339,7 +2339,7 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 		text_poke_sync();
 	}
 
-	/*
+	/*第三步,替换int3
 	 * Third step: replace the first byte (int3) by the first byte of
 	 * replacing opcode.
 	 */
@@ -2366,8 +2366,8 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 		atomic_cond_read_acquire(&bp_desc.refs, !VAL);
 }
 /* 
-改变addr这里的代码.从而执行到此处时,跳转到其他地方.
-opcode是poke insn的text地址
+改变addr这里的代码.从而执行到此处时,跳转到其他地方. 可能是tp->static_call_tramp
+opcode是poke insn的text地址,总之就是生成的跳转字节码
 tp是text_poke结构体， 
 ===1=1=====
 主要是完善tp的成员
@@ -2528,8 +2528,8 @@ void __ref text_poke_bp(void *addr, const void *opcode, size_t len, const void *
 	/* 构造一个tp结构体 */
 	struct text_poke_loc tp;
 
-	/* 完善tp */
-	text_poke_loc_init(&tp, addr, opcode, len, emulate);
+	/* 完善tp, 比如说addr可能是tp->static_call_tramp */
+	text_poke_loc_init(&tp, addr, opcode, len, emulate); /* x/1i &tp.opcode 	jmp    0xffffc8ffaf4ab807 */
 	/*  */
 	text_poke_bp_batch(&tp, 1);
 }

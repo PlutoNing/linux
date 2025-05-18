@@ -412,7 +412,7 @@ struct trace_array {
 	/* 好像是表示正在被使用？ */
 	int			trace_ref;
 #ifdef CONFIG_FUNCTION_TRACER
-	struct ftrace_ops	*ops;
+	struct ftrace_ops	*ops; /* 好像代表一个tracer的ops, 比如function tracer的ops? */
 	/* 要trace的pid？ */
 	struct trace_pid_list	__rcu *function_pids;
 	/* 不要trace的pid？ */
@@ -1771,7 +1771,7 @@ struct event_trigger_ops {
 					 struct event_trigger_data *data);
 };
 
-/**
+/** cmd是什么
  * struct event_command - callbacks and data members for event commands
  *
  * Event commands are invoked by users by writing the command name

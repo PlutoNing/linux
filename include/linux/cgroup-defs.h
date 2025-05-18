@@ -173,7 +173,7 @@ struct cgroup_subsys_state {
 	 * PI: Subsys-unique ID.  0 is unused and root is always 1.  The
 	 * matching css can be looked up using css_from_id().
 	 */
-	int id;
+	int id; /* 为1的话是第一个css */
 
 	unsigned int flags;
 
@@ -403,7 +403,7 @@ struct cgroup_freezer_state {
 
 struct cgroup {
 	/* self css with NULL ->ss, points back to this cgroup */
-	struct cgroup_subsys_state self;
+	struct cgroup_subsys_state self; /* 代表自己的css */
 
 	unsigned long flags;		/* "unsigned long" so bitops work */
 
@@ -471,10 +471,10 @@ struct cgroup {
 	u16 old_subtree_control;
 	u16 old_subtree_ss_mask;
 
-	/* Private pointers for each registered subsystem */
+	/* Private pointers for each registered subsystem. 一个cgroup可能有多个ss的限制关系 */
 	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
 
-	struct cgroup_root *root;
+	struct cgroup_root *root; /* 可能指向cgrp_dfl_root */
 
 	/*
 	 * List of cgrp_cset_links pointing at css_sets with tasks in this
@@ -714,7 +714,7 @@ struct cgroup_subsys {
 	void (*release)(struct task_struct *task);
 	void (*bind)(struct cgroup_subsys_state *root_css);
 
-	bool early_init:1;
+	bool early_init:1; /* 表示是否需要early init这个子系统 */
 
 	/*
 	 * If %true, the controller, on the default hierarchy, doesn't show
@@ -742,14 +742,14 @@ struct cgroup_subsys {
 	bool threaded:1;
 
 	/* the following two fields are initialized automatically during boot */
-	int id;
-	const char *name;
+	int id; /* 指向子系统在全局数组的idx */
+	const char *name; /* 指向cgroup_subsys_name[i] */
 
 	/* optional, initialized automatically during boot if not set */
 	const char *legacy_name;
 
 	/* link to parent, protected by cgroup_lock() */
-	struct cgroup_root *root;
+	struct cgroup_root *root; /* 可能指向cgrp_dfl_root */
 
 	/* idr for css->id */
 	struct idr css_idr;

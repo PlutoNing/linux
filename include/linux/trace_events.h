@@ -92,6 +92,7 @@ struct trace_entry {
  * results to users and which routines might sleep, etc:
  */
 struct trace_iterator {
+	/* 相关的tr */
 	struct trace_array	*tr;
 	struct tracer		*trace;
 	struct array_buffer	*array_buffer;
@@ -116,8 +117,11 @@ struct trace_iterator {
 	bool			snapshot;
 
 	/* The below is zeroed out in pipe_read */
+	/* 输出打印到这个seq file */
 	struct trace_seq	seq;
-	/* 从rb读取的trace entry存储在这里 */
+	/* 从rb读取的trace entry存储在这里
+	也是打印输出时要打印的entry
+	*/
 	struct trace_entry	*ent;
 	unsigned long		lost_events;
 	int			leftover;
@@ -147,7 +151,7 @@ struct trace_event_functions {
 	trace_print_func	hex;
 	trace_print_func	binary;
 };
-
+/* ftrace 支持多种事件类型（如函数调用、调度事件、硬件延迟等），每种事件类型通过 struct trace_event 结构定义 每个事件类型需要实现以下回调：​**reg**​：事件注册/注销函数。​**trace**​：事件触发时的数据记录函数。​**print**​：事件数据的格式化输出函数。*/
 struct trace_event {
 	struct hlist_node		node;
 	int				type;
@@ -179,6 +183,9 @@ static inline void tracing_generic_entry_update(struct trace_entry *entry,
 
 unsigned int tracing_gen_ctx_irq_test(unsigned int irqs_status);
 
+/* 
+
+*/
 enum trace_flag_type {
 	TRACE_FLAG_IRQS_OFF		= 0x01,
 	TRACE_FLAG_IRQS_NOSUPPORT	= 0x02,
@@ -197,6 +204,9 @@ static inline unsigned int tracing_gen_ctx_flags(unsigned long irqflags)
 		TRACE_FLAG_IRQS_OFF : 0;
 	return tracing_gen_ctx_irq_test(irq_status);
 }
+/* 
+
+*/
 static inline unsigned int tracing_gen_ctx(void)
 {
 	unsigned long irqflags;
@@ -274,7 +284,7 @@ enum trace_reg {
 struct trace_event_call;
 
 #define TRACE_FUNCTION_TYPE ((const char *)~0UL)
-
+/*  */
 struct trace_event_fields {
 	const char *type;
 	union {
@@ -289,7 +299,7 @@ struct trace_event_fields {
 		int (*define_fields)(struct trace_event_call *);
 	};
 };
-
+/*  */
 struct trace_event_class {
 	const char		*system;
 	void			*probe;
@@ -370,7 +380,7 @@ enum {
 
 /*  */
 struct trace_event_call {
-	struct list_head	list;
+	struct list_head list; /* 添加到ftrace_events  */
 	struct trace_event_class *class;
 	union {
 		char			*name;
@@ -464,7 +474,7 @@ static inline bool bpf_prog_array_valid(struct trace_event_call *call)
 #endif
 
 /* 
-对应available的trace event
+这里的元素对应available的trace event
 获取event call的名字 */
 static inline const char *
 trace_event_name(struct trace_event_call *call)
@@ -476,7 +486,7 @@ trace_event_name(struct trace_event_call *call)
 	else
 		return call->name;
 }
-
+/* 返回call的class的fields, 或者get_fields */
 static inline struct list_head *
 trace_get_fields(struct trace_event_call *event_call)
 {
@@ -652,13 +662,13 @@ enum {
 	EVENT_FILE_FL_PID_FILTER	= (1 << EVENT_FILE_FL_PID_FILTER_BIT),
 	EVENT_FILE_FL_WAS_ENABLED	= (1 << EVENT_FILE_FL_WAS_ENABLED_BIT),
 };
-
+/*  */
 struct trace_event_file {
 	struct list_head		list;
-	struct trace_event_call		*event_call;
+	struct trace_event_call		*event_call; /* 指向对应的call,也就是available event */
 	struct event_filter __rcu	*filter;
 	struct eventfs_file             *ef;
-	struct trace_array		*tr;
+	struct trace_array		*tr; /* 指向对应的tr, 可能是global trace */
 	struct trace_subsystem_dir	*system;
 	struct list_head		triggers;
 

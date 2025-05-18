@@ -779,7 +779,7 @@ err_out:
  *  - < 0 on error
 */
 int insn_get_length(struct insn *insn)
-{
+{/* 刚开始insn的kaddr和next_byte可能是一样的, 都是opcode */
 	int ret;
 
 	if (insn->length)
@@ -808,7 +808,7 @@ static inline int insn_complete(struct insn *insn)
 /**
 解码x86指令?
 初始化和完善insn结构体
-ftrace的时候, insn是新结构体, kaddr是opcode(另外一个静态insn的text)
+ftrace的时候, insn是新结构体, kaddr是opcode
 
  * insn_decode() - Decode an x86 instruction
  * @insn:	&struct insn to be initialized

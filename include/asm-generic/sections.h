@@ -34,7 +34,7 @@
  */
 extern char _text[], _stext[], _etext[];
 extern char _data[], _sdata[], _edata[];
-extern char __bss_start[], __bss_stop[];
+extern char __bss_start[], __bss_stop[]; /* 大小可能是0x278000 */
 extern char __init_begin[], __init_end[];
 extern char _sinittext[], _einittext[];
 extern char __start_ro_after_init[], __end_ro_after_init[];
@@ -77,7 +77,7 @@ static inline bool have_function_descriptors(void)
 	return IS_ENABLED(CONFIG_HAVE_FUNCTION_DESCRIPTORS);
 }
 
-/**
+/** 检查地址是否在指定的内存范围
  * memory_contains - checks if an object is contained within a memory region
  * @begin: virtual address of the beginning of the memory region
  * @end: virtual address of the end of the memory region
@@ -116,7 +116,7 @@ static inline bool memory_intersects(void *begin, void *end, void *virt,
 	return false;
 }
 
-/**
+/** 看这个地址是不是在初始化段
  * init_section_contains - checks if an object is contained within the init
  *                         section
  * @virt: virtual address of the memory object

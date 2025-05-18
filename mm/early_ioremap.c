@@ -63,9 +63,9 @@ static inline void __init __late_clear_fixmap(enum fixed_addresses idx)
 	BUG();
 }
 #endif
-
+/* 大小是8, 里面存的是prev_map[i] =addr(fixmap区域的虚拟地址) */
 static void __iomem *prev_map[FIX_BTMAPS_SLOTS] __initdata;
-static unsigned long prev_size[FIX_BTMAPS_SLOTS] __initdata;
+static unsigned long prev_size[FIX_BTMAPS_SLOTS] __initdata; /* 保存ioremap的大小 */
 static unsigned long slot_virt[FIX_BTMAPS_SLOTS] __initdata;
 
 void __init early_ioremap_setup(void)
@@ -95,7 +95,7 @@ static int __init check_early_ioremap_leak(void)
 	return 0;
 }
 late_initcall(check_early_ioremap_leak);
-
+/* 映射phys_addr和size描述的物理地址范围到fixmap虚拟地址区域, 返回这个虚拟地址 */
 static void __init __iomem *
 __early_ioremap(resource_size_t phys_addr, unsigned long size, pgprot_t prot)
 {
@@ -106,7 +106,7 @@ __early_ioremap(resource_size_t phys_addr, unsigned long size, pgprot_t prot)
 	int i, slot;
 
 	WARN_ON(system_state >= SYSTEM_RUNNING);
-
+	/* 从prev_map的8个slot找一个未使用的 */
 	slot = -1;
 	for (i = 0; i < FIX_BTMAPS_SLOTS; i++) {
 		if (!prev_map[i]) {
@@ -123,7 +123,7 @@ __early_ioremap(resource_size_t phys_addr, unsigned long size, pgprot_t prot)
 	last_addr = phys_addr + size - 1;
 	if (WARN_ON(!size || last_addr < phys_addr))
 		return NULL;
-
+	/* 存入ioremap的大小 */
 	prev_size[slot] = size;
 	/*
 	 * Mappings have to be page-aligned
@@ -141,24 +141,24 @@ __early_ioremap(resource_size_t phys_addr, unsigned long size, pgprot_t prot)
 
 	/*
 	 * 刚刚进行了一下对齐， Ok, go for it..
-	 */
+	FIX_BTMAP_BEGIN可能等于0x5ff */
 	idx = FIX_BTMAP_BEGIN - NR_FIX_BTMAPS*slot;
 	while (nrpages > 0) {
 		if (after_paging_init)
 			__late_set_fixmap(idx, phys_addr, prot);
 		else
-			__early_set_fixmap(idx, phys_addr, prot);/* 好像是进行内存映射 */
+			__early_set_fixmap(idx, phys_addr, prot);/* 建立对phys_addr的映射 */
 		phys_addr += PAGE_SIZE;
 		--idx;
 		--nrpages;
-	}
+	} /* 物理地址被映射到了虚拟地址,这个虚拟地址在fixmap机制中对应idx */
 	WARN(early_ioremap_debug, "%s(%pa, %08lx) [%d] => %08lx + %08lx\n",
 	     __func__, &phys_addr, size, slot, offset, slot_virt[slot]);
-
+	/* 好像slot_virt[slot]就是刚刚提到的虚拟地址 */
 	prev_map[slot] = (void __iomem *)(offset + slot_virt[slot]);
-	return prev_map[slot];
+	return prev_map[slot]; /* 返回的是fixmap区域中的虚拟地址 */
 }
-
+/* 解除fixmap映射 */
 void __init early_iounmap(void __iomem *addr, unsigned long size)
 {
 	unsigned long virt_addr;
@@ -195,10 +195,10 @@ void __init early_iounmap(void __iomem *addr, unsigned long size)
 	nrpages = PAGE_ALIGN(offset + size) >> PAGE_SHIFT;
 
 	idx = FIX_BTMAP_BEGIN - NR_FIX_BTMAPS*slot;
-	while (nrpages > 0) {
+	while (nrpages > 0) {/*  */
 		if (after_paging_init)
 			__late_clear_fixmap(idx);
-		else
+		else/* 映射到0就是解除映射吗 */
 			__early_set_fixmap(idx, 0, FIXMAP_PAGE_CLEAR);
 		--idx;
 		--nrpages;
@@ -290,7 +290,7 @@ void __init early_iounmap(void __iomem *addr, unsigned long size)
 
 #endif /* CONFIG_MMU */
 
-
+/* 解除fixmap映射 */
 void __init early_memunmap(void *addr, unsigned long size)
 {
 	early_iounmap((__force void __iomem *)addr, size);

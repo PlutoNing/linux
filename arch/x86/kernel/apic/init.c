@@ -87,7 +87,7 @@ void __init apic_setup_apic_calls(void)
 	update_static_calls();/* 更新， 修改字节码，直接跳过去 */
 	pr_info("Static calls initialized\n");
 }
-
+/* 安装选择的中断driver */
 void __init apic_install_driver(struct apic *driver)
 {
 	if (apic == driver)

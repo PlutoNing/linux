@@ -285,7 +285,7 @@ enum page_cache_mode {
 
 #include <linux/types.h>
 
-/* Extracts the PFN from a (pte|pmd|pud|pgd)val_t of a 4KB page */
+/* 最右边12个0, Extracts the PFN from a (pte|pmd|pud|pgd)val_t of a 4KB page */
 #define PTE_PFN_MASK		((pteval_t)PHYSICAL_PAGE_MASK)
 
 /*

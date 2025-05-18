@@ -493,7 +493,7 @@ static inline struct cgroup *task_dfl_cgroup(struct task_struct *task)
 {
 	return task_css_set(task)->dfl_cgrp;
 }
-
+/* 通过self成员这个css的父子关系来container_of获取cgroup的父子关系 */
 static inline struct cgroup *cgroup_parent(struct cgroup *cgrp)
 {
 	struct cgroup_subsys_state *parent_css = cgrp->self.parent;

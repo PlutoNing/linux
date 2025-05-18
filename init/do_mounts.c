@@ -31,7 +31,7 @@
 int root_mountflags = MS_RDONLY | MS_SILENT;
 static char __initdata saved_root_name[64];
 static int root_wait;
-
+/* 启动磁盘? */
 dev_t ROOT_DEV;
 
 static int __init load_ramdisk(char *str)

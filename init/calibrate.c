@@ -271,7 +271,7 @@ unsigned long __attribute__((weak)) calibrate_delay_is_known(void)
 void __attribute__((weak)) calibration_delay_done(void)
 {
 }
-
+/* 启动过程中校准 CPU 延迟循环（Delay Loop）​ 确定 CPU 在一个 jiffy（时钟节拍，通常为 1~10 毫秒）内能执行多少次空循环，即 loops_per_jiffy​  */
 void calibrate_delay(void)
 {
 	unsigned long lpj;

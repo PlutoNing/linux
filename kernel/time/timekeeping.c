@@ -139,7 +139,7 @@ static inline struct timespec64 tk_xtime(const struct timekeeper *tk)
 	ts.tv_nsec = (long)(tk->tkr_mono.xtime_nsec >> tk->tkr_mono.shift);
 	return ts;
 }
-
+/* 根据从rtc获取的wall_time初始化tk */
 static void tk_set_xtime(struct timekeeper *tk, const struct timespec64 *ts)
 {
 	tk->xtime_sec = ts->tv_sec;
@@ -155,7 +155,7 @@ static void tk_xtime_add(struct timekeeper *tk, const struct timespec64 *ts)
 	tk->tkr_mono.xtime_nsec += (u64)ts->tv_nsec << tk->tkr_mono.shift;
 	tk_normalize_xtime(tk);
 }
-/* 
+/* wall_to_mono = timespec64_sub(boot_offset, wall_time)是这样计算出的
 设置tk的wall_to_mono
 */
 static void tk_set_wall_to_mono(struct timekeeper *tk, struct timespec64 wtm)
@@ -306,8 +306,8 @@ static inline u64 timekeeping_get_delta(const struct tk_read_base *tkr)
 }
 #endif
 
-/**
-建立default clocksource和timekeeping关系
+/** tk是tk_core.timekeeper.   clock是clock = clocksource_default_clock()选择的时钟源
+建立default clocksource和timekeeping关系, 根据选择的时钟初始化tk
  * tk_setup_internals - Set up internals to use clocksource clock.
  *
  * @tk:		The target timekeeper to setup.
@@ -323,12 +323,12 @@ static void tk_setup_internals(struct timekeeper *tk, struct clocksource *clock)
 	u64 interval;
 	u64 tmp, ntpinterval;
 	struct clocksource *old_clock;
-
+	/* 设置tk->tkr_mono */
 	++tk->cs_was_changed_seq;
 	old_clock = tk->tkr_mono.clock;
 	tk->tkr_mono.clock = clock;
 	tk->tkr_mono.mask = clock->mask;
-	tk->tkr_mono.cycle_last = tk_clock_read(&tk->tkr_mono);
+	tk->tkr_mono.cycle_last =	tk_clock_read(&tk->tkr_mono); /* 从tk->tkr_mono.clock读取时间 */
 
 	tk->tkr_raw.clock = clock;
 	tk->tkr_raw.mask = clock->mask;
@@ -781,7 +781,7 @@ static void timekeeping_update(struct timekeeper *tk, unsigned int action)
 
 	tk_update_leap_state(tk);
 	tk_update_ktime_data(tk);
-
+/* 更新vdso */
 	update_vsyscall(tk);
 	update_pvclock_gtod(tk, action & TK_CLOCK_WAS_SET);
 
@@ -1664,7 +1664,7 @@ read_persistent_wall_and_boot_offset(struct timespec64 *wall_time,
 				     struct timespec64 *boot_offset)
 {
 	// 读取到wall_time
-	read_persistent_clock64(wall_time);
+	read_persistent_clock64(wall_time); /* print *wall_time $13 = {tv_sec = 1747206397, tv_nsec = 0} */
 	*boot_offset = ns_to_timespec64(local_clock());
 }
 
@@ -1685,7 +1685,7 @@ static bool suspend_timing_needed;
 
 /* Flag for if there is a persistent clock on this platform
 表示是否在此平台上有持久时钟
-*/
+timekeeping_init运行的时候一般都会成功初始化为true */
 static bool persistent_clock_exists;
 
 /*
@@ -1706,7 +1706,7 @@ void __init timekeeping_init(void)
 	// 读取到wall_time和boot_offset
 	read_persistent_wall_and_boot_offset(&wall_time, &boot_offset);
 	if (timespec64_valid_settod(&wall_time) &&
-	    timespec64_to_ns(&wall_time) > 0) {
+	    timespec64_to_ns(&wall_time) > 0) {/* 一般都会走到这里 */
 		persistent_clock_exists = true;
 	} else if (timespec64_to_ns(&wall_time) != 0) {
 		pr_warn("Persistent clock returned invalid value");

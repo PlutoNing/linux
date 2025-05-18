@@ -533,7 +533,7 @@ void sched_put_rd(struct root_domain *rd)
 
 	call_rcu(&rd->rcu, free_rootdomain);
 }
-
+/* 初始化rt的根域 */
 static int init_rootdomain(struct root_domain *rd)
 {
 	if (!zalloc_cpumask_var(&rd->span, GFP_KERNEL))
@@ -574,7 +574,7 @@ out:
 	return -ENOMEM;
 }
 
-/*
+/*root_domain 是 Linux 内核中用于 ​实时调度（Real-Time Scheduling）​​ 的核心数据结构，主要管理一组 CPU 的调度资源和约束，特别是与实时任务（RT tasks）和带宽控制相关的配置。它是实时调度层级（如 cgroup 的 RT 分组调度）的顶层域。
  * By default the system creates a single root-domain with all CPUs as
  * members (mimicking the global state we have today).
  */

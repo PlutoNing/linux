@@ -5,7 +5,7 @@
 #include <uapi/asm/bootparam.h>
 
 /*
- * These are the E820 types known to the kernel: e829条目的类型
+ * These are the E820 types known to the kernel: e820条目的类型
  */
 enum e820_type {
 	E820_TYPE_RAM		= 1,
@@ -98,10 +98,10 @@ struct e820_table {
 
 /*
  * Various well-known legacy memory ranges in physical memory:
- */
+ 传统的ISA设备使用的内存区域，比如VGA显存和其他遗留硬件。在x86架构中，0xA0000到0xFFFFF这段地址是留给硬件使用的，比如显存、BIOS ROM等*/
 #define ISA_START_ADDRESS	0x000a0000
 #define ISA_END_ADDRESS		0x00100000
-
+/*  */
 #define BIOS_BEGIN		0x000a0000
 #define BIOS_END		0x00100000
 

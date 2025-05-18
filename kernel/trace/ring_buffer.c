@@ -279,7 +279,7 @@ rb_event_data(struct ring_buffer_event *event)
 	return (void *)&event->array[1];
 }
 
-/**
+/**类似类型转换
 把从rb读出的event转为trace data
  * ring_buffer_event_data - return the data of the event
  * @event: the event to get the data from
@@ -519,7 +519,7 @@ struct ring_buffer_per_cpu {
 	unsigned long			nr_pages;
 	unsigned int			current_context;
 	struct list_head		*pages;
-	struct buffer_page		*head_page;	/* read from head */
+	struct buffer_page *head_page; /* read from head,指向pages成员 */
 	struct buffer_page		*tail_page;	/* write to tail */
 	struct buffer_page		*commit_page;	/* committed pages */
 	/* 从这个page开始读出事件 */
@@ -962,7 +962,7 @@ static __always_inline bool full_hit(struct trace_buffer *buffer, int cpu, int f
 	return (dirty * 100) > (full * nr_pages);
 }
 
-/*
+/* 唤醒睡眠的读者?
  * rb_wake_up_waiters - wake up tasks waiting for ring buffer input
  *
  * Schedules a delayed work to wake up any task that is blocked on the
@@ -1622,7 +1622,7 @@ static void rb_check_bpage(struct ring_buffer_per_cpu *cpu_buffer,
 	RB_WARN_ON(cpu_buffer, val & RB_FLAG_MASK);
 }
 
-/**
+/**检查buffer的pages
  * rb_check_pages - integrity check of buffer pages
  * @cpu_buffer: CPU buffer with pages to test
  *
@@ -1730,14 +1730,14 @@ free_pages:
 
 	return -ENOMEM;
 }
-
+/* 给这个cpu buffer分配page */
 static int rb_allocate_pages(struct ring_buffer_per_cpu *cpu_buffer,
 			     unsigned long nr_pages)
 {
 	LIST_HEAD(pages);
 
 	WARN_ON(!nr_pages);
-
+/*  */
 	if (__rb_allocate_pages(cpu_buffer, nr_pages, &pages))
 		return -ENOMEM;
 
@@ -1755,7 +1755,7 @@ static int rb_allocate_pages(struct ring_buffer_per_cpu *cpu_buffer,
 
 	return 0;
 }
-
+/* ftrace分配pcp buffer */
 static struct ring_buffer_per_cpu *
 rb_allocate_cpu_buffer(struct trace_buffer *buffer, long nr_pages, int cpu)
 {
@@ -1763,7 +1763,7 @@ rb_allocate_cpu_buffer(struct trace_buffer *buffer, long nr_pages, int cpu)
 	struct buffer_page *bpage;
 	struct page *page;
 	int ret;
-
+/* 分配pcp buffer结构体内存 */
 	cpu_buffer = kzalloc_node(ALIGN(sizeof(*cpu_buffer), cache_line_size()),
 				  GFP_KERNEL, cpu_to_node(cpu));
 	if (!cpu_buffer)
@@ -1779,14 +1779,14 @@ rb_allocate_cpu_buffer(struct trace_buffer *buffer, long nr_pages, int cpu)
 	init_irq_work(&cpu_buffer->irq_work.work, rb_wake_up_waiters);
 	init_waitqueue_head(&cpu_buffer->irq_work.waiters);
 	init_waitqueue_head(&cpu_buffer->irq_work.full_waiters);
-
+/* 分配bpage */
 	bpage = kzalloc_node(ALIGN(sizeof(*bpage), cache_line_size()),
 			    GFP_KERNEL, cpu_to_node(cpu));
 	if (!bpage)
 		goto fail_free_buffer;
 
 	rb_check_bpage(cpu_buffer, bpage);
-
+/* 分配bpage的page */
 	cpu_buffer->reader_page = bpage;
 	page = alloc_pages_node(cpu_to_node(cpu), GFP_KERNEL, 0);
 	if (!page)
@@ -1796,7 +1796,7 @@ rb_allocate_cpu_buffer(struct trace_buffer *buffer, long nr_pages, int cpu)
 
 	INIT_LIST_HEAD(&cpu_buffer->reader_page->list);
 	INIT_LIST_HEAD(&cpu_buffer->new_pages);
-
+	/* 给cpu_buffer->pages分配nr个page */
 	ret = rb_allocate_pages(cpu_buffer, nr_pages);
 	if (ret < 0)
 		goto fail_free_reader;
@@ -1840,7 +1840,7 @@ static void rb_free_cpu_buffer(struct ring_buffer_per_cpu *cpu_buffer)
 	kfree(cpu_buffer);
 }
 
-/**
+/**分配新ringbuffer
  * __ring_buffer_alloc - allocate a new ring_buffer
  * @size: the size in bytes per cpu that is needed.
  * @flags: attributes to set for the ring buffer.
@@ -1860,7 +1860,7 @@ struct trace_buffer *__ring_buffer_alloc(unsigned long size, unsigned flags,
 	int cpu;
 	int ret;
 
-	/* keep it in its own cache line */
+	/* keep it in its own cache line,分配buffer结构体内存 */
 	buffer = kzalloc(ALIGN(sizeof(*buffer), cache_line_size()),
 			 GFP_KERNEL);
 	if (!buffer)
@@ -1883,7 +1883,7 @@ struct trace_buffer *__ring_buffer_alloc(unsigned long size, unsigned flags,
 
 	buffer->cpus = nr_cpu_ids;
 
-	bsize = sizeof(void *) * nr_cpu_ids;
+	bsize = sizeof(void *) * nr_cpu_ids; /* 大小64 */
 	buffer->buffers = kzalloc(ALIGN(bsize, cache_line_size()),
 				  GFP_KERNEL);
 	if (!buffer->buffers)
@@ -1891,10 +1891,10 @@ struct trace_buffer *__ring_buffer_alloc(unsigned long size, unsigned flags,
 
 	cpu = raw_smp_processor_id();
 	cpumask_set_cpu(cpu, buffer->cpumask);
-	buffer->buffers[cpu] = rb_allocate_cpu_buffer(buffer, nr_pages, cpu);
+	buffer->buffers[cpu] = rb_allocate_cpu_buffer(buffer, nr_pages, cpu);/* 分配这个cpu的pcp buffer */
 	if (!buffer->buffers[cpu])
 		goto fail_free_buffers;
-
+/* 以后 */
 	ret = cpuhp_state_add_instance(CPUHP_TRACE_RB_PREPARE, &buffer->node);
 	if (ret < 0)
 		goto fail_free_buffers;
@@ -2516,7 +2516,7 @@ static __always_inline unsigned rb_page_size(struct buffer_page *bpage)
 {
 	return rb_page_commit(bpage);
 }
-
+/* 获取cpu_buffer->commit_page->page->commit位置  */
 static __always_inline unsigned
 rb_commit_index(struct ring_buffer_per_cpu *cpu_buffer)
 {
@@ -3279,7 +3279,7 @@ rb_wakeups(struct trace_buffer *buffer, struct ring_buffer_per_cpu *cpu_buffer)
 		irq_work_queue(&buffer->irq_work.work);
 	}
 
-	if (cpu_buffer->irq_work.waiters_pending) {
+	if (cpu_buffer->irq_work.waiters_pending) { /* 是cpu_buffer+0x1e0 */
 		cpu_buffer->irq_work.waiters_pending = false;
 		/* irq_work_queue() supplies it's own memory barriers */
 		irq_work_queue(&cpu_buffer->irq_work.work);
@@ -3457,7 +3457,7 @@ void ring_buffer_nest_end(struct trace_buffer *buffer)
 	preempt_enable_notrace();
 }
 
-/**
+/**写入事件
  * ring_buffer_unlock_commit - commit a reserved
  * @buffer: The buffer to commit to
  *
@@ -4149,7 +4149,7 @@ void ring_buffer_record_enable(struct trace_buffer *buffer)
 }
 EXPORT_SYMBOL_GPL(ring_buffer_record_enable);
 
-/**
+/** 关闭trace
  * ring_buffer_record_off - stop all writes into the buffer
  * @buffer: The ring buffer to stop writes to.
  *
@@ -4197,7 +4197,7 @@ void ring_buffer_record_on(struct trace_buffer *buffer)
 EXPORT_SYMBOL_GPL(ring_buffer_record_on);
 
 /**
-检查buffer是否可写
+检查buffer是否可写, 也可用于trace是否开启
  * ring_buffer_record_is_on - return true if the ring buffer can write
  * @buffer: The ring buffer to see if write is enabled
  *
@@ -5280,7 +5280,7 @@ ring_buffer_read_prepare_sync(void)
 }
 EXPORT_SYMBOL_GPL(ring_buffer_read_prepare_sync);
 
-/**
+/** 开始读取buffer
  * ring_buffer_read_start - start a non consuming read of the buffer
  * @iter: The iterator returned by ring_buffer_read_prepare
  *
@@ -5361,7 +5361,7 @@ void ring_buffer_iter_advance(struct ring_buffer_iter *iter)
 }
 EXPORT_SYMBOL_GPL(ring_buffer_iter_advance);
 
-/**
+/**计算trace buffer需要的内存大小
  * ring_buffer_size - return the size of the ring buffer (in bytes)
  * @buffer: The ring buffer.
  * @cpu: The CPU to get ring buffer size from.
@@ -6024,7 +6024,7 @@ int ring_buffer_read_page(struct trace_buffer *buffer,
 }
 EXPORT_SYMBOL_GPL(ring_buffer_read_page);
 
-/*
+/* cpu上线回调, 分配相关东西
  * We only allocate new buffers, never free them if the CPU goes down.
  * If we were to free the buffer, then the user would lose any trace that was in
  * the buffer.

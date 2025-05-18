@@ -650,7 +650,7 @@ SYSCALL_DEFINE2(pidfd_open, pid_t, pid, unsigned int, flags)
 	put_pid(p);
 	return fd;
 }
-
+/* 初始化pid的idr和slab */
 void __init pid_idr_init(void)
 {
 	/* Verify no one has done anything silly: */

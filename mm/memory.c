@@ -163,7 +163,7 @@ __setup("norandmaps", disable_randmaps);
 
 unsigned long zero_pfn __read_mostly;
 EXPORT_SYMBOL(zero_pfn);
-
+/* 代表着memmap机制的最高pfn */
 unsigned long highest_memmap_pfn __read_mostly;
 
 /*

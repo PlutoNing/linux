@@ -57,9 +57,9 @@
 #define HRTIMER_ACTIVE_SOFT	(HRTIMER_ACTIVE_HARD << MASK_SHIFT)
 #define HRTIMER_ACTIVE_ALL	(HRTIMER_ACTIVE_SOFT | HRTIMER_ACTIVE_HARD)
 
-/*
+/* hrtimer的base
  * The timer bases:
- *
+ *​每CPU隔离: 每个CPU核心独立管理定时器，减少锁争用，提升多核性能。​时钟类型区分: 支持多种时钟源（如MONOTONIC、REALTIME），满足不同定时需求（如避免时间跳变影响定时逻辑）。​软/硬中断分离:​硬中断上下文（非SOFT）​: 定时器回调在中断上下文中执行，要求快速、非阻塞。​软中断上下文（SOFT）​: 回调在软中断或线程上下文中执行，允许调度和长时间操作，避免阻塞硬中断。
  * There are more clockids than hrtimer bases. Thus, we index
  * into the timer bases by the hrtimer_base_type enum. When trying
  * to reach a base using a clockid, hrtimer_clockid_to_base()
@@ -1572,7 +1572,7 @@ static inline int hrtimer_clockid_to_base(clockid_t clock_id)
 	WARN(1, "Invalid clockid %d. Using MONOTONIC\n", clock_id);
 	return HRTIMER_BASE_MONOTONIC;
 }
-
+/* 初始化高精度定时器 */
 static void __hrtimer_init(struct hrtimer *timer, clockid_t clock_id,
 			   enum hrtimer_mode mode)
 {
@@ -1600,7 +1600,7 @@ static void __hrtimer_init(struct hrtimer *timer, clockid_t clock_id,
 	 */
 	if (clock_id == CLOCK_REALTIME && mode & HRTIMER_MODE_REL)
 		clock_id = CLOCK_MONOTONIC;
-
+/* 确定timer的base和类型 */
 	base = softtimer ? HRTIMER_MAX_CLOCK_BASES / 2 : 0;
 	base += hrtimer_clockid_to_base(clock_id);
 	timer->is_soft = softtimer;

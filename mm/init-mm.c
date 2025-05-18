@@ -50,7 +50,7 @@ struct mm_struct init_mm = {
 #endif
 	INIT_MM_CONTEXT(init_mm)
 };
-
+/* 初始化内核的mm */
 void setup_initial_init_mm(void *start_code, void *end_code,
 			   void *end_data, void *brk)
 {/* 下面几个参数一种可能的值（qemu 4GB内存调试）0xffffffff81000000 <startup_64> 0xffffffff82400000 <__func__.0>  0xffffffff83731b80 0xffffffff84200000 */

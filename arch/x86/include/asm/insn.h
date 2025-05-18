@@ -181,7 +181,7 @@ extern int insn_decode(struct insn *insn, const void *kaddr, int buf_len, enum i
 /* 
 ftrace的时候, 
 insn是新结构体, 
-ptr是opcode(另外一个静态insn的text)
+ptr是opcode, jmp    0xffffffff84873344 <______f.721+20> 之类的东西
  */
 #define insn_decode_kernel(_insn, _ptr) insn_decode((_insn), (_ptr), MAX_INSN_SIZE, INSN_MODE_KERN)
 

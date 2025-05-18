@@ -34,7 +34,7 @@
 #define TRACE_SYSTEM "TRACE_SYSTEM"
 
 DEFINE_MUTEX(event_mutex);
-
+/* 里面是trace_event_call, 也就是available events */
 LIST_HEAD(ftrace_events);
 static LIST_HEAD(ftrace_generic_fields);
 static LIST_HEAD(ftrace_common_fields);
@@ -111,7 +111,7 @@ trace_find_event_field(struct trace_event_call *call, char *name)
 
 	return __find_event_field(&ftrace_common_fields, name);
 }
-
+/* field是什么 */
 static int __trace_define_field(struct list_head *head, const char *type,
 				const char *name, int offset, int size,
 				int is_signed, int filter_type, int len)
@@ -275,7 +275,7 @@ static bool test_field(const char *fmt, struct trace_event_call *call)
 	return false;
 }
 
-/*
+/*刚刚初始化了这个call的init回调,这里测试打印
  * Examine the print fmt of the event looking for unsafe dereference
  * pointers using %p* that could be recorded in the trace event and
  * much later referenced after the pointer was freed. Dereferencing
@@ -458,15 +458,15 @@ static void test_event_printk(struct trace_event_call *call)
 		pr_warn("print_fmt: %s\n", fmt);
 	}
 }
-
+/*call就是available event; initcall:initcall_finish这个available event对应的call->class->raw_init是trace_event_raw_init */
 int trace_event_raw_init(struct trace_event_call *call)
 {
 	int id;
-
+	/* $4 = {node = {next = 0x0 <fixed_percpu_data>, pprev = 0xffffffff8530ca80 <event_hash+160>}, type = 20, funcs = 0xffffffff8440c420 <trace_event_type_funcs_initcall_finish>} */
 	id = register_trace_event(&call->event);
 	if (!id)
 		return -ENODEV;
-
+/* 测试打印 */
 	test_event_printk(call);
 
 	return 0;
@@ -2405,7 +2405,7 @@ event_subsystem_dir(struct trace_array *tr, const char *name,
 		pr_warn("No memory to create event subsystem %s\n", name);
 	return NULL;
 }
-
+/* 什么是fields */
 static int
 event_define_fields(struct trace_event_call *call)
 {
@@ -2420,7 +2420,7 @@ event_define_fields(struct trace_event_call *call)
 	if (list_empty(head)) {
 		struct trace_event_fields *field = call->class->fields_array;
 		unsigned int offset = sizeof(struct trace_entry);
-
+		/* 遍历call->class->fields_array数组 */
 		for (; field->type; field++) {
 			if (field->type == TRACE_FUNCTION_TYPE) {
 				field->define_fields(call);
@@ -2571,18 +2571,18 @@ static void event_remove(struct trace_event_call *call)
 	remove_event_from_tracers(call);
 	list_del(&call->list);
 }
-
+/* call是__start_ftrace_events元素指向的结构体 */
 static int event_init(struct trace_event_call *call)
 {
 	int ret = 0;
 	const char *name;
-
+	/* 可能是root@ppppp-MS-7E24:/sys/kernel/debug/tracing#cat available_events  | grep initcall  : initcall:initcall_finish */
 	name = trace_event_name(call);
 	if (WARN_ON(!name))
 		return -EINVAL;
-
+	/* initcall:initcall_finish这个available event对应的是trace_event_raw_init */
 	if (call->class->raw_init) {
-		ret = call->class->raw_init(call);
+		ret = call->class->raw_init(call);/* 调用回调,初始化call */
 		if (ret < 0 && ret != -ENOSYS)
 			pr_warn("Could not initialize trace events/%s\n", name);
 	}
@@ -2818,7 +2818,7 @@ void trace_event_eval_update(struct trace_eval_map **map, int len)
 	}
 	up_write(&trace_event_sem);
 }
-
+/* call是某一个available event; tr是<global_trace> ; 建立call对应的event file,添加到tr的event链表 */
 static struct trace_event_file *
 trace_create_new_event(struct trace_event_call *call,
 		       struct trace_array *tr)
@@ -2827,7 +2827,7 @@ trace_create_new_event(struct trace_event_call *call,
 	struct trace_pid_list *pid_list;
 	struct trace_event_file *file;
 	unsigned int first;
-
+/* slab分配 */
 	file = kmem_cache_alloc(file_cachep, GFP_TRACE);
 	if (!file)
 		return NULL;
@@ -2840,7 +2840,7 @@ trace_create_new_event(struct trace_event_call *call,
 	if (!trace_pid_list_first(pid_list, &first) ||
 	    !trace_pid_list_first(no_pid_list, &first))
 		file->flags |= EVENT_FILE_FL_PID_FILTER;
-
+/* 初始化file */
 	file->event_call = call;
 	file->tr = tr;
 	atomic_set(&file->sm_ref, 0);
@@ -2902,7 +2902,7 @@ __trace_add_new_event(struct trace_event_call *call, struct trace_array *tr)
 	else
 		return event_define_fields(call);
 }
-
+/* file对应available event.  name是available event名字*/
 static void trace_early_triggers(struct trace_event_file *file, const char *name)
 {
 	int ret;
@@ -2921,7 +2921,7 @@ static void trace_early_triggers(struct trace_event_file *file, const char *name
 	}
 }
 
-/*
+/* call是某一个available event; tr是<global_trace>
  * Just create a descriptor for early init. A descriptor is required
  * for enabling events at boot. We want to enable events before
  * the filesystem is initialized.
@@ -2932,11 +2932,11 @@ __trace_early_add_new_event(struct trace_event_call *call,
 {
 	struct trace_event_file *file;
 	int ret;
-
+/* 建立call对应的event file, 添加到tr的events链表 */
 	file = trace_create_new_event(call, tr);
 	if (!file)
 		return -ENOMEM;
-
+/* fields是什么 */
 	ret = event_define_fields(call);
 	if (ret)
 		return ret;
@@ -3574,7 +3574,7 @@ static struct ftrace_func_command event_disable_cmd = {
 	.name			= DISABLE_EVENT_STR,
 	.func			= event_enable_func,
 };
-
+/* 注册这些cmd */
 static __init int register_event_cmds(void)
 {
 	int ret;
@@ -3612,7 +3612,7 @@ static void __trace_early_add_event_dirs(struct trace_array *tr)
 	}
 }
 
-/*
+/* 遍历ftrace_events , 创建event file什么的.
  * For early boot up, the top trace array and the trace arrays created
  * by boot-time tracing require to have a list of events that can be
  * enabled. This must be done before the filesystem is set up in order
@@ -3628,7 +3628,7 @@ void __trace_early_add_events(struct trace_array *tr)
 		if (!(call->flags & TRACE_EVENT_FL_DYNAMIC) &&
 		    WARN_ON_ONCE(call->module))
 			continue;
-
+		/* call可能是root@ppppp-MS-7E24:/sys/kernel/debug/tracing#cat available_events | grep ma_read maple_tree:ma_read */
 		ret = __trace_early_add_new_event(call, tr);
 		if (ret < 0)
 			pr_warn("Could not create early event %s\n",
@@ -3806,7 +3806,7 @@ int event_trace_del_tracer(struct trace_array *tr)
 
 	return 0;
 }
-
+/* ftrace初始化,设置slab */
 static __init int event_trace_memsetup(void)
 {
 	field_cachep = KMEM_CACHE(ftrace_event_field, SLAB_PANIC);
@@ -3843,22 +3843,22 @@ early_enable_events(struct trace_array *tr, char *buf, bool disable_first)
 }
 
 static __init int event_trace_enable(void)
-{
+{ /* 找到第一个tr, 也就是global tracer什么的 */
 	struct trace_array *tr = top_trace_array();
 	struct trace_event_call **iter, *call;
 	int ret;
 
 	if (!tr)
 		return -ENODEV;
-
+	/* 调用__start_ftrace_events, __stop_ftrace_events之间的每一个call的init回调, 初始化,并添加到ftrace_events */
 	for_each_event(iter, __start_ftrace_events, __stop_ftrace_events) {
 
-		call = *iter;
-		ret = event_init(call);
+		call = *iter;/* 取得__start_ftrace_events数组元素指针指向的区域 */
+		ret = event_init(call); /* 调用call的init回调,初始化call */
 		if (!ret)
 			list_add(&call->list, &ftrace_events);
 	}
-
+/* 注册这些cmd, 添加到全局链表 */
 	register_trigger_cmds();
 
 	/*
@@ -3866,13 +3866,13 @@ static __init int event_trace_enable(void)
 	 * points at early init, before the debug files and directories
 	 * are created. Create the file entries now, and attach them
 	 * to the actual file dentries later.
-	 */
+	tr是<global_trace> . 遍历ftrace_events, 创建event file什么的 */
 	__trace_early_add_events(tr);
-
+	/* bootup_event_buf一般是空的 */
 	early_enable_events(tr, bootup_event_buf, false);
 
 	trace_printk_start_comm();
-
+/* 注册cmd */
 	register_event_cmds();
 
 
@@ -3948,13 +3948,13 @@ __init int event_trace_init(void)
 
 	return 0;
 }
-
+/*  */
 void __init trace_event_init(void)
 {
-	event_trace_memsetup();
+	event_trace_memsetup();/* 设置slab */
 	init_ftrace_syscalls();
 	event_trace_enable();
-	event_trace_init_fields();
+	event_trace_init_fields(); /* fields是什么 */
 }
 
 #ifdef CONFIG_EVENT_TRACE_STARTUP_TEST

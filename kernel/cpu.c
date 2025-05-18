@@ -2379,7 +2379,7 @@ static void *cpuhp_get_teardown_cb(enum cpuhp_state state)
 	return cpuhp_get_step(state)->teardown.single;
 }
 
-/*
+/* node是实体的连接件, state是要触发的状态, 里面也有要调用的函数
  * Call the startup/teardown function for a step either on the AP or
  * on the current CPU.
    在AP上或当前CPU上调用步骤的startup/teardown函数。
@@ -2439,7 +2439,7 @@ static void cpuhp_rollback_install(int failedcpu, enum cpuhp_state state,
 			cpuhp_issue_call(cpu, state, false, node);
 	}
 }
-
+/*  */
 int __cpuhp_state_add_instance_cpuslocked(enum cpuhp_state state,
 					  struct hlist_node *node,
 					  bool invoke)
@@ -2470,7 +2470,7 @@ int __cpuhp_state_add_instance_cpuslocked(enum cpuhp_state state,
 
 		if (cpustate < state)
 			continue;
-
+/* 开始调用? */
 		ret = cpuhp_issue_call(cpu, state, true, node);
 		if (ret) {
 			if (sp->teardown.multi)
@@ -2485,7 +2485,7 @@ unlock:
 	mutex_unlock(&cpuhp_state_mutex);
 	return ret;
 }
-
+/* state是指定的在这个状态触发?node是个连接件, */
 int __cpuhp_state_add_instance(enum cpuhp_state state, struct hlist_node *node,
 			       bool invoke)
 {
@@ -3187,7 +3187,7 @@ void set_cpu_online(unsigned int cpu, bool online)
 	}
 }
 
-/*
+/* 开机的时候激活当前的cpu, 设置为各种可用
  * Activate the first processor.
  */
 void __init boot_cpu_init(void)
@@ -3205,7 +3205,7 @@ void __init boot_cpu_init(void)
 #endif
 }
 
-/*
+/* cpu热插拔相关的
  * Must be called _AFTER_ setting up the per_cpu areas
  */
 void __init boot_cpu_hotplug_init(void)

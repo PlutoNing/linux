@@ -165,7 +165,7 @@ extern int do_clock_adjtime(const clockid_t which_clock, struct __kernel_timex *
 extern void hardpps(const struct timespec64 *, const struct timespec64 *);
 
 int read_current_timer(unsigned long *timer_val);
-
+/* i8253/i8254 是早期x86计算机中的定时器芯片，负责生成周期性中断（如系统时钟中断）。它的核心功能是：​可编程定时​：通过配置计数器，生成指定频率的中断信号。​基准时钟​：芯片的输入时钟频率固定为 ​1.193182 MHz​ */
 /* The clock frequency of the i8253/i8254 PIT */
 #define PIT_TICK_RATE 1193182ul
 

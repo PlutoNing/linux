@@ -231,7 +231,7 @@ static const struct attribute_group esrt_attr_group = {
 	.is_visible = esrt_attr_is_visible,
 };
 
-/*
+/* 没有启用
  * remap the table, validate it, mark it reserved and unmap it.
  */
 void __init efi_esrt_init(void)

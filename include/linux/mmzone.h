@@ -101,7 +101,7 @@ static inline bool migratetype_is_mergeable(int mt)
 		for (type = 0; type < MIGRATE_TYPES; type++)
 
 extern int page_group_by_mobility_disabled;
-
+/* 3个bit 1 */
 #define MIGRATETYPE_MASK ((1UL << PB_migratetype_bits) - 1)
 
 #define get_pageblock_migratetype(page)					\
@@ -722,7 +722,7 @@ enum zone_watermarks {
 #endif
 #define NR_LOWORDER_PCP_LISTS (MIGRATE_PCPTYPES * (PAGE_ALLOC_COSTLY_ORDER + 1))
 #define NR_PCP_LISTS (NR_LOWORDER_PCP_LISTS + NR_PCP_THP)
-
+/* NR_PCP_LISTS 就是((MIGRATE_PCPTYPES * (3 + 1)) + 1) */
 #define min_wmark_pages(z) (z->_watermark[WMARK_MIN] + z->watermark_boost)
 #define low_wmark_pages(z) (z->_watermark[WMARK_LOW] + z->watermark_boost)
 #define high_wmark_pages(z) (z->_watermark[WMARK_HIGH] + z->watermark_boost)
@@ -740,10 +740,10 @@ struct per_cpu_pages {
 	short expire;		/* When 0, remote pagesets are drained */
 #endif
 
-	/* Lists of pages, one per migrate type stored on the pcp-lists */
+	/* Lists of pages, one per migrate type stored on the pcp-lists, 大小是((MIGRATE_PCPTYPES * (3 + 1)) + 1) */
 	struct list_head lists[NR_PCP_LISTS];
 } ____cacheline_aligned_in_smp;
-
+/*  */
 struct per_cpu_zonestat {
 #ifdef CONFIG_SMP
 	s8 vm_stat_diff[NR_VM_ZONE_STAT_ITEMS];
@@ -887,7 +887,7 @@ struct zone {
 	int node;
 #endif
 	struct pglist_data	*zone_pgdat;
-	/*  */
+	/* zone的pcp pageset */
 	struct per_cpu_pages	__percpu *per_cpu_pageset;
 	struct per_cpu_zonestat	__percpu *per_cpu_zonestats;
 	/*
@@ -1336,7 +1336,7 @@ struct memory_failure_stats {
  *
  * Memory statistics and page replacement data structures are maintained on a
  * per-zone basis.
- */
+ node结构体的物理内存地址, todo */
 typedef struct pglist_data {
 	/*
 	 * node_zones contains just the zones for THIS node. Not all of the
@@ -1830,7 +1830,7 @@ static inline bool movable_only_nodes(nodemask_t *nodes)
 #define PA_SECTION_SHIFT	(SECTION_SIZE_BITS)
 // 27 - 12 = 15, 表示一个memsection大小是2^15次方,32k个页面
 #define PFN_SECTION_SHIFT	(SECTION_SIZE_BITS - PAGE_SHIFT)
-
+/*  */
 #define NR_MEM_SECTIONS		(1UL << SECTIONS_SHIFT)
 //  大小为2的15次方 = 32768 = 32k个页面
 #define PAGES_PER_SECTION       (1UL << PFN_SECTION_SHIFT)
@@ -1882,7 +1882,7 @@ struct mem_section_usage {
 // 这个位图描述, 在当前ms有多少页面?
 	DECLARE_BITMAP(subsection_map, SUBSECTIONS_PER_SECTION);
 #endif
-	/* See declaration of similar field in struct zone */
+	/* See declaration of similar field in struct zone, 零长数组 */
 	unsigned long pageblock_flags[0];
 };
 
@@ -1931,13 +1931,13 @@ usage是node的memsection usage结构体
 };
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
-// 一个page上面可以有多个mem_section结构体
+// 一个page上面可以有多个mem_section结构体, 128
 #define SECTIONS_PER_ROOT       (PAGE_SIZE / sizeof (struct mem_section))
 #else
 #define SECTIONS_PER_ROOT	1
 #endif
 // 这里是计算这个编号为sec的ms结构体,应该位于第几个页面.
-//全部的ms结构体是一个数组,分布在多个页面上面,每个页面有PAGE_SIZE/sizeof(struct mem_section)个ms结构体
+//全部的ms结构体是一个数组,分布在多个页面上面
 #define SECTION_NR_TO_ROOT(sec)	((sec) / SECTIONS_PER_ROOT)
 #define NR_SECTION_ROOTS	DIV_ROUND_UP(NR_MEM_SECTIONS, SECTIONS_PER_ROOT)
 #define SECTION_ROOT_MASK	(SECTIONS_PER_ROOT - 1)
@@ -2000,7 +2000,7 @@ enum {
 	SECTION_MAP_LAST_BIT,
 };
 
-// 这个section是否被标记为存在
+// section->section_mem_map & SECTION_MARKED_PRESENT这个section是否被标记为存在
 #define SECTION_MARKED_PRESENT		BIT(SECTION_MARKED_PRESENT_BIT)
 #define SECTION_HAS_MEM_MAP		BIT(SECTION_HAS_MEM_MAP_BIT)
 // 这个section是否在线
@@ -2083,7 +2083,7 @@ extern unsigned long __highest_present_section_nr;
 //
 /*
 (pfn & ~(PAGE_SECTION_MASK)) / PAGES_PER_SUBSECTION
- pfn在所在的memsection中的index / 每个subsection的页面数量(512)
+ pfn的memsection的idx / 512
  pfn的subsection idx
 */
 static inline int subsection_map_index(unsigned long pfn)

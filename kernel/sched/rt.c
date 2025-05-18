@@ -62,7 +62,7 @@ static int __init sched_rt_sysctl_init(void)
 }
 late_initcall(sched_rt_sysctl_init);
 #endif
-
+/* 作为rt_b->rt_period_timer.function的函数 */
 static enum hrtimer_restart sched_rt_period_timer(struct hrtimer *timer)
 {
 	struct rt_bandwidth *rt_b =
@@ -86,14 +86,14 @@ static enum hrtimer_restart sched_rt_period_timer(struct hrtimer *timer)
 
 	return idle ? HRTIMER_NORESTART : HRTIMER_RESTART;
 }
-
+/* 初始化rt的带宽控制机制 */
 void init_rt_bandwidth(struct rt_bandwidth *rt_b, u64 period, u64 runtime)
 {
 	rt_b->rt_period = ns_to_ktime(period);
 	rt_b->rt_runtime = runtime;
 
 	raw_spin_lock_init(&rt_b->rt_runtime_lock);
-
+/* 初始化timer */
 	hrtimer_init(&rt_b->rt_period_timer, CLOCK_MONOTONIC,
 		     HRTIMER_MODE_REL_HARD);
 	rt_b->rt_period_timer.function = sched_rt_period_timer;

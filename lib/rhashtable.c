@@ -1078,7 +1078,7 @@ int rhashtable_init(struct rhashtable *ht,
 }
 EXPORT_SYMBOL_GPL(rhashtable_init);
 
-/**
+/**初始化一个hash
  * rhltable_init - initialize a new hash list table
  * @hlt:	hash list table to be initialized
  * @params:	configuration parameters

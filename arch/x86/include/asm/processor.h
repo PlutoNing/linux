@@ -94,7 +94,7 @@ struct cpuinfo_x86 {
 	__u32			vmx_capability[NVMXINTS];
 #endif
 	__u8			x86_virt_bits;
-	__u8			x86_phys_bits;
+	__u8			x86_phys_bits; /* 大小可能是46 */
 	/* CPUID returned core id bits: */
 	__u8			x86_coreid_bits;
 	__u8			cu_id;
@@ -209,7 +209,7 @@ static inline unsigned long native_read_cr3_pa(void)
 {
 	return __native_read_cr3() & CR3_ADDR_MASK;
 }
-
+/* 把页表写入cr3 */
 static inline void load_cr3(pgd_t *pgdir)
 {
 	write_cr3(__sme_pa(pgdir));

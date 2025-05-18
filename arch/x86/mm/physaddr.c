@@ -13,7 +13,7 @@
 
 #ifdef CONFIG_DEBUG_VIRTUAL
 unsigned long __phys_addr(unsigned long x)
-{
+{ /* x - 0xffffffff80000000 */
 	unsigned long y = x - __START_KERNEL_map;
 
 	/* use the carry flag to determine if x was < __START_KERNEL_map */
@@ -31,7 +31,7 @@ unsigned long __phys_addr(unsigned long x)
 	return x;
 }
 EXPORT_SYMBOL(__phys_addr);
-
+/* 返回x - 0xffffffff80000000 + phys_base */
 unsigned long __phys_addr_symbol(unsigned long x)
 {
 	unsigned long y = x - __START_KERNEL_map;

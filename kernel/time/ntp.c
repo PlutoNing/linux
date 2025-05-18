@@ -357,7 +357,7 @@ void ntp_clear(void)
 	time_status	|= STA_UNSYNC;
 	time_maxerror	= NTP_PHASE_LIMIT;
 	time_esterror	= NTP_PHASE_LIMIT;
-
+/*  */
 	ntp_update_frequency();
 
 	tick_length	= tick_length_base;
@@ -1114,6 +1114,6 @@ __setup("ntp_tick_adj=", ntp_tick_adj_setup);
 */
 void __init ntp_init(void)
 {
-	ntp_clear();
+	ntp_clear();/* 清空一些变量 */
 	ntp_init_cmos_sync();
 }

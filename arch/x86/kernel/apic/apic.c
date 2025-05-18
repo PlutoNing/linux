@@ -1914,7 +1914,7 @@ void __init check_x2apic(void)
 static inline void try_to_enable_x2apic(int remap_mode) { }
 static inline void __x2apic_enable(void) { }
 #endif /* !CONFIG_X86_X2APIC */
-
+/*  */
 void __init enable_IR_x2apic(void)
 {
 	unsigned long flags;
@@ -2078,9 +2078,9 @@ no_apic:
 /**
  * init_apic_mappings - initialize APIC mappings
  */
-void __init init_apic_mappings(void)
+void __init  init_apic_mappings(void)
 {
-	if (apic_validate_deadline_timer())
+  	if (apic_validate_deadline_timer())
 		pr_info("TSC deadline timer available\n");
 
 	if (x2apic_mode)

@@ -295,7 +295,7 @@ int min_free_kbytes = 1024;
 int user_min_free_kbytes = -1;
 static int watermark_boost_factor __read_mostly = 15000;
 static int watermark_scale_factor = 10;
-
+/* 从第一个zone开始找,找到第一个满足arch_zone_highest_possible_pfn[zone_index] >arch_zone_lowest_possible_pfn[zone_index] */
 /* movable_zone is the "real" zone pages in ZONE_MOVABLE are taken from */
 int movable_zone;
 EXPORT_SYMBOL(movable_zone);
@@ -413,7 +413,7 @@ static __always_inline int get_pfnblock_migratetype(const struct page *page,
 }
 
 /**
-
+设置pageblock, 修改对应的ms->usage->pageblock_flags的掩码
  * set_pfnblock_flags_mask - Set the requested group of flags for a pageblock_nr_pages block of pages
  * @page: The page within the block of interest
  * @flags: The flags to set
@@ -5368,7 +5368,7 @@ static void __build_all_zonelists(void *data)
 		 */
 		for_each_node(nid) {
 			pg_data_t *pgdat = NODE_DATA(nid);
-
+			/* 构建这个node的 */
 			build_zonelists(pgdat);
 		}
 
@@ -5434,7 +5434,7 @@ void __ref build_all_zonelists(pg_data_t *pgdat)
 {
 	unsigned long vm_total_pages;
 
-	if (system_state == SYSTEM_BOOTING) {
+	if (system_state == SYSTEM_BOOTING) {/* 开机过程中是这个路径 */
 		build_all_zonelists_init();
 	} else {/* 好像内存热插拔也会调用这个函数 */
 		__build_all_zonelists(pgdat);
@@ -5591,7 +5591,7 @@ static void pageset_update(struct per_cpu_pages *pcp, unsigned long high,
 	WRITE_ONCE(pcp->high, high);
 }
 
-// 初始化pcp的pageset供内存分配
+// 初始化pcp的pageset供内存分配,具体是做per_cpu_pages->lists[pindex]的初始化
 static void per_cpu_pages_init(struct per_cpu_pages *pcp, struct per_cpu_zonestat *pzstats)
 {
 	int pindex;
@@ -5649,7 +5649,7 @@ static void zone_set_pageset_high_and_batch(struct zone *zone, int cpu_online)
 	// 设置zone的每个cpu的pageset的batch和high
 	__zone_set_pageset_high_and_batch(zone, new_high, new_batch);
 }
-
+/* 初始化这个zone的pageset */
 void __meminit setup_zone_pageset(struct zone *zone)
 {
 	int cpu;
@@ -5657,9 +5657,9 @@ void __meminit setup_zone_pageset(struct zone *zone)
 	/* Size may be 0 on !SMP && !NUMA */
 	if (sizeof(struct per_cpu_zonestat) > 0)
 		zone->per_cpu_zonestats = alloc_percpu(struct per_cpu_zonestat);
-
+/* 初始化pageset结构体 */
 	zone->per_cpu_pageset = alloc_percpu(struct per_cpu_pages);
-	for_each_possible_cpu(cpu) {
+	for_each_possible_cpu(cpu) {/* 初始化每个cpu的pageset */
 		struct per_cpu_pages *pcp;
 		struct per_cpu_zonestat *pzstats;
 
@@ -5684,7 +5684,7 @@ static void zone_pcp_update(struct zone *zone, int cpu_online)
 	mutex_unlock(&pcp_batch_high_lock);
 }
 
-/*
+/* 初始化pcp pageset, 这里是初始化结构体,统计信息成员什么的
  * Allocate per cpu pagesets and initialize them.
  * Before this call only boot pagesets were available.
  */
@@ -5693,7 +5693,7 @@ void __init setup_per_cpu_pageset(void)
 	struct pglist_data *pgdat;
 	struct zone *zone;
 	int __maybe_unused cpu;
-
+/* 设置每个zone的pageset */
 	for_each_populated_zone(zone)
 		setup_zone_pageset(zone);
 
@@ -5703,7 +5703,7 @@ void __init setup_per_cpu_pageset(void)
 	 * The numa stats for these pagesets need to be reset.
 	 * Otherwise, they will end up skewing the stats of
 	 * the nodes these zones are associated with.
-	 */
+	 初始化numa相关的统计信息 */
 	for_each_possible_cpu(cpu) {
 		struct per_cpu_zonestat *pzstats = &per_cpu(boot_zonestats, cpu);
 		memset(pzstats->vm_numa_event, 0,

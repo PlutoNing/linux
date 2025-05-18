@@ -30,14 +30,14 @@
 #define X86_FEATURE_VME			( 0*32+ 1) /* Virtual Mode Extensions */
 #define X86_FEATURE_DE			( 0*32+ 2) /* Debugging Extensions */
 #define X86_FEATURE_PSE			( 0*32+ 3) /* Page Size Extensions */
-#define X86_FEATURE_TSC			( 0*32+ 4) /* Time Stamp Counter */
+#define X86_FEATURE_TSC			( 0*32+ 4) /* Time Stamp Counter ,高精度时间*/
 #define X86_FEATURE_MSR			( 0*32+ 5) /* Model-Specific Registers */
 #define X86_FEATURE_PAE			( 0*32+ 6) /* Physical Address Extensions */
 #define X86_FEATURE_MCE			( 0*32+ 7) /* Machine Check Exception */
 #define X86_FEATURE_CX8			( 0*32+ 8) /* CMPXCHG8 instruction */
 #define X86_FEATURE_APIC		( 0*32+ 9) /* Onboard APIC */
 #define X86_FEATURE_SEP			( 0*32+11) /* SYSENTER/SYSEXIT */
-#define X86_FEATURE_MTRR		( 0*32+12) /* Memory Type Range Registers */
+#define X86_FEATURE_MTRR		( 0*32+12) /* Memory Type Range Registers  允许通过 MTRR 定义内存区域的缓存策略（如 WB/WC/UC）*/
 #define X86_FEATURE_PGE			( 0*32+13) /* Page Global Enable */
 #define X86_FEATURE_MCA			( 0*32+14) /* Machine Check Architecture */
 #define X86_FEATURE_CMOV		( 0*32+15) /* CMOV instructions (plus FCMOVcc, FCOMI with FPU) */
@@ -51,7 +51,7 @@
 #define X86_FEATURE_FXSR		( 0*32+24) /* FXSAVE/FXRSTOR, CR4.OSFXSR */
 #define X86_FEATURE_XMM			( 0*32+25) /* "sse" */
 #define X86_FEATURE_XMM2		( 0*32+26) /* "sse2" */
-#define X86_FEATURE_SELFSNOOP		( 0*32+27) /* "ss" CPU self snoop */
+#define X86_FEATURE_SELFSNOOP		( 0*32+27) /* "ss" CPU self snoop 硬件自动维护缓存一致性，无需手动刷新*/
 #define X86_FEATURE_HT			( 0*32+28) /* Hyper-Threading */
 #define X86_FEATURE_ACC			( 0*32+29) /* "tm" Automatic clock control */
 #define X86_FEATURE_IA64		( 0*32+30) /* IA-64 processor */

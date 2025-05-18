@@ -604,7 +604,7 @@ static void clocksource_resume_watchdog(void)
 {
 	atomic_inc(&watchdog_reset_pending);
 }
-
+/* 注册时钟源的时候加入全局的看门狗 */
 static void clocksource_enqueue_watchdog(struct clocksource *cs)
 {
 	INIT_LIST_HEAD(&cs->wd_list);
@@ -753,7 +753,7 @@ static bool clocksource_is_suspend(struct clocksource *cs)
 {
 	return cs == suspend_clocksource;
 }
-
+/* 也是选择某种用途时钟源的逻辑., (在注册新的时钟源后会调此函数)*/
 static void __clocksource_suspend_select(struct clocksource *cs)
 {
 	/*
@@ -993,7 +993,7 @@ static inline void clocksource_update_max_deferment(struct clocksource *cs)
 						cs->maxadj, cs->mask,
 						&cs->max_cycles);
 }
-
+/* 选最好的时钟源 */
 static struct clocksource *clocksource_find_best(bool oneshot, bool skipcur)
 {
 	struct clocksource *cs;
@@ -1015,7 +1015,7 @@ static struct clocksource *clocksource_find_best(bool oneshot, bool skipcur)
 	}
 	return NULL;
 }
-
+/* 选择系统最好的时钟源 */
 static void __clocksource_select(bool skipcur)
 {
 	bool oneshot = tick_oneshot_mode_active();
@@ -1067,7 +1067,7 @@ found:
 	}
 }
 
-/**
+/** 选择系统最好的时钟源
  * clocksource_select - Select the best clocksource available
  *
  * Private function. Must hold clocksource_mutex when called.
@@ -1109,7 +1109,7 @@ fs_initcall(clocksource_done_booting);
 
 /*
  * Enqueue the clocksource sorted by rating
-   插入一个clocksource,按照rating排序
+   插入一个clocksource到clocksource_list,按照rating排序
  */
 static void clocksource_enqueue(struct clocksource *cs)
 {
@@ -1125,7 +1125,7 @@ static void clocksource_enqueue(struct clocksource *cs)
 	list_add(&cs->list, entry);
 }
 
-/**
+/** 初始化时钟源? 还是修改时钟源?
  * __clocksource_update_freq_scale - Used update clocksource with new freq
  * @cs:		clocksource to be registered
  * @scale:	Scale factor multiplied against freq to get clocksource hz
@@ -1213,7 +1213,7 @@ void __clocksource_update_freq_scale(struct clocksource *cs, u32 scale, u32 freq
 }
 EXPORT_SYMBOL_GPL(__clocksource_update_freq_scale);
 
-/**
+/** 注册时钟源, 添加到全局数据结构, 并且进行各种用途时钟源的选择和替换什么的
  * __clocksource_register_scale - Used to install new clocksources
  * @cs:		clocksource to be registered
  * @scale:	Scale factor multiplied against freq to get clocksource hz
@@ -1238,7 +1238,7 @@ int __clocksource_register_scale(struct clocksource *cs, u32 scale, u32 freq)
 			cs->name, cs->vdso_clock_mode);
 		cs->vdso_clock_mode = VDSO_CLOCKMODE_NONE;
 	}
-
+	/* 里面可能是初始化或者修改了时钟源 */
 	/* Initialize mult/shift and max_idle_ns */
 	__clocksource_update_freq_scale(cs, scale, freq);
 
@@ -1246,10 +1246,10 @@ int __clocksource_register_scale(struct clocksource *cs, u32 scale, u32 freq)
 	mutex_lock(&clocksource_mutex);
 
 	clocksource_watchdog_lock(&flags);
-	clocksource_enqueue(cs);
-	clocksource_enqueue_watchdog(cs);
+	clocksource_enqueue(cs); /* 加入全局的clocksource_list */
+	clocksource_enqueue_watchdog(cs);/* 加入全局的看门狗 */
 	clocksource_watchdog_unlock(&flags);
-
+	/* 这里其实仅在完成boot之后才会实际工作 */
 	clocksource_select();
 	clocksource_select_watchdog(false);
 	__clocksource_suspend_select(cs);

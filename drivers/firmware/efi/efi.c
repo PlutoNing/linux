@@ -460,7 +460,7 @@ err_destroy_wq:
 }
 
 subsys_initcall(efisubsys_init);
-
+/* 没有启用 */
 void __init efi_find_mirror(void)
 {
 	efi_memory_desc_t *md;

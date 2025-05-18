@@ -4,7 +4,7 @@
 
 void *alloc_low_pages(unsigned int num);
 static inline void *alloc_low_page(void)
-{
+{ /*开机的时候 为创建内核页表分配页面 */
 	return alloc_low_pages(1);
 }
 

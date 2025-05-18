@@ -637,7 +637,7 @@ enum {
 /* 表示正在被ref？ */
 #define ftrace_rec_count(rec)	((rec)->flags & FTRACE_REF_MAX)
 
-/*  */
+/* rec就是代表内核要被trace的函数, ip指向函数入口 */
 struct dyn_ftrace {
 	unsigned long		ip; /* address of mcount call-site */
 	unsigned long		flags;

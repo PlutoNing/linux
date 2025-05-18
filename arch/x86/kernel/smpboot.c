@@ -1240,7 +1240,7 @@ void arch_thaw_secondary_cpus_end(void)
 	cache_aps_init();
 }
 
-/*
+/*smp_ops.smp_prepare_boot_cpu()回调函数
  * Early setup to make printk work.
  */
 void __init native_smp_prepare_boot_cpu(void)
@@ -1286,8 +1286,7 @@ static int __init _setup_possible_cpus(char *str)
 }
 early_param("possible_cpus", _setup_possible_cpus);
 
-
-/*
+/*  在系统掩码设置cpu状态
  * cpu_possible_mask should be static, it cannot change as cpu's
  * are onlined, or offlined. The reason is per-cpu data-structures
  * are allocated by some modules at init time, and don't expect to
@@ -1320,7 +1319,7 @@ __init void prefill_possible_map(void)
 #endif
 	} else
 		possible = setup_possible_cpus;
-
+	/* 一般得到的就是系统的cpu数量 */
 	total_cpus = max_t(int, possible, num_processors + disabled_cpus);
 
 	/* nr_cpu_ids could be reduced via nr_cpus= */
@@ -1338,12 +1337,12 @@ __init void prefill_possible_map(void)
 			possible, setup_max_cpus);
 		possible = i;
 	}
-
+	/* possible一般是系统cpu数量 */
 	set_nr_cpu_ids(possible);
 
 	pr_info("Allowing %d CPUs, %d hotplug CPUs\n",
 		possible, max_t(int, possible - num_processors, 0));
-
+	/* 在系统掩码设置cpu状态 */
 	reset_cpu_possible_mask();
 
 	for (i = 0; i < possible; i++)

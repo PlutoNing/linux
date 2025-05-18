@@ -897,7 +897,7 @@ void __init_memblock memblock_free(void *ptr, size_t size)
 		memblock_phys_free(__pa(ptr), size);
 }
 
-/**
+/**从reserved移除就是释放吗?
  * memblock_phys_free - free boot memory block
  memblock释放内存
  * @base: phys starting address of the  boot memory block
@@ -917,7 +917,7 @@ int __init_memblock memblock_phys_free(phys_addr_t base, phys_addr_t size)
 	return memblock_remove_range(&memblock.reserved, base, size);
 }
 
-// 保留这一块内存
+// 保留这一块内存, 参数描述一段物理地址范围
 int __init_memblock memblock_reserve(phys_addr_t base, phys_addr_t size)
 {
 	phys_addr_t end = base + size - 1;
@@ -1436,7 +1436,7 @@ __next_mem_pfn_range_in_zone(u64 *idx, struct zone *zone,
 #endif /* CONFIG_DEFERRED_STRUCT_PAGE_INIT */
 
 /**
-memblock机制的内存分配函数
+memblock机制的内存分配函数, 在指定范围内分配size大小align对齐的内存
  * memblock_alloc_range_nid - allocate boot memory block
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
@@ -1529,7 +1529,7 @@ done: // 找到了可用的内存区域来到这里
 	return found;
 }
 
-/**
+/**memblock在指定范围内分配size大小align对齐的内存
  * memblock_phys_alloc_range - allocate a memory block inside specified range，在指定范围内分配内存
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
@@ -1553,7 +1553,7 @@ phys_addr_t __init memblock_phys_alloc_range(phys_addr_t size,
 					false);
 }
 
-/**
+/**memblock从指定的nid分配内存
  * memblock_phys_alloc_try_nid - allocate a memory block from specified NUMA node
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
@@ -1875,7 +1875,7 @@ void __init memblock_mem_limit_remove_map(phys_addr_t limit)
 
 	memblock_cap_memory_range(0, max_addr);
 }
-
+/* 搜索地址所在的node */
 static int __init_memblock memblock_search(struct memblock_type *type, phys_addr_t addr)
 {
 	unsigned int left = 0, right = type->cnt;
@@ -1912,7 +1912,7 @@ bool __init_memblock memblock_is_map_memory(phys_addr_t addr)
 		return false;
 	return !memblock_is_nomap(&memblock.memory.regions[i]);
 }
-
+/* 早期的pfn转node函数 */
 int __init_memblock memblock_search_pfn_nid(unsigned long pfn,
 			 unsigned long *start_pfn, unsigned long *end_pfn)
 {
@@ -1999,7 +1999,7 @@ phys_addr_t __init_memblock memblock_get_current_limit(void)
 {
 	return memblock.current_limit;
 }
-
+/* 打印 */
 static void __init_memblock memblock_dump(struct memblock_type *type)
 {
 	phys_addr_t base, end, size;
@@ -2025,7 +2025,7 @@ static void __init_memblock memblock_dump(struct memblock_type *type)
 			type->name, idx, &base, &end, &size, nid_buf, flags);
 	}
 }
-
+/* 打印保留的和可用的内存 */
 static void __init_memblock __memblock_dump_all(void)
 {
 	pr_info("MEMBLOCK configuration:\n");

@@ -12,7 +12,7 @@ enum insn_type {
 	JCC = 4,
 };
 
-/*
+/*打印如下 0xffffffff82a18475 <tramp_ud>:	ud1    ecx,esp
  * ud1 %esp, %ecx - a 3 byte #UD that is unique to trampolines, chosen such
  * that there is no false-positive trampoline identification while also being a
  * speculation stop.
@@ -49,7 +49,7 @@ asm (".global __static_call_return\n\t"
      ANNOTATE_RETPOLINE_SAFE
      "ret; int3\n\t"
      ".size __static_call_return, . - __static_call_return \n\t");
-/* 通过插入指令从addr跳到func？type决定插入什么指令？ */
+/* tp->static_call_tramp是被修改的tp的东西,func一般来说func就是刚刚添加的probe.  修改tramp为func. 通过插入指令从addr跳到func？type决定插入什么指令？ */
 static void __ref __static_call_transform(void *insn, enum insn_type type,
 					  void *func, bool modinit)
 {
@@ -78,8 +78,8 @@ static void __ref __static_call_transform(void *insn, enum insn_type type,
 
 	case JMP: /* 修改指令， 跳转 */
 		code = text_gen_insn(JMP32_INSN_OPCODE, insn, func);
-		break;
-
+		break; /* x/1i code : 
+0xffffffff85d8fa84 <insn.1>:	jmp    0xffffffff84873344 <______f.721+20> */
 	case RET:
 		if (cpu_feature_enabled(X86_FEATURE_RETHUNK))
 			code = text_gen_insn(JMP32_INSN_OPCODE, insn, x86_return_thunk);
@@ -101,20 +101,20 @@ static void __ref __static_call_transform(void *insn, enum insn_type type,
 
 		break;
 	}
-
+	/* x/1i code	jmp    0xffffffff84873344 <______f.721+20> x/1i insn 	jmp    0xffffffff81125370 <__traceiter_sched_wakeup> */
 	if (memcmp(insn, code, size) == 0)
-		return;/* 按理说这个时候应该修改好了？ */
+		return;/* 如果这个时候修改好了？ 就返回 */
 
-	if (system_state == SYSTEM_BOOTING || modinit)/* 如果在boot时期美好也没关系，其他方法再试试？ */
+	if (system_state == SYSTEM_BOOTING || modinit)/* 如果在boot时期,使用early poke */
 		return text_poke_early(insn, code, size);
-
+	/* 现在开始修改insn处的代码为code */
 	text_poke_bp(insn, code, size, emulate);
 }
-
+/* insn是tp->static_call_tramp是被修改的tp的东西, 修改前进行校验 */
 static void __static_call_validate(u8 *insn, bool tail, bool tramp)
-{
+{ /* 一种情况: insn的前8个字节,jmp    0xffffffff81125370 <__traceiter_sched_wakeup> ; ud1    ecx,esp */
 	u8 opcode = insn[0];
-
+	/* -exec x/3i tramp_ud : 0xffffffff82a18475 <tramp_ud>:	ud1    ecx,esp */
 	if (tramp && memcmp(insn+5, tramp_ud, 3)) {/* -exec x/10i insn retint3 nop nop nop   	ud1    ecx,esp */
 		pr_err("trampoline signature fail");
 		BUG();
@@ -138,7 +138,7 @@ static void __static_call_validate(u8 *insn, bool tail, bool tramp)
 	pr_err("unexpected static_call insn opcode 0x%x at %pS\n", opcode, insn);
 	BUG();
 }
-
+/* 进行一个简单的编码 */
 static inline enum insn_type __sc_insn(bool null, bool tail)
 {
 	/*
@@ -153,17 +153,17 @@ static inline enum insn_type __sc_insn(bool null, bool tail)
 	 */
 	return 2*tail + null;
 }
-/* 修改tramp为func */
+/*tp->static_call_tramp是被修改的tp的东西,func一般来说func就是刚刚添加的probe.  修改tramp为func */
 void arch_static_call_transform(void *site, void *tramp, void *func, bool tail)
 {
 	mutex_lock(&text_mutex);
 
 	if (tramp) {
-		__static_call_validate(tramp, true, true);
+		__static_call_validate(tramp, true, true);/* 校验tramp的字节码是否符合预期 */
 		__static_call_transform(tramp, __sc_insn(!func, true), func, false);
 	}
 
-	if (IS_ENABLED(CONFIG_HAVE_STATIC_CALL_INLINE) && site) {
+	if (IS_ENABLED(CONFIG_HAVE_STATIC_CALL_INLINE) && site) {/* static call的分支 */
 		__static_call_validate(site, tail, false);
 		__static_call_transform(site, __sc_insn(!func, tail), func, false);
 	}

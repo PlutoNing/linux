@@ -40,7 +40,7 @@ struct _tlb_table {
 	static const struct cpu_dev *const __cpu_dev_##cpu_devX __used \
 	__section(".x86_cpu_dev.init") = \
 	&cpu_devX;
-
+/* 是一个cpudev的数组 */
 extern const struct cpu_dev *const __x86_cpu_dev_start[],
 			    *const __x86_cpu_dev_end[];
 

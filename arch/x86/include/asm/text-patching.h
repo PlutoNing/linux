@@ -148,7 +148,7 @@ void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, i
 	}
 
 }
-/* 把dest插入到addr,
+/* 作用:生成五个字节的指定opcode的字节码. 把dest插入到addr,
 执行到addr时跳转到dest
 ======
 更新静态的insn结构体的opcode，disp成员，然后返回他的text成员buff地址

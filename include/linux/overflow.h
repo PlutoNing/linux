@@ -277,7 +277,7 @@ static inline size_t __must_check size_sub(size_t minuend, size_t subtrahend)
 		(count) * sizeof(*(p)->member) + __must_be_array((p)->member),	\
 		size_mul(count, sizeof(*(p)->member) + __must_be_array((p)->member)))
 
-/**
+/** 计算带有尾部零长数组的结构体大小,  count表示数组大小
  * struct_size() - Calculate size of structure with trailing flexible array.
  * @p: Pointer to the structure.
  * @member: Name of the array member.

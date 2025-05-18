@@ -386,7 +386,7 @@ int __register_ftrace_function(struct ftrace_ops *ops)
 	if (ftrace_pids_enabled(ops))
 		ops->func = ftrace_pid_func;
 
-	/*  */
+	/* 更新ops的跳板, 转到ops->func */
 	ftrace_update_trampoline(ops);
 
 	if (ftrace_enabled)
@@ -1087,7 +1087,7 @@ static const struct ftrace_hash empty_hash = {
 	.buckets = (struct hlist_head *)empty_buckets,
 };
 #define EMPTY_HASH	((struct ftrace_hash *)&empty_hash)
-
+/* global trace的ops */
 struct ftrace_ops global_ops = {
 	.func				= ftrace_stub,
 	.local_hash.notrace_hash	= EMPTY_HASH,
@@ -2467,7 +2467,7 @@ int ftrace_update_record(struct dyn_ftrace *rec, bool enable)
 	return ftrace_check_record(rec, enable, true);
 }
 
-/**
+/** 检查rec是否启用
  * ftrace_test_record - check if the record has been enabled or not
  * @rec: the record to test
  * @enable: set to true to check if enabled, false if it is disabled
@@ -2911,7 +2911,7 @@ struct ftrace_rec_iter {
 	int			index;
 };
 
-/**
+/** 开始遍历所有pg上面的所有rec
  * ftrace_rec_iter_start - start up iterating over traced functions
  *
  * Returns an iterator handle that is used to iterate over all
@@ -2942,7 +2942,7 @@ struct ftrace_rec_iter *ftrace_rec_iter_start(void)
 	return iter;
 }
 
-/**
+/** 遍历rec过程, 可能会切换到下一个pg继续遍历
  * ftrace_rec_iter_next - get the next record to process.
  * @iter: The handle to the iterator.
  *
@@ -2958,7 +2958,7 @@ struct ftrace_rec_iter *ftrace_rec_iter_next(struct ftrace_rec_iter *iter)
 
 		/* Could have empty pages */
 		while (iter->pg && !iter->pg->index)
-			iter->pg = iter->pg->next;
+			iter->pg = iter->pg->next; /* 跨pg了 */
 	}
 
 	if (!iter->pg)
@@ -2967,7 +2967,7 @@ struct ftrace_rec_iter *ftrace_rec_iter_next(struct ftrace_rec_iter *iter)
 	return iter;
 }
 
-/**
+/** 从迭代器取出一个rec
  * ftrace_rec_iter_record - get the record at the iterator location
  * @iter: The current iterator location
  *
@@ -3249,7 +3249,7 @@ int ftrace_startup(struct ftrace_ops *ops, int command)
 	if (unlikely(ftrace_disabled))
 		return -ENODEV;
 
-	/*  */
+	/* 开启这个tracer的ftrace ops */
 	ret = __register_ftrace_function(ops);
 	if (ret)
 		return ret;
@@ -5439,11 +5439,11 @@ void clear_ftrace_function_probes(struct trace_array *tr)
 	list_for_each_entry_safe(probe, n, &tr->func_probes, list)
 		unregister_ftrace_function_probe_func(NULL, tr, probe->probe_ops);
 }
-
+/*  */
 static LIST_HEAD(ftrace_commands);
 static DEFINE_MUTEX(ftrace_cmd_mutex);
 
-/*
+/*把cmd添加到全局链表
  * Currently we only register ftrace commands from __init, so mark this
  * __init too.
  */
@@ -5459,7 +5459,7 @@ __init int register_ftrace_command(struct ftrace_func_command *cmd)
 			goto out_unlock;
 		}
 	}
-	list_add(&cmd->list, &ftrace_commands);
+	list_add(&cmd->list, &ftrace_commands); /* 把cmd添加到ftrace_commands */
  out_unlock:
 	mutex_unlock(&ftrace_cmd_mutex);
 
@@ -5554,7 +5554,7 @@ ftrace_regex_write(struct file *file, const char __user *ubuf,
 	/* iter->hash is a local copy, so we don't need regex_lock */
 
 	parser = &iter->parser;
-	read = trace_get_user(parser, ubuf, cnt, ppos);
+	read = trace_get_user(parser, ubuf, cnt, ppos);/* 获取用户输入 */
 	/* 现在用户输入的白名单函数位于parser */
 	if (read >= 0 && trace_parser_loaded(parser) &&
 	    !trace_parser_cont(parser)) {
@@ -7681,10 +7681,10 @@ static void ftrace_update_trampoline(struct ftrace_ops *ops)
 {
 	unsigned long trampoline = ops->trampoline;
 
-	/* 更新ftrace ops的跳板，跳转到当前的func */
+	/* 更新ftrace ops的跳板，跳转到当前的func(可能是function_trace_call) */
 	arch_ftrace_update_trampoline(ops);
 	if (ops->trampoline && ops->trampoline != trampoline &&
-	    (ops->flags & FTRACE_OPS_FL_ALLOC_TRAMP)) {
+	    (ops->flags & FTRACE_OPS_FL_ALLOC_TRAMP)) { /* 如果发生了更新 */
 		/* Add to kallsyms before the perf events */
 		ftrace_add_trampoline_to_kallsyms(ops);
 		/* perf输出一个ksym事件 */
@@ -7731,14 +7731,14 @@ static void ftrace_update_trampoline(struct ftrace_ops *ops)
 }
 
 #endif /* CONFIG_DYNAMIC_FTRACE */
-
+/* 初始化global trace */
 __init void ftrace_init_global_array_ops(struct trace_array *tr)
 {
 	tr->ops = &global_ops;
 	tr->ops->private = tr;
 	ftrace_init_trace_array(tr);
 }
-
+/* echo function > current_tracer 用于初始化 function tracer */
 void ftrace_init_array_ops(struct trace_array *tr, ftrace_func_t func)
 {
 	/* If we filter on pids, update to use the pid function */
@@ -7747,7 +7747,7 @@ void ftrace_init_array_ops(struct trace_array *tr, ftrace_func_t func)
 			printk("ftrace ops had %pS for function\n",
 			       tr->ops->func);
 	}
-	tr->ops->func = func;
+	tr->ops->func = func;  /* function tracer的ops->func是function_trace_call */
 	tr->ops->private = tr;
 }
 
@@ -8530,7 +8530,7 @@ int register_ftrace_function(struct ftrace_ops *ops)
 	int ret;
 
 	lock_direct_mutex();
-	/* 进行准备工作 */
+	/* 进行准备工作,检查有没有多个ops包含同一个ip的情况 */
 	ret = prepare_direct_functions_for_ipmodify(ops);
 	if (ret < 0)
 		goto out_unlock;

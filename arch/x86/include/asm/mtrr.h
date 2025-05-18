@@ -43,12 +43,12 @@
 
 #define MTRR_PHYSMASK_RSVD	GENMASK(10, 0)
 #define MTRR_PHYSMASK_V		BIT_MASK(11)
-
+/*  */
 struct mtrr_state_type {
 	struct mtrr_var_range var_ranges[MTRR_MAX_VAR_RANGES];
 	mtrr_type fixed_ranges[MTRR_NUM_FIXED_RANGES];
 	unsigned char enabled;
-	bool have_fixed;
+	bool have_fixed; /*  */
 	mtrr_type def_type;
 };
 

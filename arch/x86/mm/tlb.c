@@ -1228,7 +1228,7 @@ void flush_tlb_local(void)
 	__flush_tlb_local();
 }
 
-/*
+/*以后
  * Flush everything
  */
 void __flush_tlb_all(void)

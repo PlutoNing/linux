@@ -476,7 +476,7 @@ static void anon_vma_ctor(void *data)
 	atomic_set(&anon_vma->refcount, 0);
 	anon_vma->rb_root = RB_ROOT_CACHED;
 }
-
+/* 初始化slab */
 void __init anon_vma_init(void)
 {
 	anon_vma_cachep = kmem_cache_create("anon_vma", sizeof(struct anon_vma),

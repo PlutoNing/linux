@@ -80,7 +80,7 @@ static bool __init pcpu_need_numa(void)
 	return false;
 }
 #endif
-
+/* 检查俩cpu是不是同一个node */
 static int __init pcpu_cpu_distance(unsigned int from, unsigned int to)
 {
 #ifdef CONFIG_NUMA
@@ -92,7 +92,7 @@ static int __init pcpu_cpu_distance(unsigned int from, unsigned int to)
 	return LOCAL_DISTANCE;
 #endif
 }
-
+/* pcp机制初始化的时候, 用于获取cpu对应的node */
 static int __init pcpu_cpu_to_node(int cpu)
 {
 	return early_cpu_to_node(cpu);
@@ -112,7 +112,7 @@ static inline void setup_percpu_segment(int cpu)
 	write_gdt_entry(get_cpu_gdt_rw(cpu), GDT_ENTRY_PERCPU, &d, DESCTYPE_S);
 #endif
 }
-
+/* 初始化pcp机制 */
 void __init setup_per_cpu_areas(void)
 {
 	unsigned int cpu;
@@ -132,10 +132,10 @@ void __init setup_per_cpu_areas(void)
 	if (pcpu_chosen_fc == PCPU_FC_AUTO && pcpu_need_numa())
 		pcpu_chosen_fc = PCPU_FC_PAGE;
 #endif
-	rc = -EINVAL;
+	rc = -EINVAL; /* pcpu_chosen_fc可能是PCPU_FC_AUTO */
 	if (pcpu_chosen_fc != PCPU_FC_PAGE) {
 		const size_t dyn_size = PERCPU_MODULE_RESERVE +
-			PERCPU_DYNAMIC_RESERVE - PERCPU_FIRST_CHUNK_RESERVE;
+			PERCPU_DYNAMIC_RESERVE - PERCPU_FIRST_CHUNK_RESERVE; /* 大小可能是28672 */
 		size_t atom_size;
 
 		/*
@@ -153,7 +153,7 @@ void __init setup_per_cpu_areas(void)
 		rc = pcpu_embed_first_chunk(PERCPU_FIRST_CHUNK_RESERVE,
 					    dyn_size, atom_size,
 					    pcpu_cpu_distance,
-					    pcpu_cpu_to_node);
+					    pcpu_cpu_to_node); /* 创建和初始化三个static ,reserved,dynamic part */
 		if (rc < 0)
 			pr_warn("%s allocator failed (%d), falling back to page size\n",
 				pcpu_fc_names[pcpu_chosen_fc], rc);
@@ -167,8 +167,8 @@ void __init setup_per_cpu_areas(void)
 	/* alrighty, percpu areas up and running */
 	delta = (unsigned long)pcpu_base_addr - (unsigned long)__per_cpu_start;
 	for_each_possible_cpu(cpu) {
-		per_cpu_offset(cpu) = delta + pcpu_unit_offsets[cpu];
-		per_cpu(this_cpu_off, cpu) = per_cpu_offset(cpu);
+		per_cpu_offset(cpu) = delta + pcpu_unit_offsets[cpu]; /* 初始化__per_cpu_offset[NR_CPUS]的内存指向 */
+		per_cpu(this_cpu_off, cpu) = per_cpu_offset(cpu); /* 现在已经可以开始写入了, 会进行地址转换 */
 		per_cpu(pcpu_hot.cpu_number, cpu) = cpu;
 		setup_percpu_segment(cpu);
 		/*
@@ -197,10 +197,10 @@ void __init setup_per_cpu_areas(void)
 		 */
 		set_cpu_numa_node(cpu, early_cpu_to_node(cpu));
 #endif
-		/*
+		/*切换gdt 内核启动时，引导CPU使用 ​**.init.data 段中的临时GDT**，该GDT可能包含编译时预设的静态段描述符。​局限性​：临时GDT的段基址（如用于Per-CPU数据的段）可能指向未初始化的区域或固定地址，无法适配动态分配的Per-CPU区域。
 		 * Up to this point, the boot CPU has been using .init.data
 		 * area.  Reload any changed state for the boot CPU.
-		 */
+		 通过 pcpu_base_addr 和 pcpu_unit_offsets 计算的Per-CPU区域地址是动态确定的，​需更新GDT中的段基址以指向这些区域。*/
 		if (!cpu)
 			switch_gdt_and_percpu_base(cpu);
 	}
@@ -214,7 +214,7 @@ void __init setup_per_cpu_areas(void)
 	early_per_cpu_ptr(x86_cpu_to_node_map) = NULL;
 #endif
 
-	/* Setup node to cpumask map */
+	/* Setup node to cpumask map, 基本算空函数 */
 	setup_node_to_cpumask_map();
 
 	/* Setup cpu initialized, callin, callout masks */

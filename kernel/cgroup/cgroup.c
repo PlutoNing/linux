@@ -726,7 +726,7 @@ EXPORT_SYMBOL_GPL(of_css);
 			;						\
 		else
 
-/*
+/* css_set是什么
  * The default css_set - used by init and its children prior to any
  * hierarchies being mounted. It contains a pointer to the root state
  * for each subsystem. Also used to anchor the list of css_sets. Not
@@ -1993,7 +1993,7 @@ static int cgroup_reconfigure(struct fs_context *fc)
 	apply_cgroup_root_flags(ctx->flags);
 	return 0;
 }
-
+/* 参数是cgrp_dfl_root的cgrp成员 */
 static void init_cgroup_housekeeping(struct cgroup *cgrp)
 {
 	struct cgroup_subsys *ss;
@@ -2018,9 +2018,9 @@ static void init_cgroup_housekeeping(struct cgroup *cgrp)
 	init_waitqueue_head(&cgrp->offline_waitq);
 	INIT_WORK(&cgrp->release_agent_work, cgroup1_release_agent);
 }
-
+/* 启动的时候初始化cgroup fctx, root成员指向cgroup root */
 void init_cgroup_root(struct cgroup_fs_context *ctx)
-{
+{ /* root就是cgrp_dfl_root */
 	struct cgroup_root *root = ctx->root;
 	struct cgroup *cgrp = &root->cgrp;
 
@@ -5465,12 +5465,12 @@ static void css_release(struct percpu_ref *ref)
 	INIT_WORK(&css->destroy_work, css_release_work_fn);
 	queue_work(cgroup_destroy_wq, &css->destroy_work);
 }
-
+/* 建立三者关联, */
 static void init_and_link_css(struct cgroup_subsys_state *css,
 			      struct cgroup_subsys *ss, struct cgroup *cgrp)
 {
 	lockdep_assert_held(&cgroup_mutex);
-
+/* 获取ref */
 	cgroup_get_live(cgrp);
 
 	memset(css, 0, sizeof(*css));
@@ -5482,7 +5482,7 @@ static void init_and_link_css(struct cgroup_subsys_state *css,
 	INIT_LIST_HEAD(&css->rstat_css_node);
 	css->serial_nr = css_serial_nr_next++;
 	atomic_set(&css->online_cnt, 0);
-
+	/* 构建此ss的css的父子关系 */
 	if (cgroup_parent(cgrp)) {
 		css->parent = cgroup_css(cgroup_parent(cgrp), ss);
 		css_get(css->parent);
@@ -5984,9 +5984,9 @@ static struct kernfs_syscall_ops cgroup_kf_syscall_ops = {
 	.rmdir			= cgroup_rmdir,
 	.show_path		= cgroup_show_path,
 };
-
+/* 在cgroup_init_early函数中早期初始化每个需要early init的子系统 */
 static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
-{
+{ /* 好像就是设置ss的root, 建立ss的第一个css */
 	struct cgroup_subsys_state *css;
 
 	pr_debug("Initializing cgroup subsys %s\n", ss->name);
@@ -6021,7 +6021,7 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
 	 * pointer to this state - since the subsystem is
 	 * newly registered, all tasks and hence the
 	 * init_css_set is in the subsystem's root cgroup. */
-	init_css_set.subsys[ss->id] = css;
+	init_css_set.subsys[ss->id] = css;/* 把css挂载到init_css_set中自己所属的ss */
 
 	have_fork_callback |= (bool)ss->fork << ss->id;
 	have_exit_callback |= (bool)ss->exit << ss->id;
@@ -6038,9 +6038,9 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
 	cgroup_unlock();
 }
 
-/**
+/** 初始化每个for_each_subsys(ss, i),初始化一些属性, 建立第一个css什么的
  * cgroup_init_early - cgroup initialization at system boot
- *
+ * 启动的时候初始化cgroup机制
  * Initialize cgroups at system boot, and initialize any
  * subsystems that request early init.
  */
@@ -6051,11 +6051,11 @@ int __init cgroup_init_early(void)
 	int i;
 
 	ctx.root = &cgrp_dfl_root;
-	init_cgroup_root(&ctx);
+	init_cgroup_root(&ctx); /* 主要是初始化cgrp_dfl_root的cgrp成员 */
 	cgrp_dfl_root.cgrp.self.flags |= CSS_NO_REF;
 
 	RCU_INIT_POINTER(init_task.cgroups, &init_css_set);
-
+/* 遍历系统的全部子系统, ss指向子系统, i是idx */
 	for_each_subsys(ss, i) {
 		WARN(!ss->css_alloc || !ss->css_free || ss->name || ss->id,
 		     "invalid cgroup_subsys %d:%s css_alloc=%p css_free=%p id:name=%d:%s\n",
@@ -6063,7 +6063,7 @@ int __init cgroup_init_early(void)
 		     ss->id, ss->name);
 		WARN(strlen(cgroup_subsys_name[i]) > MAX_CGROUP_TYPE_NAMELEN,
 		     "cgroup_subsys_name %s too long\n", cgroup_subsys_name[i]);
-
+/* 初始化每个子系统 */
 		ss->id = i;
 		ss->name = cgroup_subsys_name[i];
 		if (!ss->legacy_name)

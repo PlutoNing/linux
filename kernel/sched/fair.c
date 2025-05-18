@@ -6178,7 +6178,7 @@ static enum hrtimer_restart sched_cfs_period_timer(struct hrtimer *timer)
 
 	return idle ? HRTIMER_NORESTART : HRTIMER_RESTART;
 }
-
+/* 初始化此cfs的带宽控制机制 */
 void init_cfs_bandwidth(struct cfs_bandwidth *cfs_b, struct cfs_bandwidth *parent)
 {
 	raw_spin_lock_init(&cfs_b->lock);
@@ -6192,7 +6192,7 @@ void init_cfs_bandwidth(struct cfs_bandwidth *cfs_b, struct cfs_bandwidth *paren
 	hrtimer_init(&cfs_b->period_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_PINNED);
 	cfs_b->period_timer.function = sched_cfs_period_timer;
 
-	/* Add a random offset so that timers interleave */
+	/* Add a random offset so that timers interleave . 设置过期时间 */
 	hrtimer_set_expires(&cfs_b->period_timer,
 			    get_random_u32_below(cfs_b->period));
 	hrtimer_init(&cfs_b->slack_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
@@ -13003,7 +13003,7 @@ __init void init_sched_fair_class(void)
 		INIT_LIST_HEAD(&cpu_rq(i)->cfsb_csd_list);
 #endif
 	}
-
+/* 设置调度的软中断 */
 	open_softirq(SCHED_SOFTIRQ, run_rebalance_domains);/* 调度软中断的简写 */
 
 #ifdef CONFIG_NO_HZ_COMMON

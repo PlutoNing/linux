@@ -225,7 +225,7 @@ static void __init cyc2ns_init_secondary_cpus(void)
 	}
 }
 
-/*
+/* local_clock调用到这里
  * Scheduler clock - returns current time in nanosec units.
  */
 noinstr u64 native_sched_clock(void)
@@ -651,7 +651,7 @@ success:
 	return delta;
 }
 
-/**
+/**x86_platform.calibrate_tsc()回调函数
  * native_calibrate_tsc
  * Determine TSC frequency via CPUID, else return 0.
  */
@@ -899,7 +899,7 @@ static unsigned long pit_hpet_ptimer_calibrate_cpu(void)
 	return tsc_pit_min;
 }
 
-/**
+/** 是x86_platform.calibrate_cpu()回调函数
  * native_calibrate_cpu_early - can calibrate the cpu early in boot
  */
 unsigned long native_calibrate_cpu_early(void)

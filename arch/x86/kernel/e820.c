@@ -178,7 +178,7 @@ static void __init __e820__range_add(struct e820_table *table, u64 start, u64 si
 	table->entries[x].type = type;
 	table->nr_entries++;
 }
-/* 把e820 map一个段添加到内存 */
+/* 把e820 map一个段添加到内存e820_table */
 void __init e820__range_add(u64 start, u64 size, enum e820_type type)
 {
 	__e820__range_add(e820_table, start, size, type);
@@ -199,7 +199,7 @@ static void __init e820_print_type(enum e820_type type)
 	default:			pr_cont("type %u", type);		break;
 	}
 }
-
+/* 打印得到的物理内存范围 */
 void __init e820__print_table(char *who)
 {
 	int i;
@@ -458,7 +458,7 @@ static int __init append_e820_table(struct boot_e820_entry *entries, u32 nr_entr
 
 	return __append_e820_table(entries, nr_entries);
 }
-
+/* 在e820 table里面修改参数描述范围的类型 */
 static u64 __init
 __e820__range_update(struct e820_table *table, u64 start, u64 size, enum e820_type old_type, enum e820_type new_type)
 {
@@ -470,7 +470,7 @@ __e820__range_update(struct e820_table *table, u64 start, u64 size, enum e820_ty
 
 	if (size > (ULLONG_MAX - start))
 		size = ULLONG_MAX - start;
-
+/* e820类型转换 */
 	end = start + size;
 	printk(KERN_DEBUG "e820: update [mem %#010Lx-%#010Lx] ", start, end - 1);
 	e820_print_type(old_type);
@@ -488,7 +488,7 @@ __e820__range_update(struct e820_table *table, u64 start, u64 size, enum e820_ty
 
 		entry_end = entry->addr + entry->size;
 
-		/* Completely covered by new range? */
+		/* Completely covered by new range?  如果这个entry完全位于新范围, 修改属性*/
 		if (entry->addr >= start && entry_end <= end) {
 			entry->type = new_type;
 			real_updated_size += entry->size;
@@ -647,7 +647,7 @@ static int __init e820_search_gap(unsigned long *gapstart, unsigned long *gapsiz
 	return found;
 }
 
-/*
+/* pci相关, 以后.
  * Search for the biggest gap in the low 32 bits of the E820
  * memory space. We pass this space to the PCI subsystem, so
  * that it can assign MMIO resources for hotplug or
@@ -742,7 +742,7 @@ void __init e820__memory_setup_extended(u64 phys_addr, u32 data_len)
 	e820__print_table("extended");
 }
 
-/*
+/* 把entry->type != E820_TYPE_RAM && entry->type != E820_TYPE_RESERVED_KERN之类的entry范围加入到nosave
  * Find the ranges of physical addresses that do not correspond to
  * E820 RAM areas and register the corresponding pages as 'nosave' for
  * hibernation (32-bit) or software suspend and suspend to RAM (64-bit).
@@ -764,7 +764,7 @@ void __init e820__register_nosave_regions(unsigned long limit_pfn)
 		pfn = PFN_DOWN(entry->addr + entry->size);
 
 		if (entry->type != E820_TYPE_RAM && entry->type != E820_TYPE_RESERVED_KERN)
-			register_nosave_region(PFN_UP(entry->addr), pfn);
+			register_nosave_region(PFN_UP(entry->addr), pfn); /* 可能是E820_TYPE_RESERVED */
 
 		if (pfn >= limit_pfn)
 			break;
@@ -824,7 +824,7 @@ u64 __init e820__memblock_alloc_reserved(u64 size, u64 align)
 # define MAX_ARCH_PFN MAXMEM>>PAGE_SHIFT
 #endif
 
-/*
+/* 找到limit_pfn之内的最大可用pfn
  * Find the highest page frame number we have available
  */
 static unsigned long __init e820_end_pfn(unsigned long limit_pfn, enum e820_type type)
@@ -840,7 +840,7 @@ static unsigned long __init e820_end_pfn(unsigned long limit_pfn, enum e820_type
 
 		if (entry->type != type)
 			continue;
-
+		/* 遍历e820_table的指定的type */
 		start_pfn = entry->addr >> PAGE_SHIFT;
 		end_pfn = (entry->addr + entry->size) >> PAGE_SHIFT;
 
@@ -853,7 +853,7 @@ static unsigned long __init e820_end_pfn(unsigned long limit_pfn, enum e820_type
 		if (end_pfn > last_pfn)
 			last_pfn = end_pfn;
 	}
-
+/* last pfn是limit pfn左边的最大的pfn */
 	if (last_pfn > max_arch_pfn)
 		last_pfn = max_arch_pfn;
 
@@ -866,7 +866,7 @@ unsigned long __init e820__end_of_ram_pfn(void)
 {
 	return e820_end_pfn(MAX_ARCH_PFN, E820_TYPE_RAM);
 }
-
+/* 找到4GB之内的最大可用pfn */
 unsigned long __init e820__end_of_low_ram_pfn(void)
 {
 	return e820_end_pfn(1UL << (32 - PAGE_SHIFT), E820_TYPE_RAM);
@@ -1150,20 +1150,20 @@ static bool __init do_mark_busy(enum e820_type type, struct resource *res)
  */
 
 static struct resource __initdata *e820_res;
-/* 这里保留什么资源 */
+/* 完善e820_res表, 把e820_table_firmware提供的内存布局加到sysfs */
 void __init e820__reserve_resources(void)
 {
 	int i;
 	struct resource *res;
 	u64 end;
-
+	/* 分配和创建e820_res表 */
 	res = memblock_alloc(sizeof(*res) * e820_table->nr_entries,
 			     SMP_CACHE_BYTES);
 	if (!res)
 		panic("%s: Failed to allocate %zu bytes\n", __func__,
 		      sizeof(*res) * e820_table->nr_entries);
 	e820_res = res;
-
+	/* 复制一份更易读的e820_table到e820_res */
 	for (i = 0; i < e820_table->nr_entries; i++) {
 		struct e820_entry *entry = e820_table->entries + i;
 
@@ -1189,11 +1189,11 @@ void __init e820__reserve_resources(void)
 		}
 		res++;
 	}
-
+	/* e820_table_firmware里面是bootloader提供的内存布局? */
 	/* Expose the bootloader-provided memory layout to the sysfs. */
 	for (i = 0; i < e820_table_firmware->nr_entries; i++) {
 		struct e820_entry *entry = e820_table_firmware->entries + i;
-
+		/* 把当前取到的entry的内存范围格式化为新的entry, 添加到sysfs */
 		firmware_map_add_early(entry->addr, entry->addr + entry->size, e820_type_to_string(entry));
 	}
 }
@@ -1254,7 +1254,7 @@ void __init e820__reserve_resources_late(void)
 	}
 }
 
-/*
+/*x86_init.resources.memory_setup的回调函数
  * Pass the firmware (bootloader) E820 map to the kernel and process it:
  */
 char *__init e820__memory_setup_default(void)
@@ -1290,7 +1290,7 @@ char *__init e820__memory_setup_default(void)
 	return who;
 }
 
-/*
+/* 探测物理内存?
  * 调用 e820__memory_setup_default()，本质上是获取固件/引导加载程序的
  * E820 映射——虚拟平台可以通过可选的平台特
  性覆盖这种引导环境处理方法：
@@ -1302,7 +1302,7 @@ void __init e820__memory_setup(void)
 	/* This is a firmware interface ABI - make sure we don't break it: */
 	BUILD_BUG_ON(sizeof(struct boot_e820_entry) != 20);
 
-	who = x86_init.resources.memory_setup();
+	who = x86_init.resources.memory_setup();/* 是e820__memory_setup_default(void) */
 
 	memcpy(e820_table_kexec, e820_table, sizeof(*e820_table_kexec));
 	memcpy(e820_table_firmware, e820_table, sizeof(*e820_table_firmware));
@@ -1310,7 +1310,7 @@ void __init e820__memory_setup(void)
 	pr_info("BIOS-provided physical RAM map:\n");
 	e820__print_table(who);
 }
-
+/* 把e820 table的内存加到memblock */
 void __init e820__memblock_setup(void)
 {
 	int i;
@@ -1339,12 +1339,12 @@ void __init e820__memblock_setup(void)
 
 		if (entry->type != E820_TYPE_RAM && entry->type != E820_TYPE_RESERVED_KERN)
 			continue;
-/* 如果是ram或者可用的内核内存， 就加到memblock */
+		/* 如果是ram或者可用的内核内存， 就加到memblock */
 		memblock_add(entry->addr, entry->size);
 	}
 
 	/* Throw away partial pages: */
 	memblock_trim_memory(PAGE_SIZE);
-
+	/* 打印信息 */
 	memblock_dump_all();
 }

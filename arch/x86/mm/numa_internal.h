@@ -10,7 +10,7 @@ struct numa_memblk {
 	u64			end;
 	int			nid;
 };
-
+/* blk描述了内存范围和nid的关系 */
 struct numa_meminfo {
 	int			nr_blks;
 	struct numa_memblk	blk[NR_NODE_MEMBLKS];

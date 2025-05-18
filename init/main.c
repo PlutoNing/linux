@@ -138,7 +138,7 @@ void (*__initdata late_time_init)(void);
 
 /* Untouched command line saved by arch-specific code. */
 char __initdata boot_command_line[COMMAND_LINE_SIZE];
-/* Untouched saved command line (eg. for /proc) */
+/* Untouched saved command line (eg. for /proc), 保存备份的启动参数命令行 */
 char *saved_command_line __ro_after_init;
 unsigned int saved_command_line_len __ro_after_init;
 /* Command line for parameter parsing */
@@ -262,8 +262,8 @@ static int __init loglevel(char *str)
 }
 
 early_param("loglevel", loglevel);
-
 #ifdef CONFIG_BLK_DEV_INITRD
+/* 因为initrd_end为0直接返回了, 为什么是0呢? */
 static void * __init get_boot_config_from_initrd(size_t *_size)
 {
 	u32 size, csum;
@@ -404,7 +404,7 @@ static int __init warn_bootconfig(char *str)
 	/* The 'bootconfig' has been handled by bootconfig_params(). */
 	return 0;
 }
-
+/* 一般会因为启动参数命令行没有bootconfig选项而直接返回 */
 static void __init setup_boot_config(void)
 {
 	static char tmp_cmdline[COMMAND_LINE_SIZE] __initdata;
@@ -418,13 +418,13 @@ static void __init setup_boot_config(void)
 	/* If there is no bootconfig in initrd, try embedded one. */
 	if (!data)
 		data = xbc_get_embedded_bootconfig(&size);
-
+	/* 这里复制并解析启动参数命令行, 如何找到了指定参数,bootconfig_params会置位flag: bootconfig_found */
 	strscpy(tmp_cmdline, boot_command_line, COMMAND_LINE_SIZE);
 	err = parse_args("bootconfig", tmp_cmdline, NULL, 0, 0, 0, NULL,
 			 bootconfig_params);
 
 	if (IS_ERR(err) || !(bootconfig_found || IS_ENABLED(CONFIG_BOOT_CONFIG_FORCE)))
-		return;
+		return; /* 如果bootconfig_found为false, 就返回 */
 
 	/* parse_args() stops at the next param of '--' and returns an address */
 	if (err)
@@ -624,11 +624,11 @@ static void __init setup_command_line(char *command_line)
 		ilen = strlen(extra_init_args) + 4; /* for " -- " */
 
 	len = xlen + strlen(boot_command_line) + 1;
-
+	/* 为启动参数命令行的备份申请内存空间 */
 	saved_command_line = memblock_alloc(len + ilen, SMP_CACHE_BYTES);
 	if (!saved_command_line)
 		panic("%s: Failed to allocate %zu bytes\n", __func__, len + ilen);
-
+	/* static_command_line又是什么? */
 	static_command_line = memblock_alloc(len, SMP_CACHE_BYTES);
 	if (!static_command_line)
 		panic("%s: Failed to allocate %zu bytes\n", __func__, len);
@@ -644,7 +644,7 @@ static void __init setup_command_line(char *command_line)
 	}
 	strcpy(saved_command_line + xlen, boot_command_line);
 	strcpy(static_command_line + xlen, command_line);
-
+	/* 好像一般上面这俩命令行都是一样的 */
 	if (ilen) {
 		/*
 		 * Append supplemental init boot args to saved_command_line
@@ -882,7 +882,7 @@ void start_kernel(void)
 	smp_setup_processor_id();
 	debug_objects_early_init();
 	init_vmlinux_build_id();
-
+	/* 早期初始化每个ss子系统 */
 	cgroup_init_early();
 
 	local_irq_disable();
@@ -892,15 +892,15 @@ void start_kernel(void)
 	 * Interrupts are still disabled. Do necessary setups, then
 	 * enable them.
 	 */
-	boot_cpu_init();
+	boot_cpu_init(); /* 把current cpu设置为各种可用 */
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	early_security_init();
 	// 这里会设置内存
 	setup_arch(&command_line);
-	setup_boot_config();/* boot config是什么 */
-	setup_command_line(command_line);
-	setup_nr_cpu_ids();
+	setup_boot_config();/* boot config是什么(是启动参数命令行可以设置的选项) */
+	setup_command_line(command_line); /* 备份一下启动参数命令行 */
+	setup_nr_cpu_ids(); /* 设置系统的nr_cpu_ids, 而且一般可能是arch的setup函数已经做过了此工作 */
 	setup_per_cpu_areas(); /* 初始化pcp机制？ */
 	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
 	boot_cpu_hotplug_init();/* cpu热插拔初始化 */
@@ -973,7 +973,7 @@ void start_kernel(void)
 
 	rcu_init();
 
-	/* Trace events are available after this */
+	/* Trace events are available after this,初始化trace的event */
 	trace_init();
 
 	if (initcall_debug)
@@ -1001,9 +1001,9 @@ void start_kernel(void)
 	random_init();
 
 	/* These make use of the fully initialized rng */
-	kfence_init();
+	kfence_init(); /* 空函数 */
 	boot_init_stack_canary();
-
+/* 初始化perf的pmu注册什么的 */
 	perf_event_init();
 	profile_init();
 	call_function_init();
@@ -1042,8 +1042,8 @@ void start_kernel(void)
 		initrd_start = 0;
 	}
 #endif
-	setup_per_cpu_pageset();
-	numa_policy_init();
+	setup_per_cpu_pageset();/* 初始化分配内存的pcp pageset的结构体 */
+	numa_policy_init(); /* 设置每个node的preferred_node_policy */
 	acpi_early_init();
 	if (late_time_init)
 		late_time_init();

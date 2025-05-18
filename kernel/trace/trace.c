@@ -12,6 +12,7 @@
  *  Copyright (C) 2004-2006 Ingo Molnar
  *  Copyright (C) 2004 Nadia Yvette Chambers
  */
+#include "linux/types.h"
 #include <linux/ring_buffer.h>
 #include <generated/utsrelease.h>
 #include <linux/stacktrace.h>
@@ -553,7 +554,7 @@ int tracing_check_open_get_tr(struct trace_array *tr)
 
 	return 0;
 }
-
+/* trace一个事件,call是event_function, rec是event类型转换的事件, event是刚刚分配的 */
 int call_filter_check_discard(struct trace_event_call *call, void *rec,
 			      struct trace_buffer *buffer,
 			      struct ring_buffer_event *event)
@@ -1065,7 +1066,7 @@ __buffer_unlock_commit(struct trace_buffer *buffer, struct ring_buffer_event *ev
 		/* ring_buffer_unlock_commit() enables preemption */
 		preempt_enable_notrace();
 	} else
-		ring_buffer_unlock_commit(buffer);
+		ring_buffer_unlock_commit(buffer);/* 写入 */
 }
 
 int __trace_array_puts(struct trace_array *tr, unsigned long ip,
@@ -1499,7 +1500,7 @@ int tracing_snapshot_cond_disable(struct trace_array *tr)
 EXPORT_SYMBOL_GPL(tracing_snapshot_cond_disable);
 #define free_snapshot(tr)	do { } while (0)
 #endif /* CONFIG_TRACER_SNAPSHOT */
-
+/* 关闭trace, echo 0 > traing_on */
 void tracer_tracing_off(struct trace_array *tr)
 {
 	if (tr->array_buffer.buffer)
@@ -2161,7 +2162,7 @@ static void add_tracer_options(struct trace_array *tr, struct tracer *t);
 
 static void __init apply_trace_boot_options(void);
 
-/**
+/** 注册一个tracer类型
  * register_tracer - register a tracer with the ftrace system.
  * @type: the plugin for the tracer
  *
@@ -2189,7 +2190,7 @@ int __init register_tracer(struct tracer *type)
 	}
 
 	mutex_lock(&trace_types_lock);
-
+/* 看看是不是有同名的已经注册了 */
 	for (t = trace_types; t; t = t->next) {
 		if (strcmp(type->name, t->name) == 0) {
 			/* already found */
@@ -2224,7 +2225,7 @@ int __init register_tracer(struct tracer *type)
 
 	type->next = trace_types;
 	trace_types = type;
-	add_tracer_options(&global_trace, type);
+	add_tracer_options(&global_trace, type);/* 创建options文件夹,但是还是dir空的 */
 
  out:
 	mutex_unlock(&trace_types_lock);
@@ -2588,11 +2589,13 @@ static int trace_save_cmdline(struct task_struct *tsk)
 	return 1;
 }
 
+/* 获取存储的pid的comm */
 static void __trace_find_cmdline(int pid, char comm[])
 {
 	unsigned map;
 	int tpid;
 
+	/* 没有pid表示是idle */
 	if (!pid) {
 		strcpy(comm, "<idle>");
 		return;
@@ -2606,8 +2609,10 @@ static void __trace_find_cmdline(int pid, char comm[])
 	tpid = pid & (PID_MAX_DEFAULT - 1);
 	map = savedcmd->map_pid_to_cmdline[tpid];
 	if (map != NO_CMDLINE_MAP) {
+		/* 成功找到了 */
 		tpid = savedcmd->map_cmdline_to_pid[map];
 		if (tpid == pid) {
+			/* 读取查到的comm */
 			strscpy(comm, get_saved_cmdlines(map), TASK_COMM_LEN);
 			return;
 		}
@@ -2615,6 +2620,9 @@ static void __trace_find_cmdline(int pid, char comm[])
 	strcpy(comm, "<...>");
 }
 
+/* 
+查找pid对应的comm
+*/
 void trace_find_cmdline(int pid, char comm[])
 {
 	preempt_disable();
@@ -2642,6 +2650,7 @@ static int *trace_find_tgid_ptr(int pid)
 	return &map[pid];
 }
 
+/* 获取trace的pid的tgid */
 int trace_find_tgid(int pid)
 {
 	int *ptr = trace_find_tgid_ptr(pid);
@@ -3138,7 +3147,7 @@ trace_buffer_unlock_commit_nostack(struct trace_buffer *buffer,
 {
 	__buffer_unlock_commit(buffer, event);
 }
-
+/* ip是被trace的函数的入口 */
 void
 trace_function(struct trace_array *tr, unsigned long ip, unsigned long
 	       parent_ip, unsigned int trace_ctx)
@@ -3159,7 +3168,7 @@ trace_function(struct trace_array *tr, unsigned long ip, unsigned long
 	if (!call_filter_check_discard(call, entry, buffer, event)) {
 		if (static_branch_unlikely(&trace_function_exports_enabled))
 			ftrace_exports(event, TRACE_EXPORT_FUNCTION);
-		__buffer_unlock_commit(buffer, event);
+		__buffer_unlock_commit(buffer, event);/* 提交写入 */
 	}
 }
 
@@ -4558,14 +4567,17 @@ static enum print_line_t print_trace_fmt(struct trace_iterator *iter)
 	struct trace_entry *entry;
 	struct trace_event *event;
 
+	/* 获取要打印的entry */
 	entry = iter->ent;
 
 	test_cpu_buff_start(iter);
 
 	event = ftrace_find_event(entry->type);
 
+	/* 打印iter的上下文 */
 	if (tr->trace_flags & TRACE_ITER_CONTEXT_INFO) {
 		if (iter->iter_flags & TRACE_FILE_LAT_FMT)
+		/* latency的情况 */
 			trace_print_lat_context(iter);
 		else
 			trace_print_context(iter);
@@ -5687,7 +5699,7 @@ int trace_set_options(struct trace_array *tr, char *option)
 
 	return ret;
 }
-
+/*  */
 static void __init apply_trace_boot_options(void)
 {
 	char *buf = trace_boot_options_buf;
@@ -6485,7 +6497,7 @@ tracing_set_trace_read(struct file *filp, char __user *ubuf,
 int tracer_init(struct tracer *t, struct trace_array *tr)
 {
 	tracing_reset_online_cpus(&tr->array_buffer);
-	return t->init(tr);
+	return t->init(tr); /* function tracer对应function_trace_init */
 }
 
 static void set_buffer_entries(struct array_buffer *buf, unsigned long val)
@@ -6670,11 +6682,11 @@ static void tracing_set_nop(struct trace_array *tr)
 }
 
 static bool tracer_options_updated;
-
+/*  */
 static void add_tracer_options(struct trace_array *tr, struct tracer *t)
 {
 	/* Only enable if the directory has been created already. */
-	if (!tr->dir)
+	if (!tr->dir)/* 实际上没有文件夹 */
 		return;
 
 	/* Only create trace option files after update_tracer_options finish */
@@ -6753,7 +6765,7 @@ int tracing_set_tracer(struct trace_array *tr, const char *buf)
 
 	tr->current_trace->enabled--;
 
-	if (tr->current_trace->reset)
+	if (tr->current_trace->reset) /* 可能是nop_trace_reset */
 		tr->current_trace->reset(tr);
 
 #ifdef CONFIG_TRACER_MAX_TRACE
@@ -6799,7 +6811,7 @@ int tracing_set_tracer(struct trace_array *tr, const char *buf)
 
 	return ret;
 }
-/* cur tracer文件的写ops */
+/* cur tracer文件的写ops,   echo function > current_tracer */
 static ssize_t
 tracing_set_trace_write(struct file *filp, const char __user *ubuf,
 			size_t cnt, loff_t *ppos)
@@ -9605,7 +9617,7 @@ rb_simple_write(struct file *filp, const char __user *ubuf,
 			/* 开启tracing */
 			tracer_tracing_on(tr);
 			if (tr->current_trace->start)
-				tr->current_trace->start(tr);
+				tr->current_trace->start(tr); /* func tracer的话可能是function_trace_start */
 		} else {
 			tracer_tracing_off(tr);
 			if (tr->current_trace->stop)
@@ -9686,7 +9698,7 @@ static struct dentry *trace_instance_dir;
 
 static void
 init_tracer_tracefs(struct trace_array *tr, struct dentry *d_tracer);
-
+/* 分配tr的buffer */
 static int
 allocate_trace_buffer(struct trace_array *tr, struct array_buffer *buf, int size)
 {
@@ -9695,7 +9707,7 @@ allocate_trace_buffer(struct trace_array *tr, struct array_buffer *buf, int size
 	rb_flags = tr->trace_flags & TRACE_ITER_OVERWRITE ? RB_FL_OVERWRITE : 0;
 
 	buf->tr = tr;
-
+/* 分配 trace buffer*/
 	buf->buffer = ring_buffer_alloc(size, rb_flags);
 	if (!buf->buffer)
 		return -ENOMEM;
@@ -9723,11 +9735,11 @@ static void free_trace_buffer(struct array_buffer *buf)
 		buf->data = NULL;
 	}
 }
-
+/* 分配tr的内存 */
 static int allocate_trace_buffers(struct trace_array *tr, int size)
 {
 	int ret;
-
+/* 分配和初始化trace buffer */
 	ret = allocate_trace_buffer(tr, &tr->array_buffer, size);
 	if (ret)
 		return ret;
@@ -9831,17 +9843,17 @@ static int trace_array_create_dir(struct trace_array *tr)
 
 	return ret;
 }
-
+/* 创建tr, 使用func tracer ops */
 static struct trace_array *trace_array_create(const char *name)
 {
 	struct trace_array *tr;
 	int ret;
-
+	/* 分配tr结构体内存 */
 	ret = -ENOMEM;
 	tr = kzalloc(sizeof(*tr), GFP_KERNEL);
 	if (!tr)
 		return ERR_PTR(ret);
-
+	/* 赋值名称 */
 	tr->name = kstrdup(name, GFP_KERNEL);
 	if (!tr->name)
 		goto out_free_tr;
@@ -9869,7 +9881,7 @@ static struct trace_array *trace_array_create(const char *name)
 
 	if (allocate_trace_buffers(tr, trace_buf_size) < 0)
 		goto out_free_tr;
-
+	/* 给tr分配一个使用func tracer ops的tr */
 	if (ftrace_allocate_ftrace_ops(tr) < 0)
 		goto out_free_tr;
 
@@ -10827,7 +10839,7 @@ __init static int tracer_alloc_buffers(void)
 	if (!zalloc_cpumask_var(&global_trace.pipe_cpumask, GFP_KERNEL))
 		goto out_free_savedcmd;
 
-	/* TODO: make the number of buffers hot pluggable with CPUS */
+	/* TODO: make the number of buffers hot pluggable with CPUS ,分配global_trace这个tr的trace buffer*/
 	if (allocate_trace_buffers(&global_trace, ring_buf_size) < 0) {
 		MEM_FAIL(1, "tracer: failed to allocate ring buffer!\n");
 		goto out_free_pipe_cpumask;
@@ -10850,22 +10862,22 @@ __init static int tracer_alloc_buffers(void)
 	global_trace.current_trace = &nop_trace;
 
 	global_trace.max_lock = (arch_spinlock_t)__ARCH_SPIN_LOCK_UNLOCKED;
-
+/* 初始化global trace, 设置ops什么的 */
 	ftrace_init_global_array_ops(&global_trace);
 
 	init_trace_flags_index(&global_trace);
-
+/* 注册nop tracer */
 	register_tracer(&nop_trace);
 
-	/* Function tracing may start here (via kernel command line) */
+	/* Function tracing may start here (via kernel command line) ,初始化func tracer*/
 	init_function_trace();
 
 	/* All seems OK, enable tracing */
 	tracing_disabled = 0;
-
+/* 注册通知链 */
 	atomic_notifier_chain_register(&panic_notifier_list,
 				       &trace_panic_notifier);
-
+/*  */
 	register_die_notifier(&trace_die_notifier);
 
 	global_trace.flags = TRACE_ARRAY_FL_GLOBAL;
@@ -10875,7 +10887,7 @@ __init static int tracer_alloc_buffers(void)
 	INIT_LIST_HEAD(&global_trace.hist_vars);
 	INIT_LIST_HEAD(&global_trace.err_log);
 	list_add(&global_trace.list, &ftrace_trace_arrays);
-
+/* 可能是空的option buf */
 	apply_trace_boot_options();
 
 	register_snapshot_cmd();
@@ -10931,12 +10943,12 @@ void __init early_trace_init(void)
 		else
 			static_key_enable(&tracepoint_printk_key.key);
 	}
-	/*  */
+	/* 初始化ftrace什么的 */
 	tracer_alloc_buffers();
 
 	init_events();
 }
-
+/* start_kernel调用,初始化ftrace的event */
 void __init trace_init(void)
 {
 	trace_event_init();

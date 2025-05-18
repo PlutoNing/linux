@@ -46,6 +46,8 @@ int seq_buf_print_seq(struct seq_file *m, struct seq_buf *s)
 }
 
 /**
+格式化打印不定参数
+args是当前遍历到的参数
  * seq_buf_vprintf - sequence printing of information.
  * @s: seq_buf descriptor
  * @fmt: printf format string

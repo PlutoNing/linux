@@ -41,7 +41,7 @@ static __initconst const struct of_device_id of_cmos_match[] = {
 	{}
 };
 
-/* 开机的时候调用
+/* 开机的时候调用, x86_init.timers.wallclock_init()的回调函数
  * Allow devicetree configured systems to disable the RTC by setting the
  * corresponding DT node's status property to disabled. Code is optimized
  * out for CONFIG_OF=n builds.

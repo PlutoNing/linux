@@ -73,7 +73,7 @@ RESERVE_BRK(dmi_alloc, 65536);
 
 unsigned long _brk_start = (unsigned long)__brk_base;
 unsigned long _brk_end   = (unsigned long)__brk_base;
-
+/* 启动参数 */
 struct boot_params boot_params;
 
 /*
@@ -189,7 +189,7 @@ static inline void __init copy_edd(void)
 {
 }
 #endif
-
+/* 扩展内核mm的brk, 后移brk指针 */
 void * __init extend_brk(size_t size, size_t align)
 {
 	size_t mask = align - 1;
@@ -540,7 +540,7 @@ static int __init reserve_crashkernel_low(void)
 #endif
 	return 0;
 }
-
+/* 应该是和kdump有关的 */
 static void __init reserve_crashkernel(void)
 {
 	unsigned long long crash_size, crash_base, total_mem;
@@ -729,7 +729,7 @@ static void __init trim_bios_range(void)
 	 * This typically reserves additional memory (64KiB by default)
 	 * since some BIOSes are known to corrupt low memory.  See the
 	 * Kconfig help text for X86_RESERVE_LOW.
-	 */
+	0, PAGE_SIZE可能之前被当做ram, 现在保留 */
 	e820__range_update(0, PAGE_SIZE, E820_TYPE_RAM, E820_TYPE_RESERVED);
 
 	/*
@@ -762,7 +762,7 @@ static void __init e820_add_kernel_range(void)
 	e820__range_remove(start, size, E820_TYPE_RAM, 0);
 	e820__range_add(start, size, E820_TYPE_RAM);
 }
-
+/* 在初始化memblock之前保留一些内存 */
 static void __init early_reserve_memory(void)
 {
 	/*
@@ -770,7 +770,7 @@ static void __init early_reserve_memory(void)
 	 * __end_of_kernel_reserve symbols. Any kernel sections after the
 	 * __end_of_kernel_reserve symbol must be explicitly reserved with a
 	 * separate memblock_reserve() or they will be discarded. 保留内核的一些代码段
-	 */
+	 差不多是0x1000000开始的0x5000000 */
 	memblock_reserve(__pa_symbol(_text),
 			 (unsigned long)__end_of_kernel_reserve - (unsigned long)_text);
 
@@ -786,7 +786,7 @@ static void __init early_reserve_memory(void)
 	 * systems with L1TF its contents can be leaked to user processes.
 	 */
 	memblock_reserve(0, SZ_64K);/* 为bios保留64KB */
-
+/* 保留initrd的内存 */
 	early_reserve_initrd();
 
 	memblock_x86_reserve_range_setup_data();
@@ -845,7 +845,7 @@ static void __init x86_report_nx(void)
  * global efi_enabled. This allows the same kernel image to be used on existing
  * systems (with a traditional BIOS) as well as on EFI systems.
  */
-/*
+/* start_kernel运行, 初始化内存什么的
  * setup_arch - architecture-specific boot-time initializations
  *
  * Note: On x86_64, fixmaps are ready for use even before this is called.
@@ -889,7 +889,7 @@ void __init setup_arch(char **cmdline_p)
 	idt_setup_early_traps();
 	early_cpu_init();
 	jump_label_init();
-	static_call_init();
+	static_call_init();/* 初始化static call */
 	early_ioremap_init();
 
 	setup_olpc_ofw_pgd();
@@ -926,7 +926,7 @@ void __init setup_arch(char **cmdline_p)
 
 	x86_init.oem.arch_setup();
 
-	/*
+	/*在初始化memblock之前保留一些内存
 	 * Do some memory reservations *before* memory is added to memblock, so
 	 * memblock allocations won't overwrite it.
 	 *
@@ -939,17 +939,17 @@ void __init setup_arch(char **cmdline_p)
 	 * early reservations have happened already.
 	 */
 	early_reserve_memory();/* 保留内核的一些代码段，bios内存什么的 */
-
+	/* 大小0xffffffffff */
 	iomem_resource.end = (1ULL << boot_cpu_data.x86_phys_bits) - 1;
 	e820__memory_setup();/* 处理bios e820表示的物理内存布局 */
-	parse_setup_data();/* 没有运行， 好像是空的 */
+	parse_setup_data();/*  */
 
 	copy_edd();
 
 	if (!boot_params.hdr.root_flags)
-		root_mountflags &= ~MS_RDONLY;
+		root_mountflags &= ~MS_RDONLY;/* 初始化内核的mm */
 	setup_initial_init_mm(_text, _etext, _edata, (void *)_brk_end);
-
+/* 转为物理地址存储 */
 	code_resource.start = __pa_symbol(_text);
 	code_resource.end = __pa_symbol(_etext)-1;
 	rodata_resource.start = __pa_symbol(__start_rodata);
@@ -975,7 +975,7 @@ void __init setup_arch(char **cmdline_p)
 	strscpy(command_line, boot_command_line, COMMAND_LINE_SIZE);
 	*cmdline_p = command_line;
 
-	/*
+	/* 检查cpu是否支持nx特性
 	 * x86_configure_nx() is called before parse_early_param() to detect
 	 * whether hardware doesn't support NX (so that the early EHCI debug
 	 * console setup can safely call set_fixmap()).
@@ -1010,7 +1010,7 @@ void __init setup_arch(char **cmdline_p)
 	if (movable_node_is_enabled())
 		memblock_set_bottom_up(true);
 #endif
-
+/* 打印nx特性的支持情况 */
 	x86_report_nx();
 
 	apic_setup_apic_calls();/* 更新apic的static call */
@@ -1022,14 +1022,14 @@ void __init setup_arch(char **cmdline_p)
 		setup_clear_cpu_cap(X86_FEATURE_APIC);
 	}
 
-	e820__reserve_setup_data();/* 这俩好像都是空的 */
+	e820__reserve_setup_data();/* 不执行 */
 	e820__finish_early_params();
 
 	if (efi_enabled(EFI_BOOT))
 		efi_init();
 
 	reserve_ibft_region();
-	dmi_setup();
+	dmi_setup();/* 读取硬件信息 */
 
 	/*
 	 * VMware detection requires dmi to be available, so this
@@ -1048,7 +1048,7 @@ void __init setup_arch(char **cmdline_p)
 	insert_resource(&iomem_resource, &data_resource);
 	insert_resource(&iomem_resource, &bss_resource);
 
-	e820_add_kernel_range();
+	e820_add_kernel_range();/* e820描述内存 */
 	trim_bios_range();
 #ifdef CONFIG_X86_32
 	if (ppro_with_ram_bug()) {
@@ -1069,7 +1069,7 @@ void __init setup_arch(char **cmdline_p)
 	max_pfn = e820__end_of_ram_pfn();
 
 	/* update e820 for memory not covered by WB MTRRs */
-	cache_bp_init();
+	cache_bp_init(); /* 初始化mtrr, pat之类的缓存控制相关的东西 */
 	if (mtrr_trim_uncached_memory(max_pfn))
 		max_pfn = e820__end_of_ram_pfn();
 
@@ -1090,38 +1090,38 @@ void __init setup_arch(char **cmdline_p)
 	/* How many end-of-memory variables you have, grandma! */
 	/* need this before calling reserve_initrd */
 	if (max_pfn > (1UL<<(32 - PAGE_SHIFT)))
-		max_low_pfn = e820__end_of_low_ram_pfn();
+		max_low_pfn = e820__end_of_low_ram_pfn(); /* max_low_pfn是4GB内最大可用pfn */
 	else
 		max_low_pfn = max_pfn;
 
 	high_memory = (void *)__va(max_pfn * PAGE_SIZE - 1) + 1;
 #endif
 
-	/*
+	/*启动时的smp相关
 	 * Find and reserve possible boot-time SMP configuration:
 	 */
 	find_smp_config();
 
-	early_alloc_pgt_buf();/* 预先分配一块物理内存，专门用于存放 ​​临时页表 */
+	early_alloc_pgt_buf(); /* 预先分配一块物理内存，专门用于存放 ​​临时页表 (后移brk指针若干个页面来分配内存)*/
 
 	/*
 	 * Need to conclude brk, before e820__memblock_setup()
 	 * it could use memblock_find_in_range, could overlap with
 	 * brk area.
-	 */
+		 */
 	reserve_brk();
 
 	cleanup_highmap();
 
 	memblock_set_current_limit(ISA_END_ADDRESS);
-	e820__memblock_setup();
+	e820__memblock_setup();/* e820转为memblock */
 
 	/*
 	 * Needs to run after memblock setup because it needs the physical
 	 * memory size.
 	 */
 	sev_setup_arch();
-
+	/* 没有启用 */
 	efi_fake_memmap();
 	efi_find_mirror();
 	efi_esrt_init();
@@ -1158,7 +1158,7 @@ void __init setup_arch(char **cmdline_p)
 	 *
 	 * Moreover, on machines with SandyBridge graphics or in setups that use
 	 * crashkernel the entire 1M is reserved anyway.
-	 */
+	 分配real_mode_header的内存(在前1MB内), 然后memblock 保留前1MB的内存*/
 	x86_platform.realmode_reserve();
 
 	init_mem_mapping();
@@ -1215,7 +1215,7 @@ void __init setup_arch(char **cmdline_p)
 
 	early_platform_quirks();
 
-	early_acpi_boot_init();
+	early_acpi_boot_init(); /* 这几个最后分析 */
 
 	initmem_init();/* 初始化什么 */
 	dma_contiguous_reserve(max_pfn_mapped << PAGE_SHIFT);
@@ -1228,7 +1228,7 @@ void __init setup_arch(char **cmdline_p)
 	 * won't consume hotpluggable memory.
 	 */
 	reserve_crashkernel();
-
+	/* 计算dma的大小 */
 	memblock_find_dma_reserve();
 
 	if (!early_xdbc_setup_hardware())
@@ -1248,20 +1248,20 @@ void __init setup_arch(char **cmdline_p)
 	sync_initial_page_table();
 
 	tboot_probe();
-
+	/* 设置vsyscall */
 	map_vsyscall();
 
 	x86_32_probe_apic();
-
+	/* 以后 */
 	early_quirks();
 
-	/*
+	/* 以后
 	 * Read APIC and some other early information from ACPI tables.
 	 */
 	acpi_boot_init();
 	x86_dtb_init();
 
-	/*
+	/* 直接返回了
 	 * get boot-time SMP configuration:
 	 */
 	get_smp_config();
@@ -1271,21 +1271,21 @@ void __init setup_arch(char **cmdline_p)
 	 * APIC yet, but prefill_possible_map() might need to access it.
 	 */
 	init_apic_mappings();
-
+	/* 在系统掩码设置cpu状态 */
 	prefill_possible_map();
 
 	init_cpu_to_node();
 	init_gi_nodes();
-
+	/* io apic是什么 */
 	io_apic_init_mappings();
-
+	/* 空函数 */
 	x86_init.hyper.guest_late_init();
-
+	/* 内存布局相关 */
 	e820__reserve_resources();
 	e820__register_nosave_regions(max_pfn);
 
 	x86_init.resources.reserve_resources();
-
+	/* 以后 */
 	e820__setup_pci_gap();
 
 #ifdef CONFIG_VT
@@ -1295,7 +1295,7 @@ void __init setup_arch(char **cmdline_p)
 #endif
 #endif
 	x86_init.oem.banner();
-
+	/* setup arch到time的部分了 */
 	x86_init.timers.wallclock_init();/* 初始化墙钟？ */
 
 	/*
@@ -1307,7 +1307,7 @@ void __init setup_arch(char **cmdline_p)
 	therm_lvt_init();
 
 	mcheck_init();
-
+	/* 好像就是复制了一个jiffies时钟源, 名为refined, 然后注册之 */
 	register_refined_jiffies(CLOCK_TICK_RATE);
 
 #ifdef CONFIG_EFI

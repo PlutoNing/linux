@@ -10,6 +10,7 @@
  */
 
 /**
+作为seq的buf
  * seq_buf - seq buffer structure
  * @buffer:	pointer to the buffer
  * @size:	size of the buffer

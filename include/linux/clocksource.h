@@ -115,7 +115,7 @@ struct clocksource {
 #endif
 	u64			max_cycles;
 	const char		*name;
-	struct list_head	list;
+	struct list_head list; /* 加入全局的clocksource_list */
 	int			rating;
 	enum clocksource_ids	id;
 	enum vdso_clock_mode	vdso_clock_mode;
@@ -241,7 +241,7 @@ __clocksource_register_scale(struct clocksource *cs, u32 scale, u32 freq);
 extern void
 __clocksource_update_freq_scale(struct clocksource *cs, u32 scale, u32 freq);
 
-/*
+/* 注册时钟源
  * Don't call this unless you are a default clocksource
  * (AKA: jiffies) and absolutely have to.
  */

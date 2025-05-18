@@ -53,9 +53,9 @@ early_param("numa", numa_setup);
 s16 __apicid_to_node[MAX_LOCAL_APIC] = {
 	[0 ... MAX_LOCAL_APIC-1] = NUMA_NO_NODE
 };
-
+/* 通过 cpu->apicid->node 获取node */
 int numa_cpu_node(int cpu)
-{
+{	/* 可能是0 */
 	int apicid = early_per_cpu(x86_cpu_to_apicid, cpu);
 
 	if (apicid != BAD_APICID)
@@ -66,12 +66,12 @@ int numa_cpu_node(int cpu)
 cpumask_var_t node_to_cpumask_map[MAX_NUMNODES];
 EXPORT_SYMBOL(node_to_cpumask_map);
 
-/*
+/* 表示cpu与node的对应关系
  * Map cpu index to node index
  */
 DEFINE_EARLY_PER_CPU(int, x86_cpu_to_node_map, NUMA_NO_NODE);
 EXPORT_EARLY_PER_CPU_SYMBOL(x86_cpu_to_node_map);
-
+/*  */
 void numa_set_node(int cpu, int node)
 {
 	int *cpu_to_node_map = early_per_cpu_ptr(x86_cpu_to_node_map);
@@ -121,7 +121,7 @@ void __init setup_node_to_cpumask_map(void)
 	/* cpumask_of_node() will now work */
 	pr_debug("Node to cpumask map for %u nodes\n", nr_node_ids);
 }
-
+/* nid, u64 start, u64 end描述了一个node的内存范围 */
 static int __init numa_add_memblk_to(int nid, u64 start, u64 end,
 				     struct numa_meminfo *mi)
 {
@@ -176,7 +176,7 @@ static void __init numa_move_tail_memblk(struct numa_meminfo *dst, int idx,
 	numa_remove_memblk_from(idx, src);
 }
 
-/**
+/** 把这个node的范围添加到全局的numa_meminfo
  * numa_add_memblk - Add one numa_memblk to numa_meminfo
  * @nid: NUMA node ID of the new memblk
  * @start: Start address of the new memblk
@@ -191,10 +191,10 @@ int __init numa_add_memblk(int nid, u64 start, u64 end)
 {
 	return numa_add_memblk_to(nid, start, end, &numa_meminfo);
 }
-
+/* 算是初始化检测到的node, 基于范围和nid创建node结构体 */
 /* Allocate NODE_DATA for a node on the local memory */
 static void __init alloc_node_data(int nid)
-{
+{ /* 计算node结构体大小 */
 	const size_t nd_size = roundup(sizeof(pg_data_t), PAGE_SIZE);
 	u64 nd_pa;
 	void *nd;
@@ -209,7 +209,7 @@ static void __init alloc_node_data(int nid)
 		pr_err("Cannot find %zu bytes in any node (initial node: %d)\n",
 		       nd_size, nid);
 		return;
-	}
+	} /* nd_pa是从memblock获得的物理地址,转为内核虚拟地址 */
 	nd = __va(nd_pa);
 
 	/* report and initialize */
@@ -225,7 +225,7 @@ static void __init alloc_node_data(int nid)
 	node_set_online(nid);
 }
 
-/**
+/** 清理numa_meminfo
  * numa_cleanup_meminfo - Cleanup a numa_meminfo
  * @mi: numa_meminfo to clean up
  *
@@ -329,7 +329,7 @@ int __init numa_cleanup_meminfo(struct numa_meminfo *mi)
 	return 0;
 }
 
-/*
+/*把一些mi->blk[i].nid加到nodemask掩码
  * Set nodes, which have memory in @mi, in *@nodemask.
  */
 static void __init numa_nodemask_from_meminfo(nodemask_t *nodemask,
@@ -343,9 +343,9 @@ static void __init numa_nodemask_from_meminfo(nodemask_t *nodemask,
 			node_set(mi->blk[i].nid, *nodemask);
 }
 
-/**
+/**重置NUMA distance table
  * numa_reset_distance - Reset NUMA distance table
- *
+ * 不过table体现在?
  * The current table is freed.  The next numa_set_distance() call will
  * create a new one.
  */
@@ -456,7 +456,7 @@ static bool __init numa_meminfo_cover_memory(const struct numa_meminfo *mi)
 	u64 numaram, e820ram;
 	int i;
 
-	numaram = 0;
+	numaram = 0;/* 计算mi里面的总内存(范围减去hole) */
 	for (i = 0; i < mi->nr_blks; i++) {
 		u64 s = mi->blk[i].start >> PAGE_SHIFT;
 		u64 e = mi->blk[i].end >> PAGE_SHIFT;
@@ -465,7 +465,7 @@ static bool __init numa_meminfo_cover_memory(const struct numa_meminfo *mi)
 		if ((s64)numaram < 0)
 			numaram = 0;
 	}
-
+	/* 计算系统pfn总数减去hole的内存大小 */
 	e820ram = max_pfn - absent_pages_in_range(0, max_pfn);
 
 	/* We seem to lose 3 pages somewhere. Allow 1M of slack. */
@@ -478,7 +478,7 @@ static bool __init numa_meminfo_cover_memory(const struct numa_meminfo *mi)
 	return true;
 }
 
-/*
+/* 清除memblock里面有reserved内存的node的热插拔属性
  * Mark all currently memblock-reserved physical memory (which covers the
  * kernel's own memory ranges) as hot-unswappable.
  */
@@ -505,7 +505,7 @@ static void __init numa_clear_kernel_node_hotplug(void)
 	for (i = 0; i < numa_meminfo.nr_blks; i++) {
 		struct numa_memblk *mb = numa_meminfo.blk + i;
 		int ret;
-
+		/* 设置memblock内存范围的nid */
 		ret = memblock_set_node(mb->start, mb->end - mb->start, &memblock.reserved, mb->nid);
 		WARN_ON_ONCE(ret);
 	}
@@ -518,7 +518,7 @@ static void __init numa_clear_kernel_node_hotplug(void)
 	 *   numa_meminfo might not include all memblock.reserved
 	 *   memory ranges, because quirks such as trim_snb_memory()
 	 *   reserve specific pages for Sandy Bridge graphics. ]
-	 */
+	 把有reserved内存的nid添加到reserved_nodemask*/
 	for_each_reserved_mem_region(mb_region) {
 		int nid = memblock_get_region_node(mb_region);
 
@@ -539,11 +539,11 @@ static void __init numa_clear_kernel_node_hotplug(void)
 
 		if (!node_isset(mb->nid, reserved_nodemask))
 			continue;
-
+		/* 清楚memblock里面这些内存的热插拔属性 */
 		memblock_clear_hotplug(mb->start, mb->end - mb->start);
 	}
 }
-
+/* 初始化numa, 创建node结构体什么的 */
 static int __init numa_register_memblks(struct numa_meminfo *mi)
 {
 	int i, nid;
@@ -553,9 +553,9 @@ static int __init numa_register_memblks(struct numa_meminfo *mi)
 	numa_nodemask_from_meminfo(&node_possible_map, mi);
 	if (WARN_ON(nodes_empty(node_possible_map)))
 		return -EINVAL;
-
+	/* mi->blk[i]描述了内存范围和nid的关系 */
 	for (i = 0; i < mi->nr_blks; i++) {
-		struct numa_memblk *mb = &mi->blk[i];
+		struct numa_memblk *mb = &mi->blk[i]; /* 这里把关系带到memblock */
 		memblock_set_node(mb->start, mb->end - mb->start,
 				  &memblock.memory, mb->nid);
 	}
@@ -566,7 +566,7 @@ static int __init numa_register_memblks(struct numa_meminfo *mi)
 	 * node the kernel resides in should be un-hotpluggable.
 	 *
 	 * And when we come here, alloc node data won't fail.
-	 */
+	 清除memblock里面有reserved内存的node的热插拔属性*/
 	numa_clear_kernel_node_hotplug();
 
 	/*
@@ -585,12 +585,12 @@ static int __init numa_register_memblks(struct numa_meminfo *mi)
 	}
 	if (!numa_meminfo_cover_memory(mi))
 		return -EINVAL;
-
-	/* Finally register nodes. */
+	/* 开始初始化检测到的node */
+	/* Finally register nodes. 处理node_possible_map的每一个node*/
 	for_each_node_mask(nid, node_possible_map) {
 		u64 start = PFN_PHYS(max_pfn);
 		u64 end = 0;
-
+		/* 找到mi里面这个node范围的最大值最小值 */
 		for (i = 0; i < mi->nr_blks; i++) {
 			if (nid != mi->blk[i].nid)
 				continue;
@@ -607,16 +607,16 @@ static int __init numa_register_memblks(struct numa_meminfo *mi)
 		 */
 		if (end && (end - start) < NODE_MIN_SIZE)
 			continue;
-
+		/* 现在知道了mi里面的这个node的范围,大小信息了 */
 		alloc_node_data(nid);
 	}
 
-	/* Dump memblock with node info and return. */
+	/* Dump memblock with node info and return. 打印node信息 */
 	memblock_dump_all();
 	return 0;
 }
 
-/*
+/* rr方式建立node与cpu的轮回对应关系
  * There are unfortunately some poorly designed mainboards around that
  * only connect memory to a single CPU. This breaks the 1:1 cpu->node
  * mapping. To avoid this fill in the mapping for all possible CPUs,
@@ -655,11 +655,11 @@ static int __init numa_init(int (*init_func)(void))
 	/* In case that parsing SRAT failed. */
 	WARN_ON(memblock_clear_hotplug(0, ULLONG_MAX));
 	numa_reset_distance();
-
+		/* 调用参数指定的回调, acpi numa函数, 或者amd numa函数什么的 */
 	ret = init_func();
 	if (ret < 0)
 		return ret;
-
+	/* 如果x86_acpi_numa_init  amd_numa_init 不成功, dummy numa init会到这里 */
 	/*
 	 * We reset memblock back to the top-down direction
 	 * here because if we configured ACPI_NUMA, we have
@@ -675,7 +675,7 @@ static int __init numa_init(int (*init_func)(void))
 		return ret;
 
 	numa_emulation(&numa_meminfo, numa_distance_cnt);
-
+	/* 初始化numa, 创建node结构体什么的 */
 	ret = numa_register_memblks(&numa_meminfo);
 	if (ret < 0)
 		return ret;
@@ -687,15 +687,15 @@ static int __init numa_init(int (*init_func)(void))
 			continue;
 		if (!node_online(nid))
 			numa_clear_node(i);
-	}
+	} /* 手动建立numa与cpu的关系 */
 	numa_init_array();
 
 	return 0;
 }
 
-/**
+/** 初始化numa
  * dummy_numa_init - Fallback dummy NUMA init
- *
+ * 如果amd_numa_init x86_acpi_numa_init都没有成功,就调用这个
  * Used if there's no underlying NUMA architecture, NUMA initialization
  * fails, or NUMA is disabled on the command line.
  *
@@ -734,12 +734,12 @@ void __init x86_numa_init(void)
 			return;
 #endif
 	}
-
+/* fallback函数 */
 	numa_init(dummy_numa_init);
 }
 
 
-/*
+/* gi是什么
  * A node may exist which has one or more Generic Initiators but no CPUs and no
  * memory.
  *
@@ -794,7 +794,7 @@ void __init init_cpu_to_node(void)
 		int node = numa_cpu_node(cpu);
 
 		if (node == NUMA_NO_NODE)
-			continue;
+			continue; /* 好像八个cpu都是no_node */
 
 		/*
 		 * Exclude this node from
@@ -840,7 +840,7 @@ int __cpu_to_node(int cpu)
 }
 EXPORT_SYMBOL(__cpu_to_node);
 
-/*
+/* 早期的cpu转node函数
  * Same function as cpu_to_node() but used if called before the
  * per_cpu areas are setup.
  */

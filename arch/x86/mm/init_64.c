@@ -321,7 +321,7 @@ void set_pte_vaddr_pud(pud_t *pud_page, unsigned long vaddr, pte_t new_pte)
 
 	__set_pte_vaddr(pud, vaddr, new_pte);
 }
-
+/* 设置fixmap区域映射的页表. 进行映射 */
 void set_pte_vaddr(unsigned long vaddr, pte_t pteval)
 {
 	pgd_t *pgd;
@@ -410,7 +410,7 @@ void __init init_extra_mapping_uc(unsigned long phys, unsigned long size)
 	__init_extra_mapping(phys, size, _PAGE_CACHE_MODE_UC);
 }
 
-/*
+/* 好像是初始化[vaddr,_text ] 与[brk, 512MB]的pmd
  * The head.S code sets up the kernel high mapping:
  *
  *   from __START_KERNEL_map to __START_KERNEL_map + size (== _end-_text)
@@ -424,11 +424,11 @@ void __init init_extra_mapping_uc(unsigned long phys, unsigned long size)
  * well, as they are located before _text:
  */
 void __init cleanup_highmap(void)
-{
+{ /* vaddr,vaddr_end描述512MB的范围 */
 	unsigned long vaddr = __START_KERNEL_map;
 	unsigned long vaddr_end = __START_KERNEL_map + KERNEL_IMAGE_SIZE;
-	unsigned long end = roundup((unsigned long)_brk_end, PMD_SIZE) - 1;
-	pmd_t *pmd = level2_kernel_pgt;
+	unsigned long end = roundup((unsigned long)_brk_end, PMD_SIZE) - 1; /* end地址大约在__START_KERNEL_map起始偏移96MB处 */
+	pmd_t *pmd = level2_kernel_pgt; /* 大约位于__START_KERNEL_map起始偏移68MB处 */
 
 	/*
 	 * Native path, max_pfn_mapped is not set yet.
@@ -440,7 +440,7 @@ void __init cleanup_highmap(void)
 
 	for (; vaddr + PMD_SIZE - 1 < vaddr_end; pmd++, vaddr += PMD_SIZE) {
 		if (pmd_none(*pmd))
-			continue;
+			continue; /* _text位于__START_KERNEL_map起始16MB处, end是97MB处 */
 		if (vaddr < (unsigned long) _text || vaddr > end)
 			set_pmd(pmd, __pmd(0));
 	}
@@ -730,19 +730,19 @@ __kernel_physical_mapping_init(unsigned long paddr_start,
 {
 	bool pgd_changed = false;
 	unsigned long vaddr, vaddr_start, vaddr_end, vaddr_next, paddr_last;
-
+	/* 先把物理地址转为内核虚拟地址 */
 	paddr_last = paddr_end;
 	vaddr = (unsigned long)__va(paddr_start);
 	vaddr_end = (unsigned long)__va(paddr_end);
 	vaddr_start = vaddr;
 
 	for (; vaddr < vaddr_end; vaddr = vaddr_next) {
-		pgd_t *pgd = pgd_offset_k(vaddr);/* rdx是pgd页面 */
+		pgd_t *pgd = pgd_offset_k(vaddr); /* pgd是init_top_pgt的一个条目 */
 		p4d_t *p4d;
 
 		vaddr_next = (vaddr & PGDIR_MASK) + PGDIR_SIZE;
 
-		if (pgd_val(*pgd)) {
+		if (pgd_val(*pgd)) { /* 如果pgd不为空, 指向页面, 就分配条目 */
 			p4d = (p4d_t *)pgd_page_vaddr(*pgd);
 			paddr_last = phys_p4d_init(p4d, __pa(vaddr),
 						   __pa(vaddr_end),
@@ -750,8 +750,8 @@ __kernel_physical_mapping_init(unsigned long paddr_start,
 						   prot, init);
 			continue;
 		}
-
-		p4d = alloc_low_page();
+		/* pgd条目是空的,需要为他填充个p4d页面 */
+		p4d = alloc_low_page();/* 从预分配的页面里面获取 */
 		paddr_last = phys_p4d_init(p4d, __pa(vaddr), __pa(vaddr_end),
 					   page_size_mask, prot, init);
 
@@ -811,7 +811,7 @@ void __init initmem_init(void)
 }
 #endif
 
-// 启动的时候setup_arch调用
+// x86_init.paging.pagetable_init回调函数, 启动的时候setup_arch调用
 void __init paging_init(void)
 {
 	sparse_init(); // 初始化sparse vmemmap内存模型
@@ -1506,7 +1506,7 @@ unsigned long memory_block_size_bytes(void)
 static long __meminitdata addr_start, addr_end;
 static void __meminitdata *p_start, *p_end;
 static int __meminitdata node_start;
-
+/*  */
 void __meminit vmemmap_set_pmd(pmd_t *pmd, void *p, int node,
 			       unsigned long addr, unsigned long next)
 {
@@ -1549,7 +1549,7 @@ int __meminit vmemmap_check_pmd(pmd_t *pmd, int node,
 
 /*
 处理nid的一个memsection
-start和end是nid上面某一个memsection的第一个和最后一个页面对应的page结构体地址
+start,end之间是这个memsection的全部page的page结构体?
 */
 int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 		struct vmem_altmap *altmap)
@@ -1646,7 +1646,7 @@ void register_page_bootmem_memmap(unsigned long section_nr,
 	}
 }
 #endif
-
+/* 建立memsection和page后打印 */
 void __meminit vmemmap_populate_print_last(void)
 {
 	if (p_start) {

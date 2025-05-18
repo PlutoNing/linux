@@ -24,7 +24,7 @@ extern unsigned long max_pfn;
  */
 extern unsigned long long max_possible_pfn;
 
-/**
+/** 表示memblock里面的一个region的属性
  * enum memblock_flags - definition of memory region attributes
  * @MEMBLOCK_NONE: no special request
  * @MEMBLOCK_HOTPLUG: memory region indicated in the firmware-provided memory
@@ -438,7 +438,7 @@ void *memblock_alloc_try_nid(phys_addr_t size, phys_addr_t align,
 			     int nid);
 
 
-				 // memblock机制的内存分配函数
+// memblock机制的内存分配函数
 static __always_inline void *memblock_alloc(phys_addr_t size, phys_addr_t align)
 {
 	return memblock_alloc_try_nid(size, align, MEMBLOCK_LOW_LIMIT,

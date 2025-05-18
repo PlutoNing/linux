@@ -185,7 +185,7 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct tlb_state_shared, cpu_tlbstate_shared);
 bool nmi_uaccess_okay(void);
 #define nmi_uaccess_okay nmi_uaccess_okay
 
-/* Initialize cr4 shadow for this CPU. */
+/* Initialize cr4 shadow for this CPU. 初始化cr4寄存器 */
 static inline void cr4_init_shadow(void)
 {
 	this_cpu_write(cpu_tlbstate.cr4, __read_cr4());
@@ -429,7 +429,7 @@ static inline void set_tlbstate_lam_mode(struct mm_struct *mm)
 }
 #endif
 #endif /* !MODULE */
-
+/*  */
 static inline void __native_tlb_flush_global(unsigned long cr4)
 {
 	native_write_cr4(cr4 ^ X86_CR4_PGE);

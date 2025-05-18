@@ -95,7 +95,7 @@ enum hrtimer_restart {
 // 代表hrtimer已经被加入到queue中
 #define HRTIMER_STATE_ENQUEUED	0x01
 
-/**
+/** 高精度定时器
  * struct hrtimer - the basic hrtimer structure
  * @node:	timerqueue node, which also manages node.expires,
  *		the absolute expiry time in the hrtimers internal
@@ -184,7 +184,7 @@ enum  hrtimer_base_type {
 	HRTIMER_MAX_CLOCK_BASES,
 };
 
-/**
+/**表示hrtimer的pcp cpu base
  * struct hrtimer_cpu_base - the per cpu clock bases
  * @lock:		lock protecting the base and associated clock bases
  *			and timers
@@ -244,7 +244,7 @@ struct hrtimer_cpu_base {
 	*/
 	struct hrtimer_clock_base	clock_base[HRTIMER_MAX_CLOCK_BASES];
 } ____cacheline_aligned;
-
+/* 设置timer的过期时间 */
 static inline void hrtimer_set_expires(struct hrtimer *timer, ktime_t time)
 {
 	timer->node.expires = time;

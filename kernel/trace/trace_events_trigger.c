@@ -389,7 +389,7 @@ const struct file_operations event_trigger_fops = {
 	.release = event_trigger_release,
 };
 
-/*
+/* 好像就是添加到全局的trigger_commands
  * Currently we only register event commands from __init, so mark this
  * __init too.
  */
@@ -1452,7 +1452,7 @@ onoff_get_trigger_ops(char *cmd, char *param)
 
 	return ops;
 }
-
+/*  */
 static struct event_command trigger_traceon_cmd = {
 	.name			= "traceon",
 	.trigger_type		= ETT_TRACE_ONOFF,
@@ -1549,7 +1549,7 @@ static struct event_command trigger_snapshot_cmd = {
 	.get_trigger_ops	= snapshot_get_trigger_ops,
 	.set_filter		= set_trigger_filter,
 };
-
+/* 添加到全局的trigger_commands链表 */
 static __init int register_trigger_snapshot_cmd(void)
 {
 	int ret;
@@ -2010,7 +2010,7 @@ static __init int register_trigger_enable_disable_cmds(void)
 static __init int register_trigger_traceon_traceoff_cmds(void)
 {
 	int ret;
-
+	/* 添加到全局的trigger_commands链表 */
 	ret = register_event_command(&trigger_traceon_cmd);
 	if (WARN_ON(ret < 0))
 		return ret;
@@ -2020,7 +2020,7 @@ static __init int register_trigger_traceon_traceoff_cmds(void)
 
 	return ret;
 }
-
+/* 注册这些cmd, 添加到全局链表 */
 __init int register_trigger_cmds(void)
 {
 	register_trigger_traceon_traceoff_cmds();

@@ -955,7 +955,7 @@ struct nosave_region {
 	unsigned long start_pfn;
 	unsigned long end_pfn;
 };
-
+/* 这里的都是e820 table里的entry->type != E820_TYPE_RAM && entry->type != E820_TYPE_RESERVED_KERN的内存范围 */
 static LIST_HEAD(nosave_regions);
 
 static void recycle_zone_bm_rtree(struct mem_zone_bm_rtree *zone)
@@ -986,7 +986,7 @@ static void memory_bm_recycle(struct memory_bitmap *bm)
 	}
 }
 
-/**
+/** 把entry->type != E820_TYPE_RAM && entry->type != E820_TYPE_RESERVED_KERN的进行什么nosave注册
  * register_nosave_region - Register a region of unsaveable memory.
  *
  * Register a range of page frames the contents of which should not be saved

@@ -9,7 +9,7 @@
 	.section ".init.data","aw"
 
 	.balign PAGE_SIZE
-
+// 6个页面
 SYM_DATA_START(real_mode_blob)
 	.incbin	"arch/x86/realmode/rm/realmode.bin"
 SYM_DATA_END_LABEL(real_mode_blob, SYM_L_GLOBAL, real_mode_blob_end)

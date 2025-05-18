@@ -24,7 +24,7 @@
  */
 struct syscall_metadata {
 	const char	*name;
-	int		syscall_nr;
+	int		syscall_nr;/* 对应的系统调用号 */
 	int		nb_args;
 	const char	**types;
 	const char	**args;

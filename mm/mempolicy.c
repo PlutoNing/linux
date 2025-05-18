@@ -128,7 +128,7 @@ static struct mempolicy default_policy = {
 	.mode = MPOL_LOCAL,
 };
 
-//node倾向的内存策略
+//node倾向的内存策略, 每个node的preferred_node_policy
 static struct mempolicy preferred_node_policy[MAX_NUMNODES];
 
 /**
@@ -2971,7 +2971,7 @@ void __init numa_policy_init(void)
 	sn_cache = kmem_cache_create("shared_policy_node",
 				     sizeof(struct sp_node),
 				     0, SLAB_PANIC, NULL);
-
+	/* 设置每个node的preferred_node_policy */
 	for_each_node(nid) {
 		preferred_node_policy[nid] = (struct mempolicy) {
 			.refcnt = ATOMIC_INIT(1),

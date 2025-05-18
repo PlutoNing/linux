@@ -332,7 +332,7 @@ struct cfs_rq;
 struct rt_rq;
 
 extern struct list_head task_groups;
-
+/* CPU 时间带宽​：通过 quota 和 period 定义进程组在单位时间内可使用的 CPU 时间上限。 通过 cgroup 层级结构继承配额限制（如：子 cgroup 的配额总和不超过父 cgroup）。  */
 struct cfs_bandwidth {
 #ifdef CONFIG_CFS_BANDWIDTH
 	raw_spinlock_t		lock;

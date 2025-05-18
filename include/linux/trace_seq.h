@@ -13,6 +13,7 @@
 
 struct trace_seq {
 	char			buffer[PAGE_SIZE];
+	/* 存储要打印的东西 */
 	struct seq_buf		seq;
 	int			full;
 };

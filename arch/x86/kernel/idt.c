@@ -222,7 +222,7 @@ static __init void set_intr_gate(unsigned int n, const void *addr)
 	idt_setup_from_table(idt_table, &data, 1, false);
 }
 
-/**
+/** 设置一些中断什么的
  * idt_setup_early_traps - Initialize the idt table with early traps
  *
  * On X8664 these traps do not use interrupt stacks as they can't work
@@ -326,7 +326,7 @@ void __init idt_setup_apic_and_irq_gates(void)
 	idt_setup_done = true;
 }
 
-/**
+/** 初始化一些idt的handler
  * idt_setup_early_handler - Initializes the idt table with early handlers
  */
 void __init idt_setup_early_handler(void)

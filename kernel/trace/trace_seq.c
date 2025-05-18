@@ -69,6 +69,8 @@ int trace_print_seq(struct seq_file *m, struct trace_seq *s)
 }
 
 /**
+打印trace的内容
+打印到trace_seq的buf里面
  * trace_seq_printf - sequence printing of trace information
  * @s: trace sequence descriptor
  * @fmt: printf format string
@@ -89,7 +91,9 @@ void trace_seq_printf(struct trace_seq *s, const char *fmt, ...)
 
 	__trace_seq_init(s);
 
+	/* 遍历不定参数 */
 	va_start(ap, fmt);
+	/* 把参数格式化打印到s->seq里面 */
 	seq_buf_vprintf(&s->seq, fmt, ap);
 	va_end(ap);
 

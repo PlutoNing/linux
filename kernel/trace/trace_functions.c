@@ -46,9 +46,9 @@ enum {
 	/* Update this to next highest bit. */
 	TRACE_FUNC_OPT_HIGHEST_BIT	= 0x4
 };
-
+/* 两个1 */
 #define TRACE_FUNC_OPT_MASK	(TRACE_FUNC_OPT_HIGHEST_BIT - 1)
-
+/* 给tr分配一个使用func tracer ops的fops */
 int ftrace_allocate_ftrace_ops(struct trace_array *tr)
 {
 	struct ftrace_ops *ops;
@@ -56,12 +56,12 @@ int ftrace_allocate_ftrace_ops(struct trace_array *tr)
 	/* The top level array uses the "global_ops" */
 	if (tr->flags & TRACE_ARRAY_FL_GLOBAL)
 		return 0;
-
+	/* 分配fops */
 	ops = kzalloc(sizeof(*ops), GFP_KERNEL);
 	if (!ops)
 		return -ENOMEM;
 
-	/* Currently only the non stack version is supported */
+	/* Currently only the non stack version is supported , 使用func tracer的ops函数*/
 	ops->func = function_trace_call;
 	ops->flags = FTRACE_OPS_FL_PID;
 
@@ -106,7 +106,7 @@ static ftrace_func_t select_trace_function(u32 flags_val)
 {
 	switch (flags_val & TRACE_FUNC_OPT_MASK) {
 	case TRACE_FUNC_NO_OPTS:
-		return function_trace_call;
+		return function_trace_call; /* echo function > current_tracer 是这个情况 */
 	case TRACE_FUNC_OPT_STACK:
 		return function_stack_trace_call;
 	case TRACE_FUNC_OPT_NO_REPEATS:
@@ -129,7 +129,7 @@ static bool handle_func_repeats(struct trace_array *tr, u32 flags_val)
 
 	return true;
 }
-
+/* 使用function tracer之前,调用此函数来初始化 */
 static int function_trace_init(struct trace_array *tr)
 {
 	ftrace_func_t func;
@@ -138,7 +138,7 @@ static int function_trace_init(struct trace_array *tr)
 	 * at instance creation. Unless it failed
 	 * the allocation.
 	 */
-	if (!tr->ops)
+	if (!tr->ops) /* 是<global_ops> */
 		return -ENOMEM;
 
 	func = select_trace_function(func_flags.val);
@@ -147,13 +147,13 @@ static int function_trace_init(struct trace_array *tr)
 
 	if (!handle_func_repeats(tr, func_flags.val))
 		return -ENOMEM;
-
+	/* function tracer可能是function_trace_call, 初始化tracer的ftrace ops的func函数 */
 	ftrace_init_array_ops(tr, func);
 
 	tr->array_buffer.cpu = raw_smp_processor_id();
 
 	tracing_start_cmdline_record();
-	tracing_start_function_trace(tr);
+	tracing_start_function_trace(tr); /* 注册什么 */
 	return 0;
 }
 
@@ -168,7 +168,7 @@ static void function_trace_start(struct trace_array *tr)
 {
 	tracing_reset_online_cpus(&tr->array_buffer);
 }
-
+/* func tracer的执行函数 */
 static void
 function_trace_call(unsigned long ip, unsigned long parent_ip,
 		    struct ftrace_ops *op, struct ftrace_regs *fregs)
@@ -191,7 +191,7 @@ function_trace_call(unsigned long ip, unsigned long parent_ip,
 	cpu = smp_processor_id();
 	data = per_cpu_ptr(tr->array_buffer.data, cpu);
 	if (!atomic_read(&data->disabled))
-		trace_function(tr, ip, parent_ip, trace_ctx);
+		trace_function(tr, ip, parent_ip, trace_ctx); /* 记录事件 */
 
 	ftrace_test_recursion_unlock(bit);
 }
@@ -377,7 +377,7 @@ static struct tracer_flags func_flags = {
 	.val = TRACE_FUNC_NO_OPTS, /* By default: all flags disabled */
 	.opts = func_opts
 };
-
+/* 开启function tracer */
 static void tracing_start_function_trace(struct trace_array *tr)
 {
 	tr->function_enabled = 0;

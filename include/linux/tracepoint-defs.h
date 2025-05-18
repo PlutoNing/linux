@@ -22,13 +22,13 @@ struct trace_print_flags_u64 {
 	unsigned long long	mask;
 	const char		*name;
 };
-
+/* 表示tp->funcs的一个函数? */
 struct tracepoint_func {
 	void *func;
 	void *data;
 	int prio;
 };
-
+/* 表示内核的tp结构体 */
 struct tracepoint {
 	const char *name;		/* Tracepoint name */
 	struct static_key key;

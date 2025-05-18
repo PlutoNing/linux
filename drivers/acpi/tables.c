@@ -476,9 +476,9 @@ int __init acpi_table_parse_madt(enum acpi_madt_type id,
 
 /**对表上的id调用回调
  * acpi_table_parse - find table with @id, run @handler on it
- * @id: table id to find
+ * @id: table id to find,比如可能是acpi的SRAT什么的
  * @handler: handler to run
- *
+ * 
  * Scan the ACPI System Descriptor Table (STD) for a table matching @id,
  * run @handler on it.
  *

@@ -159,7 +159,7 @@ static const struct x86_cpu_id tsc_msr_cpu_ids[] = {
 
 /*
  * MSR-based CPU/TSC frequency discovery for certain CPUs.
- *
+ * 通过读取 CPU 的 MSR 寄存器，计算并返回 CPU 的基础频率
  * Set global "lapic_timer_period" to bus_clock_cycles/jiffy
  * Return processor base frequency in KHz, or 0 on failure.
  */
@@ -173,7 +173,7 @@ unsigned long cpu_khz_from_msr(void)
 	int index;
 
 	id = x86_match_cpu(tsc_msr_cpu_ids);
-	if (!id)
+	if (!id)/* qemu从这返回了 */
 		return 0;
 
 	freq_desc = (struct freq_desc *)id->driver_data;

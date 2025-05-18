@@ -9920,7 +9920,7 @@ int in_sched_functions(unsigned long addr)
 }
 
 #ifdef CONFIG_CGROUP_SCHED
-/*
+/*Linux 内核中定义 ​根任务组（Root Task Group）​​ 的核心结构体，它是系统中所有进程的默认父组，用于实现 ​层级化调度​ 和 ​资源控制​（如 CPU、内存等）。
  * Default task group.
  * Every task in system belongs to this group at bootup.
  */
@@ -9930,7 +9930,7 @@ LIST_HEAD(task_groups);
 /* Cacheline aligned slab cache for task_group */
 static struct kmem_cache *task_group_cache __read_mostly;
 #endif
-/* 调度机制的初始化 */
+/* 调度机制的初始化 2025年5月13日16:20:43*/
 void __init sched_init(void)
 {
 	unsigned long ptr = 0;
@@ -9943,7 +9943,7 @@ void __init sched_init(void)
 #ifdef CONFIG_SMP
 	BUG_ON(&dl_sched_class != &stop_sched_class + 1);
 #endif
-
+/*  */
 	wait_bit_init();
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -9963,7 +9963,7 @@ void __init sched_init(void)
 		ptr += nr_cpu_ids * sizeof(void **);
 
 		root_task_group.shares = ROOT_TASK_GROUP_LOAD;
-		init_cfs_bandwidth(&root_task_group.cfs_bandwidth, NULL);
+		init_cfs_bandwidth(&root_task_group.cfs_bandwidth, NULL);/* 初始化带宽控制机制 */
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 #ifdef CONFIG_RT_GROUP_SCHED
 		root_task_group.rt_se = (struct sched_rt_entity **)ptr;
@@ -9978,7 +9978,7 @@ void __init sched_init(void)
 	init_rt_bandwidth(&def_rt_bandwidth, global_rt_period(), global_rt_runtime());
 
 #ifdef CONFIG_SMP
-	init_defrootdomain();
+	init_defrootdomain(); /* 初始化rt的根域 */
 #endif
 
 #ifdef CONFIG_RT_GROUP_SCHED
