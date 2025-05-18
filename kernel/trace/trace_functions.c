@@ -425,7 +425,7 @@ func_set_flag(struct trace_array *tr, u32 old_flags, u32 bit, int set)
 
 	return 0;
 }
-
+/* 预定义的function tracer */
 static struct tracer function_trace __tracer_data =
 {
 	.name		= "function",
@@ -903,7 +903,7 @@ static struct ftrace_func_command ftrace_traceon_cmd = {
 	.name			= "traceon",
 	.func			= ftrace_trace_onoff_callback,
 };
-
+/*  */
 static struct ftrace_func_command ftrace_traceoff_cmd = {
 	.name			= "traceoff",
 	.func			= ftrace_trace_onoff_callback,
@@ -927,7 +927,7 @@ static struct ftrace_func_command ftrace_cpudump_cmd = {
 static int __init init_func_cmd_traceon(void)
 {
 	int ret;
-
+	/* 好像所谓注册就是把预定义的带一个func的cmd加入全局cmd链表 */
 	ret = register_ftrace_command(&ftrace_traceoff_cmd);
 	if (ret)
 		return ret;

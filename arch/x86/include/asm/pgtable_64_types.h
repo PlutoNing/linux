@@ -144,8 +144,8 @@ PUD_SIZE = 2^30 = 1073741824 字节（即 1 GB） */
 
 #define __VMEMMAP_BASE_L4	0xffffea0000000000UL
 #define __VMEMMAP_BASE_L5	0xffd4000000000000UL
-
 #ifdef CONFIG_DYNAMIC_MEMORY_LAYOUT
+/* 开始地址为0xffffc90000000000 */
 # define VMALLOC_START		vmalloc_base
 # define VMALLOC_SIZE_TB	(pgtable_l5_enabled() ? VMALLOC_SIZE_TB_L5 : VMALLOC_SIZE_TB_L4)
 # define VMEMMAP_START		vmemmap_base

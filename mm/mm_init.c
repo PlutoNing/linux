@@ -2862,7 +2862,7 @@ void __init mm_core_init(void)
 	report_meminit();
 	kmsan_init_shadow();
 	stack_depot_early_init();
-	//这里又是初始化什么
+	//创建buddy
 	mem_init();
 	mem_init_print_info();
 	kmem_cache_init();/* 初始化slab */

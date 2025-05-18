@@ -1088,7 +1088,7 @@ static inline int pud_present(pud_t pud)
 {
 	return pud_flags(pud) & _PAGE_PRESENT;
 }
-
+/* 获得的是pmd页面的内核空间虚拟地址, 由pud指向, 上面全是pmd */
 static inline pmd_t *pud_pgtable(pud_t pud)
 {
 	return (pmd_t *)__va(pud_val(pud) & pud_pfn_mask(pud));

@@ -1048,7 +1048,7 @@ void start_kernel(void)
 	if (late_time_init)
 		late_time_init();
 	sched_clock_init();
-	calibrate_delay();
+	calibrate_delay();/* 以后 */
 
 	arch_cpu_finalize_init();
 

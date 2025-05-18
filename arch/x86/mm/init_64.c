@@ -1269,19 +1269,19 @@ void __ref arch_remove_memory(u64 start, u64 size, struct vmem_altmap *altmap)
 
 static struct kcore_list kcore_vsyscall;
 
-//在把bootmem放入buudy之后调用
+//在把bootmem放入buudy之后调用 处理页表页面, memsection map页面page结构体的ref
 static void __init register_page_bootmem_info(void)
 {
 #if defined(CONFIG_NUMA) || defined(CONFIG_HUGETLB_PAGE_OPTIMIZE_VMEMMAP)
 	int i;
-
+	/* 处理每一个node */
 	for_each_online_node(i)
 		register_page_bootmem_info_node(NODE_DATA(i));
 #endif
 }
 
 /*
-预分配页表页
+预分配vmalloc页表页, 预分配vmalloc地址空间的地址的pgd,p4d,pud
  * Pre-allocates page-table pages for the vmalloc area in the kernel page-table.
  * Only the level which needs to be synchronized between all page-tables is
  * allocated because the synchronization can be expensive.
@@ -1292,7 +1292,7 @@ static void __init preallocate_vmalloc_pages(void)
 {
 	unsigned long addr;
 	const char *lvl;
-
+	/* 开始地址为0xffffc90000000000 */
 	for (addr = VMALLOC_START; addr <= VMEMORY_END; addr = ALIGN(addr + 1, PGDIR_SIZE)) {//一个pgd
 		// 一个pgd的处理
 		pgd_t *pgd = pgd_offset_k(addr);
@@ -1576,10 +1576,10 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 
 #ifdef CONFIG_HAVE_BOOTMEM_INFO_NODE
 /*
-page是section_nr的第一个pfn?对应的的memmap, 在memsection结构体的section memmap提取出来的
-nr_pages是ms的page数量
-加入页表映射?还是说在干嘛?
-*/
+处理section nr的nr_pages个页面, start_page是ms的什么map
+nr_pages是ms的page数量, start_page是此ms的物理页对应的第一个page结构体
+处理此ms的每一个page的顶层pmd.pud,p4d,pgd页表页面的ref和type什么的
+ref不会重复add add很多次吗?*/
 void register_page_bootmem_memmap(unsigned long section_nr,
 				  struct page *start_page, unsigned long nr_pages)
 {
@@ -1592,33 +1592,33 @@ void register_page_bootmem_memmap(unsigned long section_nr,
 	pmd_t *pmd;
 	unsigned int nr_pmd_pages;
 	struct page *page;
-
+	/* 处理此ms的每一个page的顶层pmd.pud,p4d,pgd页表页面的ref和type什么的 */
 	for (; addr < end; addr = next) {
 		pte_t *pte = NULL;
-
+		/* pgd = pgd_offset_pgd((&init_mm)->pgd, ((addr))); */
 		pgd = pgd_offset_k(addr);
 		if (pgd_none(*pgd)) {
-			next = (addr + PAGE_SIZE) & PAGE_MASK; // 步进到4KB之后
+			next = (addr + PAGE_SIZE) & PAGE_MASK; // 步进处理下一个页面
 			continue;
 		}
 		get_page_bootmem(section_nr, pgd_page(*pgd), MIX_SECTION_INFO);
 
 		p4d = p4d_offset(pgd, addr);
 		if (p4d_none(*p4d)) {
-			next = (addr + PAGE_SIZE) & PAGE_MASK;
+			next = (addr + PAGE_SIZE) & PAGE_MASK;// 步进处理下一个页面
 			continue;
 		}
 		get_page_bootmem(section_nr, p4d_page(*p4d), MIX_SECTION_INFO);
 
 		pud = pud_offset(p4d, addr);
 		if (pud_none(*pud)) {
-			next = (addr + PAGE_SIZE) & PAGE_MASK;
+			next = (addr + PAGE_SIZE) & PAGE_MASK; // 步进处理下一个页面
 			continue;
 		}
 		get_page_bootmem(section_nr, pud_page(*pud), MIX_SECTION_INFO);
 
 		if (!boot_cpu_has(X86_FEATURE_PSE)) {
-			next = (addr + PAGE_SIZE) & PAGE_MASK;
+			next = (addr + PAGE_SIZE) & PAGE_MASK; // 步进处理下一个页面
 			pmd = pmd_offset(pud, addr);
 			if (pmd_none(*pmd))
 				continue;
@@ -1630,16 +1630,16 @@ void register_page_bootmem_memmap(unsigned long section_nr,
 				continue;
 			get_page_bootmem(section_nr, pte_page(*pte),
 					 SECTION_INFO);
-		} else {
-			next = pmd_addr_end(addr, end);
-
+		} else {/* 一般都有PSE */
+			next = pmd_addr_end(addr, end); /* 这里next是同pmd的最后一个页面, 如果都很规则的话, 就是2MB之后 */
+			/* 这里next的步进方式不太一样是因为马上会while循环够nr_pmd_pages次数? */
 			pmd = pmd_offset(pud, addr);
 			if (pmd_none(*pmd))
 				continue;
-
+			/* pmd */
 			nr_pmd_pages = 1 << get_order(PMD_SIZE);
 			page = pmd_page(*pmd);
-			while (nr_pmd_pages--)
+			while (nr_pmd_pages--)/* 这里其实知道,即使现在这个page结构体不对应具体的pte页表页, 但是早晚会, 或者是说只要用到这个页表页就会用到这个page结构体? */
 				get_page_bootmem(section_nr, page++,
 						 SECTION_INFO);
 		}

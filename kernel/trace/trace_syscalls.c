@@ -78,7 +78,7 @@ trace_get_syscall_nr(struct task_struct *task, struct pt_regs *regs)
 	return syscall_get_nr(task, regs);
 }
 #endif /* ARCH_TRACE_IGNORE_COMPAT_SYSCALLS */
-/* 获取系统调用的meta, 参数是在table的地址 */
+/* 获取系统调用的meta, 参数syscall是在table的地址 -> kallsym lookup查到name -> 在__start_syscalls_metadata比对到meta */
 static __init struct syscall_metadata *
 find_syscall_meta(unsigned long syscall)
 {
@@ -233,7 +233,7 @@ __set_enter_print_fmt(struct syscall_metadata *entry, char *buf, int len)
 	/* return the length of print_fmt */
 	return pos;
 }
-
+/* 如果call的syscall meta的enter event刚好也需要call , 就分配和初始化call的打印格式化字符串fmt*/
 static int __init set_syscall_print_fmt(struct trace_event_call *call)
 {
 	char *print_fmt;
@@ -244,17 +244,17 @@ static int __init set_syscall_print_fmt(struct trace_event_call *call)
 		call->print_fmt = "\"0x%lx\", REC->ret";
 		return 0;
 	}
-
+	/* call指向syscall meta, 如果syscall的enter event刚好是call  */
 	/* First: called with 0 length to calculate the needed length */
-	len = __set_enter_print_fmt(entry, NULL, 0);
-
-	print_fmt = kmalloc(len + 1, GFP_KERNEL);
+	len = __set_enter_print_fmt(entry, NULL, 0);/* 计算打印这个syscall的enter信息(参数列表什么的
+	) 需要多少长度的fmt字符串*/
+	print_fmt = kmalloc(len + 1, GFP_KERNEL);/* 分配fmt字符串空间 */
 	if (!print_fmt)
 		return -ENOMEM;
-
+	/* 这次真的把fmt字符串存储到print_fmt */
 	/* Second: actually write the @print_fmt */
 	__set_enter_print_fmt(entry, print_fmt, len + 1);
-	call->print_fmt = print_fmt;
+	call->print_fmt = print_fmt;/* 设置call的print fmt */
 
 	return 0;
 }
@@ -440,22 +440,22 @@ static void unreg_event_syscall_exit(struct trace_event_file *file,
 		unregister_trace_sys_exit(ftrace_syscall_exit, tr);
 	mutex_unlock(&syscall_trace_lock);
 }
-
+/*__start_ftrace_events里面的call的->class->raw_init的回调函数 */
 static int __init init_syscall_trace(struct trace_event_call *call)
 {
 	int id;
 	int num;
-
+	/* num对应一个syscall */
 	num = ((struct syscall_metadata *)call->data)->syscall_nr;
 	if (num < 0 || num >= NR_syscalls) {
 		pr_debug("syscall %s metadata not mapped, disabling ftrace event\n",
 				((struct syscall_metadata *)call->data)->name);
 		return -ENOSYS;
 	}
-
+	/* 此函数在call->syscall meta需要call的情况下,初始化call的print_fmt字符串 */
 	if (set_syscall_print_fmt(call) < 0)
 		return -ENOMEM;
-
+	/* 注册call对应的event, 也就是链接到全局链表.... */
 	id = trace_event_raw_init(call);
 
 	if (id < 0) {
@@ -505,14 +505,14 @@ unsigned long __init __weak arch_syscall_addr(int nr)
 {
 	return (unsigned long)sys_call_table[nr];
 }
-/* 初始化syscalls_metadata[i]数组, 以及每个meta的nr号码 */
+/* 对syscall table的每个syscall找到每个syscall的meta, 设置syscall nr后放入syscalls_metadata[i]数组 */
 void __init init_ftrace_syscalls(void)
 {
 	struct syscall_metadata *meta;
 	unsigned long addr;
 	int i;
 	void *ret;
-
+	/* 给全局的syscalls_metadata分配内存 */
 	if (!IS_ENABLED(CONFIG_HAVE_SPARSE_SYSCALL_NR)) {
 		syscalls_metadata = kcalloc(NR_syscalls,
 					sizeof(*syscalls_metadata),

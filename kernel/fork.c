@@ -1067,7 +1067,7 @@ static void task_struct_whitelist(unsigned long *offset, unsigned long *size)
 		*offset += offsetof(struct task_struct, thread);
 }
 #endif /* CONFIG_ARCH_TASK_STRUCT_ALLOCATOR */
-/*  */
+/* 设置资源限制, 初始化slab什么的 */
 void __init fork_init(void)
 {
 	int i;

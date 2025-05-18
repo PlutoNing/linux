@@ -810,7 +810,7 @@ void __init init_mem_mapping(void)
 	early_memtest(0, max_pfn_mapped << PAGE_SHIFT);
 }
 
-/*
+/* 创建那个poke代码使用的伪mm
  * Initialize an mm_struct to be used during poking and a pointer to be used
  * during patching.
  */

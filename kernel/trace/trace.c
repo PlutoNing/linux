@@ -9124,7 +9124,7 @@ static struct ftrace_func_command ftrace_snapshot_cmd = {
 	.name			= "snapshot",
 	.func			= ftrace_trace_snapshot_callback,
 };
-
+/* 注册snapshot cmd,也是加入全局链表, 以后分析snapshot */
 static __init int register_snapshot_cmd(void)
 {
 	return register_ftrace_command(&ftrace_snapshot_cmd);

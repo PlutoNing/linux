@@ -460,7 +460,7 @@ static void test_event_printk(struct trace_event_call *call)
 }
 /*call就是available event; initcall:initcall_finish这个available event对应的call->class->raw_init是trace_event_raw_init */
 int trace_event_raw_init(struct trace_event_call *call)
-{
+{/* 调用call自身设置的init回调, 初始化call */
 	int id;
 	/* $4 = {node = {next = 0x0 <fixed_percpu_data>, pprev = 0xffffffff8530ca80 <event_hash+160>}, type = 20, funcs = 0xffffffff8440c420 <trace_event_type_funcs_initcall_finish>} */
 	id = register_trace_event(&call->event);
@@ -2571,7 +2571,7 @@ static void event_remove(struct trace_event_call *call)
 	remove_event_from_tracers(call);
 	list_del(&call->list);
 }
-/* call是__start_ftrace_events元素指向的结构体 */
+/* call是__start_ftrace_events元素指向的结构体,对应available event */
 static int event_init(struct trace_event_call *call)
 {
 	int ret = 0;
@@ -2581,7 +2581,7 @@ static int event_init(struct trace_event_call *call)
 	if (WARN_ON(!name))
 		return -EINVAL;
 	/* initcall:initcall_finish这个available event对应的是trace_event_raw_init */
-	if (call->class->raw_init) {
+	if (call->class->raw_init) { /* 可以设置条件断点(call->class->raw_init != 0xffffffff85bb20f0) && (call->class->raw_init != 0xffffffff812b12b0) */
 		ret = call->class->raw_init(call);/* 调用回调,初始化call */
 		if (ret < 0 && ret != -ENOSYS)
 			pr_warn("Could not initialize trace events/%s\n", name);
@@ -2907,7 +2907,7 @@ static void trace_early_triggers(struct trace_event_file *file, const char *name
 {
 	int ret;
 	int i;
-
+	/* nr_boot_triggers一开始是0 */
 	for (i = 0; i < nr_boot_triggers; i++) {
 		if (strcmp(name, bootup_triggers[i].event))
 			continue;
@@ -2921,7 +2921,7 @@ static void trace_early_triggers(struct trace_event_file *file, const char *name
 	}
 }
 
-/* call是某一个available event; tr是<global_trace>
+/* call是某一个available event; tr是<global_trace>,
  * Just create a descriptor for early init. A descriptor is required
  * for enabling events at boot. We want to enable events before
  * the filesystem is initialized.
@@ -3622,7 +3622,7 @@ void __trace_early_add_events(struct trace_array *tr)
 {
 	struct trace_event_call *call;
 	int ret;
-
+	/* 处理每一个event call, 初始化, 建立与tr的关系什么的 */
 	list_for_each_entry(call, &ftrace_events, list) {
 		/* Early boot up should not have any modules loaded */
 		if (!(call->flags & TRACE_EVENT_FL_DYNAMIC) &&
@@ -3653,7 +3653,7 @@ static void __add_event_to_tracers(struct trace_event_call *call)
 	list_for_each_entry(tr, &ftrace_trace_arrays, list)
 		__trace_add_new_event(call, tr);
 }
-
+/* 里面的东西对应每一个available event */
 extern struct trace_event_call *__start_ftrace_events[];
 extern struct trace_event_call *__stop_ftrace_events[];
 
@@ -3952,7 +3952,7 @@ __init int event_trace_init(void)
 void __init trace_event_init(void)
 {
 	event_trace_memsetup();/* 设置slab */
-	init_ftrace_syscalls();
+	init_ftrace_syscalls(); /* 初始化每个syscall的meta */
 	event_trace_enable();
 	event_trace_init_fields(); /* fields是什么 */
 }

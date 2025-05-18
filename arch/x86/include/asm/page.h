@@ -62,7 +62,7 @@ static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 #define __boot_va(x)		__va(x)
 #define __boot_pa(x)		__pa(x)
 
-/*
+/* __pa通过减去内核地址空间的偏移获得pfn,然后pfn加上vmemmap可以获得page结构体的位置
  * virt_to_page(kaddr) returns a valid pointer if and only if
  * virt_addr_valid(kaddr) returns true.
  */

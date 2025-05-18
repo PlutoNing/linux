@@ -378,7 +378,7 @@ enum {
 
 #define TRACE_EVENT_FL_UKPROBE (TRACE_EVENT_FL_KPROBE | TRACE_EVENT_FL_UPROBE)
 
-/*  */
+/* 对应一个available event */
 struct trace_event_call {
 	struct list_head list; /* 添加到ftrace_events  */
 	struct trace_event_class *class;
@@ -398,7 +398,7 @@ struct trace_event_call {
 		void				*module;
 		atomic_t			refcnt;
 	};
-	void			*data;
+	void			*data; /* 可能指向一个syscall meta, 从中可以取出syscall nr */
 
 	/* See the TRACE_EVENT_FL_* flags above */
 	int			flags; /* static flags of different events */

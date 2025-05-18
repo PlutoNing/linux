@@ -29,7 +29,7 @@ struct syscall_metadata {
 	const char	**types;
 	const char	**args;
 	struct list_head enter_fields;
-
+	/* 指向的就是那些available event对应的call */
 	struct trace_event_call *enter_event;
 	struct trace_event_call *exit_event;
 };

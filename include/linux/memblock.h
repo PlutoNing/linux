@@ -171,7 +171,7 @@ static inline void __next_physmem_range(u64 *idx, struct memblock_type *type,
 	     __next_physmem_range(&i, type, p_start, p_end))
 #endif /* CONFIG_HAVE_MEMBLOCK_PHYS_MAP */
 
-/**
+/** 遍历在typea不在typeb的区域
  * __for_each_mem_range - iterate through memblock areas from type_a and not
  * included in type_b. Or just type_a if type_b is NULL.
  翻译: 从type_a中迭代memblock region, 并且不包含在type_b中. 如果type_b是NULL, 则只有type_a
@@ -343,7 +343,7 @@ int __init deferred_page_init_max_threads(const struct cpumask *node_cpumask);
 
 /**
  * for_each_free_mem_range - iterate through free memblock areas
-   遍历memblock中的空闲region
+   遍历memblock中的空闲region, 也就是说memory类型内存范围里面的,不在reserved范围里面的内存区域
  * @i: u64 used as loop variable
  * @nid: node selector, %NUMA_NO_NODE for all nodes
  * @flags: pick from blocks based on memory attributes

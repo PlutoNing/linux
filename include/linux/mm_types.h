@@ -108,8 +108,8 @@ struct page {
 				pgoff_t index;		/* Our offset within mapping.
 				如果是空闲页面,或者是准备释放的页面, 这里是mt
 				================================
-				一种情况:void get_page_bootmem(unsigned long info, struct page *page, unsigned long type)
-							 {page->index = type;
+				一种情况:可能是node info这个type, page上面是pgdate结构体 void get_page_bootmem(unsigned long info, struct page *page, unsigned long type)
+				{page->index = type;
 				*/
 				unsigned long share;	/* share count for fsdax */
 			};
@@ -118,7 +118,7 @@ struct page {
 			 * Usually used for buffer_heads if PagePrivate.
 			 * Used for swp_entry_t if PageSwapCache.
 			 * Indicates order in the buddy system if PageBuddy.
-
+				对于页面内容是pgdat结构体的page这里是nid
 			 对于buddy freelist上面的page, 这里是order的值
 			 */
 			unsigned long private;

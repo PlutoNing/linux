@@ -1782,7 +1782,7 @@ static inline void unuse_temporary_mm(temp_mm_state_t prev_state)
 
 /*  */
 __ro_after_init struct mm_struct *poking_mm;
-__ro_after_init unsigned long poking_addr;
+__ro_after_init unsigned long poking_addr; /* 可能是0x2aaaaaaab000 */
 
 static void text_poke_memcpy(void *dst, const void *src, size_t len)
 {

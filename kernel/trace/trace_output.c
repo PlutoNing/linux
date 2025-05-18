@@ -708,7 +708,7 @@ static void free_trace_event_type(int type)
 	if (type >= __TRACE_LAST_TYPE)
 		ida_free(&trace_event_ida, type);
 }
-
+/* 给event分配type */
 static int alloc_trace_event_type(void)
 {
 	int next;
@@ -731,7 +731,7 @@ void trace_event_read_unlock(void)
 	up_read(&trace_event_sem);
 }
 
-/**注册ftrace定义的事件类型: 初始化并添加到event_hash
+/**注册ftrace定义的事件类型: 好像也就只是初始化并添加到event_hash
  * register_trace_event - register output for an event type
  * @event: the event type to register
  *
@@ -759,7 +759,7 @@ int register_trace_event(struct trace_event *event)
 	if (WARN_ON(!event->funcs))
 		goto out;
 
-	if (!event->type) {
+	if (!event->type) { /* 从__start_ftrace_events拿到的call的event可能没有这个type */
 		event->type = alloc_trace_event_type();
 		if (!event->type)
 			goto out;

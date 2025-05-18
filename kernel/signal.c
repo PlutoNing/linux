@@ -4852,7 +4852,7 @@ static int __init init_signal_sysctls(void)
 }
 early_initcall(init_signal_sysctls);
 #endif /* CONFIG_SYSCTL */
-
+/* start_kernel初始化信号机制 */
 void __init signals_init(void)
 {
 	siginfo_buildtime_checks();
