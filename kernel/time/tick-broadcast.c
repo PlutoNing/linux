@@ -1186,6 +1186,7 @@ static void tick_broadcast_setup_oneshot(struct clock_event_device *bc,
 }
 
 /*
+设置tick_broadcast_device的模式
  * Select oneshot operating mode for the broadcast device
  */
 void tick_broadcast_switch_to_oneshot(void)
@@ -1199,7 +1200,7 @@ void tick_broadcast_switch_to_oneshot(void)
 	oldmode = tick_broadcast_device.mode;
 	tick_broadcast_device.mode = TICKDEV_MODE_ONESHOT;
 	bc = tick_broadcast_device.evtdev;
-	if (bc)
+	if (bc)/* 改变模式 */
 		tick_broadcast_setup_oneshot(bc, oldmode == TICKDEV_MODE_PERIODIC);
 
 	raw_spin_unlock_irqrestore(&tick_broadcast_lock, flags);

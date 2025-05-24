@@ -173,6 +173,7 @@ extern void warn_bogus_irq_restore(void);
  */
 #define raw_local_irq_disable()		arch_local_irq_disable()
 #define raw_local_irq_enable()		arch_local_irq_enable()
+/*  */
 #define raw_local_irq_save(flags)			\
 	do {						\
 		typecheck(unsigned long, flags);	\
@@ -217,7 +218,9 @@ extern void warn_bogus_irq_restore(void);
 		if (!was_disabled)			\
 			trace_hardirqs_off();		\
 	} while (0)
+/* 
 
+*/
 #define local_irq_save(flags)				\
 	do {						\
 		raw_local_irq_save(flags);		\

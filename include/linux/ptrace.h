@@ -405,6 +405,7 @@ static inline int ptrace_report_syscall(unsigned long message)
 	int ptrace = current->ptrace;
 	int signr;
 
+	/* 如果进程没有被调试 */
 	if (!(ptrace & PT_PTRACED))
 		return 0;
 

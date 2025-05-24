@@ -19,6 +19,7 @@
 typedef struct cpumask { DECLARE_BITMAP(bits, NR_CPUS); } cpumask_t;
 
 /**
+获取cpumask的bitmap
  * cpumask_bits - get the bits in a cpumask
  * @maskp: the struct cpumask *
  *

@@ -21,6 +21,9 @@ enum task_work_notify_mode {
 	TWA_SIGNAL_NO_IPI,
 };
 
+/* 
+有这个说明什么?
+*/
 static inline bool task_work_pending(struct task_struct *task)
 {
 	return READ_ONCE(task->task_works);

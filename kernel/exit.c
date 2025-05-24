@@ -926,7 +926,7 @@ void __noreturn do_exit(long code)
 	lockdep_free_task(tsk);
 	do_task_dead();
 }
-
+/* 没有caller吗 */
 void __noreturn make_task_dead(int signr)
 {
 	/*
@@ -993,6 +993,7 @@ SYSCALL_DEFINE1(exit, int, error_code)
 }
 
 /*
+退出组里的每一个thread
  * Take down every thread in the group.  This is called by fatal signals
  * as well as by sys_exit_group (below).
  */
@@ -1027,6 +1028,7 @@ do_group_exit(int exit_code)
 }
 
 /*
+kill线程组的每一个thread
  * this kills every thread in the thread group. Note that any externally
  * wait4()-ing process will get the correct exit code - even if this
  * thread is not the thread group leader.

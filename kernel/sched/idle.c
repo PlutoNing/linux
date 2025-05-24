@@ -233,6 +233,7 @@ exit_idle:
  * Generic idle loop implementation
  *
  * Called with polling cleared.
+ 这是做什么的
  */
 static void do_idle(void)
 {
@@ -240,6 +241,8 @@ static void do_idle(void)
 
 	/*
 	 * Check if we need to update blocked load
+	 进行什么balance什么的, balance domain什么的
+
 	 */
 	nohz_run_idle_balance(cpu);
 
@@ -250,22 +253,27 @@ static void do_idle(void)
 	 * rq->idle). This means that, if rq->idle has the polling bit set,
 	 * then setting need_resched is guaranteed to cause the CPU to
 	 * reschedule.
+	 设置自己主动检查是否需要reschedule
 	 */
 
 	__current_set_polling();
 	/* 
+	这里设置ts为idle
+	=====================
 	如果当前CPU进入空闲状态，Linux系统先会调用tick_nohz_idle_enter函数，
 	通知Tick模拟层进入空闲状态，接着会调用tick_nohz_idle_stop_tick函数，
 	正式停掉当前CPU上的Tick。
 	*/
 	tick_nohz_idle_enter();
 
+	/* 只要不需要重新调度就一直循环 */
 	while (!need_resched()) {
 		rmb();
 
 		local_irq_disable();
 
 		if (cpu_is_offline(cpu)) {
+			/* 如果cpu下线了 */
 			tick_nohz_idle_stop_tick();
 			cpuhp_report_idle_dead();
 			arch_cpu_idle_dead();
@@ -376,10 +384,13 @@ void play_idle_precise(u64 duration_ns, u64 latency_ns)
 }
 EXPORT_SYMBOL_GPL(play_idle_precise);
 
+/* 这是开启cpu吗? */
 void cpu_startup_entry(enum cpuhp_state state)
 {
 	current->flags |= PF_IDLE;
+	/* 空函数 */
 	arch_cpu_idle_prepare();
+	/*  */
 	cpuhp_online_idle(state);
 	while (1)
 		do_idle();

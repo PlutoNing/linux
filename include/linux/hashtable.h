@@ -155,6 +155,9 @@ static inline void hash_del_rcu(struct hlist_node *node)
 		hlist_for_each_entry_safe(obj, tmp, &name[bkt], member)
 
 /**
+遍历同一个bucket(key对应的bucket)上面的元素
+obj作为iter
+obj的member连接到name这个hashtable上
  * hash_for_each_possible - iterate over all possible objects hashing to the
  * same bucket
  * @name: hashtable to iterate

@@ -278,6 +278,7 @@ void __delayacct_wpcopy_end(void)
 		      &current->delays->wpcopy_count);
 }
 
+/* 在task的delays成员统计irqtime */
 void __delayacct_irq(struct task_struct *task, u32 delta)
 {
 	unsigned long flags;

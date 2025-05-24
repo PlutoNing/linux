@@ -132,6 +132,9 @@ static bool cpu_stop_queue_work(unsigned int cpu, struct cpu_stop_work *work)
 }
 
 /**
+停止一个cpu
+比如说要是current准备执行一个程序,发现要在不一样的cpu上面执行,就调用这个函数停止
+current所在的cpu
  * stop_one_cpu - stop a cpu
  * @cpu: cpu to stop
  * @fn: function to execute
@@ -141,7 +144,8 @@ static bool cpu_stop_queue_work(unsigned int cpu, struct cpu_stop_work *work)
  * the highest priority preempting any task on the cpu and
  * monopolizing it.  This function returns after the execution is
  * complete.
- *
+ * 在@cpu上面执行@fn(@arg). @fn在一个进程上下文中运行
+ * 以最高的优先级抢占cpu上的任何任务并垄断它. 这个函数在执行完成后返回
  * This function doesn't guarantee @cpu stays online till @fn
  * completes.  If @cpu goes down in the middle, execution may happen
  * partially or fully on different cpus.  @fn should either be ready
@@ -158,9 +162,11 @@ static bool cpu_stop_queue_work(unsigned int cpu, struct cpu_stop_work *work)
 int stop_one_cpu(unsigned int cpu, cpu_stop_fn_t fn, void *arg)
 {
 	struct cpu_stop_done done;
+	/* 封装一个work */
 	struct cpu_stop_work work = { .fn = fn, .arg = arg, .done = &done, .caller = _RET_IP_ };
 
 	cpu_stop_init_done(&done, 1);
+	/* 执行这个work */
 	if (!cpu_stop_queue_work(cpu, &work))
 		return -ENOENT;
 	/*
@@ -168,6 +174,7 @@ int stop_one_cpu(unsigned int cpu, cpu_stop_fn_t fn, void *arg)
 	 * cycle by doing a preemption:
 	 */
 	cond_resched();
+	/* 等待work完成 */
 	wait_for_completion(&done.completion);
 	return done.ret;
 }

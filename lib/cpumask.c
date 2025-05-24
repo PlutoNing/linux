@@ -154,7 +154,9 @@ unsigned int cpumask_local_spread(unsigned int i, int node)
 	return cpu;
 }
 EXPORT_SYMBOL(cpumask_local_spread);
-
+/* 
+表示上次选择的cpu, 下次选择就是从[distribute_cpu_mask_prev + 1]开始
+*/
 static DEFINE_PER_CPU(int, distribute_cpu_mask_prev);
 
 /**
@@ -184,6 +186,10 @@ unsigned int cpumask_any_and_distribute(const struct cpumask *src1p,
 }
 EXPORT_SYMBOL(cpumask_any_and_distribute);
 
+/* 回卷式的选择cpu
+从上次选择的cpu开始选择下一个cpu
+类似round-robin的选择方式
+ */
 unsigned int cpumask_any_distribute(const struct cpumask *srcp)
 {
 	unsigned int next, prev;

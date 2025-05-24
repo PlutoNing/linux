@@ -380,7 +380,8 @@ void thread_group_cputime(struct task_struct *tsk, struct task_cputime *times)
 static void irqtime_account_process_tick(struct task_struct *p, int user_tick,
 					 int ticks)
 {
-	u64 other, cputime = TICK_NSEC * ticks;
+	u64 other,
+	cputime = TICK_NSEC * ticks;
 
 	/*
 	 * When returning from idle, many ticks can get accounted at
@@ -484,6 +485,7 @@ void thread_group_cputime_adjusted(struct task_struct *p, u64 *ut, u64 *st)
 #else /* !CONFIG_VIRT_CPU_ACCOUNTING_NATIVE: */
 
 /*
+统计进程的cpu时间
  * Account a single tick of CPU time.
  * @p: the process that the CPU time gets accounted to
  * @user_tick: indicates if the tick is a user or a system tick
@@ -492,6 +494,7 @@ void account_process_tick(struct task_struct *p, int user_tick)
 {
 	u64 cputime, steal;
 
+	/* 这个函数一直返回false */
 	if (vtime_accounting_enabled_this_cpu())
 		return;
 

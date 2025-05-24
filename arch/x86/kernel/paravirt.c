@@ -116,8 +116,10 @@ static u64 native_steal_clock(int cpu)
 }
 
 DEFINE_STATIC_CALL(pv_steal_clock, native_steal_clock);
+/* 定义pv_sched_clock这个static call */
 DEFINE_STATIC_CALL(pv_sched_clock, native_sched_clock);
 
+/* 设置pv_sched_clock的实际函数 */
 void paravirt_set_sched_clock(u64 (*func)(void))
 {
 	static_call_update(pv_sched_clock, func);

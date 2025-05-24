@@ -1652,6 +1652,9 @@ void notify_cpu_starting(unsigned int cpu)
  * Called from the idle task. Wake up the controlling task which brings the
  * hotplug thread of the upcoming CPU up and then delegates the rest of the
  * online bringup to the hotplug thread.
+   由dile任务调用。唤醒控制任务，该任务将即将到来的CPU的热插拔线程唤醒，然后将在线
+   引导的其余部分委托给热插拔线程。
+
  */
 void cpuhp_online_idle(enum cpuhp_state state)
 {

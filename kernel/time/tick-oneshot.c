@@ -18,6 +18,7 @@
 #include "tick-internal.h"
 
 /**
+program是指?
  * tick_program_event - program the CPU local timer device for the next event
  */
 int tick_program_event(ktime_t expires, int force)
@@ -74,6 +75,8 @@ void tick_setup_oneshot(struct clock_event_device *newdev,
 }
 
 /**
+开启使用hrtimer的函数
+==================================
 通过了测试正式准备切换到单次触发模式了，最终会调用tick_switch_to_oneshot函数。
 如果切换成功，函数的最后会调用tick_broadcast_switch_to_oneshot函数，将Tick广播层
 也切换到单次触发模式
@@ -81,12 +84,13 @@ void tick_setup_oneshot(struct clock_event_device *newdev,
  */
 int tick_switch_to_oneshot(void (*handler)(struct clock_event_device *))
 {
+	/* 获取tick设备 */
 	struct tick_device *td = this_cpu_ptr(&tick_cpu_device);
 	struct clock_event_device *dev = td->evtdev;
 
 	if (!dev || !(dev->features & CLOCK_EVT_FEAT_ONESHOT) ||
 		    !tick_device_is_functional(dev)) {
-
+	/* 如果设备不可用 */
 		pr_info("Clockevents: could not switch to one-shot mode:");
 		if (!dev) {
 			pr_cont(" no tick device\n");
@@ -99,10 +103,12 @@ int tick_switch_to_oneshot(void (*handler)(struct clock_event_device *))
 		}
 		return -EINVAL;
 	}
-
+	/* 设置设备 */
 	td->mode = TICKDEV_MODE_ONESHOT;
+	/* 设置处理handler */
 	dev->event_handler = handler;
 	clockevents_switch_state(dev, CLOCK_EVT_STATE_ONESHOT);
+	/* 传播这次变动 */
 	tick_broadcast_switch_to_oneshot();
 	return 0;
 }
@@ -126,6 +132,7 @@ int tick_oneshot_mode_active(void)
 
 #ifdef CONFIG_HIGH_RES_TIMERS
 /**
+开启高精度计时
  * tick_init_highres - switch to high resolution mode
  *
  * Called with interrupts disabled.

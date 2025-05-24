@@ -6679,6 +6679,7 @@ static DEFINE_PER_CPU(cpumask_var_t, should_we_balance_tmpmask);
 
 #ifdef CONFIG_NO_HZ_COMMON
 
+/*  */
 static struct {
 	cpumask_var_t idle_cpus_mask;
 	atomic_t nr_cpus;
@@ -11879,6 +11880,8 @@ static bool update_nohz_stats(struct rq *rq)
  * Internal function that runs load balance for all idle cpus. The load balance
  * can be a simple update of blocked load or a complete load balance with
  * tasks movement depending of flags.
+   运行所有空闲cpu的负载平衡。负载平衡可以是简单的blocked load更新，也可以是完整的
+   负载平衡和任务移动，具体取决于标志。
  */
 static void _nohz_idle_balance(struct rq *this_rq, unsigned int flags)
 {
@@ -11917,6 +11920,7 @@ static void _nohz_idle_balance(struct rq *this_rq, unsigned int flags)
 	/*
 	 * Start with the next CPU after this_cpu so we will end with this_cpu and let a
 	 * chance for other idle cpu to pull load.
+	 遍历this_cpu的下一个CPU
 	 */
 	for_each_cpu_wrap(balance_cpu,  nohz.idle_cpus_mask, this_cpu+1) {
 		if (!idle_cpu(balance_cpu))
@@ -11934,7 +11938,7 @@ static void _nohz_idle_balance(struct rq *this_rq, unsigned int flags)
 				WRITE_ONCE(nohz.needs_update, 1);
 			goto abort;
 		}
-
+		/* 获取rq */
 		rq = cpu_rq(balance_cpu);
 
 		if (flags & NOHZ_STATS_KICK)
@@ -11943,8 +11947,10 @@ static void _nohz_idle_balance(struct rq *this_rq, unsigned int flags)
 		/*
 		 * If time for next balance is due,
 		 * do the balance.
+		 如果已经超过了next_balance时间
 		 */
 		if (time_after_eq(jiffies, rq->next_balance)) {
+			/* 需要执行balance */
 			struct rq_flags rf;
 
 			rq_lock_irqsave(rq, &rf);
@@ -12003,6 +12009,7 @@ static bool nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 /*
  * Check if we need to run the ILB for updating blocked load before entering
  * idle state.
+   检查我们是否需要在进入空闲状态之前运行ILB以更新blocked load。
  */
 void nohz_run_idle_balance(int cpu)
 {

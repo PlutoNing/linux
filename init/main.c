@@ -685,7 +685,7 @@ noinline void __ref __noreturn rest_init(void)
 {
 	struct task_struct *tsk;
 	int pid;
-
+/*  */
 	rcu_scheduler_starting();
 	/*
 	 * 我们需要首先生成 init 进程，以便它获得 pid 1，
@@ -699,6 +699,7 @@ noinline void __ref __noreturn rest_init(void)
 	 * CPUs for init to the non isolated CPUs.
 	 */
 	rcu_read_lock();
+	/* 找到刚刚创建的init task */
 	tsk = find_task_by_pid_ns(pid, &init_pid_ns);
 	tsk->flags |= PF_NO_SETAFFINITY;
 	set_cpus_allowed_ptr(tsk, cpumask_of(smp_processor_id()));
@@ -723,6 +724,8 @@ noinline void __ref __noreturn rest_init(void)
 	complete(&kthreadd_done);
 
 	/*
+	* The boot idle thread must execute schedule()
+	 * at least once to get things moving:
 	 * boot idle thread必须执行schedule()
 	 * 至少一次来让事情启动起来
 	 */
@@ -1047,6 +1050,7 @@ void start_kernel(void)
 	acpi_early_init();
 	if (late_time_init)
 		late_time_init();
+	/* 初始化这什么clock */
 	sched_clock_init();
 	calibrate_delay();/* 以后 */
 

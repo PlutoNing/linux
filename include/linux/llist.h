@@ -228,6 +228,7 @@ static inline bool __llist_add(struct llist_node *new, struct llist_head *head)
 }
 
 /**
+把head的东西删除掉, 返回内容
  * llist_del_all - delete all entries from lock-less list
  * @head:	the head of lock-less list to delete all entries
  *

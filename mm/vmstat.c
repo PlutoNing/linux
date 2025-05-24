@@ -791,6 +791,7 @@ static int fold_diff(int *zone_diff, int *node_diff)
 }
 
 /*
+更新cpu的zone统计信息
  * Update the zone counters for the current cpu.
  *
  * Note that refresh_cpu_vm_stats strives to only access
@@ -2007,6 +2008,8 @@ static bool need_update(int cpu)
  * Switch off vmstat processing and then fold all the remaining differentials
  * until the diffs stay at zero. The function is used by NOHZ and can only be
  * invoked when tick processing is not active.
+ 关闭vmstat的处理, 然后折叠所有剩余的差异, 直到差异保持为零.
+ 这个函数是NOHZ使用的, 只能在tick处理不活动时调用.
  */
 void quiet_vmstat(void)
 {
@@ -2024,7 +2027,7 @@ void quiet_vmstat(void)
 	 * vmstat_update. It doesn't fire that often to matter and canceling
 	 * it would be too expensive from this path.
 	 * vmstat_shepherd will take care about that for us.
-	 */
+	 更新cpu的zone统计信息*/
 	refresh_cpu_vm_stats(false);
 }
 

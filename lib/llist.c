@@ -67,6 +67,7 @@ struct llist_node *llist_del_first(struct llist_head *head)
 EXPORT_SYMBOL_GPL(llist_del_first);
 
 /**
+反转链表
  * llist_reverse_order - reverse order of a llist chain
  * @head:	first item of the list to be reversed
  *

@@ -72,7 +72,12 @@ void native_smp_send_reschedule(int cpu)
 	}
 	__apic_send_IPI(cpu, RESCHEDULE_VECTOR);
 }
-
+/* 
+一种情况是:
+在确定cpu的rq的idle会执行sched_ttwu后,会调用这个函数
+这里触发ipi中断, 执行什么东西
+可能跟CALL_FUNCTION_SINGLE_VECTOR相关
+*/
 void native_send_call_func_single_ipi(int cpu)
 {
 	__apic_send_IPI(cpu, CALL_FUNCTION_SINGLE_VECTOR);
@@ -98,7 +103,7 @@ sendmask:
 }
 
 #endif /* CONFIG_SMP */
-
+/* 用于编码要写入到icr2寄存器的值 */
 static inline int __prepare_ICR2(unsigned int mask)
 {
 	return SET_XAPIC_DEST_FIELD(mask);
@@ -116,7 +121,7 @@ u32 apic_mem_wait_icr_idle_timeout(void)
 	}
 	return APIC_ICR_BUSY;
 }
-
+/* 等待icr寄存器空闲 */
 void apic_mem_wait_icr_idle(void)
 {
 	while (native_apic_mem_read(APIC_ICR) & APIC_ICR_BUSY)
@@ -159,13 +164,22 @@ static void __default_send_IPI_shortcut(unsigned int shortcut, int vector)
 }
 
 /*
+ Linux 内核中用于通过 ​APIC（高级可编程中断控制器）​​ 发送 ​处理器间中断（IPI）​​ 的底层机制，
+ 专用于向 ​指定目标 CPU​ 发送中断信号
+ IPI（Inter-Processor Interrupt）用于多核系统中 CPU 之间的通信，典型场景包括：
+调度器唤醒其他 CPU 上的任务。
+TLB 刷新（跨核内存同步）。
+调试或性能监控事件通知。
+发送不可屏蔽中断（NMI）处理硬件错误。
+
  * This is used to send an IPI with no shorthand notation (the destination is
  * specified in bits 56 to 63 of the ICR).
  */
 void __default_send_IPI_dest_field(unsigned int dest_mask, int vector,
 				   unsigned int dest_mode)
 {
-	/* See comment in __default_send_IPI_shortcut() */
+	/* See comment in __default_send_IPI_shortcut()
+	等待icr寄存器空闲 */
 	if (unlikely(vector == NMI_VECTOR))
 		apic_mem_wait_icr_idle_timeout();
 	else

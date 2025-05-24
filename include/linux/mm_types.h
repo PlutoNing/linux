@@ -868,7 +868,9 @@ struct mm_struct {
 
 		struct linux_binfmt *binfmt;
 
-		/* Architecture-specific MM context */
+		/* Architecture-specific MM context
+		架构相关的内存ctx
+		*/
 		mm_context_t context;
 
 		unsigned long flags; /* Must use atomic bitops to access */

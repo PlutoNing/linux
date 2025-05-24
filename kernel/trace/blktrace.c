@@ -411,17 +411,30 @@ int blk_trace_remove(struct request_queue *q)
 }
 EXPORT_SYMBOL_GPL(blk_trace_remove);
 
+
+/**
+ * @description: 
+ * @param {file} *filp
+ * @param {char __user} *buffer
+ * @param {size_t} count
+ * @param {loff_t} *ppos
+ * @return {*}
+ */
 static ssize_t blk_dropped_read(struct file *filp, char __user *buffer,
 				size_t count, loff_t *ppos)
 {
+	/* bt位于priv */
 	struct blk_trace *bt = filp->private_data;
 	char buf[16];
-
+	/* 读取bt的dropped字段 */
 	snprintf(buf, sizeof(buf), "%u\n", atomic_read(&bt->dropped));
 
 	return simple_read_from_buffer(buffer, count, ppos, buf, strlen(buf));
 }
 
+/* 
+
+*/
 static const struct file_operations blk_dropped_fops = {
 	.owner =	THIS_MODULE,
 	.open =		simple_open,
@@ -510,7 +523,14 @@ static void blk_trace_setup_lba(struct blk_trace *bt,
 
 /*
  * Setup everything required to start tracing
- */
+  * @description: 
+  * @param {request_queue} *q
+  * @param {char} *name
+  * @param {dev_t} dev
+  * @param {block_device} *bdev
+  * @param {blk_user_trace_setup} *buts
+  * @return {*}
+*/
 static int do_blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 			      struct block_device *bdev,
 			      struct blk_user_trace_setup *buts)
@@ -618,6 +638,10 @@ err:
 	return ret;
 }
 
+/* 设置和启动blktrace
+
+ */
+
 static int __blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 			     struct block_device *bdev, char __user *arg)
 {
@@ -639,6 +663,16 @@ static int __blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 	return 0;
 }
 
+
+/**
+ * @description: 
+ * @param {request_queue} *q
+ * @param {char} *name
+ * @param {dev_t} dev
+ * @param {block_device} *bdev
+ * @param {char __user} *arg
+ * @return {*}
+ */
 int blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 		    struct block_device *bdev,
 		    char __user *arg)
@@ -721,6 +755,7 @@ EXPORT_SYMBOL_GPL(blk_trace_startstop);
  */
 
 /**
+处理blk_trace相关的ioctl命令
  * blk_trace_ioctl - handle the ioctls associated with tracing
  * @bdev:	the block device
  * @cmd:	the ioctl cmd
@@ -1915,4 +1950,3 @@ void blk_fill_rwbs(char *rwbs, blk_opf_t opf)
 EXPORT_SYMBOL_GPL(blk_fill_rwbs);
 
 #endif /* CONFIG_EVENT_TRACING */
-

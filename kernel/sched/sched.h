@@ -101,6 +101,7 @@ struct rq;
 struct cpuidle_state;
 
 /* task_struct::on_rq states: */
+/* 加入rq之后设置为这个flag */
 #define TASK_ON_RQ_QUEUED	1
 #define TASK_ON_RQ_MIGRATING	2
 
@@ -992,7 +993,7 @@ struct rq {
 	/*
 	 * nr_running and cpu_load should be in the same cacheline because
 	 * remote CPUs use both these fields when doing load calculation.
-	 */
+	 rq上面正在运行的任务数量?*/
 	unsigned int		nr_running;
 #ifdef CONFIG_NUMA_BALANCING
 	unsigned int		nr_numa_running;
@@ -1046,6 +1047,8 @@ struct rq {
 	struct mm_struct	*prev_mm;
 
 	unsigned int		clock_update_flags;
+	/* 不断累加delta = sched_clock_cpu(cpu_of(rq)) - rq->clock;
+	来更新clock */
 	u64			clock;
 	/* Ensure that all clocks are in the same cache line */
 	u64			clock_task ____cacheline_aligned;
@@ -1117,6 +1120,7 @@ struct rq {
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
+/* 为什么还要统计irq_time */
 	u64			prev_irq_time;
 #endif
 #ifdef CONFIG_PARAVIRT
@@ -1229,11 +1233,12 @@ static inline bool is_migration_disabled(struct task_struct *p)
 	return false;
 #endif
 }
-
+/* 定义pcp的rq */
 DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
-
+/* 获得本cpu的rq */
 #define cpu_rq(cpu)		(&per_cpu(runqueues, (cpu)))
 #define this_rq()		this_cpu_ptr(&runqueues)
+/* 通过tsk->ti->cpu->rq获得rq */
 #define task_rq(p)		cpu_rq(task_cpu(p))
 #define cpu_curr(cpu)		(cpu_rq(cpu)->curr)
 #define raw_rq()		raw_cpu_ptr(&runqueues)
@@ -1265,7 +1270,7 @@ static inline raw_spinlock_t *rq_lockp(struct rq *rq)
 
 	return &rq->__lock;
 }
-
+/* 就是简单获取rq的spinlock */
 static inline raw_spinlock_t *__rq_lockp(struct rq *rq)
 {
 	if (rq->core_enabled)
@@ -1392,7 +1397,9 @@ static inline void lockdep_assert_rq_held(struct rq *rq)
 extern void raw_spin_rq_lock_nested(struct rq *rq, int subclass);
 extern bool raw_spin_rq_trylock(struct rq *rq);
 extern void raw_spin_rq_unlock(struct rq *rq);
-
+/* 
+加锁rq
+*/
 static inline void raw_spin_rq_lock(struct rq *rq)
 {
 	raw_spin_rq_lock_nested(rq, 0);
@@ -1516,6 +1523,9 @@ extern void update_rq_clock(struct rq *rq);
  * back.
  */
 #define RQCF_REQ_SKIP		0x01
+/* 
+用于忽略update_rq_clock函数
+*/
 #define RQCF_ACT_SKIP		0x02
 #define RQCF_UPDATED		0x04
 
@@ -1527,7 +1537,9 @@ static inline void assert_clock_updated(struct rq *rq)
 	 */
 	SCHED_WARN_ON(rq->clock_update_flags < RQCF_ACT_SKIP);
 }
-
+/* 
+获取rq的clock
+*/
 static inline u64 rq_clock(struct rq *rq)
 {
 	lockdep_assert_rq_held(rq);
@@ -1535,7 +1547,7 @@ static inline u64 rq_clock(struct rq *rq)
 
 	return rq->clock;
 }
-
+/* 获取rq的clock_task */
 static inline u64 rq_clock_task(struct rq *rq)
 {
 	lockdep_assert_rq_held(rq);
@@ -2029,9 +2041,12 @@ static inline struct task_group *task_group(struct task_struct *p)
 	return p->sched_task_group;
 }
 
-/* Change a task's cfs_rq and parent entity if it moves across CPUs/groups */
+/* Change a task's cfs_rq and parent entity if it moves across CPUs/groups
+设置进程的rq
+*/
 static inline void set_task_rq(struct task_struct *p, unsigned int cpu)
 {
+/* 处理组调度相关的东西 */
 #if defined(CONFIG_FAIR_GROUP_SCHED) || defined(CONFIG_RT_GROUP_SCHED)
 	struct task_group *tg = task_group(p);
 #endif
@@ -2059,8 +2074,14 @@ static inline struct task_group *task_group(struct task_struct *p)
 
 #endif /* CONFIG_CGROUP_SCHED */
 
+/* 
+修改进程的cpu:
+修改rq
+修改ti的cpu和p的wake_cpu
+*/
 static inline void __set_task_cpu(struct task_struct *p, unsigned int cpu)
 {
+	/* 设置rq相关 */
 	set_task_rq(p, cpu);
 #ifdef CONFIG_SMP
 	/*
@@ -2069,7 +2090,9 @@ static inline void __set_task_cpu(struct task_struct *p, unsigned int cpu)
 	 * per-task data have been completed by this moment.
 	 */
 	smp_wmb();
+	/* 修改ti的cpu */
 	WRITE_ONCE(task_thread_info(p)->cpu, cpu);
+	/*  */
 	p->wake_cpu = cpu;
 #endif
 }
@@ -2167,12 +2190,14 @@ static inline int task_on_cpu(struct rq *rq, struct task_struct *p)
 	return task_current(rq, p);
 #endif
 }
-
+/* 
+检查p是不是已经入队了
+*/
 static inline int task_on_rq_queued(struct task_struct *p)
 {
 	return p->on_rq == TASK_ON_RQ_QUEUED;
 }
-
+/* 是不是准备要迁移这个tsk了 */
 static inline int task_on_rq_migrating(struct task_struct *p)
 {
 	return READ_ONCE(p->on_rq) == TASK_ON_RQ_MIGRATING;

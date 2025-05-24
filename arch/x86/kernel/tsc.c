@@ -226,6 +226,7 @@ static void __init cyc2ns_init_secondary_cpus(void)
 }
 
 /* local_clock调用到这里
+使用tsc或者jiffies机制
  * Scheduler clock - returns current time in nanosec units.
  */
 noinstr u64 native_sched_clock(void)
@@ -261,11 +262,18 @@ u64 native_sched_clock_from_tsc(u64 tsc)
 /* We need to define a real function for sched_clock, to override the
    weak default version */
 #ifdef CONFIG_PARAVIRT
+/* 
+获取时间
+调用pv_sched_clock获取时间
+底层的函数是可以设置的,比如使用哪种时钟源
+*/
 noinstr u64 sched_clock_noinstr(void)
 {
 	return paravirt_sched_clock();
 }
-
+/* 
+检查使用的是不是tsc或者jiffies时钟源
+*/
 bool using_native_sched_clock(void)
 {
 	return static_call_query(pv_sched_clock) == native_sched_clock;
@@ -275,11 +283,16 @@ u64 sched_clock_noinstr(void) __attribute__((alias("native_sched_clock")));
 
 bool using_native_sched_clock(void) { return true; }
 #endif
-
+/* 
+本质上也是调用pv_sched_clock获取时间
+*/
 notrace u64 sched_clock(void)
 {
 	u64 now;
 	preempt_disable_notrace();
+	/* 获取当前时间
+	sched_clock_noinstr()是一个内联函数, 直接调用pv_sched_clock
+	*/
 	now = sched_clock_noinstr();
 	preempt_enable_notrace();
 	return now;
@@ -1110,6 +1123,7 @@ static void tsc_resume(struct clocksource *cs)
 }
 
 /*
+读取​TSC（Time Stamp Counter，时间戳计数器）时钟源
  * We used to compare the TSC to the cycle_last value in the clocksource
  * structure to avoid a nasty time-warp. This can be observed in a
  * very small window right after one CPU updated cycle_last under
@@ -1129,7 +1143,11 @@ static u64 read_tsc(struct clocksource *cs)
 {
 	return (u64)rdtsc_ordered();
 }
-
+/* 
+关闭tsc时钟源的回调函数?
+设置tsc_unstable = 1
+调用异步函数关闭__sched_clock_stable标志, 复制scd
+*/
 static void tsc_cs_mark_unstable(struct clocksource *cs)
 {
 	if (tsc_unstable)
@@ -1137,11 +1155,14 @@ static void tsc_cs_mark_unstable(struct clocksource *cs)
 
 	tsc_unstable = 1;
 	if (using_native_sched_clock())
-		clear_sched_clock_stable();
+		clear_sched_clock_stable(); /* 调用异步函数关闭__sched_clock_stable标志, 复制scd */
 	disable_sched_clock_irqtime();
 	pr_info("Marking TSC unstable due to clocksource watchdog\n");
 }
 
+/* 
+其实就是更新scd
+*/
 static void tsc_cs_tick_stable(struct clocksource *cs)
 {
 	if (tsc_unstable)
@@ -1176,7 +1197,12 @@ static struct clocksource clocksource_tsc_early = {
 	.list			= LIST_HEAD_INIT(clocksource_tsc_early.list),
 };
 
-/*
+/*定义的是Linux内核中的 ​TSC（Time Stamp Counter，时间戳计数器）时钟源，
+它是基于x86/x86_64架构CPU内置的高精度硬件计时器。
+TSC是x86 CPU中的一个64位寄存器，每个CPU周期自动递增，提供纳秒级精度的计时。
+​极低开销​：直接通过RDTSC指令读取，无需外部硬件交互。
+​连续性​（CLOCK_SOURCE_IS_CONTINUOUS）：在CPU休眠（如C-states）时仍持续计数（现代CPU支持非停止TSC）。
+​高分辨率​（CLOCK_SOURCE_VALID_FOR_HRES）：支持高精度定时器和用户态直接访问（通过VDSO）。
  * Must mark VALID_FOR_HRES early such that when we unregister tsc_early
  * this one will immediately take over. We will only register if TSC has
  * been found good.
@@ -1198,6 +1224,9 @@ static struct clocksource clocksource_tsc = {
 	.list			= LIST_HEAD_INIT(clocksource_tsc.list),
 };
 
+/* 
+关闭tsc时钟源
+*/
 void mark_tsc_unstable(char *reason)
 {
 	if (tsc_unstable)

@@ -879,6 +879,7 @@ n是pos的下一个位置
 	     pos = n, n = list_next_entry(n, member))
 
 /**
+遍历链接在pos->member链表上的全部成员
  * list_for_each_entry_safe_from - iterate over list from current point safe against removal
  * @pos:	the type * to use as a loop cursor.
  * @n:		another type * to use as temporary storage

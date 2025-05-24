@@ -43,10 +43,10 @@ EXPORT_SYMBOL_GPL(timerqueue_add);
 
 /**
  * timerqueue_del - Removes a timer from the timerqueue.
- *
- * @head: head of timerqueue
- * @node: timer node to be removed
- *
+ *@timer的base是@base
+ * @head: head of timerqueue, 是@base->active
+ * @node: timer node to be removed, 是@timer->node
+ * 移除timer
  * Removes the timer node from the timerqueue. Returns true if the queue is
  * not empty after the remove.
  */

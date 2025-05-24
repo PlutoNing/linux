@@ -796,10 +796,12 @@ struct task_struct {
 	refcount_t			usage;
 	/* Per task flags (PF_*), defined further below: */
 	unsigned int			flags;
+	/*  */
 	unsigned int			ptrace;
 
 #ifdef CONFIG_SMP
 	int				on_cpu;
+	/* 用于加入cpu的wake_list */
 	struct __call_single_node	wake_entry;
 	unsigned int			wakee_flips;
 	unsigned long			wakee_flip_decay_ts;
@@ -813,6 +815,8 @@ struct task_struct {
 	 * used CPU that may be idle.
 	 */
 	int				recent_used_cpu;
+	/* 切换到新cpu时, 这里会指向新cpu
+	表示下次唤醒在这个cpu执行 */
 	int				wake_cpu;
 #endif
 	int				on_rq;
@@ -865,6 +869,7 @@ struct task_struct {
 
 	unsigned int			policy;
 	int				nr_cpus_allowed;
+	/* 进程可以运行的cpu? */
 	const cpumask_t			*cpus_ptr;
 	cpumask_t			*user_cpus_ptr;
 	cpumask_t			cpus_mask;
@@ -1167,6 +1172,7 @@ struct task_struct {
 	unsigned int			sessionid;
 #endif
 	struct seccomp			seccomp;
+/*  */
 	struct syscall_user_dispatch	syscall_dispatch;
 
 	/* Thread group tracking: */
@@ -1371,6 +1377,7 @@ robus_list是什么?
 	int				mm_cid;		/* Current cid in mm */
 	int				last_mm_cid;	/* Most recent cid in mm */
 	int				migrate_from_cpu;
+	/*  */
 	int				mm_cid_active;	/* Whether cid bitmap is active */
 	struct callback_head		cid_work;
 #endif
@@ -2001,6 +2008,7 @@ extern int sched_setattr_nocheck(struct task_struct *, const struct sched_attr *
 extern struct task_struct *idle_task(int cpu);
 
 /**
+是不是idle_task直接标记在flag里面
  * is_idle_task - is the specified task an idle task?
  * @p: the task in question.
  *
@@ -2033,6 +2041,7 @@ extern struct thread_info init_thread_info;
 extern unsigned long init_stack[THREAD_SIZE / sizeof(unsigned long)];
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
+/* 看来cpu是存在ti里面的 */
 # define task_thread_info(task)	(&(task)->thread_info)
 #elif !defined(__HAVE_THREAD_FUNCTIONS)
 # define task_thread_info(task)	((struct thread_info *)(task)->stack)
@@ -2329,6 +2338,7 @@ static __always_inline bool need_resched(void)
 }
 
 /*
+获取进程的cpu
  * Wrappers for p->thread_info->cpu access. No-op on UP.
  */
 #ifdef CONFIG_SMP
@@ -2394,23 +2404,33 @@ unsigned long sched_cpu_util(int cpu);
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_RSEQ
-
+/* RSEQ（Restartable Sequences，可重启序列）是 Linux 内核提供的一种机制，
+用于支持 ​用户空间程序实现高效、无锁的原子操作。其核心思想是允许用户空间定义一
+段临界区代码，当该代码执行过程中被特定事件（如抢占、信号、迁移等）中断时，
+内核会自动重启该代码，从而保证操作的原子性。 */
 /*
  * Map the event mask on the user-space ABI enum rseq_cs_flags
  * for direct mask checks.
  */
 enum rseq_event_mask_bits {
-	RSEQ_EVENT_PREEMPT_BIT	= RSEQ_CS_FLAG_NO_RESTART_ON_PREEMPT_BIT,
-	RSEQ_EVENT_SIGNAL_BIT	= RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT,
-	RSEQ_EVENT_MIGRATE_BIT	= RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT,
+	/* 当前线程被内核抢占（如时间片耗尽），可能中断临界区。 */
+	RSEQ_EVENT_PREEMPT_BIT = RSEQ_CS_FLAG_NO_RESTART_ON_PREEMPT_BIT,
+	/* 线程收到信号（如 SIGINT），需处理信号处理函数。 */
+	RSEQ_EVENT_SIGNAL_BIT = RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT,
+	/* 线程被迁移到其他 CPU（如负载均衡），导致缓存失效或 CPU 上下文变化。 */
+	RSEQ_EVENT_MIGRATE_BIT = RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT,
 };
 
 enum rseq_event_mask {
-	RSEQ_EVENT_PREEMPT	= (1U << RSEQ_EVENT_PREEMPT_BIT),
-	RSEQ_EVENT_SIGNAL	= (1U << RSEQ_EVENT_SIGNAL_BIT),
-	RSEQ_EVENT_MIGRATE	= (1U << RSEQ_EVENT_MIGRATE_BIT),
+	RSEQ_EVENT_PREEMPT = (1U << RSEQ_EVENT_PREEMPT_BIT),
+	RSEQ_EVENT_SIGNAL = (1U << RSEQ_EVENT_SIGNAL_BIT),
+	/* 线程被迁移到其他 CPU（如负载均衡），导致缓存失效或 CPU 上下文变化。 */
+	RSEQ_EVENT_MIGRATE = (1U << RSEQ_EVENT_MIGRATE_BIT),
 };
-
+/* 
+设置tif
+在返回前要执行回调
+*/
 static inline void rseq_set_notify_resume(struct task_struct *t)
 {
 	if (t->rseq)
@@ -2442,7 +2462,10 @@ static inline void rseq_preempt(struct task_struct *t)
 	rseq_set_notify_resume(t);
 }
 
-/* rseq_migrate() requires preemption to be disabled. */
+/* 
+修改rseq掩码, 表示自己迁移了
+修改tif, 表示返回前要执行回调
+rseq_migrate() requires preemption to be disabled. */
 static inline void rseq_migrate(struct task_struct *t)
 {
 	__set_bit(RSEQ_EVENT_MIGRATE_BIT, &t->rseq_event_mask);

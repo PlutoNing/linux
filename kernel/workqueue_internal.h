@@ -28,8 +28,10 @@ struct worker {
 		struct hlist_node	hentry;	/* L: while busy,挂接到pool->busy_hash,表示正在给这个pool干活 */
 	};
 
-	struct work_struct	*current_work;	/* K: work being processed and its */
-	work_func_t		current_func;	/* K: function,正在执行的func */
+	struct work_struct	*current_work;	/*
+	此worker正在执行的work任务
+	K: work being processed and its */
+	work_func_t		current_func;	/* K: function,正在执行的任务的func */
 	struct pool_workqueue	*current_pwq;	/* K: pwq */
 	u64			current_at;	/* K: runtime at start or last wakeup */
 	unsigned int		current_color;	/* K: color */

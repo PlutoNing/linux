@@ -2225,6 +2225,8 @@ static void run_local_timers(void)
 /*
 update_process_times()函数根据时钟中断产生的位置（用户态 or 内核态），
 对用户或对系统进行相应的时间更新。
+======================================
+什么时候调用这个函数?
 =========================================================================
 update_process_times需要由SMP系统上的每个CPU执行。
 除了进程统计之外，它还激活了所有注册的经典低精度定时器并使之到期，并向调度器提供时间感知。
@@ -2235,7 +2237,8 @@ void update_process_times(int user_tick)
 {
 	struct task_struct *p = current;
 
-	/* Note: this timer irq context must be accounted for as well. */
+	/* Note: this timer irq context must be accounted for as well.
+	统计进程的虚拟时间 */
 	account_process_tick(p, user_tick);
 	// 运行hrtimer与softirq相关的定时器
 	run_local_timers();

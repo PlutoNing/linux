@@ -19,6 +19,7 @@ DEFINE_APIC_CALL(native_eoi);
 DEFINE_APIC_CALL(icr_read);
 DEFINE_APIC_CALL(icr_write);
 DEFINE_APIC_CALL(read);
+/* 这里定义的是apic_call_send_IPI? */
 DEFINE_APIC_CALL(send_IPI);
 DEFINE_APIC_CALL(send_IPI_mask);
 DEFINE_APIC_CALL(send_IPI_mask_allbutself);

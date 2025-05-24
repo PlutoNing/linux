@@ -49,7 +49,9 @@
 #include "blk-pm.h"
 #include "blk-cgroup.h"
 #include "blk-throttle.h"
+/* 
 
+*/
 struct dentry *blk_debugfs_root;
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_remap);
@@ -1217,6 +1219,9 @@ void blk_io_schedule(void)
 }
 EXPORT_SYMBOL_GPL(blk_io_schedule);
 
+/* 
+块设备初始化?
+*/
 int __init blk_dev_init(void)
 {
 	BUILD_BUG_ON((__force u32)REQ_OP_LAST >= (1 << REQ_OP_BITS));
@@ -1225,7 +1230,9 @@ int __init blk_dev_init(void)
 	BUILD_BUG_ON(REQ_OP_BITS + REQ_FLAG_BITS > 8 *
 			sizeof_field(struct bio, bi_opf));
 
-	/* used for unplugging and affects IO latency/throughput - HIGHPRI */
+	/* used for unplugging and affects IO latency/throughput - HIGHPRI
+
+	*/
 	kblockd_workqueue = alloc_workqueue("kblockd",
 					    WQ_MEM_RECLAIM | WQ_HIGHPRI, 0);
 	if (!kblockd_workqueue)

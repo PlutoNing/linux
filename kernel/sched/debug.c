@@ -52,7 +52,9 @@ static const char * const sched_feat_names[] = {
 };
 
 #undef SCHED_FEAT
-
+/* 
+查看sched_feat
+*/
 static int sched_feat_show(struct seq_file *m, void *v)
 {
 	int i;
@@ -152,12 +154,16 @@ sched_feat_write(struct file *filp, const char __user *ubuf,
 
 	return cnt;
 }
-
+/* 
+查看调度特性的文件open函数
+*/
 static int sched_feat_open(struct inode *inode, struct file *filp)
 {
 	return single_open(filp, sched_feat_show, NULL);
 }
-
+/* 
+查看调度特性的文件fops
+*/
 static const struct file_operations sched_feat_fops = {
 	.open		= sched_feat_open,
 	.write		= sched_feat_write,
@@ -334,13 +340,18 @@ static const struct file_operations sched_debug_fops = {
 };
 
 static struct dentry *debugfs_sched;
+/* 
 
+*/
 static __init int sched_init_debug(void)
 {
 	struct dentry __maybe_unused *numa;
 
 	debugfs_sched = debugfs_create_dir("sched", NULL);
-
+	/* 
+root@ppppp-MS-7E24:/home/paulning/st4t#cat /sys/kernel/debug/sched/features
+PLACE_LAG PLACE_DEADLINE_INITIAL RUN_TO_PARITY NO_NEXT_BUDDY CACHE_HOT_BUDDY WAKEUP_PREEMPTION NO_HRTICK NO_HRTICK_DL NO_DOUBLE_TICK NONTASK_CAPACITY TTWU_QUEUE SIS_UTIL NO_WARN_DOUBLE_CLOCK RT_PUSH_IPI NO_RT_RUNTIME_SHARE NO_LB_MIN ATTACH_AGE_LOAD WA_IDLE WA_WEIGHT WA_BIAS UTIL_EST NO_LATENCY_WARN HZ_BW
+*/
 	debugfs_create_file("features", 0644, debugfs_sched, NULL, &sched_feat_fops);
 	debugfs_create_file_unsafe("verbose", 0644, debugfs_sched, &sched_debug_verbose, &sched_verbose_fops);
 #ifdef CONFIG_PREEMPT_DYNAMIC

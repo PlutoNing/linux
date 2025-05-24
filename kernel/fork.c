@@ -1795,6 +1795,7 @@ static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 
 	tsk->mm = mm;
 	tsk->active_mm = mm;
+	/* 这里fork cid */
 	sched_mm_cid_fork(tsk);
 	return 0;
 }
