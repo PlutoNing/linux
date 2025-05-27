@@ -83,6 +83,7 @@ static inline struct blk_mq_hw_ctx *blk_mq_map_queue_type(struct request_queue *
 	return xa_load(&q->hctx_table, q->tag_set->map[type].mq_map[cpu]);
 }
 
+/*  */
 static inline enum hctx_type blk_mq_get_hctx_type(blk_opf_t opf)
 {
 	enum hctx_type type = HCTX_TYPE_DEFAULT;
@@ -343,7 +344,8 @@ static inline void blk_mq_clear_mq_map(struct blk_mq_queue_map *qmap)
 		qmap->mq_map[cpu] = 0;
 }
 
-/*合并bio前获取plug
+/*
+合并bio前获取plug
  * blk_mq_plug() - Get caller context plug
  * @bio : the bio being submitted by the caller context
  *

@@ -55,6 +55,7 @@ struct loop_device {
 	int		lo_flags;
 	char		lo_file_name[LO_NAME_SIZE];
 
+	/*  */
 	struct file *	lo_backing_file;
 	struct block_device *lo_device;
 
@@ -239,20 +240,25 @@ static void loop_set_size(struct loop_device *lo, loff_t size)
 		kobject_uevent(&disk_to_dev(lo->lo_disk)->kobj, KOBJ_CHANGE);
 }
 
+/* 把bvec的数据写入file
+bvec->i->vfs->write */
 static int lo_write_bvec(struct file *file, struct bio_vec *bvec, loff_t *ppos)
 {
 	struct iov_iter i;
 	ssize_t bw;
 
+	/* 初始化i来io这个bvec的数据 */
 	iov_iter_bvec(&i, ITER_SOURCE, bvec, 1, bvec->bv_len);
 
 	file_start_write(file);
+	/* 这里开始写入， 把i的数据写入file */
 	bw = vfs_iter_write(file, &i, ppos, 0);
 	file_end_write(file);
 
 	if (likely(bw ==  bvec->bv_len))
 		return 0;
 
+	/* 出错了的情况 */
 	printk_ratelimited(KERN_ERR
 		"loop: Write error at byte offset %llu, length %i.\n",
 		(unsigned long long)*ppos, bvec->bv_len);
@@ -261,6 +267,7 @@ static int lo_write_bvec(struct file *file, struct bio_vec *bvec, loff_t *ppos)
 	return bw;
 }
 
+/* 把rq的全部bio的全部bvec写入lo的file里 */
 static int lo_write_simple(struct loop_device *lo, struct request *rq,
 		loff_t pos)
 {
@@ -268,7 +275,9 @@ static int lo_write_simple(struct loop_device *lo, struct request *rq,
 	struct req_iterator iter;
 	int ret = 0;
 
+	/* bvec指向rq的每一个bio的每一个bvec？ */
 	rq_for_each_segment(bvec, rq, iter) {
+		/* 把每一个bvec的内容写入文件 */
 		ret = lo_write_bvec(lo->lo_backing_file, &bvec, &pos);
 		if (ret < 0)
 			break;
@@ -493,7 +502,7 @@ static int do_req_filebacked(struct loop_device *lo, struct request *rq)
 		if (cmd->use_aio)
 			return lo_rw_aio(lo, cmd, pos, ITER_SOURCE);
 		else
-			return lo_write_simple(lo, rq, pos);
+			return lo_write_simple(lo, rq, pos);/* 把rq写入lo的file */
 	case REQ_OP_READ:
 		if (cmd->use_aio)
 			return lo_rw_aio(lo, cmd, pos, ITER_DEST);

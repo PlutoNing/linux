@@ -48,6 +48,7 @@ struct block_device {
 	bool			bd_read_only;	/* read-only policy */
 	u8			bd_partno;
 	bool			bd_write_holder;
+	/* 表示是否可以调用bio->bi_bdev->bd_disk->fops的submit io函数？ */
 	bool			bd_has_submit_bio;
 	dev_t			bd_dev;
 	atomic_t		bd_openers;
@@ -273,13 +274,16 @@ struct bio {
 	unsigned short		bi_flags;	/* BIO_* below */
 	unsigned short		bi_ioprio;
 	blk_status_t		bi_status;
-	atomic_t		__bi_remaining;/* 在链式 bio 中，bi_remaining 字段会记录剩余的 I/O 操作数。
+	/* 在链式 bio 中，bi_remaining 字段会记录剩余的 I/O 操作数。
 	这个字段在链式 BIO 中帮助内核在完成一个 bio 后，正确地处理下一个 bio，
 	直到整个链条的操作完成。 */
+	atomic_t		__bi_remaining;
 
-	struct bvec_iter	bi_iter;/* 
-	像是一个总控
+	/* 
+	作用是？
+	iter
 	 */
+	struct bvec_iter	bi_iter;
 
 	blk_qc_t		bi_cookie;
 	bio_end_io_t		*bi_end_io;/*  */
@@ -313,14 +317,17 @@ struct bio {
 	};
 
 	unsigned short		bi_vcnt;	/* 
-	有多少个bv
+	bv数组有多少个bv
 	how many bio_vec's */
 
 	/*
 	 * Everything starting with bi_max_vecs will be preserved by bio_reset()
 	 */
 
-	unsigned short		bi_max_vecs;	/* max bvl_vecs we can hold */
+	unsigned short		bi_max_vecs;	
+	/*
+	允许的最大的bi vcnt值
+	max bvl_vecs we can hold */
 
 	atomic_t		__bi_cnt;	/* pin count */
 
@@ -374,6 +381,7 @@ typedef __u32 __bitwise blk_mq_req_flags_t;
 #define REQ_FLAG_BITS	24
 
 /**
+req的类型
  * enum req_op - Operations common to the bio and request structures.
  * We use 8 bits for encoding the operation, and the remaining 24 for flags.
  *
@@ -389,9 +397,11 @@ typedef __u32 __bitwise blk_mq_req_flags_t;
 enum req_op {
 	/* read sectors from the device, 读取设备 */
 	REQ_OP_READ		= (__force blk_opf_t)0,
-	/* write sectors to the device */
+	/* write sectors to the device
+	写入设备 */
 	REQ_OP_WRITE		= (__force blk_opf_t)1,
-	/* flush the volatile write cache */
+	/* flush the volatile write cache
+	刷新缓存 */
 	REQ_OP_FLUSH		= (__force blk_opf_t)2,
 	/* discard sectors */
 	REQ_OP_DISCARD		= (__force blk_opf_t)3,
@@ -459,6 +469,7 @@ enum req_flag_bits {
 
 //对应与wbc的sync all
 #define REQ_SYNC	(__force blk_opf_t)(1ULL << __REQ_SYNC)
+/*  */
 #define REQ_META	(__force blk_opf_t)(1ULL << __REQ_META)
 #define REQ_PRIO	(__force blk_opf_t)(1ULL << __REQ_PRIO)
 #define REQ_NOMERGE	(__force blk_opf_t)(1ULL << __REQ_NOMERGE)

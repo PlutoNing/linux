@@ -766,7 +766,9 @@ static ssize_t do_iter_readv_writev(struct file *filp, struct iov_iter *iter,
 	return ret;
 }
 
-/* Do it by hand, with file-ops */
+/*
+好像是没有iter回调的话，调用这个
+Do it by hand, with file-ops */
 static ssize_t do_loop_readv_writev(struct file *filp, struct iov_iter *iter,
 		loff_t *ppos, int type, rwf_t flags)
 {
@@ -919,7 +921,8 @@ ssize_t vfs_iocb_iter_write(struct file *file, struct kiocb *iocb,
 	return ret;
 }
 EXPORT_SYMBOL(vfs_iocb_iter_write);
-/* loop，overlayfs，slice调用这些 */
+/* loop，overlayfs，slice调用这些
+把i的数据写入file */
 ssize_t vfs_iter_write(struct file *file, struct iov_iter *iter, loff_t *ppos,
 		rwf_t flags)
 {

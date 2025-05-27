@@ -33,6 +33,7 @@ static void seq_set_overflow(struct seq_file *m)
 	m->count = m->size;
 }
 
+/* 分配seq file的buf */
 static void *seq_buf_alloc(unsigned long size)
 {
 	if (unlikely(size > MAX_RW_COUNT))
@@ -146,6 +147,7 @@ Eoverflow:
 
 /**
 开始seq file的读
+一个很通用很普遍的函数
  *	seq_read -	->read() method for sequential files.
  *	@file: the file to read from
  *	@buf: the buffer to read to
@@ -156,15 +158,19 @@ Eoverflow:
  */
 ssize_t seq_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
 {
+	/* 初始化iovec */
 	struct iovec iov = { .iov_base = buf, .iov_len = size};
 	struct kiocb kiocb;
 	struct iov_iter iter;
 	ssize_t ret;
 
+	/* 初始化这个kiocb */
 	init_sync_kiocb(&kiocb, file);
+	/* 初始化一个iovec类型的iter */
 	iov_iter_init(&iter, ITER_DEST, &iov, 1, size);
 
 	kiocb.ki_pos = *ppos;
+	/* 开始读写 */
 	ret = seq_read_iter(&kiocb, &iter);
 	*ppos = kiocb.ki_pos;
 	return ret;
@@ -173,9 +179,15 @@ EXPORT_SYMBOL(seq_read);
 
 /*
  * Ready-made ->f_op->read_iter()
+进行seq file的读操作
+ * @description: 
+ * @param {kiocb} *iocb，描述了要读的文件
+ * @param {iov_iter} *iter，iter->iovec描述了要输出到的用户空间内存位置
+ * @return {*}
  */
 ssize_t seq_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 {
+	/* seq file机制中seq file的指针位于vfs file的priv里面 */
 	struct seq_file *m = iocb->ki_filp->private_data;
 	size_t copied = 0;
 	size_t n;
@@ -213,12 +225,14 @@ ssize_t seq_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 
 	/* grab buffer if we didn't have one */
 	if (!m->buf) {
+		/* 给seq file分配内存 */
 		m->buf = seq_buf_alloc(m->size = PAGE_SIZE);
 		if (!m->buf)
 			goto Enomem;
 	}
 	// something left in the buffer - copy it out first
 	if (m->count) {
+		/* 把buf里面剩余的东西拷贝出去？ */
 		n = copy_to_iter(m->buf + m->from, m->count, iter);
 		m->count -= n;
 		m->from += n;
@@ -226,6 +240,7 @@ ssize_t seq_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 		if (m->count)	// hadn't managed to copy everything
 			goto Done;
 	}
+	/* 现在m->count为0了 */
 	// get a non-empty record in the buffer
 	m->from = 0;
 	p = m->op->start(m, &m->index);
@@ -233,6 +248,7 @@ ssize_t seq_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 		err = PTR_ERR(p);
 		if (!p || IS_ERR(p))	// EOF or an error
 			break;
+		/* 这里一般是从seq源打印到seq的buf里面 */
 		err = m->op->show(m, p);
 		if (err < 0)		// hard error
 			break;
@@ -389,6 +405,14 @@ void seq_escape_mem(struct seq_file *m, const char *src, size_t len,
 }
 EXPORT_SYMBOL(seq_escape_mem);
 
+/**
+把内容输出到seq file的buf中
+ * @description: 
+ * @param {seq_file} *m
+ * @param {char} *f
+ * @param {va_list} args
+ * @return {*}
+ */
 void seq_vprintf(struct seq_file *m, const char *f, va_list args)
 {
 	int len;
@@ -404,6 +428,13 @@ void seq_vprintf(struct seq_file *m, const char *f, va_list args)
 }
 EXPORT_SYMBOL(seq_vprintf);
 
+/**
+把格式化的字符串（seq file要打印的东西）输出到seq file的buf中
+ * @description: 
+ * @param {seq_file} *m
+ * @param {char} *f
+ * @return {*}
+ */
 void seq_printf(struct seq_file *m, const char *f, ...)
 {
 	va_list args;

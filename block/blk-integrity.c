@@ -184,6 +184,7 @@ bool blk_integrity_merge_rq(struct request_queue *q, struct request *req,
 	return true;
 }
 
+/* 以后 */
 bool blk_integrity_merge_bio(struct request_queue *q, struct request *req,
 			     struct bio *bio)
 {

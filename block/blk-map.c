@@ -14,10 +14,17 @@
 struct bio_map_data {
 	bool is_our_pages : 1;
 	bool is_null_mapped : 1;
+	/* 指向所对应的iter，里面有数据 */
 	struct iov_iter iter;
 	struct iovec iov[];
 };
 
+/**
+ * @description: 
+ * @param {iov_iter} *data。 可能是描述用户空间的ubuf
+ * @param {gfp_t} gfp_mask
+ * @return {*}
+ */
 static struct bio_map_data *bio_alloc_map_data(struct iov_iter *data,
 					       gfp_t gfp_mask)
 {
@@ -25,10 +32,11 @@ static struct bio_map_data *bio_alloc_map_data(struct iov_iter *data,
 
 	if (data->nr_segs > UIO_MAXIOV)
 		return NULL;
-
+	/* 分配bmd的内存 */
 	bmd = kmalloc(struct_size(bmd, iov, data->nr_segs), gfp_mask);
 	if (!bmd)
 		return NULL;
+	/*  */
 	bmd->iter = *data;
 	if (iter_is_iovec(data)) {
 		memcpy(bmd->iov, iter_iov(data), sizeof(struct iovec) * data->nr_segs);
@@ -128,6 +136,14 @@ static int bio_uncopy_user(struct bio *bio)
 	return ret;
 }
 
+/**
+ * @description: 
+ * @param {request} *rq，里面好像就是iter的数据
+ * @param {rq_map_data} *map_data
+ * @param {iov_iter} *iter， 可能是描述用户空间的buf
+ * @param {gfp_t} gfp_mask
+ * @return {*}
+ */
 static int bio_copy_user_iov(struct request *rq, struct rq_map_data *map_data,
 		struct iov_iter *iter, gfp_t gfp_mask)
 {
@@ -188,7 +204,7 @@ static int bio_copy_user_iov(struct request *rq, struct rq_map_data *map_data,
 				goto cleanup;
 			}
 		}
-
+		/* 把page的offset，bytes区域加入bio */
 		if (bio_add_pc_page(rq->q, bio, page, bytes, offset) < bytes) {
 			if (!map_data)
 				__free_page(page);
@@ -243,6 +259,13 @@ static void blk_mq_map_bio_put(struct bio *bio)
 	}
 }
 
+/**
+ * @description: 分配一个bio
+ * @param {request} *rq
+ * @param {unsigned int} nr_vecs
+ * @param {gfp_t} gfp_mask
+ * @return {*}
+ */
 static struct bio *blk_rq_map_bio_alloc(struct request *rq,
 		unsigned int nr_vecs, gfp_t gfp_mask)
 {
@@ -254,6 +277,7 @@ static struct bio *blk_rq_map_bio_alloc(struct request *rq,
 		if (!bio)
 			return NULL;
 	} else {
+		/* 从kmalloc分配 */
 		bio = bio_kmalloc(nr_vecs, gfp_mask);
 		if (!bio)
 			return NULL;
@@ -551,7 +575,15 @@ int blk_rq_append_bio(struct request *rq, struct bio *bio)
 }
 EXPORT_SYMBOL(blk_rq_append_bio);
 
-/* Prepare bio for passthrough IO given ITER_BVEC iter */
+/* 
+基于这个iter。初始化rq，bio，
+Prepare bio for passthrough IO given ITER_BVEC iter
+
+ * @description: 
+ * @param {request} *rq，
+ * @param {iov_iter} *iter， iter的后端可能是bvec
+ * @return {*}
+ */
 static int blk_rq_map_user_bvec(struct request *rq, const struct iov_iter *iter)
 {
 	struct request_queue *q = rq->q;
@@ -568,17 +600,21 @@ static int blk_rq_map_user_bvec(struct request *rq, const struct iov_iter *iter)
 	if (nr_segs > queue_max_segments(q))
 		return -EINVAL;
 
-	/* no iovecs to alloc, as we already have a BVEC iterator */
+	/* no iovecs to alloc, as we already have a BVEC iterator
+	分配一个bio */
 	bio = blk_rq_map_bio_alloc(rq, 0, GFP_KERNEL);
 	if (bio == NULL)
 		return -ENOMEM;
 
+	/* 基于已经有的iter初始化bio */
 	bio_iov_bvec_set(bio, (struct iov_iter *)iter);
+	/* 基于bio初始化rq */
 	blk_rq_bio_prep(rq, bio, nr_segs);
 
 	/* loop to perform a bunch of sanity checks */
 	bvecs = (struct bio_vec *)iter->bvec;
 	for (i = 0; i < nr_segs; i++) {
+		/* 遍历iter的每一个bvec */
 		struct bio_vec *bv = &bvecs[i];
 
 		/*
@@ -608,11 +644,13 @@ put_bio:
 }
 
 /**
+把用户数据映射到请求中，适用于直通请求。
+用于零拷贝io，用户数据直接被映射
  * blk_rq_map_user_iov - map user data to a request, for passthrough requests
  * @q:		request queue where request should be inserted
  * @rq:		request to map data to
  * @map_data:   pointer to the rq_map_data holding pages (if necessary)
- * @iter:	iovec iterator
+ * @iter:	iovec iterator，i描述了所要io的数据，可能是用户空间的buf什么的
  * @gfp_mask:	memory allocation flags
  *
  * Description:
@@ -626,7 +664,9 @@ int blk_rq_map_user_iov(struct request_queue *q, struct request *rq,
 			struct rq_map_data *map_data,
 			const struct iov_iter *iter, gfp_t gfp_mask)
 {
-	bool copy = false, map_bvec = false;
+	bool copy = false, 
+	/* 表示iter操作的是不是bvec */
+	map_bvec = false;
 	unsigned long align = q->dma_pad_mask | queue_dma_alignment(q);
 	struct bio *bio = NULL;
 	struct iov_iter i;
@@ -645,7 +685,8 @@ int blk_rq_map_user_iov(struct request_queue *q, struct request *rq,
 	else if (queue_virt_boundary(q))
 		copy = queue_virt_boundary(q) & iov_iter_gap_alignment(iter);
 
-	if (map_bvec) {
+	if (map_bvec) {/* 如果iter的后端是bvec */
+		/* 就基于这个iter，分配初始化bio，初始化这个rq */
 		ret = blk_rq_map_user_bvec(rq, iter);
 		if (!ret)
 			return 0;
@@ -677,11 +718,22 @@ fail:
 }
 EXPORT_SYMBOL(blk_rq_map_user_iov);
 
+/**
+ * @description: 
+ * @param {request_queue} *q
+ * @param {request} *rq
+ * @param {rq_map_data} *map_data
+ * @param {void __user} *ubuf
+ * @param {unsigned long} len
+ * @param {gfp_t} gfp_mask
+ * @return {*}
+ */
 int blk_rq_map_user(struct request_queue *q, struct request *rq,
 		    struct rq_map_data *map_data, void __user *ubuf,
 		    unsigned long len, gfp_t gfp_mask)
 {
 	struct iov_iter i;
+	/* 初始化这个i */
 	int ret = import_ubuf(rq_data_dir(rq), ubuf, len, &i);
 
 	if (unlikely(ret < 0))

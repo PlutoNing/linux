@@ -2966,6 +2966,8 @@ static void bio_set_ioprio(struct bio *bio)
  * blk_mq_submit_bio - Create and send a request to block device.
    创建并发送请求到块设备
  * @bio: Bio pointer.
+ -======
+ 如果磁盘的fops没有submit io，那么这个函数会被调用。
  *
  * Builds up a request structure from @q and @bio and send to the device. The
  * request may not be queued directly to hardware if:
@@ -2984,6 +2986,7 @@ static void bio_set_ioprio(struct bio *bio)
 void blk_mq_submit_bio(struct bio *bio)
 {
 	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
+	/* 一半是current的plug */
 	struct blk_plug *plug = blk_mq_plug(bio);
 	const int is_sync = op_is_sync(bio->bi_opf);
 	struct blk_mq_hw_ctx *hctx;

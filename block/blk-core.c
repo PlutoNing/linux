@@ -371,6 +371,7 @@ dead:
 	return -ENODEV;
 }
 
+/* 释放ref */
 void blk_queue_exit(struct request_queue *q)
 {
 	percpu_ref_put(&q->q_usage_counter);
@@ -604,6 +605,7 @@ static void __submit_bio(struct bio *bio)
 		struct gendisk *disk = bio->bi_bdev->bd_disk;
 
 		disk->fops->submit_bio(bio);
+		/* 释放queue的ref */
 		blk_queue_exit(disk->queue);
 	}
 }

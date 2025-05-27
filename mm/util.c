@@ -572,6 +572,7 @@ unsigned long vm_mmap(struct file *file, unsigned long addr,
 EXPORT_SYMBOL(vm_mmap);
 
 /**
+分配物理连续内存，但是如果分配失败，则回退到非连续的vmalloc分配。
  * kvmalloc_node - attempt to allocate physically contiguous memory, but upon
  * failure, fall back to non-contiguous (vmalloc) allocation.
  * @size: size of the request.
@@ -609,6 +610,7 @@ void *kvmalloc_node(size_t size, gfp_t flags, int node)
 		kmalloc_flags &= ~__GFP_NOFAIL;
 	}
 
+	/* 从slab分配 */
 	ret = kmalloc_node(size, kmalloc_flags, node);
 
 	/*

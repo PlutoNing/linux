@@ -377,7 +377,7 @@ enum rw_hint {
 */
 struct kiocb {
 	struct file		*ki_filp; // 表示与该iocb相关联的文件
-	loff_t			ki_pos; //表示读写的位置
+	loff_t			ki_pos; //表示读写的位置，对应file的pos
 	void (*ki_complete)(struct kiocb *iocb, long ret);
 	void			*private;
 	int			ki_flags;
@@ -1207,9 +1207,12 @@ extern int send_sigurg(struct fown_struct *fown);
 #define SB_I_TS_EXPIRY_WARNED 0x00000400 /* warned about timestamp range expiry */
 #define SB_I_RETIRED	0x00000800	/* superblock shouldn't be reused */
 
-/* Possible states of 'frozen' field */
+/* 
+对sb的不同加锁级别
+Possible states of 'frozen' field */
 enum {
 	SB_UNFROZEN = 0,		/* FS is unfrozen */
+	/*  */
 	SB_FREEZE_WRITE	= 1,		/* Writes, dir ops, ioctls frozen */
 	SB_FREEZE_PAGEFAULT = 2,	/* Page faults stopped as well */
 	SB_FREEZE_FS = 3,		/* For internal FS use (e.g. to stop
@@ -1222,6 +1225,7 @@ enum {
 struct sb_writers {
 	unsigned short			frozen;		/* Is sb frozen? */
 	unsigned short			freeze_holders;	/* Who froze fs? */
+	/* 是一个数组，代表不同写入级别，不同级别需要的锁的范围不一样 */
 	struct percpu_rw_semaphore	rw_sem[SB_FREEZE_LEVELS];
 };
 
@@ -1671,6 +1675,7 @@ static inline void sb_end_intwrite(struct super_block *sb)
 }
 
 /**
+获取对一个sb的写权限
  * sb_start_write - get write access to a superblock
  * @sb: the super we write to
  *
@@ -2160,7 +2165,9 @@ static inline bool HAS_UNMAPPED_ID(struct mnt_idmap *idmap,
 	return !vfsuid_valid(i_uid_into_vfsuid(idmap, inode)) ||
 	       !vfsgid_valid(i_gid_into_vfsgid(idmap, inode));
 }
-/* 初始化kiocb */
+/* 
+要读写这个file了
+初始化这个kiocb */
 static inline void init_sync_kiocb(struct kiocb *kiocb, struct file *filp)
 {
 	*kiocb = (struct kiocb) {
@@ -2707,7 +2714,10 @@ static inline bool inode_wrong_type(const struct inode *inode, umode_t mode)
 }
 
 /**
- * file_start_write - get write access to a superblock for regular file io
+常规文件读写前获取对sb的写权限？
+ * file_start_write - get write access to a 
+ superblock
+  for regular file io
  * @file: the file we want to write to
  *
  * This is a variant of sb_start_write() which is a noop on non-regualr file.

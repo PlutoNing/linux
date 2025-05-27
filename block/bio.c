@@ -67,6 +67,7 @@ static struct biovec_slab *biovec_slab(unsigned short nr_vecs)
 }
 
 /*
+类似用于分配bio的内存池？
  * fs_bio_set is the bio_set containing bio and iovec memory pools used by
  * IO code that does not need private memory pools.
  */
@@ -241,6 +242,7 @@ static void bio_free(struct bio *bio)
 }
 
 /*
+初始化bio
  * Users of this function have their own bio allocation. Subsequently,
  * they must remember to pair any call to bio_init() with bio_uninit()
  * when IO has completed, or when the bio is released.
@@ -901,6 +903,7 @@ int bio_init_clone(struct block_device *bdev, struct bio *bio,
 EXPORT_SYMBOL(bio_init_clone);
 
 /**
+检查bio是不是满了
  * bio_full - check if the bio is full
  * @bio:	bio to check
  * @len:	length of one segment to be added
@@ -917,6 +920,18 @@ static inline bool bio_full(struct bio *bio, unsigned len)
 	return false;
 }
 
+
+/**
+把page的[off， len]区域添加到到bv
+要求两个区域物理相邻
+ * @description: 
+ * @param {bio_vec} *bv
+ * @param {page} *page
+ * @param {unsigned int} len
+ * @param {unsigned int} off
+ * @param {bool} *same_page
+ * @return {*}
+ */
 static bool bvec_try_merge_page(struct bio_vec *bv, struct page *page,
 		unsigned int len, unsigned int off, bool *same_page)
 {
@@ -924,6 +939,7 @@ static bool bvec_try_merge_page(struct bio_vec *bv, struct page *page,
 	phys_addr_t vec_end_addr = page_to_phys(bv->bv_page) + bv_end - 1;
 	phys_addr_t page_addr = page_to_phys(page);
 
+	/* 需要bv区域的尾部刚好和待添加区域的起始处对齐 */
 	if (vec_end_addr + 1 != page_addr + off)
 		return false;
 	if (xen_domain() && !xen_biovec_phys_mergeable(bv, page))
@@ -944,6 +960,9 @@ static bool bvec_try_merge_page(struct bio_vec *bv, struct page *page,
 }
 
 /*
+要把page的len长度加入一个bio
+bv是bio的bv数组的最后一个bv
+要求待添加区域和bv物理相邻
  * Try to merge a page into a segment, while obeying the hardware segment
  * size limit.  This is not for normal read/write bios, but for passthrough
  * or Zone Append operations that we can't split.
@@ -953,24 +972,29 @@ bool bvec_try_merge_hw_page(struct request_queue *q, struct bio_vec *bv,
 		bool *same_page)
 {
 	unsigned long mask = queue_segment_boundary(q);
+	/* 获取到bv的物理地址 */
 	phys_addr_t addr1 = page_to_phys(bv->bv_page) + bv->bv_offset;
+	/* 获取到要添加区域的物理地址 */
 	phys_addr_t addr2 = page_to_phys(page) + offset + len - 1;
 
 	if ((addr1 | mask) != (addr2 | mask))
 		return false;
 	if (bv->bv_len + len > queue_max_segment_size(q))
 		return false;
+	/* 尝试添加 */
 	return bvec_try_merge_page(bv, page, len, offset, same_page);
 }
 
 /**
+尝试将一个page的区域添加到bio中，同时遵守硬件的最大扇区数、最大段和间隙限制。
  * bio_add_hw_page - attempt to add a page to a bio with hw constraints
  * @q: the target queue
  * @bio: destination bio
  * @page: page to add
- * @len: vec entry length
- * @offset: vec entry offset
- * @max_sectors: maximum number of sectors that can be added
+ * @len: vec entry length， page区域的长度
+ * @offset: vec entry offset， page区域的起始处
+ * @max_sectors: maximum number of sectors that can be added，是磁盘的最大限制，
+ 还是某个什么限制？
  * @same_page: return if the segment has been merged inside the same page
  *
  * Add a page to a bio while respecting the hardware max_sectors, max_segment
@@ -982,15 +1006,19 @@ int bio_add_hw_page(struct request_queue *q, struct bio *bio,
 {
 	if (WARN_ON_ONCE(bio_flagged(bio, BIO_CLONED)))
 		return 0;
-
+/* 大小不能超限 */
 	if (((bio->bi_iter.bi_size + len) >> SECTOR_SHIFT) > max_sectors)
 		return 0;
 
 	if (bio->bi_vcnt > 0) {
+		/* 如果现在bio有内容？ */
+		/* 获取bio的最后一个bv */
 		struct bio_vec *bv = &bio->bi_io_vec[bio->bi_vcnt - 1];
 
+		/* 尝试把page的off，len区域加到bv， 要求两者相邻 */
 		if (bvec_try_merge_hw_page(q, bv, page, len, offset,
 				same_page)) {
+			/* 添加成功了 */
 			bio->bi_iter.bi_size += len;
 			return len;
 		}
@@ -1006,7 +1034,7 @@ int bio_add_hw_page(struct request_queue *q, struct bio *bio,
 		if (bvec_gap_to_prev(&q->limits, bv, offset))
 			return 0;
 	}
-
+	/* 把这个区域设置到最后一个bv */
 	bvec_set_page(&bio->bi_io_vec[bio->bi_vcnt], page, len, offset);
 	bio->bi_vcnt++;
 	bio->bi_iter.bi_size += len;
@@ -1014,6 +1042,7 @@ int bio_add_hw_page(struct request_queue *q, struct bio *bio,
 }
 
 /**
+把page的区域添加到bio中
  * bio_add_pc_page	- attempt to add page to passthrough bio
  * @q: the target queue
  * @bio: destination bio
@@ -1175,6 +1204,14 @@ void __bio_release_pages(struct bio *bio, bool mark_dirty)
 }
 EXPORT_SYMBOL_GPL(__bio_release_pages);
 
+
+/**
+为什么还能基于bio初始化bio
+ * @description: 基于iter初始化bio
+ * @param {bio} *bio
+ * @param {iov_iter} *iter
+ * @return {*}
+ */
 void bio_iov_bvec_set(struct bio *bio, struct iov_iter *iter)
 {
 	size_t size = iov_iter_count(iter);

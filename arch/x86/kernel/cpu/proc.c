@@ -67,6 +67,7 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 	int i;
 
 	cpu = c->cpu_index;
+	/*  */
 	seq_printf(m, "processor\t: %u\n"
 		   "vendor_id\t: %s\n"
 		   "cpu family\t: %d\n"

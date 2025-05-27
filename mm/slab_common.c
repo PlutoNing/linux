@@ -1030,6 +1030,7 @@ void *__do_kmalloc_node(size_t size, gfp_t flags, int node, unsigned long caller
 	return ret;
 }
 
+/* slab */
 void *__kmalloc_node(size_t size, gfp_t flags, int node)
 {
 	return __do_kmalloc_node(size, flags, node, _RET_IP_);

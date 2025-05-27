@@ -1899,6 +1899,7 @@ out:
 #ifdef CONFIG_EVENT_TRACING
 
 /**
+应该是用于转换输出格式的
  * blk_fill_rwbs - Fill the buffer rwbs by mapping op to character string.
  * @rwbs:	buffer to be filled
  * @opf:	request operation type (REQ_OP_XXX) and flags for the tracepoint

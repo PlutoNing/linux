@@ -196,12 +196,14 @@ struct poll_iocb {
  */
 struct aio_kiocb {
 	union {
+		/* 读写的文件 */
 		struct file		*ki_filp;
 		struct kiocb		rw;
 		struct fsync_iocb	fsync;
 		struct poll_iocb	poll;
 	};
 
+	/* 指向对应的ioctx */
 	struct kioctx		*ki_ctx;
 	kiocb_cancel_fn		*ki_cancel;
 
@@ -1040,7 +1042,9 @@ static bool get_reqs_available(struct kioctx *ctx)
 	return __get_reqs_available(ctx);
 }
 
-/* aio_get_req
+/*
+异步io之前分配一个aio kiocb
+aio_get_req
  *	Allocate a slot for an aio request.
  * Returns NULL if no requests are free.
  *
@@ -1460,6 +1464,7 @@ static void aio_complete_rw(struct kiocb *kiocb, long res)
 	iocb_put(iocb);
 }
 
+/* 初始化kiocb */
 static int aio_prep_rw(struct kiocb *req, const struct iocb *iocb)
 {
 	int ret;
@@ -1494,6 +1499,16 @@ static int aio_prep_rw(struct kiocb *req, const struct iocb *iocb)
 	return 0;
 }
 
+/**
+ * @description: 初始化aio的什么东西
+ * @param {int} rw
+ * @param {iocb} *iocb，内核的iocb
+ * @param {iovec} *， 一组新分配的iovec数组
+ * @param {bool} vectored
+ * @param {bool} compat
+ * @param {iov_iter} *iter， 一个空的新的iter
+ * @return {*}
+ */
 static ssize_t aio_setup_rw(int rw, const struct iocb *iocb,
 		struct iovec **iovec, bool vectored, bool compat,
 		struct iov_iter *iter)
@@ -1502,12 +1517,14 @@ static ssize_t aio_setup_rw(int rw, const struct iocb *iocb,
 	size_t len = iocb->aio_nbytes;
 
 	if (!vectored) {
+		/* 初始化这个io用户空间buf的iter */
 		ssize_t ret = import_single_range(rw, buf, len, *iovec, iter);
 		*iovec = NULL;
 		return ret;
 	}
 
-	return __import_iovec(rw, buf, len, UIO_FASTIOV, iovec, iter, compat);
+	return __import_iovec(rw, buf, len, UIO_FASTIOV, 
+		iovec, iter, compat);
 }
 
 static inline void aio_rw_done(struct kiocb *req, ssize_t ret)
@@ -1530,6 +1547,15 @@ static inline void aio_rw_done(struct kiocb *req, ssize_t ret)
 	}
 }
 
+/**
+进行一次aio的读
+ * @description: 
+ * @param {kiocb} *req，可能是aio kiocb的kiocb成员
+ * @param {iocb} *iocb，内核态的iocb
+ * @param {bool} vectored
+ * @param {bool} compat
+ * @return {*}
+ */
 static int aio_read(struct kiocb *req, const struct iocb *iocb,
 			bool vectored, bool compat)
 {
@@ -1537,10 +1563,11 @@ static int aio_read(struct kiocb *req, const struct iocb *iocb,
 	struct iov_iter iter;
 	struct file *file;
 	int ret;
-
+	/* 初始化这个kiocb */
 	ret = aio_prep_rw(req, iocb);
 	if (ret)
 		return ret;
+	/* 获取要读写的文件 */
 	file = req->ki_filp;
 	if (unlikely(!(file->f_mode & FMODE_READ)))
 		return -EBADF;
@@ -1918,6 +1945,15 @@ static int aio_poll(struct aio_kiocb *aiocb, const struct iocb *iocb)
 	return apt.error;
 }
 
+/**
+ * @description: 
+ * @param {kioctx} *ctx，对应一个异步io的上下文，
+ * @param {iocb} *iocb，是user iocb的对应，复制过来的
+ * @param {iocb __user} *user_iocb，系统调用参数里面的iocb数组的一个指针
+ * @param {aio_kiocb} *req，从ctx分配的一个aio kiocb，
+ * @param {bool} compat
+ * @return {*}
+ */
 static int __io_submit_one(struct kioctx *ctx, const struct iocb *iocb,
 			   struct iocb __user *user_iocb, struct aio_kiocb *req,
 			   bool compat)
@@ -1972,6 +2008,13 @@ static int __io_submit_one(struct kioctx *ctx, const struct iocb *iocb,
 	}
 }
 
+/**
+ * @description: 
+ * @param {kioctx} *ctx， 对应一个aio上下文
+ * @param {iocb __user} *user_iocb，从系统调用的用户空间的iocb数组获取一个指针
+ * @param {bool} compat
+ * @return {*}
+ */
 static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 			 bool compat)
 {
@@ -1979,6 +2022,7 @@ static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 	struct iocb iocb;
 	int err;
 
+	/* 把用户空间的iocb拷贝到内核空间 */
 	if (unlikely(copy_from_user(&iocb, user_iocb, sizeof(iocb))))
 		return -EFAULT;
 
@@ -1997,11 +2041,12 @@ static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 		pr_debug("EINVAL: overflow check\n");
 		return -EINVAL;
 	}
-
+	/* 分配获取一个aio kiocb */
 	req = aio_get_req(ctx);
 	if (unlikely(!req))
 		return -EAGAIN;
 
+	/* 开始io */
 	err = __io_submit_one(ctx, &iocb, user_iocb, req, compat);
 
 	/* Done with the synchronous reference */
@@ -2042,6 +2087,7 @@ SYSCALL_DEFINE3(io_submit, aio_context_t, ctx_id, long, nr,
 	if (unlikely(nr < 0))
 		return -EINVAL;
 
+	/* 查找ctx */
 	ctx = lookup_ioctx(ctx_id);
 	if (unlikely(!ctx)) {
 		pr_debug("EINVAL: invalid context id\n");
@@ -2053,6 +2099,7 @@ SYSCALL_DEFINE3(io_submit, aio_context_t, ctx_id, long, nr,
 
 	if (nr > AIO_PLUG_THRESHOLD)
 		blk_start_plug(&plug);
+
 	for (i = 0; i < nr; i++) {
 		struct iocb __user *user_iocb;
 
@@ -2061,6 +2108,7 @@ SYSCALL_DEFINE3(io_submit, aio_context_t, ctx_id, long, nr,
 			break;
 		}
 
+		/*  */
 		ret = io_submit_one(ctx, user_iocb, false);
 		if (ret)
 			break;

@@ -59,6 +59,7 @@ enum {
 /* read() from /dev/aio returns these structures. */
 struct io_event {
 	__u64		data;		/* the data field from the iocb */
+	/* 指向用户空间那个user iocb */
 	__u64		obj;		/* what iocb this event came from */
 	__s64		res;		/* result code for this event */
 	__s64		res2;		/* secondary result */
@@ -85,11 +86,15 @@ struct iocb {
 #endif
 
 	/* common fields */
+	/* 对应opcode，表示要进行的aio操作 */
 	__u16	aio_lio_opcode;	/* see IOCB_CMD_ above */
 	__s16	aio_reqprio;
+	/*  */
 	__u32	aio_fildes;
 
+	/* 要io的用户空间buf */
 	__u64	aio_buf;
+	/* 要io的长度 */
 	__u64	aio_nbytes;
 	__s64	aio_offset;
 
