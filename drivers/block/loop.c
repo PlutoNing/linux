@@ -47,9 +47,11 @@ enum {
 
 struct loop_func_table;
 
-/*  */
+/* 代表一个loop设备 */
 struct loop_device {
+	/* 是loop_add的参数,  也是/dev/loop后面的后缀*/
 	int		lo_number;
+	/*  */
 	loff_t		lo_offset;
 	loff_t		lo_sizelimit;
 	int		lo_flags;
@@ -99,6 +101,7 @@ static DEFINE_MUTEX(loop_ctl_mutex);
 static DEFINE_MUTEX(loop_validate_mutex);
 
 /**
+加什么锁
  * loop_global_lock_killable() - take locks for safe loop_validate_file() test
  *
  * @lo: struct loop_device
@@ -141,11 +144,23 @@ static void loop_global_unlock(struct loop_device *lo, bool global)
 static int max_part;
 static int part_shift;
 
+
+/**
+读取loop的大小
+其实是一个文件的大小
+ * @description: 
+ * @param {loff_t} offset, 是loop的lo_offset
+ * @param {loff_t} sizelimit, 是loop的size_limit
+ * @param {file} *file,
+ * @return {*}
+ */
 static loff_t get_size(loff_t offset, loff_t sizelimit, struct file *file)
 {
 	loff_t loopsize;
 
-	/* Compute loopsize in bytes */
+	/* Compute loopsize in bytes
+	读取文件大小
+	*/
 	loopsize = i_size_read(file->f_mapping->host);
 	if (offset > 0)
 		loopsize -= offset;
@@ -162,6 +177,12 @@ static loff_t get_size(loff_t offset, loff_t sizelimit, struct file *file)
 	return loopsize >> 9;
 }
 
+/**
+ * @description: 获取loop的大小
+ * @param {loop_device} *lo
+ * @param {file} *file
+ * @return {*}
+ */
 static loff_t get_loop_size(struct loop_device *lo, struct file *file)
 {
 	return get_size(lo->lo_offset, lo->lo_sizelimit, file);
@@ -532,6 +553,7 @@ static void loop_reread_partitions(struct loop_device *lo)
 			__func__, lo->lo_number, lo->lo_file_name, rc);
 }
 
+/* 检查是不是loop文件 */
 static inline int is_loop_device(struct file *file)
 {
 	struct inode *i = file->f_mapping->host;
@@ -1000,6 +1022,14 @@ loop_set_status_from_info(struct loop_device *lo,
 	return 0;
 }
 
+/**
+ * @description:
+ * @param {loop_device} *lo
+ * @param {blk_mode_t} mode
+ * @param {block_device} *bdev
+ * @param {loop_config} *config
+ * @return {*}
+ */
 static int loop_configure(struct loop_device *lo, blk_mode_t mode,
 			  struct block_device *bdev,
 			  const struct loop_config *config)
@@ -1042,6 +1072,7 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
 	if (error)
 		goto out_unlock;
 
+	/* 获取file的mapping和inode */
 	mapping = file->f_mapping;
 	inode = mapping->host;
 
