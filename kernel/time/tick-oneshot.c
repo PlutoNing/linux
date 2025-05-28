@@ -20,11 +20,17 @@
 /**
 program是指?
  * tick_program_event - program the CPU local timer device for the next event
+
+ * @description: 如果cpubase的到期时间发生了变化,调用这个函数
+ * @param {ktime_t} expires. 最新计算的某个到期时间发生变化了的cpubase的新到期时间
+ * @param {int} force
+ * @return {*}
  */
 int tick_program_event(ktime_t expires, int force)
 {
 	struct clock_event_device *dev = __this_cpu_read(tick_cpu_device.evtdev);
 
+	/* 以后 */
 	if (unlikely(expires == KTIME_MAX)) {
 		/*
 		 * We don't need the clock event device any more, stop it.
@@ -34,6 +40,7 @@ int tick_program_event(ktime_t expires, int force)
 		return 0;
 	}
 
+	/* 以后 */
 	if (unlikely(clockevent_state_oneshot_stopped(dev))) {
 		/*
 		 * We need the clock event again, configure it in ONESHOT mode
@@ -46,13 +53,16 @@ int tick_program_event(ktime_t expires, int force)
 }
 
 /**
+恢复当前cpu的td设备的one-shot
  * tick_resume_oneshot - resume oneshot mode
  */
 void tick_resume_oneshot(void)
 {
 	struct clock_event_device *dev = __this_cpu_read(tick_cpu_device.evtdev);
 
+	/* 设置设备的状态 */
 	clockevents_switch_state(dev, CLOCK_EVT_STATE_ONESHOT);
+	/* 编程设备. 设置到期时间什么的 */
 	clockevents_program_event(dev, ktime_get(), true);
 }
 

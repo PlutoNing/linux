@@ -18,6 +18,8 @@
 
 /* The registered clock event devices
 系统的ce设备在这里
+是什么
+20250528225521
 */
 static LIST_HEAD(clockevent_devices);
 // 要被释放的设备
@@ -184,6 +186,7 @@ void clockevents_shutdown(struct clock_event_device *dev)
 }
 
 /**
+恢复设备的tick
  * clockevents_tick_resume -	Resume the tick device before using it again
  再次使用ce设备之前恢复tick设备
  * @dev:			device to resume
@@ -235,8 +238,7 @@ static int clockevents_increase_min_delta(struct clock_event_device *dev)
 }
 
 /**
-在设置one-shot的ce设备的next到期时间expires的时候
-如果发现expires已经过期了，那么就会调用这个函数
+
  * clockevents_program_min_delta - Set clock event device to the minimum delay.
  * @dev:	device to program
  *
@@ -307,12 +309,16 @@ static int clockevents_program_min_delta(struct clock_event_device *dev)
 #endif /* CONFIG_GENERIC_CLOCKEVENTS_MIN_ADJUST */
 
 /**
-把ce设备切换为one-shot状态之后会调用这个函数
-大概是设置设备的下一次到期时间
+感觉主要还是调用dev->set_next_event来设置下次到期时间什么的
+==========================
+1 把ce设备切换为one-shot状态之后会调用这个函数 大概是设置设备的下一次到期时间
+2 如果某个cpubase的到期时间发生变化也会调用这个函数
+3 恢复设备tick, 开启one-shot状态之后也会调用这个函数
  * clockevents_program_event - Reprogram the clock event device.
- * @dev:	device to program
- * @expires:	absolute expiry time (monotonic clock),是获取的获取下一个周期性tick触发的时间
- 也就是tick_next_period的时间
+ * @dev:	device to program,可能是tick_cpu_device.evtdev
+ * @expires:	absolute expiry time (monotonic clock),
+ case1 是获取的获取下一个周期性tick触发的时间  也就是tick_next_period的时间
+ case2 也可能是刚刚计算的hrtimer的某一个cpubase的最新到期时间
  * @force:	program minimum delay if expires can not be set
  *
  * Returns 0 on success, -ETIME when the event is in the past.
@@ -341,9 +347,10 @@ int clockevents_program_event(struct clock_event_device *dev, ktime_t expires,
 		return dev->set_next_ktime(expires, dev);
 	// delta表示还有多久到期
 	delta = ktime_to_ns(ktime_sub(expires, ktime_get()));
-	if (delta <= 0)
+	if (delta <= 0) /* expires参数还没到期 */
 		return force ? clockevents_program_min_delta(dev) : -ETIME;
 
+	/* expires时间已经到期了 */
 	// 保证delta在min_delta_ns和max_delta_ns之间
 	delta = min(delta, (int64_t) dev->max_delta_ns);
 	delta = max(delta, (int64_t) dev->min_delta_ns);
@@ -559,6 +566,7 @@ int __clockevents_update_freq(struct clock_event_device *dev, u32 freq)
 	clockevents_config(dev, freq);
 
 	if (clockevent_state_oneshot(dev))
+	/* 刚刚更新了设备的频率, 这里更新next时间什么的 */
 		return clockevents_program_event(dev, dev->next_event, false);
 
 	if (clockevent_state_periodic(dev))
@@ -568,6 +576,7 @@ int __clockevents_update_freq(struct clock_event_device *dev, u32 freq)
 }
 
 /**
+更新设备的频率, 也会设置最新的到期时间
  * clockevents_update_freq - Update frequency and reprogram a clock event device.
  更新频率并重新编程时钟事件设备
  * @dev:	device to modify
@@ -577,7 +586,8 @@ int __clockevents_update_freq(struct clock_event_device *dev, u32 freq)
  * mode. Must be called on the cpu for which the device delivers per
  * cpu timer events. If called for the broadcast device the core takes
  * care of serialization.
- * 重新配置和重新编程一个单次触发模式的时钟事件设备。必须在设备传递每个cpu计时器事件的cpu上调用。
+ *重新配置和重新编程一个单次触发模式的时钟事件设备。
+  必须在设备传递每个cpu计时器事件的cpu上调用。
   如果为广播设备调用，核心将负责序列化。
  * Returns 0 on success, -ETIME when the event is in the past.
  */
@@ -587,8 +597,9 @@ int clockevents_update_freq(struct clock_event_device *dev, u32 freq)
 	int ret;
 
 	local_irq_save(flags);
+	/* 更新设备的频率 */
 	ret = tick_broadcast_update_freq(dev, freq);
-	if (ret == -ENODEV)
+	if (ret == -ENODEV)/* 返回nodev说明dev不是广播设备? */
 		ret = __clockevents_update_freq(dev, freq);
 	local_irq_restore(flags);
 	return ret;

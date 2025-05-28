@@ -87,7 +87,7 @@ static __init void x86_late_time_init(void)
 	/*
 	 * Before PIT/HPET init, select the interrupt mode. This is required
 	 * to make the decision whether PIT should be initialized correct.
-	 */
+	 是apic_intr_mode_select函数*/
 	x86_init.irqs.intr_mode_select();
 
 	/* Setup the legacy timers , 初始化legacy timers中断什么的*/
@@ -96,6 +96,7 @@ static __init void x86_late_time_init(void)
 	/*
 	 * After PIT/HPET timers init, set up the final interrupt mode for
 	 * delivering IRQs.
+	 在PIT/HPET定时器初始化之后，设置最终的中断模式
 	 */
 	x86_init.irqs.intr_mode_init();
 	tsc_init();

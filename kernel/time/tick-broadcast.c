@@ -31,6 +31,7 @@ Tick广播层存在的目的
  * timer stops in C3 state.
  */
 /* 
+20250528221535
 表示广播设备
 */
 static struct tick_device tick_broadcast_device;
@@ -249,6 +250,7 @@ int tick_broadcast_update_freq(struct clock_event_device *dev, u32 freq)
 
 	if (tick_is_broadcast_device(dev)) {// 如果ce设备用作广播设备
 		raw_spin_lock(&tick_broadcast_lock);
+		/* 设置设备的新频率, 计算新的到期时间 */
 		ret = __clockevents_update_freq(dev, freq);
 		raw_spin_unlock(&tick_broadcast_lock);
 	}
@@ -608,6 +610,7 @@ void tick_broadcast_offline(unsigned int cpu)
 
 #endif
 
+/* 挂起tk的时候停止广播设备的tick */
 void tick_suspend_broadcast(void)
 {
 	struct clock_event_device *bc;
@@ -615,6 +618,7 @@ void tick_suspend_broadcast(void)
 
 	raw_spin_lock_irqsave(&tick_broadcast_lock, flags);
 
+	/* 也就是把next设置为LONGMAX */
 	bc = tick_broadcast_device.evtdev;
 	if (bc)
 		clockevents_shutdown(bc);
@@ -638,6 +642,7 @@ bool tick_resume_check_broadcast(void)
 		return cpumask_test_cpu(smp_processor_id(), tick_broadcast_mask);
 }
 
+/* 调用回调恢复tick */
 void tick_resume_broadcast(void)
 {
 	struct clock_event_device *bc;
@@ -648,6 +653,7 @@ void tick_resume_broadcast(void)
 	bc = tick_broadcast_device.evtdev;
 
 	if (bc) {
+		/* 恢复设备的tick */
 		clockevents_tick_resume(bc);
 
 		switch (tick_broadcast_device.mode) {
@@ -723,6 +729,8 @@ static void tick_broadcast_set_event(struct clock_event_device *bc, int cpu,
 	tick_broadcast_set_affinity(bc, cpumask_of(cpu));
 }
 
+/* 在恢复设备的tick之后
+调用这个函数 */
 static void tick_resume_broadcast_oneshot(struct clock_event_device *bc)
 {
 	clockevents_switch_state(bc, CLOCK_EVT_STATE_ONESHOT);

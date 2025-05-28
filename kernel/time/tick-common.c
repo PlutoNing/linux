@@ -508,7 +508,8 @@ void tick_shutdown(unsigned int cpu)
 #endif
 
 /**
- * tick_suspend_local - Suspend the local tick device
+停止local设备的tick
+* tick_suspend_local - Suspend the local tick device
  *
  * Called from the local cpu for freeze with interrupts disabled.
  *
@@ -522,6 +523,7 @@ void tick_suspend_local(void)
 }
 
 /**
+恢复local 设备的tick
  * tick_resume_local - Resume the local tick device
  *
  * Called from the local CPU for unfreeze or XEN resume magic.
@@ -533,11 +535,13 @@ void tick_resume_local(void)
 	struct tick_device *td = this_cpu_ptr(&tick_cpu_device);
 	bool broadcast = tick_resume_check_broadcast();
 
+	/* 恢复td的设备的tick */
 	clockevents_tick_resume(td->evtdev);
 	if (!broadcast) {
 		if (td->mode == TICKDEV_MODE_PERIODIC)
 			tick_setup_periodic(td->evtdev, 0);
 		else
+		/* 切换为one-shot状态,设置下次到期时间 */
 			tick_resume_oneshot();
 	}
 
@@ -545,11 +549,13 @@ void tick_resume_local(void)
 	 * Ensure that hrtimers are up to date and the clockevents device
 	 * is reprogrammed correctly when high resolution timers are
 	 * enabled.
+	   保证hrtimers是最新的，并且当启用高分辨率定时器时，clockevents设备被正确重新编程。
 	 */
 	hrtimers_resume_local();
 }
 
 /**
+挂起tk的时候停止tick
  * tick_suspend - Suspend the tick and the broadcast device
  *
  * Called from syscore_suspend() via timekeeping_suspend with only one
@@ -560,11 +566,13 @@ void tick_resume_local(void)
  */
 void tick_suspend(void)
 {
+	/* 就是把next时间设置为LONGMAX */
 	tick_suspend_local();
 	tick_suspend_broadcast();
 }
 
 /**
+恢复ce设备和hrtimer的tick
  * tick_resume - Resume the tick and the broadcast device
  *
  * Called from syscore_resume() via timekeeping_resume with only one
@@ -574,7 +582,9 @@ void tick_suspend(void)
  */
 void tick_resume(void)
 {
+	/* 恢复广播设备的tick */
 	tick_resume_broadcast();
+	/* 这里进行当前cpu的hrtimer_bases的更新, 检查和设置到期时间什么的 */
 	tick_resume_local();
 }
 

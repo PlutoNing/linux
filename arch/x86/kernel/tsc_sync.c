@@ -47,6 +47,10 @@ void mark_tsc_async_resets(char *reason)
 	pr_info("tsc: Marking TSC async resets true due to %s\n", reason);
 }
 
+/* 
+用于 ​验证并校准 CPU 的 TSC（时间戳计数器）调整值，确保多核系统中不同 CPU 的 TSC 值保持同步。
+当检测到 TSC 调整值异常时，自动恢复为内核维护的正确值，并记录警告信息。
+*/
 void tsc_verify_tsc_adjust(bool resume)
 {
 	struct tsc_adjust *adj = this_cpu_ptr(&tsc_adjust);
@@ -175,6 +179,7 @@ bool __init tsc_store_and_check_tsc_adjust(bool bootcpu)
 #else /* !CONFIG_SMP */
 
 /*
+好像是tsc的什么纠正机制
  * Store and check the TSC ADJUST MSR if available
  */
 bool tsc_store_and_check_tsc_adjust(bool bootcpu)

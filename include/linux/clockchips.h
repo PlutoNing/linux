@@ -173,6 +173,7 @@ struct clock_event_device {
 	int			(*set_state_oneshot)(struct clock_event_device *);
 	int			(*set_state_oneshot_stopped)(struct clock_event_device *);
 	int			(*set_state_shutdown)(struct clock_event_device *);
+	/* 恢复设备的tick */
 	int			(*tick_resume)(struct clock_event_device *);
 /* 
 内核中有一个模块叫做cpuidle framework，当没有任务做的时候，cpu会进入idle状态。

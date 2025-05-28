@@ -118,6 +118,7 @@ enum hrtimer_restart {
  * The hrtimer structure must be initialized by hrtimer_init()
  */
 struct hrtimer {
+	/* 作为在排序树上的连接件 */
 	struct timerqueue_node		node;
 	ktime_t				_softexpires;
 	/* 超时的处理函数 */

@@ -78,6 +78,8 @@ static DEFINE_STATIC_KEY_FALSE(sched_clock_running);
  * Similarly we start with __sched_clock_stable_early, thereby assuming we
  * will become stable, such that there's only a single 1 -> 0 transition.
  */
+/*
+如果为真, 就是获取的pv_clock函数的时间 */
 static DEFINE_STATIC_KEY_FALSE(__sched_clock_stable);
 static int __sched_clock_stable_early = 1;
 
@@ -111,7 +113,8 @@ notrace int sched_clock_stable(void)
 {
 	return static_branch_likely(&__sched_clock_stable);
 }
-/* 设置scd的一些time value */
+/* 从时钟源读取时间
+设置scd的一些time value */
 notrace static void __scd_stamp(struct sched_clock_data *scd)
 {
 	scd->tick_gtod = ktime_get_ns();
@@ -197,7 +200,7 @@ notrace static void __clear_sched_clock_stable(void)
 }
 /* 
 关闭tsc时钟源会调用这个
-调用异步函数关闭__sched_clock_stable标志, 复制scd */
+调用异步函数关闭__sched_clock_stable标志, 复制传播scd */
 notrace void clear_sched_clock_stable(void)
 {
 	__sched_clock_stable_early = 0;
@@ -331,7 +334,9 @@ noinstr u64 local_clock_noinstr(void)
 
 	if (!static_branch_likely(&sched_clock_running))
 		return sched_clock_noinstr(); /* 执行这个分支 */
-	/* 更新scd并获取clock */
+	/* 
+	说明现在sched_clock不stable但是running?
+	更新scd并获取clock */
 	clock = sched_clock_local(this_scd());
 
 	return clock;
@@ -464,7 +469,7 @@ notrace void sched_clock_tick(void)
 
 /* 
 函数作用?
-更新scd
+读取时钟源的时间 来更新scd
 */
 notrace void sched_clock_tick_stable(void)
 {

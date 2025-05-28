@@ -40,10 +40,11 @@ EXPORT_SYMBOL(tsc_khz);
 
 /*
  * TSC can be unstable due to cpufreq or due to unsynced TSCs
+ 如果为真,代表关闭了tsc
  */
 static int __read_mostly tsc_unstable;
 static unsigned int __initdata tsc_early_khz;
-
+/* 是否通过tsc获取时间 */
 static DEFINE_STATIC_KEY_FALSE(__use_tsc);
 
 int tsc_clocksource_reliable;
@@ -179,6 +180,7 @@ static void __set_cyc2ns_scale(unsigned long khz, int cpu, unsigned long long ts
 	c2n->data[1] = data;
 }
 
+/* 更新cpu的cyc2ns */
 static void set_cyc2ns_scale(unsigned long khz, int cpu, unsigned long long tsc_now)
 {
 	unsigned long flags;
@@ -194,6 +196,7 @@ static void set_cyc2ns_scale(unsigned long khz, int cpu, unsigned long long tsc_
 }
 
 /*
+cyc2ns是什么
  * Initialize cyc2ns for boot cpu
  */
 static void __init cyc2ns_init_boot_cpu(void)
@@ -205,6 +208,7 @@ static void __init cyc2ns_init_boot_cpu(void)
 }
 
 /*
+初始化每个cpu的cyc2ns
  * Secondary CPUs do not run through tsc_init(), so set up
  * all the scale factors for all CPUs, assuming the same
  * speed as the bootup CPU.
@@ -232,6 +236,7 @@ static void __init cyc2ns_init_secondary_cpus(void)
 noinstr u64 native_sched_clock(void)
 {
 	if (static_branch_likely(&__use_tsc)) {
+		/* 通过tsc获取时间 */
 		u64 tsc_now = rdtsc();
 
 		/* return the value in ns */
@@ -272,7 +277,8 @@ noinstr u64 sched_clock_noinstr(void)
 	return paravirt_sched_clock();
 }
 /* 
-检查使用的是不是tsc或者jiffies时钟源
+检查pv_sched_clock这个最底层的时间函数
+使用的是不是tsc或者jiffies时钟源
 */
 bool using_native_sched_clock(void)
 {
@@ -305,6 +311,7 @@ int check_tsc_unstable(void)
 EXPORT_SYMBOL_GPL(check_tsc_unstable);
 
 #ifdef CONFIG_X86_TSC
+/*  */
 int __init notsc_setup(char *str)
 {
 	mark_tsc_unstable("boot parameter notsc");
@@ -1116,7 +1123,8 @@ static void __init detect_art(void)
 
 
 /* clocksource code */
-
+/* 名字叫回复tsc
+逻辑上像是纠正偏差什么的 */
 static void tsc_resume(struct clocksource *cs)
 {
 	tsc_verify_tsc_adjust(true);
@@ -1161,17 +1169,19 @@ static void tsc_cs_mark_unstable(struct clocksource *cs)
 }
 
 /* 
-其实就是更新scd
+tick一下时钟
+其实读取最新时间来更新scd
 */
 static void tsc_cs_tick_stable(struct clocksource *cs)
 {
 	if (tsc_unstable)
 		return;
 
+	/* 如果使用的是这个时钟源 */
 	if (using_native_sched_clock())
-		sched_clock_tick_stable();
+		sched_clock_tick_stable(); /* tick一下时间 */
 }
-
+/* enable tsc的回调函数 */
 static int tsc_cs_enable(struct clocksource *cs)
 {
 	vclocks_set_used(VDSO_CLOCKMODE_TSC);
@@ -1179,20 +1189,26 @@ static int tsc_cs_enable(struct clocksource *cs)
 }
 
 /*
+clocksource_tsc_early时钟源
  * .mask MUST be CLOCKSOURCE_MASK(64). See comment above read_tsc()
  */
 static struct clocksource clocksource_tsc_early = {
 	.name			= "tsc-early",
 	.rating			= 299,
 	.uncertainty_margin	= 32 * NSEC_PER_MSEC,
+	/* 读取时间 */
 	.read			= read_tsc,
 	.mask			= CLOCKSOURCE_MASK(64),
 	.flags			= CLOCK_SOURCE_IS_CONTINUOUS |
 				  CLOCK_SOURCE_MUST_VERIFY,
 	.vdso_clock_mode	= VDSO_CLOCKMODE_TSC,
+	/*  */
 	.enable			= tsc_cs_enable,
+	/*  */
 	.resume			= tsc_resume,
+	/* 好像是关闭什么的 */
 	.mark_unstable		= tsc_cs_mark_unstable,
+	/* tick一下时钟,在这里是读取ktime来更新scd */
 	.tick_stable		= tsc_cs_tick_stable,
 	.list			= LIST_HEAD_INIT(clocksource_tsc_early.list),
 };
@@ -1226,6 +1242,9 @@ static struct clocksource clocksource_tsc = {
 
 /* 
 关闭tsc时钟源
+设置tsc_unstable = 1
+关闭sched_clock_stable标志
+关闭tsc时钟源
 */
 void mark_tsc_unstable(char *reason)
 {
@@ -1234,10 +1253,10 @@ void mark_tsc_unstable(char *reason)
 
 	tsc_unstable = 1;
 	if (using_native_sched_clock())
-		clear_sched_clock_stable();
+		clear_sched_clock_stable(); /* 调用异步函数关闭__sched_clock_stable标志, 复制传播scd */
 	disable_sched_clock_irqtime();
 	pr_info("Marking TSC unstable due to %s\n", reason);
-
+	/* 关闭这俩tsc时钟源 */
 	clocksource_mark_unstable(&clocksource_tsc_early);
 	clocksource_mark_unstable(&clocksource_tsc);
 }
@@ -1292,6 +1311,7 @@ static void __init check_system_tsc_reliable(void)
 }
 
 /*
+检查tsc是不是不咋地
  * Make an educated guess if the TSC is trustworthy and synchronized
  * over all CPUs.
  */
@@ -1383,8 +1403,10 @@ EXPORT_SYMBOL(convert_art_ns_to_tsc);
 
 
 static void tsc_refine_calibration_work(struct work_struct *work);
+/* 校准tsc频率 */
 static DECLARE_DELAYED_WORK(tsc_irqwork, tsc_refine_calibration_work);
 /**
+tsc频率校准
  * tsc_refine_calibration_work - Further refine tsc freq calibration
  * @work - ignored.
  *
@@ -1423,6 +1445,7 @@ restart:
 		 */
 		hpet = is_hpet_enabled();
 		tsc_start = tsc_read_refs(&ref_start, hpet);
+		/* 这里是自己调用自己 */
 		schedule_delayed_work(&tsc_irqwork, HZ);
 		return;
 	}
@@ -1467,12 +1490,15 @@ restart:
 	if (abs(tsc_khz - freq) > tsc_khz/100)
 		goto out;
 
+	/* 更新tsc_khz */
 	tsc_khz = freq;
 	pr_info("Refined TSC clocksource calibration: %lu.%03lu MHz\n",
 		(unsigned long)tsc_khz / 1000,
 		(unsigned long)tsc_khz % 1000);
 
-	/* Inform the TSC deadline clockevent devices about the recalibration */
+	/* Inform the TSC deadline clockevent devices about the recalibration
+	校准之后, 更新每个cpu的设备的频率,. 设置新的到期时间
+	*/
 	lapic_update_tsc_freq();
 
 	/* Update the sched_clock() rate to match the clocksource one */
@@ -1490,13 +1516,18 @@ unreg:
 	clocksource_unregister(&clocksource_tsc_early);
 }
 
-
+/*
+开始tsc时钟源
+好像也没做什么太多工作
+*/
 static int __init init_tsc_clocksource(void)
 {
+	/* 要初始化了tsc_khz才继续 */
 	if (!boot_cpu_has(X86_FEATURE_TSC) || !tsc_khz)
 		return 0;
 
 	if (tsc_unstable) {
+		/* 不稳定, 自己注册 */
 		clocksource_unregister(&clocksource_tsc_early);
 		return 0;
 	}
@@ -1511,13 +1542,17 @@ static int __init init_tsc_clocksource(void)
 	if (boot_cpu_has(X86_FEATURE_TSC_KNOWN_FREQ)) {
 		if (boot_cpu_has(X86_FEATURE_ART))
 			art_related_clocksource = &clocksource_tsc;
+
+		/* 注册时钟源 */
 		clocksource_register_khz(&clocksource_tsc, tsc_khz);
+		/* unbind这个时钟源 */
 		clocksource_unregister(&clocksource_tsc_early);
 
 		if (!tsc_force_recalibrate)
 			return 0;
 	}
 
+	/* 校准tsc频率 */
 	schedule_delayed_work(&tsc_irqwork, 0);
 	return 0;
 }
@@ -1568,7 +1603,7 @@ static bool __init determine_cpu_tsc_frequencies(bool early)
 	}
 	return true;
 }
-
+/* 通过tsc_khz来计算 */
 static unsigned long __init get_loops_per_jiffy(void)
 {
 	u64 lpj = (u64)tsc_khz * KHZ;
@@ -1576,15 +1611,24 @@ static unsigned long __init get_loops_per_jiffy(void)
 	do_div(lpj, HZ);
 	return lpj;
 }
-
+/* 
+启用tsc
+==============
+有可能在初始化完tsc_khz后调用
+计算loops_per_jiffy
+初始化cyc2ns
+开启__use_tsc
+*/
 static void __init tsc_enable_sched_clock(void)
 {
+	/* 通过tsc_khz来计算 */
 	loops_per_jiffy = get_loops_per_jiffy();
 	use_tsc_delay();
 
 	/* Sanitize TSC ADJUST before cyc2ns gets initialized */
 	tsc_store_and_check_tsc_adjust(true);
 	cyc2ns_init_boot_cpu();
+	/* 启用了这个 , 以后就是通过tsc获取时间了 */
 	static_branch_enable(&__use_tsc);
 }
 
@@ -1599,7 +1643,10 @@ void __init tsc_early_init(void)
 		return;
 	tsc_enable_sched_clock();
 }
-
+/* 
+初始化tsc_khz
+注册tsc early时钟源
+*/
 void __init tsc_init(void)
 {
 	if (!cpu_feature_enabled(X86_FEATURE_TSC)) {
@@ -1615,25 +1662,29 @@ void __init tsc_init(void)
 		x86_platform.calibrate_cpu = native_calibrate_cpu;
 
 	if (!tsc_khz) {
+		/* 初始化tsc_khz? */
 		/* We failed to determine frequencies earlier, try again */
 		if (!determine_cpu_tsc_frequencies(false)) {
 			mark_tsc_unstable("could not calculate TSC khz");
 			setup_clear_cpu_cap(X86_FEATURE_TSC_DEADLINE_TIMER);
 			return;
 		}
+		/* 初始化完tsc_khz后调用
+		启用tsc */
 		tsc_enable_sched_clock();
 	}
-
+	/* 初始化每个cpu的cyc2ns */
 	cyc2ns_init_secondary_cpus();
 
 	if (!no_sched_irq_time)
 		enable_sched_clock_irqtime();
-
+	/* 计算lpj */
 	lpj_fine = get_loops_per_jiffy();
 
 	check_system_tsc_reliable();
 
 	if (unsynchronized_tsc()) {
+		/* 如果tsc不太合适 */
 		mark_tsc_unstable("TSCs unsynchronized");
 		return;
 	}
@@ -1641,6 +1692,7 @@ void __init tsc_init(void)
 	if (tsc_clocksource_reliable || no_tsc_watchdog)
 		tsc_disable_clocksource_watchdog();
 
+	/* 注册时钟源 */
 	clocksource_register_khz(&clocksource_tsc_early, tsc_khz);
 	detect_art();
 }
