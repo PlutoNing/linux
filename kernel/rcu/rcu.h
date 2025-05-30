@@ -62,6 +62,7 @@
 extern int sysctl_sched_rt_runtime;
 
 /*
+ctr是什么?
  * Return the counter portion of a sequence number previously returned
  * by rcu_seq_snap() or rcu_seq_current().
  */
@@ -103,7 +104,9 @@ static inline unsigned long rcu_seq_endval(unsigned long *sp)
 	return (*sp | RCU_SEQ_STATE_MASK) + 1;
 }
 
-/* Adjust sequence number for end of update-side operation. */
+/*
+写入一个什么endval
+ Adjust sequence number for end of update-side operation. */
 static inline void rcu_seq_end(unsigned long *sp)
 {
 	smp_mb(); /* Ensure update-side operation before counter increment. */

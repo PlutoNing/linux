@@ -13,6 +13,7 @@
 
 #include "../locking/rtmutex_common.h"
 
+/*  */
 static bool rcu_rdp_is_offloaded(struct rcu_data *rdp)
 {
 	/*

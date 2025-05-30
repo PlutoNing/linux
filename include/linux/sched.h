@@ -85,6 +85,8 @@ struct user_event_mm;
 /* Used in tsk->__state: */
 #define TASK_RUNNING			0x00000000
 #define TASK_INTERRUPTIBLE		0x00000001
+/* 线程不会响应任何信号（包括 SIGKILL）
+只能被内核显式唤醒（如超时到期、资源就绪） */
 #define TASK_UNINTERRUPTIBLE		0x00000002
 #define __TASK_STOPPED			0x00000004
 #define __TASK_TRACED			0x00000008

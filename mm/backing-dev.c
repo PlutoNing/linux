@@ -1143,6 +1143,8 @@ void bdi_put(struct backing_dev_info *bdi)
 }
 EXPORT_SYMBOL(bdi_put);
 
+/* 获取inode的bdi
+inode->sb->bdi */
 struct backing_dev_info *inode_to_bdi(struct inode *inode)
 {
 	struct super_block *sb;

@@ -215,6 +215,7 @@ struct rcu_data {
 
 	/* 4) rcu_barrier(), OOM callbacks, and expediting. */
 	unsigned long barrier_seq_snap;	/* Snap of rcu_state.barrier_sequence. */
+	/* 好像可以表示一个回调函数什么的 */
 	struct rcu_head barrier_head;
 	int exp_dynticks_snap;		/* Double-check need for IPI. */
 
@@ -353,8 +354,9 @@ struct rcu_state {
 	/* End of fields guarded by root rcu_node's lock. */
 
 	struct mutex barrier_mutex;		/* Guards barrier fields. */
+	/* 好像是什么回调函数的数量 */
 	atomic_t barrier_cpu_count;		/* # CPUs waiting on. */
-	/*  */
+	/* 发起rcu barrier的进程在这里等, 完毕后会被唤醒 */
 	struct completion barrier_completion;	/* Wake at barrier end. */
 	/* barrier操作的序号 */
 	unsigned long barrier_sequence;		/* ++ at start and end of */

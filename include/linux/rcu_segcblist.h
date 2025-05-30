@@ -198,13 +198,16 @@ struct rcu_cblist {
  */
 #define SEGCBLIST_ENABLED	BIT(0)
 #define SEGCBLIST_RCU_CORE	BIT(1)
+/* 这个标志表示是offload了 */
 #define SEGCBLIST_LOCKING	BIT(2)
 #define SEGCBLIST_KTHREAD_CB	BIT(3)
 #define SEGCBLIST_KTHREAD_GP	BIT(4)
 #define SEGCBLIST_OFFLOADED	BIT(5)
 
+/* 表示rcu的cblist */
 struct rcu_segcblist {
 	struct rcu_head *head;
+	/* 二维数组, tails->segs->cb ? */
 	struct rcu_head **tails[RCU_CBLIST_NSEGS];
 	unsigned long gp_seq[RCU_CBLIST_NSEGS];
 #ifdef CONFIG_RCU_NOCB_CPU

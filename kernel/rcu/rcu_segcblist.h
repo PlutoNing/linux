@@ -77,6 +77,7 @@ static inline bool rcu_segcblist_test_flags(struct rcu_segcblist *rsclp,
 }
 
 /*
+检查rdp的cblist是否启用
  * Is the specified rcu_segcblist enabled, for example, not corresponding
  * to an offline CPU?
  */
@@ -108,6 +109,7 @@ static inline bool rcu_segcblist_completely_offloaded(struct rcu_segcblist *rscl
 }
 
 /*
+检查这个seg的cb是不是空了
  * Are all segments following the specified segment of the specified
  * rcu_segcblist structure empty of callbacks?  (The specified
  * segment might well contain callbacks.)

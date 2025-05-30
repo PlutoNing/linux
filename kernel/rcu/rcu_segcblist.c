@@ -112,7 +112,8 @@ static void rcu_segcblist_set_seglen(struct rcu_segcblist *rsclp, int seg, long 
 	WRITE_ONCE(rsclp->seglen[seg], v);
 }
 
-/* Increase the numeric length of a segment by a specified amount. */
+/*增加cblist的指定seg的长度
+ Increase the numeric length of a segment by a specified amount. */
 static void rcu_segcblist_add_seglen(struct rcu_segcblist *rsclp, int seg, long v)
 {
 	WRITE_ONCE(rsclp->seglen[seg], rsclp->seglen[seg] + v);
@@ -134,7 +135,8 @@ static void rcu_segcblist_move_seglen(struct rcu_segcblist *rsclp, int from, int
 	rcu_segcblist_set_seglen(rsclp, from, 0);
 }
 
-/* Increment segment's length. */
+/*增加cblist的指定seg的长度
+ Increment segment's length. */
 static void rcu_segcblist_inc_seglen(struct rcu_segcblist *rsclp, int seg)
 {
 	rcu_segcblist_add_seglen(rsclp, seg, 1);
@@ -221,6 +223,7 @@ void rcu_segcblist_add_len(struct rcu_segcblist *rsclp, long v)
 }
 
 /*
+增加cblist的长度
  * Increase the numeric length of an rcu_segcblist structure by one.
  * This can cause the ->len field to disagree with the actual number of
  * callbacks on the structure.  This increase is fully ordered with respect
@@ -282,6 +285,8 @@ bool rcu_segcblist_ready_cbs(struct rcu_segcblist *rsclp)
 }
 
 /*
+检查RCU_DONE_TAIL这个seg是不是还有回调
+参数是rdp->cblist
  * Does the specified rcu_segcblist structure contain callbacks that
  * are still pending, that is, not yet ready to be invoked?
  */
@@ -348,10 +353,12 @@ void rcu_segcblist_enqueue(struct rcu_segcblist *rsclp,
 }
 
 /*
+把rhp这个回调函数加入到cblist
  * Entrain the specified callback onto the specified rcu_segcblist at
  * the end of the last non-empty segment.  If the entire rcu_segcblist
  * is empty, make no change, but return false.
- *
+ * 把指定的回调函数添加到指定的rcu_segcblist的最后一个非空段的末尾。
+ 如果整个rcu_segcblist为空，则不进行任何更改，但返回false。
  * This is intended for use by rcu_barrier()-like primitives, -not-
  * for normal grace-period use.  IMPORTANT:  The callback you enqueue
  * will wait for all prior callbacks, NOT necessarily for a grace
@@ -362,14 +369,18 @@ bool rcu_segcblist_entrain(struct rcu_segcblist *rsclp,
 {
 	int i;
 
+	/* 如果cblist为空 */
 	if (rcu_segcblist_n_cbs(rsclp) == 0)
 		return false;
+	/* 增加cblist的长度 */
 	rcu_segcblist_inc_len(rsclp);
 	smp_mb(); /* Ensure counts are updated before callback is entrained. */
 	rhp->next = NULL;
+	/* 从后往前查找 */
 	for (i = RCU_NEXT_TAIL; i > RCU_DONE_TAIL; i--)
 		if (rsclp->tails[i] != rsclp->tails[i - 1])
 			break;
+	/* 增加seg的长度 */
 	rcu_segcblist_inc_seglen(rsclp, i);
 	WRITE_ONCE(*rsclp->tails[i], rhp);
 	for (; i <= RCU_NEXT_TAIL; i++)

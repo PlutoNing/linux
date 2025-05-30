@@ -362,6 +362,7 @@ work是不是处于pending状态
 	test_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(work))
 
 /**
+检查dwork现在是不是pending
  * delayed_work_pending - Find out whether a delayable work item is currently
  * pending
  * @w: The work item in question
@@ -600,6 +601,7 @@ static inline bool queue_work(struct workqueue_struct *wq,
  * @wq: workqueue to use
  * @dwork: delayable work to queue
  * @delay: number of jiffies to wait before queueing
+ 执行前的延迟
  *
  * Equivalent to queue_delayed_work_on() but tries to use the local CPU.
  */
@@ -611,6 +613,7 @@ static inline bool queue_delayed_work(struct workqueue_struct *wq,
 }
 
 /**
+20250530233352
  * mod_delayed_work - modify delay of or queue a delayed work
    
  * @wq: workqueue to use

@@ -42,6 +42,7 @@ static void rcu_exp_gp_seq_end(void)
 }
 
 /*
+保存rcu_state.expedited_sequence的seq版本号
  * Take a snapshot of the expedited-grace-period counter, which is the
  * earliest value that will indicate that a full grace period has
  * elapsed since the current time.
@@ -279,6 +280,8 @@ static bool sync_exp_work_done(unsigned long s)
  * can piggy-back on, and with no mutex held.  Otherwise, returns false
  * with the mutex held, indicating that the caller must actually do the
  * expedited grace period.
+ 返回真表示有其他进程完成了一个加速的gp, 这样我们可以搭便车.
+ 否则返回false, 表示我们必须自己完成这个gp
  */
 static bool exp_funnel_lock(unsigned long s)
 {
@@ -299,7 +302,7 @@ static bool exp_funnel_lock(unsigned long s)
 	 * otherwise falls through to acquire ->exp_mutex.  The mapping
 	 * from CPU to rcu_node structure can be inexact, as it is just
 	 * promoting locality and is not strictly needed for correctness.
-	 */
+	 20250531012411*/
 	for (; rnp != NULL; rnp = rnp->parent) {
 		if (sync_exp_work_done(s))
 			return true;
@@ -932,8 +935,13 @@ static void rcu_exp_print_detail_task_stall_rnp(struct rcu_node *rnp)
 #endif /* #else #ifdef CONFIG_PREEMPT_RCU */
 
 /**
+如果rcu_scheduler_active不处于RCU_SCHEDULER_INACTIVE, 并且rcu_gp_is_expedited的话
+就用这个函数来sync rcu.
  * synchronize_rcu_expedited - Brute-force RCU grace period
- *
+ * 通过在所有非idle非nohz的cpu上面运行ipi函数来加快gp, 
+ ip函数检查cpu是不是在rcu临界区, 是的话,设置flag来通知最外层的rcu_read_unlock()报告RCU-preempt的quiescent state
+ * 或者请求调度器的帮助来报告RCU-sched的quiescent state. 如果cpu不在RCU read-side critical section,
+ * ipi handler会立即报告quiescent state.
  * Wait for an RCU grace period, but expedite it.  The basic idea is to
  * IPI all non-idle non-nohz online CPUs.  The IPI handler checks whether
  * the CPU is in an RCU critical section, and if so, it sets a flag that
@@ -966,6 +974,7 @@ void synchronize_rcu_expedited(void)
 
 	/* Is the state is such that the call is a grace period? */
 	if (rcu_blocking_is_gp()) {
+		/* 如果rcu_scheduler_active处于RCU_SCHEDULER_INACTIVE */
 		// Note well that this code runs with !PREEMPT && !SMP.
 		// In addition, all code that advances grace periods runs
 		// at process level.  Therefore, this expedited GP overlaps
@@ -983,6 +992,10 @@ void synchronize_rcu_expedited(void)
 
 	/* If expedited grace periods are prohibited, fall back to normal. */
 	if (rcu_gp_is_normal()) {
+		/* 这个wait_rcu_gp内部使用wakeme_after_rcu作为rcu_head_func调用call_rcu_hurry
+		call_rcu_hurry(&rs_array[i].head, wakeme_after_rcu);
+		call_rcu_hurry实际上调用call_rcu
+		call_rcu就是把rcu_head(wakeme_after_rcu函数)入队rcu_ctrlblk.curtail */
 		wait_rcu_gp(call_rcu_hurry);
 		return;
 	}

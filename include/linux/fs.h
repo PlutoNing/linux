@@ -508,6 +508,7 @@ struct address_space {
 	 */
 
 /* XArray tags, for tagging dirty and writeback pages in the pagecache. */
+/* PAGECACHE_TAG_DIRTY只是可能dirty */
 #define PAGECACHE_TAG_DIRTY	XA_MARK_0 //todddo
 #define PAGECACHE_TAG_WRITEBACK	XA_MARK_1 //表示页面正在写回
 #define PAGECACHE_TAG_TOWRITE	XA_MARK_2
@@ -718,7 +719,9 @@ struct inode {
 	unsigned long		dirtied_time_when; /*  */
 
 	struct hlist_node	i_hash; /*  */
-	struct list_head	i_io_list;	/* backing dev IO list,挂接到wb的b_io? */
+	struct list_head i_io_list; /*
+	连接到wb->b_dirty
+	backing dev IO list,挂接到wb的b_io? */
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct bdi_writeback	*i_wb;		/* 
 	inode对应的cgroup wb
@@ -2297,6 +2300,7 @@ static inline void kiocb_clone(struct kiocb *kiocb, struct kiocb *kiocb_src,
 #define I_DIO_WAKEUP		(1 << __I_DIO_WAKEUP)
 #define I_LINKABLE		(1 << 10)
 #define I_DIRTY_TIME		(1 << 11)
+/* 表示inode正在切换wb */
 #define I_WB_SWITCH		(1 << 13)
 #define I_OVL_INUSE		(1 << 14)
 #define I_CREATING		(1 << 15)

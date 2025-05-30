@@ -35,7 +35,8 @@ struct rcu_ctrlblk {
 	unsigned long gp_seq;		/* Grace-period counter. */
 };
 
-/* Definition for rcupdate control block. */
+/* Definition for rcupdate control block.
+call_rcu函数会把rcu_head初始化好之后加塞到curtail */
 static struct rcu_ctrlblk rcu_ctrlblk = {
 	.donetail	= &rcu_ctrlblk.rcucblist,
 	.curtail	= &rcu_ctrlblk.rcucblist,
@@ -163,6 +164,8 @@ static void tiny_rcu_leak_callback(struct rcu_head *rhp)
 }
 
 /*
+用于sync rcu的回调函数?
+把rcu_head入队rcu_ctrlblk.curtail
  * Post an RCU callback to be invoked after the end of an RCU grace
  * period.  But since we have but one CPU, that would be after any
  * quiescent state.
@@ -186,6 +189,7 @@ void call_rcu(struct rcu_head *head, rcu_callback_t func)
 	head->func = func;
 	head->next = NULL;
 
+	/* 入队rcu_head */
 	local_irq_save(flags);
 	*rcu_ctrlblk.curtail = head;
 	rcu_ctrlblk.curtail = &head->next;

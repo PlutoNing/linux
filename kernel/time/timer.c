@@ -2429,6 +2429,7 @@ signed long __sched schedule_timeout_killable(signed long timeout)
 }
 EXPORT_SYMBOL(schedule_timeout_killable);
 
+/* 让当前进程/线程进入不可中断的睡眠状态，并在指定的超时时间后自动唤醒 */
 signed long __sched schedule_timeout_uninterruptible(signed long timeout)
 {
 	__set_current_state(TASK_UNINTERRUPTIBLE);

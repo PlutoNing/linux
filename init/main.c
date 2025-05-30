@@ -974,6 +974,7 @@ void start_kernel(void)
 	 */
 	workqueue_init_early();
 
+	/* rcu机制 */
 	rcu_init();
 
 	/* Trace events are available after this,初始化trace的event */

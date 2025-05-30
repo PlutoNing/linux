@@ -792,8 +792,10 @@ void register_shrinker_prepared(struct shrinker *shrinker)
 	up_write(&shrinker_rwsem);
 }
 
+/* 注册shrinker */
 static int __register_shrinker(struct shrinker *shrinker)
 {
+	/* 分配shrinker的内存 */
 	int err = __prealloc_shrinker(shrinker);
 
 	if (err)
@@ -803,17 +805,20 @@ static int __register_shrinker(struct shrinker *shrinker)
 }
 
 #ifdef CONFIG_SHRINKER_DEBUG
+/* 注册shrinker */
 int register_shrinker(struct shrinker *shrinker, const char *fmt, ...)
 {
 	va_list ap;
 	int err;
 
+	/*  */
 	va_start(ap, fmt);
 	shrinker->name = kvasprintf_const(GFP_KERNEL, fmt, ap);
 	va_end(ap);
 	if (!shrinker->name)
 		return -ENOMEM;
 
+	/* 注册shrinker */
 	err = __register_shrinker(shrinker);
 	if (err) {
 		kfree_const(shrinker->name);

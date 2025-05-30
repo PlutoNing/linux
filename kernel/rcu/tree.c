@@ -498,6 +498,7 @@ unsigned long rcu_exp_batches_completed(void)
 EXPORT_SYMBOL_GPL(rcu_exp_batches_completed);
 
 /*
+返回rcu_state的根节点
  * Return the root node of the rcu_state structure.
  */
 static struct rcu_node *rcu_get_root(void)
@@ -2783,11 +2784,16 @@ EXPORT_SYMBOL_GPL(call_rcu);
  * @gp_snap: Snapshot of RCU state for objects placed to this bulk
  * @nr_records: Number of active pointers in the array
  * @records: Array of the kvfree_rcu() pointers
+ 这个结构体的内存好像位于一个完整的页面上面
  */
 struct kvfree_rcu_bulk_data {
+	/* 到krcp->bulk_head[i]的连接件 */
 	struct list_head list;
+	/* (什么?)的rcu状态的快照 */
 	struct rcu_gp_oldstate gp_snap;
+	/* 数组里活跃指针的数量 */
 	unsigned long nr_records;
+	/* 存储kvfree_rcu()指针 */
 	void *records[];
 };
 
@@ -2802,6 +2808,7 @@ struct kvfree_rcu_bulk_data {
 /**
  * struct kfree_rcu_cpu_work - single batch of kfree_rcu() requests
  * @rcu_work: Let queue_rcu_work() invoke workqueue handler after grace period
+ 在gp之后调用的work
  * @head_free: List of kfree_rcu() objects waiting for a grace period
  * @head_free_gp_snap: Grace-period snapshot to check for attempted premature frees.
  * @bulk_head_free: Bulk-List of kvfree_rcu() objects waiting for a grace period
@@ -2809,10 +2816,17 @@ struct kvfree_rcu_bulk_data {
  */
 
 struct kfree_rcu_cpu_work {
+	/* func可能是kfree_rcu_work
+	在krwp的krwp->head_free
+	krwp->bulk_head_free接管了krcp的之后会调用 */
 	struct rcu_work rcu_work;
-	struct rcu_head *head_free;
+	/* 可能会接管所属的krcp的head, 然后清空krcp的
+	krwp->head_free = krcp->head;
+	*/ struct rcu_head *head_free;
 	struct rcu_gp_oldstate head_free_gp_snap;
+	/* 里面可能是从krcp->bulk_head[j]移动过来的 */
 	struct list_head bulk_head_free[FREE_N_CHANNELS];
+	/* 指向对应的krcp */
 	struct kfree_rcu_cpu *krcp;
 };
 
@@ -2843,28 +2857,44 @@ struct kfree_rcu_cpu_work {
  * the RCU files.  Such extraction could allow further optimization of
  * the interactions with the slab allocators.
  */
+/* 每个cpu一个krcp */
 struct kfree_rcu_cpu {
 	// Objects queued on a linked list
 	// through their rcu_head structures.
 	struct rcu_head *head;
 	unsigned long head_gp_snap;
+	/* 像是krcp->head的什么计数 */
 	atomic_t head_count;
 
 	// Objects queued on a bulk-list.
+	/* 里面是bnode, bnode好像就是page大小 */
 	struct list_head bulk_head[FREE_N_CHANNELS];
+	/* krcp->bulk_count[i]是bulk_head链表上bnode的nr_records之和的计数 */
 	atomic_t bulk_count[FREE_N_CHANNELS];
 
+	/* 主要是封装一系列work */
 	struct kfree_rcu_cpu_work krw_arr[KFREE_N_BATCHES];
 	raw_spinlock_t lock;
+	/* 好像是为了处理一下krcp的bulk_head的东西 */
 	struct delayed_work monitor_work;
 	bool initialized;
 
+	/* 这个work给krcp->bkvcache分配bnode内存的页面 */
 	struct delayed_work page_cache_work;
+	/*  */
 	atomic_t backoff_page_cache_fill;
 	atomic_t work_in_progress;
+	/* 咋还有个hrtimer */
 	struct hrtimer hrtimer;
-
+	/* 
+	如果(*krcp)->bulk_head还没有bnode, 或者bnode满了
+ 从krcp->bkvcache获取一个缓存的bnode
+ ===============================================
+	如果释放bulk_head的bnode的时候,发现没有完成gp
+		移动到这里
+	里面的内容好像是一串页面 */
 	struct llist_head bkvcache;
+	/* krcp->bkvcache的数量 */
 	int nr_bkv_objs;
 };
 
@@ -2883,6 +2913,7 @@ debug_rcu_bhead_unqueue(struct kvfree_rcu_bulk_data *bhead)
 #endif
 }
 
+/* 获取当前cpu的krcp */
 static inline struct kfree_rcu_cpu *
 krc_this_cpu_lock(unsigned long *flags)
 {
@@ -2901,6 +2932,8 @@ krc_this_cpu_unlock(struct kfree_rcu_cpu *krcp, unsigned long flags)
 	raw_spin_unlock_irqrestore(&krcp->lock, flags);
 }
 
+/*如果(*krcp)->bulk_head还没有bnode, 或者bnode满了
+ 从krcp->bkvcache获取一个缓存的bnode */
 static inline struct kvfree_rcu_bulk_data *
 get_cached_bnode(struct kfree_rcu_cpu *krcp)
 {
@@ -2912,6 +2945,11 @@ get_cached_bnode(struct kfree_rcu_cpu *krcp)
 		llist_del_first(&krcp->bkvcache);
 }
 
+/* 
+把bnode加入krcp->bkvcache
+==============================================================================
+case1 如果释放bnode的时候,发现没有完成gp 移动到这里
+case2 fill的时候, bnode是新分配的页面 */
 static inline bool
 put_cached_bnode(struct kfree_rcu_cpu *krcp,
 	struct kvfree_rcu_bulk_data *bnode)
@@ -2925,6 +2963,8 @@ put_cached_bnode(struct kfree_rcu_cpu *krcp,
 	return true;
 }
 
+/* 回收krcp->bkvcache的什么内存
+释放krcp->bkvcache链表上面的每一个bnode(好像就是page) */
 static int
 drain_page_cache(struct kfree_rcu_cpu *krcp)
 {
@@ -2936,10 +2976,12 @@ drain_page_cache(struct kfree_rcu_cpu *krcp)
 		return 0;
 
 	raw_spin_lock_irqsave(&krcp->lock, flags);
+	/* 把内容move过来 */
 	page_list = llist_del_all(&krcp->bkvcache);
 	WRITE_ONCE(krcp->nr_bkv_objs, 0);
 	raw_spin_unlock_irqrestore(&krcp->lock, flags);
 
+	/* 这里处理刚刚加锁move过来的krcp->bkvcache */
 	llist_for_each_safe(pos, n, page_list) {
 		free_page((unsigned long)pos);
 		freed++;
@@ -2948,6 +2990,13 @@ drain_page_cache(struct kfree_rcu_cpu *krcp)
 	return freed;
 }
 
+/**
+ * @description: 释放bnode->records的内存
+ * @param {kfree_rcu_cpu} *krcp
+ * @param {kvfree_rcu_bulk_data} *bnode, 从krcp->bulk_head收集的完成gp的bnode
+ * @param {int} idx
+ * @return {*}
+ */
 static void
 kvfree_rcu_bulk(struct kfree_rcu_cpu *krcp,
 	struct kvfree_rcu_bulk_data *bnode, int idx)
@@ -2956,6 +3005,7 @@ kvfree_rcu_bulk(struct kfree_rcu_cpu *krcp,
 	int i;
 
 	if (!WARN_ON_ONCE(!poll_state_synchronize_rcu_full(&bnode->gp_snap))) {
+		/* 如果确实完成了gp */
 		debug_rcu_bhead_unqueue(bnode);
 		rcu_lock_acquire(&rcu_callback_map);
 		if (idx == 0) { // kmalloc() / kfree().
@@ -2986,6 +3036,7 @@ kvfree_rcu_bulk(struct kfree_rcu_cpu *krcp,
 	cond_resched_tasks_rcu_qs();
 }
 
+/* 释放链表上的head->func的内存 */
 static void
 kvfree_rcu_list(struct rcu_head *head)
 {
@@ -3000,6 +3051,7 @@ kvfree_rcu_list(struct rcu_head *head)
 		rcu_lock_acquire(&rcu_callback_map);
 		trace_rcu_invoke_kvfree_callback(rcu_state.name, head, offset);
 
+		/* 释放内存 */
 		if (!WARN_ON_ONCE(!__is_kvfree_rcu_offset(offset)))
 			kvfree(ptr);
 
@@ -3009,8 +3061,12 @@ kvfree_rcu_list(struct rcu_head *head)
 }
 
 /*
+是krwp的rwork函数 , 这个work用来回收内存好像, 回收从krcp的bulk_head接手的
+内存(在bulk_head_free成员数组)
  * This function is invoked in workqueue context after a grace period.
  * It frees all the objects queued on ->bulk_head_free or ->head_free.
+ 这个函数在工作队列上下文中调用，在一个GP之后。
+ 释放所有在->bulk_head_free或->head_free上排队的对象。
  */
 static void kfree_rcu_work(struct work_struct *work)
 {
@@ -3023,22 +3079,25 @@ static void kfree_rcu_work(struct work_struct *work)
 	struct rcu_gp_oldstate head_gp_snap;
 	int i;
 
+	/*获取 work->rwork->krwp */
 	krwp = container_of(to_rcu_work(work),
 		struct kfree_rcu_cpu_work, rcu_work);
 	krcp = krwp->krcp;
 
 	raw_spin_lock_irqsave(&krcp->lock, flags);
-	// Channels 1 and 2.
+	// Channels 1 and 2. 把要回收的内容链表移过来(这俩是kmalloc和vmalloc什么的)
 	for (i = 0; i < FREE_N_CHANNELS; i++)
 		list_replace_init(&krwp->bulk_head_free[i], &bulk_head[i]);
 
 	// Channel 3.
+	/* 这里把krwp->head_free接手过来,krwp->head_free又是刚刚从krcp->head接手的  */
 	head = krwp->head_free;
 	krwp->head_free = NULL;
 	head_gp_snap = krwp->head_free_gp_snap;
 	raw_spin_unlock_irqrestore(&krcp->lock, flags);
 
 	// Handle the first two channels.
+	/* 这里先释放bulk_head[i]链表的每一个bnode(一个页面) */
 	for (i = 0; i < FREE_N_CHANNELS; i++) {
 		// Start from the tail page, so a GP is likely passed for it.
 		list_for_each_entry_safe(bnode, n, &bulk_head[i], list)
@@ -3056,6 +3115,7 @@ static void kfree_rcu_work(struct work_struct *work)
 		kvfree_rcu_list(head);
 }
 
+/* 检查krcp->bulk_head还有没有东西 */
 static bool
 need_offload_krc(struct kfree_rcu_cpu *krcp)
 {
@@ -3068,6 +3128,8 @@ need_offload_krc(struct kfree_rcu_cpu *krcp)
 	return !!READ_ONCE(krcp->head);
 }
 
+/* 参数是krcp->krw_arr[i]的元素
+检查krwp->bulk_head_free[i]是不是有不空的 */
 static bool
 need_wait_for_krwp_work(struct kfree_rcu_cpu_work *krwp)
 {
@@ -3079,7 +3141,7 @@ need_wait_for_krwp_work(struct kfree_rcu_cpu_work *krwp)
 
 	return !!krwp->head_free;
 }
-
+/* krcp->head_count加上bulk_count数组和 */
 static int krc_count(struct kfree_rcu_cpu *krcp)
 {
 	int sum = atomic_read(&krcp->head_count);
@@ -3091,6 +3153,8 @@ static int krc_count(struct kfree_rcu_cpu *krcp)
 	return sum;
 }
 
+/* 调度krcp->monitor_work运行
+好像是为了处理一下krcp的bulk_head的东西 */
 static void
 schedule_delayed_monitor_work(struct kfree_rcu_cpu *krcp)
 {
@@ -3098,6 +3162,8 @@ schedule_delayed_monitor_work(struct kfree_rcu_cpu *krcp)
 
 	delay = krc_count(krcp) >= KVFREE_BULK_MAX_ENTR ? 1:KFREE_DRAIN_JIFFIES;
 	if (delayed_work_pending(&krcp->monitor_work)) {
+		/* 如果work现在pending的话, 如果delay功效的话, 修改时间
+		为了更快执行? */
 		delay_left = krcp->monitor_work.timer.expires - jiffies;
 		if (delay < delay_left)
 			mod_delayed_work(system_wq, &krcp->monitor_work, delay);
@@ -3106,6 +3172,8 @@ schedule_delayed_monitor_work(struct kfree_rcu_cpu *krcp)
 	queue_delayed_work(system_wq, &krcp->monitor_work, delay);
 }
 
+/* 收集并释放krcp->bulk_head里面的完成gp的bnode
+释放bnode的records的内存 */
 static void
 kvfree_rcu_drain_ready(struct kfree_rcu_cpu *krcp)
 {
@@ -3116,18 +3184,21 @@ kvfree_rcu_drain_ready(struct kfree_rcu_cpu *krcp)
 	int i;
 
 	raw_spin_lock_irqsave(&krcp->lock, flags);
+	/* 把krcp->bulk_head完成gp的bnode收集起来 */
 	for (i = 0; i < FREE_N_CHANNELS; i++) {
 		INIT_LIST_HEAD(&bulk_ready[i]);
 
+		/* 遍历krcp->bulk_head[i], 搜索满足的bnode(完成了gp的?)移动到ready */
 		list_for_each_entry_safe_reverse(bnode, n, &krcp->bulk_head[i], list) {
 			if (!poll_state_synchronize_rcu_full(&bnode->gp_snap))
 				break;
-
+			/* 把bnode移动到ready链表 */
 			atomic_sub(bnode->nr_records, &krcp->bulk_count[i]);
 			list_move(&bnode->list, &bulk_ready[i]);
 		}
 	}
 
+	/* 如果head完成gp的话, 就移动拷贝出来 */
 	if (krcp->head && poll_state_synchronize_rcu(krcp->head_gp_snap)) {
 		head_ready = krcp->head;
 		atomic_set(&krcp->head_count, 0);
@@ -3135,26 +3206,34 @@ kvfree_rcu_drain_ready(struct kfree_rcu_cpu *krcp)
 	}
 	raw_spin_unlock_irqrestore(&krcp->lock, flags);
 
+	/* 这里释放刚刚收集的完成gp的bnode
+	释放bnode的内存 */
 	for (i = 0; i < FREE_N_CHANNELS; i++) {
 		list_for_each_entry_safe(bnode, n, &bulk_ready[i], list)
 			kvfree_rcu_bulk(krcp, bnode, i);
 	}
 
+	/* 如果有的话, 释放拷贝出来的krcp->head */
 	if (head_ready)
 		kvfree_rcu_list(head_ready);
 }
 
 /*
+这里总的来说是处理krcp->bulk_head的东西
+可能让krcp->krw_arr[i]的krwp来接管处理
+也可能会调度krcp的monitor_work来处理
  * This function is invoked after the KFREE_DRAIN_JIFFIES timeout.
  */
 static void kfree_rcu_monitor(struct work_struct *work)
 {
+	/* 获取所属的krcp */
 	struct kfree_rcu_cpu *krcp = container_of(work,
 		struct kfree_rcu_cpu, monitor_work.work);
 	unsigned long flags;
 	int i, j;
 
 	// Drain ready for reclaim.
+	/* 这里释放里面的krcp->bulk_head的bnode的内存 */
 	kvfree_rcu_drain_ready(krcp);
 
 	raw_spin_lock_irqsave(&krcp->lock, flags);
@@ -3166,15 +3245,19 @@ static void kfree_rcu_monitor(struct work_struct *work)
 		// Try to detach bulk_head or head and attach it, only when
 		// all channels are free.  Any channel is not free means at krwp
 		// there is on-going rcu work to handle krwp's free business.
+		/* 如果krwp->bulk_head_free[i]还有内容, 就跳过 */
 		if (need_wait_for_krwp_work(krwp))
 			continue;
 
 		// kvfree_rcu_drain_ready() might handle this krcp, if so give up.
+		/* 这里会让krwp接受krcp */
 		if (need_offload_krc(krcp)) {
+			/* 如果krcp->bulk_head还有东西 */
 			// Channel 1 corresponds to the SLAB-pointer bulk path.
 			// Channel 2 corresponds to vmalloc-pointer bulk path.
 			for (j = 0; j < FREE_N_CHANNELS; j++) {
 				if (list_empty(&krwp->bulk_head_free[j])) {
+					/* 这里像是从krcp分派工作到这个krwp */
 					atomic_set(&krcp->bulk_count[j], 0);
 					list_replace_init(&krcp->bulk_head[j],
 						&krwp->bulk_head_free[j]);
@@ -3184,6 +3267,7 @@ static void kfree_rcu_monitor(struct work_struct *work)
 			// Channel 3 corresponds to both SLAB and vmalloc
 			// objects queued on the linked list.
 			if (!krwp->head_free) {
+				/* 让krwp接管这个head, 然后清空krcp的 */
 				krwp->head_free = krcp->head;
 				get_state_synchronize_rcu_full(&krwp->head_free_gp_snap);
 				atomic_set(&krcp->head_count, 0);
@@ -3195,6 +3279,7 @@ static void kfree_rcu_monitor(struct work_struct *work)
 			// be that the work is in the pending state when
 			// channels have been detached following by each
 			// other.
+			/* 调度work来释放krwp的内存 */
 			queue_rcu_work(system_wq, &krwp->rcu_work);
 		}
 	}
@@ -3206,10 +3291,12 @@ static void kfree_rcu_monitor(struct work_struct *work)
 	// of the channels that is still busy we should rearm the
 	// work to repeat an attempt. Because previous batches are
 	// still in progress.
+	/* 运行一下krcp的monitor_work */
 	if (need_offload_krc(krcp))
 		schedule_delayed_monitor_work(krcp);
 }
 
+/* 运行krcp->page_cache_work给krcp->bkvcache分配bnode */
 static enum hrtimer_restart
 schedule_page_work_fn(struct hrtimer *t)
 {
@@ -3220,9 +3307,11 @@ schedule_page_work_fn(struct hrtimer *t)
 	return HRTIMER_NORESTART;
 }
 
+/* 分配申请若干数量的页面(bnode)到krcp->bkvcache */
 static void fill_page_cache_func(struct work_struct *work)
 {
 	struct kvfree_rcu_bulk_data *bnode;
+	/* 获取所属的krcp */
 	struct kfree_rcu_cpu *krcp =
 		container_of(work, struct kfree_rcu_cpu,
 			page_cache_work.work);
@@ -3235,6 +3324,7 @@ static void fill_page_cache_func(struct work_struct *work)
 		1 : rcu_min_cached_objs;
 
 	for (i = READ_ONCE(krcp->nr_bkv_objs); i < nr_pages; i++) {
+		/* 分配页面 */
 		bnode = (struct kvfree_rcu_bulk_data *)
 			__get_free_page(GFP_KERNEL | __GFP_NORETRY | __GFP_NOMEMALLOC | __GFP_NOWARN);
 
@@ -3242,6 +3332,7 @@ static void fill_page_cache_func(struct work_struct *work)
 			break;
 
 		raw_spin_lock_irqsave(&krcp->lock, flags);
+		/* 加入krcp->bkvcache */
 		pushed = put_cached_bnode(krcp, bnode);
 		raw_spin_unlock_irqrestore(&krcp->lock, flags);
 
@@ -3255,6 +3346,7 @@ static void fill_page_cache_func(struct work_struct *work)
 	atomic_set(&krcp->backoff_page_cache_fill, 0);
 }
 
+/* 调用krcp->page_cache_work给krcp->bkvcache分配内存 */
 static void
 run_page_cache_worker(struct kfree_rcu_cpu *krcp)
 {
@@ -3263,13 +3355,14 @@ run_page_cache_worker(struct kfree_rcu_cpu *krcp)
 		return;
 
 	if (rcu_scheduler_active == RCU_SCHEDULER_RUNNING &&
-			!atomic_xchg(&krcp->work_in_progress, 1)) {
+			!atomic_xchg(&krcp->work_in_progress, 1)) {/* 如果本来没有work_in_progress 就执行 */
 		if (atomic_read(&krcp->backoff_page_cache_fill)) {
 			queue_delayed_work(system_wq,
 				&krcp->page_cache_work,
 					msecs_to_jiffies(rcu_delay_page_cache_fill_msec));
 		} else {
 			hrtimer_init(&krcp->hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+			/* 这个func函数准时调用krcp->page_cache_work给krcp->bkvcache分配内存 */
 			krcp->hrtimer.function = schedule_page_work_fn;
 			hrtimer_start(&krcp->hrtimer, 0, HRTIMER_MODE_REL);
 		}
@@ -3282,6 +3375,7 @@ run_page_cache_worker(struct kfree_rcu_cpu *krcp)
 // acquired by the memory allocator or anything that it might invoke.
 // Returns true if ptr was successfully recorded, else the caller must
 // use a fallback.
+/* 在krcp的管理的page里面记录一个ptr, 存入bnode->records[bnode->nr_records++] */
 static inline bool
 add_ptr_to_bulk_krc_lock(struct kfree_rcu_cpu **krcp,
 	unsigned long *flags, void *ptr, bool can_alloc)
@@ -3289,18 +3383,24 @@ add_ptr_to_bulk_krc_lock(struct kfree_rcu_cpu **krcp,
 	struct kvfree_rcu_bulk_data *bnode;
 	int idx;
 
+	/* 获取当前cpu的krcp */
 	*krcp = krc_this_cpu_lock(flags);
 	if (unlikely(!(*krcp)->initialized))
 		return false;
 
+	/* vmalloc的idx是1 */
 	idx = !!is_vmalloc_addr(ptr);
+	/* 取下这个channel的第一个bnode */
 	bnode = list_first_entry_or_null(&(*krcp)->bulk_head[idx],
 		struct kvfree_rcu_bulk_data, list);
 
-	/* Check if a new block is required. */
+	/* Check if a new block is required.
+	如果bnode还没分配, 或者满了, 这里新分配? */
 	if (!bnode || bnode->nr_records == KVFREE_BULK_MAX_ENTR) {
+		/* 获取缓存的bnode */
 		bnode = get_cached_bnode(*krcp);
 		if (!bnode && can_alloc) {
+			/* 缓存的也无了, 但是可以分配的话 */
 			krc_this_cpu_unlock(*krcp, *flags);
 
 			// __GFP_NORETRY - allows a light-weight direct reclaim
@@ -3323,11 +3423,14 @@ add_ptr_to_bulk_krc_lock(struct kfree_rcu_cpu **krcp,
 			return false;
 
 		// Initialize the new block and attach it.
+		/* 初始化这个从缓存新拿的or新分配的bnode */
 		bnode->nr_records = 0;
+		/* 加入bulk_head */
 		list_add(&bnode->list, &(*krcp)->bulk_head[idx]);
 	}
 
 	// Finally insert and update the GP for this page.
+	/* 把ptr存入bnode->records[bnode->nr_records++] */
 	bnode->records[bnode->nr_records++] = ptr;
 	get_state_synchronize_rcu_full(&bnode->gp_snap);
 	atomic_inc(&(*krcp)->bulk_count[idx]);
@@ -3374,10 +3477,13 @@ void kvfree_call_rcu(struct rcu_head *head, void *ptr)
 	}
 
 	kasan_record_aux_stack_noalloc(ptr);
+	/* 把ptr存入bnode->records[bnode->nr_records++] */
 	success = add_ptr_to_bulk_krc_lock(&krcp, &flags, ptr, !head);
 	if (!success) {
+		/* 调用krcp->page_cache_work给krcp->bkvcache分配内存 */
 		run_page_cache_worker(krcp);
 
+		/* 下面又是什么方式来存入这个ptr? 20250531002907 */
 		if (head == NULL)
 			// Inline if kvfree_rcu(one_arg) call.
 			goto unlock_return;
@@ -3393,6 +3499,7 @@ void kvfree_call_rcu(struct rcu_head *head, void *ptr)
 	}
 
 	// Set timer to drain after KFREE_DRAIN_JIFFIES.
+	/* 调度一下monitor_work, 回收或者处理bulk_head的什么东西? */
 	if (rcu_scheduler_active == RCU_SCHEDULER_RUNNING)
 		schedule_delayed_monitor_work(krcp);
 
@@ -3412,13 +3519,15 @@ unlock_return:
 }
 EXPORT_SYMBOL_GPL(kvfree_call_rcu);
 
+/* rcu的shrinker的obj count函数 */
 static unsigned long
 kfree_rcu_shrink_count(struct shrinker *shrink, struct shrink_control *sc)
 {
 	int cpu;
 	unsigned long count = 0;
 
-	/* Snapshot count of all CPUs */
+	/* Snapshot count of all CPUs
+	扫描每个cpu的krcp */
 	for_each_possible_cpu(cpu) {
 		struct kfree_rcu_cpu *krcp = per_cpu_ptr(&krc, cpu);
 
@@ -3430,17 +3539,23 @@ kfree_rcu_shrink_count(struct shrinker *shrink, struct shrink_control *sc)
 	return count == 0 ? SHRINK_EMPTY : count;
 }
 
+/* rcu的shrinker的obj scan函数
+释放krcp->bkvcache和bulk_head的内存
+@sc是内存回收的sc */
 static unsigned long
 kfree_rcu_shrink_scan(struct shrinker *shrink, struct shrink_control *sc)
 {
 	int cpu, freed = 0;
 
+	/* 回收每个cpu的krcp */
 	for_each_possible_cpu(cpu) {
 		int count;
 		struct kfree_rcu_cpu *krcp = per_cpu_ptr(&krc, cpu);
 
 		count = krc_count(krcp);
+		/* 释放krcp->bkvcache的内存 */
 		count += drain_page_cache(krcp);
+		/* 调度work来处理krcp的bulk_head的东西(回收内存) */
 		kfree_rcu_monitor(&krcp->monitor_work.work);
 
 		sc->nr_to_scan -= count;
@@ -3452,7 +3567,7 @@ kfree_rcu_shrink_scan(struct shrinker *shrink, struct shrink_control *sc)
 
 	return freed == 0 ? SHRINK_STOP : freed;
 }
-
+/* rcu的shrinker */
 static struct shrinker kfree_rcu_shrinker = {
 	.count_objects = kfree_rcu_shrink_count,
 	.scan_objects = kfree_rcu_shrink_scan,
@@ -3473,6 +3588,7 @@ void __init kfree_rcu_scheduler_running(void)
 }
 
 /*
+检查rcu_scheduler_active是不是处于RCU_SCHEDULER_INACTIVE
  * During early boot, any blocking grace-period wait automatically
  * implies a grace period.
  *
@@ -3492,6 +3608,7 @@ static int rcu_blocking_is_gp(void)
 }
 
 /**
+等待直到gp完成
  * synchronize_rcu - wait until a grace period has elapsed.
  *
  * Control will return to the caller some time after a full grace
@@ -3500,7 +3617,9 @@ static int rcu_blocking_is_gp(void)
  * upon return from synchronize_rcu(), the caller might well be executing
  * concurrently with new RCU read-side critical sections that began while
  * synchronize_rcu() was waiting.
- *
+ * gp结束后,控制会回到caller, 也就是在所有当前执行的RCU读侧临界区完成之后。
+ * 注意,但是,在快从synchronize_rcu()返回时,caller可能会与在synchronize_rcu()等待时
+   开始的新RCU读侧临界区并发执行。
  * RCU read-side critical sections are delimited by rcu_read_lock()
  * and rcu_read_unlock(), and may be nested.  In addition, but only in
  * v5.0 and later, regions of code across which interrupts, preemption,
@@ -3538,11 +3657,13 @@ void synchronize_rcu(void)
 			 lock_is_held(&rcu_lock_map) ||
 			 lock_is_held(&rcu_sched_lock_map),
 			 "Illegal synchronize_rcu() in RCU read-side critical section");
-	if (!rcu_blocking_is_gp()) {
+
+	if (!rcu_blocking_is_gp()) { /* 如果rcu_scheduler_active不处于RCU_SCHEDULER_INACTIVE */
 		if (rcu_gp_is_expedited())
 			synchronize_rcu_expedited();
 		else
 			wait_rcu_gp(call_rcu_hurry);
+
 		return;
 	}
 
@@ -3602,6 +3723,7 @@ unsigned long get_state_synchronize_rcu(void)
 EXPORT_SYMBOL_GPL(get_state_synchronize_rcu);
 
 /**
+保存快照
  * get_state_synchronize_rcu_full - Snapshot RCU state, both normal and expedited
  * @rgosp: location to place combined normal/expedited grace-period state
  *
@@ -3703,6 +3825,7 @@ void start_poll_synchronize_rcu_full(struct rcu_gp_oldstate *rgosp)
 EXPORT_SYMBOL_GPL(start_poll_synchronize_rcu_full);
 
 /**
+检查有没有完成gp
  * poll_state_synchronize_rcu - Has the specified RCU grace period completed?
  * @oldstate: value from get_state_synchronize_rcu() or start_poll_synchronize_rcu()
  *
@@ -3747,6 +3870,8 @@ bool poll_state_synchronize_rcu(unsigned long oldstate)
 EXPORT_SYMBOL_GPL(poll_state_synchronize_rcu);
 
 /**
+检查有没有完成gp
+参数是krcp的krcp->bulk_head[i]->bnode->gp_snap
  * poll_state_synchronize_rcu_full - Has the specified RCU grace period completed?
  * @rgosp: value from get_state_synchronize_rcu_full() or start_poll_synchronize_rcu_full()
  *
@@ -3909,6 +4034,7 @@ static void rcu_barrier_trace(const char *s, int cpu, unsigned long done)
 }
 
 /*
+rcu_barrier()的回调函数, 如果最后执行会唤醒发起rcu_barrier()的进程
  * RCU callback function for rcu_barrier().  If we are last, wake
  * up the task executing rcu_barrier().
  *
@@ -3923,7 +4049,9 @@ static void rcu_barrier_callback(struct rcu_head *rhp)
 	unsigned long __maybe_unused s = rcu_state.barrier_sequence;
 
 	if (atomic_dec_and_test(&rcu_state.barrier_cpu_count)) {
+		/* 自己是最后一个回调了 */
 		rcu_barrier_trace(TPS("LastCB"), -1, s);
+		/* 唤醒上面等待的进程 */
 		complete(&rcu_state.barrier_completion);
 	} else {
 		rcu_barrier_trace(TPS("CB"), -1, s);
@@ -3931,10 +4059,14 @@ static void rcu_barrier_callback(struct rcu_head *rhp)
 }
 
 /*
+初始化rdp->barrier_head上面的唤醒执行rcu barrier的进程的回调函数,
+ 然后加入cblist
  * If needed, entrain an rcu_barrier() callback on rdp->cblist.
- */
+ 是在barrier_lock下面执行的
+*/
 static void rcu_barrier_entrain(struct rcu_data *rdp)
 {
+	/* 获取全局和local的seq序号 */
 	unsigned long gseq = READ_ONCE(rcu_state.barrier_sequence);
 	unsigned long lseq = READ_ONCE(rdp->barrier_seq_snap);
 	bool wake_nocb = false;
@@ -3943,7 +4075,9 @@ static void rcu_barrier_entrain(struct rcu_data *rdp)
 	lockdep_assert_held(&rcu_state.barrier_lock);
 	if (rcu_seq_state(lseq) || !rcu_seq_state(gseq) || rcu_seq_ctr(lseq) != rcu_seq_ctr(gseq))
 		return;
+	/* 要求lseq没有这什么state, 全局的有, 并且二者的ctr相等? */
 	rcu_barrier_trace(TPS("IRQ"), -1, rcu_state.barrier_sequence);
+	/* 初始化这个回调函数, 马上加入cblist */
 	rdp->barrier_head.func = rcu_barrier_callback;
 	debug_rcu_head_queue(&rdp->barrier_head);
 	rcu_nocb_lock(rdp);
@@ -3952,12 +4086,16 @@ static void rcu_barrier_entrain(struct rcu_data *rdp)
 	 * queue. This way we don't wait for bypass timer that can reach seconds
 	 * if it's fully lazy.
 	 */
+	/* 如果rdp被卸载, 并且没有pend cbs? */
 	was_alldone = rcu_rdp_is_offloaded(rdp) && !rcu_segcblist_pend_cbs(&rdp->cblist);
 	WARN_ON_ONCE(!rcu_nocb_flush_bypass(rdp, NULL, jiffies, false));
 	wake_nocb = was_alldone && rcu_segcblist_pend_cbs(&rdp->cblist);
+	/* 把rdp->barrier_head这个回调函数加入cblist */
 	if (rcu_segcblist_entrain(&rdp->cblist, &rdp->barrier_head)) {
+		/* 成功加入了 */
 		atomic_inc(&rcu_state.barrier_cpu_count);
 	} else {
+		/* 没成功加入 */
 		debug_rcu_head_unqueue(&rdp->barrier_head);
 		rcu_barrier_trace(TPS("IRQNQ"), -1, rcu_state.barrier_sequence);
 	}
@@ -3968,17 +4106,22 @@ static void rcu_barrier_entrain(struct rcu_data *rdp)
 }
 
 /*
+这里把唤醒执行rcu barrier进程的回调函数加入cblist
+用于执行完毕后唤醒发起barrier的进程
  * Called with preemption disabled, and from cross-cpu IRQ context.
  */
 static void rcu_barrier_handler(void *cpu_in)
 {
+	/* 获取参数里封装的cpu */
 	uintptr_t cpu = (uintptr_t)cpu_in;
+	/* 获取rdp */
 	struct rcu_data *rdp = per_cpu_ptr(&rcu_data, cpu);
 
 	lockdep_assert_irqs_disabled();
 	WARN_ON_ONCE(cpu != rdp->cpu);
 	WARN_ON_ONCE(cpu != smp_processor_id());
 	raw_spin_lock(&rcu_state.barrier_lock);
+	/* 这里把唤醒执行rcu barrier进程的回调函数加入cblist */
 	rcu_barrier_entrain(rdp);
 	raw_spin_unlock(&rcu_state.barrier_lock);
 }
@@ -4047,7 +4190,7 @@ void rcu_barrier(void)
 	 * Force each CPU with callbacks to register a new callback.
 	 * When that callback is invoked, we will know that all of the
 	 * corresponding CPU's preceding callbacks have been invoked.
-	 */
+	在每一个有cb的cpu上面安装回调,等cpu的cb执行后,回调用于唤醒执行barrier的进程 */
 	for_each_possible_cpu(cpu) {
 		/* 获取pcp的rcu data */
 		rdp = per_cpu_ptr(&rcu_data, cpu);
@@ -4072,6 +4215,10 @@ retry:
 			continue;
 		}
 		raw_spin_unlock_irqrestore(&rcu_state.barrier_lock, flags);
+		/* 现在是一种rdp->cblist有内容, 并且cpu在线的情况? */
+
+		/* 在这个cpu上面执行函数
+		安装barrier操作的唤醒回调函数 */
 		if (smp_call_function_single(cpu, rcu_barrier_handler, (void *)cpu, 1)) {
 			schedule_timeout_uninterruptible(1);
 			goto retry;
@@ -4083,16 +4230,20 @@ retry:
 	/*
 	 * Now that we have an rcu_barrier_callback() callback on each
 	 * CPU, and thus each counted, remove the initial count.
-	 */
+	 这里减去最开始设置的初始值
+	 如果没有其他回调了., 就唤醒*/
 	if (atomic_sub_and_test(2, &rcu_state.barrier_cpu_count))
 		complete(&rcu_state.barrier_completion);
 
-	/* Wait for all rcu_barrier_callback() callbacks to be invoked. */
+	/* Wait for all rcu_barrier_callback() callbacks to be invoked.
+	等待刚刚安装的回调被执行完毕 */
 	wait_for_completion(&rcu_state.barrier_completion);
 
+	/* 这个时候就是完成了? */
 	/* Mark the end of the barrier operation. */
 	rcu_barrier_trace(TPS("Inc2"), -1, rcu_state.barrier_sequence);
 	rcu_seq_end(&rcu_state.barrier_sequence);
+	/* 初始化每个cpu的lseq */
 	gseq = rcu_state.barrier_sequence;
 	for_each_possible_cpu(cpu) {
 		rdp = per_cpu_ptr(&rcu_data, cpu);
@@ -4106,6 +4257,7 @@ retry:
 EXPORT_SYMBOL_GPL(rcu_barrier);
 
 /*
+计算这个指定的rcu_node的在线cpu掩码
  * Compute the mask of online CPUs for the specified rcu_node structure.
  * This will not be stable unless the rcu_node structure's ->lock is
  * held, but the bit corresponding to the current CPU will be stable
@@ -4954,7 +5106,8 @@ static void __init kfree_rcu_batch_init(void)
 	int cpu;
 	int i, j;
 
-	/* Clamp it to [0:100] seconds interval. */
+	/* 调整rcu_delay_page_cache_fill_msec的值
+	Clamp it to [0:100] seconds interval. */
 	if (rcu_delay_page_cache_fill_msec < 0 ||
 		rcu_delay_page_cache_fill_msec > 100 * MSEC_PER_SEC) {
 
@@ -4966,10 +5119,14 @@ static void __init kfree_rcu_batch_init(void)
 			rcu_delay_page_cache_fill_msec);
 	}
 
+	/* 初始化每个cpu的krcp */
 	for_each_possible_cpu(cpu) {
 		struct kfree_rcu_cpu *krcp = per_cpu_ptr(&krc, cpu);
 
+		/* 初始化krcp->krw_arr数组, 初始化每个krwp */
 		for (i = 0; i < KFREE_N_BATCHES; i++) {
+			/* 这个work用来回收内存好像, 回收从krcp的bulk_head接手的
+			内存(在bulk_head_free成员数组) */
 			INIT_RCU_WORK(&krcp->krw_arr[i].rcu_work, kfree_rcu_work);
 			krcp->krw_arr[i].krcp = krcp;
 
@@ -4980,14 +5137,18 @@ static void __init kfree_rcu_batch_init(void)
 		for (i = 0; i < FREE_N_CHANNELS; i++)
 			INIT_LIST_HEAD(&krcp->bulk_head[i]);
 
+		/* 初始化work, 这个work来回收krcp->bulk_head的内存? */
 		INIT_DELAYED_WORK(&krcp->monitor_work, kfree_rcu_monitor);
+		/* 这里给krcp->bkvcache分配页面 */
 		INIT_DELAYED_WORK(&krcp->page_cache_work, fill_page_cache_func);
 		krcp->initialized = true;
 	}
+
 	if (register_shrinker(&kfree_rcu_shrinker, "rcu-kfree"))
 		pr_err("Failed to register kfree_rcu() shrinker!\n");
 }
 
+/* 初始化rcu */
 void __init rcu_init(void)
 {
 	int cpu = smp_processor_id();

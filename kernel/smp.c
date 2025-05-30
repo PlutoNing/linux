@@ -337,7 +337,7 @@ static __always_inline void csd_unlock(struct __call_single_data *csd)
 	 */
 	smp_store_release(&csd->node.u_flags, 0);
 }
-
+/* 这里好像是公用的csd? */
 static DEFINE_PER_CPU_SHARED_ALIGNED(call_single_data_t, csd_data);
 /*
 在其他cpu上面执行csd函数的情况
@@ -383,6 +383,7 @@ void __smp_call_single_queue(int cpu, struct llist_node *node)
 }
 
 /*
+在cpu上面执行
  * Insert a previously allocated call_single_data_t element
  * for execution on the given CPU. data must already have
  * ->func, ->info, and ->flags set.
@@ -612,6 +613,7 @@ void flush_smp_call_function_queue(void)
  * @wait: If true, wait until function has completed on other CPUs.
  *
  * Returns 0 on success, else a negative status code.
+ 返回非零可能是一种需要重试的情况
  */
 int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 			     int wait)
@@ -646,12 +648,15 @@ int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 	 */
 	WARN_ON_ONCE(!in_task());
 
+	/* 栈上分配的 */
 	csd = &csd_stack;
 	if (!wait) {
+		/* 也可能使用pcp的? */
 		csd = this_cpu_ptr(&csd_data);
 		csd_lock(csd);
 	}
 
+	/* 封装函数和参数 */
 	csd->func = func;
 	csd->info = info;
 #ifdef CONFIG_CSD_LOCK_WAIT_DEBUG
@@ -659,6 +664,7 @@ int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 	csd->node.dst = cpu;
 #endif
 
+	/* 开始调用 */
 	err = generic_exec_single(cpu, csd);
 
 	if (wait)

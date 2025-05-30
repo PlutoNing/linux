@@ -2074,6 +2074,7 @@ void delayed_work_timer_fn(struct timer_list *t)
 }
 EXPORT_SYMBOL(delayed_work_timer_fn);
 
+/* 入队一个dwork */
 static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 				struct delayed_work *dwork, unsigned long delay)
 {
@@ -2090,7 +2091,7 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 	 * both optimization and correctness.  The earliest @timer can
 	 * expire is on the closest next tick and delayed_work users depend
 	 * on that there's no such delay when @delay is 0.
-	 */
+	 立即执行 */
 	if (!delay) {
 		__queue_work(cpu, wq, &dwork->work);
 		return;
@@ -2098,10 +2099,11 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 
 	dwork->wq = wq;
 	dwork->cpu = cpu;
+	/* 这里计算到期时间 */
 	timer->expires = jiffies + delay;
 
 	if (unlikely(cpu != WORK_CPU_UNBOUND))
-		add_timer_on(timer, cpu);
+		add_timer_on(timer, cpu); /* 如果指定了cpu */
 	else
 		add_timer(timer);
 }
@@ -2175,17 +2177,22 @@ bool mod_delayed_work_on(int cpu, struct workqueue_struct *wq,
 }
 EXPORT_SYMBOL_GPL(mod_delayed_work_on);
 
+/* 执行rwork */
 static void rcu_work_rcufn(struct rcu_head *rcu)
 {
+	/* 获取所属的rwork */
 	struct rcu_work *rwork = container_of(rcu, struct rcu_work, rcu);
 
 	/* read the comment in __queue_work() */
 	local_irq_disable();
+	/* 执行work */
 	__queue_work(WORK_CPU_UNBOUND, rwork->wq, &rwork->work);
 	local_irq_enable();
 }
 
 /**
+把rwork标记为pending, 有可能会执行入队操作
+grace之后在wq入队rwork
  * queue_rcu_work - queue work after a RCU grace period
  * @wq: workqueue to use
  * @rwork: work to queue
@@ -2199,8 +2206,11 @@ bool queue_rcu_work(struct workqueue_struct *wq, struct rcu_work *rwork)
 {
 	struct work_struct *work = &rwork->work;
 
+	/* 把work设置为pending ,如果是第一次设置, 就调用rcu_work_rcufn
+	来入队这个work */
 	if (!test_and_set_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(work))) {
 		rwork->wq = wq;
+		/* 入队 */
 		call_rcu_hurry(&rwork->rcu, rcu_work_rcufn);
 		return true;
 	}
@@ -3840,6 +3850,7 @@ bool flush_rcu_work(struct rcu_work *rwork)
 {
 	if (test_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(&rwork->work))) {
 		/* 正在pending的情况 */
+		/* 等待所有rdp的cb执行完 */
 		rcu_barrier();
 		flush_work(&rwork->work);
 		return true;

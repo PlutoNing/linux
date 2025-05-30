@@ -1931,6 +1931,7 @@ enum {
 	     entry = xas_next_entry(xas, max))
 
 /**
+在max范围内遍历指定mark的folio, 由entry作为迭代器
  * xas_for_each_marked() - Iterate over a range of an XArray.
  * @xas: XArray operation state.
  * @entry: Entry retrieved from the array.

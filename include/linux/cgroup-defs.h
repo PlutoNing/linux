@@ -751,7 +751,9 @@ struct cgroup_subsys {
 	/* link to parent, protected by cgroup_lock() */
 	struct cgroup_root *root; /* 可能指向cgrp_dfl_root */
 
-	/* idr for css->id */
+	/* 
+	在这里通过id查询css
+	idr for css->id */
 	struct idr css_idr;
 
 	/*

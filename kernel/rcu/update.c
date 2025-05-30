@@ -130,6 +130,7 @@ EXPORT_SYMBOL(rcu_read_lock_sched_held);
 #ifndef CONFIG_TINY_RCU
 
 /*
+rcu处于normal的含义?
  * Should expedited grace-period primitives always fall back to their
  * non-expedited counterparts?  Intended for use within RCU.  Note
  * that if the user specifies both rcu_expedited and rcu_normal, then
@@ -393,6 +394,7 @@ EXPORT_SYMBOL_GPL(rcu_read_lock_any_held);
 #endif /* #ifdef CONFIG_DEBUG_LOCK_ALLOC */
 
 /**
+在gp之后唤醒一个任务
  * wakeme_after_rcu() - Callback function to awaken a task after grace period
  * @head: Pointer to rcu_head member within rcu_synchronize structure
  *
@@ -407,6 +409,15 @@ void wakeme_after_rcu(struct rcu_head *head)
 }
 EXPORT_SYMBOL_GPL(wakeme_after_rcu);
 
+/**
+感觉主要是(用户提供的函数func_ptr)(&rs_array[i].head, wakeme_after_rcu);
+ * @description: 
+ * @param {bool} checktiny
+ * @param {int} n, crcu_array的长度
+ * @param {call_rcu_func_t} *crcu_array, 好像是什么参数的数组
+ * @param {rcu_synchronize} *rs_array, 一个同样大小的空数组
+ * @return {*}
+ */
 void __wait_rcu_gp(bool checktiny, int n, call_rcu_func_t *crcu_array,
 		   struct rcu_synchronize *rs_array)
 {
@@ -423,9 +434,11 @@ void __wait_rcu_gp(bool checktiny, int n, call_rcu_func_t *crcu_array,
 		for (j = 0; j < i; j++)
 			if (crcu_array[j] == crcu_array[i])
 				break;
+
 		if (j == i) {
 			init_rcu_head_on_stack(&rs_array[i].head);
 			init_completion(&rs_array[i].completion);
+			/* 调用函数 */
 			(crcu_array[i])(&rs_array[i].head, wakeme_after_rcu);
 		}
 	}
@@ -472,6 +485,7 @@ static bool rcuhead_is_static_object(void *addr)
 }
 
 /**
+初始化栈上的rcu head
  * init_rcu_head_on_stack() - initialize on-stack rcu_head for debugobjects
  * @head: pointer to rcu_head structure to be initialized
  *
@@ -488,6 +502,7 @@ void init_rcu_head_on_stack(struct rcu_head *head)
 EXPORT_SYMBOL_GPL(init_rcu_head_on_stack);
 
 /**
+销毁栈上的rcu head
  * destroy_rcu_head_on_stack() - destroy on-stack rcu_head for debugobjects
  * @head: pointer to rcu_head structure to be initialized
  *

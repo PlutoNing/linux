@@ -74,6 +74,7 @@
 
 #include <trace/events/vmscan.h>
 
+/*  */
 struct cgroup_subsys memory_cgrp_subsys __read_mostly;
 EXPORT_SYMBOL(memory_cgrp_subsys);
 
@@ -6893,7 +6894,7 @@ static struct cftype memory_files[] = {
 	},
 	{ }	/* terminate */
 };
-
+/* mem cg的subsys? */
 struct cgroup_subsys memory_cgrp_subsys = {
 	.css_alloc = mem_cgroup_css_alloc,
 	.css_online = mem_cgroup_css_online,

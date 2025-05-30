@@ -59,7 +59,8 @@ struct shrink_control {
  * context.
  *
  * @flags determine the shrinker abilities, like numa awareness
- */
+ shrinker机制允许不同的内核子系统注册自己的回调函数，
+ 以便在内存回收时释放它们所占用的内存*/
 struct shrinker {
 	unsigned long (*count_objects)(struct shrinker *,
 				       struct shrink_control *sc);

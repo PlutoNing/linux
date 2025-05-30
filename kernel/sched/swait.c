@@ -87,6 +87,7 @@ void swake_up_all(struct swait_queue_head *q)
 }
 EXPORT_SYMBOL(swake_up_all);
 
+/* 加入等待队列 */
 void __prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait)
 {
 	wait->task = current;
@@ -128,6 +129,7 @@ long prepare_to_swait_event(struct swait_queue_head *q, struct swait_queue *wait
 }
 EXPORT_SYMBOL(prepare_to_swait_event);
 
+/* 从队列移除自己 */
 void __finish_swait(struct swait_queue_head *q, struct swait_queue *wait)
 {
 	__set_current_state(TASK_RUNNING);

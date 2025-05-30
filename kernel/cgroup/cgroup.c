@@ -6821,6 +6821,7 @@ struct cgroup_subsys_state *css_tryget_online_from_dir(struct dentry *dentry,
 }
 
 /**
+从id获取css
  * css_from_id - lookup css by id
  * @id: the cgroup id
  * @ss: cgroup subsys to be looked into

@@ -33,9 +33,10 @@ enum wb_state {
 enum wb_stat_item {
 	WB_RECLAIMABLE,  /* 
 	这个wb负责的可回收,可写回的页面
+	比如pagecache的页面
 	todddo 2024年12月7日21:26:09 多了脏页, 也会加这个
-
 	 */
+	/* wb的正在回写的页面 */
 	WB_WRITEBACK,
 	WB_DIRTIED, /* 
 	
@@ -125,6 +126,7 @@ struct bdi_writeback {
 	如果此值加上设定的间隔,超出了now,就表示此需要刷盘了
 	last old data flush */
 
+	/* 上面连接着脏的inode */
 	struct list_head b_dirty;	/* dirty inodes */
 	struct list_head b_io;		/* 
 	上面是准备回写的inode
@@ -136,6 +138,8 @@ struct bdi_writeback {
 	atomic_t writeback_inodes;	/* 
 	这个wb控制的inode里面正在写回的数量
 	number of inodes under writeback */
+
+/* wb的状态统计, 比如各种内存类型的数量 */
 	struct percpu_counter stat[NR_WB_STAT_ITEMS]; //这里是wb对各种页面的统计
 
 	unsigned long bw_time_stamp;	/* last time write bw is updated */
@@ -185,6 +189,7 @@ struct bdi_writeback {
 	连接到关联的memcg
 	anchored at memcg->cgwb_list */
 	struct list_head blkcg_node;	/* anchored at blkcg->cgwb_list */
+	/* inode加入这个新wb, 并且inode不是DIRTY_ALL的 */
 	struct list_head b_attached;	/* attached inodes, protected by list_lock */
 	struct list_head offline_node;	/* anchored at offline_cgwbs */
 

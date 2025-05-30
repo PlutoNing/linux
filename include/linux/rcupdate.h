@@ -112,6 +112,9 @@ static inline int rcu_preempt_depth(void)
 #ifdef CONFIG_RCU_LAZY
 void call_rcu_hurry(struct rcu_head *head, rcu_callback_t func);
 #else
+/* 
+用于在rcu_gp_is_normal情况下sync rcu?
+调用rcu(使用fun初始化head之后, 把head入队rcu_ctrlblk.curtail) */
 static inline void call_rcu_hurry(struct rcu_head *head, rcu_callback_t func)
 {
 	call_rcu(head, func);
@@ -934,6 +937,7 @@ static inline notrace void rcu_read_unlock_sched_notrace(void)
 		.p = RCU_INITIALIZER(v)
 
 /*
+这个offset是否可以被kvfree_rcu处理
  * Does the specified offset indicate that the corresponding rcu_head
  * structure can be handled by kvfree_rcu()?
  */

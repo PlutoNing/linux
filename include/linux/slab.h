@@ -510,7 +510,8 @@ void kmem_cache_free(struct kmem_cache *s, void *objp);
  */
 void kmem_cache_free_bulk(struct kmem_cache *s, size_t size, void **p);
 int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size, void **p);
-
+/* 释放bnode的内存
+从krcp->bulk_head收集的完成gp的bnode */
 static __always_inline void kfree_bulk(size_t size, void **p)
 {
 	kmem_cache_free_bulk(NULL, size, p);
