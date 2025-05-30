@@ -2150,6 +2150,14 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 		sched_core_enqueue(rq, p);
 }
 
+
+/**
+从rq移除p
+ * @description: 
+ * @param {rq} *rq
+ * @param {int} flags
+ * @return {*}
+ */
 static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	if (sched_core_enabled(rq))
@@ -2323,6 +2331,7 @@ int task_state_match(struct task_struct *p, unsigned int state)
 }
 
 /*
+等到什么?
  * wait_task_inactive - wait for a thread to unschedule.
  *
  * Wait for the thread to block in any of the states set in @match_state.
@@ -2810,6 +2819,7 @@ void set_cpus_allowed_common(struct task_struct *p, struct affinity_context *ctx
 		swap(p->user_cpus_ptr, ctx->user_mask);
 }
 
+/* 设置进程亲和的cpu(在ac里面)? */
 static void
 __do_set_cpus_allowed(struct task_struct *p, struct affinity_context *ctx)
 {
@@ -2847,6 +2857,7 @@ __do_set_cpus_allowed(struct task_struct *p, struct affinity_context *ctx)
 	if (running)
 		put_prev_task(rq, p);
 
+	/* 从调度类的层面来设置 */
 	p->sched_class->set_cpus_allowed(p, ctx);
 
 	if (queued)
@@ -2856,6 +2867,7 @@ __do_set_cpus_allowed(struct task_struct *p, struct affinity_context *ctx)
 }
 
 /*
+设置进程亲和的cpu?
  * Used for kthread_bind() and select_fallback_rq(), in both cases the user
  * affinity (if any) should be destroyed too.
  */
@@ -4148,6 +4160,8 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
 
 /*
  * 检查p是否可以被唤醒
+ ================
+ 检查进程是否处于state状态
  * Invoked from try_to_wake_up() to check whether the task can be woken up.
  *
  * The caller holds p::pi_lock if p != current or has preemption
@@ -4321,6 +4335,7 @@ int try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	int cpu, success = 0;
 
 	if (p == current) {
+		/* 说明现在p处于rq, 并且cpu为当前cpu? */
 		/*
 		 * We're waking current, this means 'p->on_rq' and 'task_cpu(p)
 		 * == smp_processor_id()'. Together this means we can special
@@ -7160,6 +7175,14 @@ asmlinkage __visible void __sched preempt_schedule_irq(void)
 	exception_exit(prev_state);
 }
 
+/**
+ * @description: 唤醒等待结构体上的进程
+ * @param {wait_queue_entry_t} *curr
+ * @param {unsigned} mode, 进程处于的状态
+ * @param {int} wake_flags,唤醒的flags
+ * @param {void} *key
+ * @return {*}
+ */
 int default_wake_function(wait_queue_entry_t *curr, unsigned mode, int wake_flags,
 			  void *key)
 {
@@ -7332,6 +7355,7 @@ static inline int rt_effective_prio(struct task_struct *p, int prio)
 }
 #endif
 
+/* 设置进程的nice */
 void set_user_nice(struct task_struct *p, long nice)
 {
 	bool queued, running;
@@ -7346,6 +7370,7 @@ void set_user_nice(struct task_struct *p, long nice)
 	 * the task might be in the middle of scheduling on another CPU.
 	 */
 	rq = task_rq_lock(p, &rf);
+	/* 更新rq的时钟 */
 	update_rq_clock(rq);
 
 	/*
@@ -7358,7 +7383,9 @@ void set_user_nice(struct task_struct *p, long nice)
 		p->static_prio = NICE_TO_PRIO(nice);
 		goto out_unlock;
 	}
+	/* 检查是不是已经入队了 */
 	queued = task_on_rq_queued(p);
+	/* 检查是否正在当前rq运行 */
 	running = task_current(rq, p);
 	if (queued)
 		dequeue_task(rq, p, DEQUEUE_SAVE | DEQUEUE_NOCLOCK);

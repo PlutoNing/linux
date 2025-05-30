@@ -13,10 +13,15 @@ void __init_swait_queue_head(struct swait_queue_head *q, const char *name,
 EXPORT_SYMBOL(__init_swait_queue_head);
 
 /*
+唤醒q的进程列表上的一个进程
  * The thing about the wake_up_state() return value; I think we can ignore it.
  *
  * If for some reason it would return 0, that means the previously waiting
  * task is already running, so it will observe condition true (or has already).
+ * @description: 
+ * @param {swait_queue_head} *q, 是done的q成员
+ * @param {int} wake_flags
+ * @return {*}
  */
 void swake_up_locked(struct swait_queue_head *q, int wake_flags)
 {
@@ -25,6 +30,7 @@ void swake_up_locked(struct swait_queue_head *q, int wake_flags)
 	if (list_empty(&q->task_list))
 		return;
 
+	/* 取下来一个等待的进程, 唤醒, 移除 */
 	curr = list_first_entry(&q->task_list, typeof(*curr), task_list);
 	try_to_wake_up(curr->task, TASK_NORMAL, wake_flags);
 	list_del_init(&curr->task_list);

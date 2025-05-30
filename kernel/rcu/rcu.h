@@ -147,6 +147,7 @@ static inline bool rcu_seq_started(unsigned long *sp, unsigned long s)
 }
 
 /*
+检查自己的版本号是不是落后了(发生了race, 别人已经完成了)
  * Given a snapshot from rcu_seq_snap(), determine whether or not a
  * full update-side operation has occurred.
  */

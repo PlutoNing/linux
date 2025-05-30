@@ -557,6 +557,7 @@ static inline void cpumask_clear(struct cpumask *dstp)
 }
 
 /**
+合并两个掩码
  * cpumask_and - *dstp = *src1p & *src2p
  * @dstp: the cpumask result
  * @src1p: the first input
@@ -807,6 +808,7 @@ static inline int cpumask_parse(const char *buf, struct cpumask *dstp)
 }
 
 /**
+从命令行参数解析出cpu掩码
  * cpulist_parse - extract a cpumask from a user string of ranges
  * @buf: the buffer to extract from
  * @dstp: the cpumask to set.

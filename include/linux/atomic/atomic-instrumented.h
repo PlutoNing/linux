@@ -1359,6 +1359,7 @@ atomic_sub_and_test(int i, atomic_t *v)
 }
 
 /**
+减少1 , 然后看看是不是变0了
  * atomic_dec_and_test() - atomic decrement and test if zero with full ordering
  * @v: pointer to atomic_t
  *

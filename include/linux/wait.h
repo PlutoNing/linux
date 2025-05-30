@@ -25,12 +25,16 @@ int default_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int 
 #define WQ_FLAG_PRIORITY	0x20
 
 /*
+一个等待结构体
  * A single wait-queue entry structure:
  */
 struct wait_queue_entry {
 	unsigned int		flags;
+	/* 可能会指向tsk */
 	void			*private;
+	/* 自定义的函数, 可以定义唤醒的时候自己做什么(比如唤醒自己) */
 	wait_queue_func_t	func;
+	/* 加入等待队列的连接件 */
 	struct list_head	entry;
 };
 
@@ -97,6 +101,7 @@ init_waitqueue_func_entry(struct wait_queue_entry *wq_entry, wait_queue_func_t f
 }
 
 /**
+检查等待队列还有没有成员?
  * waitqueue_active -- locklessly test for waiters on the queue
  * @wq_head: the waitqueue to test for waiters
  *
@@ -1212,6 +1217,7 @@ int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, i
 
 #define DEFINE_WAIT(name) DEFINE_WAIT_FUNC(name, autoremove_wake_function)
 
+/* 初始化wait结构体 */
 #define init_wait(wait)								\
 	do {									\
 		(wait)->private = current;					\

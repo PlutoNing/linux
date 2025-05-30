@@ -354,7 +354,9 @@ struct rcu_state {
 
 	struct mutex barrier_mutex;		/* Guards barrier fields. */
 	atomic_t barrier_cpu_count;		/* # CPUs waiting on. */
+	/*  */
 	struct completion barrier_completion;	/* Wake at barrier end. */
+	/* barrier操作的序号 */
 	unsigned long barrier_sequence;		/* ++ at start and end of */
 						/*  rcu_barrier(). */
 	/* End of fields guarded by barrier_mutex. */

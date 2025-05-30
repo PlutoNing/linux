@@ -45,7 +45,10 @@ static inline bool rcu_segcblist_empty(struct rcu_segcblist *rsclp)
 	return !READ_ONCE(rsclp->head);
 }
 
-/* Return number of callbacks in segmented callback list. */
+/*
+参数是当前处理的cpu的rdp->cblist
+这里获取长度
+ Return number of callbacks in segmented callback list. */
 static inline long rcu_segcblist_n_cbs(struct rcu_segcblist *rsclp)
 {
 #ifdef CONFIG_RCU_NOCB_CPU

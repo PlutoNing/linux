@@ -39,7 +39,7 @@
  */
 
 struct task_struct;
-
+/* 等待的进程链接在这里 */
 struct swait_queue_head {
 	raw_spinlock_t		lock;
 	struct list_head	task_list;

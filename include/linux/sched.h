@@ -1056,7 +1056,8 @@ struct task_struct {
 	*/
 	int __user			*clear_child_tid;
 
-	/* PF_KTHREAD | PF_IO_WORKER */
+	/* PF_KTHREAD | PF_IO_WORKER
+	可能存储的kthread */
 	void				*worker_private;
 
 	u64				utime;

@@ -17,6 +17,7 @@ struct timer_list {
 	 */
 	struct hlist_node	entry; //挂到pending队列上,插入到时间轮上
 	unsigned long		expires;
+	/* 设置为null就可以代表关闭timer? */
 	void			(*function)(struct timer_list *);
 	u32			flags;
 
@@ -69,6 +70,7 @@ struct timer_list {
 #define TIMER_BASEMASK		(TIMER_CPUMASK | TIMER_MIGRATING)
 #define TIMER_DEFERRABLE	0x00080000
 #define TIMER_PINNED		0x00100000
+/*  */
 #define TIMER_IRQSAFE		0x00200000
 #define TIMER_INIT_FLAGS	(TIMER_DEFERRABLE | TIMER_PINNED | TIMER_IRQSAFE)
 #define TIMER_ARRAYSHIFT	22
@@ -205,6 +207,8 @@ extern int timer_shutdown(struct timer_list *timer);
  * See timer_delete_sync() for detailed explanation.
  *
  * Do not use in new code. Use timer_delete_sync() instead.
+ 返回0表示没有pending
+ 返回1表示是pending的然后移除了
  */
 static inline int del_timer_sync(struct timer_list *timer)
 {
@@ -212,12 +216,16 @@ static inline int del_timer_sync(struct timer_list *timer)
 }
 
 /**
+删除一个pending的timer
  * del_timer - Delete a pending timer
  * @timer:	The timer to be deleted
  *
  * See timer_delete() for detailed explanation.
  *
  * Do not use in new code. Use timer_delete() instead.
+  * Return:
+ * * %0 - The timer was not pending
+ * * %1 - The timer was pending and deactivated
  */
 static inline int del_timer(struct timer_list *timer)
 {

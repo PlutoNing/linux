@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
 /*
+这里complete一个done成员
  * Generic wait-for-completion handler;
  *
  * It differs from semaphores in that their default case is the opposite,
@@ -21,6 +22,7 @@ static void complete_with_flags(struct completion *x, int wake_flags)
 
 	if (x->done != UINT_MAX)
 		x->done++;
+	/*  */
 	swake_up_locked(&x->wait, wake_flags);
 	raw_spin_unlock_irqrestore(&x->wait.lock, flags);
 }
@@ -31,6 +33,7 @@ void complete_on_current_cpu(struct completion *x)
 }
 
 /**
+如何去complete?
  * complete: - signals a single thread waiting on this completion
  * @x:  holds the state of this particular completion
  *
@@ -134,6 +137,7 @@ wait_for_common_io(struct completion *x, long timeout, int state)
 }
 
 /**
+等待完成
  * wait_for_completion: - waits for completion of a task
  * @x:  holds the state of this particular completion
  *

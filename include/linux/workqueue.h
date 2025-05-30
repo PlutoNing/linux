@@ -36,6 +36,7 @@ enum {
 	WORK_STRUCT_LINKED_BIT	= 3,	/* next work is linked to this one */
 #ifdef CONFIG_DEBUG_OBJECTS_WORK
 	WORK_STRUCT_STATIC_BIT	= 4,	/* static initializer (debugobjects) */
+	/* 编码color的位置 */
 	WORK_STRUCT_COLOR_SHIFT	= 5,	/* color for workqueue flushing */
 #else
 	WORK_STRUCT_COLOR_SHIFT	= 4,	/* color for workqueue flushing */
@@ -120,6 +121,7 @@ struct work_struct {
 #define WORK_DATA_STATIC_INIT()	\
 	ATOMIC_LONG_INIT((unsigned long)(WORK_STRUCT_NO_POOL | WORK_STRUCT_STATIC))
 
+/* 将任务提交到工作队列，并在指定的延迟时间后执行 */
 struct delayed_work {
 	struct work_struct work; //work结构体,代表一个工作的抽象
 	struct timer_list timer;
@@ -128,7 +130,7 @@ struct delayed_work {
 	struct workqueue_struct *wq;
 	int cpu;
 };
-
+/*  */
 struct rcu_work {
 	struct work_struct work;
 	struct rcu_head rcu;
@@ -137,6 +139,7 @@ struct rcu_work {
 	struct workqueue_struct *wq;
 };
 
+/* 好像是表示wq的什么亲和性 */
 enum wq_affn_scope {
 	WQ_AFFN_DFL,			/* use system default */
 	WQ_AFFN_CPU,			/* one pod per CPU */
@@ -165,6 +168,7 @@ struct workqueue_attrs {
 	 * Work items in this workqueue are affine to these CPUs and not allowed
 	 * to execute on other CPUs. A pool serving a workqueue must have the
 	 * same @cpumask.
+	 里面的线程的cpu亲和性掩码
 	 */
 	cpumask_var_t cpumask;
 
@@ -350,6 +354,7 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 	INIT_WORK_ONSTACK(&(_work)->work, (_func))
 
 /**
+work是不是处于pending状态
  * work_pending - Find out whether a work item is currently pending
  * @work: The work item in question
  */
