@@ -75,6 +75,7 @@ void __rcu_read_lock(void);
 void __rcu_read_unlock(void);
 
 /*
+表示rcu_read_lock()的嵌套深度
  * Defined as a macro as it is a very low level header included from
  * areas that don't even know about current.  This gives the rcu_read_lock()
  * nesting depth, but makes sense only if CONFIG_PREEMPT_RCU -- in other

@@ -339,6 +339,8 @@ prepare_to_wait_exclusive(struct wait_queue_head *wq_head, struct wait_queue_ent
 }
 EXPORT_SYMBOL(prepare_to_wait_exclusive);
 
+/* 初始化一个wait
+这个wait会在唤醒的时候也顺带从队列移除 */
 void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
 {
 	wq_entry->flags = flags;
@@ -348,6 +350,13 @@ void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
 }
 EXPORT_SYMBOL(init_wait_entry);
 
+/**
+ * @description: 加入等待队列, 并设置当前进程的状态
+ * @param {wait_queue_head} *wq_head
+ * @param {wait_queue_entry} *wq_entry
+ * @param {int} state
+ * @return {*}
+ */
 long prepare_to_wait_event(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)
 {
 	unsigned long flags;
@@ -427,7 +436,7 @@ EXPORT_SYMBOL(do_wait_intr_irq);
 
 /**
 把自己标记为running
-然后从wq_head中删除wq_entry
+然后如果还在队列的话, 从wq_head中删除wq_entry
  * finish_wait - clean up after waiting in a queue
  * @wq_head: waitqueue waited on
  * @wq_entry: wait descriptor
@@ -463,6 +472,7 @@ void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_en
 EXPORT_SYMBOL(finish_wait);
 
 /**
+用作wait的func, 这样的话自己被从等待队列唤醒的时候, 会顺带从队列被移除
  * @description: 唤醒等待队列上的自己
  然后把自己从等待队列移除
  * @param {wait_queue_entry} *wq_entry, 等待结构体

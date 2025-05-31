@@ -87,6 +87,7 @@ static inline bool rcu_segcblist_is_enabled(struct rcu_segcblist *rsclp)
 }
 
 /*
+检查cblist是不是卸载了
  * Is the specified rcu_segcblist NOCB offloaded (or in the middle of the
  * [de]offloading process)?
  */

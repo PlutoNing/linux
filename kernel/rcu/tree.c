@@ -109,6 +109,7 @@ module_param(rcu_fanout_exact, bool, 0444);
 /* Increase (but not decrease) the RCU_FANOUT_LEAF at boot time. */
 static int rcu_fanout_leaf = RCU_FANOUT_LEAF;
 module_param(rcu_fanout_leaf, int, 0444);
+/*  */
 int rcu_num_lvls __read_mostly = RCU_NUM_LVLS;
 /* Number of rcu_nodes at specified level. */
 int num_rcu_lvl[] = NUM_RCU_LVL_INIT;
@@ -663,6 +664,7 @@ int rcu_needs_cpu(void)
 }
 
 /*
+如果当前的cpu被催促进入qs, 关闭他
  * If any sort of urgency was applied to the current CPU (for example,
  * the scheduler-clock interrupt was enabled on a nohz_full CPU) in order
  * to get to a quiescent state, disable it.
@@ -1010,6 +1012,8 @@ static bool rcu_future_gp_cleanup(struct rcu_node *rnp)
 }
 
 /*
+唤醒gp线程
+
  * Awaken the grace-period kthread.  Don't do a self-awaken (unless in an
  * interrupt or softirq handler, in which case we just might immediately
  * sleep upon return, resulting in a grace-period hang), and don't bother
@@ -1028,11 +1032,14 @@ static void rcu_gp_kthread_wake(void)
 {
 	struct task_struct *t = READ_ONCE(rcu_state.gp_kthread);
 
+	/* 这里是检查不做自我唤醒什么的 */
 	if ((current == t && !in_hardirq() && !in_serving_softirq()) ||
 	    !READ_ONCE(rcu_state.gp_flags) || !t)
 		return;
+	/*  */
 	WRITE_ONCE(rcu_state.gp_wake_time, jiffies);
 	WRITE_ONCE(rcu_state.gp_wake_seq, READ_ONCE(rcu_state.gp_seq));
+	/*  */
 	swake_up_one(&rcu_state.gp_wq);
 }
 
@@ -1821,6 +1828,9 @@ static int __noreturn rcu_gp_kthread(void *unused)
 }
 
 /*
+到这里说明我们是这次gp的最后一个通过qs的cpu?
+调用rcu_report_qs_rsp来清理并开始下一个gp
+================================================
  * Report a full set of quiescent states to the rcu_state data structure.
  * Invoke rcu_gp_kthread_wake() to awaken the grace-period kthread if
  * another grace period is required.  Whether we wake the grace-period
@@ -1828,6 +1838,11 @@ static int __noreturn rcu_gp_kthread(void *unused)
  * forcing, that kthread will clean up after the just-completed grace
  * period.  Note that the caller must hold rnp->lock, which is released
  * before return.
+ 记录全部的qs到rcu_state中
+ 调用rcu_gp_kthread_wake()来唤醒gp kthread如果还需要另一个gp的话
+ 无论是我们唤醒了gp kthread还是它自己唤醒了来下一轮的qs
+ 这个线程都会清理刚刚完成的gp
+ 注意caller必须持有rnp->lock,这个锁会在返回前释放
  */
 static void rcu_report_qs_rsp(unsigned long flags)
 	__releases(rcu_get_root()->lock)
@@ -1841,6 +1856,9 @@ static void rcu_report_qs_rsp(unsigned long flags)
 }
 
 /*
+批量记录多个cpu的qs到rcunode?
+=================
+感觉还是修改rnp层级上的qsmask
  * Similar to rcu_report_qs_rdp(), for which it is a helper function.
  * Allows quiescent states for a group of CPUs to be reported at one go
  * to the specified rcu_node structure, though all the CPUs in the group
@@ -1853,6 +1871,12 @@ static void rcu_report_qs_rsp(unsigned long flags)
  * As a special case, if mask is zero, the bit-already-cleared check is
  * disabled.  This allows propagating quiescent state due to resumed tasks
  * during grace-period initialization.
+ * @description: 
+ * @param {unsigned long} mask, rdp的grpmask
+ * @param {rcu_node} *rnp, rdp的mynode
+ * @param {unsigned long} gps , 是rnp->gp_seq
+ * @param {unsigned long} flags
+ * @return {*}
  */
 static void rcu_report_qs_rnp(unsigned long mask, struct rcu_node *rnp,
 			      unsigned long gps, unsigned long flags)
@@ -1863,7 +1887,8 @@ static void rcu_report_qs_rnp(unsigned long mask, struct rcu_node *rnp,
 
 	raw_lockdep_assert_held_rcu_node(rnp);
 
-	/* Walk up the rcu_node hierarchy. */
+	/* Walk up the rcu_node hierarchy.
+	遍历rcu_node层级 */
 	for (;;) {
 		if ((!(rnp->qsmask & mask) && mask) || rnp->gp_seq != gps) {
 
@@ -1877,6 +1902,7 @@ static void rcu_report_qs_rnp(unsigned long mask, struct rcu_node *rnp,
 		WARN_ON_ONCE(oldmask); /* Any child must be all zeroed! */
 		WARN_ON_ONCE(!rcu_is_leaf_node(rnp) &&
 			     rcu_preempt_blocked_readers_cgp(rnp));
+		/* 为什么取出rdp的grpmask呢 */
 		WRITE_ONCE(rnp->qsmask, rnp->qsmask & ~mask);
 		trace_rcu_quiescent_state_report(rcu_state.name, rnp->gp_seq,
 						 mask, rnp->qsmask, rnp->level,
@@ -1889,6 +1915,7 @@ static void rcu_report_qs_rnp(unsigned long mask, struct rcu_node *rnp,
 			return;
 		}
 		rnp->completedqs = rnp->gp_seq;
+		/*  */
 		mask = rnp->grpmask;
 		if (rnp->parent == NULL) {
 
@@ -1904,6 +1931,8 @@ static void rcu_report_qs_rnp(unsigned long mask, struct rcu_node *rnp,
 	}
 
 	/*
+	到这里说明我们是这次gp的最后一个通过qs的cpu?
+	调用rcu_report_qs_rsp来清理并开始下一个gp
 	 * Get here if we are the last CPU to pass through a quiescent
 	 * state for this grace period.  Invoke rcu_report_qs_rsp()
 	 * to clean up and start the next grace period if one is needed.
@@ -1912,6 +1941,7 @@ static void rcu_report_qs_rnp(unsigned long mask, struct rcu_node *rnp,
 }
 
 /*
+为所有刚刚入队这个rcu_node并且因为gp阻塞的任务记录qs
  * Record a quiescent state for all tasks that were previously queued
  * on the specified rcu_node structure and that were blocking the current
  * RCU grace period.  The caller must hold the corresponding rnp->lock with
@@ -1931,7 +1961,9 @@ rcu_report_unblock_qs_rnp(struct rcu_node *rnp, unsigned long flags)
 	    WARN_ON_ONCE(rcu_preempt_blocked_readers_cgp(rnp)) ||
 	    rnp->qsmask != 0) {
 		raw_spin_unlock_irqrestore_rcu_node(rnp, flags);
-		return;  /* Still need more quiescent states! */
+		return;  /*
+		啥叫需要更多qs?
+		Still need more quiescent states! */
 	}
 
 	rnp->completedqs = rnp->gp_seq;
@@ -1954,6 +1986,7 @@ rcu_report_unblock_qs_rnp(struct rcu_node *rnp, unsigned long flags)
 }
 
 /*
+记录cpu的qs到rdp
  * Record a quiescent state for the specified CPU to that CPU's rcu_data
  * structure.  This must be called from the specified CPU.
  */
@@ -1976,11 +2009,14 @@ rcu_report_qs_rdp(struct rcu_data *rdp)
 		 * recorded has ended, so don't report it upwards.
 		 * We will instead need a new quiescent state that lies
 		 * within the current grace period.
+		 这个qs所在的gp已经结束了，所以不需要向上报告。
+		 现在需要一个新的qs，这个qs需要在当前的gp中。
 		 */
 		rdp->cpu_no_qs.b.norm = true;	/* need qs for new gp. */
 		raw_spin_unlock_irqrestore_rcu_node(rnp, flags);
 		return;
 	}
+	/* grpmask是什么20250601011619 */
 	mask = rdp->grpmask;
 	rdp->core_needs_qs = false;
 	if ((rnp->qsmask & mask) == 0) {
@@ -2007,7 +2043,9 @@ rcu_report_qs_rdp(struct rcu_data *rdp)
 			needacc = true;
 		}
 
+		/* 关闭催促cpu进入qs的flag */
 		rcu_disable_urgency_upon_qs(rdp);
+		/*  */
 		rcu_report_qs_rnp(mask, rnp, rnp->gp_seq, flags);
 		/* ^^^ Released rnp->lock */
 

@@ -13,7 +13,8 @@
 
 #include "../locking/rtmutex_common.h"
 
-/*  */
+/* 检查rdp->cblist是不是卸载了
+表示当前的gp是不是结束了 */
 static bool rcu_rdp_is_offloaded(struct rcu_data *rdp)
 {
 	/*
@@ -363,6 +364,7 @@ void rcu_note_context_switch(bool preempt)
 EXPORT_SYMBOL_GPL(rcu_note_context_switch);
 
 /*
+检查指定的rcunode上面阻塞了gp的rcu readers?
  * Check for preempted RCU readers blocking the current grace period
  * for the specified rcu_node structure.  If the caller needs a reliable
  * answer, it must hold the rcu_node's ->lock.
@@ -459,6 +461,8 @@ static bool rcu_preempt_has_tasks(struct rcu_node *rnp)
 }
 
 /*
+目前有一个推迟的qs, 并且也不处于rcu读侧临界区
+报告这个推迟的qs
  * Report deferred quiescent states.  The deferral time can
  * be quite short, for example, in the case of the call from
  * rcu_read_unlock_special().
@@ -483,10 +487,13 @@ rcu_preempt_deferred_qs_irqrestore(struct task_struct *t, unsigned long flags)
 	special = t->rcu_read_unlock_special;
 	rdp = this_cpu_ptr(&rcu_data);
 	if (!special.s && !rdp->cpu_no_qs.b.exp) {
+		/* 没有推迟的qs, 也没有这什么exp? */
 		local_irq_restore(flags);
 		return;
 	}
+	/* 清除推迟qs的数量 */
 	t->rcu_read_unlock_special.s = 0;
+	/* 现在处理刚刚读取的special */
 	if (special.b.need_qs) {
 		if (IS_ENABLED(CONFIG_RCU_STRICT_GRACE_PERIOD)) {
 			rdp->cpu_no_qs.b.norm = false;
@@ -576,6 +583,8 @@ rcu_preempt_deferred_qs_irqrestore(struct task_struct *t, unsigned long flags)
 }
 
 /*
+检查是不是有一个推迟的pending的qs
+并且我们也不处于rcu的read-side critical section中
  * Is a deferred quiescent-state pending, and are we also not in
  * an RCU read-side critical section?  It is the caller's responsibility
  * to ensure it is otherwise safe to report any deferred quiescent
@@ -592,6 +601,7 @@ static notrace bool rcu_preempt_need_deferred_qs(struct task_struct *t)
 }
 
 /*
+记录一个延迟的quiescent state
  * Report a deferred quiescent state if needed and safe to do so.
  * As with rcu_preempt_need_deferred_qs(), "safe" involves only
  * not being in an RCU read-side critical section.  The caller must
@@ -604,6 +614,7 @@ notrace void rcu_preempt_deferred_qs(struct task_struct *t)
 
 	if (!rcu_preempt_need_deferred_qs(t))
 		return;
+	/* 目前有一个推迟的qs, 并且也不处于rcu读侧临界区 */
 	local_irq_save(flags);
 	rcu_preempt_deferred_qs_irqrestore(t, flags);
 }

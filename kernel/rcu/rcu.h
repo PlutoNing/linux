@@ -90,7 +90,10 @@ static inline void rcu_seq_set_state(unsigned long *sp, int newstate)
 	WRITE_ONCE(*sp, (*sp & ~RCU_SEQ_STATE_MASK) + newstate);
 }
 
-/* Adjust sequence number for start of update-side operation. */
+/*
+增加一个seq的值,用于开始完成gp什么的
+用于写侧的更新操作
+Adjust sequence number for start of update-side operation. */
 static inline void rcu_seq_start(unsigned long *sp)
 {
 	WRITE_ONCE(*sp, *sp + 1);
@@ -151,6 +154,9 @@ static inline bool rcu_seq_started(unsigned long *sp, unsigned long s)
 
 /*
 检查自己的版本号是不是落后了(发生了race, 别人已经完成了)
+======================
+也有一种情况是,s是刚刚从sp获得的版本号,这里检查自从获取之后
+有没有完成一个gp
  * Given a snapshot from rcu_seq_snap(), determine whether or not a
  * full update-side operation has occurred.
  */
@@ -368,7 +374,9 @@ static inline void rcu_init_levelspread(int *levelspread, const int *levelcnt)
 
 extern void rcu_init_geometry(void);
 
-/* Returns a pointer to the first leaf rcu_node structure. */
+/* 
+返回第一个rcu_node叶节点
+Returns a pointer to the first leaf rcu_node structure. */
 #define rcu_first_leaf_node() (rcu_state.level[rcu_num_lvls - 1])
 
 /* Is this rcu_node a leaf? */
@@ -410,6 +418,7 @@ extern void rcu_init_geometry(void);
 	     (cpu) = cpumask_next((cpu), cpu_possible_mask))
 
 /*
+遍历一个叶rcu_node的所有CPU
  * Iterate over all CPUs in a leaf RCU node's specified mask.
  */
 #define rcu_find_next_bit(rnp, cpu, mask) \

@@ -21,8 +21,12 @@
 
 #include "rcu_segcblist.h"
 
-/* Communicate arguments to a workqueue handler. */
+/*
+用于保存完成expedited gp的状态
+比如work, 这个rew_s什么的
+Communicate arguments to a workqueue handler. */
 struct rcu_exp_work {
+	/*  */
 	unsigned long rew_s;
 #ifdef CONFIG_RCU_EXP_KTHREAD
 	struct kthread_work rew_work;
@@ -46,8 +50,12 @@ struct rcu_node {
 	raw_spinlock_t __private lock;	/* Root rcu_node's lock protects */
 					/*  some rcu_state fields as well as */
 					/*  following. */
+	/* 变化的话可以说明gp结束了? */
 	unsigned long gp_seq;	/* Track rsp->gp_seq. */
 	unsigned long gp_seq_needed; /* Track furthest future GP request. */
+	/* 记录上次修改qsmask的seq?
+	也是qsmask为0的seq
+	rnp->completedqs = rnp->gp_seq; */
 	unsigned long completedqs; /* All QSes done for this node. */
 	unsigned long qsmask;	/* CPUs or groups that need to switch in */
 				/*  order for current grace period to proceed.*/
@@ -129,7 +137,13 @@ struct rcu_node {
 	raw_spinlock_t fqslock ____cacheline_internodealigned_in_smp;
 
 	spinlock_t exp_lock ____cacheline_internodealigned_in_smp;
+	/* 好像是如果某方想完成一个什么工作,比如gp
+	就会把自己持有的某个值写入进去(比如自己刚刚读取的expedited版本号), 导致变大了
+	其他人看到比自己大,就知道有人已经在做了 */
 	unsigned long exp_seq_rq;
+	/* 这里是一些等待队列, 用于等待特定类型人物的完成
+	比如等待expedited gp完成, 就连接到expedited gp对应的
+	数组元素去等待完成 */
 	wait_queue_head_t exp_wq[4];
 	struct rcu_exp_work rew;
 	bool exp_need_flush;	/* Need to flush workitem? */
@@ -147,6 +161,7 @@ struct rcu_node {
 #define leaf_node_cpu_bit(rnp, cpu) (BIT((cpu) - (rnp)->grplo))
 
 /*
+用于normal或者expedited grace period的qs
  * Union to allow "aggregate OR" operation on the need for a quiescent
  * state by the normal and expedited grace periods.
  */
@@ -178,6 +193,7 @@ struct rcu_snap_record {
 /* Per-CPU data for read-copy update. */
 struct rcu_data {
 	/* 1) quiescent-state and grace-period handling : */
+	/* rdp->gp_seq != rnp->gp_seq可以用来判断gp结束? */
 	unsigned long	gp_seq;		/* Track rsp->gp_seq counter. */
 	unsigned long	gp_seq_needed;	/* Track furthest future GP request. */
 	union rcu_noqs	cpu_no_qs;	/* No QSes yet for this CPU. */
@@ -209,6 +225,7 @@ struct rcu_data {
 	/* 3) dynticks interface. */
 	int dynticks_snap;		/* Per-GP tracking for dynticks. */
 	bool rcu_need_heavy_qs;		/* GP old, so heavy quiescent state! */
+	/* 表示当前的cpu需要尽快进入qs? */
 	bool rcu_urgent_qs;		/* GP old need light quiescent state. */
 	bool rcu_forced_tick;		/* Forced tick to provide QS. */
 	bool rcu_forced_tick_exp;	/*   ... provide QS to expedited GP. */
@@ -345,7 +362,9 @@ struct rcu_state {
 	struct swait_queue_head gp_wq;		/* Where GP task waits. */
 	short gp_flags;				/* Commands for GP task. */
 	short gp_state;				/* GP kthread sleep state. */
+	/* 上次唤醒gp线程的时间 */
 	unsigned long gp_wake_time;		/* Last GP kthread wake. */
+	/* 上次唤醒gp线程的seq */
 	unsigned long gp_wake_seq;		/* ->gp_seq at ^^^. */
 	unsigned long gp_seq_polled;		/* GP seq for polled API. */
 	unsigned long gp_seq_polled_snap;	/* ->gp_seq_polled at normal GP start. */
@@ -405,6 +424,7 @@ struct rcu_state {
 
 /* Values for rcu_state structure's gp_flags field. */
 #define RCU_GP_FLAG_INIT 0x1	/* Need grace-period initialization. */
+/* gp qs forcing是什么 */
 #define RCU_GP_FLAG_FQS  0x2	/* Need grace-period quiescent-state forcing. */
 #define RCU_GP_FLAG_OVLD 0x4	/* Experiencing callback overload. */
 

@@ -50,6 +50,7 @@ void swake_up_all_locked(struct swait_queue_head *q)
 		swake_up_locked(q, 0);
 }
 
+/* 唤醒gp线程会调用这个函数 */
 void swake_up_one(struct swait_queue_head *q)
 {
 	unsigned long flags;

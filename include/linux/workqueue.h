@@ -315,7 +315,8 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 
 #define INIT_WORK(_work, _func)						\
 	__INIT_WORK((_work), (_func), 0)
-
+/* 这里其实就是init work, 因为参数是在栈上分配的, 直接初始化就可以算是
+在栈上分配的, 这里起个别名 */
 #define INIT_WORK_ONSTACK(_work, _func)					\
 	__INIT_WORK((_work), (_func), 1)
 

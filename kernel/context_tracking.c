@@ -25,7 +25,7 @@
 #include <linux/kprobes.h>
 #include <trace/events/rcu.h>
 
-/*  */
+/* 20250601003522 */
 DEFINE_PER_CPU(struct context_tracking, context_tracking) = {
 #ifdef CONFIG_CONTEXT_TRACKING_IDLE
 	.dynticks_nesting = 1,
@@ -114,6 +114,7 @@ static noinstr void ct_kernel_enter_state(int offset)
 }
 
 /*
+进入rcu的extended quiescent state
  * Enter an RCU extended quiescent state, which can be either the
  * idle loop or adaptive-tickless usermode execution.
  *
@@ -126,6 +127,7 @@ static void noinstr ct_kernel_exit(bool user, int offset)
 	struct context_tracking *ct = this_cpu_ptr(&context_tracking);
 
 	WARN_ON_ONCE(ct_dynticks_nmi_nesting() != DYNTICK_IRQ_NONIDLE);
+	/*  */
 	WRITE_ONCE(ct->dynticks_nmi_nesting, 0);
 	WARN_ON_ONCE(IS_ENABLED(CONFIG_RCU_EQS_DEBUG) &&
 		     ct_dynticks_nesting() == 0);
@@ -134,11 +136,13 @@ static void noinstr ct_kernel_exit(bool user, int offset)
 		ct->dynticks_nesting--;
 		return;
 	}
-
+	/* 要求ct->dynticks_nesting为1 */
 	instrumentation_begin();
 	lockdep_assert_irqs_disabled();
-	trace_rcu_dyntick(TPS("Start"), ct_dynticks_nesting(), 0, ct_dynticks());
+	trace_rcu_dyntick(TPS("Start"), ct_dynticks_nesting(),
+	 0, ct_dynticks());
 	WARN_ON_ONCE(IS_ENABLED(CONFIG_RCU_EQS_DEBUG) && !user && !is_idle_task(current));
+	/*  */
 	rcu_preempt_deferred_qs(current);
 
 	// instrumentation for the noinstr ct_kernel_exit_state()

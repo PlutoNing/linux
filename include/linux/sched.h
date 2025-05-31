@@ -751,6 +751,7 @@ union rcu_special {
 		u8			exp_hint; /* Hint for performance. */
 		u8			need_mb; /* Readers need smp_mb(). */
 	} b; /* Bits. */
+	/* 有推迟的qs? */
 	u32 s; /* Set of bits. */
 };
 
@@ -882,7 +883,9 @@ struct task_struct {
 	unsigned short			migration_flags;
 
 #ifdef CONFIG_PREEMPT_RCU
+/* 可以表示rcu read的嵌套深度 */
 	int				rcu_read_lock_nesting;
+	/*  */
 	union rcu_special		rcu_read_unlock_special;
 	struct list_head		rcu_node_entry;
 	struct rcu_node			*rcu_blocked_node;
