@@ -119,7 +119,8 @@ static void rcu_segcblist_add_seglen(struct rcu_segcblist *rsclp, int seg, long 
 	WRITE_ONCE(rsclp->seglen[seg], rsclp->seglen[seg] + v);
 }
 
-/* Move from's segment length to to's segment. */
+/*移动回调函数?
+ Move from's segment length to to's segment. */
 static void rcu_segcblist_move_seglen(struct rcu_segcblist *rsclp, int from, int to)
 {
 	long len;
@@ -285,6 +286,9 @@ bool rcu_segcblist_ready_cbs(struct rcu_segcblist *rsclp)
 }
 
 /*
+检查rdp的cblist是不是有需要调用的cb
+检查&rdp->cblist->tails[RCU_DONE_TAIL]是不是还有回调,RCU_DONE_TAIL代表着
+需要调用
 检查RCU_DONE_TAIL这个seg是不是还有回调
 参数是rdp->cblist
  * Does the specified rcu_segcblist structure contain callbacks that
@@ -485,6 +489,13 @@ void rcu_segcblist_insert_pend_cbs(struct rcu_segcblist *rsclp,
 }
 
 /*
+感觉就是移动rdp的cblist的cb, 检查那些可以调用的
+================
+rsclp是rdp->cblist
+seq是rdp的rnp的新gp_seq, 刚刚开始了一个新的gp
+=================================
+这里函数通过cb的gp_seq来判断cb是否可以被调用
+然后把这些cb放到RCU_DONE_TAIL子列表中
  * Advance the callbacks in the specified rcu_segcblist structure based
  * on the current value passed in for the grace-period counter.
  */
@@ -493,17 +504,22 @@ void rcu_segcblist_advance(struct rcu_segcblist *rsclp, unsigned long seq)
 	int i, j;
 
 	WARN_ON_ONCE(!rcu_segcblist_is_enabled(rsclp));
+	/* 如果rdp没有RCU_DONE_TAIL的cb */
 	if (rcu_segcblist_restempty(rsclp, RCU_DONE_TAIL))
 		return;
 
 	/*
+	检查回调类型, 符合要求的(可以调用)移动到RCU_DONE_TAIL
 	 * Find all callbacks whose ->gp_seq numbers indicate that they
 	 * are ready to invoke, and put them into the RCU_DONE_TAIL segment.
 	 */
 	for (i = RCU_WAIT_TAIL; i < RCU_NEXT_TAIL; i++) {
 		if (ULONG_CMP_LT(seq, rsclp->gp_seq[i]))
 			break;
+		/* 到这里说明seq>rsclp->gp_seq[i], 说明这个i类型的cb宽限期过去了?
+		可以调用了? */
 		WRITE_ONCE(rsclp->tails[RCU_DONE_TAIL], rsclp->tails[i]);
+		/* 移动到RCU_DONE_TAIL */
 		rcu_segcblist_move_seglen(rsclp, i, RCU_DONE_TAIL);
 	}
 
@@ -511,6 +527,7 @@ void rcu_segcblist_advance(struct rcu_segcblist *rsclp, unsigned long seq)
 	if (i == RCU_WAIT_TAIL)
 		return;
 
+	/* 到这里说明刚刚确实移动了一些回调函数, 系统有一些可以调用的cb */
 	/* Clean up tail pointers that might have been misordered above. */
 	for (j = RCU_WAIT_TAIL; j < i; j++)
 		WRITE_ONCE(rsclp->tails[j], rsclp->tails[RCU_DONE_TAIL]);
@@ -520,6 +537,8 @@ void rcu_segcblist_advance(struct rcu_segcblist *rsclp, unsigned long seq)
 	 * and a non-empty RCU_NEXT_READY_TAIL.  If so, copy the
 	 * RCU_NEXT_READY_TAIL segment to fill the RCU_WAIT_TAIL gap
 	 * created by the now-ready-to-invoke segments.
+	 刚刚移动了cb, 所以可能有空的RCU_WAIT_TAIL
+	 * 和非空的RCU_NEXT_READY_TAIL. 如果是这样, 复制RCU_NEXT_READY_TAIL,
 	 */
 	for (j = RCU_WAIT_TAIL; i < RCU_NEXT_TAIL; i++, j++) {
 		if (rsclp->tails[j] == rsclp->tails[RCU_NEXT_TAIL])
@@ -531,6 +550,13 @@ void rcu_segcblist_advance(struct rcu_segcblist *rsclp, unsigned long seq)
 }
 
 /*
+基于更准确的gp信息加速cb
+原因是因为rcu在开始和结束gp时并没有同步,
+而且cb是本地发布的。
+ * 这就意味着cb必须被保守地标记, 因为获取精确的信息会降低性能和可扩展性.
+ * 当更准确的gp信息可用时, 之前发布的cb可以被"加速", 标记为在更早的gp结束时完成.
+ * 这个函数操作一个rcu_segcblist结构, 以及新的回调将变为可调用的gp序列号seq.
+ * 返回true如果有cb在seq之前不会变为可调用, 否则返回false.
  * "Accelerate" callbacks based on more-accurate grace-period information.
  * The reason for this is that RCU does not synchronize the beginnings and
  * ends of grace periods, and that callbacks are posted locally.  This in
@@ -560,6 +586,7 @@ bool rcu_segcblist_accelerate(struct rcu_segcblist *rsclp, unsigned long seq)
 	 * with any later segments, can be merged in with any newly arrived
 	 * callbacks in the RCU_NEXT_TAIL segment, and assigned "seq"
 	 * as their ->gp_seq[] grace-period completion sequence number.
+	 20250601202952
 	 */
 	for (i = RCU_NEXT_READY_TAIL; i > RCU_DONE_TAIL; i--)
 		if (rsclp->tails[i] != rsclp->tails[i - 1] &&

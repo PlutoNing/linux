@@ -57,6 +57,7 @@ struct rcu_node {
 	也是qsmask为0的seq
 	rnp->completedqs = rnp->gp_seq; */
 	unsigned long completedqs; /* All QSes done for this node. */
+	/* 好像root rnp->qsmask为空的话, 可以用于判断gp结束 */
 	unsigned long qsmask;	/* CPUs or groups that need to switch in */
 				/*  order for current grace period to proceed.*/
 				/*  In leaf rcu_node, each bit corresponds to */
@@ -80,6 +81,7 @@ struct rcu_node {
 				/* Online CPUs for next expedited GP. */
 				/*  Any CPU that has ever been online will */
 				/*  have its bit set. */
+	/* 数据流向rnp->cbovldmask -> rcu_state.cbovldnext -> rcu_state.cbovld  */
 	unsigned long cbovldmask;
 				/* CPUs experiencing callback overload. */
 	unsigned long ffmask;	/* Fully functional CPUs. */
@@ -174,6 +176,7 @@ union rcu_noqs {
 };
 
 /*
+记录在rcu stall超时的第一半段时间内的内核时间花费统计
  * Record the snapshot of the core stats at half of the first RCU stall timeout.
  * The member gp_seq is used to ensure that all members are updated only once
  * during the sampling period. The snapshot is taken only if this gp_seq is not
@@ -223,9 +226,13 @@ struct rcu_data {
 	long		blimit;		/* Upper limit on a processed batch */
 
 	/* 3) dynticks interface. */
+	/* 保存读取的rdp->cpu的东西.什么时候? 在fqs loop第一次fqs的时候*/
 	int dynticks_snap;		/* Per-GP tracking for dynticks. */
+	/* 用于延迟gp */
 	bool rcu_need_heavy_qs;		/* GP old, so heavy quiescent state! */
-	/* 表示当前的cpu需要尽快进入qs? */
+	/* 
+	也可以用于延迟gp?
+	表示当前的cpu需要尽快进入qs? */
 	bool rcu_urgent_qs;		/* GP old need light quiescent state. */
 	bool rcu_forced_tick;		/* Forced tick to provide QS. */
 	bool rcu_forced_tick_exp;	/*   ... provide QS to expedited GP. */
@@ -288,15 +295,22 @@ struct rcu_data {
 	/* 7) Diagnostic data, including RCU CPU stall warnings. */
 	unsigned int softirq_snap;	/* Snapshot of softirq activity. */
 	/* ->rcu_iw* fields protected by leaf rcu_node ->lock. */
+	/* 检查什么? */
 	struct irq_work rcu_iw;		/* Check for non-irq activity. */
+	/* 开启表示正在irq_work_queue_on(&rdp->rcu_iw, rdp->cpu);
+	等rdp->rcu_iw的rcu_iw_handler运行的时候,会关闭 */
 	bool rcu_iw_pending;		/* Is ->rcu_iw pending? */
+	/* 上次irq_work_queue_on(&rdp->rcu_iw, rdp->cpu)的rnp->gp_seq
+	也可以是rdp->rcu_iw执行的时候的gp_seq */
 	unsigned long rcu_iw_gp_seq;	/* ->gp_seq associated with ->rcu_iw. */
 	unsigned long rcu_ofl_gp_seq;	/* ->gp_seq at last offline. */
 	short rcu_ofl_gp_flags;		/* ->gp_flags at last offline. */
 	unsigned long rcu_onl_gp_seq;	/* ->gp_seq at last online. */
 	short rcu_onl_gp_flags;		/* ->gp_flags at last online. */
+	/* 上次resched_cpu的时间 */
 	unsigned long last_fqs_resched;	/* Time of last rcu_resched(). */
 	unsigned long last_sched_clock;	/* Jiffies of last rcu_sched_clock_irq(). */
+	/* 在first RCU stall timeout一半时的内核时间花费统计 */
 	struct rcu_snap_record snap_record; /* Snapshot of core stats at half of */
 					    /* the first RCU stall timeout */
 
@@ -356,10 +370,13 @@ struct rcu_state {
 
 	unsigned long gp_seq ____cacheline_internodealigned_in_smp;
 						/* Grace-period sequence #. */
+	/* 最长的gp耗时 */
 	unsigned long gp_max;			/* Maximum GP duration in */
 						/*  jiffies. */
 	struct task_struct *gp_kthread;		/* Task for grace periods. */
+	/* gp线程等待队列 */
 	struct swait_queue_head gp_wq;		/* Where GP task waits. */
+	/* 编码了一些flag */
 	short gp_flags;				/* Commands for GP task. */
 	short gp_state;				/* GP kthread sleep state. */
 	/* 上次唤醒gp线程的时间 */
@@ -397,12 +414,17 @@ struct rcu_state {
 						/*  force_quiescent_state(). */
 	unsigned long jiffies_kick_kthreads;	/* Time at which to kick */
 						/*  kthreads, if configured. */
+	/* fqs loop里面每次fqs都会++1 */
 	unsigned long n_force_qs;		/* Number of calls to */
 						/*  force_quiescent_state(). */
 	unsigned long gp_start;			/* Time at which GP started, */
 						/*  but in jiffies. */
+	/* 调用rcu_gp_cleanup的时间 */
 	unsigned long gp_end;			/* Time last GP ended, again */
 						/*  in jiffies. */
+	/* fqs loop每次活动就会在这里记录jiffies
+	清理gp会调用
+	 */
 	unsigned long gp_activity;		/* Time of last GP kthread */
 						/*  activity in jiffies. */
 	unsigned long gp_req_activity;		/* Time of last GP request */
@@ -424,19 +446,44 @@ struct rcu_state {
 
 /* Values for rcu_state structure's gp_flags field. */
 #define RCU_GP_FLAG_INIT 0x1	/* Need grace-period initialization. */
-/* gp qs forcing是什么 */
+/* gp qs forcing是什么
+主动要求fqs scan */
 #define RCU_GP_FLAG_FQS  0x2	/* Need grace-period quiescent-state forcing. */
+/* 负载高 */
 #define RCU_GP_FLAG_OVLD 0x4	/* Experiencing callback overload. */
 
-/* Values for rcu_state structure's gp_state field. */
+/* Values for rcu_state structure's gp_state field.
+表示gp的状态 */
+/* 表示当前没有进行中的宽限期。CPU 可以请求新的宽限期，此时状态会发生变化。
+这是系统启动时或上一个宽限期完全结束后的状态。 */
 #define RCU_GP_IDLE	 0	/* Initial state and no GP in progress. */
+/* 表示一个 CPU 已请求启动新的宽限期，内核正在协调启动过程。正在等待所有 CPU
+ 参与到新 GP 的初始阶段（例如，更新各自对 GP 开始时间的认知）。 */
 #define RCU_GP_WAIT_GPS  1	/* Wait for grace-period start. */
+/* 表示完成 RCU_GP_WAIT_GPS 阶段所需的所有操作已满足。内核确认所有 CPU 已响应
+ GP 启动请求，即将正式进入初始化阶段（RCU_GP_INIT） */
 #define RCU_GP_DONE_GPS  2	/* Wait done for grace-period start. */
+/* 在宽限期初始化过程中（在进入 RCU_GP_INIT 之前或期间），如果发生了 CPU 上线
+（online）或下线（offline）事件（热插拔），RCU 需要暂停初始化以处理这些状态变更。
+这个状态表示内核正在确保 CPU 列表是最新的，然后再继续初始化。 */
 #define RCU_GP_ONOFF     3	/* Grace-period initialization hotplug. */
+/* 这是宽限期真正开始的核心阶段。RCU 子系统设置宽限期的起始时间戳，初始化必要的数据结构
+（如位图、计数器），并通知所有 CPU 宽限期已经开始。 */
 #define RCU_GP_INIT      4	/* Grace-period initialization. */
+/* 宽限期启动并初始化完成后，RCU 需要等待一段时间再进行fqs扫描。在此期间，内核期望通过
+ CPU 的正常调度活动（进入空闲状态或上下文切换）自然报告静止状态。这个状态表示宽限期正在运行中
+ ，但尚未到主动扫描所有 CPU 状态的时间点。 */
 #define RCU_GP_WAIT_FQS  5	/* Wait for force-quiescent-state time. */
+/* 当 RCU_GP_WAIT_FQS 的等待时间到期（或者某些条件提前触发），RCU 调度器会触发强制静止状态扫描。
+在这个状态下，内核的 RCU 调度线程（如 rcu_sched）正在主动检查每个 CPU 的状态（看它们是否已经经过
+了一个静止点）。这是确定宽限期是否可以结束的关键步骤。 */
 #define RCU_GP_DOING_FQS 6	/* Wait done for force-quiescent-state time. */
+/* 强制静止状态检查确认所有受影响的 RCU 读侧临界区已完成（或者等效于已完成）。此时，内核可以开始执行
+宽限期结束前的清理工作，如回调和调用队列处理。
+这个状态表示宽限期原则上已结束（所有待释放资源已安全），但尚未更新相关数据结构和通知所有参与者。 */
 #define RCU_GP_CLEANUP   7	/* Grace-period cleanup started. */
+/* 所有与结束当前宽限期相关的清理工作（包括更新计数器、位图和通知 CPU）均已完成。下一个宽限期可以
+安全地启动。这是 GP 生命周期中最后一个状态。系统即将或已经返回到 RCU_GP_IDLE 状态，等待下一个宽限期请求。 */
 #define RCU_GP_CLEANED   8	/* Grace-period cleanup complete. */
 
 /*

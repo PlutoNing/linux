@@ -5562,6 +5562,7 @@ bool single_task_running(void)
 }
 EXPORT_SYMBOL(single_task_running);
 
+/* 获取cpu的切换数量 */
 unsigned long long nr_context_switches_cpu(int cpu)
 {
 	return cpu_rq(cpu)->nr_switches;

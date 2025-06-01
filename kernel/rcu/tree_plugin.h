@@ -13,8 +13,9 @@
 
 #include "../locking/rtmutex_common.h"
 
-/* 检查rdp->cblist是不是卸载了
-表示当前的gp是不是结束了 */
+/* 
+检查rdp->cblist是不是卸载了
+表示当前的gp是不是结束了? */
 static bool rcu_rdp_is_offloaded(struct rcu_data *rdp)
 {
 	/*
@@ -365,6 +366,10 @@ EXPORT_SYMBOL_GPL(rcu_note_context_switch);
 
 /*
 检查指定的rcunode上面阻塞了gp的rcu readers?
+============
+如果返回false, 好像可以用于判断gp结束
+==================
+在gp结束后,在rnp传播新gp seq时这里不应该返回真
  * Check for preempted RCU readers blocking the current grace period
  * for the specified rcu_node structure.  If the caller needs a reliable
  * answer, it must hold the rcu_node's ->lock.
@@ -1267,7 +1272,7 @@ static void rcu_boost_kthread_setaffinity(struct rcu_node *rnp, int outgoingcpu)
 }
 
 #else /* #ifdef CONFIG_RCU_BOOST */
-
+/* 这个rnp没有qs的cpu, 有阻塞的rcu reader, 提升优先级 */
 static void rcu_initiate_boost(struct rcu_node *rnp, unsigned long flags)
 	__releases(rnp->lock)
 {

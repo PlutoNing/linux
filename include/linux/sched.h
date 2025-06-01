@@ -746,6 +746,7 @@ struct uclamp_se {
 
 union rcu_special {
 	struct {
+		/* 表示是否加入了rtpcp->rtp_blkd_tasks */
 		u8			blocked;
 		u8			need_qs;
 		u8			exp_hint; /* Hint for performance. */
@@ -900,11 +901,14 @@ struct task_struct {
 #endif /* #ifdef CONFIG_TASKS_RCU */
 
 #ifdef CONFIG_TASKS_TRACE_RCU
+/*  */
 	int				trc_reader_nesting;
 	int				trc_ipi_to_cpu;
 	union rcu_special		trc_reader_special;
 	struct list_head		trc_holdout_list;
+	/* 用于链接到this_cpu_ptr(rcu_tasks_trace.rtpcpu)->rtp_blkd_tasks */
 	struct list_head		trc_blkd_node;
+	/* 所加入的rtpcp->rtp_blkd_tasks的cpu */
 	int				trc_blkd_cpu;
 #endif /* #ifdef CONFIG_TASKS_TRACE_RCU */
 

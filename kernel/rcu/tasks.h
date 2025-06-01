@@ -45,6 +45,7 @@ struct rcu_tasks_percpu {
 	struct work_struct rtp_work;
 	struct irq_work rtp_irq_work;
 	struct rcu_head barrier_q_head;
+	/* 通过t->trc_blkd_node链接进程 */
 	struct list_head rtp_blkd_tasks;
 	int cpu;
 	struct rcu_tasks *rtpp;
@@ -1372,6 +1373,8 @@ static void rcu_st_need_qs(struct task_struct *t, u8 v)
 }
 
 /*
+进程向rcu报告qs的时候调用
+修改->trc_reader_special.b.need_qs
  * Do a cmpxchg() on ->trc_reader_special.b.need_qs, allowing for
  * the four-byte operand-size restriction of some platforms.
  * Returns the old value, which is often ignored.
@@ -1424,7 +1427,9 @@ void rcu_read_unlock_trace_special(struct task_struct *t)
 }
 EXPORT_SYMBOL_GPL(rcu_read_unlock_trace_special);
 
-/* Add a newly blocked reader task to its CPU's list. */
+/* 
+在rtpcp->rtp_blkd_tasks上面添加一个新的阻塞的reader任务。
+Add a newly blocked reader task to its CPU's list. */
 void rcu_tasks_trace_qs_blkd(struct task_struct *t)
 {
 	unsigned long flags;
@@ -1436,7 +1441,9 @@ void rcu_tasks_trace_qs_blkd(struct task_struct *t)
 	t->trc_blkd_cpu = smp_processor_id();
 	if (!rtpcp->rtp_blkd_tasks.next)
 		INIT_LIST_HEAD(&rtpcp->rtp_blkd_tasks);
+	/* 加入队列 */
 	list_add(&t->trc_blkd_node, &rtpcp->rtp_blkd_tasks);
+	/* 修改标志位 */
 	WRITE_ONCE(t->trc_reader_special.b.blocked, true);
 	raw_spin_unlock_irqrestore_rcu_node(rtpcp, flags);
 }

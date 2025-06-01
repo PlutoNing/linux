@@ -450,7 +450,7 @@ static inline int fatal_signal_pending(struct task_struct *p)
 {
 	return task_sigpending(p) && __fatal_signal_pending(p);
 }
-
+/* 检查TASK_INTERRUPTIBLE | TASK_WAKEKILL状态是不是有致命信号 */
 static inline int signal_pending_state(unsigned int state, struct task_struct *p)
 {
 	if (!(state & (TASK_INTERRUPTIBLE | TASK_WAKEKILL)))

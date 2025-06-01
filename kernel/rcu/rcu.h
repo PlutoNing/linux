@@ -101,14 +101,16 @@ static inline void rcu_seq_start(unsigned long *sp)
 	WARN_ON_ONCE(rcu_seq_state(*sp) != 1);
 }
 
-/* Compute the end-of-grace-period value for the specified sequence number. */
+/*
+计算seq的gp结束值
+ Compute the end-of-grace-period value for the specified sequence number. */
 static inline unsigned long rcu_seq_endval(unsigned long *sp)
 {
 	return (*sp | RCU_SEQ_STATE_MASK) + 1;
 }
 
 /*
-写入一个什么endval
+写入一个seq的结束值,用于完成gp? 作用?
  Adjust sequence number for end of update-side operation. */
 static inline void rcu_seq_end(unsigned long *sp)
 {
@@ -118,13 +120,19 @@ static inline void rcu_seq_end(unsigned long *sp)
 }
 
 /*
+参数是&rcu_state.gp_seq
+获取更新侧的seq快照
  * rcu_seq_snap - Take a snapshot of the update side's sequence number.
  *
  * This function returns the earliest value of the grace-period sequence number
  * that will indicate that a full grace period has elapsed since the current
- * time.  Once the grace-period sequence number has reached this value, it will
+ * time.
+ 返回可以最早反映在current time之后结束的gp的seq值
+ Once the grace-period sequence number has reached this value, it will
  * be safe to invoke all callbacks that have been registered prior to the
- * current time. This value is the current grace-period number plus two to the
+ * current time.
+ 一单gp值达到这个值,就可以安全调用cb(在这个current time之前注册的)
+ This value is the current grace-period number plus two to the
  * power of the number of low-order bits reserved for state, then rounded up to
  * the next value in which the state bits are all zero.
  */
@@ -178,6 +186,12 @@ static inline bool rcu_seq_done_exact(unsigned long *sp, unsigned long s)
 }
 
 /*
+用法如下
+rcu_seq_completed_gp(rdp->gp_seq, rnp->gp_seq)
+可能是刚刚更新了rnp的gp_seq
+=================
+这里函数判断rdp的seq(之前取的old值)是不是还没跟上rnp的seq
+说明一个gp结束了
  * Has a grace period completed since the time the old gp_seq was collected?
  */
 static inline bool rcu_seq_completed_gp(unsigned long old, unsigned long new)
@@ -386,6 +400,8 @@ Returns a pointer to the first leaf rcu_node structure. */
 #define rcu_is_last_leaf_node(rnp) ((rnp) == &rcu_state.node[rcu_num_nodes - 1])
 
 /*
+遍历rnp
+进行一个完全的宽度优先扫描{srcu,}rcu_node结构体
  * Do a full breadth-first scan of the {s,}rcu_node structures for the
  * specified state structure (for SRCU) or the only rcu_state structure
  * (for RCU).
@@ -393,12 +409,14 @@ Returns a pointer to the first leaf rcu_node structure. */
 #define _rcu_for_each_node_breadth_first(sp, rnp) \
 	for ((rnp) = &(sp)->node[0]; \
 	     (rnp) < &(sp)->node[rcu_num_nodes]; (rnp)++)
+/* 遍历rnp */
 #define rcu_for_each_node_breadth_first(rnp) \
 	_rcu_for_each_node_breadth_first(&rcu_state, rnp)
 #define srcu_for_each_node_breadth_first(ssp, rnp) \
 	_rcu_for_each_node_breadth_first(ssp->srcu_sup, rnp)
 
 /*
+检查rcustate的rcunode层级
  * Scan the leaves of the rcu_node hierarchy for the rcu_state structure.
  * Note that if there is a singleton rcu_node tree with but one rcu_node
  * structure, this loop -will- visit the rcu_node structure.  It is still
@@ -423,6 +441,7 @@ Returns a pointer to the first leaf rcu_node structure. */
  */
 #define rcu_find_next_bit(rnp, cpu, mask) \
 	((rnp)->grplo + find_next_bit(&(mask), BITS_PER_LONG, (cpu)))
+/*  */
 #define for_each_leaf_node_cpu_mask(rnp, cpu, mask) \
 	for (WARN_ON_ONCE(!rcu_is_leaf_node(rnp)), \
 	     (cpu) = rcu_find_next_bit((rnp), 0, (mask)); \

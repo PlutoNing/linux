@@ -168,6 +168,7 @@ static inline void rcu_nocb_flush_deferred_wakeup(void) { }
 #ifdef CONFIG_TASKS_RCU_GENERIC
 
 # ifdef CONFIG_TASKS_RCU
+/* 修改进程的rcu_tasks_holdout */
 # define rcu_tasks_classic_qs(t, preempt)				\
 	do {								\
 		if (!(preempt) && READ_ONCE((t)->rcu_tasks_holdout))	\
@@ -183,12 +184,16 @@ void synchronize_rcu_tasks(void);
 
 # ifdef CONFIG_TASKS_TRACE_RCU
 // Bits for ->trc_reader_special.b.need_qs field.
+/* ->trc_reader_special.b.need_qs的一些标志位 */
 #define TRC_NEED_QS		0x1  // Task needs a quiescent state.
+/* 进程已经检查过了?进行了?fqs */
 #define TRC_NEED_QS_CHECKED	0x2  // Task has been checked for needing quiescent state.
 
 u8 rcu_trc_cmpxchg_need_qs(struct task_struct *t, u8 old, u8 new);
 void rcu_tasks_trace_qs_blkd(struct task_struct *t);
-
+/* 记录进程的qs
+修改needqs
+或者加入rtpcp->rtp_blkd_tasks */
 # define rcu_tasks_trace_qs(t)							\
 	do {									\
 		int ___rttq_nesting = READ_ONCE((t)->trc_reader_nesting);	\
@@ -204,7 +209,7 @@ void rcu_tasks_trace_qs_blkd(struct task_struct *t);
 # else
 # define rcu_tasks_trace_qs(t) do { } while (0)
 # endif
-
+/* 这里 修改needqs或者blockd */
 #define rcu_tasks_qs(t, preempt)					\
 do {									\
 	rcu_tasks_classic_qs((t), (preempt));				\
@@ -244,6 +249,7 @@ static inline void exit_tasks_rcu_finish(void) { }
 static inline bool rcu_trace_implies_rcu_gp(void) { return true; }
 
 /**
+向rcu报告潜在的qs?
  * cond_resched_tasks_rcu_qs - Report potential quiescent states to RCU
  *
  * This macro resembles cond_resched(), except that it is defined to

@@ -1013,6 +1013,7 @@ struct rq {
 #ifdef CONFIG_SMP
 	unsigned int		ttwu_pending;
 #endif
+/* 这里也作为内核状态的一个统计, 其他机制会从这里取数据 */
 	u64			nr_switches;
 
 #ifdef CONFIG_UCLAMP_TASK

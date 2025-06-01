@@ -77,7 +77,7 @@ static inline bool rcu_segcblist_test_flags(struct rcu_segcblist *rsclp,
 }
 
 /*
-检查rdp的cblist是否启用
+检查rdp的flag判断cblist是否启用
  * Is the specified rcu_segcblist enabled, for example, not corresponding
  * to an offline CPU?
  */

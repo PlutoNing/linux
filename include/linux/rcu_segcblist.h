@@ -56,6 +56,7 @@ struct rcu_cblist {
  * is non-empty, and it is never valid for RCU_DONE_TAIL (whose callbacks
  * are already ready to invoke) or for RCU_NEXT_TAIL (whose callbacks have
  * not yet been assigned a grace-period number).
+ 这里算是对应几种类型的回调
  */
 #define RCU_DONE_TAIL		0	/* Also RCU_WAIT head. */
 #define RCU_WAIT_TAIL		1	/* Also RCU_NEXT_READY head. */
@@ -207,8 +208,10 @@ struct rcu_cblist {
 /* 表示rcu的cblist */
 struct rcu_segcblist {
 	struct rcu_head *head;
-	/* 二维数组, tails->segs->cb ? */
+	/* 二维数组, tails->segs->cb ?
+	一组回调函数的类型 */
 	struct rcu_head **tails[RCU_CBLIST_NSEGS];
+	/* 对应上面那个每个类型的gp_seq */
 	unsigned long gp_seq[RCU_CBLIST_NSEGS];
 #ifdef CONFIG_RCU_NOCB_CPU
 	atomic_long_t len;

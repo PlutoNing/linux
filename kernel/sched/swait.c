@@ -88,7 +88,7 @@ void swake_up_all(struct swait_queue_head *q)
 }
 EXPORT_SYMBOL(swake_up_all);
 
-/* 加入等待队列 */
+/* 独占的加入等待队列 */
 void __prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait)
 {
 	wait->task = current;
@@ -107,6 +107,14 @@ void prepare_to_swait_exclusive(struct swait_queue_head *q, struct swait_queue *
 }
 EXPORT_SYMBOL(prepare_to_swait_exclusive);
 
+/**
+swait是什么? 独占地wait
+ * @description: 
+ * @param {swait_queue_head} *q
+ * @param {swait_queue} *wait
+ * @param {int} state
+ * @return {*}
+ */
 long prepare_to_swait_event(struct swait_queue_head *q, struct swait_queue *wait, int state)
 {
 	unsigned long flags;
@@ -121,6 +129,7 @@ long prepare_to_swait_event(struct swait_queue_head *q, struct swait_queue *wait
 		list_del_init(&wait->task_list);
 		ret = -ERESTARTSYS;
 	} else {
+		/* 这里wait,特点是独占的wait */
 		__prepare_to_swait(q, wait);
 		set_current_state(state);
 	}
@@ -137,7 +146,7 @@ void __finish_swait(struct swait_queue_head *q, struct swait_queue *wait)
 	if (!list_empty(&wait->task_list))
 		list_del_init(&wait->task_list);
 }
-
+/* 区别是这里对应独占地的wait */
 void finish_swait(struct swait_queue_head *q, struct swait_queue *wait)
 {
 	unsigned long flags;

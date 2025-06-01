@@ -266,6 +266,7 @@ static void rcu_dynticks_eqs_online(void)
 }
 
 /*
+读取cpu的dyntick
  * Snapshot the ->dynticks counter with full ordering so as to allow
  * stable comparison of this counter with past and future snapshots.
  */
@@ -276,6 +277,8 @@ static int rcu_dynticks_snap(int cpu)
 }
 
 /*
+检查这个cpu的dyntick快照
+返回是否处于扩展qs
  * Return true if the snapshot returned from rcu_dynticks_snap()
  * indicates that RCU is in an extended quiescent state.
  */
@@ -285,9 +288,11 @@ static bool rcu_dynticks_in_eqs(int snap)
 }
 
 /*
+snap是在fqs loop第一次fqs的时候保存的快照
  * Return true if the CPU corresponding to the specified rcu_data
  * structure has spent some time in an extended quiescent state since
  * rcu_dynticks_snap() returned the specified snapshot.
+ 返回真表示cpu在快照snap之后进入了扩展qs
  */
 static bool rcu_dynticks_in_eqs_since(struct rcu_data *rdp, int snap)
 {
@@ -725,6 +730,11 @@ void rcu_request_urgent_qs_task(struct task_struct *t)
 }
 
 /*
+如果处于扩展qs的话
+代表其他cpu报告qs?
+=============
+结束qs也会调用这个函数
+====================
  * When trying to report a quiescent state on behalf of some other CPU,
  * it is our responsibility to check for and handle potential overflow
  * of the rcu_node ->gp_seq counter with respect to the rcu_data counters.
@@ -742,15 +752,20 @@ static void rcu_gpnum_ovf(struct rcu_node *rnp, struct rcu_data *rdp)
 }
 
 /*
+读取cpu的dyntick
+返回cpu是否处于dynticks idle
  * Snapshot the specified CPU's dynticks counter so that we can later
  * credit them with an implicit quiescent state.  Return 1 if this CPU
  * is in dynticks idle mode, which is an extended quiescent state.
  */
 static int dyntick_save_progress_counter(struct rcu_data *rdp)
 {
+	/* 读取dynticks_snap */
 	rdp->dynticks_snap = rcu_dynticks_snap(rdp->cpu);
 	if (rcu_dynticks_in_eqs(rdp->dynticks_snap)) {
+		/* 如果处于扩展qs的话 */
 		trace_rcu_fqs(rcu_state.name, rdp->gp_seq, rdp->cpu, TPS("dti"));
+		/*  */
 		rcu_gpnum_ovf(rdp->mynode, rdp);
 		return 1;
 	}
@@ -758,6 +773,14 @@ static int dyntick_save_progress_counter(struct rcu_data *rdp)
 }
 
 /*
+检查是否结束qs
+如果没结束的话, 会延迟gp,多调度cpu什么的.
+==================
+检查cpu是不是因为自从上次dyntick_save_progress_counter调用之后
+处于或者度过dynticks idle状态儿度过qs
+============
+检查是不是度过qs, 因为处于或者度过了dynticks idle状态(自从上次
+调用dyntick_save_progress_counter之后)
  * Return true if the specified CPU has passed through a quiescent
  * state by virtue of being in or having passed through an dynticks
  * idle state since the last call to dyntick_save_progress_counter()
@@ -772,19 +795,27 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp)
 	 * If the CPU passed through or entered a dynticks idle phase with
 	 * no active irq/NMI handlers, then we can safely pretend that the CPU
 	 * already acknowledged the request to pass through a quiescent
-	 * state.  Either way, that CPU cannot possibly be in an RCU
+	 * state.
+	 如果cpu在没有irq/NMI处理程序的情况下通过或进入了dynticks空闲阶段，
+	 * 那么我们可以安全地假设该CPU已经确认了通过qs的请求。
+	 Either way, that CPU cannot possibly be in an RCU
 	 * read-side critical section that started before the beginning
 	 * of the current RCU grace period.
+	 无论那种情况, cpu不可能处于当前gp开始之前开始的RCU读侧临界区
 	 */
 	if (rcu_dynticks_in_eqs_since(rdp, rdp->dynticks_snap)) {
-		trace_rcu_fqs(rcu_state.name, rdp->gp_seq, rdp->cpu, TPS("dti"));
+		/* 说明cpu在上次保存dyntick快照(fqs loop第一次fqs的时候)之后进入了扩展qs */
+		trace_rcu_fqs(rcu_state.name, rdp->gp_seq, 
+			rdp->cpu, TPS("dti"));
 		rcu_gpnum_ovf(rnp, rdp);
 		return 1;
 	}
 
 	/*
 	 * Complain if a CPU that is considered to be offline from RCU's
-	 * perspective has not yet reported a quiescent state.  After all,
+	 * perspective has not yet reported a quiescent state.
+	 警告一下cpu没有报告qs就下线了
+	 After all,
 	 * the offline CPU should have reported a quiescent state during
 	 * the CPU-offline process, or, failing that, by rcu_gp_init()
 	 * if it ran concurrently with either the CPU going offline or the
@@ -792,6 +823,10 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp)
 	 * critical section while all CPUs corresponding to that structure
 	 * are offline.  This added warning detects bugs in any of these
 	 * code paths.
+	 毕竟, 下线的cpu应该在cpu下线过程中报告过qs, 或者报告失败了, 
+	 * 在rcu_gp_init()中如果它与cpu下线或叶子rcu_node结构的最后一个任务
+	 * 同时运行, 那么它会退出RCU读侧临界区, 而所有与该结构对应的CPU都处于离线状态.
+	 * 这个额外的警告检测这些代码路径中的错误.
 	 *
 	 * The rcu_node structure's ->lock is held here, which excludes
 	 * the relevant portions the CPU-hotplug code, the grace-period
@@ -817,6 +852,7 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp)
 	}
 
 	/*
+	这里根据情况设置延迟gp的标志
 	 * A CPU running for an extended time within the kernel can
 	 * delay RCU grace periods: (1) At age jiffies_to_sched_qs,
 	 * set .rcu_urgent_qs, (2) At age 2*jiffies_to_sched_qs, set
@@ -832,10 +868,14 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp)
 	    (time_after(jiffies, rcu_state.gp_start + jtsq * 2) ||
 	     time_after(jiffies, rcu_state.jiffies_resched) ||
 	     rcu_state.cbovld)) {
+		/* 
+		已经很晚了
+		cpu延迟gp */
 		WRITE_ONCE(rdp->rcu_need_heavy_qs, true);
 		/* Store rcu_need_heavy_qs before rcu_urgent_qs. */
 		smp_store_release(&rdp->rcu_urgent_qs, true);
 	} else if (time_after(jiffies, rcu_state.gp_start + jtsq)) {
+		/* 不算特别晚, 稍微延迟gp? */
 		WRITE_ONCE(rdp->rcu_urgent_qs, true);
 	}
 
@@ -861,6 +901,10 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp)
 	 * Also check to see if the CPU is getting hammered with interrupts,
 	 * but only once per grace period, just to keep the IPIs down to
 	 * a dull roar.
+	 如果超过了stall-warning时间的一半, 那么更频繁的调用resched_cpu()
+	 来缓解一下状况
+	 同时也检查cpu是不是太多中断了, 不过每个gp只检查一次
+	 省得ipi中断太多了
 	 */
 	if (time_after(jiffies, rcu_state.jiffies_resched)) {
 		if (time_after(jiffies,
@@ -868,21 +912,27 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp)
 			resched_cpu(rdp->cpu);
 			WRITE_ONCE(rdp->last_fqs_resched, jiffies);
 		}
+		/* 运行rcu_iw
+		作用是? */
 		if (IS_ENABLED(CONFIG_IRQ_WORK) &&
 		    !rdp->rcu_iw_pending && rdp->rcu_iw_gp_seq != rnp->gp_seq &&
 		    (rnp->ffmask & rdp->grpmask)) {
 			rdp->rcu_iw_pending = true;
 			rdp->rcu_iw_gp_seq = rnp->gp_seq;
+			/* 这个work会检查rcu_iw_pending, 可能发出WARN */
 			irq_work_queue_on(&rdp->rcu_iw, rdp->cpu);
 		}
 
+		/* 保存cputime快照 */
 		if (rcu_cpu_stall_cputime && rdp->snap_record.gp_seq != rdp->gp_seq) {
 			int cpu = rdp->cpu;
 			struct rcu_snap_record *rsrp;
 			struct kernel_cpustat *kcsp;
 
+			/* 获取内核的cputime统计 */
 			kcsp = &kcpustat_cpu(cpu);
 
+			/* 建立rcu stall timeout时间过一半时的cputime快照 */
 			rsrp = &rdp->snap_record;
 			rsrp->cputime_irq     = kcpustat_field(kcsp, CPUTIME_IRQ, cpu);
 			rsrp->cputime_softirq = kcpustat_field(kcsp, CPUTIME_SOFTIRQ, cpu);
@@ -1045,11 +1095,16 @@ static void rcu_gp_kthread_wake(void)
 
 /*
  * If there is room, assign a ->gp_seq number to any callbacks on this
- * CPU that have not already been assigned.  Also accelerate any callbacks
+ * CPU that have not already been assigned.
+ 如果有空间的话, 给cpu上面还没有gpseq的cb分配一个gp_seq号
+   Also accelerate any callbacks
  * that were previously assigned a ->gp_seq number that has since proven
  * to be too conservative, which can happen if callbacks get assigned a
  * ->gp_seq number while RCU is idle, but with reference to a non-root
- * rcu_node structure.  This function is idempotent, so it does not hurt
+ * rcu_node structure.
+ 同样加速那些刚刚就分配了gp_seq号的,但是比较保守的cb
+ 出现这种cb是因为cb是在rcu idle的时候获得gp_seq的,但是有一个非root的rnp引用
+ This function is idempotent, so it does not hurt
  * to call it repeatedly.  Returns an flag saying that we should awaken
  * the RCU grace-period kthread.
  *
@@ -1063,7 +1118,8 @@ static bool rcu_accelerate_cbs(struct rcu_node *rnp, struct rcu_data *rdp)
 	rcu_lockdep_assert_cblist_protected(rdp);
 	raw_lockdep_assert_held_rcu_node(rnp);
 
-	/* If no pending (not yet ready to invoke) callbacks, nothing to do. */
+	/* If no pending (not yet ready to invoke) callbacks, nothing to do.
+	检查rdp的cblist有没有需要调用的cb */
 	if (!rcu_segcblist_pend_cbs(&rdp->cblist))
 		return false;
 
@@ -1079,7 +1135,9 @@ static bool rcu_accelerate_cbs(struct rcu_node *rnp, struct rcu_data *rdp)
 	 * accelerating callback invocation to an earlier grace-period
 	 * number.
 	 */
+	/*  */
 	gp_seq_req = rcu_seq_snap(&rcu_state.gp_seq);
+	/*  */
 	if (rcu_segcblist_accelerate(&rdp->cblist, gp_seq_req))
 		ret = rcu_start_this_gp(rnp, rdp, gp_seq_req);
 
@@ -1122,13 +1180,19 @@ static void rcu_accelerate_cbs_unlocked(struct rcu_node *rnp,
 }
 
 /*
+rnp属于rdp
+这里rnp刚刚增加了gp_seq,rdp还没跟上, 算一个gp刚刚结束
+如果rdp还有cblist的话,调用这个函数来把
  * Move any callbacks whose grace period has completed to the
  * RCU_DONE_TAIL sublist, then compact the remaining sublists and
  * assign ->gp_seq numbers to any callbacks in the RCU_NEXT_TAIL
- * sublist.  This function is idempotent, so it does not hurt to
+ * sublist.
+ 把gp结束的cb移动到 RCU_DONE_TAIL子列表中,
+ * 然后压缩剩余的子列表, 并为 RCU_NEXT_TAIL 子列表中的任何回调分配 ->gp_seq
+ This function is idempotent, so it does not hurt to
  * invoke it repeatedly.  As long as it is not invoked -too- often...
  * Returns true if the RCU grace-period kthread needs to be awakened.
- *
+ * 返回真表示需要唤醒RCU的gp线程
  * The caller must hold rnp->lock with interrupts disabled.
  */
 static bool rcu_advance_cbs(struct rcu_node *rnp, struct rcu_data *rdp)
@@ -1136,13 +1200,15 @@ static bool rcu_advance_cbs(struct rcu_node *rnp, struct rcu_data *rdp)
 	rcu_lockdep_assert_cblist_protected(rdp);
 	raw_lockdep_assert_held_rcu_node(rnp);
 
-	/* If no pending (not yet ready to invoke) callbacks, nothing to do. */
+	/* If no pending (not yet ready to invoke) callbacks, nothing to do.
+	检查&rdp->cblist->tails[RCU_DONE_TAIL]是不是还有回调 */
 	if (!rcu_segcblist_pend_cbs(&rdp->cblist))
 		return false;
 
 	/*
 	 * Find all callbacks whose ->gp_seq numbers indicate that they
 	 * are ready to invoke, and put them into the RCU_DONE_TAIL sublist.
+	 通过cb的gp_seq来判断cb是否可以被调用然后把这些cb放到RCU_DONE_TAIL子列表中
 	 */
 	rcu_segcblist_advance(&rdp->cblist, rnp->gp_seq);
 
@@ -1180,8 +1246,11 @@ static void rcu_strict_gp_check_qs(void)
 }
 
 /*
+主要是note的作用, 刚刚修改了rnp->gp_seq. rnp属于rdp.
  * Update CPU-local rcu_data state to record the beginnings and ends of
- * grace periods.  The caller must hold the ->lock of the leaf rcu_node
+ * grace periods.
+ 在rdp记录gp的开始和结束
+ The caller must hold the ->lock of the leaf rcu_node
  * structure corresponding to the current CPU, and must have irqs disabled.
  * Returns true if the grace-period kthread needs to be awakened.
  */
@@ -1196,9 +1265,11 @@ static bool __note_gp_changes(struct rcu_node *rnp, struct rcu_data *rdp)
 	if (rdp->gp_seq == rnp->gp_seq)
 		return false; /* Nothing to do. */
 
-	/* Handle the ends of any preceding grace periods first. */
+	/* Handle the ends of any preceding grace periods first.
+	处理刚刚结束的gp的收尾 */
 	if (rcu_seq_completed_gp(rdp->gp_seq, rnp->gp_seq) ||
 	    unlikely(READ_ONCE(rdp->gpwrap))) {
+		/* 如果gp结束了 */
 		if (!offloaded)
 			ret = rcu_advance_cbs(rnp, rdp); /* Advance CBs. */
 		rdp->core_needs_qs = false;
@@ -1299,7 +1370,10 @@ void rcu_gp_set_torture_wait(int duration)
 }
 EXPORT_SYMBOL_GPL(rcu_gp_set_torture_wait);
 
-/* Actually implement the aforementioned wait. */
+/*
+测试
+这个一般是关的
+ Actually implement the aforementioned wait. */
 static void rcu_gp_torture_wait(void)
 {
 	unsigned long duration;
@@ -1340,6 +1414,11 @@ static void rcu_poll_gp_seq_start(unsigned long *snap)
 }
 
 // Make the polled API aware of the end of a grace period.
+/*
+在&rcu_state.gp_seq_polled写一个什么gp的结束值
+让polled api知道gp的结束
+参数可能是&rcu_state.gp_seq_polled_snap
+ */
 static void rcu_poll_gp_seq_end(unsigned long *snap)
 {
 	struct rcu_node *rnp = rcu_get_root();
@@ -1537,6 +1616,8 @@ static noinline_for_stack bool rcu_gp_init(void)
 }
 
 /*
+在fqs loop中加入gp wq的线程用这个函数判断要不要醒来
+看逻辑好像就是判断要不要fqs?
  * Helper function for swait_event_idle_exclusive() wakeup at force-quiescent-state
  * time.
  */
@@ -1561,22 +1642,30 @@ static bool rcu_gp_fqs_check_wake(int *gfp)
 }
 
 /*
+在一个fqs loop里面进行一次fqs
+总的来说检查qs是否结束, 没结束的话进行调整和加快
  * Do one round of quiescent-state forcing.
  */
 static void rcu_gp_fqs(bool first_time)
 {
 	struct rcu_node *rnp = rcu_get_root();
 
+	/* 进行状态统计 */
 	WRITE_ONCE(rcu_state.gp_activity, jiffies);
 	WRITE_ONCE(rcu_state.n_force_qs, rcu_state.n_force_qs + 1);
+	/* fqs的核心工作 */
 	if (first_time) {
-		/* Collect dyntick-idle snapshots. */
+		/* Collect dyntick-idle snapshots.
+		dyntick_save_progress_counter检查是否处于扩展qs */
 		force_qs_rnp(dyntick_save_progress_counter);
 	} else {
-		/* Handle dyntick-idle and offline CPUs. */
+		/* Handle dyntick-idle and offline CPUs.
+		检查qs是否结束, 没结束的话, 会延迟gp,做出相关应对heavy qs的
+		行为什么的 */
 		force_qs_rnp(rcu_implicit_dynticks_qs);
 	}
-	/* Clear flag to prevent immediate re-entry. */
+	/* Clear flag to prevent immediate re-entry.
+	去除强制fqs的flag */
 	if (READ_ONCE(rcu_state.gp_flags) & RCU_GP_FLAG_FQS) {
 		raw_spin_lock_irq_rcu_node(rnp);
 		WRITE_ONCE(rcu_state.gp_flags,
@@ -1586,8 +1675,12 @@ static void rcu_gp_fqs(bool first_time)
 }
 
 /*
+循环qs forcing，直到gp结束。
+=====================================================
+核心逻辑好像是设置gp_state, RCU_GP_WAIT_FQS,然后加入gp wq
+睡眠等待需要fqs的唤醒. 然后起来进行fqs, 检查qs是否结束什么的
  * Loop doing repeated quiescent-state forcing until the grace period ends.
- */
+返回的时候就是gp结束了? */
 static noinline_for_stack void rcu_gp_fqs_loop(void)
 {
 	bool first_gp_fqs = true;
@@ -1600,13 +1693,16 @@ static noinline_for_stack void rcu_gp_fqs_loop(void)
 	if (rcu_state.cbovld)
 		gf = RCU_GP_FLAG_OVLD;
 	ret = 0;
+	/* 刚刚获取j和gf */
+
 	for (;;) {
 		if (rcu_state.cbovld) {
-			j = (j + 2) / 3;
+			j = (j + 2) / 3; /* 这里是保证必须是3的倍数? */
 			if (j <= 0)
 				j = 1;
 		}
 		if (!ret || time_before(jiffies + j, rcu_state.jiffies_force_qs)) {
+			/* 时间还早, 但是强制force_qs和kick_threads? */
 			WRITE_ONCE(rcu_state.jiffies_force_qs, jiffies + j);
 			/*
 			 * jiffies_force_qs before RCU_GP_WAIT_FQS state
@@ -1618,10 +1714,15 @@ static noinline_for_stack void rcu_gp_fqs_loop(void)
 		}
 		trace_rcu_grace_period(rcu_state.name, rcu_state.gp_seq,
 				       TPS("fqswait"));
+		/* 修改gp阶段 */
 		WRITE_ONCE(rcu_state.gp_state, RCU_GP_WAIT_FQS);
+		/* 这里加入gp wq等待
+		醒来条件好像就是需要进行fqs了, 或者gp结束了 */
 		(void)swait_event_idle_timeout_exclusive(rcu_state.gp_wq,
 				 rcu_gp_fqs_check_wake(&gf), j);
+		/* 测试函数 */
 		rcu_gp_torture_wait();
+		/* 这里醒来就直接修改为doing fqs了? */
 		WRITE_ONCE(rcu_state.gp_state, RCU_GP_DOING_FQS);
 		/* Locking provides needed memory barriers. */
 		/*
@@ -1633,14 +1734,27 @@ static noinline_for_stack void rcu_gp_fqs_loop(void)
 		 * given root node's ->qsmask bit is cleared only when all CPUs and tasks from
 		 * the corresponding leaf nodes have passed through their quiescent state.
 		 */
+
+		/* 如果gp结束了, 退出循环 */
 		if (!READ_ONCE(rnp->qsmask) &&
 		    !rcu_preempt_blocked_readers_cgp(rnp))
 			break;
-		/* If time for quiescent-state forcing, do it. */
+
+		/*
+		这里开始进行fqs
+		===============
+		fqs是
+		===============
+		步骤, 判断要不要fqs, 更新rcu_state.gp_activity, 计算j值
+		========================================
+		 If time for quiescent-state forcing, do it. */
 		if (!time_after(rcu_state.jiffies_force_qs, jiffies) ||
-		    (gf & (RCU_GP_FLAG_FQS | RCU_GP_FLAG_OVLD))) {
+		    (gf & (RCU_GP_FLAG_FQS | RCU_GP_FLAG_OVLD))) {/* 开始fqs */
 			trace_rcu_grace_period(rcu_state.name, rcu_state.gp_seq,
 					       TPS("fqsstart"));
+			/* 开始fqs,
+			fqs是检查qs状态, 查看是否结束,进行相应的调整和加快
+			 */
 			rcu_gp_fqs(first_gp_fqs);
 			gf = 0;
 			if (first_gp_fqs) {
@@ -1652,8 +1766,10 @@ static noinline_for_stack void rcu_gp_fqs_loop(void)
 			cond_resched_tasks_rcu_qs();
 			WRITE_ONCE(rcu_state.gp_activity, jiffies);
 			ret = 0; /* Force full wait till next FQS. */
+			/* 似乎是进行了fqs的话, j就是下次jiffies_till_next_fqs的时间 */
 			j = READ_ONCE(jiffies_till_next_fqs);
 		} else {
+			/* 这里不进行fqs? */
 			/* Deal with stray signal. */
 			cond_resched_tasks_rcu_qs();
 			WRITE_ONCE(rcu_state.gp_activity, jiffies);
@@ -1661,6 +1777,9 @@ static noinline_for_stack void rcu_gp_fqs_loop(void)
 			trace_rcu_grace_period(rcu_state.name, rcu_state.gp_seq,
 					       TPS("fqswaitsig"));
 			ret = 1; /* Keep old FQS timing. */
+
+			/* 这里是没进行fqs的情况下计算j
+			如果还没到fqs时间,j为1, 如果到了的话, j就是超的时间 */
 			j = jiffies;
 			if (time_after(jiffies, rcu_state.jiffies_force_qs))
 				j = 1;
@@ -1672,6 +1791,7 @@ static noinline_for_stack void rcu_gp_fqs_loop(void)
 }
 
 /*
+进行gp结束后的清理
  * Clean up after the old grace period.
  */
 static noinline void rcu_gp_cleanup(void)
@@ -1688,25 +1808,37 @@ static noinline void rcu_gp_cleanup(void)
 	WRITE_ONCE(rcu_state.gp_activity, jiffies);
 	raw_spin_lock_irq_rcu_node(rnp);
 	rcu_state.gp_end = jiffies;
+	/* 计算gp耗时 */
 	gp_duration = rcu_state.gp_end - rcu_state.gp_start;
 	if (gp_duration > rcu_state.gp_max)
 		rcu_state.gp_max = gp_duration;
 
 	/*
 	 * We know the grace period is complete, but to everyone else
-	 * it appears to still be ongoing.  But it is also the case
+	 * it appears to still be ongoing.
+	 我们知道这个grace period已经完成了, 但是对其他人来说
+	 * 它看起来仍然在进行中.
+	 But it is also the case
 	 * that to everyone else it looks like there is nothing that
-	 * they can do to advance the grace period.  It is therefore
+	 * they can do to advance the grace period.
+	 但是这也是一种其他人认为他们不能推进gp的情况
+	 It is therefore
 	 * safe for us to drop the lock in order to mark the grace
 	 * period as completed in all of the rcu_node structures.
+	 因此现在是安全的, 我们可以放下锁来标记所有的
+	 * rcu_node结构的gp已经完成了.
 	 */
+	/* 标记rcu_state.gp_seq_polled为结束 */
 	rcu_poll_gp_seq_end(&rcu_state.gp_seq_polled_snap);
 	raw_spin_unlock_irq_rcu_node(rnp);
 
 	/*
 	 * Propagate new ->gp_seq value to rcu_node structures so that
 	 * other CPUs don't have to wait until the start of the next grace
-	 * period to process their callbacks.  This also avoids some nasty
+	 * period to process their callbacks.
+	 传播新的gp seq值到各个rnp, 以便其他CPU不必等到下一个
+	 * grace period的开始就可以处理它们的回调.
+	 This also avoids some nasty
 	 * RCU grace-period initialization races by forcing the end of
 	 * the current grace period to be completely recorded in all of
 	 * the rcu_node structures before the beginning of the next grace
@@ -1714,14 +1846,17 @@ static noinline void rcu_gp_cleanup(void)
 	 */
 	new_gp_seq = rcu_state.gp_seq;
 	rcu_seq_end(&new_gp_seq);
+	/* 遍历rnp */
 	rcu_for_each_node_breadth_first(rnp) {
 		raw_spin_lock_irq_rcu_node(rnp);
 		if (WARN_ON_ONCE(rcu_preempt_blocked_readers_cgp(rnp)))
 			dump_blkd_tasks(rnp, 10);
 		WARN_ON_ONCE(rnp->qsmask);
+		/* 写入新的gpseq值 */
 		WRITE_ONCE(rnp->gp_seq, new_gp_seq);
 		if (!rnp->parent)
 			smp_mb(); // Order against failing poll_state_synchronize_rcu_full().
+		/* 获取rdp */
 		rdp = this_cpu_ptr(&rcu_data);
 		if (rnp == rdp->mynode)
 			needgp = __note_gp_changes(rnp, rdp) || needgp;
@@ -1817,11 +1952,14 @@ static int __noreturn rcu_gp_kthread(void *unused)
 					       TPS("reqwaitsig"));
 		}
 
-		/* Handle quiescent-state forcing. */
+		/* Handle quiescent-state forcing.
+		进行fqs的循环, 不断的睡眠和检查fqs */
 		rcu_gp_fqs_loop();
 
+		/* fqs loop在gp结束的时候返回 */
 		/* Handle grace-period end. */
 		WRITE_ONCE(rcu_state.gp_state, RCU_GP_CLEANUP);
+		/* 进行gp的清理 */
 		rcu_gp_cleanup();
 		WRITE_ONCE(rcu_state.gp_state, RCU_GP_CLEANED);
 	}
@@ -1852,6 +1990,7 @@ static void rcu_report_qs_rsp(unsigned long flags)
 	WRITE_ONCE(rcu_state.gp_flags,
 		   READ_ONCE(rcu_state.gp_flags) | RCU_GP_FLAG_FQS);
 	raw_spin_unlock_irqrestore_rcu_node(rcu_get_root(), flags);
+	/* 唤醒gp线程 */
 	rcu_gp_kthread_wake();
 }
 
@@ -1872,7 +2011,7 @@ static void rcu_report_qs_rsp(unsigned long flags)
  * disabled.  This allows propagating quiescent state due to resumed tasks
  * during grace-period initialization.
  * @description: 
- * @param {unsigned long} mask, rdp的grpmask
+ * @param {unsigned long} mask, rdp的grpmask的一个子集
  * @param {rcu_node} *rnp, rdp的mynode
  * @param {unsigned long} gps , 是rnp->gp_seq
  * @param {unsigned long} flags
@@ -1982,6 +2121,7 @@ rcu_report_unblock_qs_rnp(struct rcu_node *rnp, unsigned long flags)
 	mask = rnp->grpmask;
 	raw_spin_unlock_rcu_node(rnp);	/* irqs remain disabled. */
 	raw_spin_lock_rcu_node(rnp_p);	/* irqs already disabled. */
+	/* 如果有rnp父层级的话, 修改层级上的qsmask */
 	rcu_report_qs_rnp(mask, rnp_p, gps, flags);
 }
 
@@ -2290,11 +2430,19 @@ void rcu_sched_clock_irq(int user)
 }
 
 /*
- * Scan the leaf rcu_node structures.  For each structure on which all
+扫描叶子cnp, 对于qs的cpu,调用回调,检查qs是否结束
+没结束的话,做出相关调整行为
+===================
+fqs loop里面进行一次fqs的核心主要函数
+ * Scan the leaf rcu_node structures.
+ 扫描叶子rcunode
+   For each structure on which all
  * CPUs have reported a quiescent state and on which there are tasks
  * blocking the current grace period, initiate RCU priority boosting.
+ 对于那些cpu报告了qs的节点, 还有有任务阻塞gp的节点, 初始化rcu优先级提升
  * Otherwise, invoke the specified function to check dyntick state for
  * each CPU that has not yet reported a quiescent state.
+ 否则,为那些还没有报告qs的cpu调用指定的f函数检查dyntick
  */
 static void force_qs_rnp(int (*f)(struct rcu_data *rdp))
 {
@@ -2304,16 +2452,21 @@ static void force_qs_rnp(int (*f)(struct rcu_data *rdp))
 	struct rcu_data *rdp;
 	struct rcu_node *rnp;
 
+	/* 检查现在是不是overload了 */
 	rcu_state.cbovld = rcu_state.cbovldnext;
 	rcu_state.cbovldnext = false;
+	/* 检查rcustate的每一个叶子rnp */
 	rcu_for_each_leaf_node(rnp) {
+		/* 调度, 修改needqs,blockd */
 		cond_resched_tasks_rcu_qs();
 		mask = 0;
 		raw_spin_lock_irqsave_rcu_node(rnp, flags);
+		/* 记录rcu overload状态 */
 		rcu_state.cbovldnext |= !!rnp->cbovldmask;
-		if (rnp->qsmask == 0) {
+		if (rnp->qsmask == 0) {/* rnp没有qs的cpu */
 			if (rcu_preempt_blocked_readers_cgp(rnp)) {
 				/*
+				这个rnp没有qs的cpu, 有阻塞的rcu reader, 提升优先级
 				 * No point in scanning bits because they
 				 * are all zero.  But we might need to
 				 * priority-boost blocked readers.
@@ -2325,8 +2478,12 @@ static void force_qs_rnp(int (*f)(struct rcu_data *rdp))
 			raw_spin_unlock_irqrestore_rcu_node(rnp, flags);
 			continue;
 		}
+		/* 处理报告了qs的cpu */
 		for_each_leaf_node_cpu_mask(rnp, cpu, rnp->qsmask) {
 			rdp = per_cpu_ptr(&rcu_data, cpu);
+			/* 这个cpu报告了qs
+			如果是第一次进行fqs, f是dyntick_save_progress_counter函数
+			检查是否处于扩展qs */
 			if (f(rdp)) {
 				mask |= rdp->grpmask;
 				rcu_disable_urgency_upon_qs(rdp);
@@ -4295,7 +4452,7 @@ retry:
 EXPORT_SYMBOL_GPL(rcu_barrier);
 
 /*
-计算这个指定的rcu_node的在线cpu掩码
+计算这个指定的rnp的在线cpu掩码
  * Compute the mask of online CPUs for the specified rcu_node structure.
  * This will not be stable unless the rcu_node structure's ->lock is
  * held, but the bit corresponding to the current CPU will be stable
@@ -4307,6 +4464,7 @@ static unsigned long rcu_rnp_online_cpus(struct rcu_node *rnp)
 }
 
 /*
+检查rdp关联的cpu是否还在线
  * Is the CPU corresponding to the specified rcu_data structure online
  * from RCU's perspective?  This perspective is given by that structure's
  * ->qsmaskinitnext field rather than by the global cpu_online_mask.
@@ -4540,6 +4698,7 @@ int rcutree_prepare_cpu(unsigned int cpu)
 	rdp->cpu_no_qs.b.norm = true;
 	rdp->core_needs_qs = false;
 	rdp->rcu_iw_pending = false;
+	/*  */
 	rdp->rcu_iw = IRQ_WORK_INIT_HARD(rcu_iw_handler);
 	rdp->rcu_iw_gp_seq = rdp->gp_seq - 1;
 	trace_rcu_grace_period(rcu_state.name, rdp->gp_seq, TPS("cpuonl"));
