@@ -958,15 +958,23 @@ static void trace_rcu_this_gp(struct rcu_node *rnp, struct rcu_data *rdp,
 }
 
 /*
+请求一个gp的开始
  * rcu_start_this_gp - Request the start of a particular grace period
  * @rnp_start: The leaf node of the CPU from which to start.
+ rnp是
  * @rdp: The rcu_data corresponding to the CPU from which to start.
+ rdp,刚刚把这个rdp的一些回调类型进行了合并,是把一个目标类型cb和他的稍晚的cb
+ 进行了合并,算是加速
  * @gp_seq_req: The gp_seq of the grace period to start.
+ 是当前的rcu_state的gp_seq
  *
  * Start the specified grace period, as needed to handle newly arrived
  * callbacks.  The required future grace periods are recorded in each
  * rcu_node structure's ->gp_seq_needed field.  Returns true if there
  * is reason to awaken the grace-period kthread.
+ 开始指定的gp,来处理新到来的cb
+ 需要未来的gp在每个rcu_node结构的->gp_seq_needed字段中记录并重新排序?
+ 返回真表示需要唤醒gp的kthread
  *
  * The caller must hold the specified rcu_node structure's ->lock, which
  * is why the caller is responsible for waking the grace-period kthread.
@@ -983,20 +991,26 @@ static bool rcu_start_this_gp(struct rcu_node *rnp_start, struct rcu_data *rdp,
 	 * Use funnel locking to either acquire the root rcu_node
 	 * structure's lock or bail out if the need for this grace period
 	 * has already been recorded -- or if that grace period has in
-	 * fact already started.  If there is already a grace period in
+	 * fact already started.
+	 要么加锁root rnp
+	 要么就是因为gp已经被记录,或者gp已经开始了
+	 If there is already a grace period in
 	 * progress in a non-leaf node, no recording is needed because the
 	 * end of the grace period will scan the leaf rcu_node structures.
 	 * Note that rnp_start->lock must not be released.
+	 如果已经在一个非叶子节点有了gp记录
+	 不需要记录了,因为gp结束的时候会扫描叶子rnp(扫描过程是做)
 	 */
 	raw_lockdep_assert_held_rcu_node(rnp_start);
 	trace_rcu_this_gp(rnp_start, rdp, gp_seq_req, TPS("Startleaf"));
+	/* 扫描rnp_start的父层级 */
 	for (rnp = rnp_start; 1; rnp = rnp->parent) {
 		if (rnp != rnp_start)
 			raw_spin_lock_rcu_node(rnp);
-		if (ULONG_CMP_GE(rnp->gp_seq_needed, gp_seq_req) ||
-		    rcu_seq_started(&rnp->gp_seq, gp_seq_req) ||
-		    (rnp != rnp_start &&
-		     rcu_seq_state(rcu_seq_current(&rnp->gp_seq)))) {
+		if (ULONG_CMP_GE(rnp->gp_seq_needed, gp_seq_req) ||  /* 说明已经被记录? */
+		    rcu_seq_started(&rnp->gp_seq, gp_seq_req) || /* 说明已经开始 */
+		    (rnp != rnp_start && rcu_seq_state(rcu_seq_current(&rnp->gp_seq)))
+		) {
 			trace_rcu_this_gp(rnp, rdp, gp_seq_req,
 					  TPS("Prestarted"));
 			goto unlock_out;
@@ -1137,10 +1151,11 @@ static bool rcu_accelerate_cbs(struct rcu_node *rnp, struct rcu_data *rdp)
 	 */
 	/*  */
 	gp_seq_req = rcu_seq_snap(&rcu_state.gp_seq);
-	/*  */
+	/* 这里是找到一个目标类型, 把目标类型之后的回调都合并进去 */
 	if (rcu_segcblist_accelerate(&rdp->cblist, gp_seq_req))
 		ret = rcu_start_this_gp(rnp, rdp, gp_seq_req);
-
+/* 返回真，说明确实找到了这个不为空的目标类型,进行了移动,然后也把那些被移动
+的类型的slot设置为了NEXT_TAIL. */
 	/* Trace depending on how much we were able to accelerate. */
 	if (rcu_segcblist_restempty(&rdp->cblist, RCU_WAIT_TAIL))
 		trace_rcu_grace_period(rcu_state.name, gp_seq_req, TPS("AccWaitCB"));

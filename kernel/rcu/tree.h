@@ -52,6 +52,7 @@ struct rcu_node {
 					/*  following. */
 	/* 变化的话可以说明gp结束了? */
 	unsigned long gp_seq;	/* Track rsp->gp_seq. */
+	/* 记录未来的gp? */
 	unsigned long gp_seq_needed; /* Track furthest future GP request. */
 	/* 记录上次修改qsmask的seq?
 	也是qsmask为0的seq

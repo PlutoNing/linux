@@ -145,13 +145,21 @@ static inline unsigned long rcu_seq_snap(unsigned long *sp)
 	return s;
 }
 
-/* Return the current value the update side's sequence number, no ordering. */
+/* 
+返回读侧当前的序列号
+Return the current value the update side's sequence number, no ordering.
+参数是某个当前遍历到的rnp的gp_seq
+这里判断说是读侧的序列号?每个rnp对应一个rcu过程? */
 static inline unsigned long rcu_seq_current(unsigned long *sp)
 {
 	return READ_ONCE(*sp);
 }
 
 /*
+参数
+sp是某个遍历到的rnp->gp_seq的
+s是之前某个时候的?或者现在的?&rcu_state.gp_seq
+检查这个gp关联的读侧更新是不是已经开始了
  * Given a snapshot from rcu_seq_snap(), determine whether or not the
  * corresponding update-side operation has started.
  */

@@ -550,6 +550,12 @@ void rcu_segcblist_advance(struct rcu_segcblist *rsclp, unsigned long seq)
 }
 
 /*
+@seq是当前的rcu_state的gp_seq
+作用:
+==================
+逻辑上就是找到一个类型的回调,然后把比这个晚的回调都合并到这个回调类型
+再把这些被移动的回调类型设置为NEXT_TAIL,更新seq
+===============
 基于更准确的gp信息加速cb
 原因是因为rcu在开始和结束gp时并没有同步,
 而且cb是本地发布的。
@@ -576,13 +582,16 @@ bool rcu_segcblist_accelerate(struct rcu_segcblist *rsclp, unsigned long seq)
 	int i, j;
 
 	WARN_ON_ONCE(!rcu_segcblist_is_enabled(rsclp));
+	/* 如果没有要执行的cb(DONE_TAIL类型的) */
 	if (rcu_segcblist_restempty(rsclp, RCU_DONE_TAIL))
 		return false;
 
 	/*
 	 * Find the segment preceding the oldest segment of callbacks
 	 * whose ->gp_seq[] completion is at or after that passed in via
-	 * "seq", skipping any empty segments.  This oldest segment, along
+	 * "seq", skipping any empty segments.
+	 
+	 This oldest segment, along
 	 * with any later segments, can be merged in with any newly arrived
 	 * callbacks in the RCU_NEXT_TAIL segment, and assigned "seq"
 	 * as their ->gp_seq[] grace-period completion sequence number.
@@ -614,9 +623,13 @@ bool rcu_segcblist_accelerate(struct rcu_segcblist *rsclp, unsigned long seq)
 	 * NEXT_READY_TAIL and the grace-period number of NEXT_READY_TAIL
 	 * would be updated.  NEXT_TAIL would then be empty.
 	 */
+	/* 刚刚是把i指向了某种类型的cb(不清楚是做什么) 
+	这里判断i类型不能空*/
 	if (rcu_segcblist_restempty(rsclp, i) || ++i >= RCU_NEXT_TAIL)
 		return false;
 
+
+	/* 然后把比i还晚的cb都移到i */
 	/* Accounting: everything below i is about to get merged into i. */
 	for (j = i + 1; j <= RCU_NEXT_TAIL; j++)
 		rcu_segcblist_move_seglen(rsclp, j, i);
@@ -628,6 +641,7 @@ bool rcu_segcblist_accelerate(struct rcu_segcblist *rsclp, unsigned long seq)
 	 * where there were no pending callbacks in the rcu_segcblist
 	 * structure other than in the RCU_NEXT_TAIL segment.
 	 */
+	/* 这里是更新每一个比i晚的类型, 设置为NEXT_TAIL, 更新seq */
 	for (; i < RCU_NEXT_TAIL; i++) {
 		WRITE_ONCE(rsclp->tails[i], rsclp->tails[RCU_NEXT_TAIL]);
 		rsclp->gp_seq[i] = seq;
