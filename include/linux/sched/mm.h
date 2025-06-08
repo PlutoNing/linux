@@ -399,6 +399,8 @@ static inline void memalloc_pin_restore(unsigned int flags)
 #ifdef CONFIG_MEMCG
 DECLARE_PER_CPU(struct mem_cgroup *, int_active_memcg);
 /**
+设置当前活跃的memcg
+作用是记账的话,从指定的memcg来charge
  * set_active_memcg - Starts the remote memcg charging scope.
  * @memcg: memcg to charge.
  *

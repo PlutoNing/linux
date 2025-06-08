@@ -9,6 +9,7 @@
 #include <asm/local.h>
 
 /* Any context (including NMI) BPF specific memory allocator.
+bpf的内存分配器, 可以用于任何上下文
  *
  * Tracing BPF programs can attach to kprobe and fentry. Hence they
  * run in unknown context where calling plain kmalloc() might not be safe.
@@ -133,9 +134,11 @@ static struct llist_node notrace *__llist_del_first(struct llist_head *head)
 	return entry;
 }
 
+/* 为c分配obj, 加入freelist */
 static void *__alloc(struct bpf_mem_cache *c, int node, gfp_t flags)
 {
 	if (c->percpu_size) {
+		/* 分配内存 */
 		void **obj = kmalloc_node(c->percpu_size, flags, node);
 		void *pptr = __alloc_percpu_gfp(c->unit_size, 8, flags);
 
@@ -190,6 +193,7 @@ static void dec_active(struct bpf_mem_cache *c, unsigned long *flags)
 		local_irq_restore(*flags);
 }
 
+/* 把预分配的内存加入到freelist */
 static void add_obj_to_free_list(struct bpf_mem_cache *c, void *obj)
 {
 	unsigned long flags;
@@ -200,7 +204,10 @@ static void add_obj_to_free_list(struct bpf_mem_cache *c, void *obj)
 	dec_active(c, &flags);
 }
 
-/* Mostly runs from irq_work except __init phase. */
+/*
+为bpf_mem_cache预分配内存
+@cnt: 分配的对象数量
+Mostly runs from irq_work except __init phase. */
 static void alloc_bulk(struct bpf_mem_cache *c, int cnt, int node, bool atomic)
 {
 	struct mem_cgroup *memcg = NULL, *old_memcg;
@@ -211,6 +218,7 @@ static void alloc_bulk(struct bpf_mem_cache *c, int cnt, int node, bool atomic)
 	gfp = __GFP_NOWARN | __GFP_ACCOUNT;
 	gfp |= atomic ? GFP_NOWAIT : GFP_KERNEL;
 
+	/* 从free_by_rcu_ttrace转移到freelist */
 	for (i = 0; i < cnt; i++) {
 		/*
 		 * For every 'c' llist_del_first(&c->free_by_rcu_ttrace); is
@@ -225,6 +233,8 @@ static void alloc_bulk(struct bpf_mem_cache *c, int cnt, int node, bool atomic)
 	if (i >= cnt)
 		return;
 
+	/* 到这里说明, free_by_rcu_ttrace里面不够参数指定的cnt个
+	这里从waiting_for_gp_ttrace继续转移 */
 	for (; i < cnt; i++) {
 		obj = llist_del_first(&c->waiting_for_gp_ttrace);
 		if (!obj)
@@ -234,6 +244,7 @@ static void alloc_bulk(struct bpf_mem_cache *c, int cnt, int node, bool atomic)
 	if (i >= cnt)
 		return;
 
+	/* 到这里说明free_by_rcu_ttrace和free_by_rcu_ttrace都不够cnt个 */
 	memcg = get_memcg(c);
 	old_memcg = set_active_memcg(memcg);
 	for (; i < cnt; i++) {
@@ -421,7 +432,9 @@ static void check_free_by_rcu(struct bpf_mem_cache *c)
 		call_rcu_hurry(&c->rcu, __free_by_rcu);
 	}
 }
-
+/* 
+填充bpf_mem_cache的异步函数
+*/
 static void bpf_mem_refill(struct irq_work *work)
 {
 	struct bpf_mem_cache *c = container_of(work, struct bpf_mem_cache, refill_work);
@@ -439,7 +452,7 @@ static void bpf_mem_refill(struct irq_work *work)
 
 	check_free_by_rcu(c);
 }
-
+/* free_cnt低于c->low_watermark时触发 */
 static void notrace irq_work_raise(struct bpf_mem_cache *c)
 {
 	irq_work_queue(&c->refill_work);
@@ -754,7 +767,10 @@ void bpf_mem_alloc_destroy(struct bpf_mem_alloc *ma)
 	}
 }
 
-/* notrace is necessary here and in other functions to make sure
+/*
+从c->free_llist取下一个node
+并且检查水位线进行填充
+notrace is necessary here and in other functions to make sure
  * bpf programs cannot attach to them and cause llist corruptions.
  */
 static void notrace *unit_alloc(struct bpf_mem_cache *c)
@@ -775,6 +791,7 @@ static void notrace *unit_alloc(struct bpf_mem_cache *c)
 	 */
 	local_irq_save(flags);
 	if (local_inc_return(&c->active) == 1) {
+		/* 说明之前没有活跃的? */
 		llnode = __llist_del_first(&c->free_llist);
 		if (llnode) {
 			cnt = --c->free_cnt;
@@ -940,7 +957,10 @@ void bpf_mem_cache_raw_free(void *ptr)
 	kfree(ptr - LLIST_NODE_SZ);
 }
 
-/* When flags == GFP_KERNEL, it signals that the caller will not cause
+/*
+如果是GPF_KERNEL标志，则表示调用者在使用kmalloc时不会导致死锁。
+所以这个函数会尝试使用kmalloc分配内存
+When flags == GFP_KERNEL, it signals that the caller will not cause
  * deadlock when using kmalloc. bpf_mem_cache_alloc_flags() will use
  * kmalloc if the free_llist is empty.
  */
@@ -964,7 +984,7 @@ void notrace *bpf_mem_cache_alloc_flags(struct bpf_mem_alloc *ma, gfp_t flags)
 
 	return !ret ? NULL : ret + LLIST_NODE_SZ;
 }
-
+/* 调整size_index数组, 改变size映射到index的行为 */
 static __init int bpf_mem_cache_adjust_size(void)
 {
 	unsigned int size;

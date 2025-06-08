@@ -52,6 +52,7 @@ struct pcpu_chunk {
 	void			*base_addr ____cacheline_aligned_in_smp;
 
 	unsigned long		*alloc_map;	/* allocation map */
+	/* 一个元数据块的数组 */
 	struct pcpu_block_md	*md_blocks;	/* metadata blocks */
 
 	void			*data;		/* chunk data */
@@ -109,7 +110,9 @@ static inline int pcpu_nr_pages_to_map_bits(int pages)
 	return pages * PAGE_SIZE / PCPU_MIN_ALLOC_SIZE;
 }
 
-/** chunk可以分配几个最小分配单元
+/** 
+chunk可以分配几个最小分配单元
+就是chunk的页面数量大小除以最小分配单元(4)
  * pcpu_chunk_map_bits - helper to convert nr_pages to size of bitmap
  * @chunk: chunk of interest
  *

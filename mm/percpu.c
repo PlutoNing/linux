@@ -161,7 +161,8 @@ static const size_t *pcpu_group_sizes __ro_after_init;
  */
 struct pcpu_chunk *pcpu_first_chunk __ro_after_init;
 
-/* 表示pcp机制的group的reserved chunk
+/* 
+表示pcp机制的group的reserved chunk
  * Optional reserved chunk.  This chunk reserves part of the first
  * chunk and serves it for reserved allocations.  When the reserved
  * region doesn't exist, the following variable is NULL.
@@ -239,6 +240,8 @@ static int pcpu_size_to_slot(int size)
 	return __pcpu_size_to_slot(size);
 }
 
+/* 每个chunk对应一个slot?
+作用是 */
 static int pcpu_chunk_slot(const struct pcpu_chunk *chunk)
 {
 	const struct pcpu_block_md *chunk_md = &chunk->chunk_md;
@@ -289,6 +292,8 @@ static unsigned long *pcpu_index_alloc_map(struct pcpu_chunk *chunk, int index)
 	       (index * PCPU_BITMAP_BLOCK_BITS / BITS_PER_LONG);
 }
 
+/* 找到位图的此bit位所属的元数据块
+返回元数据块在数组的idx */
 static unsigned long pcpu_off_to_block_index(int off)
 {
 	return off / PCPU_BITMAP_BLOCK_BITS;
@@ -305,6 +310,7 @@ static unsigned long pcpu_block_off_to_off(int index, int off)
 }
 
 /**
+检查block能否满足分配
  * pcpu_check_block_hint - check against the contig hint
  * @block: block of interest
  * @bits: size of allocation
@@ -324,6 +330,7 @@ static bool pcpu_check_block_hint(struct pcpu_block_md *block, int bits,
 }
 
 /*
+要从chunk分配alloc_bits大小的内存, 需要从block中找到合适的hint
  * pcpu_next_hint - determine which hint to use
  * @block: block of interest
  * @alloc_bits: size of allocation
@@ -539,7 +546,10 @@ static void pcpu_chunk_move(struct pcpu_chunk *chunk, int slot)
 	__pcpu_chunk_move(chunk, slot, true);
 }
 
-/** 参数是pcp机制group的一个slot, 把chunk移动到pcpu_chunk_lists里面的新链表
+/** 
+参数是pcp机制group的一个slot, 把chunk移动到pcpu_chunk_lists里面的新链表
+===================
+从chunk分配内存之后,也会调用这个函数
  * pcpu_chunk_relocate - put chunk in the appropriate chunk slot
  * @chunk: chunk of interest
  * @oslot: the previous slot it was on
@@ -618,6 +628,8 @@ static inline bool pcpu_region_overlap(int a, int b, int x, int y)
 }
 
 /**
+基于上次实际搜索的结果
+为下次分配的搜索更新位图的hint
  * pcpu_block_update - updates a block given a free area
  * @block: block of interest
  * @start: start offset in block
@@ -694,6 +706,7 @@ static void pcpu_block_update(struct pcpu_block_md *block, int start, int end)
 }
 
 /*
+从chunk分配内存之后,更新hint
  * pcpu_block_update_scan - update a block given a free area from a scan
  * @chunk: chunk of interest
  * @bit_off: chunk offset
@@ -720,6 +733,7 @@ static void pcpu_block_update_scan(struct pcpu_chunk *chunk, int bit_off,
 	if (e_off > PCPU_BITMAP_BLOCK_BITS)
 		return;
 
+	/* 找到bit_off对应的元数据块 */
 	s_index = pcpu_off_to_block_index(bit_off);
 	block = chunk->md_blocks + s_index;
 
@@ -727,6 +741,7 @@ static void pcpu_block_update_scan(struct pcpu_chunk *chunk, int bit_off,
 	l_bit = find_last_bit(pcpu_index_alloc_map(chunk, s_index), s_off);
 	s_off = (s_off == l_bit) ? 0 : l_bit + 1;
 
+	/* 更新此block_md的hint */
 	pcpu_block_update(block, s_off, e_off);
 }
 
@@ -1089,9 +1104,12 @@ static bool pcpu_is_populated(struct pcpu_chunk *chunk, int bit_off, int bits,
 }
 
 /**
+pcp要从chunk分配内存了
+这里从chunk的bitmap里面找一个合适的区域
  * pcpu_find_block_fit - finds the block index to start searching
  * @chunk: chunk of interest
  * @alloc_bits: size of request in allocation units
+ 需要的大小
  * @align: alignment of area (max PAGE_SIZE bytes)
  * @pop_only: use populated regions only
  *
@@ -1139,12 +1157,19 @@ static int pcpu_find_block_fit(struct pcpu_chunk *chunk, int alloc_bits,
 }
 
 /*
+从pcp的chunk分配内存
+从位图搜索指定大小的空白区域
  * pcpu_find_zero_area - modified from bitmap_find_next_zero_area_off()
  * @map: the address to base the search on
+ 是chunk的alloc_map
  * @size: the bitmap size in bits
+ 表示可分配区域(以4为单位)的位图的大小
  * @start: the bitnumber to start searching at
+ 从位图的start开始搜索
  * @nr: the number of zeroed bits we're looking for
+ 要搜索的大小
  * @align_mask: alignment mask for zero area
+ 下面俩是要返回的值
  * @largest_off: offset of the largest area skipped
  * @largest_bits: size of the largest area skipped
  *
@@ -1195,6 +1220,7 @@ again:
 }
 
 /**
+从chunk分配alloc_bits大小的内存, start是从chunk的chunk_md搜索到的合适区域
  * pcpu_alloc_area - allocates an area from a pcpu_chunk
  * @chunk: chunk of interest
  * @alloc_bits: size of request in allocation units
@@ -1230,18 +1256,21 @@ static int pcpu_alloc_area(struct pcpu_chunk *chunk, int alloc_bits,
 	 */
 	end = min_t(int, start + alloc_bits + PCPU_BITMAP_BLOCK_BITS,
 		    pcpu_chunk_map_bits(chunk));
+	/* 这里搜索位图满足要求的空白区域, 返回搜索到的内存区域 */
 	bit_off = pcpu_find_zero_area(chunk->alloc_map, end, start, alloc_bits,
 				      align_mask, &area_off, &area_bits);
 	if (bit_off >= end)
 		return -1;
 
-	if (area_bits)
+	if (area_bits) /* 更新hint */
 		pcpu_block_update_scan(chunk, area_off, area_bits);
 
-	/* update alloc map */
+	/* update alloc map
+	更新位图,把这个区域标记为已分配 */
 	bitmap_set(chunk->alloc_map, bit_off, alloc_bits);
 
-	/* update boundary map */
+	/* update boundary map
+	bound_map是做, 以后 */
 	set_bit(bit_off, chunk->bound_map);
 	bitmap_clear(chunk->bound_map, bit_off + 1, alloc_bits - 1);
 	set_bit(bit_off + alloc_bits, chunk->bound_map);
@@ -1702,6 +1731,8 @@ static void pcpu_memcg_free_hook(struct pcpu_chunk *chunk, int off, size_t size)
 #endif /* CONFIG_MEMCG_KMEM */
 
 /**
+pcp的分配器
+是给pcp区域分配, 还是给pcp预分配内存?
  * pcpu_alloc - the percpu allocator
  * @size: size of area to allocate in bytes
  * @align: alignment of area (max PAGE_SIZE)
@@ -1761,6 +1792,7 @@ static void __percpu *pcpu_alloc(size_t size, size_t align, bool reserved,
 		return NULL;
 
 	if (!is_atomic) {
+		/* 如果gfp指定了GFP_KERNEL的路径 */
 		/*
 		 * pcpu_balance_workfn() allocates memory under this mutex,
 		 * and it may wait for memory reclaim. Allow current task
@@ -1776,16 +1808,20 @@ static void __percpu *pcpu_alloc(size_t size, size_t align, bool reserved,
 
 	spin_lock_irqsave(&pcpu_lock, flags);
 
-	/* serve reserved allocations from the reserved chunk if available */
+	/* serve reserved allocations from the reserved chunk if available
+	如果指定了从reserved分配内存, 就使用pcpu_reserved_chunk
+	20250608120038 */
 	if (reserved && pcpu_reserved_chunk) {
 		chunk = pcpu_reserved_chunk;
 
+		/* 从chunk的bitmap获取合适的区域 */
 		off = pcpu_find_block_fit(chunk, bits, bit_align, is_atomic);
 		if (off < 0) {
 			err = "alloc from reserved chunk failed";
 			goto fail_unlock;
 		}
 
+		/* 从chunk搜索并返回满足内存分配的区域 */
 		off = pcpu_alloc_area(chunk, bits, bit_align, off);
 		if (off >= 0)
 			goto area_found;
@@ -1913,6 +1949,8 @@ fail:
 }
 
 /**
+分配动态的pcpu区域?
+是指?
  * __alloc_percpu_gfp - allocate dynamic percpu area
  * @size: size of area to allocate in bytes
  * @align: alignment of area (max PAGE_SIZE)
