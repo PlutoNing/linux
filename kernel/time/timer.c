@@ -2270,6 +2270,8 @@ static void run_local_timers(void)
 /*
 update_process_times()函数根据时钟中断产生的位置（用户态 or 内核态），
 对用户或对系统进行相应的时间更新。
+===========================
+@user_tick: 表示是否处于用户模式. 1表示用户态tick, 0表示内核态tic
 ======================================
 什么时候调用这个函数?
 =========================================================================
@@ -2287,6 +2289,7 @@ void update_process_times(int user_tick)
 	account_process_tick(p, user_tick);
 	// 运行hrtimer与softirq相关的定时器
 	run_local_timers();
+	/*  */
 	rcu_sched_clock_irq(user_tick);
 #ifdef CONFIG_IRQ_WORK
 	if (in_irq())

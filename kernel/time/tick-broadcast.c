@@ -688,6 +688,7 @@ struct cpumask *tick_get_broadcast_oneshot_mask(void)
 }
 
 /*
+检查tick_broadcast_force_mask是否置位
  * Called before going idle with interrupts disabled. Checks whether a
  * broadcast event from the other core is about to happen. We detected
  * that in tick_broadcast_oneshot_control(). The callsite can use this

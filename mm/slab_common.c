@@ -988,6 +988,9 @@ void __init create_kmalloc_caches(slab_flags_t flags)
 	slab_state = UP;
 }
 
+/* kmalloc可能是slab也可能是页面
+其中页面类型的, 就是large_kmalloc
+其实就是直接分配释放页面 */
 void free_large_kmalloc(struct folio *folio, void *object)
 {
 	unsigned int order = folio_order(folio);
@@ -1001,6 +1004,7 @@ void free_large_kmalloc(struct folio *folio, void *object)
 
 	mod_lruvec_page_state(folio_page(folio, 0), NR_SLAB_UNRECLAIMABLE_B,
 			      -(PAGE_SIZE << order));
+	/* 归还到buddy */
 	__free_pages(folio_page(folio, 0), order);
 }
 
@@ -1052,6 +1056,7 @@ void *__kmalloc_node_track_caller(size_t size, gfp_t flags,
 EXPORT_SYMBOL(__kmalloc_node_track_caller);
 
 /**
+释放内存
  * kfree - free previously allocated memory
  * @object: pointer returned by kmalloc() or kmem_cache_alloc()
  *
@@ -1069,11 +1074,15 @@ void kfree(const void *object)
 		return;
 
 	folio = virt_to_folio(object);
+
+	/*分为slab和large类型的
+	如果是large的, 也就是说是页面, 这里释放页面到buddy */
 	if (unlikely(!folio_test_slab(folio))) {
 		free_large_kmalloc(folio, (void *)object);
 		return;
 	}
 
+	/* 这个路径就是slab类型的 */
 	slab = folio_slab(folio);
 	s = slab->slab_cache;
 	__kmem_cache_free(s, (void *)object, _RET_IP_);

@@ -852,7 +852,7 @@ static void tick_nohz_restart(struct tick_sched *ts, ktime_t now)
 	 */
 	ts->next_tick = 0;
 }
-
+/* local是否有TIMER_SOFTIRQ */
 static inline bool local_timer_softirq_pending(void)
 {
 	return local_softirq_pending() & BIT(TIMER_SOFTIRQ);
@@ -1092,7 +1092,7 @@ static void __tick_nohz_full_update_tick(struct tick_sched *ts,
 		tick_nohz_restart_sched_tick(ts, now);
 #endif
 }
-
+/* 以后 */
 static void tick_nohz_full_update_tick(struct tick_sched *ts)
 {
 	if (!tick_nohz_full_cpu(smp_processor_id()))
@@ -1280,12 +1280,16 @@ void tick_nohz_idle_enter(void)
 }
 
 /**
+中断结束的时候, 更新下次tick event
  * tick_nohz_irq_exit - update next tick event from interrupt exit
  *
  * When an interrupt fires while we are idle and it doesn't cause
  * a reschedule, it may still add, modify or delete a timer, enqueue
  * an RCU callback, etc...
  * So we need to re-calculate and reprogram the next tick event.
+ 如果在空闲状态下发生了中断，而且它没有导致重新调度，那么它可能仍然会添加、修改或删除一个定时器，
+ * 入队一个RCU回调等等...
+ 所以我们需要重新计算并重新编程下一个tick事件。
  */
 void tick_nohz_irq_exit(void)
 {
@@ -1413,7 +1417,7 @@ static void tick_nohz_account_idle_time(struct tick_sched *ts,
 		account_idle_ticks(ticks);
 }
 /* 
-如果当前的Tick确实是被停止调了，则调用__tick_nohz_idle_restart_tick函数恢复
+如果当前的Tick确实是被停止了，则调用__tick_nohz_idle_restart_tick函数恢复
 */
 void tick_nohz_idle_restart_tick(void)
 {
