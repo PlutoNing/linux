@@ -33,7 +33,7 @@ void disable_sched_clock_irqtime(void)
 {
 	sched_clock_irqtime = 0;
 }
-
+/* 统计进程的中断时间 */
 static void irqtime_account_delta(struct irqtime *irqtime, u64 delta,
 				  enum cpu_usage_stat idx)
 {
@@ -47,6 +47,7 @@ static void irqtime_account_delta(struct irqtime *irqtime, u64 delta,
 }
 
 /*
+统计进程的中断时间?
  * Called after incrementing preempt_count on {soft,}irq_enter
  * and before decrementing preempt_count on {soft,}irq_exit.
  */
@@ -70,6 +71,7 @@ void irqtime_account_irq(struct task_struct *curr, unsigned int offset)
 	 * We want to continue accounting softirq time to ksoftirqd thread
 	 * in that case, so as not to confuse scheduler with a special task
 	 * that do not consume any time, but still wants to run.
+	 这里统计中断时间
 	 */
 	if (pc & HARDIRQ_MASK)
 		irqtime_account_delta(irqtime, delta, CPUTIME_IRQ);

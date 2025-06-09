@@ -355,6 +355,7 @@ void rcu_note_context_switch(bool preempt)
 	 * section, and if that critical section was blocking the current
 	 * grace period, then the fact that the task has been enqueued
 	 * means that we continue to block the current grace period.
+	 检查触发rcu软中断
 	 */
 	rcu_qs();
 	if (rdp->cpu_no_qs.b.exp)
@@ -636,6 +637,8 @@ static void rcu_preempt_deferred_qs_handler(struct irq_work *iwp)
 }
 
 /*
+处理rcu_read_unlock_special()的特殊情况
+比如需要通知rcu core处理, 或者任务在rcu读侧临界区阻塞了
  * Handle special cases during rcu_read_unlock(), such as needing to
  * notify RCU core processing or task having blocked during the RCU
  * read-side critical section.
@@ -728,10 +731,14 @@ static void rcu_preempt_check_blocked_tasks(struct rcu_node *rnp)
 
 /*
  * Check for a quiescent state from the current CPU, including voluntary
- * context switches for Tasks RCU.  When a task blocks, the task is
+ * context switches for Tasks RCU.
+ 检查来自当前CPU的quiescent state, 包括任务rcu的自愿上下文切换
+ When a task blocks, the task is
  * recorded in the corresponding CPU's rcu_node structure, which is checked
  * elsewhere, hence this function need only check for quiescent states
  * related to the current CPU, not to those related to tasks.
+ 一个进程阻塞的时候, 会被记录到所在cpu的rnp
+ 因此这个函数只需要检查所在cpu的quiescent state, 而不需要检查任务相关的
  */
 static void rcu_flavor_sched_clock_irq(int user)
 {

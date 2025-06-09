@@ -299,11 +299,13 @@ enum cpuhp_sync_state {
 	SYNC_STATE_SHOULD_DIE,
 	SYNC_STATE_ALIVE,
 	SYNC_STATE_SHOULD_ONLINE,
+	/* 表示 */
 	SYNC_STATE_ONLINE,
 };
 
 #ifdef CONFIG_HOTPLUG_CORE_SYNC
 /**
+在cpu上下线时, 更新同步状态
  * cpuhp_ap_update_sync_state - Update synchronization state during bringup/teardown
  * @state:	The synchronization state to set
  *
@@ -1652,7 +1654,7 @@ void notify_cpu_starting(unsigned int cpu)
  * Called from the idle task. Wake up the controlling task which brings the
  * hotplug thread of the upcoming CPU up and then delegates the rest of the
  * online bringup to the hotplug thread.
-   由dile任务调用。唤醒控制任务，该任务将即将到来的CPU的热插拔线程唤醒，然后将在线
+   由idle任务调用。唤醒控制任务，该任务将即将到来的CPU的热插拔线程唤醒，然后将在线
    引导的其余部分委托给热插拔线程。
 
  */
@@ -1664,6 +1666,7 @@ void cpuhp_online_idle(enum cpuhp_state state)
 	if (state != CPUHP_AP_ONLINE_IDLE)
 		return;
 
+	/* 更新此cpu的cpuhp_state.ap_sync_state为SYNC_STATE_ONLINE */
 	cpuhp_ap_update_sync_state(SYNC_STATE_ONLINE);
 
 	/*

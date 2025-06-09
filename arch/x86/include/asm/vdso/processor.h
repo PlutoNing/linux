@@ -14,7 +14,7 @@ static __always_inline void rep_nop(void)
 {
 	asm volatile("rep; nop" ::: "memory");
 }
-/*  */
+/* 忙等 */
 static __always_inline void cpu_relax(void)
 {
 	rep_nop();

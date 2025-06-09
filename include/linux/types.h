@@ -211,6 +211,7 @@ struct ustat {
 };
 
 /**
+表示回调函数
  * struct callback_head - callback structure for use with RCU and task_work
  * @next: next update requests in a list
  * @func: actual update function to call after the grace period.

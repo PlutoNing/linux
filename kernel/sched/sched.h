@@ -1043,6 +1043,7 @@ struct rq {
 
 	struct task_struct __rcu	*curr;
 	struct task_struct	*idle;
+	/* rq的stop作用是 */
 	struct task_struct	*stop;
 	unsigned long		next_balance;
 	struct mm_struct	*prev_mm;

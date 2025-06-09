@@ -375,6 +375,7 @@ void __local_bh_enable_ip(unsigned long ip, unsigned int cnt)
 	 */
 	__preempt_count_sub(cnt - 1);
 
+	/* 不处于中断, 但是local有中断? */
 	if (unlikely(!in_interrupt() && local_softirq_pending())) {
 		/*
 		 * Run softirq if any pending. And do it in its own stack
@@ -417,6 +418,8 @@ static inline bool should_wake_ksoftirqd(void)
 	return true;
 }
 
+/* 执行软中断
+可能直接执行, 也可能通过ksoftirqd */
 static inline void invoke_softirq(void)
 {
 	if (!force_irqthreads() || !__this_cpu_read(ksoftirqd)) {
@@ -439,7 +442,8 @@ static inline void invoke_softirq(void)
 		wakeup_softirqd();
 	}
 }
-/* 如果有pending, 就在irq_stack执行do_softirq函数 */
+/*
+如果有pending, 就在irq_stack执行do_softirq函数 */
 asmlinkage __visible void do_softirq(void)
 {
 	__u32 pending;
@@ -570,6 +574,7 @@ restart:
 		pending >>= softirq_bit;
 	}
 
+	/* 如果这里是非PREEMPT_RT的ksoftirqd线程, 就检查要不要触发rcu软中断 */
 	if (!IS_ENABLED(CONFIG_PREEMPT_RT) &&
 	    __this_cpu_read(ksoftirqd) == current)
 		rcu_softirq_qs();
@@ -634,7 +639,9 @@ static inline void __irq_exit_rcu(void)
 #else
 	lockdep_assert_irqs_disabled();
 #endif
+/* 统计中断时间 */
 	account_hardirq_exit(current);
+	/*  */
 	preempt_count_sub(HARDIRQ_OFFSET);
 	if (!in_interrupt() && local_softirq_pending())
 		invoke_softirq();

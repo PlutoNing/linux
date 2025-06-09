@@ -99,7 +99,9 @@ static __always_inline unsigned char interrupt_context_level(void)
 
 	return level;
 }
-/* 展开为
+/*
+大于0的话表示处于nmi上下文
+展开为
 preempt_count() & (((1UL << (4)) - 1) << (((0 + 8) + 8) + 4))
 */
 #define nmi_count()	(preempt_count() & NMI_MASK)
@@ -109,9 +111,11 @@ preempt_count() & (((1UL << (4)) - 1) << (((0 + 8) + 8) + 4))
 #else
 # define softirq_count()	(preempt_count() & SOFTIRQ_MASK)
 #endif
+/*  */
 #define irq_count()	(nmi_count() | hardirq_count() | softirq_count())
 
 /*
+获取当前执行上下文的宏
  * Macros to retrieve the current execution context:
  *
  * in_nmi()		- We're in NMI context
@@ -133,6 +137,7 @@ preempt_count() & (((1UL << (4)) - 1) << (((0 + 8) + 8) + 4))
  */
 #define in_irq()		(hardirq_count())
 #define in_softirq()		(softirq_count())
+/*  */
 #define in_interrupt()		(irq_count())
 
 /*
@@ -310,6 +315,7 @@ do { \
 do { \
 	set_preempt_need_resched(); \
 } while (0)
+
 #define preempt_fold_need_resched() \
 do { \
 	if (tif_need_resched()) \

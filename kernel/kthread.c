@@ -540,6 +540,7 @@ EXPORT_SYMBOL(kthread_create_on_node);
 
 /**
 设置进程亲和的cpu
+设置进程的cpu掩码
  * @description: 
  * @param {cpumask} *mask, 新的亲和cpu掩码
  * @param {unsigned int} state
@@ -645,6 +646,7 @@ bool kthread_is_per_cpu(struct task_struct *p)
 }
 
 /**
+这个unpark好像就是清除KTHREAD_SHOULD_PARK然后唤醒
  * kthread_unpark - unpark a thread created by kthread_create().
  * @k:		thread created by kthread_create().
  *
@@ -654,19 +656,20 @@ bool kthread_is_per_cpu(struct task_struct *p)
  */
 void kthread_unpark(struct task_struct *k)
 {
+	/* kthread的引用存储在tsk的priv */
 	struct kthread *kthread = to_kthread(k);
 
 	/*
 	 * Newly created kthread was parked when the CPU was offline.
 	 * The binding was lost and we need to set it again.
-	 */
+	绑定到指定的cpu */
 	if (test_bit(KTHREAD_IS_PER_CPU, &kthread->flags))
 		__kthread_bind(k, kthread->cpu, TASK_PARKED);
 
 	clear_bit(KTHREAD_SHOULD_PARK, &kthread->flags);
 	/*
 	 * __kthread_parkme() will either see !SHOULD_PARK or get the wakeup.
-	 */
+	 唤醒*/
 	wake_up_state(k, TASK_PARKED);
 }
 EXPORT_SYMBOL_GPL(kthread_unpark);

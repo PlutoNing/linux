@@ -49,12 +49,18 @@ struct cpu_stopper {
 	停止cpu时执行的work，设置work的fn，塞到cpu上面执行
 	for stop_cpus */
 	unsigned long		caller;
+	/* 要执行的函数
+	执行stopper->works的时候, 可能指向stopper->works取出的work
+	*/
 	cpu_stop_fn_t		fn;
 };
-/*  */
+/* pcp的stopper
+实现 ​CPU 停止机制（CPU stop machinery）​.用于在特定 CPU 上执行原子性操作 */
 static DEFINE_PER_CPU(struct cpu_stopper, cpu_stopper);
 static bool stop_machine_initialized = false;
 
+/* 如果tsk是stopper的话
+打印 */
 void print_stop_info(const char *log_lvl, struct task_struct *task)
 {
 	/*
@@ -92,7 +98,9 @@ static void cpu_stop_signal_done(struct cpu_stop_done *done)
 		complete(&done->completion);
 }
 
-/* 停止cpu， stopper所属的cpu */
+/* 
+把work加入到stopper的works里面, 然后把stopper入队wakeq
+停止cpu， stopper所属的cpu */
 static void __cpu_stop_queue_work(struct cpu_stopper *stopper,
 					struct cpu_stop_work *work,
 					struct wake_q_head *wakeq)
@@ -292,7 +300,10 @@ static int multi_cpu_stop(void *data)
 	local_irq_restore(flags);
 	return err;
 }
-
+/* 
+把两个work加入到对应的stopper上面, 然后把两个stopper入队wakeq
+唤醒wakeq开始执行
+*/
 static int cpu_stop_queue_two_works(int cpu1, struct cpu_stop_work *work1,
 				    int cpu2, struct cpu_stop_work *work2)
 {
@@ -318,6 +329,7 @@ retry:
 		goto unlock;
 	}
 
+	/* 到这里两个stopper都是enabled */
 	/*
 	 * Ensure that if we race with __stop_cpus() the stoppers won't get
 	 * queued up in reverse order leading to system deadlock.
@@ -334,6 +346,7 @@ retry:
 	}
 
 	err = 0;
+	/* 把对应的work加入对应的stopper, 然后把两个stopper入队wakeq */
 	__cpu_stop_queue_work(stopper1, work1, &wakeq);
 	__cpu_stop_queue_work(stopper2, work2, &wakeq);
 
@@ -344,6 +357,7 @@ unlock:
 	if (unlikely(err == -EDEADLK)) {
 		preempt_enable();
 
+		/* 一直忙等 */
 		while (stop_cpus_in_progress)
 			cpu_relax();
 
@@ -356,6 +370,7 @@ unlock:
 	return err;
 }
 /**
+为什么需要停止两个cpu?
  * stop_two_cpus - stops two cpus
  * @cpu1: the cpu to stop
  * @cpu2: the other cpu to stop
@@ -379,6 +394,7 @@ int stop_two_cpus(unsigned int cpu1, unsigned int cpu2, cpu_stop_fn_t fn, void *
 		.active_cpus = cpumask_of(cpu1),
 	};
 
+	/* 这是俩独立的 */
 	work1 = work2 = (struct cpu_stop_work){
 		.fn = multi_cpu_stop,
 		.arg = &msdata,
@@ -391,6 +407,8 @@ int stop_two_cpus(unsigned int cpu1, unsigned int cpu2, cpu_stop_fn_t fn, void *
 
 	if (cpu1 > cpu2)
 		swap(cpu1, cpu2);
+	/* 在两个cpu的stopper里面执行这俩work
+	分别入队stopper, 然后把stopper入队执行 */
 	if (cpu_stop_queue_two_works(cpu1, &work1, cpu2, &work2))
 		return -ENOENT;
 
@@ -520,6 +538,9 @@ static int stop_cpus(const struct cpumask *cpumask, cpu_stop_fn_t fn, void *arg)
 	return ret;
 }
 
+/* 
+检测stopper还有没有需要执行的work
+stopper->works有work就应该执行 */
 static int cpu_stop_should_run(unsigned int cpu)
 {
 	struct cpu_stopper *stopper = &per_cpu(cpu_stopper, cpu);
@@ -531,7 +552,12 @@ static int cpu_stop_should_run(unsigned int cpu)
 	raw_spin_unlock_irqrestore(&stopper->lock, flags);
 	return run;
 }
-
+/* 
+static struct smp_hotplug_thread cpu_stop_threads
+的fn函数
+==========================================================
+作用是执行stopper->works里面的work
+*/
 static void cpu_stopper_thread(unsigned int cpu)
 {
 	struct cpu_stopper *stopper = &per_cpu(cpu_stopper, cpu);
@@ -540,6 +566,7 @@ static void cpu_stopper_thread(unsigned int cpu)
 repeat:
 	work = NULL;
 	raw_spin_lock_irq(&stopper->lock);
+	/* 如果有的话, 取出一个work */
 	if (!list_empty(&stopper->works)) {
 		work = list_first_entry(&stopper->works,
 					struct cpu_stop_work, list);
@@ -547,6 +574,7 @@ repeat:
 	}
 	raw_spin_unlock_irq(&stopper->lock);
 
+	/* 执行work */
 	if (work) {
 		cpu_stop_fn_t fn = work->fn;
 		void *arg = work->arg;
@@ -557,6 +585,7 @@ repeat:
 		stopper->caller = work->caller;
 		stopper->fn = fn;
 		preempt_count_inc();
+		/* 执行fn */
 		ret = fn(arg);
 		if (done) {
 			if (ret)
@@ -596,6 +625,7 @@ static void cpu_stop_park(unsigned int cpu)
 	WARN_ON(!list_empty(&stopper->works));
 }
 
+/* 唤醒stopper的线程 */
 void stop_machine_unpark(int cpu)
 {
 	struct cpu_stopper *stopper = &per_cpu(cpu_stopper, cpu);
@@ -605,19 +635,22 @@ void stop_machine_unpark(int cpu)
 }
 
 static struct smp_hotplug_thread cpu_stop_threads = {
-	.store			= &cpu_stopper.thread,
-	.thread_should_run	= cpu_stop_should_run,
-	.thread_fn		= cpu_stopper_thread,
-	.thread_comm		= "migration/%u",
-	.create			= cpu_stop_create,
-	.park			= cpu_stop_park,
-	.selfparking		= true,
+	.store = &cpu_stopper.thread,
+	/* 检测stopper还有没有需要执行的work */
+	.thread_should_run = cpu_stop_should_run,
+	/* 执行stopper的work */
+	.thread_fn = cpu_stopper_thread,
+	.thread_comm = "migration/%u",
+	.create = cpu_stop_create,
+	.park = cpu_stop_park,
+	.selfparking = true,
 };
-
+/* 初始化cpu_stop */
 static int __init cpu_stop_init(void)
 {
 	unsigned int cpu;
 
+	/* 1, 初始化每个cpu的stopper */
 	for_each_possible_cpu(cpu) {
 		struct cpu_stopper *stopper = &per_cpu(cpu_stopper, cpu);
 
@@ -625,7 +658,9 @@ static int __init cpu_stop_init(void)
 		INIT_LIST_HEAD(&stopper->works);
 	}
 
+	/* 2. 注册cpu_stop_threads, 里面就是一些检查和运行stopper->works的回调函数 */
 	BUG_ON(smpboot_register_percpu_thread(&cpu_stop_threads));
+	/* 3, 这里唤醒stopper->thread */
 	stop_machine_unpark(raw_smp_processor_id());
 	stop_machine_initialized = true;
 	return 0;

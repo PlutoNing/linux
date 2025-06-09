@@ -22,6 +22,7 @@ typedef int (*cpu_stop_fn_t)(void *arg);
 #ifdef CONFIG_SMP
 /*  */
 struct cpu_stop_work {
+	/* 用于链接到stopper->works */
 	struct list_head	list;		/* cpu_stopper->works */
 	cpu_stop_fn_t		fn;
 	unsigned long		caller;

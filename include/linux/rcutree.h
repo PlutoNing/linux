@@ -24,6 +24,7 @@ void rcu_cpu_stall_reset(void);
 void rcu_request_urgent_qs_task(struct task_struct *t);
 
 /*
+kvm使用的
  * Note a virtualization-based context switch.  This is simply a
  * wrapper around rcu_note_context_switch(), which allows TINY_RCU
  * to save a few bytes. The caller must have disabled interrupts.

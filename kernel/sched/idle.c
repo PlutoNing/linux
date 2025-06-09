@@ -135,6 +135,7 @@ static int call_cpuidle(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 }
 
 /**
+idle线程的主要函数
  * cpuidle_idle_call - the main idle function
  *
  * NOTE: no locks or semaphores should be used here
@@ -280,14 +281,18 @@ static void do_idle(void)
 		}
 
 		arch_cpu_idle_enter();
+		/* 好像也是空函数 */
 		rcu_nocb_flush_deferred_wakeup();
 
 		/*
-		 * In poll mode we reenable interrupts and spin. Also if we
+		 * In poll mode we reenable interrupts and spin.
+		 pollmode需要重启中断和自旋
+		 Also if we
 		 * detected in the wakeup from idle path that the tick
 		 * broadcast device expired for us, we don't want to go deep
 		 * idle as we know that the IPI is going to arrive right away.
-		 */
+		 如果在idle path的wakeup中检测到了td设备过期了, 也不进入deep idle
+		 因为ipi中断可能要来了? */
 		if (cpu_idle_force_poll || tick_check_broadcast_expired()) {
 			tick_nohz_idle_restart_tick();
 			cpu_idle_poll();
@@ -297,6 +302,7 @@ static void do_idle(void)
 		arch_cpu_idle_exit();
 	}
 
+	/* 到这里说明need_resched了? */
 	/*
 	 * Since we fell out of the loop above, we know TIF_NEED_RESCHED must
 	 * be set, propagate it into PREEMPT_NEED_RESCHED.
@@ -306,6 +312,7 @@ static void do_idle(void)
 	 */
 	preempt_set_need_resched();
 	tick_nohz_idle_exit();
+	/* 清除TIF_POLLING_NRFLAG */
 	__current_clr_polling();
 
 	/*
@@ -318,6 +325,7 @@ static void do_idle(void)
 	/*
 	 * RCU relies on this call to be done outside of an RCU read-side
 	 * critical section.
+	 rcu需要这个调用在读临界区之外完成
 	 */
 	flush_smp_call_function_queue();
 	schedule_idle();

@@ -31,7 +31,7 @@ static __always_inline void __current_set_polling(void)
 	arch_set_bit(TIF_POLLING_NRFLAG,
 		     (unsigned long *)(&current_thread_info()->flags));
 }
-
+/* 清除tif的TIF_POLLING_NRFLAG标志 */
 static __always_inline void __current_clr_polling(void)
 {
 	arch_clear_bit(TIF_POLLING_NRFLAG,
