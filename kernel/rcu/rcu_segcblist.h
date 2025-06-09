@@ -28,7 +28,8 @@ void rcu_cblist_flush_enqueue(struct rcu_cblist *drclp,
 struct rcu_head *rcu_cblist_dequeue(struct rcu_cblist *rclp);
 
 /*
- * Is the specified rcu_segcblist structure empty?
+检查cblist是不是空的
+ * Is the specified -- rcu_segcblist structure empty?
  *
  * But careful!  The fact that the ->head field is NULL does not
  * necessarily imply that there are no callbacks associated with

@@ -113,6 +113,7 @@ extern void ct_idle_enter(void);
 extern void ct_idle_exit(void);
 
 /*20250601004617
+检查当前cpu是否处于类似idle,下线,内核的entry/exit之类的状态
  * Is the current CPU in an extended quiescent state?
  *
  * No ordering, as we are sampling CPU-local information.

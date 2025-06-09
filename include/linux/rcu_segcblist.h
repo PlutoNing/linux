@@ -208,7 +208,7 @@ struct rcu_cblist {
 /* 表示rcu的cblist */
 struct rcu_segcblist {
 	struct rcu_head *head;
-	/* 二维数组, tails->segs->cb ?
+	/* 像是一个数组链表 ?
 	一组回调函数的类型 */
 	struct rcu_head **tails[RCU_CBLIST_NSEGS];
 	/* 对应上面那个每个类型的gp_seq */

@@ -80,6 +80,9 @@ void rcu_sched_clock_irq(int user)
 }
 
 /*
+回收指定的cb
+要么是通过调用func函数
+要么是kfree的情况, 释放.
  * Reclaim the specified callback, either by invoking it for non-kfree cases or
  * freeing it directly (for kfree). Return true if kfreeing, false otherwise.
  */
@@ -104,7 +107,10 @@ static inline bool rcu_reclaim_tiny(struct rcu_head *head)
 	return false;
 }
 
-/* Invoke the RCU callbacks whose grace period has elapsed.  */
+/*
+rcu的软中断的回调函数
+加入新cb时, 如果cpu处于idle的话, 可能会调用这个软中断
+Invoke the RCU callbacks whose grace period has elapsed.  */
 static __latent_entropy void rcu_process_callbacks(struct softirq_action *unused)
 {
 	struct rcu_head *next, *list;
@@ -117,6 +123,7 @@ static __latent_entropy void rcu_process_callbacks(struct softirq_action *unused
 		local_irq_restore(flags);
 		return;
 	}
+	/* 20250606133727 */
 	list = rcu_ctrlblk.rcucblist;
 	rcu_ctrlblk.rcucblist = *rcu_ctrlblk.donetail;
 	*rcu_ctrlblk.donetail = NULL;
@@ -131,6 +138,7 @@ static __latent_entropy void rcu_process_callbacks(struct softirq_action *unused
 		prefetch(next);
 		debug_rcu_head_unqueue(list);
 		local_bh_disable();
+		/* 回收? */
 		rcu_reclaim_tiny(list);
 		local_bh_enable();
 		list = next;
@@ -260,6 +268,7 @@ void kvfree_call_rcu(struct rcu_head *head, void *ptr)
 EXPORT_SYMBOL_GPL(kvfree_call_rcu);
 #endif
 
+/* 初始化rcu软中断 */
 void __init rcu_init(void)
 {
 	open_softirq(RCU_SOFTIRQ, rcu_process_callbacks);

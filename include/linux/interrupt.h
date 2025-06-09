@@ -549,9 +549,8 @@ DECLARE_STATIC_KEY_FALSE(force_irqthreads_key);
    al. should be converted to tasklets, not to softirqs.
  */
 
-enum
-{
-	HI_SOFTIRQ=0,
+enum {
+	HI_SOFTIRQ = 0,
 	TIMER_SOFTIRQ, // 表示timer的softirq
 	NET_TX_SOFTIRQ,
 	NET_RX_SOFTIRQ,
@@ -560,7 +559,8 @@ enum
 	TASKLET_SOFTIRQ,
 	SCHED_SOFTIRQ,
 	HRTIMER_SOFTIRQ,
-	RCU_SOFTIRQ,    /* Preferable RCU should always be the last softirq */
+	/* invoke_rcu_core的软中断 */
+	RCU_SOFTIRQ, /* Preferable RCU should always be the last softirq */
 
 	NR_SOFTIRQS
 };

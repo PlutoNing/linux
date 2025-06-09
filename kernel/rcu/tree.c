@@ -219,6 +219,7 @@ EXPORT_SYMBOL_GPL(rcu_get_gp_kthreads_prio);
 #define PER_RCU_NODE_PERIOD 3	/* Number of grace periods between delays for debugging. */
 
 /*
+检查现在是不是处于gp
  * Return true if an RCU grace period is in progress.  The READ_ONCE()s
  * permit this function to be invoked without holding the root rcu_node
  * structure's ->lock, but of course results can be subject to change.
@@ -686,6 +687,9 @@ static void rcu_disable_urgency_upon_qs(struct rcu_data *rdp)
 }
 
 /**
+检查当前cpu是否允许读侧临界区
+返回真表示允许进入读侧临界区
+如果当前cpu处于dynticks idle状态, 则返回假,在内核的entry/exit代码中,cpu下线,返回false
  * rcu_is_watching - RCU read-side critical sections permitted on current CPU?
  *
  * Return @true if RCU is watching the running CPU and @false otherwise.
@@ -958,7 +962,10 @@ static void trace_rcu_this_gp(struct rcu_node *rnp, struct rcu_data *rdp,
 }
 
 /*
-请求一个gp的开始
+请求一个gp的开始, 遍历rnp层级,设置rnp->gp_seq_needed
+然后置位rcu_state.gp_flags的init flag
+返回true表示需要开始一个gp?
+==================
  * rcu_start_this_gp - Request the start of a particular grace period
  * @rnp_start: The leaf node of the CPU from which to start.
  rnp是
@@ -1003,7 +1010,8 @@ static bool rcu_start_this_gp(struct rcu_node *rnp_start, struct rcu_data *rdp,
 	 */
 	raw_lockdep_assert_held_rcu_node(rnp_start);
 	trace_rcu_this_gp(rnp_start, rdp, gp_seq_req, TPS("Startleaf"));
-	/* 扫描rnp_start的父层级 */
+	/* 扫描rnp_start的父层级
+	主要是处理每一个WRITE_ONCE(rnp->gp_seq_needed, gp_seq_req); */
 	for (rnp = rnp_start; 1; rnp = rnp->parent) {
 		if (rnp != rnp_start)
 			raw_spin_lock_rcu_node(rnp);
@@ -1015,6 +1023,7 @@ static bool rcu_start_this_gp(struct rcu_node *rnp_start, struct rcu_data *rdp,
 					  TPS("Prestarted"));
 			goto unlock_out;
 		}
+		/* 说明这个rnp的gp还没开始 */
 		WRITE_ONCE(rnp->gp_seq_needed, gp_seq_req);
 		if (rcu_seq_state(rcu_seq_current(&rnp->gp_seq))) {
 			/*
@@ -1033,14 +1042,18 @@ static bool rcu_start_this_gp(struct rcu_node *rnp_start, struct rcu_data *rdp,
 			break;  /* At root, and perhaps also leaf. */
 	}
 
-	/* If GP already in progress, just leave, otherwise start one. */
+	/* If GP already in progress, just leave, otherwise start one.
+	如果gp已经开始了 */
 	if (rcu_gp_in_progress()) {
 		trace_rcu_this_gp(rnp, rdp, gp_seq_req, TPS("Startedleafroot"));
 		goto unlock_out;
 	}
+	/* 现在还没有处于gp, 开始一个? */
 	trace_rcu_this_gp(rnp, rdp, gp_seq_req, TPS("Startedroot"));
+	/*  */
 	WRITE_ONCE(rcu_state.gp_flags, rcu_state.gp_flags | RCU_GP_FLAG_INIT);
 	WRITE_ONCE(rcu_state.gp_req_activity, jiffies);
+	/*  */
 	if (!READ_ONCE(rcu_state.gp_kthread)) {
 		trace_rcu_this_gp(rnp, rdp, gp_seq_req, TPS("NoGPkthread"));
 		goto unlock_out;
@@ -1048,6 +1061,10 @@ static bool rcu_start_this_gp(struct rcu_node *rnp_start, struct rcu_data *rdp,
 	trace_rcu_grace_period(rcu_state.name, data_race(rcu_state.gp_seq), TPS("newreq"));
 	ret = true;  /* Caller must wake GP kthread. */
 unlock_out:
+/*
+	case1 如果这个rnp的gp已经开始了
+ case2 如果rcu_gp_in_progress()了, 也到这里
+ */
 	/* Push furthest requested GP to leaf node and rcu_data structure. */
 	if (ULONG_CMP_LT(gp_seq_req, rnp->gp_seq_needed)) {
 		WRITE_ONCE(rnp_start->gp_seq_needed, rnp->gp_seq_needed);
@@ -1108,6 +1125,12 @@ static void rcu_gp_kthread_wake(void)
 }
 
 /*
+请求gp的开始
+====================
+返回真，说明确实找到了rdp->cblist里面的不为空的目标类型,进行了移动,然后也把那些被移动
+的类型的slot设置为了NEXT_TAIL.
+然后设置rnp层级的rnp->gp_seq_needed, 设置rcustate的init flag
+==========================
  * If there is room, assign a ->gp_seq number to any callbacks on this
  * CPU that have not already been assigned.
  如果有空间的话, 给cpu上面还没有gpseq的cb分配一个gp_seq号
@@ -1151,11 +1174,13 @@ static bool rcu_accelerate_cbs(struct rcu_node *rnp, struct rcu_data *rdp)
 	 */
 	/*  */
 	gp_seq_req = rcu_seq_snap(&rcu_state.gp_seq);
-	/* 这里是找到一个目标类型, 把目标类型之后的回调都合并进去 */
+	/* 这里是找到一个目标类型, 把rdp->cblist目标类型之后的回调都合并进去 */
 	if (rcu_segcblist_accelerate(&rdp->cblist, gp_seq_req))
 		ret = rcu_start_this_gp(rnp, rdp, gp_seq_req);
-/* 返回真，说明确实找到了这个不为空的目标类型,进行了移动,然后也把那些被移动
-的类型的slot设置为了NEXT_TAIL. */
+	/*  返回真，说明确实找到了这个不为空的目标类型,进行了移动,然后也把那些被移动
+		的类型的slot设置为了NEXT_TAIL.
+		然后设置rnp层级的rnp->gp_seq_needed, 设置rcustate的init flag
+ */
 	/* Trace depending on how much we were able to accelerate. */
 	if (rcu_segcblist_restempty(&rdp->cblist, RCU_WAIT_TAIL))
 		trace_rcu_grace_period(rcu_state.name, gp_seq_req, TPS("AccWaitCB"));
@@ -1195,6 +1220,9 @@ static void rcu_accelerate_cbs_unlocked(struct rcu_node *rnp,
 }
 
 /*
+检查rdp->cblist的每个seg, seq过大的移动到RCU_DONE_TAIL
+然后主要是accelerate此rdp的cb, 开启rnp层级的gp
+===========================================================
 rnp属于rdp
 这里rnp刚刚增加了gp_seq,rdp还没跟上, 算一个gp刚刚结束
 如果rdp还有cblist的话,调用这个函数来把
@@ -1223,11 +1251,13 @@ static bool rcu_advance_cbs(struct rcu_node *rnp, struct rcu_data *rdp)
 	/*
 	 * Find all callbacks whose ->gp_seq numbers indicate that they
 	 * are ready to invoke, and put them into the RCU_DONE_TAIL sublist.
-	 通过cb的gp_seq来判断cb是否可以被调用然后把这些cb放到RCU_DONE_TAIL子列表中
+	 检查rdp->cblist的每个seg, seq过大的移动到RCU_DONE_TAIL
 	 */
 	rcu_segcblist_advance(&rdp->cblist, rnp->gp_seq);
 
-	/* Classify any remaining callbacks. */
+	/* Classify any remaining callbacks.
+	这里主要是accelerate此rdp的cb
+	然后开启rnp层级的gp */
 	return rcu_accelerate_cbs(rnp, rdp);
 }
 
@@ -2645,6 +2675,10 @@ static void rcu_wake_cond(struct task_struct *t, int status)
 		wake_up_process(t);
 }
 
+/* 加入新cb时,如果cpu处于idle的话,会调用这个函数(也可能是通过软中断代替这个路径)
+逻辑:
+置位rcu_data.rcu_cpu_has_work
+唤醒rcu_data.rcu_cpu_kthread_task */
 static void invoke_rcu_core_kthread(void)
 {
 	struct task_struct *t;
@@ -2659,6 +2693,7 @@ static void invoke_rcu_core_kthread(void)
 }
 
 /*
+加入新cb时,如果cpu处于idle的话,会调用这个函数
  * Wake up this CPU's rcuc kthread to do RCU core processing.
  */
 static void invoke_rcu_core(void)
@@ -2745,6 +2780,7 @@ static int __init rcu_spawn_core_kthreads(void)
 }
 
 /*
+刚刚把head加入rdp->cblist
  * Handle any core-RCU processing required by a call_rcu() invocation.
  */
 static void __call_rcu_core(struct rcu_data *rdp, struct rcu_head *head,
@@ -2754,7 +2790,7 @@ static void __call_rcu_core(struct rcu_data *rdp, struct rcu_head *head,
 	 * If called from an extended quiescent state, invoke the RCU
 	 * core in order to force a re-evaluation of RCU's idleness.
 	 */
-	if (!rcu_is_watching())
+	if (!rcu_is_watching())/* 说明现在cpu在idle什么的 */
 		invoke_rcu_core();
 
 	/* If interrupts were disabled or CPU offline, don't invoke RCU core. */
@@ -2838,6 +2874,13 @@ static void check_cb_ovld(struct rcu_data *rdp)
 	raw_spin_unlock_rcu_node(rnp);
 }
 
+/**
+ * @description: 用于将回调函数安全地注册到 RCU 系统中，以便在宽限期结束后执行
+ * @param {rcu_head} *head
+ * @param {rcu_callback_t} func
+ * @param {bool} lazy_in
+ * @return {*}
+ */
 static void
 __call_rcu_common(struct rcu_head *head, rcu_callback_t func, bool lazy_in)
 {
@@ -2863,6 +2906,7 @@ __call_rcu_common(struct rcu_head *head, rcu_callback_t func, bool lazy_in)
 		WRITE_ONCE(head->func, rcu_leak_callback);
 		return;
 	}
+	/* 初始化rcu->head */
 	head->func = func;
 	head->next = NULL;
 	kasan_record_aux_stack_noalloc(head);
@@ -2870,8 +2914,10 @@ __call_rcu_common(struct rcu_head *head, rcu_callback_t func, bool lazy_in)
 	rdp = this_cpu_ptr(&rcu_data);
 	lazy = lazy_in && !rcu_async_should_hurry();
 
-	/* Add the callback to our list. */
-	if (unlikely(!rcu_segcblist_is_enabled(&rdp->cblist))) {
+	/* Add the callback to our list.
+	初始化rdp->cblist */
+	if (unlikely(!rcu_segcblist_is_enabled(
+		&rdp->cblist))) {
 		// This can trigger due to call_rcu() from offline CPU:
 		WARN_ON_ONCE(rcu_scheduler_active != RCU_SCHEDULER_INACTIVE);
 		WARN_ON_ONCE(!rcu_is_watching());
@@ -2885,6 +2931,7 @@ __call_rcu_common(struct rcu_head *head, rcu_callback_t func, bool lazy_in)
 	if (rcu_nocb_try_bypass(rdp, head, &was_alldone, flags, lazy))
 		return; // Enqueued onto ->nocb_bypass, so just leave.
 	// If no-CBs CPU gets here, rcu_nocb_try_bypass() acquired ->nocb_lock.
+	/* 加入cblist */
 	rcu_segcblist_enqueue(&rdp->cblist, head);
 	if (__is_kvfree_rcu_offset((unsigned long)func))
 		trace_rcu_kvfree_callback(rcu_state.name, head,

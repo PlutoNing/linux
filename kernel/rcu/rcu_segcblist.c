@@ -236,6 +236,7 @@ void rcu_segcblist_inc_len(struct rcu_segcblist *rsclp)
 }
 
 /*
+初始化一个空的rdp->cblist
  * Initialize an rcu_segcblist structure.
  */
 void rcu_segcblist_init(struct rcu_segcblist *rsclp)
@@ -338,6 +339,7 @@ bool rcu_segcblist_nextgp(struct rcu_segcblist *rsclp, unsigned long *lp)
 }
 
 /*
+把rcu_head加入cblist
  * Enqueue the specified callback onto the specified rcu_segcblist
  * structure, updating accounting as needed.  Note that the ->len
  * field may be accessed locklessly, hence the WRITE_ONCE().
@@ -489,7 +491,7 @@ void rcu_segcblist_insert_pend_cbs(struct rcu_segcblist *rsclp,
 }
 
 /*
-感觉就是移动rdp的cblist的cb, 检查那些可以调用的
+检查tails的每个seg的cb, seq过大的移动到RCU_DONE_TAIL
 ================
 rsclp是rdp->cblist
 seq是rdp的rnp的新gp_seq, 刚刚开始了一个新的gp
@@ -509,14 +511,14 @@ void rcu_segcblist_advance(struct rcu_segcblist *rsclp, unsigned long seq)
 		return;
 
 	/*
-	检查回调类型, 符合要求的(可以调用)移动到RCU_DONE_TAIL
+	检查tails的每个seg, seq过大的移动到RCU_DONE_TAIL
 	 * Find all callbacks whose ->gp_seq numbers indicate that they
 	 * are ready to invoke, and put them into the RCU_DONE_TAIL segment.
 	 */
 	for (i = RCU_WAIT_TAIL; i < RCU_NEXT_TAIL; i++) {
 		if (ULONG_CMP_LT(seq, rsclp->gp_seq[i]))
 			break;
-		/* 到这里说明seq>rsclp->gp_seq[i], 说明这个i类型的cb宽限期过去了?
+		/* 到这里说明seq > rsclp->gp_seq[i], 说明这个i类型的段的cb宽限期过去了?
 		可以调用了? */
 		WRITE_ONCE(rsclp->tails[RCU_DONE_TAIL], rsclp->tails[i]);
 		/* 移动到RCU_DONE_TAIL */
@@ -537,8 +539,8 @@ void rcu_segcblist_advance(struct rcu_segcblist *rsclp, unsigned long seq)
 	 * and a non-empty RCU_NEXT_READY_TAIL.  If so, copy the
 	 * RCU_NEXT_READY_TAIL segment to fill the RCU_WAIT_TAIL gap
 	 * created by the now-ready-to-invoke segments.
-	 刚刚移动了cb, 所以可能有空的RCU_WAIT_TAIL
-	 * 和非空的RCU_NEXT_READY_TAIL. 如果是这样, 复制RCU_NEXT_READY_TAIL,
+	 刚刚移动了cb, 所以可能有空的RCU_WAIT_TAIL和
+	 非空的RCU_NEXT_READY_TAIL. 如果是这样, 复制RCU_NEXT_READY_TAIL,
 	 */
 	for (j = RCU_WAIT_TAIL; i < RCU_NEXT_TAIL; i++, j++) {
 		if (rsclp->tails[j] == rsclp->tails[RCU_NEXT_TAIL])

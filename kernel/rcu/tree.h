@@ -374,6 +374,7 @@ struct rcu_state {
 	/* 最长的gp耗时 */
 	unsigned long gp_max;			/* Maximum GP duration in */
 						/*  jiffies. */
+	/* 如果应该开始gp的时候,检测到字段为空,放弃开始gp */
 	struct task_struct *gp_kthread;		/* Task for grace periods. */
 	/* gp线程等待队列 */
 	struct swait_queue_head gp_wq;		/* Where GP task waits. */
@@ -446,6 +447,7 @@ struct rcu_state {
 };
 
 /* Values for rcu_state structure's gp_flags field. */
+/* 需要初始化gp? */
 #define RCU_GP_FLAG_INIT 0x1	/* Need grace-period initialization. */
 /* gp qs forcing是什么
 主动要求fqs scan */

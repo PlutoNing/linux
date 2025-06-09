@@ -72,6 +72,8 @@ static inline unsigned long rcu_seq_ctr(unsigned long s)
 }
 
 /*
+读取出编码在gp_seq的这什么state
+(最右边两bit用做编码这个了state了)
  * Return the state portion of a sequence number previously returned
  * by rcu_seq_snap() or rcu_seq_current().
  */
@@ -159,7 +161,9 @@ static inline unsigned long rcu_seq_current(unsigned long *sp)
 参数
 sp是某个遍历到的rnp->gp_seq的
 s是之前某个时候的?或者现在的?&rcu_state.gp_seq
+===================================
 检查这个gp关联的读侧更新是不是已经开始了
+如果rnp较小,说明gp已经开始了
  * Given a snapshot from rcu_seq_snap(), determine whether or not the
  * corresponding update-side operation has started.
  */
