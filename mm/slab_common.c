@@ -1128,6 +1128,7 @@ void *kmalloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
 }
 EXPORT_SYMBOL(kmalloc_trace);
 
+/* kmalloc从指定的slab分配内存 */
 void *kmalloc_node_trace(struct kmem_cache *s, gfp_t gfpflags,
 			 int node, size_t size)
 {
@@ -1168,6 +1169,7 @@ static void *__kmalloc_large_node(size_t size, gfp_t flags, int node)
 		flags = kmalloc_fix_flags(flags);
 
 	flags |= __GFP_COMP;
+	/* 分配页面 */
 	page = alloc_pages_node(node, flags, order);
 	if (page) {
 		ptr = page_address(page);

@@ -261,6 +261,7 @@ struct folio *__folio_alloc_node(gfp_t gfp, unsigned int order, int nid)
 }
 
 /*
+优先从指定的nid分配内存
  * Allocate pages, preferring the node given as nid. When nid == NUMA_NO_NODE,
  * prefer the current CPU's closest node. Otherwise node must be valid and
  * online.
