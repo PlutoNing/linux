@@ -3484,6 +3484,7 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 }
 
 #ifdef CONFIG_NUMA_BALANCING
+/* 移动进程到指定cpu */
 static void __migrate_swap_task(struct task_struct *p, int cpu)
 {
 	if (task_on_rq_queued(p)) {
@@ -3518,7 +3519,10 @@ struct migration_swap_arg {
 	struct task_struct *src_task, *dst_task;
 	int src_cpu, dst_cpu;
 };
-
+/* 
+用于互换两个进程的cpu
+停止两个cpu, 然后运行这函数
+*/
 static int migrate_swap_stop(void *data)
 {
 	struct migration_swap_arg *arg = data;
@@ -3552,6 +3556,7 @@ static int migrate_swap_stop(void *data)
 }
 
 /*
+交换两个进程的cpu
  * Cross migrate two tasks
  */
 int migrate_swap(struct task_struct *cur, struct task_struct *p,
@@ -3560,6 +3565,7 @@ int migrate_swap(struct task_struct *cur, struct task_struct *p,
 	struct migration_swap_arg arg;
 	int ret = -EINVAL;
 
+	/* 描述一个交换移动进程cpu的参数结构体 */
 	arg = (struct migration_swap_arg){
 		.src_task = cur,
 		.src_cpu = curr_cpu,
@@ -3573,7 +3579,7 @@ int migrate_swap(struct task_struct *cur, struct task_struct *p,
 	/*
 	 * These three tests are all lockless; this is OK since all of them
 	 * will be re-checked with proper locks held further down the line.
-	 */
+	 下面进行一些检查*/
 	if (!cpu_active(arg.src_cpu) || !cpu_active(arg.dst_cpu))
 		goto out;
 
@@ -3584,6 +3590,7 @@ int migrate_swap(struct task_struct *cur, struct task_struct *p,
 		goto out;
 
 	trace_sched_swap_numa(cur, arg.src_cpu, p, arg.dst_cpu);
+	/* 停止两个cpu, 然后运行fn */
 	ret = stop_two_cpus(arg.dst_cpu, arg.src_cpu, migrate_swap_stop, &arg);
 
 out:
@@ -3740,7 +3747,8 @@ int select_task_rq(struct task_struct *p, int cpu, int wake_flags)
 
 	return cpu;
 }
-
+/* 
+设置cpu_rq(cpu)->stop这个进程 */
 void sched_set_stop_task(int cpu, struct task_struct *stop)
 {
 	static struct lock_class_key stop_pi_lock;
@@ -6753,6 +6761,7 @@ static void __sched notrace __schedule(unsigned int sched_mode)
 		hrtick_clear(rq);
 
 	local_irq_disable();
+	/* 这里会检查一下触发rcu软中断 */
 	rcu_note_context_switch(!!sched_mode);
 
 	/*

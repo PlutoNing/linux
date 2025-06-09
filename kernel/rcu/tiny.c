@@ -29,14 +29,17 @@
 
 /* Global control variables for rcupdate callback mechanism. */
 struct rcu_ctrlblk {
+	/* 表示一串回调函数 */
 	struct rcu_head *rcucblist;	/* List of pending callbacks (CBs). */
 	struct rcu_head **donetail;	/* ->next pointer of last "done" CB. */
 	struct rcu_head **curtail;	/* ->next pointer of last CB. */
+	/* 每次触发了rcu软中断之后这里+2 */
 	unsigned long gp_seq;		/* Grace-period counter. */
 };
 
 /* Definition for rcupdate control block.
-call_rcu函数会把rcu_head初始化好之后加塞到curtail */
+call_rcu函数会把rcu_head初始化好之后加塞到curtail
+里面的rcu_ctrlblk.rcucblist成员是一串回调函数 */
 static struct rcu_ctrlblk rcu_ctrlblk = {
 	.donetail	= &rcu_ctrlblk.rcucblist,
 	.curtail	= &rcu_ctrlblk.rcucblist,
@@ -49,12 +52,17 @@ void rcu_barrier(void)
 }
 EXPORT_SYMBOL(rcu_barrier);
 
-/* Record an rcu quiescent state.  */
+/*
+检查rcu_ctrlblk.rcucblist有没有需要处理的cb
+要的话就触发rcu软中断
+Record an rcu quiescent state.  */
 void rcu_qs(void)
 {
 	unsigned long flags;
 
 	local_irq_save(flags);
+	/* 现在rcu_ctrlblk.rcucblist里面有了pending的rcu回调
+	触发rcu软中断来处理和调用这些回调 */
 	if (rcu_ctrlblk.donetail != rcu_ctrlblk.curtail) {
 		rcu_ctrlblk.donetail = rcu_ctrlblk.curtail;
 		raise_softirq_irqoff(RCU_SOFTIRQ);
@@ -80,6 +88,8 @@ void rcu_sched_clock_irq(int user)
 }
 
 /*
+算是执行功能,调用func, 或者回收内存
+===========================
 回收指定的cb
 要么是通过调用func函数
 要么是kfree的情况, 释放.
@@ -94,12 +104,15 @@ static inline bool rcu_reclaim_tiny(struct rcu_head *head)
 	rcu_lock_acquire(&rcu_callback_map);
 	if (__is_kvfree_rcu_offset(offset)) {
 		trace_rcu_invoke_kvfree_callback("", head, offset);
+		/* 释放内存
+		没有调用cb? */
 		kvfree((void *)head - offset);
 		rcu_lock_release(&rcu_callback_map);
 		return true;
 	}
 
 	trace_rcu_invoke_callback("", head);
+	/* 调用并清空回调 */
 	f = head->func;
 	WRITE_ONCE(head->func, (rcu_callback_t)0L);
 	f(head);
@@ -108,6 +121,8 @@ static inline bool rcu_reclaim_tiny(struct rcu_head *head)
 }
 
 /*
+处理和调用rcu_ctrlblk.rcucblist的回调函数
+=================================================
 rcu的软中断的回调函数
 加入新cb时, 如果cpu处于idle的话, 可能会调用这个软中断
 Invoke the RCU callbacks whose grace period has elapsed.  */
@@ -118,12 +133,13 @@ static __latent_entropy void rcu_process_callbacks(struct softirq_action *unused
 
 	/* Move the ready-to-invoke callbacks to a local list. */
 	local_irq_save(flags);
+	/* 如果是空的 */
 	if (rcu_ctrlblk.donetail == &rcu_ctrlblk.rcucblist) {
 		/* No callbacks ready, so just leave. */
 		local_irq_restore(flags);
 		return;
 	}
-	/* 20250606133727 */
+	/* 取下一串回调函数 */
 	list = rcu_ctrlblk.rcucblist;
 	rcu_ctrlblk.rcucblist = *rcu_ctrlblk.donetail;
 	*rcu_ctrlblk.donetail = NULL;
@@ -132,13 +148,14 @@ static __latent_entropy void rcu_process_callbacks(struct softirq_action *unused
 	rcu_ctrlblk.donetail = &rcu_ctrlblk.rcucblist;
 	local_irq_restore(flags);
 
-	/* Invoke the callbacks on the local list. */
+	/* Invoke the callbacks on the local list.
+	现在处理这一串回调函数 */
 	while (list) {
 		next = list->next;
 		prefetch(next);
 		debug_rcu_head_unqueue(list);
 		local_bh_disable();
-		/* 回收? */
+		/* 回收? 这里调用func */
 		rcu_reclaim_tiny(list);
 		local_bh_enable();
 		list = next;

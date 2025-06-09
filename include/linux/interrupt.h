@@ -560,7 +560,8 @@ enum {
 	SCHED_SOFTIRQ,
 	HRTIMER_SOFTIRQ,
 	/* invoke_rcu_core的软中断
-	触发的时候调用rcu_process_callbacks处理rcu_ctrlblk.rcucblist上面的回调函数 */
+	触发的时候调用rcu_process_callbacks处理rcu_ctrlblk.rcucblist上面的回调函数
+	20250610012033 */
 	RCU_SOFTIRQ, /* Preferable RCU should always be the last softirq */
 
 	NR_SOFTIRQS

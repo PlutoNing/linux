@@ -241,7 +241,7 @@ static long rcu_get_n_cbs_cpu(int cpu)
 		return rcu_segcblist_n_cbs(&rdp->cblist);
 	return 0;
 }
-
+/* 检查要不要触发rcu软中断 */
 void rcu_softirq_qs(void)
 {
 	rcu_qs();
@@ -2433,6 +2433,8 @@ static void rcu_do_batch(struct rcu_data *rdp)
 }
 
 /*
+update_process_times会调用这个,
+user表示是否处于用户模式
  * This function is invoked from each scheduling-clock interrupt,
  * and checks to see if this CPU is in a non-context-switch quiescent
  * state, for example, user mode or idle loop.  It also schedules RCU
@@ -2455,7 +2457,8 @@ void rcu_sched_clock_irq(int user)
 	trace_rcu_utilization(TPS("Start scheduler-tick"));
 	lockdep_assert_irqs_disabled();
 	raw_cpu_inc(rcu_data.ticks_this_gp);
-	/* The load-acquire pairs with the store-release setting to true. */
+	/* The load-acquire pairs with the store-release setting to true.
+	以后 */
 	if (smp_load_acquire(this_cpu_ptr(&rcu_data.rcu_urgent_qs))) {
 		/* Idle and userspace execution already are quiescent states. */
 		if (!rcu_is_cpu_rrupt_from_idle() && !user) {
