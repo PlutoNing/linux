@@ -4723,6 +4723,7 @@ unsigned long get_zeroed_page(gfp_t gfp_mask)
 EXPORT_SYMBOL(get_zeroed_page);
 
 /**
+释放页面到buddy
  * __free_pages - Free pages allocated with alloc_pages().
    释放alloc_pages分配的页面
  * @page: The page pointer returned from alloc_pages().

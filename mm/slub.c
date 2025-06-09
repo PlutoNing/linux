@@ -3719,6 +3719,7 @@ slab_empty:
 
 #ifndef CONFIG_SLUB_TINY
 /*
+slab的释放函数 
  * Fastpath with forced inlining to produce a kfree and kmem_cache_free that
  * can perform fastpath freeing without additional function calls.
  *
@@ -3799,6 +3800,7 @@ static void do_slab_free(struct kmem_cache *s,
 }
 #endif /* CONFIG_SLUB_TINY */
 
+/* slab释放 */
 static __fastpath_inline void slab_free(struct kmem_cache *s, struct slab *slab,
 				      void *head, void *tail, void **p, int cnt,
 				      unsigned long addr)
@@ -3818,7 +3820,7 @@ void ___cache_free(struct kmem_cache *cache, void *x, unsigned long addr)
 	do_slab_free(cache, virt_to_slab(x), x, NULL, 1, addr);
 }
 #endif
-
+/* kmalloc释放slab */
 void __kmem_cache_free(struct kmem_cache *s, void *x, unsigned long caller)
 {
 	slab_free(s, virt_to_slab(x), x, NULL, &x, 1, caller);
