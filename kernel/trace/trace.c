@@ -996,25 +996,42 @@ static inline void ftrace_trace_stack(struct trace_array *tr,
 
 #endif
 
-static __always_inline void
-trace_event_setup(struct ring_buffer_event *event,
+/* 
+填充这个rb event表示的trace entry的基本信息, pid什么的
+==================================================
+event是刚从trace_buffer的rb buffer预分配的事件内存空间
+type为trace类型,比如BLK
+trace_ctx为获取的当前中断类型与pc什么的 */
+static __always_inline
+void trace_event_setup(struct ring_buffer_event *event,
 		  int type, unsigned int trace_ctx)
 {
+	/* 获取到rb event到trace_data转为trace_entry */
 	struct trace_entry *ent = ring_buffer_event_data(event);
 
 	tracing_generic_entry_update(ent, type, trace_ctx);
 }
 
-/* 预分配buffer */
-static __always_inline struct ring_buffer_event *
-__trace_buffer_lock_reserve(struct trace_buffer *buffer,
+/* 
+从trace buffer的rb buffer预分配事件内存空间, 并填充pid等信息
+ * @description: 
+ * @param {trace_buffer} *buffer, 要操作的trace_buffer
+ * @param {int} type, trace的类型
+ * @param {unsigned long} len, 分配的长度
+ * @param {unsigned int} trace_ctx, 获取的中断信息等
+ * @return {*}
+ */
+static __always_inline struct
+ring_buffer_event * __trace_buffer_lock_reserve(struct trace_buffer *buffer,
 			  int type,
 			  unsigned long len,
 			  unsigned int trace_ctx)
 {
 	struct ring_buffer_event *event;
 
+	/* 预留新事件的内存空间 */
 	event = ring_buffer_lock_reserve(buffer, len);
+	/* 初始化这个rb event所包含的trace_entry, 填充pid等信息 */
 	if (event != NULL)
 		trace_event_setup(event, type, trace_ctx);
 
@@ -1052,12 +1069,19 @@ void tracing_on(void)
 EXPORT_SYMBOL_GPL(tracing_on);
 
 
+/**
+ * @description: 
+ * @param {trace_buffer} *buffer
+ * @param {ring_buffer_event} *event
+ * @return {*}
+ */
 static __always_inline void
 __buffer_unlock_commit(struct trace_buffer *buffer, struct ring_buffer_event *event)
 {
 	__this_cpu_write(trace_taskinfo_save, true);
 
-	/* If this is the temp buffer, we need to commit fully */
+	/* If this is the temp buffer, we need to commit fully
+	如果提交的是trace_buffered_event */
 	if (this_cpu_read(trace_buffered_event) == event) {
 		/* Length is in event->array[0] */
 		ring_buffer_write(buffer, event->array[0], &event->array[1]);
@@ -1977,12 +2001,14 @@ update_max_tr_single(struct trace_array *tr, struct task_struct *tsk, int cpu)
 
 #endif /* CONFIG_TRACER_MAX_TRACE */
 
+/* 等待iter出现内容 */
 static int wait_on_pipe(struct trace_iterator *iter, int full)
 {
 	/* Iterators are static, they should be filled or empty */
 	if (trace_buffer_iter(iter, iter->cpu_file))
 		return 0;
 
+		/* 等待buffer出现内容才返回 */
 	return ring_buffer_wait(iter->array_buffer->buffer, iter->cpu_file,
 				full);
 }
@@ -2162,7 +2188,8 @@ static void add_tracer_options(struct trace_array *tr, struct tracer *t);
 
 static void __init apply_trace_boot_options(void);
 
-/** 注册一个tracer类型
+/**
+ 注册一个tracer类型
  * register_tracer - register a tracer with the ftrace system.
  * @type: the plugin for the tracer
  *
@@ -2190,7 +2217,7 @@ int __init register_tracer(struct tracer *type)
 	}
 
 	mutex_lock(&trace_types_lock);
-/* 看看是不是有同名的已经注册了 */
+/* 1. 检查看看是不是有同名的已经注册了 */
 	for (t = trace_types; t; t = t->next) {
 		if (strcmp(type->name, t->name) == 0) {
 			/* already found */
@@ -2201,6 +2228,7 @@ int __init register_tracer(struct tracer *type)
 		}
 	}
 
+	/* 2 这里是完善type的一些未初始化好的属性 */
 	if (!type->set_flag)
 		type->set_flag = &dummy_set_flag;
 	if (!type->flags) {
@@ -2223,9 +2251,12 @@ int __init register_tracer(struct tracer *type)
 	if (ret < 0)
 		goto out;
 
+	/*3  这里把type加入trace_types */
 	type->next = trace_types;
 	trace_types = type;
-	add_tracer_options(&global_trace, type);/* 创建options文件夹,但是还是dir空的 */
+	/* 创建options文件夹,但是还是dir空的 */
+	add_tracer_options(&global_trace, type);
+	
 
  out:
 	mutex_unlock(&trace_types_lock);
@@ -2237,7 +2268,8 @@ int __init register_tracer(struct tracer *type)
 		goto out_unlock;
 
 	printk(KERN_INFO "Starting tracer '%s'\n", type->name);
-	/* Do we want this tracer to start on bootup? */
+	/* Do we want this tracer to start on bootup?
+	这里启用tracer */
 	tracing_set_tracer(&global_trace, type->name);
 	default_bootup_tracer = NULL;
 
@@ -2781,7 +2813,7 @@ static unsigned short migration_disable_value(void)
 	return 0;
 #endif
 }
-
+/* 获取到一些中断情况, 以及preempt_count, 编码到返回值 */
 unsigned int tracing_gen_ctx_irq_test(unsigned int irqs_status)
 {
 	unsigned int trace_flags = irqs_status;
@@ -2806,6 +2838,15 @@ unsigned int tracing_gen_ctx_irq_test(unsigned int irqs_status)
 		(min_t(unsigned int, migration_disable_value(), 0xf)) << 4;
 }
 
+/**
+ * @description: 从trace buffer的rb buffer预分配事件内存空间, 并填充pid等信息
+ * @param {trace_buffer} *buffer, trace_buffer
+ * @param {int} type, trace的类型, 比如BLK的trace
+ * @param {unsigned long} len, 要分配的空间
+ * @param {unsigned int} trace_ctx, 从tracing_gen_ctx_flags生成的上下文标志
+ 描述了中断情况和preempt_count什么的
+ * @return {*}
+ */
 struct ring_buffer_event *
 trace_buffer_lock_reserve(struct trace_buffer *buffer,
 			  int type,
@@ -6696,7 +6737,12 @@ static void add_tracer_options(struct trace_array *tr, struct tracer *t)
 	create_trace_option_files(tr, t);
 }
 
-/* 设置cur tracer */
+/**
+ * @description: 
+ * @param {trace_array} *tr, 可能是global_trace
+ * @param {char} *buf, 可能是一个tracer的name
+ * @return {*}
+ 设置cur tracer */
 int tracing_set_tracer(struct trace_array *tr, const char *buf)
 {
 	struct tracer *t;
@@ -7828,6 +7874,7 @@ int tracing_set_filter_buffering(struct trace_array *tr, bool set)
 
 struct ftrace_buffer_info {
 	struct trace_iterator	iter;
+	/* 指向一个用于读取的预分配的bpage */
 	void			*spare;
 	unsigned int		spare_cpu;
 	unsigned int		read;
@@ -8561,10 +8608,19 @@ tracing_buffers_poll(struct file *filp, poll_table *poll_table)
 	return trace_poll(iter, filp, poll_table);
 }
 
+/**
+ * @description: 
+ * @param {file} *filp
+ * @param {char __user} *ubuf
+ * @param {size_t} count
+ * @param {loff_t} *ppos
+ * @return {*}
+ */
 static ssize_t
 tracing_buffers_read(struct file *filp, char __user *ubuf,
 		     size_t count, loff_t *ppos)
 {
+	/* 这里获取trace_iter */
 	struct ftrace_buffer_info *info = filp->private_data;
 	struct trace_iterator *iter = &info->iter;
 	ssize_t ret = 0;
@@ -8578,7 +8634,9 @@ tracing_buffers_read(struct file *filp, char __user *ubuf,
 		return -EBUSY;
 #endif
 
+/* 预分配page */
 	if (!info->spare) {
+		/* 这里是必须的一步 */
 		info->spare = ring_buffer_alloc_read_page(iter->array_buffer->buffer,
 							  iter->cpu_file);
 		if (IS_ERR(info->spare)) {
@@ -8597,6 +8655,7 @@ tracing_buffers_read(struct file *filp, char __user *ubuf,
 
  again:
 	trace_access_lock(iter->cpu_file);
+	/* 这里开始读取 */
 	ret = ring_buffer_read_page(iter->array_buffer->buffer,
 				    &info->spare,
 				    count,
@@ -8717,6 +8776,7 @@ static void buffer_spd_release(struct splice_pipe_desc *spd, unsigned int i)
 	spd->partial[i].private = 0;
 }
 
+/*  */
 static ssize_t
 tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 			    struct pipe_inode_info *pipe, size_t len,
@@ -8859,12 +8919,14 @@ static long tracing_buffers_ioctl(struct file *file, unsigned int cmd, unsigned 
 	mutex_unlock(&trace_types_lock);
 	return 0;
 }
-
+/*  */
 static const struct file_operations tracing_buffers_fops = {
 	.open		= tracing_buffers_open,
+	/* 普通的读取 */
 	.read		= tracing_buffers_read,
 	.poll		= tracing_buffers_poll,
 	.release	= tracing_buffers_release,
+	/* 零拷贝的读 */
 	.splice_read	= tracing_buffers_splice_read,
 	.unlocked_ioctl = tracing_buffers_ioctl,
 	.llseek		= no_llseek,
@@ -9209,6 +9271,7 @@ tracing_init_tracefs_percpu(struct trace_array *tr, long cpu)
 	trace_create_cpu_file("trace", TRACE_MODE_WRITE, d_cpu,
 				tr, cpu, &tracing_fops);
 
+	/* 就pcp文件夹下面的这里是零拷贝? */
 	trace_create_cpu_file("trace_pipe_raw", TRACE_MODE_READ, d_cpu,
 				tr, cpu, &tracing_buffers_fops);
 

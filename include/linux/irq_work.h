@@ -15,11 +15,12 @@
  */
 
 struct irq_work {
+	/*  */
 	struct __call_single_node node;
 	void (*func)(struct irq_work *);
 	struct rcuwait irqwait;
 };
-
+/* 初始化一个irq_work */
 #define __IRQ_WORK_INIT(_func, _flags) (struct irq_work){	\
 	.node = { .u_flags = (_flags), },			\
 	.func = (_func),					\
@@ -28,6 +29,7 @@ struct irq_work {
 
 #define IRQ_WORK_INIT(_func) __IRQ_WORK_INIT(_func, 0)
 #define IRQ_WORK_INIT_LAZY(_func) __IRQ_WORK_INIT(_func, IRQ_WORK_LAZY)
+/* 初始化一个硬中断的irq_work */
 #define IRQ_WORK_INIT_HARD(_func) __IRQ_WORK_INIT(_func, IRQ_WORK_HARD_IRQ)
 
 #define DEFINE_IRQ_WORK(name, _f)				\

@@ -71,6 +71,7 @@ struct trace_dynamic_info {
 } __packed;
 
 /*
+表示一个trace条目
  * The trace entry - the most basic unit of tracing. This is what
  * is printed in the end as a single line in the trace output, such as:
  *
@@ -97,6 +98,7 @@ struct trace_iterator {
 	struct tracer		*trace;
 	struct array_buffer	*array_buffer;
 	void			*private;
+	/* 读取的cpu编号 */
 	int			cpu_file;
 	struct mutex		mutex;
 	/* 存储着每个cpu对应的iter */
@@ -117,7 +119,8 @@ struct trace_iterator {
 	bool			snapshot;
 
 	/* The below is zeroed out in pipe_read */
-	/* 输出打印到这个seq file */
+	/* 输出打印到这个seq file
+	这里可否优化呢= = */
 	struct trace_seq	seq;
 	/* 从rb读取的trace entry存储在这里
 	也是打印输出时要打印的entry
@@ -171,6 +174,7 @@ enum print_line_t {
 
 enum print_line_t trace_handle_return(struct trace_seq *s);
 
+/* 初始化trace_entry */
 static inline void tracing_generic_entry_update(struct trace_entry *entry,
 						unsigned short type,
 						unsigned int trace_ctx)
@@ -198,6 +202,7 @@ enum trace_flag_type {
 };
 
 #ifdef CONFIG_TRACE_IRQFLAGS_SUPPORT
+/* 获取到一些中断情况, 以及preempt_count, 编码到返回值 */
 static inline unsigned int tracing_gen_ctx_flags(unsigned long irqflags)
 {
 	unsigned int irq_status = irqs_disabled_flags(irqflags) ?

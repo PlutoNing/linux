@@ -263,7 +263,9 @@ unsigned ring_buffer_event_length(struct ring_buffer_event *event)
 }
 EXPORT_SYMBOL_GPL(ring_buffer_event_length);
 
-/* 
+/*
+trace_data存储在rb event的array成员中
+===============================
 把从rb读出的event转为trace data
 inline for ring buffer fast paths */
 static __always_inline void *
@@ -279,7 +281,10 @@ rb_event_data(struct ring_buffer_event *event)
 	return (void *)&event->array[1];
 }
 
-/**类似类型转换
+/**
+获取存储在rb event中的trace_data
+================================
+类似类型转换
 把从rb读出的event转为trace data
  * ring_buffer_event_data - return the data of the event
  * @event: the event to get the data from
@@ -320,6 +325,7 @@ static u64 rb_event_time_stamp(struct ring_buffer_event *event)
 /* 表示rb的buffer page的真正page */
 struct buffer_data_page {
 	u64		 time_stamp;	/* page time stamp */
+	/*  */
 	local_t		 commit;	/* write committed index */
 	unsigned char	 data[] RB_ALIGN_DATA;	/* 
 	存储着buffer的event
@@ -339,12 +345,14 @@ struct buffer_page {
 	struct list_head list;		/* list of buffer pages */
 	local_t		 write;		/* 
 	写的pos？
+	里面还编码了额外的数据
 	index for next write */
 	unsigned	 read;		/* 
 	读的pos？
 	index for next read */
 	local_t		 entries;	/* entries on this page */
 	unsigned long	 real_end;	/* real end of data */
+	/* 真正的page, 存储数据 */
 	struct buffer_data_page *page;	/* Actual data page */
 };
 
@@ -423,11 +431,13 @@ int ring_buffer_print_page_header(struct trace_seq *s)
 
 	return !trace_seq_has_overflowed(s);
 }
-
+/*  */
 struct rb_irq_work {
+	/* 包含这个irq_work来封装func和作为连接件 */
 	struct irq_work			work;
 	wait_queue_head_t		waiters;
 	wait_queue_head_t		full_waiters;
+	/*  */
 	long				wait_index;
 	bool				waiters_pending;
 	bool				full_waiters_pending;
@@ -448,6 +458,7 @@ struct rb_event_info {
 };
 
 /*
+ring_buffer里的事件的时间戳类型?
  * Used for the add_timestamp
  *  NONE
  *  EXTEND - wants a time extend
@@ -521,6 +532,7 @@ struct ring_buffer_per_cpu {
 	struct list_head		*pages;
 	struct buffer_page *head_page; /* read from head,指向pages成员 */
 	struct buffer_page		*tail_page;	/* write to tail */
+	/* 环上面当前提交到的page? 在这个page之前的才是稳定的可以读取的? */
 	struct buffer_page		*commit_page;	/* committed pages */
 	/* 从这个page开始读出事件 */
 	struct buffer_page		*reader_page;
@@ -529,10 +541,17 @@ struct ring_buffer_per_cpu {
 	unsigned long			nest;
 	/* buffer里面条目的总大小 */
 	local_t				entries_bytes;
+	/* 表示里面的记录数量 */
 	local_t				entries;
 	local_t				overrun;
 	local_t				commit_overrun;
 	local_t				dropped_events;
+	/* 
+	在commiting为1为正的情况下
+修改commit page环上的bpage的commit为write值
+就是end_commit的逻辑
+=============================
+	*/
 	local_t				committing;
 	local_t				commits;
 	local_t				pages_touched;
@@ -566,21 +585,23 @@ struct ring_buffer_per_cpu {
 struct trace_buffer {
 	unsigned			flags;
 	int				cpus;
+	/* 关闭了trace? */
 	atomic_t			record_disabled;
 	atomic_t			resizing;
-	/* buffer的cpu掩码 */
+	/* buffer的cpu掩码, 要trace的cpu? */
 	cpumask_var_t			cpumask;
 
 	struct lock_class_key		*reader_lock_key;
 
 	struct mutex			mutex;
-
+/* 每个cpu对应数组一个pcp cpu_buffer, 以cpu为idx */
 	struct ring_buffer_per_cpu	**buffers;
 
 	struct hlist_node		node;
 	/* 指向trace clocks的回调func */
 	u64				(*clock)(void);
 
+	/*  */
 	struct rb_irq_work		irq_work;
 	/* buffer是不是绝对时间 */
 	bool				time_stamp_abs;
@@ -917,6 +938,7 @@ size_t ring_buffer_nr_pages(struct trace_buffer *buffer, int cpu)
 }
 
 /**
+获取rb的脏页数量
  * ring_buffer_nr_dirty_pages - get the number of used pages in the ring buffer
  * @buffer: The ring_buffer to get the number of pages from
  * @cpu: The cpu of the ring_buffer to get the number of pages from
@@ -929,13 +951,18 @@ size_t ring_buffer_nr_dirty_pages(struct trace_buffer *buffer, int cpu)
 	size_t lost;
 	size_t cnt;
 
+	/* read是已经读的?
+	lost是丢失的?
+	cnt是总共被写入的? */
 	read = local_read(&buffer->buffers[cpu]->pages_read);
 	lost = local_read(&buffer->buffers[cpu]->pages_lost);
 	cnt = local_read(&buffer->buffers[cpu]->pages_touched);
 
+	/* 说明全丢了? */
 	if (WARN_ON_ONCE(cnt < lost))
 		return 0;
 
+	/* 减去丢的 */
 	cnt -= lost;
 
 	/* The reader can read an empty page, but not more than that */
@@ -944,9 +971,11 @@ size_t ring_buffer_nr_dirty_pages(struct trace_buffer *buffer, int cpu)
 		return 0;
 	}
 
+	/* 再减去已经读的
+	剩下的就是被写入的没有被读的页面, 脏页? */
 	return cnt - read;
 }
-
+/* 计算脏页比例是否达到了full数值表示的比例 */
 static __always_inline bool full_hit(struct trace_buffer *buffer, int cpu, int full)
 {
 	struct ring_buffer_per_cpu *cpu_buffer = buffer->buffers[cpu];
@@ -962,7 +991,10 @@ static __always_inline bool full_hit(struct trace_buffer *buffer, int cpu, int f
 	return (dirty * 100) > (full * nr_pages);
 }
 
-/* 唤醒睡眠的读者?
+/*
+trace_buffer的irq_work的func
+在这些时候会执行:
+唤醒rb的睡眠的读者?
  * rb_wake_up_waiters - wake up tasks waiting for ring buffer input
  *
  * Schedules a delayed work to wake up any task that is blocked on the
@@ -970,6 +1002,7 @@ static __always_inline bool full_hit(struct trace_buffer *buffer, int cpu, int f
  */
 static void rb_wake_up_waiters(struct irq_work *work)
 {
+	/* 获取到对应的rbwork */
 	struct rb_irq_work *rbwork = container_of(work, struct rb_irq_work, work);
 
 	wake_up_all(&rbwork->waiters);
@@ -1025,9 +1058,12 @@ void ring_buffer_wake_waiters(struct trace_buffer *buffer, int cpu)
 }
 
 /**
+消费者等待rb
+不断的while循环等待rb有可读取的内容
  * ring_buffer_wait - wait for input to the ring buffer
  * @buffer: buffer to wait on
  * @cpu: the cpu buffer to wait on
+ 等待指定的cpu buffer
  * @full: wait until the percentage of pages are available, if @cpu != RING_BUFFER_ALL_CPUS
  *
  * If @cpu == RING_BUFFER_ALL_CPUS then the task will wake up as soon
@@ -1048,10 +1084,12 @@ int ring_buffer_wait(struct trace_buffer *buffer, int cpu, int full)
 	 * caller on the appropriate wait queue.
 	 */
 	if (cpu == RING_BUFFER_ALL_CPUS) {
+		/* 如果是等待全部cpu, 就是buffer的irq_work */
 		work = &buffer->irq_work;
 		/* Full only makes sense on per cpu reads */
 		full = 0;
 	} else {
+		/* 如果是指定的cpu的cpu_buffer */
 		if (!cpumask_test_cpu(cpu, buffer->cpumask))
 			return -ENODEV;
 		cpu_buffer = buffer->buffers[cpu];
@@ -1101,6 +1139,7 @@ int ring_buffer_wait(struct trace_buffer *buffer, int cpu, int full)
 
 		if (cpu != RING_BUFFER_ALL_CPUS &&
 		    !ring_buffer_empty_cpu(buffer, cpu)) {
+		/* 如果等待指定的cpu的cpu_buffer, 并且这个cpu_buffer不空 */
 			unsigned long flags;
 			bool pagebusy;
 			bool done;
@@ -1110,6 +1149,7 @@ int ring_buffer_wait(struct trace_buffer *buffer, int cpu, int full)
 
 			raw_spin_lock_irqsave(&cpu_buffer->reader_lock, flags);
 			pagebusy = cpu_buffer->reader_page == cpu_buffer->commit_page;
+			/* 如果done为true, 可以读取了 */
 			done = !pagebusy && full_hit(buffer, cpu, full);
 
 			if (!cpu_buffer->shortest_full ||
@@ -1120,6 +1160,7 @@ int ring_buffer_wait(struct trace_buffer *buffer, int cpu, int full)
 				break;
 		}
 
+		/* 现在还没有满足条件, 继续睡眠 */
 		schedule();
 
 		/* Make sure to see the new wait index */
@@ -1128,6 +1169,7 @@ int ring_buffer_wait(struct trace_buffer *buffer, int cpu, int full)
 			break;
 	}
 
+	/* 从队列中离开 */
 	if (full)
 		finish_wait(&work->full_waiters, &wait);
 	else
@@ -1370,6 +1412,8 @@ rb_is_head_page(struct buffer_page *page, struct list_head *list)
 }
 
 /*
+返回true说明, page前面这个list_head是不是不指向page的list_head了
+也就是说明这是个reader_page了?
  * rb_is_reader_page
  *
  * The unique thing about the reader page, is that, if the
@@ -1378,8 +1422,10 @@ rb_is_head_page(struct buffer_page *page, struct list_head *list)
  */
 static bool rb_is_reader_page(struct buffer_page *page)
 {
+	/* 这里获取page前面那个list_head */
 	struct list_head *list = page->list.prev;
 
+	/* 检查page前面这个list_head是不是不指向page的list_head了 */
 	return rb_list_head(list->next) != &page->list;
 }
 
@@ -1490,7 +1536,10 @@ static int rb_head_page_set_normal(struct ring_buffer_per_cpu *cpu_buffer,
 				old_flag, RB_PAGE_NORMAL);
 }
 
-/* 获取下一个bpage */
+/* 
+参数可能是&cpu_buffer->commit_page
+获取bpage下一个bpage
+让bpage指向这下一个page */
 static inline void rb_inc_page(struct buffer_page **bpage)
 {
 	struct list_head *p = rb_list_head((*bpage)->list.next);
@@ -1874,6 +1923,7 @@ struct trace_buffer *__ring_buffer_alloc(unsigned long size, unsigned flags,
 	buffer->clock = trace_clock_local;
 	buffer->reader_lock_key = key;
 
+	/* 初始化trace_buffer的irq_work */
 	init_irq_work(&buffer->irq_work.work, rb_wake_up_waiters);
 	init_waitqueue_head(&buffer->irq_work.waiters);
 
@@ -1954,7 +2004,7 @@ void ring_buffer_set_time_stamp_abs(struct trace_buffer *buffer, bool abs)
 	buffer->time_stamp_abs = abs;
 }
 
-/* buffer是不是绝对时间 */
+/* buffer里面事件是不是绝对时间? */
 bool ring_buffer_time_stamp_abs(struct trace_buffer *buffer)
 {
 	return buffer->time_stamp_abs;
@@ -1967,6 +2017,7 @@ static inline unsigned long rb_page_entries(struct buffer_page *bpage)
 	return local_read(&bpage->entries) & RB_WRITE_MASK;
 }
 
+/* 读取bpage->write右侧二十个bit */
 static inline unsigned long rb_page_write(struct buffer_page *bpage)
 {
 	return local_read(&bpage->write) & RB_WRITE_MASK;
@@ -2516,7 +2567,9 @@ static __always_inline unsigned rb_page_size(struct buffer_page *bpage)
 {
 	return rb_page_commit(bpage);
 }
-/* 获取cpu_buffer->commit_page->page->commit位置  */
+/* 
+获取commit page的commit
+获取cpu_buffer->commit_page->page->commit位置  */
 static __always_inline unsigned
 rb_commit_index(struct ring_buffer_per_cpu *cpu_buffer)
 {
@@ -3029,7 +3082,9 @@ rb_update_event(struct ring_buffer_per_cpu *cpu_buffer,
 	} else
 		event->type_len = DIV_ROUND_UP(length, RB_ALIGNMENT);
 }
-
+/* 预留时间空间的时候计算总长度
+@length是caller提供的body的长度
+这里加上header什么的 */
 static unsigned rb_calculate_event_length(unsigned length)
 {
 	struct ring_buffer_event event; /* Used only for sizeof array */
@@ -3155,15 +3210,18 @@ rb_try_to_discard(struct ring_buffer_per_cpu *cpu_buffer,
 	/* could not discard */
 	return false;
 }
-
+/* 在buffer预留空间的时候会调用 */
 static void rb_start_commit(struct ring_buffer_per_cpu *cpu_buffer)
 {
 	local_inc(&cpu_buffer->committing);
 	local_inc(&cpu_buffer->commits);
 }
 
-static __always_inline void
-rb_set_commit_to_write(struct ring_buffer_per_cpu *cpu_buffer)
+/* 作用就是set_commit_to_write
+读取cpu_buffer->commit_page, 然后把每个page的write右二十位写入到commit成员
+*/
+static __always_inline 
+void rb_set_commit_to_write(struct ring_buffer_per_cpu *cpu_buffer)
 {
 	unsigned long max_count;
 
@@ -3178,22 +3236,33 @@ rb_set_commit_to_write(struct ring_buffer_per_cpu *cpu_buffer)
  again:
 	max_count = cpu_buffer->nr_pages * 100;
 
+	/* 不断迭代cpu_buffer->commit_page, 指向所在page链上面的下一个page
+	更新每个page的commit成员 */
 	while (cpu_buffer->commit_page != READ_ONCE(cpu_buffer->tail_page)) {
+		/* 超出cpu_buffer->nr_pages容量了 */
 		if (RB_WARN_ON(cpu_buffer, !(--max_count)))
 			return;
+
+		/* 说明现在的cpu_buffer->tail_page是reader_page了
+			reader_page是什么? */
 		if (RB_WARN_ON(cpu_buffer,
 			       rb_is_reader_page(cpu_buffer->tail_page)))
 			return;
 		/*
 		 * No need for a memory barrier here, as the update
 		 * of the tail_page did it for this page.
-		 */
+		 这里是循环的核心过程
+		 其实就是操作commit page所在的page链上的每一个page
+		 把write成员的右二十个bit写入到commit成员*/
 		local_set(&cpu_buffer->commit_page->page->commit,
 			  rb_page_write(cpu_buffer->commit_page));
+		/* 让cpu_buffer->commit_page指向下一个page */
 		rb_inc_page(&cpu_buffer->commit_page);
 		/* add barrier to keep gcc from optimizing too much */
 		barrier();
 	}
+
+	/* 这里只要cpu_buffer的commit不等于commitpage的write右二十位, 就修改 */
 	while (rb_commit_index(cpu_buffer) !=
 	       rb_page_write(cpu_buffer->commit_page)) {
 
@@ -3219,6 +3288,8 @@ rb_set_commit_to_write(struct ring_buffer_per_cpu *cpu_buffer)
 		goto again;
 }
 
+/* 在commiting为1为正的情况下
+修改commit page环上的bpage的commit为write值 */
 static __always_inline void rb_end_commit(struct ring_buffer_per_cpu *cpu_buffer)
 {
 	unsigned long commits;
@@ -3227,10 +3298,13 @@ static __always_inline void rb_end_commit(struct ring_buffer_per_cpu *cpu_buffer
 		       !local_read(&cpu_buffer->committing)))
 		return;
 
+	/* 到这里说明现在处于cpu_buffer->committing为1 */
  again:
 	commits = local_read(&cpu_buffer->commits);
 	/* synchronize with interrupts */
 	barrier();
+	/* 修改commit page环上的commit为write值
+	更新commit值 */
 	if (local_read(&cpu_buffer->committing) == 1)
 		rb_set_commit_to_write(cpu_buffer);
 
@@ -3264,12 +3338,19 @@ static inline void rb_event_discard(struct ring_buffer_event *event)
 		event->time_delta = 1;
 }
 
+/* 刚刚往cpu buffer写入了数据
+这里commit
+修改commit page环上的commit为write值
+ */
 static void rb_commit(struct ring_buffer_per_cpu *cpu_buffer)
 {
 	local_inc(&cpu_buffer->entries);
 	rb_end_commit(cpu_buffer);
 }
 
+/* 刚刚往buffer的cpu_buffer写入了事件
+也进行了commit
+这里唤醒buffer们的irq_work */
 static __always_inline void
 rb_wakeups(struct trace_buffer *buffer, struct ring_buffer_per_cpu *cpu_buffer)
 {
@@ -3635,7 +3716,7 @@ static inline void check_buffer(struct ring_buffer_per_cpu *cpu_buffer,
 }
 #endif /* CONFIG_RING_BUFFER_VALIDATE_TIME_DELTAS */
 
-/* 预留内存空间 */
+/* 在cpu_buffer里面预留新事件的内存空间 */
 static struct ring_buffer_event *
 __rb_reserve_next(struct ring_buffer_per_cpu *cpu_buffer,
 		  struct rb_event_info *info)
@@ -3793,7 +3874,13 @@ __rb_reserve_next(struct ring_buffer_per_cpu *cpu_buffer,
 	return event;
 }
 
-/* 给下一个事件预留内存空间 */
+/**
+ * @description: 
+ * @param {trace_buffer} *buffer, 要操作的buffer
+ * @param {ring_buffer_per_cpu} *cpu_buffer, buffer中对应指定cpu的buffer
+ * @param {unsigned long} length,分配的长度
+ * @return {*}
+ 给下一个事件预留内存空间 */
 static __always_inline struct ring_buffer_event *
 rb_reserve_next_event(struct trace_buffer *buffer,
 		      struct ring_buffer_per_cpu *cpu_buffer,
@@ -3822,6 +3909,7 @@ rb_reserve_next_event(struct trace_buffer *buffer,
 	}
 #endif
 
+	/* 计算event的长度, 包括header和对齐长度 */
 	info.length = rb_calculate_event_length(length);
 
 	if (ring_buffer_time_stamp_abs(cpu_buffer->buffer)) {
@@ -3872,7 +3960,9 @@ rb_reserve_next_event(struct trace_buffer *buffer,
  * Returns a reserved event on the ring buffer to copy directly to.
  * The user of this interface will need to get the body to write into
  * and can use the ring_buffer_event_data() interface.
- *
+ * 返回在ring buffer保留的event, 代表一块内存, 用于直接复制信息过来
+ 这个接口的使用者需要获取body来写入数据, 可以使用
+ * ring_buffer_event_data()接口.
  * The length is the length of the data needed, not the event length
  * which also includes the event header.
  *
@@ -3898,6 +3988,7 @@ ring_buffer_lock_reserve(struct trace_buffer *buffer, unsigned long length)
 	if (unlikely(!cpumask_test_cpu(cpu, buffer->cpumask)))
 		goto out;
 
+	/* 获取对应此cpu的pcp buffer */
 	cpu_buffer = buffer->buffers[cpu];
 
 	if (unlikely(atomic_read(&cpu_buffer->record_disabled)))
@@ -4017,6 +4108,7 @@ void ring_buffer_discard_commit(struct trace_buffer *buffer,
 EXPORT_SYMBOL_GPL(ring_buffer_discard_commit);
 
 /**
+直接把data写入rb
  * ring_buffer_write - write data to the buffer without reserving
  * @buffer: The ring buffer to write to.
  * @length: The length of the data being written (excluding the event header)
@@ -4060,14 +4152,18 @@ int ring_buffer_write(struct trace_buffer *buffer,
 	if (unlikely(trace_recursive_lock(cpu_buffer)))
 		goto out;
 
+	/* 这里是在cpu_buffer预留事件空间 */
 	event = rb_reserve_next_event(buffer, cpu_buffer, length);
 	if (!event)
 		goto out_unlock;
 
+	/* 获取预留的rb event中array成员中包含的trace_data */
 	body = rb_event_data(event);
 
+	/* 拷贝到trace_data里面 */
 	memcpy(body, data, length);
 
+	/* 这里修改环上页面的commit值 */
 	rb_commit(cpu_buffer);
 
 	rb_wakeups(buffer, cpu_buffer);
@@ -4640,7 +4736,8 @@ rb_update_iter_read_stamp(struct ring_buffer_iter *iter,
 	}
 }
 
-/* 获取pcp buffer的reader page */
+/*
+ 获取pcp buffer的reader page */
 static struct buffer_page *
 rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 {
@@ -4659,15 +4756,17 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 	 * start of the reader inserts an empty page, it causes
 	 * a case where we will loop three times. There should be no
 	 * reason to loop four times (that I know of).
-	 */
+	 重复次数太多了*/
 	if (RB_WARN_ON(cpu_buffer, ++nr_loops > 3)) {
 		reader = NULL;
 		goto out;
 	}
 
+	/* 获取当前的read page pos */
 	reader = cpu_buffer->reader_page;
 
-	/* If there's more to read, return this page */
+	/* If there's more to read, return this page
+	如果现在的reader还没有被读完(read offset < size) */
 	if (cpu_buffer->reader_page->read < rb_page_size(reader))
 		goto out;
 
@@ -4680,7 +4779,7 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 	reader = NULL;
 	if (cpu_buffer->commit_page == cpu_buffer->reader_page)
 		goto out;
-
+	/* 当前指向的page被读完了, 并且后面还有已经commit的page? */
 	/* Don't bother swapping if the ring buffer is empty */
 	if (rb_num_of_entries(cpu_buffer) == 0)
 		goto out;
@@ -4694,7 +4793,7 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 	cpu_buffer->reader_page->real_end = 0;
 
  spin:
-	/*
+	/*20250611010529
 	 * Splice the empty reader page into the list around the head.
 	 */
 	reader = rb_set_head_page(cpu_buffer);
@@ -5725,6 +5824,9 @@ EXPORT_SYMBOL_GPL(ring_buffer_swap_cpu);
 #endif /* CONFIG_RING_BUFFER_ALLOW_SWAP */
 
 /**
+返回一个bpage
+这里是分配读页面
+读页面是
  * ring_buffer_alloc_read_page - allocate a page to read from buffer
  * @buffer: the buffer to allocate for.
  * @cpu: the cpu buffer to allocate.
@@ -5736,7 +5838,12 @@ EXPORT_SYMBOL_GPL(ring_buffer_swap_cpu);
  * needs to get pages from the ring buffer, it passes the result
  * of this function into ring_buffer_read_page, which will swap
  * the page that was allocated, with the read page of the buffer.
- *
+ * 这函数与 ring_buffer_read_page配合使用
+ 当从ring buffer读出一个完整的page时， 这些函数可以用来加速这个过程。
+ 调用函数应该先用这个函数分配几个页面。
+ 然后当它需要从ring buffer获取页面时， 它将这个函数的结果传入
+ ring_buffer_read_page，
+ 这将交换分配的页面与buffer的读页面。
  * Returns:
  *  The page allocated, or ERR_PTR
  */
@@ -5750,10 +5857,12 @@ void *ring_buffer_alloc_read_page(struct trace_buffer *buffer, int cpu)
 	if (!cpumask_test_cpu(cpu, buffer->cpumask))
 		return ERR_PTR(-ENODEV);
 
+	/* 获取要操作的pcp buffer */
 	cpu_buffer = buffer->buffers[cpu];
 	local_irq_save(flags);
 	arch_spin_lock(&cpu_buffer->lock);
 
+	/* 使用预分配的页面? */
 	if (cpu_buffer->free_page) {
 		bpage = cpu_buffer->free_page;
 		cpu_buffer->free_page = NULL;
@@ -5762,9 +5871,11 @@ void *ring_buffer_alloc_read_page(struct trace_buffer *buffer, int cpu)
 	arch_spin_unlock(&cpu_buffer->lock);
 	local_irq_restore(flags);
 
+	/* 这是直接使用了预分配的free_page成员 */
 	if (bpage)
 		goto out;
 
+	/* 到这里可能是因为没有预分配的成员, 这里新分配 */
 	page = alloc_pages_node(cpu_to_node(cpu),
 				GFP_KERNEL | __GFP_NORETRY, 0);
 	if (!page)
@@ -5823,8 +5934,11 @@ EXPORT_SYMBOL_GPL(ring_buffer_free_read_page);
  * ring_buffer_read_page - extract a page from the ring buffer
  * @buffer: buffer to extract from
  * @data_page: the page to use allocated from ring_buffer_alloc_read_page
+ 这里是buffer的预分配好的page, 可能是存储在这里
  * @len: amount to extract
+ 要读取的长度
  * @cpu: the cpu of the buffer to extract
+ 要读取的cpu对应的buffer
  * @full: should the extraction only happen when the page is full.
  *
  * This function will pull out a page from the ring buffer and consume it.
@@ -5896,7 +6010,8 @@ int ring_buffer_read_page(struct trace_buffer *buffer,
 	read = reader->read;
 	commit = rb_page_commit(reader);
 
-	/* Check if any events were dropped */
+	/* Check if any events were dropped
+	20250612002547 */
 	missed_events = cpu_buffer->lost_events;
 
 	/*

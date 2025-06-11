@@ -85,6 +85,7 @@ static inline bool apic_from_smp_config(void)
 #include <asm/paravirt.h>
 #endif
 
+/* 可以用于往apic寄存器写入值 */
 static inline void native_apic_mem_write(u32 reg, u32 v)
 {
 	volatile u32 *addr = (volatile u32 *)(APIC_BASE + reg);
@@ -452,6 +453,7 @@ static __always_inline void __apic_send_IPI_all(int vector)
 	static_call(apic_call_send_IPI_all)(vector);
 }
 
+/* 通过ipi运行函数 */
 static __always_inline void __apic_send_IPI_self(int vector)
 {
 	static_call_mod(apic_call_send_IPI_self)(vector);

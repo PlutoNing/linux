@@ -655,6 +655,7 @@ struct rq *__task_rq_lock(struct task_struct *p, struct rq_flags *rf)
 }
 
 /*
+加锁rq
  * task_rq_lock - lock p->pi_lock and lock the rq @p resides on.
  */
 struct rq *task_rq_lock(struct task_struct *p, struct rq_flags *rf)
@@ -2199,7 +2200,7 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 
 	dequeue_task(rq, p, flags);
 }
-
+/* 计算不同策略下的prio */
 static inline int __normal_prio(int policy, int rt_prio, int nice)
 {
 	int prio;
@@ -7804,11 +7805,19 @@ req_priv:
 	return 0;
 }
 
+/**
+ * @description: 改变内核线程p的调度策略或者实时优先级(信息在attr)
+ * @param {sched_attr} *attr
+ * @param {bool} user
+ * @param {bool} pi
+ * @return {*}
+ */
 static int __sched_setscheduler(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user, bool pi)
 {
-	int oldpolicy = -1, policy = attr->sched_policy;
+	int oldpolicy = -1,
+	policy = attr->sched_policy;
 	int retval, oldprio, newprio, queued, running;
 	const struct sched_class *prev_class;
 	struct balance_callback *head;
@@ -7839,9 +7848,11 @@ recheck:
 	 * Valid priorities for SCHED_FIFO and SCHED_RR are
 	 * 1..MAX_RT_PRIO-1, valid priority for SCHED_NORMAL,
 	 * SCHED_BATCH and SCHED_IDLE is 0.
-	 */
+	 检查priority是否合法*/
 	if (attr->sched_priority > MAX_RT_PRIO-1)
 		return -EINVAL;
+
+	/* 检查参数信息是否符合对应的调度策略 */
 	if ((dl_policy(policy) && !__checkparam_dl(attr)) ||
 	    (rt_policy(policy) != (attr->sched_priority != 0)))
 		return -EINVAL;
@@ -7867,6 +7878,8 @@ recheck:
 	}
 
 	/*
+	SCHED_DEADLINE bandwidth accounting对一致性的要求比较高
+	这里加锁cpuset_mutex
 	 * SCHED_DEADLINE bandwidth accounting relies on stable cpusets
 	 * information.
 	 */
@@ -7881,13 +7894,13 @@ recheck:
 	 *
 	 * To be able to change p->policy safely, the appropriate
 	 * runqueue lock must be held.
-	 */
+	 这里获取并加锁rq*/
 	rq = task_rq_lock(p, &rf);
 	update_rq_clock(rq);
 
 	/*
 	 * Changing the policy of the stop threads its a very bad idea:
-	 */
+	 无法修改stop线程的这些属性*/
 	if (p == rq->stop) {
 		retval = -EINVAL;
 		goto unlock;
@@ -7967,6 +7980,7 @@ change:
 	p->sched_reset_on_fork = reset_on_fork;
 	oldprio = p->prio;
 
+	/* 计算在新策略下的新priority值 */
 	newprio = __normal_prio(policy, attr->sched_priority, attr->sched_nice);
 	if (pi) {
 		/*
@@ -8035,6 +8049,13 @@ unlock:
 	return retval;
 }
 
+/**
+ * @description: 改变内核空间线程p的调度策略或实时优先级
+ * @param {int} policy
+ * @param {sched_param} *param
+ * @param {bool} check
+ * @return {*}
+ */
 static int _sched_setscheduler(struct task_struct *p, int policy,
 			       const struct sched_param *param, bool check)
 {
@@ -8044,7 +8065,8 @@ static int _sched_setscheduler(struct task_struct *p, int policy,
 		.sched_nice	= PRIO_TO_NICE(p->static_prio),
 	};
 
-	/* Fixup the legacy SCHED_RESET_ON_FORK hack. */
+	/* Fixup the legacy SCHED_RESET_ON_FORK hack.
+	完善attr */
 	if ((policy != SETPARAM_POLICY) && (policy & SCHED_RESET_ON_FORK)) {
 		attr.sched_flags |= SCHED_FLAG_RESET_ON_FORK;
 		policy &= ~SCHED_RESET_ON_FORK;
@@ -8083,7 +8105,9 @@ int sched_setattr_nocheck(struct task_struct *p, const struct sched_attr *attr)
 EXPORT_SYMBOL_GPL(sched_setattr_nocheck);
 
 /**
- * sched_setscheduler_nocheck - change the scheduling policy and/or RT priority of a thread from kernelspace.
+改变内核空间线程的调度策略或实时优先级
+ * sched_setscheduler_nocheck - 
+ change the scheduling policy and/or RT priority of a thread from kernelspace.
  * @p: the task in question.
  * @policy: new policy.
  * @param: structure containing the new RT priority.

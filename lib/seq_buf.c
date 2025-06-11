@@ -194,6 +194,7 @@ int seq_buf_puts(struct seq_buf *s, const char *str)
 }
 
 /**
+往seq写入一个字符什么的
  * seq_buf_putc - sequence printing of simple character
  * @s: seq_buf descriptor
  * @c: simple character to record
@@ -215,6 +216,7 @@ int seq_buf_putc(struct seq_buf *s, unsigned char c)
 }
 
 /**
+把data写入trace_seq
  * seq_buf_putmem - write raw data into the sequenc buffer
  * @s: seq_buf descriptor
  * @mem: The raw memory to copy into the buffer

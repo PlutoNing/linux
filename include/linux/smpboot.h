@@ -9,6 +9,7 @@ struct task_struct;
 struct smpboot_thread_data;
 
 /**
+描述一个CPU热插拔相关的线程
  * struct smp_hotplug_thread - CPU hotplug related thread descriptor
  * @store:		Pointer to per cpu storage for the task pointers
  * @list:		List head for core management

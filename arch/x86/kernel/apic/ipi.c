@@ -75,8 +75,7 @@ void native_smp_send_reschedule(int cpu)
 /* 
 一种情况是:
 在确定cpu的rq的idle会执行sched_ttwu后,会调用这个函数
-这里触发ipi中断, 执行什么东西
-可能跟CALL_FUNCTION_SINGLE_VECTOR相关
+这里触发ipi中断
 */
 void native_send_call_func_single_ipi(int cpu)
 {
@@ -129,6 +128,7 @@ void apic_mem_wait_icr_idle(void)
 }
 
 /*
+default_send_IPI的实现
  * This is safe against interruption because it only writes the lower 32
  * bits of the APIC_ICR register. The destination field is ignored for
  * short hand IPIs.
@@ -159,7 +159,8 @@ static void __default_send_IPI_shortcut(unsigned int shortcut, int vector)
 	else
 		apic_mem_wait_icr_idle();
 
-	/* Destination field (ICR2) and the destination mode are ignored */
+	/* Destination field (ICR2) and the destination mode are ignored
+	往寄存器写入要执行的函数的相关信息 */
 	native_apic_mem_write(APIC_ICR, __prepare_ICR(shortcut, vector, 0));
 }
 
@@ -247,7 +248,7 @@ void default_send_IPI_all(int vector)
 {
 	__default_send_IPI_shortcut(APIC_DEST_ALLINC, vector);
 }
-
+/* x86的apic的send ipi self回调可能是这个函数 */
 void default_send_IPI_self(int vector)
 {
 	__default_send_IPI_shortcut(APIC_DEST_SELF, vector);

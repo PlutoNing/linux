@@ -342,7 +342,9 @@ static DEFINE_PER_CPU_SHARED_ALIGNED(call_single_data_t, csd_data);
 /*
 在其他cpu上面执行csd函数的情况
 @node比如说可能是一个即将被运行的进程的p->wake_entry.llist
-触发ipi中断执行函数
+也可能是是个irq_work
+============================
+加入call_single_queue准备执行, 触发ipi中断执行函数
 */
 void __smp_call_single_queue(int cpu, struct llist_node *node)
 {
@@ -422,6 +424,8 @@ static int generic_exec_single(int cpu, struct __call_single_data *csd)
 }
 
 /**
+这是个中断的回调函数
+执行smp ipi回调函数
  * generic_smp_call_function_single_interrupt - Execute SMP IPI callbacks
  *
  * Invoked by arch to handle an IPI for call function single.
@@ -433,6 +437,10 @@ void generic_smp_call_function_single_interrupt(void)
 }
 
 /**
+=================================
+caller: 一个是generic_smp_call_function_single_interrupt
+一个是flush_smp_call_function_queue
+==================================
 刷新smp-call-function队列
 遍历queue,执行csd函数
  * __flush_smp_call_function_queue - Flush pending smp-call-function callbacks
@@ -526,7 +534,8 @@ static void __flush_smp_call_function_queue(bool warn_cpu_offline)
 			prev = &csd->node.llist;
 		}
 	}
-	/* 刚刚处理完sync的csd */
+	/* 刚刚处理完sync类型的csd
+	下面还有IRQ_WORK, ASYNC, TTWU类型的csd */
 
 	if (!entry)
 		return;
@@ -538,6 +547,7 @@ static void __flush_smp_call_function_queue(bool warn_cpu_offline)
 	llist_for_each_entry_safe(csd, csd_next, entry, node.llist) {
 		int type = CSD_TYPE(csd);
 
+		/* CSD_TYPE_TTWU下一步处理, 这里处理IRQ_WORK与ASYNC */
 		if (type != CSD_TYPE_TTWU) {
 			if (prev) {
 				prev->next = &csd_next->node.llist;
@@ -554,6 +564,7 @@ static void __flush_smp_call_function_queue(bool warn_cpu_offline)
 				csd_do_func(func, info, csd);
 				csd_lock_record(NULL);
 			} else if (type == CSD_TYPE_IRQ_WORK) {
+				/* __flush_smp_call_function_queue处理irq_work */
 				irq_work_single(csd);
 			}
 
@@ -574,6 +585,7 @@ static void __flush_smp_call_function_queue(bool warn_cpu_offline)
 
 /**
 刷新smp-call-function队列
+idle函数和迁移进程都会调用这个
  * flush_smp_call_function_queue - Flush pending smp-call-function callbacks
  *				   from task context (idle, migration thread)
  *

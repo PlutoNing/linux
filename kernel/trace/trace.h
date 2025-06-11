@@ -31,7 +31,9 @@
 
 #define TRACE_MODE_WRITE	0640
 #define TRACE_MODE_READ		0440
-
+/* trace的类型?
+20250610013001
+一共有? */
 enum trace_type {
 	__TRACE_FIRST_TYPE = 0,
 
@@ -559,6 +561,9 @@ struct trace_option_dentry {
 
 /**
 表示一个tracer
+===========================================
+blktrace就是一个tracer
+===========================================
  * struct tracer - a specific tracer and its callbacks to interact with tracefs
  * @name: the name chosen to select it on the available_tracers file
  * @init: called when one switches to this tracer (echo name > current_tracer)

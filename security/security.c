@@ -3336,6 +3336,7 @@ int security_task_setrlimit(struct task_struct *p, unsigned int resource,
 }
 
 /**
+进行安全方面的检查
  * security_task_setscheduler() - Check if setting sched policy/param is allowed
  * @p: target task
  *

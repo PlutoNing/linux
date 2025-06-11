@@ -731,7 +731,8 @@ void trace_event_read_unlock(void)
 	up_read(&trace_event_sem);
 }
 
-/**注册ftrace定义的事件类型: 好像也就只是初始化并添加到event_hash
+/**
+注册ftrace定义的事件类型: 好像也就只是初始化并添加到event_hash
  * register_trace_event - register output for an event type
  * @event: the event type to register
  *

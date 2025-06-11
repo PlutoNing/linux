@@ -253,6 +253,7 @@ void trace_seq_putc(struct trace_seq *s, unsigned char c)
 EXPORT_SYMBOL_GPL(trace_seq_putc);
 
 /**
+把data拷贝写入trace seq
  * trace_seq_putmem - write raw data into the trace_seq buffer
  * @s: trace sequence descriptor
  * @mem: The raw memory to copy into the buffer

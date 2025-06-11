@@ -30,9 +30,12 @@ enum blktrace_cat {
 };
 
 #define BLK_TC_SHIFT		(16)
+/* 左移16位 */
 #define BLK_TC_ACT(act)		((act) << BLK_TC_SHIFT)
 
 /*
+这里是trace的blktrace的动作类型
+也就是说是记录的blk层的行为记录
  * Basic trace actions
  */
 enum blktrace_act {
@@ -96,6 +99,7 @@ enum blktrace_notify {
 #define BLK_IO_TRACE_VERSION	0x07
 
 /*
+代表一个trace记录?
  * The trace itself
  */
 struct blk_io_trace {
@@ -104,6 +108,7 @@ struct blk_io_trace {
 	__u64 time;		/* in nanoseconds */
 	__u64 sector;		/* disk offset */
 	__u32 bytes;		/* transfer length */
+	/* 记录的是blk的什么行为 */
 	__u32 action;		/* what happened */
 	__u32 pid;		/* who did it */
 	__u32 device;		/* device number */

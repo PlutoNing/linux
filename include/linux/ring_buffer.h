@@ -16,6 +16,7 @@ struct ring_buffer_iter;
 struct ring_buffer_event {
 	u32		type_len:5, time_delta:27;
 
+	/* 大小似乎是2, 0是length, 2是data? */
 	u32		array[];
 };
 

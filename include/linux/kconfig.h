@@ -66,6 +66,7 @@
 				__and(IS_MODULE(option), __is_defined(MODULE)))
 
 /*
+用于检测实时补丁(PREEMPT_RT)是否启用
  * IS_ENABLED(CONFIG_FOO) evaluates to 1 if CONFIG_FOO is set to 'y' or 'm',
  * 0 otherwise.  Note that CONFIG_FOO=y results in "#define CONFIG_FOO 1" in
  * autoconf.h, while CONFIG_FOO=m results in "#define CONFIG_FOO_MODULE 1".

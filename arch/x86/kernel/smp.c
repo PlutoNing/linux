@@ -258,12 +258,14 @@ DEFINE_IDTENTRY_SYSVEC(sysvec_call_function)
 	generic_smp_call_function_interrupt();
 	trace_call_function_exit(CALL_FUNCTION_VECTOR);
 }
-
+/* 宏的作用是包装
+在原地生成一个带下划线的版本 */
 DEFINE_IDTENTRY_SYSVEC(sysvec_call_function_single)
 {
 	apic_eoi();
 	trace_call_function_single_entry(CALL_FUNCTION_SINGLE_VECTOR);
 	inc_irq_stat(irq_call_count);
+	/* 执行smp ipi回调函数 */
 	generic_smp_call_function_single_interrupt();
 	trace_call_function_single_exit(CALL_FUNCTION_SINGLE_VECTOR);
 }
