@@ -377,7 +377,8 @@ static void rb_init_page(struct buffer_data_page *bpage)
 	local_set(&bpage->commit, 0);
 }
 
-/*  */
+/* 这个page可能是buffer的reader_page
+调用这个函数可能说明page刚刚被读取过 */
 static __always_inline unsigned int rb_page_commit(struct buffer_page *bpage)
 {
 	return local_read(&bpage->page->commit);
@@ -529,12 +530,15 @@ struct ring_buffer_per_cpu {
 	struct buffer_data_page		*free_page;
 	unsigned long			nr_pages;
 	unsigned int			current_context;
+	/* pages指针是一直指向head page的前一个? */
 	struct list_head		*pages;
 	struct buffer_page *head_page; /* read from head,指向pages成员 */
 	struct buffer_page		*tail_page;	/* write to tail */
 	/* 环上面当前提交到的page? 在这个page之前的才是稳定的可以读取的? */
 	struct buffer_page		*commit_page;	/* committed pages */
-	/* 从这个page开始读出事件 */
+	/*
+	指向可以读取的page
+	从这个page开始读出事件 */
 	struct buffer_page		*reader_page;
 	unsigned long			lost_events;
 	unsigned long			last_overrun;
@@ -559,12 +563,14 @@ struct ring_buffer_per_cpu {
 	local_t				pages_read;
 	long				last_pages_touch;
 	size_t				shortest_full;
+	/* 被读取的事件总数? */
 	unsigned long			read;
 	/* 读出总数量的account？ */
 	unsigned long			read_bytes;
 	rb_time_t			write_stamp;
 	rb_time_t			before_stamp;
 	u64				event_stamp[MAX_NEST];
+	/*  */
 	u64				read_stamp;
 	/* pages removed since last reset */
 	unsigned long			pages_removed;
@@ -1069,7 +1075,7 @@ void ring_buffer_wake_waiters(struct trace_buffer *buffer, int cpu)
  * If @cpu == RING_BUFFER_ALL_CPUS then the task will wake up as soon
  * as data is added to any of the @buffer's cpu buffers. Otherwise
  * it will wait for data to be added to a specific cpu buffer.
- */
+ 20250613015459*/
 int ring_buffer_wait(struct trace_buffer *buffer, int cpu, int full)
 {
 	struct ring_buffer_per_cpu *cpu_buffer;
@@ -1391,6 +1397,8 @@ static struct list_head *rb_list_head(struct list_head *list)
 }
 
 /*
+检查给定的page是不是head page
+head page是
  * rb_is_head_page - test if the given page is the head page
  *
  * Because the reader may move the head_page pointer, we can
@@ -1430,6 +1438,7 @@ static bool rb_is_reader_page(struct buffer_page *page)
 }
 
 /*
+把这个list连接件编码上head的标记
  * rb_set_list_to_head - set a list_head to be pointing to head.
  */
 static void rb_set_list_to_head(struct list_head *list)
@@ -1547,7 +1556,9 @@ static inline void rb_inc_page(struct buffer_page **bpage)
 	*bpage = list_entry(p, struct buffer_page, list);
 }
 
-/* 设置pcp buffer的head page（前拨） */
+/* 
+设置pcp buffer的head page（前拨）
+让其指向buffer的head page */
 static struct buffer_page *
 rb_set_head_page(struct ring_buffer_per_cpu *cpu_buffer)
 {
@@ -1561,15 +1572,26 @@ rb_set_head_page(struct ring_buffer_per_cpu *cpu_buffer)
 
 	/* sanity check */
 	list = cpu_buffer->pages;
+
+	/* 如果cpu_buffer->pages不在链表上面了, 是异常情况 */
 	if (RB_WARN_ON(cpu_buffer, rb_list_head(list->prev->next) != list))
 		return NULL;
 
+	/* 此时此刻list的前一个的节点的next指向的就是list
+	也就是说pages指向的bpage的前一个bpage的next就是pages */
+
+
+	/* 获取当前的head page */
 	page = head = cpu_buffer->head_page;
 	/*
 	 * It is possible that the writer moves the header behind
 	 * where we started, and we miss in one loop.
 	 * A second loop should grab the header, but we'll do
 	 * three loops just because I'm paranoid.
+	这里最多重试三次
+	每次不断的迭代page(遍历环上下一个的bpage), 检查符合不符合head page的条件
+	是的话, 说明当前的page就是head page了
+	如果是head page, 就返回这个page
 	 */
 	for (i = 0; i < 3; i++) {
 		do {
@@ -1577,7 +1599,7 @@ rb_set_head_page(struct ring_buffer_per_cpu *cpu_buffer)
 				cpu_buffer->head_page = page;
 				return page;
 			}
-			/*  */
+			/* 指向下一个页面 */
 			rb_inc_page(&page);
 		} while (page != head);
 	}
@@ -1587,15 +1609,21 @@ rb_set_head_page(struct ring_buffer_per_cpu *cpu_buffer)
 	return NULL;
 }
 
+/* 让old的前一个节点的next指向new */
 static bool rb_head_page_replace(struct buffer_page *old,
 				struct buffer_page *new)
 {
+	/* 这里ptr是old的连接件的前一个连接件的next成员本身的地址 */
 	unsigned long *ptr = (unsigned long *)&old->list.prev->next;
 	unsigned long val;
 
+	/* 不过next成员的后几位被编码了额外的信息
+	所以next成员的实际值为val */
 	val = *ptr & ~RB_FLAG_MASK;
 	val |= RB_PAGE_HEAD;
 
+	/* 这里检查next的值是不是val, 是的话, /
+	让next的值为new的连接件的地址(即next指向新的new) */
 	return try_cmpxchg(ptr, &val, (unsigned long)&new->list);
 }
 
@@ -2490,7 +2518,10 @@ static __always_inline void *__rb_page_index(struct buffer_page *bpage, unsigned
 	return bpage->page->data + index;
 }
 
-/* 从pcp buffer读出事件 */
+/* 
+获取buffer下一个要被读取的事件
+page->data加上page的read_pos处是个ring_buffer_event
+*/
 static __always_inline struct ring_buffer_event *
 rb_reader_event(struct ring_buffer_per_cpu *cpu_buffer)
 {
@@ -4626,6 +4657,7 @@ void ring_buffer_iter_reset(struct ring_buffer_iter *iter)
 EXPORT_SYMBOL_GPL(ring_buffer_iter_reset);
 
 /**
+参数可能是iter的pcp的某cpu的子iter
 检查iter是不是空的
  * ring_buffer_iter_empty - check if an iterator has no more to read
  * @iter: The iterator to check
@@ -4642,7 +4674,10 @@ int ring_buffer_iter_empty(struct ring_buffer_iter *iter)
 	u64 commit_ts;
 
 	cpu_buffer = iter->cpu_buffer;
+	/* reader是此cpu buffer目前正在被读取的bpage */
 	reader = cpu_buffer->reader_page;
+	/* 下面俩就是当前的head page和commit page
+	 */
 	head_page = cpu_buffer->head_page;
 	commit_page = cpu_buffer->commit_page;
 	commit_ts = commit_page->page->time_stamp;
@@ -4653,11 +4688,15 @@ int ring_buffer_iter_empty(struct ring_buffer_iter *iter)
 	 * (see rb_tail_page_update())
 	 */
 	smp_rmb();
+	/* 获取commit page的commit值 
+	 */
 	commit = rb_page_commit(commit_page);
 	/* We want to make sure that the commit page doesn't change */
 	smp_rmb();
 
-	/* Make sure commit page didn't change */
+	/*
+	检查有没有race
+	Make sure commit page didn't change */
 	curr_commit_page = READ_ONCE(cpu_buffer->commit_page);
 	curr_commit_ts = READ_ONCE(curr_commit_page->page->time_stamp);
 
@@ -4667,6 +4706,8 @@ int ring_buffer_iter_empty(struct ring_buffer_iter *iter)
 	if (curr_commit_page != commit_page ||
 	    curr_commit_ts != commit_ts)
 		return 0;
+	/* 此时此刻说明没有发生新的写入?
+	 */
 
 	/* Still racy, as it may return a false positive, but that's OK */
 	return ((iter->head_page == commit_page && iter->head >= commit) ||
@@ -4676,6 +4717,8 @@ int ring_buffer_iter_empty(struct ring_buffer_iter *iter)
 }
 EXPORT_SYMBOL_GPL(ring_buffer_iter_empty);
 
+/* event刚刚被从buffer读出
+更新buffer的cpu_buffer->read_stamp成员 */
 static void
 rb_update_read_stamp(struct ring_buffer_per_cpu *cpu_buffer,
 		     struct ring_buffer_event *event)
@@ -4737,7 +4780,8 @@ rb_update_iter_read_stamp(struct ring_buffer_iter *iter,
 }
 
 /*
- 获取pcp buffer的reader page */
+调整head_page, reader_page等成员
+然后返回pcp buffer的reader page */
 static struct buffer_page *
 rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 {
@@ -4777,9 +4821,12 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 
 	/* check if we caught up to the tail */
 	reader = NULL;
+	/* 如果已经读到了commit的最新page, 没什么好读的了 */
 	if (cpu_buffer->commit_page == cpu_buffer->reader_page)
 		goto out;
-	/* 当前指向的page被读完了, 并且后面还有已经commit的page? */
+
+	/* 运行到这里, 说明 reader_page还在commit_page前面
+	当前指向的page被读完了, 并且后面还有已经commit的page? */
 	/* Don't bother swapping if the ring buffer is empty */
 	if (rb_num_of_entries(cpu_buffer) == 0)
 		goto out;
@@ -4793,12 +4840,22 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 	cpu_buffer->reader_page->real_end = 0;
 
  spin:
-	/*20250611010529
+/* spin这一段的作用是
+1 遍历buffer的page环, 找到真正的head page, 并更新head page成员, 返回reader
+2 然后让reader_page成员的prev和next分别指向head_page的前后节点, 像是并联关系
+3 然后给reader_page打上head_page的标签
+4 然后让head_page的prev的next指向reader_page */
+
+	/*
 	 * Splice the empty reader page into the list around the head.
-	 */
+	 这里调整buffer的head page指向真的head page, 并返回*/
 	reader = rb_set_head_page(cpu_buffer);
 	if (!reader)
 		goto out;
+
+	/* 
+	现在reader page和reader(head page)是并联的关系?/
+	他俩的prev和next都是一样的 */
 	cpu_buffer->reader_page->list.next = rb_list_head(reader->list.next);
 	cpu_buffer->reader_page->list.prev = reader->list.prev;
 
@@ -4806,10 +4863,13 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 	 * cpu_buffer->pages just needs to point to the buffer, it
 	 *  has no specific buffer page to point to. Lets move it out
 	 *  of our way so we don't accidentally swap it.
+	 看来pages指针是一直指向head page的前一个?
 	 */
 	cpu_buffer->pages = reader->list.prev;
 
-	/* The reader page will be pointing to the new head */
+	/* The reader page will be pointing to the new head
+	这里给reader page打上标记, 表示为head page
+	*/
 	rb_set_list_to_head(&cpu_buffer->reader_page->list);
 
 	/*
@@ -4843,17 +4903,73 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 	if (!ret)
 		goto spin;
 
+	/* 感觉刚刚就是让环上的head_page的prev的next指向reader_page
+
+                                         head_page                                      |
+                                 +<--------prev                                          |
+                                 |         next                                          |
+                                 |                                                       |
+                                 v                                                       |
+                            p|prev             reader_page                               |
+                            r|next-------------->prev                                   |
+                            e|                   next                                    |
+                            v|                                                           |
+                                                                                         |
+                                                                                         |
+                                                                                         |
+	
+	
+	*/
 	/*
 	 * Yay! We succeeded in replacing the page.
 	 *
 	 * Now make the new head point back to the reader page.
+	 现在是让head_page的next的prev指向reader_page
+
+            page1          page2     headpage    page3        page4                  |
+       <----prev<----------prev<-------prev<-----prev<--------prev<-------               |
+       ---->next---------->next------->next----->next-------->next-------->             |
+                                                                                         |
+																						 
+																						 
+            page1          page2     headpage    page3        page4                  |
+       <----prev<----------prev<-------prev  +---prev<--------prev<-------               |
+       ---->next---------->next        next--|-->next-------->next-------->             |
+                             |               |                                           |
+                             |       reader  |                                           |
+                             +------->prev<--+                                          |
+                                      next                                           
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                                                                                 	  
+                                             new_head_page                              |
+                                                  |                                      |
+                                                  |                                     |
+            page1          page2     old_head     v           page4                  |
+       <----prev<----------prev<-------prev  +---prev<--------prev<-------               |
+       ---->next---------->next        next--|-->next-------->next-------->             |
+                             |               |                                           |
+                             |       reader  |                                           |
+                             +------->prev<--+                                          |
+                                      next                                              |
 	 */
 	rb_list_head(reader->list.next)->prev = &cpu_buffer->reader_page->list;
 	rb_inc_page(&cpu_buffer->head_page);
 
 	local_inc(&cpu_buffer->pages_read);
 
-	/* Finally update the reader page to the new head */
+	/* Finally update the reader page to the new head
+	现在让reader_page指向刚刚找到的head? */
 	cpu_buffer->reader_page = reader;
 	cpu_buffer->reader_page->read = 0;
 
@@ -4865,7 +4981,8 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 	goto again;
 
  out:
-	/* Update the read_stamp on the first event */
+	/* Update the read_stamp on the first event
+	说明刚刚开始读取这个page? */
 	if (reader && reader->read == 0)
 		cpu_buffer->read_stamp = reader->page->time_stamp;
 
@@ -4920,11 +5037,14 @@ static void rb_advance_reader(struct ring_buffer_per_cpu *cpu_buffer)
 	if (RB_WARN_ON(cpu_buffer, !reader))
 		return;
 
+	/* 获取旧的read pos下的下一个要被读取的事件
+	(其实就是刚刚读取的事件)
+	下一步就是调整read pos */
 	event = rb_reader_event(cpu_buffer);
 
 	if (event->type_len <= RINGBUF_TYPE_DATA_TYPE_LEN_MAX)
 		cpu_buffer->read++;
-
+	/* 更新读取时间戳 */
 	rb_update_read_stamp(cpu_buffer, event);
 
 	length = rb_event_length(event);
@@ -5931,6 +6051,7 @@ void ring_buffer_free_read_page(struct trace_buffer *buffer, int cpu, void *data
 EXPORT_SYMBOL_GPL(ring_buffer_free_read_page);
 
 /**
+从cpu buffer的reader page中读取数据到用户提供的data page
  * ring_buffer_read_page - extract a page from the ring buffer
  * @buffer: buffer to extract from
  * @data_page: the page to use allocated from ring_buffer_alloc_read_page
@@ -5990,30 +6111,38 @@ int ring_buffer_read_page(struct trace_buffer *buffer,
 	if (len <= BUF_PAGE_HDR_SIZE)
 		goto out;
 
+	/* 现在len是数据body长度 */
 	len -= BUF_PAGE_HDR_SIZE;
 
 	if (!data_page)
 		goto out;
 
+	/* 这bpage指向用户在参数提供的容纳数据的页面 */
 	bpage = *data_page;
 	if (!bpage)
 		goto out;
 
 	raw_spin_lock_irqsave(&cpu_buffer->reader_lock, flags);
 
+	/* 获取环上准备读取的page */
 	reader = rb_get_reader_page(cpu_buffer);
 	if (!reader)
 		goto out_unlock;
+	/* 返回的reader不为null, 说明有可以读取的 */
 
+	/* 返回cpu_buffer->reader_page->data加上page的read_pos处的ring_buffer_event */
 	event = rb_reader_event(cpu_buffer);
 
+	/* read和commit分别是cpu_buffer->reader_page的读取和提交的pos */
 	read = reader->read;
 	commit = rb_page_commit(reader);
 
 	/* Check if any events were dropped
-	20250612002547 */
+	 */
 	missed_events = cpu_buffer->lost_events;
 
+	/* 目前为止, 只是获取了要读取的page的指针
+	获取要读取位置的event的指针 */
 	/*
 	 * If this page has been partially read or
 	 * if len is not big enough to read the rest of the page or
@@ -6023,6 +6152,11 @@ int ring_buffer_read_page(struct trace_buffer *buffer,
 	 */
 	if (read || (len < (commit - read)) ||
 	    cpu_buffer->reader_page == cpu_buffer->commit_page) {
+	/* 说明page之前被读取了部分?
+	或者这次读取的len没有覆盖完已经commit的部分?
+	或者现在还有写者准备写这个页面?
+	================
+	这个路径里面是: 只要len还能覆盖下一个事件完成长度, 就持续把事件拷贝到用户提供的data page里面 */
 		struct buffer_data_page *rpage = cpu_buffer->reader_page->page;
 		unsigned int rpos = read;
 		unsigned int pos = 0;
@@ -6039,14 +6173,19 @@ int ring_buffer_read_page(struct trace_buffer *buffer,
 		     cpu_buffer->reader_page == cpu_buffer->commit_page))
 			goto out_unlock;
 
+		/* 如果用户要求的太多了, 修剪到合适大小 */
 		if (len > (commit - read))
 			len = (commit - read);
 
-		/* Always keep the time extend and data together */
+		/* Always keep the time extend and data together
+		这里好像是获取事件的大小
+		*/
 		size = rb_event_ts_length(event);
 
 		if (len < size)
 			goto out_unlock;
+		/* 为什么这里要求len大于事件大小才继续?
+		应该是连一个完整事件都读取不完,是错误或者不合理的参数, 没必要继续 */
 
 		/* save the current timestamp, since the user will need it */
 		save_timestamp = cpu_buffer->read_stamp;
@@ -6060,10 +6199,13 @@ int ring_buffer_read_page(struct trace_buffer *buffer,
 			 * We have already ensured there's enough space if this
 			 * is a time extend. */
 			size = rb_event_length(event);
+			/* 拷贝到用户参数提供的data_page里面
+			一次拷贝一个事件 */
 			memcpy(bpage->data + pos, rpage->data + rpos, size);
 
 			len -= size;
 
+			/* 调整read pos, 读取时间戳什么的 */
 			rb_advance_reader(cpu_buffer);
 			rpos = reader->read;
 			pos += size;
@@ -6071,18 +6213,24 @@ int ring_buffer_read_page(struct trace_buffer *buffer,
 			if (rpos >= commit)
 				break;
 
+			/* 获取下一个要读取的事件 */
 			event = rb_reader_event(cpu_buffer);
 			/* Always keep the time extend and data together */
 			size = rb_event_ts_length(event);
-		} while (len >= size);
+		} while (len >= size);/* 只要剩下的需要读取的长度, 还能覆盖完下一个事件, 就继续 */
 
-		/* update bpage */
+		/* update bpage
+		page是独占的, 所以这里直接设置commit pos */
 		local_set(&bpage->commit, pos);
 		bpage->time_stamp = save_timestamp;
 
 		/* we copied everything to the beginning */
 		read = 0;
 	} else {
+		/* 这个路径是, reader_page还没有被读取过,  用户要读取的len把已经commit的内容全部覆盖了
+		并且reader page也不等于 commit page
+		这里就不用一个个从reader page拷贝若干个事件到用户提供的data page了
+		可以直接交换页面, 把数据全拿走 */
 		/* update the entry counter */
 		cpu_buffer->read += rb_page_entries(reader);
 		cpu_buffer->read_bytes += rb_page_commit(reader);

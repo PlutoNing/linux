@@ -4715,7 +4715,8 @@ static enum print_line_t print_bin_fmt(struct trace_iterator *iter)
 		TRACE_TYPE_HANDLED;
 }
 
-/* 判断有没有trace结果 */
+/* 
+判断有没有trace结果 */
 int trace_empty(struct trace_iterator *iter)
 {
 	struct ring_buffer_iter *buf_iter;
@@ -4727,7 +4728,9 @@ int trace_empty(struct trace_iterator *iter)
 	if (iter->cpu_file != RING_BUFFER_ALL_CPUS) {
 		cpu = iter->cpu_file;
 		buf_iter = trace_buffer_iter(iter, cpu);
-		/* 获取到这个cpu的iter */
+		/*
+		buffer的iter也是在每个cpu上有pcp的子iter
+		获取到这个cpu的iter */
 		if (buf_iter) {
 			if (!ring_buffer_iter_empty(buf_iter))
 				return 0;/* 不空 */
@@ -8655,7 +8658,10 @@ tracing_buffers_read(struct file *filp, char __user *ubuf,
 
  again:
 	trace_access_lock(iter->cpu_file);
-	/* 这里开始读取 */
+	/* 这里开始读取
+	从iter->array_buffer->buffer中读取数据到info->spare
+	读取count长度
+	 */
 	ret = ring_buffer_read_page(iter->array_buffer->buffer,
 				    &info->spare,
 				    count,
@@ -8663,9 +8669,10 @@ tracing_buffers_read(struct file *filp, char __user *ubuf,
 	trace_access_unlock(iter->cpu_file);
 
 	if (ret < 0) {
-		if (trace_empty(iter)) {
+		/* 说明没有拷贝数据 */
+		if (trace_empty(iter)) {/* 如果是因为现在buffer还没有数据可以读取 */
 			if ((filp->f_flags & O_NONBLOCK))
-				return -EAGAIN;
+				return -EAGAIN;/* 用户要求非阻塞, 那么不等待, 直接返回again */
 
 			ret = wait_on_pipe(iter, 0);
 			if (ret)
