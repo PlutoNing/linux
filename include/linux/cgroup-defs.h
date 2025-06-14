@@ -529,7 +529,8 @@ struct cgroup {
 	此cgroup的psi */
 	struct psi_group *psi;
 
-	/* used to store eBPF programs */
+	/* used to store eBPF programs
+	存储cgroup的bpf? */
 	struct cgroup_bpf bpf;
 
 	/* If there is block congestion on this cgroup. */

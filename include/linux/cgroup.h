@@ -357,6 +357,7 @@ static inline bool cgroup_tryget(struct cgroup *cgrp)
 	return css_tryget(&cgrp->self);
 }
 
+/* 释放的是cgroup的css部分 */
 static inline void cgroup_put(struct cgroup *cgrp)
 {
 	css_put(&cgrp->self);
@@ -757,6 +758,7 @@ void cgroup_sk_alloc(struct sock_cgroup_data *skcd);
 void cgroup_sk_clone(struct sock_cgroup_data *skcd);
 void cgroup_sk_free(struct sock_cgroup_data *skcd);
 
+/* 获取sock的cgroup? */
 static inline struct cgroup *sock_cgroup_ptr(struct sock_cgroup_data *skcd)
 {
 	return skcd->cgroup;

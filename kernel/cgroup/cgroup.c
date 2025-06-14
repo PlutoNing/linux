@@ -6897,6 +6897,7 @@ struct cgroup *cgroup_v1v2_get_from_fd(int fd)
 }
 
 /**
+从fd获取对应的cgroup?
  * cgroup_get_from_fd - same as cgroup_v1v2_get_from_fd, but only supports
  * cgroup2.
  * @fd: fd obtained by open(cgroup2_dir)
@@ -6925,6 +6926,8 @@ static u64 power_of_ten(int power)
 }
 
 /**
+解析一个浮点数,
+作用是
  * cgroup_parse_float - parse a floating number
  * @input: input string
  * @dec_shift: number of decimal digits to shift
@@ -7005,10 +7008,13 @@ void cgroup_sk_clone(struct sock_cgroup_data *skcd)
 	cgroup_bpf_get(cgrp);
 }
 
+/* 主要是释放引用计数 */
 void cgroup_sk_free(struct sock_cgroup_data *skcd)
 {
+	/* 获取sock的cgroup */
 	struct cgroup *cgrp = sock_cgroup_ptr(skcd);
 
+	/* 释放一个ref */
 	cgroup_bpf_put(cgrp);
 	cgroup_put(cgrp);
 }
@@ -7071,17 +7077,20 @@ static ssize_t features_show(struct kobject *kobj, struct kobj_attribute *attr,
 }
 static struct kobj_attribute cgroup_features_attr = __ATTR_RO(features);
 
+/*  */
 static struct attribute *cgroup_sysfs_attrs[] = {
 	&cgroup_delegate_attr.attr,
 	&cgroup_features_attr.attr,
 	NULL,
 };
 
+/*  */
 static const struct attribute_group cgroup_sysfs_attr_group = {
 	.attrs = cgroup_sysfs_attrs,
 	.name = "cgroup",
 };
 
+/* 创建cgroup的sysfs文件 */
 static int __init cgroup_sysfs_init(void)
 {
 	return sysfs_create_group(kernel_kobj, &cgroup_sysfs_attr_group);
