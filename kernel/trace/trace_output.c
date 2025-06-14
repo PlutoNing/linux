@@ -505,6 +505,14 @@ int trace_print_lat_fmt(struct trace_seq *s, struct trace_entry *entry)
 	return !trace_seq_has_overflowed(s);
 }
 
+/**
+输出到seq file
+ * @description: 
+ * @param {trace_seq} *s, s是iter的seq file
+ * @param {trace_entry} *entry, entry是刚刚读取的event
+ * @param {int} cpu,
+ * @return {*}
+ */
 static int
 lat_print_generic(struct trace_seq *s, struct trace_entry *entry, int cpu)
 {
@@ -654,6 +662,8 @@ int trace_print_lat_context(struct trace_iterator *iter)
 	unsigned long verbose = (tr->trace_flags & TRACE_ITER_VERBOSE);
 	u64 next_ts;
 
+	/* 读取iter的下一个事件
+	一般情况是从iter的cpu buffer的reader page什么的读取 */
 	next_entry = trace_find_next_entry(iter, NULL, &next_ts);
 	if (!next_entry)
 		next_ts = iter->ts;
@@ -666,6 +676,7 @@ int trace_print_lat_context(struct trace_iterator *iter)
 
 		trace_find_cmdline(entry->pid, comm);
 
+		/* 还往iter的seq file输出一下 */
 		trace_seq_printf(
 			s, "%16s %7d %3d %d %08x %08lx ",
 			comm, entry->pid, iter->cpu, entry->flags,

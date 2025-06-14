@@ -95,6 +95,7 @@ struct trace_entry {
 struct trace_iterator {
 	/* 相关的tr */
 	struct trace_array	*tr;
+	/*  */
 	struct tracer		*trace;
 	struct array_buffer	*array_buffer;
 	void			*private;

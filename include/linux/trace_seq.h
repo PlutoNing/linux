@@ -12,6 +12,7 @@
  */
 
 struct trace_seq {
+	/* 是个buffer, 往这里写 */
 	char			buffer[PAGE_SIZE];
 	/* 存储要打印的东西 */
 	struct seq_buf		seq;
@@ -45,6 +46,7 @@ static inline int trace_seq_used(struct trace_seq *s)
 }
 
 /**
+返回buffer的下一个写入位置的指针
  * trace_seq_buffer_ptr - return pointer to next location in buffer
  * @s: trace sequence descriptor
  *

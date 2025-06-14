@@ -346,9 +346,15 @@ struct trace_array {
 	bool			allocated_snapshot;
 #endif
 #ifdef CONFIG_TRACER_MAX_TRACE
+/* tr的max_latency
+max_latency是指
+ */
 	unsigned long		max_latency;
 #ifdef CONFIG_FSNOTIFY
+/* 表示记录max_latency的文件
+ */
 	struct dentry		*d_max_latency;
+	/* 由下面那个irq_work来包裹着运行 */
 	struct work_struct	fsnotify_work;
 	struct irq_work		fsnotify_irqwork;
 #endif

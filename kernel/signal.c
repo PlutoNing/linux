@@ -1688,6 +1688,7 @@ EXPORT_SYMBOL(send_sig_info);
 #define __si_special(priv) \
 	((priv) ? SEND_SIG_PRIV : SEND_SIG_NOINFO)
 
+/* 给进程发送信号 */
 int
 send_sig(int sig, struct task_struct *p, int priv)
 {

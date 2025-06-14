@@ -19,7 +19,9 @@
  */
 struct seq_buf {
 	char			*buffer;
+	/* 总大小 */
 	size_t			size;
+	/* 数据大小 */
 	size_t			len;
 	loff_t			readpos;
 };
@@ -56,6 +58,7 @@ seq_buf_set_overflow(struct seq_buf *s)
 }
 
 /*
+seq_buf的buffer有多少剩余
  * How much buffer is left on the seq_buf?
  */
 static inline unsigned int
@@ -67,7 +70,9 @@ seq_buf_buffer_left(struct seq_buf *s)
 	return s->size - s->len;
 }
 
-/* How much buffer was written? */
+/*
+s中多少空间被使用了
+How much buffer was written? */
 static inline unsigned int seq_buf_used(struct seq_buf *s)
 {
 	return min(s->len, s->size);
@@ -120,6 +125,8 @@ static inline size_t seq_buf_get_buf(struct seq_buf *s, char **bufp)
 }
 
 /**
+把数据提交到buffer
+感觉就是把这num的空间标记为已占用
  * seq_buf_commit - commit data to the buffer
  * @s: the seq_buf handle
  * @num: the number of bytes to commit

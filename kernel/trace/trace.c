@@ -1810,15 +1810,21 @@ static const struct file_operations tracing_max_lat_fops;
 
 static struct workqueue_struct *fsnotify_wq;
 
+/* 
+tr的fsnotify_work的workfn
+*/
 static void latency_fsnotify_workfn(struct work_struct *work)
 {
 	struct trace_array *tr = container_of(work, struct trace_array,
 					      fsnotify_work);
 	fsnotify_inode(tr->d_max_latency->d_inode, FS_MODIFY);
 }
-
+/* fsnotify_irqwork的workfn, 运行fsnotify_wq的异步work 
+为什么是irq_work运行普通work? 
+*/
 static void latency_fsnotify_workfn_irq(struct irq_work *iwork)
 {
+
 	struct trace_array *tr = container_of(iwork, struct trace_array,
 					      fsnotify_irqwork);
 	queue_work(fsnotify_wq, &tr->fsnotify_work);
@@ -1827,8 +1833,13 @@ static void latency_fsnotify_workfn_irq(struct irq_work *iwork)
 static void trace_create_maxlat_file(struct trace_array *tr,
 				     struct dentry *d_tracer)
 {
+	/* 初始化tr的fsnotify_work , fsnotify_work触发这个workfn
+	 */
 	INIT_WORK(&tr->fsnotify_work, latency_fsnotify_workfn);
+	/* 初始化tr的fsnotify_irqwork */
 	init_irq_work(&tr->fsnotify_irqwork, latency_fsnotify_workfn_irq);
+	/* 初始化记录tr的最大延迟的文件
+	 */
 	tr->d_max_latency = trace_create_file("tracing_max_latency",
 					      TRACE_MODE_WRITE,
 					      d_tracer, tr,
@@ -1848,6 +1859,7 @@ __init static int latency_fsnotify_init(void)
 
 late_initcall_sync(latency_fsnotify_init);
 
+/* 运行tr的fsnotify异步work */
 void latency_fsnotify(struct trace_array *tr)
 {
 	if (!fsnotify_wq)
@@ -1869,6 +1881,8 @@ void latency_fsnotify(struct trace_array *tr)
 #endif
 
 /*
+把tr的max_latency文件的内容记录到tr的max_buffer的max_data中
+拷贝当前trace的最大延迟到max_tr中
  * Copy the new maximum trace into the separate maximum-trace
  * structure. (this way the maximum trace is permanently saved,
  * for later retrieval via /sys/kernel/tracing/tracing_max_latency)
@@ -1877,6 +1891,7 @@ static void
 __update_max_tr(struct trace_array *tr, struct task_struct *tsk, int cpu)
 {
 	struct array_buffer *trace_buf = &tr->array_buffer;
+	/* 取出max_buffer, 后续的操作都是更新这个max_buffer */
 	struct array_buffer *max_buf = &tr->max_buffer;
 	struct trace_array_cpu *data = per_cpu_ptr(trace_buf->data, cpu);
 	struct trace_array_cpu *max_data = per_cpu_ptr(max_buf->data, cpu);
@@ -1884,6 +1899,9 @@ __update_max_tr(struct trace_array *tr, struct task_struct *tsk, int cpu)
 	max_buf->cpu = cpu;
 	max_buf->time_start = data->preempt_timestamp;
 
+	/* tr的max_latency除了在sysfs的tracing_max_latency文件中被读写fops调用之外
+	的唯一调用是这里
+	 */
 	max_data->saved_latency = tr->max_latency;
 	max_data->critical_start = data->critical_start;
 	max_data->critical_end = data->critical_end;
@@ -1903,12 +1921,20 @@ __update_max_tr(struct trace_array *tr, struct task_struct *tsk, int cpu)
 	max_data->policy = tsk->policy;
 	max_data->rt_priority = tsk->rt_priority;
 
-	/* record this tasks comm */
+	/* record this tasks comm
+	在saved_cmd记录进程的comm
+	*/
 	tracing_record_cmdline(tsk);
+	/* 传播记录tr的max_latency文件的变化?
+	 */
 	latency_fsnotify(tr);
 }
 
 /**
+把global_trace的array_buffer的内容快照拷贝到tr的max_tr中?
+========================
+主要是运行tr的cond_snapshot.update()函数
+拷贝tr的max_latency等的内容到tr的max_buffer的max_data中
  * update_max_tr - snapshot all trace buffers from global_trace to max_tr
  * @tr: tracer
  * @tsk: the task with the latency
@@ -1949,6 +1975,8 @@ update_max_tr(struct trace_array *tr, struct task_struct *tsk, int cpu,
 #endif
 	swap(tr->array_buffer.buffer, tr->max_buffer.buffer);
 
+	/* 把tr的max_latency文件的内容记录到tr的max_buffer的max_data中
+	 */
 	__update_max_tr(tr, tsk, cpu);
 
 	arch_spin_unlock(&tr->max_lock);
@@ -1979,6 +2007,7 @@ update_max_tr_single(struct trace_array *tr, struct task_struct *tsk, int cpu)
 
 	arch_spin_lock(&tr->max_lock);
 
+	/* 交换两rb的这个cpu的pcp buffer */
 	ret = ring_buffer_swap_cpu(tr->max_buffer.buffer, tr->array_buffer.buffer, cpu);
 
 	if (ret == -EBUSY) {
@@ -2001,7 +2030,8 @@ update_max_tr_single(struct trace_array *tr, struct task_struct *tsk, int cpu)
 
 #endif /* CONFIG_TRACER_MAX_TRACE */
 
-/* 等待iter出现内容 */
+/* 等待iter出现内容
+返回0表示ok */
 static int wait_on_pipe(struct trace_iterator *iter, int full)
 {
 	/* Iterators are static, they should be filled or empty */
@@ -2720,6 +2750,7 @@ static bool tracing_record_taskinfo_skip(int flags)
 }
 
 /**
+trace记录进程的信息
  * tracing_record_taskinfo - record the task info of a task
  *
  * @task:  task to record
@@ -2782,7 +2813,10 @@ void tracing_record_taskinfo_sched_switch(struct task_struct *prev,
 	__this_cpu_write(trace_taskinfo_save, false);
 }
 
-/* Helpers to record a specific task information */
+/*
+trace记录指定进程的特定信息
+这里记录command
+Helpers to record a specific task information */
 void tracing_record_cmdline(struct task_struct *task)
 {
 	tracing_record_taskinfo(task, TRACE_RECORD_CMDLINE);
@@ -3792,7 +3826,8 @@ static void trace_iterator_increment(struct trace_iterator *iter)
 		ring_buffer_iter_advance(buf_iter);
 }
 
-/* 从rb读取一个trace entry */
+/* 从rb读取一个trace entry
+返回下一个event的ref, 有pcp iter的话,也会拷贝到iter */
 static struct trace_entry *
 peek_next_entry(struct trace_iterator *iter, int cpu, u64 *ts,
 		unsigned long *lost_events)
@@ -3802,13 +3837,14 @@ peek_next_entry(struct trace_iterator *iter, int cpu, u64 *ts,
 	struct ring_buffer_iter *buf_iter = trace_buffer_iter(iter, cpu);
 
 	if (buf_iter) {
-		/* 从iter读出一个事件 */
+		/* 从iter读出一个事件, 返回句柄, 也会拷贝到iter */
 		event = ring_buffer_iter_peek(buf_iter, ts);
 		if (lost_events)
 			*lost_events = ring_buffer_iter_dropped(buf_iter) ?
 				(unsigned long)-1 : 0;
 	} else {
-		/* 没有pcp iter的情况？ */
+		/* 没有pcp iter的情况？不会拷贝到iter的event
+		只是返回指针 */
 		event = ring_buffer_peek(iter->array_buffer->buffer, cpu, ts,
 					 lost_events);
 	}
@@ -4193,11 +4229,14 @@ const char *trace_event_format(struct trace_iterator *iter, const char *fmt)
 #define STATIC_TEMP_BUF_SIZE	128
 static char static_temp_buf[STATIC_TEMP_BUF_SIZE] __aligned(4);
 
-/* Find the next real entry, without updating the iterator itself */
+/*
+获取下一个entry
+Find the next real entry, without updating the iterator itself */
 struct trace_entry *trace_find_next_entry(struct trace_iterator *iter,
 					  int *ent_cpu, u64 *ent_ts)
 {
-	/* __find_next_entry will reset ent_size */
+	/* __find_next_entry will reset ent_size
+	 */
 	int ent_size = iter->ent_size;
 	struct trace_entry *entry;
 
@@ -4217,6 +4256,8 @@ struct trace_entry *trace_find_next_entry(struct trace_iterator *iter,
 	 * The __find_next_entry() may call peek_next_entry(), which may
 	 * call ring_buffer_peek() that may make the contents of iter->ent
 	 * undefined. Need to copy iter->ent now.
+	 把iter的ent拷贝到iter->temp中
+	 目的是
 	 */
 	if (iter->ent && iter->ent != iter->temp) {
 		if ((!iter->temp || iter->temp_size < iter->ent_size) &&
@@ -4232,6 +4273,7 @@ struct trace_entry *trace_find_next_entry(struct trace_iterator *iter,
 		memcpy(iter->temp, iter->ent, iter->ent_size);
 		iter->ent = iter->temp;
 	}
+	/* 读取下一个事件 */
 	entry = __find_next_entry(iter, ent_cpu, NULL, ent_ts);
 	/* Put back the original ent_size */
 	iter->ent_size = ent_size;
@@ -4241,6 +4283,7 @@ struct trace_entry *trace_find_next_entry(struct trace_iterator *iter,
 
 /* 
 找到下一个entry
+inc表示
 Find the next real entry, and increment the iterator to the next entry */
 void *trace_find_next_entry_inc(struct trace_iterator *iter)
 {
@@ -4254,7 +4297,9 @@ void *trace_find_next_entry_inc(struct trace_iterator *iter)
 	return iter->ent ? iter : NULL;
 }
 
-/* 消耗一个事件 */
+/* 
+获取下一个event的指针
+读取一个事件 */
 static void trace_consume(struct trace_iterator *iter)
 {
 	ring_buffer_consume(iter->array_buffer->buffer, iter->cpu, &iter->ts,
@@ -4759,6 +4804,7 @@ int trace_empty(struct trace_iterator *iter)
 
 /*  
 打印trace结果？
+打印到
 Called with trace_event_read_lock() held. */
 enum print_line_t print_trace_line(struct trace_iterator *iter)
 {
@@ -4778,7 +4824,8 @@ enum print_line_t print_trace_line(struct trace_iterator *iter)
 			return TRACE_TYPE_PARTIAL_LINE;
 	}
 
-	/* 先尝试调用tracer的print line回调 */
+	/* 先尝试调用tracer的print line回调
+	回调输出到 */
 	if (iter->trace && iter->trace->print_line) {
 		ret = iter->trace->print_line(iter);
 		if (ret != TRACE_TYPE_UNHANDLED)
@@ -5205,6 +5252,7 @@ static int tracing_release(struct inode *inode, struct file *file)
 	iter = m->private;
 	mutex_lock(&trace_types_lock);
 
+	/* 释放iter在每个cpu buffer上的读取iter */
 	for_each_tracing_cpu(cpu) {
 		if (iter->buffer_iter[cpu])
 			ring_buffer_read_finish(iter->buffer_iter[cpu]);
@@ -6894,6 +6942,7 @@ tracing_set_trace_write(struct file *filp, const char __user *ubuf,
 	return ret;
 }
 
+/*  */
 static ssize_t
 tracing_nsecs_read(unsigned long *ptr, char __user *ubuf,
 		   size_t cnt, loff_t *ppos)
@@ -6958,6 +7007,8 @@ out:
 
 #ifdef CONFIG_TRACER_MAX_TRACE
 
+/* tr的max latency文件的read ops
+ */
 static ssize_t
 tracing_max_lat_read(struct file *filp, char __user *ubuf,
 		     size_t cnt, loff_t *ppos)
@@ -6967,6 +7018,8 @@ tracing_max_lat_read(struct file *filp, char __user *ubuf,
 	return tracing_nsecs_read(&tr->max_latency, ubuf, cnt, ppos);
 }
 
+/* 为什么这个文件还能写入呢？
+ */
 static ssize_t
 tracing_max_lat_write(struct file *filp, const char __user *ubuf,
 		      size_t cnt, loff_t *ppos)
@@ -7289,6 +7342,12 @@ static void tracing_spd_release_pipe(struct splice_pipe_desc *spd,
 	__free_page(spd->pages[idx]);
 }
 
+/**
+ * @description: 
+ * @param {size_t} rem
+ * @param {trace_iterator} *iter
+ * @return {*}
+ */
 static size_t
 tracing_fill_pipe_page(size_t rem, struct trace_iterator *iter)
 {
@@ -7930,6 +7989,8 @@ static void tracing_swap_cpu_buffer(void *tr)
 	update_max_tr_single((struct trace_array *)tr, current, smp_processor_id());
 }
 
+/* snap相关的
+以后 */
 static ssize_t
 tracing_snapshot_write(struct file *filp, const char __user *ubuf, size_t cnt,
 		       loff_t *ppos)
@@ -8076,6 +8137,8 @@ static const struct file_operations tracing_thresh_fops = {
 };
 
 #ifdef CONFIG_TRACER_MAX_TRACE
+/* 记录最大延迟的文件fops
+ */
 static const struct file_operations tracing_max_lat_fops = {
 	.open		= tracing_open_generic_tr,
 	.read		= tracing_max_lat_read,
@@ -8612,7 +8675,8 @@ tracing_buffers_poll(struct file *filp, poll_table *poll_table)
 }
 
 /**
- * @description: 
+ * @description: 读取buffer的reader page
+ 会拷贝两次, 从reader page到info->spare, 然后再从info->spare到用户空间
  * @param {file} *filp
  * @param {char __user} *ubuf
  * @param {size_t} count
@@ -8658,7 +8722,8 @@ tracing_buffers_read(struct file *filp, char __user *ubuf,
 
  again:
 	trace_access_lock(iter->cpu_file);
-	/* 这里开始读取
+	/* 
+	这里开始读取
 	从iter->array_buffer->buffer中读取数据到info->spare
 	读取count长度
 	 */
@@ -8674,17 +8739,20 @@ tracing_buffers_read(struct file *filp, char __user *ubuf,
 			if ((filp->f_flags & O_NONBLOCK))
 				return -EAGAIN;/* 用户要求非阻塞, 那么不等待, 直接返回again */
 
+			/* 在这里等待内容出现 */
 			ret = wait_on_pipe(iter, 0);
-			if (ret)
+			if (ret) /* 出错了 */
 				return ret;
-
+			/* 等待函数返回0, 可能是有新内容了,去读取 */
 			goto again;
 		}
 		return 0;
 	}
 
+	/* 到这里的一个情况是: 成功读取了一些内容 */
 	info->read = 0;
  read:
+	/* 把读取的内容拷贝到用户空间 */
 	size = PAGE_SIZE - info->read;
 	if (size > count)
 		size = count;
@@ -8727,7 +8795,9 @@ static int tracing_buffers_release(struct inode *inode, struct file *file)
 
 	return 0;
 }
+/* 
 
+*/
 struct buffer_ref {
 	struct trace_buffer	*buffer;
 	void			*page;
@@ -8783,7 +8853,16 @@ static void buffer_spd_release(struct splice_pipe_desc *spd, unsigned int i)
 	spd->partial[i].private = 0;
 }
 
-/*  */
+
+/**
+ * @description: 零拷贝的读取结果
+ * @param {file} *file
+ * @param {loff_t} *ppos
+ * @param {pipe_inode_info} *pipe
+ * @param {size_t} len
+ * @param {unsigned int} flags
+ * @return {*}
+ */
 static ssize_t
 tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 			    struct pipe_inode_info *pipe, size_t len,
@@ -8791,8 +8870,11 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 {
 	struct ftrace_buffer_info *info = file->private_data;
 	struct trace_iterator *iter = &info->iter;
+	/* 从这里看, 更感觉splice是保存ref, 而不是拷贝数据 */
 	struct partial_page partial_def[PIPE_DEF_BUFFERS];
+	/* 16page的缓冲区? */
 	struct page *pages_def[PIPE_DEF_BUFFERS];
+	/*  */
 	struct splice_pipe_desc spd = {
 		.pages		= pages_def,
 		.partial	= partial_def,
@@ -8812,6 +8894,7 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 	if (*ppos & (PAGE_SIZE - 1))
 		return -EINVAL;
 
+	/* 按整页面读取 */
 	if (len & (PAGE_SIZE - 1)) {
 		if (len < PAGE_SIZE)
 			return -EINVAL;
@@ -8823,20 +8906,25 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 
  again:
 	trace_access_lock(iter->cpu_file);
+	/* 获取这个cpu buffer的条目数量 */
 	entries = ring_buffer_entries_cpu(iter->array_buffer->buffer, iter->cpu_file);
 
+	/* 读取的大小受到页面数量, 用户指定的len, cpu buffer条目数量这三个因素限制 */
 	for (i = 0; i < spd.nr_pages_max && len && entries; i++, len -= PAGE_SIZE) {
 		struct page *page;
 		int r;
 
+		/* 分配一个buffer_ref */
 		ref = kzalloc(sizeof(*ref), GFP_KERNEL);
 		if (!ref) {
 			ret = -ENOMEM;
 			break;
 		}
 
+		/* 初始化这个buffer_ref */
 		refcount_set(&ref->refcount, 1);
 		ref->buffer = iter->array_buffer->buffer;
+		/* 这里分配新页面 */
 		ref->page = ring_buffer_alloc_read_page(ref->buffer, iter->cpu_file);
 		if (IS_ERR(ref->page)) {
 			ret = PTR_ERR(ref->page);
@@ -8846,6 +8934,8 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 		}
 		ref->cpu = iter->cpu_file;
 
+		/* 这里把事件读取, 拷贝到ref->page
+		这是要用户要求的len范围内，和buffer剩余事件数量的限制下, 读取了一个page的量 */
 		r = ring_buffer_read_page(ref->buffer, &ref->page,
 					  len, iter->cpu_file, 1);
 		if (r < 0) {
@@ -8855,6 +8945,10 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 			break;
 		}
 
+		/*现在完成了读取一个page(是完成了从内核的cpu buffer拷贝到内核的data page(ref->page)
+		按理说这里应该拷贝到用户空间
+		不过这个函数是零拷贝, 拿到引用就行 */
+		/* 找到这个虚拟地址对应的page结构体 */
 		page = virt_to_page(ref->page);
 
 		spd.pages[i] = page;
@@ -8864,22 +8958,27 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 		spd.nr_pages++;
 		*ppos += PAGE_SIZE;
 
+		/* 获取剩余的条目数量 */
 		entries = ring_buffer_entries_cpu(iter->array_buffer->buffer, iter->cpu_file);
 	}
 
+
 	trace_access_unlock(iter->cpu_file);
 	spd.nr_pages = i;
-
+	/* 现在spd持有了内核空间的一系列存储事件结果的页面的句柄 */
 	/* did we read anything? */
 	if (!spd.nr_pages) {
+		/* 如果刚刚没有读取到任何内容 */
 		long wait_index;
 
+		/* 没有读取到内容, 也可能是因为内存分配等问题, 这里直接返回 */
 		if (ret)
 			goto out;
 
+		/* 到这里是因为没有内容导致的没有读取到任何结果 */
 		ret = -EAGAIN;
 		if ((file->f_flags & O_NONBLOCK) || (flags & SPLICE_F_NONBLOCK))
-			goto out;
+			goto out;/* 非阻塞也不等待 */
 
 		wait_index = READ_ONCE(iter->wait_index);
 
@@ -8896,9 +8995,11 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 		if (wait_index != iter->wait_index)
 			goto out;
 
+		/* 因为有了新内容, 阻塞函数返回, 这里重试 */
 		goto again;
 	}
 
+	/* 把spd的页面的引用等信息交给pipe */
 	ret = splice_to_pipe(pipe, &spd);
 out:
 	splice_shrink_spd(&spd);
@@ -8929,7 +9030,7 @@ static long tracing_buffers_ioctl(struct file *file, unsigned int cmd, unsigned 
 /*  */
 static const struct file_operations tracing_buffers_fops = {
 	.open		= tracing_buffers_open,
-	/* 普通的读取 */
+	/* 普通的读取, 会有两次拷贝 */
 	.read		= tracing_buffers_read,
 	.poll		= tracing_buffers_poll,
 	.release	= tracing_buffers_release,
@@ -10844,7 +10945,8 @@ __init static void enable_instances(void)
 	}
 }
 
-/*  */
+/* boot早期初始化调用
+初始化ftrace的相关东西 */
 __init static int tracer_alloc_buffers(void)
 {
 	int ring_buf_size;
@@ -10868,7 +10970,7 @@ __init static int tracer_alloc_buffers(void)
 	if (!alloc_cpumask_var(&global_trace.tracing_cpumask, GFP_KERNEL))
 		goto out_free_buffer_mask;
 
-	/* Only allocate trace_printk buffers if a trace_printk exists */
+	/* Only allocate tra ce_printk buffers if a trace_printk exists */
 	if (&__stop___trace_bprintk_fmt != &__start___trace_bprintk_fmt)
 		/* Must be called before global_trace.buffer is allocated */
 		trace_printk_init_buffers();
@@ -10885,7 +10987,9 @@ __init static int tracer_alloc_buffers(void)
 	raw_spin_lock_init(&global_trace.start_lock);
 
 	/*
-	 * The prepare callbacks allocates some memory for the ring buffer. We
+	 * The prepare callbacks allocates some memory for the ring buffer.
+	 为ringbuffer分配内存
+	 We
 	 * don't free the buffer if the CPU goes down. If we were to free
 	 * the buffer, then the user would lose any trace that was in the
 	 * buffer. The memory will be removed once the "instance" is removed.
@@ -11013,7 +11117,8 @@ void __init early_trace_init(void)
 		else
 			static_key_enable(&tracepoint_printk_key.key);
 	}
-	/* 初始化ftrace什么的 */
+	/* 初始化ftrace什么的机制
+	具体做 */
 	tracer_alloc_buffers();
 
 	init_events();

@@ -184,6 +184,10 @@ static void wakeup_pipe_readers(struct pipe_inode_info *pipe)
 }
 
 /**
+把spd的结果数据页面的引用等信息交给pipe
+===================================================
+spd里面一般持有的是零拷贝下读取的内核结果, 也是内核空间的页面.
+
  * splice_to_pipe - fill passed data into a pipe
  * @pipe:	pipe to fill
  * @spd:	data to fill
@@ -212,9 +216,11 @@ ssize_t splice_to_pipe(struct pipe_inode_info *pipe,
 		goto out;
 	}
 
+	/* 这里只要pipe还没满, 就继续 */
 	while (!pipe_full(head, tail, pipe->max_usage)) {
 		struct pipe_buffer *buf = &pipe->bufs[head & mask];
 
+		/* 这里也是直接复制句柄信息到pipe */
 		buf->page = spd->pages[page_nr];
 		buf->offset = spd->partial[page_nr].offset;
 		buf->len = spd->partial[page_nr].len;
@@ -222,11 +228,13 @@ ssize_t splice_to_pipe(struct pipe_inode_info *pipe,
 		buf->ops = spd->ops;
 		buf->flags = 0;
 
+		/* 调整head pos */
 		head++;
 		pipe->head = head;
 		page_nr++;
 		ret += buf->len;
 
+		/* spd被读取完了 */
 		if (!--spd->nr_pages)
 			break;
 	}

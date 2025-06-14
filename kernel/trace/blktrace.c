@@ -1401,7 +1401,7 @@ static void blk_log_dump_pdu(struct trace_seq *s,
 
 	trace_seq_puts(s, ") ");
 }
-
+/* 好像也是输出到seq file */
 static void blk_log_generic(struct trace_seq *s, const struct trace_entry *ent, bool has_cg)
 {
 	char cmd[TASK_COMM_LEN];
@@ -1478,6 +1478,7 @@ static void blk_log_split(struct trace_seq *s, const struct trace_entry *ent, bo
 }
 
 /**
+把数据拷贝到seq file
  * @description: 
  * @param {trace_seq} *s
  * @param {trace_entry} *ent
@@ -1556,7 +1557,8 @@ static const struct {
 	[__BLK_TA_BOUNCE]	= {{  "B", "bounce" },	   blk_log_generic },
 	[__BLK_TA_REMAP]	= {{  "A", "remap" },	   blk_log_remap },
 };
-/* 打印blktrace的行 */
+/*
+ 打印blktrace的行 */
 static enum print_line_t print_one_line(struct trace_iterator *iter,
 					bool classic)
 {
@@ -1571,12 +1573,13 @@ static enum print_line_t print_one_line(struct trace_iterator *iter,
 	t	   = te_blk_io_trace(iter->ent);
 	what	   = (t->action & ((1 << BLK_TC_SHIFT) - 1)) & ~__BLK_TA_CGROUP;
 	long_act   = !!(tr->trace_flags & TRACE_ITER_VERBOSE);
+	/* 这两个函数都是输出到seq file */
 	log_action = classic ? &blk_log_action_classic : &blk_log_action;
 	has_cg	   = t->action & __BLK_TA_CGROUP;
 
 	/* 这个是什么路径 */
 	if ((t->action & ~__BLK_TN_CGROUP) == BLK_TN_MESSAGE) {
-		/* 调用log函数 */
+		/* 调用log函数, 都是输出到seq file */
 		log_action(iter, long_act ? "message" : "m", has_cg);
 		/* 把iter->ent拷贝写入seq */
 		blk_log_msg(s, iter->ent, has_cg);
@@ -1658,7 +1661,8 @@ static struct tracer blk_tracer __read_mostly = {
 	.stop		= blk_tracer_stop,
 	/* 打印header的回调 */
 	.print_header	= blk_tracer_print_header,
-	/* 打印行 */
+	/* 打印行
+	输出到 */
 	.print_line	= blk_tracer_print_line,
 	.flags		= &blk_tracer_flags,
 	.set_flag	= blk_tracer_set_flag,
