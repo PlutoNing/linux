@@ -119,6 +119,9 @@ DEFINE_PERCPU_RWSEM(cgroup_threadgroup_rwsem);
 			   "cgroup_mutex or RCU read lock required");
 
 /*
+销毁css的全局wq
+INIT_WORK(&css->destroy_work, css_killed_work_fn);
+queue_work(cgroup_destroy_wq, &css->destroy_work);
  * cgroup destruction makes heavy use of work items and there can be a lot
  * of concurrent destructions.  Use a separate workqueue so that cgroup
  * destruction work items don't end up filling up max_active of system_wq
@@ -163,7 +166,9 @@ static struct static_key_true *cgroup_subsys_on_dfl_key[] = {
 
 static DEFINE_PER_CPU(struct cgroup_rstat_cpu, cgrp_dfl_root_rstat_cpu);
 
-/* the default hierarchy */
+/* the default hierarchy
+cgroup的默认层次结构
+ */
 struct cgroup_root cgrp_dfl_root = { .cgrp.rstat_cpu = &cgrp_dfl_root_rstat_cpu };
 EXPORT_SYMBOL_GPL(cgrp_dfl_root);
 
@@ -273,6 +278,7 @@ bool cgroup_ssid_enabled(int ssid)
 }
 
 /**
+检测cgroup是否位于默认层次结构上
  * cgroup_on_dfl - test whether a cgroup is on the default hierarchy
  * @cgrp: the cgroup of interest
  *
@@ -356,6 +362,7 @@ static bool cgroup_has_tasks(struct cgroup *cgrp)
 	return cgrp->nr_populated_csets;
 }
 
+/* 检测是不是threaded */
 static bool cgroup_is_threaded(struct cgroup *cgrp)
 {
 	return cgrp->dom_cgrp != cgrp;
@@ -394,7 +401,8 @@ static bool cgroup_can_be_thread_root(struct cgroup *cgrp)
 	return true;
 }
 
-/* is @cgrp root of a threaded subtree? */
+/* is @cgrp root of a threaded subtree?
+检测一个cg是不是一个threaded subtree的root */
 static bool cgroup_is_thread_root(struct cgroup *cgrp)
 {
 	/* thread root should be a domain */
@@ -416,7 +424,11 @@ static bool cgroup_is_thread_root(struct cgroup *cgrp)
 	return false;
 }
 
-/* a domain which isn't connected to the root w/o brekage can't be used */
+/*
+检查一个dom cg是否合法
+=====================
+domcg的父层级cg不能有threaded的?
+a domain which isn't connected to the root w/o brekage can't be used */
 static bool cgroup_is_valid_domain(struct cgroup *cgrp)
 {
 	/* the cgroup itself can be a thread root */
@@ -434,7 +446,12 @@ static bool cgroup_is_valid_domain(struct cgroup *cgrp)
 	return true;
 }
 
-/* subsystems visibly enabled on a cgroup */
+/*
+获取一个cg的子系统掩码
+==================
+获取的可能是parent的subtree_control
+也可能是default root的subsys_mask什么的
+subsystems visibly enabled on a cgroup */
 static u16 cgroup_control(struct cgroup *cgrp)
 {
 	struct cgroup *parent = cgroup_parent(cgrp);
@@ -455,9 +472,12 @@ static u16 cgroup_control(struct cgroup *cgrp)
 	return root_ss_mask;
 }
 
-/* subsystems enabled on a cgroup */
+/*
+获取cgroup->parent的subtree_ss_mask
+subsystems enabled on a cgroup */
 static u16 cgroup_ss_mask(struct cgroup *cgrp)
 {
+	/*  */
 	struct cgroup *parent = cgroup_parent(cgrp);
 
 	if (parent) {
@@ -473,6 +493,8 @@ static u16 cgroup_ss_mask(struct cgroup *cgrp)
 }
 
 /**
+返回cgroup指定的ss子系统的css
+或者cgrp自己的css
  * cgroup_css - obtain a cgroup's css for the specified subsystem
   获取cgroup的此子系统的css
  * @cgrp: the cgroup of interest
@@ -717,7 +739,10 @@ EXPORT_SYMBOL_GPL(of_css);
 			;						\
 		else
 
-/* walk live descendants in postorder */
+/* walk live descendants in postorder
+后续遍历cgrp的孩子
+d_css后序遍历指向cgrp->css的层级
+然后dsct提取出d_css的cgroup */
 #define cgroup_for_each_live_descendant_post(dsct, d_css, cgrp)		\
 	css_for_each_descendant_post((d_css), cgroup_css((cgrp), NULL))	\
 		if (({ lockdep_assert_held(&cgroup_mutex);		\
@@ -726,7 +751,8 @@ EXPORT_SYMBOL_GPL(of_css);
 			;						\
 		else
 
-/* css_set是什么
+/*
+ css_set是什么
  * The default css_set - used by init and its children prior to any
  * hierarchies being mounted. It contains a pointer to the root state
  * for each subsystem. Also used to anchor the list of css_sets. Not
@@ -1545,6 +1571,8 @@ static umode_t cgroup_file_mode(const struct cftype *cft)
 }
 
 /**
+计算subtree_ss_mask - 计算子树的子系统掩码
+subtree_ss_mask是
  * cgroup_calc_subtree_ss_mask - calculate subtree_ss_mask
  * @subtree_control: the new subtree_control mask to consider
  * @this_ss_mask: available subsystems
@@ -1713,6 +1741,8 @@ static void css_clear_dir(struct cgroup_subsys_state *css)
 }
 
 /**
+创建一个cgroup目录下的子系统文件
+这个ss对应的css可能刚创建
  * css_populate_dir - create subsys files in a cgroup directory
  * @css: target css
  *
@@ -3054,6 +3084,8 @@ out_finish:
 }
 
 /**
+加锁cgroup_mutex
+然后清理掉cgroup的子节点中已经被offlined的css
  * cgroup_lock_and_drain_offline - lock cgroup_mutex and drain offlined csses
  * @cgrp: root of the target subtree
  *
@@ -3072,6 +3104,10 @@ void cgroup_lock_and_drain_offline(struct cgroup *cgrp)
 restart:
 	cgroup_lock();
 
+	/* d_css后序迭代cgrp->css
+	dsct是d_css的cgroup
+	处理每一个已经快下线的css
+	 */
 	cgroup_for_each_live_descendant_post(dsct, d_css, cgrp) {
 		for_each_subsys(ss, ssid) {
 			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
@@ -3079,8 +3115,10 @@ restart:
 
 			if (!css || !percpu_ref_is_dying(&css->refcnt))
 				continue;
-
+			/* 到这里说明css要下线了 */
+			/* 获取cgroup一个ref (css是cgroup的一个子系统的css) */
 			cgroup_get_live(dsct);
+			/* 加入等待队列 */
 			prepare_to_wait(&dsct->offline_waitq, &wait,
 					TASK_UNINTERRUPTIBLE);
 
@@ -3095,6 +3133,7 @@ restart:
 }
 
 /**
+备份cg的全部子cg的控制掩码和dom_cgrp
  * cgroup_save_control - save control masks and dom_cgrp of a subtree
  * @cgrp: root of the target subtree
  *
@@ -3115,18 +3154,22 @@ static void cgroup_save_control(struct cgroup *cgrp)
 }
 
 /**
+刷新subtree的控制掩码
  * cgroup_propagate_control - refresh control masks of a subtree
  * @cgrp: root of the target subtree
  *
  * For @cgrp and its subtree, ensure ->subtree_ss_mask matches
  * ->subtree_control and propagate controller availability through the
  * subtree so that descendants don't have unavailable controllers enabled.
+ 对于cgrp和它的子cg, 确保subtree_ss_mask和subtree_control匹配
+ 传播控制器的可用性到子cg, 使得子cg不会启用不可用的控制器
  */
 static void cgroup_propagate_control(struct cgroup *cgrp)
 {
 	struct cgroup *dsct;
 	struct cgroup_subsys_state *d_css;
 
+	/* 遍历cgrp的全部子cg */
 	cgroup_for_each_live_descendant_pre(dsct, d_css, cgrp) {
 		dsct->subtree_control &= cgroup_control(dsct);
 		dsct->subtree_ss_mask =
@@ -3154,7 +3197,7 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 		dsct->dom_cgrp = dsct->old_dom_cgrp;
 	}
 }
-
+/* css是否生效? */
 static bool css_visible(struct cgroup_subsys_state *css)
 {
 	struct cgroup_subsys *ss = css->ss;
@@ -3168,6 +3211,8 @@ static bool css_visible(struct cgroup_subsys_state *css)
 }
 
 /**
+刚刚更新了cgrp的全部子cg的subtree_control与subtree_ss_mask成员
+这里进行应用
  * cgroup_apply_control_enable - enable or show csses according to control
  * @cgrp: root of the target subtree
  *
@@ -3187,14 +3232,18 @@ static int cgroup_apply_control_enable(struct cgroup *cgrp)
 	struct cgroup_subsys *ss;
 	int ssid, ret;
 
+	/* 遍历全部子cg */
 	cgroup_for_each_live_descendant_pre(dsct, d_css, cgrp) {
 		for_each_subsys(ss, ssid) {
 			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
 
+			/* 如果当前遍历到的子cg的这个子系统没有启用 */
 			if (!(cgroup_ss_mask(dsct) & (1 << ss->id)))
 				continue;
 
+			/* 如果这个cg的这个子系统启用了, 但是还没有对应的css */
 			if (!css) {
+				/* 创建对应的css, 并启用 */
 				css = css_create(dsct, ss);
 				if (IS_ERR(css))
 					return PTR_ERR(css);
@@ -3214,6 +3263,8 @@ static int cgroup_apply_control_enable(struct cgroup *cgrp)
 }
 
 /**
+作用是?
+遍历cgrp的子cg, 处理没有启用的ss, 关闭对应的css
  * cgroup_apply_control_disable - kill or hide csses according to control
  * @cgrp: root of the target subtree
  *
@@ -3233,8 +3284,12 @@ static void cgroup_apply_control_disable(struct cgroup *cgrp)
 	struct cgroup_subsys *ss;
 	int ssid;
 
+	/* 遍历cgrp->self这个css的子css层级
+	找到附加到自己下面的cgroup (也就是dsct) */
 	cgroup_for_each_live_descendant_post(dsct, d_css, cgrp) {
+		/* 找到其中一个cgroup的几个子系统对应的css */
 		for_each_subsys(ss, ssid) {
+			/* 获得这个子系统的css */
 			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
 
 			if (!css)
@@ -3244,6 +3299,7 @@ static void cgroup_apply_control_disable(struct cgroup *cgrp)
 
 			if (css->parent &&
 			    !(cgroup_ss_mask(dsct) & (1 << ss->id))) {
+				/* 如果父cg没有启用这个子系统, 就销毁cg这个css */
 				kill_css(css);
 			} else if (!css_visible(css)) {
 				css_clear_dir(css);
@@ -3255,6 +3311,7 @@ static void cgroup_apply_control_disable(struct cgroup *cgrp)
 }
 
 /**
+刚刚更新了cgrp的全部子cg的dom_cgrp指向自己父cg的domcg
  * cgroup_apply_control - apply control mask updates to the subtree
  * @cgrp: root of the target subtree
  *
@@ -3275,6 +3332,7 @@ static int cgroup_apply_control(struct cgroup *cgrp)
 {
 	int ret;
 
+	/* 更新全部子cg的dsct->subtree_ss_mask与dsct->subtree_control */
 	cgroup_propagate_control(cgrp);
 
 	ret = cgroup_apply_control_enable(cgrp);
@@ -3290,6 +3348,8 @@ static int cgroup_apply_control(struct cgroup *cgrp)
 }
 
 /**
+应用control mask的更新
+遍历cgrp的子cg, 如果某个cg没有启用某个ss, 就关闭对应的css
  * cgroup_finalize_control - finalize control mask update
  * @cgrp: root of the target subtree
  * @ret: the result of the update
@@ -3443,6 +3503,7 @@ out_unlock:
 }
 
 /**
+threaded是什么
  * cgroup_enable_threaded - make @cgrp threaded
  * @cgrp: the target cgroup
  *
@@ -3480,12 +3541,18 @@ static int cgroup_enable_threaded(struct cgroup *cgrp)
 	    !cgroup_can_be_thread_root(dom_cgrp))
 		return -EOPNOTSUPP;
 
+		/* 校验完毕
+		cg没有被populated
+		父cg的domcg也合法 */
 	/*
 	 * The following shouldn't cause actual migrations and should
 	 * always succeed.
+	 这里备份cgrp的全部子cg的控制掩码和dom_cgrp
 	 */
 	cgroup_save_control(cgrp);
 
+	/* 遍历cgrp的全部子cg
+	把threaded的子cg的domcg指向自己父cg的domcg */
 	cgroup_for_each_live_descendant_pre(dsct, d_css, cgrp)
 		if (dsct == cgrp || cgroup_is_threaded(dsct))
 			dsct->dom_cgrp = dom_cgrp;
@@ -4190,7 +4257,8 @@ static void cgroup_file_notify_timer(struct timer_list *timer)
 	cgroup_file_notify(container_of(timer, struct cgroup_file,
 					notify_timer));
 }
-
+/* 创建css的文件
+20250616010406 */
 static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp,
 			   struct cftype *cft)
 {
@@ -4674,6 +4742,7 @@ css_leftmost_descendant(struct cgroup_subsys_state *pos)
 }
 
 /**
+后序遍历方式下.返回pos的后一个节点。
  * css_next_descendant_post - find the next descendant for post-order walk
  * @pos: the current position (%NULL to initiate traversal)
  * @root: css whose descendants to walk
@@ -5465,7 +5534,9 @@ static void css_release(struct percpu_ref *ref)
 	INIT_WORK(&css->destroy_work, css_release_work_fn);
 	queue_work(cgroup_destroy_wq, &css->destroy_work);
 }
-/* 建立三者关联, */
+/*
+cgrp刚刚启用了ss这个控制, 新建了对应的css
+建立三者关联, */
 static void init_and_link_css(struct cgroup_subsys_state *css,
 			      struct cgroup_subsys *ss, struct cgroup *cgrp)
 {
@@ -5484,6 +5555,7 @@ static void init_and_link_css(struct cgroup_subsys_state *css,
 	atomic_set(&css->online_cnt, 0);
 	/* 构建此ss的css的父子关系 */
 	if (cgroup_parent(cgrp)) {
+		/* css的父css加入的是父cg这个ss所在的css */
 		css->parent = cgroup_css(cgroup_parent(cgrp), ss);
 		css_get(css->parent);
 	}
@@ -5494,7 +5566,9 @@ static void init_and_link_css(struct cgroup_subsys_state *css,
 	BUG_ON(cgroup_css(cgrp, ss));
 }
 
-/* invoke ->css_online() on a new CSS and mark it online if successful */
+/*
+调用css的上线回调
+ invoke ->css_online() on a new CSS and mark it online if successful */
 static int online_css(struct cgroup_subsys_state *css)
 {
 	struct cgroup_subsys *ss = css->ss;
@@ -5515,7 +5589,12 @@ static int online_css(struct cgroup_subsys_state *css)
 	return ret;
 }
 
-/* if the CSS is online, invoke ->css_offline() on it and mark it offline */
+/* if the CSS is online, invoke ->css_offline() on it and mark it offline
+下线一个css
+======================================================================
+就是调用ss的下线回调
+然后清除cgroup的subsys的对应元素
+然后唤醒等待下线的waiter */
 static void offline_css(struct cgroup_subsys_state *css)
 {
 	struct cgroup_subsys *ss = css->ss;
@@ -5525,16 +5604,20 @@ static void offline_css(struct cgroup_subsys_state *css)
 	if (!(css->flags & CSS_ONLINE))
 		return;
 
+	/* 调用这个子系统的css下线回调 */
 	if (ss->css_offline)
 		ss->css_offline(css);
 
 	css->flags &= ~CSS_ONLINE;
 	RCU_INIT_POINTER(css->cgroup->subsys[ss->id], NULL);
 
+	/* 唤醒等待下线的wq
+	这个css所属的cgroup的等待这个css子系统下线的用户都在这个wq */
 	wake_up_all(&css->cgroup->offline_waitq);
 }
 
 /**
+创建cg在这个ss上面的css
  * css_create - create a cgroup_subsys_state
  * @cgrp: the cgroup new css will be associated with
  * @ss: the subsys of new css
@@ -5546,21 +5629,26 @@ static void offline_css(struct cgroup_subsys_state *css)
 static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 					      struct cgroup_subsys *ss)
 {
+	/* 先找到父cg, 一般来说就是父文件夹 */
 	struct cgroup *parent = cgroup_parent(cgrp);
+	/* 再找到父css, 可能是自己这个cg类型的css, 也可能是加入的其他类型cg的css */
 	struct cgroup_subsys_state *parent_css = cgroup_css(parent, ss);
 	struct cgroup_subsys_state *css;
 	int err;
 
 	lockdep_assert_held(&cgroup_mutex);
 
+	/* 每个ss的css长得不一样, container_of */
 	css = ss->css_alloc(parent_css);
 	if (!css)
 		css = ERR_PTR(-ENOMEM);
 	if (IS_ERR(css))
 		return css;
 
+	/* 主要是让css的parent指向父cg这个ss的css */
 	init_and_link_css(css, ss, cgrp);
 
+	/* 初始化css的释放函数 */
 	err = percpu_ref_init(&css->refcnt, css_release, 0, GFP_KERNEL);
 	if (err)
 		goto err_free_css;
@@ -5574,12 +5662,14 @@ static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 	list_add_tail_rcu(&css->sibling, &parent_css->children);
 	cgroup_idr_replace(&ss->css_idr, css, css->id);
 
+	/* 上线一个css */
 	err = online_css(css);
 	if (err)
 		goto err_list_del;
 
 	return css;
 
+	/* 后面是错误情况下的收尾工作 */
 err_list_del:
 	list_del_rcu(&css->sibling);
 err_free_css:
@@ -5789,28 +5879,35 @@ out_unlock:
 }
 
 /*
+下线一个css的异步work的工作函数
  * This is called when the refcnt of a css is confirmed to be killed.
  * css_tryget_online() is now guaranteed to fail.  Tell the subsystem to
  * initiate destruction and put the css ref from kill_css().
  */
 static void css_killed_work_fn(struct work_struct *work)
 {
+	/* 获取要下线的css */
 	struct cgroup_subsys_state *css =
 		container_of(work, struct cgroup_subsys_state, destroy_work);
 
 	cgroup_lock();
 
 	do {
+		/* 实质下线这个css(调用offline回调, 抹除cgroup->subsys) */
 		offline_css(css);
 		css_put(css);
 		/* @css can't go away while we're holding cgroup_mutex */
 		css = css->parent;
+	/* 只要父css存在, 并且父css的ref也为0了 */
 	} while (css && atomic_dec_and_test(&css->online_cnt));
 
 	cgroup_unlock();
 }
 
-/* css kill confirmation processing requires process context, bounce */
+/*
+减少css->online_cnt
+为0的话就下线css
+ css kill confirmation processing requires process context, bounce */
 static void css_killed_ref_fn(struct percpu_ref *ref)
 {
 	struct cgroup_subsys_state *css =
@@ -5823,6 +5920,9 @@ static void css_killed_ref_fn(struct percpu_ref *ref)
 }
 
 /**
+销毁一个css
+===========
+总的来说,是减少ref, 为0就调用回调来下线
  * kill_css - destroy a css
  * @css: css to destroy
  *
@@ -5861,6 +5961,11 @@ static void kill_css(struct cgroup_subsys_state *css)
 	 *
 	 * Use percpu_ref_kill_and_confirm() to get notifications as each
 	 * css is confirmed to be seen as killed on all CPUs.
+	============
+	css_killed_ref_fn会减少css->online_cnt, 当online_cnt为0时, 就会调用css_killed_work_fn
+ * css_killed_work_fn会调用offline_css()下线css, 然后唤醒等待下线的waiter
+ 	================
+	内部会减少&css->refcnt, 也肯定会调用css_killed_ref_fn函数
 	 */
 	percpu_ref_kill_and_confirm(&css->refcnt, css_killed_ref_fn);
 }
@@ -6897,7 +7002,7 @@ struct cgroup *cgroup_v1v2_get_from_fd(int fd)
 }
 
 /**
-从fd获取对应的cgroup?
+从fd获取对应的cgroup
  * cgroup_get_from_fd - same as cgroup_v1v2_get_from_fd, but only supports
  * cgroup2.
  * @fd: fd obtained by open(cgroup2_dir)

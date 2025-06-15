@@ -153,7 +153,9 @@ struct cgroup_file {
  * directly without synchronization.
  */
 struct cgroup_subsys_state {
-	/* PI: the cgroup that this css is attached to */
+	/* PI: the cgroup that this css is attached to
+	css附加的cgroup
+	css可能被cgroup->subsys[ss]指向 */
 	struct cgroup *cgroup;
 
 	/* PI: the cgroup subsystem that this css is attached to */
@@ -403,7 +405,13 @@ struct cgroup_freezer_state {
 
 struct cgroup {
 	/* self css with NULL ->ss, points back to this cgroup */
-	struct cgroup_subsys_state self; /* 代表自己的css */
+	struct cgroup_subsys_state self; /*
+	这个css主要用于构建cgroup的父子关系
+	代表自己的css
+	===================
+	也代表着这个cg本身的类型,比如memcg或者io cg
+	如果一个a cg的一个ss的css加入了这个css的层级
+	这个a cg就可以视为是这个cg的子cg */
 
 	unsigned long flags;		/* "unsigned long" so bitops work */
 
@@ -466,6 +474,8 @@ struct cgroup {
 	 * one which may have more subsystems enabled.  Controller knobs
 	 * are made available iff it's enabled in ->subtree_control.
 	 */
+	/* 是自己全部父cg的control mask与的结果
+	 */
 	u16 subtree_control;
 	u16 subtree_ss_mask;
 	u16 old_subtree_control;
@@ -497,6 +507,11 @@ struct cgroup {
 	 * from process granularity and no-internal-task constraint.
 	 * Domain level resource consumptions which aren't tied to a
 	 * specific task are charged to the dom_cgrp.
+	 如果不是threaded，则指向自身。
+	 * 如果是threaded，则指向最近的domain祖先。
+	 * 在threaded子树中，cgroup不受进程粒度和无内部任务约束的限制。
+	 * domain级别的资源消耗不与特定任务绑定，而是计入dom_cgrp。
+	 20250616002307
 	 */
 	struct cgroup *dom_cgrp;
 	struct cgroup *old_dom_cgrp;		/* used while enabling threaded */
@@ -519,7 +534,10 @@ struct cgroup {
 	struct list_head pidlists;
 	struct mutex pidlist_mutex;
 
-	/* used to wait for offlining of csses */
+	/*
+	加入队列睡眠在这里等待css下线
+	被唤醒的时候就是css已经下线了?
+	used to wait for offlining of csses */
 	wait_queue_head_t offline_waitq;
 
 	/* used to schedule release agent */

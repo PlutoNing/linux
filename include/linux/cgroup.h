@@ -243,6 +243,7 @@ void css_task_iter_end(struct css_task_iter *it);
 	     (pos) = css_next_descendant_pre((pos), (css)))
 
 /**
+后续遍历css的子层级,pos作为迭代器
  * css_for_each_descendant_post - post-order walk of a css's descendants
  * @pos: the css * to use as the loop cursor
  * @css: css whose descendants to walk
