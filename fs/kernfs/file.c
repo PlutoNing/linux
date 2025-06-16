@@ -903,6 +903,10 @@ static __poll_t kernfs_fop_poll(struct file *filp, poll_table *wait)
 	return ret;
 }
 
+/* 
+kernfs_notify_work的work函数
+kernfs fsnotify会触发这个work会处理这个kernfs_notify_list
+*/
 static void kernfs_notify_workfn(struct work_struct *work)
 {
 	struct kernfs_node *kn;
@@ -916,7 +920,9 @@ repeat:
 		spin_unlock_irq(&kernfs_notify_lock);
 		return;
 	}
+	/* 然后让链表头指向下一个元素 */
 	kernfs_notify_list = kn->attr.notify_next;
+	/* 取出这个kn */
 	kn->attr.notify_next = NULL;
 	spin_unlock_irq(&kernfs_notify_lock);
 
@@ -966,6 +972,7 @@ repeat:
 }
 
 /**
+kernfs的fsnotify
  * kernfs_notify - notify a kernfs file
  * @kn: file to notify
  *
@@ -982,6 +989,7 @@ void kernfs_notify(struct kernfs_node *kn)
 		return;
 
 	/* kick poll immediately */
+	/* poll相关的机制 */
 	rcu_read_lock();
 	on = rcu_dereference(kn->attr.open);
 	if (on) {
@@ -992,10 +1000,13 @@ void kernfs_notify(struct kernfs_node *kn)
 
 	/* schedule work to kick fsnotify */
 	spin_lock_irqsave(&kernfs_notify_lock, flags);
+	/* 如果kn还没有加入kernfs_notify_list */
 	if (!kn->attr.notify_next) {
 		kernfs_get(kn);
+		/* 这里把kn也链接到kernfs_notify_list */
 		kn->attr.notify_next = kernfs_notify_list;
 		kernfs_notify_list = kn;
+		/* 然后触发kernfs fsnotify, work会处理这个kernfs_notify_list */
 		schedule_work(&kernfs_notify_work);
 	}
 	spin_unlock_irqrestore(&kernfs_notify_lock, flags);
@@ -1016,6 +1027,7 @@ const struct file_operations kernfs_file_fops = {
 };
 
 /**
+kernfs创建文件
  * __kernfs_create_file - kernfs internal function to create a file
  * @parent: directory to create the file in
  * @name: name of the file

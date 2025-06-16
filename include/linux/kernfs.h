@@ -177,6 +177,7 @@ struct kernfs_elem_attr {
 	const struct kernfs_ops	*ops;
 	struct kernfs_open_node __rcu	*open;
 	loff_t			size;
+	/* 用于建立kernfs_notify_list的链接 */
 	struct kernfs_node	*notify_next;	/* for kernfs_notify() */
 };
 
@@ -200,6 +201,7 @@ struct kernfs_node {
 	 * accessing the following two fields directly.  If the node is
 	 * never moved to a different parent, it is safe to access the
 	 * parent directly.
+	 kn本身可能是个文件也可能是个文件夹
 	 */
 	struct kernfs_node	*parent;
 	const char		*name;

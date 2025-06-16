@@ -249,7 +249,9 @@ struct css_set {
 	struct list_head mg_tasks;
 	struct list_head dying_tasks;
 
-	/* all css_task_iters currently walking this cset */
+	/*
+	这里链接着正在迭代遍历这个cset的css_task_iters
+	all css_task_iters currently walking this cset */
 	struct list_head task_iters;
 
 	/*
@@ -460,6 +462,7 @@ struct cgroup {
 
 	int nr_threaded_children;	/* # of live threaded child cgroups */
 
+	/* 在fs对应的node */
 	struct kernfs_node *kn;		/* cgroup kernfs entry */
 	struct cgroup_file procs_file;	/* handle for "cgroup.procs" */
 	struct cgroup_file events_file;	/* handle for "cgroup.events" */
@@ -642,6 +645,7 @@ struct cftype {
 	 * a struct cgroup_file field.  cgroup will record the handle of
 	 * the created file into it.  The recorded handle can be used as
 	 * long as the containing css remains accessible.
+	 cfile在css的偏移
 	 */
 	unsigned int file_offset;
 
@@ -649,8 +653,10 @@ struct cftype {
 	 * Fields used for internal bookkeeping.  Initialized automatically
 	 * during registration.
 	 */
+	 /*  */
 	struct cgroup_subsys *ss;	/* NULL for cgroup core files */
 	struct list_head node;		/* anchored at ss->cfts */
+	/* 对应的sys文件的fops */
 	struct kernfs_ops *kf_ops;
 
 	int (*open)(struct kernfs_open_file *of);
@@ -669,7 +675,8 @@ struct cftype {
 	/* generic seq_file read interface */
 	int (*seq_show)(struct seq_file *sf, void *v);
 
-	/* optional ops, implement all or none */
+	/* optional ops, implement all or none
+	这些是可选的, seq file类型的cft有这些? */
 	void *(*seq_start)(struct seq_file *sf, loff_t *ppos);
 	void *(*seq_next)(struct seq_file *sf, void *v, loff_t *ppos);
 	void (*seq_stop)(struct seq_file *sf, void *v);
@@ -778,6 +785,7 @@ struct cgroup_subsys {
 	/*
 	 * List of cftypes.  Each entry is the first entry of an array
 	 * terminated by zero length name.
+	 链接着list_add_tail(&cfts->node, &ss->cfts);
 	 */
 	struct list_head cfts;
 

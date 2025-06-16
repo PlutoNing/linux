@@ -1286,7 +1286,8 @@ struct task_struct {
 #endif
 
 #ifdef CONFIG_CGROUPS
-	/* Control Group info protected by css_set_lock: */
+	/* Control Group info protected by css_set_lock:
+	task所属的cset */
 	struct css_set __rcu		*cgroups;
 	/* cg_list protected by css_set_lock and tsk->alloc_lock: */
 	struct list_head		cg_list;

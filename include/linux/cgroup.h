@@ -50,6 +50,7 @@ struct kernel_clone_args;
 
 /* a css_task_iter should be treated as an opaque object */
 struct css_task_iter {
+	/* 自己所对应的css是哪个ss的 */
 	struct cgroup_subsys		*ss;
 	unsigned int			flags;
 
@@ -61,6 +62,7 @@ struct css_task_iter {
 
 	struct list_head		*task_pos;
 
+	/* 指向当前正在遍历的cset的进程列表头 */
 	struct list_head		*cur_tasks_head;
 	struct css_set			*cur_cset;
 	struct css_set			*cur_dcset;
@@ -183,6 +185,7 @@ void css_task_iter_end(struct css_task_iter *it);
 	     (pos) = css_next_child((pos), (parent)))
 
 /**
+前序遍历子css
  * css_for_each_descendant_pre - pre-order walk of a css's descendants
  * @pos: the css * to use as the loop cursor
  * @root: css whose descendants to walk
@@ -415,6 +418,7 @@ extern spinlock_t css_set_lock;
 	task_css_set_check((task), (__c))->subsys[(subsys_id)]
 
 /**
+获取task的cset
  * task_css_set - obtain a task's css_set
  * @task: the task to obtain css_set for
  *
@@ -571,7 +575,9 @@ static inline ino_t cgroup_ino(struct cgroup *cgrp)
 	return kernfs_ino(cgrp->kn);
 }
 
-/* cft/css accessors for cftype->write() operation */
+/*
+cft存储在knode的priv里面
+cft/css accessors for cftype->write() operation */
 static inline struct cftype *of_cft(struct kernfs_open_file *of)
 {
 	return of->kn->priv;
@@ -585,6 +591,12 @@ static inline struct cftype *seq_cft(struct seq_file *seq)
 	return of_cft(seq->private);
 }
 
+/* 通过seq file的priv找到of
+of对应的kn找到cg
+==========================
+of对应的kn也可以找到cft, 继而可以确定这个文件是哪个ss的
+============
+cg->subsys[ss]找到css */
 static inline struct cgroup_subsys_state *seq_css(struct seq_file *seq)
 {
 	return of_css(seq->private);

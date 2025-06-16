@@ -262,6 +262,7 @@ static int cgroup_addrm_files(struct cgroup_subsys_state *css,
 #endif
 
 /**
+检测cgroup子系统是否启用
  * cgroup_ssid_enabled - cgroup subsys enabled test by subsys ID
  * @ssid: subsys ID of interest
  *
@@ -1397,6 +1398,10 @@ static void cgroup_destroy_root(struct cgroup_root *root)
 }
 
 /*
+root是给定的根层级
+cset是某进场的css_set
+==================
+这里找到task对应的cg
  * Returned cgroup is without refcount but it's valid as long as cset pins it.
  */
 static inline struct cgroup *__cset_cgroup_from_root(struct css_set *cset,
@@ -1412,6 +1417,7 @@ static inline struct cgroup *__cset_cgroup_from_root(struct css_set *cset,
 		struct cgrp_cset_link *link;
 		lockdep_assert_held(&css_set_lock);
 
+		/* 20250617021531 */
 		list_for_each_entry(link, &cset->cgrp_links, cgrp_link) {
 			struct cgroup *c = link->cgrp;
 
@@ -1477,7 +1483,12 @@ static struct cgroup *current_cgns_cgroup_dfl(void)
 	}
 }
 
-/* look up cgroup associated with given css_set on the specified hierarchy */
+/*
+root是给定的根层级
+cset是某进场的css_set
+==================
+这里找到task对应的cg
+look up cgroup associated with given css_set on the specified hierarchy */
 static struct cgroup *cset_cgroup_from_root(struct css_set *cset,
 					    struct cgroup_root *root)
 {
@@ -1488,6 +1499,7 @@ static struct cgroup *cset_cgroup_from_root(struct css_set *cset,
 }
 
 /*
+找到task在给定层级所属的cg
  * Return the cgroup for "task" from the given hierarchy. Must be
  * called with cgroup_mutex and css_set_lock held.
  */
@@ -1529,6 +1541,7 @@ struct cgroup *task_cgroup_from_root(struct task_struct *task,
 
 static struct kernfs_syscall_ops cgroup_kf_syscall_ops;
 
+/* 读取cft->name */
 static char *cgroup_file_name(struct cgroup *cgrp, const struct cftype *cft,
 			      char *buf)
 {
@@ -1642,6 +1655,7 @@ void cgroup_kn_unlock(struct kernfs_node *kn)
 }
 
 /**
+从kn加锁并获得cg
  * cgroup_kn_lock_live - locking helper for cgroup kernfs methods
  * @kn: the kernfs_node being serviced
  * @drain_offline: perform offline draining on the cgroup
@@ -1688,7 +1702,7 @@ struct cgroup *cgroup_kn_lock_live(struct kernfs_node *kn, bool drain_offline)
 	cgroup_kn_unlock(kn);
 	return NULL;
 }
-
+/* 移除文件 */
 static void cgroup_rm_file(struct cgroup *cgrp, const struct cftype *cft)
 {
 	char name[CGROUP_FILE_NAME_MAX];
@@ -2906,12 +2920,14 @@ int cgroup_attach_task(struct cgroup *dst_cgrp, struct task_struct *leader,
 	return ret;
 }
 
+/* buf里面存着一个pid */
 struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup,
 					     bool *threadgroup_locked)
 {
 	struct task_struct *tsk;
 	pid_t pid;
 
+	/* 提取出pid */
 	if (kstrtoint(strstrip(buf), 0, &pid) || pid < 0)
 		return ERR_PTR(-EINVAL);
 
@@ -2927,6 +2943,7 @@ struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup,
 	*threadgroup_locked = pid || threadgroup;
 	cgroup_attach_lock(*threadgroup_locked);
 
+	/* 获取对应的tsk */
 	rcu_read_lock();
 	if (pid) {
 		tsk = find_task_by_vpid(pid);
@@ -3564,7 +3581,8 @@ static int cgroup_enable_threaded(struct cgroup *cgrp)
 	cgroup_finalize_control(cgrp, ret);
 	return ret;
 }
-
+/* cgroup.type的cft的show ops
+seq回调会调用这个 */
 static int cgroup_type_show(struct seq_file *seq, void *v)
 {
 	struct cgroup *cgrp = seq_css(seq)->cgroup;
@@ -3581,6 +3599,7 @@ static int cgroup_type_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
+/* 这里只支持修改为threaded的type */
 static ssize_t cgroup_type_write(struct kernfs_open_file *of, char *buf,
 				 size_t nbytes, loff_t off)
 {
@@ -4084,7 +4103,7 @@ static ssize_t cgroup_kill_write(struct kernfs_open_file *of, char *buf,
 
 	return ret ?: nbytes;
 }
-
+/* 调用cft->open */
 static int cgroup_file_open(struct kernfs_open_file *of)
 {
 	struct cftype *cft = of_cft(of);
@@ -4109,7 +4128,7 @@ static int cgroup_file_open(struct kernfs_open_file *of)
 	}
 	return ret;
 }
-
+/* 调用cft->release() */
 static void cgroup_file_release(struct kernfs_open_file *of)
 {
 	struct cftype *cft = of_cft(of);
@@ -4120,12 +4139,13 @@ static void cgroup_file_release(struct kernfs_open_file *of)
 	put_cgroup_ns(ctx->ns);
 	kfree(ctx);
 }
-
+/* cft->write() */
 static ssize_t cgroup_file_write(struct kernfs_open_file *of, char *buf,
 				 size_t nbytes, loff_t off)
 {
 	struct cgroup_file_ctx *ctx = of->priv;
 	struct cgroup *cgrp = of->kn->parent->priv;
+	/* 获取cft */
 	struct cftype *cft = of_cft(of);
 	struct cgroup_subsys_state *css;
 	int ret;
@@ -4200,6 +4220,7 @@ static void cgroup_seqfile_stop(struct seq_file *seq, void *v)
 		seq_cft(seq)->seq_stop(seq, v);
 }
 
+/* 调用cft->read_u64 */
 static int cgroup_seqfile_show(struct seq_file *m, void *arg)
 {
 	struct cftype *cft = seq_cft(m);
@@ -4226,15 +4247,22 @@ static struct kernfs_ops cgroup_kf_single_ops = {
 	.seq_show		= cgroup_seqfile_show,
 };
 
+/* seq类型的cft的fops */
 static struct kernfs_ops cgroup_kf_ops = {
 	.atomic_write_len	= PAGE_SIZE,
+	/*  */
 	.open			= cgroup_file_open,
+	/*  */
 	.release		= cgroup_file_release,
+	/*  */
 	.write			= cgroup_file_write,
 	.poll			= cgroup_file_poll,
+	/*  */
 	.seq_start		= cgroup_seqfile_start,
+	/*  */
 	.seq_next		= cgroup_seqfile_next,
 	.seq_stop		= cgroup_seqfile_stop,
+	/*  */
 	.seq_show		= cgroup_seqfile_show,
 };
 
@@ -4258,7 +4286,7 @@ static void cgroup_file_notify_timer(struct timer_list *timer)
 					notify_timer));
 }
 /* 创建css的文件
-20250616010406 */
+ */
 static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp,
 			   struct cftype *cft)
 {
@@ -4287,6 +4315,7 @@ static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp,
 	if (cft->file_offset) {
 		struct cgroup_file *cfile = (void *)css + cft->file_offset;
 
+		/* 设置检查触发fsnotify的timer */
 		timer_setup(&cfile->notify_timer, cgroup_file_notify_timer, 0);
 
 		spin_lock_irq(&cgroup_file_kn_lock);
@@ -4298,10 +4327,12 @@ static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp,
 }
 
 /**
+cgroup创建或者删除文件
  * cgroup_addrm_files - add or remove files to a cgroup directory
  * @css: the target css
  * @cgrp: the target cgroup (usually css->cgroup)
  * @cfts: array of cftypes to be added
+ 要创建的文件
  * @is_add: whether to add or remove
  *
  * Depending on @is_add, add or remove files defined by @cfts on @cgrp.
@@ -4317,6 +4348,7 @@ static int cgroup_addrm_files(struct cgroup_subsys_state *css,
 	lockdep_assert_held(&cgroup_mutex);
 
 restart:
+	/* 遍历cfts, 根据符合的cft创建 */
 	for (cft = cfts; cft != cft_end && cft->name[0] != '\0'; cft++) {
 		/* does cft->flags tell us to skip this file on @cgrp? */
 		if ((cft->flags & __CFTYPE_ONLY_ON_DFL) && !cgroup_on_dfl(cgrp))
@@ -4330,6 +4362,7 @@ restart:
 		if ((cft->flags & CFTYPE_DEBUG) && !cgroup_debug)
 			continue;
 		if (is_add) {
+			/* 创建文件 */
 			ret = cgroup_add_file(css, cgrp, cft);
 			if (ret) {
 				pr_warn("%s: failed to add %s, err=%d\n",
@@ -4339,12 +4372,14 @@ restart:
 				goto restart;
 			}
 		} else {
+			/* 移除文件 */
 			cgroup_rm_file(cgrp, cft);
 		}
 	}
 	return ret;
 }
-
+/* 为cfts对应的ss的根cg
+所有已经创建的子cg添加/删除文件 */
 static int cgroup_apply_cftypes(struct cftype *cfts, bool is_add)
 {
 	struct cgroup_subsys *ss = cfts[0].ss;
@@ -4354,13 +4389,17 @@ static int cgroup_apply_cftypes(struct cftype *cfts, bool is_add)
 
 	lockdep_assert_held(&cgroup_mutex);
 
-	/* add/rm files for all cgroups created before */
+	/* add/rm files for all cgroups created before
+	为所有已经创建的cg添加/删除文件
+	*/
 	css_for_each_descendant_pre(css, cgroup_css(root, ss)) {
+		/* 遍历root cg在ss这个类型的全部子cg */
 		struct cgroup *cgrp = css->cgroup;
 
 		if (!(css->flags & CSS_VISIBLE))
 			continue;
 
+		/* 依据cfts建立文件 */
 		ret = cgroup_addrm_files(css, cgrp, cfts, is_add);
 		if (ret)
 			break;
@@ -4387,7 +4426,8 @@ static void cgroup_exit_cftypes(struct cftype *cfts)
 				__CFTYPE_ADDED);
 	}
 }
-
+/* 初始化指定ss的cfts
+初始化cfts的每个cft的fops什么的 */
 static int cgroup_init_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 {
 	struct cftype *cft;
@@ -4421,6 +4461,7 @@ static int cgroup_init_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 			kf_ops->atomic_write_len = cft->max_write_len;
 		}
 
+		/*  */
 		cft->kf_ops = kf_ops;
 		cft->ss = ss;
 		cft->flags |= __CFTYPE_ADDED;
@@ -4466,6 +4507,8 @@ int cgroup_rm_cftypes(struct cftype *cfts)
 }
 
 /**
+初始化ss的cfts的每一个cft的fops什么的属性
+给ss->root cg的全部子cg创建sys文件
  * cgroup_add_cftypes - add an array of cftypes to a subsystem
  * @ss: target cgroup subsystem
  * @cfts: zero-length name terminated array of cftypes
@@ -4489,6 +4532,7 @@ static int cgroup_add_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 	if (!cfts || cfts[0].name[0] == '\0')
 		return 0;
 
+	/* 初始化cfts的每一个cft的fops什么的 */
 	ret = cgroup_init_cftypes(ss, cfts);
 	if (ret)
 		return ret;
@@ -4496,6 +4540,7 @@ static int cgroup_add_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 	cgroup_lock();
 
 	list_add_tail(&cfts->node, &ss->cfts);
+	/* 为cfts->ss->root cg的全部子cg创建sys文件 */
 	ret = cgroup_apply_cftypes(cfts, true);
 	if (ret)
 		cgroup_rm_cftypes_locked(cfts);
@@ -4539,6 +4584,7 @@ int cgroup_add_legacy_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 }
 
 /**
+产生一个cgroup_file的修改事件
  * cgroup_file_notify - generate a file modified event for a cgroup_file
  * @cfile: target cgroup_file
  *
@@ -4556,6 +4602,7 @@ void cgroup_file_notify(struct cgroup_file *cfile)
 		if (time_in_range(jiffies, last, next)) {
 			timer_reduce(&cfile->notify_timer, next);
 		} else {
+			/* 触发fsnotify */
 			kernfs_notify(cfile->kn);
 			cfile->notified_at = jiffies;
 		}
@@ -4813,6 +4860,8 @@ bool css_has_online_children(struct cgroup_subsys_state *css)
 	return ret;
 }
 
+/* 找到iter要遍历的下一个cset
+以后 */
 static struct css_set *css_task_iter_next_css_set(struct css_task_iter *it)
 {
 	struct list_head *l;
@@ -4866,6 +4915,7 @@ static struct css_set *css_task_iter_next_css_set(struct css_task_iter *it)
 }
 
 /**
+把css_task_iter的it指向下一个css_set
  * css_task_iter_advance_css_set - advance a task iterator to the next css_set
  * @it: the iterator to advance
  *
@@ -4877,8 +4927,11 @@ static void css_task_iter_advance_css_set(struct css_task_iter *it)
 
 	lockdep_assert_held(&css_set_lock);
 
-	/* Advance to the next non-empty css_set and find first non-empty tasks list*/
+	/*
+	这里找到下一个要遍历的cset
+	Advance to the next non-empty css_set and find first non-empty tasks list*/
 	while ((cset = css_task_iter_next_css_set(it))) {
+		/* 进入循环就是找到了一个cset */
 		if (!list_empty(&cset->tasks)) {
 			it->cur_tasks_head = &cset->tasks;
 			break;
@@ -4912,11 +4965,15 @@ static void css_task_iter_advance_css_set(struct css_task_iter *it)
 	 * next task is leaving.
 	 */
 	if (it->cur_cset) {
+		/* 移除当前的cset */
 		list_del(&it->iters_node);
 		put_css_set_locked(it->cur_cset);
 	}
 	get_css_set(cset);
+	/* 更新cur_cset */
 	it->cur_cset = cset;
+	/* 加入cset的task_iters链表, 这里全是正在遍历这个cset的iter
+	 */
 	list_add(&it->iters_node, &cset->task_iters);
 }
 
@@ -4931,6 +4988,7 @@ static void css_task_iter_skip(struct css_task_iter *it,
 	}
 }
 
+/* 步进一个cset */
 static void css_task_iter_advance(struct css_task_iter *it)
 {
 	struct task_struct *task;
@@ -4956,6 +5014,7 @@ repeat:
 			it->cur_tasks_head = &it->cur_cset->dying_tasks;
 			it->task_pos = it->cur_tasks_head->next;
 		}
+		/* 需要去指向下一个cset */
 		if (it->task_pos == &it->cur_cset->dying_tasks)
 			css_task_iter_advance_css_set(it);
 	} else {
@@ -4985,6 +5044,8 @@ repeat:
 }
 
 /**
+开始遍历cg的进程
+这里初始化ctx->procs.iter(也就是it)
  * css_task_iter_start - initiate task iteration
  * @css: the css to walk tasks of
  * @flags: CSS_TASK_ITER_* flags
@@ -5012,12 +5073,14 @@ void css_task_iter_start(struct cgroup_subsys_state *css, unsigned int flags,
 
 	it->cset_head = it->cset_pos;
 
+	/* 步进iter */
 	css_task_iter_advance(it);
 
 	spin_unlock_irq(&css_set_lock);
 }
 
 /**
+返回ctx->procs.iter指向的下一个进程
  * css_task_iter_next - return the next task for the iterator
  * @it: the task iterator being iterated
  *
@@ -5042,6 +5105,7 @@ struct task_struct *css_task_iter_next(struct css_task_iter *it)
 		it->cur_task = list_entry(it->task_pos, struct task_struct,
 					  cg_list);
 		get_task_struct(it->cur_task);
+		/* 步进iter */
 		css_task_iter_advance(it);
 	}
 
@@ -5051,6 +5115,7 @@ struct task_struct *css_task_iter_next(struct css_task_iter *it)
 }
 
 /**
+结束一个css_task_iter
  * css_task_iter_end - finish task iteration
  * @it: the task iterator to finish
  *
@@ -5080,6 +5145,10 @@ static void cgroup_procs_release(struct kernfs_open_file *of)
 		css_task_iter_end(&ctx->procs.iter);
 }
 
+/*
+seq file遍历cg的进程
+s找到of找到ctx
+返回ctx->procs.iter(已经初始化好)指向的下一个进程 */
 static void *cgroup_procs_next(struct seq_file *s, void *v, loff_t *pos)
 {
 	struct kernfs_open_file *of = s->private;
@@ -5091,6 +5160,7 @@ static void *cgroup_procs_next(struct seq_file *s, void *v, loff_t *pos)
 	return css_task_iter_next(&ctx->procs.iter);
 }
 
+/* seq file开始遍历cg的进程 */
 static void *__cgroup_procs_start(struct seq_file *s, loff_t *pos,
 				  unsigned int iter_flags)
 {
@@ -5104,8 +5174,10 @@ static void *__cgroup_procs_start(struct seq_file *s, loff_t *pos,
 	 * from position 0, so we can simply keep iterating on !0 *pos.
 	 */
 	if (!ctx->procs.started) {
+	/* 如果还没有开始遍历这个ctx->procs(没有初始化ctx->procs.iter) */
 		if (WARN_ON_ONCE((*pos)))
 			return ERR_PTR(-EINVAL);
+		/* 初始化ctx->procs.iter */
 		css_task_iter_start(&cgrp->self, iter_flags, it);
 		ctx->procs.started = true;
 	} else if (!(*pos)) {
@@ -5114,11 +5186,14 @@ static void *__cgroup_procs_start(struct seq_file *s, loff_t *pos,
 	} else
 		return it->cur_task;
 
+		/* 如果遍历已经开始了, 这里就是直接下一个进程 */
 	return cgroup_procs_next(s, NULL, NULL);
 }
-
+/* cgroup.procs文件的seq start回调
+开始遍历进程 */
 static void *cgroup_procs_start(struct seq_file *s, loff_t *pos)
 {
+	/* 先找到css, 然后获得cg */
 	struct cgroup *cgrp = seq_css(s)->cgroup;
 
 	/*
@@ -5134,6 +5209,7 @@ static void *cgroup_procs_start(struct seq_file *s, loff_t *pos)
 					    CSS_TASK_ITER_THREADED);
 }
 
+/* 显示cg的一个pid */
 static int cgroup_procs_show(struct seq_file *s, void *v)
 {
 	seq_printf(s, "%d\n", task_pid_vnr(v));
@@ -5208,6 +5284,7 @@ static int cgroup_attach_permissions(struct cgroup *src_cgrp,
 	return ret;
 }
 
+/* 给cg(从of获得)添加进程(pid在buf) */
 static ssize_t __cgroup_procs_write(struct kernfs_open_file *of, char *buf,
 				    bool threadgroup)
 {
@@ -5218,10 +5295,12 @@ static ssize_t __cgroup_procs_write(struct kernfs_open_file *of, char *buf,
 	ssize_t ret;
 	bool threadgroup_locked;
 
+	/* 获得目标cg */
 	dst_cgrp = cgroup_kn_lock_live(of->kn, false);
 	if (!dst_cgrp)
 		return -ENODEV;
 
+	/* 获取buf里面的pid对应的task */
 	task = cgroup_procs_write_start(buf, threadgroup, &threadgroup_locked);
 	ret = PTR_ERR_OR_ZERO(task);
 	if (ret)
@@ -5254,7 +5333,7 @@ out_unlock:
 
 	return ret;
 }
-
+/* 给cg添加一个进程 */
 static ssize_t cgroup_procs_write(struct kernfs_open_file *of,
 				  char *buf, size_t nbytes, loff_t off)
 {
@@ -5272,7 +5351,15 @@ static ssize_t cgroup_threads_write(struct kernfs_open_file *of,
 	return __cgroup_procs_write(of, buf, false) ?: nbytes;
 }
 
-/* cgroup core interface files for the default hierarchy */
+/*
+基础的cgroup文件
+组织为一个cfts表
+建立css的时候会初始化sys文件夹, 这些对应的cft被依次创建
+根据kern node的fops调用这些cft->回调()
+实现对cg的一些管理和控制功能
+=================================
+cg文件夹下面cgroup开头的一些文件
+ cgroup core interface files for the default hierarchy */
 static struct cftype cgroup_base_files[] = {
 	{
 		.name = "cgroup.type",
@@ -5285,7 +5372,10 @@ static struct cftype cgroup_base_files[] = {
 		.flags = CFTYPE_NS_DELEGATABLE,
 		.file_offset = offsetof(struct cgroup, procs_file),
 		.release = cgroup_procs_release,
+		/* 初始化iter, 开始遍历cg的进程 */
 		.seq_start = cgroup_procs_start,
+		/*  */
+		/*  */
 		.seq_next = cgroup_procs_next,
 		.seq_show = cgroup_procs_show,
 		.write = cgroup_procs_write,
@@ -6181,6 +6271,7 @@ int __init cgroup_init_early(void)
 }
 
 /**
+初始化cgroup机制
  * cgroup_init - cgroup initialization
  *
  * Register cgroup filesystem and /proc file, and initialize
@@ -6192,6 +6283,7 @@ int __init cgroup_init(void)
 	int ssid;
 
 	BUILD_BUG_ON(CGROUP_SUBSYS_COUNT > 16);
+	/* 初始化这些cfts文件 */
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup_base_files));
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup_psi_files));
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup1_base_files));
