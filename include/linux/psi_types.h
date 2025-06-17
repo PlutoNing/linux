@@ -190,7 +190,8 @@ struct psi_group {
 	u64 total[NR_PSI_AGGREGATORS][NR_PSI_STATES - 1];
 	unsigned long avg[NR_PSI_STATES - 1][3];
 
-	/* Monitor RT polling work control */
+	/* Monitor RT polling work control
+	指向kthread_create(psi_rtpoll_worker, group, "psimon"); */
 	struct task_struct __rcu *rtpoll_task;
 	struct timer_list rtpoll_timer;
 	wait_queue_head_t rtpoll_wait;

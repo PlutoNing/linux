@@ -332,7 +332,8 @@ static void calc_avgs(unsigned long avg[3], int missed_periods,
 	avg[2] = calc_load(avg[2], EXP_300s, pct);
 }
 
-/* 计算psi group的什么东西 */
+/* 计算psi group的什么东西
+ */
 static void collect_percpu_times(struct psi_group *group,
 				 enum psi_aggregators aggregator,
 				 u32 *pchanged_states)
@@ -506,7 +507,7 @@ static u64 update_triggers(struct psi_group *group, u64 now, bool *update_total,
 
 	return now + group->rtpoll_min_period;
 }
-
+/* psi计算 */
 static u64 update_averages(struct psi_group *group, u64 now)
 {
 	unsigned long missed_periods = 0;
@@ -1309,10 +1310,15 @@ int psi_show(struct seq_file *m, struct psi_group *group, enum psi_res res)
 	return 0;
 }
 
+/* 给psi创建一个触发器
+触发器是
+
+ */
 struct psi_trigger *psi_trigger_create(struct psi_group *group, char *buf,
 				       enum psi_res res, struct file *file,
 				       struct kernfs_open_file *of)
 {
+	/*  */
 	struct psi_trigger *t;
 	enum psi_states state;
 	u32 threshold_us;
@@ -1357,10 +1363,12 @@ struct psi_trigger *psi_trigger_create(struct psi_group *group, char *buf,
 	if (threshold_us == 0 || threshold_us > window_us)
 		return ERR_PTR(-EINVAL);
 
+		/* 给trigger分配内存 */
 	t = kmalloc(sizeof(*t), GFP_KERNEL);
 	if (!t)
 		return ERR_PTR(-ENOMEM);
 
+	/* 初始化trigger */
 	t->group = group;
 	t->state = state;
 	t->threshold = threshold_us * NSEC_PER_USEC;
@@ -1495,7 +1503,7 @@ void psi_trigger_destroy(struct psi_trigger *t)
 	}
 	kfree(t);
 }
-
+/* 对poll的支持 */
 __poll_t psi_trigger_poll(void **trigger_ptr,
 				struct file *file, poll_table *wait)
 {

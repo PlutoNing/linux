@@ -3939,6 +3939,7 @@ static int cgroup_io_pressure_show(struct seq_file *seq, void *v)
 
 	return psi_show(seq, psi, PSI_IO);
 }
+/* 查看内存的psi pressure */
 static int cgroup_memory_pressure_show(struct seq_file *seq, void *v)
 {
 	struct cgroup *cgrp = seq_css(seq)->cgroup;
@@ -3946,6 +3947,7 @@ static int cgroup_memory_pressure_show(struct seq_file *seq, void *v)
 
 	return psi_show(seq, psi, PSI_MEM);
 }
+/* 查看psi */
 static int cgroup_cpu_pressure_show(struct seq_file *seq, void *v)
 {
 	struct cgroup *cgrp = seq_css(seq)->cgroup;
@@ -3954,6 +3956,7 @@ static int cgroup_cpu_pressure_show(struct seq_file *seq, void *v)
 	return psi_show(seq, psi, PSI_CPU);
 }
 
+/* 创建psi触发器 */
 static ssize_t pressure_write(struct kernfs_open_file *of, char *buf,
 			      size_t nbytes, enum psi_res res)
 {
@@ -3976,6 +3979,8 @@ static ssize_t pressure_write(struct kernfs_open_file *of, char *buf,
 	}
 
 	psi = cgroup_psi(cgrp);
+	/* 给psi创建trigger
+	trigger是 */
 	new = psi_trigger_create(psi, buf, res, of->file, of);
 	if (IS_ERR(new)) {
 		cgroup_put(cgrp);
@@ -3994,7 +3999,7 @@ static ssize_t cgroup_io_pressure_write(struct kernfs_open_file *of,
 {
 	return pressure_write(of, buf, nbytes, PSI_IO);
 }
-
+/* "memory.pressure"文件的write回调 */
 static ssize_t cgroup_memory_pressure_write(struct kernfs_open_file *of,
 					  char *buf, size_t nbytes,
 					  loff_t off)
@@ -5589,8 +5594,9 @@ static struct cftype cgroup_psi_files[] = {
 		.name = "io.pressure",
 		.file_offset = offsetof(struct cgroup, psi_files[PSI_IO]),
 		.open = cgroup_pressure_open,
-		/*  */
+		/* 调用psi_show */
 		.seq_show = cgroup_io_pressure_show,
+		/* 创建psi触发器 */
 		.write = cgroup_io_pressure_write,
 		.poll = cgroup_pressure_poll,
 		.release = cgroup_pressure_release,
@@ -5599,7 +5605,9 @@ static struct cftype cgroup_psi_files[] = {
 		.name = "memory.pressure",
 		.file_offset = offsetof(struct cgroup, psi_files[PSI_MEM]),
 		.open = cgroup_pressure_open,
+		/* 查看内存的psi pressure */
 		.seq_show = cgroup_memory_pressure_show,
+		/*  */
 		.write = cgroup_memory_pressure_write,
 		.poll = cgroup_pressure_poll,
 		.release = cgroup_pressure_release,
@@ -5608,7 +5616,9 @@ static struct cftype cgroup_psi_files[] = {
 		.name = "cpu.pressure",
 		.file_offset = offsetof(struct cgroup, psi_files[PSI_CPU]),
 		.open = cgroup_pressure_open,
+		/*  */
 		.seq_show = cgroup_cpu_pressure_show,
+		/*  */
 		.write = cgroup_cpu_pressure_write,
 		.poll = cgroup_pressure_poll,
 		.release = cgroup_pressure_release,
@@ -5618,7 +5628,9 @@ static struct cftype cgroup_psi_files[] = {
 		.name = "irq.pressure",
 		.file_offset = offsetof(struct cgroup, psi_files[PSI_IRQ]),
 		.open = cgroup_pressure_open,
+		/*  */
 		.seq_show = cgroup_irq_pressure_show,
+		/*  */
 		.write = cgroup_irq_pressure_write,
 		.poll = cgroup_pressure_poll,
 		.release = cgroup_pressure_release,
@@ -5626,7 +5638,9 @@ static struct cftype cgroup_psi_files[] = {
 #endif
 	{
 		.name = "cgroup.pressure",
+		/*  */
 		.seq_show = cgroup_pressure_show,
+		/*  */
 		.write = cgroup_pressure_write,
 	},
 #endif /* CONFIG_PSI */
