@@ -160,7 +160,8 @@ struct cgroup_subsys_state {
 	css可能被cgroup->subsys[ss]指向, 也就是说这个cg的这个ss的控制方式是有这个css定义的 */
 	struct cgroup *cgroup;
 
-	/* PI: the cgroup subsystem that this css is attached to */
+	/* PI: the cgroup subsystem that this css is attached to
+	没有ss的是什么 */
 	struct cgroup_subsys *ss;
 
 	/* reference count - access via css_[try]get() and css_put() */
@@ -458,6 +459,7 @@ struct cgroup {
 	 * should be held.
 	 */
 	int nr_descendants;
+	/* 表示正在处于释放过程中的css孩子数量 */
 	int nr_dying_descendants;
 	/* 是允许的最大数量, 还是有记录的最大数量?
 	应该是允许的 */
@@ -563,7 +565,8 @@ struct cgroup {
 	used to wait for offlining of csses */
 	wait_queue_head_t offline_waitq;
 
-	/* used to schedule release agent */
+	/* used to schedule release agent
+	release agent是 */
 	struct work_struct release_agent_work;
 
 	/* used to track pressure stalls

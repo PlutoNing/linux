@@ -1128,6 +1128,7 @@ void psi_memstall_leave(unsigned long *flags)
 EXPORT_SYMBOL_GPL(psi_memstall_leave);
 
 #ifdef CONFIG_CGROUPS
+/* 创建新cg的psi group */
 int psi_cgroup_alloc(struct cgroup *cgroup)
 {
 	if (!static_branch_likely(&psi_cgroups_enabled))

@@ -356,6 +356,7 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 
 /**
 work是不是处于pending状态
+pending表示
  * work_pending - Find out whether a work item is currently pending
  * @work: The work item in question
  */
@@ -614,7 +615,8 @@ static inline bool queue_delayed_work(struct workqueue_struct *wq,
 }
 
 /**
-20250530233352
+修改dwork的触发时间
+相当于是调度一个dwork
  * mod_delayed_work - modify delay of or queue a delayed work
    
  * @wq: workqueue to use

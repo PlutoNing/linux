@@ -2144,6 +2144,7 @@ int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask)
 
 	lockdep_assert_held(&cgroup_mutex);
 
+	/* 初始化pcp ref */
 	ret = percpu_ref_init(&root_cgrp->self.refcnt, css_release,
 			      0, GFP_KERNEL);
 	if (ret)
@@ -5648,6 +5649,8 @@ static struct cftype cgroup_psi_files[] = {
 };
 
 /*
+作为INIT_RCU_WORK(&css->destroy_rwork, css_free_rwork_fn);的函数
+用于释放css, 这里是
  * css destruction is four-stage process.
  *
  * 1. Destruction starts.  Killing of the percpu_ref is initiated.
@@ -5679,6 +5682,7 @@ static void css_free_rwork_fn(struct work_struct *work)
 	percpu_ref_exit(&css->refcnt);
 
 	if (ss) {
+		/* 有ss的css好像就是用于资源控制的 */
 		/* css free path */
 		struct cgroup_subsys_state *parent = css->parent;
 		int id = css->id;
@@ -5690,10 +5694,15 @@ static void css_free_rwork_fn(struct work_struct *work)
 		if (parent)
 			css_put(parent);
 	} else {
+		/* 这个没有ss的css, 是cg的css? */
 		/* cgroup free path */
 		atomic_dec(&cgrp->root->nr_cgrps);
+		/* 销毁cgrp->pidlists
+		 */
 		cgroup1_pidlist_destroy_all(cgrp);
+		/*  */
 		cancel_work_sync(&cgrp->release_agent_work);
+		/* 销毁bpf相关的内容 */
 		bpf_cgrp_storage_free(cgrp);
 
 		if (cgroup_parent(cgrp)) {
@@ -5718,9 +5727,12 @@ static void css_free_rwork_fn(struct work_struct *work)
 		}
 	}
 }
-
+/* 
+释放css的异步work的函数
+*/
 static void css_release_work_fn(struct work_struct *work)
 {
+	/* 获取work所属的css, 也是要释放的css */
 	struct cgroup_subsys_state *css =
 		container_of(work, struct cgroup_subsys_state, destroy_work);
 	struct cgroup_subsys *ss = css->ss;
@@ -5742,11 +5754,13 @@ static void css_release_work_fn(struct work_struct *work)
 		if (ss->css_released)
 			ss->css_released(css);
 	} else {
+		/* 没有ss的是什么 */
 		struct cgroup *tcgrp;
 
 		/* cgroup release path */
 		TRACE_CGROUP_PATH(release, cgrp);
 
+		/* 刷新cg的状态统计 */
 		cgroup_rstat_flush(cgrp);
 
 		spin_lock_irq(&css_set_lock);
@@ -5769,10 +5783,15 @@ static void css_release_work_fn(struct work_struct *work)
 
 	cgroup_unlock();
 
+	/* 调用css_free_rwork_fn */
 	INIT_RCU_WORK(&css->destroy_rwork, css_free_rwork_fn);
 	queue_rcu_work(cgroup_destroy_wq, &css->destroy_rwork);
 }
-
+/* 使用css_release_work_fn()初始化css->destroy_work
+然后运行这个work
+======================================
+root_cgrp->self.refcnt为0会调用这个函数
+ */
 static void css_release(struct percpu_ref *ref)
 {
 	struct cgroup_subsys_state *css =
@@ -5927,6 +5946,7 @@ err_free_css:
 }
 
 /*
+创建cgroup
  * The returned cgroup is fully initialized including its control mask, but
  * it doesn't have the control mask applied.
  */
@@ -5939,20 +5959,25 @@ static struct cgroup *cgroup_create(struct cgroup *parent, const char *name,
 	int level = parent->level + 1;
 	int ret;
 
-	/* allocate the cgroup and its ID, 0 is reserved for the root */
+	/* allocate the cgroup and its ID, 0 is reserved for the root
+	分配结构体内存 */
 	cgrp = kzalloc(struct_size(cgrp, ancestors, (level + 1)), GFP_KERNEL);
 	if (!cgrp)
 		return ERR_PTR(-ENOMEM);
 
+	/* 初始化self这个css的pcp ref */
 	ret = percpu_ref_init(&cgrp->self.refcnt, css_release, 0, GFP_KERNEL);
 	if (ret)
 		goto out_free_cgrp;
 
+	/*初始化cgrp的rstat
+	 */
 	ret = cgroup_rstat_init(cgrp);
 	if (ret)
 		goto out_cancel_ref;
 
-	/* create the directory */
+	/* create the directory
+	创建sys的文件夹 */
 	kn = kernfs_create_dir(parent->kn, name, mode, cgrp);
 	if (IS_ERR(kn)) {
 		ret = PTR_ERR(kn);
@@ -5960,12 +5985,15 @@ static struct cgroup *cgroup_create(struct cgroup *parent, const char *name,
 	}
 	cgrp->kn = kn;
 
+	/* 初始化新cgroup */
 	init_cgroup_housekeeping(cgrp);
 
+	/* 没初始化self的ss成员? */
 	cgrp->self.parent = &parent->self;
 	cgrp->root = root;
 	cgrp->level = level;
 
+	/* 创建psi group */
 	ret = psi_cgroup_alloc(cgrp);
 	if (ret)
 		goto out_kernfs_remove;
@@ -6028,6 +6056,7 @@ static struct cgroup *cgroup_create(struct cgroup *parent, const char *name,
 	if (!cgroup_on_dfl(cgrp))
 		cgrp->subtree_control = cgroup_control(cgrp);
 
+	/* 传播到子cg */
 	cgroup_propagate_control(cgrp);
 
 	return cgrp;
@@ -6068,6 +6097,7 @@ fail:
 	return ret;
 }
 
+/* v1 v2都是这个mkdir的fops */
 int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name, umode_t mode)
 {
 	struct cgroup *parent, *cgrp;
@@ -6077,6 +6107,7 @@ int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name, umode_t mode)
 	if (strchr(name, '\n'))
 		return -EINVAL;
 
+	/* 获取父文件夹的cg */
 	parent = cgroup_kn_lock_live(parent_kn, false);
 	if (!parent)
 		return -ENODEV;
@@ -6086,6 +6117,7 @@ int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name, umode_t mode)
 		goto out_unlock;
 	}
 
+	/* 创建cg */
 	cgrp = cgroup_create(parent, name, mode);
 	if (IS_ERR(cgrp)) {
 		ret = PTR_ERR(cgrp);
@@ -6102,6 +6134,7 @@ int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name, umode_t mode)
 	if (ret)
 		goto out_destroy;
 
+	/* 创建sys文件夹下的文件 */
 	ret = css_populate_dir(&cgrp->self);
 	if (ret)
 		goto out_destroy;
@@ -6329,9 +6362,10 @@ int cgroup_rmdir(struct kernfs_node *kn)
 	cgroup_kn_unlock(kn);
 	return ret;
 }
-
+/* v2的sys文件的fops */
 static struct kernfs_syscall_ops cgroup_kf_syscall_ops = {
 	.show_options		= cgroup_show_options,
+	/* 创建cgroup */
 	.mkdir			= cgroup_mkdir,
 	.rmdir			= cgroup_rmdir,
 	.show_path		= cgroup_show_path,

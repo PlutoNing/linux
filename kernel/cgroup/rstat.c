@@ -234,6 +234,7 @@ static void cgroup_rstat_flush_locked(struct cgroup *cgrp)
 }
 
 /**
+刷新cg的状态统计
  * cgroup_rstat_flush - flush stats in @cgrp's subtree
  * @cgrp: target cgroup
  *
@@ -251,6 +252,7 @@ __bpf_kfunc void cgroup_rstat_flush(struct cgroup *cgrp)
 	might_sleep();
 
 	spin_lock_irq(&cgroup_rstat_lock);
+	/* 刷新 */
 	cgroup_rstat_flush_locked(cgrp);
 	spin_unlock_irq(&cgroup_rstat_lock);
 }
@@ -281,6 +283,7 @@ void cgroup_rstat_flush_release(void)
 	spin_unlock_irq(&cgroup_rstat_lock);
 }
 
+/* 初始化新cg的rstat结构体 */
 int cgroup_rstat_init(struct cgroup *cgrp)
 {
 	int cpu;

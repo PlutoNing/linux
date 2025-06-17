@@ -727,6 +727,7 @@ int bpf_local_storage_map_check_btf(const struct bpf_map *map,
 	return 0;
 }
 
+/* 销毁cg前销毁cgroup->bpf_cgrp_storage */
 void bpf_local_storage_destroy(struct bpf_local_storage *local_storage)
 {
 	struct bpf_local_storage_map *storage_smap;
