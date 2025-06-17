@@ -149,6 +149,7 @@ void cgroup_leave_frozen(bool always_leave)
 }
 
 /*
+cgroup冻结一个task
  * Freeze or unfreeze the task by setting or clearing the JOBCTL_TRAP_FREEZE
  * jobctl bit.
  */
@@ -172,6 +173,7 @@ static void cgroup_freeze_task(struct task_struct *task, bool freeze)
 }
 
 /*
+冻结或者解冻整个cgroup内的所有任务
  * Freeze or unfreeze all tasks in the given cgroup.
  */
 static void cgroup_do_freeze(struct cgroup *cgrp, bool freeze)
@@ -201,6 +203,7 @@ static void cgroup_do_freeze(struct cgroup *cgrp, bool freeze)
 		 */
 		if (task->flags & PF_KTHREAD)
 			continue;
+		/* 冻结cg的每一个task */
 		cgroup_freeze_task(task, freeze);
 	}
 	css_task_iter_end(&it);
@@ -216,6 +219,7 @@ static void cgroup_do_freeze(struct cgroup *cgrp, bool freeze)
 }
 
 /*
+以后
  * Adjust the task state (freeze or unfreeze) and revisit the state of
  * source and destination cgroups.
  */
@@ -256,7 +260,7 @@ void cgroup_freezer_migrate_task(struct task_struct *task,
 	 */
 	cgroup_freeze_task(task, test_bit(CGRP_FREEZE, &dst->flags));
 }
-
+/* 冻结整个 cgroup 内的所有进程（及其后代进程），使它们进入暂停状态，并在需要时“解冻”恢复运行。 */
 void cgroup_freeze(struct cgroup *cgrp, bool freeze)
 {
 	struct cgroup_subsys_state *css;
@@ -275,6 +279,8 @@ void cgroup_freeze(struct cgroup *cgrp, bool freeze)
 
 	/*
 	 * Propagate changes downwards the cgroup tree.
+	 遍历全部子css, 是cgrp->self的子css,是文件夹下面的层级?
+	 进而操作每一个子cg, 执行freeze或unfreeze操作
 	 */
 	css_for_each_descendant_pre(css, &cgrp->self) {
 		dsct = css->cgroup;
@@ -283,6 +289,7 @@ void cgroup_freeze(struct cgroup *cgrp, bool freeze)
 			continue;
 
 		if (freeze) {
+			/* 如果是冻结 */
 			dsct->freezer.e_freeze++;
 			/*
 			 * Already frozen because of ancestor's settings?
@@ -290,6 +297,7 @@ void cgroup_freeze(struct cgroup *cgrp, bool freeze)
 			if (dsct->freezer.e_freeze > 1)
 				continue;
 		} else {
+			/* 如果是解冻 */
 			dsct->freezer.e_freeze--;
 			/*
 			 * Still frozen because of ancestor's settings?
@@ -302,7 +310,7 @@ void cgroup_freeze(struct cgroup *cgrp, bool freeze)
 
 		/*
 		 * Do change actual state: freeze or unfreeze.
-		 */
+		 这里进行事实操作这个子cg*/
 		cgroup_do_freeze(dsct, freeze);
 		applied = true;
 	}

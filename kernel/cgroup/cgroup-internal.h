@@ -139,7 +139,9 @@ struct cgroup_mgctx {
 	 * Preloaded source and destination csets.  Used to guarantee
 	 * atomic success or failure on actual migration.
 	 */
+	/* 这里连接着迁移的源src cset */
 	struct list_head	preloaded_src_csets;
+	/* 这里是找到的dst cset */
 	struct list_head	preloaded_dst_csets;
 
 	/* tasks and csets to migrate */

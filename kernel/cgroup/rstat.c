@@ -493,7 +493,7 @@ static void root_cgroup_cputime(struct cgroup_base_stat *bstat)
 #endif
 	}
 }
-
+/* 查看cgroup的cputime什么的 */
 void cgroup_base_stat_cputime_show(struct seq_file *seq)
 {
 	struct cgroup *cgrp = seq_css(seq)->cgroup;

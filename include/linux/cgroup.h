@@ -60,6 +60,7 @@ struct css_task_iter {
 	struct list_head		*tcset_pos;
 	struct list_head		*tcset_head;
 
+	/* 可能指向正在遍历的cset的一个进程task->cg_list */
 	struct list_head		*task_pos;
 
 	/* 指向当前正在遍历的cset的进程列表头 */
@@ -418,7 +419,7 @@ extern spinlock_t css_set_lock;
 	task_css_set_check((task), (__c))->subsys[(subsys_id)]
 
 /**
-获取task的cset
+获取task的cset(也就是进程的cgroups成员)
  * task_css_set - obtain a task's css_set
  * @task: the task to obtain css_set for
  *
@@ -499,7 +500,9 @@ static inline struct cgroup *task_dfl_cgroup(struct task_struct *task)
 {
 	return task_css_set(task)->dfl_cgrp;
 }
-/* 通过self成员这个css的父子关系来container_of获取cgroup的父子关系 */
+/* 通过self成员这个css的父子关系来container_of获取cgroup的父子关系
+================
+cg的父子关系通过self来组织 */
 static inline struct cgroup *cgroup_parent(struct cgroup *cgrp)
 {
 	struct cgroup_subsys_state *parent_css = cgrp->self.parent;
@@ -562,7 +565,9 @@ static inline bool task_under_cgroup_hierarchy(struct task_struct *task,
 	return cgroup_is_descendant(cset->dfl_cgrp, ancestor);
 }
 
-/* no synchronization, the result can only be used as a hint */
+/*
+以后
+ no synchronization, the result can only be used as a hint */
 static inline bool cgroup_is_populated(struct cgroup *cgrp)
 {
 	return cgrp->nr_populated_csets + cgrp->nr_populated_domain_children +

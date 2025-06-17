@@ -66,7 +66,9 @@ enum {
 	 */
 	CGRP_CPUSET_CLONE_CHILDREN,
 
-	/* Control group has to be frozen. */
+	/*
+	cgrp->flags表示cgroup有没有被冻结
+	Control group has to be frozen. */
 	CGRP_FREEZE,
 
 	/* Cgroup is frozen. */
@@ -155,7 +157,7 @@ struct cgroup_file {
 struct cgroup_subsys_state {
 	/* PI: the cgroup that this css is attached to
 	css附加的cgroup
-	css可能被cgroup->subsys[ss]指向 */
+	css可能被cgroup->subsys[ss]指向, 也就是说这个cg的这个ss的控制方式是有这个css定义的 */
 	struct cgroup *cgroup;
 
 	/* PI: the cgroup subsystem that this css is attached to */
@@ -245,6 +247,7 @@ struct css_set {
 	 * css_set_lock, but, during migration, once tasks are moved to
 	 * mg_tasks, it can be read safely while holding cgroup_mutex.
 	 */
+	/* 属于这个cset的进程 */
 	struct list_head tasks;
 	struct list_head mg_tasks;
 	struct list_head dying_tasks;
@@ -260,6 +263,12 @@ struct css_set {
 	 * associated with.  The following node is anchored at
 	 * ->subsys[ssid]->cgroup->e_csets[ssid] and provides a way to
 	 * iterate through all css's attached to a given cgroup.
+
+	 cset在每个ss都有这个连接件
+	 用于加入自己依附的css的cgroup的css->cgroup->e_csets[ssid]链表里面
+	 ==============
+	 每个cset都有一组有效的css, 其中每个css都有一个属于的cg文件夹, 这里
+	 加入cg的e_csets[ssid]链表中
 	 */
 	struct list_head e_cset_node[CGROUP_SUBSYS_COUNT];
 
@@ -271,6 +280,7 @@ struct css_set {
 	 * List running through all cgroup groups in the same hash
 	 * slot. Protected by css_set_lock
 	 */
+	 /* 用于加入全局缓存哈希表, 用于复用 */
 	struct hlist_node hlist;
 
 	/*
@@ -283,7 +293,10 @@ struct css_set {
 	 * List of csets participating in the on-going migration either as
 	 * source or destination.  Protected by cgroup_mutex.
 	 */
+	/* 用于加入到mgctx->preloaded_src_csets
+	可以表示这个cset目前处于迁移中? */
 	struct list_head mg_src_preload_node;
+	/*  */
 	struct list_head mg_dst_preload_node;
 	struct list_head mg_node;
 
@@ -293,7 +306,7 @@ struct css_set {
 	 * respectively the source and destination cgroups of the on-going
 	 * migration.  mg_dst_cset is the destination cset the target tasks
 	 * on this cset should be migrated to.  Protected by cgroup_mutex.
-	 */
+	 下面几个是迁移进程过程中记录的*/
 	struct cgroup *mg_src_cgrp;
 	struct cgroup *mg_dst_cgrp;
 	struct css_set *mg_dst_cset;
@@ -390,7 +403,8 @@ struct cgroup_freezer_state {
 	/* Should the cgroup and its descendants be frozen. */
 	bool freeze;
 
-	/* Should the cgroup actually be frozen? */
+	/* Should the cgroup actually be frozen?
+	冻结这里加一, 反之减一 */
 	int e_freeze;
 
 	/* Fields below are protected by css_set_lock */
@@ -413,7 +427,9 @@ struct cgroup {
 	===================
 	也代表着这个cg本身的类型,比如memcg或者io cg
 	如果一个a cg的一个ss的css加入了这个css的层级
-	这个a cg就可以视为是这个cg的子cg */
+	这个a cg就可以视为是这个cg的子cg
+	============
+	是cg文件夹的有效css */
 
 	unsigned long flags;		/* "unsigned long" so bitops work */
 
@@ -443,6 +459,8 @@ struct cgroup {
 	 */
 	int nr_descendants;
 	int nr_dying_descendants;
+	/* 是允许的最大数量, 还是有记录的最大数量?
+	应该是允许的 */
 	int max_descendants;
 
 	/*
@@ -478,7 +496,7 @@ struct cgroup {
 	 * are made available iff it's enabled in ->subtree_control.
 	 */
 	/* 是自己全部父cg的control mask与的结果
-	 */
+	一般来说这个是与父级直接继承的 */
 	u16 subtree_control;
 	u16 subtree_ss_mask;
 	u16 old_subtree_control;
@@ -501,6 +519,8 @@ struct cgroup {
 	 * the closest ancestor which has the subsys enabled.  The
 	 * following lists all css_sets which point to this cgroup's css
 	 * for the given subsystem.
+	 这里是链接一些cset
+	 这些cset被自己对应的css所管理控制资源
 	 */
 	struct list_head e_csets[CGROUP_SUBSYS_COUNT];
 
@@ -557,7 +577,8 @@ struct cgroup {
 	/* If there is block congestion on this cgroup. */
 	atomic_t congestion_count;
 
-	/* Used to store internal freezer state */
+	/* Used to store internal freezer state
+	freeze机制相关 */
 	struct cgroup_freezer_state freezer;
 
 #ifdef CONFIG_BPF_SYSCALL

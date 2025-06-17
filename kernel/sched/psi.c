@@ -332,6 +332,7 @@ static void calc_avgs(unsigned long avg[3], int missed_periods,
 	avg[2] = calc_load(avg[2], EXP_300s, pct);
 }
 
+/* 计算psi group的什么东西 */
 static void collect_percpu_times(struct psi_group *group,
 				 enum psi_aggregators aggregator,
 				 u32 *pchanged_states)
@@ -1158,6 +1159,8 @@ void psi_cgroup_free(struct cgroup *cgroup)
 }
 
 /**
+把进程加入cset
+改变task->cgroups的指向
  * cgroup_move_task - move task to a different cgroup
  * @task: the task
  * @to: the target css_set
@@ -1259,7 +1262,7 @@ void psi_cgroup_restart(struct psi_group *group)
 }
 #endif /* CONFIG_CGROUPS */
 
-/* psi的信息展示 */
+/* psi的信息展示, 显示res指定的信息类型 */
 int psi_show(struct seq_file *m, struct psi_group *group, enum psi_res res)
 {
 	bool only_full = false;
@@ -1272,6 +1275,7 @@ int psi_show(struct seq_file *m, struct psi_group *group, enum psi_res res)
 	/* Update averages before reporting them */
 	mutex_lock(&group->avgs_lock);
 	now = sched_clock();
+	/* 这里计算 */
 	collect_percpu_times(group, PSI_AVGS, NULL);
 	if (now >= group->avg_next_update)
 		group->avg_next_update = update_averages(group, now);

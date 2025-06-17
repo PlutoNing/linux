@@ -1290,6 +1290,9 @@ struct task_struct {
 	task所属的cset */
 	struct css_set __rcu		*cgroups;
 	/* cg_list protected by css_set_lock and tsk->alloc_lock: */
+	/* 可以用于加入mgctx的tasklist
+	有可能被iter的task_pos指向
+	也可能是task->cg_list加入到cset */
 	struct list_head		cg_list;
 #endif
 #ifdef CONFIG_X86_CPU_RESCTRL
