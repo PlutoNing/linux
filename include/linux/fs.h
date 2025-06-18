@@ -1240,6 +1240,7 @@ struct super_block {
 	loff_t			s_maxbytes;	/* Max file size */
 	/* 自己的fs_type */
 	struct file_system_type	*s_type;
+	/* 超级块的fops */
 	const struct super_operations	*s_op;
 	const struct dquot_operations	*dq_op;
 	const struct quotactl_ops	*s_qcop;

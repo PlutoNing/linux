@@ -618,16 +618,20 @@ void wb_writeout_inc(struct bdi_writeback *wb)
 EXPORT_SYMBOL_GPL(wb_writeout_inc);
 
 /*
+memcg的写回控制的timer的回调函数
  * On idle system, we can be called long after we scheduled because we use
  * deferred timers so count with missed periods.
  */
 static void writeout_period(struct timer_list *t)
 {
+	/* 获取timer所属的wb_domain, 是memcg的memcg->cgwb_domain成员 */
 	struct wb_domain *dom = from_timer(dom, t, period_timer);
 	int miss_periods = (jiffies - dom->period_time) /
 						 VM_COMPLETIONS_PERIOD_LEN;
 
+	/*  */
 	if (fprop_new_period(&dom->completions, miss_periods + 1)) {
+		/*  */
 		dom->period_time = wp_next_time(dom->period_time +
 				miss_periods * VM_COMPLETIONS_PERIOD_LEN);
 		mod_timer(&dom->period_timer, dom->period_time);
@@ -640,13 +644,14 @@ static void writeout_period(struct timer_list *t)
 	}
 }
 
-// 
+/* 初始化memcg的写回控制 */
 int wb_domain_init(struct wb_domain *dom, gfp_t gfp)
 {
 	memset(dom, 0, sizeof(*dom));
 
 	spin_lock_init(&dom->lock);
 
+	/* 设置写回的timer */
 	timer_setup(&dom->period_timer, writeout_period, TIMER_DEFERRABLE);
 
 	dom->dirty_limit_tstamp = jiffies;

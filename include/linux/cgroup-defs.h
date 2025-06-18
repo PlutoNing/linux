@@ -51,7 +51,9 @@ enum {
 	CSS_NO_REF	= (1 << 0), /* no reference counting for this css */
 	CSS_ONLINE	= (1 << 1), /* between ->css_online() and ->css_offline() */
 	CSS_RELEASED	= (1 << 2), /* refcnt reached zero, released */
-	CSS_VISIBLE	= (1 << 3), /* css is visible to userland */
+	CSS_VISIBLE	= (1 << 3), /*
+	表示有对应的文件夹?
+	css is visible to userland */
 	CSS_DYING	= (1 << 4), /* css is dying */
 };
 
@@ -312,7 +314,9 @@ struct css_set {
 	struct cgroup *mg_dst_cgrp;
 	struct css_set *mg_dst_cset;
 
-	/* dead and being drained, ignore for migration */
+	/*
+	如果对应的cg被删除了, 这里置位
+	dead and being drained, ignore for migration */
 	bool dead;
 
 	/* For RCU-protected deletion */
@@ -603,7 +607,9 @@ struct cgroup_root {
 	/* The bitmask of subsystems attached to this hierarchy */
 	unsigned int subsys_mask; // 附加到此层级结构的子系统（控制器）位掩码
 
-	/* Unique id for this hierarchy.   唯一的层级结构 ID */
+	/* 
+	从cgroup_hierarchy_idr分配的idr id
+	Unique id for this hierarchy.   唯一的层级结构 ID */
 	int hierarchy_id;
 
 	/*
@@ -612,6 +618,8 @@ struct cgroup_root {
 	 * following field. cgrp_ancestor_storage must immediately follow.
 	 根 cgroup。包含的 cgroup_root 将在释放时被销毁。
      * cgrp->ancestors[0] 将溢出到下一个字段 cgrp_ancestor_storage。
+	 ===================
+	 此cgroup root对应的cgroup
 	 */
 	struct cgroup cgrp;
 

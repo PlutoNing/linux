@@ -290,6 +290,7 @@ void free_shrinker_info(struct mem_cgroup *memcg)
 	}
 }
 
+/* 上线memcg的时候创建memcg->nodeinfo[nid]->shrinker_info */
 int alloc_shrinker_info(struct mem_cgroup *memcg)
 {
 	struct shrinker_info *info;
@@ -5204,6 +5205,8 @@ static void lru_gen_rotate_memcg(struct lruvec *lruvec, int op)
 	spin_unlock_irqrestore(&pgdat->memcg_lru.lock, flags);
 }
 
+/* 上线memcg的时候
+设置lrugen相关的东西 */
 void lru_gen_online_memcg(struct mem_cgroup *memcg)
 {
 	int gen;

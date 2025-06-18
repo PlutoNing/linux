@@ -42,6 +42,7 @@ enum memcg_stat_item {
 
 enum memcg_memory_event {
 	MEMCG_LOW,
+	/* 触发了一次reclaim_high调用 */
 	MEMCG_HIGH,
 	MEMCG_MAX,
 	MEMCG_OOM,
@@ -202,6 +203,7 @@ struct obj_cgroup {
 };
 
 /*
+memcg的定义
  * The memory controller data structure. The memory controller controls both
  * page cache and RSS per cgroup. We would eventually like to provide
  * statistics based on the statistics developed by Rik Van Riel for clock-pro,
@@ -280,7 +282,8 @@ struct mem_cgroup {
 
 	CACHELINE_PADDING(_pad1_);
 
-	/* memory.stat */
+	/* memory.stat
+	记录memcg的内存统计数据 */
 	struct memcg_vmstats	*vmstats;
 
 	/* memory.events */
@@ -313,6 +316,7 @@ struct mem_cgroup {
 	atomic_t		moving_account;
 	struct task_struct	*move_lock_task;
 
+	/* pcp的内存memcg统计数据 */
 	struct memcg_vmstats_percpu __percpu *vmstats_percpu;
 
 #ifdef CONFIG_CGROUP_WRITEBACK

@@ -164,6 +164,7 @@ struct task_struct *css_task_iter_next(struct css_task_iter *it);
 void css_task_iter_end(struct css_task_iter *it);
 
 /**
+遍历css的孩子
  * css_for_each_child - iterate through children of a css
  * @pos: the css * to use as the loop cursor
  * @parent: css whose children to walk

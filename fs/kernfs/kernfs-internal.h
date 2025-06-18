@@ -42,6 +42,7 @@ struct kernfs_root {
 	struct idr		ino_idr;
 	u32			last_id_lowbits;
 	u32			id_highbits;
+	/* 包含mkdir等回调的fops */
 	struct kernfs_syscall_ops *syscall_ops;
 
 	/* list of kernfs_super_info of this root, protected by kernfs_rwsem */

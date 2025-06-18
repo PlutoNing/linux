@@ -89,11 +89,15 @@ struct p_log {
  * See Documentation/filesystems/mount_api.rst
  */
 struct fs_context {
+	/* fc的ops
+	作用是
+	 */
 	const struct fs_context_operations *ops;
 	struct mutex		uapi_mutex;	/* Userspace access mutex */
 	struct file_system_type	*fs_type; // 指向文件系统类型的指针
 	void			*fs_private;	/* The filesystem's context//
-	 文件系统的私有上下文，用于存储特定的配置或数据 */
+	 文件系统的私有上下文，用于存储特定的配置或数据
+	 一般是指向具体fs直接实现的fc */
 	void			*sget_key;
 	struct dentry		*root;		/* The root and superblock // 根目录和超级块指针*/
 	struct user_namespace	*user_ns;	/* The user namespace for this mount */

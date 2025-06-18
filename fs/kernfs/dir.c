@@ -930,8 +930,9 @@ struct kernfs_node *kernfs_walk_and_get_ns(struct kernfs_node *parent,
 }
 
 /**
-创建一个新的kernfs层级
-就是创建/sys那种东西?
+为创建cgrp root(指针位于@priv)创建一个新的kernfs层级
+scops是mkdir等fops
+就是创建/sys的内容
 ===================
 创建root和对应的kn并初始化
  * kernfs_create_root - create a new kernfs hierarchy
@@ -978,9 +979,11 @@ struct kernfs_root *kernfs_create_root(struct kernfs_syscall_ops *scops,
 		return ERR_PTR(-ENOMEM);
 	}
 
+	/* 指向cgroup root */
 	kn->priv = priv;
 	kn->dir.root = root;
 
+	/* 设置fops */
 	root->syscall_ops = scops;
 	root->flags = flags;
 	root->kn = kn;

@@ -690,6 +690,7 @@ struct cgroup_subsys_state *of_css(struct kernfs_open_file *of)
 EXPORT_SYMBOL_GPL(of_css);
 
 /**
+遍历cg的全部css
  * for_each_css - iterate all css's of a cgroup
  * @css: the iteration cursor
  * @ssid: the index of the subsystem, CGROUP_SUBSYS_COUNT after reaching the end
@@ -1162,6 +1163,7 @@ static void free_cgrp_cset_links(struct list_head *links_to_free)
 }
 
 /**
+创建指定数量的一些cgroup cset link
  * allocate_cgrp_cset_links - allocate cgrp_cset_links
  * @count: the number of links to allocate
  * @tmp_links: list_head the allocated links are put on
@@ -1376,6 +1378,7 @@ void cgroup_favor_dynmods(struct cgroup_root *root, bool favor)
 	}
 }
 
+/* 初始化root的idr id */
 static int cgroup_init_root_id(struct cgroup_root *root)
 {
 	int id;
@@ -1775,6 +1778,7 @@ static void cgroup_rm_file(struct cgroup *cgrp, const struct cftype *cft)
 }
 
 /**
+删除cg的时候清理css的dir
  * css_clear_dir - remove subsys files in a cgroup directory
  * @css: target css
  */
@@ -1861,6 +1865,10 @@ err:
 	return ret;
 }
 
+/* 
+
+v2初始化default cgrp root时ssmask是0
+*/
 int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 {
 	struct cgroup *dcgrp = &dst_root->cgrp;
@@ -1870,6 +1878,7 @@ int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 
 	lockdep_assert_held(&cgroup_mutex);
 
+	/* 遍历ssmask指定的ss */
 	do_each_subsys_mask(ss, ssid, ss_mask) {
 		/*
 		 * If @ss has non-root csses attached to it, can't move.
@@ -2134,6 +2143,9 @@ void init_cgroup_root(struct cgroup_fs_context *ctx)
 		set_bit(CGRP_CPUSET_CLONE_CHILDREN, &root->cgrp.flags);
 }
 
+/* 
+可以用来初始化cgroup default root
+*/
 int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask)
 {
 	LIST_HEAD(tmp_links);
@@ -2156,11 +2168,13 @@ int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask)
 	 * cgroup_lock, and that's us.  Later rebinding may disable
 	 * controllers on the default hierarchy and thus create new csets,
 	 * which can't be more than the existing ones.  Allocate 2x.
+	 这里预先创建一些指定数量的cgrp_cset_link, 放在tmp_links中
 	 */
 	ret = allocate_cgrp_cset_links(2 * css_set_count, &tmp_links);
 	if (ret)
 		goto cancel_ref;
 
+	// 初始化root_cgrp的id
 	ret = cgroup_init_root_id(root);
 	if (ret)
 		goto cancel_ref;
@@ -2168,6 +2182,7 @@ int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask)
 	kf_sops = root == &cgrp_dfl_root ?
 		&cgroup_kf_syscall_ops : &cgroup1_kf_syscall_ops;
 
+	/* 创建对应的kernfs文件夹 */
 	root->kf_root = kernfs_create_root(kf_sops,
 					   KERNFS_ROOT_CREATE_DEACTIVATED |
 					   KERNFS_ROOT_SUPPORT_EXPORTOP |
@@ -2181,6 +2196,7 @@ int cgroup_setup_root(struct cgroup_root *root, u16 ss_mask)
 	WARN_ON_ONCE(cgroup_ino(root_cgrp) != 1);
 	root_cgrp->ancestors[0] = root_cgrp;
 
+	/* 创建sys文件夹 */
 	ret = css_populate_dir(&root_cgrp->self);
 	if (ret)
 		goto destroy_root;
@@ -2312,6 +2328,7 @@ static int cgroup_get_tree(struct fs_context *fc)
 	return ret;
 }
 
+/* cgroup v1的fc的ops */
 static const struct fs_context_operations cgroup_fs_context_ops = {
 	.free		= cgroup_fs_context_free,
 	.parse_param	= cgroup2_parse_param,
@@ -2319,6 +2336,7 @@ static const struct fs_context_operations cgroup_fs_context_ops = {
 	.reconfigure	= cgroup_reconfigure,
 };
 
+/* cgroup v2的fs的fc的ops */
 static const struct fs_context_operations cgroup1_fs_context_ops = {
 	.free		= cgroup_fs_context_free,
 	.parse_param	= cgroup1_parse_param,
@@ -2327,6 +2345,9 @@ static const struct fs_context_operations cgroup1_fs_context_ops = {
 };
 
 /*
+初始化vfs的fc
+===========================
+挂载cgroup fs的时候创建cgroup fc
  * Initialise the cgroup filesystem creation/reconfiguration context.  Notably,
  * we select the namespace we're going to use.
  */
@@ -2334,10 +2355,12 @@ static int cgroup_init_fs_context(struct fs_context *fc)
 {
 	struct cgroup_fs_context *ctx;
 
+	/* 分配内存 */
 	ctx = kzalloc(sizeof(struct cgroup_fs_context), GFP_KERNEL);
 	if (!ctx)
 		return -ENOMEM;
 
+	/* 初始化fc */
 	ctx->ns = current->nsproxy->cgroup_ns;
 	get_cgroup_ns(ctx->ns);
 	fc->fs_private = &ctx->kfc;
@@ -2355,6 +2378,7 @@ static int cgroup_init_fs_context(struct fs_context *fc)
 	return 0;
 }
 
+/* 卸载cgroup fs */
 static void cgroup_kill_sb(struct super_block *sb)
 {
 	struct kernfs_root *kf_root = kernfs_root_from_sb(sb);
@@ -2375,6 +2399,7 @@ static void cgroup_kill_sb(struct super_block *sb)
 	kernfs_kill_sb(sb);
 }
 
+/* cgroup v1的fs type */
 struct file_system_type cgroup_fs_type = {
 	.name			= "cgroup",
 	.init_fs_context	= cgroup_init_fs_context,
@@ -2428,6 +2453,7 @@ static int cpuset_init_fs_context(struct fs_context *fc)
 	return 0;
 }
 
+/* cpuset的fs type? */
 static struct file_system_type cpuset_fs_type = {
 	.name			= "cpuset",
 	.init_fs_context	= cpuset_init_fs_context,
@@ -2607,7 +2633,7 @@ struct task_struct *cgroup_taskset_next(struct cgroup_taskset *tset,
 }
 
 /**
-进行进程的迁移
+在memcg之间进行进程的迁移
  * cgroup_migrate_execute - migrate a taskset
  * @mgctx: migration context
  *
@@ -2626,6 +2652,7 @@ static int cgroup_migrate_execute(struct cgroup_mgctx *mgctx)
 
 	/* check that we can legitimately attach to the cgroup */
 	if (tset->nr_tasks) {
+		/* 遍历mgctx->ss_mask指定的ss */
 		do_each_subsys_mask(ss, ssid, mgctx->ss_mask) {
 			if (ss->can_attach) {
 				tset->ssid = ssid;
@@ -4963,6 +4990,9 @@ css_next_descendant_post(struct cgroup_subsys_state *pos,
 }
 
 /**
+判断css是否有在线的子节点
+============
+可以在删除cg的时候判断self有没有在线子css
  * css_has_online_children - does a css have online children
  * @css: the target css
  *
@@ -5802,7 +5832,9 @@ static void css_release(struct percpu_ref *ref)
 }
 /*
 cgrp刚刚启用了ss这个控制, 新建了对应的css
-建立三者关联, */
+建立三者关联,
+css指向ss, 指向cgrp
+css的父css是父cgrp的subsys[ss] */
 static void init_and_link_css(struct cgroup_subsys_state *css,
 			      struct cgroup_subsys *ss, struct cgroup *cgrp)
 {
@@ -5812,6 +5844,7 @@ static void init_and_link_css(struct cgroup_subsys_state *css,
 
 	memset(css, 0, sizeof(*css));
 	css->cgroup = cgrp;
+	/* 就这一个地方有设置ss成员? */
 	css->ss = ss;
 	css->id = -1;
 	INIT_LIST_HEAD(&css->sibling);
@@ -5884,6 +5917,7 @@ static void offline_css(struct cgroup_subsys_state *css)
 
 /**
 创建cg在这个ss上面的css
+什么时候需要创建: 
  * css_create - create a cgroup_subsys_state
  * @cgrp: the cgroup new css will be associated with
  * @ss: the subsys of new css
@@ -6139,6 +6173,7 @@ int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name, umode_t mode)
 	if (ret)
 		goto out_destroy;
 
+	/* 应用新的ssmask, 创建css什么的 */
 	ret = cgroup_apply_control_enable(cgrp);
 	if (ret)
 		goto out_destroy;
@@ -6201,6 +6236,7 @@ static void css_killed_ref_fn(struct percpu_ref *ref)
 
 /**
 销毁一个css
+下线cg的时候会对cg的每个css调用
 ===========
 总的来说,是减少ref, 为0就调用回调来下线
  * kill_css - destroy a css
@@ -6251,6 +6287,7 @@ static void kill_css(struct cgroup_subsys_state *css)
 }
 
 /**
+销毁cgroup
  * cgroup_destroy_locked - the first stage of cgroup destruction
  * @cgrp: cgroup to be destroyed
  *
@@ -6295,7 +6332,7 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	 * Make sure there's no live children.  We can't test emptiness of
 	 * ->self.children as dead children linger on it while being
 	 * drained; otherwise, "rmdir parent/child parent" may fail.
-	 */
+	如果cg还有在线的子cg, 不能删除 */
 	if (css_has_online_children(&cgrp->self))
 		return -EBUSY;
 
@@ -6308,6 +6345,7 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	cgrp->self.flags &= ~CSS_ONLINE;
 
 	spin_lock_irq(&css_set_lock);
+	/* 遍历关联的cset */
 	list_for_each_entry(link, &cgrp->cset_links, cset_link)
 		link->cset->dead = true;
 	spin_unlock_irq(&css_set_lock);
@@ -6316,7 +6354,8 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	for_each_css(css, ssid, cgrp)
 		kill_css(css);
 
-	/* clear and remove @cgrp dir, @cgrp has an extra ref on its kn */
+	/* clear and remove @cgrp dir, @cgrp has an extra ref on its kn
+	清理cgroup的dir */
 	css_clear_dir(&cgrp->self);
 	kernfs_remove(cgrp->kn);
 
@@ -6346,6 +6385,7 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 	return 0;
 };
 
+/* kernfs删除cgroup文件夹的回调函数 */
 int cgroup_rmdir(struct kernfs_node *kn)
 {
 	struct cgroup *cgrp;
@@ -6355,6 +6395,7 @@ int cgroup_rmdir(struct kernfs_node *kn)
 	if (!cgrp)
 		return 0;
 
+	/* 销毁cgroup */
 	ret = cgroup_destroy_locked(cgrp);
 	if (!ret)
 		TRACE_CGROUP_PATH(rmdir, cgrp);
@@ -6492,10 +6533,12 @@ int __init cgroup_init(void)
 	hash_add(css_set_table, &init_css_set.hlist,
 		 css_set_hash(init_css_set.subsys));
 
+	/* 初始化cgroup default root */
 	BUG_ON(cgroup_setup_root(&cgrp_dfl_root, 0));
 
 	cgroup_unlock();
 
+	/* 初始化每个子系统 */
 	for_each_subsys(ss, ssid) {
 		if (ss->early_init) {
 			struct cgroup_subsys_state *css =
@@ -6556,7 +6599,10 @@ int __init cgroup_init(void)
 	hash_add(css_set_table, &init_css_set.hlist,
 		 css_set_hash(init_css_set.subsys));
 
+	/* 在/sys/fs/cgroup下创建cgroup的挂载点
+	 */
 	WARN_ON(sysfs_create_mount_point(fs_kobj, "cgroup"));
+	/* 注册v1 v2的两个fs type */
 	WARN_ON(register_filesystem(&cgroup_fs_type));
 	WARN_ON(register_filesystem(&cgroup2_fs_type));
 	WARN_ON(!proc_create_single("cgroups", 0, NULL, proc_cgroupstats_show));
@@ -7169,6 +7215,7 @@ static int __init enable_cgroup_debug(char *str)
 __setup("cgroup_debug", enable_cgroup_debug);
 
 /**
+从一个cgroup目录的dentry中获取css
  * css_tryget_online_from_dir - get corresponding css from a cgroup dentry
  * @dentry: directory dentry of interest
  * @ss: subsystem of interest
@@ -7185,7 +7232,8 @@ struct cgroup_subsys_state *css_tryget_online_from_dir(struct dentry *dentry,
 	struct cgroup_subsys_state *css = NULL;
 	struct cgroup *cgrp;
 
-	/* is @dentry a cgroup dir? */
+	/* is @dentry a cgroup dir?
+	是不是cgroupfs的文件夹 */
 	if ((s_type != &cgroup_fs_type && s_type != &cgroup2_fs_type) ||
 	    !kn || kernfs_type(kn) != KERNFS_DIR)
 		return ERR_PTR(-EBADF);
