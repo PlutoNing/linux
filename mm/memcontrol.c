@@ -5600,6 +5600,7 @@ static void mem_cgroup_css_released(struct cgroup_subsys_state *css)
 	lru_gen_release_memcg(memcg);
 }
 
+/* 释放memcg的一些资源 */
 static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
@@ -6503,6 +6504,8 @@ static void mem_cgroup_move_task(void)
 #endif
 
 #ifdef CONFIG_LRU_GEN
+/* 在cgroup之间迁移进程的时候
+会对mgctx->tset调用这个函数 */
 static void mem_cgroup_attach(struct cgroup_taskset *tset)
 {
 	struct task_struct *task;
@@ -6942,12 +6945,14 @@ struct cgroup_subsys memory_cgrp_subsys = {
 	.css_online = mem_cgroup_css_online,
 	/* 下线memcg */
 	.css_offline = mem_cgroup_css_offline,
+	/*  */
 	.css_released = mem_cgroup_css_released,
+	/*  */
 	.css_free = mem_cgroup_css_free,
 	.css_reset = mem_cgroup_css_reset,
 	.css_rstat_flush = mem_cgroup_css_rstat_flush,
 	.can_attach = mem_cgroup_can_attach,
-	/* 20250619003459 */
+	/* 在cgroup之间迁移进程的时候, 改变了cset链接之后, 会调用这个 */
 	.attach = mem_cgroup_attach,
 	.cancel_attach = mem_cgroup_cancel_attach,
 	.post_attach = mem_cgroup_move_task,

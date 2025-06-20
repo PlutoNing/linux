@@ -295,6 +295,7 @@ void css_task_iter_end(struct css_task_iter *it);
 	     (task) = cgroup_taskset_next((tset), &(dst_css)))
 
 /**
+遍历cgroup tset的进程
  * cgroup_taskset_for_each_leader - iterate group leaders in a cgroup_taskset
  * @leader: the loop cursor
  * @dst_css: the destination css
@@ -382,6 +383,7 @@ static inline void cgroup_unlock(void)
 }
 
 /**
+获取进程的cset
  * task_css_set_check - obtain a task's css_set with extra access conditions
  * @task: the task to obtain css_set for
  * @__c: extra condition expression to be passed to rcu_dereference_check()

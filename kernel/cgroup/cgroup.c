@@ -902,6 +902,8 @@ static void css_set_skip_task_iters(struct css_set *cset,
 
 /**
 把进程从源css_set移动到目标css_set
+==================
+主要是把task->cg_list移除或者添加到对应链表
  * css_set_move_task - move a task from one css_set to another
  * @task: task being moved
  * @from_cset: css_set @task currently belongs to (may be NULL)
@@ -2571,6 +2573,7 @@ static void cgroup_migrate_add_task(struct task_struct *task,
 }
 
 /**
+获取tset的第一个进程
  * cgroup_taskset_first - reset taskset and return the first task
  * @tset: taskset of interest
  * @dst_cssp: output variable for the destination css
@@ -2652,7 +2655,8 @@ static int cgroup_migrate_execute(struct cgroup_mgctx *mgctx)
 
 	/* check that we can legitimately attach to the cgroup */
 	if (tset->nr_tasks) {
-		/* 遍历mgctx->ss_mask指定的ss */
+		/* 遍历mgctx->ss_mask指定的ss
+		保证所有指定的ss都是可以attach的 */
 		do_each_subsys_mask(ss, ssid, mgctx->ss_mask) {
 			if (ss->can_attach) {
 				tset->ssid = ssid;
@@ -2673,12 +2677,14 @@ static int cgroup_migrate_execute(struct cgroup_mgctx *mgctx)
 	spin_lock_irq(&css_set_lock);
 	list_for_each_entry(cset, &tset->src_csets, mg_node) {
 		list_for_each_entry_safe(task, tmp_task, &cset->mg_tasks, cg_list) {
+			/* 这里遍历src cset, 然后遍历其中的mg task */
 			struct css_set *from_cset = task_css_set(task);
 			struct css_set *to_cset = cset->mg_dst_cset;
-			/* 获得要迁移的task, 和cset */
+			/* 刚刚获得了要迁移的task, 和cset
+			这里增加ref */
 			get_css_set(to_cset);
 			to_cset->nr_tasks++;
-			/* 执行迁移 */
+			/* 执行迁移, 改变task->cg_list的链接位置 */
 			css_set_move_task(task, from_cset, to_cset, true);
 			from_cset->nr_tasks--;
 			/*

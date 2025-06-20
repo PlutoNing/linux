@@ -762,6 +762,7 @@ struct cgroup_subsys {
 
 	int (*can_attach)(struct cgroup_taskset *tset);
 	void (*cancel_attach)(struct cgroup_taskset *tset);
+	/* 迁移进程, 改变了cset之后, 会调用这个完成特定的和实质的一些工作 */
 	void (*attach)(struct cgroup_taskset *tset);
 	void (*post_attach)(void);
 	int (*can_fork)(struct task_struct *task,

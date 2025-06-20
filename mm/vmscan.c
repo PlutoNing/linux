@@ -3783,6 +3783,7 @@ void lru_gen_add_mm(struct mm_struct *mm)
 	spin_unlock(&mm_list->lock);
 }
 
+/* 20250621015251 */
 void lru_gen_del_mm(struct mm_struct *mm)
 {
 	int nid;
@@ -3822,9 +3823,11 @@ void lru_gen_del_mm(struct mm_struct *mm)
 }
 
 #ifdef CONFIG_MEMCG
+/* 20250619233255 */
 void lru_gen_migrate_mm(struct mm_struct *mm)
 {
 	struct mem_cgroup *memcg;
+	/* cgroup迁移进程时, owner是自己 */
 	struct task_struct *task = rcu_dereference_protected(mm->owner, true);
 
 	VM_WARN_ON_ONCE(task->mm != mm);
@@ -3839,8 +3842,10 @@ void lru_gen_migrate_mm(struct mm_struct *mm)
 		return;
 
 	rcu_read_lock();
+	/* 获取所属的memcg */
 	memcg = mem_cgroup_from_task(task);
 	rcu_read_unlock();
+	/* 如果mm的lrugen已经与memcg联系上了 */
 	if (memcg == mm->lru_gen.memcg)
 		return;
 

@@ -889,6 +889,7 @@ struct mm_struct {
 		 * current->mm != mm
 		 * new_owner->mm == mm
 		 * new_owner->alloc_lock is held
+		 指向task说明:
 		 */
 		struct task_struct __rcu *owner;
 #endif

@@ -147,7 +147,8 @@ struct cgroup_mgctx {
 	/* 这里是找到的dst cset */
 	struct list_head	preloaded_dst_csets;
 
-	/* tasks and csets to migrate */
+	/* tasks and csets to migrate
+	记录了要迁移的进程的cset信息 */
 	struct cgroup_taskset	tset;
 
 	/* subsystems affected by migration */
