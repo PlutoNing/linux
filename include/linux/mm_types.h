@@ -974,7 +974,7 @@ struct mm_struct {
 			unsigned long bitmap;
 #ifdef CONFIG_MEMCG
 			/* points to the memcg of "owner" above
-			所属的memcg
+			指向所属的memcg
 			*/
 			struct mem_cgroup *memcg;
 #endif
@@ -1010,7 +1010,8 @@ static inline cpumask_t *mm_cpumask(struct mm_struct *mm)
 }
 
 #ifdef CONFIG_LRU_GEN
-/* 里面是什么 */
+/* 里面是什么
+包含着memcg拥有的mm的链表 */
 /*  */
 struct lru_gen_mm_list {
 	/* mm_struct list for page table walkers

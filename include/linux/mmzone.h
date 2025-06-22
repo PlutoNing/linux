@@ -503,7 +503,8 @@ struct lru_gen_mm_state {
 	/* set to max_seq after each iteration */
 	unsigned long seq;
 	/* where the current iteration continues after
-	指向要遍历的下一个元素 */
+	指向要遍历的下一个元素
+	(是在memcg上面遍历mm?) */
 	struct list_head *head;
 	/* where the last iteration ended before */
 	struct list_head *tail;

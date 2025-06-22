@@ -3736,7 +3736,8 @@ static void reset_bloom_filter(struct lruvec *lruvec, unsigned long seq)
 /******************************************************************************
  *                          mm_struct list
  ******************************************************************************/
-/* mm_list是什么 */
+/* mm_list是什么
+memcg所拥有的mm链接在上面? */
 static struct lru_gen_mm_list *get_mm_list(struct mem_cgroup *memcg)
 {
 	static struct lru_gen_mm_list mm_list = {
@@ -3754,17 +3755,22 @@ static struct lru_gen_mm_list *get_mm_list(struct mem_cgroup *memcg)
 }
 
 /*
+mm加入所属memcg的mm链表
+=================
 fork的时候会调用这个函数,初始化新进程
 */
 void lru_gen_add_mm(struct mm_struct *mm)
 {
 	int nid;
+	/* 获取mm->task->cset->subsys[id] */
 	struct mem_cgroup *memcg = get_mem_cgroup_from_mm(mm);
+	/* 获取memcg的mm链表 */
 	struct lru_gen_mm_list *mm_list = get_mm_list(memcg);
 
 	VM_WARN_ON_ONCE(!list_empty(&mm->lru_gen.list));
 #ifdef CONFIG_MEMCG
 	VM_WARN_ON_ONCE(mm->lru_gen.memcg);
+	/* 这里mm指向所属的memcg */
 	mm->lru_gen.memcg = memcg;
 #endif
 	spin_lock(&mm_list->lock);
@@ -3778,12 +3784,13 @@ void lru_gen_add_mm(struct mm_struct *mm)
 			lruvec->mm_state.tail = &mm->lru_gen.list;
 	}
 
+	/* mm加入memcg的mm链表 */
 	list_add_tail(&mm->lru_gen.list, &mm_list->fifo);
 
 	spin_unlock(&mm_list->lock);
 }
 
-/* 20250621015251 */
+/* 把mm从所属的memcg的链表取出 */
 void lru_gen_del_mm(struct mm_struct *mm)
 {
 	int nid;
@@ -3796,6 +3803,7 @@ void lru_gen_del_mm(struct mm_struct *mm)
 #ifdef CONFIG_MEMCG
 	memcg = mm->lru_gen.memcg;
 #endif
+/* 获取memcg的mmlist(所拥有进程的mm链接在这里) */
 	mm_list = get_mm_list(memcg);
 
 	spin_lock(&mm_list->lock);
@@ -3812,6 +3820,7 @@ void lru_gen_del_mm(struct mm_struct *mm)
 			lruvec->mm_state.tail = lruvec->mm_state.tail->next;
 	}
 
+	/* 把mm从所属的memcg取出 */
 	list_del_init(&mm->lru_gen.list);
 
 	spin_unlock(&mm_list->lock);
@@ -3823,7 +3832,9 @@ void lru_gen_del_mm(struct mm_struct *mm)
 }
 
 #ifdef CONFIG_MEMCG
-/* 20250619233255 */
+/*
+在cgroup之间移动进程之后
+这里修改mm与所属memcg的绑定关系, 解除旧关联, 关联新memcg*/
 void lru_gen_migrate_mm(struct mm_struct *mm)
 {
 	struct mem_cgroup *memcg;
@@ -3851,7 +3862,9 @@ void lru_gen_migrate_mm(struct mm_struct *mm)
 
 	VM_WARN_ON_ONCE(list_empty(&mm->lru_gen.list));
 
+	/* 把mm从所属的memcg的链表链接取出来 */
 	lru_gen_del_mm(mm);
+	/* mm加入memcg的mm链表 */
 	lru_gen_add_mm(mm);
 }
 #endif

@@ -189,6 +189,7 @@ static struct move_charge_struct {
 	struct mem_cgroup *from;
 	struct mem_cgroup *to;
 	unsigned long flags;
+	/* 20250623012827 */
 	unsigned long precharge;
 	unsigned long moved_charge;
 	unsigned long moved_swap;
@@ -1007,6 +1008,7 @@ static void memcg_check_events(struct mem_cgroup *memcg, int nid)
 	}
 }
 
+// task->cset->subsys[id]
 // 获取tsk的memcg, 通过tsk对应的css来获取
 struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p)
 {
@@ -1061,7 +1063,7 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
 	 * counting is disabled on the root level in the
 	 * cgroup core. See CSS_NO_REF.
 	 */
-	if (unlikely(!mm)) { /* 没指定mm(比如说可能加入mapping)
+	if (unlikely(!mm)) { /* 没指定mm(比如说可能加入mapping(啥意思))
 	如何获取cg? */
 		memcg = active_memcg();
 		if (unlikely(memcg)) {
@@ -1076,6 +1078,7 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
 
 	rcu_read_lock();
 	do {
+		/*  */
 		memcg = mem_cgroup_from_task(rcu_dereference(mm->owner));
 		if (unlikely(!memcg))
 			memcg = root_mem_cgroup;
@@ -6194,7 +6197,9 @@ static int mem_cgroup_precharge_mc(struct mm_struct *mm)
 	return mem_cgroup_do_precharge(precharge);
 }
 
-/* cancels all extra charges on mc.from and mc.to, and wakes up all waiters. */
+/* cancels all extra charges on mc.from and mc.to, and wakes up all waiters.
+取消
+ */
 static void __mem_cgroup_clear_mc(void)
 {
 	struct mem_cgroup *from = mc.from;
@@ -6505,7 +6510,8 @@ static void mem_cgroup_move_task(void)
 
 #ifdef CONFIG_LRU_GEN
 /* 在cgroup之间迁移进程的时候
-会对mgctx->tset调用这个函数 */
+会对mgctx->tset调用这个函数
+这里修改mm与所属memcg的绑定关系, 解除旧关联, 关联新memcg */
 static void mem_cgroup_attach(struct cgroup_taskset *tset)
 {
 	struct task_struct *task;
@@ -6519,6 +6525,7 @@ static void mem_cgroup_attach(struct cgroup_taskset *tset)
 		return;
 
 	task_lock(task);
+	/* 这里修改mm与所属memcg的绑定关系, 解除旧关联, 关联新memcg */
 	if (task->mm && READ_ONCE(task->mm->owner) == task)
 		lru_gen_migrate_mm(task->mm);
 	task_unlock(task);
@@ -6952,8 +6959,10 @@ struct cgroup_subsys memory_cgrp_subsys = {
 	.css_reset = mem_cgroup_css_reset,
 	.css_rstat_flush = mem_cgroup_css_rstat_flush,
 	.can_attach = mem_cgroup_can_attach,
-	/* 在cgroup之间迁移进程的时候, 改变了cset链接之后, 会调用这个 */
+	/* 在cgroup之间迁移进程的时候, 改变了cset链接之后, 会调用这个
+	这里修改mm与所属memcg的绑定关系, 解除旧关联, 关联新memcg */
 	.attach = mem_cgroup_attach,
+	/*  */
 	.cancel_attach = mem_cgroup_cancel_attach,
 	.post_attach = mem_cgroup_move_task,
 	.dfl_cftypes = memory_files,
