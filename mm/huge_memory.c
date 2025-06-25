@@ -1933,6 +1933,7 @@ unlock:
 }
 
 /*
+对一些特殊类型的页表加锁?
  * Returns page table lock pointer if a given pmd maps a thp, NULL otherwise.
  *
  * Note that if it returns page table lock pointer, this routine returns without

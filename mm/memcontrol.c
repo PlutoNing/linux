@@ -189,7 +189,7 @@ static struct move_charge_struct {
 	struct mem_cgroup *from;
 	struct mem_cgroup *to;
 	unsigned long flags;
-	/* 20250623012827 */
+	/* */
 	unsigned long precharge;
 	unsigned long moved_charge;
 	unsigned long moved_swap;
@@ -1463,6 +1463,7 @@ static unsigned long mem_cgroup_margin(struct mem_cgroup *memcg)
 }
 
 /*
+检查memcg是不是mc的源或者目的memcg的孩子cg
  * A routine for checking "mem" is under move_account() or not.
  *
  * Checking a cgroup is mc.from or mc.to or under hierarchy of
@@ -1491,6 +1492,11 @@ unlock:
 	return ret;
 }
 
+/* 
+如果当前存在moving task
+并且memcg是mc的源或者目的cg的孩子cg
+就等待mc完成
+*/
 static bool mem_cgroup_wait_acct_move(struct mem_cgroup *memcg)
 {
 	if (mc.moving_task && current != mc.moving_task) {
@@ -6136,6 +6142,8 @@ static inline enum mc_target_type get_mctgt_type_thp(struct vm_area_struct *vma,
 }
 #endif
 
+/* 
+ */
 static int mem_cgroup_count_precharge_pte_range(pmd_t *pmd,
 					unsigned long addr, unsigned long end,
 					struct mm_walk *walk)
@@ -6169,16 +6177,19 @@ static int mem_cgroup_count_precharge_pte_range(pmd_t *pmd,
 	return 0;
 }
 
+/*  */
 static const struct mm_walk_ops precharge_walk_ops = {
 	.pmd_entry	= mem_cgroup_count_precharge_pte_range,
 	.walk_lock	= PGWALK_RDLOCK,
 };
 
+/* 这里数的是什么? */
 static unsigned long mem_cgroup_count_precharge(struct mm_struct *mm)
 {
 	unsigned long precharge;
 
 	mmap_read_lock(mm);
+	/*  */
 	walk_page_range(mm, 0, ULONG_MAX, &precharge_walk_ops, NULL);
 	mmap_read_unlock(mm);
 
@@ -6237,6 +6248,7 @@ static void __mem_cgroup_clear_mc(void)
 	}
 	memcg_oom_recover(from);
 	memcg_oom_recover(to);
+	/* 这里是唤醒与mc的操作的cg的子cg相关的阻塞进程 */
 	wake_up_all(&mc.waitq);
 }
 

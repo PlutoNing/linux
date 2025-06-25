@@ -8,6 +8,7 @@
 #define GFP_PGTABLE_USER	(GFP_PGTABLE_KERNEL | __GFP_ACCOUNT)
 
 /**
+为一个pte级别的内核页表分配内存
  * __pte_alloc_one_kernel - allocate memory for a PTE-level kernel page table
  * @mm: the mm_struct of the current context
  *
@@ -18,11 +19,14 @@
  */
 static inline pte_t *__pte_alloc_one_kernel(struct mm_struct *mm)
 {
+	/* 使用alloc_pages分配单个页面 */
 	struct ptdesc *ptdesc = pagetable_alloc(GFP_PGTABLE_KERNEL &
 			~__GFP_HIGHMEM, 0);
 
 	if (!ptdesc)
 		return NULL;
+	/* 返回这个页表页面的内核虚拟地址
+	20250626013042 */
 	return ptdesc_address(ptdesc);
 }
 

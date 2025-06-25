@@ -2256,7 +2256,7 @@ static inline int arch_make_folio_accessible(struct folio *folio)
  * Some inline functions in vmstat.h depend on page_zone()
  */
 #include <linux/vmstat.h>
-// 获取page的内存内核地址
+// 获取page结构体指针对应的的内存内核虚拟地址
 static __always_inline void *lowmem_page_address(const struct page *page)
 {
 	return page_to_virt(page);
@@ -2285,12 +2285,14 @@ void page_address_init(void);
 #endif
 
 #if !defined(HASHED_PAGE_VIRTUAL) && !defined(WANT_PAGE_VIRTUAL)
-// 获取page的内存地址
+// 获取page结构体对应的的内存虚拟地址
 #define page_address(page) lowmem_page_address(page)
 #define set_page_address(page, address)  do { } while(0)
 #define page_address_init()  do { } while(0)
 #endif
 
+/* 获取folio的page结构体对应的内存虚拟地址
+也就是folio对应的内存虚拟地址 */
 static inline void *folio_address(const struct folio *folio)
 {
 	return page_address(&folio->page);
@@ -2904,6 +2906,13 @@ static inline void *ptdesc_to_virt(const struct ptdesc *pt)
 	return page_to_virt(ptdesc_page(pt));
 }
 
+/*
+获取ptdesc对应的page结构体对应的内核内存虚拟地址
+===========
+参数是ptdesc
+是一个page结构体指针强转的结果
+所以这里获取pt的 folio,然后folio的page结构体
+然后是address(内存虚拟地址) */
 static inline void *ptdesc_address(const struct ptdesc *pt)
 {
 	return folio_address(ptdesc_folio(pt));
@@ -2917,6 +2926,8 @@ static inline bool pagetable_is_reserved(struct ptdesc *pt)
 /**
  * pagetable_alloc - Allocate pagetables
  分配页表
+ 也是使用alloc_pages分配
+ 返回的是ptdesc
  * @gfp:    GFP flags
  * @order:  desired pagetable order
  *
@@ -3079,6 +3090,7 @@ pte_t *pte_offset_map_nolock(struct mm_struct *mm, pmd_t *pmd,
 #if USE_SPLIT_PMD_PTLOCKS
 
 // 获得pmd的page
+// 获取pmd页面对应的page结构体
 static inline struct page *pmd_pgtable_page(pmd_t *pmd)
 {
 	// 512个八字节的mask
@@ -3088,13 +3100,13 @@ static inline struct page *pmd_pgtable_page(pmd_t *pmd)
 	);
 }
 
-// 获得pmd的ptdesc
+// 获得pmd页面对应的page结构体的ptdesc
 static inline struct ptdesc *pmd_ptdesc(pmd_t *pmd)
 {
 	return page_ptdesc(pmd_pgtable_page(pmd));
 }
 
-// 给pmd加锁, 但是为啥没有用到mm参数呢
+// 给mm的这个pmd加锁, 但是为啥没有用到mm参数呢
 static inline spinlock_t *pmd_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
 	return ptlock_ptr(pmd_ptdesc(pmd));

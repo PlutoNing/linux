@@ -434,6 +434,7 @@ FOLIO_MATCH(compound_head, _head_2a);
  *
  * This struct overlays struct page for now. Do not modify without a good
  * understanding of the issues.
+ 内存布局为:
  */
 struct ptdesc {
 	unsigned long __page_flags;
@@ -493,10 +494,11 @@ static_assert(sizeof(struct ptdesc) <= sizeof(struct page));
 	const struct ptdesc *:		(const struct page *)(pt),	\
 	struct ptdesc *:		(struct page *)(pt)))
 
-	// 又把ptdesc转为page
+// 又把ptdesc转为page
 #define ptdesc_folio(pt)		(_Generic((pt),			\
 	const struct ptdesc *:		(const struct folio *)(pt),	\
 	struct ptdesc *:		(struct folio *)(pt)))
+// 类型强转
 // 把获取的用于页表的page地址转为ptdesc
 #define page_ptdesc(p)			(_Generic((p),			\
 	const struct page *:		(const struct ptdesc *)(p),	\
