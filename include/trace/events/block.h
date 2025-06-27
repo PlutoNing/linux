@@ -51,7 +51,8 @@ DEFINE_EVENT(block_buffer, block_touch_buffer,
 );
 
 /**
- * block_dirty_buffer - mark a buffer dirty
+记录一个buffer置脏
+* block_dirty_buffer - mark a buffer dirty
  * @bh: buffer_head being dirtied
  *
  * Called from mark_buffer_dirty().

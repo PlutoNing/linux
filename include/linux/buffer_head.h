@@ -67,12 +67,15 @@ struct buffer_head {
 	circular list of page's buffers */
 
 	/*
-	指向此buffer里面的前一个bh
+	指向此buffer里面的下一个bh
 	 circular list of page's buffers */
 
 	
 	union {
 		struct page *b_page;	/* the page this bh is mapped to */
+		/*
+		是这个bh所io的page
+		bh位于b_folio的bh链 */
 		struct folio *b_folio;	/* the folio this bh is mapped to */
 	};
 
@@ -182,7 +185,7 @@ static __always_inline void clear_buffer_uptodate(struct buffer_head *bh)
 {
 	clear_bit(BH_Uptodate, &bh->b_state);
 }
-/*  */
+/* 如果读取时发现为真, 可以直接返回, 不用磁盘io */
 static __always_inline int buffer_uptodate(const struct buffer_head *bh)
 {
 	/*
@@ -392,6 +395,8 @@ map_bh(struct buffer_head *bh, struct super_block *sb, sector_t block)
 	bh->b_size = sb->s_blocksize;
 }
 
+/* 发起submit_bh后
+等待bh读写完成 */
 static inline void wait_on_buffer(struct buffer_head *bh)
 {
 	might_sleep();

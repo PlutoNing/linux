@@ -1127,6 +1127,7 @@ static int cgroup_bpf_query(struct cgroup *cgrp, const union bpf_attr *attr,
 	return ret;
 }
 
+/* 负责附加sock，lsm等类型prog的函数 */
 int cgroup_bpf_prog_attach(const union bpf_attr *attr,
 			   enum bpf_prog_type ptype, struct bpf_prog *prog)
 {
@@ -1134,6 +1135,7 @@ int cgroup_bpf_prog_attach(const union bpf_attr *attr,
 	struct cgroup *cgrp;
 	int ret;
 
+	/* 获取target fd所属的文件夹对应的cg */
 	cgrp = cgroup_get_from_fd(attr->target_fd);
 	if (IS_ERR(cgrp))
 		return PTR_ERR(cgrp);

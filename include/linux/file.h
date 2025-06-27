@@ -64,6 +64,7 @@ static inline struct fd fdget(unsigned int fd)
 	return __to_fd(__fdget(fd));
 }
 
+/* 转换为fd结构体 */
 static inline struct fd fdget_raw(unsigned int fd)
 {
 	return __to_fd(__fdget_raw(fd));

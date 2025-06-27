@@ -6788,6 +6788,8 @@ void cgroup_fork(struct task_struct *child)
 }
 
 /**
+从filep获取cg
+获取所属的文件夹对应的cg
  * cgroup_v1v2_get_from_file - get a cgroup pointer from a file pointer
  * @f: file corresponding to cgroup_dir
  *
@@ -7322,6 +7324,7 @@ out:
 EXPORT_SYMBOL_GPL(cgroup_get_from_path);
 
 /**
+获取fd所属的cg？
  * cgroup_v1v2_get_from_fd - get a cgroup pointer from a fd
  * @fd: fd obtained by open(cgroup_dir)
  *

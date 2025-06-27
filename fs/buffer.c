@@ -57,9 +57,11 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list);
 static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 			  struct writeback_control *wbc);
 
-/* 检查list上面有没有bh链接到这里 */
+/* 检查list上面有没有bh链接到这里
+理解为inode有没有关联的bh? */
 #define BH_ENTRY(list) list_entry((list), struct buffer_head, b_assoc_buffers)
 
+/* 标记这个bh的folio为accessed */
 inline void touch_buffer(struct buffer_head *bh)
 {
 	trace_block_touch_buffer(bh);
@@ -115,6 +117,7 @@ void buffer_check_dirty_writeback(struct folio *folio,
 }
 
 /*
+等待bh io完成
  * Block until a buffer comes unlocked.  This doesn't stop it
  * from becoming locked again - you have to lock it yourself
  * if you want to preserve its state.
@@ -525,7 +528,7 @@ EXPORT_SYMBOL(mark_buffer_async_write);
 
 /*
  * The buffer's backing address_space's private_lock must be held
- 把bh从关联的mapping移除
+ 把bh从关联的inode mapping移除
  */
 static void __remove_assoc_queue(struct buffer_head *bh)
 {
@@ -689,7 +692,9 @@ void write_boundary_block(struct block_device *bdev,
 	}
 }
 
-/* 把bh关联到指定的mapping */
+/* 把bh关联到指定的inode
+主要是fs实现使用这个接口
+作用是 */
 void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
 {
 	struct address_space *mapping = inode->i_mapping;
@@ -945,6 +950,9 @@ int remove_inode_buffers(struct inode *inode)
 }
 
 /*
+准备io这个folio? 创建上面的bh链
+==============
+初始化folio的bh链, 每个bh负责size大小区域, 这些bh负责的区域刚好完全铺满folio
  * Create the appropriate buffers when given a folio for data area and
  * the size of each buffer.. Use the bh->b_this_page linked list to
  * follow the buffers created.  Return NULL if unable to create more
@@ -972,6 +980,7 @@ struct buffer_head *folio_alloc_buffers(struct folio *folio, unsigned long size,
 	head = NULL;
 	offset = folio_size(folio);
 	while ((offset -= size) >= 0) {
+		/* 分配新的bh */
 		bh = alloc_buffer_head(gfp);
 		if (!bh)
 			goto no_grow;
@@ -982,7 +991,8 @@ struct buffer_head *folio_alloc_buffers(struct folio *folio, unsigned long size,
 
 		bh->b_size = size;
 
-		/* Link the buffer to its folio */
+		/* Link the buffer to its folio
+		设置bh关联的folio， 负责offset位置的io */
 		folio_set_bh(bh, folio, offset);
 	}
 out:
@@ -1004,6 +1014,10 @@ no_grow:
 }
 EXPORT_SYMBOL_GPL(folio_alloc_buffers);
 
+/* 给page创建bh链
+准备io这个page
+============
+似乎主要是给驱动或者fs使用, md, ntfs等等 */
 struct buffer_head *alloc_page_buffers(struct page *page, unsigned long size,
 				       bool retry)
 {
@@ -1011,6 +1025,10 @@ struct buffer_head *alloc_page_buffers(struct page *page, unsigned long size,
 }
 EXPORT_SYMBOL_GPL(alloc_page_buffers);
 
+/* folio是块设备的mapping的某个页面
+刚刚给他创建了bh链（也就是head)
+=============
+这里把bh关联到page的priv */
 static inline void link_dev_buffers(struct folio *folio,
 		struct buffer_head *head)
 {
@@ -1070,12 +1088,15 @@ static sector_t folio_init_buffers(struct folio *folio,
 }
 
 /*
+为了读写块设备的block位置
+创建bh
+============
+申请页面, 加入mapping, 在上面创建bh
  * Create the page-cache page that contains the requested block.
  *
  * This is used purely for blockdev mappings.
  */
-static int
-grow_dev_page(struct block_device *bdev, sector_t block,
+static int grow_dev_page(struct block_device *bdev, sector_t block,
 	      pgoff_t index, int size, int sizebits, gfp_t gfp)
 {
 	struct inode *inode = bdev->bd_inode;
@@ -1095,11 +1116,13 @@ grow_dev_page(struct block_device *bdev, sector_t block,
 	 */
 	gfp_mask |= __GFP_NOFAIL;
 
+	/* 获取mapping里面对应index位置（由block nr算得)的folio */
 	folio = __filemap_get_folio(inode->i_mapping, index,
 			FGP_LOCK | FGP_ACCESSED | FGP_CREAT, gfp_mask);
 
+	/* 看看这个上面有没有bh */
 	bh = folio_buffers(folio);
-	if (bh) {
+	if (bh) {/* 如果有bh的话, 有可能直接返回 */
 		if (bh->b_size == size) {
 			end_block = folio_init_buffers(folio, bdev,
 					(sector_t)index << sizebits, size);
@@ -1109,6 +1132,7 @@ grow_dev_page(struct block_device *bdev, sector_t block,
 			goto failed;
 	}
 
+	/* mapping里面对应block位置的page上面还没有bh, 这里创建 */
 	bh = folio_alloc_buffers(folio, size, true);
 
 	/*
@@ -1117,6 +1141,7 @@ grow_dev_page(struct block_device *bdev, sector_t block,
 	 * run under the folio lock.
 	 */
 	spin_lock(&inode->i_mapping->private_lock);
+	/* 把bh关联到folio的priv */
 	link_dev_buffers(folio, bh);
 	end_block = folio_init_buffers(folio, bdev,
 			(sector_t)index << sizebits, size);
@@ -1130,11 +1155,12 @@ failed:
 }
 
 /*
+为读写块设备的block位置而创建bh并返回
+申请page, 加入mapping, 然后在这个page上面创建bh, 然后返回?
  * Create buffers for the specified block device block's page.  If
  * that page was dirty, the buffers are set dirty also.
  */
-static int
-grow_buffers(struct block_device *bdev, sector_t block, int size, gfp_t gfp)
+static int grow_buffers(struct block_device *bdev, sector_t block, int size, gfp_t gfp)
 {
 	pgoff_t index;
 	int sizebits;
@@ -1154,12 +1180,14 @@ grow_buffers(struct block_device *bdev, sector_t block, int size, gfp_t gfp)
 		return -EIO;
 	}
 
-	/* Create a page with the proper size buffers.. */
+	/* Create a page with the proper size buffers..
+	在块设备的mapping对应位置申请一个page, 创建bh, 读写这个位置（通过buffer io) */
 	return grow_dev_page(bdev, block, index, size, sizebits, gfp);
 }
 
-static struct buffer_head *
-__getblk_slow(struct block_device *bdev, sector_t block,
+/* 返回块设备指定位置关联的bh
+用于io */
+static struct buffer_head * __getblk_slow(struct block_device *bdev, sector_t block,
 	     unsigned size, gfp_t gfp)
 {
 	/* Size must be multiple of hard sectorsize */
@@ -1178,10 +1206,14 @@ __getblk_slow(struct block_device *bdev, sector_t block,
 		struct buffer_head *bh;
 		int ret;
 
+		/* 这里尝试查找bdev的mapping的对应页面上面的bh, 有没有创建好了bh */
 		bh = __find_get_block(bdev, block, size);
 		if (bh)
 			return bh;
 
+		/* 没有的话, 这里需要创建对应block位置的bh
+		在mapping找到页面, 没有就申请
+		然后在页面上面新建bh链 */
 		ret = grow_buffers(bdev, block, size, gfp);
 		if (ret < 0)
 			return NULL;
@@ -1228,6 +1260,7 @@ void mark_buffer_dirty(struct buffer_head *bh)
 {
 	WARN_ON_ONCE(!buffer_uptodate(bh));
 
+	/* 这里是唯一的tp */
 	trace_block_dirty_buffer(bh);
 
 	/*
@@ -1235,7 +1268,8 @@ void mark_buffer_dirty(struct buffer_head *bh)
 	 *
 	 * Don't let the final "is it dirty" escape to before we
 	 * perhaps modified the buffer.
-	 */
+	 如果已经dirty了， 直接返回
+	*/
 	if (buffer_dirty(bh)) {
 		smp_mb();
 		if (buffer_dirty(bh))
@@ -1243,6 +1277,7 @@ void mark_buffer_dirty(struct buffer_head *bh)
 	}
 
 	if (!test_set_buffer_dirty(bh)) {/* 如果这个bh本来不是dirty */
+	/* 第一次置脏的话， 需要进行相应的联动修改 */
 		struct folio *folio = bh->b_folio;
 		struct address_space *mapping = NULL;
 
@@ -1308,6 +1343,8 @@ void __bforget(struct buffer_head *bh)
 }
 EXPORT_SYMBOL(__bforget);
 
+/* 读写bh
+发起submit_bh io（也是通过bio), 等待io完成 */
 static struct buffer_head *__bread_slow(struct buffer_head *bh)
 {
 	lock_buffer(bh);
@@ -1315,9 +1352,12 @@ static struct buffer_head *__bread_slow(struct buffer_head *bh)
 		unlock_buffer(bh);
 		return bh;
 	} else {
+		/* 需要磁盘io */
 		get_bh(bh);
 		bh->b_end_io = end_buffer_read_sync;
+		/* 发起io */
 		submit_bh(REQ_OP_READ, bh);
+		/* 等待完成 */
 		wait_on_buffer(bh);
 		if (buffer_uptodate(bh))
 			return bh;
@@ -1443,7 +1483,10 @@ lookup_bh_lru(struct block_device *bdev, sector_t block, unsigned size)
 }
 
 /*
+准备通过buffer io来读写块设备的block位置
+这里获取对应的bh （位于块设备的mapping的对应page上面的bh链)
 找到对应的bh
+没有的话会创建
  * Perform a pagecache lookup for the matching buffer.  If it's there, refresh
  * it in the LRU and mark it as accessed.  If it is not present then return
  * NULL
@@ -1459,7 +1502,7 @@ __find_get_block(struct block_device *bdev, sector_t block, unsigned size)
 		bh = __find_get_block_slow(bdev, block);
 		if (bh)
 			bh_lru_install(bh);/* 把新bh装到全局的lru cache */
-	} else
+	} else /* 标记bh的folio为accessed */
 		touch_buffer(bh);
 
 	return bh;
@@ -1475,14 +1518,13 @@ EXPORT_SYMBOL(__find_get_block);
  * __getblk_gfp() will lock up the machine if grow_dev_page's
  * try_to_free_buffers() attempt is failing.  FIXME, perhaps?
  */
-struct buffer_head *
-__getblk_gfp(struct block_device *bdev, sector_t block,
+struct buffer_head * __getblk_gfp(struct block_device *bdev, sector_t block,
 	     unsigned size, gfp_t gfp)
 {/* 从缓存或者mapping读取bh */
 	struct buffer_head *bh = __find_get_block(bdev, block, size);
 
 	might_sleep();
-	if (bh == NULL)
+	if (bh == NULL) /* 这里可能会在mapping申请页面, 然后创建bh */
 		bh = __getblk_slow(bdev, block, size, gfp);
 	return bh;
 }
@@ -1518,8 +1560,10 @@ struct buffer_head *
 __bread_gfp(struct block_device *bdev, sector_t block,
 		   unsigned size, gfp_t gfp)
 {
+	/* 先获取磁盘位置对应的bh */
 	struct buffer_head *bh = __getblk_gfp(bdev, block, size, gfp);
 
+	/* 这里开始读写 */
 	if (likely(bh) && !buffer_uptodate(bh))
 		bh = __bread_slow(bh);
 	return bh;
@@ -1582,6 +1626,9 @@ void invalidate_bh_lrus_cpu(void)
 }
 
 //把新分配的bh关联到folio, 这个bh管理page的offset起始位置
+/* 
+设置bh关联的folio
+*/
 void folio_set_bh(struct buffer_head *bh, struct folio *folio,
 		  unsigned long offset)
 {
@@ -2938,7 +2985,7 @@ static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 	submit_bio(bio);
 }
 
-//提交写回bh
+//发起buffer io
 void submit_bh(blk_opf_t opf, struct buffer_head *bh)
 {
 	submit_bh_wbc(opf, bh, NULL);

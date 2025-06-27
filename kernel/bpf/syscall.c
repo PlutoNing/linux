@@ -3872,6 +3872,7 @@ attach_type_to_prog_type(enum bpf_attach_type attach_type)
 	}
 }
 
+/* 附加prog之前的一些检查 */
 static int bpf_prog_attach_check_attach_type(const struct bpf_prog *prog,
 					     enum bpf_attach_type attach_type)
 {
@@ -3971,6 +3972,7 @@ static int bpf_prog_attach(const union bpf_attr *attr)
 	if (IS_ERR(prog))
 		return PTR_ERR(prog);
 
+		/* 一些检查 */
 	if (bpf_prog_attach_check_attach_type(prog, attr->attach_type)) {
 		bpf_prog_put(prog);
 		return -EINVAL;

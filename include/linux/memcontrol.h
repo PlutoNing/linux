@@ -381,6 +381,7 @@ static inline struct mem_cgroup *obj_cgroup_memcg(struct obj_cgroup *objcg)
 /*
  * __folio_memcg - Get the memory cgroup associated with a non-kmem folio
  获取folio的memcg
+ 编码在folio->memcg_data
  * @folio: Pointer to the folio.
  *
  * Returns a pointer to the memory cgroup associated with the folio,
@@ -425,6 +426,7 @@ static inline struct obj_cgroup *__folio_objcg(struct folio *folio)
 }
 
 /*
+获取folio所属的memcg （编码在folio->memcg_data成员)
  * folio_memcg - Get the memory cgroup associated with a folio.
  * @folio: Pointer to the folio.
  *
