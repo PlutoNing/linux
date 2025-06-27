@@ -275,6 +275,7 @@ union bpf_iter_link_info {
  *		error occurred (in which case, *errno* is set appropriately).
  *
  * BPF_PROG_ATTACH
+ 把bpf程序附加到表示指定的hook的fd
  *	Description
  *		Attach an eBPF program to a *target_fd* at the specified
  *		*attach_type* hook.
@@ -873,6 +874,7 @@ enum bpf_cmd {
 	BPF_PROG_LOAD,
 	BPF_OBJ_PIN,
 	BPF_OBJ_GET,
+	/* 挂载程序的 */
 	BPF_PROG_ATTACH,
 	BPF_PROG_DETACH,
 	BPF_PROG_TEST_RUN,
@@ -1481,12 +1483,15 @@ union bpf_attr {
 		__s32		path_fd;
 	};
 
+	/* 用于bpf附加的属性表示 */
 	struct { /* anonymous struct used by BPF_PROG_ATTACH/DETACH commands */
 		union {
 			__u32	target_fd;	/* target object to attach to or ... */
 			__u32	target_ifindex;	/* target ifindex */
 		};
+		/*  */
 		__u32		attach_bpf_fd;
+		/* bpf系统调用在attr的这个成员里表示caller指定的程序的类型 */
 		__u32		attach_type;
 		__u32		attach_flags;
 		__u32		replace_bpf_fd;

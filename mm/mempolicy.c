@@ -2158,7 +2158,7 @@ static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
 	/* skip NUMA_INTERLEAVE_HIT counter update if numa stats is disabled */
 	if (!static_branch_likely(&vm_numa_stat_key))
 		return page;
-    //看来是🈶一些统计信息的, 不过可以到cgroup级别的计数吗?
+    //看来是有一些统计信息的, 不过可以到cgroup级别的计数吗?
 	if (page && page_to_nid(page) == nid) {
 		preempt_disable();
 		__count_numa_event(page_zone(page), NUMA_INTERLEAVE_HIT);

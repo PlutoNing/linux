@@ -936,7 +936,6 @@ atomic_or(int i, atomic_t *v)
 }
 
 /**
-or操作, 取回旧值
  * atomic_fetch_or() - atomic bitwise OR with full ordering
  * @i: int value
  * @v: pointer to atomic_t

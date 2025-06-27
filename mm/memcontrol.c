@@ -6885,7 +6885,7 @@ static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 
 	return nbytes;
 }
-
+/* v2的文件 */
 static struct cftype memory_files[] = {
 	{
 		.name = "current",
@@ -6977,7 +6977,9 @@ struct cgroup_subsys memory_cgrp_subsys = {
 	/*  */
 	.cancel_attach = mem_cgroup_cancel_attach,
 	.post_attach = mem_cgroup_move_task,
+	/* 这里是v2的memcg的文件夹的文件 */
 	.dfl_cftypes = memory_files,
+	/* v1的文件 */
 	.legacy_cftypes = mem_cgroup_legacy_files,
 	.early_init = 0,
 };

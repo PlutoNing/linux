@@ -252,7 +252,8 @@ struct mem_cgroup {
 	/* OOM-Killer disable */
 	int		oom_kill_disable;
 
-	/* memory.events and memory.events.local */
+	/* memory.events and memory.events.local
+	cgroup file表示什么 */
 	struct cgroup_file events_file;
 	struct cgroup_file events_local_file;
 

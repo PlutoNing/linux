@@ -431,7 +431,7 @@ struct mpage_data {
 };
 
 /*
- 清除page关联的bh?
+ 清除page关联的bh
  * We have our BIO, so we can now mark the buffers clean.  Make
  * sure to only clean buffers which we know we'll be writing.
  */
@@ -444,6 +444,7 @@ static void clean_buffers(struct page *page, unsigned first_unmapped)
 	head = page_buffers(page);
 	bh = head;
 
+	/*  */
 	do {
 		if (buffer_counter++ == first_unmapped)
 			break;
@@ -456,6 +457,7 @@ static void clean_buffers(struct page *page, unsigned first_unmapped)
 	 * read_folio would fail to serialize with the bh and it would read from
 	 * disk before we reach the platter.
 	 如果page是刷过盘的,并且bh超量了,尝试释放
+	 这里清除和释放page关联的bh链
 	 */
 	if (buffer_heads_over_limit && PageUptodate(page))
 		try_to_free_buffers(page_folio(page));

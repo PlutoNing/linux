@@ -497,6 +497,7 @@ struct address_space {
 	errseq_t		wb_err;
 	spinlock_t		private_lock;
 	struct list_head	private_list;
+	/* 可能指向buffer_mapping */
 	void			*private_data; /* 特定于实现的成员
 	
 	 */

@@ -4709,6 +4709,7 @@ static int cgroup_add_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 }
 
 /**
+创建子系统的一系列文件
  * cgroup_add_dfl_cftypes - add an array of cftypes for default hierarchy
  * @ss: target cgroup subsystem
  * @cfts: zero-length name terminated array of cftypes
@@ -4726,6 +4727,8 @@ int cgroup_add_dfl_cftypes(struct cgroup_subsys *ss, struct cftype *cfts)
 }
 
 /**
+创建子系统的文件
+v1版本？
  * cgroup_add_legacy_cftypes - add an array of cftypes for legacy hierarchies
  * @ss: target cgroup subsystem
  * @cfts: zero-length name terminated array of cftypes
@@ -6585,6 +6588,7 @@ int __init cgroup_init(void)
 		if (ss->threaded)
 			cgrp_dfl_threaded_ss_mask |= 1 << ss->id;
 
+			/* 这里创建v1  v2的文件 */
 		if (ss->dfl_cftypes == ss->legacy_cftypes) {
 			WARN_ON(cgroup_add_cftypes(ss, ss->dfl_cftypes));
 		} else {

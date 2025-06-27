@@ -2482,7 +2482,9 @@ struct bpf_prog *bpf_prog_get(u32 ufd)
 {
 	return __bpf_prog_get(ufd, NULL, false);
 }
-
+/* ufd是要附加的prog的fd
+type为类型
+这里从fd获取到prog */
 struct bpf_prog *bpf_prog_get_type_dev(u32 ufd, enum bpf_prog_type type,
 				       bool attach_drv)
 {
@@ -3801,6 +3803,9 @@ static int bpf_raw_tracepoint_open(const union bpf_attr *attr)
 	return fd;
 }
 
+/*
+附加程序时
+提取bpf系统调用参数attr里面附加程序的类型 */
 static enum bpf_prog_type
 attach_type_to_prog_type(enum bpf_attach_type attach_type)
 {
@@ -3936,7 +3941,7 @@ static int bpf_prog_attach_check_attach_type(const struct bpf_prog *prog,
 	 BPF_F_AFTER |		\
 	 BPF_F_ID |		\
 	 BPF_F_LINK)
-
+/* bpf系统调用附加cmd的执行函数 */
 static int bpf_prog_attach(const union bpf_attr *attr)
 {
 	enum bpf_prog_type ptype;
@@ -3949,6 +3954,7 @@ static int bpf_prog_attach(const union bpf_attr *attr)
 	ptype = attach_type_to_prog_type(attr->attach_type);
 	if (ptype == BPF_PROG_TYPE_UNSPEC)
 		return -EINVAL;
+	/* 现在阶段主要就是scx类型的程序进入if */
 	if (bpf_mprog_supported(ptype)) {
 		if (attr->attach_flags & ~BPF_F_ATTACH_MASK_MPROG)
 			return -EINVAL;
@@ -3960,6 +3966,7 @@ static int bpf_prog_attach(const union bpf_attr *attr)
 			return -EINVAL;
 	}
 
+	/* 获取fd里面的prog */
 	prog = bpf_prog_get_type(attr->attach_bpf_fd, ptype);
 	if (IS_ERR(prog))
 		return PTR_ERR(prog);
@@ -5497,6 +5504,7 @@ static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 	case BPF_OBJ_GET:
 		err = bpf_obj_get(&attr);
 		break;
+		/* 附加 */
 	case BPF_PROG_ATTACH:
 		err = bpf_prog_attach(&attr);
 		break;

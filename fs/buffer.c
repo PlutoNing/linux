@@ -57,6 +57,7 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list);
 static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 			  struct writeback_control *wbc);
 
+/* 检查list上面有没有bh链接到这里 */
 #define BH_ENTRY(list) list_entry((list), struct buffer_head, b_assoc_buffers)
 
 inline void touch_buffer(struct buffer_head *bh)
@@ -524,6 +525,7 @@ EXPORT_SYMBOL(mark_buffer_async_write);
 
 /*
  * The buffer's backing address_space's private_lock must be held
+ 把bh从关联的mapping移除
  */
 static void __remove_assoc_queue(struct buffer_head *bh)
 {
@@ -532,6 +534,7 @@ static void __remove_assoc_queue(struct buffer_head *bh)
 	bh->b_assoc_map = NULL;
 }
 
+/* 检查inode的mapping有没有关联的bh */
 int inode_has_buffers(struct inode *inode)
 {
 	return !list_empty(&inode->i_data.private_list);
@@ -686,6 +689,7 @@ void write_boundary_block(struct block_device *bdev,
 	}
 }
 
+/* 把bh关联到指定的mapping */
 void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
 {
 	struct address_space *mapping = inode->i_mapping;
@@ -693,10 +697,12 @@ void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
 
 	mark_buffer_dirty(bh);
 	if (!mapping->private_data) {
+		/*  */
 		mapping->private_data = buffer_mapping;
 	} else {
 		BUG_ON(mapping->private_data != buffer_mapping);
 	}
+	/* 把bh关联到inode的mapping */
 	if (!bh->b_assoc_map) {
 		spin_lock(&buffer_mapping->private_lock);
 		list_move_tail(&bh->b_assoc_buffers,
@@ -809,7 +815,7 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list)
 	while (!list_empty(list)) { //上面全是脏buffer,遍历
 		bh = BH_ENTRY(list->next);
 		mapping = bh->b_assoc_map;
-		__remove_assoc_queue(bh); //这里都清除了什么
+		__remove_assoc_queue(bh); //这里清除当前处理的bh与这个mapping的关系
 
 		/* Avoid race with mark_buffer_dirty_inode() which does
 		 * a lockless check and we rely on seeing the dirty bit */
@@ -886,15 +892,20 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list)
  * for reiserfs.
    注意: 我们获取inode的块设备的mapping的private_lock, 假设所有的buffer都是针对块设备的
    对于reiserfs不是这样的
+   ============================
+
+这个函数会清除inode的mapping关联的一切bh
  */
 void invalidate_inode_buffers(struct inode *inode)
 {
 	if (inode_has_buffers(inode)) {
 		struct address_space *mapping = &inode->i_data;
+		/* 这个链表上面全是关联的bh */
 		struct list_head *list = &mapping->private_list;
 		struct address_space *buffer_mapping = mapping->private_data;
 
 		spin_lock(&buffer_mapping->private_lock);
+		/* 清除关联的每一个bh */
 		while (!list_empty(list))
 			__remove_assoc_queue(BH_ENTRY(list->next));
 		spin_unlock(&buffer_mapping->private_lock);
@@ -903,6 +914,8 @@ void invalidate_inode_buffers(struct inode *inode)
 EXPORT_SYMBOL(invalidate_inode_buffers);
 
 /*
+清除inode的mapping关联的干净的buffer， 如果碰到dirty的就立即返回0
+返回1表示全部bh是干净的，全部清除了
  * Remove any clean buffers from the inode's buffer list.  This is called
  * when we're trying to free the inode itself.  Those buffers can pin it.
  *
@@ -1672,7 +1685,7 @@ out:
 EXPORT_SYMBOL(block_invalidate_folio);
 
 /*
-   给folio创建buffer
+   给folio创建buffer， 创建folio的bh链
 
    folio的priv指向一串环形的bh
  * We attach and possibly dirty the buffers atomically wrt
@@ -1806,8 +1819,11 @@ static inline int block_size_bits(unsigned int blocksize)
 	return ilog2(blocksize);
 }
 
-//获取folio的buffers,是获取还是创建?
-/* 这个folio作为读写这个inode的缓冲 */
+/* 这个folio作为读写这个inode的缓冲
+=====================
+返回这个folio的bh链
+如果还没有， 就在上面就地初始化bh链
+*/
 static struct buffer_head *folio_create_buffers(struct folio *folio,
 						struct inode *inode,
 						unsigned int b_state)
@@ -2037,6 +2053,9 @@ recover:
 EXPORT_SYMBOL(__block_write_full_folio);
 
 /*
+遍历folio的bh链
+找到新的
+进行初始化
  * If a folio has any new buffers, zero them out here, and mark them uptodate
  * and dirty so they'll be written out (in order to prevent uninitialised
  * block data from leaking). And clear the new bit.
@@ -2146,7 +2165,10 @@ iomap_to_bh(struct inode *inode, sector_t block, struct buffer_head *bh,
 		return -EIO;
 	}
 }
-/* 改变了mapping里面的folio的pos和len的位置,准备发起buffer io的写入 */
+/* 
+改变了mapping里面的folio的pos和len的位置,
+
+准备发起buffer io的写入 */
 int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 		get_block_t *get_block, const struct iomap *iomap)
 {
@@ -2163,7 +2185,8 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 	BUG_ON(from > PAGE_SIZE);
 	BUG_ON(to > PAGE_SIZE);
 	BUG_ON(from > to);
-/* 创建buffer io */
+/* 创建buffer io
+这里获取folio的bh链 */
 	head = folio_create_buffers(folio, inode, 0);
 	blocksize = head->b_size;/* 可能是1024 */
 	bbits = block_size_bits(blocksize);/* 可能是10 */
@@ -2182,6 +2205,7 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 		}
 		if (buffer_new(bh))
 			clear_buffer_new(bh);
+		/* 如果还没有map要io的区域？ 这里设置get_block？ */
 		if (!buffer_mapped(bh)) {
 			WARN_ON(bh->b_size != blocksize);
 			if (get_block)
@@ -2190,7 +2214,8 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 				err = iomap_to_bh(inode, block, bh, iomap);
 			if (err)
 				break;
-/* 刚刚fs的get block函数找到了一个block,并且把bh初始化了为负责这个block的buffer io */
+			/* 刚刚fs的get block函数找到了一个block,并且把bh初始化了为负责这个block的buffer io */
+
 			if (buffer_new(bh)) {
 				clean_bdev_bh_alias(bh);
 				if (folio_test_uptodate(folio)) {
@@ -2991,6 +3016,7 @@ EXPORT_SYMBOL(sync_dirty_buffer);
  * private_lock.
  *
  * try_to_free_buffers() is non-blocking.
+ 什么是busy的含义？
  */
 static inline int buffer_busy(struct buffer_head *bh)
 {
@@ -2998,19 +3024,34 @@ static inline int buffer_busy(struct buffer_head *bh)
 		(bh->b_state & ((1 << BH_Dirty) | (1 << BH_Lock)));
 }
 
+/* 在检查folio上面没有busy的bh后
+把这个些bh全部从各自关联的mapping解除关联
+==============
+解除folio与这个bh链的关联
+然后返回这个bh链，
+============
+剔除出folio的bh链
+
+返回真说明全部是非busy的，成功取出
+返回false， 说明folio有busy的bh
+ */
 static bool
 drop_buffers(struct folio *folio, struct buffer_head **buffers_to_free)
 {
+	/* 获取到folio关联的bh（位于priv成员） */
 	struct buffer_head *head = folio_buffers(folio);
 	struct buffer_head *bh;
 
 	bh = head;
+	/* 这个while循环包装page上面的全部bh都不是busy的 */
 	do {
 		if (buffer_busy(bh))
 			goto failed;
+		/* 指向同一个page的下一个bh */
 		bh = bh->b_this_page;
 	} while (bh != head);
 
+	/* 这里把page上的全部bh从关联的mapping移除 */
 	do {
 		struct buffer_head *next = bh->b_this_page;
 
@@ -3025,7 +3066,12 @@ failed:
 	return false;
 }
 
-/*  */
+/* 
+把folio的bh链剔除出来
+然后遍历这个bh链， 逐个释放bh
+=============
+返回真说明folio的全部bh都是非busy的， 释放了
+*/
 bool try_to_free_buffers(struct folio *folio)
 {
 	struct address_space * const mapping = folio->mapping;
@@ -3036,6 +3082,7 @@ bool try_to_free_buffers(struct folio *folio)
 	if (folio_test_writeback(folio))
 		return false;
 
+	/* 这里把folio的bh链剔除出来， 位于buffers_to_free */
 	if (mapping == NULL) {		/* can this still happen? */
 		ret = drop_buffers(folio, &buffers_to_free);
 		goto out;
@@ -3062,7 +3109,10 @@ bool try_to_free_buffers(struct folio *folio)
 		folio_cancel_dirty(folio);
 	spin_unlock(&mapping->private_lock);
 out:
+
+	/* 里面是从folio剔除的， 全部非busy的 bh链 */
 	if (buffers_to_free) {
+		/* 这里一个个的释放这些bh */
 		struct buffer_head *bh = buffers_to_free;
 
 		do {
@@ -3126,6 +3176,7 @@ struct buffer_head *alloc_buffer_head(gfp_t gfp_flags)
 }
 EXPORT_SYMBOL(alloc_buffer_head);
 
+/* 释放一个bh */
 void free_buffer_head(struct buffer_head *bh)
 {
 	BUG_ON(!list_empty(&bh->b_assoc_buffers));

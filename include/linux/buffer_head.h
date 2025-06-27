@@ -85,9 +85,12 @@ struct buffer_head {
 	struct block_device *b_bdev;
 	bh_end_io_t *b_end_io;		/* I/O completion */
  	void *b_private;		/* reserved for b_end_io */
+	/* 连接件
+	用于连接到所关联的mapping的private list链表 */
 	struct list_head b_assoc_buffers; /* associated with another mapping */
 	struct address_space *b_assoc_map;	/* 
 	如果buffer在mapping的buffer list上面, 这个指向此mapping
+	也就是b_assoc_buffers所链接的mapping
 	mapping this buffer is
 						   associated with */
 	atomic_t b_count;		/* users using this buffer_head */
@@ -432,6 +435,7 @@ static inline void bh_readahead(struct buffer_head *bh, blk_opf_t op_flags)
 	}
 }
 
+/* 发起一次缓冲读？ */
 static inline void bh_read_nowait(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	if (!bh_uptodate_or_lock(bh))
