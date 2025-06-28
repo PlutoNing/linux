@@ -432,17 +432,20 @@ static void blkdev_readahead(struct readahead_control *rac)
 	mpage_readahead(rac, blkdev_get_block);
 }
 
+/* bdev fs的write_begin回调 */
 static int blkdev_write_begin(struct file *file, struct address_space *mapping,
 		loff_t pos, unsigned len, struct page **pagep, void **fsdata)
 {
 	return block_write_begin(mapping, pos, len, pagep, blkdev_get_block);
 }
 
+/* bdev fs的write_end的fops回调 */
 static int blkdev_write_end(struct file *file, struct address_space *mapping,
 		loff_t pos, unsigned len, unsigned copied, struct page *page,
 		void *fsdata)
 {
 	int ret;
+	/* 这里把page的相关buffer置脏 */
 	ret = block_write_end(file, mapping, pos, len, copied, page, fsdata);
 
 	unlock_page(page);
@@ -460,8 +463,9 @@ const struct address_space_operations def_blk_aops = {
 	/* 预读的fops */
 	.readahead	= blkdev_readahead,
 	.writepage	= blkdev_writepage,
-	/*  */
+	/* 写回指定页面 */
 	.write_begin	= blkdev_write_begin,
+	/*  */
 	.write_end	= blkdev_write_end,
 	.migrate_folio	= buffer_migrate_folio_norefs,
 	.is_dirty_writeback = buffer_check_dirty_writeback,

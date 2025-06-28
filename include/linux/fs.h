@@ -419,6 +419,7 @@ struct address_space_operations {
 
 	void (*readahead)(struct readahead_control *);
 
+	/* 写回pos处的指定页面 */
 	int (*write_begin)(struct file *, struct address_space *mapping,
 				loff_t pos, unsigned len,
 				struct page **pagep, void **fsdata);

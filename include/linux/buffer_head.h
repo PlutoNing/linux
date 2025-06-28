@@ -459,7 +459,9 @@ static inline void bh_read_nowait(struct buffer_head *bh, blk_opf_t op_flags)
 		__bh_read(bh, op_flags, false);
 }
 
-/* Returns 1 if buffer uptodated, 0 on success, and -EIO on error. */
+/*
+这里读取这个bh
+ Returns 1 if buffer uptodated, 0 on success, and -EIO on error. */
 static inline int bh_read(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	if (bh_uptodate_or_lock(bh))

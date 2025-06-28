@@ -4267,7 +4267,7 @@ again:
 						&page, &fsdata);
 		if (unlikely(status < 0))
 			break;
-/* 刚刚找到了要写的page,存入了page参数 */
+		/* 刚刚找到了要写的page,存入了page参数 */
 		if (mapping_writably_mapped(mapping))
 			flush_dcache_page(page);
 		
@@ -4368,7 +4368,7 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		return direct_write_fallback(iocb, from, ret,
 					     generic_perform_write(iocb, from));
 	}
-/*  */
+	/* 这里就是通过缓存的io */
 	return generic_perform_write(iocb, from);
 }
 EXPORT_SYMBOL(__generic_file_write_iter);

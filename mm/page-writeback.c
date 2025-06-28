@@ -3285,6 +3285,7 @@ int folio_wait_writeback_killable(struct folio *folio)
 EXPORT_SYMBOL_GPL(folio_wait_writeback_killable);
 
 /**
+等待folio写回完成
  * folio_wait_stable() - wait for writeback to finish, if necessary.
  * @folio: The folio to wait on.
  *

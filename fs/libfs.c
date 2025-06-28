@@ -1879,10 +1879,16 @@ u64 inode_query_iversion(struct inode *inode)
 }
 EXPORT_SYMBOL(inode_query_iversion);
 
-/* buffer io的直接IO, 把iter写入iocb */
+/* buffer io的直接IO, 把iter写入iocb
+@fuffered_written是调用的io函数把iter写入iocb(通过mapping)的返回值
+@direct_written, 是fallback之前的尝试的返回值
+====================
+现在iter已经通过buffer io写入到了iocb,(现在位于mapping)
+为了达到直接IO的效果, 这里需要sync & wait */
 ssize_t direct_write_fallback(struct kiocb *iocb, struct iov_iter *iter,
 		ssize_t direct_written, ssize_t buffered_written)
 {
+	/* 要写入的mapping */
 	struct address_space *mapping = iocb->ki_filp->f_mapping;
 	loff_t pos = iocb->ki_pos - buffered_written;
 	loff_t end = iocb->ki_pos - 1;
@@ -1905,6 +1911,7 @@ ssize_t direct_write_fallback(struct kiocb *iocb, struct iov_iter *iter,
 	/*
 	 * We need to ensure that the page cache pages are written to disk and
 	 * invalidated to preserve the expected O_DIRECT semantics.
+	 同步mapping里面写入的内容范围
 	 */
 	err = filemap_write_and_wait_range(mapping, pos, end);
 	if (err < 0) {

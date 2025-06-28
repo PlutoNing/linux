@@ -754,6 +754,7 @@ void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
 	struct address_space *mapping = inode->i_mapping;
 	struct address_space *buffer_mapping = bh->b_folio->mapping;
 
+	/* 把bh置脏 */
 	mark_buffer_dirty(bh);
 	if (!mapping->private_data) {
 		/*  */
@@ -761,7 +762,7 @@ void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
 	} else {
 		BUG_ON(mapping->private_data != buffer_mapping);
 	}
-	/* 把bh关联到inode的mapping */
+	/* 然后把bh关联到inode的mapping */
 	if (!bh->b_assoc_map) {
 		spin_lock(&buffer_mapping->private_lock);
 		list_move_tail(&bh->b_assoc_buffers,
@@ -773,6 +774,7 @@ void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
 EXPORT_SYMBOL(mark_buffer_dirty_inode);
 
 /*
+20250629024654
  * Add a page to the dirty page list.
  *
  * It is a sad fact of life that this function is called from several places
@@ -2328,7 +2330,7 @@ static int iomap_to_bh(struct inode *inode, sector_t block, struct buffer_head *
 /* 
 改变了mapping里面的folio, 要回写这个folio
 get_block用于给bh映射磁盘块
-准备发起buffer io的写入,这里好像只是[准备], 并没有submit什么
+准备发起buffer io的写入,这里好像只是[准备], 并没有submit什么(什么时候提交的)
 ========================
 @pos和len是folio的页内偏移
 */
@@ -2417,7 +2419,7 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 	 * If we issued read requests - let them complete.
 	 */
 	while(wait_bh > wait) {
-		/* 等待刚刚提交的bh完成 */
+		/* 等待刚刚提交的两个?bh完成 */
 		wait_on_buffer(*--wait_bh);
 		if (!buffer_uptodate(*wait_bh))
 			err = -EIO;
@@ -2432,14 +2434,18 @@ getblock函数用于给他里面的bh映射对应的磁盘block
 */
 int __block_write_begin(struct page *page, loff_t pos, unsigned len,
 		get_block_t *get_block)
-{/* 准备发起bufferio的写入 */
+{	/* 准备发起bufferio的写入 */
 	return __block_write_begin_int(page_folio(page), pos, len, get_block,
 				       NULL);
 }
 EXPORT_SYMBOL(__block_write_begin);
-/* 刚刚发起了对folio的这个位置的io,这里进行end */
+/* 刚刚发起了对folio的这个位置的io,这里进行end
+=========
+调用场合:
+ */
 static void __block_commit_write(struct folio *folio, size_t from, size_t to)
-{/* 就是把范围内的buffer都置脏 */
+{
+	/* 就是把范围内的buffer都置脏 */
 	size_t block_start, block_end;
 	bool partial = false;
 	unsigned blocksize;
@@ -2475,7 +2481,8 @@ static void __block_commit_write(struct folio *folio, size_t from, size_t to)
 		folio_mark_uptodate(folio);
 }
 
-/* 可以作为mapping的写入ops, 写入file的pos和len
+/*
+写回文件内容pos, pagep是相关的文件缓存页
  * block_write_begin takes care of the basic task of block allocation and
  * bringing partial write blocks uptodate first.
  *
@@ -2504,7 +2511,9 @@ int block_write_begin(struct address_space *mapping, loff_t pos, unsigned len,
 	return status;
 }
 EXPORT_SYMBOL(block_write_begin);
-/* 方法发起了对mapping的file的[pos,pos+len]位置的buffer io, 这里进行write end,就是commit,把范围内的buffer置脏 */
+/*
+方法发起了对mapping的file的[pos,pos+len]位置的buffer io, 
+这里进行write end,就是commit,把范围内的buffer置脏 */
 int block_write_end(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned copied,
 			struct page *page, void *fsdata)
@@ -2532,7 +2541,8 @@ int block_write_end(struct file *file, struct address_space *mapping,
 	}
 	flush_dcache_folio(folio);
 
-	/* This could be a short (even 0-length) commit,把folio的范围内的buffer都置脏 */
+	/* This could be a short (even 0-length) commit,
+	把folio的范围内的buffer都置脏 */
 	__block_commit_write(folio, start, start + copied);
 
 	return copied;
@@ -2546,7 +2556,7 @@ int generic_write_end(struct file *file, struct address_space *mapping,
 	struct inode *inode = mapping->host;
 	loff_t old_size = inode->i_size;
 	bool i_size_changed = false;
-/* 这里commit, 把涉及的page的bh置脏 */
+	/* 这里commit, 把涉及的page的bh置脏 */
 	copied = block_write_end(file, mapping, pos, len, copied, page, fsdata);
 
 	/*
@@ -2872,6 +2882,7 @@ int cont_write_begin(struct file *file, struct address_space *mapping,
 	unsigned int zerofrom;
 	int err;
 
+	/* 扩大文件 */
 	err = cont_expand_zero(file, mapping, pos, bytes);
 	if (err)
 		return err;
@@ -2882,6 +2893,7 @@ int cont_write_begin(struct file *file, struct address_space *mapping,
 		(*bytes)++;
 	}
 
+	/* 写回文件的pos内容 */
 	return block_write_begin(mapping, pos, len, pagep, get_block);
 }
 EXPORT_SYMBOL(cont_write_begin);
@@ -2943,6 +2955,7 @@ int block_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf,
 	__block_commit_write(folio, 0, end);
 
 	folio_mark_dirty(folio);
+	/* 等待写回完成 */
 	folio_wait_stable(folio);
 	return 0;
 out_unlock:
@@ -2971,9 +2984,11 @@ int block_truncate_page(struct address_space *mapping,
 	if (!length)
 		return 0;
 
+	/* 现在length是加上from加上length可以对齐到blocksize */
 	length = blocksize - length;
 	iblock = (sector_t)index << (PAGE_SHIFT - inode->i_blkbits);
 	
+	/* 找到index位置的folio */
 	folio = filemap_grab_folio(mapping, index);
 	if (IS_ERR(folio))
 		return PTR_ERR(folio);
@@ -2984,6 +2999,7 @@ int block_truncate_page(struct address_space *mapping,
 		bh = folio_buffers(folio);
 	}
 
+	/* 现在bh是这个folio上面的buffer */
 	/* Find the buffer that contains "offset" */
 	offset = offset_in_folio(folio, from);
 	pos = blocksize;
@@ -2993,6 +3009,7 @@ int block_truncate_page(struct address_space *mapping,
 		pos += blocksize;
 	}
 
+	/* 现在把bh映射到磁盘位置 */
 	if (!buffer_mapped(bh)) {
 		WARN_ON(bh->b_size != blocksize);
 		err = get_block(inode, iblock, bh, 0);
@@ -3007,6 +3024,7 @@ int block_truncate_page(struct address_space *mapping,
 	if (folio_test_uptodate(folio))
 		set_buffer_uptodate(bh);
 
+	/* 如果bh还不是up-to-date的, 就读取 */
 	if (!buffer_uptodate(bh) && !buffer_delay(bh) && !buffer_unwritten(bh)) {
 		err = bh_read(bh, 0);
 		/* Uhhuh. Read error. Complain and punt. */
@@ -3015,6 +3033,7 @@ int block_truncate_page(struct address_space *mapping,
 	}
 
 	folio_zero_range(folio, offset, length);
+	/* 修改bh后, 把bh置脏 */
 	mark_buffer_dirty(bh);
 
 unlock:
