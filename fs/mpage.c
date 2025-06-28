@@ -75,6 +75,7 @@ static void mpage_write_end_io(struct bio *bio)
 	bio_put(bio);
 }
 
+/* 发起bio */
 static struct bio *mpage_bio_submit_read(struct bio *bio)
 {
 	bio->bi_end_io = mpage_read_end_io;
@@ -92,6 +93,7 @@ static struct bio *mpage_bio_submit_write(struct bio *bio)
 }
 
 /*
+把folio的全部buffer都复刻@bh? (没有buffer的话就创建)
  * support function for mpage_readahead.  The fs supplied get_block might
  * return an up to date buffer.  This is used to map that buffer into
  * the page, which allows read_folio to avoid triggering a duplicate call
@@ -110,6 +112,7 @@ static void map_buffer_to_folio(struct folio *folio, struct buffer_head *bh,
 
 	head = folio_buffers(folio);
 	if (!head) {
+		/* 如果folio还没有buffer */
 		/*
 		 * don't make any buffers if there is only one buffer on
 		 * the folio and the folio just needs to be set up to date
@@ -119,10 +122,12 @@ static void map_buffer_to_folio(struct folio *folio, struct buffer_head *bh,
 			folio_mark_uptodate(folio);
 			return;
 		}
+		/* 给folio创建buffers */
 		create_empty_buffers(&folio->page, i_blocksize(inode), 0);
 		head = folio_buffers(folio);
 	}
 
+	/* 现在head指向folio的buffer头 */
 	page_bh = head;
 	do {
 		if (block == page_block) {
@@ -155,13 +160,20 @@ struct mpage_readpage_args {
  * We pass a buffer_head back and forth and use its buffer_mapped() flag to
  * represent the validity of its disk mapping and to decide when to do the next
  * get_block() call.
+ =============
+ 迭代需要读取的folio
+ args.nr_pages和args.folio指定了本次循环需要预读的页面和数量
+ args.bio是上次循环这个函数调用返回的bio
  */
 static struct bio *do_mpage_readpage(struct mpage_readpage_args *args)
 {
+	/* 要预读的folio, 目前位于mapping的folio */
 	struct folio *folio = args->folio;
 	struct inode *inode = folio->mapping->host;
 	const unsigned blkbits = inode->i_blkbits;
+	/* 一个page包含当前文件系统多少个block */
 	const unsigned blocks_per_page = PAGE_SIZE >> blkbits;
+	/* 当前文件系统的block大小 */
 	const unsigned blocksize = 1 << blkbits;
 	struct buffer_head *map_bh = &args->map_bh;
 	sector_t block_in_file;
@@ -189,9 +201,13 @@ static struct bio *do_mpage_readpage(struct mpage_readpage_args *args)
 	if (folio_buffers(folio))
 		goto confused;
 
+	/* folio对应磁盘的第几个block */
 	block_in_file = (sector_t)folio->index << (PAGE_SHIFT - blkbits);
+	/* 本次预读范围的最后一个block */
 	last_block = block_in_file + args->nr_pages * blocks_per_page;
+	/* 文件的大小, 文件的最后一个block */
 	last_block_in_file = (i_size_read(inode) + blocksize - 1) >> blkbits;
+	/* 这里要读取的block肯定不能超过文件末尾 */
 	if (last_block > last_block_in_file)
 		last_block = last_block_in_file;
 	page_block = 0;
@@ -199,6 +215,7 @@ static struct bio *do_mpage_readpage(struct mpage_readpage_args *args)
 	/*
 	 * Map blocks using the result from the previous get_blocks call first.
 	 */
+	/* 这个buffer包含的block数量? */
 	nblocks = map_bh->b_size >> blkbits;
 	if (buffer_mapped(map_bh) &&
 			block_in_file > args->first_logical_block &&
@@ -290,10 +307,12 @@ static struct bio *do_mpage_readpage(struct mpage_readpage_args *args)
 	/*
 	 * This folio will go to BIO.  Do we need to send this BIO off first?
 	 */
+	 /* 先把当前这个bio提交了, 然后置为null */
 	if (args->bio && (args->last_block_in_bio != blocks[0] - 1))
 		args->bio = mpage_bio_submit_read(args->bio);
 
 alloc_new:
+	/* 分配新的bio */
 	if (args->bio == NULL) {
 		args->bio = bio_alloc(bdev, bio_max_segs(args->nr_pages), opf,
 				      gfp);
@@ -304,10 +323,12 @@ alloc_new:
 
 	length = first_hole << blkbits;
 	if (!bio_add_folio(args->bio, folio, length, 0)) {
+		/*添加到bio失败? 把这个bio提交了 */
 		args->bio = mpage_bio_submit_read(args->bio);
 		goto alloc_new;
 	}
 
+	/* 添加到bio成功的路径 */
 	relative_block = block_in_file - args->first_logical_block;
 	nblocks = map_bh->b_size >> blkbits;
 	if ((buffer_boundary(map_bh) && relative_block == nblocks) ||
@@ -318,6 +339,7 @@ alloc_new:
 out:
 	return args->bio;
 
+/* 发现要预读的folio有了buffer链? */
 confused:
 	if (args->bio)
 		args->bio = mpage_bio_submit_read(args->bio);
@@ -366,6 +388,9 @@ confused:
  * this one.  So you should push what I/O you have currently accumulated.
  *
  * This all causes the disk requests to be issued in the correct order.
+ =======================
+ 开启预读
+ bdev fs的mapping的预读回调
  */
 void mpage_readahead(struct readahead_control *rac, get_block_t get_block)
 {
@@ -375,12 +400,15 @@ void mpage_readahead(struct readahead_control *rac, get_block_t get_block)
 		.is_readahead = true,
 	};
 
+	/* 随着循环, folio不断的指向需要预读的下一个folio */
 	while ((folio = readahead_folio(rac))) {
 		prefetchw(&folio->flags);
 		args.folio = folio;
 		args.nr_pages = readahead_count(rac);
+		/* 这里会提交bio */
 		args.bio = do_mpage_readpage(&args);
 	}
+	/* 把最后这个末尾也提交了 */
 	if (args.bio)
 		mpage_bio_submit_read(args.bio);
 }
@@ -398,7 +426,7 @@ int mpage_read_folio(struct folio *folio, get_block_t get_block)
 	};
 
 	args.bio = do_mpage_readpage(&args);
-	if (args.bio)
+	if (args.bio) /* 把末尾这个bio提交了 */
 		mpage_bio_submit_read(args.bio);
 	return 0;
 }

@@ -147,6 +147,7 @@ TAS_BUFFER_FNS(Dirty, dirty)
 BUFFER_FNS(Lock, locked)
 BUFFER_FNS(Req, req)
 TAS_BUFFER_FNS(Req, req)
+/* 说明bh->b_blocknr = block; */
 BUFFER_FNS(Mapped, mapped)
 BUFFER_FNS(New, new)
 BUFFER_FNS(Async_Read, async_read)
@@ -160,6 +161,7 @@ BUFFER_FNS(Meta, meta)
 BUFFER_FNS(Prio, prio)
 BUFFER_FNS(Defer_Completion, defer_completion)
 
+/* 设置bh为up-to-date */
 static __always_inline void set_buffer_uptodate(struct buffer_head *bh)
 {
 	/*
@@ -360,7 +362,8 @@ sb_bread_unmovable(struct super_block *sb, sector_t block)
 {
 	return __bread_gfp(sb->s_bdev, block, sb->s_blocksize, 0);
 }
-/* 读取sb的指定块 */
+/* 读取sb的指定块
+读取磁盘的指定@block */
 static inline void
 sb_breadahead(struct super_block *sb, sector_t block)
 {
@@ -404,6 +407,9 @@ static inline void wait_on_buffer(struct buffer_head *bh)
 		__wait_on_buffer(bh);
 }
 
+/* 设置加锁, 返回是否成功
+返回1 ,加锁成功
+返回0, 本来有锁了, 加锁失败 */
 static inline int trylock_buffer(struct buffer_head *bh)
 {
 	return likely(!test_and_set_bit_lock(BH_Lock, &bh->b_state));
@@ -423,16 +429,21 @@ static inline struct buffer_head *getblk_unmovable(struct block_device *bdev,
 	return __getblk_gfp(bdev, block, size, 0);
 }
 
+/* 找到对应这个block的bh
+在mapping找到对应的page找到对应的bh
+如果中间有缺失, 会申请or创建 */
 static inline struct buffer_head *__getblk(struct block_device *bdev,
 					   sector_t block,
 					   unsigned size)
 {
 	return __getblk_gfp(bdev, block, size, __GFP_MOVABLE);
 }
-/* 进行一次buffer io */
+/* 进行一次buffer io
+读取这个bh */
 static inline void bh_readahead(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	if (!buffer_uptodate(bh) && trylock_buffer(bh)) {
+		/* 加锁成功, 并且不是up-to-date才继续读取 */
 		if (!buffer_uptodate(bh))
 			__bh_read(bh, op_flags, false);
 		else
@@ -440,7 +451,8 @@ static inline void bh_readahead(struct buffer_head *bh, blk_opf_t op_flags)
 	}
 }
 
-/* 发起一次缓冲读？ */
+/* 发起一次缓冲读？
+仅仅提交submit_bh, 不等待完成 */
 static inline void bh_read_nowait(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	if (!bh_uptodate_or_lock(bh))

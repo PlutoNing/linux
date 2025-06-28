@@ -143,7 +143,8 @@ file_ra_state_init(struct file_ra_state *ra, struct address_space *mapping)
 }
 EXPORT_SYMBOL_GPL(file_ra_state_init);
 
-//页面预读
+/* 预读的时候, 读取文件内容到pagecache的页面
+(在发现mapping已经存在对应页面的情况下, ) */
 static void read_pages(struct readahead_control *rac)
 {
 	const struct address_space_operations *aops = rac->mapping->a_ops;
@@ -194,7 +195,7 @@ static void read_pages(struct readahead_control *rac)
 }
 
 /**
-  开启预读
+  执行一次预读
  * page_cache_ra_unbounded - Start unchecked readahead.
  * @ractl: Readahead control.
  * @nr_to_read: The number of pages to read.
@@ -235,9 +236,13 @@ void page_cache_ra_unbounded(struct readahead_control *ractl,
 	 * Preallocate as many pages as we will need.
 	 */
 	for (i = 0; i < nr_to_read; i++) {
+		/* 获取index位置的folio */
 		struct folio *folio = xa_load(&mapping->i_pages, index + i);
 
 		if (folio && !xa_is_value(folio)) {
+			/* 说明mapping里面已经存在对应页面了
+			那就不用新分配页面到pagecache了
+			这里可以直接发起读取, 读入文件内容到pagecache这个folio */
 			/*
 			 * Page already present?  Kick off the current batch
 			 * of contiguous pages before continuing with the
@@ -290,6 +295,7 @@ EXPORT_SYMBOL_GPL(page_cache_ra_unbounded);
 
 /*
  开启预读
+ 这里是预读一个批次(nr_to_read)
  * do_page_cache_ra() actually reads a chunk of disk.  It allocates
  * the pages first, then submits them for I/O. This avoids the very bad
  * behaviour which would occur if page allocations are causing VM writeback.
@@ -308,6 +314,7 @@ static void do_page_cache_ra(struct readahead_control *ractl,
 	if (isize == 0)
 		return;
 
+	/* 文件的最大大小 */
 	end_index = (isize - 1) >> PAGE_SHIFT;
 	if (index > end_index)
 		return;
@@ -320,6 +327,7 @@ static void do_page_cache_ra(struct readahead_control *ractl,
 
 /*
 强制预读,
+ractl封装了mapping, nrpages, index等信息
  * Chunk the readahead into 2 megabyte units, so that we don't pin too much
  * memory at once.
  */
@@ -338,10 +346,13 @@ void force_page_cache_ra(struct readahead_control *ractl,
 	 * If the request exceeds the readahead window, allow the read to
 	 * be up to the optimal hardware IO size
 	 */
+	/* 要开始读取的index开始位置 */
 	index = readahead_index(ractl);
 	max_pages = max_t(unsigned long, bdi->io_pages, ra->ra_pages);
 	nr_to_read = min_t(unsigned long, nr_to_read, max_pages);
+	/* 批次预读 */
 	while (nr_to_read) {
+		/* 差不多是512个页面 */
 		unsigned long this_chunk = (2 * 1024 * 1024) / PAGE_SIZE;
 
 		if (this_chunk > nr_to_read)

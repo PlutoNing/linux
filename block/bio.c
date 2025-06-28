@@ -1168,6 +1168,7 @@ void bio_add_folio_nofail(struct bio *bio, struct folio *folio, size_t len,
 }
 
 /**
+让bio传输page的一部分
 把folio的一部分添加到bio
  * bio_add_folio - Attempt to add part of a folio to a bio.
  * @bio: BIO to add to.

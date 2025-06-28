@@ -259,6 +259,7 @@ static inline void tag_clear_highpage(struct page *page)
 #endif
 
 /*
+这些地址都是页内偏移
  * If we pass in a base or tail page, we can zero up to PAGE_SIZE.
  * If we pass in a head page, we can zero up to the size of the compound page.
  */

@@ -1725,9 +1725,11 @@ int folio_wait_private_2_killable(struct folio *folio)
 EXPORT_SYMBOL(folio_wait_private_2_killable);
 
 /**
+=======================
  * folio_end_writeback - End writeback against a folio.
    写回一个folio完成时的回调?
    不过为啥感觉swap和buffer io才用这个?
+buffer io的情况, 如果检测到folio的全部bh完成了写入, 调用这里
  * @folio: The folio.
  */
 void folio_end_writeback(struct folio *folio)
@@ -4137,9 +4139,14 @@ static void dio_warn_stale_pagecache(struct file *filp)
 			current->comm);
 	}
 }
-
+/* 直接io写入之后, 进行一些页面的invalidate
+case1: 比如可能是因为这些页面被之前的non-direct io给缓存了(直接io内容a到file,
+但是对应的pagecache里面还是内容b?)
+case2: gup相关, 以后
+*/
 void kiocb_invalidate_post_direct_write(struct kiocb *iocb, size_t count)
 {
+	/* 被直接io的文件的mapping */
 	struct address_space *mapping = iocb->ki_filp->f_mapping;
 
 	if (mapping->nrpages &&
@@ -4149,9 +4156,11 @@ void kiocb_invalidate_post_direct_write(struct kiocb *iocb, size_t count)
 		dio_warn_stale_pagecache(iocb->ki_filp);
 }
 
-//直接IO写入文件
-ssize_t
-generic_file_direct_write(struct kiocb *iocb, struct iov_iter *from)
+/* 直接IO写入的fops通用实现
+
+返回>0, 错误?
+返回0, 需要fallback到buffer io */
+ssize_t generic_file_direct_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct address_space *mapping = iocb->ki_filp->f_mapping;
 	size_t write_len = iov_iter_count(from);
@@ -4177,7 +4186,9 @@ generic_file_direct_write(struct kiocb *iocb, struct iov_iter *from)
 	 * we're writing.  Either one is a pretty crazy thing to do,
 	 * so we don't support it 100%.  If this invalidation
 	 * fails, tough, the write still worked...
-	 *
+	 * 再次尝试invalidate干净页, 这些页面可能被非直接io的预读给缓存了.
+	   或者被gup机制fault了(如果巴拉巴拉...)
+	   这两个情况都很复杂?
 	 * Most of the time we do not need this since dio_complete() will do
 	 * the invalidation for us. However there are some file systems that
 	 * do not end up with dio_complete() being called, so let's not break
@@ -4188,9 +4199,12 @@ generic_file_direct_write(struct kiocb *iocb, struct iov_iter *from)
 	 * Skip invalidation for async writes or if mapping has no pages.
 	 */
 	if (written > 0) {
+		/* 被写入的inode */
 		struct inode *inode = mapping->host;
+		/* 写入的pos */
 		loff_t pos = iocb->ki_pos;
 
+		/* 这里invalidate一些mapping里的缓存页 */
 		kiocb_invalidate_post_direct_write(iocb, written);
 		pos += written;
 		write_len -= written;
@@ -4200,6 +4214,7 @@ generic_file_direct_write(struct kiocb *iocb, struct iov_iter *from)
 		}
 		iocb->ki_pos = pos;
 	}
+
 	if (written != -EIOCBQUEUED)
 		iov_iter_revert(from, write_len - iov_iter_count(from));
 	return written;
@@ -4298,7 +4313,7 @@ EXPORT_SYMBOL(generic_perform_write);
 
 /**
  * __generic_file_write_iter - write data to a file
-  写入到文件
+  把iter写入到文件
  * @iocb:	IO state structure (file, offset, etc.)
  * @from:	iov_iter with data to write
  *
@@ -4331,7 +4346,7 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	ret = file_remove_privs(file);
 	if (ret)
 		return ret;
-/* 判断是否需要更新时间 */
+	/* 判断是否需要更新时间 */
 	ret = file_update_time(file);
 	if (ret)
 		return ret;
@@ -4349,6 +4364,7 @@ ssize_t __generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		 */
 		if (ret < 0 || !iov_iter_count(from) || IS_DAX(inode))
 			return ret;
+		/* buffer io的直接io? */
 		return direct_write_fallback(iocb, from, ret,
 					     generic_perform_write(iocb, from));
 	}

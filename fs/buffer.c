@@ -137,6 +137,7 @@ static void buffer_io_error(struct buffer_head *bh, char *msg)
 }
 
 /*
+读取buffer结束后的end io函数
  * End-of-IO handler helper function which does not touch the bh after
  * unlocking it.
  * Note: unlock_buffer() sort-of does touch the bh after unlocking it, but
@@ -156,6 +157,8 @@ static void __end_buffer_read_notouch(struct buffer_head *bh, int uptodate)
 }
 
 /*
+读取bh的end io函数
+会设置bh为up-to-date
  * Default synchronous end-of-IO handler..  Just mark it up-to-date and
  * unlock the buffer.
  */
@@ -166,6 +169,8 @@ void end_buffer_read_sync(struct buffer_head *bh, int uptodate)
 }
 EXPORT_SYMBOL(end_buffer_read_sync);
 
+/* 写回bh的end io函数
+设置bh为up-to-date */
 void end_buffer_write_sync(struct buffer_head *bh, int uptodate)
 {
 	if (uptodate) {
@@ -246,7 +251,13 @@ out_unlock:
 out:
 	return ret;
 }
-// 结束buffer io,进行清理工作?
+/*
+buffer io异步读的end io函数会调用
+结束buffer io
+=======================
+主要作用是设置bh为up-to-date
+然后检查是否可以设置page为up-to-date
+*/
 static void end_buffer_async_read(struct buffer_head *bh, int uptodate)
 {
 	unsigned long flags;
@@ -257,7 +268,10 @@ static void end_buffer_async_read(struct buffer_head *bh, int uptodate)
 
 	BUG_ON(!buffer_async_read(bh));
 
+	/* 获取这个buffer所io的folio */
 	folio = bh->b_folio;
+
+	/* 设置bh为最新的 */
 	if (uptodate) {
 		set_buffer_uptodate(bh);
 	} else {
@@ -271,7 +285,6 @@ static void end_buffer_async_read(struct buffer_head *bh, int uptodate)
 	 * two buffer heads end IO at almost the same time and both
 	 * decide that the page is now completely done.
 	   小心处理, 如果两个buffer head几乎同时结束IO, 并且都认为page已经完成, 那么会发生很糟糕的事情
-
 	 */
 	first = folio_buffers(folio);
 	spin_lock_irqsave(&first->b_uptodate_lock, flags);
@@ -281,18 +294,23 @@ static void end_buffer_async_read(struct buffer_head *bh, int uptodate)
 	do {
 		if (!buffer_uptodate(tmp))
 			folio_uptodate = 0;
+		/* 这里检查当前遍历到的bh是不是仍处于异步读 */
 		if (buffer_async_read(tmp)) {
 			BUG_ON(!buffer_locked(tmp));
 			goto still_busy;
 		}
 		tmp = tmp->b_this_page;
 	} while (tmp != bh);
+
+	/* 刚刚是确保page的全部bh都结束了异步读
+	并且可能全部bh都是新的 */
 	spin_unlock_irqrestore(&first->b_uptodate_lock, flags);
 
 	/*
 	 * If all of the buffers are uptodate then we can set the page
 	 * uptodate.
 	 */
+	/* 如果全部bh都是新的, 那么设置folio为uptodate的 */
 	if (folio_uptodate)
 		folio_mark_uptodate(folio);
 	folio_unlock(folio);
@@ -354,17 +372,27 @@ static void decrypt_bh(struct work_struct *work)
 }
 
 /*
+系统完成bh之后, 用于end io
+主要逻辑是设置bh为up-to-date, 然后检查是否可以把所io的page
+也设置为up-to-date
+===================================
  * I/O completion handler for block_read_full_folio() - pages
  * which come unlocked at the end of I/O.
  buffer io的end io函数
+ =============================
+主要还是调用end_buffer_async_read
+不过会额外检查加密和Verity什么的
  */
 static void end_buffer_async_read_io(struct buffer_head *bh, int uptodate)
 {
+	/* 可能说明buffer io的folio是这个inode的页缓存页面 */
 	struct inode *inode = bh->b_folio->mapping->host;
+	/* 检查有无加密 */
 	bool decrypt = fscrypt_inode_uses_fs_layer_crypto(inode);
 	bool verify = need_fsverity(bh);
 
-	/* Decrypt (with fscrypt) and/or verify (with fsverity) if needed. */
+	/* Decrypt (with fscrypt) and/or verify (with fsverity) if needed.
+	这个路径不一定常见 */
 	if (uptodate && (decrypt || verify)) {
 		struct postprocess_bh_ctx *ctx =
 			kmalloc(sizeof(*ctx), GFP_ATOMIC);
@@ -386,6 +414,10 @@ static void end_buffer_async_read_io(struct buffer_head *bh, int uptodate)
 }
 
 /*
+buffer io的end write函数
+===========================
+和读的end io函数差不多
+设置bh为up-to-date,如果全部bh完成了写入, 也设置folio为结束io
  * Completion handler for block_write_full_page() - pages which are unlocked
  * during I/O, and which have PageWriteback cleared upon I/O completion.
     block_write_full_page的end io函数
@@ -399,6 +431,7 @@ void end_buffer_async_write(struct buffer_head *bh, int uptodate)
 
 	BUG_ON(!buffer_async_write(bh));
 
+	/* 获取所io的folio */
 	folio = bh->b_folio;
 	if (uptodate) {
 		set_buffer_uptodate(bh);
@@ -415,6 +448,7 @@ void end_buffer_async_write(struct buffer_head *bh, int uptodate)
 	clear_buffer_async_write(bh);
 	unlock_buffer(bh);
 	tmp = bh->b_this_page;
+	/* 这里检查是不是folio的全部bh都结束了写入 */
 	while (tmp != bh) {
 		if (buffer_async_write(tmp)) {
 			BUG_ON(!buffer_locked(tmp));
@@ -423,6 +457,7 @@ void end_buffer_async_write(struct buffer_head *bh, int uptodate)
 		tmp = tmp->b_this_page;
 	}
 	spin_unlock_irqrestore(&first->b_uptodate_lock, flags);
+	/* 如果全部bh都完成了写入, 设置folio也完成了写入 */
 	folio_end_writeback(folio);
 	return;
 
@@ -433,6 +468,11 @@ still_busy:
 EXPORT_SYMBOL(end_buffer_async_write);
 
 /*
+
+两个作用:
+设置bh的endio函数, 用于io完成后设置bh的up-to-date比特位
+然后置位bh的async read比特位
+==================
  * If a page's buffers are under async readin (end_buffer_async_read
  * completion) then there is a possibility that another thread of
  * control could lock one of the buffers after it has completed
@@ -462,7 +502,7 @@ static void mark_buffer_async_read(struct buffer_head *bh)
 	set_buffer_async_read(bh);
 }
 
-//通过标记来发起回写, 然后设置endio函数
+//开启这个bh的异步写入,这里修改相关属性(设置end io函数, 修改async write标志位)
 static void mark_buffer_async_write_endio(struct buffer_head *bh,
 					  bh_end_io_t *handler)
 {
@@ -470,6 +510,9 @@ static void mark_buffer_async_write_endio(struct buffer_head *bh,
 	set_buffer_async_write(bh);
 }
 
+/* 开启bh的异步写入
+==================
+主要是fs的具体实现调用 */
 void mark_buffer_async_write(struct buffer_head *bh)
 {
 	mark_buffer_async_write_endio(bh, end_buffer_async_write);
@@ -544,6 +587,8 @@ int inode_has_buffers(struct inode *inode)
 }
 
 /*
+==================
+osync等待所有已经提交的io完成, 不添加新的io
  * osync is designed to support O_SYNC io.  It waits synchronously for
  * all already-submitted IO to complete, but does not queue any new
  * writes to the disk.
@@ -561,6 +606,7 @@ static int osync_buffers_list(spinlock_t *lock, struct list_head *list)
 
 	spin_lock(lock);
 repeat:
+	/* 遍历list上的io */
 	list_for_each_prev(p, list) {
 		bh = BH_ENTRY(p);
 		if (buffer_locked(bh)) {
@@ -593,11 +639,13 @@ repeat:
  */
 int sync_mapping_buffers(struct address_space *mapping)
 {
+	/* mapping与buffer mapping关系是? */
 	struct address_space *buffer_mapping = mapping->private_data;
 
 	if (buffer_mapping == NULL || list_empty(&mapping->private_list))
 		return 0;
 
+	/* 写回mapping->private_list上面关联的一系列bh */
 	return fsync_buffers_list(&buffer_mapping->private_lock,
 					&mapping->private_list);
 }
@@ -629,6 +677,7 @@ int generic_buffers_fsync_noflush(struct file *file, loff_t start, loff_t end,
 	if (err)
 		return err;
 
+	/* 写回inode->i_mapping关联的buffer */
 	ret = sync_mapping_buffers(inode->i_mapping);
 	if (!(inode->i_state & I_DIRTY_ALL))
 		goto out;
@@ -676,6 +725,7 @@ int generic_buffers_fsync(struct file *file, loff_t start, loff_t end,
 EXPORT_SYMBOL(generic_buffers_fsync);
 
 /*
+写回block的下一个block
  * Called when we've recently written block `bblock', and it is known that
  * `bblock' was for a buffer_boundary() buffer.  This means that the block at
  * `bblock + 1' is probably a dirty indirect block.  Hunt it down and, if it's
@@ -684,8 +734,11 @@ EXPORT_SYMBOL(generic_buffers_fsync);
 void write_boundary_block(struct block_device *bdev,
 			sector_t bblock, unsigned blocksize)
 {
+	/* 写回下一个block
+	这里找到对应下一个block的bh */
 	struct buffer_head *bh = __find_get_block(bdev, bblock + 1, blocksize);
 	if (bh) {
+		/* 写回这个脏bh */
 		if (buffer_dirty(bh))
 			write_dirty_buffer(bh, 0);
 		put_bh(bh);
@@ -693,6 +746,7 @@ void write_boundary_block(struct block_device *bdev,
 }
 
 /* 把bh关联到指定的inode
+==========================
 主要是fs实现使用这个接口
 作用是 */
 void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
@@ -780,8 +834,9 @@ EXPORT_SYMBOL(block_dirty_folio);
 
 /*
 
-   写回一系列buffer, 并等待写回完成
- * Write out and wait upon a list of buffers.
+写回list上面的一系列buffer, 并等待写回完成
+list可能是inode或者mapping关联的一系列相关的bh
+* Write out and wait upon a list of buffers.
  * 
  * We have conflicting pressures: we want to make sure that all
  * initially dirty buffers get waited on, but that any subsequently
@@ -800,8 +855,6 @@ EXPORT_SYMBOL(block_dirty_folio);
  * not yet completed on that list.  So, as a final cleanup we go through
  * the osync code to catch these locked, dirty buffers without requeuing
  * any newly dirty buffers for write.
-   
-
 -----------
 mapping的buffers是什么.
  */
@@ -817,18 +870,27 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list)
 	blk_start_plug(&plug);
 
 	spin_lock(lock);
-	while (!list_empty(list)) { //上面全是脏buffer,遍历
+	 //上面全是关联的buffer,遍历.解除关联, 找到脏bh, 发起写回, 加入tmp
+	while (!list_empty(list)) {
 		bh = BH_ENTRY(list->next);
 		mapping = bh->b_assoc_map;
-		__remove_assoc_queue(bh); //这里清除当前处理的bh与这个mapping的关系
+		//这里清除当前处理的bh与这个mapping的关系,把bh->b_assoc_buffers隔离出来
+		__remove_assoc_queue(bh); 
 
 		/* Avoid race with mark_buffer_dirty_inode() which does
 		 * a lockless check and we rely on seeing the dirty bit */
 		smp_mb();
+		/* 把buffer发起写入后, 加入tmp */
 		if (buffer_dirty(bh) || buffer_locked(bh)) {
+			/* 这里把bh从关联的inode->mapping移到tmp
+			b_assoc_buffers是连接件
+			 */
+			/* tmp临时链表上面都是这次发现的list的脏buffer
+			全部提交了写入, 马上下一步等待写回完成 */
 			list_add(&bh->b_assoc_buffers, &tmp);
 			bh->b_assoc_map = mapping;
 			if (buffer_dirty(bh)) {
+				/* 写回这个bh */
 				get_bh(bh);
 				spin_unlock(lock);
 				/*
@@ -857,6 +919,8 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list)
 	blk_finish_plug(&plug);
 	spin_lock(lock);
 
+
+	/* 现在tmp上面全是发起了写回的bh */
 	while (!list_empty(&tmp)) {
 		bh = BH_ENTRY(tmp.prev);
 		get_bh(bh);
@@ -865,12 +929,14 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list)
 		/* Avoid race with mark_buffer_dirty_inode() which does
 		 * a lockless check and we rely on seeing the dirty bit */
 		smp_mb();
+		/* 如果还是dirty, 没办法, 只能重新放回关联的inode & mapping */
 		if (buffer_dirty(bh)) {
 			list_add(&bh->b_assoc_buffers,
 				 &mapping->private_list);
 			bh->b_assoc_map = mapping;
 		}
 		spin_unlock(lock);
+		/* 到这里是buffer不脏了, 这里等待写回成功, 变为up-to-date */
 		wait_on_buffer(bh);
 		if (!buffer_uptodate(bh))
 			err = -EIO;
@@ -879,6 +945,7 @@ static int fsync_buffers_list(spinlock_t *lock, struct list_head *list)
 	}
 	
 	spin_unlock(lock);
+	/* 此时list还有bh? */
 	err2 = osync_buffers_list(lock, list);
 	if (err)
 		return err;
@@ -1056,6 +1123,9 @@ static sector_t blkdev_max_block(struct block_device *bdev, unsigned int size)
 }
 
 /*
+初始化folio的buffer
+=============
+遍历folio的bh, 把没有映射的buffer依次map到block++
  * Initialise the state of a blockdev folio's buffers.
  */ 
 static sector_t folio_init_buffers(struct folio *folio,
@@ -1143,6 +1213,7 @@ static int grow_dev_page(struct block_device *bdev, sector_t block,
 	spin_lock(&inode->i_mapping->private_lock);
 	/* 把bh关联到folio的priv */
 	link_dev_buffers(folio, bh);
+	/* 初始化folio的bh链, 依次映射block开始的地方 */
 	end_block = folio_init_buffers(folio, bdev,
 			(sector_t)index << sizebits, size);
 	spin_unlock(&inode->i_mapping->private_lock);
@@ -1244,7 +1315,8 @@ static struct buffer_head * __getblk_slow(struct block_device *bdev, sector_t bl
  */
 
 /**
-这个bh被改变了,需要刷盘
+置脏bh
+如果是首次, 也会置脏folio和mapping
  * mark_buffer_dirty - mark a buffer_head as needing writeout
  * @bh: the buffer_head to mark dirty
  *
@@ -1294,6 +1366,7 @@ void mark_buffer_dirty(struct buffer_head *bh)
 }
 EXPORT_SYMBOL(mark_buffer_dirty);
 
+/* 设置bh的error标志 */
 void mark_buffer_write_io_error(struct buffer_head *bh)
 {
 	set_buffer_write_io_error(bh);
@@ -1325,6 +1398,8 @@ void __brelse(struct buffer_head * buf)
 EXPORT_SYMBOL(__brelse);
 
 /*
+释放bh
+可能会直接丢掉脏数据
  * bforget() is like brelse(), except it discards any
  * potentially dirty data.
  */
@@ -1511,6 +1586,7 @@ EXPORT_SYMBOL(__find_get_block);
 
 /*
  找到dev的这个block的bh
+ 可能是直接找到, 也可能是新创建
  * __getblk_gfp() will locate (and, if necessary, create) the buffer_head
  * which corresponds to the passed block_device, block and size. The
  * returned buffer has its reference count incremented.
@@ -1536,7 +1612,7 @@ EXPORT_SYMBOL(__getblk_gfp);
 void __breadahead(struct block_device *bdev, sector_t block, unsigned size)
 {/* 获取这个block的buffer */
 	struct buffer_head *bh = __getblk(bdev, block, size);
-	if (likely(bh)) {/* 找到buffer了开始io */
+	if (likely(bh)) {/* 找到buffer了开始读取 */
 		bh_readahead(bh, REQ_RAHEAD);
 		brelse(bh);
 	}
@@ -1744,6 +1820,7 @@ void folio_create_empty_buffers(struct folio *folio, unsigned long blocksize,
 {
 	struct buffer_head *bh, *head, *tail;
 
+	/* 这里创建buffer链 */
 	head = folio_alloc_buffers(folio, blocksize, true);
 	bh = head;
 	do {// 遍历这些环形串起来的bh
@@ -1751,6 +1828,7 @@ void folio_create_empty_buffers(struct folio *folio, unsigned long blocksize,
 		tail = bh;
 		bh = bh->b_this_page;
 	} while (bh);
+	/* 这里形成buffer环 */
 	tail->b_this_page = head;
 
 	spin_lock(&folio->mapping->private_lock);
@@ -1771,6 +1849,9 @@ void folio_create_empty_buffers(struct folio *folio, unsigned long blocksize,
 }
 EXPORT_SYMBOL(folio_create_empty_buffers);
 
+/* 给page创建buffer
+===========
+主要是mpage使用 */
 void create_empty_buffers(struct page *page,
 			unsigned long blocksize, unsigned long b_state)
 {
@@ -1866,10 +1947,12 @@ static inline int block_size_bits(unsigned int blocksize)
 	return ilog2(blocksize);
 }
 
-/* 这个folio作为读写这个inode的缓冲
+/*
 =====================
 返回这个folio的bh链
 如果还没有， 就在上面就地初始化bh链
+=============
+这个主要是blk对folio发起读写前调用, 获取folio的buffer链
 */
 static struct buffer_head *folio_create_buffers(struct folio *folio,
 						struct inode *inode,
@@ -1918,6 +2001,10 @@ static struct buffer_head *folio_create_buffers(struct folio *folio,
  * causes the writes to be flagged as synchronous writes.
  * 如果block_write_full_page()使用wbc->sync_mode == WB_SYNC_ALL调用,
  * 则使用REQ_SYNC发布写入;这将导致写入标记为同步写入
+ ===================================
+ folio是inode的mapping的一个folio
+ 这里把folio的内容写入inode文件
+ 一个个的submit_bh回写这个folio上面的bh
  */
 int __block_write_full_folio(struct inode *inode, struct folio *folio,
 			get_block_t *get_block, struct writeback_control *wbc,
@@ -1951,8 +2038,9 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 	bh = head;
 	blocksize = bh->b_size; //bh的大小
 	bbits = block_size_bits(blocksize);
-
+	/* block是folio映射的文件内容在磁盘的位置? */
 	block = (sector_t)folio->index << (PAGE_SHIFT - bbits);
+	/* last_block为文件大小 */
 	last_block = (i_size_read(inode) - 1) >> bbits;
 
 	/*
@@ -1961,6 +2049,7 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 	 */
 	do {
 		if (block > last_block) {
+			/* 文件被截断了? */
 			/*
 			 * mapped buffers outside i_size will occur, because
 			 * this folio can be outside i_size when there is a
@@ -1971,9 +2060,13 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 			 */
 			clear_buffer_dirty(bh);
 			set_buffer_uptodate(bh);
-		} else if ((!buffer_mapped(bh) || buffer_delay(bh)) &&
-			   buffer_dirty(bh)) { //如果bh脏的, 并且没有mapped或者是delay的
+		} else if (
+			(!buffer_mapped(bh) || buffer_delay(bh)) &&
+			   buffer_dirty(bh)
+			) {/* 如果bh脏的, 并且没有mapped或者是delay的
+			dirty的话, 还可能是没有mapped的吗, 是内核直接在mapping的folio上面发起了写入, 现在才map? */
 			WARN_ON(bh->b_size != blocksize);
+			/* get_block函数会把bh进行map到对应的block */
 			err = get_block(inode, block, bh, 1);
 			if (err)
 				goto recover;
@@ -1988,8 +2081,12 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 		bh = bh->b_this_page;
 		block++;
 	} while (bh != head);
+	/* 刚刚遍历和处理每一个<bh, block>, 进行映射和标志位的修改 */
 
+	/* 这里继续重新遍历一轮
+	处理加锁的操作 */
 	do {
+		/* 现在folio的bh链上面还可能有没有mapped的bh吗 */
 		if (!buffer_mapped(bh))
 			continue;
 		/*
@@ -2002,22 +2099,32 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 		   请注意,这可能会导致来自写回线程和kswapd活动的忙等待循环,
 		   但这些代码路径具有自己的节流.
 		 */
-		if (wbc->sync_mode != WB_SYNC_NONE) { //如果是要求SYNC ALL就阻塞等待可能
+
+		/* 这里如果是要求SYNC_ALL, 就lock_buffer (可能是阻塞的)
+		如果是要求SYNC_NONE, 就是trylock, 失败的话, 就redirty, 去处理下一个bh */
+		if (wbc->sync_mode != WB_SYNC_NONE) {
 			lock_buffer(bh);
-		} else if (!trylock_buffer(bh)) { //其他的sync要求, 可以try lock
-			folio_redirty_for_writepage(wbc, folio); //无法lock的话, 就redirty, 去处理
-			//下一个了
+		} else if (!trylock_buffer(bh)) {
+			folio_redirty_for_writepage(wbc, folio);
 			continue;
 		}
         
-		//SYNC ALL的要求, 需要等待
+		//到这里说明是SYNC ALL也可能是SYNC_NONE
+		//反正都是加锁成功了
 
-		if (test_clear_buffer_dirty(bh)) { //如果bh本来是脏的
+		if (test_clear_buffer_dirty(bh)) { 
+			//如果bh本来是脏的,需要写入, 这里设置bh的endio函数, 设置写入标志位
 			mark_buffer_async_write_endio(bh, handler);
 		} else {
+			/* 干净的不用写 */
 			unlock_buffer(bh);
 		}
 	} while ((bh = bh->b_this_page) != head);
+
+	/* 到这里说明刚刚已经把需要写入的bh加锁了, 并且设置了end io函数, 设置了写入
+	标志位等
+	=========
+	当然不是全部, 也有干净的bh, 也有try_lock失败redirty了的 */
 
 	/*
 	 * The folio and its buffers are protected by the writeback flag,
@@ -2028,10 +2135,12 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 
 	folio_start_writeback(folio); //在mapping的标记这个folio回写
 
+	/* 这里一个个的提交回写bh */
 	do {
 		struct buffer_head *next = bh->b_this_page;
 
-		if (buffer_async_write(bh)) { //如果bh被标记了, 说明需要发起回写
+		if (buffer_async_write(bh)) {
+			//如果bh被标记了(刚刚mark_buffer_async_write_endio标记的), 说明需要发起回写
 			submit_bh_wbc(REQ_OP_WRITE | write_flags, bh, wbc);
 			nr_underway++;
 		}
@@ -2100,9 +2209,8 @@ recover:
 EXPORT_SYMBOL(__block_write_full_folio);
 
 /*
-遍历folio的bh链
-找到新的
-进行初始化
+如果有新buffer与指定范围交叉的话
+清零交叉范围
  * If a folio has any new buffers, zero them out here, and mark them uptodate
  * and dirty so they'll be written out (in order to prevent uninitialised
  * block data from leaking). And clear the new bit.
@@ -2120,11 +2228,13 @@ void folio_zero_new_buffers(struct folio *folio, size_t from, size_t to)
 	bh = head;
 	block_start = 0;
 	do {
+		/* block_start和block_end是当前遍历到的buffer的io范围 */
 		block_end = block_start + bh->b_size;
 
 		if (buffer_new(bh)) {
 			if (block_end > from && block_start < to) {
 				if (!folio_test_uptodate(folio)) {
+				/* 这个新bh与这段范围有交叉, 并且folio不是新的 */
 					size_t start, xend;
 
 					start = max(from, block_start);
@@ -2145,10 +2255,13 @@ void folio_zero_new_buffers(struct folio *folio, size_t from, size_t to)
 }
 EXPORT_SYMBOL(folio_zero_new_buffers);
 
-static int
-iomap_to_bh(struct inode *inode, sector_t block, struct buffer_head *bh,
+/* 
+映射这个bh, 映射到block位置
+*/
+static int iomap_to_bh(struct inode *inode, sector_t block, struct buffer_head *bh,
 		const struct iomap *iomap)
 {
+	/* 转换成pos */
 	loff_t offset = block << inode->i_blkbits;
 
 	bh->b_bdev = iomap->bdev;
@@ -2213,12 +2326,16 @@ iomap_to_bh(struct inode *inode, sector_t block, struct buffer_head *bh,
 	}
 }
 /* 
-改变了mapping里面的folio的pos和len的位置,
-
-准备发起buffer io的写入 */
+改变了mapping里面的folio, 要回写这个folio
+get_block用于给bh映射磁盘块
+准备发起buffer io的写入,这里好像只是[准备], 并没有submit什么
+========================
+@pos和len是folio的页内偏移
+*/
 int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 		get_block_t *get_block, const struct iomap *iomap)
 {
+	/* from和to为要写入的范围 (folio页内偏移) */
 	unsigned from = pos & (PAGE_SIZE - 1);
 	unsigned to = from + len;
 	struct inode *inode = folio->mapping->host;
@@ -2232,27 +2349,32 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 	BUG_ON(from > PAGE_SIZE);
 	BUG_ON(to > PAGE_SIZE);
 	BUG_ON(from > to);
-/* 创建buffer io
-这里获取folio的bh链 */
+	/* 创建buffer io
+		这里获取folio的bh链 */
 	head = folio_create_buffers(folio, inode, 0);
 	blocksize = head->b_size;/* 可能是1024 */
 	bbits = block_size_bits(blocksize);/* 可能是10 */
-/* 获得在磁盘的块号 */
+	/* 获得在磁盘的块号 */
 	block = (sector_t)folio->index << (PAGE_SHIFT - bbits);
 
-	for(bh = head, block_start = 0; bh != head || !block_start;
+	for(bh = head, block_start = 0;
+		 bh != head || !block_start;
 	    block++, block_start=block_end, bh = bh->b_this_page) {
+	/* 这里for循环同时遍历bh链( bh = bh->b_this_page)和磁盘的block(block++) */
 		block_end = block_start + blocksize;
 		if (block_end <= from || block_start >= to) {
+			/* 这里是什么情况? */
 			if (folio_test_uptodate(folio)) {
 				if (!buffer_uptodate(bh))
 					set_buffer_uptodate(bh);
 			}
 			continue;
 		}
+		/* 如果bh是新创建的, 这里已经准备回写他了, 去除new标志 */
 		if (buffer_new(bh))
 			clear_buffer_new(bh);
-		/* 如果还没有map要io的区域？ 这里设置get_block？ */
+		/* 如果还没有map要io的磁盘区域？ 这里调用具体fs实现提供的get_block函数来
+		设置这个bh来对应磁盘的哪个位置 */
 		if (!buffer_mapped(bh)) {
 			WARN_ON(bh->b_size != blocksize);
 			if (get_block)
@@ -2262,8 +2384,8 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 			if (err)
 				break;
 			/* 刚刚fs的get block函数找到了一个block,并且把bh初始化了为负责这个block的buffer io */
-
 			if (buffer_new(bh)) {
+				/* 刚刚不是已经清除new了吗 */
 				clean_bdev_bh_alias(bh);
 				if (folio_test_uptodate(folio)) {
 					clear_buffer_new(bh);
@@ -2283,6 +2405,7 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 				set_buffer_uptodate(bh);
 			continue; 
 		}
+		/* 这个if应该最多触发两次? */
 		if (!buffer_uptodate(bh) && !buffer_delay(bh) &&
 		    !buffer_unwritten(bh) &&
 		     (block_start < from || block_end > to)) {
@@ -2294,6 +2417,7 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 	 * If we issued read requests - let them complete.
 	 */
 	while(wait_bh > wait) {
+		/* 等待刚刚提交的bh完成 */
 		wait_on_buffer(*--wait_bh);
 		if (!buffer_uptodate(*wait_bh))
 			err = -EIO;
@@ -2302,7 +2426,10 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 		folio_zero_new_buffers(folio, from, to);
 	return err;
 }
-/* 准备在mapping page的pos和len表示的范围io, get block应该是用于获取磁盘块的位置 */
+/*
+page是mapping里的page, 准备回写
+getblock函数用于给他里面的bh映射对应的磁盘block
+*/
 int __block_write_begin(struct page *page, loff_t pos, unsigned len,
 		get_block_t *get_block)
 {/* 准备发起bufferio的写入 */
@@ -2360,11 +2487,12 @@ int block_write_begin(struct address_space *mapping, loff_t pos, unsigned len,
 	pgoff_t index = pos >> PAGE_SHIFT;
 	struct page *page;
 	int status;
-/* 获取index位置的page */
+	/* 获取index位置的page
+	这个page就是需要回写的page */
 	page = grab_cache_page_write_begin(mapping, index);
 	if (!page)
 		return -ENOMEM;
-/* 开始block io的写入,创建buffer io */
+	/* 开始block io的写入,创建buffer io */
 	status = __block_write_begin(page, pos, len, get_block);
 	if (unlikely(status)) {
 		unlock_page(page);
@@ -2494,6 +2622,9 @@ bool block_is_partially_uptodate(struct folio *folio, size_t from, size_t count)
 EXPORT_SYMBOL(block_is_partially_uptodate);
 
 /*
+通过buffer io, 读取这个folio对应的磁盘内容到folio
+收集folio的不新的bh, 然后同意加锁,设置async_read标志位,发起submit_bh
+=====================================
  * Generic "read_folio" function for block devices that have the normal
  * get_block functionality. This is most of the block device filesystems.
  * Reads the folio asynchronously --- the unlock_buffer() and
@@ -2503,8 +2634,6 @@ EXPORT_SYMBOL(block_is_partially_uptodate);
    异步读取folio---unlock_buffer()和set/clear_buffer_uptodate()函数在IO完成后将
    缓冲区状态传播到folio中.
    ----------------------
-   get_block是函数回调.get的含义似乎是获取ref
-
  */
 int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 {
@@ -2530,6 +2659,7 @@ int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 
 	iblock = (sector_t)folio->index << (PAGE_SHIFT - bbits);
 	lblock = (limit+blocksize-1) >> bbits;
+	/* bh用于迭代这个folio的bh链 */
 	bh = head;
 	nr = 0;
 	i = 0;
@@ -2544,6 +2674,9 @@ int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 			fully_mapped = 0;
 			if (iblock < lblock) {
 				WARN_ON(bh->b_size != blocksize);
+				/* get_block函数是一个抽象的通用的回调, 具体于不同fs的实现
+				总的来说, 算是设置bh的属性, 设置bh读写dev的哪个block,哪个大小
+				然后设置bh为mapped */
 				err = get_block(inode, iblock, bh, 0);
 				if (err) {
 					folio_set_error(folio);
@@ -2564,6 +2697,8 @@ int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 			if (buffer_uptodate(bh))
 				continue;
 		}
+		/* 看来arr里面存储的是folio的bh链里面不是up-to-date的
+		也就是需要发起设备io的? */
 		arr[nr++] = bh;
 	} while (i++, iblock++, (bh = bh->b_this_page) != head);
 
@@ -2571,6 +2706,8 @@ int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 		folio_set_mappedtodisk(folio);
 
 	if (!nr) {
+		/* 也就是说arr大小为0, 也就是说没有需要io的bh
+		也就是说folio是up-to-date的 */
 		/*
 		 * All buffers are uptodate - we can set the folio uptodate
 		 * as well. But not if get_block() returned an error.
@@ -2583,6 +2720,10 @@ int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 
 	/* Stage two: lock the buffers
 	阶段2:锁定缓冲区
+	==========
+	现在arr里面都是需要io的bh
+	这里遍历arr
+	设置每个bh加锁, 设置end io函数, 设置bh的async_read标志位
 	 */
 	for (i = 0; i < nr; i++) {
 		bh = arr[i];
@@ -2607,7 +2748,9 @@ int block_read_full_folio(struct folio *folio, get_block_t *get_block)
 }
 EXPORT_SYMBOL(block_read_full_folio);
 
-/* utility function for filesystems that need to do work on expanding
+/*
+expanding truncate的文件系统的工具函数
+utility function for filesystems that need to do work on expanding
  * truncates.  Uses filesystem pagecache writes to allow the filesystem to
  * deal with the hole.  
  */
@@ -2619,10 +2762,12 @@ int generic_cont_expand_simple(struct inode *inode, loff_t size)
 	void *fsdata = NULL;
 	int err;
 
+	/* 检测是否可以修改文件大小 */
 	err = inode_newsize_ok(inode, size);
 	if (err)
 		goto out;
 
+		/* 为什么这样可以修改大小? */
 	err = aops->write_begin(NULL, mapping, size, 0, &page, &fsdata);
 	if (err)
 		goto out;
@@ -2635,6 +2780,8 @@ out:
 }
 EXPORT_SYMBOL(generic_cont_expand_simple);
 
+/* 扩大文件
+填充0 */
 static int cont_expand_zero(struct file *file, struct address_space *mapping,
 			    loff_t pos, loff_t *bytes)
 {
@@ -2711,6 +2858,9 @@ out:
 /*
  * For moronic filesystems that do not allow holes in file.
  * We may have to extend the file.
+ 主要是文件系统的实现调用
+ ============
+扩大文件, 填充0
  */
 int cont_write_begin(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len,
@@ -2784,10 +2934,12 @@ int block_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf,
 	if (folio_pos(folio) + end > size)
 		end = size - folio_pos(folio);
 
+	/* 这里是创建bh, 映射bh, 读取交叉区域什么的 */
 	ret = __block_write_begin_int(folio, 0, end, get_block, NULL);
 	if (unlikely(ret))
 		goto out_unlock;
 
+	/*  */
 	__block_commit_write(folio, 0, end);
 
 	folio_mark_dirty(folio);
@@ -2799,6 +2951,7 @@ out_unlock:
 }
 EXPORT_SYMBOL(block_page_mkwrite);
 
+/* 主要是fs实现调用这个函数 */
 int block_truncate_page(struct address_space *mapping,
 			loff_t from, get_block_t *get_block)
 {
@@ -2875,6 +3028,7 @@ EXPORT_SYMBOL(block_truncate_page);
 /*
  * The generic ->writepage function for buffer-backed address_spaces
 写东西到设备
+主要是对__block_write_full_folio函数的包装
  */
 int block_write_full_page(struct page *page, get_block_t *get_block,
 			struct writeback_control *wbc)
@@ -2992,7 +3146,8 @@ void submit_bh(blk_opf_t opf, struct buffer_head *bh)
 }
 EXPORT_SYMBOL(submit_bh);
 
-//写回脏buffer
+//提交写回脏buffer
+// 仅仅是提交
 void write_dirty_buffer(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	lock_buffer(bh);
@@ -3007,6 +3162,7 @@ void write_dirty_buffer(struct buffer_head *bh, blk_opf_t op_flags)
 EXPORT_SYMBOL(write_dirty_buffer);
 
 /*
+回写这个buffer, 等待io完成
  * For a data-integrity writeout, we need to wait upon any in-progress I/O
  * and then start new I/O and then wait upon it.  The caller must have a ref on
  * the buffer_head.
@@ -3015,7 +3171,9 @@ int __sync_dirty_buffer(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	WARN_ON(atomic_read(&bh->b_count) < 1);
 	lock_buffer(bh);
+	/* 清除脏位 */
 	if (test_clear_buffer_dirty(bh)) {
+		/* 如果本来确实脏, 回写 */
 		/*
 		 * The bh should be mapped, but it might not be if the
 		 * device was hot-removed. Not much we can do but fail the I/O.
@@ -3038,6 +3196,9 @@ int __sync_dirty_buffer(struct buffer_head *bh, blk_opf_t op_flags)
 }
 EXPORT_SYMBOL(__sync_dirty_buffer);
 
+/* 
+回写这个buffer, 等待io完成
+*/
 int sync_dirty_buffer(struct buffer_head *bh)
 {
 	return __sync_dirty_buffer(bh, REQ_SYNC);
@@ -3269,6 +3430,7 @@ int bh_uptodate_or_lock(struct buffer_head *bh)
 EXPORT_SYMBOL(bh_uptodate_or_lock);
 
 /**
+读取这个bh
  * __bh_read - Submit read for a locked buffer
  * @bh: struct buffer_head
  * @op_flags: appending REQ_OP_* flags besides REQ_OP_READ
@@ -3287,6 +3449,7 @@ int __bh_read(struct buffer_head *bh, blk_opf_t op_flags, bool wait)
 	submit_bh(REQ_OP_READ | op_flags, bh);
 	if (wait) {
 		wait_on_buffer(bh);
+		/* bh->b_end_io = end_buffer_read_sync函数会设置up-to-date */
 		if (!buffer_uptodate(bh))
 			ret = -EIO;
 	}

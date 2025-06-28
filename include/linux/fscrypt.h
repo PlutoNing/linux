@@ -843,6 +843,7 @@ static inline bool fscrypt_inode_uses_inline_crypto(const struct inode *inode)
 }
 
 /**
+检查有无加密
  * fscrypt_inode_uses_fs_layer_crypto() - test whether an inode uses fs-layer
  *					  encryption
  * @inode: an inode. If encrypted, its key must be set up.

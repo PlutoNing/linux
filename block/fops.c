@@ -404,7 +404,8 @@ static const struct iomap_ops blkdev_iomap_ops = {
 };
 
 #ifdef CONFIG_BUFFER_HEAD
-/* dev在io过程中的get ref操作
+/*
+dev在io过程中的get ref操作
 表示dev的某个block与bh建立了映射关联? */
 static int blkdev_get_block(struct inode *inode, sector_t iblock,
 		struct buffer_head *bh, int create)
@@ -425,6 +426,7 @@ static int blkdev_read_folio(struct file *file, struct folio *folio)
 	return block_read_full_folio(folio, blkdev_get_block);
 }
 
+/* bdev fs的mapping的预读回调 */
 static void blkdev_readahead(struct readahead_control *rac)
 {
 	mpage_readahead(rac, blkdev_get_block);
@@ -455,8 +457,10 @@ const struct address_space_operations def_blk_aops = {
 	.invalidate_folio = block_invalidate_folio,
 	//读取设备到folio里面
 	.read_folio	= blkdev_read_folio,
+	/* 预读的fops */
 	.readahead	= blkdev_readahead,
 	.writepage	= blkdev_writepage,
+	/*  */
 	.write_begin	= blkdev_write_begin,
 	.write_end	= blkdev_write_end,
 	.migrate_folio	= buffer_migrate_folio_norefs,

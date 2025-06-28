@@ -101,6 +101,7 @@ enum pageflags {
 	PG_locked,		/* Page is locked. Don't touch. */
 	PG_writeback,		/* Page is under writeback */
 	PG_referenced,
+	/*  */
 	PG_uptodate,
 	PG_dirty,
 	PG_lru,
@@ -737,6 +738,8 @@ TESTPAGEFLAG_FALSE(Ksm, ksm)
 u64 stable_page_flags(struct page *page);
 
 /**
+什么算是up-to-date?
+20250628145604
  * folio_test_uptodate - Is this folio up to date?
  * @folio: The folio.
  *
@@ -774,6 +777,7 @@ static __always_inline void __folio_mark_uptodate(struct folio *folio)
 	__set_bit(PG_uptodate, folio_flags(folio, 0));
 }
 
+/* 如果检测到folio的全部bh都是up-to-date的, 设置此 */
 static __always_inline void folio_mark_uptodate(struct folio *folio)
 {
 	/*

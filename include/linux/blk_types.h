@@ -477,6 +477,7 @@ enum req_flag_bits {
 #define REQ_INTEGRITY	(__force blk_opf_t)(1ULL << __REQ_INTEGRITY)
 #define REQ_FUA		(__force blk_opf_t)(1ULL << __REQ_FUA)
 #define REQ_PREFLUSH	(__force blk_opf_t)(1ULL << __REQ_PREFLUSH)
+/*  */
 #define REQ_RAHEAD	(__force blk_opf_t)(1ULL << __REQ_RAHEAD)
 #define REQ_BACKGROUND	(__force blk_opf_t)(1ULL << __REQ_BACKGROUND)
 #define REQ_NOWAIT	(__force blk_opf_t)(1ULL << __REQ_NOWAIT)

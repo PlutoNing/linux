@@ -1879,6 +1879,7 @@ u64 inode_query_iversion(struct inode *inode)
 }
 EXPORT_SYMBOL(inode_query_iversion);
 
+/* buffer io的直接IO, 把iter写入iocb */
 ssize_t direct_write_fallback(struct kiocb *iocb, struct iov_iter *iter,
 		ssize_t direct_written, ssize_t buffered_written)
 {

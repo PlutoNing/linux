@@ -3569,14 +3569,17 @@ copy:
 	return wp_page_copy(vmf);
 }
 
-/*  */
+/* 解除vma对范围内页面的映射
+start,end是mapping的范围, vma是映射到mapping的vma之一
+*/
 static void unmap_mapping_range_vma(struct vm_area_struct *vma,
 		unsigned long start_addr, unsigned long end_addr,
 		struct zap_details *details)
 {
 	zap_page_range_single(vma, start_addr, end_addr - start_addr, details);
 }
-/* 解除范围内的映射
+/* 
+解除范围内的映射
 root可能存储了映射到此mapping的所有vma
 ----------------------------
 可能是因为有多对多的关系, 这里先找到vma, 再处理vma
@@ -3595,6 +3598,7 @@ static inline void unmap_mapping_range_tree(struct rb_root_cached *root,
 		zba = max(first_index, vba);
 		zea = min(last_index, vea); // zba和zea分别代表此vma和要解除映射的范围的pgoff的起始和结束
 
+		/* 解除vma在范围内的映射 */
 		unmap_mapping_range_vma(vma,
 			((zba - vba) << PAGE_SHIFT) + vma->vm_start, // vm_start虚拟地址加上页数乘以4KB就是pgoff转为地址
 			((zea - vba + 1) << PAGE_SHIFT) + vma->vm_start,
@@ -3628,6 +3632,7 @@ void unmap_mapping_folio(struct folio *folio)
 
 	VM_BUG_ON(!folio_test_locked(folio));
 
+	/* first和last就是folio在mapping的index范围 */
 	first_index = folio->index;
 	last_index = folio_next_index(folio) - 1;
 
@@ -3645,6 +3650,7 @@ void unmap_mapping_folio(struct folio *folio)
 /**
  * unmap_mapping_pages() - Unmap pages from processes.
  解除被映射的页的映射
+ 20250629012819
  * @mapping: The address space containing pages to be unmapped.
  * @start: Index of first page to be unmapped.
  * @nr: Number of pages to be unmapped.  0 to unmap to end of file.
@@ -3670,6 +3676,7 @@ void unmap_mapping_pages(struct address_space *mapping, pgoff_t start,
 		last_index = ULONG_MAX;
 
 	i_mmap_lock_read(mapping);
+	/* 如果mapping->i_mmap还有vma, 就unmap */
 	if (unlikely(!RB_EMPTY_ROOT(&mapping->i_mmap.rb_root)))
 		unmap_mapping_range_tree(&mapping->i_mmap, first_index,
 					 last_index, &details);

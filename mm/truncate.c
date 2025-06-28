@@ -662,9 +662,12 @@ static int folio_launder(struct address_space *mapping, struct folio *folio)
 }
 
 /**
+
  * invalidate_inode_pages2_range - remove range of pages from an address_space
  好像重点在于无效化?
  从address_space中删除页面范围. 一个个的等待写回完成,解除映射?
+ =============
+ 一种调用原因可能是, mapping的start,end范围内进行了直接io, 把这些缓存的内容给invalidate
  * @mapping: the address_space
  * @start: the page offset 'from' which to invalidate
  * @end: the page offset 'to' which to invalidate (inclusive)
@@ -694,41 +697,40 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 		收拢一些到fbatch */
 		for (i = 0; i < folio_batch_count(&fbatch); i++) {
 			struct folio *folio = fbatch.folios[i];
-
 			/* We rely upon deletion not changing folio->index */
-
 			if (xa_is_value(folio)) {/* 不是正常的pagecache页面 */
 				if (!invalidate_exceptional_entry2(mapping,
 						indices[i], folio)) //如果不可以忽略的话?
 					ret = -EBUSY;
 				continue; //跳过
 			}
-
+			/* 遇到被映射的文件页, 解除映射 */
 			if (!did_range_unmap && folio_mapped(folio)) {
 				/* 只会在遇到被映射的folio时进来执行一次
-				执行的是解除映射 */
+					执行的是解除映射 */
 				/*
 				 * If folio is mapped, before taking its lock,
 				 * zap the rest of the file in one hit.
-				 这个pagecache的folio被映射了
+				 这个pagecache的folio被映射了(被映射的文件页)
+				 解除映射
 				 */
 				unmap_mapping_pages(mapping, indices[i],
 						(1 + end - indices[i]), false);
 				did_range_unmap = 1;
 			}
-
 			folio_lock(folio);
 			if (unlikely(folio->mapping != mapping)) {// 这是什么情况?
 				folio_unlock(folio);
 				continue;
 			}
 			VM_BUG_ON_FOLIO(!folio_contains(folio, indices[i]), folio);
-			folio_wait_writeback(folio); // 真的要等吗?
+			folio_wait_writeback(folio); // 等待写回完成
 
 			if (folio_mapped(folio))
 				unmap_mapping_folio(folio); // 这里遍历相关的全部vma, 然后遍历页表解除映射
 			BUG_ON(folio_mapped(folio));
 
+			/* 现在mapping里面的这个folio, 写回完成了, 映射解除了 */
 			ret2 = folio_launder(mapping, folio);
 			if (ret2 == 0) {
 				if (!invalidate_complete_folio2(mapping, folio))
@@ -738,6 +740,7 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 				ret = ret2;
 			folio_unlock(folio);
 		}
+		/* 去除batch里面is_value的folio */
 		folio_batch_remove_exceptionals(&fbatch);
 		folio_batch_release(&fbatch); // 释放到buddy
 		cond_resched();

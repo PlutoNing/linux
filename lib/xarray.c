@@ -1510,6 +1510,7 @@ void *xas_find_conflict(struct xa_state *xas)
 EXPORT_SYMBOL_GPL(xas_find_conflict);
 
 /**
+从xas获取一个条目
  * xa_load() - Load an entry from an XArray.
  * @xa: XArray.
  * @index: index into array.

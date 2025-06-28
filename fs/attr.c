@@ -230,6 +230,7 @@ kill_priv:
 EXPORT_SYMBOL(setattr_prepare);
 
 /**
+检测修改文件大小是否合法
  * inode_newsize_ok - may this inode be truncated to a given size
  * @inode:	the inode to be truncated
  * @offset:	the new size to assign to the inode
@@ -250,6 +251,7 @@ int inode_newsize_ok(const struct inode *inode, loff_t offset)
 	if (offset < 0)
 		return -EINVAL;
 	if (inode->i_size < offset) {
+		/* 如果是扩大 */
 		unsigned long limit;
 
 		limit = rlimit(RLIMIT_FSIZE);
@@ -258,6 +260,7 @@ int inode_newsize_ok(const struct inode *inode, loff_t offset)
 		if (offset > inode->i_sb->s_maxbytes)
 			goto out_big;
 	} else {
+		/* 如果是截断 */
 		/*
 		 * truncation of in-use swapfiles is disallowed - it would
 		 * cause subsequent swapout to scribble on the now-freed

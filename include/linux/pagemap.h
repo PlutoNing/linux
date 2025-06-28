@@ -785,6 +785,7 @@ static inline pgoff_t folio_index(struct folio *folio)
 }
 
 /**
+获取mapping里面下一个folio的index (可能是因为folio有时候是多个页面组成的)
  * folio_next_index - Get the index of the next folio.
  * @folio: The current folio.
  *
@@ -936,6 +937,8 @@ static inline loff_t page_file_offset(struct page *page)
 }
 
 /**
+folio是文件的页缓存页
+这里计算对应的pos
  * folio_pos - Returns the byte position of this folio in its file.
  * @folio: The folio.
  */
@@ -1365,7 +1368,7 @@ void page_cache_async_readahead(struct address_space *mapping,
 	page_cache_async_ra(&ractl, folio, req_count);
 }
 
-//获取ra的下一个预读的folio?
+/* 获取ra的下一个需要预读的folio? */
 static inline struct folio *__readahead_folio(struct readahead_control *ractl)
 {
 	struct folio *folio;
@@ -1403,6 +1406,7 @@ static inline struct page *readahead_page(struct readahead_control *ractl)
 }
 
 /**
+获取下一个要读的folio
  * readahead_folio - Get the next folio to read.
  * @ractl: The current readahead request.
  *
@@ -1412,6 +1416,7 @@ static inline struct page *readahead_page(struct readahead_control *ractl)
  */
 static inline struct folio *readahead_folio(struct readahead_control *ractl)
 {
+	/*  */
 	struct folio *folio = __readahead_folio(ractl);
 
 	if (folio)
@@ -1490,6 +1495,7 @@ static inline pgoff_t readahead_index(struct readahead_control *rac)
 }
 
 /**
+本次预读要读取的页面数量
  * readahead_count - The number of pages in this readahead request.
  * @rac: The readahead request.
  */

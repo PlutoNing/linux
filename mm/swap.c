@@ -1165,6 +1165,7 @@ void __folio_batch_release(struct folio_batch *fbatch)
 EXPORT_SYMBOL(__folio_batch_release);
 
 /**
+把batch里面的a_is_value的folio移除, 正常的往前平移
  * folio_batch_remove_exceptionals() - Prune non-folios from a batch.
  * @fbatch: The batch to prune
  *
