@@ -85,7 +85,7 @@ static inline void bvec_set_virt(struct bio_vec *bv, void *vaddr,
 struct bvec_iter {
 	sector_t		bi_sector;	
 	/*
-	要写入的设备地址？
+	要写入的设备地址？ 磁盘扇区
 	device address in 512 byte
 						   sectors */
 	unsigned int		bi_size;	/* 

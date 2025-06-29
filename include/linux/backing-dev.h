@@ -62,7 +62,8 @@ static inline bool bdi_has_dirty_io(struct backing_dev_info *bdi)
 	return atomic_long_read(&bdi->tot_write_bandwidth);
 }
 
-//
+// 进行wb级别的状态修改
+/* 统计wb的脏页, 可回收页等等 */
 static inline void wb_stat_mod(struct bdi_writeback *wb,
 				 enum wb_stat_item item, s64 amount)
 {

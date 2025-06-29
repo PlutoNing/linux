@@ -169,7 +169,8 @@ void end_buffer_read_sync(struct buffer_head *bh, int uptodate)
 }
 EXPORT_SYMBOL(end_buffer_read_sync);
 
-/* 写回bh的end io函数
+/* 
+写回bh的end io函数
 设置bh为up-to-date */
 void end_buffer_write_sync(struct buffer_head *bh, int uptodate)
 {
@@ -774,7 +775,11 @@ void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
 EXPORT_SYMBOL(mark_buffer_dirty_inode);
 
 /*
-20250629024654
+把这个folio设置为脏
+=================
+依次把buffer, folio, mapping, inode置脏
+==============
+一般用作fops的dirty_folio回调
  * Add a page to the dirty page list.
  *
  * It is a sad fact of life that this function is called from several places
@@ -805,6 +810,7 @@ bool block_dirty_folio(struct address_space *mapping, struct folio *folio)
 	bool newly_dirty;
 
 	spin_lock(&mapping->private_lock);
+	/* 先把folio的每一个buffer置脏 */
 	head = folio_buffers(folio);
 	if (head) {
 		struct buffer_head *bh = head;
@@ -819,14 +825,18 @@ bool block_dirty_folio(struct address_space *mapping, struct folio *folio)
 	 * synchronized with per-memcg dirty page counters.
 	 */
 	folio_memcg_lock(folio);
+	/* 然后置脏folio */
 	newly_dirty = !folio_test_set_dirty(folio);
 	spin_unlock(&mapping->private_lock);
 
+	/* 这里找到folio对应的wb,
+	在mapping里面把folio置脏 */
 	if (newly_dirty)
 		__folio_mark_dirty(folio, mapping, 1);
 
 	folio_memcg_unlock(folio);
 
+	/* 这里把inode置脏 */
 	if (newly_dirty)
 		__mark_inode_dirty(mapping->host, I_DIRTY_PAGES);
 
@@ -2006,7 +2016,7 @@ static struct buffer_head *folio_create_buffers(struct folio *folio,
  ===================================
  folio是inode的mapping的一个folio
  这里把folio的内容写入inode文件
- 一个个的submit_bh回写这个folio上面的bh
+ 一个个的submit_bh回写这个folio上面的buffer
  */
 int __block_write_full_folio(struct inode *inode, struct folio *folio,
 			get_block_t *get_block, struct writeback_control *wbc,
@@ -2107,6 +2117,7 @@ int __block_write_full_folio(struct inode *inode, struct folio *folio,
 		if (wbc->sync_mode != WB_SYNC_NONE) {
 			lock_buffer(bh);
 		} else if (!trylock_buffer(bh)) {
+			/* 这里就是字面意义上的再set dirty一次 */
 			folio_redirty_for_writepage(wbc, folio);
 			continue;
 		}
@@ -3181,7 +3192,11 @@ void write_dirty_buffer(struct buffer_head *bh, blk_opf_t op_flags)
 EXPORT_SYMBOL(write_dirty_buffer);
 
 /*
+同步写入buffer
 回写这个buffer, 等待io完成
+=================
+主要是文件系统实现调用这个函数
+fs实现->sync_dirty_buffer->
  * For a data-integrity writeout, we need to wait upon any in-progress I/O
  * and then start new I/O and then wait upon it.  The caller must have a ref on
  * the buffer_head.
@@ -3196,6 +3211,7 @@ int __sync_dirty_buffer(struct buffer_head *bh, blk_opf_t op_flags)
 		/*
 		 * The bh should be mapped, but it might not be if the
 		 * device was hot-removed. Not much we can do but fail the I/O.
+		 如果到这里了, 没有map(之前早就应该map了), 可能是设备热插拔了
 		 */
 		if (!buffer_mapped(bh)) {
 			unlock_buffer(bh);
@@ -3204,6 +3220,7 @@ int __sync_dirty_buffer(struct buffer_head *bh, blk_opf_t op_flags)
 
 		get_bh(bh);
 		bh->b_end_io = end_buffer_write_sync;
+		/* 提交写入并等待完成 */
 		submit_bh(REQ_OP_WRITE | op_flags, bh);
 		wait_on_buffer(bh);
 		if (!buffer_uptodate(bh))
@@ -3216,7 +3233,10 @@ int __sync_dirty_buffer(struct buffer_head *bh, blk_opf_t op_flags)
 EXPORT_SYMBOL(__sync_dirty_buffer);
 
 /* 
+同步写入buffer
 回写这个buffer, 等待io完成
+===================================
+主要是fs实现调用这个函数
 */
 int sync_dirty_buffer(struct buffer_head *bh)
 {
@@ -3477,6 +3497,9 @@ int __bh_read(struct buffer_head *bh, blk_opf_t op_flags, bool wait)
 EXPORT_SYMBOL(__bh_read);
 
 /**
+提交一批未加锁的buffer的读取
+=========================
+能加锁成功的就读取, 不等待完成. 加锁失败的跳过
  * __bh_read_batch - Submit read for a batch of unlocked buffers
  * @nr: entry number of the buffer batch
  * @bhs: a batch of struct buffer_head

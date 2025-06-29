@@ -583,6 +583,9 @@ static void cgwb_remove_from_bdi_list(struct bdi_writeback *wb)
 }
 
 //给这个memcg在bdi上创建一个wb
+/* 
+memcg -> wb <- blkcg
+*/
 static int cgwb_create(struct backing_dev_info *bdi,
 		       struct cgroup_subsys_state *memcg_css, gfp_t gfp)
 {
@@ -599,12 +602,15 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	blkcg_css = cgroup_get_e_css(memcg_css->cgroup, &io_cgrp_subsys);
 	memcg_cgwb_list = &memcg->cgwb_list; //memcg的cgwb_list
 
-	blkcg_cgwb_list = blkcg_get_cgwb_list(blkcg_css); //获取blkcg的cgwb_list
+	 //获取blkcg的cgwb_list
+	blkcg_cgwb_list = blkcg_get_cgwb_list(blkcg_css);
 
 	/* look up again under lock and discard on blkcg mismatch */
 	spin_lock_irqsave(&cgwb_lock, flags);
 	wb = radix_tree_lookup(&bdi->cgwb_tree, memcg_css->id);
-	if (wb && wb->blkcg_css != blkcg_css) { //这说明blkcg发生了变化?
+	/* wb->blkcg_css是之前在bdi的cgwb_tree关联的
+	现在新查到的有效的是blkcg_css */
+	if (wb && wb->blkcg_css != blkcg_css) {
 		cgwb_kill(wb);
 		wb = NULL;
 	}
@@ -612,7 +618,7 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	if (wb) //这是说明wb存在, 并且blkcg没有发生变化
 		goto out_put;
 
-	//wb不存在, 需要创建一个新的
+	//wb不存在, 或者是wb存在但是blkcg变化了, 总之现在需要创建一个新的
 	/* need to create a new one */
 	wb = kmalloc(sizeof(*wb), gfp);
 	if (!wb) {
@@ -633,7 +639,9 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	if (ret)
 		goto err_ref_exit;
 
+	/* 设置这个wb的关联 */
 	wb->memcg_css = memcg_css;
+	/* 设置有效的blkcg */
 	wb->blkcg_css = blkcg_css;
 	INIT_LIST_HEAD(&wb->b_attached);
 	INIT_WORK(&wb->release_work, cgwb_release_workfn);
@@ -651,13 +659,17 @@ static int cgwb_create(struct backing_dev_info *bdi,
 	 */
 	ret = -ENODEV;
 	spin_lock_irqsave(&cgwb_lock, flags);
+	//这里是判断memcg和blkcg是否在线,并且wb也在线
 	if (test_bit(WB_registered, &bdi->wb.state) &&
-	    blkcg_cgwb_list->next && memcg_cgwb_list->next) { //这里是判断memcg和blkcg是否在线,并且wb也在线
+	    blkcg_cgwb_list->next && memcg_cgwb_list->next) { 
+		
 		/* we might have raced another instance of this function */
 		ret = radix_tree_insert(&bdi->cgwb_tree, memcg_css->id, wb);//插入到bdi的cgwb_tree中
 		if (!ret) {
 			list_add_tail_rcu(&wb->bdi_node, &bdi->wb_list);
+			/* 把wb加入memcg */
 			list_add(&wb->memcg_node, memcg_cgwb_list);
+			/* 把wb加入blkcg */
 			list_add(&wb->blkcg_node, blkcg_cgwb_list);
 			blkcg_pin_online(blkcg_css);
 			css_get(memcg_css);
@@ -687,6 +699,11 @@ out_put:
 }
 
 /**
+bdi是inode的磁盘, memcg是inode的mapping的一个folio的memcg
+==============
+bdi->cgwb_tree是一个memcg到wb的kv, 这里查到memcg对应的wb
+也就是说每个task->页缓存里的folio->memcg->bdi的wb->blkcg
+每个task的读写都是可以受wb控制的
  * wb_get_lookup - get wb for a given memcg
 	查找memcg在bdi上的wb
  * @bdi: target bdi
@@ -741,8 +758,10 @@ struct bdi_writeback *wb_get_lookup(struct backing_dev_info *bdi,
 }
 
 /**
+获取memcg在bdi上面对应的wb
  * wb_get_create - get wb for a given memcg, create if necessary
   获取memcg在bdi上的wb，如果不存在则创建
+  bdi是inode的磁盘, memcg是mapping的某folio的memcg, 也可能是当前jinc
  * @bdi: target bdi
  * @memcg_css: cgroup_subsys_state of the target memcg (must have positive ref)
  * @gfp: allocation mask to use
@@ -760,7 +779,9 @@ struct bdi_writeback *wb_get_create(struct backing_dev_info *bdi,
 	might_alloc(gfp);
 
 	do {
+		/* 在bdi的cgwb_tree上面memcg作为key查询对应的wb */
 		wb = wb_get_lookup(bdi, memcg_css);
+		/* 没有的话, 这里创建 */
 	} while (!wb && !cgwb_create(bdi, memcg_css, gfp));
 	/* 有wb了或者创建成功了,就返回 */
 	return wb;

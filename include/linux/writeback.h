@@ -245,6 +245,10 @@ void cgroup_writeback_umount(void);
 bool cleanup_offline_cgwb(struct bdi_writeback *wb);
 
 /**
+找到folio对应的wb
+赋值到inode->i_wb
+==============
+inode的mapping这个folio变脏的时候会调用
  * inode_attach_wb - associate an inode with its wb
    关联inode和wb. 把找到的wb赋值到inode
  * @inode: inode of interest
@@ -253,10 +257,6 @@ bool cleanup_offline_cgwb(struct bdi_writeback *wb);
  * If @inode doesn't have its wb, associate it with the wb matching the
  * memcg of @folio or, if @folio is NULL, %current.  May be called w/ or w/o
  * @inode->i_lock.
-	如果@inode没有它的wb，则将其与与@folio的memcg匹配的wb关联，或者如果@folio为NULL，
-	则与%current关联。
-	----
-	目前猜测这里可能是为了实现cgrop级别的io控制?
  */
 static inline void inode_attach_wb(struct inode *inode, struct folio *folio)
 {

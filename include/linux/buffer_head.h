@@ -469,11 +469,18 @@ static inline int bh_read(struct buffer_head *bh, blk_opf_t op_flags)
 	return __bh_read(bh, op_flags, true);
 }
 
+/* 批量读取一批buffer (没有提前加锁)
+================
+主要是文件系统实现调用这个函数 */
 static inline void bh_read_batch(int nr, struct buffer_head *bhs[])
 {
 	__bh_read_batch(nr, bhs, 0, true);
 }
 
+/* 批量读取一批buffer (没有提前加锁)
+================
+文件系统实现调用这个函数
+*/
 static inline void bh_readahead_batch(int nr, struct buffer_head *bhs[],
 				      blk_opf_t op_flags)
 {

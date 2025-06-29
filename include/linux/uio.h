@@ -139,6 +139,7 @@ static inline bool iov_iter_is_kvec(const struct iov_iter *i)
 	return iov_iter_type(i) == ITER_KVEC;
 }
 
+/* 检查iter类型 */
 static inline bool iov_iter_is_bvec(const struct iov_iter *i)
 {
 	return iov_iter_type(i) == ITER_BVEC;
@@ -159,6 +160,8 @@ static inline unsigned char iov_iter_rw(const struct iov_iter *i)
 	return i->data_source ? WRITE : READ;
 }
 
+/* 什么是user_backed?
+零拷贝机制么 */
 static inline bool user_backed_iter(const struct iov_iter *i)
 {
 	return i->user_backed;

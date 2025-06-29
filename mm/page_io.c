@@ -27,9 +27,10 @@
 #include <linux/zswap.h>
 #include "swap.h"
 
-//
+// 结束bio的回写状态
 static void __end_swap_bio_write(struct bio *bio)
 {
+	/* 获取bio的第一个bvec的page */
 	struct folio *folio = bio_first_folio_all(bio);
 
 	if (bio->bi_status) {
@@ -211,6 +212,8 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 	return 0;
 }
 
+/* 把这个swap mapping里面的页面换出了
+这里进行统计 */
 static inline void count_swpout_vm_event(struct folio *folio)
 {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
@@ -343,6 +346,7 @@ static void swap_writepage_fs(struct page *page, struct writeback_control *wbc)
 
 // 如果交换分区是磁盘的话
 // 调用这个函数把swap mapping的page回写到磁盘
+/* 等待io完成 */
 static void swap_writepage_bdev_sync(struct page *page,
 		struct writeback_control *wbc, struct swap_info_struct *sis)
 {
@@ -352,17 +356,22 @@ static void swap_writepage_bdev_sync(struct page *page,
 	// 初始化bio
 	bio_init(&bio, sis->bdev, &bv, 1,
 		 REQ_OP_WRITE | REQ_SWAP | wbc_to_write_flags(wbc));
+	/* 设置要写入的扇区 */
 	bio.bi_iter.bi_sector = swap_page_sector(page);
+	/* 把page加入bio, 设置bio的一个bvec用于io这个page的部分内容 */
 	__bio_add_page(&bio, page, thp_size(page), 0);
-		// 关联blk cg
+	// 关联blk cg
 	bio_associate_blkg_from_page(&bio, folio);
+	/* 信息统计  */
 	count_swpout_vm_event(folio);
 
 	//开启回写
 	folio_start_writeback(folio);
 	folio_unlock(folio);
 
+	/* 提交bio等待完成 */
 	submit_bio_wait(&bio); //等待回写完成
+	/* 结束folio的回写状态 */
 	__end_swap_bio_write(&bio);
 }
 
@@ -390,7 +399,7 @@ static void swap_writepage_bdev_async(struct page *page,
 	submit_bio(bio);/* 提交io */
 }
 
-// 回写swap mapping的folio
+// 回写swap mapping的folio, 写到交换设备文件
 void __swap_writepage(struct page *page, struct writeback_control *wbc)
 {
 	struct swap_info_struct *sis = page_swap_info(page);
@@ -446,7 +455,10 @@ static void sio_read_complete(struct kiocb *iocb, long ret)
 	mempool_free(sio, sio_pool);
 }
 
-// 像是初始化了“plug”这个“任务”
+/* 
+会调用fs的回调
+读取swap 文件的页面到内存没
+*/
 static void swap_readpage_fs(struct page *page,
 			     struct swap_iocb **plug)
 {
@@ -477,6 +489,7 @@ static void swap_readpage_fs(struct page *page,
 	sio->len += thp_size(page);
 	sio->pages += 1;
 	if (sio->pages == ARRAY_SIZE(sio->bvec) || !plug) {
+		/* 这里会发起读写, 读写文件内容 */
 		swap_read_unplug(sio);
 		sio = NULL;
 	}
@@ -485,13 +498,17 @@ static void swap_readpage_fs(struct page *page,
 		*plug = sio;
 }
 
-// 好像是初始化一个bio来读取page的东西, 读入一个被swap出去的页面
+/* 这里是swap的提前预读入
+把swap文件的页面提前读取到swap mapping
+=====================
+初始化一个bio, 把page加入bio, 提交并等待完成 */
 static void swap_readpage_bdev_sync(struct page *page,
 		struct swap_info_struct *sis)
 {
 	struct bio_vec bv;
 	struct bio bio;
 
+	/* 初始化仅含有一个bvec的bio, 这里只需要读入一个页面 */
 	bio_init(&bio, sis->bdev, &bv, 1, REQ_OP_READ);
 	// 设置要读取的东西
 	bio.bi_iter.bi_sector = swap_page_sector(page);
@@ -524,7 +541,9 @@ static void swap_readpage_bdev_async(struct page *page,
 	submit_bio(bio);
 }
 
-// 把swap file的内容读入到page里面?
+/* 
+把swap file的内容读入到page里面
+*/
 void swap_readpage(struct page *page, bool synchronous, struct swap_iocb **plug)
 {
 	struct folio *folio = page_folio(page);
@@ -553,10 +572,13 @@ void swap_readpage(struct page *page, bool synchronous, struct swap_iocb **plug)
 		folio_mark_uptodate(folio);
 		folio_unlock(folio);
 	} else if (data_race(sis->flags & SWP_FS_OPS)) {
-		swap_readpage_fs(page, plug); // 东西初始化和指定在plug里面
+	/* 如果swap设备是文件, 这里调用fs的回调把内容读入 */
+		swap_readpage_fs(page, plug);
 	} else if (synchronous || (sis->flags & SWP_SYNCHRONOUS_IO)) {
-		swap_readpage_bdev_sync(page, sis); // 把swap file里面的换入到page
+	/* 同步地把swap 文件的内容读入内存 */
+		swap_readpage_bdev_sync(page, sis);
 	} else {
+		/* 异步的实现 */
 		swap_readpage_bdev_async(page, sis);
 	}
 
@@ -567,6 +589,7 @@ void swap_readpage(struct page *page, bool synchronous, struct swap_iocb **plug)
 	delayacct_swapin_end();
 }
 
+/* 读取文件内容 */
 void __swap_read_unplug(struct swap_iocb *sio)
 {
 	struct iov_iter from;

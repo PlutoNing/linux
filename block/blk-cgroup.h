@@ -112,6 +112,7 @@ struct blkcg {
 	char                            fc_app_id[FC_APPID_LEN];
 #endif
 #ifdef CONFIG_CGROUP_WRITEBACK
+	/* 自己关联的wb都在这里 */
 	struct list_head		cgwb_list;
 #endif
 };

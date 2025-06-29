@@ -321,7 +321,8 @@ struct mem_cgroup {
 	struct memcg_vmstats_percpu __percpu *vmstats_percpu;
 
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct list_head cgwb_list; //关联的wb连接到这里
+	/* 这个memcg关联的wb都在这里 */
+	struct list_head cgwb_list;
 	struct wb_domain cgwb_domain;
 	struct memcg_cgwb_frn cgwb_frn[MEMCG_CGWB_FRN_CNT];
 #endif

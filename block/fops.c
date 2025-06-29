@@ -44,10 +44,12 @@ static bool blkdev_dio_unaligned(struct block_device *bdev, loff_t pos,
 
 #define DIO_INLINE_BIO_VECS 4
 
-// 块设备的direct IO实现中的一种
+/* 块设备的direct IO实现中的一种
+ */
 static ssize_t __blkdev_direct_IO_simple(struct kiocb *iocb,
 		struct iov_iter *iter, unsigned int nr_pages)
 {
+	/* 要读写的磁盘 */
 	struct block_device *bdev = I_BDEV(iocb->ki_filp->f_mapping->host);
 	struct bio_vec inline_vecs[DIO_INLINE_BIO_VECS], *vecs;
 	loff_t pos = iocb->ki_pos;
@@ -67,6 +69,7 @@ static ssize_t __blkdev_direct_IO_simple(struct kiocb *iocb,
 			return -ENOMEM;
 	}
 
+	/* 这里初始化bio */
 	if (iov_iter_rw(iter) == READ) {
 		bio_init(&bio, bdev, vecs, nr_pages, REQ_OP_READ);
 		if (user_backed_iter(iter))
@@ -77,6 +80,7 @@ static ssize_t __blkdev_direct_IO_simple(struct kiocb *iocb,
 	bio.bi_iter.bi_sector = pos >> SECTOR_SHIFT;
 	bio.bi_ioprio = iocb->ki_ioprio;
 
+	/* 这里把iter的内容页面给bio */
 	ret = bio_iov_iter_get_pages(&bio, iter);
 	if (unlikely(ret))
 		goto out;
@@ -88,8 +92,10 @@ static ssize_t __blkdev_direct_IO_simple(struct kiocb *iocb,
 	if (iocb->ki_flags & IOCB_NOWAIT)
 		bio.bi_opf |= REQ_NOWAIT;
 
+	/* 提交bio, 等待完成 */
 	submit_bio_wait(&bio);
 
+	/* 释放内存 */
 	bio_release_pages(&bio, should_dirty);
 	if (unlikely(bio.bi_status))
 		ret = blk_status_to_errno(bio.bi_status);
@@ -161,6 +167,7 @@ static void blkdev_bio_end_io(struct bio *bio)
 	}
 }
 
+/* blk直接io的实现 (用于nr_pages比较大的情况) */
 static ssize_t __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 		unsigned int nr_pages)
 {
@@ -300,6 +307,8 @@ static void blkdev_bio_end_io_async(struct bio *bio)
 	}
 }
 
+/* 把iter写入iocb
+这函数是异步的bio提交 */
 static ssize_t __blkdev_direct_IO_async(struct kiocb *iocb,
 					struct iov_iter *iter,
 					unsigned int nr_pages)
@@ -372,11 +381,18 @@ static ssize_t blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	if (!iov_iter_count(iter))
 		return 0;
 
+	/*  */
 	nr_pages = bio_iov_vecs_to_alloc(iter, BIO_MAX_VECS + 1);
+	/* 如果要读写的内容不是很多 */
 	if (likely(nr_pages <= BIO_MAX_VECS)) {/* 
-	这一块是啥意思? */
-		if (is_sync_kiocb(iocb))
+	 */
+	
+	 /* 如果kiocb要求同步读写, __blkdev_direct_IO_simple就把iter的内容页面抽取
+	 到一个bio, 然后提交, 等待完成 */
+	 if (is_sync_kiocb(iocb))
 			return __blkdev_direct_IO_simple(iocb, iter, nr_pages);
+
+		/* 这里是可以异步提交bio */
 		return __blkdev_direct_IO_async(iocb, iter, nr_pages);
 	}
 	return __blkdev_direct_IO(iocb, iter, bio_max_segs(nr_pages));
@@ -462,6 +478,7 @@ const struct address_space_operations def_blk_aops = {
 	.read_folio	= blkdev_read_folio,
 	/* 预读的fops */
 	.readahead	= blkdev_readahead,
+	/*  */
 	.writepage	= blkdev_writepage,
 	/* 写回指定页面 */
 	.write_begin	= blkdev_write_begin,

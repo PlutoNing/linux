@@ -3971,7 +3971,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 				/* To provide entry to swap_readpage() */
 				folio->swap = entry;
-				// 这里把swap file的内容换入到内存
+				// 这里把swap file的内容换入到内存page里面
 				swap_readpage(page, true, NULL);
 				folio->private = NULL;
 			}

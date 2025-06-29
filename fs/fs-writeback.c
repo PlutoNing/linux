@@ -244,15 +244,18 @@ void wb_wait_for_completion(struct wb_completion *done)
 static atomic_t isw_nr_in_flight = ATOMIC_INIT(0);
 static struct workqueue_struct *isw_wq;
 
-/* 给inode找到对应的wb
-就是找到memcg,然后找到blkcg, 然后是对应的wb
-
+/*
+ 给inode这个folio找到or创建对应的wb
+task读写folio, 有memcg, 作为key到bdi查询wb, 获取wb->blkcg_css
  */
 void __inode_attach_wb(struct inode *inode, struct folio *folio)
 {
 	struct backing_dev_info *bdi = inode_to_bdi(inode);
 	struct bdi_writeback *wb = NULL;
 
+	/* 这里获取wb
+	如果inode开启了cgwb
+	就获取memcg对应的wb(用于控制blk读写) */
 	if (inode_cgwb_enabled(inode)) {
 		struct cgroup_subsys_state *memcg_css;
 
@@ -2649,13 +2652,16 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 	 */
 	smp_mb();
 
+	/* 如果已经是所期待的flag了 */
 	if ((inode->i_state & flags) == flags)
 		return;
 
 	spin_lock(&inode->i_lock);
+	/* 如果flag确实被设置了新值 */
 	if ((inode->i_state & flags) != flags) {
 		const int was_dirty = inode->i_state & I_DIRTY;
 
+		/* 这里folio是null, memcg会是task的memcg */
 		inode_attach_wb(inode, NULL);
 
 		inode->i_state |= flags;

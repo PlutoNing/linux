@@ -251,20 +251,20 @@ static inline void bio_clear_flag(struct bio *bio, unsigned int bit)
 	bio->bi_flags &= ~(1U << bit);
 }
 
-//
+// 获取bio的第一个bvec
 static inline struct bio_vec *bio_first_bvec_all(struct bio *bio)
 {
 	WARN_ON_ONCE(bio_flagged(bio, BIO_CLONED));
 	return bio->bi_io_vec;
 }
 
-//
+// 获取bio回写的page
 static inline struct page *bio_first_page_all(struct bio *bio)
 {
 	return bio_first_bvec_all(bio)->bv_page;
 }
 
-//
+// 获取bio所回写的folio
 static inline struct folio *bio_first_folio_all(struct bio *bio)
 {
 	return page_folio(bio_first_page_all(bio));

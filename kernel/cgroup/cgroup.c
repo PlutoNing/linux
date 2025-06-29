@@ -590,7 +590,7 @@ struct cgroup_subsys_state *cgroup_e_css(struct cgroup *cgrp,
 
 /**
  * cgroup_get_e_css - get a cgroup's effective css for the specified subsystem
-	获取cgroup的有效css
+	获取cgroup的某个ss的有效css
  * @cgrp: the cgroup of interest
  * @ss: the subsystem of interest
  *

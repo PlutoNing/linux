@@ -422,6 +422,8 @@ dio_bio_alloc(struct dio *dio, struct dio_submit *sdio,
 }
 
 /*
+dio含义是直接io
+20250630012546
  * In the AIO read case we speculatively dirty the pages before starting IO.
  * During IO completion, any of these pages which happen to have been written
  * back will be redirtied by bio_check_pages_dirty().

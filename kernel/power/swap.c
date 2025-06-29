@@ -269,6 +269,7 @@ static void hib_end_io(struct bio *bio)
 	bio_put(bio);
 }
 
+/* 睡眠相关? */
 static int hib_submit_io(blk_opf_t opf, pgoff_t page_off, void *addr,
 			 struct hib_bio_batch *hb)
 {

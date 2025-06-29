@@ -872,6 +872,7 @@ int filemap_migrate_folio(struct address_space *mapping,
 EXPORT_SYMBOL_GPL(filemap_migrate_folio);
 
 /*
+写回mapping的folio
  * Writeback a folio to clean the dirty state
    写回一个folio以清除脏状态
  */
@@ -904,6 +905,7 @@ static int writeout(struct address_space *mapping, struct folio *folio)
 	 */
 	remove_migration_ptes(folio, folio, false);
 
+	/* 调用mapping的回调 */
 	rc = mapping->a_ops->writepage(&folio->page, &wbc);
 
 	if (rc != AOP_WRITEPAGE_ACTIVATE)

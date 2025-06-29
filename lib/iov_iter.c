@@ -1303,6 +1303,7 @@ static int bvec_npages(const struct iov_iter *i, int maxpages)
 	return npages;
 }
 
+/* 计算需要多少页面来读写这个iter? */
 int iov_iter_npages(const struct iov_iter *i, int maxpages)
 {
 	if (unlikely(!i->count))
@@ -1838,7 +1839,7 @@ static ssize_t iov_iter_extract_user_pages(struct iov_iter *i,
 
 /**
  * iov_iter_extract_pages - Extract a list of contiguous pages from an iterator
- 从iter获取一系列连续的页面
+ 从iter获取一系列连续的页面 放到@pages
  * @i: The iterator to extract from
  * @pages: Where to return the list of pages
  * @maxsize: The maximum amount of iterator to extract

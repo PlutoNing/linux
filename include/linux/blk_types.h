@@ -267,6 +267,7 @@ typedef unsigned int blk_qc_t;
  */
 struct bio {
 	struct bio		*bi_next;	/* request queue link */
+	/* 要读写的磁盘 */
 	struct block_device	*bi_bdev;
 	blk_opf_t		bi_opf;		/* bottom bits REQ_OP, top bits
 						 * req_flags.
@@ -331,7 +332,8 @@ struct bio {
 
 	atomic_t		__bi_cnt;	/* pin count */
 
-	struct bio_vec		*bi_io_vec;	/* 
+	struct bio_vec		*bi_io_vec;	/*
+	是一个bvec的table 
 	里面的每一个元素, 表示一个回写的page的数据,和offset,位置什么的
 	the actual vec list */
 

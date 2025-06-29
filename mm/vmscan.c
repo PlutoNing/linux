@@ -1386,10 +1386,10 @@ typedef enum {
 	PAGE_CLEAN,
 } pageout_t;
 
-/*shrink_folio_list()调用pageout()来处理每个脏folio
+/*
+shrink_folio_list()调用pageout()来处理每个脏folio
  * pageout is called by shrink_folio_list() for each dirty folio.
  * Calls ->writepage().
-   .
  */
 static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			 struct swap_iocb **plug)
@@ -1442,7 +1442,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			.for_reclaim = 1,
 			.swap_plug = plug,
 		};
-/* 设置这个folio的回收位 */
+		/* 设置这个folio的回收位 */
 		folio_set_reclaim(folio);
 		// 回写mapping的这个脏folio
 		res = mapping->a_ops->writepage(&folio->page, &wbc);/* 可能是shmem_writepage */
@@ -2181,6 +2181,7 @@ retry:
 			 * starts and then write it out here.
 			 */
 			try_to_unmap_flush_dirty();
+			/* 换出页面 */
 			switch (pageout(folio, mapping, &plug)) {
 			case PAGE_KEEP:
 				goto keep_locked;

@@ -246,7 +246,8 @@ static void bio_free(struct bio *bio)
  * Users of this function have their own bio allocation. Subsequently,
  * they must remember to pair any call to bio_init() with bio_uninit()
  * when IO has completed, or when the bio is released.
-   这个函数的用户有自己的bio分配。随后，他们必须记住将任何对bio_init()的调用与bio_uninit()配对，
+   这个函数的用户有自己的bio分配。随后，他们必须记住将任何对bio_init()的调用与
+   bio_uninit()配对，
  */
 void bio_init(struct bio *bio, struct block_device *bdev, struct bio_vec *table,
 	      unsigned short max_vecs, blk_opf_t opf)
@@ -285,6 +286,7 @@ void bio_init(struct bio *bio, struct block_device *bdev, struct bio_vec *table,
 	bio->bi_cookie = BLK_QC_T_NONE;
 
 	bio->bi_max_vecs = max_vecs;
+	/*  */
 	bio->bi_io_vec = table;
 	bio->bi_pool = NULL;
 }
@@ -354,6 +356,7 @@ void bio_chain(struct bio *bio, struct bio *parent)
 EXPORT_SYMBOL(bio_chain);
 
 // 在链式bio中增加一个bio
+/* 主要是blk-lib调用这个函数 */
 struct bio *blk_next_bio(struct bio *bio, struct block_device *bdev,
 		unsigned int nr_pages, blk_opf_t opf, gfp_t gfp)
 {
@@ -1207,7 +1210,9 @@ EXPORT_SYMBOL_GPL(__bio_release_pages);
 
 
 /**
-为什么还能基于bio初始化bio
+内核读写过程中的一个操作, 把iter的页面放入bio用于后续的磁盘io
+这里是检测到iter为bvec类型之后调用这个函数
+把iter内容交给bio
  * @description: 基于iter初始化bio
  * @param {bio} *bio
  * @param {iov_iter} *iter
@@ -1227,12 +1232,17 @@ void bio_iov_bvec_set(struct bio *bio, struct iov_iter *iter)
 	}
 
 	bio->bi_vcnt = iter->nr_segs;
+	/* 这个函数的核心操作
+	因为事先检测到iter是bvec类型的
+	所以这里可以直接复制 */
 	bio->bi_io_vec = (struct bio_vec *)iter->bvec;
 	bio->bi_iter.bi_bvec_done = iter->iov_offset;
 	bio->bi_iter.bi_size = size;
 	bio_set_flag(bio, BIO_CLONED);
 }
 
+/* page是从iter提取的内容页面
+这里交给bio */
 static int bio_iov_add_page(struct bio *bio, struct page *page,
 		unsigned int len, unsigned int offset)
 {
@@ -1270,6 +1280,7 @@ static int bio_iov_add_zone_append_page(struct bio *bio, struct page *page,
 #define PAGE_PTRS_PER_BVEC     (sizeof(struct bio_vec) / sizeof(struct page *))
 
 /**
+把iter的内容页面交给bio
  * __bio_iov_iter_get_pages - pin user or kernel pages and add them to a bio
  * @bio: bio to add pages to
  * @iter: iov iterator describing the region to be mapped
@@ -1282,8 +1293,11 @@ static int bio_iov_add_zone_append_page(struct bio *bio, struct page *page,
 static int __bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 {
 	iov_iter_extraction_t extraction_flags = 0;
+	/* nrpages是bio还能容纳的数量? */
 	unsigned short nr_pages = bio->bi_max_vecs - bio->bi_vcnt;
+	/* 确实是 */
 	unsigned short entries_left = bio->bi_max_vecs - bio->bi_vcnt;
+	/* 现在bv指向bio->bi_io_vec这个table下一个新bvec页面的位置 */
 	struct bio_vec *bv = bio->bi_io_vec + bio->bi_vcnt;
 	struct page **pages = (struct page **)bv;
 	ssize_t size, left;
@@ -1308,6 +1322,8 @@ static int __bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 	 * more pages than bi_max_vecs allows, so we have to ALIGN_DOWN the
 	 * result to ensure the bio's total size is correct. The remainder of
 	 * the iov data will be picked up in the next bio iteration.
+	 这里开始把页面给bio
+	 就是把iter的内容放到pages参数 (由bio的bvec table强转而来)
 	 */
 	size = iov_iter_extract_pages(iter, &pages,
 				      UINT_MAX - bio->bi_iter.bi_size,
@@ -1337,7 +1353,7 @@ static int __bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 					offset);
 			if (ret)
 				break;
-		} else
+		} else /* 把page加入bio */
 			bio_iov_add_page(bio, page, len, offset);
 
 		offset = 0;
@@ -1352,6 +1368,8 @@ out:
 }
 
 /**
+要把iter的东西写到kiocb
+这里是把iter内部的内容页面赋值到bio
  * bio_iov_iter_get_pages - add user or kernel pages to a bio
  * @bio: bio to add pages to
  * @iter: iov iterator describing the region to be added
@@ -1378,7 +1396,10 @@ int bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 	if (WARN_ON_ONCE(bio_flagged(bio, BIO_CLONED)))
 		return -EIO;
 
+	/* iter一般作为读写数据的来源, 也分为好几种类型
+	这里如果内部是bvec数据源的话 */
 	if (iov_iter_is_bvec(iter)) {
+		/* 因为iter是bvec类型的, 所以这里可以直接把内部的bvec table交给bio */
 		bio_iov_bvec_set(bio, iter);
 		iov_iter_advance(iter, bio->bi_iter.bi_size);
 		return 0;
@@ -1386,8 +1407,10 @@ int bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 
 	if (iov_iter_extract_will_pin(iter))
 		bio_set_flag(bio, BIO_PAGE_PINNED);
+
 	do {
 		ret = __bio_iov_iter_get_pages(bio, iter);
+	/* 这里只要iter还有内容, 并且bio还有空间就继续 */
 	} while (!ret && iov_iter_count(iter) && !bio_full(bio, 0));
 
 	return bio->bi_vcnt ? 0 : ret;
@@ -1400,6 +1423,9 @@ static void submit_bio_wait_endio(struct bio *bio)
 }
 
 /**
+顺序读写bio (等待完成)
+===========
+调用场合: bdev fs的直接io, 换入换出页面的同步io, blk库
  * submit_bio_wait - submit a bio, and wait until it completes
    提交一个bio然后等待它完成
  * @bio: The &struct bio which describes the I/O

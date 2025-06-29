@@ -2627,7 +2627,11 @@ continue_unlock:
 }
 EXPORT_SYMBOL(write_cache_pages);
 
-// data参数是mapping, 调用mapping的writepage方法
+/* 
+回写mapping的folio
+data参数是mapping, 调用mapping的writepage方法
+==================
+do_writepages调用 */
 static int writepage_cb(struct folio *folio, struct writeback_control *wbc,
 		void *data)
 {
@@ -2657,7 +2661,8 @@ int do_writepages(struct address_space *mapping, struct writeback_control *wbc)
 		if (mapping->a_ops->writepages) { //如果mapping有writepages方法
 			ret = mapping->a_ops->writepages(mapping, wbc); //调用writepages方法
 
-		} else if (mapping->a_ops->writepage) {//没有writepages方法，有writepage方法也行
+		} else if (mapping->a_ops->writepage) {
+			//没有writepages方法，有writepage方法也行
 			struct blk_plug plug;
 			//但是这里为什么没有调用write_page呢？是在writepage_cb这里调用的
 
@@ -2713,8 +2718,16 @@ bool noop_dirty_folio(struct address_space *mapping, struct folio *folio)
 EXPORT_SYMBOL(noop_dirty_folio);
 
 /*
-   标记mapping的某个folio为脏页时会调用这个函数
-   更新统计信息, 并在inode上附加wb
+标记这个folio为脏
+================
+获取或者创建folio的memcg的wb
+然后进行统计信息的修改
+==============
+一般会有一些步骤
+有buffer io的话先把buffers置脏
+然后把folio设置dirty标志
+然后是在mapping的xas给这个folio打上dirty的tag
+然后这里是inode和wbc方面的置脏
  * Helper function for set_page_dirty family.
  *
  * Caller must hold folio_memcg_lock().
@@ -2732,15 +2745,21 @@ static void folio_account_dirtied(struct folio *folio,
 		struct bdi_writeback *wb;
 		long nr = folio_nr_pages(folio);
 
-		inode_attach_wb(inode, folio); //为什么这里需要更新inode的wb呢?
+		/* 找到或者创建这个folio对应的wb
+		然后赋值到inode->i_wb   */
+		inode_attach_wb(inode, folio);
+		/* 获取inode的i_wb */
 		wb = inode_to_wb(inode);
 
+		/* 进行memcg, zone, node级别的状态统计 */
 		__lruvec_stat_mod_folio(folio, NR_FILE_DIRTY, nr);
 		__zone_stat_mod_folio(folio, NR_ZONE_WRITE_PENDING, nr);
 		__node_stat_mod_folio(folio, NR_DIRTIED, nr);
 		
+		/* 这里是进行wb级别的状态统计 */
 		wb_stat_mod(wb, WB_RECLAIMABLE, nr);
 		wb_stat_mod(wb, WB_DIRTIED, nr);
+		/* 这里是进程级别的状态统计 */
 		task_io_account_write(nr * PAGE_SIZE);
 		current->nr_dirtied += nr;
 		__this_cpu_add(bdp_ratelimits, nr);
@@ -2765,8 +2784,8 @@ void folio_account_cleaned(struct folio *folio, struct bdi_writeback *wb)
 }
 
 /*
-   标记mapping的这个folio为脏页
-   标记folio, mapping, inode为脏
+查找创建folio对应的wb, 然后更新wb,lruvec,zone的脏页统计
+在mapping里面给这个folio打上dirty的tag
    --------------
    2024年12月7日21:28:40 在page, mapping, inode上标记这个folio为脏页
  * Mark the folio dirty, and set it dirty in the page cache, and mark
@@ -2789,15 +2808,19 @@ void __folio_mark_dirty(struct folio *folio, struct address_space *mapping,
 	xa_lock_irqsave(&mapping->i_pages, flags);
 	if (folio->mapping) {	/* Race with truncate? */
 		WARN_ON_ONCE(warn && !folio_test_uptodate(folio));
-		folio_account_dirtied(folio, mapping); //更新wb, inode的统计信息
+		//更新wb, inode的统计信息
+		folio_account_dirtied(folio, mapping);
+		/* 在mapping的页缓存中设置这个页为脏页 */
 		__xa_set_mark(&mapping->i_pages, folio_index(folio),
-				PAGECACHE_TAG_DIRTY); //在mapping的页缓存中设置这个页为脏页
+				PAGECACHE_TAG_DIRTY);
 	}
 	xa_unlock_irqrestore(&mapping->i_pages, flags);
 }
 
 /**
- * filemap_dirty_folio - Mark a folio dirty for filesystems which do not use buffer_heads.
+这个函数使用不是很多, 主要是fs实现使用, 还有就是blk io时用于redirty
+ * filemap_dirty_folio - Mark a folio dirty for filesystems
+  which do not use buffer_heads.
    让一个folio变脏,适用于不使用buffer_heads的文件系统.
    -------------------------
    标记page, mapping, inode为脏
@@ -2827,11 +2850,13 @@ void __folio_mark_dirty(struct folio *folio, struct address_space *mapping,
 bool filemap_dirty_folio(struct address_space *mapping, struct folio *folio)
 {
 	folio_memcg_lock(folio);
-	if (folio_test_set_dirty(folio)) { //如果folio是脏的,本来就是脏的,则返回false
+	 //如果folio是脏的,本来就是脏的,则返回false
+	if (folio_test_set_dirty(folio)) {
 		folio_memcg_unlock(folio);
 		return false;
 	}
 
+	/* 设置页面为脏 */
 	__folio_mark_dirty(folio, mapping, !folio_test_private(folio));
 	// 在mapping的页缓存中设置这个页为脏页,更新wb, inode的统计信息
 	folio_memcg_unlock(folio);
@@ -2866,16 +2891,21 @@ bool folio_redirty_for_writepage(struct writeback_control *wbc,
 	bool ret;
 
 	wbc->pages_skipped += nr;
-	ret = filemap_dirty_folio(mapping, folio); //标记文件映射的folio为脏
+	//标记文件映射的folio为脏
+	/* 这里就是再dirty一次 */
+	ret = filemap_dirty_folio(mapping, folio);
 
-	if (mapping && mapping_can_writeback(mapping)) { //处理mapping相关的工作
+	//处理mapping相关的工作
+	if (mapping && mapping_can_writeback(mapping)) {
 		struct inode *inode = mapping->host;
 		struct bdi_writeback *wb;
 		struct wb_lock_cookie cookie = {};
 
+		/* 获取inode的wb */
 		wb = unlocked_inode_to_wb_begin(inode, &cookie);
 		current->nr_dirtied -= nr;
 		node_stat_mod_folio(folio, NR_DIRTIED, -nr);
+		/* 因为是redirty, 所以这里是去掉多的nr? */
 		wb_stat_mod(wb, WB_DIRTIED, -nr);
 		unlocked_inode_to_wb_end(inode, &cookie);
 	}
