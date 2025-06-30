@@ -4478,6 +4478,7 @@ static void filemap_cachestat(struct address_space *mapping,
 	struct folio *folio;
 
 	rcu_read_lock();
+	/* 遍历范围内的folio */
 	xas_for_each(&xas, folio, last_index) {
 		unsigned long nr_pages;
 		pgoff_t folio_first_index, folio_last_index;
@@ -4485,6 +4486,7 @@ static void filemap_cachestat(struct address_space *mapping,
 		if (xas_retry(&xas, folio))
 			continue;
 
+		/* 不是正常的页面 */
 		if (xa_is_value(folio)) {
 			/* page is evicted */
 			void *shadow = (void *)folio;

@@ -287,6 +287,9 @@ int generic_error_remove_page(struct address_space *mapping, struct page *page)
 }
 EXPORT_SYMBOL(generic_error_remove_page);
 //从pagecache移除这个folio
+/* 如果mapping是干净的, 并且没有处于回写状态
+就移除folio的priv等成员
+然后在mapping的xas里面屏蔽清零folio所在的条目 (还可能调用mapping的free_folio回调) */
 static long mapping_evict_folio(struct address_space *mapping,
 		struct folio *folio)
 {
@@ -299,11 +302,13 @@ static long mapping_evict_folio(struct address_space *mapping,
 	//在驱逐之前, 释放相关priv等成员
 	if (!filemap_release_folio(folio, 0))
 		return 0;
-		//真正的驱逐
+	//真正的驱逐
+	/* 把folio从所在的mapping移除, 把在xas的条目清零什么的 */
 	return remove_mapping(mapping, folio);
 }
 
 /**
+20250701005528
  * invalidate_inode_page() - Remove an unused page from the pagecache.
  从pagecache移除一个页面
  目前只有处理文件页缺页时如果被poisoned的话会调用

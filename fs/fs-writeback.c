@@ -418,7 +418,9 @@ static bool inode_do_switch_wbs(struct inode *inode,
 	 * folios actually under writeback.
 	 这里进行计数和转移统计。注意，PAGECACHE_TAG_DIRTY指向可能脏的folio，
 	 而PAGECACHE_TAG_WRITEBACK指向实际正在写回的folio。
-	 */
+	=========
+	遍历每一个有脏tag的folio
+	把计数进行转移到新wb */
 	xas_for_each_marked(&xas, folio, ULONG_MAX, PAGECACHE_TAG_DIRTY) {
 		if (folio_test_dirty(folio)) {
 			long nr = folio_nr_pages(folio);

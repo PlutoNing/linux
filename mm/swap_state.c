@@ -32,6 +32,7 @@
  */
 static const struct address_space_operations swap_aops = {
 	.writepage	= swap_writepage,
+	/*  */
 	.dirty_folio	= noop_dirty_folio,
 #ifdef CONFIG_MIGRATION
 	.migrate_folio	= migrate_folio,
@@ -161,7 +162,7 @@ unlock:
   必须仅在已验证在swap mapping中的folio上调用此函数。
   从swap mapping移除folio,用于换出,释放pagecache等操作.
   ===================
-  就是把mapping里面对应的slot设置为null
+  就是把swap mapping里面对应的slot设置为null
   然后去除folio的swap_cache flag, 表示不在swap mapping了
  */
 void __delete_from_swap_cache(struct folio *folio,
@@ -189,6 +190,7 @@ void __delete_from_swap_cache(struct folio *folio,
 	//清除标记位
 	folio_clear_swapcache(folio);
 	address_space->nrpages -= nr;
+	/* 为啥这个也算到文件页里面? */
 	__node_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 	__lruvec_stat_mod_folio(folio, NR_SWAPCACHE, -nr);
 }

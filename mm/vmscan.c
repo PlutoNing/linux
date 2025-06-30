@@ -1467,9 +1467,9 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 	return PAGE_CLEAN;
 }
 
-/*文件页或者交换页,此时位于mapping
+/*
+文件页或者交换页,此时位于mapping
  从mapping移除folio
-
  看看具体做了什么工作: 这里好像仅仅是从xas移除, 没有释放页面什么的
  * Same as remove_mapping, but if the folio is removed from the mapping, it
  * gets returned with a refcount of 0.
@@ -1517,12 +1517,15 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	if (!folio_ref_freeze(folio, refcount))
 		goto cannot_free;
 	/* note: atomic_cmpxchg in folio_ref_freeze provides the smp_rmb */
+	/* 这个时候不能为脏? */
 	if (unlikely(folio_test_dirty(folio))) {
 		folio_ref_unfreeze(folio, refcount);
 		goto cannot_free;
 	}
 
-	if (folio_test_swapcache(folio)) { // 如果还是swapcache的folio, 说明是内存中的swap
+	/* 这里什么情况会是在swapcache里面, shmem的页面? */
+	if (folio_test_swapcache(folio)) {
+		// 如果还是swapcache的folio, 说明是内存中的swap
 		swp_entry_t swap = folio->swap;
 
 		if (reclaimed && !mapping_exiting(mapping))

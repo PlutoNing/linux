@@ -1872,7 +1872,8 @@ void folio_create_empty_buffers(struct folio *folio, unsigned long blocksize,
 	tail->b_this_page = head;
 
 	spin_lock(&folio->mapping->private_lock);
-	if (folio_test_uptodate(folio) || folio_test_dirty(folio)) { //如果folio是uptodate或者dirty
+	if (folio_test_uptodate(folio) || 
+		folio_test_dirty(folio)) { //如果folio是uptodate或者dirty
 		// 根据page的状态设置bh的状态
 		bh = head;
 		do {
