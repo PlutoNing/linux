@@ -175,6 +175,7 @@ static void super_wake(struct super_block *sb, unsigned int flag)
 }
 
 /*
+回收sb的inode的buffer什么的, 来回收内存, 作为slab的回收接口
  * One thing we have to be careful of with a per-sb shrinker is that we don't
  * drop the last active reference to the superblock from within the shrinker.
  * If that happens we could trigger unregistering the shrinker from within the
@@ -225,10 +226,13 @@ static unsigned long super_cache_scan(struct shrinker *shrink,
 	 * accounting uses this to fully empty the caches.
 	 */
 	sc->nr_to_scan = dentries + 1;
+	/* 回收dentry的缓存 */
 	freed = prune_dcache_sb(sb, sc);
 	sc->nr_to_scan = inodes + 1;
+	/* inode的缓存 */
 	freed += prune_icache_sb(sb, sc);
 
+	/* 文件系统私有的缓存 */
 	if (fs_objects) {
 		sc->nr_to_scan = fs_objects + 1;
 		freed += sb->s_op->free_cached_objects(sb, sc);
@@ -388,6 +392,7 @@ static struct super_block *alloc_super(struct file_system_type *type, int flags,
 	s->s_time_max = TIME64_MAX;
 
 	s->s_shrink.seeks = DEFAULT_SEEKS;
+	/* 初始化回收inode相关的 */
 	s->s_shrink.scan_objects = super_cache_scan;
 	s->s_shrink.count_objects = super_cache_count;
 	s->s_shrink.batch = 1024;

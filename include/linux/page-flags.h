@@ -771,6 +771,7 @@ static inline int PageUptodate(struct page *page)
 	return folio_test_uptodate(page_folio(page));
 }
 
+/* 把页面设置为up-to-date */
 static __always_inline void __folio_mark_uptodate(struct folio *folio)
 {
 	smp_wmb();

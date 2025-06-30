@@ -1187,7 +1187,9 @@ static inline void __set_page_dirty(struct page *page,
 }
 void folio_account_cleaned(struct folio *folio, struct bdi_writeback *wb);
 void __folio_cancel_dirty(struct folio *folio);
-// 从mapping中删除folio前会调用此函数
+/* 从mapping中删除folio前会调用此函数
+=========
+清除标记, 进行统计 */
 static inline void folio_cancel_dirty(struct folio *folio)
 {
 	/* Avoid atomic ops, locking, etc. when not actually needed. */

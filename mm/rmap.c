@@ -1717,7 +1717,8 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
 		 */
 		pte_install_uffd_wp_if_needed(vma, address, pvmw.pte, pteval);
 
-		/* Set the dirty flag on the folio now the pte is gone. */
+		/* Set the dirty flag on the folio now the pte is gone.
+		因为pte是dirty的 , 所以传播到folio? */
 		if (pte_dirty(pteval))
 			folio_mark_dirty(folio);
 

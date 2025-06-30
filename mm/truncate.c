@@ -167,6 +167,8 @@ EXPORT_SYMBOL_GPL(folio_invalidate);
 
 /*
 从pagecache截断这个folio
+=================
+解除映射, 移除绑定的priv, 清除dirty
  * If truncate cannot remove the fs-private metadata from the page, the page
  * becomes orphaned.  It will be left on the LRU and may even be mapped into
  * user pagetables if we're racing with filemap_fault().
@@ -193,17 +195,22 @@ static void truncate_cleanup_folio(struct folio *folio)
 	 * Hence dirty accounting check is placed after invalidation.
 	 一些文件系统似乎在VM取消了脏位之后重新设置页面为脏页(例如ext3日志)。
 	 因此, 在使无效之后放置了脏计数检查。
-	 */
-	folio_cancel_dirty(folio); // 取消脏标志, 进行必要的回写
+	 ==================
+	 // 取消脏标志*/
+	folio_cancel_dirty(folio); 
 	folio_clear_mappedtodisk(folio);
 }
-// 干嘛? 可能会回写, 取消page的脏位, 然后从xas移除
+/* 
+从xas移除
+取消page的脏位, 然后从xas移除
+*/
 int truncate_inode_folio(struct address_space *mapping, struct folio *folio)
 {
 	if (folio->mapping != mapping)
 		return -EIO;
 
-	truncate_cleanup_folio(folio); // 
+	/* 解除映射, 移除绑定的priv, 清除dirty */
+	truncate_cleanup_folio(folio);
 	filemap_remove_folio(folio); // 从xas移除
 	return 0;
 }

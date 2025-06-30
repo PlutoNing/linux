@@ -85,10 +85,10 @@ void *get_shadow_from_swap_cache(swp_entry_t entry)
 }
 
 /*
-把页面加入到swap的mapping
+把页面加入到swap的mapping xas
 ========================
-一种情况是shmem的mapping准备回写这个folio, entry是刚刚分配的swap slot,
-这里把folio加入到swap 的mapping, 并且设置folio的swap cache page flag.
+一种情况是shmem的mapping准备回写这个folio, entry是刚刚分配的swap slot,这
+里把folio加入到swap 的mapping, 并且设置folio的swap cache page flag.
  * add_to_swap_cache resembles filemap_add_folio on swapper_space,
  * but sets SwapCache flag and private instead of mapping and index.
    add_to_swap_cache类似于filemap_add_folio在swapper_space上，
@@ -194,7 +194,9 @@ void __delete_from_swap_cache(struct folio *folio,
 }
 
 /**
-给folio分配swp空间. 
+给folio分配swp空间, 加入swap mapping, 并设置为dirty
+=============
+算是把folio加入swap 机制?
  * add_to_swap - allocate swap space for a folio
  * @folio: folio we want to move to swap
  *
@@ -249,6 +251,8 @@ bool add_to_swap(struct folio *folio)
 	 * not write the folio out. This can cause data corruption when
 	 * the folio is swapped in later. Always setting the dirty flag
 	 * for the folio solves the problem.
+	 刚刚把folio加入swap mapping的xas数组, 这里设置为dirty , 加快
+	 刷新到swap file?
 	 */
 	folio_mark_dirty(folio);
 

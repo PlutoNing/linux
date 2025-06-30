@@ -2786,6 +2786,9 @@ void folio_account_cleaned(struct folio *folio, struct bdi_writeback *wb)
 /*
 查找创建folio对应的wb, 然后更新wb,lruvec,zone的脏页统计
 在mapping里面给这个folio打上dirty的tag
+====================
+哪里调用这个函数?
+:
    --------------
    2024年12月7日21:28:40 在page, mapping, inode上标记这个folio为脏页
  * Mark the folio dirty, and set it dirty in the page cache, and mark
@@ -2821,9 +2824,8 @@ void __folio_mark_dirty(struct folio *folio, struct address_space *mapping,
 这个函数使用不是很多, 主要是fs实现使用, 还有就是blk io时用于redirty
  * filemap_dirty_folio - Mark a folio dirty for filesystems
   which do not use buffer_heads.
-   让一个folio变脏,适用于不使用buffer_heads的文件系统.
-   -------------------------
-   标记page, mapping, inode为脏
+让一个folio变脏,适用于不使用buffer_heads的文件系统.
+标记page, mapping, inode为脏
  * @mapping: Address space this folio belongs to.
  * @folio: Folio to be marked as dirty.
  *
@@ -2850,7 +2852,7 @@ void __folio_mark_dirty(struct folio *folio, struct address_space *mapping,
 bool filemap_dirty_folio(struct address_space *mapping, struct folio *folio)
 {
 	folio_memcg_lock(folio);
-	 //如果folio是脏的,本来就是脏的,则返回false
+	 //如果folio本来就是脏的,则返回false
 	if (folio_test_set_dirty(folio)) {
 		folio_memcg_unlock(folio);
 		return false;
@@ -2872,6 +2874,8 @@ EXPORT_SYMBOL(filemap_dirty_folio);
 /**
  * folio_redirty_for_writepage - Decline to write a dirty folio.
    先不写这个脏页.
+   ===========
+   就是再dirty一次, 然后相应的减去因为重复dirty产生的额外的统计数据
  * @wbc: The writeback control.
  * @folio: The folio.
  * 
@@ -2952,7 +2956,6 @@ bool folio_mark_dirty(struct folio *folio)
 		   对于预读,如果folio被写入,标志将被重置.所以没有问题.
 		   对于folio_deactivate,如果folio被重新标记为脏,标志将被重置.所以没有问题.但是如果
 		   folio被预读使用,它将混淆预读并使其重新启动大小逐步增加的过程.但这是一个微不足道的问题.
-		   这都是在说啥....
 		 */
 		if (folio_test_reclaim(folio))
 			folio_clear_reclaim(folio);
@@ -2985,6 +2988,8 @@ int set_page_dirty_lock(struct page *page)
 EXPORT_SYMBOL(set_page_dirty_lock);
 
 /*
+清除dirty标记, 进行统计
+====================
 从mapping中删除一个folio前会调用这个函数
  * This cancels just the dirty bit on the kernel page itself, it does NOT
  * actually remove dirty bits on any mmap's that may be around. It also

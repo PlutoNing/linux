@@ -231,7 +231,7 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 }
 
 /*
-从pagecache的xas移除页面.
+从pagecache的xas移除页面
  * Delete a page from the page cache and free it. Caller has to make
  * sure the page is locked and that nobody else uses it - or that usage
  * is safe.  The caller must hold the i_pages lock.
@@ -278,6 +278,7 @@ void filemap_remove_folio(struct folio *folio)
 	BUG_ON(!folio_test_locked(folio));
 	spin_lock(&mapping->host->i_lock);
 	xa_lock_irq(&mapping->i_pages);
+	/* 这里只是从xas移除 */
 	__filemap_remove_folio(folio, NULL);
 	xa_unlock_irq(&mapping->i_pages);
 	if (mapping_shrinkable(mapping))
@@ -3878,7 +3879,7 @@ out:
 }
 EXPORT_SYMBOL(filemap_map_pages);
 
-//
+/* 文件映射的vma缺页之后, 调用这个页面通知vma可写了 */
 vm_fault_t filemap_page_mkwrite(struct vm_fault *vmf)
 {
 	struct address_space *mapping = vmf->vma->vm_file->f_mapping;
@@ -3897,8 +3898,10 @@ vm_fault_t filemap_page_mkwrite(struct vm_fault *vmf)
 	 * We mark the folio dirty already here so that when freeze is in
 	 * progress, we are guaranteed that writeback during freezing will
 	 * see the dirty folio and writeprotect it again.
+	 调用mapping的dirty_folio回调, 设置folio为dirty
 	 */
 	folio_mark_dirty(folio);
+	/* 等待写回完成 */
 	folio_wait_stable(folio);
 out:
 	sb_end_pagefault(mapping->host->i_sb);
@@ -3910,8 +3913,11 @@ mmap文件映射的vma的ops
 如果一个vma mmap了file,他的vm_ops就是这个
  */
 const struct vm_operations_struct generic_file_vm_ops = {
+	/*  */
 	.fault		= filemap_fault,
 	.map_pages	= filemap_map_pages,
+	/* 文件映射mmap缺页时, 调用fault回调获取新页面之后
+	会调用这个函数通知页面可写了 */
 	.page_mkwrite	= filemap_page_mkwrite,
 };
 
@@ -4222,9 +4228,14 @@ ssize_t generic_file_direct_write(struct kiocb *iocb, struct iov_iter *from)
 EXPORT_SYMBOL(generic_file_direct_write);
 
 //2024年12月8日01:55:36
-//写入到文件, 产生的脏内容会先写到pagecache
-//这个函数会尝试限制脏页生成速度.
-//作用:写入文件, 从i写入到iocb
+/*
+ 执行写的过程
+把数据从i写入到iocb
+把数据从i, 拷贝到mapping找到的page, 然后再回写
+调用mapping的write_begin回调找到要写入的页面
+然后调用mapping的write_end函数, 把数据回写&同步到磁盘
+ */
+
 ssize_t generic_perform_write(struct kiocb *iocb, struct iov_iter *i)
 {
 	struct file *file = iocb->ki_filp;

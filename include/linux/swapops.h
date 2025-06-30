@@ -160,7 +160,7 @@ static inline pte_t swp_entry_to_pte(swp_entry_t entry)
 	return __swp_entry_to_pte(arch_entry);
 }
 
-// 获取xas entry的值
+// 把xas的一个值（可能编码了额外的信息)转为swap entry值
 static inline swp_entry_t radix_to_swp_entry(void *arg)
 {
 	swp_entry_t entry;

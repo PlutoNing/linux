@@ -878,6 +878,7 @@ EXPORT_SYMBOL(synchronize_shrinkers);
 
 #define SHRINK_BATCH 128
 
+/* 回收slab */
 static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 				    struct shrinker *shrinker, int priority)
 {
@@ -944,6 +945,7 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 
 		shrinkctl->nr_to_scan = nr_to_scan;
 		shrinkctl->nr_scanned = nr_to_scan;
+		/* 调用各个组件定义的回调, 来回收一些内存 */
 		ret = shrinker->scan_objects(shrinker, shrinkctl);
 		if (ret == SHRINK_STOP)
 			break;
@@ -4417,9 +4419,11 @@ restart:
 		young++;
 		walk->mm_stats[MM_LEAF_YOUNG]++;
 
-		if (pte_dirty(ptent) && !folio_test_dirty(folio) &&
+		if (pte_dirty(ptent) &&
+		 !folio_test_dirty(folio) &&
 		    !(folio_test_anon(folio) && folio_test_swapbacked(folio) &&
-		      !folio_test_swapcache(folio)))
+		      !folio_test_swapcache(folio))
+			)
 			folio_mark_dirty(folio);
 
 		old_gen = folio_update_gen(folio, new_gen);
@@ -5053,6 +5057,7 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
  ******************************************************************************/
 
 /*
+20250630194627
  * This function exploits spatial locality when shrink_folio_list() walks the
  * rmap. It scans the adjacent PTEs of a young PTE and promotes hot pages. If
  * the scan was done cacheline efficiently, it adds the PMD entry pointing to

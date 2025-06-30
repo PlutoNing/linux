@@ -59,6 +59,8 @@ bool set_page_dirty(struct page *page)
 }
 EXPORT_SYMBOL(set_page_dirty);
 
+/* 把这个page设置为dirty
+以及相关的mapping, inode */
 int __set_page_dirty_nobuffers(struct page *page)
 {
 	return filemap_dirty_folio(page_mapping(page), page_folio(page));

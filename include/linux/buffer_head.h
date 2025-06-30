@@ -350,15 +350,19 @@ static inline void bforget(struct buffer_head *bh)
 		__bforget(bh);
 }
 
-/*  */
-static inline struct buffer_head *
-sb_bread(struct super_block *sb, sector_t block)
+/* 读取指定的磁盘块
+================
+主要是文件系统实现调用
+==============
+在这个过程中如何体现到buffer io命中缓存了呢?
+ */
+static inline struct buffer_head * sb_bread(struct super_block *sb, sector_t block)
 {
 	return __bread_gfp(sb->s_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
 }
 
-static inline struct buffer_head *
-sb_bread_unmovable(struct super_block *sb, sector_t block)
+/* 6.6没有调用这个函数 */
+static inline struct buffer_head * sb_bread_unmovable(struct super_block *sb, sector_t block)
 {
 	return __bread_gfp(sb->s_bdev, block, sb->s_blocksize, 0);
 }
@@ -488,6 +492,11 @@ static inline void bh_readahead_batch(int nr, struct buffer_head *bhs[],
 }
 
 /**
+读取指定的磁盘块
+=================
+返回读取完毕的buffer, 内容up-to-date的
+=============
+文件系统实现调用
  *  __bread() - reads a specified block and returns the bh
  *  @bdev: the block_device to read from
  *  @block: number of block
@@ -497,8 +506,7 @@ static inline void bh_readahead_batch(int nr, struct buffer_head *bhs[],
  *  The page cache is allocated from movable area so that it can be migrated.
  *  It returns NULL if the block was unreadable.
  */
-static inline struct buffer_head *
-__bread(struct block_device *bdev, sector_t block, unsigned size)
+static inline struct buffer_head * __bread(struct block_device *bdev, sector_t block, unsigned size)
 {
 	return __bread_gfp(bdev, block, size, __GFP_MOVABLE);
 }

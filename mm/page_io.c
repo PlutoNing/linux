@@ -27,7 +27,11 @@
 #include <linux/zswap.h>
 #include "swap.h"
 
-// 结束bio的回写状态
+/* 
+把页面换出到磁盘调用
+结束bio的回写状态
+相应的设置mapping里面的页面为dirty
+*/
 static void __end_swap_bio_write(struct bio *bio)
 {
 	/* 获取bio的第一个bvec的page */
@@ -41,8 +45,9 @@ static void __end_swap_bio_write(struct bio *bio)
 		 * very quickly.
 		 *
 		 * Also clear PG_reclaim to avoid folio_rotate_reclaimable()
-		 */
-		folio_mark_dirty(folio); //清除reclaim, 调用dirty回调
+		//清除reclaim, 调用dirty回调,设置folio为dirty 
+		*/
+		folio_mark_dirty(folio); 
 		pr_alert_ratelimited("Write-error on swap-device (%u:%u:%llu)\n",
 				     MAJOR(bio_dev(bio)), MINOR(bio_dev(bio)),
 				     (unsigned long long)bio->bi_iter.bi_sector);
@@ -194,9 +199,10 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 	/*
 	 * Arch code may have to preserve more data than just the page
 	 * contents, e.g. memory tags.
-	 */
+	 为什么这里就不回写了*/
 	ret = arch_prepare_to_swap(&folio->page);
 	if (ret) {
+		/*  */
 		folio_mark_dirty(folio);
 		folio_unlock(folio);
 		return ret;
@@ -371,7 +377,7 @@ static void swap_writepage_bdev_sync(struct page *page,
 
 	/* 提交bio等待完成 */
 	submit_bio_wait(&bio); //等待回写完成
-	/* 结束folio的回写状态 */
+	/* 结束folio的回写状态, 并且把folio设置为dirty */
 	__end_swap_bio_write(&bio);
 }
 
@@ -387,9 +393,10 @@ static void swap_writepage_bdev_async(struct page *page,
 	bio = bio_alloc(sis->bdev, 1,
 			REQ_OP_WRITE | REQ_SWAP | wbc_to_write_flags(wbc),
 			GFP_NOIO);
-/* 这里获取这个page是存储在swap 磁盘的哪个扇区 */
+	/* 这里获取这个page是存储在swap 磁盘的哪个扇区 */
 	bio->bi_iter.bi_sector = swap_page_sector(page);
 	bio->bi_end_io = end_swap_bio_write;
+	/* 把要写的页面交给bio */
 	__bio_add_page(bio, page, thp_size(page), 0);
 
 	bio_associate_blkg_from_page(bio, folio);

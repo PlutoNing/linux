@@ -2881,6 +2881,7 @@ static inline int pte_unmap_same(struct vm_fault *vmf)
 }
 
 /*
+把src拷贝到dst
  * Return:
  *	0:		copied succeeded
  *	-EHWPOISON:	copy failed due to hwpoison in source page
@@ -2999,6 +3000,8 @@ static gfp_t __get_fault_gfp_mask(struct vm_area_struct *vma)
 }
 
 /*
+有且仅有这个函数调用vma提供的page_mkwrite回调
+告诉vma这个页面可写了
  * Notify the address space that the page is about to become writable so that
  * it can prohibit this or wait for the page to get into an appropriate state.
  *
@@ -3015,6 +3018,7 @@ static vm_fault_t do_page_mkwrite(struct vm_fault *vmf, struct folio *folio)
 	    IS_SWAPFILE(vmf->vma->vm_file->f_mapping->host))
 		return VM_FAULT_SIGBUS;
 
+	/* 调用vma的回调 */
 	ret = vmf->vma->vm_ops->page_mkwrite(vmf);
 	/* Restore original flags so that caller is not surprised */
 	vmf->flags = old_flags;
@@ -3045,6 +3049,7 @@ static vm_fault_t fault_dirty_shared_page(struct vm_fault *vmf)
 	bool dirtied;
 	bool page_mkwrite = vma->vm_ops && vma->vm_ops->page_mkwrite;
 
+	/* 调用mapping的回调, 设置folio为dirty */
 	dirtied = folio_mark_dirty(folio);
 	VM_BUG_ON_FOLIO(folio_test_anon(folio), folio);
 	/*
@@ -3088,6 +3093,8 @@ static vm_fault_t fault_dirty_shared_page(struct vm_fault *vmf)
 }
 
 /*
+如果发生的页面fault是因为写入共享页面导致的
+有可能调用这个函数
  * Handle write page faults for pages that can be reused in the current vma
  * 处理可以在当前 vma 中重用的页面的写错误
  * This can happen either due to the mapping being with the VM_SHARED flag,
@@ -3101,7 +3108,9 @@ static vm_fault_t fault_dirty_shared_page(struct vm_fault *vmf)
 static inline void wp_page_reuse(struct vm_fault *vmf)
 	__releases(vmf->ptl)
 {
+	/* 发生缺页的vma */
 	struct vm_area_struct *vma = vmf->vma;
+	/* 发生缺页时写的页面, 是存在的 */
 	struct page *page = vmf->page;
 	pte_t entry;
 
@@ -3129,6 +3138,7 @@ static inline void wp_page_reuse(struct vm_fault *vmf)
 }
 
 /*
+通过拷贝处理缺页
  * Handle the case of a page which we actually need to copy to a new page,
  * either due to COW or unsharing.
  *
@@ -3150,6 +3160,7 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 	const bool unshare = vmf->flags & FAULT_FLAG_UNSHARE;
 	struct vm_area_struct *vma = vmf->vma;
 	struct mm_struct *mm = vma->vm_mm;
+	/* 因为写入这个page（不可写)发生的缺页, */
 	struct folio *old_folio = NULL;
 	struct folio *new_folio = NULL;
 	pte_t entry;
@@ -3159,21 +3170,25 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 
 	delayacct_wpcopy_start();
 
+	/* 获取这个不可写的folio */
 	if (vmf->page)
 		old_folio = page_folio(vmf->page);
 	if (unlikely(anon_vma_prepare(vma)))
 		goto oom;
 
+	/* zero pfn是什么 */
 	if (is_zero_pfn(pte_pfn(vmf->orig_pte))) {
 		new_folio = vma_alloc_zeroed_movable_folio(vma, vmf->address);
 		if (!new_folio)
 			goto oom;
 	} else {
+		/* 这里分配新folio */
 		new_folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0, vma,
 				vmf->address, false);
 		if (!new_folio)
 			goto oom;
 
+		/* 这里进行拷贝 */
 		ret = __wp_page_copy_user(&new_folio->page, vmf->page, vmf);
 		if (ret) {
 			/*
@@ -3197,6 +3212,7 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 		goto oom_free_new;
 	folio_throttle_swaprate(new_folio, GFP_KERNEL);
 
+	/* 设置为up-to-date */
 	__folio_mark_uptodate(new_folio);
 
 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, mm,
@@ -3204,10 +3220,15 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 				(vmf->address & PAGE_MASK) + PAGE_SIZE);
 	mmu_notifier_invalidate_range_start(&range);
 
+	/* 刚刚是把新页面分配成功, 并且拷贝成功
+	这里设置pte相关 */
 	/*
 	 * Re-check the pte - we dropped the lock
+	 获取发生缺页的vma在缺页地址的pte指针, 马上这里需要设置上新值
 	 */
 	vmf->pte = pte_offset_map_lock(mm, vmf->pmd, vmf->address, &vmf->ptl);
+	/* 这里一般都能找到pte指针
+	并且现在pte的值, 也是指向old folio的 */
 	if (likely(vmf->pte && pte_same(ptep_get(vmf->pte), vmf->orig_pte))) {
 		if (old_folio) {
 			if (!folio_test_anon(old_folio)) {
@@ -3218,6 +3239,7 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 			ksm_might_unmap_zero_page(mm, vmf->orig_pte);
 			inc_mm_counter(mm, MM_ANONPAGES);
 		}
+		/* 设置新pte */
 		flush_cache_page(vma, vmf->address, pte_pfn(vmf->orig_pte));
 		entry = mk_pte(&new_folio->page, vma->vm_page_prot);
 		entry = pte_sw_mkyoung(entry);
@@ -3372,7 +3394,8 @@ static vm_fault_t wp_pfn_shared(struct vm_fault *vmf)
 	return 0;
 }
 
-//cow处理wp情况
+/* 处理缺页
+处理写入共享文件映射mapping的情况 */
 static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 	__releases(vmf->ptl)
 {
@@ -3391,6 +3414,7 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 			return VM_FAULT_RETRY;
 		}
 
+		/* 调用回调, 通知页面可写了 */
 		tmp = do_page_mkwrite(vmf, folio);
 		if (unlikely(!tmp || (tmp &
 				      (VM_FAULT_ERROR | VM_FAULT_NOPAGE)))) {
@@ -3404,6 +3428,7 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 			return tmp;
 		}
 	} else {
+		/* 这里是直接重用这个页面 */
 		wp_page_reuse(vmf);
 		folio_lock(folio);
 	}
@@ -3415,8 +3440,9 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 }
 
 /*
-  wp应该是write protect.
- * This routine handles present pages, when
+  wp是write protect.
+ 处理因为写私有页等导致的fault
+  * This routine handles present pages, when
    处理存在的页面，当
  * * users try to write to a shared page (FAULT_FLAG_WRITE)
  * * GUP wants to take a R/O pin on a possibly shared anonymous page
@@ -3477,8 +3503,9 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 	/*
 	 * Shared mapping: we are guaranteed to have VM_WRITE and
 	 * FAULT_FLAG_WRITE set at this point.
+	 写入共享映射的情况
 	 */
-	if (vma->vm_flags & (VM_SHARED | VM_MAYSHARE)) { //共享映射
+	if (vma->vm_flags & (VM_SHARED | VM_MAYSHARE)) {
 		/*
 		 * VM_MIXEDMAP !pfn_valid() case, or VM_SOFTDIRTY clear on a
 		 * VM_PFNMAP VMA.
@@ -3493,10 +3520,12 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 		if (!vmf->page)
 			return wp_pfn_shared(vmf);
 
-		return wp_page_shared(vmf,folio); //如果是私有的可写特殊映射，调用函数 wp_page_copy 以复制物理页，然后把虚拟页映射到新的物理页。
+		/* 处理写入共享页面的缺页fault */
+		return wp_page_shared(vmf,folio);
 	}
 
 	/*
+	写入私有的映射的情况
 	 * Private mapping: create an exclusive anonymous page copy if reuse
 	 * is impossible. We might miss VM_WRITE for FOLL_FORCE handling.
 	 */
@@ -3548,6 +3577,7 @@ reuse:
 		wp_page_reuse(vmf);
 		return 0;
 	}
+/* 这里不得不得通过复制页面处理缺页的情况? */
 copy:
 	if ((vmf->flags & FAULT_FLAG_VMA_LOCK) && !vma->anon_vma) {
 		pte_unmap_unlock(vmf->pte, vmf->ptl);
@@ -3566,6 +3596,7 @@ copy:
 	if (folio && folio_test_ksm(folio))
 		count_vm_event(COW_KSM);
 #endif
+	/*  */
 	return wp_page_copy(vmf);
 }
 
@@ -4842,7 +4873,7 @@ uncharge_out:
 	return ret;
 }
 
-//
+// 处理写入共享页导致的fault
 static vm_fault_t do_shared_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -4854,16 +4885,18 @@ static vm_fault_t do_shared_fault(struct vm_fault *vmf)
 		return VM_FAULT_RETRY;
 	}
 
+	/* 进行fault的过程, 获取页面 */
 	ret = __do_fault(vmf);
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY)))
 		return ret;
 
+	/* 获取到的页面对应的folio */
 	folio = page_folio(vmf->page);
 
 	/*
 	 * Check if the backing address space wants to know that the page is
 	 * about to become writable
-	 */
+	 这里调用vma的page_mkwrite回调, 通知页面可写*/
 	if (vma->vm_ops->page_mkwrite) {
 		folio_unlock(folio);
 		tmp = do_page_mkwrite(vmf, folio);
@@ -4933,7 +4966,7 @@ static vm_fault_t do_fault(struct vm_fault *vmf)
 	else if (!(vma->vm_flags & VM_SHARED))
 		ret = do_cow_fault(vmf); //如果不是共享的, 那只能是写时复制
 	else
-		ret = do_shared_fault(vmf);  //可以共享映射同一个页面
+		ret = do_shared_fault(vmf);  //可以写入和共享映射同一个页面
 
 	/* preallocated pagetable is unused: free it */
 	if (vmf->prealloc_pte) {
@@ -5208,21 +5241,24 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	if (!vmf->pte) // pte不存在, 这里可能是匿名页的缺页, 也可能是文件页缺页, 这
 	//函数内部会分开处理
 		return do_pte_missing(vmf);
-	// 现在是有页面,但是不在内存中?
-
-	// 被交换的情况
+	/* 现在是有页面,但是不在内存中?
+	   被交换的情况 */
 	if (!pte_present(vmf->orig_pte)) //页面不在内存中 
 		return do_swap_page(vmf);
 
+	/* 页面在其他node? */
 	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
 
+	/* 现在是什么情况: 有pte, 在内存中,
+	哦哦可能是那些写私有页之类的错误  */
 	spin_lock(vmf->ptl);
 	entry = vmf->orig_pte;
 	if (unlikely(!pte_same(ptep_get(vmf->pte), entry))) {
 		update_mmu_tlb(vmf->vma, vmf->address, vmf->pte);
 		goto unlock;
 	}
+	/* 如果是写或者私有页导致的fault */
 	if (vmf->flags & (FAULT_FLAG_WRITE|FAULT_FLAG_UNSHARE)) {
 		if (!pte_write(entry))
 			return do_wp_page(vmf);

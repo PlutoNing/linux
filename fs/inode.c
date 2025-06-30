@@ -809,6 +809,12 @@ again:
 }
 
 /*
+shrinker回收sb内存的时候, 遍历inode, 调用这个函数来处理回收
+=========================
+分为多种情况, 比如跳过 或者 删除等等
+其中的回收的情况, 就是清除干净的buffer, 和pagecache干净的部分 ,
+达到shrinker回收内存的效果
+=======================================================
  * Isolate the inode from the LRU in preparation for freeing it.
  *
  * If the inode has the I_REFERENCED flag set, then it means that it has been
@@ -858,14 +864,20 @@ static enum lru_status inode_lru_isolate(struct list_head *item,
 	 * On highmem systems, mapping_shrinkable() permits dropping
 	 * page cache in order to free up struct inodes: lowmem might
 	 * be under pressure before the cache inside the highmem zone.
-	 */
+	 case3: 回收的情况
+	 检测到有buffer或者pagecache
+	 这里回收*/
 	if (inode_has_buffers(inode) || !mapping_empty(&inode->i_data)) {
 		__iget(inode);
 		spin_unlock(&inode->i_lock);
 		spin_unlock(lru_lock);
+		/* 尝试清除inode的buffer */
 		if (remove_inode_buffers(inode)) {
+			/* 返回1 表示inode的buffer全是干净的, 全部清除了 */
 			unsigned long reap;
+			/* 这里清除pagecache里面的干净缓存 */
 			reap = invalidate_mapping_pages(&inode->i_data, 0, -1);
+
 			if (current_is_kswapd())
 				__count_vm_events(KSWAPD_INODESTEAL, reap);
 			else
@@ -877,6 +889,7 @@ static enum lru_status inode_lru_isolate(struct list_head *item,
 		return LRU_RETRY;
 	}
 
+	/*case4: 删除的情况 */
 	WARN_ON(inode->i_state & I_NEW);
 	inode->i_state |= I_FREEING;
 	list_lru_isolate_move(lru, &inode->i_lru, freeable);
@@ -887,6 +900,7 @@ static enum lru_status inode_lru_isolate(struct list_head *item,
 }
 
 /*
+回收sb的缓存时回收inode的buffers之类的缓存
  * Walk the superblock inode LRU for freeable inodes and attempt to free them.
  * This is called from the superblock shrinker function with a number of inodes
  * to trim from the LRU. Inodes to be freed are moved to a temporary list and
@@ -897,6 +911,7 @@ long prune_icache_sb(struct super_block *sb, struct shrink_control *sc)
 	LIST_HEAD(freeable);
 	long freed;
 
+	/* 遍历sb的inode, 执行回收回调 */
 	freed = list_lru_shrink_walk(&sb->s_inode_lru, sc,
 				     inode_lru_isolate, &freeable);
 	dispose_list(&freeable);

@@ -270,8 +270,8 @@ out:
 	return isolated;
 }
 
-unsigned long
-list_lru_walk_one(struct list_lru *lru, int nid, struct mem_cgroup *memcg,
+/* 遍历list元素, 执行回调 */
+unsigned long list_lru_walk_one(struct list_lru *lru, int nid, struct mem_cgroup *memcg,
 		  list_lru_walk_cb isolate, void *cb_arg,
 		  unsigned long *nr_to_walk)
 {

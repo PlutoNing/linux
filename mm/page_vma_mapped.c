@@ -13,7 +13,7 @@ static inline bool not_found(struct page_vma_mapped_walk *pvmw)
 	return false;
 }
 
-//
+// 读取并设置pvmw->pte的值
 static bool map_pte(struct page_vma_mapped_walk *pvmw, spinlock_t **ptlp)
 {
 	pte_t ptent;
@@ -75,6 +75,7 @@ static bool map_pte(struct page_vma_mapped_walk *pvmw, spinlock_t **ptlp)
 }
 
 /**
+检查pvmw->pte
  * check_pte - check if [pvmw->pfn, @pvmw->pfn + @pvmw->nr_pages) is
  * mapped at the @pvmw->pte
  * @pvmw: page_vma_mapped_walk struct, includes a pair pte and pfn range
@@ -243,7 +244,7 @@ restart:
 		 * Make sure the pmd value isn't cached in a register by the
 		 * compiler and used as a stale value after we've observed a
 		 * subsequent update.
-		 */
+		 获取pmd的值*/
 		pmde = pmdp_get_lockless(pvmw->pmd);
 
 		if (pmd_trans_huge(pmde) || is_pmd_migration_entry(pmde) ||
@@ -273,7 +274,7 @@ restart:
 			/* 也算是处理完了pmd */
 			spin_unlock(pvmw->ptl);
 			pvmw->ptl = NULL;
-		} else if (!pmd_present(pmde)) { //pmde不存在的情况?
+		} else if (!pmd_present(pmde)) {/* pmde不存在的情况 */
 			/*
 			 * If PVMW_SYNC, take and drop THP pmd lock so that we
 			 * cannot return prematurely, while zap_huge_pmd() has
@@ -293,15 +294,20 @@ restart:
 		}
 
 		//到这里应该就是判断pte了
+
+		/* 这里先获取pvmw->pte */
 		if (!map_pte(pvmw, &ptl)) {
+			/* 返回0, 就是pvmw->pte有问题 */
 			if (!pvmw->pte)
 				goto restart;
 			goto next_pte;
 		}
 this_pte:
+		/* 这里检查pvmw->pte */
 		if (check_pte(pvmw))
 			return true;
 next_pte:
+		/* 不断的前拨pvmw的pte和对应的address, 一直找到存在的pte */
 		do {
 			pvmw->address += PAGE_SIZE;
 			if (pvmw->address >= end)
@@ -324,6 +330,7 @@ next_pte:
 			pvmw->ptl = ptl;
 			spin_lock(pvmw->ptl);
 		}
+		/* 再次检查这个新找到的pte */
 		goto this_pte;
 	} while (pvmw->address < end);
 

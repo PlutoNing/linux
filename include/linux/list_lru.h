@@ -200,8 +200,9 @@ unsigned long list_lru_walk_node(struct list_lru *lru, int nid,
 				 list_lru_walk_cb isolate, void *cb_arg,
 				 unsigned long *nr_to_walk);
 
-static inline unsigned long
-list_lru_shrink_walk(struct list_lru *lru, struct shrink_control *sc,
+/* 遍历inode, 调用回收内存的回调 */
+static inline unsigned long list_lru_shrink_walk(
+	struct list_lru *lru, struct shrink_control *sc,
 		     list_lru_walk_cb isolate, void *cb_arg)
 {
 	return list_lru_walk_one(lru, sc->nid, sc->memcg, isolate, cb_arg,

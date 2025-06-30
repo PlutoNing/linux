@@ -555,7 +555,10 @@ struct vm_fault {
 	};
 
 	struct page *cow_page;		/* Page handler may use for COW fault */
-	struct page *page;		/* ->fault handlers should return a
+	struct page *page;		/*
+	发生缺页的page
+	也可能是不为空, 因为可能是写入私有页面导致的缺页
+	->fault handlers should return a
 					 * page here, unless VM_FAULT_NOPAGE
 					 * is set (which is also implied by
 					 * VM_FAULT_ERROR).

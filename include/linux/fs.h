@@ -414,15 +414,22 @@ struct address_space_operations {
 	/* Write back some dirty pages from this mapping. */
 	int (*writepages)(struct address_space *, struct writeback_control *);
 
-	/* Mark a folio dirty.  Return true if this dirtied it */
+	/* Mark a folio dirty.  Return true if this dirtied it
+	mapping的dirty folio的回调
+	内核告诉mapping这里脏了, fs的实现可以按照自己的方式来处理
+	20250630195038 */
 	bool (*dirty_folio)(struct address_space *, struct folio *);
 
 	void (*readahead)(struct readahead_control *);
 
 	/* 写回pos处的指定页面 */
+	/* 其实一般也就是根据mapping和pos, 在xas里面找到对应index的folio,赋值到page
+		write_begin(file, mapping, pos, bytes,
+						&page, &fsdata); */
 	int (*write_begin)(struct file *, struct address_space *mapping,
 				loff_t pos, unsigned len,
 				struct page **pagep, void **fsdata);
+	/* 在等内核把数据拷贝到page之后, 进行回写等工作? */
 	int (*write_end)(struct file *, struct address_space *mapping,
 				loff_t pos, unsigned len, unsigned copied,
 				struct page *page, void *fsdata);
@@ -1319,6 +1326,7 @@ struct super_block {
 
 	const struct dentry_operations *s_d_op; /* default d_op for dentries */
 
+	/* 好像是回收自己的inode们的buffers? */
 	struct shrinker s_shrink;	/* per-sb shrinker handle */
 
 	/* Number of inodes with nlink == 0 but still referenced */
@@ -1937,6 +1945,7 @@ struct file_operations {
 	ssize_t (*splice_read)(struct file *, loff_t *, struct pipe_inode_info *, size_t, unsigned int);
 	void (*splice_eof)(struct file *file);
 	int (*setlease)(struct file *, int, struct file_lock **, void **);
+	/* 执行fallocate操作 */
 	long (*fallocate)(struct file *file, int mode, loff_t offset,
 			  loff_t len);
 	void (*show_fdinfo)(struct seq_file *m, struct file *f);

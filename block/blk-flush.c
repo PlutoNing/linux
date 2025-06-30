@@ -478,6 +478,7 @@ bool blk_insert_flush(struct request *rq)
 /**
  * blkdev_issue_flush - queue a flush
  发起一个flush请求
+ 发起一个同步的 flush 请求，确保块设备的写缓存被刷新到底层存储
  * @bdev:	blockdev to issue flush for
  *
  * Description:
