@@ -2821,6 +2821,8 @@ void __folio_mark_dirty(struct folio *folio, struct address_space *mapping,
 }
 
 /**
+在mapping级别标记folio为脏
+============================
 这个函数使用不是很多, 主要是fs实现使用, 还有就是blk io时用于redirty
  * filemap_dirty_folio - Mark a folio dirty for filesystems
   which do not use buffer_heads.
@@ -2858,7 +2860,7 @@ bool filemap_dirty_folio(struct address_space *mapping, struct folio *folio)
 		return false;
 	}
 
-	/* 设置页面为脏 */
+	/* 在mapping级别设置页面为脏 */
 	__folio_mark_dirty(folio, mapping, !folio_test_private(folio));
 	// 在mapping的页缓存中设置这个页为脏页,更新wb, inode的统计信息
 	folio_memcg_unlock(folio);
@@ -3202,8 +3204,7 @@ bool __folio_end_writeback(struct folio *folio)
 }
 
 
-//写回folio?
-//感觉好像就是登记这个要回写了?
+/* 标记mapping里面的这个folio要回写了 */
 bool __folio_start_writeback(struct folio *folio, bool keep_write)
 {
 	long nr = folio_nr_pages(folio);
@@ -3227,7 +3228,7 @@ bool __folio_start_writeback(struct folio *folio, bool keep_write)
 
 			on_wblist = mapping_tagged(mapping,
 						   PAGECACHE_TAG_WRITEBACK);
-/* 给xas打上这个tag */
+			/* 给xas打上这个tag */
 			xas_set_mark(&xas, PAGECACHE_TAG_WRITEBACK);
 			if (bdi->capabilities & BDI_CAP_WRITEBACK_ACCT) {
 				struct bdi_writeback *wb = inode_to_wb(inode);

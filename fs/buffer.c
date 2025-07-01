@@ -1872,9 +1872,9 @@ void folio_create_empty_buffers(struct folio *folio, unsigned long blocksize,
 	tail->b_this_page = head;
 
 	spin_lock(&folio->mapping->private_lock);
+	/* buffer的状态遵循folio的状态 */
 	if (folio_test_uptodate(folio) || 
-		folio_test_dirty(folio)) { //如果folio是uptodate或者dirty
-		// 根据page的状态设置bh的状态
+		folio_test_dirty(folio)) {
 		bh = head;
 		do {
 			if (folio_test_dirty(folio))

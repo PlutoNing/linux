@@ -1410,7 +1410,10 @@ static void requeue_io(struct inode *inode, struct bdi_writeback *wb)
 	inode_io_list_move_locked(inode, wb, &wb->b_more_io);
 }
 
-// 
+/* 做inode同步完成的收尾工作
+==========
+加入对应的lru
+唤醒等待者 */
 static void inode_sync_complete(struct inode *inode)
 {
 	inode->i_state &= ~I_SYNC;
@@ -1567,6 +1570,7 @@ void inode_wait_for_writeback(struct inode *inode)
 }
 
 /*
+等待inode回写完成?
  * Sleep until I_SYNC is cleared. This function must be called with i_lock
  * held and drops it. It is aimed for callers not holding any inode reference
  * so once i_lock is dropped, inode can go away.
@@ -1613,6 +1617,7 @@ static void requeue_inode(struct inode *inode, struct bdi_writeback *wb,
 		inode->dirtied_when = jiffies;
 
 	if (wbc->pages_skipped) {
+		/* 以后 */
 		/*
 		 * Writeback is not making progress due to locked buffers.
 		 * Skip this inode for now. Although having skipped pages
@@ -1676,8 +1681,7 @@ static void requeue_inode(struct inode *inode, struct bdi_writeback *wb,
  * calling inode_sync_complete() to clear it afterwards.
  * 调用者还负责在调用之前设置I_SYNC标志，并在之后调用inode_sync_complete()来清除它。
  */
-static int
-__writeback_single_inode(struct inode *inode, struct writeback_control *wbc)
+static int __writeback_single_inode(struct inode *inode, struct writeback_control *wbc)
 {
 	struct address_space *mapping = inode->i_mapping;
 	long nr_to_write = wbc->nr_to_write;
@@ -1862,6 +1866,7 @@ static int writeback_single_inode(struct inode *inode,
 	}
 
 	spin_unlock(&wb->list_lock);
+	/* 做同步完成的收尾 */
 	inode_sync_complete(inode);
 out:
 	spin_unlock(&inode->i_lock);
@@ -2001,6 +2006,7 @@ static long writeback_sb_inodes(struct super_block *sb,
 		 * WB_SYNC_ALL case.
 		   刚刚已经把inode重新排队了，如果它设置了I_SYNC并且我们正在进行WB_SYNC_NONE回写。
 		   所以现在的情况只是WB_SYNC_ALL。
+		   wbc.sync_mode = WB_SYNC_ALL
 		 */
 		if (inode->i_state & I_SYNC) {
 			//如果inode正在回写, 并且我们是sync all, 那么就得等
@@ -2026,8 +2032,10 @@ static long writeback_sb_inodes(struct super_block *sb,
 		 * evict_inode() will wait so the inode cannot be freed.
 		   使用I_SYNC将inode在内存中pin住。 
 		   只要设置了它，evict_inode()就会等待，
+		========
+		开始回写inode, 回写mapping什么的
 		 */
-		__writeback_single_inode(inode, &wbc); //开始回写inode
+		__writeback_single_inode(inode, &wbc); //
 
 		wbc_detach_inode(&wbc);
 		work->nr_pages -= write_chunk - wbc.nr_to_write;
@@ -2056,7 +2064,9 @@ static long writeback_sb_inodes(struct super_block *sb,
 		spin_lock(&inode->i_lock);
 		if (!(inode->i_state & I_DIRTY_ALL))
 			total_wrote++;
+		/* 回写这个inode */
 		requeue_inode(inode, tmp_wb, &wbc);
+		/* 做同步完成的收尾工作 */
 		inode_sync_complete(inode);
 		spin_unlock(&inode->i_lock);
 

@@ -418,14 +418,14 @@ int filemap_fdatawrite_wbc(struct address_space *mapping,
 	int ret;
 
 	if (!mapping_can_writeback(mapping) || //mapping不能写回
-	    !mapping_tagged(mapping, PAGECACHE_TAG_DIRTY)) //为啥要有PAGECACHE_TAG_DIRTY标记才能写回呢
-		//哦哦这个说明mapping里面有脏页
+	    !mapping_tagged(mapping, PAGECACHE_TAG_DIRTY))
 		return 0;
 	//到这里需要mapping can writeback,并且mapping里面有脏页
 
 	wbc_attach_fdatawrite_inode(wbc, mapping->host); //设置wb,wbc,inode三者之间的关系
 	
-	ret = do_writepages(mapping, wbc); //把脏页写回磁盘
+	 //把脏页写回磁盘
+	ret = do_writepages(mapping, wbc);
 	
 	wbc_detach_inode(wbc);
 	return ret;
