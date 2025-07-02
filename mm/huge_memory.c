@@ -2624,6 +2624,8 @@ bool can_split_folio(struct folio *folio, int *pextra_pins)
  * Returns 0 if the hugepage is split successfully.
  * Returns -EBUSY if the page is pinned or if anon_vma disappeared from under
  * us.
+ 返回0 成功
+ 其他值, 失败
  */
 int split_huge_page_to_list(struct page *page, struct list_head *list)
 {
@@ -3025,7 +3027,8 @@ static int split_huge_pages_pid(int pid, unsigned long vaddr_start,
 			continue;
 		}
 
-		/* FOLL_DUMP to ignore special (like zero) pages */
+		/* FOLL_DUMP to ignore special (like zero) pages
+		20250702233205 */
 		page = follow_page(vma, addr, FOLL_GET | FOLL_DUMP);
 
 		if (IS_ERR_OR_NULL(page))

@@ -619,7 +619,7 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
 		fgf_t fgp_flags, gfp_t gfp);
 
 /**
-  找出index位置的folio, 缺页会申请
+  找出index位置的folio, 缺页不会申请(fgp_flags为0)
  * filemap_get_folio - Find and get a folio.
  * @mapping: The address_space to search.
  * @index: The page index.
@@ -883,7 +883,9 @@ static inline struct page *read_mapping_page(struct address_space *mapping,
 	return read_cache_page(mapping, index, NULL, file);
 }
 
-/* 获取这个index位置的folio */
+/* 获取这个index位置的folio
+=============
+把指定index的folio加载到mapping */
 static inline struct folio *read_mapping_folio(struct address_space *mapping,
 				pgoff_t index, struct file *file)
 {

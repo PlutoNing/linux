@@ -914,6 +914,7 @@ const struct file_operations def_blk_fops = {
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= compat_blkdev_ioctl,
 #endif
+	/* 块设备文件的零拷贝读 */
 	.splice_read	= filemap_splice_read,
 	.splice_write	= iter_file_splice_write,
 	// 块设备的fallocate回调

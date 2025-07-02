@@ -41,6 +41,13 @@ void wait_for_stable_page(struct page *page)
 }
 EXPORT_SYMBOL_GPL(wait_for_stable_page);
 
+/*
+
+标记页面为accessed
+等价于mark对应的folio
+=============
+如果用户发起follow的时候, 指定了touch, 会mark_page_accessed
+*/
 void mark_page_accessed(struct page *page)
 {
 	folio_mark_accessed(page_folio(page));

@@ -2087,7 +2087,8 @@ static int add_page_for_migration(struct mm_struct *mm, const void __user *p,
 	if (!vma || !vma_migratable(vma))
 		goto out;
 
-	/* FOLL_DUMP to ignore special (like zero) pages */
+	/* FOLL_DUMP to ignore special (like zero) pages
+	 20250702233221  */
 	page = follow_page(vma, addr, FOLL_GET | FOLL_DUMP);
 
 	err = PTR_ERR(page);
@@ -2276,6 +2277,7 @@ out:
 }
 
 /*
+确定一组页面的nid?
  * Determine the nodes of an array of pages and store it in an array of status.
  */
 static void do_pages_stat_array(struct mm_struct *mm, unsigned long nr_pages,
@@ -2285,17 +2287,20 @@ static void do_pages_stat_array(struct mm_struct *mm, unsigned long nr_pages,
 
 	mmap_read_lock(mm);
 
+	/* 遍历每一个页面 */
 	for (i = 0; i < nr_pages; i++) {
 		unsigned long addr = (unsigned long)(*pages);
 		struct vm_area_struct *vma;
 		struct page *page;
 		int err = -EFAULT;
 
+		/* 找到addr对应的vma */
 		vma = vma_lookup(mm, addr);
 		if (!vma)
 			goto set_status;
 
-		/* FOLL_DUMP to ignore special (like zero) pages */
+		/* FOLL_DUMP to ignore special (like zero) pages
+		 */
 		page = follow_page(vma, addr, FOLL_GET | FOLL_DUMP);
 
 		err = PTR_ERR(page);
@@ -2320,6 +2325,7 @@ set_status:
 	mmap_read_unlock(mm);
 }
 
+/* 处理用户空间和内核空间拷贝的事情 */
 static int get_compat_pages_array(const void __user *chunk_pages[],
 				  const void __user * __user *pages,
 				  unsigned long chunk_nr)
@@ -2338,6 +2344,7 @@ static int get_compat_pages_array(const void __user *chunk_pages[],
 }
 
 /*
+确定一组页面的nid
  * Determine the nodes of a user array of pages and store it in
  * a user array of status.
  */
@@ -2350,8 +2357,10 @@ static int do_pages_stat(struct mm_struct *mm, unsigned long nr_pages,
 	int chunk_status[DO_PAGES_STAT_CHUNK_NR];
 
 	while (nr_pages) {
+		/* 每批次最多处理16个 */
 		unsigned long chunk_nr = min(nr_pages, DO_PAGES_STAT_CHUNK_NR);
 
+		/* 把这些指针, 从用户空间拷贝到内核空间? */
 		if (in_compat_syscall()) {
 			if (get_compat_pages_array(chunk_pages, pages,
 						   chunk_nr))
@@ -2362,6 +2371,7 @@ static int do_pages_stat(struct mm_struct *mm, unsigned long nr_pages,
 				break;
 		}
 
+		/* 检测这一组页面的信息 */
 		do_pages_stat_array(mm, chunk_nr, chunk_pages, chunk_status);
 
 		if (copy_to_user(status, chunk_status, chunk_nr * sizeof(*status)))

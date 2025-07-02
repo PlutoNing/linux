@@ -2555,7 +2555,10 @@ retry:
 	rcu_read_unlock();
 }
 
-//调用mapping的回调 读取file到folio, folio已经加入pagecache
+/* 
+folio是file的mapping内部的
+这里调用filler, 把对应的文件内容加载进来
+*/
 static int filemap_read_folio(struct file *file, filler_t filler,
 		struct folio *folio)
 {
@@ -2739,24 +2742,29 @@ static int filemap_readahead(struct kiocb *iocb, struct file *file,
 	return 0;
 }
 
-//从页缓存中获取页, 可能会预读, 以及不新的话也会重新读取.
+/* 
+从页缓存中获取页, 可能会预读, 以及不新的话也会重新读取.
+@count是要读的字节数量 */
 static int filemap_get_pages(struct kiocb *iocb, size_t count,
 		struct folio_batch *fbatch, bool need_uptodate)
 {
 	struct file *filp = iocb->ki_filp;
 	struct address_space *mapping = filp->f_mapping;
 	struct file_ra_state *ra = &filp->f_ra;
+	/* 从文件的这个pgoff开始读页面 */
 	pgoff_t index = iocb->ki_pos >> PAGE_SHIFT;
 	pgoff_t last_index;
 	struct folio *folio;
 	int err = 0;
 
-	/* "last_index" is the index of the page beyond the end of the read */
+	/* "last_index" is the index of the page beyond the end of the read
+	当前的pos加上要读的字节数量, 就是要读的最后的pgoff */
 	last_index = DIV_ROUND_UP(iocb->ki_pos + count, PAGE_SIZE);
 retry:
 	if (fatal_signal_pending(current))
 		return -EINTR;
 
+	/* 这里读取一批page */
 	filemap_get_read_batch(mapping, index, last_index - 1, fbatch);
 	if (!folio_batch_count(fbatch)) { //fbatch中没有folio?
 		if (iocb->ki_flags & IOCB_NOIO)
@@ -3065,6 +3073,8 @@ ssize_t generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 EXPORT_SYMBOL(generic_file_read_iter);
 
 /*
+文件的零拷贝读的时候
+这个函数把从mapping读取获取的page交给管道
  * Splice subpages from a folio into a pipe.
  */
 size_t splice_folio_into_pipe(struct pipe_inode_info *pipe,
@@ -3082,6 +3092,7 @@ size_t splice_folio_into_pipe(struct pipe_inode_info *pipe,
 		struct pipe_buffer *buf = pipe_head_buf(pipe);
 		size_t part = min_t(size_t, PAGE_SIZE - offset, size - spliced);
 
+		/* 直接获取引用 */
 		*buf = (struct pipe_buffer) {
 			.ops	= &page_cache_pipe_buf_ops,
 			.page	= page,
@@ -3099,6 +3110,8 @@ size_t splice_folio_into_pipe(struct pipe_inode_info *pipe,
 }
 
 /**
+文件的零拷贝读
+从mapping到管道
  * filemap_splice_read -  Splice data from a file's pagecache into a pipe
  * @in: The file to read from
  * @ppos: Pointer to the file position to read from
@@ -3131,6 +3144,8 @@ ssize_t filemap_splice_read(struct file *in, loff_t *ppos,
 	if (unlikely(*ppos >= in->f_mapping->host->i_sb->s_maxbytes))
 		return 0;
 
+	/* 把输入文件交给iocb
+	后续以iocb作为句柄, 更通用 */
 	init_sync_kiocb(&iocb, in);
 	iocb.ki_pos = *ppos;
 
@@ -3139,6 +3154,7 @@ ssize_t filemap_splice_read(struct file *in, loff_t *ppos,
 	npages = max_t(ssize_t, pipe->max_usage - used, 0);
 	len = min_t(size_t, len, npages * PAGE_SIZE);
 
+	/* 初始化 */
 	folio_batch_init(&fbatch);
 
 	do {
@@ -3148,6 +3164,7 @@ ssize_t filemap_splice_read(struct file *in, loff_t *ppos,
 			break;
 
 		iocb.ki_pos = *ppos;
+		/* 获取iocb的文件的mapping的页面, 到fbatch */
 		error = filemap_get_pages(&iocb, len, &fbatch, true);
 		if (error < 0)
 			break;
@@ -3171,12 +3188,14 @@ ssize_t filemap_splice_read(struct file *in, loff_t *ppos,
 		 */
 		writably_mapped = mapping_writably_mapped(in->f_mapping);
 
+		/* 现在遍历刚刚取到的page */
 		for (i = 0; i < folio_batch_count(&fbatch); i++) {
 			struct folio *folio = fbatch.folios[i];
 			size_t n;
 
 			if (folio_pos(folio) >= end_offset)
 				goto out;
+			/* 标记这个page要被访问, 已经访问, 提升页面的重要性 */
 			folio_mark_accessed(folio);
 
 			/*
@@ -3188,6 +3207,7 @@ ssize_t filemap_splice_read(struct file *in, loff_t *ppos,
 				flush_dcache_folio(folio);
 
 			n = min_t(loff_t, len, isize - *ppos);
+			/* 把page的ref交给管道, 没有拷贝 */
 			n = splice_folio_into_pipe(pipe, folio, *ppos, n);
 			if (!n)
 				goto out;
@@ -3969,7 +3989,8 @@ EXPORT_SYMBOL(filemap_page_mkwrite);
 EXPORT_SYMBOL(generic_file_mmap);
 EXPORT_SYMBOL(generic_file_readonly_mmap);
 
-/* 读取pagecache指定index，filler用于把文件读入到mapping */
+/*
+读取pagecache指定index，filler用于把文件读入到mapping */
 static struct folio *do_read_cache_folio(struct address_space *mapping,
 		pgoff_t index, filler_t filler, struct file *file, gfp_t gfp)
 {
@@ -3981,8 +4002,8 @@ static struct folio *do_read_cache_folio(struct address_space *mapping,
 repeat:
 	//获取folio, 不存在会创建
 	folio = filemap_get_folio(mapping, index);
-	if (IS_ERR(folio)) {//可能是不存在
-
+	//可能是不存在
+	if (IS_ERR(folio)) {
 		//申请folio
 		folio = filemap_alloc_folio(gfp, 0);
 		if (!folio)
@@ -3999,9 +4020,12 @@ repeat:
 		/* 现在新folio加入mapping了，需要把内容读进去 */
 		goto filler;
 	}
+	/* 这里是说明直接从mapping找到了page, 下面做些判断
+	如果up-to-date，那么没必要fill */
 	if (folio_test_uptodate(folio))
 		goto out;
 
+	/* 加锁失败先等待 */
 	if (!folio_trylock(folio)) {
 		folio_put_wait_locked(folio, TASK_UNINTERRUPTIBLE);
 		goto repeat;
@@ -4014,14 +4038,16 @@ repeat:
 		goto repeat;
 	}
 
-	/* Someone else locked and filled the page in a very small window */
+	/*
+	这里检查race
+	 Someone else locked and filled the page in a very small window */
 	if (folio_test_uptodate(folio)) {
 		folio_unlock(folio);
 		goto out;
 	}
 
 filler:
-//读取文件内容到pagecache
+	//读取文件内容到pagecache
 	err = filemap_read_folio(file, filler, folio);
 	if (err) {
 		folio_put(folio);
@@ -4031,12 +4057,15 @@ filler:
 	}
 
 out:
+	/* 到这里 可能是直接发现page是up-to-date的
+	可能是申请新页面, 或者直接从mapping找到不是update的, fill更新内容后到这里 */
 	folio_mark_accessed(folio);
 	return folio;
 }
 
 /**
 读取mapping的指定idx的page
+调用filler把指定的文件内容加载到pagecache
  * read_cache_folio - Read into page cache, fill it if needed.
  * @mapping: The address_space to read from.
  * @index: The index to read.
@@ -4061,6 +4090,7 @@ struct folio *read_cache_folio(struct address_space *mapping, pgoff_t index,
 EXPORT_SYMBOL(read_cache_folio);
 
 /**
+把mapping指定的页面加载进来, 使用参数指定的gfp
  * mapping_read_folio_gfp - Read into page cache, using specified allocation flags.
  * @mapping:	The address_space for the folio.
  * @index:	The index that the allocated folio will contain.
@@ -4084,13 +4114,13 @@ struct folio *mapping_read_folio_gfp(struct address_space *mapping,
 }
 EXPORT_SYMBOL(mapping_read_folio_gfp);
 
-//读取pagecache指定页
+/* //读取pagecache指定页 */
 static struct page *do_read_cache_page(struct address_space *mapping,
 		pgoff_t index, filler_t *filler, struct file *file, gfp_t gfp)
 {
 	struct folio *folio;
 
-	//建立文件内容到pagecache的映射
+	//先把指定的page加载进pagecache
 	folio = do_read_cache_folio(mapping, index, filler, file, gfp);
 	if (IS_ERR(folio))
 		return &folio->page;

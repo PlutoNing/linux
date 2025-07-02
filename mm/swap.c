@@ -505,6 +505,8 @@ static void folio_inc_refs(struct folio *folio)
  folio的buffer要被读写了
  iomap写入folio
  buffer-io基本都会
+ 零拷贝读也会
+ 把页面加载进pagecache也会调用
  */
 void folio_mark_accessed(struct folio *folio)
 {

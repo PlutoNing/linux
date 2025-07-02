@@ -210,6 +210,7 @@ static inline int pte_exec(pte_t pte)
 	return !(pte_flags(pte) & _PAGE_NX);
 }
 
+/*  */
 static inline int pte_special(pte_t pte)
 {
 	return pte_flags(pte) & _PAGE_SPECIAL;

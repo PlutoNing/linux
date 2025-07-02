@@ -712,6 +712,8 @@ void *read_part_sector(struct parsed_partitions *state, sector_t n, Sector *p)
 		goto out;
 	}
 
+	/* n >> PAGE_SECTORS_SHIFT把扇区号转为mapping的idx
+	把指定的页面加载到mapping */
 	folio = read_mapping_folio(mapping, n >> PAGE_SECTORS_SHIFT, NULL);
 	if (IS_ERR(folio))
 		goto out;

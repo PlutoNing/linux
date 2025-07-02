@@ -153,7 +153,7 @@ static int generic_remap_check_len(struct inode *inode_in,
 }
 
 /* 
-把文件内容读入pagecache？
+把pos处的文件内容加载入pagecache
 Read a page's worth of file data into the page cache. */
 static struct folio *vfs_dedupe_get_folio(struct file *file, loff_t pos)
 {

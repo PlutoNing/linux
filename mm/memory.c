@@ -612,7 +612,9 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 {
 	unsigned long pfn = pte_pfn(pte); //从pte获取到pfn
 
+	/* CONFIG_ARCH_HAS_PTE_SPECIAL的情况 */
 	if (IS_ENABLED(CONFIG_ARCH_HAS_PTE_SPECIAL)) {
+		/* 最普遍的情况 */
 		if (likely(!pte_special(pte)))
 			goto check_pfn;
 		if (vma->vm_ops && vma->vm_ops->find_special_page)
@@ -657,6 +659,10 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 		return NULL;
 
 check_pfn:
+	/* 最普遍的情况, 开启CONFIG_ARCH_HAS_PTE_SPECIAL
+	然后page不是special
+	这里检查一下pfn
+	没有问题的话, 下一步就是直接返回了pfn_to_page(pfn) */
 	if (unlikely(pfn > highest_memmap_pfn)) {
 		print_bad_pte(vma, addr, pte, NULL);
 		return NULL;
