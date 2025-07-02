@@ -2366,6 +2366,8 @@ extern void pagefault_out_of_memory(void);
 /* phys_addr & ~(~((1 << 12)-1)) */
 #define offset_in_page(p)	((unsigned long)(p) & ~PAGE_MASK)
 #define offset_in_thp(page, p)	((unsigned long)(p) & (thp_size(page) - 1))
+/* 计算文件或者磁盘的pos地址p
+在folio内部偏移是多少 */
 #define offset_in_folio(folio, p) ((unsigned long)(p) & (folio_size(folio) - 1))
 
 /*

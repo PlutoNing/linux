@@ -61,7 +61,9 @@ static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 理解为inode有没有关联的bh? */
 #define BH_ENTRY(list) list_entry((list), struct buffer_head, b_assoc_buffers)
 
-/* 标记这个bh的folio为accessed */
+/* 
+这个buffer对应的block要被读写了
+标记这个bh的folio为accessed */
 inline void touch_buffer(struct buffer_head *bh)
 {
 	trace_block_touch_buffer(bh);
@@ -199,9 +201,8 @@ EXPORT_SYMBOL(end_buffer_write_sync);
  * may be quite high.  This code could TryLock the page, and if that
  * succeeds, there is no need to take private_lock.
  */
-static struct buffer_head *
-__find_get_block_slow(struct block_device *bdev, sector_t block)
-{/* 获取dev的inode */
+static struct buffer_head * __find_get_block_slow(struct block_device *bdev, sector_t block)
+{	/* 获取dev的inode */
 	struct inode *bd_inode = bdev->bd_inode;
 	struct address_space *bd_mapping = bd_inode->i_mapping;
 	struct buffer_head *ret = NULL;
@@ -211,12 +212,13 @@ __find_get_block_slow(struct block_device *bdev, sector_t block)
 	struct folio *folio;
 	int all_mapped = 1;
 	static DEFINE_RATELIMIT_STATE(last_warned, HZ, 1);
-/* 把dev的block nr转为在mapping的pgoff */
-	index = block >> (PAGE_SHIFT - bd_inode->i_blkbits);/* 从dev的mapping里查找block对应的page */
+	/* 把dev的block nr转为在mapping的pgoff */
+	index = block >> (PAGE_SHIFT - bd_inode->i_blkbits);
+	/* 从dev的mapping里查找block对应的page */
 	folio = __filemap_get_folio(bd_mapping, index, FGP_ACCESSED, 0);
 	if (IS_ERR(folio))
 		goto out;
-/* 找到了mapping里面对应的folio */
+	/* 找到了mapping里面对应的folio */
 	spin_lock(&bd_mapping->private_lock);
 	head = folio_buffers(folio);/* 找到folio的buffer */
 	if (!head)

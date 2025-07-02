@@ -59,6 +59,7 @@ struct vm_fault;
 #define IOMAP_F_SHARED		(1U << 2)
 #define IOMAP_F_MERGED		(1U << 3)
 #ifdef CONFIG_BUFFER_HEAD
+/*  */
 #define IOMAP_F_BUFFER_HEAD	(1U << 4)
 #else
 #define IOMAP_F_BUFFER_HEAD	0
@@ -99,6 +100,7 @@ struct iomap {
 	u16			flags;	/* flags for mapping */
 	struct block_device	*bdev;	/* block device for I/O */
 	struct dax_device	*dax_dev; /* dax_dev for dax operations */
+	/* 要写入到folio的inline data */
 	void			*inline_data;
 	void			*private; /* filesystem private */
 	const struct iomap_folio_ops *folio_ops;
@@ -213,6 +215,7 @@ struct iomap_ops {
  * @srcmap: Source map for COW operations
  */
 struct iomap_iter {
+	/* iomap要操作的文件? */
 	struct inode *inode;
 	loff_t pos;
 	u64 len;
@@ -226,6 +229,7 @@ struct iomap_iter {
 int iomap_iter(struct iomap_iter *iter, const struct iomap_ops *ops);
 
 /**
+获取本次处理的长度
  * iomap_length - length of the current iomap iteration
  * @iter: iteration structure
  *
@@ -241,6 +245,8 @@ static inline u64 iomap_length(const struct iomap_iter *iter)
 }
 
 /**
+返回iter的srcmap
+srcmap是什么?
  * iomap_iter_srcmap - return the source map for the current iomap iteration
  * @i: iteration structure
  *

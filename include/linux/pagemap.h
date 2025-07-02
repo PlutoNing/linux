@@ -1580,6 +1580,7 @@ static inline int page_mkwrite_check_truncate(struct page *page,
 }
 
 /**
+计算folio大小可以包含几个磁盘块
  * i_blocks_per_folio - How many blocks fit in this folio.
  * @inode: The inode which contains the blocks.
  * @folio: The folio.

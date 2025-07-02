@@ -488,6 +488,7 @@ static void folio_inc_refs(struct folio *folio)
 #endif /* CONFIG_LRU_GEN */
 
 /*
+标记一个folio被访问过?
  * Mark a page as having seen activity.
  *
  提升为referenced
@@ -499,6 +500,11 @@ static void folio_inc_refs(struct folio *folio)
  *
  * When a newly allocated page is not yet visible, so safe for non-atomic ops,
  * __SetPageReferenced(page) may be substituted for mark_page_accessed(page).
+ =========================
+ 调用场合:
+ folio的buffer要被读写了
+ iomap写入folio
+ buffer-io基本都会
  */
 void folio_mark_accessed(struct folio *folio)
 {
@@ -507,16 +513,19 @@ void folio_mark_accessed(struct folio *folio)
 		return;
 	}
 
+	/* 设置referenced */
 	if (!folio_test_referenced(folio)) {
 		folio_set_referenced(folio);
-	} else if (folio_test_unevictable(folio)) {/* 是referenced,并且是unevictable */
+	} else if (folio_test_unevictable(folio)) {
+		/* 如果之前已经是referenced,并且还是unevictable */
 		/*
 		 * Unevictable pages are on the "LRU_UNEVICTABLE" list. But,
 		 * this list is never rotated or maintained, so marking an
 		 * unevictable page accessed has no effect.
 
 		 */
-	} else if (!folio_test_active(folio)) {/* 是referenced,但是不是active? */
+	} else if (!folio_test_active(folio)) {
+		/* 是referenced,evictable 但是不是active? */
 		/* active代表什么? */
 		/*
 		 * If the folio is on the LRU, queue it for activation via

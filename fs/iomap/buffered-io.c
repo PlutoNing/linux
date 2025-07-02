@@ -189,6 +189,7 @@ static void ifs_free(struct folio *folio)
 }
 
 /*
+iomap写入folio之前计算
  * Calculate the range inside the folio that we actually need to read.
  */
 static void iomap_adjust_read_range(struct inode *inode, struct folio *folio,
@@ -196,9 +197,11 @@ static void iomap_adjust_read_range(struct inode *inode, struct folio *folio,
 {
 	struct iomap_folio_state *ifs = folio->private;
 	loff_t orig_pos = *pos;
+	/* 获取文件大小与磁盘块大小 */
 	loff_t isize = i_size_read(inode);
 	unsigned block_bits = inode->i_blkbits;
 	unsigned block_size = (1 << block_bits);
+	/* 获取要写入的folio的页内偏移和长度 */
 	size_t poff = offset_in_folio(folio, *pos);
 	size_t plen = min_t(loff_t, folio_size(folio) - poff, length);
 	unsigned first = poff >> block_bits;
@@ -282,6 +285,8 @@ struct iomap_readpage_ctx {
 };
 
 /**
+iomap以inline方式写入folio、
+把inline data拷贝到mapping的folio
  * iomap_read_inline_data - copy inline data into the page cache
  * @iter: iteration structure
  * @folio: folio to copy to
@@ -312,6 +317,7 @@ static int iomap_read_inline_data(const struct iomap_iter *iter,
 	if (offset > 0)
 		ifs_alloc(iter->inode, folio, iter->flags);
 
+	/* 通过kmap写入 */
 	addr = kmap_local_folio(folio, offset);
 	memcpy(addr, iomap->inline_data, size);
 	memset(addr + size, 0, PAGE_SIZE - poff - size);
@@ -535,6 +541,7 @@ bool iomap_is_partially_uptodate(struct folio *folio, size_t from, size_t count)
 EXPORT_SYMBOL_GPL(iomap_is_partially_uptodate);
 
 /**
+iomap获取要写入的folio?
  * iomap_get_folio - get a folio reference for writing
  * @iter: iteration structure
  * @pos: start offset of write
@@ -551,6 +558,7 @@ struct folio *iomap_get_folio(struct iomap_iter *iter, loff_t pos, size_t len)
 		fgp |= FGP_NOWAIT;
 	fgp |= fgf_set_order(len);
 
+	/* fgp参数为(FGP_LOCK | FGP_WRITE | FGP_CREAT | FGP_STABLE | FGP_NOFS) */
 	return __filemap_get_folio(iter->inode->i_mapping, pos >> PAGE_SHIFT,
 			fgp, mapping_gfp_mask(iter->inode->i_mapping));
 }
@@ -615,27 +623,36 @@ iomap_write_failed(struct inode *inode, loff_t pos, unsigned len)
 					 pos + len - 1);
 }
 
+/* 把iomap读入到folio */
 static int iomap_read_folio_sync(loff_t block_start, struct folio *folio,
 		size_t poff, size_t plen, const struct iomap *iomap)
 {
 	struct bio_vec bvec;
 	struct bio bio;
 
+	/* 初始化bio */
 	bio_init(&bio, iomap->bdev, &bvec, 1, REQ_OP_READ);
+	/* 计算要读取的磁盘地址 */
 	bio.bi_iter.bi_sector = iomap_sector(iomap, block_start);
+	/* 把要写入的folio加入bio */
 	bio_add_folio_nofail(&bio, folio, plen, poff);
 	return submit_bio_wait(&bio);
 }
 
+/* iomap写入数据到folio */
 static int __iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 		size_t len, struct folio *folio)
 {
 	const struct iomap *srcmap = iomap_iter_srcmap(iter);
 	struct iomap_folio_state *ifs;
+	/* inode文件所在磁盘的块大小 */
 	loff_t block_size = i_blocksize(iter->inode);
+	/* pos是磁盘地址? */
 	loff_t block_start = round_down(pos, block_size);
 	loff_t block_end = round_up(pos + len, block_size);
+	/* 计算folio可以包含几个磁盘块 */
 	unsigned int nr_blocks = i_blocks_per_folio(iter->inode, folio);
+	/* from和len是folio内偏移地址 */
 	size_t from = offset_in_folio(folio, pos), to = from + len;
 	size_t poff, plen;
 
@@ -659,6 +676,7 @@ static int __iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 	folio_clear_error(folio);
 
 	do {
+		/* 计算一些值, 以后 */
 		iomap_adjust_read_range(iter->inode, folio, &block_start,
 				block_end - block_start, &poff, &plen);
 		if (plen == 0)
@@ -674,11 +692,13 @@ static int __iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 				return -EIO;
 			folio_zero_segments(folio, poff, from, to, poff + plen);
 		} else {
+			/*  */
 			int status;
 
 			if (iter->flags & IOMAP_NOWAIT)
 				return -EAGAIN;
 
+			/* 把srcmap的一些内容读入到folio */
 			status = iomap_read_folio_sync(block_start, folio,
 					poff, plen, srcmap);
 			if (status)
@@ -690,6 +710,7 @@ static int __iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 	return 0;
 }
 
+/* 获取文件的要写入的folio */
 static struct folio *__iomap_get_folio(struct iomap_iter *iter, loff_t pos,
 		size_t len)
 {
@@ -714,6 +735,8 @@ static void __iomap_put_folio(struct iomap_iter *iter, loff_t pos, size_t ret,
 	}
 }
 
+/* iomap以inline方式写入一个folio
+把iomap的inline data拷贝到folio */
 static int iomap_write_begin_inline(const struct iomap_iter *iter,
 		struct folio *folio)
 {
@@ -723,10 +746,12 @@ static int iomap_write_begin_inline(const struct iomap_iter *iter,
 	return iomap_read_inline_data(iter, folio);
 }
 
+/* 把iomap一些内容写入到folio */
 static int iomap_write_begin(struct iomap_iter *iter, loff_t pos,
 		size_t len, struct folio **foliop)
 {
 	const struct iomap_folio_ops *folio_ops = iter->iomap.folio_ops;
+	/*  */
 	const struct iomap *srcmap = iomap_iter_srcmap(iter);
 	struct folio *folio;
 	int status = 0;
@@ -741,6 +766,7 @@ static int iomap_write_begin(struct iomap_iter *iter, loff_t pos,
 	if (!mapping_large_folio_support(iter->inode->i_mapping))
 		len = min_t(size_t, len, PAGE_SIZE - offset_in_page(pos));
 
+	/* 获取要写入的folio? */
 	folio = __iomap_get_folio(iter, pos, len);
 	if (IS_ERR(folio))
 		return PTR_ERR(folio);
@@ -754,7 +780,7 @@ static int iomap_write_begin(struct iomap_iter *iter, loff_t pos,
 	 * completion before this write reaches this file offset) and hence we
 	 * could do the wrong thing here (zero a page range incorrectly or fail
 	 * to zero) and corrupt data.
-	 */
+	 如果需要校验?*/
 	if (folio_ops && folio_ops->iomap_valid) {
 		bool iomap_valid = folio_ops->iomap_valid(iter->inode,
 							 &iter->iomap);
@@ -768,11 +794,13 @@ static int iomap_write_begin(struct iomap_iter *iter, loff_t pos,
 	if (pos + len > folio_pos(folio) + folio_size(folio))
 		len = folio_pos(folio) + folio_size(folio) - pos;
 
+	/* 开始写入这个folio */
 	if (srcmap->type == IOMAP_INLINE)
-		status = iomap_write_begin_inline(iter, folio);
+		status = iomap_write_begin_inline(iter, folio); /* 把inline data拷贝到 folio */
 	else if (srcmap->flags & IOMAP_F_BUFFER_HEAD)
 		status = __block_write_begin_int(folio, pos, len, NULL, srcmap);
 	else
+	/* 把iter的一些内容写入folio */
 		status = __iomap_write_begin(iter, pos, len, folio);
 
 	if (unlikely(status))
@@ -788,6 +816,10 @@ out_unlock:
 	return status;
 }
 
+/* iomap写入的end函数
+=========
+把相关区段设置为up-to-date, dirty
+在mapping里面把folio置脏 */
 static size_t __iomap_write_end(struct inode *inode, loff_t pos, size_t len,
 		size_t copied, struct folio *folio)
 {
@@ -812,6 +844,7 @@ static size_t __iomap_write_end(struct inode *inode, loff_t pos, size_t len,
 	return copied;
 }
 
+/* iomap的inline写入的end函数 */
 static size_t iomap_write_end_inline(const struct iomap_iter *iter,
 		struct folio *folio, loff_t pos, size_t copied)
 {
@@ -830,7 +863,10 @@ static size_t iomap_write_end_inline(const struct iomap_iter *iter,
 	return copied;
 }
 
-/* Returns the number of bytes copied.  May be 0.  Cannot be an errno. */
+/*
+进行iomap的写入的结束工作
+主要是同步
+Returns the number of bytes copied.  May be 0.  Cannot be an errno. */
 static size_t iomap_write_end(struct iomap_iter *iter, loff_t pos, size_t len,
 		size_t copied, struct folio *folio)
 {
@@ -838,6 +874,7 @@ static size_t iomap_write_end(struct iomap_iter *iter, loff_t pos, size_t len,
 	loff_t old_size = iter->inode->i_size;
 	size_t ret;
 
+	/* 这里主要是加快同步 */
 	if (srcmap->type == IOMAP_INLINE) {
 		ret = iomap_write_end_inline(iter, folio, pos, copied);
 	} else if (srcmap->flags & IOMAP_F_BUFFER_HEAD) {
@@ -1326,9 +1363,11 @@ iomap_file_unshare(struct inode *inode, loff_t pos, loff_t len,
 }
 EXPORT_SYMBOL_GPL(iomap_file_unshare);
 
+/* 处理iter的一段范围 */
 static loff_t iomap_zero_iter(struct iomap_iter *iter, bool *did_zero)
 {
 	const struct iomap *srcmap = iomap_iter_srcmap(iter);
+	/*  */
 	loff_t pos = iter->pos;
 	loff_t length = iomap_length(iter);
 	loff_t written = 0;
@@ -1343,6 +1382,7 @@ static loff_t iomap_zero_iter(struct iomap_iter *iter, bool *did_zero)
 		size_t offset;
 		size_t bytes = min_t(u64, SIZE_MAX, length);
 
+		/* 把iter的一些内容写入folio */
 		status = iomap_write_begin(iter, pos, bytes, &folio);
 		if (status)
 			return status;
@@ -1353,9 +1393,11 @@ static loff_t iomap_zero_iter(struct iomap_iter *iter, bool *did_zero)
 		if (bytes > folio_size(folio) - offset)
 			bytes = folio_size(folio) - offset;
 
+		/* 清零folio的一段范围 */
 		folio_zero_range(folio, offset, bytes);
 		folio_mark_accessed(folio);
 
+		/* 进行写入的end工作, 加快同步 */
 		bytes = iomap_write_end(iter, pos, bytes, bytes, folio);
 		if (WARN_ON_ONCE(bytes == 0))
 			return -EIO;
@@ -1370,8 +1412,10 @@ static loff_t iomap_zero_iter(struct iomap_iter *iter, bool *did_zero)
 	return written;
 }
 
-int
-iomap_zero_range(struct inode *inode, loff_t pos, loff_t len, bool *did_zero,
+/*
+操作inode的【pos,len】范围
+*/
+int iomap_zero_range(struct inode *inode, loff_t pos, loff_t len, bool *did_zero,
 		const struct iomap_ops *ops)
 {
 	struct iomap_iter iter = {
@@ -1382,14 +1426,15 @@ iomap_zero_range(struct inode *inode, loff_t pos, loff_t len, bool *did_zero,
 	};
 	int ret;
 
+	/* 不断的迭代步进, 处理每一个范围 */
 	while ((ret = iomap_iter(&iter, ops)) > 0)
 		iter.processed = iomap_zero_iter(&iter, did_zero);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(iomap_zero_range);
 
-int
-iomap_truncate_page(struct inode *inode, loff_t pos, bool *did_zero,
+/* xfs调用 */
+int iomap_truncate_page(struct inode *inode, loff_t pos, bool *did_zero,
 		const struct iomap_ops *ops)
 {
 	unsigned int blocksize = i_blocksize(inode);

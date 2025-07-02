@@ -762,7 +762,8 @@ static ssize_t blkdev_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	ssize_t ret = 0;
 	size_t count;
 
-	if (unlikely(pos + iov_iter_count(to) > size)) {// 表示读取的位置超过了bdev的大小?
+	// 表示读取的位置超过了bdev的大小?
+	if (unlikely(pos + iov_iter_count(to) > size)) {
 		if (pos >= size)
 			return 0;
 		size -= pos;

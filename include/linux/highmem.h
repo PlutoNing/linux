@@ -516,6 +516,7 @@ static inline size_t memcpy_from_file_folio(char *to, struct folio *folio,
 }
 
 /**
+清零folio的一些范围
  * folio_zero_segments() - Zero two byte ranges in a folio.
  * @folio: The folio to write to.
  * @start1: The first byte to zero.

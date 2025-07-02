@@ -2061,6 +2061,8 @@ repeat:
 		VM_BUG_ON_FOLIO(!folio_contains(folio, index), folio);
 	}
 
+	/* 要把页面标记为accessed, 作用可以把页面设置referenced之类的
+	提升页面的稳定性 */
 	if (fgp_flags & FGP_ACCESSED)
 		folio_mark_accessed(folio);
 	else if (fgp_flags & FGP_WRITE) {
@@ -3014,11 +3016,8 @@ int kiocb_invalidate_pages(struct kiocb *iocb, size_t count)
  * Return:
  * * number of bytes copied, even for partial reads
  * * negative error code (or 0 if IOCB_NOIO) if nothing was read
-
- 
  */
-ssize_t
-generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
+ssize_t generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 {
 	size_t count = iov_iter_count(iter);
 	ssize_t retval = 0;
