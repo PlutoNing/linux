@@ -58,7 +58,7 @@ EXPORT_PER_CPU_SYMBOL(irq_stat);
 
 // 系统全部的软中断的数组
 static struct softirq_action softirq_vec[NR_SOFTIRQS] __cacheline_aligned_in_smp;
-
+/* 对应pcp的ksoftirqd线程 */
 DEFINE_PER_CPU(struct task_struct *, ksoftirqd);
 
 const char * const softirq_to_name[NR_SOFTIRQS] = {
@@ -72,6 +72,10 @@ const char * const softirq_to_name[NR_SOFTIRQS] = {
  * to the pending events, so lets the scheduler to balance
  * the softirq load for us.
  唤醒ksoftirqd线程
+ =============
+ 唤醒场合:
+do_softirq
+invoke_softirq
  */
 static void wakeup_softirqd(void)
 {
@@ -418,8 +422,13 @@ static inline bool should_wake_ksoftirqd(void)
 	return true;
 }
 
-/* 执行软中断
-可能直接执行, 也可能通过ksoftirqd */
+/* 
+执行软中断
+可能直接执行, 
+也可能通过ksoftirqd
+=============
+执行场合:
+ */
 static inline void invoke_softirq(void)
 {
 	if (!force_irqthreads() || !__this_cpu_read(ksoftirqd)) {
@@ -535,7 +544,7 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
 	current->flags &= ~PF_MEMALLOC;
 
 	pending = local_softirq_pending();
-	// 好像就是增加了preempt计数
+	// 增加了preempt计数
 	softirq_handle_begin();
 	in_hardirq = lockdep_softirq_start();
 	account_softirq_enter(current);
@@ -549,12 +558,13 @@ restart:
 	h = softirq_vec;
 
 	while ((softirq_bit = ffs(pending))) {
-		// softirq_bit指向第一个被置位的软中断?
+		// softirq_bit指向第一个被置位的软中断
 		unsigned int vec_nr;
 		int prev_count;
 		// 现在h指向这个软中断对应的action
 		h += softirq_bit - 1;
 
+		/* 这段号 */
 		vec_nr = h - softirq_vec;
 		prev_count = preempt_count();
 
@@ -944,10 +954,10 @@ static int ksoftirqd_should_run(unsigned int cpu)
 {
 	return local_softirq_pending();
 }
-/* 好像就是ksoftirqd线程的函数 */
+/* ksoftirqd线程的函数 */
 static void run_ksoftirqd(unsigned int cpu)
 {
-	// 就是加锁
+	// 这里disable irq
 	ksoftirqd_run_begin();
 	if (local_softirq_pending()) {
 		/*
@@ -997,7 +1007,7 @@ static int takeover_tasklets(unsigned int cpu)
 #else
 #define takeover_tasklets	NULL
 #endif /* CONFIG_HOTPLUG_CPU */
-/* 这是啥 */
+/* cpu热插拔时执行 */
 static struct smp_hotplug_thread softirq_threads = {
 	.store			= &ksoftirqd,
 	.thread_should_run	= ksoftirqd_should_run,

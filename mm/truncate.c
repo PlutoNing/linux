@@ -112,6 +112,7 @@ static void truncate_folio_batch_exceptionals(struct address_space *mapping,
 }
 
 /*
+处理mapping的特殊页
  * Invalidate exceptional entry if easily possible. This handles exceptional
  * entries for invalidate_inode_pages().
  */
@@ -287,23 +288,30 @@ int generic_error_remove_page(struct address_space *mapping, struct page *page)
 }
 EXPORT_SYMBOL(generic_error_remove_page);
 //从pagecache移除这个folio
-/* 如果mapping是干净的, 并且没有处于回写状态
+/* 
+如果mapping是干净的, 并且没有处于回写状态
 就移除folio的priv等成员
-然后在mapping的xas里面屏蔽清零folio所在的条目 (还可能调用mapping的free_folio回调) */
+然后在mapping的xas里面屏蔽清零folio所在的条目 (还可能调用mapping的free_folio回调)
+===================
+返回0 ,表示没有移除 */
 static long mapping_evict_folio(struct address_space *mapping,
 		struct folio *folio)
 {
 	if (folio_test_dirty(folio) || folio_test_writeback(folio))
 		return 0;
-	/* The refcount will be elevated if any page in the folio is mapped */
+	/* The refcount will be elevated if any page in the folio is mapped
+	说明这个页面还在被映射
+	比如mmap, shmem什么的
+	 */
 	if (folio_ref_count(folio) >
 			folio_nr_pages(folio) + folio_has_private(folio) + 1)
 		return 0;
-	//在驱逐之前, 释放相关priv等成员
+	//在驱逐之前, 释放相关priv等成员（比如绑定的buffer什么的)
 	if (!filemap_release_folio(folio, 0))
 		return 0;
 	//真正的驱逐
-	/* 把folio从所在的mapping移除, 把在xas的条目清零什么的 */
+	/* 把folio从所在的mapping移除, 
+	把在xas的条目清零什么的 */
 	return remove_mapping(mapping, folio);
 }
 
@@ -563,12 +571,16 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 	int i;
 
 	folio_batch_init(&fbatch);
-	while (find_lock_entries(mapping, &index, end, &fbatch, indices)) {//先查找收拢一些folio
+	/* 从mapping数组里面的【index,end】范围内查找page放进fbatch, indices数组存储对应page的idx */
+	while (find_lock_entries(mapping, &index, end, &fbatch, indices)) {
+		/* 遍历刚才取到的批次 */
 		for (i = 0; i < folio_batch_count(&fbatch); i++) {
+			/* 取出批次里的一个folio */
 			struct folio *folio = fbatch.folios[i];
 
 			/* We rely upon deletion not changing folio->index */
 
+			/* 这是mapping里的特殊页 */
 			if (xa_is_value(folio)) {
 				count += invalidate_exceptional_entry(mapping,
 							     indices[i], folio);
@@ -589,9 +601,9 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 			}
 			count += ret;
 		}
-		// 出路fbatch, 跳过和整理搬移数组里面的可以free的条目
+		// 处理fbatch, 跳过和整理搬移数组里面的可以free的条目
 		folio_batch_remove_exceptionals(&fbatch);
-		// free到buddy
+		// 把这些清理掉的page归还到系统的伙伴系统
 		folio_batch_release(&fbatch);
 		cond_resched();
 	}

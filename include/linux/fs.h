@@ -744,7 +744,7 @@ struct inode {
 	u16			i_wb_frn_history; /*  */
 #endif
 	struct list_head	i_lru;		/* inode LRU list */
-	struct list_head	i_sb_list; /*  */
+	struct list_head	i_sb_list; /* 连接到sb->s_inodes */
 	struct list_head	i_wb_list;	/* backing dev writeback list */
 	union {
 		struct hlist_head	i_dentry; /*  */
