@@ -451,6 +451,8 @@ static inline int is_poisoned_swp_entry(swp_entry_t entry)
 }
 
 /*
+检查pte是不是空的
+============================================
 参数是个pte的值， 一部分编码的是pfn，一部分是flag
  * This is a special version to check pte_none() just to cover the case when
  * the pte is a pte marker.  It existed because in many cases the pte marker
