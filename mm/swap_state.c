@@ -86,9 +86,9 @@ void *get_shadow_from_swap_cache(swp_entry_t entry)
 }
 
 /*
-把页面加入到swap的mapping xas
+把folio加入到swap的mapping xas
 ========================
-一种情况是shmem的mapping准备回写这个folio, entry是刚刚分配的swap slot,这
+一种情况是shmem的mapping准备回写这个folio? entry是刚刚分配的swap slot,这
 里把folio加入到swap 的mapping, 并且设置folio的swap cache page flag.
  * add_to_swap_cache resembles filemap_add_folio on swapper_space,
  * but sets SwapCache flag and private instead of mapping and index.
@@ -375,6 +375,8 @@ static inline bool swap_use_vma_readahead(void)
 }
 
 /*
+根据swap entry查询folio
+只在mapping查找,没有就算了，可能返回null
  * Lookup a swap entry in the swap cache. A found folio will be returned
  * unlocked and with its refcount incremented - we rely on the kernel
  * lock getting page table operations atomic even if we drop the folio
@@ -384,12 +386,6 @@ static inline bool swap_use_vma_readahead(void)
  
  * Caller must lock the swap device or hold a reference to keep it valid.
  调用者必须锁定交换设备或持有引用以保持其有效。
- -----------------------
- entry是由页表的条目转换来的, 编码了swap和idx信息
- 去swap的mapping找到页面,然后读入到返回的folio里面, 是个
- 换入的过程
- ============
- 只在mapping查找,没有就算了，可能返回null
  */
 struct folio *swap_cache_get_folio(swp_entry_t entry,
 		struct vm_area_struct *vma, unsigned long addr)
@@ -397,7 +393,8 @@ struct folio *swap_cache_get_folio(swp_entry_t entry,
 	struct folio *folio;
 	// 从swap的mapping里面获取folio
 	folio = filemap_get_folio(swap_address_space(entry), swp_offset(entry));
-	if (!IS_ERR(folio)) {// 如果获取没问题
+	if (!IS_ERR(folio)) {
+		/* 进行swap mapping相关的预读 */
 		bool vma_ra = swap_use_vma_readahead();
 		bool readahead;
 
@@ -477,6 +474,8 @@ struct folio *filemap_get_incore_folio(struct address_space *mapping,
 // 查找entry对应的页面, 如果mapping没有,新申请页面加入swap mapping.
 /*
 把页面读入swap cache
+==============
+如果swap mapping还没有对应页面, 申请内存, 加入mapping
 */
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
@@ -507,7 +506,10 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			page = folio_file_page(folio, swp_offset(entry));
 			goto got_page;
 		}
-		// 现在是没有这个page的情况
+		/*
+		现在IS_ERR(folio)
+		是swap mapping没有这个page的情况
+		 */
 		/*
 		 * Just skip read ahead for unused swap slot.
 		 * During swap_off when swap_slot_cache is disabled,
@@ -525,6 +527,8 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		 * cause any racers to loop around until we add it to cache.
 		   获取一个新的页面。在将 swap_map 标记为 SWAP_HAS_CACHE 之前，
 		   现在分配它，当 -EEXIST 会导致任何竞争者循环，直到我们将其添加到缓存中。
+		=====================
+
 		 */
 		folio = vma_alloc_folio(gfp_mask, 0, vma, addr, false);
 		if (!folio)
@@ -578,8 +582,10 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 	/* Caller will initiate read into locked folio */
 	folio_add_lru(folio);
+	/* 说明这次是mapping没有查到, 新申请的页面加入的mapping */
 	*new_page_allocated = true;
 	page = &folio->page;
+
 got_page:
 	put_swap_device(si);
 	return page;
@@ -684,8 +690,8 @@ static unsigned long swapin_nr_pages(unsigned long offset)
 }
 
 /**
+swap换入页面
  * swap_cluster_readahead - swap in pages in hope we need them soon
- swap预读
  * @entry: swap entry of this memory
  * @gfp_mask: memory allocation flags
  * @vmf: fault information
@@ -733,15 +739,18 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 
 	blk_start_plug(&plug);
 	for (offset = start_offset; offset <= end_offset ; offset++) {// 一个一个的读取
-		/* Ok, do the async read-ahead now */
+		/* Ok, do the async read-ahead now
+		异步的换入一个page */
 		page = __read_swap_cache_async(
 			swp_entry(swp_type(entry), offset),
 			gfp_mask, vma, addr, &page_allocated);
 		if (!page) // 读取失败,处理下一个offset
 			continue;
 		// 从swap读取成功了（可能是swap mapping本来就有, 也可能是申请页面新加入swap mapping的（page还没有装入swap file的内容））
-		if (page_allocated) {// 如果是申请页面新换入的（page的内容还不是swap file的对应page）
-			swap_readpage(page, false, &splug); // 现在把swap file的页面读入到page
+		if (page_allocated) {
+			/* 说明是一开始swap mapping么有查到, 新申请的页面加入的mapping
+			这里把swap file内容读入swap mapping page */
+			swap_readpage(page, false, &splug);
 			if (offset != entry_offset) {
 				SetPageReadahead(page);
 				count_vm_event(SWAP_RA);

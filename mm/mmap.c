@@ -2926,7 +2926,11 @@ cannot_expand:
 		}
 
 		vma->vm_file = get_file(file);
-		// 调用fops的mmap回调
+		/* 调用fops的mmap回调
+		建立他俩的mmap的关系
+		==============
+		一般file的fops mmap回调会给vma设置上自定义的ops（包含map, fault等）
+		规定缺页的时候, 需要map的时候, 如何执行具体过程, 获取文件页面 */
 		error = call_mmap(file, vma);
 		if (error)
 			goto unmap_and_free_vma;

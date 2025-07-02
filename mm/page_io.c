@@ -550,6 +550,7 @@ static void swap_readpage_bdev_async(struct page *page,
 
 /* 
 把swap file的内容读入到page里面
+page已经位于swap mapping
 */
 void swap_readpage(struct page *page, bool synchronous, struct swap_iocb **plug)
 {

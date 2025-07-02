@@ -2026,6 +2026,10 @@ static inline ssize_t call_write_iter(struct file *file, struct kiocb *kio,
 	return file->f_op->write_iter(kio, iter);
 }
 
+/* 调用文件的mmap回调
+==========
+让文件决定如何mmap, 一般就是给vma设置上对应的ops, 等具体map和fault
+的时候再进行映射 */
 static inline int call_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	return file->f_op->mmap(file, vma);

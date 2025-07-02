@@ -52,7 +52,9 @@ struct vm_area_struct *find_dst_vma(struct mm_struct *dst_mm,
 	return dst_vma;
 }
 
-/* Check if dst_addr is outside of file's size. Must be called with ptl held. */
+/*
+判断是否越界
+Check if dst_addr is outside of file's size. Must be called with ptl held. */
 static bool mfill_file_over_size(struct vm_area_struct *dst_vma,
 				 unsigned long dst_addr)
 {

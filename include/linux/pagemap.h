@@ -251,6 +251,7 @@ static inline void mapping_set_error(struct address_space *mapping, int error)
 }
 
 // 设置mapping为unevictable
+/* 如果是不能swap的shmem fs, 会设置这个 */
 static inline void mapping_set_unevictable(struct address_space *mapping)
 {
 	set_bit(AS_UNEVICTABLE, &mapping->flags);
@@ -628,8 +629,6 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
  * 查找@mapping和@index处的页缓存条目。如果存在folio, 则返回时会增加引用计数。
  * Return: A folio or ERR_PTR(-ENOENT) if there is no folio in the cache for
  * this index.  Will not return a shadow, swap or DAX entry.
- 返回: 如果没有此索引的缓存中没有folio, 则返回一个folio或ERR_PTR(-ENOENT)。
- 不会返回阴影、交换或DAX条目。
  */
 static inline struct folio *filemap_get_folio(struct address_space *mapping,
 					pgoff_t index)

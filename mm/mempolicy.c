@@ -2192,7 +2192,7 @@ static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
 }
 
 /**
-   给vma的addr分配一个folio
+   分配一个folio
    =====
    addr用于获取nid和pol
  * vma_alloc_folio - Allocate a folio for a VMA.

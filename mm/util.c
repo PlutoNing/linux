@@ -305,6 +305,7 @@ int vma_is_stack_for_current(struct vm_area_struct *vma)
 }
 
 /*
+改变vma的后备文件
  * Change backing file, only valid to use during initial VMA setup.
  */
 void vma_set_file(struct vm_area_struct *vma, struct file *file)

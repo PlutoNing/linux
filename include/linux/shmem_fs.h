@@ -130,7 +130,9 @@ static inline unsigned long shmem_swap_usage(struct vm_area_struct *vma)
 extern unsigned long shmem_partial_swap_usage(struct address_space *mapping,
 						pgoff_t start, pgoff_t end);
 
-/* Flag allocation requirements to shmem_get_folio */
+/*
+描述shmem get page的类型?
+Flag allocation requirements to shmem_get_folio */
 enum sgp_type {
 	SGP_READ,	/* don't exceed i_size, don't allocate page */
 	SGP_NOALLOC,	/* similar, but fail on hole or use fallocated page */

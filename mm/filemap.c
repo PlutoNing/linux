@@ -1990,7 +1990,6 @@ repeat:
 	 * A shadow entry of a recently evicted page, or a swap entry from
 	 * shmem/tmpfs.  Return it without attempting to raise page count.
 	   说明是一个阴影条目或者交换条目, 直接返回
-
 	 */
 	if (!folio || xa_is_value(folio))
 		goto out;
@@ -2009,8 +2008,10 @@ out:
 }
 
 /**
+===================
+shmem换入会从这里申请
  * __filemap_get_folio - Find and get a reference to a folio.
-  找到对应的folio, 不存在会申请. 返回的是带锁的
+  找到对应的folio, 不存在会申请（如果参数指定的话）. 返回的是带锁的
  * @mapping: The address_space to search.
  * @index: The page index.
  * @fgp_flags: %FGP flags modify how the folio is returned.
@@ -2104,15 +2105,16 @@ no_page:
 				order = 0;
 			if (order > 0)
 				alloc_gfp |= __GFP_NORETRY | __GFP_NOWARN;
-			folio = filemap_alloc_folio(alloc_gfp, order); //分配准备加到pagecache的页面
+			//分配准备加到pagecache的页面
+			folio = filemap_alloc_folio(alloc_gfp, order);
 			if (!folio)
 				continue;
 
 			/* Init accessed so avoid atomic mark_page_accessed later */
 			if (fgp_flags & FGP_ACCESSED) //
 				__folio_set_referenced(folio);
-
-			err = filemap_add_folio(mapping, folio, index, gfp); //把申请的页面加入mapping
+			//把申请的页面加入mapping
+			err = filemap_add_folio(mapping, folio, index, gfp);
 			if (!err)
 				break;
 			// 出错了
@@ -3250,6 +3252,8 @@ static inline size_t seek_folio_size(struct xa_state *xas, struct folio *folio)
 }
 
 /**
+用户SEEK_DATA / SEEK_HOLE调用这里
+
  * mapping_seek_hole_data - Seek for SEEK_DATA / SEEK_HOLE in the page cache.
  * @mapping: Address space to search.
  * @start: First byte to consider.
@@ -3279,6 +3283,7 @@ loff_t mapping_seek_hole_data(struct address_space *mapping, loff_t start,
 		return -ENXIO;
 
 	rcu_read_lock();
+	/* 从头到尾逐个遍历present的page */
 	while ((folio = find_get_entry(&xas, max, XA_PRESENT))) {
 		loff_t pos = (u64)xas.xa_index << PAGE_SHIFT;
 		size_t seek_size;
@@ -3807,7 +3812,7 @@ static vm_fault_t filemap_map_order0_folio(struct vm_fault *vmf,
 	return ret;
 }
 
-//shmem的map_pages回调,处理pf的时候会尝试用这个一次性多弄一些页面
+//file mmap的shmem的map_pages回调,处理pf的时候会尝试用这个一次性多弄一些页面
 vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 			     pgoff_t start_pgoff, pgoff_t end_pgoff)
 {

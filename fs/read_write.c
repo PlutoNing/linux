@@ -40,6 +40,7 @@ static inline bool unsigned_offsets(struct file *file)
 }
 
 /**
+修改文件的fpos
  * vfs_setpos - update the file offset for lseek
  设置lseek的文件偏移
  * @file:	file structure in question
