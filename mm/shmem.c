@@ -808,6 +808,7 @@ static int shmem_add_to_page_cache(struct folio *folio,
 	}
 	folio_throttle_swaprate(folio, gfp);
 
+	/* 加入xas */
 	do {
 		xas_lock_irq(&xas);
 		if (expected != xas_find_conflict(&xas)) {
@@ -826,6 +827,7 @@ static int shmem_add_to_page_cache(struct folio *folio,
 			count_vm_event(THP_FILE_ALLOC);
 			__lruvec_stat_mod_folio(folio, NR_SHMEM_THPS, nr);
 		}
+		/* shmem算文件页, 算shmem */
 		mapping->nrpages += nr;
 		__lruvec_stat_mod_folio(folio, NR_FILE_PAGES, nr);
 		__lruvec_stat_mod_folio(folio, NR_SHMEM, nr);
@@ -850,6 +852,7 @@ error:
  * Like delete_from_page_cache, but substitutes swap for @folio.
    就像delete_from_page_cache一样, 但是用swap替换@folio
    是因为把folio回写到了swap
+   ============================================
  */
 static void shmem_delete_from_page_cache(struct folio *folio, void *radswap)
 {
@@ -862,6 +865,7 @@ static void shmem_delete_from_page_cache(struct folio *folio, void *radswap)
 	xa_lock_irq(&mapping->i_pages);
 	error = shmem_replace_entry(mapping, folio->index, folio, radswap);
 	folio->mapping = NULL; // 在刚刚把folio加到了swap 的mapping里面, 所以这里要清空
+	/* 添加的逆过程, 减少相关的计数 */
 	mapping->nrpages -= nr;
 	__lruvec_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 	__lruvec_stat_mod_folio(folio, NR_SHMEM, -nr);
@@ -1805,7 +1809,7 @@ static bool shmem_should_replace_folio(struct folio *folio, gfp_t gfp)
 	return folio_zonenum(folio) > gfp_zone(gfp);
 }
 
-// 替换folio
+/* shmem在mapping替换folio? */
 static int shmem_replace_folio(struct folio **foliop, gfp_t gfp,
 				struct shmem_inode_info *info, pgoff_t index)
 {
@@ -1845,6 +1849,7 @@ static int shmem_replace_folio(struct folio **foliop, gfp_t gfp,
 	 * a nice clean interface for us to replace oldpage by newpage there.
 	 */
 	xa_lock_irq(&swap_mapping->i_pages);
+	/* 替换条目 */
 	error = shmem_replace_entry(swap_mapping, swap_index, old, new);
 	if (!error) {
 		mem_cgroup_migrate(old, new);
@@ -2745,7 +2750,8 @@ static inline struct inode *shmem_get_inode(struct mnt_idmap *idmap,
 #endif /* CONFIG_TMPFS_QUOTA */
 
 #ifdef CONFIG_USERFAULTFD
-/* 把页面添加到shmem的mapping，uffd安装pte */
+/* 
+把页面添加到shmem的mapping，uffd安装pte */
 int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 			   struct vm_area_struct *dst_vma,
 			   unsigned long dst_addr,

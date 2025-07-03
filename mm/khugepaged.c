@@ -1761,6 +1761,7 @@ static void retract_page_tables(struct address_space *mapping, pgoff_t pgoff)
 }
 
 /**
+把文件页, tmpfs, shmem, 合并为巨页
  * collapse_file - collapse filemap/tmpfs/shmem pages into huge one.
  *
  * @mm: process address space where collapse happens
@@ -1798,6 +1799,7 @@ static int collapse_file(struct mm_struct *mm, unsigned long addr,
 	LIST_HEAD(pagelist);
 	XA_STATE_ORDER(xas, &mapping->i_pages, start, HPAGE_PMD_ORDER);
 	int nr_none = 0, result = SCAN_SUCCEED;
+	/* 测试mapping的ops是不是shmem的ops */
 	bool is_shmem = shmem_file(file);
 	int nr = 0;
 
@@ -2212,6 +2214,7 @@ out:
 	return result;
 }
 
+/*  */
 static int hpage_collapse_scan_file(struct mm_struct *mm, unsigned long addr,
 				    struct file *file, pgoff_t start,
 				    struct collapse_control *cc)

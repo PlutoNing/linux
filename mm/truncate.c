@@ -287,12 +287,15 @@ int generic_error_remove_page(struct address_space *mapping, struct page *page)
 	return truncate_inode_folio(mapping, page_folio(page));
 }
 EXPORT_SYMBOL(generic_error_remove_page);
-//从pagecache移除这个folio
+
 /* 
+从pagecache移除这个folio
 如果mapping是干净的, 并且没有处于回写状态
 就移除folio的priv等成员
-然后在mapping的xas里面屏蔽清零folio所在的条目 (还可能调用mapping的free_folio回调)
-===================
+然后在mapping的xas里面屏蔽清零folio所在的条目
+=========================================================
+主要是内核很多fs实现会调用, 清理mapping的空间
+==========================================================
 返回0 ,表示没有移除 */
 static long mapping_evict_folio(struct address_space *mapping,
 		struct folio *folio)
@@ -309,9 +312,8 @@ static long mapping_evict_folio(struct address_space *mapping,
 	//在驱逐之前, 释放相关priv等成员（比如绑定的buffer什么的)
 	if (!filemap_release_folio(folio, 0))
 		return 0;
-	//真正的驱逐
-	/* 把folio从所在的mapping移除, 
-	把在xas的条目清零什么的 */
+	/*  把folio从所在的mapping移除, 
+		把在xas的条目清零什么的 */
 	return remove_mapping(mapping, folio);
 }
 
@@ -548,7 +550,9 @@ EXPORT_SYMBOL(truncate_inode_pages_final);
 
 /**
  * mapping_try_invalidate - Invalidate all the evictable folios of one inode
- 无效化inode的所有可驱逐的folio. 注意不是截断全部的folio
+ 无效化inode的范围内的所有可驱逐的folio. 注意不是截断全部的folio
+ =================
+ 很多fs实现都会调用这个函数, 清理mapping的缓存
  * @mapping: the address_space which holds the folios to invalidate
  * @start: the offset 'from' which to invalidate
  * @end: the offset 'to' which to invalidate (inclusive)
@@ -611,6 +615,8 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 /**
  * invalidate_mapping_pages - Invalidate all clean, unlocked cache of one inode
  无效化inode的所有干净的未锁定的缓存
+ =======================================================、
+ 很多调用
  * @mapping: the address_space which holds the cache to invalidate
  * @start: the offset 'from' which to invalidate
  * @end: the offset 'to' which to invalidate (inclusive)
@@ -631,6 +637,11 @@ unsigned long invalidate_mapping_pages(struct address_space *mapping,
 EXPORT_SYMBOL(invalidate_mapping_pages);
 
 /*
+从mapping移除页面 (回写中的, 脏页不处理)
+
+===========================
+
+返回1表示成功
  * This is like invalidate_inode_page(), except it ignores the page's
  * refcount.  We do this because invalidate_inode_pages2() needs stronger
  * invalidation guarantees, and cannot afford to leave pages behind because
@@ -639,8 +650,6 @@ EXPORT_SYMBOL(invalidate_mapping_pages);
    这个函数类似于invalidate_inode_page(), 但是它忽略了页面的引用计数。
    我们这样做是因为invalidate_inode_pages2()需要更强的无效化保证, 不能因为shrink_page_list()
    对它们有一个临时引用 或者 因为它们暂时停留在folio_add_lru()缓存中而留下页面
-----------------------------------------
-这是个更猛的无效化, 会等待写回完成,然后从xas移除
  */
 static int invalidate_complete_folio2(struct address_space *mapping,
 					struct folio *folio)
@@ -648,7 +657,7 @@ static int invalidate_complete_folio2(struct address_space *mapping,
 	if (folio->mapping != mapping)
 		return 0;
 
-		// 检查是否有私有数据, 有的话, 移除
+	// 检查是否有私有数据, 有的话, 移除
 	if (!filemap_release_folio(folio, GFP_KERNEL))
 		return 0;
 
@@ -686,9 +695,9 @@ static int folio_launder(struct address_space *mapping, struct folio *folio)
 /**
 
  * invalidate_inode_pages2_range - remove range of pages from an address_space
- 好像重点在于无效化?
  从address_space中删除页面范围. 一个个的等待写回完成,解除映射?
  =============
+ truncate也调用
  一种调用原因可能是, mapping的start,end范围内进行了直接io, 把这些缓存的内容给invalidate
  * @mapping: the address_space
  * @start: the page offset 'from' which to invalidate

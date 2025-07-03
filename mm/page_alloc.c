@@ -805,17 +805,19 @@ static inline void __free_one_page(struct page *page,
 	VM_BUG_ON_PAGE(page->flags & PAGE_FLAGS_CHECK_AT_PREP, page);
 
 	VM_BUG_ON(migratetype == -1);
-	if (likely(!is_migrate_isolate(migratetype))) // 更新统计信息
+	/* 如果不是isolate mt的话  更新统计信息 */
+	if (likely(!is_migrate_isolate(migratetype)))
 		__mod_zone_freepage_state(zone, 1 << order, migratetype);
 
 	VM_BUG_ON_PAGE(pfn & ((1 << order) - 1), page);
 	VM_BUG_ON_PAGE(bad_range(zone, page), page);
 
 	while (order < MAX_ORDER) {
+		/* 这是说如果发现适合规整的话, 就先不归还了? */
 		if (compaction_capture(capc, page, order, migratetype)) {
 			__mod_zone_freepage_state(zone, -(1 << order),
 								migratetype);
-			return; // 说明是被什么capc捕获了,就先不用归还了?
+			return;
 		}
 		// 找到page同order的buddy page
 		buddy = find_buddy_page_pfn(page, pfn, order, &buddy_pfn);
@@ -880,6 +882,7 @@ done_merging:
 }
 
 /**
+分裂free page
  * split_free_page() -- split a free page at split_pfn_offset
  * @free_page:		the original free page
  * @order:		the order of the page
@@ -895,6 +898,7 @@ done_merging:
 int split_free_page(struct page *free_page,
 			unsigned int order, unsigned long split_pfn_offset)
 {
+	/* 获取空闲页的zone和pfn */
 	struct zone *zone = page_zone(free_page);
 	unsigned long free_page_pfn = page_to_pfn(free_page);
 	unsigned long pfn;
@@ -908,25 +912,33 @@ int split_free_page(struct page *free_page,
 
 	spin_lock_irqsave(&zone->lock, flags);
 
+	/* 增加安全性的检查 */
 	if (!PageBuddy(free_page) || buddy_order(free_page) != order) {
 		ret = -ENOENT;
 		goto out;
 	}
 
+	/* 获取page的mt */
 	mt = get_pfnblock_migratetype(free_page, free_page_pfn);
+
+	/* 这是因为要分裂了, 就是变成了两份空闲页, 这里先减少计数
+	后续计数这俩新空闲页的时候会补回来? */
 	if (likely(!is_migrate_isolate(mt)))
 		__mod_zone_freepage_state(zone, -(1UL << order), mt);
 
+	/* 先把页面从buddy的freelist移除 */
 	del_page_from_free_list(free_page, zone, order);
-	for (pfn = free_page_pfn;
-	     pfn < free_page_pfn + (1UL << order);) {
+	/* 现在遍历老空闲页面的每一个page(虽然叫老空闲页面, 好像只有一个似的, 其实order一般大) */
+	for (pfn = free_page_pfn; pfn < free_page_pfn + (1UL << order);) {
 		int mt = get_pfnblock_migratetype(pfn_to_page(pfn), pfn);
 
 		free_page_order = min_t(unsigned int,
 					pfn ? __ffs(pfn) : order,
 					__fls(split_pfn_offset));
+		/* 把这个页面走一下归还过程 */
 		__free_one_page(pfn_to_page(pfn), pfn, zone, free_page_order,
 				mt, FPI_NONE);
+		/* 步进pfn */
 		pfn += 1UL << free_page_order;
 		split_pfn_offset -= (1UL << free_page_order);
 		/* we have done the first part, now switch to second part */
@@ -2271,6 +2283,7 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 					      -(1 << order));
 	}
 
+	/* 取用空闲页 */
 	__mod_zone_page_state(zone, NR_FREE_PAGES, -(i << order));
 	spin_unlock_irqrestore(&zone->lock, flags);
 
@@ -2678,12 +2691,15 @@ void split_page(struct page *page, unsigned int order)
 }
 EXPORT_SYMBOL_GPL(split_page);
 
+/* 好像就是如果page够大的话
+就把其中的页面按照pageblock为单位修改为movable的mt (先从buddy取回来) */
 int __isolate_free_page(struct page *page, unsigned int order)
 {
 	struct zone *zone = page_zone(page);
 	int mt = get_pageblock_migratetype(page);
 
 	if (!is_migrate_isolate(mt)) {
+		/* 如果page的mt不是isolate的 */
 		unsigned long watermark;
 		/*
 		 * Obey watermarks as if the page was being allocated. We can
@@ -2695,17 +2711,22 @@ int __isolate_free_page(struct page *page, unsigned int order)
 		if (!zone_watermark_ok(zone, 0, watermark, 0, ALLOC_CMA))
 			return 0;
 
+		/* 因为修改为movable mt之前 ,从buddy隔离出来了, 所以表现为空闲页变少了 */
 		__mod_zone_freepage_state(zone, -(1UL << order), mt);
 	}
 
+	/* 同样的先从buddy的管理中拿出来 */
 	del_page_from_free_list(page, zone, order);
 
 	/*
 	 * Set the pageblock if the isolated page is at least half of a
 	 * pageblock
+	 如果order是8 9 10
+	 也就是说256 512 1024个page
 	 */
 	if (order >= pageblock_order - 1) {
 		struct page *endpage = page + (1 << order) - 1;
+		/* 以512为step, 遍历这个页面的page */
 		for (; page < endpage; page += pageblock_nr_pages) {
 			int mt = get_pageblock_migratetype(page);
 			/*
@@ -2801,6 +2822,7 @@ struct page *rmqueue_buddy(struct zone *preferred_zone, struct zone *zone,
 				return NULL;
 			}
 		}
+		/* 从buddy取用page */
 		__mod_zone_freepage_state(zone, -(1 << order),
 					  get_pcppage_migratetype(page));
 		spin_unlock_irqrestore(&zone->lock, flags);
@@ -3997,8 +4019,7 @@ bool gfp_pfmemalloc_allowed(gfp_t gfp_mask)
  *
  * Returns true if a retry is viable or false to enter the oom path.
  */
-static inline bool
-should_reclaim_retry(gfp_t gfp_mask, unsigned order,
+static inline bool should_reclaim_retry(gfp_t gfp_mask, unsigned order,
 		     struct alloc_context *ac, int alloc_flags,
 		     bool did_some_progress, int *no_progress_loops)
 {

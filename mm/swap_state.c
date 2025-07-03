@@ -157,6 +157,8 @@ unlock:
 }
 
 /*
+从swap mapping移除folio, 清除folio的swap cache标记
+===============================================================
  * This must be called only on folios that have
  * been verified to be in the swap cache.
   必须仅在已验证在swap mapping中的folio上调用此函数。
@@ -190,7 +192,10 @@ void __delete_from_swap_cache(struct folio *folio,
 	//清除标记位
 	folio_clear_swapcache(folio);
 	address_space->nrpages -= nr;
-	/* 为啥这个也算到文件页里面? */
+	/* 为啥这个也算到文件页里面?
+	1,从meminfo文件cached的计算方式来看, swap mapping确实是算NR_FILE_PAGES的
+	2, swap mapping也是mapping, 内核代码里面计入了NR_FILE_PAGES, 虽然hugepages的
+	mapping,也是mapping, 但是就区别对待了 */
 	__node_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 	__lruvec_stat_mod_folio(folio, NR_SWAPCACHE, -nr);
 }

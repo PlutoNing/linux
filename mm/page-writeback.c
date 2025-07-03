@@ -269,6 +269,8 @@ static void wb_min_max_ratio(struct bdi_writeback *wb,
  */
 
 /**
+获取node的dirty able的页面数量
+什么算dirty able
  * node_dirtyable_memory - number of dirtyable pages in a node
  * @pgdat: the node
  *

@@ -54,6 +54,7 @@ static inline void set_max_mapnr(unsigned long limit) { }
 #endif
 
 extern atomic_long_t _totalram_pages;
+/* 全部物理内存 */
 static inline unsigned long totalram_pages(void)
 {
 	return (unsigned long)atomic_long_read(&_totalram_pages);

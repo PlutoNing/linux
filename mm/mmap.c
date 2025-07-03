@@ -4017,7 +4017,8 @@ void __init mmap_init(void)
 	VM_BUG_ON(ret);
 }
 
-/*内存增减后，重新初始化user reserve
+/*
+内存增减后，重新初始化user reserve
  * Initialise sysctl_user_reserve_kbytes.
  *
  * This is intended to prevent a user from starting a single memory hogging

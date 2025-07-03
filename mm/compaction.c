@@ -2307,6 +2307,7 @@ static bool __compaction_suitable(struct zone *zone, int order,
 }
 
 /*
+判断当前zone是否适合规整
  * compaction_suitable: Is this suitable to run compaction on this zone now?
  */
 bool compaction_suitable(struct zone *zone, int order, int highest_zoneidx)

@@ -1436,6 +1436,7 @@ void swap_free(swp_entry_t entry)
 
 /*
 刚刚把folio从swap mapping移除, entry是对应的swap条目
+这里处理的是swap file里面的空间分配相关?
  * Called after dropping swapcache to decrease refcnt to swap entries.
    在从swapcache删除后调用以减少对交换条目的引用计数.
  */

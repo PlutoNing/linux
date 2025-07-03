@@ -225,6 +225,7 @@ static inline int pipe_buf_confirm(struct pipe_inode_info *pipe,
 }
 
 /**
+调用buf的steal ops
  * pipe_buf_try_steal - attempt to take ownership of a pipe_buffer
  * @pipe:	the pipe that the buffer belongs to
  * @buf:	the buffer to attempt to steal

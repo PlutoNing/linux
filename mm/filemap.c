@@ -123,7 +123,11 @@
  *    ->private_lock		(zap_pte_range->block_dirty_folio)
  */
 
-//从mapping xas 删除
+/* 
+
+只是使用shadow覆盖folio, 额外的工作不多
+
+*/
 static void page_cache_delete(struct address_space *mapping,
 				   struct folio *folio, void *shadow)
 {
@@ -149,6 +153,9 @@ static void page_cache_delete(struct address_space *mapping,
 }
 /*
 从mapping移除此folio之前的统计操作
+==================================================================
+调用场合:
+
 */
 static void filemap_unaccount_folio(struct address_space *mapping,
 		struct folio *folio)
@@ -196,11 +203,12 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 
 	nr = folio_nr_pages(folio);
 
+	/* 看来是说mapping里面的页面肯定算NR_FILE_PAGES */
 	// 表示文件页少了nr页
 	__lruvec_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 
-	if (folio_test_swapbacked(folio)) { // 如果这个文件页是被交换的
-		// 看来shmem就是被map的交换的文件页?
+	/* 然后里面也可能是巨页, 也可能是交换的 */
+	if (folio_test_swapbacked(folio)) {
 		__lruvec_stat_mod_folio(folio, NR_SHMEM, -nr);
 		if (folio_test_pmd_mappable(folio))
 			__lruvec_stat_mod_folio(folio, NR_SHMEM_THPS, -nr);
@@ -231,7 +239,16 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 }
 
 /*
-从pagecache的xas移除页面
+pagecache移除的主要接口
+==============
+从pagecache的xas移除页面, 登记页面的移除
+这个函数的特点是可以使用shadow覆盖folio
+=========================
+内核很多fs实现会调用
+shrink_folio_list也调用
+truncate调用
+
+================================
  * Delete a page from the page cache and free it. Caller has to make
  * sure the page is locked and that nobody else uses it - or that usage
  * is safe.  The caller must hold the i_pages lock.
@@ -243,7 +260,7 @@ void __filemap_remove_folio(struct folio *folio, void *shadow)
 	trace_mm_filemap_delete_from_page_cache(folio);
 	/* 先统计 */
 	filemap_unaccount_folio(mapping, folio);
-	/* 这里从xas移除 */
+	/* 这里从xas移除, 使用shadow覆盖folio */
 	page_cache_delete(mapping, folio, shadow);
 }
 
@@ -263,6 +280,13 @@ void filemap_free_folio(struct address_space *mapping, struct folio *folio)
 }
 
 /**
+从pagecache移除页面, 单纯的从xas移除
+===============================================================
+预读会调用
+sgp也会调用, 发现文件被truncate的话
+uffd调用
+truncate
+========================
  * filemap_remove_folio - Remove folio from page cache.
    从mapping移除folio
  * @folio: The folio.
@@ -344,8 +368,14 @@ static void page_cache_delete_batch(struct address_space *mapping,
 	mapping->nrpages -= total_pages;
 }
 
-// 从mapping中删除一批folio  从xas数组移除
-// 谁调用: truncate_inode_pages_range
+/* 
+从mapping中删除一批folio:
+1: 先统计folio的移除
+2: 从xas数组删除
+3: 调用mapping的free_folio回调
+==============================================================
+调用: 只有truncate_inode_pages_range
+*/
 void delete_from_page_cache_batch(struct address_space *mapping,
 				  struct folio_batch *fbatch)
 {
@@ -356,20 +386,24 @@ void delete_from_page_cache_batch(struct address_space *mapping,
 
 	spin_lock(&mapping->host->i_lock);
 	xa_lock_irq(&mapping->i_pages);
+	/* 一个一个先统计页面的移除 */
 	for (i = 0; i < folio_batch_count(fbatch); i++) {
 		struct folio *folio = fbatch->folios[i];
 
 		trace_mm_filemap_delete_from_page_cache(folio);
-		filemap_unaccount_folio(mapping, folio); //先登记移除了
+		 //先登记移除了
+		filemap_unaccount_folio(mapping, folio);
 	}
 	// 从xas数组移除
 	page_cache_delete_batch(mapping, fbatch);
 	xa_unlock_irq(&mapping->i_pages);
+	/* 什么是shrinkable */
 	if (mapping_shrinkable(mapping))
 		inode_add_lru(mapping->host);
 
 	spin_unlock(&mapping->host->i_lock);
 
+	/* 调用mapping的free_folio回调 */
 	for (i = 0; i < folio_batch_count(fbatch); i++)
 		filemap_free_folio(mapping, fbatch->folios[i]);
 }
@@ -864,6 +898,8 @@ EXPORT_SYMBOL(file_write_and_wait_range);
 /**
  * replace_page_cache_folio - replace a pagecache folio with a new one
   替换pagecache的一个页面? 目的是什么?
+  =====================================
+  
  * @old:	folio to be replaced
  * @new:	folio to replace with
  *
@@ -892,18 +928,20 @@ void replace_page_cache_folio(struct folio *old, struct folio *new)
 	new->mapping = mapping;
 	new->index = offset;
 
+	/* 执行memcg相关的迁移 */
 	mem_cgroup_migrate(old, new);
 
 	xas_lock_irq(&xas);
 	xas_store(&xas, new);
 
 	old->mapping = NULL;
-	/* hugetlb pages do not participate in page cache accounting. */
+	/* hugetlb pages do not participate in page cache accounting.
+	巨页即使在mapping, 也不能算文件页 */
 	if (!folio_test_hugetlb(old))
 		__lruvec_stat_sub_folio(old, NR_FILE_PAGES);
 	if (!folio_test_hugetlb(new))
-
 		__lruvec_stat_add_folio(new, NR_FILE_PAGES);
+	/* mapping里面的被交换的, 是shmem */
 	if (folio_test_swapbacked(old))
 		__lruvec_stat_sub_folio(old, NR_SHMEM);
 	if (folio_test_swapbacked(new))

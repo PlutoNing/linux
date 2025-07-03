@@ -56,6 +56,8 @@ static noinline void noinline pipe_clear_nowait(struct file *file)
 }
 
 /*
+pipe的buf的steal ops
+处理pagecache类型的
  * Attempt to steal a page from a pipe buffer. This should perhaps go into
  * a vm helper function, it's already simplified quite a bit by the
  * addition of remove_mapping(). If success is returned, the caller may
@@ -152,6 +154,10 @@ error:
 	return err;
 }
 
+/* pipe的buf的ops
+=============
+可以理解为pipe由buf组成, buf可以持有各种零拷贝得来的page的ref
+pipe被读取的时候, 调用这个回调来获取数据? */
 const struct pipe_buf_operations page_cache_pipe_buf_ops = {
 	.confirm	= page_cache_pipe_buf_confirm,
 	.release	= page_cache_pipe_buf_release,
@@ -169,6 +175,7 @@ static bool user_page_pipe_buf_try_steal(struct pipe_inode_info *pipe,
 	return generic_pipe_buf_try_steal(pipe, buf);
 }
 
+/* 这个是user page的管道的buf的ops */
 static const struct pipe_buf_operations user_page_pipe_buf_ops = {
 	.release	= page_cache_pipe_buf_release,
 	.try_steal	= user_page_pipe_buf_try_steal,

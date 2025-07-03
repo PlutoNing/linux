@@ -50,6 +50,7 @@ long si_mem_available(void)
 	/*
 	 * Estimate the amount of memory available for userspace allocations,
 	 * without causing swapping or OOM.
+	空闲的减去保留的就是available的?
 	 */
 	available = global_zone_page_state(NR_FREE_PAGES) - totalreserve_pages;
 
@@ -77,11 +78,15 @@ long si_mem_available(void)
 }
 EXPORT_SYMBOL_GPL(si_mem_available);
 
+/* 获取一些系统的内存总量信息 */
 void si_meminfo(struct sysinfo *val)
 {
 	val->totalram = totalram_pages();
+	/* 统计shmem */
 	val->sharedram = global_node_page_state(NR_SHMEM);
+	/* 统计空闲页 */
 	val->freeram = global_zone_page_state(NR_FREE_PAGES);
+	/* todddddo */
 	val->bufferram = nr_blockdev_pages();
 	val->totalhigh = totalhigh_pages();
 	val->freehigh = nr_free_highpages();

@@ -5920,7 +5920,8 @@ static int mem_cgroup_move_account(struct page *page,
 
 	folio_memcg_lock(folio);
 
-	if (folio_test_anon(folio)) {/* 如果是匿名页的话 */
+	if (folio_test_anon(folio)) {
+		/* 如果是匿名页的话 */
 		if (folio_mapped(folio)) {
 			__mod_lruvec_state(from_vec, NR_ANON_MAPPED, -nr_pages);
 			__mod_lruvec_state(to_vec, NR_ANON_MAPPED, nr_pages);
@@ -5931,7 +5932,8 @@ static int mem_cgroup_move_account(struct page *page,
 						   nr_pages);
 			}
 		}
-	} else {/* 不是匿名页就是文件页 */
+	} else {
+		/* 不是匿名页就是文件页 */
 		__mod_lruvec_state(from_vec, NR_FILE_PAGES, -nr_pages);
 		__mod_lruvec_state(to_vec, NR_FILE_PAGES, nr_pages);
 
@@ -7608,6 +7610,7 @@ static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 }
 
 /**
+这里用于, 在从swap mapping移除folio之后, 计算memcg的charge相关
  * mem_cgroup_swapout - transfer a memsw charge to swap
  * @folio: folio whose memsw charge to transfer
  * @entry: swap entry to move the charge to

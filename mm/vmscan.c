@@ -1468,9 +1468,13 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 }
 
 /*
-文件页或者交换页,此时位于mapping
- 从mapping移除folio
- 看看具体做了什么工作: 这里好像仅仅是从xas移除, 没有释放页面什么的
+mapping移除folio (不移除还有ref的, 不移除dirty的)
+分两种情况: swap mapping和普通mapping, 分别处理的
+返回1 成功
+=========================================================================
+内核很多fs的实现都会调用来清理mapping
+shrink_list回收内存也会调用
+=========================================================================
  * Same as remove_mapping, but if the folio is removed from the mapping, it
  * gets returned with a refcount of 0.
  与remove_mapping相同,但是如果folio从mapping移除,它会返回一个引用计数为0的值
@@ -1523,21 +1527,23 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		goto cannot_free;
 	}
 
-	/* 这里什么情况会是在swapcache里面, shmem的页面? */
+	/* 被交换的处于swap mapping的文件页会这个路径
+	比如shmem的 */
 	if (folio_test_swapcache(folio)) {
-		// 如果还是swapcache的folio, 说明是内存中的swap
+		// 说明这个mapping是swap file的mapping
 		swp_entry_t swap = folio->swap;
 
 		if (reclaimed && !mapping_exiting(mapping))
 			shadow = workingset_eviction(folio, target_memcg);
-		//从swapcache移除folio
+		//从swap mapping移除folio
 		__delete_from_swap_cache(folio, swap, shadow);
 		// 是换出, 因为把内存中的folio移除了
 		mem_cgroup_swapout(folio, swap);
 		xa_unlock_irq(&mapping->i_pages);
 		// 以后看看如何put的
 		put_swap_folio(folio, swap);
-	} else {// 普通的pagecache folio?
+	} else {
+		// 普通的pagecache folio?
 		void (*free_folio)(struct folio *);
 
 		free_folio = mapping->a_ops->free_folio;
@@ -1564,11 +1570,11 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (reclaimed && folio_is_file_lru(folio) &&
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
 			shadow = workingset_eviction(folio, target_memcg);
-		// 从xas中移除folio
+		// 从xas中移除folio, 统计folio的移除
 		__filemap_remove_folio(folio, shadow);
 		xa_unlock_irq(&mapping->i_pages);
 		if (mapping_shrinkable(mapping))
-			inode_add_lru(mapping->host); // 添加到sb的某个lru
+			inode_add_lru(mapping->host);
 		spin_unlock(&mapping->host->i_lock);
 
 		if (free_folio)
@@ -1586,16 +1592,20 @@ cannot_free:
 
 /**
  从mapping移除folio
+ 分为swap mapping和文件mapping来处理
+ 如果folio是脏的,在回写中,或者有其他人引用,移除会失败
+ 返回: 从mapping移除的页数. 0表示无法移除
+ ====================================================================
  * remove_mapping() - Attempt to remove a folio from its mapping.
  * @mapping: The address space.
  * @folio: The folio to remove.
  *
  * If the folio is dirty, under writeback or if someone else has a ref
  * on it, removal will fail.
- 如果folio是脏的,在回写中,或者有其他人引用,移除会失败
+ 
  * Return: The number of pages removed from the mapping.  0 if the folio
  * could not be removed.
- 返回: 从mapping移除的页数. 0表示无法移除
+ 
  * Context: The caller should have a single refcount on the folio and
  * hold its lock.
  */
@@ -3273,7 +3283,9 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 		unsigned long free, anon;
 		int z;
 
+		/* 获取node上面每个zone的free pages */
 		free = sum_zone_node_page_state(pgdat->node_id, NR_FREE_PAGES);
+		/* node的文件页数量 */
 		file = node_page_state(pgdat, NR_ACTIVE_FILE) +
 			   node_page_state(pgdat, NR_INACTIVE_FILE);
 

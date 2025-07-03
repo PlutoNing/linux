@@ -159,6 +159,7 @@ void vm_events_fold_cpu(int cpu)
  *
  * vm_stat contains the global counters
  */
+/*  */
 atomic_long_t vm_zone_stat[NR_VM_ZONE_STAT_ITEMS] __cacheline_aligned_in_smp;
 /* 全局的页面统计信息 */
 atomic_long_t vm_node_stat[NR_VM_NODE_STAT_ITEMS] __cacheline_aligned_in_smp;
@@ -979,6 +980,7 @@ void drain_zonestat(struct zone *zone, struct per_cpu_zonestat *pzstats)
 
 #ifdef CONFIG_NUMA
 /*
+统计node的所有zone的某种内存数量之和
  * Determine the per node value of a stat item. This function
  * is called frequently in a NUMA machine, so try to be as
  * frugal as possible.

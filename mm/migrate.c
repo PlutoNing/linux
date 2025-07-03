@@ -409,12 +409,14 @@ static int folio_expected_refs(struct address_space *mapping,
 int folio_migrate_mapping(struct address_space *mapping,
 		struct folio *newfolio, struct folio *folio, int extra_count)
 {
+	/* folio现在位于mapping */
 	XA_STATE(xas, &mapping->i_pages, folio_index(folio));
 	struct zone *oldzone, *newzone;
 	int dirty;
 	int expected_count = folio_expected_refs(mapping, folio) + extra_count;
 	long nr = folio_nr_pages(folio);
 
+	/* 刚刚都声明xas了， 这里还可能是null吗 */
 	if (!mapping) {
 		/* Anonymous page without mapping */
 		if (folio_ref_count(folio) != expected_count)
@@ -441,11 +443,13 @@ int folio_migrate_mapping(struct address_space *mapping,
 	/*
 	 * Now we know that no one else is looking at the folio:
 	 * no turning back from here.
+	 让new folio代替folio
 	 */
 	newfolio->index = folio->index;
 	newfolio->mapping = folio->mapping;
 	folio_ref_add(newfolio, nr); /* add cache reference */
 	if (folio_test_swapbacked(folio)) {
+		/* 如果old folio是交换folio */
 		__folio_set_swapbacked(newfolio);
 		if (folio_test_swapcache(folio)) {
 			folio_set_swapcache(newfolio);
@@ -462,6 +466,7 @@ int folio_migrate_mapping(struct address_space *mapping,
 		folio_set_dirty(newfolio);
 	}
 
+	/* 把new folio存入 */
 	xas_store(&xas, newfolio);
 
 	/*
@@ -483,6 +488,7 @@ int folio_migrate_mapping(struct address_space *mapping,
 	 * Note that anonymous pages are accounted for
 	 * via NR_FILE_PAGES and NR_ANON_MAPPED if they
 	 * are mapped to swap space.
+	 如果两个zone不一样，修改统计信息
 	 */
 	if (newzone != oldzone) {
 		struct lruvec *old_lruvec, *new_lruvec;
@@ -494,7 +500,10 @@ int folio_migrate_mapping(struct address_space *mapping,
 
 		__mod_lruvec_state(old_lruvec, NR_FILE_PAGES, -nr);
 		__mod_lruvec_state(new_lruvec, NR_FILE_PAGES, nr);
+		/* 如果这个交换页当前被换出了(shmem页面)
+		1 0的情况, folio被换出了 */
 		if (folio_test_swapbacked(folio) && !folio_test_swapcache(folio)) {
+			/* 这里如果是1 1的情况, 不算NR_SHMEM的变动吗?20250704000319 */
 			__mod_lruvec_state(old_lruvec, NR_SHMEM, -nr);
 			__mod_lruvec_state(new_lruvec, NR_SHMEM, nr);
 
@@ -504,6 +513,9 @@ int folio_migrate_mapping(struct address_space *mapping,
 			}
 		}
 #ifdef CONFIG_SWAP
+		/* 1,1 和 0,1的情况
+		11是folio在mapping里面
+		01不大可能? */
 		if (folio_test_swapcache(folio)) {
 			__mod_lruvec_state(old_lruvec, NR_SWAPCACHE, -nr);
 			__mod_lruvec_state(new_lruvec, NR_SWAPCACHE, nr);

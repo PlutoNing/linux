@@ -149,6 +149,7 @@ static inline bool mapping_empty(struct address_space *mapping)
  * mapping_shrinkable - test if page cache state allows inode reclaim
    检查mapping是否允许inode回收, mapping删除页面后一遍会调用此函数
    -------
+   20250703220733
    什么叫做mapping允许inode回收呢?
  * @mapping: the page cache mapping
  *

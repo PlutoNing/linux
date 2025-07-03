@@ -598,7 +598,8 @@ static __always_inline ssize_t mfill_atomic_pte(pmd_t *dst_pmd,
 		else
 			err = mfill_atomic_pte_zeropage(dst_pmd,
 						 dst_vma, dst_addr);
-	} else {/* 如果这是可以share的vma
+	} else {/* 
+		如果这是可以share的vma
 		就同时还加入inode的mapping，然后还安装pte */
 		err = shmem_mfill_atomic_pte(dst_pmd, dst_vma,
 					     dst_addr, src_addr,

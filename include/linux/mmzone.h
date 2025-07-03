@@ -135,6 +135,8 @@ enum numa_stat_item {
 
 enum zone_stat_item {
 	/* First 128 byte cacheline (assuming 64 bit words) */
+	/* 就是空闲页, buddy取用或者归还了变多变少,
+	isolate mt的话, 会临时变少什么的 */
 	NR_FREE_PAGES,
 	NR_ZONE_LRU_BASE, /* Used only for compaction and reclaim retry */
 	NR_ZONE_INACTIVE_ANON = NR_ZONE_LRU_BASE,
@@ -187,13 +189,14 @@ enum node_stat_item {
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
 			   only modified from process context */
 
-	NR_FILE_PAGES, /* 被交换的页也算在里面 */
-	NR_FILE_DIRTY, /*有脏文件页了,
-	todddo, 2024年12月7日21:25:18 为什么可以认为是reclaimable的 */
+	NR_FILE_PAGES, /* shmem算文件页, 算shmem */
+	NR_FILE_DIRTY, /* */
 	NR_WRITEBACK,
 	NR_WRITEBACK_TEMP,	/* Writeback using temporary buffers */
-	NR_SHMEM,		/* shmem pages (included tmpfs/GEM pages)
-	现在对这个的理解好像就是被map的被交换的文件页?
+	NR_SHMEM,		/*
+	也算文件页
+	shmem pages (included tmpfs/GEM pages)
+	mapping里的, swapbacked的 算这个
 	*/
 	NR_SHMEM_THPS,
 	NR_SHMEM_PMDMAPPED,
@@ -219,7 +222,8 @@ enum node_stat_item {
 	NR_PAGETABLE,		/* 表示用于页表的page数量,used for pagetables */
 	NR_SECONDARY_PAGETABLE, /* secondary pagetables, e.g. KVM pagetables */
 #ifdef CONFIG_SWAP
-	NR_SWAPCACHE, //表示被换入到内存的交换页的mapping大小?
+	/* 位于swap mapping的页面  */
+	NR_SWAPCACHE,
 #endif
 #ifdef CONFIG_NUMA_BALANCING
 	PGPROMOTE_SUCCESS,	/* promote successfully */
