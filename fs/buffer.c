@@ -1214,6 +1214,8 @@ static int grow_dev_page(struct block_device *bdev, sector_t block,
 	int ret = 0;
 	gfp_t gfp_mask;
 
+	/* 设置mapping的gfp为nofs
+	20250703195705 */
 	gfp_mask = mapping_gfp_constraint(inode->i_mapping, ~__GFP_FS) | gfp;
 
 	/*

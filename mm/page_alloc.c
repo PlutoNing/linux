@@ -4635,7 +4635,7 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 	 * from a particular context which has been marked by
 	 * memalloc_no{fs,io}_{save,restore}. And PF_MEMALLOC_PIN which ensures
 	 * movable zones are not used during allocation.
-	 */
+	获取当前进程的gfp */
 	gfp = current_gfp_context(gfp);
 	alloc_gfp = gfp;
 

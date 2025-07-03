@@ -309,7 +309,8 @@ static inline gfp_t mapping_gfp_mask(struct address_space * mapping)
 	return mapping->gfp_mask;
 }
 
-/* Restricts the given gfp_mask to what the mapping allows. */
+/* Restricts the given gfp_mask to what the mapping allows.
+获取mapping的gfp, 加上（与）@gfp_mask的限制 */
 static inline gfp_t mapping_gfp_constraint(struct address_space *mapping,
 		gfp_t gfp_mask)
 {

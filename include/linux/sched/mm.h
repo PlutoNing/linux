@@ -227,6 +227,8 @@ static inline bool in_vfork(struct task_struct *tsk)
 }
 
 /*
+参考进程的内存分配flag, 设置参数@flag
+======================
  可能会加上一些禁止io,fs,movable的flags
  * Applies per-task gfp context to the given allocation flags.
  * PF_MEMALLOC_NOIO implies GFP_NOIO
@@ -279,6 +281,7 @@ static inline void memalloc_retry_wait(gfp_t gfp_flags)
 	 * written out, which requires IO.
 	 */
 	__set_current_state(TASK_UNINTERRUPTIBLE);
+	/* 基于进程的flag设置gfp, 可能会添加nofs什么的 */
 	gfp_flags = current_gfp_context(gfp_flags);
 	if (gfpflags_allow_blocking(gfp_flags) &&
 	    !(gfp_flags & __GFP_NORETRY))
