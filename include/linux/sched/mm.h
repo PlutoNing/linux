@@ -308,6 +308,7 @@ static inline void might_alloc(gfp_t gfp_mask)
 }
 
 /**
+设置current进程内存分配noio
  * memalloc_noio_save - Marks implicit GFP_NOIO allocation scope.
  *
  * This functions marks the beginning of the GFP_NOIO allocation scope.
@@ -339,6 +340,7 @@ static inline void memalloc_noio_restore(unsigned int flags)
 }
 
 /**
+设置current进程内存分配nofs
  * memalloc_nofs_save - Marks implicit GFP_NOFS allocation scope.
  *
  * This functions marks the beginning of the GFP_NOFS allocation scope.
@@ -357,6 +359,7 @@ static inline unsigned int memalloc_nofs_save(void)
 }
 
 /**
+20250703194901
  * memalloc_nofs_restore - Ends the implicit GFP_NOFS scope.
  * @flags: Flags to restore.
  *

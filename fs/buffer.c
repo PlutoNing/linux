@@ -740,6 +740,8 @@ EXPORT_SYMBOL(generic_buffers_fsync);
 
 /*
 写回block的下一个block
+=======================================================================
+mpage调用
  * Called when we've recently written block `bblock', and it is known that
  * `bblock' was for a buffer_boundary() buffer.  This means that the block at
  * `bblock + 1' is probably a dirty indirect block.  Hunt it down and, if it's
@@ -1264,6 +1266,10 @@ failed:
 /*
 为读写块设备的block位置而创建bh并返回
 申请page, 加入mapping, 然后在这个page上面创建bh, 然后返回?
+=======================
+block io的时候这里需要创建对应block位置的bh
+		在mapping找到页面, 没有就申请
+		然后在页面上面新建bh链
  * Create buffers for the specified block device block's page.  If
  * that page was dirty, the buffers are set dirty also.
  */
@@ -1293,7 +1299,9 @@ static int grow_buffers(struct block_device *bdev, sector_t block, int size, gfp
 }
 
 /* 返回块设备指定位置关联的bh
-用于io */
+用于io
+======================/
+ */
 static struct buffer_head * __getblk_slow(struct block_device *bdev, sector_t block,
 	     unsigned size, gfp_t gfp)
 {
@@ -1353,6 +1361,9 @@ static struct buffer_head * __getblk_slow(struct block_device *bdev, sector_t bl
 /**
 置脏bh
 如果是首次, 也会置脏folio和mapping
+==============================
+调用场合
+
  * mark_buffer_dirty - mark a buffer_head as needing writeout
  * @bh: the buffer_head to mark dirty
  *
@@ -1602,12 +1613,13 @@ lookup_bh_lru(struct block_device *bdev, sector_t block, unsigned size)
 这里获取对应的bh （位于块设备的mapping的对应page上面的bh链)
 找到对应的bh
 没有的话会创建
+========================
+从mapping获取对应的page,获取buffer,开始io
  * Perform a pagecache lookup for the matching buffer.  If it's there, refresh
  * it in the LRU and mark it as accessed.  If it is not present then return
  * NULL
  */
-struct buffer_head *
-__find_get_block(struct block_device *bdev, sector_t block, unsigned size)
+struct buffer_head * __find_get_block(struct block_device *bdev, sector_t block, unsigned size)
 {/* 看来是先在什么bh lru缓存里查找 */
 	struct buffer_head *bh = lookup_bh_lru(bdev, block, size);
 
@@ -1627,6 +1639,9 @@ EXPORT_SYMBOL(__find_get_block);
 /*
  找到dev的这个block的bh
  可能是直接找到, 也可能是新创建
+ ============================================
+ 找到mapping里面block对应的page, 没有的话, 就申请页面加入mapping
+ 获取对应的buffer
  * __getblk_gfp() will locate (and, if necessary, create) the buffer_head
  * which corresponds to the passed block_device, block and size. The
  * returned buffer has its reference count incremented.
@@ -1636,7 +1651,7 @@ EXPORT_SYMBOL(__find_get_block);
  */
 struct buffer_head * __getblk_gfp(struct block_device *bdev, sector_t block,
 	     unsigned size, gfp_t gfp)
-{/* 从缓存或者mapping读取bh */
+{	/* 从缓存或者mapping读取bh */
 	struct buffer_head *bh = __find_get_block(bdev, block, size);
 
 	might_sleep();

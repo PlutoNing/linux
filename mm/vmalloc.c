@@ -3350,6 +3350,8 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	 * page tables allocations ignore external gfp mask, enforce it
 	 * by the scope API
 	 */
+
+	/* 如果current进程设置了nofs */
 	if ((gfp_mask & (__GFP_FS | __GFP_IO)) == __GFP_IO)
 		flags = memalloc_nofs_save();
 	else if ((gfp_mask & (__GFP_FS | __GFP_IO)) == 0)
@@ -3363,6 +3365,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 			schedule_timeout_uninterruptible(1);
 	} while (nofail && (ret < 0));
 
+	/* 恢复刚才修改的noio nofs的标志 */
 	if ((gfp_mask & (__GFP_FS | __GFP_IO)) == __GFP_IO)
 		memalloc_nofs_restore(flags);
 	else if ((gfp_mask & (__GFP_FS | __GFP_IO)) == 0)

@@ -93,6 +93,7 @@ void lru_cache_add_inactive_or_unevictable(struct page *page,
 	folio_add_lru_vma(page_folio(page), vma);
 }
 
+/* page到folio的兼容 */
 int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 		pgoff_t index, gfp_t gfp)
 {
@@ -100,8 +101,7 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 }
 EXPORT_SYMBOL(add_to_page_cache_lru);
 /* 获取pagecache的一个页面 */
-noinline
-struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
+noinline struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
 		fgf_t fgp_flags, gfp_t gfp)
 {
 	struct folio *folio;

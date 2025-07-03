@@ -154,6 +154,7 @@ typedef unsigned int __bitwise gfp_t;
  * %__GFP_FS can call down to the low-level FS. Clearing the flag avoids the
  * allocator recursing into the filesystem which might already be holding
  * locks.
+ 是否会涉及底层文件系统?
  *
  * %__GFP_DIRECT_RECLAIM indicates that the caller may enter direct reclaim.
  * This flag can be cleared to avoid unnecessary delays when a fallback
@@ -332,11 +333,14 @@ typedef unsigned int __bitwise gfp_t;
  * in page fault path, while the non-light is used by khugepaged.
  */
 #define GFP_ATOMIC	(__GFP_HIGH|__GFP_KSWAPD_RECLAIM)
+/* 字面上是可以回收, 可以IO, 可以FS?
+以后 */
 #define GFP_KERNEL	(__GFP_RECLAIM | __GFP_IO | __GFP_FS)
 #define GFP_KERNEL_ACCOUNT (GFP_KERNEL | __GFP_ACCOUNT)
 #define GFP_NOWAIT	(__GFP_KSWAPD_RECLAIM)
 #define GFP_NOIO	(__GFP_RECLAIM)
 #define GFP_NOFS	(__GFP_RECLAIM | __GFP_IO)
+/* 以后 */
 #define GFP_USER	(__GFP_RECLAIM | __GFP_IO | __GFP_FS | __GFP_HARDWALL)
 #define GFP_DMA		__GFP_DMA
 #define GFP_DMA32	__GFP_DMA32

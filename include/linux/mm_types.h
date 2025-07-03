@@ -683,7 +683,9 @@ struct vm_area_struct {
 	/* Information about our backing store: */
 	unsigned long vm_pgoff;		/* Offset (within vm_file) in PAGE_SIZE
 					   units */
-	struct file * vm_file;		/* File we map to (can be NULL). */
+	struct file * vm_file;		/*
+	所mmap映射到的文件?
+	File we map to (can be NULL). */
 	void * vm_private_data;		/* 
 	对于映射到bpf map file的vma是map
 	was vm_pte (shared mem) */

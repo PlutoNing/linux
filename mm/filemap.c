@@ -916,7 +916,11 @@ void replace_page_cache_folio(struct folio *old, struct folio *new)
 }
 EXPORT_SYMBOL_GPL(replace_page_cache_folio);
 
-/* 把新申请的页面加入mapping ,xas数组*/
+/* 把新申请的页面加入mapping ,xas数组
+==========================
+调用场合:
+
+*/
 noinline int __filemap_add_folio(struct address_space *mapping,
 		struct folio *folio, pgoff_t index, gfp_t gfp, void **shadowp)
 {
@@ -989,7 +993,8 @@ noinline int __filemap_add_folio(struct address_space *mapping,
 
 		mapping->nrpages += nr;
 
-		/* hugetlb pages do not participate in page cache accounting */
+		/* hugetlb pages do not participate in page cache accounting
+		巨页不计入pagecache */
 		if (!huge) {
 			__lruvec_stat_mod_folio(folio, NR_FILE_PAGES, nr);
 			if (folio_test_pmd_mappable(folio))
@@ -1003,6 +1008,7 @@ unlock:
 	if (xas_error(&xas))
 		goto error;
 
+	/* 添加pagecache的tp点 */
 	trace_mm_filemap_add_to_page_cache(folio);
 	return 0;
 
@@ -1017,9 +1023,14 @@ error:
 
 ALLOW_ERROR_INJECTION(__filemap_add_folio, ERRNO);
 
-/* 页缓存缺少页面时, 这里把缺少的刚刚申请的页面加入pagecache */
-//把新申请的folio加入pagecache
-//1,预读会调用此
+/* 
+把页面加入mapping, 这里基本算是唯一接口
+==================================
+调用场合
+1,预读会调用此
+filemap_get_folio会添加pagecache 
+*/
+
 int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 				pgoff_t index, gfp_t gfp)
 {
@@ -1031,7 +1042,8 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 	ret = __filemap_add_folio(mapping, folio, index, gfp, &shadow);
 	if (unlikely(ret))
 		__folio_clear_locked(folio);
-	else {/* add成功了 */
+	else {
+		/* add成功了 */
 		/*
 		 * The folio might have been evicted from cache only
 		 * recently, in which case it should be activated like
@@ -1046,12 +1058,10 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 		WARN_ON_ONCE(folio_test_active(folio));
 
 		if (!(gfp & __GFP_WRITE) && shadow)
-		/* 2024年10月13日17:59:14
-	了解xarray */
 			workingset_refault(folio, shadow);
 
 		/*  成功了之后,加入lru */
-		folio_add_lru(folio); /* 这是新申请的folio, 居然这里加入lru */
+		folio_add_lru(folio); /* 这是新申请的folio, 这里加入lru */
 	}
 
 	return ret;
@@ -2025,6 +2035,9 @@ shmem换入会从这里申请
  * If this function returns a folio, it is returned with an increased refcount.
  * 返回的folio会add ref
  * Return: The found folio or an ERR_PTR() otherwise.
+ ======================
+ 调用场合:
+
  */
 struct folio *__filemap_get_folio(struct address_space *mapping, pgoff_t index,
 		fgf_t fgp_flags, gfp_t gfp)
@@ -2082,6 +2095,7 @@ no_page:
 
 		if ((fgp_flags & FGP_WRITE) && mapping_can_writeback(mapping))
 			gfp |= __GFP_WRITE;
+		/* 看来这个FGP_NOFS影响查找mapping的行为 */
 		if (fgp_flags & FGP_NOFS)
 			gfp &= ~__GFP_FS;
 		if (fgp_flags & FGP_NOWAIT) {
@@ -3990,7 +4004,9 @@ EXPORT_SYMBOL(generic_file_mmap);
 EXPORT_SYMBOL(generic_file_readonly_mmap);
 
 /*
-读取pagecache指定index，filler用于把文件读入到mapping */
+读取pagecache指定index，filler用于把文件读入到mapping
+===========================
+ */
 static struct folio *do_read_cache_folio(struct address_space *mapping,
 		pgoff_t index, filler_t filler, struct file *file, gfp_t gfp)
 {

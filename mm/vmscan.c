@@ -1807,12 +1807,15 @@ static unsigned int demote_folio_list(struct list_head *demote_folios,
 	return nr_succeeded;
 }
 
-/* 判断设置了此@gfp的(回收, 分配?)操作来操作folio是否需要与fs交互? */
+/* 判断设置了此@gfp的内存操作来操作folio是否需要与fs交互? */
 static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
 {
+	/* 如果直接允许了fs, 就是可以 */
 	if (gfp_mask & __GFP_FS)
 		return true;
 
+	/* 没有直接设置gfp_fs,
+	只有swap mapping的folio, 并且允许io才行 */
 	if (!folio_test_swapcache(folio) || !(gfp_mask & __GFP_IO))
 		return false;
 	/* folio_test_swapcache && __GFP_IO , return true */

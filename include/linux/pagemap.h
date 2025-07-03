@@ -584,6 +584,9 @@ typedef unsigned int __bitwise fgf_t;
 #define FGP_LOCK		((__force fgf_t)0x00000002)
 #define FGP_CREAT		((__force fgf_t)0x00000004)  //页缓存不存在页面时,是否可以申请
 #define FGP_WRITE		((__force fgf_t)0x00000008)
+/* 		 看来这个FGP_NOFS影响查找mapping的行为
+		if (fgp_flags & FGP_NOFS)
+			gfp &= ~__GFP_FS; */
 #define FGP_NOFS		((__force fgf_t)0x00000010)
 #define FGP_NOWAIT		((__force fgf_t)0x00000020)
 #define FGP_FOR_MMAP		((__force fgf_t)0x00000040)
@@ -620,6 +623,8 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
 
 /**
   找出index位置的folio, 缺页不会申请(fgp_flags为0)
+  =========================
+
  * filemap_get_folio - Find and get a folio.
  * @mapping: The address_space to search.
  * @index: The page index.
@@ -676,6 +681,7 @@ static inline struct folio *filemap_grab_folio(struct address_space *mapping,
 }
 
 /**
+从mapping查找page
  * find_get_page - find and get a page reference
  * @mapping: the address_space to search
  * @offset: the page index
@@ -691,6 +697,8 @@ static inline struct page *find_get_page(struct address_space *mapping,
 	return pagecache_get_page(mapping, offset, 0, 0);
 }
 
+/* 从mapping查找page
+特点是透传fgp_flags */
 static inline struct page *find_get_page_flags(struct address_space *mapping,
 					pgoff_t offset, fgf_t fgp_flags)
 {
@@ -698,6 +706,8 @@ static inline struct page *find_get_page_flags(struct address_space *mapping,
 }
 
 /**
+查找mapping的page
+特点是会加锁和lock
  * find_lock_page - locate, pin and lock a pagecache page
  * @mapping: the address_space to search
  * @index: the page index
@@ -717,6 +727,8 @@ static inline struct page *find_lock_page(struct address_space *mapping,
 }
 
 /**
+从mapping查找page
+特点是: 加锁, 不存在会创建, 并且会标记accessed
  * find_or_create_page - locate or add a pagecache page
  * @mapping: the page's address_space
  * @index: the page's index into the mapping
@@ -744,6 +756,8 @@ static inline struct page *find_or_create_page(struct address_space *mapping,
 }
 
 /**
+查找mapping的page
+会创建,会加锁,
  * grab_cache_page_nowait - returns locked page at given index in given cache
  * @mapping: target address_space
  * @index: the page index

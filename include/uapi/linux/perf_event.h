@@ -24,6 +24,7 @@
  */
 
 /*
+perf事件的类型
  * attr.type
  */
 enum perf_type_id {

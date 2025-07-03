@@ -419,8 +419,6 @@ void truncate_inode_pages_range(struct address_space *mapping,
 		folio_batch_release(&fbatch);
 		cond_resched();    
 	}
-	// 刚刚已经处理了xas和归还内存, 下面干嘛呢?
-	// 2025年2月14日02:06:22
 
 	same_folio = (lstart >> PAGE_SHIFT) == (lend >> PAGE_SHIFT);
 	folio = __filemap_get_folio(mapping, lstart >> PAGE_SHIFT, FGP_LOCK, 0);
