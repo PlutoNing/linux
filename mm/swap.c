@@ -502,6 +502,11 @@ static void folio_inc_refs(struct folio *folio)
  * __SetPageReferenced(page) may be substituted for mark_page_accessed(page).
  =========================
  调用场合:
+filemap_get_folio指定fgp_accessed的话
+buffer io从buffer lru获得buffer的话
+
+ =============
+ 粗略:
  folio的buffer要被读写了
  iomap写入folio
  buffer-io基本都会

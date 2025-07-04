@@ -519,6 +519,7 @@ static inline void *detach_page_private(struct page *page)
  * a good order (that's 1MB if you're using 4kB pages)
  */
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
+/* 等于9 */
 #define MAX_PAGECACHE_ORDER	HPAGE_PMD_ORDER
 #else
 #define MAX_PAGECACHE_ORDER	8
@@ -664,6 +665,8 @@ static inline struct folio *filemap_lock_folio(struct address_space *mapping,
 
 /**
 找到index位置的folio
+===========
+truncate和一些fs调用
  * filemap_grab_folio - grab a folio from the page cache
  * @mapping: The address space to search
  * @index: The page index

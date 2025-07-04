@@ -385,8 +385,9 @@ static inline struct buffer_head * sb_getblk_gfp(struct super_block *sb, sector_
 	return __getblk_gfp(sb->s_bdev, block, sb->s_blocksize, gfp);
 }
 
-static inline struct buffer_head *
-sb_find_get_block(struct super_block *sb, sector_t block)
+/* 获取知道block的buffer */
+static inline 
+struct buffer_head * sb_find_get_block(struct super_block *sb, sector_t block)
 {
 	return __find_get_block(sb->s_bdev, block, sb->s_blocksize);
 }

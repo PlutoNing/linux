@@ -317,7 +317,7 @@ static int iomap_read_inline_data(const struct iomap_iter *iter,
 	if (offset > 0)
 		ifs_alloc(iter->inode, folio, iter->flags);
 
-	/* 通过kmap写入 */
+	/* 把inline data通过kmap写入folio */
 	addr = kmap_local_folio(folio, offset);
 	memcpy(addr, iomap->inline_data, size);
 	memset(addr + size, 0, PAGE_SIZE - poff - size);
@@ -710,7 +710,7 @@ static int __iomap_write_begin(const struct iomap_iter *iter, loff_t pos,
 	return 0;
 }
 
-/* 获取文件的要写入的folio */
+/* iomap获取文件的要写入的folio */
 static struct folio *__iomap_get_folio(struct iomap_iter *iter, loff_t pos,
 		size_t len)
 {
@@ -743,10 +743,15 @@ static int iomap_write_begin_inline(const struct iomap_iter *iter,
 	/* needs more work for the tailpacking case; disable for now */
 	if (WARN_ON_ONCE(iomap_iter_srcmap(iter)->offset != 0))
 		return -EIO;
+	/* 为什么这里是read? */
 	return iomap_read_inline_data(iter, folio);
 }
 
-/* 把iomap一些内容写入到folio */
+/* 
+write_begin函数一般就是在写入之前找到mapping的folio
+进行一些准备什么的
+===========================
+把iomap一些内容写入到folio */
 static int iomap_write_begin(struct iomap_iter *iter, loff_t pos,
 		size_t len, struct folio **foliop)
 {
@@ -771,6 +776,8 @@ static int iomap_write_begin(struct iomap_iter *iter, loff_t pos,
 	if (IS_ERR(folio))
 		return PTR_ERR(folio);
 
+	/* 这里成功找到了folio
+	下一步来prepare这个folio */
 	/*
 	 * Now we have a locked folio, before we do anything with it we need to
 	 * check that the iomap we have cached is not stale. The inode extent
@@ -902,13 +909,19 @@ static size_t iomap_write_end(struct iomap_iter *iter, loff_t pos, size_t len,
 	return ret;
 }
 
+/* 
+iomap机制把i写入iter
+这里先写入mapping的folio什么的
+ */
 static loff_t iomap_write_iter(struct iomap_iter *iter, struct iov_iter *i)
 {
 	loff_t length = iomap_length(iter);
+	/* 一次写入512个页面大小? */
 	size_t chunk = PAGE_SIZE << MAX_PAGECACHE_ORDER;
 	loff_t pos = iter->pos;
 	ssize_t written = 0;
 	long status = 0;
+	/* 要写入的mapping */
 	struct address_space *mapping = iter->inode->i_mapping;
 	unsigned int bdp_flags = (iter->flags & IOMAP_NOWAIT) ? BDP_ASYNC : 0;
 
@@ -918,6 +931,7 @@ static loff_t iomap_write_iter(struct iomap_iter *iter, struct iov_iter *i)
 		size_t bytes;		/* Bytes to write to folio */
 		size_t copied;		/* Bytes copied from user */
 
+		/* 要写入的内容总大小 */
 		bytes = iov_iter_count(i);
 retry:
 		offset = pos & (chunk - 1);
@@ -945,6 +959,7 @@ retry:
 			break;
 		}
 
+		/* 找到并准备要写入的mapping page */
 		status = iomap_write_begin(iter, pos, bytes, &folio);
 		if (unlikely(status))
 			break;
@@ -958,7 +973,9 @@ retry:
 		if (mapping_writably_mapped(mapping))
 			flush_dcache_folio(folio);
 
+		/* 拷贝数据 */
 		copied = copy_folio_from_iter_atomic(folio, offset, bytes, i);
+		/* write_end一般就是把folio和上面的buffer进行相应的update和置脏 */
 		status = iomap_write_end(iter, pos, bytes, copied, folio);
 
 		if (unlikely(copied != status))
@@ -983,6 +1000,7 @@ retry:
 			written += status;
 			length -= status;
 		}
+	/* 只要还有内容需要写 */
 	} while (iov_iter_count(i) && length);
 
 	if (status == -EAGAIN) {
@@ -992,7 +1010,7 @@ retry:
 	return written ? written : status;
 }
 
-/* 以后 */
+/* iomap机制的文件buffer io方式写入 */
 ssize_t iomap_file_buffered_write(struct kiocb *iocb, struct iov_iter *i,
 		const struct iomap_ops *ops)
 {
@@ -1362,7 +1380,8 @@ int iomap_file_unshare(struct inode *inode, loff_t pos, loff_t len,
 }
 EXPORT_SYMBOL_GPL(iomap_file_unshare);
 
-/* 处理iter的一段范围 */
+/*
+ 处理iter的一段范围 */
 static loff_t iomap_zero_iter(struct iomap_iter *iter, bool *did_zero)
 {
 	const struct iomap *srcmap = iomap_iter_srcmap(iter);
@@ -1394,9 +1413,10 @@ static loff_t iomap_zero_iter(struct iomap_iter *iter, bool *did_zero)
 
 		/* 清零folio的一段范围 */
 		folio_zero_range(folio, offset, bytes);
+		/* 标记页面accessed */
 		folio_mark_accessed(folio);
 
-		/* 进行写入的end工作, 加快同步 */
+		/* 进行写入的end工作 (设置buffer为update, dirty什么的), 加快同步 */
 		bytes = iomap_write_end(iter, pos, bytes, bytes, folio);
 		if (WARN_ON_ONCE(bytes == 0))
 			return -EIO;

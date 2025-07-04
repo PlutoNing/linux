@@ -409,6 +409,7 @@ static inline bool is_sync_kiocb(struct kiocb *kiocb)
 struct address_space_operations {
 	/* 用于写回mapping的脏页 */
 	int (*writepage)(struct page *page, struct writeback_control *wbc);
+	/* 预读的时候会调用 */
 	int (*read_folio)(struct file *, struct folio *);
 
 	/* Write back some dirty pages from this mapping. */
@@ -420,6 +421,7 @@ struct address_space_operations {
 	 */
 	bool (*dirty_folio)(struct address_space *, struct folio *);
 
+	/* 预读的时候调用 */
 	void (*readahead)(struct readahead_control *);
 
 	/* 写回pos处的指定页面 */

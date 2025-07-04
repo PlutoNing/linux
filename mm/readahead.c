@@ -143,8 +143,8 @@ file_ra_state_init(struct file_ra_state *ra, struct address_space *mapping)
 }
 EXPORT_SYMBOL_GPL(file_ra_state_init);
 
-/* 预读的时候, 读取文件内容到pagecache的页面
-(在发现mapping已经存在对应页面的情况下, ) */
+/* 预读的时候, 加载文件内容到pagecache的页面
+主要是调用mapping的readahead回调和read_folio回调 */
 static void read_pages(struct readahead_control *rac)
 {
 	const struct address_space_operations *aops = rac->mapping->a_ops;
@@ -195,7 +195,9 @@ static void read_pages(struct readahead_control *rac)
 }
 
 /**
-  执行一次预读
+  执行一次预读的底层接口(唯一?)
+  遍历范围内的mapping page, 调用mapping的回调把文件内容加载进来
+  (如果mapping对应page缺页,就申请分配加入xas, 再试读取)
  * page_cache_ra_unbounded - Start unchecked readahead.
  * @ractl: Readahead control.
  * @nr_to_read: The number of pages to read.
@@ -241,7 +243,6 @@ void page_cache_ra_unbounded(struct readahead_control *ractl,
 
 		if (folio && !xa_is_value(folio)) {
 			/* 说明mapping里面已经存在对应页面了
-			那就不用新分配页面到pagecache了
 			这里可以直接发起读取, 读入文件内容到pagecache这个folio */
 			/*
 			 * Page already present?  Kick off the current batch
@@ -253,15 +254,16 @@ void page_cache_ra_unbounded(struct readahead_control *ractl,
 			   页面已经存在？在继续下一批之前，启动当前连续页面的批处理。
 			   这一页可能是我们打算标记为Readahead的页面，但我们没有对这一页的稳定引用，
 			   也不值得为此获取一个引用。
-
 			 */
-			read_pages(ractl); //有folio了,直接读取
+			/* 调用mapping的回调, 把文件内容加载进来 */
+			read_pages(ractl);
 			ractl->_index++;
 			i = ractl->_index + ractl->_nr_pages - index - 1;
 			continue;
 		}
-        //folio不存在 或者 is_value
+        //folio不存在 或者 is_value(比如可能被交换了?)
 
+		/* 从buddy分配新folio */
 		folio = filemap_alloc_folio(gfp_mask, 0);
 		if (!folio)
 			break;
@@ -276,6 +278,7 @@ void page_cache_ra_unbounded(struct readahead_control *ractl,
 			i = ractl->_index + ractl->_nr_pages - index - 1;
 			continue;
 		}
+
 		if (i == nr_to_read - lookahead_size)
 			folio_set_readahead(folio); //表示这个页面是预读的页面
 		ractl->_workingset |= folio_test_workingset(folio);
@@ -294,8 +297,9 @@ void page_cache_ra_unbounded(struct readahead_control *ractl,
 EXPORT_SYMBOL_GPL(page_cache_ra_unbounded);
 
 /*
- 开启预读
- 这里是预读一个批次(nr_to_read)
+ 进行一个批次的预读
+ 调用page_cache_ra_unbounded从mapping遍历page调用mapping aops加载文件内容
+ mapping缺页会申请
  * do_page_cache_ra() actually reads a chunk of disk.  It allocates
  * the pages first, then submits them for I/O. This avoids the very bad
  * behaviour which would occur if page allocations are causing VM writeback.
@@ -322,13 +326,18 @@ static void do_page_cache_ra(struct readahead_control *ractl,
 	if (nr_to_read > end_index - index)
 		nr_to_read = end_index - index + 1;
 
+	/* 这函数直接从mapping遍历page调用mapping aops加载文件内容 */
 	page_cache_ra_unbounded(ractl, nr_to_read, lookahead_size);
 }
 
 /*
-强制预读,
+强制预读, mapping缺页会申请
 ractl封装了mapping, nrpages, index等信息
- * Chunk the readahead into 2 megabyte units, so that we don't pin too much
+调用do_page_cache_ra()
+	->page_cache_ra_unbounded()从mapping遍历page调用mapping aops加载文件内容
+=========================================================
+文件io时,页缓存缺页可能会调用这个
+* Chunk the readahead into 2 megabyte units, so that we don't pin too much
  * memory at once.
  */
 void force_page_cache_ra(struct readahead_control *ractl,
@@ -341,6 +350,7 @@ void force_page_cache_ra(struct readahead_control *ractl,
 
 	if (unlikely(!mapping->a_ops->read_folio && !mapping->a_ops->readahead))
 		return;
+	/* a_ops->read_folio和a_ops->readahead至少要有一个 */
 
 	/*
 	 * If the request exceeds the readahead window, allow the read to
@@ -358,6 +368,10 @@ void force_page_cache_ra(struct readahead_control *ractl,
 		if (this_chunk > nr_to_read)
 			this_chunk = nr_to_read;
 		ractl->_index = index;
+		/* 进行一个批次的预读
+		调用page_cache_ra_unbounded从mapping遍历page调用mapping aops加载文件内容
+		=========
+		一定会成功? */
 		do_page_cache_ra(ractl, this_chunk, 0);
 
 		index += this_chunk;
@@ -583,6 +597,7 @@ fallback:
 
 /*
 按需预读
+应该是对应于force ra?
  * A minimal readahead algorithm for trivial sequential/random reads.
  */
 static void ondemand_readahead(struct readahead_control *ractl,
@@ -704,7 +719,10 @@ readit:
 	page_cache_ra_order(ractl, ra, order);
 }
 
-//开始预读, 预读的页数为req_count
+/* 开始预读, 预读的页数为req_count
+可能调用force ra或者on-demand ra
+============================================
+io的时候pagecache缺页可能会调用这个函数 */
 void page_cache_sync_ra(struct readahead_control *ractl,
 		unsigned long req_count)
 {
@@ -726,12 +744,14 @@ void page_cache_sync_ra(struct readahead_control *ractl,
 		do_forced_ra = true;
 	}
 
-	/* be dumb */
+	/* be dumb
+	force ra是什么 */
 	if (do_forced_ra) {
 		force_page_cache_ra(ractl, req_count);
 		return;
 	}
 
+	/* ondemand ra又是什么 */
 	ondemand_readahead(ractl, NULL, req_count);
 }
 EXPORT_SYMBOL_GPL(page_cache_sync_ra);

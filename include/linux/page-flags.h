@@ -538,7 +538,9 @@ PAGEFLAG(MappedToDisk, mappedtodisk, PF_NO_TAIL)
 /* PG_readahead is only used for reads; PG_reclaim is only for writes */
 PAGEFLAG(Reclaim, reclaim, PF_NO_TAIL)
 	TESTCLEARFLAG(Reclaim, reclaim, PF_NO_TAIL)
-//folio_test_readahead  folio_test_set_readahead
+/*
+ folio_test_readahead
+ folio_test_set_readahead */
 PAGEFLAG(Readahead, readahead, PF_NO_COMPOUND)
 	TESTCLEARFLAG(Readahead, readahead, PF_NO_COMPOUND)
 

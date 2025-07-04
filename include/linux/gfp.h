@@ -250,7 +250,7 @@ __alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order)
 	return __alloc_pages(gfp_mask, order, nid, NULL);
 }
 
-//
+// 从buddy分配folio
 static inline
 struct folio *__folio_alloc_node(gfp_t gfp, unsigned int order, int nid)
 {

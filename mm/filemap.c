@@ -899,7 +899,7 @@ EXPORT_SYMBOL(file_write_and_wait_range);
  * replace_page_cache_folio - replace a pagecache folio with a new one
   替换pagecache的一个页面? 目的是什么?
   =====================================
-  
+
  * @old:	folio to be replaced
  * @new:	folio to replace with
  *
@@ -954,7 +954,7 @@ void replace_page_cache_folio(struct folio *old, struct folio *new)
 }
 EXPORT_SYMBOL_GPL(replace_page_cache_folio);
 
-/* 把新申请的页面加入mapping ,xas数组
+/* 把从buddy新申请的page加入mapping ,xas数组
 ==========================
 调用场合:
 
@@ -1062,7 +1062,7 @@ error:
 ALLOW_ERROR_INJECTION(__filemap_add_folio, ERRNO);
 
 /* 
-把页面加入mapping, 这里基本算是唯一接口
+把刚刚从buddy分配的page加入mapping, 这里基本算是唯一接口
 ==================================
 调用场合
 1,预读会调用此
@@ -1077,6 +1077,7 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 
 	__folio_set_locked(folio); //什么时候解锁呢?
 
+	/*  */
 	ret = __filemap_add_folio(mapping, folio, index, gfp, &shadow);
 	if (unlikely(ret))
 		__folio_clear_locked(folio);
@@ -1107,7 +1108,7 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 EXPORT_SYMBOL_GPL(filemap_add_folio);
 
 #ifdef CONFIG_NUMA
-//页缓存缺少页面时这里分配
+//页缓存缺少页面时这里分配, 从buddy分配folio
 struct folio *filemap_alloc_folio(gfp_t gfp, unsigned int order)
 {
 	int n;
@@ -2557,6 +2558,11 @@ static void shrink_readahead_size_eio(struct file_ra_state *ra)
 }
 
 /*
+文件io读取页缓存的时候
+调用这个函数读取页缓存的页面
+这里先把一批页面读到fbatch
+每次一读到一个不update的或者readahead属性的page就返回, 所以
+fbatch的最后一个页面可能有点问题
  * filemap_get_read_batch - Get a batch of folios for read
  * 读取mapping中的一批范围[index, max]的folio到fbatch中
 
@@ -2580,8 +2586,9 @@ static void filemap_get_read_batch(struct address_space *mapping,
 	for (folio = xas_load(&xas); folio; folio = xas_next(&xas)) {//遍历mapping中的folio
 		if (xas_retry(&xas, folio))
 			continue;
+		//超过指定范围了, 或者读取到还没有被缓存到pagecache的了
 		if (xas.xa_index > max || xa_is_value(folio))
-			break; //超过指定范围了, 或者读取到还没有被缓存到pagecache的了
+			break; 
 		if (xa_is_sibling(folio))
 			break;
 		if (!folio_try_get_rcu(folio))
@@ -2599,6 +2606,7 @@ static void filemap_get_read_batch(struct address_space *mapping,
 
 		xas_advance(&xas, folio_next_index(folio) - 1);
 		continue;
+
 put_folio:
 		folio_put(folio);
 retry:
@@ -2608,8 +2616,13 @@ retry:
 }
 
 /* 
+加载文件内容到mapping
 folio是file的mapping内部的
 这里调用filler, 把对应的文件内容加载进来
+================================================
+文件io读取mapping的时候, 如果直接获取和预读都无法获取page,会手动
+创建对应mapping folio, 然后用mapping的aops read_folio作为@filler函数
+来加载pagecache
 */
 static int filemap_read_folio(struct file *file, filler_t filler,
 		struct folio *folio)
@@ -2733,7 +2746,12 @@ unlock_mapping:
 	return error;
 }
 
-//预读失败了, 这里手动分配页面,手动调用回调读取到pagecache
+/* 
+文件io读取页缓存时
+如果不能直接获取mapping处的页面(缺页?)
+而且预读也无法成功 (缺页无法申请成功?)
+这里尝试直接create folio, 然后加载文件内容到新folio
+*/
 static int filemap_create_folio(struct file *file,
 		struct address_space *mapping, pgoff_t index,
 		struct folio_batch *fbatch)
@@ -2741,7 +2759,7 @@ static int filemap_create_folio(struct file *file,
 	struct folio *folio;
 	int error;
 
-	/* 分配页面 */
+	/* 从buddy分配页面 */
 	folio = filemap_alloc_folio(mapping_gfp_mask(mapping), 0);
 	if (!folio)
 		return -ENOMEM;
@@ -2760,14 +2778,16 @@ static int filemap_create_folio(struct file *file,
 	 * well to keep locking rules simple.
 	 */
 	filemap_invalidate_lock_shared(mapping);
-	//加入pagecache
+	//把新page加入pagecache
 	error = filemap_add_folio(mapping, folio, index,
 			mapping_gfp_constraint(mapping, GFP_KERNEL));
 	if (error == -EEXIST)
 		error = AOP_TRUNCATED_PAGE;
 	if (error)
 		goto error;
-	//手动读取?
+	/* 现在mapping的index位置只是有了页面
+	还没有对应的文件内容, 更别提update的文件内容了
+	所以这里尝试加载对应文件内容 */
 	error = filemap_read_folio(file, mapping->a_ops->read_folio, folio);
 	if (error)
 		goto error;
@@ -2796,6 +2816,8 @@ static int filemap_readahead(struct kiocb *iocb, struct file *file,
 }
 
 /* 
+读取iocb描述的文件的例程(从pagecache读取)
+这里先找到相关涉及的mapping page到fbatch
 从页缓存中获取页, 可能会预读, 以及不新的话也会重新读取.
 @count是要读的字节数量 */
 static int filemap_get_pages(struct kiocb *iocb, size_t count,
@@ -2818,34 +2840,48 @@ retry:
 	if (fatal_signal_pending(current))
 		return -EINTR;
 
-	/* 这里读取一批page */
+	/* 函数核心逻辑就是获取要读取的页缓存的page
+	filemap_get_read_batch读取一批范围内的page到fbatch, 如果没有异常就直接返回了
+	不过下面返回前,要处理四种情况 */
 	filemap_get_read_batch(mapping, index, last_index - 1, fbatch);
-	/* 如果这次没有读到page, 预读一下 */
+
+	/* 情况1:如果这次没有读到page, 预读一下 */
 	if (!folio_batch_count(fbatch)) {
 		if (iocb->ki_flags & IOCB_NOIO)
 			return -EAGAIN;
-		//预读
+		//预读, 把这些mapping page对应的文件内容加载进来 (mapping缺页会申请)
 		page_cache_sync_readahead(mapping, ra, filp, index,
 				last_index - index);
-		//重新获取
+		//重新获取到哦fbatch试试
 		filemap_get_read_batch(mapping, index, last_index - 1, fbatch);
 	}
 
-	//预读之后还是没有?
+	/* 情况2: 预读之后还是没有?
+	刚刚mapping缺页的话是预读的过程中申请的页面
+	这里尝试直接在mapping分配页面? */
 	if (!folio_batch_count(fbatch)) {
 		if (iocb->ki_flags & (IOCB_NOWAIT | IOCB_WAITQ))
 			return -EAGAIN;
 		//手动分配, 手动读取到pagecache
 		err = filemap_create_folio(filp, mapping,
 				iocb->ki_pos >> PAGE_SHIFT, fbatch);
+		
+		/* 创建了页面, 这里尝试回去重新读取 */
 		if (err == AOP_TRUNCATED_PAGE)
 			goto retry;
+		
+		/* 实在不中了 */
 		return err;
 	}
 
-	//获得从pagecache读取的folio . 现在应该都预读了文件内容?
+	/* filemap_get_read_batch函数的设计让最后一个folio可能是有问题的
+	(因为函数读取mapping范围的page时,如果发现刚刚放到fbatch的folio不是
+	update的或者是readahead flag的, 就返回了
+	===========================================================
+	所以这里额外检查最后一个folio) */
 	folio = fbatch->folios[folio_batch_count(fbatch) - 1];
-	if (folio_test_readahead(folio)) { //如果是预读页面,做什么?
+	/* 情况3: 如果fbatch最后一个页面是预读的页面 */
+	if (folio_test_readahead(folio)) { 
 		
 		//为什么这里又开始异步预读?
 		err = filemap_readahead(iocb, filp, mapping, folio, last_index);
@@ -2853,6 +2889,7 @@ retry:
 			goto err;
 	}
 
+	/* 情况4:  */
 	if (!folio_test_uptodate(folio)) { //如果不是最新的, 重新读取
 	//2024年12月8日17:34:30 toddo 为什么这里可能是不最新的? 不是刚刚预读的吗.文件被
 	//别的进程直接IO写入了?
@@ -2885,7 +2922,7 @@ static inline bool pos_same_folio(loff_t pos1, loff_t pos2, struct folio *folio)
 }
 
 /**
-文件系统读取文件的例程会调用此例程, 用于从页缓存中读取数据
+文件系统读取文件的例程会调用此例程, 用于从页缓存中读取数据 (就是命中缓存?)
  * filemap_read - Read data from the page cache.
  * @iocb: The iocb to read. 从这里读
  * @iter: Destination for the data. 读到这
@@ -2903,6 +2940,7 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 {
 	struct file *filp = iocb->ki_filp;
 	struct file_ra_state *ra = &filp->f_ra;
+	/* 要读取的mapping和inode */
 	struct address_space *mapping = filp->f_mapping;
 	struct inode *inode = mapping->host;
 	struct folio_batch fbatch;
@@ -2934,7 +2972,7 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 		if (unlikely(iocb->ki_pos >= i_size_read(inode)))
 			break;
 
-		//读取文件的这些内容到pagecache
+		//先把页缓存的对应范围的page读取到fbatch (返回的fbatch里面的都是update的?)
 		error = filemap_get_pages(iocb, iter->count, &fbatch, false);
 		if (error < 0)
 			break;
@@ -2966,8 +3004,9 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 				    fbatch.folios[0]))
 			folio_mark_accessed(fbatch.folios[0]);
 
-		for (i = 0; i < folio_batch_count(&fbatch); i++) {//获取一个pagecache的folio,里面存的是要
-		//读取的文件的对应内容
+		/* 遍历刚刚获取的页缓存的page, 复制到用户的iter
+		20250705021431 */
+		for (i = 0; i < folio_batch_count(&fbatch); i++) {
 			struct folio *folio = fbatch.folios[i]; //获取
 			size_t fsize = folio_size(folio);
 			size_t offset = iocb->ki_pos & (fsize - 1);

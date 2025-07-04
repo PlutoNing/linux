@@ -65,7 +65,8 @@ static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 这个buffer对应的block要被读写了
 标记这个bh的folio为accessed
 ================================================
-__find_get_block主要是这个函数touch buffer
+主要是__find_get_block这个函数touch buffer, 在buffer lru
+找到buffer后就touch一次
  */
 inline void touch_buffer(struct buffer_head *bh)
 {
@@ -1232,7 +1233,11 @@ static int grow_dev_page(struct block_device *bdev, sector_t block,
 	 */
 	gfp_mask |= __GFP_NOFAIL;
 
-	/* 获取mapping里面对应index位置（由block nr算得)的folio */
+	/* 获取mapping里面对应index位置（由block nr算得)的folio
+	返回的是加锁的
+	会标记accessed
+	没有的话会创建mapping page
+	 */
 	folio = __filemap_get_folio(inode->i_mapping, index,
 			FGP_LOCK | FGP_ACCESSED | FGP_CREAT, gfp_mask);
 
@@ -1272,9 +1277,6 @@ failed:
 }
 
 /*
-为读写块设备的block位置而创建bh并返回
-申请page, 加入mapping, 然后在这个page上面创建bh, 然后返回?
-=======================
 __find_get_block找不到buffer的话, 调用这个创建buffer
 =============================
 block io的时候这里需要创建对应block位置的bh
@@ -1308,9 +1310,10 @@ static int grow_buffers(struct block_device *bdev, sector_t block, int size, gfp
 	return grow_dev_page(bdev, block, index, size, sizebits, gfp);
 }
 
-/* 返回块设备指定位置关联的bh
-用于io
-======================/
+/*
+内核get_blk的时候
+在mapping找不到page, 或者page找不到buffer调用这个函数创建page或者buffer
+======================
  */
 static struct buffer_head * __getblk_slow(struct block_device *bdev, sector_t block,
 	     unsigned size, gfp_t gfp)
@@ -1327,16 +1330,20 @@ static struct buffer_head * __getblk_slow(struct block_device *bdev, sector_t bl
 		return NULL;
 	}
 
+	/* 这里是循环创建吗= = */
 	for (;;) {
 		struct buffer_head *bh;
 		int ret;
 
-		/* 这里尝试查找bdev的mapping的对应页面上面的bh, 有没有创建好了bh */
+		/* 这里再次尝试查找bdev的mapping的对应页面上面的bh, 有没有创建好了bh
+		==============
+		不过其实刚才就是调用这个没找到buffer, 才调用本函数的, 这里可能是检查
+		race的情况 */
 		bh = __find_get_block(bdev, block, size);
 		if (bh)
 			return bh;
 
-		/* 没有的话, 这里需要创建对应block位置的bh
+		/* 还是没有的话, 这里需要创建对应block位置的bh
 		在mapping找到页面, 没有就申请
 		然后在页面上面新建bh链 */
 		ret = grow_buffers(bdev, block, size, gfp);
@@ -1524,7 +1531,7 @@ static struct buffer_head *__bread_slow(struct buffer_head *bh)
 struct bh_lru {
 	struct buffer_head *bhs[BH_LRU_SIZE];
 };
-/* 每个cpu的bh使用的lru? */
+/* pcp的buffer lru缓存 */
 static DEFINE_PER_CPU(struct bh_lru, bh_lrus) = {{ NULL }};
 
 #ifdef CONFIG_SMP
@@ -1585,8 +1592,7 @@ static void bh_lru_install(struct buffer_head *bh)
 在全局bh lru找到对应的bh
  * Look up the bh in this cpu's LRU.  If it's there, move it to the head.
  */
-static struct buffer_head *
-lookup_bh_lru(struct block_device *bdev, sector_t block, unsigned size)
+static struct buffer_head *lookup_bh_lru(struct block_device *bdev, sector_t block, unsigned size)
 {
 	struct buffer_head *ret = NULL;
 	unsigned int i;
@@ -1620,12 +1626,15 @@ lookup_bh_lru(struct block_device *bdev, sector_t block, unsigned size)
 }
 
 /*
-准备通过buffer io来读写块设备的block位置
-这里获取对应的bh （位于块设备的mapping的对应page上面的bh链)
-找到对应的bh
-mapping没有的话不会创建
+查找现成的mapping page和buffer, 缺失不创建
 ========================
-从mapping获取对应的page,获取buffer,开始io
+这里获取对应的bh （位于块设备的mapping的对应page上面的bh链)
+找到对应的bh (不一定能找到)
+========================
+这里分两种情况:
+从buffer lru找到, 就touch一次
+如果还不在buffer lru, 就从mapping找出来, 加入buffer lru
+================================
  * Perform a pagecache lookup for the matching buffer.  If it's there, refresh
  * it in the LRU and mark it as accessed.  If it is not present then return
  * NULL
@@ -1637,6 +1646,7 @@ struct buffer_head * __find_get_block(struct block_device *bdev, sector_t block,
 	if (bh == NULL) {
 		/* 没找到,尝试慢速路径,在dev inode mapping读取block nr对应index pgoff处的page */
 		/* __find_get_block_slow will mark the page accessed */
+		/* 这里如果mapping没有page, page没有buffer, 是返回null, 不会创建 */
 		bh = __find_get_block_slow(bdev, block);
 		if (bh)
 			bh_lru_install(bh);/* 把新bh装到全局的lru cache */
@@ -1648,10 +1658,12 @@ struct buffer_head * __find_get_block(struct block_device *bdev, sector_t block,
 EXPORT_SYMBOL(__find_get_block);
 
 /*
+这个是blk buffer io的枢纽接口
+==================================
  找到dev的这个block的bh
  可能是直接找到, 也可能是新创建
  ============================================
- 找到mapping里面block对应的page, 没有的话, 就申请页面加入mapping
+ 找到mapping里面block对应的page, 没有的话, 就__getblk_slow申请页面加入mapping
  获取对应的buffer
  * __getblk_gfp() will locate (and, if necessary, create) the buffer_head
  * which corresponds to the passed block_device, block and size. The
@@ -1659,10 +1671,14 @@ EXPORT_SYMBOL(__find_get_block);
  *
  * __getblk_gfp() will lock up the machine if grow_dev_page's
  * try_to_free_buffers() attempt is failing.  FIXME, perhaps?
+ =============================
+ 如果从buffer lru找到, touch一次
+ 如果从mapping的page找到buffer, 加入bufer lru, 返回
+ 那就从mapping创建page创建buffer, 返回
  */
 struct buffer_head * __getblk_gfp(struct block_device *bdev, sector_t block,
 	     unsigned size, gfp_t gfp)
-{	/* 从缓存或者mapping读取bh */
+{	/* 从buffer lru缓存或者mapping读取bh */
 	struct buffer_head *bh = __find_get_block(bdev, block, size);
 
 	might_sleep();
@@ -2404,7 +2420,8 @@ static int iomap_to_bh(struct inode *inode, sector_t block, struct buffer_head *
 /* 
 改变了mapping里面的folio, 要回写这个folio
 get_block用于给bh映射磁盘块
-准备发起buffer io的写入,这里好像只是[准备], 并没有submit什么(什么时候提交的)
+这里是准备这个folio
+建立buffer, 映射buffer什么的
 ========================
 @pos和len是folio的页内偏移
 */
@@ -2425,7 +2442,7 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 	BUG_ON(from > PAGE_SIZE);
 	BUG_ON(to > PAGE_SIZE);
 	BUG_ON(from > to);
-	/* 创建buffer io
+	/*  创建buffer io
 		这里获取folio的bh链 */
 	head = folio_create_buffers(folio, inode, 0);
 	blocksize = head->b_size;/* 可能是1024 */
@@ -2436,16 +2453,17 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 	for(bh = head, block_start = 0;
 		 bh != head || !block_start;
 	    block++, block_start=block_end, bh = bh->b_this_page) {
-	/* 这里for循环同时遍历bh链( bh = bh->b_this_page)和磁盘的block(block++) */
+		/* 这里for循环同时遍历bh链( bh = bh->b_this_page)和磁盘的block(block++) */
 		block_end = block_start + blocksize;
 		if (block_end <= from || block_start >= to) {
-			/* 这里是什么情况? */
+			/* 说明这是本次操作范围外的buffer? */
 			if (folio_test_uptodate(folio)) {
 				if (!buffer_uptodate(bh))
 					set_buffer_uptodate(bh);
 			}
 			continue;
 		}
+		/* 如果到这里, buffer的[block_start,block_end]范围肯定与[from,to]有交叉 */
 		/* 如果bh是新创建的, 这里已经准备回写他了, 去除new标志 */
 		if (buffer_new(bh))
 			clear_buffer_new(bh);
@@ -2536,13 +2554,17 @@ static void __block_commit_write(struct folio *folio, size_t from, size_t to)
 	block_start = 0;
 	do {
 		block_end = block_start + blocksize;
+		/* 如果是本次范围外的buffer */
 		if (block_end <= from || block_start >= to) {
 			if (!buffer_uptodate(bh))
 				partial = true;
-		} else {/* 把范围内的buffer都置脏, 这里为什么先set uptodate */
+		} else {
+			/* 把范围内的buffer都置脏, 这里为什么先set uptodate
+			写入完了, 对于写者来说是update的, 对于回写机制来说是dirty的 */
 			set_buffer_uptodate(bh);
 			mark_buffer_dirty(bh);
 		}
+
 		if (buffer_new(bh))
 			clear_buffer_new(bh);
 
