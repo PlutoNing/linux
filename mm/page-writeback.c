@@ -2857,6 +2857,7 @@ bool filemap_dirty_folio(struct address_space *mapping, struct folio *folio)
 {
 	folio_memcg_lock(folio);
 	 //如果folio本来就是脏的,则返回false
+	 /* 这里也不会重复置脏 */
 	if (folio_test_set_dirty(folio)) {
 		folio_memcg_unlock(folio);
 		return false;

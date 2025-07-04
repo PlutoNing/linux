@@ -595,6 +595,7 @@ typedef unsigned int __bitwise fgf_t;
 #define FGP_STABLE		((__force fgf_t)0x00000080)
 #define FGF_GET_ORDER(fgf)	(((__force unsigned)fgf) >> 26)	/* top 6 bits */
 
+/* 会创建 */
 #define FGP_WRITEBEGIN		(FGP_LOCK | FGP_WRITE | FGP_CREAT | FGP_STABLE)
 
 /**
@@ -874,6 +875,7 @@ struct page *grab_cache_page_write_begin(struct address_space *mapping,
 			pgoff_t index);
 
 /*
+获取page并加锁, 没有就创建
  * Returns locked page at given index in given cache, creating it if needed.
  */
 static inline struct page *grab_cache_page(struct address_space *mapping,

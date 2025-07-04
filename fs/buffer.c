@@ -63,7 +63,10 @@ static void submit_bh_wbc(blk_opf_t opf, struct buffer_head *bh,
 
 /* 
 这个buffer对应的block要被读写了
-标记这个bh的folio为accessed */
+标记这个bh的folio为accessed
+================================================
+__find_get_block主要是这个函数touch buffer
+ */
 inline void touch_buffer(struct buffer_head *bh)
 {
 	trace_block_touch_buffer(bh);
@@ -214,7 +217,8 @@ static struct buffer_head * __find_get_block_slow(struct block_device *bdev, sec
 	static DEFINE_RATELIMIT_STATE(last_warned, HZ, 1);
 	/* 把dev的block nr转为在mapping的pgoff */
 	index = block >> (PAGE_SHIFT - bd_inode->i_blkbits);
-	/* 从dev的mapping里查找block对应的page */
+	/* 从dev的mapping里查找block对应的page
+	mapping缺页的话不创建page? */
 	folio = __filemap_get_folio(bd_mapping, index, FGP_ACCESSED, 0);
 	if (IS_ERR(folio))
 		goto out;
@@ -792,11 +796,12 @@ void mark_buffer_dirty_inode(struct buffer_head *bh, struct inode *inode)
 EXPORT_SYMBOL(mark_buffer_dirty_inode);
 
 /*
-bdev fs的fops的dirty_folio回调
 fs的mapping用此函数把自己这个folio设置为脏
 =================
 依次把buffer, folio, mapping, inode置脏
-==============
+========================================
+bdev fs的fops的dirty_folio回调
+======================================
  * Add a page to the dirty page list.
  *
  * It is a sad fact of life that this function is called from several places
@@ -1270,6 +1275,8 @@ failed:
 为读写块设备的block位置而创建bh并返回
 申请page, 加入mapping, 然后在这个page上面创建bh, 然后返回?
 =======================
+__find_get_block找不到buffer的话, 调用这个创建buffer
+=============================
 block io的时候这里需要创建对应block位置的bh
 		在mapping找到页面, 没有就申请
 		然后在页面上面新建bh链
@@ -1404,7 +1411,8 @@ void mark_buffer_dirty(struct buffer_head *bh)
 		struct address_space *mapping = NULL;
 
 		folio_memcg_lock(folio);/* 把folio也置脏 */
-		if (!folio_test_set_dirty(folio)) {/* 如果folio本来不是脏的 */
+		if (!folio_test_set_dirty(folio)) {/* 如果folio本来不是脏的
+			看来这里不会重复置脏 */
 			mapping = folio->mapping;
 			if (mapping)/* 把mapping也置脏 */
 				__folio_mark_dirty(folio, mapping, 0);
@@ -1615,7 +1623,7 @@ lookup_bh_lru(struct block_device *bdev, sector_t block, unsigned size)
 准备通过buffer io来读写块设备的block位置
 这里获取对应的bh （位于块设备的mapping的对应page上面的bh链)
 找到对应的bh
-没有的话会创建
+mapping没有的话不会创建
 ========================
 从mapping获取对应的page,获取buffer,开始io
  * Perform a pagecache lookup for the matching buffer.  If it's there, refresh
@@ -2498,6 +2506,10 @@ int __block_write_begin_int(struct folio *folio, loff_t pos, unsigned len,
 /*
 page是mapping里的page, 准备回写
 getblock函数用于给他里面的bh映射对应的磁盘block
+=======================
+write_begin函数
+一般是内核在写文件之前, 找到mapping的page, begin就是准备这个page
+映射磁盘block, 建立buffer什么的
 */
 int __block_write_begin(struct page *page, loff_t pos, unsigned len,
 		get_block_t *get_block)
@@ -2562,7 +2574,7 @@ int block_write_begin(struct address_space *mapping, loff_t pos, unsigned len,
 	struct page *page;
 	int status;
 	/* 获取index位置的page
-	这个page就是需要回写的page */
+	这个page就是需要回写的page （mapping缺失的话会创建) */
 	page = grab_cache_page_write_begin(mapping, index);
 	if (!page)
 		return -ENOMEM;
@@ -3032,10 +3044,13 @@ out_unlock:
 }
 EXPORT_SYMBOL(block_page_mkwrite);
 
-/* 主要是fs实现调用这个函数 */
+/* 主要是fs实现调用这个函数
+===============
+置零mapping的from位置的磁盘内容? */
 int block_truncate_page(struct address_space *mapping,
 			loff_t from, get_block_t *get_block)
 {
+	/* 要清空的page起始处? */
 	pgoff_t index = from >> PAGE_SHIFT;
 	unsigned blocksize;
 	sector_t iblock;
@@ -3054,6 +3069,7 @@ int block_truncate_page(struct address_space *mapping,
 
 	/* 现在length是加上from加上length可以对齐到blocksize */
 	length = blocksize - length;
+	/* iblock是要截断的磁盘block位置? */
 	iblock = (sector_t)index << (PAGE_SHIFT - inode->i_blkbits);
 	
 	/* 找到index位置的folio */
@@ -3067,7 +3083,9 @@ int block_truncate_page(struct address_space *mapping,
 		bh = folio_buffers(folio);
 	}
 
-	/* 现在bh是这个folio上面的buffer */
+	/*
+	获取到了from对应的index对应的mapping page的buffer
+	现在bh是这个folio上面的buffer */
 	/* Find the buffer that contains "offset" */
 	offset = offset_in_folio(folio, from);
 	pos = blocksize;
@@ -3077,7 +3095,10 @@ int block_truncate_page(struct address_space *mapping,
 		pos += blocksize;
 	}
 
-	/* 现在把bh映射到磁盘位置 */
+	/* 现在把bh映射到磁盘位置
+	===========
+	如果这个对应的buffer还没有映射到磁盘位置, 调用caller提供的get_block
+	函数, 获取buffer应该io的磁盘位置, 并进行map */
 	if (!buffer_mapped(bh)) {
 		WARN_ON(bh->b_size != blocksize);
 		err = get_block(inode, iblock, bh, 0);
@@ -3092,7 +3113,8 @@ int block_truncate_page(struct address_space *mapping,
 	if (folio_test_uptodate(folio))
 		set_buffer_uptodate(bh);
 
-	/* 如果bh还不是up-to-date的, 就读取 */
+	/* 如果bh还不是up-to-date的, 就读取
+	把对应的磁盘位置读入内存 */
 	if (!buffer_uptodate(bh) && !buffer_delay(bh) && !buffer_unwritten(bh)) {
 		err = bh_read(bh, 0);
 		/* Uhhuh. Read error. Complain and punt. */
@@ -3100,8 +3122,11 @@ int block_truncate_page(struct address_space *mapping,
 			goto unlock;
 	}
 
+	/* 清空范围 */
 	folio_zero_range(folio, offset, length);
-	/* 修改bh后, 把bh置脏 */
+	/* 修改bh后, 把bh置脏
+	后续回回写buffer
+	这样达到了清空磁盘位置的目的 */
 	mark_buffer_dirty(bh);
 
 unlock:

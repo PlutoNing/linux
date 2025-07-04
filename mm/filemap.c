@@ -2733,7 +2733,7 @@ unlock_mapping:
 	return error;
 }
 
-//预读失败了, 这几手动分配页面,手动调用回调读取到pagecache
+//预读失败了, 这里手动分配页面,手动调用回调读取到pagecache
 static int filemap_create_folio(struct file *file,
 		struct address_space *mapping, pgoff_t index,
 		struct folio_batch *fbatch)
@@ -2741,6 +2741,7 @@ static int filemap_create_folio(struct file *file,
 	struct folio *folio;
 	int error;
 
+	/* 分配页面 */
 	folio = filemap_alloc_folio(mapping_gfp_mask(mapping), 0);
 	if (!folio)
 		return -ENOMEM;
@@ -2800,6 +2801,7 @@ static int filemap_readahead(struct kiocb *iocb, struct file *file,
 static int filemap_get_pages(struct kiocb *iocb, size_t count,
 		struct folio_batch *fbatch, bool need_uptodate)
 {
+	/* 从iocb获取file, mapping, ra */
 	struct file *filp = iocb->ki_filp;
 	struct address_space *mapping = filp->f_mapping;
 	struct file_ra_state *ra = &filp->f_ra;
@@ -2818,7 +2820,8 @@ retry:
 
 	/* 这里读取一批page */
 	filemap_get_read_batch(mapping, index, last_index - 1, fbatch);
-	if (!folio_batch_count(fbatch)) { //fbatch中没有folio?
+	/* 如果这次没有读到page, 预读一下 */
+	if (!folio_batch_count(fbatch)) {
 		if (iocb->ki_flags & IOCB_NOIO)
 			return -EAGAIN;
 		//预读
@@ -2828,7 +2831,8 @@ retry:
 		filemap_get_read_batch(mapping, index, last_index - 1, fbatch);
 	}
 
-	if (!folio_batch_count(fbatch)) { //预读之后还是没有?
+	//预读之后还是没有?
+	if (!folio_batch_count(fbatch)) {
 		if (iocb->ki_flags & (IOCB_NOWAIT | IOCB_WAITQ))
 			return -EAGAIN;
 		//手动分配, 手动读取到pagecache
@@ -3602,7 +3606,8 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
 			filemap_invalidate_lock_shared(mapping);
 			mapping_locked = true;
 		}
-	} else { //在pagecache中没有找到. 申请页面也没找到?
+	} else {
+		 //在pagecache中没有找到. 申请页面也没找到?
 		/* No page in the page cache at all */
 		count_vm_event(PGMAJFAULT);
 		count_memcg_event_mm(vmf->vma->vm_mm, PGMAJFAULT);
@@ -3693,6 +3698,7 @@ page_not_uptodate:
 	 * and we need to check for errors.
 	 */
 	fpin = maybe_unlock_mmap_for_io(vmf, fpin);
+	/* 把page内容加载进内存 */
 	error = filemap_read_folio(file, mapping->a_ops->read_folio, folio);
 	if (fpin)
 		goto out_retry;

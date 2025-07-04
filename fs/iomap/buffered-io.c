@@ -992,8 +992,8 @@ retry:
 	return written ? written : status;
 }
 
-ssize_t
-iomap_file_buffered_write(struct kiocb *iocb, struct iov_iter *i,
+/* 以后 */
+ssize_t iomap_file_buffered_write(struct kiocb *iocb, struct iov_iter *i,
 		const struct iomap_ops *ops)
 {
 	struct iomap_iter iter = {
@@ -1345,8 +1345,7 @@ static loff_t iomap_unshare_iter(struct iomap_iter *iter)
 	return written;
 }
 
-int
-iomap_file_unshare(struct inode *inode, loff_t pos, loff_t len,
+int iomap_file_unshare(struct inode *inode, loff_t pos, loff_t len,
 		const struct iomap_ops *ops)
 {
 	struct iomap_iter iter = {
@@ -1447,6 +1446,7 @@ int iomap_truncate_page(struct inode *inode, loff_t pos, bool *did_zero,
 }
 EXPORT_SYMBOL_GPL(iomap_truncate_page);
 
+/* 以后 */
 static loff_t iomap_folio_mkwrite_iter(struct iomap_iter *iter,
 		struct folio *folio)
 {
@@ -2023,8 +2023,8 @@ unlock:
 	return 0;
 }
 
-int
-iomap_writepages(struct address_space *mapping, struct writeback_control *wbc,
+/* iomap回写mapping */
+int iomap_writepages(struct address_space *mapping, struct writeback_control *wbc,
 		struct iomap_writepage_ctx *wpc,
 		const struct iomap_writeback_ops *ops)
 {

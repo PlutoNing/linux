@@ -80,6 +80,7 @@ bool clear_page_dirty_for_io(struct page *page)
 }
 EXPORT_SYMBOL(clear_page_dirty_for_io);
 
+/* folio到page的兼容版本 */
 bool redirty_page_for_writepage(struct writeback_control *wbc,
 		struct page *page)
 {
@@ -100,19 +101,21 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 	return filemap_add_folio(mapping, page_folio(page), index, gfp);
 }
 EXPORT_SYMBOL(add_to_page_cache_lru);
-/* 获取pagecache的一个页面 */
+/* 获取pagecache的一个页面, 可以指定fgp gfp */
 noinline struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
 		fgf_t fgp_flags, gfp_t gfp)
 {
 	struct folio *folio;
 
+	/* 这里就是获取folio了 */
 	folio = __filemap_get_folio(mapping, index, fgp_flags, gfp);
 	if (IS_ERR(folio))
 		return NULL;
+	/* 返回folio中指定位置的page */
 	return folio_file_page(folio, index);
 }
 EXPORT_SYMBOL(pagecache_get_page);
-/*  */
+/* 获取mapping的page用于写文件 */
 struct page *grab_cache_page_write_begin(struct address_space *mapping,
 					pgoff_t index)
 {

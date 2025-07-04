@@ -981,6 +981,7 @@ void shmem_unlock_mapping(struct address_space *mapping)
 	}
 }
 
+/* partial folio是什么 */
 static struct folio *shmem_get_partial_folio(struct inode *inode, pgoff_t index)
 {
 	struct folio *folio;
@@ -1000,11 +1001,15 @@ static struct folio *shmem_get_partial_folio(struct inode *inode, pgoff_t index)
 		folio_unlock(folio);
 		folio_put(folio);
 	}
+	/* 到这里:
+	被交换了
+	正常页面, 但是被从mapping截断了? */
 	/*
 	 * But read a folio back from swap if any of it is within i_size
 	 * (although in some cases this is just a waste of time).
 	 */
 	folio = NULL;
+	/*  */
 	shmem_get_folio(inode, index, &folio, SGP_READ);
 	return folio;
 }
@@ -2096,6 +2101,7 @@ repeat:
 
 		*foliop = folio;
 		return error; // 从交换缓存读了,这里直接返回就行
+		/* 之所以直接返回, 因为肯定是新的? */
 	}
 
 	/* 到这里说明是, 直接从shmem的mapping获取的, 没有经历换入什么的 */
@@ -2108,33 +2114,39 @@ repeat:
 			folio_put(folio);
 			goto repeat;
 		}
+		/* 这里为什么仅仅写入才mark accessed
+		读取shmem的read iter函数走到这里的sgp是read */
 		if (sgp == SGP_WRITE)
 			folio_mark_accessed(folio);
 
 		if (folio_test_uptodate(folio))
 			goto out;
 
+			/* 到这里 可能是 读 写 cache fallocate */
 		/* fallocated folio */
 		if (sgp != SGP_READ)
 			goto clear;
+		/* page不新, 并且是read */
 		folio_unlock(folio);
 		folio_put(folio);
 	}
 
-	// 到这里可能是shmem mapping没有folio （文件需要扩大?）
-	// 或者folio不是update
+	// 到这里可能是shmem mapping没有folio, 也不是被交换了 （文件需要扩大?）
+	// 如果有了folio, 就是read不新的page的情况
 	/*
 	 * SGP_READ: succeed on hole, with NULL folio, letting caller zero.
 	 * SGP_NOALLOC: fail on hole, with NULL folio, letting caller fail.
 	 */
 	*foliop = NULL;
-	/* 读取shmem 文件时调用这个函数, 这里就直接返回了, 不管是文件需要扩大, 还是folio不是
-	up-to-date */
+	/*  */
 	if (sgp == SGP_READ)
 		return 0;
+
+	/* 到这里就是shmem不存在页面 */
 	if (sgp == SGP_NOALLOC)
 		return -ENOENT;
 
+	/* 到这里就是shmem mapping不存在页面, 这里准备分配 */
 	/*
 	 * Fast cache lookup and swap lookup did not find it: allocate.
 	 */
@@ -2148,7 +2160,7 @@ repeat:
 	if (!shmem_is_huge(inode, index, false,
 			   vma ? vma->vm_mm : NULL, vma ? vma->vm_flags : 0))
 		goto alloc_nohuge;
-//这里是分配巨页
+	//这里是分配巨页
 	huge_gfp = vma_thp_gfp_mask(vma);
 	huge_gfp = limit_gfp_mask(huge_gfp, gfp);
 	folio = shmem_alloc_and_acct_folio(huge_gfp, inode, index, true);
@@ -2156,7 +2168,7 @@ repeat:
 	if (IS_ERR(folio)) {
 
 alloc_nohuge:
-//如果不是巨页的话,从这里分配
+	//如果不是巨页的话,从这里分配
 		folio = shmem_alloc_and_acct_folio(gfp, inode, index, false);
 	}
 
@@ -2197,7 +2209,7 @@ alloc_nohuge:
 	if (sgp == SGP_WRITE)
 		__folio_set_referenced(folio);
 
-//加入pagecache, 把新分配的folio加入到inode的mapping的xas里面
+	//加入pagecache, 把新分配的folio加入到inode的mapping的xas里面
 	error = shmem_add_to_page_cache(folio, mapping, hindex,
 					NULL, gfp & GFP_RECLAIM_MASK,
 					charge_mm);
@@ -3009,7 +3021,8 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 				error = 0;
 			break;
 		}
-		if (folio) {/* 如果成功找到了要读的page */
+		/* 如果成功找到了要读的page */
+		if (folio) {
 			folio_unlock(folio);
 
 			page = folio_file_page(folio, index);
@@ -3048,12 +3061,15 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 				flush_dcache_page(page);
 			/*
 			 * Mark the page accessed if we read the beginning.
+			 标记被访问了
 			 */
 			if (!offset)
 				folio_mark_accessed(folio);
 			/*
 			 * Ok, we have the page, and it's up-to-date, so
-			 * now we can copy it to user space... 现在把要读的page的内容拷贝一下
+			 * now we can copy it to user space... 
+			 现在把要读的page的内容拷贝一下
+			 拷贝到用户空间
 			 */
 			ret = copy_page_to_iter(page, offset, nr, to);
 			folio_put(folio);
@@ -3163,6 +3179,7 @@ static size_t splice_zeropage_into_pipe(struct pipe_inode_info *pipe,
 	return size;
 }
 
+/* shmem的fops的零拷贝读的回调 */
 static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 				      struct pipe_inode_info *pipe,
 				      size_t len, unsigned int flags)
@@ -3183,6 +3200,8 @@ static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 		if (*ppos >= i_size_read(inode))
 			break;
 
+		/* 读取shmem的内容
+		一般读文件disk file -> mapping -> buffer */
 		error = shmem_get_folio(inode, *ppos / PAGE_SIZE, &folio,
 					SGP_READ);
 		if (error) {
@@ -3190,6 +3209,7 @@ static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 				error = 0;
 			break;
 		}
+		/* hwpoison的情况 */
 		if (folio) {
 			folio_unlock(folio);
 
@@ -3222,6 +3242,7 @@ static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 			 */
 			if (mapping_writably_mapped(mapping))
 				flush_dcache_folio(folio);
+			/* 被读取了, 设置accessed */
 			folio_mark_accessed(folio);
 			/*
 			 * Ok, we have the page, and it's up-to-date, so we can
@@ -3231,6 +3252,7 @@ static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 			folio_put(folio);
 			folio = NULL;
 		} else {
+			/* 没在shmem mapping找到page的情况 */
 			n = splice_zeropage_into_pipe(pipe, *ppos, part);
 		}
 
@@ -3240,6 +3262,7 @@ static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 		total_spliced += n;
 		*ppos += n;
 		in->f_ra.prev_pos = *ppos;
+		/*  */
 		if (pipe_full(pipe->head, pipe->tail, pipe->max_usage))
 			break;
 
@@ -4766,7 +4789,7 @@ static const struct file_operations shmem_file_operations = {
 	.write_iter	= shmem_file_write_iter,
 	/*  */
 	.fsync		= noop_fsync,
-	/*  */
+	/* 零拷贝读的回调 */
 	.splice_read	= shmem_file_splice_read,
 	/*  */
 	.splice_write	= iter_file_splice_write,

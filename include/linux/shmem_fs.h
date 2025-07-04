@@ -146,6 +146,7 @@ int shmem_get_folio(struct inode *inode, pgoff_t index, struct folio **foliop,
 struct folio *shmem_read_folio_gfp(struct address_space *mapping,
 		pgoff_t index, gfp_t gfp);
 
+/* 从shmem的mapping获取folio */
 static inline struct folio *shmem_read_folio(struct address_space *mapping,
 		pgoff_t index)
 {

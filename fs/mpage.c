@@ -719,8 +719,7 @@ out:
  * This is a library function, which implements the writepages()
  * address_space_operation.
  */
-int
-mpage_writepages(struct address_space *mapping,
+int mpage_writepages(struct address_space *mapping,
 		struct writeback_control *wbc, get_block_t get_block)
 {
 	struct mpage_data mpd = {

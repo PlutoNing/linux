@@ -368,21 +368,19 @@ static inline struct buffer_head * sb_bread_unmovable(struct super_block *sb, se
 }
 /* 读取sb的指定块
 读取磁盘的指定@block */
-static inline void
-sb_breadahead(struct super_block *sb, sector_t block)
+static inline void sb_breadahead(struct super_block *sb, sector_t block)
 {
 	__breadahead(sb->s_bdev, block, sb->s_blocksize);
 }
 
-static inline struct buffer_head *
-sb_getblk(struct super_block *sb, sector_t block)
+/* 获取block对应的buffer */
+static inline struct buffer_head * sb_getblk(struct super_block *sb, sector_t block)
 {
 	return __getblk_gfp(sb->s_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
 }
 
-
-static inline struct buffer_head *
-sb_getblk_gfp(struct super_block *sb, sector_t block, gfp_t gfp)
+/* 这个是gfp版本 */
+static inline struct buffer_head * sb_getblk_gfp(struct super_block *sb, sector_t block, gfp_t gfp)
 {
 	return __getblk_gfp(sb->s_bdev, block, sb->s_blocksize, gfp);
 }
@@ -426,6 +424,7 @@ static inline void lock_buffer(struct buffer_head *bh)
 		__lock_buffer(bh);
 }
 
+/* unmovable体现在gfp=0 */
 static inline struct buffer_head *getblk_unmovable(struct block_device *bdev,
 						   sector_t block,
 						   unsigned size)
