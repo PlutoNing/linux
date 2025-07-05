@@ -34,7 +34,9 @@
 struct rchan_buf
 {
 	void *start;			/* start of channel buffer */
+	/* 起始地址 */
 	void *data;			/* start of current sub-buffer */
+	/* 当前的写入和分配到的地址 */
 	size_t offset;			/* current offset into sub-buffer */
 	size_t subbufs_produced;	/* count of sub-buffers produced */
 	size_t subbufs_consumed;	/* count of sub-buffers consumed */
@@ -229,9 +231,12 @@ static inline void __relay_write(struct rchan *chan,
 }
 
 /**
+在channel_buffer中预留空间, 内存是早大块分配好的
+这里移动指针就算是预留了
  *	relay_reserve - reserve slot in channel buffer
  *	@chan: relay channel
  *	@length: number of bytes to reserve
+ 这里是trace_data条目相关的长度
  *
  *	Returns pointer to reserved slot, NULL if full.
  *
@@ -242,6 +247,7 @@ static inline void __relay_write(struct rchan *chan,
 static inline void *relay_reserve(struct rchan *chan, size_t length)
 {
 	void *reserved = NULL;
+	/* relay channel在每个cpu有pcp buf */
 	struct rchan_buf *buf = *get_cpu_ptr(chan->buf);
 
 	if (unlikely(buf->offset + length > buf->chan->subbuf_size)) {

@@ -20,7 +20,8 @@
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
-
+/* 似乎是btrfs，overlayfs等一些机制需要的一些函数
+dedup，比较文件什么的 */
 /*
  * Performs necessary checks before doing a clone.
  *
@@ -114,6 +115,7 @@ static int remap_verify_area(struct file *file, loff_t pos, loff_t len,
 }
 
 /*
+检查remap fops的长度什么的
  * Ensure that we don't remap a partial EOF block in the middle of something
  * else.  Assume that the offsets have already been checked for block
  * alignment.
@@ -150,13 +152,16 @@ static int generic_remap_check_len(struct inode *inode_in,
 	return (remap_flags & REMAP_FILE_DEDUP) ? -EBADE : -EINVAL;
 }
 
-/* Read a page's worth of file data into the page cache. */
+/* 
+把pos处的文件内容加载入pagecache
+Read a page's worth of file data into the page cache. */
 static struct folio *vfs_dedupe_get_folio(struct file *file, loff_t pos)
 {
 	return read_mapping_folio(file->f_mapping, pos >> PAGE_SHIFT, file);
 }
 
 /*
+加锁来自两个文件的两个folio
  * Lock two folios, ensuring that we lock in offset order if the folios
  * are from the same file.
  */
@@ -180,8 +185,10 @@ static void vfs_unlock_two_folios(struct folio *folio1, struct folio *folio2)
 }
 
 /*
+检查两个文件的区块，看看他们是不是相同的
  * Compare extents of two files to see if they are the same.
  * Caller must have locked both inodes to prevent write races.
+ 取出两个文件的区块的folio，kmap之后进行memcmp
  */
 static int vfs_dedupe_file_range_compare(struct file *src, loff_t srcoff,
 					 struct file *dest, loff_t dstoff,
@@ -199,7 +206,7 @@ static int vfs_dedupe_file_range_compare(struct file *src, loff_t srcoff,
 		cmp_len = min(cmp_len, len);
 		if (cmp_len <= 0)
 			goto out_error;
-
+		/* 获取对应位置的两个folio */
 		src_folio = vfs_dedupe_get_folio(src, srcoff);
 		if (IS_ERR(src_folio)) {
 			error = PTR_ERR(src_folio);
@@ -225,7 +232,7 @@ static int vfs_dedupe_file_range_compare(struct file *src, loff_t srcoff,
 			same = false;
 			goto unlock;
 		}
-
+		/* 先kmap再memcmp */
 		src_addr = kmap_local_folio(src_folio,
 					offset_in_folio(src_folio, srcoff));
 		dst_addr = kmap_local_folio(dst_folio,
@@ -260,6 +267,7 @@ out_error:
 }
 
 /*
+检查两个文件是否适合clone，范围要有意义，刷新脏块。
  * Check that the two inodes are eligible for cloning, the ranges make
  * sense, and then flush all dirty data.  Caller must ensure that the
  * inodes have been locked against any other modifications.
@@ -314,7 +322,7 @@ __generic_remap_file_range_prep(struct file *file_in, loff_t pos_in,
 	inode_dio_wait(inode_in);
 	if (!same_inode)
 		inode_dio_wait(inode_out);
-
+	/* 刷新两个文件 */
 	ret = filemap_write_and_wait_range(inode_in->i_mapping,
 			pos_in, pos_in + *len - 1);
 	if (ret)
@@ -357,7 +365,9 @@ __generic_remap_file_range_prep(struct file *file_in, loff_t pos_in,
 
 	return ret;
 }
-
+/* 
+btrfs的reflink调用
+*/
 int generic_remap_file_range_prep(struct file *file_in, loff_t pos_in,
 				  struct file *file_out, loff_t pos_out,
 				  loff_t *len, unsigned int remap_flags)
@@ -366,7 +376,10 @@ int generic_remap_file_range_prep(struct file *file_in, loff_t pos_in,
 					       pos_out, len, remap_flags, NULL);
 }
 EXPORT_SYMBOL(generic_remap_file_range_prep);
-
+/* 
+执行文件的clone
+也是调用file的remap fops
+*/
 loff_t do_clone_file_range(struct file *file_in, loff_t pos_in,
 			   struct file *file_out, loff_t pos_out,
 			   loff_t len, unsigned int remap_flags)
@@ -403,7 +416,9 @@ loff_t do_clone_file_range(struct file *file_in, loff_t pos_in,
 	return ret;
 }
 EXPORT_SYMBOL(do_clone_file_range);
-
+/* 
+overlayfs和ioctl调用
+*/
 loff_t vfs_clone_file_range(struct file *file_in, loff_t pos_in,
 			    struct file *file_out, loff_t pos_out,
 			    loff_t len, unsigned int remap_flags)
@@ -435,7 +450,10 @@ static bool allow_file_dedupe(struct file *file)
 		return true;
 	return false;
 }
-
+/* 
+对两个文件进行dedup
+调用file的remap ops
+*/
 loff_t vfs_dedupe_file_range_one(struct file *src_file, loff_t src_pos,
 				 struct file *dst_file, loff_t dst_pos,
 				 loff_t len, unsigned int remap_flags)
@@ -466,6 +484,7 @@ loff_t vfs_dedupe_file_range_one(struct file *src_file, loff_t src_pos,
 		goto out_drop_write;
 
 	ret = -EXDEV;
+	/* 必须是同一个fs */
 	if (file_inode(src_file)->i_sb != file_inode(dst_file)->i_sb)
 		goto out_drop_write;
 
@@ -490,7 +509,9 @@ out_drop_write:
 	return ret;
 }
 EXPORT_SYMBOL(vfs_dedupe_file_range_one);
-
+/* 
+调用file的remap ops
+*/
 int vfs_dedupe_file_range(struct file *file, struct file_dedupe_range *same)
 {
 	struct file_dedupe_range_info *info;
@@ -537,7 +558,9 @@ int vfs_dedupe_file_range(struct file *file, struct file_dedupe_range *same)
 		same->info[i].status = FILE_DEDUPE_RANGE_SAME;
 	}
 
+	/* 处理每一个info，一共dest count个 */
 	for (i = 0, info = same->info; i < count; i++, info++) {
+		/* 获取目标fd和file */
 		struct fd dst_fd = fdget(info->dest_fd);
 		struct file *dst_file = dst_fd.file;
 
@@ -550,7 +573,7 @@ int vfs_dedupe_file_range(struct file *file, struct file_dedupe_range *same)
 			info->status = -EINVAL;
 			goto next_fdput;
 		}
-
+		/* 开始dedup */
 		deduped = vfs_dedupe_file_range_one(file, off, dst_file,
 						    info->dest_offset, len,
 						    REMAP_FILE_CAN_SHORTEN);

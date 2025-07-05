@@ -12,6 +12,7 @@ enum tick_device_mode {
 表示pcp的tick设备
 */
 struct tick_device {
+	/*  */
 	struct clock_event_device *evtdev;
 	enum tick_device_mode mode;
 };
@@ -97,7 +98,9 @@ struct tick_sched {
 	ktime_t				next_tick;
 	/* 在进入空闲状态时，系统jiffies的值。 */
 	unsigned long			idle_jiffies;
-	/* 记录了在空闲状态下收到并处理中断的时间。 */
+	/* 
+	上次idle被中断的时间
+	记录了在空闲状态下收到并处理中断的时间。 */
 	ktime_t				idle_waketime;
 
 	/* Idle entry */
@@ -108,16 +111,18 @@ struct tick_sched {
 
 	/* Tick stop */
 	/* 
-	表明当前动态时钟的工作模式，目前共有三种模式：NOHZ_MODE_INACTIVE表示
-	还没有激活；NOHZ_MODE_LOWRES表示当前处于低精度动态时钟模式；NOHZ_MODE_HIGHRES
-	表示当前处于高精度动态时钟模式。
+	表明当前动态时钟的工作模式，目前共有三种模式：
+	NOHZ_MODE_INACTIVE表示还没有激活;
+	NOHZ_MODE_LOWRES表示当前处于低精度动态时钟模式;
+	NOHZ_MODE_HIGHRES表示当前处于高精度动态时钟模式。
 	*/
 	enum tick_nohz_mode		nohz_mode;
 	/* 记录了在停止Tick前，系统jiffies的值。 */
 	unsigned long			last_jiffies;
-	/* 记录了在停止Tick的情况下，定时器到期的基准时间，其实就是记录了在停止Tick的时候，上一次Tick到来的时间，也就是上一次更新系统jiffies的时间。 */
+	/* 记录了在停止Tick的情况下，定时器到期的基准时间，其实就是记录了在停止Tick的时候，
+	上一次Tick到来的时间，也就是上一次更新系统jiffies的时间。 */
 	u64				timer_expires_base;
-	/* 记录了在停止Tick的情况下，下一个预期的定时器到期时间 */
+	/* 下一个预期的定时器到期时间 */
 	u64				timer_expires;
 	/* 系统中所有定时器中最近要到期的到期时间 */
 	u64				next_timer;

@@ -222,7 +222,7 @@ static __init void set_intr_gate(unsigned int n, const void *addr)
 	idt_setup_from_table(idt_table, &data, 1, false);
 }
 
-/**
+/** 设置一些中断什么的
  * idt_setup_early_traps - Initialize the idt table with early traps
  *
  * On X8664 these traps do not use interrupt stacks as they can't work
@@ -255,7 +255,7 @@ static const __initconst struct idt_data early_pf_idts[] = {
 };
 
 /**
- * idt_setup_early_pf - Initialize the idt table with early pagefault handler
+ * idt_setup_early_pf - 使用早期页错误处理程序初始化 idt 表
  *
  * On X8664 this does not use interrupt stacks as they can't work before
  * cpu_init() is invoked and sets up TSS. The IST variant is installed
@@ -264,7 +264,7 @@ static const __initconst struct idt_data early_pf_idts[] = {
  * Note, that X86_64 cannot install the real #PF handler in
  * idt_setup_early_traps() because the memory initialization needs the #PF
  * handler from the early_idt_handler_array to initialize the early page
- * tables.
+ * tables.  好像是把t加到idt
  */
 void __init idt_setup_early_pf(void)
 {
@@ -326,7 +326,7 @@ void __init idt_setup_apic_and_irq_gates(void)
 	idt_setup_done = true;
 }
 
-/**
+/** 初始化一些idt的handler
  * idt_setup_early_handler - Initializes the idt table with early handlers
  */
 void __init idt_setup_early_handler(void)

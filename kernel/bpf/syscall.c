@@ -59,7 +59,41 @@ static DEFINE_SPINLOCK(link_idr_lock);
 
 int sysctl_unprivileged_bpf_disabled __read_mostly =
 	IS_BUILTIN(CONFIG_BPF_UNPRIV_DEFAULT_OFF) ? 2 : 0;
-
+/* 展开如下
+static const struct bpf_map_ops *const bpf_map_types[] = {
+	[BPF_MAP_TYPE_ARRAY] = &array_map_ops,
+	[BPF_MAP_TYPE_PERCPU_ARRAY] = &percpu_array_map_ops,
+	[BPF_MAP_TYPE_PROG_ARRAY] = &prog_array_map_ops,
+	[BPF_MAP_TYPE_PERF_EVENT_ARRAY] = &perf_event_array_map_ops,
+	[BPF_MAP_TYPE_CGROUP_ARRAY] = &cgroup_array_map_ops,
+	[BPF_MAP_TYPE_CGRP_STORAGE] = &cgrp_storage_map_ops,
+	[BPF_MAP_TYPE_CGROUP_STORAGE] = &cgroup_storage_map_ops,
+	[BPF_MAP_TYPE_PERCPU_CGROUP_STORAGE] = &cgroup_storage_map_ops,
+	[BPF_MAP_TYPE_HASH] = &htab_map_ops,
+	[BPF_MAP_TYPE_PERCPU_HASH] = &htab_percpu_map_ops,
+	[BPF_MAP_TYPE_LRU_HASH] = &htab_lru_map_ops,
+	[BPF_MAP_TYPE_LRU_PERCPU_HASH] = &htab_lru_percpu_map_ops,
+	[BPF_MAP_TYPE_LPM_TRIE] = &trie_map_ops,
+	[BPF_MAP_TYPE_STACK_TRACE] = &stack_trace_map_ops,
+	[BPF_MAP_TYPE_ARRAY_OF_MAPS] = &array_of_maps_map_ops,
+	[BPF_MAP_TYPE_HASH_OF_MAPS] = &htab_of_maps_map_ops,
+	[BPF_MAP_TYPE_INODE_STORAGE] = &inode_storage_map_ops,
+	[BPF_MAP_TYPE_TASK_STORAGE] = &task_storage_map_ops,
+	[BPF_MAP_TYPE_DEVMAP] = &dev_map_ops,
+	[BPF_MAP_TYPE_DEVMAP_HASH] = &dev_map_hash_ops,
+	[BPF_MAP_TYPE_SK_STORAGE] = &sk_storage_map_ops,
+	[BPF_MAP_TYPE_CPUMAP] = &cpu_map_ops,
+	[BPF_MAP_TYPE_SOCKMAP] = &sock_map_ops,
+	[BPF_MAP_TYPE_SOCKHASH] = &sock_hash_ops,
+	[BPF_MAP_TYPE_REUSEPORT_SOCKARRAY] = &reuseport_array_ops,
+	[BPF_MAP_TYPE_QUEUE] = &queue_map_ops,
+	[BPF_MAP_TYPE_STACK] = &stack_map_ops,
+	[BPF_MAP_TYPE_STRUCT_OPS] = &bpf_struct_ops_map_ops,
+	[BPF_MAP_TYPE_RINGBUF] = &ringbuf_map_ops,
+	[BPF_MAP_TYPE_BLOOM_FILTER] = &bloom_filter_map_ops,
+	[BPF_MAP_TYPE_USER_RINGBUF] = &user_ringbuf_map_ops,
+};
+*/
 static const struct bpf_map_ops * const bpf_map_types[] = {
 #define BPF_PROG_TYPE(_id, _name, prog_ctx_type, kern_ctx_type)
 #define BPF_MAP_TYPE(_id, _ops) \
@@ -102,7 +136,7 @@ int bpf_check_uarg_tail_zero(bpfptr_t uaddr,
 		return res;
 	return res ? 0 : -E2BIG;
 }
-
+/* 被offload的map是这个ops */
 const struct bpf_map_ops bpf_map_offload_ops = {
 	.map_meta_equal = bpf_map_meta_equal,
 	.map_alloc = bpf_map_offload_map_alloc,
@@ -149,14 +183,16 @@ static void maybe_wait_bpf_programs(struct bpf_map *map)
 	    map->map_type == BPF_MAP_TYPE_ARRAY_OF_MAPS)
 		synchronize_rcu();
 }
-
+/* 更新map的value
+感觉大多数还是靠回调ops
+*/
 static int bpf_map_update_value(struct bpf_map *map, struct file *map_file,
 				void *key, void *value, __u64 flags)
 {
 	int err;
 
 	/* Need to create a kthread, thus must support schedule */
-	if (bpf_map_is_offloaded(map)) {
+	if (bpf_map_is_offloaded(map)) {/* 不大可能 unlikely */
 		return bpf_map_offload_update_elem(map, key, value, flags);
 	} else if (map->map_type == BPF_MAP_TYPE_CPUMAP ||
 		   map->map_type == BPF_MAP_TYPE_STRUCT_OPS) {
@@ -346,11 +382,12 @@ void bpf_map_init_from_attr(struct bpf_map *map, union bpf_attr *attr)
 	map->numa_node = bpf_map_attr_numa_node(attr);
 	map->map_extra = attr->map_extra;
 }
-
+/* map是新创建的
+这里从idr分配一个map的id */
 static int bpf_map_alloc_id(struct bpf_map *map)
 {
 	int id;
-
+	/* 从idr里面分配id */
 	idr_preload(GFP_KERNEL);
 	spin_lock_bh(&map_idr_lock);
 	id = idr_alloc_cyclic(&map_idr, map, 1, INT_MAX, GFP_ATOMIC);
@@ -386,6 +423,7 @@ void bpf_map_free_id(struct bpf_map *map)
 }
 
 #ifdef CONFIG_MEMCG_KMEM
+/* 初始化map的objcg */
 static void bpf_map_save_memcg(struct bpf_map *map)
 {
 	/* Currently if a map is created by a process belonging to the root
@@ -396,7 +434,8 @@ static void bpf_map_save_memcg(struct bpf_map *map)
 	if (memcg_bpf_enabled())
 		map->objcg = get_obj_cgroup_from_current();
 }
-
+/* 为什么只是简单的put ref
+没有内存的account吗 */
 static void bpf_map_release_memcg(struct bpf_map *map)
 {
 	if (map->objcg)
@@ -687,9 +726,12 @@ void bpf_obj_free_fields(const struct btf_record *rec, void *obj)
 	}
 }
 
-/* called from workqueue */
+/* called from workqueue
+当map的内核ref变成0的时候异步调用
+*/
 static void bpf_map_free_deferred(struct work_struct *work)
 {
+	/* 从work取出需要处理的map */
 	struct bpf_map *map = container_of(work, struct bpf_map, work);
 	struct btf_record *rec = map->record;
 
@@ -708,7 +750,7 @@ static void bpf_map_free_deferred(struct work_struct *work)
 	 */
 	btf_record_free(rec);
 }
-
+/* put以下user ref */
 static void bpf_map_put_uref(struct bpf_map *map)
 {
 	if (atomic64_dec_and_test(&map->usercnt)) {
@@ -717,7 +759,9 @@ static void bpf_map_put_uref(struct bpf_map *map)
 	}
 }
 
-/* decrement map refcnt and schedule it for freeing via workqueue
+/* 
+put map的内核的ref
+decrement map refcnt and schedule it for freeing via workqueue
  * (underlying map implementation ops->map_free() might sleep)
  */
 void bpf_map_put(struct bpf_map *map)
@@ -726,6 +770,7 @@ void bpf_map_put(struct bpf_map *map)
 		/* bpf_map_free_id() must be called first */
 		bpf_map_free_id(map);
 		btf_put(map->btf);
+		//调用异步的释放函数
 		INIT_WORK(&map->work, bpf_map_free_deferred);
 		/* Avoid spawning kworkers, since they all might contend
 		 * for the same mutex like slab_mutex.
@@ -734,13 +779,13 @@ void bpf_map_put(struct bpf_map *map)
 	}
 }
 EXPORT_SYMBOL_GPL(bpf_map_put);
-
+/* put map的ref */
 void bpf_map_put_with_uref(struct bpf_map *map)
 {
 	bpf_map_put_uref(map);
 	bpf_map_put(map);
 }
-
+/* map的file的fops的释放回调 */
 static int bpf_map_release(struct inode *inode, struct file *filp)
 {
 	struct bpf_map *map = filp->private_data;
@@ -770,7 +815,7 @@ static u64 bpf_map_memory_usage(const struct bpf_map *map)
 {
 	return map->ops->map_mem_usage(map);
 }
-
+/* _bpfmap的fops的show fdinfo的回调 */
 static void bpf_map_show_fdinfo(struct seq_file *m, struct file *filp)
 {
 	struct bpf_map *map = filp->private_data;
@@ -844,12 +889,12 @@ static void bpf_map_mmap_close(struct vm_area_struct *vma)
 	if (vma->vm_flags & VM_MAYWRITE)
 		bpf_map_write_active_dec(map);
 }
-
+/* bpf map 的vfs file的mmap对应的vma的ops */
 static const struct vm_operations_struct bpf_map_default_vmops = {
 	.open		= bpf_map_mmap_open,
 	.close		= bpf_map_mmap_close,
 };
-
+/* 这还能支持mmap吗 */
 static int bpf_map_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	struct bpf_map *map = filp->private_data;
@@ -907,9 +952,10 @@ static __poll_t bpf_map_poll(struct file *filp, struct poll_table_struct *pts)
 
 	return EPOLLERR;
 }
-
+/* _bpfmap在vfs对应文件的fops */
 const struct file_operations bpf_map_fops = {
 #ifdef CONFIG_PROC_FS
+/* 好像就是打印map的信息 */
 	.show_fdinfo	= bpf_map_show_fdinfo,
 #endif
 	.release	= bpf_map_release,
@@ -918,7 +964,7 @@ const struct file_operations bpf_map_fops = {
 	.mmap		= bpf_map_mmap,
 	.poll		= bpf_map_poll,
 };
-
+/* 给新创建的map分配vfs的fd */
 int bpf_map_new_fd(struct bpf_map *map, int flags)
 {
 	int ret;
@@ -926,7 +972,7 @@ int bpf_map_new_fd(struct bpf_map *map, int flags)
 	ret = security_bpf_map(map, OPEN_FMODE(flags));
 	if (ret < 0)
 		return ret;
-
+	// 分配一个匿名inode的fd
 	return anon_inode_getfd("bpf-map", &bpf_map_fops, map,
 				flags | O_CLOEXEC);
 }
@@ -1094,7 +1140,9 @@ free_map_tab:
 }
 
 #define BPF_MAP_CREATE_LAST_FIELD map_extra
-/* called via syscall */
+/* called via syscall
+执行创建map的cmd
+*/
 static int map_create(union bpf_attr *attr)
 {
 	const struct bpf_map_ops *ops;
@@ -1119,7 +1167,7 @@ static int map_create(union bpf_attr *attr)
 	if (attr->map_type != BPF_MAP_TYPE_BLOOM_FILTER &&
 	    attr->map_extra != 0)
 		return -EINVAL;
-
+		// 要求是BPF_MAP_TYPE_BLOOM_FILTER类型或者map_extra为0
 	f_flags = bpf_get_file_flag(attr->map_flags);
 	if (f_flags < 0)
 		return f_flags;
@@ -1133,16 +1181,18 @@ static int map_create(union bpf_attr *attr)
 	map_type = attr->map_type;
 	if (map_type >= ARRAY_SIZE(bpf_map_types))
 		return -EINVAL;
+	// 获取在全局types数组的idx
 	map_type = array_index_nospec(map_type, ARRAY_SIZE(bpf_map_types));
 	ops = bpf_map_types[map_type];
 	if (!ops)
 		return -EINVAL;
 
-	if (ops->map_alloc_check) {
+	if (ops->map_alloc_check) {// 执行实现者特定的回调检查
 		err = ops->map_alloc_check(attr);
 		if (err)
 			return err;
 	}
+	// 以后 
 	if (attr->map_ifindex)
 		ops = &bpf_map_offload_ops;
 	if (!ops->map_mem_usage)
@@ -1203,7 +1253,7 @@ static int map_create(union bpf_attr *attr)
 		WARN(1, "unsupported map type %d", map_type);
 		return -EPERM;
 	}
-
+	// 是调用ops的回调给自己分配内存吗?
 	map = ops->map_alloc(attr);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
@@ -1214,7 +1264,7 @@ static int map_create(union bpf_attr *attr)
 			       sizeof(attr->map_name));
 	if (err < 0)
 		goto free_map;
-
+		// 初始化ref
 	atomic64_set(&map->refcnt, 1);
 	atomic64_set(&map->usercnt, 1);
 	mutex_init(&map->freeze_mutex);
@@ -1235,7 +1285,7 @@ static int map_create(union bpf_attr *attr)
 			err = PTR_ERR(btf);
 			goto free_map;
 		}
-		if (btf_is_kernel(btf)) {
+		if (btf_is_kernel(btf)) {// 是kernel的又会怎样?
 			btf_put(btf);
 			err = -EACCES;
 			goto free_map;
@@ -1258,13 +1308,13 @@ static int map_create(union bpf_attr *attr)
 	err = security_bpf_map_alloc(map);
 	if (err)
 		goto free_map;
-
+	// 从idr分配id
 	err = bpf_map_alloc_id(map);
 	if (err)
 		goto free_map_sec;
-
+	// 初始化map的objcg
 	bpf_map_save_memcg(map);
-
+	// 给map创建对应的file
 	err = bpf_map_new_fd(map, f_flags);
 	if (err < 0) {
 		/* failed to allocate fd.
@@ -1287,7 +1337,9 @@ free_map:
 	return err;
 }
 
-/* if error is returned, fd is released.
+/* 
+获取fd对应的map
+if error is returned, fd is released.
  * On success caller should complete fd access with matching fdput()
  如果返回错误，则释放fd。
  * 成功时，调用者应使用匹配的fdput()完成fd访问
@@ -1478,7 +1530,7 @@ err_put:
 
 
 #define BPF_MAP_UPDATE_ELEM_LAST_FIELD flags
-
+/* 更新map的cmd的实际执行函数 */
 static int map_update_elem(union bpf_attr *attr, bpfptr_t uattr)
 {
 	bpfptr_t ukey = make_bpfptr(attr->key, uattr.is_kernel);
@@ -1494,6 +1546,7 @@ static int map_update_elem(union bpf_attr *attr, bpfptr_t uattr)
 		return -EINVAL;
 
 	f = fdget(ufd);
+//获取存储的map
 	map = __bpf_map_get(f);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
@@ -1508,7 +1561,7 @@ static int map_update_elem(union bpf_attr *attr, bpfptr_t uattr)
 		err = -EINVAL;
 		goto err_put;
 	}
-
+	/* 拷贝到kernel内存？ */
 	key = ___bpf_copy_key(ukey, map->key_size);
 	if (IS_ERR(key)) {
 		err = PTR_ERR(key);
@@ -1516,12 +1569,13 @@ static int map_update_elem(union bpf_attr *attr, bpfptr_t uattr)
 	}
 
 	value_size = bpf_map_value_size(map);
+	/* 拷贝到内核空间 */
 	value = kvmemdup_bpfptr(uvalue, value_size);
 	if (IS_ERR(value)) {
 		err = PTR_ERR(value);
 		goto free_key;
 	}
-
+	/* 开始update */
 	err = bpf_map_update_value(map, f.file, key, value, attr->flags);
 
 	kvfree(value);
@@ -2002,7 +2056,69 @@ err_put:
 	fdput(f);
 	return err;
 }
+/* static const struct bpf_prog_ops *const bpf_prog_types[] = {
+	[BPF_PROG_TYPE_SOCKET_FILTER] = &sk_filter_prog_ops,
+	[BPF_PROG_TYPE_SCHED_CLS] = &tc_cls_act_prog_ops,
 
+	[BPF_PROG_TYPE_SCHED_ACT] = &tc_cls_act_prog_ops,
+
+	[BPF_PROG_TYPE_XDP] = &xdp_prog_ops,
+
+	[BPF_PROG_TYPE_CGROUP_SKB] = &cg_skb_prog_ops,
+
+	[BPF_PROG_TYPE_CGROUP_SOCK] = &cg_sock_prog_ops,
+
+	[BPF_PROG_TYPE_CGROUP_SOCK_ADDR] = &cg_sock_addr_prog_ops,
+
+	[BPF_PROG_TYPE_LWT_IN] = &lwt_in_prog_ops,
+
+	[BPF_PROG_TYPE_LWT_OUT] = &lwt_out_prog_ops,
+
+	[BPF_PROG_TYPE_LWT_XMIT] = &lwt_xmit_prog_ops,
+
+	[BPF_PROG_TYPE_LWT_SEG6LOCAL] = &lwt_seg6local_prog_ops,
+
+	[BPF_PROG_TYPE_SOCK_OPS] = &sock_ops_prog_ops,
+
+	[BPF_PROG_TYPE_SK_SKB] = &sk_skb_prog_ops,
+
+	[BPF_PROG_TYPE_SK_MSG] = &sk_msg_prog_ops,
+
+	[BPF_PROG_TYPE_FLOW_DISSECTOR] = &flow_dissector_prog_ops,
+
+	[BPF_PROG_TYPE_KPROBE] = &kprobe_prog_ops,
+
+	[BPF_PROG_TYPE_TRACEPOINT] = &tracepoint_prog_ops,
+
+	[BPF_PROG_TYPE_PERF_EVENT] = &perf_event_prog_ops,
+
+	[BPF_PROG_TYPE_RAW_TRACEPOINT] = &raw_tracepoint_prog_ops,
+
+	[BPF_PROG_TYPE_RAW_TRACEPOINT_WRITABLE] =
+		&raw_tracepoint_writable_prog_ops,
+
+	[BPF_PROG_TYPE_TRACING] = &tracing_prog_ops,
+
+	[BPF_PROG_TYPE_CGROUP_DEVICE] = &cg_dev_prog_ops,
+
+	[BPF_PROG_TYPE_CGROUP_SYSCTL] = &cg_sysctl_prog_ops,
+
+	[BPF_PROG_TYPE_CGROUP_SOCKOPT] = &cg_sockopt_prog_ops,
+
+	[BPF_PROG_TYPE_SK_REUSEPORT] = &sk_reuseport_prog_ops,
+
+	[BPF_PROG_TYPE_SK_LOOKUP] = &sk_lookup_prog_ops,
+
+	[BPF_PROG_TYPE_STRUCT_OPS] = &bpf_struct_ops_prog_ops,
+
+	[BPF_PROG_TYPE_EXT] = &bpf_extension_prog_ops,
+
+	[BPF_PROG_TYPE_LSM] = &lsm_prog_ops,
+
+	[BPF_PROG_TYPE_SYSCALL] = &bpf_syscall_prog_ops,
+
+	[BPF_PROG_TYPE_NETFILTER] = &netfilter_prog_ops,
+}; */
 static const struct bpf_prog_ops * const bpf_prog_types[] = {
 #define BPF_PROG_TYPE(_id, _name, prog_ctx_type, kern_ctx_type) \
 	[_id] = & _name ## _prog_ops,
@@ -2013,7 +2129,7 @@ static const struct bpf_prog_ops * const bpf_prog_types[] = {
 #undef BPF_MAP_TYPE
 #undef BPF_LINK_TYPE
 };
-
+/* 根据type给prog的aux设置ops */
 static int find_prog_type(enum bpf_prog_type type, struct bpf_prog *prog)
 {
 	const struct bpf_prog_ops *ops;
@@ -2043,7 +2159,8 @@ static const char * const bpf_audit_str[BPF_AUDIT_MAX] = {
 	[BPF_AUDIT_LOAD]   = "LOAD",
 	[BPF_AUDIT_UNLOAD] = "UNLOAD",
 };
-
+/* audit什么
+好像就是往进程的audit ctx记录事件 */
 static void bpf_audit_prog(const struct bpf_prog *prog, unsigned int op)
 {
 	struct audit_context *ctx = NULL;
@@ -2054,15 +2171,16 @@ static void bpf_audit_prog(const struct bpf_prog *prog, unsigned int op)
 	if (audit_enabled == AUDIT_OFF)
 		return;
 	if (!in_irq() && !irqs_disabled())
-		ctx = audit_context();
+		ctx = audit_context(); /* 用的是进程的audit ctx */
 	ab = audit_log_start(ctx, GFP_ATOMIC, AUDIT_BPF);
 	if (unlikely(!ab))
 		return;
+	/* 记录日志 */
 	audit_log_format(ab, "prog-id=%u op=%s",
 			 prog->aux->id, bpf_audit_str[op]);
 	audit_log_end(ab);
 }
-
+/* 给新prog分配idr id */
 static int bpf_prog_alloc_id(struct bpf_prog *prog)
 {
 	int id;
@@ -2218,8 +2336,10 @@ static void bpf_prog_get_stats(const struct bpf_prog *prog,
 }
 
 #ifdef CONFIG_PROC_FS
+/* bpf prog的对应的file的show ops */
 static void bpf_prog_show_fdinfo(struct seq_file *m, struct file *filp)
 {
+	/* 获取存储在file的priv的prog */
 	const struct bpf_prog *prog = filp->private_data;
 	char prog_tag[sizeof(prog->tag) * 2 + 1] = { };
 	struct bpf_prog_kstats stats;
@@ -2247,7 +2367,7 @@ static void bpf_prog_show_fdinfo(struct seq_file *m, struct file *filp)
 		   prog->aux->verified_insns);
 }
 #endif
-
+/* prog的fops */
 const struct file_operations bpf_prog_fops = {
 #ifdef CONFIG_PROC_FS
 	.show_fdinfo	= bpf_prog_show_fdinfo,
@@ -2256,7 +2376,7 @@ const struct file_operations bpf_prog_fops = {
 	.read		= bpf_dummy_read,
 	.write		= bpf_dummy_write,
 };
-
+/* 给新添加的prog创建vfs fd */
 int bpf_prog_new_fd(struct bpf_prog *prog)
 {
 	int ret;
@@ -2362,7 +2482,9 @@ struct bpf_prog *bpf_prog_get(u32 ufd)
 {
 	return __bpf_prog_get(ufd, NULL, false);
 }
-
+/* ufd是要附加的prog的fd
+type为类型
+这里从fd获取到prog */
 struct bpf_prog *bpf_prog_get_type_dev(u32 ufd, enum bpf_prog_type type,
 				       bool attach_drv)
 {
@@ -2402,7 +2524,7 @@ static void bpf_prog_load_fixup_attach_type(union bpf_attr *attr)
 		break;
 	}
 }
-
+/* check attach是check什么 */
 static int
 bpf_prog_load_check_attach(enum bpf_prog_type prog_type,
 			   enum bpf_attach_type expected_attach_type,
@@ -2636,12 +2758,14 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 			return -EINVAL;
 		btf_get(attach_btf);
 	}
-
+/* 如果有prog， 就直接dst—prog就是prog了
+也可能是attach—btf */
 	bpf_prog_load_fixup_attach_type(attr);
 
 	if (bpf_prog_load_check_attach(type, attr->expected_attach_type,
 				       attach_btf, attr->attach_btf_id,
 				       dst_prog)) {/* 2024年11月05日11:27:57看到这 */
+		/* 表示出错了 */
 		if (dst_prog)
 			bpf_prog_put(dst_prog);
 		if (attach_btf)
@@ -2676,12 +2800,15 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 	prog->len = attr->insn_cnt;
 
 	err = -EFAULT;
+	/* 把insns从attr拷贝到prog */
 	if (copy_from_bpfptr(prog->insns,
 			     make_bpfptr(attr->insns, uattr.is_kernel),
 			     bpf_prog_insn_size(prog)) != 0)
 		goto free_prog_sec;
 
-	/* copy eBPF program license from user space */
+	/* copy eBPF program license from user space
+	拷贝license
+	*/
 	if (strncpy_from_bpfptr(license,
 				make_bpfptr(attr->license, uattr.is_kernel),
 				sizeof(license) - 1) < 0)
@@ -2715,6 +2842,7 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 		goto free_prog_sec;
 
 	prog->aux->load_time = ktime_get_boottime_ns();
+	/* aux是什么？ */
 	err = bpf_obj_name_cpy(prog->aux->name, attr->prog_name,
 			       sizeof(attr->prog_name));
 	if (err < 0)
@@ -2725,11 +2853,11 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 	err = bpf_check(&prog, attr, uattr, uattr_size);
 	if (err < 0)
 		goto free_used_maps;
-
+/* 这是选择了个啥？ */
 	prog = bpf_prog_select_runtime(prog, &err);
 	if (err < 0)
 		goto free_used_maps;
-
+		/* 分配idr id */
 	err = bpf_prog_alloc_id(prog);
 	if (err)
 		goto free_used_maps;
@@ -2749,9 +2877,11 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 	 * be using bpf_prog_put() given the program is exposed.
 	 */
 	bpf_prog_kallsyms_add(prog);
+	/* perf事件 */
 	perf_event_bpf_event(prog, PERF_BPF_EVENT_PROG_LOAD, 0);
+	/* 记录日志 */
 	bpf_audit_prog(prog, BPF_AUDIT_LOAD);
-
+		/* 创建对应的的file */
 	err = bpf_prog_new_fd(prog);
 	if (err < 0)
 		bpf_prog_put(prog);
@@ -3673,6 +3803,9 @@ static int bpf_raw_tracepoint_open(const union bpf_attr *attr)
 	return fd;
 }
 
+/*
+附加程序时
+提取bpf系统调用参数attr里面附加程序的类型 */
 static enum bpf_prog_type
 attach_type_to_prog_type(enum bpf_attach_type attach_type)
 {
@@ -3739,6 +3872,7 @@ attach_type_to_prog_type(enum bpf_attach_type attach_type)
 	}
 }
 
+/* 附加prog之前的一些检查 */
 static int bpf_prog_attach_check_attach_type(const struct bpf_prog *prog,
 					     enum bpf_attach_type attach_type)
 {
@@ -3808,7 +3942,7 @@ static int bpf_prog_attach_check_attach_type(const struct bpf_prog *prog,
 	 BPF_F_AFTER |		\
 	 BPF_F_ID |		\
 	 BPF_F_LINK)
-
+/* bpf系统调用附加cmd的执行函数 */
 static int bpf_prog_attach(const union bpf_attr *attr)
 {
 	enum bpf_prog_type ptype;
@@ -3821,6 +3955,7 @@ static int bpf_prog_attach(const union bpf_attr *attr)
 	ptype = attach_type_to_prog_type(attr->attach_type);
 	if (ptype == BPF_PROG_TYPE_UNSPEC)
 		return -EINVAL;
+	/* 现在阶段主要就是scx类型的程序进入if */
 	if (bpf_mprog_supported(ptype)) {
 		if (attr->attach_flags & ~BPF_F_ATTACH_MASK_MPROG)
 			return -EINVAL;
@@ -3832,10 +3967,12 @@ static int bpf_prog_attach(const union bpf_attr *attr)
 			return -EINVAL;
 	}
 
+	/* 获取fd里面的prog */
 	prog = bpf_prog_get_type(attr->attach_bpf_fd, ptype);
 	if (IS_ERR(prog))
 		return PTR_ERR(prog);
 
+		/* 一些检查 */
 	if (bpf_prog_attach_check_attach_type(prog, attr->attach_type)) {
 		bpf_prog_put(prog);
 		return -EINVAL;
@@ -3996,7 +4133,7 @@ static int bpf_prog_query(const union bpf_attr *attr,
 }
 
 #define BPF_PROG_TEST_RUN_LAST_FIELD test.batch_size
-
+/* 运行bpf的cmd */
 static int bpf_prog_test_run(const union bpf_attr *attr,
 			     union bpf_attr __user *uattr)
 {
@@ -4013,7 +4150,7 @@ static int bpf_prog_test_run(const union bpf_attr *attr,
 	if ((attr->test.ctx_size_out && !attr->test.ctx_out) ||
 	    (!attr->test.ctx_size_out && attr->test.ctx_out))
 		return -EINVAL;
-
+	/* 获取到要运行的prog */
 	prog = bpf_prog_get(attr->test.prog_fd);
 	if (IS_ERR(prog))
 		return PTR_ERR(prog);
@@ -4908,6 +5045,7 @@ err_put:
 }
 
 #define BPF_LINK_CREATE_LAST_FIELD link_create.uprobe_multi.pid
+/*  */
 static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 {
 	struct bpf_prog *prog;
@@ -4918,7 +5056,7 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 
 	if (attr->link_create.attach_type == BPF_STRUCT_OPS)
 		return bpf_struct_ops_link_create(attr);
-
+	/* 获取prog */
 	prog = bpf_prog_get(attr->link_create.prog_fd);
 	if (IS_ERR(prog))
 		return PTR_ERR(prog);
@@ -4927,7 +5065,7 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 						attr->link_create.attach_type);
 	if (ret)
 		goto out;
-
+		/* 不同类型的prog不同的处理 */
 	switch (prog->type) {
 	case BPF_PROG_TYPE_CGROUP_SKB:
 	case BPF_PROG_TYPE_CGROUP_SOCK:
@@ -4978,10 +5116,10 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 		break;
 #endif
 	case BPF_PROG_TYPE_PERF_EVENT:
-	case BPF_PROG_TYPE_TRACEPOINT:
+	case BPF_PROG_TYPE_TRACEPOINT: /* trace类型的？ */
 		ret = bpf_perf_link_attach(attr, prog);
 		break;
-	case BPF_PROG_TYPE_KPROBE:
+	case BPF_PROG_TYPE_KPROBE: /* probe类型的？ */
 		if (attr->link_create.attach_type == BPF_PERF_EVENT)
 			ret = bpf_perf_link_attach(attr, prog);
 		else if (attr->link_create.attach_type == BPF_TRACE_KPROBE_MULTI)
@@ -5318,7 +5456,7 @@ out_prog_put:
 	bpf_prog_put(prog);
 	return ret;
 }
-
+/* 执行cmd */
 static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 {
 	union bpf_attr attr;
@@ -5340,13 +5478,13 @@ static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 		return err;
 
 	switch (cmd) {
-	case BPF_MAP_CREATE:
+	case BPF_MAP_CREATE: //创建map
 		err = map_create(&attr);
 		break;
 	case BPF_MAP_LOOKUP_ELEM:
 		err = map_lookup_elem(&attr);
 		break;
-	case BPF_MAP_UPDATE_ELEM:
+	case BPF_MAP_UPDATE_ELEM: //更新map
 		err = map_update_elem(&attr, uattr);
 		break;
 	case BPF_MAP_DELETE_ELEM:
@@ -5368,6 +5506,7 @@ static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 	case BPF_OBJ_GET:
 		err = bpf_obj_get(&attr);
 		break;
+		/* 附加 */
 	case BPF_PROG_ATTACH:
 		err = bpf_prog_attach(&attr);
 		break;
@@ -5377,7 +5516,7 @@ static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 	case BPF_PROG_QUERY:
 		err = bpf_prog_query(&attr, uattr.user);
 		break;
-	case BPF_PROG_TEST_RUN:
+	case BPF_PROG_TEST_RUN:/* 运行bpf */
 		err = bpf_prog_test_run(&attr, uattr.user);
 		break;
 	case BPF_PROG_GET_NEXT_ID:
@@ -5429,7 +5568,7 @@ static int __sys_bpf(int cmd, bpfptr_t uattr, unsigned int size)
 	case BPF_MAP_DELETE_BATCH:
 		err = bpf_map_do_batch(&attr, uattr.user, BPF_MAP_DELETE_BATCH);
 		break;
-	case BPF_LINK_CREATE:
+	case BPF_LINK_CREATE:/* 创建link */
 		err = link_create(&attr, uattr);
 		break;
 	case BPF_LINK_UPDATE:
@@ -5478,10 +5617,10 @@ static bool syscall_prog_is_valid_access(int off, int size,
 		return false;
 	return true;
 }
-
+/* 执行cmd的时候没有jit的路径 */
 BPF_CALL_3(bpf_sys_bpf, int, cmd, union bpf_attr *, attr, u32, attr_size)
 {
-	switch (cmd) {
+	switch (cmd) {/* 为什么只支持这几种呢 */
 	case BPF_MAP_CREATE:
 	case BPF_MAP_DELETE_ELEM:
 	case BPF_MAP_UPDATE_ELEM:
@@ -5509,7 +5648,7 @@ BPF_CALL_3(bpf_sys_bpf, int, cmd, union bpf_attr *, attr, u32, attr_size)
  * 请参阅tools/lib/bpf/skel_internal.h
  */
 int kern_sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
-
+/* 执行cmd */
 int kern_sys_bpf(int cmd, union bpf_attr *attr, unsigned int size)
 {
 	struct bpf_prog * __maybe_unused prog;
@@ -5547,6 +5686,7 @@ int kern_sys_bpf(int cmd, union bpf_attr *attr, unsigned int size)
 		return 0;
 #endif
 	default:
+	/* 看来大多数情况是这个路径 */
 		return ____bpf_sys_bpf(cmd, attr, size);
 	}
 }

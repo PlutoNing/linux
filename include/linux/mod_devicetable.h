@@ -583,7 +583,7 @@ struct dmi_strmatch {
 	unsigned char exact_match:1;
 	char substr[79];
 };
-
+/*  */
 struct dmi_system_id {
 	int (*callback)(const struct dmi_system_id *);
 	const char *ident;

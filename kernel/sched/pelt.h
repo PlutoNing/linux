@@ -69,9 +69,13 @@ static inline u64 rq_clock_pelt(struct rq *rq)
 	return rq->clock_pelt - rq->lost_idle_time;
 }
 
-/* The rq is idle, we can sync to clock_task */
+/* 
+更新rq的clock
+当前rq运行的是idle task
+The rq is idle, we can sync to clock_task */
 static inline void _update_idle_rq_clock_pelt(struct rq *rq)
 {
+	/* 获取rq的clock_task */
 	rq->clock_pelt  = rq_clock_task(rq);
 
 	u64_u32_store(rq->clock_idle, rq_clock(rq));
@@ -81,6 +85,9 @@ static inline void _update_idle_rq_clock_pelt(struct rq *rq)
 }
 
 /*
+核心逻辑还是更新rq->clock_pelt
+刚刚rq的clock变动了delta
+pelt 是 Per-Entity Load Tracking 的缩写,表示"每个实体的负载跟踪”
  * The clock_pelt scales the time to reflect the effective amount of
  * computation done during the running delta time but then sync back to
  * clock_task when rq is idle.

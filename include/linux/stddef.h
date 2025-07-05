@@ -24,6 +24,7 @@ enum {
 #define sizeof_field(TYPE, MEMBER) sizeof((((TYPE *)0)->MEMBER))
 
 /**
+获取成员的末尾在结构体内的偏移
  * offsetofend() - Report the offset of a struct field within the struct
  *
  * @TYPE: The type of the structure

@@ -57,7 +57,7 @@ static const unsigned char fs_ftype_by_dtype[DT_MAX] = {
 	[DT_SOCK]	= FT_SOCK,
 };
 
-/**
+/** 把文件mode转为磁盘上的file的类型
  * fs_umode_to_ftype() - file mode to on-disk file type.
  * @mode: The file mode to convert.
  *

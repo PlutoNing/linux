@@ -83,26 +83,27 @@ struct dentry {
 	/* RCU lookup touched fields */
 	unsigned int d_flags;		/* protected by d_lock */
 	seqcount_spinlock_t d_seq;	/* per dentry seqlock */
-	struct hlist_bl_node d_hash;	/* lookup hash list */
+	struct hlist_bl_node d_hash;	/* lookup hash list 用于将 dentry 插入到内核的 ​dentry 哈希表 中，加速查找*/
 	struct dentry *d_parent;	/* parent directory */
-	struct qstr d_name;
-	struct inode *d_inode;		/* Where the name belongs to - NULL is
-					 * negative */
-	unsigned char d_iname[DNAME_INLINE_LEN];	/* small names */
+	struct qstr d_name; /* 当前目录项的名字 */
+	struct inode *d_inode; /* Where the name belongs to - NULL is
+					 * negative 指向与该目录项关联的 inode*/
+	unsigned char d_iname[DNAME_INLINE_LEN];	/* small names 短文件名（通常 ≤ 40 字节）的嵌入式存储，避免额外内存分配。若文件名较长，则存储在 d_name 的动态内存中。 */
 
 	/* Ref lookup also touches following */
 	struct lockref d_lockref;	/* per-dentry lock and refcount */
-	const struct dentry_operations *d_op;
-	struct super_block *d_sb;	/* The root of the dentry tree */
+	const struct dentry_operations *d_op;/* 操作函数表，定义 dentry 的特定行为（如哈希生成、名称比较、释放回调） */
+	struct super_block *d_sb;	/* The root of the dentry tree 
+	指向该 dentry 所属的 ​超级块​（文件系统实例）*/
 	unsigned long d_time;		/* used by d_revalidate */
 	void *d_fsdata;			/* fs-specific data */
 
 	union {
-		struct list_head d_lru;		/* LRU list */
+		struct list_head d_lru; /* LRU list 当 dentry 未被使用时，将其链入 ​LRU（最近最少使用）链表，由内核自动回收内存*/
 		wait_queue_head_t *d_wait;	/* in-lookup ones only */
 	};
-	struct list_head d_child;	/* child of parent list */
-	struct list_head d_subdirs;	/* our children */
+	struct list_head d_child;	/* child of parent list 链入父 dentry 的 d_subdirs 链表，表示当前 dentry 是父目录的子项*/
+	struct list_head d_subdirs; /* our children 所有子 dentry 的链表头*/
 	/*
 	 * d_alias and d_rcu can share memory
 	 */

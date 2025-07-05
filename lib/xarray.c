@@ -195,7 +195,7 @@ static void *xas_start(struct xa_state *xas)
 		return xas_reload(xas); // 合法的直接读取xas的xa_node的xa_offset处的值
 	if (xas_error(xas)) // 如果xas的xa_node的值位于err代表的范围的话, 就是err了
 		return NULL;
-	// 所以运行到这里说明是invalid?
+	// 运行到这里说明是invalid,读取xas的xa数组头
 	entry = xa_head(xas->xa);
 	if (!xa_is_node(entry)) { // 如果ent不是node地址, 不是node还可能是什么呢?
 		if (xas->xa_index)
@@ -218,11 +218,11 @@ static void *xas_descend(struct xa_state *xas, struct xa_node *node)
 {
 	// 看看idx在node上面是第几个slot
 	unsigned int offset = get_offset(xas->xa_index, node);
-	// 现在读取node的这个slot
+	// 现在读取node的这个slot, node->slots[offset]
 	void *entry = xa_entry(xas->xa, node, offset);
 
 	xas->xa_node = node;
-	while (xa_is_sibling(entry)) { // 这个ent是个sibling
+	while (xa_is_sibling(entry)) { // 是内部节点,并且小于64
 		offset = xa_to_sibling(entry); // 跳到了node的另一个offset?
 		entry = xa_entry(xas->xa, node, offset);
 		if (node->shift && xa_is_node(entry))
@@ -257,12 +257,12 @@ void *xas_load(struct xa_state *xas)
 	// 这里开始读取一个node和offset相关的一个ent值.
 	void *entry = xas_start(xas);
 
-	while (xa_is_node(entry)) {// 读取到的是一个node,所以继续读取"树"的下一层的值?
+	while (xa_is_node(entry)) {// 读取到的是一个node(是偶数),所以继续读取"树"的下一层的值
 		struct xa_node *node = xa_to_node(entry); // 先转为node
 
 		if (xas->xa_shift > node->shift)
 			break;
-		entry = xas_descend(xas, node);
+		entry = xas_descend(xas, node);/* 找下一层节点? */
 		if (node->shift == 0)
 			break;
 	}
@@ -383,31 +383,31 @@ static void xas_update(struct xa_state *xas, struct xa_node *node)
 static void *xas_alloc(struct xa_state *xas, unsigned int shift)
 {
 	struct xa_node *parent = xas->xa_node;
-	struct xa_node *node = xas->xa_alloc;
+	struct xa_node *node = xas->xa_alloc;/* 先取缓存的新node? */
 
 	if (xas_invalid(xas))
 		return NULL;
 
-	if (node) {
+	if (node) {/* 如果成功取下了,就把缓存的拿走,置空 */
 		xas->xa_alloc = NULL;
 	} else {// 如果刚刚没有分配新node?
 		gfp_t gfp = GFP_NOWAIT | __GFP_NOWARN;
 
 		if (xas->xa->xa_flags & XA_FLAGS_ACCOUNT)
 			gfp |= __GFP_ACCOUNT;
-
+/* 从slab分配一个新node */
 		node = kmem_cache_alloc_lru(radix_tree_node_cachep, xas->xa_lru, gfp);
 		if (!node) {
 			xas_set_err(xas, -ENOMEM);
 			return NULL;
 		}
 	}
-	// 现在持有了刚刚分配的新node, 并且xa_alloc被置空了
+	// 现在持有了刚刚分配的新node
 	if (parent) {// 存在parent的话, 设置子node的offset
-		node->offset = xas->xa_offset; 
+		node->offset = xas->xa_offset; /* 看来是表示自己在父node slot的idx */
 		parent->count++;
 		XA_NODE_BUG_ON(node, parent->count > XA_CHUNK_SIZE);
-		xas_update(xas, parent);
+		xas_update(xas, parent);/* 调用设置的update回调 */
 	}
 	XA_NODE_BUG_ON(node, shift > BITS_PER_LONG);
 	XA_NODE_BUG_ON(node, !list_empty(&node->private_list));
@@ -598,8 +598,8 @@ static int xas_expand(struct xa_state *xas, void *head)
 		while ((max >> shift) >= XA_CHUNK_SIZE)
 			shift += XA_CHUNK_SHIFT;
 		return shift + XA_CHUNK_SHIFT;
-	} else if (xa_is_node(head)) {
-		node = xa_to_node(head);
+	} else if (xa_is_node(head)) {/* head是xa数组的一个值,如果是偶数(最右俩bit是10)大于4096,就是node */
+		node = xa_to_node(head);/* 那么就把值减去2(去除额外的标记位转为真的node地址), */
 		shift = node->shift + XA_CHUNK_SHIFT;
 	}
 	xas->xa_node = NULL;
@@ -683,8 +683,8 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 	int shift;
 	unsigned int order = xas->xa_shift;
 
-	if (xas_top(node)) {
-		entry = xa_head_locked(xa);
+	if (xas_top(node)) {/* 小于等3算top */
+		entry = xa_head_locked(xa);/* 就是xa数组的head */
 		xas->xa_node = NULL;
 		if (!entry && xa_zero_busy(xa))
 			entry = XA_ZERO_ENTRY;
@@ -702,8 +702,8 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 		unsigned int offset = xas->xa_offset;
 
 		shift = node->shift;
-		entry = xa_entry_locked(xa, node, offset);
-		slot = &node->slots[offset];
+		entry = xa_entry_locked(xa, node, offset);/* 返回node->slots[offset] */
+		slot = &node->slots[offset];/* slot保存entry地址 */
 	} else {
 		shift = 0;
 		entry = xa_head_locked(xa);
@@ -711,14 +711,14 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 	}
 
 	while (shift > order) {
-		shift -= XA_CHUNK_SHIFT;
-		if (!entry) {
+		shift -= XA_CHUNK_SHIFT; /* -=6 */
+		if (!entry) {/* entry可能是个空的slot槽位 */
 			node = xas_alloc(xas, shift);
 			if (!node)
 				break;
 			if (xa_track_free(xa))
 				node_mark_all(node, XA_FREE_MARK);
-			// slot指向这个node
+			// slot指向的是这个空entry的地址,也就是node父node的slot位置,让slot指向这个node
 			rcu_assign_pointer(*slot, xa_mk_node(node));
 		} else if (xa_is_node(entry)) {
 			node = xa_to_node(entry);
@@ -728,13 +728,13 @@ static void *xas_create(struct xa_state *xas, bool allow_root)
 
 
 		entry = xas_descend(xas, node);
-		slot = &node->slots[xas->xa_offset];
+		slot = &node->slots[xas->xa_offset];/* lot是entry的地址 */
 	}
 
 	return entry;
 }
 
-/**
+/** 预分配空间
  * xas_create_range() - Ensure that stores to this range will succeed
    保证存储到这个范围将成功
  * @xas: XArray operation state.
@@ -832,7 +832,7 @@ void *xas_store(struct xa_state *xas, void *entry)
 	void *first, *next;
 	bool value = xa_is_value(entry);
 
-	if (entry) {
+	if (entry) {/* 如果 */
 		bool allow_root = !xa_is_node(entry) && !xa_is_zero(entry);
 		first = xas_create(xas, allow_root);
 	} else {// entry为空的情况?
@@ -870,7 +870,7 @@ void *xas_store(struct xa_state *xas, void *entry)
 		  rcu_assign_pointer包含一个释放屏障, 因此标记清除将在entry设置为NULL之前发生
 		  
 		  		 */
-		rcu_assign_pointer(*slot, entry);
+		rcu_assign_pointer(*slot, entry);/* 把值存储到slot */
 		if (xa_is_node(next) && (!node || node->shift))
 			xas_free_nodes(xas, xa_to_node(next));
 		if (!node)
@@ -1345,7 +1345,7 @@ void *xas_find(struct xa_state *xas, unsigned long max)
 }
 EXPORT_SYMBOL_GPL(xas_find);
 
-/**
+/**在xas找到下一个条目
  * xas_find_marked() - Find the next marked entry in the XArray.
  * @xas: XArray operation state.
  * @max: Highest index to return.
@@ -1510,6 +1510,7 @@ void *xas_find_conflict(struct xa_state *xas)
 EXPORT_SYMBOL_GPL(xas_find_conflict);
 
 /**
+从xas获取一个条目
  * xa_load() - Load an entry from an XArray.
  * @xa: XArray.
  * @index: index into array.

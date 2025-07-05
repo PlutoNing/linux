@@ -68,6 +68,7 @@ void __noreturn nmi_panic_self_stop(struct pt_regs *regs);
 void crash_smp_send_stop(void);
 
 /*
+在所有处理器上调用一个函数
  * Call a function on all processors
  */
 static inline void on_each_cpu(smp_call_func_t func, void *info, int wait)

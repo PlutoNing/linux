@@ -557,12 +557,12 @@ out:
 	spin_unlock(&files->file_lock);
 	return error;
 }
-
+/* 分配fd */
 int __get_unused_fd_flags(unsigned flags, unsigned long nofile)
 {
 	return alloc_fd(0, nofile, flags);
 }
-
+/* 分配fd */
 int get_unused_fd_flags(unsigned flags)
 {
 	return __get_unused_fd_flags(flags, rlimit(RLIMIT_NOFILE));
@@ -630,6 +630,7 @@ void fd_install(unsigned int fd, struct file *file)
 EXPORT_SYMBOL(fd_install);
 
 /**
+获取fd对应的文件
  * pick_file - return file associatd with fd
  * @files: file struct to retrieve file from
  * @fd: file descriptor to retrieve file for
@@ -806,6 +807,7 @@ struct file *__close_fd_get_file(unsigned int fd)
 }
 
 /*
+获取到当前进程的fd对应的file
  * variant of close_fd that gets a ref on the file for later fput.
  * The caller must ensure that filp_close() called on the file.
  */
@@ -815,6 +817,7 @@ struct file *close_fd_get_file(unsigned int fd)
 	struct file *file;
 
 	spin_lock(&files->file_lock);
+	/* 找到对应的文件 */
 	file = pick_file(files, fd);
 	spin_unlock(&files->file_lock);
 

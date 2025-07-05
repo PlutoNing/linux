@@ -35,7 +35,7 @@
 
 #include <linux/uaccess.h>
 
-
+/* select和poll的系统调用 */
 /*
  * Estimate expected accuracy in ns from a timeval.
  *

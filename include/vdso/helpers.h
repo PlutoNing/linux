@@ -26,7 +26,7 @@ static __always_inline u32 vdso_read_retry(const struct vdso_data *vd,
 	seq = READ_ONCE(vd->seq);
 	return seq != start;
 }
-
+/*  */
 static __always_inline void vdso_write_begin(struct vdso_data *vd)
 {
 	/*

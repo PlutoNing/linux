@@ -23,9 +23,9 @@
  * shmem/tmpfs to shift it all up a further one bit: see swp_to_radix_entry().
  *
  * swp_entry_t's are *never* stored anywhere in their arch-dependent format.
- */
+ 值是58 0x3a */
 #define SWP_TYPE_SHIFT	(BITS_PER_XA_VALUE - MAX_SWAPFILES_SHIFT)
-#define SWP_OFFSET_MASK	((1UL << SWP_TYPE_SHIFT) - 1)
+#define SWP_OFFSET_MASK	((1UL << SWP_TYPE_SHIFT) - 1) /* 五十几个1 */
 
 /*
  * Definitions only for PFN swap entries (see is_pfn_swap_entry()).  To
@@ -147,18 +147,20 @@ static inline swp_entry_t pte_to_swp_entry(pte_t pte)
 }
 
 /*
+把swap ent转为pte
  * Convert the arch-independent representation of a swp_entry_t into the
  * arch-dependent pte representation.
  */
 static inline pte_t swp_entry_to_pte(swp_entry_t entry)
 {
 	swp_entry_t arch_entry;
-
+	/* 就是转为arch的entry */
 	arch_entry = __swp_entry(swp_type(entry), swp_offset(entry));
+	/* 然后直接获取val */
 	return __swp_entry_to_pte(arch_entry);
 }
 
-// 获取xas entry的值
+// 把xas的一个值（可能编码了额外的信息)转为swap entry值
 static inline swp_entry_t radix_to_swp_entry(void *arg)
 {
 	swp_entry_t entry;
@@ -410,7 +412,8 @@ typedef unsigned long pte_marker;
  */
 #define  PTE_MARKER_POISONED			BIT(1)
 #define  PTE_MARKER_MASK			(BIT(2) - 1)
-
+/* 制作一个swap ent
+type是SWP_PTE_MARKER，offset是marker */
 static inline swp_entry_t make_pte_marker_entry(pte_marker marker)
 {
 	return swp_entry(SWP_PTE_MARKER, marker);
@@ -448,6 +451,9 @@ static inline int is_poisoned_swp_entry(swp_entry_t entry)
 }
 
 /*
+检查pte是不是空的
+============================================
+参数是个pte的值， 一部分编码的是pfn，一部分是flag
  * This is a special version to check pte_none() just to cover the case when
  * the pte is a pte marker.  It existed because in many cases the pte marker
  * should be seen as a none pte; it's just that we have stored some information

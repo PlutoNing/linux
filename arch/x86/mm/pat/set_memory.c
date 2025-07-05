@@ -36,7 +36,14 @@
 #include <asm/mshyperv.h>
 
 #include "../mm_internal.h"
-
+/* PAT​​（Page Attribute Table）是 x86 架构中用于​​控制内存页缓存策略​​的机制。
+它允许操作系统为不同的内存页（如普通内存、设备内存等）指定不同的缓存行为，例如：
+​​Write-Back (WB)​​：常规内存缓存策略。
+​​Uncached (UC)​​：完全禁用缓存（适用于设备内存）。
+​​Write-Combining (WC)​​：优化连续写入操作（如显存）。
+其他类型（如 Write-Through、Uncached Minus）。
+PAT 通过扩展页表项（Page Table Entry）的 PAT、PCD 和 PWT 位，提供比传统 MTRR
+（Memory Type Range Registers）更细粒度的内存类型控制。 */
 /*
  * The current flushing context - we pass it instead of 5 arguments:
  */
@@ -1790,6 +1797,10 @@ out:
 	return ret;
 }
 
+/* 
+清除addr开始的numpages个页的mask表示的属性
+设置mask_set表示的属性，清除mask_clr表示的属性
+*/
 static int change_page_attr_set_clr(unsigned long *addr, int numpages,
 				    pgprot_t mask_set, pgprot_t mask_clr,
 				    int force_split, int in_flag,
@@ -1811,6 +1822,7 @@ static int change_page_attr_set_clr(unsigned long *addr, int numpages,
 
 	/* Ensure we are PAGE_SIZE aligned */
 	if (in_flag & CPA_ARRAY) {
+		/* set rox的话，是这条路径 */
 		int i;
 		for (i = 0; i < numpages; i++) {
 			if (addr[i] & ~PAGE_MASK) {
@@ -2081,8 +2093,12 @@ int set_memory_ro(unsigned long addr, int numpages)
 	return change_page_attr_clear(&addr, numpages, __pgprot(_PAGE_RW | _PAGE_DIRTY), 0);
 }
 
+/* 
+设置为不可写，可执行
+*/
 int set_memory_rox(unsigned long addr, int numpages)
 {
+	/* 生成页权限的掩码 */
 	pgprot_t clr = __pgprot(_PAGE_RW | _PAGE_DIRTY);
 
 	if (__supported_pte_mask & _PAGE_NX)

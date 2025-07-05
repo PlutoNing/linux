@@ -12,13 +12,13 @@
 #include "timekeeping.h"
 #include "tick-internal.h"
 
-
+/* 是jiffies clock的read回调 */
 static u64 jiffies_read(struct clocksource *cs)
 {
 	return (u64) jiffies;
 }
 
-/*
+/*jiffies类型的clock源
  * The Jiffies based clocksource is the lowest common
  * denominator clock source which should function on
  * all systems. It has the same coarse resolution as
@@ -68,6 +68,8 @@ static int __init init_jiffies_clocksource(void)
 
 core_initcall(init_jiffies_clocksource);
 /* 
+选择默认的时钟源, 也就是jiffies时钟源
+===============================
 在timekeeping初始化的时候，很难选择一个最好的clock source，
 因为很有可能最好的那个还没有初始化呢。
 因此，这里的策略就是采用一个在timekeeping初始化时一定是ready的
@@ -77,9 +79,9 @@ struct clocksource * __init __weak clocksource_default_clock(void)
 {
 	return &clocksource_jiffies;
 }
-
+/* refined_jiffies时钟源, 复制并修改自clocksource_jiffies时钟源 */
 static struct clocksource refined_jiffies;
-
+/* 注册jiffies时钟源? refine指? */
 int register_refined_jiffies(long cycles_per_second)
 {
 	u64 nsec_per_tick, shift_hz;

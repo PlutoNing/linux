@@ -265,6 +265,7 @@ char *strndup_user(const char __user *s, long n)
 EXPORT_SYMBOL(strndup_user);
 
 /**
+复制用户空间的ubuf
  * memdup_user_nul - duplicate memory region from user space and NUL-terminate
  *
  * @src: source address in user space
@@ -304,6 +305,7 @@ int vma_is_stack_for_current(struct vm_area_struct *vma)
 }
 
 /*
+改变vma的后备文件
  * Change backing file, only valid to use during initial VMA setup.
  */
 void vma_set_file(struct vm_area_struct *vma, struct file *file)
@@ -571,6 +573,7 @@ unsigned long vm_mmap(struct file *file, unsigned long addr,
 EXPORT_SYMBOL(vm_mmap);
 
 /**
+分配物理连续内存，但是如果分配失败，则回退到非连续的vmalloc分配。
  * kvmalloc_node - attempt to allocate physically contiguous memory, but upon
  * failure, fall back to non-contiguous (vmalloc) allocation.
  * @size: size of the request.
@@ -608,6 +611,7 @@ void *kvmalloc_node(size_t size, gfp_t flags, int node)
 		kmalloc_flags &= ~__GFP_NOFAIL;
 	}
 
+	/* 从slab分配 */
 	ret = kmalloc_node(size, kmalloc_flags, node);
 
 	/*
@@ -640,6 +644,7 @@ void *kvmalloc_node(size_t size, gfp_t flags, int node)
 EXPORT_SYMBOL(kvmalloc_node);
 
 /**
+释放内存
  * kvfree() - Free memory.
  * @addr: Pointer to allocated memory.
  *
@@ -651,6 +656,7 @@ EXPORT_SYMBOL(kvmalloc_node);
  */
 void kvfree(const void *addr)
 {
+	/* 释放vmalloc地址 */
 	if (is_vmalloc_addr(addr))
 		vfree(addr);
 	else
@@ -751,13 +757,13 @@ struct anon_vma *folio_anon_vma(struct folio *folio)
 }
 
 /**
-获取folio所属的mapping. 直接返回mapping
+获取页缓存和交换缓存folio所属的mapping. 直接返回mapping
 slab与swp是特殊情况
  * folio_mapping - Find the mapping where this folio is stored.
  * @folio: The folio.
  *
- * For folios which are in the page cache, return the mapping that this
- * page belongs to.  Folios in the swap cache return the swap mapping
+ *对于page cache的folio， 返回mapping
+ 对于swap cache的mapping， 返回swap mapping 
  * this page is stored in (which is different from the mapping for the
  * swap file or swap device where the data is stored).
  *

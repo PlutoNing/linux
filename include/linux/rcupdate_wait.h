@@ -11,6 +11,7 @@
 
 /*
  * Structure allowing asynchronous waiting on RCU.
+ 用于rcu的异步等待?
  */
 struct rcu_synchronize {
 	struct rcu_head head;
@@ -28,7 +29,10 @@ do {									\
 	__wait_rcu_gp(checktiny, ARRAY_SIZE(__crcu_array),		\
 			__crcu_array, __rs_array);			\
 } while (0)
-
+/*
+使用wakeme_after_rcu作为rcu_head的func
+调用用户提供的函数func_ptr ,
+如下方式(func_ptr)(&rs_array[i].head, wakeme_after_rcu); */
 #define wait_rcu_gp(...) _wait_rcu_gp(false, __VA_ARGS__)
 
 /**

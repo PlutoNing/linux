@@ -65,6 +65,7 @@ static int __init set_mphash_entries(char *str)
 __setup("mphash_entries=", set_mphash_entries);
 
 static u64 event;
+/* mnt的ida数组 */
 static DEFINE_IDA(mnt_id_ida);
 static DEFINE_IDA(mnt_group_ida);
 
@@ -123,7 +124,7 @@ static inline struct hlist_head *mp_hash(struct dentry *dentry)
 	tmp = tmp + (tmp >> mp_hash_shift);
 	return &mountpoint_hashtable[tmp & mp_hash_mask];
 }
-
+/* 给新创建的mnt分配idr的id */
 static int mnt_alloc_id(struct mount *mnt)
 {
 	int res = ida_alloc(&mnt_id_ida, GFP_KERNEL);
@@ -193,13 +194,14 @@ int mnt_get_count(struct mount *mnt)
 	return mnt->mnt_count;
 #endif
 }
-
+/* 挂载过程中,创建一个vfsmnt */
 static struct mount *alloc_vfsmnt(const char *name)
 {
+	// 分配一个vfsmnt内存
 	struct mount *mnt = kmem_cache_zalloc(mnt_cache, GFP_KERNEL);
 	if (mnt) {
 		int err;
-
+		// 初始化新mnt
 		err = mnt_alloc_id(mnt);
 		if (err)
 			goto out_free_cache;
@@ -666,12 +668,13 @@ static bool legitimize_mnt(struct vfsmount *bastard, unsigned seq)
 }
 
 /**
+找到第一个孩子mnt?
  * __lookup_mnt - find first child mount
  * @mnt:	parent mount
  * @dentry:	mountpoint
  *
  * If @mnt has a child mount @c mounted @dentry find and return it.
- *
+ * 如果mnt
  * Note that the child mount @c need not be unique. There are cases
  * where shadow mounts are created. For example, during mount
  * propagation when a source mount @mnt whose root got overmounted by a
@@ -1072,6 +1075,7 @@ static struct mount *skip_mnt_tree(struct mount *p)
 }
 
 /**
+挂载过程中基于fc创建mnt
  * vfs_create_mount - Create a mount for a configured superblock
  * @fc: The configuration context with the superblock attached
  *
@@ -1086,7 +1090,7 @@ struct vfsmount *vfs_create_mount(struct fs_context *fc)
 
 	if (!fc->root)
 		return ERR_PTR(-EINVAL);
-
+	// 创建mnt结构体
 	mnt = alloc_vfsmnt(fc->source ?: "none");
 	if (!mnt)
 		return ERR_PTR(-ENOMEM);
@@ -1103,6 +1107,7 @@ struct vfsmount *vfs_create_mount(struct fs_context *fc)
 	lock_mount_hash();
 	list_add_tail(&mnt->mnt_instance, &mnt->mnt.mnt_sb->s_mounts);
 	unlock_mount_hash();
+	// 返回的是内部包含的vfsmnt
 	return &mnt->mnt;
 }
 EXPORT_SYMBOL(vfs_create_mount);
@@ -1623,6 +1628,7 @@ static bool disconnect_mount(struct mount *mnt, enum umount_tree_flags how)
 }
 
 /*
+必须持有mount lock
  * mount_lock must be held
  * namespace_sem must be held for write
  */
@@ -3248,8 +3254,10 @@ static int do_add_mount(struct mount *newmnt, struct mountpoint *mp,
 static bool mount_too_revealing(const struct super_block *sb, int *new_mnt_flags);
 
 /*
+挂载过程中,创建完fc后,调用这里
  * Create a new mount using a superblock configuration and request it
  * be added to the namespace tree.
+ 使用一个superblock配置创建一个新的挂载，并请求将其添加到ns树中
  */
 static int do_new_mount_fc(struct fs_context *fc, struct path *mountpoint,
 			   unsigned int mnt_flags)
@@ -3269,7 +3277,7 @@ static int do_new_mount_fc(struct fs_context *fc, struct path *mountpoint,
 	}
 
 	up_write(&sb->s_umount);
-
+	// 创建mnt
 	mnt = vfs_create_mount(fc);
 	if (IS_ERR(mnt))
 		return PTR_ERR(mnt);
@@ -3291,6 +3299,7 @@ static int do_new_mount_fc(struct fs_context *fc, struct path *mountpoint,
 /*
  * create a new mount for userspace and request it to be added into the
  * namespace's tree
+ 为userspace创建一个新的挂载，并请求将其添加到ns的树中
  */
 static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 			int mnt_flags, const char *name, void *data)
@@ -3302,7 +3311,7 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 
 	if (!fstype)
 		return -EINVAL;
-
+	// 查找fs名称对应的的文件系统类型
 	type = get_fs_type(fstype);
 	if (!type)
 		return -ENODEV;
@@ -3317,7 +3326,7 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 			}
 		}
 	}
-
+	// 给这次挂载创建fc
 	fc = fs_context_for_mount(type, sb_flags);
 	put_filesystem(type);
 	if (IS_ERR(fc))
@@ -3332,8 +3341,10 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 		err = parse_monolithic_mount_data(fc, data);
 	if (!err && !mount_capable(fc))
 		err = -EPERM;
+// 这里再初始化一下fc
 	if (!err)
 		err = vfs_get_tree(fc);
+	// 开始挂载
 	if (!err)
 		err = do_new_mount_fc(fc, path, mnt_flags);
 
@@ -4708,10 +4719,10 @@ static void __init init_mount_tree(void)
 void __init mnt_init(void)
 {
 	int err;
-
+	/* 分配mnt结构体的slab */
 	mnt_cache = kmem_cache_create("mnt_cache", sizeof(struct mount),
 			0, SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_ACCOUNT, NULL);
-
+	/* mnt的哈希表 */
 	mount_hashtable = alloc_large_system_hash("Mount-cache",
 				sizeof(struct hlist_head),
 				mhash_entries, 19,
@@ -4725,13 +4736,14 @@ void __init mnt_init(void)
 
 	if (!mount_hashtable || !mountpoint_hashtable)
 		panic("Failed to allocate mount hash table\n");
-
+		/* 初始化kernfs的slab什么的 */
 	kernfs_init();
-
+	// 初始化sysfs
 	err = sysfs_init();
 	if (err)
 		printk(KERN_WARNING "%s: sysfs_init error: %d\n",
 			__func__, err);
+	// 这个是/sys/fs
 	fs_kobj = kobject_create_and_add("fs", NULL);
 	if (!fs_kobj)
 		printk(KERN_WARNING "%s: kobj create error\n", __func__);
@@ -4748,7 +4760,7 @@ void put_mnt_ns(struct mnt_namespace *ns)
 	free_mnt_ns(ns);
 }
 
-// 挂载文件系统
+/* 挂载文件系统 */
 struct vfsmount *kern_mount(struct file_system_type *type)
 {
 	struct vfsmount *mnt;

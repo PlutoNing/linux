@@ -205,9 +205,11 @@ static void rcu_stall_kick_kthreads(void)
 }
 
 /*
+用于处理在rcu stall timeout过了一半之后发起的irq_work?
  * Handler for the irq_work request posted about halfway into the RCU CPU
  * stall timeout, and used to detect excessive irq disabling.  Set state
  * appropriately, but just complain if there is unexpected state on entry.
+ 感觉没做什么?
  */
 static void rcu_iw_handler(struct irq_work *iwp)
 {
@@ -217,6 +219,7 @@ static void rcu_iw_handler(struct irq_work *iwp)
 	rdp = container_of(iwp, struct rcu_data, rcu_iw);
 	rnp = rdp->mynode;
 	raw_spin_lock_rcu_node(rnp);
+	/* 这里期待是有pending的 */
 	if (!WARN_ON_ONCE(!rdp->rcu_iw_pending)) {
 		rdp->rcu_iw_gp_seq = rnp->gp_seq;
 		rdp->rcu_iw_pending = false;

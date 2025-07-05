@@ -24,6 +24,7 @@
 #include <linux/trace_clock.h>
 
 /*
+获取时间
  * trace_clock_local(): the simplest and least coherent tracing clock.
  *
  * Useful for tracing that does not cross to other CPUs nor

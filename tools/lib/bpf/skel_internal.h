@@ -67,7 +67,7 @@ struct bpf_load_and_run_opts {
 };
 
 long kern_sys_bpf(__u32 cmd, void *attr, __u32 attr_size);
-
+/* 执行一个cmd, attr是枚举bpf_attr对应cmd的attr */
 static inline int skel_sys_bpf(enum bpf_cmd cmd, union bpf_attr *attr,
 			  unsigned int size)
 {
@@ -83,7 +83,7 @@ static inline int close(int fd)
 {
 	return close_fd(fd);
 }
-
+/* 分配skel的内存 */
 static inline void *skel_alloc(size_t size)
 {
 	struct bpf_loader_ctx *ctx = kzalloc(size, GFP_KERNEL);
@@ -215,7 +215,8 @@ static inline int skel_closenz(int fd)
 #define offsetofend(TYPE, MEMBER) \
 	(offsetof(TYPE, MEMBER)	+ sizeof((((TYPE *)0)->MEMBER)))
 #endif
-
+/* 创建一个map
+但是和这个新map用什么来表示呢？ */
 static inline int skel_map_create(enum bpf_map_type map_type,
 				  const char *map_name,
 				  __u32 key_size,
@@ -235,7 +236,9 @@ static inline int skel_map_create(enum bpf_map_type map_type,
 
 	return skel_sys_bpf(BPF_MAP_CREATE, &attr, attr_sz);
 }
-
+/* 
+好像是往fd对应的map里存东西
+这里的skel表示什么 */
 static inline int skel_map_update_elem(int fd, const void *key,
 				       const void *value, __u64 flags)
 {
@@ -296,7 +299,7 @@ static inline int skel_link_create(int prog_fd, int target_fd,
 	attr.link_create.prog_fd = prog_fd;
 	attr.link_create.target_fd = target_fd;
 	attr.link_create.attach_type = attach_type;
-
+//开始执行
 	return skel_sys_bpf(BPF_LINK_CREATE, &attr, attr_sz);
 }
 
@@ -305,31 +308,33 @@ static inline int skel_link_create(int prog_fd, int target_fd,
 #else
 #define set_err err = -errno
 #endif
-
+/* */
 static inline int bpf_load_and_run(struct bpf_load_and_run_opts *opts)
 {
 	const size_t prog_load_attr_sz = offsetofend(union bpf_attr, fd_array);
 	const size_t test_run_attr_sz = offsetofend(union bpf_attr, test);
 	int map_fd = -1, prog_fd = -1, key = 0, err;
 	union bpf_attr attr;
-
-	err = map_fd = skel_map_create(BPF_MAP_TYPE_ARRAY, "__loader.map", 4, opts->data_sz, 1);
+	/* 创建了一个map， 用fd作为句柄 */
+	err = map_fd = skel_map_create(BPF_MAP_TYPE_ARRAY, "__loader.map",
+		 4, opts->data_sz, 1);
 	if (map_fd < 0) {
 		opts->errstr = "failed to create loader map";
 		set_err;
 		goto out;
 	}
-
+	/* 这里的data是一大段字节码
+	把data存入map */
 	err = skel_map_update_elem(map_fd, &key, opts->data, 0);
 	if (err < 0) {
 		opts->errstr = "failed to update loader map";
 		set_err;
 		goto out;
 	}
-
+/* 开始设置prog？ */
 	memset(&attr, 0, prog_load_attr_sz);
 	attr.prog_type = BPF_PROG_TYPE_SYSCALL;
-	attr.insns = (long) opts->insns;
+	attr.insns = (long) opts->insns; /* 也是一段字节码 */
 	attr.insn_cnt = opts->insns_sz / sizeof(struct bpf_insn);
 	attr.license = (long) "Dual BSD/GPL";
 	memcpy(attr.prog_name, "__loader.prog", sizeof("__loader.prog"));
@@ -338,6 +343,7 @@ static inline int bpf_load_and_run(struct bpf_load_and_run_opts *opts)
 	attr.log_size = opts->ctx->log_size;
 	attr.log_buf = opts->ctx->log_buf;
 	attr.prog_flags = BPF_F_SLEEPABLE;
+	/* 这里开始load prog， 刚刚存入了insns， data和一些属性什么的 */
 	err = prog_fd = skel_sys_bpf(BPF_PROG_LOAD, &attr, prog_load_attr_sz);
 	if (prog_fd < 0) {
 		opts->errstr = "failed to load loader prog";
@@ -346,9 +352,10 @@ static inline int bpf_load_and_run(struct bpf_load_and_run_opts *opts)
 	}
 
 	memset(&attr, 0, test_run_attr_sz);
-	attr.test.prog_fd = prog_fd;
+	attr.test.prog_fd = prog_fd;/* 刚刚load prog返回的对应的的fd */
 	attr.test.ctx_in = (long) opts->ctx;
 	attr.test.ctx_size_in = opts->ctx->sz;
+	/* run？ */
 	err = skel_sys_bpf(BPF_PROG_RUN, &attr, test_run_attr_sz);
 	if (err < 0 || (int)attr.test.retval < 0) {
 		opts->errstr = "failed to execute loader prog";

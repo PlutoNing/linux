@@ -409,6 +409,7 @@ static long do_fcntl(int fd, unsigned int cmd, unsigned long arg,
 		break;
 	case F_SETPIPE_SZ:
 	case F_GETPIPE_SZ:
+	/* pipe的情况 */
 		err = pipe_fcntl(filp, cmd, argi);
 		break;
 	case F_ADD_SEALS:

@@ -68,7 +68,7 @@ static inline void update_vdso_data(struct vdso_data *vdata,
 	vdso_ts->sec	= tk->xtime_sec + (s64)tk->tai_offset;
 	vdso_ts->nsec	= tk->tkr_mono.xtime_nsec;
 }
-
+/* 更新vdso, 加快获取时间的系统调用 */
 void update_vsyscall(struct timekeeper *tk)
 {
 	struct vdso_data *vdata = __arch_get_k_vdso_data();
@@ -78,7 +78,7 @@ void update_vsyscall(struct timekeeper *tk)
 
 	/* copy vsyscall data */
 	vdso_write_begin(vdata);
-
+/* 更新vdso data */
 	clock_mode = tk->tkr_mono.clock->vdso_clock_mode;
 	vdata[CS_HRES_COARSE].clock_mode	= clock_mode;
 	vdata[CS_RAW].clock_mode		= clock_mode;

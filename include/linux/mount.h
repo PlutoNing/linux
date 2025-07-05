@@ -68,8 +68,13 @@ struct path;
 #define MNT_CURSOR		0x10000000
 
 struct vfsmount {
-	struct dentry *mnt_root;	/* root of the mounted tree */
-	struct super_block *mnt_sb;	/* pointer to superblock */
+	struct dentry *mnt_root;	/* 
+	就是挂载的文件夹
+	指向fc->root
+	root of the mounted tree */
+	struct super_block *mnt_sb;	/* 
+	指向fc->root->d_sb
+	pointer to superblock */
 	int mnt_flags;
 	struct mnt_idmap *mnt_idmap;
 } __randomize_layout;

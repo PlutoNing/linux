@@ -42,7 +42,7 @@ Indicates the size of the kernel stack allocated by the kernel to each process o
  */
 #define __PAGE_OFFSET_BASE_L5	_AC(0xff11000000000000, UL)
 #define __PAGE_OFFSET_BASE_L4	_AC(0xffff888000000000, UL)
-
+/* __PAGE_OFFSET大小为0xffff888000000000 */
 #ifdef CONFIG_DYNAMIC_MEMORY_LAYOUT
 #define __PAGE_OFFSET           page_offset_base
 #else

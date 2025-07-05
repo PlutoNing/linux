@@ -14,6 +14,7 @@ struct task_struct *kthread_create_on_node(int (*threadfn)(void *data),
 					   const char namefmt[], ...);
 
 /**
+创建在指定node上面的kthread
  * kthread_create - create a kthread on the current node
  * @threadfn: the function to run in the thread
  * @data: data pointer for @threadfn()

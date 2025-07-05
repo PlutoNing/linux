@@ -40,6 +40,7 @@ static inline void __trace_seq_init(struct trace_seq *s)
 }
 
 /**
+拷贝到seq file
  * trace_print_seq - move the contents of trace_seq into a seq_file
  * @m: the seq_file descriptor that is the destination
  * @s: the trace_seq descriptor that is the source.
@@ -68,6 +69,8 @@ int trace_print_seq(struct seq_file *m, struct trace_seq *s)
 }
 
 /**
+打印trace的内容
+打印到trace_seq的buf里面
  * trace_seq_printf - sequence printing of trace information
  * @s: trace sequence descriptor
  * @fmt: printf format string
@@ -88,7 +91,9 @@ void trace_seq_printf(struct trace_seq *s, const char *fmt, ...)
 
 	__trace_seq_init(s);
 
+	/* 遍历不定参数 */
 	va_start(ap, fmt);
+	/* 把参数格式化打印到s->seq里面 */
 	seq_buf_vprintf(&s->seq, fmt, ap);
 	va_end(ap);
 
@@ -248,6 +253,7 @@ void trace_seq_putc(struct trace_seq *s, unsigned char c)
 EXPORT_SYMBOL_GPL(trace_seq_putc);
 
 /**
+把data拷贝写入trace seq
  * trace_seq_putmem - write raw data into the trace_seq buffer
  * @s: trace sequence descriptor
  * @mem: The raw memory to copy into the buffer
@@ -349,6 +355,7 @@ int trace_seq_path(struct trace_seq *s, const struct path *path)
 EXPORT_SYMBOL_GPL(trace_seq_path);
 
 /**
+把seq buf拷贝到用户空间
  * trace_seq_to_user - copy the sequence buffer to user space
  * @s: trace sequence descriptor
  * @ubuf: The userspace memory location to copy to
@@ -375,6 +382,19 @@ int trace_seq_to_user(struct trace_seq *s, char __user *ubuf, int cnt)
 }
 EXPORT_SYMBOL_GPL(trace_seq_to_user);
 
+/**
+十六进制格式输出?
+ * @description: 
+ * @param {trace_seq} *s
+ * @param {char} *prefix_str
+ * @param {int} prefix_type
+ * @param {int} rowsize
+ * @param {int} groupsize
+ * @param {void} *buf
+ * @param {size_t} len
+ * @param {bool} ascii
+ * @return {*}
+ */
 int trace_seq_hex_dump(struct trace_seq *s, const char *prefix_str,
 		       int prefix_type, int rowsize, int groupsize,
 		       const void *buf, size_t len, bool ascii)
@@ -406,6 +426,7 @@ int trace_seq_hex_dump(struct trace_seq *s, const char *prefix_str,
 EXPORT_SYMBOL(trace_seq_hex_dump);
 
 /*
+把buffer的接下来要写入的len长度标记为已使用
  * trace_seq_acquire - acquire seq buffer with size len
  * @s: trace sequence descriptor
  * @len: size of buffer to be acquired
@@ -419,6 +440,7 @@ EXPORT_SYMBOL(trace_seq_hex_dump);
  */
 char *trace_seq_acquire(struct trace_seq *s, unsigned int len)
 {
+	/* ret是下一个要被写入的位置 */
 	char *ret = trace_seq_buffer_ptr(s);
 
 	if (!WARN_ON_ONCE(seq_buf_buffer_left(&s->seq) < len))

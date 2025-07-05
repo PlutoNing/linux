@@ -85,6 +85,8 @@ struct user_event_mm;
 /* Used in tsk->__state: */
 #define TASK_RUNNING			0x00000000
 #define TASK_INTERRUPTIBLE		0x00000001
+/* 线程不会响应任何信号（包括 SIGKILL）
+只能被内核显式唤醒（如超时到期、资源就绪） */
 #define TASK_UNINTERRUPTIBLE		0x00000002
 #define __TASK_STOPPED			0x00000004
 #define __TASK_TRACED			0x00000008
@@ -744,11 +746,13 @@ struct uclamp_se {
 
 union rcu_special {
 	struct {
+		/* 表示是否加入了rtpcp->rtp_blkd_tasks */
 		u8			blocked;
 		u8			need_qs;
 		u8			exp_hint; /* Hint for performance. */
 		u8			need_mb; /* Readers need smp_mb(). */
 	} b; /* Bits. */
+	/* 有推迟的qs? */
 	u32 s; /* Set of bits. */
 };
 
@@ -796,10 +800,12 @@ struct task_struct {
 	refcount_t			usage;
 	/* Per task flags (PF_*), defined further below: */
 	unsigned int			flags;
+	/*  */
 	unsigned int			ptrace;
 
 #ifdef CONFIG_SMP
 	int				on_cpu;
+	/* 用于加入cpu的wake_list */
 	struct __call_single_node	wake_entry;
 	unsigned int			wakee_flips;
 	unsigned long			wakee_flip_decay_ts;
@@ -813,6 +819,8 @@ struct task_struct {
 	 * used CPU that may be idle.
 	 */
 	int				recent_used_cpu;
+	/* 切换到新cpu时, 这里会指向新cpu
+	表示下次唤醒在这个cpu执行 */
 	int				wake_cpu;
 #endif
 	int				on_rq;
@@ -827,7 +835,7 @@ struct task_struct {
 	struct sched_entity		se;
 	struct sched_rt_entity		rt;
 	struct sched_dl_entity		dl;
-	const struct sched_class	*sched_class;
+	const struct sched_class	*sched_class;/* 进程所属的调度类 */
 
 #ifdef CONFIG_SCHED_CORE
 	struct rb_node			core_node;
@@ -865,6 +873,7 @@ struct task_struct {
 
 	unsigned int			policy;
 	int				nr_cpus_allowed;
+	/* 进程可以运行的cpu? */
 	const cpumask_t			*cpus_ptr;
 	cpumask_t			*user_cpus_ptr;
 	cpumask_t			cpus_mask;
@@ -875,7 +884,9 @@ struct task_struct {
 	unsigned short			migration_flags;
 
 #ifdef CONFIG_PREEMPT_RCU
+/* 可以表示rcu read的嵌套深度 */
 	int				rcu_read_lock_nesting;
+	/*  */
 	union rcu_special		rcu_read_unlock_special;
 	struct list_head		rcu_node_entry;
 	struct rcu_node			*rcu_blocked_node;
@@ -890,16 +901,19 @@ struct task_struct {
 #endif /* #ifdef CONFIG_TASKS_RCU */
 
 #ifdef CONFIG_TASKS_TRACE_RCU
+/*  */
 	int				trc_reader_nesting;
 	int				trc_ipi_to_cpu;
 	union rcu_special		trc_reader_special;
 	struct list_head		trc_holdout_list;
+	/* 用于链接到this_cpu_ptr(rcu_tasks_trace.rtpcpu)->rtp_blkd_tasks */
 	struct list_head		trc_blkd_node;
+	/* 所加入的rtpcp->rtp_blkd_tasks的cpu */
 	int				trc_blkd_cpu;
 #endif /* #ifdef CONFIG_TASKS_TRACE_RCU */
 
 	struct sched_info		sched_info;
-
+	/* 好像是挂在到init_task.tasks */
 	struct list_head		tasks;
 #ifdef CONFIG_SMP
 	struct plist_node		pushable_tasks;
@@ -911,6 +925,7 @@ struct task_struct {
 
 	int				exit_state;
 	int				exit_code;
+	/* 大于等于0就是thread_group_leader */
 	int				exit_signal;
 	/* The signal sent when the parent dies: */
 	int				pdeath_signal;
@@ -1035,7 +1050,9 @@ struct task_struct {
 	/* PID/PID hash table linkage. */
 	struct pid			*thread_pid; // PIDTYPE_PID对应的pid
 	struct hlist_node		pid_links[PIDTYPE_MAX];
+	/* 加入p->group_leader->thread_group */
 	struct list_head		thread_group; // 线程组
+	/* 加入p->signal->thread_head */
 	struct list_head		thread_node;
 
 	struct completion		*vfork_done;
@@ -1048,7 +1065,8 @@ struct task_struct {
 	*/
 	int __user			*clear_child_tid;
 
-	/* PF_KTHREAD | PF_IO_WORKER */
+	/* PF_KTHREAD | PF_IO_WORKER
+	可能存储的kthread */
 	void				*worker_private;
 
 	u64				utime;
@@ -1164,6 +1182,7 @@ struct task_struct {
 	unsigned int			sessionid;
 #endif
 	struct seccomp			seccomp;
+/*  */
 	struct syscall_user_dispatch	syscall_dispatch;
 
 	/* Thread group tracking: */
@@ -1267,9 +1286,13 @@ struct task_struct {
 #endif
 
 #ifdef CONFIG_CGROUPS
-	/* Control Group info protected by css_set_lock: */
+	/* Control Group info protected by css_set_lock:
+	task所属的cset */
 	struct css_set __rcu		*cgroups;
 	/* cg_list protected by css_set_lock and tsk->alloc_lock: */
+	/* 可以用于加入mgctx的tasklist
+	有可能被iter的task_pos指向
+	也可能是task->cg_list加入到cset */
 	struct list_head		cg_list;
 #endif
 #ifdef CONFIG_X86_CPU_RESCTRL
@@ -1368,6 +1391,7 @@ robus_list是什么?
 	int				mm_cid;		/* Current cid in mm */
 	int				last_mm_cid;	/* Most recent cid in mm */
 	int				migrate_from_cpu;
+	/*  */
 	int				mm_cid_active;	/* Whether cid bitmap is active */
 	struct callback_head		cid_work;
 #endif
@@ -1521,6 +1545,8 @@ robus_list是什么?
 #endif
 	struct rcu_head			rcu;
 	refcount_t			rcu_users;
+	/* 用于开关pf
+	通过inc来关闭pf */
 	int				pagefault_disabled;
 #ifdef CONFIG_MMU
 	struct task_struct		*oom_reaper_list;
@@ -1797,6 +1823,7 @@ extern struct pid *cad_pid;
 #define PF_SUPERPRIV		0x00000100	/* Used super-user privileges */
 #define PF_DUMPCORE		0x00000200	/* Dumped core */
 #define PF_SIGNALED		0x00000400	/* Killed by a signal */
+/*  */
 #define PF_MEMALLOC		0x00000800	/* Allocating memory */
 #define PF_NPROC_EXCEEDED	0x00001000	/* set_user() noticed that RLIMIT_NPROC was exceeded */
 #define PF_USED_MATH		0x00002000	/* If unset the fpu must be initialized before use */
@@ -1804,6 +1831,7 @@ extern struct pid *cad_pid;
 #define PF_NOFREEZE		0x00008000	/* This thread should not be frozen */
 #define PF__HOLE__00010000	0x00010000
 #define PF_KSWAPD		0x00020000	/* I am kswapd */
+/* 内存分配继承nofs是什么意思 */
 #define PF_MEMALLOC_NOFS	0x00040000	/* All allocation requests will inherit GFP_NOFS */
 #define PF_MEMALLOC_NOIO	0x00080000	/* All allocation requests will inherit GFP_NOIO */
 #define PF_LOCAL_THROTTLE	0x00100000	
@@ -1996,6 +2024,7 @@ extern int sched_setattr_nocheck(struct task_struct *, const struct sched_attr *
 extern struct task_struct *idle_task(int cpu);
 
 /**
+是不是idle_task直接标记在flag里面
  * is_idle_task - is the specified task an idle task?
  * @p: the task in question.
  *
@@ -2028,6 +2057,7 @@ extern struct thread_info init_thread_info;
 extern unsigned long init_stack[THREAD_SIZE / sizeof(unsigned long)];
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
+/* 看来cpu是存在ti里面的 */
 # define task_thread_info(task)	(&(task)->thread_info)
 #elif !defined(__HAVE_THREAD_FUNCTIONS)
 # define task_thread_info(task)	((struct thread_info *)(task)->stack)
@@ -2324,6 +2354,7 @@ static __always_inline bool need_resched(void)
 }
 
 /*
+获取进程的cpu
  * Wrappers for p->thread_info->cpu access. No-op on UP.
  */
 #ifdef CONFIG_SMP
@@ -2389,23 +2420,33 @@ unsigned long sched_cpu_util(int cpu);
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_RSEQ
-
+/* RSEQ（Restartable Sequences，可重启序列）是 Linux 内核提供的一种机制，
+用于支持 ​用户空间程序实现高效、无锁的原子操作。其核心思想是允许用户空间定义一
+段临界区代码，当该代码执行过程中被特定事件（如抢占、信号、迁移等）中断时，
+内核会自动重启该代码，从而保证操作的原子性。 */
 /*
  * Map the event mask on the user-space ABI enum rseq_cs_flags
  * for direct mask checks.
  */
 enum rseq_event_mask_bits {
-	RSEQ_EVENT_PREEMPT_BIT	= RSEQ_CS_FLAG_NO_RESTART_ON_PREEMPT_BIT,
-	RSEQ_EVENT_SIGNAL_BIT	= RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT,
-	RSEQ_EVENT_MIGRATE_BIT	= RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT,
+	/* 当前线程被内核抢占（如时间片耗尽），可能中断临界区。 */
+	RSEQ_EVENT_PREEMPT_BIT = RSEQ_CS_FLAG_NO_RESTART_ON_PREEMPT_BIT,
+	/* 线程收到信号（如 SIGINT），需处理信号处理函数。 */
+	RSEQ_EVENT_SIGNAL_BIT = RSEQ_CS_FLAG_NO_RESTART_ON_SIGNAL_BIT,
+	/* 线程被迁移到其他 CPU（如负载均衡），导致缓存失效或 CPU 上下文变化。 */
+	RSEQ_EVENT_MIGRATE_BIT = RSEQ_CS_FLAG_NO_RESTART_ON_MIGRATE_BIT,
 };
 
 enum rseq_event_mask {
-	RSEQ_EVENT_PREEMPT	= (1U << RSEQ_EVENT_PREEMPT_BIT),
-	RSEQ_EVENT_SIGNAL	= (1U << RSEQ_EVENT_SIGNAL_BIT),
-	RSEQ_EVENT_MIGRATE	= (1U << RSEQ_EVENT_MIGRATE_BIT),
+	RSEQ_EVENT_PREEMPT = (1U << RSEQ_EVENT_PREEMPT_BIT),
+	RSEQ_EVENT_SIGNAL = (1U << RSEQ_EVENT_SIGNAL_BIT),
+	/* 线程被迁移到其他 CPU（如负载均衡），导致缓存失效或 CPU 上下文变化。 */
+	RSEQ_EVENT_MIGRATE = (1U << RSEQ_EVENT_MIGRATE_BIT),
 };
-
+/* 
+设置tif
+在返回前要执行回调
+*/
 static inline void rseq_set_notify_resume(struct task_struct *t)
 {
 	if (t->rseq)
@@ -2437,7 +2478,10 @@ static inline void rseq_preempt(struct task_struct *t)
 	rseq_set_notify_resume(t);
 }
 
-/* rseq_migrate() requires preemption to be disabled. */
+/* 
+修改rseq掩码, 表示自己迁移了
+修改tif, 表示返回前要执行回调
+rseq_migrate() requires preemption to be disabled. */
 static inline void rseq_migrate(struct task_struct *t)
 {
 	__set_bit(RSEQ_EVENT_MIGRATE_BIT, &t->rseq_event_mask);

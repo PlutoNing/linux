@@ -73,7 +73,7 @@ struct setup_header {
 	__u32	syssize;
 	__u16	ram_size;
 	__u16	vid_mode;
-	__u16	root_dev;
+	__u16	root_dev; /* 启动盘序号 */
 	__u16	boot_flag;
 	__u16	jump;
 	__u32	header;

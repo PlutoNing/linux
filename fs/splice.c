@@ -38,7 +38,7 @@
 #include <linux/sched/signal.h>
 
 #include "internal.h"
-
+/* splice系统调用 */
 /*
  * Splice doesn't support FMODE_NOWAIT. Since pipes may set this flag to
  * indicate they support non-blocking reads or writes, we must clear it
@@ -56,6 +56,8 @@ static noinline void noinline pipe_clear_nowait(struct file *file)
 }
 
 /*
+pipe的buf的steal ops
+处理pagecache类型的
  * Attempt to steal a page from a pipe buffer. This should perhaps go into
  * a vm helper function, it's already simplified quite a bit by the
  * addition of remove_mapping(). If success is returned, the caller may
@@ -152,6 +154,10 @@ error:
 	return err;
 }
 
+/* pipe的buf的ops
+=============
+可以理解为pipe由buf组成, buf可以持有各种零拷贝得来的page的ref
+pipe被读取的时候, 调用这个回调来获取数据? */
 const struct pipe_buf_operations page_cache_pipe_buf_ops = {
 	.confirm	= page_cache_pipe_buf_confirm,
 	.release	= page_cache_pipe_buf_release,
@@ -169,6 +175,7 @@ static bool user_page_pipe_buf_try_steal(struct pipe_inode_info *pipe,
 	return generic_pipe_buf_try_steal(pipe, buf);
 }
 
+/* 这个是user page的管道的buf的ops */
 static const struct pipe_buf_operations user_page_pipe_buf_ops = {
 	.release	= page_cache_pipe_buf_release,
 	.try_steal	= user_page_pipe_buf_try_steal,
@@ -184,6 +191,10 @@ static void wakeup_pipe_readers(struct pipe_inode_info *pipe)
 }
 
 /**
+把spd的结果数据页面的引用等信息交给pipe
+===================================================
+spd里面一般持有的是零拷贝下读取的内核结果, 也是内核空间的页面.
+
  * splice_to_pipe - fill passed data into a pipe
  * @pipe:	pipe to fill
  * @spd:	data to fill
@@ -212,9 +223,11 @@ ssize_t splice_to_pipe(struct pipe_inode_info *pipe,
 		goto out;
 	}
 
+	/* 这里只要pipe还没满, 就继续 */
 	while (!pipe_full(head, tail, pipe->max_usage)) {
 		struct pipe_buffer *buf = &pipe->bufs[head & mask];
 
+		/* 这里也是直接复制句柄信息到pipe */
 		buf->page = spd->pages[page_nr];
 		buf->offset = spd->partial[page_nr].offset;
 		buf->len = spd->partial[page_nr].len;
@@ -222,11 +235,13 @@ ssize_t splice_to_pipe(struct pipe_inode_info *pipe,
 		buf->ops = spd->ops;
 		buf->flags = 0;
 
+		/* 调整head pos */
 		head++;
 		pipe->head = head;
 		page_nr++;
 		ret += buf->len;
 
+		/* spd被读取完了 */
 		if (!--spd->nr_pages)
 			break;
 	}
@@ -298,6 +313,7 @@ void splice_shrink_spd(struct splice_pipe_desc *spd)
 }
 
 /**
+从文件读取数据，splice进管道
  * copy_splice_read -  Copy data from a file and splice the copy into a pipe
  * @in: The file to read from
  * @ppos: Pointer to the file position to read from
@@ -334,13 +350,14 @@ ssize_t copy_splice_read(struct file *in, loff_t *ppos,
 	npages = max_t(ssize_t, pipe->max_usage - used, 0);
 	len = min_t(size_t, len, npages * PAGE_SIZE);
 	npages = DIV_ROUND_UP(len, PAGE_SIZE);
-
+	/* 初始化bio vec */
 	bv = kzalloc(array_size(npages, sizeof(bv[0])) +
 		     array_size(npages, sizeof(struct page *)), GFP_KERNEL);
 	if (!bv)
 		return -ENOMEM;
 
 	pages = (struct page **)(bv + npages);
+	/* 分配页面用于存储数据 */
 	npages = alloc_pages_bulk_array(GFP_USER, npages, pages);
 	if (!npages) {
 		kfree(bv);
@@ -361,6 +378,7 @@ ssize_t copy_splice_read(struct file *in, loff_t *ppos,
 	iov_iter_bvec(&to, ITER_DEST, bv, npages, len);
 	init_sync_kiocb(&kiocb, in);
 	kiocb.ki_pos = *ppos;
+	/* 调用file的read iter这个ops */
 	ret = call_read_iter(in, &kiocb, &to);
 
 	if (ret > 0) {
@@ -381,12 +399,15 @@ ssize_t copy_splice_read(struct file *in, loff_t *ppos,
 
 	/* Push the remaining pages into the pipe. */
 	remain = ret;
+	/* 这是开始把数据进入管道？ */
 	for (i = 0; i < keep; i++) {
+		/* 像是直接获取管道的buf，基于读入的页面构造管道的buf，设置ops从pages读取可能 */
 		struct pipe_buffer *buf = pipe_head_buf(pipe);
 
 		chunk = min_t(size_t, remain, PAGE_SIZE);
 		*buf = (struct pipe_buffer) {
 			.ops	= &default_pipe_buf_ops,
+			/* 直接基于page构造pipe的buf */
 			.page	= bv[i].bv_page,
 			.offset	= 0,
 			.len	= chunk,
@@ -399,7 +420,7 @@ ssize_t copy_splice_read(struct file *in, loff_t *ppos,
 	return ret;
 }
 EXPORT_SYMBOL(copy_splice_read);
-
+/* pipe的buf的ops */
 const struct pipe_buf_operations default_pipe_buf_ops = {
 	.release	= generic_pipe_buf_release,
 	.try_steal	= generic_pipe_buf_try_steal,
@@ -923,6 +944,7 @@ static int warn_unsupported(struct file *file, const char *op)
 }
 
 /*
+从管道到文件splice
  * Attempt to initiate a splice from pipe to file.
  */
 static long do_splice_from(struct pipe_inode_info *pipe, struct file *out,
@@ -945,6 +967,7 @@ static void do_splice_eof(struct splice_desc *sd)
 }
 
 /**
+从文件读取数据，然后splice进管道
  * vfs_splice_read - Read data from a file and splice it into a pipe
  * @in:		File to splice from
  * @ppos:	Input file offset
@@ -988,7 +1011,9 @@ long vfs_splice_read(struct file *in, loff_t *ppos,
 	 * O_DIRECT and DAX don't deal with the pagecache, so we allocate a
 	 * buffer, copy into it and splice that into the pipe.
 	 */
-	if ((in->f_flags & O_DIRECT) || IS_DAX(in->f_mapping->host))
+	if ((in->f_flags & O_DIRECT) || IS_DAX(in->f_mapping->host))/* 
+	不经过pagecache的方式
+	*/
 		return copy_splice_read(in, ppos, pipe, len, flags);
 	return in->f_op->splice_read(in, ppos, pipe, len, flags);
 }
@@ -1152,6 +1177,8 @@ static void direct_file_splice_eof(struct splice_desc *sd)
 }
 
 /**
+splice系统调用
+sendfile操作文件也会调用
  * do_splice_direct - splices data directly between two files
  * @in:		file to splice from
  * @ppos:	input file offset
@@ -1219,7 +1246,9 @@ static int wait_for_space(struct pipe_inode_info *pipe, unsigned flags)
 static int splice_pipe_to_pipe(struct pipe_inode_info *ipipe,
 			       struct pipe_inode_info *opipe,
 			       size_t len, unsigned int flags);
-
+/* 
+从文件到管道splice
+*/
 long splice_file_to_pipe(struct file *in,
 			 struct pipe_inode_info *opipe,
 			 loff_t *offset,
@@ -1230,6 +1259,7 @@ long splice_file_to_pipe(struct file *in,
 	pipe_lock(opipe);
 	ret = wait_for_space(opipe, flags);
 	if (!ret)
+	/* 读入到管道 */
 		ret = vfs_splice_read(in, offset, opipe, len, flags);
 	pipe_unlock(opipe);
 	if (ret > 0)
@@ -1238,6 +1268,7 @@ long splice_file_to_pipe(struct file *in,
 }
 
 /*
+执行splice系统调用
  * Determine where to splice to/from.
  */
 long do_splice(struct file *in, loff_t *off_in, struct file *out,
@@ -1255,7 +1286,7 @@ long do_splice(struct file *in, loff_t *off_in, struct file *out,
 	ipipe = get_pipe_info(in, true);
 	opipe = get_pipe_info(out, true);
 
-	if (ipipe && opipe) {
+	if (ipipe && opipe) {/* 如果两方都是管道 */
 		if (off_in || off_out)
 			return -ESPIPE;
 
@@ -1267,7 +1298,7 @@ long do_splice(struct file *in, loff_t *off_in, struct file *out,
 			flags |= SPLICE_F_NONBLOCK;
 
 		ret = splice_pipe_to_pipe(ipipe, opipe, len, flags);
-	} else if (ipipe) {
+	} else if (ipipe) {/* 从管道到文件 */
 		if (off_in)
 			return -ESPIPE;
 		if (off_out) {
@@ -1289,6 +1320,7 @@ long do_splice(struct file *in, loff_t *off_in, struct file *out,
 			flags |= SPLICE_F_NONBLOCK;
 
 		file_start_write(out);
+		/* 从管道到文件 */
 		ret = do_splice_from(ipipe, out, &offset, len, flags);
 		file_end_write(out);
 
@@ -1296,7 +1328,7 @@ long do_splice(struct file *in, loff_t *off_in, struct file *out,
 			out->f_pos = offset;
 		else
 			*off_out = offset;
-	} else if (opipe) {
+	} else if (opipe) {/* 从文件到管道 */
 		if (off_out)
 			return -ESPIPE;
 		if (off_in) {
@@ -1668,6 +1700,7 @@ static int opipe_prep(struct pipe_inode_info *pipe, unsigned int flags)
 }
 
 /*
+在管道之间执行splice
  * Splice contents of ipipe to opipe.
  */
 static int splice_pipe_to_pipe(struct pipe_inode_info *ipipe,
@@ -1805,6 +1838,7 @@ retry:
 }
 
 /*
+链接两个管道的内容
  * Link contents of ipipe to opipe.
  */
 static int link_pipe(struct pipe_inode_info *ipipe,
@@ -1893,8 +1927,11 @@ static int link_pipe(struct pipe_inode_info *ipipe,
 }
 
 /*
- * This is a tee(1) implementation that works on pipes. It doesn't copy
- * any data, it simply references the 'in' pages on the 'out' pipe.
+用于在两个文件描述符之间 ​​零拷贝复制数据​​（通常用于管道操作）
+ * This is a tee(1) implementation that works on pipes.
+ 对pipe的tee实现
+ It doesn't copy any data, it simply references the 'in' pages on the 'out' pipe.
+ 不拷贝任何数据，仅仅链接两个管道
  * The 'flags' used are the SPLICE_F_* variants, currently the only
  * applicable one is SPLICE_F_NONBLOCK.
  */
@@ -1935,7 +1972,8 @@ long do_tee(struct file *in, struct file *out, size_t len, unsigned int flags)
 
 	return ret;
 }
-
+/* 用于在两个文件描述符之间 ​​零拷贝复制数据​​（通常用于管道操作），且
+ ​​不消耗源文件的数据​​（数据可被后续读取）。 */
 SYSCALL_DEFINE4(tee, int, fdin, int, fdout, size_t, len, unsigned int, flags)
 {
 	struct fd in, out;
@@ -1952,6 +1990,7 @@ SYSCALL_DEFINE4(tee, int, fdin, int, fdout, size_t, len, unsigned int, flags)
 	if (in.file) {
 		out = fdget(fdout);
 		if (out.file) {
+			/*  */
 			error = do_tee(in.file, out.file, len, flags);
 			fdput(out);
 		}

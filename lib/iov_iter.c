@@ -281,12 +281,23 @@ size_t fault_in_iov_iter_writeable(const struct iov_iter *i, size_t size)
 }
 EXPORT_SYMBOL(fault_in_iov_iter_writeable);
 
+
+/**初始化iovec类型的iter
+ * @description: 
+ * @param {iov_iter} *i
+ * @param {unsigned int} direction
+ * @param {iovec} *iov
+ * @param {unsigned long} nr_segs
+ * @param {size_t} count
+ * @return {*}
+ */
 void iov_iter_init(struct iov_iter *i, unsigned int direction,
 			const struct iovec *iov, unsigned long nr_segs,
 			size_t count)
 {
 	WARN_ON(direction & ~(READ | WRITE));
 	*i = (struct iov_iter) {
+		/* 函数的核心部分， 这个初始化的iter是iovec类型的 */
 		.iter_type = ITER_IOVEC,
 		.copy_mc = false,
 		.nofault = false,
@@ -464,7 +475,7 @@ static inline bool page_copy_sane(struct page *page, size_t offset, size_t n)
 		return false;
 	return true;
 }
-
+/* 把page的内容读出到i */
 size_t copy_page_to_iter(struct page *page, size_t offset, size_t bytes,
 			 struct iov_iter *i)
 {
@@ -565,7 +576,7 @@ size_t iov_iter_zero(size_t bytes, struct iov_iter *i)
 	return bytes;
 }
 EXPORT_SYMBOL(iov_iter_zero);
-
+/* 拷贝内容到page, io会用到这个 */
 size_t copy_page_from_iter_atomic(struct page *page, size_t offset,
 		size_t bytes, struct iov_iter *i)
 {
@@ -736,6 +747,7 @@ void iov_iter_kvec(struct iov_iter *i, unsigned int direction,
 }
 EXPORT_SYMBOL(iov_iter_kvec);
 
+/* 初始化i， 传输struct bio_vec的数据 */
 void iov_iter_bvec(struct iov_iter *i, unsigned int direction,
 			const struct bio_vec *bvec, unsigned long nr_segs,
 			size_t count)
@@ -1291,6 +1303,7 @@ static int bvec_npages(const struct iov_iter *i, int maxpages)
 	return npages;
 }
 
+/* 计算需要多少页面来读写这个iter? */
 int iov_iter_npages(const struct iov_iter *i, int maxpages)
 {
 	if (unlikely(!i->count))
@@ -1430,7 +1443,14 @@ struct iovec *iovec_from_user(const struct iovec __user *uvec,
 }
 
 /*
+单个的aio的ubuf
  * Single segment iovec supplied by the user, import it as ITER_UBUF.
+ * @description: 
+ * @param {int} type，
+ * @param {iovec __user} *uvec， aio的ubuf
+ * @param {iovec} * iovp， @param {iov_iter} *i， 其中一个不为空的描述了io的信息
+ * @param {bool} compat
+ * @return {*}
  */
 static ssize_t __import_iovec_ubuf(int type, const struct iovec __user *uvec,
 				   struct iovec **iovp, struct iov_iter *i,
@@ -1453,6 +1473,18 @@ static ssize_t __import_iovec_ubuf(int type, const struct iovec __user *uvec,
 	return i->count;
 }
 
+/**
+aio的什么函数
+ * @description: 
+ * @param {int} type
+ * @param {iovec __user} *uvec，要io的用户空间内存buf
+ * @param {unsigned} nr_segs，上面buf的长度
+ * @param {unsigned} fast_segs
+ * @param {iovec} * iovp ，  * @param {iov_iter} *i，这两个可能其中一个为空
+ 反正另一个描述了io的信息
+ * @param {bool} compat
+ * @return {*}
+ */
 ssize_t __import_iovec(int type, const struct iovec __user *uvec,
 		 unsigned nr_segs, unsigned fast_segs, struct iovec **iovp,
 		 struct iov_iter *i, bool compat)
@@ -1534,6 +1566,15 @@ ssize_t import_iovec(int type, const struct iovec __user *uvec,
 }
 EXPORT_SYMBOL(import_iovec);
 
+/**
+ * @description: 
+ * @param {int} rw
+ * @param {void __user} *buf，aio的iocb的用户空间buf成员
+ * @param {size_t} len，上面那个buf的长度
+ * @param {iovec} *iov，一组新的iovec
+ * @param {iov_iter} *i，一个新的空的iter
+ * @return {*}
+ */
 int import_single_range(int rw, void __user *buf, size_t len,
 		 struct iovec *iov, struct iov_iter *i)
 {
@@ -1541,12 +1582,19 @@ int import_single_range(int rw, void __user *buf, size_t len,
 		len = MAX_RW_COUNT;
 	if (unlikely(!access_ok(buf, len)))
 		return -EFAULT;
-
+	/* 初始化iter， io的是ubuf */
 	iov_iter_ubuf(i, rw, buf, len);
 	return 0;
 }
 EXPORT_SYMBOL(import_single_range);
 
+/* 
+初始化i
+======
+buf和len是用户空间的数据
+rw是io的方向
+这里把buf初始化到i里面
+*/
 int import_ubuf(int rw, void __user *buf, size_t len, struct iov_iter *i)
 {
 	if (len > MAX_RW_COUNT)
@@ -1554,6 +1602,7 @@ int import_ubuf(int rw, void __user *buf, size_t len, struct iov_iter *i)
 	if (unlikely(!access_ok(buf, len)))
 		return -EFAULT;
 
+	/* 初始化iov */
 	iov_iter_ubuf(i, rw, buf, len);
 	return 0;
 }
@@ -1790,7 +1839,7 @@ static ssize_t iov_iter_extract_user_pages(struct iov_iter *i,
 
 /**
  * iov_iter_extract_pages - Extract a list of contiguous pages from an iterator
- 从iter获取一系列连续的页面
+ 从iter获取一系列连续的页面 放到@pages
  * @i: The iterator to extract from
  * @pages: Where to return the list of pages
  * @maxsize: The maximum amount of iterator to extract

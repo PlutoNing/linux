@@ -2,7 +2,9 @@
 #define __LINUX_PSEUDO_FS__
 
 #include <linux/fs_context.h>
-
+/* 
+伪fc
+*/
 struct pseudo_fs_context {
 	const struct super_operations *ops;
 	const struct xattr_handler **xattr;

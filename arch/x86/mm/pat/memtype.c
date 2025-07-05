@@ -185,7 +185,7 @@ enum {
 };
 
 #define CM(c) (_PAGE_CACHE_MODE_ ## c)
-
+/* 返回对应的cache 和msg */
 static enum page_cache_mode __init pat_get_cache_mode(unsigned int pat_val,
 						      char *msg)
 {
@@ -201,7 +201,7 @@ static enum page_cache_mode __init pat_get_cache_mode(unsigned int pat_val,
 	case PAT_UC_MINUS: cache = CM(UC_MINUS); cache_mode = "UC- "; break;
 	default:           cache = CM(WB);       cache_mode = "WB  "; break;
 	}
-
+/* 打印msg */
 	memcpy(msg, cache_mode, 4);
 
 	return cache;
@@ -209,7 +209,7 @@ static enum page_cache_mode __init pat_get_cache_mode(unsigned int pat_val,
 
 #undef CM
 
-/*
+/*配置 PAT MSR（Model-Specific Register，模型特定寄存器）和内核的 PAT 表，启用额外的缓存属性（WC、WT、WP 等），优化内存访问性能
  * Update the cache mode to pgprot translation tables according to PAT
  * configuration.
  * Using lower indices is preferred, so we start with highest index.
@@ -228,7 +228,7 @@ static void __init init_cache_modes(u64 pat)
 	}
 	pr_info("x86/PAT: Configuration [0-7]: %s\n", pat_msg);
 }
-
+/* 设置pat机制 */
 void pat_cpu_init(void)
 {
 	if (!boot_cpu_has(X86_FEATURE_PAT)) {
@@ -238,13 +238,13 @@ void pat_cpu_init(void)
 		 */
 		panic("x86/PAT: PAT enabled, but not supported by secondary CPU\n");
 	}
-
+/* 写入指定的msr寄存器 */
 	wrmsrl(MSR_IA32_CR_PAT, pat_msr_val);
 }
 
-/**
+/**初始化 Page Attribute Table（PAT，页属性表）​​ 
  * pat_bp_init - Initialize the PAT MSR value and PAT table
- *
+ *用于扩展内存页的缓存属性控制，支持更细粒度的缓存策略（如 Write-Combining、Write-Protect）
  * This function initializes PAT MSR value and PAT table with an OS-defined
  * value to enable additional cache attributes, WC, WT and WP.
  *
@@ -362,7 +362,7 @@ void __init pat_bp_init(void)
 	}
 
 	memory_caching_control |= CACHE_PAT;
-
+/* 初始化什么? */
 	init_cache_modes(pat_msr_val);
 #undef PAT
 }
@@ -374,7 +374,7 @@ static DEFINE_SPINLOCK(memtype_lock);	/* protects memtype accesses */
  * the resulting memory type as PAT understands it.
  * (Type in pat and mtrr will not have same value)
  * The intersection is based on "Effective Memory Type" tables in IA-32
- * SDM vol 3a
+ * SDM vol 3a  
  */
 static unsigned long pat_x_mtrr_type(u64 start, u64 end,
 				     enum page_cache_mode req_type)

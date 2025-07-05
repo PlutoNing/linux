@@ -31,7 +31,7 @@ struct pcpu_block_md {
 	int                     first_free;     /* block position of first free */
 	int			nr_bits;	/* total bits responsible for */
 };
-
+/* 表示pcp机制的一个thunk? */
 struct pcpu_chunk {
 #ifdef CONFIG_PERCPU_STATS
 	int			nr_alloc;	/* # of allocations */
@@ -52,6 +52,7 @@ struct pcpu_chunk {
 	void			*base_addr ____cacheline_aligned_in_smp;
 
 	unsigned long		*alloc_map;	/* allocation map */
+	/* 一个元数据块的数组 */
 	struct pcpu_block_md	*md_blocks;	/* metadata blocks */
 
 	void			*data;		/* chunk data */
@@ -85,7 +86,7 @@ extern int pcpu_nr_empty_pop_pages;
 extern struct pcpu_chunk *pcpu_first_chunk;
 extern struct pcpu_chunk *pcpu_reserved_chunk;
 
-/**
+/** 结果就是pages的数量
  * pcpu_chunk_nr_blocks - converts nr_pages to # of md_blocks
  * @chunk: chunk of interest
  *
@@ -97,7 +98,7 @@ static inline int pcpu_chunk_nr_blocks(struct pcpu_chunk *chunk)
 	return chunk->nr_pages * PAGE_SIZE / PCPU_BITMAP_BLOCK_SIZE;
 }
 
-/**
+/** 这么多页面可以分配几个最小分配单元
  * pcpu_nr_pages_to_map_bits - converts the pages to size of bitmap
  * @pages: number of physical pages
  *
@@ -109,7 +110,9 @@ static inline int pcpu_nr_pages_to_map_bits(int pages)
 	return pages * PAGE_SIZE / PCPU_MIN_ALLOC_SIZE;
 }
 
-/**
+/** 
+chunk可以分配几个最小分配单元
+就是chunk的页面数量大小除以最小分配单元(4)
  * pcpu_chunk_map_bits - helper to convert nr_pages to size of bitmap
  * @chunk: chunk of interest
  *
@@ -158,7 +161,7 @@ struct percpu_stats {
 extern struct percpu_stats pcpu_stats;
 extern struct pcpu_alloc_info pcpu_stats_ai;
 
-/*
+/* 复制pcp的ai
  * For debug purposes. We don't care about the flexible array.
  */
 static inline void pcpu_stats_save_ai(const struct pcpu_alloc_info *ai)
@@ -211,7 +214,7 @@ static inline void pcpu_stats_area_dealloc(struct pcpu_chunk *chunk)
 	chunk->nr_alloc--;
 }
 
-/*
+/* 统计pcp的状态
  * pcpu_stats_chunk_alloc - increment chunk stats
  */
 static inline void pcpu_stats_chunk_alloc(void)

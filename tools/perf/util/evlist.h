@@ -233,7 +233,7 @@ static inline bool evlist__empty(struct evlist *evlist)
 {
 	return list_empty(&evlist->core.entries);
 }
-
+/* 从perf的perf evlist上面取下一个perf evsel, 返回wrapper */
 static inline struct evsel *evlist__first(struct evlist *evlist)
 {
 	struct perf_evsel *evsel = perf_evlist__first(&evlist->core);

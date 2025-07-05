@@ -57,9 +57,13 @@
 #define HRTIMER_ACTIVE_SOFT	(HRTIMER_ACTIVE_HARD << MASK_SHIFT)
 #define HRTIMER_ACTIVE_ALL	(HRTIMER_ACTIVE_SOFT | HRTIMER_ACTIVE_HARD)
 
-/*
+/* hrtimer的base
  * The timer bases:
- *
+ *​每CPU隔离: 每个CPU核心独立管理定时器，减少锁争用，提升多核性能。
+ ​时钟类型区分: 支持多种时钟源（如MONOTONIC、REALTIME），满足不同定时需求
+ （如避免时间跳变影响定时逻辑）。​软/硬中断分离:​硬中断上下文（非SOFT）​: 
+ 定时器回调在中断上下文中执行，要求快速、非阻塞。​软中断上下文（SOFT）​: 
+ 回调在软中断或线程上下文中执行，允许调度和长时间操作，避免阻塞硬中断。
  * There are more clockids than hrtimer bases. Thus, we index
  * into the timer bases by the hrtimer_base_type enum. When trying
  * to reach a base using a clockid, hrtimer_clockid_to_base()
@@ -130,6 +134,10 @@ static const int hrtimer_clock_to_base_table[MAX_CLOCKS] = {
 #ifdef CONFIG_SMP
 
 /*
+迁移base是什么
+也是一个hrtimer_cpu_base结构体
+定义了一个clock_base
+
  * We require the migration_base for lock_hrtimer_base()/switch_hrtimer_base()
  * such that hrtimer_callback_running() can unconditionally dereference
  * timer->base->cpu_base
@@ -150,10 +158,12 @@ static inline bool is_migration_base(struct hrtimer_clock_base *base)
 }
 
 /*
+加锁获取timer的base
  * We are using hashed locking: holding per_cpu(hrtimer_bases)[n].lock
  * means that all timers which are tied to this base via timer->base are
  * locked, and the base itself is locked too.
- *
+ * 使用hashed加锁方式, 持有per_cpu(hrtimer_bases)[n].lock锁定
+ * 这意味着所有与此基数相关的定时器都被锁定, 基数本身也被锁定
  * So __run_timers/migrate_timers can safely modify all timers which could
  * be found on the lists/queues.
  *
@@ -171,12 +181,14 @@ struct hrtimer_clock_base *lock_hrtimer_base(const struct hrtimer *timer,
 	for (;;) {
 		base = READ_ONCE(timer->base);
 		if (likely(base != &migration_base)) {
+			/* 如果timer的base不是迁移base的话,  （说明什么?) */
 			raw_spin_lock_irqsave(&base->cpu_base->lock, *flags);
 			if (likely(base == timer->base))
 				return base;
 			/* The timer has migrated to another CPU: */
 			raw_spin_unlock_irqrestore(&base->cpu_base->lock, *flags);
 		}
+		/* 释放cpu, 马上重试加锁 */
 		cpu_relax();
 	}
 }
@@ -485,6 +497,8 @@ static inline void debug_deactivate(struct hrtimer *timer)
 	trace_hrtimer_cancel(timer);
 }
 
+/* 获取cpu_base里的下一个clock_base
+一个cpu base有多个时钟源clock_base */
 static struct hrtimer_clock_base *
 __next_base(struct hrtimer_cpu_base *cpu_base, unsigned int *active)
 {
@@ -499,9 +513,23 @@ __next_base(struct hrtimer_cpu_base *cpu_base, unsigned int *active)
 	return &cpu_base->clock_base[idx];
 }
 
+/* 遍历active指定的base */
 #define for_each_active_base(base, cpu_base, active)	\
 	while ((base = __next_base((cpu_base), &(active))))
 
+/**
+找到下一个到期的时间
+========================
+更新cpubase的每一个clockbase的next_timer
+ * @description: 
+ * @param {hrtimer_cpu_base} *cpu_base
+ * @param {hrtimer} *exclude
+ * @param {unsigned int} active, 相当于指定了base, 是软中断的
+ 还是普通的,还是全部的
+ * @param {ktime_t} expires_next,如果ktime_sub(hrtimer_get_expires(timer), base->offset)
+ 小于expires_next, 就是要到期了
+ * @return {*} 返回的是下一个到期的时间
+ */
 static ktime_t __hrtimer_next_event_base(struct hrtimer_cpu_base *cpu_base,
 					 const struct hrtimer *exclude,
 					 unsigned int active,
@@ -510,16 +538,20 @@ static ktime_t __hrtimer_next_event_base(struct hrtimer_cpu_base *cpu_base,
 	struct hrtimer_clock_base *base;
 	ktime_t expires;
 
+	// 迭代cpu_base所有的clock base
 	for_each_active_base(base, cpu_base, active) {
 		struct timerqueue_node *next;
 		struct hrtimer *timer;
 
+		/* 找到此clock_base上的active红黑树第一个到期的timer */
 		next = timerqueue_getnext(&base->active);
+		/* 取出timer */
 		timer = container_of(next, struct hrtimer, node);
 		if (timer == exclude) {
+			/* 如果这个timer被参数排除了, 就找下一个timer */
 			/* Get to the next timer in the queue. */
 			next = timerqueue_iterate_next(next);
-			if (!next)
+			if (!next)/* 如果不存在下一个timer就下一个base */
 				continue;
 
 			timer = container_of(next, struct hrtimer, node);
@@ -549,6 +581,8 @@ static ktime_t __hrtimer_next_event_base(struct hrtimer_cpu_base *cpu_base,
 }
 
 /*
+查找即将到期的timer
+===================================
 用来在所有激活的定时器中查找最近即将到期定时器的到期时间。可以看出来，
 在高分辨率定时器层还没有切换到高精度模式前，该函数会返回即将到期定时器的
 到期时间，而一旦已经完成了切换，该函数将返回KTIME_MAX。也就是当高分辨率
@@ -577,6 +611,11 @@ Tick只是取消了这个定时器，对系统中其它的高分辨率定时器�
  *  - HRTIMER_ACTIVE_ALL,
  *  - HRTIMER_ACTIVE_SOFT, or
  *  - HRTIMER_ACTIVE_HARD.
+
+ * @description: 
+ * @param {hrtimer_cpu_base} *cpu_base
+ * @param {unsigned int} active_mask,检查掩码指定的时钟类型
+ * @return {*} 返回的是到期时间
  */
 static ktime_t
 __hrtimer_get_next_event(struct hrtimer_cpu_base *cpu_base, unsigned int active_mask)
@@ -585,7 +624,9 @@ __hrtimer_get_next_event(struct hrtimer_cpu_base *cpu_base, unsigned int active_
 	struct hrtimer *next_timer = NULL;
 	ktime_t expires_next = KTIME_MAX;
 
+	/* 如果是在hrtimer的软中断还没有被触发, 并且这次调用参数要求了检查软中断事件 */
 	if (!cpu_base->softirq_activated && (active_mask & HRTIMER_ACTIVE_SOFT)) {
+		/* 如果 */
 		active = cpu_base->active_bases & HRTIMER_ACTIVE_SOFT;
 		cpu_base->softirq_next_timer = NULL;
 		expires_next = __hrtimer_next_event_base(cpu_base, NULL,
@@ -603,7 +644,10 @@ __hrtimer_get_next_event(struct hrtimer_cpu_base *cpu_base, unsigned int active_
 
 	return expires_next;
 }
-
+/* 
+检查cpubase的到期时间,更新到期timer
+返回下一个到期时间
+*/
 static ktime_t hrtimer_update_next_event(struct hrtimer_cpu_base *cpu_base)
 {
 	ktime_t expires_next, soft = KTIME_MAX;
@@ -612,8 +656,10 @@ static ktime_t hrtimer_update_next_event(struct hrtimer_cpu_base *cpu_base)
 	 * If the soft interrupt has already been activated, ignore the
 	 * soft bases. They will be handled in the already raised soft
 	 * interrupt.
+	 如果软中断已经被激活, 忽略软中断的base. 它们会在已经触发的软中断中处理
 	 */
-	if (!cpu_base->softirq_activated) {
+	if (!cpu_base->softirq_activated) {/* 软中断还没有被激活 */
+		/* 这里检查一下 */
 		soft = __hrtimer_get_next_event(cpu_base, HRTIMER_ACTIVE_SOFT);
 		/*
 		 * Update the soft expiry time. clock_settime() might have
@@ -622,12 +668,14 @@ static ktime_t hrtimer_update_next_event(struct hrtimer_cpu_base *cpu_base)
 		cpu_base->softirq_expires_next = soft;
 	}
 
+	/* 获取hard timer的下一个到期时间 */
 	expires_next = __hrtimer_get_next_event(cpu_base, HRTIMER_ACTIVE_HARD);
 	/*
 	 * If a softirq timer is expiring first, update cpu_base->next_timer
 	 * and program the hardware with the soft expiry time.
 	 */
 	if (expires_next > soft) {
+		/* 如果软中断先到期 */
 		cpu_base->next_timer = cpu_base->softirq_next_timer;
 		expires_next = soft;
 	}
@@ -635,6 +683,7 @@ static ktime_t hrtimer_update_next_event(struct hrtimer_cpu_base *cpu_base)
 	return expires_next;
 }
 
+/* 更新timer base的时间clock_base */
 static inline ktime_t hrtimer_update_base(struct hrtimer_cpu_base *base)
 {
 	ktime_t *offs_real = &base->clock_base[HRTIMER_BASE_REALTIME].offset;
@@ -652,6 +701,7 @@ static inline ktime_t hrtimer_update_base(struct hrtimer_cpu_base *base)
 }
 
 /*
+检查cpubase的高分辨率模式是否激活
  * Is the high resolution mode active ?
  */
 static inline int __hrtimer_hres_active(struct hrtimer_cpu_base *cpu_base)
@@ -665,10 +715,18 @@ static inline int hrtimer_hres_active(void)
 	return __hrtimer_hres_active(this_cpu_ptr(&hrtimer_bases));
 }
 
+/**
+ * @description: 
+ * @param {hrtimer_cpu_base} *cpu_base
+ * @param {hrtimer} *next_timer, 此cpubase原本的下一个到期timer
+ * @param {ktime_t} expires_next,此cpubase新计算的到期时间(与原本的发生了变化)
+ * @return {*}
+ */
 static void __hrtimer_reprogram(struct hrtimer_cpu_base *cpu_base,
 				struct hrtimer *next_timer,
 				ktime_t expires_next)
 {
+	/* 更新最新的到期时间 */
 	cpu_base->expires_next = expires_next;
 
 	/*
@@ -690,11 +748,12 @@ static void __hrtimer_reprogram(struct hrtimer_cpu_base *cpu_base,
 	 */
 	if (!__hrtimer_hres_active(cpu_base) || cpu_base->hang_detected)
 		return;
-
+	/* hrtimer启用, 并且非hang_detected才继续执行 */
 	tick_program_event(expires_next, 1);
 }
 
 /*
+什么叫做reprogram? 计算和设置下一次到期时间
  * Reprogram the event source with checking both queues for the
  * next event
  * Called with interrupts disabled and base->lock held
@@ -704,11 +763,12 @@ hrtimer_force_reprogram(struct hrtimer_cpu_base *cpu_base, int skip_equal)
 {
 	ktime_t expires_next;
 
+	/* 更新cpubase的到期timer, 返回下一个到期时间 */
 	expires_next = hrtimer_update_next_event(cpu_base);
 
 	if (skip_equal && expires_next == cpu_base->expires_next)
 		return;
-
+	/* 意思是说如果cpubase的到期timer发生了变化, 就reprogram? */
 	__hrtimer_reprogram(cpu_base, cpu_base->next_timer, expires_next);
 }
 
@@ -760,16 +820,20 @@ sched_timer触发频率为CONFIG_HZ，在CONFIG_HZ=250的系统中，每4ms触�
  */
 static void hrtimer_switch_to_hres(void)
 {
+	/* 取出hrtimer base */
 	struct hrtimer_cpu_base *base = this_cpu_ptr(&hrtimer_bases);
 
+	/* 这里执行开启的动作 */
 	if (tick_init_highres()) {
 		pr_warn("Could not switch to high resolution mode on CPU %u\n",
 			base->cpu);
 		return;
 	}
+	/* 开启成功后, 修改相关标志 */
 	base->hres_active = 1;
 	hrtimer_resolution = HIGH_RES_NSEC;
 	/* 
+	处理sched相关的
 	调用tick_setup_sched_timer函数设置Tick模拟层
 	*/
 	tick_setup_sched_timer();
@@ -784,6 +848,8 @@ static inline void hrtimer_switch_to_hres(void) { }
 
 #endif /* CONFIG_HIGH_RES_TIMERS */
 /*
+更新cpubase的clockbase的时间
+计算和设置下一次到期时间
  * Retrigger next event is called after clock was set with interrupts
  * disabled through an SMP function call or directly from low level
  * resume code.
@@ -816,11 +882,12 @@ static void retrigger_next_event(void *arg)
 	 */
 	if (!__hrtimer_hres_active(base) && !tick_nohz_active)
 		return;
-
+	/* 到这里要求__hrtimer_hres_active或者tick_nohz_active */
 	raw_spin_lock(&base->lock);
+	/* 更新cpubase的clockbase的时间 */
 	hrtimer_update_base(base);
 	if (__hrtimer_hres_active(base))
-		hrtimer_force_reprogram(base, 0);
+		hrtimer_force_reprogram(base, 0);/* 计算下一次到期时间 */
 	else
 		hrtimer_update_next_event(base);
 	raw_spin_unlock(&base->lock);
@@ -1025,6 +1092,9 @@ void clock_was_set_delayed(void)
 }
 
 /*
+检查当前cpu的hrtimer_bases
+更新clockbase的时间
+计算和设置下一次到期时间
  * Called during resume either directly from via timekeeping_resume()
  * or in the case of s2idle from tick_unfreeze() to ensure that the
  * hrtimers are up to date.
@@ -1126,6 +1196,7 @@ static int enqueue_hrtimer(struct hrtimer *timer,
 }
 
 /*
+移除timer的函数
  * __remove_hrtimer - internal function to remove a timer
  *
  * Caller must hold the base lock.
@@ -1134,6 +1205,16 @@ static int enqueue_hrtimer(struct hrtimer *timer,
  * timer is the one which expires next. The caller can disable this by setting
  * reprogram to zero. This is useful, when the context does a reprogramming
  * anyway (e.g. timer interrupt)
+  高精度定时器模式在定时器是下一个到期的定时器时重新编程时钟事件设备。
+  调用方可以通过将reprogram设置为零来禁用此功能。
+  这在上下文确实重新编程时很有用（例如，定时器中断）
+
+ * @description:  把timer移除
+ * @param {hrtimer} *timer
+ * @param {hrtimer_clock_base} *base
+ * @param {u8} newstate
+ * @param {int} reprogram
+ * @return {*}
  */
 static void __remove_hrtimer(struct hrtimer *timer,
 			     struct hrtimer_clock_base *base,
@@ -1146,7 +1227,7 @@ static void __remove_hrtimer(struct hrtimer *timer,
 	WRITE_ONCE(timer->state, newstate);
 	if (!(state & HRTIMER_STATE_ENQUEUED))
 		return;
-
+	/* 从clock_base的active链表移除timer */
 	if (!timerqueue_del(&base->active, &timer->node))
 		cpu_base->active_bases &= ~(1 << base->index);
 
@@ -1157,13 +1238,27 @@ static void __remove_hrtimer(struct hrtimer *timer,
 	 * cpu_base->next_timer. So the worst thing what can happen is
 	 * an superfluous call to hrtimer_force_reprogram() on the
 	 * remote cpu later on if the same timer gets enqueued again.
+	 如果reprogram为假，我们不更新cpu_base->next_timer。
+	 这发生在我们删除远程cpu上的第一个定时器。
+	 这样是可以的，因为我们从不取消引用
+	 * cpu_base->next_timer。所以最糟糕的事情是
+	 * 在稍后再次排队同一计时器时对远程cpu调用hrtimer_force_reprogram()
+	 * 的多余调用。
 	 */
 	if (reprogram && timer == cpu_base->next_timer)
 		hrtimer_force_reprogram(cpu_base, 1);
 }
 
 /*
- * remove hrtimer, called with base lock held
+如果检测到timer没有正在执行回调的话, 并且对lock加锁的话,
+执行这个
+* remove hrtimer, called with base lock held
+ * @description: 
+ * @param {hrtimer} *timer
+ * @param {hrtimer_clock_base} *base, base是timer的base
+ * @param {bool} restart
+ * @param {bool} keep_local
+ * @return {*}
  */
 static inline int
 remove_hrtimer(struct hrtimer *timer, struct hrtimer_clock_base *base,
@@ -1243,6 +1338,16 @@ hrtimer_update_softirq_timer(struct hrtimer_cpu_base *cpu_base, bool reprogram)
 	hrtimer_reprogram(cpu_base->softirq_next_timer, reprogram);
 }
 
+/**
+开启hrtimer
+ * @description: 
+ * @param {hrtimer} *timer
+ * @param {ktime_t} tim
+ * @param {u64} delta_ns
+ * @param {enum hrtimer_mode} mode
+ * @param {hrtimer_clock_base} *base, 是hrtimer的clock_base
+ * @return {*}
+ */
 static int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 				    u64 delta_ns, const enum hrtimer_mode mode,
 				    struct hrtimer_clock_base *base)
@@ -1257,6 +1362,11 @@ static int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 	 * reprogram on removal, keep the timer local to the current CPU
 	 * and enforce reprogramming after it is queued no matter whether
 	 * it is the new first expiring timer again or not.
+	 如果定时器在本地cpu base上并且是第一个到期的定时器，然后
+	 * 这可能会导致硬件被重新编程两次（在删除和排队时）。
+	 * 为了避免这种情况，通过防止删除时的重新编程来保持定时器
+	 * 保持在当前CPU本地，并强制在排队后重新编程
+	 * 无论它是否是新的第一个到期的定时器。
 	 */
 	force_local = base->cpu_base == this_cpu_ptr(&hrtimer_bases);
 	force_local &= base->cpu_base->next_timer == timer;
@@ -1265,7 +1375,8 @@ static int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 	 * Remove an active timer from the queue. In case it is not queued
 	 * on the current CPU, make sure that remove_hrtimer() updates the
 	 * remote data correctly.
-	 *
+	 * 从队列中删除一个活动的定时器。如果它没有排队
+	 * 在当前CPU上，请确保remove_hrtimer()正确更新
 	 * If it's on the current CPU and the first expiring timer, then
 	 * skip reprogramming, keep the timer local and enforce
 	 * reprogramming later if it was the first expiring timer.  This
@@ -1303,6 +1414,7 @@ static int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 }
 
 /**
+开启hrtimer
  * hrtimer_start_range_ns - (re)start an hrtimer
  * @timer:	the timer to be added
  * @tim:	expiry time
@@ -1327,6 +1439,7 @@ void hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 	else
 		WARN_ON_ONCE(!(mode & HRTIMER_MODE_HARD) ^ !timer->is_hard);
 
+	/* 获取hrtimer的clock_base */
 	base = lock_hrtimer_base(timer, &flags);
 
 	if (__hrtimer_start_range_ns(timer, tim, delta_ns, mode, base))
@@ -1337,11 +1450,12 @@ void hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 EXPORT_SYMBOL_GPL(hrtimer_start_range_ns);
 
 /**
+尝试取消一个timer的定时
  * hrtimer_try_to_cancel - try to deactivate a timer
  * @timer:	hrtimer to stop
  *
  * Returns:
- *
+ * 返回0成功,1表示timer还在,-1表示timer正在执行回调函数
  *  *  0 when the timer was not active
  *  *  1 when the timer was active
  *  * -1 when the timer is currently executing the callback function and
@@ -1362,9 +1476,10 @@ int hrtimer_try_to_cancel(struct hrtimer *timer)
 	if (!hrtimer_active(timer))
 		return 0;
 
+	/* 加锁获取base */
 	base = lock_hrtimer_base(timer, &flags);
 
-	if (!hrtimer_callback_running(timer))
+	if (!hrtimer_callback_running(timer))/* 移除timer */
 		ret = remove_hrtimer(timer, base, false, false);
 
 	unlock_hrtimer_base(timer, &flags);
@@ -1462,6 +1577,7 @@ static inline void hrtimer_sync_wait_running(struct hrtimer_cpu_base *base,
 #endif
 
 /**
+取消一个timer, 等待处理完成
  * hrtimer_cancel - cancel a timer and wait for the handler to finish.
  * @timer:	the timer to be cancelled
  *
@@ -1476,9 +1592,9 @@ int hrtimer_cancel(struct hrtimer *timer)
 	do {
 		ret = hrtimer_try_to_cancel(timer);
 
-		if (ret < 0)
+		if (ret < 0) /* timer还在执行回调函数 */
 			hrtimer_cancel_wait_running(timer);
-	} while (ret < 0);
+	} while (ret < 0);/* 只要是-1, 就是timer还在执行回调函数 */
 	return ret;
 }
 EXPORT_SYMBOL_GPL(hrtimer_cancel);
@@ -1572,7 +1688,7 @@ static inline int hrtimer_clockid_to_base(clockid_t clock_id)
 	WARN(1, "Invalid clockid %d. Using MONOTONIC\n", clock_id);
 	return HRTIMER_BASE_MONOTONIC;
 }
-
+/* 初始化高精度定时器 */
 static void __hrtimer_init(struct hrtimer *timer, clockid_t clock_id,
 			   enum hrtimer_mode mode)
 {
@@ -1600,7 +1716,7 @@ static void __hrtimer_init(struct hrtimer *timer, clockid_t clock_id,
 	 */
 	if (clock_id == CLOCK_REALTIME && mode & HRTIMER_MODE_REL)
 		clock_id = CLOCK_MONOTONIC;
-
+/* 确定timer的base和类型 */
 	base = softtimer ? HRTIMER_MAX_CLOCK_BASES / 2 : 0;
 	base += hrtimer_clockid_to_base(clock_id);
 	timer->is_soft = softtimer;
@@ -1614,6 +1730,7 @@ static void __hrtimer_init(struct hrtimer *timer, clockid_t clock_id,
  * hrtimer_init - initialize a timer to the given clock
  * @timer:	the timer to be initialized
  * @clock_id:	the clock to be used
+ 使用的时钟源
  * @mode:       The modes which are relevant for initialization:
  *              HRTIMER_MODE_ABS, HRTIMER_MODE_REL, HRTIMER_MODE_ABS_SOFT,
  *              HRTIMER_MODE_REL_SOFT
@@ -1631,10 +1748,11 @@ void hrtimer_init(struct hrtimer *timer, clockid_t clock_id,
 EXPORT_SYMBOL_GPL(hrtimer_init);
 
 /*
+判断定时器是否处于活动状态
  * A timer is active, when it is enqueued into the rbtree or the
  * callback function is running or it's in the state of being migrated
  * to another cpu.
- *
+ * 当定时器被排队到红黑树中或者回调函数正在运行或者它处于迁移到另一个cpu的状态时，定时器是活动的
  * It is important for this function to not return a false negative.
  */
 bool hrtimer_active(const struct hrtimer *timer)
@@ -1812,6 +1930,8 @@ static __latent_entropy void hrtimer_run_softirq(struct softirq_action *h)
 #ifdef CONFIG_HIGH_RES_TIMERS
 
 /*
+处理hrtimer硬中断到时的handler?
+====================
 在定时器中断到来时进入硬中断处理函数hrtimer_interrupt()，如果最近到期的任务是硬timer，
 则继续在当前中断环境下处理。如果是软timer，则挂起软中断HRTIMER_SOFTIRQ，
 软中断在hrtimer_run_softirq()中处理软timer任务。
@@ -1820,16 +1940,19 @@ static __latent_entropy void hrtimer_run_softirq(struct softirq_action *h)
  */
 void hrtimer_interrupt(struct clock_event_device *dev)
 {
+	/* 取出hrtimer base */
 	struct hrtimer_cpu_base *cpu_base = this_cpu_ptr(&hrtimer_bases);
 	ktime_t expires_next, now, entry_time, delta;
 	unsigned long flags;
 	int retries = 0;
 
 	BUG_ON(!cpu_base->hres_active);
+	/* 统计信息数据 */
 	cpu_base->nr_events++;
 	dev->next_event = KTIME_MAX;
 
 	raw_spin_lock_irqsave(&cpu_base->lock, flags);
+	/* 记录下现在的时间, 事件到来的时间 */
 	entry_time = now = hrtimer_update_base(cpu_base);
 retry:
 	cpu_base->in_hrtirq = 1;
@@ -1843,20 +1966,24 @@ retry:
 	cpu_base->expires_next = KTIME_MAX;
 
 	if (!ktime_before(now, cpu_base->softirq_expires_next)) {
+		/* 说明有软中断超时了 */
 		cpu_base->softirq_expires_next = KTIME_MAX;
 		cpu_base->softirq_activated = 1;
+		/* 触发HRTIMER_SOFTIRQ软中断 */
 		raise_softirq_irqoff(HRTIMER_SOFTIRQ);
 	}
 	// 处理硬timer?
 	__hrtimer_run_queues(cpu_base, now, flags, HRTIMER_ACTIVE_HARD);
 
-	/* Reevaluate the clock bases for the [soft] next expiry */
+	/* Reevaluate the clock bases for the [soft] next expiry
+	计算下次到期的时间 */
 	expires_next = hrtimer_update_next_event(cpu_base);
 	/*
 	 * Store the new expiry value so the migration code can verify
 	 * against it.
 	 */
 	cpu_base->expires_next = expires_next;
+	/* 处理结束, 清除标志 */
 	cpu_base->in_hrtirq = 0;
 	raw_spin_unlock_irqrestore(&cpu_base->lock, flags);
 
@@ -1929,6 +2056,7 @@ static inline void __hrtimer_peek_ahead_timers(void) { }
 #endif	/* !CONFIG_HIGH_RES_TIMERS */
 
 /*
+每个jiffies都调用这个吗
  * Called from run_local_timers in hardirq context every jiffy
  */
 void hrtimer_run_queues(void)
@@ -2422,6 +2550,7 @@ int __sched schedule_hrtimeout_range(ktime_t *expires, u64 delta,
 EXPORT_SYMBOL_GPL(schedule_hrtimeout_range);
 
 /**
+带有超时的睡眠
  * schedule_hrtimeout - sleep until timeout
  * @expires:	timeout value (ktime_t)
  * @mode:	timer mode

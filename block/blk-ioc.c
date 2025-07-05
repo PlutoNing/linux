@@ -225,11 +225,11 @@ void exit_io_context(struct task_struct *task)
 		put_io_context(ioc);
 	}
 }
-
+/* 分配一个进程的io_context结构体 */
 static struct io_context *alloc_io_context(gfp_t gfp_flags, int node)
 {
 	struct io_context *ioc;
-
+	// 分配内存
 	ioc = kmem_cache_alloc_node(iocontext_cachep, gfp_flags | __GFP_ZERO,
 				    node);
 	if (unlikely(!ioc))
@@ -301,7 +301,7 @@ int __copy_io(unsigned long clone_flags, struct task_struct *tsk)
 	/*
 	 * Share io context with parent, if CLONE_IO is set
 	 */
-	if (clone_flags & CLONE_IO) {
+	if (clone_flags & CLONE_IO) {/* 如果clone_io就复用 */
 		atomic_inc(&ioc->active_ref);
 		tsk->io_context = ioc;
 	} else if (ioprio_valid(ioc->ioprio)) {

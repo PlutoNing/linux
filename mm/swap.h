@@ -10,6 +10,7 @@ int sio_pool_init(void);
 struct swap_iocb;
 void swap_readpage(struct page *page, bool do_poll, struct swap_iocb **plug);
 void __swap_read_unplug(struct swap_iocb *plug);
+/* 读取文件内容 */
 static inline void swap_read_unplug(struct swap_iocb *plug)
 {
 	if (unlikely(plug))

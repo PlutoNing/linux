@@ -31,6 +31,7 @@ static void show_val_kb(struct seq_file *m, const char *s, unsigned long num)
 	seq_write(m, " kB\n", 4);
 }
 
+/* 显示/proc/meminfo的回调 */
 static int meminfo_proc_show(struct seq_file *m, void *v)
 {
 	struct sysinfo i;
@@ -41,10 +42,14 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	unsigned long sreclaimable, sunreclaim;
 	int lru;
 
+	/* 获取一些内存信息到i */
 	si_meminfo(&i);
+	/* 再获取一些 */
 	si_swapinfo(&i);
 	committed = vm_memory_committed();
 
+	/* 文件页, 减去swap cache的, 减去bdevfs的什么的
+	20250704010527 */
 	cached = global_node_page_state(NR_FILE_PAGES) -
 			total_swapcache_pages() - i.bufferram;
 	if (cached < 0)

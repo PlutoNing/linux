@@ -10,11 +10,13 @@ struct trace_buffer;
 struct ring_buffer_iter;
 
 /*
+表示一个rb里面的event
  * Don't refer to this struct directly, use functions below.
  */
 struct ring_buffer_event {
 	u32		type_len:5, time_delta:27;
 
+	/* 大小似乎是2, 0是length, 2是data? */
 	u32		array[];
 };
 
@@ -87,7 +89,7 @@ void ring_buffer_discard_commit(struct trace_buffer *buffer,
 struct trace_buffer *
 __ring_buffer_alloc(unsigned long size, unsigned flags, struct lock_class_key *key);
 
-/*
+/*分配ringbuffer
  * Because the ring buffer is generic, if other users of the ring buffer get
  * traced by ftrace, it can produce lockdep warnings. We need to keep each
  * ring buffer's lock class separate.

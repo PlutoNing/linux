@@ -26,7 +26,7 @@
 /*
  * POSIX_FADV_WILLNEED could set PG_Referenced, and POSIX_FADV_NOREUSE could
  * deactivate the pages and clear PG_Referenced.
- */
+执行fadvise系统调用的通用实现(如果fops没有回调的话) */
 
 int generic_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 {
@@ -46,6 +46,7 @@ int generic_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 	if (!mapping || len < 0)
 		return -EINVAL;
 
+	/* 找到磁盘设备 */
 	bdi = inode_to_bdi(mapping->host);
 
 	if (IS_DAX(inode) || (bdi == &noop_backing_dev_info)) {
@@ -103,6 +104,7 @@ int generic_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 		if (!nrpages)
 			nrpages = ~0UL;
 
+		/* 用户参数指定了will need, 这里读取这些nrtpages页面 */
 		force_page_cache_readahead(mapping, file, start_index, nrpages);
 		break;
 	case POSIX_FADV_NOREUSE:
@@ -177,6 +179,7 @@ int generic_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 }
 EXPORT_SYMBOL(generic_fadvise);
 
+/* 执行fadvise系统调用 */
 int vfs_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 {
 	if (file->f_op->fadvise)
@@ -188,6 +191,7 @@ EXPORT_SYMBOL(vfs_fadvise);
 
 #ifdef CONFIG_ADVISE_SYSCALLS
 
+/* fadvise系统调用 */
 int ksys_fadvise64_64(int fd, loff_t offset, loff_t len, int advice)
 {
 	struct fd f = fdget(fd);

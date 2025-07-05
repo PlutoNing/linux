@@ -44,10 +44,12 @@ static bool blkdev_dio_unaligned(struct block_device *bdev, loff_t pos,
 
 #define DIO_INLINE_BIO_VECS 4
 
-// 块设备的direct IO实现中的一种
+/* 块设备的direct IO实现中的一种
+ */
 static ssize_t __blkdev_direct_IO_simple(struct kiocb *iocb,
 		struct iov_iter *iter, unsigned int nr_pages)
 {
+	/* 要读写的磁盘 */
 	struct block_device *bdev = I_BDEV(iocb->ki_filp->f_mapping->host);
 	struct bio_vec inline_vecs[DIO_INLINE_BIO_VECS], *vecs;
 	loff_t pos = iocb->ki_pos;
@@ -67,6 +69,7 @@ static ssize_t __blkdev_direct_IO_simple(struct kiocb *iocb,
 			return -ENOMEM;
 	}
 
+	/* 这里初始化bio */
 	if (iov_iter_rw(iter) == READ) {
 		bio_init(&bio, bdev, vecs, nr_pages, REQ_OP_READ);
 		if (user_backed_iter(iter))
@@ -77,6 +80,7 @@ static ssize_t __blkdev_direct_IO_simple(struct kiocb *iocb,
 	bio.bi_iter.bi_sector = pos >> SECTOR_SHIFT;
 	bio.bi_ioprio = iocb->ki_ioprio;
 
+	/* 这里把iter的内容页面给bio */
 	ret = bio_iov_iter_get_pages(&bio, iter);
 	if (unlikely(ret))
 		goto out;
@@ -88,8 +92,10 @@ static ssize_t __blkdev_direct_IO_simple(struct kiocb *iocb,
 	if (iocb->ki_flags & IOCB_NOWAIT)
 		bio.bi_opf |= REQ_NOWAIT;
 
+	/* 提交bio, 等待完成 */
 	submit_bio_wait(&bio);
 
+	/* 释放内存 */
 	bio_release_pages(&bio, should_dirty);
 	if (unlikely(bio.bi_status))
 		ret = blk_status_to_errno(bio.bi_status);
@@ -161,6 +167,7 @@ static void blkdev_bio_end_io(struct bio *bio)
 	}
 }
 
+/* blk直接io的实现 (用于nr_pages比较大的情况) */
 static ssize_t __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter,
 		unsigned int nr_pages)
 {
@@ -300,6 +307,8 @@ static void blkdev_bio_end_io_async(struct bio *bio)
 	}
 }
 
+/* 把iter写入iocb
+这函数是异步的bio提交 */
 static ssize_t __blkdev_direct_IO_async(struct kiocb *iocb,
 					struct iov_iter *iter,
 					unsigned int nr_pages)
@@ -372,11 +381,18 @@ static ssize_t blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	if (!iov_iter_count(iter))
 		return 0;
 
+	/*  */
 	nr_pages = bio_iov_vecs_to_alloc(iter, BIO_MAX_VECS + 1);
+	/* 如果要读写的内容不是很多 */
 	if (likely(nr_pages <= BIO_MAX_VECS)) {/* 
-	这一块是啥意思? */
-		if (is_sync_kiocb(iocb))
+	 */
+	
+	 /* 如果kiocb要求同步读写, __blkdev_direct_IO_simple就把iter的内容页面抽取
+	 到一个bio, 然后提交, 等待完成 */
+	 if (is_sync_kiocb(iocb))
 			return __blkdev_direct_IO_simple(iocb, iter, nr_pages);
+
+		/* 这里是可以异步提交bio */
 		return __blkdev_direct_IO_async(iocb, iter, nr_pages);
 	}
 	return __blkdev_direct_IO(iocb, iter, bio_max_segs(nr_pages));
@@ -404,7 +420,8 @@ static const struct iomap_ops blkdev_iomap_ops = {
 };
 
 #ifdef CONFIG_BUFFER_HEAD
-/* dev在io过程中的get ref操作
+/*
+dev在io过程中的get ref操作
 表示dev的某个block与bh建立了映射关联? */
 static int blkdev_get_block(struct inode *inode, sector_t iblock,
 		struct buffer_head *bh, int create)
@@ -425,22 +442,26 @@ static int blkdev_read_folio(struct file *file, struct folio *folio)
 	return block_read_full_folio(folio, blkdev_get_block);
 }
 
+/* bdev fs的mapping的预读回调 */
 static void blkdev_readahead(struct readahead_control *rac)
 {
 	mpage_readahead(rac, blkdev_get_block);
 }
 
+/* bdev fs的write_begin回调 */
 static int blkdev_write_begin(struct file *file, struct address_space *mapping,
 		loff_t pos, unsigned len, struct page **pagep, void **fsdata)
 {
 	return block_write_begin(mapping, pos, len, pagep, blkdev_get_block);
 }
 
+/* bdev fs的write_end的fops回调 */
 static int blkdev_write_end(struct file *file, struct address_space *mapping,
 		loff_t pos, unsigned len, unsigned copied, struct page *page,
 		void *fsdata)
 {
 	int ret;
+	/* 这里把page的相关buffer置脏 */
 	ret = block_write_end(file, mapping, pos, len, copied, page, fsdata);
 
 	unlock_page(page);
@@ -451,13 +472,18 @@ static int blkdev_write_end(struct file *file, struct address_space *mapping,
 //块设备的inode的mapping的ops
 /* 块设备的inode的mapping是什么? */
 const struct address_space_operations def_blk_aops = {
+	/*  */
 	.dirty_folio	= block_dirty_folio,
 	.invalidate_folio = block_invalidate_folio,
 	//读取设备到folio里面
 	.read_folio	= blkdev_read_folio,
+	/* 预读的fops */
 	.readahead	= blkdev_readahead,
+	/*  */
 	.writepage	= blkdev_writepage,
+	/* 写回指定页面 */
 	.write_begin	= blkdev_write_begin,
+	/*  */
 	.write_end	= blkdev_write_end,
 	.migrate_folio	= buffer_migrate_folio_norefs,
 	.is_dirty_writeback = buffer_check_dirty_writeback,
@@ -736,7 +762,8 @@ static ssize_t blkdev_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	ssize_t ret = 0;
 	size_t count;
 
-	if (unlikely(pos + iov_iter_count(to) > size)) {// 表示读取的位置超过了bdev的大小?
+	// 表示读取的位置超过了bdev的大小?
+	if (unlikely(pos + iov_iter_count(to) > size)) {
 		if (pos >= size)
 			return 0;
 		size -= pos;
@@ -887,6 +914,7 @@ const struct file_operations def_blk_fops = {
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= compat_blkdev_ioctl,
 #endif
+	/* 块设备文件的零拷贝读 */
 	.splice_read	= filemap_splice_read,
 	.splice_write	= iter_file_splice_write,
 	// 块设备的fallocate回调

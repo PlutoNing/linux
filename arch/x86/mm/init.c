@@ -66,7 +66,7 @@ unsigned long cachemode2protval(enum page_cache_mode pcm)
 	return __cachemode2pte_tbl[pcm];
 }
 EXPORT_SYMBOL(cachemode2protval);
-
+/* 和什么pat, cache控制相关的 */
 static uint8_t __pte2cachemode_tbl[8] = {
 	[__pte2cm_idx( 0        | 0         | 0        )] = _PAGE_CACHE_MODE_WB,
 	[__pte2cm_idx(_PAGE_PWT | 0         | 0        )] = _PAGE_CACHE_MODE_UC_MINUS,
@@ -103,16 +103,16 @@ enum page_cache_mode pgprot2cachemode(pgprot_t pgprot)
 		return 0;
 	return __pte2cachemode_tbl[__pte2cm_idx(masked)];
 }
-
+/* 预先分配一块物理内存，专门用于存放 ​​临时页表,如果页表需要页面从这里拿, start和top之间是nr个page,通过扩展brk分配的 */
 static unsigned long __initdata pgt_buf_start;
-static unsigned long __initdata pgt_buf_end;
-static unsigned long __initdata pgt_buf_top;
+static unsigned long __initdata pgt_buf_end; /* 表示当前取用到这里了 */
+static unsigned long __initdata pgt_buf_top; /* 这些好像都是物理pfn */
 
 static unsigned long min_pfn_mapped;
 
 static bool __initdata can_use_brk_pgt = true;
 
-/*
+/* 开机早期分配页面
  * Pages returned are already directly mapped.
  *
  * Changing that is likely to break Xen, see commit:
@@ -136,7 +136,7 @@ __ref void *alloc_low_pages(unsigned int num)
 	if ((pgt_buf_end + num) > pgt_buf_top || !can_use_brk_pgt) {
 		unsigned long ret = 0;
 
-		if (min_pfn_mapped < max_pfn_mapped) {
+		if (min_pfn_mapped < max_pfn_mapped) {/* 分配num页内存 */
 			ret = memblock_phys_alloc_range(
 					PAGE_SIZE * num, PAGE_SIZE,
 					min_pfn_mapped << PAGE_SHIFT,
@@ -149,12 +149,12 @@ __ref void *alloc_low_pages(unsigned int num)
 			panic("alloc_low_pages: can not alloc memory");
 
 		pfn = ret >> PAGE_SHIFT;
-	} else {
+	} else { /* 通过移动pgt_buf_end来获取预分配的页面 */
 		pfn = pgt_buf_end;
 		pgt_buf_end += num;
 	}
 
-	for (i = 0; i < num; i++) {
+	for (i = 0; i < num; i++) {/* 清除刚刚分配的页面的什么东西 */
 		void *adr;
 
 		adr = __va((pfn + i) << PAGE_SHIFT);
@@ -183,7 +183,7 @@ __ref void *alloc_low_pages(unsigned int num)
 #else
 #define INIT_PGD_PAGE_COUNT      (4 * INIT_PGD_PAGE_TABLES)
 #endif
-
+/* ((2 * 4) * ((1UL) << 12)) */
 #define INIT_PGT_BUF_SIZE	(INIT_PGD_PAGE_COUNT * PAGE_SIZE)
 RESERVE_BRK(early_pgt_alloc, INIT_PGT_BUF_SIZE);
 void  __init early_alloc_pgt_buf(void)
@@ -212,7 +212,7 @@ struct map_range {
 
 static int page_size_mask;
 
-/*
+/*启用PSE
  * Save some of cr4 feature set we're using (e.g.  Pentium 4MB
  * enable and PPro Global page enable), so that any CPU's that boot
  * up after us can get the correct flags. Invoked on the boot CPU.
@@ -224,7 +224,7 @@ static inline void cr4_set_bits_and_update_boot(unsigned long mask)
 		*trampoline_cr4_features = mmu_cr4_features;
 	cr4_set_bits(mask);
 }
-
+/*  */
 static void __init probe_page_size_mask(void)
 {
 	/*
@@ -235,7 +235,7 @@ static void __init probe_page_size_mask(void)
 	if (boot_cpu_has(X86_FEATURE_PSE) && !debug_pagealloc_enabled())
 		page_size_mask |= 1 << PG_LEVEL_2M;
 	else
-		direct_gbpages = 0;
+		direct_gbpages = 0;/* 这条路径 */
 
 	/* Enable PSE if available */
 	if (boot_cpu_has(X86_FEATURE_PSE))
@@ -400,7 +400,7 @@ static const char *page_size_string(struct map_range *mr)
 
 	return str_4k;
 }
-
+/* 构建页面范围数组 */
 static int __meminit split_mem_range(struct map_range *mr, int nr_range,
 				     unsigned long start,
 				     unsigned long end)
@@ -500,12 +500,12 @@ static int __meminit split_mem_range(struct map_range *mr, int nr_range,
 
 	return nr_range;
 }
-
+/* 被映射的pfn范围 */
 struct range pfn_mapped[E820_MAX_ENTRIES];
 int nr_pfn_mapped;
-
+/* 内核启动刚刚映射了这些pfn */
 static void add_pfn_range_mapped(unsigned long start_pfn, unsigned long end_pfn)
-{
+{/* rdi rsi rdx  rbp rbx */
 	nr_pfn_mapped = add_range_with_merge(pfn_mapped, E820_MAX_ENTRIES,
 					     nr_pfn_mapped, start_pfn, end_pfn);
 	nr_pfn_mapped = clean_sort_range(pfn_mapped, E820_MAX_ENTRIES);
@@ -530,9 +530,9 @@ bool pfn_range_is_mapped(unsigned long start_pfn, unsigned long end_pfn)
 }
 
 /*
- * Setup the direct mapping of the physical memory at PAGE_OFFSET.
- * This runs before bootmem is initialized and gets pages directly from
- * the physical memory. To access them they are temporarily mapped.
+ * 设置[start, end]物理内存在 PAGE_OFFSET 的直接映射。
+ * 这段代码在 bootmem 初始化之前运行，并直接从物理内存中获取页面。
+ * 为了访问这些页面，它们会被临时映射。
  */
 unsigned long __ref init_memory_mapping(unsigned long start,
 					unsigned long end, pgprot_t prot)
@@ -546,7 +546,7 @@ unsigned long __ref init_memory_mapping(unsigned long start,
 
 	memset(mr, 0, sizeof(mr));
 	nr_range = split_mem_range(mr, 0, start, end);
-
+/* mr数组描述了内存范围， 好像就是初始化这些范围的映射 */
 	for (i = 0; i < nr_range; i++)
 		ret = kernel_physical_mapping_init(mr[i].start, mr[i].end,
 						   mr[i].page_size_mask,
@@ -557,7 +557,7 @@ unsigned long __ref init_memory_mapping(unsigned long start,
 	return ret >> PAGE_SHIFT;
 }
 
-/*
+/* 映射这些物理页面,目前还是memblock里面的页面, 在内核mm进行映射
  * We need to iterate through the E820 memory map and create direct mappings
  * for only E820_TYPE_RAM and E820_KERN_RESERVED regions. We cannot simply
  * create direct mappings for all pfns from [0 to max_low_pfn) and
@@ -569,7 +569,7 @@ unsigned long __ref init_memory_mapping(unsigned long start,
  * init_mem_mapping() calls init_range_memory_mapping() with big range.
  * That range would have hole in the middle or ends, and only ram parts
  * will be mapped in init_range_memory_mapping().
- */
+ 每次映射大小2MB*/
 static unsigned long __init init_range_memory_mapping(
 					   unsigned long r_start,
 					   unsigned long r_end)
@@ -577,20 +577,20 @@ static unsigned long __init init_range_memory_mapping(
 	unsigned long start_pfn, end_pfn;
 	unsigned long mapped_ram_size = 0;
 	int i;
-
+	/* 在memblock找到交叉的pfn进行映射 */
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start_pfn, &end_pfn, NULL) {
-		u64 start = clamp_val(PFN_PHYS(start_pfn), r_start, r_end);
+		u64 start = clamp_val(PFN_PHYS(start_pfn), r_start, r_end);/* 返回的start pfn和end pfn可能远在参数范围之外 */
 		u64 end = clamp_val(PFN_PHYS(end_pfn), r_start, r_end);
 		if (start >= end)
 			continue;
-
+/* 现在查到的范围在参数指定的范围了， 也就是说处理for循环返回的范围与参数交叉的部分 */
 		/*
 		 * if it is overlapping with brk pgt, we need to
 		 * alloc pgt buf from memblock instead.
 		 */
 		can_use_brk_pgt = max(start, (u64)pgt_buf_end<<PAGE_SHIFT) >=
 				    min(end, (u64)pgt_buf_top<<PAGE_SHIFT);
-		init_memory_mapping(start, end, PAGE_KERNEL);
+		init_memory_mapping(start, end, PAGE_KERNEL);/* 建立这些页面的映射 */
 		mapped_ram_size += end - start;
 		can_use_brk_pgt = true;
 	}
@@ -617,7 +617,7 @@ static unsigned long __init get_new_step_size(unsigned long step_size)
 	return step_size << (PMD_SHIFT - PAGE_SHIFT - 1);
 }
 
-/**
+/** 参数范围基本算是整机内存, 这里建立映射
  * memory_map_top_down - Map [map_start, map_end) top down
  * @map_start: start address of the target memory range
  * @map_end: end address of the target memory range
@@ -645,11 +645,11 @@ static void __init memory_map_top_down(unsigned long map_start,
 	 */
 	addr = memblock_phys_alloc_range(PMD_SIZE, PMD_SIZE, map_start,
 					 map_end);
-	memblock_phys_free(addr, PMD_SIZE);
+	memblock_phys_free(addr, PMD_SIZE);/* 这里实际上是从reserved移除这段范围 */
 	real_end = addr + PMD_SIZE;
 
 	/* step_size need to be small so pgt_buf from BRK could cover it */
-	step_size = PMD_SIZE;
+	step_size = PMD_SIZE; /* 大小2MB */
 	max_pfn_mapped = 0; /* will get exact value next */
 	min_pfn_mapped = real_end >> PAGE_SHIFT;
 	last_start = real_end;
@@ -668,9 +668,9 @@ static void __init memory_map_top_down(unsigned long map_start,
 			if (start < map_start)
 				start = map_start;
 		} else
-			start = map_start;
+			start = map_start;/* 计算本次映射的范围, [start, last_start] */
 		mapped_ram_size += init_range_memory_mapping(start,
-							last_start);
+							last_start);/* 映射这些物理范围 */
 		last_start = start;
 		min_pfn_mapped = last_start >> PAGE_SHIFT;
 		if (mapped_ram_size >= step_size)
@@ -726,7 +726,7 @@ static void __init memory_map_bottom_up(unsigned long map_start,
 	}
 }
 
-/*
+/* 设置trampoline_pgd_entry指向一个pgd条目
  * The real mode trampoline, which is required for bootstrapping CPUs
  * occupies only a small area under the low 1MB.  See reserve_real_mode()
  * for details.
@@ -752,7 +752,7 @@ static void __init init_trampoline(void)
 		init_trampoline_kaslr();
 #endif
 }
-
+/* 基本把整机内存映射到了内核页表 */
 void __init init_mem_mapping(void)
 {
 	unsigned long end;
@@ -767,11 +767,11 @@ void __init init_mem_mapping(void)
 	end = max_low_pfn << PAGE_SHIFT;
 #endif
 
-	/* the ISA range is always mapped regardless of memory holes */
+	/* the ISA range is always mapped regardless of memory holes , 建立最开始的这段ISA内存的映射*/
 	init_memory_mapping(0, ISA_END_ADDRESS, PAGE_KERNEL);
 
 	/* Init the trampoline, possibly with KASLR memory offset */
-	init_trampoline();
+	init_trampoline(); /* 设置trampoline_pgd_entry指向一个pgd条目 */
 
 	/*
 	 * If the allocation is in bottom-up direction, we setup direct mapping
@@ -789,7 +789,7 @@ void __init init_mem_mapping(void)
 		 */
 		memory_map_bottom_up(kernel_end, end);
 		memory_map_bottom_up(ISA_END_ADDRESS, kernel_end);
-	} else {
+	} else {/* 这个范围基本算是整机内存了 */
 		memory_map_top_down(ISA_END_ADDRESS, end);
 	}
 
@@ -801,16 +801,16 @@ void __init init_mem_mapping(void)
 #else
 	early_ioremap_page_table_range_init();
 #endif
-
-	load_cr3(swapper_pg_dir);
+	/* 把内核页表写入cr3 */
+	load_cr3(swapper_pg_dir);/* 初始化cr3寄存器 */
 	__flush_tlb_all();
 
-	x86_init.hyper.init_mem_mapping();
+	x86_init.hyper.init_mem_mapping();/* 这是和虚拟化相关的吗 */
 
 	early_memtest(0, max_pfn_mapped << PAGE_SHIFT);
 }
 
-/*
+/* 创建那个poke代码使用的伪mm
  * Initialize an mm_struct to be used during poking and a pointer to be used
  * during patching.
  */
@@ -992,7 +992,7 @@ void __init free_initrd_mem(unsigned long start, unsigned long end)
 }
 #endif
 
-/*
+/* 计算dma的大小
  * Calculate the precise size of the DMA zone (first 16 MB of RAM),
  * and pass it to the MM layer - to help it set zone watermarks more
  * accurately.
@@ -1009,7 +1009,7 @@ void __init memblock_find_dma_reserve(void)
 	int i;
 	u64 u;
 
-	/*
+	/* 计算memblock的前16MB的总内存大小
 	 * Iterate over all memory ranges (free and reserved ones alike),
 	 * to calculate the total number of pages in the first 16 MB of RAM:
 	 */
@@ -1021,7 +1021,7 @@ void __init memblock_find_dma_reserve(void)
 		nr_pages += end_pfn - start_pfn;
 	}
 
-	/*
+	/*nr_free_pages表示前16MB物理内存里面free的page数量
 	 * Iterate over free memory ranges to calculate the number of free
 	 * pages in the DMA zone, while not counting potential partial
 	 * pages at the beginning or the end of the range:
@@ -1034,7 +1034,7 @@ void __init memblock_find_dma_reserve(void)
 		if (start_pfn < end_pfn)
 			nr_free_pages += end_pfn - start_pfn;
 	}
-
+	/* 一次调试过程中nr_pages=3998, nr_free_pages=3840 最后参数大小158 */
 	set_dma_reserve(nr_pages - nr_free_pages);
 #endif
 }
@@ -1047,12 +1047,12 @@ void __init zone_sizes_init(void)
 	memset(max_zone_pfns, 0, sizeof(max_zone_pfns));
 
 #ifdef CONFIG_ZONE_DMA
-	max_zone_pfns[ZONE_DMA]		= min(MAX_DMA_PFN, max_low_pfn);
+	max_zone_pfns[ZONE_DMA]		= min(MAX_DMA_PFN, max_low_pfn);  // 4096, 16MB
 #endif
 #ifdef CONFIG_ZONE_DMA32
-	max_zone_pfns[ZONE_DMA32]	= min(MAX_DMA32_PFN, max_low_pfn);
+	max_zone_pfns[ZONE_DMA32]	= min(MAX_DMA32_PFN, max_low_pfn); // 4GB
 #endif
-	max_zone_pfns[ZONE_NORMAL]	= max_low_pfn;
+	max_zone_pfns[ZONE_NORMAL]	= max_low_pfn; // 926MB
 #ifdef CONFIG_HIGHMEM
 	max_zone_pfns[ZONE_HIGHMEM]	= max_pfn;
 #endif
@@ -1060,6 +1060,7 @@ void __init zone_sizes_init(void)
 	free_area_init(max_zone_pfns);
 }
 
+/*  */
 __visible DEFINE_PER_CPU_ALIGNED(struct tlb_state, cpu_tlbstate) = {
 	.loaded_mm = &init_mm,
 	.next_asid = 1,
@@ -1070,7 +1071,7 @@ __visible DEFINE_PER_CPU_ALIGNED(struct tlb_state, cpu_tlbstate) = {
 DEFINE_PER_CPU(u64, tlbstate_untag_mask);
 EXPORT_PER_CPU_SYMBOL(tlbstate_untag_mask);
 #endif
-
+/*  */
 void update_cache_mode_entry(unsigned entry, enum page_cache_mode cache)
 {
 	/* entry 0 MUST be WB (hardwired to speed up translations) */

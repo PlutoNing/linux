@@ -19,6 +19,7 @@ DEFINE_APIC_CALL(native_eoi);
 DEFINE_APIC_CALL(icr_read);
 DEFINE_APIC_CALL(icr_write);
 DEFINE_APIC_CALL(read);
+/* 这里定义的是apic_call_send_IPI? */
 DEFINE_APIC_CALL(send_IPI);
 DEFINE_APIC_CALL(send_IPI_mask);
 DEFINE_APIC_CALL(send_IPI_mask_allbutself);
@@ -60,7 +61,7 @@ static __init void restore_override_callbacks(void)
 
 #define update_call(__cb)					\
 	static_call_update(apic_call_##__cb, *apic->__cb)
-
+/* 更新这些static call。 就是修改字节码，直接跳过去 */
 static __init void update_static_calls(void)
 {
 	update_call(eoi);
@@ -79,15 +80,15 @@ static __init void update_static_calls(void)
 	update_call(wakeup_secondary_cpu);
 	update_call(wakeup_secondary_cpu_64);
 }
-
+/* APIC 是 x86 架构中管理中断的核心硬件，分为 ​​本地 APIC​​（Local APIC，每个 CPU 核心独有）和 ​​I/O APIC​​（全局中断路由）。 */
 void __init apic_setup_apic_calls(void)
 {
 	/* Ensure that the default APIC has native_eoi populated */
 	apic->native_eoi = apic->eoi;
-	update_static_calls();
+	update_static_calls();/* 更新， 修改字节码，直接跳过去 */
 	pr_info("Static calls initialized\n");
 }
-
+/* 安装选择的中断driver */
 void __init apic_install_driver(struct apic *driver)
 {
 	if (apic == driver)

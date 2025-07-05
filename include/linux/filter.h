@@ -43,12 +43,14 @@ struct ctl_table_header;
  * Arg1, Arg2, Arg3, etc are used as argument mappings of function
  * calls in BPF_CALL instruction.
  */
+ /* bpf的各式各样的寄存器 */
 #define BPF_REG_ARG1	BPF_REG_1
 #define BPF_REG_ARG2	BPF_REG_2
 #define BPF_REG_ARG3	BPF_REG_3
 #define BPF_REG_ARG4	BPF_REG_4
 #define BPF_REG_ARG5	BPF_REG_5
 #define BPF_REG_CTX	BPF_REG_6
+/* 栈帧指针（Frame Pointer）​​，指向当前栈帧的底部（固定用途，不可修改）。 */
 #define BPF_REG_FP	BPF_REG_10
 
 /* Additional register mappings for converted user programs. */
@@ -586,7 +588,7 @@ typedef unsigned int (*bpf_dispatcher_fn)(const void *ctx,
 					  const struct bpf_insn *insnsi,
 					  unsigned int (*bpf_func)(const void *,
 								   const struct bpf_insn *));
-
+/* 运行prog */
 static __always_inline u32 __bpf_prog_run(const struct bpf_prog *prog,
 					  const void *ctx,
 					  bpf_dispatcher_fn dfunc)
@@ -598,7 +600,7 @@ static __always_inline u32 __bpf_prog_run(const struct bpf_prog *prog,
 		struct bpf_prog_stats *stats;
 		u64 start = sched_clock();
 		unsigned long flags;
-
+		/* 看来还是交给bpf—func运行的 */
 		ret = dfunc(ctx, prog->insnsi, prog->bpf_func);
 		stats = this_cpu_ptr(prog->stats);
 		flags = u64_stats_update_begin_irqsave(&stats->syncp);
@@ -610,7 +612,7 @@ static __always_inline u32 __bpf_prog_run(const struct bpf_prog *prog,
 	}
 	return ret;
 }
-
+/* 运行这个prog */
 static __always_inline u32 bpf_prog_run(const struct bpf_prog *prog, const void *ctx)
 {
 	return __bpf_prog_run(prog, ctx, bpf_dispatcher_nop_func);
@@ -1128,6 +1130,7 @@ bool is_bpf_text_address(unsigned long addr);
 int bpf_get_kallsym(unsigned int symnum, unsigned long *value, char *type,
 		    char *sym);
 
+/* 查找bpf符号 */
 static inline const char *
 bpf_address_lookup(unsigned long addr, unsigned long *size,
 		   unsigned long *off, char **modname, char *sym)

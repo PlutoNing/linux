@@ -330,10 +330,12 @@ static struct pid **task_pid_ptr(struct task_struct *task, enum pid_type type)
 }
 
 /*
+把task的pid_links[type]添加到pid->tasks[type]中
  * attach_pid() must be called with the tasklist_lock write-held.
  */
 void attach_pid(struct task_struct *task, enum pid_type type)
-{
+{	
+	// 获取这个进程的type的pid
 	struct pid *pid = *task_pid_ptr(task, type);
 	hlist_add_head_rcu(&task->pid_links[type], &pid->tasks[type]);
 }
@@ -648,7 +650,7 @@ SYSCALL_DEFINE2(pidfd_open, pid_t, pid, unsigned int, flags)
 	put_pid(p);
 	return fd;
 }
-
+/* 初始化pid的idr和slab */
 void __init pid_idr_init(void)
 {
 	/* Verify no one has done anything silly: */

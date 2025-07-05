@@ -75,6 +75,7 @@ static void mpage_write_end_io(struct bio *bio)
 	bio_put(bio);
 }
 
+/* 发起bio */
 static struct bio *mpage_bio_submit_read(struct bio *bio)
 {
 	bio->bi_end_io = mpage_read_end_io;
@@ -82,7 +83,7 @@ static struct bio *mpage_bio_submit_read(struct bio *bio)
 	submit_bio(bio);
 	return NULL;
 }
-
+/* mpage提交bio */
 static struct bio *mpage_bio_submit_write(struct bio *bio)
 {
 	bio->bi_end_io = mpage_write_end_io;
@@ -92,6 +93,7 @@ static struct bio *mpage_bio_submit_write(struct bio *bio)
 }
 
 /*
+把folio的全部buffer都复刻@bh? (没有buffer的话就创建)
  * support function for mpage_readahead.  The fs supplied get_block might
  * return an up to date buffer.  This is used to map that buffer into
  * the page, which allows read_folio to avoid triggering a duplicate call
@@ -110,6 +112,7 @@ static void map_buffer_to_folio(struct folio *folio, struct buffer_head *bh,
 
 	head = folio_buffers(folio);
 	if (!head) {
+		/* 如果folio还没有buffer */
 		/*
 		 * don't make any buffers if there is only one buffer on
 		 * the folio and the folio just needs to be set up to date
@@ -119,10 +122,12 @@ static void map_buffer_to_folio(struct folio *folio, struct buffer_head *bh,
 			folio_mark_uptodate(folio);
 			return;
 		}
+		/* 给folio创建buffers */
 		create_empty_buffers(&folio->page, i_blocksize(inode), 0);
 		head = folio_buffers(folio);
 	}
 
+	/* 现在head指向folio的buffer头 */
 	page_bh = head;
 	do {
 		if (block == page_block) {
@@ -155,13 +160,20 @@ struct mpage_readpage_args {
  * We pass a buffer_head back and forth and use its buffer_mapped() flag to
  * represent the validity of its disk mapping and to decide when to do the next
  * get_block() call.
+ =============
+ 迭代需要读取的folio
+ args.nr_pages和args.folio指定了本次循环需要预读的页面和数量
+ args.bio是上次循环这个函数调用返回的bio
  */
 static struct bio *do_mpage_readpage(struct mpage_readpage_args *args)
 {
+	/* 要预读的folio, 目前位于mapping的folio */
 	struct folio *folio = args->folio;
 	struct inode *inode = folio->mapping->host;
 	const unsigned blkbits = inode->i_blkbits;
+	/* 一个page包含当前文件系统多少个block */
 	const unsigned blocks_per_page = PAGE_SIZE >> blkbits;
+	/* 当前文件系统的block大小 */
 	const unsigned blocksize = 1 << blkbits;
 	struct buffer_head *map_bh = &args->map_bh;
 	sector_t block_in_file;
@@ -189,9 +201,13 @@ static struct bio *do_mpage_readpage(struct mpage_readpage_args *args)
 	if (folio_buffers(folio))
 		goto confused;
 
+	/* folio对应磁盘的第几个block */
 	block_in_file = (sector_t)folio->index << (PAGE_SHIFT - blkbits);
+	/* 本次预读范围的最后一个block */
 	last_block = block_in_file + args->nr_pages * blocks_per_page;
+	/* 文件的大小, 文件的最后一个block */
 	last_block_in_file = (i_size_read(inode) + blocksize - 1) >> blkbits;
+	/* 这里要读取的block肯定不能超过文件末尾 */
 	if (last_block > last_block_in_file)
 		last_block = last_block_in_file;
 	page_block = 0;
@@ -199,6 +215,7 @@ static struct bio *do_mpage_readpage(struct mpage_readpage_args *args)
 	/*
 	 * Map blocks using the result from the previous get_blocks call first.
 	 */
+	/* 这个buffer包含的block数量? */
 	nblocks = map_bh->b_size >> blkbits;
 	if (buffer_mapped(map_bh) &&
 			block_in_file > args->first_logical_block &&
@@ -290,10 +307,12 @@ static struct bio *do_mpage_readpage(struct mpage_readpage_args *args)
 	/*
 	 * This folio will go to BIO.  Do we need to send this BIO off first?
 	 */
+	 /* 先把当前这个bio提交了, 然后置为null */
 	if (args->bio && (args->last_block_in_bio != blocks[0] - 1))
 		args->bio = mpage_bio_submit_read(args->bio);
 
 alloc_new:
+	/* 分配新的bio */
 	if (args->bio == NULL) {
 		args->bio = bio_alloc(bdev, bio_max_segs(args->nr_pages), opf,
 				      gfp);
@@ -304,10 +323,12 @@ alloc_new:
 
 	length = first_hole << blkbits;
 	if (!bio_add_folio(args->bio, folio, length, 0)) {
+		/*添加到bio失败? 把这个bio提交了 */
 		args->bio = mpage_bio_submit_read(args->bio);
 		goto alloc_new;
 	}
 
+	/* 添加到bio成功的路径 */
 	relative_block = block_in_file - args->first_logical_block;
 	nblocks = map_bh->b_size >> blkbits;
 	if ((buffer_boundary(map_bh) && relative_block == nblocks) ||
@@ -318,6 +339,7 @@ alloc_new:
 out:
 	return args->bio;
 
+/* 发现要预读的folio有了buffer链? */
 confused:
 	if (args->bio)
 		args->bio = mpage_bio_submit_read(args->bio);
@@ -366,6 +388,9 @@ confused:
  * this one.  So you should push what I/O you have currently accumulated.
  *
  * This all causes the disk requests to be issued in the correct order.
+ =======================
+ 开启预读
+ bdev fs的mapping的预读回调
  */
 void mpage_readahead(struct readahead_control *rac, get_block_t get_block)
 {
@@ -375,18 +400,21 @@ void mpage_readahead(struct readahead_control *rac, get_block_t get_block)
 		.is_readahead = true,
 	};
 
+	/* 随着循环, folio不断的指向需要预读的下一个folio */
 	while ((folio = readahead_folio(rac))) {
 		prefetchw(&folio->flags);
 		args.folio = folio;
 		args.nr_pages = readahead_count(rac);
+		/* 这里会提交bio */
 		args.bio = do_mpage_readpage(&args);
 	}
+	/* 把最后这个末尾也提交了 */
 	if (args.bio)
 		mpage_bio_submit_read(args.bio);
 }
 EXPORT_SYMBOL(mpage_readahead);
 
-/*
+/*把文件的内容读入到folio
  * This isn't called much at all
  */
 int mpage_read_folio(struct folio *folio, get_block_t get_block)
@@ -394,11 +422,11 @@ int mpage_read_folio(struct folio *folio, get_block_t get_block)
 	struct mpage_readpage_args args = {
 		.folio = folio,
 		.nr_pages = 1,
-		.get_block = get_block,
+		.get_block = get_block,/* ext2是ext2_get_block */
 	};
 
 	args.bio = do_mpage_readpage(&args);
-	if (args.bio)
+	if (args.bio) /* 把末尾这个bio提交了 */
 		mpage_bio_submit_read(args.bio);
 	return 0;
 }
@@ -410,12 +438,15 @@ EXPORT_SYMBOL(mpage_read_folio);
  * If the page has buffers then they will be used for obtaining the disk
  * mapping.  We only support pages which are fully mapped-and-dirty, with a
  * special case for pages which are unmapped at the end: end-of-file.
- *
+ *处理有缓冲区的页面（buffered page）​​
+如果页面已有缓冲区（buffer_head），直接利用这些缓冲区获取磁盘块映射。
+​​条件限制​​：仅支持完全映射且标记为脏（mapped-and-dirty）的页面，但允许文件末尾（EOF）的未映射部分作为特例。
  * If the page has no buffers (preferred) then the page is mapped here.
  *
  * If all blocks are found to be contiguous then the page can go into the
  * BIO.  Otherwise fall back to the mapping's writepage().
- * 
+若页面无缓冲区，直接在此处映射磁盘块（可能通过 get_block 函数完成）。
+此情况是更优路径（preferred），因避免了缓冲区管理的开销。
  * FIXME: This code wants an estimate of how many pages are still to be
  * written, so it can intelligently allocate a suitably-sized BIO.  For now,
  * just allocate full-size (16-page) BIOs.
@@ -428,7 +459,7 @@ struct mpage_data {
 };
 
 /*
- 清除page关联的bh?
+ 清除page关联的bh
  * We have our BIO, so we can now mark the buffers clean.  Make
  * sure to only clean buffers which we know we'll be writing.
  */
@@ -441,6 +472,7 @@ static void clean_buffers(struct page *page, unsigned first_unmapped)
 	head = page_buffers(page);
 	bh = head;
 
+	/*  */
 	do {
 		if (buffer_counter++ == first_unmapped)
 			break;
@@ -453,6 +485,7 @@ static void clean_buffers(struct page *page, unsigned first_unmapped)
 	 * read_folio would fail to serialize with the bh and it would read from
 	 * disk before we reach the platter.
 	 如果page是刷过盘的,并且bh超量了,尝试释放
+	 这里清除和释放page关联的bh链
 	 */
 	if (buffer_heads_over_limit && PageUptodate(page))
 		try_to_free_buffers(page_folio(page));
@@ -468,15 +501,18 @@ void clean_page_buffers(struct page *page)
 {
 	clean_buffers(page, ~0U);
 }
-
+/* mpage的回写函数 */
 static int __mpage_writepage(struct folio *folio, struct writeback_control *wbc,
 		      void *data)
 {
 	struct mpage_data *mpd = data;
+	/* 这个时候bio应该还是空的可能 */
 	struct bio *bio = mpd->bio;
 	struct address_space *mapping = folio->mapping;
 	struct inode *inode = mapping->host;
+	/* 获取文件的一个块的大小 */
 	const unsigned blkbits = inode->i_blkbits;
+	/* 获取一个页面有多少文件块 */
 	const unsigned blocks_per_page = PAGE_SIZE >> blkbits;
 	sector_t last_block;
 	sector_t block_in_file;
@@ -491,16 +527,18 @@ static int __mpage_writepage(struct folio *folio, struct writeback_control *wbc,
 	struct buffer_head map_bh;
 	loff_t i_size = i_size_read(inode);
 	int ret = 0;
+	/* 获取folio看看有没有buffer,可能需要buffer io */
 	struct buffer_head *head = folio_buffers(folio);
 
-	if (head) {
+	if (head) {/* 如果folio有buffer */
 		struct buffer_head *bh = head;
 
 		/* If they're all mapped and dirty, do it */
 		page_block = 0;
 		do {
 			BUG_ON(buffer_locked(bh));
-			if (!buffer_mapped(bh)) {
+			if (!buffer_mapped(bh)) {/*
+				这个bh的flag还没有mapped的标志 */
 				/*
 				 * unmapped dirty buffers are created by
 				 * block_dirty_folio -> mmapped data
@@ -517,10 +555,12 @@ static int __mpage_writepage(struct folio *folio, struct writeback_control *wbc,
 
 			if (!buffer_dirty(bh) || !buffer_uptodate(bh))
 				goto confused;
+			/* 这个时候bh应该是dirty并且uptodate */
 			if (page_block) {
 				if (bh->b_blocknr != blocks[page_block-1] + 1)
 					goto confused;
 			}
+			/* 收拢一个 */
 			blocks[page_block++] = bh->b_blocknr;
 			boundary = buffer_boundary(bh);
 			if (boundary) {
@@ -528,6 +568,7 @@ static int __mpage_writepage(struct folio *folio, struct writeback_control *wbc,
 				boundary_bdev = bh->b_bdev;
 			}
 			bdev = bh->b_bdev;
+		/* 遍历page的全部buf */
 		} while ((bh = bh->b_this_page) != head);
 
 		if (first_unmapped)
@@ -546,6 +587,12 @@ static int __mpage_writepage(struct folio *folio, struct writeback_control *wbc,
 	 * The page has no buffers: map it to disk
 	 */
 	BUG_ON(!folio_test_uptodate(folio));
+	/* 
+	256的pgoff
+	一个page有八个块
+	256<<3 = 2048
+	看来block_in_file是一个folio在所映射文件的文件块号
+	*/
 	block_in_file = (sector_t)folio->index << (PAGE_SHIFT - blkbits);
 	/*
 	 * Whole page beyond EOF? Skip allocating blocks to avoid leaking
@@ -553,6 +600,7 @@ static int __mpage_writepage(struct folio *folio, struct writeback_control *wbc,
 	 */
 	if (block_in_file >= (i_size + (1 << blkbits) - 1) >> blkbits)
 		goto page_is_mapped;
+	/* 获取文件最大的块号 */
 	last_block = (i_size - 1) >> blkbits;
 	map_bh.b_folio = folio;
 	for (page_block = 0; page_block < blocks_per_page; ) {
@@ -609,7 +657,8 @@ page_is_mapped:
 		bio = mpage_bio_submit_write(bio);
 
 alloc_new:
-	if (bio == NULL) {
+	if (bio == NULL) {/* 
+		需要分配一个新的bio */
 		bio = bio_alloc(bdev, BIO_MAX_VECS,
 				REQ_OP_WRITE | wbc_to_write_flags(wbc),
 				GFP_NOFS);
@@ -628,14 +677,14 @@ alloc_new:
 		bio = mpage_bio_submit_write(bio);
 		goto alloc_new;
 	}
-
+/* 就是清除一些buffer的dirty */
 	clean_buffers(&folio->page, first_unmapped);
 
 	BUG_ON(folio_test_writeback(folio));
-	folio_start_writeback(folio);
+	folio_start_writeback(folio);/* 开启这个folio的写回 */
 	folio_unlock(folio);
 	if (boundary || (first_unmapped != blocks_per_page)) {
-		bio = mpage_bio_submit_write(bio);
+		bio = mpage_bio_submit_write(bio);/* 提交io */
 		if (boundary_block) {
 			write_boundary_block(boundary_bdev,
 					boundary_block, 1 << blkbits);
@@ -660,6 +709,8 @@ out:
 }
 
 /**
+遍历mapping的脏页，回写他们
+实现mapping的writepages ops
  * mpage_writepages - walk the list of dirty pages of the given address space & writepage() all of them
  * @mapping: address space structure to write
  * @wbc: subtract the number of written pages from *@wbc->nr_to_write
@@ -668,8 +719,7 @@ out:
  * This is a library function, which implements the writepages()
  * address_space_operation.
  */
-int
-mpage_writepages(struct address_space *mapping,
+int mpage_writepages(struct address_space *mapping,
 		struct writeback_control *wbc, get_block_t get_block)
 {
 	struct mpage_data mpd = {
@@ -679,6 +729,7 @@ mpage_writepages(struct address_space *mapping,
 	int ret;
 
 	blk_start_plug(&plug);
+	/* 回写 */
 	ret = write_cache_pages(mapping, wbc, __mpage_writepage, &mpd);
 	if (mpd.bio)
 		mpage_bio_submit_write(mpd.bio);

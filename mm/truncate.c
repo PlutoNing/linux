@@ -112,6 +112,7 @@ static void truncate_folio_batch_exceptionals(struct address_space *mapping,
 }
 
 /*
+处理mapping的特殊页
  * Invalidate exceptional entry if easily possible. This handles exceptional
  * entries for invalidate_inode_pages().
  */
@@ -167,6 +168,8 @@ EXPORT_SYMBOL_GPL(folio_invalidate);
 
 /*
 从pagecache截断这个folio
+=================
+解除映射, 移除绑定的priv, 清除dirty
  * If truncate cannot remove the fs-private metadata from the page, the page
  * becomes orphaned.  It will be left on the LRU and may even be mapped into
  * user pagetables if we're racing with filemap_fault().
@@ -193,17 +196,22 @@ static void truncate_cleanup_folio(struct folio *folio)
 	 * Hence dirty accounting check is placed after invalidation.
 	 一些文件系统似乎在VM取消了脏位之后重新设置页面为脏页(例如ext3日志)。
 	 因此, 在使无效之后放置了脏计数检查。
-	 */
-	folio_cancel_dirty(folio); // 取消脏标志, 进行必要的回写
+	 ==================
+	 // 取消脏标志*/
+	folio_cancel_dirty(folio); 
 	folio_clear_mappedtodisk(folio);
 }
-// 干嘛? 可能会回写, 取消page的脏位, 然后从xas移除
+/* 
+从xas移除
+取消page的脏位, 然后从xas移除
+*/
 int truncate_inode_folio(struct address_space *mapping, struct folio *folio)
 {
 	if (folio->mapping != mapping)
 		return -EIO;
 
-	truncate_cleanup_folio(folio); // 
+	/* 解除映射, 移除绑定的priv, 清除dirty */
+	truncate_cleanup_folio(folio);
 	filemap_remove_folio(folio); // 从xas移除
 	return 0;
 }
@@ -279,24 +287,38 @@ int generic_error_remove_page(struct address_space *mapping, struct page *page)
 	return truncate_inode_folio(mapping, page_folio(page));
 }
 EXPORT_SYMBOL(generic_error_remove_page);
-//从pagecache移除这个folio
+
+/* 
+从pagecache移除这个folio
+如果mapping是干净的, 并且没有处于回写状态
+就移除folio的priv等成员
+然后在mapping的xas里面屏蔽清零folio所在的条目
+=========================================================
+主要是内核很多fs实现会调用, 清理mapping的空间
+==========================================================
+返回0 ,表示没有移除 */
 static long mapping_evict_folio(struct address_space *mapping,
 		struct folio *folio)
 {
 	if (folio_test_dirty(folio) || folio_test_writeback(folio))
 		return 0;
-	/* The refcount will be elevated if any page in the folio is mapped */
+	/* The refcount will be elevated if any page in the folio is mapped
+	说明这个页面还在被映射
+	比如mmap, shmem什么的
+	 */
 	if (folio_ref_count(folio) >
 			folio_nr_pages(folio) + folio_has_private(folio) + 1)
 		return 0;
-	//在驱逐之前, 释放相关priv等成员
+	//在驱逐之前, 释放相关priv等成员（比如绑定的buffer什么的)
 	if (!filemap_release_folio(folio, 0))
 		return 0;
-		//真正的驱逐
+	/*  把folio从所在的mapping移除, 
+		把在xas的条目清零什么的 */
 	return remove_mapping(mapping, folio);
 }
 
 /**
+20250701005528
  * invalidate_inode_page() - Remove an unused page from the pagecache.
  从pagecache移除一个页面
  目前只有处理文件页缺页时如果被poisoned的话会调用
@@ -399,8 +421,6 @@ void truncate_inode_pages_range(struct address_space *mapping,
 		folio_batch_release(&fbatch);
 		cond_resched();    
 	}
-	// 刚刚已经处理了xas和归还内存, 下面干嘛呢?
-	// 2025年2月14日02:06:22
 
 	same_folio = (lstart >> PAGE_SHIFT) == (lend >> PAGE_SHIFT);
 	folio = __filemap_get_folio(mapping, lstart >> PAGE_SHIFT, FGP_LOCK, 0);
@@ -530,7 +550,9 @@ EXPORT_SYMBOL(truncate_inode_pages_final);
 
 /**
  * mapping_try_invalidate - Invalidate all the evictable folios of one inode
- 无效化inode的所有可驱逐的folio. 注意不是截断全部的folio
+ 无效化inode的范围内的所有可驱逐的folio. 注意不是截断全部的folio
+ =================
+ 很多fs实现都会调用这个函数, 清理mapping的缓存
  * @mapping: the address_space which holds the folios to invalidate
  * @start: the offset 'from' which to invalidate
  * @end: the offset 'to' which to invalidate (inclusive)
@@ -551,12 +573,16 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 	int i;
 
 	folio_batch_init(&fbatch);
-	while (find_lock_entries(mapping, &index, end, &fbatch, indices)) {//先查找收拢一些folio
+	/* 从mapping数组里面的【index,end】范围内查找page放进fbatch, indices数组存储对应page的idx */
+	while (find_lock_entries(mapping, &index, end, &fbatch, indices)) {
+		/* 遍历刚才取到的批次 */
 		for (i = 0; i < folio_batch_count(&fbatch); i++) {
+			/* 取出批次里的一个folio */
 			struct folio *folio = fbatch.folios[i];
 
 			/* We rely upon deletion not changing folio->index */
 
+			/* 这是mapping里的特殊页 */
 			if (xa_is_value(folio)) {
 				count += invalidate_exceptional_entry(mapping,
 							     indices[i], folio);
@@ -577,9 +603,9 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 			}
 			count += ret;
 		}
-		// 出路fbatch, 跳过和整理搬移数组里面的可以free的条目
+		// 处理fbatch, 跳过和整理搬移数组里面的可以free的条目
 		folio_batch_remove_exceptionals(&fbatch);
-		// free到buddy
+		// 把这些清理掉的page归还到系统的伙伴系统
 		folio_batch_release(&fbatch);
 		cond_resched();
 	}
@@ -589,6 +615,8 @@ unsigned long mapping_try_invalidate(struct address_space *mapping,
 /**
  * invalidate_mapping_pages - Invalidate all clean, unlocked cache of one inode
  无效化inode的所有干净的未锁定的缓存
+ =======================================================、
+ 很多调用
  * @mapping: the address_space which holds the cache to invalidate
  * @start: the offset 'from' which to invalidate
  * @end: the offset 'to' which to invalidate (inclusive)
@@ -609,6 +637,11 @@ unsigned long invalidate_mapping_pages(struct address_space *mapping,
 EXPORT_SYMBOL(invalidate_mapping_pages);
 
 /*
+从mapping移除页面 (回写中的, 脏页不处理)
+
+===========================
+
+返回1表示成功
  * This is like invalidate_inode_page(), except it ignores the page's
  * refcount.  We do this because invalidate_inode_pages2() needs stronger
  * invalidation guarantees, and cannot afford to leave pages behind because
@@ -617,8 +650,6 @@ EXPORT_SYMBOL(invalidate_mapping_pages);
    这个函数类似于invalidate_inode_page(), 但是它忽略了页面的引用计数。
    我们这样做是因为invalidate_inode_pages2()需要更强的无效化保证, 不能因为shrink_page_list()
    对它们有一个临时引用 或者 因为它们暂时停留在folio_add_lru()缓存中而留下页面
-----------------------------------------
-这是个更猛的无效化, 会等待写回完成,然后从xas移除
  */
 static int invalidate_complete_folio2(struct address_space *mapping,
 					struct folio *folio)
@@ -626,7 +657,7 @@ static int invalidate_complete_folio2(struct address_space *mapping,
 	if (folio->mapping != mapping)
 		return 0;
 
-		// 检查是否有私有数据, 有的话, 移除
+	// 检查是否有私有数据, 有的话, 移除
 	if (!filemap_release_folio(folio, GFP_KERNEL))
 		return 0;
 
@@ -662,9 +693,12 @@ static int folio_launder(struct address_space *mapping, struct folio *folio)
 }
 
 /**
+
  * invalidate_inode_pages2_range - remove range of pages from an address_space
- 好像重点在于无效化?
  从address_space中删除页面范围. 一个个的等待写回完成,解除映射?
+ =============
+ truncate也调用
+ 一种调用原因可能是, mapping的start,end范围内进行了直接io, 把这些缓存的内容给invalidate
  * @mapping: the address_space
  * @start: the page offset 'from' which to invalidate
  * @end: the page offset 'to' which to invalidate (inclusive)
@@ -694,41 +728,40 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 		收拢一些到fbatch */
 		for (i = 0; i < folio_batch_count(&fbatch); i++) {
 			struct folio *folio = fbatch.folios[i];
-
 			/* We rely upon deletion not changing folio->index */
-
 			if (xa_is_value(folio)) {/* 不是正常的pagecache页面 */
 				if (!invalidate_exceptional_entry2(mapping,
 						indices[i], folio)) //如果不可以忽略的话?
 					ret = -EBUSY;
 				continue; //跳过
 			}
-
+			/* 遇到被映射的文件页, 解除映射 */
 			if (!did_range_unmap && folio_mapped(folio)) {
 				/* 只会在遇到被映射的folio时进来执行一次
-				执行的是解除映射 */
+					执行的是解除映射 */
 				/*
 				 * If folio is mapped, before taking its lock,
 				 * zap the rest of the file in one hit.
-				 这个pagecache的folio被映射了
+				 这个pagecache的folio被映射了(被映射的文件页)
+				 解除映射
 				 */
 				unmap_mapping_pages(mapping, indices[i],
 						(1 + end - indices[i]), false);
 				did_range_unmap = 1;
 			}
-
 			folio_lock(folio);
 			if (unlikely(folio->mapping != mapping)) {// 这是什么情况?
 				folio_unlock(folio);
 				continue;
 			}
 			VM_BUG_ON_FOLIO(!folio_contains(folio, indices[i]), folio);
-			folio_wait_writeback(folio); // 真的要等吗?
+			folio_wait_writeback(folio); // 等待写回完成
 
 			if (folio_mapped(folio))
 				unmap_mapping_folio(folio); // 这里遍历相关的全部vma, 然后遍历页表解除映射
 			BUG_ON(folio_mapped(folio));
 
+			/* 现在mapping里面的这个folio, 写回完成了, 映射解除了 */
 			ret2 = folio_launder(mapping, folio);
 			if (ret2 == 0) {
 				if (!invalidate_complete_folio2(mapping, folio))
@@ -738,6 +771,7 @@ int invalidate_inode_pages2_range(struct address_space *mapping,
 				ret = ret2;
 			folio_unlock(folio);
 		}
+		/* 去除batch里面is_value的folio */
 		folio_batch_remove_exceptionals(&fbatch);
 		folio_batch_release(&fbatch); // 释放到buddy
 		cond_resched();

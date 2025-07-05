@@ -118,7 +118,7 @@ static const struct dmi_system_id io_delay_0xed_port_dmi_table[] __initconst = {
 	},
 	{ }
 };
-
+/* 为什么看起来是io相关的, 但是是什么dmi呢 */
 void __init io_delay_init(void)
 {
 	if (!io_delay_override)

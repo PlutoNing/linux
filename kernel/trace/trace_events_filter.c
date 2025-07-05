@@ -1064,6 +1064,8 @@ static int regex_match_glob(char *str, struct regex *r, int len __maybe_unused)
 }
 
 /**
+解析用户传入的 ​​简化正则表达式​​（支持通配符 * 和 ! 取反），将其分类为不同的匹配类型
+（如前缀匹配、后缀匹配、全匹配等），并提取出用于实际匹配的搜索字符串。
  * filter_parse_regex - parse a basic regex
  * @buff:   the raw regex
  * @len:    length of the regex
@@ -1074,7 +1076,10 @@ static int regex_match_glob(char *str, struct regex *r, int len __maybe_unused)
  * set search to point to the search part of the buffer and
  * return the type of search it is (see enum above).
  * This does modify buff.
- *
+ * 
+ 传进来的buff是一个正则表达式，len是长度
+ * 这个函数会将buff中正则表达式的搜索部分的指针赋值给search
+ * 返回值是一个枚举类型，表示正则表达式的类型
  * Returns enum type.
  *  search returns the pointer to use for comparison.
  *  not returns 1 if buff started with a '!'
@@ -1094,21 +1099,28 @@ enum regex_type filter_parse_regex(char *buff, int len, char **search, int *not)
 
 	*search = buff;
 
+	/* 表达式以数字开头（如 123），表示按函数地址或索引匹配，直接返回 MATCH_INDEX。 */
 	if (isdigit(buff[0]))
 		return MATCH_INDEX;
 
 	for (i = 0; i < len; i++) {
 		if (buff[i] == '*') {
 			if (!i) {
+				/* * 在开头​​：标记为 MATCH_END_ONLY，匹配以剩余字符串结尾的内容
+				（如 *alloc → 匹配 kmalloc、vmalloc）。 */
 				type = MATCH_END_ONLY;
 			} else if (i == len - 1) {
 				if (type == MATCH_END_ONLY)
+				/* 如果之前已是 MATCH_END_ONLY，标记为 MATCH_MIDDLE_ONLY（中间模糊匹配）。 */
 					type = MATCH_MIDDLE_ONLY;
 				else
+				/* 否则标记为 MATCH_FRONT_ONLY，匹配以剩余字符串开头的内容
+				（如 ext4_* → 匹配 ext4_read、ext4_write）。 */
 					type = MATCH_FRONT_ONLY;
 				buff[i] = 0;
 				break;
 			} else {	/* pattern continues, use full glob */
+				/* * 在中间​​或​​包含 [、?、\​​：返回 MATCH_GLOB，需使用复杂通配符匹配。 */
 				return MATCH_GLOB;
 			}
 		} else if (strchr("[?\\", buff[i])) {

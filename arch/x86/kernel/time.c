@@ -49,7 +49,7 @@ unsigned long profile_pc(struct pt_regs *regs)
 }
 EXPORT_SYMBOL(profile_pc);
 
-/*
+/*legacy timer中断的函数
  * Default timer interrupt handler for PIT/HPET
  */
 static irqreturn_t timer_interrupt(int irq, void *dev_id)
@@ -57,12 +57,12 @@ static irqreturn_t timer_interrupt(int irq, void *dev_id)
 	global_clock_event->event_handler(global_clock_event);
 	return IRQ_HANDLED;
 }
-
+/* 注册legacy timer中断 */
 static void __init setup_default_timer_irq(void)
 {
 	unsigned long flags = IRQF_NOBALANCING | IRQF_IRQPOLL | IRQF_TIMER;
 
-	/*
+	/*注册legacy timer中断
 	 * Unconditionally register the legacy timer interrupt; even
 	 * without legacy PIC/PIT we need this for the HPET0 in legacy
 	 * replacement mode.
@@ -71,31 +71,32 @@ static void __init setup_default_timer_irq(void)
 		pr_info("Failed to register legacy timer interrupt\n");
 }
 
-/* Default timer init function */
+/* 初始化legacy timer, Default timer init function */
 void __init hpet_time_init(void)
 {
 	if (!hpet_enable()) {
 		if (!pit_timer_init())
 			return;
 	}
-
+	/* 注册legacy timer中断 */
 	setup_default_timer_irq();
 }
-
+/*  */
 static __init void x86_late_time_init(void)
 {
 	/*
 	 * Before PIT/HPET init, select the interrupt mode. This is required
 	 * to make the decision whether PIT should be initialized correct.
-	 */
+	 是apic_intr_mode_select函数*/
 	x86_init.irqs.intr_mode_select();
 
-	/* Setup the legacy timers */
+	/* Setup the legacy timers , 初始化legacy timers中断什么的*/
 	x86_init.timers.timer_init();
 
 	/*
 	 * After PIT/HPET timers init, set up the final interrupt mode for
 	 * delivering IRQs.
+	 在PIT/HPET定时器初始化之后，设置最终的中断模式
 	 */
 	x86_init.irqs.intr_mode_init();
 	tsc_init();

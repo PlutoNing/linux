@@ -48,15 +48,19 @@
 #define PIPE_MIN_DEF_BUFFERS 2
 
 /*
+控制单个管道（Pipe）缓冲区的 ​​最大允许容量
  * The max size that a non-root user is allowed to grow the pipe. Can
  * be set by root in /proc/sys/fs/pipe-max-size
  */
 static unsigned int pipe_max_size = 1048576;
 
-/* Maximum allocatable pages per user. Hard limit is unset by default, soft
+/* 
+设置单个用户（User）可分配的管道内存页数的 ​​硬性限制​
+Maximum allocatable pages per user. Hard limit is unset by default, soft
  * matches default values.
  */
 static unsigned long pipe_user_pages_hard;
+/* 设置单个用户（User）可分配的管道内存页数的 ​​软性限制 */
 static unsigned long pipe_user_pages_soft = PIPE_DEF_BUFFERS * INR_OPEN_CUR;
 
 /*
@@ -151,6 +155,7 @@ static bool anon_pipe_buf_try_steal(struct pipe_inode_info *pipe,
 }
 
 /**
+steal？
  * generic_pipe_buf_try_steal - attempt to take ownership of a &pipe_buffer
  * @pipe:	the pipe that the buffer belongs to
  * @buf:	the buffer to attempt to steal
@@ -181,6 +186,7 @@ bool generic_pipe_buf_try_steal(struct pipe_inode_info *pipe,
 EXPORT_SYMBOL(generic_pipe_buf_try_steal);
 
 /**
+获取pipe buf的ref
  * generic_pipe_buf_get - get a reference to a &struct pipe_buffer
  * @pipe:	the pipe that the buffer belongs to
  * @buf:	the buffer to get a reference to
@@ -197,6 +203,7 @@ bool generic_pipe_buf_get(struct pipe_inode_info *pipe, struct pipe_buffer *buf)
 EXPORT_SYMBOL(generic_pipe_buf_get);
 
 /**
+pipe的buf的释放的ops
  * generic_pipe_buf_release - put a reference to a &struct pipe_buffer
  * @pipe:	the pipe that the buffer belongs to
  * @buf:	the buffer to put a reference to
@@ -210,7 +217,9 @@ void generic_pipe_buf_release(struct pipe_inode_info *pipe,
 	put_page(buf->page);
 }
 EXPORT_SYMBOL(generic_pipe_buf_release);
-
+/* 
+管道的buf的ops
+*/
 static const struct pipe_buf_operations anon_pipe_buf_ops = {
 	.release	= anon_pipe_buf_release,
 	.try_steal	= anon_pipe_buf_try_steal,
@@ -227,6 +236,7 @@ static inline bool pipe_readable(const struct pipe_inode_info *pipe)
 	return !pipe_empty(head, tail) || !writers;
 }
 
+/* 管道读的ops */
 static ssize_t
 pipe_read(struct kiocb *iocb, struct iov_iter *to)
 {
@@ -413,6 +423,9 @@ static inline bool pipe_writable(const struct pipe_inode_info *pipe)
 		!READ_ONCE(pipe->readers);
 }
 
+/* 
+管道文件write的ops
+*/
 static ssize_t
 pipe_write(struct kiocb *iocb, struct iov_iter *from)
 {
@@ -465,7 +478,7 @@ pipe_write(struct kiocb *iocb, struct iov_iter *from)
 			ret = pipe_buf_confirm(pipe, buf);
 			if (ret)
 				goto out;
-
+			/* 拷贝到管道的buf里面 */
 			ret = copy_page_from_iter(buf->page, offset, chars, from);
 			if (unlikely(ret < chars)) {
 				ret = -EFAULT;
@@ -645,7 +658,9 @@ static long pipe_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	}
 }
 
-/* No kernel lock held - fine */
+/* 
+管道文件poll的ops
+No kernel lock held - fine */
 static __poll_t
 pipe_poll(struct file *filp, poll_table *wait)
 {
@@ -711,7 +726,9 @@ static void put_pipe_info(struct inode *inode, struct pipe_inode_info *pipe)
 	if (kill)
 		free_pipe_info(pipe);
 }
-
+/* 
+释放管道
+*/
 static int
 pipe_release(struct inode *inode, struct file *file)
 {
@@ -736,9 +753,14 @@ pipe_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+/* 
+用于处理异步通知，比如当管道中的数据变得可读或可写时，通过信号（如SIGIO）
+通知进程。比如使用fcntl的F_SETOWN和F_SETFL设置异步模式后，当管道状态变化时触发信号
+*/
 static int
 pipe_fasync(int fd, struct file *filp, int on)
 {
+	/* 获取到文件表示的管道 */
 	struct pipe_inode_info *pipe = filp->private_data;
 	int retval = 0;
 
@@ -779,7 +801,9 @@ bool pipe_is_unprivileged_user(void)
 {
 	return !capable(CAP_SYS_RESOURCE) && !capable(CAP_SYS_ADMIN);
 }
-
+/* 
+分配一个pipe info
+*/
 struct pipe_inode_info *alloc_pipe_info(void)
 {
 	struct pipe_inode_info *pipe;
@@ -804,7 +828,7 @@ struct pipe_inode_info *alloc_pipe_info(void)
 
 	if (too_many_pipe_buffers_hard(user_bufs) && pipe_is_unprivileged_user())
 		goto out_revert_acct;
-
+	/* 分配pipe的buf */
 	pipe->bufs = kcalloc(pipe_bufs, sizeof(struct pipe_buffer),
 			     GFP_KERNEL_ACCOUNT);
 
@@ -827,7 +851,9 @@ out_free_uid:
 	free_uid(user);
 	return NULL;
 }
-
+/* 
+释放pipe
+*/
 void free_pipe_info(struct pipe_inode_info *pipe)
 {
 	unsigned int i;
@@ -864,13 +890,16 @@ static char *pipefs_dname(struct dentry *dentry, char *buffer, int buflen)
 	return dynamic_dname(buffer, buflen, "pipe:[%lu]",
 				d_inode(dentry)->i_ino);
 }
-
+/* pipefs的dentry ops */
 static const struct dentry_operations pipefs_dentry_operations = {
 	.d_dname	= pipefs_dname,
 };
-
+/* 
+获取pipefs的inode
+*/
 static struct inode * get_pipe_inode(void)
 {
+	/* 分配inode */
 	struct inode *inode = new_inode_pseudo(pipe_mnt->mnt_sb);
 	struct pipe_inode_info *pipe;
 
@@ -878,11 +907,11 @@ static struct inode * get_pipe_inode(void)
 		goto fail_inode;
 
 	inode->i_ino = get_next_ino();
-
+	/* 分配一个pipe */
 	pipe = alloc_pipe_info();
 	if (!pipe)
 		goto fail_iput;
-
+	/* 把pipe关联到inode */
 	inode->i_pipe = pipe;
 	pipe->files = 2;
 	pipe->readers = pipe->writers = 1;
@@ -908,9 +937,18 @@ fail_iput:
 fail_inode:
 	return NULL;
 }
-
+/* 
+创建管道文件
+给res数组里面塞俩文件
+ * res[0]是读文件， res[1]是写文件
+ * flags是一些标志位
+ * 这里的flags和open的flags有点不一样
+ * O_NOTIFICATION_PIPE表示这个pipe是用来通知的
+ * 其他的flags和open的flags一致
+*/
 int create_pipe_files(struct file **res, int flags)
 {
+	/* 创建pipe的inode， 是带pipe的 */
 	struct inode *inode = get_pipe_inode();
 	struct file *f;
 	int error;
@@ -926,7 +964,7 @@ int create_pipe_files(struct file **res, int flags)
 			return error;
 		}
 	}
-
+	/* 创建管道的文件 */
 	f = alloc_file_pseudo(inode, pipe_mnt, "",
 				O_WRONLY | (flags & (O_NONBLOCK | O_DIRECT)),
 				&pipefifo_fops);
@@ -937,7 +975,7 @@ int create_pipe_files(struct file **res, int flags)
 	}
 
 	f->private_data = inode->i_pipe;
-
+	/* res[0]是file的复制 */
 	res[0] = alloc_file_clone(f, O_RDONLY | (flags & O_NONBLOCK),
 				  &pipefifo_fops);
 	if (IS_ERR(res[0])) {
@@ -951,7 +989,10 @@ int create_pipe_files(struct file **res, int flags)
 	stream_open(inode, res[1]);
 	return 0;
 }
-
+/* 
+执行pipe系统调用
+fd和files用于装返回的结果
+*/
 static int __do_pipe_flags(int *fd, struct file **files, int flags)
 {
 	int error;
@@ -959,11 +1000,14 @@ static int __do_pipe_flags(int *fd, struct file **files, int flags)
 
 	if (flags & ~(O_CLOEXEC | O_NONBLOCK | O_DIRECT | O_NOTIFICATION_PIPE))
 		return -EINVAL;
-
+	/* 创建管道文件
+	 */
 	error = create_pipe_files(files, flags);
 	if (error)
 		return error;
-
+/* 现在files里面是俩管道文件
+下面获取俩fd，fdr和fdw
+*/
 	error = get_unused_fd_flags(flags);
 	if (error < 0)
 		goto err_read_pipe;
@@ -975,6 +1019,7 @@ static int __do_pipe_flags(int *fd, struct file **files, int flags)
 	fdw = error;
 
 	audit_fd_pair(fdr, fdw);
+	/* 返回这俩fdw和fdr */
 	fd[0] = fdr;
 	fd[1] = fdw;
 	/* pipe groks IOCB_NOWAIT */
@@ -989,10 +1034,11 @@ static int __do_pipe_flags(int *fd, struct file **files, int flags)
 	fput(files[1]);
 	return error;
 }
-
+/* 执行pipe系统调用 */
 int do_pipe_flags(int *fd, int flags)
 {
 	struct file *files[2];
+	/* 创建俩管道文件 */
 	int error = __do_pipe_flags(fd, files, flags);
 	if (!error) {
 		fd_install(fd[0], files[0]);
@@ -1002,6 +1048,7 @@ int do_pipe_flags(int *fd, int flags)
 }
 
 /*
+执行pipe系统调用
  * sys_pipe() is the normal C calling standard for creating
  * a pipe. It's not the way Unix traditionally does this, though.
  */
@@ -1010,23 +1057,24 @@ static int do_pipe2(int __user *fildes, int flags)
 	struct file *files[2];
 	int fd[2];
 	int error;
-
+	/* 执行 */
 	error = __do_pipe_flags(fd, files, flags);
-	if (!error) {
+	if (!error) {/* 没有出错 */
 		if (unlikely(copy_to_user(fildes, fd, sizeof(fd)))) {
-			fput(files[0]);
+			/* 如果把fd拷贝给用户的时候出错了 */
+			fput(files[0]);/*  */
 			fput(files[1]);
 			put_unused_fd(fd[0]);
 			put_unused_fd(fd[1]);
 			error = -EFAULT;
-		} else {
+		} else {/* 没出错 */
 			fd_install(fd[0], files[0]);
 			fd_install(fd[1], files[1]);
 		}
 	}
 	return error;
 }
-
+/* pipe系统调用 */
 SYSCALL_DEFINE2(pipe2, int __user *, fildes, int, flags)
 {
 	return do_pipe2(fildes, flags);
@@ -1061,6 +1109,7 @@ void pipe_wait_writable(struct pipe_inode_info *pipe)
 }
 
 /*
+唤醒管道的对端？
  * This depends on both the wait (here) and the wakeup (wake_up_partner)
  * holding the pipe lock, so "*cnt" is stable and we know a wakeup cannot
  * race with the count check and waitqueue prep.
@@ -1093,7 +1142,9 @@ static void wake_up_partner(struct pipe_inode_info *pipe)
 {
 	wake_up_interruptible_all(&pipe->rd_wait);
 }
-
+/* 
+管道文件的打开ops
+*/
 static int fifo_open(struct inode *inode, struct file *filp)
 {
 	struct pipe_inode_info *pipe;
@@ -1103,12 +1154,14 @@ static int fifo_open(struct inode *inode, struct file *filp)
 	filp->f_version = 0;
 
 	spin_lock(&inode->i_lock);
-	if (inode->i_pipe) {
+	if (inode->i_pipe) {/* 
+		获取到inode内含的pipe，增加打开文件计数 */
 		pipe = inode->i_pipe;
 		pipe->files++;
 		spin_unlock(&inode->i_lock);
-	} else {
+	} else {/* 第一次打开？ */
 		spin_unlock(&inode->i_lock);
+		/* 分配一个pipe info */
 		pipe = alloc_pipe_info();
 		if (!pipe)
 			return -ENOMEM;
@@ -1124,6 +1177,7 @@ static int fifo_open(struct inode *inode, struct file *filp)
 			spin_unlock(&inode->i_lock);
 		}
 	}
+	/* 也把pipe赋值给file */
 	filp->private_data = pipe;
 	/* OK, we have a pipe and it's pinned down */
 
@@ -1135,6 +1189,7 @@ static int fifo_open(struct inode *inode, struct file *filp)
 	switch (filp->f_mode & (FMODE_READ | FMODE_WRITE)) {
 	case FMODE_READ:
 	/*
+	如果是只能读的pipe
 	 *  O_RDONLY
 	 *  POSIX.1 says that O_NONBLOCK means return with the FIFO
 	 *  opened, even when there is no process writing the FIFO.
@@ -1157,6 +1212,7 @@ static int fifo_open(struct inode *inode, struct file *filp)
 
 	case FMODE_WRITE:
 	/*
+	只能写的pipe
 	 *  O_WRONLY
 	 *  POSIX.1 says that O_NONBLOCK means return -1 with
 	 *  errno=ENXIO when there is no process reading the FIFO.
@@ -1248,6 +1304,7 @@ unsigned int round_pipe_size(unsigned int size)
 }
 
 /*
+修改pipe的容量到指定的大小
  * Resize the pipe ring to a number of slots.
  *
  * Note the pipe can be reduced in capacity, but only if the current
@@ -1258,7 +1315,7 @@ int pipe_resize_ring(struct pipe_inode_info *pipe, unsigned int nr_slots)
 {
 	struct pipe_buffer *bufs;
 	unsigned int head, tail, mask, n;
-
+	/* 分配新的buf */
 	bufs = kcalloc(nr_slots, sizeof(*bufs),
 		       GFP_KERNEL_ACCOUNT | __GFP_NOWARN);
 	if (unlikely(!bufs))
@@ -1315,6 +1372,7 @@ int pipe_resize_ring(struct pipe_inode_info *pipe, unsigned int nr_slots)
 }
 
 /*
+修改pipe的大小
  * Allocate a new array of pipe buffers and copy the info over. Returns the
  * pipe size if successful, or return -ERROR on error.
  */
@@ -1330,6 +1388,7 @@ static long pipe_set_size(struct pipe_inode_info *pipe, unsigned int arg)
 #endif
 
 	size = round_pipe_size(arg);
+	/* 表示新size的页面数量 */
 	nr_slots = size >> PAGE_SHIFT;
 
 	if (!nr_slots)
@@ -1355,7 +1414,7 @@ static long pipe_set_size(struct pipe_inode_info *pipe, unsigned int arg)
 		ret = -EPERM;
 		goto out_revert_acct;
 	}
-
+	/* 开始修改容量 */
 	ret = pipe_resize_ring(pipe, nr_slots);
 	if (ret < 0)
 		goto out_revert_acct;
@@ -1370,6 +1429,7 @@ out_revert_acct:
 }
 
 /*
+获取文件表示的pipe
  * Note that i_pipe and i_cdev share the same location, so checking ->i_pipe is
  * not enough to verify that this is a pipe.
  */
@@ -1385,7 +1445,10 @@ struct pipe_inode_info *get_pipe_info(struct file *file, bool for_splice)
 #endif
 	return pipe;
 }
-
+/* fcntl（File Control）是 Linux/Unix 系统中的一个 ​​系统调用​​（System Call），用于
+对已打开的文件描述符（File Descriptor）进行底层控制。它提供了一种灵活的方式操作文件属性
+、调整文件状态或获取文件信息，支持多种命令（Command）和参数，适用于文件、套接字、管道等不
+同类型的文件描述符。 */
 long pipe_fcntl(struct file *file, unsigned int cmd, unsigned int arg)
 {
 	struct pipe_inode_info *pipe;
@@ -1399,6 +1462,7 @@ long pipe_fcntl(struct file *file, unsigned int cmd, unsigned int arg)
 
 	switch (cmd) {
 	case F_SETPIPE_SZ:
+	/* 修改pipe容量大小 */
 		ret = pipe_set_size(pipe, arg);
 		break;
 	case F_GETPIPE_SZ:
@@ -1412,13 +1476,14 @@ long pipe_fcntl(struct file *file, unsigned int cmd, unsigned int arg)
 	__pipe_unlock(pipe);
 	return ret;
 }
-
+/* pipefs的sb ops */
 static const struct super_operations pipefs_ops = {
 	.destroy_inode = free_inode_nonrcu,
 	.statfs = simple_statfs,
 };
 
 /*
+初始化pipe fs
  * pipefs should _never_ be mounted by userland - too much of security hassle,
  * no real gain from having the whole whorehouse mounted. So we don't need
  * any operations on the root directory. However, we need a non-trivial
@@ -1430,11 +1495,14 @@ static int pipefs_init_fs_context(struct fs_context *fc)
 	struct pseudo_fs_context *ctx = init_pseudo(fc, PIPEFS_MAGIC);
 	if (!ctx)
 		return -ENOMEM;
+	/*  */
 	ctx->ops = &pipefs_ops;
 	ctx->dops = &pipefs_dentry_operations;
 	return 0;
 }
-
+/* 
+pipefs的定义
+*/
 static struct file_system_type pipe_fs_type = {
 	.name		= "pipefs",
 	.init_fs_context = pipefs_init_fs_context,
@@ -1461,15 +1529,17 @@ static int do_proc_dopipe_max_size_conv(unsigned long *lvalp,
 
 	return 0;
 }
-
+/* 控制单个管道（Pipe）缓冲区的 ​​最大允许容量 */
 static int proc_dopipe_max_size(struct ctl_table *table, int write,
 				void *buffer, size_t *lenp, loff_t *ppos)
 {
 	return do_proc_douintvec(table, write, buffer, lenp, ppos,
 				 do_proc_dopipe_max_size_conv, NULL);
 }
-
+/*  */
 static struct ctl_table fs_pipe_sysctls[] = {
+	/* 控制单个管道（Pipe）缓冲区的 ​​最大允许容量​​（单位：字节）。这是用户态进程
+	通过 fcntl(fd, F_SETPIPE_SZ, size) 调整管道缓冲区大小时的 ​​全局上限​​。 */
 	{
 		.procname	= "pipe-max-size",
 		.data		= &pipe_max_size,
@@ -1477,6 +1547,8 @@ static struct ctl_table fs_pipe_sysctls[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dopipe_max_size,
 	},
+	/* 设置单个用户（User）可分配的管道内存页数的 ​​硬性限制​​。当用户创建的管道总内存
+	超过此值时，新管道分配会失败。 */
 	{
 		.procname	= "pipe-user-pages-hard",
 		.data		= &pipe_user_pages_hard,
@@ -1484,6 +1556,8 @@ static struct ctl_table fs_pipe_sysctls[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_doulongvec_minmax,
 	},
+	/* 设置单个用户（User）可分配的管道内存页数的 ​​软性限制​​。当用户创建的管道总内存超过此值时
+	，内核可能会限制新管道的分配，但允许某些特殊情况（如特权进程）。 */
 	{
 		.procname	= "pipe-user-pages-soft",
 		.data		= &pipe_user_pages_soft,
@@ -1494,12 +1568,16 @@ static struct ctl_table fs_pipe_sysctls[] = {
 	{ }
 };
 #endif
+/* 
 
+*/
 static int __init init_pipe_fs(void)
 {
+	/* 注册这个pipe fs */
 	int err = register_filesystem(&pipe_fs_type);
 
 	if (!err) {
+		/* 挂载pipe fs */
 		pipe_mnt = kern_mount(&pipe_fs_type);
 		if (IS_ERR(pipe_mnt)) {
 			err = PTR_ERR(pipe_mnt);
@@ -1513,3 +1591,12 @@ static int __init init_pipe_fs(void)
 }
 
 fs_initcall(init_pipe_fs);
+/* 
+管道的基本概念​​
+​​匿名管道（Anonymous Pipe）​​：
+	通过 pipe() 系统调用创建。仅适用于有亲缘关系的进程（如父子进程或兄弟进程）。
+	数据是单向流动的：一端写入（写端），另一端读取（读端）。典型应用场景：Shell 中的管道操作符 |（如 ls | grep txt）。
+​​命名管道（Named Pipe/FIFO）​​：
+	通过 mkfifo 命令或 mkfifo() 系统调用创建。以文件形式存在于文件系统中（如 
+	/tmp/myfifo），允许无亲缘关系的进程通信。其他特性与匿名管道类似。
+*/

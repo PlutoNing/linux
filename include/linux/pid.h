@@ -62,12 +62,15 @@ struct pid
 	refcount_t count;
 	unsigned int level;
 	spinlock_t lock;
-	/* lists of tasks that use this pid */
+	/* lists of tasks that use this pid
+	为啥还能多个task用一个pid
+	*/
 	struct hlist_head tasks[PIDTYPE_MAX];
 	struct hlist_head inodes;
 	/* wait queue for pidfd notifications */
 	wait_queue_head_t wait_pidfd;
 	struct rcu_head rcu;
+	/* 好像是和ns的成员有关系 */
 	struct upid numbers[];
 };
 
@@ -92,6 +95,7 @@ static inline struct pid *get_pid(struct pid *pid)
 
 extern void put_pid(struct pid *pid);
 extern struct task_struct *pid_task(struct pid *pid, enum pid_type);
+/* 检查这个pid是不是有对应的task? */
 static inline bool pid_has_task(struct pid *pid, enum pid_type type)
 {
 	return !hlist_empty(&pid->tasks[type]);
@@ -164,6 +168,8 @@ static inline struct pid_namespace *ns_of_pid(struct pid *pid)
  * of the current namespace. As this one could be checked before
  * pid_ns->child_reaper is assigned in copy_process, we check
  * with the pid number.
+ 如果pid是当前namespace的init进程, 那么返回true
+ * 这个函数是用来判断pid是不是当前namespace的init进程
  */
 static inline bool is_child_reaper(struct pid *pid)
 {

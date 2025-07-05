@@ -314,6 +314,7 @@ static inline unsigned int arch_slab_minalign(void)
 #endif
 
 #ifdef CONFIG_SLUB
+/* 13 */
 #define KMALLOC_SHIFT_HIGH	(PAGE_SHIFT + 1)
 #define KMALLOC_SHIFT_MAX	(MAX_ORDER + PAGE_SHIFT)
 #ifndef KMALLOC_SHIFT_LOW
@@ -324,6 +325,7 @@ static inline unsigned int arch_slab_minalign(void)
 /* Maximum allocatable size */
 #define KMALLOC_MAX_SIZE	(1UL << KMALLOC_SHIFT_MAX)
 /* Maximum size for which we actually use a slab cache */
+/* 2个页面, 超过此大小不再从slab分配 */
 #define KMALLOC_MAX_CACHE_SIZE	(1UL << KMALLOC_SHIFT_HIGH)
 /* Maximum order allocatable via the slab allocator */
 #define KMALLOC_MAX_ORDER	(KMALLOC_SHIFT_MAX - PAGE_SHIFT)
@@ -397,6 +399,9 @@ kmalloc_caches[NR_KMALLOC_TYPES][KMALLOC_SHIFT_HIGH + 1];
 
 extern unsigned long random_kmalloc_seed;
 
+/* kmalloc基于slab分配时
+借助此函数基于如下逻辑来计算所使用的slab cache
+kmalloc_caches[kmalloc_type(flags, _RET_IP_)][kmalloc_index(size)] */
 static __always_inline enum kmalloc_cache_type kmalloc_type(gfp_t flags, unsigned long caller)
 {
 	/*
@@ -428,6 +433,9 @@ static __always_inline enum kmalloc_cache_type kmalloc_type(gfp_t flags, unsigne
 }
 
 /*
+用于映射
+如果是kmalloc比较小的内存,会从slab分配
+这里计算size到slab idx的映射
  * Figure out which kmalloc slab an allocation of a certain size
  * belongs to.
  * 0 = zero alloc
@@ -510,7 +518,8 @@ void kmem_cache_free(struct kmem_cache *s, void *objp);
  */
 void kmem_cache_free_bulk(struct kmem_cache *s, size_t size, void **p);
 int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size, void **p);
-
+/* 释放bnode的内存
+从krcp->bulk_head收集的完成gp的bnode */
 static __always_inline void kfree_bulk(size_t size, void **p)
 {
 	kmem_cache_free_bulk(NULL, size, p);
@@ -610,9 +619,11 @@ static __always_inline __alloc_size(1) void *kmalloc_node(size_t size, gfp_t fla
 	if (__builtin_constant_p(size) && size) {
 		unsigned int index;
 
+		/* 大于2个页面从这里直接从buddy分配 */
 		if (size > KMALLOC_MAX_CACHE_SIZE)
 			return kmalloc_large_node(size, flags, node);
 
+		/* 从slab分配 */
 		index = kmalloc_index(size);
 		return kmalloc_node_trace(
 				kmalloc_caches[kmalloc_type(flags, _RET_IP_)][index],
@@ -705,7 +716,7 @@ static inline __alloc_size(1, 2) void *kcalloc_node(size_t n, size_t size, gfp_t
 }
 
 /*
- * Shortcuts
+ * Shortcuts，
  */
 static inline void *kmem_cache_zalloc(struct kmem_cache *k, gfp_t flags)
 {

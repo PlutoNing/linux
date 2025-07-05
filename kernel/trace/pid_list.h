@@ -79,6 +79,7 @@ struct trace_pid_list {
 	raw_spinlock_t			lock;
 	struct irq_work			refill_irqwork;
 	union upper_chunk		*upper[UPPER1_SIZE]; // 1 or 2K in size
+	/* 链接一系列upper chunk */
 	union upper_chunk		*upper_list;
 	union lower_chunk		*lower_list;
 	int				free_upper_chunks;

@@ -112,6 +112,7 @@ struct blkcg {
 	char                            fc_app_id[FC_APPID_LEN];
 #endif
 #ifdef CONFIG_CGROUP_WRITEBACK
+	/* 自己关联的wb都在这里 */
 	struct list_head		cgwb_list;
 #endif
 };
@@ -221,15 +222,20 @@ int blkg_conf_prep(struct blkcg *blkcg, const struct blkcg_policy *pol,
 void blkg_conf_exit(struct blkg_conf_ctx *ctx);
 
 /**
+检查这个bio是不是属于root blkg
  * bio_issue_as_root_blkg - see if this bio needs to be issued as root blkg
  * @return: true if this bio needs to be submitted with the root blkg context.
  *
  * In order to avoid priority inversions we sometimes need to issue a bio as if
  * it were attached to the root blkg, and then backcharge to the actual owning
- * blkg.  The idea is we do bio_blkcg_css() to look up the actual context for
+ * blkg.
+ 为了避免优先级反转我们有时需要将bio作为根blkg上下文提交，
+ * 然后去charge实际拥有的blkg。
+ The idea is we do bio_blkcg_css() to look up the actual context for
  * the bio and attach the appropriate blkg to the bio.  Then we call this helper
  * and if it is true run with the root blkg for that queue and then do any
  * backcharging to the originating cgroup once the io is complete.
+
  */
 static inline bool bio_issue_as_root_blkg(struct bio *bio)
 {
@@ -452,6 +458,7 @@ static inline void blkcg_clear_delay(struct blkcg_gq *blkg)
 }
 
 /**
+检查bio和rq是否可以合并
  * blk_cgroup_mergeable - Determine whether to allow or disallow merges
  * @rq: request to merge into
  * @bio: bio to merge
@@ -459,6 +466,8 @@ static inline void blkcg_clear_delay(struct blkcg_gq *blkg)
  * @bio and @rq should belong to the same cgroup and their issue_as_root should
  * match. The latter is necessary as we don't want to throttle e.g. a metadata
  * update because it happens to be next to a regular IO.
+ bio和rq应该属于同一个cgroup，并且它们的issue_as_root应该匹配。
+ 后者是必要的，因为我们不想因为一个元数据更新（req meta会被当成root blkg）恰好在常规IO旁边而限制它。
  */
 static inline bool blk_cgroup_mergeable(struct request *rq, struct bio *bio)
 {

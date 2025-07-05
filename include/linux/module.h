@@ -321,6 +321,7 @@ struct mod_tree_node {
 	struct latch_tree_node node;
 };
 
+/* 模块的几种内存类型 */
 enum mod_mem_type {
 	MOD_TEXT = 0,
 	MOD_DATA,
@@ -351,14 +352,17 @@ enum mod_mem_type {
 	(mod_mem_type_is_core(type) &&	\
 	 mod_mem_type_is_data(type))
 
+/* 遍历模块的每种内存类型 */
 #define for_each_mod_mem_type(type)			\
 	for (enum mod_mem_type (type) = 0;		\
 	     (type) < MOD_MEM_NUM_TYPES; (type)++)
 
+/* 遍历模块内存类型，处理模块里面class内存类型的内存 */
 #define for_class_mod_mem_type(type, class)		\
 	for_each_mod_mem_type(type)			\
 		if (mod_mem_type_is_##class(type))
 
+/* 表示模块的一段内存，某种类型的内存 */
 struct module_memory {
 	void *base;
 	unsigned int size;
@@ -375,9 +379,13 @@ struct module_memory {
 #define __module_memory_align
 #endif
 
+/* 表示一个模块的符号表 */
 struct mod_kallsyms {
+	/* 符号表 */
 	Elf_Sym *symtab;
+	/* 符号数量 */
 	unsigned int num_symtab;
+	/* 字符串表，  */
 	char *strtab;
 	char *typetab;
 };
@@ -457,6 +465,7 @@ struct module {
 	/* Startup function. */
 	int (*init)(void);
 
+	/* 模块的内存空间 */
 	struct module_memory mem[MOD_MEM_NUM_TYPES] __module_memory_align;
 
 	/* Arch-specific module values */
@@ -610,6 +619,7 @@ bool __is_module_percpu_address(unsigned long addr, unsigned long *can_addr);
 bool is_module_percpu_address(unsigned long addr);
 bool is_module_text_address(unsigned long addr);
 
+/* 判断addr是不是在mod的type类型内存里面 */
 static inline bool within_module_mem_type(unsigned long addr,
 					  const struct module *mod,
 					  enum mod_mem_type type)
@@ -631,10 +641,13 @@ static inline bool within_module_core(unsigned long addr,
 	return false;
 }
 
+/* 如果是模块的init的符号 */
 static inline bool within_module_init(unsigned long addr,
 				      const struct module *mod)
 {
+	/* 遍历模块的init类型的mem type */
 	for_class_mod_mem_type(type, init) {
+		/* 如果type是init类型的模块内存（text，rodata什么的） */
 		if (within_module_mem_type(addr, mod, type))
 			return true;
 	}

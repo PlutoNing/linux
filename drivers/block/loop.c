@@ -47,14 +47,17 @@ enum {
 
 struct loop_func_table;
 
-/*  */
+/* 代表一个loop设备 */
 struct loop_device {
+	/* 是loop_add的参数,  也是/dev/loop后面的后缀*/
 	int		lo_number;
+	/*  */
 	loff_t		lo_offset;
 	loff_t		lo_sizelimit;
 	int		lo_flags;
 	char		lo_file_name[LO_NAME_SIZE];
 
+	/*  */
 	struct file *	lo_backing_file;
 	struct block_device *lo_device;
 
@@ -98,6 +101,7 @@ static DEFINE_MUTEX(loop_ctl_mutex);
 static DEFINE_MUTEX(loop_validate_mutex);
 
 /**
+加什么锁
  * loop_global_lock_killable() - take locks for safe loop_validate_file() test
  *
  * @lo: struct loop_device
@@ -140,11 +144,23 @@ static void loop_global_unlock(struct loop_device *lo, bool global)
 static int max_part;
 static int part_shift;
 
+
+/**
+读取loop的大小
+其实是一个文件的大小
+ * @description: 
+ * @param {loff_t} offset, 是loop的lo_offset
+ * @param {loff_t} sizelimit, 是loop的size_limit
+ * @param {file} *file,
+ * @return {*}
+ */
 static loff_t get_size(loff_t offset, loff_t sizelimit, struct file *file)
 {
 	loff_t loopsize;
 
-	/* Compute loopsize in bytes */
+	/* Compute loopsize in bytes
+	读取文件大小
+	*/
 	loopsize = i_size_read(file->f_mapping->host);
 	if (offset > 0)
 		loopsize -= offset;
@@ -161,6 +177,12 @@ static loff_t get_size(loff_t offset, loff_t sizelimit, struct file *file)
 	return loopsize >> 9;
 }
 
+/**
+ * @description: 获取loop的大小
+ * @param {loop_device} *lo
+ * @param {file} *file
+ * @return {*}
+ */
 static loff_t get_loop_size(struct loop_device *lo, struct file *file)
 {
 	return get_size(lo->lo_offset, lo->lo_sizelimit, file);
@@ -239,20 +261,25 @@ static void loop_set_size(struct loop_device *lo, loff_t size)
 		kobject_uevent(&disk_to_dev(lo->lo_disk)->kobj, KOBJ_CHANGE);
 }
 
+/* 把bvec的数据写入file
+bvec->i->vfs->write */
 static int lo_write_bvec(struct file *file, struct bio_vec *bvec, loff_t *ppos)
 {
 	struct iov_iter i;
 	ssize_t bw;
 
+	/* 初始化i来io这个bvec的数据 */
 	iov_iter_bvec(&i, ITER_SOURCE, bvec, 1, bvec->bv_len);
 
 	file_start_write(file);
+	/* 这里开始写入， 把i的数据写入file */
 	bw = vfs_iter_write(file, &i, ppos, 0);
 	file_end_write(file);
 
 	if (likely(bw ==  bvec->bv_len))
 		return 0;
 
+	/* 出错了的情况 */
 	printk_ratelimited(KERN_ERR
 		"loop: Write error at byte offset %llu, length %i.\n",
 		(unsigned long long)*ppos, bvec->bv_len);
@@ -261,6 +288,7 @@ static int lo_write_bvec(struct file *file, struct bio_vec *bvec, loff_t *ppos)
 	return bw;
 }
 
+/* 把rq的全部bio的全部bvec写入lo的file里 */
 static int lo_write_simple(struct loop_device *lo, struct request *rq,
 		loff_t pos)
 {
@@ -268,7 +296,9 @@ static int lo_write_simple(struct loop_device *lo, struct request *rq,
 	struct req_iterator iter;
 	int ret = 0;
 
+	/* bvec指向rq的每一个bio的每一个bvec？ */
 	rq_for_each_segment(bvec, rq, iter) {
+		/* 把每一个bvec的内容写入文件 */
 		ret = lo_write_bvec(lo->lo_backing_file, &bvec, &pos);
 		if (ret < 0)
 			break;
@@ -493,7 +523,7 @@ static int do_req_filebacked(struct loop_device *lo, struct request *rq)
 		if (cmd->use_aio)
 			return lo_rw_aio(lo, cmd, pos, ITER_SOURCE);
 		else
-			return lo_write_simple(lo, rq, pos);
+			return lo_write_simple(lo, rq, pos);/* 把rq写入lo的file */
 	case REQ_OP_READ:
 		if (cmd->use_aio)
 			return lo_rw_aio(lo, cmd, pos, ITER_DEST);
@@ -523,6 +553,7 @@ static void loop_reread_partitions(struct loop_device *lo)
 			__func__, lo->lo_number, lo->lo_file_name, rc);
 }
 
+/* 检查是不是loop文件 */
 static inline int is_loop_device(struct file *file)
 {
 	struct inode *i = file->f_mapping->host;
@@ -991,6 +1022,14 @@ loop_set_status_from_info(struct loop_device *lo,
 	return 0;
 }
 
+/**
+ * @description:
+ * @param {loop_device} *lo
+ * @param {blk_mode_t} mode
+ * @param {block_device} *bdev
+ * @param {loop_config} *config
+ * @return {*}
+ */
 static int loop_configure(struct loop_device *lo, blk_mode_t mode,
 			  struct block_device *bdev,
 			  const struct loop_config *config)
@@ -1033,6 +1072,7 @@ static int loop_configure(struct loop_device *lo, blk_mode_t mode,
 	if (error)
 		goto out_unlock;
 
+	/* 获取file的mapping和inode */
 	mapping = file->f_mapping;
 	inode = mapping->host;
 

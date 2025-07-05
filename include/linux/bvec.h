@@ -17,6 +17,7 @@
 struct page;
 
 /**
+一段连续的物理内存地址范围
  * struct bio_vec - a contiguous range of physical memory addresses
  * @bv_page:   First page associated with the address range.
  * @bv_len:    Number of bytes in the address range.
@@ -29,8 +30,11 @@ struct page;
  * This holds because page_is_mergeable() checks the above property.
  */
 struct bio_vec {
+	/*  */
 	struct page	*bv_page;
+	/* 区域长度 */
 	unsigned int	bv_len;
+	/* bv表示的区域在page内的起始处 */
 	unsigned int	bv_offset;
 };
 
@@ -77,14 +81,25 @@ static inline void bvec_set_virt(struct bio_vec *bv, void *vaddr,
 	bvec_set_page(bv, virt_to_page(vaddr), len, offset_in_page(vaddr));
 }
 
+/* 一个迭代器，一个bio一个，记录了io的相关meta */
 struct bvec_iter {
-	sector_t		bi_sector;	/* device address in 512 byte
+	sector_t		bi_sector;	
+	/*
+	要写入的设备地址？ 磁盘扇区
+	device address in 512 byte
 						   sectors */
-	unsigned int		bi_size;	/* residual I/O count */
+	unsigned int		bi_size;	/* 
+	剩余的io size
+	residual I/O count */
 
-	unsigned int		bi_idx;		/* current index into bvl_vec */
+	unsigned int		bi_idx;		
+	/*
+	iter当前指向的bvec
+	current index into bvl_vec */
 
-	unsigned int            bi_bvec_done;	/* number of bytes completed in
+	unsigned int            bi_bvec_done;	
+	/*表示当前指向的bvec（bv[iter->bi_idx]）完成了多少
+	number of bytes completed in
 						   current bvec */
 } __packed;
 
@@ -100,10 +115,15 @@ struct bvec_iter_all {
  */
 #define __bvec_iter_bvec(bvec, iter)	(&(bvec)[(iter).bi_idx])
 
-/* multi-page (mp_bvec) helpers */
+/* multi-page (mp_bvec) helpers
+获取iter的idx在bvec这个bv数组中当前指向的bv的page
+*/
 #define mp_bvec_iter_page(bvec, iter)				\
 	(__bvec_iter_bvec((bvec), (iter))->bv_page)
 
+	/* 
+	获取iter的idx在bvec这个bv数组中当前指向的bv的长度？
+	*/
 #define mp_bvec_iter_len(bvec, iter)				\
 	min((iter).bi_size,					\
 	    __bvec_iter_bvec((bvec), (iter))->bv_len - (iter).bi_bvec_done)
@@ -114,6 +134,14 @@ struct bvec_iter_all {
 #define mp_bvec_iter_page_idx(bvec, iter)			\
 	(mp_bvec_iter_offset((bvec), (iter)) / PAGE_SIZE)
 
+
+/**
+感觉就是复制一下在bvec数组中的iter的当前指向的bv的page, len, offset
+ * @description: 
+bvec可能是一个bv数组
+iter是一个迭代器,表示当前iter在bvec数组中的位置之类的信息
+ * @return {*}
+ */
 #define mp_bvec_iter_bvec(bvec, iter)				\
 ((struct bio_vec) {						\
 	.bv_page	= mp_bvec_iter_page((bvec), (iter)),	\
@@ -165,8 +193,14 @@ static inline bool bvec_iter_advance(const struct bio_vec *bv,
 }
 
 /*
+往前步进bio的iter
  * A simpler version of bvec_iter_advance(), @bytes should not span
  * across multiple bvec entries, i.e. bytes <= bv[i->bi_idx].bv_len
+ * @description: 
+ * @param {bio_vec} *bv， 是bio的bv
+ * @param {bvec_iter} *iter
+ * @param {unsigned int} bytes，要消耗或者调整的长度
+ * @return {*}
  */
 static inline void bvec_iter_advance_single(const struct bio_vec *bv,
 				struct bvec_iter *iter, unsigned int bytes)
@@ -174,6 +208,7 @@ static inline void bvec_iter_advance_single(const struct bio_vec *bv,
 	unsigned int done = iter->bi_bvec_done + bytes;
 
 	if (done == bv[iter->bi_idx].bv_len) {
+		/* 当前bvec完成了， 处理下一个bvec */
 		done = 0;
 		iter->bi_idx++;
 	}

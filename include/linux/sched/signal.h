@@ -193,7 +193,9 @@ it[2]是2种cpu执行时间定时的cpu_itimer定时器。
 	*/
 	struct posix_cputimers posix_cputimers;
 
-	/* PID/PID hash table linkage. */
+	/* PID/PID hash table linkage.
+	存储着进程的不同类型的pid
+	*/
 	struct pid *pids[PIDTYPE_MAX]; // 其他的pid type对应的pid
 
 #ifdef CONFIG_NO_HZ_FULL
@@ -448,7 +450,7 @@ static inline int fatal_signal_pending(struct task_struct *p)
 {
 	return task_sigpending(p) && __fatal_signal_pending(p);
 }
-
+/* 检查TASK_INTERRUPTIBLE | TASK_WAKEKILL状态是不是有致命信号 */
 static inline int signal_pending_state(unsigned int state, struct task_struct *p)
 {
 	if (!(state & (TASK_INTERRUPTIBLE | TASK_WAKEKILL)))
@@ -725,6 +727,7 @@ static inline struct pid *task_tgid(struct task_struct *task)
 }
 
 /*
+获取进程的pgid
  * Without tasklist or RCU lock it is not safe to dereference
  * the result of task_pgrp/task_session even if task == current,
  * we can race with another thread doing sys_setsid/sys_setpgid.
@@ -733,7 +736,7 @@ static inline struct pid *task_pgrp(struct task_struct *task)
 {
 	return task->signal->pids[PIDTYPE_PGID];
 }
-
+/* 获取进程的sid */
 static inline struct pid *task_session(struct task_struct *task)
 {
 	return task->signal->pids[PIDTYPE_SID];
@@ -743,7 +746,7 @@ static inline int get_nr_threads(struct task_struct *task)
 {
 	return task->signal->nr_threads;
 }
-
+/* 为啥是以这个标准判定 */
 static inline bool thread_group_leader(struct task_struct *p)
 {
 	return p->exit_signal >= 0;

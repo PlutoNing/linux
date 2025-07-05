@@ -94,6 +94,7 @@ struct request {
 	unsigned int __data_len;	/* total data len */
 	sector_t __sector;		/* sector cursor */
 
+	/* 当前处理的bio？ 是一串bio */
 	struct bio *bio;
 	struct bio *biotail;
 
@@ -125,6 +126,7 @@ struct request {
 	/*
 	 * Number of scatter-gather DMA addr+len pairs after
 	 * physical address coalescing is performed.
+	   表示物理地址合并后，散列表中DMA地址和长度对的数量？
 	 */
 	unsigned short nr_phys_segments;
 
@@ -204,7 +206,7 @@ static inline unsigned short req_get_ioprio(struct request *req)
 {
 	return req->ioprio;
 }
-
+/* 检查rq是读还是写 */
 #define rq_data_dir(rq)		(op_is_write(req_op(rq)) ? WRITE : READ)
 
 #define rq_dma_dir(rq) \
@@ -336,7 +338,8 @@ struct blk_mq_hw_ctx {
 	 * @queue: Pointer to the request queue that owns this hardware context.
 	 */
 	struct request_queue	*queue;
-	/** @fq: Queue of requests that need to perform a flush operation. */
+	/** @fq: Queue of requests that need to perform a flush operation.
+	需要执行刷新操作的req的queue */
 	struct blk_flush_queue	*fq;
 
 	/**
@@ -451,6 +454,7 @@ struct blk_mq_queue_map {
 };
 
 /**
+硬件队列的类型
  * enum hctx_type - Type of hardware queue
  * @HCTX_TYPE_DEFAULT:	All I/O not otherwise accounted for.
  * @HCTX_TYPE_READ:	Just for READ I/O.
@@ -955,6 +959,15 @@ static inline void blk_mq_cleanup_rq(struct request *rq)
 		rq->q->mq_ops->cleanup_rq(rq);
 }
 
+
+/**
+基于bio初始化rq
+ * @description: 
+ * @param {request} *rq
+ * @param {bio} *bio
+ * @param {unsigned int} nr_segs
+ * @return {*}
+ */
 static inline void blk_rq_bio_prep(struct request *rq, struct bio *bio,
 		unsigned int nr_segs)
 {
@@ -1006,7 +1019,7 @@ struct req_iterator {
 	struct bvec_iter iter;
 	struct bio *bio;
 };
-
+/* 迭代rq的每一个bio */
 #define __rq_for_each_bio(_bio, rq)	\
 	if ((rq->bio))			\
 		for (_bio = (rq)->bio; _bio; _bio = _bio->bi_next)

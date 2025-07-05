@@ -809,7 +809,7 @@ static int __init dmi_init(void)
 }
 subsys_initcall(dmi_init);
 
-/**
+/**在系统启动时，从 BIOS 提供的 ​DMI/SMBIOS 表​ 中提取硬件信息
  *	dmi_setup - scan and setup DMI system information
  *
  *	Scan the DMI system information. This setups DMI identifiers
@@ -874,7 +874,7 @@ static bool dmi_is_end_of_table(const struct dmi_system_id *dmi)
 	return dmi->matches[0].slot == DMI_NONE;
 }
 
-/**
+/**用于检查系统 DMI（Desktop Management Interface）数据
  *	dmi_check_system - check system DMI data
  *	@list: array of dmi_system_id structures to match against
  *		All non-null elements of the list must match
@@ -882,7 +882,7 @@ static bool dmi_is_end_of_table(const struct dmi_system_id *dmi)
  *		list string must be a substring of the specified
  *		DMI slot's string data) to be considered a
  *		successful match.
- *
+ *比对预设的 DMI 规则（如硬件黑名单、白名单或兼容性规则），动态调整内核行为（如禁用某些驱动、修复硬件兼容性问题）
  *	Walk the blacklist table running matching functions until someone
  *	returns non zero or we hit the end. Callback function is called for
  *	each successful match. Returns the number of matches.

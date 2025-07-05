@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
 /*
+这里complete一个done成员
  * Generic wait-for-completion handler;
  *
  * It differs from semaphores in that their default case is the opposite,
@@ -21,6 +22,7 @@ static void complete_with_flags(struct completion *x, int wake_flags)
 
 	if (x->done != UINT_MAX)
 		x->done++;
+	/*  */
 	swake_up_locked(&x->wait, wake_flags);
 	raw_spin_unlock_irqrestore(&x->wait.lock, flags);
 }
@@ -31,6 +33,7 @@ void complete_on_current_cpu(struct completion *x)
 }
 
 /**
+如何去complete? 唤醒q的一个等待进程
  * complete: - signals a single thread waiting on this completion
  * @x:  holds the state of this particular completion
  *
@@ -76,12 +79,13 @@ void complete_all(struct completion *x)
 	raw_spin_unlock_irqrestore(&x->wait.lock, flags);
 }
 EXPORT_SYMBOL(complete_all);
-
+/* 等待x完成 */
 static inline long __sched
 do_wait_for_common(struct completion *x,
 		   long (*action)(long), long timeout, int state)
 {
 	if (!x->done) {
+		/* 声明一个wait */
 		DECLARE_SWAITQUEUE(wait);
 
 		do {
@@ -89,12 +93,16 @@ do_wait_for_common(struct completion *x,
 				timeout = -ERESTARTSYS;
 				break;
 			}
+			/* 加入等待队列 */
 			__prepare_to_swait(&x->wait, &wait);
+			/*  */
 			__set_current_state(state);
 			raw_spin_unlock_irq(&x->wait.lock);
+			/* 执行预定的函数 */
 			timeout = action(timeout);
 			raw_spin_lock_irq(&x->wait.lock);
 		} while (!x->done && timeout);
+		/* 从队列移除自己 */
 		__finish_swait(&x->wait, &wait);
 		if (!x->done)
 			return timeout;
@@ -104,6 +112,15 @@ do_wait_for_common(struct completion *x,
 	return timeout ?: 1;
 }
 
+
+/**
+ * @description: 等待x完成
+ * @param {completion} *x
+ * @param {	 } long
+ * @param {long} timeout
+ * @param {int} state
+ * @return {*}
+ */
 static inline long __sched
 __wait_for_common(struct completion *x,
 		  long (*action)(long), long timeout, int state)
@@ -113,6 +130,7 @@ __wait_for_common(struct completion *x,
 	complete_acquire(x);
 
 	raw_spin_lock_irq(&x->wait.lock);
+	/* 等待 */
 	timeout = do_wait_for_common(x, action, timeout, state);
 	raw_spin_unlock_irq(&x->wait.lock);
 
@@ -120,7 +138,7 @@ __wait_for_common(struct completion *x,
 
 	return timeout;
 }
-
+/* 等待完成 */
 static long __sched
 wait_for_common(struct completion *x, long timeout, int state)
 {
@@ -134,6 +152,7 @@ wait_for_common_io(struct completion *x, long timeout, int state)
 }
 
 /**
+等待完成
  * wait_for_completion: - waits for completion of a task
  * @x:  holds the state of this particular completion
  *

@@ -48,6 +48,9 @@ static inline void syscall_enter_audit(struct pt_regs *regs, long syscall)
 	}
 }
 
+/* 
+根据work这个flag来决定是否需要修改一下syscall
+*/
 static long syscall_trace_enter(struct pt_regs *regs, long syscall,
 				unsigned long work)
 {
@@ -118,6 +121,9 @@ noinstr long syscall_enter_from_user_mode(struct pt_regs *regs, long syscall)
 	return ret;
 }
 
+/* 
+系统调用前的检查
+*/
 noinstr void syscall_enter_from_user_mode_prepare(struct pt_regs *regs)
 {
 	__enter_from_user_mode(regs);
@@ -147,6 +153,9 @@ void noinstr exit_to_user_mode(void)
 /* Workaround to allow gradual conversion of architecture code */
 void __weak arch_do_signal_or_restart(struct pt_regs *regs) { }
 
+/* 
+
+*/
 static unsigned long exit_to_user_mode_loop(struct pt_regs *regs,
 					    unsigned long ti_work)
 {

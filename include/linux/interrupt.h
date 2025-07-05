@@ -549,9 +549,8 @@ DECLARE_STATIC_KEY_FALSE(force_irqthreads_key);
    al. should be converted to tasklets, not to softirqs.
  */
 
-enum
-{
-	HI_SOFTIRQ=0,
+enum {
+	HI_SOFTIRQ = 0,
 	TIMER_SOFTIRQ, // 表示timer的softirq
 	NET_TX_SOFTIRQ,
 	NET_RX_SOFTIRQ,
@@ -560,7 +559,10 @@ enum
 	TASKLET_SOFTIRQ,
 	SCHED_SOFTIRQ,
 	HRTIMER_SOFTIRQ,
-	RCU_SOFTIRQ,    /* Preferable RCU should always be the last softirq */
+	/* invoke_rcu_core的软中断
+	触发的时候调用rcu_process_callbacks处理rcu_ctrlblk.rcucblist上面的回调函数
+	 */
+	RCU_SOFTIRQ, /* Preferable RCU should always be the last softirq */
 
 	NR_SOFTIRQS
 };
@@ -600,6 +602,7 @@ asmlinkage void __do_softirq(void);
 #ifdef CONFIG_PREEMPT_RT
 extern void do_softirq_post_smp_call_flush(unsigned int was_pending);
 #else
+/* 执行软中断 */
 static inline void do_softirq_post_smp_call_flush(unsigned int unused)
 {
 	do_softirq();
@@ -612,7 +615,7 @@ extern void __raise_softirq_irqoff(unsigned int nr);
 
 extern void raise_softirq_irqoff(unsigned int nr);
 extern void raise_softirq(unsigned int nr);
-/* 出来softirq的线程 */
+/* 处理softirq */
 DECLARE_PER_CPU(struct task_struct *, ksoftirqd);
 
 static inline struct task_struct *this_cpu_ksoftirqd(void)

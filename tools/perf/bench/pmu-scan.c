@@ -124,7 +124,7 @@ static void delete_result(void)
 	results = NULL;
 	nr_pmus = 0;
 }
-
+/* 执行pmu scan的benchmark */
 static int run_pmu_scan(void)
 {
 	struct stats stats;
@@ -169,7 +169,7 @@ static int run_pmu_scan(void)
 	delete_result();
 	return 0;
 }
-
+/* 执行'internals/pmu-scan' benchmark */
 int bench_pmu_scan(int argc, const char **argv)
 {
 	int err = 0;

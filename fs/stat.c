@@ -90,6 +90,7 @@ void generic_fill_statx_attr(struct inode *inode, struct kstat *stat)
 EXPORT_SYMBOL(generic_fill_statx_attr);
 
 /**
+不进行安全检查，获取文件基本属性
  * vfs_getattr_nosec - getattr without security checks
  * @path: file to get attributes from
  * @stat: structure to return attributes in
@@ -141,6 +142,7 @@ int vfs_getattr_nosec(const struct path *path, struct kstat *stat,
 EXPORT_SYMBOL(vfs_getattr_nosec);
 
 /*
+vfs获取文件属性
  * vfs_getattr - Get the enhanced basic attributes of a file
  * @path: The file of interest
  * @stat: Where to return the statistics
@@ -174,6 +176,7 @@ int vfs_getattr(const struct path *path, struct kstat *stat,
 EXPORT_SYMBOL(vfs_getattr);
 
 /**
+获取fd的文件基本属性
  * vfs_fstat - Get the basic attributes by file descriptor
  * @fd: The file descriptor referring to the file of interest
  * @stat: The result structure to fill in.
@@ -191,6 +194,7 @@ int vfs_fstat(int fd, struct kstat *stat)
 	f = fdget_raw(fd);
 	if (!f.file)
 		return -EBADF;
+	/*  */
 	error = vfs_getattr(&f.file->f_path, stat, STATX_BASIC_STATS, 0);
 	fdput(f);
 	return error;

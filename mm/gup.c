@@ -204,6 +204,7 @@ static void gup_put_folio(struct folio *folio, int refs, unsigned int flags)
 }
 
 /**
+增加page的ref
  * try_grab_page() - elevate a page's refcount by a flag-dependent amount
  * @page:    pointer to page to be grabbed
  * @flags:   gup flags: these are the FOLL_* flag values.
@@ -530,10 +531,18 @@ static struct page *no_page_table(struct vm_area_struct *vma,
 	return NULL;
 }
 
+/* 调用这个函数可能是因为刚刚没有找到 pte对应的pfn对应的page结构体
+================
+这里只是修改pte的属性
+还是不返回page
+ */
 static int follow_pfn_pte(struct vm_area_struct *vma, unsigned long address,
 		pte_t *pte, unsigned int flags)
 {
+	/* 这里会修改pte
+	make_young make_dirty等等 */
 	if (flags & FOLL_TOUCH) {
+		/* 获取pte的备份值 */
 		pte_t orig_entry = ptep_get(pte);
 		pte_t entry = orig_entry;
 
@@ -551,7 +560,8 @@ static int follow_pfn_pte(struct vm_area_struct *vma, unsigned long address,
 	return -EEXIST;
 }
 
-/* FOLL_FORCE can write to even unwritable PTEs in COW mappings. */
+/* FOLL_FORCE can write to even unwritable PTEs in COW mappings.
+检测follow_page的时候能不能write pte? */
 static inline bool can_follow_write_pte(pte_t pte, struct page *page,
 					struct vm_area_struct *vma,
 					unsigned int flags)
@@ -589,7 +599,12 @@ static inline bool can_follow_write_pte(pte_t pte, struct page *page,
 	return !userfaultfd_pte_wp(vma, pte);
 }
 
-// 获取pte对应的page
+/* 
+获取addr对应的page
+=========
+Q:为什么也mark_page_accessed
+如果用户发起follow的时候, 指定了touch, 会mark_page_accessed
+*/
 static struct page *follow_page_pte(struct vm_area_struct *vma,
 		unsigned long address, pmd_t *pmd, unsigned int flags,
 		struct dev_pagemap **pgmap)
@@ -610,24 +625,30 @@ static struct page *follow_page_pte(struct vm_area_struct *vma,
 		return no_page_table(vma, flags);
 	// 从pte指针读取出pte条目
 	pte = ptep_get(ptep);
-	if (!pte_present(pte)) // 不在内存
+	/* 如果这个页面被换出了 */
+	if (!pte_present(pte))
 		goto no_page;
 	if (pte_protnone(pte) && !gup_can_follow_protnone(vma, flags))
 		goto no_page;
 
+	/* 返回pte对应的page */
 	page = vm_normal_page(vma, address, pte);
 
 	/*
 	 * We only care about anon pages in can_follow_write_pte() and don't
 	 * have to worry about pte_devmap() because they are never anon.
-	 */
+	 
+	 如果参数要求FOLL_WRITE, 但是事实上不能can_follow_write_pte
+	 就返回*/
 	if ((flags & FOLL_WRITE) &&
 	    !can_follow_write_pte(pte, page, vma, flags)) {
 		page = NULL;
 		goto out;
 	}
+	/*  */
 
 	if (!page && pte_devmap(pte) && (flags & (FOLL_GET | FOLL_PIN))) {
+		/* 如果刚刚没有follow到page, 并且还是devmap的情况 */
 		/*
 		 * Only return device mapping pages in the FOLL_GET or FOLL_PIN
 		 * case since they are only valid while holding the pgmap
@@ -639,6 +660,10 @@ static struct page *follow_page_pte(struct vm_area_struct *vma,
 		else
 			goto no_page;
 	} else if (unlikely(!page)) {
+		/* 没有找到pte对应的pfn对应的page结构体的情况
+		这里检查是不是因为zero pfn
+		然后就是根据参数,是否修改一下pte, 直接返回了也是 */
+		/* 为什么没有page结构体的情况是少见的? */
 		if (flags & FOLL_DUMP) {
 			/* Avoid special (like zero) pages in core dumps */
 			page = ERR_PTR(-EFAULT);
@@ -648,6 +673,7 @@ static struct page *follow_page_pte(struct vm_area_struct *vma,
 		if (is_zero_pfn(pte_pfn(pte))) {
 			page = pte_page(pte);
 		} else {
+			/* 这里修改pte属性, page结构体不存在就是不存在了 */
 			ret = follow_pfn_pte(vma, address, ptep, flags);
 			page = ERR_PTR(ret);
 			goto out;
@@ -662,7 +688,8 @@ static struct page *follow_page_pte(struct vm_area_struct *vma,
 	VM_BUG_ON_PAGE((flags & FOLL_PIN) && PageAnon(page) &&
 		       !PageAnonExclusive(page), page);
 
-	/* try_grab_page() does nothing unless FOLL_GET or FOLL_PIN is set. */
+	/* try_grab_page() does nothing unless FOLL_GET or FOLL_PIN is set.
+	这里尝试增加ref */
 	ret = try_grab_page(page, flags);
 	if (unlikely(ret)) {
 		page = ERR_PTR(ret);
@@ -682,21 +709,26 @@ static struct page *follow_page_pte(struct vm_area_struct *vma,
 			goto out;
 		}
 	}
+	/* 如果用户发起follow的时候, 指定了touch, 会mark_page_accessed */
 	if (flags & FOLL_TOUCH) {
 		if ((flags & FOLL_WRITE) &&
 		    !pte_dirty(pte) && !PageDirty(page))
-			set_page_dirty(page);
+			set_page_dirty(page); /* 这里为什么必须pte和page都不dirty的时候才设置page dirty呢
+			如果pte dirty, page不dirty的话, 谁来设置dirty?
+			有可能page dirty, pte不dirty吗? */
 		/*
 		 * pte_mkyoung() would be more correct here, but atomic care
 		 * is needed to avoid losing the dirty bit: it is easier to use
 		 * mark_page_accessed().
-		 */
+		 标记页面为accessed*/
 		mark_page_accessed(page);
 	}
 out:
 	pte_unmap_unlock(ptep, ptl);
 	return page;
+
 no_page:
+	/* 没找到页面, 被换出了, 或者不存在 */
 	pte_unmap_unlock(ptep, ptl);
 	if (!pte_none(pte))
 		return NULL;
@@ -718,12 +750,15 @@ static struct page *follow_pmd_mask(struct vm_area_struct *vma,
 	struct mm_struct *mm = vma->vm_mm;
 	// 获得pmd的指针
 	pmd = pmd_offset(pudp, address);
-	// read_once读取出pmd条目
+	// pmd条目
 	pmdval = pmdp_get_lockless(pmd);
-	if (pmd_none(pmdval)) // 用户地址空间还没有这个页面
+	// 用户地址空间还没有这个页面
+	if (pmd_none(pmdval))
 		return no_page_table(vma, flags);
-	if (!pmd_present(pmdval)) // 用户这个地址还不在内存
+	// 用户这个地址还不在内存
+	if (!pmd_present(pmdval))
 		return no_page_table(vma, flags);
+	/* devmap相关 */
 	if (pmd_devmap(pmdval)) {
 		ptl = pmd_lock(mm, pmd);
 		page = follow_devmap_pmd(vma, address, pmd, flags, &ctx->pgmap);
@@ -776,6 +811,7 @@ static struct page *follow_pud_mask(struct vm_area_struct *vma,
 	pud = pud_offset(p4dp, address);
 	if (pud_none(*pud))
 		return no_page_table(vma, flags);
+	/* devmap相关的 */
 	if (pud_devmap(*pud)) {
 		ptl = pud_lock(mm, pud);
 		page = follow_devmap_pud(vma, address, pud, flags, &ctx->pgmap);
@@ -852,6 +888,7 @@ static struct page *follow_page_mask(struct vm_area_struct *vma,
 		return hugetlb_follow_page_mask(vma, address, flags,
 						&ctx->page_mask);
 
+	/* 获取地址的页目录 */
 	pgd = pgd_offset(mm, address);
 
 	if (pgd_none(*pgd) || unlikely(pgd_bad(*pgd)))
@@ -860,6 +897,10 @@ static struct page *follow_page_mask(struct vm_area_struct *vma,
 	return follow_p4d_mask(vma, address, pgd, flags, ctx);
 }
 
+/* addr位于vma
+==========
+找到vma的addr对应的page
+ */
 struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 			 unsigned int foll_flags)
 {
@@ -875,6 +916,7 @@ struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 	/*
 	 * We never set FOLL_HONOR_NUMA_FAULT because callers don't expect
 	 * to fail on PROT_NONE-mapped pages.
+	 查找对应的page
 	 */
 	page = follow_page_mask(vma, address, foll_flags, &ctx);
 	if (ctx.pgmap)
@@ -938,6 +980,7 @@ unmap:
 }
 
 /*
+必须持有mmap_lock才能进入
  * mmap_lock must be held on entry.  If @flags has FOLL_UNLOCKABLE but not
  * FOLL_NOWAIT, the mmap_lock may be released.  If it is, *@locked will be set
  * to 0 and -EBUSY returned.
@@ -980,7 +1023,7 @@ static int faultin_page(struct vm_area_struct *vma,
 		/* FAULT_FLAG_WRITE and FAULT_FLAG_UNSHARE are incompatible */
 		VM_BUG_ON(fault_flags & FAULT_FLAG_WRITE);
 	}
-
+	/* 解决pf */
 	ret = handle_mm_fault(vma, address, fault_flags, NULL);
 
 	if (ret & VM_FAULT_COMPLETED) {

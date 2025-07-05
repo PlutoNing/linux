@@ -424,7 +424,7 @@ void __init do_early_exception(struct pt_regs *regs, int trapnr)
 	early_fixup_exception(regs, trapnr);
 }
 
-/* Don't add a printk in there. printk relies on the PDA which is not initialized 
+/* 清空内存区域  Don't add a printk in there. printk relies on the PDA which is not initialized 
    yet. */
 void __init clear_bss(void)
 {
@@ -442,7 +442,7 @@ static unsigned long get_cmd_line_ptr(void)
 
 	return cmd_line_ptr;
 }
-
+/*  */
 static void __init copy_bootdata(char *real_mode_data)
 {
 	char * command_line;
@@ -486,15 +486,15 @@ asmlinkage __visible void __init __noreturn x86_64_start_kernel(char * real_mode
 	MAYBE_BUILD_BUG_ON(!(((MODULES_END - 1) & PGDIR_MASK) ==
 				(__START_KERNEL & PGDIR_MASK)));
 	BUILD_BUG_ON(__fix_to_virt(__end_of_fixed_addresses) <= MODULES_END);
-
+	/* 初始化cpu_tlbstate.cr4 */
 	cr4_init_shadow();
 
 	/* Kill off the identity-map trampoline */
 	reset_early_page_tables();
-
+	/* 清空__brk_base,__bss_start 内存区域 */
 	clear_bss();
 
-	/*
+	/* 调用clear_page_orig清空, 不断的重复64次写入来清空页面
 	 * This needs to happen *before* kasan_early_init() because latter maps stuff
 	 * into that page.
 	 */
@@ -509,7 +509,7 @@ asmlinkage __visible void __init __noreturn x86_64_start_kernel(char * real_mode
 
 	kasan_early_init();
 
-	/*
+	/* 写cr4寄存器用于
 	 * Flush global TLB entries which could be left over from the trampoline page
 	 * table.
 	 *
@@ -526,7 +526,7 @@ asmlinkage __visible void __init __noreturn x86_64_start_kernel(char * real_mode
 
 	copy_bootdata(__va(real_mode_data));
 
-	/*
+	/*启动早期在引导处理器（BSP）上加载 CPU 微码
 	 * Load microcode early on BSP.
 	 */
 	load_ucode_bsp();
@@ -536,7 +536,7 @@ asmlinkage __visible void __init __noreturn x86_64_start_kernel(char * real_mode
 
 	x86_64_start_reservations(real_mode_data);
 }
-
+/*  */
 void __init __noreturn x86_64_start_reservations(char *real_mode_data)
 {
 	/* version is always not zero if it is copied */
@@ -552,7 +552,7 @@ void __init __noreturn x86_64_start_reservations(char *real_mode_data)
 	default:
 		break;
 	}
-
+/* 运行初始化 */
 	start_kernel();
 }
 

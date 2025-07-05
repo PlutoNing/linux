@@ -698,11 +698,13 @@ out:
 }
 
 struct bpf_raw_tp_test_run_info {
+	/* 要运行的prog */
 	struct bpf_prog *prog;
 	void *ctx;
+	/* 本次运行prog的返回值 */
 	u32 retval;
 };
-
+/* bpf运行info指定的prog */
 static void
 __bpf_prog_test_run_raw_tp(void *data)
 {
@@ -712,7 +714,7 @@ __bpf_prog_test_run_raw_tp(void *data)
 	info->retval = bpf_prog_run(info->prog, info->ctx);
 	rcu_read_unlock();
 }
-
+/* 如何run prog */
 int bpf_prog_test_run_raw_tp(struct bpf_prog *prog,
 			     const union bpf_attr *kattr,
 			     union bpf_attr __user *uattr)
@@ -743,7 +745,7 @@ int bpf_prog_test_run_raw_tp(struct bpf_prog *prog,
 	} else {
 		info.ctx = NULL;
 	}
-
+	/* 要运行的prog */
 	info.prog = prog;
 
 	current_cpu = get_cpu();
@@ -757,7 +759,7 @@ int bpf_prog_test_run_raw_tp(struct bpf_prog *prog,
 		 * invalid value before smp_call_function_single().
 		 */
 		err = -ENXIO;
-	} else {
+	} else {/* 要在指定的cpu上面运行？ */
 		err = smp_call_function_single(cpu, __bpf_prog_test_run_raw_tp,
 					       &info, 1);
 	}

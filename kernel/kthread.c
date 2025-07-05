@@ -74,7 +74,7 @@ enum KTHREAD_BITS {
 	KTHREAD_SHOULD_STOP,
 	KTHREAD_SHOULD_PARK,
 };
-
+/* 存储在tsk的priv里面 */
 static inline struct kthread *to_kthread(struct task_struct *k)
 {
 	WARN_ON(!(k->flags & PF_KTHREAD));
@@ -151,6 +151,7 @@ void free_kthread_struct(struct task_struct *k)
 }
 
 /**
+判断kthread是否应该返回
  * kthread_should_stop - should this kthread return now?
  *
  * When someone calls kthread_stop() on your kthread, it will be woken
@@ -437,7 +438,8 @@ static void create_kthread(struct kthread_create_info *create)
 }
 
 static __printf(4, 0)
-/* 创建一个内核线程.使用thread_fn函数 */
+/* 
+创建一个内核线程.使用thread_fn函数 */
 struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 						    void *data, int node,
 						    const char namefmt[],
@@ -466,6 +468,7 @@ struct task_struct *__kthread_create_on_node(int (*threadfn)(void *data),
 	list_add_tail(&create->list, &kthread_create_list);
 	spin_unlock(&kthread_create_lock);
 
+	/* 20250528230735 */
 	wake_up_process(kthreadd_task);
 	/*
 	 * Wait for completion in killable state, for I might be chosen by
@@ -493,11 +496,14 @@ free_create:
 }
 
 /**
+创建一个kthread
  * kthread_create_on_node - create a kthread.
- 創建kthread
+ 创建kthread
  * @threadfn: the function to run until signal_pending(current).
- * @data: data ptr for @threadfn.
+ worker的函数
+ * @data: data ptr for @threadfn., worker的指针
  * @node: task and thread structures for the thread are allocated on this node
+ worker结构体的内存是从这个node分配的
  * @namefmt: printf-style name for the thread.
  *
  * Description: This helper function creates and names a kernel
@@ -532,6 +538,14 @@ struct task_struct *kthread_create_on_node(int (*threadfn)(void *data),
 }
 EXPORT_SYMBOL(kthread_create_on_node);
 
+/**
+设置进程亲和的cpu
+设置进程的cpu掩码
+ * @description: 
+ * @param {cpumask} *mask, 新的亲和cpu掩码
+ * @param {unsigned int} state
+ * @return {*}
+ */
 static void __kthread_bind_mask(struct task_struct *p, const struct cpumask *mask, unsigned int state)
 {
 	unsigned long flags;
@@ -543,22 +557,24 @@ static void __kthread_bind_mask(struct task_struct *p, const struct cpumask *mas
 
 	/* It's safe because the task is inactive. */
 	raw_spin_lock_irqsave(&p->pi_lock, flags);
+	/* 设置亲和cpu */
 	do_set_cpus_allowed(p, mask);
 	p->flags |= PF_NO_SETAFFINITY;
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 }
-
+/* 把一个新创建的kthread绑定到cpu */
 static void __kthread_bind(struct task_struct *p, unsigned int cpu, unsigned int state)
 {
 	__kthread_bind_mask(p, cpumask_of(cpu), state);
 }
-
+/* 设置cpu亲和性掩码 */
 void kthread_bind_mask(struct task_struct *p, const struct cpumask *mask)
 {
 	__kthread_bind_mask(p, mask, TASK_UNINTERRUPTIBLE);
 }
 
 /**
+绑定新创建的kthread到一个cpu
  * kthread_bind - bind a just-created kthread to a cpu.
  * @p: thread created by kthread_create().
  * @cpu: cpu (might not be online, must be possible) for @k to run on.
@@ -601,7 +617,8 @@ struct task_struct *kthread_create_on_cpu(int (*threadfn)(void *data),
 	return p;
 }
 EXPORT_SYMBOL(kthread_create_on_cpu);
-/* 让k这个kthread指向cpu */
+/* 让k这个kthread指向cpu
+cpu是pool的cpu */
 void kthread_set_per_cpu(struct task_struct *k, int cpu)
 {
 	struct kthread *kthread = to_kthread(k);
@@ -629,6 +646,7 @@ bool kthread_is_per_cpu(struct task_struct *p)
 }
 
 /**
+这个unpark好像就是清除KTHREAD_SHOULD_PARK然后唤醒
  * kthread_unpark - unpark a thread created by kthread_create().
  * @k:		thread created by kthread_create().
  *
@@ -638,19 +656,20 @@ bool kthread_is_per_cpu(struct task_struct *p)
  */
 void kthread_unpark(struct task_struct *k)
 {
+	/* kthread的引用存储在tsk的priv */
 	struct kthread *kthread = to_kthread(k);
 
 	/*
 	 * Newly created kthread was parked when the CPU was offline.
 	 * The binding was lost and we need to set it again.
-	 */
+	绑定到指定的cpu */
 	if (test_bit(KTHREAD_IS_PER_CPU, &kthread->flags))
 		__kthread_bind(k, kthread->cpu, TASK_PARKED);
 
 	clear_bit(KTHREAD_SHOULD_PARK, &kthread->flags);
 	/*
 	 * __kthread_parkme() will either see !SHOULD_PARK or get the wakeup.
-	 */
+	 唤醒*/
 	wake_up_state(k, TASK_PARKED);
 }
 EXPORT_SYMBOL_GPL(kthread_unpark);
@@ -773,6 +792,14 @@ int kthreadd(void *unused)
 	return 0;
 }
 
+/**
+初始化一个kthread的worker
+ * @description: 
+ * @param {kthread_worker} *worker
+ * @param {char} *name
+ * @param {lock_class_key} *key
+ * @return {*}
+ */
 void __kthread_init_worker(struct kthread_worker *worker,
 				const char *name,
 				struct lock_class_key *key)
@@ -855,6 +882,15 @@ repeat:
 }
 EXPORT_SYMBOL_GPL(kthread_worker_fn);
 
+/**
+创建一个kthread worker
+ * @description: 
+ * @param {kthread_worker} *__kthread_create_worker
+ * @param {unsigned int} flags
+ * @param {char} namefmt
+ * @param {va_list} args
+ * @return {*}
+ */
 static __printf(3, 0) struct kthread_worker *
 __kthread_create_worker(int cpu, unsigned int flags,
 			const char namefmt[], va_list args)
@@ -867,21 +903,25 @@ __kthread_create_worker(int cpu, unsigned int flags,
 	if (!worker)
 		return ERR_PTR(-ENOMEM);
 
+	/* 初始化一些成员 */
 	kthread_init_worker(worker);
 
 	if (cpu >= 0)
 		node = cpu_to_node(cpu);
 
+	/* 创建内核线程 */
 	task = __kthread_create_on_node(kthread_worker_fn, worker,
 						node, namefmt, args);
 	if (IS_ERR(task))
 		goto fail_task;
 
+	/* 绑定到cpu */
 	if (cpu >= 0)
 		kthread_bind(task, cpu);
 
 	worker->flags = flags;
 	worker->task = task;
+	/* 唤醒一次 */
 	wake_up_process(task);
 	return worker;
 
@@ -891,6 +931,7 @@ fail_task:
 }
 
 /**
+创建一个kthread
  * kthread_create_worker - create a kthread worker
  * @flags: flags modifying the default behavior of the worker
  * @namefmt: printf-style name for the kthread worker (task).
@@ -906,6 +947,7 @@ kthread_create_worker(unsigned int flags, const char namefmt[], ...)
 	va_list args;
 
 	va_start(args, namefmt);
+	/* 创建kthread worker */
 	worker = __kthread_create_worker(-1, flags, namefmt, args);
 	va_end(args);
 
@@ -1133,6 +1175,8 @@ struct kthread_flush_work {
 	struct completion	done;
 };
 
+/* 刷新一个worker的全部work
+把这个函数定义为一个work,在worker上面运行 */
 static void kthread_flush_work_fn(struct kthread_work *work)
 {
 	struct kthread_flush_work *fwork =
@@ -1377,6 +1421,7 @@ bool kthread_cancel_delayed_work_sync(struct kthread_delayed_work *dwork)
 EXPORT_SYMBOL_GPL(kthread_cancel_delayed_work_sync);
 
 /**
+刷新一个worker的全部的work
  * kthread_flush_worker - flush all current works on a kthread_worker
  * @worker: worker to flush
  *
@@ -1385,6 +1430,7 @@ EXPORT_SYMBOL_GPL(kthread_cancel_delayed_work_sync);
  */
 void kthread_flush_worker(struct kthread_worker *worker)
 {
+	/* 定义并运行这个flush的work */
 	struct kthread_flush_work fwork = {
 		KTHREAD_WORK_INIT(fwork.work, kthread_flush_work_fn),
 		COMPLETION_INITIALIZER_ONSTACK(fwork.done),

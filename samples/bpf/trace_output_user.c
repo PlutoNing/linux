@@ -5,7 +5,23 @@
 #include <time.h>
 #include <signal.h>
 #include <bpf/libbpf.h>
+/* 编译的命令
+gcc -Wp,-MD,samples/bpf/.trace_output_user.o.d -Wall -O2 -Wmissing-prototypes -Wstrict-prototypes -I./usr/include \
+ -I./tools/testing/selftests/bpf/ -I/home/paulning/study/linux/samples/bpf/libbpf/include -I./tools/include \
+ -I./tools/perf -DHAVE_ATTR_TEST=0  -c  -o samples/bpf/trace_output_user.o samples/bpf/trace_output_user.c
 
+/home/paulning/study/llvm-project/llvm/build/bin/clang -g -O2 --target=bpf -D__TARGET_ARCH_x86   \
+ -Wno-compare-distinct-pointer-types -I./include -I./samples/bpf -I./tools/include \
+  -I/home/paulning/study/linux/samples/bpf/libbpf/include \
+   -idirafter /home/paulning/study/llvm-project/llvm/build/lib/clang/21/include \
+    -idirafter /usr/local/include -idirafter /usr/include/x86_64-linux-gnu \
+	-idirafter /usr/include       -c samples/bpf/trace_output.bpf.c -o samples/bpf/trace_output.bpf.o
+gcc -Wp,-MD,samples/bpf/.trace_output.d -Wall -O2 -Wmissing-prototypes -Wstrict-prototypes \
+ -I./usr/include -I./tools/testing/selftests/bpf/ -I/home/paulning/study/linux/samples/bpf/libbpf/include \
+  -I./tools/include -I./tools/perf -DHAVE_ATTR_TEST=0   \
+   -o samples/bpf/trace_output samples/bpf/trace_output_user.o /home/paulning/study/linux/samples/bpf/libbpf/libbpf.a -lelf -lz -lrt
+
+*/
 static __u64 time_get_ns(void)
 {
 	struct timespec ts;
@@ -52,12 +68,13 @@ int main(int argc, char **argv)
 	FILE *f;
 
 	snprintf(filename, sizeof(filename), "%s.bpf.o", argv[0]);
+	printf("bpf filename %s\n", filename);
 	obj = bpf_object__open_file(filename, NULL);
 	if (libbpf_get_error(obj)) {
 		fprintf(stderr, "ERROR: opening BPF object file failed\n");
 		return 0;
 	}
-
+	printf("open bpf object file %s\n", filename);
 	/* load BPF program */
 	if (bpf_object__load(obj)) {
 		fprintf(stderr, "ERROR: loading BPF object file failed\n");

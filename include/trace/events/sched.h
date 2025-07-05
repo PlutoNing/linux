@@ -218,6 +218,17 @@ static inline long __trace_sched_switch_state(bool preempt,
 
 /*
  * Tracepoint for task switches, performed by the scheduler:
+static inline __attribute__((__gnu_inline__)) __attribute__((__unused__))
+__attribute__((no_instrument_function)) int
+register_trace_sched_switch(void (*probe)(void *__data, bool preempt,
+					  struct task_struct *prev,
+					  struct task_struct *next,
+					  unsigned int prev_state),
+			    void *data)
+{
+	return tracepoint_probe_register(&__tracepoint_sched_switch,
+					 (void *)probe, data);
+}
  */
 TRACE_EVENT(sched_switch,
 

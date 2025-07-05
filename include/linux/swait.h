@@ -39,7 +39,7 @@
  */
 
 struct task_struct;
-
+/* 等待的进程链接在这里 */
 struct swait_queue_head {
 	raw_spinlock_t		lock;
 	struct list_head	task_list;
@@ -154,6 +154,7 @@ extern long prepare_to_swait_event(struct swait_queue_head *q, struct swait_queu
 extern void __finish_swait(struct swait_queue_head *q, struct swait_queue *wait);
 extern void finish_swait(struct swait_queue_head *q, struct swait_queue *wait);
 
+/* 等待事件发生 */
 /* as per ___wait_event() but for swait, therefore "exclusive == 1" */
 #define ___swait_event(wq, condition, state, ret, cmd)			\
 ({									\
@@ -257,6 +258,7 @@ do {									\
 		       __ret = schedule_timeout(__ret))
 
 /**
+等待条件发生,带超时,并且不计入系统负载
  * swait_event_idle_timeout_exclusive - wait up to timeout without load contribution
  * @wq: the waitqueue to wait on
  * @condition: a C expression for the event to wait for

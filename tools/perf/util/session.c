@@ -145,7 +145,7 @@ void perf_session__set_id_hdr_size(struct perf_session *session)
 
 	machines__set_id_hdr_size(&session->machines, id_hdr_size);
 }
-
+/* 创建kernel map */
 int perf_session__create_kernel_maps(struct perf_session *session)
 {
 	int ret = machine__create_kernel_maps(&session->machines.host);
@@ -189,7 +189,7 @@ static int ordered_events__deliver_event(struct ordered_events *oe,
 					   session->tool, event->file_offset,
 					   event->file_path);
 }
-
+/* session是什么 */
 struct perf_session *__perf_session__new(struct perf_data *data,
 					 bool repipe, int repipe_fd,
 					 struct perf_tool *tool)
@@ -247,7 +247,7 @@ struct perf_session *__perf_session__new(struct perf_data *data,
 	} else  {
 		session->machines.host.env = &perf_env;
 	}
-
+/* x86的ubuntu物理机为false */
 	session->machines.host.single_address_space =
 		perf_env__single_address_space(session->machines.host.env);
 
@@ -474,7 +474,7 @@ static int perf_session__process_compressed_event_stub(struct perf_session *sess
        dump_printf(": unhandled!\n");
        return 0;
 }
-
+/*  */
 void perf_tool__fill_defaults(struct perf_tool *tool)
 {
 	if (tool->sample == NULL)
@@ -1306,7 +1306,7 @@ static void sample_read__printf(struct perf_sample *sample, u64 read_format)
 		printf("\n");
 	}
 }
-
+/* 导出什么事件 */
 static void dump_event(struct evlist *evlist, union perf_event *event,
 		       u64 file_offset, struct perf_sample *sample,
 		       const char *file_path)
@@ -1623,7 +1623,7 @@ static int perf_session__deliver_event(struct perf_session *session,
 				       const char *file_path)
 {
 	struct perf_sample sample;
-	int ret = evlist__parse_sample(session->evlist, event, &sample);
+	int ret = evlist__parse_sample(session->evlist, event, &sample);/* 采样到sample */
 
 	if (ret) {
 		pr_err("Can't parse sample, err = %d\n", ret);
@@ -1840,7 +1840,7 @@ int perf_session__peek_events(struct perf_session *session, u64 offset,
 
 	return err;
 }
-
+/*  */
 static s64 perf_session__process_event(struct perf_session *session,
 				       union perf_event *event, u64 file_offset,
 				       const char *file_path)
@@ -2046,13 +2046,13 @@ static int __perf_session__process_pipe_events(struct perf_session *session)
 
 	head = 0;
 	cur_size = sizeof(union perf_event);
-
+/* 分配event的内存空间 */
 	buf = malloc(cur_size);
 	if (!buf)
 		return -errno;
 	ordered_events__set_copy_on_queue(oe, true);
 more:
-	event = buf;
+	event = buf;/* 从session的perf data读取一个event */
 	err = perf_data__read(session->data, event,
 			      sizeof(struct perf_event_header));
 	if (err <= 0) {
@@ -2072,7 +2072,7 @@ more:
 		goto out_err;
 	}
 
-	if (size > cur_size) {
+	if (size > cur_size) {/* 应该属于unlikely */
 		void *new = realloc(buf, size);
 		if (!new) {
 			pr_err("failed to allocate memory to read event\n");
@@ -2085,7 +2085,7 @@ more:
 	p = event;
 	p += sizeof(struct perf_event_header);
 
-	if (size - sizeof(struct perf_event_header)) {
+	if (size - sizeof(struct perf_event_header)) {/* 读取事件除了header之外的部分? */
 		err = perf_data__read(session->data, p,
 				      size - sizeof(struct perf_event_header));
 		if (err <= 0) {
@@ -2098,7 +2098,7 @@ more:
 			goto out_err;
 		}
 	}
-
+/* 现在应该是把事件读完了 */
 	if ((skip = perf_session__process_event(session, event, head, "pipe")) < 0) {
 		pr_err("%#" PRIx64 " [%#x]: failed to process type: %d\n",
 		       head, event->header.size, event->header.type);
@@ -2116,7 +2116,7 @@ more:
 		goto out_err;
 
 	if (!session_done())
-		goto more;
+		goto more; /* 循环往复 */
 done:
 	/* do the final flush for ordered samples */
 	err = ordered_events__flush(oe, OE_FLUSH__FINAL);
@@ -2612,7 +2612,7 @@ out_err:
 
 	return ret;
 }
-
+/* 处理session的event */
 int perf_session__process_events(struct perf_session *session)
 {
 	if (perf_session__register_idle_thread(session) < 0)

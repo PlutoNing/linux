@@ -156,7 +156,9 @@ static inline void init_llist_head(struct llist_head *list)
 	     (pos) = llist_entry((pos)->member.next, typeof(*(pos)), member))
 
 /**
- * llist_for_each_entry_safe - iterate over some deleted entries of lock-less list of given type
+pos->member.next链接在node链表上面
+ * llist_for_each_entry_safe - 
+ iterate over some deleted entries of lock-less list of given type
  *			       safe against removal of list entry
  * @pos:	the type * to use as a loop cursor.
  * @n:		another type * to use as temporary storage
@@ -215,7 +217,7 @@ static inline bool __llist_add_batch(struct llist_node *new_first,
  * @head:	the head for your lock-less list
  *
  * Returns true if the list was empty prior to adding this entry.
- 返回真表示
+ 返回真表示之前是空的
  */
 static inline bool llist_add(struct llist_node *new, struct llist_head *head)
 {
@@ -228,6 +230,7 @@ static inline bool __llist_add(struct llist_node *new, struct llist_head *head)
 }
 
 /**
+把head的东西删除掉, 返回内容
  * llist_del_all - delete all entries from lock-less list
  * @head:	the head of lock-less list to delete all entries
  *

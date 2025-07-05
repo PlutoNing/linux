@@ -150,6 +150,8 @@ static inline void percpu_ref_kill(struct percpu_ref *ref)
 }
 
 /*
+检测是不是处于pcp模式
+然后读取ref->percpu_count_ptr赋值到percpu_countp
  * Internal helper.  Don't use outside percpu-refcount proper.  The
  * function doesn't return the pointer and let the caller test it for NULL
  * because doing so forces the compiler to generate two conditional
@@ -314,6 +316,8 @@ static inline bool percpu_ref_tryget_live(struct percpu_ref *ref)
 }
 
 /**
+减少pcpref的指定值
+如果处于pcp模式，则从当前cpu的percpu_count_ptr中减去nr
  * percpu_ref_put_many - decrement a percpu refcount
  * @ref: percpu_ref to put
  * @nr: number of references to put
@@ -338,6 +342,7 @@ static inline void percpu_ref_put_many(struct percpu_ref *ref, unsigned long nr)
 }
 
 /**
+减少pcpref
  * percpu_ref_put - decrement a percpu refcount
  * @ref: percpu_ref to put
  *
@@ -352,6 +357,7 @@ static inline void percpu_ref_put(struct percpu_ref *ref)
 }
 
 /**
+检查一个pcp ref是否处于dying状态或者已经dead
  * percpu_ref_is_dying - test whether a percpu refcount is dying or dead
  * @ref: percpu_ref to test
  *

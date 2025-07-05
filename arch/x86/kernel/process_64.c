@@ -546,7 +546,7 @@ void compat_start_thread(struct pt_regs *regs, u32 new_ip, u32 new_sp, bool x32)
 }
 #endif
 
-/*
+/*切换进程
  *	switch_to(x,y) should switch tasks from x to y.
  *
  * This could still be optimized:
@@ -573,7 +573,7 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 
 	/* We must save %fs and %gs before load_TLS() because
 	 * %fs and %gs may be cleared by load_TLS().
-	 *
+	 * 保存fs和gs
 	 * (e.g. xen_load_tls())
 	 */
 	save_fsgs(prev_p);
@@ -605,22 +605,22 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	 * Note that we don't need to do anything for CS and SS, as
 	 * those are saved and restored as part of pt_regs.
 	 */
-	savesegment(es, prev->es);
+	savesegment(es, prev->es); /* 把prev的es保存起来 */
 	if (unlikely(next->es | prev->es))
 		loadsegment(es, next->es);
 
-	savesegment(ds, prev->ds);
+	savesegment(ds, prev->ds);/* 保存prev的ds */
 	if (unlikely(next->ds | prev->ds))
 		loadsegment(ds, next->ds);
 
-	x86_fsgsbase_load(prev, next);
+	x86_fsgsbase_load(prev, next);/* 这些都是啥寄存器 */
 
 	x86_pkru_load(prev, next);
 
 	/*
 	 * Switch the PDA and FPU contexts.
 	 */
-	raw_cpu_write(pcpu_hot.current_task, next_p);
+	raw_cpu_write(pcpu_hot.current_task, next_p);/* 更新pcp hot的current进程 */
 	// 看来存储的是下一个进程的thread_info的regs哪里大概的位置?
 	raw_cpu_write(pcpu_hot.top_of_stack, task_top_of_stack(next_p));
 

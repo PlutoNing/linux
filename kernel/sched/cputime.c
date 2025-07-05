@@ -33,7 +33,7 @@ void disable_sched_clock_irqtime(void)
 {
 	sched_clock_irqtime = 0;
 }
-
+/* 统计进程的中断时间 */
 static void irqtime_account_delta(struct irqtime *irqtime, u64 delta,
 				  enum cpu_usage_stat idx)
 {
@@ -47,6 +47,7 @@ static void irqtime_account_delta(struct irqtime *irqtime, u64 delta,
 }
 
 /*
+统计进程的中断时间?
  * Called after incrementing preempt_count on {soft,}irq_enter
  * and before decrementing preempt_count on {soft,}irq_exit.
  */
@@ -70,6 +71,7 @@ void irqtime_account_irq(struct task_struct *curr, unsigned int offset)
 	 * We want to continue accounting softirq time to ksoftirqd thread
 	 * in that case, so as not to confuse scheduler with a special task
 	 * that do not consume any time, but still wants to run.
+	 这里统计中断时间
 	 */
 	if (pc & HARDIRQ_MASK)
 		irqtime_account_delta(irqtime, delta, CPUTIME_IRQ);
@@ -380,7 +382,8 @@ void thread_group_cputime(struct task_struct *tsk, struct task_cputime *times)
 static void irqtime_account_process_tick(struct task_struct *p, int user_tick,
 					 int ticks)
 {
-	u64 other, cputime = TICK_NSEC * ticks;
+	u64 other,
+	cputime = TICK_NSEC * ticks;
 
 	/*
 	 * When returning from idle, many ticks can get accounted at
@@ -484,6 +487,7 @@ void thread_group_cputime_adjusted(struct task_struct *p, u64 *ut, u64 *st)
 #else /* !CONFIG_VIRT_CPU_ACCOUNTING_NATIVE: */
 
 /*
+统计进程的cpu时间
  * Account a single tick of CPU time.
  * @p: the process that the CPU time gets accounted to
  * @user_tick: indicates if the tick is a user or a system tick
@@ -492,6 +496,7 @@ void account_process_tick(struct task_struct *p, int user_tick)
 {
 	u64 cputime, steal;
 
+	/* 这个函数一直返回false */
 	if (vtime_accounting_enabled_this_cpu())
 		return;
 

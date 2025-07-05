@@ -163,11 +163,11 @@ static inline int verify_chain(Indirect *from, Indirect *to)
 static int ext2_block_to_path(struct inode *inode,
 			long i_block, int offsets[4], int *boundary)
 {
-	int ptrs = EXT2_ADDR_PER_BLOCK(inode->i_sb);
-	int ptrs_bits = EXT2_ADDR_PER_BLOCK_BITS(inode->i_sb);
-	const long direct_blocks = EXT2_NDIR_BLOCKS,
+	int ptrs = EXT2_ADDR_PER_BLOCK(inode->i_sb);/* 是256 */
+	int ptrs_bits = EXT2_ADDR_PER_BLOCK_BITS(inode->i_sb);/* 是8 */
+	const long direct_blocks = EXT2_NDIR_BLOCKS,/* 是12 */
 		indirect_blocks = ptrs,
-		double_blocks = (1 << (ptrs_bits * 2));
+		double_blocks = (1 << (ptrs_bits * 2));/* 大小65536 */
 	int n = 0;
 	int final = 0;
 
@@ -202,7 +202,7 @@ static int ext2_block_to_path(struct inode *inode,
 	return n;
 }
 
-/**
+/**读取data的indirect blocks chain
  *	ext2_get_branch - read the chain of indirect blocks leading to data
  *	@inode: inode in question
  *	@depth: depth of the chain (1 - direct pointer, etc.)
@@ -603,7 +603,7 @@ static void ext2_splice_branch(struct inode *inode,
 	mark_inode_dirty(inode);
 }
 
-/*
+/*ext2的块分配策略
  * Allocation strategy is simple: if we have to allocate something, we will
  * have to go the whole way to leaf. So let's do it before attaching anything
  * to tree, set linkage between the newborn blocks, write them if sync is
@@ -779,7 +779,7 @@ cleanup:
 		*bno = le32_to_cpu(chain[depth-1].key);
 	return err;
 }
-
+/* getblock的回调 */
 int ext2_get_block(struct inode *inode, sector_t iblock,
 		struct buffer_head *bh_result, int create)
 {
@@ -791,8 +791,8 @@ int ext2_get_block(struct inode *inode, sector_t iblock,
 	ret = ext2_get_blocks(inode, iblock, max_blocks, &bno, &new, &boundary,
 			create);
 	if (ret <= 0)
-		return ret;
-
+		return ret; // 出错了
+/* bno是找到的结果 */
 	map_bh(bh_result, inode->i_sb, bno);
 	bh_result->b_size = (ret << inode->i_blkbits);
 	if (new)
@@ -903,7 +903,7 @@ int ext2_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 
 	return ret;
 }
-
+/* folio是新加入mapping的，这里把file的内容读进去 */
 static int ext2_read_folio(struct file *file, struct folio *folio)
 {
 	return mpage_read_folio(folio, ext2_get_block);
@@ -913,25 +913,25 @@ static void ext2_readahead(struct readahead_control *rac)
 {
 	mpage_readahead(rac, ext2_get_block);
 }
-
+/* mapping的写入ops, 要写入file的[pos,pos+len], pagep参数是空的 */
 static int
 ext2_write_begin(struct file *file, struct address_space *mapping,
 		loff_t pos, unsigned len, struct page **pagep, void **fsdata)
 {
 	int ret;
-
+/* 通用函数.找到mapping的index位置的page, 创建buffer io*/
 	ret = block_write_begin(mapping, pos, len, pagep, ext2_get_block);
 	if (ret < 0)
 		ext2_write_failed(mapping, pos + len);
 	return ret;
 }
-
+/* ext2的mapping的write end函数,刚刚找到了 */
 static int ext2_write_end(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned copied,
 			struct page *page, void *fsdata)
 {
 	int ret;
-
+/* 调用的也是通用方法, 刚刚找到了mapping的对应的page,也拷贝了内容 */
 	ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
 	if (ret < len)
 		ext2_write_failed(mapping, pos + len);
@@ -942,7 +942,9 @@ static sector_t ext2_bmap(struct address_space *mapping, sector_t block)
 {
 	return generic_block_bmap(mapping,block,ext2_get_block);
 }
-
+/* 
+ext2回写page的函数,ext2调用的公用的mpage_writepages
+*/
 static int
 ext2_writepages(struct address_space *mapping, struct writeback_control *wbc)
 {
@@ -1364,7 +1366,7 @@ void ext2_set_inode_flags(struct inode *inode)
 	if (test_opt(inode->i_sb, DAX) && S_ISREG(inode->i_mode))
 		inode->i_flags |= S_DAX;
 }
-
+/* 设置各种ops */
 void ext2_set_file_ops(struct inode *inode)
 {
 	inode->i_op = &ext2_file_inode_operations;

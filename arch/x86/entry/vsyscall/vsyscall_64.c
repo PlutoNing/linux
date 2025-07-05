@@ -41,7 +41,7 @@
 
 #define CREATE_TRACE_POINTS
 #include "vsyscall_trace.h"
-
+/* 内核模拟 vsyscall，页面不可执行，需陷入内核处理。 ​XONLY​	仅允许执行（不可读/写），通过硬件特性（如 SMEP）保护。​NONE​	完全禁用 vsyscall，强制使用更安全的替代机制（如 vDSO）。 */
 static enum { EMULATE, XONLY, NONE } vsyscall_mode __ro_after_init =
 #ifdef CONFIG_LEGACY_VSYSCALL_NONE
 	NONE;
@@ -50,7 +50,7 @@ static enum { EMULATE, XONLY, NONE } vsyscall_mode __ro_after_init =
 #else
 	#error VSYSCALL config is broken
 #endif
-
+/* vsyscall​ 是 Linux 早期用于加速某些系统调用（如 gettimeofday）的机制，通过映射固定地址的代码页到用户空间，避免上下文切换 */
 static int __init vsyscall_setup(char *str)
 {
 	if (str) {
@@ -391,7 +391,7 @@ void __init map_vsyscall(void)
 			     PAGE_KERNEL_VVAR);
 		set_vsyscall_pgtable_user_bits(swapper_pg_dir);
 	}
-
+	/* 一般是这条路径 */
 	if (vsyscall_mode == XONLY)
 		vm_flags_init(&gate_vma, VM_EXEC);
 

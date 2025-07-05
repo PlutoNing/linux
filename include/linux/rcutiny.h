@@ -122,11 +122,14 @@ static inline void kvfree_call_rcu(struct rcu_head *head, void *ptr)
 
 void rcu_qs(void);
 
+/* 检查要不要触发rcu软中断 */
 static inline void rcu_softirq_qs(void)
 {
 	rcu_qs();
 }
-
+/* 
+里面会检查要不要触发rcu软中断
+*/
 #define rcu_note_context_switch(preempt) \
 	do { \
 		rcu_qs(); \

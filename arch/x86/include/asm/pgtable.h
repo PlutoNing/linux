@@ -210,6 +210,7 @@ static inline int pte_exec(pte_t pte)
 	return !(pte_flags(pte) & _PAGE_NX);
 }
 
+/*  */
 static inline int pte_special(pte_t pte)
 {
 	return pte_flags(pte) & _PAGE_SPECIAL;
@@ -389,6 +390,7 @@ static inline pte_t pte_wrprotect(pte_t pte)
 }
 
 #ifdef CONFIG_HAVE_ARCH_USERFAULTFD_WP
+/* 检查这个pte是不是被uffd写保护的？ */
 static inline int pte_uffd_wp(pte_t pte)
 {
 	bool wp = pte_flags(pte) & _PAGE_UFFD_WP;
@@ -1049,6 +1051,13 @@ static inline unsigned long pmd_page_vaddr(pmd_t pmd)
  *
  * (Currently stuck as a macro because of indirect forward reference
  * to linux/mm.h:page_to_nid())
+_dst_pte = ({
+		pgprot_t __pgprot = dst_vma->vm_page_prot;
+		pfn_pte((unsigned long)((page) - ((struct page *)vmemmap_base)),
+			__pgprot);
+	});
+({ ... }) 结构​​：
+GNU C 扩展语法，允许将多个语句组合成一个表达式，​​返回最后一个语句的值​​（此处返回 pfn_pte 的结果）。
  */
 #define mk_pte(page, pgprot)						  \
 ({									  \
@@ -1080,7 +1089,7 @@ static inline int pud_present(pud_t pud)
 {
 	return pud_flags(pud) & _PAGE_PRESENT;
 }
-
+/* 获得的是pmd页面的内核空间虚拟地址, 由pud指向, 上面全是pmd */
 static inline pmd_t *pud_pgtable(pud_t pud)
 {
 	return (pmd_t *)__va(pud_val(pud) & pud_pfn_mask(pud));
@@ -1293,6 +1302,7 @@ extern int ptep_clear_flush_young(struct vm_area_struct *vma,
 				  unsigned long address, pte_t *ptep);
 
 #define __HAVE_ARCH_PTEP_GET_AND_CLEAR
+/* 释放页表项 */
 static inline pte_t ptep_get_and_clear(struct mm_struct *mm, unsigned long addr,
 				       pte_t *ptep)
 {

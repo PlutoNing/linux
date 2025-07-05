@@ -53,7 +53,7 @@ static inline void native_write_cr3(unsigned long val)
 {
 	asm volatile("mov %0,%%cr3": : "r" (val) : "memory");
 }
-
+/* 读取cr4寄存器 */
 static inline unsigned long native_read_cr4(void)
 {
 	unsigned long val;
@@ -119,7 +119,7 @@ static __always_inline void native_wbinvd(void)
 {
 	asm volatile("wbinvd": : :"memory");
 }
-
+/* 读取cr4 */
 static inline unsigned long __read_cr4(void)
 {
 	return native_read_cr4();
@@ -167,7 +167,7 @@ static inline void __write_cr4(unsigned long x)
 {
 	native_write_cr4(x);
 }
-
+/* ​wbinvd 指令​：强制写回所有缓存行并标记为无效，确保内存一致性。 */
 static __always_inline void wbinvd(void)
 {
 	native_wbinvd();
@@ -216,7 +216,7 @@ fail:
 #endif /* CONFIG_X86_USER_SHADOW_STACK */
 
 #define nop() asm volatile ("nop")
-
+/* 0F 01 E8 是 SERIALIZE 的机器码（需在支持该指令的 CPU 上运行）。​指令作用​：SERIALIZE 是 Intel 引入的指令，用于序列化程序的执行流，确保之前的所有操作（如内存修改、分支预测等）完成后，再执行后续指令。 */
 static inline void serialize(void)
 {
 	/* Instruction opcode for SERIALIZE; supported in binutils >= 2.35. */

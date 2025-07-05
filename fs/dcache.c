@@ -2041,7 +2041,7 @@ void d_instantiate(struct dentry *entry, struct inode * inode)
 }
 EXPORT_SYMBOL(d_instantiate);
 
-/*
+/*在文件系统层面把inode加入dentry之后,在内核数据结构层面建立联系
  * This should be equivalent to d_instantiate() + unlock_new_inode(),
  * with lockdep-related part of unlock_new_inode() done before
  * anything else.  Use that instead of open-coding d_instantiate()/
@@ -3327,7 +3327,9 @@ static void __init dcache_init(void)
 	d_hash_shift = 32 - d_hash_shift;
 }
 
-/* SLAB cache for __getname() consumers */
+/* 
+负责分配文件名的slab?
+SLAB cache for __getname() consumers */
 struct kmem_cache *names_cachep __read_mostly;
 EXPORT_SYMBOL(names_cachep);
 
@@ -3341,9 +3343,12 @@ void __init vfs_caches_init_early(void)
 	dcache_init_early();
 	inode_init_early();
 }
-// 初始化vfs缓存
+/*
+start_kernel调用
+初始化vfs缓存  */
 void __init vfs_caches_init(void)
 {
+	// 分配文件名的slab?
 	names_cachep = kmem_cache_create_usercopy("names_cache", PATH_MAX, 0,
 			SLAB_HWCACHE_ALIGN|SLAB_PANIC, 0, PATH_MAX, NULL);
 

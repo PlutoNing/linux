@@ -8,6 +8,7 @@
 #include "trace.h"
 
 /*
+步进到iter的下一个map的范围
  * Advance to the next range we need to map.
  *
  * If the iomap is marked IOMAP_F_STALE, it means the existing map was not fully
@@ -57,6 +58,7 @@ static inline void iomap_iter_done(struct iomap_iter *iter)
 }
 
 /**
+遍历file的一些范围
  * iomap_iter - iterate over a ranges in a file
  * @iter: iteration structue
  * @ops: iomap ops provided by the file system
@@ -84,6 +86,7 @@ int iomap_iter(struct iomap_iter *iter, const struct iomap_ops *ops)
 	}
 
 	trace_iomap_iter(iter, ops, _RET_IP_);
+	/* 步进到下一个范围, pos增加iter->processed之类的距离 */
 	ret = iomap_iter_advance(iter);
 	if (ret <= 0)
 		return ret;

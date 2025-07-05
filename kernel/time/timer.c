@@ -218,7 +218,8 @@ struct timer_base {
 	spinlock_t		expiry_lock;
 	atomic_t		timer_waiters;
 #endif
-	unsigned long		clk; // base当前的时钟jeffies
+/* 可能指向jiffies也可能是下一个到期的timer的时间 */
+	unsigned long		clk;
 	unsigned long		next_expiry; // base的最左边timer的到期时间?
 	unsigned int		cpu; // 对应的cpu
 	bool			next_expiry_recalc;
@@ -526,7 +527,7 @@ unsigned long round_jiffies_up_relative(unsigned long j)
 }
 EXPORT_SYMBOL_GPL(round_jiffies_up_relative);
 
-
+/* 取出timer的什么array的idx */
 static inline unsigned int timer_get_idx(struct timer_list *timer)
 {
 	return (timer->flags & TIMER_ARRAYMASK) >> TIMER_ARRAYSHIFT;
@@ -932,7 +933,7 @@ void init_timer_key(struct timer_list *timer,
 }
 EXPORT_SYMBOL(init_timer_key);
 
-//移除timer
+//移除timer, timer似乎处于pending状态
 static inline void detach_timer(struct timer_list *timer, bool clear_pending)
 {
 	struct hlist_node *entry = &timer->entry;
@@ -945,7 +946,17 @@ static inline void detach_timer(struct timer_list *timer, bool clear_pending)
 	entry->next = LIST_POISON2;
 }
 
-//timer和base是关联的. 
+ 
+/**
+把一个pending的timer从base的哈希表中移除
+ * @description: 
+ * @param {timer_list} *timer
+ * @param {timer_base} *base
+ * @param {bool} clear_pending
+ * @return {*}
+ 返回0表示timer没有pending
+ 返回1表示是pending的, 并且从base的哈希表中移除
+ */
 static int detach_if_pending(struct timer_list *timer, struct timer_base *base,
 			     bool clear_pending)
 {
@@ -954,17 +965,19 @@ static int detach_if_pending(struct timer_list *timer, struct timer_base *base,
 	if (!timer_pending(timer))
 		return 0;
 
+	/* 如果timer是hlist的唯一元素, 对base也需要修改一下 */
 	if (hlist_is_singular_node(&timer->entry, base->vectors + idx)) {
 		__clear_bit(idx, base->pending_map);
 		base->next_expiry_recalc = true;
 	}
 
+	/* 从哈希表移除 */
 	detach_timer(timer, clear_pending);
 	return 1;
 }
 
-// cpu表示定时器所在的cpu?或者即将被插入到的cpu
 /* 
+ cpu表示定时器所在的cpu?或者即将被插入到的cpu
 tflags是timer的flag
 这里通过timer的flag获取他属于cpu的哪个base, timer即将插入cpu的timer_base
 */
@@ -1039,16 +1052,18 @@ static inline void forward_timer_base(struct timer_base *base)
 	 * jiffies otherwise we forward to the next expiry value.
 	 */
 	if (time_after(base->next_expiry, jnow)) {
+		/* 如果还没超时 */
 		base->clk = jnow;
-	} else {
+	} else {/* 如果已经超时了 */
 		if (WARN_ON_ONCE(time_before(base->next_expiry, base->clk)))
 			return;
+		/* 如果已经超时了, 并且base->clk也落后了 */
 		base->clk = base->next_expiry;
 	}
 }
 
 
-/*
+/*通过timer的flag
 获取timer的base
  * We are using hashed locking: Holding per_cpu(timer_bases[x]).lock means
  * that all timers which are tied to this base are locked, and the base itself
@@ -1094,8 +1109,15 @@ static struct timer_base *lock_timer_base(struct timer_list *timer,
 #define MOD_TIMER_NOTPENDING		0x04
 
 /* 
+设置一个timer的超时时间
 可以用来开启一个timer
-*/
+ * @description: 
+ * @param {timer_list} *timer
+ * @param {unsigned long} expires
+ 新的到期时间
+ * @param {unsigned int} options
+ * @return {*}
+ */
 static inline int
 __mod_timer(struct timer_list *timer, unsigned long expires, unsigned int options)
 {
@@ -1110,7 +1132,8 @@ __mod_timer(struct timer_list *timer, unsigned long expires, unsigned int option
 	 * This is a common optimization triggered by the networking code - if
 	 * the timer is re-modified to have the same timeout or ends up in the
 	 * same array bucket then just return:
-	 这是一个常见的优化，由网络代码触发-如果定时器被重新修改为具有相同的超时时间或最终位于相同的数组桶中，则只需返回：
+	 这是一个常见的优化，由网络代码触发
+	 -如果定时器被重新修改为具有相同的超时时间或最终位于相同的数组桶中，则只需返回：
 	 */
 	if (!(options & MOD_TIMER_NOTPENDING) && timer_pending(timer)) {/* 
 		如果可以修改pending的timer
@@ -1168,6 +1191,7 @@ __mod_timer(struct timer_list *timer, unsigned long expires, unsigned int option
 			goto out_unlock;
 		}
 	} else {
+		/* 如果MOD_TIMER_NOTPENDING 或者timer没有pending */
 		base = lock_timer_base(timer, &flags);
 		/*
 		 * Has @timer been shutdown? This needs to be evaluated
@@ -1176,10 +1200,10 @@ __mod_timer(struct timer_list *timer, unsigned long expires, unsigned int option
 		 */
 		if (!timer->function)
 			goto out_unlock;
-
+		/* 调整base的clock */
 		forward_timer_base(base);
 	}
-
+/* 如果timer处于pending状态 */
 	ret = detach_if_pending(timer, base, false);
 	if (!ret && (options & MOD_TIMER_PENDING_ONLY))
 		goto out_unlock;
@@ -1216,6 +1240,7 @@ __mod_timer(struct timer_list *timer, unsigned long expires, unsigned int option
 	 * enqueue_timer() is required. Otherwise we need to (re)calculate
 	 * the wheel index via internal_add_timer().
 	 */
+	/* 修改之后重新入队 */
 	if (idx != UINT_MAX && clk == base->clk)
 		enqueue_timer(base, timer, idx, bucket_expiry);
 	else // 需要计算idx
@@ -1257,6 +1282,7 @@ EXPORT_SYMBOL(mod_timer_pending);
  修改一个timer的超时时间
  * @timer:	The timer to be modified
  * @expires:	New absolute timeout in jiffies
+ 新的超时时间
  *
  * mod_timer(timer, expires) is equivalent to:
  *
@@ -1406,6 +1432,7 @@ out_unlock:
 EXPORT_SYMBOL_GPL(add_timer_on);
 
 /**
+移除一个timer
  * __timer_delete - Internal function: Deactivate a timer
  * @timer:	The timer to be deactivated
  * @shutdown:	If true, this indicates that the timer is about to be
@@ -1440,6 +1467,7 @@ static int __timer_delete(struct timer_list *timer, bool shutdown)
 	 * that the callback cannot requeue the timer.
 	 */
 	if (timer_pending(timer) || shutdown) {
+		/* 只处理pending的timer, 从哈希表移除timer */
 		base = lock_timer_base(timer, &flags);
 		ret = detach_if_pending(timer, base, true);
 		if (shutdown)
@@ -1451,6 +1479,7 @@ static int __timer_delete(struct timer_list *timer, bool shutdown)
 }
 
 /**
+删除一个pending的timer
  * timer_delete - Deactivate a timer
  * @timer:	The timer to be deactivated
  *
@@ -1459,7 +1488,10 @@ static int __timer_delete(struct timer_list *timer, bool shutdown)
  * callback function is concurrently executed on a different CPU or not.
  * It neither prevents rearming of the timer.  If @timer can be rearmed
  * concurrently then the return value of this function is meaningless.
- *
+ * 这个函数只会停用一个pending的timer，但是与
+ * timer_delete_sync()不同，它不考虑定时器的回调函数是否在不同的CPU上并发执行。
+ * 它也不会阻止定时器的重新使用。如果@timer可以被并发重新使用，那么这个函数的
+ 返回值是没有意义的。
  * Return:
  * * %0 - The timer was not pending
  * * %1 - The timer was pending and deactivated
@@ -1492,6 +1524,8 @@ int timer_shutdown(struct timer_list *timer)
 EXPORT_SYMBOL_GPL(timer_shutdown);
 
 /**
+移除或者关闭一个timer
+并没有等待handler完成与否
  * __try_to_del_timer_sync - Internal function: Try to deactivate a timer
  关闭一个timer
  * @timer:	Timer to deactivate
@@ -1524,14 +1558,20 @@ static int __try_to_del_timer_sync(struct timer_list *timer, bool shutdown)
 	//获取timer的base
 	base = lock_timer_base(timer, &flags);
 
+	/* 把timer从哈希表移除 */
 	if (base->running_timer != timer)
 		ret = detach_if_pending(timer, base, true);
+	
+	/* 关闭timer */
 	if (shutdown)
 		timer->function = NULL;
 
 	raw_spin_unlock_irqrestore(&base->lock, flags);
 
 	return ret;
+	/* -1表示正在running
+	0 没有pending
+	1 pending,移除了 */
 }
 
 /**
@@ -1630,6 +1670,8 @@ static inline void del_timer_wait_running(struct timer_list *timer) { }
 #endif
 
 /**
+关闭timer 把func设置为null
+pending的话,从哈希表移除
  * __timer_delete_sync - Internal function: Deactivate a timer and wait
  *			 for the handler to finish.
  关闭一个定时器并等待处理程序完成。
@@ -1687,16 +1729,19 @@ static int __timer_delete_sync(struct timer_list *timer, bool shutdown)
 	do {
 		ret = __try_to_del_timer_sync(timer, shutdown);
 
-		if (unlikely(ret < 0)) { //在其他cpu上面运行
+		if (unlikely(ret < 0)) {
+			/* 返回-1表示正在running */
 			del_timer_wait_running(timer);
 			cpu_relax();
 		}
 	} while (ret < 0);
-
+	/*  */
 	return ret;
 }
 
 /**
+删除timer
+等待handler执行完毕
  * timer_delete_sync - Deactivate a timer and wait for the handler to finish.
  * @timer:	The timer to be deactivated
  *
@@ -2225,6 +2270,10 @@ static void run_local_timers(void)
 /*
 update_process_times()函数根据时钟中断产生的位置（用户态 or 内核态），
 对用户或对系统进行相应的时间更新。
+===========================
+@user_tick: 表示是否处于用户模式. 1表示用户态tick, 0表示内核态tic
+======================================
+什么时候调用这个函数?
 =========================================================================
 update_process_times需要由SMP系统上的每个CPU执行。
 除了进程统计之外，它还激活了所有注册的经典低精度定时器并使之到期，并向调度器提供时间感知。
@@ -2235,10 +2284,12 @@ void update_process_times(int user_tick)
 {
 	struct task_struct *p = current;
 
-	/* Note: this timer irq context must be accounted for as well. */
+	/* Note: this timer irq context must be accounted for as well.
+	统计进程的虚拟时间 */
 	account_process_tick(p, user_tick);
 	// 运行hrtimer与softirq相关的定时器
 	run_local_timers();
+	/*  */
 	rcu_sched_clock_irq(user_tick);
 #ifdef CONFIG_IRQ_WORK
 	if (in_irq())
@@ -2381,6 +2432,7 @@ signed long __sched schedule_timeout_killable(signed long timeout)
 }
 EXPORT_SYMBOL(schedule_timeout_killable);
 
+/* 让当前进程/线程进入不可中断的睡眠状态，并在指定的超时时间后自动唤醒 */
 signed long __sched schedule_timeout_uninterruptible(signed long timeout)
 {
 	__set_current_state(TASK_UNINTERRUPTIBLE);

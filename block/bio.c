@@ -67,6 +67,7 @@ static struct biovec_slab *biovec_slab(unsigned short nr_vecs)
 }
 
 /*
+类似用于分配bio的内存池？
  * fs_bio_set is the bio_set containing bio and iovec memory pools used by
  * IO code that does not need private memory pools.
  */
@@ -241,10 +242,12 @@ static void bio_free(struct bio *bio)
 }
 
 /*
+初始化bio
  * Users of this function have their own bio allocation. Subsequently,
  * they must remember to pair any call to bio_init() with bio_uninit()
  * when IO has completed, or when the bio is released.
-   这个函数的用户有自己的bio分配。随后，他们必须记住将任何对bio_init()的调用与bio_uninit()配对，
+   这个函数的用户有自己的bio分配。随后，他们必须记住将任何对bio_init()的调用与
+   bio_uninit()配对，
  */
 void bio_init(struct bio *bio, struct block_device *bdev, struct bio_vec *table,
 	      unsigned short max_vecs, blk_opf_t opf)
@@ -283,6 +286,7 @@ void bio_init(struct bio *bio, struct block_device *bdev, struct bio_vec *table,
 	bio->bi_cookie = BLK_QC_T_NONE;
 
 	bio->bi_max_vecs = max_vecs;
+	/*  */
 	bio->bi_io_vec = table;
 	bio->bi_pool = NULL;
 }
@@ -352,6 +356,7 @@ void bio_chain(struct bio *bio, struct bio *parent)
 EXPORT_SYMBOL(bio_chain);
 
 // 在链式bio中增加一个bio
+/* 主要是blk-lib调用这个函数 */
 struct bio *blk_next_bio(struct bio *bio, struct block_device *bdev,
 		unsigned int nr_pages, blk_opf_t opf, gfp_t gfp)
 {
@@ -680,7 +685,7 @@ static void bio_truncate(struct bio *bio, unsigned new_size)
 	bio->bi_iter.bi_size = new_size;
 }
 
-/**
+/**为什么要truncate这个bio
  * guard_bio_eod - truncate a BIO to fit the block device
  * @bio:	bio to truncate
  *
@@ -693,7 +698,7 @@ static void bio_truncate(struct bio *bio, unsigned new_size)
  * sector" case.
  */
 void guard_bio_eod(struct bio *bio)
-{
+{/* bdev的扇区数量,磁盘大小和扇区大小可以算出 */
 	sector_t maxsector = bdev_nr_sectors(bio->bi_bdev);
 
 	if (!maxsector)
@@ -901,6 +906,7 @@ int bio_init_clone(struct block_device *bdev, struct bio *bio,
 EXPORT_SYMBOL(bio_init_clone);
 
 /**
+检查bio是不是满了
  * bio_full - check if the bio is full
  * @bio:	bio to check
  * @len:	length of one segment to be added
@@ -917,6 +923,18 @@ static inline bool bio_full(struct bio *bio, unsigned len)
 	return false;
 }
 
+
+/**
+把page的[off， len]区域添加到到bv
+要求两个区域物理相邻
+ * @description: 
+ * @param {bio_vec} *bv
+ * @param {page} *page
+ * @param {unsigned int} len
+ * @param {unsigned int} off
+ * @param {bool} *same_page
+ * @return {*}
+ */
 static bool bvec_try_merge_page(struct bio_vec *bv, struct page *page,
 		unsigned int len, unsigned int off, bool *same_page)
 {
@@ -924,6 +942,7 @@ static bool bvec_try_merge_page(struct bio_vec *bv, struct page *page,
 	phys_addr_t vec_end_addr = page_to_phys(bv->bv_page) + bv_end - 1;
 	phys_addr_t page_addr = page_to_phys(page);
 
+	/* 需要bv区域的尾部刚好和待添加区域的起始处对齐 */
 	if (vec_end_addr + 1 != page_addr + off)
 		return false;
 	if (xen_domain() && !xen_biovec_phys_mergeable(bv, page))
@@ -944,6 +963,9 @@ static bool bvec_try_merge_page(struct bio_vec *bv, struct page *page,
 }
 
 /*
+要把page的len长度加入一个bio
+bv是bio的bv数组的最后一个bv
+要求待添加区域和bv物理相邻
  * Try to merge a page into a segment, while obeying the hardware segment
  * size limit.  This is not for normal read/write bios, but for passthrough
  * or Zone Append operations that we can't split.
@@ -953,24 +975,29 @@ bool bvec_try_merge_hw_page(struct request_queue *q, struct bio_vec *bv,
 		bool *same_page)
 {
 	unsigned long mask = queue_segment_boundary(q);
+	/* 获取到bv的物理地址 */
 	phys_addr_t addr1 = page_to_phys(bv->bv_page) + bv->bv_offset;
+	/* 获取到要添加区域的物理地址 */
 	phys_addr_t addr2 = page_to_phys(page) + offset + len - 1;
 
 	if ((addr1 | mask) != (addr2 | mask))
 		return false;
 	if (bv->bv_len + len > queue_max_segment_size(q))
 		return false;
+	/* 尝试添加 */
 	return bvec_try_merge_page(bv, page, len, offset, same_page);
 }
 
 /**
+尝试将一个page的区域添加到bio中，同时遵守硬件的最大扇区数、最大段和间隙限制。
  * bio_add_hw_page - attempt to add a page to a bio with hw constraints
  * @q: the target queue
  * @bio: destination bio
  * @page: page to add
- * @len: vec entry length
- * @offset: vec entry offset
- * @max_sectors: maximum number of sectors that can be added
+ * @len: vec entry length， page区域的长度
+ * @offset: vec entry offset， page区域的起始处
+ * @max_sectors: maximum number of sectors that can be added，是磁盘的最大限制，
+ 还是某个什么限制？
  * @same_page: return if the segment has been merged inside the same page
  *
  * Add a page to a bio while respecting the hardware max_sectors, max_segment
@@ -982,15 +1009,19 @@ int bio_add_hw_page(struct request_queue *q, struct bio *bio,
 {
 	if (WARN_ON_ONCE(bio_flagged(bio, BIO_CLONED)))
 		return 0;
-
+/* 大小不能超限 */
 	if (((bio->bi_iter.bi_size + len) >> SECTOR_SHIFT) > max_sectors)
 		return 0;
 
 	if (bio->bi_vcnt > 0) {
+		/* 如果现在bio有内容？ */
+		/* 获取bio的最后一个bv */
 		struct bio_vec *bv = &bio->bi_io_vec[bio->bi_vcnt - 1];
 
+		/* 尝试把page的off，len区域加到bv， 要求两者相邻 */
 		if (bvec_try_merge_hw_page(q, bv, page, len, offset,
 				same_page)) {
+			/* 添加成功了 */
 			bio->bi_iter.bi_size += len;
 			return len;
 		}
@@ -1006,7 +1037,7 @@ int bio_add_hw_page(struct request_queue *q, struct bio *bio,
 		if (bvec_gap_to_prev(&q->limits, bv, offset))
 			return 0;
 	}
-
+	/* 把这个区域设置到最后一个bv */
 	bvec_set_page(&bio->bi_io_vec[bio->bi_vcnt], page, len, offset);
 	bio->bi_vcnt++;
 	bio->bi_iter.bi_size += len;
@@ -1014,6 +1045,7 @@ int bio_add_hw_page(struct request_queue *q, struct bio *bio,
 }
 
 /**
+把page的区域添加到bio中
  * bio_add_pc_page	- attempt to add page to passthrough bio
  * @q: the target queue
  * @bio: destination bio
@@ -1096,6 +1128,7 @@ void __bio_add_page(struct bio *bio, struct page *page,
 EXPORT_SYMBOL_GPL(__bio_add_page);
 
 /**
+把page的一部分添加到bio
  *	bio_add_page	-	attempt to add page(s) to bio
  *	@bio: destination bio
  *	@page: start page to add
@@ -1138,6 +1171,8 @@ void bio_add_folio_nofail(struct bio *bio, struct folio *folio, size_t len,
 }
 
 /**
+让bio传输page的一部分
+把folio的一部分添加到bio
  * bio_add_folio - Attempt to add part of a folio to a bio.
  * @bio: BIO to add to.
  * @folio: Folio to add.
@@ -1149,7 +1184,7 @@ void bio_add_folio_nofail(struct bio *bio, struct folio *folio, size_t len,
  * PAGE_SIZE, this function can create a bio_vec that starts in a page
  * after the bv_page.  BIOs do not support folios that are 4GiB or larger.
  *
- * Return: Whether the addition was successful.
+ * Return: Whether the addition was success,返回已添加是否成功
  */
 bool bio_add_folio(struct bio *bio, struct folio *folio, size_t len,
 		   size_t off)
@@ -1173,6 +1208,16 @@ void __bio_release_pages(struct bio *bio, bool mark_dirty)
 }
 EXPORT_SYMBOL_GPL(__bio_release_pages);
 
+
+/**
+内核读写过程中的一个操作, 把iter的页面放入bio用于后续的磁盘io
+这里是检测到iter为bvec类型之后调用这个函数
+把iter内容交给bio
+ * @description: 基于iter初始化bio
+ * @param {bio} *bio
+ * @param {iov_iter} *iter
+ * @return {*}
+ */
 void bio_iov_bvec_set(struct bio *bio, struct iov_iter *iter)
 {
 	size_t size = iov_iter_count(iter);
@@ -1187,12 +1232,17 @@ void bio_iov_bvec_set(struct bio *bio, struct iov_iter *iter)
 	}
 
 	bio->bi_vcnt = iter->nr_segs;
+	/* 这个函数的核心操作
+	因为事先检测到iter是bvec类型的
+	所以这里可以直接复制 */
 	bio->bi_io_vec = (struct bio_vec *)iter->bvec;
 	bio->bi_iter.bi_bvec_done = iter->iov_offset;
 	bio->bi_iter.bi_size = size;
 	bio_set_flag(bio, BIO_CLONED);
 }
 
+/* page是从iter提取的内容页面
+这里交给bio */
 static int bio_iov_add_page(struct bio *bio, struct page *page,
 		unsigned int len, unsigned int offset)
 {
@@ -1230,6 +1280,7 @@ static int bio_iov_add_zone_append_page(struct bio *bio, struct page *page,
 #define PAGE_PTRS_PER_BVEC     (sizeof(struct bio_vec) / sizeof(struct page *))
 
 /**
+把iter的内容页面交给bio
  * __bio_iov_iter_get_pages - pin user or kernel pages and add them to a bio
  * @bio: bio to add pages to
  * @iter: iov iterator describing the region to be mapped
@@ -1242,8 +1293,11 @@ static int bio_iov_add_zone_append_page(struct bio *bio, struct page *page,
 static int __bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 {
 	iov_iter_extraction_t extraction_flags = 0;
+	/* nrpages是bio还能容纳的数量? */
 	unsigned short nr_pages = bio->bi_max_vecs - bio->bi_vcnt;
+	/* 确实是 */
 	unsigned short entries_left = bio->bi_max_vecs - bio->bi_vcnt;
+	/* 现在bv指向bio->bi_io_vec这个table下一个新bvec页面的位置 */
 	struct bio_vec *bv = bio->bi_io_vec + bio->bi_vcnt;
 	struct page **pages = (struct page **)bv;
 	ssize_t size, left;
@@ -1268,6 +1322,8 @@ static int __bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 	 * more pages than bi_max_vecs allows, so we have to ALIGN_DOWN the
 	 * result to ensure the bio's total size is correct. The remainder of
 	 * the iov data will be picked up in the next bio iteration.
+	 这里开始把页面给bio
+	 就是把iter的内容放到pages参数 (由bio的bvec table强转而来)
 	 */
 	size = iov_iter_extract_pages(iter, &pages,
 				      UINT_MAX - bio->bi_iter.bi_size,
@@ -1297,7 +1353,7 @@ static int __bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 					offset);
 			if (ret)
 				break;
-		} else
+		} else /* 把page加入bio */
 			bio_iov_add_page(bio, page, len, offset);
 
 		offset = 0;
@@ -1312,6 +1368,8 @@ out:
 }
 
 /**
+要把iter的东西写到kiocb
+这里是把iter内部的内容页面赋值到bio
  * bio_iov_iter_get_pages - add user or kernel pages to a bio
  * @bio: bio to add pages to
  * @iter: iov iterator describing the region to be added
@@ -1338,7 +1396,10 @@ int bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 	if (WARN_ON_ONCE(bio_flagged(bio, BIO_CLONED)))
 		return -EIO;
 
+	/* iter一般作为读写数据的来源, 也分为好几种类型
+	这里如果内部是bvec数据源的话 */
 	if (iov_iter_is_bvec(iter)) {
+		/* 因为iter是bvec类型的, 所以这里可以直接把内部的bvec table交给bio */
 		bio_iov_bvec_set(bio, iter);
 		iov_iter_advance(iter, bio->bi_iter.bi_size);
 		return 0;
@@ -1346,8 +1407,10 @@ int bio_iov_iter_get_pages(struct bio *bio, struct iov_iter *iter)
 
 	if (iov_iter_extract_will_pin(iter))
 		bio_set_flag(bio, BIO_PAGE_PINNED);
+
 	do {
 		ret = __bio_iov_iter_get_pages(bio, iter);
+	/* 这里只要iter还有内容, 并且bio还有空间就继续 */
 	} while (!ret && iov_iter_count(iter) && !bio_full(bio, 0));
 
 	return bio->bi_vcnt ? 0 : ret;
@@ -1360,6 +1423,9 @@ static void submit_bio_wait_endio(struct bio *bio)
 }
 
 /**
+顺序读写bio (等待完成)
+===========
+调用场合: bdev fs的直接io, 换入换出页面的同步io, blk库
  * submit_bio_wait - submit a bio, and wait until it completes
    提交一个bio然后等待它完成
  * @bio: The &struct bio which describes the I/O

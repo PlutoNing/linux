@@ -138,7 +138,7 @@ void (*__initdata late_time_init)(void);
 
 /* Untouched command line saved by arch-specific code. */
 char __initdata boot_command_line[COMMAND_LINE_SIZE];
-/* Untouched saved command line (eg. for /proc) */
+/* Untouched saved command line (eg. for /proc), 保存备份的启动参数命令行 */
 char *saved_command_line __ro_after_init;
 unsigned int saved_command_line_len __ro_after_init;
 /* Command line for parameter parsing */
@@ -262,8 +262,8 @@ static int __init loglevel(char *str)
 }
 
 early_param("loglevel", loglevel);
-
 #ifdef CONFIG_BLK_DEV_INITRD
+/* 因为initrd_end为0直接返回了, 为什么是0呢? */
 static void * __init get_boot_config_from_initrd(size_t *_size)
 {
 	u32 size, csum;
@@ -404,7 +404,7 @@ static int __init warn_bootconfig(char *str)
 	/* The 'bootconfig' has been handled by bootconfig_params(). */
 	return 0;
 }
-
+/* 一般会因为启动参数命令行没有bootconfig选项而直接返回 */
 static void __init setup_boot_config(void)
 {
 	static char tmp_cmdline[COMMAND_LINE_SIZE] __initdata;
@@ -418,13 +418,13 @@ static void __init setup_boot_config(void)
 	/* If there is no bootconfig in initrd, try embedded one. */
 	if (!data)
 		data = xbc_get_embedded_bootconfig(&size);
-
+	/* 这里复制并解析启动参数命令行, 如何找到了指定参数,bootconfig_params会置位flag: bootconfig_found */
 	strscpy(tmp_cmdline, boot_command_line, COMMAND_LINE_SIZE);
 	err = parse_args("bootconfig", tmp_cmdline, NULL, 0, 0, 0, NULL,
 			 bootconfig_params);
 
 	if (IS_ERR(err) || !(bootconfig_found || IS_ENABLED(CONFIG_BOOT_CONFIG_FORCE)))
-		return;
+		return; /* 如果bootconfig_found为false, 就返回 */
 
 	/* parse_args() stops at the next param of '--' and returns an address */
 	if (err)
@@ -469,7 +469,7 @@ static void __init exit_boot_config(void)
 }
 
 #else	/* !CONFIG_BOOT_CONFIG */
-
+/*  */
 static void __init setup_boot_config(void)
 {
 	/* Remove bootconfig data from initrd */
@@ -624,11 +624,11 @@ static void __init setup_command_line(char *command_line)
 		ilen = strlen(extra_init_args) + 4; /* for " -- " */
 
 	len = xlen + strlen(boot_command_line) + 1;
-
+	/* 为启动参数命令行的备份申请内存空间 */
 	saved_command_line = memblock_alloc(len + ilen, SMP_CACHE_BYTES);
 	if (!saved_command_line)
 		panic("%s: Failed to allocate %zu bytes\n", __func__, len + ilen);
-
+	/* static_command_line又是什么? */
 	static_command_line = memblock_alloc(len, SMP_CACHE_BYTES);
 	if (!static_command_line)
 		panic("%s: Failed to allocate %zu bytes\n", __func__, len);
@@ -644,7 +644,7 @@ static void __init setup_command_line(char *command_line)
 	}
 	strcpy(saved_command_line + xlen, boot_command_line);
 	strcpy(static_command_line + xlen, command_line);
-
+	/* 好像一般上面这俩命令行都是一样的 */
 	if (ilen) {
 		/*
 		 * Append supplemental init boot args to saved_command_line
@@ -680,17 +680,17 @@ static void __init setup_command_line(char *command_line)
  */
 
 static __initdata DECLARE_COMPLETION(kthreadd_done);
-
+/* 进行启动的rest init */
 noinline void __ref __noreturn rest_init(void)
 {
 	struct task_struct *tsk;
 	int pid;
-
+/*  */
 	rcu_scheduler_starting();
 	/*
-	 * We need to spawn init first so that it obtains pid 1, however
-	 * the init task will end up wanting to create kthreads, which, if
-	 * we schedule it before we create kthreadd, will OOPS.
+	 * 我们需要首先生成 init 进程，以便它获得 pid 1，
+	 * 然而 init 任务最终会尝试创建内核线程，
+	 * 如果我们在创建 kthreadd 之前调度它，将会导致 OOPS。
 	 */
 	pid = user_mode_thread(kernel_init, NULL, CLONE_FS);
 	/*
@@ -699,12 +699,13 @@ noinline void __ref __noreturn rest_init(void)
 	 * CPUs for init to the non isolated CPUs.
 	 */
 	rcu_read_lock();
+	/* 找到刚刚创建的init task */
 	tsk = find_task_by_pid_ns(pid, &init_pid_ns);
 	tsk->flags |= PF_NO_SETAFFINITY;
 	set_cpus_allowed_ptr(tsk, cpumask_of(smp_processor_id()));
 	rcu_read_unlock();
 
-	numa_default_policy();
+	numa_default_policy();/* default plolicy是什么 */
 	//创建添加kthreadd线程的线程
 	pid = kernel_thread(kthreadd, NULL, NULL, CLONE_FS | CLONE_FILES);
 	rcu_read_lock();
@@ -723,15 +724,17 @@ noinline void __ref __noreturn rest_init(void)
 	complete(&kthreadd_done);
 
 	/*
-	 * The boot idle thread must execute schedule()
+	* The boot idle thread must execute schedule()
 	 * at least once to get things moving:
+	 * boot idle thread必须执行schedule()
+	 * 至少一次来让事情启动起来
 	 */
 	schedule_preempt_disabled();
 	/* Call into cpu_idle with preempt disabled */
 	cpu_startup_entry(CPUHP_ONLINE);
 }
 
-/* Check for early params. */
+/* Check for early params. 检查需要提前处理的内核参数？*/
 static int __init do_early_param(char *param, char *val,
 				 const char *unused, void *arg)
 {
@@ -749,7 +752,7 @@ static int __init do_early_param(char *param, char *val,
 	/* We accept everything at this stage. */
 	return 0;
 }
-
+/* 这里处理需要提前处理的内核启动参数？ */
 void __init parse_early_options(char *cmdline)
 {
 	parse_args("early options", cmdline, NULL, 0, 0, 0, NULL,
@@ -822,7 +825,7 @@ static int __init early_randomize_kstack_offset(char *buf)
 }
 early_param("randomize_kstack_offset", early_randomize_kstack_offset);
 #endif
-
+/* 进行rest init */
 void __init __weak __noreturn arch_call_rest_init(void)
 {
 	rest_init();
@@ -882,7 +885,7 @@ void start_kernel(void)
 	smp_setup_processor_id();
 	debug_objects_early_init();
 	init_vmlinux_build_id();
-
+	/* 早期初始化每个ss子系统 */
 	cgroup_init_early();
 
 	local_irq_disable();
@@ -892,18 +895,18 @@ void start_kernel(void)
 	 * Interrupts are still disabled. Do necessary setups, then
 	 * enable them.
 	 */
-	boot_cpu_init();
+	boot_cpu_init(); /* 把current cpu设置为各种可用 */
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	early_security_init();
 	// 这里会设置内存
 	setup_arch(&command_line);
-	setup_boot_config();
-	setup_command_line(command_line);
-	setup_nr_cpu_ids();
-	setup_per_cpu_areas();
+	setup_boot_config();/* boot config是什么(是启动参数命令行可以设置的选项) */
+	setup_command_line(command_line); /* 备份一下启动参数命令行 */
+	setup_nr_cpu_ids(); /* 设置系统的nr_cpu_ids, 而且一般可能是arch的setup函数已经做过了此工作 */
+	setup_per_cpu_areas(); /* 初始化pcp机制？ */
 	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
-	boot_cpu_hotplug_init();
+	boot_cpu_hotplug_init();/* cpu热插拔初始化 */
 
 	pr_notice("Kernel command line: %s\n", saved_command_line);
 	/* parameters may set static keys */
@@ -929,24 +932,28 @@ void start_kernel(void)
 	 * initalization of page allocator
 	 */
 	setup_log_buf(0);
-	vfs_caches_init_early();
+	vfs_caches_init_early();/* vfs的一些hash和slab什么的 */
 	sort_main_extable();
 	// 中断相关
 	trap_init();
 	// 内存?
 	mm_core_init();
 	poking_init();
+	/* 初始化ftrace
+	 */
 	ftrace_init();
 
-	/* trace_printk can be enabled here */
+	/* 
+	初始化trace机制
+	trace_printk can be enabled here */
 	early_trace_init();
-
+/* 1233 */
 	/*
 	 * Set up the scheduler prior starting any interrupts (such as the
 	 * timer interrupt). Full topology setup happens at smp_init()
 	 * time - but meanwhile we still have a functioning scheduler.
 	 */
-	sched_init();
+	sched_init();/* 初始化调度 */
 
 	if (WARN(!irqs_disabled(),
 		 "Interrupts were enabled *very* early, fixing it\n"))
@@ -956,20 +963,21 @@ void start_kernel(void)
 
 	/*
 	 * Set up housekeeping before setting up workqueues to allow the unbound
-	 * workqueue to take non-housekeeping into account.
+	 * workqueue to take non-housekeeping into account.在设置工作队列之前设置housekeeping，以便无绑定工作队列可以考虑非housekeeping任务。
 	 */
 	housekeeping_init();
 
 	/*
 	 * Allow workqueue creation and work item queueing/cancelling
 	 * early.  Work item execution depends on kthreads and starts after
-	 * workqueue_init().
+	 * workqueue_init().允许工作队列的创建以及工作项的排队/取消。 工作项的执行依赖于内核线程，并在workqueue_init()之后开始。
 	 */
 	workqueue_init_early();
 
+	/* rcu机制 */
 	rcu_init();
 
-	/* Trace events are available after this */
+	/* Trace events are available after this,初始化trace的event */
 	trace_init();
 
 	if (initcall_debug)
@@ -997,9 +1005,9 @@ void start_kernel(void)
 	random_init();
 
 	/* These make use of the fully initialized rng */
-	kfence_init();
+	kfence_init(); /* 空函数 */
 	boot_init_stack_canary();
-
+/* 初始化perf的pmu注册什么的 */
 	perf_event_init();
 	profile_init();
 	call_function_init();
@@ -1038,13 +1046,14 @@ void start_kernel(void)
 		initrd_start = 0;
 	}
 #endif
-	setup_per_cpu_pageset();
-	numa_policy_init();
+	setup_per_cpu_pageset();/* 初始化分配内存的pcp pageset的结构体 */
+	numa_policy_init(); /* 设置每个node的preferred_node_policy */
 	acpi_early_init();
 	if (late_time_init)
 		late_time_init();
+	/* 初始化这什么clock */
 	sched_clock_init();
-	calibrate_delay();
+	calibrate_delay();/* 以后 */
 
 	arch_cpu_finalize_init();
 
@@ -1063,6 +1072,7 @@ void start_kernel(void)
 	security_init();
 	dbg_late_init();
 	net_ns_init();
+	// 初始化一些vfs相关的东西
 	vfs_caches_init();
 	pagecache_init();
 	signals_init();
@@ -1557,6 +1567,7 @@ static noinline void __init kernel_init_freeable(void)
 	smp_init();
 	sched_init_smp();
 
+	/* 初始化wq_pod_types数组 */
 	workqueue_init_topology();
 	padata_init();
 	page_alloc_init_late();

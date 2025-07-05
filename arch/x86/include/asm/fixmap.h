@@ -58,7 +58,7 @@ extern unsigned long __FIXADDR_TOP;
 #define FIXADDR_TOP	(round_up(VSYSCALL_ADDR + PAGE_SIZE, 1<<PMD_SHIFT) - \
 			 PAGE_SIZE)
 #endif
-
+/* FIXADDR_TOP 0xffffffffff7ff000? */
 /*
  * Here we define all the compile-time 'special' virtual
  * addresses. The point is to have a constant address at
@@ -95,7 +95,7 @@ enum fixed_addresses {
 	FIX_APIC_BASE,	/* local (CPU) APIC) -- required for SMP or not */
 #endif
 #ifdef CONFIG_X86_IO_APIC
-	FIX_IO_APIC_BASE_0,
+	FIX_IO_APIC_BASE_0, /* 有可能是516 */
 	FIX_IO_APIC_BASE_END = FIX_IO_APIC_BASE_0 + MAX_IO_APICS - 1,
 #endif
 #ifdef CONFIG_KMAP_LOCAL
@@ -142,7 +142,7 @@ enum fixed_addresses {
 	FIX_TBOOT_BASE,
 #endif
 	__end_of_fixed_addresses
-};
+/* __end_of_fixed_addresses大小可能是1535 */};
 
 
 extern void reserve_top_address(unsigned long reserve);
@@ -161,6 +161,7 @@ void native_set_fixmap(unsigned /* enum fixed_addresses */ idx,
 		       phys_addr_t phys, pgprot_t flags);
 
 #ifndef CONFIG_PARAVIRT_XXL
+/* 设置idx映射到phys */
 static inline void __set_fixmap(enum fixed_addresses idx,
 				phys_addr_t phys, pgprot_t flags)
 {

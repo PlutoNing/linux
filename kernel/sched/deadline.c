@@ -2714,7 +2714,7 @@ static int task_is_throttled_dl(struct task_struct *p, int cpu)
 	return p->dl.dl_throttled;
 }
 #endif
-
+/* 定义dl的调度类 */
 DEFINE_SCHED_CLASS(dl) = {
 
 	.enqueue_task		= enqueue_task_dl,
@@ -2936,6 +2936,7 @@ void __getparam_dl(struct task_struct *p, struct sched_attr *attr)
 }
 
 /*
+检查一个dl进程的新参数是否合法
  * This function validates the new parameters of a -deadline task.
  * We ask for the deadline not being zero, and greater or equal
  * than the runtime, as well as the period of being zero or

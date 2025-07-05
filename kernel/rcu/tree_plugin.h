@@ -13,6 +13,9 @@
 
 #include "../locking/rtmutex_common.h"
 
+/* 
+检查rdp->cblist是不是卸载了
+表示当前的gp是不是结束了? */
 static bool rcu_rdp_is_offloaded(struct rcu_data *rdp)
 {
 	/*
@@ -352,6 +355,7 @@ void rcu_note_context_switch(bool preempt)
 	 * section, and if that critical section was blocking the current
 	 * grace period, then the fact that the task has been enqueued
 	 * means that we continue to block the current grace period.
+	 检查触发rcu软中断
 	 */
 	rcu_qs();
 	if (rdp->cpu_no_qs.b.exp)
@@ -362,6 +366,11 @@ void rcu_note_context_switch(bool preempt)
 EXPORT_SYMBOL_GPL(rcu_note_context_switch);
 
 /*
+检查指定的rcunode上面阻塞了gp的rcu readers?
+============
+如果返回false, 好像可以用于判断gp结束
+==================
+在gp结束后,在rnp传播新gp seq时这里不应该返回真
  * Check for preempted RCU readers blocking the current grace period
  * for the specified rcu_node structure.  If the caller needs a reliable
  * answer, it must hold the rcu_node's ->lock.
@@ -458,6 +467,8 @@ static bool rcu_preempt_has_tasks(struct rcu_node *rnp)
 }
 
 /*
+目前有一个推迟的qs, 并且也不处于rcu读侧临界区
+报告这个推迟的qs
  * Report deferred quiescent states.  The deferral time can
  * be quite short, for example, in the case of the call from
  * rcu_read_unlock_special().
@@ -482,10 +493,13 @@ rcu_preempt_deferred_qs_irqrestore(struct task_struct *t, unsigned long flags)
 	special = t->rcu_read_unlock_special;
 	rdp = this_cpu_ptr(&rcu_data);
 	if (!special.s && !rdp->cpu_no_qs.b.exp) {
+		/* 没有推迟的qs, 也没有这什么exp? */
 		local_irq_restore(flags);
 		return;
 	}
+	/* 清除推迟qs的数量 */
 	t->rcu_read_unlock_special.s = 0;
+	/* 现在处理刚刚读取的special */
 	if (special.b.need_qs) {
 		if (IS_ENABLED(CONFIG_RCU_STRICT_GRACE_PERIOD)) {
 			rdp->cpu_no_qs.b.norm = false;
@@ -575,6 +589,8 @@ rcu_preempt_deferred_qs_irqrestore(struct task_struct *t, unsigned long flags)
 }
 
 /*
+检查是不是有一个推迟的pending的qs
+并且我们也不处于rcu的read-side critical section中
  * Is a deferred quiescent-state pending, and are we also not in
  * an RCU read-side critical section?  It is the caller's responsibility
  * to ensure it is otherwise safe to report any deferred quiescent
@@ -591,6 +607,7 @@ static notrace bool rcu_preempt_need_deferred_qs(struct task_struct *t)
 }
 
 /*
+记录一个延迟的quiescent state
  * Report a deferred quiescent state if needed and safe to do so.
  * As with rcu_preempt_need_deferred_qs(), "safe" involves only
  * not being in an RCU read-side critical section.  The caller must
@@ -603,6 +620,7 @@ notrace void rcu_preempt_deferred_qs(struct task_struct *t)
 
 	if (!rcu_preempt_need_deferred_qs(t))
 		return;
+	/* 目前有一个推迟的qs, 并且也不处于rcu读侧临界区 */
 	local_irq_save(flags);
 	rcu_preempt_deferred_qs_irqrestore(t, flags);
 }
@@ -619,6 +637,8 @@ static void rcu_preempt_deferred_qs_handler(struct irq_work *iwp)
 }
 
 /*
+处理rcu_read_unlock_special()的特殊情况
+比如需要通知rcu core处理, 或者任务在rcu读侧临界区阻塞了
  * Handle special cases during rcu_read_unlock(), such as needing to
  * notify RCU core processing or task having blocked during the RCU
  * read-side critical section.
@@ -711,10 +731,14 @@ static void rcu_preempt_check_blocked_tasks(struct rcu_node *rnp)
 
 /*
  * Check for a quiescent state from the current CPU, including voluntary
- * context switches for Tasks RCU.  When a task blocks, the task is
+ * context switches for Tasks RCU.
+ 检查来自当前CPU的quiescent state, 包括任务rcu的自愿上下文切换
+ When a task blocks, the task is
  * recorded in the corresponding CPU's rcu_node structure, which is checked
  * elsewhere, hence this function need only check for quiescent states
  * related to the current CPU, not to those related to tasks.
+ 一个进程阻塞的时候, 会被记录到所在cpu的rnp
+ 因此这个函数只需要检查所在cpu的quiescent state, 而不需要检查任务相关的
  */
 static void rcu_flavor_sched_clock_irq(int user)
 {
@@ -1255,7 +1279,7 @@ static void rcu_boost_kthread_setaffinity(struct rcu_node *rnp, int outgoingcpu)
 }
 
 #else /* #ifdef CONFIG_RCU_BOOST */
-
+/* 这个rnp没有qs的cpu, 有阻塞的rcu reader, 提升优先级 */
 static void rcu_initiate_boost(struct rcu_node *rnp, unsigned long flags)
 	__releases(rnp->lock)
 {

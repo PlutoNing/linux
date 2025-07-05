@@ -666,6 +666,8 @@ struct pmu_event_list {
 		list_for_each_entry((sibling), &(event)->sibling_list, sibling_list)
 
 /**
+感觉更像是一个类，或者配置
+而不是一个事件实体
  * struct perf_event - performance event kernel representation:
  */
 struct perf_event {
@@ -674,6 +676,7 @@ struct perf_event {
 	 * entry onto perf_event_context::event_list;
 	 *   modifications require ctx->lock
 	 *   RCU safe iterations.
+	 链接到ctx的event list上
 	 */
 	struct list_head		event_entry;
 
@@ -1007,7 +1010,9 @@ struct perf_cpu_context {
 };
 
 struct perf_output_handle {
+	/* 这次对应的perf event设置 */
 	struct perf_event		*event;
+	/* 这次输出的buffer */
 	struct perf_buffer		*rb;
 	unsigned long			wakeup;
 	unsigned long			size;
@@ -1154,6 +1159,7 @@ struct perf_sample_data {
 	 * group so as to minimize the cachelines touched.
 	 */
 	u64				type;
+	/* 用于在sample记录pid，tid */
 	struct {
 		u32	pid;
 		u32	tid;

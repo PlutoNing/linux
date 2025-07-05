@@ -61,25 +61,30 @@ static __always_inline int __ct_state(void)
 #endif
 
 #ifdef CONFIG_CONTEXT_TRACKING_IDLE
+/* 读取当前cpu追踪上下文的dynticks
+20250601003955 */
 static __always_inline int ct_dynticks(void)
 {
 	return atomic_read(this_cpu_ptr(&context_tracking.state)) & CT_DYNTICKS_MASK;
 }
-
+/* 读取指定cpu追踪上下文的dynticks
+20250601004015 */
 static __always_inline int ct_dynticks_cpu(int cpu)
 {
 	struct context_tracking *ct = per_cpu_ptr(&context_tracking, cpu);
 
 	return atomic_read(&ct->state) & CT_DYNTICKS_MASK;
 }
-
+/* 
+20250601004044
+acquire内存顺序获取cpu的DYNTICKS */
 static __always_inline int ct_dynticks_cpu_acquire(int cpu)
 {
 	struct context_tracking *ct = per_cpu_ptr(&context_tracking, cpu);
 
 	return atomic_read_acquire(&ct->state) & CT_DYNTICKS_MASK;
 }
-
+/* 读取dynticks_nesting */
 static __always_inline long ct_dynticks_nesting(void)
 {
 	return __this_cpu_read(context_tracking.dynticks_nesting);

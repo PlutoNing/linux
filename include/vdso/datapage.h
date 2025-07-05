@@ -33,7 +33,7 @@ struct arch_vdso_data {};
 #define VDSO_COARSE	(BIT(CLOCK_REALTIME_COARSE)	| \
 			 BIT(CLOCK_MONOTONIC_COARSE))
 #define VDSO_RAW	(BIT(CLOCK_MONOTONIC_RAW))
-
+/* 在vdso的idx */
 #define CS_HRES_COARSE	0
 #define CS_RAW		1
 #define CS_BASES	(CS_RAW + 1)
@@ -56,7 +56,7 @@ struct vdso_timestamp {
 	u64	nsec;
 };
 
-/**
+/**时间相关系统调用的vdso的结构体
  * struct vdso_data - vdso datapage representation
  * @seq:		timebase sequence counter
  * @clock_mode:		clock mode

@@ -159,6 +159,7 @@ void vm_events_fold_cpu(int cpu)
  *
  * vm_stat contains the global counters
  */
+/*  */
 atomic_long_t vm_zone_stat[NR_VM_ZONE_STAT_ITEMS] __cacheline_aligned_in_smp;
 /* 全局的页面统计信息 */
 atomic_long_t vm_node_stat[NR_VM_NODE_STAT_ITEMS] __cacheline_aligned_in_smp;
@@ -791,6 +792,7 @@ static int fold_diff(int *zone_diff, int *node_diff)
 }
 
 /*
+更新cpu的zone统计信息
  * Update the zone counters for the current cpu.
  *
  * Note that refresh_cpu_vm_stats strives to only access
@@ -978,6 +980,7 @@ void drain_zonestat(struct zone *zone, struct per_cpu_zonestat *pzstats)
 
 #ifdef CONFIG_NUMA
 /*
+统计node的所有zone的某种内存数量之和
  * Determine the per node value of a stat item. This function
  * is called frequently in a NUMA machine, so try to be as
  * frugal as possible.
@@ -2007,6 +2010,8 @@ static bool need_update(int cpu)
  * Switch off vmstat processing and then fold all the remaining differentials
  * until the diffs stay at zero. The function is used by NOHZ and can only be
  * invoked when tick processing is not active.
+ 关闭vmstat的处理, 然后折叠所有剩余的差异, 直到差异保持为零.
+ 这个函数是NOHZ使用的, 只能在tick处理不活动时调用.
  */
 void quiet_vmstat(void)
 {
@@ -2024,7 +2029,7 @@ void quiet_vmstat(void)
 	 * vmstat_update. It doesn't fire that often to matter and canceling
 	 * it would be too expensive from this path.
 	 * vmstat_shepherd will take care about that for us.
-	 */
+	 更新cpu的zone统计信息*/
 	refresh_cpu_vm_stats(false);
 }
 

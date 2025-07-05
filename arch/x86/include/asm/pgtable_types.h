@@ -30,7 +30,7 @@
 #define _PAGE_BIT_PKEY_BIT1	60	/* Protection Keys, bit 2/4 */
 #define _PAGE_BIT_PKEY_BIT2	61	/* Protection Keys, bit 3/4 */
 #define _PAGE_BIT_PKEY_BIT3	62	/* Protection Keys, bit 4/4 */
-#define _PAGE_BIT_NX		63	/* No execute: only valid after cpuid check */
+#define _PAGE_BIT_NX		63	/* No execute: only valid after cpuid check，  */
 
 #define _PAGE_BIT_SPECIAL	_PAGE_BIT_SOFTW1
 #define _PAGE_BIT_CPA_TEST	_PAGE_BIT_SOFTW1
@@ -121,7 +121,7 @@
 #endif
 
 #if defined(CONFIG_X86_64) || defined(CONFIG_X86_PAE)
-#define _PAGE_NX	(_AT(pteval_t, 1) << _PAGE_BIT_NX)
+#define _PAGE_NX	(_AT(pteval_t, 1) << _PAGE_BIT_NX) /* NX 位允许将内存页标记为 ​​不可执行​​，防止攻击者通过缓冲区溢出在栈/堆中执行恶意代码 */
 #define _PAGE_DEVMAP	(_AT(u64, 1) << _PAGE_BIT_DEVMAP)
 #define _PAGE_SOFTW4	(_AT(pteval_t, 1) << _PAGE_BIT_SOFTW4)
 #else
@@ -285,10 +285,11 @@ enum page_cache_mode {
 
 #include <linux/types.h>
 
-/* Extracts the PFN from a (pte|pmd|pud|pgd)val_t of a 4KB page */
+/* 最右边12个0, Extracts the PFN from a (pte|pmd|pud|pgd)val_t of a 4KB page */
 #define PTE_PFN_MASK		((pteval_t)PHYSICAL_PAGE_MASK)
 
 /*
+提取处pte的flag
  *  Extracts the flags from a (pte|pmd|pud|pgd)val_t
  *  This includes the protection key value.
  */
@@ -479,7 +480,7 @@ static inline pteval_t native_pte_val(pte_t pte)
 {
 	return pte.pte;
 }
-
+/* 获取pte条目的flag */
 static inline pteval_t pte_flags(pte_t pte)
 {
 	return native_pte_val(pte) & PTE_FLAGS_MASK;

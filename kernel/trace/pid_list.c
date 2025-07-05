@@ -90,6 +90,7 @@ static inline bool upper_empty(union upper_chunk *chunk)
 	return bit >= sizeof(chunk->data) * 8;
 }
 
+/*  */
 static inline int pid_split(unsigned int pid, unsigned int *upper1,
 			     unsigned int *upper2, unsigned int *lower)
 {
@@ -116,6 +117,7 @@ static inline unsigned int pid_join(unsigned int upper1,
 }
 
 /**
+检查pid_list中是否有pid
  * trace_pid_list_is_set - test if the pid is set in the list
  * @pid_list: The pid list to test
  * @pid: The pid to see if set in the list.
@@ -155,6 +157,7 @@ bool trace_pid_list_is_set(struct trace_pid_list *pid_list, unsigned int pid)
 }
 
 /**
+把pid加入到pid_list中
  * trace_pid_list_set - add a pid to the list
  * @pid_list: The pid list to add the @pid to.
  * @pid: The pid to add.
@@ -259,6 +262,7 @@ int trace_pid_list_clear(struct trace_pid_list *pid_list, unsigned int pid)
 }
 
 /**
+返回pidlist中的pid之后的pid， 放在next中
  * trace_pid_list_next - return the next pid in the list
  * @pid_list: The pid list to examine.
  * @pid: The pid to start from
@@ -315,6 +319,7 @@ int trace_pid_list_next(struct trace_pid_list *pid_list, unsigned int pid,
 }
 
 /**
+返回list中的第一个pid
  * trace_pid_list_first - return the first pid in the list
  * @pid_list: The pid list to examine.
  * @pid: The pointer to place the pid first found pid that is set.
@@ -402,6 +407,7 @@ static void pid_list_refill_irq(struct irq_work *iwork)
 }
 
 /**
+创建一个新的pid list
  * trace_pid_list_alloc - create a new pid_list
  *
  * Allocates a new pid_list to store pids into.
@@ -424,6 +430,7 @@ struct trace_pid_list *trace_pid_list_alloc(void)
 
 	raw_spin_lock_init(&pid_list->lock);
 
+	/* 分配pid list的upper chunk */
 	for (i = 0; i < CHUNK_ALLOC; i++) {
 		union upper_chunk *chunk;
 
@@ -435,6 +442,7 @@ struct trace_pid_list *trace_pid_list_alloc(void)
 		pid_list->free_upper_chunks++;
 	}
 
+	/* 分配lower chunk */
 	for (i = 0; i < CHUNK_ALLOC; i++) {
 		union lower_chunk *chunk;
 

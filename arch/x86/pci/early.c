@@ -6,13 +6,13 @@
 #include <asm/pci_x86.h>
 
 /* Direct PCI access. This is used for PCI accesses in early boot before
-   the PCI subsystem works. */
-
+   the PCI subsystem works.
+  内核在早期启动阶段直接访问 PCI 设备配置空间的底层实现，用于在 PCI 子系统初始化之前手动读取 PCI 配置寄存器。  */
 u32 read_pci_config(u8 bus, u8 slot, u8 func, u8 offset)
-{
+{ /* 读取PCI设备的配置寄存器 */
 	u32 v;
 	outl(0x80000000 | (bus<<16) | (slot<<11) | (func<<8) | offset, 0xcf8);
-	v = inl(0xcfc);
+	v = inl(0xcfc); /* 端口0xcf8和0xcfc是PCI配置空间访问的标准I/O端口。 */
 	return v;
 }
 

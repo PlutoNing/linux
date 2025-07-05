@@ -33,7 +33,7 @@ static inline int pfn_valid(unsigned long pfn)
 
 #elif defined(CONFIG_SPARSEMEM_VMEMMAP)
 
-/* memmap is virtually contiguous.  */
+/* memmap is virtually contiguous.  pfn加上0xffffea0000000000就是 */
 #define __pfn_to_page(pfn)	(vmemmap + (pfn))
 /* page转为pfn */
 #define __page_to_pfn(page)	(unsigned long)((page) - vmemmap)

@@ -27,7 +27,7 @@ extern tracepoint_ptr_t __stop___tracepoints_ptrs[];
 
 DEFINE_SRCU(tracepoint_srcu);
 EXPORT_SYMBOL_GPL(tracepoint_srcu);
-
+/* 为了可见性什么的 */
 enum tp_transition_sync {
 	TP_TRANSITION_SYNC_1_0_1,
 	TP_TRANSITION_SYNC_N_2_1,
@@ -53,7 +53,7 @@ static void tp_rcu_get_state(enum tp_transition_sync sync)
 	snapshot->srcu = start_poll_synchronize_srcu(&tracepoint_srcu);
 	snapshot->ongoing = true;
 }
-
+/* 给tp添加func之后, 这里来sync一下, 保证101可见性什么的 */
 static void tp_rcu_cond_sync(enum tp_transition_sync sync)
 {
 	struct tp_transition_snapshot *snapshot = &tp_transition_snapshot[sync];
@@ -103,7 +103,7 @@ static void tp_stub_func(void)
 {
 	return;
 }
-
+/* 分配count个tp->funcs里面同类的成员,马上加入进去 */
 static inline void *allocate_probes(int count)
 {
 	struct tp_probes *p  = kmalloc(struct_size(p, probes, count),
@@ -175,7 +175,7 @@ static void debug_print_probes(struct tracepoint_func *funcs)
 	for (i = 0; funcs[i].func; i++)
 		printk(KERN_DEBUG "Probe %d : %p\n", i, funcs[i].func);
 }
-
+/* funcs是tp的funcs, tp_func带着probe, 这里把probe添加到tp,进行启用 */
 static struct tracepoint_func *
 func_add(struct tracepoint_func **funcs, struct tracepoint_func *tp_func,
 	 int prio)
@@ -201,11 +201,11 @@ func_add(struct tracepoint_func **funcs, struct tracepoint_func *tp_func,
 			nr_probes++;
 		}
 	}
-	/* + 2 : one for new probe, one for NULL func */
+	/* + 2 : one for new probe, one for NULL func,分配新结构体 */
 	new = allocate_probes(nr_probes + 2);
 	if (new == NULL)
 		return ERR_PTR(-ENOMEM);
-	if (old) {
+	if (old) {/* 把旧的拷贝过来, cow是为了一致性还是加速? */
 		nr_probes = 0;
 		for (iter_probes = 0; old[iter_probes].func; iter_probes++) {
 			if (old[iter_probes].func == tp_stub_func)
@@ -224,7 +224,7 @@ func_add(struct tracepoint_func **funcs, struct tracepoint_func *tp_func,
 	}
 	new[pos] = *tp_func;
 	new[nr_probes].func = NULL;
-	*funcs = new;
+	*funcs = new;/* cow替换 */
 	debug_print_probes(*funcs);
 	return old;
 }
@@ -291,7 +291,7 @@ static void *func_remove(struct tracepoint_func **funcs,
 	return old;
 }
 
-/*
+/* 计算tp->funcs的什么数量
  * Count the number of functions (enum tp_func_state) in a tp_funcs array.
  */
 static enum tp_func_state nr_func_state(const struct tracepoint_func *tp_funcs)
@@ -304,7 +304,7 @@ static enum tp_func_state nr_func_state(const struct tracepoint_func *tp_funcs)
 		return TP_FUNC_2;
 	return TP_FUNC_N;	/* 3 or more */
 }
-
+/* tp_funcs是tp的东西,也就刚刚添加了函数 */
 static void tracepoint_update_call(struct tracepoint *tp, struct tracepoint_func *tp_funcs)
 {
 	void *func = tp->iterator;
@@ -313,11 +313,11 @@ static void tracepoint_update_call(struct tracepoint *tp, struct tracepoint_func
 	if (!tp->static_call_key)
 		return;
 	if (nr_func_state(tp_funcs) == TP_FUNC_1)
-		func = tp_funcs[0].func;
+		func = tp_funcs[0].func; /* 一般来说func就是刚刚添加的probe,例如<probe_sched_wakeup> */
 	__static_call_update(tp->static_call_key, tp->static_call_tramp, func);
 }
 
-/*
+/*给tp添加probe(存储在func), 记录一些信息
  * Add the probe function to a tracepoint.
  */
 static int tracepoint_add_func(struct tracepoint *tp,
@@ -335,7 +335,7 @@ static int tracepoint_add_func(struct tracepoint *tp,
 
 	tp_funcs = rcu_dereference_protected(tp->funcs,
 			lockdep_is_held(&tracepoints_mutex));
-	old = func_add(&tp_funcs, func, prio);
+	old = func_add(&tp_funcs, func, prio); /* 把func添加到tp的funcs */
 	if (IS_ERR(old)) {
 		WARN_ON_ONCE(warn && PTR_ERR(old) != -ENOMEM);
 		return PTR_ERR(old);
@@ -346,16 +346,16 @@ static int tracepoint_add_func(struct tracepoint *tp,
 	 * that the new probe callbacks array is consistent before setting
 	 * a pointer to it.  This array is referenced by __DO_TRACE from
 	 * include/linux/tracepoint.h using rcu_dereference_sched().
-	 */
+	 计算tp->funcs的什么数量,状态来着*/
 	switch (nr_func_state(tp_funcs)) {
-	case TP_FUNC_1:		/* 0->1 */
+	case TP_FUNC_1:		/* 0->1 ,说明是刚刚添加?*/
 		/*
 		 * Make sure new static func never uses old data after a
 		 * 1->0->1 transition sequence.
 		 */
 		tp_rcu_cond_sync(TP_TRANSITION_SYNC_1_0_1);
-		/* Set static call to first function */
-		tracepoint_update_call(tp, tp_funcs);
+		/* Set static call to first function, 进行了一些hook */
+		tracepoint_update_call(tp,tp_funcs); /* x/i tp.static_call_tramp 0xffffffff827ba280 <__SCT__tp_func_sched_wakeup>:	jmp    0xffffffff8129db40 <probe_sched_wakeup> */
 		/* Both iterator and static call handle NULL tp->funcs */
 		rcu_assign_pointer(tp->funcs, tp_funcs);
 		static_key_enable(&tp->key);
@@ -485,10 +485,10 @@ int tracepoint_probe_register_prio_may_exist(struct tracepoint *tp, void *probe,
 }
 EXPORT_SYMBOL_GPL(tracepoint_probe_register_prio_may_exist);
 
-/**
+/** 启用一个tp
  * tracepoint_probe_register_prio -  Connect a probe to a tracepoint with priority
- * @tp: tracepoint
- * @probe: probe handler
+ * @tp: tracepoint. 可能是__tracepoint_sched_wakeup
+ * @probe: probe handler . 可能是probe_sched_wakeup
  * @data: tracepoint data
  * @prio: priority of this function over other registered functions
  *
@@ -507,17 +507,17 @@ int tracepoint_probe_register_prio(struct tracepoint *tp, void *probe,
 	mutex_lock(&tracepoints_mutex);
 	tp_func.func = probe;
 	tp_func.data = data;
-	tp_func.prio = prio;
+	tp_func.prio = prio;/* 开始执行 */
 	ret = tracepoint_add_func(tp, &tp_func, prio, true);
 	mutex_unlock(&tracepoints_mutex);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(tracepoint_probe_register_prio);
 
-/**
+/** 启用一个tp
  * tracepoint_probe_register -  Connect a probe to a tracepoint
- * @tp: tracepoint
- * @probe: probe handler
+ * @tp: tracepoint, 可能是__tracepoint_sched_wakeup
+ * @probe: probe handler, 可能是probe_sched_wakeup
  * @data: tracepoint data
  *
  * Returns 0 if ok, error value on error.

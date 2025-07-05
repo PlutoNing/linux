@@ -29,8 +29,9 @@
 #ifdef CONFIG_BLK_DEV_IO_TRACE
 
 static unsigned int blktrace_seq __read_mostly = 1;
-
+/* 初始化blk tracer完毕时, 这里指向初始化好的blk tracer */
 static struct trace_array *blk_tr;
+/*  */
 static bool blk_tracer_enabled __read_mostly;
 
 static LIST_HEAD(running_trace_list);
@@ -64,6 +65,7 @@ static void blk_register_tracepoints(void);
 static void blk_unregister_tracepoints(void);
 
 /*
+notify message是
  * Send out a notify message.
  */
 static void trace_note(struct blk_trace *bt, pid_t pid, int action,
@@ -78,13 +80,18 @@ static void trace_note(struct blk_trace *bt, pid_t pid, int action,
 	ssize_t cgid_len = cgid ? sizeof(cgid) : 0;
 
 	if (blk_tracer) {
+		/* 获取的是trace_buffer */
 		buffer = blk_tr->array_buffer.buffer;
+		/* 获取当前的中断类型, 获取pc到trace_ctx */
 		trace_ctx = tracing_gen_ctx_flags(0);
+		/* 这里预分配event, 并且rb event代表的trace entry的pid等信息
+		返回的是rb event */
 		event = trace_buffer_lock_reserve(buffer, TRACE_BLK,
 						  sizeof(*t) + len + cgid_len,
 						  trace_ctx);
 		if (!event)
 			return;
+		/* 这里获取到rb event所包含的trace entry */
 		t = ring_buffer_event_data(event);
 		goto record_it;
 	}
@@ -92,7 +99,10 @@ static void trace_note(struct blk_trace *bt, pid_t pid, int action,
 	if (!bt->rchan)
 		return;
 
+	/* 这里的len是trace data条目相关的长度
+	这里调整bt->rchan在当前cpu的buf的一些指针, 用于预留内存空间 */
 	t = relay_reserve(bt->rchan, sizeof(*t) + len + cgid_len);
+	/* 这里fill这个trace记录 */
 	if (t) {
 		t->magic = BLK_IO_TRACE_MAGIC | BLK_IO_TRACE_VERSION;
 		t->time = ktime_to_ns(ktime_get());
@@ -411,17 +421,30 @@ int blk_trace_remove(struct request_queue *q)
 }
 EXPORT_SYMBOL_GPL(blk_trace_remove);
 
+
+/**
+ * @description: 
+ * @param {file} *filp
+ * @param {char __user} *buffer
+ * @param {size_t} count
+ * @param {loff_t} *ppos
+ * @return {*}
+ */
 static ssize_t blk_dropped_read(struct file *filp, char __user *buffer,
 				size_t count, loff_t *ppos)
 {
+	/* bt位于priv */
 	struct blk_trace *bt = filp->private_data;
 	char buf[16];
-
+	/* 读取bt的dropped字段 */
 	snprintf(buf, sizeof(buf), "%u\n", atomic_read(&bt->dropped));
 
 	return simple_read_from_buffer(buffer, count, ppos, buf, strlen(buf));
 }
 
+/* 
+
+*/
 static const struct file_operations blk_dropped_fops = {
 	.owner =	THIS_MODULE,
 	.open =		simple_open,
@@ -510,7 +533,14 @@ static void blk_trace_setup_lba(struct blk_trace *bt,
 
 /*
  * Setup everything required to start tracing
- */
+  * @description: 
+  * @param {request_queue} *q
+  * @param {char} *name
+  * @param {dev_t} dev
+  * @param {block_device} *bdev
+  * @param {blk_user_trace_setup} *buts
+  * @return {*}
+*/
 static int do_blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 			      struct block_device *bdev,
 			      struct blk_user_trace_setup *buts)
@@ -618,6 +648,10 @@ err:
 	return ret;
 }
 
+/* 设置和启动blktrace
+
+ */
+
 static int __blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 			     struct block_device *bdev, char __user *arg)
 {
@@ -639,6 +673,16 @@ static int __blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 	return 0;
 }
 
+
+/**
+ * @description: 
+ * @param {request_queue} *q
+ * @param {char} *name
+ * @param {dev_t} dev
+ * @param {block_device} *bdev
+ * @param {char __user} *arg
+ * @return {*}
+ */
 int blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 		    struct block_device *bdev,
 		    char __user *arg)
@@ -721,6 +765,7 @@ EXPORT_SYMBOL_GPL(blk_trace_startstop);
  */
 
 /**
+处理blk_trace相关的ioctl命令
  * blk_trace_ioctl - handle the ioctls associated with tracing
  * @bdev:	the block device
  * @cmd:	the ioctl cmd
@@ -1186,12 +1231,13 @@ out:
 	rwbs[i] = '\0';
 }
 
+/* 转换trace_entry的类型 */
 static inline
 const struct blk_io_trace *te_blk_io_trace(const struct trace_entry *ent)
 {
 	return (const struct blk_io_trace *)ent;
 }
-
+/* 获取条目里的body地址 */
 static inline const void *pdu_start(const struct trace_entry *ent, bool has_cg)
 {
 	return (void *)(te_blk_io_trace(ent) + 1) + (has_cg ? sizeof(u64) : 0);
@@ -1202,6 +1248,7 @@ static inline u64 t_cgid(const struct trace_entry *ent)
 	return *(u64 *)(te_blk_io_trace(ent) + 1);
 }
 
+/* 获取body长度 */
 static inline int pdu_real_len(const struct trace_entry *ent, bool has_cg)
 {
 	return te_blk_io_trace(ent)->pdu_len - (has_cg ? sizeof(u64) : 0);
@@ -1241,6 +1288,14 @@ static __u64 get_pdu_int(const struct trace_entry *ent, bool has_cg)
 typedef void (blk_log_action_t) (struct trace_iterator *iter, const char *act,
 	bool has_cg);
 
+/**
+ * @description: log_action函数的classic版本
+ 也是printf到iter->seq里面
+ * @param {trace_iterator} *iter, 迭代器
+ * @param {char} *act, 表示blk行为的字母, 比如Q什么的
+ * @param {bool} has_cg. 是否cgroup
+ * @return {*}
+ */
 static void blk_log_action_classic(struct trace_iterator *iter, const char *act,
 	bool has_cg)
 {
@@ -1258,6 +1313,14 @@ static void blk_log_action_classic(struct trace_iterator *iter, const char *act,
 			 secs, nsec_rem, iter->ent->pid, act, rwbs);
 }
 
+/**
+ * @description: log_action函数的实现
+ 输出到seq
+ * @param {trace_iterator} *iter
+ * @param {char} *act
+ * @param {bool} has_cg
+ * @return {*}
+ */
 static void blk_log_action(struct trace_iterator *iter, const char *act,
 	bool has_cg)
 {
@@ -1338,7 +1401,7 @@ static void blk_log_dump_pdu(struct trace_seq *s,
 
 	trace_seq_puts(s, ") ");
 }
-
+/* 好像也是输出到seq file */
 static void blk_log_generic(struct trace_seq *s, const struct trace_entry *ent, bool has_cg)
 {
 	char cmd[TASK_COMM_LEN];
@@ -1414,16 +1477,26 @@ static void blk_log_split(struct trace_seq *s, const struct trace_entry *ent, bo
 			 get_pdu_int(ent, has_cg), cmd);
 }
 
+/**
+把数据拷贝到seq file
+ * @description: 
+ * @param {trace_seq} *s
+ * @param {trace_entry} *ent
+ * @param {bool} has_cg
+ * @return {*}
+ */
 static void blk_log_msg(struct trace_seq *s, const struct trace_entry *ent,
 			bool has_cg)
 {
 
+	/* 把trace data拷贝到trace seq */
 	trace_seq_putmem(s, pdu_start(ent, has_cg),
 		pdu_real_len(ent, has_cg));
 	trace_seq_putc(s, '\n');
 }
 
 /*
+blk tracer的打印事件header的回调函数
  * struct tracer operations
  */
 
@@ -1435,28 +1508,34 @@ static void blk_tracer_print_header(struct seq_file *m)
 		    "#  |     |     |           |   |   |\n");
 }
 
+/* 打开blktrace的开关标志 */
 static void blk_tracer_start(struct trace_array *tr)
 {
 	blk_tracer_enabled = true;
 }
 
+/* 初始化blk_tracer
+这里好像就是初始化blk_tr, 打开blktrace开关标志 */
 static int blk_tracer_init(struct trace_array *tr)
 {
 	blk_tr = tr;
+	/* 开启tracer, 其实就是打开开关标志 */
 	blk_tracer_start(tr);
 	return 0;
 }
-
+/* 关闭开关 */
 static void blk_tracer_stop(struct trace_array *tr)
 {
 	blk_tracer_enabled = false;
 }
-
+/*  */
 static void blk_tracer_reset(struct trace_array *tr)
 {
 	blk_tracer_stop(tr);
 }
-
+/* 这里临时定义一个数组
+完成blk行为到字符表示和回调函数的映射
+用于在打印输出的时候, 不同的行为有不同的输出方式 */
 static const struct {
 	const char *act[2];
 	void	   (*print)(struct trace_seq *s, const struct trace_entry *ent,
@@ -1478,7 +1557,8 @@ static const struct {
 	[__BLK_TA_BOUNCE]	= {{  "B", "bounce" },	   blk_log_generic },
 	[__BLK_TA_REMAP]	= {{  "A", "remap" },	   blk_log_remap },
 };
-
+/*
+ 打印blktrace的行 */
 static enum print_line_t print_one_line(struct trace_iterator *iter,
 					bool classic)
 {
@@ -1493,11 +1573,15 @@ static enum print_line_t print_one_line(struct trace_iterator *iter,
 	t	   = te_blk_io_trace(iter->ent);
 	what	   = (t->action & ((1 << BLK_TC_SHIFT) - 1)) & ~__BLK_TA_CGROUP;
 	long_act   = !!(tr->trace_flags & TRACE_ITER_VERBOSE);
+	/* 这两个函数都是输出到seq file */
 	log_action = classic ? &blk_log_action_classic : &blk_log_action;
 	has_cg	   = t->action & __BLK_TA_CGROUP;
 
+	/* 这个是什么路径 */
 	if ((t->action & ~__BLK_TN_CGROUP) == BLK_TN_MESSAGE) {
+		/* 调用log函数, 都是输出到seq file */
 		log_action(iter, long_act ? "message" : "m", has_cg);
+		/* 把iter->ent拷贝写入seq */
 		blk_log_msg(s, iter->ent, has_cg);
 		return trace_handle_return(s);
 	}
@@ -1505,6 +1589,8 @@ static enum print_line_t print_one_line(struct trace_iterator *iter,
 	if (unlikely(what == 0 || what >= ARRAY_SIZE(what2act)))
 		trace_seq_printf(s, "Unknown action %x\n", what);
 	else {
+		/* 这个好像是更一般的路径, 打印log
+		而且针对不同的blk行为,调用不同的回调来处理打印输出过程 */
 		log_action(iter, what2act[what].act[long_act], has_cg);
 		what2act[what].print(s, iter->ent, has_cg);
 	}
@@ -1542,6 +1628,7 @@ blk_trace_event_print_binary(struct trace_iterator *iter, int flags,
 	return trace_handle_return(&iter->seq);
 }
 
+/* 打印trace记录 */
 static enum print_line_t blk_tracer_print_line(struct trace_iterator *iter)
 {
 	if ((iter->ent->type != TRACE_BLK) ||
@@ -1564,30 +1651,37 @@ blk_tracer_set_flag(struct trace_array *tr, u32 old_flags, u32 bit, int set)
 	return 0;
 }
 
+/*  */
 static struct tracer blk_tracer __read_mostly = {
 	.name		= "blk",
+	/* 这个tracer的初始化回调 */
 	.init		= blk_tracer_init,
 	.reset		= blk_tracer_reset,
 	.start		= blk_tracer_start,
 	.stop		= blk_tracer_stop,
+	/* 打印header的回调 */
 	.print_header	= blk_tracer_print_header,
+	/* 打印行
+	输出到 */
 	.print_line	= blk_tracer_print_line,
 	.flags		= &blk_tracer_flags,
 	.set_flag	= blk_tracer_set_flag,
 };
-
+/* trace_blk_event的ops
+作用是 */
 static struct trace_event_functions trace_blk_event_funcs = {
 	.trace		= blk_trace_event_print,
 	.binary		= blk_trace_event_print_binary,
 };
-
+/* 表示blk 的event? */
 static struct trace_event trace_blk_event = {
 	.type		= TRACE_BLK,
 	.funcs		= &trace_blk_event_funcs,
 };
-
+/* 初始化blktracer */
 static int __init init_blk_tracer(void)
 {
+	/* 添加到event_hash */
 	if (!register_trace_event(&trace_blk_event)) {
 		pr_warn("Warning: could not register block events\n");
 		return 1;
@@ -1864,6 +1958,7 @@ out:
 #ifdef CONFIG_EVENT_TRACING
 
 /**
+应该是用于转换输出格式的
  * blk_fill_rwbs - Fill the buffer rwbs by mapping op to character string.
  * @rwbs:	buffer to be filled
  * @opf:	request operation type (REQ_OP_XXX) and flags for the tracepoint
@@ -1915,4 +2010,3 @@ void blk_fill_rwbs(char *rwbs, blk_opf_t opf)
 EXPORT_SYMBOL_GPL(blk_fill_rwbs);
 
 #endif /* CONFIG_EVENT_TRACING */
-

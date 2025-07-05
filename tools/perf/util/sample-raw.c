@@ -7,7 +7,7 @@
 #include "header.h"
 #include "sample-raw.h"
 
-/*
+/*检查perf.data的平台
  * Check platform the perf data file was created on and perform platform
  * specific interpretation.
  */

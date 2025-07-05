@@ -151,6 +151,7 @@ static inline void *phys_to_virt(phys_addr_t address)
 #define phys_to_virt phys_to_virt
 
 /*
+获取到page的物理地址
  * Change "struct page" to physical address.
  */
 #define page_to_phys(page)    ((dma_addr_t)page_to_pfn(page) << PAGE_SHIFT)

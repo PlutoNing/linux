@@ -241,7 +241,7 @@ __sched int bit_wait_io_timeout(struct wait_bit_key *word, int mode)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(bit_wait_io_timeout);
-
+/* 初始化一些等待队列 */
 void __init wait_bit_init(void)
 {
 	int i;

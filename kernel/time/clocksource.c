@@ -87,13 +87,17 @@ EXPORT_SYMBOL_GPL(clocks_calc_mult_shift);
  * override_name:
  *	Name of the user-specified clocksource.
  */
+ /* 当前被选中的时钟源 */
 static struct clocksource *curr_clocksource;
+// 用作suspend时的clocksource?
 static struct clocksource *suspend_clocksource;
 // 系统的所有clocksource
 static LIST_HEAD(clocksource_list);
 static DEFINE_MUTEX(clocksource_mutex);
+/* 是用户设置的手动选的时钟源 */
 static char override_name[CS_NAME_LEN];
 static int finished_booting;
+/* 开始挂起tk的时间 */
 static u64 suspend_start;
 
 /*
@@ -131,6 +135,7 @@ static void clocksource_select(void);
 好像标记为不稳定的cs会通过wd_list挂接到这里
 */
 static LIST_HEAD(watchdog_list);
+/* 看门狗的时钟源 */
 static struct clocksource *watchdog;
 static struct timer_list watchdog_timer;
 static DECLARE_WORK(watchdog_work, clocksource_watchdog_work);
@@ -174,6 +179,7 @@ static void clocksource_watchdog_work(struct work_struct *work)
 }
 /* 
 把cs标记为不稳定?
+差不多是关闭的逻辑
 */
 static void __clocksource_unstable(struct clocksource *cs)
 {
@@ -214,6 +220,7 @@ void clocksource_mark_unstable(struct clocksource *cs)
 	if (!(cs->flags & CLOCK_SOURCE_UNSTABLE)) {/* 如果cs目前还是stable的 */
 		if (!list_empty(&cs->list) && list_empty(&cs->wd_list))
 			list_add(&cs->wd_list, &watchdog_list);
+		/* 标记时钟源为不稳定 */
 		__clocksource_unstable(cs);
 	}
 	spin_unlock_irqrestore(&watchdog_lock, flags);
@@ -604,7 +611,7 @@ static void clocksource_resume_watchdog(void)
 {
 	atomic_inc(&watchdog_reset_pending);
 }
-
+/* 注册时钟源的时候加入全局的看门狗 */
 static void clocksource_enqueue_watchdog(struct clocksource *cs)
 {
 	INIT_LIST_HEAD(&cs->wd_list);
@@ -678,6 +685,7 @@ static void clocksource_dequeue_watchdog(struct clocksource *cs)
 	}
 }
 
+/* 以后 */
 static int __clocksource_watchdog_kthread(void)
 {
 	struct clocksource *cs, *tmp;
@@ -748,12 +756,15 @@ static inline void clocksource_watchdog_lock(unsigned long *flags) { }
 static inline void clocksource_watchdog_unlock(unsigned long *flags) { }
 
 #endif /* CONFIG_CLOCKSOURCE_WATCHDOG */
-
+/* 检查这个时钟源是不是suspend时钟源 */
 static bool clocksource_is_suspend(struct clocksource *cs)
 {
 	return cs == suspend_clocksource;
 }
-
+/* 
+把这个时钟源选择为suspend时钟源
+==============================
+也是选择某种用途时钟源的逻辑., (在注册新的时钟源后会调此函数)*/
 static void __clocksource_suspend_select(struct clocksource *cs)
 {
 	/*
@@ -778,6 +789,7 @@ static void __clocksource_suspend_select(struct clocksource *cs)
 }
 
 /**
+为suspend选择一个时钟源
  * clocksource_suspend_select - Select the best clocksource for suspend timing
  * @fallback:	if select a fallback clocksource
  */
@@ -789,6 +801,7 @@ static void clocksource_suspend_select(bool fallback)
 	if (fallback)
 		suspend_clocksource = NULL;
 
+	/* 遍历系统的每一个时钟源 */
 	list_for_each_entry(cs, &clocksource_list, list) {
 		/* Skip current if we were requested for a fallback. */
 		if (fallback && cs == old_suspend)
@@ -799,9 +812,12 @@ static void clocksource_suspend_select(bool fallback)
 }
 
 /**
+开始suspend timing
  * clocksource_start_suspend_timing - Start measuring the suspend timing
  * @cs:			current clocksource from timekeeping
+是tk->tkr_mono.clock
  * @start_cycles:	current cycles from timekeeping
+ 是挂起前在tk保存的cycle_last
  *
  * This function will save the start cycle values of suspend timer to calculate
  * the suspend time when resuming system.
@@ -848,6 +864,11 @@ void clocksource_start_suspend_timing(struct clocksource *cs, u64 start_cycles)
  * that means there is only one cpu, no processes are running and the interrupts
  * are disabled. It is therefore possible to stop the suspend timer without
  * taking the clocksource mutex.
+
+ * @description: 
+ * @param {clocksource} *cs, 可能是tk->tkr_mono.clock时钟源
+ * @param {u64} cycle_now. 刚刚读取的mono时间
+ * @return {*}
  */
 u64 clocksource_stop_suspend_timing(struct clocksource *cs, u64 cycle_now)
 {
@@ -884,6 +905,8 @@ u64 clocksource_stop_suspend_timing(struct clocksource *cs, u64 cycle_now)
 }
 
 /**
+挂起tk的时候挂起时钟源
+调用每个时钟源的suspend函数
  * clocksource_suspend - suspend the clocksource(s)
  */
 void clocksource_suspend(void)
@@ -896,6 +919,7 @@ void clocksource_suspend(void)
 }
 
 /**
+调用每个时钟源的resume函数
  * clocksource_resume - resume the clocksource(s)
  */
 void clocksource_resume(void)
@@ -910,6 +934,7 @@ void clocksource_resume(void)
 }
 
 /**
+以后
  * clocksource_touch_watchdog - Update watchdog
  *
  * Update the watchdog after exception contexts such as kgdb so as not
@@ -993,7 +1018,7 @@ static inline void clocksource_update_max_deferment(struct clocksource *cs)
 						cs->maxadj, cs->mask,
 						&cs->max_cycles);
 }
-
+/* 选最好的时钟源 */
 static struct clocksource *clocksource_find_best(bool oneshot, bool skipcur)
 {
 	struct clocksource *cs;
@@ -1015,7 +1040,8 @@ static struct clocksource *clocksource_find_best(bool oneshot, bool skipcur)
 	}
 	return NULL;
 }
-
+/* 选择系统最好的时钟源
+作为新的curr时钟源 */
 static void __clocksource_select(bool skipcur)
 {
 	bool oneshot = tick_oneshot_mode_active();
@@ -1067,7 +1093,7 @@ found:
 	}
 }
 
-/**
+/** 选择系统最好的时钟源
  * clocksource_select - Select the best clocksource available
  *
  * Private function. Must hold clocksource_mutex when called.
@@ -1079,13 +1105,17 @@ static void clocksource_select(void)
 {
 	__clocksource_select(false);
 }
-
+/* 替换掉当前选中的时钟源
+这里选择新的 */
 static void clocksource_select_fallback(void)
 {
 	__clocksource_select(true);
 }
 
 /*
+在core bootup快结束的时候调用
+===============
+会选择默认时钟源
  * clocksource_done_booting - Called near the end of core bootup
  *
  * Hack to avoid lots of clocksource churn at boot time.
@@ -1101,6 +1131,7 @@ static int __init clocksource_done_booting(void)
 	 * Run the watchdog first to eliminate unstable clock sources
 	 */
 	__clocksource_watchdog_kthread();
+	/* 选择时钟源 */
 	clocksource_select();
 	mutex_unlock(&clocksource_mutex);
 	return 0;
@@ -1109,7 +1140,7 @@ fs_initcall(clocksource_done_booting);
 
 /*
  * Enqueue the clocksource sorted by rating
-   插入一个clocksource,按照rating排序
+   插入一个clocksource到clocksource_list,按照rating排序
  */
 static void clocksource_enqueue(struct clocksource *cs)
 {
@@ -1125,7 +1156,7 @@ static void clocksource_enqueue(struct clocksource *cs)
 	list_add(&cs->list, entry);
 }
 
-/**
+/** 初始化时钟源? 还是修改时钟源?
  * __clocksource_update_freq_scale - Used update clocksource with new freq
  * @cs:		clocksource to be registered
  * @scale:	Scale factor multiplied against freq to get clocksource hz
@@ -1213,7 +1244,7 @@ void __clocksource_update_freq_scale(struct clocksource *cs, u32 scale, u32 freq
 }
 EXPORT_SYMBOL_GPL(__clocksource_update_freq_scale);
 
-/**
+/** 注册时钟源, 添加到全局数据结构, 并且进行各种用途时钟源的选择和替换什么的
  * __clocksource_register_scale - Used to install new clocksources
  * @cs:		clocksource to be registered
  * @scale:	Scale factor multiplied against freq to get clocksource hz
@@ -1238,7 +1269,7 @@ int __clocksource_register_scale(struct clocksource *cs, u32 scale, u32 freq)
 			cs->name, cs->vdso_clock_mode);
 		cs->vdso_clock_mode = VDSO_CLOCKMODE_NONE;
 	}
-
+	/* 里面可能是初始化或者修改了时钟源 */
 	/* Initialize mult/shift and max_idle_ns */
 	__clocksource_update_freq_scale(cs, scale, freq);
 
@@ -1246,12 +1277,13 @@ int __clocksource_register_scale(struct clocksource *cs, u32 scale, u32 freq)
 	mutex_lock(&clocksource_mutex);
 
 	clocksource_watchdog_lock(&flags);
-	clocksource_enqueue(cs);
-	clocksource_enqueue_watchdog(cs);
+	clocksource_enqueue(cs); /* 加入全局的clocksource_list */
+	clocksource_enqueue_watchdog(cs);/* 加入全局的看门狗 */
 	clocksource_watchdog_unlock(&flags);
-
+	/* 这里其实仅在完成boot之后才会实际工作 */
 	clocksource_select();
 	clocksource_select_watchdog(false);
+	/* 选择suspend时钟源 */
 	__clocksource_suspend_select(cs);
 	mutex_unlock(&clocksource_mutex);
 	return 0;
@@ -1264,10 +1296,12 @@ static void __clocksource_change_rating(struct clocksource *cs, int rating)
 {
 	list_del(&cs->list);
 	cs->rating = rating;
+	/* 重新入队 */
 	clocksource_enqueue(cs);
 }
 
 /**
+修改一个时钟源的评分
  * clocksource_change_rating - Change the rating of a registered clocksource
  * @cs:		clocksource to be changed
  * @rating:	new rating
@@ -1278,18 +1312,24 @@ void clocksource_change_rating(struct clocksource *cs, int rating)
 
 	mutex_lock(&clocksource_mutex);
 	clocksource_watchdog_lock(&flags);
+	/* 修改评分 */
 	__clocksource_change_rating(cs, rating);
 	clocksource_watchdog_unlock(&flags);
 
+	/* 重新评选时钟源 */
 	clocksource_select();
+	/* 选择watchdog */
 	clocksource_select_watchdog(false);
+	/* 选择suspend时钟源 */
 	clocksource_suspend_select(false);
 	mutex_unlock(&clocksource_mutex);
 }
 EXPORT_SYMBOL(clocksource_change_rating);
 
 /*
-解绑指定的clocksource
+移除指定的clocksource
+从全局的clocksource_list中移除
+然后如果此时钟源是当前的时钟源, 则重新选择一个新的时钟源
  * Unbind clocksource @cs. Called with clocksource_mutex held
  */
 static int clocksource_unbind(struct clocksource *cs)
@@ -1303,6 +1343,7 @@ static int clocksource_unbind(struct clocksource *cs)
 			return -EBUSY;
 	}
 
+	/* 重新为系统选择最好的时钟源 */
 	if (cs == curr_clocksource) {
 		/* Select and try to install a replacement clock source */
 		clocksource_select_fallback();
@@ -1310,6 +1351,7 @@ static int clocksource_unbind(struct clocksource *cs)
 			return -EBUSY;
 	}
 
+	/* 选择新的suspend时钟源 */
 	if (clocksource_is_suspend(cs)) {
 		/*
 		 * Select and try to install a replacement suspend clocksource.
@@ -1320,7 +1362,9 @@ static int clocksource_unbind(struct clocksource *cs)
 	}
 
 	clocksource_watchdog_lock(&flags);
+	/* 以后 */
 	clocksource_dequeue_watchdog(cs);
+	/* 把这个时钟源从全局链表移除 */
 	list_del_init(&cs->list);
 	clocksource_watchdog_unlock(&flags);
 
@@ -1328,6 +1372,7 @@ static int clocksource_unbind(struct clocksource *cs)
 }
 
 /**
+移除一个时钟源
  * clocksource_unregister - remove a registered clocksource
  * @cs:	clocksource to be unregistered
  */
@@ -1337,7 +1382,7 @@ int clocksource_unregister(struct clocksource *cs)
 
 	mutex_lock(&clocksource_mutex);
 	if (!list_empty(&cs->list))
-		ret = clocksource_unbind(cs);
+		ret = clocksource_unbind(cs);/* 执行移除的必要操作,重新选择相关时钟源什么的 */
 	mutex_unlock(&clocksource_mutex);
 	return ret;
 }
@@ -1345,6 +1390,7 @@ EXPORT_SYMBOL(clocksource_unregister);
 
 #ifdef CONFIG_SYSFS
 /**
+查看时钟源的sys接口
  * current_clocksource_show - sysfs interface for current clocksource
  * @dev:	unused
  * @attr:	unused
@@ -1383,6 +1429,7 @@ ssize_t sysfs_get_uname(const char *buf, char *dst, size_t cnt)
 }
 
 /**
+手动选择时钟源的接口?
  * current_clocksource_store - interface for manually overriding clocksource
  * @dev:	unused
  * @attr:	unused
@@ -1450,6 +1497,7 @@ static DEVICE_ATTR_WO(unbind_clocksource);
 /**
  * available_clocksource_show - sysfs interface for listing clocksource
  查看可用的clocksource的sysfs接口
+ /sys/devices/system/clocksource/clocksource0/available_clocksource
  * @dev:	unused
  * @attr:	unused
  * @buf:	char buffer to be filled with clocksource list

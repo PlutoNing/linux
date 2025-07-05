@@ -204,7 +204,7 @@ copy_mc_to_kernel(void *dst, const void *src, size_t cnt)
 	return 0;
 }
 #endif
-
+/* 关闭current的pf */
 static __always_inline void pagefault_disabled_inc(void)
 {
 	current->pagefault_disabled++;
@@ -216,9 +216,7 @@ static __always_inline void pagefault_disabled_dec(void)
 }
 
 /*
- * These routines enable/disable the pagefault handler. If disabled, it will
- * not take any locks and go straight to the fixup table.
- *
+ * 这个函数开关pf handler，如果惯了，不会获得任何锁，然后直接进入fxitable
  * User access methods will not sleep when called from a pagefault_disabled()
  * environment.
  */

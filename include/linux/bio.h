@@ -63,6 +63,7 @@ static inline bool bio_has_data(struct bio *bio)
 	return false;
 }
 
+/* 表示bio的iter没有那么多功能？ */
 static inline bool bio_no_advance_iter(const struct bio *bio)
 {
 	return bio_op(bio) == REQ_OP_DISCARD ||
@@ -107,7 +108,15 @@ static inline void bio_advance_iter(const struct bio *bio,
 		/* TODO: It is reasonable to complete bio with error here. */
 }
 
-/* @bytes should be less or equal to bvec[i->bi_idx].bv_len */
+/*
+消耗bio的bytes长度， 就是往前调整iter，调整bio的写入位置
+@bytes should be less or equal to bvec[i->bi_idx].bv_len 
+ * @description: 
+ * @param {bio} *bio
+ * @param {bvec_iter} *iter
+ * @param {unsigned int} bytes
+ * @return {*}
+ */
 static inline void bio_advance_iter_single(const struct bio *bio,
 					   struct bvec_iter *iter,
 					   unsigned int bytes)
@@ -141,13 +150,13 @@ static inline void bio_advance(struct bio *bio, unsigned int nbytes)
 	}
 	__bio_advance(bio, nbytes);
 }
-
+/*  */
 #define __bio_for_each_segment(bvl, bio, iter, start)			\
 	for (iter = (start);						\
 	     (iter).bi_size &&						\
 		((bvl = bio_iter_iovec((bio), (iter))), 1);		\
 	     bio_advance_iter_single((bio), &(iter), (bvl).bv_len))
-
+/* bio真实指向bio， iter和bvec是空的 */
 #define bio_for_each_segment(bvl, bio, iter)				\
 	__bio_for_each_segment(bvl, bio, iter, (bio)->bi_iter)
 
@@ -242,20 +251,20 @@ static inline void bio_clear_flag(struct bio *bio, unsigned int bit)
 	bio->bi_flags &= ~(1U << bit);
 }
 
-//
+// 获取bio的第一个bvec
 static inline struct bio_vec *bio_first_bvec_all(struct bio *bio)
 {
 	WARN_ON_ONCE(bio_flagged(bio, BIO_CLONED));
 	return bio->bi_io_vec;
 }
 
-//
+// 获取bio回写的page
 static inline struct page *bio_first_page_all(struct bio *bio)
 {
 	return bio_first_bvec_all(bio)->bv_page;
 }
 
-//
+// 获取bio所回写的folio
 static inline struct folio *bio_first_folio_all(struct bio *bio)
 {
 	return page_folio(bio_first_page_all(bio));

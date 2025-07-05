@@ -102,6 +102,9 @@ void vma_set_page_prot(struct vm_area_struct *vma)
 }
 
 /*
+要销毁这个vma了
+vma->file->mapping
+把vma从mapping的i_mmap中删除
  * Requires inode->i_mapping->i_mmap_rwsem
  */
 static void __remove_shared_vm_struct(struct vm_area_struct *vma,
@@ -111,11 +114,14 @@ static void __remove_shared_vm_struct(struct vm_area_struct *vma,
 		mapping_unmap_writable(mapping);
 
 	flush_dcache_mmap_lock(mapping);
+	/* 从tree删除 */
 	vma_interval_tree_remove(vma, &mapping->i_mmap);
 	flush_dcache_mmap_unlock(mapping);
 }
 
 /*
+销毁vma的时候
+删除file
  * Unlink a file-based vm structure from its interval tree, to hide
  * vma from rmap and vmtruncate before freeing its page tables.
  */
@@ -132,6 +138,8 @@ void unlink_file_vma(struct vm_area_struct *vma)
 }
 
 /*
+退出进程的时候
+销毁vma
  * Close a vm structure and free it.
  */
 static void remove_vma(struct vm_area_struct *vma, bool unreachable)
@@ -155,6 +163,7 @@ static inline struct vm_area_struct *vma_prev_limit(struct vma_iterator *vmi,
 }
 
 /*
+brk申请内存前检查
  * check_brk_limits() - Use platform specific check of range & verify mlock
  * limits.
  * @addr: The address to check
@@ -881,6 +890,9 @@ can_vma_merge_after(struct vm_area_struct *vma, unsigned long vm_flags,
  * NNNN is represented by *next or not represented at all (NULL)
  * **** is not represented - it will be merged and the vma containing the
  *      area is returned, or the function will return NULL
+ =================================
+prev是范围的前一个vma
+ remap到addr end的范围
  */
 struct vm_area_struct *vma_merge(struct vma_iterator *vmi, struct mm_struct *mm,
 			struct vm_area_struct *prev, unsigned long addr,
@@ -911,29 +923,39 @@ struct vm_area_struct *vma_merge(struct vma_iterator *vmi, struct mm_struct *mm,
 	if (vm_flags & VM_SPECIAL)
 		return NULL;
 
-	/* Does the input range span an existing VMA? (cases 5 - 8) */
+	/* Does the input range span an existing VMA? (cases 5 - 8)
+	找到prev的尾巴到本次映射范围结束地址交叉的第一个vma
+	*/
 	curr = find_vma_intersection(mm, prev ? prev->vm_end : 0, end);
+/* 
+            |--------|
+	|-----|		
 
-	if (!curr ||			/* cases 1 - 4 */
-	    end == curr->vm_end)	/* cases 6 - 8, adjacent VMA */
-		next = vma_lookup(mm, end);
+*/
+	if (!curr ||			/*如果没有[prev_end, new_end ]交叉的vma， cases 1 - 4 */
+	    end == curr->vm_end)	/*有交叉，但是交叉的vma与本次映射范围的屁股是对齐的
+		 cases 6 - 8, adjacent VMA */
+		next = vma_lookup(mm, end);/* 如果是这两种情况， 就找到new_end所在的vma */
 	else
-		next = NULL;		/* case 5 */
+		next = NULL;		/*有交叉的vma，并且屁股也不是对齐的 case 5 */
 
-	if (prev) {
+	if (prev) {/* 如果存在prev， 看看能不能合并 */
 		vma_start = prev->vm_start;
 		vma_pgoff = prev->vm_pgoff;
 
 		/* Can we merge the predecessor? */
-		if (addr == prev->vm_end && mpol_equal(vma_policy(prev), policy)
+		if (addr == prev->vm_end /* 地址范围对齐 */
+			 && mpol_equal(vma_policy(prev), policy)
 		    && can_vma_merge_after(prev, vm_flags, anon_vma, file,
 					   pgoff, vm_userfaultfd_ctx, anon_name)) {
-			merge_prev = true;
+			merge_prev = true;/* 决定与prev合并 */
 			vma_prev(vmi);
 		}
 	}
 
-	/* Can we merge the successor? */
+	/* Can we merge the successor? 
+	是否与下一个合并
+	*/
 	if (next && mpol_equal(policy, vma_policy(next)) &&
 	    can_vma_merge_before(next, vm_flags, anon_vma, file, pgoff+pglen,
 				 vm_userfaultfd_ctx, anon_name)) {
@@ -1605,6 +1627,7 @@ static inline int accountable_mapping(struct file *file, vm_flags_t vm_flags)
 }
 
 /**
+找一段满足要求的未映射地址范围
  * unmapped_area() - Find an area between the low_limit and the high_limit with
  * the correct alignment and offset, all from @info. Note: current->mm is used
  * for the search.
@@ -1657,6 +1680,7 @@ retry:
 }
 
 /**
+找一段范围内的未映射地址范围
  * unmapped_area_topdown() - Find an area between the low_limit and the
  * high_limit with the correct alignment and offset at the highest available
  * address, all from @info. Note: current->mm is used for the search.
@@ -1682,6 +1706,7 @@ static unsigned long unmapped_area_topdown(struct vm_unmapped_area_info *info)
 	if (low_limit < mmap_min_addr)
 		low_limit = mmap_min_addr;
 	high_limit = info->high_limit;
+	/* 调整范围和要找的长度 */
 retry:
 	if (mas_empty_area_rev(&mas, low_limit, high_limit - 1, length))
 		return -ENOMEM;
@@ -1709,6 +1734,7 @@ retry:
 }
 
 /*
+找一段还没有被map的地址范围
  * Search for an unmapped address range.
  *
  * We are looking for a range that:
@@ -1850,7 +1876,9 @@ arch_get_unmapped_area_topdown(struct file *filp, unsigned long addr,
 	return generic_get_unmapped_area_topdown(filp, addr, len, pgoff, flags);
 }
 #endif
-
+/* 找到一段可以map的地址
+希望map到[addr，addr+len]
+file是现存的一个vma的file， pgoff是vma的old addr的pgoff */
 unsigned long
 get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 		unsigned long pgoff, unsigned long flags)
@@ -1866,11 +1894,13 @@ get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 	if (len > TASK_SIZE)
 		return -ENOMEM;
 
+	/* mm提供了get area回调 */
 	get_area = current->mm->get_unmapped_area;
-	if (file) {
+	if (file) {/* 如果是文件映射， 使用file的get area回调 */
 		if (file->f_op->get_unmapped_area)
 			get_area = file->f_op->get_unmapped_area;
 	} else if (flags & MAP_SHARED) {
+		/* 为啥这还是个特殊情况 */
 		/*
 		 * mmap_region() will call shmem_zero_setup() to create a file,
 		 * so use shmem's get_unmapped_area in case it can be huge.
@@ -1880,6 +1910,7 @@ get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 		get_area = shmem_get_unmapped_area;
 	}
 
+	/* 获取可映射区域 */
 	addr = get_area(file, addr, len, pgoff, flags);
 	if (IS_ERR_VALUE(addr))
 		return addr;
@@ -1912,6 +1943,7 @@ struct vm_area_struct *find_vma_intersection(struct mm_struct *mm,
 	unsigned long index = start_addr;
 
 	mmap_assert_locked(mm);
+	/* 可能返回空 */
 	return mt_find(&mm->mm_mt, &index, end_addr - 1);
 }
 EXPORT_SYMBOL(find_vma_intersection);
@@ -1935,8 +1967,8 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 EXPORT_SYMBOL(find_vma);
 
 /**
- * find_vma_prev() - Find the VMA for a given address, or the next vma and
- * set %pprev to the previous VMA, if any.
+ * find_vma_prev() - 查找给定地址的VMA，
+ 或者下一个VMA，并将%pprev设置为前一个VMA（如果有的话）。
  * @mm: The mm_struct to check
  * @addr: The address
  * @pprev: The pointer to set to the previous VMA
@@ -1952,6 +1984,7 @@ find_vma_prev(struct mm_struct *mm, unsigned long addr,
 			struct vm_area_struct **pprev)
 {
 	struct vm_area_struct *vma;
+	/* 找到vma tree */
 	MA_STATE(mas, &mm->mm_mt, addr, addr);
 
 	vma = mas_walk(&mas);
@@ -2502,6 +2535,7 @@ out_free_vma:
 }
 
 /*
+为啥要split vma
  * Split a vma into two pieces at address 'addr', a new vma is allocated
  * either for the first part or the tail.
  */
@@ -2892,7 +2926,11 @@ cannot_expand:
 		}
 
 		vma->vm_file = get_file(file);
-		// 调用fops的mmap回调
+		/* 调用fops的mmap回调
+		建立他俩的mmap的关系
+		==============
+		一般file的fops mmap回调会给vma设置上自定义的ops（包含map, fault等）
+		规定缺页的时候, 需要map的时候, 如何执行具体过程, 获取文件页面 */
 		error = call_mmap(file, vma);
 		if (error)
 			goto unmap_and_free_vma;
@@ -3037,6 +3075,7 @@ unacct_error:
 	return error;
 }
 
+/* unmap指定的地址范围 */
 static int __vm_munmap(unsigned long start, size_t len, bool unlock)
 {
 	int ret;
@@ -3046,7 +3085,7 @@ static int __vm_munmap(unsigned long start, size_t len, bool unlock)
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
-
+	/* unmap这个范围 */
 	ret = do_vmi_munmap(&vmi, mm, start, len, &uf, unlock);
 	if (ret || !unlock)
 		mmap_write_unlock(mm);
@@ -3140,6 +3179,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 		flags |= MAP_LOCKED;
 
 	file = get_file(vma->vm_file);
+	/* 进行mmap */
 	ret = do_mmap(vma->vm_file, start, size,
 			prot, flags, 0, pgoff, &populate, NULL);
 	fput(file);
@@ -3153,6 +3193,7 @@ out:
 }
 
 /*
+unmap指定vma 的一部分或者全部
  * do_vma_munmap() - Unmap a full or partial vma.
  * @vmi: The vma iterator pointing at the vma
  * @vma: The first vma to be munmapped
@@ -3278,7 +3319,8 @@ unacct_fail:
 	return -ENOMEM;
 }
 
-//分配内存
+/*brk分配内存
+request是申请的长度  */
 int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
 {
 	struct mm_struct *mm = current->mm;
@@ -3301,11 +3343,11 @@ int vm_brk_flags(unsigned long addr, unsigned long request, unsigned long flags)
 
 	if (mmap_write_lock_killable(mm))
 		return -EINTR;
-
+	/* 进行一些检查 */
 	ret = check_brk_limits(addr, len);
 	if (ret)
 		goto limits_failed;
-
+	/* 为什么这里要unmap */
 	ret = do_vmi_munmap(&vmi, mm, addr, len, &uf, 0);
 	if (ret)
 		goto munmap_failed;
@@ -3327,14 +3369,17 @@ limits_failed:
 }
 EXPORT_SYMBOL(vm_brk_flags);
 
-//分配内存
+//brk分配内存
 int vm_brk(unsigned long addr, unsigned long len)
 {
 	return vm_brk_flags(addr, len, 0);
 }
 EXPORT_SYMBOL(vm_brk);
 
-/* Release all mmaps. */
+/* Release all mmaps.
+退出mmap是干什么？
+进程退出
+*/
 void exit_mmap(struct mm_struct *mm)
 {
 	struct mmu_gather tlb;
@@ -3360,8 +3405,11 @@ void exit_mmap(struct mm_struct *mm)
 	flush_cache_mm(mm);
 	tlb_gather_mmu_fullmm(&tlb, mm);
 	/* update_hiwater_rss(mm) here? but nobody should be looking */
-	/* Use ULONG_MAX here to ensure all VMAs in the mm are unmapped */
-	unmap_vmas(&tlb, &mas, vma, 0, ULONG_MAX, ULONG_MAX, false);
+	/* Use ULONG_MAX here to ensure all VMAs in the mm are unmapped
+	解除映射全部的vma
+	*/
+	unmap_vmas(&tlb, &mas, vma, 0, 
+		ULONG_MAX, ULONG_MAX, false);
 	mmap_read_unlock(mm);
 
 	/*
@@ -3372,6 +3420,7 @@ void exit_mmap(struct mm_struct *mm)
 	mmap_write_lock(mm);
 	mt_clear_in_rcu(&mm->mm_mt);
 	mas_set(&mas, vma->vm_end);
+	/* 释放页表 */
 	free_pgtables(&tlb, &mas, vma, FIRST_USER_ADDRESS,
 		      USER_PGTABLES_CEILING, true);
 	tlb_finish_mmu(&tlb);
@@ -3385,6 +3434,7 @@ void exit_mmap(struct mm_struct *mm)
 	do {
 		if (vma->vm_flags & VM_ACCOUNT)
 			nr_accounted += vma_pages(vma);
+		/* 从mm移除这个vma？ */
 		remove_vma(vma, true);
 		count++;
 		cond_resched();
@@ -3410,7 +3460,7 @@ int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 
 
 	if (find_vma_intersection(mm, vma->vm_start, vma->vm_end))
-		return -ENOMEM;
+		return -ENOMEM;/* 如果有现存的vma与这个新vma是交叉的 */
 
 	if ((vma->vm_flags & VM_ACCOUNT) &&
 	     security_vm_enough_memory_mm(mm, charged))
@@ -3433,7 +3483,7 @@ int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 		vma->vm_pgoff = vma->vm_start >> PAGE_SHIFT;
 	}
 
-	if (vma_link(mm, vma)) {
+	if (vma_link(mm, vma)) {/* 这里真正把vma插入mm */
 		vm_unacct_memory(charged);
 		return -ENOMEM;
 	}
@@ -3442,6 +3492,10 @@ int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 }
 
 /*
+要从vmap指定的vma进行remap
+从pgoff对应的addr，remap到addr和len
+==
+感觉就是新建一个目标范围的vma，然后直接设置pgoff？
  * Copy the vma structure to a new location in the same mm,
  * prior to moving page table entries, to effect an mremap move.
  */
@@ -3465,14 +3519,20 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 		faulted_in_anon_vma = false;
 	}
 
+	/*  */
 	new_vma = find_vma_prev(mm, addr, &prev);
+	/* new vma可能是addr所在的vma，也可能是下一个vma */
 	if (new_vma && new_vma->vm_start < addr + len)
-		return NULL;	/* should never get here */
+		return NULL;	/* 说明是addr处没有vma，下一个vma与参数指定
+	范围交叉了，should never get here */
 
-	new_vma = vma_merge(&vmi, mm, prev, addr, addr + len, vma->vm_flags,
+	/* 现在要么是new vma包含addr
+	要么是new vma是[addr，addr+len]后面的vma */
+	new_vma = vma_merge(&vmi, mm, prev,
+				 addr, addr + len, vma->vm_flags,
 			    vma->anon_vma, vma->vm_file, pgoff, vma_policy(vma),
 			    vma->vm_userfaultfd_ctx, anon_vma_name(vma));
-	if (new_vma) {
+	if (new_vma) {/* 如果是合并了 */
 		/*
 		 * Source vma may have been merged into new_vma
 		 */
@@ -3494,10 +3554,13 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 			*vmap = vma = new_vma;
 		}
 		*need_rmap_locks = (new_vma->vm_pgoff <= vma->vm_pgoff);
-	} else {
+	} else {/* 没有合并 */
 		new_vma = vm_area_dup(vma);
 		if (!new_vma)
 			goto out;
+		/* new vma的范围直接就是remap的范围
+		pgoff就是老范围的pgoff
+		表示是re map */
 		new_vma->vm_start = addr;
 		new_vma->vm_end = addr + len;
 		new_vma->vm_pgoff = pgoff;
@@ -3505,10 +3568,12 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 			goto out_free_vma;
 		if (anon_vma_clone(new_vma, vma))
 			goto out_free_mempol;
+		/* 这个属性直接是刚才复制vma的时候memcpy的？ */
 		if (new_vma->vm_file)
 			get_file(new_vma->vm_file);
 		if (new_vma->vm_ops && new_vma->vm_ops->open)
 			new_vma->vm_ops->open(new_vma);
+		/* 把新vma插入mm */
 		if (vma_link(mm, new_vma))
 			goto out_vma_link;
 		*need_rmap_locks = false;
@@ -3577,6 +3642,7 @@ void vm_stat_account(struct mm_struct *mm, vm_flags_t flags, long npages)
 static vm_fault_t special_mapping_fault(struct vm_fault *vmf);
 
 /*
+为什么是空函数
  * Having a close hook prevents vma merging regardless of flags.
  */
 static void special_mapping_close(struct vm_area_struct *vma)
@@ -3587,7 +3653,8 @@ static const char *special_mapping_name(struct vm_area_struct *vma)
 {
 	return ((struct vm_special_mapping *)vma->vm_private_data)->name;
 }
-
+/* special vma的remap回调函数
+也是调用vma的sm的remap回调 */
 static int special_mapping_mremap(struct vm_area_struct *new_vma)
 {
 	struct vm_special_mapping *sm = new_vma->vm_private_data;
@@ -3600,7 +3667,7 @@ static int special_mapping_mremap(struct vm_area_struct *new_vma)
 
 	return 0;
 }
-
+/* special vma的ops的回调 */
 static int special_mapping_split(struct vm_area_struct *vma, unsigned long addr)
 {
 	/*
@@ -3611,7 +3678,7 @@ static int special_mapping_split(struct vm_area_struct *vma, unsigned long addr)
 	 */
 	return -EINVAL;
 }
-
+/* special mapping的ops */
 static const struct vm_operations_struct special_mapping_vmops = {
 	.close = special_mapping_close,
 	.fault = special_mapping_fault,
@@ -3626,7 +3693,8 @@ static const struct vm_operations_struct legacy_special_mapping_vmops = {
 	.close = special_mapping_close,
 	.fault = special_mapping_fault,
 };
-
+/* special vma的fault函数
+这种vma的缺页不是去申请，而是从vma的一个page数组里面拿 */
 static vm_fault_t special_mapping_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -3656,7 +3724,8 @@ static vm_fault_t special_mapping_fault(struct vm_fault *vmf)
 
 	return VM_FAULT_SIGBUS;
 }
-
+/* 什么是special mapping？
+感觉就是手动创建一个指定范围地址的vma插入mm了， 估计用作特殊用途吧*/
 static struct vm_area_struct *__install_special_mapping(
 	struct mm_struct *mm,
 	unsigned long addr, unsigned long len,
@@ -3666,6 +3735,7 @@ static struct vm_area_struct *__install_special_mapping(
 	int ret;
 	struct vm_area_struct *vma;
 
+	/* 创建一个vma，这个mm的vma， 就是从slab创建vma， 建立与mm的关系 */
 	vma = vm_area_alloc(mm);
 	if (unlikely(vma == NULL))
 		return ERR_PTR(-ENOMEM);
@@ -3680,6 +3750,7 @@ static struct vm_area_struct *__install_special_mapping(
 	vma->vm_ops = ops;
 	vma->vm_private_data = priv;
 
+	/* 把这个vma插入这个mm */
 	ret = insert_vm_struct(mm, vma);
 	if (ret)
 		goto out;
@@ -3695,6 +3766,7 @@ out:
 	return ERR_PTR(ret);
 }
 
+/* 判断是不是special mapping？ */
 bool vma_is_special_mapping(const struct vm_area_struct *vma,
 	const struct vm_special_mapping *sm)
 {
@@ -3733,7 +3805,7 @@ int install_special_mapping(struct mm_struct *mm,
 }
 
 static DEFINE_MUTEX(mm_all_locks_mutex);
-
+/* 锁住mm的一个vma的av */
 static void vm_lock_anon_vma(struct mm_struct *mm, struct anon_vma *anon_vma)
 {
 	if (!test_bit(0, (unsigned long *) &anon_vma->root->rb_root.rb_root.rb_node)) {
@@ -3756,7 +3828,7 @@ static void vm_lock_anon_vma(struct mm_struct *mm, struct anon_vma *anon_vma)
 			BUG();
 	}
 }
-
+/* mapping是是属于mm的其中一个vma的， 这里加锁这个mapping */
 static void vm_lock_mapping(struct mm_struct *mm, struct address_space *mapping)
 {
 	if (!test_bit(AS_MM_ALL_LOCKS, &mapping->flags)) {
@@ -3776,9 +3848,8 @@ static void vm_lock_mapping(struct mm_struct *mm, struct address_space *mapping)
 }
 
 /*
- * This operation locks against the VM for all pte/vma/mm related
- * operations that could ever happen on a certain mm. This includes
- * vmtruncate, try_to_unmap, and all page faults.
+ * 此操作会锁定针对某个 mm 上可能发生的所有 pte/vma/mm 相关操作。
+ * 这包括 vmtruncate、try_to_unmap 和所有页面错误。
  *
  * The caller must take the mmap_lock in write mode before calling
  * mm_take_all_locks(). The caller isn't allowed to release the
@@ -3829,13 +3900,16 @@ int mm_take_all_locks(struct mm_struct *mm)
 	 * being written to until mmap_write_unlock() or mmap_write_downgrade()
 	 * is reached.
 	 */
+	/* 遍历mm的每一个vma */
 	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (signal_pending(current))
 			goto out_unlock;
+		/* 加写锁 */
 		vma_start_write(vma);
 	}
 
 	mas_set(&mas, 0);
+	/* 锁住mm的每一个巨页的文件映射vma */
 	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (signal_pending(current))
 			goto out_unlock;
@@ -3845,6 +3919,7 @@ int mm_take_all_locks(struct mm_struct *mm)
 	}
 
 	mas_set(&mas, 0);
+	/* 锁住mm的每一个非巨页的文件映射vma */
 	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (signal_pending(current))
 			goto out_unlock;
@@ -3854,6 +3929,7 @@ int mm_take_all_locks(struct mm_struct *mm)
 	}
 
 	mas_set(&mas, 0);
+	/* 这里是锁住每一个匿名的vma */
 	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (signal_pending(current))
 			goto out_unlock;
@@ -3868,7 +3944,7 @@ out_unlock:
 	mm_drop_all_locks(mm);
 	return -EINTR;
 }
-
+/* 解锁匿名vma？ */
 static void vm_unlock_anon_vma(struct anon_vma *anon_vma)
 {
 	if (test_bit(0, (unsigned long *) &anon_vma->root->rb_root.rb_root.rb_node)) {
@@ -3890,7 +3966,7 @@ static void vm_unlock_anon_vma(struct anon_vma *anon_vma)
 		anon_vma_unlock_write(anon_vma);
 	}
 }
-
+/* 解锁映射文件的vma？ */
 static void vm_unlock_mapping(struct address_space *mapping)
 {
 	if (test_bit(AS_MM_ALL_LOCKS, &mapping->flags)) {
@@ -3905,7 +3981,7 @@ static void vm_unlock_mapping(struct address_space *mapping)
 	}
 }
 
-/*
+/* 解锁mm， 释放所有vma的锁
  * The mmap_lock cannot be released by the caller until
  * mm_drop_all_locks() returns.
  */
@@ -3913,23 +3989,24 @@ void mm_drop_all_locks(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
 	struct anon_vma_chain *avc;
+	/* 获取mm的vma tree */
 	MA_STATE(mas, &mm->mm_mt, 0, 0);
 
 	mmap_assert_write_locked(mm);
 	BUG_ON(!mutex_is_locked(&mm_all_locks_mutex));
-
+	/* 遍历mm的每一个vma */
 	mas_for_each(&mas, vma, ULONG_MAX) {
 		if (vma->anon_vma)
 			list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
 				vm_unlock_anon_vma(avc->anon_vma);
-		if (vma->vm_file && vma->vm_file->f_mapping)
+		if (vma->vm_file && vma->vm_file->f_mapping)/* 如果是映射文件的vma */
 			vm_unlock_mapping(vma->vm_file->f_mapping);
 	}
 
 	mutex_unlock(&mm_all_locks_mutex);
 }
 
-/*
+/*初始化pcp的vm计数器
  * initialise the percpu counter for VM
  */
 void __init mmap_init(void)
@@ -3941,6 +4018,7 @@ void __init mmap_init(void)
 }
 
 /*
+内存增减后，重新初始化user reserve
  * Initialise sysctl_user_reserve_kbytes.
  *
  * This is intended to prevent a user from starting a single memory hogging
@@ -3961,7 +4039,7 @@ static int init_user_reserve(void)
 }
 subsys_initcall(init_user_reserve);
 
-/*
+/*内存热插拔之后重新初始化admin reserve
  * Initialise sysctl_admin_reserve_kbytes.
  *
  * The purpose of sysctl_admin_reserve_kbytes is to allow the sys admin
@@ -3983,14 +4061,12 @@ static int init_admin_reserve(void)
 subsys_initcall(init_admin_reserve);
 
 /*
- * Reinititalise user and admin reserves if memory is added or removed.
+ * 如果内存被添加或移除，则重新初始化user和admin保留。
  *
- * The default user reserve max is 128MB, and the default max for the
- * admin reserve is 8MB. These are usually, but not always, enough to
- * enable recovery from a memory hogging process using login/sshd, a shell,
- * and tools like top. It may make sense to increase or even disable the
- * reserve depending on the existence of swap or variations in the recovery
- * tools. So, the admin may have changed them.
+ * 默认的用户保留最大值是128MB，管理员保留的默认最大值是8MB。
+ * 这些通常（但不总是）足够通过使用login/sshd、一个shell以及像top这样的工具
+ * 从内存占用过多的进程中恢复。根据是否存在交换空间或恢复工具的变化，
+ * 增加甚至禁用保留可能是合理的。因此，管理员可能已经更改了它们。
  *
  * If memory is added and the reserves have been eliminated or increased above
  * the default max, then we'll trust the admin.
@@ -4038,7 +4114,7 @@ static int reserve_mem_notifier(struct notifier_block *nb,
 	}
 	return NOTIFY_OK;
 }
-
+/* 内存热插拔的回调函数， 重新初始化reserve 内存 */
 static int __meminit init_reserve_notifier(void)
 {
 	if (hotplug_memory_notifier(reserve_mem_notifier, DEFAULT_CALLBACK_PRI))

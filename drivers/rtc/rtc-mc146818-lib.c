@@ -129,7 +129,7 @@ static void mc146818_get_time_callback(unsigned char seconds, void *param_in)
 
 	p->ctrl = CMOS_READ(RTC_CONTROL);
 }
-
+/* 是访问 ​Motorola MC146818​ 兼容RTC芯片的接口，通过I/O端口（如0x70/0x71）读取CMOS寄存器，获取年、月、日、时、分、秒等时间字段 */
 int mc146818_get_time(struct rtc_time *time)
 {
 	struct mc146818_get_time_callback_param p = {

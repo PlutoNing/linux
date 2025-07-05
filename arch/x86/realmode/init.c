@@ -10,7 +10,7 @@
 #include <asm/tlbflush.h>
 #include <asm/crash.h>
 #include <asm/sev.h>
-
+/* 是从memblock分配的内存,大小可能几个页面, 是物理地址, 转为虚拟地址赋值给real_mode_header */
 struct real_mode_header *real_mode_header;
 u32 *trampoline_cr4_features;
 
@@ -42,7 +42,7 @@ void load_trampoline_pgtable(void)
 	 */
 	__flush_tlb_all();
 }
-
+/* x86_platform.realmode_reserve()回调函数,  */
 void __init reserve_real_mode(void)
 {
 	phys_addr_t mem;
@@ -58,9 +58,9 @@ void __init reserve_real_mode(void)
 	if (!mem)
 		pr_info("No sub-1M memory is available for the trampoline\n");
 	else
-		set_real_mode_mem(mem);
+		set_real_mode_mem(mem); /* 让real_mode_header 指向这块内存,大概几页大小 */
 
-	/*
+	/* 把系统物理内存的前1MB设置为保留
 	 * Unconditionally reserve the entire fisrt 1M, see comment in
 	 * setup_arch().
 	 */

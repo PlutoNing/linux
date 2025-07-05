@@ -994,7 +994,7 @@ static bool __init hpet_is_pc10_damaged(void)
 	return true;
 }
 
-/**
+/**开启HPET timer
  * hpet_enable - Try to setup the HPET timer. Returns 1 on success.
  */
 int __init hpet_enable(void)

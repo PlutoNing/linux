@@ -394,7 +394,7 @@ static inline void static_key_set_linked(struct static_key *key)
 	key->type |= JUMP_TYPE_LINKED;
 }
 
-/***
+/*** 初始化static key
  * A 'struct static_key' uses a union such that it either points directly
  * to a table of 'struct jump_entry' or to a linked list of modules which in
  * turn point to 'struct jump_entry' tables.
@@ -415,7 +415,7 @@ static void static_key_set_entries(struct static_key *key,
 }
 
 static enum jump_label_type jump_label_type(struct jump_entry *entry)
-{
+{ /* key加上自身编码的offset就是static_key */
 	struct static_key *key = jump_entry_key(entry);
 	bool enabled = static_key_enabled(key);
 	bool branch = jump_entry_is_branch(entry);
@@ -483,7 +483,7 @@ static void __jump_label_update(struct static_key *key,
 	arch_jump_label_transform_apply();
 }
 #endif
-
+/* 初始化__start___jump_table里面的entry */
 void __init jump_label_init(void)
 {
 	struct jump_entry *iter_start = __start___jump_table;
@@ -506,7 +506,7 @@ void __init jump_label_init(void)
 	cpus_read_lock();
 	jump_label_lock();
 	jump_label_sort_entries(iter_start, iter_stop);
-
+	/* 遍历__start___jump_table的每一个, 逐个初始化 */
 	for (iter = iter_start; iter < iter_stop; iter++) {
 		struct static_key *iterk;
 		bool in_init;

@@ -408,7 +408,9 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 	unlink_anon_vmas(vma);
 	return -ENOMEM;
 }
-
+/* 
+销毁vma的时候解除av的关联
+*/
 void unlink_anon_vmas(struct vm_area_struct *vma)
 {
 	struct anon_vma_chain *avc, *next;
@@ -418,7 +420,9 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 	 * Unlink each anon_vma chained to the VMA.  This list is ordered
 	 * from newest to oldest, ensuring the root anon_vma gets freed last.
 	 */
+	/* 找到vma的avc链表上面的全部avc */
 	list_for_each_entry_safe(avc, next, &vma->anon_vma_chain, same_vma) {
+		/* 获取这个avc的av */
 		struct anon_vma *anon_vma = avc->anon_vma;
 
 		root = lock_anon_vma_root(root, anon_vma);
@@ -472,7 +476,7 @@ static void anon_vma_ctor(void *data)
 	atomic_set(&anon_vma->refcount, 0);
 	anon_vma->rb_root = RB_ROOT_CACHED;
 }
-
+/* 初始化slab */
 void __init anon_vma_init(void)
 {
 	anon_vma_cachep = kmem_cache_create("anon_vma", sizeof(struct anon_vma),
@@ -1713,7 +1717,8 @@ static bool try_to_unmap_one(struct folio *folio, struct vm_area_struct *vma,
 		 */
 		pte_install_uffd_wp_if_needed(vma, address, pvmw.pte, pteval);
 
-		/* Set the dirty flag on the folio now the pte is gone. */
+		/* Set the dirty flag on the folio now the pte is gone.
+		因为pte是dirty的 , 所以传播到folio? */
 		if (pte_dirty(pteval))
 			folio_mark_dirty(folio);
 

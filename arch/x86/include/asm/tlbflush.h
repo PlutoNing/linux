@@ -153,21 +153,30 @@ struct tlb_state {
 };
 DECLARE_PER_CPU_ALIGNED(struct tlb_state, cpu_tlbstate);
 
+/* struct tlb_state_shared 中的 is_lazy 字段用于标记当前 CPU 的 TLB
+是否处于 ​​Lazy Mode（惰性模式）​​。该机制是为了优化进程上下文切换时的 TLB 管理性能而设计的。 */
 struct tlb_state_shared {
 	/*
 	 * We can be in one of several states:
 	 *
 	 *  - Actively using an mm.  Our CPU's bit will be set in
 	 *    mm_cpumask(loaded_mm) and is_lazy == false;
-	 *
+	 *  oaded_mm 指向当前进程的内存描述符（mm_struct）。
+当前 CPU 的位已设置在 mm_cpumask(loaded_mm) 中。
+is_lazy = false。TLB 直接关联到当前进程的页表，无延迟操作。
+进程切换时会主动刷新 TLB。
 	 *  - Not using a real mm.  loaded_mm == &init_mm.  Our CPU's bit
 	 *    will not be set in mm_cpumask(&init_mm) and is_lazy == false.
-	 *
+	 *loaded_mm 指向内核初始化用的 init_mm（无用户空间映射）。当前 CPU 的位未设置
+	 在 mm_cpumask(&init_mm) 中。is_lazy = false。TLB 仅包含内核空间映射，无需
+	 管理用户空间 TLB。常见于内核线程或中断上下文。
 	 *  - Lazily using a real mm.  loaded_mm != &init_mm, our bit
 	 *    is set in mm_cpumask(loaded_mm), but is_lazy == true.
 	 *    We're heuristically guessing that the CR3 load we
 	 *    skipped more than makes up for the overhead added by
-	 *    lazy mode.
+	 *    lazy mode.tlb是不是在lazy mode， 延迟刷新 TLB​​：进程切换时不立即刷新 TLB，
+	 而是推迟到实际需要访问 TLB 时。​性能权衡​​：通过减少不必要的 TLB 刷新来提升性能，
+	 但可能导致后续访问 TLB 时的轻微延迟。
 	 */
 	bool is_lazy;
 };
@@ -176,7 +185,7 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct tlb_state_shared, cpu_tlbstate_shared);
 bool nmi_uaccess_okay(void);
 #define nmi_uaccess_okay nmi_uaccess_okay
 
-/* Initialize cr4 shadow for this CPU. */
+/* Initialize cr4 shadow for this CPU. 初始化cr4寄存器 */
 static inline void cr4_init_shadow(void)
 {
 	this_cpu_write(cpu_tlbstate.cr4, __read_cr4());
@@ -420,7 +429,7 @@ static inline void set_tlbstate_lam_mode(struct mm_struct *mm)
 }
 #endif
 #endif /* !MODULE */
-
+/*  */
 static inline void __native_tlb_flush_global(unsigned long cr4)
 {
 	native_write_cr4(cr4 ^ X86_CR4_PGE);

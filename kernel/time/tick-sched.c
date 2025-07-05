@@ -38,7 +38,7 @@
  好像是表示那个什么模拟的tick层
  */
 static DEFINE_PER_CPU(struct tick_sched, tick_cpu_sched);
-
+/* 获取tick_cpu_sched设备 */
 struct tick_sched *tick_get_tick_sched(int cpu)
 {
 	return &per_cpu(tick_cpu_sched, cpu);
@@ -295,6 +295,7 @@ static void tick_sched_handle(struct tick_sched *ts, struct pt_regs *regs)
 		ts->next_tick = 0;
 	}
 #endif
+/*  */
 	update_process_times(user_mode(regs));
 	profile_tick(CPU_PROFILING);
 }
@@ -664,14 +665,14 @@ static int __init setup_tick_nohz(char *str)
 }
 
 __setup("nohz=", setup_tick_nohz);
-
+/* 检查tick_cpu_sched是不是停止了 */
 bool tick_nohz_tick_stopped(void)
 {
 	struct tick_sched *ts = this_cpu_ptr(&tick_cpu_sched);
 
 	return ts->tick_stopped;
 }
-
+/* 检查此cpu的tick_cpu_sched是不是停止了 */
 bool tick_nohz_tick_stopped_cpu(int cpu)
 {
 	struct tick_sched *ts = per_cpu_ptr(&tick_cpu_sched, cpu);
@@ -680,6 +681,8 @@ bool tick_nohz_tick_stopped_cpu(int cpu)
 }
 
 /**
+当CPU处于空闲状态时，tick_nohz_update_jiffies函数会被调用?
+更新jiffies
  * tick_nohz_update_jiffies - update jiffies when idle was interrupted
  *
  * Called from interrupt entry when the CPU was idle
@@ -692,10 +695,11 @@ bool tick_nohz_tick_stopped_cpu(int cpu)
 static void tick_nohz_update_jiffies(ktime_t now)
 {
 	unsigned long flags;
-
+	/* 记录idle_waketime */
 	__this_cpu_write(tick_cpu_sched.idle_waketime, now);
 
 	local_irq_save(flags);
+	/* 更新jiffies */
 	tick_do_update_jiffies64(now);
 	local_irq_restore(flags);
 
@@ -726,6 +730,8 @@ static void tick_nohz_stop_idle(struct tick_sched *ts, ktime_t now)
 	sched_clock_idle_wakeup_event();
 }
 /* 
+设置进入idle的时间, 设置处于idle的flag
+===========================
 该函数也主要是完成一些字段设置的工作，先将表示进入空闲状态时间的idle_entrytime
 字段设置为当前时间，然后将表示当前CPU确实是处于空闲状态的字段idle_active也置1。
 到此，准备工作就完成了，接着会调用tick_nohz_idle_stop_tick函数开始停Tick
@@ -770,6 +776,7 @@ static u64 get_cpu_sleep_time_us(struct tick_sched *ts, ktime_t *sleeptime,
 }
 
 /**
+获取一个cpu的总的idle time
  * get_cpu_idle_time_us - get the total idle time of a CPU
  * @cpu: CPU number to query
  * @last_update_time: variable to store update time in. Do not update
@@ -796,6 +803,7 @@ u64 get_cpu_idle_time_us(int cpu, u64 *last_update_time)
 EXPORT_SYMBOL_GPL(get_cpu_idle_time_us);
 
 /**
+获取一个cpu的总的iowait time
  * get_cpu_iowait_time_us - get the total iowait time of a CPU
  * @cpu: CPU number to query
  * @last_update_time: variable to store update time in. Do not update
@@ -844,7 +852,7 @@ static void tick_nohz_restart(struct tick_sched *ts, ktime_t now)
 	 */
 	ts->next_tick = 0;
 }
-
+/* local是否有TIMER_SOFTIRQ */
 static inline bool local_timer_softirq_pending(void)
 {
 	return local_softirq_pending() & BIT(TIMER_SOFTIRQ);
@@ -949,11 +957,15 @@ static ktime_t tick_nohz_next_event(struct tick_sched *ts, int cpu)
 out:
 	return ts->timer_expires;
 }
-
+/* 
+cpu下线的时候调用来关掉什么东西
+*/
 static void tick_nohz_stop_tick(struct tick_sched *ts, int cpu)
 {
+	/* 取出tick设备 */
 	struct clock_event_device *dev = __this_cpu_read(tick_cpu_device.evtdev);
 	u64 basemono = ts->timer_expires_base;
+	/*  */
 	u64 expires = ts->timer_expires;
 	ktime_t tick = expires;
 
@@ -969,6 +981,7 @@ static void tick_nohz_stop_tick(struct tick_sched *ts, int cpu)
 	 * was the one which had the do_timer() duty last.
 	 */
 	if (cpu == tick_do_timer_cpu) {
+		/* 如果这个cpu的do_timer的cpu */
 		tick_do_timer_cpu = TICK_DO_TIMER_NONE;
 		ts->do_timer_last = 1;
 	} else if (tick_do_timer_cpu != TICK_DO_TIMER_NONE) {
@@ -994,12 +1007,13 @@ static void tick_nohz_stop_tick(struct tick_sched *ts, int cpu)
 	 * first call we save the current tick time, so we can restart
 	 * the scheduler tick in nohz_restart_sched_tick.
 	 */
-	if (!ts->tick_stopped) {
+	if (!ts->tick_stopped) {/* 如果ts还在运行 */
 		calc_load_nohz_start();
 		quiet_vmstat();
 
 		ts->last_tick = hrtimer_get_expires(&ts->sched_timer);
 		ts->tick_stopped = 1;
+		/* trace此次关闭 */
 		trace_tick_stop(1, TICK_DEP_MASK_NONE);
 	}
 
@@ -1008,14 +1022,16 @@ static void tick_nohz_stop_tick(struct tick_sched *ts, int cpu)
 	/*
 	 * If the expiration time == KTIME_MAX, then we simply stop
 	 * the tick timer.
+	 如果ts的timer没有到期时间
 	 */
 	if (unlikely(expires == KTIME_MAX)) {
 		if (ts->nohz_mode == NOHZ_MODE_HIGHRES)
-			hrtimer_cancel(&ts->sched_timer);
+			hrtimer_cancel(&ts->sched_timer);/* 取消timer */
 		else
 			tick_program_event(KTIME_MAX, 1);
 		return;
 	}
+	/* 看来这里是更一般的情况 */
 
 	if (ts->nohz_mode == NOHZ_MODE_HIGHRES) {
 		hrtimer_start(&ts->sched_timer, tick,
@@ -1076,7 +1092,7 @@ static void __tick_nohz_full_update_tick(struct tick_sched *ts,
 		tick_nohz_restart_sched_tick(ts, now);
 #endif
 }
-
+/* 以后 */
 static void tick_nohz_full_update_tick(struct tick_sched *ts)
 {
 	if (!tick_nohz_full_cpu(smp_processor_id()))
@@ -1173,6 +1189,7 @@ static bool can_stop_idle_tick(int cpu, struct tick_sched *ts)
 }
 
 /**
+cpu下线了会调用这个函数
 调用tick_nohz_idle_stop_tick函数开始停Tick
  * tick_nohz_idle_stop_tick - stop the idle tick from the idle task
  *
@@ -1180,6 +1197,7 @@ static bool can_stop_idle_tick(int cpu, struct tick_sched *ts)
  */
 void tick_nohz_idle_stop_tick(void)
 {
+	/* 取出ts */
 	struct tick_sched *ts = this_cpu_ptr(&tick_cpu_sched);
 	int cpu = smp_processor_id();
 	ktime_t expires;
@@ -1207,6 +1225,7 @@ void tick_nohz_idle_stop_tick(void)
 		ts->idle_expires = expires;
 
 		if (!was_stopped && ts->tick_stopped) {
+			/* 如果确实是这次操作刚刚关闭的 */
 			ts->idle_jiffies = ts->last_jiffies;
 			nohz_balance_enter_idle(cpu);
 		}
@@ -1226,6 +1245,11 @@ void tick_nohz_idle_retain_tick(void)
 }
 
 /**
+cpu进入idle后设置ts为idle
+====================
+为什么进入空闲状态
+就是cpu执行do_idle函数时，cpu会进入空闲状态
+============================
 如果当前CPU进入空闲状态，Linux系统先会调用tick_nohz_idle_enter函数，
 通知Tick模拟层进入空闲状态，接着会调用tick_nohz_idle_stop_tick函数，
 正式停掉当前CPU上的Tick。
@@ -1247,20 +1271,25 @@ void tick_nohz_idle_enter(void)
 	ts = this_cpu_ptr(&tick_cpu_sched);
 
 	WARN_ON_ONCE(ts->timer_expires_base);
-
+	/* 设置这个cpu的ts为inidle */
 	ts->inidle = 1;
+	/* 设置处于idle */
 	tick_nohz_start_idle(ts);
 
 	local_irq_enable();
 }
 
 /**
+中断结束的时候, 更新下次tick event
  * tick_nohz_irq_exit - update next tick event from interrupt exit
  *
  * When an interrupt fires while we are idle and it doesn't cause
  * a reschedule, it may still add, modify or delete a timer, enqueue
  * an RCU callback, etc...
  * So we need to re-calculate and reprogram the next tick event.
+ 如果在空闲状态下发生了中断，而且它没有导致重新调度，那么它可能仍然会添加、修改或删除一个定时器，
+ * 入队一个RCU回调等等...
+ 所以我们需要重新计算并重新编程下一个tick事件。
  */
 void tick_nohz_irq_exit(void)
 {
@@ -1388,7 +1417,7 @@ static void tick_nohz_account_idle_time(struct tick_sched *ts,
 		account_idle_ticks(ticks);
 }
 /* 
-如果当前的Tick确实是被停止调了，则调用__tick_nohz_idle_restart_tick函数恢复
+如果当前的Tick确实是被停止了，则调用__tick_nohz_idle_restart_tick函数恢复
 */
 void tick_nohz_idle_restart_tick(void)
 {
@@ -1625,6 +1654,7 @@ static int __init skew_tick(char *str)
 early_param("skew_tick", skew_tick);
 
 /**
+开启高精度计时后会调用这个函数
 设置sched_timer
 ==============
 由于已经没有Tick了，而这时候高分辨率定时器层是处在高精度模式的，

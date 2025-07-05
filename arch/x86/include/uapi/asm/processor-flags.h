@@ -126,7 +126,7 @@ always 1 on 8086 and 186
 #define X86_CR4_PAE		_BITUL(X86_CR4_PAE_BIT)
 #define X86_CR4_MCE_BIT		6 /* Machine check enable */
 #define X86_CR4_MCE		_BITUL(X86_CR4_MCE_BIT)
-#define X86_CR4_PGE_BIT		7 /* enable global pages */
+#define X86_CR4_PGE_BIT		7 /* enable global pages 全局页表项支持，允许 TLB 缓存全局页。*/
 #define X86_CR4_PGE		_BITUL(X86_CR4_PGE_BIT)
 #define X86_CR4_PCE_BIT		8 /* enable performance counters at ipl 3 */
 #define X86_CR4_PCE		_BITUL(X86_CR4_PCE_BIT)

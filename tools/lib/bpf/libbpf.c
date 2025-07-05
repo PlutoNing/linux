@@ -334,7 +334,7 @@ enum reloc_type {
 };
 
 struct reloc_desc {
-	enum reloc_type type;
+	enum reloc_type type;/* reloc的类型, 比如说数据段什么的 */
 	int insn_idx;
 	union {
 		const struct bpf_core_relo *core_relo; /* used when type == RELO_CORE */
@@ -391,14 +391,14 @@ struct bpf_program {
 	char *name;
 	char *sec_name;
 	size_t sec_idx;
-	const struct bpf_sec_def *sec_def;
+	const struct bpf_sec_def *sec_def;/* 存储着prog的type和attach type什么的 */
 	/* this program's instruction offset (in number of instructions)
-	 * within its containing ELF section
+	 * within its containing ELF section. prog的指令开始的offset
 	 */
 	size_t sec_insn_off;
 	/* number of original instructions in ELF section belonging to this
 	 * program, not taking into account subprogram instructions possible
-	 * appended later during relocation
+	 * appended later during relocation,  prog的指令数量
 	 */
 	size_t sec_insn_cnt;
 	/* Offset (in number of instructions) of the start of instruction
@@ -502,26 +502,26 @@ struct bpf_map_def {
 
 struct bpf_map {
 	struct bpf_object *obj;
-	char *name;
+	char *name;/* 可能是progname.bss */
 	/* real_name is defined for special internal maps (.rodata*,
 	 * .data*, .bss, .kconfig) and preserves their original ELF section
 	 * name. This is important to be able to find corresponding BTF
 	 * DATASEC information.
 	 */
-	char *real_name;
-	int fd;
-	int sec_idx;
+	char *real_name;/* 比如是.bss */
+	int fd;/* 内核态创建的map的fd */
+	int sec_idx;/* 所map的sec在elf的idx */
 	size_t sec_offset;
 	int map_ifindex;
 	int inner_map_fd;
-	struct bpf_map_def def;
+	struct bpf_map_def def;/* 存储map的type,key,value之类的属性 */
 	__u32 numa_node;
 	__u32 btf_var_idx;
 	__u32 btf_key_type_id;
 	__u32 btf_value_type_id;
 	__u32 btf_vmlinux_value_type_id;
-	enum libbpf_map_type libbpf_type;
-	void *mmaped;
+	enum libbpf_map_type libbpf_type;/* 表示是.bss, .rodata什么的 */
+	void *mmaped;/* 是把map的sec的内容mmap之后的地址 */
 	struct bpf_struct_ops *st_ops;
 	struct bpf_map *inner_map;
 	void **init_slots;
@@ -610,14 +610,14 @@ struct elf_state {
 	const void *obj_buf;
 	size_t obj_buf_sz;
 	Elf *elf;
-	Elf64_Ehdr *ehdr;
-	Elf_Data *symbols;
+	Elf64_Ehdr *ehdr;/* 指向elf成员的hdr */
+	Elf_Data *symbols;/* 符号段 */
 	Elf_Data *st_ops_data;
 	Elf_Data *st_ops_link_data;
 	size_t shstrndx; /* section index for section name strings */
-	size_t strtabidx;
-	struct elf_sec_desc *secs;
-	size_t sec_cnt;
+	size_t strtabidx; /* 符号名称字符串表索引​（对应 .strtab 节区），用于解析符号名称。 */
+	struct elf_sec_desc *secs;/* 存储着全部sec的desc */
+	size_t sec_cnt;/* elf的sec数量? */
 	int btf_maps_shndx;
 	__u32 btf_maps_sec_btf_id;
 	int text_shndx;
@@ -634,7 +634,7 @@ struct bpf_object {
 	__u32 kern_version;
 
 	struct bpf_program *programs;
-	size_t nr_programs;
+	size_t nr_programs;/* obj的prog数量 */
 	struct bpf_map *maps;
 	size_t nr_maps;
 	size_t maps_cap;
@@ -1244,7 +1244,7 @@ static int bpf_object_init_struct_ops(struct bpf_object *obj)
 					  BPF_F_LINK);
 	return err;
 }
-
+/* 构造和填充bpf obj */
 static struct bpf_object *bpf_object__new(const char *path,
 					  const void *obj_buf,
 					  size_t obj_buf_sz,
@@ -1289,7 +1289,7 @@ static struct bpf_object *bpf_object__new(const char *path,
 
 	return obj;
 }
-
+/* 如果把elf的信息解析完了, 就调用来释放elf的空间 */
 static void bpf_object__elf_finish(struct bpf_object *obj)
 {
 	if (!obj->efile.elf)
@@ -1307,7 +1307,7 @@ static void bpf_object__elf_finish(struct bpf_object *obj)
 	obj->efile.obj_buf = NULL;
 	obj->efile.obj_buf_sz = 0;
 }
-
+/* 基于obj_buf初始化elf成员 */
 static int bpf_object__elf_init(struct bpf_object *obj)
 {
 	Elf64_Ehdr *ehdr;
@@ -1320,10 +1320,10 @@ static int bpf_object__elf_init(struct bpf_object *obj)
 	}
 
 	if (obj->efile.obj_buf_sz > 0) {
-		/* obj_buf should have been validated by bpf_object__open_mem(). */
+		/* obj_buf should have been validated by bpf_object__open_mem().将内存中的二进制数据（例如从网络接收的 ELF 文件、动态加载的模块或进程内存中的代码段）解析为 ELF 对象 */
 		elf = elf_memory((char *)obj->efile.obj_buf, obj->efile.obj_buf_sz);
 	} else {
-		obj->efile.fd = open(obj->path, O_RDONLY | O_CLOEXEC);
+		obj->efile.fd = open(obj->path, O_RDONLY | O_CLOEXEC); //打开bpf.o文件
 		if (obj->efile.fd < 0) {
 			char errmsg[STRERR_BUFSIZE], *cp;
 
@@ -1333,7 +1333,7 @@ static int bpf_object__elf_init(struct bpf_object *obj)
 			return err;
 		}
 
-		elf = elf_begin(obj->efile.fd, ELF_C_READ_MMAP, NULL);
+		elf = elf_begin(obj->efile.fd, ELF_C_READ_MMAP, NULL);/* 读取elf出来 */
 	}
 
 	if (!elf) {
@@ -1489,7 +1489,7 @@ static Elf64_Sym *find_elf_var_sym(const struct bpf_object *obj, const char *nam
 
 	return ERR_PTR(-ENOENT);
 }
-
+/* 给bpf obj添加一个map */
 static struct bpf_map *bpf_object__add_map(struct bpf_object *obj)
 {
 	struct bpf_map *map;
@@ -1508,7 +1508,7 @@ static struct bpf_map *bpf_object__add_map(struct bpf_object *obj)
 
 	return map;
 }
-
+/* 计算需要mmap的page数量 */
 static size_t bpf_map_mmap_sz(unsigned int value_sz, unsigned int max_entries)
 {
 	const long page_sz = sysconf(_SC_PAGE_SIZE);
@@ -1630,7 +1630,7 @@ static bool map_is_mmapable(struct bpf_object *obj, struct bpf_map *map)
 
 	return false;
 }
-
+/* 这是elf的一个段, 初始化到bpf obj的map */
 static int
 bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
 			      const char *real_name, int sec_idx, void *data, size_t data_sz)
@@ -1639,7 +1639,7 @@ bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
 	struct bpf_map *map;
 	size_t mmap_sz;
 	int err;
-
+/* 给bpf obj创建添加一个新map */
 	map = bpf_object__add_map(obj);
 	if (IS_ERR(map))
 		return PTR_ERR(map);
@@ -1671,7 +1671,7 @@ bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
 
 	pr_debug("map '%s' (global data): at sec_idx %d, offset %zu, flags %x.\n",
 		 map->name, map->sec_idx, map->sec_offset, def->map_flags);
-
+/* 计算需要mmap的长度 */
 	mmap_sz = bpf_map_mmap_sz(map->def.value_size, map->def.max_entries);
 	map->mmaped = mmap(NULL, mmap_sz, PROT_READ | PROT_WRITE,
 			   MAP_SHARED | MAP_ANONYMOUS, -1, 0);
@@ -1691,7 +1691,7 @@ bpf_object__init_internal_map(struct bpf_object *obj, enum libbpf_map_type type,
 	pr_debug("map %td is \"%s\"\n", map - obj->maps, map->name);
 	return 0;
 }
-
+/* 初始化bpf obj的global_data_maps */
 static int bpf_object__init_global_data_maps(struct bpf_object *obj)
 {
 	struct elf_sec_desc *sec_desc;
@@ -1724,7 +1724,7 @@ static int bpf_object__init_global_data_maps(struct bpf_object *obj)
 							    sec_desc->data->d_buf,
 							    sec_desc->data->d_size);
 			break;
-		case SEC_BSS:
+		case SEC_BSS: /* 如果是bss段, sec_name是.bss */
 			sec_name = elf_sec_name(obj, elf_sec_by_idx(obj, sec_idx));
 			err = bpf_object__init_internal_map(obj, LIBBPF_MAP_BSS,
 							    sec_name, sec_idx,
@@ -2032,7 +2032,7 @@ static int bpf_object__read_kconfig_mem(struct bpf_object *obj,
 	fclose(file);
 	return err;
 }
-
+/* kconfig map是 */
 static int bpf_object__init_kconfig_map(struct bpf_object *obj)
 {
 	struct extern_desc *last_ext = NULL, *ext;
@@ -2610,7 +2610,7 @@ static int bpf_object__init_user_btf_map(struct bpf_object *obj,
 
 	return 0;
 }
-
+/* 初始化bpf obj的user_btf_maps */
 static int bpf_object__init_user_btf_maps(struct bpf_object *obj, bool strict,
 					  const char *pin_root_path)
 {
@@ -2662,7 +2662,7 @@ static int bpf_object__init_user_btf_maps(struct bpf_object *obj, bool strict,
 
 	return 0;
 }
-
+/* 初始化bpf obj的maps */
 static int bpf_object__init_maps(struct bpf_object *obj,
 				 const struct bpf_object_open_opts *opts)
 {
@@ -2906,7 +2906,7 @@ static int compare_vsi_off(const void *_a, const void *_b)
 
 	return a->offset - b->offset;
 }
-
+/* 修复btf,过程? */
 static int btf_fixup_datasec(struct bpf_object *obj, struct btf *btf,
 			     struct btf_type *t)
 {
@@ -3025,7 +3025,7 @@ static int bpf_object_fixup_btf(struct bpf_object *obj)
 
 	return 0;
 }
-
+/* 判断prog是否需要btf */
 static bool prog_needs_vmlinux_btf(struct bpf_program *prog)
 {
 	if (prog->type == BPF_PROG_TYPE_STRUCT_OPS ||
@@ -3040,7 +3040,7 @@ static bool prog_needs_vmlinux_btf(struct bpf_program *prog)
 
 	return false;
 }
-
+/* 检查obj是否需要linux btf */
 static bool obj_needs_vmlinux_btf(const struct bpf_object *obj)
 {
 	struct bpf_program *prog;
@@ -3196,7 +3196,7 @@ report:
 	}
 	return err;
 }
-
+/* 获取符号名字 */
 static const char *elf_sym_str(const struct bpf_object *obj, size_t off)
 {
 	const char *name;
@@ -3210,7 +3210,7 @@ static const char *elf_sym_str(const struct bpf_object *obj, size_t off)
 
 	return name;
 }
-
+/* 获取elf的sec的名字 */
 static const char *elf_sec_str(const struct bpf_object *obj, size_t off)
 {
 	const char *name;
@@ -3224,7 +3224,7 @@ static const char *elf_sec_str(const struct bpf_object *obj, size_t off)
 
 	return name;
 }
-
+/* 获取obj的elf的指定idx的sec */
 static Elf_Scn *elf_sec_by_idx(const struct bpf_object *obj, size_t idx)
 {
 	Elf_Scn *scn;
@@ -3273,7 +3273,7 @@ static Elf64_Shdr *elf_sec_hdr(const struct bpf_object *obj, Elf_Scn *scn)
 
 	return shdr;
 }
-
+/* 获取elf的sec名字 */
 static const char *elf_sec_name(const struct bpf_object *obj, Elf_Scn *scn)
 {
 	const char *name;
@@ -3295,7 +3295,7 @@ static const char *elf_sec_name(const struct bpf_object *obj, Elf_Scn *scn)
 
 	return name;
 }
-
+/* 获取sec的data */
 static Elf_Data *elf_sec_data(const struct bpf_object *obj, Elf_Scn *scn)
 {
 	Elf_Data *data;
@@ -3313,7 +3313,7 @@ static Elf_Data *elf_sec_data(const struct bpf_object *obj, Elf_Scn *scn)
 
 	return data;
 }
-
+/* 获取idx指定的符号 */
 static Elf64_Sym *elf_sym_by_idx(const struct bpf_object *obj, size_t idx)
 {
 	if (idx >= obj->efile.symbols->d_size / sizeof(Elf64_Sym))
@@ -3321,7 +3321,7 @@ static Elf64_Sym *elf_sym_by_idx(const struct bpf_object *obj, size_t idx)
 
 	return (Elf64_Sym *)obj->efile.symbols->d_buf + idx;
 }
-
+/* 获取段数据的条目, 并进行类型转换 */
 static Elf64_Rel *elf_rel_by_idx(Elf_Data *data, size_t idx)
 {
 	if (idx >= data->d_size / sizeof(Elf64_Rel))
@@ -3381,7 +3381,7 @@ static int cmp_progs(const void *_a, const void *_b)
 	/* sec_insn_off can't be the same within the section */
 	return a->sec_insn_off < b->sec_insn_off ? -1 : 1;
 }
-
+/* 开始读取elf的各个section？ */
 static int bpf_object__elf_collect(struct bpf_object *obj)
 {
 	struct elf_sec_desc *sec_desc;
@@ -3404,7 +3404,7 @@ static int bpf_object__elf_collect(struct bpf_object *obj)
 			obj->path, elf_errmsg(-1));
 		return -LIBBPF_ERRNO__FORMAT;
 	}
-	obj->efile.secs = calloc(obj->efile.sec_cnt, sizeof(*obj->efile.secs));
+	obj->efile.secs = calloc(obj->efile.sec_cnt, sizeof(*obj->efile.secs));/* 分配各段的指针 */
 	if (!obj->efile.secs)
 		return -ENOMEM;
 
@@ -3412,7 +3412,7 @@ static int bpf_object__elf_collect(struct bpf_object *obj)
 	 * so do the first pass and find the symbol table
 	 */
 	scn = NULL;
-	while ((scn = elf_nextscn(elf, scn)) != NULL) {
+	while ((scn = elf_nextscn(elf, scn)) != NULL) {/* 先读取符号表 */
 		sh = elf_sec_hdr(obj, scn);
 		if (!sh)
 			return -LIBBPF_ERRNO__FORMAT;
@@ -3991,7 +3991,7 @@ static bool prog_is_subprog(const struct bpf_object *obj, const struct bpf_progr
 {
 	return prog->sec_idx == obj->efile.text_shndx && obj->nr_programs > 1;
 }
-
+/* 通过progname查找prog */
 struct bpf_program *
 bpf_object__find_program_by_name(const struct bpf_object *obj,
 				 const char *name)
@@ -4006,7 +4006,7 @@ bpf_object__find_program_by_name(const struct bpf_object *obj,
 	}
 	return errno = ENOENT, NULL;
 }
-
+/* 看看obj在shndx处的sec是不是data段 */
 static bool bpf_object__shndx_is_data(const struct bpf_object *obj,
 				      int shndx)
 {
@@ -4025,7 +4025,7 @@ static bool bpf_object__shndx_is_maps(const struct bpf_object *obj,
 {
 	return shndx == obj->efile.btf_maps_shndx;
 }
-
+/* 把sec的类型转为当时存储这些sec的map的类型 */
 static enum libbpf_map_type
 bpf_object__section_to_libbpf_map_type(const struct bpf_object *obj, int shndx)
 {
@@ -4043,12 +4043,12 @@ bpf_object__section_to_libbpf_map_type(const struct bpf_object *obj, int shndx)
 		return LIBBPF_MAP_UNSPEC;
 	}
 }
-
+/* rel是对于sym的, insn是sym的指令, insn_idx是insn在prog内部的idx */
 static int bpf_program__record_reloc(struct bpf_program *prog,
 				     struct reloc_desc *reloc_desc,
 				     __u32 insn_idx, const char *sym_name,
 				     const Elf64_Sym *sym, const Elf64_Rel *rel)
-{
+{/* 取出对应的insn */
 	struct bpf_insn *insn = &prog->insns[insn_idx];
 	size_t map_idx, nr_maps = prog->obj->nr_maps;
 	struct bpf_object *obj = prog->obj;
@@ -4175,10 +4175,10 @@ static int bpf_program__record_reloc(struct bpf_program *prog,
 			prog->name, sym_sec_name);
 		return -LIBBPF_ERRNO__RELOC;
 	}
-	for (map_idx = 0; map_idx < nr_maps; map_idx++) {
+	for (map_idx = 0; map_idx < nr_maps; map_idx++) {/* 遍历obj的每一个map */
 		map = &obj->maps[map_idx];
 		if (map->libbpf_type != type || map->sec_idx != sym->st_shndx)
-			continue;
+			continue;/* 找到存储这个sec的map */
 		pr_debug("prog '%s': found data map %zd (%s, sec %d, off %zu) for insn %u\n",
 			 prog->name, map_idx, map->name, map->sec_idx,
 			 map->sec_offset, insn_idx);
@@ -4189,20 +4189,20 @@ static int bpf_program__record_reloc(struct bpf_program *prog,
 			prog->name, sym_sec_name);
 		return -LIBBPF_ERRNO__RELOC;
 	}
-
+/* 完善reloc desc */
 	reloc_desc->type = RELO_DATA;
 	reloc_desc->insn_idx = insn_idx;
 	reloc_desc->map_idx = map_idx;
 	reloc_desc->sym_off = sym->st_value;
 	return 0;
 }
-
+/* 看看这个insn是不是在prog的范围内 */
 static bool prog_contains_insn(const struct bpf_program *prog, size_t insn_idx)
 {
 	return insn_idx >= prog->sec_insn_off &&
 	       insn_idx < prog->sec_insn_off + prog->sec_insn_cnt;
 }
-
+/* 在obj找到这个insnde prog */
 static struct bpf_program *find_prog_by_sec_insn(const struct bpf_object *obj,
 						 size_t sec_idx, size_t insn_idx)
 {
@@ -4259,7 +4259,7 @@ bpf_object__collect_prog_relos(struct bpf_object *obj, Elf64_Shdr *shdr, Elf_Dat
 
 	pr_debug("sec '%s': collecting relocation for section(%zu) '%s'\n",
 		 relo_sec_name, sec_idx, sec_name);
-	nrels = shdr->sh_size / shdr->sh_entsize;
+	nrels = shdr->sh_size / shdr->sh_entsize;/* 计算reloc段的条目数量 */
 
 	for (i = 0; i < nrels; i++) {
 		rel = elf_rel_by_idx(data, i);
@@ -4267,9 +4267,9 @@ bpf_object__collect_prog_relos(struct bpf_object *obj, Elf64_Shdr *shdr, Elf_Dat
 			pr_warn("sec '%s': failed to get relo #%d\n", relo_sec_name, i);
 			return -LIBBPF_ERRNO__FORMAT;
 		}
-
+/* rel的info左32位是符号idx */
 		sym_idx = ELF64_R_SYM(rel->r_info);
-		sym = elf_sym_by_idx(obj, sym_idx);
+		sym = elf_sym_by_idx(obj, sym_idx);/* 获取这个reloc的sym */
 		if (!sym) {
 			pr_warn("sec '%s': symbol #%zu not found for relo #%d\n",
 				relo_sec_name, sym_idx, i);
@@ -4287,7 +4287,7 @@ bpf_object__collect_prog_relos(struct bpf_object *obj, Elf64_Shdr *shdr, Elf_Dat
 				relo_sec_name, (size_t)rel->r_offset, i);
 			return -LIBBPF_ERRNO__FORMAT;
 		}
-
+		/* rel的offset是需要修正的地址偏移（例如 .text 段中某条指令的操作数地址） */
 		insn_idx = rel->r_offset / BPF_INSN_SZ;
 		/* relocations against static functions are recorded as
 		 * relocations against the section that contains a function;
@@ -4303,14 +4303,14 @@ bpf_object__collect_prog_relos(struct bpf_object *obj, Elf64_Shdr *shdr, Elf_Dat
 
 		pr_debug("sec '%s': relo #%d: insn #%u against '%s'\n",
 			 relo_sec_name, i, insn_idx, sym_name);
-
+/* 找到这个insn所在的prog */
 		prog = find_prog_by_sec_insn(obj, sec_idx, insn_idx);
 		if (!prog) {
 			pr_debug("sec '%s': relo #%d: couldn't find program in section '%s' for insn #%u, probably overridden weak function, skipping...\n",
 				relo_sec_name, i, sec_name, insn_idx);
 			continue;
 		}
-
+		/* 扩大prog->reloc_desc */
 		relos = libbpf_reallocarray(prog->reloc_desc,
 					    prog->nr_reloc + 1, sizeof(*relos));
 		if (!relos)
@@ -4320,7 +4320,7 @@ bpf_object__collect_prog_relos(struct bpf_object *obj, Elf64_Shdr *shdr, Elf_Dat
 		/* adjust insn_idx to local BPF program frame of reference */
 		insn_idx -= prog->sec_insn_off;
 		err = bpf_program__record_reloc(prog, &relos[prog->nr_reloc],
-						insn_idx, sym_name, sym, rel);
+						insn_idx, sym_name, sym, rel);/* 记录和完善这个reloc在reloc什么 */
 		if (err)
 			return err;
 
@@ -4515,7 +4515,7 @@ bpf_object__probe_loading(struct bpf_object *obj)
 	if (ret)
 		pr_warn("Failed to bump RLIMIT_MEMLOCK (err = %d), you might need to do it explicitly!\n", ret);
 
-	/* make sure basic loading works */
+	/*调用系统调用加载prog,  make sure basic loading works */
 	ret = bpf_prog_load(BPF_PROG_TYPE_SOCKET_FILTER, NULL, "GPL", insns, insn_cnt, NULL);
 	if (ret < 0)
 		ret = bpf_prog_load(BPF_PROG_TYPE_TRACEPOINT, NULL, "GPL", insns, insn_cnt, NULL);
@@ -5054,7 +5054,7 @@ bpf_object__reuse_map(struct bpf_map *map)
 
 	return 0;
 }
-
+/* 系统调用在内核态创建map之后, 这里populate */
 static int
 bpf_object__populate_internal_map(struct bpf_object *obj, struct bpf_map *map)
 {
@@ -5093,7 +5093,7 @@ bpf_object__populate_internal_map(struct bpf_object *obj, struct bpf_map *map)
 }
 
 static void bpf_map__destroy(struct bpf_map *map);
-
+/* 加载obj的时候在内核态创建map */
 static int bpf_object__create_map(struct bpf_object *obj, struct bpf_map *map, bool is_inner)
 {
 	LIBBPF_OPTS(bpf_map_create_opts, create_attr);
@@ -5153,7 +5153,7 @@ static int bpf_object__create_map(struct bpf_object *obj, struct bpf_map *map, b
 	default:
 		break;
 	}
-
+/* 初始化完了bpf系统调用的参数attr, 开始调用 */
 	if (obj->gen_loader) {
 		bpf_gen__map_create(obj->gen_loader, def->type, map_name,
 				    def->key_size, def->value_size, def->max_entries,
@@ -5303,7 +5303,7 @@ static int map_set_def_max_entries(struct bpf_map *map)
 
 	return 0;
 }
-
+/* 在内核创建map? */
 static int
 bpf_object__create_maps(struct bpf_object *obj)
 {
@@ -5363,7 +5363,7 @@ retry:
 			pr_debug("map '%s': skipping creation (preset fd=%d)\n",
 				 map->name, map->fd);
 		} else {
-			err = bpf_object__create_map(obj, map, false);
+			err = bpf_object__create_map(obj, map, false);/* 系统调用创建map */
 			if (err)
 				goto err_out;
 
@@ -5371,7 +5371,7 @@ retry:
 				 map->name, map->fd);
 
 			if (bpf_map__is_internal(map)) {
-				err = bpf_object__populate_internal_map(obj, map);
+				err = bpf_object__populate_internal_map(obj, map);/* 好像就是把修改key为zero的value */
 				if (err < 0) {
 					zclose(map->fd);
 					goto err_out;
@@ -6533,11 +6533,11 @@ bpf_object__relocate(struct bpf_object *obj, const char *targ_btf_path)
 	 * reduce relocation speed, since amount of find_prog_insn_relo()
 	 * would increase and most of them will fail to find a relo.
 	 */
-	for (i = 0; i < obj->nr_programs; i++) {
+	for (i = 0; i < obj->nr_programs; i++) {/* 遍历处理一个prog的reloc */
 		prog = &obj->programs[i];
 		for (j = 0; j < prog->nr_reloc; j++) {
 			struct reloc_desc *relo = &prog->reloc_desc[j];
-			struct bpf_insn *insn = &prog->insns[relo->insn_idx];
+			struct bpf_insn *insn = &prog->insns[relo->insn_idx];/* 找出reloc要操作的insn */
 
 			/* mark the insn, so it's recognized by insn_is_pseudo_func() */
 			if (relo->type == RELO_SUBPROG_ADDR)
@@ -6739,7 +6739,7 @@ static int bpf_object__collect_relos(struct bpf_object *obj)
 
 		if (sec_desc->sec_type != SEC_RELO)
 			continue;
-
+/* 找到reloc段 */
 		shdr = sec_desc->shdr;
 		data = sec_desc->data;
 		idx = shdr->sh_info;
@@ -6754,7 +6754,7 @@ static int bpf_object__collect_relos(struct bpf_object *obj)
 		else if (idx == obj->efile.btf_maps_shndx)
 			err = bpf_object__collect_map_relos(obj, shdr, data);
 		else
-			err = bpf_object__collect_prog_relos(obj, shdr, data);
+			err = bpf_object__collect_prog_relos(obj, shdr, data);/* 解析reloc, 看看reloc什么东西 */
 		if (err)
 			return err;
 	}
@@ -7333,7 +7333,7 @@ bpf_object__load_progs(struct bpf_object *obj, int log_level)
 }
 
 static const struct bpf_sec_def *find_sec_def(const char *sec_name);
-
+/* 初始化obj的每一个prog的type,attach,set_up回调什么的 */
 static int bpf_object_init_progs(struct bpf_object *obj, const struct bpf_object_open_opts *opts)
 {
 	struct bpf_program *prog;
@@ -7366,7 +7366,7 @@ static int bpf_object_init_progs(struct bpf_object *obj, const struct bpf_object
 
 	return 0;
 }
-
+/* 打开这个bpf prog */
 static struct bpf_object *bpf_object_open(const char *path, const void *obj_buf, size_t obj_buf_sz,
 					  const struct bpf_object_open_opts *opts)
 {
@@ -7406,7 +7406,7 @@ static struct bpf_object *bpf_object_open(const char *path, const void *obj_buf,
 		return ERR_PTR(-EINVAL);
 	if (log_size && !log_buf)
 		return ERR_PTR(-EINVAL);
-
+/* 构造和填充bpf obj */
 	obj = bpf_object__new(path, obj_buf, obj_buf_sz, obj_name);
 	if (IS_ERR(obj))
 		return obj;
@@ -7437,8 +7437,8 @@ static struct bpf_object *bpf_object_open(const char *path, const void *obj_buf,
 		}
 	}
 
-	err = bpf_object__elf_init(obj);
-	err = err ? : bpf_object__check_endianness(obj);
+	err = bpf_object__elf_init(obj); /* 读取了elf */
+	err = err ? : bpf_object__check_endianness(obj); /* 检查这个有啥用 */
 	err = err ? : bpf_object__elf_collect(obj);
 	err = err ? : bpf_object__collect_externs(obj);
 	err = err ? : bpf_object_fixup_btf(obj);
@@ -7471,7 +7471,7 @@ struct bpf_object *bpf_object__open(const char *path)
 {
 	return bpf_object__open_file(path, NULL);
 }
-
+/* 打开bpf obj, 解析elf, 填充完善bpf obj map的信息 */
 struct bpf_object *
 bpf_object__open_mem(const void *obj_buf, size_t obj_buf_sz,
 		     const struct bpf_object_open_opts *opts)
@@ -7768,7 +7768,7 @@ static int bpf_object__resolve_ksyms_btf_id(struct bpf_object *obj)
 	}
 	return 0;
 }
-
+/* extern是什么 */
 static int bpf_object__resolve_externs(struct bpf_object *obj,
 				       const char *extra_kconfig)
 {
@@ -7925,7 +7925,7 @@ static int bpf_object_load(struct bpf_object *obj, int extra_log_level, const ch
 	if (obj->gen_loader)
 		bpf_gen__init(obj->gen_loader, extra_log_level, obj->nr_programs, obj->nr_maps);
 
-	err = bpf_object__probe_loading(obj);
+	err = bpf_object__probe_loading(obj);/* 调用系统调用加载prog */
 	err = err ? : bpf_object__load_vmlinux_btf(obj, false);
 	err = err ? : bpf_object__resolve_externs(obj, obj->kconfig);
 	err = err ? : bpf_object__sanitize_and_load_btf(obj);
@@ -7933,7 +7933,7 @@ static int bpf_object_load(struct bpf_object *obj, int extra_log_level, const ch
 	err = err ? : bpf_object__init_kern_struct_ops_maps(obj);
 	err = err ? : bpf_object__create_maps(obj);
 	err = err ? : bpf_object__relocate(obj, obj->btf_custom_path ? : target_btf_path);
-	err = err ? : bpf_object__load_progs(obj, extra_log_level);
+	err = err ? : bpf_object__load_progs(obj, extra_log_level);/* 这里开始load */
 	err = err ? : bpf_object_init_prog_arrays(obj);
 	err = err ? : bpf_object_prepare_struct_ops(obj);
 
@@ -8510,11 +8510,11 @@ int bpf_object__gen_loader(struct bpf_object *obj, struct gen_loader_opts *opts)
 	obj->gen_loader = gen;
 	return 0;
 }
-
+/* 获取下一个prog */
 static struct bpf_program *
 __bpf_program__iter(const struct bpf_program *p, const struct bpf_object *obj,
 		    bool forward)
-{
+{/* 获取prog数量 */
 	size_t nr_programs = obj->nr_programs;
 	ssize_t idx;
 
@@ -8536,7 +8536,7 @@ __bpf_program__iter(const struct bpf_program *p, const struct bpf_object *obj,
 		return NULL;
 	return &obj->programs[idx];
 }
-
+/* 用于获取bpf obj的 */
 struct bpf_program *
 bpf_object__next_program(const struct bpf_object *obj, struct bpf_program *prev)
 {
@@ -8976,7 +8976,7 @@ static bool sec_def_matches(const struct bpf_sec_def *sec_def, const char *sec_n
 
 	return strcmp(sec_name, sec_def->sec) == 0;
 }
-
+/* 找到sec_name匹配的def */
 static const struct bpf_sec_def *find_sec_def(const char *sec_name)
 {
 	const struct bpf_sec_def *sec_def;
@@ -8988,7 +8988,7 @@ static const struct bpf_sec_def *find_sec_def(const char *sec_name)
 		if (sec_def_matches(sec_def, sec_name))
 			return sec_def;
 	}
-
+	/* 在section_defs找到匹配的def */
 	n = ARRAY_SIZE(section_defs);
 	for (i = 0; i < n; i++) {
 		sec_def = &section_defs[i];
@@ -9719,7 +9719,7 @@ int bpf_map__set_inner_map_fd(struct bpf_map *map, int fd)
 	map->inner_map_fd = fd;
 	return 0;
 }
-
+/* 获取obj的m这个map的下一个map */
 static struct bpf_map *
 __bpf_map__iter(const struct bpf_map *m, const struct bpf_object *obj, int i)
 {
@@ -9728,7 +9728,7 @@ __bpf_map__iter(const struct bpf_map *m, const struct bpf_object *obj, int i)
 
 	if (!obj || !obj->maps)
 		return errno = EINVAL, NULL;
-
+/* 获取首尾的map */
 	s = obj->maps;
 	e = obj->maps + obj->nr_maps;
 
@@ -9743,7 +9743,7 @@ __bpf_map__iter(const struct bpf_map *m, const struct bpf_object *obj, int i)
 		return NULL;
 	return &obj->maps[idx];
 }
-
+/* 迭代器获取下一个map */
 struct bpf_map *
 bpf_object__next_map(const struct bpf_object *obj, const struct bpf_map *prev)
 {
@@ -9764,13 +9764,13 @@ bpf_object__prev_map(const struct bpf_object *obj, const struct bpf_map *next)
 
 	return __bpf_map__iter(next, obj, -1);
 }
-
+/* 比如找到progname.bss对应的map */
 struct bpf_map *
 bpf_object__find_map_by_name(const struct bpf_object *obj, const char *name)
 {
 	struct bpf_map *pos;
 
-	bpf_object__for_each_map(pos, obj) {
+	bpf_object__for_each_map(pos, obj) {/* 遍历每一个map */
 		/* if it's a special internal map name (which always starts
 		 * with dot) then check if that special name matches the
 		 * real map name (ELF section name)
@@ -12942,7 +12942,7 @@ int libbpf_num_possible_cpus(void)
 	WRITE_ONCE(cpus, tmp_cpus);
 	return tmp_cpus;
 }
-
+/* 填充每个maps[i].mmaped成员, */
 static int populate_skeleton_maps(const struct bpf_object *obj,
 				  struct bpf_map_skeleton *maps,
 				  size_t map_cnt)
@@ -12966,7 +12966,7 @@ static int populate_skeleton_maps(const struct bpf_object *obj,
 	}
 	return 0;
 }
-
+/* 赋值每个progs[i].prog */
 static int populate_skeleton_progs(const struct bpf_object *obj,
 				   struct bpf_prog_skeleton *progs,
 				   size_t prog_cnt)
@@ -13014,7 +13014,7 @@ int bpf_object__open_skeleton(struct bpf_object_skeleton *s,
 			s->name, err);
 		return libbpf_err(err);
 	}
-
+/* 把obj复制给skel */
 	*s->obj = obj;
 	err = populate_skeleton_maps(obj, s->maps, s->map_cnt);
 	if (err) {
@@ -13205,7 +13205,7 @@ void bpf_object__detach_skeleton(struct bpf_object_skeleton *s)
 		*link = NULL;
 	}
 }
-
+/* 销毁bpf obj skelton */
 void bpf_object__destroy_skeleton(struct bpf_object_skeleton *s)
 {
 	if (!s)

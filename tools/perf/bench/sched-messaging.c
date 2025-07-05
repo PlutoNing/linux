@@ -194,7 +194,7 @@ static void reap_worker(pthread_t id)
 	}
 }
 
-/* One group of senders and receivers */
+/* One group of senders and receivers,构造一组收发者吗 */
 static unsigned int group(pthread_t *pth,
 		unsigned int num_fds,
 		int ready_out,
@@ -225,7 +225,7 @@ static unsigned int group(pthread_t *pth,
 		ctx->in_fds[1] = fds[1];
 		ctx->ready_out = ready_out;
 		ctx->wakefd = wakefd;
-
+/* 创建一个接受者线程 */
 		pth[i] = create_worker(ctx, (void *)receiver);
 
 		snd_ctx->out_fds[i] = fds[1];
@@ -233,7 +233,7 @@ static unsigned int group(pthread_t *pth,
 			close(fds[0]);
 	}
 
-	/* Now we have all the fds, fork the senders */
+	/* Now we have all the fds, fork the senders,创建sender线程 */
 	for (i = 0; i < num_fds; i++) {
 		snd_ctx->ready_out = ready_out;
 		snd_ctx->wakefd = wakefd;
@@ -265,7 +265,7 @@ static const char * const bench_sched_message_usage[] = {
 	"perf bench sched messaging <options>",
 	NULL
 };
-
+/* sched messaging 测试 */
 int bench_sched_messaging(int argc, const char **argv)
 {
 	unsigned int i, total_children;
@@ -278,7 +278,7 @@ int bench_sched_messaging(int argc, const char **argv)
 
 	argc = parse_options(argc, argv, options,
 			     bench_sched_message_usage, 0);
-
+/* 400个线程的数组? */
 	pth_tab = malloc(num_fds * 2 * num_groups * sizeof(pthread_t));
 	if (!pth_tab)
 		err(EXIT_FAILURE, "main:malloc()");

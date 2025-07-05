@@ -25,9 +25,11 @@
 #include <trace/events/ipi.h>
 
 static DEFINE_PER_CPU(struct llist_head, raised_list);
+/*  */
 static DEFINE_PER_CPU(struct llist_head, lazy_list);
+/*  */
 static DEFINE_PER_CPU(struct task_struct *, irq_workd);
-
+/* 唤醒irq_workd这个task来处理lazy_list里面的irq_work */
 static void wake_irq_workd(void)
 {
 	struct task_struct *tsk = __this_cpu_read(irq_workd);
@@ -42,6 +44,9 @@ static void irq_work_wake(struct irq_work *entry)
 	wake_irq_workd();
 }
 
+/* irq_work_wakeup是一个func为irq_work_wake函数的硬中断
+irq_work
+ */
 static DEFINE_PER_CPU(struct irq_work, irq_work_wakeup) =
 	IRQ_WORK_INIT_HARD(irq_work_wake);
 #endif
@@ -52,6 +57,7 @@ static int irq_workd_should_run(unsigned int cpu)
 }
 
 /*
+设置work为IRQ_WORK_CLAIMED | CSD_TYPE_IRQ_WORK
  * Claim the entry so that no one else will poke at it.
  */
 static bool irq_work_claim(struct irq_work *work)
@@ -75,16 +81,20 @@ void __weak arch_irq_work_raise(void)
 	 * Lame architectures will get the timer tick callback
 	 */
 }
-
+/* 立即运行irq_work */
 static __always_inline void irq_work_raise(struct irq_work *work)
 {
 	if (trace_ipi_send_cpu_enabled() && arch_irq_work_has_interrupt())
 		trace_ipi_send_cpu(smp_processor_id(), _RET_IP_, work->func);
 
+	/* 这里是通过ipi中断运行的 */
 	arch_irq_work_raise();
 }
 
-/* Enqueue on current CPU, work must already be claimed and preempt disabled */
+/*
+在当前cpu入队执行这个irq_work
+可能是加入lazy_list执行, 也可能是ipi立即执行
+Enqueue on current CPU, work must already be claimed and preempt disabled */
 static void __irq_work_queue_local(struct irq_work *work)
 {
 	struct llist_head *list;
@@ -104,18 +114,23 @@ static void __irq_work_queue_local(struct irq_work *work)
 	else
 		list = this_cpu_ptr(&raised_list);
 
+	/* 加入list, 准备执行 */
 	if (!llist_add(&work->node.llist, list))
 		return;
 
-	/* If the work is "lazy", handle it from next tick if any */
+	/* If the work is "lazy", handle it from next tick if any
+	立即运行 */
 	if (!lazy_work || tick_nohz_tick_stopped())
 		irq_work_raise(work);
 }
 
-/* Enqueue the irq work @work on the current CPU */
+/*
+运行这个irq_work
+Enqueue the irq work @work on the current CPU */
 bool irq_work_queue(struct irq_work *work)
 {
-	/* Only queue if not already pending */
+	/* Only queue if not already pending
+	设置为claimed, 如果已经pending了就返回 */
 	if (!irq_work_claim(work))
 		return false;
 
@@ -129,6 +144,9 @@ bool irq_work_queue(struct irq_work *work)
 EXPORT_SYMBOL_GPL(irq_work_queue);
 
 /*
+在指定cpu运行irq_work
+=========================================
+可能是加入call_single_queue执行, 也可能是加入lazy_list, 也可能是ipi
  * Enqueue the irq_work @work on @cpu unless it's already pending
  * somewhere.
  *
@@ -150,7 +168,9 @@ bool irq_work_queue_on(struct irq_work *work, int cpu)
 	kasan_record_aux_stack_noalloc(work);
 
 	preempt_disable();
+	/* 参数指定的可能是当前cpu或者其他cpu, 分开情况处理 */
 	if (cpu != smp_processor_id()) {
+		/* 如果指定的是远程cpu */
 		/* Arch remote IPI send/receive backend aren't NMI safe */
 		WARN_ON_ONCE(in_nmi());
 
@@ -161,17 +181,19 @@ bool irq_work_queue_on(struct irq_work *work, int cpu)
 		 */
 		if (IS_ENABLED(CONFIG_PREEMPT_RT) &&
 		    !(atomic_read(&work->node.a_flags) & IRQ_WORK_HARD_IRQ)) {
-
+			/* 如果开启了rt, 并且不是硬中断的irq_work */
 			if (!llist_add(&work->node.llist, &per_cpu(lazy_list, cpu)))
 				goto out;
-
+			/* 到这里说明现在lazy_list里面就一个这个irq_work */
 			work = &per_cpu(irq_work_wakeup, cpu);
 			if (!irq_work_claim(work))
 				goto out;
 		}
 
+		/* 加入call_single_queue执行 */
 		__smp_call_single_queue(cpu, &work->node.llist);
 	} else {
+		/* 如果指定的cpu就是当前cpu, 直接运行就好 */
 		__irq_work_queue_local(work);
 	}
 out:
@@ -197,7 +219,7 @@ bool irq_work_needs_cpu(void)
 
 	return true;
 }
-
+/* 运行irq_work的func函数 */
 void irq_work_single(void *arg)
 {
 	struct irq_work *work = arg;
@@ -231,7 +253,8 @@ void irq_work_single(void *arg)
 	    !arch_irq_work_has_interrupt())
 		rcuwait_wake_up(&work->irqwait);
 }
-
+/* 运行list上面的每一个irq_work
+这个list可能是lazy_list */
 static void irq_work_run_list(struct llist_head *list)
 {
 	struct irq_work *work, *tmp;
@@ -246,8 +269,9 @@ static void irq_work_run_list(struct llist_head *list)
 
 	if (llist_empty(list))
 		return;
-
+/* 把list的内容移动到llnode */
 	llnode = llist_del_all(list);
+	/* 遍历运行llnode上面的每一个irq_work */
 	llist_for_each_entry_safe(work, tmp, llnode, node.llist)
 		irq_work_single(work);
 }
@@ -299,12 +323,12 @@ void irq_work_sync(struct irq_work *work)
 		cpu_relax();
 }
 EXPORT_SYMBOL_GPL(irq_work_sync);
-
+/* 运行lazy_list上面的irq_work */
 static void run_irq_workd(unsigned int cpu)
 {
 	irq_work_run_list(this_cpu_ptr(&lazy_list));
 }
-
+/* 改变进程的调度类和优先级什么的 */
 static void irq_workd_setup(unsigned int cpu)
 {
 	sched_set_fifo_low(current);
@@ -312,12 +336,18 @@ static void irq_workd_setup(unsigned int cpu)
 
 static struct smp_hotplug_thread irqwork_threads = {
 	.store                  = &irq_workd,
+	/* 这里的初始化设置, 仅仅是改变调度类和优先级什么的
+	为了提升优先级 */
 	.setup			= irq_workd_setup,
+	/* 检测lazy_list是不是空的 */
 	.thread_should_run      = irq_workd_should_run,
+	/* 运行lazy_list上面的irq_work */
 	.thread_fn              = run_irq_workd,
 	.thread_comm            = "irq_work/%u",
 };
-
+/* 初始化irqwork_threads
+用于运行irq_work
+主要是lazy_list上面的irq_work */
 static __init int irq_work_init_threads(void)
 {
 	if (IS_ENABLED(CONFIG_PREEMPT_RT))

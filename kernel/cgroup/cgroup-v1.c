@@ -190,24 +190,35 @@ struct cgroup_pidlist {
 };
 
 /*
+调度cgrp->pidlists的每一个pidlist的dwork
  * Used to destroy all pidlists lingering waiting for destroy timer.  None
  * should be left afterwards.
+ 用于销毁所有pidlist, 这些pidlist在等待销毁定时器
  */
 void cgroup1_pidlist_destroy_all(struct cgroup *cgrp)
 {
 	struct cgroup_pidlist *l, *tmp_l;
 
 	mutex_lock(&cgrp->pidlist_mutex);
+	/* 把每个pid_list的destroy_dwork都加入到销毁工作队列中
+	 */
 	list_for_each_entry_safe(l, tmp_l, &cgrp->pidlists, links)
 		mod_delayed_work(cgroup_pidlist_destroy_wq, &l->destroy_dwork, 0);
 	mutex_unlock(&cgrp->pidlist_mutex);
 
+	/* 运行这些work */
 	flush_workqueue(cgroup_pidlist_destroy_wq);
 	BUG_ON(!list_empty(&cgrp->pidlists));
 }
 
+/* cgroup_pidlist->destroy_dwork的fn函数
+用于
+ */
 static void cgroup_pidlist_destroy_work_fn(struct work_struct *work)
 {
+	/* cgroup_pidlist有个dwork有个work成员
+	这里取出需要处理的相关成员
+	 */
 	struct delayed_work *dwork = to_delayed_work(work);
 	struct cgroup_pidlist *l = container_of(dwork, struct cgroup_pidlist,
 						destroy_dwork);

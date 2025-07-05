@@ -15,7 +15,7 @@
 #include <linux/kmemleak.h>
 
 /*
-参数info是nid
+参数info是nid, page是此node的pgdat结构体所在的数据页, 一般有好几个
 */
 void get_page_bootmem(unsigned long info, struct page *page, unsigned long type)
 {
@@ -89,14 +89,14 @@ static void __init register_page_bootmem_info_section(unsigned long start_pfn)
 	struct mem_section *ms;
 	struct page *page, *memmap;
 	struct mem_section_usage *usage;
-
+	/* 找到pfn对应的memsection */
 	section_nr = pfn_to_section_nr(start_pfn);
 	ms = __nr_to_section(section_nr);
 
 	memmap = sparse_decode_mem_map(ms->section_mem_map, section_nr);
-	//
+	// 处理此ms的每一个page的顶层pmd.pud,p4d,pgd页表页面的ref和type什么的 , 完成之后可以-exec  p (*(struct page*)0xffffea0008dbffc0)查看index, ref什么的
 	register_page_bootmem_memmap(section_nr, memmap, PAGES_PER_SECTION);
-
+	/* 这里同样方式处理ms->usage所使用的page结构体的type和ref */
 	usage = ms->usage;
 	page = virt_to_page(usage);
 
@@ -107,19 +107,19 @@ static void __init register_page_bootmem_info_section(unsigned long start_pfn)
 }
 #endif /* !CONFIG_SPARSEMEM_VMEMMAP */
 
-// 在把bootmem放入buudy之后调用
+// bootmem过程中把memblock页面放入buudy之后调用, 处理页表页面, memsection map页面page结构体的ref
 void __init register_page_bootmem_info_node(struct pglist_data *pgdat)
 {
 	unsigned long i, pfn, end_pfn, nr_pages;
 	int node = pgdat->node_id;
 	struct page *page;
 
-	// 存放这个node结构体需要几个页面?
+	// 存放这个node结构体需要几个页面? 有情况是6个
 	nr_pages = PAGE_ALIGN(sizeof(struct pglist_data)) >> PAGE_SHIFT;
 	page = virt_to_page(pgdat);
 
-	for (i = 0; i < nr_pages; i++, page++) //遍历处理node的前nr_page个页面?
-		get_page_bootmem(node, page, NODE_INFO);
+	for (i = 0; i < nr_pages; i++, page++) //遍历处理node结构体所在的nr_page个页面
+		get_page_bootmem(node, page, NODE_INFO); /* 设置page type, 设置priv, 处理ref */
 
 	pfn = pgdat->node_start_pfn;
 	end_pfn = pgdat_end_pfn(pgdat);
@@ -134,6 +134,6 @@ void __init register_page_bootmem_info_node(struct pglist_data *pgdat)
 		 */
 		if (pfn_valid(pfn) && (early_pfn_to_nid(pfn) == node))
 			register_page_bootmem_info_section(pfn); // 处理这个memsection
-		// 好像里面会处理页表的page, usemap的page什么的
+		// 好像里面会处理页表的page, usemap的page之类page的ref,index, 整体来说是一个get的逻辑
 	}
 }

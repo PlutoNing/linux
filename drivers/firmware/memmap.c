@@ -18,7 +18,7 @@
  * Data types ------------------------------------------------------------------
  */
 
-/*
+/* 表示e820_table_firmware提供的内存范围的结构体
  * Firmware map entry. Because firmware memory maps are flat and not
  * hierarchical, it's ok to organise them in a linked list. No parent
  * information is necessary as for the resource tree.
@@ -76,7 +76,7 @@ static const struct sysfs_ops memmap_attr_ops = {
 };
 
 /* Firmware memory map entries. */
-static LIST_HEAD(map_entries);
+static LIST_HEAD(map_entries); /* 链接firmware_map_entry */
 static DEFINE_SPINLOCK(map_entries_lock);
 
 /*
@@ -126,7 +126,7 @@ static struct kobj_type __refdata memmap_ktype = {
  * Registration functions ------------------------------------------------------
  */
 
-/**
+/** 参数是e820_table_firmware指定的内存布局的一个范围, 添加到刚刚创建的entry里面
  * firmware_map_add_entry() - Does the real work to add a firmware memmap entry.
  * @start: Start of the memory range.
  * @end:   End of the memory range (exclusive).
@@ -308,7 +308,7 @@ int __meminit firmware_map_add_hotplug(u64 start, u64 end, const char *type)
 	return 0;
 }
 
-/**
+/** 参数是e820_table_firmware指定的内存布局的一个内存范围
  * firmware_map_add_early() - Adds a firmware mapping entry.
  * @start: Start of the memory range.
  * @end:   End of the memory range.
@@ -324,7 +324,7 @@ int __meminit firmware_map_add_hotplug(u64 start, u64 end, const char *type)
 int __init firmware_map_add_early(u64 start, u64 end, const char *type)
 {
 	struct firmware_map_entry *entry;
-
+	/* 创建对应的entry */
 	entry = memblock_alloc(sizeof(struct firmware_map_entry),
 			       SMP_CACHE_BYTES);
 	if (WARN_ON(!entry))

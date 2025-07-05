@@ -50,6 +50,7 @@ struct kernel_clone_args;
 
 /* a css_task_iter should be treated as an opaque object */
 struct css_task_iter {
+	/* 自己所对应的css是哪个ss的 */
 	struct cgroup_subsys		*ss;
 	unsigned int			flags;
 
@@ -59,8 +60,10 @@ struct css_task_iter {
 	struct list_head		*tcset_pos;
 	struct list_head		*tcset_head;
 
+	/* 可能指向正在遍历的cset的一个进程task->cg_list */
 	struct list_head		*task_pos;
 
+	/* 指向当前正在遍历的cset的进程列表头 */
 	struct list_head		*cur_tasks_head;
 	struct css_set			*cur_cset;
 	struct css_set			*cur_dcset;
@@ -161,6 +164,7 @@ struct task_struct *css_task_iter_next(struct css_task_iter *it);
 void css_task_iter_end(struct css_task_iter *it);
 
 /**
+遍历css的孩子
  * css_for_each_child - iterate through children of a css
  * @pos: the css * to use as the loop cursor
  * @parent: css whose children to walk
@@ -183,6 +187,7 @@ void css_task_iter_end(struct css_task_iter *it);
 	     (pos) = css_next_child((pos), (parent)))
 
 /**
+前序遍历子css
  * css_for_each_descendant_pre - pre-order walk of a css's descendants
  * @pos: the css * to use as the loop cursor
  * @root: css whose descendants to walk
@@ -243,6 +248,7 @@ void css_task_iter_end(struct css_task_iter *it);
 	     (pos) = css_next_descendant_pre((pos), (css)))
 
 /**
+后续遍历css的子层级,pos作为迭代器
  * css_for_each_descendant_post - post-order walk of a css's descendants
  * @pos: the css * to use as the loop cursor
  * @css: css whose descendants to walk
@@ -289,6 +295,7 @@ void css_task_iter_end(struct css_task_iter *it);
 	     (task) = cgroup_taskset_next((tset), &(dst_css)))
 
 /**
+遍历cgroup tset的进程
  * cgroup_taskset_for_each_leader - iterate group leaders in a cgroup_taskset
  * @leader: the loop cursor
  * @dst_css: the destination css
@@ -357,6 +364,7 @@ static inline bool cgroup_tryget(struct cgroup *cgrp)
 	return css_tryget(&cgrp->self);
 }
 
+/* 释放的是cgroup的css部分 */
 static inline void cgroup_put(struct cgroup *cgrp)
 {
 	css_put(&cgrp->self);
@@ -375,6 +383,7 @@ static inline void cgroup_unlock(void)
 }
 
 /**
+获取进程的cset
  * task_css_set_check - obtain a task's css_set with extra access conditions
  * @task: the task to obtain css_set for
  * @__c: extra condition expression to be passed to rcu_dereference_check()
@@ -413,6 +422,7 @@ extern spinlock_t css_set_lock;
 	task_css_set_check((task), (__c))->subsys[(subsys_id)]
 
 /**
+获取task的cset(也就是进程的cgroups成员)
  * task_css_set - obtain a task's css_set
  * @task: the task to obtain css_set for
  *
@@ -493,7 +503,9 @@ static inline struct cgroup *task_dfl_cgroup(struct task_struct *task)
 {
 	return task_css_set(task)->dfl_cgrp;
 }
-
+/* 通过self成员这个css的父子关系来container_of获取cgroup的父子关系
+================
+cg的父子关系通过self来组织 */
 static inline struct cgroup *cgroup_parent(struct cgroup *cgrp)
 {
 	struct cgroup_subsys_state *parent_css = cgrp->self.parent;
@@ -556,7 +568,9 @@ static inline bool task_under_cgroup_hierarchy(struct task_struct *task,
 	return cgroup_is_descendant(cset->dfl_cgrp, ancestor);
 }
 
-/* no synchronization, the result can only be used as a hint */
+/*
+以后
+ no synchronization, the result can only be used as a hint */
 static inline bool cgroup_is_populated(struct cgroup *cgrp)
 {
 	return cgrp->nr_populated_csets + cgrp->nr_populated_domain_children +
@@ -569,7 +583,9 @@ static inline ino_t cgroup_ino(struct cgroup *cgrp)
 	return kernfs_ino(cgrp->kn);
 }
 
-/* cft/css accessors for cftype->write() operation */
+/*
+cft存储在knode的priv里面
+cft/css accessors for cftype->write() operation */
 static inline struct cftype *of_cft(struct kernfs_open_file *of)
 {
 	return of->kn->priv;
@@ -583,6 +599,12 @@ static inline struct cftype *seq_cft(struct seq_file *seq)
 	return of_cft(seq->private);
 }
 
+/* 通过seq file的priv找到of
+of对应的kn找到cg
+==========================
+of对应的kn也可以找到cft, 继而可以确定这个文件是哪个ss的
+============
+cg->subsys[ss]找到css */
 static inline struct cgroup_subsys_state *seq_css(struct seq_file *seq)
 {
 	return of_css(seq->private);
@@ -757,6 +779,7 @@ void cgroup_sk_alloc(struct sock_cgroup_data *skcd);
 void cgroup_sk_clone(struct sock_cgroup_data *skcd);
 void cgroup_sk_free(struct sock_cgroup_data *skcd);
 
+/* 获取sock的cgroup? */
 static inline struct cgroup *sock_cgroup_ptr(struct sock_cgroup_data *skcd)
 {
 	return skcd->cgroup;

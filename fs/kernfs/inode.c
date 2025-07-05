@@ -64,7 +64,7 @@ static struct kernfs_iattrs *kernfs_iattrs_noalloc(struct kernfs_node *kn)
 {
 	return __kernfs_iattrs(kn, 0);
 }
-
+/* 设置这个kn的attr */
 int __kernfs_setattr(struct kernfs_node *kn, const struct iattr *iattr)
 {
 	struct kernfs_iattrs *attrs;

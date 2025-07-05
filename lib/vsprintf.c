@@ -2718,6 +2718,7 @@ set_precision(struct printf_spec *spec, int prec)
 }
 
 /**
+格式化打印到buf
  * vsnprintf - Format a string and place it in a buffer
  * @buf: The buffer to place the result into
  * @size: The size of the buffer, including the trailing null space

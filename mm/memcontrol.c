@@ -74,6 +74,7 @@
 
 #include <trace/events/vmscan.h>
 
+/*  */
 struct cgroup_subsys memory_cgrp_subsys __read_mostly;
 EXPORT_SYMBOL(memory_cgrp_subsys);
 
@@ -188,6 +189,7 @@ static struct move_charge_struct {
 	struct mem_cgroup *from;
 	struct mem_cgroup *to;
 	unsigned long flags;
+	/* */
 	unsigned long precharge;
 	unsigned long moved_charge;
 	unsigned long moved_swap;
@@ -588,6 +590,7 @@ mem_cgroup_largest_soft_limit_node(struct mem_cgroup_tree_per_node *mctz)
  *    only for 2 seconds due to (1).
  */
 static void flush_memcg_stats_dwork(struct work_struct *w);
+ /* 上线root memcg时会调用这个函数 */
 static DECLARE_DEFERRABLE_WORK(stats_flush_dwork, flush_memcg_stats_dwork);
 static DEFINE_PER_CPU(unsigned int, stats_updates);
 static atomic_t stats_flush_ongoing = ATOMIC_INIT(0);
@@ -672,7 +675,8 @@ void mem_cgroup_flush_stats_ratelimited(void)
 	if (time_after64(jiffies_64, READ_ONCE(flush_next_time)))
 		mem_cgroup_flush_stats();
 }
-
+/* 上线root memcg时会调用这个函数
+ */
 static void flush_memcg_stats_dwork(struct work_struct *w)
 {
 	/*
@@ -1004,6 +1008,7 @@ static void memcg_check_events(struct mem_cgroup *memcg, int nid)
 	}
 }
 
+// task->cset->subsys[id]
 // 获取tsk的memcg, 通过tsk对应的css来获取
 struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p)
 {
@@ -1058,7 +1063,7 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
 	 * counting is disabled on the root level in the
 	 * cgroup core. See CSS_NO_REF.
 	 */
-	if (unlikely(!mm)) { /* 没指定mm(比如说可能加入mapping)
+	if (unlikely(!mm)) { /* 没指定mm(比如说可能加入mapping(啥意思))
 	如何获取cg? */
 		memcg = active_memcg();
 		if (unlikely(memcg)) {
@@ -1073,6 +1078,7 @@ struct mem_cgroup *get_mem_cgroup_from_mm(struct mm_struct *mm)
 
 	rcu_read_lock();
 	do {
+		/*  */
 		memcg = mem_cgroup_from_task(rcu_dereference(mm->owner));
 		if (unlikely(!memcg))
 			memcg = root_mem_cgroup;
@@ -1457,6 +1463,7 @@ static unsigned long mem_cgroup_margin(struct mem_cgroup *memcg)
 }
 
 /*
+检查memcg是不是mc的源或者目的memcg的孩子cg
  * A routine for checking "mem" is under move_account() or not.
  *
  * Checking a cgroup is mc.from or mc.to or under hierarchy of
@@ -1485,6 +1492,11 @@ unlock:
 	return ret;
 }
 
+/* 
+如果当前存在moving task
+并且memcg是mc的源或者目的cg的孩子cg
+就等待mc完成
+*/
 static bool mem_cgroup_wait_acct_move(struct mem_cgroup *memcg)
 {
 	if (mc.moving_task && current != mc.moving_task) {
@@ -2401,12 +2413,14 @@ static int memcg_hotplug_cpu_dead(unsigned int cpu)
 	return 0;
 }
 
+/* 回收memcg的内存 */
 static unsigned long reclaim_high(struct mem_cgroup *memcg,
 				  unsigned int nr_pages,
 				  gfp_t gfp_mask)
 {
 	unsigned long nr_reclaimed = 0;
 
+	/* 对父层级上的每一个高于high的memcg做一次回收 */
 	do {
 		unsigned long pflags;
 
@@ -2417,6 +2431,7 @@ static unsigned long reclaim_high(struct mem_cgroup *memcg,
 		memcg_memory_event(memcg, MEMCG_HIGH);
 
 		psi_memstall_enter(&pflags);
+		/* 尝试回收 */
 		nr_reclaimed += try_to_free_mem_cgroup_pages(memcg, nr_pages,
 							gfp_mask,
 							MEMCG_RECLAIM_MAY_SWAP);
@@ -2427,11 +2442,14 @@ static unsigned long reclaim_high(struct mem_cgroup *memcg,
 	return nr_reclaimed;
 }
 
+/* memcg的high_work的工作函数
+回收内存 */
 static void high_work_func(struct work_struct *work)
 {
 	struct mem_cgroup *memcg;
 
 	memcg = container_of(work, struct mem_cgroup, high_work);
+	/* 回收内存 */
 	reclaim_high(memcg, MEMCG_CHARGE_BATCH, GFP_KERNEL);
 }
 
@@ -3815,6 +3833,9 @@ static int mem_cgroup_dummy_seq_show(__always_unused struct seq_file *m,
 }
 
 #ifdef CONFIG_MEMCG_KMEM
+/* 上线memcg过程中, 先上线kmem
+初始化memcg->objcg
+objcg是 */
 static int memcg_online_kmem(struct mem_cgroup *memcg)
 {
 	struct obj_cgroup *objcg;
@@ -3839,6 +3860,7 @@ static int memcg_online_kmem(struct mem_cgroup *memcg)
 	return 0;
 }
 
+/* 下线memcg时处理objcg */
 static void memcg_offline_kmem(struct mem_cgroup *memcg)
 {
 	struct mem_cgroup *parent;
@@ -4626,6 +4648,7 @@ static int mem_cgroup_oom_control_write(struct cgroup_subsys_state *css,
 
 #include <trace/events/writeback.h>
 
+/* 初始化memcg->cgwb_domain */
 static int memcg_wb_domain_init(struct mem_cgroup *memcg, gfp_t gfp)
 {
 	return wb_domain_init(&memcg->cgwb_domain, gfp);
@@ -4922,6 +4945,7 @@ static void memcg_event_ptable_queue_proc(struct file *file,
 }
 
 /*
+cgroup的事件机制
  * DO NOT USE IN NEW FILES.
  *
  * Parse input and register new cgroup event handler.
@@ -5313,10 +5337,13 @@ struct mem_cgroup *mem_cgroup_get_from_ino(unsigned long ino)
 }
 #endif
 
+/* memcg有一个pn数组(memcg->nodeinfo[node])
+是对每个node的状态建模 */
 static int alloc_mem_cgroup_per_node_info(struct mem_cgroup *memcg, int node)
 {
 	struct mem_cgroup_per_node *pn;
 
+	/* 分配内存 */
 	pn = kzalloc_node(sizeof(*pn), GFP_KERNEL, node);
 	if (!pn)
 		return 1;
@@ -5364,6 +5391,7 @@ static void mem_cgroup_free(struct mem_cgroup *memcg)
 	__mem_cgroup_free(memcg);
 }
 
+/* 创建memcg结构体 */
 static struct mem_cgroup *mem_cgroup_alloc(void)
 {
 	struct mem_cgroup *memcg;
@@ -5371,10 +5399,12 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	int __maybe_unused i;
 	long error = -ENOMEM;
 
+	/* 分配内存 */
 	memcg = kzalloc(struct_size(memcg, nodeinfo, nr_node_ids), GFP_KERNEL);
 	if (!memcg)
 		return ERR_PTR(error);
 
+		/* 分配idr id */
 	memcg->id.id = idr_alloc(&mem_cgroup_idr, NULL,
 				 1, MEM_CGROUP_ID_MAX + 1, GFP_KERNEL);
 	if (memcg->id.id < 0) {
@@ -5382,26 +5412,35 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 		goto fail;
 	}
 
+	/* 创建stat */
 	memcg->vmstats = kzalloc(sizeof(struct memcg_vmstats), GFP_KERNEL);
 	if (!memcg->vmstats)
 		goto fail;
 
+	/* 这个是pcp的 */
 	memcg->vmstats_percpu = alloc_percpu_gfp(struct memcg_vmstats_percpu,
 						 GFP_KERNEL_ACCOUNT);
 	if (!memcg->vmstats_percpu)
 		goto fail;
 
+	/* 初始化memcg->nodeinfo数组里的pn */
 	for_each_node(node)
 		if (alloc_mem_cgroup_per_node_info(memcg, node))
 			goto fail;
 
+	/* 初始化memcg的写回控制 */
 	if (memcg_wb_domain_init(memcg, GFP_KERNEL))
 		goto fail;
 
+	/* 初始化highwork, work被调用时会对父层级上的每一个高于high的memcg
+	回收一次内存
+	调用时机:
+	 */
 	INIT_WORK(&memcg->high_work, high_work_func);
 	INIT_LIST_HEAD(&memcg->oom_notify);
 	mutex_init(&memcg->thresholds_lock);
 	spin_lock_init(&memcg->move_lock);
+	/*  */
 	vmpressure_init(&memcg->vmpressure);
 	INIT_LIST_HEAD(&memcg->event_list);
 	spin_lock_init(&memcg->event_list_lock);
@@ -5429,6 +5468,8 @@ fail:
 	return ERR_PTR(error);
 }
 
+/* memcg的css创建函数
+创建一个memcg, 返回其中的css部分 */
 static struct cgroup_subsys_state * __ref
 mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 {
@@ -5436,6 +5477,7 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	struct mem_cgroup *memcg, *old_memcg;
 
 	old_memcg = set_active_memcg(parent);
+	/* 创建结构体 */
 	memcg = mem_cgroup_alloc();
 	set_active_memcg(old_memcg);
 	if (IS_ERR(memcg))
@@ -5477,10 +5519,13 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	return &memcg->css;
 }
 
+/* 上线一个memcg css的回调函数 */
 static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
 {
+	/* 获取到css所属的memcg */
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
 
+	/* 先初始化memcg->objcg */
 	if (memcg_online_kmem(memcg))
 		goto remove_id;
 
@@ -5488,13 +5533,16 @@ static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
 	 * A memcg must be visible for expand_shrinker_info()
 	 * by the time the maps are allocated. So, we allocate maps
 	 * here, when for_each_mem_cgroup() can't skip it.
+	 创建memcg->nodeinfo[nid]->shrinker_info
 	 */
 	if (alloc_shrinker_info(memcg))
 		goto offline_kmem;
 
+	/* 如果是root memcg, 调用一下do_flush_stats */
 	if (unlikely(mem_cgroup_is_root(memcg)))
 		queue_delayed_work(system_unbound_wq, &stats_flush_dwork,
 				   FLUSH_TIME);
+	/* 设置lrugen相关 */
 	lru_gen_online_memcg(memcg);
 
 	/* Online state pins memcg ID, memcg ID pins CSS */
@@ -5521,6 +5569,7 @@ remove_id:
 	return -ENOMEM;
 }
 
+/* 下线memcg的函数 */
 static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
@@ -5532,6 +5581,7 @@ static void mem_cgroup_css_offline(struct cgroup_subsys_state *css)
 	 * directory to avoid race between userspace and kernelspace.
 	 */
 	spin_lock_irq(&memcg->event_list_lock);
+	/* 这些事件是  */
 	list_for_each_entry_safe(event, tmp, &memcg->event_list, list) {
 		list_del_init(&event->list);
 		schedule_work(&event->remove);
@@ -5559,6 +5609,7 @@ static void mem_cgroup_css_released(struct cgroup_subsys_state *css)
 	lru_gen_release_memcg(memcg);
 }
 
+/* 释放memcg的一些资源 */
 static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 {
 	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
@@ -5869,7 +5920,8 @@ static int mem_cgroup_move_account(struct page *page,
 
 	folio_memcg_lock(folio);
 
-	if (folio_test_anon(folio)) {/* 如果是匿名页的话 */
+	if (folio_test_anon(folio)) {
+		/* 如果是匿名页的话 */
 		if (folio_mapped(folio)) {
 			__mod_lruvec_state(from_vec, NR_ANON_MAPPED, -nr_pages);
 			__mod_lruvec_state(to_vec, NR_ANON_MAPPED, nr_pages);
@@ -5880,7 +5932,8 @@ static int mem_cgroup_move_account(struct page *page,
 						   nr_pages);
 			}
 		}
-	} else {/* 不是匿名页就是文件页 */
+	} else {
+		/* 不是匿名页就是文件页 */
 		__mod_lruvec_state(from_vec, NR_FILE_PAGES, -nr_pages);
 		__mod_lruvec_state(to_vec, NR_FILE_PAGES, nr_pages);
 
@@ -6091,6 +6144,8 @@ static inline enum mc_target_type get_mctgt_type_thp(struct vm_area_struct *vma,
 }
 #endif
 
+/* 
+ */
 static int mem_cgroup_count_precharge_pte_range(pmd_t *pmd,
 					unsigned long addr, unsigned long end,
 					struct mm_walk *walk)
@@ -6124,16 +6179,19 @@ static int mem_cgroup_count_precharge_pte_range(pmd_t *pmd,
 	return 0;
 }
 
+/*  */
 static const struct mm_walk_ops precharge_walk_ops = {
 	.pmd_entry	= mem_cgroup_count_precharge_pte_range,
 	.walk_lock	= PGWALK_RDLOCK,
 };
 
+/* 这里数的是什么? */
 static unsigned long mem_cgroup_count_precharge(struct mm_struct *mm)
 {
 	unsigned long precharge;
 
 	mmap_read_lock(mm);
+	/*  */
 	walk_page_range(mm, 0, ULONG_MAX, &precharge_walk_ops, NULL);
 	mmap_read_unlock(mm);
 
@@ -6152,7 +6210,9 @@ static int mem_cgroup_precharge_mc(struct mm_struct *mm)
 	return mem_cgroup_do_precharge(precharge);
 }
 
-/* cancels all extra charges on mc.from and mc.to, and wakes up all waiters. */
+/* cancels all extra charges on mc.from and mc.to, and wakes up all waiters.
+取消
+ */
 static void __mem_cgroup_clear_mc(void)
 {
 	struct mem_cgroup *from = mc.from;
@@ -6190,6 +6250,7 @@ static void __mem_cgroup_clear_mc(void)
 	}
 	memcg_oom_recover(from);
 	memcg_oom_recover(to);
+	/* 这里是唤醒与mc的操作的cg的子cg相关的阻塞进程 */
 	wake_up_all(&mc.waitq);
 }
 
@@ -6462,6 +6523,9 @@ static void mem_cgroup_move_task(void)
 #endif
 
 #ifdef CONFIG_LRU_GEN
+/* 在cgroup之间迁移进程的时候
+会对mgctx->tset调用这个函数
+这里修改mm与所属memcg的绑定关系, 解除旧关联, 关联新memcg */
 static void mem_cgroup_attach(struct cgroup_taskset *tset)
 {
 	struct task_struct *task;
@@ -6475,6 +6539,7 @@ static void mem_cgroup_attach(struct cgroup_taskset *tset)
 		return;
 
 	task_lock(task);
+	/* 这里修改mm与所属memcg的绑定关系, 解除旧关联, 关联新memcg */
 	if (task->mm && READ_ONCE(task->mm->owner) == task)
 		lru_gen_migrate_mm(task->mm);
 	task_unlock(task);
@@ -6822,7 +6887,7 @@ static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 
 	return nbytes;
 }
-
+/* v2的文件 */
 static struct cftype memory_files[] = {
 	{
 		.name = "current",
@@ -6893,20 +6958,30 @@ static struct cftype memory_files[] = {
 	},
 	{ }	/* terminate */
 };
-
+/* mem cg的subsys? */
 struct cgroup_subsys memory_cgrp_subsys = {
+	/* 创建memcg, 返回其中的css部分 */
 	.css_alloc = mem_cgroup_css_alloc,
+	/* 创建css的时候就会online */
 	.css_online = mem_cgroup_css_online,
+	/* 下线memcg */
 	.css_offline = mem_cgroup_css_offline,
+	/*  */
 	.css_released = mem_cgroup_css_released,
+	/*  */
 	.css_free = mem_cgroup_css_free,
 	.css_reset = mem_cgroup_css_reset,
 	.css_rstat_flush = mem_cgroup_css_rstat_flush,
 	.can_attach = mem_cgroup_can_attach,
+	/* 在cgroup之间迁移进程的时候, 改变了cset链接之后, 会调用这个
+	这里修改mm与所属memcg的绑定关系, 解除旧关联, 关联新memcg */
 	.attach = mem_cgroup_attach,
+	/*  */
 	.cancel_attach = mem_cgroup_cancel_attach,
 	.post_attach = mem_cgroup_move_task,
+	/* 这里是v2的memcg的文件夹的文件 */
 	.dfl_cftypes = memory_files,
+	/* v1的文件 */
 	.legacy_cftypes = mem_cgroup_legacy_files,
 	.early_init = 0,
 };
@@ -7535,6 +7610,7 @@ static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 }
 
 /**
+这里用于, 在从swap mapping移除folio之后, 计算memcg的charge相关
  * mem_cgroup_swapout - transfer a memsw charge to swap
  * @folio: folio whose memsw charge to transfer
  * @entry: swap entry to move the charge to

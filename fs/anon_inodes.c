@@ -23,7 +23,7 @@
 #include <linux/pseudo_fs.h>
 
 #include <linux/uaccess.h>
-
+/* 匿名inode的mnt */
 static struct vfsmount *anon_inode_mnt __read_mostly;
 static struct inode *anon_inode_inode;
 
@@ -54,7 +54,7 @@ static struct file_system_type anon_inode_fs_type = {
 	.init_fs_context = anon_inodefs_init_fs_context,
 	.kill_sb	= kill_anon_super,
 };
-
+/* 创建anon inode */
 static struct inode *anon_inode_make_secure_inode(
 	const char *name,
 	const struct inode *context_inode)
@@ -62,7 +62,7 @@ static struct inode *anon_inode_make_secure_inode(
 	struct inode *inode;
 	const struct qstr qname = QSTR_INIT(name, strlen(name));
 	int error;
-
+	/* 分配一个新的anon inode */
 	inode = alloc_anon_inode(anon_inode_mnt->mnt_sb);
 	if (IS_ERR(inode))
 		return inode;
@@ -74,7 +74,9 @@ static struct inode *anon_inode_make_secure_inode(
 	}
 	return inode;
 }
-
+/* 获取一个匿名inode的file
+这里name, fops,priv都是caller制定的
+看来没有什么预制的条件, 就是获取一个, 可能是系统的匿名inode都存在一个什么地方吧 */
 static struct file *__anon_inode_getfile(const char *name,
 					 const struct file_operations *fops,
 					 void *priv, int flags,
@@ -87,7 +89,8 @@ static struct file *__anon_inode_getfile(const char *name,
 	if (fops->owner && !try_module_get(fops->owner))
 		return ERR_PTR(-ENOENT);
 
-	if (secure) {
+	if (secure) {/* userfaultfd是secure的 */
+		/* 创建inode */
 		inode =	anon_inode_make_secure_inode(name, context_inode);
 		if (IS_ERR(inode)) {
 			file = ERR_CAST(inode);
@@ -105,7 +108,9 @@ static struct file *__anon_inode_getfile(const char *name,
 		 */
 		ihold(inode);
 	}
+	//刚刚是获取了inode
 
+	// 这里分配对应的伪文件
 	file = alloc_file_pseudo(inode, anon_inode_mnt, name,
 				 flags & (O_ACCMODE | O_NONBLOCK), fops);
 	if (IS_ERR(file))
@@ -125,6 +130,7 @@ err:
 }
 
 /**
+创建一个伪文件
  * anon_inode_getfile - creates a new file instance by hooking it up to an
  *                      anonymous inode, and a dentry that describe the "class"
  *                      of the file
@@ -176,7 +182,7 @@ struct file *anon_inode_getfile_secure(const char *name,
 	return __anon_inode_getfile(name, fops, priv, flags,
 				    context_inode, true);
 }
-
+/* 给新创建的bpf map，userfaultfd分配一个fd */
 static int __anon_inode_getfd(const char *name,
 			      const struct file_operations *fops,
 			      void *priv, int flags,
@@ -185,12 +191,12 @@ static int __anon_inode_getfd(const char *name,
 {
 	int error, fd;
 	struct file *file;
-
+// 分配一个fd
 	error = get_unused_fd_flags(flags);
 	if (error < 0)
 		return error;
 	fd = error;
-
+/* 创建anon file */
 	file = __anon_inode_getfile(name, fops, priv, flags, context_inode,
 				    secure);
 	if (IS_ERR(file)) {
@@ -207,6 +213,7 @@ err_put_unused_fd:
 }
 
 /**
+给新创建的map或者prog分配一个fd
  * anon_inode_getfd - creates a new file instance by hooking it up to
  *                    an anonymous inode and a dentry that describe
  *                    the "class" of the file
@@ -231,6 +238,7 @@ int anon_inode_getfd(const char *name, const struct file_operations *fops,
 EXPORT_SYMBOL_GPL(anon_inode_getfd);
 
 /**
+创建anon inode
  * anon_inode_getfd_secure - Like anon_inode_getfd(), but creates a new
  * !S_PRIVATE anon inode rather than reuse the singleton anon inode, and calls
  * the inode_init_security_anon() LSM hook. This allows the inode to have its

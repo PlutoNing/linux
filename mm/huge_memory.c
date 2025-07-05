@@ -1933,6 +1933,7 @@ unlock:
 }
 
 /*
+对一些特殊类型的页表加锁?
  * Returns page table lock pointer if a given pmd maps a thp, NULL otherwise.
  *
  * Note that if it returns page table lock pointer, this routine returns without
@@ -2529,6 +2530,7 @@ static void __split_huge_page(struct page *page, struct list_head *list,
 			else if (folio_test_clear_dirty(tail))
 				folio_account_cleaned(tail,
 					inode_to_wb(folio->mapping->host));
+			/* 为什么巨页也调用 */
 			__filemap_remove_folio(tail, NULL);
 			folio_put(tail);
 		} else if (!PageAnon(page)) {
@@ -2623,6 +2625,8 @@ bool can_split_folio(struct folio *folio, int *pextra_pins)
  * Returns 0 if the hugepage is split successfully.
  * Returns -EBUSY if the page is pinned or if anon_vma disappeared from under
  * us.
+ 返回0 成功
+ 其他值, 失败
  */
 int split_huge_page_to_list(struct page *page, struct list_head *list)
 {
@@ -3024,7 +3028,8 @@ static int split_huge_pages_pid(int pid, unsigned long vaddr_start,
 			continue;
 		}
 
-		/* FOLL_DUMP to ignore special (like zero) pages */
+		/* FOLL_DUMP to ignore special (like zero) pages
+		20250702233205 */
 		page = follow_page(vma, addr, FOLL_GET | FOLL_DUMP);
 
 		if (IS_ERR_OR_NULL(page))

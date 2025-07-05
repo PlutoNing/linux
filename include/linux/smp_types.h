@@ -14,6 +14,7 @@ enum {
 
 	IRQ_WORK_CLAIMED	= (IRQ_WORK_PENDING | IRQ_WORK_BUSY),
 
+	/* 这四个bit是四个csd_type */
 	CSD_TYPE_ASYNC		= 0x00,
 	CSD_TYPE_SYNC		= 0x10,
 	CSD_TYPE_IRQ_WORK	= 0x20,
@@ -56,6 +57,7 @@ enum {
  */
 
 struct __call_single_node {
+	/* 可以用来加入执行队列 */
 	struct llist_node	llist;
 	union {
 		unsigned int	u_flags;

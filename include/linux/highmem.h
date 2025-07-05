@@ -199,6 +199,7 @@ static inline void invalidate_kernel_vmap_range(void *vaddr, int size)
 
 /* when CONFIG_HIGHMEM is not set these will be plain clear/copy_page */
 #ifndef clear_user_highpage
+/* zero， 清空这个用户的页面 */
 static inline void clear_user_highpage(struct page *page, unsigned long vaddr)
 {
 	void *addr = kmap_local_page(page);
@@ -258,6 +259,7 @@ static inline void tag_clear_highpage(struct page *page)
 #endif
 
 /*
+这些地址都是页内偏移
  * If we pass in a base or tail page, we can zero up to PAGE_SIZE.
  * If we pass in a head page, we can zero up to the size of the compound page.
  */
@@ -268,7 +270,7 @@ void zero_user_segments(struct page *page, unsigned start1, unsigned end1,
 static inline void zero_user_segments(struct page *page,
 		unsigned start1, unsigned end1,
 		unsigned start2, unsigned end2)
-{
+{/* 把页面的一部分清零 */
 	void *kaddr = kmap_local_page(page);
 	unsigned int i;
 
@@ -514,6 +516,7 @@ static inline size_t memcpy_from_file_folio(char *to, struct folio *folio,
 }
 
 /**
+清零folio的一些范围
  * folio_zero_segments() - Zero two byte ranges in a folio.
  * @folio: The folio to write to.
  * @start1: The first byte to zero.
@@ -527,7 +530,7 @@ static inline void folio_zero_segments(struct folio *folio,
 	zero_user_segments(&folio->page, start1, xend1, start2, xend2);
 }
 
-/**
+/**把folio的一部分内容置0
  * folio_zero_segment() - Zero a byte range in a folio.
  * @folio: The folio to write to.
  * @start: The first byte to zero.

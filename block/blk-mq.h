@@ -83,6 +83,7 @@ static inline struct blk_mq_hw_ctx *blk_mq_map_queue_type(struct request_queue *
 	return xa_load(&q->hctx_table, q->tag_set->map[type].mq_map[cpu]);
 }
 
+/*  */
 static inline enum hctx_type blk_mq_get_hctx_type(blk_opf_t opf)
 {
 	enum hctx_type type = HCTX_TYPE_DEFAULT;
@@ -97,7 +98,7 @@ static inline enum hctx_type blk_mq_get_hctx_type(blk_opf_t opf)
 	return type;
 }
 
-/*
+/*获取(cmd_flags,type)对应的硬件队列
  * blk_mq_map_queue() - map (cmd_flags,type) to hardware queue
  * @q: request queue
  * @opf: operation type (REQ_OP_*) and flags (e.g. REQ_POLLED).
@@ -126,7 +127,7 @@ void blk_mq_flush_plug_list(struct blk_plug *plug, bool from_schedule);
 void blk_mq_cancel_work_sync(struct request_queue *q);
 
 void blk_mq_release(struct request_queue *q);
-
+/* 获取q的pcp的ctx */
 static inline struct blk_mq_ctx *__blk_mq_get_ctx(struct request_queue *q,
 					   unsigned int cpu)
 {
@@ -344,6 +345,7 @@ static inline void blk_mq_clear_mq_map(struct blk_mq_queue_map *qmap)
 }
 
 /*
+合并bio前获取plug
  * blk_mq_plug() - Get caller context plug
  * @bio : the bio being submitted by the caller context
  *

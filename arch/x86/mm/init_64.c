@@ -321,7 +321,7 @@ void set_pte_vaddr_pud(pud_t *pud_page, unsigned long vaddr, pte_t new_pte)
 
 	__set_pte_vaddr(pud, vaddr, new_pte);
 }
-
+/* 设置fixmap区域映射的页表. 进行映射 */
 void set_pte_vaddr(unsigned long vaddr, pte_t pteval)
 {
 	pgd_t *pgd;
@@ -410,7 +410,7 @@ void __init init_extra_mapping_uc(unsigned long phys, unsigned long size)
 	__init_extra_mapping(phys, size, _PAGE_CACHE_MODE_UC);
 }
 
-/*
+/* 好像是初始化[vaddr,_text ] 与[brk, 512MB]的pmd
  * The head.S code sets up the kernel high mapping:
  *
  *   from __START_KERNEL_map to __START_KERNEL_map + size (== _end-_text)
@@ -424,11 +424,11 @@ void __init init_extra_mapping_uc(unsigned long phys, unsigned long size)
  * well, as they are located before _text:
  */
 void __init cleanup_highmap(void)
-{
+{ /* vaddr,vaddr_end描述512MB的范围 */
 	unsigned long vaddr = __START_KERNEL_map;
 	unsigned long vaddr_end = __START_KERNEL_map + KERNEL_IMAGE_SIZE;
-	unsigned long end = roundup((unsigned long)_brk_end, PMD_SIZE) - 1;
-	pmd_t *pmd = level2_kernel_pgt;
+	unsigned long end = roundup((unsigned long)_brk_end, PMD_SIZE) - 1; /* end地址大约在__START_KERNEL_map起始偏移96MB处 */
+	pmd_t *pmd = level2_kernel_pgt; /* 大约位于__START_KERNEL_map起始偏移68MB处 */
 
 	/*
 	 * Native path, max_pfn_mapped is not set yet.
@@ -440,7 +440,7 @@ void __init cleanup_highmap(void)
 
 	for (; vaddr + PMD_SIZE - 1 < vaddr_end; pmd++, vaddr += PMD_SIZE) {
 		if (pmd_none(*pmd))
-			continue;
+			continue; /* _text位于__START_KERNEL_map起始16MB处, end是97MB处 */
 		if (vaddr < (unsigned long) _text || vaddr > end)
 			set_pmd(pmd, __pmd(0));
 	}
@@ -448,7 +448,7 @@ void __init cleanup_highmap(void)
 
 /*
  * Create PTE level page table mapping for physical addresses.
- * It returns the last physical address mapped.
+ * It returns the last physical address mapped. 用这个pte page作为pte页表，装载paddr范围的页面？
  */
 static unsigned long __meminit
 phys_pte_init(pte_t *pte_page, unsigned long paddr, unsigned long paddr_end,
@@ -464,7 +464,7 @@ phys_pte_init(pte_t *pte_page, unsigned long paddr, unsigned long paddr_end,
 
 	for (; i < PTRS_PER_PTE; i++, paddr = paddr_next, pte++) {
 		paddr_next = (paddr & PAGE_MASK) + PAGE_SIZE;
-		if (paddr >= paddr_end) {
+		if (paddr >= paddr_end) {/* 如果超出了本次函数参数指定的需要映射的物理地址范围 */
 			if (!after_bootmem &&
 			    !e820__mapped_any(paddr & PAGE_MASK, paddr_next,
 					     E820_TYPE_RAM) &&
@@ -480,7 +480,7 @@ phys_pte_init(pte_t *pte_page, unsigned long paddr, unsigned long paddr_end,
 		 * pagetable pages as RO. So assume someone who pre-setup
 		 * these mappings are more intelligent.
 		 */
-		if (!pte_none(*pte)) {
+		if (!pte_none(*pte)) {/* 如果这个pte已经有页面了 */
 			if (!after_bootmem)
 				pages++;
 			continue;
@@ -489,8 +489,8 @@ phys_pte_init(pte_t *pte_page, unsigned long paddr, unsigned long paddr_end,
 		if (0)
 			pr_info("   pte=%p addr=%lx pte=%016lx\n", pte, paddr,
 				pfn_pte(paddr >> PAGE_SHIFT, PAGE_KERNEL).pte);
-		pages++;
-		set_pte_init(pte, pfn_pte(paddr >> PAGE_SHIFT, prot), init);
+		pages++;/* pages表示本次函数调用成功映射的物理页面数量 */ /* 下面这句，其实就是包裹着赋值pte，被各种宏，和内联 */
+		set_pte_init(pte, pfn_pte(paddr >> PAGE_SHIFT, prot), init);/* pte指向这个paddr的页面 */
 		paddr_last = (paddr & PAGE_MASK) + PAGE_SIZE;
 	}
 
@@ -499,7 +499,7 @@ phys_pte_init(pte_t *pte_page, unsigned long paddr, unsigned long paddr_end,
 	return paddr_last;
 }
 
-/*
+/* 填充满这个pmd页面， 每个条目都指向一个塞满pte的pte 页面
  * Create PMD level page table mapping for physical addresses. The virtual
  * and physical address have to be aligned at this level.
  * It returns the last physical address mapped.
@@ -514,7 +514,7 @@ phys_pmd_init(pmd_t *pmd_page, unsigned long paddr, unsigned long paddr_end,
 	int i = pmd_index(paddr);
 
 	for (; i < PTRS_PER_PMD; i++, paddr = paddr_next) {
-		pmd_t *pmd = pmd_page + pmd_index(paddr);
+		pmd_t *pmd = pmd_page + pmd_index(paddr); /* pmd指向一个pte条目页面 */
 		pte_t *pte;
 		pgprot_t new_prot = prot;
 
@@ -571,11 +571,11 @@ phys_pmd_init(pmd_t *pmd_page, unsigned long paddr, unsigned long paddr_end,
 			continue;
 		}
 
-		pte = alloc_low_page();
+		pte = alloc_low_page();/* 分配一个页面 */  /* 现在pte指向的页面排列满了pte ent，(pte[3].pte >> 12)& 0xfffffffff */
 		paddr_last = phys_pte_init(pte, paddr, paddr_end, new_prot, init);
 
 		spin_lock(&init_mm.page_table_lock);
-		pmd_populate_kernel_init(&init_mm, pmd, pte, init);
+		pmd_populate_kernel_init(&init_mm, pmd, pte, init);/* 让pmd指向这个pte页面 */
 		spin_unlock(&init_mm.page_table_lock);
 	}
 	update_page_count(PG_LEVEL_2M, pages);
@@ -583,10 +583,10 @@ phys_pmd_init(pmd_t *pmd_page, unsigned long paddr, unsigned long paddr_end,
 }
 
 /*
- * Create PUD level page table mapping for physical addresses. The virtual
- * and physical address do not have to be aligned at this level. KASLR can
- * randomize virtual addresses up to this level.
- * It returns the last physical address mapped.
+ * 为物理地址创建PUD级别的页表映射。虚拟地址和物理地址在此级别不需要对齐。
+ * KASLR可以将虚拟地址
+ 随机化到此级别。
+ * 它返回最后一个被映射的物理地址。
  */
 static unsigned long __meminit
 phys_pud_init(pud_t *pud_page, unsigned long paddr, unsigned long paddr_end,
@@ -606,7 +606,7 @@ phys_pud_init(pud_t *pud_page, unsigned long paddr, unsigned long paddr_end,
 		pud = pud_page + pud_index(vaddr);
 		paddr_next = (paddr & PUD_MASK) + PUD_SIZE;
 
-		if (paddr >= paddr_end) {
+		if (paddr >= paddr_end) { /* r14 r15 */
 			if (!after_bootmem &&
 			    !e820__mapped_any(paddr & PUD_MASK, paddr_next,
 					     E820_TYPE_RAM) &&
@@ -616,13 +616,13 @@ phys_pud_init(pud_t *pud_page, unsigned long paddr, unsigned long paddr_end,
 			continue;
 		}
 
-		if (!pud_none(*pud)) {
+		if (!pud_none(*pud)) {/* 如果已经准备好了页表页面 */
 			if (!pud_large(*pud)) {
 				pmd = pmd_offset(pud, 0);
 				paddr_last = phys_pmd_init(pmd, paddr,
 							   paddr_end,
 							   page_size_mask,
-							   prot, init);
+							   prot, init); /* 填满这个pmd页面， */
 				continue;
 			}
 			/*
@@ -721,7 +721,7 @@ phys_p4d_init(p4d_t *p4d_page, unsigned long paddr, unsigned long paddr_end,
 
 	return paddr_last;
 }
-
+/* 建立paddr范围的页面映射 */
 static unsigned long __meminit
 __kernel_physical_mapping_init(unsigned long paddr_start,
 			       unsigned long paddr_end,
@@ -730,19 +730,19 @@ __kernel_physical_mapping_init(unsigned long paddr_start,
 {
 	bool pgd_changed = false;
 	unsigned long vaddr, vaddr_start, vaddr_end, vaddr_next, paddr_last;
-
+	/* 先把物理地址转为内核虚拟地址 */
 	paddr_last = paddr_end;
 	vaddr = (unsigned long)__va(paddr_start);
 	vaddr_end = (unsigned long)__va(paddr_end);
 	vaddr_start = vaddr;
 
 	for (; vaddr < vaddr_end; vaddr = vaddr_next) {
-		pgd_t *pgd = pgd_offset_k(vaddr);
+		pgd_t *pgd = pgd_offset_k(vaddr); /* pgd是init_top_pgt的一个条目 */
 		p4d_t *p4d;
 
 		vaddr_next = (vaddr & PGDIR_MASK) + PGDIR_SIZE;
 
-		if (pgd_val(*pgd)) {
+		if (pgd_val(*pgd)) { /* 如果pgd不为空, 指向页面, 就分配条目 */
 			p4d = (p4d_t *)pgd_page_vaddr(*pgd);
 			paddr_last = phys_p4d_init(p4d, __pa(vaddr),
 						   __pa(vaddr_end),
@@ -750,8 +750,8 @@ __kernel_physical_mapping_init(unsigned long paddr_start,
 						   prot, init);
 			continue;
 		}
-
-		p4d = alloc_low_page();
+		/* pgd条目是空的,需要为他填充个p4d页面 */
+		p4d = alloc_low_page();/* 从预分配的页面里面获取 */
 		paddr_last = phys_p4d_init(p4d, __pa(vaddr), __pa(vaddr_end),
 					   page_size_mask, prot, init);
 
@@ -773,11 +773,11 @@ __kernel_physical_mapping_init(unsigned long paddr_start,
 }
 
 
-/*
- * Create page table mapping for the physical memory for specific physical
- * addresses. Note that it can only be used to populate non-present entries.
- * The virtual and physical addresses have to be aligned on PMD level
- * down. It returns the last physical address mapped.
+/*开机的时候建立映射
+ * 为特定的物理地址创建物理内存的页表映射。注意，
+ 它只能用于填充不存在的条目。
+ * 虚拟地址和物理地址必须在PMD级别及以下对齐。
+ * 它返回最后一个被映射的物理地址。
  */
 unsigned long __meminit
 kernel_physical_mapping_init(unsigned long paddr_start,
@@ -811,7 +811,7 @@ void __init initmem_init(void)
 }
 #endif
 
-// 启动的时候setup_arch调用
+// x86_init.paging.pagetable_init回调函数, 启动的时候setup_arch调用
 void __init paging_init(void)
 {
 	sparse_init(); // 初始化sparse vmemmap内存模型
@@ -1269,19 +1269,19 @@ void __ref arch_remove_memory(u64 start, u64 size, struct vmem_altmap *altmap)
 
 static struct kcore_list kcore_vsyscall;
 
-//在把bootmem放入buudy之后调用
+//在把bootmem放入buudy之后调用 处理页表页面, memsection map页面page结构体的ref
 static void __init register_page_bootmem_info(void)
 {
 #if defined(CONFIG_NUMA) || defined(CONFIG_HUGETLB_PAGE_OPTIMIZE_VMEMMAP)
 	int i;
-
+	/* 处理每一个node */
 	for_each_online_node(i)
 		register_page_bootmem_info_node(NODE_DATA(i));
 #endif
 }
 
 /*
-预分配页表页
+预分配vmalloc页表页, 预分配vmalloc地址空间的地址的pgd,p4d,pud
  * Pre-allocates page-table pages for the vmalloc area in the kernel page-table.
  * Only the level which needs to be synchronized between all page-tables is
  * allocated because the synchronization can be expensive.
@@ -1292,7 +1292,7 @@ static void __init preallocate_vmalloc_pages(void)
 {
 	unsigned long addr;
 	const char *lvl;
-
+	/* 开始地址为0xffffc90000000000 */
 	for (addr = VMALLOC_START; addr <= VMEMORY_END; addr = ALIGN(addr + 1, PGDIR_SIZE)) {//一个pgd
 		// 一个pgd的处理
 		pgd_t *pgd = pgd_offset_k(addr);
@@ -1506,7 +1506,7 @@ unsigned long memory_block_size_bytes(void)
 static long __meminitdata addr_start, addr_end;
 static void __meminitdata *p_start, *p_end;
 static int __meminitdata node_start;
-
+/*  */
 void __meminit vmemmap_set_pmd(pmd_t *pmd, void *p, int node,
 			       unsigned long addr, unsigned long next)
 {
@@ -1549,7 +1549,7 @@ int __meminit vmemmap_check_pmd(pmd_t *pmd, int node,
 
 /*
 处理nid的一个memsection
-start和end是nid上面某一个memsection的第一个和最后一个页面对应的page结构体地址
+start,end之间是这个memsection的全部page的page结构体?
 */
 int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 		struct vmem_altmap *altmap)
@@ -1576,10 +1576,10 @@ int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node,
 
 #ifdef CONFIG_HAVE_BOOTMEM_INFO_NODE
 /*
-page是section_nr的第一个pfn?对应的的memmap, 在memsection结构体的section memmap提取出来的
-nr_pages是ms的page数量
-加入页表映射?还是说在干嘛?
-*/
+处理section nr的nr_pages个页面, start_page是ms的什么map
+nr_pages是ms的page数量, start_page是此ms的物理页对应的第一个page结构体
+处理此ms的每一个page的顶层pmd.pud,p4d,pgd页表页面的ref和type什么的
+ref不会重复add add很多次吗?*/
 void register_page_bootmem_memmap(unsigned long section_nr,
 				  struct page *start_page, unsigned long nr_pages)
 {
@@ -1592,33 +1592,33 @@ void register_page_bootmem_memmap(unsigned long section_nr,
 	pmd_t *pmd;
 	unsigned int nr_pmd_pages;
 	struct page *page;
-
+	/* 处理此ms的每一个page的顶层pmd.pud,p4d,pgd页表页面的ref和type什么的 */
 	for (; addr < end; addr = next) {
 		pte_t *pte = NULL;
-
+		/* pgd = pgd_offset_pgd((&init_mm)->pgd, ((addr))); */
 		pgd = pgd_offset_k(addr);
 		if (pgd_none(*pgd)) {
-			next = (addr + PAGE_SIZE) & PAGE_MASK; // 步进到4KB之后
+			next = (addr + PAGE_SIZE) & PAGE_MASK; // 步进处理下一个页面
 			continue;
 		}
 		get_page_bootmem(section_nr, pgd_page(*pgd), MIX_SECTION_INFO);
 
 		p4d = p4d_offset(pgd, addr);
 		if (p4d_none(*p4d)) {
-			next = (addr + PAGE_SIZE) & PAGE_MASK;
+			next = (addr + PAGE_SIZE) & PAGE_MASK;// 步进处理下一个页面
 			continue;
 		}
 		get_page_bootmem(section_nr, p4d_page(*p4d), MIX_SECTION_INFO);
 
 		pud = pud_offset(p4d, addr);
 		if (pud_none(*pud)) {
-			next = (addr + PAGE_SIZE) & PAGE_MASK;
+			next = (addr + PAGE_SIZE) & PAGE_MASK; // 步进处理下一个页面
 			continue;
 		}
 		get_page_bootmem(section_nr, pud_page(*pud), MIX_SECTION_INFO);
 
 		if (!boot_cpu_has(X86_FEATURE_PSE)) {
-			next = (addr + PAGE_SIZE) & PAGE_MASK;
+			next = (addr + PAGE_SIZE) & PAGE_MASK; // 步进处理下一个页面
 			pmd = pmd_offset(pud, addr);
 			if (pmd_none(*pmd))
 				continue;
@@ -1630,23 +1630,23 @@ void register_page_bootmem_memmap(unsigned long section_nr,
 				continue;
 			get_page_bootmem(section_nr, pte_page(*pte),
 					 SECTION_INFO);
-		} else {
-			next = pmd_addr_end(addr, end);
-
+		} else {/* 一般都有PSE */
+			next = pmd_addr_end(addr, end); /* 这里next是同pmd的最后一个页面, 如果都很规则的话, 就是2MB之后 */
+			/* 这里next的步进方式不太一样是因为马上会while循环够nr_pmd_pages次数? */
 			pmd = pmd_offset(pud, addr);
 			if (pmd_none(*pmd))
 				continue;
-
+			/* pmd */
 			nr_pmd_pages = 1 << get_order(PMD_SIZE);
 			page = pmd_page(*pmd);
-			while (nr_pmd_pages--)
+			while (nr_pmd_pages--)/* 这里其实知道,即使现在这个page结构体不对应具体的pte页表页, 但是早晚会, 或者是说只要用到这个页表页就会用到这个page结构体? */
 				get_page_bootmem(section_nr, page++,
 						 SECTION_INFO);
 		}
 	}
 }
 #endif
-
+/* 建立memsection和page后打印 */
 void __meminit vmemmap_populate_print_last(void)
 {
 	if (p_start) {

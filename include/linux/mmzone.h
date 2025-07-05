@@ -101,7 +101,7 @@ static inline bool migratetype_is_mergeable(int mt)
 		for (type = 0; type < MIGRATE_TYPES; type++)
 
 extern int page_group_by_mobility_disabled;
-
+/* 3个bit 1 */
 #define MIGRATETYPE_MASK ((1UL << PB_migratetype_bits) - 1)
 
 #define get_pageblock_migratetype(page)					\
@@ -135,6 +135,8 @@ enum numa_stat_item {
 
 enum zone_stat_item {
 	/* First 128 byte cacheline (assuming 64 bit words) */
+	/* 就是空闲页, buddy取用或者归还了变多变少,
+	isolate mt的话, 会临时变少什么的 */
 	NR_FREE_PAGES,
 	NR_ZONE_LRU_BASE, /* Used only for compaction and reclaim retry */
 	NR_ZONE_INACTIVE_ANON = NR_ZONE_LRU_BASE,
@@ -187,13 +189,14 @@ enum node_stat_item {
 	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
 			   only modified from process context */
 
-	NR_FILE_PAGES, /* 被交换的页也算在里面 */
-	NR_FILE_DIRTY, /*有脏文件页了,
-	todddo, 2024年12月7日21:25:18 为什么可以认为是reclaimable的 */
+	NR_FILE_PAGES, /* shmem算文件页, 算shmem */
+	NR_FILE_DIRTY, /* */
 	NR_WRITEBACK,
 	NR_WRITEBACK_TEMP,	/* Writeback using temporary buffers */
-	NR_SHMEM,		/* shmem pages (included tmpfs/GEM pages)
-	现在对这个的理解好像就是被map的被交换的文件页?
+	NR_SHMEM,		/*
+	也算文件页
+	shmem pages (included tmpfs/GEM pages)
+	mapping里的, swapbacked的 算这个
 	*/
 	NR_SHMEM_THPS,
 	NR_SHMEM_PMDMAPPED,
@@ -219,7 +222,8 @@ enum node_stat_item {
 	NR_PAGETABLE,		/* 表示用于页表的page数量,used for pagetables */
 	NR_SECONDARY_PAGETABLE, /* secondary pagetables, e.g. KVM pagetables */
 #ifdef CONFIG_SWAP
-	NR_SWAPCACHE, //表示被换入到内存的交换页的mapping大小?
+	/* 位于swap mapping的页面  */
+	NR_SWAPCACHE,
 #endif
 #ifdef CONFIG_NUMA_BALANCING
 	PGPROMOTE_SUCCESS,	/* promote successfully */
@@ -503,7 +507,8 @@ struct lru_gen_mm_state {
 	/* set to max_seq after each iteration */
 	unsigned long seq;
 	/* where the current iteration continues after
-	指向要遍历的下一个元素 */
+	指向要遍历的下一个元素
+	(是在memcg上面遍历mm?) */
 	struct list_head *head;
 	/* where the last iteration ended before */
 	struct list_head *tail;
@@ -722,7 +727,7 @@ enum zone_watermarks {
 #endif
 #define NR_LOWORDER_PCP_LISTS (MIGRATE_PCPTYPES * (PAGE_ALLOC_COSTLY_ORDER + 1))
 #define NR_PCP_LISTS (NR_LOWORDER_PCP_LISTS + NR_PCP_THP)
-
+/* NR_PCP_LISTS 就是((MIGRATE_PCPTYPES * (3 + 1)) + 1) */
 #define min_wmark_pages(z) (z->_watermark[WMARK_MIN] + z->watermark_boost)
 #define low_wmark_pages(z) (z->_watermark[WMARK_LOW] + z->watermark_boost)
 #define high_wmark_pages(z) (z->_watermark[WMARK_HIGH] + z->watermark_boost)
@@ -740,10 +745,10 @@ struct per_cpu_pages {
 	short expire;		/* When 0, remote pagesets are drained */
 #endif
 
-	/* Lists of pages, one per migrate type stored on the pcp-lists */
+	/* Lists of pages, one per migrate type stored on the pcp-lists, 大小是((MIGRATE_PCPTYPES * (3 + 1)) + 1) */
 	struct list_head lists[NR_PCP_LISTS];
 } ____cacheline_aligned_in_smp;
-
+/*  */
 struct per_cpu_zonestat {
 #ifdef CONFIG_SMP
 	s8 vm_stat_diff[NR_VM_ZONE_STAT_ITEMS];
@@ -887,7 +892,7 @@ struct zone {
 	int node;
 #endif
 	struct pglist_data	*zone_pgdat;
-	/*  */
+	/* zone的pcp pageset */
 	struct per_cpu_pages	__percpu *per_cpu_pageset;
 	struct per_cpu_zonestat	__percpu *per_cpu_zonestats;
 	/*
@@ -1336,7 +1341,7 @@ struct memory_failure_stats {
  *
  * Memory statistics and page replacement data structures are maintained on a
  * per-zone basis.
- */
+ node结构体的物理内存地址, todo */
 typedef struct pglist_data {
 	/*
 	 * node_zones contains just the zones for THIS node. Not all of the
@@ -1830,7 +1835,7 @@ static inline bool movable_only_nodes(nodemask_t *nodes)
 #define PA_SECTION_SHIFT	(SECTION_SIZE_BITS)
 // 27 - 12 = 15, 表示一个memsection大小是2^15次方,32k个页面
 #define PFN_SECTION_SHIFT	(SECTION_SIZE_BITS - PAGE_SHIFT)
-
+/*  */
 #define NR_MEM_SECTIONS		(1UL << SECTIONS_SHIFT)
 //  大小为2的15次方 = 32768 = 32k个页面
 #define PAGES_PER_SECTION       (1UL << PFN_SECTION_SHIFT)
@@ -1846,7 +1851,7 @@ static inline bool movable_only_nodes(nodemask_t *nodes)
 #if (MAX_ORDER + PAGE_SHIFT) > SECTION_SIZE_BITS
 #error Allocator MAX_ORDER exceeds SECTION_SIZE
 #endif
-// 把pfn转换为section_nr, 每个section有2^15个页面,
+// 右移15，把pfn转换为section_nr, 每个section有2^15个页面,
 static inline unsigned long pfn_to_section_nr(unsigned long pfn)
 {
 	return pfn >> PFN_SECTION_SHIFT;
@@ -1882,7 +1887,7 @@ struct mem_section_usage {
 // 这个位图描述, 在当前ms有多少页面?
 	DECLARE_BITMAP(subsection_map, SUBSECTIONS_PER_SECTION);
 #endif
-	/* See declaration of similar field in struct zone */
+	/* See declaration of similar field in struct zone, 零长数组 */
 	unsigned long pageblock_flags[0];
 };
 
@@ -1931,13 +1936,13 @@ usage是node的memsection usage结构体
 };
 
 #ifdef CONFIG_SPARSEMEM_EXTREME
-// 一个page上面可以有多个mem_section结构体
+// 一个page上面可以有多个mem_section结构体, 128
 #define SECTIONS_PER_ROOT       (PAGE_SIZE / sizeof (struct mem_section))
 #else
 #define SECTIONS_PER_ROOT	1
 #endif
 // 这里是计算这个编号为sec的ms结构体,应该位于第几个页面.
-//全部的ms结构体是一个数组,分布在多个页面上面,每个页面有PAGE_SIZE/sizeof(struct mem_section)个ms结构体
+//全部的ms结构体是一个数组,分布在多个页面上面
 #define SECTION_NR_TO_ROOT(sec)	((sec) / SECTIONS_PER_ROOT)
 #define NR_SECTION_ROOTS	DIV_ROUND_UP(NR_MEM_SECTIONS, SECTIONS_PER_ROOT)
 #define SECTION_ROOT_MASK	(SECTIONS_PER_ROOT - 1)
@@ -2000,7 +2005,7 @@ enum {
 	SECTION_MAP_LAST_BIT,
 };
 
-// 这个section是否被标记为存在
+// section->section_mem_map & SECTION_MARKED_PRESENT这个section是否被标记为存在
 #define SECTION_MARKED_PRESENT		BIT(SECTION_MARKED_PRESENT_BIT)
 #define SECTION_HAS_MEM_MAP		BIT(SECTION_HAS_MEM_MAP_BIT)
 // 这个section是否在线
@@ -2083,7 +2088,7 @@ extern unsigned long __highest_present_section_nr;
 //
 /*
 (pfn & ~(PAGE_SECTION_MASK)) / PAGES_PER_SUBSECTION
- pfn在所在的memsection中的index / 每个subsection的页面数量(512)
+ pfn的memsection的idx / 512
  pfn的subsection idx
 */
 static inline int subsection_map_index(unsigned long pfn)
@@ -2106,14 +2111,14 @@ static inline int pfn_section_valid(struct mem_section *ms, unsigned long pfn)
 #endif
 
 #ifndef CONFIG_HAVE_ARCH_PFN_VALID
-/**
+/** 什么算是valid的pfn？
  * pfn_valid - check if there is a valid memory map entry for a PFN
  * @pfn: the page frame number to check
  *
- * Check if there is a valid memory map entry aka struct page for the @pfn.
- * Note, that availability of the memory map entry does not imply that
- * there is actual usable memory at that @pfn. The struct page may
- * represent a hole or an unusable page frame.
+ 检查@pfn是否有一个有效的内存映射条目，也就是struct page。
+ * 注意，有内存映射条目并不意味着@pfn处有实际可用的内存。
+ * struct page可能表示一个空洞
+ 或不可用的页帧。
  *
  * Return: 1 for PFNs that have memory map entries and 0 otherwise
  */
@@ -2122,10 +2127,10 @@ static inline int pfn_valid(unsigned long pfn)
 	struct mem_section *ms;
 
 	/*
-	 * Ensure the upper PAGE_SHIFT bits are clear in the
-	 * pfn. Else it might lead to false positives when
-	 * some of the upper bits are set, but the lower bits
-	 * match a valid pfn.
+* 确保pfn的高位PAGE_SHIFT位是清零的。
+	 * 否则，当高位某些位被设置，
+	 但低位与有效的pfn匹配时，
+	 * 可能会导致误判。
 	 */
 	if (PHYS_PFN(PFN_PHYS(pfn)) != pfn)
 		return 0;

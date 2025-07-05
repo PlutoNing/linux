@@ -5068,6 +5068,7 @@ int mas_empty_area(struct ma_state *mas, unsigned long min,
 EXPORT_SYMBOL_GPL(mas_empty_area);
 
 /*
+找到一段最高的满足size的地址
  * mas_empty_area_rev() - Get the highest address within the range that is
  * sufficient for the size requested.
  * @mas: The maple state
@@ -5976,6 +5977,10 @@ ptr_out_of_range:
 }
 
 /**
+首次调用​​
+从 mas->index ​​起始位置​​ 开始查找，返回 ​​第一个存在的条目​​（若存在），且确保条目值不超过 max。
+​​后续调用​​
+在上次查找结果的 ​​下一个位置​​ 继续查找，直到达到 max 或遍历完所有条目。
  * mas_find() - On the first call, find the entry at or after mas->index up to
  * %max.  Otherwise, find the entry after mas->index.
  * @mas: The maple state
@@ -6229,6 +6234,7 @@ void __init maple_tree_init(void)
  * @index: The index to load
  *
  * Return: the entry or %NULL
+ 可能返回空
  */
 void *mtree_load(struct maple_tree *mt, unsigned long index)
 {
@@ -6503,6 +6509,7 @@ void mtree_destroy(struct maple_tree *mt)
 EXPORT_SYMBOL(mtree_destroy);
 
 /**
+在index与max之间查找
  * mt_find() - Search from the start up until an entry is found.
  * @mt: The maple tree
  * @index: Pointer which contains the start location of the search
@@ -6517,6 +6524,7 @@ EXPORT_SYMBOL(mtree_destroy);
  * single index or a range if indices.
  *
  * Return: The entry at or after the @index or %NULL
+ 可能返回空
  */
 void *mt_find(struct maple_tree *mt, unsigned long *index, unsigned long max)
 {

@@ -40,7 +40,7 @@
 #include "internal.h"
 
 static int thaw_super_locked(struct super_block *sb, enum freeze_holder who);
-
+/* 系统全部的sb在这里 */
 static LIST_HEAD(super_blocks);
 static DEFINE_SPINLOCK(sb_lock);
 
@@ -175,6 +175,7 @@ static void super_wake(struct super_block *sb, unsigned int flag)
 }
 
 /*
+回收sb的inode的buffer什么的, 来回收内存, 作为slab的回收接口
  * One thing we have to be careful of with a per-sb shrinker is that we don't
  * drop the last active reference to the superblock from within the shrinker.
  * If that happens we could trigger unregistering the shrinker from within the
@@ -225,10 +226,13 @@ static unsigned long super_cache_scan(struct shrinker *shrink,
 	 * accounting uses this to fully empty the caches.
 	 */
 	sc->nr_to_scan = dentries + 1;
+	/* 回收dentry的缓存 */
 	freed = prune_dcache_sb(sb, sc);
 	sc->nr_to_scan = inodes + 1;
+	/* inode的缓存 */
 	freed += prune_icache_sb(sb, sc);
 
+	/* 文件系统私有的缓存 */
 	if (fs_objects) {
 		sc->nr_to_scan = fs_objects + 1;
 		freed += sb->s_op->free_cached_objects(sb, sc);
@@ -295,7 +299,9 @@ static void destroy_super_rcu(struct rcu_head *head)
 	schedule_work(&s->destroy_work);
 }
 
-/* Free a superblock that has never been seen by anyone */
+/* 
+如果sb创建失败了, 会调用这个
+Free a superblock that has never been seen by anyone */
 static void destroy_unused_super(struct super_block *s)
 {
 	if (!s)
@@ -313,6 +319,7 @@ static void destroy_unused_super(struct super_block *s)
 
 /**
  *	alloc_super	-	create new superblock
+ 创建新的sb
  *	@type:	filesystem type superblock should belong to
  *	@flags: the mount flags
  *	@user_ns: User namespace for the super_block
@@ -323,6 +330,7 @@ static void destroy_unused_super(struct super_block *s)
 static struct super_block *alloc_super(struct file_system_type *type, int flags,
 				       struct user_namespace *user_ns)
 {
+	// 分配内存
 	struct super_block *s = kzalloc(sizeof(struct super_block),  GFP_USER);
 	static const struct super_operations default_op;
 	int i;
@@ -384,6 +392,7 @@ static struct super_block *alloc_super(struct file_system_type *type, int flags,
 	s->s_time_max = TIME64_MAX;
 
 	s->s_shrink.seeks = DEFAULT_SEEKS;
+	/* 初始化回收inode相关的 */
 	s->s_shrink.scan_objects = super_cache_scan;
 	s->s_shrink.count_objects = super_cache_count;
 	s->s_shrink.batch = 1024;
@@ -433,7 +442,7 @@ void put_super(struct super_block *sb)
 	__put_super(sb);
 	spin_unlock(&sb_lock);
 }
-
+/* 唤醒super */
 static void kill_super_notify(struct super_block *sb)
 {
 	lockdep_assert_not_held(&sb->s_umount);
@@ -450,6 +459,7 @@ static void kill_super_notify(struct super_block *sb)
 	 * SB_DEAD.
 	 */
 	spin_lock(&sb_lock);
+	// 从fs_type的sb实例列表移除
 	hlist_del_init(&sb->s_instances);
 	spin_unlock(&sb_lock);
 
@@ -751,6 +761,7 @@ bool mount_capable(struct fs_context *fc)
 }
 
 /**
+从fc里面查找或创建一个sb
  * sget_fc - Find or create a superblock
  * @fc:	Filesystem context.
  * @test: Comparison callback
@@ -801,15 +812,16 @@ retry:
 	}
 	if (!s) {
 		spin_unlock(&sb_lock);
+		// 分配一个新sb
 		s = alloc_super(fc->fs_type, fc->sb_flags, user_ns);
 		if (!s)
 			return ERR_PTR(-ENOMEM);
 		goto retry;
 	}
-
+	// 初始化新sb
 	s->s_fs_info = fc->s_fs_info;
 	err = set(s, fc);
-	if (err) {
+	if (err) {// 出错了
 		s->s_fs_info = NULL;
 		spin_unlock(&sb_lock);
 		destroy_unused_super(s);
@@ -824,6 +836,7 @@ retry:
 	 * It's in a nascent state and users should wait on SB_BORN or
 	 * SB_DYING to be set.
 	 */
+	// 把新sb加入全局的sb链表
 	list_add_tail(&s->s_list, &super_blocks);
 	hlist_add_head(&s->s_instances, &s->s_type->fs_supers);
 	spin_unlock(&sb_lock);
@@ -849,6 +862,7 @@ share_extant_sb:
 EXPORT_SYMBOL(sget_fc);
 
 /**
+挂载新文件系统的时候寻找type对应的超级块？
  *	sget	-	find or create a superblock
  *	@type:	  filesystem type superblock should belong to
  *	@test:	  comparison callback
@@ -891,20 +905,21 @@ retry:
 			return old;
 		}
 	}
-	if (!s) {
+	if (!s) {/* 如果没有成功找到 */
 		spin_unlock(&sb_lock);
 		s = alloc_super(type, (flags & ~SB_SUBMOUNT), user_ns);
 		if (!s)
 			return ERR_PTR(-ENOMEM);
-		goto retry;
+		goto retry;/* 重试 */
 	}
-
+/* 设置找到的sb */
 	err = set(s, data);
 	if (err) {
 		spin_unlock(&sb_lock);
 		destroy_unused_super(s);
 		return ERR_PTR(err);
 	}
+	/* 初始化找到的sb */
 	s->s_type = type;
 	strscpy(s->s_id, type->name, sizeof(s->s_id));
 	list_add_tail(&s->s_list, &super_blocks);
@@ -1295,16 +1310,18 @@ int set_anon_super(struct super_block *s, void *data)
 	return get_anon_bdev(&s->s_dev);
 }
 EXPORT_SYMBOL(set_anon_super);
-
+/* 清理super */
 void kill_anon_super(struct super_block *sb)
 {
 	dev_t dev = sb->s_dev;
+	// 一些通用的清理操作
 	generic_shutdown_super(sb);
+	// 从fs_type移除, 唤醒sb
 	kill_super_notify(sb);
 	free_anon_bdev(dev);
 }
 EXPORT_SYMBOL(kill_anon_super);
-
+/* 清理super */
 void kill_litter_super(struct super_block *sb)
 {
 	if (sb->s_root)
@@ -1328,7 +1345,7 @@ static int test_single_super(struct super_block *s, struct fs_context *fc)
 {
 	return 1;
 }
-
+/*  */
 static int vfs_get_super(struct fs_context *fc,
 		int (*test)(struct super_block *, struct fs_context *),
 		int (*fill_super)(struct super_block *sb, struct fs_context *fc))
@@ -1712,18 +1729,19 @@ static int compare_single(struct super_block *s, void *p)
 {
 	return 1;
 }
-
+/* 通用的挂载函数， fill-super是调用者提供的 */
 struct dentry *mount_single(struct file_system_type *fs_type,
 	int flags, void *data,
 	int (*fill_super)(struct super_block *, void *, int))
 {
 	struct super_block *s;
 	int error;
-
+/* 查找或者创建要使用的sb */
 	s = sget(fs_type, compare_single, set_anon_super, flags, NULL);
 	if (IS_ERR(s))
 		return ERR_CAST(s);
 	if (!s->s_root) {
+		/*  */
 		error = fill_super(s, data, flags & SB_SILENT ? 1 : 0);
 		if (!error)
 			s->s_flags |= SB_ACTIVE;
@@ -1739,12 +1757,17 @@ struct dentry *mount_single(struct file_system_type *fs_type,
 EXPORT_SYMBOL(mount_single);
 
 /**
+挂载过程中,完善一下为此次挂载创建的fc
+好像是用fs的实现的特定的回调函数来设置一个fc的东西
  * vfs_get_tree - Get the mountable root
+ 翻译是获得一个可挂载的root?
  * @fc: The superblock configuration context.
  *
  * The filesystem is invoked to get or create a superblock which can then later
  * be used for mounting.  The filesystem places a pointer to the root to be
  * used for mounting in @fc->root.
+ 翻译: 文件系统被调用来获取或创建一个超级块, 然后可以用于挂载. 文件系统将指针放在root中, 用于挂载
+ * @fc->root.
  */
 int vfs_get_tree(struct fs_context *fc)
 {
@@ -1756,6 +1779,8 @@ int vfs_get_tree(struct fs_context *fc)
 
 	/* Get the mountable root in fc->root, with a ref on the root and a ref
 	 * on the superblock.
+	 调用各自fs实现的特定的回调
+	 这个函数会对fc产生什么变化呢
 	 */
 	error = fc->ops->get_tree(fc);
 	if (error < 0)

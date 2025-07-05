@@ -108,8 +108,8 @@ struct page {
 				pgoff_t index;		/* Our offset within mapping.
 				如果是空闲页面,或者是准备释放的页面, 这里是mt
 				================================
-				一种情况:void get_page_bootmem(unsigned long info, struct page *page, unsigned long type)
-							 {page->index = type;
+				一种情况:可能是node info这个type, page上面是pgdate结构体 void get_page_bootmem(unsigned long info, struct page *page, unsigned long type)
+				{page->index = type;
 				*/
 				unsigned long share;	/* share count for fsdax */
 			};
@@ -118,7 +118,7 @@ struct page {
 			 * Usually used for buffer_heads if PagePrivate.
 			 * Used for swp_entry_t if PageSwapCache.
 			 * Indicates order in the buddy system if PageBuddy.
-
+				对于页面内容是pgdat结构体的page这里是nid
 			 对于buddy freelist上面的page, 这里是order的值
 			 */
 			unsigned long private;
@@ -331,7 +331,7 @@ struct folio {
 				void *private;/* 
 				对于buffer io,这里指向相关结构体
 				 */
-				swp_entry_t swap; //在swap cache中的swap entry?
+				swp_entry_t swap; //在swap cache中的swap entry? 如果从mapping移除了,就置0
 			};
 			atomic_t _mapcount;
 			atomic_t _refcount;
@@ -434,6 +434,7 @@ FOLIO_MATCH(compound_head, _head_2a);
  *
  * This struct overlays struct page for now. Do not modify without a good
  * understanding of the issues.
+ 内存布局为:
  */
 struct ptdesc {
 	unsigned long __page_flags;
@@ -493,10 +494,11 @@ static_assert(sizeof(struct ptdesc) <= sizeof(struct page));
 	const struct ptdesc *:		(const struct page *)(pt),	\
 	struct ptdesc *:		(struct page *)(pt)))
 
-	// 又把ptdesc转为page
+// 又把ptdesc转为page
 #define ptdesc_folio(pt)		(_Generic((pt),			\
 	const struct ptdesc *:		(const struct folio *)(pt),	\
 	struct ptdesc *:		(struct folio *)(pt)))
+// 类型强转
 // 把获取的用于页表的page地址转为ptdesc
 #define page_ptdesc(p)			(_Generic((p),			\
 	const struct page *:		(const struct ptdesc *)(p),	\
@@ -681,8 +683,12 @@ struct vm_area_struct {
 	/* Information about our backing store: */
 	unsigned long vm_pgoff;		/* Offset (within vm_file) in PAGE_SIZE
 					   units */
-	struct file * vm_file;		/* File we map to (can be NULL). */
-	void * vm_private_data;		/* was vm_pte (shared mem) */
+	struct file * vm_file;		/*
+	所mmap映射到的文件?
+	File we map to (can be NULL). */
+	void * vm_private_data;		/* 
+	对于映射到bpf map file的vma是map
+	was vm_pte (shared mem) */
 
 #ifdef CONFIG_ANON_VMA_NAME
 	/*
@@ -706,6 +712,7 @@ struct vm_area_struct {
 #ifdef CONFIG_NUMA_BALANCING
 	struct vma_numab_state *numab_state;	/* NUMA Balancing state */
 #endif
+/* uffd相关 */
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
 } __randomize_layout;
 
@@ -865,7 +872,9 @@ struct mm_struct {
 
 		struct linux_binfmt *binfmt;
 
-		/* Architecture-specific MM context */
+		/* Architecture-specific MM context
+		架构相关的内存ctx
+		*/
 		mm_context_t context;
 
 		unsigned long flags; /* Must use atomic bitops to access */
@@ -884,6 +893,7 @@ struct mm_struct {
 		 * current->mm != mm
 		 * new_owner->mm == mm
 		 * new_owner->alloc_lock is held
+		 指向task说明:
 		 */
 		struct task_struct __rcu *owner;
 #endif
@@ -968,7 +978,7 @@ struct mm_struct {
 			unsigned long bitmap;
 #ifdef CONFIG_MEMCG
 			/* points to the memcg of "owner" above
-			所属的memcg
+			指向所属的memcg
 			*/
 			struct mem_cgroup *memcg;
 #endif
@@ -1004,7 +1014,8 @@ static inline cpumask_t *mm_cpumask(struct mm_struct *mm)
 }
 
 #ifdef CONFIG_LRU_GEN
-/* 里面是什么 */
+/* 里面是什么
+包含着memcg拥有的mm的链表 */
 /*  */
 struct lru_gen_mm_list {
 	/* mm_struct list for page table walkers
@@ -1079,7 +1090,8 @@ struct vma_iterator {
 			.node = MAS_START,				\
 		},							\
 	}
-
+/* 初始化一个vmi
+用于遍历从addr开始的vma */
 static inline void vma_iter_init(struct vma_iterator *vmi,
 		struct mm_struct *mm, unsigned long addr)
 {

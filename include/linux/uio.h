@@ -27,11 +27,14 @@ struct kvec {
 /* 表示iter的种类 */
 enum iter_type {
 	/* iter types */
+	/*  */
 	ITER_IOVEC,
 	ITER_KVEC,
+	/* 表示io的是struct bio_vec的数据 */
 	ITER_BVEC,
 	ITER_XARRAY,
 	ITER_DISCARD,
+	/* 负责的是用户空间的buf */
 	ITER_UBUF,
 };
 
@@ -44,11 +47,16 @@ struct iov_iter_state {
 	unsigned long nr_segs;
 };
 
+/* 
+
+*/
 struct iov_iter {
-	u8 iter_type; // 一共有几种呢?
+	u8 iter_type; // 一共有几种呢?在enum iter_type定义
 	bool copy_mc;
 	bool nofault;
+	/* 表示是读还是写 */
 	bool data_source;
+	/* 含义？ */
 	bool user_backed;
 	union {
 		size_t iov_offset;
@@ -76,14 +84,18 @@ struct iov_iter {
 				/* use iter_iov() to get the current vec */
 				const struct iovec *__iov;
 				const struct kvec *kvec;
+				/* 传输的是struct bio_vec的数据 */
 				const struct bio_vec *bvec;
 				struct xarray *xarray;
+				/* 所负责的用户空间的buf */
 				void __user *ubuf;
 			};
+			/* 大小 */
 			size_t count;
 		};
 	};
 	union {
+		/* 一组情况是bvec数组的长度 */
 		unsigned long nr_segs;
 		loff_t xarray_start;
 	};
@@ -127,6 +139,7 @@ static inline bool iov_iter_is_kvec(const struct iov_iter *i)
 	return iov_iter_type(i) == ITER_KVEC;
 }
 
+/* 检查iter类型 */
 static inline bool iov_iter_is_bvec(const struct iov_iter *i)
 {
 	return iov_iter_type(i) == ITER_BVEC;
@@ -147,6 +160,8 @@ static inline unsigned char iov_iter_rw(const struct iov_iter *i)
 	return i->data_source ? WRITE : READ;
 }
 
+/* 什么是user_backed?
+零拷贝机制么 */
 static inline bool user_backed_iter(const struct iov_iter *i)
 {
 	return i->user_backed;
@@ -383,6 +398,7 @@ int import_single_range(int type, void __user *buf, size_t len,
 		 struct iovec *iov, struct iov_iter *i);
 int import_ubuf(int type, void __user *buf, size_t len, struct iov_iter *i);
 
+/* 以ubuf为基础初始化i */
 static inline void iov_iter_ubuf(struct iov_iter *i, unsigned int direction,
 			void __user *buf, size_t count)
 {

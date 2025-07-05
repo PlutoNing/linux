@@ -142,14 +142,14 @@ static size_t pcpu_chunk_struct_size __ro_after_init;
 /* cpus with the lowest and highest unit addresses */
 static unsigned int pcpu_low_unit_cpu __ro_after_init;
 static unsigned int pcpu_high_unit_cpu __ro_after_init;
-
-/* the address of the first chunk which starts with the kernel static area */
+/* 指向pcp的group的内存地址
+ the address of the first chunk which starts with the kernel static area */
 void *pcpu_base_addr __ro_after_init;
 
 static const int *pcpu_unit_map __ro_after_init;		/* cpu -> unit */
 const unsigned long *pcpu_unit_offsets __ro_after_init;	/* cpu -> unit offset */
 
-/* group information, used for vm allocation */
+/* group information, used for vm allocation . 下面是pcp机制的一些内部信息*/
 static int pcpu_nr_groups __ro_after_init;
 static const unsigned long *pcpu_group_offsets __ro_after_init;
 static const size_t *pcpu_group_sizes __ro_after_init;
@@ -161,7 +161,8 @@ static const size_t *pcpu_group_sizes __ro_after_init;
  */
 struct pcpu_chunk *pcpu_first_chunk __ro_after_init;
 
-/*
+/* 
+表示pcp机制的group的reserved chunk
  * Optional reserved chunk.  This chunk reserves part of the first
  * chunk and serves it for reserved allocations.  When the reserved
  * region doesn't exist, the following variable is NULL.
@@ -170,7 +171,7 @@ struct pcpu_chunk *pcpu_reserved_chunk __ro_after_init;
 
 DEFINE_SPINLOCK(pcpu_lock);	/* all internal data structures */
 static DEFINE_MUTEX(pcpu_alloc_mutex);	/* chunk create/destroy, [de]pop, map ext */
-
+/* pcp机制的chunk根据计算出的slot, 链接在pcpu_chunk_lists[slot]对应的链表 */
 struct list_head *pcpu_chunk_lists __ro_after_init; /* chunk list slots */
 
 /*
@@ -229,7 +230,7 @@ static bool pcpu_addr_in_chunk(struct pcpu_chunk *chunk, void *addr)
 static int __pcpu_size_to_slot(int size)
 {
 	int highbit = fls(size);	/* size is in bytes */
-	return max(highbit - PCPU_SLOT_BASE_SHIFT + 2, 1);
+	return max(highbit - PCPU_SLOT_BASE_SHIFT + 2, 1); /* 返回max(highbit - 3, 1) */
 }
 
 static int pcpu_size_to_slot(int size)
@@ -239,6 +240,8 @@ static int pcpu_size_to_slot(int size)
 	return __pcpu_size_to_slot(size);
 }
 
+/* 每个chunk对应一个slot?
+作用是 */
 static int pcpu_chunk_slot(const struct pcpu_chunk *chunk)
 {
 	const struct pcpu_block_md *chunk_md = &chunk->chunk_md;
@@ -289,6 +292,8 @@ static unsigned long *pcpu_index_alloc_map(struct pcpu_chunk *chunk, int index)
 	       (index * PCPU_BITMAP_BLOCK_BITS / BITS_PER_LONG);
 }
 
+/* 找到位图的此bit位所属的元数据块
+返回元数据块在数组的idx */
 static unsigned long pcpu_off_to_block_index(int off)
 {
 	return off / PCPU_BITMAP_BLOCK_BITS;
@@ -305,6 +310,7 @@ static unsigned long pcpu_block_off_to_off(int index, int off)
 }
 
 /**
+检查block能否满足分配
  * pcpu_check_block_hint - check against the contig hint
  * @block: block of interest
  * @bits: size of allocation
@@ -324,6 +330,7 @@ static bool pcpu_check_block_hint(struct pcpu_block_md *block, int bits,
 }
 
 /*
+要从chunk分配alloc_bits大小的内存, 需要从block中找到合适的hint
  * pcpu_next_hint - determine which hint to use
  * @block: block of interest
  * @alloc_bits: size of allocation
@@ -522,7 +529,7 @@ static void pcpu_mem_free(void *ptr)
 {
 	kvfree(ptr);
 }
-
+/* 把chunk移动到pcpu_chunk_lists里面的新链表 */
 static void __pcpu_chunk_move(struct pcpu_chunk *chunk, int slot,
 			      bool move_front)
 {
@@ -539,7 +546,10 @@ static void pcpu_chunk_move(struct pcpu_chunk *chunk, int slot)
 	__pcpu_chunk_move(chunk, slot, true);
 }
 
-/**
+/** 
+参数是pcp机制group的一个slot, 把chunk移动到pcpu_chunk_lists里面的新链表
+===================
+从chunk分配内存之后,也会调用这个函数
  * pcpu_chunk_relocate - put chunk in the appropriate chunk slot
  * @chunk: chunk of interest
  * @oslot: the previous slot it was on
@@ -618,6 +628,8 @@ static inline bool pcpu_region_overlap(int a, int b, int x, int y)
 }
 
 /**
+基于上次实际搜索的结果
+为下次分配的搜索更新位图的hint
  * pcpu_block_update - updates a block given a free area
  * @block: block of interest
  * @start: start offset in block
@@ -694,6 +706,7 @@ static void pcpu_block_update(struct pcpu_block_md *block, int start, int end)
 }
 
 /*
+从chunk分配内存之后,更新hint
  * pcpu_block_update_scan - update a block given a free area from a scan
  * @chunk: chunk of interest
  * @bit_off: chunk offset
@@ -720,6 +733,7 @@ static void pcpu_block_update_scan(struct pcpu_chunk *chunk, int bit_off,
 	if (e_off > PCPU_BITMAP_BLOCK_BITS)
 		return;
 
+	/* 找到bit_off对应的元数据块 */
 	s_index = pcpu_off_to_block_index(bit_off);
 	block = chunk->md_blocks + s_index;
 
@@ -727,6 +741,7 @@ static void pcpu_block_update_scan(struct pcpu_chunk *chunk, int bit_off,
 	l_bit = find_last_bit(pcpu_index_alloc_map(chunk, s_index), s_off);
 	s_off = (s_off == l_bit) ? 0 : l_bit + 1;
 
+	/* 更新此block_md的hint */
 	pcpu_block_update(block, s_off, e_off);
 }
 
@@ -795,7 +810,7 @@ static void pcpu_block_refresh_hint(struct pcpu_chunk *chunk, int index)
 		pcpu_block_update(block, start, end);
 }
 
-/**
+/** 更新分配时候的hint
  * pcpu_block_update_hint_alloc - update hint on allocation path
  * @chunk: chunk of interest
  * @bit_off: chunk offset
@@ -1089,9 +1104,12 @@ static bool pcpu_is_populated(struct pcpu_chunk *chunk, int bit_off, int bits,
 }
 
 /**
+pcp要从chunk分配内存了
+这里从chunk的bitmap里面找一个合适的区域
  * pcpu_find_block_fit - finds the block index to start searching
  * @chunk: chunk of interest
  * @alloc_bits: size of request in allocation units
+ 需要的大小
  * @align: alignment of area (max PAGE_SIZE bytes)
  * @pop_only: use populated regions only
  *
@@ -1139,12 +1157,19 @@ static int pcpu_find_block_fit(struct pcpu_chunk *chunk, int alloc_bits,
 }
 
 /*
+从pcp的chunk分配内存
+从位图搜索指定大小的空白区域
  * pcpu_find_zero_area - modified from bitmap_find_next_zero_area_off()
  * @map: the address to base the search on
+ 是chunk的alloc_map
  * @size: the bitmap size in bits
+ 表示可分配区域(以4为单位)的位图的大小
  * @start: the bitnumber to start searching at
+ 从位图的start开始搜索
  * @nr: the number of zeroed bits we're looking for
+ 要搜索的大小
  * @align_mask: alignment mask for zero area
+ 下面俩是要返回的值
  * @largest_off: offset of the largest area skipped
  * @largest_bits: size of the largest area skipped
  *
@@ -1195,6 +1220,7 @@ again:
 }
 
 /**
+从chunk分配alloc_bits大小的内存, start是从chunk的chunk_md搜索到的合适区域
  * pcpu_alloc_area - allocates an area from a pcpu_chunk
  * @chunk: chunk of interest
  * @alloc_bits: size of request in allocation units
@@ -1230,18 +1256,21 @@ static int pcpu_alloc_area(struct pcpu_chunk *chunk, int alloc_bits,
 	 */
 	end = min_t(int, start + alloc_bits + PCPU_BITMAP_BLOCK_BITS,
 		    pcpu_chunk_map_bits(chunk));
+	/* 这里搜索位图满足要求的空白区域, 返回搜索到的内存区域 */
 	bit_off = pcpu_find_zero_area(chunk->alloc_map, end, start, alloc_bits,
 				      align_mask, &area_off, &area_bits);
 	if (bit_off >= end)
 		return -1;
 
-	if (area_bits)
+	if (area_bits) /* 更新hint */
 		pcpu_block_update_scan(chunk, area_off, area_bits);
 
-	/* update alloc map */
+	/* update alloc map
+	更新位图,把这个区域标记为已分配 */
 	bitmap_set(chunk->alloc_map, bit_off, alloc_bits);
 
-	/* update boundary map */
+	/* update boundary map
+	bound_map是做, 以后 */
 	set_bit(bit_off, chunk->bound_map);
 	bitmap_clear(chunk->bound_map, bit_off + 1, alloc_bits - 1);
 	set_bit(bit_off + alloc_bits, chunk->bound_map);
@@ -1305,7 +1334,7 @@ static int pcpu_free_area(struct pcpu_chunk *chunk, int off)
 
 	return freed;
 }
-
+/* 初始化 */
 static void pcpu_init_md_block(struct pcpu_block_md *block, int nr_bits)
 {
 	block->scan_hint = 0;
@@ -1315,7 +1344,7 @@ static void pcpu_init_md_block(struct pcpu_block_md *block, int nr_bits)
 	block->first_free = 0;
 	block->nr_bits = nr_bits;
 }
-
+/* 初始化chunk md的每个md_block */
 static void pcpu_init_md_blocks(struct pcpu_chunk *chunk)
 {
 	struct pcpu_block_md *md_block;
@@ -1329,10 +1358,10 @@ static void pcpu_init_md_blocks(struct pcpu_chunk *chunk)
 		pcpu_init_md_block(md_block, PCPU_BITMAP_BLOCK_BITS);
 }
 
-/**
+/** 创建chunk, 初始化pcp group的一个part, 比如reserved,或者dynamic什么的
  * pcpu_alloc_first_chunk - creates chunks that serve the first chunk
- * @tmp_addr: the start of the region served
- * @map_size: size of the region served
+ * @tmp_addr: the start of the region served, 有情况是group的reserved区块起始处(group_ptr + static_size)
+ * @map_size: size of the region served, 对应的区块大小, 比如reserved区块, 位于ai->reserved_size
  *
  * This is responsible for creating the chunks that serve the first chunk.  The
  * base_addr is page aligned down of @tmp_addr while the region end is page
@@ -1350,28 +1379,28 @@ static struct pcpu_chunk * __init pcpu_alloc_first_chunk(unsigned long tmp_addr,
 	int start_offset, offset_bits, region_size, region_bits;
 	size_t alloc_size;
 
-	/* region calculations */
+	/* region calculations , 对齐到页面大小*/
 	aligned_addr = tmp_addr & PAGE_MASK;
 
-	start_offset = tmp_addr - aligned_addr;
-	region_size = ALIGN(start_offset + map_size, PAGE_SIZE);
+	start_offset = tmp_addr - aligned_addr; /* start offset也是刚刚对齐可能被抹掉的非对齐大小, 比如2536B */
+	region_size = ALIGN(start_offset + map_size, PAGE_SIZE); /* 这里把参数加上这个抹掉的区域后进行对齐, 8KB可能到12KB */
 
-	/* allocate chunk */
+	/* allocate chunk, 分配chunk的内存 */
 	alloc_size = struct_size(chunk, populated,
 				 BITS_TO_LONGS(region_size >> PAGE_SHIFT));
 	chunk = memblock_alloc(alloc_size, SMP_CACHE_BYTES);
 	if (!chunk)
 		panic("%s: Failed to allocate %zu bytes\n", __func__,
 		      alloc_size);
-
+	/* 初始化chunk */
 	INIT_LIST_HEAD(&chunk->list);
 
-	chunk->base_addr = (void *)aligned_addr;
-	chunk->start_offset = start_offset;
-	chunk->end_offset = region_size - chunk->start_offset - map_size;
+	chunk->base_addr = (void *)aligned_addr;/* 对齐后的chunk起始处 0xffff888236c2f000*/
+	chunk->start_offset = start_offset;/* 因为对齐到page size被抹去的起始处之前的区域 */
+	chunk->end_offset = region_size - chunk->start_offset - map_size; /* 好像是因为对齐多的实际大小,比如参数8KB,实际分12KB,这里是4KB */
 
-	chunk->nr_pages = region_size >> PAGE_SHIFT;
-	region_bits = pcpu_chunk_map_bits(chunk);
+	chunk->nr_pages = region_size >> PAGE_SHIFT;/* chunk的实际页面数量 */
+	region_bits = pcpu_chunk_map_bits(chunk); /* 3个page是3072 */
 
 	alloc_size = BITS_TO_LONGS(region_bits) * sizeof(chunk->alloc_map[0]);
 	chunk->alloc_map = memblock_alloc(alloc_size, SMP_CACHE_BYTES);
@@ -1405,11 +1434,11 @@ static struct pcpu_chunk * __init pcpu_alloc_first_chunk(unsigned long tmp_addr,
 	chunk->nr_empty_pop_pages = chunk->nr_pages;
 
 	chunk->free_bytes = map_size;
-
+	/* 如果存在start_offset, 就是因为对齐抹掉的区域 */
 	if (chunk->start_offset) {
 		/* hide the beginning of the bitmap */
 		offset_bits = chunk->start_offset / PCPU_MIN_ALLOC_SIZE;
-		bitmap_set(chunk->alloc_map, 0, offset_bits);
+		bitmap_set(chunk->alloc_map, 0, offset_bits); /* 在位图上面屏蔽 */
 		set_bit(0, chunk->bound_map);
 		set_bit(offset_bits, chunk->bound_map);
 
@@ -1417,13 +1446,13 @@ static struct pcpu_chunk * __init pcpu_alloc_first_chunk(unsigned long tmp_addr,
 
 		pcpu_block_update_hint_alloc(chunk, 0, offset_bits);
 	}
-
+	/* start_offset和end_offset加起来就是因为对齐多分配的区域, 比如4KB, 需要8KB,实际分了12KB */
 	if (chunk->end_offset) {
 		/* hide the end of the bitmap */
 		offset_bits = chunk->end_offset / PCPU_MIN_ALLOC_SIZE;
 		bitmap_set(chunk->alloc_map,
 			   pcpu_chunk_map_bits(chunk) - offset_bits,
-			   offset_bits);
+			   offset_bits);/* 在位图上面屏蔽这些区域 */
 		set_bit((start_offset + map_size) / PCPU_MIN_ALLOC_SIZE,
 			chunk->bound_map);
 		set_bit(region_bits, chunk->bound_map);
@@ -1702,6 +1731,8 @@ static void pcpu_memcg_free_hook(struct pcpu_chunk *chunk, int off, size_t size)
 #endif /* CONFIG_MEMCG_KMEM */
 
 /**
+pcp的分配器
+是给pcp区域分配, 还是给pcp预分配内存?
  * pcpu_alloc - the percpu allocator
  * @size: size of area to allocate in bytes
  * @align: alignment of area (max PAGE_SIZE)
@@ -1761,6 +1792,7 @@ static void __percpu *pcpu_alloc(size_t size, size_t align, bool reserved,
 		return NULL;
 
 	if (!is_atomic) {
+		/* 如果gfp指定了GFP_KERNEL的路径 */
 		/*
 		 * pcpu_balance_workfn() allocates memory under this mutex,
 		 * and it may wait for memory reclaim. Allow current task
@@ -1776,16 +1808,20 @@ static void __percpu *pcpu_alloc(size_t size, size_t align, bool reserved,
 
 	spin_lock_irqsave(&pcpu_lock, flags);
 
-	/* serve reserved allocations from the reserved chunk if available */
+	/* serve reserved allocations from the reserved chunk if available
+	如果指定了从reserved分配内存, 就使用pcpu_reserved_chunk
+	20250608120038 */
 	if (reserved && pcpu_reserved_chunk) {
 		chunk = pcpu_reserved_chunk;
 
+		/* 从chunk的bitmap获取合适的区域 */
 		off = pcpu_find_block_fit(chunk, bits, bit_align, is_atomic);
 		if (off < 0) {
 			err = "alloc from reserved chunk failed";
 			goto fail_unlock;
 		}
 
+		/* 从chunk搜索并返回满足内存分配的区域 */
 		off = pcpu_alloc_area(chunk, bits, bit_align, off);
 		if (off >= 0)
 			goto area_found;
@@ -1913,6 +1949,8 @@ fail:
 }
 
 /**
+分配动态的pcpu区域?
+是指?
  * __alloc_percpu_gfp - allocate dynamic percpu area
  * @size: size of area to allocate in bytes
  * @align: alignment of area (max PAGE_SIZE)
@@ -2429,7 +2467,7 @@ phys_addr_t per_cpu_ptr_to_phys(void *addr)
  */
 struct pcpu_alloc_info * __init pcpu_alloc_alloc_info(int nr_groups,
 						      int nr_units)
-{
+{	/* 给ai分配内存 */
 	struct pcpu_alloc_info *ai;
 	size_t base_size, ai_size;
 	void *ptr;
@@ -2438,7 +2476,7 @@ struct pcpu_alloc_info * __init pcpu_alloc_alloc_info(int nr_groups,
 	base_size = ALIGN(struct_size(ai, groups, nr_groups),
 			  __alignof__(ai->groups[0].cpu_map[0]));
 	ai_size = base_size + nr_units * sizeof(ai->groups[0].cpu_map[0]);
-
+	/* 给ai分配内存 */
 	ptr = memblock_alloc(PFN_ALIGN(ai_size), PAGE_SIZE);
 	if (!ptr)
 		return NULL;
@@ -2467,7 +2505,7 @@ void __init pcpu_free_alloc_info(struct pcpu_alloc_info *ai)
 	memblock_free(ai, ai->__ai_size);
 }
 
-/**
+/** 打印出pcp机制初始化时的alloc info
  * pcpu_dump_alloc_info - print out information about pcpu_alloc_info
  * @lvl: loglevel
  * @ai: allocation info to dump
@@ -2524,10 +2562,10 @@ static void pcpu_dump_alloc_info(const char *lvl,
 	pr_cont("\n");
 }
 
-/**
+/**初始化第一个pcp chunk
  * pcpu_setup_first_chunk - initialize the first percpu chunk
  * @ai: pcpu_alloc_info describing how to percpu area is shaped
- * @base_addr: mapped address
+ * @base_addr: mapped address, 好像是一个group的起始内存地址
  *
  * Initialize the first percpu chunk which contains the kernel static
  * percpu area.  This function is to be called from arch percpu area
@@ -2580,7 +2618,7 @@ static void pcpu_dump_alloc_info(const char *lvl,
  */
 void __init pcpu_setup_first_chunk(const struct pcpu_alloc_info *ai,
 				   void *base_addr)
-{
+{	/* 差不多二百多KB */
 	size_t size_sum = ai->static_size + ai->reserved_size + ai->dyn_size;
 	size_t static_size, dyn_size;
 	unsigned long *group_offsets;
@@ -2621,24 +2659,24 @@ void __init pcpu_setup_first_chunk(const struct pcpu_alloc_info *ai,
 	PCPU_SETUP_BUG_ON(pcpu_verify_alloc_info(ai) < 0);
 
 	/* process group information and build config tables accordingly */
-	alloc_size = ai->nr_groups * sizeof(group_offsets[0]);
+	alloc_size = ai->nr_groups * sizeof(group_offsets[0]); /* 1个8字节 */
 	group_offsets = memblock_alloc(alloc_size, SMP_CACHE_BYTES);
 	if (!group_offsets)
 		panic("%s: Failed to allocate %zu bytes\n", __func__,
 		      alloc_size);
-
+	/* group_sizes是用于存储对应size的数组 */
 	alloc_size = ai->nr_groups * sizeof(group_sizes[0]);
 	group_sizes = memblock_alloc(alloc_size, SMP_CACHE_BYTES);
 	if (!group_sizes)
 		panic("%s: Failed to allocate %zu bytes\n", __func__,
 		      alloc_size);
-
+	/* unit_map也是个数组, 这里分配内存 */
 	alloc_size = nr_cpu_ids * sizeof(unit_map[0]);
 	unit_map = memblock_alloc(alloc_size, SMP_CACHE_BYTES);
 	if (!unit_map)
 		panic("%s: Failed to allocate %zu bytes\n", __func__,
 		      alloc_size);
-
+	/* 分配unit off的内存 */
 	alloc_size = nr_cpu_ids * sizeof(unit_off[0]);
 	unit_off = memblock_alloc(alloc_size, SMP_CACHE_BYTES);
 	if (!unit_off)
@@ -2650,13 +2688,13 @@ void __init pcpu_setup_first_chunk(const struct pcpu_alloc_info *ai,
 
 	pcpu_low_unit_cpu = NR_CPUS;
 	pcpu_high_unit_cpu = NR_CPUS;
-
+	/* 建立cpu与group的多对多关系,  每个cpu在每个group都有点内存 */
 	for (group = 0, unit = 0; group < ai->nr_groups; group++, unit += i) {
 		const struct pcpu_group_info *gi = &ai->groups[group];
 
-		group_offsets[group] = gi->base_offset;
-		group_sizes[group] = gi->nr_units * ai->unit_size;
-
+		group_offsets[group] = gi->base_offset; /* 一般是0 */
+		group_sizes[group] = gi->nr_units * ai->unit_size;/* 2MB, 也是group的内存大小 */
+		/* 看样子是每个cpu在当前的group分点内存 */
 		for (i = 0; i < gi->nr_units; i++) {
 			cpu = gi->cpu_map[i];
 			if (cpu == NR_CPUS)
@@ -2678,7 +2716,7 @@ void __init pcpu_setup_first_chunk(const struct pcpu_alloc_info *ai,
 				pcpu_high_unit_cpu = cpu;
 		}
 	}
-	pcpu_nr_units = unit;
+	pcpu_nr_units = unit; /* 大小8 */
 
 	for_each_possible_cpu(cpu)
 		PCPU_SETUP_BUG_ON(unit_map[cpu] == UINT_MAX);
@@ -2708,7 +2746,7 @@ void __init pcpu_setup_first_chunk(const struct pcpu_alloc_info *ai,
 	 *   free_slot - fully free chunks
 	 *   to_depopulate_slot - isolated, chunks to depopulate
 	 */
-	pcpu_sidelined_slot = __pcpu_size_to_slot(pcpu_unit_size) + 1;
+	pcpu_sidelined_slot = __pcpu_size_to_slot(pcpu_unit_size) + 1; /* 大小17 */
 	pcpu_free_slot = pcpu_sidelined_slot + 1;
 	pcpu_to_depopulate_slot = pcpu_free_slot + 1;
 	pcpu_nr_slots = pcpu_to_depopulate_slot + 1;
@@ -2722,7 +2760,7 @@ void __init pcpu_setup_first_chunk(const struct pcpu_alloc_info *ai,
 	for (i = 0; i < pcpu_nr_slots; i++)
 		INIT_LIST_HEAD(&pcpu_chunk_lists[i]);
 
-	/*
+	/*static region的尾部需要与最小分配单元对齐(4)
 	 * The end of the static region needs to be aligned with the
 	 * minimum allocation size as this offsets the reserved and
 	 * dynamic region.  The first chunk ends page aligned by
@@ -2730,8 +2768,8 @@ void __init pcpu_setup_first_chunk(const struct pcpu_alloc_info *ai,
 	 * can be shrunk to compensate while still staying above the
 	 * configured sizes.
 	 */
-	static_size = ALIGN(ai->static_size, PCPU_MIN_ALLOC_SIZE);
-	dyn_size = ai->dyn_size - (static_size - ai->static_size);
+	static_size = ALIGN(ai->static_size, PCPU_MIN_ALLOC_SIZE); /* 差不多190KB */
+	dyn_size = ai->dyn_size - (static_size - ai->static_size); /* 29KB */
 
 	/*
 	 * Initialize first chunk:
@@ -2745,14 +2783,14 @@ void __init pcpu_setup_first_chunk(const struct pcpu_alloc_info *ai,
 	 *   chunk.
 	 */
 	tmp_addr = (unsigned long)base_addr + static_size;
-	if (ai->reserved_size)
+	if (ai->reserved_size)/* 初始化static part之后的reserved part */
 		pcpu_reserved_chunk = pcpu_alloc_first_chunk(tmp_addr,
 						ai->reserved_size);
 	tmp_addr = (unsigned long)base_addr + static_size + ai->reserved_size;
-	pcpu_first_chunk = pcpu_alloc_first_chunk(tmp_addr, dyn_size);
+	pcpu_first_chunk = pcpu_alloc_first_chunk(tmp_addr, dyn_size);/* 初始化最后的dynamic part */
 
 	pcpu_nr_empty_pop_pages = pcpu_first_chunk->nr_empty_pop_pages;
-	pcpu_chunk_relocate(pcpu_first_chunk, -1);
+	pcpu_chunk_relocate(pcpu_first_chunk, -1);/* 把chunk移动到pcpu_chunk_lists里面的新链表 */
 
 	/* include all regions of the first chunk */
 	pcpu_nr_populated += PFN_DOWN(size_sum);
@@ -2813,7 +2851,7 @@ early_param("percpu_alloc", percpu_alloc_setup);
 
 /* pcpu_build_alloc_info() is used by both embed and page first chunk */
 #if defined(BUILD_EMBED_FIRST_CHUNK) || defined(BUILD_PAGE_FIRST_CHUNK)
-/**
+/** 分配,计算,初始化pcp ai结构体,计算所需的各种东西
  * pcpu_build_alloc_info - build alloc_info considering distances between CPUs
  * @reserved_size: the size of reserved percpu area in bytes
  * @dyn_size: minimum free size for dynamic allocation in bytes
@@ -2842,7 +2880,7 @@ static struct pcpu_alloc_info * __init __flatten pcpu_build_alloc_info(
 	static int group_map[NR_CPUS] __initdata;
 	static int group_cnt[NR_CPUS] __initdata;
 	static struct cpumask mask __initdata;
-	const size_t static_size = __per_cpu_end - __per_cpu_start;
+	const size_t static_size = __per_cpu_end - __per_cpu_start; /* 可能是195048 */
 	int nr_groups = 1, nr_units = 0;
 	size_t size_sum, min_unit_size, alloc_size;
 	int upa, max_upa, best_upa;	/* units_per_alloc */
@@ -2858,8 +2896,8 @@ static struct pcpu_alloc_info * __init __flatten pcpu_build_alloc_info(
 
 	/* calculate size_sum and ensure dyn_size is enough for early alloc */
 	size_sum = PFN_ALIGN(static_size + reserved_size +
-			    max_t(size_t, dyn_size, PERCPU_DYNAMIC_EARLY_SIZE));
-	dyn_size = size_sum - static_size - reserved_size;
+			    max_t(size_t, dyn_size, PERCPU_DYNAMIC_EARLY_SIZE)); /* 233472, 二百多KB */
+	dyn_size = size_sum - static_size - reserved_size; /* 差不多30232 */
 
 	/*
 	 * Determine min_unit_size, alloc_size and max_upa such that
@@ -2877,19 +2915,19 @@ static struct pcpu_alloc_info * __init __flatten pcpu_build_alloc_info(
 	max_upa = upa;
 
 	cpumask_copy(&mask, cpu_possible_mask);
-
+	/* mask就是系统cpu的掩码, 八个cpu就是0xff */
 	/* group cpus according to their proximity */
 	for (group = 0; !cpumask_empty(&mask); group++) {
 		/* pop the group's first cpu */
-		cpu = cpumask_first(&mask);
+		cpu = cpumask_first(&mask); 
 		group_map[cpu] = group;
 		group_cnt[group]++;
-		cpumask_clear_cpu(cpu, &mask);
+		cpumask_clear_cpu(cpu, &mask);/* 这里是弹出式的取法, 所以是不断变化的每次, 会逐步遍历每个cpu */
 
-		for_each_cpu(tcpu, &mask) {
+		for_each_cpu(tcpu, &mask) {/* 遍历mask的剩下的cpu? */
 			if (!cpu_distance_fn ||
 			    (cpu_distance_fn(cpu, tcpu) == LOCAL_DISTANCE &&
-			     cpu_distance_fn(tcpu, cpu) == LOCAL_DISTANCE)) {
+			     cpu_distance_fn(tcpu, cpu) == LOCAL_DISTANCE)) {/* 俩cpu是同一个node */
 				group_map[tcpu] = group;
 				group_cnt[group]++;
 				cpumask_clear_cpu(tcpu, &mask);
@@ -2910,11 +2948,11 @@ static struct pcpu_alloc_info * __init __flatten pcpu_build_alloc_info(
 
 		if (alloc_size % upa || (offset_in_page(alloc_size / upa)))
 			continue;
-
+		/*  */
 		for (group = 0; group < nr_groups; group++) {
 			int this_allocs = DIV_ROUND_UP(group_cnt[group], upa);
-			allocs += this_allocs;
-			wasted += this_allocs * upa - group_cnt[group];
+			allocs += this_allocs; /* r9 += rax */
+			wasted += this_allocs * upa - group_cnt[group]; /*       */
 		}
 
 		/*
@@ -2937,7 +2975,7 @@ static struct pcpu_alloc_info * __init __flatten pcpu_build_alloc_info(
 	/* allocate and fill alloc_info */
 	for (group = 0; group < nr_groups; group++)
 		nr_units += roundup(group_cnt[group], upa);
-
+	/* 创建pcp ai */
 	ai = pcpu_alloc_alloc_info(nr_groups, nr_units);
 	if (!ai)
 		return ERR_PTR(-ENOMEM);
@@ -2975,7 +3013,7 @@ static struct pcpu_alloc_info * __init __flatten pcpu_build_alloc_info(
 
 	return ai;
 }
-
+/* 给pcp机制的group分配内存 ,@size一般可能是2MB */
 static void * __init pcpu_fc_alloc(unsigned int cpu, size_t size, size_t align,
 				   pcpu_fc_cpu_to_node_fn_t cpu_to_nd_fn)
 {
@@ -2993,7 +3031,7 @@ static void * __init pcpu_fc_alloc(unsigned int cpu, size_t size, size_t align,
 			cpu, node);
 		pr_debug("per cpu data for cpu%d %zu bytes at 0x%llx\n",
 			 cpu, size, (u64)__pa(ptr));
-	} else {
+	} else {/* 如果cpu指定了node */
 		ptr = memblock_alloc_try_nid(size, align, goal,
 					     MEMBLOCK_ALLOC_ACCESSIBLE,
 					     node);
@@ -3016,9 +3054,9 @@ static void __init pcpu_fc_free(void *ptr, size_t size)
 #if defined(BUILD_EMBED_FIRST_CHUNK)
 /**
  * pcpu_embed_first_chunk - embed the first percpu chunk into bootmem
- * @reserved_size: the size of reserved percpu area in bytes
- * @dyn_size: minimum free size for dynamic allocation in bytes
- * @atom_size: allocation atom size
+ * @reserved_size: the size of reserved percpu area in bytes, 可能是8KB
+ * @dyn_size: minimum free size for dynamic allocation in bytes, 可能是28672
+ * @atom_size: allocation atom size, 一般是pmd size
  * @cpu_distance_fn: callback to determine distance between cpus, optional
  * @cpu_to_nd_fn: callback to convert cpu to it's node, optional
  *
@@ -3050,21 +3088,21 @@ int __init pcpu_embed_first_chunk(size_t reserved_size, size_t dyn_size,
 				  pcpu_fc_cpu_distance_fn_t cpu_distance_fn,
 				  pcpu_fc_cpu_to_node_fn_t cpu_to_nd_fn)
 {
-	void *base = (void *)ULONG_MAX;
+	void *base = (void *)ULONG_MAX; /* 记录分配给group的最低内存地址 */
 	void **areas = NULL;
 	struct pcpu_alloc_info *ai;
 	size_t size_sum, areas_size;
-	unsigned long max_distance;
-	int group, i, highest_group, rc = 0;
-
+	unsigned long max_distance; /* 最高和最低内存地址的group的距离 */
+	int group, i, highest_group, rc = 0; /* highest_group指向位于最高内存地址的group */
+	/* 创建和计算初始化pcp ai结构体 */
 	ai = pcpu_build_alloc_info(reserved_size, dyn_size, atom_size,
 				   cpu_distance_fn);
 	if (IS_ERR(ai))
 		return PTR_ERR(ai);
 
 	size_sum = ai->static_size + ai->reserved_size + ai->dyn_size;
-	areas_size = PFN_ALIGN(ai->nr_groups * sizeof(void *));
-
+	areas_size = PFN_ALIGN(ai->nr_groups * sizeof(void *)); /* 4096, 一个页面大小 */
+	/* areas是一个数组, 包含着group的句柄, areas[group] = ptr(group内存?) */
 	areas = memblock_alloc(areas_size, SMP_CACHE_BYTES);
 	if (!areas) {
 		rc = -ENOMEM;
@@ -3082,7 +3120,7 @@ int __init pcpu_embed_first_chunk(size_t reserved_size, size_t dyn_size,
 			cpu = gi->cpu_map[i];
 		BUG_ON(cpu == NR_CPUS);
 
-		/* allocate space for the whole group */
+		/* allocate space for the whole group , 这里是给group分配内存*/
 		ptr = pcpu_fc_alloc(cpu, gi->nr_units * ai->unit_size, atom_size, cpu_to_nd_fn);
 		if (!ptr) {
 			rc = -ENOMEM;
@@ -3090,14 +3128,14 @@ int __init pcpu_embed_first_chunk(size_t reserved_size, size_t dyn_size,
 		}
 		/* kmemleak tracks the percpu allocations separately */
 		kmemleak_ignore_phys(__pa(ptr));
-		areas[group] = ptr;
+		areas[group] = ptr; /* areas指向每个group的内存地址 */
 
 		base = min(ptr, base);
 		if (ptr > areas[highest_group])
 			highest_group = group;
 	}
-	max_distance = areas[highest_group] - base;
-	max_distance += ai->unit_size * ai->groups[highest_group].nr_units;
+	max_distance = areas[highest_group] - base; /* 最高和最低group的内存地址距离 */
+	max_distance += ai->unit_size * ai->groups[highest_group].nr_units; /* 又加上了一个group大小 */
 
 	/* warn if maximum distance is further than 75% of vmalloc space */
 	if (max_distance > VMALLOC_TOTAL * 3 / 4) {
@@ -3116,19 +3154,19 @@ int __init pcpu_embed_first_chunk(size_t reserved_size, size_t dyn_size,
 	 * overlapping groups.
 	 */
 	for (group = 0; group < ai->nr_groups; group++) {
-		struct pcpu_group_info *gi = &ai->groups[group];
-		void *ptr = areas[group];
+		struct pcpu_group_info *gi = &ai->groups[group];/* 分配的信息 */
+		void *ptr = areas[group]; /* 分配的内存 */
 
-		for (i = 0; i < gi->nr_units; i++, ptr += ai->unit_size) {
+		for (i = 0; i < gi->nr_units; i++, ptr += ai->unit_size) {/* 刚刚给ptr分配了2MB, 每次步进256KB, 八次刚刚好 */
 			if (gi->cpu_map[i] == NR_CPUS) {
 				/* unused unit, free whole */
 				pcpu_fc_free(ptr, ai->unit_size);
 				continue;
 			}
-			/* copy and return the unused part */
+			/* copy and return the unused part, 拷贝一百多kb过去 */
 			memcpy(ptr, __per_cpu_load, ai->static_size);
-			pcpu_fc_free(ptr + size_sum, ai->unit_size - size_sum);
-		}
+			pcpu_fc_free(ptr + size_sum, ai->unit_size - size_sum); /* size_sum可能是228KB, 而unit size一般是256KB */
+		} /* 把这两MB用完, 拷贝static的__per_cpu_load过去, 拷贝八次到unit size,并把unit size中size num以外的内存还回去 */
 	}
 
 	/* base address is now known, determine group base offsets */
@@ -3139,7 +3177,7 @@ int __init pcpu_embed_first_chunk(size_t reserved_size, size_t dyn_size,
 	pr_info("Embedded %zu pages/cpu s%zu r%zu d%zu u%zu\n",
 		PFN_DOWN(size_sum), ai->static_size, ai->reserved_size,
 		ai->dyn_size, ai->unit_size);
-
+	/* base是某group的内存, 第一个应该.  */
 	pcpu_setup_first_chunk(ai, base);
 	goto out_free;
 

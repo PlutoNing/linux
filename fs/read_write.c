@@ -25,6 +25,7 @@
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
 
+/*  */
 const struct file_operations generic_ro_fops = {
 	.llseek		= generic_file_llseek,
 	.read_iter	= generic_file_read_iter,
@@ -40,6 +41,7 @@ static inline bool unsigned_offsets(struct file *file)
 }
 
 /**
+修改文件的fpos
  * vfs_setpos - update the file offset for lseek
  设置lseek的文件偏移
  * @file:	file structure in question
@@ -293,7 +295,7 @@ out:
 	return retval;
 }
 EXPORT_SYMBOL(default_llseek);
-
+/* seek的实现， vfs */
 loff_t vfs_llseek(struct file *file, loff_t offset, int whence)
 {
 	if (!(file->f_mode & FMODE_LSEEK))
@@ -301,7 +303,7 @@ loff_t vfs_llseek(struct file *file, loff_t offset, int whence)
 	return file->f_op->llseek(file, offset, whence);
 }
 EXPORT_SYMBOL(vfs_llseek);
-
+/* seek系统调用 */
 static off_t ksys_lseek(unsigned int fd, off_t offset, unsigned int whence)
 {
 	off_t retval;
@@ -331,7 +333,7 @@ COMPAT_SYSCALL_DEFINE3(lseek, unsigned int, fd, compat_off_t, offset, unsigned i
 	return ksys_lseek(fd, offset, whence);
 }
 #endif
-
+/* 对文件进行seek，调整pos */
 #if !defined(CONFIG_64BIT) || defined(CONFIG_COMPAT) || \
 	defined(__ARCH_WANT_SYS_LLSEEK)
 SYSCALL_DEFINE5(llseek, unsigned int, fd, unsigned long, offset_high,
@@ -388,7 +390,7 @@ int rw_verify_area(int read_write, struct file *file, const loff_t *ppos, size_t
 				read_write == READ ? MAY_READ : MAY_WRITE);
 }
 EXPORT_SYMBOL(rw_verify_area);
-
+/* 调用read iter这个fops函数 */
 static ssize_t new_sync_read(struct file *filp, char __user *buf, size_t len, loff_t *ppos)
 {
 	struct kiocb kiocb;
@@ -398,7 +400,7 @@ static ssize_t new_sync_read(struct file *filp, char __user *buf, size_t len, lo
 	init_sync_kiocb(&kiocb, filp);
 	kiocb.ki_pos = (ppos ? *ppos : 0);
 	iov_iter_ubuf(&iter, ITER_DEST, buf, len);
-
+	/* 调用fops的read iter函数 */
 	ret = call_read_iter(filp, &kiocb, &iter);
 	BUG_ON(ret == -EIOCBQUEUED);
 	if (ppos)
@@ -461,7 +463,7 @@ ssize_t kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 	return __kernel_read(file, buf, count, pos);
 }
 EXPORT_SYMBOL(kernel_read);
-
+/* read系统调用 */
 ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 {
 	ssize_t ret;
@@ -492,7 +494,7 @@ ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 	inc_syscr(current);
 	return ret;
 }
-
+/* 写入函数,构造kiocb来写入 */
 static ssize_t new_sync_write(struct file *filp, const char __user *buf, size_t len, loff_t *ppos)
 {
 	struct kiocb kiocb;
@@ -502,7 +504,7 @@ static ssize_t new_sync_write(struct file *filp, const char __user *buf, size_t 
 	init_sync_kiocb(&kiocb, filp);
 	kiocb.ki_pos = (ppos ? *ppos : 0);
 	iov_iter_ubuf(&iter, ITER_SOURCE, (void __user *)buf, len);
-
+/* 调用fs的ops */
 	ret = call_write_iter(filp, &kiocb, &iter);
 	BUG_ON(ret == -EIOCBQUEUED);
 	if (ret > 0 && ppos)
@@ -510,7 +512,9 @@ static ssize_t new_sync_write(struct file *filp, const char __user *buf, size_t 
 	return ret;
 }
 
-/* caller is responsible for file_start_write/file_end_write */
+/* 
+内核的写入函数
+caller is responsible for file_start_write/file_end_write */
 ssize_t __kernel_write_iter(struct file *file, struct iov_iter *from, loff_t *pos)
 {
 	struct kiocb kiocb;
@@ -529,6 +533,7 @@ ssize_t __kernel_write_iter(struct file *file, struct iov_iter *from, loff_t *po
 
 	init_sync_kiocb(&kiocb, file);
 	kiocb.ki_pos = pos ? *pos : 0;
+	/* 调用fops */
 	ret = file->f_op->write_iter(&kiocb, from);
 	if (ret > 0) {
 		if (pos)
@@ -540,7 +545,9 @@ ssize_t __kernel_write_iter(struct file *file, struct iov_iter *from, loff_t *po
 	return ret;
 }
 
-/* caller is responsible for file_start_write/file_end_write */
+/* 
+内核的写入函数
+caller is responsible for file_start_write/file_end_write */
 ssize_t __kernel_write(struct file *file, const void *buf, size_t count, loff_t *pos)
 {
 	struct kvec iov = {
@@ -559,7 +566,7 @@ ssize_t __kernel_write(struct file *file, const void *buf, size_t count, loff_t 
  * for any other kernel modules.
  */
 EXPORT_SYMBOL_GPL(__kernel_write);
-
+/* 内核使用的写函数 */
 ssize_t kernel_write(struct file *file, const void *buf, size_t count,
 			    loff_t *pos)
 {
@@ -570,6 +577,7 @@ ssize_t kernel_write(struct file *file, const void *buf, size_t count,
 		return ret;
 
 	file_start_write(file);
+	/* 内核写入 */
 	ret =  __kernel_write(file, buf, count, pos);
 	file_end_write(file);
 	return ret;
@@ -615,7 +623,7 @@ static inline loff_t *file_ppos(struct file *file)
 {
 	return file->f_mode & FMODE_STREAM ? NULL : &file->f_pos;
 }
-
+/* read系统调用的函数 */
 ssize_t ksys_read(unsigned int fd, char __user *buf, size_t count)
 {
 	struct fd f = fdget_pos(fd);
@@ -627,6 +635,7 @@ ssize_t ksys_read(unsigned int fd, char __user *buf, size_t count)
 			pos = *ppos;
 			ppos = &pos;
 		}
+		/* read开始 */
 		ret = vfs_read(f.file, buf, count, ppos);
 		if (ret >= 0 && ppos)
 			f.file->f_pos = pos;
@@ -634,7 +643,7 @@ ssize_t ksys_read(unsigned int fd, char __user *buf, size_t count)
 	}
 	return ret;
 }
-
+/* read系统调用？ */
 SYSCALL_DEFINE3(read, unsigned int, fd, char __user *, buf, size_t, count)
 {
 	return ksys_read(fd, buf, count);
@@ -652,6 +661,7 @@ ssize_t ksys_write(unsigned int fd, const char __user *buf, size_t count)
 			pos = *ppos;
 			ppos = &pos;
 		}
+		/* 写入 */
 		ret = vfs_write(f.file, buf, count, ppos);
 		if (ret >= 0 && ppos)
 			f.file->f_pos = pos;
@@ -700,7 +710,7 @@ COMPAT_SYSCALL_DEFINE5(pread64, unsigned int, fd, char __user *, buf,
 	return ksys_pread64(fd, buf, count, compat_arg_u64_glue(pos));
 }
 #endif
-
+/* pwrite系统调用 */
 ssize_t ksys_pwrite64(unsigned int fd, const char __user *buf,
 		      size_t count, loff_t pos)
 {
@@ -720,7 +730,7 @@ ssize_t ksys_pwrite64(unsigned int fd, const char __user *buf,
 
 	return ret;
 }
-
+/*  */
 SYSCALL_DEFINE4(pwrite64, unsigned int, fd, const char __user *, buf,
 			 size_t, count, loff_t, pos)
 {
@@ -734,7 +744,7 @@ COMPAT_SYSCALL_DEFINE5(pwrite64, unsigned int, fd, const char __user *, buf,
 	return ksys_pwrite64(fd, buf, count, compat_arg_u64_glue(pos));
 }
 #endif
-
+/* 通过fops的write iter回调实现write */
 static ssize_t do_iter_readv_writev(struct file *filp, struct iov_iter *iter,
 		loff_t *ppos, int type, rwf_t flags)
 {
@@ -747,6 +757,7 @@ static ssize_t do_iter_readv_writev(struct file *filp, struct iov_iter *iter,
 		return ret;
 	kiocb.ki_pos = (ppos ? *ppos : 0);
 
+	/* 开始读写 */
 	if (type == READ)
 		ret = call_read_iter(filp, &kiocb, iter);
 	else
@@ -757,7 +768,9 @@ static ssize_t do_iter_readv_writev(struct file *filp, struct iov_iter *iter,
 	return ret;
 }
 
-/* Do it by hand, with file-ops */
+/*
+好像是没有iter回调的话，调用这个
+Do it by hand, with file-ops */
 static ssize_t do_loop_readv_writev(struct file *filp, struct iov_iter *iter,
 		loff_t *ppos, int type, rwf_t flags)
 {
@@ -790,7 +803,7 @@ static ssize_t do_loop_readv_writev(struct file *filp, struct iov_iter *iter,
 
 	return ret;
 }
-
+/* iter的读文件 */
 static ssize_t do_iter_read(struct file *file, struct iov_iter *iter,
 		loff_t *pos, rwf_t flags)
 {
@@ -818,7 +831,7 @@ out:
 		fsnotify_access(file);
 	return ret;
 }
-
+/*  */
 ssize_t vfs_iocb_iter_read(struct file *file, struct kiocb *iocb,
 			   struct iov_iter *iter)
 {
@@ -838,7 +851,7 @@ ssize_t vfs_iocb_iter_read(struct file *file, struct kiocb *iocb,
 	ret = rw_verify_area(READ, file, &iocb->ki_pos, tot_len);
 	if (ret < 0)
 		return ret;
-
+	/* 调用fops */
 	ret = call_read_iter(file, iocb, iter);
 out:
 	if (ret >= 0)
@@ -846,7 +859,7 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL(vfs_iocb_iter_read);
-
+/* 读文件 */
 ssize_t vfs_iter_read(struct file *file, struct iov_iter *iter, loff_t *ppos,
 		rwf_t flags)
 {
@@ -855,7 +868,7 @@ ssize_t vfs_iter_read(struct file *file, struct iov_iter *iter, loff_t *ppos,
 	return do_iter_read(file, iter, ppos, flags);
 }
 EXPORT_SYMBOL(vfs_iter_read);
-
+/* writev，loop，splice，调用 */
 static ssize_t do_iter_write(struct file *file, struct iov_iter *iter,
 		loff_t *pos, rwf_t flags)
 {
@@ -874,7 +887,7 @@ static ssize_t do_iter_write(struct file *file, struct iov_iter *iter,
 	if (ret < 0)
 		return ret;
 
-	if (file->f_op->write_iter)
+	if (file->f_op->write_iter)/* iter方式的write */
 		ret = do_iter_readv_writev(file, iter, pos, WRITE, flags);
 	else
 		ret = do_loop_readv_writev(file, iter, pos, WRITE, flags);
@@ -910,7 +923,8 @@ ssize_t vfs_iocb_iter_write(struct file *file, struct kiocb *iocb,
 	return ret;
 }
 EXPORT_SYMBOL(vfs_iocb_iter_write);
-
+/* loop，overlayfs，slice调用这些
+把i的数据写入file */
 ssize_t vfs_iter_write(struct file *file, struct iov_iter *iter, loff_t *ppos,
 		rwf_t flags)
 {
@@ -936,7 +950,7 @@ static ssize_t vfs_readv(struct file *file, const struct iovec __user *vec,
 
 	return ret;
 }
-
+/* 批量写入多个缓冲区 */
 static ssize_t vfs_writev(struct file *file, const struct iovec __user *vec,
 		   unsigned long vlen, loff_t *pos, rwf_t flags)
 {
@@ -948,6 +962,7 @@ static ssize_t vfs_writev(struct file *file, const struct iovec __user *vec,
 	ret = import_iovec(ITER_SOURCE, vec, vlen, ARRAY_SIZE(iovstack), &iov, &iter);
 	if (ret >= 0) {
 		file_start_write(file);
+		/* 开始写入 */
 		ret = do_iter_write(file, &iter, pos, flags);
 		file_end_write(file);
 		kfree(iov);
@@ -1031,7 +1046,8 @@ static ssize_t do_preadv(unsigned long fd, const struct iovec __user *vec,
 	inc_syscr(current);
 	return ret;
 }
-
+/* 用于​​将多个缓冲区的数据写入文件的指定位置​​，同时保持文件偏移量不变。
+其核心功能是通过一次系统调用完成分散数据的写入，提升效率并支持大文件操作（64 位偏移量）。 */
 static ssize_t do_pwritev(unsigned long fd, const struct iovec __user *vec,
 			  unsigned long vlen, loff_t pos, rwf_t flags)
 {
@@ -1153,7 +1169,9 @@ COMPAT_SYSCALL_DEFINE6(preadv2, compat_ulong_t, fd,
 		return do_readv(fd, vec, vlen, flags);
 	return do_preadv(fd, vec, vlen, pos, flags);
 }
-
+/* pwritev的系统调用
+用于​​将多个缓冲区的数据写入文件的指定位置​​，同时保持文件偏移量不变。
+其核心功能是通过一次系统调用完成分散数据的写入，提升效率并支持大文件操作（64 位偏移量）。 */
 #ifdef __ARCH_WANT_COMPAT_SYS_PWRITEV64
 COMPAT_SYSCALL_DEFINE4(pwritev64, unsigned long, fd,
 		const struct iovec __user *, vec,
@@ -1194,7 +1212,9 @@ COMPAT_SYSCALL_DEFINE6(pwritev2, compat_ulong_t, fd,
 	return do_pwritev(fd, vec, vlen, pos, flags);
 }
 #endif /* CONFIG_COMPAT */
-
+/* 
+sendfile系统调用
+*/
 static ssize_t do_sendfile(int out_fd, int in_fd, loff_t *ppos,
 		  	   size_t count, loff_t max)
 {
@@ -1269,13 +1289,15 @@ static ssize_t do_sendfile(int out_fd, int in_fd, loff_t *ppos,
 		if (retval < 0)
 			goto fput_out;
 		file_start_write(out.file);
+		/* 为什么也是splice
+		如果是文件， 就是splice */
 		retval = do_splice_direct(in.file, &pos, out.file, &out_pos,
 					  count, fl);
 		file_end_write(out.file);
 	} else {
 		if (out.file->f_flags & O_NONBLOCK)
 			fl |= SPLICE_F_NONBLOCK;
-
+		/* 这是对管道的sendfile */
 		retval = splice_file_to_pipe(in.file, opipe, &pos, count, fl);
 	}
 
@@ -1303,7 +1325,7 @@ fput_in:
 out:
 	return retval;
 }
-
+/* sendfile系统调用 */
 SYSCALL_DEFINE4(sendfile, int, out_fd, int, in_fd, off_t __user *, offset, size_t, count)
 {
 	loff_t pos;
@@ -1322,7 +1344,7 @@ SYSCALL_DEFINE4(sendfile, int, out_fd, int, in_fd, off_t __user *, offset, size_
 
 	return do_sendfile(out_fd, in_fd, NULL, count, 0);
 }
-
+/* sendfile系统调用 */
 SYSCALL_DEFINE4(sendfile64, int, out_fd, int, in_fd, loff_t __user *, offset, size_t, count)
 {
 	loff_t pos;
@@ -1339,7 +1361,7 @@ SYSCALL_DEFINE4(sendfile64, int, out_fd, int, in_fd, loff_t __user *, offset, si
 
 	return do_sendfile(out_fd, in_fd, NULL, count, 0);
 }
-
+/* sendfile系统调用 */
 #ifdef CONFIG_COMPAT
 COMPAT_SYSCALL_DEFINE4(sendfile, int, out_fd, int, in_fd,
 		compat_off_t __user *, offset, compat_size_t, count)
@@ -1360,7 +1382,13 @@ COMPAT_SYSCALL_DEFINE4(sendfile, int, out_fd, int, in_fd,
 
 	return do_sendfile(out_fd, in_fd, NULL, count, 0);
 }
-
+/* 
+sendfile64 系统调用​​的兼容模式（32 位用户空间与 64 位内核交互）实现，
+用于​​高效地将数据从一个文件描述符传输到另一个文件描述符​​，通常用于网络服务器
+中将文件内容直接发送到套接字，避免数据在用户空间和内核空间之间的多次拷贝。
+===
+文件描述符之间
+*/
 COMPAT_SYSCALL_DEFINE4(sendfile64, int, out_fd, int, in_fd,
 		compat_loff_t __user *, offset, compat_size_t, count)
 {
@@ -1381,6 +1409,8 @@ COMPAT_SYSCALL_DEFINE4(sendfile64, int, out_fd, int, in_fd,
 #endif
 
 /**
+在两个文件之间拷贝数据
+数据直接在文件系统或存储设备间传输，无需经过用户空间缓冲区，减少 CPU 和内存开销。
  * generic_copy_file_range - copy data between two files
  * @file_in:	file structure to read from
  * @pos_in:	file offset to read from
@@ -1486,6 +1516,7 @@ static int generic_copy_file_checks(struct file *file_in, loff_t pos_in,
 }
 
 /*
+数据直接在文件系统或存储设备间传输，无需经过用户空间缓冲区，减少 CPU 和内存开销。
  * copy_file_range() differs from regular file read and write in that it
  * specifically allows return partial success.  When it does so is up to
  * the copy_file_range method.
@@ -1500,6 +1531,7 @@ ssize_t vfs_copy_file_range(struct file *file_in, loff_t pos_in,
 	if (flags & ~COPY_FILE_SPLICE)
 		return -EINVAL;
 
+		/* 检查 */
 	ret = generic_copy_file_checks(file_in, pos_in, file_out, pos_out, &len,
 				       flags);
 	if (unlikely(ret))
@@ -1524,12 +1556,14 @@ ssize_t vfs_copy_file_range(struct file *file_in, loff_t pos_in,
 	 * are supported (e.g. nfs,cifs), we only call the copy method.
 	 */
 	if (!splice && file_out->f_op->copy_file_range) {
+		/* 通过调用回调实现吗 */
 		ret = file_out->f_op->copy_file_range(file_in, pos_in,
 						      file_out, pos_out,
 						      len, flags);
 		goto done;
 	}
 
+	/* 第二种实现的方式 */
 	if (!splice && file_in->f_op->remap_file_range &&
 	    file_inode(file_in)->i_sb == file_inode(file_out)->i_sb) {
 		ret = file_in->f_op->remap_file_range(file_in, pos_in,
@@ -1553,6 +1587,7 @@ ssize_t vfs_copy_file_range(struct file *file_in, loff_t pos_in,
 	 *
 	 * We also get here if caller (e.g. nfsd) requested COPY_FILE_SPLICE.
 	 */
+	/* 这个是通用的实现吗 */
 	ret = generic_copy_file_range(file_in, pos_in, file_out, pos_out, len,
 				      flags);
 
@@ -1573,6 +1608,9 @@ done:
 }
 EXPORT_SYMBOL(vfs_copy_file_range);
 
+/* copy_file_range 系统调用​​的实现，用于​​高效地在两个文件之间复制数据​
+​（通常支持跨文件系统操作）。其核心功能是通过内核空间直接操作文件数据，
+避免数据在用户空间和内核空间之间的多次拷贝，尤其适用于大文件或需要高性能的场景。 */
 SYSCALL_DEFINE6(copy_file_range, int, fd_in, loff_t __user *, off_in,
 		int, fd_out, loff_t __user *, off_out,
 		size_t, len, unsigned int, flags)
@@ -1610,6 +1648,7 @@ SYSCALL_DEFINE6(copy_file_range, int, fd_in, loff_t __user *, off_in,
 	if (flags != 0)
 		goto out;
 
+	/* 拷贝文件 */
 	ret = vfs_copy_file_range(f_in.file, pos_in, f_out.file, pos_out, len,
 				  flags);
 	if (ret > 0) {
@@ -1640,9 +1679,9 @@ out2:
 }
 
 /*
- * Don't operate on ranges the page cache doesn't support, and don't exceed the
- * LFS limits.  If pos is under the limit it becomes a short access.  If it
- * exceeds the limit we return -EFBIG.
+ * 不要操作页面缓存不支持的范围，也不要超过LFS限制。
+ * 如果pos在限制范围内，则会成为一次短访问。
+ * 如果超出限制，我们返回-EFBIG。
  */
 int generic_write_check_limits(struct file *file, loff_t pos, loff_t *count)
 {
@@ -1669,7 +1708,9 @@ int generic_write_check_limits(struct file *file, loff_t pos, loff_t *count)
 	return 0;
 }
 
-/* Like generic_write_checks(), but takes size of write instead of iter. */
+/* 
+检查的是写入的size而不是iter的size
+Like generic_write_checks(), but takes size of write instead of iter. */
 int generic_write_checks_count(struct kiocb *iocb, loff_t *count)
 {
 	struct file *file = iocb->ki_filp;
@@ -1695,7 +1736,7 @@ EXPORT_SYMBOL(generic_write_checks_count);
 
 /*
  * Performs necessary checks before doing a write
- *
+ * 写之前的检查
  * Can adjust writing position or amount of bytes to write.
  * Returns appropriate error code that caller should return or
  * zero in case that write should be allowed.
@@ -1717,6 +1758,7 @@ EXPORT_SYMBOL(generic_write_checks);
 /*
  * Performs common checks before doing a file copy/clone
  * from @file_in to @file_out.
+ 在文件复制前进行检查
  */
 int generic_file_rw_checks(struct file *file_in, struct file *file_out)
 {

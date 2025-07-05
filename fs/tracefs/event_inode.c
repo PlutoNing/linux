@@ -24,6 +24,7 @@
 #include "internal.h"
 
 struct eventfs_inode {
+	/* ef链接在这里 */
 	struct list_head	e_top_files;
 };
 
@@ -514,6 +515,7 @@ static int dcache_readdir_wrapper(struct file *file, struct dir_context *ctx)
 }
 
 /**
+初步创建event file
  * eventfs_prepare_ef - helper function to prepare eventfs_file
  * @name: the name of the file/directory to create.
  * @mode: the permission that the file should have.
@@ -731,6 +733,11 @@ int eventfs_add_events_file(const char *name, umode_t mode,
 }
 
 /**
+比如添加trigger文件
+root@laptop:/sys/kernel/debug/tracing# ls events/ftrace/print/
+format  hist  id  inject  trigger
+root@laptop:/sys/kernel/debug/tracing#
+
  * eventfs_add_file - add eventfs file to list to create later
  * @name: the name of the file to create.
  * @mode: the permission that the file should have.
@@ -761,6 +768,7 @@ int eventfs_add_file(const char *name, umode_t mode,
 	if (!(mode & S_IFMT))
 		mode |= S_IFREG;
 
+	/* 创建ef */
 	ef = eventfs_prepare_ef(name, mode, fop, NULL, data);
 	if (IS_ERR(ef))
 		return -ENOMEM;

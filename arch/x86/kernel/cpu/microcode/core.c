@@ -140,10 +140,10 @@ void __init load_ucode_bsp(void)
 {
 	unsigned int cpuid_1_eax;
 	bool intel = true;
-
+	/* CPUID 是获取 CPU 信息的指令，若不支持则无法判断 CPU 型号和厂商，直接退出 */
 	if (!have_cpuid_p())
 		return;
-
+	/* 执行 CPUID 指令（输入 EAX=1），返回结果存储在 cpuid_1_eax 中 */
 	cpuid_1_eax = native_cpuid_eax(1);
 
 	switch (x86_cpuid_vendor()) {
@@ -161,7 +161,7 @@ void __init load_ucode_bsp(void)
 	default:
 		return;
 	}
-
+	/* 从固件或文件中加载微码。 */
 	if (check_loader_disabled_bsp())
 		return;
 

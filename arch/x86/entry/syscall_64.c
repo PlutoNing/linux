@@ -12,7 +12,7 @@
 #undef __SYSCALL
 
 #define __SYSCALL(nr, sym) __x64_##sym,
-
+/* 系统调用表 */
 asmlinkage const sys_call_ptr_t sys_call_table[] = {
 #include <asm/syscalls_64.h>
 };

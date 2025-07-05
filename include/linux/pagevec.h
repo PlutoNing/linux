@@ -33,6 +33,7 @@ struct folio_batch {
 };
 
 /**
+初始化fbatch
  * folio_batch_init() - Initialise a batch of folios
  * @fbatch: The folio batch.
  *

@@ -42,6 +42,7 @@ enum memcg_stat_item {
 
 enum memcg_memory_event {
 	MEMCG_LOW,
+	/* 触发了一次reclaim_high调用 */
 	MEMCG_HIGH,
 	MEMCG_MAX,
 	MEMCG_OOM,
@@ -202,6 +203,7 @@ struct obj_cgroup {
 };
 
 /*
+memcg的定义
  * The memory controller data structure. The memory controller controls both
  * page cache and RSS per cgroup. We would eventually like to provide
  * statistics based on the statistics developed by Rik Van Riel for clock-pro,
@@ -250,7 +252,8 @@ struct mem_cgroup {
 	/* OOM-Killer disable */
 	int		oom_kill_disable;
 
-	/* memory.events and memory.events.local */
+	/* memory.events and memory.events.local
+	cgroup file表示什么 */
 	struct cgroup_file events_file;
 	struct cgroup_file events_local_file;
 
@@ -280,7 +283,8 @@ struct mem_cgroup {
 
 	CACHELINE_PADDING(_pad1_);
 
-	/* memory.stat */
+	/* memory.stat
+	记录memcg的内存统计数据 */
 	struct memcg_vmstats	*vmstats;
 
 	/* memory.events */
@@ -313,10 +317,12 @@ struct mem_cgroup {
 	atomic_t		moving_account;
 	struct task_struct	*move_lock_task;
 
+	/* pcp的内存memcg统计数据 */
 	struct memcg_vmstats_percpu __percpu *vmstats_percpu;
 
 #ifdef CONFIG_CGROUP_WRITEBACK
-	struct list_head cgwb_list; //关联的wb连接到这里
+	/* 这个memcg关联的wb都在这里 */
+	struct list_head cgwb_list;
 	struct wb_domain cgwb_domain;
 	struct memcg_cgwb_frn cgwb_frn[MEMCG_CGWB_FRN_CNT];
 #endif
@@ -376,6 +382,7 @@ static inline struct mem_cgroup *obj_cgroup_memcg(struct obj_cgroup *objcg)
 /*
  * __folio_memcg - Get the memory cgroup associated with a non-kmem folio
  获取folio的memcg
+ 编码在folio->memcg_data
  * @folio: Pointer to the folio.
  *
  * Returns a pointer to the memory cgroup associated with the folio,
@@ -420,6 +427,7 @@ static inline struct obj_cgroup *__folio_objcg(struct folio *folio)
 }
 
 /*
+获取folio所属的memcg （编码在folio->memcg_data成员)
  * folio_memcg - Get the memory cgroup associated with a folio.
  * @folio: Pointer to the folio.
  *

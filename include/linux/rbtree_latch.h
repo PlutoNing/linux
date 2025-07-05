@@ -37,6 +37,7 @@
 #include <linux/seqlock.h>
 #include <linux/rcupdate.h>
 
+/*  */
 struct latch_tree_node {
 	struct rb_node node[2];
 };
@@ -179,6 +180,7 @@ latch_tree_erase(struct latch_tree_node *node,
 }
 
 /**
+查找指定node
  * latch_tree_find() - find the node matching @key in the trees @root
  * @key: search key
  * @root: trees to search for @key

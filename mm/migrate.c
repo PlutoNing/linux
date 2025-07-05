@@ -409,12 +409,14 @@ static int folio_expected_refs(struct address_space *mapping,
 int folio_migrate_mapping(struct address_space *mapping,
 		struct folio *newfolio, struct folio *folio, int extra_count)
 {
+	/* folio现在位于mapping */
 	XA_STATE(xas, &mapping->i_pages, folio_index(folio));
 	struct zone *oldzone, *newzone;
 	int dirty;
 	int expected_count = folio_expected_refs(mapping, folio) + extra_count;
 	long nr = folio_nr_pages(folio);
 
+	/* 刚刚都声明xas了， 这里还可能是null吗 */
 	if (!mapping) {
 		/* Anonymous page without mapping */
 		if (folio_ref_count(folio) != expected_count)
@@ -441,11 +443,13 @@ int folio_migrate_mapping(struct address_space *mapping,
 	/*
 	 * Now we know that no one else is looking at the folio:
 	 * no turning back from here.
+	 让new folio代替folio
 	 */
 	newfolio->index = folio->index;
 	newfolio->mapping = folio->mapping;
 	folio_ref_add(newfolio, nr); /* add cache reference */
 	if (folio_test_swapbacked(folio)) {
+		/* 如果old folio是交换folio */
 		__folio_set_swapbacked(newfolio);
 		if (folio_test_swapcache(folio)) {
 			folio_set_swapcache(newfolio);
@@ -462,6 +466,7 @@ int folio_migrate_mapping(struct address_space *mapping,
 		folio_set_dirty(newfolio);
 	}
 
+	/* 把new folio存入 */
 	xas_store(&xas, newfolio);
 
 	/*
@@ -483,6 +488,7 @@ int folio_migrate_mapping(struct address_space *mapping,
 	 * Note that anonymous pages are accounted for
 	 * via NR_FILE_PAGES and NR_ANON_MAPPED if they
 	 * are mapped to swap space.
+	 如果两个zone不一样，修改统计信息
 	 */
 	if (newzone != oldzone) {
 		struct lruvec *old_lruvec, *new_lruvec;
@@ -494,7 +500,10 @@ int folio_migrate_mapping(struct address_space *mapping,
 
 		__mod_lruvec_state(old_lruvec, NR_FILE_PAGES, -nr);
 		__mod_lruvec_state(new_lruvec, NR_FILE_PAGES, nr);
+		/* 如果这个交换页当前被换出了(shmem页面)
+		1 0的情况, folio被换出了 */
 		if (folio_test_swapbacked(folio) && !folio_test_swapcache(folio)) {
+			/* 这里如果是1 1的情况, 不算NR_SHMEM的变动吗?20250704000319 */
 			__mod_lruvec_state(old_lruvec, NR_SHMEM, -nr);
 			__mod_lruvec_state(new_lruvec, NR_SHMEM, nr);
 
@@ -504,6 +513,9 @@ int folio_migrate_mapping(struct address_space *mapping,
 			}
 		}
 #ifdef CONFIG_SWAP
+		/* 1,1 和 0,1的情况
+		11是folio在mapping里面
+		01不大可能? */
 		if (folio_test_swapcache(folio)) {
 			__mod_lruvec_state(old_lruvec, NR_SWAPCACHE, -nr);
 			__mod_lruvec_state(new_lruvec, NR_SWAPCACHE, nr);
@@ -872,6 +884,7 @@ int filemap_migrate_folio(struct address_space *mapping,
 EXPORT_SYMBOL_GPL(filemap_migrate_folio);
 
 /*
+写回mapping的folio
  * Writeback a folio to clean the dirty state
    写回一个folio以清除脏状态
  */
@@ -904,6 +917,7 @@ static int writeout(struct address_space *mapping, struct folio *folio)
 	 */
 	remove_migration_ptes(folio, folio, false);
 
+	/* 调用mapping的回调 */
 	rc = mapping->a_ops->writepage(&folio->page, &wbc);
 
 	if (rc != AOP_WRITEPAGE_ACTIVATE)
@@ -2085,7 +2099,8 @@ static int add_page_for_migration(struct mm_struct *mm, const void __user *p,
 	if (!vma || !vma_migratable(vma))
 		goto out;
 
-	/* FOLL_DUMP to ignore special (like zero) pages */
+	/* FOLL_DUMP to ignore special (like zero) pages
+	 20250702233221  */
 	page = follow_page(vma, addr, FOLL_GET | FOLL_DUMP);
 
 	err = PTR_ERR(page);
@@ -2274,6 +2289,7 @@ out:
 }
 
 /*
+确定一组页面的nid?
  * Determine the nodes of an array of pages and store it in an array of status.
  */
 static void do_pages_stat_array(struct mm_struct *mm, unsigned long nr_pages,
@@ -2283,17 +2299,20 @@ static void do_pages_stat_array(struct mm_struct *mm, unsigned long nr_pages,
 
 	mmap_read_lock(mm);
 
+	/* 遍历每一个页面 */
 	for (i = 0; i < nr_pages; i++) {
 		unsigned long addr = (unsigned long)(*pages);
 		struct vm_area_struct *vma;
 		struct page *page;
 		int err = -EFAULT;
 
+		/* 找到addr对应的vma */
 		vma = vma_lookup(mm, addr);
 		if (!vma)
 			goto set_status;
 
-		/* FOLL_DUMP to ignore special (like zero) pages */
+		/* FOLL_DUMP to ignore special (like zero) pages
+		 */
 		page = follow_page(vma, addr, FOLL_GET | FOLL_DUMP);
 
 		err = PTR_ERR(page);
@@ -2318,6 +2337,7 @@ set_status:
 	mmap_read_unlock(mm);
 }
 
+/* 处理用户空间和内核空间拷贝的事情 */
 static int get_compat_pages_array(const void __user *chunk_pages[],
 				  const void __user * __user *pages,
 				  unsigned long chunk_nr)
@@ -2336,6 +2356,7 @@ static int get_compat_pages_array(const void __user *chunk_pages[],
 }
 
 /*
+确定一组页面的nid
  * Determine the nodes of a user array of pages and store it in
  * a user array of status.
  */
@@ -2348,8 +2369,10 @@ static int do_pages_stat(struct mm_struct *mm, unsigned long nr_pages,
 	int chunk_status[DO_PAGES_STAT_CHUNK_NR];
 
 	while (nr_pages) {
+		/* 每批次最多处理16个 */
 		unsigned long chunk_nr = min(nr_pages, DO_PAGES_STAT_CHUNK_NR);
 
+		/* 把这些指针, 从用户空间拷贝到内核空间? */
 		if (in_compat_syscall()) {
 			if (get_compat_pages_array(chunk_pages, pages,
 						   chunk_nr))
@@ -2360,6 +2383,7 @@ static int do_pages_stat(struct mm_struct *mm, unsigned long nr_pages,
 				break;
 		}
 
+		/* 检测这一组页面的信息 */
 		do_pages_stat_array(mm, chunk_nr, chunk_pages, chunk_status);
 
 		if (copy_to_user(status, chunk_status, chunk_nr * sizeof(*status)))

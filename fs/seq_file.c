@@ -22,7 +22,10 @@
 
 #include <linux/uaccess.h>
 #include <asm/page.h>
-
+/* 
+seqfile的实现
+一种用于简化顺序文件操作的机制，主要用于在 /proc 或 /sys 等虚拟文件系统中生成动态内容。
+*/
 static struct kmem_cache *seq_file_cache __ro_after_init;
 
 static void seq_set_overflow(struct seq_file *m)
@@ -30,6 +33,7 @@ static void seq_set_overflow(struct seq_file *m)
 	m->count = m->size;
 }
 
+/* 分配seq file的buf */
 static void *seq_buf_alloc(unsigned long size)
 {
 	if (unlikely(size > MAX_RW_COUNT))
@@ -40,8 +44,7 @@ static void *seq_buf_alloc(unsigned long size)
 
 /**
 seq_open对file做了什么
-让file的priv指向seq_file.
-seq_file由op初始化
+初始化一个指定seq ops的seq file，挂在file的priv
  *	seq_open -	initialize sequential file
  *	@file: file we initialize
  *	@op: method table describing the sequence
@@ -143,6 +146,8 @@ Eoverflow:
 }
 
 /**
+开始seq file的读
+一个很通用很普遍的函数
  *	seq_read -	->read() method for sequential files.
  *	@file: the file to read from
  *	@buf: the buffer to read to
@@ -153,15 +158,19 @@ Eoverflow:
  */
 ssize_t seq_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
 {
+	/* 初始化iovec */
 	struct iovec iov = { .iov_base = buf, .iov_len = size};
 	struct kiocb kiocb;
 	struct iov_iter iter;
 	ssize_t ret;
 
+	/* 初始化这个kiocb */
 	init_sync_kiocb(&kiocb, file);
+	/* 初始化一个iovec类型的iter */
 	iov_iter_init(&iter, ITER_DEST, &iov, 1, size);
 
 	kiocb.ki_pos = *ppos;
+	/* 开始读写 */
 	ret = seq_read_iter(&kiocb, &iter);
 	*ppos = kiocb.ki_pos;
 	return ret;
@@ -170,9 +179,15 @@ EXPORT_SYMBOL(seq_read);
 
 /*
  * Ready-made ->f_op->read_iter()
+进行seq file的读操作
+ * @description: 
+ * @param {kiocb} *iocb，描述了要读的文件
+ * @param {iov_iter} *iter，iter->iovec描述了要输出到的用户空间内存位置
+ * @return {*}
  */
 ssize_t seq_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 {
+	/* seq file机制中seq file的指针位于vfs file的priv里面 */
 	struct seq_file *m = iocb->ki_filp->private_data;
 	size_t copied = 0;
 	size_t n;
@@ -210,12 +225,14 @@ ssize_t seq_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 
 	/* grab buffer if we didn't have one */
 	if (!m->buf) {
+		/* 给seq file分配内存 */
 		m->buf = seq_buf_alloc(m->size = PAGE_SIZE);
 		if (!m->buf)
 			goto Enomem;
 	}
 	// something left in the buffer - copy it out first
 	if (m->count) {
+		/* 把buf里面剩余的东西拷贝出去？ */
 		n = copy_to_iter(m->buf + m->from, m->count, iter);
 		m->count -= n;
 		m->from += n;
@@ -223,6 +240,7 @@ ssize_t seq_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 		if (m->count)	// hadn't managed to copy everything
 			goto Done;
 	}
+	/* 现在m->count为0了 */
 	// get a non-empty record in the buffer
 	m->from = 0;
 	p = m->op->start(m, &m->index);
@@ -230,6 +248,7 @@ ssize_t seq_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 		err = PTR_ERR(p);
 		if (!p || IS_ERR(p))	// EOF or an error
 			break;
+		/* 这里一般是从seq源打印到seq的buf里面 */
 		err = m->op->show(m, p);
 		if (err < 0)		// hard error
 			break;
@@ -386,6 +405,14 @@ void seq_escape_mem(struct seq_file *m, const char *src, size_t len,
 }
 EXPORT_SYMBOL(seq_escape_mem);
 
+/**
+把内容输出到seq file的buf中
+ * @description: 
+ * @param {seq_file} *m
+ * @param {char} *f
+ * @param {va_list} args
+ * @return {*}
+ */
 void seq_vprintf(struct seq_file *m, const char *f, va_list args)
 {
 	int len;
@@ -401,6 +428,13 @@ void seq_vprintf(struct seq_file *m, const char *f, va_list args)
 }
 EXPORT_SYMBOL(seq_vprintf);
 
+/**
+把格式化的字符串（seq file要打印的东西）输出到seq file的buf中
+ * @description: 
+ * @param {seq_file} *m
+ * @param {char} *f
+ * @return {*}
+ */
 void seq_printf(struct seq_file *m, const char *f, ...)
 {
 	va_list args;
@@ -576,9 +610,11 @@ static void single_stop(struct seq_file *p, void *v)
 int single_open(struct file *file, int (*show)(struct seq_file *, void *),
 		void *data)
 {
+	/* 分配一个seq ops */
 	struct seq_operations *op = kmalloc(sizeof(*op), GFP_KERNEL_ACCOUNT);
 	int res = -ENOMEM;
 
+	/* 初始化seq ops */
 	if (op) {
 		op->start = single_start;
 		op->next = single_next;
@@ -612,6 +648,7 @@ int single_open_size(struct file *file, int (*show)(struct seq_file *, void *),
 }
 EXPORT_SYMBOL(single_open_size);
 
+/* 释放相关的seq file */
 int single_release(struct inode *inode, struct file *file)
 {
 	const struct seq_operations *op = ((struct seq_file *)file->private_data)->op;
@@ -631,6 +668,7 @@ int seq_release_private(struct inode *inode, struct file *file)
 }
 EXPORT_SYMBOL(seq_release_private);
 
+/* 创建seq file， 创建iter */
 void *__seq_open_private(struct file *f, const struct seq_operations *ops,
 		int psize)
 {
@@ -638,15 +676,19 @@ void *__seq_open_private(struct file *f, const struct seq_operations *ops,
 	void *private;
 	struct seq_file *seq;
 
+	/* 分配iter的内存 */
 	private = kzalloc(psize, GFP_KERNEL_ACCOUNT);
 	if (private == NULL)
 		goto out;
 
+	/* 打开一个seq file */
 	rc = seq_open(f, ops);
 	if (rc < 0)
 		goto out_free;
 
+	/* file的priv是seq file */
 	seq = f->private_data;
+	/* seq file的priv是iter */
 	seq->private = private;
 	return private;
 
@@ -904,6 +946,7 @@ void seq_hex_dump(struct seq_file *m, const char *prefix_str, int prefix_type,
 }
 EXPORT_SYMBOL(seq_hex_dump);
 
+/* seq file开始读取list */
 struct list_head *seq_list_start(struct list_head *head, loff_t pos)
 {
 	struct list_head *lh;
@@ -1147,7 +1190,7 @@ seq_hlist_next_percpu(void *v, struct hlist_head __percpu *head,
 	return NULL;
 }
 EXPORT_SYMBOL(seq_hlist_next_percpu);
-
+/* 初始化seq-file机制 */
 void __init seq_file_init(void)
 {
 	seq_file_cache = KMEM_CACHE(seq_file, SLAB_ACCOUNT|SLAB_PANIC);

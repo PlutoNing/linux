@@ -374,6 +374,7 @@ static inline int list_empty(const struct list_head *head)
 }
 
 /**
+移除,然后重新初始化
  * list_del_init_careful - deletes entry from list and reinitialize it.
  * @entry: the element to delete from the list.
  *
@@ -879,6 +880,7 @@ n是pos的下一个位置
 	     pos = n, n = list_next_entry(n, member))
 
 /**
+遍历链接在pos->member链表上的全部成员
  * list_for_each_entry_safe_from - iterate over list from current point safe against removal
  * @pos:	the type * to use as a loop cursor.
  * @n:		another type * to use as temporary storage
@@ -1084,6 +1086,7 @@ static inline bool hlist_fake(struct hlist_node *h)
 }
 
 /**
+是不是hlist的唯一元素
  * hlist_is_singular_node - is node the only element of the specified hlist?
  * @n: Node to check for singularity.
  * @h: Header for potentially singular list.

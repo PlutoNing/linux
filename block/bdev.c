@@ -358,7 +358,7 @@ static const struct super_operations bdev_sops = {
 	.alloc_inode = bdev_alloc_inode,
 	.free_inode = bdev_free_inode,
 	.drop_inode = generic_delete_inode,
-	// bdev fs驱逐inode
+	// bdev fs删除inode
 	.evict_inode = bdev_evict_inode,
 };
 /* 初始化bdev fs */
@@ -377,7 +377,7 @@ static struct file_system_type bd_type = {
 	.init_fs_context = bd_init_fs_context,
 	.kill_sb	= kill_anon_super,
 };
-//像是bdev的伪文件系统的sb
+/* 20250704010312 */
 struct super_block *blockdev_superblock __read_mostly;
 EXPORT_SYMBOL_GPL(blockdev_superblock);
 
@@ -453,6 +453,8 @@ void bdev_add(struct block_device *bdev, dev_t dev)
 	insert_inode_hash(bdev->bd_inode);
 }
 
+/* 这个统计的是什么?
+看起来像是bdev fs的全部inode的mapping数量之和 */
 long nr_blockdev_pages(void)
 {
 	struct inode *inode;

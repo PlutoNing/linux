@@ -26,6 +26,7 @@ static void perf_output_wakeup(struct perf_output_handle *handle)
 }
 
 /*
+用于获取perf_output_handle的句柄
  * We need to ensure a later event_id doesn't publish a head when a former
  * event isn't done writing. However since we need to deal with NMIs we
  * cannot fully serialize things.
@@ -145,6 +146,9 @@ ring_buffer_has_space(unsigned long head, unsigned long tail,
 		return CIRC_SPACE(tail, head, data_size) >= size;
 }
 
+/* 开始记录事件
+好像就是前拨了write pos， 让handle记录所需要的信息
+*/
 static __always_inline int
 __perf_output_begin(struct perf_output_handle *handle,
 		    struct perf_sample_data *data,
@@ -167,6 +171,7 @@ __perf_output_begin(struct perf_output_handle *handle,
 	if (event->parent)
 		event = event->parent;
 
+	/* 获取buffer */
 	rb = rcu_dereference(event->rb);
 	if (unlikely(!rb))
 		goto out;
@@ -179,6 +184,7 @@ __perf_output_begin(struct perf_output_handle *handle,
 		goto out;
 	}
 
+	/* 让handle记录所需要的信息 */
 	handle->rb    = rb;
 	handle->event = event;
 
@@ -189,8 +195,10 @@ __perf_output_begin(struct perf_output_handle *handle,
 			size += event->id_header_size;
 	}
 
+	/* 获取句柄 */
 	perf_output_get_handle(handle);
 
+	/* 获取write pos */
 	offset = local_read(&rb->head);
 	do {
 		head = offset;
@@ -279,6 +287,10 @@ int perf_output_begin_backward(struct perf_output_handle *handle,
 	return __perf_output_begin(handle, data, event, size, true);
 }
 
+/* 
+data是sample的指针，
+准备开始输出事件
+*/
 int perf_output_begin(struct perf_output_handle *handle,
 		      struct perf_sample_data *data,
 		      struct perf_event *event, unsigned int size)
@@ -288,6 +300,7 @@ int perf_output_begin(struct perf_output_handle *handle,
 				   unlikely(is_write_backward(event)));
 }
 
+/* perf输出事件 */
 unsigned int perf_output_copy(struct perf_output_handle *handle,
 		      const void *buf, unsigned int len)
 {

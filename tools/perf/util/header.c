@@ -3777,7 +3777,7 @@ static int perf_header__getbuffer64(struct perf_header *header,
 
 	return 0;
 }
-
+/*  */
 int perf_header__process_sections(struct perf_header *header, int fd,
 				  void *data,
 				  int (*process)(struct perf_file_section *section,
@@ -4033,7 +4033,7 @@ static int perf_file_section__process(struct perf_file_section *section,
 
 	return feat_ops[feat].process(&fdd, data);
 }
-
+/* 把data的header读到header和repipefd */
 static int perf_file_header__read_pipe(struct perf_pipe_file_header *header,
 				       struct perf_header *ph,
 				       struct perf_data* data,
@@ -4044,7 +4044,7 @@ static int perf_file_header__read_pipe(struct perf_pipe_file_header *header,
 		.ph = ph,
 	};
 	ssize_t ret;
-
+/* 读取perf file的header */
 	ret = perf_data__read(data, header, sizeof(*header));
 	if (ret <= 0)
 		return -1;
@@ -4062,7 +4062,7 @@ static int perf_file_header__read_pipe(struct perf_pipe_file_header *header,
 
 	return 0;
 }
-
+/* 把session->data的header读到repipefd */
 static int perf_header__read_pipe(struct perf_session *session, int repipe_fd)
 {
 	struct perf_header *header = &session->header;
@@ -4373,7 +4373,7 @@ size_t perf_event__fprintf_event_update(union perf_event *event, FILE *fp)
 
 	return ret;
 }
-
+/* 处理一个事件 */
 int perf_event__process_attr(struct perf_tool *tool __maybe_unused,
 			     union perf_event *event,
 			     struct evlist **pevlist)

@@ -357,7 +357,7 @@ u64 ordered_events__first_time(struct ordered_events *oe)
 	event = list_first_entry(&oe->events, struct ordered_event, list);
 	return event->timestamp;
 }
-
+/* 初始化order events的处理方式? */
 void ordered_events__init(struct ordered_events *oe, ordered_events__deliver_t deliver,
 			  void *data)
 {

@@ -101,6 +101,7 @@ enum pageflags {
 	PG_locked,		/* Page is locked. Don't touch. */
 	PG_writeback,		/* Page is under writeback */
 	PG_referenced,
+	/*  */
 	PG_uptodate,
 	PG_dirty,
 	PG_lru,
@@ -537,7 +538,9 @@ PAGEFLAG(MappedToDisk, mappedtodisk, PF_NO_TAIL)
 /* PG_readahead is only used for reads; PG_reclaim is only for writes */
 PAGEFLAG(Reclaim, reclaim, PF_NO_TAIL)
 	TESTCLEARFLAG(Reclaim, reclaim, PF_NO_TAIL)
-//folio_test_readahead  folio_test_set_readahead
+/*
+ folio_test_readahead
+ folio_test_set_readahead */
 PAGEFLAG(Readahead, readahead, PF_NO_COMPOUND)
 	TESTCLEARFLAG(Readahead, readahead, PF_NO_COMPOUND)
 
@@ -664,7 +667,9 @@ PAGEFLAG_FALSE(VmemmapSelfHosted, vmemmap_self_hosted)
 #define PAGE_MAPPING_ANON	0x1
 #define PAGE_MAPPING_MOVABLE	0x2
 #define PAGE_MAPPING_KSM	(PAGE_MAPPING_ANON | PAGE_MAPPING_MOVABLE)
-/* 就是0x11? */
+/* 就是0x11?
+有这个flag就是匿名vma的mapping？
+*/
 #define PAGE_MAPPING_FLAGS	(PAGE_MAPPING_ANON | PAGE_MAPPING_MOVABLE)
 
 /*
@@ -735,6 +740,8 @@ TESTPAGEFLAG_FALSE(Ksm, ksm)
 u64 stable_page_flags(struct page *page);
 
 /**
+什么算是up-to-date?
+20250628145604
  * folio_test_uptodate - Is this folio up to date?
  * @folio: The folio.
  *
@@ -766,12 +773,14 @@ static inline int PageUptodate(struct page *page)
 	return folio_test_uptodate(page_folio(page));
 }
 
+/* 把页面设置为up-to-date */
 static __always_inline void __folio_mark_uptodate(struct folio *folio)
 {
 	smp_wmb();
 	__set_bit(PG_uptodate, folio_flags(folio, 0));
 }
 
+/* 如果检测到folio的全部bh都是up-to-date的, 设置此 */
 static __always_inline void folio_mark_uptodate(struct folio *folio)
 {
 	/*

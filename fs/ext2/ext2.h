@@ -81,7 +81,7 @@ struct ext2_sb_info {
 	unsigned long s_blocks_last;    /* Last seen block count */
 	struct buffer_head * s_sbh;	/* Buffer containing the super block */
 	struct ext2_super_block * s_es;	/* Pointer to the super block in the buffer */
-	struct buffer_head ** s_group_desc;
+	struct buffer_head ** s_group_desc;/* 可以desc = (struct ext2_group_desc *) sbi->s_group_desc[group_desc]->b_data; */
 	unsigned long  s_mount_opt;
 	unsigned long s_sb_block;
 	kuid_t s_resuid;
@@ -117,7 +117,7 @@ struct ext2_sb_info {
 	struct dax_device *s_daxdev;
 	u64 s_dax_part_off;
 };
-
+/* 操作块组的位图之前,在sbi加锁 */
 static inline spinlock_t *
 sb_bgl_lock(struct ext2_sb_info *sbi, unsigned int block_group)
 {
@@ -194,7 +194,7 @@ struct ext2_group_desc
 	__le32	bg_inode_bitmap;		/* Inodes bitmap block */
 	__le32	bg_inode_table;		/* Inodes table block */
 	__le16	bg_free_blocks_count;	/* Free blocks count */
-	__le16	bg_free_inodes_count;	/* Free inodes count */
+	__le16	bg_free_inodes_count;	/* Free inodes count,块组的freeinode计数 */
 	__le16	bg_used_dirs_count;	/* Directories count */
 	__le16	bg_pad;
 	__le32	bg_reserved[3];
@@ -671,7 +671,7 @@ struct ext2_inode_info {
 	 * ext2_reserve_window_node.
 	 */
 	struct mutex truncate_mutex;
-	struct inode	vfs_inode;
+	struct inode	vfs_inode; /* 表示vfs的inode */
 	struct list_head i_orphan;	/* unlinked but open inodes */
 #ifdef CONFIG_QUOTA
 	struct dquot *i_dquot[MAXQUOTAS];

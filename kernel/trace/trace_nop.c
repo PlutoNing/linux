@@ -50,7 +50,7 @@ static int nop_trace_init(struct trace_array *tr)
 	start_nop_trace(tr);
 	return 0;
 }
-
+/* 如果要echo function > current_tracer. 从nop tracer切换到function tracer的话. 用于reset nop tracer */
 static void nop_trace_reset(struct trace_array *tr)
 {
 	stop_nop_trace(tr);
@@ -84,7 +84,7 @@ static int nop_set_flag(struct trace_array *tr, u32 old_flags, u32 bit, int set)
 	return 0;
 }
 
-
+/* 表示nop tracer */
 struct tracer nop_trace __read_mostly =
 {
 	.name		= "nop",

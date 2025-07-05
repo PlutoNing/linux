@@ -24,13 +24,14 @@ static inline void wake_up_if_idle(int cpu) { }
 #ifdef TIF_POLLING_NRFLAG
 
 #ifdef _ASM_GENERIC_BITOPS_INSTRUMENTED_ATOMIC_H
-
+/* 设置TIF_POLLING_NRFLAG
+线程处于忙等待（Busy-wait）状态，主动检查是否需要调度。 */
 static __always_inline void __current_set_polling(void)
 {
 	arch_set_bit(TIF_POLLING_NRFLAG,
 		     (unsigned long *)(&current_thread_info()->flags));
 }
-
+/* 清除tif的TIF_POLLING_NRFLAG标志 */
 static __always_inline void __current_clr_polling(void)
 {
 	arch_clear_bit(TIF_POLLING_NRFLAG,

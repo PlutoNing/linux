@@ -43,7 +43,7 @@ struct breakpoint {
 	int fd;
 	char watched;
 };
-
+/* 设置一个断点 */
 static int breakpoint_setup(void *addr)
 {
 	struct perf_event_attr attr = { .size = 0, };
@@ -106,7 +106,7 @@ static void *breakpoint_thread(void *arg)
 	free(threads);
 	return NULL;
 }
-
+/* 执行breakpoint/thread benchmark */
 // The benchmark creates nbreakpoints inheritable breakpoints,
 // then starts nparallel threads which create and join bench_repeat batches of nthreads threads.
 int bench_breakpoint_thread(int argc, const char **argv)

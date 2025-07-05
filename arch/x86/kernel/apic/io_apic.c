@@ -2676,7 +2676,7 @@ static int io_apic_get_version(int ioapic)
 #define IOAPIC_RESOURCE_NAME_SIZE 11
 
 static struct resource *ioapic_resources;
-
+/* 分配内存, 并初始化每个ioapics[i].iomem_res */
 static struct resource * __init ioapic_setup_resources(void)
 {
 	unsigned long n;
@@ -2689,12 +2689,12 @@ static struct resource * __init ioapic_setup_resources(void)
 
 	n = IOAPIC_RESOURCE_NAME_SIZE + sizeof(struct resource);
 	n *= nr_ioapics;
-
+	/* 分配内存 */
 	mem = memblock_alloc(n, SMP_CACHE_BYTES);
 	if (!mem)
 		panic("%s: Failed to allocate %lu bytes\n", __func__, n);
 	res = (void *)mem;
-
+	/* 现在mem指向放名字的内存pos */
 	mem += sizeof(struct resource) * nr_ioapics;
 
 	for_each_ioapic(i) {
@@ -2727,7 +2727,7 @@ static void io_apic_set_fixmap(enum fixed_addresses idx, phys_addr_t phys)
 
 	__set_fixmap(idx, phys, flags);
 }
-
+/* 以后 */
 void __init io_apic_init_mappings(void)
 {
 	unsigned long ioapic_phys, idx = FIX_IO_APIC_BASE_0;
@@ -2891,7 +2891,7 @@ int mp_register_ioapic(int id, u32 address, u32 gsi_base,
 	ioapics[idx].mp_config.type = MP_IOAPIC;
 	ioapics[idx].mp_config.flags = MPC_APIC_USABLE;
 	ioapics[idx].mp_config.apicaddr = address;
-
+	/* 设置FIX_IO_APIC_BASE_0 + idx映射到address */
 	io_apic_set_fixmap(FIX_IO_APIC_BASE_0 + idx, address);
 	if (bad_ioapic_register(idx)) {
 		clear_fixmap(FIX_IO_APIC_BASE_0 + idx);

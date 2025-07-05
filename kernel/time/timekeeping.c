@@ -139,7 +139,7 @@ static inline struct timespec64 tk_xtime(const struct timekeeper *tk)
 	ts.tv_nsec = (long)(tk->tkr_mono.xtime_nsec >> tk->tkr_mono.shift);
 	return ts;
 }
-
+/* 根据从rtc获取的wall_time初始化tk */
 static void tk_set_xtime(struct timekeeper *tk, const struct timespec64 *ts)
 {
 	tk->xtime_sec = ts->tv_sec;
@@ -155,7 +155,7 @@ static void tk_xtime_add(struct timekeeper *tk, const struct timespec64 *ts)
 	tk->tkr_mono.xtime_nsec += (u64)ts->tv_nsec << tk->tkr_mono.shift;
 	tk_normalize_xtime(tk);
 }
-/* 
+/* wall_to_mono = timespec64_sub(boot_offset, wall_time)是这样计算出的
 设置tk的wall_to_mono
 */
 static void tk_set_wall_to_mono(struct timekeeper *tk, struct timespec64 wtm)
@@ -169,12 +169,14 @@ static void tk_set_wall_to_mono(struct timekeeper *tk, struct timespec64 wtm)
 	set_normalized_timespec64(&tmp, -tk->wall_to_monotonic.tv_sec,
 					-tk->wall_to_monotonic.tv_nsec);
 	WARN_ON_ONCE(tk->offs_real != timespec64_to_ktime(tmp));
+	/* 设置tk的wall_to_monotonic */
 	tk->wall_to_monotonic = wtm;
 	set_normalized_timespec64(&tmp, -wtm.tv_sec, -wtm.tv_nsec);
 	tk->offs_real = timespec64_to_ktime(tmp);
 	tk->offs_tai = ktime_add(tk->offs_real, ktime_set(tk->tai_offset, 0));
 }
 
+/* delta是睡眠时间 */
 static inline void tk_update_sleep_time(struct timekeeper *tk, ktime_t delta)
 {
 	tk->offs_boot = ktime_add(tk->offs_boot, delta);
@@ -306,8 +308,8 @@ static inline u64 timekeeping_get_delta(const struct tk_read_base *tkr)
 }
 #endif
 
-/**
-建立default clocksource和timekeeping关系
+/** tk是tk_core.timekeeper.   clock是clock = clocksource_default_clock()选择的时钟源
+建立default clocksource和timekeeping关系, 根据选择的时钟初始化tk
  * tk_setup_internals - Set up internals to use clocksource clock.
  *
  * @tk:		The target timekeeper to setup.
@@ -323,12 +325,12 @@ static void tk_setup_internals(struct timekeeper *tk, struct clocksource *clock)
 	u64 interval;
 	u64 tmp, ntpinterval;
 	struct clocksource *old_clock;
-
+	/* 设置tk->tkr_mono */
 	++tk->cs_was_changed_seq;
 	old_clock = tk->tkr_mono.clock;
 	tk->tkr_mono.clock = clock;
 	tk->tkr_mono.mask = clock->mask;
-	tk->tkr_mono.cycle_last = tk_clock_read(&tk->tkr_mono);
+	tk->tkr_mono.cycle_last =	tk_clock_read(&tk->tkr_mono); /* 从tk->tkr_mono.clock读取时间 */
 
 	tk->tkr_raw.clock = clock;
 	tk->tkr_raw.mask = clock->mask;
@@ -781,7 +783,7 @@ static void timekeeping_update(struct timekeeper *tk, unsigned int action)
 
 	tk_update_leap_state(tk);
 	tk_update_ktime_data(tk);
-
+/* 更新vdso */
 	update_vsyscall(tk);
 	update_pvclock_gtod(tk, action & TK_CLOCK_WAS_SET);
 
@@ -802,6 +804,8 @@ static void timekeeping_update(struct timekeeper *tk, unsigned int action)
 }
 
 /**
+保存xtime_nsec, 更新xtime_nsec到最新
+===================================
 调用timekeeping_forward_now函数。就要更换新的clocksource了，就是旧clocksource
 最后再发挥一次作用。调用旧的clocksource的read函数，将最后的这段时间间隔（当前到上次
 read）加到real time system clock以及minitonic raw system clock上去
@@ -1664,7 +1668,7 @@ read_persistent_wall_and_boot_offset(struct timespec64 *wall_time,
 				     struct timespec64 *boot_offset)
 {
 	// 读取到wall_time
-	read_persistent_clock64(wall_time);
+	read_persistent_clock64(wall_time); /* print *wall_time $13 = {tv_sec = 1747206397, tv_nsec = 0} */
 	*boot_offset = ns_to_timespec64(local_clock());
 }
 
@@ -1685,7 +1689,7 @@ static bool suspend_timing_needed;
 
 /* Flag for if there is a persistent clock on this platform
 表示是否在此平台上有持久时钟
-*/
+timekeeping_init运行的时候一般都会成功初始化为true */
 static bool persistent_clock_exists;
 
 /*
@@ -1706,7 +1710,7 @@ void __init timekeeping_init(void)
 	// 读取到wall_time和boot_offset
 	read_persistent_wall_and_boot_offset(&wall_time, &boot_offset);
 	if (timespec64_valid_settod(&wall_time) &&
-	    timespec64_to_ns(&wall_time) > 0) {
+	    timespec64_to_ns(&wall_time) > 0) {/* 一般都会走到这里 */
 		persistent_clock_exists = true;
 	} else if (timespec64_to_ns(&wall_time) != 0) {
 		pr_warn("Persistent clock returned invalid value");
@@ -1750,6 +1754,7 @@ void __init timekeeping_init(void)
 static struct timespec64 timekeeping_suspend_time;
 
 /**
+调表?
  * __timekeeping_inject_sleeptime - Internal function to add sleep interval
  * @tk:		Pointer to the timekeeper to be updated
  * @delta:	Pointer to the delta value in timespec64 format
@@ -1766,6 +1771,8 @@ static void __timekeeping_inject_sleeptime(struct timekeeper *tk,
 				"sleep delta value!\n");
 		return;
 	}
+
+	/* 调表timekeeping */
 	tk_xtime_add(tk, delta);
 	tk_set_wall_to_mono(tk, timespec64_sub(tk->wall_to_monotonic, *delta));
 	tk_update_sleep_time(tk, timespec64_to_ktime(*delta));
@@ -1844,6 +1851,7 @@ void timekeeping_inject_sleeptime64(const struct timespec64 *delta)
 #endif
 
 /**
+恢复tk
  * timekeeping_resume - Resumes the generic timekeeping subsystem.
  */
 void timekeeping_resume(void)
@@ -1857,7 +1865,9 @@ void timekeeping_resume(void)
 
 	read_persistent_clock64(&ts_new);
 
+	/* 调用每个ce设备的resume函数 */
 	clockevents_resume();
+	/* 调用每个时钟源的resume函数 */
 	clocksource_resume();
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
@@ -1875,7 +1885,9 @@ void timekeeping_resume(void)
 	 * The less preferred source will only be tried if there is no better
 	 * usable source. The rtc part is handled separately in rtc core code.
 	 */
+	/* 读取时间 */
 	cycle_now = tk_clock_read(&tk->tkr_mono);
+	/* 以后 */
 	nsec = clocksource_stop_suspend_timing(clock, cycle_now);
 	if (nsec > 0) {
 		ts_delta = ns_to_timespec64(nsec);
@@ -1887,6 +1899,7 @@ void timekeeping_resume(void)
 
 	if (inject_sleeptime) {
 		suspend_timing_needed = false;
+		/* 好像是调整因为睡眠没动的时间? */
 		__timekeeping_inject_sleeptime(tk, &ts_delta);
 	}
 
@@ -1896,18 +1909,21 @@ void timekeeping_resume(void)
 
 	tk->ntp_error = 0;
 	timekeeping_suspended = 0;
+	/* 更新tk的属性 */
 	timekeeping_update(tk, TK_MIRROR | TK_CLOCK_WAS_SET);
 	write_seqcount_end(&tk_core.seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
 
 	touch_softlockup_watchdog();
 
-	/* Resume the clockevent device(s) and hrtimers */
+	/* Resume the clockevent device(s) and hrtimers
+	恢复设备的tick, 恢复timer什么的
+	*/
 	tick_resume();
 	/* Notify timerfd as resume is equivalent to clock_was_set() */
 	timerfd_resume();
 }
-
+/* 挂起tk */
 int timekeeping_suspend(void)
 {
 	struct timekeeper *tk = &tk_core.timekeeper;
@@ -1931,6 +1947,7 @@ int timekeeping_suspend(void)
 
 	raw_spin_lock_irqsave(&timekeeper_lock, flags);
 	write_seqcount_begin(&tk_core.seq);
+	/*  保存cycle_last, 更新xtime_nsec*/
 	timekeeping_forward_now(tk);
 	timekeeping_suspended = 1;
 
@@ -1941,8 +1958,10 @@ int timekeeping_suspend(void)
 	 */
 	curr_clock = tk->tkr_mono.clock;
 	cycle_now = tk->tkr_mono.cycle_last;
+	/* 保存开始挂起的时间 */
 	clocksource_start_suspend_timing(curr_clock, cycle_now);
 
+	/* 以后 */
 	if (persistent_clock_exists) {
 		/*
 		 * To avoid drift caused by repeated suspend/resumes,
@@ -1970,6 +1989,7 @@ int timekeeping_suspend(void)
 	write_seqcount_end(&tk_core.seq);
 	raw_spin_unlock_irqrestore(&timekeeper_lock, flags);
 
+	/* 停止tick, 把local和广播设备的next时间都设置为LONGMAX */
 	tick_suspend();
 	clocksource_suspend();
 	clockevents_suspend();
@@ -1977,7 +1997,9 @@ int timekeeping_suspend(void)
 	return 0;
 }
 
-/* sysfs resume/suspend bits for timekeeping */
+/* sysfs resume/suspend bits for timekeeping
+tk的恢复和挂起的ops
+*/
 static struct syscore_ops timekeeping_syscore_ops = {
 	.resume		= timekeeping_resume,
 	.suspend	= timekeeping_suspend,

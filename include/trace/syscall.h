@@ -24,12 +24,12 @@
  */
 struct syscall_metadata {
 	const char	*name;
-	int		syscall_nr;
+	int		syscall_nr;/* 对应的系统调用号 */
 	int		nb_args;
 	const char	**types;
 	const char	**args;
 	struct list_head enter_fields;
-
+	/* 指向的就是那些available event对应的call */
 	struct trace_event_call *enter_event;
 	struct trace_event_call *exit_event;
 };
@@ -41,6 +41,8 @@ static inline void syscall_tracepoint_update(struct task_struct *p)
 		set_task_syscall_work(p, SYSCALL_TRACEPOINT);
 	else
 		clear_task_syscall_work(p, SYSCALL_TRACEPOINT);
+	/*
+	*/
 }
 #else
 static inline void syscall_tracepoint_update(struct task_struct *p)

@@ -149,6 +149,7 @@ static inline bool mapping_empty(struct address_space *mapping)
  * mapping_shrinkable - test if page cache state allows inode reclaim
    检查mapping是否允许inode回收, mapping删除页面后一遍会调用此函数
    -------
+   20250703220733
    什么叫做mapping允许inode回收呢?
  * @mapping: the page cache mapping
  *
@@ -251,6 +252,7 @@ static inline void mapping_set_error(struct address_space *mapping, int error)
 }
 
 // 设置mapping为unevictable
+/* 如果是不能swap的shmem fs, 会设置这个 */
 static inline void mapping_set_unevictable(struct address_space *mapping)
 {
 	set_bit(AS_UNEVICTABLE, &mapping->flags);
@@ -308,7 +310,8 @@ static inline gfp_t mapping_gfp_mask(struct address_space * mapping)
 	return mapping->gfp_mask;
 }
 
-/* Restricts the given gfp_mask to what the mapping allows. */
+/* Restricts the given gfp_mask to what the mapping allows.
+获取mapping的gfp, 加上（与）@gfp_mask的限制 */
 static inline gfp_t mapping_gfp_constraint(struct address_space *mapping,
 		gfp_t gfp_mask)
 {
@@ -516,6 +519,7 @@ static inline void *detach_page_private(struct page *page)
  * a good order (that's 1MB if you're using 4kB pages)
  */
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
+/* 等于9 */
 #define MAX_PAGECACHE_ORDER	HPAGE_PMD_ORDER
 #else
 #define MAX_PAGECACHE_ORDER	8
@@ -583,12 +587,16 @@ typedef unsigned int __bitwise fgf_t;
 #define FGP_LOCK		((__force fgf_t)0x00000002)
 #define FGP_CREAT		((__force fgf_t)0x00000004)  //页缓存不存在页面时,是否可以申请
 #define FGP_WRITE		((__force fgf_t)0x00000008)
+/* 		 看来这个FGP_NOFS影响查找mapping的行为
+		if (fgp_flags & FGP_NOFS)
+			gfp &= ~__GFP_FS; */
 #define FGP_NOFS		((__force fgf_t)0x00000010)
 #define FGP_NOWAIT		((__force fgf_t)0x00000020)
 #define FGP_FOR_MMAP		((__force fgf_t)0x00000040)
 #define FGP_STABLE		((__force fgf_t)0x00000080)
 #define FGF_GET_ORDER(fgf)	(((__force unsigned)fgf) >> 26)	/* top 6 bits */
 
+/* 会创建 */
 #define FGP_WRITEBEGIN		(FGP_LOCK | FGP_WRITE | FGP_CREAT | FGP_STABLE)
 
 /**
@@ -618,7 +626,9 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
 		fgf_t fgp_flags, gfp_t gfp);
 
 /**
-  找出index位置的folio, 缺页会申请
+  找出index位置的folio, 缺页不会申请(fgp_flags为0)
+  =========================
+
  * filemap_get_folio - Find and get a folio.
  * @mapping: The address_space to search.
  * @index: The page index.
@@ -628,8 +638,6 @@ struct page *pagecache_get_page(struct address_space *mapping, pgoff_t index,
  * 查找@mapping和@index处的页缓存条目。如果存在folio, 则返回时会增加引用计数。
  * Return: A folio or ERR_PTR(-ENOENT) if there is no folio in the cache for
  * this index.  Will not return a shadow, swap or DAX entry.
- 返回: 如果没有此索引的缓存中没有folio, 则返回一个folio或ERR_PTR(-ENOENT)。
- 不会返回阴影、交换或DAX条目。
  */
 static inline struct folio *filemap_get_folio(struct address_space *mapping,
 					pgoff_t index)
@@ -656,6 +664,9 @@ static inline struct folio *filemap_lock_folio(struct address_space *mapping,
 }
 
 /**
+找到index位置的folio
+===========
+truncate和一些fs调用
  * filemap_grab_folio - grab a folio from the page cache
  * @mapping: The address space to search
  * @index: The page index
@@ -676,6 +687,7 @@ static inline struct folio *filemap_grab_folio(struct address_space *mapping,
 }
 
 /**
+从mapping查找page
  * find_get_page - find and get a page reference
  * @mapping: the address_space to search
  * @offset: the page index
@@ -691,6 +703,8 @@ static inline struct page *find_get_page(struct address_space *mapping,
 	return pagecache_get_page(mapping, offset, 0, 0);
 }
 
+/* 从mapping查找page
+特点是透传fgp_flags */
 static inline struct page *find_get_page_flags(struct address_space *mapping,
 					pgoff_t offset, fgf_t fgp_flags)
 {
@@ -698,6 +712,8 @@ static inline struct page *find_get_page_flags(struct address_space *mapping,
 }
 
 /**
+查找mapping的page
+特点是会加锁和lock
  * find_lock_page - locate, pin and lock a pagecache page
  * @mapping: the address_space to search
  * @index: the page index
@@ -717,6 +733,8 @@ static inline struct page *find_lock_page(struct address_space *mapping,
 }
 
 /**
+从mapping查找page
+特点是: 加锁, 不存在会创建, 并且会标记accessed
  * find_or_create_page - locate or add a pagecache page
  * @mapping: the page's address_space
  * @index: the page's index into the mapping
@@ -744,6 +762,8 @@ static inline struct page *find_or_create_page(struct address_space *mapping,
 }
 
 /**
+查找mapping的page
+会创建,会加锁,
  * grab_cache_page_nowait - returns locked page at given index in given cache
  * @mapping: target address_space
  * @index: the page index
@@ -785,6 +805,7 @@ static inline pgoff_t folio_index(struct folio *folio)
 }
 
 /**
+获取mapping里面下一个folio的index (可能是因为folio有时候是多个页面组成的)
  * folio_next_index - Get the index of the next folio.
  * @folio: The current folio.
  *
@@ -857,6 +878,7 @@ struct page *grab_cache_page_write_begin(struct address_space *mapping,
 			pgoff_t index);
 
 /*
+获取page并加锁, 没有就创建
  * Returns locked page at given index in given cache, creating it if needed.
  */
 static inline struct page *grab_cache_page(struct address_space *mapping,
@@ -882,7 +904,9 @@ static inline struct page *read_mapping_page(struct address_space *mapping,
 	return read_cache_page(mapping, index, NULL, file);
 }
 
-/*  */
+/* 获取这个index位置的folio
+=============
+把指定index的folio加载到mapping */
 static inline struct folio *read_mapping_folio(struct address_space *mapping,
 				pgoff_t index, struct file *file)
 {
@@ -921,7 +945,7 @@ static inline pgoff_t page_to_pgoff(struct page *page)
 	return page_to_index(page);
 }
 
-/*
+/*把pgoff转为addr
  * Return byte-offset into filesystem object for page.
  */
 static inline loff_t page_offset(struct page *page)
@@ -936,6 +960,8 @@ static inline loff_t page_file_offset(struct page *page)
 }
 
 /**
+folio是文件的页缓存页
+这里计算对应的pos
  * folio_pos - Returns the byte position of this folio in its file.
  * @folio: The folio.
  */
@@ -1174,6 +1200,8 @@ void folio_end_writeback(struct folio *folio);
 void wait_for_stable_page(struct page *page);
 void folio_wait_stable(struct folio *folio);
 void __folio_mark_dirty(struct folio *folio, struct address_space *, int warn);
+/* 设置页面为脏
+6.6这个函数没有被调用 */
 static inline void __set_page_dirty(struct page *page,
 		struct address_space *mapping, int warn)
 {
@@ -1181,7 +1209,9 @@ static inline void __set_page_dirty(struct page *page,
 }
 void folio_account_cleaned(struct folio *folio, struct bdi_writeback *wb);
 void __folio_cancel_dirty(struct folio *folio);
-// 从mapping中删除folio前会调用此函数
+/* 从mapping中删除folio前会调用此函数
+=========
+清除标记, 进行统计 */
 static inline void folio_cancel_dirty(struct folio *folio)
 {
 	/* Avoid atomic ops, locking, etc. when not actually needed. */
@@ -1365,7 +1395,7 @@ void page_cache_async_readahead(struct address_space *mapping,
 	page_cache_async_ra(&ractl, folio, req_count);
 }
 
-//获取ra的下一个预读的folio?
+/* 获取ra的下一个需要预读的folio? */
 static inline struct folio *__readahead_folio(struct readahead_control *ractl)
 {
 	struct folio *folio;
@@ -1403,6 +1433,7 @@ static inline struct page *readahead_page(struct readahead_control *ractl)
 }
 
 /**
+获取下一个要读的folio
  * readahead_folio - Get the next folio to read.
  * @ractl: The current readahead request.
  *
@@ -1412,6 +1443,7 @@ static inline struct page *readahead_page(struct readahead_control *ractl)
  */
 static inline struct folio *readahead_folio(struct readahead_control *ractl)
 {
+	/*  */
 	struct folio *folio = __readahead_folio(ractl);
 
 	if (folio)
@@ -1490,6 +1522,7 @@ static inline pgoff_t readahead_index(struct readahead_control *rac)
 }
 
 /**
+本次预读要读取的页面数量
  * readahead_count - The number of pages in this readahead request.
  * @rac: The readahead request.
  */
@@ -1506,7 +1539,7 @@ static inline size_t readahead_batch_length(struct readahead_control *rac)
 {
 	return rac->_batch_count * PAGE_SIZE;
 }
-
+/* inode的大小需要几个page */
 static inline unsigned long dir_pages(struct inode *inode)
 {
 	return (unsigned long)(inode->i_size + PAGE_SIZE - 1) >>
@@ -1570,6 +1603,7 @@ static inline int page_mkwrite_check_truncate(struct page *page,
 }
 
 /**
+计算folio大小可以包含几个磁盘块
  * i_blocks_per_folio - How many blocks fit in this folio.
  * @inode: The inode which contains the blocks.
  * @folio: The folio.

@@ -849,7 +849,7 @@ void __init *early_memremap_decrypted_wp(resource_size_t phys_addr,
 	return early_memremap_prot(phys_addr, size, __PAGE_KERNEL_NOENC_WP);
 }
 #endif	/* CONFIG_AMD_MEM_ENCRYPT */
-
+/* 好像一个静态的"pte页表" */
 static pte_t bm_pte[PAGE_SIZE/sizeof(pte_t)] __page_aligned_bss;
 
 static inline pmd_t * __init early_ioremap_pmd(unsigned long addr)
@@ -873,7 +873,7 @@ bool __init is_early_ioremap_ptep(pte_t *ptep)
 {
 	return ptep >= &bm_pte[0] && ptep < &bm_pte[PAGE_SIZE/sizeof(pte_t)];
 }
-
+/* ioremap, 以后 */
 void __init early_ioremap_init(void)
 {
 	pmd_t *pmd;
@@ -912,7 +912,7 @@ void __init early_ioremap_init(void)
 		       FIX_BTMAP_BEGIN);
 	}
 }
-
+/* 在bm_pte页表上面建立对phys物理地址的映射, 虚拟地址可以通过idx获得  */
 void __init __early_set_fixmap(enum fixed_addresses idx,
 			       phys_addr_t phys, pgprot_t flags)
 {
@@ -923,7 +923,7 @@ void __init __early_set_fixmap(enum fixed_addresses idx,
 		BUG();
 		return;
 	}
-	pte = early_ioremap_pte(addr);
+	pte = early_ioremap_pte(addr); /* 返回bm_pte上面一个ptep */
 
 	/* Sanitize 'prot' against any unsupported bits: */
 	pgprot_val(flags) &= __supported_pte_mask;

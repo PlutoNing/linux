@@ -41,7 +41,7 @@
  * space (-4094 to -2).  They're never stored in the slots array; only
  * returned by the normal API.
  */
-
+/*  */
 #define BITS_PER_XA_VALUE	(BITS_PER_LONG - 1)
 
 /**
@@ -191,7 +191,7 @@ static inline bool xa_is_internal(const void *entry)
 
 #define XA_ZERO_ENTRY		xa_mk_internal(257)
 
-/**
+/**值不能是0x402
  * xa_is_zero() - Is the entry a zero entry?
  * @entry: Entry retrieved from the XArray
  *
@@ -1211,7 +1211,7 @@ struct xa_node {
 	新建node时初始化时会等于xas->xa_offset. 然后一般也是xa_node的offset, 也是parent. 
 	表示在父节点中的槽偏移量。它指示当前节点在父节点 slots 数组中的位置?
 	Slot offset in parent */
-	unsigned char	count;		/* Total entry count
+	unsigned char	count;		/* Total entry count, 自己slot条目的数量?
 	表示当前节点中所有非 NULL 元素的总数。这包括值条目、重试条目、
 	用户指针、兄弟条目和指向下一级树的指针
 	 */
@@ -1346,9 +1346,9 @@ static inline struct xa_node *xa_to_node(const void *entry)
 
 /* Private
 判断ent是不是node
-还是一样的逻辑, 是内部节点, 并且值位于某些范围,就是node的ent
-但是node的ent是什么呢? 好像是如果是node的ent, 就说明ent其实是个
-node的地址
+右2bit置一,并且大于4096
+但
+n
 */
 static inline bool xa_is_node(const void *entry)
 {
@@ -1356,7 +1356,7 @@ static inline bool xa_is_node(const void *entry)
 }
 
 /* Private
-参数好像一般是node里面的一个offset?
+把offset的最右俩bit变为10
 */
 static inline void *xa_mk_sibling(unsigned int offset)
 {
@@ -1715,7 +1715,7 @@ static inline void *xas_reload(struct xa_state *xas)
 	void *entry;
 	char offset;
 
-	if (!node) // 说明还没有指向这个数组?
+	if (!node) // 说明xas还没有指向一个node
 		return xa_head(xas->xa);
 	if (IS_ENABLED(CONFIG_XARRAY_MULTI)) {
 		/* 
@@ -1931,6 +1931,7 @@ enum {
 	     entry = xas_next_entry(xas, max))
 
 /**
+在max范围内遍历指定mark的folio, 由entry作为迭代器
  * xas_for_each_marked() - Iterate over a range of an XArray.
  * @xas: XArray operation state.
  * @entry: Entry retrieved from the array.
@@ -2000,7 +2001,7 @@ static inline void *xas_prev(struct xa_state *xas)
 	return xa_entry(xas->xa, node, xas->xa_offset);
 }
 
-/**
+/** 移动cursor到下一个元素
  * xas_next() - Move state to next index.
  * @xas: XArray operation state.
  *

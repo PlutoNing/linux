@@ -19,6 +19,7 @@
 typedef struct cpumask { DECLARE_BITMAP(bits, NR_CPUS); } cpumask_t;
 
 /**
+获取cpumask的bitmap
  * cpumask_bits - get the bits in a cpumask
  * @maskp: the struct cpumask *
  *
@@ -40,7 +41,7 @@ typedef struct cpumask { DECLARE_BITMAP(bits, NR_CPUS); } cpumask_t;
 #else
 extern unsigned int nr_cpu_ids;
 #endif
-
+/* 设置系统的nr_cpu_ids */
 static inline void set_nr_cpu_ids(unsigned int nr)
 {
 #if (NR_CPUS == 1) || defined(CONFIG_FORCE_NR_CPUS)
@@ -128,6 +129,7 @@ extern struct cpumask __cpu_present_mask;
 extern struct cpumask __cpu_active_mask;
 extern struct cpumask __cpu_dying_mask;
 #define cpu_possible_mask ((const struct cpumask *)&__cpu_possible_mask)
+/*  */
 #define cpu_online_mask   ((const struct cpumask *)&__cpu_online_mask)
 #define cpu_present_mask  ((const struct cpumask *)&__cpu_present_mask)
 #define cpu_active_mask   ((const struct cpumask *)&__cpu_active_mask)
@@ -555,6 +557,7 @@ static inline void cpumask_clear(struct cpumask *dstp)
 }
 
 /**
+合并两个掩码
  * cpumask_and - *dstp = *src1p & *src2p
  * @dstp: the cpumask result
  * @src1p: the first input
@@ -805,6 +808,7 @@ static inline int cpumask_parse(const char *buf, struct cpumask *dstp)
 }
 
 /**
+从命令行参数解析出cpu掩码
  * cpulist_parse - extract a cpumask from a user string of ranges
  * @buf: the buffer to extract from
  * @dstp: the cpumask to set.

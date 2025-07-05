@@ -387,7 +387,7 @@ int __cpuhp_state_add_instance(enum cpuhp_state state, struct hlist_node *node,
 int __cpuhp_state_add_instance_cpuslocked(enum cpuhp_state state,
 					  struct hlist_node *node, bool invoke);
 
-/**
+/** node是个连接件
  * cpuhp_state_add_instance - Add an instance for a state and invoke startup
  *                            callback.
  添加状态的实例并调用启动回调

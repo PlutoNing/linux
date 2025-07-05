@@ -41,8 +41,11 @@ extern vm_fault_t handle_userfault(struct vm_fault *vmf, unsigned long reason);
 /* A combined operation mode + behavior flags. */
 typedef unsigned int __bitwise uffd_flags_t;
 
-/* Mutually exclusive modes of operation. */
+/* 
+表示不同的mfill类型？
+Mutually exclusive modes of operation. */
 enum mfill_atomic_mode {
+	/* 要把用户提供的src处的页面拷贝过来，再安装 */
 	MFILL_ATOMIC_COPY,
 	MFILL_ATOMIC_ZEROPAGE,
 	MFILL_ATOMIC_CONTINUE,
@@ -132,7 +135,7 @@ static inline bool userfaultfd_missing(struct vm_area_struct *vma)
 {
 	return vma->vm_flags & VM_UFFD_MISSING;
 }
-
+/* 看看vma是不是被uffd写保护了？ */
 static inline bool userfaultfd_wp(struct vm_area_struct *vma)
 {
 	return vma->vm_flags & VM_UFFD_WP;
@@ -142,7 +145,12 @@ static inline bool userfaultfd_minor(struct vm_area_struct *vma)
 {
 	return vma->vm_flags & VM_UFFD_MINOR;
 }
-
+/* 
+看看是不是该交给uffd处理
+------------------
+参数是vma和pte
+vma缺页了
+pte是vmf的pte值 */
 static inline bool userfaultfd_pte_wp(struct vm_area_struct *vma,
 				      pte_t pte)
 {
@@ -159,7 +167,9 @@ static inline bool userfaultfd_armed(struct vm_area_struct *vma)
 {
 	return vma->vm_flags & __VM_UFFD_FLAGS;
 }
-
+/* 
+检查这个vma能不能uffd
+*/
 static inline bool vma_can_userfault(struct vm_area_struct *vma,
 				     unsigned long vm_flags)
 {

@@ -90,6 +90,7 @@ struct file_dedupe_range {
 	__u16 dest_count;	/* in - total elements in info array */
 	__u16 reserved1;	/* must be zero */
 	__u32 reserved2;	/* must be zero */
+	/* 大小是dest count */
 	struct file_dedupe_range_info info[];
 };
 
@@ -272,10 +273,13 @@ struct fsxattr {
 #define FS_FL_USER_VISIBLE		0x0003DFFF /* User visible flags */
 #define FS_FL_USER_MODIFIABLE		0x000380FF /* User modifiable flags */
 
+/* 
 
+*/
 #define SYNC_FILE_RANGE_WAIT_BEFORE	1
 #define SYNC_FILE_RANGE_WRITE		2
 #define SYNC_FILE_RANGE_WAIT_AFTER	4
+/* 这三个flag的合体 */
 #define SYNC_FILE_RANGE_WRITE_AND_WAIT	(SYNC_FILE_RANGE_WRITE | \
 					 SYNC_FILE_RANGE_WAIT_BEFORE | \
 					 SYNC_FILE_RANGE_WAIT_AFTER)

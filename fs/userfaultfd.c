@@ -71,12 +71,14 @@ static struct kmem_cache *userfaultfd_ctx_cachep __read_mostly;
 struct userfaultfd_ctx {
 	/* waitqueue head for the pending (i.e. not read) userfaults */
 	wait_queue_head_t fault_pending_wqh;
-	/* waitqueue head for the userfaults */
+	/* waitqueue head for the userfaults
+	已经读下来，准备处理的fault
+	*/
 	wait_queue_head_t fault_wqh;
 	/* waitqueue head for the pseudo fd to wakeup poll/read */
 	wait_queue_head_t fd_wqh;
 	/* waitqueue head for events */
-	wait_queue_head_t event_wqh;
+	wait_queue_head_t  event_wqh;
 	/* a refile sequence protected by fault_pending_wqh lock */
 	seqcount_spinlock_t refile_seq;
 	/* pseudo fd refcounting */
@@ -89,7 +91,9 @@ struct userfaultfd_ctx {
 	bool released;
 	/* memory mappings are changing because of non-cooperative event */
 	atomic_t mmap_changing;
-	/* mm with one ore more vmas attached to this userfaultfd_ctx */
+	/* 
+	对应的mm
+	mm with one ore more vmas attached to this userfaultfd_ctx */
 	struct mm_struct *mm;
 };
 
@@ -140,7 +144,7 @@ bool userfaultfd_wp_unpopulated(struct vm_area_struct *vma)
 
 	return ctx->features & UFFD_FEATURE_WP_UNPOPULATED;
 }
-
+/* 设置uffd的flag */
 static void userfaultfd_set_vm_flags(struct vm_area_struct *vma,
 				     vm_flags_t flags)
 {
@@ -155,7 +159,9 @@ static void userfaultfd_set_vm_flags(struct vm_area_struct *vma,
 	if ((vma->vm_flags & VM_SHARED) && uffd_wp_changed)
 		vma_set_page_prot(vma);
 }
+/* 
 
+*/
 static int userfaultfd_wake_function(wait_queue_entry_t *wq, unsigned mode,
 				     int wake_flags, void *key)
 {
@@ -239,7 +245,9 @@ static inline void msg_init(struct uffd_msg *msg)
 	 */
 	memset(msg, 0, sizeof(struct uffd_msg));
 }
+/* 
 
+*/
 static inline struct uffd_msg userfault_msg(unsigned long address,
 					    unsigned long real_address,
 					    unsigned int flags,
@@ -398,6 +406,8 @@ static inline unsigned int userfaultfd_get_blocking_state(unsigned int flags)
 }
 
 /*
+uffd处理pf
+添加一个事件，等待uffd处理
  * The locking rules involved in returning VM_FAULT_RETRY depending on
  * FAULT_FLAG_ALLOW_RETRY, FAULT_FLAG_RETRY_NOWAIT and
  * FAULT_FLAG_KILLABLE are not straightforward. The "Caution"
@@ -516,9 +526,12 @@ vm_fault_t handle_userfault(struct vm_fault *vmf, unsigned long reason)
 	if (vmf->flags & FAULT_FLAG_RETRY_NOWAIT)
 		goto out;
 
-	/* take the reference before dropping the mmap_lock */
+	/* take the reference before dropping the mmap_lock 
+	获取一下ref
+	*/
 	userfaultfd_ctx_get(ctx);
 
+	/* 初始化uwq */
 	init_waitqueue_func_entry(&uwq.wq, userfaultfd_wake_function);
 	uwq.wq.private = current;
 	uwq.msg = userfault_msg(vmf->address, vmf->real_address, vmf->flags,
@@ -598,7 +611,7 @@ vm_fault_t handle_userfault(struct vm_fault *vmf, unsigned long reason)
 out:
 	return ret;
 }
-
+/* 这是等待什么完成 */
 static void userfaultfd_event_wait_completion(struct userfaultfd_ctx *ctx,
 					      struct userfaultfd_wait_queue *ewq)
 {
@@ -808,7 +821,9 @@ void mremap_userfaultfd_complete(struct vm_userfaultfd_ctx *vm_ctx,
 
 	userfaultfd_event_wait_completion(ctx, &ewq);
 }
+/* 
 
+*/
 bool userfaultfd_remove(struct vm_area_struct *vma,
 			unsigned long start, unsigned long end)
 {
@@ -819,7 +834,7 @@ bool userfaultfd_remove(struct vm_area_struct *vma,
 	ctx = vma->vm_userfaultfd_ctx.ctx;
 	if (!ctx || !(ctx->features & UFFD_FEATURE_EVENT_REMOVE))
 		return true;
-
+	/* 有ctx并且是UFFD_FEATURE_EVENT_REMOVE */
 	userfaultfd_ctx_get(ctx);
 	atomic_inc(&ctx->mmap_changing);
 	mmap_read_unlock(mm);
@@ -829,7 +844,7 @@ bool userfaultfd_remove(struct vm_area_struct *vma,
 	ewq.msg.event = UFFD_EVENT_REMOVE;
 	ewq.msg.arg.remove.start = start;
 	ewq.msg.arg.remove.end = end;
-
+	/* 添加一个事件，等待完成 */
 	userfaultfd_event_wait_completion(ctx, &ewq);
 
 	return false;
@@ -847,7 +862,7 @@ static bool has_unmap_ctx(struct userfaultfd_ctx *ctx, struct list_head *unmaps,
 
 	return false;
 }
-
+/*  */
 int userfaultfd_unmap_prep(struct vm_area_struct *vma, unsigned long start,
 			   unsigned long end, struct list_head *unmaps)
 {
@@ -871,7 +886,7 @@ int userfaultfd_unmap_prep(struct vm_area_struct *vma, unsigned long start,
 
 	return 0;
 }
-
+/* 都是mmap，remap调用的这个函数 */
 void userfaultfd_unmap_complete(struct mm_struct *mm, struct list_head *uf)
 {
 	struct userfaultfd_unmap_ctx *ctx, *n;
@@ -890,7 +905,7 @@ void userfaultfd_unmap_complete(struct mm_struct *mm, struct list_head *uf)
 		kfree(ctx);
 	}
 }
-
+/* 释放userfaultfd的函数 */
 static int userfaultfd_release(struct inode *inode, struct file *file)
 {
 	struct userfaultfd_ctx *ctx = file->private_data;
@@ -907,7 +922,9 @@ static int userfaultfd_release(struct inode *inode, struct file *file)
 		goto wakeup;
 
 	/*
-	 * Flush page faults out of all CPUs. NOTE: all page faults
+	 * Flush page faults out of all CPUs. 
+	 刷新全部cpu的page faults
+	 NOTE: all page faults
 	 * must be retried without returning VM_FAULT_SIGBUS if
 	 * userfaultfd_ctx_get() succeeds but vma->vma_userfault_ctx
 	 * changes while handle_userfault released the mmap_lock. So
@@ -916,7 +933,7 @@ static int userfaultfd_release(struct inode *inode, struct file *file)
 	 */
 	mmap_write_lock(mm);
 	prev = NULL;
-	for_each_vma(vmi, vma) {
+	for_each_vma(vmi, vma) {/* vmi方式遍历 */
 		cond_resched();
 		BUG_ON(!!vma->vm_userfaultfd_ctx.ctx ^
 		       !!(vma->vm_flags & __VM_UFFD_FLAGS));
@@ -924,6 +941,7 @@ static int userfaultfd_release(struct inode *inode, struct file *file)
 			prev = vma;
 			continue;
 		}
+		/* 是要找的vma */
 		new_flags = vma->vm_flags & ~__VM_UFFD_FLAGS;
 		prev = vma_merge(&vmi, mm, prev, vma->vm_start, vma->vm_end,
 				 new_flags, vma->anon_vma,
@@ -961,7 +979,9 @@ wakeup:
 	return 0;
 }
 
-/* fault_pending_wqh.lock must be hold by the caller */
+/* 
+从wqh上面取出一个uwq
+fault_pending_wqh.lock must be hold by the caller */
 static inline struct userfaultfd_wait_queue *find_userfault_in(
 		wait_queue_head_t *wqh)
 {
@@ -979,19 +999,19 @@ static inline struct userfaultfd_wait_queue *find_userfault_in(
 out:
 	return uwq;
 }
-
+/* 从ctx的fault pending wqh上面取出一个uwq */
 static inline struct userfaultfd_wait_queue *find_userfault(
 		struct userfaultfd_ctx *ctx)
 {
 	return find_userfault_in(&ctx->fault_pending_wqh);
 }
-
+/* 取一个 */
 static inline struct userfaultfd_wait_queue *find_userfault_evt(
 		struct userfaultfd_ctx *ctx)
 {
 	return find_userfault_in(&ctx->event_wqh);
 }
-
+/* userfaultfd的ops */
 static __poll_t userfaultfd_poll(struct file *file, poll_table *wait)
 {
 	struct userfaultfd_ctx *ctx = file->private_data;
@@ -1029,13 +1049,13 @@ static __poll_t userfaultfd_poll(struct file *file, poll_table *wait)
 }
 
 static const struct file_operations userfaultfd_fops;
-
+/* 解决fork类型的userfault event wq事件 */
 static int resolve_userfault_fork(struct userfaultfd_ctx *new,
 				  struct inode *inode,
 				  struct uffd_msg *msg)
 {
 	int fd;
-
+/* 创建新anon fd */
 	fd = anon_inode_getfd_secure("[userfaultfd]", &userfaultfd_fops, new,
 			O_RDONLY | (new->flags & UFFD_SHARED_FCNTL_FLAGS), inode);
 	if (fd < 0)
@@ -1045,7 +1065,9 @@ static int resolve_userfault_fork(struct userfaultfd_ctx *new,
 	msg->arg.fork.ufd = fd;
 	return 0;
 }
-
+/* userfaultfd的read ops的读函数
+读取一些fault，fork fd相关的事件
+*/
 static ssize_t userfaultfd_ctx_read(struct userfaultfd_ctx *ctx, int no_wait,
 				    struct uffd_msg *msg, struct inode *inode)
 {
@@ -1068,8 +1090,11 @@ static ssize_t userfaultfd_ctx_read(struct userfaultfd_ctx *ctx, int no_wait,
 	for (;;) {
 		set_current_state(TASK_INTERRUPTIBLE);
 		spin_lock(&ctx->fault_pending_wqh.lock);
+		/* 从ctx的fault_pending_wqh上面取出一个uwq
+		 */
 		uwq = find_userfault(ctx);
-		if (uwq) {
+		if (uwq) {/* 如果找到了一个pending的uwq
+			*/
 			/*
 			 * Use a seqcount to repeat the lockless check
 			 * in wake_userfault() to avoid missing
@@ -1101,6 +1126,7 @@ static ssize_t userfaultfd_ctx_read(struct userfaultfd_ctx *ctx, int no_wait,
 			 * anyway.
 			 */
 			list_del(&uwq->wq.entry);
+			/* 添加到要处理的队列 */
 			add_wait_queue(&ctx->fault_wqh, &uwq->wq);
 
 			write_seqcount_end(&ctx->refile_seq);
@@ -1114,6 +1140,7 @@ static ssize_t userfaultfd_ctx_read(struct userfaultfd_ctx *ctx, int no_wait,
 		spin_unlock(&ctx->fault_pending_wqh.lock);
 
 		spin_lock(&ctx->event_wqh.lock);
+		/* 从event wq上面取 */
 		uwq = find_userfault_evt(ctx);
 		if (uwq) {
 			*msg = uwq->msg;
@@ -1122,6 +1149,7 @@ static ssize_t userfaultfd_ctx_read(struct userfaultfd_ctx *ctx, int no_wait,
 				fork_nctx = (struct userfaultfd_ctx *)
 					(unsigned long)
 					uwq->msg.arg.reserved.reserved1;
+					/* 移到fork event上面 */
 				list_move(&uwq->wq.entry, &fork_event);
 				/*
 				 * fork_nctx can be freed as soon as
@@ -1153,11 +1181,18 @@ static ssize_t userfaultfd_ctx_read(struct userfaultfd_ctx *ctx, int no_wait,
 		schedule();
 		spin_lock_irq(&ctx->fd_wqh.lock);
 	}
+	/* 
+	case1；摘到一个pending的
+	case2；找到一个event wq的
+	case3；找到event wq上面fork的
+	或者是有signal pending，no wait什么的，ret不为0
+	*/
 	__remove_wait_queue(&ctx->fd_wqh, &wait);
 	__set_current_state(TASK_RUNNING);
 	spin_unlock_irq(&ctx->fd_wqh.lock);
 
-	if (!ret && msg->event == UFFD_EVENT_FORK) {
+	if (!ret && msg->event == UFFD_EVENT_FORK) {/*case3， 在这里处理fork事件 */
+		/* 创建新fd */
 		ret = resolve_userfault_fork(fork_nctx, inode, msg);
 		spin_lock_irq(&ctx->event_wqh.lock);
 		if (!list_empty(&fork_event)) {
@@ -1210,7 +1245,8 @@ static ssize_t userfaultfd_ctx_read(struct userfaultfd_ctx *ctx, int no_wait,
 
 	return ret;
 }
-
+/* userfaultfd的read ops
+从里面读什么？一些fault，fork相关事件 */
 static ssize_t userfaultfd_read(struct file *file, char __user *buf,
 				size_t count, loff_t *ppos)
 {
@@ -1226,9 +1262,11 @@ static ssize_t userfaultfd_read(struct file *file, char __user *buf,
 	for (;;) {
 		if (count < sizeof(msg))
 			return ret ? ret : -EINVAL;
+		/* 读取一些事件 */
 		_ret = userfaultfd_ctx_read(ctx, no_wait, &msg, inode);
 		if (_ret < 0)
 			return ret ? ret : _ret;
+		/* 把msg拷贝到用户空间的buf */
 		if (copy_to_user((__u64 __user *) buf, &msg, sizeof(msg)))
 			return ret ? ret : -EFAULT;
 		ret += sizeof(msg);
@@ -1241,7 +1279,7 @@ static ssize_t userfaultfd_read(struct file *file, char __user *buf,
 		no_wait = O_NONBLOCK;
 	}
 }
-
+/* 唤醒对uffd的处理 */
 static void __wake_userfault(struct userfaultfd_ctx *ctx,
 			     struct userfaultfd_wake_range *range)
 {
@@ -1254,7 +1292,7 @@ static void __wake_userfault(struct userfaultfd_ctx *ctx,
 		__wake_up(&ctx->fault_wqh, TASK_NORMAL, 1, range);
 	spin_unlock_irq(&ctx->fault_pending_wqh.lock);
 }
-
+/* 唤醒对uffd的处理 */
 static __always_inline void wake_userfault(struct userfaultfd_ctx *ctx,
 					   struct userfaultfd_wake_range *range)
 {
@@ -1278,14 +1316,15 @@ static __always_inline void wake_userfault(struct userfaultfd_ctx *ctx,
 	 */
 	do {
 		seq = read_seqcount_begin(&ctx->refile_seq);
+		/* 有需要处理的uffd事件 */
 		need_wakeup = waitqueue_active(&ctx->fault_pending_wqh) ||
 			waitqueue_active(&ctx->fault_wqh);
 		cond_resched();
 	} while (read_seqcount_retry(&ctx->refile_seq, seq));
-	if (need_wakeup)
+	if (need_wakeup)/* 如果确实有的话 */
 		__wake_userfault(ctx, range);
 }
-
+/*  */
 static __always_inline int validate_unaligned_range(
 	struct mm_struct *mm, __u64 start, __u64 len)
 {
@@ -1305,7 +1344,9 @@ static __always_inline int validate_unaligned_range(
 		return -EINVAL;
 	return 0;
 }
-
+/* 
+uffd校验用户请求的范围是否合法
+*/
 static __always_inline int validate_range(struct mm_struct *mm,
 					  __u64 start, __u64 len)
 {
@@ -1314,7 +1355,9 @@ static __always_inline int validate_range(struct mm_struct *mm,
 
 	return validate_unaligned_range(mm, start, len);
 }
-
+/* 
+注册需要监控的内存区域，指定监控事件类型（如缺页、写保护）。
+ */
 static int userfaultfd_register(struct userfaultfd_ctx *ctx,
 				unsigned long arg)
 {
@@ -1357,12 +1400,12 @@ static int userfaultfd_register(struct userfaultfd_ctx *ctx,
 #endif
 		vm_flags |= VM_UFFD_MINOR;
 	}
-
+	/* 检查范围合法性 */
 	ret = validate_range(mm, uffdio_register.range.start,
 			     uffdio_register.range.len);
 	if (ret)
 		goto out;
-
+	/* 获取用户请求管理的范围 */
 	start = uffdio_register.range.start;
 	end = start + uffdio_register.range.len;
 
@@ -1372,12 +1415,14 @@ static int userfaultfd_register(struct userfaultfd_ctx *ctx,
 
 	ret = -EINVAL;
 	mmap_write_lock(mm);
+	/* 初始化vmi，遍历start开始的vma */
 	vma_iter_init(&vmi, mm, start);
 	vma = vma_find(&vmi, end);
 	if (!vma)
 		goto out_unlock;
 
 	/*
+	处理巨页的情况
 	 * If the first vma contains huge pages, make sure start address
 	 * is aligned to huge page size.
 	 */
@@ -1394,7 +1439,7 @@ static int userfaultfd_register(struct userfaultfd_ctx *ctx,
 	found = false;
 	basic_ioctls = false;
 	cur = vma;
-	do {
+	do {/* 一个一个遍历处理vma， */
 		cond_resched();
 
 		BUG_ON(!!cur->vm_userfaultfd_ctx.ctx ^
@@ -1402,6 +1447,7 @@ static int userfaultfd_register(struct userfaultfd_ctx *ctx,
 
 		/* check not compatible vmas */
 		ret = -EINVAL;
+		/* 先检查这个vma能不能uffd */
 		if (!vma_can_userfault(cur, vm_flags))
 			goto out_unlock;
 
@@ -1415,7 +1461,7 @@ static int userfaultfd_register(struct userfaultfd_ctx *ctx,
 		 */
 		ret = -EPERM;
 		if (unlikely(!(cur->vm_flags & VM_MAYWRITE)))
-			goto out_unlock;
+			goto out_unlock;/* 这是说不可写的vma不可能缺页？还是不能去添加页面 */
 
 		/*
 		 * If this vma contains ending address, and huge pages
@@ -1451,6 +1497,7 @@ static int userfaultfd_register(struct userfaultfd_ctx *ctx,
 			basic_ioctls = true;
 
 		found = true;
+	/* 继续寻找下一个vma */
 	} for_each_vma_range(vmi, cur, end);
 	BUG_ON(!found);
 
@@ -1509,6 +1556,7 @@ static int userfaultfd_register(struct userfaultfd_ctx *ctx,
 		 * the current one has not been updated yet.
 		 */
 		vma_start_write(vma);
+		/* 设置uffd的flag */
 		userfaultfd_set_vm_flags(vma, new_flags);
 		vma->vm_userfaultfd_ctx.ctx = ctx;
 
@@ -1551,7 +1599,9 @@ out_unlock:
 out:
 	return ret;
 }
-
+/*
+取消注册的内存区域
+*/
 static int userfaultfd_unregister(struct userfaultfd_ctx *ctx,
 				  unsigned long arg)
 {
@@ -1709,6 +1759,7 @@ out:
 }
 
 /*
+唤醒因等待缺页事件而被挂起的线程
  * userfaultfd_wake may be used in combination with the
  * UFFDIO_*_MODE_DONTWAKE to wakeup userfaults in batches.
  */
@@ -1727,7 +1778,7 @@ static int userfaultfd_wake(struct userfaultfd_ctx *ctx,
 	ret = validate_range(ctx->mm, uffdio_wake.start, uffdio_wake.len);
 	if (ret)
 		goto out;
-
+	/* 获取操作的范围 */
 	range.start = uffdio_wake.start;
 	range.len = uffdio_wake.len;
 
@@ -1736,7 +1787,7 @@ static int userfaultfd_wake(struct userfaultfd_ctx *ctx,
 	 * so check it again to be sure.
 	 */
 	VM_BUG_ON(!range.len);
-
+	/* 唤醒范围内uffd的处理 */
 	wake_userfault(ctx, &range);
 	ret = 0;
 
@@ -1744,6 +1795,7 @@ out:
 	return ret;
 }
 
+/* 将用户态数据拷贝到缺页的物理页中（用于解决缺页）。 */
 static int userfaultfd_copy(struct userfaultfd_ctx *ctx,
 			    unsigned long arg)
 {
@@ -1752,7 +1804,7 @@ static int userfaultfd_copy(struct userfaultfd_ctx *ctx,
 	struct uffdio_copy __user *user_uffdio_copy;
 	struct userfaultfd_wake_range range;
 	uffd_flags_t flags = 0;
-
+	/* 获取用户提供的uffd copy */
 	user_uffdio_copy = (struct uffdio_copy __user *) arg;
 
 	ret = -EAGAIN;
@@ -1760,6 +1812,7 @@ static int userfaultfd_copy(struct userfaultfd_ctx *ctx,
 		goto out;
 
 	ret = -EFAULT;
+	/* 把用户的uffd copy到内核 */
 	if (copy_from_user(&uffdio_copy, user_uffdio_copy,
 			   /* don't copy "copy" last field */
 			   sizeof(uffdio_copy)-sizeof(__s64)))
@@ -1769,6 +1822,7 @@ static int userfaultfd_copy(struct userfaultfd_ctx *ctx,
 				       uffdio_copy.len);
 	if (ret)
 		goto out;
+	/* 为什么又检查一遍 */
 	ret = validate_range(ctx->mm, uffdio_copy.dst, uffdio_copy.len);
 	if (ret)
 		goto out;
@@ -1778,9 +1832,12 @@ static int userfaultfd_copy(struct userfaultfd_ctx *ctx,
 		goto out;
 	if (uffdio_copy.mode & UFFDIO_COPY_MODE_WP)
 		flags |= MFILL_ATOMIC_WP;
-	if (mmget_not_zero(ctx->mm)) {
-		ret = mfill_atomic_copy(ctx->mm, uffdio_copy.dst, uffdio_copy.src,
-					uffdio_copy.len, &ctx->mmap_changing,
+	if (mmget_not_zero(ctx->mm)) {/* 如果这个mm还有其他人在用 */
+		ret = mfill_atomic_copy(ctx->mm, 
+			uffdio_copy.dst, /* 要修复安装页面pte的地址 */
+			uffdio_copy.src, /* 往页面拷贝的数据来源 */
+					uffdio_copy.len,/* 要修复的长度 */
+					 &ctx->mmap_changing,
 					flags);
 		mmput(ctx->mm);
 	} else {
@@ -1801,7 +1858,9 @@ static int userfaultfd_copy(struct userfaultfd_ctx *ctx,
 out:
 	return ret;
 }
-
+/* 
+uffd安装zero page
+*/
 static int userfaultfd_zeropage(struct userfaultfd_ctx *ctx,
 				unsigned long arg)
 {
@@ -1831,6 +1890,7 @@ static int userfaultfd_zeropage(struct userfaultfd_ctx *ctx,
 		goto out;
 
 	if (mmget_not_zero(ctx->mm)) {
+		/* uffd安装zero page */
 		ret = mfill_atomic_zeropage(ctx->mm, uffdio_zeropage.range.start,
 					   uffdio_zeropage.range.len,
 					   &ctx->mmap_changing);
@@ -1853,7 +1913,7 @@ static int userfaultfd_zeropage(struct userfaultfd_ctx *ctx,
 out:
 	return ret;
 }
-
+/* uffd的写保护的方式 */
 static int userfaultfd_writeprotect(struct userfaultfd_ctx *ctx,
 				    unsigned long arg)
 {
@@ -1867,7 +1927,7 @@ static int userfaultfd_writeprotect(struct userfaultfd_ctx *ctx,
 		return -EAGAIN;
 
 	user_uffdio_wp = (struct uffdio_writeprotect __user *) arg;
-
+	/* 把用户提供的uffd wp数据拷贝到uffdio */
 	if (copy_from_user(&uffdio_wp, user_uffdio_wp,
 			   sizeof(struct uffdio_writeprotect)))
 		return -EFAULT;
@@ -1888,8 +1948,11 @@ static int userfaultfd_writeprotect(struct userfaultfd_ctx *ctx,
 		return -EINVAL;
 
 	if (mmget_not_zero(ctx->mm)) {
-		ret = mwriteprotect_range(ctx->mm, uffdio_wp.range.start,
-					  uffdio_wp.range.len, mode_wp,
+		/* 改变范围内的可写性 */
+		ret = mwriteprotect_range(ctx->mm, 
+			uffdio_wp.range.start,
+					  uffdio_wp.range.len, 
+					  mode_wp,
 					  &ctx->mmap_changing);
 		mmput(ctx->mm);
 	} else {
@@ -1906,7 +1969,9 @@ static int userfaultfd_writeprotect(struct userfaultfd_ctx *ctx,
 	}
 	return ret;
 }
-
+/* 
+congtinue方式执行uffd
+*/
 static int userfaultfd_continue(struct userfaultfd_ctx *ctx, unsigned long arg)
 {
 	__s64 ret;
@@ -1940,6 +2005,7 @@ static int userfaultfd_continue(struct userfaultfd_ctx *ctx, unsigned long arg)
 		flags |= MFILL_ATOMIC_WP;
 
 	if (mmget_not_zero(ctx->mm)) {
+		/* 执行mfill */
 		ret = mfill_atomic_continue(ctx->mm, uffdio_continue.range.start,
 					    uffdio_continue.range.len,
 					    &ctx->mmap_changing, flags);
@@ -1965,7 +2031,7 @@ static int userfaultfd_continue(struct userfaultfd_ctx *ctx, unsigned long arg)
 out:
 	return ret;
 }
-
+/* poison方式执行mfill */
 static inline int userfaultfd_poison(struct userfaultfd_ctx *ctx, unsigned long arg)
 {
 	__s64 ret;
@@ -1995,6 +2061,7 @@ static inline int userfaultfd_poison(struct userfaultfd_ctx *ctx, unsigned long 
 		goto out;
 
 	if (mmget_not_zero(ctx->mm)) {
+		/* 开始mfill */
 		ret = mfill_atomic_poison(ctx->mm, uffdio_poison.range.start,
 					  uffdio_poison.range.len,
 					  &ctx->mmap_changing, 0);
@@ -2031,6 +2098,7 @@ static inline unsigned int uffd_ctx_features(__u64 user_features)
 }
 
 /*
+初始化 userfaultfd 上下文，协商支持的 API 版本和功能（必选第一步）
  * userland asks for a certain API version and we return which bits
  * and ioctl commands are implemented in this kernel for such API
  * version or -EINVAL if unknown.
@@ -2072,7 +2140,9 @@ static int userfaultfd_api(struct userfaultfd_ctx *ctx,
 	if (copy_to_user(buf, &uffdio_api, sizeof(uffdio_api)))
 		goto out;
 
-	/* only enable the requested features for this uffd context */
+	/* only enable the requested features for this uffd context
+	仅仅开启这个uffd上下文的被请求的特征
+	*/
 	ctx_features = uffd_ctx_features(features);
 	ret = -EINVAL;
 	if (cmpxchg(&ctx->features, 0, ctx_features) != 0)
@@ -2087,7 +2157,8 @@ err_out:
 		ret = -EFAULT;
 	goto out;
 }
-
+/* Userfaultfd 机制的核心控制函数​​，负责处理用户态通过 ioctl 发送的各种命令，
+协调内存监控、缺页处理和用户态干预 */
 static long userfaultfd_ioctl(struct file *file, unsigned cmd,
 			      unsigned long arg)
 {
@@ -2097,26 +2168,33 @@ static long userfaultfd_ioctl(struct file *file, unsigned cmd,
 	if (cmd != UFFDIO_API && !userfaultfd_is_initialized(ctx))
 		return -EINVAL;
 
-	switch(cmd) {
+	switch(cmd) {/* 
+		初始化 userfaultfd 上下文，协商支持的 API 版本和功能（必选第一步） */
 	case UFFDIO_API:
 		ret = userfaultfd_api(ctx, arg);
 		break;
 	case UFFDIO_REGISTER:
+	/* 注册需要监控的内存区域，指定监控事件类型（如缺页、写保护）。 */
 		ret = userfaultfd_register(ctx, arg);
 		break;
 	case UFFDIO_UNREGISTER:
+	/* 取消注册的内存区域 */
 		ret = userfaultfd_unregister(ctx, arg);
 		break;
 	case UFFDIO_WAKE:
+	/* 唤醒因等待缺页事件而被挂起的线程？ */
 		ret = userfaultfd_wake(ctx, arg);
 		break;
 	case UFFDIO_COPY:
+	/* 将用户态数据拷贝到缺页的物理页中（用于解决缺页）。 */
 		ret = userfaultfd_copy(ctx, arg);
 		break;
 	case UFFDIO_ZEROPAGE:
+	/* uffd安装zero page */
 		ret = userfaultfd_zeropage(ctx, arg);
 		break;
 	case UFFDIO_WRITEPROTECT:
+	/* 改变范围内的可写性 */
 		ret = userfaultfd_writeprotect(ctx, arg);
 		break;
 	case UFFDIO_CONTINUE:
@@ -2130,6 +2208,7 @@ static long userfaultfd_ioctl(struct file *file, unsigned cmd,
 }
 
 #ifdef CONFIG_PROC_FS
+/* 打印fd的信息 */
 static void userfaultfd_show_fdinfo(struct seq_file *m, struct file *f)
 {
 	struct userfaultfd_ctx *ctx = f->private_data;
@@ -2156,7 +2235,7 @@ static void userfaultfd_show_fdinfo(struct seq_file *m, struct file *f)
 		   UFFD_API_IOCTLS|UFFD_API_RANGE_IOCTLS);
 }
 #endif
-
+/* userfaultfd的ops */
 static const struct file_operations userfaultfd_fops = {
 #ifdef CONFIG_PROC_FS
 	.show_fdinfo	= userfaultfd_show_fdinfo,
@@ -2165,6 +2244,7 @@ static const struct file_operations userfaultfd_fops = {
 	.poll		= userfaultfd_poll,
 	.read		= userfaultfd_read,
 	.unlocked_ioctl = userfaultfd_ioctl,
+	/* 这个是用的通用实现 */
 	.compat_ioctl	= compat_ptr_ioctl,
 	.llseek		= noop_llseek,
 };
@@ -2179,7 +2259,9 @@ static void init_once_userfaultfd_ctx(void *mem)
 	init_waitqueue_head(&ctx->fd_wqh);
 	seqcount_spinlock_init(&ctx->refile_seq, &ctx->fault_pending_wqh.lock);
 }
-
+/* 新建一个user fault fd
+实质上创建一个anon inode
+文件的 fops是user fault fd实现相关的，priv是相关的ctx*/
 static int new_userfaultfd(int flags)
 {
 	struct userfaultfd_ctx *ctx;
@@ -2207,7 +2289,7 @@ static int new_userfaultfd(int flags)
 	ctx->mm = current->mm;
 	/* prevent the mm struct to be freed */
 	mmgrab(ctx->mm);
-
+	/* 创建anon file */
 	fd = anon_inode_getfd_secure("[userfaultfd]", &userfaultfd_fops, ctx,
 			O_RDONLY | (flags & UFFD_SHARED_FCNTL_FLAGS), NULL);
 	if (fd < 0) {
@@ -2216,7 +2298,7 @@ static int new_userfaultfd(int flags)
 	}
 	return fd;
 }
-
+/* 创建userfaultfd前的检查 */
 static inline bool userfaultfd_syscall_allowed(int flags)
 {
 	/* Userspace-only page faults are always allowed */
@@ -2233,7 +2315,11 @@ static inline bool userfaultfd_syscall_allowed(int flags)
 	/* Otherwise, access to kernel fault handling is sysctl controlled. */
 	return sysctl_unprivileged_userfaultfd;
 }
-
+/* 当进程调用 userfaultfd 系统调用或通过 /dev/userfaultfd 的 ioctl 创建实例时，
+会返回一个​​文件描述符​​。该描述符不是磁盘文件，而是内核中的 ​​匿名 inode​​，
+可通过 /proc/<pid>/fd 查看：
+lrwx------ 1 user user 64 Jun 10 15:35 3 -> 'anon_inode:[userfaultfd]'
+*/
 SYSCALL_DEFINE1(userfaultfd, int, flags)
 {
 	if (!userfaultfd_syscall_allowed(flags))
@@ -2241,7 +2327,7 @@ SYSCALL_DEFINE1(userfaultfd, int, flags)
 
 	return new_userfaultfd(flags);
 }
-
+/* 可以通过注册的misc ioctl回调创建新设备 */
 static long userfaultfd_dev_ioctl(struct file *file, unsigned int cmd, unsigned long flags)
 {
 	if (cmd != USERFAULTFD_IOC_NEW)
@@ -2249,14 +2335,15 @@ static long userfaultfd_dev_ioctl(struct file *file, unsigned int cmd, unsigned 
 
 	return new_userfaultfd(flags);
 }
-
+/* 定义了 ioctl 接口 (unlocked_ioctl 和 compat_ioctl)，仅支持 USERFAULTFD_IOC_NEW 
+命令，用于创建新的 userfaultfd 实例 */
 static const struct file_operations userfaultfd_dev_fops = {
 	.unlocked_ioctl = userfaultfd_dev_ioctl,
 	.compat_ioctl = userfaultfd_dev_ioctl,
 	.owner = THIS_MODULE,
 	.llseek = noop_llseek,
 };
-
+/* 定义了一个名为 userfaultfd 的杂项设备 */
 static struct miscdevice userfaultfd_misc = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = "userfaultfd",
@@ -2266,7 +2353,8 @@ static struct miscdevice userfaultfd_misc = {
 static int __init userfaultfd_init(void)
 {
 	int ret;
-
+/* 定义了一个名为 userfaultfd 的杂项设备，动态分配次设备号（MISC_DYNAMIC_MINOR），
+并关联了文件操作函数 userfaultfd_dev_fops */
 	ret = misc_register(&userfaultfd_misc);
 	if (ret)
 		return ret;
@@ -2282,3 +2370,6 @@ static int __init userfaultfd_init(void)
 	return 0;
 }
 __initcall(userfaultfd_init);
+/* 内核中 ​​userfaultfd 系统调用​​ 的实现，用于创建一个用户态缺页处理（Userfaultfd）
+机制的文件描述符。该机制允许用户态程序​​直接处理页错误（Page Fault）​​，在虚拟化、进程迁移、
+内存快照等场景中实现细粒度的内存管理控制 */

@@ -579,7 +579,9 @@ again:
 
 	return len + old_addr - old_end;	/* how much done */
 }
-
+/* 
+执行remap的过程
+*/
 static unsigned long move_vma(struct vm_area_struct *vma,
 		unsigned long old_addr, unsigned long old_len,
 		unsigned long new_len, unsigned long new_addr,
@@ -635,8 +637,11 @@ static unsigned long move_vma(struct vm_area_struct *vma,
 			return -ENOMEM;
 	}
 
+	/* 加写锁 */
 	vma_start_write(vma);
+	/* 获取原本地址范围的pgoff */
 	new_pgoff = vma->vm_pgoff + ((old_addr - vma->vm_start) >> PAGE_SHIFT);
+	/*  */
 	new_vma = copy_vma(&vma, new_addr, new_len, new_pgoff,
 			   &need_rmap_locks);
 	if (!new_vma) {
@@ -742,7 +747,7 @@ static unsigned long move_vma(struct vm_area_struct *vma,
 
 	return new_addr;
 }
-
+/* 准备扩展addr，这里检查一下能否扩展？ */
 static struct vm_area_struct *vma_to_resize(unsigned long addr,
 	unsigned long old_len, unsigned long new_len, unsigned long flags)
 {
@@ -750,6 +755,7 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 	struct vm_area_struct *vma;
 	unsigned long pgoff;
 
+	/* 找到addr处的vma */
 	vma = vma_lookup(mm, addr);
 	if (!vma)
 		return ERR_PTR(-EFAULT);
@@ -767,11 +773,16 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 		return ERR_PTR(-EINVAL);
 	}
 
+	/* 如果这次remap不让unmap
+	但是这个vma又是不让扩展的，或者是pfnmap
+	是非法情况 */
 	if ((flags & MREMAP_DONTUNMAP) &&
 			(vma->vm_flags & (VM_DONTEXPAND | VM_PFNMAP)))
 		return ERR_PTR(-EINVAL);
 
-	/* We can't remap across vm area boundaries */
+	/* We can't remap across vm area boundaries
+	如果要扩展的区域不是全部位于一个vma内部
+	*/
 	if (old_len > vma->vm_end - addr)
 		return ERR_PTR(-EFAULT);
 
@@ -781,6 +792,9 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 	/* Need to be careful about a growing mapping */
 	pgoff = (addr - vma->vm_start) >> PAGE_SHIFT;
 	pgoff += vma->vm_pgoff;
+	/* pgoff是addr的pgoff */
+
+	/* 怎么可能， 是说new len太大，溢出了？ */
 	if (pgoff + (new_len >> PAGE_SHIFT) < pgoff)
 		return ERR_PTR(-EINVAL);
 
@@ -796,7 +810,7 @@ static struct vm_area_struct *vma_to_resize(unsigned long addr,
 
 	return vma;
 }
-
+/* remap系统调用的函数 */
 static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
 		unsigned long new_addr, unsigned long new_len, bool *locked,
 		unsigned long flags, struct vm_userfaultfd_ctx *uf,
@@ -836,18 +850,21 @@ static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
 		return -ENOMEM;
 
 	if (flags & MREMAP_FIXED) {
+		/* MREMAP_FIXED若 new_address 已被占用，内核会​​覆盖原有映射​​（可能导致数据丢失）。 */
 		ret = do_munmap(mm, new_addr, new_len, uf_unmap_early);
 		if (ret)
 			goto out;
 	}
 
 	if (old_len > new_len) {
+		/* 变小了， 后面部分也不要了 */
 		ret = do_munmap(mm, addr+new_len, old_len - new_len, uf_unmap);
 		if (ret)
 			goto out;
 		old_len = new_len;
 	}
 
+	/* 找到addr所在的vma */
 	vma = vma_to_resize(addr, old_len, new_len, flags);
 	if (IS_ERR(vma)) {
 		ret = PTR_ERR(vma);
@@ -867,6 +884,7 @@ static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
 	if (vma->vm_flags & VM_MAYSHARE)
 		map_flags |= MAP_SHARED;
 
+	/* 找一段地址 */
 	ret = get_unmapped_area(vma->vm_file, new_addr, new_len, vma->vm_pgoff +
 				((addr - vma->vm_start) >> PAGE_SHIFT),
 				map_flags);
@@ -877,6 +895,7 @@ static unsigned long mremap_to(unsigned long addr, unsigned long old_len,
 	if (!(flags & MREMAP_FIXED))
 		new_addr = ret;
 
+	/* 开始remap */
 	ret = move_vma(vma, addr, old_len, new_len, new_addr, locked, flags, uf,
 		       uf_unmap);
 
@@ -898,15 +917,18 @@ static int vma_expandable(struct vm_area_struct *vma, unsigned long delta)
 	return 1;
 }
 
-/*
+/*程序通过 mmap 分配内存后，若需要更大空间，可用 mremap 直接扩展，避免多次 mmap/munmap 的开销
  * Expand (or shrink) an existing mapping, potentially moving it at the
  * same time (controlled by the MREMAP_MAYMOVE flag and available VM space)
  *
  * MREMAP_FIXED option added 5-Dec-1999 by Benjamin LaHaise
  * This option implies MREMAP_MAYMOVE.
  */
-SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
-		unsigned long, new_len, unsigned long, flags,
+SYSCALL_DEFINE5(mremap, 
+		unsigned long, addr, 
+		unsigned long, old_len,
+		unsigned long, new_len, 
+		unsigned long, flags,
 		unsigned long, new_addr)
 {
 	struct mm_struct *mm = current->mm;
@@ -959,14 +981,16 @@ SYSCALL_DEFINE5(mremap, unsigned long, addr, unsigned long, old_len,
 	if (!new_len)
 		return ret;
 
+	/* 加写锁 */
 	if (mmap_write_lock_killable(current->mm))
 		return -EINTR;
 	vma = vma_lookup(mm, addr);
 	if (!vma) {
-		ret = -EFAULT;
+		ret = -EFAULT;/* 如果这个地方都没有vma， 不需要也不存在remap */
 		goto out;
 	}
 
+	/* 巨页的情况 */
 	if (is_vm_hugetlb_page(vma)) {
 		struct hstate *h __maybe_unused = hstate_vma(vma);
 

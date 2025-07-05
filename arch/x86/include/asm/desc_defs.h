@@ -110,7 +110,7 @@ static inline unsigned long gate_segment(const gate_desc *g)
 {
 	return g->segment;
 }
-
+/*GDT（Global Descriptor Table） 在 x86 架构中定义内存段的基址、界限和访问权限（如代码段、数据段）每个 CPU 拥有独立的 GDT，支持不同的内核任务或隔离机制。  */
 struct desc_ptr {
 	unsigned short size;
 	unsigned long address;

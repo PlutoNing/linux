@@ -77,7 +77,7 @@ extern unsigned char boot_gdt[];
 extern unsigned char secondary_startup_64[];
 extern unsigned char secondary_startup_64_no_verify[];
 #endif
-
+/* 差不多可能返回6个page */
 static inline size_t real_mode_size_needed(void)
 {
 	if (real_mode_header)
@@ -85,7 +85,7 @@ static inline size_t real_mode_size_needed(void)
 
 	return ALIGN(real_mode_blob_end - real_mode_blob, PAGE_SIZE);
 }
-
+/* 参数是从memblock分配的内存,大小可能几个页面, 是物理地址, 转为虚拟地址赋值给real_mode_header */
 static inline void set_real_mode_mem(phys_addr_t mem)
 {
 	real_mode_header = (struct real_mode_header *) __va(mem);

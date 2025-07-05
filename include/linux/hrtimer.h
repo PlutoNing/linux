@@ -91,11 +91,12 @@ enum hrtimer_restart {
  *
  * All state transitions are protected by cpu_base->lock.
  */
+/* 表示timer不活动了 */
 #define HRTIMER_STATE_INACTIVE	0x00
 // 代表hrtimer已经被加入到queue中
 #define HRTIMER_STATE_ENQUEUED	0x01
 
-/**
+/** 高精度定时器
  * struct hrtimer - the basic hrtimer structure
  * @node:	timerqueue node, which also manages node.expires,
  *		the absolute expiry time in the hrtimers internal
@@ -117,10 +118,13 @@ enum hrtimer_restart {
  * The hrtimer structure must be initialized by hrtimer_init()
  */
 struct hrtimer {
+	/* 作为在排序树上的连接件 */
 	struct timerqueue_node		node;
 	ktime_t				_softexpires;
+	/* 超时的处理函数 */
 	enum hrtimer_restart		(*function)(struct hrtimer *);
-	struct hrtimer_clock_base	*base;
+	struct hrtimer_clock_base	*base;/* timer->clock_base->cpu_base */
+	/* timer的状态, 是不活跃的, 还是已经queued等待执行 */
 	u8				state;
 	u8				is_rel;
 	u8				is_soft;
@@ -163,8 +167,12 @@ struct hrtimer_clock_base {
 	unsigned int		index; // 不同的时钟源,HRTIMER_BASE_MONOTONIC
 	clockid_t		clockid; // 不同的clockid
 	seqcount_raw_spinlock_t	seq;
+	/* 如果指向所属的timer, 说明还是活跃的
+	也可以说明正在执行回调函数 */
 	struct hrtimer		*running;
-	struct timerqueue_head	active; // 代表了一个红黑树
+	/* 代表了一个红黑树
+	自己的timer->node链接在这里 */
+	struct timerqueue_head	active;
 	ktime_t			(*get_time)(void); // 获取时间的回调函数
 	ktime_t			offset;
 } __hrtimer_clock_base_align;
@@ -184,7 +192,7 @@ enum  hrtimer_base_type {
 	HRTIMER_MAX_CLOCK_BASES,
 };
 
-/**
+/**表示hrtimer的pcp cpu base
  * struct hrtimer_cpu_base - the per cpu clock bases
  * @lock:		lock protecting the base and associated clock bases
  *			and timers
@@ -217,15 +225,23 @@ enum  hrtimer_base_type {
  *	 cross cpu removals.
  */
 struct hrtimer_cpu_base {
+	/* 保护范围是?
+	
+	*/
 	raw_spinlock_t			lock;
 	unsigned int			cpu; // 这个hrtimer_base所属的cpu
+	/* 表示现在活跃的时间源? 软中断什么的.硬终端什么的? */
 	unsigned int			active_bases;
 	unsigned int			clock_was_set_seq;
+	/* 表示hrtimer是否启用? */
 	unsigned int			hres_active		: 1,
+	/* 表示hrtimer_interrupt正在执行 */
 					in_hrtirq		: 1,
 					hang_detected		: 1,
+	/* 有软中断超时了? */
 					softirq_activated       : 1;
 #ifdef CONFIG_HIGH_RES_TIMERS
+/* 每次来个event调用hrtimer handler, 这里inc一下 */
 	unsigned int			nr_events;
 	unsigned short			nr_retries;
 	unsigned short			nr_hangs;
@@ -235,16 +251,21 @@ struct hrtimer_cpu_base {
 	spinlock_t			softirq_expiry_lock;
 	atomic_t			timer_waiters;
 #endif
+/* 下一个到期的时间 */
 	ktime_t				expires_next;
+	/* 下一个到期的timer */
 	struct hrtimer			*next_timer;
+	/* 下一个软中断到时的时间? */
 	ktime_t				softirq_expires_next;
+	/* 下一个软中断到期的timer */
+	/*  */
 	struct hrtimer			*softirq_next_timer;
 	/*
 	下面好像是代表了不同的时钟源
 	*/
 	struct hrtimer_clock_base	clock_base[HRTIMER_MAX_CLOCK_BASES];
 } ____cacheline_aligned;
-
+/* 设置timer的过期时间 */
 static inline void hrtimer_set_expires(struct hrtimer *timer, ktime_t time)
 {
 	timer->node.expires = time;
@@ -280,7 +301,9 @@ static inline void hrtimer_add_expires_ns(struct hrtimer *timer, u64 ns)
 	timer->node.expires = ktime_add_ns(timer->node.expires, ns);
 	timer->_softexpires = ktime_add_ns(timer->_softexpires, ns);
 }
-
+/* 
+获取timer的到期时间
+*/
 static inline ktime_t hrtimer_get_expires(const struct hrtimer *timer)
 {
 	return timer->node.expires;
@@ -413,9 +436,10 @@ extern void hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 				   u64 range_ns, const enum hrtimer_mode mode);
 
 /**
+开启一个hrtimer
  * hrtimer_start - (re)start an hrtimer
  * @timer:	the timer to be added
- * @tim:	expiry time
+ * @tim:	expiry time,到期时间
  * @mode:	timer mode: absolute (HRTIMER_MODE_ABS) or
  *		relative (HRTIMER_MODE_REL), and pinned (HRTIMER_MODE_PINNED);
  *		softirq based mode is considered for debug purpose only!
@@ -490,6 +514,7 @@ static inline bool hrtimer_is_queued(struct hrtimer *timer)
 /*
  * Helper function to check, whether the timer is running the callback
  * function
+ 检查timer是否在执行回调函数
  */
 static inline int hrtimer_callback_running(struct hrtimer *timer)
 {

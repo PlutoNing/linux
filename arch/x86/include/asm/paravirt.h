@@ -22,10 +22,16 @@ u64 dummy_steal_clock(int cpu);
 u64 dummy_sched_clock(void);
 
 DECLARE_STATIC_CALL(pv_steal_clock, dummy_steal_clock);
+/* 定义pv_sched_clock的static call */
 DECLARE_STATIC_CALL(pv_sched_clock, dummy_sched_clock);
 
 void paravirt_set_sched_clock(u64 (*func)(void));
 
+/* 
+获取时间
+调用pv_sched_clock这个static call来获取时间
+底层会调用时钟源, 比如可能是tsc或者jiffies什么的
+*/
 static __always_inline u64 paravirt_sched_clock(void)
 {
 	return static_call(pv_sched_clock)();

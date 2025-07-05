@@ -36,6 +36,7 @@ static bool seq_buf_can_fit(struct seq_buf *s, size_t len)
  * @s: the seq_buf descriptor that is the source.
  *
  * Returns zero on success, non zero otherwise
+ 返回0表示成功
  */
 int seq_buf_print_seq(struct seq_file *m, struct seq_buf *s)
 {
@@ -45,6 +46,8 @@ int seq_buf_print_seq(struct seq_file *m, struct seq_buf *s)
 }
 
 /**
+格式化打印不定参数
+args是当前遍历到的参数
  * seq_buf_vprintf - sequence printing of information.
  * @s: seq_buf descriptor
  * @fmt: printf format string
@@ -191,6 +194,7 @@ int seq_buf_puts(struct seq_buf *s, const char *str)
 }
 
 /**
+往seq写入一个字符什么的
  * seq_buf_putc - sequence printing of simple character
  * @s: seq_buf descriptor
  * @c: simple character to record
@@ -212,6 +216,7 @@ int seq_buf_putc(struct seq_buf *s, unsigned char c)
 }
 
 /**
+把data写入trace_seq
  * seq_buf_putmem - write raw data into the sequenc buffer
  * @s: seq_buf descriptor
  * @mem: The raw memory to copy into the buffer
@@ -321,6 +326,7 @@ int seq_buf_path(struct seq_buf *s, const struct path *path, const char *esc)
 }
 
 /**
+把seq buf拷贝到用户空间
  * seq_buf_to_user - copy the sequence buffer to user space
  * @s: seq_buf descriptor
  * @ubuf: The userspace memory location to copy to
@@ -356,6 +362,7 @@ int seq_buf_to_user(struct seq_buf *s, char __user *ubuf, int cnt)
 	len -= s->readpos;
 	if (cnt > len)
 		cnt = len;
+	/* 开始拷贝 */
 	ret = copy_to_user(ubuf, s->buffer + s->readpos, cnt);
 	if (ret == cnt)
 		return -EFAULT;

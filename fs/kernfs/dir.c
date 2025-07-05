@@ -597,7 +597,8 @@ struct kernfs_node *kernfs_node_from_dentry(struct dentry *dentry)
 		return kernfs_dentry_node(dentry);
 	return NULL;
 }
-
+/* 创建一个kernfs_node
+是root的kn,加入了root的idr */
 static struct kernfs_node *__kernfs_new_node(struct kernfs_root *root,
 					     struct kernfs_node *parent,
 					     const char *name, umode_t mode,
@@ -615,7 +616,7 @@ static struct kernfs_node *__kernfs_new_node(struct kernfs_root *root,
 	kn = kmem_cache_zalloc(kernfs_node_cache, GFP_KERNEL);
 	if (!kn)
 		goto err_out1;
-
+	// idr相关
 	idr_preload(GFP_KERNEL);
 	spin_lock(&kernfs_idr_lock);
 	ret = idr_alloc_cyclic(&root->ino_idr, kn, 1, 0, GFP_ATOMIC);
@@ -627,7 +628,7 @@ static struct kernfs_node *__kernfs_new_node(struct kernfs_root *root,
 	idr_preload_end();
 	if (ret < 0)
 		goto err_out2;
-
+	// 初始化kn
 	kn->id = (u64)id_highbits << 32 | ret;
 
 	atomic_set(&kn->count, 1);
@@ -637,14 +638,14 @@ static struct kernfs_node *__kernfs_new_node(struct kernfs_root *root,
 	kn->name = name;
 	kn->mode = mode;
 	kn->flags = flags;
-
+	// 设置attr
 	if (!uid_eq(uid, GLOBAL_ROOT_UID) || !gid_eq(gid, GLOBAL_ROOT_GID)) {
 		struct iattr iattr = {
 			.ia_valid = ATTR_UID | ATTR_GID,
 			.ia_uid = uid,
 			.ia_gid = gid,
 		};
-
+		// 设置attr
 		ret = __kernfs_setattr(kn, &iattr);
 		if (ret < 0)
 			goto err_out3;
@@ -929,6 +930,11 @@ struct kernfs_node *kernfs_walk_and_get_ns(struct kernfs_node *parent,
 }
 
 /**
+为创建cgrp root(指针位于@priv)创建一个新的kernfs层级
+scops是mkdir等fops
+就是创建/sys的内容
+===================
+创建root和对应的kn并初始化
  * kernfs_create_root - create a new kernfs hierarchy
  * @scops: optional syscall operations for the hierarchy
  * @flags: KERNFS_ROOT_* flags
@@ -942,7 +948,7 @@ struct kernfs_root *kernfs_create_root(struct kernfs_syscall_ops *scops,
 {
 	struct kernfs_root *root;
 	struct kernfs_node *kn;
-
+	// 先创建一个新的kernfs_root
 	root = kzalloc(sizeof(*root), GFP_KERNEL);
 	if (!root)
 		return ERR_PTR(-ENOMEM);
@@ -963,7 +969,7 @@ struct kernfs_root *kernfs_create_root(struct kernfs_syscall_ops *scops,
 		root->id_highbits = 0;
 	else
 		root->id_highbits = 1;
-
+	// 创建kn, kn会加入root的idr
 	kn = __kernfs_new_node(root, NULL, "", S_IFDIR | S_IRUGO | S_IXUGO,
 			       GLOBAL_ROOT_UID, GLOBAL_ROOT_GID,
 			       KERNFS_DIR);
@@ -973,9 +979,11 @@ struct kernfs_root *kernfs_create_root(struct kernfs_syscall_ops *scops,
 		return ERR_PTR(-ENOMEM);
 	}
 
+	/* 指向cgroup root */
 	kn->priv = priv;
 	kn->dir.root = root;
 
+	/* 设置fops */
 	root->syscall_ops = scops;
 	root->flags = flags;
 	root->kn = kn;
@@ -1006,6 +1014,7 @@ void kernfs_destroy_root(struct kernfs_root *root)
 }
 
 /**
+获得kernfs_root的kn
  * kernfs_root_to_node - return the kernfs_node associated with a kernfs_root
  * @root: root to use to lookup
  *
@@ -1056,6 +1065,7 @@ struct kernfs_node *kernfs_create_dir_ns(struct kernfs_node *parent,
 }
 
 /**
+在sysfs创建dir
  * kernfs_create_empty_dir - create an always empty directory
  * @parent: parent in which to create a new directory
  * @name: name of the new directory
@@ -1362,6 +1372,7 @@ static void kernfs_activate_one(struct kernfs_node *kn)
 }
 
 /**
+什么是kn的激活呢?
  * kernfs_activate - activate a node which started deactivated
  * @kn: kernfs_node whose subtree is to be activated
  *

@@ -74,7 +74,7 @@ static enum pti_mode {
 	PTI_FORCE_OFF,
 	PTI_FORCE_ON
 } pti_mode;
-
+/* 用于控制页表隔离（Page Table Isolation, PTI）机制 */
 void __init pti_check_boottime_disable(void)
 {
 	char arg[5];
@@ -602,7 +602,7 @@ static void pti_set_kernel_image_nonglobal(void)
 	set_memory_nonglobal(start, (end - start) >> PAGE_SHIFT);
 }
 
-/*
+/* 以后, qemu没有pti?
  * Initialize kernel page table isolation
  */
 void __init pti_init(void)

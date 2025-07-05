@@ -91,7 +91,7 @@ static DEFINE_XARRAY_FLAGS(memory_groups, XA_FLAGS_ALLOC);
 #define MEMORY_GROUP_MARK_DYNAMIC	XA_MARK_1
 
 static BLOCKING_NOTIFIER_HEAD(memory_chain);
-
+/* 好像是注册内存热插拔相关 */
 int register_memory_notifier(struct notifier_block *nb)
 {
 	return blocking_notifier_chain_register(&memory_chain, nb);

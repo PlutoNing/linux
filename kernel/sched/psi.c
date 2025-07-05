@@ -165,7 +165,7 @@ __setup("psi=", setup_psi);
 /* Sampling frequency in nanoseconds */
 static u64 psi_period __read_mostly;
 
-/* System-level pressure and stall tracking */
+/* System-level pressure and stall tracking ,系统的psi定义*/
 static DEFINE_PER_CPU(struct psi_group_cpu, system_group_pcpu);
 struct psi_group psi_system = {
 	.pcpu = &system_group_pcpu,
@@ -174,7 +174,7 @@ struct psi_group psi_system = {
 static void psi_avgs_work(struct work_struct *work);
 
 static void poll_timer_fn(struct timer_list *t);
-
+/* 初始化系统的psi_system */
 static void group_init(struct psi_group *group)
 {
 	int cpu;
@@ -201,7 +201,7 @@ static void group_init(struct psi_group *group)
 	timer_setup(&group->rtpoll_timer, poll_timer_fn, 0);
 	rcu_assign_pointer(group->rtpoll_task, NULL);
 }
-
+/* 初始化调度的psi */
 void __init psi_init(void)
 {
 	if (!psi_enable) {
@@ -332,6 +332,8 @@ static void calc_avgs(unsigned long avg[3], int missed_periods,
 	avg[2] = calc_load(avg[2], EXP_300s, pct);
 }
 
+/* 计算psi group的什么东西
+ */
 static void collect_percpu_times(struct psi_group *group,
 				 enum psi_aggregators aggregator,
 				 u32 *pchanged_states)
@@ -505,7 +507,7 @@ static u64 update_triggers(struct psi_group *group, u64 now, bool *update_total,
 
 	return now + group->rtpoll_min_period;
 }
-
+/* psi计算 */
 static u64 update_averages(struct psi_group *group, u64 now)
 {
 	unsigned long missed_periods = 0;
@@ -1126,6 +1128,7 @@ void psi_memstall_leave(unsigned long *flags)
 EXPORT_SYMBOL_GPL(psi_memstall_leave);
 
 #ifdef CONFIG_CGROUPS
+/* 创建新cg的psi group */
 int psi_cgroup_alloc(struct cgroup *cgroup)
 {
 	if (!static_branch_likely(&psi_cgroups_enabled))
@@ -1158,6 +1161,8 @@ void psi_cgroup_free(struct cgroup *cgroup)
 }
 
 /**
+把进程加入cset
+改变task->cgroups的指向
  * cgroup_move_task - move task to a different cgroup
  * @task: the task
  * @to: the target css_set
@@ -1259,7 +1264,7 @@ void psi_cgroup_restart(struct psi_group *group)
 }
 #endif /* CONFIG_CGROUPS */
 
-/* psi的信息展示 */
+/* psi的信息展示, 显示res指定的信息类型 */
 int psi_show(struct seq_file *m, struct psi_group *group, enum psi_res res)
 {
 	bool only_full = false;
@@ -1272,6 +1277,7 @@ int psi_show(struct seq_file *m, struct psi_group *group, enum psi_res res)
 	/* Update averages before reporting them */
 	mutex_lock(&group->avgs_lock);
 	now = sched_clock();
+	/* 这里计算 */
 	collect_percpu_times(group, PSI_AVGS, NULL);
 	if (now >= group->avg_next_update)
 		group->avg_next_update = update_averages(group, now);
@@ -1305,10 +1311,15 @@ int psi_show(struct seq_file *m, struct psi_group *group, enum psi_res res)
 	return 0;
 }
 
+/* 给psi创建一个触发器
+触发器是
+
+ */
 struct psi_trigger *psi_trigger_create(struct psi_group *group, char *buf,
 				       enum psi_res res, struct file *file,
 				       struct kernfs_open_file *of)
 {
+	/*  */
 	struct psi_trigger *t;
 	enum psi_states state;
 	u32 threshold_us;
@@ -1353,10 +1364,12 @@ struct psi_trigger *psi_trigger_create(struct psi_group *group, char *buf,
 	if (threshold_us == 0 || threshold_us > window_us)
 		return ERR_PTR(-EINVAL);
 
+		/* 给trigger分配内存 */
 	t = kmalloc(sizeof(*t), GFP_KERNEL);
 	if (!t)
 		return ERR_PTR(-ENOMEM);
 
+	/* 初始化trigger */
 	t->group = group;
 	t->state = state;
 	t->threshold = threshold_us * NSEC_PER_USEC;
@@ -1491,7 +1504,7 @@ void psi_trigger_destroy(struct psi_trigger *t)
 	}
 	kfree(t);
 }
-
+/* 对poll的支持 */
 __poll_t psi_trigger_poll(void **trigger_ptr,
 				struct file *file, poll_table *wait)
 {

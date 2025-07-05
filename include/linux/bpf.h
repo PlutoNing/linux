@@ -79,6 +79,7 @@ struct bpf_map_ops {
 	void (*map_release)(struct bpf_map *map, struct file *map_file);
 	void (*map_free)(struct bpf_map *map);
 	int (*map_get_next_key)(struct bpf_map *map, void *key, void *next_key);
+	/* user ref变成0的时候调用 */
 	void (*map_release_uref)(struct bpf_map *map);
 	void *(*map_lookup_elem_sys_only)(struct bpf_map *map, void *key);
 	int (*map_lookup_batch)(struct bpf_map *map, const union bpf_attr *attr,
@@ -263,11 +264,13 @@ struct bpf_map {
 	u32 id;
 	struct btf_record *record;
 	int numa_node;
+	/* 下面三个属性都是创建的时候从attr复制的 */
 	u32 btf_key_type_id;
 	u32 btf_value_type_id;
 	u32 btf_vmlinux_value_type_id;
 	struct btf *btf;
 #ifdef CONFIG_MEMCG_KMEM
+/* 创建map的时候指向current的objcg */
 	struct obj_cgroup *objcg;
 #endif
 	char name[BPF_OBJ_NAME_LEN];
@@ -275,6 +278,7 @@ struct bpf_map {
 	 * particularly with refcounting.
 	 */
 	atomic64_t refcnt ____cacheline_aligned;
+	/* 为什么还分出了一个user ref */
 	atomic64_t usercnt;
 	struct work_struct work;
 	struct mutex freeze_mutex;
@@ -913,7 +917,7 @@ static inline bool bpf_pseudo_func(const struct bpf_insn *insn)
 	return insn->code == (BPF_LD | BPF_IMM | BPF_DW) &&
 	       insn->src_reg == BPF_PSEUDO_FUNC;
 }
-
+/* 就一个run的ops吗 */
 struct bpf_prog_ops {
 	int (*test_run)(struct bpf_prog *prog, const union bpf_attr *kattr,
 			union bpf_attr __user *uattr);
@@ -1091,11 +1095,11 @@ bpf_trampoline_enter_t bpf_trampoline_enter(const struct bpf_prog *prog);
 bpf_trampoline_exit_t bpf_trampoline_exit(const struct bpf_prog *prog);
 
 struct bpf_ksym {
-	unsigned long		 start;
-	unsigned long		 end;
+	unsigned long		 start;/* 好像是bpf-func的开始地址 */
+	unsigned long		 end;/* start加上jit长度？ */
 	char			 name[KSYM_NAME_LEN];
-	struct list_head	 lnode;
-	struct latch_tree_node	 tnode;
+	struct list_head	 lnode;/* 链表链接件， 添加到bpf-kallsyms */
+	struct latch_tree_node	 tnode;/* tree链接件， 添加到bpf-tree */
 	bool			 prog;
 };
 
@@ -1381,7 +1385,7 @@ struct bpf_prog_aux {
 	u32 max_pkt_offset;
 	u32 max_tp_access;
 	u32 stack_depth;
-	u32 id;
+	u32 id; /* 是prog的idr id */
 	u32 func_cnt; /* used by non-func prog as the number of func progs */
 	u32 func_idx; /* 0 for non-func prog, the index in func array for func prog */
 	u32 attach_btf_id; /* in-kernel BTF type id to attach to */
@@ -1413,6 +1417,7 @@ struct bpf_prog_aux {
 	struct bpf_kfunc_desc_tab *kfunc_tab;
 	struct bpf_kfunc_btf_tab *kfunc_btf_tab;
 	u32 size_poke_tab;
+	/* 和bpf func相关 */
 	struct bpf_ksym ksym;
 	const struct bpf_prog_ops *ops;
 	struct bpf_map **used_maps;
@@ -1424,6 +1429,7 @@ struct bpf_prog_aux {
 	u32 verified_insns;
 	int cgroup_atype; /* enum cgroup_bpf_attach_type */
 	struct bpf_map *cgroup_storage[MAX_BPF_CGROUP_STORAGE_TYPE];
+	/* 居然是prog的name */
 	char name[BPF_OBJ_NAME_LEN];
 #ifdef CONFIG_SECURITY
 	void *security;
@@ -1775,7 +1781,7 @@ struct bpf_event_entry {
 	struct file *map_file;
 	struct rcu_head rcu;
 };
-
+/* 什么叫含有prog? */
 static inline bool map_type_contains_progs(struct bpf_map *map)
 {
 	return map->map_type == BPF_MAP_TYPE_PROG_ARRAY ||
@@ -1996,6 +2002,7 @@ extern struct mutex bpf_stats_enabled_mutex;
  * kprobes, tracepoints) to prevent deadlocks on map operations as any of
  * these events can happen inside a region which holds a map bucket lock
  * and can deadlock on it.
+ 翻译： 
  */
 static inline void bpf_disable_instrumentation(void)
 {
@@ -2336,7 +2343,9 @@ int cpu_map_enqueue(struct bpf_cpu_map_entry *rcpu, struct xdp_frame *xdpf,
 int cpu_map_generic_redirect(struct bpf_cpu_map_entry *rcpu,
 			     struct sk_buff *skb);
 
-/* Return map's numa specified by userspace */
+/* Return map's numa specified by userspace
+执行bpf操作的时候的内存节点
+*/
 static inline int bpf_map_attr_numa_node(const union bpf_attr *attr)
 {
 	return (attr->map_flags & BPF_F_NUMA_NODE) ?
@@ -2733,6 +2742,9 @@ bpf_probe_read_kernel_common(void *dst, u32 size, const void *unsafe_ptr)
 void __bpf_free_used_btfs(struct bpf_prog_aux *aux,
 			  struct btf_mod_pair *used_btfs, u32 len);
 
+/* 附加程序时获取prog
+ufd是参数attr里程序的fd
+type为程序类型 */
 static inline struct bpf_prog *bpf_prog_get_type(u32 ufd,
 						 enum bpf_prog_type type)
 {

@@ -8,7 +8,8 @@
 #include <linux/compat.h>
 #include <asm/unistd.h>
 #include <linux/filelock.h>
-
+/* 这些代码是 Linux 内核中与 ​​文件时间属性修改​​ 相关的系统调用实现，
+涵盖现代高精度接口（utimensat）和传统接口（utimes、utime等）的兼容性支持 */
 static bool nsec_valid(long nsec)
 {
 	if (nsec == UTIME_OMIT || nsec == UTIME_NOW)
@@ -144,7 +145,7 @@ long do_utimes(int dfd, const char __user *filename, struct timespec64 *times,
 		return do_utimes_fd(dfd, times, flags);
 	return do_utimes_path(dfd, filename, times, flags);
 }
-
+/* 以 ​​纳秒级精度​​ 设置文件的访问时间（atime）和修改时间（mtime），支持更灵活的控制标志。 */
 SYSCALL_DEFINE4(utimensat, int, dfd, const char __user *, filename,
 		struct __kernel_timespec __user *, utimes, int, flags)
 {
@@ -166,10 +167,9 @@ SYSCALL_DEFINE4(utimensat, int, dfd, const char __user *, filename,
 
 #ifdef __ARCH_WANT_SYS_UTIME
 /*
- * futimesat(), utimes() and utime() are older versions of utimensat()
- * that are provided for compatibility with traditional C libraries.
- * On modern architectures, we always use libc wrappers around
- * utimensat() instead.
+ * futimesat()、utimes() 和 utime() 是 utimensat() 的旧版本，
+ * 它们是为了与传统 C 库兼容而提供的。
+ * 在现代架构上，我们始终使用围绕 utimensat() 的 libc 包装函数。
  */
 static long do_futimesat(int dfd, const char __user *filename,
 			 struct __kernel_old_timeval __user *utimes)
@@ -199,7 +199,8 @@ static long do_futimesat(int dfd, const char __user *filename,
 	return do_utimes(dfd, filename, utimes ? tstimes : NULL, 0);
 }
 
-
+/* 传统接口（futimesat/utimes/utime）​​
+旧版系统调用，以 ​​微秒级精度​​ 修改文件时间，主要用于兼容性 */
 SYSCALL_DEFINE3(futimesat, int, dfd, const char __user *, filename,
 		struct __kernel_old_timeval __user *, utimes)
 {

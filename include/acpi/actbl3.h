@@ -25,17 +25,17 @@
  * the wrong signature.
  */
 #define ACPI_SIG_SLIC           "SLIC"	/* Software Licensing Description Table */
-#define ACPI_SIG_SLIT           "SLIT"	/* System Locality Distance Information Table */
+#define ACPI_SIG_SLIT           "SLIT"	/* System Locality Distance Information Table ​NUMA 节点距离​：定义不同 NUMA 节点之间的访问延迟，用于任务分配优化。*/
 #define ACPI_SIG_SPCR           "SPCR"	/* Serial Port Console Redirection table */
 #define ACPI_SIG_SPMI           "SPMI"	/* Server Platform Management Interface table */
-#define ACPI_SIG_SRAT           "SRAT"	/* System Resource Affinity Table */
+#define ACPI_SIG_SRAT           "SRAT"	/* System Resource Affinity Table,NUMA 架构资源亲和性​：描述 CPU 和内存的物理位置（NUMA 节点），优化多核调度和内存访问。 */
 #define ACPI_SIG_STAO           "STAO"	/* Status Override table */
 #define ACPI_SIG_TCPA           "TCPA"	/* Trusted Computing Platform Alliance table */
 #define ACPI_SIG_TPM2           "TPM2"	/* Trusted Platform Module 2.0 H/W interface table */
 #define ACPI_SIG_UEFI           "UEFI"	/* Uefi Boot Optimization Table */
 #define ACPI_SIG_VIOT           "VIOT"	/* Virtual I/O Translation Table */
 #define ACPI_SIG_WAET           "WAET"	/* Windows ACPI Emulated devices Table */
-#define ACPI_SIG_WDAT           "WDAT"	/* Watchdog Action Table */
+#define ACPI_SIG_WDAT           "WDAT"	/* Watchdog Action Table ​硬件看门狗配置​：定义看门狗定时器的动作和触发条件，防止系统死锁。*/
 #define ACPI_SIG_WDDT           "WDDT"	/* Watchdog Timer Description Table */
 #define ACPI_SIG_WDRT           "WDRT"	/* Watchdog Resource Table */
 #define ACPI_SIG_WPBT           "WPBT"	/* Windows Platform Binary Table */

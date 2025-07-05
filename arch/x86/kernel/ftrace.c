@@ -35,6 +35,7 @@
 
 #ifdef CONFIG_DYNAMIC_FTRACE
 
+/*  */
 static int ftrace_poke_late = 0;
 
 void ftrace_arch_code_modify_prepare(void)
@@ -62,14 +63,20 @@ void ftrace_arch_code_modify_post_process(void)
 	mutex_unlock(&text_mutex);
 }
 
+/* 返回一段表示nop的字节码 */
 static const char *ftrace_nop_replace(void)
 {
 	return x86_nops[5];
 }
-/* @ip是ftrace函数的地址,
+/* 生成一段字节码,从ip跳到addr
+@ip是ftrace函数的地址,
 addr是新函数的地址.
 cpu执行到ip时跳转到addr.
-返回的是insn的text代码buf地址 */
+返回的是insn的text代码buf地址
+========================
+更新静态的insn结构体的opcode（call指令），disp（从ip跳到addr）成员，
+然后返回他的text成员buff地址
+*/
 static const char *ftrace_call_replace(unsigned long ip, unsigned long addr)
 {
 	/*
@@ -79,6 +86,7 @@ static const char *ftrace_call_replace(unsigned long ip, unsigned long addr)
 	return text_gen_insn(CALL_INSN_OPCODE, (void *)ip, (void *)addr);
 }
 
+/* 准备把ip处的字节码替换为别的字节码， 先检查一下现在的字节码是不是符合预期 */
 static int ftrace_verify_code(unsigned long ip, const char *old_code)
 {
 	char cur_code[MCOUNT_INSN_SIZE];
@@ -95,7 +103,7 @@ static int ftrace_verify_code(unsigned long ip, const char *old_code)
 		WARN_ON(1);
 		return -EFAULT;
 	}
-
+	/* 现在cur code是ip处现在的字节码 */
 	/* Make sure it is what we expect it to be */
 	if (memcmp(cur_code, old_code, MCOUNT_INSN_SIZE) != 0) {
 		ftrace_expected = old_code;
@@ -107,7 +115,8 @@ static int ftrace_verify_code(unsigned long ip, const char *old_code)
 }
 
 /*
- * Marked __ref because it calls text_poke_early() which is .init.text. That is
+现在ip处的代码应该是old code，替换为new code
+* Marked __ref because it calls text_poke_early() which is .init.text. That is
  * ok because that call will happen early, during boot, when .init sections are
  * still present.
  */
@@ -115,24 +124,34 @@ static int __ref
 ftrace_modify_code_direct(unsigned long ip, const char *old_code,
 			  const char *new_code)
 {
+	/* 看看ip处现在的字节码是不是old code */
 	int ret = ftrace_verify_code(ip, old_code);
 	if (ret)
 		return ret;
 
-	/* replace the text with the new text */
+	/* replace the text with the new text
+	开始hook
+	*/
 	if (ftrace_poke_late)
+	/* 把hook信息计入全局的tp vec数组，等待别人后续执行 */
 		text_poke_queue((void *)ip, new_code, MCOUNT_INSN_SIZE, NULL);
 	else
+	/* 直接现在修改 */
 		text_poke_early((void *)ip, new_code, MCOUNT_INSN_SIZE);
 	return 0;
 }
 
+/* 停止trace这个函数
+把rec->ip处的call指令替换为nop指令
+*/
 int ftrace_make_nop(struct module *mod, struct dyn_ftrace *rec, unsigned long addr)
 {
 	unsigned long ip = rec->ip;
 	const char *new, *old;
 
+	/* 生成call字节码 */
 	old = ftrace_call_replace(ip, addr);
+	/* 生成nop字节码 */
 	new = ftrace_nop_replace();
 
 	/*
@@ -142,6 +161,8 @@ int ftrace_make_nop(struct module *mod, struct dyn_ftrace *rec, unsigned long ad
 	 * or before the code will ever be executed (module load).
 	 * We do not want to use the breakpoint version in this case,
 	 * just modify the code directly.
+	 */
+	/* 如果addr的地址是fentry，才执行
 	 */
 	if (addr == MCOUNT_ADDR)
 		return ftrace_modify_code_direct(ip, old, new);
@@ -154,15 +175,22 @@ int ftrace_make_nop(struct module *mod, struct dyn_ftrace *rec, unsigned long ad
 	return -EINVAL;
 }
 
+/* 开始trace这个函数
+把rec->ip处的nop指令替换为call指令
+addr是rec的ip对应要跳转的addr */
 int ftrace_make_call(struct dyn_ftrace *rec, unsigned long addr)
 {
 	unsigned long ip = rec->ip;
 	const char *new, *old;
 
+	/* 生成插入的nop机器码 */
 	old = ftrace_nop_replace();
+	/* 生成call机器码 */
 	new = ftrace_call_replace(ip, addr);
 
-	/* Should only be called when module is loaded */
+	/* Should only be called when module is loaded
+	现在的ip处是nop指令，替换为call指令
+	*/
 	return ftrace_modify_code_direct(rec->ip, old, new);
 }
 
@@ -180,21 +208,22 @@ int ftrace_modify_call(struct dyn_ftrace *rec, unsigned long old_addr,
 	WARN_ON(1);
 	return -EINVAL;
 }
-/* 把ftrace func更新为此func ... */
+/* ftrace_call func更新为此func ...
+也就是说， 以后ftrace call函数就是调用func了。
+*/
 int ftrace_update_ftrace_func(ftrace_func_t func)
 {
 	unsigned long ip;
 	const char *new;
-
+	/* 先修改ftrace all函数 */
 	ip = (unsigned long)(&ftrace_call);
-	/* 执行到ip时,跳转到func.
-	返回的new是insn的text buf地址 */
+	/* 生成从ip跳到func的字节码，放在new */
 	new = ftrace_call_replace(ip, (unsigned long)func);
-	/* 好像这里才是开始poke代码,
-	new 是insn的text ...
-	现在insn的disp已经可以跳转到new func ... */
+	/* 
+	好像这里才是开始poke代码 */
 	text_poke_bp((void *)ip, new, MCOUNT_INSN_SIZE, NULL);
 
+	/* 同样地方式修改ftrace call保存regs的版本 */
 	ip = (unsigned long)(&ftrace_regs_call);
 	new = ftrace_call_replace(ip, (unsigned long)func);
 	text_poke_bp((void *)ip, new, MCOUNT_INSN_SIZE, NULL);
@@ -208,9 +237,9 @@ void ftrace_replace_code(int enable)
 	struct dyn_ftrace *rec;
 	const char *new, *old;
 	int ret;
-
+	/* 遍历系统全部的rec */
 	for_ftrace_rec_iter(iter) {
-		rec = ftrace_rec_iter_record(iter);
+		rec = ftrace_rec_iter_record(iter); /* 取出一个rec */
 
 		switch (ftrace_test_record(rec, enable)) {
 		case FTRACE_UPDATE_IGNORE:
@@ -226,7 +255,7 @@ void ftrace_replace_code(int enable)
 			old = ftrace_call_replace(rec->ip, ftrace_get_addr_curr(rec));
 			break;
 		}
-
+/* 检查rec->ip处现在是不是old字节码 */
 		ret = ftrace_verify_code(rec->ip, old);
 		if (ret) {
 			ftrace_expected = old;
@@ -253,7 +282,7 @@ void ftrace_replace_code(int enable)
 			new = ftrace_nop_replace();
 			break;
 		}
-
+		/* hook这个rec的ip */
 		text_poke_queue((void *)rec->ip, new, MCOUNT_INSN_SIZE, NULL);
 		ftrace_update_record(rec, enable);
 	}
@@ -297,6 +326,14 @@ extern void ftrace_regs_caller_jmp(void);
 
 /* movq function_trace_op(%rip), %rdx */
 /* 0x48 0x8b 0x15 <offset-to-ftrace_trace_op (4 bytes)> */
+/* 
+这里就是下面语句的反汇编
+SYM_INNER_LABEL(ftrace_regs_caller_op_ptr, SYM_L_GLOBAL)
+        ANNOTATE_NOENDBR
+        Load the ftrace_ops into the 3rd parameter 
+        movq function_trace_op(%rip), %rdx
+ffffffff81113616:       48 8b 15 a3 b1 a4 02    mov    0x2a4b1a3(%rip),%rdx        # ffffffff83b5e7c0 <function_trace_op>
+*/
 #define OP_REF_SIZE	7
 
 /*
@@ -315,8 +352,13 @@ union ftrace_op_code_union {
 	} __attribute__((packed));
 };
 
+/* 一般是5 */
 #define RET_SIZE		(IS_ENABLED(CONFIG_RETPOLINE) ? 5 : 1 + IS_ENABLED(CONFIG_SLS))
 
+/* 创建ops的跳板
+跳板就是一块内存区域，对其进行poke
+会跳转到ops->func
+*/
 static unsigned long
 create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 {
@@ -333,10 +375,19 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 	void *ip, *dest;
 	/* 48 8b 15 <offset> is movq <offset>(%rip), %rdx */
 	unsigned const char op_ref[] = { 0x48, 0x8b, 0x15 };
+	/* retq是C3 CC */
 	unsigned const char retq[] = { RET_INSN_OPCODE, INT3_INSN_OPCODE };
 	union ftrace_op_code_union op_ptr;
 	int ret;
-
+/* 
+$ nm -n vmlinux | grep "ftrace_regs"
+ffffffff811135a0 T __pfx_ftrace_regs_caller
+ffffffff811135b0 T ftrace_regs_caller
+ffffffff81113616 T ftrace_regs_caller_op_ptr
+ffffffff8111368b T ftrace_regs_call
+ffffffff811136dd T ftrace_regs_caller_jmp
+ffffffff8111370f T ftrace_regs_caller_end
+*/
 	if (ops->flags & FTRACE_OPS_FL_SAVE_REGS) {
 		start_offset = (unsigned long)ftrace_regs_caller;
 		end_offset = (unsigned long)ftrace_regs_caller_end;
@@ -350,14 +401,24 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 		call_offset = (unsigned long)ftrace_call;
 		jmp_offset = 0;
 	}
-
+/* 
+paulning@laptop:~/study/linux$ nm -n vmlinux | grep "ftrace_regs"
+ffffffff811135a0 T __pfx_ftrace_regs_caller
+ffffffff811135b0 T ftrace_regs_caller
+ffffffff81113616 T ftrace_regs_caller_op_ptr
+ffffffff8111368b T ftrace_regs_call
+ffffffff811136dd T ftrace_regs_caller_jmp
+ffffffff8111370f T ftrace_regs_caller_end
+*/
 	size = end_offset - start_offset;
 
 	/*
 	 * Allocate enough size to store the ftrace_caller code,
 	 * the iret , as well as the address of the ftrace_ops this
 	 * trampoline is used for.
-	 */
+	 分配足够的内存来存储ftrace_caller代码，
+	 * iret指令，以及这个跳板所使用的ftrace_ops的地址。
+	 198 + 5 + 4 = 207*/
 	trampoline = alloc_tramp(size + RET_SIZE + sizeof(void *));
 	if (!trampoline)
 		return 0;
@@ -365,23 +426,43 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 	*tramp_size = size + RET_SIZE + sizeof(void *);
 	npages = DIV_ROUND_UP(*tramp_size, PAGE_SIZE);
 
-	/* Copy ftrace_caller onto the trampoline memory */
+	/* Copy ftrace_caller onto the trampoline memory
+	把ftrace_caller开始的一些二进制代码拷贝到trampoline内存中
+	*/
 	ret = copy_from_kernel_nofault(trampoline, (void *)start_offset, size);
 	if (WARN_ON(ret < 0))
 		goto fail;
 
 	ip = trampoline + size;
+	/* 现在 x/i ip 0xffffffffa02010c6:	add    BYTE PTR [rax],al
+	接下来在ip处生成从ip跳转到x86_return_thunk的机器码，或者直接就是ret的机器码
+	反正就是从ip地址处是ret作用的机器码
+	​​if的目的​​：根据 CPU 是否支持 X86_FEATURE_RETHUNK，动态替换返回指令（retq）为安全版本。
+​​		支持 RETHUNK​​：生成跳转到 x86_return_thunk 的指令。
+​​		不支持 RETHUNK​​：直接使用原生 retq 指令。
+	*/
 	if (cpu_feature_enabled(X86_FEATURE_RETHUNK))
 		__text_gen_insn(ip, JMP32_INSN_OPCODE, ip, x86_return_thunk, JMP32_INSN_SIZE);
 	else
+	/*  */
 		memcpy(ip, retq, sizeof(retq));
-
+	/* 现在 x/i ip   0xffffffffa02010c6:	ret */
 	/* No need to test direct calls on created trampolines */
 	if (ops->flags & FTRACE_OPS_FL_SAVE_REGS) {
 		/* NOP the jnz 1f; but make sure it's a 2 byte jnz */
+		/* 现在trampoline是ftrace caller regs的一系列二进制代码
+		这里让ip指向其中ftrace_regs_caller_jmp部分的指针 */
 		ip = trampoline + (jmp_offset - start_offset);
+		/* 
+ffffffff811136dd <ftrace_regs_caller_jmp>:
+ffffffff811136dd:       75 35                   jne    ffffffff81113714 <ftrace_regs_caller_end+0x5>
+ffffffff811136df:       48 8b 6c 24 20          mov    0x20(%rsp),%rbp
+ffffffff811136e4:       4c 8b 4c 24 40          mov    0x40(%rsp),%r9 
+ftrace_regs_caller_jmp这个地方的第一个机器码应该是75，不是的话就是异常
+*/
 		if (WARN_ON(*(char *)ip != 0x75))
 			goto fail;
+		/* 把nop的机器码拷到这里 */
 		ret = copy_from_kernel_nofault(ip, x86_nops[2], 2);
 		if (ret < 0)
 			goto fail;
@@ -393,12 +474,20 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 	 * load the third parameter for the callback. Basically, that
 	 * location at the end of the trampoline takes the place of
 	 * the global function_trace_op variable.
+*/
+	/* x/i (trampoline + size) 0xffffffffa02010c6:	ret 就是ip的位置 */
+	ptr = (unsigned long *)(trampoline + size + RET_SIZE); /* x/i ptr 0xffffffffa02010c7:	int3 */
+	*ptr = (unsigned long)ops; /* 就是ops的地址, 其实也是ops->func指针的地址 */
+
+	op_offset -= start_offset; /* op_offset 107 */
+	/* 这里的from就是ftrace_64.S中如下语句的反汇编
+	SYM_INNER_LABEL(ftrace_regs_caller_op_ptr, SYM_L_GLOBAL)
+        ANNOTATE_NOENDBR
+        Load the ftrace_ops into the 3rd parameter
+        movq function_trace_op(%rip), %rdx
+		ffffffff81113616:       48 8b 15 a3 b1 a4 02    mov    0x2a4b1a3(%rip),%rdx        # ffffffff83b5e7c0 <function_trace_op>
 	 */
-
-	ptr = (unsigned long *)(trampoline + size + RET_SIZE);
-	*ptr = (unsigned long)ops;
-
-	op_offset -= start_offset;
+	/* x/i trampoline + op_offset 0xffffffffa020106b:	mov    rdx,QWORD PTR [rip+0x427478e]        # 0xffffffffa4475800拷贝48 8b 15 a3 b1 a4 02七个字节到op ptr结构体 */
 	memcpy(&op_ptr, trampoline + op_offset, OP_REF_SIZE);
 
 	/* Are we pointing to the reference? */
@@ -408,20 +497,50 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 	/* Load the contents of ptr into the callback parameter */
 	offset = (unsigned long)ptr;
 	offset -= (unsigned long)trampoline + op_offset + OP_REF_SIZE;
-
+	/*  offset大小85
+	现在trampoline开始的地方就是一系列函数
+ffffffff811135b0 T ftrace_regs_caller
+ffffffff81113616 T ftrace_regs_caller_op_ptr
+ffffffff8111368b T ftrace_regs_call
+ffffffff811136dd T ftrace_regs_caller_jmp
+ffffffff8111370f T ftrace_regs_caller_end的字节码
+在后面紧跟的是ftrace ops的地址
+	*/
+	/* 
+	现在offset就是ftrace_regs_caller_op_ptr到ops的距离
+	*/
 	op_ptr.offset = offset;
 
-	/* put in the new offset to the ftrace_ops */
+	/* put in the new offset to the ftrace_ops
+	这里的to就是trampoline字节码区域里面ftrace_regs_caller_op_ptr的地址
+	修改ftrace_regs_caller_op_ptr的开头的movq function_trace_op(%rip), %rdx的语句
+	语句的字节码如下48 8b 15 a3 b1 a4 02    mov    0x2a4b1a3(%rip),%rdx
+	把其中的a3 b1 a4 02替换为新的地址
+	*/
 	memcpy(trampoline + op_offset, &op_ptr, OP_REF_SIZE);
 
 	/* put in the call to the function */
 	mutex_lock(&text_mutex);
+	/* 
+ffffffff8111368b T ftrace_regs_call 减去	ffffffff811135b0 T ftrace_regs_caller
+其实现在call_offset就是ftrace_regs_call函数在trampoline内存中的相对偏移
+ftrace_regs_call函数开头的部分字节码如下
+SYM_INNER_LABEL(ftrace_regs_call, SYM_L_GLOBAL)
+        ANNOTATE_NOENDBR
+        call ftrace_stub
+ffffffff8111368b:       e8 a0 fd ff ff          call   ffffffff81113430 <ftrace_stub>*/
 	call_offset -= start_offset;
 	/*
 	 * No need to translate into a callthunk. The trampoline does
 	 * the depth accounting before the call already.
-	 */
+	一般就是直接返回ops->func */
 	dest = ftrace_ops_get_func(ops);
+	/* 
+	所以现在trampoline + call_offset就是ftrace_regs_call函数的地址，指向e8 a0 fd ff ff这一块
+	现在text_gen_insn函数的作用就是生成五个字节的从当前地址（trampoline + call_offset）跳转到
+	ops的func函数（dest）的机器码
+	然后memcpy把这个机器码拷贝到trampoline + call_offset处，完成hook
+	*/
 	memcpy(trampoline + call_offset,
 	       text_gen_insn(CALL_INSN_OPCODE, trampoline + call_offset, dest),
 	       CALL_INSN_SIZE);
@@ -430,6 +549,7 @@ create_trampoline(struct ftrace_ops *ops, unsigned int *tramp_size)
 	/* ALLOC_TRAMP flags lets us know we created it */
 	ops->flags |= FTRACE_OPS_FL_ALLOC_TRAMP;
 
+	/* 设置这个trampoline的内存为可读可执行 */
 	set_memory_rox((unsigned long)trampoline, npages);
 	return (unsigned long)trampoline;
 fail:
@@ -463,11 +583,23 @@ void set_ftrace_ops_ro(void)
 	} while_for_each_ftrace_op(ops);
 }
 
+/* 计算ftrace_ops的跳板内存区域的开头到call指令的偏移量
+paulning@laptop:~/study/linux$ nm -n vmlinux | grep "ftrace_regs"
+ffffffff811135a0 T __pfx_ftrace_regs_caller
+ffffffff811135b0 T ftrace_regs_caller
+ffffffff81113616 T ftrace_regs_caller_op_ptr
+ffffffff8111368b T ftrace_regs_call
+ffffffff811136dd T ftrace_regs_caller_jmp
+ffffffff8111370f T ftrace_regs_caller_end
+就是call标签函数到caller函数起始处的offset
+ */
 static unsigned long calc_trampoline_call_offset(bool save_regs)
 {
 	unsigned long start_offset;
 	unsigned long call_offset;
 
+	/* 根据是否保存寄存器来选择不同的ftrace caller
+	 */
 	if (save_regs) {
 		start_offset = (unsigned long)ftrace_regs_caller;
 		call_offset = (unsigned long)ftrace_regs_call;
@@ -479,6 +611,8 @@ static unsigned long calc_trampoline_call_offset(bool save_regs)
 	return call_offset - start_offset;
 }
 
+/* 更新ops的跳板
+跳转到当前的func, 可能是function_trace_call */
 void arch_ftrace_update_trampoline(struct ftrace_ops *ops)
 {
 	ftrace_func_t func;
@@ -488,6 +622,7 @@ void arch_ftrace_update_trampoline(struct ftrace_ops *ops)
 	const char *new;
 
 	if (!ops->trampoline) {
+		/* 创建跳板， 跳转到ops->func */
 		ops->trampoline = create_trampoline(ops, &size);
 		if (!ops->trampoline)
 			return;
@@ -499,16 +634,23 @@ void arch_ftrace_update_trampoline(struct ftrace_ops *ops)
 	 * The ftrace_ops caller may set up its own trampoline.
 	 * In such a case, this code must not modify it.
 	 */
+	/* 如果还没有跳板，就无需更新的概念
+	 */
 	if (!(ops->flags & FTRACE_OPS_FL_ALLOC_TRAMP))
 		return;
 
+	/* 计算ftrace call代码在跳板代码段的offset */
 	offset = calc_trampoline_call_offset(ops->flags & FTRACE_OPS_FL_SAVE_REGS);
+	/* ip指向的就是跳板区域的call指令附近 */
 	ip = ops->trampoline + offset;
+	/* 基本就是ops->func */
 	func = ftrace_ops_get_func(ops);
 
 	mutex_lock(&text_mutex);
 	/* Do a safe modify in case the trampoline is executing */
+	/* 生成五个字节的从ip跳转到func的机器码，放在new */
 	new = ftrace_call_replace(ip, (unsigned long)func);
+	/* 把new里面的新机器码放到ip处，完成hook，以后跳转到新位置 */
 	text_poke_bp((void *)ip, new, MCOUNT_INSN_SIZE, NULL);
 	mutex_unlock(&text_mutex);
 }

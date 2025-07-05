@@ -206,7 +206,7 @@ static inline void shmem_unacct_blocks(unsigned long flags, long pages)
 	if (flags & VM_NORESERVE)
 		vm_unacct_memory(pages * VM_ACCT(PAGE_SIZE));
 }
-
+/* 内存的记账 */
 static int shmem_inode_acct_block(struct inode *inode, long pages)
 {
 	struct shmem_inode_info *info = SHMEM_I(inode);
@@ -267,7 +267,9 @@ bool vma_is_anon_shmem(struct vm_area_struct *vma)
 {
 	return vma->vm_ops == &shmem_anon_vm_ops;
 }
-
+/* 
+vma的ops是shmem_vm_ops或者shmem_anon_vm_ops
+*/
 bool vma_is_shmem(struct vm_area_struct *vma)
 {
 	return vma_is_anon_shmem(vma) || vma->vm_ops == &shmem_vm_ops;
@@ -806,6 +808,7 @@ static int shmem_add_to_page_cache(struct folio *folio,
 	}
 	folio_throttle_swaprate(folio, gfp);
 
+	/* 加入xas */
 	do {
 		xas_lock_irq(&xas);
 		if (expected != xas_find_conflict(&xas)) {
@@ -824,6 +827,7 @@ static int shmem_add_to_page_cache(struct folio *folio,
 			count_vm_event(THP_FILE_ALLOC);
 			__lruvec_stat_mod_folio(folio, NR_SHMEM_THPS, nr);
 		}
+		/* shmem算文件页, 算shmem */
 		mapping->nrpages += nr;
 		__lruvec_stat_mod_folio(folio, NR_FILE_PAGES, nr);
 		__lruvec_stat_mod_folio(folio, NR_SHMEM, nr);
@@ -844,10 +848,11 @@ error:
 	return error;
 }
 
-/*
+/*刚刚把folio加入swap的mapping了,这里在shmem的mapping的folio位置替换为swap ent
  * Like delete_from_page_cache, but substitutes swap for @folio.
    就像delete_from_page_cache一样, 但是用swap替换@folio
    是因为把folio回写到了swap
+   ============================================
  */
 static void shmem_delete_from_page_cache(struct folio *folio, void *radswap)
 {
@@ -860,6 +865,7 @@ static void shmem_delete_from_page_cache(struct folio *folio, void *radswap)
 	xa_lock_irq(&mapping->i_pages);
 	error = shmem_replace_entry(mapping, folio->index, folio, radswap);
 	folio->mapping = NULL; // 在刚刚把folio加到了swap 的mapping里面, 所以这里要清空
+	/* 添加的逆过程, 减少相关的计数 */
 	mapping->nrpages -= nr;
 	__lruvec_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 	__lruvec_stat_mod_folio(folio, NR_SHMEM, -nr);
@@ -869,12 +875,11 @@ static void shmem_delete_from_page_cache(struct folio *folio, void *radswap)
 }
 
 /*
+shmem文件的mapping的index位置的folio被换出了?
+这里释放
+==========
+truncate这个shmem文件的时候会调用这个
  * Remove swap entry from page cache, free the swap and its page cache.
- 这里是从shmem mapping找到的交换条目, 准备释放
- 释放swap mapping里面这个条目, 还有交换空间?
- =======================================================
- mapping是shmem的mapping
- radswap就是从shmem mapping找到的folio* , index是在shmem mapping的pgoff,
  */
 static int shmem_free_swap(struct address_space *mapping,
 			   pgoff_t index, void *radswap)
@@ -976,6 +981,7 @@ void shmem_unlock_mapping(struct address_space *mapping)
 	}
 }
 
+/* partial folio是什么 */
 static struct folio *shmem_get_partial_folio(struct inode *inode, pgoff_t index)
 {
 	struct folio *folio;
@@ -995,17 +1001,23 @@ static struct folio *shmem_get_partial_folio(struct inode *inode, pgoff_t index)
 		folio_unlock(folio);
 		folio_put(folio);
 	}
+	/* 到这里:
+	被交换了
+	正常页面, 但是被从mapping截断了? */
 	/*
 	 * But read a folio back from swap if any of it is within i_size
 	 * (although in some cases this is just a waste of time).
 	 */
 	folio = NULL;
+	/*  */
 	shmem_get_folio(inode, index, &folio, SGP_READ);
 	return folio;
 }
 
 /*
 truncate这个shmem inode的范围
+==============================
+这里只是清理xas, 移除swap, 释放内存到buddy
  * Remove range of pages and swap entries from page cache, and free them.
  * If !unfalloc, truncate or punch hole; if unfalloc, undo failed fallocate.
    从page cache中删除范围内的页面和交换条目，并释放它们。
@@ -1039,20 +1051,25 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 		for (i = 0; i < folio_batch_count(&fbatch); i++) { // 一个一个处理找到的folio
 			folio = fbatch.folios[i];
 
-			if (xa_is_value(folio)) { // 这个folio是个存储在swap的交换条目
+			// 这个folio是个存储在swap的交换条目
+			if (xa_is_value(folio)) {
 				if (unfalloc)
 					continue;
-				// 释放交换空间
+				// 释放交换空间, 好像是swap file的空间, 还有swap mapping的空间?
 				nr_swaps_freed += !shmem_free_swap(mapping,
 							indices[i], folio);
 				continue;
 			}
 
+
+			/*  现在是明确了folio是mapping里的folio了? */
 			if (!unfalloc || !folio_test_uptodate(folio))
 				truncate_inode_folio(mapping, folio);
+
 			folio_unlock(folio);
 		}
 		folio_batch_remove_exceptionals(&fbatch);
+		/* 释放folio的内存 */
 		folio_batch_release(&fbatch);
 		cond_resched();
 	}
@@ -1359,6 +1376,9 @@ static int shmem_find_swap_entries(struct address_space *mapping,
 }
 
 /*
+fbatch是shmem mapping里面找到的一组swap条目
+这里换入
+======================================================================
  * Move the swapped pages for an inode to page cache. Returns the count
  * of pages swapped in, or the error in case of failure.
    移动inode的swap页面到page cache，返回移动的页面数，或者失败的错误
@@ -1372,7 +1392,7 @@ static int shmem_unuse_swap_entries(struct inode *inode,
 	struct address_space *mapping = inode->i_mapping;
 
 	for (i = 0; i < folio_batch_count(fbatch); i++) {
-		// fbatch存储的是shmem inodemapping里面找到的swap entry
+		// fbatch存储的是shmem的mapping里面找到的swap entry
 		struct folio *folio = fbatch->folios[i];
 
 		if (!xa_is_value(folio))
@@ -1476,7 +1496,10 @@ int shmem_unuse(unsigned int type)
 }
 
 /*
-shmem的mapping的写回writepage函数回调的实现
+shmem也是支持回写的.
+=========================================
+shmem的mapping的写回writepage函数回调的实现, 
+回收shmem会使用swap
 用于写回shmem mapping的脏页
  * Move the page from the page cache to the swap cache.
    shmem把page从页缓存移到swap cache
@@ -1537,6 +1560,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	 * good idea to continue anyway, once we're pushing into swap.  So
 	 * reactivate the folio, and let shmem_fallocate() quit when too many.
 	 */
+	/* 如果写回shmem的脏页时,发现不是up-to-date的, 这是什么情况? */
 	if (!folio_test_uptodate(folio)) {
 		if (inode->i_private) {
 			struct shmem_falloc *shmem_falloc;
@@ -1556,7 +1580,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 		folio_zero_range(folio, 0, folio_size(folio));
 		flush_dcache_folio(folio);
 		folio_mark_uptodate(folio);
-	} // 感觉这啥也没做?
+	}
 	// 分配一个swap slot
 	swap = folio_alloc_swap(folio);
 	if (!swap.val)
@@ -1574,21 +1598,22 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	if (list_empty(&info->swaplist))
 		list_add(&info->swaplist, &shmem_swaplist);
 
+	/* // 这里把folio加入到swap的mapping的xas,成功了 */
 	if (add_to_swap_cache(folio, swap,
 			__GFP_HIGH | __GFP_NOMEMALLOC | __GFP_NOWARN,
-			NULL) == 0) { // 这里把folio加入到swap的mapping,成功了
+			NULL) == 0) {
 		shmem_recalc_inode(inode, 0, 1);
-		swap_shmem_alloc(swap); // 表示把这个swap entry分配给shmem了
-		// 这里为什么要在shmem mapping删除这个swap entry对应的xas value呢
-		// 哦哦函数其实是在shmem mapping用swap替换这个folio
-		// 确实是这样, 因为现在就是把folio回写到swap,那么这个folio对应的xas value就
-		// 再也不直接是folio了, 而是对应的swap
+		// 把swap entry ref打上shmem的标签,表示把这个swap entry分配给shmem了
+		swap_shmem_alloc(swap); 
+		/* 用swap条目值代替xas里面原本的folio值, 因为被交换出去了
+		这样下次读取到，就知道这是被交换了 */
 		shmem_delete_from_page_cache(folio, swp_to_radix_entry(swap));
 
 		mutex_unlock(&shmem_swaplist_mutex);
 		BUG_ON(folio_mapped(folio));
-		swap_writepage(&folio->page, wbc); // 现在这个folio就被交给swap mapping了
-		// ,本来属于shmem mapping的
+		// 回写这个page,提交bio
+		swap_writepage(&folio->page, wbc);
+		// 
 		return 0;
 	}
 	// 这里是要回写的shmem mapping的folio加入到swap mapping 出错了的情况
@@ -1655,7 +1680,7 @@ static void shmem_pseudo_vma_destroy(struct vm_area_struct *vma)
 	mpol_cond_put(vma->vm_policy);
 }
 
-// shmem换入? 新申请页面加入swap mapping
+// shmem换入 新申请页面加入swap mapping
 static struct folio *shmem_swapin(swp_entry_t swap, gfp_t gfp,
 			struct shmem_inode_info *info, pgoff_t index)
 {
@@ -1720,7 +1745,9 @@ static struct folio *shmem_alloc_hugefolio(gfp_t gfp,
 		count_vm_event(THP_FILE_FALLBACK);
 	return folio;
 }
-
+/* 
+shmem分配页面
+*/
 static struct folio *shmem_alloc_folio(gfp_t gfp,
 			struct shmem_inode_info *info, pgoff_t index)
 {
@@ -1728,6 +1755,7 @@ static struct folio *shmem_alloc_folio(gfp_t gfp,
 	struct folio *folio;
 
 	shmem_pseudo_vma_init(&pvma, info, index);
+	/* 通过一个伪vma来分配页面 */
 	folio = vma_alloc_folio(gfp, 0, &pvma, 0, false);
 	shmem_pseudo_vma_destroy(&pvma);
 
@@ -1786,7 +1814,7 @@ static bool shmem_should_replace_folio(struct folio *folio, gfp_t gfp)
 	return folio_zonenum(folio) > gfp_zone(gfp);
 }
 
-// 替换folio
+/* shmem在mapping替换folio? */
 static int shmem_replace_folio(struct folio **foliop, gfp_t gfp,
 				struct shmem_inode_info *info, pgoff_t index)
 {
@@ -1826,6 +1854,7 @@ static int shmem_replace_folio(struct folio **foliop, gfp_t gfp,
 	 * a nice clean interface for us to replace oldpage by newpage there.
 	 */
 	xa_lock_irq(&swap_mapping->i_pages);
+	/* 替换条目 */
 	error = shmem_replace_entry(swap_mapping, swap_index, old, new);
 	if (!error) {
 		mem_cgroup_migrate(old, new);
@@ -1882,9 +1911,10 @@ static void shmem_set_folio_swapin_error(struct inode *inode, pgoff_t index,
 }
 
 /*
-换入这个folio
-这里是从swap换入, 可能已经位于swap mapping,也可能不在,那就从swap file里换入读入swap mapping
-然后也会加入shmem的mapping
+
+shmem查找mapping, 如果发现是is_value, 就换入
+这里是从swap换入, 可能已经位于swap mapping,
+也可能不在,那就从swap file里换入读入swap mapping,然后也会加入shmem的mapping
  * Swap in the folio pointed to by *foliop.
  * Caller has to make sure that *foliop contains a valid swapped folio.
  * Returns 0 and the folio in foliop if success. On failure, returns the
@@ -1923,7 +1953,8 @@ static int shmem_swapin_folio(struct inode *inode, pgoff_t index,
 	/* Look it up and read it in..
 	这里先从swap cache查询读取*/
 	folio = swap_cache_get_folio(swap, NULL, 0);
-	if (!folio) {/* 说明现在不在swap cache? */
+	if (!folio) {
+		/* 说明现在不在swap cache */
 		/* Or update major stats only when swapin succeeds?? */
 		if (fault_type) {
 			*fault_type |= VM_FAULT_MAJOR;
@@ -2020,14 +2051,14 @@ unlock:
  * vma, vmf, and fault_type are only supplied by shmem_fault:
  * otherwise they are NULL.
  ------------------
- shmem mmap缺页时来到这里, 看来是vma映射pagecache里面的页?
+ shmem mmap缺页时来到这里, 看来是vma映射mapping里面的页
  */
 static int shmem_get_folio_gfp(struct inode *inode, pgoff_t index,
 		struct folio **foliop, enum sgp_type sgp, gfp_t gfp,
 		struct vm_area_struct *vma, struct vm_fault *vmf,
 		vm_fault_t *fault_type)
 {
-	// 操作的是inode的mapping
+	// 操作的是inode的mapping, shmem文件的mapping
 	struct address_space *mapping = inode->i_mapping;
 	struct shmem_inode_info *info = SHMEM_I(inode);
 	struct shmem_sb_info *sbinfo;
@@ -2050,18 +2081,18 @@ repeat:
 	sbinfo = SHMEM_SB(inode->i_sb);
 	charge_mm = vma ? vma->vm_mm : NULL;
 
-	//找到xas里面index对应的folio , 没有也不新建
+	/* 从mmap文件的缓存里查找 */
 	folio = filemap_get_entry(mapping, index);
-	if (folio && vma && userfaultfd_minor(vma)) { //找到了?
+	/* 处理与uffd机制相关的东西 */
+	if (folio && vma && userfaultfd_minor(vma)) {
 		if (!xa_is_value(folio))
 			folio_put(folio);
 		*fault_type = handle_userfault(vmf, VM_UFFD_MINOR);
 		return 0;
 	}
 
-	if (xa_is_value(folio)) { // 不在pagecache, 这里从swap cache?
-		// 现在folio是个swap entry吗?
-		// 好像shmem的xas里面is_value的条目就是swap entry
+	/* shmem的mapping里面这个page被换出了 */
+	if (xa_is_value(folio)) {
 		error = shmem_swapin_folio(inode, index, &folio,
 					  sgp, gfp, vma, fault_type);// 函数会读这个
 		//swap mapping（也可能从swap file新读入）, 然后把这个swap mapping的页面加入到shmem mapping
@@ -2070,10 +2101,11 @@ repeat:
 
 		*foliop = folio;
 		return error; // 从交换缓存读了,这里直接返回就行
+		/* 之所以直接返回, 因为肯定是新的? */
 	}
 
-	if (folio) { //找到了, 可能直接在shmem mapping, 也可能是个刚刚读入shmem mapping的
-		// is_value的交换条目, 反正现在应该肯定在shmem的mapping了
+	/* 到这里说明是, 直接从shmem的mapping获取的, 没有经历换入什么的 */
+	if (folio) {
 		folio_lock(folio);
 
 		/* Has the folio been truncated or swapped out? */
@@ -2082,31 +2114,39 @@ repeat:
 			folio_put(folio);
 			goto repeat;
 		}
+		/* 这里为什么仅仅写入才mark accessed
+		读取shmem的read iter函数走到这里的sgp是read */
 		if (sgp == SGP_WRITE)
 			folio_mark_accessed(folio);
 
 		if (folio_test_uptodate(folio))
 			goto out;
 
+			/* 到这里 可能是 读 写 cache fallocate */
 		/* fallocated folio */
 		if (sgp != SGP_READ)
 			goto clear;
+		/* page不新, 并且是read */
 		folio_unlock(folio);
 		folio_put(folio);
 	}
 
-	// 到这里可能是因为没有folio
-	// 或者folio不是新的?
+	// 到这里可能是shmem mapping没有folio, 也不是被交换了 （文件需要扩大?）
+	// 如果有了folio, 就是read不新的page的情况
 	/*
 	 * SGP_READ: succeed on hole, with NULL folio, letting caller zero.
 	 * SGP_NOALLOC: fail on hole, with NULL folio, letting caller fail.
 	 */
 	*foliop = NULL;
+	/*  */
 	if (sgp == SGP_READ)
 		return 0;
+
+	/* 到这里就是shmem不存在页面 */
 	if (sgp == SGP_NOALLOC)
 		return -ENOENT;
 
+	/* 到这里就是shmem mapping不存在页面, 这里准备分配 */
 	/*
 	 * Fast cache lookup and swap lookup did not find it: allocate.
 	 */
@@ -2120,7 +2160,7 @@ repeat:
 	if (!shmem_is_huge(inode, index, false,
 			   vma ? vma->vm_mm : NULL, vma ? vma->vm_flags : 0))
 		goto alloc_nohuge;
-//这里是分配巨页
+	//这里是分配巨页
 	huge_gfp = vma_thp_gfp_mask(vma);
 	huge_gfp = limit_gfp_mask(huge_gfp, gfp);
 	folio = shmem_alloc_and_acct_folio(huge_gfp, inode, index, true);
@@ -2128,7 +2168,7 @@ repeat:
 	if (IS_ERR(folio)) {
 
 alloc_nohuge:
-//如果不是巨页的话,从这里分配
+	//如果不是巨页的话,从这里分配
 		folio = shmem_alloc_and_acct_folio(gfp, inode, index, false);
 	}
 
@@ -2169,7 +2209,7 @@ alloc_nohuge:
 	if (sgp == SGP_WRITE)
 		__folio_set_referenced(folio);
 
-//加入pagecache, 把新分配的folio加入到inode的mapping的xas里面
+	//加入pagecache, 把新分配的folio加入到inode的mapping的xas里面
 	error = shmem_add_to_page_cache(folio, mapping, hindex,
 					NULL, gfp & GFP_RECLAIM_MASK,
 					charge_mm);
@@ -2266,14 +2306,18 @@ unlock:
 	return error;
 }
 
-// 获取shmem的mapping页面
-// 是一个很通用很频繁的接口
-// 1 直接找, 2 换入, 3 分配新页加入mapping
+/*  
+获取shmem的mapping页面. 赋值到foliop
+是一个很通用很频繁的接口
+1 直接找, 2 换入, 3 分配新页加入mapping
+===========================
+读取shmem文件时, 会调用这个
+ */
 int shmem_get_folio(struct inode *inode, pgoff_t index, struct folio **foliop,
 		enum sgp_type sgp)
 {
-	return shmem_get_folio_gfp(inode, index, foliop, sgp,
-			mapping_gfp_mask(inode->i_mapping), NULL, NULL, NULL);
+	return shmem_get_folio_gfp(inode, index, foliop, sgp,mapping_gfp_mask(inode->i_mapping),
+	 NULL, NULL, NULL);
 }
 
 /*
@@ -2289,10 +2333,15 @@ static int synchronous_wake_function(wait_queue_entry_t *wait, unsigned mode, in
 	return ret;
 }
 
-//shmem mmap的vma缺页的处理函数
+/*
+ shmem mmap的vma缺页的处理函数
+ 映射到shmem文件的vma缺页时, 会执行这个回调.
+ */
 static vm_fault_t shmem_fault(struct vm_fault *vmf)
 {
+	/* 进程发生缺页的vma */
 	struct vm_area_struct *vma = vmf->vma;
+	/* 被vma映射的shmem文件 */
 	struct inode *inode = file_inode(vma->vm_file);
 	gfp_t gfp = mapping_gfp_mask(inode->i_mapping);
 	struct folio *folio = NULL;
@@ -2373,16 +2422,18 @@ static vm_fault_t shmem_fault(struct vm_fault *vmf)
 		spin_unlock(&inode->i_lock);
 	}
 
-	//给pagecache获取新页并加入
+	//从shmem的mapping获取页面, 并把获取到的页面赋值到vmf->page
+	// 内核下一步会把这个vmf->page映射到vma对应的的页表项
 	err = shmem_get_folio_gfp(inode, vmf->pgoff, &folio, SGP_CACHE,
 				  gfp, vma, vmf, &ret);
 	if (err)
 		return vmf_error(err);
-	if (folio) //
+	if (folio)
 		vmf->page = folio_file_page(folio, vmf->pgoff);
 	return ret;
 }
 
+/* shmem fs的常规文件的get_unmapped_area回调 */
 unsigned long shmem_get_unmapped_area(struct file *file,
 				      unsigned long uaddr, unsigned long len,
 				      unsigned long pgoff, unsigned long flags)
@@ -2519,7 +2570,8 @@ out_nomem:
 	return retval;
 }
 
-// shmem 的fops, mmap回调
+/* shmem 的fops, mmap回调
+mmap这个文件, 参数@vma要映射地址空间到这个文件 */
 static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct inode *inode = file_inode(file);
@@ -2535,15 +2587,18 @@ static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 
 	file_accessed(file);
 	/* This is anonymous shared memory if it is unlinked at the time of mmap
-	
+	i_nlink, 这里i_nlink是什么, 20250702153329
 	 */
 	if (inode->i_nlink)
 		vma->vm_ops = &shmem_vm_ops;  //文件的shmem
 	else
-		vma->vm_ops = &shmem_anon_vm_ops; //为什么还有匿名的shmem? 2024年12月8日02:15:17 todddo
+		vma->vm_ops = &shmem_anon_vm_ops; //为什么还有匿名的shmem? 20250702152530
 	return 0;
 }
-
+/* shmem fs的常规文件open ops
+============
+这里没什么特别的工作.
+ */
 static int shmem_file_open(struct inode *inode, struct file *file)
 {
 	file->f_mode |= FMODE_CAN_ODIRECT;
@@ -2584,7 +2639,7 @@ static struct offset_ctx *shmem_get_offset_ctx(struct inode *inode)
 	return &SHMEM_I(inode)->dir_offsets;
 }
 
-// 好像是shmem fs分配inode
+/* shmem fs分配inode */
 static struct inode *__shmem_get_inode(struct mnt_idmap *idmap,
 					     struct super_block *sb,
 					     struct inode *dir, umode_t mode,
@@ -2639,6 +2694,7 @@ static struct inode *__shmem_get_inode(struct mnt_idmap *idmap,
 		init_special_inode(inode, mode, dev);
 		break;
 	case S_IFREG:
+	/* 常规文件 */
 		inode->i_mapping->a_ops = &shmem_aops;
 		inode->i_op = &shmem_inode_operations;
 		inode->i_fop = &shmem_file_operations;
@@ -2646,6 +2702,7 @@ static struct inode *__shmem_get_inode(struct mnt_idmap *idmap,
 					 shmem_get_sbmpol(sbinfo));
 		break;
 	case S_IFDIR:
+	/* 文件夹 */
 		inc_nlink(inode);
 		/* Some things misbehave if size == 0 on a directory */
 		inode->i_size = 2 * BOGO_DIRENT_SIZE;
@@ -2667,7 +2724,7 @@ static struct inode *__shmem_get_inode(struct mnt_idmap *idmap,
 }
 
 #ifdef CONFIG_TMPFS_QUOTA
-// 分配新inode
+// shmem fs分配新inode
 static struct inode *shmem_get_inode(struct mnt_idmap *idmap,
 				     struct super_block *sb, struct inode *dir,
 				     umode_t mode, dev_t dev, unsigned long flags)
@@ -2705,6 +2762,8 @@ static inline struct inode *shmem_get_inode(struct mnt_idmap *idmap,
 #endif /* CONFIG_TMPFS_QUOTA */
 
 #ifdef CONFIG_USERFAULTFD
+/* 
+把页面添加到shmem的mapping，uffd安装pte */
 int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 			   struct vm_area_struct *dst_vma,
 			   unsigned long dst_addr,
@@ -2716,12 +2775,15 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 	struct shmem_inode_info *info = SHMEM_I(inode);
 	struct address_space *mapping = inode->i_mapping;
 	gfp_t gfp = mapping_gfp_mask(mapping);
+	/* 获取到dst addr对应的pgoff */
 	pgoff_t pgoff = linear_page_index(dst_vma, dst_addr);
 	void *page_kaddr;
 	struct folio *folio;
 	int ret;
 	pgoff_t max_off;
-
+	/* 
+	内存的记账？
+	*/
 	if (shmem_inode_acct_block(inode, 1)) {
 		/*
 		 * We may have got a page, returned -ENOENT triggering a retry,
@@ -2735,13 +2797,17 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 		return -ENOMEM;
 	}
 
-	if (!*foliop) {
+	if (!*foliop) {/* 如果folio还没有页面 */
 		ret = -ENOMEM;
+		/* 分配一个页面 */
 		folio = shmem_alloc_folio(gfp, info, pgoff);
 		if (!folio)
 			goto out_unacct_blocks;
 
-		if (uffd_flags_mode_is(flags, MFILL_ATOMIC_COPY)) {
+		if (uffd_flags_mode_is(flags, MFILL_ATOMIC_COPY)) {/* 
+			如果是copy的uffd
+			把用户src处的数据copy到这个页面
+			*/
 			page_kaddr = kmap_local_folio(folio, 0);
 			/*
 			 * The read mmap_lock is held here.  Despite the
@@ -2758,6 +2824,7 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 			 * Disable page faults to prevent potential deadlock
 			 * and retry the copy outside the mmap_lock.
 			 */
+			/* 先关闭pf，然后拷贝数据 */
 			pagefault_disable();
 			ret = copy_from_user(page_kaddr,
 					     (const void __user *)src_addr,
@@ -2777,7 +2844,7 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 		} else {		/* ZEROPAGE */
 			clear_user_highpage(&folio->page, dst_addr);
 		}
-	} else {
+	} else {/* 参数的folio直接有页面了 */
 		folio = *foliop;
 		VM_BUG_ON_FOLIO(folio_test_large(folio), folio);
 		*foliop = NULL;
@@ -2793,12 +2860,12 @@ int shmem_mfill_atomic_pte(pmd_t *dst_pmd,
 	max_off = DIV_ROUND_UP(i_size_read(inode), PAGE_SIZE);
 	if (unlikely(pgoff >= max_off))
 		goto out_release;
-
+	/* 这里是把这个页面加入到shmem的mapping */
 	ret = shmem_add_to_page_cache(folio, mapping, pgoff, NULL,
 				      gfp & GFP_RECLAIM_MASK, dst_vma->vm_mm);
 	if (ret)
 		goto out_release;
-
+	/* 安装pte */
 	ret = mfill_atomic_install_pte(dst_pmd, dst_vma, dst_addr,
 				       &folio->page, true, flags);
 	if (ret)
@@ -2823,15 +2890,21 @@ static const struct inode_operations shmem_symlink_inode_operations;
 static const struct inode_operations shmem_short_symlink_operations;
 
 
-//准备写出到文件时, 会调用mapping的这个write_begin函数
+//
 /*
+shmem的write begin fops, 准备写出到文件时, 会调用mapping的这个write_begin函数
+其实一般也就是根据mapping和pos, 在xas里面找到对应index的folio,赋值到page
+status = a_ops->write_begin(file, mapping, pos, bytes,
+						&page, &fsdata);
+====================================
+找到要写的page,存入pagep参数
 file: 文件
 mapping: 文件的mapping
 pos和len: 写入的位置和长度
 page似乎是要写入到这个页
 fsdata: 似乎是存储一些fs自己 的信息
 =================
-shmem有后备文件吗?
+shmem有后备文件可以算是swap
  */
 static int
 shmem_write_begin(struct file *file, struct address_space *mapping,
@@ -2840,6 +2913,7 @@ shmem_write_begin(struct file *file, struct address_space *mapping,
 {
 	struct inode *inode = mapping->host;
 	struct shmem_inode_info *info = SHMEM_I(inode);
+	/* pos为要写入的文件位置, 这里转为mapping的idx */
 	pgoff_t index = pos >> PAGE_SHIFT;
 	struct folio *folio;
 	int ret = 0;
@@ -2852,7 +2926,7 @@ shmem_write_begin(struct file *file, struct address_space *mapping,
 		if ((info->seals & F_SEAL_GROW) && pos + len > inode->i_size)
 			return -EPERM;
 	}
-
+	/* 找到pgoff为index的folio, 存入foliop */
 	ret = shmem_get_folio(inode, index, &folio, SGP_WRITE);
 
 	if (ret)
@@ -2869,18 +2943,28 @@ shmem_write_begin(struct file *file, struct address_space *mapping,
 	return 0;
 }
 
-/* 对应与 write_begin */
-static int
-shmem_write_end(struct file *file, struct address_space *mapping,
+/*
+ 对应与 write_begin
+ ====================
+ 内核调用write_begin找到要回写的page, 然后拷贝, 然后这里进行回写等操作? */
+static int shmem_write_end(struct file *file, struct address_space *mapping,
 			loff_t pos, unsigned len, unsigned copied,
 			struct page *page, void *fsdata)
 {
+	/* folio刚刚已经被内核拷贝了新数据进去 */
+	/* 获取要写回的folio和对应的inode文件 */
 	struct folio *folio = page_folio(page);
 	struct inode *inode = mapping->host;
 
 	if (pos + copied > inode->i_size)
 		i_size_write(inode, pos + copied);
 
+	/* page刚刚被内核拷贝新内容进去
+	然后内核调用自己执行写入过程的end操作
+	这里检测到页面还不是up-to-date （按理说应该是了, 是对于写入过程的up-to-date, 对于
+	后备文件, 则是需要回写的)
+	===========
+	所以这里会把page设置为up-to-date */
 	if (!folio_test_uptodate(folio)) {
 		if (copied < folio_size(folio)) {
 			size_t from = offset_in_folio(folio, pos);
@@ -2889,17 +2973,20 @@ shmem_write_end(struct file *file, struct address_space *mapping,
 		}
 		folio_mark_uptodate(folio);
 	}
+	/* 然后设置dirty */
 	folio_mark_dirty(folio);
 	folio_unlock(folio);
 	folio_put(folio);
 
 	return copied;
 }
-
+/* shmem fs的read iter回调函数 */
 static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
+	/* 要读取的shmem file */
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
+	/* shmem file的mapping */
 	struct address_space *mapping = inode->i_mapping;
 	pgoff_t index;
 	unsigned long offset;
@@ -2925,13 +3012,16 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 			if (nr <= offset)
 				break;
 		}
-
+		/* 找到要读的folio
+		==================
+		直接从mapping查找对应idx, 有的话就返回, 也可能是被换出了就换入. */
 		error = shmem_get_folio(inode, index, &folio, SGP_READ);
 		if (error) {
 			if (error == -EINVAL)
 				error = 0;
 			break;
 		}
+		/* 如果成功找到了要读的page */
 		if (folio) {
 			folio_unlock(folio);
 
@@ -2960,6 +3050,7 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 		}
 		nr -= offset;
 
+		/* 把读到的mapping folio拷贝到用户空间 */
 		if (folio) {
 			/*
 			 * If users can be writing to this page using arbitrary
@@ -2970,12 +3061,15 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 				flush_dcache_page(page);
 			/*
 			 * Mark the page accessed if we read the beginning.
+			 标记被访问了
 			 */
 			if (!offset)
 				folio_mark_accessed(folio);
 			/*
 			 * Ok, we have the page, and it's up-to-date, so
-			 * now we can copy it to user space...
+			 * now we can copy it to user space... 
+			 现在把要读的page的内容拷贝一下
+			 拷贝到用户空间
 			 */
 			ret = copy_page_to_iter(page, offset, nr, to);
 			folio_put(folio);
@@ -3015,7 +3109,7 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	return retval ? retval : error;
 }
 
-//shmem写入文件
+//shmem写入文件的fops
 static ssize_t shmem_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct file *file = iocb->ki_filp;
@@ -3085,6 +3179,7 @@ static size_t splice_zeropage_into_pipe(struct pipe_inode_info *pipe,
 	return size;
 }
 
+/* shmem的fops的零拷贝读的回调 */
 static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 				      struct pipe_inode_info *pipe,
 				      size_t len, unsigned int flags)
@@ -3105,6 +3200,8 @@ static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 		if (*ppos >= i_size_read(inode))
 			break;
 
+		/* 读取shmem的内容
+		一般读文件disk file -> mapping -> buffer */
 		error = shmem_get_folio(inode, *ppos / PAGE_SIZE, &folio,
 					SGP_READ);
 		if (error) {
@@ -3112,6 +3209,7 @@ static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 				error = 0;
 			break;
 		}
+		/* hwpoison的情况 */
 		if (folio) {
 			folio_unlock(folio);
 
@@ -3144,6 +3242,7 @@ static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 			 */
 			if (mapping_writably_mapped(mapping))
 				flush_dcache_folio(folio);
+			/* 被读取了, 设置accessed */
 			folio_mark_accessed(folio);
 			/*
 			 * Ok, we have the page, and it's up-to-date, so we can
@@ -3153,6 +3252,7 @@ static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 			folio_put(folio);
 			folio = NULL;
 		} else {
+			/* 没在shmem mapping找到page的情况 */
 			n = splice_zeropage_into_pipe(pipe, *ppos, part);
 		}
 
@@ -3162,6 +3262,7 @@ static ssize_t shmem_file_splice_read(struct file *in, loff_t *ppos,
 		total_spliced += n;
 		*ppos += n;
 		in->f_ra.prev_pos = *ppos;
+		/*  */
 		if (pipe_full(pipe->head, pipe->tail, pipe->max_usage))
 			break;
 
@@ -3184,6 +3285,8 @@ static loff_t shmem_file_llseek(struct file *file, loff_t offset, int whence)
 	if (whence != SEEK_DATA && whence != SEEK_HOLE)
 		return generic_file_llseek_size(file, offset, whence,
 					MAX_LFS_FILESIZE, i_size_read(inode));
+
+	/* 用户的seek是SEEK_DATA或者SEEK_HOLE */
 	if (offset < 0)
 		return -ENXIO;
 
@@ -3385,8 +3488,7 @@ static int shmem_statfs(struct dentry *dentry, struct kstatfs *buf)
  * File creation. Allocate an inode, and we're done..
 shmem分配inode mknod回调
  */
-static int
-shmem_mknod(struct mnt_idmap *idmap, struct inode *dir,
+static int shmem_mknod(struct mnt_idmap *idmap, struct inode *dir,
 	    struct dentry *dentry, umode_t mode, dev_t dev)
 {
 	struct inode *inode;
@@ -3423,8 +3525,7 @@ out_iput:
 }
 
 // shmem 创建tmpfile的回调
-static int
-shmem_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
+static int shmem_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 	      struct file *file, umode_t mode)
 {
 	struct inode *inode;
@@ -3629,6 +3730,7 @@ static int shmem_rename2(struct mnt_idmap *idmap,
 	return 0;
 }
 
+/* shmem fs的建立符号链接的fops? */
 static int shmem_symlink(struct mnt_idmap *idmap, struct inode *dir,
 			 struct dentry *dentry, const char *symname)
 {
@@ -4643,11 +4745,20 @@ static int shmem_error_remove_page(struct address_space *mapping,
 }
 // shmem的mapping的ops
 const struct address_space_operations shmem_aops = {
+	/* 写入回调
+	写入swap */
 	.writepage	= shmem_writepage,
+	/* 简单设置page的dirty flag即可 */
 	.dirty_folio	= noop_dirty_folio,
 #ifdef CONFIG_TMPFS
 //写入内容到文件时会调用这俩
+
+/* 其实一般也就是根据mapping和pos, 在xas里面找到对应index的folio,赋值到page
+		status = a_ops->write_begin(file, mapping, pos, bytes,
+						&page, &fsdata); */
 	.write_begin	= shmem_write_begin,
+
+	/* 等内核拷贝完数据后, 这里回写? */
 	.write_end	= shmem_write_end,
 #endif
 #ifdef CONFIG_MIGRATION
@@ -4657,24 +4768,37 @@ const struct address_space_operations shmem_aops = {
 };
 EXPORT_SYMBOL(shmem_aops);
 
-// shmem的fops
+// shmem文件的fops
 static const struct file_operations shmem_file_operations = {
 	// 执行mmap的回调
 	// 这个回调是什么时候执行的?
+	/* shmem文件也是支持mmap的, 应该是这个时候执行的 */
 	.mmap		= shmem_mmap,
+	/* 打开shmem 文件的回调
+	没有做什么特别的工作 */
 	.open		= shmem_file_open,
+	/* 好像是mmap的时候获取可以mmap的空闲地址 */
 	.get_unmapped_area = shmem_get_unmapped_area,
 #ifdef CONFIG_TMPFS
+	/* 以后 */
 	.llseek		= shmem_file_llseek,
+	/* 直接读取mapping的idx, 可能会换入, 再没有的话,
+	也不会扩大文件 */
 	.read_iter	= shmem_file_read_iter,
+	/* 写入回调 */
 	.write_iter	= shmem_file_write_iter,
+	/*  */
 	.fsync		= noop_fsync,
+	/* 零拷贝读的回调 */
 	.splice_read	= shmem_file_splice_read,
+	/*  */
 	.splice_write	= iter_file_splice_write,
+	/*  */
 	.fallocate	= shmem_fallocate,
 #endif
 };
 
+/* shmem fs常规文件的inode ops */
 static const struct inode_operations shmem_inode_operations = {
 	.getattr	= shmem_getattr,
 	.setattr	= shmem_setattr,
@@ -4697,6 +4821,7 @@ static const struct inode_operations shmem_dir_inode_operations = {
 	//
 	.link		= shmem_link,
 	.unlink		= shmem_unlink,
+	/* 建立符号链接? */
 	.symlink	= shmem_symlink,
 	// shmem创建文件夹
 	.mkdir		= shmem_mkdir,
@@ -4755,7 +4880,12 @@ static const struct super_operations shmem_ops = {
 #endif
 };
 
-// file mmap的shmem的vma ops  
+/* 
+如果一个进程的vma映射到了shmem 文件,
+他的这个vma会被shmem fops mmap回调设置上这个ops,
+规定缺页的时候, 映射的时候内核如何如何执行这些ops 回调来具体
+获取shmem 文件的页面
+*/
 static const struct vm_operations_struct shmem_vm_ops = {
 	// 缺页了就是调用get_folio, 函数内部自己会查找,换入or申请
 	.fault		= shmem_fault,
@@ -4769,7 +4899,8 @@ static const struct vm_operations_struct shmem_vm_ops = {
 
 // 匿名的shmem file的mapping ops, 匿名的shmem file是什么?
 //=====================
-/* 如果进程申请共享的匿名内存
+/* 
+如果进程申请共享的匿名内存
 底下是通过shmem实现的
 会有一个shmem file
 这个新建的vma使用这个vm_ops */
@@ -5025,8 +5156,7 @@ static struct file *__shmem_file_setup(struct vfsmount *mnt, const char *name, l
 	clear_nlink(inode);	/* It is unlinked */
 	res = ERR_PTR(ramfs_nommu_expand_for_mapping(inode, size));
 	if (!IS_ERR(res)) // 配上file
-		res = alloc_file_pseudo(inode, mnt, name, O_RDWR,
-				&shmem_file_operations);
+		res = alloc_file_pseudo(inode, mnt, name, O_RDWR, &shmem_file_operations);
 	if (IS_ERR(res))
 		iput(inode);
 	return res;

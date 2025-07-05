@@ -17,7 +17,7 @@
 /*
  * Resources are tree-like, allowing
  * nesting etc..
- */
+ 描述内核的代码段,数据段什么的物理地址范围*/
 struct resource {
 	resource_size_t start;
 	resource_size_t end;

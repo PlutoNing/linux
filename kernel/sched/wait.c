@@ -7,7 +7,7 @@
 
 #include "linux/printk.h"
 void __init_waitqueue_head(struct wait_queue_head *wq_head, const char *name, struct lock_class_key *key)
-{
+{/* 初始化wq */
 	spin_lock_init(&wq_head->lock);
 	lockdep_set_class_and_name(&wq_head->lock, key, name);
 	INIT_LIST_HEAD(&wq_head->head);
@@ -66,7 +66,7 @@ EXPORT_SYMBOL(remove_wait_queue);
 #define WAITQUEUE_WALK_BREAK_CNT 64
 
 /*
-唤醒wq上面的一个实体, 似乎key存储了唤醒上面, bookmark应该是保存中间状态
+唤醒wq上面的一个实体, 
  * The core wakeup function. Non-exclusive wakeups (nr_exclusive == 0) just
  * wake everything up. If it's an exclusive wakeup (nr_exclusive == small +ve
  * number) then we wake that number of exclusive tasks, and potentially all
@@ -78,6 +78,14 @@ EXPORT_SYMBOL(remove_wait_queue);
  * There are circumstances in which we can try to wake a task which has already
  * started to run but is not in state TASK_RUNNING. try_to_wake_up() returns
  * zero in this (rare) case, and we handle it by continuing to scan the queue.
+ * @description: 
+ * @param {wait_queue_head} *wq_head
+ * @param {unsigned int} mode
+ * @param {int} nr_exclusive
+ * @param {int} wake_flags
+ * @param {void} *key
+ * @param {wait_queue_entry_t} *bookmark  保存中间状态
+ * @return {*}
  */
 static int __wake_up_common(struct wait_queue_head *wq_head, unsigned int mode,
 			int nr_exclusive, int wake_flags, void *key,
@@ -96,6 +104,7 @@ static int __wake_up_common(struct wait_queue_head *wq_head, unsigned int mode,
 	} else //一般的情况?
 		curr = list_first_entry(&wq_head->head, wait_queue_entry_t, entry);
 
+/* 判断这个目的是? */
 	if (&curr->entry == &wq_head->head)
 		return nr_exclusive;
 	
@@ -124,6 +133,15 @@ static int __wake_up_common(struct wait_queue_head *wq_head, unsigned int mode,
 	return nr_exclusive;
 }
 
+/**
+ * @description: 唤醒等待队列上的线程
+ * @param {wait_queue_head} *wq_head
+ * @param {unsigned int} mode
+ * @param {int} nr_exclusive
+ * @param {int} wake_flags
+ * @param {void} *key
+ * @return {*}
+ */
 static int __wake_up_common_lock(struct wait_queue_head *wq_head, unsigned int mode,
 			int nr_exclusive, int wake_flags, void *key)
 {
@@ -138,6 +156,7 @@ static int __wake_up_common_lock(struct wait_queue_head *wq_head, unsigned int m
 
 	do {
 		spin_lock_irqsave(&wq_head->lock, flags);
+		/*  */
 		remaining = __wake_up_common(wq_head, mode, remaining,
 						wake_flags, key, &bookmark);
 		spin_unlock_irqrestore(&wq_head->lock, flags);
@@ -147,6 +166,7 @@ static int __wake_up_common_lock(struct wait_queue_head *wq_head, unsigned int m
 }
 
 /**
+唤醒等待队列上的线程
  * __wake_up - wake up threads blocked on a waitqueue.
  * @wq_head: the waitqueue
  * @mode: which threads
@@ -287,7 +307,16 @@ prepare_to_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_ent
 }
 EXPORT_SYMBOL(prepare_to_wait);
 
-/* Returns true if we are the first waiter in the queue, false otherwise. */
+/*
+加入等待队列(仅在wq为空的情况下加入)
+ Returns true if we are the first waiter in the queue, false otherwise. 
+20250529224057 
+ * @description: 
+ * @param {wait_queue_head} *wq_head
+ * @param {wait_queue_entry} *wq_entry
+ * @param {int} state
+ * @return {*}
+ */
 bool
 prepare_to_wait_exclusive(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)
 {
@@ -295,17 +324,23 @@ prepare_to_wait_exclusive(struct wait_queue_head *wq_head, struct wait_queue_ent
 	bool was_empty = false;
 
 	wq_entry->flags |= WQ_FLAG_EXCLUSIVE;
+
 	spin_lock_irqsave(&wq_head->lock, flags);
 	if (list_empty(&wq_entry->entry)) {
 		was_empty = list_empty(&wq_head->head);
+		/* 加入等待队列 */
 		__add_wait_queue_entry_tail(wq_head, wq_entry);
 	}
+	/*  */
 	set_current_state(state);
 	spin_unlock_irqrestore(&wq_head->lock, flags);
+
 	return was_empty;
 }
 EXPORT_SYMBOL(prepare_to_wait_exclusive);
 
+/* 初始化一个wait
+这个wait会在唤醒的时候也顺带从队列移除 */
 void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
 {
 	wq_entry->flags = flags;
@@ -315,6 +350,13 @@ void init_wait_entry(struct wait_queue_entry *wq_entry, int flags)
 }
 EXPORT_SYMBOL(init_wait_entry);
 
+/**
+ * @description: 加入等待队列, 并设置当前进程的状态
+ * @param {wait_queue_head} *wq_head
+ * @param {wait_queue_entry} *wq_entry
+ * @param {int} state
+ * @return {*}
+ */
 long prepare_to_wait_event(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry, int state)
 {
 	unsigned long flags;
@@ -393,7 +435,8 @@ int do_wait_intr_irq(wait_queue_head_t *wq, wait_queue_entry_t *wait)
 EXPORT_SYMBOL(do_wait_intr_irq);
 
 /**
-从wq移除,标记为可运行
+把自己标记为running
+然后如果还在队列的话, 从wq_head中删除wq_entry
  * finish_wait - clean up after waiting in a queue
  * @wq_head: waitqueue waited on
  * @wq_entry: wait descriptor
@@ -428,10 +471,22 @@ void finish_wait(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_en
 }
 EXPORT_SYMBOL(finish_wait);
 
+/**
+用作wait的func, 这样的话自己被从等待队列唤醒的时候, 会顺带从队列被移除
+ * @description: 唤醒等待队列上的自己
+ 然后把自己从等待队列移除
+ * @param {wait_queue_entry} *wq_entry, 等待结构体
+ * @param {unsigned} mode, 进程的状态
+ * @param {int} sync,唤醒的wake_flags
+ * @param {void} *key
+ * @return {*}
+ */
 int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int sync, void *key)
 {
+	/* 唤醒 */
 	int ret = default_wake_function(wq_entry, mode, sync, key);
 
+	/* 从等待队列移除 */
 	if (ret)
 		list_del_init_careful(&wq_entry->entry);
 

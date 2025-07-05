@@ -60,7 +60,7 @@
  * the page table folding, they are always available, regardless of
  * CONFIG_PGTABLE_LEVELS value. For the folded levels they simply return 0
  * because in such cases PTRS_PER_PxD equals 1.
- 找到地址的在pte页表页面的offset?
+ 找到地址的在pte页表页面的offset? 也就是说这个物理地址应该被放到pte页表的第几个条目上面？
  */
 
 static inline unsigned long pte_index(unsigned long address)
@@ -86,7 +86,7 @@ static inline unsigned long pud_index(unsigned long address)
 #endif
 
 #ifndef pgd_index
-/* Must be a compile-time constant, so implement it as a macro */
+/* Must be a compile-time constant, so implement it as a macro, 查找在pgd页面的idx */
 #define pgd_index(a)  (((a) >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1))
 #endif
 
@@ -122,6 +122,7 @@ void pte_free_defer(struct mm_struct *mm, pgtable_t pgtable);
 
 /* Find an entry in the second-level page table.. */
 #ifndef pmd_offset
+/* 获取pud上面的pmd页面 */
 static inline pmd_t *pmd_offset(pud_t *pud, unsigned long address)
 {
 	return pud_pgtable(*pud) + pmd_index(address);
@@ -136,7 +137,7 @@ static inline pud_t *pud_offset(p4d_t *p4d, unsigned long address)
 }
 #define pud_offset pud_offset
 #endif
-
+/* 找到addr的pgd条目 */
 static inline pgd_t *pgd_offset_pgd(pgd_t *pgd, unsigned long address)
 {
 	return (pgd + pgd_index(address));
@@ -153,7 +154,7 @@ static inline pgd_t *pgd_offset_pgd(pgd_t *pgd, unsigned long address)
  * a shortcut which implies the use of the kernel's pgd, instead
  * of a process's
    获取内核的pgd,而不是进程的
- */
+ 起始就是init_mm->pgd + ((addr >> 39) & 511 ) *8 */
 #ifndef pgd_offset_k
 #define pgd_offset_k(address)		pgd_offset(&init_mm, (address))
 #endif
@@ -284,7 +285,7 @@ static inline int pudp_set_access_flags(struct vm_area_struct *vma,
 #endif
 
 #ifndef ptep_get
-/* 原子的读取ptep */
+/* 原子的读取ptep，读取ptep的值 */
 static inline pte_t ptep_get(pte_t *ptep)
 {
 	return READ_ONCE(*ptep);
@@ -492,6 +493,7 @@ static inline pte_t ptep_get_lockless(pte_t *ptep)
 #endif
 
 #ifndef pmdp_get_lockless
+/* 原子读取pmd指向的页面地址 */
 static inline pmd_t pmdp_get_lockless(pmd_t *pmdp)
 {
 	return pmdp_get(pmdp);

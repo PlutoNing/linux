@@ -26,7 +26,7 @@
 int main(void)
 {
 	int fd;
-
+	/* 使用unshare创建一个新的命名空间（CLONE_NEWNS） */
 	if (unshare(CLONE_NEWNS) == -1) {
 		if (errno == ENOSYS || errno == EPERM) {
 			fprintf(stderr, "error: unshare, errno %d\n", errno);

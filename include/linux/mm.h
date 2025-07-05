@@ -54,6 +54,7 @@ static inline void set_max_mapnr(unsigned long limit) { }
 #endif
 
 extern atomic_long_t _totalram_pages;
+/* 全部物理内存 */
 static inline unsigned long totalram_pages(void)
 {
 	return (unsigned long)atomic_long_read(&_totalram_pages);
@@ -291,7 +292,10 @@ extern unsigned int kobjsize(const void *objp);
 /* 
 说明这个VMA是一个PFN映射，而不是一个文件映射。
 Page-ranges managed without "struct page", just pure PFN */
-#define VM_UFFD_WP	0x00001000	/* wrprotect pages tracking */
+#define VM_UFFD_WP	0x00001000	
+/* 
+说明被uffd写保护了？
+wrprotect pages tracking */
 
 #define VM_LOCKED	0x00002000
 #define VM_IO           0x00004000	/* Memory mapped I/O or similar */
@@ -524,9 +528,15 @@ struct vm_fault {
 	const struct {
 		struct vm_area_struct *vma;	/* Target VMA */
 		gfp_t gfp_mask;			/* gfp mask to be used for allocations */
-		pgoff_t pgoff;			/* Logical page offset based on vma */
-		unsigned long address;		/* Faulting virtual address - masked */
-		unsigned long real_address;	/* Faulting virtual address - unmasked */
+		pgoff_t pgoff;			/* 
+		缺页地址的pgoff
+		Logical page offset based on vma */
+		unsigned long address;		/* 
+		页面对齐的地址
+		Faulting virtual address - masked */
+		unsigned long real_address;	/* 
+		原本的缺页地址
+		Faulting virtual address - unmasked */
 	};
 	enum fault_flag flags;		/* FAULT_FLAG_xxx flags
 					 * XXX: should really be 'const' */
@@ -546,7 +556,10 @@ struct vm_fault {
 	};
 
 	struct page *cow_page;		/* Page handler may use for COW fault */
-	struct page *page;		/* ->fault handlers should return a
+	struct page *page;		/*
+	发生缺页的page
+	也可能是不为空, 因为可能是写入私有页面导致的缺页
+	->fault handlers should return a
 					 * page here, unless VM_FAULT_NOPAGE
 					 * is set (which is also implied by
 					 * VM_FAULT_ERROR).
@@ -835,14 +848,14 @@ extern const struct vm_operations_struct vma_dummy_vm_ops;
 /*
  * WARNING: vma_init does not initialize vma->vm_lock.
  * Use vm_area_alloc()/vm_area_free() if vma needs locking.
- 初始化vma
+ 初始化vma与mm的关系，以及vma
  vma是为mm新建的
  */
 static inline void vma_init(struct vm_area_struct *vma, struct mm_struct *mm)
 {
 	memset(vma, 0, sizeof(*vma));
-	vma->vm_mm = mm;
-	vma->vm_ops = &vma_dummy_vm_ops;
+	vma->vm_mm = mm; /* vma指向这个mm */
+	vma->vm_ops = &vma_dummy_vm_ops; /* 设置vma的ops */
 	INIT_LIST_HEAD(&vma->anon_vma_chain);
 	vma_mark_detached(vma, false);
 	vma_numab_state_init(vma);
@@ -977,7 +990,8 @@ static inline bool vma_is_accessible(struct vm_area_struct *vma)
 	return vma->vm_flags & VM_ACCESS_FLAGS;
 }
 
-// 找到有交叉的vma
+/* 找到下一个条目
+不超过max */
 static inline
 struct vm_area_struct *vma_find(struct vma_iterator *vmi, unsigned long max)
 {
@@ -2093,7 +2107,7 @@ static inline void set_page_node(struct page *page, unsigned long node)
 	page->flags |= (node & NODES_MASK) << NODES_PGSHIFT;
 }
 
-// 建立与zone的关联
+// 建立与zone的关联, 在page的flag编码zone和node的信息/
 static inline void set_page_links(struct page *page, enum zone_type zone,
 	unsigned long node, unsigned long pfn)
 {
@@ -2246,7 +2260,7 @@ static inline int arch_make_folio_accessible(struct folio *folio)
  * Some inline functions in vmstat.h depend on page_zone()
  */
 #include <linux/vmstat.h>
-// 获取page的内存内核地址
+// 获取page结构体指针对应的的内存内核虚拟地址
 static __always_inline void *lowmem_page_address(const struct page *page)
 {
 	return page_to_virt(page);
@@ -2275,12 +2289,14 @@ void page_address_init(void);
 #endif
 
 #if !defined(HASHED_PAGE_VIRTUAL) && !defined(WANT_PAGE_VIRTUAL)
-// 获取page的内存地址
+// 获取page结构体对应的的内存虚拟地址
 #define page_address(page) lowmem_page_address(page)
 #define set_page_address(page, address)  do { } while(0)
 #define page_address_init()  do { } while(0)
 #endif
 
+/* 获取folio的page结构体对应的内存虚拟地址
+也就是folio对应的内存虚拟地址 */
 static inline void *folio_address(const struct folio *folio)
 {
 	return page_address(&folio->page);
@@ -2348,9 +2364,11 @@ static inline void clear_page_pfmemalloc(struct page *page)
  * Can be called by the pagefault handler when it gets a VM_FAULT_OOM.
  */
 extern void pagefault_out_of_memory(void);
-/*  */
+/* phys_addr & ~(~((1 << 12)-1)) */
 #define offset_in_page(p)	((unsigned long)(p) & ~PAGE_MASK)
 #define offset_in_thp(page, p)	((unsigned long)(p) & (thp_size(page) - 1))
+/* 计算文件或者磁盘的pos地址p
+在folio内部偏移是多少 */
 #define offset_in_folio(folio, p) ((unsigned long)(p) & (folio_size(folio) - 1))
 
 /*
@@ -2860,12 +2878,14 @@ int __pte_alloc(struct mm_struct *mm, pmd_t *pmd);
 int __pte_alloc_kernel(pmd_t *pmd);
 
 #if defined(CONFIG_MMU)
-
+/* 找到addr在pgd条目的p4d页面 */
 static inline p4d_t *p4d_alloc(struct mm_struct *mm, pgd_t *pgd,
 		unsigned long address)
 {
+	/* 如果pgd是空，就分配p4d页面 */
 	return (unlikely(pgd_none(*pgd)) && __p4d_alloc(mm, pgd, address)) ?
-		NULL : p4d_offset(pgd, address);
+		NULL : /* 如果pgd是null的， 并且分配p4d页面失败了 */
+		p4d_offset(pgd, address);
 }
 
 static inline pud_t *pud_alloc(struct mm_struct *mm, p4d_t *p4d,
@@ -2874,7 +2894,7 @@ static inline pud_t *pud_alloc(struct mm_struct *mm, p4d_t *p4d,
 	return (unlikely(p4d_none(*p4d)) && __pud_alloc(mm, p4d, address)) ?
 		NULL : pud_offset(p4d, address);
 }
-
+/* 获取的是pmd页面，上面都是pmd条目 */
 static inline pmd_t *pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address)
 {
 	return (unlikely(pud_none(*pud)) && __pmd_alloc(mm, pud, address))?
@@ -2892,6 +2912,13 @@ static inline void *ptdesc_to_virt(const struct ptdesc *pt)
 	return page_to_virt(ptdesc_page(pt));
 }
 
+/*
+获取ptdesc对应的page结构体对应的内核内存虚拟地址
+===========
+参数是ptdesc
+是一个page结构体指针强转的结果
+所以这里获取pt的 folio,然后folio的page结构体
+然后是address(内存虚拟地址) */
 static inline void *ptdesc_address(const struct ptdesc *pt)
 {
 	return folio_address(ptdesc_folio(pt));
@@ -2905,6 +2932,8 @@ static inline bool pagetable_is_reserved(struct ptdesc *pt)
 /**
  * pagetable_alloc - Allocate pagetables
  分配页表
+ 也是使用alloc_pages分配
+ 返回的是ptdesc
  * @gfp:    GFP flags
  * @order:  desired pagetable order
  *
@@ -3032,7 +3061,7 @@ static inline pte_t *pte_offset_map(pmd_t *pmd, unsigned long addr)
 pte_t *__pte_offset_map_lock(struct mm_struct *mm, pmd_t *pmd,
 			unsigned long addr, spinlock_t **ptlp);
 
-// 获取页表项
+/* 获取pte指针 */
 static inline pte_t *pte_offset_map_lock(struct mm_struct *mm, pmd_t *pmd,
 			unsigned long addr, spinlock_t **ptlp)
 {
@@ -3067,6 +3096,7 @@ pte_t *pte_offset_map_nolock(struct mm_struct *mm, pmd_t *pmd,
 #if USE_SPLIT_PMD_PTLOCKS
 
 // 获得pmd的page
+// 获取pmd页面对应的page结构体
 static inline struct page *pmd_pgtable_page(pmd_t *pmd)
 {
 	// 512个八字节的mask
@@ -3076,13 +3106,13 @@ static inline struct page *pmd_pgtable_page(pmd_t *pmd)
 	);
 }
 
-// 获得pmd的ptdesc
+// 获得pmd页面对应的page结构体的ptdesc
 static inline struct ptdesc *pmd_ptdesc(pmd_t *pmd)
 {
 	return page_ptdesc(pmd_pgtable_page(pmd));
 }
 
-// 给pmd加锁, 但是为啥没有用到mm参数呢
+// 给mm的这个pmd加锁, 但是为啥没有用到mm参数呢
 static inline spinlock_t *pmd_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
 	return ptlock_ptr(pmd_ptdesc(pmd));
@@ -3495,7 +3525,7 @@ static inline unsigned long stack_guard_start_gap(struct vm_area_struct *vma)
 
 	return 0;
 }
-
+/* 获取减去gap之后的vma开始地址 */
 static inline unsigned long vm_start_gap(struct vm_area_struct *vma)
 {
 	unsigned long gap = stack_guard_start_gap(vma);
@@ -3537,7 +3567,7 @@ static inline struct vm_area_struct *find_exact_vma(struct mm_struct *mm,
 
 	return vma;
 }
-
+/* 检查vma是不是完全包住了这个范围 */
 static inline bool range_in_vma(struct vm_area_struct *vma,
 				unsigned long start, unsigned long end)
 {

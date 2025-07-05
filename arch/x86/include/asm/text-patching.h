@@ -55,20 +55,20 @@ extern void text_poke_queue(void *addr, const void *opcode, size_t len, const vo
 extern void text_poke_finish(void);
 /*  */
 #define INT3_INSN_SIZE		1
-#define INT3_INSN_OPCODE	0xCC
+#define INT3_INSN_OPCODE	0xCC /* int3指令 */
 
 #define RET_INSN_SIZE		1
-#define RET_INSN_OPCODE		0xC3
+#define RET_INSN_OPCODE		0xC3 /* ret指令 */
 
 #define CALL_INSN_SIZE		5
 /* 在 x86 架构中，0xE8是call指令的操作码的一部分 */
-#define CALL_INSN_OPCODE	0xE8
+#define CALL_INSN_OPCODE	0xE8 /* 指令占用 5 个字节，其中 1 个字节是操作码，剩下的 4 个字节是目标地址的偏移量（相对于当前指令的下一条指令） */
 /*  */
 #define JMP32_INSN_SIZE		5
-#define JMP32_INSN_OPCODE	0xE9
+#define JMP32_INSN_OPCODE	0xE9 /* JMP32 是一个 32 位的无条件跳转指令。它会跳转到目标地址。占用 5 个字节，其中 1 个字节是操作码，剩下的 4 个字节是目标地址的偏移量 */
 
 #define JMP8_INSN_SIZE		2
-#define JMP8_INSN_OPCODE	0xEB
+#define JMP8_INSN_OPCODE	0xEB /* JMP8 是一个 8 位的无条件跳转指令。它会跳转到目标地址。用 2 个字节，其中 1 个字节是操作码，另 1 个字节是目标地址的偏移量。  */
 /*  */
 #define DISP32_SIZE		4
 /*  */
@@ -104,11 +104,16 @@ union text_poke_insn {
 		s32 disp;
 	} __attribute__((packed));
 };
-/* 把dest插入到addr, 用opcode，做指令.
- buf是个text_poke_insn  */
+/* 
+在buf里面构造利用opcode从addr跳到dest的机器码
+=======
+构造insn结构体（buf就是）
+把dest插入到addr, 用opcode（可能是call）做指令.
+  */
 static __always_inline
 void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, int size)
 {
+	/* 类型转换 */
 	union text_poke_insn *insn = buf;
 
 	BUG_ON(size < text_opcode_size(opcode));
@@ -118,17 +123,21 @@ void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, i
 	 * Hide the addresses to avoid the compiler folding in constants when
 	 * referencing code, these can mess up annotations like
 	 * ANNOTATE_NOENDBR.
-
+	展开为
+	 __asm__("" : "=r"(insn) : "0"(insn));
+	__asm__("" : "=r"(addr) : "0"(addr));
+	__asm__("" : "=r"(dest) : "0"(dest));
 	 */
 	OPTIMIZER_HIDE_VAR(insn);
 	// __asm__("" : "=r"(insn) : "0"(insn))
 	OPTIMIZER_HIDE_VAR(addr);
 	OPTIMIZER_HIDE_VAR(dest);
 
-	insn->opcode = opcode;
+	insn->opcode = opcode;/* opcode是要插入的指令 */
 
-	if (size > 1) {
+	if (size > 1) {/* 这些地址都是代码段的，是指令,比如 -exec x/x dest 0xffffffff83faba64 <insn.0>:	0xff698ae8    */
 		insn->disp = (long)dest - (long)(addr + size);
+		/* -exec x/i dest 0xffffffff83faba64 <insn.0>:	call   0xffffffff83fa23f3  */
 		if (size == 2) {
 			/*
 			 * Ensure that for JMP8 the displacement
@@ -139,13 +148,17 @@ void __text_gen_insn(void *buf, u8 opcode, const void *addr, const void *dest, i
 	}
 
 }
-/* 把dest插入到addr,
-执行到addr时跳转到dest */
+/* 作用:生成五个字节的指定opcode的字节码. 把dest插入到addr,
+执行到addr时跳转到dest
+======
+更新静态的insn结构体的opcode，disp成员，然后返回他的text成员buff地址
+*/
 static __always_inline
 void *text_gen_insn(u8 opcode, const void *addr, const void *dest)
 {
 	/* 为啥好多静态的 */
 	static union text_poke_insn insn; /* per instance */
+	/* 构造insn结构体 */
 	__text_gen_insn(&insn, opcode, addr, dest, text_opcode_size(opcode));
 	return &insn.text;
 }

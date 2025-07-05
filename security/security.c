@@ -1675,6 +1675,7 @@ out:
 EXPORT_SYMBOL(security_inode_init_security);
 
 /**
+初始化一个新创建的anon inode
  * security_inode_init_security_anon() - Initialize an anonymous inode
  * @inode: the inode
  * @name: the anonymous inode class
@@ -3335,6 +3336,7 @@ int security_task_setrlimit(struct task_struct *p, unsigned int resource,
 }
 
 /**
+进行安全方面的检查
  * security_task_setscheduler() - Check if setting sched policy/param is allowed
  * @p: target task
  *

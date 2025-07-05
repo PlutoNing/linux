@@ -44,7 +44,7 @@ static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 #define __pa_nodebug(x)	__phys_addr_nodebug((unsigned long)(x))
 /* __pa_symbol should be used for C visible symbols.
    This seems to be the official gcc blessed way to do such arithmetic. */
-/*
+/*把内核的虚拟地址转为物理地址, 返回x - 0xffffffff80000000
  * We need __phys_reloc_hide() here because gcc may assume that there is no
  * overflow during __pa() calculation and can optimize it unexpectedly.
  * Newer versions of gcc provide -fno-strict-overflow switch to handle this
@@ -55,14 +55,18 @@ static inline void copy_user_page(void *to, void *from, unsigned long vaddr,
 	__phys_addr_symbol(__phys_reloc_hide((unsigned long)(x)))
 
 #ifndef __va
-// 内核的地址映射
+// 内核的地址映射, 将物理地址转换为内核线性映射区域的虚拟地址, 就是原值加上0xffff888000000000
 #define __va(x)			((void *)((unsigned long)(x)+PAGE_OFFSET))
 #endif
 
 #define __boot_va(x)		__va(x)
 #define __boot_pa(x)		__pa(x)
 
-/*
+/* 
+virt_to_page(kaddr)将内核虚拟地址转换为page结构体指针
+ * __pa(kaddr)将内核虚拟地址转换为物理地址, 通过右移PAGE_SHIFT获得pfn
+ * pfn_to_page(pfn)将pfn转换为page结构体指针
+__pa通过减去内核地址空间的偏移获得pfn,然后pfn加上vmemmap可以获得page结构体的位置
  * virt_to_page(kaddr) returns a valid pointer if and only if
  * virt_addr_valid(kaddr) returns true.
  */

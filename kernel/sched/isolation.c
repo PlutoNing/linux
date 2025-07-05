@@ -78,7 +78,7 @@ bool housekeeping_test_cpu(int cpu, enum hk_type type)
 	return true;
 }
 EXPORT_SYMBOL_GPL(housekeeping_test_cpu);
-
+/* housekeeping是什么 */
 void __init housekeeping_init(void)
 {
 	enum hk_type type;

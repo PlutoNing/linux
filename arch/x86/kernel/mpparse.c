@@ -470,7 +470,7 @@ static int __init check_physptr(struct mpf_intel *mpf, unsigned int early)
 	return 0;
 }
 
-/*
+/*x86_init.mpparse.get_smp_config回调函数
  * Scan the memory blocks for an SMP configuration block.
  */
 void __init default_get_smp_config(unsigned int early)
@@ -486,7 +486,7 @@ void __init default_get_smp_config(unsigned int early)
 	if (acpi_lapic && early)
 		return;
 
-	/*
+	/* 好像从这里就返回了
 	 * MPS doesn't support hyperthreading, aka only have
 	 * thread 0 apic id in MPS table
 	 */
@@ -542,7 +542,7 @@ static void __init smp_reserve_memory(struct mpf_intel *mpf)
 {
 	memblock_reserve(mpf->physptr, get_mpc_size(mpf->physptr));
 }
-
+/* 检查base,length这段物理内存,先映射到fixmap区域,然后转换为mpf_intel类型, 检查 */
 static int __init smp_scan_config(unsigned long base, unsigned long length)
 {
 	unsigned int *bp;
@@ -554,7 +554,7 @@ static int __init smp_scan_config(unsigned long base, unsigned long length)
 	BUILD_BUG_ON(sizeof(*mpf) != 16);
 
 	while (length > 0) {
-		bp = early_memremap(base, length);
+		bp = early_memremap(base, length); /* 映射base, length到fixmap区域 */
 		mpf = (struct mpf_intel *)bp;
 		if ((*bp == SMP_MAGIC_IDENT) &&
 		    (mpf->length == 1) &&
@@ -575,7 +575,7 @@ static int __init smp_scan_config(unsigned long base, unsigned long length)
 				smp_reserve_memory(mpf);
 
 			ret = 1;
-		}
+		}/* 检查完毕, 解除映射 */
 		early_memunmap(bp, length);
 
 		if (ret)
@@ -586,12 +586,12 @@ static int __init smp_scan_config(unsigned long base, unsigned long length)
 	}
 	return ret;
 }
-
+/* x86_init.mpparse.find_smp_config()回调函数 */
 void __init default_find_smp_config(void)
 {
 	unsigned int address;
 
-	/*
+	/* 检查这些物理地址范围
 	 * FIXME: Linux assumes you have 640K of base ram..
 	 * this continues the error...
 	 *
@@ -815,7 +815,7 @@ static int __init parse_alloc_mptable_opt(char *p)
 	return 0;
 }
 early_param("alloc_mptable", parse_alloc_mptable_opt);
-
+/* 里面俩if都为空 */
 void __init e820__memblock_alloc_reserved_mpc_new(void)
 {
 	if (enable_update_mptable && alloc_mptable)

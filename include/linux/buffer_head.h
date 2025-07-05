@@ -62,15 +62,20 @@ typedef void (bh_end_io_t)(struct buffer_head *bh, int uptodate);
 struct buffer_head {
 	unsigned long b_state;		/* buffer state bitmap (see above) */
 
-	struct buffer_head *b_this_page;/* circular list of page's buffers */
+	struct buffer_head *b_this_page;/* 
+	这个page的全部buf都在这？
+	circular list of page's buffers */
 
 	/*
-	指向此buffer里面的前一个bh
+	指向此buffer里面的下一个bh
 	 circular list of page's buffers */
 
 	
 	union {
 		struct page *b_page;	/* the page this bh is mapped to */
+		/*
+		是这个bh所io的page
+		bh位于b_folio的bh链 */
 		struct folio *b_folio;	/* the folio this bh is mapped to */
 	};
 
@@ -83,9 +88,12 @@ struct buffer_head {
 	struct block_device *b_bdev;
 	bh_end_io_t *b_end_io;		/* I/O completion */
  	void *b_private;		/* reserved for b_end_io */
+	/* 连接件
+	用于连接到所关联的mapping的private list链表 */
 	struct list_head b_assoc_buffers; /* associated with another mapping */
 	struct address_space *b_assoc_map;	/* 
 	如果buffer在mapping的buffer list上面, 这个指向此mapping
+	也就是b_assoc_buffers所链接的mapping
 	mapping this buffer is
 						   associated with */
 	atomic_t b_count;		/* users using this buffer_head */
@@ -139,6 +147,7 @@ TAS_BUFFER_FNS(Dirty, dirty)
 BUFFER_FNS(Lock, locked)
 BUFFER_FNS(Req, req)
 TAS_BUFFER_FNS(Req, req)
+/* 说明bh->b_blocknr = block; */
 BUFFER_FNS(Mapped, mapped)
 BUFFER_FNS(New, new)
 BUFFER_FNS(Async_Read, async_read)
@@ -152,6 +161,7 @@ BUFFER_FNS(Meta, meta)
 BUFFER_FNS(Prio, prio)
 BUFFER_FNS(Defer_Completion, defer_completion)
 
+/* 设置bh为up-to-date */
 static __always_inline void set_buffer_uptodate(struct buffer_head *bh)
 {
 	/*
@@ -177,7 +187,7 @@ static __always_inline void clear_buffer_uptodate(struct buffer_head *bh)
 {
 	clear_bit(BH_Uptodate, &bh->b_state);
 }
-
+/* 如果读取时发现为真, 可以直接返回, 不用磁盘io */
 static __always_inline int buffer_uptodate(const struct buffer_head *bh)
 {
 	/*
@@ -340,44 +350,48 @@ static inline void bforget(struct buffer_head *bh)
 		__bforget(bh);
 }
 
-/*  */
-static inline struct buffer_head *
-sb_bread(struct super_block *sb, sector_t block)
+/* 读取指定的磁盘块
+================
+主要是文件系统实现调用
+==============
+在这个过程中如何体现到buffer io命中缓存了呢?
+ */
+static inline struct buffer_head * sb_bread(struct super_block *sb, sector_t block)
 {
 	return __bread_gfp(sb->s_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
 }
 
-static inline struct buffer_head *
-sb_bread_unmovable(struct super_block *sb, sector_t block)
+/* 6.6没有调用这个函数 */
+static inline struct buffer_head * sb_bread_unmovable(struct super_block *sb, sector_t block)
 {
 	return __bread_gfp(sb->s_bdev, block, sb->s_blocksize, 0);
 }
-
-static inline void
-sb_breadahead(struct super_block *sb, sector_t block)
+/* 读取sb的指定块
+读取磁盘的指定@block */
+static inline void sb_breadahead(struct super_block *sb, sector_t block)
 {
 	__breadahead(sb->s_bdev, block, sb->s_blocksize);
 }
 
-static inline struct buffer_head *
-sb_getblk(struct super_block *sb, sector_t block)
+/* 获取block对应的buffer */
+static inline struct buffer_head * sb_getblk(struct super_block *sb, sector_t block)
 {
 	return __getblk_gfp(sb->s_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
 }
 
-
-static inline struct buffer_head *
-sb_getblk_gfp(struct super_block *sb, sector_t block, gfp_t gfp)
+/* 这个是gfp版本 */
+static inline struct buffer_head * sb_getblk_gfp(struct super_block *sb, sector_t block, gfp_t gfp)
 {
 	return __getblk_gfp(sb->s_bdev, block, sb->s_blocksize, gfp);
 }
 
-static inline struct buffer_head *
-sb_find_get_block(struct super_block *sb, sector_t block)
+/* 获取知道block的buffer */
+static inline 
+struct buffer_head * sb_find_get_block(struct super_block *sb, sector_t block)
 {
 	return __find_get_block(sb->s_bdev, block, sb->s_blocksize);
 }
-
+/* 让bh负责sb的block块号的buffer io */
 static inline void
 map_bh(struct buffer_head *bh, struct super_block *sb, sector_t block)
 {
@@ -387,6 +401,8 @@ map_bh(struct buffer_head *bh, struct super_block *sb, sector_t block)
 	bh->b_size = sb->s_blocksize;
 }
 
+/* 发起submit_bh后
+等待bh读写完成 */
 static inline void wait_on_buffer(struct buffer_head *bh)
 {
 	might_sleep();
@@ -394,6 +410,9 @@ static inline void wait_on_buffer(struct buffer_head *bh)
 		__wait_on_buffer(bh);
 }
 
+/* 设置加锁, 返回是否成功
+返回1 ,加锁成功
+返回0, 本来有锁了, 加锁失败 */
 static inline int trylock_buffer(struct buffer_head *bh)
 {
 	return likely(!test_and_set_bit_lock(BH_Lock, &bh->b_state));
@@ -406,6 +425,7 @@ static inline void lock_buffer(struct buffer_head *bh)
 		__lock_buffer(bh);
 }
 
+/* unmovable体现在gfp=0 */
 static inline struct buffer_head *getblk_unmovable(struct block_device *bdev,
 						   sector_t block,
 						   unsigned size)
@@ -413,16 +433,21 @@ static inline struct buffer_head *getblk_unmovable(struct block_device *bdev,
 	return __getblk_gfp(bdev, block, size, 0);
 }
 
+/* 找到对应这个block的bh
+在mapping找到对应的page找到对应的bh
+如果中间有缺失, 会申请or创建 */
 static inline struct buffer_head *__getblk(struct block_device *bdev,
 					   sector_t block,
 					   unsigned size)
 {
 	return __getblk_gfp(bdev, block, size, __GFP_MOVABLE);
 }
-
+/* 进行一次buffer io
+读取这个bh */
 static inline void bh_readahead(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	if (!buffer_uptodate(bh) && trylock_buffer(bh)) {
+		/* 加锁成功, 并且不是up-to-date才继续读取 */
 		if (!buffer_uptodate(bh))
 			__bh_read(bh, op_flags, false);
 		else
@@ -430,13 +455,17 @@ static inline void bh_readahead(struct buffer_head *bh, blk_opf_t op_flags)
 	}
 }
 
+/* 发起一次缓冲读？
+仅仅提交submit_bh, 不等待完成 */
 static inline void bh_read_nowait(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	if (!bh_uptodate_or_lock(bh))
 		__bh_read(bh, op_flags, false);
 }
 
-/* Returns 1 if buffer uptodated, 0 on success, and -EIO on error. */
+/*
+这里读取这个bh
+ Returns 1 if buffer uptodated, 0 on success, and -EIO on error. */
 static inline int bh_read(struct buffer_head *bh, blk_opf_t op_flags)
 {
 	if (bh_uptodate_or_lock(bh))
@@ -444,11 +473,18 @@ static inline int bh_read(struct buffer_head *bh, blk_opf_t op_flags)
 	return __bh_read(bh, op_flags, true);
 }
 
+/* 批量读取一批buffer (没有提前加锁)
+================
+主要是文件系统实现调用这个函数 */
 static inline void bh_read_batch(int nr, struct buffer_head *bhs[])
 {
 	__bh_read_batch(nr, bhs, 0, true);
 }
 
+/* 批量读取一批buffer (没有提前加锁)
+================
+文件系统实现调用这个函数
+*/
 static inline void bh_readahead_batch(int nr, struct buffer_head *bhs[],
 				      blk_opf_t op_flags)
 {
@@ -456,6 +492,11 @@ static inline void bh_readahead_batch(int nr, struct buffer_head *bhs[],
 }
 
 /**
+读取指定的磁盘块
+=================
+返回读取完毕的buffer, 内容up-to-date的
+=============
+文件系统实现调用
  *  __bread() - reads a specified block and returns the bh
  *  @bdev: the block_device to read from
  *  @block: number of block
@@ -465,8 +506,7 @@ static inline void bh_readahead_batch(int nr, struct buffer_head *bhs[],
  *  The page cache is allocated from movable area so that it can be migrated.
  *  It returns NULL if the block was unreadable.
  */
-static inline struct buffer_head *
-__bread(struct block_device *bdev, sector_t block, unsigned size)
+static inline struct buffer_head * __bread(struct block_device *bdev, sector_t block, unsigned size)
 {
 	return __bread_gfp(bdev, block, size, __GFP_MOVABLE);
 }

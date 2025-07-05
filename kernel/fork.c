@@ -138,7 +138,7 @@ static const char * const resident_page_types[] = {
 	NAMED_ARRAY_INDEX(MM_SWAPENTS),
 	NAMED_ARRAY_INDEX(MM_SHMEMPAGES),
 };
-
+/* 好像是全局的process数量 */
 DEFINE_PER_CPU(unsigned long, process_counts) = 0;
 
 __cacheline_aligned DEFINE_RWLOCK(tasklist_lock);  /* outer */
@@ -150,7 +150,7 @@ int lockdep_tasklist_lock_is_held(void)
 }
 EXPORT_SYMBOL_GPL(lockdep_tasklist_lock_is_held);
 #endif /* #ifdef CONFIG_PROVE_RCU */
-
+/* 统计每个cpu的进程数量之和 */
 int nr_processes(void)
 {
 	int cpu;
@@ -499,11 +499,11 @@ static inline void vma_lock_free(struct vm_area_struct *vma) {}
 struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
-
+	/* 分配这个vma结构体以及内存 */
 	vma = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);
 	if (!vma)
 		return NULL;
-
+	/* 初始化他俩的关系 */
 	vma_init(vma, mm);
 
 	if (!vma_lock_alloc(vma)) {
@@ -513,7 +513,9 @@ struct vm_area_struct *vm_area_alloc(struct mm_struct *mm)
 
 	return vma;
 }
-
+/* 
+复制vma
+*/
 struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 {
 	struct vm_area_struct *new = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);
@@ -534,11 +536,12 @@ struct vm_area_struct *vm_area_dup(struct vm_area_struct *orig)
 	}
 	INIT_LIST_HEAD(&new->anon_vma_chain);
 	vma_numab_state_init(new);
+	/* */
 	dup_anon_vma_name(orig, new);
 
 	return new;
 }
-
+/* 比如退出mm的时候，会调用这个 */
 void __vm_area_free(struct vm_area_struct *vma)
 {
 	vma_numab_state_free(vma);
@@ -548,6 +551,7 @@ void __vm_area_free(struct vm_area_struct *vma)
 }
 
 #ifdef CONFIG_PER_VMA_LOCK
+/* 以rcu方式销毁vma */
 static void vm_area_free_rcu_cb(struct rcu_head *head)
 {
 	struct vm_area_struct *vma = container_of(head, struct vm_area_struct,
@@ -558,7 +562,7 @@ static void vm_area_free_rcu_cb(struct rcu_head *head)
 	__vm_area_free(vma);
 }
 #endif
-
+/* 销毁这个vma */
 void vm_area_free(struct vm_area_struct *vma)
 {
 #ifdef CONFIG_PER_VMA_LOCK
@@ -1063,7 +1067,7 @@ static void task_struct_whitelist(unsigned long *offset, unsigned long *size)
 		*offset += offsetof(struct task_struct, thread);
 }
 #endif /* CONFIG_ARCH_TASK_STRUCT_ALLOCATOR */
-
+/* 设置资源限制, 初始化slab什么的 */
 void __init fork_init(void)
 {
 	int i;
@@ -1791,6 +1795,7 @@ static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 
 	tsk->mm = mm;
 	tsk->active_mm = mm;
+	/* 这里fork cid */
 	sched_mm_cid_fork(tsk);
 	return 0;
 }
@@ -2003,7 +2008,7 @@ static void rt_mutex_init_task(struct task_struct *p)
 	p->pi_blocked_on = NULL;
 #endif
 }
-
+/* pid_links是什么 */
 static inline void init_task_pid_links(struct task_struct *task)
 {
 	enum pid_type type;
@@ -2050,7 +2055,8 @@ struct pid *pidfd_pid(const struct file *file)
 
 	return ERR_PTR(-EBADF);
 }
-
+/* 释放什么?
+priv是pid */
 static int pidfd_release(struct inode *inode, struct file *file)
 {
 	struct pid *pid = file->private_data;
@@ -2063,6 +2069,7 @@ static int pidfd_release(struct inode *inode, struct file *file)
 #ifdef CONFIG_PROC_FS
 /**
  * pidfd_show_fdinfo - print information about a pidfd
+ 打印一个pidfd的信息
  * @m: proc fdinfo file
  * @f: file referencing a pidfd
  *
@@ -2103,6 +2110,7 @@ static void pidfd_show_fdinfo(struct seq_file *m, struct file *f)
 	pid_t nr = -1;
 
 	if (likely(pid_has_task(pid, PIDTYPE_PID))) {
+		// 获取文件的sb的ns
 		ns = proc_pid_ns(file_inode(m->file)->i_sb);
 		nr = pid_nr_ns(pid, ns);
 	}
@@ -2147,7 +2155,7 @@ static __poll_t pidfd_poll(struct file *file, struct poll_table_struct *pts)
 
 	return poll_flags;
 }
-
+/* pidfd的ops */
 const struct file_operations pidfd_fops = {
 	.release = pidfd_release,
 	.poll = pidfd_poll,
@@ -2157,6 +2165,7 @@ const struct file_operations pidfd_fops = {
 };
 
 /**
+为进程分配pidfd_file
  * __pidfd_prepare - allocate a new pidfd_file and reserve a pidfd
  * @pid:   the struct pid for which to create a pidfd
  * @flags: flags of the new @pidfd
@@ -2183,6 +2192,8 @@ const struct file_operations pidfd_fops = {
  *         pidfd file is returned in the last argument to the function. On
  *         error, a negative error code is returned from the function and the
  *         last argument remains unchanged.
+ ========================
+ pidfd是什么.
  */
 static int __pidfd_prepare(struct pid *pid, unsigned int flags, struct file **ret)
 {
@@ -2191,11 +2202,11 @@ static int __pidfd_prepare(struct pid *pid, unsigned int flags, struct file **re
 
 	if (flags & ~(O_NONBLOCK | O_RDWR | O_CLOEXEC))
 		return -EINVAL;
-
+	// 这里分配的还是普通fd
 	pidfd = get_unused_fd_flags(O_RDWR | O_CLOEXEC);
 	if (pidfd < 0)
 		return pidfd;
-
+	// 创建一个伪文件
 	pidfd_file = anon_inode_getfile("[pidfd]", &pidfd_fops, pid,
 					flags | O_RDWR | O_CLOEXEC);
 	if (IS_ERR(pidfd_file)) {
@@ -2564,13 +2575,14 @@ __latent_entropy struct task_struct *copy_process(
 	retval = copy_signal(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_sighand;
-	//
+	// 拷贝mm
 	retval = copy_mm(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_signal;
 	retval = copy_namespaces(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_mm;
+	// 拷贝io_context
 	retval = copy_io(clone_flags, p);
 	if (retval)
 		goto bad_fork_cleanup_namespaces;
@@ -2598,6 +2610,7 @@ __latent_entropy struct task_struct *copy_process(
 	 */
 	if (clone_flags & CLONE_PIDFD) {
 		/* Note that no task has been attached to @pid yet. */
+		/* 分配pidfd_file */
 		retval = __pidfd_prepare(pid, O_RDWR | O_CLOEXEC, &pidfile);
 		if (retval < 0)
 			goto bad_fork_free_pid;
@@ -2622,6 +2635,7 @@ __latent_entropy struct task_struct *copy_process(
 	/*
 	 * Syscall tracing and stepping should be turned off in the
 	 * child regardless of CLONE_PTRACE.
+	 子进程的调试应该关闭
 	 */
 	user_disable_single_step(p);
 	clear_task_syscall_work(p, SYSCALL_TRACE);
@@ -2741,7 +2755,7 @@ __latent_entropy struct task_struct *copy_process(
 	init_task_pid_links(p);
 	if (likely(p->pid)) {
 		ptrace_init_task(p, (clone_flags & CLONE_PTRACE) || trace);
-
+		/* 这里初始化进程的各种pid */
 		init_task_pid(p, PIDTYPE_PID, pid);
 		if (thread_group_leader(p)) {
 			init_task_pid(p, PIDTYPE_TGID, pid);
@@ -2763,11 +2777,12 @@ __latent_entropy struct task_struct *copy_process(
 							 p->real_parent->signal->is_child_subreaper;
 			list_add_tail(&p->sibling, &p->real_parent->children);
 			list_add_tail_rcu(&p->tasks, &init_task.tasks);
+			// 把task的pid_links加入pid
 			attach_pid(p, PIDTYPE_TGID);
 			attach_pid(p, PIDTYPE_PGID);
 			attach_pid(p, PIDTYPE_SID);
 			__this_cpu_inc(process_counts);
-		} else {
+		} else {/* 这个是什么情况 */
 			current->signal->nr_threads++;
 			current->signal->quick_threads++;
 			atomic_inc(&current->signal->live);
@@ -3042,7 +3057,7 @@ pid_t kernel_thread(int (*fn)(void *), void *arg, const char *name,
 }
 
 /*
- * Create a user mode thread.
+ * Create a user mode thread.,创建一个用户模式线程
  */
 pid_t user_mode_thread(int (*fn)(void *), void *arg, unsigned long flags)
 {
@@ -3054,7 +3069,7 @@ pid_t user_mode_thread(int (*fn)(void *), void *arg, unsigned long flags)
 		.fn_arg		= arg,
 	};
 
-	return kernel_clone(&args);
+	return kernel_clone(&args);/* 创建线程 */
 }
 
 // fork的系统调用
@@ -3325,7 +3340,7 @@ static void sighand_ctor(void *data)
 	spin_lock_init(&sighand->siglock);
 	init_waitqueue_head(&sighand->signalfd_wqh);
 }
-
+/* 创建mm的slab */
 void __init mm_cache_init(void)
 {
 	unsigned int mm_size;
@@ -3344,7 +3359,7 @@ void __init mm_cache_init(void)
 			sizeof_field(struct mm_struct, saved_auxv),
 			NULL);
 }
-
+/* 进程的slab? */
 void __init proc_caches_init(void)
 {
 	sighand_cachep = kmem_cache_create("sighand_cache",

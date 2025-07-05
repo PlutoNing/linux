@@ -13,10 +13,15 @@ void __init_swait_queue_head(struct swait_queue_head *q, const char *name,
 EXPORT_SYMBOL(__init_swait_queue_head);
 
 /*
+唤醒q的进程列表上的一个进程
  * The thing about the wake_up_state() return value; I think we can ignore it.
  *
  * If for some reason it would return 0, that means the previously waiting
  * task is already running, so it will observe condition true (or has already).
+ * @description: 
+ * @param {swait_queue_head} *q, 是done的q成员
+ * @param {int} wake_flags
+ * @return {*}
  */
 void swake_up_locked(struct swait_queue_head *q, int wake_flags)
 {
@@ -25,6 +30,7 @@ void swake_up_locked(struct swait_queue_head *q, int wake_flags)
 	if (list_empty(&q->task_list))
 		return;
 
+	/* 取下来一个等待的进程, 唤醒, 移除 */
 	curr = list_first_entry(&q->task_list, typeof(*curr), task_list);
 	try_to_wake_up(curr->task, TASK_NORMAL, wake_flags);
 	list_del_init(&curr->task_list);
@@ -44,6 +50,7 @@ void swake_up_all_locked(struct swait_queue_head *q)
 		swake_up_locked(q, 0);
 }
 
+/* 唤醒gp线程会调用这个函数 */
 void swake_up_one(struct swait_queue_head *q)
 {
 	unsigned long flags;
@@ -81,6 +88,7 @@ void swake_up_all(struct swait_queue_head *q)
 }
 EXPORT_SYMBOL(swake_up_all);
 
+/* 独占的加入等待队列 */
 void __prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait)
 {
 	wait->task = current;
@@ -99,6 +107,14 @@ void prepare_to_swait_exclusive(struct swait_queue_head *q, struct swait_queue *
 }
 EXPORT_SYMBOL(prepare_to_swait_exclusive);
 
+/**
+swait是什么? 独占地wait
+ * @description: 
+ * @param {swait_queue_head} *q
+ * @param {swait_queue} *wait
+ * @param {int} state
+ * @return {*}
+ */
 long prepare_to_swait_event(struct swait_queue_head *q, struct swait_queue *wait, int state)
 {
 	unsigned long flags;
@@ -113,6 +129,7 @@ long prepare_to_swait_event(struct swait_queue_head *q, struct swait_queue *wait
 		list_del_init(&wait->task_list);
 		ret = -ERESTARTSYS;
 	} else {
+		/* 这里wait,特点是独占的wait */
 		__prepare_to_swait(q, wait);
 		set_current_state(state);
 	}
@@ -122,13 +139,14 @@ long prepare_to_swait_event(struct swait_queue_head *q, struct swait_queue *wait
 }
 EXPORT_SYMBOL(prepare_to_swait_event);
 
+/* 从队列移除自己 */
 void __finish_swait(struct swait_queue_head *q, struct swait_queue *wait)
 {
 	__set_current_state(TASK_RUNNING);
 	if (!list_empty(&wait->task_list))
 		list_del_init(&wait->task_list);
 }
-
+/* 区别是这里对应独占地的wait */
 void finish_swait(struct swait_queue_head *q, struct swait_queue *wait)
 {
 	unsigned long flags;

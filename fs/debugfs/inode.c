@@ -66,7 +66,9 @@ static const struct inode_operations debugfs_symlink_inode_operations = {
 	.get_link	= simple_get_link,
 	.setattr	= debugfs_setattr,
 };
-
+/* 
+获取一个inode
+*/
 static struct inode *debugfs_get_inode(struct super_block *sb)
 {
 	struct inode *inode = new_inode(sb);
@@ -622,6 +624,7 @@ struct dentry *debugfs_create_dir(const char *name, struct dentry *parent)
 EXPORT_SYMBOL_GPL(debugfs_create_dir);
 
 /**
+在debugfs创建一个automount文件夹
  * debugfs_create_automount - create automount point in the debugfs filesystem
  * @name: a pointer to a string containing the name of the file to create.
  * @parent: a pointer to the parent dentry for this file.  This should be a
@@ -637,6 +640,7 @@ struct dentry *debugfs_create_automount(const char *name,
 					debugfs_automount_t f,
 					void *data)
 {
+	/*  */
 	struct dentry *dentry = start_creating(name, parent);
 	struct inode *inode;
 
@@ -648,6 +652,7 @@ struct dentry *debugfs_create_automount(const char *name,
 		return ERR_PTR(-EPERM);
 	}
 
+	/* 获取inode */
 	inode = debugfs_get_inode(dentry->d_sb);
 	if (unlikely(!inode)) {
 		pr_err("out of free dentries, can not create automount '%s'\n",
@@ -655,6 +660,7 @@ struct dentry *debugfs_create_automount(const char *name,
 		return failed_creating(dentry);
 	}
 
+	/* 设置为使用空文件夹的inode ops和fops */
 	make_empty_dir_inode(inode);
 	inode->i_flags |= S_AUTOMOUNT;
 	inode->i_private = data;

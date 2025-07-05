@@ -25,6 +25,7 @@
  */
 struct completion {
 	unsigned int done;
+	/* 链接等待进程 */
 	struct swait_queue_head wait;
 };
 

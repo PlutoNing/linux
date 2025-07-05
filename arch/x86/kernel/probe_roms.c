@@ -36,7 +36,7 @@ static struct resource extension_rom_resource = {
 	.end	= 0xeffff,
 	.flags	= IORESOURCE_BUSY | IORESOURCE_READONLY | IORESOURCE_MEM
 };
-
+/*  */
 static struct resource adapter_rom_resources[] = { {
 	.name 	= "Adapter ROM",
 	.start	= 0xc8000,
@@ -195,7 +195,7 @@ static int __init romchecksum(const unsigned char *rom, unsigned long length)
 		sum += c;
 	return !length && !sum;
 }
-
+/* x86_init.resources.probe_roms()回调函数 */
 void __init probe_roms(void)
 {
 	unsigned long start, length, upper;
@@ -213,7 +213,7 @@ void __init probe_roms(void)
 			((system_rom_resource.end + 1) - video_rom_resource.start),
 			SNP_PAGE_STATE_PRIVATE);
 
-	/* video rom */
+	/* video rom , video的是[0xc0000,0xc7fff],adapter_rom_resources从0xc8000开始 */
 	upper = adapter_rom_resources[0].start;
 	for (start = video_rom_resource.start; start < upper; start += 2048) {
 		rom = isa_bus_to_virt(start);
@@ -235,7 +235,7 @@ void __init probe_roms(void)
 		request_resource(&iomem_resource, &video_rom_resource);
 		break;
 	}
-
+	/* 现在可能是0xca000 */
 	start = (video_rom_resource.end + 1 + 2047) & ~2047UL;
 	if (start < upper)
 		start = upper;

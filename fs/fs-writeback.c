@@ -82,6 +82,8 @@ static inline struct inode *wb_inode(struct list_head *head)
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(wbc_writepage);
 
+/* 把wb标记为有dirty io
+如果已经是了,就不设置,返回false */
 static bool wb_io_lists_populated(struct bdi_writeback *wb)
 {
 	if (wb_has_dirty_io(wb)) {
@@ -106,6 +108,8 @@ static void wb_io_lists_depopulated(struct bdi_writeback *wb)
 }
 
 /**
+把inode移到head,
+然后根据实际情况修改wb的dirty状况
  * inode_io_list_move_locked - move an inode onto a bdi_writeback IO list
  * @inode: inode to be moved
  * @wb: target bdi_writeback
@@ -138,6 +142,7 @@ static void wb_wakeup(struct bdi_writeback *wb)
 {
 	spin_lock_irq(&wb->work_lock);
 	if (test_bit(WB_registered, &wb->state))
+	/* 20250530184739 */
 		mod_delayed_work(bdi_wq, &wb->dwork, 0);
 	spin_unlock_irq(&wb->work_lock);
 }
@@ -235,18 +240,22 @@ void wb_wait_for_completion(struct wb_completion *done)
 #define WB_MAX_INODES_PER_ISW  ((1024UL - sizeof(struct inode_switch_wbs_context)) \
                                 / sizeof(struct inode *))
 
+/* 正在切换wb的inode数量 */
 static atomic_t isw_nr_in_flight = ATOMIC_INIT(0);
 static struct workqueue_struct *isw_wq;
 
-/* 给inode找到对应的wb
-就是找到memcg,然后找到blkcg, 然后是对应的wb
-
+/*
+ 给inode这个folio找到or创建对应的wb
+task读写folio, 有memcg, 作为key到bdi查询wb, 获取wb->blkcg_css
  */
 void __inode_attach_wb(struct inode *inode, struct folio *folio)
 {
 	struct backing_dev_info *bdi = inode_to_bdi(inode);
 	struct bdi_writeback *wb = NULL;
 
+	/* 这里获取wb
+	如果inode开启了cgwb
+	就获取memcg对应的wb(用于控制blk读写) */
 	if (inode_cgwb_enabled(inode)) {
 		struct cgroup_subsys_state *memcg_css;
 
@@ -275,6 +284,7 @@ void __inode_attach_wb(struct inode *inode, struct folio *folio)
 EXPORT_SYMBOL_GPL(__inode_attach_wb);
 
 /**
+inode加入这个新wb, 并且inode不是DIRTY_ALL的
  * inode_cgwb_move_to_attached - put the inode onto wb->b_attached list
  * @inode: inode of interest with i_lock held
  * @wb: target bdi_writeback
@@ -294,6 +304,7 @@ static void inode_cgwb_move_to_attached(struct inode *inode,
 		list_move(&inode->i_io_list, &wb->b_attached);
 	else
 		list_del_init(&inode->i_io_list);
+	/* 修改wb的状态 */
 	wb_io_lists_depopulated(wb);
 }
 
@@ -353,6 +364,7 @@ static struct bdi_writeback *inode_to_wb_and_lock_list(struct inode *inode)
 }
 
 struct inode_switch_wbs_context {
+	/* 执行切换的rwork? */
 	struct rcu_work		work;
 
 	/*
@@ -361,9 +373,10 @@ struct inode_switch_wbs_context {
 	 * sure that the second part is executed for each inode gone through
 	 * the first part, all inode pointers are placed into a NULL-terminated
 	 * array embedded into struct inode_switch_wbs_context.  Otherwise
-	 * an inode could be left in a non-consistent state.
-	 */
+	 * an inode could be left in a non-consistent state
+	 要切换的新wb*/
 	struct bdi_writeback	*new_wb;
+	/* isw->inodes[0] = inode是要切换的inode */
 	struct inode		*inodes[];
 };
 
@@ -377,6 +390,7 @@ static void bdi_up_write_wb_switch_rwsem(struct backing_dev_info *bdi)
 	up_write(&bdi->wb_switch_rwsem);
 }
 
+/* 切换inode的wb */
 static bool inode_do_switch_wbs(struct inode *inode,
 				struct bdi_writeback *old_wb,
 				struct bdi_writeback *new_wb)
@@ -402,7 +416,11 @@ static bool inode_do_switch_wbs(struct inode *inode,
 	 * Count and transfer stats.  Note that PAGECACHE_TAG_DIRTY points
 	 * to possibly dirty folios while PAGECACHE_TAG_WRITEBACK points to
 	 * folios actually under writeback.
-	 */
+	 这里进行计数和转移统计。注意，PAGECACHE_TAG_DIRTY指向可能脏的folio，
+	 而PAGECACHE_TAG_WRITEBACK指向实际正在写回的folio。
+	=========
+	遍历每一个有脏tag的folio
+	把计数进行转移到新wb */
 	xas_for_each_marked(&xas, folio, ULONG_MAX, PAGECACHE_TAG_DIRTY) {
 		if (folio_test_dirty(folio)) {
 			long nr = folio_nr_pages(folio);
@@ -433,23 +451,28 @@ static bool inode_do_switch_wbs(struct inode *inode,
 	 * The transfer preserves @inode->dirtied_when ordering.  If the @inode
 	 * was clean, it means it was on the b_attached list, so move it onto
 	 * the b_attached list of @new_wb.
-	 */
+	 如果inode已经位于wb的脏链表了*/
 	if (!list_empty(&inode->i_io_list)) {
 		inode->i_wb = new_wb;
 
+		
 		if (inode->i_state & I_DIRTY_ALL) {
+			/*如果是DIRTY_ALL 这里把inode插入到新wb的脏链表的合适位置上面 */
 			struct inode *pos;
 
+			/* 遍历new_wb->b_dirty上面的inode */
 			list_for_each_entry(pos, &new_wb->b_dirty, i_io_list)
-				if (time_after_eq(inode->dirtied_when,
-						  pos->dirtied_when))
-					break;
+				if (time_after_eq(inode->dirtied_when,pos->dirtied_when))
+					break; /* 一直找到在inode之前变脏的一个inode */
+			/*把这个inode插入到适当的位置*/
 			inode_io_list_move_locked(inode, new_wb,
 						  pos->i_io_list.prev);
 		} else {
+			/* 不是DIRTY_ALL的情况 */
 			inode_cgwb_move_to_attached(inode, new_wb);
 		}
 	} else {
+		/* 如果inode不在什么脏链表, 自己修改wb指针 */
 		inode->i_wb = new_wb;
 	}
 
@@ -470,7 +493,7 @@ skip_switch:
 
 	return switched;
 }
-
+/* 执行inode切换wb的异步rwork的func */
 static void inode_switch_wbs_work_fn(struct work_struct *work)
 {
 	struct inode_switch_wbs_context *isw =
@@ -484,7 +507,7 @@ static void inode_switch_wbs_work_fn(struct work_struct *work)
 	/*
 	 * If @inode switches cgwb membership while sync_inodes_sb() is
 	 * being issued, sync_inodes_sb() might miss it.  Synchronize.
-	 */
+	 这里同步的原因?*/
 	down_read(&bdi->wb_switch_rwsem);
 
 	/*
@@ -497,6 +520,7 @@ static void inode_switch_wbs_work_fn(struct work_struct *work)
 	 * gives us exclusion against all wb related operations on @inode
 	 * including IO list manipulations and stat updates.
 	 */
+	/* 按顺序加锁 */
 	if (old_wb < new_wb) {
 		spin_lock(&old_wb->list_lock);
 		spin_lock_nested(&new_wb->list_lock, SINGLE_DEPTH_NESTING);
@@ -505,8 +529,10 @@ static void inode_switch_wbs_work_fn(struct work_struct *work)
 		spin_lock_nested(&old_wb->list_lock, SINGLE_DEPTH_NESTING);
 	}
 
+	/* 遍历inodes数组, 处理每一个需要切换wb的inode */
 	for (inodep = isw->inodes; *inodep; inodep++) {
 		WARN_ON_ONCE((*inodep)->i_wb != old_wb);
+		/* 切换这个inode的wb */
 		if (inode_do_switch_wbs(*inodep, old_wb, new_wb))
 			nr_switched++;
 	}
@@ -517,6 +543,7 @@ static void inode_switch_wbs_work_fn(struct work_struct *work)
 	up_read(&bdi->wb_switch_rwsem);
 
 	if (nr_switched) {
+		/* 这里因为转移了inode, 唤醒相关回写, 释放相关ref */
 		wb_wakeup(new_wb);
 		wb_put_many(old_wb, nr_switched);
 	}
@@ -527,7 +554,8 @@ static void inode_switch_wbs_work_fn(struct work_struct *work)
 	kfree(isw);
 	atomic_dec(&isw_nr_in_flight);
 }
-
+/* inode要切换到这个新wb了
+这里进行一下准备和检查什么的 */
 static bool inode_prepare_wbs_switch(struct inode *inode,
 				     struct bdi_writeback *new_wb)
 {
@@ -565,9 +593,11 @@ static bool inode_prepare_wbs_switch(struct inode *inode,
  *
  * Switch @inode's wb association to the wb identified by @new_wb_id.  The
  * switching is performed asynchronously and may fail silently.
+   改变@inode的wb关联到由@new_wb_id标识的wb。 切换是异步执行的，可能会静默失败。
  */
 static void inode_switch_wbs(struct inode *inode, int new_wb_id)
 {
+	/* 获取bdi */
 	struct backing_dev_info *bdi = inode_to_bdi(inode);
 	struct cgroup_subsys_state *memcg_css;
 	struct inode_switch_wbs_context *isw;
@@ -580,22 +610,27 @@ static void inode_switch_wbs(struct inode *inode, int new_wb_id)
 	if (atomic_read(&isw_nr_in_flight) > WB_FRN_MAX_IN_FLIGHT)
 		return;
 
+	/* 分配记录转换中间状态的isw结构体 */
 	isw = kzalloc(struct_size(isw, inodes, 2), GFP_ATOMIC);
 	if (!isw)
 		return;
 
 	atomic_inc(&isw_nr_in_flight);
 
-	/* find and pin the new wb */
+	/* find and pin the new wb
+	加锁获取memcg css */
 	rcu_read_lock();
 	memcg_css = css_from_id(new_wb_id, &memory_cgrp_subsys);
 	if (memcg_css && !css_tryget(memcg_css))
 		memcg_css = NULL;
 	rcu_read_unlock();
+
 	if (!memcg_css)
 		goto out_free;
 
+	/* 查找memcg_css在这个bdi的wb */
 	isw->new_wb = wb_get_create(bdi, memcg_css, GFP_ATOMIC);
+	/* 可以释放memcg_css了 */
 	css_put(memcg_css);
 	if (!isw->new_wb)
 		goto out_free;
@@ -612,6 +647,7 @@ static void inode_switch_wbs(struct inode *inode, int new_wb_id)
 	 * Let's continue after I_WB_SWITCH is guaranteed to be visible.
 	 */
 	INIT_RCU_WORK(&isw->work, inode_switch_wbs_work_fn);
+	/* 执行isw->work */
 	queue_rcu_work(isw_wq, &isw->work);
 	return;
 
@@ -1285,7 +1321,7 @@ void inode_io_list_del(struct inode *inode)
 
 EXPORT_SYMBOL(inode_io_list_del);
 
-/*
+/*标记这个inode开始回写了
  * mark an inode as under writeback on the sb
  */
 void sb_mark_inode_writeback(struct inode *inode)
@@ -1374,7 +1410,10 @@ static void requeue_io(struct inode *inode, struct bdi_writeback *wb)
 	inode_io_list_move_locked(inode, wb, &wb->b_more_io);
 }
 
-// 
+/* 做inode同步完成的收尾工作
+==========
+加入对应的lru
+唤醒等待者 */
 static void inode_sync_complete(struct inode *inode)
 {
 	inode->i_state &= ~I_SYNC;
@@ -1400,7 +1439,7 @@ static bool inode_dirtied_after(struct inode *inode, unsigned long t)
 	return ret;
 }
 
-/*
+/*移动要回写的脏inode
  * Move expired (dirtied before dirtied_before) dirty inodes from
  * @delaying_queue to @dispatch_queue.
  */
@@ -1420,7 +1459,7 @@ static int move_expired_inodes(struct list_head *delaying_queue,
 		if (inode_dirtied_after(inode, dirtied_before))
 			break;
 		spin_lock(&inode->i_lock);
-		list_move(&inode->i_io_list, &tmp);
+		list_move(&inode->i_io_list, &tmp);/* 移动,准备回写 */
 		moved++;
 		inode->i_state |= I_SYNC_QUEUED;
 		spin_unlock(&inode->i_lock);
@@ -1531,6 +1570,7 @@ void inode_wait_for_writeback(struct inode *inode)
 }
 
 /*
+等待inode回写完成?
  * Sleep until I_SYNC is cleared. This function must be called with i_lock
  * held and drops it. It is aimed for callers not holding any inode reference
  * so once i_lock is dropped, inode can go away.
@@ -1577,6 +1617,7 @@ static void requeue_inode(struct inode *inode, struct bdi_writeback *wb,
 		inode->dirtied_when = jiffies;
 
 	if (wbc->pages_skipped) {
+		/* 以后 */
 		/*
 		 * Writeback is not making progress due to locked buffers.
 		 * Skip this inode for now. Although having skipped pages
@@ -1640,8 +1681,7 @@ static void requeue_inode(struct inode *inode, struct bdi_writeback *wb,
  * calling inode_sync_complete() to clear it afterwards.
  * 调用者还负责在调用之前设置I_SYNC标志，并在之后调用inode_sync_complete()来清除它。
  */
-static int
-__writeback_single_inode(struct inode *inode, struct writeback_control *wbc)
+static int __writeback_single_inode(struct inode *inode, struct writeback_control *wbc)
 {
 	struct address_space *mapping = inode->i_mapping;
 	long nr_to_write = wbc->nr_to_write;
@@ -1826,6 +1866,7 @@ static int writeback_single_inode(struct inode *inode,
 	}
 
 	spin_unlock(&wb->list_lock);
+	/* 做同步完成的收尾 */
 	inode_sync_complete(inode);
 out:
 	spin_unlock(&inode->i_lock);
@@ -1864,7 +1905,7 @@ static long writeback_chunk_size(struct bdi_writeback *wb,
 	return pages;
 }
 
-/*
+/*work是wb的一个work,sb是work负责的一个inode的sb
 回写wb时, 取下inode后, 最终都会调用此, 不是取下任何一个fs的inode就立马开始回写.
 而是都会和sb相关,先回写某sb的
 按照sb批量的回写有利于IO么 todddo
@@ -1965,6 +2006,7 @@ static long writeback_sb_inodes(struct super_block *sb,
 		 * WB_SYNC_ALL case.
 		   刚刚已经把inode重新排队了，如果它设置了I_SYNC并且我们正在进行WB_SYNC_NONE回写。
 		   所以现在的情况只是WB_SYNC_ALL。
+		   wbc.sync_mode = WB_SYNC_ALL
 		 */
 		if (inode->i_state & I_SYNC) {
 			//如果inode正在回写, 并且我们是sync all, 那么就得等
@@ -1990,8 +2032,10 @@ static long writeback_sb_inodes(struct super_block *sb,
 		 * evict_inode() will wait so the inode cannot be freed.
 		   使用I_SYNC将inode在内存中pin住。 
 		   只要设置了它，evict_inode()就会等待，
+		========
+		开始回写inode, 回写mapping什么的
 		 */
-		__writeback_single_inode(inode, &wbc); //开始回写
+		__writeback_single_inode(inode, &wbc); //
 
 		wbc_detach_inode(&wbc);
 		work->nr_pages -= write_chunk - wbc.nr_to_write;
@@ -2020,7 +2064,9 @@ static long writeback_sb_inodes(struct super_block *sb,
 		spin_lock(&inode->i_lock);
 		if (!(inode->i_state & I_DIRTY_ALL))
 			total_wrote++;
+		/* 回写这个inode */
 		requeue_inode(inode, tmp_wb, &wbc);
+		/* 做同步完成的收尾工作 */
 		inode_sync_complete(inode);
 		spin_unlock(&inode->i_lock);
 
@@ -2051,7 +2097,7 @@ static long __writeback_inodes_wb(struct bdi_writeback *wb,
 	long wrote = 0;
 
 	while (!list_empty(&wb->b_io)) {/* 遍历所有b_io上面的inode, 进行回写 */
-		struct inode *inode = wb_inode(wb->b_io.prev);
+		struct inode *inode = wb_inode(wb->b_io.prev);/* 取下wb负责的一个inode */
 		struct super_block *sb = inode->i_sb;
 
 		if (!super_trylock_shared(sb)) { //对fs unmount加共享锁失败了
@@ -2062,7 +2108,7 @@ static long __writeback_inodes_wb(struct bdi_writeback *wb,
 			 */
 			redirty_tail(inode, wb);
 			continue;
-		}
+		}/* work是wb的一个work,sb是work负责的一个inode的sb */
 		wrote += writeback_sb_inodes(sb, wb, work);
 		up_read(&sb->s_umount);
 
@@ -2301,7 +2347,7 @@ static long wb_check_old_data_flush(struct bdi_writeback *wb)
 	nr_pages = get_nr_dirty_pages();
 
 	if (nr_pages) {
-		//这个work就是刷新全部的脏页
+		//这个work就是刷新全部的脏页,定义这个work
 		struct wb_writeback_work work = {
 			.nr_pages	= nr_pages,
 			.sync_mode	= WB_SYNC_NONE,
@@ -2310,7 +2356,7 @@ static long wb_check_old_data_flush(struct bdi_writeback *wb)
 			.reason		= WB_REASON_PERIODIC,
 		};
 
-		return wb_writeback(wb, &work);
+		return wb_writeback(wb, &work);/* 执行这个work */
 	}
 
 	return 0;
@@ -2387,7 +2433,7 @@ static long wb_do_writeback(struct bdi_writeback *wb)
 
  */
 void wb_workfn(struct work_struct *work)
-{
+{/* 取出dwork代表的bdi回写任务 */
 	struct bdi_writeback *wb = container_of(to_delayed_work(work),
 						struct bdi_writeback, dwork);
 	long pages_written;
@@ -2618,13 +2664,16 @@ void __mark_inode_dirty(struct inode *inode, int flags)
 	 */
 	smp_mb();
 
+	/* 如果已经是所期待的flag了 */
 	if ((inode->i_state & flags) == flags)
 		return;
 
 	spin_lock(&inode->i_lock);
+	/* 如果flag确实被设置了新值 */
 	if ((inode->i_state & flags) != flags) {
 		const int was_dirty = inode->i_state & I_DIRTY;
 
+		/* 这里folio是null, memcg会是task的memcg */
 		inode_attach_wb(inode, NULL);
 
 		inode->i_state |= flags;

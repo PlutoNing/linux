@@ -163,7 +163,7 @@ __setup("norandmaps", disable_randmaps);
 
 unsigned long zero_pfn __read_mostly;
 EXPORT_SYMBOL(zero_pfn);
-
+/* 代表着memmap机制的最高pfn */
 unsigned long highest_memmap_pfn __read_mostly;
 
 /*
@@ -182,6 +182,7 @@ void mm_trace_rss_stat(struct mm_struct *mm, int member)
 }
 
 /*
+销毁页表
  * Note: this doesn't free the actual pages themselves. That
  * has been handled earlier when unmapping all the memory regions.
  */
@@ -193,7 +194,7 @@ static void free_pte_range(struct mmu_gather *tlb, pmd_t *pmd,
 	pte_free_tlb(tlb, token, addr);
 	mm_dec_nr_ptes(tlb->mm);
 }
-
+/* 销毁页表 */
 static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -227,7 +228,7 @@ static inline void free_pmd_range(struct mmu_gather *tlb, pud_t *pud,
 	pmd_free_tlb(tlb, pmd, start);
 	mm_dec_nr_pmds(tlb->mm);
 }
-
+/* 销毁页表 */
 static inline void free_pud_range(struct mmu_gather *tlb, p4d_t *p4d,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -261,7 +262,7 @@ static inline void free_pud_range(struct mmu_gather *tlb, p4d_t *p4d,
 	pud_free_tlb(tlb, pud, start);
 	mm_dec_nr_puds(tlb->mm);
 }
-
+/* 销毁页表 */
 static inline void free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
 				unsigned long addr, unsigned long end,
 				unsigned long floor, unsigned long ceiling)
@@ -296,6 +297,7 @@ static inline void free_p4d_range(struct mmu_gather *tlb, pgd_t *pgd,
 }
 
 /*
+释放范围内的页表
  * This function frees user-level page tables of a process.
  */
 void free_pgd_range(struct mmu_gather *tlb,
@@ -351,6 +353,7 @@ void free_pgd_range(struct mmu_gather *tlb,
 	 * (see pte_free_tlb()), flush the tlb if we need
 	 */
 	tlb_change_page_size(tlb, PAGE_SIZE);
+	/*  */
 	pgd = pgd_offset(tlb->mm, addr);
 	do {
 		next = pgd_addr_end(addr, end);
@@ -359,18 +362,24 @@ void free_pgd_range(struct mmu_gather *tlb,
 		free_p4d_range(tlb, pgd, addr, next, floor, ceiling);
 	} while (pgd++, addr = next, addr != end);
 }
+/* 
+销毁页表
 
+mas是mm的， vma是第一个vma
+*/
 void free_pgtables(struct mmu_gather *tlb, struct ma_state *mas,
 		   struct vm_area_struct *vma, unsigned long floor,
 		   unsigned long ceiling, bool mm_wr_locked)
 {
 	do {
+		/* 找到当前vma的起始地址 */
 		unsigned long addr = vma->vm_start;
 		struct vm_area_struct *next;
 
 		/*
 		 * Note: USER_PGTABLES_CEILING may be passed as ceiling and may
 		 * be 0.  This will underflow and is okay.
+		 预先存着下一个循环要处理的next
 		 */
 		next = mas_find(mas, ceiling - 1);
 
@@ -380,15 +389,18 @@ void free_pgtables(struct mmu_gather *tlb, struct ma_state *mas,
 		 */
 		if (mm_wr_locked)
 			vma_start_write(vma);
+		/* 解除rmap */
 		unlink_anon_vmas(vma);
+		/* 把vma从自己映射的file的mapping的i mmap树移除 */
 		unlink_file_vma(vma);
 
-		if (is_vm_hugetlb_page(vma)) {
+		if (is_vm_hugetlb_page(vma)) {/* 巨页的情况 */
 			hugetlb_free_pgd_range(tlb, addr, vma->vm_end,
 				floor, next ? next->vm_start : ceiling);
 		} else {
 			/*
 			 * Optimization: gather nearby vmas into one call down
+			 这是一个优化，为了顺带处理后续的vma
 			 */
 			while (next && next->vm_start <= vma->vm_end + PMD_SIZE
 			       && !is_vm_hugetlb_page(next)) {
@@ -399,9 +411,12 @@ void free_pgtables(struct mmu_gather *tlb, struct ma_state *mas,
 				unlink_anon_vmas(vma);
 				unlink_file_vma(vma);
 			}
+			/* 释放这个范围的页表？ */
 			free_pgd_range(tlb, addr, vma->vm_end,
 				floor, next ? next->vm_start : ceiling);
 		}
+
+		/* 处理下一个 */
 		vma = next;
 	} while (vma);
 }
@@ -435,7 +450,9 @@ void pmd_install(struct mm_struct *mm, pmd_t *pmd, pgtable_t *pte)
 	}
 	spin_unlock(ptl);
 }
-
+/* 
+给这个pmd分配一个pte页表页面
+*/
 int __pte_alloc(struct mm_struct *mm, pmd_t *pmd)
 {
 	pgtable_t new = pte_alloc_one(mm);
@@ -595,7 +612,9 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 {
 	unsigned long pfn = pte_pfn(pte); //从pte获取到pfn
 
+	/* CONFIG_ARCH_HAS_PTE_SPECIAL的情况 */
 	if (IS_ENABLED(CONFIG_ARCH_HAS_PTE_SPECIAL)) {
+		/* 最普遍的情况 */
 		if (likely(!pte_special(pte)))
 			goto check_pfn;
 		if (vma->vm_ops && vma->vm_ops->find_special_page)
@@ -640,6 +659,10 @@ struct page *vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
 		return NULL;
 
 check_pfn:
+	/* 最普遍的情况, 开启CONFIG_ARCH_HAS_PTE_SPECIAL
+	然后page不是special
+	这里检查一下pfn
+	没有问题的话, 下一步就是直接返回了pfn_to_page(pfn) */
 	if (unlikely(pfn > highest_memmap_pfn)) {
 		print_bad_pte(vma, addr, pte, NULL);
 		return NULL;
@@ -1435,7 +1458,7 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 
 	tlb_change_page_size(tlb, PAGE_SIZE);
 	init_rss_vec(rss);
-	start_pte = pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
+	start_pte = pte = pte_offset_map_lock(mm, pmd, addr, &ptl);/* 获取ptep */
 	if (!pte)
 		return addr;
 
@@ -2864,6 +2887,7 @@ static inline int pte_unmap_same(struct vm_fault *vmf)
 }
 
 /*
+把src拷贝到dst
  * Return:
  *	0:		copied succeeded
  *	-EHWPOISON:	copy failed due to hwpoison in source page
@@ -2982,6 +3006,8 @@ static gfp_t __get_fault_gfp_mask(struct vm_area_struct *vma)
 }
 
 /*
+有且仅有这个函数调用vma提供的page_mkwrite回调
+告诉vma这个页面可写了
  * Notify the address space that the page is about to become writable so that
  * it can prohibit this or wait for the page to get into an appropriate state.
  *
@@ -2998,6 +3024,7 @@ static vm_fault_t do_page_mkwrite(struct vm_fault *vmf, struct folio *folio)
 	    IS_SWAPFILE(vmf->vma->vm_file->f_mapping->host))
 		return VM_FAULT_SIGBUS;
 
+	/* 调用vma的回调 */
 	ret = vmf->vma->vm_ops->page_mkwrite(vmf);
 	/* Restore original flags so that caller is not surprised */
 	vmf->flags = old_flags;
@@ -3028,6 +3055,7 @@ static vm_fault_t fault_dirty_shared_page(struct vm_fault *vmf)
 	bool dirtied;
 	bool page_mkwrite = vma->vm_ops && vma->vm_ops->page_mkwrite;
 
+	/* 调用mapping的回调, 设置folio为dirty */
 	dirtied = folio_mark_dirty(folio);
 	VM_BUG_ON_FOLIO(folio_test_anon(folio), folio);
 	/*
@@ -3071,6 +3099,8 @@ static vm_fault_t fault_dirty_shared_page(struct vm_fault *vmf)
 }
 
 /*
+如果发生的页面fault是因为写入共享页面导致的
+有可能调用这个函数
  * Handle write page faults for pages that can be reused in the current vma
  * 处理可以在当前 vma 中重用的页面的写错误
  * This can happen either due to the mapping being with the VM_SHARED flag,
@@ -3084,7 +3114,9 @@ static vm_fault_t fault_dirty_shared_page(struct vm_fault *vmf)
 static inline void wp_page_reuse(struct vm_fault *vmf)
 	__releases(vmf->ptl)
 {
+	/* 发生缺页的vma */
 	struct vm_area_struct *vma = vmf->vma;
+	/* 发生缺页时写的页面, 是存在的 */
 	struct page *page = vmf->page;
 	pte_t entry;
 
@@ -3112,6 +3144,7 @@ static inline void wp_page_reuse(struct vm_fault *vmf)
 }
 
 /*
+通过拷贝处理缺页
  * Handle the case of a page which we actually need to copy to a new page,
  * either due to COW or unsharing.
  *
@@ -3133,6 +3166,7 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 	const bool unshare = vmf->flags & FAULT_FLAG_UNSHARE;
 	struct vm_area_struct *vma = vmf->vma;
 	struct mm_struct *mm = vma->vm_mm;
+	/* 因为写入这个page（不可写)发生的缺页, */
 	struct folio *old_folio = NULL;
 	struct folio *new_folio = NULL;
 	pte_t entry;
@@ -3142,21 +3176,25 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 
 	delayacct_wpcopy_start();
 
+	/* 获取这个不可写的folio */
 	if (vmf->page)
 		old_folio = page_folio(vmf->page);
 	if (unlikely(anon_vma_prepare(vma)))
 		goto oom;
 
+	/* zero pfn是什么 */
 	if (is_zero_pfn(pte_pfn(vmf->orig_pte))) {
 		new_folio = vma_alloc_zeroed_movable_folio(vma, vmf->address);
 		if (!new_folio)
 			goto oom;
 	} else {
+		/* 这里分配新folio */
 		new_folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0, vma,
 				vmf->address, false);
 		if (!new_folio)
 			goto oom;
 
+		/* 这里进行拷贝 */
 		ret = __wp_page_copy_user(&new_folio->page, vmf->page, vmf);
 		if (ret) {
 			/*
@@ -3180,6 +3218,7 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 		goto oom_free_new;
 	folio_throttle_swaprate(new_folio, GFP_KERNEL);
 
+	/* 设置为up-to-date */
 	__folio_mark_uptodate(new_folio);
 
 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, mm,
@@ -3187,10 +3226,15 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 				(vmf->address & PAGE_MASK) + PAGE_SIZE);
 	mmu_notifier_invalidate_range_start(&range);
 
+	/* 刚刚是把新页面分配成功, 并且拷贝成功
+	这里设置pte相关 */
 	/*
 	 * Re-check the pte - we dropped the lock
+	 获取发生缺页的vma在缺页地址的pte指针, 马上这里需要设置上新值
 	 */
 	vmf->pte = pte_offset_map_lock(mm, vmf->pmd, vmf->address, &vmf->ptl);
+	/* 这里一般都能找到pte指针
+	并且现在pte的值, 也是指向old folio的 */
 	if (likely(vmf->pte && pte_same(ptep_get(vmf->pte), vmf->orig_pte))) {
 		if (old_folio) {
 			if (!folio_test_anon(old_folio)) {
@@ -3201,6 +3245,7 @@ static vm_fault_t wp_page_copy(struct vm_fault *vmf)
 			ksm_might_unmap_zero_page(mm, vmf->orig_pte);
 			inc_mm_counter(mm, MM_ANONPAGES);
 		}
+		/* 设置新pte */
 		flush_cache_page(vma, vmf->address, pte_pfn(vmf->orig_pte));
 		entry = mk_pte(&new_folio->page, vma->vm_page_prot);
 		entry = pte_sw_mkyoung(entry);
@@ -3355,7 +3400,8 @@ static vm_fault_t wp_pfn_shared(struct vm_fault *vmf)
 	return 0;
 }
 
-//cow处理wp情况
+/* 处理缺页
+处理写入共享文件映射mapping的情况 */
 static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 	__releases(vmf->ptl)
 {
@@ -3374,6 +3420,7 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 			return VM_FAULT_RETRY;
 		}
 
+		/* 调用回调, 通知页面可写了 */
 		tmp = do_page_mkwrite(vmf, folio);
 		if (unlikely(!tmp || (tmp &
 				      (VM_FAULT_ERROR | VM_FAULT_NOPAGE)))) {
@@ -3387,6 +3434,7 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 			return tmp;
 		}
 	} else {
+		/* 这里是直接重用这个页面 */
 		wp_page_reuse(vmf);
 		folio_lock(folio);
 	}
@@ -3398,8 +3446,9 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf, struct folio *folio)
 }
 
 /*
-  wp应该是write protect.
- * This routine handles present pages, when
+  wp是write protect.
+ 处理因为写私有页等导致的fault
+  * This routine handles present pages, when
    处理存在的页面，当
  * * users try to write to a shared page (FAULT_FLAG_WRITE)
  * * GUP wants to take a R/O pin on a possibly shared anonymous page
@@ -3433,8 +3482,10 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 	struct vm_area_struct *vma = vmf->vma;
 	struct folio *folio = NULL;
 
-	if (likely(!unshare)) { //什么情况?
-		if (userfaultfd_pte_wp(vma, ptep_get(vmf->pte))) {
+	if (likely(!unshare)) {/* 如果是共享的vma vmf？ */
+		if (userfaultfd_pte_wp(vma, ptep_get(vmf->pte))) {/* 
+			如果应该交给uffd处理
+			*/
 			pte_unmap_unlock(vmf->pte, vmf->ptl);
 			return handle_userfault(vmf, VM_UFFD_WP);
 		}
@@ -3458,8 +3509,9 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 	/*
 	 * Shared mapping: we are guaranteed to have VM_WRITE and
 	 * FAULT_FLAG_WRITE set at this point.
+	 写入共享映射的情况
 	 */
-	if (vma->vm_flags & (VM_SHARED | VM_MAYSHARE)) { //共享映射
+	if (vma->vm_flags & (VM_SHARED | VM_MAYSHARE)) {
 		/*
 		 * VM_MIXEDMAP !pfn_valid() case, or VM_SOFTDIRTY clear on a
 		 * VM_PFNMAP VMA.
@@ -3474,10 +3526,12 @@ static vm_fault_t do_wp_page(struct vm_fault *vmf)
 		if (!vmf->page)
 			return wp_pfn_shared(vmf);
 
-		return wp_page_shared(vmf,folio); //如果是私有的可写特殊映射，调用函数 wp_page_copy 以复制物理页，然后把虚拟页映射到新的物理页。
+		/* 处理写入共享页面的缺页fault */
+		return wp_page_shared(vmf,folio);
 	}
 
 	/*
+	写入私有的映射的情况
 	 * Private mapping: create an exclusive anonymous page copy if reuse
 	 * is impossible. We might miss VM_WRITE for FOLL_FORCE handling.
 	 */
@@ -3529,6 +3583,7 @@ reuse:
 		wp_page_reuse(vmf);
 		return 0;
 	}
+/* 这里不得不得通过复制页面处理缺页的情况? */
 copy:
 	if ((vmf->flags & FAULT_FLAG_VMA_LOCK) && !vma->anon_vma) {
 		pte_unmap_unlock(vmf->pte, vmf->ptl);
@@ -3547,17 +3602,21 @@ copy:
 	if (folio && folio_test_ksm(folio))
 		count_vm_event(COW_KSM);
 #endif
+	/*  */
 	return wp_page_copy(vmf);
 }
 
-/*  */
+/* 解除vma对范围内页面的映射
+start,end是mapping的范围, vma是映射到mapping的vma之一
+*/
 static void unmap_mapping_range_vma(struct vm_area_struct *vma,
 		unsigned long start_addr, unsigned long end_addr,
 		struct zap_details *details)
 {
 	zap_page_range_single(vma, start_addr, end_addr - start_addr, details);
 }
-/* 解除范围内的映射
+/* 
+解除范围内的映射
 root可能存储了映射到此mapping的所有vma
 ----------------------------
 可能是因为有多对多的关系, 这里先找到vma, 再处理vma
@@ -3576,6 +3635,7 @@ static inline void unmap_mapping_range_tree(struct rb_root_cached *root,
 		zba = max(first_index, vba);
 		zea = min(last_index, vea); // zba和zea分别代表此vma和要解除映射的范围的pgoff的起始和结束
 
+		/* 解除vma在范围内的映射 */
 		unmap_mapping_range_vma(vma,
 			((zba - vba) << PAGE_SHIFT) + vma->vm_start, // vm_start虚拟地址加上页数乘以4KB就是pgoff转为地址
 			((zea - vba + 1) << PAGE_SHIFT) + vma->vm_start,
@@ -3609,6 +3669,7 @@ void unmap_mapping_folio(struct folio *folio)
 
 	VM_BUG_ON(!folio_test_locked(folio));
 
+	/* first和last就是folio在mapping的index范围 */
 	first_index = folio->index;
 	last_index = folio_next_index(folio) - 1;
 
@@ -3626,6 +3687,7 @@ void unmap_mapping_folio(struct folio *folio)
 /**
  * unmap_mapping_pages() - Unmap pages from processes.
  解除被映射的页的映射
+ 20250629012819
  * @mapping: The address space containing pages to be unmapped.
  * @start: Index of first page to be unmapped.
  * @nr: Number of pages to be unmapped.  0 to unmap to end of file.
@@ -3651,6 +3713,7 @@ void unmap_mapping_pages(struct address_space *mapping, pgoff_t start,
 		last_index = ULONG_MAX;
 
 	i_mmap_lock_read(mapping);
+	/* 如果mapping->i_mmap还有vma, 就unmap */
 	if (unlikely(!RB_EMPTY_ROOT(&mapping->i_mmap.rb_root)))
 		unmap_mapping_range_tree(&mapping->i_mmap, first_index,
 					 last_index, &details);
@@ -3945,7 +4008,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 
 				/* To provide entry to swap_readpage() */
 				folio->swap = entry;
-				// 这里把swap file的内容换入到内存
+				// 这里把swap file的内容换入到内存page里面
 				swap_readpage(page, true, NULL);
 				folio->private = NULL;
 			}
@@ -4652,7 +4715,7 @@ static int __init fault_around_debugfs(void)
 late_initcall(fault_around_debugfs);
 #endif
 
-/*
+/*处理pf的时候会考虑调用这个,一次性多弄一些页面
  * do_fault_around() tries to map few pages around the fault address. The hope
  * is that the pages will be needed soon and this will lower the number of
  * faults to handle.
@@ -4816,7 +4879,7 @@ uncharge_out:
 	return ret;
 }
 
-//
+// 处理写入共享页导致的fault
 static vm_fault_t do_shared_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -4828,16 +4891,18 @@ static vm_fault_t do_shared_fault(struct vm_fault *vmf)
 		return VM_FAULT_RETRY;
 	}
 
+	/* 进行fault的过程, 获取页面 */
 	ret = __do_fault(vmf);
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE | VM_FAULT_RETRY)))
 		return ret;
 
+	/* 获取到的页面对应的folio */
 	folio = page_folio(vmf->page);
 
 	/*
 	 * Check if the backing address space wants to know that the page is
 	 * about to become writable
-	 */
+	 这里调用vma的page_mkwrite回调, 通知页面可写*/
 	if (vma->vm_ops->page_mkwrite) {
 		folio_unlock(folio);
 		tmp = do_page_mkwrite(vmf, folio);
@@ -4907,7 +4972,7 @@ static vm_fault_t do_fault(struct vm_fault *vmf)
 	else if (!(vma->vm_flags & VM_SHARED))
 		ret = do_cow_fault(vmf); //如果不是共享的, 那只能是写时复制
 	else
-		ret = do_shared_fault(vmf);  //可以共享映射同一个页面
+		ret = do_shared_fault(vmf);  //可以写入和共享映射同一个页面
 
 	/* preallocated pagetable is unused: free it */
 	if (vmf->prealloc_pte) {
@@ -5182,21 +5247,24 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	if (!vmf->pte) // pte不存在, 这里可能是匿名页的缺页, 也可能是文件页缺页, 这
 	//函数内部会分开处理
 		return do_pte_missing(vmf);
-	// 现在是有页面,但是不在内存中?
-
-	// 被交换的情况
+	/* 现在是有页面,但是不在内存中?
+	   被交换的情况 */
 	if (!pte_present(vmf->orig_pte)) //页面不在内存中 
 		return do_swap_page(vmf);
 
+	/* 页面在其他node? */
 	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
 
+	/* 现在是什么情况: 有pte, 在内存中,
+	哦哦可能是那些写私有页之类的错误  */
 	spin_lock(vmf->ptl);
 	entry = vmf->orig_pte;
 	if (unlikely(!pte_same(ptep_get(vmf->pte), entry))) {
 		update_mmu_tlb(vmf->vma, vmf->address, vmf->pte);
 		goto unlock;
 	}
+	/* 如果是写或者私有页导致的fault */
 	if (vmf->flags & (FAULT_FLAG_WRITE|FAULT_FLAG_UNSHARE)) {
 		if (!pte_write(entry))
 			return do_wp_page(vmf);
@@ -5239,6 +5307,7 @@ unlock:
 static vm_fault_t __handle_mm_fault(struct vm_area_struct *vma,
 		unsigned long address, unsigned int flags)
 {
+	/* 构造vmf结构体 */
 	struct vm_fault vmf = {
 		.vma = vma, 
 		.address = address & PAGE_MASK,
@@ -5328,7 +5397,10 @@ retry_pud:
 			}
 		}
 	}
-
+	/* 
+	刚刚是先follow下来，安装好各级页表
+	处理好巨页等各种特殊情况
+	*/
 	return handle_pte_fault(&vmf); // 可以处理pte了
 }
 
@@ -5468,7 +5540,7 @@ static vm_fault_t sanitize_fault_flags(struct vm_area_struct *vma,
 	return 0;
 }
 
-/*
+/*处理user的pf
  * By the time we get here, we already hold the mm semaphore
  * 在我们到达这里的时候，我们已经持有了mm信号量
  * The mmap_lock may have been released depending on flags and our
@@ -5704,6 +5776,7 @@ inval:
 
 #ifndef __PAGETABLE_P4D_FOLDED
 /*
+给pgd条目分配p4d页面
  * Allocate p4d page table.
  * We've already handled the fast-path in-line.
  */
@@ -5750,6 +5823,7 @@ int __pud_alloc(struct mm_struct *mm, p4d_t *p4d, unsigned long address)
 
 #ifndef __PAGETABLE_PMD_FOLDED
 /*
+分配pmd页面
  * Allocate page middle directory.
  * We've already handled the fast-path in-line.
  */

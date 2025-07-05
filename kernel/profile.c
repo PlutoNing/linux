@@ -96,7 +96,7 @@ int profile_setup(char *str)
 }
 __setup("profile=", profile_setup);
 
-
+/* profile是什么 */
 int __ref profile_init(void)
 {
 	int buffer_bytes;

@@ -101,7 +101,7 @@ static inline bool replace_android_lib(const char *filename, char *newfilename)
 	}
 	return false;
 }
-
+/* 设置新分配的map属性 */
 void map__init(struct map *map, u64 start, u64 end, u64 pgoff, struct dso *dso)
 {
 	map__set_start(map, start);
@@ -630,7 +630,7 @@ struct maps *map__kmaps(struct map *map)
 	}
 	return kmap->kmaps;
 }
-
+/*  */
 u64 map__dso_map_ip(const struct map *map, u64 ip)
 {
 	return ip - map__start(map) + map__pgoff(map);

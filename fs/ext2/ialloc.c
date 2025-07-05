@@ -37,7 +37,7 @@
  */
 
 
-/*
+/*获取指定块组的inode bitmap,读入sb的bitmap cache
  * Read the inode allocation bitmap for a given block_group, reading
  * into the specified slot in the superblock's bitmap cache.
  *
@@ -48,7 +48,7 @@ read_inode_bitmap(struct super_block * sb, unsigned long block_group)
 {
 	struct ext2_group_desc *desc;
 	struct buffer_head *bh = NULL;
-
+/* 获取group desc */
 	desc = ext2_get_group_desc(sb, block_group, NULL);
 	if (!desc)
 		goto error_out;
@@ -152,7 +152,7 @@ void ext2_free_inode (struct inode * inode)
 	brelse(bitmap_bh);
 }
 
-/*
+/* 预读刚分配的inode
  * We perform asynchronous prereading of the new inode's inode block when
  * we create the inode, in the expectation that the inode will be written
  * back soon.  There are two reasons:
@@ -170,7 +170,7 @@ static void ext2_preread_inode(struct inode *inode)
 	unsigned long offset;
 	unsigned long block;
 	struct ext2_group_desc * gdp;
-
+/* 块组的计算方式 */
 	block_group = (inode->i_ino - 1) / EXT2_INODES_PER_GROUP(inode->i_sb);
 	gdp = ext2_get_group_desc(inode->i_sb, block_group, NULL);
 	if (gdp == NULL)
@@ -178,11 +178,11 @@ static void ext2_preread_inode(struct inode *inode)
 
 	/*
 	 * Figure out the offset within the block group inode table
-	 */
+	offset是在块组内的偏移? */
 	offset = ((inode->i_ino - 1) % EXT2_INODES_PER_GROUP(inode->i_sb)) *
 				EXT2_INODE_SIZE(inode->i_sb);
 	block = le32_to_cpu(gdp->bg_inode_table) +
-				(offset >> EXT2_BLOCK_SIZE_BITS(inode->i_sb));
+				(offset >> EXT2_BLOCK_SIZE_BITS(inode->i_sb));/* 获取块号 */
 	sb_breadahead(inode->i_sb, block);
 }
 
@@ -415,7 +415,7 @@ static int find_group_other(struct super_block *sb, struct inode *parent)
 found:
 	return group;
 }
-
+/* ext2创建新inode */
 struct inode *ext2_new_inode(struct inode *dir, umode_t mode,
 			     const struct qstr *qstr)
 {
@@ -432,11 +432,11 @@ struct inode *ext2_new_inode(struct inode *dir, umode_t mode,
 	int err;
 
 	sb = dir->i_sb;
-	inode = new_inode(sb);
+	inode = new_inode(sb);/* 这里是共有的函数 */
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 
-	ei = EXT2_I(inode);
+	ei = EXT2_I(inode);    
 	sbi = EXT2_SB(sb);
 	es = sbi->s_es;
 	if (S_ISDIR(mode)) {
@@ -451,16 +451,16 @@ struct inode *ext2_new_inode(struct inode *dir, umode_t mode,
 		err = -ENOSPC;
 		goto fail;
 	}
-
+/* ext2特定的机制 */
 	for (i = 0; i < sbi->s_groups_count; i++) {
-		gdp = ext2_get_group_desc(sb, group, &bh2);
+		gdp = ext2_get_group_desc(sb, group, &bh2);/* 找到当前的gdb */
 		if (!gdp) {
 			if (++group == sbi->s_groups_count)
 				group = 0;
 			continue;
 		}
 		brelse(bitmap_bh);
-		bitmap_bh = read_inode_bitmap(sb, group);
+		bitmap_bh = read_inode_bitmap(sb, group);/* 获取inode bitmap */
 		if (!bitmap_bh) {
 			err = -EIO;
 			goto fail;
@@ -481,8 +481,8 @@ repeat_in_this_group:
 			 */
 			if (++group == sbi->s_groups_count)
 				group = 0;
-			continue;
-		}
+			continue;/* 去下一个group找 */
+		} /* 置位bitmap的ino位置 */
 		if (ext2_set_bit_atomic(sb_bgl_lock(sbi, group),
 						ino, bitmap_bh->b_data)) {
 			/* we lost this inode */
@@ -504,10 +504,10 @@ repeat_in_this_group:
 	brelse(bitmap_bh);
 	err = -ENOSPC;
 	goto fail;
-got:
-	mark_buffer_dirty(bitmap_bh);
+got:/* 置位inode bitmap成功后 */
+	mark_buffer_dirty(bitmap_bh);/* 标记需要回写 */
 	if (sb->s_flags & SB_SYNCHRONOUS)
-		sync_dirty_buffer(bitmap_bh);
+		sync_dirty_buffer(bitmap_bh);/* 关键函数 */
 	brelse(bitmap_bh);
 
 	ino += group * EXT2_INODES_PER_GROUP(sb) + 1;

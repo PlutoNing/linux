@@ -1026,7 +1026,11 @@ out_free_interp:
 
 	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
 		current->flags |= PF_RANDOMIZE;
-
+	/* 
+	exec之后调用
+	这个时候应该就是子进程在运行了
+	函数设置mm的一些属性
+	*/
 	setup_new_exec(bprm);
 
 	/* Do this so that we can load the interpreter, if need be.  We will

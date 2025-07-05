@@ -109,6 +109,7 @@ struct clone_args {
 #define CLONE_ARGS_SIZE_VER2 88 /* sizeof third published struct */
 
 /*
+内核的几种调度策略
  * Scheduling policies
  */
 #define SCHED_NORMAL		0

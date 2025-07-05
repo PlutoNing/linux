@@ -125,7 +125,7 @@ void ksys_sync(void)
 	if (unlikely(laptop_mode))
 		laptop_sync_completion();
 }
-
+/* sync的系统调用 */
 SYSCALL_DEFINE0(sync)
 {
 	ksys_sync();
@@ -177,6 +177,7 @@ SYSCALL_DEFINE1(syncfs, int, fd)
 	sb = f.file->f_path.dentry->d_sb;
 
 	down_read(&sb->s_umount);
+	/* 同步这个fs */
 	ret = sync_filesystem(sb);
 	up_read(&sb->s_umount);
 
@@ -211,6 +212,7 @@ int vfs_fsync_range(struct file *file, loff_t start, loff_t end, int datasync)
 EXPORT_SYMBOL(vfs_fsync_range);
 
 /**
+执行fsync和fdatasync
  * vfs_fsync - perform a fsync or fdatasync on a file
  * @file:		file to sync
  * @datasync:		only perform a fdatasync operation
@@ -223,19 +225,21 @@ int vfs_fsync(struct file *file, int datasync)
 	return vfs_fsync_range(file, 0, LLONG_MAX, datasync);
 }
 EXPORT_SYMBOL(vfs_fsync);
-
+/* 
+执行fsync和fdatasync系统调用
+*/
 static int do_fsync(unsigned int fd, int datasync)
 {
 	struct fd f = fdget(fd);
 	int ret = -EBADF;
 
-	if (f.file) {
+	if (f.file) {/* sync指定的文件 */
 		ret = vfs_fsync(f.file, datasync);
 		fdput(f);
 	}
 	return ret;
 }
-
+/* fsync和fdatasync系统调用 */
 SYSCALL_DEFINE1(fsync, unsigned int, fd)
 {
 	return do_fsync(fd, 0);
@@ -245,7 +249,7 @@ SYSCALL_DEFINE1(fdatasync, unsigned int, fd)
 {
 	return do_fsync(fd, 1);
 }
-
+/* 同步这个文件 */
 int sync_file_range(struct file *file, loff_t offset, loff_t nbytes,
 		    unsigned int flags)
 {
@@ -257,13 +261,14 @@ int sync_file_range(struct file *file, loff_t offset, loff_t nbytes,
 	ret = -EINVAL;
 	if (flags & ~VALID_FLAGS)
 		goto out;
-
+	/* 获取到同步的结束范围 */
 	endbyte = offset + nbytes;
 
 	if ((s64)offset < 0)
 		goto out;
 	if ((s64)endbyte < 0)
 		goto out;
+	/* 溢出了 */
 	if (endbyte < offset)
 		goto out;
 
@@ -283,7 +288,7 @@ int sync_file_range(struct file *file, loff_t offset, loff_t nbytes,
 			nbytes = 0;
 		}
 	}
-
+	/* 长度为0. 就是全部sync */
 	if (nbytes == 0)
 		endbyte = LLONG_MAX;
 	else
@@ -294,10 +299,13 @@ int sync_file_range(struct file *file, loff_t offset, loff_t nbytes,
 	if (!S_ISREG(i_mode) && !S_ISBLK(i_mode) && !S_ISDIR(i_mode) &&
 			!S_ISLNK(i_mode))
 		goto out;
-
+	/*
+	 获取file的mapping
+	  */
 	mapping = file->f_mapping;
 	ret = 0;
 	if (flags & SYNC_FILE_RANGE_WAIT_BEFORE) {
+		/* 同步这个范围 */
 		ret = file_fdatawait_range(file, offset, endbyte);
 		if (ret < 0)
 			goto out;
@@ -305,7 +313,7 @@ int sync_file_range(struct file *file, loff_t offset, loff_t nbytes,
 
 	if (flags & SYNC_FILE_RANGE_WRITE) {
 		int sync_mode = WB_SYNC_NONE;
-
+		/* 如果三个flag全指定了 */
 		if ((flags & SYNC_FILE_RANGE_WRITE_AND_WAIT) ==
 			     SYNC_FILE_RANGE_WRITE_AND_WAIT)
 			sync_mode = WB_SYNC_ALL;
@@ -324,6 +332,7 @@ out:
 }
 
 /*
+执行sync file系统调用
  * ksys_sync_file_range() permits finely controlled syncing over a segment of
  * a file in the range offset .. (offset+nbytes-1) inclusive.  If nbytes is
  * zero then ksys_sync_file_range() will operate from offset out to EOF.
@@ -381,14 +390,17 @@ int ksys_sync_file_range(int fd, loff_t offset, loff_t nbytes,
 
 	ret = -EBADF;
 	f = fdget(fd);
-	if (f.file)
+	if (f.file) /* 同步这个文件 */
 		ret = sync_file_range(f.file, offset, nbytes, flags);
 
 	fdput(f);
 	return ret;
 }
 
-SYSCALL_DEFINE4(sync_file_range, int, fd, loff_t, offset, loff_t, nbytes,
+SYSCALL_DEFINE4(sync_file_range, 
+	int, fd, 
+	loff_t, offset, 
+	loff_t, nbytes,
 				unsigned int, flags)
 {
 	return ksys_sync_file_range(fd, offset, nbytes, flags);

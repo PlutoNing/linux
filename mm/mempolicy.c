@@ -128,7 +128,7 @@ static struct mempolicy default_policy = {
 	.mode = MPOL_LOCAL,
 };
 
-//node倾向的内存策略
+//node倾向的内存策略, 每个node的preferred_node_policy
 static struct mempolicy preferred_node_policy[MAX_NUMNODES];
 
 /**
@@ -257,7 +257,7 @@ static int mpol_set_nodemask(struct mempolicy *pol,
 	return ret;
 }
 
-/*
+/*新建一个内存pol
  * This function just creates a new policy, does some check and simple
  * initialization. You must invoke mpol_set_nodemask() to set nodes.
  */
@@ -857,7 +857,7 @@ static int mbind_range(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	return vma_replace_policy(vma, new_pol);
 }
 
-/* Set the process memory policy */
+/* Set the process memory policy，设置进程内存pol */
 static long do_set_mempolicy(unsigned short mode, unsigned short flags,
 			     nodemask_t *nodes)
 {
@@ -875,7 +875,7 @@ static long do_set_mempolicy(unsigned short mode, unsigned short flags,
 	}
 
 	task_lock(current);
-	ret = mpol_set_nodemask(new, nodes, scratch);
+	ret = mpol_set_nodemask(new, nodes, scratch);/* 设置内存pol */
 	if (ret) {
 		task_unlock(current);
 		mpol_put(new);
@@ -2158,7 +2158,7 @@ static struct page *alloc_page_interleave(gfp_t gfp, unsigned order,
 	/* skip NUMA_INTERLEAVE_HIT counter update if numa stats is disabled */
 	if (!static_branch_likely(&vm_numa_stat_key))
 		return page;
-    //看来是🈶一些统计信息的, 不过可以到cgroup级别的计数吗?
+    //看来是有一些统计信息的, 不过可以到cgroup级别的计数吗?
 	if (page && page_to_nid(page) == nid) {
 		preempt_disable();
 		__count_numa_event(page_zone(page), NUMA_INTERLEAVE_HIT);
@@ -2192,7 +2192,9 @@ static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
 }
 
 /**
-   给vma分配一个folio
+   分配一个folio
+   =====
+   addr用于获取nid和pol
  * vma_alloc_folio - Allocate a folio for a VMA.
  * @gfp: GFP flags.
  * @order: Order of the folio.
@@ -2969,7 +2971,7 @@ void __init numa_policy_init(void)
 	sn_cache = kmem_cache_create("shared_policy_node",
 				     sizeof(struct sp_node),
 				     0, SLAB_PANIC, NULL);
-
+	/* 设置每个node的preferred_node_policy */
 	for_each_node(nid) {
 		preferred_node_policy[nid] = (struct mempolicy) {
 			.refcnt = ATOMIC_INIT(1),

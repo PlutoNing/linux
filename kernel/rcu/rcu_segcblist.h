@@ -28,7 +28,8 @@ void rcu_cblist_flush_enqueue(struct rcu_cblist *drclp,
 struct rcu_head *rcu_cblist_dequeue(struct rcu_cblist *rclp);
 
 /*
- * Is the specified rcu_segcblist structure empty?
+检查cblist是不是空的
+ * Is the specified -- rcu_segcblist structure empty?
  *
  * But careful!  The fact that the ->head field is NULL does not
  * necessarily imply that there are no callbacks associated with
@@ -45,7 +46,10 @@ static inline bool rcu_segcblist_empty(struct rcu_segcblist *rsclp)
 	return !READ_ONCE(rsclp->head);
 }
 
-/* Return number of callbacks in segmented callback list. */
+/*
+参数是当前处理的cpu的rdp->cblist
+这里获取长度
+ Return number of callbacks in segmented callback list. */
 static inline long rcu_segcblist_n_cbs(struct rcu_segcblist *rsclp)
 {
 #ifdef CONFIG_RCU_NOCB_CPU
@@ -74,6 +78,7 @@ static inline bool rcu_segcblist_test_flags(struct rcu_segcblist *rsclp,
 }
 
 /*
+检查rdp的flag判断cblist是否启用
  * Is the specified rcu_segcblist enabled, for example, not corresponding
  * to an offline CPU?
  */
@@ -83,6 +88,7 @@ static inline bool rcu_segcblist_is_enabled(struct rcu_segcblist *rsclp)
 }
 
 /*
+检查cblist是不是卸载了
  * Is the specified rcu_segcblist NOCB offloaded (or in the middle of the
  * [de]offloading process)?
  */
@@ -105,6 +111,7 @@ static inline bool rcu_segcblist_completely_offloaded(struct rcu_segcblist *rscl
 }
 
 /*
+检查这个seg的cb是不是空了
  * Are all segments following the specified segment of the specified
  * rcu_segcblist structure empty of callbacks?  (The specified
  * segment might well contain callbacks.)

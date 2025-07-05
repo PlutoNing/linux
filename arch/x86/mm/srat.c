@@ -101,7 +101,7 @@ acpi_numa_processor_affinity_init(struct acpi_srat_cpu_affinity *pa)
 	printk(KERN_INFO "SRAT: PXM %u -> APIC 0x%02x -> Node %u\n",
 	       pxm, apic_id, node);
 }
-
+/* 以后 */
 int __init x86_acpi_numa_init(void)
 {
 	int ret;

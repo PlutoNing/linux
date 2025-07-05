@@ -167,7 +167,7 @@ static struct resource *alloc_resource(gfp_t flags)
 	return kzalloc(sizeof(struct resource), flags);
 }
 
-/* Return the conflict entry if you can't request it */
+/* Return the conflict entry if you can't request it，资源树相关 */
 static struct resource * __request_resource(struct resource *root, struct resource *new)
 {
 	resource_size_t start = new->start;
@@ -763,7 +763,7 @@ struct resource *lookup_resource(struct resource *root, resource_size_t start)
 	return res;
 }
 
-/*
+/*资源树是什么
  * Insert a resource into the resource tree. If successful, return NULL,
  * otherwise return the conflicting resource (compare to __request_resource())
  */

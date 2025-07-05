@@ -195,7 +195,7 @@ static size_t elf_addr_to_index(Elf *elf, GElf_Addr addr)
 
 	return -1;
 }
-
+/* ep是elf的hdr,读取一个name指定的段到shp */
 Elf_Scn *elf_section_by_name(Elf *elf, GElf_Ehdr *ep,
 			     GElf_Shdr *shp, const char *name, size_t *idx)
 {
@@ -852,7 +852,7 @@ char *dso__demangle_sym(struct dso *dso, int kmodule, const char *elf_name)
  * Align offset to 4 bytes as needed for note name and descriptor data.
  */
 #define NOTE_ALIGN(n) (((n) + 3) & -4U)
-
+/* 读取elf的bid */
 static int elf_read_build_id(Elf *elf, void *bf, size_t size)
 {
 	int err = -1;
@@ -869,7 +869,7 @@ static int elf_read_build_id(Elf *elf, void *bf, size_t size)
 	ek = elf_kind(elf);
 	if (ek != ELF_K_ELF)
 		goto out;
-
+/* 获取elf的header */
 	if (gelf_getehdr(elf, &ehdr) == NULL) {
 		pr_err("%s: cannot get elf header.\n", __func__);
 		goto out;
@@ -962,7 +962,7 @@ out_close:
 }
 
 #else // HAVE_LIBBFD_BUILDID_SUPPORT
-
+/* 读取bid */
 static int read_build_id(const char *filename, struct build_id *bid)
 {
 	size_t size = sizeof(bid->data);
@@ -994,7 +994,7 @@ out:
 }
 
 #endif // HAVE_LIBBFD_BUILDID_SUPPORT
-
+/* 读取库文件的build id */
 int filename__read_build_id(const char *filename, struct build_id *bid)
 {
 	struct kmod_path m = { .name = NULL, };

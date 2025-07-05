@@ -27,7 +27,7 @@ struct vfsmount;
 struct path;
 
 enum fs_context_purpose {
-	FS_CONTEXT_FOR_MOUNT,		/* New superblock for explicit mount */
+	FS_CONTEXT_FOR_MOUNT,		/* 是为了挂载, New superblock for explicit mount */
 	FS_CONTEXT_FOR_SUBMOUNT,	/* New superblock for automatic submount */
 	FS_CONTEXT_FOR_RECONFIGURE,	/* Superblock reconfiguration (remount) */
 };
@@ -89,11 +89,15 @@ struct p_log {
  * See Documentation/filesystems/mount_api.rst
  */
 struct fs_context {
+	/* fc的ops
+	作用是
+	 */
 	const struct fs_context_operations *ops;
 	struct mutex		uapi_mutex;	/* Userspace access mutex */
 	struct file_system_type	*fs_type; // 指向文件系统类型的指针
 	void			*fs_private;	/* The filesystem's context//
-	 文件系统的私有上下文，用于存储特定的配置或数据 */
+	 文件系统的私有上下文，用于存储特定的配置或数据
+	 一般是指向具体fs直接实现的fc */
 	void			*sget_key;
 	struct dentry		*root;		/* The root and superblock // 根目录和超级块指针*/
 	struct user_namespace	*user_ns;	/* The user namespace for this mount */
@@ -115,10 +119,14 @@ struct fs_context {
 };
 
 struct fs_context_operations {
+	// 释放fc的时候调用
 	void (*free)(struct fs_context *fc);
 	int (*dup)(struct fs_context *fc, struct fs_context *src_fc);
+	// 解析文件系统参数
 	int (*parse_param)(struct fs_context *fc, struct fs_parameter *param);
 	int (*parse_monolithic)(struct fs_context *fc, void *data);
+	/* Get the mountable root in fc->root, with a ref on the root and a ref
+	 * on the superblock. */
 	int (*get_tree)(struct fs_context *fc);
 	int (*reconfigure)(struct fs_context *fc);
 };

@@ -474,11 +474,11 @@ int __init acpi_table_parse_madt(enum acpi_madt_type id,
 					    handler, max_entries);
 }
 
-/**
+/**对表上的id调用回调
  * acpi_table_parse - find table with @id, run @handler on it
- * @id: table id to find
+ * @id: table id to find,比如可能是acpi的SRAT什么的
  * @handler: handler to run
- *
+ * 
  * Scan the ACPI System Descriptor Table (STD) for a table matching @id,
  * run @handler on it.
  *
@@ -493,7 +493,7 @@ int __init acpi_table_parse(char *id, acpi_tbl_table_handler handler)
 
 	if (!id || !handler)
 		return -EINVAL;
-
+/* 下面找到id对应的， 放在table */
 	if (strncmp(id, ACPI_SIG_MADT, 4) == 0)
 		acpi_get_table(id, acpi_apic_instance, &table);
 	else

@@ -387,7 +387,9 @@ struct page_vma_mapped_walk {
 	pgoff_t pgoff;
 	struct vm_area_struct *vma;
 	unsigned long address;
+	/* pvmw->address所对应的pmd */
 	pmd_t *pmd;
+	/* pvmw->address对应的ptep */
 	pte_t *pte;
 	spinlock_t *ptl;
 	unsigned int flags;

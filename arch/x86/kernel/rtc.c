@@ -53,7 +53,7 @@ int mach_set_cmos_time(const struct timespec64 *now)
 	}
 	return retval;
 }
-
+/* 是x86_platform.get_wallclock的函数 */
 void mach_get_cmos_time(struct timespec64 *now)
 {
 	struct rtc_time tm;
@@ -107,7 +107,7 @@ int update_persistent_clock64(struct timespec64 now)
 
 /* not static: needed by APM */
 void read_persistent_clock64(struct timespec64 *ts)
-{
+{/* 调用回调 */
 	x86_platform.get_wallclock(ts);
 }
 

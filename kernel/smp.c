@@ -43,13 +43,13 @@ struct call_function_data {
 };
 
 static DEFINE_PER_CPU_ALIGNED(struct call_function_data, cfd_data);
-/* pcp的csd队列, 挂载着要调用的csd函数 */
+/* pcp的csd队列, 挂载着要调用的csd函数, 比如进程的p->wake_entry.llist成员 */
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct llist_head, call_single_queue);
 
 static DEFINE_PER_CPU(atomic_t, trigger_backtrace) = ATOMIC_INIT(1);
 
 static void __flush_smp_call_function_queue(bool warn_cpu_offline);
-
+/*  */
 int smpcfd_prepare_cpu(unsigned int cpu)
 {
 	struct call_function_data *cfd = &per_cpu(cfd_data, cpu);
@@ -107,13 +107,18 @@ void __init call_function_init(void)
 
 	smpcfd_prepare_cpu(smp_processor_id());
 }
-/* 好像是执行这个cpu的csd列表 */
+/* 好像是执行这个cpu的csd列表
+一般往此cpu的pcp call_single_queue队列中添加csd(比如进程的p->wake_entry.llist)
+后会调用这个函数触发ipi中断来执行函数
+*/
 static __always_inline void
 send_call_function_single_ipi(int cpu)
 {
 	if (call_function_single_prep_ipi(cpu)) {
+		/* 返回true表示cpu的rq的idle会执行sched_ttwu */
 		trace_ipi_send_cpu(cpu, _RET_IP_,
 				   generic_smp_call_function_single_interrupt);
+		/* 触发ipi中断来执行函数 */
 		arch_send_call_function_single_ipi(cpu);
 	}
 }
@@ -332,9 +337,15 @@ static __always_inline void csd_unlock(struct __call_single_data *csd)
 	 */
 	smp_store_release(&csd->node.u_flags, 0);
 }
-
+/* 这里好像是公用的csd? */
 static DEFINE_PER_CPU_SHARED_ALIGNED(call_single_data_t, csd_data);
-/* 在其他cpu上面执行csd函数的情况 */
+/*
+在其他cpu上面执行csd函数的情况
+@node比如说可能是一个即将被运行的进程的p->wake_entry.llist
+也可能是是个irq_work
+============================
+加入call_single_queue准备执行, 触发ipi中断执行函数
+*/
 void __smp_call_single_queue(int cpu, struct llist_node *node)
 {
 	/*
@@ -343,11 +354,12 @@ void __smp_call_single_queue(int cpu, struct llist_node *node)
 	 *   flush_smp_call_function_queue()
 	 * even if we haven't sent the smp_call IPI yet (e.g. the stopper
 	 * executes migration_cpu_stop() on the remote CPU).
+	 这里trace一下
 	 */
 	if (trace_csd_queue_cpu_enabled()) {
 		call_single_data_t *csd;
 		smp_call_func_t func;
-
+		/* 这里获取到csd成员,比如进程的p->wake_entry.llist */
 		csd = container_of(node, call_single_data_t, node.llist);
 		func = CSD_TYPE(csd) == CSD_TYPE_TTWU ?
 			sched_ttwu_pending : csd->func;
@@ -366,12 +378,14 @@ void __smp_call_single_queue(int cpu, struct llist_node *node)
 	 * to arch code to make it appear to obey cache coherency WRT
 	 * locking and barrier primitives. Generic code isn't really
 	 * equipped to do the right thing...
+	 这里把进程的p->wake_entry.llist成员加入pcp的call_single_queue队列
 	 */
 	if (llist_add(node, &per_cpu(call_single_queue, cpu)))
-		send_call_function_single_ipi(cpu);
+		send_call_function_single_ipi(cpu);/* 触发ipi中断执行函数 */
 }
 
 /*
+在cpu上面执行
  * Insert a previously allocated call_single_data_t element
  * for execution on the given CPU. data must already have
  * ->func, ->info, and ->flags set.
@@ -410,6 +424,8 @@ static int generic_exec_single(int cpu, struct __call_single_data *csd)
 }
 
 /**
+这是个中断的回调函数
+执行smp ipi回调函数
  * generic_smp_call_function_single_interrupt - Execute SMP IPI callbacks
  *
  * Invoked by arch to handle an IPI for call function single.
@@ -421,6 +437,12 @@ void generic_smp_call_function_single_interrupt(void)
 }
 
 /**
+=================================
+caller: 一个是generic_smp_call_function_single_interrupt
+一个是flush_smp_call_function_queue
+==================================
+刷新smp-call-function队列
+遍历queue,执行csd函数
  * __flush_smp_call_function_queue - Flush pending smp-call-function callbacks
  *
  * @warn_cpu_offline: If set to 'true', warn if callbacks were queued on an
@@ -448,13 +470,16 @@ static void __flush_smp_call_function_queue(bool warn_cpu_offline)
 	tbt = this_cpu_ptr(&trigger_backtrace);
 	atomic_set_release(tbt, 1);
 
+	/* 获取当前cpu的call_single_queue */
 	head = this_cpu_ptr(&call_single_queue);
 	entry = llist_del_all(head);
+	/* 反转链表 */
 	entry = llist_reverse_order(entry);
 
 	/* There shouldn't be any pending callbacks on an offline CPU. */
 	if (unlikely(warn_cpu_offline && !cpu_online(smp_processor_id()) &&
 		     !warned && entry != NULL)) {
+		/* 处理bugon */
 		warned = true;
 		WARN(1, "IPI on offline CPU %d\n", smp_processor_id());
 
@@ -487,8 +512,10 @@ static void __flush_smp_call_function_queue(bool warn_cpu_offline)
 	 * First; run all SYNC callbacks, people are waiting for us.
 	 */
 	prev = NULL;
+	/* 遍历queue里面的全部csd */
 	llist_for_each_entry_safe(csd, csd_next, entry, node.llist) {
 		/* Do we wait until *after* callback? */
+		/* 先处理sync的csd */
 		if (CSD_TYPE(csd) == CSD_TYPE_SYNC) {
 			smp_call_func_t func = csd->func;
 			void *info = csd->info;
@@ -507,6 +534,8 @@ static void __flush_smp_call_function_queue(bool warn_cpu_offline)
 			prev = &csd->node.llist;
 		}
 	}
+	/* 刚刚处理完sync类型的csd
+	下面还有IRQ_WORK, ASYNC, TTWU类型的csd */
 
 	if (!entry)
 		return;
@@ -518,6 +547,7 @@ static void __flush_smp_call_function_queue(bool warn_cpu_offline)
 	llist_for_each_entry_safe(csd, csd_next, entry, node.llist) {
 		int type = CSD_TYPE(csd);
 
+		/* CSD_TYPE_TTWU下一步处理, 这里处理IRQ_WORK与ASYNC */
 		if (type != CSD_TYPE_TTWU) {
 			if (prev) {
 				prev->next = &csd_next->node.llist;
@@ -534,6 +564,7 @@ static void __flush_smp_call_function_queue(bool warn_cpu_offline)
 				csd_do_func(func, info, csd);
 				csd_lock_record(NULL);
 			} else if (type == CSD_TYPE_IRQ_WORK) {
+				/* __flush_smp_call_function_queue处理irq_work */
 				irq_work_single(csd);
 			}
 
@@ -553,6 +584,8 @@ static void __flush_smp_call_function_queue(bool warn_cpu_offline)
 
 
 /**
+刷新smp-call-function队列
+idle函数和迁移进程都会调用这个
  * flush_smp_call_function_queue - Flush pending smp-call-function callbacks
  *				   from task context (idle, migration thread)
  *
@@ -569,12 +602,14 @@ void flush_smp_call_function_queue(void)
 	unsigned int was_pending;
 	unsigned long flags;
 
+	/* 如果当前cpu的call_single_queue为空, 无需处理 */
 	if (llist_empty(this_cpu_ptr(&call_single_queue)))
 		return;
 
 	local_irq_save(flags);
 	/* Get the already pending soft interrupts for RT enabled kernels */
 	was_pending = local_softirq_pending();
+	/* 执行队列上的csd函数 */
 	__flush_smp_call_function_queue(true);
 	if (local_softirq_pending())
 		do_softirq_post_smp_call_flush(was_pending);
@@ -590,6 +625,7 @@ void flush_smp_call_function_queue(void)
  * @wait: If true, wait until function has completed on other CPUs.
  *
  * Returns 0 on success, else a negative status code.
+ 返回非零可能是一种需要重试的情况
  */
 int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 			     int wait)
@@ -624,12 +660,15 @@ int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 	 */
 	WARN_ON_ONCE(!in_task());
 
+	/* 栈上分配的 */
 	csd = &csd_stack;
 	if (!wait) {
+		/* 也可能使用pcp的? */
 		csd = this_cpu_ptr(&csd_data);
 		csd_lock(csd);
 	}
 
+	/* 封装函数和参数 */
 	csd->func = func;
 	csd->info = info;
 #ifdef CONFIG_CSD_LOCK_WAIT_DEBUG
@@ -637,6 +676,7 @@ int smp_call_function_single(int cpu, smp_call_func_t func, void *info,
 	csd->node.dst = cpu;
 #endif
 
+	/* 开始调用 */
 	err = generic_exec_single(cpu, csd);
 
 	if (wait)
@@ -747,6 +787,7 @@ EXPORT_SYMBOL_GPL(smp_call_function_any);
 #define SCF_WAIT	(1U << 0)
 #define SCF_RUN_LOCAL	(1U << 1)
 
+/*  */
 static void smp_call_function_many_cond(const struct cpumask *mask,
 					smp_call_func_t func, void *info,
 					unsigned int scf_flags,
@@ -852,6 +893,7 @@ static void smp_call_function_many_cond(const struct cpumask *mask,
 }
 
 /**
+在所有给定的CPU上运行一个函数
  * smp_call_function_many(): Run a function on a set of CPUs.
  * @mask: The set of cpus to run on (only runs on online subset).
  * @func: The function to run. This must be fast and non-blocking.
@@ -875,6 +917,7 @@ void smp_call_function_many(const struct cpumask *mask,
 EXPORT_SYMBOL(smp_call_function_many);
 
 /**
+在所有其他CPU上运行一个函数
  * smp_call_function(): Run a function on all other CPUs.
  * @func: The function to run. This must be fast and non-blocking.
  * @info: An arbitrary pointer to pass to the function.

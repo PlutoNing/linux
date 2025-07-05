@@ -14,6 +14,8 @@ static int rcu_print_task_exp_stall(struct rcu_node *rnp);
 static void rcu_exp_print_detail_task_stall_rnp(struct rcu_node *rnp);
 
 /*
+增加expedited seq的值
+用于开始一个expedited gp
  * Record the start of an expedited grace period.
  */
 static void rcu_exp_gp_seq_start(void)
@@ -42,6 +44,7 @@ static void rcu_exp_gp_seq_end(void)
 }
 
 /*
+保存rcu_state.expedited_sequence的seq版本号
  * Take a snapshot of the expedited-grace-period counter, which is the
  * earliest value that will indicate that a full grace period has
  * elapsed since the current time.
@@ -57,6 +60,9 @@ static unsigned long rcu_exp_gp_seq_snap(void)
 }
 
 /*
+s是一个expedited版本号
+这里检查在获取这个版本号之后是否完成了一个gp
+就是检查这个s是不是落后了源值
  * Given a counter snapshot from rcu_exp_gp_seq_snap(), return true
  * if a full expedited grace period has elapsed since that snapshot
  * was taken.
@@ -67,6 +73,8 @@ static bool rcu_exp_gp_seq_done(unsigned long s)
 }
 
 /*
+以后
+重置rcu_node树中的->expmaskinit值用于反应cpu的上线活动
  * Reset the ->expmaskinit values in the rcu_node tree to reflect any
  * recent CPU-online activity.  Note that these masks are not cleared
  * when CPUs go offline, so they reflect the union of all CPUs that have
@@ -86,11 +94,13 @@ static void sync_exp_reset_tree_hotplug(void)
 	/* If no new CPUs onlined since last time, nothing to do. */
 	if (likely(ncpus == rcu_state.ncpus_snap))
 		return;
+	/* 更新ncpus快照 */
 	rcu_state.ncpus_snap = ncpus;
 
 	/*
 	 * Each pass through the following loop propagates newly onlined
 	 * CPUs for the current rcu_node structure up the rcu_node tree.
+	 这里遍历rcu_state的什么叶节点
 	 */
 	rcu_for_each_leaf_node(rnp) {
 		raw_spin_lock_irqsave_rcu_node(rnp, flags);
@@ -127,6 +137,8 @@ static void sync_exp_reset_tree_hotplug(void)
 }
 
 /*
+为了准备一个新的expedited gp
+这里重置rcu_node树中的->expmask值
  * Reset the ->expmask values in the rcu_node tree in preparation for
  * a new expedited grace period.
  */
@@ -262,7 +274,8 @@ static void rcu_report_exp_rdp(struct rcu_data *rdp)
 	rcu_report_exp_cpu_mult(rdp->mynode, rdp->grpmask, true);
 }
 
-/* Common code for work-done checking. */
+/* Common code for work-done checking.
+检查s是不是落后了源值, 说明过了一个gp? */
 static bool sync_exp_work_done(unsigned long s)
 {
 	if (rcu_exp_gp_seq_done(s)) {
@@ -279,6 +292,8 @@ static bool sync_exp_work_done(unsigned long s)
  * can piggy-back on, and with no mutex held.  Otherwise, returns false
  * with the mutex held, indicating that the caller must actually do the
  * expedited grace period.
+ 返回真表示有其他进程完成了一个加速的gp, 这样我们可以搭便车.
+ 否则返回false, 表示我们必须自己完成这个gp
  */
 static bool exp_funnel_lock(unsigned long s)
 {
@@ -294,29 +309,37 @@ static bool exp_funnel_lock(unsigned long s)
 		goto fastpath;
 
 	/*
+	这个循环每一遍都会检查这个rcu_node tree?返回有没有其他人完成了这个工作?
 	 * Each pass through the following loop works its way up
 	 * the rcu_node tree, returning if others have done the work or
 	 * otherwise falls through to acquire ->exp_mutex.  The mapping
 	 * from CPU to rcu_node structure can be inexact, as it is just
 	 * promoting locality and is not strictly needed for correctness.
 	 */
+	/* 检查rdp->mynode所在的树 */
 	for (; rnp != NULL; rnp = rnp->parent) {
-		if (sync_exp_work_done(s))
+		if (sync_exp_work_done(s))/* 如果这个s的源值自从获取之后变大了
+		说明有人完成了gp? */
 			return true;
 
+		/* 现在说明没有其他人完成gp, 现在是检查是不是有人正在完成gp
+		或者去检查rdp->mynode父层级 */
 		/* Work not done, either wait here or go up. */
 		spin_lock(&rnp->exp_lock);
 		if (ULONG_CMP_GE(rnp->exp_seq_rq, s)) {
+			/* 说明有其他人正在gp */
 
 			/* Someone else doing GP, so wait for them. */
 			spin_unlock(&rnp->exp_lock);
 			trace_rcu_exp_funnel_lock(rcu_state.name, rnp->level,
 						  rnp->grplo, rnp->grphi,
 						  TPS("wait"));
+			/* 在这里等待别人完成gp */
 			wait_event(rnp->exp_wq[rcu_seq_ctr(s) & 0x3],
 				   sync_exp_work_done(s));
 			return true;
 		}
+		/* 自己做gp? */
 		WRITE_ONCE(rnp->exp_seq_rq, s); /* Followers can wait on us. */
 		spin_unlock(&rnp->exp_lock);
 		trace_rcu_exp_funnel_lock(rcu_state.name, rnp->level,
@@ -324,18 +347,23 @@ static bool exp_funnel_lock(unsigned long s)
 	}
 	mutex_lock(&rcu_state.exp_mutex);
 fastpath:
+/* 可以直接检查 */
 	if (sync_exp_work_done(s)) {
 		mutex_unlock(&rcu_state.exp_mutex);
 		return true;
 	}
+	/* 到这里说明需要自己完成expedited gp?
+	增加expedited seq的值, 开始写侧更新 */
 	rcu_exp_gp_seq_start();
 	trace_rcu_exp_grace_period(rcu_state.name, s, TPS("start"));
 	return false;
 }
 
 /*
+选择expedited gp需要等待的指定的rcu_node树中的CPU?
  * Select the CPUs within the specified rcu_node that the upcoming
  * expedited grace period needs to wait for.
+ rewp是一个rnp的work
  */
 static void __sync_rcu_exp_select_node_cpus(struct rcu_exp_work *rewp)
 {
@@ -348,7 +376,8 @@ static void __sync_rcu_exp_select_node_cpus(struct rcu_exp_work *rewp)
 
 	raw_spin_lock_irqsave_rcu_node(rnp, flags);
 
-	/* Each pass checks a CPU for identity, offline, and idle. */
+	/* Each pass checks a CPU for identity, offline, and idle.
+	每一遍循环检查一个cpu */
 	mask_ofl_test = 0;
 	for_each_leaf_node_cpu_mask(rnp, cpu, rnp->expmask) {
 		struct rcu_data *rdp = per_cpu_ptr(&rcu_data, cpu);
@@ -471,6 +500,8 @@ static inline void synchronize_rcu_expedited_destroy_work(struct rcu_exp_work *r
 {
 }
 #else /* !CONFIG_RCU_EXP_KTHREAD */
+/* 这里好像是在最后一个叶节点或者没有其他race的情况下
+直接调用一个什么work */
 static void sync_rcu_exp_select_node_cpus(struct work_struct *wp)
 {
 	struct rcu_exp_work *rewp =
@@ -503,16 +534,19 @@ static inline void sync_rcu_exp_select_cpus_flush_work(struct rcu_node *rnp)
 }
 
 /*
+用于完成expedited gp的synchronize_rcu_expedited_queue_work的work的func函数
  * Work-queue handler to drive an expedited grace period forward.
  */
 static void wait_rcu_exp_gp(struct work_struct *wp)
 {
 	struct rcu_exp_work *rewp;
 
+	/* 获取到所属的rew */
 	rewp = container_of(wp, struct rcu_exp_work, rew_work);
 	rcu_exp_sel_wait_wake(rewp->rew_s);
 }
 
+/* 这个函数用于完成一个expedited gp */
 static inline void synchronize_rcu_expedited_queue_work(struct rcu_exp_work *rew)
 {
 	INIT_WORK_ONSTACK(&rew->rew_work, wait_rcu_exp_gp);
@@ -526,6 +560,9 @@ static inline void synchronize_rcu_expedited_destroy_work(struct rcu_exp_work *r
 #endif /* CONFIG_RCU_EXP_KTHREAD */
 
 /*
+用于完成expedited gp的人物入队后, 被唤醒时先执行这个prep的逻辑
+后续其他函数进行wait和wake,clean
+这个函数打下基础
  * Select the nodes that the upcoming expedited grace period needs
  * to wait for.
  */
@@ -534,10 +571,12 @@ static void sync_rcu_exp_select_cpus(void)
 	struct rcu_node *rnp;
 
 	trace_rcu_exp_grace_period(rcu_state.name, rcu_exp_gp_seq_endval(), TPS("reset"));
+	/* 重置rcu_node树中的->expmask值 */
 	sync_exp_reset_tree();
 	trace_rcu_exp_grace_period(rcu_state.name, rcu_exp_gp_seq_endval(), TPS("select"));
 
-	/* Schedule work for each leaf rcu_node structure. */
+	/* Schedule work for each leaf rcu_node structure.
+	调度每个rcu_node叶节点的什么work */
 	rcu_for_each_leaf_node(rnp) {
 		rnp->exp_need_flush = false;
 		if (!READ_ONCE(rnp->expmask))
@@ -714,7 +753,10 @@ static void rcu_exp_wait_wake(unsigned long s)
 	mutex_unlock(&rcu_state.exp_wake_mutex);
 }
 
-/*
+/*用于完成expedited gp的synchronize_rcu_expedited_queue_work的work的func
+函数的核心函数
+在队列中被唤醒后执行这个函数来完成expedited gp.
+参数是rew的rew_s
  * Common code to drive an expedited grace period forward, used by
  * workqueues and mid-boot-time tasks.
  */
@@ -932,8 +974,13 @@ static void rcu_exp_print_detail_task_stall_rnp(struct rcu_node *rnp)
 #endif /* #else #ifdef CONFIG_PREEMPT_RCU */
 
 /**
+如果rcu_scheduler_active不处于RCU_SCHEDULER_INACTIVE, 并且rcu_gp_is_expedited的话
+就用这个函数来sync rcu.
  * synchronize_rcu_expedited - Brute-force RCU grace period
- *
+ * 通过在所有非idle非nohz的cpu上面运行ipi函数来加快gp, 
+ ip函数检查cpu是不是在rcu临界区, 是的话,设置flag来通知最外层的rcu_read_unlock()报告RCU-preempt的quiescent state
+ * 或者请求调度器的帮助来报告RCU-sched的quiescent state. 如果cpu不在RCU read-side critical section,
+ * ipi handler会立即报告quiescent state.
  * Wait for an RCU grace period, but expedite it.  The basic idea is to
  * IPI all non-idle non-nohz online CPUs.  The IPI handler checks whether
  * the CPU is in an RCU critical section, and if so, it sets a flag that
@@ -966,6 +1013,7 @@ void synchronize_rcu_expedited(void)
 
 	/* Is the state is such that the call is a grace period? */
 	if (rcu_blocking_is_gp()) {
+		/* 如果rcu_scheduler_active处于RCU_SCHEDULER_INACTIVE */
 		// Note well that this code runs with !PREEMPT && !SMP.
 		// In addition, all code that advances grace periods runs
 		// at process level.  Therefore, this expedited GP overlaps
@@ -983,15 +1031,25 @@ void synchronize_rcu_expedited(void)
 
 	/* If expedited grace periods are prohibited, fall back to normal. */
 	if (rcu_gp_is_normal()) {
+		/* 这里是加速gp被禁用的情况, 使用normal gp */
+		/* 这个wait_rcu_gp内部使用wakeme_after_rcu作为rcu_head_func调用call_rcu_hurry
+		call_rcu_hurry(&rs_array[i].head, wakeme_after_rcu);
+		call_rcu_hurry实际上调用call_rcu
+		call_rcu就是把rcu_head(wakeme_after_rcu函数)入队rcu_ctrlblk.curtail
+		==========
+		这个过程中gp是如何完成的 */
 		wait_rcu_gp(call_rcu_hurry);
 		return;
 	}
 
-	/* Take a snapshot of the sequence number.  */
+	/* Take a snapshot of the sequence number.
+	保存一下expedited的seq号  */
 	s = rcu_exp_gp_seq_snap();
+	/* 检查有没有其他人完成了gp */
 	if (exp_funnel_lock(s))
 		return;  /* Someone else did our work for us. */
 
+	/* 到这里说明要自己完成expedited gp, 并且已经增加了expedited seq */
 	/* Ensure that load happens before action based on it. */
 	if (unlikely(boottime)) {
 		/* Direct call during scheduler init and early_initcalls(). */

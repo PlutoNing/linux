@@ -69,7 +69,7 @@ struct machine {
 	struct machines   *machines;
 	bool		  trampolines_mapped;
 };
-
+/* 从machine找到一个线程 */
 static inline struct threads *machine__threads(struct machine *machine, pid_t tid)
 {
 	/* Cast it to handle tid == -1 */
@@ -85,7 +85,7 @@ struct map *machine__kernel_map(struct machine *machine)
 	return machine->vmlinux_map;
 }
 
-/*
+/* 获取machine的kernel map
  * kernel (the one returned by machine__kernel_map()) plus kernel modules maps
  */
 static inline

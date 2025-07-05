@@ -18,6 +18,9 @@
 #include "blk-rq-qos.h"
 #include "blk-throttle.h"
 
+/* 
+复制一下bio的bv数组的第一个bvec到bv中
+ */
 static inline void bio_get_first_bvec(struct bio *bio, struct bio_vec *bv)
 {
 	*bv = mp_bvec_iter_bvec(bio->bi_io_vec, bio->bi_iter);
@@ -49,9 +52,18 @@ static inline void bio_get_last_bvec(struct bio *bio, struct bio_vec *bv)
 		bv->bv_len = iter.bi_bvec_done;
 }
 
+/**
+ * @description: 
+ * @param {request_queue} *q q是prev req的q
+ * @param {request} *prev_rq
+ * @param {bio} *prev， prev是req的tailbio
+ * @param {bio} *next，好像就是检查这个bio能不能合并到req
+ * @return {*}
+ */
 static inline bool bio_will_gap(struct request_queue *q,
 		struct request *prev_rq, struct bio *prev, struct bio *next)
 {
+	/* p和n表示什么？ */
 	struct bio_vec pb, nb;
 
 	if (!bio_has_data(prev) || !queue_virt_boundary(q))
@@ -62,7 +74,7 @@ static inline bool bio_will_gap(struct request_queue *q,
 	 * is quite difficult to respect the sg gap limit.  We work hard to
 	 * merge a huge number of small single bios in case of mkfs.
 	 */
-	if (prev_rq)
+	if (prev_rq)/* 一般是这个情况 */
 		bio_get_first_bvec(prev_rq->bio, &pb);
 	else
 		bio_get_first_bvec(prev, &pb);
@@ -608,6 +620,7 @@ static inline unsigned int blk_rq_get_max_sectors(struct request *rq,
 static inline int ll_new_hw_segment(struct request *req, struct bio *bio,
 		unsigned int nr_phys_segs)
 {
+	/* 必须属于同一个cgroup， 并且要一起被或者不当成root处理 */
 	if (!blk_cgroup_mergeable(req, bio))
 		goto no_merge;
 
@@ -633,6 +646,7 @@ no_merge:
 	return 0;
 }
 
+/*  */
 int ll_back_merge_fn(struct request *req, struct bio *bio, unsigned int nr_segs)
 {
 	if (req_gap_back_merge(req, bio))
@@ -1080,7 +1094,7 @@ static enum bio_merge_status blk_attempt_bio_merge(struct request_queue *q,
 	return BIO_MERGE_FAILED;
 }
 
-/**
+/**尝试合并这个bio
  * blk_attempt_plug_merge - try to merge with %current's plugged list
  * @q: request_queue new bio is being queued at
  * @bio: new bio being queued
@@ -1105,7 +1119,7 @@ bool blk_attempt_plug_merge(struct request_queue *q, struct bio *bio,
 {
 	struct blk_plug *plug;
 	struct request *rq;
-
+/* 从current获取plug */
 	plug = blk_mq_plug(bio);
 	if (!plug || rq_list_empty(plug->mq_list))
 		return false;
@@ -1156,7 +1170,7 @@ bool blk_bio_list_merge(struct request_queue *q, struct list_head *list,
 	return false;
 }
 EXPORT_SYMBOL_GPL(blk_bio_list_merge);
-
+/* sched方式合并bio */
 bool blk_mq_sched_try_merge(struct request_queue *q, struct bio *bio,
 		unsigned int nr_segs, struct request **merged_request)
 {

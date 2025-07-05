@@ -2,7 +2,8 @@
 #include <linux/export.h>
 #include <linux/fs.h>
 #include <linux/fs_stack.h>
-
+/* 内核中用于文件系统堆栈（如 overlayfs）的实用函数，主要用于 ​​复制 inode 的元数据​
+​（如大小、权限、时间戳等），并确保跨不同架构（32/64 位）的原子性和一致性。 */
 /* does _NOT_ require i_mutex to be held.
  *
  * This function cannot be inlined since i_size_{read,write} is rather

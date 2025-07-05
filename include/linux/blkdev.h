@@ -314,6 +314,7 @@ struct queue_limits {
 	unsigned int		discard_alignment;
 	unsigned int		zone_write_granularity;
 
+	/* 好像是里面的req最多允许的什么phys seg的数量 */
 	unsigned short		max_segments;
 	unsigned short		max_integrity_segments;
 	unsigned short		max_discard_segments;
@@ -392,7 +393,7 @@ struct request_queue {
 
 	const struct blk_mq_ops	*mq_ops;
 
-	/* sw queues */
+	/* sw queues. pcp的queue ctx */
 	struct blk_mq_ctx __percpu	*queue_ctx;
 
 	unsigned int		queue_depth;
@@ -976,7 +977,7 @@ struct blk_plug {
 	struct request *mq_list; /* blk-mq requests */
 
 	/* if ios_left is > 1, we can batch tag/rq allocations */
-	struct request *cached_rq;
+	struct request *cached_rq;/* 缓存的rq */
 	unsigned short nr_ios;
 
 	unsigned short rq_count;
@@ -1122,6 +1123,7 @@ static inline unsigned int queue_max_hw_sectors(const struct request_queue *q)
 	return q->limits.max_hw_sectors;
 }
 
+/*  */
 static inline unsigned short queue_max_segments(const struct request_queue *q)
 {
 	return q->limits.max_segments;

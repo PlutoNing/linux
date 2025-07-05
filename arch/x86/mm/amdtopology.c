@@ -34,7 +34,7 @@ static __init int find_northbridge(void)
 
 	for (num = 0; num < 32; num++) {
 		u32 header;
-
+		/* 读取pcie配置 */
 		header = read_pci_config(0, num, 0, 0x00);
 		if (header != (PCI_VENDOR_ID_AMD | (0x1100<<16)) &&
 			header != (PCI_VENDOR_ID_AMD | (0x1200<<16)) &&
@@ -51,7 +51,7 @@ static __init int find_northbridge(void)
 
 	return -ENOENT;
 }
-
+/* amd numa初始化函数, setup_arch调用 */
 int __init amd_numa_init(void)
 {
 	u64 start = PFN_PHYS(0);

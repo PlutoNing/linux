@@ -131,7 +131,7 @@ static inline void mmget(struct mm_struct *mm)
 {
 	atomic_inc(&mm->mm_users);
 }
-/*  */
+/* 获取引用， 如果没有人在用了，就不获取了 */
 static inline bool mmget_not_zero(struct mm_struct *mm)
 {
 	return atomic_inc_not_zero(&mm->mm_users);
@@ -227,6 +227,8 @@ static inline bool in_vfork(struct task_struct *tsk)
 }
 
 /*
+参考进程的内存分配flag, 设置参数@flag
+======================
  可能会加上一些禁止io,fs,movable的flags
  * Applies per-task gfp context to the given allocation flags.
  * PF_MEMALLOC_NOIO implies GFP_NOIO
@@ -279,6 +281,7 @@ static inline void memalloc_retry_wait(gfp_t gfp_flags)
 	 * written out, which requires IO.
 	 */
 	__set_current_state(TASK_UNINTERRUPTIBLE);
+	/* 基于进程的flag设置gfp, 可能会添加nofs什么的 */
 	gfp_flags = current_gfp_context(gfp_flags);
 	if (gfpflags_allow_blocking(gfp_flags) &&
 	    !(gfp_flags & __GFP_NORETRY))
@@ -308,6 +311,7 @@ static inline void might_alloc(gfp_t gfp_mask)
 }
 
 /**
+设置current进程内存分配noio
  * memalloc_noio_save - Marks implicit GFP_NOIO allocation scope.
  *
  * This functions marks the beginning of the GFP_NOIO allocation scope.
@@ -339,6 +343,7 @@ static inline void memalloc_noio_restore(unsigned int flags)
 }
 
 /**
+设置current进程内存分配nofs
  * memalloc_nofs_save - Marks implicit GFP_NOFS allocation scope.
  *
  * This functions marks the beginning of the GFP_NOFS allocation scope.
@@ -357,6 +362,7 @@ static inline unsigned int memalloc_nofs_save(void)
 }
 
 /**
+20250703194901
  * memalloc_nofs_restore - Ends the implicit GFP_NOFS scope.
  * @flags: Flags to restore.
  *
@@ -399,6 +405,8 @@ static inline void memalloc_pin_restore(unsigned int flags)
 #ifdef CONFIG_MEMCG
 DECLARE_PER_CPU(struct mem_cgroup *, int_active_memcg);
 /**
+设置当前活跃的memcg
+作用是如果下一步需要记账的话,从这个指定的活跃的memcg来charge
  * set_active_memcg - Starts the remote memcg charging scope.
  * @memcg: memcg to charge.
  *

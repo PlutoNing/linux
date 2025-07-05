@@ -244,12 +244,16 @@ void init_build_id(struct module *mod, const struct load_info *info)
 }
 #endif
 
+/* 获取指定符号的名字 */
 static const char *kallsyms_symbol_name(struct mod_kallsyms *kallsyms, unsigned int symnum)
 {
+	/* 通过在字符串表的idx来查询名字 */
 	return kallsyms->strtab + kallsyms->symtab[symnum].st_name;
 }
 
 /*
+在指定模块搜索addr处的符号，返回到size和offset里面
+返回符号名字
  * Given a module and address, find the corresponding symbol and return its name
  * while providing its size and offset if needed.
  */
@@ -271,6 +275,7 @@ static const char *find_kallsyms_symbol(struct module *mod,
 
 	nextval = (unsigned long)mod_mem->base + mod_mem->size;
 
+	/* 第best个符号的val？ */
 	bestval = kallsyms_symbol_value(&kallsyms->symtab[best]);
 
 	/*
@@ -279,6 +284,7 @@ static const char *find_kallsyms_symbol(struct module *mod,
 	 */
 	for (i = 1; i < kallsyms->num_symtab; i++) {
 		const Elf_Sym *sym = &kallsyms->symtab[i];
+		/* 遍历每一个符号sym */
 		unsigned long thisval = kallsyms_symbol_value(sym);
 
 		if (sym->st_shndx == SHN_UNDEF)
@@ -308,6 +314,7 @@ static const char *find_kallsyms_symbol(struct module *mod,
 	if (offset)
 		*offset = addr - bestval;
 
+	/* 通过在字符串表的idx来查询名字 */
 	return kallsyms_symbol_name(kallsyms, best);
 }
 
@@ -318,6 +325,9 @@ void * __weak dereference_module_function_descriptor(struct module *mod,
 }
 
 /*
+查找模块的符号
+查询名字放在namebuf里面
+模块名放入modname
  * For kallsyms to ask for address resolution.  NULL means not found.  Careful
  * not to lock to avoid deadlock on oopses, simply disable preemption.
  */
@@ -332,8 +342,10 @@ const char *module_address_lookup(unsigned long addr,
 	struct module *mod;
 
 	preempt_disable();
+	/* 搜索这个地址的模块 */
 	mod = __module_address(addr);
 	if (mod) {
+		/* 成功找到， 开始返回结果 */
 		if (modname)
 			*modname = mod->name;
 		if (modbuildid) {
@@ -344,6 +356,7 @@ const char *module_address_lookup(unsigned long addr,
 #endif
 		}
 
+		/* 在模块里面查询名字 */
 		ret = find_kallsyms_symbol(mod, addr, size, offset);
 	}
 	/* Make a copy in here where it's safe */

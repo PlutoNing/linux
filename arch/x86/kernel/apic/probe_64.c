@@ -17,12 +17,12 @@
 void __init x86_64_probe_apic(void)
 {
 	struct apic **drv;
-
+/*  */
 	enable_IR_x2apic();
 
 	for (drv = __apicdrivers; drv < __apicdrivers_end; drv++) {
 		if ((*drv)->probe && (*drv)->probe()) {
-			apic_install_driver(*drv);
+			apic_install_driver(*drv); /* 是apic_flat */
 			break;
 		}
 	}

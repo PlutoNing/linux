@@ -14,15 +14,20 @@
 
 struct seq_operations;
 
+/* 一个seq file的表示 */
 struct seq_file {
 	char *buf;
+	/* 最大大小？ */
 	size_t size;
+	/* 类似于pos的作用？ */
 	size_t from;
+	/* buf里面的内容大小 */
 	size_t count;
 	size_t pad_until;
 	loff_t index;
 	loff_t read_pos;
 	struct mutex lock;
+	/*  */
 	const struct seq_operations *op;
 	int poll_event;
 	const struct file *file;

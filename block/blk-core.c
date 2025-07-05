@@ -49,7 +49,9 @@
 #include "blk-pm.h"
 #include "blk-cgroup.h"
 #include "blk-throttle.h"
+/* 
 
+*/
 struct dentry *blk_debugfs_root;
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_remap);
@@ -369,6 +371,7 @@ dead:
 	return -ENODEV;
 }
 
+/* 释放ref */
 void blk_queue_exit(struct request_queue *q)
 {
 	percpu_ref_put(&q->q_usage_counter);
@@ -602,6 +605,7 @@ static void __submit_bio(struct bio *bio)
 		struct gendisk *disk = bio->bi_bdev->bd_disk;
 
 		disk->fops->submit_bio(bio);
+		/* 释放queue的ref */
 		blk_queue_exit(disk->queue);
 	}
 }
@@ -681,7 +685,7 @@ static void __submit_bio_noacct(struct bio *bio)
 
 	current->bio_list = NULL;
 }
-
+/* 提交bio */
 static void __submit_bio_noacct_mq(struct bio *bio)
 {
 	struct bio_list bio_list[2] = { };
@@ -819,7 +823,7 @@ void submit_bio_noacct(struct bio *bio)
 
 	if (blk_throtl_bio(bio))
 		return;
-	submit_bio_noacct_nocheck(bio);
+	submit_bio_noacct_nocheck(bio);/* 提交io */
 	return;
 
 not_supported:
@@ -1217,6 +1221,9 @@ void blk_io_schedule(void)
 }
 EXPORT_SYMBOL_GPL(blk_io_schedule);
 
+/* 
+块设备初始化?
+*/
 int __init blk_dev_init(void)
 {
 	BUILD_BUG_ON((__force u32)REQ_OP_LAST >= (1 << REQ_OP_BITS));
@@ -1225,7 +1232,9 @@ int __init blk_dev_init(void)
 	BUILD_BUG_ON(REQ_OP_BITS + REQ_FLAG_BITS > 8 *
 			sizeof_field(struct bio, bi_opf));
 
-	/* used for unplugging and affects IO latency/throughput - HIGHPRI */
+	/* used for unplugging and affects IO latency/throughput - HIGHPRI
+
+	*/
 	kblockd_workqueue = alloc_workqueue("kblockd",
 					    WQ_MEM_RECLAIM | WQ_HIGHPRI, 0);
 	if (!kblockd_workqueue)

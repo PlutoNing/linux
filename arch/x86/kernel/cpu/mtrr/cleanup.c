@@ -881,7 +881,7 @@ int __init mtrr_trim_uncached_memory(unsigned long end_pfn)
 	 */
 	if (!cpu_feature_enabled(X86_FEATURE_MTRR) || disable_mtrr_trim)
 		return 0;
-
+	/* 实际目的是读取出msr的状态到def */
 	rdmsr(MSR_MTRRdefType, def, dummy);
 	def &= MTRR_DEF_TYPE_TYPE;
 	if (def != MTRR_TYPE_UNCACHABLE)

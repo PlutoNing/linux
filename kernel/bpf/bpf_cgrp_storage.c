@@ -43,6 +43,7 @@ static struct bpf_local_storage __rcu **cgroup_storage_ptr(void *owner)
 	return &cg->bpf_cgrp_storage;
 }
 
+/* 销毁cg前进行bpf相关的销毁 */
 void bpf_cgrp_storage_free(struct cgroup *cgroup)
 {
 	struct bpf_local_storage *local_storage;
@@ -55,6 +56,7 @@ void bpf_cgrp_storage_free(struct cgroup *cgroup)
 	}
 
 	bpf_cgrp_storage_lock();
+	/* 销毁local storage */
 	bpf_local_storage_destroy(local_storage);
 	bpf_cgrp_storage_unlock();
 	rcu_read_unlock();

@@ -39,12 +39,12 @@ extern void __init enable_debug_cgroup(void);
 		}							\
 	} while (0)
 
-/*
+/* 创建cgroupfs的ctx
  * The cgroup filesystem superblock creation/mount context.
  */
 struct cgroup_fs_context {
 	struct kernfs_fs_context kfc;
-	struct cgroup_root	*root;
+	struct cgroup_root	*root; /* 指向cgroup root */
 	struct cgroup_namespace	*ns;
 	unsigned int	flags;			/* CGRP_ROOT_* flags */
 
@@ -99,14 +99,19 @@ struct cgrp_cset_link {
 	/* list of cgrp_cset_links anchored at cgrp->cset_links */
 	struct list_head	cset_link;
 
-	/* list of cgrp_cset_links anchored at css_set->cgrp_links */
+	/* list of cgrp_cset_links anchored at css_set->cgrp_links
+	链接到cset->cgrp_links
+	20250617021157 */
 	struct list_head	cgrp_link;
 };
 
 /* used to track tasks and csets during migration */
 struct cgroup_taskset {
 	/* the src and dst cset list running through cset->mg_node */
+	/* 链接src cset, 迁移的进程来自cset */
 	struct list_head	src_csets;
+	/* 链接dst cset, 迁移的进程要到此cset 
+	 */
 	struct list_head	dst_csets;
 
 	/* the number of tasks in the set */
@@ -137,10 +142,13 @@ struct cgroup_mgctx {
 	 * Preloaded source and destination csets.  Used to guarantee
 	 * atomic success or failure on actual migration.
 	 */
+	/* 这里连接着迁移的源src cset */
 	struct list_head	preloaded_src_csets;
+	/* 这里是找到的dst cset */
 	struct list_head	preloaded_dst_csets;
 
-	/* tasks and csets to migrate */
+	/* tasks and csets to migrate
+	记录了要迁移的进程的cset信息 */
 	struct cgroup_taskset	tset;
 
 	/* subsystems affected by migration */

@@ -57,7 +57,7 @@ static inline __le16 ext2_rec_len_to_disk(unsigned len)
 	return cpu_to_le16(len);
 }
 
-/*
+/*获取ext2的块大小， 一般是1024
  * ext2 uses block-sized chunks. Arguably, sector-sized ones would be
  * more robust, but we have what we have
  */
@@ -80,14 +80,14 @@ ext2_last_byte(struct inode *inode, unsigned long page_nr)
 		last_byte = PAGE_SIZE;
 	return last_byte;
 }
-
+/* page是mapping的page, 改变了pos,len的位置,准备写入,把page范围内的bh置脏 */
 static void ext2_commit_chunk(struct page *page, loff_t pos, unsigned len)
 {
 	struct address_space *mapping = page->mapping;
 	struct inode *dir = mapping->host;
 
 	inode_inc_iversion(dir);
-	block_write_end(NULL, mapping, pos, len, len, page, NULL);
+	block_write_end(NULL, mapping, pos, len, len, page, NULL);/* 把范围内的buffer都置脏,算是提交了 */
 
 	if (pos+len > dir->i_size) {
 		i_size_write(dir, pos+len);
@@ -179,7 +179,7 @@ fail:
 	return false;
 }
 
-/*
+/*获取ext2目录inode的第n个页面，放在page？
  * Calls to ext2_get_page()/ext2_put_page() must be nested according to the
  * rules documented in kmap_local_page()/kunmap_local().
  *
@@ -244,7 +244,7 @@ ext2_validate_entry(char *base, unsigned offset, unsigned mask)
 	}
 	return offset_in_page(p);
 }
-
+/* 设置ext2 de的类型 */
 static inline void ext2_set_de_type(ext2_dirent *de, struct inode *inode)
 {
 	if (EXT2_HAS_INCOMPAT_FEATURE(inode->i_sb, EXT2_FEATURE_INCOMPAT_FILETYPE))
@@ -252,7 +252,7 @@ static inline void ext2_set_de_type(ext2_dirent *de, struct inode *inode)
 	else
 		de->file_type = 0;
 }
-
+/* ext2读取目录的ops回调 */
 static int
 ext2_readdir(struct file *file, struct dir_context *ctx)
 {
@@ -434,17 +434,17 @@ int ext2_inode_by_name(struct inode *dir, const struct qstr *child, ino_t *ino)
 	ext2_put_page(page, de);
 	return 0;
 }
-
+/* 似乎是准备进行ext2 io了创建buffer */
 static int ext2_prepare_chunk(struct page *page, loff_t pos, unsigned len)
 {
 	return __block_write_begin(page, pos, len, ext2_get_block);
 }
 
-
+/* 刚刚改变了这个inode的mapping的page,这里sync */
 static int ext2_handle_dirsync(struct inode *dir)
 {
 	int err;
-
+/* 同步inode的mapping */
 	err = filemap_write_and_wait(dir->i_mapping);
 	if (!err)
 		err = sync_inode_metadata(dir, 1);
@@ -474,7 +474,7 @@ int ext2_set_link(struct inode *dir, struct ext2_dir_entry_2 *de,
 	return ext2_handle_dirsync(dir);
 }
 
-/*
+/*把inode加入目录
  *	Parent is locked.
  */
 int ext2_add_link (struct dentry *dentry, struct inode *inode)
@@ -482,7 +482,7 @@ int ext2_add_link (struct dentry *dentry, struct inode *inode)
 	struct inode *dir = d_inode(dentry->d_parent);
 	const char *name = dentry->d_name.name;
 	int namelen = dentry->d_name.len;
-	unsigned chunk_size = ext2_chunk_size(dir);
+	unsigned chunk_size = ext2_chunk_size(dir);/* 可能是1024 */
 	unsigned reclen = EXT2_DIR_REC_LEN(namelen);
 	unsigned short rec_len, name_len;
 	struct page *page = NULL;
@@ -505,9 +505,9 @@ int ext2_add_link (struct dentry *dentry, struct inode *inode)
 			return PTR_ERR(kaddr);
 		lock_page(page);
 		dir_end = kaddr + ext2_last_byte(dir, n);
-		de = (ext2_dirent *)kaddr;
+		de = (ext2_dirent *)kaddr;/* 看来page是躺着一组ext2 dent */
 		kaddr += PAGE_SIZE - reclen;
-		while ((char *)de <= kaddr) {
+		while ((char *)de <= kaddr) {/* 遍历每一个ext2 dentry */
 			if ((char *)de == dir_end) {
 				/* We hit i_size */
 				name_len = 0;
@@ -540,8 +540,8 @@ int ext2_add_link (struct dentry *dentry, struct inode *inode)
 	return -EINVAL;
 
 got_it:
-	pos = page_offset(page) + offset_in_page(de);
-	err = ext2_prepare_chunk(page, pos, rec_len);
+	pos = page_offset(page) + offset_in_page(de);/* 在inode的数据存储page内要写入ent的位置? */
+	err = ext2_prepare_chunk(page, pos, rec_len);/* 创建buffer io */
 	if (err)
 		goto out_unlock;
 	if (de->inode) {
@@ -553,12 +553,12 @@ got_it:
 	de->name_len = namelen;
 	memcpy(de->name, name, namelen);
 	de->inode = cpu_to_le32(inode->i_ino);
-	ext2_set_de_type (de, inode);
-	ext2_commit_chunk(page, pos, rec_len);
+	ext2_set_de_type (de, inode);/* 设置磁盘上的条目de的类型 */
+	ext2_commit_chunk(page, pos, rec_len);/* 好像只是提交,把page范围内的buffer置脏 */
 	dir->i_mtime = inode_set_ctime_current(dir);
 	EXT2_I(dir)->i_flags &= ~EXT2_BTREE_FL;
 	mark_inode_dirty(dir);
-	err = ext2_handle_dirsync(dir);
+	err = ext2_handle_dirsync(dir);/* 修改了内容,这里同步 */
 	/* OFFSET_CACHE */
 out_put:
 	ext2_put_page(page, de);

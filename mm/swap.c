@@ -108,9 +108,9 @@ static void __page_cache_release(struct folio *folio)
 // 释放folio的page到系统
 static void __folio_put_small(struct folio *folio)
 {
-	__page_cache_release(folio);
+	__page_cache_release(folio);/* 从lru移除 */
 	mem_cgroup_uncharge(folio);
-	free_unref_page(&folio->page, 0);
+	free_unref_page(&folio->page, 0);/* 还到buddy */
 }
 // 用于释放大页, thp和hugetlb
 static void __folio_put_large(struct folio *folio)
@@ -488,6 +488,7 @@ static void folio_inc_refs(struct folio *folio)
 #endif /* CONFIG_LRU_GEN */
 
 /*
+标记一个folio被访问过?
  * Mark a page as having seen activity.
  *
  提升为referenced
@@ -499,6 +500,18 @@ static void folio_inc_refs(struct folio *folio)
  *
  * When a newly allocated page is not yet visible, so safe for non-atomic ops,
  * __SetPageReferenced(page) may be substituted for mark_page_accessed(page).
+ =========================
+ 调用场合:
+filemap_get_folio指定fgp_accessed的话
+buffer io从buffer lru获得buffer的话
+
+ =============
+ 粗略:
+ folio的buffer要被读写了
+ iomap写入folio
+ buffer-io基本都会
+ 零拷贝读也会
+ 把页面加载进pagecache也会调用
  */
 void folio_mark_accessed(struct folio *folio)
 {
@@ -507,16 +520,19 @@ void folio_mark_accessed(struct folio *folio)
 		return;
 	}
 
+	/* 设置referenced */
 	if (!folio_test_referenced(folio)) {
 		folio_set_referenced(folio);
-	} else if (folio_test_unevictable(folio)) {/* 是referenced,并且是unevictable */
+	} else if (folio_test_unevictable(folio)) {
+		/* 如果之前已经是referenced,并且还是unevictable */
 		/*
 		 * Unevictable pages are on the "LRU_UNEVICTABLE" list. But,
 		 * this list is never rotated or maintained, so marking an
 		 * unevictable page accessed has no effect.
 
 		 */
-	} else if (!folio_test_active(folio)) {/* 是referenced,但是不是active? */
+	} else if (!folio_test_active(folio)) {
+		/* 是referenced,evictable 但是不是active? */
 		/* active代表什么? */
 		/*
 		 * If the folio is on the LRU, queue it for activation via
@@ -1165,6 +1181,7 @@ void __folio_batch_release(struct folio_batch *fbatch)
 EXPORT_SYMBOL(__folio_batch_release);
 
 /**
+把batch里面的a_is_value的folio移除, 正常的往前平移
  * folio_batch_remove_exceptionals() - Prune non-folios from a batch.
  * @fbatch: The batch to prune
  *

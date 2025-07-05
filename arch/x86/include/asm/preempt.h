@@ -19,7 +19,7 @@
 #define PREEMPT_ENABLED	(0 + PREEMPT_NEED_RESCHED)
 
 /*
-
+获取pcpu_hot.preempt_count的值
  * We mask the PREEMPT_NEED_RESCHED bit so as not to confuse all current users
  * that think a non-zero value indicates we cannot preempt.
  

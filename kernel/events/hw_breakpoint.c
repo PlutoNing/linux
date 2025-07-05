@@ -1002,11 +1002,11 @@ static struct pmu perf_breakpoint = {
 	.stop		= hw_breakpoint_stop,
 	.read		= hw_breakpoint_pmu_read,
 };
-
+/* perf初始化 */
 int __init init_hw_breakpoint(void)
 {
 	int ret;
-
+/* 初始化一个hash */
 	ret = rhltable_init(&task_bps_ht, &task_bps_ht_params);
 	if (ret)
 		return ret;
@@ -1016,7 +1016,7 @@ int __init init_hw_breakpoint(void)
 		return ret;
 
 	constraints_initialized = true;
-
+/* 注册pmu */
 	perf_pmu_register(&perf_breakpoint, "breakpoint", PERF_TYPE_BREAKPOINT);
 
 	return register_die_notifier(&hw_breakpoint_exceptions_nb);

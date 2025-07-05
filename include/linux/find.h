@@ -196,6 +196,7 @@ unsigned long find_next_zero_bit(const unsigned long *addr, unsigned long size,
 
 #ifndef find_first_bit
 /**
+找到第一个置位的bit
  * find_first_bit - find the first set bit in a memory region
  * @addr: The address to start the search at
  * @size: The maximum number of bits to search
@@ -420,6 +421,7 @@ unsigned long find_next_and_bit_wrap(const unsigned long *addr1,
 }
 
 /**
+可以回卷的findbit, 找到offset之后的置位的bit
  * find_next_bit_wrap - find the next set bit in both memory regions
  * @addr: The first address to base the search on
  * @size: The bitmap size in bits

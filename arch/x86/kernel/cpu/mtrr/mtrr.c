@@ -57,9 +57,9 @@
 
 /* arch_phys_wc_add returns an MTRR register index plus this offset. */
 #define MTRR_TO_PHYS_WC_OFFSET 1000
-
+/* 可能是8(8GB内存qemu虚拟机) */
 u32 num_var_ranges;
-
+/*  */
 unsigned int mtrr_usage_table[MTRR_MAX_VAR_RANGES];
 DEFINE_MUTEX(mtrr_mutex);
 
@@ -98,7 +98,7 @@ static int have_wrcomb(void)
 	}
 	return mtrr_if->have_wrcomb ? mtrr_if->have_wrcomb() : 0;
 }
-
+/* 初始化mtrr_usage_table */
 static void __init init_table(void)
 {
 	int i, max;
@@ -544,7 +544,7 @@ EXPORT_SYMBOL_GPL(arch_phys_wc_index);
 
 int __initdata changed_by_mtrr_cleanup;
 
-/**
+/**初始化 x86 架构的 MTRR（Memory Type Range Registers，内存类型范围寄存器）​​ 的核心逻辑，用于控制不同内存区域的缓存策略。
  * mtrr_bp_init - initialize MTRRs on the boot CPU
  *
  * This needs to be called early; before any of the other CPUs are

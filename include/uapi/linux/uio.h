@@ -13,7 +13,8 @@
 #include <linux/compiler.h>
 #include <linux/types.h>
 
-
+/* iovec的定义
+描述了一段要作为写入dst的用户空间内存 */
 struct iovec
 {
 	void __user *iov_base;	/* BSD uses caddr_t (1003.1g requires void *) */

@@ -113,6 +113,7 @@ void psi_task_switch(struct task_struct *prev, struct task_struct *next,
 void psi_account_irqtime(struct task_struct *task, u32 delta);
 
 /*
+进行psi统计
  * PSI tracks state that persists across sleeps, such as iowaits and
  * memory stalls. As a result, it has to distinguish between sleeps,
  * where a task's runnable state changes, and requeues, where a task
@@ -216,7 +217,7 @@ static inline void sched_info_dequeue(struct rq *rq, struct task_struct *t)
 	rq_sched_info_dequeue(rq, delta);
 }
 
-/*
+/* 更新进程的sched info
  * Called when a task finally hits the CPU.  We can now calculate how
  * long it was waiting to run.  We also note when it began so that we
  * can keep stats on how long its timeslice is.
@@ -239,6 +240,7 @@ static void sched_info_arrive(struct rq *rq, struct task_struct *t)
 }
 
 /*
+记录t的被调度时间
  * This function is only called from enqueue_task(), but also only updates
  * the timestamp if it is already not set.  It's assumed that
  * sched_info_dequeue() will clear that stamp when appropriate.

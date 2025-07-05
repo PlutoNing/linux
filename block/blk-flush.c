@@ -94,6 +94,7 @@ enum {
 static void blk_kick_flush(struct request_queue *q,
 			   struct blk_flush_queue *fq, blk_opf_t flags);
 
+/* 获取queue的fq */
 static inline struct blk_flush_queue *
 blk_get_flush_queue(struct request_queue *q, struct blk_mq_ctx *ctx)
 {
@@ -148,6 +149,8 @@ static void blk_account_io_flush(struct request *rq)
 }
 
 /**
+完成flush序列？
+序列指？
  * blk_flush_complete_seq - complete flush sequence
  * @rq: PREFLUSH/FUA request being sequenced
  * @fq: flush queue
@@ -164,6 +167,7 @@ static void blk_flush_complete_seq(struct request *rq,
 				   struct blk_flush_queue *fq,
 				   unsigned int seq, blk_status_t error)
 {
+	/* 获取到q */
 	struct request_queue *q = rq->q;
 	struct list_head *pending = &fq->flush_queue[fq->flush_pending_idx];
 	blk_opf_t cmd_flags;
@@ -210,6 +214,7 @@ static void blk_flush_complete_seq(struct request *rq,
 		BUG();
 	}
 
+	/* 刷盘？ */
 	blk_kick_flush(q, fq, cmd_flags);
 }
 
@@ -220,6 +225,7 @@ static enum rq_end_io_ret flush_end_io(struct request *flush_rq,
 	struct list_head *running;
 	struct request *rq, *n;
 	unsigned long flags = 0;
+	/* 获取到q的fq */
 	struct blk_flush_queue *fq = blk_get_flush_queue(q, flush_rq->mq_ctx);
 
 	/* release the tag's ownership to the req cloned from */
@@ -274,6 +280,7 @@ bool is_flush_rq(struct request *rq)
 }
 
 /**
+尝试发起flush请求？
  * blk_kick_flush - consider issuing flush request
  * @q: request_queue being kicked
  * @fq: flush queue
@@ -292,6 +299,7 @@ static void blk_kick_flush(struct request_queue *q, struct blk_flush_queue *fq,
 	struct list_head *pending = &fq->flush_queue[fq->flush_pending_idx];
 	struct request *first_rq =
 		list_first_entry(pending, struct request, queuelist);
+	/*  */
 	struct request *flush_rq = fq->flush_rq;
 
 	/* C1 described at the top of this file */
@@ -396,6 +404,7 @@ static void blk_rq_init_flush(struct request *rq)
 }
 
 /*
+在flush状态机中插入一个PREFLUSH/FUA请求。
  * Insert a PREFLUSH/FUA request into the flush state machine.
  * Returns true if the request has been consumed by the flush state machine,
  * or false if the caller should continue to process it.
@@ -469,6 +478,7 @@ bool blk_insert_flush(struct request *rq)
 /**
  * blkdev_issue_flush - queue a flush
  发起一个flush请求
+ 发起一个同步的 flush 请求，确保块设备的写缓存被刷新到底层存储
  * @bdev:	blockdev to issue flush for
  *
  * Description:

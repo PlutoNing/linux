@@ -38,7 +38,7 @@ struct pcpu_hot {
 static_assert(sizeof(struct pcpu_hot) == 64);
 /*  */
 DECLARE_PER_CPU_ALIGNED(struct pcpu_hot, pcpu_hot);
-
+/* 获取current进程 */
 static __always_inline struct task_struct *get_current(void)
 {
 	return this_cpu_read_stable(pcpu_hot.current_task);

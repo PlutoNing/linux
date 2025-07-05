@@ -425,7 +425,9 @@ static inline void tlb_flush(struct mmu_gather *tlb)
 #endif
 
 #endif /* CONFIG_MMU_GATHER_NO_RANGE */
-
+/* 
+把tlb设置成适合处理这个vma的属性
+*/
 static inline void
 tlb_update_vma_flags(struct mmu_gather *tlb, struct vm_area_struct *vma)
 {

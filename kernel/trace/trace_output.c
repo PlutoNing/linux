@@ -19,7 +19,7 @@
 #define EVENT_HASHSIZE	128
 
 DECLARE_RWSEM(trace_event_sem);
-
+/* 存储已经注册的ftrace 事件类型的hash */
 static struct hlist_head event_hash[EVENT_HASHSIZE] __read_mostly;
 
 enum print_line_t trace_print_bputs_msg_only(struct trace_iterator *iter)
@@ -434,12 +434,14 @@ seq_print_ip_sym(struct trace_seq *s, unsigned long ip, unsigned long sym_flags)
 }
 
 /**
+打印
  * trace_print_lat_fmt - print the irq, preempt and lockdep fields
  * @s: trace seq struct to write to
  * @entry: The trace entry field from the ring buffer
  *
  * Prints the generic fields of irqs off, in hard or softirq, preempt
  * count.
+ 打印
  */
 int trace_print_lat_fmt(struct trace_seq *s, struct trace_entry *entry)
 {
@@ -503,13 +505,22 @@ int trace_print_lat_fmt(struct trace_seq *s, struct trace_entry *entry)
 	return !trace_seq_has_overflowed(s);
 }
 
+/**
+输出到seq file
+ * @description: 
+ * @param {trace_seq} *s, s是iter的seq file
+ * @param {trace_entry} *entry, entry是刚刚读取的event
+ * @param {int} cpu,
+ * @return {*}
+ */
 static int
 lat_print_generic(struct trace_seq *s, struct trace_entry *entry, int cpu)
 {
 	char comm[TASK_COMM_LEN];
-
+	// 获取存储的pid对应的comm
 	trace_find_cmdline(entry->pid, comm);
 
+	/* 先打印基础信息 */
 	trace_seq_printf(s, "%8.8s-%-7d %3d",
 			 comm, entry->pid, cpu);
 
@@ -590,6 +601,7 @@ lat_print_timestamp(struct trace_iterator *iter, u64 next_ts)
 	return !trace_seq_has_overflowed(s);
 }
 
+/* 打印trace的时间 */
 static void trace_print_time(struct trace_seq *s, struct trace_iterator *iter,
 			     unsigned long long ts)
 {
@@ -605,18 +617,24 @@ static void trace_print_time(struct trace_seq *s, struct trace_iterator *iter,
 		trace_seq_printf(s, " %12llu", ts);
 }
 
+/* 
+打印什么上下文
+*/
 int trace_print_context(struct trace_iterator *iter)
 {
 	struct trace_array *tr = iter->tr;
 	struct trace_seq *s = &iter->seq;
+	/* 获取当前要输出的ent */
 	struct trace_entry *entry = iter->ent;
 	char comm[TASK_COMM_LEN];
 
+	/* 找到和这个pid在savedcmd的comm */
 	trace_find_cmdline(entry->pid, comm);
 
 	trace_seq_printf(s, "%16s-%-7d ", comm, entry->pid);
 
 	if (tr->trace_flags & TRACE_ITER_RECORD_TGID) {
+		/* 获取要打印的tgid */
 		unsigned int tgid = trace_find_tgid(entry->pid);
 
 		if (!tgid)
@@ -644,6 +662,8 @@ int trace_print_lat_context(struct trace_iterator *iter)
 	unsigned long verbose = (tr->trace_flags & TRACE_ITER_VERBOSE);
 	u64 next_ts;
 
+	/* 读取iter的下一个事件
+	一般情况是从iter的cpu buffer的reader page什么的读取 */
 	next_entry = trace_find_next_entry(iter, NULL, &next_ts);
 	if (!next_entry)
 		next_ts = iter->ts;
@@ -656,6 +676,7 @@ int trace_print_lat_context(struct trace_iterator *iter)
 
 		trace_find_cmdline(entry->pid, comm);
 
+		/* 还往iter的seq file输出一下 */
 		trace_seq_printf(
 			s, "%16s %7d %3d %d %08x %08lx ",
 			comm, entry->pid, iter->cpu, entry->flags,
@@ -669,7 +690,7 @@ int trace_print_lat_context(struct trace_iterator *iter)
 	return !trace_seq_has_overflowed(s);
 }
 
-/**
+/**注册ftrace事件之前检查是不是已经注册了
  * ftrace_find_event - find a registered event
  * @type: the type of event to look for
  *
@@ -698,7 +719,7 @@ static void free_trace_event_type(int type)
 	if (type >= __TRACE_LAST_TYPE)
 		ida_free(&trace_event_ida, type);
 }
-
+/* 给event分配type */
 static int alloc_trace_event_type(void)
 {
 	int next;
@@ -722,6 +743,7 @@ void trace_event_read_unlock(void)
 }
 
 /**
+注册ftrace定义的事件类型: 好像也就只是初始化并添加到event_hash
  * register_trace_event - register output for an event type
  * @event: the event type to register
  *
@@ -749,7 +771,7 @@ int register_trace_event(struct trace_event *event)
 	if (WARN_ON(!event->funcs))
 		goto out;
 
-	if (!event->type) {
+	if (!event->type) { /* 从__start_ftrace_events拿到的call的event可能没有这个type */
 		event->type = alloc_trace_event_type();
 		if (!event->type)
 			goto out;
@@ -772,7 +794,7 @@ int register_trace_event(struct trace_event *event)
 		event->funcs->binary = trace_nop_print;
 
 	key = event->type & (EVENT_HASHSIZE - 1);
-
+/* 添加到已注册事件hash, */
 	hlist_add_head(&event->node, &event_hash[key]);
 
 	ret = event->type;
@@ -1056,14 +1078,14 @@ static enum print_line_t trace_fn_bin(struct trace_iterator *iter, int flags,
 
 	return trace_handle_return(s);
 }
-
+/* ftrace的函数事件类型的ops */
 static struct trace_event_functions trace_fn_funcs = {
 	.trace		= trace_fn_trace,
 	.raw		= trace_fn_raw,
 	.hex		= trace_fn_hex,
 	.binary		= trace_fn_bin,
 };
-
+/* 表示ftrace的函数事件类型 */
 static struct trace_event trace_fn_event = {
 	.type		= TRACE_FN,
 	.funcs		= &trace_fn_funcs,
@@ -1692,7 +1714,7 @@ static struct trace_event trace_func_repeats_event = {
 	.type	 	= TRACE_FUNC_REPEATS,
 	.funcs		= &trace_func_repeats_funcs,
 };
-
+/* ftrace 支持多种事件类型（如函数调用、调度事件、硬件延迟等），每种事件类型通过 struct trace_event 结构定义。 */
 static struct trace_event *events[] __initdata = {
 	&trace_fn_event,
 	&trace_ctx_event,
@@ -1709,7 +1731,7 @@ static struct trace_event *events[] __initdata = {
 	&trace_func_repeats_event,
 	NULL
 };
-
+/* 注册系统定义的ftrace事件类型 */
 __init int init_events(void)
 {
 	struct trace_event *event;
@@ -1717,7 +1739,7 @@ __init int init_events(void)
 
 	for (i = 0; events[i]; i++) {
 		event = events[i];
-		ret = register_trace_event(event);
+		ret = register_trace_event(event);/* 注册事件类型 */
 		WARN_ONCE(!ret, "event %d failed to register", event->type);
 	}
 

@@ -467,6 +467,17 @@ void __init_or_module noinline apply_alternatives(struct alt_instr *start,
 	kasan_enable_current();
 }
 
+/* 判断给定的 x86 指令是否为 ​​32 位条件跳转指令（Jcc.d32）
+指令	操作码（Hex）	条件描述
+JO	0x0f 0x80	溢出时跳转
+JNO	0x0f 0x81	无溢出时跳转
+JB	0x0f 0x82	低于时跳转
+JAE	0x0f 0x83	高于或等于时跳转
+JE	0x0f 0x84	相等时跳转
+JNE	0x0f 0x85	不相等时跳转
+...	...	...
+JG	0x0f 0x8f	有符号大于时跳转
+​ */
 static inline bool is_jcc32(struct insn *insn)
 {
 	/* Jcc.d32 second opcode byte is in the range: 0x80-0x8f */
@@ -1658,6 +1669,7 @@ void __init alternative_instructions(void)
 }
 
 /**
+进行hook
  * text_poke_early - Update instructions on a live kernel at boot time
  * @addr: address to modify
  * @opcode: source of the copy
@@ -1676,15 +1688,20 @@ void __init_or_module text_poke_early(void *addr, const void *opcode,
 
 	if (boot_cpu_has(X86_FEATURE_NX) &&
 	    is_module_text_address((unsigned long)addr)) {
+			/* 如果是模块的代码 */
 		/*
 		 * Modules text is marked initially as non-executable, so the
 		 * code cannot be running and speculative code-fetches are
 		 * prevented. Just change the code.
+		 模块的代码最初是被标记为不可执行的
+		 所以代码不能运行，而且防止了投机代码获取
+		 * 可以直接修改代码
 		 */
 		memcpy(addr, opcode, len);
 	} else {
+		/* 为什么这边的情况也是关了中断就可以直接拷贝了 */
 		local_irq_save(flags);
-		memcpy(addr, opcode, len);
+		memcpy(addr, opcode, len);/* 直接拷贝？ */
 		local_irq_restore(flags);
 		sync_core();
 
@@ -1700,6 +1717,8 @@ typedef struct {
 } temp_mm_state_t;
 
 /*
+为了方便，使用临时的mm
+构造一个temp使用指定的mm，并且切换到这个mm
  * Using a temporary mm allows to set temporary mappings that are not accessible
  * by other CPUs. Such mappings are needed to perform sensitive memory writes
  * that override the kernel memory protections (e.g., W^X), without exposing the
@@ -1722,11 +1741,13 @@ static inline temp_mm_state_t use_temporary_mm(struct mm_struct *mm)
 	 * Make sure not to be in TLB lazy mode, as otherwise we'll end up
 	 * with a stale address space WITHOUT being in lazy mode after
 	 * restoring the previous mm.
+	 确保不在tlb的lazy mode
 	 */
 	if (this_cpu_read(cpu_tlbstate_shared.is_lazy))
-		leave_mm(smp_processor_id());
+		leave_mm(smp_processor_id());/* 切换到内核mm */
 
 	temp_state.mm = this_cpu_read(cpu_tlbstate.loaded_mm);
+	/* 切换到指定的mm */
 	switch_mm_irqs_off(NULL, mm, current);
 
 	/*
@@ -1759,8 +1780,9 @@ static inline void unuse_temporary_mm(temp_mm_state_t prev_state)
 		hw_breakpoint_restore();
 }
 
+/*  */
 __ro_after_init struct mm_struct *poking_mm;
-__ro_after_init unsigned long poking_addr;
+__ro_after_init unsigned long poking_addr; /* 可能是0x2aaaaaaab000 */
 
 static void text_poke_memcpy(void *dst, const void *src, size_t len)
 {
@@ -1775,7 +1797,10 @@ static void text_poke_memset(void *dst, const void *src, size_t len)
 }
 
 typedef void text_poke_f(void *dst, const void *src, size_t len);
-/* hook代码段 */
+/* hook代码段
+在addr插入len长度的op（位于src）.
+比如插入int3什么的
+*/
 static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t len)
 {
 	/* 要拷贝的指令是不是跨页面了. */
@@ -1793,16 +1818,18 @@ static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t l
 	 */
 	BUG_ON(!after_bootmem);
 
+	/* 拿到这两个page， 用临时的mm映射， 然后调用func开始操作 */
 	if (!core_kernel_text((unsigned long)addr)) {/* 如果不是内核代码段 */
 		pages[0] = vmalloc_to_page(addr);
 		if (cross_page_boundary)
 			pages[1] = vmalloc_to_page(addr + PAGE_SIZE);
 	} else {/* 是内核代码段. */
-		pages[0] = virt_to_page(addr);
+		pages[0] = virt_to_page(addr); /* pages[0] = (((struct page *)vmemmap_base) +(__phys_addr((unsigned long)(addr)) >> 12)); */
 		WARN_ON(!PageReserved(pages[0]));
 		if (cross_page_boundary)
 			pages[1] = virt_to_page(addr + PAGE_SIZE);
 	}
+	/* 现在pages的页面是addr所在页面 */
 	/*
 	 * If something went wrong, crash and burn since recovery paths are not
 	 * implemented.
@@ -1827,7 +1854,9 @@ static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t l
 
 	local_irq_save(flags);
 
+	/* 制作addr所在页面的pte */
 	pte = mk_pte(pages[0], pgprot);
+	/* 把所在页面加入poking mm */
 	set_pte_at(poking_mm, poking_addr, ptep, pte);
 
 	if (cross_page_boundary) {
@@ -1839,9 +1868,16 @@ static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t l
 	 * Loading the temporary mm behaves as a compiler barrier, which
 	 * guarantees that the PTE will be set at the time memcpy() is done.
 	 */
+	 /* 
+	 构造一个临时的temp tlb state，使用指定的mm，并且切换到这个poking mm
+	 */
 	prev = use_temporary_mm(poking_mm);
 
 	kasan_disable_current();
+	/* 
+	poking_addr+offset_in_page(addr)是要poke的addr在poking mm的地址
+	现在系统加载的也是poking mm
+	*/
 	func((u8 *)poking_addr + offset_in_page(addr), src, len);
 	kasan_enable_current();
 
@@ -1851,6 +1887,7 @@ static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t l
 	 */
 	barrier();
 
+	/* 清除pte */
 	pte_clear(poking_mm, poking_addr, ptep);
 	if (cross_page_boundary)
 		pte_clear(poking_mm, poking_addr + PAGE_SIZE, ptep + 1);
@@ -1860,12 +1897,14 @@ static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t l
 	 * instruction that already allows the core to see the updated version.
 	 * Xen-PV is assumed to serialize execution in a similar manner.
 	 */
+	/* 不使用临时mm了 */
 	unuse_temporary_mm(prev);
 
 	/*
 	 * Flushing the TLB might involve IPIs, which would require enabled
 	 * IRQs, but not if the mm is not used, as it is in this point.
 	 */
+	/* 刷新tlb */
 	flush_tlb_mm_range(poking_mm, poking_addr, poking_addr +
 			   (cross_page_boundary ? 2 : 1) * PAGE_SIZE,
 			   PAGE_SHIFT, false);
@@ -1885,7 +1924,8 @@ static void *__text_poke(text_poke_f func, void *addr, const void *src, size_t l
 
 /**
 动态hook一个代码
-插入len长度的op.
+在addr插入len长度的op.
+比如插入int3什么的
  * text_poke - Update instructions on a live kernel
  * @addr: address to modify
  * @opcode: source of the copy
@@ -1905,6 +1945,7 @@ void *text_poke(void *addr, const void *opcode, size_t len)
 {
 	lockdep_assert_held(&text_mutex);
 
+	/* 使用func对addr所在page进行操作 */
 	return __text_poke(text_poke_memcpy, addr, opcode, len);
 }
 
@@ -2005,7 +2046,7 @@ void *text_poke_set(void *addr, int c, size_t len)
 	mutex_unlock(&text_mutex);
 	return addr;
 }
-
+/* 执行serialize指令 */
 static void do_sync_core(void *info)
 {
 	sync_core();
@@ -2023,21 +2064,27 @@ void text_poke_sync(void)
  */
 struct text_poke_loc {
 	/* addr := _stext + rel_addr */
+	/*poke时设置为addr - (void *)_stext */
 	s32 rel_addr;
 	s32 disp;
 	u8 len;
 	u8 opcode;
 	const u8 text[POKE_MAX_OPCODE_SIZE];
 	/* see text_poke_bp_batch() */
+	/* 保存ip本来的代码,保存要hook的addr处的老代码备份 */
 	u8 old;
 };
 
+/* 
+主要包含一个tp， 用于代码poke
+*/
 struct bp_patching_desc {
 	struct text_poke_loc *vec;
 	int nr_entries;
 	atomic_t refs;
 };
 
+/*  */
 static struct bp_patching_desc bp_desc;
 
 static __always_inline
@@ -2059,6 +2106,7 @@ static __always_inline void put_desc(void)
 	raw_atomic_dec(&desc->refs);
 }
 
+/* 算是获取ip？这里是获得要hook的addr */
 static __always_inline void *text_poke_addr(struct text_poke_loc *tp)
 {
 	return _stext + tp->rel_addr;
@@ -2162,6 +2210,7 @@ static struct text_poke_loc tp_vec[TP_VEC_MAX];
 static int tp_vec_nr;
 
 /**
+修改代码二进制, tp的reladdr和text表示着hook的addr和opcode
  * text_poke_bp_batch() -- update instructions on live kernel on SMP
  * @tp:			vector of instructions to patch
  * @nr_entries:		number of entries in the vector
@@ -2190,6 +2239,7 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 
 	lockdep_assert_held(&text_mutex);
 
+	/* 初始化bp desc */
 	bp_desc.vec = tp;
 	bp_desc.nr_entries = nr_entries;
 
@@ -2215,23 +2265,24 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 	 */
 	smp_wmb();
 
-	/*
+	/* 先插入int3指令
 	 * First step: add a int3 trap to the address that will be patched.
 	 */
 	for (i = 0; i < nr_entries; i++) {
+		/* 获取ip？ */
 		tp[i].old = *(u8 *)text_poke_addr(&tp[i]);
 		text_poke(text_poke_addr(&tp[i]), &int3, INT3_INSN_SIZE);
 	}
-
+/* 在每个cpu上面执行serialize指令 */
 	text_poke_sync();
 
 	/*
 	 * Second step: update all but the first byte of the patched range.
 	 */
 	for (do_sync = 0, i = 0; i < nr_entries; i++) {
-		u8 old[POKE_MAX_OPCODE_SIZE+1] = { tp[i].old, };
+		u8 old[POKE_MAX_OPCODE_SIZE+1] = { tp[i].old, }; /* 备份? x/i old 0xffffc9000111fbc4:	jmp    0xffffc8ffffa8acb4 */
 		u8 _new[POKE_MAX_OPCODE_SIZE+1];
-		const u8 *new = tp[i].text;
+		const u8 *new = tp[i].text; /* x/i new  	jmp    0xffffc8ffffc034da */
 		int len = tp[i].len;
 
 		if (len - INT3_INSN_SIZE > 0) {
@@ -2244,7 +2295,7 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 				memcpy(_new + 1, new, 5);
 				new = _new;
 			}
-
+/* 在int3指令后面继续插入 */
 			text_poke(text_poke_addr(&tp[i]) + INT3_INSN_SIZE,
 				  new + INT3_INSN_SIZE,
 				  len - INT3_INSN_SIZE);
@@ -2275,7 +2326,7 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 		 * executable code.
 		 * The old instruction is recorded so that the event can be
 		 * processed forwards or backwards.
-		 */
+		 记录perf事件*/
 		perf_event_text_poke(text_poke_addr(&tp[i]), old, len, new, len);
 	}
 
@@ -2288,7 +2339,7 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 		text_poke_sync();
 	}
 
-	/*
+	/*第三步,替换int3
 	 * Third step: replace the first byte (int3) by the first byte of
 	 * replacing opcode.
 	 */
@@ -2314,26 +2365,34 @@ static void text_poke_bp_batch(struct text_poke_loc *tp, unsigned int nr_entries
 	if (!atomic_dec_and_test(&bp_desc.refs))
 		atomic_cond_read_acquire(&bp_desc.refs, !VAL);
 }
-/* 改变addr这里的代码.从而执行到此处时,跳转到其他地方.
-opcode是poke insn的text地址
-tp是text_poke结构体 */
+/* 
+改变addr这里的代码.从而执行到此处时,跳转到其他地方. 可能是tp->static_call_tramp
+opcode是poke insn的text地址,总之就是生成的跳转字节码
+tp是text_poke结构体， 
+===1=1=====
+主要是完善tp的成员
+tp是句柄，承载着hook的全部信息 */
 static void text_poke_loc_init(struct text_poke_loc *tp, void *addr,
 			       const void *opcode, size_t len, const void *emulate)
 {
 	struct insn insn;
 	int ret, i = 0;
 
-	if (len == 6)
+	if (len == 6)/* 一般情况下是5 */
 		i = 1;
-	/* 拷贝最多五字节的opcode到tp. */
-	/* 这个时候opcode的内容是什么? */
+	/* 
+	opcode就是静态insn结构体的text数组，也是五字节大小
+	拷贝最多五字节的opcode到tp.
+	这个时候opcode的内容是什么? 应该还是空的*/
 	memcpy((void *)tp->text, opcode+i, len-i);
 	if (!emulate)
 		emulate = opcode;
 	
-	/* // Expands to
+	/*  Expands to
 		insn_decode((&insn), (emulate), 15, INSN_MODE_KERN)
-		这里好像是要解码insn ... */
+		这里好像是要解码insn ... 
+		完善insn结构体
+		*/
 
 	ret = insn_decode_kernel(&insn, emulate);
 
@@ -2343,6 +2402,9 @@ static void text_poke_loc_init(struct text_poke_loc *tp, void *addr,
 	tp->len = len;
 	tp->opcode = insn.opcode.bytes[0];
 
+	/* 
+	如果是32位的跳转指令
+	*/
 	if (is_jcc32(&insn)) {
 		/*
 		 * Map Jcc.d32 onto Jcc.d8 and use len to distinguish.
@@ -2420,6 +2482,7 @@ static bool tp_order_fail(void *addr)
 	return false;
 }
 
+/*  */
 static void text_poke_flush(void *addr)
 {
 	if (tp_vec_nr == TP_VEC_MAX || tp_order_fail(addr)) {
@@ -2433,20 +2496,23 @@ void text_poke_finish(void)
 	text_poke_flush(NULL);
 }
 
+/* 把addr处的代码替换为opcode
+queue方式就是把hook的信息放在全局的tp vec数组就行，等待别人来执行 */
 void __ref text_poke_queue(void *addr, const void *opcode, size_t len, const void *emulate)
 {
 	struct text_poke_loc *tp;
 
 	text_poke_flush(addr);
 
+	/* 从全局取一个tp作为这次的使用 */
 	tp = &tp_vec[tp_vec_nr++];
+	/* 初始化这个tp */
 	text_poke_loc_init(tp, addr, opcode, len, emulate);
 }
 
 /**
 改变addr这里的代码.从而执行到此处时,跳转到其他地方.
-opcode是insn的text地址,那么opcode里面存储什么.
-
+opcode是insn的text成员地址
  * text_poke_bp() -- update instructions on live kernel on SMP
  * @addr:	address to patch
  * @opcode:	opcode of new instruction
@@ -2459,8 +2525,11 @@ opcode是insn的text地址,那么opcode里面存储什么.
  */
 void __ref text_poke_bp(void *addr, const void *opcode, size_t len, const void *emulate)
 {
+	/* 构造一个tp结构体 */
 	struct text_poke_loc tp;
 
-	text_poke_loc_init(&tp, addr, opcode, len, emulate);
+	/* 完善tp, 比如说addr可能是tp->static_call_tramp */
+	text_poke_loc_init(&tp, addr, opcode, len, emulate); /* x/1i &tp.opcode 	jmp    0xffffc8ffaf4ab807 */
+	/*  */
 	text_poke_bp_batch(&tp, 1);
 }

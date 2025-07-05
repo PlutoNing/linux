@@ -29,6 +29,7 @@ void trigger_data_free(struct event_trigger_data *data)
 }
 
 /**
+调用event关联的trigger
  * event_triggers_call - Call triggers associated with a trace event
  * @file: The trace_event_file associated with the event
  * @buffer: The ring buffer that the event is being written to
@@ -66,10 +67,12 @@ event_triggers_call(struct trace_event_file *file,
 	if (list_empty(&file->triggers))
 		return tt;
 
+	/* 遍历file的triggers */
 	list_for_each_entry_rcu(data, &file->triggers, list) {
 		if (data->paused)
 			continue;
 		if (!rec) {
+			/* 触发 */
 			data->ops->trigger(data, buffer, rec, event);
 			continue;
 		}
@@ -80,6 +83,7 @@ event_triggers_call(struct trace_event_file *file,
 			tt |= data->cmd_ops->trigger_type;
 			continue;
 		}
+		/* 为什么又trigger一次 */
 		data->ops->trigger(data, buffer, rec, event);
 	}
 	return tt;
@@ -101,6 +105,7 @@ bool __trace_trigger_soft_disabled(struct trace_event_file *file)
 EXPORT_SYMBOL_GPL(__trace_trigger_soft_disabled);
 
 /**
+调用triggers
  * event_triggers_post_call - Call 'post_triggers' for a trace event
  * @file: The trace_event_file associated with the event
  * @tt: enum event_trigger_type containing a set bit for each trigger to invoke
@@ -129,6 +134,7 @@ EXPORT_SYMBOL_GPL(event_triggers_post_call);
 
 #define SHOW_AVAILABLE_TRIGGERS	(void *)(1UL)
 
+/* 获取下一个trigger */
 static void *trigger_next(struct seq_file *m, void *t, loff_t *pos)
 {
 	struct trace_event_file *event_file = event_file_data(m->private);
@@ -153,6 +159,13 @@ static bool check_user_trigger(struct trace_event_file *file)
 	return false;
 }
 
+/* trigger ef文件的seq start ops
+遍历系统可用的triggers
+root@laptop:/sys/kernel/debug/tracing# cat events/ftrace/print/trigger 
+# Available triggers:
+# traceon traceoff snapshot stacktrace enable_event disable_event
+ enable_hist disable_hist hist
+ */
 static void *trigger_start(struct seq_file *m, loff_t *pos)
 {
 	struct trace_event_file *event_file;
@@ -174,6 +187,8 @@ static void trigger_stop(struct seq_file *m, void *t)
 	mutex_unlock(&event_mutex);
 }
 
+/* trigger ef文件的seq遍历show ops
+打印系统triggers */
 static int trigger_show(struct seq_file *m, void *v)
 {
 	struct event_trigger_data *data;
@@ -196,13 +211,16 @@ static int trigger_show(struct seq_file *m, void *v)
 	return 0;
 }
 
+/* trigger这个ef文件的seq ops */
 static const struct seq_operations event_triggers_seq_ops = {
+	/* 初始化seq 遍历 */
 	.start = trigger_start,
 	.next = trigger_next,
 	.stop = trigger_stop,
 	.show = trigger_show,
 };
 
+/* 打开trigger ef文件 */
 static int event_trigger_regex_open(struct inode *inode, struct file *file)
 {
 	int ret;
@@ -220,18 +238,23 @@ static int event_trigger_regex_open(struct inode *inode, struct file *file)
 
 	if ((file->f_mode & FMODE_WRITE) &&
 	    (file->f_flags & O_TRUNC)) {
+	/* 如果是写入或者截断 */
 		struct trace_event_file *event_file;
 		struct event_command *p;
 
+		/* 获取filp的df指针 */
 		event_file = event_file_data(file);
 
+		/* 遍历每一个trigger command， 取消注册ef相关的 */
 		list_for_each_entry(p, &trigger_commands, list) {
 			if (p->unreg_all)
 				p->unreg_all(event_file);
 		}
 	}
 
+	/* 如果是读取打开这个ef文件 */
 	if (file->f_mode & FMODE_READ) {
+		/* 给这个trigger这个ef file绑上一个seq file */
 		ret = seq_open(file, &event_triggers_seq_ops);
 		if (!ret) {
 			struct seq_file *m = file->private_data;
@@ -244,6 +267,7 @@ static int event_trigger_regex_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
+/* 设置trigger */
 int trigger_process_regex(struct trace_event_file *file, char *buff)
 {
 	char *command, *next;
@@ -272,6 +296,7 @@ int trigger_process_regex(struct trace_event_file *file, char *buff)
 	return ret;
 }
 
+/* 写入trigger ef文件的ops */
 static ssize_t event_trigger_regex_write(struct file *file,
 					 const char __user *ubuf,
 					 size_t cnt, loff_t *ppos)
@@ -293,12 +318,14 @@ static ssize_t event_trigger_regex_write(struct file *file,
 	strim(buf);
 
 	mutex_lock(&event_mutex);
+	/* 获取ef指针 */
 	event_file = event_file_data(file);
 	if (unlikely(!event_file)) {
 		mutex_unlock(&event_mutex);
 		kfree(buf);
 		return -ENODEV;
 	}
+	/* 设置trigger */
 	ret = trigger_process_regex(event_file, buf);
 	mutex_unlock(&event_mutex);
 
@@ -324,6 +351,7 @@ static int event_trigger_regex_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+/* trigger ef文件的写入函数 */
 static ssize_t
 event_trigger_write(struct file *filp, const char __user *ubuf,
 		    size_t cnt, loff_t *ppos)
@@ -331,6 +359,7 @@ event_trigger_write(struct file *filp, const char __user *ubuf,
 	return event_trigger_regex_write(filp, ubuf, cnt, ppos);
 }
 
+/* 打开trigger这个ef文件 */
 static int
 event_trigger_open(struct inode *inode, struct file *filp)
 {
@@ -344,15 +373,23 @@ event_trigger_release(struct inode *inode, struct file *file)
 	return event_trigger_regex_release(inode, file);
 }
 
+/* ls events/ftrace/print/
+	format  hist  id  inject  trigger
+	trigger的fops
+trigger文件用于添加触发器
+	*/
 const struct file_operations event_trigger_fops = {
+	/* 打开文件，创建seq */
 	.open = event_trigger_open,
+	/* 读的话就是遍历seq， 打印系统可用的trigger */
 	.read = seq_read,
+	/* 设置trigger */
 	.write = event_trigger_write,
 	.llseek = tracing_lseek,
 	.release = event_trigger_release,
 };
 
-/*
+/* 好像就是添加到全局的trigger_commands
  * Currently we only register event commands from __init, so mark this
  * __init too.
  */
@@ -1415,7 +1452,7 @@ onoff_get_trigger_ops(char *cmd, char *param)
 
 	return ops;
 }
-
+/*  */
 static struct event_command trigger_traceon_cmd = {
 	.name			= "traceon",
 	.trigger_type		= ETT_TRACE_ONOFF,
@@ -1512,7 +1549,7 @@ static struct event_command trigger_snapshot_cmd = {
 	.get_trigger_ops	= snapshot_get_trigger_ops,
 	.set_filter		= set_trigger_filter,
 };
-
+/* 添加到全局的trigger_commands链表 */
 static __init int register_trigger_snapshot_cmd(void)
 {
 	int ret;
@@ -1973,7 +2010,7 @@ static __init int register_trigger_enable_disable_cmds(void)
 static __init int register_trigger_traceon_traceoff_cmds(void)
 {
 	int ret;
-
+	/* 添加到全局的trigger_commands链表 */
 	ret = register_event_command(&trigger_traceon_cmd);
 	if (WARN_ON(ret < 0))
 		return ret;
@@ -1983,7 +2020,7 @@ static __init int register_trigger_traceon_traceoff_cmds(void)
 
 	return ret;
 }
-
+/* 注册这些cmd, 添加到全局链表 */
 __init int register_trigger_cmds(void)
 {
 	register_trigger_traceon_traceoff_cmds();

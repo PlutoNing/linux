@@ -54,7 +54,7 @@
  *
  */
 
-/*
+/* 获取sched clock, jiffies时钟源
  * Scheduler clock - returns current time in nanosec units.
  * This is default implementation.
  * Architectures and sub-architectures can override this.
@@ -65,7 +65,9 @@ notrace unsigned long long __weak sched_clock(void)
 					* (NSEC_PER_SEC / HZ);
 }
 EXPORT_SYMBOL_GPL(sched_clock);
-
+/* 
+如果比较小的话会关闭__sched_clock_stable
+*/
 static DEFINE_STATIC_KEY_FALSE(sched_clock_running);
 
 #ifdef CONFIG_HAVE_UNSTABLE_SCHED_CLOCK
@@ -76,6 +78,8 @@ static DEFINE_STATIC_KEY_FALSE(sched_clock_running);
  * Similarly we start with __sched_clock_stable_early, thereby assuming we
  * will become stable, such that there's only a single 1 -> 0 transition.
  */
+/*
+如果为真, 就是获取的pv_clock函数的时间 */
 static DEFINE_STATIC_KEY_FALSE(__sched_clock_stable);
 static int __sched_clock_stable_early = 1;
 
@@ -90,9 +94,9 @@ struct sched_clock_data {
 	u64			tick_gtod;
 	u64			clock;
 };
-
+/* 定义pcp的scd */
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct sched_clock_data, sched_clock_data);
-
+/* 读取pcp的sched_clock_data */
 static __always_inline struct sched_clock_data *this_scd(void)
 {
 	return this_cpu_ptr(&sched_clock_data);
@@ -102,18 +106,23 @@ notrace static inline struct sched_clock_data *cpu_sdc(int cpu)
 {
 	return &per_cpu(sched_clock_data, cpu);
 }
-
+/* 
+检查是不是stable的
+*/
 notrace int sched_clock_stable(void)
 {
 	return static_branch_likely(&__sched_clock_stable);
 }
-
+/* 从时钟源读取时间
+设置scd的一些time value */
 notrace static void __scd_stamp(struct sched_clock_data *scd)
 {
 	scd->tick_gtod = ktime_get_ns();
 	scd->tick_raw = sched_clock();
 }
-
+/*
+开启__sched_clock_stable开关
+*/
 notrace static void __set_sched_clock_stable(void)
 {
 	struct sched_clock_data *scd;
@@ -139,10 +148,12 @@ notrace static void __set_sched_clock_stable(void)
 }
 
 /*
+复制传播一份scd, 关闭__sched_clock_stable
+clear clock stable的话会调用这个函数.
  * If we ever get here, we're screwed, because we found out -- typically after
  * the fact -- that TSC wasn't good. This means all our clocksources (including
  * ktime) could have reported wrong values.
- *
+ * 调用这个函数说明当前时钟源可能不可靠了
  * What we do here is an attempt to fix up and continue sort of where we left
  * off in a coherent manner.
  *
@@ -156,12 +167,13 @@ notrace static void __sched_clock_work(struct work_struct *work)
 
 	/* take a current timestamp and set 'now' */
 	preempt_disable();
+	/* 读取当前的scd, 设置当前的一些value */
 	scd = this_scd();
 	__scd_stamp(scd);
 	scd->clock = scd->tick_gtod + __gtod_offset;
 	preempt_enable();
 
-	/* clone to all CPUs */
+	/* clone to all CPUs , 把这个value复制传播到所有cpu的scd*/
 	for_each_possible_cpu(cpu)
 		per_cpu(sched_clock_data, cpu) = *scd;
 
@@ -175,6 +187,9 @@ notrace static void __sched_clock_work(struct work_struct *work)
 
 static DECLARE_WORK(sched_clock_work, __sched_clock_work);
 
+/* 
+关闭__sched_clock_stable标志, 复制scd
+*/
 notrace static void __clear_sched_clock_stable(void)
 {
 	if (!sched_clock_stable())
@@ -183,7 +198,9 @@ notrace static void __clear_sched_clock_stable(void)
 	tick_dep_set(TICK_DEP_BIT_CLOCK_UNSTABLE);
 	schedule_work(&sched_clock_work);
 }
-
+/* 
+关闭tsc时钟源会调用这个
+调用异步函数关闭__sched_clock_stable标志, 复制传播scd */
 notrace void clear_sched_clock_stable(void)
 {
 	__sched_clock_stable_early = 0;
@@ -191,17 +208,22 @@ notrace void clear_sched_clock_stable(void)
 	smp_mb(); /* matches sched_clock_init_late() */
 
 	if (static_key_count(&sched_clock_running.key) == 2)
-		__clear_sched_clock_stable();
+		__clear_sched_clock_stable(); /*  */
 }
-
+/* 
+sched_clock_init的主要调用函数
+设置scd的一些时间值
+ */
 notrace static void __sched_clock_gtod_offset(void)
-{
+{ /* 读取sched_clock_data */
 	struct sched_clock_data *scd = this_scd();
 
 	__scd_stamp(scd);
 	__gtod_offset = (scd->tick_raw + __sched_clock_offset) - scd->tick_gtod;
 }
-
+/* 
+start_kernel调用
+初始化 */
 void __init sched_clock_init(void)
 {
 	/*
@@ -212,12 +234,17 @@ void __init sched_clock_init(void)
 	 * can't really be out of sync.
 	 */
 	local_irq_disable();
+	/* 初始化的逻辑
+	设置scd什么的*/
 	__sched_clock_gtod_offset();
 	local_irq_enable();
 
 	static_branch_inc(&sched_clock_running);
 }
 /*
+初始化的时候调用这个函数
+增加sched_clock_running
+开启sched_clock_stable
  * We run this as late_initcall() such that it runs after all built-in drivers,
  * notably: acpi_processor and intel_idle, which can mark the TSC as unstable.
  */
@@ -255,8 +282,11 @@ static __always_inline u64 wrap_max(u64 x, u64 y)
 }
 
 /*
+获取计算clock
+更新scd
+并返回clock
  * update the percpu scd from the raw @now value
- *
+ * 更新scd的clock值
  *  - filter out backward motion
  *  - use the GTOD tick value to create a window to filter crazy TSC values
  */
@@ -266,6 +296,7 @@ static __always_inline u64 sched_clock_local(struct sched_clock_data *scd)
 	s64 delta;
 
 again:
+/* 从pv_clock获取时间 */
 	now = sched_clock_noinstr();
 	delta = now - scd->tick_raw;
 	if (unlikely(delta < 0))
@@ -292,22 +323,25 @@ again:
 
 	return clock;
 }
-
+/* 获取的是boottime? */
 noinstr u64 local_clock_noinstr(void)
 {
 	u64 clock;
 
+	/* 获取的pv_clock */
 	if (static_branch_likely(&__sched_clock_stable))
 		return sched_clock_noinstr() + __sched_clock_offset;
 
 	if (!static_branch_likely(&sched_clock_running))
-		return sched_clock_noinstr();
-
+		return sched_clock_noinstr(); /* 执行这个分支 */
+	/* 
+	说明现在sched_clock不stable但是running?
+	更新scd并获取clock */
 	clock = sched_clock_local(this_scd());
 
 	return clock;
 }
-
+/* 获取的好像是boottime */
 u64 local_clock(void)
 {
 	u64 now;
@@ -381,7 +415,7 @@ again:
 }
 
 /*
- 
+ 获取此cpu的sched clock值
  * Similar to cpu_clock(), but requires local IRQs to be disabled.
  *
  * See cpu_clock().
@@ -391,12 +425,14 @@ notrace u64 sched_clock_cpu(int cpu)
 	struct sched_clock_data *scd;
 	u64 clock;
 
+	/* 这里的可能性是多少? */
 	if (sched_clock_stable())
 		return sched_clock() + __sched_clock_offset;
 
 	if (!static_branch_likely(&sched_clock_running))
 		return sched_clock();
 
+	/* 到这里说明sched_clock_running? */
 	preempt_disable_notrace();
 	scd = cpu_sdc(cpu);
 
@@ -410,6 +446,8 @@ notrace u64 sched_clock_cpu(int cpu)
 }
 EXPORT_SYMBOL_GPL(sched_clock_cpu);
 
+/* 主要还是tick的作用
+更新scd */
 notrace void sched_clock_tick(void)
 {
 	struct sched_clock_data *scd;
@@ -422,11 +460,17 @@ notrace void sched_clock_tick(void)
 
 	lockdep_assert_irqs_disabled();
 
+	/* 更新scd */
 	scd = this_scd();
 	__scd_stamp(scd);
+
 	sched_clock_local(scd);
 }
 
+/* 
+函数作用?
+读取时钟源的时间 来更新scd
+*/
 notrace void sched_clock_tick_stable(void)
 {
 	if (!sched_clock_stable())
@@ -440,6 +484,7 @@ notrace void sched_clock_tick_stable(void)
 	 * TSC to be unstable, any computation will be computing crap.
 	 */
 	local_irq_disable();
+	/* 更新scd */
 	__sched_clock_gtod_offset();
 	local_irq_enable();
 }
@@ -467,6 +512,7 @@ notrace void sched_clock_idle_wakeup_event(void)
 		return;
 
 	local_irq_save(flags);
+	/* tick一下 */
 	sched_clock_tick();
 	local_irq_restore(flags);
 }

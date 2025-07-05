@@ -17,7 +17,7 @@
  */
 BLOCKING_NOTIFIER_HEAD(reboot_notifier_list);
 
-/*
+/*注册notifier
  *	Notifier chain core routines.  The exported routines below
  *	are layered on top of these, with appropriate locking added.
  */
@@ -33,11 +33,11 @@ static int notifier_chain_register(struct notifier_block **nl,
 			return -EEXIST;
 		}
 		if (n->priority > (*nl)->priority)
-			break;
+			break;/* 高优先级的在chain的前面 */
 		if (n->priority == (*nl)->priority && unique_priority)
 			return -EBUSY;
 		nl = &((*nl)->next);
-	}
+	}/* 找到一个合适的插入位置 */
 	n->next = *nl;
 	rcu_assign_pointer(*nl, n);
 	trace_notifier_register((void *)n->notifier_call);
@@ -137,7 +137,7 @@ static int notifier_call_chain_robust(struct notifier_block **nl,
  *	use a spinlock, and call_chain is synchronized by RCU (no locks).
  */
 
-/**
+/**通知链（notifier chain）在内核中的作用。通知链是内核中用于事件通知的一种机制，允许不同模块在某些事件发生时得到通知。例如，当网络设备状态变化时，相关模块可以通过通知链来通知其他模块。
  *	atomic_notifier_chain_register - Add notifier to an atomic notifier chain
  *	@nh: Pointer to head of the atomic notifier chain
  *	@n: New entry in notifier chain
@@ -275,7 +275,7 @@ static int __blocking_notifier_chain_register(struct blocking_notifier_head *nh,
 }
 
 /**
- *	blocking_notifier_chain_register - Add notifier to a blocking notifier chain
+ *	blocking_notifier_chain_register - 添加一个notifier到blocking notifier chain
  *	@nh: Pointer to head of the blocking notifier chain
  *	@n: New entry in notifier chain
  *
@@ -596,7 +596,7 @@ int notrace notify_die(enum die_val val, const char *str,
 	return atomic_notifier_call_chain(&die_chain, val, &args);
 }
 NOKPROBE_SYMBOL(notify_die);
-
+/* ftrace注册通知链 */
 int register_die_notifier(struct notifier_block *nb)
 {
 	return atomic_notifier_chain_register(&die_chain, nb);

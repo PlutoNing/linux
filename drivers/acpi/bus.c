@@ -1246,7 +1246,7 @@ void __init acpi_early_init(void)
 	disable_acpi();
 }
 
-/**
+/**完成acpi子系统的初始化, 以后分析
  * acpi_subsystem_init - Finalize the early initialization of ACPI.
  *
  * Switch over the platform to the ACPI mode (if possible).

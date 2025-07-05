@@ -612,7 +612,7 @@ static int __init_memblock memblock_add_range(struct memblock_type *type,
 		return 0;
 
 	/* special case for empty array */
-	if (type->regions[0].size == 0) {
+	if (type->regions[0].size == 0) {/* 如果是第一次保留内存 */
 		WARN_ON(type->cnt != 1 || type->total_size);
 		type->regions[0].base = base;
 		type->regions[0].size = size;
@@ -728,7 +728,7 @@ int __init_memblock memblock_add_node(phys_addr_t base, phys_addr_t size,
 }
 
 /**
- * memblock_add - add new memblock region
+ * memblock_add - add new memblock region，把一段内存加入到memblock
  * @base: base address of the new region
  * @size: size of the new region
  *
@@ -748,7 +748,7 @@ int __init_memblock memblock_add(phys_addr_t base, phys_addr_t size)
 	return memblock_add_range(&memblock.memory, base, size, MAX_NUMNODES, 0);
 }
 
-/**
+/**如果base和size描述的区域a首尾head.tail刚好位于所在region的中间, 就分裂, 因为head和tail各自的前后要被赋予不同的属性?
  * memblock_isolate_range - isolate given range into disjoint memblocks
    释放type中base和size描述的内存区域, 从与之交叉的region的范围移除
    start_rgn和end_rgn是out参数, 用于返回此region的idx
@@ -897,7 +897,7 @@ void __init_memblock memblock_free(void *ptr, size_t size)
 		memblock_phys_free(__pa(ptr), size);
 }
 
-/**
+/**从reserved移除就是释放吗?
  * memblock_phys_free - free boot memory block
  memblock释放内存
  * @base: phys starting address of the  boot memory block
@@ -917,7 +917,7 @@ int __init_memblock memblock_phys_free(phys_addr_t base, phys_addr_t size)
 	return memblock_remove_range(&memblock.reserved, base, size);
 }
 
-// 判断参数描述的内存区域是不是保留的
+// 保留这一块内存, 参数描述一段物理地址范围
 int __init_memblock memblock_reserve(phys_addr_t base, phys_addr_t size)
 {
 	phys_addr_t end = base + size - 1;
@@ -1151,7 +1151,7 @@ void __next_mem_range(u64 *idx, int nid, enum memblock_flags flags,
 			idx_a++;
 			*idx = (u32)idx_a | (u64)idx_b << 32;
 			return;
-		}
+		}/* 如果没有指定要排除的type_b这里直接找到返回了, 指定了type_b就开始遍历type_b */
 
 		/* scan areas before each reservation */
 		for (; idx_b < type_b->cnt + 1; idx_b++) {
@@ -1358,7 +1358,7 @@ int __init_memblock memblock_set_node(phys_addr_t base, phys_addr_t size,
 	int start_rgn, end_rgn;
 	int i, ret;
 
-	// 把base和size描述的内存区域从type中"移除"
+	// 要以region为单位设置base,size的区域属性, 把头尾的region进行分裂.
 	ret = memblock_isolate_range(type, base, size, &start_rgn, &end_rgn);
 	if (ret)
 		return ret;
@@ -1436,7 +1436,7 @@ __next_mem_pfn_range_in_zone(u64 *idx, struct zone *zone,
 #endif /* CONFIG_DEFERRED_STRUCT_PAGE_INIT */
 
 /**
-memblock机制的内存分配函数
+memblock机制的内存分配函数, 在指定范围内分配size大小align对齐的内存
  * memblock_alloc_range_nid - allocate boot memory block
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
@@ -1529,8 +1529,8 @@ done: // 找到了可用的内存区域来到这里
 	return found;
 }
 
-/**
- * memblock_phys_alloc_range - allocate a memory block inside specified range
+/**memblock在指定范围内分配size大小align对齐的内存
+ * memblock_phys_alloc_range - allocate a memory block inside specified range，在指定范围内分配内存
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
  * @start: the lower bound of the memory region to allocate (physical address)
@@ -1553,7 +1553,7 @@ phys_addr_t __init memblock_phys_alloc_range(phys_addr_t size,
 					false);
 }
 
-/**
+/**memblock从指定的nid分配内存
  * memblock_phys_alloc_try_nid - allocate a memory block from specified NUMA node
  * @size: size of memory block to be allocated in bytes
  * @align: alignment of the region and block's size
@@ -1875,7 +1875,7 @@ void __init memblock_mem_limit_remove_map(phys_addr_t limit)
 
 	memblock_cap_memory_range(0, max_addr);
 }
-
+/* 搜索地址所在的node */
 static int __init_memblock memblock_search(struct memblock_type *type, phys_addr_t addr)
 {
 	unsigned int left = 0, right = type->cnt;
@@ -1912,7 +1912,7 @@ bool __init_memblock memblock_is_map_memory(phys_addr_t addr)
 		return false;
 	return !memblock_is_nomap(&memblock.memory.regions[i]);
 }
-
+/* 早期的pfn转node函数 */
 int __init_memblock memblock_search_pfn_nid(unsigned long pfn,
 			 unsigned long *start_pfn, unsigned long *end_pfn)
 {
@@ -1964,7 +1964,7 @@ bool __init_memblock memblock_is_region_reserved(phys_addr_t base, phys_addr_t s
 {
 	return memblock_overlaps_region(&memblock.reserved, base, size);
 }
-
+/* 启动的时候把探测的物理内存加入到memblock之后， trim一下 */
 void __init_memblock memblock_trim_memory(phys_addr_t align)
 {
 	phys_addr_t start, end, orig_start, orig_end;
@@ -1999,7 +1999,7 @@ phys_addr_t __init_memblock memblock_get_current_limit(void)
 {
 	return memblock.current_limit;
 }
-
+/* 打印 */
 static void __init_memblock memblock_dump(struct memblock_type *type)
 {
 	phys_addr_t base, end, size;
@@ -2025,7 +2025,7 @@ static void __init_memblock memblock_dump(struct memblock_type *type)
 			type->name, idx, &base, &end, &size, nid_buf, flags);
 	}
 }
-
+/* 打印保留的和可用的内存 */
 static void __init_memblock __memblock_dump_all(void)
 {
 	pr_info("MEMBLOCK configuration:\n");
@@ -2145,8 +2145,8 @@ static void __init free_unused_memmap(void)
 #endif
 }
 
-/*
-参数是一个free的memory type region
+/*参数是一个free的memory type region, 表示一堆连续的页面, 这个时候对应的page结构体也初始化了必要的东西
+一堆连续的page结构体,这里进行循环,进行找到比较大的order, 加入buddy
 把范围内的页面按照尽可能大的order释放到buddy
 */
 static void __init __free_pages_memory(unsigned long start, unsigned long end)
@@ -2180,7 +2180,7 @@ static void __init __free_pages_memory(unsigned long start, unsigned long end)
 // 参数是一个free的memory type region
 /*
 把这个region的页面释放到buddy
-*/
+返回这次处理了多少页面*/
 static unsigned long __init __free_memory_core(phys_addr_t start,
 				 phys_addr_t end)
 {
@@ -2190,15 +2190,15 @@ static unsigned long __init __free_memory_core(phys_addr_t start,
 
 	if (start_pfn >= end_pfn)
 		return 0;
-		// 释放到buddy
+	// 释放到buddy
 	__free_pages_memory(start_pfn, end_pfn);
 
 	return end_pfn - start_pfn;
 }
 
 /*
-函数的作用是?
-
+函数的作用是? 遍历memblock的pfn, 加上vmemap就是page结构体地址, 初始化page的一些属性
+把memblock转为buddy？ 初始化page什么的
 */
 static void __init memmap_init_reserved_pages(void)
 {
@@ -2219,7 +2219,7 @@ static void __init memmap_init_reserved_pages(void)
 
 		if (memblock_is_nomap(region))
 			reserve_bootmem_region(start, end, nid); // 标记每个页面为reserved
-		// 设置范围内的region的node id , 不过为什么遍历的是memory type 但是这里是reserved type呢
+		// 设置范围内的reserved的region的node id ,
 		memblock_set_node(start, end, &memblock.reserved, nid);
 	}
 
@@ -2230,7 +2230,7 @@ static void __init memmap_init_reserved_pages(void)
 		nid = memblock_get_region_node(region);
 		start = region->base;
 		end = start + region->size;
-
+		/* 初始化? */
 		reserve_bootmem_region(start, end, nid);
 	}
 }
@@ -2246,7 +2246,7 @@ static unsigned long __init free_low_memory_core_early(void)
 	// 清除所有region的热插拔标志
 	memblock_clear_hotplug(0, -1);
 
-	memmap_init_reserved_pages();
+	memmap_init_reserved_pages(); /* 遍历memblock的pfn, 加上vmemap就是page结构体地址, 初始化page的一些属性 */
 
 	/*
 	 * We need to use NUMA_NO_NODE instead of NODE_DATA(0)->node_id
@@ -2282,12 +2282,12 @@ void __init reset_all_zones_managed_pages(void)
 		return;
 
 	for_each_online_pgdat(pgdat)
-		reset_node_managed_pages(pgdat);
+		reset_node_managed_pages(pgdat);/* reset这个node */
 
 	reset_managed_pages_done = 1;
 }
 
-/**
+/**在zone初始化好之后, 把memblock的内存给zone buddy
   把所有的内存释放给伙伴系统?
  * memblock_free_all - release free pages to the buddy allocator
  */
@@ -2298,7 +2298,7 @@ void __init memblock_free_all(void)
 	free_unused_memmap(); // 好像是释放region之间的内存?
 	reset_all_zones_managed_pages(); // 这里把所有node所有zone的managed_pages置为0
 
-	pages = free_low_memory_core_early();
+	pages = free_low_memory_core_early(); /* 把memblock里面free的pfn加入到buddy */
 	totalram_pages_add(pages);
 }
 

@@ -613,6 +613,8 @@ static void setup_APIC_timer(void)
 }
 
 /*
+校准cpu的TSC频率
+更新lapic_events的频率, 设置新的到期时间
  * Install the updated TSC frequency from recalibration at the TSC
  * deadline clockevent devices.
  */
@@ -623,9 +625,12 @@ static void __lapic_update_tsc_freq(void *info)
 	if (!this_cpu_has(X86_FEATURE_TSC_DEADLINE_TIMER))
 		return;
 
+	/* 更新设备的频率 */
 	clockevents_update_freq(levt, tsc_khz * (1000 / TSC_DIVISOR));
 }
 
+/* 校准tsc
+更新每个cpu的lapic_events设备的频率., 设置新的到期时间 */
 void lapic_update_tsc_freq(void)
 {
 	/*
@@ -1256,12 +1261,12 @@ void __init sync_Arb_IDs(void)
 	apic_write(APIC_ICR, APIC_DEST_ALLINC |
 			APIC_INT_LEVELTRIG | APIC_DM_INIT);
 }
-
+/*  */
 enum apic_intr_mode_id apic_intr_mode __ro_after_init;
 
 static int __init __apic_intr_mode_select(void)
 {
-	/* Check kernel option */
+	/* Check kernel option, 最开始为false */
 	if (apic_is_disabled) {
 		pr_info("APIC disabled via kernel command line\n");
 		return APIC_PIC;
@@ -1314,7 +1319,7 @@ static int __init __apic_intr_mode_select(void)
 	return APIC_SYMMETRIC_IO;
 }
 
-/* Select the interrupt delivery mode for the BSP */
+/* Select the interrupt delivery mode for the BSP, 是x86_init.irqs.intr_mode_select的函数 */
 void __init apic_intr_mode_select(void)
 {
 	apic_intr_mode = __apic_intr_mode_select();
@@ -1914,7 +1919,7 @@ void __init check_x2apic(void)
 static inline void try_to_enable_x2apic(int remap_mode) { }
 static inline void __x2apic_enable(void) { }
 #endif /* !CONFIG_X86_X2APIC */
-
+/*  */
 void __init enable_IR_x2apic(void)
 {
 	unsigned long flags;
@@ -2078,9 +2083,9 @@ no_apic:
 /**
  * init_apic_mappings - initialize APIC mappings
  */
-void __init init_apic_mappings(void)
+void __init  init_apic_mappings(void)
 {
-	if (apic_validate_deadline_timer())
+  	if (apic_validate_deadline_timer())
 		pr_info("TSC deadline timer available\n");
 
 	if (x2apic_mode)

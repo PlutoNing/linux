@@ -131,7 +131,9 @@ struct params {
 };
 
 
-/* Global, read-writable area, accessible to all processes and threads: */
+/* Global, read-writable area, accessible to all processes and threads:
+全局读写区域,对所有进程和线程可见
+ */
 
 struct global_info {
 	u8			*data;
@@ -158,14 +160,29 @@ struct global_info {
 
 	struct params		p;
 };
-
+/* 
+存储全局的配置
+*/
 static struct global_info	*g = NULL;
 
 static int parse_cpus_opt(const struct option *opt, const char *arg, int unset);
 static int parse_nodes_opt(const struct option *opt, const char *arg, int unset);
 
 struct params p0;
-
+/* 示例:
+ # Running  4x8-bw-process, "perf bench numa mem -p 4 -t 8 -P 512 -s 20 -zZ0q --thp  1"
+         20.548 secs slowest (max) thread-runtime
+         20.000 secs fastest (min) thread-runtime
+         20.383 secs average thread-runtime
+          1.334 % difference between max/avg runtime
+         10.691 GB data processed, per thread
+        342.117 GB data processed, total
+          1.922 nsecs/byte/thread runtime
+          0.520 GB/sec/thread speed
+         16.649 GB/sec total speed
+=========================
+perf bench numa mem支持的选项
+*/
 static const struct option options[] = {
 	OPT_INTEGER('p', "nr_proc"	, &p0.nr_proc,		"number of processes"),
 	OPT_INTEGER('t', "nr_threads"	, &p0.nr_threads,	"number of threads per process"),
@@ -222,6 +239,7 @@ static const char * const numa_usage[] = {
 };
 
 /*
+获取node数量
  * To get number of numa nodes present.
  */
 static int nr_numa_nodes(void)
@@ -367,7 +385,7 @@ err_out:
 	BUG_ON(-1);
 	return NULL;
 }
-
+/* 把自己绑定到cpu */
 static void bind_to_cpumask(cpu_set_t *mask)
 {
 	int ret;
@@ -388,7 +406,7 @@ static void mempol_restore(void)
 
 	BUG_ON(ret);
 }
-
+/* 把自己bind到node */
 static void bind_to_memnode(int node)
 {
 	struct bitmask *node_mask;
@@ -902,7 +920,7 @@ static u64 do_work(u8 *__data, long bytes, int nr, int nr_max, int loop, u64 val
 
 	return val;
 }
-
+/* 设置g->threads[task_nr].curr_cpu */
 static void update_curr_cpu(int task_nr, unsigned long bytes_worked)
 {
 	unsigned int cpu;
@@ -1149,7 +1167,7 @@ static void show_summary(double runtime_ns_max, int l, double *convergence)
 	if (g->p.show_details >= 0)
 		fflush(stdout);
 }
-
+/* 子进程的线程工作函数 */
 static void *worker_thread(void *__tdata)
 {
 	struct thread_data *td = __tdata;
@@ -1344,7 +1362,7 @@ static void *worker_thread(void *__tdata)
 	return NULL;
 }
 
-/*
+/*执行测试的子进程
  * A worker process starts a couple of threads:
  */
 static void worker_process(int process_nr)
@@ -1389,7 +1407,7 @@ static void worker_process(int process_nr)
 		td->val          = rand();
 		td->curr_cpu	 = -1;
 		td->process_lock = &process_lock;
-
+/* 子进程开始执行工作 */
 		ret = pthread_create(pthreads + t, NULL, worker_thread, td);
 		BUG_ON(ret);
 	}
@@ -1460,7 +1478,7 @@ static void deinit_thread_data(void)
 
 	free_data(g->threads, size);
 }
-
+/* 初始化全局信息结构体g */
 static int init(void)
 {
 	g = (void *)alloc_data(sizeof(*g), MAP_SHARED, 1, 0, 0 /* THP */, 0);
@@ -1559,7 +1577,7 @@ static void print_res(const char *name, double val,
 	else
 		printf(" %14.3f %s\n", val, txt_long);
 }
-
+/* 运行 */
 static int __bench_numa(const char *name)
 {
 	struct timeval start, stop, diff;
@@ -1586,13 +1604,13 @@ static int __bench_numa(const char *name)
 
 	gettimeofday(&start, NULL);
 
-	for (i = 0; i < g->p.nr_proc; i++) {
+	for (i = 0; i < g->p.nr_proc; i++) {/* 要运行的子进程数量 */
 		pid = fork();
 		dprintf(" # process %2d: PID %d\n", i, pid);
 
 		BUG_ON(pid < 0);
 		if (!pid) {
-			/* Child process: */
+			/* Child process: 运行真正执行测试的子进程*/
 			worker_process(i);
 
 			exit(0);
@@ -1755,7 +1773,7 @@ static int command_size(const char **argv)
 
 	return size;
 }
-
+/* 运行套件前,初始化参数 */
 static void init_params(struct params *p, const char *name, int argc, const char **argv)
 {
 	int i;
@@ -1784,7 +1802,7 @@ static void init_params(struct params *p, const char *name, int argc, const char
 	p->nr_secs			= 5;
 	p->run_all			= argc == 1;
 }
-
+/* 运行一个bench numa套件 */
 static int run_bench_numa(const char *name, const char **argv)
 {
 	int argc = command_size(argv);
@@ -1793,7 +1811,7 @@ static int run_bench_numa(const char *name, const char **argv)
 	argc = parse_options(argc, argv, options, bench_numa_usage, 0);
 	if (argc)
 		goto err;
-
+	/* 比如是RAM-bw-local */
 	if (__bench_numa(name))
 		goto err;
 
@@ -1898,7 +1916,7 @@ static int bench_all(void)
 
 	ret = system("echo ' #'; echo ' # Running test on: '$(uname -a); echo ' #'");
 	BUG_ON(ret < 0);
-
+/* 运行每一个预定义的测试 */
 	for (i = 0; i < nr; i++) {
 		run_bench_numa(tests[i][0], tests[i] + 1);
 	}
@@ -1907,7 +1925,7 @@ static int bench_all(void)
 
 	return 0;
 }
-
+/* perf bench numa的函数 */
 int bench_numa(int argc, const char **argv)
 {
 	init_params(&p0, "main,", argc, argv);
@@ -1916,7 +1934,7 @@ int bench_numa(int argc, const char **argv)
 		goto err;
 
 	if (p0.run_all)
-		return bench_all();
+		return bench_all();/* 开始运行 */
 
 	if (__bench_numa(NULL))
 		goto err;

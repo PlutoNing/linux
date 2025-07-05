@@ -79,6 +79,8 @@ static void show_all_irqs(struct seq_file *p)
 	show_irq_gap(p, nr_irqs - next);
 }
 
+/* 显示的内容对应/proc/stat文件
+系统cpu的各种sys,user时间 */
 static int show_stat(struct seq_file *p, void *v)
 {
 	int i, j;
@@ -136,6 +138,7 @@ static int show_stat(struct seq_file *p, void *v)
 	seq_put_decimal_ull(p, " ", nsec_to_clock_t(guest_nice));
 	seq_putc(p, '\n');
 
+	/* 打印每个cpu的 */
 	for_each_online_cpu(i) {
 		struct kernel_cpustat kcpustat;
 		u64 *cpustat = kcpustat.cpustat;

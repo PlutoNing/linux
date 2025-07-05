@@ -461,7 +461,9 @@ void propagate_mount_unlock(struct mount *mnt)
 			child->mnt.mnt_flags &= ~MNT_LOCKED;
 	}
 }
-
+/* 
+卸载这个mount
+*/
 static void umount_one(struct mount *mnt, struct list_head *to_umount)
 {
 	CLEAR_MNT_MARK(mnt);
@@ -472,6 +474,8 @@ static void umount_one(struct mount *mnt, struct list_head *to_umount)
 }
 
 /*
+卸载mount
+好像是就是检查要不要卸载这个mnt
  * NOTE: unmounting 'mnt' naturally propagates to all other mounts its
  * parent propagates to.
  */
@@ -483,8 +487,8 @@ static bool __propagate_umount(struct mount *mnt,
 	struct mount *child;
 
 	/*
-	 * The state of the parent won't change if this mount is
-	 * already unmounted or marked as without children.
+	 * 如果这个挂载点已经被卸载或者被标记为没有子节点，
+	 * 那么父节点的状态将不会发生变化。
 	 */
 	if (mnt->mnt.mnt_flags & (MNT_UMOUNT | MNT_MARKED))
 		goto out;
@@ -495,18 +499,23 @@ static bool __propagate_umount(struct mount *mnt,
 	list_for_each_entry(child, &mnt->mnt_mounts, mnt_child) {
 		if (child->mnt_mountpoint == mnt->mnt.mnt_root)
 			continue;
+		/* 找到mnt的每一个不是top的子mnt */
 		if (!list_empty(&child->mnt_umounting) && IS_MNT_MARKED(child))
 			continue;
+		/* 如果child->mnt_umounting是空的， 或者没有IS_MNT_MARKED */
 		/* Found a mounted child */
 		goto children;
 	}
 
+	/* 如果mnt的所有子mnt都是不空的，并且被IS_MNT_MARKED
+	开始操作 */
 	/* Mark mounts that can be unmounted if not locked */
 	SET_MNT_MARK(mnt);
 	progress = true;
 
 	/* If a mount is without children and not locked umount it. */
 	if (!IS_MNT_LOCKED(mnt)) {
+		/* 如果可以卸载就卸载 */
 		umount_one(mnt, to_umount);
 	} else {
 children:
@@ -515,22 +524,27 @@ children:
 out:
 	return progress;
 }
-
+/* 
+用于卸载
+*/
 static void umount_list(struct list_head *to_umount,
 			struct list_head *to_restore)
 {
 	struct mount *mnt, *child, *tmp;
+	/* mnt通过mnt_list挂载到to_mount */
 	list_for_each_entry(mnt, to_umount, mnt_list) {
+		/* 取出挂载在mnt->mnt_mounts的每一个mount */
 		list_for_each_entry_safe(child, tmp, &mnt->mnt_mounts, mnt_child) {
 			/* topper? */
 			if (child->mnt_mountpoint == mnt->mnt.mnt_root)
 				list_move_tail(&child->mnt_umounting, to_restore);
 			else
+			/* 卸载这个 */
 				umount_one(child, to_umount);
 		}
 	}
 }
-
+/* 卸载的时候调用 */
 static void restore_mounts(struct list_head *to_restore)
 {
 	/* Restore mounts to a clean working state */
@@ -564,6 +578,7 @@ static void cleanup_umount_visitations(struct list_head *visited)
 }
 
 /*
+用于卸载的函数
  * collect all mounts that receive propagation from the mount in @list,
  * and return these additional mounts in the same list.
  * @list: the list of mounts to be unmounted.
@@ -631,7 +646,9 @@ int propagate_umount(struct list_head *list)
 		}
 	}
 
+	/*  */
 	umount_list(&to_umount, &to_restore);
+	/*  */
 	restore_mounts(&to_restore);
 	cleanup_umount_visitations(&visited);
 	list_splice_tail(&to_umount, list);

@@ -12,6 +12,7 @@ tqhead红黑树上的节点
 */
 struct timerqueue_node {
 	struct rb_node node;
+	/* 到期时间 */
 	ktime_t expires; // 如果值为0的话, 表示不再被触发了?
 };
 

@@ -33,9 +33,9 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/kmem.h>
-
+/* 创建完了kmalloc_caches， kmalloc可以用了 */
 enum slab_state slab_state;
-LIST_HEAD(slab_caches);
+LIST_HEAD(slab_caches);/* 全局的slab cache */
 DEFINE_MUTEX(slab_mutex);
 struct kmem_cache *kmem_cache;
 
@@ -247,6 +247,7 @@ out:
 }
 
 /**
+创建一个特殊的kmem_cache, 该kmem_cache的对象可以被复制到用户空间?
  * kmem_cache_create_usercopy - Create a cache with a region suitable
  * for copying to userspace
  * @name: A string which is used in /proc/slabinfo to identify this cache.
@@ -625,7 +626,7 @@ void kmem_dump_obj(void *object)
 EXPORT_SYMBOL_GPL(kmem_dump_obj);
 #endif
 
-/* Create a cache during boot when no slab services are available yet */
+/* 在启动期间创建一个缓存，此时尚无 slab 服务可用 */
 void __init create_boot_cache(struct kmem_cache *s, const char *name,
 		unsigned int size, slab_flags_t flags,
 		unsigned int useroffset, unsigned int usersize)
@@ -649,7 +650,7 @@ void __init create_boot_cache(struct kmem_cache *s, const char *name,
 	s->usersize = usersize;
 #endif
 
-	err = __kmem_cache_create(s, flags);
+	err = __kmem_cache_create(s, flags);/* 初始化缓存 */
 
 	if (err)
 		panic("Creation of kmalloc slab %s size=%u failed. Reason %d\n",
@@ -657,7 +658,7 @@ void __init create_boot_cache(struct kmem_cache *s, const char *name,
 
 	s->refcount = -1;	/* Exempt from merging for now */
 }
-
+/* 从kmem_cache创建slab cache。。。。。 */
 static struct kmem_cache *__init create_kmalloc_cache(const char *name,
 						      unsigned int size,
 						      slab_flags_t flags)
@@ -666,7 +667,7 @@ static struct kmem_cache *__init create_kmalloc_cache(const char *name,
 
 	if (!s)
 		panic("Out of memory when creating slab %s\n", name);
-
+/* boot cache有啥不同？ */
 	create_boot_cache(s, name, size, flags | SLAB_KMALLOC, 0, size);
 	list_add(&s->list, &slab_caches);
 	s->refcount = 1;
@@ -846,7 +847,7 @@ const struct kmalloc_info_struct kmalloc_info[] __initconst = {
 	INIT_KMALLOC_INFO(2097152, 2M)
 };
 
-/*
+/* 这是想构造一个啥表？调用完如下：size_index[0] =3 '\003'[1] =4 '\004'[2] =5 '\005'[3] =5 '\005'[4] =6 '\006'[5] =6 '\006'[6] =6 '\006'[7] =6 '\006'[8] =1 '\001'[9] =1 '\001'[10] =1 '\001'[11] =1 '\001'[12] =7 '\a'
  * Patch up the size_index table if we have strange large alignment
  * requirements for the kmalloc array. This is only the case for
  * MIPS it seems. The standard arches will not generate any code here.
@@ -903,7 +904,7 @@ static unsigned int __kmalloc_minalign(void)
 
 	return max(minalign, arch_slab_minalign());
 }
-
+/* 创建kmalloc_caches[type][idx] */
 void __init
 new_kmalloc_cache(int idx, enum kmalloc_cache_type type, slab_flags_t flags)
 {
@@ -914,7 +915,7 @@ new_kmalloc_cache(int idx, enum kmalloc_cache_type type, slab_flags_t flags)
 	if ((KMALLOC_RECLAIM != KMALLOC_NORMAL) && (type == KMALLOC_RECLAIM)) {
 		flags |= SLAB_RECLAIM_ACCOUNT;
 	} else if (IS_ENABLED(CONFIG_MEMCG_KMEM) && (type == KMALLOC_CGROUP)) {
-		if (mem_cgroup_kmem_disabled()) {
+		if (mem_cgroup_kmem_disabled()) {/* 复用normal的 */
 			kmalloc_caches[type][idx] = kmalloc_caches[KMALLOC_NORMAL][idx];
 			return;
 		}
@@ -943,15 +944,15 @@ new_kmalloc_cache(int idx, enum kmalloc_cache_type type, slab_flags_t flags)
 	if (!kmalloc_caches[type][aligned_idx])
 		kmalloc_caches[type][aligned_idx] = create_kmalloc_cache(
 					kmalloc_info[aligned_idx].name[type],
-					aligned_size, flags);
+					aligned_size, flags);/* 开始创建slab */
 	if (idx != aligned_idx)
 		kmalloc_caches[type][idx] = kmalloc_caches[type][aligned_idx];
 }
 
 /*
- * Create the kmalloc array. Some of the regular kmalloc arrays
- * may already have been created because they were needed to
- * enable allocations for slab creation.
+* 创建kmalloc array. 有些可能
+ 已经被创建了，因
+ 为需要他们来开启slab机制。  填充kmalloc_caches的slab
  */
 void __init create_kmalloc_caches(slab_flags_t flags)
 {
@@ -987,6 +988,9 @@ void __init create_kmalloc_caches(slab_flags_t flags)
 	slab_state = UP;
 }
 
+/* kmalloc可能是slab也可能是页面
+其中页面类型的, 就是large_kmalloc
+其实就是直接分配释放页面 */
 void free_large_kmalloc(struct folio *folio, void *object)
 {
 	unsigned int order = folio_order(folio);
@@ -1000,6 +1004,7 @@ void free_large_kmalloc(struct folio *folio, void *object)
 
 	mod_lruvec_page_state(folio_page(folio, 0), NR_SLAB_UNRECLAIMABLE_B,
 			      -(PAGE_SIZE << order));
+	/* 归还到buddy */
 	__free_pages(folio_page(folio, 0), order);
 }
 
@@ -1029,6 +1034,7 @@ void *__do_kmalloc_node(size_t size, gfp_t flags, int node, unsigned long caller
 	return ret;
 }
 
+/* slab */
 void *__kmalloc_node(size_t size, gfp_t flags, int node)
 {
 	return __do_kmalloc_node(size, flags, node, _RET_IP_);
@@ -1050,6 +1056,7 @@ void *__kmalloc_node_track_caller(size_t size, gfp_t flags,
 EXPORT_SYMBOL(__kmalloc_node_track_caller);
 
 /**
+释放内存
  * kfree - free previously allocated memory
  * @object: pointer returned by kmalloc() or kmem_cache_alloc()
  *
@@ -1067,11 +1074,15 @@ void kfree(const void *object)
 		return;
 
 	folio = virt_to_folio(object);
+
+	/*分为slab和large类型的
+	如果是large的, 也就是说是页面, 这里释放页面到buddy */
 	if (unlikely(!folio_test_slab(folio))) {
 		free_large_kmalloc(folio, (void *)object);
 		return;
 	}
 
+	/* 这个路径就是slab类型的 */
 	slab = folio_slab(folio);
 	s = slab->slab_cache;
 	__kmem_cache_free(s, (void *)object, _RET_IP_);
@@ -1126,6 +1137,7 @@ void *kmalloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
 }
 EXPORT_SYMBOL(kmalloc_trace);
 
+/* kmalloc从指定的slab分配内存 */
 void *kmalloc_node_trace(struct kmem_cache *s, gfp_t gfpflags,
 			 int node, size_t size)
 {
@@ -1166,6 +1178,7 @@ static void *__kmalloc_large_node(size_t size, gfp_t flags, int node)
 		flags = kmalloc_fix_flags(flags);
 
 	flags |= __GFP_COMP;
+	/* 分配页面 */
 	page = alloc_pages_node(node, flags, order);
 	if (page) {
 		ptr = page_address(page);

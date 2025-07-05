@@ -159,6 +159,7 @@ struct kernfs_elem_dir {
 	/*
 	 * The kernfs hierarchy this directory belongs to.  This fits
 	 * better directly in kernfs_node but is here to save space.
+	 指向所属的kernfs root
 	 */
 	struct kernfs_root	*root;
 	/*
@@ -176,6 +177,7 @@ struct kernfs_elem_attr {
 	const struct kernfs_ops	*ops;
 	struct kernfs_open_node __rcu	*open;
 	loff_t			size;
+	/* 用于建立kernfs_notify_list的链接 */
 	struct kernfs_node	*notify_next;	/* for kernfs_notify() */
 };
 
@@ -199,6 +201,7 @@ struct kernfs_node {
 	 * accessing the following two fields directly.  If the node is
 	 * never moved to a different parent, it is safe to access the
 	 * parent directly.
+	 kn本身可能是个文件也可能是个文件夹
 	 */
 	struct kernfs_node	*parent;
 	const char		*name;
@@ -208,6 +211,7 @@ struct kernfs_node {
 	const void		*ns;	/* namespace tag */
 	unsigned int		hash;	/* ns + name hash */
 	union {
+		/* 对应的sysfs的dir? */
 		struct kernfs_elem_dir		dir;
 		struct kernfs_elem_symlink	symlink;
 		struct kernfs_elem_attr		attr;

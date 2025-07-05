@@ -25,7 +25,7 @@ int add_range(struct range *range, int az, int nr_range, u64 start, u64 end)
 
 	return nr_range;
 }
-
+/* 记录这些在内核启动时映射的pfn */
 int add_range_with_merge(struct range *range, int az, int nr_range,
 		     u64 start, u64 end)
 {
@@ -122,7 +122,7 @@ static int cmp_range(const void *x1, const void *x2)
 		return 1;
 	return 0;
 }
-
+/* 排序range这个数组 */
 int clean_sort_range(struct range *range, int az)
 {
 	int i, j, k = az - 1, nr_range = az;

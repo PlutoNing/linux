@@ -58,7 +58,7 @@ static unsigned long stack_maxrandom_size(unsigned long task_size)
 #endif
 
 #define SIZE_128M    (128 * 1024 * 1024UL)
-
+/* 何谓legacy？ */
 static int mmap_is_legacy(void)
 {
 	if (current->personality & ADDR_COMPAT_LAYOUT)
@@ -125,7 +125,8 @@ static void arch_pick_mmap_base(unsigned long *base, unsigned long *legacy_base,
 	else
 		*base = mmap_base(random_factor, task_size, rlim_stack);
 }
-
+/* 给mm设置mmap时候的get area函数
+ */
 void arch_pick_mmap_layout(struct mm_struct *mm, struct rlimit *rlim_stack)
 {
 	if (mmap_is_legacy())
@@ -149,7 +150,9 @@ void arch_pick_mmap_layout(struct mm_struct *mm, struct rlimit *rlim_stack)
 			rlim_stack);
 #endif
 }
+/* 
 
+*/
 unsigned long get_mmap_base(int is_legacy)
 {
 	struct mm_struct *mm = current->mm;

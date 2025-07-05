@@ -138,7 +138,7 @@ static bool round_up_default_nslabs(void)
 	return true;
 }
 
-/**
+/**调整area和slot的数量
  * swiotlb_adjust_nareas() - adjust the number of areas and slots
  * @nareas:	Desired number of areas. Zero is treated as 1.
  *
@@ -262,13 +262,13 @@ void __init swiotlb_update_mem_attributes(void)
 	bytes = PAGE_ALIGN(mem->nslabs << IO_TLB_SHIFT);
 	set_memory_decrypted((unsigned long)mem->vaddr, bytes >> PAGE_SHIFT);
 }
-
+/* mem可能是io_tlb_default_mem.defpool, tlb是刚刚分配的内存物理地址 */
 static void swiotlb_init_io_tlb_pool(struct io_tlb_pool *mem, phys_addr_t start,
 		unsigned long nslabs, bool late_alloc, unsigned int nareas)
 {
 	void *vaddr = phys_to_virt(start);
 	unsigned long bytes = nslabs << IO_TLB_SHIFT, i;
-
+	/* 初始化mem */
 	mem->nslabs = nslabs;
 	mem->start = start;
 	mem->end = mem->start + bytes;
@@ -293,7 +293,7 @@ static void swiotlb_init_io_tlb_pool(struct io_tlb_pool *mem, phys_addr_t start,
 	return;
 }
 
-/**
+/** pool可能是io_tlb_default_mem.defpool, 这里加入
  * add_mem_pool() - add a memory pool to the allocator
  * @mem:	Software IO TLB allocator.
  * @pool:	Memory pool to be added.
@@ -309,7 +309,7 @@ static void add_mem_pool(struct io_tlb_mem *mem, struct io_tlb_pool *pool)
 	mem->nslabs = pool->nslabs;
 #endif
 }
-
+/* memblock_alloc的包装 */
 static void __init *swiotlb_memblock_alloc(unsigned long nslabs,
 		unsigned int flags,
 		int (*remap)(void *tlb, unsigned long nslabs))
@@ -348,7 +348,7 @@ static void __init *swiotlb_memblock_alloc(unsigned long nslabs,
  */
 void __init swiotlb_init_remap(bool addressing_limit, unsigned int flags,
 		int (*remap)(void *tlb, unsigned long nslabs))
-{
+{ 
 	struct io_tlb_pool *mem = &io_tlb_default_mem.defpool;
 	unsigned long nslabs;
 	unsigned int nareas;
@@ -375,7 +375,7 @@ void __init swiotlb_init_remap(bool addressing_limit, unsigned int flags,
 	if (!default_nareas)
 		swiotlb_adjust_nareas(num_possible_cpus());
 
-	nslabs = default_nslabs;
+	nslabs = default_nslabs;/* 大小32768 */
 	nareas = limit_nareas(default_nareas, nslabs);
 	while ((tlb = swiotlb_memblock_alloc(nslabs, flags, remap)) == NULL) {
 		if (nslabs <= IO_TLB_MIN_SLABS)
@@ -389,7 +389,7 @@ void __init swiotlb_init_remap(bool addressing_limit, unsigned int flags,
 			default_nslabs, nslabs);
 		default_nslabs = nslabs;
 	}
-
+	/* 分配io_tlb_default_mem.defpool->slots的内存 */
 	alloc_size = PAGE_ALIGN(array_size(sizeof(*mem->slots), nslabs));
 	mem->slots = memblock_alloc(alloc_size, PAGE_SIZE);
 	if (!mem->slots) {
@@ -397,14 +397,14 @@ void __init swiotlb_init_remap(bool addressing_limit, unsigned int flags,
 			__func__, alloc_size, PAGE_SIZE);
 		return;
 	}
-
+	/* 分配io_tlb_default_mem.defpool->areas的内存 */
 	mem->areas = memblock_alloc(array_size(sizeof(struct io_tlb_area),
 		nareas), SMP_CACHE_BYTES);
 	if (!mem->areas) {
 		pr_warn("%s: Failed to allocate mem->areas.\n", __func__);
 		return;
 	}
-
+	/* 初始化mem */
 	swiotlb_init_io_tlb_pool(mem, __pa(tlb), nslabs, false, nareas);
 	add_mem_pool(&io_tlb_default_mem, mem);
 

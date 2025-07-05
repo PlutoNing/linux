@@ -53,7 +53,7 @@ extern unsigned int ptrs_per_p4d;
 
 /*
  * PGDIR_SHIFT determines what a top-level page table entry can map
- */
+ 大小39 */
 #define PGDIR_SHIFT	pgdir_shift
 #define PTRS_PER_PGD	512
 
@@ -144,8 +144,8 @@ PUD_SIZE = 2^30 = 1073741824 字节（即 1 GB） */
 
 #define __VMEMMAP_BASE_L4	0xffffea0000000000UL
 #define __VMEMMAP_BASE_L5	0xffd4000000000000UL
-
 #ifdef CONFIG_DYNAMIC_MEMORY_LAYOUT
+/* 开始地址为0xffffc90000000000 */
 # define VMALLOC_START		vmalloc_base
 # define VMALLOC_SIZE_TB	(pgtable_l5_enabled() ? VMALLOC_SIZE_TB_L5 : VMALLOC_SIZE_TB_L4)
 # define VMEMMAP_START		vmemmap_base
@@ -202,7 +202,7 @@ PUD_SIZE = 2^30 = 1073741824 字节（即 1 GB） */
 #define KMSAN_MODULES_SHADOW_START	(VMALLOC_END + KMSAN_VMALLOC_ORIGIN_OFFSET + 1)
 #define KMSAN_MODULES_ORIGIN_START	(KMSAN_MODULES_SHADOW_START + MODULES_LEN)
 #endif /* CONFIG_KMSAN */
-
+/* 0xffffffff80000000 + 512MB */
 #define MODULES_VADDR		(__START_KERNEL_map + KERNEL_IMAGE_SIZE)
 /* The module sections ends with the start of the fixmap */
 #ifndef CONFIG_DEBUG_KMAP_LOCAL_FORCE_MAP

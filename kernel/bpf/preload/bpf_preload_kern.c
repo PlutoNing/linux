@@ -38,7 +38,7 @@ static struct bpf_preload_ops ops = {
 static int load_skel(void)
 {
 	int err;
-
+	// 这里主要是分配skel的内存
 	skel = iterators_bpf__open();
 	if (!skel)
 		return -ENOMEM;
@@ -48,6 +48,7 @@ static int load_skel(void)
 	err = iterators_bpf__attach(skel);
 	if (err)
 		goto out;
+	// maps_link主要在这里设置
 	maps_link = bpf_link_get_from_fd(skel->links.dump_bpf_map_fd);
 	if (IS_ERR(maps_link)) {
 		err = PTR_ERR(maps_link);
@@ -70,7 +71,7 @@ out:
 	free_links_and_skel();
 	return err;
 }
-
+/* load什么? */
 static int __init load(void)
 {
 	int err;

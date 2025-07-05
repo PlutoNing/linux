@@ -100,7 +100,7 @@ static void init_espfix_random(void)
 	page_random = (rand / ESPFIX_STACKS_PER_PAGE)
 		& (ESPFIX_PAGE_SPACE - 1);
 }
-
+/* espfix是什么 */
 void __init init_espfix_bsp(void)
 {
 	pgd_t *pgd;

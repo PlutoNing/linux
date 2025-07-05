@@ -24,16 +24,19 @@ void delayed_work_timer_fn(struct timer_list *t);
 /*
  * The first word is the work queue pointer and the flags rolled into
  * one
+ 取出(work)->data)成员
  */
 #define work_data_bits(work) ((unsigned long *)(&(work)->data))
 
 enum {
 	WORK_STRUCT_PENDING_BIT	= 0,	/* work item is pending execution */
+	/* 把work移动到pool的worklist后会清除这个bit */
 	WORK_STRUCT_INACTIVE_BIT= 1,	/* work item is inactive */
 	WORK_STRUCT_PWQ_BIT	= 2,	/* data points to pwq */
 	WORK_STRUCT_LINKED_BIT	= 3,	/* next work is linked to this one */
 #ifdef CONFIG_DEBUG_OBJECTS_WORK
 	WORK_STRUCT_STATIC_BIT	= 4,	/* static initializer (debugobjects) */
+	/* 编码color的位置 */
 	WORK_STRUCT_COLOR_SHIFT	= 5,	/* color for workqueue flushing */
 #else
 	WORK_STRUCT_COLOR_SHIFT	= 4,	/* color for workqueue flushing */
@@ -42,8 +45,11 @@ enum {
 	WORK_STRUCT_COLOR_BITS	= 4,
 
 	WORK_STRUCT_PENDING	= 1 << WORK_STRUCT_PENDING_BIT,
+	/* 比如说pwq满了的时候， 新加入的work会被放入inactive list, 标记为此flag */
 	WORK_STRUCT_INACTIVE	= 1 << WORK_STRUCT_INACTIVE_BIT,
+	/* 这个bit置位的话, 说明编码了pwq */
 	WORK_STRUCT_PWQ		= 1 << WORK_STRUCT_PWQ_BIT,
+	/*  */
 	WORK_STRUCT_LINKED	= 1 << WORK_STRUCT_LINKED_BIT,
 #ifdef CONFIG_DEBUG_OBJECTS_WORK
 	WORK_STRUCT_STATIC	= 1 << WORK_STRUCT_STATIC_BIT,
@@ -75,6 +81,7 @@ enum {
 	 * indicate that no pool is associated.
 	 */
 	WORK_OFFQ_FLAG_BITS	= 1,
+	/* 右移此数量的位或者编码的pool id */
 	WORK_OFFQ_POOL_SHIFT	= WORK_OFFQ_FLAG_BASE + WORK_OFFQ_FLAG_BITS,
 	WORK_OFFQ_LEFT		= BITS_PER_LONG - WORK_OFFQ_POOL_SHIFT,
 	WORK_OFFQ_POOL_BITS	= WORK_OFFQ_LEFT <= 31 ? WORK_OFFQ_LEFT : 31,
@@ -89,13 +96,19 @@ enum {
 
 /* Convenience constants - of type 'unsigned long', not 'enum'! */
 #define WORK_OFFQ_CANCELING	(1ul << __WORK_OFFQ_CANCELING)
+/* 表示空的poolid */
 #define WORK_OFFQ_POOL_NONE	((1ul << WORK_OFFQ_POOL_BITS) - 1)
 #define WORK_STRUCT_NO_POOL	(WORK_OFFQ_POOL_NONE << WORK_OFFQ_POOL_SHIFT)
 
 #define WORK_STRUCT_FLAG_MASK    ((1ul << WORK_STRUCT_FLAG_BITS) - 1)
+/* 编码pwq的掩码 */
 #define WORK_STRUCT_WQ_DATA_MASK (~WORK_STRUCT_FLAG_MASK)
 
 struct work_struct {
+	/* 
+	编码了一些信息
+	比如所属的pwq
+	*/
 	atomic_long_t data;
 	struct list_head entry;
 	work_func_t func;
@@ -108,6 +121,7 @@ struct work_struct {
 #define WORK_DATA_STATIC_INIT()	\
 	ATOMIC_LONG_INIT((unsigned long)(WORK_STRUCT_NO_POOL | WORK_STRUCT_STATIC))
 
+/* 将任务提交到工作队列，并在指定的延迟时间后执行 */
 struct delayed_work {
 	struct work_struct work; //work结构体,代表一个工作的抽象
 	struct timer_list timer;
@@ -116,7 +130,7 @@ struct delayed_work {
 	struct workqueue_struct *wq;
 	int cpu;
 };
-
+/*  */
 struct rcu_work {
 	struct work_struct work;
 	struct rcu_head rcu;
@@ -125,6 +139,7 @@ struct rcu_work {
 	struct workqueue_struct *wq;
 };
 
+/* 好像是表示wq的什么亲和性 */
 enum wq_affn_scope {
 	WQ_AFFN_DFL,			/* use system default */
 	WQ_AFFN_CPU,			/* one pod per CPU */
@@ -153,6 +168,7 @@ struct workqueue_attrs {
 	 * Work items in this workqueue are affine to these CPUs and not allowed
 	 * to execute on other CPUs. A pool serving a workqueue must have the
 	 * same @cpumask.
+	 里面的线程的cpu亲和性掩码
 	 */
 	cpumask_var_t cpumask;
 
@@ -202,7 +218,7 @@ struct workqueue_attrs {
 	 */
 	bool ordered;
 };
-
+/* 取出work代表的dwork */
 static inline struct delayed_work *to_delayed_work(struct work_struct *work)
 {
 	return container_of(work, struct delayed_work, work);
@@ -299,7 +315,8 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 
 #define INIT_WORK(_work, _func)						\
 	__INIT_WORK((_work), (_func), 0)
-
+/* 这里其实就是init work, 因为参数是在栈上分配的, 直接初始化就可以算是
+在栈上分配的, 这里起个别名 */
 #define INIT_WORK_ONSTACK(_work, _func)					\
 	__INIT_WORK((_work), (_func), 1)
 
@@ -338,6 +355,8 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 	INIT_WORK_ONSTACK(&(_work)->work, (_func))
 
 /**
+work是不是处于pending状态
+pending表示
  * work_pending - Find out whether a work item is currently pending
  * @work: The work item in question
  */
@@ -345,6 +364,7 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 	test_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(work))
 
 /**
+检查dwork现在是不是pending
  * delayed_work_pending - Find out whether a delayable work item is currently
  * pending
  * @w: The work item in question
@@ -353,16 +373,24 @@ static inline unsigned int work_static(struct work_struct *work) { return 0; }
 	work_pending(&(w)->work)
 
 /*
+作为wq的flag
  * Workqueue flags and constants.  For details, please refer to
  * Documentation/core-api/workqueue.rst.
  */
 enum {
-	WQ_UNBOUND		= 1 << 1, /* not bound to any cpu */
-	WQ_FREEZABLE		= 1 << 2, /* freeze during suspend */
-	WQ_MEM_RECLAIM		= 1 << 3, /* may be used for memory reclaim */
-	WQ_HIGHPRI		= 1 << 4, /* high priority */
-	WQ_CPU_INTENSIVE	= 1 << 5, /* cpu intensive workqueue */
-	WQ_SYSFS		= 1 << 6, /* visible in sysfs, see workqueue_sysfs_register() */
+	WQ_UNBOUND = 1 << 1,
+	/*工作队列不绑定到任何 CPU，任务可在任意 CPU 上执行。 not bound to any cpu */
+	WQ_FREEZABLE = 1 << 2,
+	/* freeze during suspend 系统挂起（suspend）时冻结该工作队列的任务*/
+	WQ_MEM_RECLAIM = 1 << 3,
+	/*允许在内存回收路径中使用该工作队列。 may be used for memory reclaim */
+	WQ_HIGHPRI = 1 << 4,
+	/*高优先级工作队列，任务优先调度。 high priority */
+	WQ_CPU_INTENSIVE = 1 << 5,
+	/*标记为 CPU 密集型任务，调度器会减少抢占频率。 cpu intensive workqueue */
+	WQ_SYSFS = 1 << 6,
+	/*在 sysfs 中暴露工作队列信息，便于用户空间监控和调试。
+	 visible in sysfs, see workqueue_sysfs_register() */
 
 	/*
 	 * Per-cpu workqueues are generally preferred because they tend to
@@ -388,18 +416,29 @@ enum {
 	 * performance disadvantage.
 	 *
 	 * http://thread.gmane.org/gmane.linux.kernel/1480396
+	 节能模式，默认按 per-CPU 运行，若启用 workqueue.power_efficient 内核参数则转为未绑定。
 	 */
-	WQ_POWER_EFFICIENT	= 1 << 7,
+	WQ_POWER_EFFICIENT = 1 << 7,
 
-	__WQ_DESTROYING		= 1 << 15, /* internal: workqueue is destroying */
-	__WQ_DRAINING		= 1 << 16, /* internal: workqueue is draining */
-	__WQ_ORDERED		= 1 << 17, /* internal: workqueue is ordered */
-	__WQ_LEGACY		= 1 << 18, /* internal: create*_workqueue() */
-	__WQ_ORDERED_EXPLICIT	= 1 << 19, /* internal: alloc_ordered_workqueue() */
+	__WQ_DESTROYING = 1 << 15,
+	/* 标记工作队列正在销毁，防止并发操作导致资源冲突。
+	internal: workqueue is destroying */
+	__WQ_DRAINING = 1 << 16,
+	/*工作队列正在排空（draining），不再接受新任务，等待现有任务完成。
+	 internal: workqueue is draining */
+	__WQ_ORDERED = 1 << 17,
+	/*内部有序队列，任务按提交顺序严格串行执行。 internal: workqueue is ordered */
+	__WQ_LEGACY = 1 << 18,
+	/*标识通过旧版 API（如 create_workqueue）创建的队列，用于兼容性处理。
+	 internal: create*_workqueue() */
+	__WQ_ORDERED_EXPLICIT = 1 << 19,
+	/*显式创建的有序队列（通过 alloc_ordered_workqueue），区别于隐式有序队列。 internal: alloc_ordered_workqueue() */
 
-	WQ_MAX_ACTIVE		= 512,	  /* I like 512, better ideas? */
-	WQ_UNBOUND_MAX_ACTIVE	= WQ_MAX_ACTIVE,
-	WQ_DFL_ACTIVE		= WQ_MAX_ACTIVE / 2,
+	WQ_MAX_ACTIVE = 512,
+	/* 工作队列最大活跃任务数（默认为 512），适用于 per-CPU 队列。
+	I like 512, better ideas? */
+	WQ_UNBOUND_MAX_ACTIVE = WQ_MAX_ACTIVE,
+	WQ_DFL_ACTIVE = WQ_MAX_ACTIVE / 2,
 };
 
 /*
@@ -529,6 +568,7 @@ extern void show_one_workqueue(struct workqueue_struct *wq);
 extern void wq_worker_comm(char *buf, size_t size, struct task_struct *task);
 
 /**
+在wq上面入队一个work
  * queue_work - queue work on a workqueue
  * @wq: workqueue to use
  * @work: work to queue
@@ -563,6 +603,7 @@ static inline bool queue_work(struct workqueue_struct *wq,
  * @wq: workqueue to use
  * @dwork: delayable work to queue
  * @delay: number of jiffies to wait before queueing
+ 执行前的延迟
  *
  * Equivalent to queue_delayed_work_on() but tries to use the local CPU.
  */
@@ -574,6 +615,8 @@ static inline bool queue_delayed_work(struct workqueue_struct *wq,
 }
 
 /**
+修改dwork的触发时间
+相当于是调度一个dwork
  * mod_delayed_work - modify delay of or queue a delayed work
    
  * @wq: workqueue to use
@@ -590,6 +633,7 @@ static inline bool mod_delayed_work(struct workqueue_struct *wq,
 }
 
 /**
+在这个cpu上面运行异步任务
  * schedule_work_on - put work task on a specific cpu
  * @cpu: cpu to put the work task on
  * @work: job to be done
@@ -602,12 +646,13 @@ static inline bool schedule_work_on(int cpu, struct work_struct *work)
 }
 
 /**
+在全局wq执行任务
  * schedule_work - put work task in global workqueue
  * @work: job to be done
  *
  * Returns %false if @work was already on the kernel-global workqueue and
  * %true otherwise.
- *
+ * 返回值为false表示work已经在内核全局工作队列上，true表示work不在内核全局工作队列上。
  * This puts a job in the kernel-global workqueue if it was not already
  * queued and leaves it in the same position on the kernel-global
  * workqueue otherwise.

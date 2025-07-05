@@ -30,7 +30,7 @@
  *	returned 0 we must skip the element, otherwise we got the reference.
  *	Once the reference is obtained we can drop the spinlock.
  */
-
+/* 系统全部的fs类型在这里 */
 static struct file_system_type *file_systems;
 static DEFINE_RWLOCK(file_systems_lock);
 
@@ -45,7 +45,7 @@ void put_filesystem(struct file_system_type *fs)
 {
 	module_put(fs->owner);
 }
-
+// 通过fs名字查找fs_type
 static struct file_system_type **find_filesystem(const char *name, unsigned len)
 {
 	struct file_system_type **p;
@@ -260,7 +260,7 @@ static int __init proc_filesystems_init(void)
 }
 module_init(proc_filesystems_init);
 #endif
-
+/* 通过fs名字查找fs_type */
 static struct file_system_type *__get_fs_type(const char *name, int len)
 {
 	struct file_system_type *fs;
@@ -272,13 +272,13 @@ static struct file_system_type *__get_fs_type(const char *name, int len)
 	read_unlock(&file_systems_lock);
 	return fs;
 }
-
+/* 通过fs名字查找fs_type */
 struct file_system_type *get_fs_type(const char *name)
 {
 	struct file_system_type *fs;
 	const char *dot = strchr(name, '.');
 	int len = dot ? dot - name : strlen(name);
-
+	// c查找fs_type
 	fs = __get_fs_type(name, len);
 	if (!fs && (request_module("fs-%.*s", len, name) == 0)) {
 		fs = __get_fs_type(name, len);

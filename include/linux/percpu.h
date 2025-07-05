@@ -12,7 +12,7 @@
 
 #include <asm/percpu.h>
 
-/* enough to cover all DEFINE_PER_CPUs in modules */
+/*大小8KB,  enough to cover all DEFINE_PER_CPUs in modules */
 #ifdef CONFIG_MODULES
 #define PERCPU_MODULE_RESERVE		(8 << 10)
 #else
@@ -25,7 +25,7 @@
 /* minimum allocation size and shift in bytes */
 #define PCPU_MIN_ALLOC_SHIFT		2
 #define PCPU_MIN_ALLOC_SIZE		(1 << PCPU_MIN_ALLOC_SHIFT)
-
+/* 大小为4 */
 /*
  * The PCPU_BITMAP_BLOCK_SIZE must be the same size as PAGE_SIZE as the
  * updating of hints is used to manage the nr_empty_pop_pages in both
@@ -69,14 +69,14 @@
 
 extern void *pcpu_base_addr;
 extern const unsigned long *pcpu_unit_offsets;
-
+/* 表示pcp机制的group分配信息 */
 struct pcpu_group_info {
 	int			nr_units;	/* aligned # of units */
 	unsigned long		base_offset;	/* base address offset */
 	unsigned int		*cpu_map;	/* unit->cpu map, empty
 						 * entries contain NR_CPUS */
 };
-
+/*  */
 struct pcpu_alloc_info {
 	size_t			static_size;
 	size_t			reserved_size;
@@ -88,7 +88,7 @@ struct pcpu_alloc_info {
 	int			nr_groups;	/* 0 if grouping unnecessary */
 	struct pcpu_group_info	groups[];
 };
-
+/*  */
 enum pcpu_fc {
 	PCPU_FC_AUTO,
 	PCPU_FC_EMBED,
@@ -137,6 +137,7 @@ DEFINE_FREE(free_percpu, void __percpu *, free_percpu(_T))
 
 extern phys_addr_t per_cpu_ptr_to_phys(void *addr);
 
+/* 创建pcp的变量 */
 #define alloc_percpu_gfp(type, gfp)					\
 	(typeof(type) __percpu *)__alloc_percpu_gfp(sizeof(type),	\
 						__alignof__(type), gfp)

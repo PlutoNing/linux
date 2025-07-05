@@ -27,7 +27,7 @@ static void read_to_eol(struct io *io)
 			return;
 	}
 }
-
+/* 解析kallsyms  */
 int kallsyms__parse(const char *filename, void *arg,
 		    int (*process_symbol)(void *arg, const char *name,
 					  char type, u64 start))
@@ -35,7 +35,7 @@ int kallsyms__parse(const char *filename, void *arg,
 	struct io io;
 	char bf[BUFSIZ];
 	int err;
-
+	/* 打开/proc/kallsyms */
 	io.fd = open(filename, O_RDONLY, 0);
 
 	if (io.fd < 0)
@@ -50,12 +50,12 @@ int kallsyms__parse(const char *filename, void *arg,
 		size_t i;
 		char symbol_type;
 		char symbol_name[KSYM_NAME_LEN + 1];
-
+		/* (base) [21:53] paulning@ppppp-MS-7E24~/study/linux/tools/perf$head -n 1 /proc/kallsyms  0000000000000000 A fixed_percpu_data */
 		if (io__get_hex(&io, &start) != ' ') {
 			read_to_eol(&io);
 			continue;
 		}
-		symbol_type = io__get_char(&io);
+		symbol_type = io__get_char(&io);/* 获取内核符号类型 */
 		if (io__get_char(&io) != ' ') {
 			read_to_eol(&io);
 			continue;
@@ -67,7 +67,7 @@ int kallsyms__parse(const char *filename, void *arg,
 			symbol_name[i]  = ch;
 		}
 		symbol_name[i]  = '\0';
-
+/* 处理一个符号 */
 		err = process_symbol(arg, symbol_name, symbol_type, start);
 		if (err)
 			break;

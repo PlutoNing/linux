@@ -112,7 +112,8 @@ static inline void context_tracking_init(void) { }
 extern void ct_idle_enter(void);
 extern void ct_idle_exit(void);
 
-/*
+/*20250601004617
+检查当前cpu是否处于类似idle,下线,内核的entry/exit之类的状态
  * Is the current CPU in an extended quiescent state?
  *
  * No ordering, as we are sampling CPU-local information.
@@ -123,6 +124,8 @@ static __always_inline bool rcu_dynticks_curr_cpu_in_eqs(void)
 }
 
 /*
+修改追踪上下文的state
+20250601004648
  * Increment the current CPU's context_tracking structure's ->state field
  * with ordering.  Return the new value.
  */

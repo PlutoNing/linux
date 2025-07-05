@@ -24,7 +24,9 @@
  *	@private: private data owned by the ops.
  **/
 struct pipe_buffer {
+	/* 内容页 */
 	struct page *page;
+	/* 内容页上的数据位置信息 */
 	unsigned int offset, len;
 	const struct pipe_buf_operations *ops;
 	unsigned int flags;
@@ -32,7 +34,8 @@ struct pipe_buffer {
 };
 
 /**
- *	struct pipe_inode_info - a linux kernel pipe
+表示内核一个pipe
+ *	struct pipe_ inode_info - a linux kernel pipe
  *	@mutex: mutex protecting the whole thing
  *	@rd_wait: reader wait point in case of empty pipe
  *	@wr_wait: writer wait point in case of full pipe
@@ -58,8 +61,10 @@ struct pipe_buffer {
 struct pipe_inode_info {
 	struct mutex mutex;
 	wait_queue_head_t rd_wait, wr_wait;
+	/* 当前写入的head pos */
 	unsigned int head;
 	unsigned int tail;
+	/* pipe使用的页面数量 */
 	unsigned int max_usage;
 	unsigned int ring_size;
 #ifdef CONFIG_WATCH_QUEUE
@@ -75,6 +80,7 @@ struct pipe_inode_info {
 	struct page *tmp_page;
 	struct fasync_struct *fasync_readers;
 	struct fasync_struct *fasync_writers;
+	/* pipe的存储空间? */
 	struct pipe_buffer *bufs;
 	struct user_struct *user;
 #ifdef CONFIG_WATCH_QUEUE
@@ -135,6 +141,7 @@ static inline bool pipe_empty(unsigned int head, unsigned int tail)
 }
 
 /**
+获取pipe已经使用的容量
  * pipe_occupancy - Return number of slots used in the pipe
  * @head: The pipe ring head pointer
  * @tail: The pipe ring tail pointer
@@ -145,6 +152,7 @@ static inline unsigned int pipe_occupancy(unsigned int head, unsigned int tail)
 }
 
 /**
+判断pipe是不是满了
  * pipe_full - Return true if the pipe is full
  * @head: The pipe ring head pointer
  * @tail: The pipe ring tail pointer
@@ -217,6 +225,7 @@ static inline int pipe_buf_confirm(struct pipe_inode_info *pipe,
 }
 
 /**
+调用buf的steal ops
  * pipe_buf_try_steal - attempt to take ownership of a pipe_buffer
  * @pipe:	the pipe that the buffer belongs to
  * @buf:	the buffer to attempt to steal

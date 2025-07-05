@@ -596,6 +596,7 @@ static struct page *get_mergeable_page(struct ksm_rmap_item *rmap_item)
 	if (!vma)
 		goto out;
 
+		/* 20250702233215 */
 	page = follow_page(vma, addr, FOLL_GET);
 	if (IS_ERR_OR_NULL(page))
 		goto out;
@@ -1279,6 +1280,7 @@ out:
 }
 
 /*
+把两个页面合二为一?
  * try_to_merge_one_page - take two pages and merge them into one
  * @vma: the vma that holds the pte pointing to page
  * @page: the PageAnon page that we want to replace with kpage
@@ -1299,6 +1301,7 @@ static int try_to_merge_one_page(struct vm_area_struct *vma,
 	if (!PageAnon(page))
 		goto out;
 
+	/* 只操作匿名页 */
 	/*
 	 * We need the page lock to read a stable PageSwapCache in
 	 * write_protect_page().  We use trylock_page() instead of
@@ -1328,6 +1331,7 @@ static int try_to_merge_one_page(struct vm_area_struct *vma,
 			 * stable_tree_insert() will update stable_node.
 			 */
 			set_page_stable_node(page, NULL);
+			/* 20250703002534 */
 			mark_page_accessed(page);
 			/*
 			 * Page reclaim just frees a clean page with no dirty

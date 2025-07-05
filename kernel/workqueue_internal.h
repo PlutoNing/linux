@@ -24,12 +24,16 @@ struct worker_pool;
 struct worker {
 	/* on idle list while idle, on busy hash table while busy */
 	union {
-		struct list_head	entry;	/* L: while idle */
-		struct hlist_node	hentry;	/* L: while busy */
+		struct list_head	entry;	/*
+		idle的时候加入pool的idle_list
+		L: while idle */
+		struct hlist_node	hentry;	/* L: while busy,挂接到pool->busy_hash,表示正在给这个pool干活 */
 	};
 
-	struct work_struct	*current_work;	/* K: work being processed and its */
-	work_func_t		current_func;	/* K: function */
+	struct work_struct	*current_work;	/*
+	此worker正在执行的work任务
+	K: work being processed and its */
+	work_func_t		current_func;	/* K: function,正在执行的任务的func */
 	struct pool_workqueue	*current_pwq;	/* K: pwq */
 	u64			current_at;	/* K: runtime at start or last wakeup */
 	unsigned int		current_color;	/* K: color */
@@ -39,29 +43,36 @@ struct worker {
 	/* used by the scheduler to determine a worker's last known identity */
 	work_func_t		last_func;	/* K: last work's fn */
 
+	/* 里面是pool的works */
 	struct list_head	scheduled;	/* L: scheduled works */
 
-	struct task_struct	*task;		/* I: worker task */
+	struct task_struct	*task;		/*
+	worker的调度实体?
+	I: worker task */
 	struct worker_pool	*pool;		/* A: the associated pool */
 						/* L: for rescuers */
 	struct list_head	node;		/* A: anchored at pool->workers */
 						/* A: runs through worker->node */
 
-	unsigned long		last_active;	/* K: last active timestamp */
+	unsigned long		last_active;	/*
+	上次进入idle前的时间
+	K: last active timestamp */
 	unsigned int		flags;		/* L: flags */
 	int			id;		/* I: worker id */
 
-	/*
+	/*名字?
 	 * Opaque string set with work_set_desc().  Printed out with task
 	 * dump for debugging - WARN, BUG, panic or sysrq.
 	 */
 	char			desc[WORKER_DESC_LEN];
 
-	/* used only by rescuers to point to the target workqueue */
+	/*
+	对应的wq
+	used only by rescuers to point to the target workqueue */
 	struct workqueue_struct	*rescue_wq;	/* I: the workqueue to rescue */
 };
 
-/**
+/**如果current是worker,返回他
  * current_wq_worker - return struct worker if %current is a workqueue worker
  */
 static inline struct worker *current_wq_worker(void)

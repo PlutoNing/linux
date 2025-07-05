@@ -329,7 +329,7 @@ static inline void notify_partition_change(struct cpuset *cs, int old_prs)
 	if (is_partition_valid(cs))
 		WRITE_ONCE(cs->prs_err, PERR_NONE);
 }
-
+/* cpuset子系统在早期初始化的时候分配的第一个css就是这个 */
 static struct cpuset top_cpuset = {
 	.flags = ((1 << CS_ONLINE) | (1 << CS_CPU_EXCLUSIVE) |
 		  (1 << CS_MEM_EXCLUSIVE)),
@@ -3210,7 +3210,7 @@ static struct cftype dfl_files[] = {
 };
 
 
-/**
+/** cpuset子系统ss->css_alloc的回调函数
  * cpuset_css_alloc - Allocate a cpuset css
  * @parent_css: Parent css of the control group that the new cpuset will be
  *              part of

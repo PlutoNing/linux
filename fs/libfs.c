@@ -899,6 +899,7 @@ const struct address_space_operations ram_aops = {
 EXPORT_SYMBOL(ram_aops);
 
 /*
+初始化sb?
  * the inodes created here are not hashed. If you use iunique to generate
  * unique inode values later for this filesystem, then you must take care
  * to pass it an appropriate max_reserved value to avoid collisions.
@@ -968,7 +969,7 @@ out:
 EXPORT_SYMBOL(simple_fill_super);
 
 static DEFINE_SPINLOCK(pin_fs_lock);
-
+/* 获取fs的ref */
 int simple_pin_fs(struct file_system_type *type, struct vfsmount **mount, int *count)
 {
 	struct vfsmount *mnt = NULL;
@@ -1495,12 +1496,13 @@ void kfree_link(void *p)
 	kfree(p);
 }
 EXPORT_SYMBOL(kfree_link);
-
+/*  */
 struct inode *alloc_anon_inode(struct super_block *s)
 {
 	static const struct address_space_operations anon_aops = {
 		.dirty_folio	= noop_dirty_folio,
 	};
+	/* 从sb分配inode */
 	struct inode *inode = new_inode_pseudo(s);
 
 	if (!inode)
@@ -1597,6 +1599,7 @@ static ssize_t empty_dir_listxattr(struct dentry *dentry, char *list, size_t siz
 	return -EOPNOTSUPP;
 }
 
+/* 空文件夹的inode ops */
 static const struct inode_operations empty_dir_inode_operations = {
 	.lookup		= empty_dir_lookup,
 	.permission	= generic_permission,
@@ -1617,6 +1620,7 @@ static int empty_dir_readdir(struct file *file, struct dir_context *ctx)
 	return 0;
 }
 
+/* 空文件夹的fops */
 static const struct file_operations empty_dir_operations = {
 	.llseek		= empty_dir_llseek,
 	.read		= generic_read_dir,
@@ -1625,9 +1629,13 @@ static const struct file_operations empty_dir_operations = {
 };
 
 
+/* 
+把一个新inode初始化为一个空文件夹的inode？
+*/
 void make_empty_dir_inode(struct inode *inode)
 {
 	set_nlink(inode, 2);
+	/* 一个user，group，other都可以r，x的DIR */
 	inode->i_mode = S_IFDIR | S_IRUGO | S_IXUGO;
 	inode->i_uid = GLOBAL_ROOT_UID;
 	inode->i_gid = GLOBAL_ROOT_GID;
@@ -1871,9 +1879,16 @@ u64 inode_query_iversion(struct inode *inode)
 }
 EXPORT_SYMBOL(inode_query_iversion);
 
+/* buffer io的直接IO, 把iter写入iocb
+@fuffered_written是调用的io函数把iter写入iocb(通过mapping)的返回值
+@direct_written, 是fallback之前的尝试的返回值
+====================
+现在iter已经通过buffer io写入到了iocb,(现在位于mapping)
+为了达到直接IO的效果, 这里需要sync & wait */
 ssize_t direct_write_fallback(struct kiocb *iocb, struct iov_iter *iter,
 		ssize_t direct_written, ssize_t buffered_written)
 {
+	/* 要写入的mapping */
 	struct address_space *mapping = iocb->ki_filp->f_mapping;
 	loff_t pos = iocb->ki_pos - buffered_written;
 	loff_t end = iocb->ki_pos - 1;
@@ -1896,6 +1911,7 @@ ssize_t direct_write_fallback(struct kiocb *iocb, struct iov_iter *iter,
 	/*
 	 * We need to ensure that the page cache pages are written to disk and
 	 * invalidated to preserve the expected O_DIRECT semantics.
+	 同步mapping里面写入的内容范围
 	 */
 	err = filemap_write_and_wait_range(mapping, pos, end);
 	if (err < 0) {

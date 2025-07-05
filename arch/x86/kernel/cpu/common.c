@@ -712,7 +712,7 @@ __u32 cpu_caps_set[NCAPINTS + NBUGINTS] __aligned(sizeof(unsigned long));
 DEFINE_PER_CPU(struct cpu_entry_area *, cpu_entry_area);
 #endif
 
-/* Load the original GDT from the per-cpu structure */
+/* Load the original GDT from the per-cpu structure 将指定 CPU 的 GDT 重新加载到当前 CPU 的 GDTR 寄存器。*/
 void load_direct_gdt(int cpu)
 {
 	struct desc_ptr gdt_descr;
@@ -734,7 +734,7 @@ void load_fixmap_gdt(int cpu)
 }
 EXPORT_SYMBOL_GPL(load_fixmap_gdt);
 
-/**
+/** 切换加载gdt
  * switch_gdt_and_percpu_base - Switch to direct GDT and runtime per CPU base
  * @cpu:	The CPU number for which this is invoked
  *
@@ -1568,7 +1568,7 @@ static void __init cpu_parse_early_param(void)
 		add_taint(TAINT_CPU_OUT_OF_SPEC, LOCKDEP_STILL_OK);
 }
 
-/*
+/*启动的时候初始化部分boot_cpu_data
  * Do minimum CPU detection early.
  * Fields really needed: vendor, cpuid_level, family, model, mask,
  * cache alignment.

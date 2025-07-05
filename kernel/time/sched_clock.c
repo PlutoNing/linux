@@ -80,6 +80,9 @@ notrace int sched_clock_read_retry(unsigned int seq)
 	return raw_read_seqcount_latch_retry(&cd.seq, seq);
 }
 
+/* 
+
+*/
 unsigned long long noinstr sched_clock_noinstr(void)
 {
 	struct clock_read_data *rd;

@@ -83,7 +83,9 @@ EXPORT_SYMBOL(wrap_directory_iterator);
 	unsafe_copy_to_user(dst, src, len, label);		\
 } while (0)
 
-
+/* 
+遍历目录
+*/
 int iterate_dir(struct file *file, struct dir_context *ctx)
 {
 	struct inode *inode = file_inode(file);
@@ -103,6 +105,7 @@ int iterate_dir(struct file *file, struct dir_context *ctx)
 	res = -ENOENT;
 	if (!IS_DEADDIR(inode)) {
 		ctx->pos = file->f_pos;
+		/* 通过fops遍历目录么。。。。 */
 		res = file->f_op->iterate_shared(file, ctx);
 		file->f_pos = ctx->pos;
 		fsnotify_access(file);
@@ -225,7 +228,7 @@ SYSCALL_DEFINE3(old_readdir, unsigned int, fd,
 
 	if (!f.file)
 		return -EBADF;
-
+	/* 遍历目录 */
 	error = iterate_dir(f.file, &buf.ctx);
 	if (buf.result)
 		error = buf.result;
@@ -386,7 +389,7 @@ efault:
 	buf->error = -EFAULT;
 	return false;
 }
-
+/* 从文件描述符 fd 指定的目录中读取目录项（directory entries），并将这些目录项信息填充到用户空间提供的缓冲区 dirent 中 */
 SYSCALL_DEFINE3(getdents64, unsigned int, fd,
 		struct linux_dirent64 __user *, dirent, unsigned int, count)
 {
@@ -470,7 +473,9 @@ efault:
 	buf->result = -EFAULT;
 	return false;
 }
-
+/* 
+旧版目录遍历接口，适用于传统 32 位程序
+*/
 COMPAT_SYSCALL_DEFINE3(old_readdir, unsigned int, fd,
 		struct compat_old_linux_dirent __user *, dirent, unsigned int, count)
 {
@@ -554,7 +559,9 @@ efault:
 	buf->error = -EFAULT;
 	return false;
 }
-
+/* 
+现代目录遍历接口，支持大文件系统，处理 64 位到 32 位的兼容性问题。
+*/
 COMPAT_SYSCALL_DEFINE3(getdents, unsigned int, fd,
 		struct compat_linux_dirent __user *, dirent, unsigned int, count)
 {
@@ -569,7 +576,9 @@ COMPAT_SYSCALL_DEFINE3(getdents, unsigned int, fd,
 	f = fdget_pos(fd);
 	if (!f.file)
 		return -EBADF;
-
+	/* 
+	遍历目录
+	*/
 	error = iterate_dir(f.file, &buf.ctx);
 	if (error >= 0)
 		error = buf.error;

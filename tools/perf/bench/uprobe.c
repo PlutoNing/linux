@@ -62,7 +62,7 @@ static int bench_uprobe__setup_bpf_skel(enum bench_uprobe bench)
 {
 	DECLARE_LIBBPF_OPTS(bpf_uprobe_opts, uprobe_opts);
 	int err;
-
+/* 创建skel, 加载程序 */
 	/* Load and verify BPF application */
 	skel = bench_uprobe_bpf__open();
 	if (!skel) {
@@ -137,7 +137,7 @@ static int bench_uprobe_format__default_fprintf(const char *name, const char *un
 
 	return printed + 1;
 }
-
+/* 运行'uprobe' benchmark */
 static int bench_uprobe(int argc, const char **argv, enum bench_uprobe bench)
 {
 	const char *name = "usleep(1000)", *unit = "usec";
@@ -181,12 +181,12 @@ static int bench_uprobe(int argc, const char **argv, enum bench_uprobe bench)
 
 	return 0;
 }
-
+/* 执行'uprobe/baseline' benchmark */
 int bench_uprobe_baseline(int argc, const char **argv)
 {
 	return bench_uprobe(argc, argv, BENCH_UPROBE__BASELINE);
 }
-
+/* 执行插入空prog的bench */
 int bench_uprobe_empty(int argc, const char **argv)
 {
 	return bench_uprobe(argc, argv, BENCH_UPROBE__EMPTY);

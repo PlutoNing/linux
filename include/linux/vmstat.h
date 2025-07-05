@@ -169,6 +169,7 @@ global_numa_event_state(enum numa_stat_item item)
 }
 #endif /* CONFIG_NUMA */
 
+/* 修改zone的统计信息 */
 static inline void zone_page_state_add(long x, struct zone *zone,
 				 enum zone_stat_item item)
 {
@@ -183,6 +184,7 @@ static inline void node_page_state_add(long x, struct pglist_data *pgdat,
 	atomic_long_add(x, &vm_node_stat[item]);
 }
 
+/* 修改全局的统计信息 */
 static inline unsigned long global_zone_page_state(enum zone_stat_item item)
 {
 	long x = atomic_long_read(&vm_zone_stat[item]);
@@ -210,6 +212,7 @@ static inline unsigned long global_node_page_state(enum node_stat_item item)
 	return global_node_page_state_pages(item);
 }
 
+/* 获取zone的某一个类型的页面的数量 */
 static inline unsigned long zone_page_state(struct zone *zone,
 					enum zone_stat_item item)
 {
@@ -494,6 +497,7 @@ static inline void node_stat_sub_folio(struct folio *folio,
 	mod_node_page_state(folio_pgdat(folio), item, -folio_nr_pages(folio));
 }
 
+/* 统计zone的free page的变化 */
 static inline void __mod_zone_freepage_state(struct zone *zone, int nr_pages,
 					     int migratetype)
 {

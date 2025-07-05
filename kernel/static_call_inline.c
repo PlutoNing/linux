@@ -40,7 +40,7 @@ static void static_call_unlock(void)
 {
 	mutex_unlock(&static_call_mutex);
 }
-
+/* 获取一个call_site的addr */
 static inline void *static_call_addr(struct static_call_site *site)
 {
 	return (void *)((long)site->addr + (long)&site->addr);
@@ -102,7 +102,7 @@ static void static_call_site_swap(void *_a, void *_b, int size)
 	b->addr = tmp.addr + delta;
 	b->key  = tmp.key  + delta;
 }
-
+/* 排序__start_static_call_sites的call_site */
 static inline void static_call_sort_entries(struct static_call_site *start,
 					    struct static_call_site *stop)
 {
@@ -130,20 +130,20 @@ static inline struct static_call_site *static_call_key_sites(struct static_call_
 
 	return (struct static_call_site *)(key->type & ~1);
 }
-
+/* Static Call 是 Linux 内核中一种 ​​低开销的函数调用优化技术​​，通过代码修补（如 JMP 或 NOP 指令）直接跳转到目标函数，避免传统函数指针的间接调用开销。传统方法（如函数指针或 jmp）会导致 ​额外的间接调用开销​（CPU 分支预测失败、缓存不友好）。Static Call 通过 ​编译时固定调用点 + 运行时动态修补​ 来解决这个问题。 */
 void __static_call_update(struct static_call_key *key, void *tramp, void *func)
-{
+{ /* tp->static_call_key和tp->static_call_tramp是被修改的tp的东西, func一般来说func就是刚刚添加的probe,例如<probe_sched_wakeup> */
 	struct static_call_site *site, *stop;
 	struct static_call_mod *site_mod, first;
 
 	cpus_read_lock();
 	static_call_lock();
-
+/* func可能的取值 native_apic_mem_eoi  */
 	if (key->func == func)
 		goto done;
-
+	/* tp->static_call_key->func修改为新添加的probe函数 */
 	key->func = func;
-
+/* 修改tp的tramp */
 	arch_static_call_transform(NULL, tramp, func, false);
 
 	/*
@@ -216,7 +216,7 @@ done:
 	cpus_read_unlock();
 }
 EXPORT_SYMBOL_GPL(__static_call_update);
-
+/* 初始化__start_static_call_sites的每一个call_site成员 */
 static int __static_call_init(struct module *mod,
 			      struct static_call_site *start,
 			      struct static_call_site *stop)
@@ -481,7 +481,7 @@ int static_call_text_reserved(void *start, void *end)
 
 	return __static_call_mod_text_reserved(start, end);
 }
-
+/* 调整和初始化__start_static_call_sites的每一个call_site */
 int __init static_call_init(void)
 {
 	int ret;

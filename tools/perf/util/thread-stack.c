@@ -362,7 +362,7 @@ static int __thread_stack__flush(struct thread *thread, struct thread_stack *ts)
 }
 
 int thread_stack__flush(struct thread *thread)
-{
+{/* 获取栈 */
 	struct thread_stack *ts = thread__ts(thread);
 	unsigned int pos;
 	int err = 0;

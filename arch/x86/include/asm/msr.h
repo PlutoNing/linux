@@ -110,7 +110,7 @@ do {							\
 #define native_wrmsrl(msr, val)				\
 	__wrmsr((msr), (u32)((u64)(val)),		\
 		       (u32)((u64)(val) >> 32))
-
+/*  */
 static inline unsigned long long native_read_msr(unsigned int msr)
 {
 	unsigned long long val;
@@ -241,7 +241,7 @@ static inline unsigned long long native_read_pmc(int counter)
  * Note: the rd* operations modify the parameters directly (without using
  * pointer indirection), this allows gcc to optimize better
  */
-
+/*  */
 #define rdmsr(msr, low, high)					\
 do {								\
 	u64 __val = native_read_msr((msr));			\
@@ -256,7 +256,7 @@ static inline void wrmsr(unsigned int msr, u32 low, u32 high)
 
 #define rdmsrl(msr, val)			\
 	((val) = native_read_msr((msr)))
-
+/* 写入指定的msr寄存器 */
 static inline void wrmsrl(unsigned int msr, u64 val)
 {
 	native_write_msr(msr, (u32)(val & 0xffffffffULL), (u32)(val >> 32));

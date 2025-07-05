@@ -240,7 +240,7 @@ p4d_t * __meminit vmemmap_p4d_populate(pgd_t *pgd, unsigned long addr, int node)
 	return p4d;
 }
 
-// 给addr分配p4d页表
+// addr可能是0xffffea0000000000, 也就是vmemmap起始处的一个page结构体, 给addr分配p4d页表
 pgd_t * __meminit vmemmap_pgd_populate(unsigned long addr, int node)
 {
 	// 获取内核页表的pgd
@@ -323,7 +323,7 @@ int __weak __meminit vmemmap_check_pmd(pmd_t *pmd, int node,
 {
 	return 0;
 }
-
+/* start,end之间是这个memsection的全部page的page结构体 */
 int __meminit vmemmap_populate_hugepages(unsigned long start, unsigned long end,
 					 int node, struct vmem_altmap *altmap)
 {
@@ -336,7 +336,7 @@ int __meminit vmemmap_populate_hugepages(unsigned long start, unsigned long end,
 
 	for (addr = start; addr < end; addr = next) {
 		next = pmd_addr_end(addr, end);
-
+		/* addr是0xffffea0000000000的话, next就是0xffffea0000200000, 也就是下一个pmd负责的区域起始处(2MB距离) */
 		pgd = vmemmap_pgd_populate(addr, node);
 		if (!pgd)
 			return -ENOMEM;
@@ -352,9 +352,9 @@ int __meminit vmemmap_populate_hugepages(unsigned long start, unsigned long end,
 		pmd = pmd_offset(pud, addr);
 		if (pmd_none(READ_ONCE(*pmd))) {
 			void *p;
-
+/* p差不多在pmd地址后面129GB处 */
 			p = vmemmap_alloc_block_buf(PMD_SIZE, node, altmap);
-			if (p) {
+			if (p) { /* addr  0xffffea0000a00000  p: 0xffff888237800000 , p是从sparsemap_buf分的2MB内存*/
 				vmemmap_set_pmd(pmd, p, node, addr, next);
 				continue;
 			} else if (altmap) {
@@ -469,8 +469,8 @@ static int __meminit vmemmap_populate_compound_pages(unsigned long start_pfn,
 
 /*
 处理nid的一个memsection
-pfn是nid上面的某一个memsection的起始pfn
-nr_pages是这个memsection的大小
+pfn是nid上面的此memsection的起始pfn
+nr_pages是这个memsection的大小,一般都是32K个page
 */
 struct page * __meminit __populate_section_memmap(unsigned long pfn,
 		unsigned long nr_pages, int nid, struct vmem_altmap *altmap,
@@ -481,7 +481,7 @@ struct page * __meminit __populate_section_memmap(unsigned long pfn,
 	// memsection的最后一个page结构体的地址
 	unsigned long end = start + nr_pages * sizeof(struct page);
 	int r;
-
+	/* start,end之间是这个memsection的全部page的page结构体 */
 	if (WARN_ON_ONCE(!IS_ALIGNED(pfn, PAGES_PER_SUBSECTION) ||
 		!IS_ALIGNED(nr_pages, PAGES_PER_SUBSECTION)))
 		return NULL;

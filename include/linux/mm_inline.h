@@ -430,7 +430,7 @@ static inline void dup_anon_vma_name(struct vm_area_struct *orig_vma,
 	if (anon_name)
 		new_vma->anon_name = anon_vma_name_reuse(anon_name);
 }
-
+/*  */
 static inline void free_anon_vma_name(struct vm_area_struct *vma)
 {
 	/*

@@ -120,13 +120,13 @@ struct static_key {
 
 #ifndef __ASSEMBLY__
 #ifdef CONFIG_HAVE_ARCH_JUMP_LABEL_RELATIVE
-
+/* 表示__start___jump_table的元素类型 */
 struct jump_entry {
 	s32 code;
 	s32 target;
-	long key;	// key may be far away from the core kernel under KASLR
+	long key;	// key还编码了额外的信息, key may be far away from the core kernel under KASLR
 };
-
+/* 看来code成员好像是disp */
 static inline unsigned long jump_entry_code(const struct jump_entry *entry)
 {
 	return (unsigned long)&entry->code + entry->code;
@@ -136,7 +136,7 @@ static inline unsigned long jump_entry_target(const struct jump_entry *entry)
 {
 	return (unsigned long)&entry->target + entry->target;
 }
-
+/* key加上自身编码的offset就是static_key */
 static inline struct static_key *jump_entry_key(const struct jump_entry *entry)
 {
 	long offset = entry->key & ~3L;
@@ -172,7 +172,7 @@ static inline bool jump_entry_is_init(const struct jump_entry *entry)
 {
 	return (unsigned long)entry->key & 2UL;
 }
-
+/* 把jump_entry标记为init */
 static inline void jump_entry_set_init(struct jump_entry *entry, bool set)
 {
 	if (set)
@@ -194,7 +194,7 @@ static inline int jump_entry_size(struct jump_entry *entry)
 #endif
 
 #ifndef __ASSEMBLY__
-
+/* __start___jump_table数组的元素类型 */
 enum jump_label_type {
 	JUMP_LABEL_NOP = 0,
 	JUMP_LABEL_JMP,

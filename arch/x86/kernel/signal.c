@@ -298,6 +298,7 @@ static inline unsigned long get_nr_restart_syscall(const struct pt_regs *regs)
 }
 
 /*
+init不会处理kill信号
  * Note that 'init' is a special process: it doesn't get signals it doesn't
  * want to handle. Thus you cannot kill init even with a SIGKILL even by
  * mistake.

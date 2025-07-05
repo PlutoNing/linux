@@ -1058,7 +1058,7 @@ int populate_cache_leaves(unsigned int cpu)
  */
 static unsigned long saved_cr4;
 static DEFINE_RAW_SPINLOCK(cache_disable_lock);
-
+/* 关闭一些缓存什么的 */
 void cache_disable(void) __acquires(cache_disable_lock)
 {
 	unsigned long cr0;
@@ -1071,12 +1071,12 @@ void cache_disable(void) __acquires(cache_disable_lock)
 	 */
 
 	raw_spin_lock(&cache_disable_lock);
-
+	/* 设置 CR0 寄存器的 ​Cache Disable (CD)​​ 位为 1，禁用 CPU 缓存。 */
 	/* Enter the no-fill (CD=1, NW=0) cache mode and flush caches. */
 	cr0 = read_cr0() | X86_CR0_CD;
 	write_cr0(cr0);
 
-	/*
+	/*若 CPU ​不支持自监听（Self-Snooping）​，执行 wbinvd 指令写回并无效化缓存
 	 * Cache flushing is the most time-consuming step when programming
 	 * the MTRRs. Fortunately, as per the Intel Software Development
 	 * Manual, we can skip it if the processor supports cache self-
@@ -1085,7 +1085,7 @@ void cache_disable(void) __acquires(cache_disable_lock)
 	if (!static_cpu_has(X86_FEATURE_SELFSNOOP))
 		wbinvd();
 
-	/* Save value of CR4 and clear Page Global Enable (bit 7) */
+	/* Save value of CR4 and clear Page Global Enable (bit 7)保存并清除 CR4 寄存器的 ​Page Global Enable (PGE)​​ 位。 */
 	if (cpu_feature_enabled(X86_FEATURE_PGE)) {
 		saved_cr4 = __read_cr4();
 		__write_cr4(saved_cr4 & ~X86_CR4_PGE);
@@ -1094,7 +1094,7 @@ void cache_disable(void) __acquires(cache_disable_lock)
 	/* Flush all TLBs via a mov %cr3, %reg; mov %reg, %cr3 */
 	count_vm_tlb_event(NR_TLB_LOCAL_FLUSH_ALL);
 	flush_tlb_local();
-
+	/* 若 CPU 支持 ​MTRR（Memory Type Range Registers）​，调用 mtrr_disable 禁用。 */
 	if (cpu_feature_enabled(X86_FEATURE_MTRR))
 		mtrr_disable();
 
@@ -1102,7 +1102,7 @@ void cache_disable(void) __acquires(cache_disable_lock)
 	if (!static_cpu_has(X86_FEATURE_SELFSNOOP))
 		wbinvd();
 }
-
+/* 使能cpu的cache */
 void cache_enable(void) __releases(cache_disable_lock)
 {
 	/* Flush TLBs (no need to flush caches - they are disabled) */
@@ -1121,17 +1121,17 @@ void cache_enable(void) __releases(cache_disable_lock)
 
 	raw_spin_unlock(&cache_disable_lock);
 }
-
+/* 如果memory_caching_control的话, 调用来初始化 */
 static void cache_cpu_init(void)
 {
 	unsigned long flags;
 
 	local_irq_save(flags);
 	cache_disable();
-
+	/* 初始化mtrr */
 	if (memory_caching_control & CACHE_MTRR)
 		mtrr_generic_set_state();
-
+	/* 初始化pat */
 	if (memory_caching_control & CACHE_PAT)
 		pat_cpu_init();
 
@@ -1160,8 +1160,8 @@ static int cache_rendezvous_handler(void *unused)
 }
 
 void __init cache_bp_init(void)
-{
-	mtrr_bp_init();
+{ /* 初始化mtrr机制 */
+	mtrr_bp_init(); 
 	pat_bp_init();
 
 	if (memory_caching_control)

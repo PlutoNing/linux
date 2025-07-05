@@ -33,9 +33,10 @@ enum wb_state {
 enum wb_stat_item {
 	WB_RECLAIMABLE,  /* 
 	这个wb负责的可回收,可写回的页面
+	比如pagecache的页面
 	todddo 2024年12月7日21:26:09 多了脏页, 也会加这个
-
 	 */
+	/* wb的正在回写的页面 */
 	WB_WRITEBACK,
 	WB_DIRTIED, /* 
 	
@@ -125,6 +126,7 @@ struct bdi_writeback {
 	如果此值加上设定的间隔,超出了now,就表示此需要刷盘了
 	last old data flush */
 
+	/* 上面连接着脏的inode */
 	struct list_head b_dirty;	/* dirty inodes */
 	struct list_head b_io;		/* 
 	上面是准备回写的inode
@@ -136,6 +138,8 @@ struct bdi_writeback {
 	atomic_t writeback_inodes;	/* 
 	这个wb控制的inode里面正在写回的数量
 	number of inodes under writeback */
+
+	/* wb的状态统计, 比如各种内存类型的数量 */
 	struct percpu_counter stat[NR_WB_STAT_ITEMS]; //这里是wb对各种页面的统计
 
 	unsigned long bw_time_stamp;	/* last time write bw is updated */
@@ -167,7 +171,7 @@ struct bdi_writeback {
 	unsigned long dirty_sleep;	/* last wait */
 
 	struct list_head bdi_node;	/* 
-	挂接到bdi
+	挂接到bdi, 用于加入bdi->wb_list
 	anchored at bdi->wb_list */
 
 #ifdef CONFIG_CGROUP_WRITEBACK
@@ -176,15 +180,20 @@ struct bdi_writeback {
 	used only for !root wb's */
 	struct fprop_local_percpu memcg_completions;
 	struct cgroup_subsys_state *memcg_css; /* 
-	对应的memcg
+	对应的memcg, wb控制这个memcg的读写相关
+	可以用memcg作为key在bdi->cgwb_tree上面查到这个wb
 	the associated memcg */
 	struct cgroup_subsys_state *blkcg_css; /* 
 	对应的blkcg
+	wb->memcg_css的读写相关正是受这个blkcg控制
 	and blkcg */
 	struct list_head memcg_node;	/* 
 	连接到关联的memcg
 	anchored at memcg->cgwb_list */
-	struct list_head blkcg_node;	/* anchored at blkcg->cgwb_list */
+	struct list_head blkcg_node;	/*
+	这里加入自己关联的blkcg
+	anchored at blkcg->cgwb_list */
+	/* inode加入这个新wb, 并且inode不是DIRTY_ALL的 */
 	struct list_head b_attached;	/* attached inodes, protected by list_lock */
 	struct list_head offline_node;	/* anchored at offline_cgwbs */
 

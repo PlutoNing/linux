@@ -135,6 +135,7 @@ extern void irqtime_account_irq(struct task_struct *tsk, unsigned int offset);
 static inline void irqtime_account_irq(struct task_struct *tsk, unsigned int offset) { }
 #endif
 
+/* 统计当前task处理softirq的信息 */
 static inline void account_softirq_enter(struct task_struct *tsk)
 {
 	vtime_account_irq(tsk, SOFTIRQ_OFFSET);
@@ -152,7 +153,7 @@ static inline void account_hardirq_enter(struct task_struct *tsk)
 	vtime_account_irq(tsk, HARDIRQ_OFFSET);
 	irqtime_account_irq(tsk, HARDIRQ_OFFSET);
 }
-
+/* 统计中断时间 */
 static inline void account_hardirq_exit(struct task_struct *tsk)
 {
 	vtime_account_hardirq(tsk);

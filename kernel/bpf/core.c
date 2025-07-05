@@ -40,7 +40,7 @@
 
 #include <asm/barrier.h>
 #include <asm/unaligned.h>
-
+/* eBPF 程序使用 ​​11 个通用寄存器​​（R0-R10），每个寄存器宽度为 ​​64 位​​ */
 /* Registers */
 #define BPF_R0	regs[BPF_REG_0]
 #define BPF_R1	regs[BPF_REG_1]
@@ -54,14 +54,23 @@
 #define BPF_R9	regs[BPF_REG_9]
 #define BPF_R10	regs[BPF_REG_10]
 
-/* Named registers */
+/* Named registers
+命名寄存器宏（DST, SRC, FP, AX, ...）​​
+这些宏用于简化对寄存器和指令字段的访问：*/
+/* 目标寄存器（指令操作的目标，如 MOV DST, SRC） */
 #define DST	regs[insn->dst_reg]
 #define SRC	regs[insn->src_reg]
-#define FP	regs[BPF_REG_FP]
+/* 等同于 R10，栈帧指针 */
+#define FP	regs[BPF_REG_FP] 
+/* 辅助寄存器​​（Auxiliary），用于临时存储（某些指令隐式使用） */
 #define AX	regs[BPF_REG_AX]
+/* 等同于 R1，函数第一个参数 */
 #define ARG1	regs[BPF_REG_ARG1]
+/* 上下文指针（如网络程序中的 struct __sk_buff*）。？ */
 #define CTX	regs[BPF_REG_CTX]
+/* 指令中的偏移字段（用于跳转或内存访问）。 */
 #define OFF	insn->off
+/* 立即数 */
 #define IMM	insn->imm
 
 struct bpf_mem_alloc bpf_global_ma;
@@ -127,7 +136,7 @@ struct bpf_prog *bpf_prog_alloc_no_stats(unsigned int size, gfp_t gfp_extra_flag
 	return fp;
 }
 
-/* 分配内存空间 */
+/* load prog前给prog分配内存空间 */
 struct bpf_prog *bpf_prog_alloc(unsigned int size, gfp_t gfp_extra_flags)
 {
 	gfp_t gfp_flags = bpf_memcg_flags(GFP_KERNEL | __GFP_ZERO | gfp_extra_flags);
@@ -155,12 +164,12 @@ struct bpf_prog *bpf_prog_alloc(unsigned int size, gfp_t gfp_extra_flags)
 	return prog;
 }
 EXPORT_SYMBOL_GPL(bpf_prog_alloc);
-
+/* linfo是什么？ */
 int bpf_prog_alloc_jited_linfo(struct bpf_prog *prog)
 {
 	if (!prog->aux->nr_linfo || !prog->jit_requested)
 		return 0;
-
+/* 必须有nr—linfo和jit */
 	prog->aux->jited_linfo = kvcalloc(prog->aux->nr_linfo,
 					  sizeof(*prog->aux->jited_linfo),
 					  bpf_memcg_flags(GFP_KERNEL | __GFP_NOWARN));
@@ -557,7 +566,8 @@ int bpf_jit_kallsyms __read_mostly = IS_BUILTIN(CONFIG_BPF_JIT_DEFAULT_ON);
 int bpf_jit_harden   __read_mostly;
 long bpf_jit_limit   __read_mostly;
 long bpf_jit_limit_max __read_mostly;
-
+/* prog的set ksym addr
+ksym addr是什么？ */
 static void
 bpf_prog_ksym_set_addr(struct bpf_prog *prog)
 {
@@ -615,6 +625,7 @@ static __always_inline bool bpf_tree_less(struct latch_tree_node *a,
 	return bpf_get_ksym_start(a) < bpf_get_ksym_start(b);
 }
 
+/* 在bpf tree查找ksym时使用 */
 static __always_inline int bpf_tree_comp(void *key, struct latch_tree_node *n)
 {
 	unsigned long val = (unsigned long)key;
@@ -630,6 +641,8 @@ static __always_inline int bpf_tree_comp(void *key, struct latch_tree_node *n)
 	return 0;
 }
 
+/* 在bpf tree查找ksym的ops
+比较相同的ksym */
 static const struct latch_tree_ops bpf_tree_ops = {
 	.less	= bpf_tree_less,
 	.comp	= bpf_tree_comp,
@@ -637,8 +650,9 @@ static const struct latch_tree_ops bpf_tree_ops = {
 
 static DEFINE_SPINLOCK(bpf_lock);
 static LIST_HEAD(bpf_kallsyms);
+/* bpf kysm存储在这颗树 */
 static struct latch_tree_root bpf_tree __cacheline_aligned;
-
+/* 添加到哪里 */
 void bpf_ksym_add(struct bpf_ksym *ksym)
 {
 	spin_lock_bh(&bpf_lock);
@@ -668,17 +682,17 @@ static bool bpf_prog_kallsyms_candidate(const struct bpf_prog *fp)
 {
 	return fp->jited && !bpf_prog_was_classic(fp);
 }
-
+/* 初始化aux的ksym */
 void bpf_prog_kallsyms_add(struct bpf_prog *fp)
 {
 	if (!bpf_prog_kallsyms_candidate(fp) ||
 	    !bpf_capable())
 		return;
-
+	/* 以后 */
 	bpf_prog_ksym_set_addr(fp);
 	bpf_prog_ksym_set_name(fp);
 	fp->aux->ksym.prog = true;
-
+	/* 添加到一些全局的数据结构上面，kallsyms， bpf tree什么的 */
 	bpf_ksym_add(&fp->aux->ksym);
 }
 
@@ -690,6 +704,7 @@ void bpf_prog_kallsyms_del(struct bpf_prog *fp)
 	bpf_ksym_del(&fp->aux->ksym);
 }
 
+/* 查找addr地址处的bpf ksym */
 static struct bpf_ksym *bpf_ksym_find(unsigned long addr)
 {
 	struct latch_tree_node *n;
@@ -698,6 +713,7 @@ static struct bpf_ksym *bpf_ksym_find(unsigned long addr)
 	return n ? container_of(n, struct bpf_ksym, tnode) : NULL;
 }
 
+/* 查找bpf ksym */
 const char *__bpf_address_lookup(unsigned long addr, unsigned long *size,
 				 unsigned long *off, char *sym)
 {
@@ -1652,10 +1668,12 @@ bool bpf_opcode_in_insntable(u8 code)
 
 #ifndef CONFIG_BPF_JIT_ALWAYS_ON
 /**
+运行bpf prog
  *	___bpf_prog_run - run eBPF program on a given context
  *	@regs: is the array of MAX_BPF_EXT_REG eBPF pseudo-registers
+ 本次执行的寄存器
  *	@insn: is the array of eBPF instructions
- *
+ * 本次执行的指令
  * Decode and execute eBPF instructions.
  *
  * Return: whatever value is in %BPF_R0 at program exit
@@ -1664,6 +1682,7 @@ static u64 ___bpf_prog_run(u64 *regs, const struct bpf_insn *insn)
 {
 #define BPF_INSN_2_LBL(x, y)    [BPF_##x | BPF_##y] = &&x##_##y
 #define BPF_INSN_3_LBL(x, y, z) [BPF_##x | BPF_##y | BPF_##z] = &&x##_##y##_##z
+
 	static const void * const jumptable[256] __annotate_jump_table = {
 		[0 ... 255] = &&default_label,
 		/* Now overwrite non-defaults ... */
@@ -2168,6 +2187,7 @@ static unsigned int PROG_NAME(stack_size)(const void *ctx, const struct bpf_insn
 }
 
 #define PROG_NAME_ARGS(stack_size) __bpf_prog_run_args##stack_size
+/* 分配寄存器和stack， 开始执行 */
 #define DEFINE_BPF_PROG_RUN_ARGS(stack_size) \
 static u64 PROG_NAME_ARGS(stack_size)(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5, \
 				      const struct bpf_insn *insn) \
@@ -2200,7 +2220,15 @@ EVAL6(DEFINE_BPF_PROG_RUN_ARGS, 224, 256, 288, 320, 352, 384);
 EVAL4(DEFINE_BPF_PROG_RUN_ARGS, 416, 448, 480, 512);
 
 #define PROG_NAME_LIST(stack_size) PROG_NAME(stack_size),
-
+/* static unsigned int (*interpreters[])(const void *ctx,
+				      const struct bpf_insn *insn) = {
+	__bpf_prog_run32,  __bpf_prog_run64,  __bpf_prog_run96,
+	__bpf_prog_run128, __bpf_prog_run160, __bpf_prog_run192,
+	__bpf_prog_run224, __bpf_prog_run256, __bpf_prog_run288,
+	__bpf_prog_run320, __bpf_prog_run352, __bpf_prog_run384,
+	__bpf_prog_run416, __bpf_prog_run448, __bpf_prog_run480,
+	__bpf_prog_run512,
+}; */
 static unsigned int (*interpreters[])(const void *ctx,
 				      const struct bpf_insn *insn) = {
 EVAL6(PROG_NAME_LIST, 32, 64, 96, 128, 160, 192)
@@ -2298,7 +2326,7 @@ out:
 	mutex_unlock(&aux->used_maps_mutex);
 	return ret;
 }
-
+/* 选择一个预置的函数 */
 static void bpf_prog_select_func(struct bpf_prog *fp)
 {
 #ifndef CONFIG_BPF_JIT_ALWAYS_ON
@@ -2311,6 +2339,8 @@ static void bpf_prog_select_func(struct bpf_prog *fp)
 }
 
 /**
+load prog时调用
+runtime是什么？
  *	bpf_prog_select_runtime - select exec runtime for BPF program
  *	@fp: bpf_prog populated with BPF program
  *	@err: pointer to error variable
@@ -2334,7 +2364,9 @@ struct bpf_prog *bpf_prog_select_runtime(struct bpf_prog *fp, int *err)
 	if (IS_ENABLED(CONFIG_BPF_JIT_ALWAYS_ON) ||
 	    bpf_prog_has_kfunc_call(fp))
 		jit_needed = true;
-
+	/* 
+	选择一个预置的函数
+	*/
 	bpf_prog_select_func(fp);
 
 	/* eBPF JITs can rewrite the program in case constant
@@ -2354,7 +2386,7 @@ struct bpf_prog *bpf_prog_select_runtime(struct bpf_prog *fp, int *err)
 			*err = -ENOTSUPP;
 			return fp;
 		}
-	} else {
+	} else {/* unlikely的情况 */
 		*err = bpf_prog_offload_compile(fp);
 		if (*err)
 			return fp;

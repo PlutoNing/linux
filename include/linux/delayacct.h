@@ -219,7 +219,9 @@ static inline void delayacct_wpcopy_end(void)
 	if (current->delays)
 		__delayacct_wpcopy_end();
 }
-
+/* 
+进行task的irqtime统计
+*/
 static inline void delayacct_irq(struct task_struct *task, u32 delta)
 {
 	if (!static_branch_unlikely(&delayacct_key))

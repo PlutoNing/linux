@@ -21,7 +21,7 @@ SYM_FUNC_START(clear_page_rep)
 	RET
 SYM_FUNC_END(clear_page_rep)
 EXPORT_SYMBOL_GPL(clear_page_rep)
-
+/*clear_page_orig的实现*/
 SYM_FUNC_START(clear_page_orig)
 	xorl   %eax,%eax
 	movl   $4096/64,%ecx

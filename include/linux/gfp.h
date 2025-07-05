@@ -202,6 +202,7 @@ alloc_pages_bulk_list(gfp_t gfp, unsigned long nr_pages, struct list_head *list)
 	return __alloc_pages_bulk(gfp, numa_mem_id(), NULL, nr_pages, list, NULL);
 }
 
+/* 分配一组页面 */
 static inline unsigned long
 alloc_pages_bulk_array(gfp_t gfp, unsigned long nr_pages, struct page **page_array)
 {
@@ -249,7 +250,7 @@ __alloc_pages_node(int nid, gfp_t gfp_mask, unsigned int order)
 	return __alloc_pages(gfp_mask, order, nid, NULL);
 }
 
-//
+// 从buddy分配folio
 static inline
 struct folio *__folio_alloc_node(gfp_t gfp, unsigned int order, int nid)
 {
@@ -260,6 +261,7 @@ struct folio *__folio_alloc_node(gfp_t gfp, unsigned int order, int nid)
 }
 
 /*
+优先从指定的nid分配内存
  * Allocate pages, preferring the node given as nid. When nid == NUMA_NO_NODE,
  * prefer the current CPU's closest node. Otherwise node must be valid and
  * online.
@@ -355,6 +357,7 @@ extern gfp_t gfp_allowed_mask;
 /* Returns true if the gfp_mask allows use of ALLOC_NO_WATERMARK */
 bool gfp_pfmemalloc_allowed(gfp_t gfp_mask);
 
+/* 内存分配能否io fs? */
 static inline bool gfp_has_io_fs(gfp_t gfp)
 {
 	return (gfp & (__GFP_IO | __GFP_FS)) == (__GFP_IO | __GFP_FS);

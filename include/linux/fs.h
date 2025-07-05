@@ -377,7 +377,7 @@ enum rw_hint {
 */
 struct kiocb {
 	struct file		*ki_filp; // 表示与该iocb相关联的文件
-	loff_t			ki_pos; //表示读写的位置
+	loff_t			ki_pos; //表示读写的位置，对应file的pos
 	void (*ki_complete)(struct kiocb *iocb, long ret);
 	void			*private;
 	int			ki_flags;
@@ -409,19 +409,29 @@ static inline bool is_sync_kiocb(struct kiocb *kiocb)
 struct address_space_operations {
 	/* 用于写回mapping的脏页 */
 	int (*writepage)(struct page *page, struct writeback_control *wbc);
+	/* 预读的时候会调用 */
 	int (*read_folio)(struct file *, struct folio *);
 
 	/* Write back some dirty pages from this mapping. */
 	int (*writepages)(struct address_space *, struct writeback_control *);
 
-	/* Mark a folio dirty.  Return true if this dirtied it */
+	/* Mark a folio dirty.  Return true if this dirtied it
+	mapping的dirty folio的回调
+	内核告诉mapping这里脏了, fs的实现可以按照自己的方式来处理
+	 */
 	bool (*dirty_folio)(struct address_space *, struct folio *);
 
+	/* 预读的时候调用 */
 	void (*readahead)(struct readahead_control *);
 
+	/* 写回pos处的指定页面 */
+	/* 其实一般也就是根据mapping和pos, 在xas里面找到对应index的folio,赋值到page
+		write_begin(file, mapping, pos, bytes,
+						&page, &fsdata); */
 	int (*write_begin)(struct file *, struct address_space *mapping,
 				loff_t pos, unsigned len,
 				struct page **pagep, void **fsdata);
+	/* 在等内核把数据拷贝到page之后, 进行回写等工作? */
 	int (*write_end)(struct file *, struct address_space *mapping,
 				loff_t pos, unsigned len, unsigned copied,
 				struct page *page, void *fsdata);
@@ -430,6 +440,9 @@ struct address_space_operations {
 	sector_t (*bmap)(struct address_space *, sector_t);
 	void (*invalidate_folio) (struct folio *, size_t offset, size_t len);
 	bool (*release_folio)(struct folio *, gfp_t);
+	/* 这个回调做什么
+	有这个回调fs的一般不多
+	 */
 	void (*free_folio)(struct folio *folio);
 	ssize_t (*direct_IO)(struct kiocb *, struct iov_iter *iter);
 	/*
@@ -497,6 +510,7 @@ struct address_space {
 	errseq_t		wb_err;
 	spinlock_t		private_lock;
 	struct list_head	private_list;
+	/* 可能指向buffer_mapping */
 	void			*private_data; /* 特定于实现的成员
 	
 	 */
@@ -508,6 +522,7 @@ struct address_space {
 	 */
 
 /* XArray tags, for tagging dirty and writeback pages in the pagecache. */
+/* PAGECACHE_TAG_DIRTY只是可能dirty */
 #define PAGECACHE_TAG_DIRTY	XA_MARK_0 //todddo
 #define PAGECACHE_TAG_WRITEBACK	XA_MARK_1 //表示页面正在写回
 #define PAGECACHE_TAG_TOWRITE	XA_MARK_2
@@ -672,7 +687,7 @@ struct inode {
 	struct super_block	*i_sb; /* 指向 inode 所在的超级块（super_block），
 	超级块表示文件系统的一个实例，管理所有文件系统对象。 */
 
-	struct address_space	*i_mapping;/* 
+	struct address_space	*i_mapping;/* 为什么inode也有mapping呢
 	dev inode的mapping是存储的bh相关 */
 
 #ifdef CONFIG_SECURITY
@@ -718,7 +733,9 @@ struct inode {
 	unsigned long		dirtied_time_when; /*  */
 
 	struct hlist_node	i_hash; /*  */
-	struct list_head	i_io_list;	/* backing dev IO list */
+	struct list_head i_io_list; /*
+	连接到wb->b_dirty
+	backing dev IO list,挂接到wb的b_io? */
 #ifdef CONFIG_CGROUP_WRITEBACK
 	struct bdi_writeback	*i_wb;		/* 
 	inode对应的cgroup wb
@@ -732,7 +749,7 @@ struct inode {
 	u16			i_wb_frn_history; /*  */
 #endif
 	struct list_head	i_lru;		/* inode LRU list */
-	struct list_head	i_sb_list; /*  */
+	struct list_head	i_sb_list; /* 连接到sb->s_inodes */
 	struct list_head	i_wb_list;	/* backing dev writeback list */
 	union {
 		struct hlist_head	i_dentry; /*  */
@@ -914,7 +931,7 @@ void filemap_invalidate_unlock_two(struct address_space *mapping1,
 
 
 /*
-
+从inode中读取文件的大小
  * NOTE: in a 32bit arch with a preemptable kernel and
  * an UP compile the i_size_read/write must be atomic
  * with respect to the local cpu (unlike with preempt disabled),
@@ -947,7 +964,7 @@ static inline loff_t i_size_read(const struct inode *inode)
 #endif
 }
 
-/*
+/*改变inode的大小
  * NOTE: unlike i_size_read(), i_size_write() does need locking around it
  * (normally i_mutex), otherwise on 32bit/SMP an update of i_size_seqcount
  * can be lost, resulting in subsequent i_size_read() calls spinning forever.
@@ -1207,9 +1224,12 @@ extern int send_sigurg(struct fown_struct *fown);
 #define SB_I_TS_EXPIRY_WARNED 0x00000400 /* warned about timestamp range expiry */
 #define SB_I_RETIRED	0x00000800	/* superblock shouldn't be reused */
 
-/* Possible states of 'frozen' field */
+/* 
+对sb的不同加锁级别
+Possible states of 'frozen' field */
 enum {
 	SB_UNFROZEN = 0,		/* FS is unfrozen */
+	/*  */
 	SB_FREEZE_WRITE	= 1,		/* Writes, dir ops, ioctls frozen */
 	SB_FREEZE_PAGEFAULT = 2,	/* Page faults stopped as well */
 	SB_FREEZE_FS = 3,		/* For internal FS use (e.g. to stop
@@ -1222,6 +1242,7 @@ enum {
 struct sb_writers {
 	unsigned short			frozen;		/* Is sb frozen? */
 	unsigned short			freeze_holders;	/* Who froze fs? */
+	/* 是一个数组，代表不同写入级别，不同级别需要的锁的范围不一样 */
 	struct percpu_rw_semaphore	rw_sem[SB_FREEZE_LEVELS];
 };
 
@@ -1231,7 +1252,9 @@ struct super_block {
 	unsigned char		s_blocksize_bits;
 	unsigned long		s_blocksize; /* 以byte为单位 */
 	loff_t			s_maxbytes;	/* Max file size */
+	/* 自己的fs_type */
 	struct file_system_type	*s_type;
+	/* 超级块的fops */
 	const struct super_operations	*s_op;
 	const struct dquot_operations	*dq_op;
 	const struct quotactl_ops	*s_qcop;
@@ -1263,6 +1286,7 @@ struct super_block {
 	struct block_device	*s_bdev;
 	struct backing_dev_info *s_bdi;
 	struct mtd_info		*s_mtd;
+	/* 加入到s->s_type->fs_supers */
 	struct hlist_node	s_instances;
 	unsigned int		s_quota_types;	/* Bitmask of supported quota types */
 	struct quota_info	s_dquot;	/* Diskquota specific options */
@@ -1307,6 +1331,7 @@ struct super_block {
 
 	const struct dentry_operations *s_d_op; /* default d_op for dentries */
 
+	/* 好像是回收自己的inode们的buffers? */
 	struct shrinker s_shrink;	/* per-sb shrinker handle */
 
 	/* Number of inodes with nlink == 0 but still referenced */
@@ -1669,6 +1694,7 @@ static inline void sb_end_intwrite(struct super_block *sb)
 }
 
 /**
+获取对一个sb的写权限
  * sb_start_write - get write access to a superblock
  * @sb: the super we write to
  *
@@ -1916,6 +1942,7 @@ struct file_operations {
 	int (*fsync) (struct file *, loff_t, loff_t, int datasync);
 	int (*fasync) (int, struct file *, int);
 	int (*lock) (struct file *, int, struct file_lock *);
+	/* mmap时候使用，找一段可以map的地址 */
 	unsigned long (*get_unmapped_area)(struct file *, unsigned long, unsigned long, unsigned long, unsigned long);
 	int (*check_flags)(int);
 	int (*flock) (struct file *, int, struct file_lock *);
@@ -1923,6 +1950,7 @@ struct file_operations {
 	ssize_t (*splice_read)(struct file *, loff_t *, struct pipe_inode_info *, size_t, unsigned int);
 	void (*splice_eof)(struct file *file);
 	int (*setlease)(struct file *, int, struct file_lock **, void **);
+	/* 执行fallocate操作 */
 	long (*fallocate)(struct file *file, int mode, loff_t offset,
 			  loff_t len);
 	void (*show_fdinfo)(struct seq_file *m, struct file *f);
@@ -1931,6 +1959,7 @@ struct file_operations {
 #endif
 	ssize_t (*copy_file_range)(struct file *, loff_t, struct file *,
 			loff_t, size_t, unsigned int);
+		/* 用于dedup */
 	loff_t (*remap_file_range)(struct file *file_in, loff_t pos_in,
 				   struct file *file_out, loff_t pos_out,
 				   loff_t len, unsigned int remap_flags);
@@ -1956,13 +1985,13 @@ struct inode_operations {
 	int (*readlink) (struct dentry *, char __user *,int);
 
 	int (*create) (struct mnt_idmap *, struct inode *,struct dentry *,
-		       umode_t, bool);
+		       umode_t, bool); /* 在目录下创建新文件（如 open 使用 O_CREAT 标志时触发） */
 	int (*link) (struct dentry *,struct inode *,struct dentry *);
 	int (*unlink) (struct inode *,struct dentry *);
 	int (*symlink) (struct mnt_idmap *, struct inode *,struct dentry *,
 			const char *);
-	int (*mkdir) (struct mnt_idmap *, struct inode *,struct dentry *,
-		      umode_t);
+	int (*mkdir)(struct mnt_idmap *, struct inode *, struct dentry *,
+		     umode_t); /* 创建子目录 */
 	int (*rmdir) (struct inode *,struct dentry *);
 	int (*mknod) (struct mnt_idmap *, struct inode *,struct dentry *,
 		      umode_t,dev_t);
@@ -1989,19 +2018,23 @@ struct inode_operations {
 	int (*fileattr_get)(struct dentry *dentry, struct fileattr *fa);
 	struct offset_ctx *(*get_offset_ctx)(struct inode *inode);
 } ____cacheline_aligned;
-
+/* fops的函数 */
 static inline ssize_t call_read_iter(struct file *file, struct kiocb *kio,
 				     struct iov_iter *iter)
 {
 	return file->f_op->read_iter(kio, iter);
 }
-
+/* 调用fops回调 */
 static inline ssize_t call_write_iter(struct file *file, struct kiocb *kio,
 				      struct iov_iter *iter)
 {
 	return file->f_op->write_iter(kio, iter);
 }
 
+/* 调用文件的mmap回调
+==========
+让文件决定如何mmap, 一般就是给vma设置上对应的ops, 等具体map和fault
+的时候再进行映射 */
 static inline int call_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	return file->f_op->mmap(file, vma);
@@ -2037,7 +2070,9 @@ enum freeze_holder {
 	FREEZE_HOLDER_KERNEL	= (1U << 0),
 	FREEZE_HOLDER_USERSPACE	= (1U << 1),
 };
+/* 
 
+*/
 struct super_operations {
    	struct inode *(*alloc_inode)(struct super_block *sb);
 	void (*destroy_inode)(struct inode *);
@@ -2154,7 +2189,9 @@ static inline bool HAS_UNMAPPED_ID(struct mnt_idmap *idmap,
 	return !vfsuid_valid(i_uid_into_vfsuid(idmap, inode)) ||
 	       !vfsgid_valid(i_gid_into_vfsgid(idmap, inode));
 }
-
+/* 
+要读写这个file了
+初始化这个kiocb */
 static inline void init_sync_kiocb(struct kiocb *kiocb, struct file *filp)
 {
 	*kiocb = (struct kiocb) {
@@ -2284,6 +2321,7 @@ static inline void kiocb_clone(struct kiocb *kiocb, struct kiocb *kiocb_src,
 #define I_DIO_WAKEUP		(1 << __I_DIO_WAKEUP)
 #define I_LINKABLE		(1 << 10)
 #define I_DIRTY_TIME		(1 << 11)
+/* 表示inode正在切换wb */
 #define I_WB_SWITCH		(1 << 13)
 #define I_OVL_INUSE		(1 << 14)
 #define I_CREATING		(1 << 15)
@@ -2380,6 +2418,7 @@ struct file_system_type {
 	void (*kill_sb) (struct super_block *);
 	struct module *owner;
 	struct file_system_type * next;
+	/* 这个类型的全部实例的sb在这里 */
 	struct hlist_head fs_supers;
 
 	struct lock_class_key s_lock_key;
@@ -2566,7 +2605,7 @@ extern void __init vfs_caches_init_early(void);
 extern void __init vfs_caches_init(void);
 
 extern struct kmem_cache *names_cachep;
-
+/* 分配一个filename */
 #define __getname()		kmem_cache_alloc(names_cachep, GFP_KERNEL)
 #define __putname(name)		kmem_cache_free(names_cachep, (void *)(name))
 
@@ -2700,7 +2739,10 @@ static inline bool inode_wrong_type(const struct inode *inode, umode_t mode)
 }
 
 /**
- * file_start_write - get write access to a superblock for regular file io
+常规文件读写前获取对sb的写权限？
+ * file_start_write - get write access to a 
+ superblock
+  for regular file io
  * @file: the file we want to write to
  *
  * This is a variant of sb_start_write() which is a noop on non-regualr file.
@@ -2720,7 +2762,7 @@ static inline bool file_start_write_trylock(struct file *file)
 	return sb_start_write_trylock(file_inode(file)->i_sb);
 }
 
-/**
+/**意义是?
  * file_end_write - drop write access to a superblock of a regular file
  * @file: the file we wrote to
  *

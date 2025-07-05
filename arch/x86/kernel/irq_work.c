@@ -22,12 +22,13 @@ DEFINE_IDTENTRY_SYSVEC(sysvec_irq_work)
 	irq_work_run();
 	trace_irq_work_exit(IRQ_WORK_VECTOR);
 }
-
+/* 立即运行irq_work */
 void arch_irq_work_raise(void)
 {
 	if (!arch_irq_work_has_interrupt())
 		return;
 
+	/* 通过ipi中断运行 */
 	__apic_send_IPI_self(IRQ_WORK_VECTOR);
 	apic_wait_icr_idle();
 }

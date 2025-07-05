@@ -1476,12 +1476,16 @@ void would_dump(struct linux_binprm *bprm, struct file *file)
 	}
 }
 EXPORT_SYMBOL(would_dump);
-
+/* 
+exec之后
+设置mm的一些属性
+*/
 void setup_new_exec(struct linux_binprm * bprm)
 {
 	/* Setup things that can depend upon the personality */
 	struct task_struct *me = current;
 
+	/* 给mm设置mmap时候的get area函数 */
 	arch_pick_mmap_layout(me->mm, &bprm->rlim_stack);
 
 	arch_setup_new_exec();
@@ -1872,13 +1876,14 @@ static int bprm_execve(struct linux_binprm *bprm,
 	 */
 	check_unsafe_exec(bprm);
 	current->in_execve = 1;
+	/*重置      t的mm_cid_active和last_cid */
 	sched_mm_cid_before_execve(current);
 	// 打开程序文件
 	file = do_open_execat(fd, filename, flags);
 	retval = PTR_ERR(file);
 	if (IS_ERR(file))
 		goto out_unmark;
-
+	/* 这里查询新进程的cpu. 看看要不要把current也移到新cpu上面 */
 	sched_exec();
 
 	bprm->file = file;
@@ -1902,7 +1907,7 @@ static int bprm_execve(struct linux_binprm *bprm,
 	retval = exec_binprm(bprm);
 	if (retval < 0)
 		goto out;
-
+	/* 初始化t的mm_cid_active和last_cid */
 	sched_mm_cid_after_execve(current);
 	/* execve succeeded */
 	current->fs->in_exec = 0;

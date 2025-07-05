@@ -12,7 +12,7 @@ static inline bool vclock_was_used(int vclock)
 {
 	return READ_ONCE(vclocks_used) & (1U << vclock);
 }
-
+/* 应该是启用tsc之类的逻辑 */
 static inline void vclocks_set_used(unsigned int which)
 {
 	WRITE_ONCE(vclocks_used, READ_ONCE(vclocks_used) | (1 << which));

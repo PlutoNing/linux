@@ -36,12 +36,12 @@
 #include "ext2.h"
 #include "xattr.h"
 #include "acl.h"
-
+/* 把新创建的inode加入目录 */
 static inline int ext2_add_nondir(struct dentry *dentry, struct inode *inode)
 {
-	int err = ext2_add_link(dentry, inode);
+	int err = ext2_add_link(dentry, inode);/* 加入目录 */
 	if (!err) {
-		d_instantiate_new(dentry, inode);
+		d_instantiate_new(dentry, inode);/* 初始化数据结构关联 */
 		return 0;
 	}
 	inode_dec_link_count(inode);
@@ -91,7 +91,7 @@ struct dentry *ext2_get_parent(struct dentry *child)
 	return d_obtain_alias(ext2_iget(child->d_sb, ino));
 } 
 
-/*
+/* 是dir node的create ops的回调,在目录下创建文件
  * By the time this is called, we already have created
  * the directory cache entry for the new file, but it
  * is so far negative - it has no inode.
@@ -109,11 +109,11 @@ static int ext2_create (struct mnt_idmap * idmap,
 	err = dquot_initialize(dir);
 	if (err)
 		return err;
-
+/* 创建新文件对应的inode */
 	inode = ext2_new_inode(dir, mode, &dentry->d_name);
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
-
+/* 设置各种ops */
 	ext2_set_file_ops(inode);
 	mark_inode_dirty(inode);
 	return ext2_add_nondir(dentry, inode);

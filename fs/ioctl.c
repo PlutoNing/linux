@@ -30,7 +30,7 @@
 /* So that the fiemap access checks can't overflow on 32 bit machines. */
 #define FIEMAP_MAX_EXTENTS	(UINT_MAX / sizeof(struct fiemap_extent))
 
-/**
+/** 执行文件系统特定的ioctl操作
  * vfs_ioctl - call filesystem specific ioctl methods
  * @filp:	open file to invoke ioctl method on
  * @cmd:	ioctl command to execute
@@ -47,7 +47,7 @@ long vfs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	if (!filp->f_op->unlocked_ioctl)
 		goto out;
-
+/* 调用fs的fops */
 	error = filp->f_op->unlocked_ioctl(filp, cmd, arg);
 	if (error == -ENOIOCTLCMD)
 		error = -ENOTTY;
@@ -853,7 +853,7 @@ static int do_vfs_ioctl(struct file *filp, unsigned int fd,
 
 	return -ENOIOCTLCMD;
 }
-
+/* ioctl系统调用 */
 SYSCALL_DEFINE3(ioctl, unsigned int, fd, unsigned int, cmd, unsigned long, arg)
 {
 	struct fd f = fdget(fd);
@@ -869,7 +869,7 @@ SYSCALL_DEFINE3(ioctl, unsigned int, fd, unsigned int, cmd, unsigned long, arg)
 	error = do_vfs_ioctl(f.file, fd, cmd, arg);
 	if (error == -ENOIOCTLCMD)
 		error = vfs_ioctl(f.file, cmd, arg);
-
+/* 上面的两个函数是什么区别 */
 out:
 	fdput(f);
 	return error;
@@ -877,6 +877,7 @@ out:
 
 #ifdef CONFIG_COMPAT
 /**
+
  * compat_ptr_ioctl - generic implementation of .compat_ioctl file operation
  * @file: The file to operate on.
  * @cmd: The ioctl command number.

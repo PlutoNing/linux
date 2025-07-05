@@ -74,7 +74,7 @@ early_param("nohugevmalloc", set_nohugevmalloc);
 #else /* CONFIG_HAVE_ARCH_HUGE_VMALLOC */
 static const bool vmap_allow_huge = false;
 #endif	/* CONFIG_HAVE_ARCH_HUGE_VMALLOC */
-
+/* 检查是否位于vmalloc地址范围内 */
 bool is_vmalloc_addr(const void *x)
 {
 	unsigned long addr = (unsigned long)kasan_reset_tag(x);
@@ -84,6 +84,7 @@ bool is_vmalloc_addr(const void *x)
 EXPORT_SYMBOL(is_vmalloc_addr);
 
 struct vfree_deferred {
+	/* 链接要释放的vmalloc地址 */
 	struct llist_head list;
 	struct work_struct wq;
 };
@@ -407,6 +408,7 @@ static void vunmap_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
 }
 
 /*
+释放vma的物理内存
 类似于vunmap_range，但不刷新缓存或TLB。
  * vunmap_range_noflush is similar to vunmap_range, but does not
  * flush caches or TLBs.
@@ -435,6 +437,7 @@ void __vunmap_range_noflush(unsigned long start, unsigned long end)
 			mask |= PGTBL_PGD_MODIFIED;
 		if (pgd_none_or_clear_bad(pgd))
 			continue;
+		/* vmalloc释放页面 */
 		vunmap_p4d_range(pgd, addr, next, &mask);
 	} while (pgd++, addr = next, addr != end);
 
@@ -442,7 +445,8 @@ void __vunmap_range_noflush(unsigned long start, unsigned long end)
 		arch_sync_kernel_mappings(start, end);
 }
 
-/* 解除页表映射 */
+/* 释放va的物理内存
+解除页表映射 */
 void vunmap_range_noflush(unsigned long start, unsigned long end)
 {
 	kmsan_vunmap_range_noflush(start, end);
@@ -1911,8 +1915,8 @@ static void drain_vmap_area_work(struct work_struct *work)
 /*
 vmalloc释放内存
 释放分配的vm_struct
-释放一个vmap_area
-重新插入红黑树, 表示空闲
+释放一个vmap_area后
+把va地址范围重新插入红黑树, 表示空闲
  * Free a vmap area, caller ensuring that the area has been unmapped,
  * unlinked and flush_cache_vunmap had been called for the correct
  * range previously.
@@ -1947,7 +1951,8 @@ static void free_vmap_area_noflush(struct vmap_area *va)
 }
 
 /*
-释放一个vmap_area
+释放一个vmalloc地址
+va是刚刚从红黑树移除的地址范围, 这里释放对应的vm
 解除页表映射, 把地址范围重新插入红黑树, 表示空闲
  * Free and unmap a vmap area
  */
@@ -1976,6 +1981,7 @@ struct vmap_area *find_vmap_area(unsigned long addr)
 }
 
 // 从红黑树中删除一个vmap_area
+/* 每一个vmalloc地址范围都以vmap_area_root中的va表示 */
 static struct vmap_area *find_unlink_vmap_area(unsigned long addr)
 {
 	struct vmap_area *va;
@@ -2824,17 +2830,19 @@ struct vm_struct *remove_vm_area(const void *addr)
 			addr))
 		return NULL;
 
-	// 从红黑树找到并删除vmap_area
+	// 从表示vmalloc地址空间范围的红黑树, 找到并删除vmap_area
 	va = find_unlink_vmap_area((unsigned long)addr);
 	if (!va || !va->vm)
 		return NULL;
 	vm = va->vm;
-	// va存在并且va->vm存在
+	/* 通过va找到vm
+	va是地址空间范围的表示
+	vm是真正包含页面的表示 */
 	debug_check_no_locks_freed(vm->addr, get_vm_area_size(vm));
 	debug_check_no_obj_freed(vm->addr, get_vm_area_size(vm));
 	kasan_free_module_shadow(vm);
 	kasan_poison_vmalloc(vm->addr, get_vm_area_size(vm));
-	// 这里好像是释放映射的物理内存
+	// 这里是解除页表映射
 	free_unmap_vmap_area(va);
 	return vm;
 }
@@ -2886,7 +2894,8 @@ static void vm_reset_perms(struct vm_struct *area)
 	_vm_unmap_aliases(start, end, flush_dmap);
 	set_area_direct_map(area, set_direct_map_default_noflush);
 }
-
+/* vfree_deferred在中断上下文用于释放vmalloc地址
+异步调用 */
 static void delayed_vfree_work(struct work_struct *w)
 {
 	struct vfree_deferred *p = container_of(w, struct vfree_deferred, wq);
@@ -2897,6 +2906,7 @@ static void delayed_vfree_work(struct work_struct *w)
 }
 
 /**
+在中断的情况下
 释放vmalloc分配的物理内存
  * vfree_atomic - release memory allocated by vmalloc()
  * @addr:	  memory base address
@@ -2947,6 +2957,9 @@ void vfree(const void *addr)
 	struct vm_struct *vm;
 	int i;
 
+	/* 这个函数把地址放入异步work, 不过异步work还是调用这个函数
+	看来是如果处于中断上下文的话, 只是加入队列, 离开中断的时候才不会进入
+	if, 真正释放. */
 	if (unlikely(in_interrupt())) {
 		vfree_atomic(addr);
 		return;
@@ -2958,7 +2971,7 @@ void vfree(const void *addr)
 
 	if (!addr)
 		return;
-	// 释放地址空间,解除映射
+	// 释放地址空间, 解除映射, 下一步再归还内存
 	vm = remove_vm_area(addr);
 	if (unlikely(!vm)) {
 		WARN(1, KERN_ERR "Trying to vfree() nonexistent vm area (%p)\n",
@@ -2968,7 +2981,7 @@ void vfree(const void *addr)
 
 	if (unlikely(vm->flags & VM_FLUSH_RESET_PERMS))
 		vm_reset_perms(vm);
-	// 一个一个释放物理页
+	/* 刚刚释放了地址空间范围, 解除了页表映射,. 这里归还内存 */
 	for (i = 0; i < vm->nr_pages; i++) {
 		struct page *page = vm->pages[i];
 
@@ -2977,11 +2990,13 @@ void vfree(const void *addr)
 		/*
 		 * High-order allocs for huge vmallocs are split, so
 		 * can be freed as an array of order-0 allocations
+		 归还页面到buddy系统
 		 */
 		__free_page(page);
 		cond_resched();
 	}
 	atomic_long_sub(vm->nr_pages, &nr_vmalloc_pages);
+	/* 这里是释放结构体的内存 */
 	kvfree(vm->pages);
 	kfree(vm);
 }
@@ -3335,6 +3350,8 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	 * page tables allocations ignore external gfp mask, enforce it
 	 * by the scope API
 	 */
+
+	/* 如果current进程设置了nofs */
 	if ((gfp_mask & (__GFP_FS | __GFP_IO)) == __GFP_IO)
 		flags = memalloc_nofs_save();
 	else if ((gfp_mask & (__GFP_FS | __GFP_IO)) == 0)
@@ -3348,6 +3365,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 			schedule_timeout_uninterruptible(1);
 	} while (nofail && (ret < 0));
 
+	/* 恢复刚才修改的noio nofs的标志 */
 	if ((gfp_mask & (__GFP_FS | __GFP_IO)) == __GFP_IO)
 		memalloc_nofs_restore(flags);
 	else if ((gfp_mask & (__GFP_FS | __GFP_IO)) == 0)
@@ -4641,6 +4659,9 @@ void __init vmalloc_init(void)
 	 */
 	vmap_area_cachep = KMEM_CACHE(vmap_area, SLAB_PANIC);
 
+	/* 初始化每个cpu的vfree_deferred
+	vfree_deferred是包含着在中断上下文释放的vmalloc地址
+	也包含一个异步work来释放这些地址 */
 	for_each_possible_cpu(i) {
 		struct vmap_block_queue *vbq;
 		struct vfree_deferred *p;

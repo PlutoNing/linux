@@ -191,7 +191,7 @@ int main(int argc, char **argv)
 {
 	int pagemap_fd;
 	int pagesize;
-
+/* 打印通用的头 */
 	ksft_print_header();
 	ksft_set_plan(15);
 

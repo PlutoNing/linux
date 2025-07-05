@@ -25,12 +25,16 @@ int default_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, int 
 #define WQ_FLAG_PRIORITY	0x20
 
 /*
+一个等待结构体
  * A single wait-queue entry structure:
  */
 struct wait_queue_entry {
 	unsigned int		flags;
+	/* 可能会指向tsk */
 	void			*private;
+	/* 自定义的函数, 可以定义唤醒的时候自己做什么(比如唤醒自己) */
 	wait_queue_func_t	func;
+	/* 加入等待队列的连接件 */
 	struct list_head	entry;
 };
 
@@ -85,7 +89,9 @@ static inline void init_waitqueue_entry(struct wait_queue_entry *wq_entry, struc
 	wq_entry->private	= p;
 	wq_entry->func		= default_wake_function;
 }
-
+/* 
+初始化一个waitqueue entry
+*/
 static inline void
 init_waitqueue_func_entry(struct wait_queue_entry *wq_entry, wait_queue_func_t func)
 {
@@ -95,6 +101,7 @@ init_waitqueue_func_entry(struct wait_queue_entry *wq_entry, wait_queue_func_t f
 }
 
 /**
+检查等待队列还有没有成员?
  * waitqueue_active -- locklessly test for waiters on the queue
  * @wq_head: the waitqueue to test for waiters
  *
@@ -168,6 +175,7 @@ extern void add_wait_queue_exclusive(struct wait_queue_head *wq_head, struct wai
 extern void add_wait_queue_priority(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry);
 extern void remove_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry);
 
+/* 带有优先级的加入等待队列 */
 static inline void __add_wait_queue(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry)
 {
 	struct list_head *head = &wq_head->head;
@@ -190,7 +198,7 @@ __add_wait_queue_exclusive(struct wait_queue_head *wq_head, struct wait_queue_en
 	wq_entry->flags |= WQ_FLAG_EXCLUSIVE;
 	__add_wait_queue(wq_head, wq_entry);
 }
-
+/* 加入等待队列 */
 static inline void __add_wait_queue_entry_tail(struct wait_queue_head *wq_head, struct wait_queue_entry *wq_entry)
 {
 	list_add_tail(&wq_entry->entry, &wq_head->head);
@@ -289,6 +297,8 @@ static inline void wake_up_pollfree(struct wait_queue_head *wq_head)
 extern void init_wait_entry(struct wait_queue_entry *wq_entry, int flags);
 
 /*
+加入wq_head, 等待condition发生
+期间会执行cmd函数, cmd可能是schedule函数什么的
  * The below macro ___wait_event() has an explicit shadow of the __ret
  * variable when used from the wait_event_*() macros.
  *
@@ -323,15 +333,18 @@ extern void init_wait_entry(struct wait_queue_entry *wq_entry, int flags);
 	finish_wait(&wq_head, &__wq_entry);					\
 __out:	__ret;									\
 })
-
+/* 加入wq_head, 等待condition发生 */
 #define __wait_event(wq_head, condition)					\
 	(void)___wait_event(wq_head, condition, TASK_UNINTERRUPTIBLE, 0, 0,	\
 			    schedule())
 
 /**
+等待条件发生
  * wait_event - sleep until a condition gets true
  * @wq_head: the waitqueue to wait on
+ 要链接的睡眠队列
  * @condition: a C expression for the event to wait for
+ 被唤醒的条件
  *
  * The process is put to sleep (TASK_UNINTERRUPTIBLE) until the
  * @condition evaluates to true. The @condition is checked each time
@@ -1210,6 +1223,7 @@ int autoremove_wake_function(struct wait_queue_entry *wq_entry, unsigned mode, i
 
 #define DEFINE_WAIT(name) DEFINE_WAIT_FUNC(name, autoremove_wake_function)
 
+/* 初始化wait结构体 */
 #define init_wait(wait)								\
 	do {									\
 		(wait)->private = current;					\

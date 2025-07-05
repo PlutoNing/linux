@@ -439,7 +439,7 @@ __blk_mq_alloc_requests_batch(struct blk_mq_alloc_data *data)
 
 	return rq_list_pop(data->cached_rq);
 }
-
+/* 分配rq */
 static struct request *__blk_mq_alloc_requests(struct blk_mq_alloc_data *data)
 {
 	struct request_queue *q = data->q;
@@ -478,8 +478,8 @@ static struct request *__blk_mq_alloc_requests(struct blk_mq_alloc_data *data)
 	}
 
 retry:
-	data->ctx = blk_mq_get_ctx(q);
-	data->hctx = blk_mq_map_queue(q, data->cmd_flags, data->ctx);
+	data->ctx = blk_mq_get_ctx(q);/* 获取q的pcp的ctx成员 */
+	data->hctx = blk_mq_map_queue(q, data->cmd_flags, data->ctx);/* 硬件上下文 */
 	if (!(data->rq_flags & RQF_SCHED_TAGS))
 		blk_mq_tag_busy(data->hctx);
 
@@ -2865,19 +2865,19 @@ out:
 	if (ret != BLK_STS_OK)
 		blk_mq_commit_rqs(hctx, queued, false);
 }
-
+/* 尝试合并bio */
 static bool blk_mq_attempt_bio_merge(struct request_queue *q,
 				     struct bio *bio, unsigned int nr_segs)
 {
 	if (!blk_queue_nomerges(q) && bio_mergeable(bio)) {
-		if (blk_attempt_plug_merge(q, bio, nr_segs))
+		if (blk_attempt_plug_merge(q, bio, nr_segs))/* 尝试合并 */
 			return true;
 		if (blk_mq_sched_bio_merge(q, bio, nr_segs))
 			return true;
 	}
 	return false;
 }
-
+/* 新创建rq */
 static struct request *blk_mq_get_new_requests(struct request_queue *q,
 					       struct blk_plug *plug,
 					       struct bio *bio,
@@ -2892,7 +2892,7 @@ static struct request *blk_mq_get_new_requests(struct request_queue *q,
 
 	if (unlikely(bio_queue_enter(bio)))
 		return NULL;
-
+/* 尝试合并bio */
 	if (blk_mq_attempt_bio_merge(q, bio, nsegs))
 		goto queue_exit;
 
@@ -2914,7 +2914,7 @@ queue_exit:
 	blk_queue_exit(q);
 	return NULL;
 }
-
+/* 看看有没有cache的rq */
 static inline struct request *blk_mq_get_cached_request(struct request_queue *q,
 		struct blk_plug *plug, struct bio **bio, unsigned int nsegs)
 {
@@ -2926,7 +2926,7 @@ static inline struct request *blk_mq_get_cached_request(struct request_queue *q,
 	rq = rq_list_peek(&plug->cached_rq);
 	if (!rq || rq->q != q)
 		return NULL;
-
+/* 必须有缓存的rq,并且是q的rq */
 	if (blk_mq_attempt_bio_merge(q, *bio, nsegs)) {
 		*bio = NULL;
 		return NULL;
@@ -2966,6 +2966,8 @@ static void bio_set_ioprio(struct bio *bio)
  * blk_mq_submit_bio - Create and send a request to block device.
    创建并发送请求到块设备
  * @bio: Bio pointer.
+ -======
+ 如果磁盘的fops没有submit io，那么这个函数会被调用。
  *
  * Builds up a request structure from @q and @bio and send to the device. The
  * request may not be queued directly to hardware if:
@@ -2984,6 +2986,7 @@ static void bio_set_ioprio(struct bio *bio)
 void blk_mq_submit_bio(struct bio *bio)
 {
 	struct request_queue *q = bdev_get_queue(bio->bi_bdev);
+	/* 一半是current的plug */
 	struct blk_plug *plug = blk_mq_plug(bio);
 	const int is_sync = op_is_sync(bio->bi_opf);
 	struct blk_mq_hw_ctx *hctx;
@@ -3002,12 +3005,12 @@ void blk_mq_submit_bio(struct bio *bio)
 		return;
 
 	bio_set_ioprio(bio);
-	// 2025年2月17日00:13:08 到这了
+	// 看看plug有没有缓存的可用的rq
 	rq = blk_mq_get_cached_request(q, plug, &bio, nr_segs);
 	if (!rq) {
 		if (!bio)
 			return;
-		rq = blk_mq_get_new_requests(q, plug, bio, nr_segs);
+		rq = blk_mq_get_new_requests(q, plug, bio, nr_segs);/* 新创建rq */
 		if (unlikely(!rq))
 			return;
 	}

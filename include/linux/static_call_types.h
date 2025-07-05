@@ -57,9 +57,9 @@ struct static_call_site {
 	__STATIC_CALL_ADDRESSABLE(name);				\
 	__raw_static_call(name);					\
 })
-
+/*  */
 struct static_call_key {
-	void *func;
+	void *func; /* tp->static_call_key->func修改为新添加的probe函数 */
 	union {
 		/* bit 0: 0 = mods, 1 = sites */
 		unsigned long type;

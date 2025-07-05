@@ -16,7 +16,7 @@
  * some kernel statistics (CPU usage, context switches ...),
  * used by rstatd/perfmeter
  */
-
+/* cpu花在不同类型的时间 */
 enum cpu_usage_stat {
 	CPUTIME_USER,
 	CPUTIME_NICE,
@@ -34,6 +34,7 @@ enum cpu_usage_stat {
 	NR_STATS,
 };
 
+/*  */
 struct kernel_cpustat {
 	u64 cpustat[NR_STATS];
 };
@@ -49,7 +50,9 @@ DECLARE_PER_CPU(struct kernel_cpustat, kernel_cpustat);
 /* Must have preemption disabled for this to be meaningful. */
 #define kstat_this_cpu this_cpu_ptr(&kstat)
 #define kcpustat_this_cpu this_cpu_ptr(&kernel_cpustat)
+/* pcp的kstat统计, 主要是软中断 */
 #define kstat_cpu(cpu) per_cpu(kstat, cpu)
+/* 每个cpu的kernel state */
 #define kcpustat_cpu(cpu) per_cpu(kernel_cpustat, cpu)
 
 extern unsigned long long nr_context_switches_cpu(int cpu);
@@ -57,17 +60,19 @@ extern unsigned long long nr_context_switches(void);
 
 extern unsigned int kstat_irqs_cpu(unsigned int irq, int cpu);
 extern void kstat_incr_irq_this_cpu(unsigned int irq);
-
+/* 统计kstat */
 static inline void kstat_incr_softirqs_this_cpu(unsigned int irq)
 {
 	__this_cpu_inc(kstat.softirqs[irq]);
 }
+/* 获取指定类型的软中断计数 */
 
 static inline unsigned int kstat_softirqs_cpu(unsigned int irq, int cpu)
 {
        return kstat_cpu(cpu).softirqs[irq];
 }
 
+/* 获取cpu的各种软中断数量 */
 static inline unsigned int kstat_cpu_softirqs_sum(int cpu)
 {
 	int i;
@@ -85,6 +90,7 @@ static inline unsigned int kstat_cpu_softirqs_sum(int cpu)
 extern unsigned int kstat_irqs_usr(unsigned int irq);
 
 /*
+获取cpu的硬中断数量
  * Number of interrupts per cpu, since bootup
  */
 static inline unsigned long kstat_cpu_irqs_sum(unsigned int cpu)

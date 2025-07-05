@@ -67,6 +67,10 @@
 #define		APIC_ESR_RECVILL	0x00040
 #define		APIC_ESR_ILLREGA	0x00080
 #define 	APIC_LVTCMCI	0x2f0
+/* APIC 的 ​ICR（Interrupt Command Register）​​ 是 64 位寄存器，分为两部分：
+​ICR2​（高 32 位）：指定目标 CPU 的 APIC ID。
+​ICR​（低 32 位）：配置中断类型、触发模式等参数。
+通过写入 ICR2 和 ICR 寄存器，APIC 硬件会自动将中断发送到目标 CPU。 */
 #define	APIC_ICR	0x300
 #define		APIC_DEST_SELF		0x40000
 #define		APIC_DEST_ALLINC	0x80000
@@ -77,6 +81,7 @@
 #define		APIC_ICR_RR_VALID	0x20000
 #define		APIC_INT_LEVELTRIG	0x08000
 #define		APIC_INT_ASSERT		0x04000
+/* busy的掩码 */
 #define		APIC_ICR_BUSY		0x01000
 #define		APIC_DEST_LOGICAL	0x00800
 #define		APIC_DEST_PHYSICAL	0x00000

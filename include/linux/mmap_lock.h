@@ -115,7 +115,7 @@ static inline void mmap_write_lock_nested(struct mm_struct *mm, int subclass)
 	down_write_nested(&mm->mmap_lock, subclass);
 	__mmap_lock_trace_acquire_returned(mm, true, true);
 }
-
+/* 对mm的mmap lock加锁 */
 static inline int mmap_write_lock_killable(struct mm_struct *mm)
 {
 	int ret;

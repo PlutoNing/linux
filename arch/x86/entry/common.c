@@ -88,6 +88,7 @@ __visible noinstr void do_syscall_64(struct pt_regs *regs, int nr)
 #endif
 
 #if defined(CONFIG_X86_32) || defined(CONFIG_IA32_EMULATION)
+/* 获取syscall_nr */
 static __always_inline int syscall_32_enter(struct pt_regs *regs)
 {
 	if (IS_ENABLED(CONFIG_IA32_EMULATION))
@@ -134,9 +135,12 @@ __visible noinstr void do_int80_syscall_32(struct pt_regs *regs)
 	instrumentation_end();
 	syscall_exit_to_user_mode(regs);
 }
-
+/* 
+发起系统调用
+*/
 static noinstr bool __do_fast_syscall_32(struct pt_regs *regs)
 {
+	/* 获取系统调用号 */
 	int nr = syscall_32_enter(regs);
 	int res;
 
@@ -146,17 +150,21 @@ static noinstr bool __do_fast_syscall_32(struct pt_regs *regs)
 	 * fetch EBP before invoking any of the syscall entry work
 	 * functions.
 	 */
+	/* 检查 */
 	syscall_enter_from_user_mode_prepare(regs);
 
 	instrumentation_begin();
-	/* Fetch EBP from where the vDSO stashed it. */
+	/* Fetch EBP from where the vDSO stashed it.
+	这里为什么是让bp更新为sp呢 */
 	if (IS_ENABLED(CONFIG_X86_64)) {
 		/*
 		 * Micro-optimization: the pointer we're following is
 		 * explicitly 32 bits, so it can't be out of range.
 		 */
-		res = __get_user(*(u32 *)&regs->bp,
-			 (u32 __user __force *)(unsigned long)(u32)regs->sp);
+		res = __get_user(
+			*(u32 *)&regs->bp,
+			 (u32 __user __force *)(unsigned long)(u32)regs->sp
+			);
 	} else {
 		res = get_user(*(u32 *)&regs->bp,
 		       (u32 __user __force *)(unsigned long)(u32)regs->sp);
@@ -182,7 +190,9 @@ static noinstr bool __do_fast_syscall_32(struct pt_regs *regs)
 	return true;
 }
 
-/* Returns 0 to return using IRET or 1 to return using SYSEXIT/SYSRETL. */
+/* 
+执行系统调用
+Returns 0 to return using IRET or 1 to return using SYSEXIT/SYSRETL. */
 __visible noinstr long do_fast_syscall_32(struct pt_regs *regs)
 {
 	/*
@@ -196,10 +206,12 @@ __visible noinstr long do_fast_syscall_32(struct pt_regs *regs)
 	 * SYSENTER loses EIP, and even SYSCALL32 needs us to skip forward
 	 * so that 'regs->ip -= 2' lands back on an int $0x80 instruction.
 	 * Fix it up.
-	 */
+	 调整ip地址*/
 	regs->ip = landing_pad;
 
-	/* Invoke the syscall. If it failed, keep it simple: use IRET. */
+	/* Invoke the syscall. If it failed, keep it simple: use IRET.
+	发起系统调用
+	*/
 	if (!__do_fast_syscall_32(regs))
 		return 0;
 
@@ -234,7 +246,10 @@ __visible noinstr long do_fast_syscall_32(struct pt_regs *regs)
 #endif
 }
 
-/* Returns 0 to return using IRET or 1 to return using SYSEXIT/SYSRETL. */
+/* 
+Returns 0 to return using IRET
+ or 
+1 to return using SYSEXIT/SYSRETL. */
 __visible noinstr long do_SYSENTER_32(struct pt_regs *regs)
 {
 	/* SYSENTER loses RSP, but the vDSO saved it in RBP. */

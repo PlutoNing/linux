@@ -34,7 +34,7 @@
 
 #ifdef CONFIG_DEBUG_MEMORY_INIT
 int __meminitdata mminit_loglevel;
-
+/* 刚刚初始化完zonelist,这里打印&debug一下 */
 /* The zonelists are simply reported, validation is manual. */
 void __init mminit_verify_zonelist(void)
 {
@@ -289,7 +289,7 @@ static int __init cmdline_parse_movablecore(char *p)
 }
 early_param("movablecore", cmdline_parse_movablecore);
 
-/*
+/* 早期计算页数的函数
  * early_calculate_totalpages()
  * Sum pages in active regions for movable zone.
  * Populate N_MEMORY for calculating usable_nodes.
@@ -334,7 +334,7 @@ static void __init find_usable_zone_for_movable(void)
 }
 
 /*
-
+ 里面大多数逻辑都没有执行
  * Find the PFN the Movable zone begins in each node. Kernel memory
  * is spread evenly between nodes as long as the nodes have enough
  * memory. When they don't, some nodes will have more kernelcore than
@@ -358,7 +358,7 @@ static void __init find_zone_movable_pfns_for_nodes(void)
 	*/
 	find_usable_zone_for_movable();
 
-	/*
+	/* 一般为false
 	 * If movable_node is specified, ignore kernelcore and movablecore
 	 * options.
 	 */
@@ -378,7 +378,7 @@ static void __init find_zone_movable_pfns_for_nodes(void)
 		goto out2;
 	}
 
-	/*
+	/* 一般为false
 	 * If kernelcore=mirror is specified, ignore movablecore option
 	 */
 	if (mirrored_kernelcore) {
@@ -413,7 +413,7 @@ static void __init find_zone_movable_pfns_for_nodes(void)
 		goto out2;
 	}
 
-	/*
+	/* 也为false
 	 * If kernelcore=nn% or movablecore=nn% was specified, calculate the
 	 * amount of necessary memory.
 	 */
@@ -424,7 +424,7 @@ static void __init find_zone_movable_pfns_for_nodes(void)
 		required_movablecore = (totalpages * 100 * required_movablecore_percent) /
 					10000UL;
 
-	/*
+	/* 也为false
 	 * If movablecore= was specified, calculate what size of
 	 * kernelcore that corresponds so that memory usable for
 	 * any allocation type is evenly spread. If both kernelcore
@@ -447,7 +447,7 @@ static void __init find_zone_movable_pfns_for_nodes(void)
 		required_kernelcore = max(required_kernelcore, corepages);
 	}
 
-	/*
+	/* 可能这里直接out了
 	 * If kernelcore was not specified or kernelcore size is larger
 	 * than totalpages, there is no ZONE_MOVABLE.
 	 */
@@ -568,7 +568,7 @@ static void __meminit __init_single_page(struct page *page, unsigned long pfn,
 				unsigned long zone, int nid)
 {
 	mm_zero_struct_page(page);
-	// 设置新page与zone的关联
+	// 设置新page与zone的关联, 在page的flag编码zone和node的信息
 	set_page_links(page, zone, nid, pfn);
 	init_page_count(page);
 	page_mapcount_reset(page);
@@ -597,7 +597,7 @@ struct mminit_pfnnid_cache {
 
 static struct mminit_pfnnid_cache early_pfnnid_cache __meminitdata;
 
-/*
+/* 早期的pfn转node函数
  * Required by SPARSEMEM. Given a PFN, return what node the PFN is on.
  */
 static int __meminit __early_pfn_to_nid(unsigned long pfn,
@@ -605,12 +605,12 @@ static int __meminit __early_pfn_to_nid(unsigned long pfn,
 {
 	unsigned long start_pfn, end_pfn;
 	int nid;
-
+	/* 检查缓存 */
 	if (state->last_start <= pfn && pfn < state->last_end)
 		return state->last_nid;
 
 	nid = memblock_search_pfn_nid(pfn, &start_pfn, &end_pfn);
-	if (nid != NUMA_NO_NODE) {
+	if (nid != NUMA_NO_NODE) {/* 更新缓存 */
 		state->last_start = start_pfn;
 		state->last_end = end_pfn;
 		state->last_nid = nid;
@@ -618,7 +618,7 @@ static int __meminit __early_pfn_to_nid(unsigned long pfn,
 
 	return nid;
 }
-
+/* 早期的pfn转node函数 */
 int __meminit early_pfn_to_nid(unsigned long pfn)
 {
 	static DEFINE_SPINLOCK(early_pfn_lock);
@@ -743,8 +743,8 @@ static inline void init_reserved_page(unsigned long pfn, int nid)
 }
 #endif /* CONFIG_DEFERRED_STRUCT_PAGE_INIT */
 
-/*
-start和end是node的一个region
+/* 启动的时候调用，是把memblock转为buddy？
+start和end是node的一个memblock region
 =============================
 设置范围内全部page的lru成员, reserved标志
  * Initialised pages do not have PageReserved set. This function is
@@ -764,7 +764,7 @@ void __meminit reserve_bootmem_region(phys_addr_t start,
 	// 遍历这个区域的每一个页面
 	for (; start_pfn < end_pfn; start_pfn++) {
 		if (pfn_valid(start_pfn)) {
-			struct page *page = pfn_to_page(start_pfn);
+			struct page *page = pfn_to_page(start_pfn);/* 就是vmemmap_base + (start_pfn) */
 
 			init_reserved_page(start_pfn, nid);
 
@@ -781,7 +781,7 @@ void __meminit reserve_bootmem_region(phys_addr_t start,
 	}
 }
 
-/* If zone is ZONE_MOVABLE but memory is mirrored, it is an overlapped init */
+/* mirrored_kernelcore一般都是false, If zone is ZONE_MOVABLE but memory is mirrored, it is an overlapped init */
 static bool __meminit
 overlap_memmap_init(unsigned long zone, unsigned long *pfn)
 {
@@ -803,7 +803,7 @@ overlap_memmap_init(unsigned long zone, unsigned long *pfn)
 	return false;
 }
 
-/*
+/* 在把memblock的页面转移给zone的时候, 处理memblock的region之间的hole, 也是正常加入,但是设为reserved
  * Only struct pages that correspond to ranges defined by memblock.memory
  * are zeroed and initialized by going through __init_single_page() during
  * memmap_init_zone_range().
@@ -836,9 +836,9 @@ static void __init init_unavailable_range(unsigned long spfn,
 		if (!pfn_valid(pageblock_start_pfn(pfn))) {
 			pfn = pageblock_end_pfn(pfn) - 1;
 			continue;
-		}
+		} /* 为什么也是正常的把region之间的hole加入zone? */
 		__init_single_page(pfn_to_page(pfn), pfn, zone, node);
-		__SetPageReserved(pfn_to_page(pfn));
+		__SetPageReserved(pfn_to_page(pfn)); /* 设为reserved */
 		pgcnt++;
 	}
 
@@ -847,7 +847,7 @@ static void __init init_unavailable_range(unsigned long spfn,
 			node, zone_names[zone], pgcnt);
 }
 
-/*
+/*初始化memblock的这个region与zone交叉的部分,相当于"交给"zone了
 一种情况是:boot的时候,start pfn开始的size属于node的一个region, 并且
 也是与zone交叉的区域, zone_end_pfn是这个zone的结束pfn
 一种情况是:刚刚把start pfn开始的size个页面加入到了nid的zone
@@ -889,22 +889,22 @@ void __meminit memmap_init_range(unsigned long size, int nid, unsigned long zone
 	}
 #endif
 
-	for (pfn = start_pfn; pfn < end_pfn; ) { // 遍历新加入的页面
+	for (pfn = start_pfn; pfn < end_pfn; ) { // 遍历新加入的页面(region与zone交叉的范围)
 		/*
 		 * There can be holes in boot-time mem_map[]s handed to this
 		 * function.  They do not exist on hotplugged memory.
 		 */
 		if (context == MEMINIT_EARLY) {
 			if (overlap_memmap_init(zone, &pfn))
-				continue;
+				continue; /* 一般也都没开启defer init */
 			if (defer_init(nid, pfn, zone_end_pfn)) {
 				deferred_struct_pages = true;
 				break;
 			}
 		}
-
+		/* 第一个pfn对应的page地址一般是0xffffea0000000040 */
 		page = pfn_to_page(pfn);
-		// 初始化单个页面
+		// 初始化单个页面,初始化对应的page结构体
 		__init_single_page(page, pfn, zone, nid);
 		if (context == MEMINIT_HOTPLUG)
 			__SetPageReserved(page);
@@ -932,11 +932,11 @@ static void __init memmap_init_zone_range(struct zone *zone,
 					  unsigned long end_pfn,
 					  unsigned long *hole_pfn)
 {
-	// 获得zone的pfn范围
+	// a,获得zone的pfn范围 , 比如可能是DMA ZONE的1到16MB
 	unsigned long zone_start_pfn = zone->zone_start_pfn;
 	unsigned long zone_end_pfn = zone_start_pfn + zone->spanned_pages;
 	int nid = zone_to_nid(zone), zone_id = zone_idx(zone);
-	// 找到这个region在这个zone的范围
+	// b,找到这个region在这个zone的范围, 范围的属性就是看region情况了, 可能是1到159的pfn
 	start_pfn = clamp(start_pfn, zone_start_pfn, zone_end_pfn);
 	end_pfn = clamp(end_pfn, zone_start_pfn, zone_end_pfn);
 
@@ -945,7 +945,7 @@ static void __init memmap_init_zone_range(struct zone *zone,
 	// 初始化region里与zone交叉的新页面的基本属性
 	memmap_init_range(end_pfn - start_pfn, nid, zone_id, start_pfn,
 			  zone_end_pfn, MEMINIT_EARLY, NULL, MIGRATE_MOVABLE);
-
+	/* 有空洞, 比如说第一次运行这个函数pfn从1开始的, 0到1就是hole */
 	if (*hole_pfn < start_pfn)
 		init_unavailable_range(*hole_pfn, start_pfn, zone_id, nid);
 
@@ -969,7 +969,7 @@ static void __init memmap_init(void)
 
 			if (!populated_zone(zone))
 				continue;
-
+			/* 处理这个region的页面 */
 			memmap_init_zone_range(zone, start_pfn, end_pfn,
 					       &hole_pfn);
 			zone_id = j;
@@ -1185,7 +1185,7 @@ unsigned long __init __absent_pages_in_range(int nid,
 	return nr_absent;
 }
 
-/**
+/** 计算范围内memblock的内存的hole大小
  * absent_pages_in_range - Return number of page frames in holes within a range
  * @start_pfn: The start PFN to start searching for holes
  * @end_pfn: The end PFN to stop searching for holes
@@ -1856,9 +1856,9 @@ static bool arch_has_descending_max_zone_pfns(void)
  计算每个节点中每个区域的大小及其空洞。如果两个相邻区域之间的最大PFN匹配，则假定该区域为空。
  例如，如果arch_max_dma_pfn == arch_max_dma32_pfn，则假定arch_max_dma32_pfn没有页面。
  还假定一个区域从前一个区域结束的地方开始。例如，ZONE_DMA32从arch_max_dma_pfn开始。
- */
+    print *max_zone_pfn@3      $17 = {4096, 1048576, 2359296}      */
 void __init free_area_init(unsigned long *max_zone_pfn)
-{
+{ 
 	unsigned long start_pfn, end_pfn;
 	int i, nid, zone;
 	bool descending;
@@ -1867,7 +1867,7 @@ void __init free_area_init(unsigned long *max_zone_pfn)
 	memset(arch_zone_lowest_possible_pfn, 0,sizeof(arch_zone_lowest_possible_pfn));
 	memset(arch_zone_highest_possible_pfn, 0,sizeof(arch_zone_highest_possible_pfn));
 
-	// 就是memory type的第一个region的base
+	// 就是memory type的第一个region的base , 可能是64
 	start_pfn = PHYS_PFN(memblock_start_of_DRAM());
 	descending = arch_has_descending_max_zone_pfns();
 
@@ -1930,7 +1930,7 @@ void __init free_area_init(unsigned long *max_zone_pfn)
 	 * enable future "sub-section" extensions of the memory map.
 	 */
 	pr_info("Early memory node ranges\n");
-	// 遍历系统所有regions
+	// 遍历系统memblock所有regions, 初始化对应的memsection的sub map
 	for_each_mem_pfn_range(i, MAX_NUMNODES, &start_pfn, &end_pfn, &nid) {
 		pr_info("  node %3d: [mem %#018Lx-%#018Lx]\n", nid,
 			(u64)start_pfn << PAGE_SHIFT,
@@ -1981,7 +1981,7 @@ void __init free_area_init(unsigned long *max_zone_pfn)
 		check_for_memory(pgdat);
 	}
 
-	memmap_init(); // 感觉这里真的是page加入zone, 建立连接初始化基本属性什么的
+	memmap_init(); // 是page加入zone, 建立连接初始化基本属性什么的
 
 	/* disable hash distribution for systems with a single node */
 	fixup_hashdist();
@@ -2629,7 +2629,7 @@ void *__init alloc_large_system_hash(const char *tablename,
 	return table;
 }
 
-/**
+/**设置dma_reserve的大小
  * set_dma_reserve - set the specified number of pages reserved in the first zone
  * @new_dma_reserve: The number of pages to mark reserved
  *
@@ -2857,15 +2857,15 @@ void __init mm_core_init(void)
 	   page_ext需要连续的页面，大于MAX_ORDER，除非是SPARSEMEM
 	 */
 	page_ext_init_flatmem();
-	mem_debugging_and_hardening_init();
+	mem_debugging_and_hardening_init();/* 以后 */
 	kfence_alloc_pool_and_metadata();
 	report_meminit();
 	kmsan_init_shadow();
 	stack_depot_early_init();
-	//
+	//创建buddy
 	mem_init();
 	mem_init_print_info();
-	kmem_cache_init();
+	kmem_cache_init();/* 初始化slab */
 	/*
 	 * page_owner must be initialized after buddy is ready, and also after
 	 * slab is ready so that stack_depot_init() works properly
@@ -2883,7 +2883,7 @@ void __init mm_core_init(void)
 	/* Should be run before the first non-init thread is created */
 	init_espfix_bsp();
 	/* Should be run after espfix64 is set up. */
-	pti_init();
+	pti_init();/* 页表隔离 */
 	kmsan_init_runtime();
-	mm_cache_init();
+	mm_cache_init();/* 创建mm的slab */
 }

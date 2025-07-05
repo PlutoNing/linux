@@ -66,6 +66,7 @@ irq是0到15的值，这里把他映射到0x30到0x3f
 #define ERROR_APIC_VECTOR		0xfe
 #define RESCHEDULE_VECTOR		0xfd
 #define CALL_FUNCTION_VECTOR		0xfc
+/* 表示执行上面函数的ipi flag, 好像是中断的序号 */
 #define CALL_FUNCTION_SINGLE_VECTOR	0xfb
 #define THERMAL_APIC_VECTOR		0xfa
 #define THRESHOLD_APIC_VECTOR		0xf9

@@ -98,6 +98,10 @@ static inline void arch_smp_send_reschedule(int cpu)
 	smp_ops.smp_send_reschedule(cpu);
 }
 
+/* 
+在确定cpu的rq的idle会执行sched_ttwu后,调用这个函数
+触发特定的ipi中断来执行函数
+*/
 static inline void arch_send_call_function_single_ipi(int cpu)
 {
 	smp_ops.send_call_func_single_ipi(cpu);

@@ -85,7 +85,7 @@ static unsigned int cache_map_fixed;
 static unsigned long smp_changes_mask;
 static int mtrr_state_set;
 u64 mtrr_tom2;
-
+/*  */
 struct mtrr_state_type mtrr_state;
 EXPORT_SYMBOL_GPL(mtrr_state);
 
@@ -167,7 +167,7 @@ static void rm_map_entry_at(int idx)
 	}
 }
 
-/*
+/* mtrr添加内存范围
  * Add an entry into cache_map at a specific index.  Merges adjacent entries if
  * appropriate.  Return the number of merges for correcting the scan index
  * (this is needed as merging will reduce the number of entries, which will
@@ -254,7 +254,7 @@ static int clr_map_range_at(u64 start, u64 end, int idx)
 	return ret;
 }
 
-/*
+/* mtrr添加一段内存范围
  * Add MTRR to the map.  The current map is scanned and each part of the MTRR
  * either overlapping with an existing entry or with a hole in the map is
  * handled separately.
@@ -846,7 +846,7 @@ out_put_cpu:
 	put_cpu();
 }
 
-/**
+/** 检查fixed-range MTRRs,如果变化的话更新
  * set_fixed_ranges - checks & updates the fixed-range MTRRs if they
  *		      differ from the saved set
  * @frs: pointer to fixed-range MTRR values, saved by get_fixed_ranges()
@@ -868,7 +868,7 @@ static int set_fixed_ranges(mtrr_type *frs)
 	return changed;
 }
 
-/*
+/*vr是mtrr_state.var_ranges[index]
  * Set the MSR pair relating to a var range.
  * Returns true if changes are made.
  */
@@ -876,7 +876,7 @@ static bool set_mtrr_var_ranges(unsigned int index, struct mtrr_var_range *vr)
 {
 	unsigned int lo, hi;
 	bool changed = false;
-
+	/* u64 __val = native_read_msr(0x200 + 2 * index);lo = __val;hi = __val >> 32; */
 	rdmsr(MTRRphysBase_MSR(index), lo, hi);
 	if ((vr->base_lo & ~MTRR_PHYSBASE_RSVD) != (lo & ~MTRR_PHYSBASE_RSVD)
 	    || (vr->base_hi & ~phys_hi_rsvd) != (hi & ~phys_hi_rsvd)) {
@@ -884,7 +884,7 @@ static bool set_mtrr_var_ranges(unsigned int index, struct mtrr_var_range *vr)
 		mtrr_wrmsr(MTRRphysBase_MSR(index), vr->base_lo, vr->base_hi);
 		changed = true;
 	}
-
+/* u64 __val = native_read_msr(((0x200 + 2 * (index) + 1))) */
 	rdmsr(MTRRphysMask_MSR(index), lo, hi);
 
 	if ((vr->mask_lo & ~MTRR_PHYSMASK_RSVD) != (lo & ~MTRR_PHYSMASK_RSVD)
@@ -897,7 +897,7 @@ static bool set_mtrr_var_ranges(unsigned int index, struct mtrr_var_range *vr)
 
 static u32 deftype_lo, deftype_hi;
 
-/**
+/**设置这个cpu的mtrr状态
  * set_mtrr_state - Set the MTRR state for this CPU.
  *
  * NOTE: The CPU must already be in a safe state for MTRR changes, including
@@ -949,7 +949,7 @@ void mtrr_enable(void)
 	/* Intel (P6) standard MTRRs */
 	mtrr_wrmsr(MSR_MTRRdefType, deftype_lo, deftype_hi);
 }
-
+/* 设置mtrr */
 void mtrr_generic_set_state(void)
 {
 	unsigned long mask, count;
@@ -957,7 +957,7 @@ void mtrr_generic_set_state(void)
 	/* Actually set the state */
 	mask = set_mtrr_state();
 
-	/* Use the atomic bitops to update the global mask */
+	/* Use the atomic bitops to update the global mask, mask怎么一直是0?(qemu) */
 	for (count = 0; count < sizeof(mask) * 8; ++count) {
 		if (mask & 0x01)
 			set_bit(count, &smp_changes_mask);

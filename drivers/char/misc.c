@@ -307,3 +307,5 @@ fail_remove:
 	return err;
 }
 subsys_initcall(misc_init);
+/* misc 是 ​​杂项设备（Miscellaneous Device）​​ 的简称，用于归类那些​​无法明确划分到标准设备
+类别​​（如字符设备、块设备）的驱动 */

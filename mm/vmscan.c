@@ -290,6 +290,7 @@ void free_shrinker_info(struct mem_cgroup *memcg)
 	}
 }
 
+/* 上线memcg的时候创建memcg->nodeinfo[nid]->shrinker_info */
 int alloc_shrinker_info(struct mem_cgroup *memcg)
 {
 	struct shrinker_info *info;
@@ -792,8 +793,10 @@ void register_shrinker_prepared(struct shrinker *shrinker)
 	up_write(&shrinker_rwsem);
 }
 
+/* 注册shrinker */
 static int __register_shrinker(struct shrinker *shrinker)
 {
+	/* 分配shrinker的内存 */
 	int err = __prealloc_shrinker(shrinker);
 
 	if (err)
@@ -803,17 +806,20 @@ static int __register_shrinker(struct shrinker *shrinker)
 }
 
 #ifdef CONFIG_SHRINKER_DEBUG
+/* 注册shrinker */
 int register_shrinker(struct shrinker *shrinker, const char *fmt, ...)
 {
 	va_list ap;
 	int err;
 
+	/*  */
 	va_start(ap, fmt);
 	shrinker->name = kvasprintf_const(GFP_KERNEL, fmt, ap);
 	va_end(ap);
 	if (!shrinker->name)
 		return -ENOMEM;
 
+	/* 注册shrinker */
 	err = __register_shrinker(shrinker);
 	if (err) {
 		kfree_const(shrinker->name);
@@ -872,6 +878,7 @@ EXPORT_SYMBOL(synchronize_shrinkers);
 
 #define SHRINK_BATCH 128
 
+/* 回收slab */
 static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 				    struct shrinker *shrinker, int priority)
 {
@@ -938,6 +945,7 @@ static unsigned long do_shrink_slab(struct shrink_control *shrinkctl,
 
 		shrinkctl->nr_to_scan = nr_to_scan;
 		shrinkctl->nr_scanned = nr_to_scan;
+		/* 调用各个组件定义的回调, 来回收一些内存 */
 		ret = shrinker->scan_objects(shrinker, shrinkctl);
 		if (ret == SHRINK_STOP)
 			break;
@@ -1381,9 +1389,9 @@ typedef enum {
 } pageout_t;
 
 /*
+shrink_folio_list()调用pageout()来处理每个脏folio
  * pageout is called by shrink_folio_list() for each dirty folio.
  * Calls ->writepage().
-   shrink_folio_list()调用pageout()来处理每个脏folio
  */
 static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			 struct swap_iocb **plug)
@@ -1409,7 +1417,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 	 */
 	if (!is_page_cache_freeable(folio))
 		return PAGE_KEEP;
-	if (!mapping) {
+	if (!mapping) {/* 一般情况下都是有mapping的 */
 		/*
 		 * Some data journaling orphaned folios can have
 		 * folio->mapping == NULL while being dirty with clean buffers.
@@ -1425,7 +1433,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 	}
 	if (mapping->a_ops->writepage == NULL)
 		return PAGE_ACTIVATE;
-
+/* 准备处理这个脏folio了,先清除dirty位,成功了就处理 */
 	if (folio_clear_dirty_for_io(folio)) {
 		int res;
 		struct writeback_control wbc = {
@@ -1436,10 +1444,10 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			.for_reclaim = 1,
 			.swap_plug = plug,
 		};
-
+		/* 设置这个folio的回收位 */
 		folio_set_reclaim(folio);
 		// 回写mapping的这个脏folio
-		res = mapping->a_ops->writepage(&folio->page, &wbc);
+		res = mapping->a_ops->writepage(&folio->page, &wbc);/* 可能是shmem_writepage */
 		if (res < 0)
 			handle_write_error(mapping, folio, res);
 		if (res == AOP_WRITEPAGE_ACTIVATE) {
@@ -1460,9 +1468,13 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 }
 
 /*
- 从mapping移除folio
-
- 看看具体做了什么工作: 这里好像仅仅是从xas移除, 没有释放页面什么的
+mapping移除folio (不移除还有ref的, 不移除dirty的)
+分两种情况: swap mapping和普通mapping, 分别处理的
+返回1 成功
+=========================================================================
+内核很多fs的实现都会调用来清理mapping
+shrink_list回收内存也会调用
+=========================================================================
  * Same as remove_mapping, but if the folio is removed from the mapping, it
  * gets returned with a refcount of 0.
  与remove_mapping相同,但是如果folio从mapping移除,它会返回一个引用计数为0的值
@@ -1509,24 +1521,29 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 	if (!folio_ref_freeze(folio, refcount))
 		goto cannot_free;
 	/* note: atomic_cmpxchg in folio_ref_freeze provides the smp_rmb */
+	/* 这个时候不能为脏? */
 	if (unlikely(folio_test_dirty(folio))) {
 		folio_ref_unfreeze(folio, refcount);
 		goto cannot_free;
 	}
 
-	if (folio_test_swapcache(folio)) { // 如果是swapcache的folio, 说明是内存中的swap
+	/* 被交换的处于swap mapping的文件页会这个路径
+	比如shmem的 */
+	if (folio_test_swapcache(folio)) {
+		// 说明这个mapping是swap file的mapping
 		swp_entry_t swap = folio->swap;
 
 		if (reclaimed && !mapping_exiting(mapping))
 			shadow = workingset_eviction(folio, target_memcg);
-		//从swapcache移除folio
+		//从swap mapping移除folio
 		__delete_from_swap_cache(folio, swap, shadow);
 		// 是换出, 因为把内存中的folio移除了
 		mem_cgroup_swapout(folio, swap);
 		xa_unlock_irq(&mapping->i_pages);
 		// 以后看看如何put的
 		put_swap_folio(folio, swap);
-	} else {// 普通的pagecache folio?
+	} else {
+		// 普通的pagecache folio?
 		void (*free_folio)(struct folio *);
 
 		free_folio = mapping->a_ops->free_folio;
@@ -1553,11 +1570,11 @@ static int __remove_mapping(struct address_space *mapping, struct folio *folio,
 		if (reclaimed && folio_is_file_lru(folio) &&
 		    !mapping_exiting(mapping) && !dax_mapping(mapping))
 			shadow = workingset_eviction(folio, target_memcg);
-		// 从xas中移除folio
+		// 从xas中移除folio, 统计folio的移除
 		__filemap_remove_folio(folio, shadow);
 		xa_unlock_irq(&mapping->i_pages);
 		if (mapping_shrinkable(mapping))
-			inode_add_lru(mapping->host); // 添加到sb的某个lru
+			inode_add_lru(mapping->host);
 		spin_unlock(&mapping->host->i_lock);
 
 		if (free_folio)
@@ -1575,16 +1592,20 @@ cannot_free:
 
 /**
  从mapping移除folio
+ 分为swap mapping和文件mapping来处理
+ 如果folio是脏的,在回写中,或者有其他人引用,移除会失败
+ 返回: 从mapping移除的页数. 0表示无法移除
+ ====================================================================
  * remove_mapping() - Attempt to remove a folio from its mapping.
  * @mapping: The address space.
  * @folio: The folio to remove.
  *
  * If the folio is dirty, under writeback or if someone else has a ref
  * on it, removal will fail.
- 如果folio是脏的,在回写中,或者有其他人引用,移除会失败
+ 
  * Return: The number of pages removed from the mapping.  0 if the folio
  * could not be removed.
- 返回: 从mapping移除的页数. 0表示无法移除
+ 
  * Context: The caller should have a single refcount on the folio and
  * hold its lock.
  */
@@ -1796,12 +1817,15 @@ static unsigned int demote_folio_list(struct list_head *demote_folios,
 	return nr_succeeded;
 }
 
-/* 判断设置了此@gfp的(回收, 分配?)操作来操作folio是否需要与fs交互? */
+/* 判断设置了此@gfp的内存操作来操作folio是否需要与fs交互? */
 static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
 {
+	/* 如果直接允许了fs, 就是可以 */
 	if (gfp_mask & __GFP_FS)
 		return true;
 
+	/* 没有直接设置gfp_fs,
+	只有swap mapping的folio, 并且允许io才行 */
 	if (!folio_test_swapcache(folio) || !(gfp_mask & __GFP_IO))
 		return false;
 	/* folio_test_swapcache && __GFP_IO , return true */
@@ -2175,6 +2199,7 @@ retry:
 			 * starts and then write it out here.
 			 */
 			try_to_unmap_flush_dirty();
+			/* 换出页面 */
 			switch (pageout(folio, mapping, &plug)) {
 			case PAGE_KEEP:
 				goto keep_locked;
@@ -2256,7 +2281,7 @@ retry:
 			}
 		}
 
-		if (folio_test_anon(folio) && !folio_test_swapbacked(folio)) {
+		if (folio_test_anon(folio) && !folio_test_swapbacked(folio)) {/* 不是交换的匿名页 */
 			/* follow __remove_mapping for reference */
 			if (!folio_ref_freeze(folio, 1))
 				goto keep_locked;
@@ -2274,7 +2299,7 @@ retry:
 			count_memcg_folio_events(folio, PGLAZYFREED, nr_pages);
 		} else if (!mapping || !__remove_mapping(mapping, folio, true,
 							 sc->target_mem_cgroup))
-			goto keep_locked;
+			goto keep_locked;/* 如果是文件页或者交换页(匿名页),  没有mapping或者无法从mapping移除 */
 
 		folio_unlock(folio);
 free_it:
@@ -3258,7 +3283,9 @@ static void prepare_scan_count(pg_data_t *pgdat, struct scan_control *sc)
 		unsigned long free, anon;
 		int z;
 
+		/* 获取node上面每个zone的free pages */
 		free = sum_zone_node_page_state(pgdat->node_id, NR_FREE_PAGES);
+		/* node的文件页数量 */
 		file = node_page_state(pgdat, NR_ACTIVE_FILE) +
 			   node_page_state(pgdat, NR_INACTIVE_FILE);
 
@@ -3730,7 +3757,8 @@ static void reset_bloom_filter(struct lruvec *lruvec, unsigned long seq)
 /******************************************************************************
  *                          mm_struct list
  ******************************************************************************/
-/* mm_list是什么 */
+/* mm_list是什么
+memcg所拥有的mm链接在上面? */
 static struct lru_gen_mm_list *get_mm_list(struct mem_cgroup *memcg)
 {
 	static struct lru_gen_mm_list mm_list = {
@@ -3748,17 +3776,22 @@ static struct lru_gen_mm_list *get_mm_list(struct mem_cgroup *memcg)
 }
 
 /*
+mm加入所属memcg的mm链表
+=================
 fork的时候会调用这个函数,初始化新进程
 */
 void lru_gen_add_mm(struct mm_struct *mm)
 {
 	int nid;
+	/* 获取mm->task->cset->subsys[id] */
 	struct mem_cgroup *memcg = get_mem_cgroup_from_mm(mm);
+	/* 获取memcg的mm链表 */
 	struct lru_gen_mm_list *mm_list = get_mm_list(memcg);
 
 	VM_WARN_ON_ONCE(!list_empty(&mm->lru_gen.list));
 #ifdef CONFIG_MEMCG
 	VM_WARN_ON_ONCE(mm->lru_gen.memcg);
+	/* 这里mm指向所属的memcg */
 	mm->lru_gen.memcg = memcg;
 #endif
 	spin_lock(&mm_list->lock);
@@ -3772,11 +3805,13 @@ void lru_gen_add_mm(struct mm_struct *mm)
 			lruvec->mm_state.tail = &mm->lru_gen.list;
 	}
 
+	/* mm加入memcg的mm链表 */
 	list_add_tail(&mm->lru_gen.list, &mm_list->fifo);
 
 	spin_unlock(&mm_list->lock);
 }
 
+/* 把mm从所属的memcg的链表取出 */
 void lru_gen_del_mm(struct mm_struct *mm)
 {
 	int nid;
@@ -3789,6 +3824,7 @@ void lru_gen_del_mm(struct mm_struct *mm)
 #ifdef CONFIG_MEMCG
 	memcg = mm->lru_gen.memcg;
 #endif
+/* 获取memcg的mmlist(所拥有进程的mm链接在这里) */
 	mm_list = get_mm_list(memcg);
 
 	spin_lock(&mm_list->lock);
@@ -3805,6 +3841,7 @@ void lru_gen_del_mm(struct mm_struct *mm)
 			lruvec->mm_state.tail = lruvec->mm_state.tail->next;
 	}
 
+	/* 把mm从所属的memcg取出 */
 	list_del_init(&mm->lru_gen.list);
 
 	spin_unlock(&mm_list->lock);
@@ -3816,9 +3853,13 @@ void lru_gen_del_mm(struct mm_struct *mm)
 }
 
 #ifdef CONFIG_MEMCG
+/*
+在cgroup之间移动进程之后
+这里修改mm与所属memcg的绑定关系, 解除旧关联, 关联新memcg*/
 void lru_gen_migrate_mm(struct mm_struct *mm)
 {
 	struct mem_cgroup *memcg;
+	/* cgroup迁移进程时, owner是自己 */
 	struct task_struct *task = rcu_dereference_protected(mm->owner, true);
 
 	VM_WARN_ON_ONCE(task->mm != mm);
@@ -3833,14 +3874,18 @@ void lru_gen_migrate_mm(struct mm_struct *mm)
 		return;
 
 	rcu_read_lock();
+	/* 获取所属的memcg */
 	memcg = mem_cgroup_from_task(task);
 	rcu_read_unlock();
+	/* 如果mm的lrugen已经与memcg联系上了 */
 	if (memcg == mm->lru_gen.memcg)
 		return;
 
 	VM_WARN_ON_ONCE(list_empty(&mm->lru_gen.list));
 
+	/* 把mm从所属的memcg的链表链接取出来 */
 	lru_gen_del_mm(mm);
+	/* mm加入memcg的mm链表 */
 	lru_gen_add_mm(mm);
 }
 #endif
@@ -4392,9 +4437,11 @@ restart:
 		young++;
 		walk->mm_stats[MM_LEAF_YOUNG]++;
 
-		if (pte_dirty(ptent) && !folio_test_dirty(folio) &&
+		if (pte_dirty(ptent) &&
+		 !folio_test_dirty(folio) &&
 		    !(folio_test_anon(folio) && folio_test_swapbacked(folio) &&
-		      !folio_test_swapcache(folio)))
+		      !folio_test_swapcache(folio))
+			)
 			folio_mark_dirty(folio);
 
 		old_gen = folio_update_gen(folio, new_gen);
@@ -5028,6 +5075,7 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
  ******************************************************************************/
 
 /*
+20250630194627
  * This function exploits spatial locality when shrink_folio_list() walks the
  * rmap. It scans the adjacent PTEs of a young PTE and promotes hot pages. If
  * the scan was done cacheline efficiently, it adds the PMD entry pointing to
@@ -5199,6 +5247,8 @@ static void lru_gen_rotate_memcg(struct lruvec *lruvec, int op)
 	spin_unlock_irqrestore(&pgdat->memcg_lru.lock, flags);
 }
 
+/* 上线memcg的时候
+设置lrugen相关的东西 */
 void lru_gen_online_memcg(struct mem_cgroup *memcg)
 {
 	int gen;

@@ -99,7 +99,9 @@ static __always_inline unsigned char interrupt_context_level(void)
 
 	return level;
 }
-/* 展开为
+/*
+大于0的话表示处于nmi上下文
+展开为
 preempt_count() & (((1UL << (4)) - 1) << (((0 + 8) + 8) + 4))
 */
 #define nmi_count()	(preempt_count() & NMI_MASK)
@@ -109,9 +111,11 @@ preempt_count() & (((1UL << (4)) - 1) << (((0 + 8) + 8) + 4))
 #else
 # define softirq_count()	(preempt_count() & SOFTIRQ_MASK)
 #endif
+/*  */
 #define irq_count()	(nmi_count() | hardirq_count() | softirq_count())
 
 /*
+获取当前执行上下文的宏
  * Macros to retrieve the current execution context:
  *
  * in_nmi()		- We're in NMI context
@@ -133,6 +137,7 @@ preempt_count() & (((1UL << (4)) - 1) << (((0 + 8) + 8) + 4))
  */
 #define in_irq()		(hardirq_count())
 #define in_softirq()		(softirq_count())
+/*  */
 #define in_interrupt()		(irq_count())
 
 /*
@@ -204,16 +209,18 @@ extern void preempt_count_sub(int val);
 
 #ifdef CONFIG_PREEMPT_COUNT
 
-/* __preempt_count_add 的作用是在当前 CPU 上对 preempt_count 
+/* 
+__preempt_count_add 的作用是在当前 CPU 上对 preempt_count 
 进行增减操作，以便管理内核的抢占机制，
 确保在特定的临界区中不会发生任务切换。在进入关键代码时增加 preempt_count，
-退出时减少，以控制抢占行为，从而实现稳定的内核调度和并发控制。 */
+退出时减少，以控制抢占行为，从而实现稳定的内核调度和并发控制.
+ */
 #define preempt_disable() \
 do { \
 	preempt_count_inc(); \
 	barrier(); \
 } while (0)
-
+/* 其实就是执行__asm__ __volatile__("" : : : "memory") 和sub一下 count */
 #define sched_preempt_enable_no_resched() \
 do { \
 	barrier(); \
@@ -308,6 +315,7 @@ do { \
 do { \
 	set_preempt_need_resched(); \
 } while (0)
+
 #define preempt_fold_need_resched() \
 do { \
 	if (tif_need_resched()) \

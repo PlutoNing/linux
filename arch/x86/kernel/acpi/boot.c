@@ -1644,7 +1644,7 @@ static const struct dmi_system_id acpi_dmi_table_late[] __initconst = {
 	{}
 };
 
-/*
+/*完成 ​ACPI 系统表的早期初始化和验证，为后续 ACPI 驱动和硬件管理（如 CPU、中断控制器、电源管理）提供基础, 以后分析
  * acpi_boot_table_init() and acpi_boot_init()
  *  called from setup_arch(), always.
  *	1. checksums all tables
@@ -1727,7 +1727,7 @@ int __init acpi_boot_init(void)
 	 */
 	if (acpi_disabled)
 		return 1;
-
+	/* 调用handler处理这些id flag */
 	acpi_table_parse(ACPI_SIG_BOOT, acpi_parse_sbf);
 
 	/*

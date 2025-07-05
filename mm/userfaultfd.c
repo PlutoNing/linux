@@ -19,6 +19,11 @@
 #include <asm/tlb.h>
 #include "internal.h"
 
+/* 
+获取范围所属的vma
+要求范围完全在这个vma之内
+否则返回null
+*/
 static __always_inline
 struct vm_area_struct *find_dst_vma(struct mm_struct *dst_mm,
 				    unsigned long dst_start,
@@ -29,12 +34,14 @@ struct vm_area_struct *find_dst_vma(struct mm_struct *dst_mm,
 	 * single existing vma.
 	 */
 	struct vm_area_struct *dst_vma;
-
+	/* 获取地址处的vma */
 	dst_vma = find_vma(dst_mm, dst_start);
+	/* 如果请求的范围不是在一个vma之内，不处理 */
 	if (!range_in_vma(dst_vma, dst_start, dst_start + len))
 		return NULL;
 
 	/*
+	检查这个vma是不是注册了uffd
 	 * Check the vma is registered in uffd, this is required to
 	 * enforce the VM_MAYWRITE check done at uffd registration
 	 * time.
@@ -45,7 +52,9 @@ struct vm_area_struct *find_dst_vma(struct mm_struct *dst_mm,
 	return dst_vma;
 }
 
-/* Check if dst_addr is outside of file's size. Must be called with ptl held. */
+/*
+判断是否越界
+Check if dst_addr is outside of file's size. Must be called with ptl held. */
 static bool mfill_file_over_size(struct vm_area_struct *dst_vma,
 				 unsigned long dst_addr)
 {
@@ -62,6 +71,10 @@ static bool mfill_file_over_size(struct vm_area_struct *dst_vma,
 }
 
 /*
+addr，vma，pmd是一一对应的
+page是addr对应的pgoff在vma file对应的的page。
+===
+把page安装到pmd，是页表级别的完善
  * Install PTEs, to map dst_addr (within dst_vma) to page.
  *
  * This function handles both MCOPY_ATOMIC_NORMAL and _CONTINUE for both shmem
@@ -77,20 +90,24 @@ int mfill_atomic_install_pte(pmd_t *dst_pmd,
 	pte_t _dst_pte, *dst_pte;
 	bool writable = dst_vma->vm_flags & VM_WRITE;
 	bool vm_shared = dst_vma->vm_flags & VM_SHARED;
+	/* 看看是不是在页缓存或者交换缓存 */
 	bool page_in_cache = page_mapping(page);
 	spinlock_t *ptl;
 	struct folio *folio;
-
+	/* 制作page的pte条目 */
 	_dst_pte = mk_pte(page, dst_vma->vm_page_prot);
 	_dst_pte = pte_mkdirty(_dst_pte);
 	if (page_in_cache && !vm_shared)
-		writable = false;
+		writable = false; /* 如果是私有的文件映射 */
 	if (writable)
 		_dst_pte = pte_mkwrite(_dst_pte, dst_vma);
 	if (flags & MFILL_ATOMIC_WP)
 		_dst_pte = pte_mkuffd_wp(_dst_pte);
 
 	ret = -EAGAIN;
+	/* 
+获取pte指针
+	*/
 	dst_pte = pte_offset_map_lock(dst_mm, dst_pmd, dst_addr, &ptl);
 	if (!dst_pte)
 		goto out;
@@ -107,10 +124,11 @@ int mfill_atomic_install_pte(pmd_t *dst_pmd,
 	 * page backing it, then access the page.
 	 */
 	if (!pte_none_mostly(ptep_get(dst_pte)))
-		goto out_unlock;
-
+		goto out_unlock;/* 如果pte有页面了 */
+	/* 如果pte没有页面 */
 	folio = page_folio(page);
-	if (page_in_cache) {
+	/* 添加rmap */
+	if (page_in_cache) {/*  */
 		/* Usually, cache pages are already added to LRU */
 		if (newly_allocated)
 			folio_add_lru(folio);
@@ -123,9 +141,10 @@ int mfill_atomic_install_pte(pmd_t *dst_pmd,
 	/*
 	 * Must happen after rmap, as mm_counter() checks mapping (via
 	 * PageAnon()), which is set by __page_set_anon_rmap().
+	 dst mm要增加页面了
 	 */
 	inc_mm_counter(dst_mm, mm_counter(page));
-
+	/* 设置ptep的值未pte */
 	set_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);
 
 	/* No need to invalidate - it was non-present before */
@@ -136,7 +155,9 @@ out_unlock:
 out:
 	return ret;
 }
-
+/* copy方式执行mfill
+把用户src处的页面拷贝到foliop，然后安装到dst addr处的pte
+*/
 static int mfill_atomic_pte_copy(pmd_t *dst_pmd,
 				 struct vm_area_struct *dst_vma,
 				 unsigned long dst_addr,
@@ -148,8 +169,9 @@ static int mfill_atomic_pte_copy(pmd_t *dst_pmd,
 	int ret;
 	struct folio *folio;
 
-	if (!*foliop) {
+	if (!*foliop) {/* 如果foliop没有指向页面 */
 		ret = -ENOMEM;
+		/* 分配一个folio */
 		folio = vma_alloc_folio(GFP_HIGHUSER_MOVABLE, 0, dst_vma,
 					dst_addr, false);
 		if (!folio)
@@ -171,9 +193,15 @@ static int mfill_atomic_pte_copy(pmd_t *dst_pmd,
 		 * Disable page faults to prevent potential deadlock
 		 * and retry the copy outside the mmap_lock.
 		 */
+		/* 
+		关闭current的pf
+		*/
 		pagefault_disable();
+		/* 把用户提供的页面内容，拷贝到新分配的页面上面
+		*/
 		ret = copy_from_user(kaddr, (const void __user *) src_addr,
 				     PAGE_SIZE);
+		/* 这里又开启pf */
 		pagefault_enable();
 		kunmap_local(kaddr);
 
@@ -201,7 +229,7 @@ static int mfill_atomic_pte_copy(pmd_t *dst_pmd,
 	ret = -ENOMEM;
 	if (mem_cgroup_charge(folio, dst_vma->vm_mm, GFP_KERNEL))
 		goto out_release;
-
+	/* 安装pte */
 	ret = mfill_atomic_install_pte(dst_pmd, dst_vma, dst_addr,
 				       &folio->page, true, flags);
 	if (ret)
@@ -212,7 +240,9 @@ out_release:
 	folio_put(folio);
 	goto out;
 }
-
+/* 
+给dst addr处的pte安装一个zero page
+*/
 static int mfill_atomic_pte_zeropage(pmd_t *dst_pmd,
 				     struct vm_area_struct *dst_vma,
 				     unsigned long dst_addr)
@@ -234,6 +264,7 @@ static int mfill_atomic_pte_zeropage(pmd_t *dst_pmd,
 	ret = -EEXIST;
 	if (!pte_none(ptep_get(dst_pte)))
 		goto out_unlock;
+	/* 设置pte */
 	set_pte_at(dst_vma->vm_mm, dst_addr, dst_pte, _dst_pte);
 	/* No need to invalidate - it was non-present before */
 	update_mmu_cache(dst_vma, dst_addr, dst_pte);
@@ -244,18 +275,24 @@ out:
 	return ret;
 }
 
-/* Handles UFFDIO_CONTINUE for all shmem VMAs (shared or private). */
+/* 
+continue方式进行mfill？
+这个时候就是说vma的addr映射pgoff的的mapping已经有页面了，但是vma的页表还没感受到
+这里安装到页表
+Handles UFFDIO_CONTINUE for all shmem VMAs (shared or private). */
 static int mfill_atomic_pte_continue(pmd_t *dst_pmd,
 				     struct vm_area_struct *dst_vma,
 				     unsigned long dst_addr,
 				     uffd_flags_t flags)
 {
+	/* 获取vma映射的inode */
 	struct inode *inode = file_inode(dst_vma->vm_file);
+	/* 获取dst addr的pgoff */
 	pgoff_t pgoff = linear_page_index(dst_vma, dst_addr);
 	struct folio *folio;
 	struct page *page;
 	int ret;
-
+	/* 为什么直接就是shmem get folio？ */
 	ret = shmem_get_folio(inode, pgoff, &folio, SGP_NOALLOC);
 	/* Our caller expects us to return -EFAULT if we failed to find folio */
 	if (ret == -ENOENT)
@@ -266,13 +303,13 @@ static int mfill_atomic_pte_continue(pmd_t *dst_pmd,
 		ret = -EFAULT;
 		goto out;
 	}
-
+	/* 获取folio在pgoff（dst_addr）处的page，  folio也保存了pgoff的概念？ */
 	page = folio_file_page(folio, pgoff);
 	if (PageHWPoison(page)) {
 		ret = -EIO;
 		goto out_release;
 	}
-
+	/* 现在把page安装到pmd上面的pte里 */
 	ret = mfill_atomic_install_pte(dst_pmd, dst_vma, dst_addr,
 				       page, false, flags);
 	if (ret)
@@ -288,7 +325,11 @@ out_release:
 	goto out;
 }
 
-/* Handles UFFDIO_POISON for all non-hugetlb VMAs. */
+/* 
+poison方式进行mfill
+给dst-addr的pte安装页面
+但是安装的是一个PTE_MARKER_POISONED对应的swap ent的pte
+Handles UFFDIO_POISON for all non-hugetlb VMAs. */
 static int mfill_atomic_pte_poison(pmd_t *dst_pmd,
 				   struct vm_area_struct *dst_vma,
 				   unsigned long dst_addr,
@@ -298,9 +339,10 @@ static int mfill_atomic_pte_poison(pmd_t *dst_pmd,
 	struct mm_struct *dst_mm = dst_vma->vm_mm;
 	pte_t _dst_pte, *dst_pte;
 	spinlock_t *ptl;
-
+/* 制作一个PTE_MARKER_POISONED的swap ent， 并返回他的pte */
 	_dst_pte = make_pte_marker(PTE_MARKER_POISONED);
 	ret = -EAGAIN;
+	/* 获取dst-addr的ptep */
 	dst_pte = pte_offset_map_lock(dst_mm, dst_pmd, dst_addr, &ptl);
 	if (!dst_pte)
 		goto out;
@@ -312,9 +354,10 @@ static int mfill_atomic_pte_poison(pmd_t *dst_pmd,
 
 	ret = -EEXIST;
 	/* Refuse to overwrite any PTE, even a PTE marker (e.g. UFFD WP). */
-	if (!pte_none(*dst_pte))
+	if (!pte_none(*dst_pte))/* 如果这个ptep有对应的物理页面了 */
 		goto out_unlock;
-
+	/* 设置这个ptep指向刚刚生成的marker pte
+	但是岂不是还是没有页面？ */
 	set_pte_at(dst_mm, dst_addr, dst_pte, _dst_pte);
 
 	/* No need to invalidate - it was non-present before */
@@ -325,13 +368,15 @@ out_unlock:
 out:
 	return ret;
 }
+/* 
 
+*/
 static pmd_t *mm_alloc_pmd(struct mm_struct *mm, unsigned long address)
 {
 	pgd_t *pgd;
 	p4d_t *p4d;
 	pud_t *pud;
-
+/* 找到pgd， 这里pgd一定可以找到吗？ */
 	pgd = pgd_offset(mm, address);
 	p4d = p4d_alloc(mm, pgd, address);
 	if (!p4d)
@@ -343,12 +388,15 @@ static pmd_t *mm_alloc_pmd(struct mm_struct *mm, unsigned long address)
 	 * Note that we didn't run this because the pmd was
 	 * missing, the *pmd may be already established and in
 	 * turn it may also be a trans_huge_pmd.
+
 	 */
+	/* 给pud的pmd页面，分配一个pmd */
 	return pmd_alloc(mm, pud, address);
 }
 
 #ifdef CONFIG_HUGETLB_PAGE
 /*
+处理巨页的uffd mfill路径
  * mfill_atomic processing for HUGETLB vmas.  Note that this routine is
  * called with mmap_lock held, it will release mmap_lock before returning.
  */
@@ -508,7 +556,11 @@ extern ssize_t mfill_atomic_hugetlb(struct vm_area_struct *dst_vma,
 				    unsigned long len,
 				    uffd_flags_t flags);
 #endif /* CONFIG_HUGETLB_PAGE */
-
+/* 
+参数里面的dst addr和pmd，vma是一一对应的
+@src_addr: 如果需要拷贝，会把src拷贝到页面
+@foliop：这个是要安装的页面，如果为空的话，会申请
+*/
 static __always_inline ssize_t mfill_atomic_pte(pmd_t *dst_pmd,
 						struct vm_area_struct *dst_vma,
 						unsigned long dst_addr,
@@ -516,8 +568,9 @@ static __always_inline ssize_t mfill_atomic_pte(pmd_t *dst_pmd,
 						uffd_flags_t flags,
 						struct folio **foliop)
 {
+	/* 为什么后续就把src给扔了 */
 	ssize_t err;
-
+	/* 现在给dst addr对应的pte安装dst addr对应的pgoff对应的物理页面 */
 	if (uffd_flags_mode_is(flags, MFILL_ATOMIC_CONTINUE)) {
 		return mfill_atomic_pte_continue(dst_pmd, dst_vma,
 						 dst_addr, flags);
@@ -536,15 +589,18 @@ static __always_inline ssize_t mfill_atomic_pte(pmd_t *dst_pmd,
 	 * only happens in the pagetable (to verify it's still none)
 	 * and not in the radix tree.
 	 */
-	if (!(dst_vma->vm_flags & VM_SHARED)) {
+	if (!(dst_vma->vm_flags & VM_SHARED)) {/* 如果dst vma是私有的 */
 		if (uffd_flags_mode_is(flags, MFILL_ATOMIC_COPY))
+		/* 把用户src的内容拷贝到folio，然后安装pte */
 			err = mfill_atomic_pte_copy(dst_pmd, dst_vma,
 						    dst_addr, src_addr,
 						    flags, foliop);
 		else
 			err = mfill_atomic_pte_zeropage(dst_pmd,
 						 dst_vma, dst_addr);
-	} else {
+	} else {/* 
+		如果这是可以share的vma
+		就同时还加入inode的mapping，然后还安装pte */
 		err = shmem_mfill_atomic_pte(dst_pmd, dst_vma,
 					     dst_addr, src_addr,
 					     flags, foliop);
@@ -552,7 +608,12 @@ static __always_inline ssize_t mfill_atomic_pte(pmd_t *dst_pmd,
 
 	return err;
 }
-
+/* 
+看看在做什么
+安装pte
+一般这个时候dst addr对应的pgoff已经有页面了， 把页面安装到pte，
+同时可能还会拷贝src的内容到这个页面再安装
+ */
 static __always_inline ssize_t mfill_atomic(struct mm_struct *dst_mm,
 					    unsigned long dst_start,
 					    unsigned long src_start,
@@ -585,9 +646,8 @@ retry:
 	mmap_read_lock(dst_mm);
 
 	/*
-	 * If memory mappings are changing because of non-cooperative
-	 * operation (e.g. mremap) running in parallel, bail out and
-	 * request the user to retry later
+	 * 如果内存映射因非协作操作（例如 mremap）并行运行而发生变化，
+	 * 则退出并请求用户稍后重试
 	 */
 	err = -EAGAIN;
 	if (mmap_changing && atomic_read(mmap_changing))
@@ -598,10 +658,11 @@ retry:
 	 * both valid and fully within a single existing vma.
 	 */
 	err = -ENOENT;
+	/* 获取范围所属的vma */
 	dst_vma = find_dst_vma(dst_mm, dst_start, len);
-	if (!dst_vma)
+	if (!dst_vma)/* 说明可能范围跨越了多个vma， */
 		goto out_unlock;
-
+	/* 说明范围都位于这个vma内部， 并且vma是uffd合法的 */
 	err = -EINVAL;
 	/*
 	 * shmem_zero_setup is invoked in mmap for MAP_ANONYMOUS|MAP_SHARED but
@@ -621,12 +682,13 @@ retry:
 	/*
 	 * If this is a HUGETLB vma, pass off to appropriate routine
 	 */
-	if (is_vm_hugetlb_page(dst_vma))
+	if (is_vm_hugetlb_page(dst_vma))/* 巨页的路径 */
 		return  mfill_atomic_hugetlb(dst_vma, dst_start,
 					     src_start, len, flags);
 
 	if (!vma_is_anonymous(dst_vma) && !vma_is_shmem(dst_vma))
 		goto out_unlock;
+	/* 只处理匿名vma或者shmem vma */
 	if (!vma_is_shmem(dst_vma) &&
 	    uffd_flags_mode_is(flags, MFILL_ATOMIC_CONTINUE))
 		goto out_unlock;
@@ -640,18 +702,21 @@ retry:
 	if (!(dst_vma->vm_flags & VM_SHARED) &&
 	    unlikely(anon_vma_prepare(dst_vma)))
 		goto out_unlock;
-
-	while (src_addr < src_start + len) {
+/* 必须是shared的， 
+如果是私有的话，anon_vma_prepare失败 */
+	while (src_addr < src_start + len) {/*
+		 处理src范围的每一个page
+		  */
 		pmd_t dst_pmdval;
 
 		BUG_ON(dst_addr >= dst_start + len);
-
+		/* 获取地址处的pmd指针 */
 		dst_pmd = mm_alloc_pmd(dst_mm, dst_addr);
 		if (unlikely(!dst_pmd)) {
 			err = -ENOMEM;
 			break;
 		}
-
+		/* 获取指向的页面地址 */
 		dst_pmdval = pmdp_get_lockless(dst_pmd);
 		/*
 		 * If the dst_pmd is mapped as THP don't
@@ -661,8 +726,9 @@ retry:
 			err = -EEXIST;
 			break;
 		}
-		if (unlikely(pmd_none(dst_pmdval)) &&
-		    unlikely(__pte_alloc(dst_mm, dst_pmd))) {
+		if (unlikely(pmd_none(dst_pmdval)) && /* 如果这个pmd条目没有对应的页面 */
+		    unlikely(__pte_alloc(dst_mm, dst_pmd))/* 并且给这个pmd条目分配pte页表页面失败了 */
+		){
 			err = -ENOMEM;
 			break;
 		}
@@ -672,9 +738,12 @@ retry:
 			break;
 		}
 
-		BUG_ON(pmd_none(*dst_pmd));
+		BUG_ON(pmd_none(*dst_pmd));/*此时pmd必须指向一个pte页面了 */
 		BUG_ON(pmd_trans_huge(*dst_pmd));
-
+		/* 
+		开始处理？
+		开始安装pte
+		*/
 		err = mfill_atomic_pte(dst_pmd, dst_vma, dst_addr,
 				       src_addr, flags, &folio);
 		cond_resched();
@@ -721,7 +790,7 @@ out:
 	BUG_ON(!copied && !err);
 	return copied ? copied : err;
 }
-
+/*  */
 ssize_t mfill_atomic_copy(struct mm_struct *dst_mm, unsigned long dst_start,
 			  unsigned long src_start, unsigned long len,
 			  atomic_t *mmap_changing, uffd_flags_t flags)
@@ -729,14 +798,14 @@ ssize_t mfill_atomic_copy(struct mm_struct *dst_mm, unsigned long dst_start,
 	return mfill_atomic(dst_mm, dst_start, src_start, len, mmap_changing,
 			    uffd_flags_set_mode(flags, MFILL_ATOMIC_COPY));
 }
-
+/*  */
 ssize_t mfill_atomic_zeropage(struct mm_struct *dst_mm, unsigned long start,
 			      unsigned long len, atomic_t *mmap_changing)
 {
 	return mfill_atomic(dst_mm, start, 0, len, mmap_changing,
 			    uffd_flags_set_mode(0, MFILL_ATOMIC_ZEROPAGE));
 }
-
+/* continue方式执行mfill */
 ssize_t mfill_atomic_continue(struct mm_struct *dst_mm, unsigned long start,
 			      unsigned long len, atomic_t *mmap_changing,
 			      uffd_flags_t flags)
@@ -752,7 +821,9 @@ ssize_t mfill_atomic_poison(struct mm_struct *dst_mm, unsigned long start,
 	return mfill_atomic(dst_mm, start, 0, len, mmap_changing,
 			    uffd_flags_set_mode(flags, MFILL_ATOMIC_POISON));
 }
-
+/* 
+范围是位于dst-vma的
+*/
 long uffd_wp_range(struct vm_area_struct *dst_vma,
 		   unsigned long start, unsigned long len, bool enable_wp)
 {
@@ -776,12 +847,15 @@ long uffd_wp_range(struct vm_area_struct *dst_vma,
 	if (!enable_wp && vma_wants_manual_pte_write_upgrade(dst_vma))
 		mm_cp_flags |= MM_CP_TRY_CHANGE_WRITABLE;
 	tlb_gather_mmu(&tlb, dst_vma->vm_mm);
+	/* 改变范围内的可写性 */
 	ret = change_protection(&tlb, dst_vma, start, start + len, mm_cp_flags);
 	tlb_finish_mmu(&tlb);
 
 	return ret;
 }
-
+/* 
+改变范围内的可写性
+*/
 int mwriteprotect_range(struct mm_struct *dst_mm, unsigned long start,
 			unsigned long len, bool enable_wp,
 			atomic_t *mmap_changing)
@@ -814,6 +888,7 @@ int mwriteprotect_range(struct mm_struct *dst_mm, unsigned long start,
 		goto out_unlock;
 
 	err = -ENOENT;
+	/* 遍历vma，赋值到dst-vma */
 	for_each_vma_range(vmi, dst_vma, end) {
 
 		if (!userfaultfd_wp(dst_vma)) {
@@ -827,10 +902,10 @@ int mwriteprotect_range(struct mm_struct *dst_mm, unsigned long start,
 			if ((start & page_mask) || (len & page_mask))
 				break;
 		}
-
+		/* 调整要对这个vma操作的范围 */
 		_start = max(dst_vma->vm_start, start);
 		_end = min(dst_vma->vm_end, end);
-
+		/* 开始操作，改变范围内的可写性 */
 		err = uffd_wp_range(dst_vma, _start, _end - _start, enable_wp);
 
 		/* Return 0 on success, <0 on failures */

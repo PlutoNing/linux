@@ -75,6 +75,7 @@ void __rcu_read_lock(void);
 void __rcu_read_unlock(void);
 
 /*
+表示rcu_read_lock()的嵌套深度
  * Defined as a macro as it is a very low level header included from
  * areas that don't even know about current.  This gives the rcu_read_lock()
  * nesting depth, but makes sense only if CONFIG_PREEMPT_RCU -- in other
@@ -112,6 +113,9 @@ static inline int rcu_preempt_depth(void)
 #ifdef CONFIG_RCU_LAZY
 void call_rcu_hurry(struct rcu_head *head, rcu_callback_t func);
 #else
+/* 
+用于在rcu_gp_is_normal情况下sync rcu?
+调用rcu(使用fun初始化head之后, 把head入队rcu_ctrlblk.curtail) */
 static inline void call_rcu_hurry(struct rcu_head *head, rcu_callback_t func)
 {
 	call_rcu(head, func);
@@ -164,6 +168,7 @@ static inline void rcu_nocb_flush_deferred_wakeup(void) { }
 #ifdef CONFIG_TASKS_RCU_GENERIC
 
 # ifdef CONFIG_TASKS_RCU
+/* 修改进程的rcu_tasks_holdout */
 # define rcu_tasks_classic_qs(t, preempt)				\
 	do {								\
 		if (!(preempt) && READ_ONCE((t)->rcu_tasks_holdout))	\
@@ -179,12 +184,16 @@ void synchronize_rcu_tasks(void);
 
 # ifdef CONFIG_TASKS_TRACE_RCU
 // Bits for ->trc_reader_special.b.need_qs field.
+/* ->trc_reader_special.b.need_qs的一些标志位 */
 #define TRC_NEED_QS		0x1  // Task needs a quiescent state.
+/* 进程已经检查过了?进行了?fqs */
 #define TRC_NEED_QS_CHECKED	0x2  // Task has been checked for needing quiescent state.
 
 u8 rcu_trc_cmpxchg_need_qs(struct task_struct *t, u8 old, u8 new);
 void rcu_tasks_trace_qs_blkd(struct task_struct *t);
-
+/* 记录进程的qs
+修改needqs
+或者加入rtpcp->rtp_blkd_tasks */
 # define rcu_tasks_trace_qs(t)							\
 	do {									\
 		int ___rttq_nesting = READ_ONCE((t)->trc_reader_nesting);	\
@@ -200,7 +209,7 @@ void rcu_tasks_trace_qs_blkd(struct task_struct *t);
 # else
 # define rcu_tasks_trace_qs(t) do { } while (0)
 # endif
-
+/* 这里 修改needqs或者blockd */
 #define rcu_tasks_qs(t, preempt)					\
 do {									\
 	rcu_tasks_classic_qs((t), (preempt));				\
@@ -240,6 +249,7 @@ static inline void exit_tasks_rcu_finish(void) { }
 static inline bool rcu_trace_implies_rcu_gp(void) { return true; }
 
 /**
+向rcu报告潜在的qs?
  * cond_resched_tasks_rcu_qs - Report potential quiescent states to RCU
  *
  * This macro resembles cond_resched(), except that it is defined to
@@ -934,6 +944,7 @@ static inline notrace void rcu_read_unlock_sched_notrace(void)
 		.p = RCU_INITIALIZER(v)
 
 /*
+这个offset是否可以被kvfree_rcu处理
  * Does the specified offset indicate that the corresponding rcu_head
  * structure can be handled by kvfree_rcu()?
  */

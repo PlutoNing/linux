@@ -181,11 +181,11 @@ static bool check_pipe(struct perf_data *data)
 			is_pipe = true;
 	}
 
-	if (is_pipe) {
+	if (is_pipe) {/* bench的时候是pipe */
 		if (data->use_stdio) {
 			const char *mode;
 
-			mode = perf_data__is_read(data) ? "r" : "w";
+			mode = perf_data__is_read(data) ? "r" : "w";/* bench时是w */
 			data->file.fptr = fdopen(fd, mode);
 
 			if (data->file.fptr == NULL) {
@@ -383,7 +383,7 @@ void perf_data__close(struct perf_data *data)
 	else
 		close(data->file.fd);
 }
-
+/* 从里面读取perf事件 */
 ssize_t perf_data__read(struct perf_data *data, void *buf, size_t size)
 {
 	if (data->use_stdio) {
@@ -399,7 +399,7 @@ ssize_t perf_data_file__write(struct perf_data_file *file,
 {
 	return writen(file->fd, buf, size);
 }
-
+/* 写入perf data */
 ssize_t perf_data__write(struct perf_data *data,
 			      void *buf, size_t size)
 {

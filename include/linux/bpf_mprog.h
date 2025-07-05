@@ -331,6 +331,7 @@ int bpf_mprog_detach(struct bpf_mprog_entry *entry,
 int bpf_mprog_query(const union bpf_attr *attr, union bpf_attr __user *uattr,
 		    struct bpf_mprog_entry *entry);
 
+/* mprog指 */
 static inline bool bpf_mprog_supported(enum bpf_prog_type type)
 {
 	switch (type) {

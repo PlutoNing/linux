@@ -13,13 +13,16 @@ struct elevator_type;
 #define BLK_MAX_TIMEOUT		(5 * HZ)
 
 extern struct dentry *blk_debugfs_root;
+/* 
 
+*/
 struct blk_flush_queue {
 	spinlock_t		mq_flush_lock;
 	unsigned int		flush_pending_idx:1;
 	unsigned int		flush_running_idx:1;
 	blk_status_t 		rq_status;
 	unsigned long		flush_pending_since;
+	/*  */
 	struct list_head	flush_queue[2];
 	unsigned long		flush_data_in_flight;
 	struct request		*flush_rq;
@@ -159,6 +162,7 @@ static inline bool blk_discard_mergable(struct request *req)
 	return false;
 }
 
+/* 获取req被允许的最大的phys seg的数量 */
 static inline unsigned int blk_rq_get_max_segments(struct request *rq)
 {
 	if (req_op(rq) == REQ_OP_DISCARD)

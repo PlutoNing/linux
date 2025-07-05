@@ -108,7 +108,7 @@ static void thread__set_guest_comm(struct thread *thread, pid_t pid)
 	snprintf(comm, sizeof(comm), "[guest/%d]", pid);
 	thread__set_comm(thread, comm, 0);
 }
-
+/* 初始化session的machines */
 int machine__init(struct machine *machine, const char *root_dir, pid_t pid)
 {
 	int err = -ENOMEM;
@@ -141,7 +141,7 @@ int machine__init(struct machine *machine, const char *root_dir, pid_t pid)
 	if (machine__set_mmap_name(machine))
 		goto out;
 
-	if (pid != HOST_KERNEL_ID) {
+	if (pid != HOST_KERNEL_ID) {/* 如果不是在host运行? */
 		struct thread *thread = machine__findnew_thread(machine, -1,
 								pid);
 
@@ -270,7 +270,7 @@ void machine__delete(struct machine *machine)
 		free(machine);
 	}
 }
-
+/* 创建session时初始化内部的machines */
 void machines__init(struct machines *machines)
 {
 	machine__init(&machines->host, "", HOST_KERNEL_ID);
@@ -625,7 +625,7 @@ static struct thread *____machine__findnew_thread(struct machine *machine,
 	struct thread *th;
 	struct thread_rb_node *nd;
 	bool leftmost = true;
-
+/* 缓存机制? */
 	th = threads__get_last_match(threads, machine, pid, tid);
 	if (th)
 		return th;
@@ -1348,7 +1348,7 @@ int __weak machine__create_extra_kernel_maps(struct machine *machine __maybe_unu
 {
 	return 0;
 }
-
+/* 创建kernel map */
 static int
 __machine__create_kernel_maps(struct machine *machine, struct dso *kernel)
 {
@@ -1359,7 +1359,7 @@ __machine__create_kernel_maps(struct machine *machine, struct dso *kernel)
 	machine->vmlinux_map = map__new2(0, kernel);
 	if (machine->vmlinux_map == NULL)
 		return -ENOMEM;
-
+/* 设置map ip回调函数 */
 	map__set_map_ip(machine->vmlinux_map, identity__map_ip);
 	map__set_unmap_ip(machine->vmlinux_map, identity__map_ip);
 	return maps__insert(machine__kernel_maps(machine), machine->vmlinux_map);
@@ -1705,7 +1705,7 @@ static int machine__update_kernel_mmap(struct machine *machine,
 
 	return err;
 }
-
+/* 创建kernel map */
 int machine__create_kernel_maps(struct machine *machine)
 {
 	struct dso *kernel = machine__get_kernel(machine);
@@ -3206,7 +3206,7 @@ int thread__resolve_callchain(struct thread *thread,
 
 	return ret;
 }
-
+/* 遍历machin的每一个threads,fn每一个thread */
 int machine__for_each_thread(struct machine *machine,
 			     int (*fn)(struct thread *thread, void *p),
 			     void *priv)

@@ -17,7 +17,7 @@
 
 #include <linux/bug.h>
 #include <linux/mm_types.h>
-
+/* 0xffffffffff7ff000 - x<<12 */
 #define __fix_to_virt(x)	(FIXADDR_TOP - ((x) << PAGE_SHIFT))
 #define __virt_to_fix(x)	((FIXADDR_TOP - ((x)&PAGE_MASK)) >> PAGE_SHIFT)
 
@@ -39,7 +39,7 @@ static inline unsigned long virt_to_fix(const unsigned long vaddr)
 	return __virt_to_fix(vaddr);
 }
 
-/*
+/*默认的page flag?
  * Provide some reasonable defaults for page flags.
  * Not all architectures use all of these different types and some
  * architectures use different names.

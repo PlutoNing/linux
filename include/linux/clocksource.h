@@ -115,7 +115,8 @@ struct clocksource {
 #endif
 	u64			max_cycles;
 	const char		*name;
-	struct list_head	list;
+	struct list_head list; /* 加入全局的clocksource_list */
+	/* 时钟源的评分, 越高越好 */
 	int			rating;
 	enum clocksource_ids	id;
 	enum vdso_clock_mode	vdso_clock_mode;
@@ -131,6 +132,7 @@ struct clocksource {
 	/* private: */
 #ifdef CONFIG_CLOCKSOURCE_WATCHDOG
 	/* Watchdog related data, used by the framework */
+	/* 连接到watchdog_list  好像是作为watchdog的什么东西 */
 	struct list_head	wd_list;
 	u64			cs_last;
 	u64			wd_last; // 挂到watchdog_list上
@@ -241,7 +243,7 @@ __clocksource_register_scale(struct clocksource *cs, u32 scale, u32 freq);
 extern void
 __clocksource_update_freq_scale(struct clocksource *cs, u32 scale, u32 freq);
 
-/*
+/* 注册时钟源
  * Don't call this unless you are a default clocksource
  * (AKA: jiffies) and absolutely have to.
  */
@@ -255,6 +257,7 @@ static inline int clocksource_register_hz(struct clocksource *cs, u32 hz)
 	return __clocksource_register_scale(cs, 1, hz);
 }
 
+/* 注册时钟源 */
 static inline int clocksource_register_khz(struct clocksource *cs, u32 khz)
 {
 	return __clocksource_register_scale(cs, 1000, khz);

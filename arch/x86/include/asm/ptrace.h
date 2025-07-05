@@ -91,6 +91,7 @@ C ABI (Application Binary Interface) 规定这些寄存器是被调用者（call
 iretq 的返回帧，保存返回地址、代码段、标志寄存器、栈指针和栈段*/
 	unsigned long ip;
 	unsigned long cs;
+	/* 标志寄存器? */
 	unsigned long flags;
 	unsigned long sp;
 	unsigned long ss;
@@ -213,6 +214,8 @@ static inline unsigned long kernel_stack_pointer(struct pt_regs *regs)
 	return regs->sp;
 }
 
+/*
+ */
 static inline unsigned long instruction_pointer(struct pt_regs *regs)
 {
 	return regs->ip;

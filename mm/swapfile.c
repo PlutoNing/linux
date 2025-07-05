@@ -246,7 +246,7 @@ offset_to_swap_extent(struct swap_info_struct *sis, unsigned long offset)
 	BUG();
 }
 
-//返回page在swap中的sector?
+//返回swap page在swap磁盘中的sector?
 sector_t swap_page_sector(struct page *page)
 {
 	struct swap_info_struct *sis = page_swap_info(page);
@@ -601,7 +601,7 @@ static void free_cluster(struct swap_info_struct *si, unsigned long idx)
 	__free_cluster(si, idx);
 }
 
-/*
+/*要把这个offset拿走用了
  * The cluster corresponding to page_nr will be used. The cluster will be
  * removed from free cluster list and its usage counter will be increased.
    翻译: 与page_nr对应的cluster将被使用。cluster将从空闲cluster列表中删除，
@@ -981,11 +981,11 @@ checks: // 好像是找到了一个可用的offset就到这里
 			goto scan;
 		else
 			goto done;
-	}
-	WRITE_ONCE(si->swap_map[offset], usage);
+	}/* 这个offset没有人用了,这里取走 */
+	WRITE_ONCE(si->swap_map[offset], usage);/* 取走之前先设置,usage为SWAP_HAS_CACHE,表示被我用了 */
 	inc_cluster_info_page(si, si->cluster_info, offset);
 	unlock_cluster(ci);
-	//这里alloc什么? 就是改变一些属性,标记位置被使用什么的
+	//标记offset开始的nr位置已经被alloc? 就是改变一些属性,标记位置被使用什么的
 	swap_range_alloc(si, offset, 1);
 	// 把entry值加入slot
 	slots[n_ret++] = swp_entry(si->type, offset);
@@ -1142,7 +1142,7 @@ int get_swap_pages(int n_goal, swp_entry_t swp_entries[], int entry_size)
 		spin_unlock(&swap_avail_lock);
 		goto noswap;
 	}
-
+/* 可能是64个 */
 	n_goal = min3((long)n_goal, (long)SWAP_BATCH, avail_pgs);
 	/* 一种情况n_goal是1, size就是大页的大小 */
 	atomic_long_sub(n_goal * size, &nr_swap_pages);
@@ -1436,6 +1436,7 @@ void swap_free(swp_entry_t entry)
 
 /*
 刚刚把folio从swap mapping移除, entry是对应的swap条目
+这里处理的是swap file里面的空间分配相关?
  * Called after dropping swapcache to decrease refcnt to swap entries.
    在从swapcache删除后调用以减少对交换条目的引用计数.
  */
@@ -1647,8 +1648,8 @@ unlock_out:
 	return ret;
 }
 /* 2025年3月10日10:37:45
-检查这个folio是否被交换了
-就是看它对应的额swap entry的引用数量
+检查这个folio是否被交换了(swap_swapcount(si, entry) != 0)
+就是看它对应的swap entry的引用数量
 */
 static bool folio_swapped(struct folio *folio)
 {
@@ -1680,9 +1681,9 @@ bool folio_free_swap(struct folio *folio)
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 
 	if (!folio_test_swapcache(folio))
-		return false; // 必须要在swap cache了
+		return false; // 这个时候必须要在swap cache了
 	if (folio_test_writeback(folio))
-		return false;
+		return false;/* 正在回写到swap file的也不能释放swap space? */
 	if (folio_swapped(folio)) // 如果这个folio被交换了
 		return false;
 
@@ -3490,12 +3491,12 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 		err = -ENOENT;
 		goto unlock_out;
 	}
-	// 看看has_cache这个bit位是否设置了
+	// 看看has_cache这个最左边的bit位是否设置了
 	has_cache = count & SWAP_HAS_CACHE;
 	count &= ~SWAP_HAS_CACHE; // 然后去掉编码的这个bit位
 	err = 0;
 
-	if (usage == SWAP_HAS_CACHE) {
+	if (usage == SWAP_HAS_CACHE) {/*  */
 
 		/* set SWAP_HAS_CACHE if there is no cache and entry is used
 		设置SWAP_HAS_CACHE，如果没有缓存并且条目正在使用
@@ -3508,7 +3509,7 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 			err = -ENOENT;
 
 	} else if (count || has_cache) {// 如果正在使用,或者有缓存
-	// （感觉是一般的情况,这时候usage好像是1什么的）
+	//
 
 		if (
 			(count & ~COUNT_CONTINUED) //去掉count里面编码的bit位后的值 
@@ -3522,7 +3523,7 @@ static int __swap_duplicate(swp_entry_t entry, unsigned char usage)
 			err = -ENOMEM;
 	} else
 		err = -ENOENT;			/* unused swap entry */
-
+/* 重新把ref值加上编码位,存入map */
 	WRITE_ONCE(p->swap_map[offset], count | has_cache);
 
 unlock_out:

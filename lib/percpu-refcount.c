@@ -38,7 +38,8 @@
 
 static DEFINE_SPINLOCK(percpu_ref_switch_lock);
 static DECLARE_WAIT_QUEUE_HEAD(percpu_ref_switch_waitq);
-
+/* 获取pcpref的在每个cpu上面的值
+也就是ref->percpu_count_ptr */
 static unsigned long __percpu *percpu_count_ptr(struct percpu_ref *ref)
 {
 	return (unsigned long __percpu *)
@@ -46,6 +47,7 @@ static unsigned long __percpu *percpu_count_ptr(struct percpu_ref *ref)
 }
 
 /**
+初始化pcpref
  * percpu_ref_init - initialize a percpu refcount
  * @ref: percpu_ref to initialize
  * @release: function which will be called when refcount hits 0
@@ -209,7 +211,11 @@ static void percpu_ref_switch_to_atomic_rcu(struct rcu_head *rcu)
 static void percpu_ref_noop_confirm_switch(struct percpu_ref *ref)
 {
 }
-
+/* 如果处于__PERCPU_REF_ATOMIC的话
+就直接调用confirm_switch(ref)函数返回
+===================
+不处于的话, 就切换到__PERCPU_REF_ATOMIC
+ */
 static void __percpu_ref_switch_to_atomic(struct percpu_ref *ref,
 					  percpu_ref_func_t *confirm_switch)
 {
@@ -233,7 +239,10 @@ static void __percpu_ref_switch_to_atomic(struct percpu_ref *ref,
 	call_rcu_hurry(&ref->data->rcu,
 		       percpu_ref_switch_to_atomic_rcu);
 }
-
+/* 切换到pcp模式
+对应切换到atomic模式
+========
+初始化ref->percpu_count_ptr为0 */
 static void __percpu_ref_switch_to_percpu(struct percpu_ref *ref)
 {
 	unsigned long __percpu *percpu_count = percpu_count_ptr(ref);
@@ -242,7 +251,7 @@ static void __percpu_ref_switch_to_percpu(struct percpu_ref *ref)
 	BUG_ON(!percpu_count);
 
 	if (!(ref->percpu_count_ptr & __PERCPU_REF_ATOMIC))
-		return;
+		return;/* 无需切换 */
 
 	if (WARN_ON_ONCE(!ref->data->allow_reinit))
 		return;
@@ -261,7 +270,7 @@ static void __percpu_ref_switch_to_percpu(struct percpu_ref *ref)
 	smp_store_release(&ref->percpu_count_ptr,
 			  ref->percpu_count_ptr & ~__PERCPU_REF_ATOMIC);
 }
-
+/* 切换pcpref的模式, 是atomic或者pcp模式 */
 static void __percpu_ref_switch_mode(struct percpu_ref *ref,
 				     percpu_ref_func_t *confirm_switch)
 {
@@ -364,6 +373,7 @@ void percpu_ref_switch_to_percpu(struct percpu_ref *ref)
 EXPORT_SYMBOL_GPL(percpu_ref_switch_to_percpu);
 
 /**
+减少一个ref
  * percpu_ref_kill_and_confirm - drop the initial ref and schedule confirmation
  * @ref: percpu_ref to kill
  * @confirm_kill: optional confirmation callback
@@ -392,7 +402,9 @@ void percpu_ref_kill_and_confirm(struct percpu_ref *ref,
 		  ref->data->release);
 
 	ref->percpu_count_ptr |= __PERCPU_REF_DEAD;
+	/* 这里切换模式, 内部肯定会调用confirm_kill函数 */
 	__percpu_ref_switch_mode(ref, confirm_kill);
+	 /* 这里减少ref值 */
 	percpu_ref_put(ref);
 
 	spin_unlock_irqrestore(&percpu_ref_switch_lock, flags);
