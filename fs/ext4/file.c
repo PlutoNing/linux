@@ -282,6 +282,8 @@ static ssize_t ext4_write_checks(struct kiocb *iocb, struct iov_iter *from)
 	return count;
 }
 
+/* ext4的write_iter的非dax非直接io的实现方式
+其实就是通过缓存的那个, 这里是buffer io */
 static ssize_t ext4_buffered_write_iter(struct kiocb *iocb,
 					struct iov_iter *from)
 {
@@ -296,6 +298,7 @@ static ssize_t ext4_buffered_write_iter(struct kiocb *iocb,
 	if (ret <= 0)
 		goto out;
 
+	/* 直接调用通用函数吗 */
 	ret = generic_perform_write(iocb, from);
 
 out:
@@ -699,8 +702,8 @@ out:
 }
 #endif
 
-static ssize_t
-ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
+/* ext4的write_iter回调 */
+static ssize_t ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct inode *inode = file_inode(iocb->ki_filp);
 

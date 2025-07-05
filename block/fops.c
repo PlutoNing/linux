@@ -373,7 +373,9 @@ static ssize_t __blkdev_direct_IO_async(struct kiocb *iocb,
 	}
 	return -EIOCBQUEUED;
 }
-// 块设备的direct IO实现
+/* 块设备的direct IO实现
+================
+返回成功读取或者写入的数量 */
 static ssize_t blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 {
 	unsigned int nr_pages;
@@ -415,6 +417,7 @@ static int blkdev_iomap_begin(struct inode *inode, loff_t offset, loff_t length,
 	return 0;
 }
 
+/*  */
 static const struct iomap_ops blkdev_iomap_ops = {
 	.iomap_begin		= blkdev_iomap_begin,
 };
@@ -663,12 +666,17 @@ static int blkdev_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t
-blkdev_direct_write(struct kiocb *iocb, struct iov_iter *from)
+/* 
+进程bdevfs的直接IO
+=====================
+返回的是io成功的数据量
+*/
+static ssize_t blkdev_direct_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	size_t count = iov_iter_count(from);
 	ssize_t written;
 
+	/* 这里处理范围内mapping的page ,(回写什么的) */
 	written = kiocb_invalidate_pages(iocb, count);
 	if (written) {
 		if (written == -EBUSY)
@@ -678,6 +686,7 @@ blkdev_direct_write(struct kiocb *iocb, struct iov_iter *from)
 
 	written = blkdev_direct_IO(iocb, from);
 	if (written > 0) {
+		/* 如果成功io了一部分 , 这里进行后处理 */
 		kiocb_invalidate_post_direct_write(iocb, count);
 		iocb->ki_pos += written;
 		count -= written;
@@ -687,17 +696,22 @@ blkdev_direct_write(struct kiocb *iocb, struct iov_iter *from)
 	return written;
 }
 
+/* bdevfs的write_iter函数的buffer方式(对应于
+直接IO)写入数据(用户的from写入到内核的kiocb) */
 static ssize_t blkdev_buffered_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return iomap_file_buffered_write(iocb, from, &blkdev_iomap_ops);
 }
 
 /*
+bdevfs的write_iter回调实现
+
  * Write data to the block device.  Only intended for the block device itself
  * and the raw driver which basically is a fake block device.
  *
  * Does not take i_mutex for the write and thus is not for general purpose
  * use.
+ 返回非0出错
  */
 static ssize_t blkdev_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
@@ -729,19 +743,24 @@ static ssize_t blkdev_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		iov_iter_truncate(from, size);
 	}
 
+	/* 更新修改时间? */
 	ret = file_update_time(file);
 	if (ret)
 		return ret;
 
+	/*  */
 	if (iocb->ki_flags & IOCB_DIRECT) {
+		/* 如果要求直接写入, 这里直接写入 */
 		ret = blkdev_direct_write(iocb, from);
-		if (ret >= 0 && iov_iter_count(from))
+		if (ret >= 0 && iov_iter_count(from)) /* 直接写入有点问题, 这里fallback */
 			ret = direct_write_fallback(iocb, from, ret,
 					blkdev_buffered_write(iocb, from));
 	} else {
+		/* buffer方式写入 (底下调用的是iomap机制 (这样做的fs有多少比例)) */
 		ret = blkdev_buffered_write(iocb, from);
 	}
 
+	/* ret大于零表示成功写入了一些数据 */
 	if (ret > 0)
 		ret = generic_write_sync(iocb, ret);
 	iov_iter_reexpand(from, iov_iter_count(from) + shorted);
@@ -790,7 +809,7 @@ static ssize_t blkdev_read_iter(struct kiocb *iocb, struct iov_iter *to)
 		if (ret < 0 || !count)
 			goto reexpand;
 	}
-	// 从page cache中读取数据
+	// 从page cache中读取数据page, 拷贝到to
 	ret = filemap_read(iocb, to, ret);
 
 reexpand:
@@ -901,8 +920,10 @@ const struct file_operations def_blk_fops = {
 	.release	= blkdev_release,
 /* 就是一个包装的通用seek实现 */
 	.llseek		= blkdev_llseek,
-	/*  */
+	/* 如果不是直接IO的情况, 就是filemap_read()
+	通过pagecache把内容读到iter */
 	.read_iter	= blkdev_read_iter,
+	/* 分为直接io 或者buffer io(利用iomap机制) */
 	.write_iter	= blkdev_write_iter,
 	.iopoll		= iocb_bio_iopoll,
 	/* 也是一般的mmap实现 */

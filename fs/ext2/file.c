@@ -122,6 +122,7 @@ static const struct vm_operations_struct ext2_dax_vm_ops = {
 	.pfn_mkwrite	= ext2_dax_fault,
 };
 
+/* 把vma的ops设置为自己特定的ops */
 static int ext2_file_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	if (!IS_DAX(file_inode(file)))
@@ -279,6 +280,7 @@ out_unlock:
 	return ret;
 }
 
+/* ext2的read_iter的fops */
 static ssize_t ext2_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 #ifdef CONFIG_FS_DAX
@@ -305,12 +307,15 @@ static ssize_t ext2_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 
 const struct file_operations ext2_file_operations = {
 	.llseek		= generic_file_llseek,
+	/*  */
 	.read_iter	= ext2_file_read_iter,
+	/*  */
 	.write_iter	= ext2_file_write_iter,
 	.unlocked_ioctl = ext2_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= ext2_compat_ioctl,
 #endif
+	/*  */
 	.mmap		= ext2_file_mmap,
 	.open		= dquot_file_open,
 	.release	= ext2_release_file,

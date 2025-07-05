@@ -336,6 +336,7 @@ enum rw_hint {
 
 /* non-RWF related bits - start at 16 */
 #define IOCB_EVENTFD		(1 << 16)
+/*  */
 #define IOCB_DIRECT		(1 << 17)
 #define IOCB_WRITE		(1 << 18)
 /* iocb->ki_waitq is valid */
@@ -1924,8 +1925,10 @@ struct offset_ctx;
 struct file_operations {
 	struct module *owner;
 	loff_t (*llseek) (struct file *, loff_t, int);
+	/* 读到buff里面, 优先级高于read_iter */
 	ssize_t (*read) (struct file *, char __user *, size_t, loff_t *);
 	ssize_t (*write) (struct file *, const char __user *, size_t, loff_t *);
+	/* 相比于read(), 特点是读到iter里面 */
 	ssize_t (*read_iter) (struct kiocb *, struct iov_iter *);
 	ssize_t (*write_iter) (struct kiocb *, struct iov_iter *);
 	int (*iopoll)(struct kiocb *kiocb, struct io_comp_batch *,
@@ -1934,6 +1937,7 @@ struct file_operations {
 	__poll_t (*poll) (struct file *, struct poll_table_struct *);
 	long (*unlocked_ioctl) (struct file *, unsigned int, unsigned long);
 	long (*compat_ioctl) (struct file *, unsigned int, unsigned long);
+	/* 好多这个函数的工作就是把vma的aops设置为自己特定的类型 */
 	int (*mmap) (struct file *, struct vm_area_struct *);
 	unsigned long mmap_supported_flags;
 	int (*open) (struct inode *, struct file *);
@@ -2018,7 +2022,8 @@ struct inode_operations {
 	int (*fileattr_get)(struct dentry *dentry, struct fileattr *fa);
 	struct offset_ctx *(*get_offset_ctx)(struct inode *inode);
 } ____cacheline_aligned;
-/* fops的函数 */
+/* fops的函数
+调用read_iter的枢纽 */
 static inline ssize_t call_read_iter(struct file *file, struct kiocb *kio,
 				     struct iov_iter *iter)
 {
@@ -2682,6 +2687,8 @@ static inline bool iocb_is_dsync(const struct kiocb *iocb)
 
 /*
    写文件例程会调用此函数来sync自己的写入
+   ===============
+   比如bdev fs的write_iter函数就会调用
  * Sync the bytes written if this was a synchronous write.  Expect ki_pos
  * to already be updated for the write, and will return either the amount
  * of bytes passed in, or an error if syncing the file failed.

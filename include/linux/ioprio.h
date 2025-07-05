@@ -55,6 +55,7 @@ static inline int __get_task_ioprio(struct task_struct *p)
 }
 #endif /* CONFIG_BLOCK */
 
+/* ioprio如何实现 */
 static inline int get_current_ioprio(void)
 {
 	return __get_task_ioprio(current);

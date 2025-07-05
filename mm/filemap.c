@@ -751,7 +751,7 @@ bool filemap_range_has_writeback(struct address_space *mapping,
 EXPORT_SYMBOL_GPL(filemap_range_has_writeback);
 
 /**
-写回mapping的这个范围, 可以阻塞
+写回mapping的这个范围, 可以阻塞等待完成
 先__filemap_fdatawrite_range写, 然后__filemap_fdatawait_range等待
  * filemap_write_and_wait_range - write out & wait on a file range
  * @mapping:	the address_space for the pages
@@ -2816,6 +2816,8 @@ static int filemap_readahead(struct kiocb *iocb, struct file *file,
 }
 
 /* 
+读取pagecache的时候获取页面的函数
+=====================
 读取iocb描述的文件的例程(从pagecache读取)
 这里先找到相关涉及的mapping page到fbatch
 从页缓存中获取页, 可能会预读, 以及不新的话也会重新读取.
@@ -2842,7 +2844,8 @@ retry:
 
 	/* 函数核心逻辑就是获取要读取的页缓存的page
 	filemap_get_read_batch读取一批范围内的page到fbatch, 如果没有异常就直接返回了
-	不过下面返回前,要处理四种情况 */
+	不过下面返回前,要处理四种情况
+	20250706022330 */
 	filemap_get_read_batch(mapping, index, last_index - 1, fbatch);
 
 	/* 情况1:如果这次没有读到page, 预读一下 */
@@ -2923,6 +2926,10 @@ static inline bool pos_same_folio(loff_t pos1, loff_t pos2, struct folio *folio)
 
 /**
 文件系统读取文件的例程会调用此例程, 用于从页缓存中读取数据 (就是命中缓存?)
+把页缓存的数据拷贝到用户的iter
+==================================================================
+调用场合:
+fs实现->generic_file_read_iter()->filemap_read()
  * filemap_read - Read data from the page cache.
  * @iocb: The iocb to read. 从这里读
  * @iter: Destination for the data. 读到这
@@ -2934,6 +2941,8 @@ static inline bool pos_same_folio(loff_t pos1, loff_t pos2, struct folio *folio)
  * Return: Total number of bytes copied, including those already read by
  * the caller.  If an error happens before any bytes are copied, returns
  * a negative error number.
+ 20250706021609
+ 看来filemap_read和generic_perform_write是比较核心的俩
  */
 ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 		ssize_t already_read)
@@ -2969,6 +2978,7 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 		if ((iocb->ki_flags & IOCB_WAITQ) && already_read)
 			iocb->ki_flags |= IOCB_NOWAIT;
 
+		/* 这里有一丝可能性吗, 是不是该算错误 */
 		if (unlikely(iocb->ki_pos >= i_size_read(inode)))
 			break;
 
@@ -2984,10 +2994,12 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 		 * the correct value for "nr", which means the zero-filled
 		 * part of the page is not copied back to userspace (unless
 		 * another truncate extends the file - this is desired though).
+		 又检查了一次有没有超限
 		 */
 		isize = i_size_read(inode);
 		if (unlikely(iocb->ki_pos >= isize))
 			goto put_folios;
+		/* 获取要读取的末尾地址, 即使要读再多, 也只能到文件末尾 */
 		end_offset = min_t(loff_t, isize, iocb->ki_pos + iter->count);
 
 		/*
@@ -2999,15 +3011,15 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 		/*
 		 * When a read accesses the same folio several times, only
 		 * mark it as accessed the first time.
+		 如果多次读取同一个folio, 仅在第一次mark accessed
 		 */
 		if (!pos_same_folio(iocb->ki_pos, last_pos - 1,
 				    fbatch.folios[0]))
 			folio_mark_accessed(fbatch.folios[0]);
 
-		/* 遍历刚刚获取的页缓存的page, 复制到用户的iter
-		20250705021431 */
+		/* 遍历刚刚获取的页缓存的page, 复制到用户的iter */
 		for (i = 0; i < folio_batch_count(&fbatch); i++) {
-			struct folio *folio = fbatch.folios[i]; //获取
+			struct folio *folio = fbatch.folios[i];
 			size_t fsize = folio_size(folio);
 			size_t offset = iocb->ki_pos & (fsize - 1);
 			size_t bytes = min_t(loff_t, end_offset - iocb->ki_pos,
@@ -3016,6 +3028,9 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 
 			if (end_offset < folio_pos(folio))
 				break;
+			/* 20250706022157
+			这里感觉这个函数更多还是mark accessed的作用, 提升页面referenced
+			不太好直接计数 */
 			if (i > 0)
 				folio_mark_accessed(folio);
 			/*
@@ -3038,8 +3053,10 @@ ssize_t filemap_read(struct kiocb *iocb, struct iov_iter *iter,
 			}
 		}
 put_folios:
+		/* 本轮loop拷贝完了, 这里释放引用 */
 		for (i = 0; i < folio_batch_count(&fbatch); i++)
 			folio_put(fbatch.folios[i]);
+		/* 重新初始化fbatch */
 		folio_batch_init(&fbatch);
 	} while (iov_iter_count(iter) && iocb->ki_pos < isize && !error);
 
@@ -3068,23 +3085,34 @@ int kiocb_write_and_wait(struct kiocb *iocb, size_t count)
 	return filemap_write_and_wait_range(mapping, pos, end);
 }
 
+/* 
+===========
+一种情况是要直接IO写入iocb文件了, 打算写入count,调用
+*/
 int kiocb_invalidate_pages(struct kiocb *iocb, size_t count)
 {
 	struct address_space *mapping = iocb->ki_filp->f_mapping;
+	/* [pos,end]是要写入的范围 */
 	loff_t pos = iocb->ki_pos;
 	loff_t end = pos + count - 1;
 	int ret;
 
 	if (iocb->ki_flags & IOCB_NOWAIT) {
-		/* we could block if there are any pages in the range */
+		/* we could block if there are any pages in the range
+		为什么这里mapping有page反而不行了? 因为直接IO?
+		直接IO要求nowait, 但是范围内的mapping有页面了 (需要回写, 等不了) */
 		if (filemap_range_has_page(mapping, pos, end))
 			return -EAGAIN;
 	} else {
+		/* 这次直接IO可以阻塞, 那么这里回写 */
 		ret = filemap_write_and_wait_range(mapping, pos, end);
 		if (ret)
 			return ret;
 	}
 
+	/* 到这里两种情况:
+	1, 直接IO不阻塞, 范围内mapping不存在
+	2, 直接IO可以阻塞, 范围内也回写完了 */
 	/*
 	 * After a write we want buffered reads to be sure to go to disk to get
 	 * the new data.  We invalidate clean cached page from the region we're
@@ -3100,6 +3128,9 @@ int kiocb_invalidate_pages(struct kiocb *iocb, size_t count)
 /**
  * generic_file_read_iter - generic filesystem read routine
    文件系统的通用读取函数
+   作为一种通用的read_iter函数, 把页缓存内的数据拷贝到iter
+========================================
+部分fs在部分情况下作为read_iter的实现部分
  * @iocb:	kernel I/O control block
  * @iter:	destination for the data read
  *
@@ -3133,7 +3164,8 @@ ssize_t generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 		struct address_space *mapping = file->f_mapping;
 		struct inode *inode = mapping->host;
 
-		retval = kiocb_write_and_wait(iocb, count); //执行写入之前, 先把范围内脏页写回
+		 //执行写入之前, 先把范围内脏页写回
+		retval = kiocb_write_and_wait(iocb, count);
 
 		if (retval < 0)
 			return retval;
@@ -3163,6 +3195,7 @@ ssize_t generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 			return retval;
 	}
 
+	/* 调用filemap_read找到页缓存相关的page, 把内容拷贝到iter */
 	return filemap_read(iocb, iter, retval);
 }
 EXPORT_SYMBOL(generic_file_read_iter);
@@ -4405,7 +4438,7 @@ again:
 			status = -EINTR;
 			break;
 		}
-		/* 2,. 调用fs的mapping的回调, 去赋值这个page.
+		/* 2,. write_begin的工作一般是找到要写的page
 		其实一般也就是根据mapping和pos, 在xas里面找到对应index的folio,赋值到page */
 		status = a_ops->write_begin(file, mapping, pos, bytes,
 						&page, &fsdata);
@@ -4419,7 +4452,10 @@ again:
 		通过kmap, 把写入内容拷贝到page的这个page */
 		copied = copy_page_from_iter_atomic(page, offset, bytes, i);
 		flush_dcache_page(page);
-		/* commit bh的修改, 调整inode大小 */
+		/*
+		3
+		write_end一般是收尾一般是回写什么的
+		 commit bh的修改, 调整inode大小 */
 		status = a_ops->write_end(file, mapping, pos, bytes, copied,
 						page, fsdata);
 
@@ -4457,7 +4493,7 @@ EXPORT_SYMBOL(generic_perform_write);
 
 /**
  * __generic_file_write_iter - write data to a file
-  把iter写入到文件
+  把iter写入到文件, generic_file_write_iter的实现逻辑
  * @iocb:	IO state structure (file, offset, etc.)
  * @from:	iov_iter with data to write
  *
@@ -4469,8 +4505,8 @@ EXPORT_SYMBOL(generic_perform_write);
  并根据我们是进行直接IO还是标准缓冲写入调用适当的子例程.
  * It expects i_rwsem to be grabbed unless we work on a block device or similar
  * object which does not need locking at all.
-         *   除非我们处理块设备或类似对象,否则它期望i_rwsem被抓住,这些对象根本不需要锁定.
-     * This function does *not* take care of syncing data in case of O_SYNC write.
+ * 除非我们处理块设备或类似对象,否则它期望i_rwsem被抓住,这些对象根本不需要锁定.
+ * This function does *not* take care of syncing data in case of O_SYNC write.
  * A caller has to handle it. This is mainly due to the fact that we want to
  * avoid syncing under i_rwsem.
  * 这个函数不负责在O_SYNC写入的情况下同步数据.调用者必须处理它.这主要是因为我们不想在i_rwsem下同步.

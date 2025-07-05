@@ -730,6 +730,8 @@ size_t iov_iter_single_seg_count(const struct iov_iter *i)
 }
 EXPORT_SYMBOL(iov_iter_single_seg_count);
 
+/* 初始化一个kvec类型的iter
+ */
 void iov_iter_kvec(struct iov_iter *i, unsigned int direction,
 			const struct kvec *kvec, unsigned long nr_segs,
 			size_t count)
@@ -1474,7 +1476,7 @@ static ssize_t __import_iovec_ubuf(int type, const struct iovec __user *uvec,
 }
 
 /**
-aio的什么函数
+转换iovec与iter
  * @description: 
  * @param {int} type
  * @param {iovec __user} *uvec，要io的用户空间内存buf
@@ -1536,6 +1538,7 @@ ssize_t __import_iovec(int type, const struct iovec __user *uvec,
 }
 
 /**
+转换iovec与iter
  * import_iovec() - Copy an array of &struct iovec from userspace
  *     into the kernel, check that it is valid, and initialize a new
  *     &struct iov_iter iterator to access it.

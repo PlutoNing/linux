@@ -390,7 +390,11 @@ int rw_verify_area(int read_write, struct file *file, const loff_t *ppos, size_t
 				read_write == READ ? MAY_READ : MAY_WRITE);
 }
 EXPORT_SYMBOL(rw_verify_area);
-/* 调用read iter这个fops函数 */
+/* 调用read iter回调
+把文件的指定内容pos读到buf里面
+==================
+vfs_read系统调用通过这个函数调用read_iter函数
+ */
 static ssize_t new_sync_read(struct file *filp, char __user *buf, size_t len, loff_t *ppos)
 {
 	struct kiocb kiocb;
@@ -416,7 +420,10 @@ static int warn_unsupported(struct file *file, const char *op)
 	return -EINVAL;
 }
 
-// 内核读文件的函数
+/* 
+调用read_iter回调
+
+*/
 ssize_t __kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 {
 	struct kvec iov = {
@@ -434,12 +441,15 @@ ssize_t __kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 	/*
 	 * Also fail if ->read_iter and ->read are both wired up as that
 	 * implies very convoluted semantics.
+	 read函数和read_iter必须要有一个
 	 */
 	if (unlikely(!file->f_op->read_iter || file->f_op->read))
 		return warn_unsupported(file, "read");
 
+	/* 这里初始化这个kiocb的filp与pos */
 	init_sync_kiocb(&kiocb, file);
 	kiocb.ki_pos = pos ? *pos : 0;
+	/* 初始化个kvec类型的iter  */
 	iov_iter_kvec(&iter, ITER_DEST, &iov, 1, iov.iov_len);
 	ret = file->f_op->read_iter(&kiocb, &iter);
 	if (ret > 0) {
@@ -452,7 +462,10 @@ ssize_t __kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 	return ret;
 }
 
-// 内核读文件的函数
+/*
+ 内核读文件的函数
+可能不是io机制, 而是其他的需要读文件的机制
+ */
 ssize_t kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 {
 	ssize_t ret;
@@ -463,7 +476,9 @@ ssize_t kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 	return __kernel_read(file, buf, count, pos);
 }
 EXPORT_SYMBOL(kernel_read);
-/* read系统调用 */
+/* 
+==============
+read系统调用 */
 ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 {
 	ssize_t ret;
@@ -481,6 +496,7 @@ ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 	if (count > MAX_RW_COUNT)
 		count =  MAX_RW_COUNT;
 
+	/* 看来read函数的优先级更高 */
 	if (file->f_op->read)
 		ret = file->f_op->read(file, buf, count, pos);
 	else if (file->f_op->read_iter)
@@ -556,6 +572,7 @@ ssize_t __kernel_write(struct file *file, const void *buf, size_t count, loff_t 
 	};
 	struct iov_iter iter;
 	iov_iter_kvec(&iter, ITER_SOURCE, &iov, 1, iov.iov_len);
+	/* 写入到内核 */
 	return __kernel_write_iter(file, &iter, pos);
 }
 /*
@@ -566,7 +583,9 @@ ssize_t __kernel_write(struct file *file, const void *buf, size_t count, loff_t 
  * for any other kernel modules.
  */
 EXPORT_SYMBOL_GPL(__kernel_write);
-/* 内核使用的写函数 */
+/* 内核使用的写函数
+============
+内核其他机制可能会利用这个来IO */
 ssize_t kernel_write(struct file *file, const void *buf, size_t count,
 			    loff_t *pos)
 {
@@ -744,7 +763,12 @@ COMPAT_SYSCALL_DEFINE5(pwrite64, unsigned int, fd, const char __user *, buf,
 	return ksys_pwrite64(fd, buf, count, compat_arg_u64_glue(pos));
 }
 #endif
-/* 通过fops的write iter回调实现write */
+/*
+ 通过fops的read或者write的iter回调实现读写
+ =================
+ readv系统调用
+ 和几个小fs调用
+ */
 static ssize_t do_iter_readv_writev(struct file *filp, struct iov_iter *iter,
 		loff_t *ppos, int type, rwf_t flags)
 {
@@ -803,7 +827,10 @@ static ssize_t do_loop_readv_writev(struct file *filp, struct iov_iter *iter,
 
 	return ret;
 }
-/* iter的读文件 */
+/* iter的读文件
+==============
+readv系统调用
+和几个小fs通过vfs_iter_read->do_iter_read */
 static ssize_t do_iter_read(struct file *file, struct iov_iter *iter,
 		loff_t *pos, rwf_t flags)
 {
@@ -831,7 +858,11 @@ out:
 		fsnotify_access(file);
 	return ret;
 }
-/*  */
+/* 调用read_iter读函数
+======================================================
+好像也没什么调用
+
+ */
 ssize_t vfs_iocb_iter_read(struct file *file, struct kiocb *iocb,
 			   struct iov_iter *iter)
 {
@@ -859,7 +890,9 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL(vfs_iocb_iter_read);
-/* 读文件 */
+/* 调用read_iter函数读文件
+==========
+为什么只是小几个fs调用 */
 ssize_t vfs_iter_read(struct file *file, struct iov_iter *iter, loff_t *ppos,
 		rwf_t flags)
 {
@@ -934,6 +967,11 @@ ssize_t vfs_iter_write(struct file *file, struct iov_iter *iter, loff_t *ppos,
 }
 EXPORT_SYMBOL(vfs_iter_write);
 
+/*
+readv系统调用
+==========
+其实也是read_iter函数, 不过是iovec的版本
+=========== */
 static ssize_t vfs_readv(struct file *file, const struct iovec __user *vec,
 		  unsigned long vlen, loff_t *pos, rwf_t flags)
 {
@@ -942,8 +980,10 @@ static ssize_t vfs_readv(struct file *file, const struct iovec __user *vec,
 	struct iov_iter iter;
 	ssize_t ret;
 
+	/* 转换iovec与iter */
 	ret = import_iovec(ITER_DEST, vec, vlen, ARRAY_SIZE(iovstack), &iov, &iter);
 	if (ret >= 0) {
+		/* 调用read_iter函数来读到iter */
 		ret = do_iter_read(file, &iter, pos, flags);
 		kfree(iov);
 	}
@@ -970,6 +1010,8 @@ static ssize_t vfs_writev(struct file *file, const struct iovec __user *vec,
 	return ret;
 }
 
+/* iovec方式io
+调用read_iter回答 */
 static ssize_t do_readv(unsigned long fd, const struct iovec __user *vec,
 			unsigned long vlen, rwf_t flags)
 {
@@ -1023,7 +1065,7 @@ static inline loff_t pos_from_hilo(unsigned long high, unsigned long low)
 #define HALF_LONG_BITS (BITS_PER_LONG / 2)
 	return (((loff_t)high << HALF_LONG_BITS) << HALF_LONG_BITS) | low;
 }
-
+/* pread版本 */
 static ssize_t do_preadv(unsigned long fd, const struct iovec __user *vec,
 			 unsigned long vlen, loff_t pos, rwf_t flags)
 {
