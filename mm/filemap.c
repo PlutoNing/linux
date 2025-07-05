@@ -233,6 +233,7 @@ static void filemap_unaccount_folio(struct address_space *mapping,
 	 * folio and anyway will be cleared before returning folio to
 	 * buddy allocator.
 	 */
+	/* 如果是移除了脏页的情况 */
 	if (WARN_ON_ONCE(folio_test_dirty(folio) &&
 			 mapping_can_writeback(mapping)))
 		folio_account_cleaned(folio, inode_to_wb(mapping->host));

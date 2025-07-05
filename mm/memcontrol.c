@@ -5947,6 +5947,7 @@ static int mem_cgroup_move_account(struct page *page,
 			__mod_lruvec_state(to_vec, NR_FILE_MAPPED, nr_pages);
 		}
 
+		/* 如果移动的是脏页的话, 修改两个memcg的脏页计数 */
 		if (folio_test_dirty(folio)) {
 			struct address_space *mapping = folio_mapping(folio);
 

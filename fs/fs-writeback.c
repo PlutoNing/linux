@@ -1118,6 +1118,7 @@ int cgroup_writeback_by_id(u64 bdi_id, int memcg_id,
 	 * BTW the memcg stats are flushed periodically and this is best-effort
 	 * estimation, so some potential error is ok.
 	 */
+	/* 获取脏页的数量? */
 	dirty = memcg_page_state(mem_cgroup_from_css(memcg_css), NR_FILE_DIRTY);
 	dirty = dirty * 10 / 8;
 

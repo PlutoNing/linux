@@ -399,6 +399,9 @@ static int folio_expected_refs(struct address_space *mapping,
 }
 
 /*
+===========
+调用时机?
+
  * Replace the page in the mapping.
  *
  * The number of remaining references must be:
@@ -521,6 +524,7 @@ int folio_migrate_mapping(struct address_space *mapping,
 			__mod_lruvec_state(new_lruvec, NR_SWAPCACHE, nr);
 		}
 #endif
+		/* 如果页缓存的脏页 */
 		if (dirty && mapping_can_writeback(mapping)) {
 			__mod_lruvec_state(old_lruvec, NR_FILE_DIRTY, -nr);
 			__mod_zone_page_state(oldzone, NR_ZONE_WRITE_PENDING, -nr);

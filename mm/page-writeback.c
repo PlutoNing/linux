@@ -493,6 +493,7 @@ static unsigned long node_dirty_limit(struct pglist_data *pgdat)
 }
 
 /**
+检查一个node的脏页数量是否处于允许范围内
  * node_dirty_ok - tells whether a node is within its dirty limits
  * @pgdat: the node to check
  *
@@ -2730,6 +2731,8 @@ EXPORT_SYMBOL(noop_dirty_folio);
 然后把folio设置dirty标志
 然后是在mapping的xas给这个folio打上dirty的tag
 然后这里是inode和wbc方面的置脏
+===============================================
+调用时机?20250706023222
  * Helper function for set_page_dirty family.
  *
  * Caller must hold folio_memcg_lock().
@@ -2771,6 +2774,10 @@ static void folio_account_dirtied(struct folio *folio,
 }
 
 /*
+好像是页面回写完了调用
+======================
+调用时机:?
+
  * Helper function for deaccounting dirty page without writeback.
  * 标记系统少了的这个脏页, 统计
  * Caller must hold folio_memcg_lock().
@@ -2993,9 +3000,10 @@ int set_page_dirty_lock(struct page *page)
 EXPORT_SYMBOL(set_page_dirty_lock);
 
 /*
-清除dirty标记, 进行统计
+回写完成? 清除dirty标记, 进行统计
 ====================
-从mapping中删除一个folio前会调用这个函数
+调用时机:?
+从mapping中删除一个folio前会调用这个函数 (应该是极少数异常的情况)
  * This cancels just the dirty bit on the kernel page itself, it does NOT
  * actually remove dirty bits on any mmap's that may be around. It also
  * leaves the page tagged dirty, so any sync activity will still find it on

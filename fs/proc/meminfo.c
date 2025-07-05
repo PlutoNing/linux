@@ -100,6 +100,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		   (unsigned long)atomic_read(&zswap_stored_pages) <<
 		   (PAGE_SHIFT - 10));
 #endif
+	/* 显示脏页数量 */
 	show_val_kb(m, "Dirty:          ",
 		    global_node_page_state(NR_FILE_DIRTY));
 	show_val_kb(m, "Writeback:      ",
