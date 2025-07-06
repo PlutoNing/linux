@@ -226,6 +226,7 @@ static bool remove_migration_pte(struct folio *folio,
 		entry = pte_to_swp_entry(old_pte);
 		if (!is_migration_entry_young(entry))
 			pte = pte_mkold(pte);
+		/* 20250707021914  分析folio_test_dirty调用 */
 		if (folio_test_dirty(folio) && is_migration_entry_dirty(entry))
 			pte = pte_mkdirty(pte);
 		if (is_writable_migration_entry(entry))
@@ -399,6 +400,8 @@ static int folio_expected_refs(struct address_space *mapping,
 }
 
 /*
+把页面移动到新分配的页面上面
+感觉这里主要是属性的移动?没有页表映射, 没有内容拷贝?
 ===========
 调用时机?
 
@@ -419,7 +422,9 @@ int folio_migrate_mapping(struct address_space *mapping,
 	int expected_count = folio_expected_refs(mapping, folio) + extra_count;
 	long nr = folio_nr_pages(folio);
 
-	/* 刚刚都声明xas了， 这里还可能是null吗 */
+	/* 刚刚都声明xas了， 这里还可能是null吗
+	上层的调用者有可能是null的mapping
+	说明是匿名页 */
 	if (!mapping) {
 		/* Anonymous page without mapping */
 		if (folio_ref_count(folio) != expected_count)
@@ -431,6 +436,7 @@ int folio_migrate_mapping(struct address_space *mapping,
 		if (folio_test_swapbacked(folio))
 			__folio_set_swapbacked(newfolio);
 
+		/* 匿名页这就迁移成功了吗 */
 		return MIGRATEPAGE_SUCCESS;
 	}
 
@@ -466,6 +472,7 @@ int folio_migrate_mapping(struct address_space *mapping,
 	dirty = folio_test_dirty(folio);
 	if (dirty) {
 		folio_clear_dirty(folio);
+		/* 直接set, 没有test */
 		folio_set_dirty(newfolio);
 	}
 
@@ -570,6 +577,7 @@ int migrate_huge_page_move_mapping(struct address_space *mapping,
 }
 
 /*
+迁移page的flag属性?
  * Copy the flags and some other ancillary information
  */
 void folio_migrate_flags(struct folio *newfolio, struct folio *folio)
@@ -674,6 +682,7 @@ EXPORT_SYMBOL(folio_migrate_copy);
  *                    Migration functions
  ***********************************************************/
 
+ /* 把页面移动到新分配的页面 */
 int migrate_folio_extra(struct address_space *mapping, struct folio *dst,
 		struct folio *src, enum migrate_mode mode, int extra_count)
 {
@@ -681,11 +690,13 @@ int migrate_folio_extra(struct address_space *mapping, struct folio *dst,
 
 	BUG_ON(folio_test_writeback(src));	/* Writeback must be complete */
 
+	/* 这里更多的移动复制属性, 比如在mapping的idx什么的 */
 	rc = folio_migrate_mapping(mapping, dst, src, extra_count);
 
 	if (rc != MIGRATEPAGE_SUCCESS)
 		return rc;
 
+	/* 这里拷贝页面数据? */
 	if (mode != MIGRATE_SYNC_NO_COPY)
 		folio_migrate_copy(dst, src);
 	else
@@ -694,8 +705,12 @@ int migrate_folio_extra(struct address_space *mapping, struct folio *dst,
 }
 
 /**
+把page移动到新分配的page上面
+复制属性, 比如在mapping的idx什么的
+复制页面内容
  * migrate_folio() - Simple folio migration.
  * @mapping: The address_space containing the folio.
+ mapping可能为空
  * @dst: The folio to migrate the data to.
  * @src: The folio containing the current data.
  * @mode: How to migrate the page.
@@ -932,6 +947,9 @@ static int writeout(struct address_space *mapping, struct folio *folio)
 }
 
 /*
+如果mapping没有移动页面回调ops
+就用这个函数来移动
+先把旧的回写了和在mapping释放了
  * Default handling if a filesystem does not provide a migration function.
  */
 static int fallback_migrate_folio(struct address_space *mapping,
@@ -960,6 +978,7 @@ static int fallback_migrate_folio(struct address_space *mapping,
 }
 
 /*
+把一个页面移动到新分配的page
  * Move a page to a newly allocated page
  * The page is locked and all ptes have been successfully removed.
  *
@@ -982,6 +1001,7 @@ static int move_to_new_folio(struct folio *dst, struct folio *src,
 	if (likely(is_lru)) {
 		struct address_space *mapping = folio_mapping(src);
 
+		/* 理解为匿名页 */
 		if (!mapping)
 			rc = migrate_folio(mapping, dst, src, mode);
 		else if (mapping->a_ops->migrate_folio)

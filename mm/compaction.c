@@ -823,6 +823,7 @@ static bool too_many_isolated(struct compact_control *cc)
 }
 
 /**
+隔离这个pageblock里面的可以迁移的page
  * isolate_migratepages_block() - isolate all migrate-able pages within
  *				  a single pageblock
  * @cc:		Compaction control structure.
@@ -839,8 +840,7 @@ static bool too_many_isolated(struct compact_control *cc)
  * The pages are isolated on cc->migratepages list (not required to be empty),
  * and cc->nr_migratepages is updated accordingly.
  */
-static int
-isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
+static int isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 			unsigned long end_pfn, isolate_mode_t mode)
 {
 	pg_data_t *pgdat = cc->zone->zone_pgdat;
@@ -886,7 +886,8 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		next_skip_pfn = block_end_pfn(low_pfn, cc->order);
 	}
 
-	/* Time to isolate some pages for migration */
+	/* Time to isolate some pages for migration
+	遍历范围内的page, 开始isolate */
 	for (; low_pfn < end_pfn; low_pfn++) {
 
 		if (skip_on_failure && low_pfn >= next_skip_pfn) {
@@ -942,8 +943,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * COMPACT_CLUSTER_MAX at a time so the second call must
 		 * not falsely conclude that the block should be skipped.
 		 */
-		if (!valid_page && (pageblock_aligned(low_pfn) ||
-				    low_pfn == cc->zone->zone_start_pfn)) {
+		if (!valid_page && (pageblock_aligned(low_pfn) || low_pfn == cc->zone->zone_start_pfn)) {
 			if (!isolation_suitable(cc, page)) {
 				low_pfn = end_pfn;
 				folio = NULL;
@@ -952,6 +952,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 			valid_page = page;
 		}
 
+		/* 巨页的情况, 以后 */
 		if (PageHuge(page) && cc->alloc_contig) {
 			if (locked) {
 				unlock_page_lruvec_irqrestore(locked, flags);
@@ -996,6 +997,8 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * which is generally unsafe, but the race window is small and
 		 * the worst thing that can happen is that we skip some
 		 * potential isolation targets.
+		 如果当前遍历到的pfn还处于buddy的管理 (还没有分配出去, 是freede)
+		 跳过
 		 */
 		if (PageBuddy(page)) {
 			unsigned long freepage_order = buddy_order_unsafe(page);
@@ -1019,6 +1022,7 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * We can potentially save a lot of iterations if we skip them
 		 * at once. The check is racy, but we can consider only valid
 		 * values and the only danger is skipping too much.
+		 复合页的情况
 		 */
 		if (PageCompound(page) && !cc->alloc_contig) {
 			const unsigned int order = compound_order(page);
@@ -1034,6 +1038,8 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * Check may be lockless but that's ok as we recheck later.
 		 * It's possible to migrate LRU and non-lru movable pages.
 		 * Skip any other type of page
+		 如果不是lru里面的page
+		 PageLRU表示? 以后
 		 */
 		if (!PageLRU(page)) {
 			/*
@@ -1071,17 +1077,21 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		 * admittedly racy check.
 		 */
 		mapping = folio_mapping(folio);
+		/* 如果是匿名页, 并且被pin了 */
 		if (!mapping && (folio_ref_count(folio) - 1) > folio_mapcount(folio))
 			goto isolate_fail_put;
 
 		/*
 		 * Only allow to migrate anonymous pages in GFP_NOFS context
 		 * because those do not depend on fs locks.
+		 如果是文件页, 但是gfp没有允许与FS交互
 		 */
 		if (!(cc->gfp_mask & __GFP_FS) && mapping)
 			goto isolate_fail_put;
 
-		/* Only take pages on LRU: a check now makes later tests safe */
+		/* Only take pages on LRU: a check now makes later tests safe
+		仅仅处理lru page
+		20250707015656 什么时候会lru flag */
 		if (!folio_test_lru(folio))
 			goto isolate_fail_put;
 
@@ -1098,6 +1108,8 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		if ((mode & ISOLATE_ASYNC_MIGRATE) && folio_test_writeback(folio))
 			goto isolate_fail_put;
 
+		/* 如果这是脏page
+		可能是匿名页吗? */
 		if ((mode & ISOLATE_ASYNC_MIGRATE) && folio_test_dirty(folio)) {
 			bool migrate_dirty;
 
@@ -1116,15 +1128,19 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 			mapping = folio_mapping(folio);
 			migrate_dirty = !mapping ||
 					mapping->a_ops->migrate_folio;
+			/* 没有mapping, 匿名页, 可以migrate_dirty
+			有mapping, 也有migrate_folio aops, 可以migrate_dirty */
 			folio_unlock(folio);
 			if (!migrate_dirty)
 				goto isolate_fail_put;
 		}
 
-		/* Try isolate the folio */
+		/* Try isolate the folio
+		这里清除page的lru 标记 */
 		if (!folio_test_clear_lru(folio))
 			goto isolate_fail_put;
 
+		/* 只有本来不是lru page的情况下, 才会到这里 */
 		lruvec = folio_lruvec(folio);
 
 		/* If we already hold the lock, we can skip some rechecking */

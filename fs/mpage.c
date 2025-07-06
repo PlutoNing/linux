@@ -459,7 +459,10 @@ struct mpage_data {
 };
 
 /*
- 清除page关联的bh
+ 清除page的buffer的dirty置位
+ 如果page已经update的, 会删除buffer
+ ==============================================================
+mpage的__mpage_writepage用于回写page
  * We have our BIO, so we can now mark the buffers clean.  Make
  * sure to only clean buffers which we know we'll be writing.
  */
@@ -492,7 +495,10 @@ static void clean_buffers(struct page *page, unsigned first_unmapped)
 }
 
 /*
-2024年10月12日16:19:50
+清除page的buffer的dirty置位
+如果page已经update的, 会删除buffer
+====================================
+6.6没有调用
  * For situations where we want to clean all buffers attached to a page.
  * We don't need to calculate how many buffers are attached to the page,
  * we just need to specify a number larger than the maximum number of buffers.
@@ -501,7 +507,9 @@ void clean_page_buffers(struct page *page)
 {
 	clean_buffers(page, ~0U);
 }
-/* mpage的回写函数 */
+/* mpage的回写函数
+============
+mpage用来回写write_cache_pages(mapping, wbc, __mpage_writepage, &mpd) */
 static int __mpage_writepage(struct folio *folio, struct writeback_control *wbc,
 		      void *data)
 {
@@ -677,7 +685,7 @@ alloc_new:
 		bio = mpage_bio_submit_write(bio);
 		goto alloc_new;
 	}
-/* 就是清除一些buffer的dirty */
+	/* 就是清除一些buffer的dirty */
 	clean_buffers(&folio->page, first_unmapped);
 
 	BUG_ON(folio_test_writeback(folio));

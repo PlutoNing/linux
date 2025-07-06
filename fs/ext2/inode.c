@@ -960,6 +960,8 @@ ext2_dax_writepages(struct address_space *mapping, struct writeback_control *wbc
 }
 
 const struct address_space_operations ext2_aops = {
+	/* 也是使用block dirty folio?
+	这里block的含义是什么 */
 	.dirty_folio		= block_dirty_folio,
 	.invalidate_folio	= block_invalidate_folio,
 	.read_folio		= ext2_read_folio,

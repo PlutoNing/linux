@@ -974,6 +974,7 @@ int folio_referenced(struct folio *folio, int is_locked,
 }
 
 ////遍历mapping里面的全部vma中, 映射了此folio的vma, 进行mkclean操作
+/* make clean就是找到映射这个page的pte, 移除dirty属性等 */
 static int page_vma_mkclean_one(struct page_vma_mapped_walk *pvmw)
 {
 	int cleaned = 0;
@@ -997,21 +998,25 @@ static int page_vma_mkclean_one(struct page_vma_mapped_walk *pvmw)
 		int ret = 0;
 
 		address = pvmw->address;
-		if (pvmw->pte) { //处理这个pte
-		//是怎么样mk clean的呢
+		if (pvmw->pte) {
+			/* 如果page_vma_mapped_walk返回了pte, 这个pte是指向pfn的 */
 			pte_t *pte = pvmw->pte;
 			pte_t entry = ptep_get(pte);
 
 			if (!pte_dirty(entry) && !pte_write(entry))
 				continue; //如果这个pte不脏且不可写, 就不用处理
 
+			/* 到这里是这个pte是dirty的或者可写的 */
 			flush_cache_page(vma, address, pte_pfn(entry));
 			entry = ptep_clear_flush(vma, address, pte);
 			entry = pte_wrprotect(entry);
 			entry = pte_mkclean(entry);
 			set_pte_at(vma->vm_mm, address, pte, entry);
 			ret = 1;
-		} else { //没有pte?
+		} else { 
+			/* 没有pte?
+			按理说,page_vma_mapped_walk返回true, 就是说明找到了一个指向pfn的pte和pmd
+			这里如果pmd存在的话, 可能pmd指向一个hugepage  */
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 			pmd_t *pmd = pvmw->pmd;
 			pmd_t entry;
@@ -1041,7 +1046,14 @@ static int page_vma_mkclean_one(struct page_vma_mapped_walk *pvmw)
 	return cleaned;
 }
 
-//对mapping的进行rmap walk, 对folio进行mkclean操作
+/* 
+遍历映射了此mapping中的folio的vma, 
+进行mkclean操作
+这个函数就是rmap遍历过程中对vma执行的回调, 执行mkclean/
+找到映射这个pfn的pte, 修改pte的dirty属性等
+===============================================
+回收内存调用pageout前会调用这个函数
+*/
 static bool page_mkclean_one(struct folio *folio, struct vm_area_struct *vma,
 			     unsigned long address, void *arg)
 {
@@ -1063,15 +1075,25 @@ static bool page_mkclean_one(struct folio *folio, struct vm_area_struct *vma,
 	return true;
 }
 
+/*  */
 static bool invalid_mkclean_vma(struct vm_area_struct *vma, void *arg)
 {
-	if (vma->vm_flags & VM_SHARED)
+	if (vma->vm_flags
+		 & VM_SHARED)
 		return false;
 
 	return true;
 }
 
-//遍历mapping里面的全部vma中, 映射了此folio的vma, 进行mkclean操作
+/*
+遍历mapping里面的全部vma中映射了此folio的vma, 
+进行mkclean操作
+mkclean找到映射这个pfn的pte, 修改pte的dirty属性等
+==============
+返回0, 表示没有工作
+返回处理了几个pte?
+===============================================
+回收内存调用pageout前会调用这个函数, 移除映射到这个page的pte的dirty属性 */
 int folio_mkclean(struct folio *folio)
 {
 	int cleaned = 0;
@@ -1086,12 +1108,14 @@ int folio_mkclean(struct folio *folio)
 
 	if (!folio_mapped(folio))
 		return 0;   
-	//为什么只处理mapped的?
+
 
 	mapping = folio_mapping(folio);
 	if (!mapping)
 		return 0;
 
+	/* 加锁情况下, 处理mapping中被map的folio
+	找到映射到这个folio的pte, 修改页表项的dirty属性 */
 	rmap_walk(folio, &rwc);
 
 	return cleaned;
@@ -2547,6 +2571,7 @@ static void rmap_walk_anon(struct folio *folio,
 }
 
 /*
+遍历映射到此mapping中的文件页的函数, 执行指定的回调
  * rmap_walk_file - do something to file page using the object-based rmap method
  通过rmap方法处理文件页
  * @folio: the folio to be handled
@@ -2615,7 +2640,9 @@ done:
 		i_mmap_unlock_read(mapping);
 }
 
-//
+/* 
+遍历映射到此folio的vma
+ */
 void rmap_walk(struct folio *folio, struct rmap_walk_control *rwc)
 {
 	if (unlikely(folio_test_ksm(folio)))

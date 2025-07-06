@@ -922,6 +922,8 @@ void pagecache_isize_extended(struct inode *inode, loff_t from, loff_t to)
 	/*
 	 * See clear_page_dirty_for_io() for details why set_page_dirty()
 	 * is needed.
+	 page_mkclean解除页表对这个page的脏位
+	 set_page_dirty发起page的回写
 	 */
 	if (page_mkclean(page))
 		set_page_dirty(page);

@@ -1493,8 +1493,14 @@ static unsigned long zap_pte_range(struct mmu_gather *tlb,
 			}
 
 			delay_rmap = 0;
-			if (!PageAnon(page)) {// 被映射的在内存中的文件页?
+			if (!PageAnon(page)) {
+				/* 如果是被映射的文件页 */
 				if (pte_dirty(ptent)) {
+					/* 如果pte是dirty的
+					这里set_page_dirty调用mapping的回调, 把page也设置dirty (
+					有的mapping的dirty aops实现还会在io, mapping层面置脏page
+					======================================================
+					总之是为了回写) */
 					set_page_dirty(page);
 					if (tlb_delay_rmap(tlb)) {
 						delay_rmap = 1;
@@ -6055,6 +6061,7 @@ int __access_remote_vm(struct mm_struct *mm, unsigned long addr, void *buf,
 		return 0;
 
 	/* Untag the address before looking up the VMA */
+	/* 好像就是返回原本的addr? */
 	addr = untagged_addr_remote(mm, addr);
 
 	/* Avoid triggering the temporary warning in __get_user_pages */
@@ -6066,9 +6073,11 @@ int __access_remote_vm(struct mm_struct *mm, unsigned long addr, void *buf,
 		int bytes, offset;
 		void *maddr;
 		struct vm_area_struct *vma = NULL;
+		/* 获取当前循环的addr对应的page */
 		struct page *page = get_user_page_vma_remote(mm, addr,
 							     gup_flags, &vma);
 
+		/* 获取异常 */
 		if (IS_ERR_OR_NULL(page)) {
 			/* We might need to expand the stack to access it */
 			vma = vma_lookup(mm, addr);
@@ -6097,6 +6106,7 @@ int __access_remote_vm(struct mm_struct *mm, unsigned long addr, void *buf,
 			if (bytes <= 0)
 				break;
 		} else {
+			/* 顺利获取 */
 			bytes = len;
 			offset = addr & (PAGE_SIZE-1);
 			if (bytes > PAGE_SIZE-offset)
@@ -6104,8 +6114,13 @@ int __access_remote_vm(struct mm_struct *mm, unsigned long addr, void *buf,
 
 			maddr = kmap(page);
 			if (write) {
+				/* 如果是要写入其他进程的内存 */
 				copy_to_user_page(vma, page, addr,
 						  maddr + offset, buf, bytes);
+				/* 这里设置为dirty, 发起回写
+				================
+				这里万一不是匿名页呢
+				匿名vma的dirty aops是什么, 以后 */
 				set_page_dirty_lock(page);
 			} else {
 				copy_from_user_page(vma, page, addr,
@@ -6114,6 +6129,8 @@ int __access_remote_vm(struct mm_struct *mm, unsigned long addr, void *buf,
 			kunmap(page);
 			put_page(page);
 		}
+
+		/* 步进循环的游标 */
 		len -= bytes;
 		buf += bytes;
 		addr += bytes;

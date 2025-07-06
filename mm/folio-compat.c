@@ -60,6 +60,11 @@ bool set_page_writeback(struct page *page)
 }
 EXPORT_SYMBOL(set_page_writeback);
 
+/* 调用mapping的dirty回调置脏folio
+===============================
+gup写入其他进程内存调用
+truncate调用
+不少机制都会调用 */
 bool set_page_dirty(struct page *page)
 {
 	return folio_mark_dirty(page_folio(page));

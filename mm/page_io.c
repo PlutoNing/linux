@@ -290,6 +290,7 @@ static void sio_write_complete(struct kiocb *iocb, long ret)
 				   ret, page_file_offset(page));
 		for (p = 0; p < sio->pages; p++) {
 			page = sio->bvec[p].bv_page;
+			/* 置脏这个page flag, 也会在mapping置脏, 发起回写 */
 			set_page_dirty(page);
 			ClearPageReclaim(page);
 		}

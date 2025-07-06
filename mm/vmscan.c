@@ -1390,6 +1390,7 @@ typedef enum {
 
 /*
 shrink_folio_list()调用pageout()来处理每个脏folio
+调用a_ops->writepage来回写这个page
  * pageout is called by shrink_folio_list() for each dirty folio.
  * Calls ->writepage().
  */
@@ -1433,7 +1434,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 	}
 	if (mapping->a_ops->writepage == NULL)
 		return PAGE_ACTIVATE;
-/* 准备处理这个脏folio了,先清除dirty位,成功了就处理 */
+	/* 准备处理这个脏folio了,先清除dirty位,成功了就处理 */
 	if (folio_clear_dirty_for_io(folio)) {
 		int res;
 		struct writeback_control wbc = {
@@ -1455,6 +1456,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			return PAGE_ACTIVATE;
 		}
 
+		/* 立马就回写完了? */
 		if (!folio_test_writeback(folio)) {
 			/* synchronous write or broken a_ops? */
 			folio_clear_reclaim(folio);

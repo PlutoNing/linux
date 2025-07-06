@@ -709,6 +709,7 @@ static __always_inline bool __folio_test_movable(const struct folio *folio)
 }
 /* 
 检查page是不是movable的
+什么是movable
 */
 static __always_inline int __PageMovable(struct page *page)
 {

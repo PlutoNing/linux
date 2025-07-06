@@ -798,9 +798,13 @@ EXPORT_SYMBOL(mark_buffer_dirty_inode);
 
 /*
 fs的mapping用此函数把自己这个folio设置为脏
-=================
 依次把buffer, folio, mapping, inode置脏
+发起回写
+=======================================
+与filemap_dirty_folio(也是发起回写)的区别:
+多了置脏buffer的步骤
 ========================================
+调用时机:
 bdev fs的fops的dirty_folio回调
 ======================================
  * Add a page to the dirty page list.
@@ -853,7 +857,7 @@ bool block_dirty_folio(struct address_space *mapping, struct folio *folio)
 	spin_unlock(&mapping->private_lock);
 
 	/* 这里找到folio对应的wb,
-	在mapping里面把folio置脏 */
+	在io层面和mapping层面把folio置脏 */
 	if (newly_dirty)
 		__folio_mark_dirty(folio, mapping, 1);
 
@@ -1202,7 +1206,7 @@ static sector_t folio_init_buffers(struct folio *folio,
 }
 
 /*
-为了读写块设备的block位置
+为了读写块设备的block位置 (getblk找不到buffer都走这里创建)
 创建bh
 ============
 申请页面, 加入mapping, 在上面创建bh
@@ -1243,12 +1247,16 @@ static int grow_dev_page(struct block_device *bdev, sector_t block,
 
 	/* 看看这个上面有没有bh */
 	bh = folio_buffers(folio);
-	if (bh) {/* 如果有bh的话, 有可能直接返回 */
+	if (bh) {
+		/* 按理来说不应该有buffer? 因为就是刚刚没找到buffer或者folio才
+		调用这个函数的 */
+		/* 如果有bh的话, 如果大小合适,有可能直接返回 */
 		if (bh->b_size == size) {
 			end_block = folio_init_buffers(folio, bdev,
 					(sector_t)index << sizebits, size);
 			goto done;
 		}
+		/* 大小不合适, 就删除这些已存在的buffer */
 		if (!try_to_free_buffers(folio))
 			goto failed;
 	}
@@ -1376,10 +1384,12 @@ static struct buffer_head * __getblk_slow(struct block_device *bdev, sector_t bl
  */
 
 /**
-置脏bh
-如果是首次, 也会置脏folio和mapping
+置脏一个buffer
+其实就是回写这个buffer, 这里发起
+设置buffer的dirty flag, 如果是首次, 也会置脏folio和mapping级别
 ==============================
-调用场合
+调用场合:
+
 
  * mark_buffer_dirty - mark a buffer_head as needing writeout
  * @bh: the buffer_head to mark dirty
@@ -1421,7 +1431,7 @@ void mark_buffer_dirty(struct buffer_head *bh)
 		if (!folio_test_set_dirty(folio)) {/* 如果folio本来不是脏的
 			看来这里不会重复置脏 */
 			mapping = folio->mapping;
-			if (mapping)/* 把mapping也置脏 */
+			if (mapping)/* 在io层面，mapping层面置脏 */
 				__folio_mark_dirty(folio, mapping, 0);
 		}
 		folio_memcg_unlock(folio);
@@ -1828,6 +1838,9 @@ static void discard_buffer(struct buffer_head * bh)
 }
 
 /**
+
+==================
+一些fs用这个函数作为mapping的invalidate_folio回调
  * block_invalidate_folio - Invalidate part or all of a buffer-backed folio.
  * @folio: The folio which is affected.
  * @offset: start of the range to invalidate
@@ -1883,6 +1896,8 @@ void block_invalidate_folio(struct folio *folio, size_t offset, size_t length)
 	 * We release buffers only if the entire folio is being invalidated.
 	 * The get_block cached value has been unconditionally invalidated,
 	 * so real IO is not possible anymore.
+	 如果整个folio都被invalidate了
+	 就释放folio
 	 */
 	if (length == folio_size(folio))
 		filemap_release_folio(folio, 0);
@@ -1892,9 +1907,9 @@ out:
 EXPORT_SYMBOL(block_invalidate_folio);
 
 /*
-   给folio创建buffer， 创建folio的bh链
-
-   folio的priv指向一串环形的bh
+   给folio创建buffer
+   ======================================================
+   buffer是一个链, 句柄在folio的priv
  * We attach and possibly dirty the buffers atomically wrt
  * block_dirty_folio() via private_lock.  try_to_free_buffers
  * is already excluded via the folio lock.
@@ -1921,6 +1936,7 @@ void folio_create_empty_buffers(struct folio *folio, unsigned long blocksize,
 		folio_test_dirty(folio)) {
 		bh = head;
 		do {
+			/* 如果page被置脏了, 说明有人希望回写 */
 			if (folio_test_dirty(folio))
 				set_buffer_dirty(bh);
 			if (folio_test_uptodate(folio))
@@ -3395,7 +3411,9 @@ drop_buffers(struct folio *folio, struct buffer_head **buffers_to_free)
 		bh = bh->b_this_page;
 	} while (bh != head);
 
-	/* 这里把page上的全部bh从关联的mapping移除 */
+	/* 这里把page上的全部bh从关联的mapping移除
+	========
+	关联了mapping, 回写mapping的inode时也会回写这个buffer */
 	do {
 		struct buffer_head *next = bh->b_this_page;
 
@@ -3411,11 +3429,18 @@ failed:
 }
 
 /* 
-把folio的bh链剔除出来
-然后遍历这个bh链， 逐个释放bh
+主要是会写完毕page调用这个 (相比于因为删除等原因来cancel dirty)
+================
+释放folio的buffer链, 清除folio的dirty位 (要求folio结束writeback,
+ buffer都不busy)
 =============
-20250706023525
 返回真说明folio的全部bh都是非busy的， 释放了
+===================
+调用场合:
+grow_dev_page发现folio已经存在了不合适的buffer, 用于删除buffer
+mpage的__mpage_writepage用于回写page后clean page, clean_buffers->try_to_free_buffers
+文件系统用于clean page
+pageout函数也调用
 */
 bool try_to_free_buffers(struct folio *folio)
 {
@@ -3429,6 +3454,7 @@ bool try_to_free_buffers(struct folio *folio)
 
 	/* 这里把folio的bh链剔除出来， 位于buffers_to_free */
 	if (mapping == NULL) {		/* can this still happen? */
+		/* 没有mapping就不用加锁, 也不用cacel dirty */
 		ret = drop_buffers(folio, &buffers_to_free);
 		goto out;
 	}
@@ -3455,7 +3481,7 @@ bool try_to_free_buffers(struct folio *folio)
 	spin_unlock(&mapping->private_lock);
 out:
 
-	/* 里面是从folio剔除的， 全部非busy的 bh链 */
+	/* 里面是从folio剔除的， 全部非busy的buffer链 */
 	if (buffers_to_free) {
 		/* 这里一个个的释放这些bh */
 		struct buffer_head *bh = buffers_to_free;

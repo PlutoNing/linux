@@ -503,6 +503,7 @@ static bool user_event_enabler_queue_fault(struct user_event_mm *mm,
 	return true;
 }
 
+/*  */
 static int user_event_enabler_write(struct user_event_mm *mm,
 				    struct user_event_enabler *enabler,
 				    bool fixup_fault, int *attempt)
@@ -529,9 +530,11 @@ static int user_event_enabler_write(struct user_event_mm *mm,
 
 	align_addr_bit(&uaddr, &bit, ENABLE_BITOPS(enabler));
 
+	/* 获取这个mm的uaddr处的page */
 	ret = pin_user_pages_remote(mm->mm, uaddr, 1, FOLL_WRITE | FOLL_NOFAULT,
 				    &page, NULL);
 
+	/* 现在page就是那个mm的那个地址的page */
 	if (unlikely(ret <= 0)) {
 		if (!fixup_fault)
 			return -EFAULT;
@@ -542,7 +545,10 @@ static int user_event_enabler_write(struct user_event_mm *mm,
 		return -EFAULT;
 	}
 
+	/* 通过kmap来修改这个页面 */
 	kaddr = kmap_local_page(page);
+	/* ptr就是uaddr对应的地址
+	现在可以通过写入ptr来修改mm的uaddr这个page (因为kmap了) */
 	ptr = kaddr + (uaddr & ~PAGE_MASK);
 
 	/* Update bit atomically, user tracers must be atomic as well */
@@ -552,6 +558,7 @@ static int user_event_enabler_write(struct user_event_mm *mm,
 		clear_bit(bit, ptr);
 
 	kunmap_local(kaddr);
+	/* 现在unpin, 然后发起回写 */
 	unpin_user_pages_dirty_lock(&page, 1, true);
 
 	return 0;

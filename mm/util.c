@@ -792,6 +792,7 @@ struct address_space *folio_mapping(struct folio *folio)
 EXPORT_SYMBOL(folio_mapping);
 
 /**
+拷贝folio的内容
  * folio_copy - Copy the contents of one folio to another.
  * @dst: Folio to copy to.
  * @src: Folio to copy from.

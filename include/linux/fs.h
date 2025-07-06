@@ -440,6 +440,7 @@ struct address_space_operations {
 	/* Unfortunately this kludge is needed for FIBMAP. Don't use it */
 	sector_t (*bmap)(struct address_space *, sector_t);
 	void (*invalidate_folio) (struct folio *, size_t offset, size_t len);
+	/* 20250706135422 */
 	bool (*release_folio)(struct folio *, gfp_t);
 	/* 这个回调做什么
 	有这个回调fs的一般不多

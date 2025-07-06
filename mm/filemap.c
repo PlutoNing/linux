@@ -155,7 +155,7 @@ static void page_cache_delete(struct address_space *mapping,
 从mapping移除此folio之前的统计操作
 ==================================================================
 调用场合:
-
+通过filemap_remove_folio->__filemap_remove_folio(主要路径)很多内核机制都会调用
 */
 static void filemap_unaccount_folio(struct address_space *mapping,
 		struct folio *folio)
@@ -248,7 +248,7 @@ pagecache移除的主要接口
 内核很多fs实现会调用
 shrink_folio_list也调用
 truncate调用
-
+filemap_remove_folio与remove_mapping都会调用
 ================================
  * Delete a page from the page cache and free it. Caller has to make
  * sure the page is locked and that nobody else uses it - or that usage
@@ -310,6 +310,7 @@ void filemap_remove_folio(struct folio *folio)
 		inode_add_lru(mapping->host);
 	spin_unlock(&mapping->host->i_lock);
 
+	/* 调用free_folio回调 */
 	filemap_free_folio(mapping, folio);
 }
 
@@ -722,7 +723,7 @@ static bool mapping_needs_writeback(struct address_space *mapping)
 	return mapping->nrpages;
 }
 
-// 返回真说明范围内有至少一个dirty,wb或者locked的folio
+/* 返回真说明范围内有至少一个dirty,wb或者locked的folio */
 bool filemap_range_has_writeback(struct address_space *mapping,
 				 loff_t start_byte, loff_t end_byte)
 {
@@ -4034,7 +4035,7 @@ out:
 }
 EXPORT_SYMBOL(filemap_map_pages);
 
-/* 文件映射的vma缺页之后, 调用这个页面通知vma可写了 */
+/* 文件映射的vma缺页之后, 调用这个页面通知vma可写了 (页表层面的操作) */
 vm_fault_t filemap_page_mkwrite(struct vm_fault *vmf)
 {
 	struct address_space *mapping = vmf->vma->vm_file->f_mapping;
@@ -4587,9 +4588,14 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 EXPORT_SYMBOL(generic_file_write_iter);
 
 /**
-总的来说就是检查一下需要释放的东西
-一种情况是,从mapping驱逐folio之前,释放folio的fs priv数据,buffer等相关.
-返回是否还需要释放(是否成功)
+在加锁和folio结束回写的情况下, 释放priv, buffer等资源
+================================================
+	如果mapping的invalidate_folio发现整个folio的buffer都被invalidate
+就调用来释放folio (确保folio加锁回写结束, 调用release_folio回调, 释放buffer)
+	在mapping移动folio到新分配的folio, 也会调用
+	shrink_list调用
+==============================================
+返回是表示释放成功
  * filemap_release_folio() - Release fs-specific metadata on a folio.
  * @folio: The folio which the kernel is trying to free.
  * @gfp: Memory allocation flags (and I/O mode).
@@ -4639,7 +4645,7 @@ EXPORT_SYMBOL(filemap_release_folio);
  * writeback, and the number of (recently) evicted pages.
    函数会查询[first_index, last_index]范围内的pagecache的统计信息
    查询的统计信息包括:脏页数,标记为写回的页数,以及(最近)驱逐的页数
-
+20250707020307
  */
 static void filemap_cachestat(struct address_space *mapping,
 		pgoff_t first_index, pgoff_t last_index, struct cachestat *cs)
@@ -4720,6 +4726,8 @@ resched:
 }
 
 /*
+20250707020322
+cachestat系统调用
  * The cachestat(2) system call.
  *
  * cachestat() returns the page cache statistics of a file in the
@@ -4788,6 +4796,7 @@ SYSCALL_DEFINE4(cachestat, unsigned int, fd,
 		csr.len == 0 ? ULONG_MAX : (csr.off + csr.len - 1) >> PAGE_SHIFT;
 	memset(&cs, 0, sizeof(struct cachestat));
 	mapping = f.file->f_mapping;
+	/* 获取mapping的stat */
 	filemap_cachestat(mapping, first_index, last_index, &cs);
 	fdput(f);
 

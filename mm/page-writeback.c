@@ -2439,6 +2439,8 @@ EXPORT_SYMBOL(tag_pages_for_writeback);
 
 /**
 使用wbc作为控制,写回这个mapping的所有脏页
+===================
+一个比较通用基础的回写mapping函数
  * write_cache_pages - walk the list of dirty pages of the given address space and write all of them.
    遍历给定地址空间的脏页列表并写回所有脏页
  * @mapping: address space structure to write, 用于写入的地址空间结构
@@ -2777,7 +2779,8 @@ static void folio_account_dirtied(struct folio *folio,
 好像是页面回写完了调用
 ======================
 调用时机:?
-
+一个回写完毕的, __folio_cancel_dirty
+一个是更偏向于主动删除的, filemap_unaccount_folio
  * Helper function for deaccounting dirty page without writeback.
  * 标记系统少了的这个脏页, 统计
  * Caller must hold folio_memcg_lock().
@@ -2793,11 +2796,12 @@ void folio_account_cleaned(struct folio *folio, struct bdi_writeback *wb)
 }
 
 /*
-查找创建folio对应的wb, 然后更新wb,lruvec,zone的脏页统计
-在mapping里面给这个folio打上dirty的tag
+在io和mapping层面对folio置脏
 ====================
-哪里调用这个函数?
-:
+哪里调用这个函数? 这个函数更偏向于内部函数, 下划线开头
+1, 主要是mark_bufer_dirty, 这个是内核层面直接来调用这个内部函数在pagecache置脏folio
+2, 和filemap_dirty_folio调用, 这个filemap_dirty_folio其实也会调用__folio_mark_dirty,
+filemap_dirty_folio更偏向于外部, 甚至可以直接作为fs的mapping的dirty folio这个aops
    --------------
    2024年12月7日21:28:40 在page, mapping, inode上标记这个folio为脏页
  * Mark the folio dirty, and set it dirty in the page cache, and mark
@@ -2820,9 +2824,12 @@ void __folio_mark_dirty(struct folio *folio, struct address_space *mapping,
 	xa_lock_irqsave(&mapping->i_pages, flags);
 	if (folio->mapping) {	/* Race with truncate? */
 		WARN_ON_ONCE(warn && !folio_test_uptodate(folio));
-		//更新wb, inode的统计信息
+		/* 在io层面dirty
+		更新wb, inode的统计信息 */
 		folio_account_dirtied(folio, mapping);
-		/* 在mapping的页缓存中设置这个页为脏页 */
+		/*
+		在mapping层面dirty
+		在mapping的页缓存中设置这个页为脏页 */
 		__xa_set_mark(&mapping->i_pages, folio_index(folio),
 				PAGECACHE_TAG_DIRTY);
 	}
@@ -2830,9 +2837,14 @@ void __folio_mark_dirty(struct folio *folio, struct address_space *mapping,
 }
 
 /**
-在mapping级别标记folio为脏
-============================
+经常用作mapping的dirty aops
+在io和页缓存级别标记folio为脏, 发起io
+==============================================================
 这个函数使用不是很多, 主要是fs实现使用, 还有就是blk io时用于redirty
+folio_mark_dirty-->filemap_dirty_folio------\
+                                             >--------->__folio_mark_dirty
+mark_buffer_dirty---------------------------/
+=================================================================
  * filemap_dirty_folio - Mark a folio dirty for filesystems
   which do not use buffer_heads.
 让一个folio变脏,适用于不使用buffer_heads的文件系统.
@@ -2870,9 +2882,10 @@ bool filemap_dirty_folio(struct address_space *mapping, struct folio *folio)
 		return false;
 	}
 
-	/* 在mapping级别设置页面为脏 */
+
+	/* 在io和mapping的页缓存中设置这个页为脏页,更新wb, inode的统计信息 */
 	__folio_mark_dirty(folio, mapping, !folio_test_private(folio));
-	// 在mapping的页缓存中设置这个页为脏页,更新wb, inode的统计信息
+	
 	folio_memcg_unlock(folio);
 
 	if (mapping->host) {
@@ -2907,7 +2920,6 @@ bool folio_redirty_for_writepage(struct writeback_control *wbc,
 	bool ret;
 
 	wbc->pages_skipped += nr;
-	//标记文件映射的folio为脏
 	/* 这里就是再dirty一次 */
 	ret = filemap_dirty_folio(mapping, folio);
 
@@ -2930,11 +2942,26 @@ bool folio_redirty_for_writepage(struct writeback_control *wbc,
 EXPORT_SYMBOL(folio_redirty_for_writepage);
 
 /**
-   调用mapping的dirty回调
+   调用mapping的dirty回调, 在mapping级别设置dirty, 发起这个page的回写
+   ===============================================
+   感觉是基本谁都可以调用, 回写页缓存的page, 先调用mapping的这个dirty aops
+   本身先把自己在各种层面各种机制置脏, 然后有的还会调用__内部函数来置脏
+   ===============================================
+   调用时机
+	filemap_page_mkwrite
+	set_page_dirty
+	gup
+	huge
+	ksm
+	migrate
+	fault
+	swap
+	回收内存
+
+   ===============================================
  * folio_mark_dirty - Mark a folio as being modified.
    标记一个folio为被修改.
  * @folio: The folio.
- * 
  * The folio may not be truncated while this function is running.
  * Holding the folio lock is sufficient to prevent truncation, but some
  * callers cannot acquire a sleeping lock.  These callers instead hold
@@ -2945,8 +2972,6 @@ EXPORT_SYMBOL(folio_redirty_for_writepage);
  * 持有 folio 的锁足以防止截断，但某些调用者无法获取会引起休眠的锁。
  * 这些调用者会持有页表锁（page table lock），该锁用于保护至少包含该 folio 中一个页面的页表。
  * 在截断操作期间，页表锁会在解除页面映射（unmap pages）之前阻止截断操作，从而确保 folio 未被移出其映射。
- *
-   
  * Return: True if the folio was newly dirtied, false if it was already dirty.
  */
 bool folio_mark_dirty(struct folio *folio)
@@ -2971,6 +2996,7 @@ bool folio_mark_dirty(struct folio *folio)
 		 */
 		if (folio_test_reclaim(folio))
 			folio_clear_reclaim(folio);
+		/* 让mapping自己设置mapping级别的dirty */
 		return mapping->a_ops->dirty_folio(mapping, folio);
 	}
 
@@ -2979,6 +3005,9 @@ bool folio_mark_dirty(struct folio *folio)
 EXPORT_SYMBOL(folio_mark_dirty);
 
 /*
+先加锁, 再置脏的版本封装
+==============================
+gup写入其他进程的内存 , 会调用这个函数来置脏发起回写
  * set_page_dirty() is racy if the caller has no reference against
  * page->mapping->host, and if the page is unlocked.  This is because another
  * CPU could truncate the page off the mapping and then free the mapping.
@@ -3004,6 +3033,7 @@ EXPORT_SYMBOL(set_page_dirty_lock);
 ====================
 调用时机:?
 从mapping中删除一个folio前会调用这个函数 (应该是极少数异常的情况)
+主要还是try_to_free_buffers调用
  * This cancels just the dirty bit on the kernel page itself, it does NOT
  * actually remove dirty bits on any mmap's that may be around. It also
  * leaves the page tagged dirty, so any sync activity will still find it on
@@ -3034,14 +3064,22 @@ void __folio_cancel_dirty(struct folio *folio)
 
 		unlocked_inode_to_wb_end(inode, &cookie);
 		folio_memcg_unlock(folio);
-	} else {//清除dirty. 不用写回似乎就是直接清除脏位
+	} else {//
+	// 这里直接清除脏位
 		folio_clear_dirty(folio);
 	}
 }
 EXPORT_SYMBOL(__folio_cancel_dirty);
 
 /*
-清除页表的脏位, 但是调用ops的dirty回调,清除page flag的脏位
+清除页表的脏位, 
+	但是调用ops的dirty回调, 回调会在io和mapping层面置脏folio
+然后清除folio的脏位
+===============
+感觉是为了把dirty从内核这个层面传导到io和页缓存的层面?
+然后取消dirty, 看起来好像dirty从内核转移到了io和页缓存?
+==========================
+pageout函数回写mapping的folio前,会调用来清除页表项的dirty, 设置mapping的dirty?
  * Clear a folio's dirty flag, while caring for dirty memory accounting.
  * Returns true if the folio was previously dirty.
  * 清除一个folio的脏标志,同时关心脏内存计数.如果这个folio之前是脏的,则返回true.
@@ -3069,7 +3107,8 @@ bool folio_clear_dirty_for_io(struct folio *folio)
 
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 
-	if (mapping && mapping_can_writeback(mapping)) {//如果这个folio有mapping,并且这个mapping可以写回
+	if (mapping && mapping_can_writeback(mapping)) {
+		//如果这个folio有mapping,并且这个mapping可以写回
 		struct inode *inode = mapping->host;
 		struct bdi_writeback *wb;
 		struct wb_lock_cookie cookie = {};
@@ -3107,8 +3146,9 @@ bool folio_clear_dirty_for_io(struct folio *folio)
 
 		 */
 		if (folio_mkclean(folio)) //让指向这个folio的所有页表项的脏位都清除
-			folio_mark_dirty(folio); //为什么又让page变dirty了, 这里是调用ops的dirty回调
-		/*
+			folio_mark_dirty(folio);
+		/* 为什么又让page变dirty了, 这里是调用ops的dirty回调20250706225706
+		这是mapping级别的dirty, 不再是页表项的dirty了?
 		 * We carefully synchronise fault handlers against
 		 * installing a dirty pte and marking the folio dirty
 		 * at this point.  We do this by having them hold the
@@ -3119,7 +3159,8 @@ bool folio_clear_dirty_for_io(struct folio *folio)
 		   我们通过dirty的时候持有页锁来实现这一点,而在这里进来的folio总是被锁定的,所以我们得到了期望的排除.
 		 */
 		wb = unlocked_inode_to_wb_begin(inode, &cookie);
-		if (folio_test_clear_dirty(folio)) {//这里是清除标记位的dirty
+		/* 这里又清除页面的dirty? 刚刚folio_mark_dirty可能刚刚让folio变dirty */
+		if (folio_test_clear_dirty(folio)) {
 			long nr = folio_nr_pages(folio);
 			lruvec_stat_mod_folio(folio, NR_FILE_DIRTY, -nr);
 			zone_stat_mod_folio(folio, NR_ZONE_WRITE_PENDING, -nr);
@@ -3127,6 +3168,7 @@ bool folio_clear_dirty_for_io(struct folio *folio)
 			ret = true;
 		}
 		unlocked_inode_to_wb_end(inode, &cookie);
+		/* 返回folio被设置了dirty与否 */
 		return ret;
 	}
 	return folio_test_clear_dirty(folio);

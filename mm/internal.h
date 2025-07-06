@@ -292,6 +292,8 @@ static inline unsigned int buddy_order(struct page *page)
 }
 
 /*
+如果是buddy的page
+priv是order
  * Like buddy_order(), but for callers who cannot afford to hold the zone lock.
  * PageBuddy() should be checked first by the caller to minimize race window,
  * and invalid values must be handled gracefully.

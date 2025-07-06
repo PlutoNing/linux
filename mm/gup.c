@@ -186,7 +186,7 @@ struct folio *try_grab_folio(struct page *page, int refs, unsigned int flags)
 
 	return folio;
 }
-// 释放被pin的folio?
+// 释放被pin的folio? (unpin)
 static void gup_put_folio(struct folio *folio, int refs, unsigned int flags)
 {
 	if (flags & FOLL_PIN) {
@@ -339,6 +339,8 @@ static inline struct folio *gup_folio_next(struct page **list,
 }
 
 /**
+在gup机制pin了, 并且修改了其他进程的页面之后
+调用这个函数来收尾 (unpin + 写回)
  * unpin_user_pages_dirty_lock() - release and optionally dirty gup-pinned pages
  * @pages:  array of pages to be maybe marked dirty, and definitely released.
  * @npages: number of pages in the @pages array.
@@ -368,6 +370,7 @@ void unpin_user_pages_dirty_lock(struct page **pages, unsigned long npages,
 	unsigned int nr;
 
 	if (!make_dirty) {
+		/* 没有修改页面, 直接unpin就好 */
 		unpin_user_pages(pages, npages);
 		return;
 	}
@@ -394,6 +397,7 @@ void unpin_user_pages_dirty_lock(struct page **pages, unsigned long npages,
 		 * set_page_dirty(). The page stays dirty, despite being
 		 * written back, so it gets written back again in the
 		 * next writeback cycle. This is harmless.
+		 修改了页面 ,需要回写
 		 */
 		if (!folio_test_dirty(folio)) {
 			folio_lock(folio);
@@ -406,6 +410,8 @@ void unpin_user_pages_dirty_lock(struct page **pages, unsigned long npages,
 EXPORT_SYMBOL(unpin_user_pages_dirty_lock);
 
 /**
+===================
+主要是一些driver调用
  * unpin_user_page_range_dirty_lock() - release and optionally dirty
  * gup-pinned page range
  *
@@ -437,6 +443,7 @@ void unpin_user_page_range_dirty_lock(struct page *page, unsigned long npages,
 		folio = gup_folio_range_next(page, npages, i, &nr);
 		if (make_dirty && !folio_test_dirty(folio)) {
 			folio_lock(folio);
+			/* 发起回写 */
 			folio_mark_dirty(folio);
 			folio_unlock(folio);
 		}
@@ -714,13 +721,13 @@ static struct page *follow_page_pte(struct vm_area_struct *vma,
 		if ((flags & FOLL_WRITE) &&
 		    !pte_dirty(pte) && !PageDirty(page))
 			set_page_dirty(page); /* 这里为什么必须pte和page都不dirty的时候才设置page dirty呢
-			如果pte dirty, page不dirty的话, 谁来设置dirty?
-			有可能page dirty, pte不dirty吗? */
+			==================
+			如果pte和page都是不dirty的, 就调用mapping回调, 置脏page (也可能在io和mapping置脏folio) */
 		/*
 		 * pte_mkyoung() would be more correct here, but atomic care
 		 * is needed to avoid losing the dirty bit: it is easier to use
 		 * mark_page_accessed().
-		 标记页面为accessed*/
+		 标记页面为accessed (更多的作用是提升页面稳定性)*/
 		mark_page_accessed(page);
 	}
 out:
@@ -1591,6 +1598,7 @@ static __always_inline long __get_user_pages_locked(struct mm_struct *mm,
 
 	pages_done = 0;
 	for (;;) {
+		/* 获取和pin */
 		ret = __get_user_pages(mm, start, nr_pages, flags, pages,
 				       locked);
 		if (!(flags & FOLL_UNLOCKABLE)) {
@@ -1655,6 +1663,7 @@ retry:
 		}
 
 		*locked = 1;
+		/*  */
 		ret = __get_user_pages(mm, start, 1, flags | FOLL_TRIED,
 				       pages, locked);
 		if (!*locked) {
@@ -2289,7 +2298,7 @@ static long check_and_migrate_movable_pages(unsigned long nr_pages,
 #endif /* CONFIG_MIGRATION */
 
 /*
-一个一个follow page, 加入到pages数组
+一个一个follow page (可以起到pin的作用?), 加入到pages数组
  * __gup_longterm_locked() is a wrapper for __get_user_pages_locked which
  * allows us to process the FOLL_LONGTERM flag.
    是一个__get_user_pages_locked的包装器，允许我们处理FOLL_LONGTERM标志。
@@ -2451,6 +2460,7 @@ long get_user_pages_remote(struct mm_struct *mm,
 			       FOLL_TOUCH | FOLL_REMOTE))
 		return -EINVAL;
 
+	/* 开始获取 */
 	return __get_user_pages_locked(mm, start, nr_pages, pages,
 				       locked ? locked : &local_locked,
 				       gup_flags);
@@ -3478,6 +3488,7 @@ int pin_user_pages_fast(unsigned long start, int nr_pages,
 EXPORT_SYMBOL_GPL(pin_user_pages_fast);
 
 /**
+pin住mm这个进程的start开始的nr_pages个页面, 放在pages里面
  * pin_user_pages_remote() - pin pages of a remote process
  *
  * @mm:		mm_struct of target mm
@@ -3510,6 +3521,7 @@ long pin_user_pages_remote(struct mm_struct *mm,
 	if (!is_valid_gup_args(pages, locked, &gup_flags,
 			       FOLL_PIN | FOLL_TOUCH | FOLL_REMOTE))
 		return 0;
+	/* 开始pin */
 	return __gup_longterm_locked(mm, start, nr_pages, pages,
 				     locked ? locked : &local_locked,
 				     gup_flags);

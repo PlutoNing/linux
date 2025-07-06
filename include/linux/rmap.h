@@ -464,12 +464,16 @@ struct rmap_walk_control {
 	/*
 	 * Return false if page table scanning in rmap_walk should be stopped.
 	 * Otherwise, return true.
+	 rmap方式遍历映射到一个folio的vma的时候
+	 这个函数是用户指定的在vma上面执行的回调
 	 */
 	bool (*rmap_one)(struct folio *folio, struct vm_area_struct *vma,
 					unsigned long addr, void *arg);
 	int (*done)(struct folio *folio);
 	struct anon_vma *(*anon_lock)(struct folio *folio,
 				      struct rmap_walk_control *rwc);
+	/* rmap方式遍历映射到一个folio的vma的时候
+	这个函数用来判断是不是感兴趣的vma (不对它执行rmap_one函数) */
 	bool (*invalid_vma)(struct vm_area_struct *vma, void *arg);
 };
 

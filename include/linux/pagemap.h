@@ -1214,6 +1214,14 @@ void __folio_cancel_dirty(struct folio *folio);
 这里是个枢纽
 =========
 从mapping中删除folio前会调用此函数
+folio结束回写, 删除buffer时, 也会调用
+=======
+try_to_free_buffers
+grow_dev_page发现folio已经存在了不合适的buffer, 用于删除buffer
+mpage的__mpage_writepage用于回写page后clean page, clean_buffers->try_to_free_buffers
+文件系统用于clean page
+pageout函数也调用
+===========
  */
 static inline void folio_cancel_dirty(struct folio *folio)
 {

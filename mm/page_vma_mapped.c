@@ -151,7 +151,8 @@ static void step_forward(struct page_vma_mapped_walk *pvmw, unsigned long size)
 }
 
 /**
-确定pfn是不是被映射了
+确定pfn是不是被vma映射了
+是的话, 返回1,@pvmw->pmd and @pvmw->pte是对应的页表项
  * page_vma_mapped_walk - check if @pvmw->pfn is mapped in @pvmw->vma at
  * @pvmw->address
    检查pfn是否在vma中被address映射

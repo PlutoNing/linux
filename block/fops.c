@@ -475,8 +475,10 @@ static int blkdev_write_end(struct file *file, struct address_space *mapping,
 //块设备的inode的mapping的ops
 /* 块设备的inode的mapping是什么? */
 const struct address_space_operations def_blk_aops = {
-	/*  */
+	/* bdevfs的dirty aops
+	在mapping级别设置folio为dirty? */
 	.dirty_folio	= block_dirty_folio,
+	/*  */
 	.invalidate_folio = block_invalidate_folio,
 	//读取设备到folio里面
 	.read_folio	= blkdev_read_folio,
