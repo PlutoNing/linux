@@ -376,6 +376,7 @@ repeat:
 	get_swap_pages(1, &entry, 1);
 out:
 // 现在entry里面存储的是分配的新的slot
+/* 这里charge这个memcg使用的swap file的空间 */
 	if (mem_cgroup_try_charge_swap(folio, entry)) {
 		put_swap_folio(folio, entry);
 		entry.val = 0;

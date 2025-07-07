@@ -1414,7 +1414,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 	p->swap_map[offset] = 0;
 	dec_cluster_info_page(p, p->cluster_info, offset);
 	unlock_cluster(ci);
-	// uncharge这个swap 条目
+	// uncharge这个swap file的条目和空间使用情况
 	mem_cgroup_uncharge_swap(entry, 1);
 	// 然后这里还能free什么呢, 释放swap mapping
 	swap_range_free(p, offset, 1);
@@ -1470,6 +1470,8 @@ void put_swap_folio(struct folio *folio, swp_entry_t entry)
 		if (free_entries == SWAPFILE_CLUSTER) {
 			unlock_cluster_or_swap_info(si, ci);
 			spin_lock(&si->lock);
+			/* uncharge这个swap file的空间
+			算是释放swap file的使用 */
 			mem_cgroup_uncharge_swap(entry, SWAPFILE_CLUSTER);
 			swap_free_cluster(si, idx);
 			spin_unlock(&si->lock);

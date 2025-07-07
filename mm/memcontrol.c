@@ -2674,7 +2674,9 @@ out:
 	css_put(&memcg->css);
 }
 
-/* charge内存 */
+/* charge内存
+============
+charge的枢纽函数? */
 static int try_charge_memcg(struct mem_cgroup *memcg, gfp_t gfp_mask,
 			unsigned int nr_pages)
 {
@@ -2877,7 +2879,7 @@ done_restock:
 }
 
 
-/*  */
+/* charge这个memcg的内存 */
 static inline int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 			     unsigned int nr_pages)
 {
@@ -3495,6 +3497,7 @@ void split_page_memcg(struct page *head, unsigned int nr)
 
 #ifdef CONFIG_SWAP
 /**
+修改memcg的swap计数
  * mem_cgroup_move_swap_account - move swap charge and swap_cgroup's record.
  * @entry: swap entry to be moved
  * @from:  mem_cgroup which the entry is moved from
@@ -6437,6 +6440,7 @@ put:			/* get_mctgt_type() gets & locks the page */
 			break;
 		case MC_TARGET_SWAP:
 			ent = target.ent;
+			/* 修改memcg的swap计数 */
 			if (!mem_cgroup_move_swap_account(ent, mc.from, mc.to)) {
 				mc.precharge--;
 				mem_cgroup_id_get_many(mc.to, 1);
@@ -7160,7 +7164,8 @@ void mem_cgroup_calculate_protection(struct mem_cgroup *root,
 			atomic_long_read(&parent->memory.children_low_usage)));
 }
 
-/*在get memcg之后调用的.  */
+/*在get memcg之后调用的.
+charge这个memcg的内存  */
 static int charge_memcg(struct folio *folio, struct mem_cgroup *memcg,
 			gfp_t gfp)
 {
@@ -7186,7 +7191,9 @@ out:
 
 /*
 内部会get然后put
-charge memcg此folio */
+charge memcg此folio
+============
+charge的枢纽? */
 int __mem_cgroup_charge(struct folio *folio, struct mm_struct *mm, gfp_t gfp)
 {
 	struct mem_cgroup *memcg;
@@ -7202,6 +7209,7 @@ int __mem_cgroup_charge(struct folio *folio, struct mm_struct *mm, gfp_t gfp)
 }
 
 /**
+charge新换入的folio
  * mem_cgroup_swapin_charge_folio - Charge a newly allocated folio for swapin.
  * @folio: folio to charge.
  * @mm: mm context of the victim
@@ -7481,6 +7489,7 @@ void mem_cgroup_sk_free(struct sock *sk)
 }
 
 /**
+charge此memcg的sock内存
  * mem_cgroup_charge_skmem - charge socket memory
  * @memcg: memcg to charge
  * @nr_pages: number of pages to charge
@@ -7516,6 +7525,7 @@ bool mem_cgroup_charge_skmem(struct mem_cgroup *memcg, unsigned int nr_pages,
 }
 
 /**
+uncharge此memcg的sock内存
  * mem_cgroup_uncharge_skmem - uncharge socket memory
  * @memcg: memcg to uncharge
  * @nr_pages: number of pages to uncharge
@@ -7593,6 +7603,7 @@ static int __init mem_cgroup_init(void)
 subsys_initcall(mem_cgroup_init);
 
 #ifdef CONFIG_SWAP
+/*  */
 static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 {
 	while (!refcount_inc_not_zero(&memcg->id.ref)) {
@@ -7613,6 +7624,8 @@ static struct mem_cgroup *mem_cgroup_id_get_online(struct mem_cgroup *memcg)
 
 /**
 这里用于, 在从swap mapping移除folio之后, 计算memcg的charge相关
+=========================================================
+回收了swap mapping里的folio, 调用这个
  * mem_cgroup_swapout - transfer a memsw charge to swap
  * @folio: folio whose memsw charge to transfer
  * @entry: swap entry to move the charge to
@@ -7653,10 +7666,12 @@ void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry)
 	oldid = swap_cgroup_record(entry, mem_cgroup_id(swap_memcg),
 				   nr_entries);
 	VM_BUG_ON_FOLIO(oldid, folio);
+	/* 使用的swap file变多了? */
 	mod_memcg_state(swap_memcg, MEMCG_SWAP, nr_entries);
 
 	folio->memcg_data = 0;
 
+	/* 内存用少了 */
 	if (!mem_cgroup_is_root(memcg))
 		page_counter_uncharge(&memcg->memory, nr_entries);
 
@@ -7673,6 +7688,7 @@ void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry)
 	 * only synchronisation we have for updating the per-CPU variables.
 	 */
 	memcg_stats_lock();
+	/*  */
 	mem_cgroup_charge_statistics(memcg, -nr_entries);
 	memcg_stats_unlock();
 	memcg_check_events(memcg, folio_nid(folio));
@@ -7681,8 +7697,9 @@ void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry)
 }
 
 /**
+刚刚把page换出到swap file了?
  * __mem_cgroup_try_charge_swap - try charging swap space for a folio
- 刚刚给folio分配了entry这个swap slot, 这里进行charge
+ 刚刚给folio分配了entry这个swap file slot(也叫swap space), 这里进行charge
  * @folio: folio being added to swap
  * @entry: swap entry to charge
  *
@@ -7720,18 +7737,21 @@ int __mem_cgroup_try_charge_swap(struct folio *folio, swp_entry_t entry)
 		mem_cgroup_id_put(memcg);
 		return -ENOMEM;
 	}
+	/* 刚刚已经charge成功了 */
 
 	/* Get references for the tail pages, too */
 	if (nr_pages > 1)
 		mem_cgroup_id_get_many(memcg, nr_pages - 1);
 	oldid = swap_cgroup_record(entry, mem_cgroup_id(memcg), nr_pages);
 	VM_BUG_ON_FOLIO(oldid, folio);
+	/* 把页面换出了? */
 	mod_memcg_state(memcg, MEMCG_SWAP, nr_pages);
 
 	return 0;
 }
 
 /**
+把页面换入之后, uncharge此memcg使用的swap file空间
  * __mem_cgroup_uncharge_swap - uncharge swap space
    uncharge swap的条目
  * @entry: swap entry to uncharge
@@ -7753,7 +7773,7 @@ void __mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages)
 			else
 				page_counter_uncharge(&memcg->swap, nr_pages);
 		}
-		//
+		// 使用的swap file空间变少了
 		mod_memcg_state(memcg, MEMCG_SWAP, -nr_pages);
 		mem_cgroup_id_put_many(memcg, nr_pages);
 	}

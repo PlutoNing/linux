@@ -28,13 +28,17 @@ struct page;
 struct mm_struct;
 struct kmem_cache;
 
-/* Cgroup-specific page state, on top of universal node page state */
+/*
+memcg的内存类型计数与node_stat_item基本一样 (下面就是从NR_VM_NODE_STAT_ITEMS开始的)
+但是也有额外的类型, 如下:
+Cgroup-specific page state, on top of universal node page state */
 enum memcg_stat_item {
+	/* 表示的是memcg的swap mapping用量, 还是swap file用量? */
 	MEMCG_SWAP = NR_VM_NODE_STAT_ITEMS,
 	MEMCG_SOCK,
 	MEMCG_PERCPU_B,
 	MEMCG_VMALLOC,
-	MEMCG_KMEM, // 使用的kmem, 比如用于栈内存的额
+	MEMCG_KMEM, // 使用的kmem, 比如用于栈内存的
 	MEMCG_ZSWAP_B,
 	MEMCG_ZSWAPPED,
 	MEMCG_NR_STAT,
@@ -688,6 +692,13 @@ int __mem_cgroup_charge(struct folio *folio, struct mm_struct *mm, gfp_t gfp);
 
 /**
 charge新分配的folio.
+===================
+charge的主要函数
+=================
+几个主要的调用点:
+页缓存在__filemap_add_folio
+匿名页集中在fault机制里面的几个函数
+还有就是shmem, huge, ksm, migrate等等
  * mem_cgroup_charge - Charge a newly allocated folio to a cgroup.
  * @folio: Folio to charge.
  * @mm: mm context of the allocating task.
@@ -1006,7 +1017,9 @@ static inline void mem_cgroup_unlock_pages(void)
 	rcu_read_unlock();
 }
 
-/* idx can be of type enum memcg_stat_item or node_stat_item */
+/*
+统计memcg的某个内存类型
+idx can be of type enum memcg_stat_item or node_stat_item */
 static inline void mod_memcg_state(struct mem_cgroup *memcg,
 				   int idx, int val)
 {
@@ -1017,6 +1030,9 @@ static inline void mod_memcg_state(struct mem_cgroup *memcg,
 	local_irq_restore(flags);
 }
 
+/* 修改page所在的memcg的idx类型的页面计数
+====================
+主要是vmalloc机制调用 */
 static inline void mod_memcg_page_state(struct page *page,
 					int idx, int val)
 {

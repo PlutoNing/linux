@@ -687,7 +687,10 @@ static inline void folio_throttle_swaprate(struct folio *folio, gfp_t gfp)
 #if defined(CONFIG_MEMCG) && defined(CONFIG_SWAP)
 void mem_cgroup_swapout(struct folio *folio, swp_entry_t entry);
 int __mem_cgroup_try_charge_swap(struct folio *folio, swp_entry_t entry);
-// 刚刚给folio分配了entry这个swap slot, 这里进行charge
+/* 把folio换出了
+================================================================
+刚刚给folio分配了entry这个swap slot, 这里进行charge
+ */
 static inline int mem_cgroup_try_charge_swap(struct folio *folio,
 		swp_entry_t entry)
 {
@@ -698,7 +701,10 @@ static inline int mem_cgroup_try_charge_swap(struct folio *folio,
 
 extern void __mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages);
 
-// 如何uncharge一个swap条目呢?而且还是在添加到swap一个页面之后.
+/* 
+把page换入后
+调用来uncharge使用的swap file空间
+*/
 static inline void mem_cgroup_uncharge_swap(swp_entry_t entry, unsigned int nr_pages)
 {
 	if (mem_cgroup_disabled())

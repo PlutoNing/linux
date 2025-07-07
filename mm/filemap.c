@@ -286,7 +286,7 @@ void filemap_free_folio(struct address_space *mapping, struct folio *folio)
 预读会调用
 sgp也会调用, 发现文件被truncate的话
 uffd调用
-truncate
+truncate (shmem,)
 ========================
  * filemap_remove_folio - Remove folio from page cache.
    从mapping移除folio
@@ -959,7 +959,8 @@ EXPORT_SYMBOL_GPL(replace_page_cache_folio);
 /* 把从buddy新申请的page加入mapping ,xas数组
 ==========================
 调用场合:
-
+一个是大头的pagecache机制: filemap_add_folio
+另一个是巨页,(没有像shmem, swap等一样有自己的添加逻辑)
 */
 noinline int __filemap_add_folio(struct address_space *mapping,
 		struct folio *folio, pgoff_t index, gfp_t gfp, void **shadowp)
@@ -1067,8 +1068,14 @@ ALLOW_ERROR_INJECTION(__filemap_add_folio, ERRNO);
 把刚刚从buddy分配的page加入mapping, 这里基本算是唯一接口
 ==================================
 调用场合
-1,预读会调用此
-filemap_get_folio会添加pagecache 
+1, 预读机制会调用此
+2. 调用的大头,页缓存
+ __filemap_get_folio: 调用最多, 获取页缓存页面 (很多机制都是调这个)
+ filemap_create_folio: 调用少, 就是预读的时候如果怎么试都不成功, 手动创建folio加载文件内容
+ do_read_cache_folio: 读取指定页, 或者把指定位置的页缓存页面加载到内存
+
+=============================
+shmem和swap也会添加到mapping, 不过不是这种系列的函数
 */
 
 int filemap_add_folio(struct address_space *mapping, struct folio *folio,
@@ -2078,7 +2085,7 @@ shmem换入会从这里申请
  * Return: The found folio or an ERR_PTR() otherwise.
  ======================
  调用场合:
-
+就是用于获取指定位置的folio
  */
 struct folio *__filemap_get_folio(struct address_space *mapping, pgoff_t index,
 		fgf_t fgp_flags, gfp_t gfp)
@@ -4248,7 +4255,7 @@ struct folio *mapping_read_folio_gfp(struct address_space *mapping,
 }
 EXPORT_SYMBOL(mapping_read_folio_gfp);
 
-/* //读取pagecache指定页 */
+/* 读取pagecache指定页 */
 static struct page *do_read_cache_page(struct address_space *mapping,
 		pgoff_t index, filler_t *filler, struct file *file, gfp_t gfp)
 {

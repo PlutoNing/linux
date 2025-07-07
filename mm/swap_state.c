@@ -163,7 +163,7 @@ unlock:
  * been verified to be in the swap cache.
   必须仅在已验证在swap mapping中的folio上调用此函数。
   从swap mapping移除folio,用于换出,释放pagecache等操作.
-  ===================
+  ==============================================================
   就是把swap mapping里面对应的slot设置为null
   然后去除folio的swap_cache flag, 表示不在swap mapping了
  */
@@ -178,6 +178,7 @@ void __delete_from_swap_cache(struct folio *folio,
 
 	xas_set_update(&xas, workingset_update_node);
 
+	/* folio应该是加锁了的, 有swapcache标记的, 并且不能处于IO中 */
 	VM_BUG_ON_FOLIO(!folio_test_locked(folio), folio);
 	VM_BUG_ON_FOLIO(!folio_test_swapcache(folio), folio);
 	VM_BUG_ON_FOLIO(folio_test_writeback(folio), folio);
@@ -195,7 +196,8 @@ void __delete_from_swap_cache(struct folio *folio,
 	/* 为啥这个也算到文件页里面?
 	1,从meminfo文件cached的计算方式来看, swap mapping确实是算NR_FILE_PAGES的
 	2, swap mapping也是mapping, 内核代码里面计入了NR_FILE_PAGES, 虽然hugepages的
-	mapping,也是mapping, 但是就区别对待了 */
+	mapping,也是mapping, 但是就区别对待了
+	20250708011058 */
 	__node_stat_mod_folio(folio, NR_FILE_PAGES, -nr);
 	__lruvec_stat_mod_folio(folio, NR_SWAPCACHE, -nr);
 }
@@ -271,7 +273,9 @@ fail:
 }
 
 /*
-一种情况是folio是swap mapping里面的
+ 把folio从swap mapping移除
+ =================================================
+ shmem把folio换入到shmem mapping后, 会把folio从swap mapping移除
  * This must be called only on folios that have
  * been verified to be in the swap cache and locked.
  * It will never put the folio into the free list,
@@ -286,7 +290,8 @@ void delete_from_swap_cache(struct folio *folio)
 	struct address_space *address_space = swap_address_space(entry); // 获取所在的swap file的mapping
 
 	xa_lock_irq(&address_space->i_pages); // 锁定mapping的xas数组, 开始操作
-	__delete_from_swap_cache(folio, entry, NULL);// 从swap mapping xas移除
+	/* 从swap mapping xas移除 */
+	__delete_from_swap_cache(folio, entry, NULL);
 	xa_unlock_irq(&address_space->i_pages);
 
 	put_swap_folio(folio, entry); // 移除后减少ref计数

@@ -1675,7 +1675,7 @@ preload_this_cpu_lock(spinlock_t *lock, gfp_t gfp_mask, int node)
 }
 
 /*
-vmap机制分配一个区域
+vmap机制分配一个区域 (分配vmalloc地址空间)
  * Allocate a region of KVA of the specified size and alignment, within the
  * vstart and vend.
  */
@@ -1712,7 +1712,7 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
 
 retry:
 	preload_this_cpu_lock(&free_vmap_area_lock, gfp_mask, node);
-	// 从红黑树分配一个vmap_area
+	// 从红黑树分配一个vmap_area, 分配的是vmalloc地址空间
 	addr = __alloc_vmap_area(&free_vmap_area_root, &free_vmap_area_list,
 		size, align, vstart, vend);
 	spin_unlock(&free_vmap_area_lock);
@@ -2695,9 +2695,12 @@ static void clear_vm_uninitialized_flag(struct vm_struct *vm)
 	vm->flags &= ~VM_UNINITIALIZED;
 }
 
-// vmalloc的分配内存的时候,分配vm_area结构体的内存,分配vmalloc内存
+/* 
+这里分配地址空间
+=======================================================
+vmalloc的分配内存的时候,分配vm_area结构体的内存,分配vmalloc内存
 // 调用__get_vm_area_node获取空闲的线性地址区域后，此时的线性地址是没有对应的物理内存的，
-// 然后调用__vmalloc_area_node为其申请物理内存
+// 然后调用__vmalloc_area_node为其申请物理内存 */
 static struct vm_struct *__get_vm_area_node(unsigned long size,
 		unsigned long align, unsigned long shift, unsigned long flags,
 		unsigned long start, unsigned long end, int node,
@@ -2722,14 +2725,14 @@ static struct vm_struct *__get_vm_area_node(unsigned long size,
 
 	if (!(flags & VM_NO_GUARD))
 		size += PAGE_SIZE;
-	// 分配vmap_area
+	// 分配vmap_area, 这里分配的是地址空间
 	va = alloc_vmap_area(size, align, start, end, node, gfp_mask, 0);
 	if (IS_ERR(va)) {
 		kfree(area);
 		return NULL;
 	}
 
-	// va加入area
+	// va加入area, 建立二者的关联
 	setup_vmalloc_vm(area, va, flags, caller);
 
 	/*
@@ -3263,8 +3266,7 @@ vm_area_alloc_pages(gfp_t gfp, int nid,
 }
 
 /*
-area是刚才vmalloc机制分配的内存 
-是从vmalloc的地址空间分配的
+area是刚才vmalloc机制分配的内存,是从vmalloc的地址空间分配的
 现在需要为其映射物理内存
 @page_shift一般是12
 */
@@ -3290,6 +3292,8 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	/* Please note that the recursion is strictly bounded. */
 	if (array_size > PAGE_SIZE) {
 		// 如果需要的page数组大小大于一个页,那么就用vmalloc分配
+		/* 先从vmalloc地址空间分配
+		然后申请物理页面映射过去 */
 		area->pages = __vmalloc_node(array_size, 1, nested_gfp, node,
 					area->caller);
 	} else {
@@ -3318,6 +3322,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	if (gfp_mask & __GFP_ACCOUNT) {
 		int i;
 
+		/* 这个时候的page可能属于某memcg吗 */
 		for (i = 0; i < area->nr_pages; i++)
 			mod_memcg_page_state(area->pages[i], MEMCG_VMALLOC, 1);
 	}
@@ -3388,6 +3393,9 @@ fail:
 
 /**
 分配连续的vmap地址空间
+==============
+先从vmalloc地址空间分配
+然后申请物理页面映射过去
  * __vmalloc_node_range - allocate virtually contiguous memory
  * @size:		  allocation size
  * @align:		  desired alignment
@@ -3460,7 +3468,7 @@ void *__vmalloc_node_range(unsigned long size, unsigned long align,
 	}
 
 again:
-// vmalloc分配一段空闲的线性地址空间
+	// vmalloc分配一段空闲的线性地址空间
 	area = __get_vm_area_node(real_size, align, shift, VM_ALLOC |
 				  VM_UNINITIALIZED | vm_flags, start, end, node,
 				  gfp_mask, caller);
@@ -3503,7 +3511,7 @@ again:
 	/* Allocate physical pages and map them into vmalloc space.
 	分配物理页面并将它们映射到vmalloc空间?
 	调用__get_vm_area_node获取空闲的线性地址区域后，此时的线性地址是没有对应的物理内存的，
-	然后调用__vmalloc_area_node为其申请物理内存
+	然后调用 __vmalloc_area_node 为其申请物理内存
 	*/
 	ret = __vmalloc_area_node(area, gfp_mask, prot, shift, node);
 	if (!ret)
