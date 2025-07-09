@@ -188,12 +188,16 @@ void putback_movable_pages(struct list_head *l)
 
 /*
  * Restore a potential migration pte to a working pte entry
+ 迁移过程中
+ 找到映射旧页面old的old pte
+ 让他们指向新folio
  */
 static bool remove_migration_pte(struct folio *folio,
 		struct vm_area_struct *vma, unsigned long addr, void *old)
 {
 	DEFINE_FOLIO_VMA_WALK(pvmw, old, vma, addr, PVMW_SYNC | PVMW_MIGRATION);
 
+	/* 找到映射old这个page的pte */
 	while (page_vma_mapped_walk(&pvmw)) {
 		rmap_t rmap_flags = RMAP_NONE;
 		pte_t old_pte;
@@ -218,6 +222,7 @@ static bool remove_migration_pte(struct folio *folio,
 #endif
 
 		folio_get(folio);
+		/* 新建一个指向new（folio里面的page)的pte */
 		pte = mk_pte(new, READ_ONCE(vma->vm_page_prot));
 		old_pte = ptep_get(pvmw.pte);
 		if (pte_swp_soft_dirty(old_pte))
@@ -226,7 +231,7 @@ static bool remove_migration_pte(struct folio *folio,
 		entry = pte_to_swp_entry(old_pte);
 		if (!is_migration_entry_young(entry))
 			pte = pte_mkold(pte);
-		/* 20250707021914  分析folio_test_dirty调用 */
+		/* 根据folio的属性, 设置pte的属性 */
 		if (folio_test_dirty(folio) && is_migration_entry_dirty(entry))
 			pte = pte_mkdirty(pte);
 		if (is_writable_migration_entry(entry))
@@ -268,6 +273,8 @@ static bool remove_migration_pte(struct folio *folio,
 		} else
 #endif
 		{
+			/* 这里根据新folio的文件页还是匿名页设置rmap
+			然后安装pte */
 			if (folio_test_anon(folio))
 				page_add_anon_rmap(new, vma, pvmw.address,
 						   rmap_flags);
@@ -289,6 +296,7 @@ static bool remove_migration_pte(struct folio *folio,
 }
 
 /*
+让映射old page的pte映射新page
  * Get rid of all migration entries and replace them by
  * references to the indicated page.
  */

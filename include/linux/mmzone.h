@@ -186,7 +186,9 @@ enum node_stat_item {
 	NR_ANON_MAPPED,	/* 
 	表示被映射的匿名页, 就是一般意义上的那种匿名页
 	Mapped anonymous pages */
-	NR_FILE_MAPPED,	/* pagecache pages mapped into pagetables.
+	NR_FILE_MAPPED,	/*
+	被映射的文件页
+	pagecache pages mapped into pagetables.
 			   only modified from process context */
 
 	NR_FILE_PAGES, /* shmem算文件页, 算shmem */

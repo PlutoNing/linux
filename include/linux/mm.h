@@ -2674,7 +2674,7 @@ static inline void dec_mm_counter(struct mm_struct *mm, int member)
 /* Optimized variant when page is already known not to be PageAnon
 获取进程的这个文件页面的类型, 
 如果是交换的, 就是shmem
-不然就是pagecache?
+不然就是pagecache
  */
 static inline int mm_counter_file(struct page *page)
 {

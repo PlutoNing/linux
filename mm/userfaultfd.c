@@ -106,7 +106,7 @@ int mfill_atomic_install_pte(pmd_t *dst_pmd,
 
 	ret = -EAGAIN;
 	/* 
-获取pte指针
+		获取pte指针
 	*/
 	dst_pte = pte_offset_map_lock(dst_mm, dst_pmd, dst_addr, &ptl);
 	if (!dst_pte)
@@ -132,8 +132,12 @@ int mfill_atomic_install_pte(pmd_t *dst_pmd,
 		/* Usually, cache pages are already added to LRU */
 		if (newly_allocated)
 			folio_add_lru(folio);
+		/* 这个file page被新映射了
+		这里添加rmap */
 		page_add_file_rmap(page, dst_vma, false);
 	} else {
+		/* uffd新映射的是个匿名页
+		添加rmap */
 		page_add_new_anon_rmap(page, dst_vma, dst_addr);
 		folio_add_lru_vma(folio, dst_vma);
 	}

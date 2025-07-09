@@ -34,6 +34,7 @@ enum {
 	 Resident file mapping pages */
 	MM_ANONPAGES,	/* Resident anonymous pages */
 	MM_SWAPENTS,	/* Anonymous swap entries */
+	/* mm的file page与shmem没有包含关系? */
 	MM_SHMEMPAGES,	/* Resident shared memory pages */
 	NR_MM_COUNTERS
 };

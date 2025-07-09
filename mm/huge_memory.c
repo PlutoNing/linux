@@ -3283,6 +3283,7 @@ void remove_migration_pmd(struct page_vma_mapped_walk *pvmw, struct page *new)
 	if (PageDirty(new) && is_migration_entry_dirty(entry))
 		pmde = pmd_mkdirty(pmde);
 
+	/* 设置新页面的rmap */
 	if (PageAnon(new)) {
 		rmap_t rmap_flags = RMAP_COMPOUND;
 

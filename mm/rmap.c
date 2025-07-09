@@ -1457,6 +1457,7 @@ void folio_add_file_rmap_range(struct folio *folio, struct page *page,
 		}
 	}
 
+	/* NR_SHMEM_PMDMAPPED : NR_FILE_PMDMAPPED包含在file mapped里面的 */
 	if (nr_pmdmapped)
 		__lruvec_stat_mod_folio(folio, folio_test_swapbacked(folio) ?
 			NR_SHMEM_PMDMAPPED : NR_FILE_PMDMAPPED, nr_pmdmapped);
@@ -1467,7 +1468,7 @@ void folio_add_file_rmap_range(struct folio *folio, struct page *page,
 }
 
 /**
- 设置单个page的rmap . 看来应该都是page_mapped的页面
+ 设置file page的rmap
  * page_add_file_rmap - add pte mapping to a file page
    添加pte映射到文件页
  * @page:	the page to add the mapping to

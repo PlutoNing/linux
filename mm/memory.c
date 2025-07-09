@@ -1904,10 +1904,8 @@ static int validate_page_before_insert(struct page *page)
 	return 0;
 }
 
-/* 已经锁住pte了, 这里插入file页面?
-设置pte
-设置rmap
-更新mm的计数器
+/* 
+让@pte指向@page
  */
 static int insert_page_into_pte_locked(struct vm_area_struct *vma, pte_t *pte,
 			unsigned long addr, struct page *page, pgprot_t prot)
@@ -1949,6 +1947,7 @@ static int insert_page(struct vm_area_struct *vma, unsigned long addr,
 	pte = get_locked_pte(vma->vm_mm, addr, &ptl);
 	if (!pte)
 		goto out;
+	/* 让pte指向page */
 	retval = insert_page_into_pte_locked(vma, pte, addr, page, prot);
 	pte_unmap_unlock(pte, ptl);
 out:
@@ -4471,8 +4470,10 @@ static void deposit_prealloc_pte(struct vm_fault *vmf)
 	vmf->prealloc_pte = NULL;
 }
 
-// 直接把这个复合页面page作为pmd表项的指向
+/* // 直接把这个复合页面page作为pmd表项的指向
 // 一种情况可能是page是fault处理刚刚返回的复合页
+/==========================
+让pmd指向大页 */
 vm_fault_t do_set_pmd(struct vm_fault *vmf, struct page *page)
 {
 	struct vm_area_struct *vma = vmf->vma;
