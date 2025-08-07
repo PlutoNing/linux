@@ -465,6 +465,7 @@ int __must_check device_add_disk(struct device *parent, struct gendisk *disk,
 	if (ret)
 		goto out_device_del;
 
+	/* 创建/sys/block/下的磁盘对应文件夹 */
 	ret = sysfs_create_link(block_depr, &ddev->kobj,
 				kobject_name(&ddev->kobj));
 	if (ret)
@@ -888,7 +889,8 @@ static int __init genhd_device_init(void)
 
 	register_blkdev(BLOCK_EXT_MAJOR, "blkext");
 
-	/* create top-level block dir */
+	/* create top-level block dir
+	/sys/block文件夹? */
 	block_depr = kobject_create_and_add("block", NULL);
 	return 0;
 }
@@ -1219,6 +1221,7 @@ const struct device_type disk_type = {
 
 #ifdef CONFIG_PROC_FS
 /*
+diskstats的fops的show函数
  * aggregate disk stat collector.  Uses the same stats that the sysfs
  * entries do, above, but makes them available through one seq_file.
  *
@@ -1296,6 +1299,7 @@ static int diskstats_show(struct seq_file *seqf, void *v)
 	return 0;
 }
 
+/* diskstats的fops */
 static const struct seq_operations diskstats_op = {
 	.start	= disk_seqf_start,
 	.next	= disk_seqf_next,

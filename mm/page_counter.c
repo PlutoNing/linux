@@ -94,6 +94,7 @@ void page_counter_charge(struct page_counter *counter, unsigned long nr_pages)
  *
  * Returns %true on success, or %false and @fail if the counter or one
  * of its ancestors has hit its configured limit.
+ 返回1表示成功
  */
 bool page_counter_try_charge(struct page_counter *counter,
 			     unsigned long nr_pages,

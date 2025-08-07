@@ -509,6 +509,7 @@ static inline bool memcg_slab_pre_alloc_hook(struct kmem_cache *s,
 			goto out;
 	}
 
+	/* charge这个slab使用的内存 */
 	if (obj_cgroup_charge(objcg, flags, objects * obj_full_size(s)))
 		goto out;
 

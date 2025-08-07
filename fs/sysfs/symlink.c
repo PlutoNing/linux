@@ -17,6 +17,7 @@
 
 #include "sysfs.h"
 
+/* 在sysfs创建文件夹 */
 static int sysfs_do_create_link_sd(struct kernfs_node *parent,
 				   struct kobject *target_kobj,
 				   const char *name, int warn)
@@ -64,6 +65,7 @@ int sysfs_create_link_sd(struct kernfs_node *kn, struct kobject *target,
 	return sysfs_do_create_link_sd(kn, target, name, 1);
 }
 
+/* 在sysfs创建文件夹 */
 static int sysfs_do_create_link(struct kobject *kobj, struct kobject *target,
 				const char *name, int warn)
 {
@@ -81,6 +83,7 @@ static int sysfs_do_create_link(struct kobject *kobj, struct kobject *target,
 }
 
 /**
+在sysfs创建文件夹
  *	sysfs_create_link - create symlink between two objects.
  *	@kobj:	object whose directory we're creating the link in.
  *	@target:	object we're pointing to.

@@ -2696,27 +2696,38 @@ retry:
 		return 0;
 
 	if (!do_memsw_account() ||
-	    page_counter_try_charge(&memcg->memsw, batch, &counter)) {/* 如果让charge sw, */
-		/* 不让charge memsw,就走到这里charge memory. */
+	    page_counter_try_charge(&memcg->memsw, batch, &counter)) {
+		/* 如果不让charge swap, 走到这里
+		如果让charge swap, chargeswap成功了,走到这里
+		======================================
+		总之走到这里是要charge mem */
 		if (page_counter_try_charge(&memcg->memory, batch, &counter))
 			goto done_restock;
 
 		/* charge mem失败, 但是charge memsw成功,回滚 */
 		if (do_memsw_account())
 			page_counter_uncharge(&memcg->memsw, batch);
+		/* 计算mem_over_limit有两个地方, 这里是因为charge mem失败
+		所以统计mem的超额 */
 		mem_over_limit = mem_cgroup_from_counter(counter, memory);
 	} else {/* charge memsw失败的路径 */
+		/* 走到这里的情况:
+		1, 需要charge swap, 但是charge swap失败了. */
+		/* 感觉各种回收钩子可以放在这
+		甚至钩子可以是ebpf? */
+
+		/* 统计memsw的超额 */
 		mem_over_limit = mem_cgroup_from_counter(counter, memsw);
 		reclaim_options &= ~MEMCG_RECLAIM_MAY_SWAP;
 	}
 
-	/* charge mem 失败 */
+	/* charge失败的情况 */
 
 	if (batch > nr_pages) {/* 把batch搞小一点,重试 */
 		batch = nr_pages;
 		goto retry;
 	}
-
+	/* 第一次charge失败, 第二次调整为nr_pages也失败 */
 	/*
 	 * Prevent unbounded recursion when reclaim operations need to
 	 * allocate memory. This might exceed the limits temporarily,
@@ -2734,10 +2745,12 @@ retry:
 	if (!gfpflags_allow_blocking(gfp_mask))
 		goto nomem;
 
+	/* 产生一次over limit事件 */
 	memcg_memory_event(mem_over_limit, MEMCG_MAX);
 	raised_max_event = true;
 
 	psi_memstall_enter(&pflags);
+	/* 回收出超额的内存 */
 	nr_reclaimed = try_to_free_mem_cgroup_pages(mem_over_limit, nr_pages,
 						    gfp_mask, reclaim_options);
 	psi_memstall_leave(&pflags);
@@ -2785,6 +2798,7 @@ retry:
 	 * keep retrying as long as the memcg oom killer is able to make
 	 * a forward progress or bypass the charge if the oom killer
 	 * couldn't make any progress.
+	 在memcg里面进行一次oom再试charge
 	 */
 	if (mem_cgroup_oom(mem_over_limit, gfp_mask,
 			   get_order(nr_pages * PAGE_SIZE))) {
@@ -2836,10 +2850,13 @@ done_restock:
 	 * not recorded as it most likely matches current's and won't
 	 * change in the meantime.  As high limit is checked again before
 	 * reclaim, the cost of mismatch is negligible.
+	 如果父层级有超额的情况
+	 返回前发起回收
 	 */
 	do {
 		bool mem_high, swap_high;
 
+		/* 获得mem和swap超额的数量 */
 		mem_high = page_counter_read(&memcg->memory) >
 			READ_ONCE(memcg->memory.high);
 		swap_high = page_counter_read(&memcg->swap) >
@@ -2879,7 +2896,7 @@ done_restock:
 }
 
 
-/* charge这个memcg的内存 */
+/* charge这个memcg的内存 （相对于kmem的一般性的内存） */
 static inline int try_charge(struct mem_cgroup *memcg, gfp_t gfp_mask,
 			     unsigned int nr_pages)
 {
@@ -3151,6 +3168,7 @@ static void obj_cgroup_uncharge_pages(struct obj_cgroup *objcg,
 
 /*
 从一个objcg中charge一些kmem page
+比如charge的是zswap,slab,pcp等的内存
  * obj_cgroup_charge_pages: charge a number of kernel pages to a objcg
  * @objcg: object cgroup to charge
  * @gfp: reclaim mode
@@ -3422,7 +3440,7 @@ static void refill_obj_stock(struct obj_cgroup *objcg, unsigned int nr_bytes,
 		obj_cgroup_uncharge_pages(objcg, nr_pages);
 }
 
-//
+// charge的是zswap,slab,pcp等的内存
 int obj_cgroup_charge(struct obj_cgroup *objcg, gfp_t gfp, size_t size)
 {
 	unsigned int nr_pages, nr_bytes;
@@ -8011,6 +8029,7 @@ bool obj_cgroup_may_zswap(struct obj_cgroup *objcg)
 }
 
 /**
+charg zsswap的内存
  * obj_cgroup_charge_zswap - charge compression backend memory
  * @objcg: the object cgroup
  * @size: size of compressed object

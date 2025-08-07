@@ -126,7 +126,8 @@ preempt_count() & (((1UL << (4)) - 1) << (((0 + 8) + 8) + 4))
 #define in_nmi()		(nmi_count())
 #define in_hardirq()		(hardirq_count())
 #define in_serving_softirq()	(softirq_count() & SOFTIRQ_OFFSET)
-/* 是不是用户进程? */
+/* 是不是用户进程?
+说明在处理中断 */
 #define in_task()		(!(in_nmi() | in_hardirq() | in_serving_softirq()))
 
 /*
