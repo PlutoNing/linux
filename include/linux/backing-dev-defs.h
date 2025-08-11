@@ -211,6 +211,7 @@ struct backing_dev_info {
 	最大预读的长度 
 	max readahead in PAGE_SIZE units */
 	unsigned long io_pages;	/* max allowed IO size */
+	/*  */
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;	/* Pointer to aux data for congested func */
 
@@ -268,11 +269,17 @@ enum {
 void clear_wb_congested(struct bdi_writeback_congested *congested, int sync);
 void set_wb_congested(struct bdi_writeback_congested *congested, int sync);
 
+/* 清理磁盘拥堵状态
+=================
+fuse,nfs */
 static inline void clear_bdi_congested(struct backing_dev_info *bdi, int sync)
 {
 	clear_wb_congested(bdi->wb.congested, sync);
 }
 
+/* 设置磁盘为拥堵状态
+============================
+fuse和nfs */
 static inline void set_bdi_congested(struct backing_dev_info *bdi, int sync)
 {
 	set_wb_congested(bdi->wb.congested, sync);

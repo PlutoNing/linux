@@ -4176,7 +4176,8 @@ static const struct file_operations shmem_file_operations = {
 	/* splice todo */
 	.splice_read	= generic_file_splice_read,
 	.splice_write	= iter_file_splice_write,
-	/*  */
+	/* shmem的fallocate回调
+	实现了打洞 */
 	.fallocate	= shmem_fallocate,
 #endif
 };

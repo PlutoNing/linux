@@ -429,8 +429,6 @@ static int filemap_check_and_keep_errors(struct address_space *mapping)
 }
 
 /**
-2024年7月17日22:53:02
-写回的函数？
 2024年7月18日00:07:29写回一段范围内的数据
  * __filemap_fdatawrite_range - start writeback on mapping dirty pages in range
  * @mapping:	address space structure to write

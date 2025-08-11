@@ -237,7 +237,7 @@ out:
 
 /*
 2024年6月30日14:36:44
-
+进行一下预读, POSIX_FADV_WILLNEED会调用这里
  * Chunk the readahead into 2 megabyte units, so that we don't pin too much
  * memory at once.
  */
@@ -636,7 +636,8 @@ page_cache_async_readahead(struct address_space *mapping,
 	ondemand_readahead(mapping, ra, filp, true, offset, req_size);
 }
 EXPORT_SYMBOL_GPL(page_cache_async_readahead);
-/* 预读fd */
+/* 预读fd的系统调用
+通过fadvise触发预读 */
 ssize_t ksys_readahead(int fd, loff_t offset, size_t count)
 {
 	ssize_t ret;
@@ -658,7 +659,7 @@ ssize_t ksys_readahead(int fd, loff_t offset, size_t count)
 	if (!f.file->f_mapping || !f.file->f_mapping->a_ops ||
 	    !S_ISREG(file_inode(f.file)->i_mode))
 		goto out;
-	/* advise设置参数 */
+	/* 设置willneed的fadvise,会预读 */
 	ret = vfs_fadvise(f.file, offset, count, POSIX_FADV_WILLNEED);
 out:
 	fdput(f);
