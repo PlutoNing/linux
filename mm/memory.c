@@ -618,7 +618,12 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
 }
 
 /*
-
+- 根据页表项和虚拟地址获取对应的`struct page`指针
+- 返回NULL的情况包括：
+  - 零页（zero page）：特殊的只读零填充页面
+  - 设备内存映射：如framebuffer、MMIO等
+  - 特殊文件映射：如某些文件系统的特殊处理
+  - 非LRU页面：如某些内核保留页面
  * vm_normal_page -- This function gets the "struct page" associated with a pte.
  *
  * "Special" mappings do not wish to be associated with a "struct page" (either
@@ -658,9 +663,6 @@ static void print_bad_pte(struct vm_area_struct *vma, unsigned long addr,
  * (which can be slower and simply not an option for some PFNMAP users). The
  * advantage is that we don't have to follow the strict linearity rule of
  * PFNMAP mappings in order to support COWable mappings.
- *2024年7月1日23:07:33
-根据pte返回page数据结构
-2024年7月2日22:54:52
 vm_normal_page根据pte来返回normal paging页面的struct page结构。
 调用函数 vm_normal_page ，从pte得到pfn，然后得到pfn对应的page。
 	特殊映射不希望关联page，直接使用pfn，
@@ -1503,6 +1505,7 @@ void unmap_vmas(struct mmu_gather *tlb,
 }
 
 /**
+解除页面范围的映射
 2024年07月26日15:35:53
 函数结构与前两个函数类似。将任务从address开始到address+size长度内的所有对应的pmd都清零。
 zap_page_range的主要功能是在进行内存收缩、释放内存、退出虚存映射或移动页表的过程中，
@@ -3224,7 +3227,8 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				set_page_private(page, entry.val);
 				/* 添加到匿名lru */
 				lru_cache_add_anon(page);
-				/* 这里吧swp file里的page内容读取到刚刚申请的page内存区域里面 */
+				/* 这里吧swp file里的page内容读取到刚刚申请的
+				page内存区域里面 */
 				swap_readpage(page, true);
 			}
 		} else {

@@ -381,9 +381,8 @@ int __swap_writepage(struct page *page, struct writeback_control *wbc,
 out:
 	return ret;
 }
-/* 2024年07月03日14:53:14
-把page从swp file里读出来拷贝到page。
-申请page的时候已经把swp ent信息赋值到page的priv里面了。
+/*
+把swap file读入到swap mapping的page
  */
 int swap_readpage(struct page *page, bool synchronous)
 {

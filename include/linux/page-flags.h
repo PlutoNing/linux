@@ -175,20 +175,24 @@ enum pageflags {
 
 struct page;	/* forward declaration */
 
-//2024年06月20日16:31:26
-/* 2024年6月30日21:51:00
-之后所有page 都会配置两个属性：mapping 和 compound_head，
-并且通过 compound_head 确认是尾页还是头页，详细看 compound_head() 函数；
- */
+/* 用于thp, hugetlbfs,驱动等 */
+/* 
+复合页结构：
++-------------+-------------+-------------+-----+-------------+
+|   头页面    |   尾页1     |   尾页2     | ... |   尾页511   |
+|   page[0]   |   page[1]   |   page[2]   |     |  page[511]  |
++-------------+-------------+-------------+-----+-------------+
+     ↑              ↑              ↑                    ↑
+   头页面        尾页面        尾页面              尾页面
+
+*/
 static inline struct page *compound_head(struct page *page)
 {
-	/* 通过 page->compound_head 的最后一位是否设为 1 来判断该页是否为头页，
-	如果不是头页，只需要减 1 即可获得头页地址。（正常情况下page 的地址都是页对齐的） */
 	unsigned long head = READ_ONCE(page->compound_head);
 
-	if (unlikely(head & 1))
-		return (struct page *) (head - 1);
-	return page;
+	if (unlikely(head & 1)) // 检查最低位是否为1
+		return (struct page *) (head - 1); // 尾页面：返回头页面
+	return page; // 已经是头页面
 }
 /* 2024年6月30日21:47:26
 另外函数PageHead和函数PageTail用来检测一个页是否是页头或者页尾。

@@ -366,7 +366,7 @@ static long ovl_fallocate(struct file *file, int mode, loff_t offset, loff_t len
 
 	return ret;
 }
-
+/* overlayfs的fadvise实现是一个代理模式，将用户的fadvise请求正确地路由到实际存储文件上 */
 static int ovl_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 {
 	struct fd real;

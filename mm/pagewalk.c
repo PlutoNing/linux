@@ -4,6 +4,7 @@
 #include <linux/sched.h>
 #include <linux/hugetlb.h>
 /* 2024年7月13日01:34:37
+遍历范围内的pte, 执行回调
  */
 static int walk_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
@@ -27,6 +28,7 @@ static int walk_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 	return err;
 }
 /* 2024年7月13日01:34:28
+遍历范围内的pte, 执行回调
  */
 static int walk_pmd_range(pud_t *pud, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
@@ -74,6 +76,7 @@ again:
 	return err;
 }
 /* 2024年7月13日01:34:19
+遍历范围内的pte, 执行回调
  */
 static int walk_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
@@ -120,6 +123,7 @@ static int walk_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 	return err;
 }
 /* 2024年7月13日01:34:10
+遍历范围内的pte, 执行回调
  */
 static int walk_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
@@ -147,7 +151,8 @@ static int walk_p4d_range(pgd_t *pgd, unsigned long addr, unsigned long end,
 
 	return err;
 }
-/* 2024年7月13日01:33:52 */
+/* 2024年7月13日01:33:52
+遍历范围内的pte, 执行回调 */
 static int walk_pgd_range(unsigned long addr, unsigned long end,
 			  struct mm_walk *walk)
 {
@@ -252,7 +257,9 @@ static int walk_page_test(unsigned long start, unsigned long end,
 	}
 	return 0;
 }
-/* 2024年7月13日01:33:41 */
+/* 2024年7月13日01:33:41
+遍历这个vma的pte
+walk封装了ops回调和参数 */
 static int __walk_page_range(unsigned long start, unsigned long end,
 			struct mm_walk *walk)
 {
@@ -269,43 +276,34 @@ static int __walk_page_range(unsigned long start, unsigned long end,
 }
 
 /**
-2024年7月13日01:31:39
-2024年8月25日15:52:25
-
- * walk_page_range - walk page table with caller specific callbacks
- * @mm:		mm_struct representing the target process of page table walk
- * @start:	start address of the virtual address range
- * @end:	end address of the virtual address range
- * @ops:	operation to call during the walk
- * @private:	private data for callbacks' usage
+ * walk_page_range - 使用调用者指定的回调函数遍历页表
+ * @mm: 指向目标进程内存描述符的指针，表示要遍历哪个进程的页表
+ * @start: 虚拟地址范围的起始地址（包含）
+ * @end: 虚拟地址范围的结束地址（不包含）
+ * @ops: 遍历过程中要调用的操作函数集合
+ * @private: 供回调函数使用的私有数据指针
  *
- * Recursively walk the page table tree of the process represented by @mm
- * within the virtual address range [@start, @end). During walking, we can do
- * some caller-specific works for each entry, by setting up pmd_entry(),
- * pte_entry(), and/or hugetlb_entry(). If you don't set up for some of these
- * callbacks, the associated entries/pages are just ignored.
- * The return values of these callbacks are commonly defined like below:
+ * 在[@start, @end)指定的虚拟地址范围内，递归遍历由@mm指定的进程的整个页表树。
+ * 在遍历过程中，可以通过设置pmd_entry()、pte_entry()和/或hugetlb_entry()等回调函数，
+ * 对每个页表项执行调用者特定的操作。如果没有设置某些回调函数，相应的页表项或页面将被忽略。
  *
- *  - 0  : succeeded to handle the current entry, and if you don't reach the
- *         end address yet, continue to walk.
- *  - >0 : succeeded to handle the current entry, and return to the caller
- *         with caller specific value.
- *  - <0 : failed to handle the current entry, and return to the caller
- *         with error code.
+ * 这些回调函数的返回值通常按以下方式定义：
  *
- * Before starting to walk page table, some callers want to check whether
- * they really want to walk over the current vma, typically by checking
- * its vm_flags. walk_page_test() and @ops->test_walk() are used for this
- * purpose.
+ *  - 0  : 成功处理了当前页表项，如果尚未到达结束地址，则继续遍历
+ *  - >0 : 成功处理了当前页表项，并携带调用者特定的值返回给调用方
+ *  - <0 : 处理当前页表项失败，并携带错误码返回给调用方
  *
- * struct mm_walk keeps current values of some common data like vma and pmd,
- * which are useful for the access from callbacks. If you want to pass some
- * caller-specific data to callbacks, @private should be helpful.
+ * 在开始遍历页表之前，某些调用者希望确认是否真的要遍历当前的虚拟内存区域(vma)，
+ * 通常通过检查其vm_flags标志来判断。walk_page_test()和@ops->test_walk()就是用于此目的。
  *
- * Locking:
- *   Callers of walk_page_range() and walk_page_vma() should hold @mm->mmap_sem,
- *   because these function traverse vma list and/or access to vma's data.
+ * struct mm_walk结构体保存了vma、pmd等常用数据的当前值，便于回调函数访问。
+ * 如果需要向回调函数传递调用者特定的数据，@private参数会很有用。
+ *
+ * 锁定要求：
+ *   walk_page_range()和walk_page_vma()的调用者必须持有@mm->mmap_sem锁，
+ *   因为这些函数会遍历vma列表和/或访问vma的数据。
  */
+
 int walk_page_range(struct mm_struct *mm, unsigned long start,
 		unsigned long end, const struct mm_walk_ops *ops,
 		void *private)
@@ -326,7 +324,7 @@ int walk_page_range(struct mm_struct *mm, unsigned long start,
 		return -EINVAL;
 
 	lockdep_assert_held(&walk.mm->mmap_sem);
-	/* 2024年7月13日01:32:50 find vma */
+	/* 遍历范围内的vma*/
 	vma = find_vma(walk.mm, start);
 	do {
 		if (!vma) { /* after the last vma */

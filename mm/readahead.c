@@ -237,7 +237,9 @@ out:
 
 /*
 2024年6月30日14:36:44
-进行一下预读, POSIX_FADV_WILLNEED会调用这里
+把file的指定范围的内容加载进pagecache
+-===================================================================
+fadvise的willneed advice调用这里
  * Chunk the readahead into 2 megabyte units, so that we don't pin too much
  * memory at once.
  */
@@ -263,7 +265,7 @@ int force_page_cache_readahead(struct address_space *mapping, struct file *filp,
 
 		if (this_chunk > nr_to_read)
 			this_chunk = nr_to_read;
-		/* 真正预读？ */
+		/* 真正预读 */
 		__do_page_cache_readahead(mapping, filp, offset, this_chunk, 0);
 
 		offset += this_chunk;

@@ -2109,7 +2109,7 @@ static inline void pgtable_pte_page_dtor(struct page *page)
 	dec_zone_page_state(page, NR_PAGETABLE);
 }
 /* 2024年7月13日13:46:29
-自旋锁找到addr的pte，把页表的锁赋到ptlp。
+获取PTE指针并加锁
  */
 #define pte_offset_map_lock(mm, pmd, address, ptlp)	\
 ({							\

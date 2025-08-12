@@ -138,6 +138,7 @@ int generic_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 		/*
 		 * Ignore return value because fadvise() shall return
 		 * success even if filesystem can't retrieve a hint,
+		 加载进pagecache
 		 */
 		force_page_cache_readahead(mapping, file, start_index, nrpages);
 		break;
@@ -213,12 +214,17 @@ int generic_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 }
 EXPORT_SYMBOL(generic_fadvise);
 /* 2024年07月18日18:30:17
+这个被mmap的file的offset对应的vma被willneed了
+这里调用file的fops来执行完成这个willneed (基本就是把文件读入pagecache)
+======================================
 系统调用直接调用
 madvise willneed调用
 预读调用
  */
 int vfs_fadvise(struct file *file, loff_t offset, loff_t len, int advice)
 {
+	/* 只有overlayfs
+	overlayfs的fadvise实现是一个代理模式，将用户的fadvise请求正确地路由到实际存储文件上 */
 	if (file->f_op->fadvise)
 		return file->f_op->fadvise(file, offset, len, advice);
 

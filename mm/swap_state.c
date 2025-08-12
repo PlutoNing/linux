@@ -396,9 +396,13 @@ struct page *lookup_swap_cache(swp_entry_t entry, struct vm_area_struct *vma,
 	/* page可能为空 */
 	return page;
 }
-/* swap的预读 
+/* swap的预读
+这里先找到swap mapping的对应页面
 查找entry的swpfile的mapping
 没有页面的话，新分配，插入mapping
+=================================================
+调用场景
+madvise的willneed匿名vma, 把vma的addr对应的被换出的页面换入
 */
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
@@ -418,12 +422,14 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		si = get_swap_device(entry);
 		if (!si)
 			break;
-		/* 获取页面，缺页会申请 */
+		/* 获取页面，缺页不会申请 */
 		found_page = find_get_page(swap_address_space(entry),
 					   swp_offset(entry));
 		put_swap_device(si);
 		if (found_page)
 			break;
+		/* swap mapping没有页面, 这里需要分配页面加入mapping, 然后才能把swap file
+		的文件对应page读进来 */
 
 		/*
 		 * Just skip read ahead for unused swap slot.
@@ -438,6 +444,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 		/*
 		 * Get a new page to read into from swap.
+		 为swap mapping申请新页面
 		 */
 		if (!new_page) {
 			new_page = alloc_page_vma(gfp_mask, vma, addr);
@@ -469,7 +476,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		if (likely(!err)) {
 			/* Initiate read into locked page */
 			SetPageWorkingset(new_page);
-			/*  */
+			/* 加入lru */
 			lru_cache_add_anon(new_page);
 			*new_page_allocated = true;
 			return new_page;
@@ -489,6 +496,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 
 /*
 2024年8月1日00:05:11
+vma的index地址对应的page被换出了, 这里换入
  * Locate a page of swap in physical memory, reserving swap cache space
  * and reading the disk if it is not already cached.
  * A failure return means that either the page allocation failed or that
@@ -498,10 +506,11 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		struct vm_area_struct *vma, unsigned long addr, bool do_poll)
 {
 	bool page_was_allocated;
-	/*  */
+	/* 先找到swap mapping对应的page */
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
 			vma, addr, &page_was_allocated);
 
+	/* 这里把swap file对应的内容读入到这个page */
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll);
 
@@ -840,6 +849,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		if (!page)
 			continue;
 		if (page_allocated) {
+			/* 把swap file的内容读入 */
 			swap_readpage(page, false);
 			if (i != ra_info.offset) {
 				SetPageReadahead(page);

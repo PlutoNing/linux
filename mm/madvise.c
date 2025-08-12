@@ -181,6 +181,9 @@ out:
 }
 
 #ifdef CONFIG_SWAP
+/* madvise调用
+用于处理will need, 但是没有后背文件的vma
+遍历vma的页表, 对每个pmd执行这个函数回调, 总之是把vma的页面换入 */
 static int swapin_walk_pmd_entry(pmd_t *pmd, unsigned long start,
 	unsigned long end, struct mm_walk *walk)
 {
@@ -203,10 +206,12 @@ static int swapin_walk_pmd_entry(pmd_t *pmd, unsigned long start,
 
 		if (pte_present(pte) || pte_none(pte))
 			continue;
+		/* 处理范围内的每一个被换出的page */
 		entry = pte_to_swp_entry(pte);
 		if (unlikely(non_swap_entry(entry)))
 			continue;
 
+		/* 把页面换入 */
 		page = read_swap_cache_async(entry, GFP_HIGHUSER_MOVABLE,
 							vma, index, false);
 		if (page)
@@ -216,10 +221,15 @@ static int swapin_walk_pmd_entry(pmd_t *pmd, unsigned long start,
 	return 0;
 }
 
+/* 遍历vma的页表时, 对pmd执行的回调函数
+用于把vma的页面换入
+============================================
+madvise调用 */
 static const struct mm_walk_ops swapin_walk_ops = {
 	.pmd_entry		= swapin_walk_pmd_entry,
 };
 
+/* 把shmem的vma的页面也换入内存 */
 static void force_shm_swapin_readahead(struct vm_area_struct *vma,
 		unsigned long start, unsigned long end,
 		struct address_space *mapping)
@@ -233,10 +243,12 @@ static void force_shm_swapin_readahead(struct vm_area_struct *vma,
 
 		page = find_get_entry(mapping, index);
 		if (!xa_is_value(page)) {
+			/* 对应的页面已经在mapping了 */
 			if (page)
 				put_page(page);
 			continue;
 		}
+		/* 对应的页面不在Mmapping, is_value的mapping entry是swp项 */
 		swap = radix_to_swp_entry(page);
 		page = read_swap_cache_async(swap, GFP_HIGHUSER_MOVABLE,
 							NULL, 0, false);
@@ -262,12 +274,14 @@ static long madvise_willneed(struct vm_area_struct *vma,
 	*prev = vma;
 #ifdef CONFIG_SWAP
 	if (!file) {
-		/* 没有后背文件的vma */
+		/* 没有后背文件的vma, 匿名vma
+		把vma的页面换入 */
 		walk_page_range(vma->vm_mm, start, end, &swapin_walk_ops, vma);
 		lru_add_drain(); /* Push any new pages onto the LRU now */
 		return 0;
 	}
 
+	/* 如果这是shmem的vma */
 	if (shmem_mapping(file->f_mapping)) {
 		force_shm_swapin_readahead(vma, start, end,
 					file->f_mapping);
@@ -292,14 +306,21 @@ static long madvise_willneed(struct vm_area_struct *vma,
 	*prev = NULL;	/* tell sys_madvise we drop mmap_sem */
 	get_file(file);
 	up_read(&current->mm->mmap_sem);
+	/* 在file的全局偏移 */
 	offset = (loff_t)(start - vma->vm_start)
 			+ ((loff_t)vma->vm_pgoff << PAGE_SHIFT);
+	/* 这里就是mmap的文件的情况了
+	调用vfs的advise,指定willneed, 把加载进来 */
 	vfs_fadvise(file, offset, end - start, POSIX_FADV_WILLNEED);
 	fput(file);
 	down_read(&current->mm->mmap_sem);
 	return 0;
 }
 
+/* madvise用于cold pageout某个vma的pmd
+处理每个pte, 进行cold, 可能会pageout回收页面
+==============================================
+一个vma被advise cold时, 遍历其页表, 对pmd执行此回调 */
 static int madvise_cold_or_pageout_pte_range(pmd_t *pmd,
 				unsigned long addr, unsigned long end,
 				struct mm_walk *walk)
@@ -318,8 +339,12 @@ static int madvise_cold_or_pageout_pte_range(pmd_t *pmd,
 		return -EINTR;
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
+/* 检查当前PMD是否指向一个2MB的透明大页
+ */
 	if (pmd_trans_huge(*pmd)) {
 		pmd_t orig_pmd;
+		/* pmd的末尾边界, 或者就是end(如果end比pmd end小的话)
+		总之获取min(end, pmd end) */
 		unsigned long next = pmd_addr_end(addr, end);
 
 		tlb_change_page_size(tlb, HPAGE_PMD_SIZE);
@@ -338,15 +363,21 @@ static int madvise_cold_or_pageout_pte_range(pmd_t *pmd,
 		}
 
 		page = pmd_page(orig_pmd);
+		/* 如果操作范围没有完全覆盖整个2MB大页，
+		也就是说本次cold的end位于大页中间
+		需拆分大页*/
 		if (next - addr != HPAGE_PMD_SIZE) {
 			int err;
 
+			/* 只有当前进程独占该大页时才允许拆分 */
 			if (page_mapcount(page) != 1)
 				goto huge_unlock;
 
 			get_page(page);
 			spin_unlock(ptl);
 			lock_page(page);
+			/* 将2MB大页拆分成512个4KB普通页面
+ 			拆分后跳转到`regular_page`处理普通页面*/
 			err = split_huge_page(page);
 			unlock_page(page);
 			put_page(page);
@@ -355,7 +386,9 @@ static int madvise_cold_or_pageout_pte_range(pmd_t *pmd,
 			return 0;
 		}
 
+		/* 如果操作范围正好覆盖整个2MB大页 */
 		if (pmd_young(orig_pmd)) {
+			/* 需要同步更新CPU的TLB缓存，确保一致性 */
 			pmdp_invalidate(vma, addr, pmd);
 			orig_pmd = pmd_mkold(orig_pmd);
 
@@ -363,10 +396,13 @@ static int madvise_cold_or_pageout_pte_range(pmd_t *pmd,
 			tlb_remove_pmd_tlb_entry(tlb, pmd, addr);
 		}
 
+		/* 清除页面的`PG_referenced`标志 */
 		ClearPageReferenced(page);
+		/* 清除页表项中的"young"标志，并返回原值 */
 		test_and_clear_page_young(page);
 		if (pageout) {
 			if (!isolate_lru_page(page)) {
+				/* 成功从lru移除了 */
 				if (PageUnevictable(page))
 					putback_lru_page(page);
 				else
@@ -376,6 +412,7 @@ static int madvise_cold_or_pageout_pte_range(pmd_t *pmd,
 			deactivate_page(page);
 huge_unlock:
 		spin_unlock(ptl);
+		/* 把这些页面回收 */
 		if (pageout)
 			reclaim_pages(&page_list);
 		return 0;
@@ -385,8 +422,10 @@ huge_unlock:
 		return 0;
 regular_page:
 #endif
+/* 非透明巨页的情况 */
 	tlb_change_page_size(tlb, PAGE_SIZE);
 	orig_pte = pte = pte_offset_map_lock(vma->vm_mm, pmd, addr, &ptl);
+	/* 防止TLB缓存中的旧映射影响当前的页表修改操作 */
 	flush_tlb_batched_pending(mm);
 	arch_enter_lazy_mmu_mode();
 	for (; addr < end; pte++, addr += PAGE_SIZE) {
@@ -467,10 +506,13 @@ regular_page:
 	return 0;
 }
 
+/* madvise用于cold pageout某个vma的pmd
+==============================================
+一个vma被advise cold时, 遍历其页表, 对pmd执行此回调 */
 static const struct mm_walk_ops cold_walk_ops = {
 	.pmd_entry = madvise_cold_or_pageout_pte_range,
 };
-
+/* madvise进行cold某vma的页面 */
 static void madvise_cold_page_range(struct mmu_gather *tlb,
 			     struct vm_area_struct *vma,
 			     unsigned long addr, unsigned long end)
@@ -485,6 +527,7 @@ static void madvise_cold_page_range(struct mmu_gather *tlb,
 	tlb_end_vma(tlb, vma);
 }
 
+/* madvise进行cold某vma的页面 */
 static long madvise_cold(struct vm_area_struct *vma,
 			struct vm_area_struct **prev,
 			unsigned long start_addr, unsigned long end_addr)
@@ -503,7 +546,7 @@ static long madvise_cold(struct vm_area_struct *vma,
 
 	return 0;
 }
-
+/* madvise进行pageout某vma的页面 */
 static void madvise_pageout_page_range(struct mmu_gather *tlb,
 			     struct vm_area_struct *vma,
 			     unsigned long addr, unsigned long end)
@@ -533,7 +576,7 @@ static inline bool can_do_pageout(struct vm_area_struct *vma)
 	return inode_owner_or_capable(file_inode(vma->vm_file)) ||
 		inode_permission(file_inode(vma->vm_file), MAY_WRITE) == 0;
 }
-
+/* madvise进行pageout某vma的页面 */
 static long madvise_pageout(struct vm_area_struct *vma,
 			struct vm_area_struct **prev,
 			unsigned long start_addr, unsigned long end_addr)
@@ -729,6 +772,8 @@ static int madvise_free_single_vma(struct vm_area_struct *vma,
 }
 
 /*
+
+应用通过madvise通知不再需要这些页面
  * Application no longer needs these pages.  If the pages are dirty,
  * it's OK to just throw them away.  The app will be more careful about
  * data it wants to keep.  Be sure to free swap resources too.  The
@@ -802,7 +847,7 @@ static long madvise_dontneed_free(struct vm_area_struct *vma,
 		VM_WARN_ON(start >= end);
 	}
 
-	if (behavior == MADV_DONTNEED)
+	if (behavior == MADV_DONTNEED) /* 立即释放页面, 解除映射 */
 		return madvise_dontneed_single_vma(vma, start, end);
 	else if (behavior == MADV_FREE)
 		return madvise_free_single_vma(vma, start, end);
@@ -930,18 +975,21 @@ static int madvise_inject_error(int behavior,
 
 /* 对vma进行madvise */
 /* madvise系统调用用这个函数处理每一个vma */
-static long
-madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
+static long madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
 		unsigned long start, unsigned long end, int behavior)
 {
 	switch (behavior) {
 	case MADV_REMOVE:
+	/* 打洞 */
 		return madvise_remove(vma, prev, start, end);
 	case MADV_WILLNEED:
+	/* 换入匿名vma或者shmem vma. 加载mmap的vma的文件内容到pagecache */
 		return madvise_willneed(vma, prev, start, end);
 	case MADV_COLD:
+	/* cold此vma */
 		return madvise_cold(vma, prev, start, end);
 	case MADV_PAGEOUT:
+	/* pageout此vma的范围 */
 		return madvise_pageout(vma, prev, start, end);
 	case MADV_FREE:
 	case MADV_DONTNEED:

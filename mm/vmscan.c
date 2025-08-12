@@ -2517,7 +2517,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 			nr_deactivate, nr_rotated, sc->priority, file);
 }
 /* 2024年08月20日20:21:07
-用处？
+把里面的页面回收
  */
 unsigned long reclaim_pages(struct list_head *page_list)
 {

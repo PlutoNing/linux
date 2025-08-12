@@ -44,7 +44,7 @@
 #define _PAGE_USER	(_AT(pteval_t, 1) << _PAGE_BIT_USER)
 #define _PAGE_PWT	(_AT(pteval_t, 1) << _PAGE_BIT_PWT)
 #define _PAGE_PCD	(_AT(pteval_t, 1) << _PAGE_BIT_PCD)
-/*  */
+/* young标志表示该大页最近被访问过，这是内存回收算法用来判断页面活跃度的依据 */
 #define _PAGE_ACCESSED	(_AT(pteval_t, 1) << _PAGE_BIT_ACCESSED)
 #define _PAGE_DIRTY	(_AT(pteval_t, 1) << _PAGE_BIT_DIRTY)
 #define _PAGE_PSE	(_AT(pteval_t, 1) << _PAGE_BIT_PSE)

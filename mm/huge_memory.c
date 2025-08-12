@@ -1699,6 +1699,7 @@ bool madvise_free_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 	struct mm_struct *mm = tlb->mm;
 	bool ret = false;
 
+	/* 设置tlb按照巨页大小来执行操作 */
 	tlb_change_page_size(tlb, HPAGE_PMD_SIZE);
 
 	ptl = pmd_trans_huge_lock(pmd, vma);
@@ -1715,6 +1716,7 @@ bool madvise_free_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 		goto out;
 	}
 
+	/* 获取对应的大页 */
 	page = pmd_page(orig_pmd);
 	/*
 	 * If other processes are mapping this page, we couldn't discard
@@ -1729,6 +1731,7 @@ bool madvise_free_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 	/*
 	 * If user want to discard part-pages of THP, split it so MADV_FREE
 	 * will deactivate only them.
+	 只释放大页的一部分
 	 */
 	if (next - addr != HPAGE_PMD_SIZE) {
 		get_page(page);
@@ -2710,6 +2713,7 @@ bool can_split_huge_page(struct page *page, int *pextra_pins)
  */
 int split_huge_page_to_list(struct page *page, struct list_head *list)
 {
+	/* 透明大页是复合页的特例 */
 	struct page *head = compound_head(page);
 	struct pglist_data *pgdata = NODE_DATA(page_to_nid(head));
 	struct deferred_split *ds_queue = get_deferred_split_queue(page);
@@ -2787,6 +2791,7 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 	spin_lock_irqsave(&pgdata->lru_lock, flags);
 
 	if (mapping) {
+		/* 20250813013448 */
 		XA_STATE(xas, &mapping->i_pages, page_index(head));
 
 		/*

@@ -165,7 +165,7 @@ static inline int pmd_dirty(pmd_t pmd)
 {
 	return pmd_flags(pmd) & _PAGE_DIRTY;
 }
-
+/* young标志表示该大页最近被访问过，这是内存回收算法用来判断页面活跃度的依据 */
 static inline int pmd_young(pmd_t pmd)
 {
 	return pmd_flags(pmd) & _PAGE_ACCESSED;
@@ -411,6 +411,7 @@ static inline pmd_t pmd_clear_flags(pmd_t pmd, pmdval_t clear)
 	return native_make_pmd(v & ~clear);
 }
 
+/* 将页面标记为"未访问"，这样内存回收算法会认为该页面不活跃，可以回收 */
 static inline pmd_t pmd_mkold(pmd_t pmd)
 {
 	return pmd_clear_flags(pmd, _PAGE_ACCESSED);
@@ -829,7 +830,8 @@ static inline unsigned long pmd_page_vaddr(pmd_t pmd)
 
 /*
 2024年7月13日13:30:55
-获得pmd指向的页表，页表里512个pte？
+================
+可以用于获取pmd对应的大页
  * Currently stuck as a macro due to indirect forward reference to
  * linux/mmzone.h's __section_mem_map_addr() definition:
  */
@@ -880,8 +882,8 @@ static inline unsigned long pte_index(unsigned long address)
 {
 	return (address >> PAGE_SHIFT) & (PTRS_PER_PTE - 1);
 }
-/* *pmd指向？ 应该是指向pte页表的地址。
-获取pte
+/*
+获取对应addr的ptep
 */
 static inline pte_t * pte_offset_kernel(pmd_t *pmd, unsigned long address)
 {

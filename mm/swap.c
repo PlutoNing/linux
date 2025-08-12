@@ -465,6 +465,8 @@ static void __lru_cache_add(struct page *page)
 /**
 2024年07月03日14:51:49
 
+====================================================
+换入vma的页面时,swap mapping缺页, 申请之后加入mapping之后, 调用
  * lru_cache_add_anon - add a page to the page lists
  * @page: the page to add
  */
@@ -475,7 +477,7 @@ void lru_cache_add_anon(struct page *page)
 	__lru_cache_add(page);
 }
 /* 2024年07月29日13:15:45
-函数名的file含义？ */
+ */
 void lru_cache_add_file(struct page *page)
 {
 	if (PageActive(page))
