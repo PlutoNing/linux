@@ -486,9 +486,6 @@ EXPORT_SYMBOL(lru_cache_add_file);
 
 /**
 2024年6月24日23:41:05
-
-加到page list？什么list？加到pagevec。
-
  * lru_cache_add - add a page to a page list
  * @page: the page to be added to the LRU.
  *
