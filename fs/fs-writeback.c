@@ -807,6 +807,8 @@ void wbc_account_cgroup_owner(struct writeback_control *wbc, struct page *page,
 EXPORT_SYMBOL_GPL(wbc_account_cgroup_owner);
 
 /**
+检测一个inode是否处于"拥塞"状态，即该inode对应的存储设备是否
+因为I/O负载过高而无法及时处理更多的写请求。
  * inode_congested - test whether an inode is congested
  * @inode: inode to test for congestion (may be NULL)
  * @cong_bits: mask of WB_[a]sync_congested bits to test

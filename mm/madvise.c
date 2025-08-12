@@ -38,6 +38,7 @@ struct madvise_walk_private {
 };
 
 /*
+需要写入vma的madv行为
  * Any behaviour which results in changes to the vma->vm_flags needs to
  * take mmap_sem for writing. Others, which simply traverse vmas, need
  * to only take it for reading.
@@ -810,6 +811,7 @@ static long madvise_dontneed_free(struct vm_area_struct *vma,
 }
 
 /*
+用于在文件中间"打孔"（punch a hole），即释放指定范围的页面和关联的后备存储。
  * Application wants to free up the pages and associated backing store.
  * This is effectively punching a hole into the middle of a file.
  */
@@ -926,6 +928,7 @@ static int madvise_inject_error(int behavior,
 }
 #endif
 
+/* 对vma进行madvise */
 /* madvise系统调用用这个函数处理每一个vma */
 static long
 madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
@@ -987,6 +990,7 @@ madvise_behavior_valid(int behavior)
 }
 
 /*
+可以hook内核对vma的管理
  * The madvise(2) system call.
  *
  * Applications can use madvise() to advise the kernel how it should
@@ -1000,20 +1004,29 @@ madvise_behavior_valid(int behavior)
  *		results in some read-ahead and read-behind.
  *  MADV_RANDOM - the system should read the minimum amount of data
  *		on any access, since it is unlikely that the appli-
- *		cation will need more than what it asks for.
+ *		cation will need more than what it asks for.随机访问，最小化预读
+
  *  MADV_SEQUENTIAL - pages in the given range will probably be accessed
  *		once, so they can be aggressively read ahead, and
- *		can be freed soon after they are accessed.
+ *		can be freed soon after they are accessed.顺序访问，积极预读，访问后尽快释放
+
  *  MADV_WILLNEED - the application is notifying the system to read
- *		some pages ahead.
+ *		some pages ahead.提前加载页面到内存
+
  *  MADV_DONTNEED - the application is finished with the given range,
- *		so the kernel can free resources associated with it.
+ *		so the kernel can free resources associated with it.不再需要，可以释放相关资源
+
  *  MADV_FREE - the application marks pages in the given range as lazy free,
  *		where actual purges are postponed until memory pressure happens.
+ 延迟释放，直到内存压力时才真正释放
+
  *  MADV_REMOVE - the application wants to free up the given range of
  *		pages and associated backing store.
+ 立即释放页面和后备存储
+
  *  MADV_DONTFORK - omit this area from child's address space when forking:
  *		typically, to avoid COWing pages pinned by get_user_pages().
+
  *  MADV_DOFORK - cancel MADV_DONTFORK: no longer omit this area when forking.
  *  MADV_WIPEONFORK - present the child process with zero-filled memory in this
  *              range after a fork.
@@ -1083,6 +1096,7 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 		return madvise_inject_error(behavior, start, start + len_in);
 #endif
 
+	/* 检测advise的行为需不需要加锁 */
 	write = madvise_need_mmap_write(behavior);
 	if (write) {
 		if (down_write_killable(&current->mm->mmap_sem))
@@ -1120,7 +1134,6 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 		if (end < tmp)
 			tmp = end;
 
-		/* 遍历vma进行advise */
 		/* Here vma->vm_start <= start < tmp <= (end|vma->vm_end). */
 		error = madvise_vma(vma, &prev, start, tmp, behavior);
 		if (error)

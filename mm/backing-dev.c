@@ -1200,6 +1200,9 @@ void clear_wb_congested(struct bdi_writeback_congested *congested, int sync)
 EXPORT_SYMBOL(clear_wb_congested);
 /* 2024年07月18日15:06:42
 报告wb的阻塞情况，统计到全局数组nr-wb-congestion数组
+=================================
+调用场合:
+
  */
 void set_wb_congested(struct bdi_writeback_congested *congested, int sync)
 {
