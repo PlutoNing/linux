@@ -248,6 +248,7 @@ static void force_shm_swapin_readahead(struct vm_area_struct *vma,
 #endif		/* CONFIG_SWAP */
 
 /*
+madvise系统调用告知这个vma将会被读取
  * Schedule all required I/O operations.  Do not wait for completion.
  */
 static long madvise_willneed(struct vm_area_struct *vma,
@@ -260,6 +261,7 @@ static long madvise_willneed(struct vm_area_struct *vma,
 	*prev = vma;
 #ifdef CONFIG_SWAP
 	if (!file) {
+		/* 没有后背文件的vma */
 		walk_page_range(vma->vm_mm, start, end, &swapin_walk_ops, vma);
 		lru_add_drain(); /* Push any new pages onto the LRU now */
 		return 0;
@@ -924,6 +926,7 @@ static int madvise_inject_error(int behavior,
 }
 #endif
 
+/* madvise系统调用用这个函数处理每一个vma */
 static long
 madvise_vma(struct vm_area_struct *vma, struct vm_area_struct **prev,
 		unsigned long start, unsigned long end, int behavior)
@@ -1117,13 +1120,13 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 		if (end < tmp)
 			tmp = end;
 
+		/* 遍历vma进行advise */
 		/* Here vma->vm_start <= start < tmp <= (end|vma->vm_end). */
 		error = madvise_vma(vma, &prev, start, tmp, behavior);
 		if (error)
 			goto out;
 		start = tmp;
-		if (prev && start < prev->vm_end)
-			start = prev->vm_end;
+		if (prev && start < prev->vm_end)			start = prev->vm_end;
 		error = unmapped_error;
 		if (start >= end)
 			goto out;
