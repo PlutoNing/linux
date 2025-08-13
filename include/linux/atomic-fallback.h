@@ -85,7 +85,6 @@ atomic_read_acquire(const atomic_t *v)
 #endif
 
 #ifndef atomic_set_release
-/* release语义 */
 static inline void
 atomic_set_release(atomic_t *v, int i)
 {
@@ -1055,7 +1054,6 @@ atomic_inc_and_test(atomic_t *v)
 
 #ifndef atomic_add_negative
 /**
-2024年08月09日19:25:33
  * atomic_add_negative - add and test if negative
  * @i: integer value to add
  * @v: pointer of type atomic_t
@@ -1117,8 +1115,6 @@ atomic_add_unless(atomic_t *v, int a, int u)
 
 #ifndef atomic_inc_not_zero
 /**
-++，除非是0
-如果是0的话返回false，不然就是++并且返回true
  * atomic_inc_not_zero - increment unless the number is zero
  * @v: pointer of type atomic_t
  *
@@ -1130,9 +1126,6 @@ atomic_inc_not_zero(atomic_t *v)
 {
 	return atomic_add_unless(v, 1, 0);
 }
-/* ++，除非是0
-如果是0的话返回false，不然就是++并且返回true。
-不是0才加，返回有没有加。 */
 #define atomic_inc_not_zero atomic_inc_not_zero
 #endif
 
@@ -1153,8 +1146,6 @@ atomic_inc_unless_negative(atomic_t *v)
 #endif
 
 #ifndef atomic_dec_unless_positive
-/* 减少v，除非v大于0；
-返回有没有减少。 */
 static inline bool
 atomic_dec_unless_positive(atomic_t *v)
 {
@@ -1167,8 +1158,6 @@ atomic_dec_unless_positive(atomic_t *v)
 
 	return true;
 }
-/* 减少v，除非v大于0；
-返回有没有减少。 */
 #define atomic_dec_unless_positive atomic_dec_unless_positive
 #endif
 
