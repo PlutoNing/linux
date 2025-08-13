@@ -1,0 +1,49 @@
+
+;; Function of_devfreq_cooling_register_power (of_devfreq_cooling_register_power, funcdef_no=2025, decl_uid=27297, cgraph_uid=2090, symbol_order=3615)
+
+
+;; Generating RTL for gimple basic block 2
+
+
+try_optimize_cfg iteration 1
+
+Merging block 3 into block 2...
+Merged blocks 2 and 3.
+Merged 2 and 3 without moving.
+Removing jump 11.
+Merging block 4 into block 2...
+Merged blocks 2 and 4.
+Merged 2 and 4 without moving.
+
+
+try_optimize_cfg iteration 2
+
+
+
+;;
+;; Full RTL generated for this function:
+;;
+(note 1 0 6 NOTE_INSN_DELETED)
+(note 6 1 2 2 [bb 2] NOTE_INSN_BASIC_BLOCK)
+(insn 2 6 3 2 (set (reg/v/f:DI 88 [ np ])
+        (reg:DI 5 di [ np ])) "./include/linux/devfreq_cooling.h":81 -1
+     (nil))
+(insn 3 2 4 2 (set (reg/v/f:DI 89 [ df ])
+        (reg:DI 4 si [ df ])) "./include/linux/devfreq_cooling.h":81 -1
+     (nil))
+(insn 4 3 5 2 (set (reg/v/f:DI 90 [ dfc_power ])
+        (reg:DI 1 dx [ dfc_power ])) "./include/linux/devfreq_cooling.h":81 -1
+     (nil))
+(note 5 4 8 2 NOTE_INSN_FUNCTION_BEG)
+(debug_insn 8 5 9 2 (debug_marker) "./include/linux/devfreq_cooling.h":82 -1
+     (nil))
+(debug_insn 9 8 10 2 (debug_marker) "./include/linux/err.h":26 -1
+     (nil))
+(insn 10 9 14 2 (set (reg/f:DI 87 [ <retval> ])
+        (const_int -22 [0xffffffffffffffea])) "./include/linux/devfreq_cooling.h":82 -1
+     (nil))
+(insn 14 10 15 2 (set (reg/i:DI 0 ax)
+        (reg/f:DI 87 [ <retval> ])) "./include/linux/devfreq_cooling.h":83 -1
+     (nil))
+(insn 15 14 0 2 (use (reg/i:DI 0 ax)) "./include/linux/devfreq_cooling.h":83 -1
+     (nil))

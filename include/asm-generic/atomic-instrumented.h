@@ -767,8 +767,6 @@ atomic_add_negative(int i, atomic_t *v)
 	kasan_check_write(v, sizeof(*v));
 	return arch_atomic_add_negative(i, v);
 }
-/* 返回真，是减完之后为负了
-返回假是大于等于0。 */
 #define atomic_add_negative atomic_add_negative
 #endif
 
@@ -1677,9 +1675,6 @@ atomic64_dec_if_positive(atomic64_t *v)
 	arch_xchg_relaxed(__ai_ptr, __VA_ARGS__);				\
 })
 #endif
-
-/* 将old和ptr指向的内容比较，如果相等，则将new写入到ptr中，返回old，如果不相等，则返回ptr指向的内容。 */
-
 
 #if !defined(arch_cmpxchg_relaxed) || defined(arch_cmpxchg)
 #define cmpxchg(ptr, ...)						\

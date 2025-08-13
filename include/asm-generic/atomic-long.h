@@ -322,7 +322,6 @@ atomic_long_fetch_andnot_relaxed(long i, atomic_long_t *v)
 	return atomic64_fetch_andnot_relaxed(i, v);
 }
 
-//原子的或操作,针对long类型
 static inline void
 atomic_long_or(long i, atomic_long_t *v)
 {
@@ -436,9 +435,7 @@ atomic_long_try_cmpxchg(atomic_long_t *v, long *old, long new)
 {
 	return atomic64_try_cmpxchg(v, (s64 *)old, new);
 }
-/* 
-如果旧值跟*old相等，将new赋值给原子变量，返回true；
-如果旧值跟*old不等，将new赋值给给*old，返回false */
+
 static inline bool
 atomic_long_try_cmpxchg_acquire(atomic_long_t *v, long *old, long new)
 {
