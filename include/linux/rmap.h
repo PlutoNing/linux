@@ -100,20 +100,36 @@ struct anon_vma_chain {
 	unsigned long cached_vma_start, cached_vma_last;
 #endif
 };
-
+/*
+ 定义了在反向映射（rmap）操作中用于try_to_unmap()函数的标志位，
+这些标志控制页面取消映射时的行为。 */
 enum ttu_flags {
+	/* 用于页面迁移场景，表示正在将页面从一个位置迁移到另一个位置
+ */
 	TTU_MIGRATION		= 0x1,	/* migration mode */
+	/* 用于munlock系统调用，解除页面的内存锁定
+ */
 	TTU_MUNLOCK		= 0x2,	/* munlock mode */
-
+/* 如果存在透明大页（THP），在取消映射前会先分裂对应的PMD
+ */
 	TTU_SPLIT_HUGE_PMD	= 0x4,	/* split huge PMD if any */
+	/* 在取消映射时忽略页面的mlocked状态, 用于强制取消映射即使页面被锁定
+ */
 	TTU_IGNORE_MLOCK	= 0x8,	/* ignore mlock */
+	/* 在取消映射时不更新页面的访问位（不老化） */
 	TTU_IGNORE_ACCESS	= 0x10,	/* don't age */
+	/* 即使页面标记为硬件错误（hwpoison），也继续取消映射
+ */
 	TTU_IGNORE_HWPOISON	= 0x20,	/* corrupted page is recoverable */
+	/* 允许批量处理TLB刷新操作以提高性能
+ */
 	TTU_BATCH_FLUSH		= 0x40,	/* Batch TLB flushes where possible
 					 * and caller guarantees they will
 					 * do a final flush if necessary */
+	/* 表示调用者已经持有rmap锁，函数内部不需要再次获取 */
 	TTU_RMAP_LOCKED		= 0x80,	/* do not grab rmap lock:
 					 * caller holds it */
+	/* 在分裂透明大页时冻结PTE */
 	TTU_SPLIT_FREEZE	= 0x100,		/* freeze pte under splitting thp */
 };
 

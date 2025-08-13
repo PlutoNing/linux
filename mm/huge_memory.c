@@ -2414,6 +2414,9 @@ void vma_adjust_trans_huge(struct vm_area_struct *vma,
 	}
 }
 
+/* 解除页面的映射
+=================================
+分裂大页前会调用 */
 static void unmap_page(struct page *page)
 {
 	enum ttu_flags ttu_flags = TTU_IGNORE_MLOCK | TTU_IGNORE_ACCESS |
@@ -2780,6 +2783,7 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 	}
 
 	mlocked = PageMlocked(page);
+	/*  */
 	unmap_page(head);
 	VM_BUG_ON_PAGE(compound_mapcount(head), head);
 

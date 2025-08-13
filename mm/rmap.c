@@ -1531,7 +1531,6 @@ void page_remove_rmap(struct page *page, bool compound)
 /*
 2024年7月18日23:56:51
 解除映射
-todo，是个很大的函数
  * @arg: enum ttu_flags will be passed to this argument
  */
 static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
@@ -1957,7 +1956,7 @@ bool try_to_unmap(struct page *page, enum ttu_flags flags)
 		rwc.invalid_vma = invalid_migration_vma;
 
 	if (flags & TTU_RMAP_LOCKED)
-		rmap_walk_locked(page, &rwc);
+		rmap_walk_locked(page, &rwc); /* caller已经加锁了 */
 	else
 		rmap_walk(page, &rwc);
 
