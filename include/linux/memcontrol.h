@@ -122,6 +122,7 @@ struct lruvec_stat {
  */
 struct memcg_shrinker_map {
 	struct rcu_head rcu;
+	/* 是个位图， 置位的话表示对应的shrinker来活儿了 */
 	unsigned long map[0];
 };
 
@@ -159,7 +160,9 @@ struct mem_cgroup_per_node {
 参考__invalidate_reclaim_iterators
  */
 	struct mem_cgroup_reclaim_iter	iter[DEF_PRIORITY + 1];
-	/* shrinker map，好像是存储shrinker什么的 */
+	/* shrinker map，好像是存储shrinker什么的
+	每个memcg在每个node都有这个东西， 存储memcg自己在这node上面的
+	shrinker， 用于回收什么的， 比如回收thp？ */
 	struct memcg_shrinker_map __rcu	*shrinker_map;
 
 	struct rb_node		tree_node;	/* RB tree node usage超过softlimit时，链接到全局的

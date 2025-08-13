@@ -464,7 +464,7 @@ unlock:
 	mutex_unlock(&memcg_shrinker_map_mutex);
 	return ret;
 }
-
+/* 设置memcg的这个node上面的这个shrinker有事情要做了 */
 void memcg_set_shrinker_bit(struct mem_cgroup *memcg, int nid, int shrinker_id)
 {
 	if (shrinker_id >= 0 && memcg && !mem_cgroup_is_root(memcg)) {
@@ -3448,6 +3448,7 @@ void __memcg_kmem_uncharge(struct page *page, int order)
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 
 /*
+分裂thp之前，完善每个子页面的cgroup指针
  * Because tail pages are not marked as "used", set it. We're under
  * pgdat->lru_lock and migration entries setup in all page mappings.
  */
@@ -6079,7 +6080,6 @@ static struct page *mc_handle_file_pte(struct vm_area_struct *vma,
 
 /**
 2024年7月13日14:51:11
-话说account和charge还不一样吗，怎么又来个move account。
  * mem_cgroup_move_account - move account of the page
  * @page: the page
  * @compound: charge the page as compound or small page
@@ -6122,14 +6122,13 @@ static int mem_cgroup_move_account(struct page *page,
 	anon = PageAnon(page);
 
 	pgdat = page_pgdat(page);
-	/* 其实就是获取from和to这两个memcg在这个node上面的lruvec */
 	from_vec = mem_cgroup_lruvec(pgdat, from);
 	to_vec = mem_cgroup_lruvec(pgdat, to);
 
 	spin_lock_irqsave(&from->move_lock, flags);
 
 	if (!anon && page_mapped(page)) {
-		/* 不是匿名页并且已映射 */
+		/* 如果是被map的文件页 */
 		__mod_lruvec_state(from_vec, NR_FILE_MAPPED, -nr_pages);
 		__mod_lruvec_state(to_vec, NR_FILE_MAPPED, nr_pages);
 	}
@@ -6139,7 +6138,8 @@ static int mem_cgroup_move_account(struct page *page,
 	 * mod_memcg_page_state will serialize updates to PageDirty.
 	 * So mapping should be stable for dirty pages.
 	 */
-	if (!anon && PageDirty(page)) {/* 脏文件页 */
+	if (!anon && PageDirty(page)) {
+		/* 如果是脏文件页 */
 		struct address_space *mapping = page_mapping(page);
 
 		if (mapping_cap_account_dirty(mapping)) {
@@ -6154,7 +6154,9 @@ static int mem_cgroup_move_account(struct page *page,
 	}
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-/* 2024年7月13日14:53:21 todo */
+/* 2024年7月13日14:53:21
+如果是被加入ds队列的page的话
+也要移动page到新memcg的ds队列*/
 	if (compound && !list_empty(page_deferred_list(page))) {
 		spin_lock(&from->deferred_split_queue.split_queue_lock);
 		list_del_init(page_deferred_list(page));

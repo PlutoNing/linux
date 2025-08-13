@@ -680,8 +680,11 @@ static inline int put_page_testzero(struct page *page)
 
 /*
 2024年06月25日15:14:17
-如果page的refcount是0，则不处理，等待回收即可，返回0
-如果page的refcount非0，则refcount加上1，返回1
+返回：
+- __非0__：成功增加引用计数（页面有效）
+
+- __0__：引用计数为0，未增加（页面即将被释放）
+
  * Try to grab a ref unless the page has a refcount of zero, return false if
  * that is the case.
  * This can be called when MMU is off so it must not access
@@ -846,7 +849,9 @@ void split_page(struct page *page, unsigned int order);
  */
 typedef void compound_page_dtor(struct page *);
 
-/* Keep the enum in sync with compound_page_dtors array in mm/page_alloc.c */
+/*
+不同类型的复核页的析构函数索引
+Keep the enum in sync with compound_page_dtors array in mm/page_alloc.c */
 enum compound_dtor_id {
 	NULL_COMPOUND_DTOR,
 	COMPOUND_PAGE_DTOR,
@@ -1130,7 +1135,8 @@ static inline __must_check bool try_get_page(struct page *page)
 	page_ref_inc(page);
 	return true;
 }
-/* put引用 */
+/* put引用
+有可能是会直接释放 */
 static inline void put_page(struct page *page)
 {
 	page = compound_head(page);
@@ -1260,7 +1266,7 @@ static inline void page_cpupid_reset_last(struct page *page)
 	page->_last_cpupid = -1 & LAST_CPUPID_MASK;
 }
 #else
-/* cpuid是什么 */
+/* 记录上一次访问这个page的cpuid */
 static inline int page_cpupid_last(struct page *page)
 {
 	return (page->flags >> LAST_CPUPID_PGSHIFT) & LAST_CPUPID_MASK;

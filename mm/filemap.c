@@ -132,6 +132,7 @@ static void page_cache_delete(struct address_space *mapping,
 	XA_STATE(xas, &mapping->i_pages, page->index);
 	unsigned int nr = 1;
 
+	/* 设置node更新回调 */
 	mapping_set_update(&xas, mapping);
 
 	/* hugetlb pages are represented by a single entry in the xarray */

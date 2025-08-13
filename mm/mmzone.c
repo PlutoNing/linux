@@ -104,7 +104,9 @@ void lruvec_init(struct lruvec *lruvec)
 }
 
 #if defined(CONFIG_NUMA_BALANCING) && !defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS)
-/*  */
+/* last_cpupid是一个编码值，记录最后一次访问该页的 CPU 和 PID__。
+用NUMA balancing，内核会根据这个值判断是否需要将该页迁移到更合适的 NUMA 节点。
+ */
 int page_cpupid_xchg_last(struct page *page, int cpupid)
 {
 	unsigned long old_flags, flags;

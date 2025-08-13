@@ -497,6 +497,8 @@ pmd_t maybe_pmd_mkwrite(pmd_t pmd, struct vm_area_struct *vma)
 }
 
 #ifdef CONFIG_MEMCG
+/* 获取thp的ds队列
+可能是memcg的， 也可能是node的 */
 static inline struct deferred_split *get_deferred_split_queue(struct page *page)
 {
 	struct mem_cgroup *memcg = compound_head(page)->mem_cgroup;
@@ -515,7 +517,7 @@ static inline struct deferred_split *get_deferred_split_queue(struct page *page)
 	return &pgdat->deferred_split_queue;
 }
 #endif
-
+/* 初始化 */
 void prep_transhuge_page(struct page *page)
 {
 	/*
@@ -1736,6 +1738,7 @@ bool madvise_free_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 	if (next - addr != HPAGE_PMD_SIZE) {
 		get_page(page);
 		spin_unlock(ptl);
+		/* 分裂大页 */
 		split_huge_page(page);
 		unlock_page(page);
 		put_page(page);
@@ -2443,6 +2446,7 @@ static void remap_page(struct page *page)
 	}
 }
 
+/* 分裂thp的第tail个尾页 */
 static void __split_huge_page_tail(struct page *head, int tail,
 		struct lruvec *lruvec, struct list_head *list)
 {
@@ -2456,7 +2460,10 @@ static void __split_huge_page_tail(struct page *head, int tail,
 	 * After successful get_page_unless_zero() might follow flags change,
 	 * for exmaple lock_page() which set PG_waiters.
 	 */
+	/* __清除尾页中不应存在的标志位__，这些标志位在页面准备重新分配时是不
+	应该设置的（如PG_locked, PG_dirty等） */
 	page_tail->flags &= ~PAGE_FLAGS_CHECK_AT_PREP;
+	/* __从head page中复制关键标志tail page，确保每个子页面拥有与原始大页一致的状态*/
 	page_tail->flags |= (head->flags &
 			((1L << PG_referenced) |
 			 (1L << PG_swapbacked) |
@@ -2486,7 +2493,9 @@ static void __split_huge_page_tail(struct page *head, int tail,
 	 */
 	clear_compound_head(page_tail);
 
-	/* Finally unfreeze refcount. Additional reference from page cache. */
+	/* Finally unfreeze refcount. Additional reference from page cache.
+	这里设置尾页的refcount
+	如果是文件页或者swap mapping里面的， 需要额外加一 */
 	page_ref_unfreeze(page_tail, 1 + (!PageAnon(head) ||
 					  PageSwapCache(head)));
 
@@ -2505,7 +2514,10 @@ static void __split_huge_page_tail(struct page *head, int tail,
 	lru_add_page_tail(head, page_tail, lruvec, list);
 }
 /* 2024年8月5日23:35:07
+分裂大页的工作函数
 
+@list：如果不为空，分裂后的尾页会放到这里， 而不是lru
+@end：如果是文件页thp的话，这里是文件大小
  */
 static void __split_huge_page(struct page *page, struct list_head *list,
 		pgoff_t end, unsigned long flags)
@@ -2519,9 +2531,12 @@ static void __split_huge_page(struct page *page, struct list_head *list,
 
 	lruvec = mem_cgroup_page_lruvec(head, pgdat);
 
-	/* complete memcg works before add pages to LRU */
+	/*
+	完善每个子页面的cgroup指针
+	complete memcg works before add pages to LRU */
 	mem_cgroup_split_huge_fixup(head);
 
+	/* 如果是位于swap cache的匿名thp， 找到对应的swapcache */
 	if (PageAnon(head) && PageSwapCache(head)) {
 		swp_entry_t entry = { .val = page_private(head) };
 
@@ -2530,19 +2545,24 @@ static void __split_huge_page(struct page *page, struct list_head *list,
 		xa_lock(&swap_cache->i_pages);
 	}
 
+	/* 从后往前一个一个分裂子页 */
 	for (i = HPAGE_PMD_NR - 1; i >= 1; i--) {
 		__split_huge_page_tail(head, i, lruvec, list);
 		/* Some pages can be beyond i_size: drop them from page cache */
 		if (head[i].index >= end) {
+			/* 超过了文件范围， 移除 */
 			ClearPageDirty(head + i);
 			__delete_from_page_cache(head + i, NULL);
 			if (IS_ENABLED(CONFIG_SHMEM) && PageSwapBacked(head))
 				shmem_uncharge(head->mapping->host, 1);
 			put_page(head + i);
 		} else if (!PageAnon(page)) {
+			/* 没超文件范围， 是普通文件页
+			直接把page地址存入xas */
 			__xa_store(&head->mapping->i_pages, head[i].index,
 					head + i, 0);
 		} else if (swap_cache) {
+			/* 存入swap cache */
 			__xa_store(&swap_cache->i_pages, offset + i,
 					head + i, 0);
 		}
@@ -2589,6 +2609,7 @@ static void __split_huge_page(struct page *page, struct list_head *list,
 }
 /* 2024年6月25日21:45:47
 2024年7月2日23:51:40
+指被页表映射的次数
  */
 int total_mapcount(struct page *page)
 {
@@ -2679,16 +2700,21 @@ int page_trans_huge_mapcount(struct page *page, int *total_mapcount)
 	return ret;
 }
 
-/* Racy check whether the huge page can be split */
+/*
+当所有映射都来自用户空间的页表，且没有额外的内核引用时，才能split
+Racy check whether the huge page can be split */
 bool can_split_huge_page(struct page *page, int *pextra_pins)
 {
 	int extra_pins;
 
-	/* Additional pins from page cache */
+	/*
+	页缓存产生的pin
+	Additional pins from page cache */
 	if (PageAnon(page))
 		extra_pins = PageSwapCache(page) ? HPAGE_PMD_NR : 0;
 	else
 		extra_pins = HPAGE_PMD_NR;
+
 	if (pextra_pins)
 		*pextra_pins = extra_pins;
 	return total_mapcount(page) == page_count(page) - extra_pins - 1;
@@ -2703,7 +2729,8 @@ bool can_split_huge_page(struct page *page, int *pextra_pins)
  * The huge page must be locked.
  *
  * If @list is null, tail pages will be added to LRU list, otherwise, to @list.
- *
+ *如果@list为NULL，则分裂后的尾页会被添加到 LRU 链表中；
+ * 否则会被添加到 @list 指定的链表中。
  * Both head page and tail pages will inherit mapping, flags, and so on from
  * the hugepage.
  *
@@ -2752,6 +2779,7 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 		mapping = NULL;
 		anon_vma_lock_write(anon_vma);
 	} else {
+		/* 文件页 */
 		mapping = head->mapping;
 
 		/* Truncated ? */
@@ -2769,6 +2797,8 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 		 * which cannot be nested inside the page tree lock. So note
 		 * end now: i_size itself may be changed at any moment, but
 		 * head page lock is good enough to serialize the trimming.
+		 分裂透明大页（THP）前，提前计算文件实际页数边界，以便安全地截断
+		 超出文件末尾的尾页，避免无效数据残留
 		 */
 		end = DIV_ROUND_UP(i_size_read(mapping->host), PAGE_SIZE);
 	}
@@ -2783,7 +2813,7 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 	}
 
 	mlocked = PageMlocked(page);
-	/*  */
+	/* 解除页面的映射 */
 	unmap_page(head);
 	VM_BUG_ON_PAGE(compound_mapcount(head), head);
 
@@ -2795,7 +2825,7 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 	spin_lock_irqsave(&pgdata->lru_lock, flags);
 
 	if (mapping) {
-		/* 20250813013448 */
+		/* 如果是文件页的话， lock mapping？ */
 		XA_STATE(xas, &mapping->i_pages, page_index(head));
 
 		/*
@@ -2812,10 +2842,14 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 	count = page_count(head);
 	mapcount = total_mapcount(head);
 	if (!mapcount && page_ref_freeze(head, 1 + extra_pins)) {
+		/* 无用户空间映射并且引用计数精确匹配，确保无额外内核引用 */
+
+		/* 如果页面现在在ds队列， 移出来 */
 		if (!list_empty(page_deferred_list(head))) {
 			ds_queue->split_queue_len--;
 			list_del(page_deferred_list(head));
 		}
+		/* 进行计数 */
 		if (mapping) {
 			if (PageSwapBacked(page))
 				__dec_node_page_state(page, NR_SHMEM_THPS);
@@ -2824,6 +2858,7 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 		}
 
 		spin_unlock(&ds_queue->split_queue_lock);
+		/* 开始分裂 */
 		__split_huge_page(page, list, end, flags);
 		if (PageSwapCache(head)) {
 			swp_entry_t entry = { .val = page_private(head) };
@@ -2832,6 +2867,7 @@ int split_huge_page_to_list(struct page *page, struct list_head *list)
 		} else
 			ret = 0;
 	} else {
+		/* 页面还在被映射 */
 		if (IS_ENABLED(CONFIG_DEBUG_VM) && mapcount) {
 			pr_alert("total_mapcount: %u, page_count(): %u\n",
 					mapcount, count);
@@ -2859,21 +2895,23 @@ out:
 	count_vm_event(!ret ? THP_SPLIT_PAGE : THP_SPLIT_PAGE_FAILED);
 	return ret;
 }
-
+/* 释放thp页面 */
 void free_transhuge_page(struct page *page)
 {
 	struct deferred_split *ds_queue = get_deferred_split_queue(page);
 	unsigned long flags;
 
+	/* 从defer队列移除 */
 	spin_lock_irqsave(&ds_queue->split_queue_lock, flags);
 	if (!list_empty(page_deferred_list(page))) {
 		ds_queue->split_queue_len--;
 		list_del(page_deferred_list(page));
 	}
 	spin_unlock_irqrestore(&ds_queue->split_queue_lock, flags);
+	/*  */
 	free_compound_page(page);
 }
-
+/* 把一个thp加入ds队列， 以后再split */
 void deferred_split_huge_page(struct page *page)
 {
 	struct deferred_split *ds_queue = get_deferred_split_queue(page);
@@ -2893,9 +2931,13 @@ void deferred_split_huge_page(struct page *page)
 	 * Check PageSwapCache to determine if the page is being
 	 * handled by page reclaim since THP swap would add the page into
 	 * swap cache before calling try_to_unmap().
-	 */
+	 延迟分裂队列在内存压力时由shrinker触发，是异步批量处理 |
+| 页面回收路径在内存紧张时直接回收 ，是同步立即处理 |
+可能冲突
+
+*/
 	if (PageSwapCache(page))
-		return;
+		return;// 页面正在被回收路径处理，跳过延迟处理
 
 	spin_lock_irqsave(&ds_queue->split_queue_lock, flags);
 	if (list_empty(page_deferred_list(page))) {
@@ -2923,7 +2965,7 @@ static unsigned long deferred_split_count(struct shrinker *shrink,
 #endif
 	return READ_ONCE(ds_queue->split_queue_len);
 }
-
+/* 扫描ds队列， 分裂里面的thp */
 static unsigned long deferred_split_scan(struct shrinker *shrink,
 		struct shrink_control *sc)
 {
@@ -2938,15 +2980,19 @@ static unsigned long deferred_split_scan(struct shrinker *shrink,
 	if (sc->memcg)
 		ds_queue = &sc->memcg->deferred_split_queue;
 #endif
-
+/* 如果有memcg的话， 就是操作memcg的ds队列 */
 	spin_lock_irqsave(&ds_queue->split_queue_lock, flags);
 	/* Take pin on all head pages to avoid freeing them under us */
 	list_for_each_safe(pos, next, &ds_queue->split_queue) {
+		/* 遍历ds队列上面被延迟的thp */
 		page = list_entry((void *)pos, struct page, mapping);
 		page = compound_head(page);
 		if (get_page_unless_zero(page)) {
+			/* 页面现在仍有计数， get ref成功，马上准备split */
 			list_move(page_deferred_list(page), &list);
 		} else {
+			/* 页面现在已经没有ref了， 没有get ref， 也不用split了
+			这是什么情况？ */
 			/* We lost race with put_compound_page() */
 			list_del_init(page_deferred_list(page));
 			ds_queue->split_queue_len--;
@@ -2957,6 +3003,7 @@ static unsigned long deferred_split_scan(struct shrinker *shrink,
 	spin_unlock_irqrestore(&ds_queue->split_queue_lock, flags);
 
 	list_for_each_safe(pos, next, &list) {
+		/* 分裂刚刚收集的thp */
 		page = list_entry((void *)pos, struct page, mapping);
 		if (!trylock_page(page))
 			goto next;

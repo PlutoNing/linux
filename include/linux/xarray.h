@@ -1107,34 +1107,34 @@ static inline void xa_release(struct xarray *xa, unsigned long index)
  * either a value entry or a sibling of a value entry.
  */
 struct xa_node {
-	unsigned char	shift;		/* Bits remaining in each slot 
+	unsigned char shift; /* Bits remaining in each slot 
 	shift成员用于指定当前xa_node的slots数组中成员的单位，
-	当shift为0时，说明当前xa_node的slots数组中成员为叶子节点，
+	当shift为0时，说明当前xa_node的slots数组中成员为叶子节点，直接存储数据
 	当shift为6时，说明当前xa_node的slots数组中成员指向的
 	xa_node可以最多包含2^6(即64）个节点
 */
-	unsigned char	offset;		/* Slot offset in parent
+	unsigned char offset; /*
 	offset成员表示该xa_node在父节点的slots数组中的偏移。
 	（这里要注意，如果xa_node在父节点为NULL，offset是任意的值，因为没有被初始化） */
-	unsigned char	count;		/* Total entry count
-	count成员表示该xa_node有多少个slots已经被使用 */
-	unsigned char	nr_values;	/* Value entry count
-	nr_values成员表示该xa_node有多少个slots存储的Value Entry */
-	struct xa_node __rcu *parent;	/* NULL at top of tree
+	unsigned char count; /*
+	slots数组中非NULL条目的总数
+    包括：指针、值、内部条目等各种类型 */
+	unsigned char nr_values; /*
+	真正的"值条目"数量
+    只统计用户存储的实际数据（xa_mk_value）*/
+	struct xa_node __rcu *parent; /* NULL at top of tree
 	parent成员指向该xa_node的父节点 */
-	struct xarray	*array;		/* The array we belong to
+	struct xarray *array; /* The array we belong to
 	array成员指向该xa_node所属的xarray */
 	union {
-		struct list_head private_list;	/* For tree user */
-		struct rcu_head	rcu_head;	/* Used when freeing node */
+		struct list_head private_list; /* For tree user */
+		struct rcu_head rcu_head; /* Used when freeing node */
 	};
-	/* lots是个指针数组，该数组既可以存储下一级的节点, 
-	也可以用于存储即将插入的对象指针 */
-	void __rcu	*slots[XA_CHUNK_SIZE];
-
+	void __rcu *slots[XA_CHUNK_SIZE];
+	/* 64个槽位，存储子节点或实际数据 */
 	union {
-		unsigned long	tags[XA_MAX_MARKS][XA_MARK_LONGS];
-		unsigned long	marks[XA_MAX_MARKS][XA_MARK_LONGS];
+		unsigned long tags[XA_MAX_MARKS][XA_MARK_LONGS];
+		unsigned long marks[XA_MAX_MARKS][XA_MARK_LONGS];
 		//对应不同mark的不同位图
 	};
 };
@@ -1297,18 +1297,12 @@ typedef void (*xa_update_node_t)(struct xa_node *node);
 
 /*
 2024年06月20日16:15:10
-xa_state？
-类似非常大的指针数组
  * The xa_state is opaque to its users.  It contains various different pieces
  * of state involved in the current operation on the XArray.  It should be
  * declared on the stack and passed between the various internal routines.
  * The various elements in it should not be accessed directly, but only
  * through the provided accessor functions.  The below documentation is for
  * the benefit of those working on the code, not for users of the XArray.
- * xa_state是一个不透明的结构，它包含了当前操作XArray的各种不同状态。
- * 它应该在堆栈上声明，并在内部例程之间传递。不应直接访问它的各个元素，
-	 * 而只能通过提供的访问器函数访问。下面的文档是为那些在代码上工作的人提供的，
-	 * 而不是XArray的用户。
  * @xa_node usually points to the xa_node containing the slot we're operating
  * on (and @xa_offset is the offset in the slots array).  If there is a
  * single entry in the array at index 0, there are no allocated xa_nodes to
@@ -1317,22 +1311,26 @@ xa_state？
  * position in the tree of nodes for this operation.  If an error occurs
  * during an operation, it is set to an %XAS_ERROR value.  If we run off the
  * end of the allocated nodes, it is set to %XAS_BOUNDS.
- 其中xa_node通常指向包含我们正在操作的槽的xa_node（xa_offset是slots数组中的偏移量）。
- 如果在索引0处的数组中有单个条目，则没有分配的xa_node指向，因此我们在xa_node中存储NULL。
- 如果xa_state没有在树的正确位置上行走到xa_node，则将xa_node设置为XAS_RESTART。
- 如果操作期间发生错误，则将其设置为XAS_ERROR值。如果我们超出了分配的节点的末尾，则将其设置为XAS_BOUNDS。
-	
+ =========================================================================
+ xa_state是一个对用户不透明的结构体，包含当前XArray操作所需的各种状态信息。
+这个结构体在栈上声明，并在各个内部函数之间传递。其中的各个字段应通过提供的访问函数来操作。
+
+xa_node通常指向正在操作的槽位的xa_node节点（xa_offset是该节点slots数组中的偏移量）。
+如果数组中索引0处只有一个条目，那么没有分配xa_node节点可指向，此时xa_node存储为NULL。
+如果xa_state没有遍历到正确的节点位置，xa_node会被设置为XAS_RESTART。
+如果操作过程中发生错误，会被设置为XAS_ERROR值。
+如果超出了已分配节点的范围，会被设置为XAS_BOUNDS。
  */
 struct xa_state {
-	struct xarray *xa; //
-	unsigned long xa_index; //
-	unsigned char xa_shift; //表示当前操作的节点的shift
-	unsigned char xa_sibs;
-	unsigned char xa_offset; //表示当前操作的节点的偏移
-	unsigned char xa_pad;		/* Helps gcc generate better code */
-	struct xa_node *xa_node; //表示当前操作的节点
-	struct xa_node *xa_alloc;
-	xa_update_node_t xa_update;
+	struct xarray *xa; /* 指向所属的XArray实例，标识操作目标 */
+	unsigned long xa_index; /* 当前操作的索引值，即要访问的数组位置 */
+	unsigned char xa_shift; /* 当前节点层级对应的位移量，用于计算索引范围 */
+	unsigned char xa_sibs;  /* 多槽位条目时的兄弟节点掩码（高级功能） */
+	unsigned char xa_offset; /* 在当前xa_node节点slots数组中的具体偏移位置 */
+	unsigned char xa_pad; /* 填充字节，用于优化GCC代码生成 */
+	struct xa_node *xa_node;/* 指向当前操作的xa_node节点，或特殊状态值 */
+	struct xa_node *xa_alloc; /* 预分配的节点指针，用于内存分配优化 */
+	xa_update_node_t xa_update; /* 节点更新回调函数，如workingset_update_node */
 };
 
 /*

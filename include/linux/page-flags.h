@@ -364,6 +364,7 @@ PAGEFLAG(Reserved, reserved, PF_NO_COMPOUND)
 	__CLEARPAGEFLAG(Reserved, reserved, PF_NO_COMPOUND)
 	__SETPAGEFLAG(Reserved, reserved, PF_NO_COMPOUND)
 /* 当一个page使用swap作为后备存储时需要为该page设置PG_swapbacked标志位。这种情况通常是匿名页或者shmem页，
+也可能是swap mapping里面的
 但是需要注意的是即使是匿名页也有可能不设置PG_swapbacked(例如MADV_FREE)。 */
 PAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
 	__CLEARPAGEFLAG(SwapBacked, swapbacked, PF_NO_TAIL)
@@ -410,8 +411,7 @@ PAGEFLAG_FALSE(HighMem)
 #ifdef CONFIG_SWAP
 /* 2024年7月2日22:59:24
 2024年7月14日14:47:57
-则是在page为匿名页的情况向判断该页是否分配了swap缓存 空间。
-往往在内存回收时若匿名页没有分配。此页是已经加入到swapcache。
+
  */
 static __always_inline int PageSwapCache(struct page *page)
 {
@@ -464,6 +464,9 @@ static inline bool set_hwpoison_free_buddy_page(struct page *page)
 TESTPAGEFLAG(Young, young, PF_ANY)
 SETPAGEFLAG(Young, young, PF_ANY)
 TESTCLEARFLAG(Young, young, PF_ANY)
+/* 优先回收 idle 页面
+用于 NUMA balancing、THP collapse 决策
+ */
 PAGEFLAG(Idle, idle, PF_ANY)
 #endif
 
@@ -601,7 +604,8 @@ static __always_inline void set_compound_head(struct page *page, struct page *he
 {
 	WRITE_ONCE(page->compound_head, (unsigned long)head + 1);
 }
-
+/* 把尾页分离走的时候
+清理复合页相关标记 */
 static __always_inline void clear_compound_head(struct page *page)
 {
 	WRITE_ONCE(page->compound_head, 0);
@@ -653,6 +657,9 @@ static inline int PageTransHuge(struct page *page)
  * PageTransCompound returns true for both transparent huge pages
  * and hugetlbfs pages, so it should only be called when it's known
  * that hugetlbfs pages aren't involved.
+ ===========================================
+ - __PTE级别的thp（4KB页面，但属于一个thp页对象__）
+
  */
 static inline int PageTransCompound(struct page *page)
 {
@@ -901,6 +908,8 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
  *
  * __PG_HWPOISON is exceptional because it needs to be kept beyond page's
  * alloc-free cycle to prevent from reusing the page.
+ 在页面被回收并准备重新分配前，内核会检查这些标志位。
+ 如果此时页面仍带有这些标志，说明存在内核 bug 或 struct page 结构已损坏。
  */
 #define PAGE_FLAGS_CHECK_AT_PREP	\
 	(((1UL << NR_PAGEFLAGS) - 1) & ~__PG_HWPOISON)

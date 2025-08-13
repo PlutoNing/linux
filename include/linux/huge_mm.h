@@ -165,7 +165,9 @@ extern void free_transhuge_page(struct page *page);
 
 bool can_split_huge_page(struct page *page, int *pextra_pins);
 int split_huge_page_to_list(struct page *page, struct list_head *list);
-/* split大页 */
+/* split大页
+=================
+这里的@page不一定非得是head page */
 static inline int split_huge_page(struct page *page)
 {
 	return split_huge_page_to_list(page, NULL);

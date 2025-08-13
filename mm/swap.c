@@ -995,7 +995,8 @@ EXPORT_SYMBOL(__pagevec_release);
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /* used by __split_huge_page_refcount() */
 /* 2024年07月29日12:07:02
-
+从大页page分裂出尾页page_tail之后，
+加入lru或者参数@list
  */
 
 void lru_add_page_tail(struct page *page, struct page *page_tail,
@@ -1009,6 +1010,7 @@ void lru_add_page_tail(struct page *page, struct page *page_tail,
 
 	lockdep_assert_held(&lruvec_pgdat(lruvec)->lru_lock);
 
+	/* 加入lru */
 	if (!list)
 		SetPageLRU(page_tail);
 
@@ -1016,6 +1018,7 @@ void lru_add_page_tail(struct page *page, struct page *page_tail,
 	if (likely(PageLRU(page)))
 		list_add_tail(&page_tail->lru, &page->lru);
 	else if (list) {
+		/* 这里是split的caller提供了收集尾页的list， 不放lru了，放list里面 */
 		/* page reclaim is reclaiming a huge page */
 		get_page(page_tail);
 		list_add_tail(&page_tail->lru, list);

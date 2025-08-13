@@ -1134,14 +1134,8 @@ int copy_page_range(struct mm_struct *dst_mm, struct mm_struct *src_mm,
 
 
 /* 2024年07月26日15:32:35
-该函数的作用是将在pmd中从虚拟地址address开始，长度为size的内存块通过循环调用
-pte_clear将其页表项清零，
-调用free_pte将所含空间中的物理内存或交换空间中的虚存页释放掉。
-
-2024年7月27日22:48:20
-太长不看23333，todo。
-2024年8月21日00:51:44
-
+解除页表映射
+分为present和swap两种情况
  */
 static unsigned long zap_pte_range(struct mmu_gather *tlb,
 				struct vm_area_struct *vma, pmd_t *pmd,
@@ -1174,11 +1168,11 @@ again:
 		if (need_resched())
 			break;
 
-		if (pte_present(ptent)) {/* pte有映射 */
+		if (pte_present(ptent)) {/* pte项指向的页面在内存中 */
 			struct page *page;
-			/* 获取正常的映射的page，就是说不是特殊映射就返回。 */
+			/* 获取正常的映射的page结构体，就是说不是特殊映射就返回0 */
 			page = vm_normal_page(vma, addr, ptent);
-			if (unlikely(details) && page) {/* todo2024年8月21日00:54:24 */
+			if (unlikely(details) && page) {
 				/*
 				 * unmap_shared_mapping_pages() wants to
 				 * invalidate cache without truncating:
@@ -1197,14 +1191,18 @@ again:
 			if (unlikely(!page))/* 特殊映射，跳过 */
 				continue;
 
-			if (!PageAnon(page)) {/* 不是匿名页，有什么关系吗？可以说明是文件页吗 */
-				if (pte_dirty(ptent)) {/* pte说是脏文件页的情况 */
+			/* 说明刚刚解除了对这个普通页面的一个映射， 下面修改对应的相关状态 */
+			/* 在页表项被丢弃前， 把相关信息从pte页表项传递到page结构体上面 */
+			if (!PageAnon(page)) {
+				if (pte_dirty(ptent)) {
+					/* 如果pte页表项脏， 置脏 */
 					force_flush = 1;
 					set_page_dirty(page);
 				}
 
+				/* 如果pte刚刚被访问过，标记页面也为accessed */
 				if (pte_young(ptent) &&
-				    likely(!(vma->vm_flags & VM_SEQ_READ)))/* 被经常访问 */
+				    likely(!(vma->vm_flags & VM_SEQ_READ)))
 					mark_page_accessed(page);
 			}
 			/* 更新page相关类型的统计 */
@@ -1222,9 +1220,9 @@ again:
 			}
 
 			continue;
-		}/* pte有映射的情况完毕 */
+		}/*页面在内存的情况完毕 */
 
-		/* 接下来是swap的情况？ */
+		/* 接下来是swap的情况 */
 		entry = pte_to_swp_entry(ptent);
 		if (non_swap_entry(entry) && is_device_private_entry(entry)) {
 			struct page *page = device_private_entry_to_page(entry);

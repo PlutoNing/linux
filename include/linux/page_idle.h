@@ -9,6 +9,7 @@
 #ifdef CONFIG_IDLE_PAGE_TRACKING
 
 #ifdef CONFIG_64BIT
+/*  */
 static inline bool page_is_young(struct page *page)
 {
 	return PageYoung(page);

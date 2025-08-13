@@ -1476,7 +1476,8 @@ static void page_remove_anon_compound_rmap(struct page *page)
 
 /**
 2024年7月27日13:40:30
-todo，为什么没有操作page的mapping指针？
+======================================================
+如果解除了一个页表项对page的map，这里同步更新rmap
  * page_remove_rmap - take down pte mapping from a page
  * @page:	page to remove mapping from
  * @compound:	uncharge the page as compound or small page

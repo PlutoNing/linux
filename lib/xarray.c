@@ -361,7 +361,9 @@ static bool __xas_nomem(struct xa_state *xas, gfp_t gfp)
 	xas->xa_node = XAS_RESTART;
 	return true;
 }
+/* xas node被修改了
 
+这里调用回调， 看看是移入还是移除shadows*/
 static void xas_update(struct xa_state *xas, struct xa_node *node)
 {
 	if (xas->xa_update)

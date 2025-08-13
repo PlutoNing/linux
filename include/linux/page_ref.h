@@ -68,6 +68,7 @@ static inline int page_ref_count(struct page *page)
 }
 /* 2024年7月3日22:38:29
 2024年7月14日14:50:04
+被引用的计数， 与map count不一样
  */
 static inline int page_count(struct page *page)
 {
@@ -168,7 +169,7 @@ static inline int page_ref_add_unless(struct page *page, int nr, int u)
 	return ret;
 }
 /* 2024年07月03日11:51:39
-
+符合预期的情况下， 清零页面引用计数
  */
 static inline int page_ref_freeze(struct page *page, int count)
 {
@@ -180,7 +181,7 @@ static inline int page_ref_freeze(struct page *page, int count)
 	return ret;
 }
 /* 2024年8月13日22:04:29
-todo
+设置page的refcount
  */
 static inline void page_ref_unfreeze(struct page *page, int count)
 {

@@ -321,7 +321,7 @@ const char * const migratetype_names[MIGRATE_TYPES] = {
 	"Isolate",
 #endif
 };
-
+/* compound， huge，thp页面的析构函数 */
 compound_page_dtor * const compound_page_dtors[] = {
 	NULL,
 	free_compound_page,

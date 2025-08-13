@@ -171,7 +171,10 @@ struct page {
 		struct {	/* Second tail page of compound page */
 			unsigned long _compound_pad_1;	/* compound_head */
 			unsigned long _compound_pad_2;
-			/* For both global and memcg */
+			/* For both global and memcg
+			当透明大页暂时不能被分裂时（如被映射），不立即失败
+			将页面加入延迟队列，等待合适时机再尝试分裂
+			*/
 			struct list_head deferred_list;
 		};
 		struct {	/* Page table pages */

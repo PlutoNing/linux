@@ -373,10 +373,20 @@ out:
  * create excessive amounts of shadow nodes.  To keep a lid on this,
  * track shadow nodes and reclaim them when they grow way past the
  * point where they would still be useful.
+ 影子条目反映了无法装入内存的那部分工作集，因此它们的数量取决于工作负载的访问模式。
+ 在大多数情况下，这些影子条目会随着inode的回收而重新加载或被回收，但是一个（恶意的）
+ 工作负载如果以数倍于可用内存的总大小顺序访问文件，同时阻止这些inode被回收，
+ 就可能创建过量的影子节点。
+ 为了控制这种情况，需要跟踪影子节点，并在它们增长到远超有用程度时将其回收。
  */
 
 static struct list_lru shadow_nodes;
 
+/* 
+判断XArray节点是否只包含影子条目（shadow entries）
+将符合条件的节点加入`shadow_nodes` LRU列表
+当节点不再只包含影子条目时，将其从列表中移除
+*/
 void workingset_update_node(struct xa_node *node)
 {
 	/*
@@ -390,6 +400,7 @@ void workingset_update_node(struct xa_node *node)
 	VM_WARN_ON_ONCE(!irqs_disabled());  /* For __inc_lruvec_page_state */
 
 	if (node->count && node->count == node->nr_values) {
+		// 所有非NULL条目都是影子条目（值条目）
 		if (list_empty(&node->private_list)) {
 			list_lru_add(&shadow_nodes, &node->private_list);
 			__inc_lruvec_slab_state(node, WORKINGSET_NODES);

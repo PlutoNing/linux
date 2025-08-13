@@ -598,7 +598,7 @@ static long madvise_pageout(struct vm_area_struct *vma,
 
 	return 0;
 }
-
+/* 释放范围内内存 */
 static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 				unsigned long end, struct mm_walk *walk)
 
@@ -624,6 +624,7 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 	orig_pte = pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
 	flush_tlb_batched_pending(mm);
 	arch_enter_lazy_mmu_mode();
+	/* 普通页面的情况， */
 	for (; addr != end; pte++, addr += PAGE_SIZE) {
 		ptent = *pte;
 
@@ -635,6 +636,7 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 		 * (page allocation + zeroing).
 		 */
 		if (!pte_present(ptent)) {
+			/* swap页面 */
 			swp_entry_t entry;
 
 			entry = pte_to_swp_entry(ptent);
@@ -645,10 +647,10 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 			pte_clear_not_present_full(mm, addr, pte, tlb->fullmm);
 			continue;
 		}
-
+		/* 在内存的普通页面 */
 		page = vm_normal_page(vma, addr, ptent);
 		if (!page)
-			continue;
+			continue; /* 什么情况，特殊映射就不管了吗 */
 
 		/*
 		 * If pmd isn't transhuge but the page is THP and
@@ -656,8 +658,10 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 		 * deactivate all pages.
 		 */
 		if (PageTransCompound(page)) {
+			/* 说明page位于一个thp里面 */
 			if (page_mapcount(page) != 1)
 				goto out;
+			/* 如果是pte级别的thp，并且进程独占 */
 			get_page(page);
 			if (!trylock_page(page)) {
 				put_page(page);
@@ -665,6 +669,7 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 			}
 			pte_unmap_unlock(orig_pte, ptl);
 			if (split_huge_page(page)) {
+				/* 分裂page所在的thp */
 				unlock_page(page);
 				put_page(page);
 				pte_offset_map_lock(mm, pmd, addr, &ptl);
@@ -673,6 +678,8 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 			unlock_page(page);
 			put_page(page);
 			pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
+			/* 这里后退一下loop的游标然后continue，下一个loop这个page会被作为
+			普通页面处理掉 */
 			pte--;
 			addr -= PAGE_SIZE;
 			continue;
@@ -681,6 +688,7 @@ static int madvise_free_pte_range(pmd_t *pmd, unsigned long addr,
 		VM_BUG_ON_PAGE(PageTransCompound(page), page);
 
 		if (PageSwapCache(page) || PageDirty(page)) {
+			/* 20250813205051 */
 			if (!trylock_page(page))
 				continue;
 			/*
@@ -731,11 +739,12 @@ out:
 next:
 	return 0;
 }
-
+/*  */
 static const struct mm_walk_ops madvise_free_walk_ops = {
 	.pmd_entry		= madvise_free_pte_range,
 };
 
+/* 程序不再需要范围内的内存 */
 static int madvise_free_single_vma(struct vm_area_struct *vma,
 			unsigned long start_addr, unsigned long end_addr)
 {
@@ -762,6 +771,7 @@ static int madvise_free_single_vma(struct vm_area_struct *vma,
 
 	mmu_notifier_invalidate_range_start(&range);
 	tlb_start_vma(&tlb, vma);
+	/* 遍历vma的页面 */
 	walk_page_range(vma->vm_mm, range.start, range.end,
 			&madvise_free_walk_ops, &tlb);
 	tlb_end_vma(&tlb, vma);
@@ -772,7 +782,7 @@ static int madvise_free_single_vma(struct vm_area_struct *vma,
 }
 
 /*
-
+直接接触页表映射
 应用通过madvise通知不再需要这些页面
  * Application no longer needs these pages.  If the pages are dirty,
  * it's OK to just throw them away.  The app will be more careful about
@@ -847,6 +857,26 @@ static long madvise_dontneed_free(struct vm_area_struct *vma,
 		VM_WARN_ON(start >= end);
 	}
 
+	/* 
+应用调用：madvise(addr, len, MADV_DONTNEED)
+    ↓
+内核：立即解除页表映射
+    ↓
+结果：该地址范围变为"未映射"
+    ↓
+下次访问：触发SIGSEGV或重新分配页面
+================================================
+
+应用调用：madvise(addr, len, MADV_FREE)
+    ↓
+内核：标记页面为lazyfree，保留映射
+    ↓
+结果：页面仍在内存，但标记为可回收
+    ↓
+内存紧张时：真正释放页面
+    ↓
+下次访问：如果页面还在则直接复用，否则重新分配
+	*/
 	if (behavior == MADV_DONTNEED) /* 立即释放页面, 解除映射 */
 		return madvise_dontneed_single_vma(vma, start, end);
 	else if (behavior == MADV_FREE)
