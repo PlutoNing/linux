@@ -105,6 +105,7 @@ struct user_event_mm;
 #define TASK_RTLOCK_WAIT		0x00001000
 #define TASK_FREEZABLE			0x00002000
 #define __TASK_FREEZABLE_UNSAFE	       (0x00004000 * IS_ENABLED(CONFIG_LOCKDEP))
+/* 表示进程休眠冻结了 */
 #define TASK_FROZEN			0x00008000
 #define TASK_STATE_MAX			0x00010000
 
@@ -1828,6 +1829,10 @@ extern struct pid *cad_pid;
 #define PF_NPROC_EXCEEDED	0x00001000	/* set_user() noticed that RLIMIT_NPROC was exceeded */
 #define PF_USED_MATH		0x00002000	/* If unset the fpu must be initialized before use */
 #define PF_USER_WORKER		0x00004000	/* Kernel thread cloned from userspace thread */
+/* Linux 的 freezer 机制是内核在系统挂起（suspend）、休眠（hibernate）或 cgroup freezer 子系统需要暂停进程时，
+用来“冻结”用户空间进程和某些内核线程的一套基础设施。
+核心思想是：让所有可冻结的任务在某个同步点停下来，直到内核发出“解冻”信号，从而保证系统在休眠/挂起期间数据一致、
+设备状态稳定。 */
 #define PF_NOFREEZE		0x00008000	/* This thread should not be frozen */
 #define PF__HOLE__00010000	0x00010000
 #define PF_KSWAPD		0x00020000	/* I am kswapd */
@@ -1848,6 +1853,7 @@ extern struct pid *cad_pid;
 /* Allocation context constrained to zones which allow long term pinning. */
 #define PF__HOLE__20000000	0x20000000
 #define PF__HOLE__40000000	0x40000000
+/*  */
 #define PF_SUSPEND_TASK		0x80000000      /* This thread called freeze_processes() and should not be frozen */
 
 /*

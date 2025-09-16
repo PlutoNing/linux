@@ -4790,6 +4790,8 @@ const struct address_space_operations shmem_aops = {
 	.write_end	= shmem_write_end,
 #endif
 #ifdef CONFIG_MIGRATION
+	/* 函数作用是在 mapping 里面用新 page 代替旧 page
+	完全继承旧页面的内容和属性 */
 	.migrate_folio	= migrate_folio,
 #endif
 	.error_remove_page = shmem_error_remove_page,

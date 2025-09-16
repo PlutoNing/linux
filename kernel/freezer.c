@@ -27,6 +27,7 @@ bool pm_nosig_freezing;
 static DEFINE_SPINLOCK(freezer_lock);
 
 /**
+测试进程是否需要被冻结
  * freezing_slow_path - slow path for testing whether a task needs to be frozen
  * @p: task to be tested
  *
@@ -58,7 +59,8 @@ bool frozen(struct task_struct *p)
 	return READ_ONCE(p->__state) & TASK_FROZEN;
 }
 
-/* Refrigerator is place where frozen processes are stored :-). */
+/* Refrigerator is place where frozen processes are stored :-).
+在这里执行无限循环就是冻结了? */
 bool __refrigerator(bool check_kthr_stop)
 {
 	unsigned int state = get_current_state();

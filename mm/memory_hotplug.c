@@ -317,6 +317,7 @@ static int check_pfn_span(unsigned long pfn, unsigned long nr_pages)
 }
 
 /*
+获取 pfn 对应的 page
  * Return page for the valid pfn only if the page is online. All pfn
  * walkers which rely on the fully initialized page->flags and others
  * should use this rather than pfn_valid && pfn_to_page

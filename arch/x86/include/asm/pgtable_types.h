@@ -141,7 +141,14 @@
 #define _PAGE_SAVED_DIRTY	(_AT(pteval_t, 1) << _PAGE_BIT_SAVED_DIRTY)
 /* pmd项的flag */
 #define _PAGE_DIRTY_BITS (_PAGE_DIRTY | _PAGE_SAVED_DIRTY)
-
+/* 
+- 当 NUMA Balancing 或某些内存管理子系统想 __暂时剥夺页的访问权限__ 以便后续处理
+（如迁移、统计、缺页重填）时，会把 PTE 的 `_PAGE_PRESENT` 清 0，同时置位 `_PAGE_PROTNONE`。
+- 这样形成的 PTE 具有以下特征：
+  – 没有PAGE_PRESENT → 硬件不会把它当作有效映射，任何访问都会触发缺页异常；
+  – 有PAGE_PROTNONE → 内核一看就知道这是“故意为之”，不是真正的缺页，而是需要由
+   NUMA balancing、soft-dirty、userfaultfd 等逻辑来接管。
+*/
 #define _PAGE_PROTNONE	(_AT(pteval_t, 1) << _PAGE_BIT_PROTNONE)
 
 /*

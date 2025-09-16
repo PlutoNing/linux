@@ -172,3 +172,4 @@ sphinx_*/
 /rust-project.json
 clangd/compile_commands.json
 compile_commands.json
+**/modules.builtin

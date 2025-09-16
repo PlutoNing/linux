@@ -63,6 +63,7 @@ int numa_cpu_node(int cpu)
 	return NUMA_NO_NODE;
 }
 
+/* node的关联cpu? */
 cpumask_var_t node_to_cpumask_map[MAX_NUMNODES];
 EXPORT_SYMBOL(node_to_cpumask_map);
 
@@ -906,6 +907,7 @@ void numa_remove_cpu(int cpu)
  */
 const struct cpumask *cpumask_of_node(int node)
 {
+	/* 越界了 */
 	if ((unsigned)node >= nr_node_ids) {
 		printk(KERN_WARNING
 			"cpumask_of_node(%d): (unsigned)node >= nr_node_ids(%u)\n",

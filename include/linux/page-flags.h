@@ -719,6 +719,14 @@ static __always_inline int __PageMovable(struct page *page)
 
 #ifdef CONFIG_KSM
 /*
+- 是KSM（Kernel Samepage Merging）创建的写保护"共享页面"或"合并页面"
+- 被映射到多个进程的内存空间中（多个mms）
+- 只在VM_MERGEABLE虚拟内存区域中发现相同匿名页面内容时创建
+================
+仍是匿名页
+但是 mapping 不指向 av,而是 stable node
+只读的
+通过 stable node 管理多个 va 到一个 physical page 的 map
  * A KSM page is one of those write-protected "shared pages" or "merged pages"
  * which KSM maps into multiple mms, wherever identical anonymous page content
  * is found in VM_MERGEABLE vmas.  It's a PageAnon page, pointing not to any
@@ -741,8 +749,26 @@ TESTPAGEFLAG_FALSE(Ksm, ksm)
 u64 stable_page_flags(struct page *page);
 
 /**
-什么算是up-to-date?
-20250628145604
+__up-to-date的定义__：
+
+一个folio（页面）被认为&#x662F;__&#x75;p-to-date__（最新的）当且仅当：
+
+1. __文件缓存页__：页面中&#x7684;__&#x6BCF;一个字&#x8282;__&#x90FD;__至少与存储设备上的对应字节一样新__
+
+   - 即页面内容是最新的，或者比磁盘上的版本更新
+   - 通常发生在读操作完成后，或者写操作将数据写入页面后
+
+2. __匿名页和CoW页__：__总是up-to-date__
+
+   - 匿名页（如堆、栈）没有对应的磁盘版本
+   - CoW（写时复制）页在复制完成时就是最新的
+
+__设置时机__：
+
+- __读操作完成__：从磁盘读取数据到页面后
+- __写操作完成__：数据写入页面后
+- __页面初始化__：新分配的页面被填充数据后
+
  * folio_test_uptodate - Is this folio up to date?
  * @folio: The folio.
  *

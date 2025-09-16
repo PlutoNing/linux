@@ -151,7 +151,10 @@ struct scan_control {
 	/* Always discard instead of demoting to lower tier memory */
 	unsigned int no_demotion:1;
 
-	/* Allocation order */
+	/* Allocation order
+	设置order的是哪些：
+	kswap
+	*/
 	s8 order;
 
 	/* Scan (total_size >> priority) pages at once */
@@ -5036,8 +5039,8 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 	VM_WARN_ON_ONCE(!current_is_kswapd());
 
 	/* check the order to exclude compaction-induced reclaim */
-	if (!min_ttl || 
-		sc->order || 
+	if (!min_ttl || /* sysctl `lru_gen_min_ttl` 控制，防止过度老化。 */
+		sc->order || /* 如果是高阶分配（如 THP），跳过老化，直接回收。 */
 		sc->priority == DEF_PRIORITY /* 说明刚开始? 还没必要aging? */
 		)
 		return;
@@ -5046,7 +5049,9 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 	do {
 		struct lruvec *lruvec = mem_cgroup_lruvec(memcg, pgdat);
 
-		if (lruvec_is_reclaimable(lruvec, sc, min_ttl)) {/* 有可回收的lruvec也不age? */
+		if (lruvec_is_reclaimable(lruvec, sc, min_ttl)) {
+			/* 有可回收的lruvec也不age
+			如果任何一个 memcg 满足条件，立即返回，说明“已经有冷页可收”，无需老化。 */
 			mem_cgroup_iter_break(NULL, memcg);
 			return;
 		}
@@ -5055,7 +5060,6 @@ static void lru_gen_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 	} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
 
 	/* 到这里是找到一个最底层的memcg? */
-
 	/*
 	 * The main goal is to OOM kill if every generation from all memcgs is
 	 * younger than min_ttl. However, another possibility is all memcgs are
@@ -5486,10 +5490,10 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 			VM_WARN_ON_ONCE_FOLIO(folio_zonenum(folio) != zone, folio);
 
 			scanned += delta;
-
+			/* 先看满足不满足isolate条件， 不满足的话调整下lru中的位置 */
 			if (sort_folio(lruvec, folio, sc, tier))
 				sorted += delta;
-
+			/* 满足isolate条件, isolate_folio会从lrugen的list移出 */
 			else if (isolate_folio(lruvec, folio, sc)) {
 				/* 已经从lrugen的list移出了,下面加到要回收的list里面 */
 				list_add(&folio->lru, list);
@@ -5904,7 +5908,6 @@ static bool try_to_shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 }
 /* 不管是shrink_many,还是one, 最终都是调用这个函数.
 1. mglru的全局回收调用
-
 回收lruvec的内存. */
 static int shrink_one(struct lruvec *lruvec, struct scan_control *sc)
 {
@@ -7881,8 +7884,6 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 #endif
 /* 2024年09月09日15:44:23
 Aging主要用来产生年轻一代。
-
-MGLRU在kswapd_age_node进行了拦截调用lru_gen_age_node：
  */
 static void kswapd_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 {
@@ -7949,12 +7950,6 @@ static bool pgdat_balanced(pg_data_t *pgdat, int order, int highest_zoneidx)
 	/* notesss  这里hook一下, 计算是否需要shrink_pagecache
 	需要的话, 就返回false?
 	安全性稳定性? */
-    
-
-
-	
-
-
 	/*
 	 * Check watermarks bottom-up as lower zones are more likely to
 	 * meet watermarks.
@@ -7979,15 +7974,20 @@ static bool pgdat_balanced(pg_data_t *pgdat, int order, int highest_zoneidx)
 	 * If a node has no managed zone within highest_zoneidx, it does not
 	 * need balancing by definition. This can happen if a zone-restricted
 	 * allocation tries to wake a remote kswapd.
+	 如果一个node没有managed zone, 那么就不需要balance
+	 这可能是因为zone-restricted allocation试图唤醒一个remote kswapd
 	 */
 	if (mark == -1)
 		return true;
 
+	/* 所有zone的高水位都危险 */
 	return false;
 }
 
 /*
 清空node的阻塞状态
+===========================================================
+如果kswap检测到node还ok， 就会清除这些标志位
 Clear pgdat state for congested, dirty or under writeback.
 待分析,什么时候置位这些bit? */
 static void clear_pgdat_congested(pg_data_t *pgdat)
@@ -8007,7 +8007,7 @@ kswapd_try_to_sleep准备kswap休息.
  * waiting in throttle_direct_reclaim() and that watermarks have been met.
  *  检查是不是没有进程阻塞等待ksawp工作了， 检查是不是水位ok了
  * Returns true if kswapd is ready to sleep
-  返回真, 代表ksswap可以休息
+  返回真, 代表kswap可以休息
  */
 static bool prepare_kswapd_sleep(pg_data_t *pgdat, int order,
 				int highest_zoneidx)
@@ -8030,7 +8030,6 @@ static bool prepare_kswapd_sleep(pg_data_t *pgdat, int order,
 	 * the wake up is premature, processes will wake kswapd and get
 	 * throttled again. The difference from wake ups in balance_pgdat() is
 	 * that here we are under prepare_to_wait().
-
 	 如果还有进程阻塞在这里.
 	 */
 	if (waitqueue_active(&pgdat->pfmemalloc_wait))
@@ -8041,7 +8040,7 @@ static bool prepare_kswapd_sleep(pg_data_t *pgdat, int order,
 	if (pgdat->kswapd_failures >= MAX_RECLAIM_RETRIES)
 		return true;
 	
-	/*  */
+	/* 检查水位 */
 	if (pgdat_balanced(pgdat, order, highest_zoneidx)) {
 		clear_pgdat_congested(pgdat);
 		return true;
@@ -8140,10 +8139,8 @@ clear_reclaim_active(pg_data_t *pgdat, int highest_zoneidx)
 }
 
 /*
-kswapd调用此函数来回收node. 
+kswapd的循环检测到内存不ok时, 调用此函数来回收node一些指定order的内存. 
  返回回收完成后可以满足的order
- kswap的回收
-
  * For kswapd, balance_pgdat() will reclaim pages across a node from zones
  * that are eligible for use by the caller until at least one zone is
  * balanced.
@@ -8185,7 +8182,7 @@ static int balance_pgdat(pg_data_t *pgdat, int order, int highest_zoneidx)
 	 * Account for the reclaim boost. Note that the zone boost is left in
 	 * place so that parallel allocations that are near the watermark will
 	 * stall or direct reclaim until kswapd is finished.
-
+	这里记录boost信息
 	 */
 	nr_boost_reclaim = 0;
 	for (i = 0; i <= highest_zoneidx; i++) {
@@ -8206,7 +8203,7 @@ restart:
 	/* 回收priority次数 */
 	/* 开始进行回收 */
 	do {
-		/* 保存之前回收的数量 */
+		/* 保存之前回收的数量, 用于统计回收数量 */
 		unsigned long nr_reclaimed = sc.nr_reclaimed;
 		/* 是否加急 */
 		bool raise_priority = true;
@@ -8249,17 +8246,19 @@ restart:
 
 
 		if (!balanced && nr_boost_reclaim) {/*
-		如果第一次没有回收成功, 就把nr_boost_reclaim置零重试.
+		0 0 ： 不平衡， 没有boost，不会进来
+		0 1 : 不平衡, 处于boost, 不boost了.==========
+		1 0 : 平衡， 不进来
+		1 1 : 平衡， 不进来
 		 */
 			nr_boost_reclaim = 0;
 			goto restart; //不是从这里重启
 		}
-
-		/* 到这里说明
-		直接就是balanced
-		第一次运行不是 */
-		/* case1: 不平衡, 不boost
-		case2: 平衡, boost或者不boost */
+		/* 
+		到这里可能是
+		1, 平衡的话， 可能boost
+		2， 不平衡， 一定不会boost
+		*/
 		/*
 		 * If boosting is not active then only reclaim if there are no
 		 * eligible zones. Note that sc.reclaim_idx is not used as
@@ -8268,14 +8267,13 @@ restart:
 		if (!nr_boost_reclaim && balanced)/* 已经平衡了,也不打算boost,
 		算是完成工作了, */
 			goto out;
-
-		/* 没有balanced, 没有boost */
-
-		/*  case1: 不平衡, 不boost
-			case2: 平衡, boost */
+		/* 到这里说明不平衡， 或者打算boost */
 
 
-		/* Limit the priority of boosting to avoid reclaim writeback.
+		/*
+		如果实在平衡情况下打算boost的话， 并且已经试了几轮了，这里提升priority
+		Limit the priority of boosting to avoid reclaim writeback.
+		避免是指?
 		 */
 		if (nr_boost_reclaim && sc.priority == DEF_PRIORITY - 2)/* 说明还没有balanced. */
 			raise_priority = false;
@@ -8285,11 +8283,11 @@ restart:
 		 * intent is to relieve pressure not issue sub-optimal IO
 		 * from reclaim context. If no pages are reclaimed, the
 		 * reclaim will be aborted.
-		 如果是boost的话, 不回写不交换.
+		 如果是平衡情况下的boost的话, 不回写不交换.
+		 如果现在还不平衡， 就开启这些
 		 */
 		sc.may_writepage = !laptop_mode && !nr_boost_reclaim;
-		sc.may_swap = !nr_boost_reclaim; //可惜可以swap ... todddo, 复用的话,尝试可以不可以关闭,
-		// 或者通过设置boost来关闭 ?
+		sc.may_swap = !nr_boost_reclaim;
 
 		/*
 		 * Do some background aging, to give pages a chance to be
@@ -8437,6 +8435,7 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 	long remaining = 0;
 	DEFINE_WAIT(wait);
 
+	/* 睡眠了， 或者应该停止了 */
 	if (freezing(current) || kthread_should_stop())
 		return;
 
@@ -8451,8 +8450,8 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 	   尝试睡眠一小会儿, 
 	   意思是说如果kswap回收效果不好, kcompact也不会好?
 	 */
-	if (prepare_kswapd_sleep(pgdat, reclaim_order, highest_zoneidx)) {/* 如果kswapd
-	可以休息. */
+	if (prepare_kswapd_sleep(pgdat, reclaim_order, highest_zoneidx)) {/* 
+		如果kswap可以休息. */
 	/* 不过也不能长睡, 这里先短睡, 看看会不会被叫醒 */
 		/*
 		 * Compaction records what page blocks it recently failed to
@@ -8497,7 +8496,7 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 	 */
 	if (!remaining &&
 	    prepare_kswapd_sleep(pgdat, reclaim_order, highest_zoneidx)) {
-			//如果刚刚没有被叫醒, 内存情况不错, 这里去sleep
+		//如果刚刚没有被叫醒, 并且现在还可以休息。说明内存情况不错, 这里去sleep
 		trace_mm_vmscan_kswapd_sleep(pgdat->node_id);
 
 		/*
@@ -8514,7 +8513,7 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 			schedule();
 
 		set_pgdat_percpu_threshold(pgdat, calculate_pressure_threshold);
-	} else { //短睡也被叫醒了
+	} else { //短睡也被叫醒了， 或者现在不能休息
 		if (remaining)
 			count_vm_event(KSWAPD_LOW_WMARK_HIT_QUICKLY);
 		else
@@ -8525,10 +8524,8 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
 
 /*
 kswapd的工作函数. 
-
 kswapd的运行条件:
 不满足sleep条件就回收
-
  * The background pageout daemon, started as a kernel thread
  * from the init process.
  * kswap后台写回进程
@@ -8560,7 +8557,7 @@ static int kswapd(void *p)
 	 * and that if we need more memory we should get access to it
 	 * regardless (see "__alloc_pages()"). "kswapd" should
 	 * never get caught in the normal page freeing logic.
-	 * 标记自己为kswap进程, 这样的话内存分配权限比较搞.
+	 * 标记自己为kswap进程, 这样的话内存分配权限比较高.
 	 * (Kswapd normally doesn't need memory anyway, but sometimes
 	 * you need a small amount of memory in order to be able to
 	 * page out something else, and this flag essentially protects
@@ -8569,25 +8566,31 @@ static int kswapd(void *p)
 	   这样是为了防止kswap为了回收内存而分配一些内存的时间继续回收内存?
 	 */
 	tsk->flags |= PF_MEMALLOC | PF_KSWAPD;
+	/* 设置自己可以休眠 */
 	set_freezable();
 
 	/* 设置默认的回收需求 */
 	WRITE_ONCE(pgdat->kswapd_order, 0);
 	WRITE_ONCE(pgdat->kswapd_highest_zoneidx, MAX_NR_ZONES);
 
+	/* 为什么kswap把这里清零? */
 	atomic_set(&pgdat->nr_writeback_throttled, 0);
 	for ( ; ; ) {
 		bool ret;
 
+		/* 
+		alloc_order: 申请者希望被满足的order
+		reclaim_order: kswap实际回收到的order
+		*/
 		alloc_order = reclaim_order = READ_ONCE(pgdat->kswapd_order);
 		highest_zoneidx = kswapd_highest_zoneidx(pgdat,
 							highest_zoneidx);
 
 kswapd_try_sleep:
-/* 尝试睡眠 */
+		/* 尝试睡眠 */
 		kswapd_try_to_sleep(pgdat, alloc_order, reclaim_order,
 					highest_zoneidx);
-//醒来工作
+		//醒来工作
 		/* Read the new order and highest_zoneidx */
 		alloc_order = READ_ONCE(pgdat->kswapd_order);
 		highest_zoneidx = kswapd_highest_zoneidx(pgdat,
@@ -8595,6 +8598,7 @@ kswapd_try_sleep:
 		WRITE_ONCE(pgdat->kswapd_order, 0);
 		WRITE_ONCE(pgdat->kswapd_highest_zoneidx, MAX_NR_ZONES);
 
+		/* 进程尝试休眠 */
 		ret = try_to_freeze();
 		if (kthread_should_stop())
 			break;
@@ -8602,6 +8606,9 @@ kswapd_try_sleep:
 		/*
 		 * We can speed up thawing tasks if we don't call balance_pgdat
 		 * after returning from the refrigerator
+		 如果 kswapd 被 freezer 机制冻结（ret = try_to_freeze() 返回 true），说明系统正准备挂起/休眠。
+		 此时 kswapd 已经通过 refrigerator 进入 TASK_FROZEN 状态并被唤醒，内核马上要把它彻底解冻。
+		在这种情况下，不需要再调用 balance_pgdat() 继续回收内存，因为整个系统即将停机，继续回收既无意义又会拖慢挂起流程
 		 */
 		if (ret)
 			continue;
@@ -8622,6 +8629,7 @@ kswapd_try_sleep:
 		 */
 		reclaim_order = balance_pgdat(pgdat, alloc_order,
 						highest_zoneidx);
+		/* 如果没有完成回收额度， 这里不是继续去读取新的额度， 而是直接重试 */
 		if (reclaim_order < alloc_order)
 			goto kswapd_try_sleep;
 	}

@@ -1836,6 +1836,7 @@ static void numa_promotion_adjust_threshold(struct pglist_data *pgdat,
 	}
 }
 
+/* 20250916110926 */
 bool should_numa_migrate_memory(struct task_struct *p, struct page * page,
 				int src_nid, int dst_cpu)
 {
@@ -3086,6 +3087,7 @@ void task_numa_free(struct task_struct *p, bool final)
 
 /*
  * Got a PROT_NONE fault for a page on @node.
+ 刚刚为task迁移了页面到他的node， 这里开始pf
  */
 void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 {

@@ -122,6 +122,7 @@
  * @rmap_list: head for this mm_slot's singly-linked list of rmap_items
  */
 struct ksm_mm_slot {
+	/* 好像是需要 ksm 的东西 */
 	struct mm_slot slot;
 	struct ksm_rmap_item *rmap_list;
 };
@@ -270,7 +271,9 @@ static unsigned int ksm_stable_node_chains_prune_millisecs = 2000;
 /* Maximum number of page slots sharing a stable node */
 static int ksm_max_page_sharing = 256;
 
-/* Number of pages ksmd should scan in one batch */
+/*
+每次 ksm 运行需要处理的数量
+Number of pages ksmd should scan in one batch */
 static unsigned int ksm_thread_pages_to_scan = 100;
 
 /* Milliseconds ksmd should sleep between batches */
@@ -309,7 +312,7 @@ static DEFINE_SPINLOCK(ksm_mmlist_lock);
 #define KSM_KMEM_CACHE(__struct, __flags) kmem_cache_create(#__struct,\
 		sizeof(struct __struct), __alignof__(struct __struct),\
 		(__flags), NULL)
-
+/* 初始化 ksm 使用的 slab */
 static int __init ksm_slab_init(void)
 {
 	rmap_item_cache = KSM_KMEM_CACHE(ksm_rmap_item, 0);
@@ -674,6 +677,7 @@ static void remove_node_from_stable_tree(struct ksm_stable_node *stable_node)
 	/* check it's not STABLE_NODE_CHAIN or negative */
 	BUG_ON(stable_node->rmap_hlist_len < 0);
 
+	/* rmap item 链接在 node 的 hlist */
 	hlist_for_each_entry(rmap_item, &stable_node->hlist, hlist) {
 		if (rmap_item->hlist.next) {
 			ksm_pages_sharing--;
@@ -716,6 +720,7 @@ enum get_ksm_page_flags {
 };
 
 /*
+获取 ref 并加锁
  * get_ksm_page: checks if the page indicated by the stable node
  * is still its ksm page, despite having held no reference to it.
  * In which case we can trust the content of the page, and it
@@ -723,6 +728,9 @@ enum get_ksm_page_flags {
  * remove the stale node from the stable tree and return NULL.
  * But beware, the stable node's page might be being migrated.
  *
+ 检查稳定节点所指示的页面是否仍然是其KSM页面，尽管之前没有持有对该页面的引用。
+ 如果是这样，我们可以信任该页面的内容，并返回获取到的页面；但如果该页面现在已被释放，
+ 则从稳定树中移除过时的节点并返回NULL。但要注意，稳定节点的页面可能正在被迁移。
  * You would expect the stable_node to hold a reference to the ksm page.
  * But if it increments the page's count, swapping out has to wait for
  * ksmd to come around again before it can free the page, which may take
@@ -741,6 +749,7 @@ static struct page *get_ksm_page(struct ksm_stable_node *stable_node,
 	void *expected_mapping;
 	unsigned long kpfn;
 
+	/* 是个 mapping */
 	expected_mapping = (void *)((unsigned long)stable_node |
 					PAGE_MAPPING_KSM);
 again:
@@ -758,6 +767,7 @@ again:
 	 * the same is in reuse_ksm_page() case; but if page is swapcache
 	 * in folio_migrate_mapping(), it might still be our page,
 	 * in which case it's essential to keep the node.
+	 持续去获取 ref
 	 */
 	while (!get_page_unless_zero(page)) {
 		/*
@@ -773,11 +783,13 @@ again:
 		cpu_relax();
 	}
 
+	/* 再次保证 page 的 mapping 正确性 */
 	if (READ_ONCE(page->mapping) != expected_mapping) {
 		put_page(page);
 		goto stale;
 	}
 
+	/* 对页面加锁 */
 	if (flags == GET_KSM_PAGE_TRYLOCK) {
 		if (!trylock_page(page)) {
 			put_page(page);
@@ -902,7 +914,7 @@ static int unmerge_ksm_pages(struct vm_area_struct *vma,
 	}
 	return err;
 }
-
+/* 获取一个 ksm page 的 stable node */
 static inline struct ksm_stable_node *folio_stable_node(struct folio *folio)
 {
 	return folio_test_ksm(folio) ? folio_raw_mapping(folio) : NULL;
@@ -1877,6 +1889,7 @@ chain_append:
 }
 
 /*
+把新ksm page对应的stable node加入stable tree
  * stable_tree_insert - insert stable tree node pointing to new ksm page
  * into the stable tree.
  *
@@ -1965,6 +1978,7 @@ again:
 		return NULL;
 
 	INIT_HLIST_HEAD(&stable_node_dup->hlist);
+	/* 唯二设置pfn的地方 */
 	stable_node_dup->kpfn = kpfn;
 	set_page_stable_node(kpage, stable_node_dup);
 	stable_node_dup->rmap_hlist_len = 0;
@@ -2318,7 +2332,7 @@ static struct ksm_rmap_item *get_next_rmap_item(struct ksm_mm_slot *mm_slot,
 	}
 	return rmap_item;
 }
-
+/* 获取一个可以 ksm 的页面? */
 static struct ksm_rmap_item *scan_get_next_rmap_item(struct page **page)
 {
 	struct mm_struct *mm;
@@ -2493,6 +2507,7 @@ no_vmas:
 }
 
 /**
+ksm 工作函数
  * ksm_do_scan  - the ksm scanner main worker function.
  * @scan_npages:  number of pages we want to scan before we return.
  */
@@ -2519,6 +2534,7 @@ static int ksmd_should_run(void)
 	return (ksm_run & KSM_RUN_MERGE) && !list_empty(&ksm_mm_head.slot.mm_node);
 }
 
+/* ksm 线程的工作函数 */
 static int ksm_scan_thread(void *nothing)
 {
 	unsigned int sleep_ms;
@@ -2528,6 +2544,7 @@ static int ksm_scan_thread(void *nothing)
 
 	while (!kthread_should_stop()) {
 		mutex_lock(&ksm_thread_mutex);
+		/* 等待热插拔完成? */
 		wait_while_offlining();
 		if (ksmd_should_run())
 			ksm_do_scan(ksm_thread_pages_to_scan);
@@ -2965,6 +2982,7 @@ void collect_procs_ksm(struct page *page, struct list_head *to_kill,
 #endif
 
 #ifdef CONFIG_MIGRATION
+/* 感觉像是用 new 代替 folio 的 ksm 相关属性? */
 void folio_migrate_ksm(struct folio *newfolio, struct folio *folio)
 {
 	struct ksm_stable_node *stable_node;
@@ -2973,9 +2991,13 @@ void folio_migrate_ksm(struct folio *newfolio, struct folio *folio)
 	VM_BUG_ON_FOLIO(!folio_test_locked(newfolio), newfolio);
 	VM_BUG_ON_FOLIO(newfolio->mapping != folio->mapping, newfolio);
 
+	/* 获取对应的 stable node */
 	stable_node = folio_stable_node(folio);
 	if (stable_node) {
 		VM_BUG_ON_FOLIO(stable_node->kpfn != folio_pfn(folio), folio);
+		/* 这里是唯一设置 kpfn 的地方
+		============
+		把 stable node 与新的 folio 关联? */
 		stable_node->kpfn = folio_pfn(newfolio);
 		/*
 		 * newfolio->mapping was set in advance; now we need smp_wmb()
@@ -2984,6 +3006,7 @@ void folio_migrate_ksm(struct folio *newfolio, struct folio *folio)
 		 * has gone stale (or that folio_test_swapcache has been cleared).
 		 */
 		smp_wmb();
+		/* 取消旧 ksm page 的 stable node 关联 */
 		set_page_stable_node(&folio->page, NULL);
 	}
 }
@@ -3492,13 +3515,15 @@ static const struct attribute_group ksm_attr_group = {
 	.name = "ksm",
 };
 #endif /* CONFIG_SYSFS */
-
+/* 初始化 ksm */
 static int __init ksm_init(void)
 {
 	struct task_struct *ksm_thread;
 	int err;
 
-	/* The correct value depends on page size and endianness */
+	/*
+	当KSM发现某个页面的内容与零页相同时，可以直接将其映射到全局零页，而不是创建新的KSM页面
+	The correct value depends on page size and endianness */
 	zero_checksum = calc_checksum(ZERO_PAGE(0));
 	/* Default to false for backwards compatibility */
 	ksm_use_zero_pages = false;

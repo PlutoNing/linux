@@ -16,10 +16,12 @@
 #include <trace/events/page_isolation.h>
 
 /*
+检查[start_pfn, end_pfn)范围内是否包含不可移动的页面
  * This function checks whether the range [start_pfn, end_pfn) includes
  * unmovable pages or not. The range must fall into a single pageblock and
  * consequently belong to a single zone.
- *
+ * 检查[start_pfn, end_pfn)范围内是否包含不可移动的页面。该范围必须落入一个pageblock，
+ 因此属于一个zone。
  * PageLRU check without isolation or lru_lock could race so that
  * MIGRATE_MOVABLE block might include unmovable pages. And __PageMovable
  * check without lock_page also may miss some movable non-lru pages at
@@ -37,6 +39,7 @@ static struct page *has_unmovable_pages(unsigned long start_pfn, unsigned long e
 	struct zone *zone = page_zone(page);
 	unsigned long pfn;
 
+	/* 应该属于同一个pageblock */
 	VM_BUG_ON(pageblock_start_pfn(start_pfn) !=
 		  pageblock_start_pfn(end_pfn - 1));
 
@@ -79,15 +82,18 @@ static struct page *has_unmovable_pages(unsigned long start_pfn, unsigned long e
 		 * handle each tail page individually in migration.
 		 */
 		if (PageHuge(page) || PageTransCompound(page)) {
+			/* 如果是大页， 检查是否 movable 的方式如下: */
 			struct folio *folio = page_folio(page);
 			unsigned int skip_pages;
 
 			if (PageHuge(page)) {
+				/* 巨页的话, 检查 hstatefile 是否支持 */
 				if (!hugepage_migration_supported(folio_hstate(folio)))
 					return page;
 			} else if (!folio_test_lru(folio) && !__folio_test_movable(folio)) {
 				return page;
 			}
+			/* 普通复合页, 在 lru 或者直接是 movalbe 的就行 */
 
 			skip_pages = folio_nr_pages(folio) - folio_page_idx(folio, page);
 			pfn += skip_pages - 1;
@@ -101,6 +107,8 @@ static struct page *has_unmovable_pages(unsigned long start_pfn, unsigned long e
 		 * because their page->_refcount is zero at all time.
 		 */
 		if (!page_ref_count(page)) {
+			/* 如果是没有 ref 的页面，, 忽略
+			buddy 页面忽略整个 buddy 里面的 */
 			if (PageBuddy(page))
 				pfn += (1 << buddy_order(page)) - 1;
 			continue;
@@ -140,6 +148,8 @@ static struct page *has_unmovable_pages(unsigned long start_pfn, unsigned long e
 }
 
 /*
+isolate 这个范围内的pageblock, page 对应范围开始的 pfn.
+然后把里面的 buddy page 移动到 isolate 列表	
  * This function set pageblock migratetype to isolate if no unmovable page is
  * present in [start_pfn, end_pfn). The pageblock must intersect with
  * [start_pfn, end_pfn).
@@ -158,6 +168,7 @@ static int set_migratetype_isolate(struct page *page, int migratetype, int isol_
 	 * We assume the caller intended to SET migrate type to isolate.
 	 * If it is already set, then someone else must have raced and
 	 * set it before us.
+	 如果已经设置为isolate, 则返回-EBUSY
 	 */
 	if (is_migrate_isolate_page(page)) {
 		spin_unlock_irqrestore(&zone->lock, flags);
@@ -178,11 +189,14 @@ static int set_migratetype_isolate(struct page *page, int migratetype, int isol_
 	unmovable = has_unmovable_pages(check_unmovable_start, check_unmovable_end,
 			migratetype, isol_flags);
 	if (!unmovable) {
+		/* 范围内没有不可 move 的页面 */
 		unsigned long nr_pages;
 		int mt = get_pageblock_migratetype(page);
 
 		set_pageblock_migratetype(page, MIGRATE_ISOLATE);
 		zone->nr_isolate_pageblock++;
+		/* 开启迁移? 具体迁移什么
+		把 pageblock 里面的 buddy page 移动到 isolate 列表 */
 		nr_pages = move_freepages_block(zone, page, MIGRATE_ISOLATE,
 									NULL);
 
@@ -191,6 +205,7 @@ static int set_migratetype_isolate(struct page *page, int migratetype, int isol_
 		return 0;
 	}
 
+	/* 范围内有 unmovable page, 失败 */
 	spin_unlock_irqrestore(&zone->lock, flags);
 	if (isol_flags & REPORT_FAILURE) {
 		/*
@@ -263,6 +278,7 @@ out:
 	spin_unlock_irqrestore(&zone->lock, flags);
 }
 
+/* 找到范围内第一个合法的 page 结构体 */
 static inline struct page *
 __first_valid_page(unsigned long pfn, unsigned long nr_pages)
 {
@@ -280,6 +296,7 @@ __first_valid_page(unsigned long pfn, unsigned long nr_pages)
 }
 
 /**
+isolate 这个@boundary_pfn前面或者后面的 pageblock
  * isolate_single_pageblock() -- tries to isolate a pageblock that might be
  * within a free or in-use page.
  * @boundary_pfn:		pageblock-aligned pfn that a page might cross
@@ -334,6 +351,7 @@ static int isolate_single_pageblock(unsigned long boundary_pfn, int flags,
 
 		VM_BUG_ON(!is_migrate_isolate(mt));
 	} else {
+		/* 开始 isolate 这个 pageblock */
 		ret = set_migratetype_isolate(pfn_to_page(isolate_pageblock), migratetype,
 				flags, isolate_pageblock, isolate_pageblock + pageblock_nr_pages);
 
@@ -361,7 +379,10 @@ static int isolate_single_pageblock(unsigned long boundary_pfn, int flags,
 			return 0;
 	}
 
+	/* 遍历 pageblock 的全部页面 */
 	for (pfn = start_pfn; pfn < boundary_pfn;) {
+		/* 找到范围内的第一个合法的 page
+		然后如果是 buddy 的话,检查他的 order */
 		struct page *page = __first_valid_page(pfn, boundary_pfn - pfn);
 
 		VM_BUG_ON(!page);
@@ -370,6 +391,7 @@ static int isolate_single_pageblock(unsigned long boundary_pfn, int flags,
 		 * start_pfn is MAX_ORDER_NR_PAGES aligned, if there is any
 		 * free pages in [start_pfn, boundary_pfn), its head page will
 		 * always be in the range.
+		 如果是越过 pageblock 界限的大 buddy 页面,需要 split
 		 */
 		if (PageBuddy(page)) {
 			int order = buddy_order(page);
@@ -396,6 +418,8 @@ static int isolate_single_pageblock(unsigned long boundary_pfn, int flags,
 				pfn = head_pfn + nr_pages;
 				continue;
 			}
+
+			/* 到这里说明是跨过 pageblock 边界的大页 */
 #if defined CONFIG_COMPACTION || defined CONFIG_CMA
 			/*
 			 * hugetlb, lru compound (THP), and movable compound pages
@@ -405,6 +429,7 @@ static int isolate_single_pageblock(unsigned long boundary_pfn, int flags,
 				int order;
 				unsigned long outer_pfn;
 				int page_mt = get_pageblock_migratetype(page);
+				/* 可能是刚才 skip isolate */
 				bool isolate_page = !is_migrate_isolate_page(page);
 				struct compact_control cc = {
 					.nr_migratepages = 0,
@@ -424,14 +449,18 @@ static int isolate_single_pageblock(unsigned long boundary_pfn, int flags,
 				 * Ideally, the page should be freed as two separate
 				 * pages to be added into separate migratetype free
 				 * lists.
+				 如果 page 现在还不是 isolate 的, 先标记为 isolate 的
 				 */
 				if (isolate_page) {
+					/* 把所在的整个 pageblock 都修改 mt
+					移动里面的 buddy 页面到对应 mt 的 freelist */
 					ret = set_migratetype_isolate(page, page_mt,
 						flags, head_pfn, head_pfn + nr_pages);
 					if (ret)
 						goto failed;
 				}
 
+				/* 范围可能是个跨过 pageblock 边界的大页 */
 				ret = __alloc_contig_migrate_range(&cc, head_pfn,
 							head_pfn + nr_pages);
 
@@ -481,6 +510,7 @@ failed:
 }
 
 /**
+把范围内页面标记为 isolate
  * start_isolate_page_range() - mark page range MIGRATE_ISOLATE
  * @start_pfn:		The first PFN of the range to be isolated.
  * @end_pfn:		The last PFN of the range to be isolated.

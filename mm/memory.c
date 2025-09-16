@@ -4989,6 +4989,7 @@ static vm_fault_t do_fault(struct vm_fault *vmf)
 	return ret;
 }
 
+/* 返回页面应该属于的node */
 int numa_migrate_prep(struct page *page, struct vm_area_struct *vma,
 		      unsigned long addr, int page_nid, int *flags)
 {
@@ -5006,6 +5007,7 @@ int numa_migrate_prep(struct page *page, struct vm_area_struct *vma,
 	return mpol_misplaced(page, vma, addr);
 }
 
+/* 处理页面在其他node的缺页？ 移回来就算是fault成功? */
 static vm_fault_t do_numa_page(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
@@ -5041,6 +5043,7 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	    can_change_pte_writable(vma, vmf->address, pte))
 		writable = true;
 
+		/* 找到pte对应的page, 在其他node， 但是对于当前进程算缺页? */
 	page = vm_normal_page(vma, vmf->address, pte);
 	if (!page || is_zone_device_page(page))
 		goto out_map;
@@ -5079,6 +5082,7 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 		last_cpupid = page_cpupid_last(page);
 	target_nid = numa_migrate_prep(page, vma, vmf->address, page_nid,
 			&flags);
+	/* 页面无需balance */
 	if (target_nid == NUMA_NO_NODE) {
 		put_page(page);
 		goto out_map;
@@ -5088,9 +5092,11 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 
 	/* Migrate to the requested node */
 	if (migrate_misplaced_page(page, vma, target_nid)) {
+		/* 迁移了一些页面 */
 		page_nid = target_nid;
 		flags |= TNF_MIGRATED;
 	} else {
+		/* 没有迁移页面 */
 		flags |= TNF_MIGRATE_FAIL;
 		vmf->pte = pte_offset_map_lock(vma->vm_mm, vmf->pmd,
 					       vmf->address, &vmf->ptl);
@@ -5104,9 +5110,11 @@ static vm_fault_t do_numa_page(struct vm_fault *vmf)
 	}
 
 out:
-	if (page_nid != NUMA_NO_NODE)
+	if (page_nid != NUMA_NO_NODE) /* 刚刚为task迁移了页面到他的node， 这里开始pf */
 		task_numa_fault(last_cpupid, page_nid, 1, flags);
 	return 0;
+
+/* 没有对应的页面， 或者是复合页  */
 out_map:
 	/*
 	 * Make it present again, depending on how arch implements
@@ -5259,7 +5267,7 @@ static vm_fault_t handle_pte_fault(struct vm_fault *vmf)
 	if (!pte_present(vmf->orig_pte)) //页面不在内存中 
 		return do_swap_page(vmf);
 
-	/* 页面在其他node? */
+	/* 页面在其他node*/
 	if (pte_protnone(vmf->orig_pte) && vma_is_accessible(vmf->vma))
 		return do_numa_page(vmf);
 
