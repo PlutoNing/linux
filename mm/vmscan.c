@@ -2154,7 +2154,7 @@ retry:
 		if (folio_maybe_dma_pinned(folio))
 			goto activate_locked;
 		mapping = folio_mapping(folio);
-		if (folio_test_dirty(folio)) {/* 如果是dirty页面.  */
+		if (folio_test_dirty(folio)) {/* 如果是dirty页面. 可能是匿名 */
 			/* Only kswapd can writeback filesystem folios
 			 * to avoid risk of stack overflow. 
 			 只有kswapd回写dirty
@@ -2189,7 +2189,7 @@ retry:
 				goto activate_locked;
 			}
 			/* 下面是准备写回.  */
-			/* 走到这里就说明, kswap要在node很脏的情况下回收这个已经被扫描过一次的dirty了 */
+			/* 走到这里就说明,1,匿名页被换出, 不一定是kswap  2,kswap要在node很脏的情况下回收这个已经被扫描过一次的dirty了 */
 			if (references == FOLIOREF_RECLAIM_CLEAN)
 				goto keep_locked;
 			if (!may_enter_fs(folio, sc->gfp_mask))

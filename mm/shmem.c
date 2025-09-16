@@ -2617,9 +2617,9 @@ static int shmem_mmap(struct file *file, struct vm_area_struct *vma)
 	/* This is anonymous shared memory if it is unlinked at the time of mmap
 	i_nlink, 这里i_nlink是什么, 20250702153329
 	 */
-	if (inode->i_nlink)
+	if (inode->i_nlink) /* 映射文件的vma shmem? */
 		vma->vm_ops = &shmem_vm_ops;  //文件的shmem
-	else
+	else  /* mmap分配匿名内存的情况? */
 		vma->vm_ops = &shmem_anon_vm_ops; //为什么还有匿名的shmem? 20250702152530
 	return 0;
 }
@@ -4908,7 +4908,7 @@ static const struct super_operations shmem_ops = {
 #endif
 };
 
-/* 
+/* 共享映射shmem的vma的ops
 如果一个进程的vma映射到了shmem 文件,
 他的这个vma会被shmem fops mmap回调设置上这个ops,
 规定缺页的时候, 映射的时候内核如何如何执行这些ops 回调来具体
