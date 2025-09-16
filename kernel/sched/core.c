@@ -3291,7 +3291,7 @@ static int __set_cpus_allowed_ptr(struct task_struct *p,
 	return __set_cpus_allowed_ptr_locked(p, ctx, rq, &rf);
 }
 /* 
-
+设置进程的绑定cpu?
 */
 int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 {
@@ -4852,6 +4852,7 @@ static struct ctl_table sched_core_sysctls[] = {
 	},
 #endif /* CONFIG_UCLAMP_TASK */
 #ifdef CONFIG_NUMA_BALANCING
+/* sysctl设置numa开关 */
 	{
 		.procname	= "numa_balancing",
 		.data		= NULL, /* filled in by handler */

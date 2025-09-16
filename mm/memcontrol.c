@@ -6868,7 +6868,9 @@ static ssize_t memory_oom_group_write(struct kernfs_open_file *of,
 的回调函数
 ---------------
 不断调用try_to_free_mem_cgroup_pages, 一直到回收够足够页面.  */
-/* 回收memcg指定比例的内存 */
+/* 回收memcg指定比例的内存
+========
+也是不精确回收 */
 static ssize_t memory_reclaim(struct kernfs_open_file *of, char *buf,
 			      size_t nbytes, loff_t off)
 {

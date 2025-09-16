@@ -104,6 +104,12 @@ extern int page_group_by_mobility_disabled;
 /* 3个bit 1 */
 #define MIGRATETYPE_MASK ((1UL << PB_migratetype_bits) - 1)
 
+/* - mem section 提供大粒度的内存区域管理
+
+- pageblock 提供细粒度的迁移类型（migratetype）管理
+
+- 通过 `ms->usage->pageblock_flags` 位图管理 pageblock 的迁移属性
+ */
 #define get_pageblock_migratetype(page)					\
 	get_pfnblock_flags_mask(page, page_to_pfn(page), MIGRATETYPE_MASK)
 
@@ -732,6 +738,7 @@ enum zone_watermarks {
 /* NR_PCP_LISTS 就是((MIGRATE_PCPTYPES * (3 + 1)) + 1) */
 #define min_wmark_pages(z) (z->_watermark[WMARK_MIN] + z->watermark_boost)
 #define low_wmark_pages(z) (z->_watermark[WMARK_LOW] + z->watermark_boost)
+/* 获取zone的高水位 */
 #define high_wmark_pages(z) (z->_watermark[WMARK_HIGH] + z->watermark_boost)
 
 #define wmark_pages(z, i) (z->_watermark[i] + z->watermark_boost)
@@ -976,9 +983,8 @@ struct zone {
 	 * Number of isolated pageblock. It is used to solve incorrect
 	 * freepage counting problem due to racy retrieving migratetype
 	 * of pageblock. Protected by zone->lock.
-	  表示被隔离的pageblock数量
+	  表示zone 里面被标记为 isolate的pageblock数量
 	  被用于解决由于pageblock的migratetype的竞争而导致的错误的freepage计数问题
-
 	 */
 	unsigned long		nr_isolate_pageblock;
 #endif
@@ -1897,6 +1903,20 @@ void subsection_map_init(unsigned long pfn, unsigned long nr_pages);
 
 struct page;
 struct page_ext;
+/* __mem section（内存段）是 Linux 内核内存热插拔（memory hotplug）的基本管理单元__：
+
+1. __组织结构__：
+
+   - 每个 mem section 管理 32K 个页面（PAGES_PER_SECTION = 32768）
+   - 通过 `struct mem_section` 结构体表示，包含状态信息和指向页面结构的指针
+   - 支持 subsection 细分，每个 subsection 512 个页面
+
+2. __核心功能__：
+
+   - 支持内存的在线/离线操作（online/offline）
+   - 提供内存存在性检查和状态管理
+   - 作为内存热插拔的粒度单位
+ */
 struct mem_section {
 	/*
 	 * This is, logically, a pointer to an array of struct

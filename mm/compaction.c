@@ -997,7 +997,7 @@ static int isolate_migratepages_block(struct compact_control *cc, unsigned long 
 		 * which is generally unsafe, but the race window is small and
 		 * the worst thing that can happen is that we skip some
 		 * potential isolation targets.
-		 如果当前遍历到的pfn还处于buddy的管理 (还没有分配出去, 是freede)
+		 如果当前遍历到的pfn还处于buddy的管理 (还没有分配出去, 是free的)
 		 跳过
 		 */
 		if (PageBuddy(page)) {
@@ -1039,7 +1039,8 @@ static int isolate_migratepages_block(struct compact_control *cc, unsigned long 
 		 * It's possible to migrate LRU and non-lru movable pages.
 		 * Skip any other type of page
 		 如果不是lru里面的page
-		 PageLRU表示? 以后
+		 刚刚也跳过了 buddy
+		 这里是 movable 的? 还有什么情况?
 		 */
 		if (!PageLRU(page)) {
 			/*
@@ -1048,6 +1049,7 @@ static int isolate_migratepages_block(struct compact_control *cc, unsigned long 
 			 */
 			if (unlikely(__PageMovable(page)) &&
 					!PageIsolated(page)) {
+				/* 如果是还没有 isolate 的 movable 页面 */
 				if (locked) {
 					unlock_page_lruvec_irqrestore(locked, flags);
 					locked = NULL;
@@ -1295,6 +1297,7 @@ fatal_pending:
 }
 
 /**
+把范围内的页面隔离出来到 cc 的 migratepages链表
  * isolate_migratepages_range() - isolate migrate-able pages in a PFN range
  * @cc:        Compaction control structure.
  * @start_pfn: The first PFN to start isolating.
@@ -1316,6 +1319,7 @@ isolate_migratepages_range(struct compact_control *cc, unsigned long start_pfn,
 	if (block_start_pfn < cc->zone->zone_start_pfn)
 		block_start_pfn = cc->zone->zone_start_pfn;
 	block_end_pfn = pageblock_end_pfn(pfn);
+	/* 刚刚确定了一个 pageblock 的范围 */
 
 	for (; pfn < end_pfn; pfn = block_end_pfn,
 				block_start_pfn = block_end_pfn,
@@ -1323,6 +1327,7 @@ isolate_migratepages_range(struct compact_control *cc, unsigned long start_pfn,
 
 		block_end_pfn = min(block_end_pfn, end_pfn);
 
+		/* 范围要合法 */
 		if (!pageblock_pfn_to_page(block_start_pfn,
 					block_end_pfn, cc->zone))
 			continue;

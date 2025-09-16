@@ -129,6 +129,10 @@ struct page *grab_cache_page_write_begin(struct address_space *mapping,
 }
 EXPORT_SYMBOL(grab_cache_page_write_begin);
 
+/* 从lru移除
+==========
+返回真表示成功移除
+假表示本来不在lru */
 bool isolate_lru_page(struct page *page)
 {
 	if (WARN_RATELIMIT(PageTail(page), "trying to isolate tail page"))

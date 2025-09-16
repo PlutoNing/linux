@@ -450,6 +450,8 @@ struct address_space_operations {
 	/*
 	 * migrate the contents of a folio to the specified target. If
 	 * migrate_mode is MIGRATE_ASYNC, it must not block.
+	 用 dst 完全代替 mapping 里面的旧页面 src
+	 完全继承内容和属性
 	 */
 	int (*migrate_folio)(struct address_space *, struct folio *dst,
 			struct folio *src, enum migrate_mode);

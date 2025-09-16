@@ -2608,6 +2608,9 @@ static void sp_free(struct sp_node *n)
 }
 
 /**
+检查当前页面是否在对的node中
+=============
+返回应该属于的node
  * mpol_misplaced - check whether current page node is valid in policy
  *
  * @page: page to be checked

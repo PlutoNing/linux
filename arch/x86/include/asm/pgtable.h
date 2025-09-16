@@ -52,6 +52,9 @@ void ptdump_walk_user_pgd_level_checkwx(void);
  * ZERO_PAGE is a global shared page that is always zero: used
  * for zero-mapped memory areas etc..
  */
+/* 数组大小是 4KB
+当进程需要访问全零的内存页时（比如未初始化的BSS段），内核不会真的分配一个独立的物理页
+并清零，而是让所有这样的虚拟页都映射到同一个物理零页上，从而节省内存。 */
 extern unsigned long empty_zero_page[PAGE_SIZE / sizeof(unsigned long)]
 	__visible;
 #define ZERO_PAGE(vaddr) ((void)(vaddr),virt_to_page(empty_zero_page))
@@ -1008,6 +1011,7 @@ static inline int pmd_present(pmd_t pmd)
 
 #ifdef CONFIG_NUMA_BALANCING
 /*
+区分“真正的缺页”与“由内核自己制造的 PROT_NONE 陷阱”
  * These work without NUMA balancing but the kernel does not care. See the
  * comment in include/linux/pgtable.h
    pte的flag有_PAGE_PROTNONE并且没有_PAGE_PRESENT

@@ -57,6 +57,8 @@
 
 #include "internal.h"
 
+/* 参数可能是一个还没有 isolate 的 movable 页面
+20250905010054 */
 bool isolate_movable_page(struct page *page, isolate_mode_t mode)
 {
 	struct folio *folio = folio_get_nontail_page(page);
@@ -644,6 +646,7 @@ void folio_migrate_flags(struct folio *newfolio, struct folio *folio)
 	}
 	page_cpupid_xchg_last(&newfolio->page, cpupid);
 
+	/* 新代替旧, 继承 stable node 什么的 */
 	folio_migrate_ksm(newfolio, folio);
 	/*
 	 * Please do not reorder this without considering how mm/ksm.c's
@@ -679,6 +682,7 @@ void folio_migrate_flags(struct folio *newfolio, struct folio *folio)
 }
 EXPORT_SYMBOL(folio_migrate_flags);
 
+/* 复制页面内容和属性 */
 void folio_migrate_copy(struct folio *newfolio, struct folio *folio)
 {
 	folio_copy(newfolio, folio);
@@ -690,7 +694,9 @@ EXPORT_SYMBOL(folio_migrate_copy);
  *                    Migration functions
  ***********************************************************/
 
- /* 把页面移动到新分配的页面 */
+ /* 把页面移动到新分配的页面
+ ========
+ 把 src 的内容和属性都转移到 dst */
 int migrate_folio_extra(struct address_space *mapping, struct folio *dst,
 		struct folio *src, enum migrate_mode mode, int extra_count)
 {
@@ -704,7 +710,7 @@ int migrate_folio_extra(struct address_space *mapping, struct folio *dst,
 	if (rc != MIGRATEPAGE_SUCCESS)
 		return rc;
 
-	/* 这里拷贝页面数据? */
+	/* 这里拷贝页面数据? 复制页面的内容和属性*/
 	if (mode != MIGRATE_SYNC_NO_COPY)
 		folio_migrate_copy(dst, src);
 	else
@@ -713,9 +719,9 @@ int migrate_folio_extra(struct address_space *mapping, struct folio *dst,
 }
 
 /**
-把page移动到新分配的page上面
-复制属性, 比如在mapping的idx什么的
-复制页面内容
+在 mapping 中,用 dst 代替 src 这个 page
+把page移动到新分配的page上面, 复制属性, 比如在mapping的
+idx什么的,也复制页面内容
  * migrate_folio() - Simple folio migration.
  * @mapping: The address_space containing the folio.
  mapping可能为空
@@ -958,6 +964,7 @@ static int writeout(struct address_space *mapping, struct folio *folio)
 如果mapping没有移动页面回调ops
 就用这个函数来移动
 先把旧的回写了和在mapping释放了
+然后直接 migrate folio （和匿名页一个逻辑)
  * Default handling if a filesystem does not provide a migration function.
  */
 static int fallback_migrate_folio(struct address_space *mapping,
@@ -986,6 +993,7 @@ static int fallback_migrate_folio(struct address_space *mapping,
 }
 
 /*
+用 dst 代替 src, 继承他的页面内容和属性
 把一个页面移动到新分配的page
  * Move a page to a newly allocated page
  * The page is locked and all ptes have been successfully removed.
@@ -994,6 +1002,7 @@ static int fallback_migrate_folio(struct address_space *mapping,
  * is successful.
  *
  * Return value:
+ 返回非 0 表示出错
  *   < 0 - error code
  *  MIGRATEPAGE_SUCCESS - success
  */
@@ -1001,6 +1010,7 @@ static int move_to_new_folio(struct folio *dst, struct folio *src,
 				enum migrate_mode mode)
 {
 	int rc = -EAGAIN;
+	/* 不可以移动的就是 lru 的? */
 	bool is_lru = !__PageMovable(&src->page);
 
 	VM_BUG_ON_FOLIO(!folio_test_locked(src), src);
@@ -1013,16 +1023,19 @@ static int move_to_new_folio(struct folio *dst, struct folio *src,
 		if (!mapping)
 			rc = migrate_folio(mapping, dst, src, mode);
 		else if (mapping->a_ops->migrate_folio)
-			/*
+		/* 实现了 migrate 回调的 mapping 的情况 */
+		/*
+		
 			 * Most folios have a mapping and most filesystems
 			 * provide a migrate_folio callback. Anonymous folios
 			 * are part of swap space which also has its own
 			 * migrate_folio callback. This is the most common path
 			 * for page migration.
-			 */
+			 只有这里调用 mapping 的 migrate folio 回调*/
 			rc = mapping->a_ops->migrate_folio(mapping, dst, src,
 								mode);
 		else
+		/* 这里和匿名页是一个逻辑， 只不过多了写回的处理 */
 			rc = fallback_migrate_folio(mapping, dst, src, mode);
 	} else {
 		const struct movable_operations *mops;
@@ -1104,7 +1117,10 @@ static void __migrate_folio_extract(struct folio *dst,
 	dst->private = NULL;
 }
 
-/* Restore the source folio to the original state upon failure */
+/*
+迁移 src 到其他页面出错了
+这里回滚
+Restore the source folio to the original state upon failure */
 static void migrate_folio_undo_src(struct folio *src,
 				   int page_was_mapped,
 				   struct anon_vma *anon_vma,
@@ -1122,7 +1138,10 @@ static void migrate_folio_undo_src(struct folio *src,
 		list_move_tail(&src->lru, ret);
 }
 
-/* Restore the destination folio to the original state upon failure */
+/*
+准备用 dst 代替其他页面 （src 迁移到 dst)
+出错了
+Restore the destination folio to the original state upon failure */
 static void migrate_folio_undo_dst(struct folio *dst, bool locked,
 		free_folio_t put_new_folio, unsigned long private)
 {
@@ -1134,7 +1153,10 @@ static void migrate_folio_undo_dst(struct folio *dst, bool locked,
 		folio_put(dst);
 }
 
-/* Cleanup src folio upon migration success */
+/*
+现在 src 迁移成功了
+也就是说被 dst 页面代替了
+Cleanup src folio upon migration success */
 static void migrate_folio_done(struct folio *src,
 			       enum migrate_reason reason)
 {
@@ -1311,7 +1333,10 @@ out:
 	return rc;
 }
 
-/* Migrate the folio to the newly allocated folio in dst. */
+/*
+迁移到 dst
+用 dst 代替 src 这个页面
+Migrate the folio to the newly allocated folio in dst. */
 static int migrate_folio_move(free_folio_t put_new_folio, unsigned long private,
 			      struct folio *src, struct folio *dst,
 			      enum migrate_mode mode, enum migrate_reason reason,
@@ -1323,12 +1348,15 @@ static int migrate_folio_move(free_folio_t put_new_folio, unsigned long private,
 	bool is_lru = !__PageMovable(&src->page);
 	struct list_head *prev;
 
+	/* 好像是抽取 dst 的属性， 然后清空 */
 	__migrate_folio_extract(dst, &page_was_mapped, &anon_vma);
+	/* 把 dst 从 lru 移除 */
 	prev = dst->lru.prev;
 	list_del(&dst->lru);
 
+	/* 用 dst 代替 src 这个老页面 */
 	rc = move_to_new_folio(dst, src, mode);
-	if (rc)
+	if (rc) /* 出错了 */
 		goto out;
 
 	if (unlikely(!is_lru))
@@ -1343,10 +1371,12 @@ static int migrate_folio_move(free_folio_t put_new_folio, unsigned long private,
 	 * unsuccessful, and other cases when a page has been temporarily
 	 * isolated from the unevictable LRU: but this case is the easiest.
 	 */
+	/* 这里重新把 dst 加入 lru */
 	folio_add_lru(dst);
 	if (page_was_mapped)
 		lru_add_drain();
 
+	/* 这里迁移 pte 的映射 */
 	if (page_was_mapped)
 		remove_migration_ptes(src, dst, false);
 
@@ -1373,6 +1403,7 @@ out_unlock_both:
 
 	return rc;
 out:
+/* 出错了 */
 	/*
 	 * A folio that has not been migrated will be restored to
 	 * right list unless we want to retry.
@@ -1812,6 +1843,7 @@ move:
 
 			cond_resched();
 
+			/* 把 folio 迁移到 dst */
 			rc = migrate_folio_move(put_new_folio, private,
 						folio, dst, mode,
 						reason, ret_folios);
@@ -1913,6 +1945,7 @@ static int migrate_pages_sync(struct list_head *from, new_folio_t get_new_folio,
 }
 
 /*
+迁移页面
  * migrate_pages - migrate the folios specified in a list, to the free folios
  *		   supplied as the target for the page migration
  *
@@ -1954,6 +1987,7 @@ int migrate_pages(struct list_head *from, new_folio_t get_new_folio,
 
 	memset(&stats, 0, sizeof(stats));
 
+	/* 以后 */
 	rc_gather = migrate_hugetlbs(from, get_new_folio, put_new_folio, private,
 				     mode, reason, &stats, &ret_folios);
 	if (rc_gather < 0)
@@ -1968,14 +2002,18 @@ again:
 			continue;
 		}
 
+		/* 收拢一批普通页面 */
 		nr_pages += folio_nr_pages(folio);
 		if (nr_pages >= NR_MAX_BATCHED_MIGRATION)
 			break;
 	}
+	/* 把刚才收拢的移到folios */
 	if (nr_pages >= NR_MAX_BATCHED_MIGRATION)
 		list_cut_before(&folios, from, &folio2->lru);
 	else
 		list_splice_init(from, &folios);
+
+	/* 开始处理 folios 里面的页面 */
 	if (mode == MIGRATE_ASYNC)
 		rc = migrate_pages_batch(&folios, get_new_folio, put_new_folio,
 				private, mode, reason, &ret_folios,
@@ -1985,6 +2023,8 @@ again:
 		rc = migrate_pages_sync(&folios, get_new_folio, put_new_folio,
 				private, mode, reason, &ret_folios,
 				&split_folios, &stats);
+	/* 将 */
+	
 	list_splice_tail_init(&folios, &ret_folios);
 	if (rc < 0) {
 		rc_gather = rc;
@@ -2521,6 +2561,7 @@ SYSCALL_DEFINE6(move_pages, pid_t, pid, unsigned long, nr_pages,
 /*
  * Returns true if this is a safe migration target node for misplaced NUMA
  * pages. Currently it only checks the watermarks which is crude.
+ 如果pgdat可以迁移nr_migrate_pages, 返回true
  */
 static bool migrate_balanced_pgdat(struct pglist_data *pgdat,
 				   unsigned long nr_migrate_pages)
@@ -2544,6 +2585,9 @@ static bool migrate_balanced_pgdat(struct pglist_data *pgdat,
 	return false;
 }
 
+/* 在指定的node上面分配页面
+======================
+可以用于numa平衡 */
 static struct folio *alloc_misplaced_dst_folio(struct folio *src,
 					   unsigned long data)
 {
@@ -2560,7 +2604,8 @@ static struct folio *alloc_misplaced_dst_folio(struct folio *src,
 	}
 	return __folio_alloc_node(gfp, order, nid);
 }
-/*  */
+/* numa平衡迁移页面
+先isolate */
 static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 {
 	int nr_pages = thp_nr_pages(page);
@@ -2572,7 +2617,8 @@ static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 	if (PageTransHuge(page) && total_mapcount(page) > 1)
 		return 0;
 
-	/* Avoid migrating to a node that is nearly full */
+	/* Avoid migrating to a node that is nearly full
+	检查目标node是否合适 */
 	if (!migrate_balanced_pgdat(pgdat, nr_pages)) {
 		int z;
 
@@ -2582,6 +2628,7 @@ static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 			if (managed_zone(pgdat->node_zones + z))
 				break;
 		}
+		/* 这个node快满了, 唤醒kswap */
 		wakeup_kswapd(pgdat->node_zones + z, 0, order, ZONE_MOVABLE);
 		return 0;
 	}
@@ -2589,6 +2636,7 @@ static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 	if (!isolate_lru_page(page))
 		return 0;
 
+	/* 本来在lru上面， isolate成功了 */
 	mod_node_page_state(page_pgdat(page), NR_ISOLATED_ANON + page_is_file_lru(page),
 			    nr_pages);
 
@@ -2602,9 +2650,14 @@ static int numamigrate_isolate_page(pg_data_t *pgdat, struct page *page)
 }
 
 /*
+把页面迁移到指定node
  * Attempt to migrate a misplaced page to the specified destination
  * node. Caller is expected to have an elevated reference count on
  * the page that will be dropped by this function before returning.
+尝试将一个错误放置的页面迁移到指定的目的节点。调用者应该对页面有一个提升的引用计数，
+该函数在返回之前会释放这个引用计数
+========================
+返回0表示失败
  */
 int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 			   int node)
@@ -2619,6 +2672,7 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	/*
 	 * Don't migrate file pages that are mapped in multiple processes
 	 * with execute permissions as they are probably shared libraries.
+	 不迁移多个进程映射的可执行文件页面，因为它们可能是共享库。
 	 */
 	if (page_mapcount(page) != 1 && page_is_file_lru(page) &&
 	    (vma->vm_flags & VM_EXEC))
@@ -2627,14 +2681,18 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	/*
 	 * Also do not migrate dirty pages as not all filesystems can move
 	 * dirty pages in MIGRATE_ASYNC mode which is a waste of cycles.
+	 不迁移脏页面，因为不是所有的文件系统都可以在MIGRATE_ASYNC模式下移动脏页面，
+	 这会浪费很多周期。
 	 */
 	if (page_is_file_lru(page) && PageDirty(page))
 		goto out;
 
+	/* 这里从lru里面isolate出来 */
 	isolated = numamigrate_isolate_page(pgdat, page);
 	if (!isolated)
 		goto out;
 
+	/* 这里开始迁移 */
 	list_add(&page->lru, &migratepages);
 	nr_remaining = migrate_pages(&migratepages, alloc_misplaced_dst_folio,
 				     NULL, node, MIGRATE_ASYNC,

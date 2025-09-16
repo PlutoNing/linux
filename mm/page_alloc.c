@@ -445,7 +445,7 @@ void set_pfnblock_flags_mask(struct page *page, unsigned long flags,
 	do {
 	} while (!try_cmpxchg(&bitmap[word_bitidx], &word, (word & ~mask) | flags));
 }
-/* 设置pageblock的mt */
+/* 设置page 所在pageblock的mt */
 void set_pageblock_migratetype(struct page *page, int migratetype)
 {
 	if (unlikely(page_group_by_mobility_disabled &&
@@ -705,6 +705,7 @@ static inline void add_to_free_list_tail(struct page *page, struct zone *zone,
 }
 
 /*
+移动到对应的 freelist
  * Used for pages which are on another list. Move the pages to the tail
  * of the list - so the moved pages won't immediately be considered for
  * allocation again (e.g., optimization for memory onlining).
@@ -1697,6 +1698,8 @@ static inline struct page *__rmqueue_cma_fallback(struct zone *zone,
 #endif
 
 /*
+范围是一个 pageblock
+把范围内的 buddy page 移动到指定的 freelist 上面, lru page 就简单计数
  * Move the free pages in a range to the freelist tail of the requested type.
  * Note that start_page and end_pages are not aligned on a pageblock
  * boundary. If alignment is required, use move_freepages_block()
@@ -1717,6 +1720,7 @@ static int move_freepages(struct zone *zone,
 			 * We assume that pages that could be isolated for
 			 * migration are movable. But we don't actually try
 			 * isolating, as that would be expensive.
+			 看来页面的状态主要是 lru 的，buddy 的,moveable 的
 			 */
 			if (num_movable &&
 					(PageLRU(page) || __PageMovable(page)))
@@ -1725,11 +1729,15 @@ static int move_freepages(struct zone *zone,
 			continue;
 		}
 
+		/* 现在是 buddy 的 page 的情况 */
 		/* Make sure we are not inadvertently changing nodes */
 		VM_BUG_ON_PAGE(page_to_nid(page) != zone_to_nid(zone), page);
 		VM_BUG_ON_PAGE(page_zone(page) != zone, page);
 
 		order = buddy_order(page);
+		/* 现在 page 不在 freelist 吗, 还是说移动到 isolate 的 freelist 上面
+		========
+		设置 pageblock 为 isolate 时,这里mt是 isolate */
 		move_to_free_list(page, zone, order, migratetype);
 		pfn += 1 << order;
 		pages_moved += 1 << order;
@@ -1738,6 +1746,9 @@ static int move_freepages(struct zone *zone,
 	return pages_moved;
 }
 
+/* 操作 page 所在的 pageblock 
+把 pageblock 内的 buddy page 移动到指定的 freelist 上面 
+lru page 和 movable page 就简单计数*/
 int move_freepages_block(struct zone *zone, struct page *page,
 				int migratetype, int *num_movable)
 {
@@ -6327,7 +6338,9 @@ static void alloc_contig_dump_pages(struct list_head *page_list)
 	}
 }
 
-/* [start, end) must belong to a single zone. */
+/*
+范围可能是个跨过 pageblock 边界 的范围
+[start, end) must belong to a single zone. */
 int __alloc_contig_migrate_range(struct compact_control *cc,
 					unsigned long start, unsigned long end)
 {
@@ -6350,6 +6363,7 @@ int __alloc_contig_migrate_range(struct compact_control *cc,
 		}
 
 		if (list_empty(&cc->migratepages)) {
+			/* migrate 链表空了, 但是范围内还有可以迁移的 */
 			cc->nr_migratepages = 0;
 			ret = isolate_migratepages_range(cc, pfn, end);
 			if (ret && ret != -EAGAIN)
@@ -6387,6 +6401,7 @@ int __alloc_contig_migrate_range(struct compact_control *cc,
 }
 
 /**
+尝试把这段作为连续的物理页面分配
  * alloc_contig_range() -- tries to allocate given range of pages
  * @start:	start PFN to allocate
  * @end:	one-past-the-last PFN to allocate
@@ -6533,6 +6548,7 @@ done:
 }
 EXPORT_SYMBOL(alloc_contig_range);
 
+/* 尝试把这段作为连续物理页面分配 */
 static int __alloc_contig_pages(unsigned long start_pfn,
 				unsigned long nr_pages, gfp_t gfp_mask)
 {
@@ -6542,6 +6558,7 @@ static int __alloc_contig_pages(unsigned long start_pfn,
 				  gfp_mask);
 }
 
+/* 检查范围内页面不能有保留的，huge 的，不是本 zone 的 */
 static bool pfn_range_valid_contig(struct zone *z, unsigned long start_pfn,
 				   unsigned long nr_pages)
 {
@@ -6574,6 +6591,7 @@ static bool zone_spans_last_pfn(const struct zone *zone,
 }
 
 /**
+分配物理上连续的页面
  * alloc_contig_pages() -- tries to find and allocate contiguous range of pages
  * @nr_pages:	Number of contiguous pages to allocate
  * @gfp_mask:	GFP mask to limit search and used during compaction
@@ -6607,6 +6625,8 @@ struct page *alloc_contig_pages(unsigned long nr_pages, gfp_t gfp_mask,
 					gfp_zone(gfp_mask), nodemask) {
 		spin_lock_irqsave(&zone->lock, flags);
 
+		/* 遍历每个 zone
+		现在以 nr_pages 对齐，遍历 zone 的每个此大小的范围 */
 		pfn = ALIGN(zone->zone_start_pfn, nr_pages);
 		while (zone_spans_last_pfn(zone, pfn, nr_pages)) {
 			if (pfn_range_valid_contig(zone, pfn, nr_pages)) {
@@ -6618,6 +6638,7 @@ struct page *alloc_contig_pages(unsigned long nr_pages, gfp_t gfp_mask,
 				 * and cause alloc_contig_range() to fail...
 				 */
 				spin_unlock_irqrestore(&zone->lock, flags);
+				/* 尝试从这里分配 */
 				ret = __alloc_contig_pages(pfn, nr_pages,
 							gfp_mask);
 				if (!ret)
