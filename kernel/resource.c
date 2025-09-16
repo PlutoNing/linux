@@ -38,6 +38,7 @@ struct resource ioport_resource = {
 };
 EXPORT_SYMBOL(ioport_resource);
 
+/*  */
 struct resource iomem_resource = {
 	.name	= "PCI mem",
 	.start	= 0,
@@ -1146,6 +1147,9 @@ static void revoke_iomem(struct resource *res)
 static void revoke_iomem(struct resource *res) {}
 #endif
 
+/* 获取iomem_inode的mapping
+==========================
+作用是 */
 struct address_space *iomem_get_mapping(void)
 {
 	/*
@@ -1983,7 +1987,7 @@ static struct file_system_type iomem_fs_type = {
 	.init_fs_context = iomem_fs_init_fs_context,
 	.kill_sb	= kill_anon_super,
 };
-
+/* 初始化iomem_inode */
 static int __init iomem_init_inode(void)
 {
 	static struct vfsmount *iomem_vfs_mount;
@@ -1991,12 +1995,14 @@ static int __init iomem_init_inode(void)
 	struct inode *inode;
 	int rc;
 
+	/* 这里会挂载 */
 	rc = simple_pin_fs(&iomem_fs_type, &iomem_vfs_mount, &iomem_fs_cnt);
 	if (rc < 0) {
 		pr_err("Cannot mount iomem pseudo filesystem: %d\n", rc);
 		return rc;
 	}
 
+	/* 分配一个inode */
 	inode = alloc_anon_inode(iomem_vfs_mount->mnt_sb);
 	if (IS_ERR(inode)) {
 		rc = PTR_ERR(inode);

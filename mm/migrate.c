@@ -57,8 +57,7 @@
 
 #include "internal.h"
 
-/* 参数可能是一个还没有 isolate 的 movable 页面
-20250905010054 */
+/* 参数可能是一个还没有 isolate 的 movable 页面 */
 bool isolate_movable_page(struct page *page, isolate_mode_t mode)
 {
 	struct folio *folio = folio_get_nontail_page(page);

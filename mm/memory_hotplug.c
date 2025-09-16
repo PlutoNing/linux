@@ -248,7 +248,8 @@ void mem_hotplug_done(void)
 
 u64 max_mem_size = U64_MAX;
 
-/* add this memory to iomem resource */
+/* add this memory to iomem resource
+注册物理内存资源 */
 static struct resource *register_memory_resource(u64 start, u64 size,
 						 const char *resource_name)
 {
@@ -258,6 +259,7 @@ static struct resource *register_memory_resource(u64 start, u64 size,
 	if (strcmp(resource_name, "System RAM"))
 		flags |= IORESOURCE_SYSRAM_DRIVER_MANAGED;
 
+	/* 范围要在硬件允许的范围里面 */
 	if (!mhp_range_allowed(start, size, true))
 		return ERR_PTR(-E2BIG);
 
@@ -1525,7 +1527,9 @@ error_mem_hotplug_end:
 	return ret;
 }
 
-/* requires device_hotplug_lock, see add_memory_resource() */
+/* 
+添加物理内存,热插拔
+requires device_hotplug_lock, see add_memory_resource() */
 int __ref __add_memory(int nid, u64 start, u64 size, mhp_t mhp_flags)
 {
 	struct resource *res;
@@ -1541,6 +1545,7 @@ int __ref __add_memory(int nid, u64 start, u64 size, mhp_t mhp_flags)
 	return ret;
 }
 
+/* 怎么没人调用? */
 int add_memory(int nid, u64 start, u64 size, mhp_t mhp_flags)
 {
 	int rc;
@@ -1604,6 +1609,7 @@ out_unlock:
 EXPORT_SYMBOL_GPL(add_memory_driver_managed);
 
 /*
+让硬件定义内存范围
  * Platforms should define arch_get_mappable_range() that provides
  * maximum possible addressable physical memory range for which the
  * linear mapping could be created. The platform returned address
@@ -1625,6 +1631,9 @@ struct range __weak arch_get_mappable_range(void)
 	return mhp_range;
 }
 
+/* mhp_range是什么
+=========
+好像是硬件可以支持的内存范围 */
 struct range mhp_get_pluggable_range(bool need_mapping)
 {
 	const u64 max_phys = (1ULL << MAX_PHYSMEM_BITS) - 1;
@@ -1645,8 +1654,10 @@ struct range mhp_get_pluggable_range(bool need_mapping)
 }
 EXPORT_SYMBOL_GPL(mhp_get_pluggable_range);
 
+/* 看看这个添加的范围是否位于硬件支持的范围里面 */
 bool mhp_range_allowed(u64 start, u64 size, bool need_mapping)
 {
+	/* 要求参数范围位于mhp_range之内? */
 	struct range mhp_range = mhp_get_pluggable_range(need_mapping);
 	u64 end = start + size;
 
@@ -2331,6 +2342,7 @@ static int try_reonline_memory_block(struct memory_block *mem, void *arg)
  * memory is still in use. Primarily useful for memory devices that logically
  * unplugged all memory (so it's no longer in use) and want to offline + remove
  * that memory.
+ 尝试下线和移除内存, 可能会花比较多时间
  */
 int offline_and_remove_memory(u64 start, u64 size)
 {

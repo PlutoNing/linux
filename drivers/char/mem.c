@@ -641,7 +641,12 @@ static int open_port(struct inode *inode, struct file *filp)
 #define write_zero	write_null
 #define write_iter_zero	write_iter_null
 #define open_mem	open_port
-
+/* ### `/dev/mem` (mem_fops)
+- __作用__：直接访问物理内存
+- __用途__：调试、硬件访问、内核开发
+- __权限__：需要root权限
+- __示例__：`dd if=/dev/mem of=dump bs=1M count=1`
+ */
 static const struct file_operations __maybe_unused mem_fops = {
 	.llseek		= memory_lseek,
 	.read		= read_mem,
@@ -653,7 +658,12 @@ static const struct file_operations __maybe_unused mem_fops = {
 	.mmap_capabilities = memory_mmap_capabilities,
 #endif
 };
+/* ### . `/dev/null` (null_fops)
 
+- __作用__：黑洞设备，丢弃所有写入数据
+- __用途__：丢弃输出、测试程序
+- __示例__：`echo "test" > /dev/null`
+ */
 static const struct file_operations null_fops = {
 	.llseek		= null_lseek,
 	.read		= read_null,
@@ -664,6 +674,12 @@ static const struct file_operations null_fops = {
 	.uring_cmd	= uring_cmd_null,
 };
 
+/* ### `/dev/port` (port_fops)
+
+- __作用__：直接访问I/O端口
+- __用途__：硬件编程、驱动开发
+- __示例__：`outb 0x60 0x64`
+ */
 static const struct file_operations __maybe_unused port_fops = {
 	.llseek		= memory_lseek,
 	.read		= read_port,
@@ -671,6 +687,11 @@ static const struct file_operations __maybe_unused port_fops = {
 	.open		= open_port,
 };
 
+/* ### `/dev/zero` (zero_fops)
+
+- __作用__：提供无限零字节
+- __用途__：创建空文件、内存初始化
+ */
 static const struct file_operations zero_fops = {
 	.llseek		= zero_lseek,
 	.write		= write_zero,
@@ -683,7 +704,12 @@ static const struct file_operations zero_fops = {
 	.mmap_capabilities = zero_mmap_capabilities,
 #endif
 };
+/* ### `/dev/full` (full_fops)
 
+- __作用__：总是返回"设备已满"错误
+- __用途__：测试程序错误处理
+- __示例__：`echo "test" > /dev/full` → ENOSPC错误
+ */
 static const struct file_operations full_fops = {
 	.llseek		= full_lseek,
 	.read_iter	= read_iter_zero,
